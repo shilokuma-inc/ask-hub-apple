@@ -1,0 +1,14 @@
+name: バグ修正
+description: バグのIssue
+title: "【FIX】"
+labels: [bug]
+projects: []
+body:
+  - type: textarea
+    id: content
+    attributes:
+      label: 概要
+      description: バグ・修正したい機能の説明をお願いします
+      placeholder: バグ内容
+    validations:
+      required: true
