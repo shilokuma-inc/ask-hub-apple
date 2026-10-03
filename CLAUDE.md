@@ -20,8 +20,11 @@
 - `AskHub/` … アプリ本体（iOS / macOS 共通）。macOS 版は App Sandbox + ネットワーク送信のみ許可
 - `AskHubTests/` / `AskHubUITests/` … テスト
 - `Configs/*.xcconfig` … ビルド設定。Team ID・Bundle ID・バージョン・Deployment Target はここだけを編集する
-- オーケストレーター（Discussion #1 の Q2: アプリとは分ける）は、同じリポジトリ内の Swift Package の
-  executable として置く。アプリは GitHub だけを見るクライアントに徹し、`claude` / `git` / `xcodebuild` を起動しない
+- `AskHubKit/` … アプリとオーケストレーターで共有するローカル Swift Package。
+  プロトコル（ラベル・目印・回答形式）のモデルとパーサー、GitHub API クライアントなど UI に依存しないコードはここに置く。
+  アプリターゲットからリンク済み（pbxproj の編集は不要。`.swift` ファイルを追加するだけでよい）
+- オーケストレーター（Discussion #1 の Q2: アプリとは分ける）は、`AskHubKit/Package.swift` に macOS 用の
+  executable ターゲットとして追加する。アプリは GitHub だけを見るクライアントに徹し、`claude` / `git` / `xcodebuild` を起動しない
 
 ## ビルド・検証
 
@@ -30,10 +33,11 @@ swiftlint lint --strict
 xcodebuild -project AskHub.xcodeproj -scheme AskHub -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 xcodebuild -project AskHub.xcodeproj -scheme AskHub -destination 'platform=macOS' build
 xcodebuild test -project AskHub.xcodeproj -scheme AskHub -destination 'platform=macOS' -only-testing:AskHubTests
+swift test --package-path AskHubKit
 ```
 
 - Simulator 名は OS 更新で改名されることがある。解決できない場合は `xcrun simctl list devices available` で UDID を調べて `id=` で指定する
-- CI（`.github/workflows/_build.yml`）は iOS でビルド・テストし、macOS は署名なしでビルドする
+- CI（`.github/workflows/_build.yml`）は iOS でビルド・テストし、`AskHubKit` を `swift test` で検証し、macOS は署名なしでビルドする
 
 ## ブランチ運用
 
