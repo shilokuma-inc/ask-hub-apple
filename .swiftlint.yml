@@ -4,6 +4,7 @@
 
 excluded:
   - .build
+  - AskHubKit/.build
   - DerivedData
   - Configs
   - "**/Package.swift"
