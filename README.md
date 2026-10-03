@@ -1,14 +1,14 @@
 # AskHub
 
-iOS Application Template (SwiftUI)
+ループ開発（ralph-loop）で人間の判断が必要なものだけを集めて回答する macOS / iOS アプリです。
+Discussion の質問や PR の ask を 1 つの一覧にまとめ、アプリで回答すると GitHub に返信され、止まっていたループが再開します。
 
-iOS アプリのリポジトリを新規作成するときの GitHub テンプレートリポジトリです。
-SwiftUI のプロジェクト一式と、ビルド・テスト・Archive・TestFlight 配信までの GitHub Actions ワークフローを含みます。
+構想と決定事項は [Discussion #1](https://github.com/shilokuma-inc/ask-hub-apple/discussions/1) を参照してください。
 
 ## Environment
 
 - Xcode 26.3
-- iOS 17.0 以上
+- iOS 17.0 以上 / macOS 14.0 以上（SwiftUI マルチプラットフォーム）
 - Swift 6（Swift 6 言語モード / Strict Concurrency）
 - SwiftUI / Swift Testing / XCTest（UI テスト）
 - SwiftLint 0.65.1（Build Tool Plugin）
@@ -58,38 +58,21 @@ SwiftUI のプロジェクト一式と、ビルド・テスト・Archive・TestF
   </table>
 </div>
 
-## テンプレートの使い方
+## セットアップ
 
-### 1. リポジトリを作成する
-
-GitHub の「Use this template」からリポジトリを作成し、clone します。
-
-### 2. プロジェクト名を変更する
-
-`AskHub` を新しいアプリ名に一括変更するスクリプトを用意しています。
-ディレクトリ・`.xcodeproj`・スキーム・ソース内の識別子・README のバッジ URL をまとめて置換します。
-
-```bash
-scripts/rename.sh MyApp
-```
-
-- アプリ名は英字で始まる英数字のみです（Swift のモジュール名になります）
-- README のバッジ URL に使うリポジトリ名は `origin` から推定します。別のものを使う場合は第 2 引数で `owner/repo` を渡します
-- 作業ツリーがクリーンな状態で実行し、実行後に `git diff` で差分を確認してコミットしてください
-
-### 3. 署名情報を設定する
+### 1. 署名情報を設定する
 
 署名情報やバージョンは pbxproj ではなく [Configs/Project.xcconfig](Configs/Project.xcconfig) に集約しています。
-リポジトリ作成後、まず以下を書き換えてください。
+値を変更するときはここを書き換えてください。
 
 | 設定 | 内容 |
 |---|---|
 | `DEVELOPMENT_TEAM` | Apple Developer Program の Team ID |
 | `APP_BUNDLE_IDENTIFIER` | アプリ本体の Bundle Identifier。テストターゲットは `.Tests` / `.UITests` を付けて自動で派生します |
 | `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` | アプリのバージョン / ビルド番号 |
-| `IPHONEOS_DEPLOYMENT_TARGET` | 最低サポート OS |
+| `IPHONEOS_DEPLOYMENT_TARGET` / `MACOSX_DEPLOYMENT_TARGET` | 最低サポート OS |
 
-### 4. GitHub Secrets を設定する
+### 2. GitHub Secrets を設定する
 
 Archive / Upload ワークフローは App Store Connect API Key で認証します。
 リポジトリの Settings → Secrets and variables → Actions に以下を登録してください。
@@ -104,7 +87,7 @@ Archive / Upload ワークフローは App Store Connect API Key で認証しま
 API Key は App Store Connect の「ユーザとアクセス → 統合 → App Store Connect API」で、App Manager 以上の権限で発行します。
 アップロード先のアプリは事前に App Store Connect に登録しておいてください。
 
-### 5. ブランチ運用と CI
+### 3. ブランチ運用と CI
 
 | ブランチ | Build（ビルド + テスト + SwiftLint） | Archive（IPA Export） | Upload（App Store Connect） |
 |---|:-:|:-:|:-:|
@@ -119,7 +102,7 @@ API Key は App Store Connect の「ユーザとアクセス → 統合 → App 
 - `assets/**` はアプリのコードを含まないため、どのワークフローも実行しません
 - Xcode のバージョンは [.github/workflows/_build.yml](.github/workflows/_build.yml) と [.github/workflows/_archive.yml](.github/workflows/_archive.yml) の `xcode-version` で固定しています。Environment の更新時はあわせて変更してください
 
-### 6. PR 本文のスクリーンショット
+### 4. PR 本文のスクリーンショット
 
 UI の見た目が変わる変更では、Before / After のスクリーンショットを PR 本文に添付します。
 
@@ -139,7 +122,7 @@ UI の見た目が変わる変更では、Before / After のスクリーンシ�
 ├── AskHubUITests/   # UI テスト（XCTest）
 ├── AskHub.xcodeproj # 共有スキーム AskHub を含む
 ├── docs/                    # ExportOptions.plist のサンプル
-├── scripts/                 # rename.sh
+├── scripts/                 # ralph-loop の setup / start / stop
 ├── .swiftlint.yml           # SwiftLint 設定
 └── .github/
     ├── ISSUE_TEMPLATE/      # Issue テンプレート
