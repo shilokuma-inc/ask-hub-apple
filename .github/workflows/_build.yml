@@ -69,6 +69,16 @@ jobs:
             -retry-tests-on-failure \
             -test-iterations 2
 
+      - name: Build for macOS
+        # 同じターゲットを macOS 向けにもビルドする。ランナーには署名用の証明書が無いため署名は省く
+        run: |
+          xcodebuild build \
+            -project "$PROJECT_NAME.xcodeproj" \
+            -scheme "$SCHEME" \
+            -destination "platform=macOS" \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO
+
       - name: Upload test results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
