@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4FA0000000000000000000F3 /* AskHubKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4FA0000000000000000000F2 /* AskHubKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		4FC9E1FA2BF1049C00F630AB /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -68,6 +72,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4FA0000000000000000000F3 /* AskHubKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -139,6 +144,9 @@
 				4FA0000000000000000000B1 /* AskHub */,
 			);
 			name = AskHub;
+			packageProductDependencies = (
+				4FA0000000000000000000F2 /* AskHubKit */,
+			);
 			productName = AskHub;
 			productReference = 4FC9E1E92BF1049B00F630AB /* AskHub.app */;
 			productType = "com.apple.product-type.application";
@@ -221,6 +229,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLint" */,
+				4FA0000000000000000000F1 /* XCLocalSwiftPackageReference "AskHubKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4FC9E1EA2BF1049B00F630AB /* Products */;
@@ -610,6 +619,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		4FA0000000000000000000F1 /* XCLocalSwiftPackageReference "AskHubKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = AskHubKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLint" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -622,6 +638,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		4FA0000000000000000000F2 /* AskHubKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AskHubKit;
+		};
 		4F27869E2BF3744F00E9F5EF /* SwiftLintBuildToolPlugin */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLint" */;
