@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "4FC9E1E82BF1049B00F630AB"
-               BuildableName = "IOSTemplateApp.app"
-               BlueprintName = "IOSTemplateApp"
-               ReferencedContainer = "container:IOSTemplateApp.xcodeproj">
+               BuildableName = "AskHub.app"
+               BlueprintName = "AskHub"
+               ReferencedContainer = "container:AskHub.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -36,9 +36,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "4FC9E1F82BF1049C00F630AB"
-               BuildableName = "IOSTemplateAppTests.xctest"
-               BlueprintName = "IOSTemplateAppTests"
-               ReferencedContainer = "container:IOSTemplateApp.xcodeproj">
+               BuildableName = "AskHubTests.xctest"
+               BlueprintName = "AskHubTests"
+               ReferencedContainer = "container:AskHub.xcodeproj">
             </BuildableReference>
          </TestableReference>
          <TestableReference
@@ -46,9 +46,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "4FC9E2022BF1049C00F630AB"
-               BuildableName = "IOSTemplateAppUITests.xctest"
-               BlueprintName = "IOSTemplateAppUITests"
-               ReferencedContainer = "container:IOSTemplateApp.xcodeproj">
+               BuildableName = "AskHubUITests.xctest"
+               BlueprintName = "AskHubUITests"
+               ReferencedContainer = "container:AskHub.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -68,9 +68,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "4FC9E1E82BF1049B00F630AB"
-            BuildableName = "IOSTemplateApp.app"
-            BlueprintName = "IOSTemplateApp"
-            ReferencedContainer = "container:IOSTemplateApp.xcodeproj">
+            BuildableName = "AskHub.app"
+            BlueprintName = "AskHub"
+            ReferencedContainer = "container:AskHub.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -85,9 +85,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "4FC9E1E82BF1049B00F630AB"
-            BuildableName = "IOSTemplateApp.app"
-            BlueprintName = "IOSTemplateApp"
-            ReferencedContainer = "container:IOSTemplateApp.xcodeproj">
+            BuildableName = "AskHub.app"
+            BlueprintName = "AskHub"
+            ReferencedContainer = "container:AskHub.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

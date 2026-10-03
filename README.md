@@ -1,4 +1,4 @@
-# IOSTemplateApp
+# AskHub
 
 iOS Application Template (SwiftUI)
 
@@ -27,13 +27,13 @@ SwiftUI のプロジェクト一式と、ビルド・テスト・Archive・TestF
       <tr>
         <td style="border:2px double #000080;text-align:left;">main</td>
         <td style="border:2px double #000080;text-align:center;">
-          <a href="https://github.com/shilokuma-inc/template-app-ios/actions/workflows/build.yml?query=branch%3Amain">
-            <img src="https://github.com/shilokuma-inc/template-app-ios/actions/workflows/build.yml/badge.svg?branch=main" alt="Build">
+          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml?query=branch%3Amain">
+            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml/badge.svg?branch=main" alt="Build">
           </a>
         </td>
         <td style="border:2px double #000080;text-align:center;">
-          <a href="https://github.com/shilokuma-inc/template-app-ios/actions/workflows/archive.yml?query=branch%3Amain">
-            <img src="https://github.com/shilokuma-inc/template-app-ios/actions/workflows/archive.yml/badge.svg?branch=main" alt="Archive">
+          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/archive.yml?query=branch%3Amain">
+            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/archive.yml/badge.svg?branch=main" alt="Archive">
           </a>
         </td>
         <td style="border:2px double #000080;text-align:center;">
@@ -42,15 +42,15 @@ SwiftUI のプロジェクト一式と、ビルド・テスト・Archive・TestF
       <tr>
         <td style="border:2px double #000080;text-align:left;">develop</td>
         <td style="border:2px double #000080;text-align:center;">
-          <a href="https://github.com/shilokuma-inc/template-app-ios/actions/workflows/build.yml?query=branch%3Adevelop">
-            <img src="https://github.com/shilokuma-inc/template-app-ios/actions/workflows/build.yml/badge.svg?branch=develop" alt="Build">
+          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml?query=branch%3Adevelop">
+            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml/badge.svg?branch=develop" alt="Build">
           </a>
         </td>
         <td style="border:2px double #000080;text-align:center;">
         </td>
         <td style="border:2px double #000080;text-align:center;">
-          <a href="https://github.com/shilokuma-inc/template-app-ios/actions/workflows/upload.yml?query=branch%3Adevelop">
-            <img src="https://github.com/shilokuma-inc/template-app-ios/actions/workflows/upload.yml/badge.svg?branch=develop" alt="Upload">
+          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/upload.yml?query=branch%3Adevelop">
+            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/upload.yml/badge.svg?branch=develop" alt="Upload">
           </a>
         </td>
       </tr>
@@ -66,7 +66,7 @@ GitHub の「Use this template」からリポジトリを作成し、clone し�
 
 ### 2. プロジェクト名を変更する
 
-`IOSTemplateApp` を新しいアプリ名に一括変更するスクリプトを用意しています。
+`AskHub` を新しいアプリ名に一括変更するスクリプトを用意しています。
 ディレクトリ・`.xcodeproj`・スキーム・ソース内の識別子・README のバッジ URL をまとめて置換します。
 
 ```bash
@@ -134,10 +134,10 @@ UI の見た目が変わる変更では、Before / After のスクリーンシ�
 ```
 .
 ├── Configs/                 # xcconfig（署名情報・バージョン・Deployment Target）
-├── IOSTemplateApp/          # アプリ本体（SwiftUI）
-├── IOSTemplateAppTests/     # Unit テスト（Swift Testing）
-├── IOSTemplateAppUITests/   # UI テスト（XCTest）
-├── IOSTemplateApp.xcodeproj # 共有スキーム IOSTemplateApp を含む
+├── AskHub/          # アプリ本体（SwiftUI）
+├── AskHubTests/     # Unit テスト（Swift Testing）
+├── AskHubUITests/   # UI テスト（XCTest）
+├── AskHub.xcodeproj # 共有スキーム AskHub を含む
 ├── docs/                    # ExportOptions.plist のサンプル
 ├── scripts/                 # rename.sh
 ├── .swiftlint.yml           # SwiftLint 設定

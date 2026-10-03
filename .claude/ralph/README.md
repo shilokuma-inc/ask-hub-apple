@@ -2,7 +2,7 @@
 
 [ralph-loop](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-loop) で
 自律的に実装を回すための雛形。設計の根拠と、実際に踏んだ落とし穴は
-[Discussion #87](https://github.com/shilokuma-inc/template-app-ios/discussions/87) を参照。
+[Discussion #87](https://github.com/shilokuma-inc/ask-hub-apple/discussions/87) を参照。
 
 ## 構成
 
