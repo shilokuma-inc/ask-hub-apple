@@ -22,7 +22,7 @@ reviews:
     # 自動生成・バイナリ系はレビュー対象外
     - "!**/*.xcassets/**"
     - "!**/Package.resolved"
-    - "!**/*.pbxproj"
+    # pbxproj はレビュー対象に残す。ループには触らせない方針なので、意図しない変更が入ったら気づけるようにする
     - "!DerivedData/**"
   path_instructions:
     - path: "**/*.swift"
