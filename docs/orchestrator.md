@@ -193,6 +193,18 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 
 回答済みの質問はメモリ上でだけ覚えるため、オーケストレーターを再起動した直後は、回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
 
+## 異常終了したループを再開する
+
+ask への回答が無くても、**タスクを残したまま異常終了したループ**は毎回のポーリングで再開する（`StallWatcher`）。
+新しい Discussion の起動より先に判定し、途中の epic に別の epic を被せない。
+
+- 異常終了 = 制御用 worktree に `.claude/ralph-loop.local.md` が残っているのに、`.claude/askhub-loop.pid` のプロセスが居ない。
+  ralph-loop プラグインが無くて 1 周で終わった・Stop hook が state を見失った・プロセスが落ちた、などで起きる
+- `scripts/ralph-stop.sh` で手で止めたループと、promise を出して終わったループは state ファイルが消えるので、再開しない
+- 制御用 worktree のブランチが `epic/` で始まるときだけ再開する（`loopCommand` の `{discussion}` は空文字列）
+- goal / state が変わらないまま 3 回止まったら、自動の再開をやめてログに出す。ループが進めば（goal / state が変われば）数え直す。
+  数はメモリ上でだけ覚えるので、オーケストレーターを再起動すると数え直す
+
 ## epic が完了したら最終 PR を作る
 
 毎回のポーリングの最後に、担当リポジトリごとに制御用 worktree を読んで判定する（`EpicCompletion`、副作用なし）。
