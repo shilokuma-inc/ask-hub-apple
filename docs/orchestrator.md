@@ -160,7 +160,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 家の Mac ごとに担当リポジトリを分けて常駐させる（Discussion #1 の Q10）。各 Mac で次を行う。
 
 1. **アカウント**: `claude` にログインする（Mac ごとに別のアカウントでよい）。`gh auth login` は信用する author のアカウントで行う
-2. **開発ツール**: Xcode と iOS Simulator のランタイム、`brew install gh swiftlint`
+2. **開発ツール**: Xcode と iOS Simulator のランタイム、`brew install gh jq swiftlint`
 3. **共有設定**: `git clone git@github.com:mrs1669/agents-config.git ~/.agents && ~/.agents/install.sh`（AGENTS.md と LEARNINGS の hook）
 4. **常駐の前提**: スリープを止める・停電後に自動で起動する・ログインしたままにする（LaunchAgent はログイン中のユーザーで動く）。
    `~/.claude/settings.json` の `skipDangerousModePermissionPrompt` は `true` のまま（無人で `bypassPermissions` を使うため）

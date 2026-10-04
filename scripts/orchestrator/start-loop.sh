@@ -63,6 +63,7 @@ open_tasks() {
   || fail "scripts/ralph-setup.sh / ralph-start.sh がありません（template-app-ios の ralph 一式を取り込んでください）"
 # 周回は ralph-loop プラグインの Stop hook が回す。プラグインが無いと 1 周目で黙って終わるので、起動前に止める
 RALPH_PLUGIN="ralph-loop@claude-plugins-official"
+command -v jq >/dev/null 2>&1 || fail "jq が見つかりません（brew install jq で入れてください）"
 ralph_plugin_enabled() {
   local settings
   for settings in "$HOME/.claude/settings.json" "$CTL/.claude/settings.json" "$CTL/.claude/settings.local.json"; do
