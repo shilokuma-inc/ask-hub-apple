@@ -55,7 +55,7 @@ struct LocalLoopRuntimeTests {
         try finished.run()
         finished.waitUntilExit()
         try Data("\(finished.processIdentifier)".utf8).write(to: pidFile)
-        #expect(await runtime.status(of: repository) == LoopStatus(stateFileExists: false, processAlive: false))
+        #expect(await runtime.status(of: repository) == LoopStatus(stateFileExists: false, processAlive: false, stalled: true))
 
         // PID ファイルが読めなければ判断せず、state ファイルを信じる
         try Data("not a pid".utf8).write(to: pidFile)

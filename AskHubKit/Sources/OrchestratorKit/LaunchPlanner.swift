@@ -41,10 +41,14 @@ public struct LoopStatus: Sendable, Equatable {
     public let stateFileExists: Bool?
     /// このオーケストレーターが起動したプロセスが生きているか
     public let processAlive: Bool
+    /// ループが異常終了した（state ファイルが残っているのに、記録した PID のプロセスが居ない）。
+    /// `ralph-stop.sh` で止めた・promise で終わったループは state ファイルが消えるので `false`
+    public let stalled: Bool
 
-    public init(stateFileExists: Bool?, processAlive: Bool) {
+    public init(stateFileExists: Bool?, processAlive: Bool, stalled: Bool = false) {
         self.stateFileExists = stateFileExists
         self.processAlive = processAlive
+        self.stalled = stalled
     }
 
     public static let idle = Self(stateFileExists: false, processAlive: false)
