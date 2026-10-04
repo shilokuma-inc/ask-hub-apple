@@ -44,12 +44,22 @@ struct GitHubMergeQueueTests {
         return GitHubMergeQueue(client: client, trustedAuthors: TrustedAuthors(["mrs1669"]))
     }
 
-    private static func node(number: Int, author: String, mergeable: String, rollup: String?) -> String {
+    private static func node(
+        number: Int,
+        author: String,
+        mergeable: String,
+        rollup: String?,
+        base: String = "develop",
+        headRepository: String? = "o/r"
+    ) -> String {
         let rollupJSON = rollup.map { #"{ "state": "\#($0)" }"# } ?? "null"
+        let headJSON = headRepository.map { #"{ "nameWithOwner": "\#($0)" }"# } ?? "null"
         return #"""
             { "id": "PR_\#(number)", "number": \#(number), "title": "T\#(number)", "body": "まとめ", "url": "https://github.com/o/r/pull/\#(number)",
-              "baseRefName": "develop", "headRefName": "epic/e\#(number)", "headRefOid": "sha\#(number)", "mergeable": "\#(mergeable)",
-              "author": { "login": "\#(author)" }, "repository": { "nameWithOwner": "o/r" },
+              "baseRefName": "\#(base)", "headRefName": "epic/e\#(number)", "headRefOid": "sha\#(number)", "mergeable": "\#(mergeable)",
+              "author": { "login": "\#(author)" },
+              "repository": { "nameWithOwner": "o/r", "defaultBranchRef": { "name": "develop" } },
+              "headRepository": \#(headJSON),
               "commits": { "nodes": [{ "commit": { "statusCheckRollup": \#(rollupJSON) } }] } }
             """#
     }
@@ -62,12 +72,16 @@ struct GitHubMergeQueueTests {
                   \#(Self.node(number: 2, author: "MRS1669", mergeable: "CONFLICTING", rollup: "PENDING")),
                   \#(Self.node(number: 3, author: "someone", mergeable: "MERGEABLE", rollup: "SUCCESS")),
                   \#(Self.node(number: 4, author: "mrs1669", mergeable: "UNKNOWN", rollup: nil)),
+                  \#(Self.node(number: 5, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS", base: "epic/mvp")),
+                  \#(Self.node(number: 6, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS", headRepository: "fork/r")),
+                  \#(Self.node(number: 7, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS", headRepository: nil)),
                   {}
                 ] } } }
                 """#)
         ])
         let pulls = try await makeQueue(http).epicPullRequests(org: "shilokuma-inc")
 
+        // 既定ブランチ以外への PR（5）・fork からの PR（6）・head のリポジトリが分からない PR（7）は除く
         #expect(pulls.map(\.number) == [1, 2, 4])
         #expect(pulls.map(\.checks) == [.success, .pending, .none])
         #expect(pulls.map(\.mergeability) == [.mergeable, .conflicting, .unknown])

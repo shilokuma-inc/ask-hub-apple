@@ -21,6 +21,8 @@ public struct GitHubMergeQueue: MergeQueueProviding {
             )
             return (data.search.nodes.compactMap(\.self), data.search.pageInfo)
         }
+        // 最終 PR だけを出す: 同じリポジトリの epic ブランチから既定ブランチ（develop）への PR で、信用する author が作ったもの。
+        // fork からの PR は、マージ後に削除するブランチがこのリポジトリに無いので扱わない
         return nodes.compactMap(\.pullRequest).filter { trustedAuthors.contains($0.author) }
     }
 
@@ -50,7 +52,8 @@ public struct GitHubMergeQueue: MergeQueueProviding {
               ... on PullRequest {
                 id number title body url baseRefName headRefName headRefOid mergeable
                 author { login }
-                repository { nameWithOwner }
+                repository { nameWithOwner defaultBranchRef { name } }
+                headRepository { nameWithOwner }
                 commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
               }
             }
@@ -91,6 +94,7 @@ private struct EpicNode: Decodable {
 
     struct Repository: Decodable {
         let nameWithOwner: String
+        let defaultBranchRef: BranchRef?
     }
 
     struct Commits: Decodable {
@@ -108,17 +112,21 @@ private struct EpicNode: Decodable {
     let mergeable: String?
     let author: Login?
     let repository: Repository?
+    let headRepository: HeadRepository?
     let commits: Commits?
 
     /// 検索の型に合わないノード（`{}`）では `nil`
     var pullRequest: EpicPullRequest? {
         guard let id, let number, let title, let url, let baseRefName, let headRefName, let headRefOid,
-              let repository = repository?.nameWithOwner else {
+              let repository,
+              // 既定ブランチ（develop）への PR だけ。fork や head のリポジトリが分からない PR は除く
+              baseRefName == repository.defaultBranchRef?.name,
+              headRepository?.nameWithOwner.caseInsensitiveCompare(repository.nameWithOwner) == .orderedSame else {
             return nil
         }
         return EpicPullRequest(
             id: id,
-            repository: repository,
+            repository: repository.nameWithOwner,
             number: number,
             title: title,
             body: body ?? "",
@@ -169,6 +177,14 @@ private struct CommitNode: Decodable {
     }
 
     let commit: Commit
+}
+
+private struct BranchRef: Decodable {
+    let name: String
+}
+
+private struct HeadRepository: Decodable {
+    let nameWithOwner: String
 }
 
 private struct CheckRollup: Decodable {
