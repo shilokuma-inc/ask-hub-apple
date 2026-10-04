@@ -6,4 +6,12 @@ public enum AskHubLabel: String, CaseIterable, Sendable {
     case needsAnswer = "needs-answer"
     /// Discussion の回答が確定し、ループを始めてよい
     case readyForLoop = "ready-for-loop"
+    /// epic ごとの仮決め一覧（判断ログ）の Issue
+    case decisionLog = "decision-log"
+    /// 実機・実データでの確認が必要な Issue
+    case needsVerify = "needs-verify"
+    /// アプリから出した新機能の依頼の Issue
+    case ideaRequest = "idea-request"
+    /// epic → `develop` の最終 PR
+    case epicFinal = "epic-final"
 }
