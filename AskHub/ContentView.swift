@@ -84,7 +84,12 @@ struct ContentView: View {
             }
             .tabItem { Label("依頼", systemImage: "plus.bubble") }
         }
-        .task { await model.refresh() }
+        // 起動時に、マージ待ちのバッジも出せるようにまとめて取得する。取得済みなら取り直さない
+        .task {
+            async let inboxRefreshed: Void = model.refreshIfStale()
+            async let mergeQueueRefreshed: Void = mergeModel.refreshIfStale()
+            _ = await (inboxRefreshed, mergeQueueRefreshed)
+        }
         .sheet(isPresented: $isShowingSettings) {
             // トークンを保存・削除した後に、取得し直す
             Task {

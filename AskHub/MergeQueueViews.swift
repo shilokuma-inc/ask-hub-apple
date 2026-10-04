@@ -33,7 +33,8 @@ struct MergeQueueListView: View {
                 Button("設定", systemImage: "gearshape", action: openSettings)
             }
         }
-        .task { await model.refresh() }
+        // 起動時やフォアグラウンド復帰時に取得済みなら、タブを開いただけでは取り直さない
+        .task { await model.refreshIfStale() }
     }
 
     @ViewBuilder private var emptyState: some View {
