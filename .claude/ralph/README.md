@@ -2,7 +2,7 @@
 
 [ralph-loop](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-loop) で
 自律的に実装を回すための雛形。設計の根拠と、実際に踏んだ落とし穴は
-[Discussion #87](https://github.com/shilokuma-inc/ask-hub-apple/discussions/87) を参照。
+[Discussion #87](https://github.com/shilokuma-inc/template-app-ios/discussions/87) を参照。
 
 ## 構成
 
@@ -58,7 +58,9 @@ cd ../myapp-ralph-ctl && git push -u origin epic/monetization
 # 5. 起動（ralph-start.sh が出力するコマンドをそのまま使う）
 ```
 
-停止は `scripts/ralph-stop.sh`。worktree ごと消すなら `--worktrees`。
+停止は `scripts/ralph-stop.sh`。worktree ごと消すなら、**Claude のセッションが終了してから**
+`scripts/ralph-stop.sh --worktrees` を実行する（実行中のループを止めたのと同じ呼び出しでは、
+作業中のスロットを壊さないよう削除しない）。
 
 ### テンプレートを更新したとき
 
@@ -96,6 +98,13 @@ worktree 2枠で PR を常時2本 in-flight に保てる。
 `ralph-start.sh` が state ファイルを直接書く方式なら、これらに依存しない。
 `session_id` を空にすると hook 側のセッション照合がスキップされる。
 
+**Stop hook は作業ディレクトリでループを判定する。** hook は、その時点の作業ディレクトリにある
+`.claude/ralph-loop.local.md` を探す。また `session_id` が空なので、どのセッションのものかは区別しない。そのため次の 2 つに注意する。
+- ループの Claude がスロットに `cd` したままターンを終えると、ループが無いと判断され、**エラーも出さずに止まる**。
+  playbook では、スロットでの操作を `git -C` とサブシェルに限り、ターンの終わりに作業ディレクトリを確認させている
+- **制御用 worktree の中で、別の Claude Code セッションを開かない（`cd` もしない）。** そのセッションも
+  ループ本体として Stop hook に捕まり、ループの指示を受け取ってしまう
+
 **マージ条件は「全 CI が pass」＋「CodeRabbit の未対応指摘なし」＋「未回答の `ask` なし」。**
 CodeRabbit の指摘はコードレビューとして対応し、各コメントに返信する。
 自分が `ask` を残した PR は**マージせず保留**し、回答が付くまで待つ。
@@ -131,6 +140,28 @@ promise は完全一致でしか成立せず「詰まった」を表現できな
 着手不能なタスクがあると無限ループになる。playbook の「詰まったときの扱い」で
 タスクを**保留として閉じられる**ようにし、無進捗が続いたら自分で停止させる。
 `ralph-start.sh` はこの節が playbook に無いと 0 での起動を拒否する。
+
+## AskHub・オーケストレーターとの連携
+
+[AskHub](https://github.com/shilokuma-inc/ask-hub-apple) は、人間の判断が要るものだけを集めて iPhone / Mac から回答する受信箱アプリ。
+家の Mac に常駐するオーケストレーター（`askhub-orchestrator`）が回答を見て、このループを自動で起動・再開し、最終 PR を作る。
+手で `ralph-start.sh` を叩く運用から、次の流れに置き換わる。
+
+| きっかけ | 自動で起きること |
+| --- | --- |
+| Discussion の質問に回答して「確定」（`ready-for-loop`） | 起動スクリプト（`askhub-start-loop`）が goal を作り、`ralph-setup.sh` → `ralph-start.sh` → ループを起動 |
+| PR の ask に回答（`needs-answer`） | 止まっていたループを再開 |
+| 全タスク完了 | オーケストレーターが epic → develop の最終 PR（`epic-final`）を作る |
+
+**このテンプレートの側で守ること**（形式の正本は ask-hub-apple の `docs/protocol.md`）:
+
+- ask のコメントは質問の目印（`<!-- ask-hub:question id="…" options="…" -->`）で始め、PR に `needs-answer` を付ける。
+  目印が無い ask は AskHub に届かず、回答してもループが再開しない
+- 判断ログ Issue には `decision-log`、実機確認 Issue には `needs-verify` を付ける（AskHub の「急がない」に出る）
+- 最終 PR はループで作らない。オーケストレーターが「最終 PR に載せる内容」を読んで作る
+- 不足しているプロトコルのラベルは `ralph-setup.sh` が作る
+
+セットアップ（Mac ごとの手順・設定ファイル）は ask-hub-apple の `docs/orchestrator.md` を参照。
 
 ## ループに向かないタスク
 
