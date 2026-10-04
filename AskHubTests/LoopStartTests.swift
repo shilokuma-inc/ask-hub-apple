@@ -106,6 +106,19 @@ struct LoopStartTests {
 
         #expect(form.isPosted)
         #expect(starter.marked.isEmpty)
+        #expect(form.errorMessage == "この Discussion には、ほかに未回答の質問が 1 件あるため、ループを始めませんでした")
+    }
+
+    @Test func retryChecksRemainingQuestionsAgain() async throws {
+        let starter = RecordingStarter()
+        let inbox = await makeInbox(starter: starter)
+        let form = AnswerFormModel(question: discussionQuestions(in: inbox)[0])
+        // 再試行の時点でほかの未回答の質問が残っていれば、印を付けずに理由を出す
+        await form.startLoop(using: inbox)
+
+        #expect(starter.marked.isEmpty)
+        #expect(!form.loopStartFailed)
+        #expect(form.errorMessage?.contains("ほかに未回答の質問が 1 件ある") == true)
     }
 
     @Test func retriesMarkingWhenOnlyLoopStartFailed() async throws {

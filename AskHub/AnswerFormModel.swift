@@ -53,14 +53,19 @@ final class AnswerFormModel {
             errorMessage = InboxModel.message(for: error)
             return
         }
-        // 投稿の後の一覧でも、この Discussion にほかの未回答の質問が無いことを確かめてから始める
-        if startsLoopAfterPosting && canStartLoop(in: inbox) {
+        if startsLoopAfterPosting {
             await startLoop(using: inbox)
         }
     }
 
-    /// Discussion に `ready-for-loop` を付ける。投稿の後に失敗したときの再試行にも使う
+    /// Discussion に `ready-for-loop` を付ける。投稿の後に失敗したときの再試行にも使う。
+    /// その時点の一覧で、この Discussion にほかの未回答の質問が無いことを確かめてから付ける
     func startLoop(using inbox: InboxModel) async {
+        guard canStartLoop(in: inbox) else {
+            loopStartFailed = false
+            errorMessage = "この Discussion には、ほかに未回答の質問が \(inbox.remainingQuestions(besides: question)) 件あるため、ループを始めませんでした"
+            return
+        }
         isPosting = true
         defer { isPosting = false }
         do {
