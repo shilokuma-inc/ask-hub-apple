@@ -5,7 +5,7 @@ import Foundation
 /// アプリは担当 PC を知らないので、この時刻が新しいかで「担当 PC なし」を判断する
 public enum OrchestratorHeartbeat {
     /// 印を書くラベルの名前
-    public static let labelName = "askhub-orchestrator"
+    public static let labelName = AskHubLabel.orchestratorHeartbeat.rawValue
     /// オーケストレーターが印を書き直す間隔
     public static let updateInterval: TimeInterval = 10 * 60
     /// この時間より古い印は、担当 PC がいないとみなす（書き直しの間隔に余裕を持たせる）

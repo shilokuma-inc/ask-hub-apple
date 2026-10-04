@@ -14,4 +14,6 @@ public enum AskHubLabel: String, CaseIterable, Sendable {
     case ideaRequest = "idea-request"
     /// epic → `develop` の最終 PR
     case epicFinal = "epic-final"
+    /// このリポジトリを担当する PC のオーケストレーターがいる（説明に最終確認の時刻を書く）
+    case orchestratorHeartbeat = "askhub-orchestrator"
 }

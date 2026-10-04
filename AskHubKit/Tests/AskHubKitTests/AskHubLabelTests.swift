@@ -9,9 +9,10 @@ struct AskHubLabelTests {
         #expect(AskHubLabel.needsVerify.rawValue == "needs-verify")
         #expect(AskHubLabel.ideaRequest.rawValue == "idea-request")
         #expect(AskHubLabel.epicFinal.rawValue == "epic-final")
+        #expect(AskHubLabel.orchestratorHeartbeat.rawValue == "askhub-orchestrator")
     }
 
     @Test func coversAllProtocolLabels() {
-        #expect(AskHubLabel.allCases.count == 6)
+        #expect(AskHubLabel.allCases.count == 7)
     }
 }
