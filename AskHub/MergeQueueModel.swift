@@ -17,6 +17,8 @@ final class MergeQueueModel {
     }
 
     private(set) var pullRequests: [EpicPullRequest] = []
+    /// アプリからマージした PR。検索に反映されるまで、取り直しても一覧に出さない（もう一度マージしようとしないため）
+    private var mergedIDs: Set<String> = []
     private(set) var state = LoadState.idle
 
     private let tokenStore: any TokenStore
@@ -63,7 +65,10 @@ final class MergeQueueModel {
         }
         state = .loading
         do {
-            pullRequests = try await makeProvider(token).epicPullRequests(org: InboxModel.org)
+            let fetched = try await makeProvider(token).epicPullRequests(org: InboxModel.org)
+            // 取得結果に出てこなくなった（検索に反映された）PR は、覚えておく必要がない
+            mergedIDs.formIntersection(fetched.map(\.id))
+            pullRequests = fetched.filter { !mergedIDs.contains($0.id) }
             state = .loaded
         } catch {
             state = .failed(Self.message(for: error))
@@ -79,10 +84,12 @@ final class MergeQueueModel {
             try await makeProvider(token).merge(pullRequest)
         } catch MergeQueueError.branchNotDeleted {
             // マージはできている。ブランチが残ったことはエラーとして伝えるが、一覧からは外す
+            mergedIDs.insert(pullRequest.id)
             pullRequests.removeAll { $0.id == pullRequest.id }
             await refresh()
             throw MergeQueueError.branchNotDeleted(pullRequest.headBranch)
         }
+        mergedIDs.insert(pullRequest.id)
         pullRequests.removeAll { $0.id == pullRequest.id }
         await refresh()
     }

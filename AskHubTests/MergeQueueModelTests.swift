@@ -73,6 +73,16 @@ struct MergeQueueModelTests {
         #expect(model.pullRequests.map(\.number) == [80])
     }
 
+    @Test func doesNotShowMergedPullRequestBeforeSearchCatchesUp() async throws {
+        // 検索への反映が遅れ、マージした PR がまだ返ってくる
+        let model = MergeQueueModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in SampleMergeQueue() }
+        await model.refresh()
+        try await model.merge(model.pullRequests[0])
+        await model.refresh()
+
+        #expect(model.pullRequests.map(\.number) == [80])
+    }
+
     @Test func keepsPullRequestWhenHeadChanged() async {
         let queue = RecordingQueue()
         queue.setFailure(.headChanged)
