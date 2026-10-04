@@ -17,6 +17,7 @@ struct FakeGitHubState {
     var existingPullRequests: [String: ExistingPullRequest] = [:]
     var createdEpicPullRequests: [String] = []
     var labeledPullRequests: [Int] = []
+    var updatedPullRequestBodies: [String] = []
     var labelFails = false
     var ideaIssues: [IdeaRequestIssue] = []
     var ideaComments: [String] = []
@@ -183,6 +184,14 @@ final class FakeGitHub: OrchestratorGitHub {
             }
             state.closedIdeas.append(issue.number)
         }
+    }
+
+    var updatedPullRequestBodies: [String] {
+        state.withLock { $0.updatedPullRequestBodies }
+    }
+
+    func updatePullRequestBody(in repository: String, number: Int, body: String) async throws {
+        state.withLock { $0.updatedPullRequestBodies.append("#\(number): \(body)") }
     }
 
     func addEpicFinalLabel(in repository: String, number: Int) async throws {

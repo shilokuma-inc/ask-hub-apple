@@ -27,6 +27,11 @@ public struct EpicSnapshot: Sendable, Equatable {
         }
         return "ゴール元: Discussion #\(discussion)\n<!-- ask-hub:discussion \(discussion) -->\n\n\(summary)"
     }
+
+    /// PR の本文に、ゴール元の Discussion の目印があるか
+    public static func hasDiscussionMarker(_ body: String?) -> Bool {
+        body?.contains("<!-- ask-hub:discussion ") ?? false
+    }
 }
 
 /// epic が完了して、develop 向けの最終 PR を作ってよいか（副作用なし）

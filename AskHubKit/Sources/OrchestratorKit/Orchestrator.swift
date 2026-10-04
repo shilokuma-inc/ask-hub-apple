@@ -15,6 +15,8 @@ public protocol OrchestratorGitHub: Sendable {
     func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int
     /// PR に `epic-final` を付ける。既に付いていても失敗しない
     func addEpicFinalLabel(in repository: String, number: Int) async throws
+    /// PR の本文を置き換える
+    func updatePullRequestBody(in repository: String, number: Int, body: String) async throws
     /// org 全体の、`idea-request` が付いた open な Issue
     func ideaRequests(org: String) async throws -> [IdeaRequestIssue]
     /// 依頼 Issue にコメントする
@@ -41,10 +43,13 @@ public struct CommandResult: Sendable, Equatable {
 public struct ExistingPullRequest: Sendable, Equatable {
     public let number: Int
     public let isOpen: Bool
+    /// PR の本文。空なら `nil`
+    public let body: String?
 
-    public init(number: Int, isOpen: Bool) {
+    public init(number: Int, isOpen: Bool, body: String? = nil) {
         self.number = number
         self.isOpen = isOpen
+        self.body = body
     }
 }
 
@@ -275,6 +280,13 @@ public actor Orchestrator {
             if let existing = try await github.existingPullRequest(in: repository.fullName, head: branch) {
                 // 作った後にラベルだけ付け損ねた場合に備え、open な PR には付け直す（付与は冪等）
                 if existing.isOpen {
+                    // 目印を入れる前のオーケストレーターが作った PR などには、ゴール元の Discussion の目印を足す。
+                    // 足さないと、マージしても Discussion が閉じない
+                    if let discussion = snapshot.discussion, !EpicSnapshot.hasDiscussionMarker(existing.body) {
+                        let body = EpicSnapshot.pullRequestBody(summary: existing.body ?? "", discussion: discussion)
+                        try await github.updatePullRequestBody(in: repository.fullName, number: existing.number, body: body)
+                        log("\(repository.fullName) の最終 PR #\(existing.number) に、ゴール元の Discussion #\(discussion) の目印を足しました")
+                    }
                     try await github.addEpicFinalLabel(in: repository.fullName, number: existing.number)
                 }
                 finalizedEpics.insert(key)

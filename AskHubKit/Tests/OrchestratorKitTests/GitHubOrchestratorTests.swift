@@ -137,6 +137,16 @@ struct GitHubOrchestratorTests {
         #expect(http.requests.count == 1)
     }
 
+    @Test func updatesPullRequestBodyWithPatch() async throws {
+        let http = StubHTTPClient([#"{ "number": 9, "state": "open", "body": "新しい本文" }"#])
+        try await makeGitHub(http).updatePullRequestBody(in: "shilokuma-inc/ask-hub-apple", number: 9, body: "新しい本文")
+        let request = try #require(http.requests.first)
+        #expect(request.httpMethod == "PATCH")
+        #expect(request.url?.path() == "/repos/shilokuma-inc/ask-hub-apple/pulls/9")
+        let body = try #require(request.httpBody)
+        #expect(try JSONSerialization.jsonObject(with: body) as? [String: String] == ["body": "新しい本文"])
+    }
+
     @Test func findsPullRequestsToDefaultBranchByHeadPreferringOpen() async throws {
         let repositoryInfo = #"{ "default_branch": "develop" }"#
         let http = StubHTTPClient([
