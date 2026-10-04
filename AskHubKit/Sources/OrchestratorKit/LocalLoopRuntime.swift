@@ -5,6 +5,9 @@ import os
 public actor LocalLoopRuntime: LoopRuntime {
     /// 制御用 worktree の中の、ralph-loop の state ファイルの場所
     public static let stateFileRelativePath = ".claude/ralph-loop.local.md"
+    /// 起動スクリプト（askhub-start-loop）が書く、ループのプロセスの PID。
+    /// state ファイルが残ったままプロセスが死んだ（落ちた・止められた）ことを見分けるのに使う
+    public static let pidFileRelativePath = ".claude/askhub-loop.pid"
 
     /// 起動したプロセス。キーは `fullName` を小文字にしたもの。
     /// オーケストレーターを再起動すると忘れるが、その場合も state ファイルが残っていれば起動しない
@@ -33,12 +36,24 @@ public actor LocalLoopRuntime: LoopRuntime {
         if processes[key]?.isRunning == false {
             processes[key] = nil
         }
-        let stateFile = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
-            .appendingPathComponent(Self.stateFileRelativePath)
-        return LoopStatus(
-            stateFileExists: Self.fileExists(at: stateFile.path),
-            processAlive: processes[key] != nil
-        )
+        let control = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
+        var stateFileExists = Self.fileExists(at: control.appendingPathComponent(Self.stateFileRelativePath).path)
+        // state ファイルが残っていても、記録した PID のプロセスが居なければループは止まっている（落ちた・止められた）。
+        // 起動スクリプトがそれを見て state を片付けてから再開するので、ここでは「無い」とみなす
+        if stateFileExists == true, processes[key] == nil,
+           Self.recordedProcessIsGone(pidFile: control.appendingPathComponent(Self.pidFileRelativePath)) {
+            stateFileExists = false
+        }
+        return LoopStatus(stateFileExists: stateFileExists, processAlive: processes[key] != nil)
+    }
+
+    /// PID ファイルに記録したプロセスが居なくなっているか。PID ファイルが無い・読めないときは判断できないので `false`
+    static func recordedProcessIsGone(pidFile: URL) -> Bool {
+        guard let text = try? String(contentsOf: pidFile, encoding: .utf8),
+              let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 0 else {
+            return false
+        }
+        return kill(pid, 0) == -1 && errno == ESRCH
     }
 
     /// ファイルがあるか。`FileManager.fileExists` はアクセス権が無いときも `false` を返すため、
