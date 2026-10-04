@@ -25,4 +25,29 @@ final class AskHubUITests: XCTestCase {
         app.tabBars.buttons["急がない"].tap()
         XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
     }
+
+    @MainActor
+    func testSendIdeaRequest() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは Issue を作ったことにして GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["依頼"].tap()
+        let send = app.buttons["依頼を送る"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5))
+        XCTAssertFalse(send.isEnabled)
+
+        app.buttons["repository-picker"].tap()
+        app.buttons["notti-ios"].tap()
+        let summary = app.textFields["例: 通知の頻度を調整したい"]
+        summary.tap()
+        summary.typeText("通知の頻度を調整したい")
+        let body = app.textFields["やりたいこと・背景・決まっていることなど"]
+        body.tap()
+        body.typeText("朝だけにしたい")
+        send.tap()
+
+        XCTAssertTrue(app.staticTexts["依頼を送りました"].waitForExistence(timeout: 5))
+    }
 }

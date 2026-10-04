@@ -8,13 +8,15 @@
 import AskHubKit
 import SwiftUI
 
-/// 受信箱。「要回答」と「急がない」のタブに分ける（Discussion #1 の Q5）
+/// 受信箱（「要回答」「急がない」。Discussion #1 の Q5）と「依頼」のタブ
 struct ContentView: View {
     @State private var model: InboxModel
+    @State private var requestModel: IdeaRequestModel
     @State private var isShowingSettings = false
 
-    init(model: InboxModel = .launchDefault()) {
+    init(model: InboxModel = .launchDefault(), requestModel: IdeaRequestModel = .launchDefault()) {
         _model = State(initialValue: model)
+        _requestModel = State(initialValue: requestModel)
     }
 
     var body: some View {
@@ -47,11 +49,19 @@ struct ContentView: View {
                 )
             }
             .tabItem { Label("急がない", systemImage: "tray.full") }
+
+            NavigationStack {
+                NewRequestView(model: requestModel) { isShowingSettings = true }
+            }
+            .tabItem { Label("依頼", systemImage: "plus.bubble") }
         }
         .task { await model.refresh() }
         .sheet(isPresented: $isShowingSettings) {
             // トークンを保存・削除した後に、取得し直す
-            Task { await model.refresh() }
+            Task {
+                await model.refresh()
+                await requestModel.loadRepositories()
+            }
         } content: {
             SettingsView()
         }
@@ -60,10 +70,10 @@ struct ContentView: View {
 
 #if DEBUG
 #Preview("一覧") {
-    ContentView(model: .sample())
+    ContentView(model: .sample(), requestModel: .sample())
 }
 #endif
 
 #Preview("トークン未設定") {
-    ContentView(model: InboxModel(tokenStore: InMemoryTokenStore()))
+    ContentView(model: InboxModel(tokenStore: InMemoryTokenStore()), requestModel: IdeaRequestModel(tokenStore: InMemoryTokenStore()))
 }
