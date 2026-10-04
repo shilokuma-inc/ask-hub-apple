@@ -101,6 +101,12 @@ struct LocalLoopRuntimeTests {
         let snapshot = await LocalLoopRuntime().epicSnapshot(of: repository)
         #expect(snapshot == EpicSnapshot(branch: "epic/mvp", goal: "- [x] A", state: nil))
 
+        // 起動スクリプトが残したゴール元の Discussion の番号を読む
+        try Data("12\n".utf8).write(to: control.appendingPathComponent(".claude/askhub-bootstrap.local.txt"))
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).discussion == 12)
+        try Data("not a number".utf8).write(to: control.appendingPathComponent(".claude/askhub-bootstrap.local.txt"))
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).discussion == nil)
+
         // detached HEAD ではブランチが無い
         try Data("0123456789abcdef0123456789abcdef01234567\n".utf8).write(to: gitDirectory.appendingPathComponent("HEAD"))
         #expect(await LocalLoopRuntime().epicSnapshot(of: repository).branch == nil)

@@ -27,6 +27,57 @@ extension OrchestratorTests {
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple の epic/mvp が完了したので、最終 PR #100 を作りました"))
     }
 
+    @Test func putsGoalDiscussionMarkerAtTopOfEpicFinalPullRequest() async throws {
+        let github = FakeGitHub([.success([])])
+        let runtime = FakeRuntime()
+        let epic = Self.completedEpic
+        runtime.setEpic(EpicSnapshot(branch: epic.branch, goal: epic.goal, state: epic.state, discussion: 12))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+
+        #expect(github.createdEpicPullRequests == [
+            "shilokuma-inc/ask-hub-apple epic/mvp: ゴール元: Discussion #12\n<!-- ask-hub:discussion 12 -->\n\n- 回答待ち: #3"
+        ])
+    }
+
+    @Test func addsGoalDiscussionMarkerToExistingOpenPullRequestWithoutIt() async throws {
+        let epic = Self.completedEpic
+        let withDiscussion = EpicSnapshot(branch: epic.branch, goal: epic.goal, state: epic.state, discussion: 12)
+
+        // 目印の無い open な PR には足してからラベルを付ける
+        let github = FakeGitHub([.success([])])
+        github.addExistingPullRequest(head: "epic/mvp", ExistingPullRequest(number: 9, isOpen: true, body: "- まとめ"))
+        let runtime = FakeRuntime()
+        runtime.setEpic(withDiscussion)
+        try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
+        #expect(github.updatedPullRequestBodies == ["#9: ゴール元: Discussion #12\n<!-- ask-hub:discussion 12 -->\n\n- まとめ"])
+        #expect(github.labeledPullRequests == [9])
+        #expect(github.createdEpicPullRequests.isEmpty)
+
+        // 先頭に正しい目印がある PR（CRLF でも）・閉じた PR は書き換えない
+        for existing in [
+            ExistingPullRequest(number: 9, isOpen: true, body: "ゴール元: Discussion #12\n<!-- ask-hub:discussion 12 -->\n"),
+            ExistingPullRequest(number: 9, isOpen: true, body: "ゴール元: Discussion #12\r\n<!-- ask-hub:discussion 12 -->\r\n"),
+            ExistingPullRequest(number: 7, isOpen: false, body: "- まとめ")
+        ] {
+            let other = FakeGitHub([.success([])])
+            other.addExistingPullRequest(head: "epic/mvp", existing)
+            let otherRuntime = FakeRuntime()
+            otherRuntime.setEpic(withDiscussion)
+            try await makeOrchestrator(github: other, runtime: otherRuntime).pollOnce()
+            #expect(other.updatedPullRequestBodies.isEmpty)
+        }
+    }
+
+    @Test func recognizesOnlyLeadingMarkerWithMatchingNumber() {
+        #expect(EpicSnapshot.hasDiscussionMarker("ゴール元: Discussion #12\n<!-- ask-hub:discussion 12 -->\n\n本文", discussion: 12))
+        // 番号の不一致・途中に引用された目印・目印なしは、ワークフローが閉じないので「無い」とみなす
+        #expect(!EpicSnapshot.hasDiscussionMarker("ゴール元: Discussion #12\n<!-- ask-hub:discussion 13 -->", discussion: 12))
+        #expect(!EpicSnapshot.hasDiscussionMarker("まとめ\n<!-- ask-hub:discussion 12 -->", discussion: 12))
+        #expect(!EpicSnapshot.hasDiscussionMarker(nil, discussion: 12))
+    }
+
     @Test func relabelsCreatedPullRequestWhenLabelingFailed() async throws {
         let github = FakeGitHub([.success([])])
         github.setLabelFails(true)

@@ -116,7 +116,7 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         )
         // open なものがあればそれを、無ければ最初のもの（閉じた PR）を返す
         let pull = pulls.first { $0.state == "open" } ?? pulls.first
-        return pull.map { ExistingPullRequest(number: $0.number, isOpen: $0.state == "open") }
+        return pull.map { ExistingPullRequest(number: $0.number, isOpen: $0.state == "open", body: $0.body) }
     }
 
     public func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int {
@@ -133,6 +133,10 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
             as: PullRequestSummary.self
         )
         return pull.number
+    }
+
+    public func updatePullRequestBody(in repository: String, number: Int, body: String) async throws {
+        _ = try await client.send("PATCH", "repos/\(repository)/pulls/\(number)", body: ["body": body], as: PullRequestSummary.self)
     }
 
     public func addEpicFinalLabel(in repository: String, number: Int) async throws {
@@ -357,6 +361,7 @@ private struct PullRequestSummary: Decodable {
     let number: Int
     /// `open` / `closed`（マージ済みも `closed`）
     let state: String
+    let body: String?
 }
 
 private struct RepositoryInfo: Decodable {
