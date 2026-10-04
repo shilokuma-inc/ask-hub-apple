@@ -3,7 +3,9 @@
 AskHub アプリ・オーケストレーター・ループ（Claude）が、GitHub 上で「人間の判断が必要なもの」を
 やり取りするための取り決め。決定の経緯は [Discussion #1](https://github.com/shilokuma-inc/ask-hub-apple/discussions/1) を参照。
 
-このドキュメントで実装済みの仕様を変更するときは、`AskHubKit` の対応する実装（`AskHubLabel` など）も合わせて更新すること。
+このドキュメントで実装済みの仕様を変更するときは、`AskHubKit` の対応する実装も合わせて更新すること。
+ラベルは `AskHubLabel`、質問の目印は `QuestionMarker`、回答の形式は `Answer`、
+信用する author と回答済みの判定は `TrustedAuthors` が実装している。
 
 ## 登場するもの
 
@@ -17,7 +19,6 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 ## ラベル
 
 すべてのリポジトリで同じ名前を使う。`AskHubKit` の `AskHubLabel` と一致させる。
-現在の `AskHubLabel` が定義しているのは `needs-answer` と `ready-for-loop` だけで、残りのラベルはプロトコルのモデルを追加するときに足す。
 
 | ラベル | 付ける対象 | 意味 | 付ける側 | 外す側 |
 | --- | --- | --- | --- | --- |
