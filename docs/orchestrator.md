@@ -5,8 +5,8 @@ AskHub の回答を受けて、ループ（ralph-loop）を自動で起動・再
 アプリは GitHub だけを見るクライアントで、`claude` / `git` / `xcodebuild` の起動はすべてオーケストレーターが行う
 （Discussion #1 の Q2）。
 
-> 現時点で行うのは「`ready-for-loop` の Discussion からのループの起動」と「ask の回答によるループの再開と `needs-answer` の削除」。
-> 最終 PR の作成などは後続の PR で追加する。
+> 現時点で行うのは「`ready-for-loop` の Discussion からのループの起動」「ask の回答によるループの再開と `needs-answer` の削除」
+> 「epic の完了の検知と最終 PR（`epic-final`）の作成」。
 
 ## ビルドと実行
 
@@ -119,3 +119,23 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 5. 信用する author の質問がすべて回答済みになった Discussion / PR から `needs-answer` を外す
 
 回答済みの質問はメモリ上でだけ覚えるため、オーケストレーターを再起動した直後は、回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
+
+## epic が完了したら最終 PR を作る
+
+毎回のポーリングの最後に、担当リポジトリごとに制御用 worktree を読んで判定する（`EpicCompletion`、副作用なし）。
+次をすべて満たしたら epic の完了とみなす。
+
+- ループが止まっている（`.claude/ralph-loop.local.md` が無く、起動したプロセスも生きていない。同じ周回で起動したリポジトリは除く）
+- 制御用 worktree のブランチが `epic/` で始まる（`git` を起動せず、`.git` から `HEAD` を読む）
+- `.claude/ralph-goal.local.md` に、`※回答待ち` の付いていない `- [ ]` が無い
+- `.claude/ralph-state.local.md` の「最終 PR に載せる内容」が埋まっている（HTML コメントだけなら空とみなす）
+
+完了していれば、epic ブランチからリポジトリの既定ブランチ（`develop`）への PR を作り、`epic-final` を付ける。
+
+| 項目 | 値 |
+| --- | --- |
+| タイトル | `【FEAT】<epic ブランチ> を <既定ブランチ> に取り込む` |
+| 本文 | 「最終 PR に載せる内容」と、オーケストレーターが作った旨・アプリの「マージ待ち」からマージする旨 |
+| ラベル | `epic-final` |
+
+同じ head ブランチの PR が既にあれば（閉じた PR も含む）作らない。作った PR はメモリ上で覚え、毎回は問い合わせない。
