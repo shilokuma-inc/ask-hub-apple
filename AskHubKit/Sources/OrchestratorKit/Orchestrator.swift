@@ -282,7 +282,7 @@ public actor Orchestrator {
                 if existing.isOpen {
                     // 目印を入れる前のオーケストレーターが作った PR などには、ゴール元の Discussion の目印を足す。
                     // 足さないと、マージしても Discussion が閉じない
-                    if let discussion = snapshot.discussion, !EpicSnapshot.hasDiscussionMarker(existing.body) {
+                    if let discussion = snapshot.discussion, !EpicSnapshot.hasDiscussionMarker(existing.body, discussion: discussion) {
                         let body = EpicSnapshot.pullRequestBody(summary: existing.body ?? "", discussion: discussion)
                         try await github.updatePullRequestBody(in: repository.fullName, number: existing.number, body: body)
                         log("\(repository.fullName) の最終 PR #\(existing.number) に、ゴール元の Discussion #\(discussion) の目印を足しました")

@@ -28,9 +28,13 @@ public struct EpicSnapshot: Sendable, Equatable {
         return "ゴール元: Discussion #\(discussion)\n<!-- ask-hub:discussion \(discussion) -->\n\n\(summary)"
     }
 
-    /// PR の本文に、ゴール元の Discussion の目印があるか
-    public static func hasDiscussionMarker(_ body: String?) -> Bool {
-        body?.contains("<!-- ask-hub:discussion ") ?? false
+    /// PR の本文の先頭に、`discussion` の目印があるか。
+    /// ワークフロー（close-goal-discussion.yml）と同じく、1 行目の見出しと 2 行目の目印の番号が一致するときだけ認める
+    public static func hasDiscussionMarker(_ body: String?, discussion: Int) -> Bool {
+        let lines = (body ?? "").replacingOccurrences(of: "\r", with: "").components(separatedBy: "\n")
+        return lines.count >= 2
+            && lines[0] == "ゴール元: Discussion #\(discussion)"
+            && lines[1] == "<!-- ask-hub:discussion \(discussion) -->"
     }
 }
 

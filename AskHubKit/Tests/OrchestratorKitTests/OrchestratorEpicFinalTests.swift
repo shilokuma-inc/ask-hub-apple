@@ -55,9 +55,10 @@ extension OrchestratorTests {
         #expect(github.labeledPullRequests == [9])
         #expect(github.createdEpicPullRequests.isEmpty)
 
-        // 既に目印がある PR・閉じた PR は書き換えない
+        // 先頭に正しい目印がある PR（CRLF でも）・閉じた PR は書き換えない
         for existing in [
             ExistingPullRequest(number: 9, isOpen: true, body: "ゴール元: Discussion #12\n<!-- ask-hub:discussion 12 -->\n"),
+            ExistingPullRequest(number: 9, isOpen: true, body: "ゴール元: Discussion #12\r\n<!-- ask-hub:discussion 12 -->\r\n"),
             ExistingPullRequest(number: 7, isOpen: false, body: "- まとめ")
         ] {
             let other = FakeGitHub([.success([])])
@@ -67,6 +68,14 @@ extension OrchestratorTests {
             try await makeOrchestrator(github: other, runtime: otherRuntime).pollOnce()
             #expect(other.updatedPullRequestBodies.isEmpty)
         }
+    }
+
+    @Test func recognizesOnlyLeadingMarkerWithMatchingNumber() {
+        #expect(EpicSnapshot.hasDiscussionMarker("ゴール元: Discussion #12\n<!-- ask-hub:discussion 12 -->\n\n本文", discussion: 12))
+        // 番号の不一致・途中に引用された目印・目印なしは、ワークフローが閉じないので「無い」とみなす
+        #expect(!EpicSnapshot.hasDiscussionMarker("ゴール元: Discussion #12\n<!-- ask-hub:discussion 13 -->", discussion: 12))
+        #expect(!EpicSnapshot.hasDiscussionMarker("まとめ\n<!-- ask-hub:discussion 12 -->", discussion: 12))
+        #expect(!EpicSnapshot.hasDiscussionMarker(nil, discussion: 12))
     }
 
     @Test func relabelsCreatedPullRequestWhenLabelingFailed() async throws {
