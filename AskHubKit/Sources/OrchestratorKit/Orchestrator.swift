@@ -82,6 +82,7 @@ public actor Orchestrator {
     private var lastHeartbeats: [String: Date] = [:]
     private let now: @Sendable () -> Date
     private var ideaTracker = IdeaRequestTracker()
+    private var stallWatcher = StallWatcher()
 
     /// 依頼から Discussion を作らせるコマンドの制限時間
     static let ideaCommandTimeout: Duration = .seconds(30 * 60)
@@ -137,6 +138,10 @@ public actor Orchestrator {
         } catch {
             log("回答の確認に失敗しました: \(error)")
         }
+
+        // 異常終了したループ（タスクを残したまま止まった）を再開する。
+        // 新しい Discussion の起動より先に行い、途中の epic に別の epic を被せない
+        await resumeStalledLoops(statuses: &statuses)
 
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         for action in tracker.update(discussions: discussions, statuses: statuses) {
@@ -446,6 +451,43 @@ extension Orchestrator {
             log("\(name) の質問がすべて回答済みになったので、needs-answer を外しました")
         } catch {
             log("\(name) の needs-answer を外せませんでした（次のポーリングで再試行します）: \(error)")
+        }
+    }
+}
+
+// MARK: - 異常終了したループの再開
+
+extension Orchestrator {
+    private func resumeStalledLoops(statuses: inout [String: LoopStatus]) async {
+        for repository in config.repositories {
+            await resumeIfStalled(repository, statuses: &statuses)
+        }
+    }
+
+    private func resumeIfStalled(_ repository: RepositoryConfig, statuses: inout [String: LoopStatus]) async {
+        let key = repository.fullName.lowercased()
+        let status = statuses[key] ?? .idle
+        guard status.stalled else {
+            return
+        }
+        let snapshot = await runtime.epicSnapshot(of: repository)
+        switch stallWatcher.update(repositoryKey: key, status: status, snapshot: snapshot) {
+        case nil:
+            return
+
+        case let .giveUp(attempts):
+            log("\(repository.fullName) のループが進まないまま \(attempts) 回止まったので、自動の再開をやめます（ループのログを確認してください）")
+
+        case let .resume(attempt):
+            do {
+                // 再開では Discussion を伴わないので `{discussion}` は空になる
+                try await runtime.launch(config.loopCommand.render(for: repository), for: repository)
+            } catch {
+                log("\(repository.fullName) の止まったループを再開できませんでした（\(attempt)/\(StallWatcher.maxAttempts) 回目）: \(error)")
+                return
+            }
+            statuses[key] = LoopStatus(stateFileExists: false, processAlive: true)
+            log("\(repository.fullName) のループがタスクを残して止まっていたので、再開しました（\(attempt)/\(StallWatcher.maxAttempts) 回目）")
         }
     }
 }
