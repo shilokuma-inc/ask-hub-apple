@@ -39,6 +39,8 @@ extension Orchestrator {
                 // 再開では Discussion を伴わないので `{discussion}` は空になる
                 try await runtime.launch(config.loopCommand.render(for: repository), for: repository)
             } catch {
+                // 同じポーリングで、途中の epic に新しい Discussion のループを被せない
+                statuses[key] = LoopStatus(stateFileExists: true, processAlive: false, stalled: true)
                 log("\(repository.fullName) の止まったループを再開できませんでした（\(attempt)/\(StallWatcher.maxAttempts) 回目）: \(error)")
                 return
             }

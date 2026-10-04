@@ -37,6 +37,19 @@ extension OrchestratorTests {
         #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", ""]])
     }
 
+    @Test func doesNotLaunchReadyDiscussionWhenResumingStalledLoopFails() async throws {
+        let github = FakeGitHub([.success([ReadyDiscussion.fixture(number: 5)])])
+        let runtime = FakeRuntime()
+        runtime.set(Self.stalled)
+        runtime.setLaunchFails(true)
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】A", state: nil))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        let decisions = try await orchestrator.pollOnce()
+
+        #expect(decisions == [.skip(ReadyDiscussion.fixture(number: 5), .loopStateRemains)])
+    }
+
     @Test func stopsResumingStalledLoopThatMakesNoProgress() async throws {
         let github = FakeGitHub([.success([])])
         let runtime = FakeRuntime()
