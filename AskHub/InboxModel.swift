@@ -31,6 +31,8 @@ final class InboxModel {
     /// `ready-for-loop` を付けて、ループの開始を待っている Discussion
     private(set) var waiting: [WaitingDiscussion] = []
     private(set) var state = LoadState.idle
+    /// 直前に取得を始めた時刻。自動更新（`refreshIfStale`）の間隔の判断に使う
+    private(set) var lastRefreshed: Date?
 
     private let tokenStore: any TokenStore
     private let makeSource: @Sendable (String) -> any InboxSource
@@ -112,7 +114,15 @@ final class InboxModel {
         repeat {
             needsRefreshAfterLoading = false
             await load()
-        } while needsRefreshAfterLoading
+        } while needsRefreshAfterLoading && !Task.isCancelled
+    }
+
+    /// 自動更新（フォアグラウンド復帰・Background App Refresh）。取得中か、直前の取得から間もなければ取り直さない
+    func refreshIfStale(now: Date = .now) async {
+        guard !isLoading, AutoRefresh.isStale(lastRefreshed: lastRefreshed, now: now) else {
+            return
+        }
+        await refresh()
     }
 
     private func load() async {
@@ -132,7 +142,9 @@ final class InboxModel {
         }
 
         useToken(token)
+        let previous = (state: state, lastRefreshed: lastRefreshed)
         state = .loading
+        lastRefreshed = .now
         let fetcher = InboxFetcher(source: makeSource(token), trustedAuthors: trustedAuthors)
         do {
             async let questions = fetcher.unansweredQuestions(org: Self.org)
@@ -152,6 +164,11 @@ final class InboxModel {
             self.waiting = fetchedWaiting
             state = .loaded
         } catch {
+            // バックグラウンドの取得が打ち切られた。失敗とは表示せず、次の自動更新で取り直せるようにする
+            if Task.isCancelled {
+                (state, lastRefreshed) = previous
+                return
+            }
             state = .failed(Self.message(for: error))
         }
     }

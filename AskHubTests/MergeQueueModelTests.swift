@@ -57,6 +57,18 @@ struct MergeQueueModelTests {
         #expect(model.pullRequests.map(\.number) == [50, 80])
     }
 
+    @Test func refreshIfStaleSkipsRecentRefresh() async throws {
+        let model = makeModel(queue: RecordingQueue())
+        await model.refreshIfStale()
+        let lastRefreshed = try #require(model.lastRefreshed)
+
+        await model.refreshIfStale(now: lastRefreshed.addingTimeInterval(AutoRefresh.minimumInterval - 1))
+        #expect(model.lastRefreshed == lastRefreshed)
+
+        await model.refreshIfStale(now: lastRefreshed.addingTimeInterval(AutoRefresh.minimumInterval))
+        #expect(try #require(model.lastRefreshed) > lastRefreshed)
+    }
+
     @Test func needsToken() async {
         let model = makeModel(token: nil, queue: RecordingQueue())
         await model.refresh()

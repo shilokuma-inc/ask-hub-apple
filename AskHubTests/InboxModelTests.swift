@@ -153,6 +153,62 @@ struct InboxModelTests {
         #expect(model.questions.isEmpty)
     }
 
+    @Test func refreshIfStaleSkipsRecentRefresh() async throws {
+        let loads = OSAllocatedUnfairLock(initialState: 0)
+        let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in
+            loads.withLock { $0 += 1 }
+            return StubSource()
+        }
+        await model.refreshIfStale()
+        let lastRefreshed = try #require(model.lastRefreshed)
+
+        // フォアグラウンドに戻ったが、直前の取得から間もない
+        await model.refreshIfStale(now: lastRefreshed.addingTimeInterval(AutoRefresh.minimumInterval - 1))
+        #expect(loads.withLock { $0 } == 1)
+
+        await model.refreshIfStale(now: lastRefreshed.addingTimeInterval(AutoRefresh.minimumInterval))
+        #expect(loads.withLock { $0 } == 2)
+    }
+
+    /// 取得を打ち切られるまで待たせる取得元
+    private final class HangingSource: InboxSource {
+        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+            try await Task.sleep(for: .seconds(60))
+            return []
+        }
+
+        func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
+            []
+        }
+
+        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+            try await Task.sleep(for: .seconds(60))
+            return []
+        }
+    }
+
+    @Test func cancelledRefreshKeepsPreviousState() async throws {
+        let hangs = OSAllocatedUnfairLock(initialState: false)
+        let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in
+            hangs.withLock { $0 } ? HangingSource() as any InboxSource : StubSource()
+        }
+        await model.refresh()
+        let lastRefreshed = model.lastRefreshed
+        hangs.withLock { $0 = true }
+
+        // Background App Refresh の時間切れで、取得が打ち切られた
+        let task = Task { await model.refresh() }
+        while model.state != .loading {
+            await Task.yield()
+        }
+        task.cancel()
+        await task.value
+
+        #expect(model.state == .loaded)
+        #expect(model.questions.map(\.id) == ["C_1"])
+        #expect(model.lastRefreshed == lastRefreshed)
+    }
+
     @Test func messageForRateLimit() {
         #expect(InboxModel.message(for: GitHubError.rateLimited(retryAfter: .seconds(90))) == "GitHub のレート制限中です。90 秒ほど待ってから更新してください")
     }

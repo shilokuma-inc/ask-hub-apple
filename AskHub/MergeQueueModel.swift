@@ -20,6 +20,8 @@ final class MergeQueueModel {
     /// アプリからマージした PR。検索に反映されるまで、取り直しても一覧に出さない（もう一度マージしようとしないため）
     private var mergedIDs: Set<String> = []
     private(set) var state = LoadState.idle
+    /// 直前に取得を始めた時刻。自動更新（`refreshIfStale`）の間隔の判断に使う
+    private(set) var lastRefreshed: Date?
 
     private let tokenStore: any TokenStore
     private let makeProvider: @Sendable (String) -> any MergeQueueProviding
@@ -47,7 +49,15 @@ final class MergeQueueModel {
         repeat {
             needsRefreshAfterLoading = false
             await load()
-        } while needsRefreshAfterLoading
+        } while needsRefreshAfterLoading && !Task.isCancelled
+    }
+
+    /// 自動更新（フォアグラウンド復帰・Background App Refresh）。取得中か、直前の取得から間もなければ取り直さない
+    func refreshIfStale(now: Date = .now) async {
+        guard !isLoading, AutoRefresh.isStale(lastRefreshed: lastRefreshed, now: now) else {
+            return
+        }
+        await refresh()
     }
 
     private func load() async {
@@ -63,7 +73,9 @@ final class MergeQueueModel {
             state = .failed(Self.message(for: error))
             return
         }
+        let previous = (state: state, lastRefreshed: lastRefreshed)
         state = .loading
+        lastRefreshed = .now
         do {
             let fetched = try await makeProvider(token).epicPullRequests(org: InboxModel.org)
             // 取得結果に出てこなくなった（検索に反映された）PR は、覚えておく必要がない
@@ -71,6 +83,11 @@ final class MergeQueueModel {
             pullRequests = fetched.filter { !mergedIDs.contains($0.id) }
             state = .loaded
         } catch {
+            // バックグラウンドの取得が打ち切られた。失敗とは表示せず、次の自動更新で取り直せるようにする
+            if Task.isCancelled {
+                (state, lastRefreshed) = previous
+                return
+            }
             state = .failed(Self.message(for: error))
         }
     }
