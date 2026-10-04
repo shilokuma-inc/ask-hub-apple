@@ -42,11 +42,23 @@ final class InboxModel {
         state == .loading
     }
 
-    /// 保存済みのトークンで、要回答と急がないをまとめて取得し直す
+    /// 取得中に `refresh()` が呼ばれたか。取得が終わったら最新のトークンで取り直す
+    private var needsRefreshAfterLoading = false
+
+    /// 保存済みのトークンで、要回答と急がないをまとめて取得し直す。
+    /// 取得中に呼ばれた場合は、その取得が終わってから取り直す（設定でトークンを変えた直後など）
     func refresh() async {
         guard !isLoading else {
+            needsRefreshAfterLoading = true
             return
         }
+        repeat {
+            needsRefreshAfterLoading = false
+            await load()
+        } while needsRefreshAfterLoading
+    }
+
+    private func load() async {
         let token: String
         do {
             guard let saved = try tokenStore.load() else {

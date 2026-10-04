@@ -96,6 +96,63 @@ struct InboxModelTests {
         #expect(!String(describing: model.state).contains("github_pat_saved"))
     }
 
+    /// 最初の取得を、テストが開けるまで止めておく取得元
+    private final class GatedSource: InboxSource {
+        private let gate = OSAllocatedUnfairLock<(opened: Bool, waiters: [CheckedContinuation<Void, Never>])>(initialState: (false, []))
+
+        func open() {
+            let waiters = gate.withLock { state in
+                state.opened = true
+                defer { state.waiters = [] }
+                return state.waiters
+            }
+            waiters.forEach { $0.resume() }
+        }
+
+        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+            await withCheckedContinuation { continuation in
+                let opened = gate.withLock { state in
+                    if !state.opened {
+                        state.waiters.append(continuation)
+                    }
+                    return state.opened
+                }
+                if opened {
+                    continuation.resume()
+                }
+            }
+            return try await StubSource().subjectsNeedingAnswer(org: org)
+        }
+
+        func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
+            try await StubSource().questionThreads(of: subject)
+        }
+
+        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+            try await StubSource().lowPriorityIssues(org: org)
+        }
+    }
+
+    @Test func refreshDuringLoadingReloadsWithLatestToken() async throws {
+        let store = InMemoryTokenStore(token: "github_pat_old")
+        let source = GatedSource()
+        let model = InboxModel(tokenStore: store) { _ in source }
+
+        let first = Task { await model.refresh() }
+        while model.state != .loading {
+            await Task.yield()
+        }
+        // 取得中に設定でトークンを削除して、シートを閉じた
+        try store.delete()
+        await model.refresh()
+        source.open()
+        await first.value
+
+        // 古いトークンでの結果を残さず、最新の状態（未設定）を反映する
+        #expect(model.state == .needsToken)
+        #expect(model.questions.isEmpty)
+    }
+
     @Test func messageForRateLimit() {
         #expect(InboxModel.message(for: GitHubError.rateLimited(retryAfter: .seconds(90))) == "GitHub のレート制限中です。90 秒ほど待ってから更新してください")
     }
