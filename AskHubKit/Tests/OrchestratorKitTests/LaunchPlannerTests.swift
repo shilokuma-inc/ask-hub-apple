@@ -1,0 +1,109 @@
+import Foundation
+@testable import OrchestratorKit
+import Testing
+
+struct LaunchPlannerTests {
+    private let app = RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")
+    private let other = RepositoryConfig(owner: "shilokuma-inc", name: "beat-tap-ios", checkoutPath: "/src/beat-tap-ios")
+
+    private func config() throws -> OrchestratorConfig {
+        OrchestratorConfig(
+            trustedAuthorLogins: ["mrs1669"],
+            org: "shilokuma-inc",
+            repositories: [app, other],
+            pollInterval: .seconds(60),
+            loopCommand: try LoopCommandTemplate(arguments: ["/usr/local/bin/start-loop"])
+        )
+    }
+
+    @Test func launchesTrustedDiscussionOfAssignedIdleRepository() throws {
+        let discussion = ReadyDiscussion.fixture(repository: "Shilokuma-Inc/Ask-Hub-Apple", number: 3)
+        let decisions = LaunchPlanner.decide([discussion], config: try config(), statuses: [:])
+        #expect(decisions == [.launch(discussion, app)])
+    }
+
+    @Test func skipsDiscussionOfOtherPC() throws {
+        let discussion = ReadyDiscussion.fixture(repository: "shilokuma-inc/notti-ios")
+        let decisions = LaunchPlanner.decide([discussion], config: try config(), statuses: [:])
+        #expect(decisions == [.skip(discussion, .notAssigned)])
+    }
+
+    @Test func skipsUntrustedOrDeletedAuthor() throws {
+        let untrusted = ReadyDiscussion.fixture(number: 1, author: "someone")
+        let deleted = ReadyDiscussion.fixture(number: 2, author: nil)
+        let decisions = LaunchPlanner.decide([untrusted, deleted], config: try config(), statuses: [:])
+        #expect(decisions == [.skip(untrusted, .untrustedAuthor), .skip(deleted, .untrustedAuthor)])
+    }
+
+    @Test func skipsWhileLoopIsRunningOrStateRemains() throws {
+        let running = ReadyDiscussion.fixture(repository: "shilokuma-inc/ask-hub-apple")
+        let remaining = ReadyDiscussion.fixture(repository: "shilokuma-inc/beat-tap-ios")
+        let decisions = LaunchPlanner.decide(
+            [running, remaining],
+            config: try config(),
+            statuses: [
+                "shilokuma-inc/ask-hub-apple": LoopStatus(stateFileExists: true, processAlive: true),
+                "shilokuma-inc/beat-tap-ios": LoopStatus(stateFileExists: true, processAlive: false)
+            ]
+        )
+        #expect(decisions == [.skip(running, .loopRunning), .skip(remaining, .loopStateRemains)])
+    }
+
+    @Test func skipsDiscussionAlreadyLaunched() throws {
+        let launched = ReadyDiscussion.fixture(number: 3)
+        let next = ReadyDiscussion.fixture(number: 5)
+        let decisions = LaunchPlanner.decide([launched, next], config: try config(), statuses: [:], excluding: ["D_3"])
+        #expect(decisions == [.skip(launched, .alreadyLaunched), .launch(next, app)])
+    }
+
+    @Test func skipsWhenStateFileCannotBeChecked() throws {
+        let discussion = ReadyDiscussion.fixture()
+        let decisions = LaunchPlanner.decide(
+            [discussion],
+            config: try config(),
+            statuses: ["shilokuma-inc/ask-hub-apple": LoopStatus(stateFileExists: nil, processAlive: false)]
+        )
+        #expect(decisions == [.skip(discussion, .loopStatusUnknown)])
+    }
+
+    @Test func launchesProcessAliveWithoutStateFileAsRunning() throws {
+        // state ファイルを作る前の起動直後も、起動したプロセスが生きていれば二重に起動しない
+        let discussion = ReadyDiscussion.fixture()
+        let decisions = LaunchPlanner.decide(
+            [discussion],
+            config: try config(),
+            statuses: ["shilokuma-inc/ask-hub-apple": LoopStatus(stateFileExists: false, processAlive: true)]
+        )
+        #expect(decisions == [.skip(discussion, .loopRunning)])
+    }
+
+    @Test func launchesOnlyOldestDiscussionPerRepository() throws {
+        let newer = ReadyDiscussion.fixture(number: 9)
+        let older = ReadyDiscussion.fixture(number: 4)
+        let otherRepository = ReadyDiscussion.fixture(repository: "shilokuma-inc/beat-tap-ios", number: 7)
+        let decisions = LaunchPlanner.decide([newer, otherRepository, older], config: try config(), statuses: [:])
+        #expect(decisions == [
+            .launch(older, app),
+            .launch(otherRepository, other),
+            .skip(newer, .waitingForAnotherDiscussion(number: 4))
+        ])
+    }
+}
+
+extension ReadyDiscussion {
+    static func fixture(
+        repository: String = "shilokuma-inc/ask-hub-apple",
+        number: Int = 1,
+        author: String? = "mrs1669"
+    ) -> Self {
+        Self(
+            nodeID: "D_\(number)",
+            repository: repository,
+            number: number,
+            title: "Discussion \(number)",
+            url: URL(string: "https://github.com/\(repository)/discussions/\(number)")!,
+            author: author,
+            readyLabelID: "LA_ready"
+        )
+    }
+}

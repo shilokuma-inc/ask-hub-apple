@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  askhub-orchestrator を launchd で常駐させる LaunchAgent のテンプレート。
+  scripts/orchestrator/install.sh が @...@ を置き換えて ~/Library/LaunchAgents に書き出す。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@LABEL@</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>@BINARY@</string>
+    <string>--config</string>
+    <string>@CONFIG@</string>
+  </array>
+
+  <!-- ログイン時に起動し、落ちたら再起動する（ThrottleInterval 秒より短い間隔では起こさない） -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <!-- launchd の PATH は最小限なので、gh / claude / git の場所を渡す -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@PATH@</string>
+    <key>HOME</key>
+    <string>@HOME@</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>@HOME@</string>
+
+  <!-- ログは時刻付きで標準出力に出る -->
+  <key>StandardOutPath</key>
+  <string>@LOG_DIR@/orchestrator.log</string>
+  <key>StandardErrorPath</key>
+  <string>@LOG_DIR@/orchestrator.log</string>
+
+  <!-- 既定ではジョブが終わるとプロセスグループごと止められる。オーケストレーターを再起動しても、起動したループを止めない -->
+  <key>AbandonProcessGroup</key>
+  <true/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
