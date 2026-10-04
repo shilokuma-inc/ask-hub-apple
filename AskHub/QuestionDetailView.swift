@@ -6,6 +6,8 @@ struct QuestionDetailView: View {
     let inbox: InboxModel
     @State private var form: AnswerFormModel
     @State private var isConfirmingLoopStart = false
+    /// 投稿の前にキーボードを閉じ、確認や結果が隠れないようにする
+    @FocusState private var isEditingNote: Bool
     @Environment(\.dismiss)
     private var dismiss
 
@@ -42,6 +44,7 @@ struct QuestionDetailView: View {
             Section {
                 TextField(question.marker.isFreeForm ? "回答" : "補足（任意）", text: $form.note, axis: .vertical)
                     .lineLimit(3...8)
+                    .focused($isEditingNote)
             } header: {
                 Text(question.marker.isFreeForm ? "回答" : "補足")
             } footer: {
@@ -73,6 +76,7 @@ struct QuestionDetailView: View {
             if !form.isPosted {
                 Section {
                     Button {
+                        isEditingNote = false
                         if form.startsLoopAfterPosting {
                             isConfirmingLoopStart = true
                         } else {
