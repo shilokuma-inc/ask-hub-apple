@@ -64,7 +64,7 @@ public struct QuestionThread: Sendable, Equatable {
 }
 
 /// 受信箱の「要回答」に出す、未回答の質問
-public struct InboxQuestion: Sendable, Equatable, Identifiable {
+public struct InboxQuestion: Sendable, Equatable, Hashable, Identifiable {
     public var subject: InboxSubject
     public var comment: InboxComment
     public var marker: QuestionMarker
