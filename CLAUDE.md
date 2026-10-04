@@ -42,7 +42,7 @@ swift test --package-path AskHubKit
 ## 知見の記録（LEARNINGS.md）
 
 - 作業を始める前に [`LEARNINGS.md`](LEARNINGS.md) を読む。ハマりどころ・API の癖がまとまっている
-- 新しい知見を得たら、実装 PR の中で `LEARNINGS.md` の該当する見出しの末尾に追記する（既存の行は書き換えない。`merge=union` で並行する追記が両方残る）
+- 新しい知見を得たら、実装 PR の中で `LEARNINGS.md` の該当する見出しの末尾に追記する（既存の行は書き換えない。`merge=union` で並行する追記が両方残るのは、ローカルの git でマージ・リベースしたとき。GitHub 上の PR のマージには効かないので、コンフリクトしたらローカルで base を取り込む）
 - PC 固有の値（ローカルパス・Simulator の UDID など）は書かない
 
 ## ブランチ運用
