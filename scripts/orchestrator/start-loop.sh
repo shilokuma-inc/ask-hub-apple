@@ -213,13 +213,15 @@ else
 fi
 
 # ---- ループの起動 ---------------------------------------------------------------------
+# state を作る前に PID を記録する。state を作った直後にこのプロセスが終わっても、
+# 「PID の記録が無い state」（手で起動したループとみなされ、誰も片付けない）を残さないため
+printf '%s\n' "$$" > "$PID_FILE"
 (cd "$CTL" && "$CHECKOUT/scripts/ralph-start.sh" "$PROMISE" >/dev/null)
 [[ -f "$STATE" ]] || fail "state ファイルを作れませんでした: $STATE"
 
 LOOP_LOG="$LOG_DIR/$REPO_NAME-loop-$(date +%Y%m%d-%H%M%S).log"
 INITIAL=$(sed -n '/^---$/,/^---$/!p' "$STATE" | sed '/^$/d')
 log "ループを起動します（ログ: $LOOP_LOG）"
-printf '%s\n' "$$" > "$PID_FILE"
 cd "$CTL"
 exec "$CLAUDE_BIN" -p --permission-mode bypassPermissions \
   --add-dir "${CTL%-ctl}-a" --add-dir "${CTL%-ctl}-b" \
