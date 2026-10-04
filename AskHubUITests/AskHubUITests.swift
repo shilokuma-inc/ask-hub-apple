@@ -110,4 +110,30 @@ final class AskHubUITests: XCTestCase {
         confirm.tap()
         XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
     }
+
+    @MainActor
+    func testMergeEpicAfterConfirmation() throws {
+        let app = XCUIApplication()
+        // サンプルデータではマージしたことにして GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["マージ待ち"].tap()
+        let row = app.staticTexts["【FEAT】epic/mvp を develop に取り込む"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        app.swipeUp()
+        let merge = app.buttons["develop にマージ"]
+        XCTAssertTrue(merge.waitForExistence(timeout: 5))
+        XCTAssertTrue(merge.isEnabled)
+        merge.tap()
+
+        // 確かめてからマージする
+        let confirm = app.buttons["develop にマージする"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
+        XCTAssertTrue(app.navigationBars["マージ待ち"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["【FEAT】epic/mvp を develop に取り込む"].exists)
+    }
 }
