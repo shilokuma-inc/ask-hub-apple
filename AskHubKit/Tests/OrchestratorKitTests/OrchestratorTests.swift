@@ -1,3 +1,4 @@
+import AskHubKit
 import Foundation
 @testable import OrchestratorKit
 import os
@@ -8,7 +9,25 @@ private struct TestError: Error {}
 private struct FakeGitHubState {
     var results: [Result<[ReadyDiscussion], TestError>]
     var removed: [String] = []
+    var removedNeedsAnswer: [String] = []
     var removeFails = false
+}
+
+/// `needs-answer` の Discussion / PR を返す取得元。スレッドはテストから差し替える
+private final class FakeInbox: InboxSource {
+    private let state = OSAllocatedUnfairLock<(subjects: [InboxSubject], threads: [String: [QuestionThread]])>(initialState: ([], [:]))
+
+    func set(_ subjects: [InboxSubject], threads: [String: [QuestionThread]]) {
+        state.withLock { $0 = (subjects, threads) }
+    }
+
+    func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        state.withLock { $0.subjects }
+    }
+
+    func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
+        state.withLock { $0.threads[subject.nodeID] ?? [] }
+    }
 }
 
 private struct FakeRuntimeState {
@@ -44,6 +63,14 @@ struct OrchestratorTests {
                 }
                 return try first.get()
             }
+        }
+
+        var removedNeedsAnswer: [String] {
+            state.withLock { $0.removedNeedsAnswer }
+        }
+
+        func removeNeedsAnswerLabel(from subject: InboxSubject) async throws {
+            state.withLock { $0.removedNeedsAnswer.append(subject.nodeID) }
         }
 
         func removeReadyLabel(from discussion: ReadyDiscussion) async throws {
@@ -104,7 +131,7 @@ struct OrchestratorTests {
     private static let started = LoopStatus(stateFileExists: true, processAlive: true)
     private static let exitedWithoutStarting = LoopStatus(stateFileExists: false, processAlive: false)
 
-    private func makeOrchestrator(github: FakeGitHub, runtime: FakeRuntime) throws -> Orchestrator {
+    private func makeOrchestrator(github: FakeGitHub, runtime: FakeRuntime, inbox: FakeInbox = FakeInbox()) throws -> Orchestrator {
         let config = OrchestratorConfig(
             trustedAuthorLogins: ["mrs1669"],
             org: "shilokuma-inc",
@@ -113,7 +140,7 @@ struct OrchestratorTests {
             loopCommand: try LoopCommandTemplate(arguments: ["/usr/local/bin/start-loop", "{repository}", "{discussion}"])
         )
         let logs = logs
-        return Orchestrator(config: config, github: github, runtime: runtime) { logs.append($0) }
+        return Orchestrator(config: config, github: github, inbox: inbox, runtime: runtime) { logs.append($0) }
     }
 
     @Test func removesLabelOnlyAfterLoopStarts() async throws {
@@ -202,6 +229,84 @@ struct OrchestratorTests {
         #expect(runtime.launched.isEmpty)
         #expect(github.removed.isEmpty)
         #expect(logs.recorded == ["shilokuma-inc/ask-hub-apple#12 は起動しません: 制御用 worktree に .claude/ralph-loop.local.md が残っています"])
+    }
+
+    // MARK: - ask への回答
+
+    private static func pullRequest(repository: String = "shilokuma-inc/ask-hub-apple", number: Int = 34) -> InboxSubject {
+        InboxSubject(
+            kind: .pullRequest,
+            nodeID: "PR_\(number)",
+            repository: repository,
+            number: number,
+            title: "PR",
+            url: URL(string: "https://github.com/\(repository)/pull/\(number)")!
+        )
+    }
+
+    private static func ask(_ id: String, replies: [String?]) -> QuestionThread {
+        QuestionThread(
+            comment: InboxComment(
+                nodeID: id,
+                databaseID: 1,
+                author: "mrs1669",
+                body: #"<!-- ask-hub:question id="pr34-1" options="A|B" -->"#,
+                url: URL(string: "https://github.com")!,
+                createdAt: Date()
+            ),
+            replyAuthors: replies
+        )
+    }
+
+    @Test func resumesStoppedLoopWhenAskIsAnsweredAndRemovesNeedsAnswer() async throws {
+        let github = FakeGitHub([.success([])])
+        let runtime = FakeRuntime()
+        let inbox = FakeInbox()
+        let subject = Self.pullRequest()
+        inbox.set([subject], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime, inbox: inbox)
+
+        try await orchestrator.pollOnce()
+        // 再開では {discussion} が空になる
+        #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", ""]])
+        #expect(github.removedNeedsAnswer == ["PR_34"])
+
+        // 再開を確かめたら、同じ回答では再開しない
+        runtime.set(Self.started)
+        try await orchestrator.pollOnce()
+        runtime.set(.idle)
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.count == 1)
+        #expect(await orchestrator.pendingResumes.isEmpty)
+    }
+
+    @Test func doesNotResumeRunningLoopOrOtherPCRepository() async throws {
+        let github = FakeGitHub([.success([])])
+        let runtime = FakeRuntime()
+        runtime.set(Self.started)
+        let inbox = FakeInbox()
+        inbox.set(
+            [Self.pullRequest(), Self.pullRequest(repository: "shilokuma-inc/notti-ios", number: 7)],
+            threads: [
+                "PR_34": [Self.ask("C_1", replies: ["mrs1669"]), Self.ask("C_2", replies: [])],
+                "PR_7": [Self.ask("C_3", replies: ["mrs1669"])]
+            ]
+        )
+        try await makeOrchestrator(github: github, runtime: runtime, inbox: inbox).pollOnce()
+
+        // 動いているループは自分で回答を拾う。別の PC の担当には触らない。未回答が残る PR のラベルは外さない
+        #expect(runtime.launched.isEmpty)
+        #expect(github.removedNeedsAnswer.isEmpty)
+    }
+
+    @Test func resumeAndReadyForLoopDoNotLaunchTwiceInOnePoll() async throws {
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        let runtime = FakeRuntime()
+        let inbox = FakeInbox()
+        inbox.set([Self.pullRequest()], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
+        try await makeOrchestrator(github: github, runtime: runtime, inbox: inbox).pollOnce()
+
+        #expect(runtime.launched.count == 1)
     }
 
     @Test func runContinuesAfterFailedPollAndStopsWhenSleepThrows() async throws {
