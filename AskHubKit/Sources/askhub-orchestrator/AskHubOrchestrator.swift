@@ -38,9 +38,19 @@ enum AskHubOrchestrator {
             lines.append("  - \(repository.fullName)")
             lines.append("      checkout: \(repository.checkoutPath)")
             lines.append("      control:  \(repository.controlWorktreePath)")
-            lines.append("      loop:     \(config.loopCommand.render(for: repository).joined(separator: " "))")
+            lines.append("      loop:     \(jsonArray(config.loopCommand.render(for: repository)))")
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// 空白を含む引数でも境界が分かるよう、JSON の配列として表示する
+    private static func jsonArray(_ arguments: [String]) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
+        guard let data = try? encoder.encode(arguments), let json = String(bytes: data, encoding: .utf8) else {
+            return arguments.description
+        }
+        return json
     }
 
     private static func fail(_ message: String, status: Int32) -> Never {
