@@ -50,4 +50,26 @@ final class AskHubUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["依頼を送りました"].waitForExistence(timeout: 5))
     }
+
+    @MainActor
+    func testAnswerQuestionFromDetail() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは投稿しても GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        let row = app.staticTexts["Q1. レート制限の単位 送信の上限をどの単位で数えますか？"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        let post = app.buttons["回答を投稿"]
+        XCTAssertTrue(post.waitForExistence(timeout: 5))
+        XCTAssertFalse(post.isEnabled)
+        app.buttons["1時間"].tap()
+        XCTAssertTrue(post.isEnabled)
+        post.tap()
+
+        // 投稿すると一覧に戻る
+        XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
+    }
 }
