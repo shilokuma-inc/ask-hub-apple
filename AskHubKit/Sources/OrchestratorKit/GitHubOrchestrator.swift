@@ -75,6 +75,59 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         )
     }
 
+    public func hasPullRequest(in repository: String, head branch: String) async throws -> Bool {
+        let owner = try Self.owner(of: repository)
+        let pulls = try await client.getAllPages(
+            "repos/\(repository)/pulls",
+            query: [URLQueryItem(name: "head", value: "\(owner):\(branch)"), URLQueryItem(name: "state", value: "all")],
+            of: PullRequestNumber.self
+        )
+        return !pulls.isEmpty
+    }
+
+    public func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int {
+        // 統合先は Q13 の develop。リポジトリの既定ブランチとして読む
+        let base = try await client.get("repos/\(repository)", as: RepositoryInfo.self).defaultBranch
+        let pull = try await client.send(
+            "POST",
+            "repos/\(repository)/pulls",
+            body: NewPullRequest(
+                title: Self.epicFinalTitle(branch: branch, base: base),
+                head: branch,
+                base: base,
+                body: body + Self.epicFinalFooter
+            ),
+            as: PullRequestNumber.self
+        )
+        // PR のラベルは Issue の API で付ける
+        _ = try await client.send(
+            "POST",
+            "repos/\(repository)/issues/\(pull.number)/labels",
+            body: ["labels": [AskHubLabel.epicFinal.rawValue]],
+            as: [LabelName].self
+        )
+        return pull.number
+    }
+
+    static func epicFinalTitle(branch: String, base: String) -> String {
+        "【FEAT】\(branch) を \(base) に取り込む"
+    }
+
+    static let epicFinalFooter = """
+
+
+        ---
+        この PR は askhub-orchestrator が epic の完了を検知して作成しました。
+        AskHub アプリの「マージ待ち」から確認して、merge commit でマージしてください。
+        """
+
+    private static func owner(of repository: String) throws -> String {
+        guard let owner = repository.split(separator: "/").first, !owner.isEmpty else {
+            throw GitHubError.invalidResponse
+        }
+        return String(owner)
+    }
+
     private static let labelQuery = """
         query($owner: String!, $name: String!, $label: String!) {
           repository(owner: $owner, name: $name) { label(name: $label) { id } }
@@ -167,4 +220,27 @@ private struct RemoveLabelsData: Decodable {
     }
 
     let removeLabelsFromLabelable: Payload?
+}
+
+private struct PullRequestNumber: Decodable {
+    let number: Int
+}
+
+private struct RepositoryInfo: Decodable {
+    let defaultBranch: String
+
+    private enum CodingKeys: String, CodingKey {
+        case defaultBranch = "default_branch"
+    }
+}
+
+private struct NewPullRequest: Encodable, Sendable {
+    let title: String
+    let head: String
+    let base: String
+    let body: String
+}
+
+private struct LabelName: Decodable {
+    let name: String
 }

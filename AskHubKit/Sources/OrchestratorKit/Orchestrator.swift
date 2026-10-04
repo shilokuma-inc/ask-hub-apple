@@ -8,6 +8,10 @@ public protocol OrchestratorGitHub: Sendable {
     func removeReadyLabel(from discussion: ReadyDiscussion) async throws
     /// Discussion / PR から `needs-answer` を外す
     func removeNeedsAnswerLabel(from subject: InboxSubject) async throws
+    /// `branch` を head にした PR が（閉じたものも含めて）あるか
+    func hasPullRequest(in repository: String, head branch: String) async throws -> Bool
+    /// `branch` から既定ブランチへの epic の最終 PR を作り、`epic-final` を付ける。PR の番号を返す
+    func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int
 }
 
 /// ループの状態の取得と起動。テストでは差し替える
@@ -15,6 +19,8 @@ public protocol LoopRuntime: Sendable {
     func status(of repository: RepositoryConfig) async -> LoopStatus
     /// `arguments` をシェルを経由せずに実行する。終了は待たない
     func launch(_ arguments: [String], for repository: RepositoryConfig) async throws
+    /// 制御用 worktree のブランチ・ゴール・state を読む
+    func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot
 }
 
 /// 「ポーリング → 状態判定 → アクション」を繰り返す。
@@ -27,6 +33,8 @@ public actor Orchestrator {
     private let log: @Sendable (String) -> Void
     private var tracker = LaunchTracker()
     private var watcher = ResumeWatcher()
+    /// epic の最終 PR を作った（または既にあった）リポジトリ。毎回 GitHub に問い合わせないために覚える
+    private var finalizedEpics: Set<String> = []
 
     /// - Parameter inbox: `needs-answer` の Discussion / PR と質問の取得元
     public init(
@@ -91,7 +99,9 @@ public actor Orchestrator {
         for decision in decisions {
             switch decision {
             case let .launch(discussion, repository):
-                await launch(discussion, in: repository)
+                if await launch(discussion, in: repository) {
+                    statuses[repository.fullName.lowercased()] = LoopStatus(stateFileExists: false, processAlive: true)
+                }
 
             case let .skip(discussion, reason):
                 if let message = Self.describe(reason) {
@@ -99,7 +109,36 @@ public actor Orchestrator {
                 }
             }
         }
+
+        // 止まったループの epic が完了していたら、既定ブランチへの最終 PR（epic-final）を作る
+        for repository in config.repositories {
+            await finalizeEpicIfComplete(repository, status: statuses[repository.fullName.lowercased()] ?? .idle)
+        }
         return decisions
+    }
+
+    private func finalizeEpicIfComplete(_ repository: RepositoryConfig, status: LoopStatus) async {
+        let snapshot = await runtime.epicSnapshot(of: repository)
+        guard case let .complete(branch, summary) = EpicCompletion(snapshot: snapshot, status: status) else {
+            return
+        }
+        // 同じ epic の PR は 1 回だけ作る。ブランチが変われば（次の epic）改めて判定する
+        let key = "\(repository.fullName.lowercased()) \(branch)"
+        guard !finalizedEpics.contains(key) else {
+            return
+        }
+        do {
+            // 閉じた PR もあれば作り直さない（人がマージせずに閉じたものを復活させない）
+            if try await github.hasPullRequest(in: repository.fullName, head: branch) {
+                finalizedEpics.insert(key)
+                return
+            }
+            let number = try await github.createEpicFinalPullRequest(in: repository.fullName, head: branch, body: summary)
+            finalizedEpics.insert(key)
+            log("\(repository.fullName) の \(branch) が完了したので、最終 PR #\(number)（epic-final）を作りました")
+        } catch {
+            log("\(repository.fullName) の \(branch) の最終 PR を作れませんでした（次のポーリングで再試行します）: \(error)")
+        }
     }
 
     private func handleAnswers(statuses: inout [String: LoopStatus]) async throws {
@@ -166,7 +205,8 @@ public actor Orchestrator {
         tracker.entries
     }
 
-    private func launch(_ discussion: ReadyDiscussion, in repository: RepositoryConfig) async {
+    /// 起動できたら `true`
+    private func launch(_ discussion: ReadyDiscussion, in repository: RepositoryConfig) async -> Bool {
         let key = repository.fullName.lowercased()
         do {
             try await runtime.launch(config.loopCommand.render(for: repository, discussionNumber: discussion.number), for: repository)
@@ -174,10 +214,11 @@ public actor Orchestrator {
             let entry = tracker.recordLaunchFailure(of: discussion, repositoryKey: key)
             let next = entry.phase == .gaveUp ? "起動をやめます（ready-for-loop は残します）" : "次のポーリングで再試行します"
             log("\(Self.name(of: discussion)) のループを起動できませんでした（\(entry.attempts)/\(LaunchTracker.maxAttempts) 回目）: \(error)。\(next)")
-            return
+            return false
         }
         tracker.recordLaunch(of: discussion, repositoryKey: key)
         log("\(Self.name(of: discussion)) のループを起動しました。開始を確かめてから ready-for-loop を外します")
+        return true
     }
 
     private func perform(_ action: LaunchTracker.Action) async {
