@@ -69,11 +69,11 @@ public protocol LoopRuntime: Sendable {
 /// 「ポーリング → 状態判定 → アクション」を繰り返す。
 /// 起動した Discussion（`LaunchTracker`）と回答済みの質問（`ResumeWatcher`）を覚えておくため actor にする
 public actor Orchestrator {
-    private let config: OrchestratorConfig
+    let config: OrchestratorConfig
     private let github: any OrchestratorGitHub
     private let inbox: any InboxSource
-    private let runtime: any LoopRuntime
-    private let log: @Sendable (String) -> Void
+    let runtime: any LoopRuntime
+    let log: @Sendable (String) -> Void
     private var tracker = LaunchTracker()
     private var watcher = ResumeWatcher()
     /// epic の最終 PR を作った（または既にあった）リポジトリ。毎回 GitHub に問い合わせないために覚える
@@ -82,6 +82,7 @@ public actor Orchestrator {
     private var lastHeartbeats: [String: Date] = [:]
     private let now: @Sendable () -> Date
     private var ideaTracker = IdeaRequestTracker()
+    var stallWatcher = StallWatcher()
 
     /// 依頼から Discussion を作らせるコマンドの制限時間
     static let ideaCommandTimeout: Duration = .seconds(30 * 60)
@@ -138,6 +139,10 @@ public actor Orchestrator {
             log("回答の確認に失敗しました: \(error)")
         }
 
+        // 異常終了したループ（タスクを残したまま止まった）を再開する。
+        // 新しい Discussion の起動より先に行い、途中の epic に別の epic を被せない
+        await resumeStalledLoops(statuses: &statuses)
+
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         for action in tracker.update(discussions: discussions, statuses: statuses) {
             await perform(action)
@@ -147,7 +152,8 @@ public actor Orchestrator {
             discussions,
             config: config,
             statuses: statuses,
-            excluding: tracker.blockedDiscussionIDs
+            excluding: tracker.blockedDiscussionIDs,
+            epicsInProgress: await epicsInProgress(among: discussions)
         )
         for decision in decisions {
             switch decision {
@@ -408,7 +414,7 @@ public actor Orchestrator {
     /// （別の PC の担当・ループの実行中・順番待ちは、待てば解消するので出さない）
     private static func describe(_ reason: LaunchDecision.SkipReason) -> String? {
         switch reason {
-        case .notAssigned, .loopRunning, .waitingForAnotherDiscussion, .alreadyLaunched:
+        case .notAssigned, .loopRunning, .waitingForAnotherDiscussion, .alreadyLaunched, .epicInProgress:
             nil
 
         case .untrustedAuthor:

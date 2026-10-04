@@ -11,12 +11,21 @@ public struct EpicSnapshot: Sendable, Equatable {
     /// ゴール元の Discussion の番号。起動スクリプトが `.claude/askhub-bootstrap.local.txt` に残す。
     /// 手で始めた epic など、記録が無ければ `nil`
     public let discussion: Int?
+    /// ループを始められる状態まで準備した（起動スクリプトが完了語を `.claude/askhub-promise.local.txt` に残した）
+    public let loopPrepared: Bool
 
-    public init(branch: String?, goal: String?, state: String?, discussion: Int? = nil) {
+    public init(branch: String?, goal: String?, state: String?, discussion: Int? = nil, loopPrepared: Bool = false) {
         self.branch = branch
         self.goal = goal
         self.state = state
         self.discussion = discussion
+        self.loopPrepared = loopPrepared
+    }
+
+    /// 途中の epic がある（準備を終えた `epic/` のブランチに、回答待ちでない未完了のタスクが残っている）。
+    /// 1 リポジトリにつきループは 1 つなので、新しい epic はこれが終わるまで始めない
+    public var inProgress: Bool {
+        loopPrepared && branch?.hasPrefix("epic/") == true && goal.map(EpicCompletion.hasUnfinishedTasks(in:)) == true
     }
 
     /// 最終 PR の本文。ゴール元の Discussion があれば、先頭にその番号と機械が読める目印を置く

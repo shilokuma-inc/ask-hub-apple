@@ -38,13 +38,15 @@ public actor LocalLoopRuntime: LoopRuntime {
         }
         let control = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
         var stateFileExists = Self.fileExists(at: control.appendingPathComponent(Self.stateFileRelativePath).path)
+        var stalled = false
         // state ファイルが残っていても、記録した PID のプロセスが居なければループは止まっている（落ちた・止められた）。
         // 起動スクリプトがそれを見て state を片付けてから再開するので、ここでは「無い」とみなす
         if stateFileExists == true, processes[key] == nil,
            Self.recordedProcessIsGone(pidFile: control.appendingPathComponent(Self.pidFileRelativePath)) {
             stateFileExists = false
+            stalled = true
         }
-        return LoopStatus(stateFileExists: stateFileExists, processAlive: processes[key] != nil)
+        return LoopStatus(stateFileExists: stateFileExists, processAlive: processes[key] != nil, stalled: stalled)
     }
 
     /// PID ファイルに記録したプロセスが居なくなっているか。PID ファイルが無い・読めないときは判断できないので `false`
@@ -80,7 +82,8 @@ public actor LocalLoopRuntime: LoopRuntime {
             state: read(".claude/ralph-state.local.md"),
             discussion: read(".claude/askhub-bootstrap.local.txt")
                 .flatMap { $0.split(whereSeparator: \.isNewline).first }
-                .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+                .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) },
+            loopPrepared: read(".claude/askhub-promise.local.txt")?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         )
     }
 
