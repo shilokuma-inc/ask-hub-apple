@@ -26,15 +26,14 @@ Discussion の質問や PR の ask を 1 つの一覧にまとめ、アプリで
       </tr>
       <tr>
         <td style="border:2px double #000080;text-align:left;">main</td>
+        <!-- main ブランチは初回リリースで作成する。作成までは実行履歴が無くバッジが「no status」になるため、
+             作成後に次のバッジを戻す:
+          build.yml/badge.svg?branch=main&event=push（Build）、archive.yml/badge.svg?branch=main（Archive） -->
         <td style="border:2px double #000080;text-align:center;">
-          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml?query=branch%3Amain">
-            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml/badge.svg?branch=main" alt="Build">
-          </a>
+          未作成
         </td>
         <td style="border:2px double #000080;text-align:center;">
-          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/archive.yml?query=branch%3Amain">
-            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/archive.yml/badge.svg?branch=main" alt="Archive">
-          </a>
+          未作成
         </td>
         <td style="border:2px double #000080;text-align:center;">
         </td>
@@ -42,8 +41,8 @@ Discussion の質問や PR の ask を 1 つの一覧にまとめ、アプリで
       <tr>
         <td style="border:2px double #000080;text-align:left;">develop</td>
         <td style="border:2px double #000080;text-align:center;">
-          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml?query=branch%3Adevelop">
-            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml/badge.svg?branch=develop" alt="Build">
+          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml?query=branch%3Adevelop+event%3Apush">
+            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml/badge.svg?branch=develop&event=push" alt="Build">
           </a>
         </td>
         <td style="border:2px double #000080;text-align:center;">
