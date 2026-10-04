@@ -79,7 +79,7 @@ struct GitHubOrchestratorTests {
         #expect(discussions.first?.author == "mrs1669")
         #expect(discussions.first?.repository == "o/r")
         let first = try requestJSON(http.requests[0])
-        #expect(first.variables["query"] as? String == "org:shilokuma-inc label:ready-for-loop")
+        #expect(first.variables["query"] as? String == "org:shilokuma-inc label:ready-for-loop is:open")
         #expect(first.variables["after"] is NSNull)
         #expect(try requestJSON(http.requests[1]).variables["after"] as? String == "S1")
     }

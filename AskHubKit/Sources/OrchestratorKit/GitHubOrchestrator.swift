@@ -11,11 +11,13 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
 
     public func readyForLoopDiscussions(org: String) async throws -> [ReadyDiscussion] {
         let label = AskHubLabel.readyForLoop.rawValue
-        // 担当リポジトリごとではなく org 全体を 1 回で検索する（Search API のレート制限のため）
+        // 担当リポジトリごとではなく org 全体を 1 回で検索する（Search API のレート制限のため）。
+        // 検索結果は 1,000 件までなので、closed の Discussion で上限を埋めないよう検索の段階で open に絞る
+        let query = "org:\(org) label:\(label) is:open"
         let nodes: [SearchNode] = try await collectGraphQLPages { after in
             let data = try await client.graphQL(
                 Self.searchQuery,
-                variables: ["query": .string("org:\(org) label:\(label)"), "after": after.map(GraphQLVariable.string) ?? .null],
+                variables: ["query": .string(query), "after": after.map(GraphQLVariable.string) ?? .null],
                 as: SearchData.self
             )
             return (data.search.nodes.compactMap(\.self), data.search.pageInfo)
