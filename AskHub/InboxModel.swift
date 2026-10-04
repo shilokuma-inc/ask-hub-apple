@@ -23,6 +23,8 @@ final class InboxModel {
     private(set) var questions: [InboxQuestion] = []
     /// アプリから回答した質問。GitHub の検索に回答が反映されるまで、取り直しても一覧に出さない
     private var answeredQuestionIDs: Set<String> = []
+    /// 直前の取得に使ったトークン。変わったら（別のアカウントになりうるので）回答済みの記録を捨てる
+    private var lastToken: String?
     private(set) var issues: [InboxIssue] = []
     private(set) var state = LoadState.idle
 
@@ -53,9 +55,18 @@ final class InboxModel {
         }
         _ = try await makePoster(token).post(answer, to: question)
         // 検索の反映を待たずに、回答した質問はすぐ一覧から消す。取り直しても戻さない
+        useToken(token)
         answeredQuestionIDs.insert(question.id)
         questions.removeAll { $0.id == question.id }
         await refresh()
+    }
+
+    /// トークンが変わったら（別のアカウントになりうるので）回答済みの記録を捨てる
+    private func useToken(_ token: String) {
+        if token != lastToken {
+            answeredQuestionIDs.removeAll()
+            lastToken = token
+        }
     }
 
     var isLoading: Bool {
@@ -93,6 +104,7 @@ final class InboxModel {
             return
         }
 
+        useToken(token)
         state = .loading
         let fetcher = InboxFetcher(source: makeSource(token), trustedAuthors: trustedAuthors)
         do {

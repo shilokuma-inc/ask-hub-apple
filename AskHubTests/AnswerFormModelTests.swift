@@ -79,6 +79,23 @@ struct AnswerFormModelTests {
         #expect(inbox.questions.count == 2)
     }
 
+    @Test func forgetsAnsweredQuestionsWhenTokenChanges() async throws {
+        let store = InMemoryTokenStore(token: "github_pat_old")
+        let inbox = InboxModel(tokenStore: store, makeSource: { _ in SampleInboxSource() }, makePoster: { _ in RecordingPoster() })
+        await inbox.refresh()
+        try await inbox.post(Answer(choice: "1時間"), to: question)
+        #expect(!inbox.questions.contains { $0.id == question.id })
+
+        // 別のトークン（別のアカウントかもしれない）に変えたら、回答済みの記録を捨てて GitHub の結果どおりに出す
+        try store.save("github_pat_new")
+        await inbox.refresh()
+        #expect(inbox.questions.contains { $0.id == question.id })
+
+        // 新しいトークンで回答した質問は、取り直しても戻さない
+        try await inbox.post(Answer(choice: "1時間"), to: question)
+        #expect(!inbox.questions.contains { $0.id == question.id })
+    }
+
     @Test func keepsInputAndShowsErrorWhenPostingFails() async {
         let poster = RecordingPoster(failure: GitHubError.http(status: 422, message: "Validation Failed"))
         let form = AnswerFormModel(question: question)
