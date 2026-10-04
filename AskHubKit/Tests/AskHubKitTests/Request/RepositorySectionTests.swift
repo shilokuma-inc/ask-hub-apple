@@ -1,28 +1,33 @@
 import AskHubKit
+import Foundation
 import Testing
 
 struct RepositorySectionTests {
-    @Test func groupsAppsFirstKeepingOrder() {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func groupsAssignedFirstKeepingOrder() {
         let sections = RepositorySection.grouping([
-            "shilokuma-inc/dotfiles",
-            "shilokuma-inc/ask-hub-apple",
-            "shilokuma-inc/template-app-ios",
-            "shilokuma-inc/Notti-iOS",
-            "shilokuma-inc/ios-tools"
-        ])
+            RequestRepository(fullName: "o/dotfiles"),
+            RequestRepository(fullName: "o/ask-hub-apple", lastSeen: now.addingTimeInterval(-60)),
+            RequestRepository(fullName: "o/stale-ios", lastSeen: now.addingTimeInterval(-OrchestratorHeartbeat.freshness - 1)),
+            RequestRepository(fullName: "o/notti-ios", lastSeen: now.addingTimeInterval(-OrchestratorHeartbeat.freshness))
+        ], now: now)
 
         #expect(sections == [
-            RepositorySection(
-                title: "アプリ",
-                repositories: ["shilokuma-inc/ask-hub-apple", "shilokuma-inc/template-app-ios", "shilokuma-inc/Notti-iOS"]
-            ),
-            RepositorySection(title: "その他", repositories: ["shilokuma-inc/dotfiles", "shilokuma-inc/ios-tools"])
+            RepositorySection(title: "担当 PC あり", repositories: ["o/ask-hub-apple", "o/notti-ios"]),
+            RepositorySection(title: "担当 PC なし", repositories: ["o/dotfiles", "o/stale-ios"])
         ])
     }
 
     @Test func omitsEmptySections() {
-        #expect(RepositorySection.grouping([]).isEmpty)
-        #expect(RepositorySection.grouping(["o/dotfiles"]) == [RepositorySection(title: "その他", repositories: ["o/dotfiles"])])
-        #expect(RepositorySection.grouping(["o/notti-ios"]) == [RepositorySection(title: "アプリ", repositories: ["o/notti-ios"])])
+        #expect(RepositorySection.grouping([], now: now).isEmpty)
+        #expect(
+            RepositorySection.grouping([RequestRepository(fullName: "o/dotfiles")], now: now)
+                == [RepositorySection(title: "担当 PC なし", repositories: ["o/dotfiles"])]
+        )
+        #expect(
+            RepositorySection.grouping([RequestRepository(fullName: "o/notti-ios", lastSeen: now)], now: now)
+                == [RepositorySection(title: "担当 PC あり", repositories: ["o/notti-ios"])]
+        )
     }
 }

@@ -22,16 +22,37 @@ struct IdeaRequestTests {
     }
 
     @Test func listsUnarchivedRepositoriesByRecentPush() async throws {
+        let seen = Date(timeIntervalSince1970: 1_800_000_000)
+        let heartbeat = OrchestratorHeartbeat.description(at: seen)
         let http = MockHTTPClient([
             .init(status: 200, body: #"""
                 [{ "full_name": "shilokuma-inc/ask-hub-apple", "archived": false },
                  { "full_name": "shilokuma-inc/old-app", "archived": true },
                  { "full_name": "shilokuma-inc/notti-ios", "archived": false }]
+                """#),
+            // 担当の印は GraphQL の org のリポジトリ一覧から読む。ページングを最後まで追う
+            .init(status: 200, body: #"""
+                { "data": { "organization": { "repositories": {
+                  "pageInfo": { "hasNextPage": true, "endCursor": "c1" },
+                  "nodes": [{ "nameWithOwner": "shilokuma-inc/notti-ios", "label": { "description": "手書きの説明" } },
+                            { "nameWithOwner": "shilokuma-inc/new-app", "label": { "description": "\#(heartbeat)" } }]
+                } } } }
+                """#),
+            .init(status: 200, body: #"""
+                { "data": { "organization": { "repositories": {
+                  "pageInfo": { "hasNextPage": false, "endCursor": "c2" },
+                  "nodes": [{ "nameWithOwner": "shilokuma-inc/ask-hub-apple", "label": { "description": "\#(heartbeat)" } }]
+                } } } }
                 """#)
         ])
         let repositories = try await makeRequester(http).repositories(in: "shilokuma-inc")
 
-        #expect(repositories == ["shilokuma-inc/ask-hub-apple", "shilokuma-inc/notti-ios"])
+        // 候補は REST の一覧のまま。印の読めないものは担当なし
+        #expect(repositories == [
+            RequestRepository(fullName: "shilokuma-inc/ask-hub-apple", lastSeen: seen),
+            RequestRepository(fullName: "shilokuma-inc/notti-ios")
+        ])
+        #expect(http.requests.count == 3)
         let url = try #require(http.requests.first?.url)
         #expect(url.path() == "/orgs/shilokuma-inc/repos")
         let query = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)

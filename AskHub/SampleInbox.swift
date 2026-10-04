@@ -107,13 +107,13 @@ extension IdeaRequestModel {
 
 /// Preview と UI テスト用。Issue を作ったことにして GitHub には送らない
 struct SampleIdeaRequester: IdeaRequesting {
-    func repositories(in org: String) async throws -> [String] {
+    func repositories(in org: String) async throws -> [RequestRepository] {
         [
-            "shilokuma-inc/ask-hub-apple",
-            "shilokuma-inc/notti-ios",
-            "shilokuma-inc/claude-plugins",
-            "shilokuma-inc/beat-tap-ios",
-            "shilokuma-inc/dotfiles"
+            RequestRepository(fullName: "shilokuma-inc/ask-hub-apple", lastSeen: Date()),
+            RequestRepository(fullName: "shilokuma-inc/notti-ios"),
+            RequestRepository(fullName: "shilokuma-inc/claude-plugins"),
+            RequestRepository(fullName: "shilokuma-inc/beat-tap-ios", lastSeen: Date()),
+            RequestRepository(fullName: "shilokuma-inc/dotfiles")
         ]
     }
 
