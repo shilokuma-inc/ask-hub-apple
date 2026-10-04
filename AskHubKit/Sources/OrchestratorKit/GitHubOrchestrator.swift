@@ -75,6 +75,32 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         )
     }
 
+    public func addReadyLabel(to subject: InboxSubject) async throws {
+        let parts = subject.repository.split(separator: "/", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else {
+            throw GitHubError.invalidResponse
+        }
+        // Discussion のラベルは REST で付けられないため、リポジトリのラベルの node id を引いて GraphQL で付ける
+        let data = try await client.graphQL(
+            Self.labelQuery,
+            variables: [
+                "owner": .string(parts[0]),
+                "name": .string(parts[1]),
+                "label": .string(AskHubLabel.readyForLoop.rawValue)
+            ],
+            as: LabelData.self
+        )
+        guard let labelID = data.repository?.label?.id else {
+            // ラベルが無いと付けられない（ralph-setup.sh が作る）。失敗として返し、needs-answer を残す
+            throw GitHubError.invalidResponse
+        }
+        _ = try await client.graphQL(
+            Self.addLabelMutation,
+            variables: ["labelable": .string(subject.nodeID), "labels": .strings([labelID])],
+            as: AddLabelsData.self
+        )
+    }
+
     public func existingPullRequest(in repository: String, head branch: String) async throws -> ExistingPullRequest? {
         let owner = try Self.owner(of: repository)
         // 最終 PR と同じ統合先（既定ブランチ）への PR だけを見る。別の base への PR では最終 PR の代わりにならない
@@ -241,6 +267,12 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         }
         """
 
+    private static let addLabelMutation = """
+        mutation($labelable: ID!, $labels: [ID!]!) {
+          addLabelsToLabelable(input: { labelableId: $labelable, labelIds: $labels }) { clientMutationId }
+        }
+        """
+
     private static let removeLabelMutation = """
         mutation($labelable: ID!, $labels: [ID!]!) {
           removeLabelsFromLabelable(input: { labelableId: $labelable, labelIds: $labels }) { clientMutationId }
@@ -311,6 +343,14 @@ private struct RemoveLabelsData: Decodable {
     }
 
     let removeLabelsFromLabelable: Payload?
+}
+
+private struct AddLabelsData: Decodable {
+    struct Payload: Decodable {
+        let clientMutationId: String?
+    }
+
+    let addLabelsToLabelable: Payload?
 }
 
 private struct PullRequestSummary: Decodable {

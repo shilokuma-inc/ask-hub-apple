@@ -163,6 +163,58 @@ struct OrchestratorTests {
         #expect(await orchestrator.pendingResumes.isEmpty)
     }
 
+    @Test func addsReadyForLoopWhenAllDiscussionQuestionsAreAnswered() async throws {
+        let github = FakeGitHub([.success([])])
+        let inbox = FakeInbox()
+        let discussion = InboxSubject(
+            kind: .discussion,
+            nodeID: "D_115",
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 115,
+            title: "依頼",
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/discussions/115")!
+        )
+        inbox.set(
+            [discussion, Self.pullRequest()],
+            threads: [
+                "D_115": [Self.ask("C_1", replies: ["mrs1669"]), Self.ask("C_2", replies: ["mrs1669"])],
+                "PR_34": [Self.ask("C_3", replies: ["mrs1669"])]
+            ]
+        )
+        try await makeOrchestrator(github: github, runtime: FakeRuntime(), inbox: inbox).pollOnce()
+
+        // Discussion には ready-for-loop を付けてから needs-answer を外す。PR の ask には付けない
+        #expect(github.addedReady == ["D_115"])
+        #expect(Set(github.removedNeedsAnswer) == ["D_115", "PR_34"])
+        #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#115 の質問がすべて回答されたので、ready-for-loop を付けました（ループを始めます）"))
+    }
+
+    @Test func keepsNeedsAnswerWhenReadyForLoopCannotBeAdded() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setAddReadyFails(true)
+        let inbox = FakeInbox()
+        let discussion = InboxSubject(
+            kind: .discussion,
+            nodeID: "D_115",
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 115,
+            title: "依頼",
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/discussions/115")!
+        )
+        inbox.set([discussion], threads: ["D_115": [Self.ask("C_1", replies: ["mrs1669"])]])
+        let orchestrator = try makeOrchestrator(github: github, runtime: FakeRuntime(), inbox: inbox)
+        try await orchestrator.pollOnce()
+
+        // 付けられなければ needs-answer を残し、次のポーリングで回答待ちとして見つけ直す
+        #expect(github.addedReady.isEmpty)
+        #expect(github.removedNeedsAnswer.isEmpty)
+
+        github.setAddReadyFails(false)
+        try await orchestrator.pollOnce()
+        #expect(github.addedReady == ["D_115"])
+        #expect(github.removedNeedsAnswer == ["D_115"])
+    }
+
     @Test func doesNotResumeRunningLoopOrOtherPCRepository() async throws {
         let github = FakeGitHub([.success([])])
         let runtime = FakeRuntime()
