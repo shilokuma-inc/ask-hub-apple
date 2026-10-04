@@ -228,7 +228,7 @@
 			mainGroup = 4FC9E1E02BF1049B00F630AB;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLint" */,
+				4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLintPlugins" */,
 				4FA0000000000000000000F1 /* XCLocalSwiftPackageReference "AskHubKit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -627,9 +627,9 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLint" */ = {
+		4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLintPlugins" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/realm/SwiftLint";
+			repositoryURL = "https://github.com/SimplyDanny/SwiftLintPlugins";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 0.65.1;
@@ -644,17 +644,17 @@
 		};
 		4F27869E2BF3744F00E9F5EF /* SwiftLintBuildToolPlugin */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLint" */;
+			package = 4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLintPlugins" */;
 			productName = "plugin:SwiftLintBuildToolPlugin";
 		};
 		4FA0000000000000000000D2 /* SwiftLintBuildToolPlugin */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLint" */;
+			package = 4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLintPlugins" */;
 			productName = "plugin:SwiftLintBuildToolPlugin";
 		};
 		4FA0000000000000000000E2 /* SwiftLintBuildToolPlugin */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLint" */;
+			package = 4F27869D2BF373B800E9F5EF /* XCRemoteSwiftPackageReference "SwiftLintPlugins" */;
 			productName = "plugin:SwiftLintBuildToolPlugin";
 		};
 /* End XCSwiftPackageProductDependency section */
