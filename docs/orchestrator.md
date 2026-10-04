@@ -187,7 +187,9 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
    | 起動後に state ファイルが現れた | 再開できたとみなす |
    | state ファイルが現れないままプロセスが終わった | 起動し直す。3 回確かめられなければ、次の回答が付くまで再開しない |
 
-5. 信用する author の質問がすべて回答済みになった Discussion / PR から `needs-answer` を外す
+5. 信用する author の質問がすべて回答済みになった Discussion / PR から `needs-answer` を外す。
+   **Discussion の場合は、先に `ready-for-loop` を付ける**（全問回答でループを始める。Discussion #1 の Q3 の変更）。
+   付けられなかったときは `needs-answer` も外さず、次のポーリングで再試行する
 
 回答済みの質問はメモリ上でだけ覚えるため、オーケストレーターを再起動した直後は、回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
 
