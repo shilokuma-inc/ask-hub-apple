@@ -26,16 +26,33 @@ final class InboxModel {
 
     private let tokenStore: any TokenStore
     private let makeSource: @Sendable (String) -> any InboxSource
+    private let makePoster: @Sendable (String) -> any AnswerPosting
     private let trustedAuthors: TrustedAuthors
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
         trustedAuthors: TrustedAuthors = .default,
-        makeSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) }
+        makeSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) },
+        makePoster: @escaping @Sendable (String) -> any AnswerPosting = { GitHubAnswerPoster(client: GitHubClient(token: $0)) }
     ) {
         self.tokenStore = tokenStore
         self.trustedAuthors = trustedAuthors
         self.makeSource = makeSource
+        self.makePoster = makePoster
+    }
+
+    /// 回答を投稿するときのトークンが無い
+    struct MissingTokenError: Error {}
+
+    /// 質問に回答を投稿する。成功したらその質問を一覧から外し、一覧を取り直す
+    func post(_ answer: Answer, to question: InboxQuestion) async throws {
+        guard let token = try tokenStore.load() else {
+            throw MissingTokenError()
+        }
+        _ = try await makePoster(token).post(answer, to: question)
+        // 検索の反映を待たずに、回答した質問はすぐ一覧から消す
+        questions.removeAll { $0.id == question.id }
+        await refresh()
     }
 
     var isLoading: Bool {
@@ -85,14 +102,29 @@ final class InboxModel {
         }
     }
 
-    /// 取得の失敗の説明。トークンの値は含めない
+    /// 取得・投稿の失敗の説明。トークンの値は含めない
     static func message(for error: any Error) -> String {
-        switch error as? GitHubError {
+        if error is MissingTokenError {
+            return "トークンが未設定です。設定で保存してください"
+        }
+        if let error = error as? AnswerPostingError {
+            switch error {
+            case .invalidAnswer:
+                return "選択肢を選ぶか、回答を入力してください"
+
+            case .missingCommentID:
+                return "返信先のコメントを特定できませんでした。GitHub で回答してください"
+            }
+        }
+        if error is KeychainError {
+            return "Keychain からトークンを読み込めませんでした"
+        }
+        return switch error as? GitHubError {
         case .http(status: 401, _):
             "トークンが無効です。設定でトークンを保存し直してください"
 
         case let .http(status, message):
-            "GitHub から取得できませんでした（HTTP \(status)\(message.map { ": \($0)" } ?? "")）"
+            "GitHub とのやり取りに失敗しました（HTTP \(status)\(message.map { ": \($0)" } ?? "")）"
 
         case let .rateLimited(retryAfter):
             "GitHub のレート制限中です。\(retryAfter.components.seconds) 秒ほど待ってから更新してください"
@@ -101,7 +133,7 @@ final class InboxModel {
             "GitHub の応答を読み取れませんでした"
 
         case nil:
-            "GitHub から取得できませんでした（\(error.localizedDescription)）"
+            "GitHub とのやり取りに失敗しました（\(error.localizedDescription)）"
         }
     }
 }
