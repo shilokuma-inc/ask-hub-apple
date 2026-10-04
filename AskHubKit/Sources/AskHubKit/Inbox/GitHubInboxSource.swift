@@ -114,7 +114,8 @@ public struct GitHubInboxSource: InboxSource {
             )
             return WaitingDiscussion(
                 subject: subject,
-                lastSeen: OrchestratorHeartbeat.lastSeen(in: repository.label?.description)
+                lastSeen: OrchestratorHeartbeat.lastSeen(in: repository.label?.description),
+                author: node.author?.login
             )
         }
     }
@@ -127,6 +128,7 @@ public struct GitHubInboxSource: InboxSource {
             nodes {
               ... on Discussion {
                 id number title url closed
+                author { login }
                 repository { nameWithOwner label(name: $label) { description } }
               }
             }
@@ -470,6 +472,7 @@ private struct WaitingNode: Decodable {
     let title: String?
     let url: URL?
     let closed: Bool?
+    let author: Author?
     let repository: Repository?
 }
 

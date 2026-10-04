@@ -224,11 +224,13 @@ struct SampleInboxSource: InboxSource {
         [
             WaitingDiscussion(
                 subject: Self.subject(.discussion, repository: "shilokuma-inc/ask-hub-apple", number: 15, title: "マージ待ちに件数のバッジを出したい"),
-                lastSeen: Self.now.addingTimeInterval(-5 * 60)
+                lastSeen: Self.now.addingTimeInterval(-5 * 60),
+                author: "mrs1669"
             ),
             WaitingDiscussion(
                 subject: Self.subject(.discussion, repository: "shilokuma-inc/beat-tap-ios", number: 3, title: "練習モードを追加したい"),
-                lastSeen: nil
+                lastSeen: nil,
+                author: "mrs1669"
             )
         ]
     }

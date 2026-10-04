@@ -63,6 +63,7 @@ struct InboxFetcherTests {
         var subjects: [InboxSubject] = []
         var threads: [String: [QuestionThread]] = [:]
         var issues: [InboxIssue] = []
+        var waiting: [WaitingDiscussion] = []
 
         func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
             subjects
@@ -75,6 +76,27 @@ struct InboxFetcherTests {
         func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
             issues
         }
+
+        func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
+            waiting
+        }
+    }
+
+    @Test func keepsOnlyWaitingDiscussionsByTrustedAuthors() async throws {
+        func waiting(_ nodeID: String, number: Int, author: String?) -> WaitingDiscussion {
+            var subject = InboxSubject.fixture(kind: .discussion, nodeID: nodeID)
+            subject.number = number
+            return WaitingDiscussion(subject: subject, lastSeen: nil, author: author)
+        }
+        let source = StubSource(waiting: [
+            waiting("D_2", number: 2, author: "MRS1669"),
+            waiting("D_3", number: 3, author: "someone"),
+            waiting("D_4", number: 4, author: nil),
+            waiting("D_1", number: 1, author: "mrs1669")
+        ])
+        let discussions = try await InboxFetcher(source: source, trustedAuthors: TrustedAuthors(["mrs1669"]))
+            .waitingDiscussions(org: "o")
+        #expect(discussions.map(\.subject.nodeID) == ["D_1", "D_2"])
     }
 
     @Test func collectsQuestionsAcrossSubjectsOldestFirst() async throws {

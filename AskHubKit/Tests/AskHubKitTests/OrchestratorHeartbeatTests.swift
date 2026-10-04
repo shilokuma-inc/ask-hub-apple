@@ -27,6 +27,7 @@ struct WaitingDiscussionSourceTests {
             .init(status: 200, body: #"""
                 { "data": { "search": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
                   { "id": "D_3", "number": 3, "title": "通知", "url": "https://github.com/o/r/discussions/3", "closed": false,
+                    "author": { "login": "mrs1669" },
                     "repository": { "nameWithOwner": "o/r", "label": { "description": "\#(seen)" } } },
                   { "id": "D_4", "number": 4, "title": "担当なし", "url": "https://github.com/o/r2/discussions/4", "closed": false,
                     "repository": { "nameWithOwner": "o/r2", "label": null } },
@@ -41,6 +42,7 @@ struct WaitingDiscussionSourceTests {
 
         #expect(waiting.map(\.subject.nodeID) == ["D_3", "D_4"])
         #expect(waiting.map(\.lastSeen) == [Date(timeIntervalSince1970: 1_800_000_000), nil])
+        #expect(waiting.map(\.author) == ["mrs1669", nil])
         let data = try #require(http.requests.first?.httpBody)
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let variables = try #require(object["variables"] as? [String: Any])

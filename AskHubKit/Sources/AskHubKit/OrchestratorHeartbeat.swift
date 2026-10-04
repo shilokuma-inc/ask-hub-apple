@@ -42,10 +42,13 @@ public struct WaitingDiscussion: Sendable, Equatable, Identifiable {
     public var subject: InboxSubject
     /// リポジトリの `askhub-orchestrator` の最終確認の時刻。印が無ければ `nil`
     public var lastSeen: Date?
+    /// Discussion を作った author。削除済みのアカウントなどで取れなければ `nil`
+    public var author: String?
 
-    public init(subject: InboxSubject, lastSeen: Date?) {
+    public init(subject: InboxSubject, lastSeen: Date?, author: String? = nil) {
         self.subject = subject
         self.lastSeen = lastSeen
+        self.author = author
     }
 
     public var id: String {

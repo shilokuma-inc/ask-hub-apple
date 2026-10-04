@@ -42,6 +42,7 @@ public struct InboxFetcher: Sendable {
     /// 信用する author が作ったものだけを扱う（public リポジトリでは誰でも Discussion を作れるため）
     public func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
         try await source.waitingDiscussions(org: org)
+            .filter { trustedAuthors.contains($0.author) }
             .sorted { ($0.subject.repository, $0.subject.number) < ($1.subject.repository, $1.subject.number) }
     }
 
