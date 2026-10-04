@@ -60,6 +60,7 @@ jobs:
       - name: Build and test
         # UI テストは共有ランナー上で起動待ちに失敗することがあるため、失敗したテストだけ最大 2 回まで再試行する
         run: |
+          # 並列テストを有効にすると Simulator の clone を作って起動するため、clone を作らずに実行する
           xcodebuild test \
             -project "$PROJECT_NAME.xcodeproj" \
             -scheme "$SCHEME" \
@@ -67,7 +68,8 @@ jobs:
             -derivedDataPath DerivedData \
             -resultBundlePath TestResults.xcresult \
             -retry-tests-on-failure \
-            -test-iterations 2
+            -test-iterations 2 \
+            -parallel-testing-enabled NO
 
       - name: Test AskHubKit
         # アプリとオーケストレーターで共有するローカルパッケージ。UI に依存しないので swift test で直接検証する
