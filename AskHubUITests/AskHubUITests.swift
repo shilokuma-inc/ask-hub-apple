@@ -69,8 +69,11 @@ final class AskHubUITests: XCTestCase {
         let post = app.buttons["回答を投稿"]
         XCTAssertTrue(post.waitForExistence(timeout: 5))
         XCTAssertFalse(post.isEnabled)
+        // 投稿される 1 行目を、投稿の前に確かめられる
+        XCTAssertTrue(app.staticTexts["選択肢を選んでください"].exists)
         app.buttons["1時間"].tap()
         XCTAssertTrue(post.isEnabled)
+        XCTAssertTrue(app.staticTexts["回答: 1時間"].exists)
         post.tap()
 
         // 投稿すると一覧に戻る

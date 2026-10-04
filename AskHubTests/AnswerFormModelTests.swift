@@ -65,6 +65,19 @@ struct AnswerFormModelTests {
         #expect(form.answer == Answer(note: "通知は朝だけにしたい"))
     }
 
+    @Test func choiceLineMatchesFirstLineOfPostedBody() {
+        let form = AnswerFormModel(question: question)
+        #expect(form.answer.choiceLine == nil)
+        form.choice = "1時間"
+        form.note = "夜は長くてもよい"
+        #expect(form.answer.choiceLine == "回答: 1時間")
+        #expect(form.answer.body.split(separator: "\n").first.map(String.init) == form.answer.choiceLine)
+    }
+
+    @Test func freeFormAnswerHasNoChoiceLine() {
+        #expect(Answer(note: "回答: 自由記述").choiceLine == nil)
+    }
+
     @Test func postsAnswerInProtocolFormat() async {
         let poster = RecordingPoster()
         let inbox = makeInbox(poster: poster)
