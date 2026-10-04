@@ -134,9 +134,9 @@ if [[ -n "$DISCUSSION" ]]; then
     | if ($d | ok) | not then error("Discussion の author が信用する author ではありません") else . end
     | "# \($d.title)\n\n## 本文（\($d.author.login)）\n\($d.body)\n",
       ( [.[].data.repository.discussion.comments.nodes[]] | .[]
-        | select(ok) as $c
-        | "\n## コメント（\($c.author.login)）\n\($c.body)\n",
-          ( $c.replies.nodes[] | select(ok) | "\n### 返信（\(.author.login)）\n\(.body)\n" ) )
+        # コメントと返信は author を別々に判定する（信用外のコメントへの、信用する author の返信も渡す）
+        | (select(ok) | "\n## コメント（\(.author.login)）\n\(.body)\n"),
+          ( .replies.nodes[] | select(ok) | "\n### 返信（\(.author.login)）\n\(.body)\n" ) )
   ') || fail "Discussion #$DISCUSSION を読み取れませんでした（author が信用する author ではない可能性があります）"
   PROMPT=$(cat <<PROMPT
 あなたは ralph-loop で自律開発を始める前の準備担当です。リポジトリ $REPOSITORY の Discussion #$DISCUSSION をゴール元として、
