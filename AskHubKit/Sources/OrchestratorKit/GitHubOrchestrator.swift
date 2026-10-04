@@ -119,9 +119,9 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
             ],
             of: PullRequestSummary.self
         )
-        // open なものがあればそれを、無ければ最初のもの（閉じた PR）を返す
-        let pull = pulls.first { $0.state == "open" } ?? pulls.first
-        return pull.map { ExistingPullRequest(number: $0.number, isOpen: $0.state == "open", body: $0.body) }
+        // open なものがあればそれを、無ければマージ済みのもの、それも無ければ最初のもの（閉じた PR）を返す
+        let pull = pulls.first { $0.state == "open" } ?? pulls.first { $0.mergedAt != nil } ?? pulls.first
+        return pull.map { ExistingPullRequest(number: $0.number, isOpen: $0.state == "open", body: $0.body, isMerged: $0.mergedAt != nil) }
     }
 
     public func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int {
@@ -233,6 +233,45 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
                 as: LabelName.self
             )
         }
+    }
+
+    public func decisionLogs(in repository: String) async throws -> [DecisionLogIssue] {
+        let issues = try await client.getAllPages(
+            "repos/\(repository)/issues",
+            query: [
+                URLQueryItem(name: "labels", value: AskHubLabel.decisionLog.rawValue),
+                URLQueryItem(name: "state", value: "open")
+            ],
+            of: IssueSummary.self
+        )
+        // Issue の API は PR も返すので除く
+        return issues.filter { $0.pullRequest == nil }.map {
+            DecisionLogIssue(repository: repository, number: $0.number, title: $0.title, body: $0.body ?? "")
+        }
+    }
+
+    public func comments(in repository: String, issue number: Int) async throws -> [IssueComment] {
+        try await client.getAllPages("repos/\(repository)/issues/\(number)/comments", of: IssueCommentSummary.self).map {
+            IssueComment(id: $0.id, author: $0.user?.login, body: $0.body ?? "")
+        }
+    }
+
+    public func comment(on issue: DecisionLogIssue, body: String) async throws {
+        _ = try await client.send(
+            "POST",
+            "repos/\(issue.repository)/issues/\(issue.number)/comments",
+            body: ["body": body],
+            as: CommentID.self
+        )
+    }
+
+    public func close(_ issue: DecisionLogIssue) async throws {
+        _ = try await client.send(
+            "PATCH",
+            "repos/\(issue.repository)/issues/\(issue.number)",
+            body: ["state": "closed", "state_reason": "completed"],
+            as: PullRequestSummary.self
+        )
     }
 
     static func epicFinalTitle(branch: String, base: String) -> String {
@@ -367,6 +406,42 @@ private struct PullRequestSummary: Decodable {
     /// `open` / `closed`（マージ済みも `closed`）
     let state: String
     let body: String?
+    /// マージした時刻。マージされていなければ `nil`（Issue の API の応答にも使うので、そこでは常に `nil`）
+    let mergedAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case number
+        case state
+        case body
+        case mergedAt = "merged_at"
+    }
+}
+
+private struct IssueSummary: Decodable {
+    let number: Int
+    let title: String
+    let body: String?
+    /// PR のときだけある
+    let pullRequest: PullRequestLink?
+
+    struct PullRequestLink: Decodable {}
+
+    private enum CodingKeys: String, CodingKey {
+        case number
+        case title
+        case body
+        case pullRequest = "pull_request"
+    }
+}
+
+private struct IssueCommentSummary: Decodable {
+    let id: Int
+    let user: User?
+    let body: String?
+
+    struct User: Decodable {
+        let login: String
+    }
 }
 
 private struct RepositoryInfo: Decodable {

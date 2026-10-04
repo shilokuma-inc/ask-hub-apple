@@ -27,6 +27,14 @@ public protocol OrchestratorGitHub: Sendable {
     func close(_ issue: IdeaRequestIssue) async throws
     /// 担当リポジトリのラベル `askhub-orchestrator` の説明を書き換える。ラベルが無ければ作る
     func updateHeartbeat(in repository: String, description: String) async throws
+    /// リポジトリの、`decision-log` が付いた open な Issue（仮決め一覧）
+    func decisionLogs(in repository: String) async throws -> [DecisionLogIssue]
+    /// Issue のコメント（古い順）
+    func comments(in repository: String, issue number: Int) async throws -> [IssueComment]
+    /// 仮決め一覧にコメントする
+    func comment(on issue: DecisionLogIssue, body: String) async throws
+    /// 仮決め一覧をクローズする（完了として）
+    func close(_ issue: DecisionLogIssue) async throws
 }
 
 /// 終わるまで待って実行したコマンドの結果
@@ -47,11 +55,14 @@ public struct ExistingPullRequest: Sendable, Equatable {
     public let isOpen: Bool
     /// PR の本文。空なら `nil`
     public let body: String?
+    /// マージ済み
+    public let isMerged: Bool
 
-    public init(number: Int, isOpen: Bool, body: String? = nil) {
+    public init(number: Int, isOpen: Bool, body: String? = nil, isMerged: Bool = false) {
         self.number = number
         self.isOpen = isOpen
         self.body = body
+        self.isMerged = isMerged
     }
 }
 

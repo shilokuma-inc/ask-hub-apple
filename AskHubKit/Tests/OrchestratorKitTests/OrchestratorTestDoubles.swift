@@ -28,6 +28,12 @@ struct FakeGitHubState {
     var heartbeats: [String] = []
     var heartbeatFails = false
     var ideaCloseFails = false
+    var decisionLogs: [DecisionLogIssue] = []
+    /// 仮決め一覧のコメント（キーは Issue の番号）
+    var issueComments: [Int: [IssueComment]] = [:]
+    var decisionComments: [String] = []
+    var closedDecisionLogs: [Int] = []
+    var decisionCloseFails = false
 }
 
 /// `needs-answer` の Discussion / PR を返す取得元。スレッドはテストから差し替える
@@ -164,6 +170,51 @@ final class FakeGitHub: OrchestratorGitHub {
                 throw TestError()
             }
             state.heartbeats.append("\(repository): \(description)")
+        }
+    }
+
+    func setDecisionLogs(_ issues: [DecisionLogIssue], comments: [Int: [IssueComment]] = [:]) {
+        state.withLock {
+            $0.decisionLogs = issues
+            $0.issueComments = comments
+        }
+    }
+
+    func setDecisionCloseFails(_ fails: Bool) {
+        state.withLock { $0.decisionCloseFails = fails }
+    }
+
+    var decisionComments: [String] {
+        state.withLock { $0.decisionComments }
+    }
+
+    var closedDecisionLogs: [Int] {
+        state.withLock { $0.closedDecisionLogs }
+    }
+
+    func decisionLogs(in repository: String) async throws -> [DecisionLogIssue] {
+        state.withLock { $0.decisionLogs.filter { $0.repository == repository } }
+    }
+
+    func comments(in repository: String, issue number: Int) async throws -> [IssueComment] {
+        state.withLock { $0.issueComments[number] ?? [] }
+    }
+
+    /// コメントは、次の取得で返るように Issue のコメントにも足す
+    func comment(on issue: DecisionLogIssue, body: String) async throws {
+        state.withLock { state in
+            state.decisionComments.append("#\(issue.number): \(body)")
+            let id = 9_000 + state.decisionComments.count
+            state.issueComments[issue.number, default: []].append(IssueComment(id: id, author: "mrs1669", body: body))
+        }
+    }
+
+    func close(_ issue: DecisionLogIssue) async throws {
+        try state.withLock { state in
+            if state.decisionCloseFails {
+                throw TestError()
+            }
+            state.closedDecisionLogs.append(issue.number)
         }
     }
 
