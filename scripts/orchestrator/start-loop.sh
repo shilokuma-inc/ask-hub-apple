@@ -72,6 +72,24 @@ UNFINISHED_MESSAGE="前の epic に未完了のタスクが残っています（
 [[ -d "$CHECKOUT/.git" || -f "$CHECKOUT/.git" ]] || fail "checkout が見つかりません: $CHECKOUT"
 [[ -x "$CHECKOUT/scripts/ralph-setup.sh" && -x "$CHECKOUT/scripts/ralph-start.sh" ]] \
   || fail "scripts/ralph-setup.sh / ralph-start.sh がありません（template-app-ios の ralph 一式を取り込んでください）"
+# 周回は ralph-loop プラグインの Stop hook が回す。プラグインが無いと 1 周目で黙って終わるので、起動前に止める
+RALPH_PLUGIN="ralph-loop@claude-plugins-official"
+command -v jq >/dev/null 2>&1 || fail "jq が見つかりません（brew install jq で入れてください）"
+ralph_plugin_enabled() {
+  local settings
+  # Claude Code と同じく、優先度の高い設定（ローカル → プロジェクト → ユーザー）から見て、
+  # このプラグインの値を最初に持つファイルで決める（上位の false を下位の true で覆さない）
+  for settings in "$CTL/.claude/settings.local.json" "$CTL/.claude/settings.json" "$HOME/.claude/settings.json"; do
+    [[ -f "$settings" ]] || continue
+    if jq -e --arg plugin "$RALPH_PLUGIN" '.enabledPlugins | has($plugin)' "$settings" >/dev/null 2>&1; then
+      jq -e --arg plugin "$RALPH_PLUGIN" '.enabledPlugins[$plugin] == true' "$settings" >/dev/null 2>&1
+      return
+    fi
+  done
+  return 1
+}
+ralph_plugin_enabled \
+  || fail "Claude Code の $RALPH_PLUGIN が有効になっていません（claude plugin install $RALPH_PLUGIN で入れてください）"
 if [[ -f "$STATE" ]]; then
   RECORDED=$(head -1 "$PID_FILE" 2>/dev/null || true)
   if [[ "$RECORDED" =~ ^[0-9]+$ ]] && ! kill -0 "$RECORDED" 2>/dev/null; then
