@@ -16,7 +16,37 @@ extension InboxModel {
     }
 }
 
+extension IdeaRequestModel {
+    /// アプリの起動時に使うモデル。DEBUG ビルドでは起動引数でサンプルデータに切り替えられる
+    static func launchDefault() -> IdeaRequestModel {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(InboxModel.sampleLaunchArgument) {
+            return sample()
+        }
+        #endif
+        return IdeaRequestModel()
+    }
+}
+
 #if DEBUG
+extension IdeaRequestModel {
+    /// Preview と UI テスト用。GitHub には接続しない
+    static func sample() -> IdeaRequestModel {
+        IdeaRequestModel(tokenStore: InMemoryTokenStore(token: "sample")) { _ in SampleIdeaRequester() }
+    }
+}
+
+/// Preview と UI テスト用。Issue を作ったことにして GitHub には送らない
+struct SampleIdeaRequester: IdeaRequesting {
+    func repositories(in org: String) async throws -> [String] {
+        ["shilokuma-inc/ask-hub-apple", "shilokuma-inc/notti-ios", "shilokuma-inc/beat-tap-ios"]
+    }
+
+    func create(_ request: IdeaRequest) async throws -> CreatedIssue {
+        CreatedIssue(number: 41, htmlURL: URL(string: "https://github.com/\(request.repository)/issues/41")!)
+    }
+}
+
 extension InboxModel {
     /// Preview と UI テスト用。GitHub には接続しない
     static func sample() -> InboxModel {
