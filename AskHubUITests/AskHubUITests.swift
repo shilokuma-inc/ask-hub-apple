@@ -24,6 +24,8 @@ final class AskHubUITests: XCTestCase {
 
         app.tabBars.buttons["急がない"].tap()
         XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
+        // 担当の印が無いリポジトリの開始待ちは「担当 PC なし」と出る
+        XCTAssertTrue(app.staticTexts["担当 PC なし"].exists)
     }
 
     @MainActor
