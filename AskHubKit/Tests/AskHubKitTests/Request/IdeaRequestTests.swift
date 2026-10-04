@@ -13,6 +13,9 @@ struct IdeaRequestTests {
         #expect(valid.title == "【依頼】通知の頻度を調整したい")
 
         #expect(!IdeaRequest(repository: "", summary: "要約", body: "本文").isValid)
+        for repository in ["o//r", "/o/r", "o/r/", "o", "o/r/x"] {
+            #expect(!IdeaRequest(repository: repository, summary: "要約", body: "本文").isValid, "\(repository)")
+        }
         #expect(!IdeaRequest(repository: "o/r", summary: "  ", body: "本文").isValid)
         #expect(!IdeaRequest(repository: "o/r", summary: "1 行目\n2 行目", body: "本文").isValid)
         #expect(!IdeaRequest(repository: "o/r", summary: "要約", body: " \n ").isValid)

@@ -23,7 +23,9 @@ public struct IdeaRequest: Sendable, Equatable {
     /// 送ってよい形か。リポジトリを選び、要約は 1 行で空でなく、依頼文が空でないこと
     public var isValid: Bool {
         let summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        return repository.split(separator: "/").count == 2
+        // 既定の split は空の要素を省くので、"o//r" や "/o/r" も 2 要素に見えてしまう
+        let parts = repository.split(separator: "/", omittingEmptySubsequences: false)
+        return parts.count == 2 && parts.allSatisfy { !$0.isEmpty }
             && !summary.isEmpty
             && !summary.contains(where: \.isNewline)
             && !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
