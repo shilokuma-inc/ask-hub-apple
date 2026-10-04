@@ -60,6 +60,16 @@ struct IdeaRequestTests {
         #expect(query.contains(URLQueryItem(name: "type", value: "all")))
     }
 
+    @Test func listsRepositoriesEvenIfHeartbeatsFail() async throws {
+        let http = MockHTTPClient([
+            .init(status: 200, body: #"[{ "full_name": "shilokuma-inc/notti-ios", "archived": false }]"#),
+            .init(status: 200, body: #"{ "data": null, "errors": [{ "message": "Something went wrong" }] }"#)
+        ])
+        let repositories = try await makeRequester(http).repositories(in: "shilokuma-inc")
+
+        #expect(repositories == [RequestRepository(fullName: "shilokuma-inc/notti-ios")])
+    }
+
     @Test func createsIssueWithIdeaRequestLabel() async throws {
         let http = MockHTTPClient([
             .init(status: 201, body: #"{ "number": 41, "html_url": "https://github.com/shilokuma-inc/notti-ios/issues/41" }"#)
