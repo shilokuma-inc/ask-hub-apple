@@ -3,61 +3,88 @@ import Foundation
 import os
 import Testing
 
+private struct TestError: Error {}
+
+private struct FakeGitHubState {
+    var results: [Result<[ReadyDiscussion], TestError>]
+    var removed: [String] = []
+    var removeFails = false
+}
+
+private struct FakeRuntimeState {
+    var launched: [[String]] = []
+    var status = LoopStatus.idle
+    var launchFails = false
+}
+
 struct OrchestratorTests {
-    private struct TestError: Error {}
-
-    /// 呼び出しを記録する GitHub
+    /// 呼び出しを記録する GitHub。検索結果は登録した順に返し、最後のものを返し続ける
     private final class FakeGitHub: OrchestratorGitHub {
-        private let state: OSAllocatedUnfairLock<(results: [Result<[ReadyDiscussion], TestError>], removed: [String])>
-        private let removeFails: Bool
+        private let state: OSAllocatedUnfairLock<FakeGitHubState>
 
-        init(_ results: [Result<[ReadyDiscussion], TestError>], removeFails: Bool = false) {
-            state = OSAllocatedUnfairLock(initialState: (results, []))
-            self.removeFails = removeFails
+        init(_ results: [Result<[ReadyDiscussion], TestError>]) {
+            state = OSAllocatedUnfairLock(initialState: FakeGitHubState(results: results))
         }
 
         var removed: [String] {
             state.withLock { $0.removed }
         }
 
+        func setRemoveFails(_ fails: Bool) {
+            state.withLock { $0.removeFails = fails }
+        }
+
         func readyForLoopDiscussions(org: String) async throws -> [ReadyDiscussion] {
             try state.withLock { state in
-                state.results.isEmpty ? [] : try state.results.removeFirst().get()
+                guard let first = state.results.first else {
+                    return []
+                }
+                if state.results.count > 1 {
+                    state.results.removeFirst()
+                }
+                return try first.get()
             }
         }
 
         func removeReadyLabel(from discussion: ReadyDiscussion) async throws {
-            if removeFails {
-                throw TestError()
+            try state.withLock { state in
+                if state.removeFails {
+                    throw TestError()
+                }
+                state.removed.append(discussion.nodeID)
             }
-            state.withLock { $0.removed.append(discussion.nodeID) }
         }
     }
 
-    /// 起動したコマンドを記録するだけで、実際には起動しない
+    /// 起動したコマンドを記録するだけで、実際には起動しない。ループの状態はテストから変える
     private final class FakeRuntime: LoopRuntime {
-        private let state = OSAllocatedUnfairLock<[[String]]>(initialState: [])
-        private let statuses: [String: LoopStatus]
-        private let launchFails: Bool
-
-        init(statuses: [String: LoopStatus] = [:], launchFails: Bool = false) {
-            self.statuses = statuses
-            self.launchFails = launchFails
-        }
+        private let state = OSAllocatedUnfairLock(initialState: FakeRuntimeState())
 
         var launched: [[String]] {
-            state.withLock { $0 }
+            state.withLock { $0.launched }
+        }
+
+        func set(_ status: LoopStatus) {
+            state.withLock { $0.status = status }
+        }
+
+        func setLaunchFails(_ fails: Bool) {
+            state.withLock { $0.launchFails = fails }
         }
 
         func status(of repository: RepositoryConfig) async -> LoopStatus {
-            statuses[repository.fullName] ?? .idle
+            state.withLock { $0.status }
         }
 
         func launch(_ arguments: [String], for repository: RepositoryConfig) async throws {
-            if launchFails {
-                throw TestError()
+            try state.withLock { state in
+                if state.launchFails {
+                    throw TestError()
+                }
+                state.launched.append(arguments)
+                // 起動したプロセスは、テストが状態を変えるまで生きている
+                state.status = LoopStatus(stateFileExists: false, processAlive: true)
             }
-            state.withLock { $0.append(arguments) }
         }
     }
 
@@ -74,6 +101,8 @@ struct OrchestratorTests {
     }
 
     private let logs = LogRecorder()
+    private static let started = LoopStatus(stateFileExists: true, processAlive: true)
+    private static let exitedWithoutStarting = LoopStatus(stateFileExists: false, processAlive: false)
 
     private func makeOrchestrator(github: FakeGitHub, runtime: FakeRuntime) throws -> Orchestrator {
         let config = OrchestratorConfig(
@@ -87,37 +116,87 @@ struct OrchestratorTests {
         return Orchestrator(config: config, github: github, runtime: runtime) { logs.append($0) }
     }
 
-    @Test func launchesLoopThenRemovesLabel() async throws {
+    @Test func removesLabelOnlyAfterLoopStarts() async throws {
         let github = FakeGitHub([.success([.fixture(number: 12)])])
         let runtime = FakeRuntime()
-        try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
 
+        try await orchestrator.pollOnce()
         #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "12"]])
-        #expect(github.removed == ["D_12"])
-        #expect(logs.recorded == ["shilokuma-inc/ask-hub-apple#12 のループを起動しました"])
-    }
-
-    @Test func keepsLabelWhenLaunchFails() async throws {
-        let github = FakeGitHub([.success([.fixture(number: 12)])])
-        try await makeOrchestrator(github: github, runtime: FakeRuntime(launchFails: true)).pollOnce()
-
         #expect(github.removed.isEmpty)
-        #expect(logs.recorded.count == 1)
-        #expect(logs.recorded.first?.hasPrefix("shilokuma-inc/ask-hub-apple#12 のループを起動できませんでした") == true)
+
+        // state ファイルが現れるまではラベルを外さず、起動もし直さない
+        try await orchestrator.pollOnce()
+        #expect(github.removed.isEmpty)
+        #expect(runtime.launched.count == 1)
+
+        runtime.set(Self.started)
+        try await orchestrator.pollOnce()
+        #expect(github.removed == ["D_12"])
+        #expect(runtime.launched.count == 1)
     }
 
-    @Test func logsWhenLabelCannotBeRemoved() async throws {
-        let github = FakeGitHub([.success([.fixture(number: 12)])], removeFails: true)
+    @Test func doesNotRelaunchWhileLabelCannotBeRemoved() async throws {
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        github.setRemoveFails(true)
         let runtime = FakeRuntime()
-        try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
 
-        #expect(runtime.launched.count == 1)
+        try await orchestrator.pollOnce()
+        runtime.set(Self.started)
+        try await orchestrator.pollOnce()
         #expect(logs.recorded.last?.hasPrefix("shilokuma-inc/ask-hub-apple#12 の ready-for-loop を外せませんでした") == true)
+
+        // ループが終わって state ファイルが消えても、ラベルが残っている Discussion を起動し直さない
+        runtime.set(.idle)
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.count == 1)
+
+        github.setRemoveFails(false)
+        try await orchestrator.pollOnce()
+        #expect(github.removed == ["D_12"])
+        #expect(runtime.launched.count == 1)
+    }
+
+    @Test func retriesWhenProcessExitsWithoutStartingAndGivesUp() async throws {
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        let runtime = FakeRuntime()
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        for _ in 0..<LaunchTracker.maxAttempts {
+            try await orchestrator.pollOnce()
+            runtime.set(Self.exitedWithoutStarting)
+        }
+        try await orchestrator.pollOnce()
+        try await orchestrator.pollOnce()
+
+        #expect(runtime.launched.count == LaunchTracker.maxAttempts)
+        #expect(github.removed.isEmpty)
+        #expect(await orchestrator.trackedEntries["D_12"]?.phase == .gaveUp)
+        #expect(logs.recorded.contains { $0.contains("起動をやめます") })
+    }
+
+    @Test func keepsLabelAndRetriesWhenLaunchFails() async throws {
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        let runtime = FakeRuntime()
+        runtime.setLaunchFails(true)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+        #expect(github.removed.isEmpty)
+        #expect(logs.recorded.first?.hasPrefix("shilokuma-inc/ask-hub-apple#12 のループを起動できませんでした（1/3 回目）") == true)
+
+        runtime.setLaunchFails(false)
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.count == 1)
+        let entry = await orchestrator.trackedEntries["D_12"]
+        #expect(entry == LaunchTracker.Entry(repositoryKey: "shilokuma-inc/ask-hub-apple", attempts: 2, phase: .starting))
     }
 
     @Test func doesNotLaunchWhileStateFileRemains() async throws {
         let github = FakeGitHub([.success([.fixture(number: 12)])])
-        let runtime = FakeRuntime(statuses: ["shilokuma-inc/ask-hub-apple": LoopStatus(stateFileExists: true, processAlive: false)])
+        let runtime = FakeRuntime()
+        runtime.set(LoopStatus(stateFileExists: true, processAlive: false))
         try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
 
         #expect(runtime.launched.isEmpty)

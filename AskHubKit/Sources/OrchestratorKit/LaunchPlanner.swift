@@ -70,22 +70,30 @@ public enum LaunchDecision: Sendable, Equatable {
         case loopStatusUnknown
         /// 同じリポジトリの別の Discussion を先に起動する
         case waitingForAnotherDiscussion(number: Int)
+        /// 起動済みで、ループの開始の確認かラベルの削除を待っている（`LaunchTracker`）
+        case alreadyLaunched
     }
 }
 
 /// `ready-for-loop` の Discussion から、起動するループを決める（副作用なし）
 public enum LaunchPlanner {
-    /// - Parameter statuses: 担当リポジトリの `fullName` を小文字にしたキーごとのループの状態。無いものは停止中とみなす
+    /// - Parameters:
+    ///   - statuses: 担当リポジトリの `fullName` を小文字にしたキーごとのループの状態。無いものは停止中とみなす
+    ///   - excluding: 起動済みで追跡中の Discussion の node id
     public static func decide(
         _ discussions: [ReadyDiscussion],
         config: OrchestratorConfig,
-        statuses: [String: LoopStatus]
+        statuses: [String: LoopStatus],
+        excluding launched: Set<String> = []
     ) -> [LaunchDecision] {
         // 1 つのリポジトリで同時に動かすループは 1 つ。番号の小さい（先に作られた）Discussion から起動する
         var launching: [String: Int] = [:]
         return discussions.sorted { $0.number < $1.number }.map { discussion in
             guard let repository = config.repository(named: discussion.repository) else {
                 return .skip(discussion, .notAssigned)
+            }
+            if launched.contains(discussion.nodeID) {
+                return .skip(discussion, .alreadyLaunched)
             }
             // public リポジトリでは誰でも Discussion を作れるため、信用する author のものだけを指示として扱う
             guard config.trustedAuthors.contains(discussion.author) else {

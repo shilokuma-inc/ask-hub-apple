@@ -13,12 +13,14 @@ public protocol LoopRuntime: Sendable {
     func launch(_ arguments: [String], for repository: RepositoryConfig) async throws
 }
 
-/// 「ポーリング → 状態判定 → アクション」を繰り返す
-public struct Orchestrator: Sendable {
+/// 「ポーリング → 状態判定 → アクション」を繰り返す。
+/// 起動した Discussion を `LaunchTracker` で覚えておくため actor にする
+public actor Orchestrator {
     private let config: OrchestratorConfig
     private let github: any OrchestratorGitHub
     private let runtime: any LoopRuntime
     private let log: @Sendable (String) -> Void
+    private var tracker = LaunchTracker()
 
     public init(
         config: OrchestratorConfig,
@@ -49,7 +51,7 @@ public struct Orchestrator: Sendable {
         }
     }
 
-    /// 1 回分のポーリング。実行した判定を返す
+    /// 1 回分のポーリング。実行した起動判定を返す
     @discardableResult
     public func pollOnce() async throws -> [LaunchDecision] {
         let discussions = try await github.readyForLoopDiscussions(org: config.org)
@@ -57,7 +59,18 @@ public struct Orchestrator: Sendable {
         for repository in config.repositories {
             statuses[repository.fullName.lowercased()] = await runtime.status(of: repository)
         }
-        let decisions = LaunchPlanner.decide(discussions, config: config, statuses: statuses)
+
+        // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
+        for action in tracker.update(discussions: discussions, statuses: statuses) {
+            await perform(action)
+        }
+
+        let decisions = LaunchPlanner.decide(
+            discussions,
+            config: config,
+            statuses: statuses,
+            excluding: tracker.blockedDiscussionIDs
+        )
         for decision in decisions {
             switch decision {
             case let .launch(discussion, repository):
@@ -65,36 +78,61 @@ public struct Orchestrator: Sendable {
 
             case let .skip(discussion, reason):
                 if let message = Self.describe(reason) {
-                    log("\(discussion.repository)#\(discussion.number) は起動しません: \(message)")
+                    log("\(Self.name(of: discussion)) は起動しません: \(message)")
                 }
             }
         }
         return decisions
     }
 
+    /// 追跡中の Discussion の状態（テスト用）
+    var trackedEntries: [String: LaunchTracker.Entry] {
+        tracker.entries
+    }
+
     private func launch(_ discussion: ReadyDiscussion, in repository: RepositoryConfig) async {
-        let name = "\(discussion.repository)#\(discussion.number)"
+        let key = repository.fullName.lowercased()
         do {
             try await runtime.launch(config.loopCommand.render(for: repository, discussionNumber: discussion.number), for: repository)
         } catch {
-            // ラベルは残し、次のポーリングで再試行する
-            log("\(name) のループを起動できませんでした: \(error)")
+            let entry = tracker.recordLaunchFailure(of: discussion, repositoryKey: key)
+            let next = entry.phase == .gaveUp ? "起動をやめます（ready-for-loop は残します）" : "次のポーリングで再試行します"
+            log("\(Self.name(of: discussion)) のループを起動できませんでした（\(entry.attempts)/\(LaunchTracker.maxAttempts) 回目）: \(error)。\(next)")
             return
         }
-        log("\(name) のループを起動しました")
-        do {
-            try await github.removeReadyLabel(from: discussion)
-        } catch {
-            // 起動したプロセスが生きている間は再起動しない。ラベルは次の起動判定まで残る
-            log("\(name) の ready-for-loop を外せませんでした: \(error)")
+        tracker.recordLaunch(of: discussion, repositoryKey: key)
+        log("\(Self.name(of: discussion)) のループを起動しました。開始を確かめてから ready-for-loop を外します")
+    }
+
+    private func perform(_ action: LaunchTracker.Action) async {
+        switch action {
+        case let .removeLabel(discussion):
+            do {
+                try await github.removeReadyLabel(from: discussion)
+                tracker.recordLabelRemoved(from: discussion)
+                log("\(Self.name(of: discussion)) のループの開始を確かめ、ready-for-loop を外しました")
+            } catch {
+                // 追跡を続けるので、外せるまで二重に起動せず、次のポーリングで外し直す
+                log("\(Self.name(of: discussion)) の ready-for-loop を外せませんでした（次のポーリングで再試行します）: \(error)")
+            }
+
+        case let .retry(discussion, attempts):
+            log("\(Self.name(of: discussion)) のループの開始を確かめられないままプロセスが終わりました（\(attempts)/\(LaunchTracker.maxAttempts) 回目）。起動し直します")
+
+        case let .giveUp(discussion, attempts):
+            log("\(Self.name(of: discussion)) のループの開始を \(attempts) 回確かめられませんでした。起動をやめます（loopCommand を確認してください）")
         }
+    }
+
+    private static func name(of discussion: ReadyDiscussion) -> String {
+        "\(discussion.repository)#\(discussion.number)"
     }
 
     /// ログに出す見送りの理由。毎回のポーリングで出るため、人の対応が要るものだけにする
     /// （別の PC の担当・ループの実行中・順番待ちは、待てば解消するので出さない）
     private static func describe(_ reason: LaunchDecision.SkipReason) -> String? {
         switch reason {
-        case .notAssigned, .loopRunning, .waitingForAnotherDiscussion:
+        case .notAssigned, .loopRunning, .waitingForAnotherDiscussion, .alreadyLaunched:
             nil
 
         case .untrustedAuthor:

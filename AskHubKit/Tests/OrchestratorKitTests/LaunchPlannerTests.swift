@@ -49,6 +49,13 @@ struct LaunchPlannerTests {
         #expect(decisions == [.skip(running, .loopRunning), .skip(remaining, .loopStateRemains)])
     }
 
+    @Test func skipsDiscussionAlreadyLaunched() throws {
+        let launched = ReadyDiscussion.fixture(number: 3)
+        let next = ReadyDiscussion.fixture(number: 5)
+        let decisions = LaunchPlanner.decide([launched, next], config: try config(), statuses: [:], excluding: ["D_3"])
+        #expect(decisions == [.skip(launched, .alreadyLaunched), .launch(next, app)])
+    }
+
     @Test func skipsWhenStateFileCannotBeChecked() throws {
         let discussion = ReadyDiscussion.fixture()
         let decisions = LaunchPlanner.decide(
