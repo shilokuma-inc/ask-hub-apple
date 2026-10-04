@@ -21,6 +21,8 @@ public protocol OrchestratorGitHub: Sendable {
     func comment(on issue: IdeaRequestIssue, body: String) async throws
     /// 依頼 Issue をクローズする（完了として）
     func close(_ issue: IdeaRequestIssue) async throws
+    /// 担当リポジトリのラベル `askhub-orchestrator` の説明を書き換える。ラベルが無ければ作る
+    func updateHeartbeat(in repository: String, description: String) async throws
 }
 
 /// 終わるまで待って実行したコマンドの結果
@@ -69,6 +71,9 @@ public actor Orchestrator {
     private var watcher = ResumeWatcher()
     /// epic の最終 PR を作った（または既にあった）リポジトリ。毎回 GitHub に問い合わせないために覚える
     private var finalizedEpics: Set<String> = []
+    /// 担当の印を最後に書いた時刻（キーは担当リポジトリの `fullName` を小文字にしたもの）
+    private var lastHeartbeats: [String: Date] = [:]
+    private let now: @Sendable () -> Date
     private var ideaTracker = IdeaRequestTracker()
 
     /// 依頼から Discussion を作らせるコマンドの制限時間
@@ -80,13 +85,15 @@ public actor Orchestrator {
         github: any OrchestratorGitHub,
         inbox: any InboxSource,
         runtime: any LoopRuntime,
-        log: @escaping @Sendable (String) -> Void
+        log: @escaping @Sendable (String) -> Void,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.config = config
         self.github = github
         self.inbox = inbox
         self.runtime = runtime
         self.log = log
+        self.now = now
     }
 
     /// `pollInterval` ごとにポーリングする。タスクがキャンセルされるまで戻らない。
@@ -109,6 +116,7 @@ public actor Orchestrator {
     /// 1 回分のポーリング。実行した起動判定を返す
     @discardableResult
     public func pollOnce() async throws -> [LaunchDecision] {
+        await updateHeartbeats()
         let discussions = try await github.readyForLoopDiscussions(org: config.org)
         var statuses: [String: LoopStatus] = [:]
         for repository in config.repositories {
@@ -160,6 +168,24 @@ public actor Orchestrator {
             log("依頼の確認に失敗しました: \(error)")
         }
         return decisions
+    }
+
+    /// 担当リポジトリに「担当している」印（最終確認の時刻）を書く。アプリが「担当 PC なし」を判断するのに使う。
+    /// 同じリポジトリには `OrchestratorHeartbeat.updateInterval` に 1 回まで
+    private func updateHeartbeats() async {
+        let current = now()
+        for repository in config.repositories {
+            let key = repository.fullName.lowercased()
+            if let last = lastHeartbeats[key], current.timeIntervalSince(last) < OrchestratorHeartbeat.updateInterval {
+                continue
+            }
+            do {
+                try await github.updateHeartbeat(in: repository.fullName, description: OrchestratorHeartbeat.description(at: current))
+                lastHeartbeats[key] = current
+            } catch {
+                log("\(repository.fullName) に担当の印を書けませんでした（次のポーリングで再試行します）: \(error)")
+            }
+        }
     }
 
     private func handleIdeaRequests() async throws {

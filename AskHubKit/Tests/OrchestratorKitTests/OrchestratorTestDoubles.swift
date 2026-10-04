@@ -22,6 +22,8 @@ struct FakeGitHubState {
     var ideaComments: [String] = []
     var closedIdeas: [Int] = []
     var ideaCommentFails = false
+    var heartbeats: [String] = []
+    var heartbeatFails = false
     var ideaCloseFails = false
 }
 
@@ -126,6 +128,23 @@ final class FakeGitHub: OrchestratorGitHub {
 
     func setIdeaIssues(_ issues: [IdeaRequestIssue]) {
         state.withLock { $0.ideaIssues = issues }
+    }
+
+    var heartbeats: [String] {
+        state.withLock { $0.heartbeats }
+    }
+
+    func setHeartbeatFails(_ fails: Bool) {
+        state.withLock { $0.heartbeatFails = fails }
+    }
+
+    func updateHeartbeat(in repository: String, description: String) async throws {
+        try state.withLock { state in
+            if state.heartbeatFails {
+                throw TestError()
+            }
+            state.heartbeats.append("\(repository): \(description)")
+        }
     }
 
     func setIdeaCommentFails(_ fails: Bool) {

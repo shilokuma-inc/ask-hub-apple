@@ -7,10 +7,15 @@ import Testing
 struct GitHubOrchestratorTests {
     /// 登録した順に 200 のレスポンスを返し、送られたリクエストを記録する
     private final class StubHTTPClient: HTTPClient {
-        private let state: OSAllocatedUnfairLock<(bodies: [String], requests: [URLRequest])>
+        private let state: OSAllocatedUnfairLock<(responses: [(status: Int, body: String)], requests: [URLRequest])>
 
-        init(_ bodies: [String]) {
-            state = OSAllocatedUnfairLock(initialState: (bodies, []))
+        /// すべて 200 で返す
+        convenience init(_ bodies: [String]) {
+            self.init(responses: bodies.map { (200, $0) })
+        }
+
+        init(responses: [(status: Int, body: String)]) {
+            state = OSAllocatedUnfairLock(initialState: (responses, []))
         }
 
         var requests: [URLRequest] {
@@ -18,18 +23,18 @@ struct GitHubOrchestratorTests {
         }
 
         func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-            let body = try state.withLock { state in
+            let next = try state.withLock { state in
                 state.requests.append(request)
-                guard !state.bodies.isEmpty else {
+                guard !state.responses.isEmpty else {
                     throw GitHubError.invalidResponse
                 }
-                return state.bodies.removeFirst()
+                return state.responses.removeFirst()
             }
             guard let url = request.url,
-                  let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil) else {
+                  let response = HTTPURLResponse(url: url, statusCode: next.status, httpVersion: nil, headerFields: nil) else {
                 throw GitHubError.invalidResponse
             }
-            return (Data(body.utf8), response)
+            return (Data(next.body.utf8), response)
         }
     }
 
@@ -213,6 +218,26 @@ struct GitHubOrchestratorTests {
         let closeBody = try #require(http.requests[1].httpBody)
         let close = try #require(try JSONSerialization.jsonObject(with: closeBody) as? [String: String])
         #expect(close == ["state": "closed", "state_reason": "completed"])
+    }
+
+    @Test func updatesHeartbeatLabelOrCreatesIt() async throws {
+        let http = StubHTTPClient([#"{ "name": "askhub-orchestrator" }"#])
+        try await makeGitHub(http).updateHeartbeat(in: "o/r", description: "最終確認")
+        #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" } == ["PATCH /repos/o/r/labels/askhub-orchestrator"])
+        let patchBody = try #require(http.requests[0].httpBody)
+        #expect(try JSONSerialization.jsonObject(with: patchBody) as? [String: String] == ["description": "最終確認"])
+
+        // ラベルが無ければ作る
+        let missing = StubHTTPClient(responses: [(404, #"{ "message": "Not Found" }"#), (201, #"{ "name": "askhub-orchestrator" }"#)])
+        try await makeGitHub(missing).updateHeartbeat(in: "o/r", description: "最終確認")
+        #expect(missing.requests.map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" } == [
+            "PATCH /repos/o/r/labels/askhub-orchestrator",
+            "POST /repos/o/r/labels"
+        ])
+        let createBody = try #require(missing.requests[1].httpBody)
+        let created = try #require(try JSONSerialization.jsonObject(with: createBody) as? [String: String])
+        #expect(created["name"] == "askhub-orchestrator")
+        #expect(created["description"] == "最終確認")
     }
 
     @Test func removeLabelReportsGraphQLErrors() async {
