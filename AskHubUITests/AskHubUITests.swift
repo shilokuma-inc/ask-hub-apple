@@ -14,10 +14,15 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
-    func testLaunchShowsContentView() throws {
+    func testInboxShowsBothTabs() throws {
         let app = XCUIApplication()
+        // GitHub に接続せず、アプリに組み込んだサンプルデータを表示する
+        app.launchArguments += ["-AskHubSampleInbox"]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Hello, world!"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["通知の頻度を調整したい"].firstMatch.waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["急がない"].tap()
+        XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
     }
 }
