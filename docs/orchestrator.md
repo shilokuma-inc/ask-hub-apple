@@ -106,9 +106,12 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
     { "repository": "shilokuma-inc/ask-hub-apple", "path": "~/Desktop/ios/ask-hub-apple" }
   ],
   "pollIntervalSeconds": 60,
-  "loopCommand": ["/path/to/start-loop.sh", "{repository}", "{controlPath}"]
+  "loopCommand": ["/Users/<ユーザー名>/.local/bin/askhub-start-loop", "{repository}", "{checkoutPath}", "{controlPath}", "{discussion}"]
 }
 ```
+
+`scripts/orchestrator/orchestrator.example.json` をコピーして使う。`loopCommand` は `install.sh` が配置する
+`askhub-start-loop`（下記「ループの起動スクリプト」）を絶対パスで指す。
 
 | キー | 必須 | 説明 |
 | --- | --- | --- |
@@ -129,6 +132,43 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `{checkoutPath}` | メインの checkout のパス |
 | `{controlPath}` | 制御用 worktree のパス。`scripts/ralph-setup.sh` と同じく checkout の隣の `<ディレクトリ名から -ios を除いたもの>-ralph-ctl` |
 | `{discussion}` | ループのゴール元の Discussion の番号（`ready-for-loop` から起動するとき）。Discussion を伴わない起動では空文字列 |
+
+## ループの起動スクリプト（askhub-start-loop）
+
+`scripts/orchestrator/start-loop.sh`。`install.sh` が `~/.local/bin/askhub-start-loop` に配置する。
+引数は `<repository> <checkoutPath> <controlPath> [discussion]` で、`loopCommand` のプレースホルダをそのまま渡す。
+
+| 呼ばれ方 | 動作 |
+| --- | --- |
+| `discussion` あり（`ready-for-loop` から） | 新しい epic を準備してからループを起動する。準備はヘッドレスの `claude` が行う（`ralph-setup.sh`・playbook のプレースホルダの置き換え・STEP A に沿った goal の作成・epic の push）。最後の行の `ASKHUB_PROMISE: <完了語>` を読み取る。Discussion はスクリプトが `gh` で取得し、**信用する author の本文・コメント・返信だけ**を `claude` に渡す |
+| `discussion` が空（ask への回答で再開） | 既存の制御用 worktree でループを起動し直す。片付け済みのスロットは作り直す。未完了のタスクが無ければ何もしない |
+| state ファイルがある | ループが動いているので何もしない。ただし記録した PID（`.claude/askhub-loop.pid`）のプロセスが終わっていれば、残った state を片付けて続ける |
+
+- 前の epic が完了済み（未完了のタスクが無い）なら、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/` に退避してから worktree を片付ける。
+  未完了なら新しい epic は始めない（1 リポジトリにつきループは 1 つ）。
+  worktree にコミットしていない変更がある・退避に失敗したときは、片付けずに失敗として返す
+- 信用する author は、オーケストレーターが設定の `trustedAuthors` を環境変数 `ASKHUB_TRUSTED_AUTHORS` で渡す（手で設定する必要は無い）
+- オーケストレーターも PID ファイルを読み、state ファイルが残っていても PID のプロセスが居なければ「止まっている」とみなして再開する
+- 準備が途中で失敗した場合（完了語を読み取れない等）は、オーケストレーターの再試行で、同じ Discussion の途中の worktree を片付けてやり直す
+- ループは `claude -p --permission-mode bypassPermissions` を `exec` で起動する。このプロセスの寿命がループの寿命になる。
+  ralph の Stop hook はヘッドレスでも周回する（標準入力は `/dev/null`）
+- ログは `~/Library/Logs/askhub/loops/<リポジトリ>-bootstrap-*.log`（準備）と `<リポジトリ>-loop-*.log`（ループ）
+- 環境変数で `claude` の場所・ログの場所・信用する author・準備のモデルを変えられる（スクリプト冒頭のコメントを参照）
+
+## Mac ごとのセットアップ
+
+家の Mac ごとに担当リポジトリを分けて常駐させる（Discussion #1 の Q10）。各 Mac で次を行う。
+
+1. **アカウント**: `claude` にログインする（Mac ごとに別のアカウントでよい）。`gh auth login` は信用する author のアカウントで行う
+2. **開発ツール**: Xcode と iOS Simulator のランタイム、`brew install gh swiftlint`
+3. **共有設定**: `git clone git@github.com:mrs1669/agents-config.git ~/.agents && ~/.agents/install.sh`（AGENTS.md と LEARNINGS の hook）
+4. **常駐の前提**: スリープを止める・停電後に自動で起動する・ログインしたままにする（LaunchAgent はログイン中のユーザーで動く）。
+   `~/.claude/settings.json` の `skipDangerousModePermissionPrompt` は `true` のまま（無人で `bypassPermissions` を使うため）
+5. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには template-app-ios の ralph 一式（`.claude/ralph/`・`scripts/ralph-*.sh`）とプロトコルのラベルが必要
+6. **オーケストレーター**: このリポジトリを clone して `scripts/orchestrator/install.sh` を実行し、
+   `~/.config/askhub/orchestrator.json` を `orchestrator.example.json` から作る（担当リポジトリだけを書く。ほかの Mac と重ねない）
+7. **確認と登録**: `~/.local/bin/askhub-orchestrator --once` でエラーが出ないことを確かめてから `launchctl bootstrap` する。
+   ログは `~/Library/Logs/askhub/orchestrator.log`
 
 ## ask に回答が付いたらループを再開する
 

@@ -5,6 +5,9 @@ import os
 public actor LocalLoopRuntime: LoopRuntime {
     /// 制御用 worktree の中の、ralph-loop の state ファイルの場所
     public static let stateFileRelativePath = ".claude/ralph-loop.local.md"
+    /// 起動スクリプト（askhub-start-loop）が書く、ループのプロセスの PID。
+    /// state ファイルが残ったままプロセスが死んだ（落ちた・止められた）ことを見分けるのに使う
+    public static let pidFileRelativePath = ".claude/askhub-loop.pid"
 
     /// 起動したプロセス。キーは `fullName` を小文字にしたもの。
     /// オーケストレーターを再起動すると忘れるが、その場合も state ファイルが残っていれば起動しない
@@ -15,9 +18,17 @@ public actor LocalLoopRuntime: LoopRuntime {
     /// 終了後に出力の読み切りを待つ上限
     private let outputDrainTimeout: Duration
 
-    public init(killGracePeriod: Duration = .seconds(10), outputDrainTimeout: Duration = .seconds(5)) {
+    /// 起動するコマンドに追加で渡す環境変数（継承した環境変数は残す）
+    private let environment: [String: String]
+
+    public init(
+        killGracePeriod: Duration = .seconds(10),
+        outputDrainTimeout: Duration = .seconds(5),
+        environment: [String: String] = [:]
+    ) {
         self.killGracePeriod = killGracePeriod
         self.outputDrainTimeout = outputDrainTimeout
+        self.environment = environment
     }
 
     public func status(of repository: RepositoryConfig) -> LoopStatus {
@@ -25,12 +36,24 @@ public actor LocalLoopRuntime: LoopRuntime {
         if processes[key]?.isRunning == false {
             processes[key] = nil
         }
-        let stateFile = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
-            .appendingPathComponent(Self.stateFileRelativePath)
-        return LoopStatus(
-            stateFileExists: Self.fileExists(at: stateFile.path),
-            processAlive: processes[key] != nil
-        )
+        let control = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
+        var stateFileExists = Self.fileExists(at: control.appendingPathComponent(Self.stateFileRelativePath).path)
+        // state ファイルが残っていても、記録した PID のプロセスが居なければループは止まっている（落ちた・止められた）。
+        // 起動スクリプトがそれを見て state を片付けてから再開するので、ここでは「無い」とみなす
+        if stateFileExists == true, processes[key] == nil,
+           Self.recordedProcessIsGone(pidFile: control.appendingPathComponent(Self.pidFileRelativePath)) {
+            stateFileExists = false
+        }
+        return LoopStatus(stateFileExists: stateFileExists, processAlive: processes[key] != nil)
+    }
+
+    /// PID ファイルに記録したプロセスが居なくなっているか。PID ファイルが無い・読めないときは判断できないので `false`
+    static func recordedProcessIsGone(pidFile: URL) -> Bool {
+        guard let text = try? String(contentsOf: pidFile, encoding: .utf8),
+              let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 0 else {
+            return false
+        }
+        return kill(pid, 0) == -1 && errno == ESRCH
     }
 
     /// ファイルがあるか。`FileManager.fileExists` はアクセス権が無いときも `false` を返すため、
@@ -88,7 +111,7 @@ public actor LocalLoopRuntime: LoopRuntime {
     /// `arguments` の先頭を実行ファイルとして、メインの checkout を作業ディレクトリに起動する。
     /// 先頭が絶対パスでなければ `PATH` から探す（launchd の `PATH` は最小限なので、絶対パスを推奨する）
     public func launch(_ arguments: [String], for repository: RepositoryConfig) throws {
-        let process = try Self.makeProcess(arguments, in: repository)
+        let process = try Self.makeProcess(arguments, in: repository, environment: environment)
         try process.run()
         processes[repository.fullName.lowercased()] = process
     }
@@ -103,7 +126,7 @@ public actor LocalLoopRuntime: LoopRuntime {
         for repository: RepositoryConfig,
         timeout: Duration
     ) async throws -> CommandResult {
-        let process = try Self.makeProcess(arguments, in: repository)
+        let process = try Self.makeProcess(arguments, in: repository, environment: environment)
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
@@ -149,7 +172,11 @@ public actor LocalLoopRuntime: LoopRuntime {
     static let maxOutputBytes = 1_000_000
 
     /// 先頭が絶対パスでなければ `PATH` から探す。作業ディレクトリはメインの checkout
-    private static func makeProcess(_ arguments: [String], in repository: RepositoryConfig) throws -> Process {
+    private static func makeProcess(
+        _ arguments: [String],
+        in repository: RepositoryConfig,
+        environment: [String: String]
+    ) throws -> Process {
         guard let executable = arguments.first else {
             throw OrchestratorConfigError.emptyLoopCommand
         }
@@ -162,6 +189,9 @@ public actor LocalLoopRuntime: LoopRuntime {
             process.arguments = arguments
         }
         process.currentDirectoryURL = URL(fileURLWithPath: repository.checkoutPath, isDirectory: true)
+        if !environment.isEmpty {
+            process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        }
         return process
     }
 }

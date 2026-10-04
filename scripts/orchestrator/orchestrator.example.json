@@ -1,0 +1,9 @@
+{
+  "trustedAuthors": ["mrs1669"],
+  "org": "shilokuma-inc",
+  "repositories": [
+    { "repository": "shilokuma-inc/ask-hub-apple", "path": "~/Desktop/ios/ask-hub-apple" }
+  ],
+  "pollIntervalSeconds": 60,
+  "loopCommand": ["/Users/<ユーザー名>/.local/bin/askhub-start-loop", "{repository}", "{checkoutPath}", "{controlPath}", "{discussion}"]
+}

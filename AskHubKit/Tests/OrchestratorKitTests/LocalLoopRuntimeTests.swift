@@ -35,6 +35,43 @@ struct LocalLoopRuntimeTests {
         #expect(await runtime.status(of: repository) == LoopStatus(stateFileExists: true, processAlive: false))
     }
 
+    @Test func treatsStateFileAsStaleWhenRecordedProcessIsGone() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let control = URL(fileURLWithPath: repository.controlWorktreePath)
+        let stateFile = control.appendingPathComponent(LocalLoopRuntime.stateFileRelativePath)
+        let pidFile = control.appendingPathComponent(LocalLoopRuntime.pidFileRelativePath)
+        try FileManager.default.createDirectory(at: stateFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("---\nactive: true\n---\n".utf8).write(to: stateFile)
+        let runtime = LocalLoopRuntime()
+
+        // 生きているプロセス（このテスト自身）なら、ループは動いている
+        try Data("\(getpid())\n".utf8).write(to: pidFile)
+        #expect(await runtime.status(of: repository) == LoopStatus(stateFileExists: true, processAlive: false))
+
+        // 終わったプロセスの PID なら、state ファイルは残っていても止まっている
+        let finished = Process()
+        finished.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try finished.run()
+        finished.waitUntilExit()
+        try Data("\(finished.processIdentifier)".utf8).write(to: pidFile)
+        #expect(await runtime.status(of: repository) == LoopStatus(stateFileExists: false, processAlive: false))
+
+        // PID ファイルが読めなければ判断せず、state ファイルを信じる
+        try Data("not a pid".utf8).write(to: pidFile)
+        #expect(await runtime.status(of: repository) == LoopStatus(stateFileExists: true, processAlive: false))
+    }
+
+    @Test func passesAdditionalEnvironmentToCommands() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runtime = LocalLoopRuntime(environment: ["ASKHUB_TRUSTED_AUTHORS": "mrs1669,someone"])
+        let result = try await runtime.run(["/usr/bin/env"], input: "", for: repository, timeout: .seconds(10))
+        #expect(result.output.contains("ASKHUB_TRUSTED_AUTHORS=mrs1669,someone"))
+        // 継承した環境変数も残る
+        #expect(result.output.contains("PATH="))
+    }
+
     @Test func reportsUnknownWhenControlWorktreeIsUnreadable() async throws {
         let (repository, root) = try makeRepository()
         let control = URL(fileURLWithPath: repository.controlWorktreePath)

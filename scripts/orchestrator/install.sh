@@ -61,6 +61,8 @@ BIN_DIR=$(swift build --package-path "$REPO_ROOT/AskHubKit" -c release --show-bi
 
 mkdir -p "$PREFIX" "$AGENTS_DIR" "$LOG_DIR"
 install -m 755 "$BIN_DIR/askhub-orchestrator" "$PREFIX/askhub-orchestrator"
+# loopCommand から呼ぶループの起動スクリプト。checkout の場所に依存しないよう、実行ファイルと同じ場所に置く
+install -m 755 "$REPO_ROOT/scripts/orchestrator/start-loop.sh" "$PREFIX/askhub-start-loop"
 
 # XML に入る値なので、& < > をエスケープしてから置き換える
 escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
@@ -80,6 +82,7 @@ cat <<MSG
 
 インストールしました
   実行ファイル: $PREFIX/askhub-orchestrator
+  起動スクリプト: $PREFIX/askhub-start-loop（設定の loopCommand に指定する）
   plist:        $PLIST
   ログ:         $LOG_DIR/orchestrator.log
 
