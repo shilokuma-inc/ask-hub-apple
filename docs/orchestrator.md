@@ -54,3 +54,4 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `{repository}` | `owner/repo` |
 | `{checkoutPath}` | メインの checkout のパス |
 | `{controlPath}` | 制御用 worktree のパス。`scripts/ralph-setup.sh` と同じく checkout の隣の `<ディレクトリ名から -ios を除いたもの>-ralph-ctl` |
+| `{discussion}` | ループのゴール元の Discussion の番号（`ready-for-loop` から起動するとき）。Discussion を伴わない起動では空文字列 |
