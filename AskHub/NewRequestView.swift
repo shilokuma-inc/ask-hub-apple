@@ -98,8 +98,12 @@ struct NewRequestView: View {
         default:
             Picker("依頼先", selection: $model.repository) {
                 Text("選択してください").tag(String?.none)
-                ForEach(model.repositories, id: \.self) { repository in
-                    Text(InboxSubject.shortRepository(repository)).tag(Optional(repository))
+                ForEach(model.repositorySections) { section in
+                    Section(section.title) {
+                        ForEach(section.repositories, id: \.self) { repository in
+                            Text(InboxSubject.shortRepository(repository)).tag(Optional(repository))
+                        }
+                    }
                 }
             }
             .accessibilityIdentifier("repository-picker")

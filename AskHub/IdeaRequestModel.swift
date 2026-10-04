@@ -16,6 +16,10 @@ final class IdeaRequestModel {
     }
 
     private(set) var repositories: [String] = []
+    /// Picker に出すまとまり。候補は絞らない
+    var repositorySections: [RepositorySection] {
+        RepositorySection.grouping(repositories)
+    }
     private(set) var repositoriesState = RepositoriesState.idle
     /// 選んだリポジトリ（`owner/repo`）
     var repository: String?
