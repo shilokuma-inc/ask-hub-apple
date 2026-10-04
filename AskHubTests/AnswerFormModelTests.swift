@@ -4,6 +4,13 @@ import Foundation
 import os
 import Testing
 
+/// `GatedSource` の状態
+private struct SourceGate {
+    var calls = 0
+    var opened = false
+    var waiter: CheckedContinuation<Void, Never>?
+}
+
 @MainActor
 struct AnswerFormModelTests {
     /// 投稿された回答を記録する。失敗させることもできる
@@ -94,6 +101,73 @@ struct AnswerFormModelTests {
         // 新しいトークンで回答した質問は、取り直しても戻さない
         try await inbox.post(Answer(choice: "1時間"), to: question)
         #expect(!inbox.questions.contains { $0.id == question.id })
+    }
+
+    /// 1 回目の取得を、テストが開けるまで止めておく取得元
+    private final class GatedSource: InboxSource {
+        private let gate = OSAllocatedUnfairLock(initialState: SourceGate())
+
+        /// 待っている取得を進める。取得が待ち始める前に呼ばれても、待たずに進むようにする
+        func open() {
+            let waiter = gate.withLock { state in
+                state.opened = true
+                defer { state.waiter = nil }
+                return state.waiter
+            }
+            waiter?.resume()
+        }
+
+        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+            let isFirst = gate.withLock { state in
+                state.calls += 1
+                return state.calls == 1
+            }
+            if isFirst {
+                await withCheckedContinuation { continuation in
+                    let opened = gate.withLock { state in
+                        if !state.opened {
+                            state.waiter = continuation
+                        }
+                        return state.opened
+                    }
+                    if opened {
+                        continuation.resume()
+                    }
+                }
+                // 古いトークンでの結果には質問が無い（回答済みの記録を消してしまう条件）
+                return []
+            }
+            return try await SampleInboxSource().subjectsNeedingAnswer(org: org)
+        }
+
+        func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
+            try await SampleInboxSource().questionThreads(of: subject)
+        }
+
+        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+            []
+        }
+    }
+
+    @Test func discardsResultFetchedWithOldTokenAfterAnsweringWithNewToken() async throws {
+        let store = InMemoryTokenStore(token: "github_pat_old")
+        let source = GatedSource()
+        let inbox = InboxModel(tokenStore: store, makeSource: { _ in source }, makePoster: { _ in RecordingPoster() })
+
+        let first = Task { await inbox.refresh() }
+        while !inbox.isLoading {
+            await Task.yield()
+        }
+        // 古いトークンで取得している間に、新しいトークンで回答した
+        try store.save("github_pat_new")
+        try await inbox.post(Answer(choice: "1時間"), to: question)
+        source.open()
+        await first.value
+
+        // 古いトークンでの結果は捨て、新しいトークンで取り直しても回答した質問は戻らない
+        #expect(inbox.state == .loaded)
+        #expect(!inbox.questions.contains { $0.id == question.id })
+        #expect(!inbox.questions.isEmpty)
     }
 
     @Test func keepsInputAndShowsErrorWhenPostingFails() async {

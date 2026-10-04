@@ -111,6 +111,12 @@ final class InboxModel {
             async let questions = fetcher.unansweredQuestions(org: Self.org)
             async let issues = fetcher.lowPriorityIssues(org: Self.org)
             let (fetchedQuestions, fetchedIssues) = try await (questions, issues)
+            // 取得を待つ間に別のトークンで回答した場合は、古いトークンでの結果を捨てて取り直す
+            guard token == lastToken else {
+                needsRefreshAfterLoading = true
+                state = .idle
+                return
+            }
             // 取得結果に出てこなくなった（検索に回答が反映された）質問は、覚えておく必要がない
             answeredQuestionIDs.formIntersection(fetchedQuestions.map(\.id))
             self.questions = fetchedQuestions.filter { !answeredQuestionIDs.contains($0.id) }
