@@ -88,17 +88,26 @@ if [[ -n "$DISCUSSION" ]]; then
     if [[ "$HALF_DONE" == false && "$(open_tasks)" -gt 0 ]]; then
       fail "前の epic に未完了のタスクが残っています（$GOAL）。1 リポジトリにつきループは 1 つなので、新しい epic は始めません"
     fi
-    # 前の epic は完了済み。goal / state を退避してから worktree を片付ける
-    PREVIOUS=$(git -C "$CTL" symbolic-ref --short HEAD 2>/dev/null || echo detached)
-    DEST="$ARCHIVE_DIR/$REPO_NAME/$(date +%Y%m%d-%H%M%S)-${PREVIOUS//\//-}"
-    mkdir -p "$DEST"
-    cp "$CTL"/.claude/*.local.* "$DEST"/ 2>/dev/null || true
-    log "前の epic（$PREVIOUS）の goal / state を退避しました: $DEST"
+    # 前の epic は完了済み（または同じ Discussion の準備の途中）。worktree を片付ける前に、
+    # コミットしていない変更が無いことを確かめ、goal / state などの作業ファイルを退避する
+    WORKTREES=()
     for slot in "${CTL%-ctl}-a" "${CTL%-ctl}-b" "$CTL"; do
       if git -C "$CHECKOUT" worktree list --porcelain | grep -qxF "worktree $slot"; then
-        git -C "$CHECKOUT" worktree remove --force "$slot"
-        log "worktree を削除しました: $slot"
+        WORKTREES+=("$slot")
+        # 作業ファイル（.claude/ 配下。.git/info/exclude で除外している）は退避するので見ない
+        DIRTY=$(git -C "$slot" status --porcelain --untracked-files=all -- . ':(exclude).claude' 2>/dev/null || echo "?")
+        [[ -z "$DIRTY" ]] || fail "worktree にコミットしていない変更があるため片付けません: $slot（$DIRTY）"
       fi
+    done
+    PREVIOUS=$(git -C "$CTL" symbolic-ref --short HEAD 2>/dev/null || echo detached)
+    DEST="$ARCHIVE_DIR/$REPO_NAME/$(date +%Y%m%d-%H%M%S)-${PREVIOUS//\//-}"
+    if ! { mkdir -p "$DEST" && cp -R "$CTL/.claude" "$DEST/"; }; then
+      fail "作業ファイルを退避できなかったため、worktree を片付けません（退避先: $DEST）"
+    fi
+    log "前の epic（$PREVIOUS）の作業ファイルを退避しました: $DEST"
+    for slot in "${WORKTREES[@]}"; do
+      git -C "$CHECKOUT" worktree remove --force "$slot"
+      log "worktree を削除しました: $slot"
     done
   fi
 
