@@ -14,3 +14,15 @@ extension URLSession: HTTPClient {
         return (data, response)
     }
 }
+
+extension URLSession {
+    /// キャッシュを持たないセッション。GitHub API の応答は `cache-control: max-age=60` なので、
+    /// 既定の URLCache では最大 60 秒古い状態を読む（CLI のディスクキャッシュは別プロセスとも共有される）。
+    /// 応答（private リポジトリの内容を含む）をディスクに残さないためにも使う
+    public static let uncached: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
+    }()
+}
