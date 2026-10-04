@@ -64,7 +64,7 @@ install -m 755 "$BIN_DIR/askhub-orchestrator" "$PREFIX/askhub-orchestrator"
 
 # XML に入る値なので、& < > をエスケープしてから置き換える
 escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
-replace() { printf '%s' "$1" | sed -e 's/[\/&|]/\\&/g'; }
+replace() { printf '%s' "$1" | sed -e 's/[\\/&|]/\\&/g'; }
 PLIST="$AGENTS_DIR/$LABEL.plist"
 sed \
   -e "s|@LABEL@|$(replace "$LABEL")|g" \
