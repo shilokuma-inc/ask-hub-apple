@@ -16,7 +16,8 @@ struct InboxListView<Item: Identifiable, Row: View, Leading: View>: View {
 
     var body: some View {
         List {
-            if case let .failed(message) = model.state, !items.isEmpty {
+            // 一覧の中身（items または先頭の節）があるときは、空の表示の代わりにここで失敗を知らせる
+            if case let .failed(message) = model.state, !(items.isEmpty && leadingIsEmpty) {
                 Section {
                     Label(message, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.red)
