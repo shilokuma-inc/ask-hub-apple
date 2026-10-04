@@ -146,7 +146,8 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
                 title: title,
                 body: node.body ?? "",
                 url: url,
-                author: node.author?.login
+                author: node.author?.login,
+                editor: node.editor?.login
             )
         }
     }
@@ -174,7 +175,7 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
           search(query: $query, type: ISSUE, first: 50, after: $after) {
             pageInfo { hasNextPage endCursor }
             nodes {
-              ... on Issue { id number title body url author { login } repository { nameWithOwner } }
+              ... on Issue { id number title body url author { login } editor { login } repository { nameWithOwner } }
             }
           }
         }
@@ -330,6 +331,7 @@ private struct IdeaIssueNode: Decodable {
     let body: String?
     let url: URL?
     let author: SearchNode.Author?
+    let editor: SearchNode.Author?
     let repository: SearchNode.Repository?
 }
 

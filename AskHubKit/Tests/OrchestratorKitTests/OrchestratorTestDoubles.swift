@@ -21,7 +21,8 @@ struct FakeGitHubState {
     var ideaIssues: [IdeaRequestIssue] = []
     var ideaComments: [String] = []
     var closedIdeas: [Int] = []
-    var ideaCompletionFails = false
+    var ideaCommentFails = false
+    var ideaCloseFails = false
 }
 
 /// `needs-answer` の Discussion / PR を返す取得元。スレッドはテストから差し替える
@@ -126,8 +127,12 @@ final class FakeGitHub: OrchestratorGitHub {
         state.withLock { $0.ideaIssues = issues }
     }
 
-    func setIdeaCompletionFails(_ fails: Bool) {
-        state.withLock { $0.ideaCompletionFails = fails }
+    func setIdeaCommentFails(_ fails: Bool) {
+        state.withLock { $0.ideaCommentFails = fails }
+    }
+
+    func setIdeaCloseFails(_ fails: Bool) {
+        state.withLock { $0.ideaCloseFails = fails }
     }
 
     var ideaComments: [String] {
@@ -144,7 +149,7 @@ final class FakeGitHub: OrchestratorGitHub {
 
     func comment(on issue: IdeaRequestIssue, body: String) async throws {
         try state.withLock { state in
-            if state.ideaCompletionFails {
+            if state.ideaCommentFails {
                 throw TestError()
             }
             state.ideaComments.append("#\(issue.number): \(body)")
@@ -152,7 +157,12 @@ final class FakeGitHub: OrchestratorGitHub {
     }
 
     func close(_ issue: IdeaRequestIssue) async throws {
-        state.withLock { $0.closedIdeas.append(issue.number) }
+        try state.withLock { state in
+            if state.ideaCloseFails {
+                throw TestError()
+            }
+            state.closedIdeas.append(issue.number)
+        }
     }
 
     func addEpicFinalLabel(in repository: String, number: Int) async throws {

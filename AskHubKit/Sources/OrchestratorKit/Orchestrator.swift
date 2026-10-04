@@ -166,9 +166,9 @@ public actor Orchestrator {
         let issues = try await github.ideaRequests(org: config.org)
         ideaTracker.prune(keeping: issues)
 
-        // Discussion を作った後、依頼 Issue への後処理だけが残っているもの
-        for (issue, url) in ideaTracker.pendingCompletions(in: issues) {
-            await complete(issue, discussion: url)
+        // 依頼 Issue への後処理（リンクのコメント・クローズ・失敗の通知）。失敗したら次のポーリングで続きから
+        for (issue, followUp) in ideaTracker.followUps(in: issues) {
+            await perform(followUp, on: issue)
         }
 
         guard let (issue, repository) = ideaTracker.next(in: issues, config: config) else {
@@ -178,54 +178,58 @@ public actor Orchestrator {
         log("\(name) の依頼から、質問付きの Discussion を作らせます")
         let prompt = IdeaPrompt.make(for: issue, trustedAuthors: config.trustedAuthorLogins)
         let arguments = config.ideaCommand.render(prompt: prompt, for: repository)
-        let result: CommandResult
+        let reason: String
         do {
-            result = try await runtime.run(arguments, for: repository, timeout: Self.ideaCommandTimeout)
+            let result = try await runtime.run(arguments, for: repository, timeout: Self.ideaCommandTimeout)
+            if result.status == 0, let url = IdeaPrompt.discussionURL(in: result.output, repository: issue.repository) {
+                ideaTracker.recordCreated(url, for: issue)
+                log("\(name) の依頼から Discussion を作りました: \(url.absoluteString)")
+                await perform(.commentAndClose(url), on: issue)
+                return
+            }
+            reason = "Discussion の URL を受け取れませんでした（終了コード \(result.status)）"
         } catch {
-            await recordIdeaFailure(issue, reason: "ideaCommand を起動できませんでした（\(error)）")
-            return
+            reason = "ideaCommand を起動できませんでした（\(error)）"
         }
-        guard result.status == 0, let url = IdeaPrompt.discussionURL(in: result.output, repository: issue.repository) else {
-            await recordIdeaFailure(issue, reason: "Discussion の URL を受け取れませんでした（終了コード \(result.status)）")
-            return
-        }
-        ideaTracker.recordCreated(url, for: issue)
-        log("\(name) の依頼から Discussion を作りました: \(url.absoluteString)")
-        await complete(issue, discussion: url)
-    }
-
-    /// 依頼 Issue に Discussion へのリンクをコメントしてクローズする。失敗したら次のポーリングで再試行する
-    private func complete(_ issue: IdeaRequestIssue, discussion url: URL) async {
-        let name = "\(issue.repository)#\(issue.number)"
-        do {
-            try await github.comment(on: issue, body: """
-                質問付きの Discussion を作りました: \(url.absoluteString)
-
-                AskHub アプリの「要回答」から回答し、「回答を確定してループを始める」を押してください。（askhub-orchestrator）
-                """)
-            try await github.close(issue)
-            ideaTracker.recordCompleted(issue)
-            log("\(name) に Discussion へのリンクをコメントしてクローズしました")
-        } catch {
-            log("\(name) へのコメントかクローズに失敗しました（次のポーリングで再試行します）: \(error)")
-        }
-    }
-
-    private func recordIdeaFailure(_ issue: IdeaRequestIssue, reason: String) async {
-        let name = "\(issue.repository)#\(issue.number)"
-        guard ideaTracker.recordFailure(for: issue) else {
+        if ideaTracker.recordFailure(for: issue, reason: reason) {
+            log("\(name) の Discussion を \(IdeaRequestTracker.maxAttempts) 回作れなかったので、やめます: \(reason)")
+            await perform(.reportFailure(reason: reason), on: issue)
+        } else {
             log("\(name) の Discussion を作れませんでした。次のポーリングで再試行します: \(reason)")
-            return
         }
-        log("\(name) の Discussion を \(IdeaRequestTracker.maxAttempts) 回作れなかったので、やめます: \(reason)")
-        // 人が気づけるよう、依頼 Issue に書き残す（Issue は開いたまま）
+    }
+
+    /// 依頼 Issue への後処理を 1 段ずつ進める。コメントを重ねないよう、済んだ段は記録してから次へ進む
+    private func perform(_ followUp: IdeaRequestTracker.FollowUp, on issue: IdeaRequestIssue) async {
+        let name = "\(issue.repository)#\(issue.number)"
         do {
-            try await github.comment(on: issue, body: """
-                質問付きの Discussion を作れませんでした（\(IdeaRequestTracker.maxAttempts) 回試行）: \(reason)
-                担当 PC のオーケストレーターのログと ideaCommand の設定を確認してください。（askhub-orchestrator）
-                """)
+            switch followUp {
+            case let .commentAndClose(url):
+                try await github.comment(on: issue, body: """
+                    質問付きの Discussion を作りました: \(url.absoluteString)
+
+                    AskHub アプリの「要回答」から回答し、「回答を確定してループを始める」を押してください。（askhub-orchestrator）
+                    """)
+                ideaTracker.recordCommented(issue)
+                try await github.close(issue)
+                ideaTracker.recordCompleted(issue)
+                log("\(name) に Discussion へのリンクをコメントしてクローズしました")
+
+            case .close:
+                try await github.close(issue)
+                ideaTracker.recordCompleted(issue)
+                log("\(name) をクローズしました")
+
+            case let .reportFailure(reason):
+                // 人が気づけるよう、依頼 Issue に書き残す（Issue は開いたまま）
+                try await github.comment(on: issue, body: """
+                    質問付きの Discussion を作れませんでした（\(IdeaRequestTracker.maxAttempts) 回試行）: \(reason)
+                    担当 PC のオーケストレーターのログと ideaCommand の設定を確認してください。（askhub-orchestrator）
+                    """)
+                ideaTracker.recordFailureReported(issue)
+            }
         } catch {
-            log("\(name) に失敗をコメントできませんでした: \(error)")
+            log("\(name) の後処理に失敗しました（次のポーリングで続きから再試行します）: \(error)")
         }
     }
 

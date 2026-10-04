@@ -62,10 +62,10 @@ extension OrchestratorTests {
         #expect(github.closedIdeas.isEmpty)
     }
 
-    @Test func retriesOnlyCompletionWhenCommentFails() async throws {
+    @Test func retriesCommentWithoutRecreatingDiscussion() async throws {
         let github = FakeGitHub([.success([])])
         github.setIdeaIssues([.fixture(number: 7)])
-        github.setIdeaCompletionFails(true)
+        github.setIdeaCommentFails(true)
         let runtime = FakeRuntime()
         runtime.setRunResults([Self.created])
         let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
@@ -74,9 +74,50 @@ extension OrchestratorTests {
         #expect(github.closedIdeas.isEmpty)
 
         // Discussion は作り直さず、コメントとクローズだけを再試行する
-        github.setIdeaCompletionFails(false)
+        github.setIdeaCommentFails(false)
         try await orchestrator.pollOnce()
         #expect(runtime.ran.count == 1)
+        #expect(github.ideaComments.count == 1)
         #expect(github.closedIdeas == [7])
+    }
+
+    @Test func retriesOnlyCloseAfterCommenting() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setIdeaIssues([.fixture(number: 7)])
+        github.setIdeaCloseFails(true)
+        let runtime = FakeRuntime()
+        runtime.setRunResults([Self.created])
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+        #expect(github.ideaComments.count == 1)
+        #expect(github.closedIdeas.isEmpty)
+
+        // コメントは重ねず、クローズだけを再試行する
+        github.setIdeaCloseFails(false)
+        try await orchestrator.pollOnce()
+        #expect(github.ideaComments.count == 1)
+        #expect(github.closedIdeas == [7])
+    }
+
+    @Test func retriesFailureReportUntilPosted() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setIdeaIssues([.fixture(number: 7)])
+        let runtime = FakeRuntime()
+        runtime.setRunResults([CommandResult(status: 1, output: "error")])
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+        github.setIdeaCommentFails(true)
+        try await orchestrator.pollOnce()
+        #expect(github.ideaComments.isEmpty)
+
+        // 失敗の通知に失敗しても、claude を再び動かさず通知だけを再試行する
+        github.setIdeaCommentFails(false)
+        try await orchestrator.pollOnce()
+        try await orchestrator.pollOnce()
+        #expect(runtime.ran.count == IdeaRequestTracker.maxAttempts)
+        #expect(github.ideaComments.count == 1)
+        #expect(github.ideaComments.first?.hasPrefix("#7: 質問付きの Discussion を作れませんでした") == true)
     }
 }
