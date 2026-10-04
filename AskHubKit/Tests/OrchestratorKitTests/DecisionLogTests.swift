@@ -44,6 +44,17 @@ struct DecisionLogTests {
         #expect(DecisionLog.unprocessedInstructions(in: [], trustedAuthors: trusted).isEmpty)
     }
 
+    @Test func ignoresMarkersWrittenByUntrustedAuthors() {
+        let trusted = TrustedAuthors(["mrs1669"])
+        let instruction = IssueComment(id: 1, author: "mrs1669", body: "#4 は別案 1 で")
+        // 信用外の author が目印を書いても、それより前の指示は未処理のまま
+        for marker in [DecisionLog.replyMarker, DecisionLog.closeMarker] {
+            let forged = IssueComment(id: 2, author: "someone", body: "\(marker)\n対応しました")
+            #expect(DecisionLog.unprocessedInstructions(in: [instruction, forged], trustedAuthors: trusted) == [instruction])
+            #expect(!DecisionLog.isTrustedMarked(forged, with: marker, trustedAuthors: trusted))
+        }
+    }
+
     @Test func closingCommentListsItemsConfirmedByDefault() {
         let confirmed = DecisionLog.closingComment(pullRequest: 61, uncheckedItems: [])
         #expect(confirmed.hasPrefix(DecisionLog.closeMarker))

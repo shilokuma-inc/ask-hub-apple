@@ -60,7 +60,10 @@ extension Orchestrator {
     private func closeDecisionLog(_ issue: DecisionLogIssue, pullRequest: Int) async throws {
         // コメントした後にクローズだけ失敗していたら、コメントを重ねない
         let comments = try await github.comments(in: issue.repository, issue: issue.number)
-        if !comments.contains(where: { $0.body.contains(DecisionLog.closeMarker) }) {
+        let commented = comments.contains {
+            DecisionLog.isTrustedMarked($0, with: DecisionLog.closeMarker, trustedAuthors: config.trustedAuthors)
+        }
+        if !commented {
             let body = DecisionLog.closingComment(pullRequest: pullRequest, uncheckedItems: DecisionLog.uncheckedItems(in: issue.body))
             try await github.comment(on: issue, body: body)
         }

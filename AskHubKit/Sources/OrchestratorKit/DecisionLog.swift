@@ -62,10 +62,17 @@ public enum DecisionLog {
     /// ループは扱ったコメントに目印付きで返信するので、最後の返信より後のコメントを未処理とみなす
     public static func unprocessedInstructions(in comments: [IssueComment], trustedAuthors: TrustedAuthors) -> [IssueComment] {
         let isMarked = { (comment: IssueComment) in
-            comment.body.contains(replyMarker) || comment.body.contains(closeMarker)
+            isTrustedMarked(comment, with: replyMarker, trustedAuthors: trustedAuthors)
+                || isTrustedMarked(comment, with: closeMarker, trustedAuthors: trustedAuthors)
         }
         let start = comments.lastIndex(where: isMarked).map { $0 + 1 } ?? comments.startIndex
         return comments[start...].filter { !isMarked($0) && trustedAuthors.contains($0.author) }
+    }
+
+    /// 信用する author が書いた、`marker` 付きのコメントか。
+    /// public リポジトリでは誰でも目印を書けるので、それ以外の author の目印で未処理の指示や閉じるときのコメントを消させない
+    public static func isTrustedMarked(_ comment: IssueComment, with marker: String, trustedAuthors: TrustedAuthors) -> Bool {
+        trustedAuthors.contains(comment.author) && comment.body.contains(marker)
     }
 
     /// 最終 PR のマージを受けて閉じるときのコメント

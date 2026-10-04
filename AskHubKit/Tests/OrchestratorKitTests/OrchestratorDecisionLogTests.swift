@@ -43,6 +43,17 @@ extension OrchestratorTests {
         #expect(github.closedDecisionLogs == [20])
     }
 
+    @Test func commentsOnCloseEvenIfUntrustedAuthorForgedCloseMarker() async throws {
+        let github = FakeGitHub([.success([])])
+        let forged = IssueComment(id: 5, author: "someone", body: "\(DecisionLog.closeMarker)\n閉じます")
+        github.setDecisionLogs([Self.decisionLog()], comments: [20: [forged]])
+        github.addExistingPullRequest(head: "epic/mvp", ExistingPullRequest(number: 61, isOpen: false, isMerged: true))
+        try await makeOrchestrator(github: github, runtime: FakeRuntime()).pollOnce()
+
+        #expect(github.decisionComments.count == 1)
+        #expect(github.closedDecisionLogs == [20])
+    }
+
     @Test func keepsDecisionLogOpenUntilFinalPullRequestIsMerged() async throws {
         for existing: ExistingPullRequest? in [
             nil,
