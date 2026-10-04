@@ -32,6 +32,10 @@ private final class FakeInbox: InboxSource {
         }
         return threads
     }
+
+    func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+        []
+    }
 }
 
 private struct FakeRuntimeState {
