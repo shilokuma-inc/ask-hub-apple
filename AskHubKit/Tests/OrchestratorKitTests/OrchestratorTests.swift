@@ -11,6 +11,11 @@ private struct FakeGitHubState {
     var removed: [String] = []
     var removedNeedsAnswer: [String] = []
     var removeFails = false
+    /// 既にある PR（キーは head ブランチ）
+    var existingPullRequests: [String: ExistingPullRequest] = [:]
+    var createdEpicPullRequests: [String] = []
+    var labeledPullRequests: [Int] = []
+    var labelFails = false
 }
 
 /// `needs-answer` の Discussion / PR を返す取得元。スレッドはテストから差し替える
@@ -42,6 +47,7 @@ private struct FakeRuntimeState {
     var launched: [[String]] = []
     var status = LoopStatus.idle
     var launchFails = false
+    var epic = EpicSnapshot(branch: "epic/mvp", goal: nil, state: nil)
 }
 
 struct OrchestratorTests {
@@ -79,6 +85,43 @@ struct OrchestratorTests {
 
         func removeNeedsAnswerLabel(from subject: InboxSubject) async throws {
             state.withLock { $0.removedNeedsAnswer.append(subject.nodeID) }
+        }
+
+        var createdEpicPullRequests: [String] {
+            state.withLock { $0.createdEpicPullRequests }
+        }
+
+        var labeledPullRequests: [Int] {
+            state.withLock { $0.labeledPullRequests }
+        }
+
+        func addExistingPullRequest(head: String, _ pull: ExistingPullRequest) {
+            state.withLock { $0.existingPullRequests[head] = pull }
+        }
+
+        func setLabelFails(_ fails: Bool) {
+            state.withLock { $0.labelFails = fails }
+        }
+
+        func existingPullRequest(in repository: String, head branch: String) async throws -> ExistingPullRequest? {
+            state.withLock { $0.existingPullRequests[branch] }
+        }
+
+        func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int {
+            state.withLock { state in
+                state.createdEpicPullRequests.append("\(repository) \(branch): \(body)")
+                state.existingPullRequests[branch] = ExistingPullRequest(number: 100, isOpen: true)
+                return 100
+            }
+        }
+
+        func addEpicFinalLabel(in repository: String, number: Int) async throws {
+            try state.withLock { state in
+                if state.labelFails {
+                    throw TestError()
+                }
+                state.labeledPullRequests.append(number)
+            }
         }
 
         func removeReadyLabel(from discussion: ReadyDiscussion) async throws {
@@ -120,6 +163,14 @@ struct OrchestratorTests {
                 // 起動したプロセスは、テストが状態を変えるまで生きている
                 state.status = LoopStatus(stateFileExists: false, processAlive: true)
             }
+        }
+
+        func setEpic(_ epic: EpicSnapshot) {
+            state.withLock { $0.epic = epic }
+        }
+
+        func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot {
+            state.withLock { $0.epic }
         }
     }
 
@@ -347,5 +398,76 @@ struct OrchestratorTests {
         #expect(sleeps.withLock { $0 } == 2)
         #expect(runtime.launched.count == 1)
         #expect(logs.recorded.first?.hasPrefix("ポーリングに失敗しました") == true)
+    }
+}
+
+// MARK: - epic の最終 PR
+
+extension OrchestratorTests {
+    private static let completedEpic = EpicSnapshot(
+        branch: "epic/mvp",
+        goal: "- [x] 【FEAT】A\n- [ ] 【FEAT】B  ※回答待ち（PR #3 / ask id 1）",
+        state: "## 最終 PR に載せる内容\n- 回答待ち: #3\n\n## メモ\n"
+    )
+
+    @Test func createsEpicFinalPullRequestOnceWhenEpicCompletes() async throws {
+        let github = FakeGitHub([.success([])])
+        let runtime = FakeRuntime()
+        runtime.setEpic(Self.completedEpic)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+        try await orchestrator.pollOnce()
+
+        #expect(github.createdEpicPullRequests == ["shilokuma-inc/ask-hub-apple epic/mvp: - 回答待ち: #3"])
+        #expect(github.labeledPullRequests == [100])
+        #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple の epic/mvp が完了したので、最終 PR #100 を作りました"))
+    }
+
+    @Test func relabelsCreatedPullRequestWhenLabelingFailed() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setLabelFails(true)
+        let runtime = FakeRuntime()
+        runtime.setEpic(Self.completedEpic)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+        #expect(github.labeledPullRequests.isEmpty)
+
+        // 次のポーリングでは PR を作り直さず、既存の PR にラベルを付け直す
+        github.setLabelFails(false)
+        try await orchestrator.pollOnce()
+        try await orchestrator.pollOnce()
+        #expect(github.createdEpicPullRequests.count == 1)
+        #expect(github.labeledPullRequests == [100])
+    }
+
+    @Test func doesNotCreateEpicFinalWhenPullRequestExistsOrLoopIsActive() async throws {
+        let github = FakeGitHub([.success([])])
+        // 人が閉じた PR にはラベルを付けず、作り直しもしない
+        github.addExistingPullRequest(head: "epic/mvp", ExistingPullRequest(number: 7, isOpen: false))
+        let runtime = FakeRuntime()
+        runtime.setEpic(Self.completedEpic)
+        try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
+        #expect(github.createdEpicPullRequests.isEmpty)
+        #expect(github.labeledPullRequests.isEmpty)
+
+        let otherGitHub = FakeGitHub([.success([])])
+        let running = FakeRuntime()
+        running.setEpic(Self.completedEpic)
+        running.set(LoopStatus(stateFileExists: true, processAlive: true))
+        try await makeOrchestrator(github: otherGitHub, runtime: running).pollOnce()
+        #expect(otherGitHub.createdEpicPullRequests.isEmpty)
+    }
+
+    @Test func doesNotCreateEpicFinalRightAfterLaunchingLoopInSamePoll() async throws {
+        // ready-for-loop で起動したリポジトリは、同じ周回では動いているとみなす
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        let runtime = FakeRuntime()
+        runtime.setEpic(Self.completedEpic)
+        try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
+
+        #expect(runtime.launched.count == 1)
+        #expect(github.createdEpicPullRequests.isEmpty)
     }
 }

@@ -75,6 +75,74 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         )
     }
 
+    public func existingPullRequest(in repository: String, head branch: String) async throws -> ExistingPullRequest? {
+        let owner = try Self.owner(of: repository)
+        // 最終 PR と同じ統合先（既定ブランチ）への PR だけを見る。別の base への PR では最終 PR の代わりにならない
+        let base = try await defaultBranch(of: repository)
+        let pulls = try await client.getAllPages(
+            "repos/\(repository)/pulls",
+            query: [
+                URLQueryItem(name: "head", value: "\(owner):\(branch)"),
+                URLQueryItem(name: "base", value: base),
+                URLQueryItem(name: "state", value: "all")
+            ],
+            of: PullRequestSummary.self
+        )
+        // open なものがあればそれを、無ければ最初のもの（閉じた PR）を返す
+        let pull = pulls.first { $0.state == "open" } ?? pulls.first
+        return pull.map { ExistingPullRequest(number: $0.number, isOpen: $0.state == "open") }
+    }
+
+    public func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int {
+        let base = try await defaultBranch(of: repository)
+        let pull = try await client.send(
+            "POST",
+            "repos/\(repository)/pulls",
+            body: NewPullRequest(
+                title: Self.epicFinalTitle(branch: branch, base: base),
+                head: branch,
+                base: base,
+                body: body + Self.epicFinalFooter
+            ),
+            as: PullRequestSummary.self
+        )
+        return pull.number
+    }
+
+    public func addEpicFinalLabel(in repository: String, number: Int) async throws {
+        // PR のラベルは Issue の API で付ける。既に付いているラベルを足しても失敗しない
+        _ = try await client.send(
+            "POST",
+            "repos/\(repository)/issues/\(number)/labels",
+            body: ["labels": [AskHubLabel.epicFinal.rawValue]],
+            as: [LabelName].self
+        )
+    }
+
+    /// 統合先は Q13 の develop。リポジトリの既定ブランチとして読む
+    private func defaultBranch(of repository: String) async throws -> String {
+        try await client.get("repos/\(repository)", as: RepositoryInfo.self).defaultBranch
+    }
+
+    static func epicFinalTitle(branch: String, base: String) -> String {
+        "【FEAT】\(branch) を \(base) に取り込む"
+    }
+
+    static let epicFinalFooter = """
+
+
+        ---
+        この PR は askhub-orchestrator が epic の完了を検知して作成しました。
+        AskHub アプリの「マージ待ち」から確認して、merge commit でマージしてください。
+        """
+
+    private static func owner(of repository: String) throws -> String {
+        guard let owner = repository.split(separator: "/").first, !owner.isEmpty else {
+            throw GitHubError.invalidResponse
+        }
+        return String(owner)
+    }
+
     private static let labelQuery = """
         query($owner: String!, $name: String!, $label: String!) {
           repository(owner: $owner, name: $name) { label(name: $label) { id } }
@@ -167,4 +235,29 @@ private struct RemoveLabelsData: Decodable {
     }
 
     let removeLabelsFromLabelable: Payload?
+}
+
+private struct PullRequestSummary: Decodable {
+    let number: Int
+    /// `open` / `closed`（マージ済みも `closed`）
+    let state: String
+}
+
+private struct RepositoryInfo: Decodable {
+    let defaultBranch: String
+
+    private enum CodingKeys: String, CodingKey {
+        case defaultBranch = "default_branch"
+    }
+}
+
+private struct NewPullRequest: Encodable, Sendable {
+    let title: String
+    let head: String
+    let base: String
+    let body: String
+}
+
+private struct LabelName: Decodable {
+    let name: String
 }

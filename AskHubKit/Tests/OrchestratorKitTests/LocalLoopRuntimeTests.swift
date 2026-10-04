@@ -49,6 +49,37 @@ struct LocalLoopRuntimeTests {
         #expect(await LocalLoopRuntime().status(of: repository) == LoopStatus(stateFileExists: nil, processAlive: false))
     }
 
+    @Test func readsEpicSnapshotFromWorktree() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let control = URL(fileURLWithPath: repository.controlWorktreePath)
+        let gitDirectory = root.appendingPathComponent("main.git/worktrees/ctl")
+        try FileManager.default.createDirectory(at: gitDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: control.appendingPathComponent(".claude"), withIntermediateDirectories: true)
+        // worktree の `.git` は gitdir を指すファイル
+        try Data("gitdir: \(gitDirectory.path)\n".utf8).write(to: control.appendingPathComponent(".git"))
+        try Data("ref: refs/heads/epic/mvp\n".utf8).write(to: gitDirectory.appendingPathComponent("HEAD"))
+        try Data("- [x] A".utf8).write(to: control.appendingPathComponent(".claude/ralph-goal.local.md"))
+
+        let snapshot = await LocalLoopRuntime().epicSnapshot(of: repository)
+        #expect(snapshot == EpicSnapshot(branch: "epic/mvp", goal: "- [x] A", state: nil))
+
+        // detached HEAD ではブランチが無い
+        try Data("0123456789abcdef0123456789abcdef01234567\n".utf8).write(to: gitDirectory.appendingPathComponent("HEAD"))
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).branch == nil)
+    }
+
+    @Test func readsBranchFromGitDirectory() throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let checkout = URL(fileURLWithPath: repository.checkoutPath)
+        try FileManager.default.createDirectory(at: checkout.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try Data("ref: refs/heads/develop\n".utf8).write(to: checkout.appendingPathComponent(".git/HEAD"))
+
+        #expect(LocalLoopRuntime.currentBranch(of: checkout) == "develop")
+        #expect(LocalLoopRuntime.currentBranch(of: root) == nil)
+    }
+
     @Test func runsCommandInCheckoutAndTracksUntilExit() async throws {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }

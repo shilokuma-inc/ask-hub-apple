@@ -132,6 +132,55 @@ struct GitHubOrchestratorTests {
         #expect(http.requests.count == 1)
     }
 
+    @Test func findsPullRequestsToDefaultBranchByHeadPreferringOpen() async throws {
+        let repositoryInfo = #"{ "default_branch": "develop" }"#
+        let http = StubHTTPClient([
+            repositoryInfo, "[]",
+            repositoryInfo, #"[{ "number": 7, "state": "closed" }]"#,
+            repositoryInfo, #"[{ "number": 7, "state": "closed" }, { "number": 9, "state": "open" }]"#
+        ])
+        let github = makeGitHub(http)
+        let repository = "shilokuma-inc/ask-hub-apple"
+        #expect(try await github.existingPullRequest(in: repository, head: "epic/mvp") == nil)
+        #expect(try await github.existingPullRequest(in: repository, head: "epic/mvp") == ExistingPullRequest(number: 7, isOpen: false))
+        #expect(try await github.existingPullRequest(in: repository, head: "epic/mvp") == ExistingPullRequest(number: 9, isOpen: true))
+
+        #expect(http.requests[0].url?.path() == "/repos/shilokuma-inc/ask-hub-apple")
+        let url = try #require(http.requests[1].url)
+        #expect(url.path() == "/repos/shilokuma-inc/ask-hub-apple/pulls")
+        let query = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        #expect(query.contains(URLQueryItem(name: "head", value: "shilokuma-inc:epic/mvp")))
+        #expect(query.contains(URLQueryItem(name: "base", value: "develop")))
+        #expect(query.contains(URLQueryItem(name: "state", value: "all")))
+    }
+
+    @Test func createsEpicFinalPullRequestToDefaultBranchWithLabel() async throws {
+        let http = StubHTTPClient([
+            #"{ "default_branch": "develop" }"#,
+            #"{ "number": 42, "state": "open" }"#,
+            #"[{ "name": "epic-final" }]"#
+        ])
+        let github = makeGitHub(http)
+        let number = try await github.createEpicFinalPullRequest(in: "o/r", head: "epic/mvp", body: "まとめ")
+        #expect(number == 42)
+        try await github.addEpicFinalLabel(in: "o/r", number: number)
+
+        #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" } == [
+            "GET /repos/o/r",
+            "POST /repos/o/r/pulls",
+            "POST /repos/o/r/issues/42/labels"
+        ])
+        let pullBody = try #require(http.requests[1].httpBody)
+        let pull = try #require(try JSONSerialization.jsonObject(with: pullBody) as? [String: String])
+        #expect(pull["title"] == "【FEAT】epic/mvp を develop に取り込む")
+        #expect(pull["head"] == "epic/mvp")
+        #expect(pull["base"] == "develop")
+        #expect(pull["body"]?.hasPrefix("まとめ\n\n---\n") == true)
+        let labelsBody = try #require(http.requests[2].httpBody)
+        let labels = try #require(try JSONSerialization.jsonObject(with: labelsBody) as? [String: [String]])
+        #expect(labels == ["labels": ["epic-final"]])
+    }
+
     @Test func removeLabelReportsGraphQLErrors() async {
         let http = StubHTTPClient([#"{ "data": null, "errors": [{ "message": "Resource not accessible" }] }"#])
         await #expect(throws: GitHubError.graphQL(messages: ["Resource not accessible"])) {

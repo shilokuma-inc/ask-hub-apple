@@ -37,6 +37,45 @@ public actor LocalLoopRuntime: LoopRuntime {
         }
     }
 
+    public func epicSnapshot(of repository: RepositoryConfig) -> EpicSnapshot {
+        let control = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
+        func read(_ path: String) -> String? {
+            try? String(contentsOf: control.appendingPathComponent(path), encoding: .utf8)
+        }
+        return EpicSnapshot(
+            branch: Self.currentBranch(of: control),
+            goal: read(".claude/ralph-goal.local.md"),
+            state: read(".claude/ralph-state.local.md")
+        )
+    }
+
+    /// worktree が checkout しているブランチ。`git` を起動せず、`.git`（worktree ではファイル）から `HEAD` をたどる
+    static func currentBranch(of worktree: URL) -> String? {
+        let dotGit = worktree.appendingPathComponent(".git")
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: dotGit.path, isDirectory: &isDirectory) else {
+            return nil
+        }
+        let gitDirectory: URL
+        if isDirectory.boolValue {
+            gitDirectory = dotGit
+        } else {
+            // worktree の `.git` は `gitdir: <パス>` の 1 行
+            guard let pointer = try? String(contentsOf: dotGit, encoding: .utf8),
+                  let path = pointer.split(whereSeparator: \.isNewline).first?.trimmingPrefix("gitdir: ") else {
+                return nil
+            }
+            gitDirectory = URL(fileURLWithPath: String(path), relativeTo: worktree)
+        }
+        guard let head = try? String(contentsOf: gitDirectory.appendingPathComponent("HEAD"), encoding: .utf8) else {
+            return nil
+        }
+        let reference = head.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = "ref: refs/heads/"
+        // detached HEAD（コミットのハッシュ）ではブランチが無い
+        return reference.hasPrefix(prefix) ? String(reference.dropFirst(prefix.count)) : nil
+    }
+
     /// `arguments` の先頭を実行ファイルとして、メインの checkout を作業ディレクトリに起動する。
     /// 先頭が絶対パスでなければ `PATH` から探す（launchd の `PATH` は最小限なので、絶対パスを推奨する）
     public func launch(_ arguments: [String], for repository: RepositoryConfig) throws {
