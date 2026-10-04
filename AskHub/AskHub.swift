@@ -22,10 +22,28 @@ struct AskHub: App {
         }
         .onChange(of: scenePhase) { _, phase in
             // フォアグラウンドに戻ったら取り直す（Discussion #1 の Q7）。直前の取得から間もなければ取り直さない
-            if phase == .active {
+            switch phase {
+            case .active:
                 Task { await refreshIfStale() }
+
+            case .background:
+                #if os(iOS)
+                BackgroundRefresh.schedule()
+                #endif
+
+            default:
+                break
             }
         }
+        #if os(iOS)
+        .backgroundTask(.appRefresh(BackgroundRefresh.identifier)) { [inbox, mergeQueue] in
+            await BackgroundRefresh.schedule()
+            // 時間切れになると取得は打ち切られる。そのときは失敗を表示せず、前回の一覧を残す
+            async let inboxRefreshed: Void = inbox.refreshIfStale()
+            async let mergeQueueRefreshed: Void = mergeQueue.refreshIfStale()
+            _ = await (inboxRefreshed, mergeQueueRefreshed)
+        }
+        #endif
     }
 
     private func refreshIfStale() async {
