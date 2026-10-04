@@ -90,6 +90,10 @@ public struct KeychainTokenStore: TokenStore {
         }
     }
 
+    // macOS では `kSecUseDataProtectionKeychain` を付けず、従来の Keychain を使う。
+    // Data Protection Keychain は provisioning profile で許可された entitlement（`keychain-access-groups` など）付きの
+    // 署名が要り、このアプリには無いため `errSecMissingEntitlement` になりうる（TN3137）。
+    // そのため macOS では `kSecAttrAccessible` は効かないが、ロック中の読み込みが要るのは iOS の Background App Refresh だけ
     private var baseQuery: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
