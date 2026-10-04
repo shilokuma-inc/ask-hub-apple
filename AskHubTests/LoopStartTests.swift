@@ -95,12 +95,27 @@ struct LoopStartTests {
         #expect(starter.marked.isEmpty)
     }
 
+    @Test func doesNotMarkWhileOtherQuestionsRemain() async throws {
+        let starter = RecordingStarter()
+        let inbox = await makeInbox(starter: starter)
+        let form = AnswerFormModel(question: discussionQuestions(in: inbox)[0])
+        form.choice = "1時間"
+        // 選べない状態で入っていても、ほかの未回答の質問が残っていれば始めない
+        form.startsLoopAfterPosting = true
+        await form.post(using: inbox)
+
+        #expect(form.isPosted)
+        #expect(starter.marked.isEmpty)
+    }
+
     @Test func retriesMarkingWhenOnlyLoopStartFailed() async throws {
         let starter = RecordingStarter()
         starter.setFails(true)
         let inbox = await makeInbox(starter: starter)
-        let form = AnswerFormModel(question: discussionQuestions(in: inbox)[0])
-        form.choice = "1時間"
+        let questions = discussionQuestions(in: inbox)
+        try await inbox.post(Answer(choice: "1時間"), to: questions[0])
+        let form = AnswerFormModel(question: questions[1])
+        form.note = "朝だけにしたい"
         form.startsLoopAfterPosting = true
         await form.post(using: inbox)
 

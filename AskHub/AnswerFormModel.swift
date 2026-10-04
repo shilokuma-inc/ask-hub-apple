@@ -53,7 +53,8 @@ final class AnswerFormModel {
             errorMessage = InboxModel.message(for: error)
             return
         }
-        if startsLoopAfterPosting {
+        // 投稿の後の一覧でも、この Discussion にほかの未回答の質問が無いことを確かめてから始める
+        if startsLoopAfterPosting && canStartLoop(in: inbox) {
             await startLoop(using: inbox)
         }
     }
