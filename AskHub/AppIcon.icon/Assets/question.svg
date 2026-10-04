@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- ❓マーク（GitHub の文字色 #1F2328）。吹き出しの中央に重ねる -->
+  <path fill="none" stroke="#1F2328" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" d="M416 362 A96 96 0 1 1 580 430 C540 460 512 476 512 516 V540"/>
+  <circle fill="#1F2328" cx="512" cy="628" r="44"/>
+</svg>
