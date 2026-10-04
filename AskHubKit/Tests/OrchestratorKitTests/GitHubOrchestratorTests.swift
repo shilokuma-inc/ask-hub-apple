@@ -137,6 +137,60 @@ struct GitHubOrchestratorTests {
         #expect(http.requests.count == 1)
     }
 
+    @Test func addsReadyForLoopByLookingUpLabelID() async throws {
+        let http = StubHTTPClient([
+            #"{ "data": { "repository": { "label": { "id": "LA_ready" } } } }"#,
+            #"{ "data": { "addLabelsToLabelable": { "clientMutationId": null } } }"#
+        ])
+        let subject = InboxSubject(
+            kind: .discussion,
+            nodeID: "D_115",
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 115,
+            title: "T",
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/discussions/115")!
+        )
+        try await makeGitHub(http).addReadyLabel(to: subject)
+
+        let lookup = try requestJSON(http.requests[0])
+        #expect(lookup.variables["label"] as? String == "ready-for-loop")
+        let mutation = try requestJSON(http.requests[1])
+        #expect(mutation.query.contains("addLabelsToLabelable"))
+        #expect(mutation.variables["labelable"] as? String == "D_115")
+        #expect(mutation.variables["labels"] as? [String] == ["LA_ready"])
+    }
+
+    @Test func failsToAddReadyForLoopWhenMutationPayloadIsNull() async throws {
+        let http = StubHTTPClient([
+            #"{ "data": { "repository": { "label": { "id": "LA_ready" } } } }"#,
+            #"{ "data": { "addLabelsToLabelable": null } }"#
+        ])
+        let subject = InboxSubject(
+            kind: .discussion,
+            nodeID: "D_1",
+            repository: "o/r",
+            number: 1,
+            title: "T",
+            url: URL(string: "https://github.com/o/r/discussions/1")!
+        )
+        await #expect(throws: (any Error).self) { try await self.makeGitHub(http).addReadyLabel(to: subject) }
+    }
+
+    @Test func failsToAddReadyForLoopWhenRepositoryHasNoLabel() async throws {
+        let http = StubHTTPClient([#"{ "data": { "repository": { "label": null } } }"#])
+        let subject = InboxSubject(
+            kind: .discussion,
+            nodeID: "D_1",
+            repository: "o/r",
+            number: 1,
+            title: "T",
+            url: URL(string: "https://github.com/o/r/discussions/1")!
+        )
+        // ラベルが無いと付けられないので失敗として返す（呼び出し側は needs-answer を残して再試行する）
+        await #expect(throws: (any Error).self) { try await self.makeGitHub(http).addReadyLabel(to: subject) }
+        #expect(http.requests.count == 1)
+    }
+
     @Test func updatesPullRequestBodyWithPatch() async throws {
         let http = StubHTTPClient([#"{ "number": 9, "state": "open", "body": "新しい本文" }"#])
         try await makeGitHub(http).updatePullRequestBody(in: "shilokuma-inc/ask-hub-apple", number: 9, body: "新しい本文")

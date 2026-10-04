@@ -12,6 +12,8 @@ struct FakeGitHubState {
     var results: [Result<[ReadyDiscussion], TestError>]
     var removed: [String] = []
     var removedNeedsAnswer: [String] = []
+    var addedReady: [String] = []
+    var addReadyFails = false
     var removeFails = false
     /// 既にある PR（キーは head ブランチ）
     var existingPullRequests: [String: ExistingPullRequest] = [:]
@@ -93,6 +95,23 @@ final class FakeGitHub: OrchestratorGitHub {
 
     var removedNeedsAnswer: [String] {
         state.withLock { $0.removedNeedsAnswer }
+    }
+
+    var addedReady: [String] {
+        state.withLock { $0.addedReady }
+    }
+
+    func setAddReadyFails(_ fails: Bool) {
+        state.withLock { $0.addReadyFails = fails }
+    }
+
+    func addReadyLabel(to subject: InboxSubject) async throws {
+        try state.withLock { state in
+            if state.addReadyFails {
+                throw TestError()
+            }
+            state.addedReady.append(subject.nodeID)
+        }
     }
 
     func removeNeedsAnswerLabel(from subject: InboxSubject) async throws {
