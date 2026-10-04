@@ -75,6 +75,15 @@ struct QuestionDetailView: View {
 
             if !form.isPosted {
                 Section {
+                    if !question.marker.isFreeForm {
+                        // 投稿前に、GitHub に書かれる 1 行目を確かめられるようにする（Discussion #142 の Q3）
+                        if let choiceLine = form.answer.choiceLine {
+                            Text(choiceLine)
+                        } else {
+                            Text("選択肢を選んでください")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     Button {
                         isEditingNote = false
                         if form.startsLoopAfterPosting {
