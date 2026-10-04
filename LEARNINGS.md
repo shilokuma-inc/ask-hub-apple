@@ -24,3 +24,9 @@
   名前で解決できないときは `xcrun simctl list devices available` で UDID を調べて `id=` で指定する
 - 複数の worktree で同時に `xcodebuild` を流すときは、`-derivedDataPath` を worktree ごとに分ける。
   同じ DerivedData を共有するとビルドが壊れる
+
+## Keychain
+
+- macOS で `kSecUseDataProtectionKeychain` を使うには、provisioning profile で許可された entitlement
+  （`keychain-access-groups` / `application-identifier`）付きの署名が要る（TN3137）。無いと `errSecMissingEntitlement`（-34018）になる。
+  付けない場合は従来の Keychain になり、`kSecAttrAccessible`（`AfterFirstUnlock` など）は効かない
