@@ -79,6 +79,43 @@ public actor LocalLoopRuntime: LoopRuntime {
     /// `arguments` の先頭を実行ファイルとして、メインの checkout を作業ディレクトリに起動する。
     /// 先頭が絶対パスでなければ `PATH` から探す（launchd の `PATH` は最小限なので、絶対パスを推奨する）
     public func launch(_ arguments: [String], for repository: RepositoryConfig) throws {
+        let process = try Self.makeProcess(arguments, in: repository)
+        try process.run()
+        processes[repository.fullName.lowercased()] = process
+    }
+
+    /// `arguments` を実行して終了を待ち、終了コードと出力（標準出力と標準エラー）を返す。
+    /// `timeout` を過ぎたら SIGTERM で止める（`claude` が終わらない場合に備える）
+    public func run(_ arguments: [String], for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult {
+        let process = try Self.makeProcess(arguments, in: repository)
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        let (exited, exit) = AsyncStream<Int32>.makeStream()
+        process.terminationHandler = { process in
+            exit.yield(process.terminationStatus)
+            exit.finish()
+        }
+        try process.run()
+
+        let pid = process.processIdentifier
+        let timer = Task {
+            try await Task.sleep(for: timeout)
+            kill(pid, SIGTERM)
+        }
+        defer { timer.cancel() }
+        // 出力はプロセスが終わるまで読み続ける（パイプが一杯になって止まらないように、終了を待つ前から読む）
+        let reader = pipe.fileHandleForReading
+        let data = await Task.detached { reader.readDataToEndOfFile() }.value
+        var status: Int32 = -1
+        for await value in exited {
+            status = value
+        }
+        return CommandResult(status: status, output: String(bytes: data, encoding: .utf8) ?? "")
+    }
+
+    /// 先頭が絶対パスでなければ `PATH` から探す。作業ディレクトリはメインの checkout
+    private static func makeProcess(_ arguments: [String], in repository: RepositoryConfig) throws -> Process {
         guard let executable = arguments.first else {
             throw OrchestratorConfigError.emptyLoopCommand
         }
@@ -91,7 +128,6 @@ public actor LocalLoopRuntime: LoopRuntime {
             process.arguments = arguments
         }
         process.currentDirectoryURL = URL(fileURLWithPath: repository.checkoutPath, isDirectory: true)
-        try process.run()
-        processes[repository.fullName.lowercased()] = process
+        return process
     }
 }

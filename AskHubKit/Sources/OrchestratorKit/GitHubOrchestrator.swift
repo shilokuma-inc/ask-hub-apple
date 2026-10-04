@@ -124,6 +124,62 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         try await client.get("repos/\(repository)", as: RepositoryInfo.self).defaultBranch
     }
 
+    public func ideaRequests(org: String) async throws -> [IdeaRequestIssue] {
+        let query = "org:\(org) is:issue is:open label:\(AskHubLabel.ideaRequest.rawValue)"
+        let nodes: [IdeaIssueNode] = try await collectGraphQLPages { after in
+            let data = try await client.graphQL(
+                Self.ideaSearchQuery,
+                variables: ["query": .string(query), "after": after.map(GraphQLVariable.string) ?? .null],
+                as: IdeaSearchData.self
+            )
+            return (data.search.nodes.compactMap(\.self), data.search.pageInfo)
+        }
+        return nodes.compactMap { node in
+            guard let id = node.id, let number = node.number, let title = node.title, let url = node.url,
+                  let repository = node.repository?.nameWithOwner else {
+                return nil
+            }
+            return IdeaRequestIssue(
+                nodeID: id,
+                repository: repository,
+                number: number,
+                title: title,
+                body: node.body ?? "",
+                url: url,
+                author: node.author?.login
+            )
+        }
+    }
+
+    public func comment(on issue: IdeaRequestIssue, body: String) async throws {
+        _ = try await client.send(
+            "POST",
+            "repos/\(issue.repository)/issues/\(issue.number)/comments",
+            body: ["body": body],
+            as: CommentID.self
+        )
+    }
+
+    public func close(_ issue: IdeaRequestIssue) async throws {
+        _ = try await client.send(
+            "PATCH",
+            "repos/\(issue.repository)/issues/\(issue.number)",
+            body: ["state": "closed", "state_reason": "completed"],
+            as: PullRequestSummary.self
+        )
+    }
+
+    private static let ideaSearchQuery = """
+        query($query: String!, $after: String) {
+          search(query: $query, type: ISSUE, first: 50, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              ... on Issue { id number title body url author { login } repository { nameWithOwner } }
+            }
+          }
+        }
+        """
+
     static func epicFinalTitle(branch: String, base: String) -> String {
         "【FEAT】\(branch) を \(base) に取り込む"
     }
@@ -260,4 +316,23 @@ private struct NewPullRequest: Encodable, Sendable {
 
 private struct LabelName: Decodable {
     let name: String
+}
+
+private struct IdeaSearchData: Decodable {
+    let search: Connection<IdeaIssueNode>
+}
+
+/// 検索結果の依頼 Issue
+private struct IdeaIssueNode: Decodable {
+    let id: String?
+    let number: Int?
+    let title: String?
+    let body: String?
+    let url: URL?
+    let author: SearchNode.Author?
+    let repository: SearchNode.Repository?
+}
+
+private struct CommentID: Decodable {
+    let id: Int
 }

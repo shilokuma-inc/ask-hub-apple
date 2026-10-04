@@ -99,6 +99,31 @@ struct LocalLoopRuntimeTests {
         #expect(try String(contentsOf: checkout.appendingPathComponent("arg.txt"), encoding: .utf8) == "a b")
     }
 
+    @Test func runCollectsOutputAndExitStatus() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // 標準出力と標準エラーをまとめて受け取り、引数は 1 つのまま渡る
+        let result = try await LocalLoopRuntime().run(
+            ["/bin/sh", "-c", #"printf '%s\n' "$1"; echo err >&2; exit 3"#, "sh", "ASKHUB_DISCUSSION_URL: a b"],
+            for: repository,
+            timeout: .seconds(10)
+        )
+        #expect(result.status == 3)
+        #expect(result.output.contains("ASKHUB_DISCUSSION_URL: a b\n"))
+        #expect(result.output.contains("err"))
+    }
+
+    @Test func runStopsCommandAfterTimeout() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let start = ContinuousClock.now
+        let result = try await LocalLoopRuntime().run(["/bin/sleep", "10"], for: repository, timeout: .milliseconds(300))
+        #expect(result.status != 0)
+        #expect(ContinuousClock.now - start < .seconds(5))
+    }
+
     @Test func resolvesRelativeExecutableFromPath() async throws {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }
