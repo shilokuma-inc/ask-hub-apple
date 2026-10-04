@@ -131,7 +131,8 @@ struct QuestionDetailView: View {
     private func post() {
         Task {
             await form.post(using: inbox)
-            if form.isPosted && !form.loopStartFailed {
+            // ループを始めなかった理由（errorMessage）があるときは、閉じずに見せる
+            if form.isPosted && !form.loopStartFailed && form.errorMessage == nil {
                 dismiss()
             }
         }
