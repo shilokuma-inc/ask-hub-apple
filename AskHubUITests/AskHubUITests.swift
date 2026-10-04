@@ -61,6 +61,8 @@ final class AskHubUITests: XCTestCase {
         let row = app.staticTexts["Q1. レート制限の単位 送信の上限をどの単位で数えますか？"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
+        // 投稿ボタンは画面の下にあるので、スクロールして表示する
+        app.swipeUp()
 
         let post = app.buttons["回答を投稿"]
         XCTAssertTrue(post.waitForExistence(timeout: 5))
@@ -70,6 +72,40 @@ final class AskHubUITests: XCTestCase {
         post.tap()
 
         // 投稿すると一覧に戻る
+        XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testStartLoopWhenAnsweringLastQuestionOfDiscussion() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは投稿もループの開始も GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        // 1 つ目の質問に答える（まだ未回答の質問が残るので、ループは始められない）
+        app.staticTexts["Q1. レート制限の単位 送信の上限をどの単位で数えますか？"].tap()
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["この Discussion には、ほかに未回答の質問が 1 件あります"].waitForExistence(timeout: 5))
+        app.buttons["1時間"].tap()
+        app.buttons["回答を投稿"].tap()
+
+        // 最後の質問では、投稿と一緒にループを始められる
+        let lastQuestion = app.staticTexts["Q2. 通知の文言 通知に表示する文言の案があれば教えてください。"]
+        XCTAssertTrue(lastQuestion.waitForExistence(timeout: 5))
+        lastQuestion.tap()
+        app.swipeUp()
+        let toggle = app.switches["投稿したら、回答を確定してループを始める"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        toggle.switches.firstMatch.tap()
+        let note = app.textFields["回答"]
+        note.tap()
+        note.typeText("朝の通知だけにしたい")
+        app.buttons["回答を投稿してループを始める"].tap()
+
+        // 確かめてから始める
+        let confirm = app.buttons["投稿してループを始める"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
         XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
     }
 }
