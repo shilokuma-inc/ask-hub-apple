@@ -8,10 +8,23 @@ public protocol OrchestratorGitHub: Sendable {
     func removeReadyLabel(from discussion: ReadyDiscussion) async throws
     /// Discussion / PR から `needs-answer` を外す
     func removeNeedsAnswerLabel(from subject: InboxSubject) async throws
-    /// `branch` を head にした PR が（閉じたものも含めて）あるか
-    func hasPullRequest(in repository: String, head branch: String) async throws -> Bool
-    /// `branch` から既定ブランチへの epic の最終 PR を作り、`epic-final` を付ける。PR の番号を返す
+    /// `branch` を head にした PR（閉じたものも含む）。無ければ `nil`
+    func existingPullRequest(in repository: String, head branch: String) async throws -> ExistingPullRequest?
+    /// `branch` から既定ブランチへの epic の最終 PR を作る。PR の番号を返す
     func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int
+    /// PR に `epic-final` を付ける。既に付いていても失敗しない
+    func addEpicFinalLabel(in repository: String, number: Int) async throws
+}
+
+/// 既にある PR
+public struct ExistingPullRequest: Sendable, Equatable {
+    public let number: Int
+    public let isOpen: Bool
+
+    public init(number: Int, isOpen: Bool) {
+        self.number = number
+        self.isOpen = isOpen
+    }
 }
 
 /// ループの状態の取得と起動。テストでは差し替える
@@ -129,13 +142,20 @@ public actor Orchestrator {
         }
         do {
             // 閉じた PR もあれば作り直さない（人がマージせずに閉じたものを復活させない）
-            if try await github.hasPullRequest(in: repository.fullName, head: branch) {
+            if let existing = try await github.existingPullRequest(in: repository.fullName, head: branch) {
+                // 作った後にラベルだけ付け損ねた場合に備え、open な PR には付け直す（付与は冪等）
+                if existing.isOpen {
+                    try await github.addEpicFinalLabel(in: repository.fullName, number: existing.number)
+                }
                 finalizedEpics.insert(key)
                 return
             }
             let number = try await github.createEpicFinalPullRequest(in: repository.fullName, head: branch, body: summary)
+            log("\(repository.fullName) の \(branch) が完了したので、最終 PR #\(number) を作りました")
+            // ラベルの付与に失敗しても、次のポーリングで既存の PR として付け直す
+            try await github.addEpicFinalLabel(in: repository.fullName, number: number)
             finalizedEpics.insert(key)
-            log("\(repository.fullName) の \(branch) が完了したので、最終 PR #\(number)（epic-final）を作りました")
+            log("\(repository.fullName) の最終 PR #\(number) に epic-final を付けました")
         } catch {
             log("\(repository.fullName) の \(branch) の最終 PR を作れませんでした（次のポーリングで再試行します）: \(error)")
         }

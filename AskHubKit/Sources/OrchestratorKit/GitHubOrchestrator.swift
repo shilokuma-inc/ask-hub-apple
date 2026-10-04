@@ -75,14 +75,16 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         )
     }
 
-    public func hasPullRequest(in repository: String, head branch: String) async throws -> Bool {
+    public func existingPullRequest(in repository: String, head branch: String) async throws -> ExistingPullRequest? {
         let owner = try Self.owner(of: repository)
         let pulls = try await client.getAllPages(
             "repos/\(repository)/pulls",
             query: [URLQueryItem(name: "head", value: "\(owner):\(branch)"), URLQueryItem(name: "state", value: "all")],
-            of: PullRequestNumber.self
+            of: PullRequestSummary.self
         )
-        return !pulls.isEmpty
+        // open なものがあればそれを、無ければ最初のもの（閉じた PR）を返す
+        let pull = pulls.first { $0.state == "open" } ?? pulls.first
+        return pull.map { ExistingPullRequest(number: $0.number, isOpen: $0.state == "open") }
     }
 
     public func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int {
@@ -97,16 +99,19 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
                 base: base,
                 body: body + Self.epicFinalFooter
             ),
-            as: PullRequestNumber.self
+            as: PullRequestSummary.self
         )
-        // PR のラベルは Issue の API で付ける
+        return pull.number
+    }
+
+    public func addEpicFinalLabel(in repository: String, number: Int) async throws {
+        // PR のラベルは Issue の API で付ける。既に付いているラベルを足しても失敗しない
         _ = try await client.send(
             "POST",
-            "repos/\(repository)/issues/\(pull.number)/labels",
+            "repos/\(repository)/issues/\(number)/labels",
             body: ["labels": [AskHubLabel.epicFinal.rawValue]],
             as: [LabelName].self
         )
-        return pull.number
     }
 
     static func epicFinalTitle(branch: String, base: String) -> String {
@@ -222,8 +227,10 @@ private struct RemoveLabelsData: Decodable {
     let removeLabelsFromLabelable: Payload?
 }
 
-private struct PullRequestNumber: Decodable {
+private struct PullRequestSummary: Decodable {
     let number: Int
+    /// `open` / `closed`（マージ済みも `closed`）
+    let state: String
 }
 
 private struct RepositoryInfo: Decodable {

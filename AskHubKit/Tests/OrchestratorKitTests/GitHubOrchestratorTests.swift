@@ -132,11 +132,17 @@ struct GitHubOrchestratorTests {
         #expect(http.requests.count == 1)
     }
 
-    @Test func checksPullRequestsOfAnyStateByHead() async throws {
-        let http = StubHTTPClient(["[]", #"[{ "number": 7 }]"#])
+    @Test func findsPullRequestsOfAnyStateByHeadPreferringOpen() async throws {
+        let http = StubHTTPClient([
+            "[]",
+            #"[{ "number": 7, "state": "closed" }]"#,
+            #"[{ "number": 7, "state": "closed" }, { "number": 9, "state": "open" }]"#
+        ])
         let github = makeGitHub(http)
-        #expect(try await !github.hasPullRequest(in: "shilokuma-inc/ask-hub-apple", head: "epic/mvp"))
-        #expect(try await github.hasPullRequest(in: "shilokuma-inc/ask-hub-apple", head: "epic/mvp"))
+        let repository = "shilokuma-inc/ask-hub-apple"
+        #expect(try await github.existingPullRequest(in: repository, head: "epic/mvp") == nil)
+        #expect(try await github.existingPullRequest(in: repository, head: "epic/mvp") == ExistingPullRequest(number: 7, isOpen: false))
+        #expect(try await github.existingPullRequest(in: repository, head: "epic/mvp") == ExistingPullRequest(number: 9, isOpen: true))
 
         let url = try #require(http.requests[0].url)
         #expect(url.path() == "/repos/shilokuma-inc/ask-hub-apple/pulls")
@@ -148,11 +154,13 @@ struct GitHubOrchestratorTests {
     @Test func createsEpicFinalPullRequestToDefaultBranchWithLabel() async throws {
         let http = StubHTTPClient([
             #"{ "default_branch": "develop" }"#,
-            #"{ "number": 42 }"#,
+            #"{ "number": 42, "state": "open" }"#,
             #"[{ "name": "epic-final" }]"#
         ])
-        let number = try await makeGitHub(http).createEpicFinalPullRequest(in: "o/r", head: "epic/mvp", body: "まとめ")
+        let github = makeGitHub(http)
+        let number = try await github.createEpicFinalPullRequest(in: "o/r", head: "epic/mvp", body: "まとめ")
         #expect(number == 42)
+        try await github.addEpicFinalLabel(in: "o/r", number: number)
 
         #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" } == [
             "GET /repos/o/r",
