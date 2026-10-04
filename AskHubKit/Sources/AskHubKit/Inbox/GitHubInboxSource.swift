@@ -85,6 +85,55 @@ public struct GitHubInboxSource: InboxSource {
         }
         """
 
+    public func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
+        let query = "org:\(org) label:\(AskHubLabel.readyForLoop.rawValue) is:open"
+        let nodes: [WaitingNode] = try await collectGraphQLPages { after in
+            let data = try await client.graphQL(
+                Self.waitingQuery,
+                variables: [
+                    "query": .string(query),
+                    "after": after.map(GraphQLVariable.string) ?? .null,
+                    "label": .string(OrchestratorHeartbeat.labelName)
+                ],
+                as: WaitingSearchData.self
+            )
+            return (data.search.nodes.compactMap(\.self), data.search.pageInfo)
+        }
+        return nodes.compactMap { node in
+            guard let id = node.id, let number = node.number, let title = node.title, let url = node.url,
+                  let repository = node.repository, node.closed != true else {
+                return nil
+            }
+            let subject = InboxSubject(
+                kind: .discussion,
+                nodeID: id,
+                repository: repository.nameWithOwner,
+                number: number,
+                title: title,
+                url: url
+            )
+            return WaitingDiscussion(
+                subject: subject,
+                lastSeen: OrchestratorHeartbeat.lastSeen(in: repository.label?.description)
+            )
+        }
+    }
+
+    /// 検索結果のリポジトリから、担当の印のラベルも一緒に読む（検索 1 回で済ませる）
+    private static let waitingQuery = """
+        query($query: String!, $after: String, $label: String!) {
+          search(query: $query, type: DISCUSSION, first: 50, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              ... on Discussion {
+                id number title url closed
+                repository { nameWithOwner label(name: $label) { description } }
+              }
+            }
+          }
+        }
+        """
+
     // MARK: - 検索
 
     private func search(query: String, type: String, kind: InboxSubject.Kind) async throws -> [InboxSubject] {
@@ -403,4 +452,27 @@ private struct PullRequestNode: Decodable {
 
 private struct ReviewThreadCommentsNode: Decodable {
     let comments: Connection<CommentNode>?
+}
+
+private struct WaitingSearchData: Decodable {
+    let search: Connection<WaitingNode>
+}
+
+/// ループの開始を待っている Discussion
+private struct WaitingNode: Decodable {
+    struct Repository: Decodable {
+        let nameWithOwner: String
+        let label: HeartbeatLabel?
+    }
+
+    let id: String?
+    let number: Int?
+    let title: String?
+    let url: URL?
+    let closed: Bool?
+    let repository: Repository?
+}
+
+private struct HeartbeatLabel: Decodable {
+    let description: String?
 }
