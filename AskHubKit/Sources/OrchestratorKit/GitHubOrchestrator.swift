@@ -94,11 +94,16 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
             // ラベルが無いと付けられない（ralph-setup.sh が作る）。失敗として返し、needs-answer を残す
             throw GitHubError.invalidResponse
         }
-        _ = try await client.graphQL(
+        let added = try await client.graphQL(
             Self.addLabelMutation,
             variables: ["labelable": .string(subject.nodeID), "labels": .strings([labelID])],
             as: AddLabelsData.self
         )
+        // errors が無くても payload が null なら付いていない。成功扱いにすると needs-answer だけが外れ、
+        // この Discussion は回答待ちの検索にもループの起動の検索にも出なくなる
+        guard added.addLabelsToLabelable != nil else {
+            throw GitHubError.invalidResponse
+        }
     }
 
     public func existingPullRequest(in repository: String, head branch: String) async throws -> ExistingPullRequest? {

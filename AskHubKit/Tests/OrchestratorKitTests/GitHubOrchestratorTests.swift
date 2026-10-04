@@ -160,6 +160,22 @@ struct GitHubOrchestratorTests {
         #expect(mutation.variables["labels"] as? [String] == ["LA_ready"])
     }
 
+    @Test func failsToAddReadyForLoopWhenMutationPayloadIsNull() async throws {
+        let http = StubHTTPClient([
+            #"{ "data": { "repository": { "label": { "id": "LA_ready" } } } }"#,
+            #"{ "data": { "addLabelsToLabelable": null } }"#
+        ])
+        let subject = InboxSubject(
+            kind: .discussion,
+            nodeID: "D_1",
+            repository: "o/r",
+            number: 1,
+            title: "T",
+            url: URL(string: "https://github.com/o/r/discussions/1")!
+        )
+        await #expect(throws: (any Error).self) { try await self.makeGitHub(http).addReadyLabel(to: subject) }
+    }
+
     @Test func failsToAddReadyForLoopWhenRepositoryHasNoLabel() async throws {
         let http = StubHTTPClient([#"{ "data": { "repository": { "label": null } } }"#])
         let subject = InboxSubject(
