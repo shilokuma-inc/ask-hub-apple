@@ -13,6 +13,8 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
     case pollIntervalTooShort(seconds: Int, minimum: Int)
     case emptyLoopCommand
     case unknownPlaceholder(String)
+    case emptyIdeaCommand
+    case unknownIdeaPlaceholder(String)
 
     public var description: String {
         switch self {
@@ -43,6 +45,14 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
         case let .unknownPlaceholder(name):
             "loopCommand に未知のプレースホルダ {\(name)} があります（使えるもの: "
                 + LoopCommandTemplate.Placeholder.allCases.map { "{\($0.rawValue)}" }.joined(separator: " ")
+                + "）"
+
+        case .emptyIdeaCommand:
+            "ideaCommand が空です。実行するコマンドを引数の配列で指定してください"
+
+        case let .unknownIdeaPlaceholder(name):
+            "ideaCommand に未知のプレースホルダ {\(name)} があります（使えるもの: "
+                + IdeaCommandTemplate.Placeholder.allCases.map { "{\($0.rawValue)}" }.joined(separator: " ")
                 + "）"
         }
     }

@@ -1,4 +1,5 @@
 import AskHubKit
+import Foundation
 
 /// オーケストレーターが使う GitHub の操作。テストでは差し替える
 public protocol OrchestratorGitHub: Sendable {
@@ -14,6 +15,24 @@ public protocol OrchestratorGitHub: Sendable {
     func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int
     /// PR に `epic-final` を付ける。既に付いていても失敗しない
     func addEpicFinalLabel(in repository: String, number: Int) async throws
+    /// org 全体の、`idea-request` が付いた open な Issue
+    func ideaRequests(org: String) async throws -> [IdeaRequestIssue]
+    /// 依頼 Issue にコメントする
+    func comment(on issue: IdeaRequestIssue, body: String) async throws
+    /// 依頼 Issue をクローズする（完了として）
+    func close(_ issue: IdeaRequestIssue) async throws
+}
+
+/// 終わるまで待って実行したコマンドの結果
+public struct CommandResult: Sendable, Equatable {
+    public let status: Int32
+    /// 標準出力と標準エラー
+    public let output: String
+
+    public init(status: Int32, output: String) {
+        self.status = status
+        self.output = output
+    }
 }
 
 /// 既にある PR
@@ -34,6 +53,8 @@ public protocol LoopRuntime: Sendable {
     func launch(_ arguments: [String], for repository: RepositoryConfig) async throws
     /// 制御用 worktree のブランチ・ゴール・state を読む
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot
+    /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める
+    func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
 }
 
 /// 「ポーリング → 状態判定 → アクション」を繰り返す。
@@ -48,6 +69,10 @@ public actor Orchestrator {
     private var watcher = ResumeWatcher()
     /// epic の最終 PR を作った（または既にあった）リポジトリ。毎回 GitHub に問い合わせないために覚える
     private var finalizedEpics: Set<String> = []
+    private var ideaTracker = IdeaRequestTracker()
+
+    /// 依頼から Discussion を作らせるコマンドの制限時間
+    static let ideaCommandTimeout: Duration = .seconds(30 * 60)
 
     /// - Parameter inbox: `needs-answer` の Discussion / PR と質問の取得元
     public init(
@@ -127,7 +152,86 @@ public actor Orchestrator {
         for repository in config.repositories {
             await finalizeEpicIfComplete(repository, status: statuses[repository.fullName.lowercased()] ?? .idle)
         }
+
+        // 新機能の依頼: claude に質問付きの Discussion を作らせる（1 回のポーリングで 1 件）
+        do {
+            try await handleIdeaRequests()
+        } catch {
+            log("依頼の確認に失敗しました: \(error)")
+        }
         return decisions
+    }
+
+    private func handleIdeaRequests() async throws {
+        let issues = try await github.ideaRequests(org: config.org)
+        ideaTracker.prune(keeping: issues)
+
+        // 依頼 Issue への後処理（リンクのコメント・クローズ・失敗の通知）。失敗したら次のポーリングで続きから
+        for (issue, followUp) in ideaTracker.followUps(in: issues) {
+            await perform(followUp, on: issue)
+        }
+
+        guard let (issue, repository) = ideaTracker.next(in: issues, config: config) else {
+            return
+        }
+        let name = "\(issue.repository)#\(issue.number)"
+        log("\(name) の依頼から、質問付きの Discussion を作らせます")
+        let prompt = IdeaPrompt.make(for: issue, trustedAuthors: config.trustedAuthorLogins)
+        let arguments = config.ideaCommand.render(for: repository)
+        let reason: String
+        do {
+            // プロンプト（依頼の本文を含む）は引数ではなく標準入力で渡す
+            let result = try await runtime.run(arguments, input: prompt, for: repository, timeout: Self.ideaCommandTimeout)
+            if result.status == 0, let url = IdeaPrompt.discussionURL(in: result.output, repository: issue.repository) {
+                ideaTracker.recordCreated(url, for: issue)
+                log("\(name) の依頼から Discussion を作りました: \(url.absoluteString)")
+                await perform(.commentAndClose(url), on: issue)
+                return
+            }
+            reason = "Discussion の URL を受け取れませんでした（終了コード \(result.status)）"
+        } catch {
+            reason = "ideaCommand を起動できませんでした（\(error)）"
+        }
+        if ideaTracker.recordFailure(for: issue, reason: reason) {
+            log("\(name) の Discussion を \(IdeaRequestTracker.maxAttempts) 回作れなかったので、やめます: \(reason)")
+            await perform(.reportFailure(reason: reason), on: issue)
+        } else {
+            log("\(name) の Discussion を作れませんでした。次のポーリングで再試行します: \(reason)")
+        }
+    }
+
+    /// 依頼 Issue への後処理を 1 段ずつ進める。コメントを重ねないよう、済んだ段は記録してから次へ進む
+    private func perform(_ followUp: IdeaRequestTracker.FollowUp, on issue: IdeaRequestIssue) async {
+        let name = "\(issue.repository)#\(issue.number)"
+        do {
+            switch followUp {
+            case let .commentAndClose(url):
+                try await github.comment(on: issue, body: """
+                    質問付きの Discussion を作りました: \(url.absoluteString)
+
+                    AskHub アプリの「要回答」から回答し、「回答を確定してループを始める」を押してください。（askhub-orchestrator）
+                    """)
+                ideaTracker.recordCommented(issue)
+                try await github.close(issue)
+                ideaTracker.recordCompleted(issue)
+                log("\(name) に Discussion へのリンクをコメントしてクローズしました")
+
+            case .close:
+                try await github.close(issue)
+                ideaTracker.recordCompleted(issue)
+                log("\(name) をクローズしました")
+
+            case let .reportFailure(reason):
+                // 人が気づけるよう、依頼 Issue に書き残す（Issue は開いたまま）
+                try await github.comment(on: issue, body: """
+                    質問付きの Discussion を作れませんでした（\(IdeaRequestTracker.maxAttempts) 回試行）: \(reason)
+                    担当 PC のオーケストレーターのログと ideaCommand の設定を確認してください。（askhub-orchestrator）
+                    """)
+                ideaTracker.recordFailureReported(issue)
+            }
+        } catch {
+            log("\(name) の後処理に失敗しました（次のポーリングで続きから再試行します）: \(error)")
+        }
     }
 
     private func finalizeEpicIfComplete(_ repository: RepositoryConfig, status: LoopStatus) async {

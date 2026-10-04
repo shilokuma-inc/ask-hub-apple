@@ -181,6 +181,40 @@ struct GitHubOrchestratorTests {
         #expect(labels == ["labels": ["epic-final"]])
     }
 
+    @Test func searchesOpenIdeaRequestsInOrg() async throws {
+        let http = StubHTTPClient([
+            #"""
+            { "data": { "search": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
+              { "id": "I_7", "number": 7, "title": "【依頼】通知", "body": "朝だけ", "url": "https://github.com/o/r/issues/7",
+                "author": { "login": "mrs1669" }, "repository": { "nameWithOwner": "o/r" } },
+              {}
+            ] } } }
+            """#
+        ])
+        let issues = try await makeGitHub(http).ideaRequests(org: "shilokuma-inc")
+
+        #expect(issues.map(\.number) == [7])
+        #expect(issues.first?.body == "朝だけ")
+        #expect(issues.first?.author == "mrs1669")
+        #expect(try requestJSON(http.requests[0]).variables["query"] as? String == "org:shilokuma-inc is:issue is:open label:idea-request")
+    }
+
+    @Test func commentsAndClosesIdeaRequest() async throws {
+        let http = StubHTTPClient([#"{ "id": 1 }"#, #"{ "number": 7, "state": "closed" }"#])
+        let github = makeGitHub(http)
+        let issue = IdeaRequestIssue.fixture(repository: "o/r", number: 7)
+        try await github.comment(on: issue, body: "作りました")
+        try await github.close(issue)
+
+        #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" } == [
+            "POST /repos/o/r/issues/7/comments",
+            "PATCH /repos/o/r/issues/7"
+        ])
+        let closeBody = try #require(http.requests[1].httpBody)
+        let close = try #require(try JSONSerialization.jsonObject(with: closeBody) as? [String: String])
+        #expect(close == ["state": "closed", "state_reason": "completed"])
+    }
+
     @Test func removeLabelReportsGraphQLErrors() async {
         let http = StubHTTPClient([#"{ "data": null, "errors": [{ "message": "Resource not accessible" }] }"#])
         await #expect(throws: GitHubError.graphQL(messages: ["Resource not accessible"])) {

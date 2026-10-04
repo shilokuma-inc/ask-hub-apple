@@ -40,10 +40,15 @@ public struct LoopCommandTemplate: Sendable, Equatable {
             .controlPath: repository.controlWorktreePath,
             .discussion: discussionNumber.map(String.init) ?? ""
         ]
-        // 1 回の走査で置き換える。値（パスなど）に `{...}` が含まれていても再び置き換えない
-        return arguments.map { argument in
-            argument.replacing(Self.placeholderPattern) { match in
-                Placeholder(rawValue: String(match.output.1)).flatMap { values[$0] } ?? String(match.output.0)
+        return Self.substitute(arguments, values: Dictionary(uniqueKeysWithValues: values.map { ($0.key.rawValue, $0.value) }))
+    }
+
+    /// 各引数の `{name}` を `values` で置き換える（`ideaCommand` でも使う）。
+    /// 1 回の走査で置き換えるので、値（パスなど）に `{...}` が含まれていても再び置き換えない
+    static func substitute(_ arguments: [String], values: [String: String]) -> [String] {
+        arguments.map { argument in
+            argument.replacing(placeholderPattern) { match in
+                values[String(match.output.1)] ?? String(match.output.0)
             }
         }
     }
@@ -54,7 +59,7 @@ public struct LoopCommandTemplate: Sendable, Equatable {
         /\{([A-Za-z]+)\}/
     }
 
-    private static func placeholderNames(in argument: String) -> [String] {
+    static func placeholderNames(in argument: String) -> [String] {
         argument.matches(of: placeholderPattern).map { String($0.output.1) }
     }
 }

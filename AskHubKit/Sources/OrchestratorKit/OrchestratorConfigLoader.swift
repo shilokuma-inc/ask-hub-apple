@@ -14,7 +14,7 @@ import Foundation
 ///   "loopCommand": ["/path/to/start-loop.sh", "{repository}", "{controlPath}"]
 /// }
 /// ```
-/// `trustedAuthors` と `pollIntervalSeconds` は省略できる（既定値は `TrustedAuthors.default` と 60 秒）。
+/// `trustedAuthors`・`pollIntervalSeconds`・`ideaCommand` は省略できる（既定値は `TrustedAuthors.default`・60 秒・`IdeaCommandTemplate.defaultArguments`）。
 public struct OrchestratorConfigLoader: Sendable {
     /// `~` の展開に使うホームディレクトリ。テストで差し替える
     public let homeDirectory: String
@@ -88,7 +88,8 @@ public struct OrchestratorConfigLoader: Sendable {
             org: org,
             repositories: repositories,
             pollInterval: .seconds(seconds),
-            loopCommand: try LoopCommandTemplate(arguments: file.loopCommand)
+            loopCommand: try LoopCommandTemplate(arguments: file.loopCommand),
+            ideaCommand: try IdeaCommandTemplate(arguments: file.ideaCommand ?? IdeaCommandTemplate.defaultArguments)
         )
     }
 
@@ -160,4 +161,5 @@ private struct ConfigFile: Decodable {
     let repositories: [Repository]
     let pollIntervalSeconds: Int?
     let loopCommand: [String]
+    let ideaCommand: [String]?
 }
