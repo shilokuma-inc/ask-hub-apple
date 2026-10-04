@@ -55,7 +55,7 @@ struct LocalLoopRuntimeTests {
         try finished.run()
         finished.waitUntilExit()
         try Data("\(finished.processIdentifier)".utf8).write(to: pidFile)
-        #expect(await runtime.status(of: repository) == LoopStatus(stateFileExists: false, processAlive: false))
+        #expect(await runtime.status(of: repository) == LoopStatus(stateFileExists: false, processAlive: false, stalled: true))
 
         // PID ファイルが読めなければ判断せず、state ファイルを信じる
         try Data("not a pid".utf8).write(to: pidFile)
@@ -106,6 +106,11 @@ struct LocalLoopRuntimeTests {
         #expect(await LocalLoopRuntime().epicSnapshot(of: repository).discussion == 12)
         try Data("not a number".utf8).write(to: control.appendingPathComponent(".claude/askhub-bootstrap.local.txt"))
         #expect(await LocalLoopRuntime().epicSnapshot(of: repository).discussion == nil)
+
+        // 起動スクリプトが完了語を残していれば、ループを始められる状態まで準備できている
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).loopPrepared == false)
+        try Data("DONE\n".utf8).write(to: control.appendingPathComponent(".claude/askhub-promise.local.txt"))
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).loopPrepared)
 
         // detached HEAD ではブランチが無い
         try Data("0123456789abcdef0123456789abcdef01234567\n".utf8).write(to: gitDirectory.appendingPathComponent("HEAD"))

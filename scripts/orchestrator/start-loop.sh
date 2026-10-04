@@ -58,6 +58,17 @@ open_tasks() {
   grep '^- \[ \]' "$GOAL" | grep -vc '※回答待ち' || true
 }
 
+# 同じ Discussion の準備が途中で失敗している（完了語が無く、準備を始めた Discussion の番号が同じ）
+half_done() {
+  [[ ! -f "$PROMISE_FILE" && "$(head -1 "$BOOTSTRAP_FILE" 2>/dev/null)" == "$DISCUSSION" ]]
+}
+
+# 前の epic に未完了のタスクが残っていて、新しい epic を始められない
+previous_epic_unfinished() {
+  [[ -d "$CTL" ]] && ! half_done && [[ "$(open_tasks)" -gt 0 ]]
+}
+UNFINISHED_MESSAGE="前の epic に未完了のタスクが残っています（$GOAL）。1 リポジトリにつきループは 1 つなので、新しい epic は始めません"
+
 [[ -d "$CHECKOUT/.git" || -f "$CHECKOUT/.git" ]] || fail "checkout が見つかりません: $CHECKOUT"
 [[ -x "$CHECKOUT/scripts/ralph-setup.sh" && -x "$CHECKOUT/scripts/ralph-start.sh" ]] \
   || fail "scripts/ralph-setup.sh / ralph-start.sh がありません（template-app-ios の ralph 一式を取り込んでください）"
@@ -82,6 +93,8 @@ ralph_plugin_enabled \
 if [[ -f "$STATE" ]]; then
   RECORDED=$(head -1 "$PID_FILE" 2>/dev/null || true)
   if [[ "$RECORDED" =~ ^[0-9]+$ ]] && ! kill -0 "$RECORDED" 2>/dev/null; then
+    # 新しい epic を始められないなら、state ファイル（異常終了の目印。オーケストレーターが再開に使う）を残したまま断る
+    [[ -n "$DISCUSSION" ]] && previous_epic_unfinished && fail "$UNFINISHED_MESSAGE"
     # 記録したプロセスが居ない。落ちたか止められて state ファイルだけ残っている
     log "state ファイルが残っていますが、ループのプロセス（PID $RECORDED）は終わっています。state を片付けて続けます"
     rm -f "$STATE"
@@ -98,14 +111,8 @@ if [[ -n "$DISCUSSION" ]]; then
   [[ "$DISCUSSION" =~ ^[0-9]+$ ]] || fail "Discussion の番号が不正です: $DISCUSSION"
 
   if [[ -d "$CTL" ]]; then
-    HALF_DONE=false
-    if [[ ! -f "$PROMISE_FILE" && "$(head -1 "$BOOTSTRAP_FILE" 2>/dev/null)" == "$DISCUSSION" ]]; then
-      HALF_DONE=true
-      log "同じ Discussion の準備が途中で失敗していたので、やり直します"
-    fi
-    if [[ "$HALF_DONE" == false && "$(open_tasks)" -gt 0 ]]; then
-      fail "前の epic に未完了のタスクが残っています（$GOAL）。1 リポジトリにつきループは 1 つなので、新しい epic は始めません"
-    fi
+    previous_epic_unfinished && fail "$UNFINISHED_MESSAGE"
+    half_done && log "同じ Discussion の準備が途中で失敗していたので、やり直します"
     # 前の epic は完了済み（または同じ Discussion の準備の途中）。worktree を片付ける前に、
     # コミットしていない変更が無いことを確かめ、goal / state などの作業ファイルを退避する
     WORKTREES=()
