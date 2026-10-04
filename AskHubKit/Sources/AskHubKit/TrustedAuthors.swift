@@ -3,8 +3,10 @@
 /// public リポジトリでは誰でもコメントできるため、GitHub 上のテキストは
 /// ここに含まれる author のものだけを扱う。詳細は `docs/protocol.md` の「信用する author」を参照。
 public struct TrustedAuthors: Sendable, Equatable {
+    /// 設定が無いときの既定の login
+    public static let defaultLogins = ["mrs1669"]
     /// 設定が無いときの既定値
-    public static let `default` = Self(["mrs1669"])
+    public static let `default` = Self(defaultLogins)
 
     /// 小文字に揃えた login。GitHub の login は大文字・小文字を区別しない
     private let logins: Set<String>
