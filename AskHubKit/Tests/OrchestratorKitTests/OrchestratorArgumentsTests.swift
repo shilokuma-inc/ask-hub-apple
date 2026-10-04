@@ -10,6 +10,10 @@ struct OrchestratorArgumentsTests {
         #expect(try OrchestratorArguments.parse(["--config", "/tmp/a.json"]) == OrchestratorArguments(configPath: "/tmp/a.json"))
         #expect(try OrchestratorArguments.parse(["-h"]).showsHelp)
         #expect(try OrchestratorArguments.parse(["--help"]).showsHelp)
+        #expect(
+            try OrchestratorArguments.parse(["--once", "--config", "/tmp/a.json"])
+                == OrchestratorArguments(configPath: "/tmp/a.json", runsOnce: true)
+        )
     }
 
     @Test func rejectsMissingValueAndUnknownOption() {

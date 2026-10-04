@@ -11,6 +11,8 @@ public struct LoopCommandTemplate: Sendable, Equatable {
         case checkoutPath
         /// 制御用 worktree のパス
         case controlPath
+        /// ループのゴール元の Discussion の番号。Discussion を伴わない起動では空文字列
+        case discussion
     }
 
     public let arguments: [String]
@@ -30,11 +32,13 @@ public struct LoopCommandTemplate: Sendable, Equatable {
     }
 
     /// 担当リポジトリの値で置き換えた引数の配列を返す
-    public func render(for repository: RepositoryConfig) -> [String] {
+    /// - Parameter discussionNumber: ゴール元の Discussion。`nil` なら `{discussion}` を空文字列にする
+    public func render(for repository: RepositoryConfig, discussionNumber: Int? = nil) -> [String] {
         let values: [Placeholder: String] = [
             .repository: repository.fullName,
             .checkoutPath: repository.checkoutPath,
-            .controlPath: repository.controlWorktreePath
+            .controlPath: repository.controlWorktreePath,
+            .discussion: discussionNumber.map(String.init) ?? ""
         ]
         // 1 回の走査で置き換える。値（パスなど）に `{...}` が含まれていても再び置き換えない
         return arguments.map { argument in
