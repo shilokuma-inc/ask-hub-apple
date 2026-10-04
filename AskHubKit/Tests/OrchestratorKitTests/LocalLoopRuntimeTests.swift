@@ -124,6 +124,38 @@ struct LocalLoopRuntimeTests {
         #expect(ContinuousClock.now - start < .seconds(5))
     }
 
+    @Test func runKillsCommandThatIgnoresSIGTERM() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let start = ContinuousClock.now
+        // sh が止まっても子の sleep がパイプを持ち続けるので、読み切りの上限も短くする
+        let runtime = LocalLoopRuntime(killGracePeriod: .milliseconds(300), outputDrainTimeout: .milliseconds(300))
+        let result = try await runtime.run(
+            ["/bin/sh", "-c", "trap '' TERM; sleep 10"],
+            for: repository,
+            timeout: .milliseconds(300)
+        )
+        #expect(result.status != 0)
+        #expect(ContinuousClock.now - start < .seconds(5))
+    }
+
+    @Test func runReturnsEvenIfChildKeepsPipeOpen() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // 子プロセス（sleep）がパイプを持ったまま残っても、決めた時間で読み切りをやめて戻る
+        let start = ContinuousClock.now
+        let result = try await LocalLoopRuntime(outputDrainTimeout: .milliseconds(500)).run(
+            ["/bin/sh", "-c", "sleep 10 & echo done"],
+            for: repository,
+            timeout: .seconds(10)
+        )
+        #expect(result.status == 0)
+        #expect(result.output.contains("done"))
+        #expect(ContinuousClock.now - start < .seconds(5))
+    }
+
     @Test func resolvesRelativeExecutableFromPath() async throws {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }

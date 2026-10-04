@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// この Mac でループの状態を調べ、`loopCommand` を起動する
 public actor LocalLoopRuntime: LoopRuntime {
@@ -9,7 +10,15 @@ public actor LocalLoopRuntime: LoopRuntime {
     /// オーケストレーターを再起動すると忘れるが、その場合も state ファイルが残っていれば起動しない
     private var processes: [String: Process] = [:]
 
-    public init() {}
+    /// SIGTERM を送ってから SIGKILL を送るまでの猶予
+    private let killGracePeriod: Duration
+    /// 終了後に出力の読み切りを待つ上限
+    private let outputDrainTimeout: Duration
+
+    public init(killGracePeriod: Duration = .seconds(10), outputDrainTimeout: Duration = .seconds(5)) {
+        self.killGracePeriod = killGracePeriod
+        self.outputDrainTimeout = outputDrainTimeout
+    }
 
     public func status(of repository: RepositoryConfig) -> LoopStatus {
         let key = repository.fullName.lowercased()
@@ -85,7 +94,9 @@ public actor LocalLoopRuntime: LoopRuntime {
     }
 
     /// `arguments` を実行して終了を待ち、終了コードと出力（標準出力と標準エラー）を返す。
-    /// `timeout` を過ぎたら SIGTERM で止める（`claude` が終わらない場合に備える）
+    ///
+    /// `timeout` を過ぎたら SIGTERM を送り、`killGracePeriod` 待っても終わらなければ SIGKILL で止める。
+    /// 出力は終了後に最長 `outputDrainTimeout` だけ読み切りを待つ（パイプを継承した子プロセスが残っても戻れるように）
     public func run(_ arguments: [String], for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult {
         let process = try Self.makeProcess(arguments, in: repository)
         let pipe = Pipe()
@@ -96,21 +107,48 @@ public actor LocalLoopRuntime: LoopRuntime {
             exit.yield(process.terminationStatus)
             exit.finish()
         }
+        // 出力は届いた分から読み、パイプが一杯になってコマンドが止まらないようにする
+        let output = OSAllocatedUnfairLock(initialState: Data())
+        let (closed, close) = AsyncStream<Void>.makeStream()
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                close.finish()
+            } else {
+                output.withLock { $0.append(chunk) }
+            }
+        }
         try process.run()
 
         let pid = process.processIdentifier
+        let killGracePeriod = killGracePeriod
         let timer = Task {
             try await Task.sleep(for: timeout)
             kill(pid, SIGTERM)
+            try await Task.sleep(for: killGracePeriod)
+            kill(pid, SIGKILL)
         }
-        defer { timer.cancel() }
-        // 出力はプロセスが終わるまで読み続ける（パイプが一杯になって止まらないように、終了を待つ前から読む）
-        let reader = pipe.fileHandleForReading
-        let data = await Task.detached { reader.readDataToEndOfFile() }.value
         var status: Int32 = -1
         for await value in exited {
             status = value
         }
+        timer.cancel()
+
+        // 終わった後に残りの出力を読み切る。子プロセスがパイプを持ち続けても、待つのは決めた時間まで
+        let outputDrainTimeout = outputDrainTimeout
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await _ in closed {}
+            }
+            group.addTask {
+                try? await Task.sleep(for: outputDrainTimeout)
+            }
+            await group.next()
+            group.cancelAll()
+        }
+        pipe.fileHandleForReading.readabilityHandler = nil
+        let data = output.withLock { $0 }
         return CommandResult(status: status, output: String(bytes: data, encoding: .utf8) ?? "")
     }
 
