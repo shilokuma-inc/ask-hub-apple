@@ -45,6 +45,9 @@ PLAYBOOK="$CTL/.claude/ralph-playbook.local.md"
 PROMISE_FILE="$CTL/.claude/askhub-promise.local.txt"
 # 準備を始めた Discussion の番号。準備が途中で失敗したかどうかの判定に使う（完了語が無く、この番号が同じなら途中で失敗している）
 BOOTSTRAP_FILE="$CTL/.claude/askhub-bootstrap.local.txt"
+# ループのプロセスの PID（exec するので、このスクリプトの PID がそのままループの PID になる）。
+# オーケストレーターも読み、state ファイルが残ったままプロセスが死んだことを見分ける
+PID_FILE="$CTL/.claude/askhub-loop.pid"
 
 log() { echo "[$(date '+%F %T')] [start-loop $REPOSITORY] $*"; }
 fail() { log "error: $*"; exit 1; }
@@ -59,8 +62,16 @@ open_tasks() {
 [[ -x "$CHECKOUT/scripts/ralph-setup.sh" && -x "$CHECKOUT/scripts/ralph-start.sh" ]] \
   || fail "scripts/ralph-setup.sh / ralph-start.sh がありません（template-app-ios の ralph 一式を取り込んでください）"
 if [[ -f "$STATE" ]]; then
-  log "ループは既に動いています（$STATE）。何もしません"
-  exit 0
+  RECORDED=$(head -1 "$PID_FILE" 2>/dev/null || true)
+  if [[ "$RECORDED" =~ ^[0-9]+$ ]] && ! kill -0 "$RECORDED" 2>/dev/null; then
+    # 記録したプロセスが居ない。落ちたか止められて state ファイルだけ残っている
+    log "state ファイルが残っていますが、ループのプロセス（PID $RECORDED）は終わっています。state を片付けて続けます"
+    rm -f "$STATE"
+  else
+    # PID が生きている、または PID の記録が無い（手で起動したループ）。どちらも動いているとみなして触らない
+    log "ループは既に動いています（$STATE）。何もしません"
+    exit 0
+  fi
 fi
 mkdir -p "$LOG_DIR"
 
@@ -173,3 +184,4 @@ cd "$CTL"
 exec "$CLAUDE_BIN" -p --permission-mode bypassPermissions \
   --add-dir "${CTL%-ctl}-a" --add-dir "${CTL%-ctl}-b" \
   "$INITIAL" </dev/null >>"$LOOP_LOG" 2>&1
+printf '%s\n' "$$" > "$PID_FILE"
