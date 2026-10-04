@@ -77,7 +77,10 @@ public actor LocalLoopRuntime: LoopRuntime {
         return EpicSnapshot(
             branch: Self.currentBranch(of: control),
             goal: read(".claude/ralph-goal.local.md"),
-            state: read(".claude/ralph-state.local.md")
+            state: read(".claude/ralph-state.local.md"),
+            discussion: read(".claude/askhub-bootstrap.local.txt")
+                .flatMap { $0.split(whereSeparator: \.isNewline).first }
+                .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
         )
     }
 

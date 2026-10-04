@@ -8,11 +8,24 @@ public struct EpicSnapshot: Sendable, Equatable {
     public let goal: String?
     /// `.claude/ralph-state.local.md` の内容。無ければ `nil`
     public let state: String?
+    /// ゴール元の Discussion の番号。起動スクリプトが `.claude/askhub-bootstrap.local.txt` に残す。
+    /// 手で始めた epic など、記録が無ければ `nil`
+    public let discussion: Int?
 
-    public init(branch: String?, goal: String?, state: String?) {
+    public init(branch: String?, goal: String?, state: String?, discussion: Int? = nil) {
         self.branch = branch
         self.goal = goal
         self.state = state
+        self.discussion = discussion
+    }
+
+    /// 最終 PR の本文。ゴール元の Discussion があれば、先頭にその番号と機械が読める目印を置く
+    /// （最終 PR がマージされたら、ワークフローがこの目印を読んで Discussion を閉じる）
+    public static func pullRequestBody(summary: String, discussion: Int?) -> String {
+        guard let discussion else {
+            return summary
+        }
+        return "ゴール元: Discussion #\(discussion)\n<!-- ask-hub:discussion \(discussion) -->\n\n\(summary)"
     }
 }
 

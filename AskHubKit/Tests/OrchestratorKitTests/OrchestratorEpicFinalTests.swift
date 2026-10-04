@@ -27,6 +27,20 @@ extension OrchestratorTests {
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple の epic/mvp が完了したので、最終 PR #100 を作りました"))
     }
 
+    @Test func putsGoalDiscussionMarkerAtTopOfEpicFinalPullRequest() async throws {
+        let github = FakeGitHub([.success([])])
+        let runtime = FakeRuntime()
+        let epic = Self.completedEpic
+        runtime.setEpic(EpicSnapshot(branch: epic.branch, goal: epic.goal, state: epic.state, discussion: 12))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+
+        #expect(github.createdEpicPullRequests == [
+            "shilokuma-inc/ask-hub-apple epic/mvp: ゴール元: Discussion #12\n<!-- ask-hub:discussion 12 -->\n\n- 回答待ち: #3"
+        ])
+    }
+
     @Test func relabelsCreatedPullRequestWhenLabelingFailed() async throws {
         let github = FakeGitHub([.success([])])
         github.setLabelFails(true)

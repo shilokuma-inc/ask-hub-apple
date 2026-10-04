@@ -280,7 +280,8 @@ public actor Orchestrator {
                 finalizedEpics.insert(key)
                 return
             }
-            let number = try await github.createEpicFinalPullRequest(in: repository.fullName, head: branch, body: summary)
+            let body = EpicSnapshot.pullRequestBody(summary: summary, discussion: snapshot.discussion)
+            let number = try await github.createEpicFinalPullRequest(in: repository.fullName, head: branch, body: body)
             log("\(repository.fullName) の \(branch) が完了したので、最終 PR #\(number) を作りました")
             // ラベルの付与に失敗しても、次のポーリングで既存の PR として付け直す
             try await github.addEpicFinalLabel(in: repository.fullName, number: number)
