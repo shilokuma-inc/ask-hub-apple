@@ -5,6 +5,8 @@ import SwiftUI
 struct NewRequestView: View {
     let model: IdeaRequestModel
     let openSettings: () -> Void
+    /// 送信後にキーボードを閉じ、結果が隠れないようにする
+    @FocusState private var isEditing: Bool
 
     var body: some View {
         @Bindable var model = model
@@ -22,6 +24,7 @@ struct NewRequestView: View {
 
             Section {
                 TextField("例: 通知の頻度を調整したい", text: $model.summary)
+                    .focused($isEditing)
             } header: {
                 Text("要約")
             } footer: {
@@ -31,6 +34,7 @@ struct NewRequestView: View {
             Section("依頼文") {
                 TextField("やりたいこと・背景・決まっていることなど", text: $model.body, axis: .vertical)
                     .lineLimit(5...12)
+                    .focused($isEditing)
             }
 
             if let errorMessage = model.errorMessage {
@@ -51,6 +55,7 @@ struct NewRequestView: View {
 
             Section {
                 Button {
+                    isEditing = false
                     Task { await model.send() }
                 } label: {
                     if model.isSending {
@@ -97,6 +102,7 @@ struct NewRequestView: View {
                     Text(InboxSubject.shortRepository(repository)).tag(Optional(repository))
                 }
             }
+            .accessibilityIdentifier("repository-picker")
         }
     }
 }
