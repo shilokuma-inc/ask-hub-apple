@@ -138,23 +138,28 @@ struct QuestionDetailView: View {
         }
     }
 
+    /// 選んだ選択肢は、印を出さずに行の背景と太字・アクセントカラーで示す（Discussion #142 の Q1・Q2）
     private func optionButton(_ option: String) -> some View {
-        Button {
+        let isSelected = form.choice == option
+        return Button {
             form.choice = option
         } label: {
-            HStack {
+            // 常に太字の幅で高さを確保し、選んだ瞬間に行の高さが変わらないようにする
+            ZStack(alignment: .topLeading) {
                 Text(option)
-                    .foregroundStyle(.primary)
-                Spacer()
-                if form.choice == option {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(.tint)
-                }
+                    .bold()
+                    .hidden()
+                    .accessibilityHidden(true)
+                Text(option)
+                    .bold(isSelected)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(form.choice == option ? .isSelected : [])
+        .listRowBackground(isSelected ? Color.accentColor.opacity(0.15) : nil)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
