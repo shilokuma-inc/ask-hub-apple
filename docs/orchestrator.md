@@ -87,7 +87,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `repositories` | ✓ | この PC が担当するリポジトリ。`repository` は `owner/repo`、`path` はメインの checkout の絶対パス（`~` 可）。owner は `org` と同じであること。PC 間で担当を重ねない（Q10） |
 | `pollIntervalSeconds` | | ポーリング間隔（秒）。既定 60、下限 30（Search API は認証済みでも 30 回/分のため） |
 | `loopCommand` | ✓ | ループを起動するコマンド。シェルを経由せず引数の配列のまま実行する |
-| `ideaCommand` | | 依頼から質問付きの Discussion を作らせるコマンド。シェルを経由せず実行し、終わるまで待つ（30 分で打ち切る）。省略時は `["claude", "-p", "{prompt}", "--allowedTools", "Bash(gh:*)"]`。`{prompt}` は必須で、ほかに `{repository}` / `{checkoutPath}` が使える |
+| `ideaCommand` | | 依頼から質問付きの Discussion を作らせるコマンド。シェルを経由せず実行し、終わるまで待つ（30 分で打ち切る）。プロンプトは標準入力で渡す（依頼の本文をプロセスの引数に出さないため）。省略時は `["claude", "-p", "--allowedTools", "Bash(gh:*)"]`。`{repository}` / `{checkoutPath}` が使える |
 
 ### `loopCommand` のプレースホルダ
 
@@ -150,7 +150,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 対象の選び方とプロンプトは `IdeaRequestTracker` / `IdeaPrompt`（副作用なし）が担う。
 
 1. org 全体から `idea-request` の open な Issue を検索し、担当リポジトリかつ信用する author が作った（本文を編集した人がいればその人も信用する author の）ものを、番号の古い順に 1 件選ぶ
-2. `ideaCommand` をメインの checkout で実行し、終わるまで待つ。プロンプトでは次を指示する
+2. `ideaCommand` をメインの checkout で実行し、プロンプトを標準入力で渡して終わるまで待つ。プロンプトでは次を指示する
    - リポジトリを読んで依頼を考察し、人間に決めてもらう点を質問にする
    - カテゴリ「Ideas」に Discussion を作り、質問は 1 つにつき 1 コメントで、先頭に質問の目印を置く
    - Discussion に `needs-answer` を付ける
@@ -163,6 +163,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 
 `ideaCommand` は 30 分で SIGTERM、さらに 10 秒で SIGKILL を送って止める。終了後の出力の読み切りは最長 5 秒で打ち切る
 （`claude` が起動した子プロセスがパイプを持ったまま残っても、ポーリングを止めないため）。
+保持する出力は末尾の 1 MB まで（URL は最後の行に出させるので、末尾があれば足りる）。
 
 処理の進み具合はメモリ上でだけ覚えるため、オーケストレーターを再起動すると、諦めた依頼をもう一度試す。
 1 件の処理の間はポーリングが止まる（`claude` を同時に 1 つしか動かさないため）。
