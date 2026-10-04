@@ -64,6 +64,36 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
 `loopCommand` は、ループを始めたら制御用 worktree に `.claude/ralph-loop.local.md` を作ること（`scripts/ralph-start.sh` が作る）。
 作らないと開始を確かめられず、起動に失敗したとみなされる。
 
+## 常駐させる（launchd）
+
+`scripts/orchestrator/install.sh` で、release ビルド・実行ファイルの配置・LaunchAgent の plist の書き出しを行う。
+launchd への登録はスクリプトでは行わず、最後に登録のコマンドを表示する。
+
+```bash
+scripts/orchestrator/install.sh            # 既定の場所に入れる
+"$HOME/.local/bin/askhub-orchestrator" --once   # 設定とトークンを確かめる
+launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/jp.shilokuma.askhub-orchestrator.plist"
+```
+
+オプションで場所を変えたときは、インストーラーが最後に表示する確認と登録のコマンド（`--config` や plist のパスを反映したもの）を使う。
+
+| オプション | 既定 | 説明 |
+| --- | --- | --- |
+| `--prefix <dir>` | `~/.local/bin` | 実行ファイルを置く場所 |
+| `--config <path>` | `~/.config/askhub/orchestrator.json` | 設定ファイル |
+| `--agents-dir <dir>` | `~/Library/LaunchAgents` | plist を書き出す場所 |
+| `--log-dir <dir>` | `~/Library/Logs/askhub` | ログ（`orchestrator.log`）の場所 |
+
+plist（`scripts/orchestrator/jp.shilokuma.askhub-orchestrator.plist.template`）の要点:
+
+- ログイン時に起動し（`RunAtLoad`）、落ちたら再起動する（`KeepAlive`。30 秒より短い間隔では起こさない）
+- launchd の `PATH` は最小限なので、Homebrew（`/opt/homebrew/bin`）・`/usr/local/bin`・`~/.local/bin` を加えた `PATH` を渡す。
+  スクリプトは `gh` / `claude` / `git` がこの `PATH` に無ければ警告する
+- `AbandonProcessGroup`: launchd は既定でジョブが終わるとプロセスグループごと止める。オーケストレーターを再起動しても、起動したループを止めない
+
+止めるときは `launchctl bootout gui/$(id -u)/jp.shilokuma.askhub-orchestrator`。
+更新するときはスクリプトを流し直してから、`bootout` → `bootstrap` する。
+
 ## 設定ファイル
 
 PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない**（ローカルパスを含むため）。
