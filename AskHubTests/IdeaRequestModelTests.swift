@@ -49,6 +49,59 @@ struct IdeaRequestModelTests {
         #expect(model.repository == nil)
     }
 
+    /// 最初の一覧の取得を、テストが開けるまで止めておく
+    private final class GatedRequester: IdeaRequesting {
+        private let gate = OSAllocatedUnfairLock<(opened: Bool, waiters: [CheckedContinuation<Void, Never>])>(initialState: (false, []))
+
+        func open() {
+            let waiters = gate.withLock { state in
+                state.opened = true
+                defer { state.waiters = [] }
+                return state.waiters
+            }
+            waiters.forEach { $0.resume() }
+        }
+
+        func repositories(in org: String) async throws -> [String] {
+            await withCheckedContinuation { continuation in
+                let opened = gate.withLock { state in
+                    if !state.opened {
+                        state.waiters.append(continuation)
+                    }
+                    return state.opened
+                }
+                if opened {
+                    continuation.resume()
+                }
+            }
+            return ["shilokuma-inc/ask-hub-apple"]
+        }
+
+        func create(_ request: IdeaRequest) async throws -> CreatedIssue {
+            throw IdeaRequestError.invalidRequest
+        }
+    }
+
+    @Test func reloadRequestedDuringLoadingUsesLatestToken() async throws {
+        let store = InMemoryTokenStore(token: "github_pat_old")
+        let requester = GatedRequester()
+        let model = IdeaRequestModel(tokenStore: store) { _ in requester }
+
+        let first = Task { await model.loadRepositories() }
+        while model.repositoriesState != .loading {
+            await Task.yield()
+        }
+        // 取得中に設定でトークンを削除して、シートを閉じた
+        try store.delete()
+        await model.loadRepositories()
+        requester.open()
+        await first.value
+
+        // 古いトークンでの一覧を残さず、最新の状態（未設定）を反映する
+        #expect(model.repositoriesState == .needsToken)
+        #expect(model.repositories.isEmpty)
+    }
+
     @Test func needsTokenToListRepositories() async {
         let model = makeModel(token: nil, requester: RecordingRequester())
         await model.loadRepositories()

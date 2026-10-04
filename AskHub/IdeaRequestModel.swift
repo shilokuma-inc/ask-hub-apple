@@ -45,11 +45,23 @@ final class IdeaRequestModel {
         !isSending && request.isValid
     }
 
-    /// 依頼先に選べるリポジトリを取り直す
+    /// 取得中に `loadRepositories()` が呼ばれたか。取得が終わったら最新のトークンで取り直す
+    private var needsReloadAfterLoading = false
+
+    /// 依頼先に選べるリポジトリを取り直す。
+    /// 取得中に呼ばれた場合は、その取得が終わってから取り直す（設定でトークンを変えた直後など）
     func loadRepositories() async {
         guard repositoriesState != .loading else {
+            needsReloadAfterLoading = true
             return
         }
+        repeat {
+            needsReloadAfterLoading = false
+            await loadRepositoriesOnce()
+        } while needsReloadAfterLoading
+    }
+
+    private func loadRepositoriesOnce() async {
         let token: String
         do {
             guard let saved = try tokenStore.load() else {
