@@ -1,11 +1,12 @@
+import AskHubKit
 import Foundation
 import OrchestratorKit
 
 /// オーケストレーターのエントリポイント。
-/// 現時点では設定を読み込んで内容を表示する。ポーリングと各アクションは後続のタスクで追加する
+/// 設定を読み込んで内容を表示し、`pollInterval` ごとに GitHub をポーリングする
 @main
 enum AskHubOrchestrator {
-    static func main() {
+    static func main() async {
         let arguments: OrchestratorArguments
         do {
             arguments = try OrchestratorArguments.parse(CommandLine.arguments.dropFirst())
@@ -25,6 +26,62 @@ enum AskHubOrchestrator {
             fail("\(error)", status: EX_CONFIG)
         }
         print(summary(of: config))
+
+        let token: String
+        do {
+            token = try githubToken()
+        } catch {
+            fail("GitHub のトークンを取得できません。`gh auth login` を済ませてください（\(error)）", status: EX_UNAVAILABLE)
+        }
+        let orchestrator = Orchestrator(
+            config: config,
+            github: GitHubOrchestrator(client: GitHubClient(token: token)),
+            runtime: LocalLoopRuntime(),
+            log: log
+        )
+        if arguments.runsOnce {
+            do {
+                try await orchestrator.pollOnce()
+            } catch {
+                fail("ポーリングに失敗しました: \(error)", status: EX_TEMPFAIL)
+            }
+            return
+        }
+        await orchestrator.run()
+    }
+
+    /// `gh auth token` でトークンを得る（Discussion #1 の Q4）。トークンはメモリにだけ置き、表示しない
+    private static func githubToken() throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["gh", "auth", "token"]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let token = String(bytes: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty else {
+            throw TokenError(status: process.terminationStatus)
+        }
+        return token
+    }
+
+    private struct TokenError: Error, CustomStringConvertible {
+        let status: Int32
+
+        var description: String {
+            "gh auth token の終了コード: \(status)"
+        }
+    }
+
+    /// 時刻を付けて標準出力に書く。launchd のログに残るよう、バッファせずに書き出す
+    @Sendable
+    private static func log(_ message: String) {
+        let time = Date().formatted(.iso8601)
+        FileHandle.standardOutput.write(Data("[\(time)] \(message)\n".utf8))
     }
 
     private static func summary(of config: OrchestratorConfig) -> String {
