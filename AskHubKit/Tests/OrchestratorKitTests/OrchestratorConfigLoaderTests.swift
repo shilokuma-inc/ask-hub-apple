@@ -92,10 +92,15 @@ struct OrchestratorConfigLoaderTests {
         }
     }
 
-    @Test(arguments: ["ask-hub-apple", "shilokuma-inc/", "/ask-hub-apple", "shilokuma-inc/a/b", "shilokuma-inc/a b"])
-    func rejectsInvalidRepositoryName(_ name: String) {
+    @Test(arguments: [
+        "ask-hub-apple", "shilokuma-inc/", "/ask-hub-apple", "shilokuma-inc/a/b", "shilokuma-inc/a b",
+        "shilokuma-inc/foo\nbar", "shilokuma-inc/foo\tbar", "shilokuma-inc/foo\u{7F}"
+    ])
+    func rejectsInvalidRepositoryName(_ name: String) throws {
+        // 改行などを含む値も JSON として正しく埋め込むため、文字列をエンコードしてから渡す
+        let encodedName = try #require(String(data: JSONEncoder().encode(name), encoding: .utf8))
         #expect(throws: OrchestratorConfigError.invalidRepositoryName(name)) {
-            try decode(config(repositories: #"[{ "repository": "\#(name)", "path": "/src" }]"#))
+            try decode(config(repositories: #"[{ "repository": \#(encodedName), "path": "/src" }]"#))
         }
     }
 

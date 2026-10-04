@@ -97,7 +97,12 @@ public struct OrchestratorConfigLoader: Sendable {
         org: String
     ) throws(OrchestratorConfigError) -> RepositoryConfig {
         let parts = entry.repository.split(separator: "/", omittingEmptySubsequences: false)
-        guard parts.count == 2, parts.allSatisfy({ !$0.isEmpty && !$0.contains(" ") }) else {
+        let isValidPart = { (part: Substring) in
+            !part.isEmpty && !part.unicodeScalars.contains {
+                CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0)
+            }
+        }
+        guard parts.count == 2, parts.allSatisfy(isValidPart) else {
             throw .invalidRepositoryName(entry.repository)
         }
         // 受信箱は org 全体を検索するため（Discussion #1 の Q6）、org の外のリポジトリは扱えない
