@@ -5,6 +5,7 @@ import SwiftUI
 struct QuestionDetailView: View {
     let inbox: InboxModel
     @State private var form: AnswerFormModel
+    @State private var isConfirmingLoopStart = false
     @Environment(\.dismiss)
     private var dismiss
 
@@ -47,35 +48,89 @@ struct QuestionDetailView: View {
                 Text(question.marker.isFreeForm ? "入力した内容を返信として投稿します" : "「回答: 選択肢」の次の行に続けて投稿します")
             }
 
+            if question.subject.kind == .discussion && !form.isPosted {
+                loopSection
+            }
+
             if let errorMessage = form.errorMessage {
                 Section {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.red)
+                    if form.loopStartFailed {
+                        Button("ループを始める（再試行）") {
+                            Task {
+                                await form.startLoop(using: inbox)
+                                if !form.loopStartFailed {
+                                    dismiss()
+                                }
+                            }
+                        }
+                        .disabled(form.isPosting)
+                    }
                 }
             }
 
-            Section {
-                Button {
-                    Task {
-                        await form.post(using: inbox)
-                        if form.isPosted {
-                            dismiss()
+            if !form.isPosted {
+                Section {
+                    Button {
+                        if form.startsLoopAfterPosting {
+                            isConfirmingLoopStart = true
+                        } else {
+                            post()
+                        }
+                    } label: {
+                        if form.isPosting {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text(form.startsLoopAfterPosting ? "回答を投稿してループを始める" : "回答を投稿")
+                                .frame(maxWidth: .infinity)
                         }
                     }
-                } label: {
-                    if form.isPosting {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text("回答を投稿")
-                            .frame(maxWidth: .infinity)
-                    }
+                    .disabled(!form.canPost)
                 }
-                .disabled(!form.canPost)
             }
+        }
+        // ループの起動は取り消せず、トークンも消費するので、確かめてから始める
+        .confirmationDialog(
+            "回答を投稿して、ループを始めますか？",
+            isPresented: $isConfirmingLoopStart,
+            titleVisibility: .visible
+        ) {
+            Button("投稿してループを始める") { post() }
+        } message: {
+            Text("\(question.subject.shortReference)「\(question.subject.title)」に ready-for-loop を付け、担当 PC のオーケストレーターがループを起動します")
         }
         .formStyle(.grouped)
         .navigationTitle(question.subject.shortReference)
+    }
+
+    /// Discussion の回答を確定してループを始める（Discussion #1 の Q3）
+    @ViewBuilder private var loopSection: some View {
+        let remaining = inbox.remainingQuestions(besides: question)
+        Section {
+            if form.canStartLoop(in: inbox) {
+                Toggle("投稿したら、回答を確定してループを始める", isOn: $form.startsLoopAfterPosting)
+            } else {
+                Text("この Discussion には、ほかに未回答の質問が \(remaining) 件あります")
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("ループ")
+        } footer: {
+            Text(form.canStartLoop(in: inbox)
+                ? "Discussion に ready-for-loop を付けます。担当 PC のオーケストレーターがループを起動します"
+                : "すべての質問に答えると、回答を確定してループを始められます")
+        }
+    }
+
+    private func post() {
+        Task {
+            await form.post(using: inbox)
+            if form.isPosted && !form.loopStartFailed {
+                dismiss()
+            }
+        }
     }
 
     private func optionButton(_ option: String) -> some View {
