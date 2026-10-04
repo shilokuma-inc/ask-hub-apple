@@ -119,6 +119,15 @@ UI の見た目が変わる変更では、Before / After のスクリーンシ�
 - Before / After は表で横に並べ、同一条件（同じ端末・OS・外観モード・データ状態）で撮影します
 - 影響する画面が複数ある場合は画面ごとに用意します。新規画面で Before が無い場合は「なし」と書きます
 
+### 6. アプリアイコンを差し替える
+
+アプリアイコンは Icon Composer のバンドル [AskHub/AppIcon.icon](AskHub/AppIcon.icon) で管理しています（iOS / macOS 共通。ライト・ダーク・ティントの外観と旧 OS 向けのフォールバックは Xcode がビルド時に生成します）。
+
+- 元の絵は `AskHub/AppIcon.icon/Assets/` の SVG（吹き出し `bubble.svg` と❓ `question.svg`）です。テキストなので直接編集もできます
+- Icon Composer（Xcode 26 以降に同梱）で `AskHub/AppIcon.icon` を開き、レイヤーの画像・背景色・ガラスの質感を編集して保存します。背景色やレイヤーの順は `icon.json` に保存されます
+- `AskHub/` はフォルダ同期グループなので、`.icon` を置き換えるだけでターゲットに入ります。pbxproj と xcconfig の変更は不要です（`ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` のまま拾われます）
+- 差し替えたら iOS Simulator のホーム画面と macOS の Dock で見た目を確かめ、PR にスクリーンショットを載せます
+
 ## 構成
 
 ```
