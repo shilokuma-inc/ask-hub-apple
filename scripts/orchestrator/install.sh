@@ -21,6 +21,26 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# 引用符で渡された `~` を展開し、相対パスは実行した場所を基準に絶対パスにする。
+# plist の WorkingDirectory は $HOME なので、相対パスのままだと別の場所を指してしまう
+absolute_path() {
+  local path="$1"
+  # 展開されずに届いた文字の `~` を照合するので、引用符で囲んだままにする
+  # shellcheck disable=SC2088
+  case "$path" in
+    "~") path="$HOME" ;;
+    "~/"*) path="$HOME/${path#"~/"}" ;;
+  esac
+  case "$path" in
+    /*) printf '%s' "$path" ;;
+    *) printf '%s/%s' "$PWD" "$path" ;;
+  esac
+}
+PREFIX=$(absolute_path "$PREFIX")
+CONFIG=$(absolute_path "$CONFIG")
+AGENTS_DIR=$(absolute_path "$AGENTS_DIR")
+LOG_DIR=$(absolute_path "$LOG_DIR")
+
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 TEMPLATE="$REPO_ROOT/scripts/orchestrator/$LABEL.plist.template"
 
