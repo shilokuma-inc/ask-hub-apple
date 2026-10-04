@@ -36,12 +36,13 @@ public struct ReadyDiscussion: Sendable, Equatable {
 
 /// 担当リポジトリのループの状態
 public struct LoopStatus: Sendable, Equatable {
-    /// 制御用 worktree に `.claude/ralph-loop.local.md` があるか
-    public let stateFileExists: Bool
+    /// 制御用 worktree に `.claude/ralph-loop.local.md` があるか。
+    /// アクセス権が無いなどで確かめられないときは `nil`（無いとはみなさない）
+    public let stateFileExists: Bool?
     /// このオーケストレーターが起動したプロセスが生きているか
     public let processAlive: Bool
 
-    public init(stateFileExists: Bool, processAlive: Bool) {
+    public init(stateFileExists: Bool?, processAlive: Bool) {
         self.stateFileExists = stateFileExists
         self.processAlive = processAlive
     }
@@ -65,6 +66,8 @@ public enum LaunchDecision: Sendable, Equatable {
         case loopRunning
         /// ループの state ファイルが残っている（実行中か、終了後に片付いていない）
         case loopStateRemains
+        /// state ファイルの有無を確かめられない（アクセス権が無いなど）
+        case loopStatusUnknown
         /// 同じリポジトリの別の Discussion を先に起動する
         case waitingForAnotherDiscussion(number: Int)
     }
@@ -96,8 +99,16 @@ public enum LaunchPlanner {
             if status.processAlive {
                 return .skip(discussion, .loopRunning)
             }
-            if status.stateFileExists {
+            switch status.stateFileExists {
+            case true:
                 return .skip(discussion, .loopStateRemains)
+
+            case nil:
+                // 動いているループを二重に起動しないよう、確かめられないときは起動しない
+                return .skip(discussion, .loopStatusUnknown)
+
+            case false:
+                break
             }
             launching[key] = discussion.number
             return .launch(discussion, repository)

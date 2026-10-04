@@ -19,9 +19,22 @@ public actor LocalLoopRuntime: LoopRuntime {
         let stateFile = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
             .appendingPathComponent(Self.stateFileRelativePath)
         return LoopStatus(
-            stateFileExists: FileManager.default.fileExists(atPath: stateFile.path),
+            stateFileExists: Self.fileExists(at: stateFile.path),
             processAlive: processes[key] != nil
         )
+    }
+
+    /// ファイルがあるか。`FileManager.fileExists` はアクセス権が無いときも `false` を返すため、
+    /// 「無い」と「確かめられない」（`nil`）を区別する
+    static func fileExists(at path: String) -> Bool? {
+        do {
+            _ = try FileManager.default.attributesOfItem(atPath: path)
+            return true
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            return false
+        } catch {
+            return nil
+        }
     }
 
     /// `arguments` の先頭を実行ファイルとして、メインの checkout を作業ディレクトリに起動する。

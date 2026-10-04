@@ -49,6 +49,16 @@ struct LaunchPlannerTests {
         #expect(decisions == [.skip(running, .loopRunning), .skip(remaining, .loopStateRemains)])
     }
 
+    @Test func skipsWhenStateFileCannotBeChecked() throws {
+        let discussion = ReadyDiscussion.fixture()
+        let decisions = LaunchPlanner.decide(
+            [discussion],
+            config: try config(),
+            statuses: ["shilokuma-inc/ask-hub-apple": LoopStatus(stateFileExists: nil, processAlive: false)]
+        )
+        #expect(decisions == [.skip(discussion, .loopStatusUnknown)])
+    }
+
     @Test func launchesProcessAliveWithoutStateFileAsRunning() throws {
         // state ファイルを作る前の起動直後も、起動したプロセスが生きていれば二重に起動しない
         let discussion = ReadyDiscussion.fixture()

@@ -35,6 +35,20 @@ struct LocalLoopRuntimeTests {
         #expect(await runtime.status(of: repository) == LoopStatus(stateFileExists: true, processAlive: false))
     }
 
+    @Test func reportsUnknownWhenControlWorktreeIsUnreadable() async throws {
+        let (repository, root) = try makeRepository()
+        let control = URL(fileURLWithPath: repository.controlWorktreePath)
+        try FileManager.default.createDirectory(at: control, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: control.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: control.path)
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        // アクセス権が無いときは「無い」ではなく「確かめられない」
+        #expect(await LocalLoopRuntime().status(of: repository) == LoopStatus(stateFileExists: nil, processAlive: false))
+    }
+
     @Test func runsCommandInCheckoutAndTracksUntilExit() async throws {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }

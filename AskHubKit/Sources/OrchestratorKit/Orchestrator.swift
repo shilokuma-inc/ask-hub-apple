@@ -102,6 +102,9 @@ public struct Orchestrator: Sendable {
 
         case .loopStateRemains:
             "制御用 worktree に .claude/ralph-loop.local.md が残っています"
+
+        case .loopStatusUnknown:
+            "制御用 worktree の .claude/ralph-loop.local.md の有無を確かめられません（アクセス権を確認してください）"
         }
     }
 }
