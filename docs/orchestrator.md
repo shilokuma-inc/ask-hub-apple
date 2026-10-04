@@ -5,7 +5,8 @@ AskHub の回答を受けて、ループ（ralph-loop）を自動で起動・再
 アプリは GitHub だけを見るクライアントで、`claude` / `git` / `xcodebuild` の起動はすべてオーケストレーターが行う
 （Discussion #1 の Q2）。
 
-> 現時点では設定ファイルを読み込んで内容を表示するところまで。ポーリングと各アクションは後続の PR で追加する。
+> 現時点で行うのは「`ready-for-loop` の Discussion を検知してループを起動する」だけ。
+> ask の回答による再開や、最終 PR の作成などは後続の PR で追加する。
 
 ## ビルドと実行
 
@@ -17,9 +18,42 @@ swift build --package-path AskHubKit -c release --product askhub-orchestrator
 | オプション | 説明 |
 | --- | --- |
 | `--config <path>` | 設定ファイルの場所。既定は `~/.config/askhub/orchestrator.json` |
+| `--once` | 1 回だけポーリングして終了する（動作確認用） |
 | `-h`, `--help` | 使い方を表示する |
 
-終了コードは、引数の誤りが `64`（`EX_USAGE`）、設定ファイルの誤りが `78`（`EX_CONFIG`）。
+起動すると設定の内容を表示し、`pollIntervalSeconds` ごとにポーリングする。ログは時刻付きで標準出力に出す。
+
+終了コードは、引数の誤りが `64`（`EX_USAGE`）、GitHub のトークンを得られないときが `69`（`EX_UNAVAILABLE`）、
+`--once` でのポーリングの失敗が `75`（`EX_TEMPFAIL`）、設定ファイルの誤りが `78`（`EX_CONFIG`）。
+
+GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 の Q4）。先に `gh auth login` を済ませておく。
+
+## ready-for-loop の Discussion からループを起動する
+
+1 回のポーリングで次を行う。判定は `LaunchPlanner`（副作用なし）、GitHub の操作は `GitHubOrchestrator`、
+ループの状態の取得と起動は `LocalLoopRuntime` が担う。
+
+1. org 全体から `ready-for-loop` が付いた open な Discussion を検索する（担当リポジトリごとではなく 1 回の検索で）
+2. 担当リポジトリごとにループの状態を調べる
+   - 制御用 worktree に `.claude/ralph-loop.local.md` があるか
+   - このオーケストレーターが起動したプロセスが生きているか
+3. Discussion ごとに判定する
+
+   | 条件 | 動作 |
+   | --- | --- |
+   | 担当リポジトリではない | 何もしない（別の PC の担当） |
+   | Discussion の author が信用する author ではない | 起動しない（ログに出す） |
+   | 起動したプロセスが生きている | 起動しない（終わるのを待つ） |
+   | state ファイルが残っている | 起動しない（ログに出す。前のループの片付けが必要） |
+   | 同じリポジトリに番号の小さい起動対象がある | 起動しない（1 リポジトリにつきループは 1 つ） |
+   | それ以外 | `loopCommand` を起動し、`ready-for-loop` を外す |
+
+4. 起動に失敗したらラベルは残し、次のポーリングで再試行する
+
+`loopCommand` はメインの checkout を作業ディレクトリにして、シェルを経由せずに起動する（終了は待たない）。
+先頭が絶対パスでなければ `PATH` から探すが、launchd の `PATH` は最小限なので絶対パスにすること。
+起動したプロセスはメモリ上でだけ追跡するため、オーケストレーターを再起動すると忘れる。
+その場合も state ファイルが残っていれば二重には起動しない。
 
 ## 設定ファイル
 
