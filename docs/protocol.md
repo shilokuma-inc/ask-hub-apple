@@ -129,6 +129,15 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 信用リストを collaborator から自動で導出しない。増やす操作は明示的な判断として行う。
 
+## 依頼先のリポジトリ
+
+アプリの「新しい依頼」で依頼先に選べるリポジトリは、**対象の org（`shilokuma-inc`）のアーカイブ済みでないリポジトリすべて**とする
+（[Discussion #115](https://github.com/shilokuma-inc/ask-hub-apple/discussions/115) の Q4 で確定）。
+
+- 担当 PC（オーケストレーター）のいるリポジトリだけに絞らない。担当 PC がいないリポジトリに出した依頼は、担当が付くまで処理されない
+- 一覧は REST の `orgs/{org}/repos` からページングを最後まで追って取得する（`GitHubIdeaRequester`）
+- 前に選んだ依頼先は保存しない（Q6）
+
 ## 流れ
 
 1. 人間がアプリから新機能を依頼する → `idea-request` の Issue（タイトル `【依頼】<要約>`）
