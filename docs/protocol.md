@@ -70,6 +70,9 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 質問を出したら、その Discussion / PR に `needs-answer` を付ける。
 
+`needs-answer` は Discussion #1 の決定どおり Issue にも付けられるが、MVP では Issue 上の質問の書き方を定義しない。
+アプリの「要回答」に出すのは Discussion（※1）と PR（※2）だけで、`needs-answer` の付いた Issue は一覧に出さない。
+
 ## 回答済みの判定
 
 質問コメントへの返信のうち、**信用する author のものが 1 件以上あれば回答済み**とする。
