@@ -15,6 +15,11 @@ public struct TrustedAuthors: Sendable, Equatable {
         self.logins = Set(logins.map { $0.lowercased() })
     }
 
+    /// 小文字に揃えた login の一覧（並びは安定させる）。外部のコマンドへ渡すときに使う
+    public var sortedLogins: [String] {
+        logins.sorted()
+    }
+
     /// 信用する author か。削除済みのユーザー（author が `nil`）は信用しない
     public func contains(_ login: String?) -> Bool {
         guard let login else {

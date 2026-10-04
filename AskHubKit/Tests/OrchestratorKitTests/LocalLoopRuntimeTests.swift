@@ -35,6 +35,16 @@ struct LocalLoopRuntimeTests {
         #expect(await runtime.status(of: repository) == LoopStatus(stateFileExists: true, processAlive: false))
     }
 
+    @Test func passesAdditionalEnvironmentToCommands() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runtime = LocalLoopRuntime(environment: ["ASKHUB_TRUSTED_AUTHORS": "mrs1669,someone"])
+        let result = try await runtime.run(["/usr/bin/env"], input: "", for: repository, timeout: .seconds(10))
+        #expect(result.output.contains("ASKHUB_TRUSTED_AUTHORS=mrs1669,someone"))
+        // 継承した環境変数も残る
+        #expect(result.output.contains("PATH="))
+    }
+
     @Test func reportsUnknownWhenControlWorktreeIsUnreadable() async throws {
         let (repository, root) = try makeRepository()
         let control = URL(fileURLWithPath: repository.controlWorktreePath)

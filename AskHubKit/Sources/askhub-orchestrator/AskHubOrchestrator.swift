@@ -39,7 +39,10 @@ enum AskHubOrchestrator {
             config: config,
             github: GitHubOrchestrator(client: client),
             inbox: GitHubInboxSource(client: client),
-            runtime: LocalLoopRuntime(),
+            // 起動スクリプトも同じ author だけを信用するよう、設定の値を環境変数で渡す
+            runtime: LocalLoopRuntime(environment: [
+                "ASKHUB_TRUSTED_AUTHORS": config.trustedAuthors.sortedLogins.joined(separator: ",")
+            ]),
             log: log
         )
         if arguments.runsOnce {
