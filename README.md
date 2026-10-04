@@ -85,9 +85,16 @@ Archive / Upload ワークフローは App Store Connect API Key で認証しま
 | `APPLE_API_ISSUER_ID` | API Key の Issuer ID |
 
 API Key は App Store Connect の「ユーザとアクセス → 統合 → App Store Connect API」で、App Manager 以上の権限で発行します。
-アップロード先のアプリは事前に App Store Connect に登録しておいてください。
+### 3. App Store Connect にアプリを作成する
 
-### 3. ブランチ運用と CI
+Bundle ID・証明書・プロビジョニングプロファイルは、Export のときに API Key で自動的に作成されます（`-allowProvisioningUpdates`）。
+App Store Connect でのアプリ作成だけは API で行えないため、Web 画面で行います。
+
+アプリを作らずに `develop` へ push しても問題ありません。Upload ワークフローがアップロードの前にアプリの有無を確認し（[.github/scripts/check-app-store-app.rb](.github/scripts/check-app-store-app.rb)）、アプリが無ければ「新規アプリ」画面に入力する値（名前・バンドル ID・SKU など）を Job Summary に表示して止まります。表示された値でアプリを作成してから、ワークフローを再実行してください。
+
+SKU は Bundle ID と同じ値にします。SKU はユーザーには見えない社内用の ID で、後から変更できないため、迷わないようにルールを固定しています。
+
+### 4. ブランチ運用と CI
 
 | ブランチ | Build（ビルド + テスト + SwiftLint） | Archive（IPA Export） | Upload（App Store Connect） |
 |---|:-:|:-:|:-:|
@@ -102,7 +109,7 @@ API Key は App Store Connect の「ユーザとアクセス → 統合 → App 
 - `assets/**` はアプリのコードを含まないため、どのワークフローも実行しません
 - Xcode のバージョンは [.github/workflows/_build.yml](.github/workflows/_build.yml) と [.github/workflows/_archive.yml](.github/workflows/_archive.yml) の `xcode-version` で固定しています。Environment の更新時はあわせて変更してください
 
-### 4. PR 本文のスクリーンショット
+### 5. PR 本文のスクリーンショット
 
 UI の見た目が変わる変更では、Before / After のスクリーンショットを PR 本文に添付します。
 
@@ -127,6 +134,7 @@ UI の見た目が変わる変更では、Before / After のスクリーンシ�
 └── .github/
     ├── ISSUE_TEMPLATE/      # Issue テンプレート
     ├── pull_request_template.md
+    ├── scripts/             # check-app-store-app.rb（App Store Connect のアプリの有無を確認）
     └── workflows/
         ├── _build.yml       # 共通処理: ビルド + テスト + SwiftLint（workflow_call）
         ├── _archive.yml     # 共通処理: Archive → Export（→ Upload）（workflow_call）
