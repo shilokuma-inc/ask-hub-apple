@@ -11,11 +11,14 @@ let package = Package(
     ],
     products: [
         .library(name: "AskHubKit", targets: ["AskHubKit"]),
+        // macOS で launchd から常駐させる CLI。アプリからは使わない
+        .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
     ],
     targets: [
         .target(name: "AskHubKit"),
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
+        .executableTarget(name: "askhub-orchestrator", dependencies: ["OrchestratorKit"]),
         .testTarget(name: "AskHubKitTests", dependencies: ["AskHubKit"]),
         .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]
