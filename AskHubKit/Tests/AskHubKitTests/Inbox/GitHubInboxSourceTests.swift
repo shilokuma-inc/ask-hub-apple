@@ -62,8 +62,8 @@ struct GitHubInboxSourceTests {
         ])
         let requests = http.requests
         #expect(requests.count == 3)
-        #expect(try variables(of: requests[0]) == ["query": "org:shilokuma-inc label:needs-answer", "after": nil])
-        #expect(try variables(of: requests[1]) == ["query": "org:shilokuma-inc label:needs-answer", "after": "S1"])
+        #expect(try variables(of: requests[0]) == ["query": "org:shilokuma-inc label:needs-answer is:open", "after": nil])
+        #expect(try variables(of: requests[1]) == ["query": "org:shilokuma-inc label:needs-answer is:open", "after": "S1"])
         #expect(try variables(of: requests[2]) == ["query": "org:shilokuma-inc label:needs-answer is:pr is:open", "after": nil])
     }
 

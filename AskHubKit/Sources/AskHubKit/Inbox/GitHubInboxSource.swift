@@ -12,9 +12,9 @@ public struct GitHubInboxSource: InboxSource {
 
     public func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
         let label = AskHubLabel.needsAnswer.rawValue
-        // Discussion の検索は open / closed の絞り込みに頼らず、取得した `closed` で除く
+        // 検索結果は 1,000 件までなので、closed で上限を埋めないよう検索の段階で open に絞る（取得後の `closed` でも除く）
         let discussions = try await search(
-            query: "org:\(org) label:\(label)",
+            query: "org:\(org) label:\(label) is:open",
             type: "DISCUSSION",
             kind: .discussion
         )
