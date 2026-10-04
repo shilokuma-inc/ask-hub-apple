@@ -48,6 +48,12 @@
 - `Process` で起動した子プロセスの生存は、`Process` を保持しておいて `isRunning` で見る。
   `Process` は `Sendable` ではないので、`actor` の状態として持つと `@unchecked Sendable` なしで扱える
 
+## シェルスクリプト
+
+- bash で `"$CONFIG（…）"` のように変数の直後に全角文字を書くと、バイト単位で変数名の一部と読まれ、`set -u` で unbound variable になる。
+  日本語が続く変数は `${CONFIG}` と波かっこで囲む
+- launchd の LaunchAgent は既定でジョブの終了時にプロセスグループごと止める。子プロセス（ループなど）を残したいときは `AbandonProcessGroup` を `true` にする
+
 ## SwiftUI
 
 - `List` の行を `Link` で包むと、行の中の文字がすべてアクセントカラーになり `.foregroundStyle(.secondary)` も効かない。
