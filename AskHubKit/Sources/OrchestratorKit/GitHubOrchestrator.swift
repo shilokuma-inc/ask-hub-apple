@@ -77,9 +77,15 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
 
     public func existingPullRequest(in repository: String, head branch: String) async throws -> ExistingPullRequest? {
         let owner = try Self.owner(of: repository)
+        // 最終 PR と同じ統合先（既定ブランチ）への PR だけを見る。別の base への PR では最終 PR の代わりにならない
+        let base = try await defaultBranch(of: repository)
         let pulls = try await client.getAllPages(
             "repos/\(repository)/pulls",
-            query: [URLQueryItem(name: "head", value: "\(owner):\(branch)"), URLQueryItem(name: "state", value: "all")],
+            query: [
+                URLQueryItem(name: "head", value: "\(owner):\(branch)"),
+                URLQueryItem(name: "base", value: base),
+                URLQueryItem(name: "state", value: "all")
+            ],
             of: PullRequestSummary.self
         )
         // open なものがあればそれを、無ければ最初のもの（閉じた PR）を返す
@@ -88,8 +94,7 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
     }
 
     public func createEpicFinalPullRequest(in repository: String, head branch: String, body: String) async throws -> Int {
-        // 統合先は Q13 の develop。リポジトリの既定ブランチとして読む
-        let base = try await client.get("repos/\(repository)", as: RepositoryInfo.self).defaultBranch
+        let base = try await defaultBranch(of: repository)
         let pull = try await client.send(
             "POST",
             "repos/\(repository)/pulls",
@@ -112,6 +117,11 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
             body: ["labels": [AskHubLabel.epicFinal.rawValue]],
             as: [LabelName].self
         )
+    }
+
+    /// 統合先は Q13 の develop。リポジトリの既定ブランチとして読む
+    private func defaultBranch(of repository: String) async throws -> String {
+        try await client.get("repos/\(repository)", as: RepositoryInfo.self).defaultBranch
     }
 
     static func epicFinalTitle(branch: String, base: String) -> String {

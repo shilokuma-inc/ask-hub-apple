@@ -132,11 +132,12 @@ struct GitHubOrchestratorTests {
         #expect(http.requests.count == 1)
     }
 
-    @Test func findsPullRequestsOfAnyStateByHeadPreferringOpen() async throws {
+    @Test func findsPullRequestsToDefaultBranchByHeadPreferringOpen() async throws {
+        let repositoryInfo = #"{ "default_branch": "develop" }"#
         let http = StubHTTPClient([
-            "[]",
-            #"[{ "number": 7, "state": "closed" }]"#,
-            #"[{ "number": 7, "state": "closed" }, { "number": 9, "state": "open" }]"#
+            repositoryInfo, "[]",
+            repositoryInfo, #"[{ "number": 7, "state": "closed" }]"#,
+            repositoryInfo, #"[{ "number": 7, "state": "closed" }, { "number": 9, "state": "open" }]"#
         ])
         let github = makeGitHub(http)
         let repository = "shilokuma-inc/ask-hub-apple"
@@ -144,10 +145,12 @@ struct GitHubOrchestratorTests {
         #expect(try await github.existingPullRequest(in: repository, head: "epic/mvp") == ExistingPullRequest(number: 7, isOpen: false))
         #expect(try await github.existingPullRequest(in: repository, head: "epic/mvp") == ExistingPullRequest(number: 9, isOpen: true))
 
-        let url = try #require(http.requests[0].url)
+        #expect(http.requests[0].url?.path() == "/repos/shilokuma-inc/ask-hub-apple")
+        let url = try #require(http.requests[1].url)
         #expect(url.path() == "/repos/shilokuma-inc/ask-hub-apple/pulls")
         let query = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
         #expect(query.contains(URLQueryItem(name: "head", value: "shilokuma-inc:epic/mvp")))
+        #expect(query.contains(URLQueryItem(name: "base", value: "develop")))
         #expect(query.contains(URLQueryItem(name: "state", value: "all")))
     }
 
