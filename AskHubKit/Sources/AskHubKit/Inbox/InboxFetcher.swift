@@ -6,6 +6,15 @@ public protocol InboxSource: Sendable {
     func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread]
     /// `decision-log` / `needs-verify` が付いた open な Issue
     func lowPriorityIssues(org: String) async throws -> [InboxIssue]
+    /// `ready-for-loop` が付いた open な Discussion と、そのリポジトリの担当の印
+    func waitingDiscussions(org: String) async throws -> [WaitingDiscussion]
+}
+
+extension InboxSource {
+    /// 取得しない取得元（テストの差し替えなど）では空
+    public func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
+        []
+    }
 }
 
 /// 受信箱に出すもの（「要回答」の質問と「急がない」の Issue）を集める
@@ -27,6 +36,13 @@ public struct InboxFetcher: Sendable {
             questions += InboxQuestion.unanswered(in: threads, of: subject, trustedAuthors: trustedAuthors)
         }
         return questions.sorted { ($0.comment.createdAt, $0.id) < ($1.comment.createdAt, $1.id) }
+    }
+
+    /// ループの開始を待っている Discussion を、番号の古い順に返す。
+    /// 信用する author が作ったものだけを扱う（public リポジトリでは誰でも Discussion を作れるため）
+    public func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
+        try await source.waitingDiscussions(org: org)
+            .sorted { ($0.subject.repository, $0.subject.number) < ($1.subject.repository, $1.subject.number) }
     }
 
     /// 「急がない」に出す Issue を、更新の新しい順に返す。

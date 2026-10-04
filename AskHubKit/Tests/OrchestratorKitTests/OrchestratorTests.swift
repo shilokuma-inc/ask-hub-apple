@@ -9,7 +9,12 @@ struct OrchestratorTests {
     static let started = LoopStatus(stateFileExists: true, processAlive: true)
     static let exitedWithoutStarting = LoopStatus(stateFileExists: false, processAlive: false)
 
-    func makeOrchestrator(github: FakeGitHub, runtime: FakeRuntime, inbox: FakeInbox = FakeInbox()) throws -> Orchestrator {
+    func makeOrchestrator(
+        github: FakeGitHub,
+        runtime: FakeRuntime,
+        inbox: FakeInbox = FakeInbox(),
+        now: @escaping @Sendable () -> Date = { Date(timeIntervalSince1970: 1_800_000_000) }
+    ) throws -> Orchestrator {
         let config = OrchestratorConfig(
             trustedAuthorLogins: ["mrs1669"],
             org: "shilokuma-inc",
@@ -18,7 +23,7 @@ struct OrchestratorTests {
             loopCommand: try LoopCommandTemplate(arguments: ["/usr/local/bin/start-loop", "{repository}", "{discussion}"])
         )
         let logs = logs
-        return Orchestrator(config: config, github: github, inbox: inbox, runtime: runtime) { logs.append($0) }
+        return Orchestrator(config: config, github: github, inbox: inbox, runtime: runtime, log: { logs.append($0) }, now: now)
     }
 
     @Test func removesLabelOnlyAfterLoopStarts() async throws {

@@ -181,6 +181,25 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         }
         """
 
+    public func updateHeartbeat(in repository: String, description: String) async throws {
+        do {
+            _ = try await client.send(
+                "PATCH",
+                "repos/\(repository)/labels/\(OrchestratorHeartbeat.labelName)",
+                body: ["description": description],
+                as: LabelName.self
+            )
+        } catch GitHubError.http(status: 404, _) {
+            // まだラベルが無い
+            _ = try await client.send(
+                "POST",
+                "repos/\(repository)/labels",
+                body: ["name": OrchestratorHeartbeat.labelName, "color": "c5def5", "description": description],
+                as: LabelName.self
+            )
+        }
+    }
+
     static func epicFinalTitle(branch: String, base: String) -> String {
         "【FEAT】\(branch) を \(base) に取り込む"
     }

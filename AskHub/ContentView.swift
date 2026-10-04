@@ -60,7 +60,9 @@ struct ContentView: View {
                         // Link の既定のスタイルは行の文字をすべてアクセントカラーにするため、行の配色を使う
                         .buttonStyle(.plain)
                     },
-                    openSettings: { isShowingSettings = true }
+                    openSettings: { isShowingSettings = true },
+                    leadingIsEmpty: model.waiting.isEmpty,
+                    leading: { WaitingDiscussionsSection(waiting: model.waiting) }
                 )
             }
             .tabItem { Label("急がない", systemImage: "tray.full") }
