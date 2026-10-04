@@ -67,7 +67,7 @@ struct IdeaRequestTests {
         ])
         let repositories = try await makeRequester(http).repositories(in: "shilokuma-inc")
 
-        #expect(repositories == [RequestRepository(fullName: "shilokuma-inc/notti-ios")])
+        #expect(repositories == [RequestRepository(fullName: "shilokuma-inc/notti-ios", isAssignmentKnown: false)])
     }
 
     @Test func createsIssueWithIdeaRequestLabel() async throws {

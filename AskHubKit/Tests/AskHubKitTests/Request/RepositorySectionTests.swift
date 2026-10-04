@@ -19,6 +19,15 @@ struct RepositorySectionTests {
         ])
     }
 
+    @Test func doesNotSplitWhenAssignmentIsUnknown() {
+        let sections = RepositorySection.grouping([
+            RequestRepository(fullName: "o/ask-hub-apple", isAssignmentKnown: false),
+            RequestRepository(fullName: "o/dotfiles", isAssignmentKnown: false)
+        ], now: now)
+
+        #expect(sections == [RepositorySection(title: "担当 PC の有無を確認できませんでした", repositories: ["o/ask-hub-apple", "o/dotfiles"])])
+    }
+
     @Test func omitsEmptySections() {
         #expect(RepositorySection.grouping([], now: now).isEmpty)
         #expect(

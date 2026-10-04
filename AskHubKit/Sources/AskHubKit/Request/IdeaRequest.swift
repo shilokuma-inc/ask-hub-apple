@@ -80,8 +80,10 @@ public struct GitHubIdeaRequester: IdeaRequesting {
         )
         .filter { !$0.archived }
         .map(\.fullName)
-        // 担当の印は区切りのための付加情報。取れなくても候補は出す（すべて担当なしとして扱う）
-        let lastSeen = (try? await heartbeats(in: org)) ?? [:]
+        // 担当の印は区切りのための付加情報。取れなくても候補は出す（担当の有無は不明として扱う）
+        guard let lastSeen = try? await heartbeats(in: org) else {
+            return names.map { RequestRepository(fullName: $0, isAssignmentKnown: false) }
+        }
         return names.map { RequestRepository(fullName: $0, lastSeen: lastSeen[$0]) }
     }
 
