@@ -94,6 +94,44 @@ struct GitHubOrchestratorTests {
         #expect(request.variables["labels"] as? [String] == ["LA_ready"])
     }
 
+    @Test func removesNeedsAnswerByLookingUpLabelID() async throws {
+        let http = StubHTTPClient([
+            #"{ "data": { "repository": { "label": { "id": "LA_needs" } } } }"#,
+            #"{ "data": { "removeLabelsFromLabelable": { "clientMutationId": null } } }"#
+        ])
+        let subject = InboxSubject(
+            kind: .discussion,
+            nodeID: "D_7",
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 7,
+            title: "T",
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/discussions/7")!
+        )
+        try await makeGitHub(http).removeNeedsAnswerLabel(from: subject)
+
+        let lookup = try requestJSON(http.requests[0])
+        #expect(lookup.variables["owner"] as? String == "shilokuma-inc")
+        #expect(lookup.variables["name"] as? String == "ask-hub-apple")
+        #expect(lookup.variables["label"] as? String == "needs-answer")
+        let mutation = try requestJSON(http.requests[1])
+        #expect(mutation.variables["labelable"] as? String == "D_7")
+        #expect(mutation.variables["labels"] as? [String] == ["LA_needs"])
+    }
+
+    @Test func skipsMutationWhenRepositoryHasNoNeedsAnswerLabel() async throws {
+        let http = StubHTTPClient([#"{ "data": { "repository": { "label": null } } }"#])
+        let subject = InboxSubject(
+            kind: .pullRequest,
+            nodeID: "PR_1",
+            repository: "o/r",
+            number: 1,
+            title: "T",
+            url: URL(string: "https://github.com/o/r/pull/1")!
+        )
+        try await makeGitHub(http).removeNeedsAnswerLabel(from: subject)
+        #expect(http.requests.count == 1)
+    }
+
     @Test func removeLabelReportsGraphQLErrors() async {
         let http = StubHTTPClient([#"{ "data": null, "errors": [{ "message": "Resource not accessible" }] }"#])
         await #expect(throws: GitHubError.graphQL(messages: ["Resource not accessible"])) {

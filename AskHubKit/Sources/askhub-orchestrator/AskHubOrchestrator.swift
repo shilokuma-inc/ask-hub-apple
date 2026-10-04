@@ -33,9 +33,11 @@ enum AskHubOrchestrator {
         } catch {
             fail("GitHub のトークンを取得できません。`gh auth login` を済ませてください（\(error)）", status: EX_UNAVAILABLE)
         }
+        let client = GitHubClient(token: token)
         let orchestrator = Orchestrator(
             config: config,
-            github: GitHubOrchestrator(client: GitHubClient(token: token)),
+            github: GitHubOrchestrator(client: client),
+            inbox: GitHubInboxSource(client: client),
             runtime: LocalLoopRuntime(),
             log: log
         )

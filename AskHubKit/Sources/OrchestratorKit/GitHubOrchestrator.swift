@@ -49,6 +49,38 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         )
     }
 
+    public func removeNeedsAnswerLabel(from subject: InboxSubject) async throws {
+        let parts = subject.repository.split(separator: "/", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else {
+            throw GitHubError.invalidResponse
+        }
+        // Discussion のラベルは REST で外せないため、リポジトリのラベルの node id を引いて GraphQL で外す
+        let data = try await client.graphQL(
+            Self.labelQuery,
+            variables: [
+                "owner": .string(parts[0]),
+                "name": .string(parts[1]),
+                "label": .string(AskHubLabel.needsAnswer.rawValue)
+            ],
+            as: LabelData.self
+        )
+        guard let labelID = data.repository?.label?.id else {
+            // リポジトリにラベルが無ければ、付いてもいない
+            return
+        }
+        _ = try await client.graphQL(
+            Self.removeLabelMutation,
+            variables: ["labelable": .string(subject.nodeID), "labels": .strings([labelID])],
+            as: RemoveLabelsData.self
+        )
+    }
+
+    private static let labelQuery = """
+        query($owner: String!, $name: String!, $label: String!) {
+          repository(owner: $owner, name: $name) { label(name: $label) { id } }
+        }
+        """
+
     private static let searchQuery = """
         query($query: String!, $after: String) {
           search(query: $query, type: DISCUSSION, first: 50, after: $after) {
@@ -115,6 +147,18 @@ private struct SearchNode: Decodable {
     func labelID(named name: String) -> String? {
         labels?.nodes.compactMap(\.self).first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.id
     }
+}
+
+private struct LabelData: Decodable {
+    struct Repository: Decodable {
+        let label: LabelNode?
+    }
+
+    let repository: Repository?
+}
+
+private struct LabelNode: Decodable {
+    let id: String
 }
 
 private struct RemoveLabelsData: Decodable {

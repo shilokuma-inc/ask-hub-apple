@@ -5,8 +5,8 @@ AskHub の回答を受けて、ループ（ralph-loop）を自動で起動・再
 アプリは GitHub だけを見るクライアントで、`claude` / `git` / `xcodebuild` の起動はすべてオーケストレーターが行う
 （Discussion #1 の Q2）。
 
-> 現時点で行うのは「`ready-for-loop` の Discussion を検知してループを起動する」だけ。
-> ask の回答による再開や、最終 PR の作成などは後続の PR で追加する。
+> 現時点で行うのは「`ready-for-loop` の Discussion からのループの起動」と「ask の回答によるループの再開と `needs-answer` の削除」。
+> 最終 PR の作成などは後続の PR で追加する。
 
 ## ビルドと実行
 
@@ -98,3 +98,24 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `{checkoutPath}` | メインの checkout のパス |
 | `{controlPath}` | 制御用 worktree のパス。`scripts/ralph-setup.sh` と同じく checkout の隣の `<ディレクトリ名から -ios を除いたもの>-ralph-ctl` |
 | `{discussion}` | ループのゴール元の Discussion の番号（`ready-for-loop` から起動するとき）。Discussion を伴わない起動では空文字列 |
+
+## ask に回答が付いたらループを再開する
+
+`ready-for-loop` の判定の前に、毎回のポーリングで次を行う。判定は `ResumeWatcher`（副作用なし）が担う。
+
+1. org 全体の `needs-answer` の open な Discussion / PR を取得し（`GitHubInboxSource`）、担当リポジトリのものだけを扱う
+2. 信用する author の質問と、その回答状況を読み取る（回答済み = 信用する author の返信が 1 件以上）
+3. PR の ask（※2）に**新しく**回答が付いたら、そのリポジトリを再開待ちにする。Discussion（※1）の回答では再開しない（ループは `ready-for-loop` で始まる）
+4. 再開待ちのリポジトリ
+
+   | 状態 | 動作 |
+   | --- | --- |
+   | ループが動いている（プロセスが生きている / state ファイルがある） | 起動しない。回答はループ自身が拾う |
+   | state ファイルの有無が不明 | 待つ |
+   | 止まっている | `loopCommand` を起動する（`{discussion}` は空文字列） |
+   | 起動後に state ファイルが現れた | 再開できたとみなす |
+   | state ファイルが現れないままプロセスが終わった | 起動し直す。3 回確かめられなければ、次の回答が付くまで再開しない |
+
+5. 信用する author の質問がすべて回答済みになった Discussion / PR から `needs-answer` を外す
+
+回答済みの質問はメモリ上でだけ覚えるため、オーケストレーターを再起動した直後は、回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
