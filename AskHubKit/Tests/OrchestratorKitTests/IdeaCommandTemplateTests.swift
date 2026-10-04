@@ -6,17 +6,14 @@ struct IdeaCommandTemplateTests {
 
     @Test func defaultRunsClaudeHeadlessWithGhOnly() throws {
         #expect(try IdeaCommandTemplate() == IdeaCommandTemplate.standard)
-        let rendered = IdeaCommandTemplate.standard.render(prompt: "考察して {repository} は置き換えない", for: repository)
-        // プロンプトは 1 つの引数のまま渡し、中の `{...}` は置き換えない
-        #expect(rendered == ["claude", "-p", "考察して {repository} は置き換えない", "--allowedTools", "Bash(gh:*)"])
+        // プロンプトは標準入力で渡すので、引数には含めない
+        #expect(IdeaCommandTemplate.standard.render(for: repository) == ["claude", "-p", "--allowedTools", "Bash(gh:*)"])
     }
 
     @Test func rendersRepositoryAndCheckoutPath() throws {
-        let template = try IdeaCommandTemplate(arguments: [
-            "/opt/bin/claude", "-p", "{prompt}", "--add-dir", "{checkoutPath}", "--repo={repository}"
-        ])
-        #expect(template.render(prompt: "P", for: repository) == [
-            "/opt/bin/claude", "-p", "P", "--add-dir", "/src/my apps/ask-hub-apple", "--repo=shilokuma-inc/ask-hub-apple"
+        let template = try IdeaCommandTemplate(arguments: ["/opt/bin/claude", "-p", "--add-dir", "{checkoutPath}", "--repo={repository}"])
+        #expect(template.render(for: repository) == [
+            "/opt/bin/claude", "-p", "--add-dir", "/src/my apps/ask-hub-apple", "--repo=shilokuma-inc/ask-hub-apple"
         ])
     }
 
@@ -25,10 +22,10 @@ struct IdeaCommandTemplateTests {
             try IdeaCommandTemplate(arguments: [])
         }
         #expect(throws: OrchestratorConfigError.unknownIdeaPlaceholder("controlPath")) {
-            try IdeaCommandTemplate(arguments: ["claude", "-p", "{prompt}", "{controlPath}"])
+            try IdeaCommandTemplate(arguments: ["claude", "-p", "{controlPath}"])
         }
-        #expect(throws: OrchestratorConfigError.ideaCommandWithoutPrompt) {
-            try IdeaCommandTemplate(arguments: ["claude", "-p"])
+        #expect(throws: OrchestratorConfigError.unknownIdeaPlaceholder("prompt")) {
+            try IdeaCommandTemplate(arguments: ["claude", "-p", "{prompt}"])
         }
     }
 }

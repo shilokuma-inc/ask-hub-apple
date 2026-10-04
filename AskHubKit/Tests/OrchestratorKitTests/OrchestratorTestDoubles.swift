@@ -58,6 +58,7 @@ struct FakeRuntimeState {
     /// `run` が順に返す結果。尽きたら最後のものを返し続ける
     var runResults: [CommandResult] = [CommandResult(status: 0, output: "")]
     var ran: [[String]] = []
+    var inputs: [String] = []
 }
 
 final class FakeGitHub: OrchestratorGitHub {
@@ -231,9 +232,14 @@ final class FakeRuntime: LoopRuntime {
         state.withLock { $0.ran }
     }
 
-    func run(_ arguments: [String], for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult {
+    var inputs: [String] {
+        state.withLock { $0.inputs }
+    }
+
+    func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult {
         state.withLock { state in
             state.ran.append(arguments)
+            state.inputs.append(input)
             let result = state.runResults[0]
             if state.runResults.count > 1 {
                 state.runResults.removeFirst()

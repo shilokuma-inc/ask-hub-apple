@@ -21,9 +21,10 @@ extension OrchestratorTests {
 
         try await orchestrator.pollOnce()
 
-        let arguments = try #require(runtime.ran.first)
-        #expect(arguments.first == "claude")
-        #expect(arguments[2].contains("依頼 Issue: #7"))
+        // プロンプト（依頼の本文を含む）は引数ではなく標準入力で渡す
+        #expect(runtime.ran.first == IdeaCommandTemplate.defaultArguments)
+        #expect(runtime.inputs.first?.contains("依頼 Issue: #7") == true)
+        #expect(runtime.ran.first?.contains { $0.contains("朝だけにしたい") } == false)
         #expect(github.ideaComments.count == 1)
         #expect(github.ideaComments.first?.hasPrefix("#7: 質問付きの Discussion を作りました: https://github.com/shilokuma-inc/ask-hub-apple/discussions/12") == true)
         #expect(github.closedIdeas == [7])

@@ -1,19 +1,17 @@
 /// 依頼から Discussion を作らせるコマンド（既定は `claude` のヘッドレス実行）のテンプレート。
 ///
 /// `LoopCommandTemplate` と同じく、シェルを経由せず引数の配列のまま実行する。
-/// `{prompt}` に `IdeaPrompt` が組み立てたプロンプトが入る
+/// `IdeaPrompt` が組み立てたプロンプトは標準入力で渡す（依頼の本文をプロセスの引数に出さないため）
 public struct IdeaCommandTemplate: Sendable, Equatable {
     public enum Placeholder: String, CaseIterable, Sendable {
-        /// `claude` に渡すプロンプト
-        case prompt
         /// `owner/repo`
         case repository
         /// メインの checkout のパス
         case checkoutPath
     }
 
-    /// 設定ファイルで省略したときの値。`gh` だけを許可して Discussion とコメントとラベルを作らせる
-    public static let defaultArguments = ["claude", "-p", "{prompt}", "--allowedTools", "Bash(gh:*)"]
+    /// 設定ファイルで省略したときの値。プロンプトを標準入力から読ませ、`gh` だけを許可して Discussion とコメントとラベルを作らせる
+    public static let defaultArguments = ["claude", "-p", "--allowedTools", "Bash(gh:*)"]
 
     public let arguments: [String]
 
@@ -24,7 +22,7 @@ public struct IdeaCommandTemplate: Sendable, Equatable {
         self.arguments = arguments
     }
 
-    /// 引数が空、`{prompt}` が無い、または未知の `{placeholder}` を含む場合は失敗する
+    /// 引数が空、または未知の `{placeholder}` を含む場合は失敗する
     public init(arguments: [String] = defaultArguments) throws(OrchestratorConfigError) {
         guard let executable = arguments.first, !executable.isEmpty else {
             throw .emptyIdeaCommand
@@ -34,15 +32,11 @@ public struct IdeaCommandTemplate: Sendable, Equatable {
         if let unknown = names.first(where: { !known.contains($0) }) {
             throw .unknownIdeaPlaceholder(unknown)
         }
-        guard names.contains(Placeholder.prompt.rawValue) else {
-            throw .ideaCommandWithoutPrompt
-        }
         self.arguments = arguments
     }
 
-    public func render(prompt: String, for repository: RepositoryConfig) -> [String] {
+    public func render(for repository: RepositoryConfig) -> [String] {
         LoopCommandTemplate.substitute(arguments, values: [
-            Placeholder.prompt.rawValue: prompt,
             Placeholder.repository.rawValue: repository.fullName,
             Placeholder.checkoutPath.rawValue: repository.checkoutPath
         ])

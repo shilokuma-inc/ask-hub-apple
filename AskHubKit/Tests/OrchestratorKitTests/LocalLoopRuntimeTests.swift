@@ -106,6 +106,7 @@ struct LocalLoopRuntimeTests {
         // 標準出力と標準エラーをまとめて受け取り、引数は 1 つのまま渡る
         let result = try await LocalLoopRuntime().run(
             ["/bin/sh", "-c", #"printf '%s\n' "$1"; echo err >&2; exit 3"#, "sh", "ASKHUB_DISCUSSION_URL: a b"],
+            input: "",
             for: repository,
             timeout: .seconds(10)
         )
@@ -114,12 +115,36 @@ struct LocalLoopRuntimeTests {
         #expect(result.output.contains("err"))
     }
 
+    @Test func runPassesInputThroughStandardInput() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // パイプの容量（64 KB 程度）より大きな入力でも止まらない
+        let input = String(repeating: "依頼の本文。", count: 20_000)
+        let result = try await LocalLoopRuntime().run(["/usr/bin/wc", "-c"], input: input, for: repository, timeout: .seconds(10))
+        #expect(result.status == 0)
+        #expect(result.output.trimmingCharacters(in: .whitespacesAndNewlines) == String(Data(input.utf8).count))
+    }
+
+    @Test func runKeepsOnlyTailOfLargeOutput() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // 上限を超える出力でも、末尾（URL の行）は残り、文字の途中で切れても文字列にできる
+        let script = #"yes あいう | head -c 1500001; echo; echo "ASKHUB_DISCUSSION_URL: https://github.com/o/r/discussions/1""#
+        let result = try await LocalLoopRuntime().run(["/bin/sh", "-c", script], input: "", for: repository, timeout: .seconds(30))
+        #expect(result.status == 0)
+        // 保持するのは上限まで（壊れた文字の置き換えで数バイト増えることはある）
+        #expect(result.output.utf8.count <= LocalLoopRuntime.maxOutputBytes + 8)
+        #expect(result.output.hasSuffix("ASKHUB_DISCUSSION_URL: https://github.com/o/r/discussions/1\n"))
+    }
+
     @Test func runStopsCommandAfterTimeout() async throws {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }
 
         let start = ContinuousClock.now
-        let result = try await LocalLoopRuntime().run(["/bin/sleep", "10"], for: repository, timeout: .milliseconds(300))
+        let result = try await LocalLoopRuntime().run(["/bin/sleep", "10"], input: "", for: repository, timeout: .milliseconds(300))
         #expect(result.status != 0)
         #expect(ContinuousClock.now - start < .seconds(5))
     }
@@ -133,6 +158,7 @@ struct LocalLoopRuntimeTests {
         let runtime = LocalLoopRuntime(killGracePeriod: .milliseconds(300), outputDrainTimeout: .milliseconds(300))
         let result = try await runtime.run(
             ["/bin/sh", "-c", "trap '' TERM; sleep 10"],
+            input: "",
             for: repository,
             timeout: .milliseconds(300)
         )
@@ -148,6 +174,7 @@ struct LocalLoopRuntimeTests {
         let start = ContinuousClock.now
         let result = try await LocalLoopRuntime(outputDrainTimeout: .milliseconds(500)).run(
             ["/bin/sh", "-c", "sleep 10 & echo done"],
+            input: "",
             for: repository,
             timeout: .seconds(10)
         )

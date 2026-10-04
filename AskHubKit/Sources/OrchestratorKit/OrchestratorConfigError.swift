@@ -15,7 +15,6 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
     case unknownPlaceholder(String)
     case emptyIdeaCommand
     case unknownIdeaPlaceholder(String)
-    case ideaCommandWithoutPrompt
 
     public var description: String {
         switch self {
@@ -55,9 +54,6 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
             "ideaCommand に未知のプレースホルダ {\(name)} があります（使えるもの: "
                 + IdeaCommandTemplate.Placeholder.allCases.map { "{\($0.rawValue)}" }.joined(separator: " ")
                 + "）"
-
-        case .ideaCommandWithoutPrompt:
-            "ideaCommand に {prompt} がありません。プロンプトを渡す引数に {prompt} を置いてください"
         }
     }
 }

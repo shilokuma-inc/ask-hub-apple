@@ -97,29 +97,33 @@ public actor LocalLoopRuntime: LoopRuntime {
     ///
     /// `timeout` を過ぎたら SIGTERM を送り、`killGracePeriod` 待っても終わらなければ SIGKILL で止める。
     /// 出力は終了後に最長 `outputDrainTimeout` だけ読み切りを待つ（パイプを継承した子プロセスが残っても戻れるように）
-    public func run(_ arguments: [String], for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult {
+    public func run(
+        _ arguments: [String],
+        input: String,
+        for repository: RepositoryConfig,
+        timeout: Duration
+    ) async throws -> CommandResult {
         let process = try Self.makeProcess(arguments, in: repository)
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
+        let inputPipe = Pipe()
+        process.standardInput = inputPipe
         let (exited, exit) = AsyncStream<Int32>.makeStream()
         process.terminationHandler = { process in
             exit.yield(process.terminationStatus)
             exit.finish()
         }
-        // 出力は届いた分から読み、パイプが一杯になってコマンドが止まらないようにする
-        let output = OSAllocatedUnfairLock(initialState: Data())
-        let (closed, close) = AsyncStream<Void>.makeStream()
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            if chunk.isEmpty {
-                handle.readabilityHandler = nil
-                close.finish()
-            } else {
-                output.withLock { $0.append(chunk) }
-            }
-        }
+        let collector = OutputCollector(reading: pipe.fileHandleForReading, limit: Self.maxOutputBytes)
         try process.run()
+
+        // 入力はパイプの容量を超えうるので、読み手を待たせないよう別のタスクで書いて閉じる
+        let writer = inputPipe.fileHandleForWriting
+        let inputData = Data(input.utf8)
+        Task.detached {
+            try? writer.write(contentsOf: inputData)
+            try? writer.close()
+        }
 
         let pid = process.processIdentifier
         let killGracePeriod = killGracePeriod
@@ -135,22 +139,12 @@ public actor LocalLoopRuntime: LoopRuntime {
         }
         timer.cancel()
 
-        // 終わった後に残りの出力を読み切る。子プロセスがパイプを持ち続けても、待つのは決めた時間まで
-        let outputDrainTimeout = outputDrainTimeout
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                for await _ in closed {}
-            }
-            group.addTask {
-                try? await Task.sleep(for: outputDrainTimeout)
-            }
-            await group.next()
-            group.cancelAll()
-        }
-        pipe.fileHandleForReading.readabilityHandler = nil
-        let data = output.withLock { $0 }
-        return CommandResult(status: status, output: String(bytes: data, encoding: .utf8) ?? "")
+        let output = await collector.finish(waitingAtMost: outputDrainTimeout)
+        return CommandResult(status: status, output: output)
     }
+
+    /// `run` で保持する出力の上限（末尾から）
+    static let maxOutputBytes = 1_000_000
 
     /// 先頭が絶対パスでなければ `PATH` から探す。作業ディレクトリはメインの checkout
     private static func makeProcess(_ arguments: [String], in repository: RepositoryConfig) throws -> Process {
@@ -167,5 +161,56 @@ public actor LocalLoopRuntime: LoopRuntime {
         }
         process.currentDirectoryURL = URL(fileURLWithPath: repository.checkoutPath, isDirectory: true)
         return process
+    }
+}
+
+/// コマンドの出力を届いた分から読み、末尾の `limit` バイトだけを保持する。
+/// パイプが一杯になってコマンドが止まらないよう、終了を待つ前から読み続ける
+private final class OutputCollector: Sendable {
+    private let handle: FileHandle
+    private let data = OSAllocatedUnfairLock(initialState: Data())
+    private let closed: AsyncStream<Void>
+
+    init(reading handle: FileHandle, limit: Int) {
+        self.handle = handle
+        let (closed, close) = AsyncStream<Void>.makeStream()
+        self.closed = closed
+        let data = data
+        handle.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                close.finish()
+                return
+            }
+            // URL は最後の行に出させるので、末尾があれば足りる
+            data.withLock { data in
+                data.append(chunk)
+                if data.count > limit {
+                    data.removeFirst(data.count - limit)
+                }
+            }
+        }
+    }
+
+    /// 残りの出力を読み切って返す。子プロセスがパイプを持ち続けても、待つのは `timeout` まで
+    func finish(waitingAtMost timeout: Duration) async -> String {
+        let closed = closed
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await _ in closed {}
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+            }
+            await group.next()
+            group.cancelAll()
+        }
+        handle.readabilityHandler = nil
+        let bytes = data.withLock { $0 }
+        // 末尾だけを残すと文字の途中で切れ、コマンドの出力に不正なバイトが混ざることもある。
+        // 全体を失わないよう、壊れた部分を置き換えて読む（URL の行が読めればよい）
+        // swiftlint:disable:next optional_data_string_conversion
+        return String(decoding: bytes, as: UTF8.self)
     }
 }

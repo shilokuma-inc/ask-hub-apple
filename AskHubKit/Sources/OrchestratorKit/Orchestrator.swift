@@ -53,8 +53,8 @@ public protocol LoopRuntime: Sendable {
     func launch(_ arguments: [String], for repository: RepositoryConfig) async throws
     /// 制御用 worktree のブランチ・ゴール・state を読む
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot
-    /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`timeout` を過ぎたら止める
-    func run(_ arguments: [String], for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
+    /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める
+    func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
 }
 
 /// 「ポーリング → 状態判定 → アクション」を繰り返す。
@@ -177,10 +177,11 @@ public actor Orchestrator {
         let name = "\(issue.repository)#\(issue.number)"
         log("\(name) の依頼から、質問付きの Discussion を作らせます")
         let prompt = IdeaPrompt.make(for: issue, trustedAuthors: config.trustedAuthorLogins)
-        let arguments = config.ideaCommand.render(prompt: prompt, for: repository)
+        let arguments = config.ideaCommand.render(for: repository)
         let reason: String
         do {
-            let result = try await runtime.run(arguments, for: repository, timeout: Self.ideaCommandTimeout)
+            // プロンプト（依頼の本文を含む）は引数ではなく標準入力で渡す
+            let result = try await runtime.run(arguments, input: prompt, for: repository, timeout: Self.ideaCommandTimeout)
             if result.status == 0, let url = IdeaPrompt.discussionURL(in: result.output, repository: issue.repository) {
                 ideaTracker.recordCreated(url, for: issue)
                 log("\(name) の依頼から Discussion を作りました: \(url.absoluteString)")

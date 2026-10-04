@@ -51,11 +51,13 @@ struct OrchestratorConfigLoaderTests {
 
     @Test func readsIdeaCommandOrUsesDefault() throws {
         #expect(try decode(config()).ideaCommand == IdeaCommandTemplate.standard)
-        let custom = config().replacingOccurrences(of: #""org""#, with: #""ideaCommand": ["/opt/bin/claude", "-p", "{prompt}"], "org""#)
-        #expect(try decode(custom).ideaCommand.arguments == ["/opt/bin/claude", "-p", "{prompt}"])
-        let invalid = config().replacingOccurrences(of: #""org""#, with: #""ideaCommand": ["claude"], "org""#)
-        #expect(throws: OrchestratorConfigError.ideaCommandWithoutPrompt) {
-            try decode(invalid)
+        let customField = #""ideaCommand": ["/opt/bin/claude", "-p", "--add-dir", "{checkoutPath}"], "org""#
+        let custom = config().replacingOccurrences(of: #""org""#, with: customField)
+        #expect(try decode(custom).ideaCommand.arguments == ["/opt/bin/claude", "-p", "--add-dir", "{checkoutPath}"])
+        // プロンプトは標準入力で渡すので、{prompt} は使えない（古い書き方は設定エラーで気づける）
+        let old = config().replacingOccurrences(of: #""org""#, with: #""ideaCommand": ["claude", "-p", "{prompt}"], "org""#)
+        #expect(throws: OrchestratorConfigError.unknownIdeaPlaceholder("prompt")) {
+            try decode(old)
         }
     }
 
