@@ -72,6 +72,11 @@ struct AnswerFormModelTests {
         #expect(form.isPosted)
         #expect(!form.canPost)
         #expect(poster.bodies == ["回答: 1時間\n夜は長くてもよい"])
+        // 検索がまだ回答を反映していなくても（サンプルは同じ質問を返し続ける）、取り直した一覧に戻さない
+        #expect(!inbox.questions.contains { $0.id == question.id })
+        await inbox.refresh()
+        #expect(!inbox.questions.contains { $0.id == question.id })
+        #expect(inbox.questions.count == 2)
     }
 
     @Test func keepsInputAndShowsErrorWhenPostingFails() async {

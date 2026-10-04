@@ -21,6 +21,8 @@ final class InboxModel {
     static let org = "shilokuma-inc"
 
     private(set) var questions: [InboxQuestion] = []
+    /// アプリから回答した質問。GitHub の検索に回答が反映されるまで、取り直しても一覧に出さない
+    private var answeredQuestionIDs: Set<String> = []
     private(set) var issues: [InboxIssue] = []
     private(set) var state = LoadState.idle
 
@@ -50,7 +52,8 @@ final class InboxModel {
             throw MissingTokenError()
         }
         _ = try await makePoster(token).post(answer, to: question)
-        // 検索の反映を待たずに、回答した質問はすぐ一覧から消す
+        // 検索の反映を待たずに、回答した質問はすぐ一覧から消す。取り直しても戻さない
+        answeredQuestionIDs.insert(question.id)
         questions.removeAll { $0.id == question.id }
         await refresh()
     }
@@ -95,7 +98,11 @@ final class InboxModel {
         do {
             async let questions = fetcher.unansweredQuestions(org: Self.org)
             async let issues = fetcher.lowPriorityIssues(org: Self.org)
-            (self.questions, self.issues) = try await (questions, issues)
+            let (fetchedQuestions, fetchedIssues) = try await (questions, issues)
+            // 取得結果に出てこなくなった（検索に回答が反映された）質問は、覚えておく必要がない
+            answeredQuestionIDs.formIntersection(fetchedQuestions.map(\.id))
+            self.questions = fetchedQuestions.filter { !answeredQuestionIDs.contains($0.id) }
+            self.issues = fetchedIssues
             state = .loaded
         } catch {
             state = .failed(Self.message(for: error))
