@@ -28,10 +28,16 @@ struct ContentView: View {
                     emptyTitle: "未回答の質問はありません",
                     emptySystemImage: "checkmark.bubble",
                     model: model,
-                    url: \.comment.url,
-                    row: { QuestionRow(question: $0) },
+                    row: { question in
+                        NavigationLink(value: question) {
+                            QuestionRow(question: question)
+                        }
+                    },
                     openSettings: { isShowingSettings = true }
                 )
+                .navigationDestination(for: InboxQuestion.self) { question in
+                    QuestionDetailView(question: question, inbox: model)
+                }
             }
             .tabItem { Label("要回答", systemImage: "questionmark.bubble") }
             .badge(model.questions.count)
@@ -43,8 +49,17 @@ struct ContentView: View {
                     emptyTitle: "判断ログ・実機確認はありません",
                     emptySystemImage: "tray",
                     model: model,
-                    url: \.url,
-                    row: { IssueRow(issue: $0) },
+                    row: { issue in
+                        // 判断ログ・実機確認は GitHub で読み書きする
+                        Link(destination: issue.url) {
+                            IssueRow(issue: issue)
+                                // 行全体をタップできるように幅を広げる
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(.rect)
+                        }
+                        // Link の既定のスタイルは行の文字をすべてアクセントカラーにするため、行の配色を使う
+                        .buttonStyle(.plain)
+                    },
                     openSettings: { isShowingSettings = true }
                 )
             }
