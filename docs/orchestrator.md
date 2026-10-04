@@ -140,12 +140,15 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 
 | 呼ばれ方 | 動作 |
 | --- | --- |
-| `discussion` あり（`ready-for-loop` から） | 新しい epic を準備してからループを起動する。準備はヘッドレスの `claude` が行う（`ralph-setup.sh`・playbook のプレースホルダの置き換え・STEP A に沿った goal の作成・epic の push）。最後の行の `ASKHUB_PROMISE: <完了語>` を読み取る |
+| `discussion` あり（`ready-for-loop` から） | 新しい epic を準備してからループを起動する。準備はヘッドレスの `claude` が行う（`ralph-setup.sh`・playbook のプレースホルダの置き換え・STEP A に沿った goal の作成・epic の push）。最後の行の `ASKHUB_PROMISE: <完了語>` を読み取る。Discussion はスクリプトが `gh` で取得し、**信用する author の本文・コメント・返信だけ**を `claude` に渡す |
 | `discussion` が空（ask への回答で再開） | 既存の制御用 worktree でループを起動し直す。片付け済みのスロットは作り直す。未完了のタスクが無ければ何もしない |
-| state ファイルがある | ループが動いているので何もしない |
+| state ファイルがある | ループが動いているので何もしない。ただし記録した PID（`.claude/askhub-loop.pid`）のプロセスが終わっていれば、残った state を片付けて続ける |
 
-- 前の epic が完了済み（未完了のタスクが無い）なら、制御用 worktree の goal / state を `~/Library/Logs/askhub/archive/` に退避してから worktree を片付ける。
-  未完了なら新しい epic は始めない（1 リポジトリにつきループは 1 つ）
+- 前の epic が完了済み（未完了のタスクが無い）なら、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/` に退避してから worktree を片付ける。
+  未完了なら新しい epic は始めない（1 リポジトリにつきループは 1 つ）。
+  worktree にコミットしていない変更がある・退避に失敗したときは、片付けずに失敗として返す
+- 信用する author は、オーケストレーターが設定の `trustedAuthors` を環境変数 `ASKHUB_TRUSTED_AUTHORS` で渡す（手で設定する必要は無い）
+- オーケストレーターも PID ファイルを読み、state ファイルが残っていても PID のプロセスが居なければ「止まっている」とみなして再開する
 - 準備が途中で失敗した場合（完了語を読み取れない等）は、オーケストレーターの再試行で、同じ Discussion の途中の worktree を片付けてやり直す
 - ループは `claude -p --permission-mode bypassPermissions` を `exec` で起動する。このプロセスの寿命がループの寿命になる。
   ralph の Stop hook はヘッドレスでも周回する（標準入力は `/dev/null`）
