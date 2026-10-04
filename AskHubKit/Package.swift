@@ -14,6 +14,9 @@ let package = Package(
     ],
     targets: [
         .target(name: "AskHubKit"),
+        // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
+        .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .testTarget(name: "AskHubKitTests", dependencies: ["AskHubKit"]),
+        .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]
 )
