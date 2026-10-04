@@ -28,6 +28,8 @@ final class InboxModel {
     /// トークンの値そのものはモデルに残さない
     private var lastTokenFingerprint: String?
     private(set) var issues: [InboxIssue] = []
+    /// `ready-for-loop` を付けて、ループの開始を待っている Discussion
+    private(set) var waiting: [WaitingDiscussion] = []
     private(set) var state = LoadState.idle
 
     private let tokenStore: any TokenStore
@@ -119,6 +121,7 @@ final class InboxModel {
             guard let saved = try tokenStore.load() else {
                 questions = []
                 issues = []
+                waiting = []
                 state = .needsToken
                 return
             }
@@ -134,7 +137,8 @@ final class InboxModel {
         do {
             async let questions = fetcher.unansweredQuestions(org: Self.org)
             async let issues = fetcher.lowPriorityIssues(org: Self.org)
-            let (fetchedQuestions, fetchedIssues) = try await (questions, issues)
+            async let waiting = fetcher.waitingDiscussions(org: Self.org)
+            let (fetchedQuestions, fetchedIssues, fetchedWaiting) = try await (questions, issues, waiting)
             // 取得を待つ間に別のトークンで回答した場合は、古いトークンでの結果を捨てて取り直す
             guard Self.fingerprint(of: token) == lastTokenFingerprint else {
                 needsRefreshAfterLoading = true
@@ -145,6 +149,7 @@ final class InboxModel {
             answeredQuestionIDs.formIntersection(fetchedQuestions.map(\.id))
             self.questions = fetchedQuestions.filter { !answeredQuestionIDs.contains($0.id) }
             self.issues = fetchedIssues
+            self.waiting = fetchedWaiting
             state = .loaded
         } catch {
             state = .failed(Self.message(for: error))

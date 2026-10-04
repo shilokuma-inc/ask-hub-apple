@@ -151,6 +151,19 @@ struct SampleInboxSource: InboxSource {
         ]
     }
 
+    func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
+        [
+            WaitingDiscussion(
+                subject: Self.subject(.discussion, repository: "shilokuma-inc/ask-hub-apple", number: 15, title: "マージ待ちに件数のバッジを出したい"),
+                lastSeen: Self.now.addingTimeInterval(-5 * 60)
+            ),
+            WaitingDiscussion(
+                subject: Self.subject(.discussion, repository: "shilokuma-inc/beat-tap-ios", number: 3, title: "練習モードを追加したい"),
+                lastSeen: nil
+            )
+        ]
+    }
+
     func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
         [
             InboxIssue(
