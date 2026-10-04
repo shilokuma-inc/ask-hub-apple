@@ -18,6 +18,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public let repositories: [RepositoryConfig]
     public let pollInterval: Duration
     public let loopCommand: LoopCommandTemplate
+    /// 依頼から Discussion を作らせるコマンド
+    public let ideaCommand: IdeaCommandTemplate
 
     public var trustedAuthors: TrustedAuthors {
         TrustedAuthors(trustedAuthorLogins)
@@ -28,13 +30,15 @@ public struct OrchestratorConfig: Sendable, Equatable {
         org: String,
         repositories: [RepositoryConfig],
         pollInterval: Duration,
-        loopCommand: LoopCommandTemplate
+        loopCommand: LoopCommandTemplate,
+        ideaCommand: IdeaCommandTemplate = .standard
     ) {
         self.trustedAuthorLogins = trustedAuthorLogins
         self.org = org
         self.repositories = repositories
         self.pollInterval = pollInterval
         self.loopCommand = loopCommand
+        self.ideaCommand = ideaCommand
     }
 
     /// 担当リポジトリを `owner/repo` で探す。GitHub の名前は大文字・小文字を区別しない

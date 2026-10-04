@@ -49,6 +49,16 @@ struct OrchestratorConfigLoaderTests {
         #expect(result.trustedAuthorLogins == ["mrs1669"])
     }
 
+    @Test func readsIdeaCommandOrUsesDefault() throws {
+        #expect(try decode(config()).ideaCommand == IdeaCommandTemplate.standard)
+        let custom = config().replacingOccurrences(of: #""org""#, with: #""ideaCommand": ["/opt/bin/claude", "-p", "{prompt}"], "org""#)
+        #expect(try decode(custom).ideaCommand.arguments == ["/opt/bin/claude", "-p", "{prompt}"])
+        let invalid = config().replacingOccurrences(of: #""org""#, with: #""ideaCommand": ["claude"], "org""#)
+        #expect(throws: OrchestratorConfigError.ideaCommandWithoutPrompt) {
+            try decode(invalid)
+        }
+    }
+
     @Test func appliesDefaults() throws {
         let result = try decode(config())
 
