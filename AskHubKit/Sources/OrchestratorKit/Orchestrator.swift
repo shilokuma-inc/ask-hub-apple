@@ -27,6 +27,14 @@ public protocol OrchestratorGitHub: Sendable {
     func close(_ issue: IdeaRequestIssue) async throws
     /// 担当リポジトリのラベル `askhub-orchestrator` の説明を書き換える。ラベルが無ければ作る
     func updateHeartbeat(in repository: String, description: String) async throws
+    /// リポジトリの、`decision-log` が付いた open な Issue（仮決め一覧）
+    func decisionLogs(in repository: String) async throws -> [DecisionLogIssue]
+    /// Issue のコメント（古い順）
+    func comments(in repository: String, issue number: Int) async throws -> [IssueComment]
+    /// 仮決め一覧にコメントする
+    func comment(on issue: DecisionLogIssue, body: String) async throws
+    /// 仮決め一覧をクローズする（完了として）
+    func close(_ issue: DecisionLogIssue) async throws
 }
 
 /// 終わるまで待って実行したコマンドの結果
@@ -47,11 +55,14 @@ public struct ExistingPullRequest: Sendable, Equatable {
     public let isOpen: Bool
     /// PR の本文。空なら `nil`
     public let body: String?
+    /// マージ済み
+    public let isMerged: Bool
 
-    public init(number: Int, isOpen: Bool, body: String? = nil) {
+    public init(number: Int, isOpen: Bool, body: String? = nil, isMerged: Bool = false) {
         self.number = number
         self.isOpen = isOpen
         self.body = body
+        self.isMerged = isMerged
     }
 }
 
@@ -70,14 +81,18 @@ public protocol LoopRuntime: Sendable {
 /// 起動した Discussion（`LaunchTracker`）と回答済みの質問（`ResumeWatcher`）を覚えておくため actor にする
 public actor Orchestrator {
     let config: OrchestratorConfig
-    private let github: any OrchestratorGitHub
+    let github: any OrchestratorGitHub
     private let inbox: any InboxSource
     let runtime: any LoopRuntime
     let log: @Sendable (String) -> Void
     private var tracker = LaunchTracker()
     private var watcher = ResumeWatcher()
     /// epic の最終 PR を作った（または既にあった）リポジトリ。毎回 GitHub に問い合わせないために覚える
-    private var finalizedEpics: Set<String> = []
+    var finalizedEpics: Set<String> = []
+    /// 仮決め一覧への指示を受けてループを再開した epic。再び完了したら、最終 PR の本文を書き直す
+    var epicsToRefresh: Set<String> = []
+    /// ループの再開に使った仮決め一覧のコメント（`<repo小文字>#<コメント id>`）。同じコメントで何度も再開しない
+    var resumedDecisionComments: Set<String> = []
     /// 担当の印を最後に書いた時刻（キーは担当リポジトリの `fullName` を小文字にしたもの）
     private var lastHeartbeats: [String: Date] = [:]
     private let now: @Sendable () -> Date
@@ -142,6 +157,9 @@ public actor Orchestrator {
         // 異常終了したループ（タスクを残したまま止まった）を再開する。
         // 新しい Discussion の起動より先に行い、途中の epic に別の epic を被せない
         await resumeStalledLoops(statuses: &statuses)
+
+        // 仮決め一覧: 最終 PR がマージされたら閉じ、マージ前に付いた指示ではループを再開する
+        await handleDecisionLogs(statuses: &statuses)
 
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         for action in tracker.update(discussions: discussions, statuses: statuses) {
@@ -288,9 +306,17 @@ public actor Orchestrator {
             if let existing = try await github.existingPullRequest(in: repository.fullName, head: branch) {
                 // 作った後にラベルだけ付け損ねた場合に備え、open な PR には付け直す（付与は冪等）
                 if existing.isOpen {
-                    // 目印を入れる前のオーケストレーターが作った PR などには、ゴール元の Discussion の目印を足す。
-                    // 足さないと、マージしても Discussion が閉じない
-                    if let discussion = snapshot.discussion, !EpicSnapshot.hasDiscussionMarker(existing.body, discussion: discussion) {
+                    let rewritten = try await rewriteFinalPullRequestIfResumed(
+                        existing,
+                        key: key,
+                        summary: summary,
+                        snapshot: snapshot,
+                        in: repository
+                    )
+                    if !rewritten, let discussion = snapshot.discussion,
+                       !EpicSnapshot.hasDiscussionMarker(existing.body, discussion: discussion) {
+                        // 目印を入れる前のオーケストレーターが作った PR などには、ゴール元の Discussion の目印を足す。
+                        // 足さないと、マージしても Discussion が閉じない（書き直した本文には目印が入っている）
                         let body = EpicSnapshot.pullRequestBody(summary: existing.body ?? "", discussion: discussion)
                         try await github.updatePullRequestBody(in: repository.fullName, number: existing.number, body: body)
                         log("\(repository.fullName) の最終 PR #\(existing.number) に、ゴール元の Discussion #\(discussion) の目印を足しました")
