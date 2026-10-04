@@ -15,7 +15,12 @@ final class IdeaRequestModel {
         case failed(String)
     }
 
-    private(set) var repositories: [String] = []
+    private(set) var repositories: [RequestRepository] = []
+
+    /// Picker に出すまとまり（担当 PC の有無）。候補は絞らない
+    func repositorySections(now: Date) -> [RepositorySection] {
+        RepositorySection.grouping(repositories, now: now)
+    }
     private(set) var repositoriesState = RepositoriesState.idle
     /// 選んだリポジトリ（`owner/repo`）
     var repository: String?
@@ -78,7 +83,7 @@ final class IdeaRequestModel {
         do {
             repositories = try await makeRequester(token).repositories(in: InboxModel.org)
             // 選んでいたリポジトリが一覧から消えていたら、選び直してもらう
-            if let repository, !repositories.contains(repository) {
+            if let repository, !repositories.contains(where: { $0.fullName == repository }) {
                 self.repository = nil
             }
             repositoriesState = .loaded

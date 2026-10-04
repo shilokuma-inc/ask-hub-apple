@@ -19,11 +19,14 @@ struct IdeaRequestModelTests {
             created.withLock { $0 }
         }
 
-        func repositories(in org: String) async throws -> [String] {
+        func repositories(in org: String) async throws -> [RequestRepository] {
             if let failure {
                 throw failure
             }
-            return ["shilokuma-inc/ask-hub-apple", "shilokuma-inc/notti-ios"]
+            return [
+                RequestRepository(fullName: "shilokuma-inc/ask-hub-apple", lastSeen: Date(timeIntervalSince1970: 1_800_000_000)),
+                RequestRepository(fullName: "shilokuma-inc/notti-ios")
+            ]
         }
 
         func create(_ request: IdeaRequest) async throws -> CreatedIssue {
@@ -45,8 +48,12 @@ struct IdeaRequestModelTests {
         await model.loadRepositories()
 
         #expect(model.repositoriesState == .loaded)
-        #expect(model.repositories == ["shilokuma-inc/ask-hub-apple", "shilokuma-inc/notti-ios"])
+        #expect(model.repositories.map(\.fullName) == ["shilokuma-inc/ask-hub-apple", "shilokuma-inc/notti-ios"])
         #expect(model.repository == nil)
+        #expect(model.repositorySections(now: Date(timeIntervalSince1970: 1_800_000_000)) == [
+            RepositorySection(title: "担当 PC あり", repositories: ["shilokuma-inc/ask-hub-apple"]),
+            RepositorySection(title: "担当 PC なし", repositories: ["shilokuma-inc/notti-ios"])
+        ])
     }
 
     /// 最初の一覧の取得を、テストが開けるまで止めておく
@@ -62,7 +69,7 @@ struct IdeaRequestModelTests {
             waiters.forEach { $0.resume() }
         }
 
-        func repositories(in org: String) async throws -> [String] {
+        func repositories(in org: String) async throws -> [RequestRepository] {
             await withCheckedContinuation { continuation in
                 let opened = gate.withLock { state in
                     if !state.opened {
@@ -74,7 +81,7 @@ struct IdeaRequestModelTests {
                     continuation.resume()
                 }
             }
-            return ["shilokuma-inc/ask-hub-apple"]
+            return [RequestRepository(fullName: "shilokuma-inc/ask-hub-apple")]
         }
 
         func create(_ request: IdeaRequest) async throws -> CreatedIssue {
