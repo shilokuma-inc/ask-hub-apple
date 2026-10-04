@@ -119,6 +119,8 @@ public actor LocalLoopRuntime: LoopRuntime {
 
         // 入力はパイプの容量を超えうるので、読み手を待たせないよう別のタスクで書いて閉じる
         let writer = inputPipe.fileHandleForWriting
+        // 子プロセスが標準入力を読まずに終了しても SIGPIPE でオーケストレーターごと落ちないようにする（EPIPE になる）
+        _ = fcntl(writer.fileDescriptor, F_SETNOSIGPIPE, 1)
         let inputData = Data(input.utf8)
         Task.detached {
             try? writer.write(contentsOf: inputData)
