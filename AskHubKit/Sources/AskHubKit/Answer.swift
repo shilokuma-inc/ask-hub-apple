@@ -19,12 +19,15 @@ public struct Answer: Sendable, Equatable {
         self.note = note
     }
 
-    /// 返信の本文から回答を読み取る。1 行目が `回答: ` で始まらなければ、全体を自由記述とみなす
-    public init(parsing body: String) {
+    /// 返信の本文から、その質問への回答を読み取る。
+    ///
+    /// 選択肢の無い質問では、本文全体を自由記述とみなす（自由記述が `回答: ` で始まっていても選択肢として読まない）。
+    /// 選択肢のある質問では、1 行目が `回答: ` で始まれば選択肢、残りを自由記述とみなす。
+    public init(parsing body: String, for marker: QuestionMarker) {
         let lines = body
             .replacingOccurrences(of: "\r\n", with: "\n")
             .split(separator: "\n", omittingEmptySubsequences: false)
-        if let first = lines.first, first.hasPrefix(Self.choicePrefix) {
+        if !marker.isFreeForm, let first = lines.first, first.hasPrefix(Self.choicePrefix) {
             let choice = first.dropFirst(Self.choicePrefix.count).trimmingCharacters(in: .whitespaces)
             self.init(
                 choice: choice.isEmpty ? nil : choice,
