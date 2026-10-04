@@ -49,14 +49,30 @@ struct QuestionMarkerTests {
         #expect(QuestionMarker.parse(#"<!-- ask-hub:question id="a" id="b" -->"#)?.id == "a")
     }
 
-    @Test func htmlCommentRoundTrips() {
+    @Test func htmlCommentRoundTrips() throws {
         let markers = [
             QuestionMarker(id: "d1-q1", options: ["はい", "いいえ"]),
             QuestionMarker(id: "pr2-1")
         ]
         for marker in markers {
-            #expect(QuestionMarker.parse(marker.htmlComment) == marker)
+            let comment = try #require(marker.htmlComment)
+            #expect(QuestionMarker.parse(comment) == marker)
         }
         #expect(markers[1].htmlComment == #"<!-- ask-hub:question id="pr2-1" -->"#)
+    }
+
+    @Test(arguments: [
+        QuestionMarker(id: ""),
+        QuestionMarker(id: #"q"1"#),
+        QuestionMarker(id: "q1\nq2"),
+        QuestionMarker(id: "q1-->"),
+        QuestionMarker(id: "q1", options: ["A|B"]),
+        QuestionMarker(id: "q1", options: [#"A"B"#]),
+        QuestionMarker(id: "q1", options: [""]),
+        QuestionMarker(id: "q1", options: [" A "])
+    ])
+    func unrepresentableMarkerHasNoHTMLComment(marker: QuestionMarker) {
+        #expect(!marker.isRepresentable)
+        #expect(marker.htmlComment == nil)
     }
 }
