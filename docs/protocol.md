@@ -104,6 +104,19 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 夜間はもっと長くてもよい。
 ```
 
+## ゴール元の Discussion の目印
+
+オーケストレーターは、最終 PR（`epic-final`）の本文の先頭に、epic のゴール元の Discussion を書く。
+
+```
+ゴール元: Discussion #12
+<!-- ask-hub:discussion 12 -->
+```
+
+- 番号は、起動スクリプト（askhub-start-loop）が制御用 worktree に残す `.claude/askhub-bootstrap.local.txt` から読む。手で始めた epic には付かない
+- 最終 PR が `develop` にマージされると、ワークフロー（`.github/workflows/close-goal-discussion.yml`）がこの目印を読み、
+  Discussion に PR へのリンクをコメントしてから解決済みで閉じる
+
 ## 信用する author
 
 アプリとオーケストレーターの設定で列挙する。既定は `mrs1669`。
@@ -126,3 +139,4 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 5. ask に回答が付くと、オーケストレーターが終了済みのループを再開し、回答済みの `needs-answer` を外す
 6. epic の全タスクが完了すると、オーケストレーターが `develop` 向けの最終 PR（`epic-final`）を作る
 7. 人間がアプリの「マージ待ち」から確認して merge commit でマージする
+8. マージされると、ワークフローがゴール元の Discussion を解決済みで閉じる（下記「ゴール元の Discussion の目印」）

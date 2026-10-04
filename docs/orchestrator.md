@@ -206,8 +206,11 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | 項目 | 値 |
 | --- | --- |
 | タイトル | `【FEAT】<epic ブランチ> を <既定ブランチ> に取り込む` |
-| 本文 | 「最終 PR に載せる内容」と、オーケストレーターが作った旨・アプリの「マージ待ち」からマージする旨 |
+| 本文 | 先頭にゴール元の Discussion（`ゴール元: Discussion #N` と `<!-- ask-hub:discussion N -->`。起動スクリプトの記録がある場合）、続けて「最終 PR に載せる内容」と、オーケストレーターが作った旨・アプリの「マージ待ち」からマージする旨 |
 | ラベル | `epic-final` |
+
+最終 PR がマージされると、ワークフロー（`.github/workflows/close-goal-discussion.yml`）が本文の目印からゴール元の Discussion を特定し、
+PR へのリンクをコメントしてから解決済みで閉じる（`docs/protocol.md` の「ゴール元の Discussion の目印」）。
 
 同じ head ブランチから既定ブランチへの PR が既にあれば（閉じた PR も含む）作らない（別の base への PR は数えない）。既にある PR が open なら `epic-final` を付け直す
 （PR を作った直後にラベルの付与だけ失敗した場合に、次のポーリングで付け直すため。付与は冪等）。
