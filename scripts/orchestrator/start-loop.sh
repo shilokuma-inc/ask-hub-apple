@@ -66,9 +66,14 @@ RALPH_PLUGIN="ralph-loop@claude-plugins-official"
 command -v jq >/dev/null 2>&1 || fail "jq が見つかりません（brew install jq で入れてください）"
 ralph_plugin_enabled() {
   local settings
-  for settings in "$HOME/.claude/settings.json" "$CTL/.claude/settings.json" "$CTL/.claude/settings.local.json"; do
+  # Claude Code と同じく、優先度の高い設定（ローカル → プロジェクト → ユーザー）から見て、
+  # このプラグインの値を最初に持つファイルで決める（上位の false を下位の true で覆さない）
+  for settings in "$CTL/.claude/settings.local.json" "$CTL/.claude/settings.json" "$HOME/.claude/settings.json"; do
     [[ -f "$settings" ]] || continue
-    jq -e --arg plugin "$RALPH_PLUGIN" '.enabledPlugins[$plugin] == true' "$settings" >/dev/null 2>&1 && return 0
+    if jq -e --arg plugin "$RALPH_PLUGIN" '.enabledPlugins | has($plugin)' "$settings" >/dev/null 2>&1; then
+      jq -e --arg plugin "$RALPH_PLUGIN" '.enabledPlugins[$plugin] == true' "$settings" >/dev/null 2>&1
+      return
+    fi
   done
   return 1
 }
