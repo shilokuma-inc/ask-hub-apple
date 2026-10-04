@@ -38,4 +38,15 @@ struct StallWatcherTests {
         // リポジトリごとに数える
         #expect(watcher.update(repositoryKey: "other", status: Self.stalled, snapshot: Self.epic) == .resume(attempt: 1))
     }
+
+    @Test func epicIsInProgressOnlyWhenPreparedWithUnfinishedTasks() {
+        let goal = "- [x] 【FEAT】A\n- [ ] 【FEAT】B"
+        #expect(EpicSnapshot(branch: "epic/mvp", goal: goal, state: nil, loopPrepared: true).inProgress)
+        // 準備の途中（完了語が無い）・epic 以外のブランチ・回答待ちだけが残った epic は途中とみなさない
+        #expect(!EpicSnapshot(branch: "epic/mvp", goal: goal, state: nil).inProgress)
+        #expect(!EpicSnapshot(branch: "develop", goal: goal, state: nil, loopPrepared: true).inProgress)
+        let waiting = "- [x] 【FEAT】A\n- [ ] 【FEAT】B  ※回答待ち（PR #3 / ask id 1）"
+        #expect(!EpicSnapshot(branch: "epic/mvp", goal: waiting, state: nil, loopPrepared: true).inProgress)
+        #expect(!EpicSnapshot(branch: "epic/mvp", goal: nil, state: nil, loopPrepared: true).inProgress)
+    }
 }

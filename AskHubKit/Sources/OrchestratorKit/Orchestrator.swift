@@ -69,11 +69,11 @@ public protocol LoopRuntime: Sendable {
 /// 「ポーリング → 状態判定 → アクション」を繰り返す。
 /// 起動した Discussion（`LaunchTracker`）と回答済みの質問（`ResumeWatcher`）を覚えておくため actor にする
 public actor Orchestrator {
-    private let config: OrchestratorConfig
+    let config: OrchestratorConfig
     private let github: any OrchestratorGitHub
     private let inbox: any InboxSource
-    private let runtime: any LoopRuntime
-    private let log: @Sendable (String) -> Void
+    let runtime: any LoopRuntime
+    let log: @Sendable (String) -> Void
     private var tracker = LaunchTracker()
     private var watcher = ResumeWatcher()
     /// epic の最終 PR を作った（または既にあった）リポジトリ。毎回 GitHub に問い合わせないために覚える
@@ -82,7 +82,7 @@ public actor Orchestrator {
     private var lastHeartbeats: [String: Date] = [:]
     private let now: @Sendable () -> Date
     private var ideaTracker = IdeaRequestTracker()
-    private var stallWatcher = StallWatcher()
+    var stallWatcher = StallWatcher()
 
     /// 依頼から Discussion を作らせるコマンドの制限時間
     static let ideaCommandTimeout: Duration = .seconds(30 * 60)
@@ -152,7 +152,8 @@ public actor Orchestrator {
             discussions,
             config: config,
             statuses: statuses,
-            excluding: tracker.blockedDiscussionIDs
+            excluding: tracker.blockedDiscussionIDs,
+            epicsInProgress: await epicsInProgress(among: discussions)
         )
         for decision in decisions {
             switch decision {
@@ -413,7 +414,7 @@ public actor Orchestrator {
     /// （別の PC の担当・ループの実行中・順番待ちは、待てば解消するので出さない）
     private static func describe(_ reason: LaunchDecision.SkipReason) -> String? {
         switch reason {
-        case .notAssigned, .loopRunning, .waitingForAnotherDiscussion, .alreadyLaunched:
+        case .notAssigned, .loopRunning, .waitingForAnotherDiscussion, .alreadyLaunched, .epicInProgress:
             nil
 
         case .untrustedAuthor:
@@ -451,43 +452,6 @@ extension Orchestrator {
             log("\(name) の質問がすべて回答済みになったので、needs-answer を外しました")
         } catch {
             log("\(name) の needs-answer を外せませんでした（次のポーリングで再試行します）: \(error)")
-        }
-    }
-}
-
-// MARK: - 異常終了したループの再開
-
-extension Orchestrator {
-    private func resumeStalledLoops(statuses: inout [String: LoopStatus]) async {
-        for repository in config.repositories {
-            await resumeIfStalled(repository, statuses: &statuses)
-        }
-    }
-
-    private func resumeIfStalled(_ repository: RepositoryConfig, statuses: inout [String: LoopStatus]) async {
-        let key = repository.fullName.lowercased()
-        let status = statuses[key] ?? .idle
-        guard status.stalled else {
-            return
-        }
-        let snapshot = await runtime.epicSnapshot(of: repository)
-        switch stallWatcher.update(repositoryKey: key, status: status, snapshot: snapshot) {
-        case nil:
-            return
-
-        case let .giveUp(attempts):
-            log("\(repository.fullName) のループが進まないまま \(attempts) 回止まったので、自動の再開をやめます（ループのログを確認してください）")
-
-        case let .resume(attempt):
-            do {
-                // 再開では Discussion を伴わないので `{discussion}` は空になる
-                try await runtime.launch(config.loopCommand.render(for: repository), for: repository)
-            } catch {
-                log("\(repository.fullName) の止まったループを再開できませんでした（\(attempt)/\(StallWatcher.maxAttempts) 回目）: \(error)")
-                return
-            }
-            statuses[key] = LoopStatus(stateFileExists: false, processAlive: true)
-            log("\(repository.fullName) のループがタスクを残して止まっていたので、再開しました（\(attempt)/\(StallWatcher.maxAttempts) 回目）")
         }
     }
 }

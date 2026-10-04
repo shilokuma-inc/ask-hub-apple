@@ -56,6 +56,20 @@ struct LaunchPlannerTests {
         #expect(decisions == [.skip(launched, .alreadyLaunched), .launch(next, app)])
     }
 
+    @Test func waitsForEpicInProgressInSameRepositoryOnly() throws {
+        let discussion = ReadyDiscussion.fixture()
+        let decisions = LaunchPlanner.decide(
+            [discussion],
+            config: try config(),
+            statuses: [:],
+            epicsInProgress: ["shilokuma-inc/ask-hub-apple"]
+        )
+        #expect(decisions == [.skip(discussion, .epicInProgress)])
+
+        let other = LaunchPlanner.decide([discussion], config: try config(), statuses: [:], epicsInProgress: ["shilokuma-inc/notti-ios"])
+        #expect(other == [.launch(discussion, try config().repositories[0])])
+    }
+
     @Test func skipsWhenStateFileCannotBeChecked() throws {
         let discussion = ReadyDiscussion.fixture()
         let decisions = LaunchPlanner.decide(

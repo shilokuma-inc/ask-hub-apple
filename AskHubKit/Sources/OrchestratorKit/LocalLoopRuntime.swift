@@ -82,7 +82,8 @@ public actor LocalLoopRuntime: LoopRuntime {
             state: read(".claude/ralph-state.local.md"),
             discussion: read(".claude/askhub-bootstrap.local.txt")
                 .flatMap { $0.split(whereSeparator: \.isNewline).first }
-                .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+                .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) },
+            loopPrepared: read(".claude/askhub-promise.local.txt")?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         )
     }
 

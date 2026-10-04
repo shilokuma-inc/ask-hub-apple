@@ -52,4 +52,22 @@ extension OrchestratorTests {
         #expect(runtime.launched.count == StallWatcher.maxAttempts)
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple のループが進まないまま 3 回止まったので、自動の再開をやめます（ループのログを確認してください）"))
     }
+
+    @Test func waitsForEpicInProgressWithoutCountingFailuresThenLaunches() async throws {
+        let github = FakeGitHub([.success([ReadyDiscussion.fixture(number: 5)])])
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [ ] 【FEAT】A", state: nil, loopPrepared: true))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        // 途中の epic がある間は、何回ポーリングしても起動しない（起動の失敗として数えない）
+        for _ in 0...LaunchTracker.maxAttempts {
+            try await orchestrator.pollOnce()
+        }
+        #expect(runtime.launched.isEmpty)
+
+        // epic が終われば起動する
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】A", state: nil, loopPrepared: true))
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "5"]])
+    }
 }

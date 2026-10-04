@@ -107,6 +107,11 @@ struct LocalLoopRuntimeTests {
         try Data("not a number".utf8).write(to: control.appendingPathComponent(".claude/askhub-bootstrap.local.txt"))
         #expect(await LocalLoopRuntime().epicSnapshot(of: repository).discussion == nil)
 
+        // 起動スクリプトが完了語を残していれば、ループを始められる状態まで準備できている
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).loopPrepared == false)
+        try Data("DONE\n".utf8).write(to: control.appendingPathComponent(".claude/askhub-promise.local.txt"))
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).loopPrepared)
+
         // detached HEAD ではブランチが無い
         try Data("0123456789abcdef0123456789abcdef01234567\n".utf8).write(to: gitDirectory.appendingPathComponent("HEAD"))
         #expect(await LocalLoopRuntime().epicSnapshot(of: repository).branch == nil)

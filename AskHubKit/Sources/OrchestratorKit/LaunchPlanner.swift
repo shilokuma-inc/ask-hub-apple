@@ -76,6 +76,8 @@ public enum LaunchDecision: Sendable, Equatable {
         case waitingForAnotherDiscussion(number: Int)
         /// 起動済みで、ループの開始の確認かラベルの削除を待っている（`LaunchTracker`）
         case alreadyLaunched
+        /// 同じリポジトリの途中の epic（未完了のタスクが残っている）が終わるのを待っている
+        case epicInProgress
     }
 }
 
@@ -84,11 +86,13 @@ public enum LaunchPlanner {
     /// - Parameters:
     ///   - statuses: 担当リポジトリの `fullName` を小文字にしたキーごとのループの状態。無いものは停止中とみなす
     ///   - excluding: 起動済みで追跡中の Discussion の node id
+    ///   - epicsInProgress: 途中の epic がある担当リポジトリ（`fullName` を小文字にしたもの）
     public static func decide(
         _ discussions: [ReadyDiscussion],
         config: OrchestratorConfig,
         statuses: [String: LoopStatus],
-        excluding launched: Set<String> = []
+        excluding launched: Set<String> = [],
+        epicsInProgress: Set<String> = []
     ) -> [LaunchDecision] {
         // 1 つのリポジトリで同時に動かすループは 1 つ。番号の小さい（先に作られた）Discussion から起動する
         var launching: [String: Int] = [:]
@@ -110,6 +114,10 @@ public enum LaunchPlanner {
             let status = statuses[key] ?? .idle
             if status.processAlive {
                 return .skip(discussion, .loopRunning)
+            }
+            // 起動スクリプトも断るが、起動の失敗として数えると上限で諦めてしまい、epic が終わっても始まらない
+            if epicsInProgress.contains(key) {
+                return .skip(discussion, .epicInProgress)
             }
             switch status.stateFileExists {
             case true:
