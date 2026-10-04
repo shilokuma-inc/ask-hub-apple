@@ -106,8 +106,13 @@ public actor Orchestrator {
         var snapshots: [AnswerSnapshot] = []
         for subject in try await inbox.subjectsNeedingAnswer(org: config.org)
         where config.repository(named: subject.repository) != nil {
-            let threads = try await inbox.questionThreads(of: subject)
-            snapshots.append(AnswerSnapshot(subject: subject, threads: threads, trustedAuthors: config.trustedAuthors))
+            // 1 件の失敗（権限不足など）で、ほかの Discussion / PR の再開とラベルの削除を止めない
+            do {
+                let threads = try await inbox.questionThreads(of: subject)
+                snapshots.append(AnswerSnapshot(subject: subject, threads: threads, trustedAuthors: config.trustedAuthors))
+            } catch {
+                log("\(subject.repository)#\(subject.number) の質問を取得できませんでした: \(error)")
+            }
         }
         for action in watcher.update(snapshots: snapshots, statuses: statuses) {
             switch action {

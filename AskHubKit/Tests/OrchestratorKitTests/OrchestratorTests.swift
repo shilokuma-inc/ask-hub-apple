@@ -25,8 +25,12 @@ private final class FakeInbox: InboxSource {
         state.withLock { $0.subjects }
     }
 
+    /// スレッドを登録していない Discussion / PR は取得に失敗する
     func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
-        state.withLock { $0.threads[subject.nodeID] ?? [] }
+        guard let threads = state.withLock({ $0.threads[subject.nodeID] }) else {
+            throw TestError()
+        }
+        return threads
     }
 }
 
@@ -297,6 +301,19 @@ struct OrchestratorTests {
         // 動いているループは自分で回答を拾う。別の PC の担当には触らない。未回答が残る PR のラベルは外さない
         #expect(runtime.launched.isEmpty)
         #expect(github.removedNeedsAnswer.isEmpty)
+    }
+
+    @Test func skipsOnlySubjectWhoseQuestionsCannotBeFetched() async throws {
+        let github = FakeGitHub([.success([])])
+        let runtime = FakeRuntime()
+        let inbox = FakeInbox()
+        // PR_1 はスレッドを登録していないので取得に失敗する
+        inbox.set([Self.pullRequest(number: 1), Self.pullRequest()], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
+        try await makeOrchestrator(github: github, runtime: runtime, inbox: inbox).pollOnce()
+
+        #expect(runtime.launched.count == 1)
+        #expect(github.removedNeedsAnswer == ["PR_34"])
+        #expect(logs.recorded.first?.hasPrefix("shilokuma-inc/ask-hub-apple#1 の質問を取得できませんでした") == true)
     }
 
     @Test func resumeAndReadyForLoopDoNotLaunchTwiceInOnePoll() async throws {
