@@ -11,8 +11,12 @@ final class AnswerFormModel {
     var choice: String?
     /// 自由記述（選択肢のある質問では補足）
     var note = ""
+    /// 投稿したら、Discussion の回答を確定してループを始める（`ready-for-loop` を付ける）
+    var startsLoopAfterPosting = false
     private(set) var isPosting = false
     private(set) var isPosted = false
+    /// 回答は投稿できたが、ループを始める印を付けられなかった
+    private(set) var loopStartFailed = false
     private(set) var errorMessage: String?
 
     init(question: InboxQuestion) {
@@ -28,7 +32,13 @@ final class AnswerFormModel {
         !isPosting && !isPosted && answer.isValid(for: question.marker)
     }
 
-    /// 回答を投稿する。失敗したら入力を残してエラーを出す
+    /// 「投稿したらループを始める」を選べるか。Discussion で、未回答の質問がこれだけのとき
+    func canStartLoop(in inbox: InboxModel) -> Bool {
+        question.subject.kind == .discussion && inbox.remainingQuestions(besides: question) == 0
+    }
+
+    /// 回答を投稿する。失敗したら入力を残してエラーを出す。
+    /// `startsLoopAfterPosting` なら、投稿の後に Discussion へ `ready-for-loop` を付ける
     func post(using inbox: InboxModel) async {
         guard canPost else {
             return
@@ -41,6 +51,24 @@ final class AnswerFormModel {
             isPosted = true
         } catch {
             errorMessage = InboxModel.message(for: error)
+            return
+        }
+        if startsLoopAfterPosting {
+            await startLoop(using: inbox)
+        }
+    }
+
+    /// Discussion に `ready-for-loop` を付ける。投稿の後に失敗したときの再試行にも使う
+    func startLoop(using inbox: InboxModel) async {
+        isPosting = true
+        defer { isPosting = false }
+        do {
+            try await inbox.startLoop(for: question.subject)
+            loopStartFailed = false
+            errorMessage = nil
+        } catch {
+            loopStartFailed = true
+            errorMessage = "回答は投稿しました。ループを始める印（ready-for-loop）を付けられませんでした: " + InboxModel.message(for: error)
         }
     }
 }

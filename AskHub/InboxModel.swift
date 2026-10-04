@@ -33,22 +33,38 @@ final class InboxModel {
     private let tokenStore: any TokenStore
     private let makeSource: @Sendable (String) -> any InboxSource
     private let makePoster: @Sendable (String) -> any AnswerPosting
+    private let makeStarter: @Sendable (String) -> any LoopStarting
     private let trustedAuthors: TrustedAuthors
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
         trustedAuthors: TrustedAuthors = .default,
         makeSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) },
-        makePoster: @escaping @Sendable (String) -> any AnswerPosting = { GitHubAnswerPoster(client: GitHubClient(token: $0)) }
+        makePoster: @escaping @Sendable (String) -> any AnswerPosting = { GitHubAnswerPoster(client: GitHubClient(token: $0)) },
+        makeStarter: @escaping @Sendable (String) -> any LoopStarting = { GitHubLoopStarter(client: GitHubClient(token: $0)) }
     ) {
         self.tokenStore = tokenStore
         self.trustedAuthors = trustedAuthors
         self.makeSource = makeSource
         self.makePoster = makePoster
+        self.makeStarter = makeStarter
     }
 
     /// 回答を投稿するときのトークンが無い
     struct MissingTokenError: Error {}
+
+    /// 同じ Discussion / PR に残っている、ほかの未回答の質問の数
+    func remainingQuestions(besides question: InboxQuestion) -> Int {
+        questions.filter { $0.subject.nodeID == question.subject.nodeID && $0.id != question.id }.count
+    }
+
+    /// Discussion の回答を確定し、ループを始めてよい印（`ready-for-loop`）を付ける（Discussion #1 の Q3）
+    func startLoop(for discussion: InboxSubject) async throws {
+        guard let token = try tokenStore.load() else {
+            throw MissingTokenError()
+        }
+        try await makeStarter(token).markReadyForLoop(discussion)
+    }
 
     /// 質問に回答を投稿する。成功したらその質問を一覧から外し、一覧を取り直す
     func post(_ answer: Answer, to question: InboxQuestion) async throws {

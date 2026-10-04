@@ -53,9 +53,15 @@ extension InboxModel {
         InboxModel(
             tokenStore: InMemoryTokenStore(token: "sample"),
             makeSource: { _ in SampleInboxSource() },
-            makePoster: { _ in SampleAnswerPoster() }
+            makePoster: { _ in SampleAnswerPoster() },
+            makeStarter: { _ in SampleLoopStarter() }
         )
     }
+}
+
+/// Preview と UI テスト用。ループを始める印を付けたことにして GitHub には送らない
+struct SampleLoopStarter: LoopStarting {
+    func markReadyForLoop(_ discussion: InboxSubject) async throws {}
 }
 
 /// Preview と UI テスト用。投稿したことにして GitHub には送らない
