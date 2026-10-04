@@ -60,14 +60,26 @@ struct GitHubClientTests {
         #expect(http.requests[1].url?.query()?.contains("page=2") == true)
     }
 
-    @Test func refusesToFollowLinkToAnotherHost() async {
+    @Test(arguments: [
+        "https://evil.example.com/steal?page=2",
+        // 同じホストでも、平文の通信や別のポートにはトークンを送らない
+        "http://api.github.com/repos/o/r/issues?page=2",
+        "https://api.github.com:8443/repos/o/r/issues?page=2"
+    ])
+    func refusesToFollowLinkToAnotherOrigin(_ next: String) async {
         let http = MockHTTPClient([
-            .init(status: 200, body: "[]", headers: ["Link": #"<https://evil.example.com/steal?page=2>; rel="next""#])
+            .init(status: 200, body: "[]", headers: ["Link": "<\(next)>; rel=\"next\""])
         ])
         await #expect(throws: GitHubError.invalidResponse) {
             try await makeClient(http).getAllPages("repos/o/r/issues", of: Issue.self)
         }
         #expect(http.requests.count == 1)
+    }
+
+    @Test func treatsDefaultPortAndHostCaseAsSameOrigin() throws {
+        let base = try #require(URL(string: "https://api.github.com/"))
+        let next = try #require(URL(string: "https://API.GitHub.com:443/repos/o/r/issues?page=2"))
+        #expect(GitHubClient.isSameOrigin(next, base))
     }
 
     // MARK: - レート制限

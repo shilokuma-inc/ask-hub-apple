@@ -59,12 +59,22 @@ public struct GitHubClient: Sendable {
             let (data, response) = try await perform(makeRequest(url: current, method: "GET"))
             items += try Self.decode([T].self, from: data)
             next = LinkHeader.nextURL(from: response.value(forHTTPHeaderField: "Link"))
-            // トークンを別のホストに送らないよう、次のページは同じホストに限る
-            if let next, next.host() != baseURL.host() {
+            // トークンを別の宛先や平文の通信で送らないよう、次のページは baseURL と同じオリジンに限る
+            if let next, !Self.isSameOrigin(next, baseURL) {
                 throw GitHubError.invalidResponse
             }
         }
         return items
+    }
+
+    /// スキーム・ホスト・ポートが一致するか。ポートの省略はスキームの既定値として比べる
+    static func isSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+        func port(of url: URL) -> Int? {
+            url.port ?? ["https": 443, "http": 80][url.scheme?.lowercased() ?? ""]
+        }
+        return lhs.scheme?.lowercased() == rhs.scheme?.lowercased()
+            && lhs.host()?.lowercased() == rhs.host()?.lowercased()
+            && port(of: lhs) == port(of: rhs)
     }
 
     /// REST API に本文付きのリクエスト（POST / PATCH / PUT / DELETE）を送り、レスポンスをデコードする
