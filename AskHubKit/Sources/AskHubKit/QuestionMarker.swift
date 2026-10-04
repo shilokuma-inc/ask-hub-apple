@@ -7,7 +7,7 @@ import Foundation
 /// ```
 ///
 /// 詳細は `docs/protocol.md` の「質問の目印」を参照。
-public struct QuestionMarker: Sendable, Equatable {
+public struct QuestionMarker: Sendable, Equatable, Hashable {
     /// リポジトリ内で一意な質問の id
     public var id: String
     /// 選択肢。空なら自由記述のみの質問

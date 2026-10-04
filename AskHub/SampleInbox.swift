@@ -50,12 +50,33 @@ struct SampleIdeaRequester: IdeaRequesting {
 extension InboxModel {
     /// Preview と UI テスト用。GitHub には接続しない
     static func sample() -> InboxModel {
-        InboxModel(tokenStore: InMemoryTokenStore(token: "sample")) { _ in SampleInboxSource() }
+        InboxModel(
+            tokenStore: InMemoryTokenStore(token: "sample"),
+            makeSource: { _ in SampleInboxSource() },
+            makePoster: { _ in SampleAnswerPoster() }
+        )
+    }
+}
+
+/// Preview と UI テスト用。投稿したことにして GitHub には送らない
+struct SampleAnswerPoster: AnswerPosting {
+    func post(_ answer: Answer, to question: InboxQuestion) async throws -> URL {
+        question.comment.url
     }
 }
 
 /// Preview と UI テスト用の固定の受信箱
 struct SampleInboxSource: InboxSource {
+    /// 選択肢のある Discussion の質問（Preview 用）
+    static var sampleQuestion: InboxQuestion {
+        let thread = sampleThreads(of: discussion)[0]
+        return InboxQuestion(
+            subject: discussion,
+            comment: thread.comment,
+            marker: QuestionMarker.parse(thread.comment.body) ?? QuestionMarker(id: "d12-q1")
+        )
+    }
+
     private static let now = Date()
 
     private static func subject(_ kind: InboxSubject.Kind, repository: String, number: Int, title: String) -> InboxSubject {
@@ -97,6 +118,10 @@ struct SampleInboxSource: InboxSource {
     }
 
     func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
+        Self.sampleThreads(of: subject)
+    }
+
+    private static func sampleThreads(of subject: InboxSubject) -> [QuestionThread] {
         if subject == Self.discussion {
             return [
                 Self.thread(subject, id: "q1", minutesAgo: 180, body: """

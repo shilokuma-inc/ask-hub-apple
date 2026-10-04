@@ -1,4 +1,5 @@
 import AskHubKit
+import CryptoKit
 import Foundation
 import Observation
 
@@ -21,21 +22,59 @@ final class InboxModel {
     static let org = "shilokuma-inc"
 
     private(set) var questions: [InboxQuestion] = []
+    /// アプリから回答した質問。GitHub の検索に回答が反映されるまで、取り直しても一覧に出さない
+    private var answeredQuestionIDs: Set<String> = []
+    /// 直前の取得・投稿に使ったトークンの SHA-256。変わったら（別のアカウントになりうるので）回答済みの記録を捨てる。
+    /// トークンの値そのものはモデルに残さない
+    private var lastTokenFingerprint: String?
     private(set) var issues: [InboxIssue] = []
     private(set) var state = LoadState.idle
 
     private let tokenStore: any TokenStore
     private let makeSource: @Sendable (String) -> any InboxSource
+    private let makePoster: @Sendable (String) -> any AnswerPosting
     private let trustedAuthors: TrustedAuthors
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
         trustedAuthors: TrustedAuthors = .default,
-        makeSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) }
+        makeSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) },
+        makePoster: @escaping @Sendable (String) -> any AnswerPosting = { GitHubAnswerPoster(client: GitHubClient(token: $0)) }
     ) {
         self.tokenStore = tokenStore
         self.trustedAuthors = trustedAuthors
         self.makeSource = makeSource
+        self.makePoster = makePoster
+    }
+
+    /// 回答を投稿するときのトークンが無い
+    struct MissingTokenError: Error {}
+
+    /// 質問に回答を投稿する。成功したらその質問を一覧から外し、一覧を取り直す
+    func post(_ answer: Answer, to question: InboxQuestion) async throws {
+        guard let token = try tokenStore.load() else {
+            throw MissingTokenError()
+        }
+        _ = try await makePoster(token).post(answer, to: question)
+        // 検索の反映を待たずに、回答した質問はすぐ一覧から消す。取り直しても戻さない
+        useToken(token)
+        answeredQuestionIDs.insert(question.id)
+        questions.removeAll { $0.id == question.id }
+        await refresh()
+    }
+
+    /// トークンが変わったら（別のアカウントになりうるので）回答済みの記録を捨てる
+    private func useToken(_ token: String) {
+        let fingerprint = Self.fingerprint(of: token)
+        if fingerprint != lastTokenFingerprint {
+            answeredQuestionIDs.removeAll()
+            lastTokenFingerprint = fingerprint
+        }
+    }
+
+    /// トークンを比べるための SHA-256（16 進）
+    private static func fingerprint(of token: String) -> String {
+        SHA256.hash(data: Data(token.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     var isLoading: Bool {
@@ -73,26 +112,52 @@ final class InboxModel {
             return
         }
 
+        useToken(token)
         state = .loading
         let fetcher = InboxFetcher(source: makeSource(token), trustedAuthors: trustedAuthors)
         do {
             async let questions = fetcher.unansweredQuestions(org: Self.org)
             async let issues = fetcher.lowPriorityIssues(org: Self.org)
-            (self.questions, self.issues) = try await (questions, issues)
+            let (fetchedQuestions, fetchedIssues) = try await (questions, issues)
+            // 取得を待つ間に別のトークンで回答した場合は、古いトークンでの結果を捨てて取り直す
+            guard Self.fingerprint(of: token) == lastTokenFingerprint else {
+                needsRefreshAfterLoading = true
+                state = .idle
+                return
+            }
+            // 取得結果に出てこなくなった（検索に回答が反映された）質問は、覚えておく必要がない
+            answeredQuestionIDs.formIntersection(fetchedQuestions.map(\.id))
+            self.questions = fetchedQuestions.filter { !answeredQuestionIDs.contains($0.id) }
+            self.issues = fetchedIssues
             state = .loaded
         } catch {
             state = .failed(Self.message(for: error))
         }
     }
 
-    /// 取得の失敗の説明。トークンの値は含めない
+    /// 取得・投稿の失敗の説明。トークンの値は含めない
     static func message(for error: any Error) -> String {
-        switch error as? GitHubError {
+        if error is MissingTokenError {
+            return "トークンが未設定です。設定で保存してください"
+        }
+        if let error = error as? AnswerPostingError {
+            switch error {
+            case .invalidAnswer:
+                return "選択肢を選ぶか、回答を入力してください"
+
+            case .missingCommentID:
+                return "返信先のコメントを特定できませんでした。GitHub で回答してください"
+            }
+        }
+        if error is KeychainError {
+            return "Keychain からトークンを読み込めませんでした"
+        }
+        return switch error as? GitHubError {
         case .http(status: 401, _):
             "トークンが無効です。設定でトークンを保存し直してください"
 
         case let .http(status, message):
-            "GitHub から取得できませんでした（HTTP \(status)\(message.map { ": \($0)" } ?? "")）"
+            "GitHub とのやり取りに失敗しました（HTTP \(status)\(message.map { ": \($0)" } ?? "")）"
 
         case let .rateLimited(retryAfter):
             "GitHub のレート制限中です。\(retryAfter.components.seconds) 秒ほど待ってから更新してください"
@@ -101,7 +166,7 @@ final class InboxModel {
             "GitHub の応答を読み取れませんでした"
 
         case nil:
-            "GitHub から取得できませんでした（\(error.localizedDescription)）"
+            "GitHub とのやり取りに失敗しました（\(error.localizedDescription)）"
         }
     }
 }
