@@ -12,11 +12,17 @@ import SwiftUI
 struct ContentView: View {
     @State private var model: InboxModel
     @State private var requestModel: IdeaRequestModel
+    @State private var mergeModel: MergeQueueModel
     @State private var isShowingSettings = false
 
-    init(model: InboxModel = .launchDefault(), requestModel: IdeaRequestModel = .launchDefault()) {
+    init(
+        model: InboxModel = .launchDefault(),
+        requestModel: IdeaRequestModel = .launchDefault(),
+        mergeModel: MergeQueueModel = .launchDefault()
+    ) {
         _model = State(initialValue: model)
         _requestModel = State(initialValue: requestModel)
+        _mergeModel = State(initialValue: mergeModel)
     }
 
     var body: some View {
@@ -68,6 +74,12 @@ struct ContentView: View {
             .tabItem { Label("急がない", systemImage: "tray.full") }
 
             NavigationStack {
+                MergeQueueListView(model: mergeModel) { isShowingSettings = true }
+            }
+            .tabItem { Label("マージ待ち", systemImage: "arrow.triangle.merge") }
+            .badge(mergeModel.pullRequests.count)
+
+            NavigationStack {
                 NewRequestView(model: requestModel) { isShowingSettings = true }
             }
             .tabItem { Label("依頼", systemImage: "plus.bubble") }
@@ -78,6 +90,7 @@ struct ContentView: View {
             Task {
                 await model.refresh()
                 await requestModel.loadRepositories()
+                await mergeModel.refresh()
             }
         } content: {
             SettingsView()
@@ -87,10 +100,14 @@ struct ContentView: View {
 
 #if DEBUG
 #Preview("一覧") {
-    ContentView(model: .sample(), requestModel: .sample())
+    ContentView(model: .sample(), requestModel: .sample(), mergeModel: .sample())
 }
 #endif
 
 #Preview("トークン未設定") {
-    ContentView(model: InboxModel(tokenStore: InMemoryTokenStore()), requestModel: IdeaRequestModel(tokenStore: InMemoryTokenStore()))
+    ContentView(
+        model: InboxModel(tokenStore: InMemoryTokenStore()),
+        requestModel: IdeaRequestModel(tokenStore: InMemoryTokenStore()),
+        mergeModel: MergeQueueModel(tokenStore: InMemoryTokenStore())
+    )
 }
