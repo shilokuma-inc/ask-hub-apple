@@ -176,7 +176,9 @@ $DISCUSSION_TEXT
 </discussion>
 PROMPT
 )
-  BOOT_ARGS=(-p --permission-mode bypassPermissions --add-dir "$(dirname "$CHECKOUT")")
+  # --add-dir は値を複数受け取るので、プロンプトの直前に置くとプロンプトまでディレクトリとして読まれる。
+  # 必ず --add-dir を先に置き、値を 1 つだけ取るオプション（--permission-mode）を挟んでからプロンプトを渡す
+  BOOT_ARGS=(-p --add-dir "$(dirname "$CHECKOUT")" --permission-mode bypassPermissions)
   [[ -n "${ASKHUB_BOOTSTRAP_MODEL:-}" ]] && BOOT_ARGS+=(--model "$ASKHUB_BOOTSTRAP_MODEL")
   set +e
   # shellcheck disable=SC2094  # 標準エラーと出力を同じログに追記するだけで、読み出しはしない
@@ -223,6 +225,7 @@ LOOP_LOG="$LOG_DIR/$REPO_NAME-loop-$(date +%Y%m%d-%H%M%S).log"
 INITIAL=$(sed -n '/^---$/,/^---$/!p' "$STATE" | sed '/^$/d')
 log "ループを起動します（ログ: $LOOP_LOG）"
 cd "$CTL"
-exec "$CLAUDE_BIN" -p --permission-mode bypassPermissions \
-  --add-dir "${CTL%-ctl}-a" --add-dir "${CTL%-ctl}-b" \
+# --add-dir は値を複数受け取るので、プロンプトの直前には置かない（準備の claude と同じ理由）
+exec "$CLAUDE_BIN" -p --add-dir "${CTL%-ctl}-a" --add-dir "${CTL%-ctl}-b" \
+  --permission-mode bypassPermissions \
   "$INITIAL" </dev/null >>"$LOOP_LOG" 2>&1
