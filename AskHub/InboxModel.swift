@@ -1,4 +1,5 @@
 import AskHubKit
+import CryptoKit
 import Foundation
 import Observation
 
@@ -23,8 +24,9 @@ final class InboxModel {
     private(set) var questions: [InboxQuestion] = []
     /// アプリから回答した質問。GitHub の検索に回答が反映されるまで、取り直しても一覧に出さない
     private var answeredQuestionIDs: Set<String> = []
-    /// 直前の取得に使ったトークン。変わったら（別のアカウントになりうるので）回答済みの記録を捨てる
-    private var lastToken: String?
+    /// 直前の取得・投稿に使ったトークンの SHA-256。変わったら（別のアカウントになりうるので）回答済みの記録を捨てる。
+    /// トークンの値そのものはモデルに残さない
+    private var lastTokenFingerprint: String?
     private(set) var issues: [InboxIssue] = []
     private(set) var state = LoadState.idle
 
@@ -63,10 +65,16 @@ final class InboxModel {
 
     /// トークンが変わったら（別のアカウントになりうるので）回答済みの記録を捨てる
     private func useToken(_ token: String) {
-        if token != lastToken {
+        let fingerprint = Self.fingerprint(of: token)
+        if fingerprint != lastTokenFingerprint {
             answeredQuestionIDs.removeAll()
-            lastToken = token
+            lastTokenFingerprint = fingerprint
         }
+    }
+
+    /// トークンを比べるための SHA-256（16 進）
+    private static func fingerprint(of token: String) -> String {
+        SHA256.hash(data: Data(token.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     var isLoading: Bool {
@@ -112,7 +120,7 @@ final class InboxModel {
             async let issues = fetcher.lowPriorityIssues(org: Self.org)
             let (fetchedQuestions, fetchedIssues) = try await (questions, issues)
             // 取得を待つ間に別のトークンで回答した場合は、古いトークンでの結果を捨てて取り直す
-            guard token == lastToken else {
+            guard Self.fingerprint(of: token) == lastTokenFingerprint else {
                 needsRefreshAfterLoading = true
                 state = .idle
                 return
