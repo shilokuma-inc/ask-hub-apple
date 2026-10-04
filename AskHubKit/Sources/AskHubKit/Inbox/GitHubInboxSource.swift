@@ -36,6 +36,55 @@ public struct GitHubInboxSource: InboxSource {
         }
     }
 
+    public func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+        // ラベルをカンマで並べると OR で検索できるので、1 回の検索で済ませる
+        let labels = InboxIssue.Kind.labels.map(\.rawValue).joined(separator: ",")
+        let nodes: [IssueSearchNode] = try await collectGraphQLPages { after in
+            let data = try await client.graphQL(
+                Self.issueSearchQuery,
+                variables: [
+                    "query": .string("org:\(org) is:issue is:open label:\(labels)"),
+                    "after": after.map(GraphQLVariable.string) ?? .null
+                ],
+                as: IssueSearchData.self
+            )
+            return (data.search.nodes.compactMap(\.self), data.search.pageInfo)
+        }
+        return nodes.compactMap { node in
+            guard let id = node.id, let number = node.number, let title = node.title, let url = node.url,
+                  let updatedAt = node.updatedAt, let repository = node.repository?.nameWithOwner,
+                  let kind = InboxIssue.Kind(labelNames: node.labels?.nodes.compactMap(\.self).map(\.name) ?? []) else {
+                return nil
+            }
+            return InboxIssue(
+                id: id,
+                kind: kind,
+                repository: repository,
+                number: number,
+                title: title,
+                url: url,
+                author: node.author?.login,
+                updatedAt: updatedAt
+            )
+        }
+    }
+
+    private static let issueSearchQuery = """
+        query($query: String!, $after: String) {
+          search(query: $query, type: ISSUE, first: 50, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              ... on Issue {
+                id number title url updatedAt
+                author { login }
+                repository { nameWithOwner }
+                labels(first: 100) { nodes { name } }
+              }
+            }
+          }
+        }
+        """
+
     // MARK: - 検索
 
     private func search(query: String, type: String, kind: InboxSubject.Kind) async throws -> [InboxSubject] {
@@ -240,6 +289,34 @@ public struct GitHubInboxSource: InboxSource {
 }
 
 // MARK: - レスポンスの形
+
+private struct IssueSearchData: Decodable {
+    let search: Connection<IssueSearchNode>
+}
+
+/// 検索結果の Issue
+private struct IssueSearchNode: Decodable {
+    struct Repository: Decodable {
+        let nameWithOwner: String
+    }
+
+    struct Label: Decodable {
+        let name: String
+    }
+
+    struct Labels: Decodable {
+        let nodes: [Label?]
+    }
+
+    let id: String?
+    let number: Int?
+    let title: String?
+    let url: URL?
+    let updatedAt: Date?
+    let author: Author?
+    let repository: Repository?
+    let labels: Labels?
+}
 
 private struct Connection<Node: Decodable>: Decodable {
     let pageInfo: GraphQLPageInfo

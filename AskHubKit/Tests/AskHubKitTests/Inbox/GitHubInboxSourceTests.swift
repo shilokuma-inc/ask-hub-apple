@@ -67,6 +67,32 @@ struct GitHubInboxSourceTests {
         #expect(try variables(of: requests[2]) == ["query": "org:shilokuma-inc label:needs-answer is:pr is:open", "after": nil])
     }
 
+    @Test func searchesLowPriorityIssuesWithOneQuery() async throws {
+        let http = MockHTTPClient([
+            .init(status: 200, body: #"""
+                { "data": { "search": { "pageInfo": \#(Self.page(hasNext: false, cursor: nil)), "nodes": [
+                  { "id": "I_9", "number": 9, "title": "仮決め一覧", "url": "https://github.com/o/r/issues/9",
+                    "updatedAt": "2026-10-04T01:00:00Z", "author": { "login": "mrs1669" }, "repository": { "nameWithOwner": "o/r" },
+                    "labels": { "nodes": [{ "name": "decision-log" }] } },
+                  { "id": "I_10", "number": 10, "title": "ラベルが外れた", "url": "https://github.com/o/r/issues/10",
+                    "updatedAt": "2026-10-04T01:00:00Z", "author": null, "repository": { "nameWithOwner": "o/r" },
+                    "labels": { "nodes": [] } },
+                  {}
+                ] } } }
+                """#)
+        ])
+        let issues = try await makeSource(http).lowPriorityIssues(org: "shilokuma-inc")
+
+        #expect(issues.map(\.id) == ["I_9"])
+        #expect(issues.first?.kind == .decisionLog)
+        #expect(issues.first?.author == "mrs1669")
+        #expect(issues.first?.updatedAt == (try Date("2026-10-04T01:00:00Z", strategy: .iso8601)))
+        #expect(try variables(of: http.requests[0]) == [
+            "query": "org:shilokuma-inc is:issue is:open label:decision-log,needs-verify",
+            "after": nil
+        ])
+    }
+
     // MARK: - Discussion
 
     @Test func collectsDiscussionCommentsAndAllReplies() async throws {

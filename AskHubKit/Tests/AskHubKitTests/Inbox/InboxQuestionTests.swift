@@ -59,9 +59,10 @@ struct InboxQuestionTests {
 }
 
 struct InboxFetcherTests {
-    private struct StubSource: InboxSource {
-        var subjects: [InboxSubject]
-        var threads: [String: [QuestionThread]]
+    struct StubSource: InboxSource {
+        var subjects: [InboxSubject] = []
+        var threads: [String: [QuestionThread]] = [:]
+        var issues: [InboxIssue] = []
 
         func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
             subjects
@@ -69,6 +70,10 @@ struct InboxFetcherTests {
 
         func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
             threads[subject.nodeID] ?? []
+        }
+
+        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+            issues
         }
     }
 
@@ -92,6 +97,37 @@ struct InboxFetcherTests {
             .unansweredQuestions(org: "shilokuma-inc")
         #expect(questions.map(\.id) == ["C_old", "C_new"])
         #expect(questions.map(\.subject) == [pullRequest, discussion])
+    }
+}
+
+struct InboxIssueTests {
+    @Test func kindFromLabels() {
+        #expect(InboxIssue.Kind(labelNames: ["bug", "Needs-Verify"]) == .needsVerify)
+        #expect(InboxIssue.Kind(labelNames: ["needs-verify", "decision-log"]) == .decisionLog)
+        #expect(InboxIssue.Kind(labelNames: ["bug"]) == nil)
+    }
+
+    @Test func fetcherKeepsTrustedIssuesNewestFirst() async throws {
+        func issue(_ id: String, author: String?, updatedAt: TimeInterval) -> InboxIssue {
+            InboxIssue(
+                id: id,
+                kind: .needsVerify,
+                repository: "o/r",
+                number: 1,
+                title: id,
+                url: URL(string: "https://github.com/o/r/issues/1")!,
+                author: author,
+                updatedAt: Date(timeIntervalSince1970: updatedAt)
+            )
+        }
+        let source = InboxFetcherTests.StubSource(issues: [
+            issue("old", author: "mrs1669", updatedAt: 1),
+            issue("spoofed", author: "someone", updatedAt: 3),
+            issue("deleted", author: nil, updatedAt: 4),
+            issue("new", author: "MRS1669", updatedAt: 2)
+        ])
+        let issues = try await InboxFetcher(source: source, trustedAuthors: TrustedAuthors(["mrs1669"])).lowPriorityIssues(org: "o")
+        #expect(issues.map(\.id) == ["new", "old"])
     }
 }
 
