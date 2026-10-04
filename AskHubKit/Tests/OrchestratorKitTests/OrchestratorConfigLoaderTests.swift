@@ -43,6 +43,12 @@ struct OrchestratorConfigLoaderTests {
         #expect(result.loopCommand.arguments == ["/usr/local/bin/start-loop", "{repository}"])
     }
 
+    @Test func trimsTrustedAuthors() throws {
+        let result = try decode(config(trustedAuthors: #"[" mrs1669 ", " "]"#))
+
+        #expect(result.trustedAuthorLogins == ["mrs1669"])
+    }
+
     @Test func appliesDefaults() throws {
         let result = try decode(config())
 
@@ -71,6 +77,9 @@ struct OrchestratorConfigLoaderTests {
     @Test func rejectsEmptyValues() {
         #expect(throws: OrchestratorConfigError.emptyTrustedAuthors) {
             try decode(config(trustedAuthors: #"[""]"#))
+        }
+        #expect(throws: OrchestratorConfigError.emptyTrustedAuthors) {
+            try decode(config(trustedAuthors: #"[" ", "\n"]"#))
         }
         #expect(throws: OrchestratorConfigError.emptyOrg) {
             try decode(config(org: #"" ""#))

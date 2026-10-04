@@ -54,8 +54,10 @@ public struct OrchestratorConfigLoader: Sendable {
     }
 
     private func validate(_ file: ConfigFile) throws(OrchestratorConfigError) -> OrchestratorConfig {
-        let trustedAuthors = file.trustedAuthors ?? TrustedAuthors.defaultLogins
-        guard trustedAuthors.contains(where: { !$0.isEmpty }) else {
+        let trustedAuthors = (file.trustedAuthors ?? TrustedAuthors.defaultLogins)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !trustedAuthors.isEmpty else {
             throw .emptyTrustedAuthors
         }
         let org = file.org.trimmingCharacters(in: .whitespaces)
@@ -82,7 +84,7 @@ public struct OrchestratorConfigLoader: Sendable {
         }
 
         return OrchestratorConfig(
-            trustedAuthorLogins: trustedAuthors.filter { !$0.isEmpty },
+            trustedAuthorLogins: trustedAuthors,
             org: org,
             repositories: repositories,
             pollInterval: .seconds(seconds),
