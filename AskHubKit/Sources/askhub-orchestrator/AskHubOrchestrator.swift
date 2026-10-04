@@ -25,7 +25,8 @@ enum AskHubOrchestrator {
         } catch {
             fail("\(error)", status: EX_CONFIG)
         }
-        print(summary(of: config))
+        // launchd の下では標準出力がファイルになり print はバッファに残るため、log と同じ経路で書く
+        log(summary(of: config))
 
         let token: String
         do {
