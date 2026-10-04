@@ -75,6 +75,8 @@ scripts/orchestrator/install.sh            # 既定の場所に入れる
 launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/jp.shilokuma.askhub-orchestrator.plist"
 ```
 
+オプションで場所を変えたときは、インストーラーが最後に表示する確認と登録のコマンド（`--config` や plist のパスを反映したもの）を使う。
+
 | オプション | 既定 | 説明 |
 | --- | --- | --- |
 | `--prefix <dir>` | `~/.local/bin` | 実行ファイルを置く場所 |
