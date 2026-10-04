@@ -28,7 +28,76 @@ extension IdeaRequestModel {
     }
 }
 
+extension MergeQueueModel {
+    /// アプリの起動時に使うモデル。DEBUG ビルドでは起動引数でサンプルデータに切り替えられる
+    static func launchDefault() -> MergeQueueModel {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(InboxModel.sampleLaunchArgument) {
+            return sample()
+        }
+        #endif
+        return MergeQueueModel()
+    }
+}
+
 #if DEBUG
+extension MergeQueueModel {
+    /// Preview と UI テスト用。GitHub には接続しない
+    static func sample() -> MergeQueueModel {
+        MergeQueueModel(tokenStore: InMemoryTokenStore(token: "sample")) { _ in SampleMergeQueue() }
+    }
+}
+
+/// Preview と UI テスト用。マージしたことにして GitHub には送らない
+struct SampleMergeQueue: MergeQueueProviding {
+    static let pullRequests = [
+        EpicPullRequest(
+            id: "PR_50",
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 50,
+            title: "【FEAT】epic/mvp を develop に取り込む",
+            body: """
+                ### 回答待ちの PR
+                - なし
+
+                ### 返答のない仮決め（既定値のまま確定）
+                - #9 の 20 件
+
+                ### 実機確認 Issue
+                - #18 PAT の Keychain への保存
+                - #27 ready-for-loop からのループの起動
+                """,
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/pull/50")!,
+            baseBranch: "develop",
+            headBranch: "epic/mvp",
+            headSHA: "0000000",
+            author: "mrs1669",
+            checks: .success,
+            mergeability: .mergeable
+        ),
+        EpicPullRequest(
+            id: "PR_80",
+            repository: "shilokuma-inc/notti-ios",
+            number: 80,
+            title: "【FEAT】epic/notification を develop に取り込む",
+            body: "### 回答待ちの PR\n- #77",
+            url: URL(string: "https://github.com/shilokuma-inc/notti-ios/pull/80")!,
+            baseBranch: "develop",
+            headBranch: "epic/notification",
+            headSHA: "0000001",
+            author: "mrs1669",
+            checks: .pending,
+            mergeability: .mergeable
+        )
+    ]
+
+    func epicPullRequests(org: String) async throws -> [EpicPullRequest] {
+        Self.pullRequests
+    }
+
+    func merge(_ pullRequest: EpicPullRequest) async throws {}
+}
+
 extension IdeaRequestModel {
     /// Preview と UI テスト用。GitHub には接続しない
     static func sample() -> IdeaRequestModel {
