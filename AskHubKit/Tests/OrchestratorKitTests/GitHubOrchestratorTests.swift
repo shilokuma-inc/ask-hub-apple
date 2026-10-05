@@ -311,3 +311,62 @@ struct GitHubOrchestratorTests {
         }
     }
 }
+
+// MARK: - 仮決め一覧（decision-log）
+
+extension GitHubOrchestratorTests {
+    @Test func prefersMergedPullRequestAmongClosedOnes() async throws {
+        let http = StubHTTPClient([
+            #"{ "default_branch": "develop" }"#,
+            #"""
+            [{ "number": 7, "state": "closed", "merged_at": null },
+             { "number": 8, "state": "closed", "merged_at": "2026-10-04T21:13:30Z" }]
+            """#
+        ])
+        let pull = try await makeGitHub(http).existingPullRequest(in: "o/r", head: "epic/mvp")
+        #expect(pull == ExistingPullRequest(number: 8, isOpen: false, isMerged: true))
+    }
+
+    @Test func fetchesOpenDecisionLogsWithoutPullRequests() async throws {
+        let http = StubHTTPClient([
+            #"""
+            [{ "number": 9, "title": "【CHORE】epic/mvp の仮決め一覧", "body": "- [ ] #3 色" },
+             { "number": 10, "title": "PR", "body": null, "pull_request": { "url": "https://api.github.com/repos/o/r/pulls/10" } }]
+            """#
+        ])
+        let issues = try await makeGitHub(http).decisionLogs(in: "o/r")
+
+        #expect(issues == [DecisionLogIssue(repository: "o/r", number: 9, title: "【CHORE】epic/mvp の仮決め一覧", body: "- [ ] #3 色")])
+        let url = try #require(http.requests.first?.url)
+        #expect(url.path() == "/repos/o/r/issues")
+        let query = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        #expect(query.contains(URLQueryItem(name: "labels", value: "decision-log")))
+        #expect(query.contains(URLQueryItem(name: "state", value: "open")))
+    }
+
+    @Test func commentsOnAndClosesDecisionLog() async throws {
+        let http = StubHTTPClient([
+            ##"[{ "id": 1, "user": { "login": "mrs1669" }, "body": "#3 は別案 1 で" }, { "id": 2, "user": null, "body": null }]"##,
+            #"{ "id": 3 }"#,
+            #"{ "number": 9, "state": "closed" }"#
+        ])
+        let github = makeGitHub(http)
+        let issue = DecisionLogIssue(repository: "o/r", number: 9, title: "T", body: "")
+
+        #expect(try await github.comments(in: "o/r", issue: 9) == [
+            IssueComment(id: 1, author: "mrs1669", body: "#3 は別案 1 で"),
+            IssueComment(id: 2, author: nil, body: "")
+        ])
+        try await github.comment(on: issue, body: "閉じます")
+        try await github.close(issue)
+
+        #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" } == [
+            "GET /repos/o/r/issues/9/comments",
+            "POST /repos/o/r/issues/9/comments",
+            "PATCH /repos/o/r/issues/9"
+        ])
+        let body = try #require(http.requests.last?.httpBody)
+        let object = try #require(try JSONSerialization.jsonObject(with: body) as? [String: String])
+        #expect(object == ["state": "closed", "state_reason": "completed"])
+    }
+}

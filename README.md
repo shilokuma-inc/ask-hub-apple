@@ -26,15 +26,14 @@ Discussion の質問や PR の ask を 1 つの一覧にまとめ、アプリで
       </tr>
       <tr>
         <td style="border:2px double #000080;text-align:left;">main</td>
+        <!-- main ブランチは初回リリースで作成する。作成までは実行履歴が無くバッジが「no status」になるため、
+             作成後に次のバッジを戻す:
+          build.yml/badge.svg?branch=main&event=push（Build）、archive.yml/badge.svg?branch=main（Archive） -->
         <td style="border:2px double #000080;text-align:center;">
-          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml?query=branch%3Amain">
-            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml/badge.svg?branch=main" alt="Build">
-          </a>
+          未作成
         </td>
         <td style="border:2px double #000080;text-align:center;">
-          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/archive.yml?query=branch%3Amain">
-            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/archive.yml/badge.svg?branch=main" alt="Archive">
-          </a>
+          未作成
         </td>
         <td style="border:2px double #000080;text-align:center;">
         </td>
@@ -42,8 +41,8 @@ Discussion の質問や PR の ask を 1 つの一覧にまとめ、アプリで
       <tr>
         <td style="border:2px double #000080;text-align:left;">develop</td>
         <td style="border:2px double #000080;text-align:center;">
-          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml?query=branch%3Adevelop">
-            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml/badge.svg?branch=develop" alt="Build">
+          <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml?query=branch%3Adevelop+event%3Apush">
+            <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml/badge.svg?branch=develop&event=push" alt="Build">
           </a>
         </td>
         <td style="border:2px double #000080;text-align:center;">
@@ -101,12 +100,15 @@ SKU は Bundle ID と同じ値にします。SKU はユーザーには見えな�
 | `main` | ✅ | ✅ | |
 | `develop` | ✅ | | ✅ |
 | `release/**` | ✅ | | ✅ |
-| その他の作業ブランチ | ✅ | | |
-| `assets/**`（スクリーンショット置き場） | | | |
+| その他の作業ブランチ | ✅（Unit テストのみ。macOS で実行） | | |
+| Pull Request の作成時（opened / reopened / ready_for_review） | ✅ | | |
 | Fork からの Pull Request | ✅ | | |
+| `assets/**`（スクリーンショット置き場） | | | |
 
 - Upload は Archive → IPA Export を含むため、`develop` / `release/**` では Archive を別途実行しません
 - `assets/**` はアプリのコードを含まないため、どのワークフローも実行しません
+- ドキュメントだけの変更（`**/*.md`、`docs/**`）では Build を実行しません。Upload（`develop` / `release/**` への push）と Archive（`main` への push）は、ドキュメントだけの変更でも実行します
+- 作業ブランチへの push では、Simulator の起動に時間がかかるため iOS はビルドの確認だけにし、UI テスト（`AskHubUITests`）を省いた Unit テストを macOS 上で実行します（アドホック署名・App Sandbox 無効）。UI テストは Pull Request の作成時と `main` / `develop` / `release/**` への push で実行します。Fork からの Pull Request は push で実行されないため、更新（synchronize）を含むすべてのイベントで UI テストまで実行します
 - Xcode のバージョンは [.github/workflows/_build.yml](.github/workflows/_build.yml) と [.github/workflows/_archive.yml](.github/workflows/_archive.yml) の `xcode-version` で固定しています。Environment の更新時はあわせて変更してください
 
 ### 5. PR 本文のスクリーンショット
@@ -147,7 +149,7 @@ UI の見た目が変わる変更では、Before / After のスクリーンシ�
     └── workflows/
         ├── _build.yml       # 共通処理: ビルド + テスト + SwiftLint（workflow_call）
         ├── _archive.yml     # 共通処理: Archive → Export（→ Upload）（workflow_call）
-        ├── build.yml        # 全ブランチの push / Fork からの PR
+        ├── build.yml        # 全ブランチの push / PR の作成時 / Fork からの PR
         ├── archive.yml      # main の push
         ├── upload.yml       # develop / release/** の push
         └── cleanup-assets-branch.yml # PR マージ時に assets/issue-<番号> ブランチを削除

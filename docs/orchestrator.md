@@ -6,7 +6,8 @@ AskHub の回答を受けて、ループ（ralph-loop）を自動で起動・再
 （Discussion #1 の Q2）。
 
 > 現時点で行うのは「`ready-for-loop` の Discussion からのループの起動」「ask の回答によるループの再開と `needs-answer` の削除」
-> 「epic の完了の検知と最終 PR（`epic-final`）の作成」「新機能の依頼（`idea-request`）からの質問付き Discussion の作成」。
+> 「epic の完了の検知と最終 PR（`epic-final`）の作成」「仮決め一覧（`decision-log`）のクローズと、指示によるループの再開」
+> 「新機能の依頼（`idea-request`）からの質問付き Discussion の作成」。
 
 ## ビルドと実行
 
@@ -53,6 +54,7 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
    | 起動済みで追跡中 | 何もしない（3. で扱う） |
    | Discussion の author が信用する author ではない | 起動しない（ログに出す） |
    | 起動したプロセスが生きている | 起動しない（終わるのを待つ） |
+   | 途中の epic がある（準備を終えた `epic/` のブランチに、回答待ちでない未完了のタスクが残っている） | 起動しない（epic が終わるのを待つ。起動の失敗としては数えない） |
    | state ファイルが残っている / 有無が不明 | 起動しない（ログに出す） |
    | 同じリポジトリに番号の小さい起動対象がある | 起動しない（1 リポジトリにつきループは 1 つ） |
    | それ以外 | `loopCommand` を起動する（実行ファイルが無いなどで起動できなければ、3 回まで再試行） |
@@ -160,14 +162,16 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 家の Mac ごとに担当リポジトリを分けて常駐させる（Discussion #1 の Q10）。各 Mac で次を行う。
 
 1. **アカウント**: `claude` にログインする（Mac ごとに別のアカウントでよい）。`gh auth login` は信用する author のアカウントで行う
-2. **開発ツール**: Xcode と iOS Simulator のランタイム、`brew install gh swiftlint`
+2. **開発ツール**: Xcode と iOS Simulator のランタイム、`brew install gh jq swiftlint`
 3. **共有設定**: `git clone git@github.com:mrs1669/agents-config.git ~/.agents && ~/.agents/install.sh`（AGENTS.md と LEARNINGS の hook）
 4. **常駐の前提**: スリープを止める・停電後に自動で起動する・ログインしたままにする（LaunchAgent はログイン中のユーザーで動く）。
    `~/.claude/settings.json` の `skipDangerousModePermissionPrompt` は `true` のまま（無人で `bypassPermissions` を使うため）
-5. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには template-app-ios の ralph 一式（`.claude/ralph/`・`scripts/ralph-*.sh`）とプロトコルのラベルが必要
-6. **オーケストレーター**: このリポジトリを clone して `scripts/orchestrator/install.sh` を実行し、
+5. **ralph-loop プラグイン**: `claude plugin install ralph-loop@claude-plugins-official` を、制御用 worktree（`*-ralph-ctl`）の外で実行する。
+   `~/.claude/settings.json` の `enabledPlugins` に入っていれば有効。周回は このプラグインの Stop hook が回すので、無いとループが 1 周で黙って終わる（`askhub-start-loop` は起動前にエラーで止める）
+6. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには template-app-ios の ralph 一式（`.claude/ralph/`・`scripts/ralph-*.sh`）とプロトコルのラベルが必要
+7. **オーケストレーター**: このリポジトリを clone して `scripts/orchestrator/install.sh` を実行し、
    `~/.config/askhub/orchestrator.json` を `orchestrator.example.json` から作る（担当リポジトリだけを書く。ほかの Mac と重ねない）
-7. **確認と登録**: `~/.local/bin/askhub-orchestrator --once` でエラーが出ないことを確かめてから `launchctl bootstrap` する。
+8. **確認と登録**: `~/.local/bin/askhub-orchestrator --once` でエラーが出ないことを確かめてから `launchctl bootstrap` する。
    ログは `~/Library/Logs/askhub/orchestrator.log`
 
 ## ask に回答が付いたらループを再開する
@@ -193,6 +197,19 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 
 回答済みの質問はメモリ上でだけ覚えるため、オーケストレーターを再起動した直後は、回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
 
+## 異常終了したループを再開する
+
+ask への回答が無くても、**タスクを残したまま異常終了したループ**は毎回のポーリングで再開する（`StallWatcher`）。
+新しい Discussion の起動より先に判定し、途中の epic に別の epic を被せない。
+
+- 異常終了 = 制御用 worktree に `.claude/ralph-loop.local.md` が残っているのに、`.claude/askhub-loop.pid` のプロセスが居ない。
+  ralph-loop プラグインが無くて 1 周で終わった・Stop hook が state を見失った・プロセスが落ちた、などで起きる
+- `scripts/ralph-stop.sh` で手で止めたループと、promise を出して終わったループは state ファイルが消えるので、再開しない
+- 制御用 worktree のブランチが `epic/` で始まるときだけ再開する（`loopCommand` の `{discussion}` は空文字列）
+- 起動スクリプトは、前の epic が途中のまま新しい Discussion で起動されたときは、state ファイルを残したまま断る（異常終了の目印を消さない）
+- goal / state が変わらないまま 3 回止まったら、自動の再開をやめてログに出す。ループが進めば（goal / state が変われば）数え直す。
+  数はメモリ上でだけ覚えるので、オーケストレーターを再起動すると数え直す
+
 ## epic が完了したら最終 PR を作る
 
 毎回のポーリングの最後に、担当リポジトリごとに制御用 worktree を読んで判定する（`EpicCompletion`、副作用なし）。
@@ -217,6 +234,22 @@ PR へのリンクをコメントしてから解決済みで閉じる（`docs/pr
 同じ head ブランチから既定ブランチへの PR が既にあれば（閉じた PR も含む）作らない（別の base への PR は数えない）。既にある PR が open なら `epic-final` を付け直す
 （PR を作った直後にラベルの付与だけ失敗した場合に、次のポーリングで付け直すため。付与は冪等）。
 作った PR はメモリ上で覚え、毎回は問い合わせない。
+仮決め一覧への指示でループを再開した epic は、再び完了したときに、open な最終 PR の本文を「最終 PR に載せる内容」で書き直す。
+
+## 仮決め一覧を閉じる・指示でループを再開する
+
+毎回のポーリングで、異常終了したループの再開の後に、担当リポジトリの仮決め一覧（`decision-log` の open な Issue）を見る。
+epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め一覧`）から読み、そのブランチから既定ブランチへの PR で判定する
+（扱いの決まりは `docs/protocol.md` の「仮決め一覧」）。
+
+| 最終 PR | 行うこと |
+| --- | --- |
+| マージ済み | 閉じるときのコメント（チェックの無い仮決めは既定値のまま確定した旨と一覧）を付けて、完了として閉じる |
+| open | ループが止まっていて（state ファイルが無く、異常終了でもない）、制御用 worktree がその epic にあり、未処理の指示があれば、ループを再開する |
+| 無い・マージせずに閉じた | 何もしない |
+
+- コメントを付けた後にクローズだけ失敗したときは、次のポーリングでクローズだけをやり直す（コメントの目印で判断する）
+- 同じコメントでは 1 回だけ再開する（メモリ上で覚える）。制御用 worktree が別の epic に移っていたら再開せず、ログに 1 回出す
 
 
 ## 新機能の依頼から質問付きの Discussion を作る

@@ -53,6 +53,8 @@
   スクリーンショットは `XCTAttachment`（`lifetime = .keepAlways`）で残し、`xcrun xcresulttool export attachments` で取り出す。
   画面全体が写るので、PR に載せる前にアプリのウィンドウだけ切り抜く
 - SwiftUI の `Picker` の中に `Section("見出し")` を置くと、iOS / macOS ともメニューに見出し付きの区切りとして出る
+- 「Mac Development」の署名用証明書が無い Mac では、macOS 向けの `xcodebuild build` / `test` が署名エラーで止まる。
+  CI（`_build.yml`）と同じく、build は `CODE_SIGNING_ALLOWED=NO`、test は `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= ENABLE_APP_SANDBOX=NO` を付ける
 
 ## Keychain
 
