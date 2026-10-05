@@ -10,20 +10,11 @@ import SwiftUI
 
 /// 受信箱（「要回答」「急がない」。Discussion #1 の Q5）と「依頼」のタブ
 struct ContentView: View {
-    @State private var model: InboxModel
-    @State private var requestModel: IdeaRequestModel
-    @State private var mergeModel: MergeQueueModel
+    // モデルは App が持つ（デモモードの切り替えで差し替わる）
+    let model: InboxModel
+    let requestModel: IdeaRequestModel
+    let mergeModel: MergeQueueModel
     @State private var isShowingSettings = false
-
-    init(
-        model: InboxModel = .launchDefault(),
-        requestModel: IdeaRequestModel = .launchDefault(),
-        mergeModel: MergeQueueModel = .launchDefault()
-    ) {
-        _model = State(initialValue: model)
-        _requestModel = State(initialValue: requestModel)
-        _mergeModel = State(initialValue: mergeModel)
-    }
 
     var body: some View {
         TabView {
@@ -43,6 +34,7 @@ struct ContentView: View {
                     leadingIsEmpty: model.usageLimited.isEmpty,
                     leading: { UsageLimitedSection(repositories: model.usageLimited) }
                 )
+                .demoModeBanner()
                 .navigationDestination(for: InboxQuestion.self) { question in
                     QuestionDetailView(question: question, inbox: model)
                 }
@@ -75,22 +67,26 @@ struct ContentView: View {
                         WaitingDiscussionsSection(waiting: model.waiting)
                     }
                 )
+                .demoModeBanner()
             }
             .tabItem { Label("急がない", systemImage: "tray.full") }
 
             NavigationStack {
                 MergeQueueListView(model: mergeModel) { isShowingSettings = true }
+                    .demoModeBanner()
             }
             .tabItem { Label("マージ待ち", systemImage: "arrow.triangle.merge") }
             .badge(mergeModel.pullRequests.count)
 
             NavigationStack {
                 NewRequestView(model: requestModel) { isShowingSettings = true }
+                    .demoModeBanner()
             }
             .tabItem { Label("依頼", systemImage: "plus.bubble") }
         }
-        // 起動時に、マージ待ちのバッジも出せるようにまとめて取得する。取得済みなら取り直さない
-        .task {
+        // 起動時に、マージ待ちのバッジも出せるようにまとめて取得する。取得済みなら取り直さない。
+        // デモモードの切り替えでモデルが差し替わったら、新しいモデルで取り直す
+        .task(id: ObjectIdentifier(model)) {
             async let inboxRefreshed: Void = model.refreshIfStale()
             async let mergeQueueRefreshed: Void = mergeModel.refreshIfStale()
             _ = await (inboxRefreshed, mergeQueueRefreshed)

@@ -57,9 +57,10 @@ struct InboxListView<Item: Identifiable, Row: View, Leading: View>: View {
             ContentUnavailableView {
                 Label("トークンが未設定です", systemImage: "key")
             } description: {
-                Text("設定で GitHub の Personal Access Token を保存してください")
+                Text("設定で GitHub の Personal Access Token を保存してください。トークンが無くても、サンプルデータで操作を試せます")
             } actions: {
                 Button("設定を開く", action: openSettings)
+                TryDemoButton()
             }
 
         case let .failed(message):

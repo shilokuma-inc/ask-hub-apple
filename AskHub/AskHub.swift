@@ -13,12 +13,15 @@ struct AskHub: App {
     @State private var inbox = InboxModel.launchDefault()
     @State private var requests = IdeaRequestModel.launchDefault()
     @State private var mergeQueue = MergeQueueModel.launchDefault()
+    @State private var isDemoMode = DemoMode.isEnabled
     @Environment(\.scenePhase)
     private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ContentView(model: inbox, requestModel: requests, mergeModel: mergeQueue)
+                .environment(\.isDemoMode, isDemoMode)
+                .environment(\.setDemoMode) { setDemoMode($0) }
         }
         .onChange(of: scenePhase) { _, phase in
             // フォアグラウンドに戻ったら取り直す（Discussion #1 の Q7）。直前の取得から間もなければ取り直さない
@@ -44,6 +47,15 @@ struct AskHub: App {
             _ = await (inboxRefreshed, mergeQueueRefreshed)
         }
         #endif
+    }
+
+    /// デモモードを切り替え、一覧のモデルをサンプルデータ（または GitHub）のものに差し替える
+    private func setDemoMode(_ enabled: Bool) {
+        DemoMode.isEnabled = enabled
+        isDemoMode = enabled
+        inbox = enabled ? .sample() : InboxModel()
+        requests = enabled ? .sample() : IdeaRequestModel()
+        mergeQueue = enabled ? .sample() : MergeQueueModel()
     }
 
     private func refreshIfStale() async {

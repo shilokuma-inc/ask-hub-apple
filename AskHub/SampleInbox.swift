@@ -5,8 +5,11 @@ extension InboxModel {
     /// UI テストでサンプルデータを表示する起動引数
     static let sampleLaunchArgument = "-AskHubSampleInbox"
 
-    /// アプリの起動時に使うモデル。DEBUG ビルドでは起動引数でサンプルデータに切り替えられる
+    /// アプリの起動時に使うモデル。デモモードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
     static func launchDefault() -> InboxModel {
+        if DemoMode.isEnabled {
+            return sample()
+        }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains(sampleLaunchArgument) {
             return sample()
@@ -17,8 +20,11 @@ extension InboxModel {
 }
 
 extension IdeaRequestModel {
-    /// アプリの起動時に使うモデル。DEBUG ビルドでは起動引数でサンプルデータに切り替えられる
+    /// アプリの起動時に使うモデル。デモモードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
     static func launchDefault() -> IdeaRequestModel {
+        if DemoMode.isEnabled {
+            return sample()
+        }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains(InboxModel.sampleLaunchArgument) {
             return sample()
@@ -29,8 +35,11 @@ extension IdeaRequestModel {
 }
 
 extension MergeQueueModel {
-    /// アプリの起動時に使うモデル。DEBUG ビルドでは起動引数でサンプルデータに切り替えられる
+    /// アプリの起動時に使うモデル。デモモードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
     static func launchDefault() -> MergeQueueModel {
+        if DemoMode.isEnabled {
+            return sample()
+        }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains(InboxModel.sampleLaunchArgument) {
             return sample()
@@ -40,15 +49,14 @@ extension MergeQueueModel {
     }
 }
 
-#if DEBUG
 extension MergeQueueModel {
-    /// Preview と UI テスト用。GitHub には接続しない
+    /// デモモード・Preview・UI テスト用。GitHub には接続しない
     static func sample() -> MergeQueueModel {
         MergeQueueModel(tokenStore: InMemoryTokenStore(token: "sample")) { _ in SampleMergeQueue() }
     }
 }
 
-/// Preview と UI テスト用。マージしたことにして GitHub には送らない
+/// デモモード・Preview・UI テスト用。マージしたことにして GitHub には送らない
 struct SampleMergeQueue: MergeQueueProviding {
     static let pullRequests = [
         EpicPullRequest(
@@ -127,13 +135,13 @@ struct SampleMergeQueue: MergeQueueProviding {
 }
 
 extension IdeaRequestModel {
-    /// Preview と UI テスト用。GitHub には接続しない
+    /// デモモード・Preview・UI テスト用。GitHub には接続しない
     static func sample() -> IdeaRequestModel {
         IdeaRequestModel(tokenStore: InMemoryTokenStore(token: "sample")) { _ in SampleIdeaRequester() }
     }
 }
 
-/// Preview と UI テスト用。Issue を作ったことにして GitHub には送らない
+/// デモモード・Preview・UI テスト用。Issue を作ったことにして GitHub には送らない
 struct SampleIdeaRequester: IdeaRequesting {
     func repositories(in org: String) async throws -> [RequestRepository] {
         [
@@ -151,7 +159,7 @@ struct SampleIdeaRequester: IdeaRequesting {
 }
 
 extension InboxModel {
-    /// Preview と UI テスト用。GitHub には接続しない
+    /// デモモード・Preview・UI テスト用。GitHub には接続しない
     static func sample() -> InboxModel {
         InboxModel(
             tokenStore: InMemoryTokenStore(token: "sample"),
@@ -162,12 +170,12 @@ extension InboxModel {
     }
 }
 
-/// Preview と UI テスト用。ループを始める印を付けたことにして GitHub には送らない
+/// デモモード・Preview・UI テスト用。ループを始める印を付けたことにして GitHub には送らない
 struct SampleLoopStarter: LoopStarting {
     func markReadyForLoop(_ discussion: InboxSubject) async throws {}
 }
 
-/// Preview と UI テスト用。投稿したことにして GitHub には送らない
+/// デモモード・Preview・UI テスト用。投稿したことにして GitHub には送らない
 struct SampleAnswerPoster: AnswerPosting {
     func post(_ answer: Answer, to question: InboxQuestion) async throws -> URL {
         question.comment.url
@@ -318,4 +326,3 @@ struct SampleInboxSource: InboxSource {
         ]
     }
 }
-#endif

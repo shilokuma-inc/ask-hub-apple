@@ -85,6 +85,7 @@ struct NewRequestView: View {
         switch model.repositoriesState {
         case .needsToken:
             Button("トークンを設定する", action: openSettings)
+            TryDemoButton()
 
         case .idle:
             ProgressView()

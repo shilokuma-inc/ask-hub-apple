@@ -47,6 +47,7 @@ struct MergeQueueListView: View {
                 Label("トークンが未設定です", systemImage: "key")
             } actions: {
                 Button("設定を開く", action: openSettings)
+                TryDemoButton()
             }
 
         case let .failed(message):
