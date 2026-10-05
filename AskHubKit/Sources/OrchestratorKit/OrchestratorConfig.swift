@@ -13,6 +13,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public static let defaultIterationTimeout: Duration = .seconds(90 * 60)
     /// `iterationTimeout` の下限。ビルドとテストの重いリポジトリで、まともな周回を止めないため
     public static let minimumIterationTimeout: Duration = .seconds(10 * 60)
+    /// `iterationTimeout` の上限（1 日）
+    public static let maximumIterationTimeout: Duration = .seconds(24 * 60 * 60)
 
     /// 指示として扱ってよい GitHub アカウントの login
     public let trustedAuthorLogins: [String]

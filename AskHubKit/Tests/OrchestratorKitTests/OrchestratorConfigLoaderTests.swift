@@ -161,8 +161,12 @@ struct OrchestratorConfigLoaderTests {
     @Test func readsIterationTimeoutWithDefaultAndMinimum() throws {
         #expect(try decode(config()).iterationTimeout == .seconds(90 * 60))
         #expect(try decode(config(iterationTimeoutMinutes: 120)).iterationTimeout == .seconds(120 * 60))
-        #expect(throws: OrchestratorConfigError.iterationTimeoutTooShort(minutes: 9, minimum: 10)) {
+        #expect(throws: OrchestratorConfigError.iterationTimeoutOutOfRange(minutes: 9, minimum: 10, maximum: 1440)) {
             try decode(config(iterationTimeoutMinutes: 9))
+        }
+        // 秒に変換するとあふれる値も、落ちずに設定エラーにする
+        #expect(throws: OrchestratorConfigError.iterationTimeoutOutOfRange(minutes: Int.max, minimum: 10, maximum: 1440)) {
+            try decode(config(iterationTimeoutMinutes: Int.max))
         }
     }
 

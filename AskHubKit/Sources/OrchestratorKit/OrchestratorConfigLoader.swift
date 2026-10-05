@@ -86,8 +86,10 @@ public struct OrchestratorConfigLoader: Sendable {
 
         let timeoutMinutes = file.iterationTimeoutMinutes ?? Int(OrchestratorConfig.defaultIterationTimeout.components.seconds / 60)
         let minimumMinutes = Int(OrchestratorConfig.minimumIterationTimeout.components.seconds / 60)
-        guard timeoutMinutes >= minimumMinutes else {
-            throw .iterationTimeoutTooShort(minutes: timeoutMinutes, minimum: minimumMinutes)
+        let maximumMinutes = Int(OrchestratorConfig.maximumIterationTimeout.components.seconds / 60)
+        // 秒への変換であふれないよう、変換の前に範囲を確かめる
+        guard (minimumMinutes...maximumMinutes).contains(timeoutMinutes) else {
+            throw .iterationTimeoutOutOfRange(minutes: timeoutMinutes, minimum: minimumMinutes, maximum: maximumMinutes)
         }
 
         return OrchestratorConfig(
