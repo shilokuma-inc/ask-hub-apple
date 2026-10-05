@@ -4,6 +4,8 @@ import SwiftUI
 /// 質問の詳細と回答の入力
 struct QuestionDetailView: View {
     let inbox: InboxModel
+    /// 本文のブロック要素。変換は描画のたびに走らせず、画面を作るときに 1 回だけ行う
+    private let renderedBody: RenderedBody
     @State private var form: AnswerFormModel
     @State private var isConfirmingLoopStart = false
     /// 投稿の前にキーボードを閉じ、確認や結果が隠れないようにする
@@ -13,6 +15,7 @@ struct QuestionDetailView: View {
 
     init(question: InboxQuestion, inbox: InboxModel) {
         self.inbox = inbox
+        renderedBody = RenderedBody(body: question.questionBody)
         _form = State(initialValue: AnswerFormModel(question: question))
     }
 
@@ -29,8 +32,7 @@ struct QuestionDetailView: View {
             }
 
             Section("質問") {
-                Text(question.detailText)
-                    .textSelection(.enabled)
+                RenderedBodyView(content: renderedBody)
             }
 
             if !question.marker.isFreeForm {
@@ -169,21 +171,6 @@ struct QuestionDetailView: View {
         .buttonStyle(.plain)
         .listRowBackground(isSelected ? Color.accentColor.opacity(0.15) : nil)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-extension InboxQuestion {
-    /// 詳細に出す質問の本文。Markdown の画像（`ask-badge` など）と見出しの `#` を除き、改行は残す
-    var detailText: AttributedString {
-        let text = questionBody
-            .replacing(/!\[[^\]]*\]\([^)]*\)/, with: "")
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces) }
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        // 太字やコードなどのインラインの装飾だけを解釈する
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
     }
 }
 

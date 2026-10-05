@@ -83,6 +83,30 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    func testQuestionDetailRendersHTMLAsBlocks() throws {
+        let app = XCUIApplication()
+        // HTML タグと Markdown が混ざった質問のサンプル（#163）を開く
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        let row = app.staticTexts["HTMLタグの有効化"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        // <h3> と ### の見出し、<li> と - の箇条書きが、タグや記号の無い文字として出る
+        XCTAssertTrue(app.staticTexts["Q1. 解釈するタグの範囲"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["よく使うタグ: 見出し・太字・箇条書き・コード・リンク"].exists)
+        XCTAssertTrue(app.staticTexts["補足（Markdown）"].exists)
+        XCTAssertTrue(app.staticTexts["見出しは ### Q1. の書き方も混ざる"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "<h3>Q1.")).firstMatch.exists)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "question-detail-html"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testStartLoopWhenAnsweringLastQuestionOfDiscussion() throws {
         let app = XCUIApplication()
         // サンプルデータでは投稿もループの開始も GitHub には送らない
