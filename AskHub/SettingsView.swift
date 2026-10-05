@@ -4,6 +4,8 @@ import SwiftUI
 /// GitHub のトークンを設定する画面
 struct SettingsView: View {
     @State private var model: TokenSettingsModel
+    /// キーボードの「完了」でキーボードを閉じ、下のボタンが隠れないようにする
+    @FocusState private var isEditingToken: Bool
     @Environment(\.dismiss)
     private var dismiss
 
@@ -17,6 +19,7 @@ struct SettingsView: View {
                 Section {
                     SecureField("github_pat_…", text: $model.input)
                         .autocorrectionDisabled()
+                        .focused($isEditingToken)
                         .onSubmit { model.save() }
                     Button("保存") { model.save() }
                         .disabled(!model.canSave)
@@ -41,6 +44,7 @@ struct SettingsView: View {
                 }
             }
             .formStyle(.grouped)
+            .keyboardDoneButton($isEditingToken)
             .navigationTitle("設定")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
