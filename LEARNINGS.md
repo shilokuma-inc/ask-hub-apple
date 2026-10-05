@@ -64,6 +64,8 @@
 - 複数の worktree で同時に iOS の UI テストを流すときは、Simulator も worktree ごとに分ける（同じ Simulator を取り合うと不安定になる）
 - サンプルデータ（`-AskHubSampleInbox`）でも、設定の画面（`SettingsView`）は Simulator の Keychain を読み書きする。
   UI テストで「保存」を押すと Simulator にトークンが残るので、押せること（`isHittable`）だけを確かめる
+- iOS の `TabView` の `.badge(_:)` の件数は、UI テストからタブのボタン（`app.tabBars.buttons["…"]`）の `value` にも `label` にも出ない。
+  バッジの件数は UI テストのアサーションでは確かめられないので、サンプルデータのスクリーンショットで確かめる
 
 ## Keychain
 
