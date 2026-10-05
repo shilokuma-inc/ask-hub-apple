@@ -35,6 +35,20 @@ struct GitHubClientTests {
         #expect(request.value(forHTTPHeaderField: "X-GitHub-Api-Version") == "2022-11-28")
     }
 
+    @Test func ignoresLocalCache() async throws {
+        // GitHub API の応答は max-age=60 なので、キャッシュを使うと閉じた直後の Issue を open と読む
+        let http = MockHTTPClient([
+            .init(status: 200, body: #"{"number":1}"#),
+            .init(status: 200, body: #"{"number":2}"#)
+        ])
+        let client = makeClient(http)
+        _ = try await client.get("repos/o/r/issues/1", as: Issue.self)
+        _ = try await client.send("PATCH", "repos/o/r/issues/2", body: ["state": "closed"], as: Issue.self)
+        #expect(http.requests.map(\.cachePolicy) == [.reloadIgnoringLocalCacheData, .reloadIgnoringLocalCacheData])
+        #expect(URLSession.uncached.configuration.urlCache == nil)
+        #expect(URLSession.uncached.configuration.requestCachePolicy == .reloadIgnoringLocalCacheData)
+    }
+
     @Test func httpErrorCarriesMessageWithoutToken() async {
         let http = MockHTTPClient([.init(status: 404, body: #"{"message":"Not Found"}"#)])
         await #expect(throws: GitHubError.http(status: 404, message: "Not Found")) {

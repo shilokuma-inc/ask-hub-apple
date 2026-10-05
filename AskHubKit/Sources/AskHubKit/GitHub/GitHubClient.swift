@@ -20,7 +20,7 @@ public struct GitHubClient: Sendable {
     ///   - now: 現在時刻。`x-ratelimit-reset` までの待ち時間の計算に使う
     public init(
         token: String,
-        http: any HTTPClient = URLSession.shared,
+        http: any HTTPClient = URLSession.uncached,
         baseURL: URL = defaultBaseURL,
         retryPolicy: RetryPolicy = .default,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
@@ -128,6 +128,8 @@ public struct GitHubClient: Sendable {
     private func makeRequest(url: URL, method: String) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = method
+        // 渡されたセッションにキャッシュがあっても、古い応答を使わない
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
