@@ -52,7 +52,7 @@ final class AskHubUITests: XCTestCase {
         body.typeText("朝だけにしたい")
         send.tap()
 
-        XCTAssertTrue(app.staticTexts["依頼を送りました"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["notti-ios に「通知の頻度を調整したい」を依頼しました"].waitForExistence(timeout: 5))
     }
 
     @MainActor

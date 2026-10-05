@@ -27,8 +27,8 @@ final class IdeaRequestModel {
     var summary = ""
     var body = ""
     private(set) var isSending = false
-    /// 直前に作った依頼の Issue
-    private(set) var created: CreatedIssue?
+    /// 直前に送った依頼。送った時点のリポジトリ・要約と、作った Issue
+    private(set) var sent: SentRequest?
     private(set) var errorMessage: String?
 
     private let tokenStore: any TokenStore
@@ -104,7 +104,10 @@ final class IdeaRequestModel {
             guard let token = try tokenStore.load() else {
                 throw MissingTokenError()
             }
-            created = try await makeRequester(token).create(request)
+            // 送信中に Picker や入力が変わっても、送った時点の値で表示する
+            let request = request
+            let issue = try await makeRequester(token).create(request)
+            sent = SentRequest(request: request, issue: issue)
             summary = ""
             body = ""
         } catch {
