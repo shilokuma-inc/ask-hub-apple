@@ -48,7 +48,13 @@ public struct LaunchTracker: Sendable, Equatable {
     }
 
     /// 最新の検索結果とループの状態で追跡を進め、行うことを返す
-    public mutating func update(discussions: [ReadyDiscussion], statuses: [String: LoopStatus]) -> [Action] {
+    /// - Parameter preparedDiscussions: 担当リポジトリごとの、制御用 worktree の準備元の Discussion の番号
+    ///   （`.claude/askhub-bootstrap.local.txt`）。state ファイルが、起動した Discussion のループのものかを見分ける
+    public mutating func update(
+        discussions: [ReadyDiscussion],
+        statuses: [String: LoopStatus],
+        preparedDiscussions: [String: Int] = [:]
+    ) -> [Action] {
         // ラベルが外れた（検索に出ない）Discussion は追跡をやめる
         let current = Set(discussions.map(\.nodeID))
         entries = entries.filter { current.contains($0.key) }
@@ -61,10 +67,11 @@ public struct LaunchTracker: Sendable, Equatable {
             let status = statuses[entry.repositoryKey] ?? .idle
             switch entry.phase {
             case .starting:
-                if status.stateFileExists == true {
+                // 別のループ（手で再開した前の epic など）の state ファイルを、この Discussion の開始と取り違えない
+                if status.stateFileExists == true, preparedDiscussions[entry.repositoryKey] == discussion.number {
                     entry.phase = .started
                     actions.append(.removeLabel(discussion))
-                } else if !status.processAlive && status.stateFileExists == false {
+                } else if !status.processAlive && status.stateFileExists != nil {
                     entry.phase = entry.attempts >= Self.maxAttempts ? .gaveUp : .failed
                     actions.append(entry.phase == .gaveUp
                         ? .giveUp(discussion, attempts: entry.attempts)

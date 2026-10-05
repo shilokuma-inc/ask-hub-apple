@@ -2,16 +2,13 @@ import Foundation
 
 // 途中の epic の扱い（異常終了したループの再開・新しい epic の順番待ち）
 extension Orchestrator {
-    /// `ready-for-loop` の Discussion がある担当リポジトリのうち、途中の epic があるもの
-    func epicsInProgress(among discussions: [ReadyDiscussion]) async -> Set<String> {
-        var keys: Set<String> = []
-        for repository in config.repositories
-        where discussions.contains(where: { $0.repository.lowercased() == repository.fullName.lowercased() }) {
-            if await runtime.epicSnapshot(of: repository).inProgress {
-                keys.insert(repository.fullName.lowercased())
-            }
+    /// 担当リポジトリごとの制御用 worktree の epic（キーは `fullName` を小文字にしたもの）
+    func epicSnapshots() async -> [String: EpicSnapshot] {
+        var snapshots: [String: EpicSnapshot] = [:]
+        for repository in config.repositories {
+            snapshots[repository.fullName.lowercased()] = await runtime.epicSnapshot(of: repository)
         }
-        return keys
+        return snapshots
     }
 
     func resumeStalledLoops(statuses: inout [String: LoopStatus]) async {

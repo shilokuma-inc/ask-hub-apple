@@ -114,14 +114,32 @@ extension OrchestratorTests {
         #expect(otherGitHub.createdEpicPullRequests.isEmpty)
     }
 
-    @Test func doesNotCreateEpicFinalRightAfterLaunchingLoopInSamePoll() async throws {
-        // ready-for-loop で起動したリポジトリは、同じ周回では動いているとみなす
+    @Test func createsEpicFinalBeforeLaunchingNextDiscussion() async throws {
+        // 次の Discussion の起動は前の epic の作業ファイルを退避するので、先に最終 PR を作る
         let github = FakeGitHub([.success([.fixture(number: 12)])])
         let runtime = FakeRuntime()
         runtime.setEpic(Self.completedEpic)
         try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
 
+        #expect(github.createdEpicPullRequests.count == 1)
         #expect(runtime.launched.count == 1)
-        #expect(github.createdEpicPullRequests.isEmpty)
+    }
+
+    @Test func doesNotLaunchNextDiscussionUntilEpicFinalIsCreated() async throws {
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        github.setLabelFails(true)
+        let runtime = FakeRuntime()
+        runtime.setEpic(Self.completedEpic)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        // 最終 PR を作り終えられない（ラベルの付与に失敗した）間は、次の Discussion を起動しない
+        let decisions = try await orchestrator.pollOnce()
+        #expect(decisions == [.skip(.fixture(number: 12), .epicInProgress)])
+        #expect(runtime.launched.isEmpty)
+
+        github.setLabelFails(false)
+        try await orchestrator.pollOnce()
+        #expect(github.labeledPullRequests == [100])
+        #expect(runtime.launched.count == 1)
     }
 }
