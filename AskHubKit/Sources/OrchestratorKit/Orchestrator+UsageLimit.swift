@@ -18,13 +18,16 @@ extension Orchestrator {
             let key = repository.fullName.lowercased()
             let status = statuses[key] ?? .idle
             guard !status.processAlive, status.stateFileExists == false,
-                  let reset = await runtime.usageLimitReset(of: repository), reset > current else {
+                  let reset = await runtime.usageLimitReset(of: repository) else {
                 continue
             }
-            latest = max(latest ?? reset, reset)
-            // 上限で止まった分は、自動の再開・起動の失敗に数えない
+            // 上限で止まった分は、自動の再開・起動の失敗に数えない（解除の時刻を過ぎてから気付いた場合も。
+            // 最新のログは次の起動で別のファイルになるので、免除し続けることはない）
             stallWatcher.forget(repositoryKey: key)
             tracker.forgiveFailures(repositoryKey: key)
+            if reset > current {
+                latest = max(latest ?? reset, reset)
+            }
         }
         updateUsageLimit(latest)
     }

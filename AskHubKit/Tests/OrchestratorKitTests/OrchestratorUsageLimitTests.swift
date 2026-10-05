@@ -37,6 +37,27 @@ extension OrchestratorTests {
         #expect(github.heartbeats.last?.hasSuffix(OrchestratorHeartbeat.description(at: clock.now)) == true)
     }
 
+    @Test func forgivesLaunchFailuresByUsageLimitNoticedAfterReset() async throws {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_800_000_000))
+        let github = FakeGitHub([.success([ReadyDiscussion.fixture(number: 5)])])
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "develop", goal: nil, state: nil))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime, now: { clock.now })
+
+        // 準備の claude が起動直後に終わり続け、3 回で諦める
+        for _ in 0..<LaunchTracker.maxAttempts {
+            try await orchestrator.pollOnce()
+            runtime.set(.idle)
+        }
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.count == LaunchTracker.maxAttempts)
+
+        // 解除の時刻を過ぎてから、上限で終わっていたと分かったら、失敗を数えなかったことにして起動し直す
+        runtime.setUsageLimitReset(clock.now.addingTimeInterval(-60))
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.count == LaunchTracker.maxAttempts + 1)
+    }
+
     @Test func doesNotCountIdeaCommandFailureByUsageLimit() async throws {
         let clock = TestClock(Date(timeIntervalSince1970: 1_800_000_000))
         let github = FakeGitHub([.success([])])
