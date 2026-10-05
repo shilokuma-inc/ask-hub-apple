@@ -101,6 +101,15 @@ struct RenderedBodyTests {
         #expect(text(body.blocks[1]) == "別のリスト")
     }
 
+    @Test func listItemWithInlineStylesStaysOneLine() {
+        let body = RenderedBody(body: "<ul><li><b>太字</b>: 説明 <code>code</code> 末尾</li></ul>\n- **強調** と `c` と [l](https://e.com)")
+        guard case .list(let items) = body.blocks.first else {
+            Issue.record("箇条書きではない")
+            return
+        }
+        #expect(items.map { String($0.text.characters) } == ["太字: 説明 code 末尾", "強調 と c と l"])
+    }
+
     @Test func listItemWithTwoParagraphsStaysOneItem() {
         let body = RenderedBody(markdown: "- 1 つ目\n\n  続き\n- 2 つ目")
         guard case .list(let items) = body.blocks.first else {

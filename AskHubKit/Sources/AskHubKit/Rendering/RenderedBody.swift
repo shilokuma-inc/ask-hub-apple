@@ -137,7 +137,8 @@ private struct BlockBuilder {
     private enum Current {
         case heading(level: Int, identity: Int, text: AttributedString)
         case paragraph(identity: Int, text: AttributedString)
-        case list(identity: Int, items: [RenderedBody.ListItem], itemIdentity: Int?)
+        /// `itemIdentity` は直近の項目、`paragraphIdentity` はその項目の中の直近の段落（2 つ目の段落で改行を挟むため）
+        case list(identity: Int, items: [RenderedBody.ListItem], itemIdentity: Int?, paragraphIdentity: Int?)
         case codeBlock(identity: Int, language: String?, code: String)
     }
 
@@ -236,25 +237,31 @@ private struct BlockBuilder {
         let innermostList = lists.first { if case .listItem = $0.kind { return false } else { return true } }
         let isOrdered = if case .orderedList = innermostList?.kind { true } else { false }
 
+        let paragraphIdentity = components.first?.identity
         var items: [RenderedBody.ListItem] = []
-        if case .list(let identity, let currentItems, let itemIdentity) = current, identity == outermost.identity {
+        if case .list(let identity, let currentItems, let itemIdentity, let currentParagraph) = current, identity == outermost.identity {
             items = currentItems
             if itemIdentity == innermostItem.identity, !items.isEmpty {
-                // 同じ項目の続き（項目の中の 2 つ目の段落など）
+                // 同じ項目の続き。太字などの run の切れ目ならそのままつなげ、2 つ目の段落なら改行を挟む
                 var last = items.removeLast()
-                if !String(last.text.characters).hasSuffix("\n"), !String(piece.characters).hasPrefix("\n") {
+                if currentParagraph != paragraphIdentity {
                     last.text.append(AttributedString("\n"))
                 }
                 last.text.append(piece)
                 items.append(last)
-                current = .list(identity: identity, items: items, itemIdentity: itemIdentity)
+                current = .list(identity: identity, items: items, itemIdentity: itemIdentity, paragraphIdentity: paragraphIdentity)
                 return
             }
         } else {
             flush()
         }
         items.append(RenderedBody.ListItem(depth: depth, ordinal: isOrdered ? ordinal : nil, text: piece))
-        current = .list(identity: outermost.identity, items: items, itemIdentity: innermostItem.identity)
+        current = .list(
+            identity: outermost.identity,
+            items: items,
+            itemIdentity: innermostItem.identity,
+            paragraphIdentity: paragraphIdentity
+        )
     }
 
     private mutating func flush() {
@@ -269,7 +276,7 @@ private struct BlockBuilder {
                 blocks.append(.paragraph(trimmed))
             }
 
-        case .list(_, let items, _):
+        case .list(_, let items, _, _):
             blocks.append(.list(items.map { RenderedBody.ListItem(depth: $0.depth, ordinal: $0.ordinal, text: Self.trimmed($0.text)) }))
 
         case .codeBlock(_, let language, let code):
