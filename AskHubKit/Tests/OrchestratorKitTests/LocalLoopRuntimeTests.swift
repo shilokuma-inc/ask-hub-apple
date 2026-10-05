@@ -145,6 +145,41 @@ struct LocalLoopRuntimeTests {
         #expect(await runtime.usageLimitReset(of: repository) == nil)
     }
 
+    @Test func findsAndTerminatesLoopWhoseIterationIsTooLong() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let control = URL(fileURLWithPath: repository.controlWorktreePath)
+        let stateFile = control.appendingPathComponent(LocalLoopRuntime.stateFileRelativePath)
+        let pidFile = control.appendingPathComponent(LocalLoopRuntime.pidFileRelativePath)
+        try FileManager.default.createDirectory(at: stateFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let loop = Process()
+        loop.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        loop.arguments = ["30"]
+        try loop.run()
+        defer { loop.terminate() }
+        // 起動スクリプトと同じく、プロセスの起動の後に PID を書く
+        try Data("\(loop.processIdentifier)\n".utf8).write(to: pidFile)
+        try Data("---\niteration: 2\n---\n".utf8).write(to: stateFile)
+        let runtime = LocalLoopRuntime(killGracePeriod: .milliseconds(100))
+        let now = Date()
+
+        // 周回が始まったばかりなら止めない
+        #expect(await runtime.hungLoop(of: repository, timeout: .seconds(90 * 60), now: now) == nil)
+
+        // state ファイルが 90 分より前から書き直されていなければ、固まったとみなす
+        let started = now.addingTimeInterval(-91 * 60)
+        try FileManager.default.setAttributes([.modificationDate: started], ofItemAtPath: stateFile.path)
+        let hung = try #require(await runtime.hungLoop(of: repository, timeout: .seconds(90 * 60), now: now))
+        #expect(hung.pid == loop.processIdentifier)
+
+        // PID ファイルがプロセスの起動より前に書かれていたら、PID が再利用された別のプロセスなので止めない
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-3600)], ofItemAtPath: pidFile.path)
+        #expect(await runtime.hungLoop(of: repository, timeout: .seconds(90 * 60), now: now) == nil)
+
+        await runtime.terminate(hung)
+        #expect(try await waitUntil { !loop.isRunning })
+    }
+
     @Test func readsBranchFromGitDirectory() throws {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }

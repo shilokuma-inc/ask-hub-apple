@@ -39,6 +39,57 @@ public actor LocalLoopRuntime: LoopRuntime {
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/askhub/loops", isDirectory: true)
     }
 
+    public func hungLoop(of repository: RepositoryConfig, timeout: Duration, now: Date) -> HungLoop? {
+        let control = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
+        let pidFile = control.appendingPathComponent(Self.pidFileRelativePath)
+        guard let text = try? String(contentsOf: pidFile, encoding: .utf8),
+              let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 0,
+              let recordedAt = Self.modificationDate(of: pidFile),
+              Self.isRecordedLoop(pid: pid, recordedAt: recordedAt),
+              let started = Self.modificationDate(of: control.appendingPathComponent(Self.stateFileRelativePath)),
+              now.timeIntervalSince(started) > TimeInterval(timeout.components.seconds) else {
+            return nil
+        }
+        return HungLoop(pid: pid, iterationStartedAt: started)
+    }
+
+    private static func modificationDate(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+    }
+
+    /// `pid` のプロセスが生きていて、PID ファイルに記録したループそのものか。
+    /// 起動スクリプトは自分の PID を書いてから `claude` に exec するので、ループのプロセスは PID ファイルより前に起動している。
+    /// ループが終わった後に PID が別のプロセスに再利用されていれば、そのプロセスは PID ファイルより後に起動している（止めてはいけない）
+    static func isRecordedLoop(pid: pid_t, recordedAt: Date) -> Bool {
+        guard kill(pid, 0) == 0, let startedAt = processStartDate(pid: pid) else {
+            return false
+        }
+        // ファイルの時刻と起動時刻の精度の差を見込む
+        return startedAt <= recordedAt.addingTimeInterval(1)
+    }
+
+    /// プロセスの起動時刻（`sysctl` の `kinfo_proc`）
+    static func processStartDate(pid: pid_t) -> Date? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0, size > 0 else {
+            return nil
+        }
+        let start = info.kp_proc.p_un.__p_starttime
+        return Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
+    }
+
+    public func terminate(_ loop: HungLoop) async {
+        guard Self.processStartDate(pid: loop.pid) != nil, kill(loop.pid, SIGTERM) == 0 else {
+            return
+        }
+        try? await Task.sleep(for: killGracePeriod)
+        if kill(loop.pid, 0) == 0 {
+            kill(loop.pid, SIGKILL)
+        }
+    }
+
     /// 最新のログの末尾（このバイト数）だけを読む
     static let logTailBytes = 8 * 1024
 

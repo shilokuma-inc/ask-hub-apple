@@ -75,6 +75,10 @@ public protocol LoopRuntime: Sendable {
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot
     /// 最新のループ（準備を含む）が Claude の利用上限で終わっていれば、解除の時刻。そうでなければ `nil`
     func usageLimitReset(of repository: RepositoryConfig) async -> Date?
+    /// ループのプロセスが生きているのに、今の周回が `timeout` より長く進んでいなければ、そのプロセス
+    func hungLoop(of repository: RepositoryConfig, timeout: Duration, now: Date) async -> HungLoop?
+    /// 固まったループのプロセスを止める（SIGTERM、猶予の後も残れば SIGKILL）
+    func terminate(_ loop: HungLoop) async
     /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める
     func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
 }
@@ -143,6 +147,8 @@ public actor Orchestrator {
     /// 1 回分のポーリング。実行した起動判定を返す
     @discardableResult
     public func pollOnce() async throws -> [LaunchDecision] {
+        // 固まったループを止める（止めた後は、異常終了したループとして再開する）
+        await terminateHungLoops()
         var statuses: [String: LoopStatus] = [:]
         for repository in config.repositories {
             statuses[repository.fullName.lowercased()] = await runtime.status(of: repository)
