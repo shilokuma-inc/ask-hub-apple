@@ -119,14 +119,16 @@ struct InlineMarker {
             }
         }
 
-        /// `href` を Markdown のリンク先にする。`http(s)` 以外のスキーム（`javascript:` など）は `nil`
+        /// `href` を Markdown のリンク先にする。`http(s)` 以外のスキーム（`javascript:` など）は `nil`。
+        /// 改行などの制御文字を含むものも、Markdown のリンク先に書けないので `nil`（文字だけ残す）
         private static func destination(for href: String?) -> (text: String, markdown: String)? {
             guard let href = href?.trimmingCharacters(in: .whitespacesAndNewlines), !href.isEmpty else {
                 return nil
             }
             let lowered = href.lowercased()
             guard lowered.hasPrefix("http://") || lowered.hasPrefix("https://"),
-                  !href.contains("<"), !href.contains(">") else {
+                  !href.contains("<"), !href.contains(">"),
+                  !href.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else {
                 return nil
             }
             let needsBrackets = href.contains { $0.isWhitespace || $0 == "(" || $0 == ")" }

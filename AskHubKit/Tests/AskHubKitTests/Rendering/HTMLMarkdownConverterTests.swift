@@ -74,7 +74,9 @@ struct HTMLMarkdownConverterTests {
         #"<a href="/relative">危険</a>"#,
         #"<a href="">危険</a>"#,
         #"<a>危険</a>"#,
-        #"<a href="https://example.com/<x>">危険</a>"#
+        #"<a href="https://example.com/<x>">危険</a>"#,
+        "<a href=\"https://example.com/a\nb\">危険</a>",
+        "<a href=\"https://example.com/a\tb\">危険</a>"
     ])
     func linksWithoutHTTPSchemeKeepOnlyText(html: String) {
         #expect(convert(html) == "危険")
