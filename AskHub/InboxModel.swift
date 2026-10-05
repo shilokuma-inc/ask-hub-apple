@@ -152,7 +152,8 @@ final class InboxModel {
             async let questions = fetcher.unansweredQuestions(org: Self.org)
             async let issues = fetcher.lowPriorityIssues(org: Self.org)
             async let waiting = fetcher.waitingDiscussions(org: Self.org)
-            async let usageLimited = fetcher.usageLimitedRepositories(org: Self.org, now: .now)
+            // 上限の表示は補助なので、取得に失敗しても受信箱は出す（次の更新で取り直す）
+            async let usageLimited = (try? await fetcher.usageLimitedRepositories(org: Self.org, now: .now)) ?? []
             let (fetchedQuestions, fetchedIssues, fetchedWaiting, fetchedUsageLimited) =
                 try await (questions, issues, waiting, usageLimited)
             // 取得を待つ間に別のトークンで回答した場合は、古いトークンでの結果を捨てて取り直す
