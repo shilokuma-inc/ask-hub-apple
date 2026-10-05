@@ -57,6 +57,8 @@
   CI（`_build.yml`）と同じく、build は `CODE_SIGNING_ALLOWED=NO`、test は `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= ENABLE_APP_SANDBOX=NO` を付ける
 - `xcode-select` が CommandLineTools を指している Mac では、`swiftlint` が `sourcekitdInProc` を見つけられず Fatal error で落ちる。
   `xcodebuild` と同じく `DEVELOPER_DIR` を Xcode.app に向けて実行する
+- UI テストで `app.textFields["placeholder"]` で引いた入力欄は、文字を入力すると placeholder が消えて引けなくなる
+  （`value` を読むと No matches found で落ちる）。入力後は `NSPredicate(format: "value CONTAINS %@", …)` で値から探す
 
 ## Keychain
 
@@ -94,3 +96,5 @@
   `Link` に `.buttonStyle(.plain)` を付け、行に `.frame(maxWidth: .infinity, alignment: .leading)` と `.contentShape(.rect)` を付けて行全体をタップできるようにする
 - 一覧などの UI をテストやスクリーンショットで確かめるときは、DEBUG ビルドだけの起動引数（`-AskHubSampleInbox`）でサンプルデータに切り替える。
   Preview と同じサンプルを使い回せ、GitHub にもトークンにも依存しない
+- `ToolbarItemGroup(placement: .keyboard)` は Deployment Target が macOS 14 でもビルドエラーにならない（`#if os(iOS)` で囲まなくてよい）。
+  同じ画面で重複して出ないよう、入力欄ごとではなく `Form` に 1 回だけ付ける
