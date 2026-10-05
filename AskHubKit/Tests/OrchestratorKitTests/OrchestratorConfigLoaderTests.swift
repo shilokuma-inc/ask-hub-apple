@@ -14,6 +14,7 @@ struct OrchestratorConfigLoaderTests {
         org: String = #""shilokuma-inc""#,
         repositories: String = #"[{ "repository": "shilokuma-inc/ask-hub-apple", "path": "~/src/ask-hub-apple" }]"#,
         pollIntervalSeconds: Int? = nil,
+        iterationTimeoutMinutes: Int? = nil,
         loopCommand: String = #"["/usr/local/bin/start-loop", "{repository}"]"#
     ) -> String {
         var fields = [
@@ -26,6 +27,9 @@ struct OrchestratorConfigLoaderTests {
         }
         if let pollIntervalSeconds {
             fields.append(#""pollIntervalSeconds": \#(pollIntervalSeconds)"#)
+        }
+        if let iterationTimeoutMinutes {
+            fields.append(#""iterationTimeoutMinutes": \#(iterationTimeoutMinutes)"#)
         }
         return "{" + fields.joined(separator: ",") + "}"
     }
@@ -152,6 +156,14 @@ struct OrchestratorConfigLoaderTests {
             try decode(config(pollIntervalSeconds: 29))
         }
         #expect(try decode(config(pollIntervalSeconds: 30)).pollInterval == .seconds(30))
+    }
+
+    @Test func readsIterationTimeoutWithDefaultAndMinimum() throws {
+        #expect(try decode(config()).iterationTimeout == .seconds(90 * 60))
+        #expect(try decode(config(iterationTimeoutMinutes: 120)).iterationTimeout == .seconds(120 * 60))
+        #expect(throws: OrchestratorConfigError.iterationTimeoutTooShort(minutes: 9, minimum: 10)) {
+            try decode(config(iterationTimeoutMinutes: 9))
+        }
     }
 
     @Test func rejectsUnknownPlaceholder() {

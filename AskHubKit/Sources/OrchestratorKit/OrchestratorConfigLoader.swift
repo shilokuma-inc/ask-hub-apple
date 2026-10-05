@@ -14,7 +14,8 @@ import Foundation
 ///   "loopCommand": ["/path/to/start-loop.sh", "{repository}", "{controlPath}"]
 /// }
 /// ```
-/// `trustedAuthors`・`pollIntervalSeconds`・`ideaCommand` は省略できる（既定値は `TrustedAuthors.default`・60 秒・`IdeaCommandTemplate.defaultArguments`）。
+/// `trustedAuthors`・`pollIntervalSeconds`・`ideaCommand`・`iterationTimeoutMinutes` は省略できる
+/// （既定値は `TrustedAuthors.default`・60 秒・`IdeaCommandTemplate.defaultArguments`・90 分）。
 public struct OrchestratorConfigLoader: Sendable {
     /// `~` の展開に使うホームディレクトリ。テストで差し替える
     public let homeDirectory: String
@@ -83,13 +84,20 @@ public struct OrchestratorConfigLoader: Sendable {
             throw .pollIntervalTooShort(seconds: seconds, minimum: minimum)
         }
 
+        let timeoutMinutes = file.iterationTimeoutMinutes ?? Int(OrchestratorConfig.defaultIterationTimeout.components.seconds / 60)
+        let minimumMinutes = Int(OrchestratorConfig.minimumIterationTimeout.components.seconds / 60)
+        guard timeoutMinutes >= minimumMinutes else {
+            throw .iterationTimeoutTooShort(minutes: timeoutMinutes, minimum: minimumMinutes)
+        }
+
         return OrchestratorConfig(
             trustedAuthorLogins: trustedAuthors,
             org: org,
             repositories: repositories,
             pollInterval: .seconds(seconds),
             loopCommand: try LoopCommandTemplate(arguments: file.loopCommand),
-            ideaCommand: try IdeaCommandTemplate(arguments: file.ideaCommand ?? IdeaCommandTemplate.defaultArguments)
+            ideaCommand: try IdeaCommandTemplate(arguments: file.ideaCommand ?? IdeaCommandTemplate.defaultArguments),
+            iterationTimeout: .seconds(timeoutMinutes * 60)
         )
     }
 
@@ -162,4 +170,5 @@ private struct ConfigFile: Decodable {
     let pollIntervalSeconds: Int?
     let loopCommand: [String]
     let ideaCommand: [String]?
+    let iterationTimeoutMinutes: Int?
 }

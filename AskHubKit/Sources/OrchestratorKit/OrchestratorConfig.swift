@@ -9,6 +9,10 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public static let defaultPollInterval: Duration = .seconds(60)
     /// ポーリング間隔の下限（秒）。Search API は認証済みでも 30 回/分のため、これより短くしない
     public static let minimumPollInterval: Duration = .seconds(30)
+    /// ループの 1 周がこれより長く進まなければ、固まったとみなして止める（既定）
+    public static let defaultIterationTimeout: Duration = .seconds(90 * 60)
+    /// `iterationTimeout` の下限。ビルドとテストの重いリポジトリで、まともな周回を止めないため
+    public static let minimumIterationTimeout: Duration = .seconds(10 * 60)
 
     /// 指示として扱ってよい GitHub アカウントの login
     public let trustedAuthorLogins: [String]
@@ -20,6 +24,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public let loopCommand: LoopCommandTemplate
     /// 依頼から Discussion を作らせるコマンド
     public let ideaCommand: IdeaCommandTemplate
+    /// ループの 1 周（state ファイルが書き直されてから）がこれより長く進まなければ、固まったとみなして止める
+    public let iterationTimeout: Duration
 
     public var trustedAuthors: TrustedAuthors {
         TrustedAuthors(trustedAuthorLogins)
@@ -31,7 +37,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
         repositories: [RepositoryConfig],
         pollInterval: Duration,
         loopCommand: LoopCommandTemplate,
-        ideaCommand: IdeaCommandTemplate = .standard
+        ideaCommand: IdeaCommandTemplate = .standard,
+        iterationTimeout: Duration = defaultIterationTimeout
     ) {
         self.trustedAuthorLogins = trustedAuthorLogins
         self.org = org
@@ -39,6 +46,7 @@ public struct OrchestratorConfig: Sendable, Equatable {
         self.pollInterval = pollInterval
         self.loopCommand = loopCommand
         self.ideaCommand = ideaCommand
+        self.iterationTimeout = iterationTimeout
     }
 
     /// 担当リポジトリを `owner/repo` で探す。GitHub の名前は大文字・小文字を区別しない
