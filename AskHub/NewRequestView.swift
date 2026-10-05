@@ -76,7 +76,8 @@ struct NewRequestView: View {
                 Button("設定", systemImage: "gearshape", action: openSettings)
             }
         }
-        .task { await model.loadRepositories() }
+        // デモモードの切り替えでモデルが差し替わったら、新しいモデルで読み直す
+        .task(id: ObjectIdentifier(model)) { await model.loadRepositories() }
         .refreshable { await model.loadRepositories() }
     }
 
