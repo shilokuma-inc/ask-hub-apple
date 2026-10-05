@@ -36,6 +36,8 @@
   同じ DerivedData を共有するとビルドが壊れる
 - 「Mac Development」の署名用証明書が無い Mac では、macOS 向けの `xcodebuild build` / `test` が署名エラーで止まる。
   CI（`_build.yml`）と同じく、build は `CODE_SIGNING_ALLOWED=NO`、test は `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= ENABLE_APP_SANDBOX=NO` を付ける
+- `xcode-select` が CommandLineTools を指している Mac では、`swiftlint` が `sourcekitdInProc` を見つけられず Fatal error で落ちる。
+  `xcodebuild` と同じく `DEVELOPER_DIR` を Xcode.app に向けて実行する
 
 ## Keychain
 
@@ -51,6 +53,11 @@
   `URL.resolvingSymlinksInPath()` は `/private` を外した形を返すため、`pwd -P` の結果などと比べるときは `realpath(3)` を使う
 - `Process` で起動した子プロセスの生存は、`Process` を保持しておいて `isRunning` で見る。
   `Process` は `Sendable` ではないので、`actor` の状態として持つと `@unchecked Sendable` なしで扱える
+- `AttributedString(markdown:)` はインライン HTML（`<b>` など）を解釈せず文字のまま残し、`&lt;` などの文字参照は自分でデコードする。
+  HTML を Markdown に変換してから渡すときは、文字参照をデコードしない（二重デコードになる）。ただし Markdown のコードスパン・
+  コードブロックの中では文字参照がそのまま出るので、HTML の `<pre>` / `<code>` の中身だけは変換側でデコードする
+- `AttributedString(markdown:)` の `.full` は段落内の 1 つの改行を空白にまとめる（`.inlineOnlyPreservingWhitespace` は残す）。
+  改行を確実に残すには、行末に空白 2 つか `\` を置くハードブレークにする
 
 ## シェルスクリプト
 
