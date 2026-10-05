@@ -127,11 +127,31 @@ struct IdeaRequestModelTests {
         await model.send()
 
         #expect(requester.requests == [IdeaRequest(repository: "shilokuma-inc/notti-ios", summary: "通知の頻度を調整したい", body: "朝だけにしたい")])
-        #expect(model.created?.number == 41)
+        #expect(model.sent?.issue.number == 41)
         #expect(model.summary.isEmpty)
         #expect(model.body.isEmpty)
         #expect(model.repository == "shilokuma-inc/notti-ios")
         #expect(model.errorMessage == nil)
+    }
+
+    @Test func keepsSentRepositoryAndSummaryAfterChangingSelection() async throws {
+        let model = makeModel(requester: RecordingRequester())
+        model.repository = "shilokuma-inc/ask-hub-apple"
+        model.summary = "  通知の頻度を調整したい "
+        model.body = "朝だけにしたい"
+        await model.send()
+
+        // 続けて依頼しようとリポジトリと入力を変えても、送信結果は送った時点のまま
+        model.repository = "shilokuma-inc/notti-ios"
+        model.summary = "次の依頼"
+
+        let sent = try #require(model.sent)
+        #expect(sent.repository == "shilokuma-inc/ask-hub-apple")
+        #expect(sent.summary == "通知の頻度を調整したい")
+        #expect(sent.message == "ask-hub-apple に「通知の頻度を調整したい」を依頼しました")
+        #expect(sent.linkTitle == "ask-hub-apple#41 を GitHub で開く")
+        #expect(sent.issue.htmlURL == URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/41"))
+        #expect(model.body.isEmpty)
     }
 
     @Test func keepsInputAndShowsErrorWhenSendingFails() async {
@@ -141,7 +161,7 @@ struct IdeaRequestModelTests {
         model.body = "依頼文"
         await model.send()
 
-        #expect(model.created == nil)
+        #expect(model.sent == nil)
         #expect(model.summary == "要約")
         #expect(model.errorMessage == "トークンが無効です。設定でトークンを保存し直してください")
     }
