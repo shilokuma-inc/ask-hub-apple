@@ -59,6 +59,13 @@ struct RenderedBodyTests {
         #expect(text(body.blocks[0]) == "新しい Product ID を登録してよいですか？")
     }
 
+    @Test func keepsImageSyntaxInsideCode() {
+        let body = RenderedBody(markdown: "`![x](y)` と\n\n```\n![fence](z)\n```\n\n![removed](https://e.com/a.png)")
+        #expect(body.blocks.count == 2)
+        #expect(text(body.blocks[0]) == "![x](y) と")
+        #expect(body.blocks[1] == .codeBlock(language: nil, code: "![fence](z)"))
+    }
+
     @Test func keepsSingleLineBreaksInsideParagraph() {
         let body = RenderedBody(body: "1 行目\n2 行目<br>3 行目")
         #expect(body.blocks.count == 1)

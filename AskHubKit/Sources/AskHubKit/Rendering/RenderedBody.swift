@@ -49,7 +49,7 @@ public struct RenderedBody: Sendable, Equatable {
 
     /// Markdown から作る（HTML は解釈しない）
     public init(markdown: String) {
-        let source = Self.preservingLineBreaks(Self.removingImages(markdown))
+        let source = Self.preservingLineBreaks(markdown)
         var options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
         options.failurePolicy = .returnPartiallyParsedIfPossible
         guard let attributed = try? AttributedString(markdown: source, options: options) else {
@@ -79,11 +79,6 @@ public struct RenderedBody: Sendable, Equatable {
             }
         }
         .joined(separator: "\n")
-    }
-
-    /// Markdown の画像 `![alt](url)` を取り除く（`ask-badge` などのバッジ画像は本文に出さない）
-    static func removingImages(_ markdown: String) -> String {
-        markdown.replacing(/!\[[^\]]*\]\([^)]*\)/, with: "")
     }
 
     /// 段落の中の 1 つの改行をハードブレーク（行末の空白 2 つ）にして、full 解釈でも改行が残るようにする。
@@ -150,7 +145,8 @@ private struct BlockBuilder {
     private var blocks: [RenderedBody.Block] = []
 
     mutating func append(_ run: AttributedString.Runs.Run, in attributed: AttributedString) {
-        // 画像は表示しない（alt も出さない）
+        // 画像（`ask-badge` などのバッジを含む）は表示しない（alt も出さない）。
+        // 正規表現で先に消すとコードの中の `![alt](url)` まで消えるので、解釈した結果の run で除く
         guard run.imageURL == nil else {
             return
         }
