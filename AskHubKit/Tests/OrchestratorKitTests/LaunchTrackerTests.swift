@@ -20,12 +20,27 @@ struct LaunchTrackerTests {
         #expect(tracker.blockedDiscussionIDs == ["D_12"])
     }
 
+    @Test func doesNotTakeStateFileOfAnotherLoopAsStart() {
+        var tracker = LaunchTracker()
+        tracker.recordLaunch(of: discussion, repositoryKey: key)
+
+        // 制御用 worktree が別の Discussion（前の epic）から準備されたものなら、この Discussion のループではない
+        let otherLoop = statuses(LoopStatus(stateFileExists: true, processAlive: true))
+        #expect(tracker.update(discussions: [discussion], statuses: otherLoop, preparedDiscussions: [key: 3]).isEmpty)
+        // 起動したプロセスが終われば、state ファイルが残っていても起動の失敗とみなす
+        let ended = statuses(LoopStatus(stateFileExists: true, processAlive: false))
+        let actions = tracker.update(discussions: [discussion], statuses: ended, preparedDiscussions: [key: 3])
+        #expect(actions == [.retry(discussion, attempts: 1)])
+        #expect(tracker.blockedDiscussionIDs.isEmpty)
+    }
+
     @Test func removesLabelOnceStateFileAppearsAndKeepsRetryingRemoval() {
         var tracker = LaunchTracker()
         tracker.recordLaunch(of: discussion, repositoryKey: key)
 
         let started = statuses(LoopStatus(stateFileExists: true, processAlive: false))
-        #expect(tracker.update(discussions: [discussion], statuses: started) == [.removeLabel(discussion)])
+        let actions = tracker.update(discussions: [discussion], statuses: started, preparedDiscussions: [key: 12])
+        #expect(actions == [.removeLabel(discussion)])
         // 外せていなければ、ループが終わっても外し直す
         #expect(tracker.update(discussions: [discussion], statuses: statuses(.idle)) == [.removeLabel(discussion)])
 
