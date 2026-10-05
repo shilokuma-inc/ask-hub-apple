@@ -1,6 +1,7 @@
 import AskHubKit
 import Foundation
 @testable import OrchestratorKit
+import os
 import Testing
 
 // MARK: - Claude の利用上限
@@ -55,16 +56,15 @@ extension OrchestratorTests {
 }
 
 /// テストで進める時計
-final class TestClock: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value: Date
+final class TestClock: Sendable {
+    private let value: OSAllocatedUnfairLock<Date>
 
     init(_ date: Date) {
-        value = date
+        value = OSAllocatedUnfairLock(initialState: date)
     }
 
     var now: Date {
-        get { lock.withLock { value } }
-        set { lock.withLock { value = newValue } }
+        get { value.withLock { $0 } }
+        set { value.withLock { $0 = newValue } }
     }
 }
