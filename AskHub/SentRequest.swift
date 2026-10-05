@@ -2,12 +2,14 @@ import AskHubKit
 import Foundation
 
 /// 「新しい依頼」画面で送った依頼。表示は送った時点の値で組み立てる（送信後に Picker でリポジトリを変えても変わらない）
-struct SentRequest: Equatable {
+struct SentRequest: Equatable, Identifiable {
     /// 送った時点のリポジトリ（`owner/repo`）
     let repository: String
     /// 入力した要約。Issue タイトルの `【依頼】` は付けない
     let summary: String
     let issue: CreatedIssue
+
+    var id: URL { issue.htmlURL }
 
     init(request: IdeaRequest, issue: CreatedIssue) {
         repository = request.repository

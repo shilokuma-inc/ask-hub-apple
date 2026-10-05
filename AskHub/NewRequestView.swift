@@ -44,12 +44,18 @@ struct NewRequestView: View {
                 }
             }
 
-            if let sent = model.sent {
+            if !model.sent.isEmpty {
                 Section {
-                    // 要約が長くても切り詰めずに折り返す
-                    Label(sent.message, systemImage: "checkmark.circle")
-                        .fixedSize(horizontal: false, vertical: true)
-                    Link(sent.linkTitle, destination: sent.issue.htmlURL)
+                    ForEach(model.sent) { sent in
+                        VStack(alignment: .leading, spacing: 6) {
+                            // 要約が長くても切り詰めずに折り返す
+                            Label(sent.message, systemImage: "checkmark.circle")
+                                .fixedSize(horizontal: false, vertical: true)
+                            Link(sent.linkTitle, destination: sent.issue.htmlURL)
+                        }
+                    }
+                } header: {
+                    Text("送った依頼")
                 } footer: {
                     Text("担当 PC のオーケストレーターが、質問付きの Discussion を作ります")
                 }
@@ -119,6 +125,12 @@ struct NewRequestView: View {
 #Preview {
     NavigationStack {
         NewRequestView(model: .sample(), openSettings: {})
+    }
+}
+
+#Preview("送った依頼が複数") {
+    NavigationStack {
+        NewRequestView(model: .sample(sent: SentRequest.samples), openSettings: {})
     }
 }
 #endif

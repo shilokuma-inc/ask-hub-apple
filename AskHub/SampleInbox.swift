@@ -136,9 +136,27 @@ struct SampleMergeQueue: MergeQueueProviding {
 
 extension IdeaRequestModel {
     /// デモモード・Preview・UI テスト用。GitHub には接続しない
-    static func sample() -> IdeaRequestModel {
-        IdeaRequestModel(tokenStore: InMemoryTokenStore(token: "sample")) { _ in SampleIdeaRequester() }
+    static func sample(sent: [SentRequest] = []) -> IdeaRequestModel {
+        IdeaRequestModel(tokenStore: InMemoryTokenStore(token: "sample"), makeRequester: { _ in SampleIdeaRequester() }, sent: sent)
     }
+}
+
+extension SentRequest {
+    /// Preview 用。送った依頼が複数あるときの一覧（新しい順）
+    static let samples = [
+        SentRequest(
+            request: IdeaRequest(repository: "shilokuma-inc/notti-ios", summary: "通知の頻度を調整したい", body: "朝だけにしたい"),
+            issue: CreatedIssue(number: 42, htmlURL: URL(string: "https://github.com/shilokuma-inc/notti-ios/issues/42")!)
+        ),
+        SentRequest(
+            request: IdeaRequest(
+                repository: "shilokuma-inc/ask-hub-apple",
+                summary: "「依頼を送りました」の表示を、何をどこへ送ったか分かる形にしたい。続けて依頼したときも前の依頼を残したい",
+                body: "送った時点のリポジトリと要約を出す"
+            ),
+            issue: CreatedIssue(number: 184, htmlURL: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/184")!)
+        )
+    ]
 }
 
 /// デモモード・Preview・UI テスト用。Issue を作ったことにして GitHub には送らない
