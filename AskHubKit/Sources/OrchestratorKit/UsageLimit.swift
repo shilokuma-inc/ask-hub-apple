@@ -11,6 +11,8 @@ public enum UsageLimit {
     static let trailingLines = 5
     /// 上限のメッセージはあるが解除の時刻を読めないときに待つ時間
     static let fallbackWait: TimeInterval = 60 * 60
+    /// 解除の時刻として受け入れる先の上限（週の上限でも 7 日で解除される）
+    static let maximumWait: TimeInterval = 8 * 24 * 60 * 60
 
     /// - Parameters:
     ///   - output: `claude` の出力（ログの末尾）
@@ -26,7 +28,9 @@ public enum UsageLimit {
             return nil
         }
         if let match = line.firstMatch(of: /usage limit reached\|(\d{9,})/.ignoresCase()), let epoch = TimeInterval(match.1) {
-            return Date(timeIntervalSince1970: epoch)
+            let date = Date(timeIntervalSince1970: epoch)
+            // ミリ秒などの桁違いの値で待機が長引かないよう、週の上限（7 日）を超える先は読めなかったものとみなす
+            return date > loggedAt.addingTimeInterval(maximumWait) ? loggedAt.addingTimeInterval(fallbackWait) : date
         }
         guard let match = line.firstMatch(of: /resets\s+(.+?)(?:\s*\(([^)]+)\))?\s*$/.ignoresCase()) else {
             return loggedAt.addingTimeInterval(fallbackWait)

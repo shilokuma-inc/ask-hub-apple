@@ -32,8 +32,12 @@ struct UsageLimitTests {
 
     @Test func readsEpochFormAndFallsBackWhenTimeIsUnreadable() {
         let loggedAt = tokyoDate(day: 5, hour: 10)
-        let epoch = UsageLimit.resetDate(in: "Claude AI usage limit reached|1800000000", loggedAt: loggedAt)
-        #expect(epoch == Date(timeIntervalSince1970: 1_800_000_000))
+        let reset = loggedAt.addingTimeInterval(2 * 60 * 60)
+        let epoch = UsageLimit.resetDate(in: "Claude AI usage limit reached|\(Int(reset.timeIntervalSince1970))", loggedAt: loggedAt)
+        #expect(epoch == reset)
+        // ミリ秒の UNIX 時刻（桁違いに先の時刻）は読めなかったものとみなす
+        let milliseconds = UsageLimit.resetDate(in: "Claude AI usage limit reached|1800000000000", loggedAt: loggedAt)
+        #expect(milliseconds == loggedAt.addingTimeInterval(60 * 60))
         // 解除の時刻を読めなければ、1 時間後に試し直す
         #expect(UsageLimit.resetDate(in: "You've hit your usage limit", loggedAt: loggedAt) == loggedAt.addingTimeInterval(60 * 60))
         // タイムゾーンが無ければ、既定のタイムゾーンで読む

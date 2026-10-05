@@ -127,12 +127,14 @@ struct LocalLoopRuntimeTests {
 
         // 起動スクリプトは最新のログを `<リポジトリ名>-latest.log` のリンクで指す
         let log = logs.appendingPathComponent("ask-hub-apple-loop-20261005-101145.log")
-        try Data("Claude AI usage limit reached|1800000000\n".utf8).write(to: log)
+        // ログの更新時刻（今）から 1 時間後に解除される
+        let reset = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + 3600).rounded(.down))
+        try Data("Claude AI usage limit reached|\(Int(reset.timeIntervalSince1970))\n".utf8).write(to: log)
         try FileManager.default.createSymbolicLink(
             at: logs.appendingPathComponent("ask-hub-apple-latest.log"),
             withDestinationURL: log
         )
-        #expect(await runtime.usageLimitReset(of: repository) == Date(timeIntervalSince1970: 1_800_000_000))
+        #expect(await runtime.usageLimitReset(of: repository) == reset)
 
         try Data("ループを起動します\n".utf8).write(to: log)
         #expect(await runtime.usageLimitReset(of: repository) == nil)
