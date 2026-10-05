@@ -157,9 +157,10 @@ final class AskHubUITests: XCTestCase {
         XCTAssertTrue(heading.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["返答のない仮決め（既定値のまま確定）"].exists)
         XCTAssertTrue(app.staticTexts["実機確認 Issue"].exists)
-        // 「状態」の「コンフリクト: なし」と区別するため、「まとめ」の見出しより下にある「なし」を箇条書きの項目とみなす
+        // 「状態」の「コンフリクト: なし」と区別するため、「まとめ」の見出しより下から始まる「なし」を箇条書きの項目とみなす
+        // （見出しの accessibility frame はブロック全体に広がるので、上端どうしで比べる）
         let items = app.staticTexts.matching(NSPredicate(format: "label == %@", "なし")).allElementsBoundByIndex
-        XCTAssertTrue(items.contains { $0.frame.minY >= heading.frame.maxY })
+        XCTAssertTrue(items.contains { $0.frame.minY > heading.frame.minY })
         XCTAssertTrue(app.staticTexts["#161 の 6 件。エンティティのデコード範囲と <br> の変換を含む。詳細は #161"].exists)
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "<h3>")).firstMatch.exists)
 
