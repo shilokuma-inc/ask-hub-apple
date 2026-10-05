@@ -124,7 +124,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `pollIntervalSeconds` | | ポーリング間隔（秒）。既定 60、下限 30（Search API は認証済みでも 30 回/分のため） |
 | `loopCommand` | ✓ | ループを起動するコマンド。シェルを経由せず引数の配列のまま実行する |
 | `ideaCommand` | | 依頼から質問付きの Discussion を作らせるコマンド。シェルを経由せず実行し、終わるまで待つ（30 分で打ち切る）。プロンプトは標準入力で渡す（依頼の本文をプロセスの引数に出さないため）。省略時は `["claude", "-p", "--allowedTools", "Bash(gh:*)"]`。`{repository}` / `{checkoutPath}` が使える |
-| `iterationTimeoutMinutes` | | ループの 1 周がこれより長く進まなければ、固まったとみなして止める（分。省略時は 90、10 以上）。下の「固まったループを止める」を参照 |
+| `iterationTimeoutMinutes` | | ループの 1 周がこれより長く進まなければ、固まったとみなして止める（分。省略時は 90、10 以上 1440 以下）。下の「固まったループを止める」を参照 |
 
 ### `loopCommand` のプレースホルダ
 
