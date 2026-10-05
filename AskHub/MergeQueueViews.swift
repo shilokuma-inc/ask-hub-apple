@@ -34,7 +34,8 @@ struct MergeQueueListView: View {
             }
         }
         // 起動時やフォアグラウンド復帰時に取得済みなら、タブを開いただけでは取り直さない
-        .task { await model.refreshIfStale() }
+        // デモモードの切り替えでモデルが差し替わったら、新しいモデルで取り直す
+        .task(id: ObjectIdentifier(model)) { await model.refreshIfStale() }
     }
 
     @ViewBuilder private var emptyState: some View {
@@ -47,6 +48,7 @@ struct MergeQueueListView: View {
                 Label("トークンが未設定です", systemImage: "key")
             } actions: {
                 Button("設定を開く", action: openSettings)
+                TryDemoButton()
             }
 
         case let .failed(message):

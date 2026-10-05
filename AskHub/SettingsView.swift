@@ -6,6 +6,10 @@ struct SettingsView: View {
     @State private var model: TokenSettingsModel
     @Environment(\.dismiss)
     private var dismiss
+    @Environment(\.isDemoMode)
+    private var isDemoMode
+    @Environment(\.setDemoMode)
+    private var setDemoMode
 
     init(model: TokenSettingsModel = TokenSettingsModel()) {
         _model = State(initialValue: model)
@@ -30,6 +34,26 @@ struct SettingsView: View {
                     LabeledContent("トークン", value: model.hasSavedToken ? "保存済み" : "未設定")
                     if model.hasSavedToken {
                         Button("トークンを削除", role: .destructive) { model.delete() }
+                    }
+                }
+
+                if let setDemoMode {
+                    Section {
+                        if isDemoMode {
+                            Button("デモモードを終了") {
+                                setDemoMode(false)
+                                dismiss()
+                            }
+                        } else {
+                            Button("サンプルデータで試す") {
+                                setDemoMode(true)
+                                dismiss()
+                            }
+                        }
+                    } header: {
+                        Text("デモモード")
+                    } footer: {
+                        Text("GitHub に接続せず、サンプルデータで画面と操作を試せます。回答・マージ・依頼は送ったことにするだけで、GitHub には反映されません。")
                     }
                 }
 
