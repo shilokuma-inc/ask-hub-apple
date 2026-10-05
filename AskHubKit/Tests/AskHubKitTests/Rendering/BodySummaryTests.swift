@@ -55,6 +55,10 @@ struct BodySummaryTests {
         #expect(BodySummary.oneLine("a < b かつ <未閉じ") == "a < b かつ <未閉じ")
     }
 
+    @Test func keepsImageSyntaxInsideCodeSpan() {
+        #expect(BodySummary.oneLine("`![x](y)` と ![badge](https://e.com/a.png) 後") == "![x](y) と 後")
+    }
+
     @Test func collapsesWhitespaceAndLineBreaks() {
         #expect(BodySummary.oneLine("1 行目<br>2 行目\n\n\n3   行目") == "1 行目 2 行目 3 行目")
     }

@@ -6,7 +6,7 @@ import Foundation
 /// 先頭の目印（HTML コメント）とバッジなどの画像は出さない
 public enum BodySummary {
     public static func oneLine(_ body: String) -> String {
-        let markdown = HTMLMarkdownConverter.convert(body).replacing(/!\[[^\]]*\]\([^)]*\)/, with: "")
+        let markdown = HTMLMarkdownConverter.convert(body)
         let joined = strippingBlockMarkers(markdown).joined(separator: " ")
         return collapsingWhitespace(resolvingInlineMarkdown(joined))
     }
@@ -34,7 +34,8 @@ public enum BodySummary {
         /^(?:(?:>+|#{1,6}|[-*+]|\d{1,9}[.)])(?:\s+|$))+/
     }
 
-    /// 太字・コード・リンクなどのインラインの記号を解釈して文字だけにする（エンティティもデコードされる）
+    /// 太字・コード・リンクなどのインラインの記号を解釈して文字だけにする（エンティティもデコードされる）。
+    /// 画像（`ask-badge` などのバッジ）は解釈した結果の run で除く（正規表現で先に消すとコードの中の `![alt](url)` まで消える）
     private static func resolvingInlineMarkdown(_ text: String) -> String {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         guard let attributed = try? AttributedString(markdown: text, options: options) else {
