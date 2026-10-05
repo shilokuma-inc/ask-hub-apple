@@ -305,4 +305,22 @@ struct OrchestratorTests {
         #expect(github.removed.isEmpty)
         #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "12"]])
     }
+
+    @Test func stopsDiscussionWithoutTasksAndTellsItOnce() async throws {
+        // 準備の結果 goal にタスクが無かった（起動スクリプトが目印を残した）
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "# goal\n", state: nil, discussion: 12, noTasksDiscussion: 12))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        let decisions = try await orchestrator.pollOnce()
+
+        // やり直さず、Discussion に知らせて ready-for-loop を外し、目印を消す
+        #expect(decisions == [.skip(.fixture(number: 12), .alreadyLaunched)])
+        #expect(runtime.launched.isEmpty)
+        #expect(github.discussionComments == ["D_12: \(Orchestrator.noTasksComment)"])
+        #expect(github.removed == ["D_12"])
+        #expect(runtime.clearedNoTasksMarkers == 1)
+        #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#12 は準備の結果やることが残っていなかったので、知らせて ready-for-loop を外しました"))
+    }
 }

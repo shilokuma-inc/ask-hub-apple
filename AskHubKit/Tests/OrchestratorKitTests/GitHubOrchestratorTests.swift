@@ -6,7 +6,7 @@ import Testing
 
 struct GitHubOrchestratorTests {
     /// 登録した順に 200 のレスポンスを返し、送られたリクエストを記録する
-    private final class StubHTTPClient: HTTPClient {
+    final class StubHTTPClient: HTTPClient {
         private let state: OSAllocatedUnfairLock<(responses: [(status: Int, body: String)], requests: [URLRequest])>
 
         /// すべて 200 で返す
@@ -38,11 +38,11 @@ struct GitHubOrchestratorTests {
         }
     }
 
-    private func makeGitHub(_ http: StubHTTPClient) -> GitHubOrchestrator {
+    func makeGitHub(_ http: StubHTTPClient) -> GitHubOrchestrator {
         GitHubOrchestrator(client: GitHubClient(token: "github_pat_secret", http: http, sleep: { _ in }))
     }
 
-    private func requestJSON(_ request: URLRequest) throws -> (query: String, variables: [String: Any]) {
+    func requestJSON(_ request: URLRequest) throws -> (query: String, variables: [String: Any]) {
         let body = try #require(request.httpBody)
         let object = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         return (try #require(object["query"] as? String), try #require(object["variables"] as? [String: Any]))

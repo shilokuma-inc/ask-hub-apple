@@ -123,6 +123,11 @@ public struct LaunchTracker: Sendable, Equatable {
         entries[discussion.nodeID] = Entry(repositoryKey: repositoryKey, attempts: 0, phase: .started)
     }
 
+    /// 追跡をやめる（知らせて止めた Discussion。ラベルを付け直したら、改めて起動する）
+    public mutating func forget(_ discussion: ReadyDiscussion) {
+        entries[discussion.nodeID] = nil
+    }
+
     /// `ready-for-loop` を外した
     public mutating func recordLabelRemoved(from discussion: ReadyDiscussion) {
         entries[discussion.nodeID]?.phase = .labelRemoved

@@ -107,6 +107,12 @@ struct LocalLoopRuntimeTests {
         try Data("not a number".utf8).write(to: control.appendingPathComponent(".claude/askhub-bootstrap.local.txt"))
         #expect(await LocalLoopRuntime().epicSnapshot(of: repository).discussion == nil)
 
+        // 準備の結果 goal にタスクが無かった Discussion の番号を読み、知らせた後に消す
+        try Data("12\n".utf8).write(to: control.appendingPathComponent(LocalLoopRuntime.noTasksFileRelativePath))
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).noTasksDiscussion == 12)
+        await LocalLoopRuntime().clearNoTasksMarker(of: repository)
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).noTasksDiscussion == nil)
+
         // 起動スクリプトが完了語を残していれば、ループを始められる状態まで準備できている
         #expect(await LocalLoopRuntime().epicSnapshot(of: repository).loopPrepared == false)
         try Data("DONE\n".utf8).write(to: control.appendingPathComponent(".claude/askhub-promise.local.txt"))

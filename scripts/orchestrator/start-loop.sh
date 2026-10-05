@@ -47,6 +47,8 @@ PLAYBOOK="$CTL/.claude/ralph-playbook.local.md"
 PROMISE_FILE="$CTL/.claude/askhub-promise.local.txt"
 # 準備を始めた Discussion の番号。準備が途中で失敗したかどうかの判定に使う（完了語が無く、この番号が同じなら途中で失敗している）
 BOOTSTRAP_FILE="$CTL/.claude/askhub-bootstrap.local.txt"
+# 準備の結果、goal にタスクが無かった Discussion の番号。オーケストレーターはこれを見て、やり直さずに知らせて止める
+NO_TASKS_FILE="$CTL/.claude/askhub-no-tasks.local.txt"
 # ループのプロセスの PID（exec するので、このスクリプトの PID がそのままループの PID になる）。
 # オーケストレーターも読み、state ファイルが残ったままプロセスが死んだことを見分ける
 PID_FILE="$CTL/.claude/askhub-loop.pid"
@@ -142,6 +144,7 @@ if [[ -n "$DISCUSSION" ]]; then
   # オーケストレーターは最新のログの末尾から、Claude の利用上限で終わったかを読む
   ln -sfn "$BOOT_LOG" "$LATEST_LOG"
   log "Discussion #$DISCUSSION から新しい epic を準備します（ログ: ${BOOT_LOG}）"
+  rm -f "$NO_TASKS_FILE"
 
   # Discussion は、信用する author の本文・コメント・返信だけをここで取り出して渡す。
   # 信用外の author の文（誰でも書ける）を準備の claude に一切見せないため
@@ -224,7 +227,11 @@ PROMPT
   if grep -q '{{[A-Z_]*}}' "$PLAYBOOK"; then
     fail "playbook に未置換のプレースホルダが残っています: $PLAYBOOK"
   fi
-  [[ "$(open_tasks)" -gt 0 ]] || fail "goal にタスクがありません: $GOAL"
+  if [[ "$(open_tasks)" -eq 0 ]]; then
+    # 内容が別の PR で実装済みなど、やることが残っていない。やり直しても同じなので、目印を残して終わる
+    printf '%s\n' "$DISCUSSION" > "$NO_TASKS_FILE"
+    fail "goal にタスクがありません（Discussion #${DISCUSSION} にはやることが残っていません）: $GOAL"
+  fi
   printf '%s\n' "$PROMISE" > "$PROMISE_FILE"
   log "準備が完了しました（完了語: ${PROMISE}）"
 

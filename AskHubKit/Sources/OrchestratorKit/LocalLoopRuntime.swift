@@ -8,6 +8,8 @@ public actor LocalLoopRuntime: LoopRuntime {
     /// 起動スクリプト（askhub-start-loop）が書く、ループのプロセスの PID。
     /// state ファイルが残ったままプロセスが死んだ（落ちた・止められた）ことを見分けるのに使う
     public static let pidFileRelativePath = ".claude/askhub-loop.pid"
+    /// 起動スクリプトが、準備の結果 goal にタスクが無かった Discussion の番号を書く
+    public static let noTasksFileRelativePath = ".claude/askhub-no-tasks.local.txt"
 
     /// 起動したプロセス。キーは `fullName` を小文字にしたもの。
     /// オーケストレーターを再起動すると忘れるが、その場合も state ファイルが残っていれば起動しない
@@ -80,6 +82,11 @@ public actor LocalLoopRuntime: LoopRuntime {
         }
         let start = info.kp_proc.p_un.__p_starttime
         return Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
+    }
+
+    public func clearNoTasksMarker(of repository: RepositoryConfig) {
+        let control = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
+        try? FileManager.default.removeItem(at: control.appendingPathComponent(Self.noTasksFileRelativePath))
     }
 
     public func terminate(_ loop: HungLoop) async {
@@ -166,14 +173,18 @@ public actor LocalLoopRuntime: LoopRuntime {
         func read(_ path: String) -> String? {
             try? String(contentsOf: control.appendingPathComponent(path), encoding: .utf8)
         }
+        func number(_ path: String) -> Int? {
+            read(path)
+                .flatMap { $0.split(whereSeparator: \.isNewline).first }
+                .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        }
         return EpicSnapshot(
             branch: Self.currentBranch(of: control),
             goal: read(".claude/ralph-goal.local.md"),
             state: read(".claude/ralph-state.local.md"),
-            discussion: read(".claude/askhub-bootstrap.local.txt")
-                .flatMap { $0.split(whereSeparator: \.isNewline).first }
-                .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) },
-            loopPrepared: read(".claude/askhub-promise.local.txt")?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            discussion: number(".claude/askhub-bootstrap.local.txt"),
+            loopPrepared: read(".claude/askhub-promise.local.txt")?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+            noTasksDiscussion: number(Self.noTasksFileRelativePath)
         )
     }
 

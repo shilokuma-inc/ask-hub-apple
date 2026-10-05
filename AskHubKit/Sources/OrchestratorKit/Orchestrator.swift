@@ -7,6 +7,8 @@ public protocol OrchestratorGitHub: Sendable {
     func readyForLoopDiscussions(org: String) async throws -> [ReadyDiscussion]
     /// Discussion から `ready-for-loop` を外す
     func removeReadyLabel(from discussion: ReadyDiscussion) async throws
+    /// `ready-for-loop` の Discussion にコメントする
+    func comment(on discussion: ReadyDiscussion, body: String) async throws
     /// Discussion / PR から `needs-answer` を外す
     func removeNeedsAnswerLabel(from subject: InboxSubject) async throws
     /// Discussion に `ready-for-loop` を付ける（質問がすべて回答されたとき）。既に付いていても失敗しない
@@ -79,6 +81,8 @@ public protocol LoopRuntime: Sendable {
     func hungLoop(of repository: RepositoryConfig, timeout: Duration, now: Date) async -> HungLoop?
     /// 固まったループのプロセスを止める（SIGTERM、猶予の後も残れば SIGKILL）
     func terminate(_ loop: HungLoop) async
+    /// 「goal にタスクが無かった」目印を消す（Discussion に知らせた後。追記してラベルを付け直せば、もう一度準備する）
+    func clearNoTasksMarker(of repository: RepositoryConfig) async
     /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める
     func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
 }
@@ -186,13 +190,13 @@ public actor Orchestrator {
 
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         let snapshots = await epicSnapshots()
-        await advanceLaunchedDiscussions(discussions, statuses: statuses, snapshots: snapshots)
+        let handled = await advanceLaunchedDiscussions(discussions, statuses: statuses, snapshots: snapshots)
 
         let decisions = LaunchPlanner.decide(
             discussions,
             config: config,
             statuses: statuses,
-            excluding: tracker.blockedDiscussionIDs,
+            excluding: tracker.blockedDiscussionIDs.union(handled),
             epicsInProgress: Set(snapshots.filter(\.value.inProgress).keys).union(unfinalized)
         )
         for decision in decisions {
