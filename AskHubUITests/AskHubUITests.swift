@@ -153,10 +153,14 @@ final class AskHubUITests: XCTestCase {
         row.tap()
 
         // <h3> と ### の見出し、<li> と - の箇条書きが、タグや記号の無い文字として出る
-        XCTAssertTrue(app.staticTexts["回答待ちの PR"].waitForExistence(timeout: 5))
+        let heading = app.staticTexts["回答待ちの PR"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["返答のない仮決め（既定値のまま確定）"].exists)
         XCTAssertTrue(app.staticTexts["実機確認 Issue"].exists)
-        XCTAssertTrue(app.staticTexts["なし"].firstMatch.exists)
+        // 「状態」の「コンフリクト: なし」と区別するため、「まとめ」の見出しより下にある「なし」を箇条書きの項目とみなす
+        let items = app.staticTexts.matching(NSPredicate(format: "label == %@", "なし")).allElementsBoundByIndex
+        XCTAssertTrue(items.contains { $0.frame.minY >= heading.frame.maxY })
+        XCTAssertTrue(app.staticTexts["#161 の 6 件。エンティティのデコード範囲と <br> の変換を含む。詳細は #161"].exists)
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "<h3>")).firstMatch.exists)
 
         let screenshot = XCTAttachment(screenshot: app.screenshot())
