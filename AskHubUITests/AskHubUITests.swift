@@ -116,6 +116,39 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    func testDismissKeyboardInQuestionDetail() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは投稿しても GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        let row = app.staticTexts["Q2. 通知の文言 通知に表示する文言の案があれば教えてください。"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        // 回答の欄と投稿ボタンは画面の下にあるので、スクロールして表示する
+        app.swipeUp()
+
+        // 回答の Return は改行のままで、キーボードは閉じない
+        let note = app.textFields["回答"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
+        note.tap()
+        note.typeText("朝の通知だけにしたい\n夜は送らない")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let multiline = NSPredicate(format: "value CONTAINS %@", "朝の通知だけにしたい\n夜は送らない")
+        XCTAssertTrue(app.textFields.matching(multiline).firstMatch.exists)
+
+        // キーボード上の「完了」で閉じると、下の「回答を投稿」が押せる
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let post = app.buttons["回答を投稿"]
+        XCTAssertTrue(post.isHittable)
+        post.tap()
+
+        // 投稿すると一覧に戻る
+        XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testQuestionDetailRendersHTMLAsBlocks() throws {
         let app = XCUIApplication()
         // HTML タグと Markdown が混ざった質問のサンプル（#163）を開く
