@@ -29,6 +29,8 @@ struct OrchestratorTests {
     @Test func removesLabelOnlyAfterLoopStarts() async throws {
         let github = FakeGitHub([.success([.fixture(number: 12)])])
         let runtime = FakeRuntime()
+        // 起動スクリプトは準備元の Discussion の番号を残す
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: nil, state: nil, discussion: 12))
         let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
 
         try await orchestrator.pollOnce()
@@ -50,6 +52,7 @@ struct OrchestratorTests {
         let github = FakeGitHub([.success([.fixture(number: 12)])])
         github.setRemoveFails(true)
         let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: nil, state: nil, discussion: 12))
         let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
 
         try await orchestrator.pollOnce()

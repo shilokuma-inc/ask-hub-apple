@@ -85,7 +85,7 @@ public actor Orchestrator {
     private let inbox: any InboxSource
     let runtime: any LoopRuntime
     let log: @Sendable (String) -> Void
-    private var tracker = LaunchTracker()
+    var tracker = LaunchTracker()
     private var watcher = ResumeWatcher()
     /// epic の最終 PR を作った（または既にあった）リポジトリ。毎回 GitHub に問い合わせないために覚える
     var finalizedEpics: Set<String> = []
@@ -161,17 +161,20 @@ public actor Orchestrator {
         // 仮決め一覧: 最終 PR がマージされたら閉じ、マージ前に付いた指示ではループを再開する
         await handleDecisionLogs(statuses: &statuses)
 
+        // 止まったループの epic が完了していたら、既定ブランチへの最終 PR（epic-final）を作る。
+        // 新しい Discussion の起動（前の epic の作業ファイルを退避する）より先に行う
+        let unfinalized = await finalizeCompletedEpics(statuses: statuses)
+
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
-        for action in tracker.update(discussions: discussions, statuses: statuses) {
-            await perform(action)
-        }
+        let snapshots = await epicSnapshots()
+        await advanceLaunchedDiscussions(discussions, statuses: statuses, snapshots: snapshots)
 
         let decisions = LaunchPlanner.decide(
             discussions,
             config: config,
             statuses: statuses,
             excluding: tracker.blockedDiscussionIDs,
-            epicsInProgress: await epicsInProgress(among: discussions)
+            epicsInProgress: Set(snapshots.filter(\.value.inProgress).keys).union(unfinalized)
         )
         for decision in decisions {
             switch decision {
@@ -185,11 +188,6 @@ public actor Orchestrator {
                     log("\(Self.name(of: discussion)) は起動しません: \(message)")
                 }
             }
-        }
-
-        // 止まったループの epic が完了していたら、既定ブランチへの最終 PR（epic-final）を作る
-        for repository in config.repositories {
-            await finalizeEpicIfComplete(repository, status: statuses[repository.fullName.lowercased()] ?? .idle)
         }
 
         // 新機能の依頼: claude に質問付きの Discussion を作らせる（1 回のポーリングで 1 件）
@@ -291,53 +289,6 @@ public actor Orchestrator {
         }
     }
 
-    private func finalizeEpicIfComplete(_ repository: RepositoryConfig, status: LoopStatus) async {
-        let snapshot = await runtime.epicSnapshot(of: repository)
-        guard case let .complete(branch, summary) = EpicCompletion(snapshot: snapshot, status: status) else {
-            return
-        }
-        // 同じ epic の PR は 1 回だけ作る。ブランチが変われば（次の epic）改めて判定する
-        let key = "\(repository.fullName.lowercased()) \(branch)"
-        guard !finalizedEpics.contains(key) else {
-            return
-        }
-        do {
-            // 閉じた PR もあれば作り直さない（人がマージせずに閉じたものを復活させない）
-            if let existing = try await github.existingPullRequest(in: repository.fullName, head: branch) {
-                // 作った後にラベルだけ付け損ねた場合に備え、open な PR には付け直す（付与は冪等）
-                if existing.isOpen {
-                    let rewritten = try await rewriteFinalPullRequestIfResumed(
-                        existing,
-                        key: key,
-                        summary: summary,
-                        snapshot: snapshot,
-                        in: repository
-                    )
-                    if !rewritten, let discussion = snapshot.discussion,
-                       !EpicSnapshot.hasDiscussionMarker(existing.body, discussion: discussion) {
-                        // 目印を入れる前のオーケストレーターが作った PR などには、ゴール元の Discussion の目印を足す。
-                        // 足さないと、マージしても Discussion が閉じない（書き直した本文には目印が入っている）
-                        let body = EpicSnapshot.pullRequestBody(summary: existing.body ?? "", discussion: discussion)
-                        try await github.updatePullRequestBody(in: repository.fullName, number: existing.number, body: body)
-                        log("\(repository.fullName) の最終 PR #\(existing.number) に、ゴール元の Discussion #\(discussion) の目印を足しました")
-                    }
-                    try await github.addEpicFinalLabel(in: repository.fullName, number: existing.number)
-                }
-                finalizedEpics.insert(key)
-                return
-            }
-            let body = EpicSnapshot.pullRequestBody(summary: summary, discussion: snapshot.discussion)
-            let number = try await github.createEpicFinalPullRequest(in: repository.fullName, head: branch, body: body)
-            log("\(repository.fullName) の \(branch) が完了したので、最終 PR #\(number) を作りました")
-            // ラベルの付与に失敗しても、次のポーリングで既存の PR として付け直す
-            try await github.addEpicFinalLabel(in: repository.fullName, number: number)
-            finalizedEpics.insert(key)
-            log("\(repository.fullName) の最終 PR #\(number) に epic-final を付けました")
-        } catch {
-            log("\(repository.fullName) の \(branch) の最終 PR を作れませんでした（次のポーリングで再試行します）: \(error)")
-        }
-    }
-
     private func handleAnswers(statuses: inout [String: LoopStatus]) async throws {
         var snapshots: [AnswerSnapshot] = []
         for subject in try await inbox.subjectsNeedingAnswer(org: config.org)
@@ -412,7 +363,7 @@ public actor Orchestrator {
         return true
     }
 
-    private func perform(_ action: LaunchTracker.Action) async {
+    func perform(_ action: LaunchTracker.Action) async {
         switch action {
         case let .removeLabel(discussion):
             do {
