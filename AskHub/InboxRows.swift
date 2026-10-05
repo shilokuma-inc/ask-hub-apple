@@ -70,18 +70,6 @@ extension InboxSubject {
     }
 }
 
-extension InboxQuestion {
-    /// 一覧に出す質問の要約。Markdown の画像（`ask-badge` など）と見出しの `#` を除き、行をつなげる
-    var summary: String {
-        questionBody
-            .replacing(/!\[[^\]]*\]\([^)]*\)/, with: "")
-            .split(whereSeparator: \.isNewline)
-            .map { $0.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-    }
-}
-
 extension InboxIssue.Kind {
     var title: String {
         switch self {

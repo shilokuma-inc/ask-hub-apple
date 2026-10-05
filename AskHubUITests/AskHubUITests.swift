@@ -21,6 +21,8 @@ final class AskHubUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["通知の頻度を調整したい"].firstMatch.waitForExistence(timeout: 5))
+        // HTML タグと Markdown が混ざった質問のサンプルも一覧に出る
+        XCTAssertTrue(app.staticTexts["HTMLタグの有効化"].firstMatch.exists)
 
         app.tabBars.buttons["急がない"].tap()
         XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
@@ -81,6 +83,30 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    func testQuestionDetailRendersHTMLAsBlocks() throws {
+        let app = XCUIApplication()
+        // HTML タグと Markdown が混ざった質問のサンプル（#163）を開く
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        let row = app.staticTexts["HTMLタグの有効化"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        // <h3> と ### の見出し、<li> と - の箇条書きが、タグや記号の無い文字として出る
+        XCTAssertTrue(app.staticTexts["Q1. 解釈するタグの範囲"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["よく使うタグ: 見出し・太字・箇条書き・コード・リンク"].exists)
+        XCTAssertTrue(app.staticTexts["補足（Markdown）"].exists)
+        XCTAssertTrue(app.staticTexts["見出しは ### Q1. の書き方も混ざる"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "<h3>Q1.")).firstMatch.exists)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "question-detail-html"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testStartLoopWhenAnsweringLastQuestionOfDiscussion() throws {
         let app = XCUIApplication()
         // サンプルデータでは投稿もループの開始も GitHub には送らない
@@ -112,6 +138,36 @@ final class AskHubUITests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         confirm.tap()
         XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testMergeDetailRendersHTMLAsBlocks() throws {
+        let app = XCUIApplication()
+        // HTML タグと Markdown が混ざった PR 本文のサンプル（#163）を開く
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["マージ待ち"].tap()
+        let row = app.staticTexts["【FEAT】epic/html-rendering を develop に取り込む"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        // <h3> と ### の見出し、<li> と - の箇条書きが、タグや記号の無い文字として出る
+        let heading = app.staticTexts["回答待ちの PR"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["返答のない仮決め（既定値のまま確定）"].exists)
+        XCTAssertTrue(app.staticTexts["実機確認 Issue"].exists)
+        // 「状態」の「コンフリクト: なし」と区別するため、「まとめ」の見出しより下から始まる「なし」を箇条書きの項目とみなす
+        // （見出しの accessibility frame はブロック全体に広がるので、上端どうしで比べる）
+        let items = app.staticTexts.matching(NSPredicate(format: "label == %@", "なし")).allElementsBoundByIndex
+        XCTAssertTrue(items.contains { $0.frame.minY > heading.frame.minY })
+        XCTAssertTrue(app.staticTexts["#161 の 6 件。エンティティのデコード範囲と <br> の変換を含む。詳細は #161"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "<h3>")).firstMatch.exists)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "merge-detail-html"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     @MainActor

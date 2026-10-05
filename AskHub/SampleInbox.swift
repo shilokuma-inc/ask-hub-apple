@@ -88,6 +88,34 @@ struct SampleMergeQueue: MergeQueueProviding {
             author: "mrs1669",
             checks: .pending,
             mergeability: .mergeable
+        ),
+        EpicPullRequest(
+            id: "PR_120",
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 120,
+            title: "【FEAT】epic/html-rendering を develop に取り込む",
+            // HTML タグと Markdown が混ざった本文（表示の確認用）
+            body: """
+                <h3>回答待ちの PR</h3>
+                <ul>
+                <li>なし</li>
+                </ul>
+                <h3>返答のない仮決め（既定値のまま確定）</h3>
+                <p>#161 の 6 件。<b>エンティティのデコード範囲</b>と <code>&lt;br&gt;</code> の変換を含む。詳細は <a href="https://github.com/shilokuma-inc/ask-hub-apple/issues/161">#161</a></p>
+
+                ### 実機確認 Issue
+                - なし
+
+                ### 保留にしたタスク
+                1. なし
+                """,
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/pull/120")!,
+            baseBranch: "develop",
+            headBranch: "epic/html-rendering",
+            headSHA: "0000002",
+            author: "mrs1669",
+            checks: .success,
+            mergeability: .mergeable
         )
     ]
 
@@ -193,9 +221,11 @@ struct SampleInboxSource: InboxSource {
         number: 34,
         title: "【FEAT】受信箱の一覧を追加する"
     )
+    /// HTML タグと Markdown が混ざった質問を持つ Discussion（表示の確認用）
+    private static let htmlDiscussion = subject(.discussion, repository: "shilokuma-inc/ask-hub-apple", number: 128, title: "HTMLタグの有効化")
 
     func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
-        [Self.discussion, Self.pullRequest]
+        [Self.discussion, Self.pullRequest, Self.htmlDiscussion]
     }
 
     func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
@@ -214,6 +244,24 @@ struct SampleInboxSource: InboxSource {
                     <!-- ask-hub:question id="d12-q2" -->
                     ### Q2. 通知の文言
                     通知に表示する文言の案があれば教えてください。
+                    """)
+            ]
+        }
+        if subject == Self.htmlDiscussion {
+            return [
+                Self.thread(subject, id: "q1", minutesAgo: 10, body: """
+                    <!-- ask-hub:question id="d128-q1" options="よく使うタグ|すべてのタグ" -->
+                    <h3>Q1. 解釈するタグの範囲</h3>
+                    <p>質問の本文に <code>&lt;h3&gt;</code> のような HTML が混ざります。どこまで解釈しますか？</p>
+                    <ul>
+                    <li><b>よく使うタグ</b>: 見出し・太字・箇条書き・コード・リンク</li>
+                    <li><i>すべてのタグ</i>: 表や <code>&lt;details&gt;</code> も再現する</li>
+                    </ul>
+                    参考: <a href="https://github.com/shilokuma-inc/ask-hub-apple/issues/127">#127</a>
+
+                    ### 補足（Markdown）
+                    - 見出しは `### Q1.` の書き方も混ざる
+                    - どちらの書き方でも同じ見た目にそろえたい
                     """)
             ]
         }
