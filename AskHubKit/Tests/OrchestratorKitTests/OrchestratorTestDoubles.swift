@@ -67,6 +67,8 @@ struct FakeRuntimeState {
     var launchFails = false
     var epic = EpicSnapshot(branch: "epic/mvp", goal: nil, state: nil)
     var usageLimitReset: Date?
+    var hungLoop: HungLoop?
+    var terminated: [HungLoop] = []
     /// `run` が順に返す結果。尽きたら最後のものを返し続ける
     var runResults: [CommandResult] = [CommandResult(status: 0, output: "")]
     var ran: [[String]] = []
@@ -325,6 +327,27 @@ final class FakeRuntime: LoopRuntime {
 
     func usageLimitReset(of repository: RepositoryConfig) async -> Date? {
         state.withLock { $0.usageLimitReset }
+    }
+
+    func setHungLoop(_ loop: HungLoop?) {
+        state.withLock { $0.hungLoop = loop }
+    }
+
+    var terminated: [HungLoop] {
+        state.withLock { $0.terminated }
+    }
+
+    func hungLoop(of repository: RepositoryConfig, timeout: Duration, now: Date) async -> HungLoop? {
+        state.withLock { $0.hungLoop }
+    }
+
+    func terminate(_ loop: HungLoop) async {
+        state.withLock { state in
+            state.terminated.append(loop)
+            // 止めたプロセスは終わり、state ファイルだけが残る（異常終了）
+            state.hungLoop = nil
+            state.status = LoopStatus(stateFileExists: false, processAlive: false, stalled: true)
+        }
     }
 
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot {
