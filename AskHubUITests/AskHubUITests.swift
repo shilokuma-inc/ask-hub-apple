@@ -141,6 +141,31 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    func testMergeDetailRendersHTMLAsBlocks() throws {
+        let app = XCUIApplication()
+        // HTML タグと Markdown が混ざった PR 本文のサンプル（#163）を開く
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["マージ待ち"].tap()
+        let row = app.staticTexts["【FEAT】epic/html-rendering を develop に取り込む"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        // <h3> と ### の見出し、<li> と - の箇条書きが、タグや記号の無い文字として出る
+        XCTAssertTrue(app.staticTexts["回答待ちの PR"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["返答のない仮決め（既定値のまま確定）"].exists)
+        XCTAssertTrue(app.staticTexts["実機確認 Issue"].exists)
+        XCTAssertTrue(app.staticTexts["なし"].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "<h3>")).firstMatch.exists)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "merge-detail-html"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testMergeEpicAfterConfirmation() throws {
         let app = XCUIApplication()
         // サンプルデータではマージしたことにして GitHub には送らない
