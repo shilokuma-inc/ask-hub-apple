@@ -136,6 +136,11 @@ struct LocalLoopRuntimeTests {
         )
         #expect(await runtime.usageLimitReset(of: repository) == reset)
 
+        // 時刻だけの解除の時刻は、ログの更新時刻を基準に読む
+        try Data("You've hit your session limit · resets 12pm (UTC)\n".utf8).write(to: log)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 0)], ofItemAtPath: log.path)
+        #expect(await runtime.usageLimitReset(of: repository) == Date(timeIntervalSince1970: 12 * 60 * 60))
+
         try Data("ループを起動します\n".utf8).write(to: log)
         #expect(await runtime.usageLimitReset(of: repository) == nil)
     }
