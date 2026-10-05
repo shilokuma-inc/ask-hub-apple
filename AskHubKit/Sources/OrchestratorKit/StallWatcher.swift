@@ -28,6 +28,11 @@ public struct StallWatcher: Sendable {
 
     public init() {}
 
+    /// 数えた回数を忘れる（利用上限で止まった分は数えない）
+    public mutating func forget(repositoryKey key: String) {
+        entries[key] = nil
+    }
+
     public mutating func update(repositoryKey key: String, status: LoopStatus, snapshot: EpicSnapshot) -> Action? {
         guard status.stalled, !status.processAlive, snapshot.branch?.hasPrefix("epic/") == true else {
             return nil

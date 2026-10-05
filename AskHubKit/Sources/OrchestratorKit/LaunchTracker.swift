@@ -105,6 +105,15 @@ public struct LaunchTracker: Sendable, Equatable {
         return entry
     }
 
+    /// `repositoryKey` の起動の失敗を数えなかったことにする（利用上限で失敗した分）。
+    /// 諦めた Discussion も含め、次の起動判定で起動し直す
+    public mutating func forgiveFailures(repositoryKey: String) {
+        for (id, entry) in entries where entry.repositoryKey == repositoryKey
+            && [.starting, .failed, .gaveUp].contains(entry.phase) {
+            entries[id] = Entry(repositoryKey: repositoryKey, attempts: 0, phase: .failed)
+        }
+    }
+
     /// `ready-for-loop` を外した
     public mutating func recordLabelRemoved(from discussion: ReadyDiscussion) {
         entries[discussion.nodeID]?.phase = .labelRemoved

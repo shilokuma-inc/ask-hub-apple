@@ -37,6 +37,8 @@ LOG_DIR="${ASKHUB_LOG_DIR:-$HOME/Library/Logs/askhub/loops}"
 ARCHIVE_DIR="${ASKHUB_ARCHIVE_DIR:-$HOME/Library/Logs/askhub/archive}"
 TRUSTED="${ASKHUB_TRUSTED_AUTHORS:-mrs1669}"
 REPO_NAME="${REPOSITORY#*/}"
+# 最新のログ（準備・ループ）を指すリンク。名前はオーケストレーター（LocalLoopRuntime）と揃える
+LATEST_LOG="$LOG_DIR/${REPO_NAME}-latest.log"
 
 STATE="$CTL/.claude/ralph-loop.local.md"
 GOAL="$CTL/.claude/ralph-goal.local.md"
@@ -137,6 +139,8 @@ if [[ -n "$DISCUSSION" ]]; then
   fi
 
   BOOT_LOG="$LOG_DIR/$REPO_NAME-bootstrap-$(date +%Y%m%d-%H%M%S).log"
+  # オーケストレーターは最新のログの末尾から、Claude の利用上限で終わったかを読む
+  ln -sfn "$BOOT_LOG" "$LATEST_LOG"
   log "Discussion #$DISCUSSION から新しい epic を準備します（ログ: ${BOOT_LOG}）"
 
   # Discussion は、信用する author の本文・コメント・返信だけをここで取り出して渡す。
@@ -247,6 +251,7 @@ printf '%s\n' "$$" > "$PID_FILE"
 [[ -f "$STATE" ]] || fail "state ファイルを作れませんでした: $STATE"
 
 LOOP_LOG="$LOG_DIR/$REPO_NAME-loop-$(date +%Y%m%d-%H%M%S).log"
+ln -sfn "$LOOP_LOG" "$LATEST_LOG"
 INITIAL=$(sed -n '/^---$/,/^---$/!p' "$STATE" | sed '/^$/d')
 log "ループを起動します（ログ: ${LOOP_LOG}）"
 cd "$CTL"

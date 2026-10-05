@@ -20,15 +20,43 @@ public actor LocalLoopRuntime: LoopRuntime {
 
     /// 起動するコマンドに追加で渡す環境変数（継承した環境変数は残す）
     private let environment: [String: String]
+    /// 起動スクリプトがループのログを置く場所。`<リポジトリ名>-latest.log` が最新のログを指す
+    private let loopLogDirectory: URL
 
+    /// - Parameter loopLogDirectory: 省略すると、起動スクリプトと同じく `ASKHUB_LOG_DIR` か `~/Library/Logs/askhub/loops`
     public init(
         killGracePeriod: Duration = .seconds(10),
         outputDrainTimeout: Duration = .seconds(5),
-        environment: [String: String] = [:]
+        environment: [String: String] = [:],
+        loopLogDirectory: URL? = nil
     ) {
         self.killGracePeriod = killGracePeriod
         self.outputDrainTimeout = outputDrainTimeout
         self.environment = environment
+        let configured = environment["ASKHUB_LOG_DIR"] ?? ProcessInfo.processInfo.environment["ASKHUB_LOG_DIR"]
+        self.loopLogDirectory = loopLogDirectory
+            ?? configured.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/askhub/loops", isDirectory: true)
+    }
+
+    /// 最新のログの末尾（このバイト数）だけを読む
+    static let logTailBytes = 8 * 1024
+
+    public func usageLimitReset(of repository: RepositoryConfig) -> Date? {
+        let latest = loopLogDirectory.appendingPathComponent("\(repository.name)-latest.log").resolvingSymlinksInPath()
+        guard let handle = try? FileHandle(forReadingFrom: latest) else {
+            return nil
+        }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd(),
+              (try? handle.seek(toOffset: size > UInt64(Self.logTailBytes) ? size - UInt64(Self.logTailBytes) : 0)) != nil,
+              let data = try? handle.readToEnd(),
+              let modified = (try? FileManager.default.attributesOfItem(atPath: latest.path))?[.modificationDate] as? Date else {
+            return nil
+        }
+        // 末尾だけを読むと文字の途中で切れることがあるので、壊れた部分は置き換えて読む
+        // swiftlint:disable:next optional_data_string_conversion
+        return UsageLimit.resetDate(in: String(decoding: data, as: UTF8.self), loggedAt: modified)
     }
 
     public func status(of repository: RepositoryConfig) -> LoopStatus {
