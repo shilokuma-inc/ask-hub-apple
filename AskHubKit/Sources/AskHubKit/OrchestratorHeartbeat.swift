@@ -117,4 +117,16 @@ public struct UsageLimitedRepository: Sendable, Equatable, Identifiable {
     public var id: String {
         repository
     }
+
+    /// 「12:00 に再開」（今日でなければ「10月7日 9:00 に再開」）
+    public func resumeText(now: Date, calendar: Calendar = .current) -> String {
+        Self.resumeText(until: until, now: now, calendar: calendar)
+    }
+
+    public static func resumeText(until: Date, now: Date, calendar: Calendar = .current) -> String {
+        let parts = calendar.dateComponents([.month, .day, .hour, .minute], from: until)
+        let time = "\(parts.hour ?? 0):" + String(format: "%02d", parts.minute ?? 0)
+        let day = calendar.isDate(until, inSameDayAs: now) ? "" : "\(parts.month ?? 0)月\(parts.day ?? 0)日 "
+        return "\(day)\(time) に再開"
+    }
 }

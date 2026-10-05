@@ -39,7 +39,9 @@ struct ContentView: View {
                             QuestionRow(question: question)
                         }
                     },
-                    openSettings: { isShowingSettings = true }
+                    openSettings: { isShowingSettings = true },
+                    leadingIsEmpty: model.usageLimited.isEmpty,
+                    leading: { UsageLimitedSection(repositories: model.usageLimited) }
                 )
                 .navigationDestination(for: InboxQuestion.self) { question in
                     QuestionDetailView(question: question, inbox: model)
@@ -67,8 +69,11 @@ struct ContentView: View {
                         .buttonStyle(.plain)
                     },
                     openSettings: { isShowingSettings = true },
-                    leadingIsEmpty: model.waiting.isEmpty,
-                    leading: { WaitingDiscussionsSection(waiting: model.waiting) }
+                    leadingIsEmpty: model.waiting.isEmpty && model.usageLimited.isEmpty,
+                    leading: {
+                        UsageLimitedSection(repositories: model.usageLimited)
+                        WaitingDiscussionsSection(waiting: model.waiting)
+                    }
                 )
             }
             .tabItem { Label("急がない", systemImage: "tray.full") }

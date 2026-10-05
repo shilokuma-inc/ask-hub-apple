@@ -39,6 +39,16 @@ struct OrchestratorHeartbeatTests {
         #expect(!stale.isUsageLimited(now: now))
     }
 
+    @Test func describesWhenLoopsResume() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        let morning = calendar.date(from: DateComponents(year: 2026, month: 10, day: 5, hour: 10, minute: 11))!
+        let noon = calendar.date(from: DateComponents(year: 2026, month: 10, day: 5, hour: 12))!
+        let later = calendar.date(from: DateComponents(year: 2026, month: 10, day: 7, hour: 9, minute: 5))!
+        #expect(UsageLimitedRepository.resumeText(until: noon, now: morning, calendar: calendar) == "12:00 に再開")
+        #expect(UsageLimitedRepository.resumeText(until: later, now: morning, calendar: calendar) == "10月7日 9:05 に再開")
+    }
+
     @Test func assignedOnlyWhileHeartbeatIsFresh() {
         #expect(OrchestratorHeartbeat.isAssigned(lastSeen: now.addingTimeInterval(-29 * 60), now: now))
         #expect(!OrchestratorHeartbeat.isAssigned(lastSeen: now.addingTimeInterval(-31 * 60), now: now))
