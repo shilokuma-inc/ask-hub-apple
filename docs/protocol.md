@@ -29,14 +29,15 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `needs-verify` | Issue | 実機・実データでの確認が必要 | ループ | — （人間が確認して閉じる） |
 | `idea-request` | Issue | アプリから出した新機能の依頼 | アプリ | — （オーケストレーターが Discussion を作ってクローズする） |
 | `epic-final` | PR | epic → `develop` の最終 PR | オーケストレーター | — （アプリからマージする） |
-| `askhub-orchestrator` | （リポジトリのラベルとして置くだけ） | このリポジトリを担当する PC のオーケストレーターがいる。説明に最終確認の時刻を書く | オーケストレーター（10 分ごとに説明を書き換える） | — |
+| `askhub-orchestrator` | （リポジトリのラベルとして置くだけ） | このリポジトリを担当する PC のオーケストレーターがいる。説明に最終確認の時刻（Claude の利用上限で待機中なら、解除の時刻も）を書く | オーケストレーター（10 分ごとに説明を書き換える） | — |
 
 アプリの一覧での扱い:
 
 - **要回答**: `needs-answer` が付いた Discussion（※1）と PR（※2）
 - **急がない**: `decision-log` と `needs-verify` の Issue
 - **マージ待ち**: `epic-final` の PR
-- **ループの開始待ち**（急がないの先頭）: `ready-for-loop` の Discussion。`askhub-orchestrator` の時刻が 30 分より古い・無いリポジトリは「担当 PC なし」
+- **上限で待機中**（要回答・急がないの先頭）: `askhub-orchestrator` の説明に解除の時刻があるリポジトリ。再開の時刻を出す
+- **ループの開始待ち**（急がないの先頭）: `ready-for-loop` の Discussion。`askhub-orchestrator` の時刻が 30 分より古い・無いリポジトリは「担当 PC なし」。担当 PC が上限で待機中なら「上限で待機中（〇時に再開）」
 
 対象は `shilokuma-inc` org 全体で、ラベルで検索する（リポジトリの列挙は設定しない）。
 
