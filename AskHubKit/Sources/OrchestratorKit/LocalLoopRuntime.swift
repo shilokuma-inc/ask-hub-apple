@@ -45,12 +45,12 @@ public actor LocalLoopRuntime: LoopRuntime {
         guard let text = try? String(contentsOf: pidFile, encoding: .utf8),
               let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 0,
               let recordedAt = Self.modificationDate(of: pidFile),
-              Self.isRecordedLoop(pid: pid, recordedAt: recordedAt),
+              let processStartedAt = Self.recordedLoopStartDate(pid: pid, recordedAt: recordedAt),
               let started = Self.modificationDate(of: control.appendingPathComponent(Self.stateFileRelativePath)),
               now.timeIntervalSince(started) > TimeInterval(timeout.components.seconds) else {
             return nil
         }
-        return HungLoop(pid: pid, iterationStartedAt: started)
+        return HungLoop(pid: pid, iterationStartedAt: started, processStartedAt: processStartedAt)
     }
 
     private static func modificationDate(of url: URL) -> Date? {
@@ -60,12 +60,14 @@ public actor LocalLoopRuntime: LoopRuntime {
     /// `pid` のプロセスが生きていて、PID ファイルに記録したループそのものか。
     /// 起動スクリプトは自分の PID を書いてから `claude` に exec するので、ループのプロセスは PID ファイルより前に起動している。
     /// ループが終わった後に PID が別のプロセスに再利用されていれば、そのプロセスは PID ファイルより後に起動している（止めてはいけない）
-    static func isRecordedLoop(pid: pid_t, recordedAt: Date) -> Bool {
-        guard kill(pid, 0) == 0, let startedAt = processStartDate(pid: pid) else {
-            return false
+    /// そうならプロセスの起動時刻、違えば `nil`
+    static func recordedLoopStartDate(pid: pid_t, recordedAt: Date) -> Date? {
+        guard kill(pid, 0) == 0, let startedAt = processStartDate(pid: pid),
+              // ファイルの時刻と起動時刻の精度の差を見込む
+              startedAt <= recordedAt.addingTimeInterval(1) else {
+            return nil
         }
-        // ファイルの時刻と起動時刻の精度の差を見込む
-        return startedAt <= recordedAt.addingTimeInterval(1)
+        return startedAt
     }
 
     /// プロセスの起動時刻（`sysctl` の `kinfo_proc`）
@@ -81,13 +83,22 @@ public actor LocalLoopRuntime: LoopRuntime {
     }
 
     public func terminate(_ loop: HungLoop) async {
-        guard Self.processStartDate(pid: loop.pid) != nil, kill(loop.pid, SIGTERM) == 0 else {
+        guard Self.isSameProcess(loop), kill(loop.pid, SIGTERM) == 0 else {
             return
         }
         try? await Task.sleep(for: killGracePeriod)
-        if kill(loop.pid, 0) == 0 {
+        // 猶予の間に終わって PID が再利用されていたら、送らない
+        if Self.isSameProcess(loop) {
             kill(loop.pid, SIGKILL)
         }
+    }
+
+    /// `loop.pid` が、見つけたときと同じプロセス（起動時刻が同じ）か
+    static func isSameProcess(_ loop: HungLoop) -> Bool {
+        guard let expected = loop.processStartedAt, let current = processStartDate(pid: loop.pid) else {
+            return false
+        }
+        return current == expected
     }
 
     /// 最新のログの末尾（このバイト数）だけを読む

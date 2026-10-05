@@ -176,6 +176,11 @@ struct LocalLoopRuntimeTests {
         try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-3600)], ofItemAtPath: pidFile.path)
         #expect(await runtime.hungLoop(of: repository, timeout: .seconds(90 * 60), now: now) == nil)
 
+        // 見つけたときと起動時刻が違う（PID が再利用された）なら、シグナルを送らない
+        let reused = HungLoop(pid: hung.pid, iterationStartedAt: hung.iterationStartedAt, processStartedAt: Date(timeIntervalSince1970: 0))
+        await runtime.terminate(reused)
+        #expect(loop.isRunning)
+
         await runtime.terminate(hung)
         #expect(try await waitUntil { !loop.isRunning })
     }

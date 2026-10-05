@@ -5,10 +5,13 @@ public struct HungLoop: Sendable, Equatable {
     public let pid: Int32
     /// 今の周回の開始（state ファイルの更新）の時刻
     public let iterationStartedAt: Date
+    /// 見つけたときのプロセスの起動時刻。シグナルを送る直前に照合し、PID が再利用された別のプロセスを止めない
+    public let processStartedAt: Date?
 
-    public init(pid: Int32, iterationStartedAt: Date) {
+    public init(pid: Int32, iterationStartedAt: Date, processStartedAt: Date? = nil) {
         self.pid = pid
         self.iterationStartedAt = iterationStartedAt
+        self.processStartedAt = processStartedAt
     }
 }
 
