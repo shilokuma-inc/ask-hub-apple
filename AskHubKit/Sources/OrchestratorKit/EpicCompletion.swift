@@ -13,13 +13,23 @@ public struct EpicSnapshot: Sendable, Equatable {
     public let discussion: Int?
     /// ループを始められる状態まで準備した（起動スクリプトが完了語を `.claude/askhub-promise.local.txt` に残した）
     public let loopPrepared: Bool
+    /// 準備の結果 goal にタスクが無かった Discussion の番号（起動スクリプトが `.claude/askhub-no-tasks.local.txt` に残す）
+    public let noTasksDiscussion: Int?
 
-    public init(branch: String?, goal: String?, state: String?, discussion: Int? = nil, loopPrepared: Bool = false) {
+    public init(
+        branch: String?,
+        goal: String?,
+        state: String?,
+        discussion: Int? = nil,
+        loopPrepared: Bool = false,
+        noTasksDiscussion: Int? = nil
+    ) {
         self.branch = branch
         self.goal = goal
         self.state = state
         self.discussion = discussion
         self.loopPrepared = loopPrepared
+        self.noTasksDiscussion = noTasksDiscussion
     }
 
     /// 途中の epic がある（準備を終えた `epic/` のブランチに、回答待ちでない未完了のタスクが残っている）。

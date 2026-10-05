@@ -114,6 +114,20 @@ public struct LaunchTracker: Sendable, Equatable {
         }
     }
 
+    /// 追跡していない Discussion のループが、既に始まっている（オーケストレーターの再起動の前に起動していた）。
+    /// 開始を確かめた扱いにし、次の `update` で `ready-for-loop` を外させる
+    public mutating func adoptStarted(_ discussion: ReadyDiscussion, repositoryKey: String) {
+        guard entries[discussion.nodeID] == nil else {
+            return
+        }
+        entries[discussion.nodeID] = Entry(repositoryKey: repositoryKey, attempts: 0, phase: .started)
+    }
+
+    /// 追跡をやめる（知らせて止めた Discussion。ラベルを付け直したら、改めて起動する）
+    public mutating func forget(_ discussion: ReadyDiscussion) {
+        entries[discussion.nodeID] = nil
+    }
+
     /// `ready-for-loop` を外した
     public mutating func recordLabelRemoved(from discussion: ReadyDiscussion) {
         entries[discussion.nodeID]?.phase = .labelRemoved

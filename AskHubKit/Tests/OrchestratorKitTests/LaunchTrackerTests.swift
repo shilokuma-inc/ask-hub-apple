@@ -20,6 +20,18 @@ struct LaunchTrackerTests {
         #expect(tracker.blockedDiscussionIDs == ["D_12"])
     }
 
+    @Test func adoptsLoopStartedBeforeRestartOnlyWhenUntracked() {
+        var tracker = LaunchTracker()
+        tracker.adoptStarted(discussion, repositoryKey: key)
+        #expect(tracker.update(discussions: [discussion], statuses: statuses(.idle)) == [.removeLabel(discussion)])
+
+        // 追跡中の Discussion は上書きしない
+        var launching = LaunchTracker()
+        launching.recordLaunch(of: discussion, repositoryKey: key)
+        launching.adoptStarted(discussion, repositoryKey: key)
+        #expect(launching.entries[discussion.nodeID]?.phase == .starting)
+    }
+
     @Test func doesNotTakeStateFileOfAnotherLoopAsStart() {
         var tracker = LaunchTracker()
         tracker.recordLaunch(of: discussion, repositoryKey: key)

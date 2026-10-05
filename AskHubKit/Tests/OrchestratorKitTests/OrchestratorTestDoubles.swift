@@ -26,6 +26,7 @@ struct FakeGitHubState {
     var closedIdeas: [Int] = []
     var ideaCommentFails = false
     var heartbeats: [String] = []
+    var discussionComments: [String] = []
     var heartbeatFails = false
     var ideaCloseFails = false
     var decisionLogs: [DecisionLogIssue] = []
@@ -69,6 +70,7 @@ struct FakeRuntimeState {
     var usageLimitReset: Date?
     var hungLoop: HungLoop?
     var terminated: [HungLoop] = []
+    var clearedNoTasksMarkers = 0
     /// `run` が順に返す結果。尽きたら最後のものを返し続ける
     var runResults: [CommandResult] = [CommandResult(status: 0, output: "")]
     var ran: [[String]] = []
@@ -284,6 +286,14 @@ final class FakeGitHub: OrchestratorGitHub {
             state.removed.append(discussion.nodeID)
         }
     }
+
+    var discussionComments: [String] {
+        state.withLock { $0.discussionComments }
+    }
+
+    func comment(on discussion: ReadyDiscussion, body: String) async throws {
+        state.withLock { $0.discussionComments.append("\(discussion.nodeID): \(body)") }
+    }
 }
 
 /// 起動したコマンドを記録するだけで、実際には起動しない。ループの状態はテストから変える
@@ -339,6 +349,23 @@ final class FakeRuntime: LoopRuntime {
 
     func hungLoop(of repository: RepositoryConfig, timeout: Duration, now: Date) async -> HungLoop? {
         state.withLock { $0.hungLoop }
+    }
+
+    var clearedNoTasksMarkers: Int {
+        state.withLock { $0.clearedNoTasksMarkers }
+    }
+
+    func clearNoTasksMarker(of repository: RepositoryConfig) async {
+        state.withLock { state in
+            state.clearedNoTasksMarkers += 1
+            state.epic = EpicSnapshot(
+                branch: state.epic.branch,
+                goal: state.epic.goal,
+                state: state.epic.state,
+                discussion: state.epic.discussion,
+                loopPrepared: state.epic.loopPrepared
+            )
+        }
     }
 
     func terminate(_ loop: HungLoop) async {

@@ -3,7 +3,7 @@ import Foundation
 
 /// GitHub の GraphQL API でオーケストレーターの操作を行う
 public struct GitHubOrchestrator: OrchestratorGitHub {
-    private let client: GitHubClient
+    let client: GitHubClient
 
     public init(client: GitHubClient) {
         self.client = client

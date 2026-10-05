@@ -45,6 +45,8 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
    | state ファイルが現れ、制御用 worktree の準備元（`.claude/askhub-bootstrap.local.txt`）がこの Discussion | ループが始まったとみなし、`ready-for-loop` を外す。外せなければ次のポーリングで外し直す |
    | プロセスが生きている / state ファイルの有無が不明 | 待つ |
    | 開始を確かめられないままプロセスが終わった（別のループの state ファイルが残っていても） | 起動に失敗したとみなし、起動し直す。3 回失敗したら起動をやめる（ラベルは残す） |
+   | 追跡していないが、制御用 worktree がこの Discussion から準備を終えている（`askhub-bootstrap.local.txt` が一致し、完了語がある） | オーケストレーターの再起動の前に始まったループとみなし、`ready-for-loop` を外す（残すと、epic の後に同じ Discussion からもう一度始めてしまう） |
+   | 準備の結果 goal にタスクが無かった（起動スクリプトが `.claude/askhub-no-tasks.local.txt` に番号を残した） | やり直さず、Discussion に「やることが残っていない」とコメントして `ready-for-loop` を外し、目印を消す。追記してラベルを付け直せば、もう一度準備する |
 
 4. まだ起動していない Discussion ごとに判定する
 
