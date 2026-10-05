@@ -261,4 +261,28 @@ final class AskHubUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["マージ待ち"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["【FEAT】epic/mvp を develop に取り込む"].exists)
     }
+
+    @MainActor
+    func testDismissKeyboardInSettings() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        // 設定はシートの中に自前の NavigationStack を持つ。その中でもキーボード上の「完了」が出る
+        let settings = app.buttons["設定"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        let token = app.secureTextFields["github_pat_…"]
+        XCTAssertTrue(token.waitForExistence(timeout: 5))
+        token.tap()
+        token.typeText("github_pat_uitest")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+
+        // 「完了」で閉じると、下の「保存」が押せる。保存すると Simulator の Keychain に書き込むので、押せることだけ確かめる
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let save = app.buttons["保存"]
+        XCTAssertTrue(save.isEnabled)
+        XCTAssertTrue(save.isHittable)
+    }
 }
