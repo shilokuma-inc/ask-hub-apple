@@ -58,6 +58,10 @@
   コードブロックの中では文字参照がそのまま出るので、HTML の `<pre>` / `<code>` の中身だけは変換側でデコードする
 - `AttributedString(markdown:)` の `.full` は段落内の 1 つの改行を空白にまとめる（`.inlineOnlyPreservingWhitespace` は残す）。
   改行を確実に残すには、行末に空白 2 つか `\` を置くハードブレークにする
+- `AttributedString(markdown:)` の `.full` では、ブロック（段落・見出し・リストの項目・コードブロック）の間に改行の文字が入らず、
+  `presentationIntent` の `components` の identity だけで区切りが分かる。描画用に分けるときは run を identity でまとめる。
+  入れ子のリストは `listItem` と `unorderedList` / `orderedList` が内側から外側の順に並び、ハードブレークは `inlinePresentationIntent` が
+  `.lineBreak` の `"\n"` の run になる
 
 ## シェルスクリプト
 
