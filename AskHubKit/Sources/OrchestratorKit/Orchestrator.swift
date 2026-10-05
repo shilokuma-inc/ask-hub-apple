@@ -161,7 +161,6 @@ public actor Orchestrator {
             _ = await finalizeCompletedEpics(statuses: statuses)
             return []
         }
-        let discussions = try await github.readyForLoopDiscussions(org: config.org)
 
         // ask への回答: 止まっているループを再開し、すべて回答済みなら needs-answer を外す。
         // 失敗しても ready-for-loop の判定は続ける
@@ -181,6 +180,9 @@ public actor Orchestrator {
         // 止まったループの epic が完了していたら、既定ブランチへの最終 PR（epic-final）を作る。
         // 新しい Discussion の起動（前の epic の作業ファイルを退避する）より先に行う
         let unfinalized = await finalizeCompletedEpics(statuses: statuses)
+
+        // ready-for-loop の検索は失敗しうるので、ここまで（回答・異常終了・固まったループの再開と最終 PR）を先に済ませる
+        let discussions = try await github.readyForLoopDiscussions(org: config.org)
 
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         let snapshots = await epicSnapshots()
