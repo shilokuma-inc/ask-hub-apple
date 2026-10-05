@@ -49,7 +49,7 @@ struct LoopStartTests {
 
     /// サンプルの Discussion（notti-ios#12）には質問が 2 つある
     private func discussionQuestions(in inbox: InboxModel) -> [InboxQuestion] {
-        inbox.questions.filter { $0.subject.kind == .discussion }
+        inbox.questions.filter { $0.subject.shortReference == "notti-ios#12" }
     }
 
     @Test func canStartLoopOnlyForLastQuestionOfDiscussion() async throws {

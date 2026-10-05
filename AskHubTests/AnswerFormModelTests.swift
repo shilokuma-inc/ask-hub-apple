@@ -96,7 +96,8 @@ struct AnswerFormModelTests {
         #expect(!inbox.questions.contains { $0.id == question.id })
         await inbox.refresh()
         #expect(!inbox.questions.contains { $0.id == question.id })
-        #expect(inbox.questions.count == 2)
+        // サンプルの 4 件から回答した 1 件が減る
+        #expect(inbox.questions.count == 3)
     }
 
     @Test func forgetsAnsweredQuestionsWhenTokenChanges() async throws {

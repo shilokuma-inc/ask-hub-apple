@@ -21,6 +21,8 @@ final class AskHubUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["通知の頻度を調整したい"].firstMatch.waitForExistence(timeout: 5))
+        // HTML タグと Markdown が混ざった質問のサンプルも一覧に出る
+        XCTAssertTrue(app.staticTexts["HTMLタグの有効化"].firstMatch.exists)
 
         app.tabBars.buttons["急がない"].tap()
         XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))

@@ -54,7 +54,7 @@ struct MergeQueueModelTests {
         let model = makeModel(queue: RecordingQueue())
         await model.refresh()
         #expect(model.state == .loaded)
-        #expect(model.pullRequests.map(\.number) == [50, 80])
+        #expect(model.pullRequests.map(\.number) == [50, 80, 120])
     }
 
     @Test func refreshIfStaleSkipsRecentRefresh() async throws {
@@ -82,7 +82,7 @@ struct MergeQueueModelTests {
         try await model.merge(model.pullRequests[0])
 
         #expect(queue.merged == [50])
-        #expect(model.pullRequests.map(\.number) == [80])
+        #expect(model.pullRequests.map(\.number) == [80, 120])
     }
 
     @Test func doesNotShowMergedPullRequestBeforeSearchCatchesUp() async throws {
@@ -92,7 +92,7 @@ struct MergeQueueModelTests {
         try await model.merge(model.pullRequests[0])
         await model.refresh()
 
-        #expect(model.pullRequests.map(\.number) == [80])
+        #expect(model.pullRequests.map(\.number) == [80, 120])
     }
 
     @Test func keepsPullRequestWhenHeadChanged() async {
@@ -104,7 +104,7 @@ struct MergeQueueModelTests {
         await #expect(throws: GitHubError.self) {
             try await model.merge(model.pullRequests[0])
         }
-        #expect(model.pullRequests.count == 2)
+        #expect(model.pullRequests.count == 3)
         #expect(MergeQueueModel.message(for: GitHubError.http(status: 409, message: nil)) == "確認した後に PR が更新されました。内容を確かめ直してからマージしてください")
     }
 
@@ -118,7 +118,7 @@ struct MergeQueueModelTests {
             try await model.merge(model.pullRequests[0])
         }
         // マージはできているので、一覧からは外す
-        #expect(model.pullRequests.map(\.number) == [80])
+        #expect(model.pullRequests.map(\.number) == [80, 120])
         let message = MergeQueueModel.message(for: MergeQueueError.branchNotDeleted("epic/mvp"))
         #expect(message == "マージしましたが、ブランチ epic/mvp を削除できませんでした。GitHub で削除してください")
     }
