@@ -18,6 +18,17 @@ extension Orchestrator {
         statuses: [String: LoopStatus],
         snapshots: [String: EpicSnapshot]
     ) async {
+        // 再起動で追跡が消えても、制御用 worktree がその Discussion から準備を終えていれば、ループは始まっている。
+        // ラベルを残すと、epic が終わった後に同じ Discussion から同じ epic をもう一度始めてしまう
+        for discussion in discussions {
+            guard let repository = config.repository(named: discussion.repository) else {
+                continue
+            }
+            let key = repository.fullName.lowercased()
+            if let snapshot = snapshots[key], snapshot.loopPrepared, snapshot.discussion == discussion.number {
+                tracker.adoptStarted(discussion, repositoryKey: key)
+            }
+        }
         let actions = tracker.update(
             discussions: discussions,
             statuses: statuses,

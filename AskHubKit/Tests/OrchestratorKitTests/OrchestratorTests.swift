@@ -278,4 +278,31 @@ struct OrchestratorTests {
         #expect(runtime.launched.count == 1)
         #expect(logs.recorded.first?.hasPrefix("ポーリングに失敗しました") == true)
     }
+
+    @Test func removesLabelOfDiscussionWhoseLoopStartedBeforeRestart() async throws {
+        // 再起動の前に #12 から準備を終えてループを始めていた（追跡は消えている）
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        let runtime = FakeRuntime()
+        runtime.set(LoopStatus(stateFileExists: true, processAlive: false))
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [ ] 【FEAT】A", state: nil, discussion: 12, loopPrepared: true))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+
+        #expect(github.removed == ["D_12"])
+        #expect(runtime.launched.isEmpty)
+    }
+
+    @Test func relaunchesDiscussionWhosePreparationWasInterrupted() async throws {
+        // 準備が途中（完了語が無い）なら、ラベルを外さず起動し直す（起動スクリプトが準備をやり直す）
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: nil, state: nil, discussion: 12, loopPrepared: false))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+
+        #expect(github.removed.isEmpty)
+        #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "12"]])
+    }
 }
