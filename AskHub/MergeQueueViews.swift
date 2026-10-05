@@ -102,11 +102,19 @@ struct MergeStatusLabel: View {
 struct MergeDetailView: View {
     let pullRequest: EpicPullRequest
     let model: MergeQueueModel
+    /// 本文（まとめ）のブロック要素。変換は描画のたびに走らせず、画面を作るときに 1 回だけ行う
+    private let renderedBody: RenderedBody
     @State private var isConfirming = false
     @State private var isMerging = false
     @State private var errorMessage: String?
     @Environment(\.dismiss)
     private var dismiss
+
+    init(pullRequest: EpicPullRequest, model: MergeQueueModel) {
+        self.pullRequest = pullRequest
+        self.model = model
+        renderedBody = RenderedBody(body: pullRequest.body)
+    }
 
     var body: some View {
         Form {
@@ -123,8 +131,12 @@ struct MergeDetailView: View {
             }
 
             Section("まとめ") {
-                Text(summary)
-                    .textSelection(.enabled)
+                if renderedBody.blocks.isEmpty {
+                    Text("（本文がありません）")
+                        .foregroundStyle(.secondary)
+                } else {
+                    RenderedBodyView(content: renderedBody)
+                }
             }
 
             if let errorMessage {
@@ -163,12 +175,6 @@ struct MergeDetailView: View {
         } message: {
             Text("\(pullRequest.title)\n\(pullRequest.repository)#\(pullRequest.number)（merge commit。\(pullRequest.headBranch) は削除されます）")
         }
-    }
-
-    private var summary: AttributedString {
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        let body = pullRequest.body.isEmpty ? "（本文がありません）" : pullRequest.body
-        return (try? AttributedString(markdown: body, options: options)) ?? AttributedString(body)
     }
 
     private var checksText: String {
