@@ -113,6 +113,11 @@ mkdir -p "$LOG_DIR"
 # ---- 新しい epic の準備 ---------------------------------------------------------------
 if [[ -n "$DISCUSSION" ]]; then
   [[ "$DISCUSSION" =~ ^[0-9]+$ ]] || fail "Discussion の番号が不正です: $DISCUSSION"
+  # 「やることが無い」目印をオーケストレーターが Discussion に知らせる前に、同じ Discussion で準備し直さない
+  # （準備し直すと目印を消してしまい、知らせないままになる。知らせた後は目印が消えている）
+  if [[ "$(head -1 "$NO_TASKS_FILE" 2>/dev/null)" == "$DISCUSSION" ]]; then
+    fail "Discussion #${DISCUSSION} にやることが無いことを、まだ知らせていません（オーケストレーターが知らせた後に起動してください）"
+  fi
 
   if [[ -d "$CTL" ]]; then
     previous_epic_unfinished && fail "$UNFINISHED_MESSAGE"
