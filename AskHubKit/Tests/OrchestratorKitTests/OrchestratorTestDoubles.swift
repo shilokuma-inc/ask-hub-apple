@@ -66,6 +66,7 @@ struct FakeRuntimeState {
     var status = LoopStatus.idle
     var launchFails = false
     var epic = EpicSnapshot(branch: "epic/mvp", goal: nil, state: nil)
+    var usageLimitReset: Date?
     /// `run` が順に返す結果。尽きたら最後のものを返し続ける
     var runResults: [CommandResult] = [CommandResult(status: 0, output: "")]
     var ran: [[String]] = []
@@ -316,6 +317,14 @@ final class FakeRuntime: LoopRuntime {
 
     func setEpic(_ epic: EpicSnapshot) {
         state.withLock { $0.epic = epic }
+    }
+
+    func setUsageLimitReset(_ date: Date?) {
+        state.withLock { $0.usageLimitReset = date }
+    }
+
+    func usageLimitReset(of repository: RepositoryConfig) async -> Date? {
+        state.withLock { $0.usageLimitReset }
     }
 
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot {

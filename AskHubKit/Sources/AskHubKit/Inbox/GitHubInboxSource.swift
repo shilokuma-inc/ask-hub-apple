@@ -4,7 +4,7 @@ import Foundation
 ///
 /// 検索・コメント・返信のいずれも、ページングを最後まで追う
 public struct GitHubInboxSource: InboxSource {
-    private let client: GitHubClient
+    let client: GitHubClient
 
     public init(client: GitHubClient) {
         self.client = client
@@ -115,26 +115,11 @@ public struct GitHubInboxSource: InboxSource {
             return WaitingDiscussion(
                 subject: subject,
                 lastSeen: OrchestratorHeartbeat.lastSeen(in: repository.label?.description),
-                author: node.author?.login
+                author: node.author?.login,
+                usageLimitedUntil: OrchestratorHeartbeat.usageLimitedUntil(in: repository.label?.description)
             )
         }
     }
-
-    /// 検索結果のリポジトリから、担当の印のラベルも一緒に読む（検索 1 回で済ませる）
-    private static let waitingQuery = """
-        query($query: String!, $after: String, $label: String!) {
-          search(query: $query, type: DISCUSSION, first: 50, after: $after) {
-            pageInfo { hasNextPage endCursor }
-            nodes {
-              ... on Discussion {
-                id number title url closed
-                author { login }
-                repository { nameWithOwner label(name: $label) { description } }
-              }
-            }
-          }
-        }
-        """
 
     // MARK: - 検索
 

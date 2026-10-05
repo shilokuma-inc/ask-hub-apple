@@ -289,6 +289,10 @@ struct SampleInboxSource: InboxSource {
         ]
     }
 
+    func usageLimitedRepositories(org: String, now: Date) async throws -> [UsageLimitedRepository] {
+        [UsageLimitedRepository(repository: "shilokuma-inc/notti-ios", until: Self.now.addingTimeInterval(2 * 60 * 60))]
+    }
+
     func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
         [
             InboxIssue(

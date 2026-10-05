@@ -117,6 +117,34 @@ struct LocalLoopRuntimeTests {
         #expect(await LocalLoopRuntime().epicSnapshot(of: repository).branch == nil)
     }
 
+    @Test func readsUsageLimitFromLatestLogLink() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let logs = root.appendingPathComponent("logs")
+        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        let runtime = LocalLoopRuntime(loopLogDirectory: logs)
+        #expect(await runtime.usageLimitReset(of: repository) == nil)
+
+        // 起動スクリプトは最新のログを `<リポジトリ名>-latest.log` のリンクで指す
+        let log = logs.appendingPathComponent("ask-hub-apple-loop-20261005-101145.log")
+        // ログの更新時刻（今）から 1 時間後に解除される
+        let reset = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + 3600).rounded(.down))
+        try Data("Claude AI usage limit reached|\(Int(reset.timeIntervalSince1970))\n".utf8).write(to: log)
+        try FileManager.default.createSymbolicLink(
+            at: logs.appendingPathComponent("ask-hub-apple-latest.log"),
+            withDestinationURL: log
+        )
+        #expect(await runtime.usageLimitReset(of: repository) == reset)
+
+        // 時刻だけの解除の時刻は、ログの更新時刻を基準に読む
+        try Data("You've hit your session limit · resets 12pm (UTC)\n".utf8).write(to: log)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 0)], ofItemAtPath: log.path)
+        #expect(await runtime.usageLimitReset(of: repository) == Date(timeIntervalSince1970: 12 * 60 * 60))
+
+        try Data("ループを起動します\n".utf8).write(to: log)
+        #expect(await runtime.usageLimitReset(of: repository) == nil)
+    }
+
     @Test func readsBranchFromGitDirectory() throws {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }

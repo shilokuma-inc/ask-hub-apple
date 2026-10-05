@@ -129,7 +129,13 @@ struct WaitingDiscussionRow: View {
                 Text(discussion.subject.shortReference)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if isAssigned {
+                if let until = discussion.usageLimitedUntil, discussion.isUsageLimited(now: Date()) {
+                    Label(
+                        "上限で待機中（\(UsageLimitedRepository.resumeText(until: until, now: Date()))）",
+                        systemImage: "moon.zzz.fill"
+                    )
+                    .foregroundStyle(.orange)
+                } else if isAssigned {
                     Label("担当 PC が起動します", systemImage: "hourglass")
                         .foregroundStyle(.secondary)
                 } else {
@@ -144,5 +150,31 @@ struct WaitingDiscussionRow: View {
                 .lineLimit(2)
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// 「上限で待機中」の節。担当 PC が Claude の利用上限で止まっているリポジトリと、再開の時刻を出す
+struct UsageLimitedSection: View {
+    let repositories: [UsageLimitedRepository]
+
+    var body: some View {
+        if !repositories.isEmpty {
+            Section {
+                ForEach(repositories) { repository in
+                    HStack(spacing: 6) {
+                        Label(repository.repository, systemImage: "moon.zzz.fill")
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Text(repository.resumeText(now: Date()))
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.callout)
+                }
+            } header: {
+                Text("上限で待機中")
+            } footer: {
+                Text("担当 PC の Claude が利用上限に達しています。再開の時刻を過ぎると、止まっていたループを自動で再開します")
+            }
+        }
     }
 }

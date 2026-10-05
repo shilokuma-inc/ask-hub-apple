@@ -30,6 +30,8 @@ final class InboxModel {
     private(set) var issues: [InboxIssue] = []
     /// `ready-for-loop` を付けて、ループの開始を待っている Discussion
     private(set) var waiting: [WaitingDiscussion] = []
+    /// 担当 PC が Claude の利用上限で待機しているリポジトリ
+    private(set) var usageLimited: [UsageLimitedRepository] = []
     private(set) var state = LoadState.idle
     /// 直前に取得を始めた時刻。自動更新（`refreshIfStale`）の間隔の判断に使う
     private(set) var lastRefreshed: Date?
@@ -150,7 +152,10 @@ final class InboxModel {
             async let questions = fetcher.unansweredQuestions(org: Self.org)
             async let issues = fetcher.lowPriorityIssues(org: Self.org)
             async let waiting = fetcher.waitingDiscussions(org: Self.org)
-            let (fetchedQuestions, fetchedIssues, fetchedWaiting) = try await (questions, issues, waiting)
+            // 上限の表示は補助なので、取得に失敗しても受信箱は出す（次の更新で取り直す）
+            async let usageLimited = (try? await fetcher.usageLimitedRepositories(org: Self.org, now: .now)) ?? []
+            let (fetchedQuestions, fetchedIssues, fetchedWaiting, fetchedUsageLimited) =
+                try await (questions, issues, waiting, usageLimited)
             // 取得を待つ間に別のトークンで回答した場合は、古いトークンでの結果を捨てて取り直す
             guard Self.fingerprint(of: token) == lastTokenFingerprint else {
                 needsRefreshAfterLoading = true
@@ -162,6 +167,7 @@ final class InboxModel {
             self.questions = fetchedQuestions.filter { !answeredQuestionIDs.contains($0.id) }
             self.issues = fetchedIssues
             self.waiting = fetchedWaiting
+            self.usageLimited = fetchedUsageLimited
             state = .loaded
         } catch {
             // バックグラウンドの取得が打ち切られた。失敗とは表示せず、次の自動更新で取り直せるようにする

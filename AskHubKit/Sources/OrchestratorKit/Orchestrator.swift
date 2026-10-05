@@ -73,6 +73,8 @@ public protocol LoopRuntime: Sendable {
     func launch(_ arguments: [String], for repository: RepositoryConfig) async throws
     /// 制御用 worktree のブランチ・ゴール・state を読む
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot
+    /// 最新のループ（準備を含む）が Claude の利用上限で終わっていれば、解除の時刻。そうでなければ `nil`
+    func usageLimitReset(of repository: RepositoryConfig) async -> Date?
     /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める
     func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
 }
@@ -94,8 +96,10 @@ public actor Orchestrator {
     /// ループの再開に使った仮決め一覧のコメント（`<repo小文字>#<コメント id>`）。同じコメントで何度も再開しない
     var resumedDecisionComments: Set<String> = []
     /// 担当の印を最後に書いた時刻（キーは担当リポジトリの `fullName` を小文字にしたもの）
-    private var lastHeartbeats: [String: Date] = [:]
-    private let now: @Sendable () -> Date
+    var lastHeartbeats: [String: Date] = [:]
+    /// Claude の利用上限の解除の時刻。それまでこの Mac のループの起動・再開を止める（アカウントは Mac ごとに共通）
+    var usageLimitedUntil: Date?
+    let now: @Sendable () -> Date
     private var ideaTracker = IdeaRequestTracker()
     var stallWatcher = StallWatcher()
 
@@ -139,12 +143,19 @@ public actor Orchestrator {
     /// 1 回分のポーリング。実行した起動判定を返す
     @discardableResult
     public func pollOnce() async throws -> [LaunchDecision] {
-        await updateHeartbeats()
-        let discussions = try await github.readyForLoopDiscussions(org: config.org)
         var statuses: [String: LoopStatus] = [:]
         for repository in config.repositories {
             statuses[repository.fullName.lowercased()] = await runtime.status(of: repository)
         }
+        // 止まったループが Claude の利用上限で終わっていたら、解除の時刻を担当の印に書いて待つ
+        await refreshUsageLimit(statuses: statuses)
+        await updateHeartbeats()
+        if activeUsageLimit(at: now()) != nil {
+            // 最終 PR の作成は claude を使わないので、待っている間も進める
+            _ = await finalizeCompletedEpics(statuses: statuses)
+            return []
+        }
+        let discussions = try await github.readyForLoopDiscussions(org: config.org)
 
         // ask への回答: 止まっているループを再開し、すべて回答済みなら needs-answer を外す。
         // 失敗しても ready-for-loop の判定は続ける
@@ -209,7 +220,8 @@ public actor Orchestrator {
                 continue
             }
             do {
-                try await github.updateHeartbeat(in: repository.fullName, description: OrchestratorHeartbeat.description(at: current))
+                let description = OrchestratorHeartbeat.description(at: current, usageLimitedUntil: activeUsageLimit(at: current))
+                try await github.updateHeartbeat(in: repository.fullName, description: description)
                 lastHeartbeats[key] = current
             } catch {
                 log("\(repository.fullName) に担当の印を書けませんでした（次のポーリングで再試行します）: \(error)")
@@ -241,6 +253,11 @@ public actor Orchestrator {
                 ideaTracker.recordCreated(url, for: issue)
                 log("\(name) の依頼から Discussion を作りました: \(url.absoluteString)")
                 await perform(.commentAndClose(url), on: issue)
+                return
+            }
+            // 利用上限で失敗したなら、失敗に数えず解除を待つ
+            if recordUsageLimit(in: result.output) {
+                log("\(name) の Discussion を作る claude が利用上限で終わりました。解除の後に作り直します")
                 return
             }
             reason = "Discussion の URL を受け取れませんでした（終了コード \(result.status)）"
