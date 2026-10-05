@@ -56,6 +56,39 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    func testDismissKeyboardInNewRequest() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは Issue を作ったことにして GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["依頼"].tap()
+        app.buttons["repository-picker"].tap()
+        app.buttons["notti-ios"].tap()
+        let summary = app.textFields["例: 通知の頻度を調整したい"]
+        summary.tap()
+        summary.typeText("通知の頻度を調整したい")
+
+        // 依頼文の Return は改行のままで、キーボードは閉じない
+        let body = app.textFields["やりたいこと・背景・決まっていることなど"]
+        body.tap()
+        body.typeText("朝だけにしたい\n夜は止めたい")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        // 入力すると placeholder では引けなくなるので、入力した値で探す
+        let multiline = NSPredicate(format: "value CONTAINS %@", "朝だけにしたい\n夜は止めたい")
+        XCTAssertTrue(app.textFields.matching(multiline).firstMatch.exists)
+
+        // キーボード上の「完了」で閉じると、下の「依頼を送る」が押せる
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let send = app.buttons["依頼を送る"]
+        XCTAssertTrue(send.isHittable)
+        send.tap()
+
+        XCTAssertTrue(app.staticTexts["依頼を送りました"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testAnswerQuestionFromDetail() throws {
         let app = XCUIApplication()
         // サンプルデータでは投稿しても GitHub には送らない
@@ -76,6 +109,39 @@ final class AskHubUITests: XCTestCase {
         app.buttons["1時間"].tap()
         XCTAssertTrue(post.isEnabled)
         XCTAssertTrue(app.staticTexts["回答: 1時間"].exists)
+        post.tap()
+
+        // 投稿すると一覧に戻る
+        XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testDismissKeyboardInQuestionDetail() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは投稿しても GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        let row = app.staticTexts["Q2. 通知の文言 通知に表示する文言の案があれば教えてください。"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        // 回答の欄と投稿ボタンは画面の下にあるので、スクロールして表示する
+        app.swipeUp()
+
+        // 回答の Return は改行のままで、キーボードは閉じない
+        let note = app.textFields["回答"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
+        note.tap()
+        note.typeText("朝の通知だけにしたい\n夜は送らない")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let multiline = NSPredicate(format: "value CONTAINS %@", "朝の通知だけにしたい\n夜は送らない")
+        XCTAssertTrue(app.textFields.matching(multiline).firstMatch.exists)
+
+        // キーボード上の「完了」で閉じると、下の「回答を投稿」が押せる
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let post = app.buttons["回答を投稿"]
+        XCTAssertTrue(post.isHittable)
         post.tap()
 
         // 投稿すると一覧に戻る
@@ -194,5 +260,29 @@ final class AskHubUITests: XCTestCase {
         confirm.tap()
         XCTAssertTrue(app.navigationBars["マージ待ち"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["【FEAT】epic/mvp を develop に取り込む"].exists)
+    }
+
+    @MainActor
+    func testDismissKeyboardInSettings() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        // 設定はシートの中に自前の NavigationStack を持つ。その中でもキーボード上の「完了」が出る
+        let settings = app.buttons["設定"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        let token = app.secureTextFields["github_pat_…"]
+        XCTAssertTrue(token.waitForExistence(timeout: 5))
+        token.tap()
+        token.typeText("github_pat_uitest")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+
+        // 「完了」で閉じると、下の「保存」が押せる。保存すると Simulator の Keychain に書き込むので、押せることだけ確かめる
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let save = app.buttons["保存"]
+        XCTAssertTrue(save.isEnabled)
+        XCTAssertTrue(save.isHittable)
     }
 }
