@@ -46,6 +46,13 @@ struct BodySummaryTests {
         #expect(BodySummary.oneLine("<pre>let b = 2</pre>") == "let b = 2")
     }
 
+    @Test func fenceClosesOnlyWithSameCharacterAndLength() {
+        // ```` の中の ``` と、~~~ の中の ``` はコードの中身
+        #expect(BodySummary.oneLine("````\nlet a = 1\n```\n- 中身\n````\n- 後") == "let a = 1 ``` - 中身 後")
+        #expect(BodySummary.oneLine("~~~\n```\n# 中身\n~~~\n# 後") == "``` # 中身 後")
+        #expect(BodySummary.oneLine("```swift\n# 閉じない") == "# 閉じない")
+    }
+
     @Test func resolvesInlineMarkdownToText() {
         #expect(BodySummary.oneLine("**太字** と *斜体* と `code` と [リンク](https://example.com) と a &amp; b") == "太字 と 斜体 と code と リンク と a & b")
     }

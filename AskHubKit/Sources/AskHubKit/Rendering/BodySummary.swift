@@ -14,19 +14,53 @@ public enum BodySummary {
     /// 行ごとに見出し・箇条書き・引用の記号を取り除く。コードフェンスの行は落とし、中の文字は残す
     private static func strippingBlockMarkers(_ markdown: String) -> [String] {
         var lines: [String] = []
-        var isInsideFence = false
+        var openFence: Fence?
         for rawLine in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("```") || line.hasPrefix("~~~") {
-                isInsideFence.toggle()
-                continue
+            if let fence = Fence(line: rawLine) {
+                if let open = openFence {
+                    // 同じ文字で同じ長さ以上のフェンスだけが閉じる（```` の中の ``` は中身）
+                    if fence.closes(open) {
+                        openFence = nil
+                        continue
+                    }
+                } else {
+                    openFence = fence
+                    continue
+                }
             }
-            let stripped = isInsideFence ? line : line.replacing(blockMarkerPattern, with: "").trimmingCharacters(in: .whitespaces)
+            let stripped = openFence != nil ? line : line.replacing(blockMarkerPattern, with: "").trimmingCharacters(in: .whitespaces)
             if !stripped.isEmpty {
                 lines.append(stripped)
             }
         }
         return lines
+    }
+
+    /// 行頭（3 つまでの空白を許す）のコードフェンス（``` か ~~~ が 3 つ以上）
+    private struct Fence {
+        let character: Character
+        let length: Int
+        /// フェンスの後に文字が無い（閉じフェンスになれる）か
+        let isAlone: Bool
+
+        init?(line: Substring) {
+            let trimmed = line.drop { $0 == " " }
+            guard line.count - trimmed.count <= 3, let first = trimmed.first, first == "`" || first == "~" else {
+                return nil
+            }
+            let run = trimmed.prefix { $0 == first }
+            guard run.count >= 3 else {
+                return nil
+            }
+            character = first
+            length = run.count
+            isAlone = trimmed.dropFirst(run.count).allSatisfy(\.isWhitespace)
+        }
+
+        func closes(_ open: Fence) -> Bool {
+            character == open.character && length >= open.length && isAlone
+        }
     }
 
     /// 行頭の `>`・`#`・`-` `*` `+`・`1.` `1)`（組み合わせも）。`Regex` は Sendable でないので computed property にする
