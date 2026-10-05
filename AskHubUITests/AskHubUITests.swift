@@ -56,6 +56,39 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    func testDismissKeyboardInNewRequest() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは Issue を作ったことにして GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["依頼"].tap()
+        app.buttons["repository-picker"].tap()
+        app.buttons["notti-ios"].tap()
+        let summary = app.textFields["例: 通知の頻度を調整したい"]
+        summary.tap()
+        summary.typeText("通知の頻度を調整したい")
+
+        // 依頼文の Return は改行のままで、キーボードは閉じない
+        let body = app.textFields["やりたいこと・背景・決まっていることなど"]
+        body.tap()
+        body.typeText("朝だけにしたい\n夜は止めたい")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        // 入力すると placeholder では引けなくなるので、入力した値で探す
+        let multiline = NSPredicate(format: "value CONTAINS %@", "朝だけにしたい\n夜は止めたい")
+        XCTAssertTrue(app.textFields.matching(multiline).firstMatch.exists)
+
+        // キーボード上の「完了」で閉じると、下の「依頼を送る」が押せる
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let send = app.buttons["依頼を送る"]
+        XCTAssertTrue(send.isHittable)
+        send.tap()
+
+        XCTAssertTrue(app.staticTexts["依頼を送りました"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testAnswerQuestionFromDetail() throws {
         let app = XCUIApplication()
         // サンプルデータでは投稿しても GitHub には送らない

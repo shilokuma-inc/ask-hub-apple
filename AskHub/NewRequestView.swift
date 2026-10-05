@@ -5,7 +5,7 @@ import SwiftUI
 struct NewRequestView: View {
     let model: IdeaRequestModel
     let openSettings: () -> Void
-    /// 送信後にキーボードを閉じ、結果が隠れないようにする
+    /// 送信後とキーボードの「完了」でキーボードを閉じ、結果やボタンが隠れないようにする
     @FocusState private var isEditing: Bool
 
     var body: some View {
@@ -70,6 +70,7 @@ struct NewRequestView: View {
             }
         }
         .formStyle(.grouped)
+        .keyboardDoneButton($isEditing)
         .navigationTitle("新しい依頼")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
