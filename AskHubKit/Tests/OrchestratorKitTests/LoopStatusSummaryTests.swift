@@ -83,6 +83,9 @@ struct LoopStatusSummaryTests {
         let answer = report(.init(status: .idle, snapshot: Self.epic(goal: waiting)))
         #expect(answer.state == .waitingForAnswer)
         #expect(answer.progress == .init(completed: 3, total: 4))
+        // 回答が付いて再開を待っている（再開に失敗した）なら、人を待っていない
+        let answered = report(.init(status: .idle, snapshot: Self.epic(goal: waiting), hasAnsweredQuestions: true))
+        #expect(answered.state == .waitingToStart)
 
         // すべて終わった（最終 PR のマージ待ち）。次の Discussion が待っていても完了を出す
         let done = waiting.replacingOccurrences(of: "- [ ] 【FEAT】C", with: "- [x] 【FEAT】C")

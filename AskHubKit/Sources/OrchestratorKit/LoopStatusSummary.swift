@@ -12,6 +12,8 @@ public struct LoopStatusFacts: Sendable, Equatable {
     public var gaveUp: Bool
     /// このリポジトリの `ready-for-loop` の Discussion のうち、まだ起動していないものの番号
     public var readyDiscussion: Int?
+    /// ask に回答が付き、ループの再開を待っている（goal の `※回答待ち` はループが再開して外すまで残る）
+    public var hasAnsweredQuestions: Bool
     /// epic の最終 PR が `develop` にマージ済み（制御用 worktree が次の epic に切り替わるまで、完了の goal が残る）
     public var epicMerged: Bool
     /// ループが最後に動いた時刻（state ファイル・ログの更新時刻のうち新しいもの）
@@ -23,6 +25,7 @@ public struct LoopStatusFacts: Sendable, Equatable {
         usageLimitedUntil: Date? = nil,
         gaveUp: Bool = false,
         readyDiscussion: Int? = nil,
+        hasAnsweredQuestions: Bool = false,
         epicMerged: Bool = false,
         lastActivityAt: Date? = nil
     ) {
@@ -31,6 +34,7 @@ public struct LoopStatusFacts: Sendable, Equatable {
         self.usageLimitedUntil = usageLimitedUntil
         self.gaveUp = gaveUp
         self.readyDiscussion = readyDiscussion
+        self.hasAnsweredQuestions = hasAnsweredQuestions
         self.epicMerged = epicMerged
         self.lastActivityAt = lastActivityAt
     }
@@ -79,7 +83,8 @@ public enum LoopStatusSummary {
             switch epic.phase {
             // 止まったまま（手で止めた・異常終了して再開を待っている）。次の起動・再開を待つ
             case .tasksRemain: return .waitingToStart
-            case .waitingForAnswer: return .waitingForAnswer
+            // 回答が付いていれば、もう人を待っていない（再開に失敗して止まっている間も含む）
+            case .waitingForAnswer: return facts.hasAnsweredQuestions ? .waitingToStart : .waitingForAnswer
             // 最終 PR のマージを待つ間は、次の Discussion が `ready-for-loop` でも始まらない
             case .done: return .completed
             }
