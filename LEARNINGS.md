@@ -64,6 +64,9 @@
 - 複数の worktree で同時に iOS の UI テストを流すときは、Simulator も worktree ごとに分ける（同じ Simulator を取り合うと不安定になる）
 - サンプルデータ（`-AskHubSampleInbox`）でも、設定の画面（`SettingsView`）は Simulator の Keychain を読み書きする。
   UI テストで「保存」を押すと Simulator にトークンが残るので、押せること（`isHittable`）だけを確かめる
+- `AskHubUITestsLaunchTests`（`runsForEachTargetApplicationUIConfiguration`）は横向きでも起動するので、Simulator が横向きのまま残り、
+  続けて流す UI テストが要素を見つけられず一斉に落ちることがある（ログに `Interface orientation changed to Landscape Left` が出る）。
+  UI テストの `setUp` で `XCUIDevice.shared.orientation = .portrait` に戻す
 
 ## Keychain
 
