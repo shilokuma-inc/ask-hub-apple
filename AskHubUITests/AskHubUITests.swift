@@ -14,6 +14,15 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    override func setUp() async throws {
+        // Simulator が横向きのまま残っていると（ほかの UI テストが回したなど）、レイアウトが変わって要素を見つけられない。
+        // 向きは iOS にしか無い（UI テストは macOS でもビルドする）
+        #if os(iOS)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+    }
+
+    @MainActor
     func testInboxShowsBothTabs() throws {
         let app = XCUIApplication()
         // GitHub に接続せず、アプリに組み込んだサンプルデータを表示する
@@ -260,6 +269,32 @@ final class AskHubUITests: XCTestCase {
         confirm.tap()
         XCTAssertTrue(app.navigationBars["マージ待ち"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["【FEAT】epic/mvp を develop に取り込む"].exists)
+    }
+
+    @MainActor
+    func testLoopStatusTabShowsEveryRepository() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["ループ"].tap()
+        XCTAssertTrue(app.staticTexts["ask-hub-apple"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["epic/loop-status"].exists)
+        XCTAssertTrue(app.staticTexts["ゴール元: Discussion #211"].exists)
+        XCTAssertTrue(app.staticTexts["5 / 12 タスク完了"].exists)
+        // 実行中なのに長く動きが無いループは知らせる
+        XCTAssertTrue(app.staticTexts["長く動きがありません"].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "最後の動き: ")).firstMatch.exists)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "loop-status-tab"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        // 担当 PC がいないリポジトリと状態の無いリポジトリは、一覧の下のほうにある
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["担当 PC なし"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["状態なし"].exists)
     }
 
     @MainActor
