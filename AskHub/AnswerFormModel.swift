@@ -12,7 +12,8 @@ final class AnswerFormModel {
     /// 自由記述（選択肢のある質問では補足）
     var note = ""
     /// 投稿したら、Discussion の回答を確定してループを始める（`ready-for-loop` を付ける）。
-    /// 選べる質問（Discussion の最後の質問）では既定でオンにする（Issue #98）。始める前には確認ダイアログを出す
+    /// 選べる質問（Discussion の最後の質問）では、設定画面の既定値（`LoopStartPreference`。初期値はオン）から始める
+    /// （Issue #98・Discussion #244）。始める前には確認ダイアログを出す
     var startsLoopAfterPosting = false
     private(set) var isPosting = false
     private(set) var isPosted = false
@@ -24,10 +25,10 @@ final class AnswerFormModel {
         self.question = question
     }
 
-    /// 画面を開いた時点の一覧で、「投稿したらループを始める」を選べるならオンにしておく
-    convenience init(question: InboxQuestion, inbox: InboxModel) {
+    /// 画面を開いた時点の一覧で「投稿したらループを始める」を選べるなら、設定画面の既定値にしておく
+    convenience init(question: InboxQuestion, inbox: InboxModel, defaults: UserDefaults = .standard) {
         self.init(question: question)
-        startsLoopAfterPosting = canStartLoop(in: inbox)
+        startsLoopAfterPosting = canStartLoop(in: inbox) && LoopStartPreference.startsLoopAfterPosting(in: defaults)
     }
 
     /// 投稿する回答（`docs/protocol.md` の「回答の形式」）
