@@ -33,8 +33,12 @@ struct IdeaRequestModelTests {
             if let failure {
                 throw failure
             }
-            created.withLock { $0.append(request) }
-            return CreatedIssue(number: 41, htmlURL: URL(string: "https://github.com/\(request.repository)/issues/41")!)
+            // 1 件目が #41、以降は 1 つずつ増やす
+            let number = created.withLock {
+                $0.append(request)
+                return 40 + $0.count
+            }
+            return CreatedIssue(number: number, htmlURL: URL(string: "https://github.com/\(request.repository)/issues/\(number)")!)
         }
     }
 
@@ -127,11 +131,76 @@ struct IdeaRequestModelTests {
         await model.send()
 
         #expect(requester.requests == [IdeaRequest(repository: "shilokuma-inc/notti-ios", summary: "通知の頻度を調整したい", body: "朝だけにしたい")])
-        #expect(model.created?.number == 41)
+        #expect(model.sent.map(\.issue.number) == [41])
         #expect(model.summary.isEmpty)
         #expect(model.body.isEmpty)
         #expect(model.repository == "shilokuma-inc/notti-ios")
         #expect(model.errorMessage == nil)
+    }
+
+    @Test func keepsSentRepositoryAndSummaryAfterChangingSelection() async throws {
+        let model = makeModel(requester: RecordingRequester())
+        model.repository = "shilokuma-inc/ask-hub-apple"
+        model.summary = "  通知の頻度を調整したい "
+        model.body = "朝だけにしたい"
+        await model.send()
+
+        // 続けて依頼しようとリポジトリと入力を変えても、送信結果は送った時点のまま
+        model.repository = "shilokuma-inc/notti-ios"
+        model.summary = "次の依頼"
+
+        let sent = try #require(model.sent.first)
+        #expect(sent.repository == "shilokuma-inc/ask-hub-apple")
+        #expect(sent.summary == "通知の頻度を調整したい")
+        #expect(sent.message == "ask-hub-apple に「通知の頻度を調整したい」を依頼しました")
+        #expect(sent.linkTitle == "ask-hub-apple#41 を GitHub で開く")
+        #expect(sent.issue.htmlURL == URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/41"))
+        #expect(model.body.isEmpty)
+    }
+
+    @Test func keepsEverySentRequestNewestFirst() async {
+        let model = makeModel(requester: RecordingRequester())
+        model.repository = "shilokuma-inc/ask-hub-apple"
+        model.summary = "1 件目"
+        model.body = "依頼文"
+        await model.send()
+        model.repository = "shilokuma-inc/notti-ios"
+        model.summary = "2 件目"
+        model.body = "依頼文"
+        await model.send()
+
+        // 直前の 1 件で上書きせず、新しい順に残す
+        #expect(model.sent.map(\.message) == [
+            "notti-ios に「2 件目」を依頼しました",
+            "ask-hub-apple に「1 件目」を依頼しました"
+        ])
+        #expect(model.sent.map(\.linkTitle) == ["notti-ios#42 を GitHub で開く", "ask-hub-apple#41 を GitHub で開く"])
+    }
+
+    @Test func doesNotAddFailedRequestToSentList() async {
+        let failure = GitHubError.http(status: 401, message: "Bad credentials")
+        let model = makeModel(requester: RecordingRequester(failure: failure))
+        model.repository = "shilokuma-inc/notti-ios"
+        model.summary = "要約"
+        model.body = "依頼文"
+        await model.send()
+        await model.send()
+
+        #expect(model.sent.isEmpty)
+        #expect(model.errorMessage != nil)
+    }
+
+    @Test func startsWithEmptySentListWhenModelIsRecreated() async {
+        let requester = RecordingRequester()
+        let model = makeModel(requester: requester)
+        model.repository = "shilokuma-inc/notti-ios"
+        model.summary = "要約"
+        model.body = "依頼文"
+        await model.send()
+        #expect(model.sent.count == 1)
+
+        // 一覧は保存しないので、作り直したモデル（アプリの再起動・デモモードの切り替え）には残らない
+        #expect(makeModel(requester: requester).sent.isEmpty)
     }
 
     @Test func keepsInputAndShowsErrorWhenSendingFails() async {
@@ -141,7 +210,7 @@ struct IdeaRequestModelTests {
         model.body = "依頼文"
         await model.send()
 
-        #expect(model.created == nil)
+        #expect(model.sent.isEmpty)
         #expect(model.summary == "要約")
         #expect(model.errorMessage == "トークンが無効です。設定でトークンを保存し直してください")
     }

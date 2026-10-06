@@ -27,8 +27,8 @@ final class IdeaRequestModel {
     var summary = ""
     var body = ""
     private(set) var isSending = false
-    /// 直前に作った依頼の Issue
-    private(set) var created: CreatedIssue?
+    /// この画面で送った依頼（新しい順）。メモリにだけ持ち、保存しない。アプリを終了するかモデルを作り直すと消える
+    private(set) var sent: [SentRequest]
     private(set) var errorMessage: String?
 
     private let tokenStore: any TokenStore
@@ -36,10 +36,12 @@ final class IdeaRequestModel {
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
-        makeRequester: @escaping @Sendable (String) -> any IdeaRequesting = { GitHubIdeaRequester(client: GitHubClient(token: $0)) }
+        makeRequester: @escaping @Sendable (String) -> any IdeaRequesting = { GitHubIdeaRequester(client: GitHubClient(token: $0)) },
+        sent: [SentRequest] = []
     ) {
         self.tokenStore = tokenStore
         self.makeRequester = makeRequester
+        self.sent = sent
     }
 
     var request: IdeaRequest {
@@ -104,7 +106,10 @@ final class IdeaRequestModel {
             guard let token = try tokenStore.load() else {
                 throw MissingTokenError()
             }
-            created = try await makeRequester(token).create(request)
+            // 送信中に Picker や入力が変わっても、送った時点の値で表示する
+            let request = request
+            let issue = try await makeRequester(token).create(request)
+            sent.insert(SentRequest(request: request, issue: issue), at: 0)
             summary = ""
             body = ""
         } catch {

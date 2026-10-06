@@ -44,10 +44,18 @@ struct NewRequestView: View {
                 }
             }
 
-            if let created = model.created {
+            if !model.sent.isEmpty {
                 Section {
-                    Label("依頼を送りました", systemImage: "checkmark.circle")
-                    Link("#\(created.number) を GitHub で開く", destination: created.htmlURL)
+                    ForEach(model.sent) { sent in
+                        VStack(alignment: .leading, spacing: 6) {
+                            // 要約が長くても切り詰めずに折り返す
+                            Label(sent.message, systemImage: "checkmark.circle")
+                                .fixedSize(horizontal: false, vertical: true)
+                            Link(sent.linkTitle, destination: sent.issue.htmlURL)
+                        }
+                    }
+                } header: {
+                    Text("送った依頼")
                 } footer: {
                     Text("担当 PC のオーケストレーターが、質問付きの Discussion を作ります")
                 }
@@ -118,6 +126,12 @@ struct NewRequestView: View {
 #Preview {
     NavigationStack {
         NewRequestView(model: .sample(), openSettings: {})
+    }
+}
+
+#Preview("送った依頼が複数") {
+    NavigationStack {
+        NewRequestView(model: .sample(sent: SentRequest.samples), openSettings: {})
     }
 }
 #endif
