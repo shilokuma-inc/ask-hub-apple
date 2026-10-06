@@ -224,9 +224,11 @@ public actor LocalLoopRuntime: LoopRuntime {
     }
 
     /// `arguments` の先頭を実行ファイルとして、メインの checkout を作業ディレクトリに起動する。
-    /// 先頭が絶対パスでなければ `PATH` から探す（launchd の `PATH` は最小限なので、絶対パスを推奨する）
-    public func launch(_ arguments: [String], for repository: RepositoryConfig) throws {
-        let process = try Self.makeProcess(arguments, in: repository, environment: environment)
+    /// 先頭が絶対パスでなければ `PATH` から探す（launchd の `PATH` は最小限なので、絶対パスを推奨する）。
+    /// `extraEnvironment` は、初期化で渡した環境変数よりも優先する
+    public func launch(_ arguments: [String], environment extraEnvironment: [String: String], for repository: RepositoryConfig) throws {
+        let merged = environment.merging(extraEnvironment) { _, new in new }
+        let process = try Self.makeProcess(arguments, in: repository, environment: merged)
         try process.run()
         processes[repository.fullName.lowercased()] = process
     }

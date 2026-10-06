@@ -383,7 +383,7 @@ final class FakeRuntime: LoopRuntime {
         state.withLock { $0.status }
     }
 
-    func launch(_ arguments: [String], for repository: RepositoryConfig) async throws {
+    func launch(_ arguments: [String], environment: [String: String], for repository: RepositoryConfig) async throws {
         try state.withLock { state in
             if state.launchFails {
                 throw TestError()

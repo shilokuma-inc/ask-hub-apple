@@ -77,8 +77,9 @@ public struct ExistingPullRequest: Sendable, Equatable {
 /// ループの状態の取得と起動。テストでは差し替える
 public protocol LoopRuntime: Sendable {
     func status(of repository: RepositoryConfig) async -> LoopStatus
-    /// `arguments` をシェルを経由せずに実行する。終了は待たない
-    func launch(_ arguments: [String], for repository: RepositoryConfig) async throws
+    /// `arguments` をシェルを経由せずに実行する。終了は待たない。
+    /// `environment` は、この起動にだけ追加で渡す環境変数（起動の理由を起動スクリプトに伝えるのに使う）
+    func launch(_ arguments: [String], environment: [String: String], for repository: RepositoryConfig) async throws
     /// 制御用 worktree のブランチ・ゴール・state を読む
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot
     /// 最新のループ（準備を含む）が Claude の利用上限で終わっていれば、解除の時刻。そうでなければ `nil`
@@ -93,6 +94,13 @@ public protocol LoopRuntime: Sendable {
     func lastActivity(of repository: RepositoryConfig) async -> Date?
     /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める
     func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
+}
+
+extension LoopRuntime {
+    /// 追加の環境変数なしで `arguments` を実行する。終了は待たない
+    public func launch(_ arguments: [String], for repository: RepositoryConfig) async throws {
+        try await launch(arguments, environment: [:], for: repository)
+    }
 }
 
 /// 「ポーリング → 状態判定 → アクション」を繰り返す。
