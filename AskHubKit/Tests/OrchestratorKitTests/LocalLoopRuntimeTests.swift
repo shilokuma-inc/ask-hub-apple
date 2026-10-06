@@ -72,6 +72,22 @@ struct LocalLoopRuntimeTests {
         #expect(result.output.contains("PATH="))
     }
 
+    @Test func passesPerLaunchEnvironmentOverConfiguredOne() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runtime = LocalLoopRuntime(environment: ["ASKHUB_TRUSTED_AUTHORS": "mrs1669", "ASKHUB_RESUME_REASON": "configured"])
+
+        // 起動ごとの環境変数は、初期化で渡した値より優先し、ほかの値は残す
+        try await runtime.launch(
+            ["/bin/sh", "-c", #"printf '%s %s' "$ASKHUB_RESUME_REASON" "$ASKHUB_TRUSTED_AUTHORS" > env.tmp; mv env.tmp env.txt"#],
+            environment: ["ASKHUB_RESUME_REASON": "decision-log"],
+            for: repository
+        )
+        let output = URL(fileURLWithPath: repository.checkoutPath).appendingPathComponent("env.txt")
+        #expect(try await waitUntil { FileManager.default.fileExists(atPath: output.path) })
+        #expect(try String(contentsOf: output, encoding: .utf8) == "decision-log mrs1669")
+    }
+
     @Test func reportsUnknownWhenControlWorktreeIsUnreadable() async throws {
         let (repository, root) = try makeRepository()
         let control = URL(fileURLWithPath: repository.controlWorktreePath)

@@ -77,8 +77,9 @@ public struct ExistingPullRequest: Sendable, Equatable {
 /// ループの状態の取得と起動。テストでは差し替える
 public protocol LoopRuntime: Sendable {
     func status(of repository: RepositoryConfig) async -> LoopStatus
-    /// `arguments` をシェルを経由せずに実行する。終了は待たない
-    func launch(_ arguments: [String], for repository: RepositoryConfig) async throws
+    /// `arguments` をシェルを経由せずに実行する。終了は待たない。
+    /// `environment` は、この起動にだけ追加で渡す環境変数（起動の理由を起動スクリプトに伝えるのに使う）
+    func launch(_ arguments: [String], environment: [String: String], for repository: RepositoryConfig) async throws
     /// 制御用 worktree のブランチ・ゴール・state を読む
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot
     /// 最新のループ（準備を含む）が Claude の利用上限で終わっていれば、解除の時刻。そうでなければ `nil`
@@ -95,6 +96,13 @@ public protocol LoopRuntime: Sendable {
     func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
 }
 
+extension LoopRuntime {
+    /// 追加の環境変数なしで `arguments` を実行する。終了は待たない
+    public func launch(_ arguments: [String], for repository: RepositoryConfig) async throws {
+        try await launch(arguments, environment: [:], for: repository)
+    }
+}
+
 /// 「ポーリング → 状態判定 → アクション」を繰り返す。
 /// 起動した Discussion（`LaunchTracker`）と回答済みの質問（`ResumeWatcher`）を覚えておくため actor にする
 public actor Orchestrator {
@@ -109,8 +117,11 @@ public actor Orchestrator {
     var finalizedEpics: Set<String> = []
     /// 仮決め一覧への指示を受けてループを再開した epic。再び完了したら、最終 PR の本文を書き直す
     var epicsToRefresh: Set<String> = []
-    /// ループの再開に使った仮決め一覧のコメント（`<repo小文字>#<コメント id>`）。同じコメントで何度も再開しない
+    /// 処理済みとして扱う仮決め一覧のコメント（`<repo小文字>#<コメント id>`）。同じコメントで何度も再開しない。
+    /// ループの開始を確かめてから（または上限まで試して諦めてから）入れる
     var resumedDecisionComments: Set<String> = []
+    /// 仮決め一覧への指示でループを起動し、開始をまだ確かめていないもの（キーは担当リポジトリの `fullName` を小文字にしたもの）
+    var pendingDecisionResumes: [String: DecisionLogResume] = [:]
     /// 担当の印を最後に書いた時刻（キーは担当リポジトリの `fullName` を小文字にしたもの）
     var lastHeartbeats: [String: Date] = [:]
     /// Claude の利用上限の解除の時刻。それまでこの Mac のループの起動・再開を止める（アカウントは Mac ごとに共通）
