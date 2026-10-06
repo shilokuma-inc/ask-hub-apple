@@ -14,6 +14,15 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    override func setUp() async throws {
+        // Simulator が横向きのまま残っていると（ほかの UI テストが回したなど）、レイアウトが変わって要素を見つけられない。
+        // 向きは iOS にしか無い（UI テストは macOS でもビルドする）
+        #if os(iOS)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+    }
+
+    @MainActor
     func testInboxShowsBothTabs() throws {
         let app = XCUIApplication()
         // GitHub に接続せず、アプリに組み込んだサンプルデータを表示する
@@ -24,10 +33,13 @@ final class AskHubUITests: XCTestCase {
         // HTML タグと Markdown が混ざった質問のサンプルも一覧に出る
         XCTAssertTrue(app.staticTexts["HTMLタグの有効化"].firstMatch.exists)
 
+        // 「上限で待機中」「ループの開始待ち」は「ループ」タブに出し、要回答・急がないには出さない
+        XCTAssertFalse(app.staticTexts["上限で待機中"].exists)
+
         app.tabBars.buttons["急がない"].tap()
         XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
-        // 担当の印が無いリポジトリの開始待ちは「担当 PC なし」と出る
-        XCTAssertTrue(app.staticTexts["担当 PC なし"].exists)
+        XCTAssertFalse(app.staticTexts["上限で待機中"].exists)
+        XCTAssertFalse(app.staticTexts["ループの開始待ち"].exists)
     }
 
     @MainActor
@@ -260,6 +272,54 @@ final class AskHubUITests: XCTestCase {
         confirm.tap()
         XCTAssertTrue(app.navigationBars["マージ待ち"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["【FEAT】epic/mvp を develop に取り込む"].exists)
+    }
+
+    @MainActor
+    func testLoopStatusTabShowsEveryRepository() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["ループ"].tap()
+        // 一覧の先頭に「上限で待機中」と「ループの開始待ち」の節がある
+        XCTAssertTrue(app.staticTexts["上限で待機中"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["shilokuma-inc/notti-ios"].exists)
+        XCTAssertTrue(app.staticTexts["ループの開始待ち"].exists)
+        XCTAssertTrue(app.staticTexts["ask-hub-apple#15"].exists)
+        // 担当の印が無いリポジトリの開始待ちは「担当 PC なし」と出る
+        XCTAssertTrue(app.staticTexts["beat-tap-ios#3"].exists)
+        XCTAssertTrue(app.staticTexts["担当 PC なし"].exists)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "loop-status-tab"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        // その下にリポジトリごとの状態がある
+        scrollUntilHittable(app.staticTexts["ask-hub-apple"], in: app)
+        scrollUntilHittable(app.staticTexts["5 / 12 タスク完了"], in: app)
+        XCTAssertTrue(app.staticTexts["epic/loop-status"].exists)
+        XCTAssertTrue(app.staticTexts["ゴール元: Discussion #211"].exists)
+        // 実行中なのに長く動きが無いループは知らせる
+        scrollUntilHittable(app.staticTexts["長く動きがありません"], in: app)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "最後の動き: ")).firstMatch.exists)
+
+        // 担当 PC がいないリポジトリ（weather-mini）と状態の無いリポジトリは、一覧の下のほうにある
+        scrollUntilHittable(app.staticTexts["状態なし"], in: app)
+        scrollUntilHittable(app.staticTexts["weather-mini"], in: app)
+        XCTAssertTrue(app.staticTexts["担当 PC なし"].exists)
+    }
+
+    /// 要素が画面に出るまで、一覧をゆっくり上にスクロールする（速く払うと行を飛ばしてしまう）
+    @MainActor
+    private func scrollUntilHittable(_ element: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        for _ in 0..<8 {
+            if element.exists && element.isHittable {
+                return
+            }
+            app.collectionViews.firstMatch.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(element.exists && element.isHittable, "\(element) が画面に出ない", file: file, line: line)
     }
 
     @MainActor

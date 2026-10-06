@@ -370,3 +370,55 @@ extension GitHubOrchestratorTests {
         #expect(object == ["state": "closed", "state_reason": "completed"])
     }
 }
+
+// MARK: - 状態用の Issue（loop-status）
+
+extension GitHubOrchestratorTests {
+    @Test func listsLoopStatusIssuesIncludingClosedOnes() async throws {
+        let http = StubHTTPClient([
+            #"""
+            [{ "number": 3, "state": "open", "body": "本文", "user": { "login": "mrs1669" }, "updated_at": "2027-01-15T08:00:00Z" },
+             { "number": 4, "state": "closed", "body": null, "user": null, "updated_at": "2027-01-15T07:00:00Z" },
+             { "number": 5, "state": "open", "body": "", "user": { "login": "mrs1669" }, "updated_at": "2027-01-15T08:00:00Z",
+               "pull_request": { "url": "https://api.github.com/repos/o/r/pulls/5" } }]
+            """#
+        ])
+        let issues = try await makeGitHub(http).loopStatusIssues(in: "o/r")
+
+        let updatedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(issues == [
+            LoopStatusIssueRecord(number: 3, author: "mrs1669", isOpen: true, updatedAt: updatedAt, body: "本文"),
+            LoopStatusIssueRecord(number: 4, author: nil, isOpen: false, updatedAt: updatedAt.addingTimeInterval(-3600), body: "")
+        ])
+        let url = try #require(http.requests.first?.url)
+        #expect(url.path() == "/repos/o/r/issues")
+        let query = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        #expect(query.contains(URLQueryItem(name: "labels", value: "loop-status")))
+        #expect(query.contains(URLQueryItem(name: "state", value: "all")))
+    }
+
+    @Test func createsLoopStatusIssueWithLabelAndReopensOnUpdate() async throws {
+        let http = StubHTTPClient(responses: [
+            // ラベルが既にあれば 422
+            (422, #"{ "message": "Validation Failed" }"#),
+            (201, #"{ "number": 11 }"#),
+            (200, #"{ "number": 11 }"#)
+        ])
+        let github = makeGitHub(http)
+        #expect(try await github.createLoopStatusIssue(in: "o/r", body: "状態") == 11)
+        try await github.updateLoopStatusIssue(in: "o/r", number: 11, body: "新しい状態")
+
+        #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" } == [
+            "POST /repos/o/r/labels",
+            "POST /repos/o/r/issues",
+            "PATCH /repos/o/r/issues/11"
+        ])
+        let createBody = try #require(http.requests[1].httpBody)
+        let created = try #require(try JSONSerialization.jsonObject(with: createBody) as? [String: Any])
+        #expect(created["title"] as? String == "【AskHub】ループの状態")
+        #expect(created["labels"] as? [String] == ["loop-status"])
+        let updateBody = try #require(http.requests[2].httpBody)
+        let updated = try #require(try JSONSerialization.jsonObject(with: updateBody) as? [String: String])
+        #expect(updated == ["body": "新しい状態", "state": "open"])
+    }
+}
