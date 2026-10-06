@@ -13,13 +13,14 @@ struct AskHub: App {
     @State private var inbox = InboxModel.launchDefault()
     @State private var requests = IdeaRequestModel.launchDefault()
     @State private var mergeQueue = MergeQueueModel.launchDefault()
+    @State private var loopStatus = LoopStatusModel.launchDefault()
     @State private var isDemoMode = DemoMode.isEnabled
     @Environment(\.scenePhase)
     private var scenePhase
 
     var body: some Scene {
         WindowGroup {
-            ContentView(model: inbox, requestModel: requests, mergeModel: mergeQueue)
+            ContentView(model: inbox, requestModel: requests, mergeModel: mergeQueue, loopModel: loopStatus)
                 .environment(\.isDemoMode, isDemoMode)
                 .environment(\.setDemoMode) { setDemoMode($0) }
         }
@@ -56,11 +57,13 @@ struct AskHub: App {
         inbox = enabled ? .sample() : InboxModel()
         requests = enabled ? .sample() : IdeaRequestModel()
         mergeQueue = enabled ? .sample() : MergeQueueModel()
+        loopStatus = enabled ? .sample() : LoopStatusModel()
     }
 
     private func refreshIfStale() async {
         async let inboxRefreshed: Void = inbox.refreshIfStale()
         async let mergeQueueRefreshed: Void = mergeQueue.refreshIfStale()
-        _ = await (inboxRefreshed, mergeQueueRefreshed)
+        async let loopStatusRefreshed: Void = loopStatus.refreshIfStale()
+        _ = await (inboxRefreshed, mergeQueueRefreshed, loopStatusRefreshed)
     }
 }
