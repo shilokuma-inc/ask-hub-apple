@@ -25,7 +25,10 @@ enum AskHubOrchestrator {
         } catch {
             fail("\(error)", status: EX_CONFIG)
         }
-        // launchd の下では標準出力がファイルになり print はバッファに残るため、log と同じ経路で書く
+        // launchd の下では標準出力がファイルになり print はバッファに残るため、log と同じ経路で書く。
+        // 起動できたことが一目で分かるよう、担当リポジトリの一覧の前に 1 行出す
+        let configPath = arguments.configPath ?? loader.defaultPath
+        log("起動しました（pid \(ProcessInfo.processInfo.processIdentifier)、設定: \(configPath)）")
         log(summary(of: config))
 
         let token: String
@@ -118,6 +121,8 @@ enum AskHubOrchestrator {
 
     private static func fail(_ message: String, status: Int32) -> Never {
         FileHandle.standardError.write(Data("askhub-orchestrator: \(message)\n".utf8))
+        // launchd の plist で標準エラーがログに向いていない環境でも理由が残るよう、ログと同じ経路（標準出力）にも時刻付きで書く
+        log("終了します（終了コード \(status)）: \(message)")
         exit(status)
     }
 }
