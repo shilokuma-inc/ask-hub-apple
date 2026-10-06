@@ -101,7 +101,10 @@ final class LoopStatusModel {
             async let waiting = inboxFetcher.waitingDiscussions(org: org)
             // 上限の表示は補助なので、取得に失敗してもループの状態は出す（次の更新で取り直す）
             async let usageLimited = (try? await inboxFetcher.usageLimitedRepositories(org: org, now: .now)) ?? []
-            (self.rows, self.waiting, self.usageLimited) = try await (rows, waiting, usageLimited)
+            let fetched = try await (rows, waiting, usageLimited)
+            // 上限の取得の `try?` は打ち切りも空として返すので、打ち切られていれば途中の結果で一覧を上書きしない
+            try Task.checkCancellation()
+            (self.rows, self.waiting, self.usageLimited) = fetched
             state = .loaded
         } catch {
             // バックグラウンドの取得が打ち切られた。失敗とは表示せず、次の自動更新で取り直せるようにする

@@ -1,6 +1,7 @@
 @testable import AskHub
 import AskHubKit
 import Foundation
+import os
 import Testing
 
 @MainActor
@@ -196,5 +197,58 @@ struct LoopStatusModelTests {
 
         await model.refreshIfStale(now: lastRefreshed.addingTimeInterval(AutoRefresh.minimumInterval))
         #expect(try #require(model.lastRefreshed) > lastRefreshed)
+    }
+
+    /// 担当の印のある 1 リポジトリを返す取得元
+    private struct OneRepositorySource: LoopStatusSource {
+        func loopStatusRepositories(org: String) async throws -> [LoopStatusRepository] {
+            [LoopStatusRepository(repository: "o/r", heartbeatDescription: OrchestratorHeartbeat.description(at: .now), issues: [])]
+        }
+    }
+
+    /// 「上限で待機中」の取得が終わらない受信箱の取得元（打ち切られると `CancellationError` を投げる）
+    private struct HangingUsageLimitSource: InboxSource {
+        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+            []
+        }
+
+        func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
+            []
+        }
+
+        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+            []
+        }
+
+        func usageLimitedRepositories(org: String, now: Date) async throws -> [UsageLimitedRepository] {
+            try await Task.sleep(for: .seconds(60))
+            return []
+        }
+    }
+
+    @Test func cancelledRefreshDoesNotOverwriteWithPartialResults() async throws {
+        let hangs = OSAllocatedUnfairLock(initialState: false)
+        let model = LoopStatusModel(
+            tokenStore: InMemoryTokenStore(token: "github_pat_saved"),
+            makeSource: { _ in hangs.withLock { $0 } ? OneRepositorySource() as any LoopStatusSource : EmptySource() },
+            makeInboxSource: { _ in
+                hangs.withLock { $0 } ? HangingUsageLimitSource() as any InboxSource : SectionsSource(waiting: [], usageLimited: [])
+            }
+        )
+        await model.refresh()
+        let lastRefreshed = model.lastRefreshed
+        hangs.withLock { $0 = true }
+
+        // 上限の取得は `try?` で失敗を許すが、打ち切りでは途中の結果（新しい行・空の上限）で一覧を上書きしない
+        let task = Task { await model.refresh() }
+        while model.state != .loading {
+            await Task.yield()
+        }
+        task.cancel()
+        await task.value
+
+        #expect(model.state == .loaded)
+        #expect(model.rows.isEmpty)
+        #expect(model.lastRefreshed == lastRefreshed)
     }
 }
