@@ -88,6 +88,9 @@
   `presentationIntent` の `components` の identity だけで区切りが分かる。描画用に分けるときは run を identity でまとめる。
   入れ子のリストは `listItem` と `unorderedList` / `orderedList` が内側から外側の順に並び、ハードブレークは `inlinePresentationIntent` が
   `.lineBreak` の `"\n"` の run になる
+- `JSONEncoder` は文字列の中の `>` をエスケープしない（`/` は `.withoutEscapingSlashes` を付けなければ `\/` になる）。
+  JSON を HTML コメント（`<!-- … -->`）に埋めるときは、エンコード後に `>` を `\u003e` に置き換えると、値に `-->` があっても目印が途中で閉じない。
+  `.iso8601` の日付は秒未満を落とすので、読み戻した値と `==` で比べるなら書き出す前に秒未満を切り捨てる
 
 ## シェルスクリプト
 
