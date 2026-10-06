@@ -71,7 +71,9 @@
   UI テストの `setUp` で `XCUIDevice.shared.orientation = .portrait` に戻す（`orientation` は iOS にしか無いので `#if os(iOS)` で囲む。CI は macOS でも UI テストをビルドする）
 - 画面収録・アクセシビリティ（オートメーション）の許可が無い Mac では、macOS の UI テストは
   「Timed out while enabling automation mode」で起動できず、`screencapture -l <ウィンドウ ID>` も「could not create image from window」で失敗する。
-  macOS の見た目のスクリーンショットが撮れないときは、iOS Simulator の UI テスト（`XCTAttachment`）で撮れる分だけ載せ、macOS は実機確認の Issue に切り出す
+  その場合でも、macOS のユニットテスト（`AskHubTests`。sandbox なしで流す）の中で View を `NSHostingView` に載せて `NSWindow` に置き、
+  `orderFrontRegardless()` で少し待ってから `bitmapImageRepForCachingDisplay(in:)` / `cacheDisplay(in:to:)` で描けば、`List` を含めて許可なしで PNG にできる。
+  `NSAppearance(named: .aqua / .darkAqua)` を window と hosting view に設定すればライト・ダークを撮り分けられる（撮影用のテストはコミットしない）
 
 ## Keychain
 
