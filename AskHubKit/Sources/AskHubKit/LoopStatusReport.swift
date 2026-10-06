@@ -84,12 +84,21 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     /// ゴール元の Discussion の番号。手で始めた epic など、記録が無ければ `nil`
     public var discussion: Int?
     public var progress: Progress?
+    // 時刻は目印に秒までしか書かないので、読み戻した値と比べられるよう代入のたびに秒未満を切り捨てる
+    // （`didSet` は init では呼ばれないので、init でも切り捨てる）
+
     /// ループが最後に動いた時刻（state ファイル・ログの更新時刻など）
-    public var lastActivityAt: Date?
+    public var lastActivityAt: Date? {
+        didSet { lastActivityAt = lastActivityAt.map(Self.wholeSeconds) }
+    }
     /// 利用上限の解除の時刻（`usageLimited` のとき）
-    public var usageLimitedUntil: Date?
+    public var usageLimitedUntil: Date? {
+        didSet { usageLimitedUntil = usageLimitedUntil.map(Self.wholeSeconds) }
+    }
     /// オーケストレーターが最後に確かめた時刻。状態が変わらなくても `updateInterval` ごとに書き直す
-    public var checkedAt: Date
+    public var checkedAt: Date {
+        didSet { checkedAt = Self.wholeSeconds(checkedAt) }
+    }
 
     public init(
         state: State,
@@ -104,7 +113,6 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         self.epic = epic
         self.discussion = discussion
         self.progress = progress
-        // 目印の時刻は秒までなので、読み戻した値と比べられるよう秒未満を切り捨てる
         self.lastActivityAt = lastActivityAt.map(Self.wholeSeconds)
         self.usageLimitedUntil = usageLimitedUntil.map(Self.wholeSeconds)
         self.checkedAt = Self.wholeSeconds(checkedAt)

@@ -62,6 +62,16 @@ struct LoopStatusReportTests {
         )
         #expect(report.checkedAt == now)
         #expect(LoopStatusReport.parse(report.issueBody) == report)
+
+        // 作った後に代入した時刻も切り捨てる
+        var updated = report
+        updated.checkedAt = now.addingTimeInterval(600.9)
+        updated.lastActivityAt = now.addingTimeInterval(300.5)
+        updated.usageLimitedUntil = now.addingTimeInterval(3600.2)
+        #expect(updated.checkedAt == now.addingTimeInterval(600))
+        #expect(updated.lastActivityAt == now.addingTimeInterval(300))
+        #expect(updated.usageLimitedUntil == now.addingTimeInterval(3600))
+        #expect(LoopStatusReport.parse(updated.issueBody) == updated)
     }
 
     @Test func comparesStatusIgnoringCheckedAt() {
