@@ -25,10 +25,7 @@ enum AskHubOrchestrator {
         } catch {
             fail("\(error)", status: EX_CONFIG)
         }
-        // launchd の下では標準出力がファイルになり print はバッファに残るため、log と同じ経路で書く。
-        // 起動できたことが一目で分かるよう、担当リポジトリの一覧の前に 1 行出す
-        let configPath = arguments.configPath ?? loader.defaultPath
-        log("起動しました（pid \(ProcessInfo.processInfo.processIdentifier)、設定: \(configPath)）")
+        // launchd の下では標準出力がファイルになり print はバッファに残るため、log と同じ経路で書く
         log(summary(of: config))
 
         let token: String
@@ -37,6 +34,10 @@ enum AskHubOrchestrator {
         } catch {
             fail("GitHub のトークンを取得できません。`gh auth login` を済ませてください（\(error)）", status: EX_UNAVAILABLE)
         }
+        // 起動に必要なもの（設定・トークン）が揃ってから、起動できたことを 1 行出す。
+        // トークンの取得に失敗したときは fail の「終了します」の行だけが残り、成功と見分けられる
+        let configPath = arguments.configPath ?? loader.defaultPath
+        log("起動しました（pid \(ProcessInfo.processInfo.processIdentifier)、設定: \(configPath)）")
         let client = GitHubClient(token: token)
         let orchestrator = Orchestrator(
             config: config,
