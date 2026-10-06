@@ -70,6 +70,7 @@ final class FakeInbox: InboxSource {
 
 struct FakeRuntimeState {
     var launched: [[String]] = []
+    var launchEnvironments: [[String: String]] = [] // 起動ごとに追加で渡した環境変数（`launched` と同じ順）
     var status = LoopStatus.idle
     var launchFails = false
     var epic = EpicSnapshot(branch: "epic/mvp", goal: nil, state: nil)
@@ -371,6 +372,10 @@ final class FakeRuntime: LoopRuntime {
         state.withLock { $0.launched }
     }
 
+    var launchEnvironments: [[String: String]] {
+        state.withLock { $0.launchEnvironments }
+    }
+
     func set(_ status: LoopStatus) {
         state.withLock { $0.status = status }
     }
@@ -389,6 +394,7 @@ final class FakeRuntime: LoopRuntime {
                 throw TestError()
             }
             state.launched.append(arguments)
+            state.launchEnvironments.append(environment)
             // 起動したプロセスは、テストが状態を変えるまで生きている
             state.status = LoopStatus(stateFileExists: false, processAlive: true)
         }

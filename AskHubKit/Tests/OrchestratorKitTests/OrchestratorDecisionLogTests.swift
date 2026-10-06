@@ -82,7 +82,14 @@ extension OrchestratorTests {
 
         try await orchestrator.pollOnce()
         #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", ""]])
+        // epic のタスクがすべて完了していても起動スクリプトがループを起動するよう、再開の理由を渡す
+        #expect(runtime.launchEnvironments == [["ASKHUB_RESUME_REASON": "decision-log"]])
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#20 の仮決め一覧に指示が付いたので、ループを再開しました"))
+
+        // ループが始まった（state ファイルが現れた）
+        runtime.set(Self.started)
+        try await orchestrator.pollOnce()
+        #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#20 の仮決め一覧の指示で再開したループの開始を確かめました"))
 
         // ループが返信せずに止まっても、同じコメントでは再開しない
         runtime.set(.idle)
@@ -106,7 +113,10 @@ extension OrchestratorTests {
         try await orchestrator.pollOnce()
         #expect(github.updatedPullRequestBodies.isEmpty)
 
-        // 再開したループが promise を出して止まった
+        // 再開したループが始まり、promise を出して止まった
+        runtime.set(Self.started)
+        try await orchestrator.pollOnce()
+        #expect(github.updatedPullRequestBodies.isEmpty)
         runtime.set(.idle)
         try await orchestrator.pollOnce()
         #expect(github.updatedPullRequestBodies == [
@@ -116,6 +126,53 @@ extension OrchestratorTests {
         // 書き直しは 1 回だけ
         try await orchestrator.pollOnce()
         #expect(github.updatedPullRequestBodies.count == 1)
+    }
+
+    @Test func doesNotRewriteFinalPullRequestWhenResumedLoopDidNotStart() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setDecisionLogs([Self.decisionLog()], comments: [20: [Self.instruction]])
+        github.addExistingPullRequest(head: "epic/mvp", ExistingPullRequest(number: 61, isOpen: true, body: "- 古いまとめ"))
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】完了済み", state: "## 最終 PR に載せる内容\n- まとめ\n"))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        // 起動スクリプトがループを始めずに終わる（state ファイルが現れない）たびに、上限まで再開し直す
+        for attempt in 1...Orchestrator.maxDecisionResumeAttempts {
+            try await orchestrator.pollOnce()
+            #expect(runtime.launched.count == attempt)
+            runtime.set(Self.exitedWithoutStarting)
+        }
+        let retry = "shilokuma-inc/ask-hub-apple#20 の仮決め一覧の指示で起動したループの開始を確かめられないまま、プロセスが終わりました（1/3 回目）。再開し直します"
+        #expect(logs.recorded.contains(retry))
+
+        // 上限に達したら、この指示では再開しない
+        try await orchestrator.pollOnce()
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.count == Orchestrator.maxDecisionResumeAttempts)
+        let giveUp = "shilokuma-inc/ask-hub-apple#20 の仮決め一覧の指示でループの開始を 3 回確かめられませんでした。この指示では再開しません（loopCommand と起動スクリプトのログを確認してください）"
+        #expect(logs.recorded.contains(giveUp))
+        // ループが動いていないので、最終 PR の本文は書き直さない
+        #expect(github.updatedPullRequestBodies.isEmpty)
+        #expect(!logs.recorded.contains { $0.contains("再開したループの結果で書き直しました") })
+    }
+
+    @Test func confirmsResumeWhenLoopRepliedBeforeStateFileWasSeen() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setDecisionLogs([Self.decisionLog()], comments: [20: [Self.instruction]])
+        github.addExistingPullRequest(head: "epic/mvp", ExistingPullRequest(number: 61, isOpen: true, body: "- 古いまとめ"))
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FIX】#3 を別案 1 に", state: "## 最終 PR に載せる内容\n- 新しいまとめ\n"))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+        try await orchestrator.pollOnce()
+
+        // ポーリングの間にループが始まり、指示に返信して終わった（state ファイルを見られなかった）
+        let reply = IssueComment(id: 2, author: "mrs1669", body: "\(DecisionLog.replyMarker)\n#3 を変更しました")
+        github.setDecisionLogs([Self.decisionLog()], comments: [20: [Self.instruction, reply]])
+        runtime.set(Self.exitedWithoutStarting)
+        try await orchestrator.pollOnce()
+
+        #expect(runtime.launched.count == 1)
+        #expect(github.updatedPullRequestBodies == ["#61: - 新しいまとめ" + GitHubOrchestrator.epicFinalFooter])
     }
 
     @Test func doesNotResumeWithoutUnprocessedInstruction() async throws {
