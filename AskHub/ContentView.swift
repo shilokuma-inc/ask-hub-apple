@@ -8,12 +8,13 @@
 import AskHubKit
 import SwiftUI
 
-/// 受信箱（「要回答」「急がない」。Discussion #1 の Q5）と「依頼」のタブ
+/// 受信箱（「要回答」「急がない」。Discussion #1 の Q5）・「マージ待ち」・「ループ」・「依頼」のタブ
 struct ContentView: View {
     // モデルは App が持つ（デモモードの切り替えで差し替わる）
     let model: InboxModel
     let requestModel: IdeaRequestModel
     let mergeModel: MergeQueueModel
+    let loopModel: LoopStatusModel
     @State private var isShowingSettings = false
 
     var body: some View {
@@ -30,9 +31,7 @@ struct ContentView: View {
                             QuestionRow(question: question)
                         }
                     },
-                    openSettings: { isShowingSettings = true },
-                    leadingIsEmpty: model.usageLimited.isEmpty,
-                    leading: { UsageLimitedSection(repositories: model.usageLimited) }
+                    openSettings: { isShowingSettings = true }
                 )
                 .demoModeBanner()
                 .navigationDestination(for: InboxQuestion.self) { question in
@@ -60,12 +59,7 @@ struct ContentView: View {
                         // Link の既定のスタイルは行の文字をすべてアクセントカラーにするため、行の配色を使う
                         .buttonStyle(.plain)
                     },
-                    openSettings: { isShowingSettings = true },
-                    leadingIsEmpty: model.waiting.isEmpty && model.usageLimited.isEmpty,
-                    leading: {
-                        UsageLimitedSection(repositories: model.usageLimited)
-                        WaitingDiscussionsSection(waiting: model.waiting)
-                    }
+                    openSettings: { isShowingSettings = true }
                 )
                 .demoModeBanner()
             }
@@ -79,6 +73,13 @@ struct ContentView: View {
             }
             .tabItem { Label("マージ待ち", systemImage: "arrow.triangle.merge") }
             .badge(mergeModel.pullRequests.count)
+
+            // iOS のタブバーは 5 つまで（6 つ目からは「その他」にまとめられる）
+            NavigationStack {
+                LoopStatusListView(model: loopModel) { isShowingSettings = true }
+                    .demoModeBanner()
+            }
+            .tabItem { Label("ループ", systemImage: "arrow.triangle.2.circlepath") }
 
             NavigationStack {
                 NewRequestView(model: requestModel) { isShowingSettings = true }
@@ -99,6 +100,7 @@ struct ContentView: View {
                 await model.refresh()
                 await requestModel.loadRepositories()
                 await mergeModel.refresh()
+                await loopModel.refresh()
             }
         } content: {
             SettingsView()
@@ -108,7 +110,7 @@ struct ContentView: View {
 
 #if DEBUG
 #Preview("一覧") {
-    ContentView(model: .sample(), requestModel: .sample(), mergeModel: .sample())
+    ContentView(model: .sample(), requestModel: .sample(), mergeModel: .sample(), loopModel: .sample())
 }
 #endif
 
@@ -116,6 +118,7 @@ struct ContentView: View {
     ContentView(
         model: InboxModel(tokenStore: InMemoryTokenStore()),
         requestModel: IdeaRequestModel(tokenStore: InMemoryTokenStore()),
-        mergeModel: MergeQueueModel(tokenStore: InMemoryTokenStore())
+        mergeModel: MergeQueueModel(tokenStore: InMemoryTokenStore()),
+        loopModel: LoopStatusModel(tokenStore: InMemoryTokenStore())
     )
 }

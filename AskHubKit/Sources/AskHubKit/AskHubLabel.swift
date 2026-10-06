@@ -16,4 +16,6 @@ public enum AskHubLabel: String, CaseIterable, Sendable {
     case epicFinal = "epic-final"
     /// このリポジトリを担当する PC のオーケストレーターがいる（説明に最終確認の時刻を書く）
     case orchestratorHeartbeat = "askhub-orchestrator"
+    /// オーケストレーターがループの状態を書き出す Issue（リポジトリごとに 1 つ）
+    case loopStatus = "loop-status"
 }

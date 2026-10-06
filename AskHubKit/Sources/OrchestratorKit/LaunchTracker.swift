@@ -42,6 +42,11 @@ public struct LaunchTracker: Sendable, Equatable {
 
     public init() {}
 
+    /// `repositoryKey` の Discussion のうち、ループの起動を諦めたものがあるか
+    public func hasGivenUp(repositoryKey: String) -> Bool {
+        entries.values.contains { $0.repositoryKey == repositoryKey && $0.phase == .gaveUp }
+    }
+
     /// 起動判定で起動しない Discussion（追跡中で、起動し直す番ではないもの）
     public var blockedDiscussionIDs: Set<String> {
         Set(entries.filter { $0.value.phase != .failed }.keys)
