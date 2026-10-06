@@ -1,6 +1,7 @@
 @testable import AskHub
 import AskHubKit
 import Foundation
+import SwiftUI
 import Testing
 
 struct InboxIssueSectionsTests {
@@ -29,6 +30,9 @@ struct InboxIssueSectionsTests {
 
         #expect(sections.map(\.header?.title) == ["判断ログ", "実機確認"])
         #expect(sections.map(\.header?.systemImage) == ["list.bullet.clipboard", "iphone"])
+        // 見出しのアイコンは行のラベルと同じ種類の色
+        #expect(sections.map(\.header?.tint) == [InboxIssue.Kind.decisionLog.color, InboxIssue.Kind.needsVerify.color])
+        #expect(InboxIssue.Kind.decisionLog.color != InboxIssue.Kind.needsVerify.color)
         #expect(sections.map { $0.items.map(\.id) } == [["D1", "D2"], ["V1", "V2"]])
     }
 

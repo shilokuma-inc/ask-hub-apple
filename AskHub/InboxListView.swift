@@ -6,6 +6,8 @@ struct InboxListSection<Item: Identifiable>: Identifiable {
     struct Header {
         let title: String
         let systemImage: String
+        /// 見出しのアイコンの色。行のラベルと同じ色にして、どのセクションの行か見分けられるようにする
+        let tint: Color
     }
 
     let id: String
@@ -41,7 +43,12 @@ struct InboxListView<Item: Identifiable, Row: View>: View {
                     Section {
                         rows(of: section)
                     } header: {
-                        Label("\(header.title)（\(section.items.count) 件）", systemImage: header.systemImage)
+                        Label {
+                            Text("\(header.title)（\(section.items.count) 件）")
+                        } icon: {
+                            Image(systemName: header.systemImage)
+                                .foregroundStyle(header.tint)
+                        }
                     }
                 } else {
                     rows(of: section)

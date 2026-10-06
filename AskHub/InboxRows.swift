@@ -42,7 +42,7 @@ struct IssueRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Label(issue.kind.title, systemImage: issue.kind.systemImage)
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(issue.kind.color)
                 Text("\(InboxSubject.shortRepository(issue.repository))#\(issue.number)")
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -93,6 +93,17 @@ extension InboxIssue.Kind {
             "iphone"
         }
     }
+
+    /// 種類を見分ける色。セクション見出しのアイコンと行のラベルに使う。システムカラーなのでライト・ダークの両方で読める
+    var color: Color {
+        switch self {
+        case .decisionLog:
+            .purple
+
+        case .needsVerify:
+            .orange
+        }
+    }
 }
 
 extension InboxIssue {
@@ -103,7 +114,7 @@ extension InboxIssue {
             guard !items.isEmpty else { return nil }
             return InboxListSection(
                 id: kind.title,
-                header: InboxListSection.Header(title: kind.title, systemImage: kind.systemImage),
+                header: InboxListSection.Header(title: kind.title, systemImage: kind.systemImage, tint: kind.color),
                 items: items
             )
         }
