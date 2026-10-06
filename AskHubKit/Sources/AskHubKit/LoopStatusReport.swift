@@ -29,7 +29,8 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         case waitingForAnswer = "waiting-for-answer"
         /// Claude の利用上限で待機している（`usageLimitedUntil` に解除の時刻）
         case usageLimited = "usage-limited"
-        /// `ready-for-loop` の Discussion があるが、まだ起動していない
+        /// epic のタスクが残ったままループが止まっている（再開待ち・手で止めた）、
+        /// または `ready-for-loop` の Discussion があるが、まだ起動していない
         case waitingToStart = "waiting-to-start"
         /// 異常終了し、自動の再開を諦めた
         case gaveUp = "gave-up"
