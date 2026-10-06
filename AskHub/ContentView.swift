@@ -31,9 +31,7 @@ struct ContentView: View {
                             QuestionRow(question: question)
                         }
                     },
-                    openSettings: { isShowingSettings = true },
-                    leadingIsEmpty: model.usageLimited.isEmpty,
-                    leading: { UsageLimitedSection(repositories: model.usageLimited) }
+                    openSettings: { isShowingSettings = true }
                 )
                 .demoModeBanner()
                 .navigationDestination(for: InboxQuestion.self) { question in
@@ -61,12 +59,7 @@ struct ContentView: View {
                         // Link の既定のスタイルは行の文字をすべてアクセントカラーにするため、行の配色を使う
                         .buttonStyle(.plain)
                     },
-                    openSettings: { isShowingSettings = true },
-                    leadingIsEmpty: model.waiting.isEmpty && model.usageLimited.isEmpty,
-                    leading: {
-                        UsageLimitedSection(repositories: model.usageLimited)
-                        WaitingDiscussionsSection(waiting: model.waiting)
-                    }
+                    openSettings: { isShowingSettings = true }
                 )
                 .demoModeBanner()
             }

@@ -1,30 +1,32 @@
 import AskHubKit
 import SwiftUI
 
-/// 「ループ」タブ。リポジトリごとのループの状態を出す（表示だけ）
+/// 「ループ」タブ。先頭に「上限で待機中」「ループの開始待ち」（どちらも空なら出さない）、その下にリポジトリごとのループの状態を出す（表示だけ）
 struct LoopStatusListView: View {
     let model: LoopStatusModel
     let openSettings: () -> Void
 
     var body: some View {
-        List(model.rows) { row in
-            let display = row.display(now: Date())
-            if let destination = display.destination {
-                // ゴール元の Discussion（無ければ状態用の Issue）を GitHub で開く
-                Link(destination: destination) {
-                    LoopStatusRowView(repository: row.repository, display: display)
-                        // 行全体をタップできるように幅を広げる
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(.rect)
+        List {
+            // 一覧の中身があるときは、空の表示の代わりにここで失敗を知らせる
+            if case let .failed(message) = model.state, !model.isEmpty {
+                Section {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
                 }
-                // Link の既定のスタイルは行の文字をすべてアクセントカラーにするため、行の配色を使う
-                .buttonStyle(.plain)
-            } else {
-                LoopStatusRowView(repository: row.repository, display: display)
+            }
+            UsageLimitedSection(repositories: model.usageLimited)
+            WaitingDiscussionsSection(waiting: model.waiting)
+            if !model.rows.isEmpty {
+                Section("リポジトリ") {
+                    ForEach(model.rows) { row in
+                        rowView(row)
+                    }
+                }
             }
         }
         .overlay {
-            if model.rows.isEmpty {
+            if model.isEmpty {
                 emptyState
             }
         }
@@ -44,6 +46,23 @@ struct LoopStatusListView: View {
         // 起動時やフォアグラウンド復帰時に取得済みなら、タブを開いただけでは取り直さない
         // デモモードの切り替えでモデルが差し替わったら、新しいモデルで取り直す
         .task(id: ObjectIdentifier(model)) { await model.refreshIfStale() }
+    }
+
+    @ViewBuilder private func rowView(_ row: LoopStatusRow) -> some View {
+        let display = row.display(now: Date())
+        if let destination = display.destination {
+            // ゴール元の Discussion（無ければ状態用の Issue）を GitHub で開く
+            Link(destination: destination) {
+                LoopStatusRowView(repository: row.repository, display: display)
+                    // 行全体をタップできるように幅を広げる
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+            }
+            // Link の既定のスタイルは行の文字をすべてアクセントカラーにするため、行の配色を使う
+            .buttonStyle(.plain)
+        } else {
+            LoopStatusRowView(repository: row.repository, display: display)
+        }
     }
 
     @ViewBuilder private var emptyState: some View {
@@ -122,6 +141,91 @@ struct LoopStatusRowView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// 「ループの開始待ち」の節。担当 PC のいないリポジトリは「担当 PC なし」と出す
+struct WaitingDiscussionsSection: View {
+    let waiting: [WaitingDiscussion]
+
+    var body: some View {
+        if !waiting.isEmpty {
+            Section {
+                ForEach(waiting) { discussion in
+                    Link(destination: discussion.subject.url) {
+                        WaitingDiscussionRow(discussion: discussion)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } header: {
+                Text("ループの開始待ち")
+            } footer: {
+                Text("担当 PC のオーケストレーターが 30 分以上確認していないリポジトリは「担当 PC なし」と出します")
+            }
+        }
+    }
+}
+
+struct WaitingDiscussionRow: View {
+    let discussion: WaitingDiscussion
+
+    var body: some View {
+        // 相対時刻を出さないので、表示のたびの時刻で判定すればよい
+        let isAssigned = discussion.isAssigned(now: Date())
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(discussion.subject.shortReference)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let until = discussion.usageLimitedUntil, discussion.isUsageLimited(now: Date()) {
+                    Label(
+                        "上限で待機中（\(UsageLimitedRepository.resumeText(until: until, now: Date()))）",
+                        systemImage: "moon.zzz.fill"
+                    )
+                    .foregroundStyle(.orange)
+                } else if isAssigned {
+                    Label("担当 PC が起動します", systemImage: "hourglass")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("担当 PC なし", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+            }
+            .font(.caption)
+
+            Text(discussion.subject.title)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// 「上限で待機中」の節。担当 PC が Claude の利用上限で止まっているリポジトリと、再開の時刻を出す
+struct UsageLimitedSection: View {
+    let repositories: [UsageLimitedRepository]
+
+    var body: some View {
+        if !repositories.isEmpty {
+            Section {
+                ForEach(repositories) { repository in
+                    HStack(spacing: 6) {
+                        Label(repository.repository, systemImage: "moon.zzz.fill")
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Text(repository.resumeText(now: Date()))
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.callout)
+                }
+            } header: {
+                Text("上限で待機中")
+            } footer: {
+                Text("担当 PC の Claude が利用上限に達しています。再開の時刻を過ぎると、止まっていたループを自動で再開します")
+            }
+        }
     }
 }
 
