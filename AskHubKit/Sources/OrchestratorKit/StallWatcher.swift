@@ -33,6 +33,11 @@ public struct StallWatcher: Sendable {
         entries[key] = nil
     }
 
+    /// `snapshot` の epic のまま、再開を諦めているか（epic が進めば数え直すので `false` に戻る）
+    public func hasGivenUp(repositoryKey key: String, snapshot: EpicSnapshot) -> Bool {
+        entries[key].map { $0.gaveUp && $0.snapshot == snapshot } ?? false
+    }
+
     public mutating func update(repositoryKey key: String, status: LoopStatus, snapshot: EpicSnapshot) -> Action? {
         guard status.stalled, !status.processAlive, snapshot.branch?.hasPrefix("epic/") == true else {
             return nil
