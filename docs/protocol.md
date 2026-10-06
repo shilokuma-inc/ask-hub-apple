@@ -30,6 +30,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `idea-request` | Issue | アプリから出した新機能の依頼 | アプリ | — （オーケストレーターが Discussion を作ってクローズする） |
 | `epic-final` | PR | epic → `develop` の最終 PR | オーケストレーター | — （アプリからマージする） |
 | `askhub-orchestrator` | （リポジトリのラベルとして置くだけ） | このリポジトリを担当する PC のオーケストレーターがいる。説明に最終確認の時刻（Claude の利用上限で待機中なら、解除の時刻も）を書く | オーケストレーター（10 分ごとに説明を書き換える） | — |
+| `loop-status` | Issue | ループの状態を書き出す Issue（リポジトリごとに 1 つ。下記「ループの状態」） | オーケストレーター | — |
 
 アプリの一覧での扱い:
 
@@ -40,6 +41,47 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **ループの開始待ち**（急がないの先頭）: `ready-for-loop` の Discussion。`askhub-orchestrator` の時刻が 30 分より古い・無いリポジトリは「担当 PC なし」。担当 PC が上限で待機中なら「上限で待機中（〇時に再開）」
 
 対象は `shilokuma-inc` org 全体で、ラベルで検索する（リポジトリの列挙は設定しない）。
+
+## ループの状態
+
+アプリは Mac の中を見られないので、オーケストレーターが担当リポジトリごとにループの状態を Issue に書き出し、アプリはそれを読む
+（[Discussion #197](https://github.com/shilokuma-inc/ask-hub-apple/discussions/197) の Q1・Q2）。形式は `AskHubKit` の `LoopStatusReport` が実装している。
+
+- Issue はリポジトリごとに 1 つ。ラベル `loop-status`、タイトル `【AskHub】ループの状態`
+- 本文の**先頭**に機械が読める目印を置き、続けて人が読める表を置く。アプリが読むのは目印だけ
+- **信用する author が作った Issue だけを読む**（public リポジトリでは誰でも同じラベルの Issue を作れる）
+- public リポジトリでは誰でも読めるので、epic 名・Discussion の番号・件数・時刻だけを書く。**ローカルパス・ログの中身・PC 名・トークンは書かない**
+
+```html
+<!-- ask-hub:loop-status {"checkedAt":"2026-10-06T00:10:00Z","discussion":197,"epic":"epic/loop-status","lastActivityAt":"2026-10-06T00:07:00Z","progress":{"completed":5,"total":12},"state":"running"} -->
+```
+
+目印の中身は JSON（キーの順は問わない。知らないキーは無視する）。時刻は秒までの ISO 8601（UTC）。
+文字列の中の `>` は `\u003e` にエスケープし、目印の終わり（`-->`）と取り違えないようにする。
+
+| キー | 必須 | 内容 |
+| --- | --- | --- |
+| `state` | 必須 | 状態の分類（下表） |
+| `checkedAt` | 必須 | オーケストレーターが最後に確かめた時刻。状態が変わらなくても 10 分ごとに書き直す |
+| `epic` | 任意 | 統合ブランチ（例: `epic/loop-status`） |
+| `discussion` | 任意 | ゴール元の Discussion の番号 |
+| `progress` | 任意 | goal のチェックボックスの数。`completed`（`[x]`。保留で閉じたものを含む）と `total` |
+| `lastActivityAt` | 任意 | ループが最後に動いた時刻 |
+| `usageLimitedUntil` | 任意 | Claude の利用上限の解除の時刻（`usage-limited` のとき） |
+
+| `state` | 表の表記 | 意味 |
+| --- | --- | --- |
+| `running` | 実行中 | ループが動いている |
+| `waiting-for-answer` | 回答待ち | 回答待ちのタスクだけが残っている（PR の ask が未回答） |
+| `usage-limited` | 上限で待機中 | Claude の利用上限で待機している |
+| `waiting-to-start` | 開始待ち | `ready-for-loop` の Discussion があるが、まだ起動していない |
+| `gave-up` | 異常終了（再開を諦めた） | 異常終了し、自動の再開を諦めた |
+| `completed` | 完了（最終 PR のマージ待ち） | 全タスクが終わり、最終 PR のマージを待っている |
+| `no-loop` | ループなし | ループが無い |
+
+- アプリが知らない `state` は「不明」として扱う（新しいオーケストレーターが分類を足しても読めなくならないように）
+- 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
+- オーケストレーターは、`checkedAt` 以外が変わったときに本文を書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す
 
 ## 質問の目印
 
