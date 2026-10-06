@@ -68,6 +68,20 @@ struct LoopStartTests {
         #expect(!AnswerFormModel(question: ask).canStartLoop(in: inbox))
     }
 
+    @Test func startsLoopByDefaultOnlyForLastQuestionOfDiscussion() async throws {
+        let inbox = await makeInbox(starter: RecordingStarter())
+        let questions = discussionQuestions(in: inbox)
+        #expect(!AnswerFormModel(question: questions[0], inbox: inbox).startsLoopAfterPosting)
+
+        // 1 つ目に答えると、最後の質問では既定でオンになる
+        try await inbox.post(Answer(choice: "1時間"), to: questions[0])
+        #expect(AnswerFormModel(question: questions[1], inbox: inbox).startsLoopAfterPosting)
+
+        // PR の ask ではオンにしない
+        let ask = try #require(inbox.questions.first { $0.subject.kind == .pullRequest })
+        #expect(!AnswerFormModel(question: ask, inbox: inbox).startsLoopAfterPosting)
+    }
+
     @Test func marksDiscussionReadyAfterPosting() async throws {
         let starter = RecordingStarter()
         let inbox = await makeInbox(starter: starter)

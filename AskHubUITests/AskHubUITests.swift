@@ -209,14 +209,14 @@ final class AskHubUITests: XCTestCase {
         app.buttons["1時間"].tap()
         app.buttons["回答を投稿"].tap()
 
-        // 最後の質問では、投稿と一緒にループを始められる
+        // 最後の質問では、投稿と一緒にループを始められる。「投稿したらループを始める」は既定でオン（Issue #98）
         let lastQuestion = app.staticTexts["Q2. 通知の文言 通知に表示する文言の案があれば教えてください。"]
         XCTAssertTrue(lastQuestion.waitForExistence(timeout: 5))
         lastQuestion.tap()
         app.swipeUp()
         let toggle = app.switches["投稿したら、回答を確定してループを始める"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        toggle.switches.firstMatch.tap()
+        XCTAssertEqual(toggle.value as? String, "1")
         let note = app.textFields["回答"]
         note.tap()
         note.typeText("朝の通知だけにしたい")
