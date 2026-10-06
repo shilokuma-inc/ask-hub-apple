@@ -38,6 +38,17 @@ final class AskHubUITests: XCTestCase {
 
         app.tabBars.buttons["急がない"].tap()
         XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
+        // 判断ログ（上）と実機確認（下）のセクションに分け、見出しに件数を出す
+        let decisionLogHeader = app.staticTexts["判断ログ（2 件）"]
+        let needsVerifyHeader = app.staticTexts["実機確認（1 件）"]
+        XCTAssertTrue(decisionLogHeader.exists)
+        XCTAssertTrue(needsVerifyHeader.exists)
+        XCTAssertLessThan(decisionLogHeader.frame.minY, needsVerifyHeader.frame.minY)
+        // 更新が実機確認より古い判断ログも、判断ログのセクション（実機確認の見出しより上）に入る
+        XCTAssertLessThan(
+            app.staticTexts["【CHORE】epic/notification の仮決め一覧"].frame.minY,
+            needsVerifyHeader.frame.minY
+        )
         XCTAssertFalse(app.staticTexts["上限で待機中"].exists)
         XCTAssertFalse(app.staticTexts["ループの開始待ち"].exists)
     }
