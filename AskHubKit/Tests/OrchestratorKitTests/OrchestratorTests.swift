@@ -114,7 +114,10 @@ struct OrchestratorTests {
 
         #expect(runtime.launched.isEmpty)
         #expect(github.removed.isEmpty)
-        #expect(logs.recorded == ["shilokuma-inc/ask-hub-apple#12 は起動しません: 制御用 worktree に .claude/ralph-loop.local.md が残っています"])
+        // 状態用の Issue を作ったログ（Orchestrator+LoopStatus）は除いて比べる
+        #expect(logs.recorded.filter { !$0.contains("ループの状態") } == [
+            "shilokuma-inc/ask-hub-apple#12 は起動しません: 制御用 worktree に .claude/ralph-loop.local.md が残っています"
+        ])
     }
 
     // MARK: - ask への回答

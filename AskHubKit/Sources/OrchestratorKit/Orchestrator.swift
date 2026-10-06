@@ -37,6 +37,12 @@ public protocol OrchestratorGitHub: Sendable {
     func comment(on issue: DecisionLogIssue, body: String) async throws
     /// 仮決め一覧をクローズする（完了として）
     func close(_ issue: DecisionLogIssue) async throws
+    /// リポジトリの、`loop-status` が付いた Issue（閉じたものも含む）
+    func loopStatusIssues(in repository: String) async throws -> [LoopStatusIssueRecord]
+    /// 状態用の Issue を作る（ラベルが無ければ作る）。Issue の番号を返す
+    func createLoopStatusIssue(in repository: String, body: String) async throws -> Int
+    /// 状態用の Issue の本文を置き換える。閉じられていれば開き直す
+    func updateLoopStatusIssue(in repository: String, number: Int, body: String) async throws
 }
 
 /// 終わるまで待って実行したコマンドの結果
@@ -83,6 +89,8 @@ public protocol LoopRuntime: Sendable {
     func terminate(_ loop: HungLoop) async
     /// 「goal にタスクが無かった」目印を消す（Discussion に知らせた後。追記してラベルを付け直せば、もう一度準備する）
     func clearNoTasksMarker(of repository: RepositoryConfig) async
+    /// ループが最後に動いた時刻（state ファイル・goal・最新のログの更新時刻のうち新しいもの）。無ければ `nil`
+    func lastActivity(of repository: RepositoryConfig) async -> Date?
     /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める
     func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
 }
@@ -110,6 +118,12 @@ public actor Orchestrator {
     let now: @Sendable () -> Date
     private var ideaTracker = IdeaRequestTracker()
     var stallWatcher = StallWatcher()
+    /// 状態用の Issue に書いた内容
+    var loopStatusPublisher = LoopStatusPublisher()
+    /// 担当リポジトリごとの、まだ起動していない `ready-for-loop` の Discussion の番号（最後に取得できたもの）
+    var readyDiscussionNumbers: [String: Int] = [:]
+    /// epic の最終 PR がマージ済みか（キーは `<repo小文字> <branch>`）。未マージなら確かめた時刻も持ち、問い合わせを間引く
+    var epicMergeChecks: [String: (merged: Bool, checkedAt: Date)] = [:]
 
     /// 依頼から Discussion を作らせるコマンドの制限時間
     static let ideaCommandTimeout: Duration = .seconds(30 * 60)
@@ -163,6 +177,7 @@ public actor Orchestrator {
         if activeUsageLimit(at: now()) != nil {
             // 最終 PR の作成は claude を使わないので、待っている間も進める
             _ = await finalizeCompletedEpics(statuses: statuses)
+            await publishLoopStatuses(statuses: statuses)
             return []
         }
 
@@ -190,6 +205,7 @@ public actor Orchestrator {
 
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         let snapshots = await epicSnapshots()
+        recordReadyDiscussions(discussions, snapshots: snapshots)
         let handled = await advanceLaunchedDiscussions(discussions, statuses: statuses, snapshots: snapshots)
 
         let decisions = LaunchPlanner.decide(
@@ -219,6 +235,8 @@ public actor Orchestrator {
         } catch {
             log("依頼の確認に失敗しました: \(error)")
         }
+        // ループの状態を状態用の Issue に書き出す（起動・再開を反映した後）
+        await publishLoopStatuses(statuses: statuses)
         return decisions
     }
 

@@ -128,6 +128,14 @@ public actor LocalLoopRuntime: LoopRuntime {
         return UsageLimit.resetDate(in: String(decoding: data, as: UTF8.self), loggedAt: modified)
     }
 
+    public func lastActivity(of repository: RepositoryConfig) -> Date? {
+        let control = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
+        let files = [Self.stateFileRelativePath, ".claude/ralph-state.local.md", ".claude/ralph-goal.local.md"]
+            .map { control.appendingPathComponent($0) }
+            + [loopLogDirectory.appendingPathComponent("\(repository.name)-latest.log").resolvingSymlinksInPath()]
+        return files.compactMap(Self.modificationDate(of:)).max()
+    }
+
     public func status(of repository: RepositoryConfig) -> LoopStatus {
         let key = repository.fullName.lowercased()
         if processes[key]?.isRunning == false {
