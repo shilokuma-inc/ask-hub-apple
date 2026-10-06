@@ -16,7 +16,7 @@ struct QuestionDetailView: View {
     init(question: InboxQuestion, inbox: InboxModel) {
         self.inbox = inbox
         renderedBody = RenderedBody(body: question.questionBody)
-        _form = State(initialValue: AnswerFormModel(question: question))
+        _form = State(initialValue: AnswerFormModel(question: question, inbox: inbox))
     }
 
     private var question: InboxQuestion {
