@@ -230,6 +230,46 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    func testStartLoopDefaultFollowsSettings() throws {
+        let app = XCUIApplication()
+        // サンプルデータの起動引数では、設定画面の既定値（オン）から始まる
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        // 設定画面のスイッチは初期値オン。オフにする（Discussion #244 の Q1）
+        let settings = app.buttons["設定"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        let preference = app.switches["投稿したらループを始める"]
+        XCTAssertTrue(preference.waitForExistence(timeout: 5))
+        if !preference.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertEqual(preference.value as? String, "1")
+        preference.switches.firstMatch.tap()
+        XCTAssertEqual(preference.value as? String, "0")
+        app.buttons["完了"].tap()
+
+        // 1 つ目の質問に答えて、最後の質問を開く
+        let firstQuestion = app.staticTexts["Q1. レート制限の単位 送信の上限をどの単位で数えますか？"]
+        XCTAssertTrue(firstQuestion.waitForExistence(timeout: 5))
+        firstQuestion.tap()
+        app.swipeUp()
+        app.buttons["1時間"].tap()
+        app.buttons["回答を投稿"].tap()
+        let lastQuestion = app.staticTexts["Q2. 通知の文言 通知に表示する文言の案があれば教えてください。"]
+        XCTAssertTrue(lastQuestion.waitForExistence(timeout: 5))
+        lastQuestion.tap()
+        app.swipeUp()
+
+        // 回答画面のトグルは設定の値（オフ）から始まり、投稿ボタンもループを始めない文言になる
+        let toggle = app.switches["投稿したら、回答を確定してループを始める"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "0")
+        XCTAssertTrue(app.buttons["回答を投稿"].exists)
+    }
+
+    @MainActor
     func testMergeDetailRendersHTMLAsBlocks() throws {
         let app = XCUIApplication()
         // HTML タグと Markdown が混ざった PR 本文のサンプル（#163）を開く
