@@ -171,9 +171,9 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
         // 自分の型の値だけなのでエンコードは失敗しない
-        let data = (try? encoder.encode(self)) ?? Data("{}".utf8)
+        let encoded = (try? encoder.encode(self)).flatMap { String(bytes: $0, encoding: .utf8) } ?? "{}"
         // JSON の構文に `>` は無く、文字列の中にしか現れない。エスケープして目印の終わり（`-->`）と取り違えないようにする
-        let json = String(decoding: data, as: UTF8.self).replacingOccurrences(of: ">", with: "\\u003e")
+        let json = encoded.replacingOccurrences(of: ">", with: "\\u003e")
         return "\(Self.commentOpen) \(Self.keyword) \(json) \(Self.commentClose)"
     }
 
