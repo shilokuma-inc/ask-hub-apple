@@ -74,11 +74,15 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `running` | 実行中 | ループが動いている |
 | `waiting-for-answer` | 回答待ち | 回答待ちのタスクだけが残っている（PR の ask が未回答） |
 | `usage-limited` | 上限で待機中 | Claude の利用上限で待機している |
-| `waiting-to-start` | 開始待ち | `ready-for-loop` の Discussion があるが、まだ起動していない |
+| `waiting-to-start` | 開始待ち | epic のタスクが残ったままループが止まっている（再開待ち・手で止めた）、または `ready-for-loop` の Discussion があるがまだ起動していない |
 | `gave-up` | 異常終了（再開を諦めた） | 異常終了し、自動の再開を諦めた |
 | `completed` | 完了（最終 PR のマージ待ち） | 全タスクが終わり、最終 PR のマージを待っている |
 | `no-loop` | ループなし | ループが無い |
 
+- 複数に当てはまるときは、上限で待機中 → 実行中 → 異常終了 → epic の進み具合（開始待ち・回答待ち・完了）→ `ready-for-loop` の開始待ち → ループなし の順に優先する（`OrchestratorKit` の `LoopStatusSummary`）。
+  完了した epic の最終 PR がマージされるまでは、次の Discussion に `ready-for-loop` が付いていても「完了」を出す
+- `epic`・`discussion`・`progress`・`lastActivityAt` は、制御用 worktree が準備を終えた `epic/` のブランチにあるときだけ書く。
+  epic が無く `ready-for-loop` を待っているときは、`discussion` にその Discussion の番号を書く
 - アプリが知らない `state` は「不明」として扱う（新しいオーケストレーターが分類を足しても読めなくならないように）
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
 - オーケストレーターは、`checkedAt` 以外が変わったときに本文を書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す
