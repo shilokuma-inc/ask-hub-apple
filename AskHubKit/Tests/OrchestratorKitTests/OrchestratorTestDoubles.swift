@@ -35,6 +35,12 @@ struct FakeGitHubState {
     var decisionComments: [String] = []
     var closedDecisionLogs: [Int] = []
     var decisionCloseFails = false
+    /// 状態用の Issue（キーは番号）
+    var loopStatusIssues: [Int: LoopStatusIssueRecord] = [:]
+    var createdLoopStatusIssues: [String] = []
+    var updatedLoopStatusIssues: [String] = []
+    var loopStatusIssueListings = 0
+    var loopStatusFails = false
 }
 
 /// `needs-answer` の Discussion / PR を返す取得元。スレッドはテストから差し替える
@@ -71,6 +77,7 @@ struct FakeRuntimeState {
     var hungLoop: HungLoop?
     var terminated: [HungLoop] = []
     var clearedNoTasksMarkers = 0
+    var lastActivity: Date?
     /// `run` が順に返す結果。尽きたら最後のものを返し続ける
     var runResults: [CommandResult] = [CommandResult(status: 0, output: "")]
     var ran: [[String]] = []
@@ -163,6 +170,66 @@ final class FakeGitHub: OrchestratorGitHub {
 
     var heartbeats: [String] {
         state.withLock { $0.heartbeats }
+    }
+
+    var loopStatusIssuesByNumber: [Int: LoopStatusIssueRecord] {
+        state.withLock { $0.loopStatusIssues }
+    }
+
+    var createdLoopStatusIssues: [String] {
+        state.withLock { $0.createdLoopStatusIssues }
+    }
+
+    var updatedLoopStatusIssues: [String] {
+        state.withLock { $0.updatedLoopStatusIssues }
+    }
+
+    var loopStatusIssueListings: Int {
+        state.withLock { $0.loopStatusIssueListings }
+    }
+
+    func setLoopStatusIssues(_ issues: [LoopStatusIssueRecord]) {
+        state.withLock { $0.loopStatusIssues = Dictionary(uniqueKeysWithValues: issues.map { ($0.number, $0) }) }
+    }
+
+    func setLoopStatusFails(_ fails: Bool) {
+        state.withLock { $0.loopStatusFails = fails }
+    }
+
+    func loopStatusIssues(in repository: String) async throws -> [LoopStatusIssueRecord] {
+        try state.withLock { state in
+            if state.loopStatusFails {
+                throw TestError()
+            }
+            state.loopStatusIssueListings += 1
+            return state.loopStatusIssues.values.sorted { $0.number < $1.number }
+        }
+    }
+
+    func createLoopStatusIssue(in repository: String, body: String) async throws -> Int {
+        try state.withLock { state in
+            if state.loopStatusFails {
+                throw TestError()
+            }
+            let number = (state.loopStatusIssues.keys.max() ?? 100) + 1
+            state.loopStatusIssues[number] = LoopStatusIssueRecord(
+                number: number, author: "mrs1669", isOpen: true, updatedAt: Date(timeIntervalSince1970: 0), body: body
+            )
+            state.createdLoopStatusIssues.append("\(repository)#\(number)")
+            return number
+        }
+    }
+
+    func updateLoopStatusIssue(in repository: String, number: Int, body: String) async throws {
+        try state.withLock { state in
+            guard !state.loopStatusFails, let issue = state.loopStatusIssues[number] else {
+                throw TestError()
+            }
+            state.loopStatusIssues[number] = LoopStatusIssueRecord(
+                number: number, author: issue.author, isOpen: true, updatedAt: issue.updatedAt, body: body
+            )
+            state.updatedLoopStatusIssues.append("\(repository)#\(number)")
+        }
     }
 
     func setHeartbeatFails(_ fails: Bool) {
@@ -379,6 +446,14 @@ final class FakeRuntime: LoopRuntime {
 
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot {
         state.withLock { $0.epic }
+    }
+
+    func setLastActivity(_ date: Date?) {
+        state.withLock { $0.lastActivity = date }
+    }
+
+    func lastActivity(of repository: RepositoryConfig) async -> Date? {
+        state.withLock { $0.lastActivity }
     }
 
     func setRunResults(_ results: [CommandResult]) {
