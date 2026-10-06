@@ -93,14 +93,14 @@ final class LoopStatusModel {
         let previous = (state: state, lastRefreshed: lastRefreshed)
         state = .loading
         lastRefreshed = .now
-        let org = InboxModel.org
+        let orgs = [InboxModel.org]
         let fetcher = LoopStatusFetcher(source: makeSource(token), trustedAuthors: trustedAuthors)
         let inboxFetcher = InboxFetcher(source: makeInboxSource(token), trustedAuthors: trustedAuthors)
         do {
-            async let rows = fetcher.rows(org: org)
-            async let waiting = inboxFetcher.waitingDiscussions(org: org)
+            async let rows = fetcher.rows(orgs: orgs)
+            async let waiting = inboxFetcher.waitingDiscussions(orgs: orgs)
             // 上限の表示は補助なので、取得に失敗してもループの状態は出す（次の更新で取り直す）
-            async let usageLimited = (try? await inboxFetcher.usageLimitedRepositories(org: org, now: .now)) ?? []
+            async let usageLimited = (try? await inboxFetcher.usageLimitedRepositories(orgs: orgs, now: .now)) ?? []
             let fetched = try await (rows, waiting, usageLimited)
             // 上限の取得の `try?` は打ち切りも空として返すので、打ち切られていれば途中の結果で一覧を上書きしない
             try Task.checkCancellation()

@@ -131,7 +131,7 @@ struct AnswerFormModelTests {
             waiter?.resume()
         }
 
-        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             let isFirst = gate.withLock { state in
                 state.calls += 1
                 return state.calls == 1
@@ -151,14 +151,14 @@ struct AnswerFormModelTests {
                 // 古いトークンでの結果には質問が無い（回答済みの記録を消してしまう条件）
                 return []
             }
-            return try await SampleInboxSource().subjectsNeedingAnswer(org: org)
+            return try await SampleInboxSource().subjectsNeedingAnswer(orgs: orgs)
         }
 
         func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
             try await SampleInboxSource().questionThreads(of: subject)
         }
 
-        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
             []
         }
     }

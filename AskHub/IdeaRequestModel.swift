@@ -83,7 +83,7 @@ final class IdeaRequestModel {
         }
         repositoriesState = .loading
         do {
-            repositories = try await makeRequester(token).repositories(in: InboxModel.org)
+            repositories = try await makeRequester(token).repositories(in: [InboxModel.org])
             // 選んでいたリポジトリが一覧から消えていたら、選び直してもらう
             if let repository, !repositories.contains(where: { $0.fullName == repository }) {
                 self.repository = nil

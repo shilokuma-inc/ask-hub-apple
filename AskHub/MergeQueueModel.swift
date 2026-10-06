@@ -77,7 +77,7 @@ final class MergeQueueModel {
         state = .loading
         lastRefreshed = .now
         do {
-            let fetched = try await makeProvider(token).epicPullRequests(org: InboxModel.org)
+            let fetched = try await makeProvider(token).epicPullRequests(orgs: [InboxModel.org])
             // 取得結果に出てこなくなった（検索に反映された）PR は、覚えておく必要がない
             mergedIDs.formIntersection(fetched.map(\.id))
             pullRequests = fetched.filter { !mergedIDs.contains($0.id) }

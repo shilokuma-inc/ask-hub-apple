@@ -10,16 +10,19 @@ public struct GitHubInboxSource: InboxSource {
         self.client = client
     }
 
-    public func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+    public func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
+        guard let scope = SearchScope.organizations(orgs) else {
+            return []
+        }
         let label = AskHubLabel.needsAnswer.rawValue
         // 検索結果は 1,000 件までなので、closed で上限を埋めないよう検索の段階で open に絞る（取得後の `closed` でも除く）
         let discussions = try await search(
-            query: "org:\(org) label:\(label) is:open",
+            query: "\(scope) label:\(label) is:open",
             type: "DISCUSSION",
             kind: .discussion
         )
         let pullRequests = try await search(
-            query: "org:\(org) label:\(label) is:pr is:open",
+            query: "\(scope) label:\(label) is:pr is:open",
             type: "ISSUE",
             kind: .pullRequest
         )
@@ -36,14 +39,17 @@ public struct GitHubInboxSource: InboxSource {
         }
     }
 
-    public func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+    public func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
+        guard let scope = SearchScope.organizations(orgs) else {
+            return []
+        }
         // ラベルをカンマで並べると OR で検索できるので、1 回の検索で済ませる
         let labels = InboxIssue.Kind.labels.map(\.rawValue).joined(separator: ",")
         let nodes: [IssueSearchNode] = try await collectGraphQLPages { after in
             let data = try await client.graphQL(
                 Self.issueSearchQuery,
                 variables: [
-                    "query": .string("org:\(org) is:issue is:open label:\(labels)"),
+                    "query": .string("\(scope) is:issue is:open label:\(labels)"),
                     "after": after.map(GraphQLVariable.string) ?? .null
                 ],
                 as: IssueSearchData.self
@@ -85,8 +91,11 @@ public struct GitHubInboxSource: InboxSource {
         }
         """
 
-    public func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
-        let query = "org:\(org) label:\(AskHubLabel.readyForLoop.rawValue) is:open"
+    public func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion] {
+        guard let scope = SearchScope.organizations(orgs) else {
+            return []
+        }
+        let query = "\(scope) label:\(AskHubLabel.readyForLoop.rawValue) is:open"
         let nodes: [WaitingNode] = try await collectGraphQLPages { after in
             let data = try await client.graphQL(
                 Self.waitingQuery,

@@ -2,9 +2,18 @@ import Foundation
 
 // 担当の印（ラベル askhub-orchestrator）を一緒に読む取得
 extension GitHubInboxSource {
-    /// org のリポジトリの担当の印を読み、担当 PC が利用上限で待機しているものを返す。
+    /// organization のリポジトリの担当の印を読み、担当 PC が利用上限で待機しているものを返す。
     /// 検索ではなく `organization.repositories` を最後のページまでたどる（検索の件数のずれ・レート制限が無い）
-    public func usageLimitedRepositories(org: String, now: Date) async throws -> [UsageLimitedRepository] {
+    public func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
+        var repositories: [UsageLimitedRepository] = []
+        // レート制限を考えて、organization ごとに順番に取得する
+        for org in orgs {
+            repositories += try await usageLimitedRepositories(org: org, now: now)
+        }
+        return repositories.sorted { ($0.until, $0.repository) < ($1.until, $1.repository) }
+    }
+
+    private func usageLimitedRepositories(org: String, now: Date) async throws -> [UsageLimitedRepository] {
         let nodes: [UsageLimitRepositoryNode] = try await collectGraphQLPages { after in
             let data = try await client.graphQL(
                 Self.usageLimitQuery,
@@ -30,7 +39,6 @@ extension GitHubInboxSource {
             }
             return UsageLimitedRepository(repository: node.nameWithOwner, until: until)
         }
-        .sorted { ($0.until, $0.repository) < ($1.until, $1.repository) }
     }
 
     /// 検索結果のリポジトリから、担当の印のラベルも一緒に読む（検索 1 回で済ませる）

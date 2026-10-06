@@ -79,7 +79,7 @@ struct GitHubMergeQueueTests {
                 ] } } }
                 """#)
         ])
-        let pulls = try await makeQueue(http).epicPullRequests(org: "shilokuma-inc")
+        let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
 
         // 既定ブランチ以外への PR（5）・fork からの PR（6）・head のリポジトリが分からない PR（7）は除く
         #expect(pulls.map(\.number) == [1, 2, 4])

@@ -349,7 +349,7 @@ public actor Orchestrator {
 
     private func handleAnswers(statuses: inout [String: LoopStatus]) async throws {
         var snapshots: [AnswerSnapshot] = []
-        for subject in try await inbox.subjectsNeedingAnswer(org: config.org)
+        for subject in try await inbox.subjectsNeedingAnswer(orgs: [config.org])
         where config.repository(named: subject.repository) != nil {
             // 1 件の失敗（権限不足など）で、ほかの Discussion / PR の再開とラベルの削除を止めない
             do {

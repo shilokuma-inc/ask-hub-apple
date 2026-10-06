@@ -14,7 +14,7 @@ struct InboxModelTests {
             self.failure = failure
         }
 
-        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             if let failure {
                 throw failure
             }
@@ -37,7 +37,7 @@ struct InboxModelTests {
             ]
         }
 
-        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
             [
                 InboxIssue(
                     id: "I_1",
@@ -109,7 +109,7 @@ struct InboxModelTests {
             waiters.forEach { $0.resume() }
         }
 
-        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             await withCheckedContinuation { continuation in
                 let opened = gate.withLock { state in
                     if !state.opened {
@@ -121,15 +121,15 @@ struct InboxModelTests {
                     continuation.resume()
                 }
             }
-            return try await StubSource().subjectsNeedingAnswer(org: org)
+            return try await StubSource().subjectsNeedingAnswer(orgs: orgs)
         }
 
         func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
             try await StubSource().questionThreads(of: subject)
         }
 
-        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
-            try await StubSource().lowPriorityIssues(org: org)
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
+            try await StubSource().lowPriorityIssues(orgs: orgs)
         }
     }
 
@@ -172,7 +172,7 @@ struct InboxModelTests {
 
     /// 取得を打ち切られるまで待たせる取得元
     private final class HangingSource: InboxSource {
-        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             try await Task.sleep(for: .seconds(60))
             return []
         }
@@ -181,7 +181,7 @@ struct InboxModelTests {
             []
         }
 
-        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
             try await Task.sleep(for: .seconds(60))
             return []
         }

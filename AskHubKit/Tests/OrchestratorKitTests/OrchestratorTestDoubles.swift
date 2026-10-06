@@ -51,7 +51,7 @@ final class FakeInbox: InboxSource {
         state.withLock { $0 = (subjects, threads) }
     }
 
-    func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+    func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
         state.withLock { $0.subjects }
     }
 
@@ -63,7 +63,7 @@ final class FakeInbox: InboxSource {
         return threads
     }
 
-    func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+    func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
         []
     }
 }

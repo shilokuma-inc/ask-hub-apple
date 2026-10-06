@@ -103,8 +103,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
 
 /// 「マージ待ち」の取得とマージ。テストでは差し替える
 public protocol MergeQueueProviding: Sendable {
-    /// org 全体の、`epic-final` が付いた open な PR
-    func epicPullRequests(org: String) async throws -> [EpicPullRequest]
+    /// organization 全体の、`epic-final` が付いた open な PR
+    func epicPullRequests(orgs: [String]) async throws -> [EpicPullRequest]
     /// merge commit でマージし、epic ブランチを削除する
     func merge(_ pullRequest: EpicPullRequest) async throws
 }

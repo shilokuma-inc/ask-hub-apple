@@ -56,8 +56,8 @@ public enum IdeaRequestError: Error, Equatable, Sendable {
 
 /// 依頼の作成先とリポジトリの一覧。テストでは差し替える
 public protocol IdeaRequesting: Sendable {
-    /// org のリポジトリ。アーカイブ済みを除き、最近 push された順
-    func repositories(in org: String) async throws -> [RequestRepository]
+    /// organization のリポジトリ。アーカイブ済みを除き、organization ごとに（指定の順で）最近 push された順
+    func repositories(in orgs: [String]) async throws -> [RequestRepository]
     /// `idea-request` ラベル付きの Issue を作る
     func create(_ request: IdeaRequest) async throws -> CreatedIssue
 }
@@ -70,9 +70,18 @@ public struct GitHubIdeaRequester: IdeaRequesting {
         self.client = client
     }
 
-    /// 候補は REST の全件。担当の印は GraphQL の org のリポジトリ一覧から付け足す
+    /// 候補は REST の全件。担当の印は GraphQL の organization のリポジトリ一覧から付け足す
     /// （Search API は一覧と件数がずれ、30 回/分の制限もあるので使わない）
-    public func repositories(in org: String) async throws -> [RequestRepository] {
+    public func repositories(in orgs: [String]) async throws -> [RequestRepository] {
+        var candidates: [RequestRepository] = []
+        // レート制限を考えて、organization ごとに順番に取得する
+        for org in orgs {
+            candidates += try await repositories(in: org)
+        }
+        return candidates
+    }
+
+    private func repositories(in org: String) async throws -> [RequestRepository] {
         let names = try await client.getAllPages(
             "orgs/\(org)/repos",
             query: [URLQueryItem(name: "type", value: "all"), URLQueryItem(name: "sort", value: "pushed")],

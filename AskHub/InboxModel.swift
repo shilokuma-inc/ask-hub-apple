@@ -144,8 +144,8 @@ final class InboxModel {
         lastRefreshed = .now
         let fetcher = InboxFetcher(source: makeSource(token), trustedAuthors: trustedAuthors)
         do {
-            async let questions = fetcher.unansweredQuestions(org: Self.org)
-            async let issues = fetcher.lowPriorityIssues(org: Self.org)
+            async let questions = fetcher.unansweredQuestions(orgs: [Self.org])
+            async let issues = fetcher.lowPriorityIssues(orgs: [Self.org])
             let (fetchedQuestions, fetchedIssues) = try await (questions, issues)
             // 取得を待つ間に別のトークンで回答した場合は、古いトークンでの結果を捨てて取り直す
             guard Self.fingerprint(of: token) == lastTokenFingerprint else {
