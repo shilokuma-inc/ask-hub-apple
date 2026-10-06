@@ -37,8 +37,9 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **要回答**: `needs-answer` が付いた Discussion（※1）と PR（※2）
 - **急がない**: `decision-log` と `needs-verify` の Issue
 - **マージ待ち**: `epic-final` の PR
-- **上限で待機中**（要回答・急がないの先頭）: `askhub-orchestrator` の説明に解除の時刻があるリポジトリ。再開の時刻を出す
-- **ループの開始待ち**（急がないの先頭）: `ready-for-loop` の Discussion。`askhub-orchestrator` の時刻が 30 分より古い・無いリポジトリは「担当 PC なし」。担当 PC が上限で待機中なら「上限で待機中（〇時に再開）」
+- **ループ**: 担当リポジトリごとのループの状態。`loop-status` の Issue から読む（下の「ループの状態」）
+- **上限で待機中**（ループの先頭）: `askhub-orchestrator` の説明に解除の時刻があるリポジトリ。再開の時刻を出す
+- **ループの開始待ち**（ループの先頭。上限で待機中の下）: `ready-for-loop` の Discussion。`askhub-orchestrator` の時刻が 30 分より古い・無いリポジトリは「担当 PC なし」。担当 PC が上限で待機中なら「上限で待機中（〇時に再開）」
 
 対象は `shilokuma-inc` org 全体で、ラベルで検索する（リポジトリの列挙は設定しない）。
 
