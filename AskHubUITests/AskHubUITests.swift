@@ -15,8 +15,11 @@ final class AskHubUITests: XCTestCase {
 
     @MainActor
     override func setUp() async throws {
-        // Simulator が横向きのまま残っていると（ほかの UI テストが回したなど）、レイアウトが変わって要素を見つけられない
+        // Simulator が横向きのまま残っていると（ほかの UI テストが回したなど）、レイアウトが変わって要素を見つけられない。
+        // 向きは iOS にしか無い（UI テストは macOS でもビルドする）
+        #if os(iOS)
         XCUIDevice.shared.orientation = .portrait
+        #endif
     }
 
     @MainActor
