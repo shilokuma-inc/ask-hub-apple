@@ -88,18 +88,24 @@ public struct LoopStatusRow: Sendable, Equatable, Identifiable {
     /// 取得したリポジトリを行にまとめ、リポジトリ名の順に返す。
     ///
     /// 担当の印か、信用する author の状態用の Issue があるリポジトリを行にする（担当 PC が古いものも「担当 PC なし」として出す）。
-    /// 状態用の Issue は誰でも同じラベルで作れるので、信用する author が作ったものだけを読み、複数あれば最も新しく更新されたものを使う
+    /// 状態用の Issue は誰でも同じラベルで作れるので、信用する author が作ったものだけを読み、複数あれば目印を読めるうち最も新しく更新されたものを使う
     public static func rows(from repositories: [LoopStatusRepository], trustedAuthors: TrustedAuthors) -> [Self] {
         repositories.compactMap { repository in
-            let issue = repository.issues
+            let trusted = repository.issues
                 .filter { trustedAuthors.contains($0.author) }
-                .compactMap { issue in LoopStatusReport.parse(issue.body).map { (issue, $0) } }
-                .max { ($0.0.updatedAt, $0.0.number) < ($1.0.updatedAt, $1.0.number) }
+                .sorted { ($0.updatedAt, $0.number) > ($1.updatedAt, $1.number) }
+            let parsed = trusted.lazy.compactMap { issue in LoopStatusReport.parse(issue.body).map { (issue, $0) } }.first
             let lastSeen = OrchestratorHeartbeat.lastSeen(in: repository.heartbeatDescription)
-            guard issue != nil || lastSeen != nil else {
+            // 本文を読めなくても（人が編集したなど）、信用する author の Issue があれば行は残す
+            guard !trusted.isEmpty || lastSeen != nil else {
                 return nil
             }
-            return Self(repository: repository.repository, report: issue?.1, issueURL: issue?.0.url, lastSeen: lastSeen)
+            return Self(
+                repository: repository.repository,
+                report: parsed?.1,
+                issueURL: parsed?.0.url ?? trusted.first?.url,
+                lastSeen: lastSeen
+            )
         }
         .sorted { $0.repository.lowercased() < $1.repository.lowercased() }
     }

@@ -66,6 +66,23 @@ struct LoopStatusRowTests {
         #expect(rows[0].status(now: now) == .reported(report(.running)))
     }
 
+    @Test func keepsRepositoryWhoseTrustedIssueCannotBeParsed() {
+        let repositories = [
+            LoopStatusRepository(repository: "o/r", heartbeatDescription: nil, issues: [issue(3, report: nil)]),
+            LoopStatusRepository(repository: "o/s", heartbeatDescription: nil, issues: [issue(4, author: "someone", report: nil)])
+        ]
+        let rows = LoopStatusRow.rows(from: repositories, trustedAuthors: trusted)
+        #expect(rows.map(\.repository) == ["o/r"])
+        #expect(rows[0].report == nil)
+        #expect(rows[0].issueURL == URL(string: "https://github.com/o/r/issues/3"))
+        #expect(rows[0].status(now: now) == .unassigned)
+        let heartbeat = OrchestratorHeartbeat.description(at: now)
+        let assigned = LoopStatusRow.rows(from: [
+            LoopStatusRepository(repository: "o/r", heartbeatDescription: heartbeat, issues: [issue(3, report: nil)])
+        ], trustedAuthors: trusted)
+        #expect(assigned.first?.status(now: now) == .notReported)
+    }
+
     @Test func treatsRowAsUnassignedOnlyWhenBothTimesAreStale() {
         let fresh = report(.running, checkedMinutesAgo: 10)
         let staleReport = report(.running, checkedMinutesAgo: 40)
