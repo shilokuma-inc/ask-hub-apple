@@ -9,7 +9,8 @@ struct SentRequest: Equatable, Identifiable {
     let summary: String
     let issue: CreatedIssue
 
-    var id: URL { issue.htmlURL }
+    /// 送るたびに作る。同じ Issue の URL が返っても（サンプルの requester は毎回 #41 を返す）一覧の項目を区別できるようにする
+    let id = UUID()
 
     init(request: IdeaRequest, issue: CreatedIssue) {
         repository = request.repository
