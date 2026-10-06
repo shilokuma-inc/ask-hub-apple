@@ -66,7 +66,7 @@
   UI テストで「保存」を押すと Simulator にトークンが残るので、押せること（`isHittable`）だけを確かめる
 - `AskHubUITestsLaunchTests`（`runsForEachTargetApplicationUIConfiguration`）は横向きでも起動するので、Simulator が横向きのまま残り、
   続けて流す UI テストが要素を見つけられず一斉に落ちることがある（ログに `Interface orientation changed to Landscape Left` が出る）。
-  UI テストの `setUp` で `XCUIDevice.shared.orientation = .portrait` に戻す
+  UI テストの `setUp` で `XCUIDevice.shared.orientation = .portrait` に戻す（`orientation` は iOS にしか無いので `#if os(iOS)` で囲む。CI は macOS でも UI テストをビルドする）
 
 ## Keychain
 
