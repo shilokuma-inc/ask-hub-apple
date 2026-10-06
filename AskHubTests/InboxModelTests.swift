@@ -62,6 +62,43 @@ struct InboxModelTests {
         )
     }
 
+    /// 渡された organization を記録する取得元
+    private final class RecordingSource: InboxSource {
+        let orgs = OSAllocatedUnfairLock<[[String]]>(initialState: [])
+
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
+            self.orgs.withLock { $0.append(orgs) }
+            return []
+        }
+
+        func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
+            []
+        }
+
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
+            self.orgs.withLock { $0.append(orgs) }
+            return []
+        }
+    }
+
+    @Test func fetchesConfiguredOrganizationsEachTime() async {
+        let source = RecordingSource()
+        var configured = ["shilokuma-inc"]
+        let model = InboxModel(
+            tokenStore: InMemoryTokenStore(token: "github_pat_saved"),
+            makeSource: { _ in source },
+            organizations: { configured }
+        )
+        await model.refresh()
+        // 設定で変えたら、次の取得から反映する
+        configured = ["shilokuma-inc", "BeaconFun4"]
+        await model.refresh()
+        #expect(source.orgs.withLock { $0 } == [
+            ["shilokuma-inc"], ["shilokuma-inc"],
+            ["shilokuma-inc", "BeaconFun4"], ["shilokuma-inc", "BeaconFun4"]
+        ])
+    }
+
     @Test func needsTokenWithoutSavedToken() async {
         let model = InboxModel(tokenStore: InMemoryTokenStore()) { _ in StubSource() }
         await model.refresh()

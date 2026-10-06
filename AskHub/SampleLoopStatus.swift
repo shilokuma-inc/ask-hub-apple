@@ -30,7 +30,7 @@ extension LoopStatusModel {
 struct SampleLoopStatusSource: LoopStatusSource {
     func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
         // サンプルのリポジトリは先頭の organization に置く
-        let org = orgs.first ?? "shilokuma-inc"
+        let org = orgs.first ?? TargetOrganizations.defaultLogins[0]
         // 時刻は取得のたびに今からの相対で作る（担当 PC の有無や「最後の動き」が古くならないように）
         let now = Date()
         func minutesAgo(_ minutes: Double) -> Date {

@@ -1,9 +1,10 @@
 import AskHubKit
 import SwiftUI
 
-/// GitHub のトークンを設定する画面
+/// GitHub のトークンと、一覧を取得する organization を設定する画面
 struct SettingsView: View {
     @State private var model: TokenSettingsModel
+    @State private var organizationModel: OrganizationSettingsModel
     /// キーボードの「完了」でキーボードを閉じ、下のボタンが隠れないようにする
     @FocusState private var isEditingToken: Bool
     @Environment(\.dismiss)
@@ -13,8 +14,9 @@ struct SettingsView: View {
     @Environment(\.setDemoMode)
     private var setDemoMode
 
-    init(model: TokenSettingsModel = TokenSettingsModel()) {
+    init(model: TokenSettingsModel = TokenSettingsModel(), organizationModel: OrganizationSettingsModel = OrganizationSettingsModel()) {
         _model = State(initialValue: model)
+        _organizationModel = State(initialValue: organizationModel)
     }
 
     var body: some View {
@@ -38,6 +40,18 @@ struct SettingsView: View {
                     if model.hasSavedToken {
                         Button("トークンを削除", role: .destructive) { model.delete() }
                     }
+                }
+
+                Section {
+                    NavigationLink {
+                        OrganizationSettingsView(model: organizationModel)
+                    } label: {
+                        LabeledContent("organization", value: organizationModel.logins.joined(separator: ", "))
+                    }
+                } header: {
+                    Text("取得する organization")
+                } footer: {
+                    Text("要回答・急がない・マージ待ち・ループ・依頼に、ここに並べた organization のリポジトリを出します。")
                 }
 
                 if let setDemoMode {
@@ -81,6 +95,55 @@ struct SettingsView: View {
         // macOS のシートは内容の大きさに縮むため、フォームが読める幅を確保する
         .frame(minWidth: 460, minHeight: 320)
         #endif
+    }
+}
+
+/// 一覧を取得する organization を追加・削除する画面
+struct OrganizationSettingsView: View {
+    @Bindable var model: OrganizationSettingsModel
+    @FocusState private var isEditing: Bool
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(model.logins, id: \.self) { login in
+                    HStack {
+                        Text(login)
+                        Spacer()
+                        Button("削除", role: .destructive) { model.remove(login) }
+                            .buttonStyle(.borderless)
+                            .disabled(!model.canRemove)
+                    }
+                }
+            } footer: {
+                Text("""
+                    並べた順に取得します。最後の 1 つは削除できません。\
+                    Fine-grained PAT は 1 つの owner にしか使えないので、\
+                    複数の organization に回答・依頼するなら、すべてに書き込めるトークンを保存してください。
+                    """)
+            }
+
+            Section {
+                TextField("shilokuma-inc", text: $model.input)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    // organization の名前は英数字とハイフンなので、英字のキーボードで小文字のまま入力できるようにする
+                    .keyboardType(.asciiCapable)
+                    .textInputAutocapitalization(.never)
+                    #endif
+                    .focused($isEditing)
+                    .onSubmit { model.add() }
+                Button("追加") { model.add() }
+                    .disabled(!model.canAdd)
+            } header: {
+                Text("organization を追加")
+            } footer: {
+                Text("GitHub の organization の名前（URL の github.com/ の後ろ）を入力してください。")
+            }
+        }
+        .formStyle(.grouped)
+        .keyboardDoneButton($isEditing)
+        .navigationTitle("取得する organization")
     }
 }
 

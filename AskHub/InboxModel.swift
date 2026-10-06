@@ -18,9 +18,6 @@ final class InboxModel {
         case failed(String)
     }
 
-    /// 対象の organization（Discussion #1 の Q6）
-    static let org = "shilokuma-inc"
-
     private(set) var questions: [InboxQuestion] = []
     /// アプリから回答した質問。GitHub の検索に回答が反映されるまで、取り直しても一覧に出さない
     private var answeredQuestionIDs: Set<String> = []
@@ -37,16 +34,20 @@ final class InboxModel {
     private let makePoster: @Sendable (String) -> any AnswerPosting
     private let makeStarter: @Sendable (String) -> any LoopStarting
     private let trustedAuthors: TrustedAuthors
+    /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
+    private let organizations: () -> [String]
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
         trustedAuthors: TrustedAuthors = .default,
         makeSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) },
         makePoster: @escaping @Sendable (String) -> any AnswerPosting = { GitHubAnswerPoster(client: GitHubClient(token: $0)) },
-        makeStarter: @escaping @Sendable (String) -> any LoopStarting = { GitHubLoopStarter(client: GitHubClient(token: $0)) }
+        makeStarter: @escaping @Sendable (String) -> any LoopStarting = { GitHubLoopStarter(client: GitHubClient(token: $0)) },
+        organizations: @escaping () -> [String] = { OrganizationSettings.load() }
     ) {
         self.tokenStore = tokenStore
         self.trustedAuthors = trustedAuthors
+        self.organizations = organizations
         self.makeSource = makeSource
         self.makePoster = makePoster
         self.makeStarter = makeStarter
@@ -143,9 +144,10 @@ final class InboxModel {
         state = .loading
         lastRefreshed = .now
         let fetcher = InboxFetcher(source: makeSource(token), trustedAuthors: trustedAuthors)
+        let orgs = organizations()
         do {
-            async let questions = fetcher.unansweredQuestions(orgs: [Self.org])
-            async let issues = fetcher.lowPriorityIssues(orgs: [Self.org])
+            async let questions = fetcher.unansweredQuestions(orgs: orgs)
+            async let issues = fetcher.lowPriorityIssues(orgs: orgs)
             let (fetchedQuestions, fetchedIssues) = try await (questions, issues)
             // 取得を待つ間に別のトークンで回答した場合は、古いトークンでの結果を捨てて取り直す
             guard Self.fingerprint(of: token) == lastTokenFingerprint else {
