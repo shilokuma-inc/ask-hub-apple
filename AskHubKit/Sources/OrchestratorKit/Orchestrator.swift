@@ -117,8 +117,11 @@ public actor Orchestrator {
     var finalizedEpics: Set<String> = []
     /// 仮決め一覧への指示を受けてループを再開した epic。再び完了したら、最終 PR の本文を書き直す
     var epicsToRefresh: Set<String> = []
-    /// ループの再開に使った仮決め一覧のコメント（`<repo小文字>#<コメント id>`）。同じコメントで何度も再開しない
+    /// 処理済みとして扱う仮決め一覧のコメント（`<repo小文字>#<コメント id>`）。同じコメントで何度も再開しない。
+    /// ループの開始を確かめてから（または上限まで試して諦めてから）入れる
     var resumedDecisionComments: Set<String> = []
+    /// 仮決め一覧への指示でループを起動し、開始をまだ確かめていないもの（キーは担当リポジトリの `fullName` を小文字にしたもの）
+    var pendingDecisionResumes: [String: DecisionLogResume] = [:]
     /// 担当の印を最後に書いた時刻（キーは担当リポジトリの `fullName` を小文字にしたもの）
     var lastHeartbeats: [String: Date] = [:]
     /// Claude の利用上限の解除の時刻。それまでこの Mac のループの起動・再開を止める（アカウントは Mac ごとに共通）
