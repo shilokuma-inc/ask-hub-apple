@@ -87,6 +87,15 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
 - オーケストレーターは、`checkedAt` 以外が変わったときに本文を書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す
 
+アプリの読み方（`LoopStatusFetcher`。GitHub からの取得は `GitHubLoopStatusSource`）:
+
+- `organization.repositories` の GraphQL で、リポジトリごとに担当の印（`askhub-orchestrator` の説明）と open な `loop-status` の Issue を一緒に読む（Search API は使わない）。
+  リポジトリも Issue もページングを最後まで追う
+- 信用する author が作り、目印を読める Issue のうち、最も新しく更新されたものを使う
+- 行にするのは、担当の印か信用する author の状態用の Issue があるリポジトリ（Q4: 担当 PC のいるリポジトリをすべて出す）。
+  担当の印も `checkedAt` も 30 分より古ければ「担当 PC なし」、担当 PC はいるが状態用の Issue が無ければ「状態なし」とする
+- `loop-status` の Issue は「急がない」などの一覧には出さない（一覧はラベルで検索しており、`loop-status` を含めない）
+
 ## 質問の目印
 
 質問のコメント本文の**先頭**に、次の HTML コメントを置く。GitHub 上では表示されない。
