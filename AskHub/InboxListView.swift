@@ -1,31 +1,55 @@
 import AskHubKit
 import SwiftUI
 
-/// 受信箱の一覧の 1 タブ分。要回答と急がないで、行（遷移先を含む）・空のときの文言だけが違う
+/// 一覧の見出し付きのまとまり。見出しが無ければ（`header == nil`）見出しなしで並べる
+struct InboxListSection<Item: Identifiable>: Identifiable {
+    struct Header {
+        let title: String
+        let systemImage: String
+    }
+
+    let id: String
+    let header: Header?
+    let items: [Item]
+}
+
+/// 受信箱の一覧の 1 タブ分。要回答と急がないで、行（遷移先を含む）・セクションの分け方・空のときの文言だけが違う
 struct InboxListView<Item: Identifiable, Row: View>: View {
     let title: String
-    let items: [Item]
+    let sections: [InboxListSection<Item>]
     let emptyTitle: String
     let emptySystemImage: String
     let model: InboxModel
     @ViewBuilder let row: (Item) -> Row
     let openSettings: () -> Void
 
+    private var isEmpty: Bool {
+        sections.allSatisfy(\.items.isEmpty)
+    }
+
     var body: some View {
         List {
             // 一覧の中身があるときは、空の表示の代わりにここで失敗を知らせる
-            if case let .failed(message) = model.state, !items.isEmpty {
+            if case let .failed(message) = model.state, !isEmpty {
                 Section {
                     Label(message, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.red)
                 }
             }
-            ForEach(items) { item in
-                row(item)
+            ForEach(sections) { section in
+                if let header = section.header {
+                    Section {
+                        rows(of: section)
+                    } header: {
+                        Label("\(header.title)（\(section.items.count) 件）", systemImage: header.systemImage)
+                    }
+                } else {
+                    rows(of: section)
+                }
             }
         }
         .overlay {
-            if items.isEmpty {
+            if isEmpty {
                 emptyState
             }
         }
@@ -41,6 +65,12 @@ struct InboxListView<Item: Identifiable, Row: View>: View {
             ToolbarItem(placement: .primaryAction) {
                 Button("設定", systemImage: "gearshape", action: openSettings)
             }
+        }
+    }
+
+    private func rows(of section: InboxListSection<Item>) -> some View {
+        ForEach(section.items) { item in
+            row(item)
         }
     }
 
@@ -65,5 +95,28 @@ struct InboxListView<Item: Identifiable, Row: View>: View {
         case .loaded:
             ContentUnavailableView(emptyTitle, systemImage: emptySystemImage)
         }
+    }
+}
+
+extension InboxListView {
+    /// セクションに分けずに並べる（「要回答」）
+    init(
+        title: String,
+        items: [Item],
+        emptyTitle: String,
+        emptySystemImage: String,
+        model: InboxModel,
+        @ViewBuilder row: @escaping (Item) -> Row,
+        openSettings: @escaping () -> Void
+    ) {
+        self.init(
+            title: title,
+            sections: [InboxListSection(id: "all", header: nil, items: items)],
+            emptyTitle: emptyTitle,
+            emptySystemImage: emptySystemImage,
+            model: model,
+            row: row,
+            openSettings: openSettings
+        )
     }
 }
