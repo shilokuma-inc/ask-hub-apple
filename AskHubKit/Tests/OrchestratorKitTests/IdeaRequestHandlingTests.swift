@@ -79,7 +79,6 @@ struct IdeaRequestTrackerTests {
     private func config() throws -> OrchestratorConfig {
         OrchestratorConfig(
             trustedAuthorLogins: ["mrs1669"],
-            org: "shilokuma-inc",
             repositories: [RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")],
             pollInterval: .seconds(60),
             loopCommand: try LoopCommandTemplate(arguments: ["/usr/local/bin/start-loop"])

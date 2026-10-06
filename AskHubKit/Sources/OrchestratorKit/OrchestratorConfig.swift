@@ -18,8 +18,6 @@ public struct OrchestratorConfig: Sendable, Equatable {
 
     /// 指示として扱ってよい GitHub アカウントの login
     public let trustedAuthorLogins: [String]
-    /// `needs-answer` などを検索する GitHub の organization
-    public let org: String
     /// この PC が担当するリポジトリ
     public let repositories: [RepositoryConfig]
     public let pollInterval: Duration
@@ -33,9 +31,18 @@ public struct OrchestratorConfig: Sendable, Equatable {
         TrustedAuthors(trustedAuthorLogins)
     }
 
+    /// `needs-answer` などを検索する organization。担当リポジトリの owner を、重ねずに設定の順で並べる
+    public var orgs: [String] {
+        var orgs: [String] = []
+        for owner in repositories.map(\.owner)
+        where !orgs.contains(where: { $0.caseInsensitiveCompare(owner) == .orderedSame }) {
+            orgs.append(owner)
+        }
+        return orgs
+    }
+
     public init(
         trustedAuthorLogins: [String],
-        org: String,
         repositories: [RepositoryConfig],
         pollInterval: Duration,
         loopCommand: LoopCommandTemplate,
@@ -43,7 +50,6 @@ public struct OrchestratorConfig: Sendable, Equatable {
         iterationTimeout: Duration = defaultIterationTimeout
     ) {
         self.trustedAuthorLogins = trustedAuthorLogins
-        self.org = org
         self.repositories = repositories
         self.pollInterval = pollInterval
         self.loopCommand = loopCommand

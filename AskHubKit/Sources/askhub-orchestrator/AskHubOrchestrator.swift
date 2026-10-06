@@ -96,7 +96,7 @@ enum AskHubOrchestrator {
 
     private static func summary(of config: OrchestratorConfig) -> String {
         var lines = [
-            "org: \(config.org)",
+            "orgs: \(config.orgs.joined(separator: ", "))",
             "trusted authors: \(config.trustedAuthorLogins.joined(separator: ", "))",
             "poll interval: \(config.pollInterval.components.seconds) 秒",
             "repositories:"

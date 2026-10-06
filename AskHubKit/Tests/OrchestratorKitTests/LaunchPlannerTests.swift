@@ -9,7 +9,6 @@ struct LaunchPlannerTests {
     private func config() throws -> OrchestratorConfig {
         OrchestratorConfig(
             trustedAuthorLogins: ["mrs1669"],
-            org: "shilokuma-inc",
             repositories: [app, other],
             pollInterval: .seconds(60),
             loopCommand: try LoopCommandTemplate(arguments: ["/usr/local/bin/start-loop"])

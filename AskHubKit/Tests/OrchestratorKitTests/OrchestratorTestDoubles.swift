@@ -10,6 +10,8 @@ struct TestError: Error {}
 
 struct FakeGitHubState {
     var results: [Result<[ReadyDiscussion], TestError>]
+    /// `ready-for-loop` の検索に渡された organization（呼ばれた順）
+    var searchedOrgs: [[String]] = []
     var removed: [String] = []
     var removedNeedsAnswer: [String] = []
     var addedReady: [String] = []
@@ -41,31 +43,6 @@ struct FakeGitHubState {
     var updatedLoopStatusIssues: [String] = []
     var loopStatusIssueListings = 0
     var loopStatusFails = false
-}
-
-/// `needs-answer` の Discussion / PR を返す取得元。スレッドはテストから差し替える
-final class FakeInbox: InboxSource {
-    private let state = OSAllocatedUnfairLock<(subjects: [InboxSubject], threads: [String: [QuestionThread]])>(initialState: ([], [:]))
-
-    func set(_ subjects: [InboxSubject], threads: [String: [QuestionThread]]) {
-        state.withLock { $0 = (subjects, threads) }
-    }
-
-    func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
-        state.withLock { $0.subjects }
-    }
-
-    /// スレッドを登録していない Discussion / PR は取得に失敗する
-    func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
-        guard let threads = state.withLock({ $0.threads[subject.nodeID] }) else {
-            throw TestError()
-        }
-        return threads
-    }
-
-    func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
-        []
-    }
 }
 
 struct FakeRuntimeState {
@@ -100,16 +77,26 @@ final class FakeGitHub: OrchestratorGitHub {
         state.withLock { $0.removeFails = fails }
     }
 
-    func readyForLoopDiscussions(org: String) async throws -> [ReadyDiscussion] {
+    var searchedOrgs: [[String]] {
+        state.withLock { $0.searchedOrgs }
+    }
+
+    /// 渡された organization の外のリポジトリの Discussion は返さない（GitHub の検索と同じく）
+    func readyForLoopDiscussions(orgs: [String]) async throws -> [ReadyDiscussion] {
         try state.withLock { state in
+            state.searchedOrgs.append(orgs)
             guard let first = state.results.first else {
                 return []
             }
             if state.results.count > 1 {
                 state.results.removeFirst()
             }
-            return try first.get()
+            return try first.get().filter { Self.isInside(orgs, $0.repository) }
         }
+    }
+
+    private static func isInside(_ orgs: [String], _ repository: String) -> Bool {
+        orgs.contains { repository.lowercased().hasPrefix($0.lowercased() + "/") }
     }
 
     var removedNeedsAnswer: [String] {
@@ -307,8 +294,8 @@ final class FakeGitHub: OrchestratorGitHub {
         state.withLock { $0.closedIdeas }
     }
 
-    func ideaRequests(org: String) async throws -> [IdeaRequestIssue] {
-        state.withLock { $0.ideaIssues }
+    func ideaRequests(orgs: [String]) async throws -> [IdeaRequestIssue] {
+        state.withLock { $0.ideaIssues }.filter { Self.isInside(orgs, $0.repository) }
     }
 
     func comment(on issue: IdeaRequestIssue, body: String) async throws {

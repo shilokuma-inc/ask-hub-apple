@@ -4,10 +4,8 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
     case unreadable(path: String, reason: String)
     case invalidJSON(reason: String)
     case emptyTrustedAuthors
-    case emptyOrg
     case noRepositories
     case invalidRepositoryName(String)
-    case repositoryOutsideOrg(repository: String, org: String)
     case duplicateRepository(String)
     case relativeCheckoutPath(repository: String, path: String)
     case pollIntervalTooShort(seconds: Int, minimum: Int)
@@ -27,14 +25,10 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
             "設定ファイルの JSON が不正です: \(reason)"
         case .emptyTrustedAuthors:
             "trustedAuthors が空です。指示として扱う GitHub アカウントを 1 つ以上指定してください"
-        case .emptyOrg:
-            "org が空です"
         case .noRepositories:
             "repositories が空です。担当リポジトリを 1 つ以上指定してください"
         case let .invalidRepositoryName(name):
             "repositories の repository は owner/repo の形式にしてください: \(name)"
-        case let .repositoryOutsideOrg(repository, org):
-            "担当リポジトリが org（\(org)）の外にあります: \(repository)"
         case let .duplicateRepository(name):
             "担当リポジトリが重複しています: \(name)"
         case let .relativeCheckoutPath(repository, path):

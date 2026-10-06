@@ -6,9 +6,9 @@ import Foundation
 /// ```json
 /// {
 ///   "trustedAuthors": ["mrs1669"],
-///   "org": "shilokuma-inc",
 ///   "repositories": [
-///     { "repository": "shilokuma-inc/ask-hub-apple", "path": "~/Desktop/ios/ask-hub-apple" }
+///     { "repository": "shilokuma-inc/ask-hub-apple", "path": "~/Desktop/ios/ask-hub-apple" },
+///     { "repository": "BeaconFun4/demomoni-remake-ios", "path": "~/Desktop/ios/demomoni-remake-ios" }
 ///   ],
 ///   "pollIntervalSeconds": 60,
 ///   "loopCommand": ["/path/to/start-loop.sh", "{repository}", "{controlPath}"]
@@ -16,6 +16,7 @@ import Foundation
 /// ```
 /// `trustedAuthors`・`pollIntervalSeconds`・`ideaCommand`・`iterationTimeoutMinutes` は省略できる
 /// （既定値は `TrustedAuthors.default`・60 秒・`IdeaCommandTemplate.defaultArguments`・90 分）。
+/// 検索する organization は担当リポジトリの owner から決める。以前の `org` が残っていても無視する
 public struct OrchestratorConfigLoader: Sendable {
     /// `~` の展開に使うホームディレクトリ。テストで差し替える
     public let homeDirectory: String
@@ -61,17 +62,13 @@ public struct OrchestratorConfigLoader: Sendable {
         guard !trustedAuthors.isEmpty else {
             throw .emptyTrustedAuthors
         }
-        let org = file.org.trimmingCharacters(in: .whitespaces)
-        guard !org.isEmpty else {
-            throw .emptyOrg
-        }
         guard !file.repositories.isEmpty else {
             throw .noRepositories
         }
 
         var repositories: [RepositoryConfig] = []
         for entry in file.repositories {
-            let repository = try repositoryConfig(from: entry, org: org)
+            let repository = try repositoryConfig(from: entry)
             if repositories.contains(where: { $0.fullName.caseInsensitiveCompare(repository.fullName) == .orderedSame }) {
                 throw .duplicateRepository(repository.fullName)
             }
@@ -94,7 +91,6 @@ public struct OrchestratorConfigLoader: Sendable {
 
         return OrchestratorConfig(
             trustedAuthorLogins: trustedAuthors,
-            org: org,
             repositories: repositories,
             pollInterval: .seconds(seconds),
             loopCommand: try LoopCommandTemplate(arguments: file.loopCommand),
@@ -104,8 +100,7 @@ public struct OrchestratorConfigLoader: Sendable {
     }
 
     private func repositoryConfig(
-        from entry: ConfigFile.Repository,
-        org: String
+        from entry: ConfigFile.Repository
     ) throws(OrchestratorConfigError) -> RepositoryConfig {
         let parts = entry.repository.split(separator: "/", omittingEmptySubsequences: false)
         let isValidPart = { (part: Substring) in
@@ -115,10 +110,6 @@ public struct OrchestratorConfigLoader: Sendable {
         }
         guard parts.count == 2, parts.allSatisfy(isValidPart) else {
             throw .invalidRepositoryName(entry.repository)
-        }
-        // 受信箱は org 全体を検索するため（Discussion #1 の Q6）、org の外のリポジトリは扱えない
-        guard parts[0].caseInsensitiveCompare(org) == .orderedSame else {
-            throw .repositoryOutsideOrg(repository: entry.repository, org: org)
         }
         let path = expandingTilde(in: entry.path)
         guard path.hasPrefix("/") else {
@@ -167,7 +158,6 @@ private struct ConfigFile: Decodable {
     }
 
     let trustedAuthors: [String]?
-    let org: String
     let repositories: [Repository]
     let pollIntervalSeconds: Int?
     let loopCommand: [String]
