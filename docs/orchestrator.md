@@ -98,6 +98,8 @@ plist（`scripts/orchestrator/jp.shilokuma.askhub-orchestrator.plist.template`�
 
 止めるときは `launchctl bootout gui/$(id -u)/jp.shilokuma.askhub-orchestrator`。
 更新するときはスクリプトを流し直してから、`bootout` → `bootstrap` する。
+`launchctl kickstart -k` での再起動は使わない。launchd が `state = spawn scheduled` のままプロセスを起動しなくなることがあり（2026-10-06 に発生）、その状態は `bootout` → `bootstrap` でしか直らない。
+起動できたかは、ログの `起動しました（pid …）` の行の時刻で確かめる。起動に失敗したときは `終了します（終了コード …）` の行に理由が出る。
 
 ## 設定ファイル
 
