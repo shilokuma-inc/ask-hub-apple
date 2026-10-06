@@ -15,9 +15,14 @@ extension LoopStatusModel {
         return LoopStatusModel()
     }
 
-    /// デモモード・Preview・UI テスト用。GitHub には接続しない
+    /// デモモード・Preview・UI テスト用。GitHub には接続しない。
+    /// 「上限で待機中」「ループの開始待ち」は受信箱のサンプル（`SampleInboxSource`）から出す
     static func sample() -> LoopStatusModel {
-        LoopStatusModel(tokenStore: InMemoryTokenStore(token: "sample")) { _ in SampleLoopStatusSource() }
+        LoopStatusModel(
+            tokenStore: InMemoryTokenStore(token: "sample"),
+            makeSource: { _ in SampleLoopStatusSource() },
+            makeInboxSource: { _ in SampleInboxSource() }
+        )
     }
 }
 

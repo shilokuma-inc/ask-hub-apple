@@ -1,8 +1,8 @@
 import AskHubKit
 import SwiftUI
 
-/// 受信箱の一覧の 1 タブ分。要回答と急がないで、行（遷移先を含む）・空のときの文言・先頭の節だけが違う
-struct InboxListView<Item: Identifiable, Row: View, Leading: View>: View {
+/// 受信箱の一覧の 1 タブ分。要回答と急がないで、行（遷移先を含む）・空のときの文言だけが違う
+struct InboxListView<Item: Identifiable, Row: View>: View {
     let title: String
     let items: [Item]
     let emptyTitle: String
@@ -10,26 +10,22 @@ struct InboxListView<Item: Identifiable, Row: View, Leading: View>: View {
     let model: InboxModel
     @ViewBuilder let row: (Item) -> Row
     let openSettings: () -> Void
-    /// 一覧の先頭に置く節（急がないの「ループの開始待ち」）
-    var leadingIsEmpty = true
-    @ViewBuilder var leading: () -> Leading
 
     var body: some View {
         List {
-            // 一覧の中身（items または先頭の節）があるときは、空の表示の代わりにここで失敗を知らせる
-            if case let .failed(message) = model.state, !(items.isEmpty && leadingIsEmpty) {
+            // 一覧の中身があるときは、空の表示の代わりにここで失敗を知らせる
+            if case let .failed(message) = model.state, !items.isEmpty {
                 Section {
                     Label(message, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.red)
                 }
             }
-            leading()
             ForEach(items) { item in
                 row(item)
             }
         }
         .overlay {
-            if items.isEmpty && leadingIsEmpty {
+            if items.isEmpty {
                 emptyState
             }
         }
@@ -68,114 +64,6 @@ struct InboxListView<Item: Identifiable, Row: View, Leading: View>: View {
 
         case .loaded:
             ContentUnavailableView(emptyTitle, systemImage: emptySystemImage)
-        }
-    }
-}
-
-extension InboxListView where Leading == EmptyView {
-    init(
-        title: String,
-        items: [Item],
-        emptyTitle: String,
-        emptySystemImage: String,
-        model: InboxModel,
-        @ViewBuilder row: @escaping (Item) -> Row,
-        openSettings: @escaping () -> Void
-    ) {
-        self.init(
-            title: title,
-            items: items,
-            emptyTitle: emptyTitle,
-            emptySystemImage: emptySystemImage,
-            model: model,
-            row: row,
-            openSettings: openSettings,
-            leading: { EmptyView() }
-        )
-    }
-}
-
-/// 「ループの開始待ち」の節。担当 PC のいないリポジトリは「担当 PC なし」と出す
-struct WaitingDiscussionsSection: View {
-    let waiting: [WaitingDiscussion]
-
-    var body: some View {
-        if !waiting.isEmpty {
-            Section {
-                ForEach(waiting) { discussion in
-                    Link(destination: discussion.subject.url) {
-                        WaitingDiscussionRow(discussion: discussion)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                }
-            } header: {
-                Text("ループの開始待ち")
-            } footer: {
-                Text("担当 PC のオーケストレーターが 30 分以上確認していないリポジトリは「担当 PC なし」と出します")
-            }
-        }
-    }
-}
-
-struct WaitingDiscussionRow: View {
-    let discussion: WaitingDiscussion
-
-    var body: some View {
-        // 相対時刻を出さないので、表示のたびの時刻で判定すればよい
-        let isAssigned = discussion.isAssigned(now: Date())
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(discussion.subject.shortReference)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if let until = discussion.usageLimitedUntil, discussion.isUsageLimited(now: Date()) {
-                    Label(
-                        "上限で待機中（\(UsageLimitedRepository.resumeText(until: until, now: Date()))）",
-                        systemImage: "moon.zzz.fill"
-                    )
-                    .foregroundStyle(.orange)
-                } else if isAssigned {
-                    Label("担当 PC が起動します", systemImage: "hourglass")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Label("担当 PC なし", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                }
-            }
-            .font(.caption)
-
-            Text(discussion.subject.title)
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-        }
-        .padding(.vertical, 2)
-    }
-}
-
-/// 「上限で待機中」の節。担当 PC が Claude の利用上限で止まっているリポジトリと、再開の時刻を出す
-struct UsageLimitedSection: View {
-    let repositories: [UsageLimitedRepository]
-
-    var body: some View {
-        if !repositories.isEmpty {
-            Section {
-                ForEach(repositories) { repository in
-                    HStack(spacing: 6) {
-                        Label(repository.repository, systemImage: "moon.zzz.fill")
-                            .foregroundStyle(.orange)
-                        Spacer()
-                        Text(repository.resumeText(now: Date()))
-                            .foregroundStyle(.secondary)
-                    }
-                    .font(.callout)
-                }
-            } header: {
-                Text("上限で待機中")
-            } footer: {
-                Text("担当 PC の Claude が利用上限に達しています。再開の時刻を過ぎると、止まっていたループを自動で再開します")
-            }
         }
     }
 }
