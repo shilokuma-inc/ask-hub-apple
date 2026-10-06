@@ -64,6 +64,8 @@ struct ContentView: View {
                 .demoModeBanner()
             }
             .tabItem { Label("急がない", systemImage: "tray.full") }
+            // 数えるのは判断ログ・実機確認の Issue だけ。ループの開始待ち（`waiting`）は含めない
+            .badge(model.issues.count)
 
             NavigationStack {
                 MergeQueueListView(model: mergeModel) { isShowingSettings = true }
