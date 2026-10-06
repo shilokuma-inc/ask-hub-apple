@@ -66,6 +66,13 @@ struct LoopStatusSummaryTests {
         #expect(report(.init(status: .idle, snapshot: nil, gaveUp: true, readyDiscussion: 5)).state == .gaveUp)
     }
 
+    @Test func doesNotReportFailedResumeAsRunning() {
+        // 再開に失敗した（Orchestrator+LoopResume）ループは、state ファイルが残ったまま `stalled` になる
+        let failedResume = LoopStatus(stateFileExists: true, processAlive: false, stalled: true)
+        #expect(report(.init(status: failedResume, snapshot: Self.epic())).state == .waitingToStart)
+        #expect(report(.init(status: failedResume, snapshot: Self.epic(), gaveUp: true)).state == .gaveUp)
+    }
+
     @Test func classifiesStoppedEpicByRemainingTasks() {
         // 回答待ちでない未完了のタスクが残っている（再開を待っている・手で止めた）
         #expect(report(.init(status: Self.stalled, snapshot: Self.epic())).state == .waitingToStart)

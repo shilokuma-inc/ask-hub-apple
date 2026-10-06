@@ -68,7 +68,8 @@ public enum LoopStatusSummary {
         if OrchestratorHeartbeat.isUsageLimited(until: facts.usageLimitedUntil, now: now) {
             return .usageLimited
         }
-        if facts.status.processAlive || facts.status.stateFileExists == true {
+        // 再開に失敗したループは state ファイルが残ったまま `stalled` になる。動いてはいないので実行中としない
+        if facts.status.processAlive || (facts.status.stateFileExists == true && !facts.status.stalled) {
             return .running
         }
         if facts.gaveUp {
