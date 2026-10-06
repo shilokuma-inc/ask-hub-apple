@@ -5,8 +5,10 @@
 #   discussion あり（ready-for-loop の Discussion から）:
 #     新しい epic を準備する。ヘッドレスの claude に ralph-setup.sh・playbook の置き換え・goal の作成・
 #     epic の push をさせてから、ループを起動する。前の epic が完了済みなら、その制御用 worktree を退避して片付ける
-#   discussion が空（ask への回答による再開）:
-#     既存の制御用 worktree でループを起動し直す
+#   discussion が空（ask への回答・仮決め一覧への指示・異常終了による再開）:
+#     既存の制御用 worktree でループを起動し直す。未完了のタスクが無ければ起動しない。
+#     ただし ASKHUB_RESUME_REASON=decision-log（仮決め一覧への指示による再開）なら、タスクが無くても起動する
+#     （指示はループが周回の最初に読んで修正タスクにするため。epic の完了後に付いた指示ではタスクが残っていない）
 #
 # ループは exec で起動するので、このプロセスの寿命 = ループの寿命になる（オーケストレーターはそれを見て生死を判断する）。
 # ralph の Stop hook はヘッドレス（claude -p）でも周回する。標準入力は /dev/null にする（待ちが発生するため）。
@@ -17,6 +19,7 @@
 #   ASKHUB_ARCHIVE_DIR       完了した epic の goal / state の退避先（既定: ~/Library/Logs/askhub/archive）
 #   ASKHUB_TRUSTED_AUTHORS   指示として扱う GitHub アカウント（カンマ区切り。既定: mrs1669）
 #   ASKHUB_BOOTSTRAP_MODEL   準備に使うモデル（既定: claude の既定）
+#   ASKHUB_RESUME_REASON     再開の理由。オーケストレーターが起動ごとに渡す（decision-log: 仮決め一覧への指示）
 set -euo pipefail
 
 # Git hook や launchd から継承した経路変数が別のチェックアウトを指すことがある
@@ -36,6 +39,7 @@ CLAUDE_BIN="${ASKHUB_CLAUDE:-claude}"
 LOG_DIR="${ASKHUB_LOG_DIR:-$HOME/Library/Logs/askhub/loops}"
 ARCHIVE_DIR="${ASKHUB_ARCHIVE_DIR:-$HOME/Library/Logs/askhub/archive}"
 TRUSTED="${ASKHUB_TRUSTED_AUTHORS:-mrs1669}"
+RESUME_REASON="${ASKHUB_RESUME_REASON:-}"
 REPO_NAME="${REPOSITORY#*/}"
 # 最新のログ（準備・ループ）を指すリンク。名前はオーケストレーター（LocalLoopRuntime）と揃える
 LATEST_LOG="$LOG_DIR/${REPO_NAME}-latest.log"
@@ -246,8 +250,12 @@ else
   [[ -f "$PROMISE_FILE" ]] || fail "完了語の記録がありません（${PROMISE_FILE}）。手で書くか、Discussion から始め直してください"
   PROMISE=$(head -1 "$PROMISE_FILE")
   if [[ "$(open_tasks)" -eq 0 ]]; then
-    log "未完了のタスクがありません。再開しません（最終 PR はオーケストレーターが作ります）"
-    exit 0
+    if [[ "$RESUME_REASON" != "decision-log" ]]; then
+      log "未完了のタスクがありません。再開しません（最終 PR はオーケストレーターが作ります）"
+      exit 0
+    fi
+    # 仮決め一覧への指示は、ループが周回の最初に読んで修正タスクにする。タスクが無くても起動しないと指示が処理されない
+    log "未完了のタスクはありませんが、仮決め一覧への指示を処理するために再開します"
   fi
   # 片付け済みのスロットを作り直す（ralph-setup.sh は既存の worktree を再利用する）
   EPIC=$(git -C "$CTL" symbolic-ref --short HEAD)
