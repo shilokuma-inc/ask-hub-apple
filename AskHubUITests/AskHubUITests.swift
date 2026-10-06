@@ -14,6 +14,12 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    override func setUp() async throws {
+        // Simulator が横向きのまま残っていると（ほかの UI テストが回したなど）、レイアウトが変わって要素を見つけられない
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    @MainActor
     func testInboxShowsBothTabs() throws {
         let app = XCUIApplication()
         // GitHub に接続せず、アプリに組み込んだサンプルデータを表示する
