@@ -11,6 +11,7 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
     case duplicateRepository(String)
     case relativeCheckoutPath(repository: String, path: String)
     case pollIntervalTooShort(seconds: Int, minimum: Int)
+    case iterationTimeoutOutOfRange(minutes: Int, minimum: Int, maximum: Int)
     case emptyLoopCommand
     case unknownPlaceholder(String)
     case emptyIdeaCommand
@@ -40,6 +41,8 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
             "\(repository) の path は絶対パス（または ~ から始まるパス）にしてください: \(path)"
         case let .pollIntervalTooShort(seconds, minimum):
             "pollIntervalSeconds は \(minimum) 以上にしてください（指定: \(seconds)）"
+        case let .iterationTimeoutOutOfRange(minutes, minimum, maximum):
+            "iterationTimeoutMinutes は \(minimum) 以上 \(maximum) 以下にしてください（指定: \(minutes)）"
         case .emptyLoopCommand:
             "loopCommand が空です。実行するコマンドを引数の配列で指定してください"
         case let .unknownPlaceholder(name):

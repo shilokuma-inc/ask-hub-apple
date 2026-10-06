@@ -8,6 +8,8 @@ public actor LocalLoopRuntime: LoopRuntime {
     /// 起動スクリプト（askhub-start-loop）が書く、ループのプロセスの PID。
     /// state ファイルが残ったままプロセスが死んだ（落ちた・止められた）ことを見分けるのに使う
     public static let pidFileRelativePath = ".claude/askhub-loop.pid"
+    /// 起動スクリプトが、準備の結果 goal にタスクが無かった Discussion の番号を書く
+    public static let noTasksFileRelativePath = ".claude/askhub-no-tasks.local.txt"
 
     /// 起動したプロセス。キーは `fullName` を小文字にしたもの。
     /// オーケストレーターを再起動すると忘れるが、その場合も state ファイルが残っていれば起動しない
@@ -39,6 +41,73 @@ public actor LocalLoopRuntime: LoopRuntime {
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/askhub/loops", isDirectory: true)
     }
 
+    public func hungLoop(of repository: RepositoryConfig, timeout: Duration, now: Date) -> HungLoop? {
+        let control = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
+        let pidFile = control.appendingPathComponent(Self.pidFileRelativePath)
+        guard let text = try? String(contentsOf: pidFile, encoding: .utf8),
+              let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 0,
+              let recordedAt = Self.modificationDate(of: pidFile),
+              let processStartedAt = Self.recordedLoopStartDate(pid: pid, recordedAt: recordedAt),
+              let started = Self.modificationDate(of: control.appendingPathComponent(Self.stateFileRelativePath)),
+              now.timeIntervalSince(started) > TimeInterval(timeout.components.seconds) else {
+            return nil
+        }
+        return HungLoop(pid: pid, iterationStartedAt: started, processStartedAt: processStartedAt)
+    }
+
+    private static func modificationDate(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+    }
+
+    /// `pid` のプロセスが生きていて、PID ファイルに記録したループそのものか。
+    /// 起動スクリプトは自分の PID を書いてから `claude` に exec するので、ループのプロセスは PID ファイルより前に起動している。
+    /// ループが終わった後に PID が別のプロセスに再利用されていれば、そのプロセスは PID ファイルより後に起動している（止めてはいけない）
+    /// そうならプロセスの起動時刻、違えば `nil`
+    static func recordedLoopStartDate(pid: pid_t, recordedAt: Date) -> Date? {
+        guard kill(pid, 0) == 0, let startedAt = processStartDate(pid: pid),
+              // ファイルの時刻と起動時刻の精度の差を見込む
+              startedAt <= recordedAt.addingTimeInterval(1) else {
+            return nil
+        }
+        return startedAt
+    }
+
+    /// プロセスの起動時刻（`sysctl` の `kinfo_proc`）
+    static func processStartDate(pid: pid_t) -> Date? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0, size > 0 else {
+            return nil
+        }
+        let start = info.kp_proc.p_un.__p_starttime
+        return Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
+    }
+
+    public func clearNoTasksMarker(of repository: RepositoryConfig) {
+        let control = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
+        try? FileManager.default.removeItem(at: control.appendingPathComponent(Self.noTasksFileRelativePath))
+    }
+
+    public func terminate(_ loop: HungLoop) async {
+        guard Self.isSameProcess(loop), kill(loop.pid, SIGTERM) == 0 else {
+            return
+        }
+        try? await Task.sleep(for: killGracePeriod)
+        // 猶予の間に終わって PID が再利用されていたら、送らない
+        if Self.isSameProcess(loop) {
+            kill(loop.pid, SIGKILL)
+        }
+    }
+
+    /// `loop.pid` が、見つけたときと同じプロセス（起動時刻が同じ）か
+    static func isSameProcess(_ loop: HungLoop) -> Bool {
+        guard let expected = loop.processStartedAt, let current = processStartDate(pid: loop.pid) else {
+            return false
+        }
+        return current == expected
+    }
+
     /// 最新のログの末尾（このバイト数）だけを読む
     static let logTailBytes = 8 * 1024
 
@@ -57,6 +126,14 @@ public actor LocalLoopRuntime: LoopRuntime {
         // 末尾だけを読むと文字の途中で切れることがあるので、壊れた部分は置き換えて読む
         // swiftlint:disable:next optional_data_string_conversion
         return UsageLimit.resetDate(in: String(decoding: data, as: UTF8.self), loggedAt: modified)
+    }
+
+    public func lastActivity(of repository: RepositoryConfig) -> Date? {
+        let control = URL(fileURLWithPath: repository.controlWorktreePath, isDirectory: true)
+        let files = [Self.stateFileRelativePath, ".claude/ralph-state.local.md", ".claude/ralph-goal.local.md"]
+            .map { control.appendingPathComponent($0) }
+            + [loopLogDirectory.appendingPathComponent("\(repository.name)-latest.log").resolvingSymlinksInPath()]
+        return files.compactMap(Self.modificationDate(of:)).max()
     }
 
     public func status(of repository: RepositoryConfig) -> LoopStatus {
@@ -104,14 +181,18 @@ public actor LocalLoopRuntime: LoopRuntime {
         func read(_ path: String) -> String? {
             try? String(contentsOf: control.appendingPathComponent(path), encoding: .utf8)
         }
+        func number(_ path: String) -> Int? {
+            read(path)
+                .flatMap { $0.split(whereSeparator: \.isNewline).first }
+                .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        }
         return EpicSnapshot(
             branch: Self.currentBranch(of: control),
             goal: read(".claude/ralph-goal.local.md"),
             state: read(".claude/ralph-state.local.md"),
-            discussion: read(".claude/askhub-bootstrap.local.txt")
-                .flatMap { $0.split(whereSeparator: \.isNewline).first }
-                .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) },
-            loopPrepared: read(".claude/askhub-promise.local.txt")?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            discussion: number(".claude/askhub-bootstrap.local.txt"),
+            loopPrepared: read(".claude/askhub-promise.local.txt")?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+            noTasksDiscussion: number(Self.noTasksFileRelativePath)
         )
     }
 

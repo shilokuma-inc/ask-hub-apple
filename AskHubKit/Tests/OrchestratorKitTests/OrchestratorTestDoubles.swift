@@ -26,6 +26,7 @@ struct FakeGitHubState {
     var closedIdeas: [Int] = []
     var ideaCommentFails = false
     var heartbeats: [String] = []
+    var discussionComments: [String] = []
     var heartbeatFails = false
     var ideaCloseFails = false
     var decisionLogs: [DecisionLogIssue] = []
@@ -34,6 +35,12 @@ struct FakeGitHubState {
     var decisionComments: [String] = []
     var closedDecisionLogs: [Int] = []
     var decisionCloseFails = false
+    /// 状態用の Issue（キーは番号）
+    var loopStatusIssues: [Int: LoopStatusIssueRecord] = [:]
+    var createdLoopStatusIssues: [String] = []
+    var updatedLoopStatusIssues: [String] = []
+    var loopStatusIssueListings = 0
+    var loopStatusFails = false
 }
 
 /// `needs-answer` の Discussion / PR を返す取得元。スレッドはテストから差し替える
@@ -67,6 +74,10 @@ struct FakeRuntimeState {
     var launchFails = false
     var epic = EpicSnapshot(branch: "epic/mvp", goal: nil, state: nil)
     var usageLimitReset: Date?
+    var hungLoop: HungLoop?
+    var terminated: [HungLoop] = []
+    var clearedNoTasksMarkers = 0
+    var lastActivity: Date?
     /// `run` が順に返す結果。尽きたら最後のものを返し続ける
     var runResults: [CommandResult] = [CommandResult(status: 0, output: "")]
     var ran: [[String]] = []
@@ -159,6 +170,66 @@ final class FakeGitHub: OrchestratorGitHub {
 
     var heartbeats: [String] {
         state.withLock { $0.heartbeats }
+    }
+
+    var loopStatusIssuesByNumber: [Int: LoopStatusIssueRecord] {
+        state.withLock { $0.loopStatusIssues }
+    }
+
+    var createdLoopStatusIssues: [String] {
+        state.withLock { $0.createdLoopStatusIssues }
+    }
+
+    var updatedLoopStatusIssues: [String] {
+        state.withLock { $0.updatedLoopStatusIssues }
+    }
+
+    var loopStatusIssueListings: Int {
+        state.withLock { $0.loopStatusIssueListings }
+    }
+
+    func setLoopStatusIssues(_ issues: [LoopStatusIssueRecord]) {
+        state.withLock { $0.loopStatusIssues = Dictionary(uniqueKeysWithValues: issues.map { ($0.number, $0) }) }
+    }
+
+    func setLoopStatusFails(_ fails: Bool) {
+        state.withLock { $0.loopStatusFails = fails }
+    }
+
+    func loopStatusIssues(in repository: String) async throws -> [LoopStatusIssueRecord] {
+        try state.withLock { state in
+            if state.loopStatusFails {
+                throw TestError()
+            }
+            state.loopStatusIssueListings += 1
+            return state.loopStatusIssues.values.sorted { $0.number < $1.number }
+        }
+    }
+
+    func createLoopStatusIssue(in repository: String, body: String) async throws -> Int {
+        try state.withLock { state in
+            if state.loopStatusFails {
+                throw TestError()
+            }
+            let number = (state.loopStatusIssues.keys.max() ?? 100) + 1
+            state.loopStatusIssues[number] = LoopStatusIssueRecord(
+                number: number, author: "mrs1669", isOpen: true, updatedAt: Date(timeIntervalSince1970: 0), body: body
+            )
+            state.createdLoopStatusIssues.append("\(repository)#\(number)")
+            return number
+        }
+    }
+
+    func updateLoopStatusIssue(in repository: String, number: Int, body: String) async throws {
+        try state.withLock { state in
+            guard !state.loopStatusFails, let issue = state.loopStatusIssues[number] else {
+                throw TestError()
+            }
+            state.loopStatusIssues[number] = LoopStatusIssueRecord(
+                number: number, author: issue.author, isOpen: true, updatedAt: issue.updatedAt, body: body
+            )
+            state.updatedLoopStatusIssues.append("\(repository)#\(number)")
+        }
     }
 
     func setHeartbeatFails(_ fails: Bool) {
@@ -282,6 +353,14 @@ final class FakeGitHub: OrchestratorGitHub {
             state.removed.append(discussion.nodeID)
         }
     }
+
+    var discussionComments: [String] {
+        state.withLock { $0.discussionComments }
+    }
+
+    func comment(on discussion: ReadyDiscussion, body: String) async throws {
+        state.withLock { $0.discussionComments.append("\(discussion.nodeID): \(body)") }
+    }
 }
 
 /// 起動したコマンドを記録するだけで、実際には起動しない。ループの状態はテストから変える
@@ -327,8 +406,54 @@ final class FakeRuntime: LoopRuntime {
         state.withLock { $0.usageLimitReset }
     }
 
+    func setHungLoop(_ loop: HungLoop?) {
+        state.withLock { $0.hungLoop = loop }
+    }
+
+    var terminated: [HungLoop] {
+        state.withLock { $0.terminated }
+    }
+
+    func hungLoop(of repository: RepositoryConfig, timeout: Duration, now: Date) async -> HungLoop? {
+        state.withLock { $0.hungLoop }
+    }
+
+    var clearedNoTasksMarkers: Int {
+        state.withLock { $0.clearedNoTasksMarkers }
+    }
+
+    func clearNoTasksMarker(of repository: RepositoryConfig) async {
+        state.withLock { state in
+            state.clearedNoTasksMarkers += 1
+            state.epic = EpicSnapshot(
+                branch: state.epic.branch,
+                goal: state.epic.goal,
+                state: state.epic.state,
+                discussion: state.epic.discussion,
+                loopPrepared: state.epic.loopPrepared
+            )
+        }
+    }
+
+    func terminate(_ loop: HungLoop) async {
+        state.withLock { state in
+            state.terminated.append(loop)
+            // 止めたプロセスは終わり、state ファイルだけが残る（異常終了）
+            state.hungLoop = nil
+            state.status = LoopStatus(stateFileExists: false, processAlive: false, stalled: true)
+        }
+    }
+
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot {
         state.withLock { $0.epic }
+    }
+
+    func setLastActivity(_ date: Date?) {
+        state.withLock { $0.lastActivity = date }
+    }
+
+    func lastActivity(of repository: RepositoryConfig) async -> Date? {
+        state.withLock { $0.lastActivity }
     }
 
     func setRunResults(_ results: [CommandResult]) {

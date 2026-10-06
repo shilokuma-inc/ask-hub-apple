@@ -107,6 +107,12 @@ struct LocalLoopRuntimeTests {
         try Data("not a number".utf8).write(to: control.appendingPathComponent(".claude/askhub-bootstrap.local.txt"))
         #expect(await LocalLoopRuntime().epicSnapshot(of: repository).discussion == nil)
 
+        // 準備の結果 goal にタスクが無かった Discussion の番号を読み、知らせた後に消す
+        try Data("12\n".utf8).write(to: control.appendingPathComponent(LocalLoopRuntime.noTasksFileRelativePath))
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).noTasksDiscussion == 12)
+        await LocalLoopRuntime().clearNoTasksMarker(of: repository)
+        #expect(await LocalLoopRuntime().epicSnapshot(of: repository).noTasksDiscussion == nil)
+
         // 起動スクリプトが完了語を残していれば、ループを始められる状態まで準備できている
         #expect(await LocalLoopRuntime().epicSnapshot(of: repository).loopPrepared == false)
         try Data("DONE\n".utf8).write(to: control.appendingPathComponent(".claude/askhub-promise.local.txt"))
@@ -143,6 +149,46 @@ struct LocalLoopRuntimeTests {
 
         try Data("ループを起動します\n".utf8).write(to: log)
         #expect(await runtime.usageLimitReset(of: repository) == nil)
+    }
+
+    @Test func findsAndTerminatesLoopWhoseIterationIsTooLong() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let control = URL(fileURLWithPath: repository.controlWorktreePath)
+        let stateFile = control.appendingPathComponent(LocalLoopRuntime.stateFileRelativePath)
+        let pidFile = control.appendingPathComponent(LocalLoopRuntime.pidFileRelativePath)
+        try FileManager.default.createDirectory(at: stateFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let loop = Process()
+        loop.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        loop.arguments = ["30"]
+        try loop.run()
+        defer { loop.terminate() }
+        // 起動スクリプトと同じく、プロセスの起動の後に PID を書く
+        try Data("\(loop.processIdentifier)\n".utf8).write(to: pidFile)
+        try Data("---\niteration: 2\n---\n".utf8).write(to: stateFile)
+        let runtime = LocalLoopRuntime(killGracePeriod: .milliseconds(100))
+        let now = Date()
+
+        // 周回が始まったばかりなら止めない
+        #expect(await runtime.hungLoop(of: repository, timeout: .seconds(90 * 60), now: now) == nil)
+
+        // state ファイルが 90 分より前から書き直されていなければ、固まったとみなす
+        let started = now.addingTimeInterval(-91 * 60)
+        try FileManager.default.setAttributes([.modificationDate: started], ofItemAtPath: stateFile.path)
+        let hung = try #require(await runtime.hungLoop(of: repository, timeout: .seconds(90 * 60), now: now))
+        #expect(hung.pid == loop.processIdentifier)
+
+        // PID ファイルがプロセスの起動より前に書かれていたら、PID が再利用された別のプロセスなので止めない
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-3600)], ofItemAtPath: pidFile.path)
+        #expect(await runtime.hungLoop(of: repository, timeout: .seconds(90 * 60), now: now) == nil)
+
+        // 見つけたときと起動時刻が違う（PID が再利用された）なら、シグナルを送らない
+        let reused = HungLoop(pid: hung.pid, iterationStartedAt: hung.iterationStartedAt, processStartedAt: Date(timeIntervalSince1970: 0))
+        await runtime.terminate(reused)
+        #expect(loop.isRunning)
+
+        await runtime.terminate(hung)
+        #expect(try await waitUntil { !loop.isRunning })
     }
 
     @Test func readsBranchFromGitDirectory() throws {

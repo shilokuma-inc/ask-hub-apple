@@ -7,6 +7,8 @@ public protocol OrchestratorGitHub: Sendable {
     func readyForLoopDiscussions(org: String) async throws -> [ReadyDiscussion]
     /// Discussion から `ready-for-loop` を外す
     func removeReadyLabel(from discussion: ReadyDiscussion) async throws
+    /// `ready-for-loop` の Discussion にコメントする
+    func comment(on discussion: ReadyDiscussion, body: String) async throws
     /// Discussion / PR から `needs-answer` を外す
     func removeNeedsAnswerLabel(from subject: InboxSubject) async throws
     /// Discussion に `ready-for-loop` を付ける（質問がすべて回答されたとき）。既に付いていても失敗しない
@@ -35,6 +37,12 @@ public protocol OrchestratorGitHub: Sendable {
     func comment(on issue: DecisionLogIssue, body: String) async throws
     /// 仮決め一覧をクローズする（完了として）
     func close(_ issue: DecisionLogIssue) async throws
+    /// リポジトリの、`loop-status` が付いた Issue（閉じたものも含む）
+    func loopStatusIssues(in repository: String) async throws -> [LoopStatusIssueRecord]
+    /// 状態用の Issue を作る（ラベルが無ければ作る）。Issue の番号を返す
+    func createLoopStatusIssue(in repository: String, body: String) async throws -> Int
+    /// 状態用の Issue の本文を置き換える。閉じられていれば開き直す
+    func updateLoopStatusIssue(in repository: String, number: Int, body: String) async throws
 }
 
 /// 終わるまで待って実行したコマンドの結果
@@ -75,6 +83,14 @@ public protocol LoopRuntime: Sendable {
     func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot
     /// 最新のループ（準備を含む）が Claude の利用上限で終わっていれば、解除の時刻。そうでなければ `nil`
     func usageLimitReset(of repository: RepositoryConfig) async -> Date?
+    /// ループのプロセスが生きているのに、今の周回が `timeout` より長く進んでいなければ、そのプロセス
+    func hungLoop(of repository: RepositoryConfig, timeout: Duration, now: Date) async -> HungLoop?
+    /// 固まったループのプロセスを止める（SIGTERM、猶予の後も残れば SIGKILL）
+    func terminate(_ loop: HungLoop) async
+    /// 「goal にタスクが無かった」目印を消す（Discussion に知らせた後。追記してラベルを付け直せば、もう一度準備する）
+    func clearNoTasksMarker(of repository: RepositoryConfig) async
+    /// ループが最後に動いた時刻（state ファイル・goal・最新のログの更新時刻のうち新しいもの）。無ければ `nil`
+    func lastActivity(of repository: RepositoryConfig) async -> Date?
     /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める
     func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
 }
@@ -102,6 +118,12 @@ public actor Orchestrator {
     let now: @Sendable () -> Date
     private var ideaTracker = IdeaRequestTracker()
     var stallWatcher = StallWatcher()
+    /// 状態用の Issue に書いた内容
+    var loopStatusPublisher = LoopStatusPublisher()
+    /// 担当リポジトリごとの、まだ起動していない `ready-for-loop` の Discussion の番号（最後に取得できたもの）
+    var readyDiscussionNumbers: [String: Int] = [:]
+    /// epic の最終 PR がマージ済みか（キーは `<repo小文字> <branch>`）。未マージなら確かめた時刻も持ち、問い合わせを間引く
+    var epicMergeChecks: [String: (merged: Bool, checkedAt: Date)] = [:]
 
     /// 依頼から Discussion を作らせるコマンドの制限時間
     static let ideaCommandTimeout: Duration = .seconds(30 * 60)
@@ -143,6 +165,8 @@ public actor Orchestrator {
     /// 1 回分のポーリング。実行した起動判定を返す
     @discardableResult
     public func pollOnce() async throws -> [LaunchDecision] {
+        // 固まったループを止める（止めた後は、異常終了したループとして再開する）
+        await terminateHungLoops()
         var statuses: [String: LoopStatus] = [:]
         for repository in config.repositories {
             statuses[repository.fullName.lowercased()] = await runtime.status(of: repository)
@@ -153,9 +177,9 @@ public actor Orchestrator {
         if activeUsageLimit(at: now()) != nil {
             // 最終 PR の作成は claude を使わないので、待っている間も進める
             _ = await finalizeCompletedEpics(statuses: statuses)
+            await publishLoopStatuses(statuses: statuses)
             return []
         }
-        let discussions = try await github.readyForLoopDiscussions(org: config.org)
 
         // ask への回答: 止まっているループを再開し、すべて回答済みなら needs-answer を外す。
         // 失敗しても ready-for-loop の判定は続ける
@@ -176,15 +200,19 @@ public actor Orchestrator {
         // 新しい Discussion の起動（前の epic の作業ファイルを退避する）より先に行う
         let unfinalized = await finalizeCompletedEpics(statuses: statuses)
 
+        // ready-for-loop の検索は失敗しうるので、ここまで（回答・異常終了・固まったループの再開と最終 PR）を先に済ませる
+        let discussions = try await github.readyForLoopDiscussions(org: config.org)
+
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         let snapshots = await epicSnapshots()
-        await advanceLaunchedDiscussions(discussions, statuses: statuses, snapshots: snapshots)
+        recordReadyDiscussions(discussions, snapshots: snapshots)
+        let handled = await advanceLaunchedDiscussions(discussions, statuses: statuses, snapshots: snapshots)
 
         let decisions = LaunchPlanner.decide(
             discussions,
             config: config,
             statuses: statuses,
-            excluding: tracker.blockedDiscussionIDs,
+            excluding: tracker.blockedDiscussionIDs.union(handled),
             epicsInProgress: Set(snapshots.filter(\.value.inProgress).keys).union(unfinalized)
         )
         for decision in decisions {
@@ -207,6 +235,8 @@ public actor Orchestrator {
         } catch {
             log("依頼の確認に失敗しました: \(error)")
         }
+        // ループの状態を状態用の Issue に書き出す（起動・再開を反映した後）
+        await publishLoopStatuses(statuses: statuses)
         return decisions
     }
 

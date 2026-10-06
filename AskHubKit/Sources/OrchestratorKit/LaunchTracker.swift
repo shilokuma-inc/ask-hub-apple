@@ -42,6 +42,11 @@ public struct LaunchTracker: Sendable, Equatable {
 
     public init() {}
 
+    /// `repositoryKey` の Discussion のうち、ループの起動を諦めたものがあるか
+    public func hasGivenUp(repositoryKey: String) -> Bool {
+        entries.values.contains { $0.repositoryKey == repositoryKey && $0.phase == .gaveUp }
+    }
+
     /// 起動判定で起動しない Discussion（追跡中で、起動し直す番ではないもの）
     public var blockedDiscussionIDs: Set<String> {
         Set(entries.filter { $0.value.phase != .failed }.keys)
@@ -112,6 +117,20 @@ public struct LaunchTracker: Sendable, Equatable {
             && [.starting, .failed, .gaveUp].contains(entry.phase) {
             entries[id] = Entry(repositoryKey: repositoryKey, attempts: 0, phase: .failed)
         }
+    }
+
+    /// 追跡していない Discussion のループが、既に始まっている（オーケストレーターの再起動の前に起動していた）。
+    /// 開始を確かめた扱いにし、次の `update` で `ready-for-loop` を外させる
+    public mutating func adoptStarted(_ discussion: ReadyDiscussion, repositoryKey: String) {
+        guard entries[discussion.nodeID] == nil else {
+            return
+        }
+        entries[discussion.nodeID] = Entry(repositoryKey: repositoryKey, attempts: 0, phase: .started)
+    }
+
+    /// 追跡をやめる（知らせて止めた Discussion。ラベルを付け直したら、改めて起動する）
+    public mutating func forget(_ discussion: ReadyDiscussion) {
+        entries[discussion.nodeID] = nil
     }
 
     /// `ready-for-loop` を外した

@@ -114,7 +114,10 @@ struct OrchestratorTests {
 
         #expect(runtime.launched.isEmpty)
         #expect(github.removed.isEmpty)
-        #expect(logs.recorded == ["shilokuma-inc/ask-hub-apple#12 は起動しません: 制御用 worktree に .claude/ralph-loop.local.md が残っています"])
+        // 状態用の Issue を作ったログ（Orchestrator+LoopStatus）は除いて比べる
+        #expect(logs.recorded.filter { !$0.contains("ループの状態") } == [
+            "shilokuma-inc/ask-hub-apple#12 は起動しません: 制御用 worktree に .claude/ralph-loop.local.md が残っています"
+        ])
     }
 
     // MARK: - ask への回答
@@ -277,5 +280,50 @@ struct OrchestratorTests {
         #expect(sleeps.withLock { $0 } == 2)
         #expect(runtime.launched.count == 1)
         #expect(logs.recorded.first?.hasPrefix("ポーリングに失敗しました") == true)
+    }
+
+    @Test func removesLabelOfDiscussionWhoseLoopStartedBeforeRestart() async throws {
+        // 再起動の前に #12 から準備を終えてループを始めていた（追跡は消えている）
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        let runtime = FakeRuntime()
+        runtime.set(LoopStatus(stateFileExists: true, processAlive: false))
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [ ] 【FEAT】A", state: nil, discussion: 12, loopPrepared: true))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+
+        #expect(github.removed == ["D_12"])
+        #expect(runtime.launched.isEmpty)
+    }
+
+    @Test func relaunchesDiscussionWhosePreparationWasInterrupted() async throws {
+        // 準備が途中（完了語が無い）なら、ラベルを外さず起動し直す（起動スクリプトが準備をやり直す）
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: nil, state: nil, discussion: 12, loopPrepared: false))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+
+        #expect(github.removed.isEmpty)
+        #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "12"]])
+    }
+
+    @Test func stopsDiscussionWithoutTasksAndTellsItOnce() async throws {
+        // 準備の結果 goal にタスクが無かった（起動スクリプトが目印を残した）
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "# goal\n", state: nil, discussion: 12, noTasksDiscussion: 12))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        let decisions = try await orchestrator.pollOnce()
+
+        // やり直さず、Discussion に知らせて ready-for-loop を外し、目印を消す
+        #expect(decisions == [.skip(.fixture(number: 12), .alreadyLaunched)])
+        #expect(runtime.launched.isEmpty)
+        #expect(github.discussionComments == ["D_12: \(Orchestrator.noTasksComment)"])
+        #expect(github.removed == ["D_12"])
+        #expect(runtime.clearedNoTasksMarkers == 1)
+        #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#12 は準備の結果やることが残っていなかったので、知らせて ready-for-loop を外しました"))
     }
 }

@@ -8,7 +8,7 @@ struct QuestionDetailView: View {
     private let renderedBody: RenderedBody
     @State private var form: AnswerFormModel
     @State private var isConfirmingLoopStart = false
-    /// 投稿の前にキーボードを閉じ、確認や結果が隠れないようにする
+    /// 投稿の前とキーボードの「完了」でキーボードを閉じ、確認や結果・ボタンが隠れないようにする
     @FocusState private var isEditingNote: Bool
     @Environment(\.dismiss)
     private var dismiss
@@ -117,6 +117,7 @@ struct QuestionDetailView: View {
             Text("\(question.subject.shortReference)「\(question.subject.title)」に ready-for-loop を付け、担当 PC のオーケストレーターがループを起動します")
         }
         .formStyle(.grouped)
+        .keyboardDoneButton($isEditingNote)
         .navigationTitle(question.subject.shortReference)
     }
 

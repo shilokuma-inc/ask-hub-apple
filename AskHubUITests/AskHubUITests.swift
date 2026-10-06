@@ -14,6 +14,15 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    override func setUp() async throws {
+        // Simulator が横向きのまま残っていると（ほかの UI テストが回したなど）、レイアウトが変わって要素を見つけられない。
+        // 向きは iOS にしか無い（UI テストは macOS でもビルドする）
+        #if os(iOS)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+    }
+
+    @MainActor
     func testInboxShowsBothTabs() throws {
         let app = XCUIApplication()
         // GitHub に接続せず、アプリに組み込んだサンプルデータを表示する
@@ -24,10 +33,13 @@ final class AskHubUITests: XCTestCase {
         // HTML タグと Markdown が混ざった質問のサンプルも一覧に出る
         XCTAssertTrue(app.staticTexts["HTMLタグの有効化"].firstMatch.exists)
 
+        // 「上限で待機中」「ループの開始待ち」は「ループ」タブに出し、要回答・急がないには出さない
+        XCTAssertFalse(app.staticTexts["上限で待機中"].exists)
+
         app.tabBars.buttons["急がない"].tap()
         XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
-        // 担当の印が無いリポジトリの開始待ちは「担当 PC なし」と出る
-        XCTAssertTrue(app.staticTexts["担当 PC なし"].exists)
+        XCTAssertFalse(app.staticTexts["上限で待機中"].exists)
+        XCTAssertFalse(app.staticTexts["ループの開始待ち"].exists)
     }
 
     @MainActor
@@ -56,6 +68,39 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
+    func testDismissKeyboardInNewRequest() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは Issue を作ったことにして GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["依頼"].tap()
+        app.buttons["repository-picker"].tap()
+        app.buttons["notti-ios"].tap()
+        let summary = app.textFields["例: 通知の頻度を調整したい"]
+        summary.tap()
+        summary.typeText("通知の頻度を調整したい")
+
+        // 依頼文の Return は改行のままで、キーボードは閉じない
+        let body = app.textFields["やりたいこと・背景・決まっていることなど"]
+        body.tap()
+        body.typeText("朝だけにしたい\n夜は止めたい")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        // 入力すると placeholder では引けなくなるので、入力した値で探す
+        let multiline = NSPredicate(format: "value CONTAINS %@", "朝だけにしたい\n夜は止めたい")
+        XCTAssertTrue(app.textFields.matching(multiline).firstMatch.exists)
+
+        // キーボード上の「完了」で閉じると、下の「依頼を送る」が押せる
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let send = app.buttons["依頼を送る"]
+        XCTAssertTrue(send.isHittable)
+        send.tap()
+
+        XCTAssertTrue(app.staticTexts["依頼を送りました"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testAnswerQuestionFromDetail() throws {
         let app = XCUIApplication()
         // サンプルデータでは投稿しても GitHub には送らない
@@ -76,6 +121,39 @@ final class AskHubUITests: XCTestCase {
         app.buttons["1時間"].tap()
         XCTAssertTrue(post.isEnabled)
         XCTAssertTrue(app.staticTexts["回答: 1時間"].exists)
+        post.tap()
+
+        // 投稿すると一覧に戻る
+        XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testDismissKeyboardInQuestionDetail() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは投稿しても GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        let row = app.staticTexts["Q2. 通知の文言 通知に表示する文言の案があれば教えてください。"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        // 回答の欄と投稿ボタンは画面の下にあるので、スクロールして表示する
+        app.swipeUp()
+
+        // 回答の Return は改行のままで、キーボードは閉じない
+        let note = app.textFields["回答"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
+        note.tap()
+        note.typeText("朝の通知だけにしたい\n夜は送らない")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let multiline = NSPredicate(format: "value CONTAINS %@", "朝の通知だけにしたい\n夜は送らない")
+        XCTAssertTrue(app.textFields.matching(multiline).firstMatch.exists)
+
+        // キーボード上の「完了」で閉じると、下の「回答を投稿」が押せる
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let post = app.buttons["回答を投稿"]
+        XCTAssertTrue(post.isHittable)
         post.tap()
 
         // 投稿すると一覧に戻る
@@ -194,5 +272,77 @@ final class AskHubUITests: XCTestCase {
         confirm.tap()
         XCTAssertTrue(app.navigationBars["マージ待ち"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["【FEAT】epic/mvp を develop に取り込む"].exists)
+    }
+
+    @MainActor
+    func testLoopStatusTabShowsEveryRepository() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["ループ"].tap()
+        // 一覧の先頭に「上限で待機中」と「ループの開始待ち」の節がある
+        XCTAssertTrue(app.staticTexts["上限で待機中"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["shilokuma-inc/notti-ios"].exists)
+        XCTAssertTrue(app.staticTexts["ループの開始待ち"].exists)
+        XCTAssertTrue(app.staticTexts["ask-hub-apple#15"].exists)
+        // 担当の印が無いリポジトリの開始待ちは「担当 PC なし」と出る
+        XCTAssertTrue(app.staticTexts["beat-tap-ios#3"].exists)
+        XCTAssertTrue(app.staticTexts["担当 PC なし"].exists)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "loop-status-tab"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        // その下にリポジトリごとの状態がある
+        scrollUntilHittable(app.staticTexts["ask-hub-apple"], in: app)
+        scrollUntilHittable(app.staticTexts["5 / 12 タスク完了"], in: app)
+        XCTAssertTrue(app.staticTexts["epic/loop-status"].exists)
+        XCTAssertTrue(app.staticTexts["ゴール元: Discussion #211"].exists)
+        // 実行中なのに長く動きが無いループは知らせる
+        scrollUntilHittable(app.staticTexts["長く動きがありません"], in: app)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "最後の動き: ")).firstMatch.exists)
+
+        // 担当 PC がいないリポジトリ（weather-mini）と状態の無いリポジトリは、一覧の下のほうにある
+        scrollUntilHittable(app.staticTexts["状態なし"], in: app)
+        scrollUntilHittable(app.staticTexts["weather-mini"], in: app)
+        XCTAssertTrue(app.staticTexts["担当 PC なし"].exists)
+    }
+
+    /// 要素が画面に出るまで、一覧をゆっくり上にスクロールする（速く払うと行を飛ばしてしまう）
+    @MainActor
+    private func scrollUntilHittable(_ element: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        for _ in 0..<8 {
+            if element.exists && element.isHittable {
+                return
+            }
+            app.collectionViews.firstMatch.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(element.exists && element.isHittable, "\(element) が画面に出ない", file: file, line: line)
+    }
+
+    @MainActor
+    func testDismissKeyboardInSettings() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        // 設定はシートの中に自前の NavigationStack を持つ。その中でもキーボード上の「完了」が出る
+        let settings = app.buttons["設定"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        let token = app.secureTextFields["github_pat_…"]
+        XCTAssertTrue(token.waitForExistence(timeout: 5))
+        token.tap()
+        token.typeText("github_pat_uitest")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+
+        // 「完了」で閉じると、下の「保存」が押せる。保存すると Simulator の Keychain に書き込むので、押せることだけ確かめる
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let save = app.buttons["保存"]
+        XCTAssertTrue(save.isEnabled)
+        XCTAssertTrue(save.isHittable)
     }
 }
