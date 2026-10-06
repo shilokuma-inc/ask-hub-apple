@@ -340,6 +340,17 @@ struct SampleInboxSource: InboxSource {
                 url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/18")!,
                 author: "mrs1669",
                 updatedAt: Self.now.addingTimeInterval(-50 * 60)
+            ),
+            // 更新の新しい順では実機確認より後ろに来る判断ログ（セクションに分けたときの並びの確認用）
+            InboxIssue(
+                id: "I_77",
+                kind: .decisionLog,
+                repository: "shilokuma-inc/notti-ios",
+                number: 77,
+                title: "【CHORE】epic/notification の仮決め一覧",
+                url: URL(string: "https://github.com/shilokuma-inc/notti-ios/issues/77")!,
+                author: "mrs1669",
+                updatedAt: Self.now.addingTimeInterval(-70 * 60)
             )
         ]
     }

@@ -44,7 +44,8 @@ struct ContentView: View {
             NavigationStack {
                 InboxListView(
                     title: "急がない",
-                    items: model.issues,
+                    // 判断ログ（上）と実機確認（下）に分ける
+                    sections: InboxIssue.sections(of: model.issues),
                     emptyTitle: "判断ログ・実機確認はありません",
                     emptySystemImage: "tray",
                     model: model,

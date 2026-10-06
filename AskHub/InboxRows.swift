@@ -42,7 +42,7 @@ struct IssueRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Label(issue.kind.title, systemImage: issue.kind.systemImage)
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(issue.kind.color)
                 Text("\(InboxSubject.shortRepository(issue.repository))#\(issue.number)")
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -71,6 +71,9 @@ extension InboxSubject {
 }
 
 extension InboxIssue.Kind {
+    /// 「急がない」のセクションの並び（判断ログが上、実機確認が下）
+    static let sectionOrder: [Self] = [.decisionLog, .needsVerify]
+
     var title: String {
         switch self {
         case .decisionLog:
@@ -88,6 +91,32 @@ extension InboxIssue.Kind {
 
         case .needsVerify:
             "iphone"
+        }
+    }
+
+    /// 種類を見分ける色。セクション見出しのアイコンと行のラベルに使う。システムカラーなのでライト・ダークの両方で読める
+    var color: Color {
+        switch self {
+        case .decisionLog:
+            .purple
+
+        case .needsVerify:
+            .orange
+        }
+    }
+}
+
+extension InboxIssue {
+    /// 「急がない」の一覧を種類ごとのセクションに分ける。セクションの中の並びは `issues` のまま。0 件の種類は出さない
+    static func sections(of issues: [InboxIssue]) -> [InboxListSection<InboxIssue>] {
+        Kind.sectionOrder.compactMap { kind in
+            let items = issues.filter { $0.kind == kind }
+            guard !items.isEmpty else { return nil }
+            return InboxListSection(
+                id: kind.title,
+                header: InboxListSection.Header(title: kind.title, systemImage: kind.systemImage, tint: kind.color),
+                items: items
+            )
         }
     }
 }
