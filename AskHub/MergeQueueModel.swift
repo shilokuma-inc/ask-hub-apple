@@ -25,14 +25,18 @@ final class MergeQueueModel {
 
     private let tokenStore: any TokenStore
     private let makeProvider: @Sendable (String) -> any MergeQueueProviding
+    /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
+    private let organizations: () -> [String]
     /// 取得中に `refresh()` が呼ばれたか。取得が終わったら最新のトークンで取り直す
     private var needsRefreshAfterLoading = false
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
-        makeProvider: @escaping @Sendable (String) -> any MergeQueueProviding = { GitHubMergeQueue(client: GitHubClient(token: $0)) }
+        makeProvider: @escaping @Sendable (String) -> any MergeQueueProviding = { GitHubMergeQueue(client: GitHubClient(token: $0)) },
+        organizations: @escaping () -> [String] = { OrganizationSettings.load() }
     ) {
         self.tokenStore = tokenStore
+        self.organizations = organizations
         self.makeProvider = makeProvider
     }
 
@@ -77,7 +81,7 @@ final class MergeQueueModel {
         state = .loading
         lastRefreshed = .now
         do {
-            let fetched = try await makeProvider(token).epicPullRequests(org: InboxModel.org)
+            let fetched = try await makeProvider(token).epicPullRequests(orgs: organizations())
             // 取得結果に出てこなくなった（検索に反映された）PR は、覚えておく必要がない
             mergedIDs.formIntersection(fetched.map(\.id))
             pullRequests = fetched.filter { !mergedIDs.contains($0.id) }

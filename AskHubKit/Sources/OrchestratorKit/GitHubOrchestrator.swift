@@ -9,11 +9,14 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         self.client = client
     }
 
-    public func readyForLoopDiscussions(org: String) async throws -> [ReadyDiscussion] {
+    public func readyForLoopDiscussions(orgs: [String]) async throws -> [ReadyDiscussion] {
+        guard let scope = SearchScope.organizations(orgs) else {
+            return []
+        }
         let label = AskHubLabel.readyForLoop.rawValue
-        // 担当リポジトリごとではなく org 全体を 1 回で検索する（Search API のレート制限のため）。
+        // 担当リポジトリごとではなく organization 全体を 1 回で検索する（Search API のレート制限のため）。
         // 検索結果は 1,000 件までなので、closed の Discussion で上限を埋めないよう検索の段階で open に絞る
-        let query = "org:\(org) label:\(label) is:open"
+        let query = "\(scope) label:\(label) is:open"
         let nodes: [SearchNode] = try await collectGraphQLPages { after in
             let data = try await client.graphQL(
                 Self.searchQuery,
@@ -159,8 +162,11 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
         try await client.get("repos/\(repository)", as: RepositoryInfo.self).defaultBranch
     }
 
-    public func ideaRequests(org: String) async throws -> [IdeaRequestIssue] {
-        let query = "org:\(org) is:issue is:open label:\(AskHubLabel.ideaRequest.rawValue)"
+    public func ideaRequests(orgs: [String]) async throws -> [IdeaRequestIssue] {
+        guard let scope = SearchScope.organizations(orgs) else {
+            return []
+        }
+        let query = "\(scope) is:issue is:open label:\(AskHubLabel.ideaRequest.rawValue)"
         let nodes: [IdeaIssueNode] = try await collectGraphQLPages { after in
             let data = try await client.graphQL(
                 Self.ideaSearchQuery,

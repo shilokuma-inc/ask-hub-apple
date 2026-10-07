@@ -74,7 +74,7 @@ struct WaitingDiscussionSourceTests {
                 """#)
         ])
         let source = GitHubInboxSource(client: GitHubClient(token: "github_pat_secret", http: http, sleep: { _ in }))
-        let waiting = try await source.waitingDiscussions(org: "shilokuma-inc")
+        let waiting = try await source.waitingDiscussions(orgs: ["shilokuma-inc"])
 
         #expect(waiting.map(\.subject.nodeID) == ["D_3", "D_4"])
         #expect(waiting.map(\.lastSeen) == [Date(timeIntervalSince1970: 1_800_000_000), nil])
@@ -112,12 +112,41 @@ struct UsageLimitedRepositorySourceTests {
         ])
         let source = GitHubInboxSource(client: GitHubClient(token: "github_pat_secret", http: http, sleep: { _ in }))
 
-        let repositories = try await source.usageLimitedRepositories(org: "o", now: now)
+        let repositories = try await source.usageLimitedRepositories(orgs: ["o"], now: now)
 
         // 解除済み・担当の印が古い・印なしは除き、解除の早い順に並べる
         #expect(repositories == [
             UsageLimitedRepository(repository: "o/c", until: now.addingTimeInterval(600)),
             UsageLimitedRepository(repository: "o/a", until: now.addingTimeInterval(3600))
         ])
+    }
+
+    @Test func readsEachOrganizationAndSortsAcrossThem() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let later = OrchestratorHeartbeat.description(at: now, usageLimitedUntil: now.addingTimeInterval(3600))
+        let sooner = OrchestratorHeartbeat.description(at: now, usageLimitedUntil: now.addingTimeInterval(600))
+        let http = MockHTTPClient([
+            .init(status: 200, body: #"""
+                { "data": { "organization": { "repositories": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
+                  { "nameWithOwner": "a/x", "label": { "description": "\#(later)" } }
+                ] } } } }
+                """#),
+            .init(status: 200, body: #"""
+                { "data": { "organization": { "repositories": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
+                  { "nameWithOwner": "b/y", "label": { "description": "\#(sooner)" } }
+                ] } } } }
+                """#)
+        ])
+        let source = GitHubInboxSource(client: GitHubClient(token: "github_pat_secret", http: http, sleep: { _ in }))
+
+        let repositories = try await source.usageLimitedRepositories(orgs: ["a", "b"], now: now)
+
+        #expect(repositories.map(\.repository) == ["b/y", "a/x"])
+        let orgs = try http.requests.map { request in
+            let data = try #require(request.httpBody)
+            let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            return (object["variables"] as? [String: Any])?["org"] as? String
+        }
+        #expect(orgs == ["a", "b"])
     }
 }

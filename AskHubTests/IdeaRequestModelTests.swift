@@ -19,7 +19,7 @@ struct IdeaRequestModelTests {
             created.withLock { $0 }
         }
 
-        func repositories(in org: String) async throws -> [RequestRepository] {
+        func repositories(in orgs: [String]) async throws -> [RequestRepository] {
             if let failure {
                 throw failure
             }
@@ -73,7 +73,7 @@ struct IdeaRequestModelTests {
             waiters.forEach { $0.resume() }
         }
 
-        func repositories(in org: String) async throws -> [RequestRepository] {
+        func repositories(in orgs: [String]) async throws -> [RequestRepository] {
             await withCheckedContinuation { continuation in
                 let opened = gate.withLock { state in
                     if !state.opened {

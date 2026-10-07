@@ -33,13 +33,17 @@ final class IdeaRequestModel {
 
     private let tokenStore: any TokenStore
     private let makeRequester: @Sendable (String) -> any IdeaRequesting
+    /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
+    private let organizations: () -> [String]
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
         makeRequester: @escaping @Sendable (String) -> any IdeaRequesting = { GitHubIdeaRequester(client: GitHubClient(token: $0)) },
-        sent: [SentRequest] = []
+        sent: [SentRequest] = [],
+        organizations: @escaping () -> [String] = { OrganizationSettings.load() }
     ) {
         self.tokenStore = tokenStore
+        self.organizations = organizations
         self.makeRequester = makeRequester
         self.sent = sent
     }
@@ -83,7 +87,7 @@ final class IdeaRequestModel {
         }
         repositoriesState = .loading
         do {
-            repositories = try await makeRequester(token).repositories(in: InboxModel.org)
+            repositories = try await makeRequester(token).repositories(in: organizations())
             // 選んでいたリポジトリが一覧から消えていたら、選び直してもらう
             if let repository, !repositories.contains(where: { $0.fullName == repository }) {
                 self.repository = nil

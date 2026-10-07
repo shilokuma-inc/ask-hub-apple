@@ -17,7 +17,6 @@ struct RepositoryConfigTests {
         let repository = RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")
         let config = OrchestratorConfig(
             trustedAuthorLogins: ["mrs1669"],
-            org: "shilokuma-inc",
             repositories: [repository],
             pollInterval: .seconds(60),
             loopCommand: try LoopCommandTemplate(arguments: ["start"])

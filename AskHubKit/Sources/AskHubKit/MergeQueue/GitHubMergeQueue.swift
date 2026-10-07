@@ -11,8 +11,11 @@ public struct GitHubMergeQueue: MergeQueueProviding {
         self.trustedAuthors = trustedAuthors
     }
 
-    public func epicPullRequests(org: String) async throws -> [EpicPullRequest] {
-        let query = "org:\(org) is:pr is:open label:\(AskHubLabel.epicFinal.rawValue)"
+    public func epicPullRequests(orgs: [String]) async throws -> [EpicPullRequest] {
+        guard let scope = SearchScope.organizations(orgs) else {
+            return []
+        }
+        let query = "\(scope) is:pr is:open label:\(AskHubLabel.epicFinal.rawValue)"
         let nodes: [EpicNode] = try await collectGraphQLPages { after in
             let data = try await client.graphQL(
                 Self.searchQuery,

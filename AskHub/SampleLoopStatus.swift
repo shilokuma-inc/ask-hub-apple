@@ -28,7 +28,9 @@ extension LoopStatusModel {
 
 /// デモモード・Preview・UI テスト用の固定のループの状態。すべての状態（停滞・担当 PC なし・状態なしを含む）を 1 行ずつ出す
 struct SampleLoopStatusSource: LoopStatusSource {
-    func loopStatusRepositories(org: String) async throws -> [LoopStatusRepository] {
+    func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
+        // サンプルのリポジトリは先頭の organization に置く
+        let org = orgs.first ?? TargetOrganizations.defaultLogins[0]
         // 時刻は取得のたびに今からの相対で作る（担当 PC の有無や「最後の動き」が古くならないように）
         let now = Date()
         func minutesAgo(_ minutes: Double) -> Date {

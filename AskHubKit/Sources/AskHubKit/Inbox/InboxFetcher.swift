@@ -3,25 +3,25 @@ import Foundation
 /// 受信箱の取得元。テストでは差し替える
 public protocol InboxSource: Sendable {
     /// `needs-answer` が付いた open な Discussion と PR
-    func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject]
+    func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject]
     /// Discussion / PR の、質問かもしれないスレッドの一覧
     func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread]
     /// `decision-log` / `needs-verify` が付いた open な Issue
-    func lowPriorityIssues(org: String) async throws -> [InboxIssue]
+    func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue]
     /// `ready-for-loop` が付いた open な Discussion と、そのリポジトリの担当の印
-    func waitingDiscussions(org: String) async throws -> [WaitingDiscussion]
+    func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion]
     /// 担当 PC が Claude の利用上限で待機しているリポジトリ（担当の印から読む）
-    func usageLimitedRepositories(org: String, now: Date) async throws -> [UsageLimitedRepository]
+    func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository]
 }
 
 extension InboxSource {
     /// 取得しない取得元（テストの差し替えなど）では空
-    public func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
+    public func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion] {
         []
     }
 
     /// 取得しない取得元（テストの差し替えなど）では空
-    public func usageLimitedRepositories(org: String, now: Date) async throws -> [UsageLimitedRepository] {
+    public func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
         []
     }
 }
@@ -36,11 +36,11 @@ public struct InboxFetcher: Sendable {
         self.trustedAuthors = trustedAuthors
     }
 
-    /// org 全体の未回答の質問を、古い順に返す
-    public func unansweredQuestions(org: String) async throws -> [InboxQuestion] {
+    /// organization 全体の未回答の質問を、古い順に返す
+    public func unansweredQuestions(orgs: [String]) async throws -> [InboxQuestion] {
         var questions: [InboxQuestion] = []
         // レート制限を考えて、Discussion / PR ごとに順番に取得する
-        for subject in try await source.subjectsNeedingAnswer(org: org) {
+        for subject in try await source.subjectsNeedingAnswer(orgs: orgs) {
             let threads = try await source.questionThreads(of: subject)
             questions += InboxQuestion.unanswered(in: threads, of: subject, trustedAuthors: trustedAuthors)
         }
@@ -49,21 +49,21 @@ public struct InboxFetcher: Sendable {
 
     /// ループの開始を待っている Discussion を、番号の古い順に返す。
     /// 信用する author が作ったものだけを扱う（public リポジトリでは誰でも Discussion を作れるため）
-    public func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
-        try await source.waitingDiscussions(org: org)
+    public func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion] {
+        try await source.waitingDiscussions(orgs: orgs)
             .filter { trustedAuthors.contains($0.author) }
             .sorted { ($0.subject.repository, $0.subject.number) < ($1.subject.repository, $1.subject.number) }
     }
 
     /// 担当 PC が Claude の利用上限で待機しているリポジトリを、解除の早い順に返す
-    public func usageLimitedRepositories(org: String, now: Date) async throws -> [UsageLimitedRepository] {
-        try await source.usageLimitedRepositories(org: org, now: now)
+    public func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
+        try await source.usageLimitedRepositories(orgs: orgs, now: now)
     }
 
     /// 「急がない」に出す Issue を、更新の新しい順に返す。
     /// 信用する author が作ったものだけを扱う（public リポジトリでは誰でも Issue を作れ、ラベルの付いた Issue を装えるため）
-    public func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
-        try await source.lowPriorityIssues(org: org)
+    public func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
+        try await source.lowPriorityIssues(orgs: orgs)
             .filter { trustedAuthors.contains($0.author) }
             .sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
     }

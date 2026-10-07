@@ -31,6 +31,8 @@ final class LoopStatusModel {
     private let makeSource: @Sendable (String) -> any LoopStatusSource
     /// 「上限で待機中」「ループの開始待ち」の取得元（受信箱と同じ取得元を使う）
     private let makeInboxSource: @Sendable (String) -> any InboxSource
+    /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
+    private let organizations: () -> [String]
     /// 取得中に `refresh()` が呼ばれたか。取得が終わったら最新のトークンで取り直す
     private var needsRefreshAfterLoading = false
 
@@ -38,10 +40,12 @@ final class LoopStatusModel {
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
         trustedAuthors: TrustedAuthors = .default,
         makeSource: @escaping @Sendable (String) -> any LoopStatusSource = { GitHubLoopStatusSource(client: GitHubClient(token: $0)) },
-        makeInboxSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) }
+        makeInboxSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) },
+        organizations: @escaping () -> [String] = { OrganizationSettings.load() }
     ) {
         self.tokenStore = tokenStore
         self.trustedAuthors = trustedAuthors
+        self.organizations = organizations
         self.makeSource = makeSource
         self.makeInboxSource = makeInboxSource
     }
@@ -93,14 +97,14 @@ final class LoopStatusModel {
         let previous = (state: state, lastRefreshed: lastRefreshed)
         state = .loading
         lastRefreshed = .now
-        let org = InboxModel.org
+        let orgs = organizations()
         let fetcher = LoopStatusFetcher(source: makeSource(token), trustedAuthors: trustedAuthors)
         let inboxFetcher = InboxFetcher(source: makeInboxSource(token), trustedAuthors: trustedAuthors)
         do {
-            async let rows = fetcher.rows(org: org)
-            async let waiting = inboxFetcher.waitingDiscussions(org: org)
+            async let rows = fetcher.rows(orgs: orgs)
+            async let waiting = inboxFetcher.waitingDiscussions(orgs: orgs)
             // 上限の表示は補助なので、取得に失敗してもループの状態は出す（次の更新で取り直す）
-            async let usageLimited = (try? await inboxFetcher.usageLimitedRepositories(org: org, now: .now)) ?? []
+            async let usageLimited = (try? await inboxFetcher.usageLimitedRepositories(orgs: orgs, now: .now)) ?? []
             let fetched = try await (rows, waiting, usageLimited)
             // 上限の取得の `try?` は打ち切りも空として返すので、打ち切られていれば途中の結果で一覧を上書きしない
             try Task.checkCancellation()

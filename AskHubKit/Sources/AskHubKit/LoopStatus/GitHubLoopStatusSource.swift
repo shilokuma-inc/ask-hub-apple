@@ -11,7 +11,16 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
         self.client = client
     }
 
-    public func loopStatusRepositories(org: String) async throws -> [LoopStatusRepository] {
+    public func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
+        var repositories: [LoopStatusRepository] = []
+        // レート制限を考えて、organization ごとに順番に取得する
+        for org in orgs {
+            repositories += try await loopStatusRepositories(org: org)
+        }
+        return repositories
+    }
+
+    private func loopStatusRepositories(org: String) async throws -> [LoopStatusRepository] {
         let nodes: [RepositoryNode] = try await collectGraphQLPages { after in
             let data = try await client.graphQL(
                 Self.repositoriesQuery,

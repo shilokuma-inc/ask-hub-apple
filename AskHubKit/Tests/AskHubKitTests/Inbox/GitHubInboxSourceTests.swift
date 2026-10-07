@@ -52,7 +52,7 @@ struct GitHubInboxSourceTests {
                 ] } } }
                 """#)
         ])
-        let subjects = try await makeSource(http).subjectsNeedingAnswer(org: "shilokuma-inc")
+        let subjects = try await makeSource(http).subjectsNeedingAnswer(orgs: ["shilokuma-inc"])
 
         let discussionURL = try #require(URL(string: "https://github.com/o/r/discussions/1"))
         let pullRequestURL = try #require(URL(string: "https://github.com/o/r2/pull/3"))
@@ -81,7 +81,7 @@ struct GitHubInboxSourceTests {
                 ] } } }
                 """#)
         ])
-        let issues = try await makeSource(http).lowPriorityIssues(org: "shilokuma-inc")
+        let issues = try await makeSource(http).lowPriorityIssues(orgs: ["shilokuma-inc"])
 
         #expect(issues.map(\.id) == ["I_9"])
         #expect(issues.first?.kind == .decisionLog)
@@ -91,6 +91,30 @@ struct GitHubInboxSourceTests {
             "query": "org:shilokuma-inc is:issue is:open label:decision-log,needs-verify",
             "after": nil
         ])
+    }
+
+    @Test func searchesAllOrganizationsWithOneQuery() async throws {
+        let empty = #"{ "data": { "search": { "pageInfo": \#(Self.page(hasNext: false, cursor: nil)), "nodes": [] } } }"#
+        let http = MockHTTPClient([.init(status: 200, body: empty), .init(status: 200, body: empty)])
+
+        _ = try await makeSource(http).subjectsNeedingAnswer(orgs: ["shilokuma-inc", "BeaconFun4"])
+
+        // org: を並べると OR で検索されるので、organization が増えても検索の回数は変わらない
+        #expect(try http.requests.map { try variables(of: $0)["query"] } == [
+            "org:shilokuma-inc org:BeaconFun4 label:needs-answer is:open",
+            "org:shilokuma-inc org:BeaconFun4 label:needs-answer is:pr is:open"
+        ])
+    }
+
+    @Test func doesNotSearchWithoutOrganizations() async throws {
+        let http = MockHTTPClient([])
+        let source = makeSource(http)
+
+        // 修飾子なしで GitHub 全体を検索しない
+        #expect(try await source.subjectsNeedingAnswer(orgs: []).isEmpty)
+        #expect(try await source.lowPriorityIssues(orgs: []).isEmpty)
+        #expect(try await source.waitingDiscussions(orgs: []).isEmpty)
+        #expect(http.requests.isEmpty)
     }
 
     // MARK: - Discussion

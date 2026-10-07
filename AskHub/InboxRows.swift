@@ -60,7 +60,7 @@ struct IssueRow: View {
 }
 
 extension InboxSubject {
-    /// 一覧に出す `repo#番号`。org は 1 つなので owner は省く
+    /// 一覧に出す `repo#番号`。organization をまたいで同じ名前のリポジトリは置かない前提で、owner は省く
     var shortReference: String {
         "\(Self.shortRepository(repository))#\(number)"
     }

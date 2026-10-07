@@ -1,6 +1,5 @@
 {
   "trustedAuthors": ["mrs1669"],
-  "org": "shilokuma-inc",
   "repositories": [
     { "repository": "shilokuma-inc/ask-hub-apple", "path": "~/Desktop/ios/ask-hub-apple" }
   ],

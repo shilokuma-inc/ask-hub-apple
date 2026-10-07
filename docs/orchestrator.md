@@ -34,7 +34,7 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
 1 回のポーリングで次を行う。判定は `LaunchPlanner` と `LaunchTracker`（どちらも副作用なし）、GitHub の操作は `GitHubOrchestrator`、
 ループの状態の取得と起動は `LocalLoopRuntime` が担う。
 
-1. org 全体から `ready-for-loop` が付いた open な Discussion を検索する（担当リポジトリごとではなく 1 回の検索で）
+1. 担当リポジトリの owner の organization 全体から `ready-for-loop` が付いた open な Discussion を検索する（担当リポジトリごとではなく、`org:a org:b` の 1 回の検索で）
 2. 担当リポジトリごとにループの状態を調べる
    - 制御用 worktree に `.claude/ralph-loop.local.md` があるか（アクセス権が無いなどで確かめられないときは「不明」）
    - このオーケストレーターが起動したプロセスが生きているか
@@ -108,9 +108,9 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 ```json
 {
   "trustedAuthors": ["mrs1669"],
-  "org": "shilokuma-inc",
   "repositories": [
-    { "repository": "shilokuma-inc/ask-hub-apple", "path": "~/Desktop/ios/ask-hub-apple" }
+    { "repository": "shilokuma-inc/ask-hub-apple", "path": "~/Desktop/ios/ask-hub-apple" },
+    { "repository": "BeaconFun4/demomoni-remake-ios", "path": "~/Desktop/ios/demomoni-remake-ios" }
   ],
   "pollIntervalSeconds": 60,
   "loopCommand": ["/Users/<ユーザー名>/.local/bin/askhub-start-loop", "{repository}", "{checkoutPath}", "{controlPath}", "{discussion}"]
@@ -123,12 +123,13 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | キー | 必須 | 説明 |
 | --- | --- | --- |
 | `trustedAuthors` | | 指示として扱う GitHub アカウント。省略時は `["mrs1669"]` |
-| `org` | ✓ | `needs-answer` などを検索する organization |
-| `repositories` | ✓ | この PC が担当するリポジトリ。`repository` は `owner/repo`、`path` はメインの checkout の絶対パス（`~` 可）。owner は `org` と同じであること。PC 間で担当を重ねない（Q10） |
+| `repositories` | ✓ | この PC が担当するリポジトリ。`repository` は `owner/repo`、`path` はメインの checkout の絶対パス（`~` 可）。owner は別の organization でもよい（`needs-answer` などは、担当リポジトリの owner の organization をまとめて検索する）。PC 間で担当を重ねない（Q10） |
 | `pollIntervalSeconds` | | ポーリング間隔（秒）。既定 60、下限 30（Search API は認証済みでも 30 回/分のため） |
 | `loopCommand` | ✓ | ループを起動するコマンド。シェルを経由せず引数の配列のまま実行する |
 | `ideaCommand` | | 依頼から質問付きの Discussion を作らせるコマンド。シェルを経由せず実行し、終わるまで待つ（30 分で打ち切る）。プロンプトは標準入力で渡す（依頼の本文をプロセスの引数に出さないため）。省略時は `["claude", "-p", "--allowedTools", "Bash(gh:*)"]`。`{repository}` / `{checkoutPath}` が使える |
 | `iterationTimeoutMinutes` | | ループの 1 周がこれより長く進まなければ、固まったとみなして止める（分。省略時は 90、10 以上 1440 以下）。下の「固まったループを止める」を参照 |
+
+以前の設定にあった `org` は不要になった（書いてあっても無視する）。
 
 ### `loopCommand` のプレースホルダ
 
@@ -185,7 +186,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 
 `ready-for-loop` の判定の前に、毎回のポーリングで次を行う。判定は `ResumeWatcher`（副作用なし）が担う。
 
-1. org 全体の `needs-answer` の open な Discussion / PR を取得し（`GitHubInboxSource`）、担当リポジトリのものだけを扱う
+1. 担当リポジトリの owner の organization 全体から `needs-answer` の open な Discussion / PR を取得し（`GitHubInboxSource`）、担当リポジトリのものだけを扱う
 2. 信用する author の質問と、その回答状況を読み取る（回答済み = 信用する author の返信が 1 件以上）
 3. PR の ask（※2）に**新しく**回答が付いたら、そのリポジトリを再開待ちにする。Discussion（※1）の回答では再開しない（ループは `ready-for-loop` で始まる）
 4. 再開待ちのリポジトリ
@@ -275,7 +276,7 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 毎回のポーリングの最後に、アプリから出された依頼（`idea-request` の open な Issue。Discussion #1 の Q12）を 1 件だけ処理する。
 対象の選び方とプロンプトは `IdeaRequestTracker` / `IdeaPrompt`（副作用なし）が担う。
 
-1. org 全体から `idea-request` の open な Issue を検索し、担当リポジトリかつ信用する author が作った（本文を編集した人がいればその人も信用する author の）ものを、番号の古い順に 1 件選ぶ
+1. 担当リポジトリの owner の organization 全体から `idea-request` の open な Issue を検索し、担当リポジトリかつ信用する author が作った（本文を編集した人がいればその人も信用する author の）ものを、番号の古い順に 1 件選ぶ
 2. `ideaCommand` をメインの checkout で実行し、プロンプトを標準入力で渡して終わるまで待つ。プロンプトでは次を指示する
    - リポジトリを読んで依頼を考察し、人間に決めてもらう点を質問にする
    - カテゴリ「Ideas」に Discussion を作り、質問は 1 つにつき 1 コメントで、先頭に質問の目印を置く

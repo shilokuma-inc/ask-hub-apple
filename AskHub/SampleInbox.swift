@@ -127,7 +127,7 @@ struct SampleMergeQueue: MergeQueueProviding {
         )
     ]
 
-    func epicPullRequests(org: String) async throws -> [EpicPullRequest] {
+    func epicPullRequests(orgs: [String]) async throws -> [EpicPullRequest] {
         Self.pullRequests
     }
 
@@ -161,7 +161,7 @@ extension SentRequest {
 
 /// デモモード・Preview・UI テスト用。Issue を作ったことにして GitHub には送らない
 struct SampleIdeaRequester: IdeaRequesting {
-    func repositories(in org: String) async throws -> [RequestRepository] {
+    func repositories(in orgs: [String]) async throws -> [RequestRepository] {
         [
             RequestRepository(fullName: "shilokuma-inc/ask-hub-apple", lastSeen: Date()),
             RequestRepository(fullName: "shilokuma-inc/notti-ios"),
@@ -250,7 +250,7 @@ struct SampleInboxSource: InboxSource {
     /// HTML タグと Markdown が混ざった質問を持つ Discussion（表示の確認用）
     private static let htmlDiscussion = subject(.discussion, repository: "shilokuma-inc/ask-hub-apple", number: 128, title: "HTMLタグの有効化")
 
-    func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+    func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
         [Self.discussion, Self.pullRequest, Self.htmlDiscussion]
     }
 
@@ -300,7 +300,7 @@ struct SampleInboxSource: InboxSource {
         ]
     }
 
-    func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
+    func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion] {
         [
             WaitingDiscussion(
                 subject: Self.subject(.discussion, repository: "shilokuma-inc/ask-hub-apple", number: 15, title: "マージ待ちに件数のバッジを出したい"),
@@ -315,11 +315,11 @@ struct SampleInboxSource: InboxSource {
         ]
     }
 
-    func usageLimitedRepositories(org: String, now: Date) async throws -> [UsageLimitedRepository] {
+    func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
         [UsageLimitedRepository(repository: "shilokuma-inc/notti-ios", until: Self.now.addingTimeInterval(2 * 60 * 60))]
     }
 
-    func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+    func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
         [
             InboxIssue(
                 id: "I_9",

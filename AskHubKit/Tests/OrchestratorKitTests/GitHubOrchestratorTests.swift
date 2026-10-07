@@ -77,7 +77,7 @@ struct GitHubOrchestratorTests {
             ] } } }
             """#
         ])
-        let discussions = try await makeGitHub(http).readyForLoopDiscussions(org: "shilokuma-inc")
+        let discussions = try await makeGitHub(http).readyForLoopDiscussions(orgs: ["shilokuma-inc"])
 
         #expect(discussions.map(\.nodeID) == ["D_1", "D_3"])
         #expect(discussions.map(\.readyLabelID) == ["LA_1", "LA_9"])
@@ -260,7 +260,7 @@ struct GitHubOrchestratorTests {
             ] } } }
             """#
         ])
-        let issues = try await makeGitHub(http).ideaRequests(org: "shilokuma-inc")
+        let issues = try await makeGitHub(http).ideaRequests(orgs: ["shilokuma-inc"])
 
         #expect(issues.map(\.number) == [7])
         #expect(issues.first?.body == "朝だけ")

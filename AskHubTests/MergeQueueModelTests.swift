@@ -24,7 +24,7 @@ struct MergeQueueModelTests {
             state.withLock { $0.failure = failure }
         }
 
-        func epicPullRequests(org: String) async throws -> [EpicPullRequest] {
+        func epicPullRequests(orgs: [String]) async throws -> [EpicPullRequest] {
             let merged = state.withLock { $0.merged }
             return SampleMergeQueue.pullRequests.filter { !merged.contains($0.number) }
         }

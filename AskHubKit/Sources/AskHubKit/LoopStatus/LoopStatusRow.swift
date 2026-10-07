@@ -113,8 +113,8 @@ public struct LoopStatusRow: Sendable, Equatable, Identifiable {
 
 /// 「ループ」タブの取得元。テストやサンプルデータでは差し替える
 public protocol LoopStatusSource: Sendable {
-    /// org のアーカイブ済みでないリポジトリごとの、担当の印と open な状態用の Issue
-    func loopStatusRepositories(org: String) async throws -> [LoopStatusRepository]
+    /// organization のアーカイブ済みでないリポジトリごとの、担当の印と open な状態用の Issue
+    func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository]
 }
 
 /// 「ループ」タブに出す行を集める
@@ -127,7 +127,7 @@ public struct LoopStatusFetcher: Sendable {
         self.trustedAuthors = trustedAuthors
     }
 
-    public func rows(org: String) async throws -> [LoopStatusRow] {
-        LoopStatusRow.rows(from: try await source.loopStatusRepositories(org: org), trustedAuthors: trustedAuthors)
+    public func rows(orgs: [String]) async throws -> [LoopStatusRow] {
+        LoopStatusRow.rows(from: try await source.loopStatusRepositories(orgs: orgs), trustedAuthors: trustedAuthors)
     }
 }

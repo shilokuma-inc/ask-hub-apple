@@ -14,7 +14,7 @@ struct InboxModelTests {
             self.failure = failure
         }
 
-        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             if let failure {
                 throw failure
             }
@@ -37,7 +37,7 @@ struct InboxModelTests {
             ]
         }
 
-        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
             [
                 InboxIssue(
                     id: "I_1",
@@ -60,6 +60,43 @@ struct InboxModelTests {
             title: "タイトル",
             url: URL(string: "https://github.com/o/r/discussions/1")!
         )
+    }
+
+    /// 渡された organization を記録する取得元
+    private final class RecordingSource: InboxSource {
+        let orgs = OSAllocatedUnfairLock<[[String]]>(initialState: [])
+
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
+            self.orgs.withLock { $0.append(orgs) }
+            return []
+        }
+
+        func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
+            []
+        }
+
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
+            self.orgs.withLock { $0.append(orgs) }
+            return []
+        }
+    }
+
+    @Test func fetchesConfiguredOrganizationsEachTime() async {
+        let source = RecordingSource()
+        var configured = ["shilokuma-inc"]
+        let model = InboxModel(
+            tokenStore: InMemoryTokenStore(token: "github_pat_saved"),
+            makeSource: { _ in source },
+            organizations: { configured }
+        )
+        await model.refresh()
+        // 設定で変えたら、次の取得から反映する
+        configured = ["shilokuma-inc", "BeaconFun4"]
+        await model.refresh()
+        #expect(source.orgs.withLock { $0 } == [
+            ["shilokuma-inc"], ["shilokuma-inc"],
+            ["shilokuma-inc", "BeaconFun4"], ["shilokuma-inc", "BeaconFun4"]
+        ])
     }
 
     @Test func needsTokenWithoutSavedToken() async {
@@ -109,7 +146,7 @@ struct InboxModelTests {
             waiters.forEach { $0.resume() }
         }
 
-        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             await withCheckedContinuation { continuation in
                 let opened = gate.withLock { state in
                     if !state.opened {
@@ -121,15 +158,15 @@ struct InboxModelTests {
                     continuation.resume()
                 }
             }
-            return try await StubSource().subjectsNeedingAnswer(org: org)
+            return try await StubSource().subjectsNeedingAnswer(orgs: orgs)
         }
 
         func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
             try await StubSource().questionThreads(of: subject)
         }
 
-        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
-            try await StubSource().lowPriorityIssues(org: org)
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
+            try await StubSource().lowPriorityIssues(orgs: orgs)
         }
     }
 
@@ -172,7 +209,7 @@ struct InboxModelTests {
 
     /// 取得を打ち切られるまで待たせる取得元
     private final class HangingSource: InboxSource {
-        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             try await Task.sleep(for: .seconds(60))
             return []
         }
@@ -181,7 +218,7 @@ struct InboxModelTests {
             []
         }
 
-        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
             try await Task.sleep(for: .seconds(60))
             return []
         }

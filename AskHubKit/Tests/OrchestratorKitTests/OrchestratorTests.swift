@@ -13,17 +13,34 @@ struct OrchestratorTests {
         github: FakeGitHub,
         runtime: FakeRuntime,
         inbox: FakeInbox = FakeInbox(),
+        repositories: [RepositoryConfig] = [
+            RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")
+        ],
         now: @escaping @Sendable () -> Date = { Date(timeIntervalSince1970: 1_800_000_000) }
     ) throws -> Orchestrator {
         let config = OrchestratorConfig(
             trustedAuthorLogins: ["mrs1669"],
-            org: "shilokuma-inc",
-            repositories: [RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")],
+            repositories: repositories,
             pollInterval: .seconds(60),
             loopCommand: try LoopCommandTemplate(arguments: ["/usr/local/bin/start-loop", "{repository}", "{discussion}"])
         )
         let logs = logs
         return Orchestrator(config: config, github: github, inbox: inbox, runtime: runtime, log: { logs.append($0) }, now: now)
+    }
+
+    @Test func launchesLoopOfRepositoryInAnotherOrganization() async throws {
+        let github = FakeGitHub([.success([.fixture(repository: "BeaconFun4/demomoni-remake-ios", number: 3)])])
+        let runtime = FakeRuntime()
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime, repositories: [
+            RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple"),
+            RepositoryConfig(owner: "BeaconFun4", name: "demomoni-remake-ios", checkoutPath: "/src/demomoni-remake-ios")
+        ])
+
+        try await orchestrator.pollOnce()
+
+        // 担当リポジトリの owner をまとめて 1 回で検索する
+        #expect(github.searchedOrgs == [["shilokuma-inc", "BeaconFun4"]])
+        #expect(runtime.launched == [["/usr/local/bin/start-loop", "BeaconFun4/demomoni-remake-ios", "3"]])
     }
 
     @Test func removesLabelOnlyAfterLoopStarts() async throws {
