@@ -189,9 +189,10 @@ ask・判断ログ（`decision-log`）・実機確認（`needs-verify`）の書�
 
 1. **始めるときに `ready-for-loop` を外す**（付いていれば）。Discussion のラベルは REST で外せないので GraphQL を使う:
    ```bash
+   owner=shilokuma-inc repo=ask-hub-apple number=273   # ゴール元の Discussion に合わせる
    ids=$(gh api graphql -f query='query($o:String!,$r:String!,$n:Int!){ repository(owner:$o,name:$r){
      discussion(number:$n){ id } label(name:"ready-for-loop"){ id } } }' \
-     -f o=<owner> -f r=<repo> -F n=<N> --jq '.data.repository | "\(.discussion.id) \(.label.id)"')
+     -f o="$owner" -f r="$repo" -F n="$number" --jq '.data.repository | "\(.discussion.id) \(.label.id)"')
    read -r discussion label <<<"$ids"
    gh api graphql -f query='mutation($d:ID!,$l:ID!){ removeLabelsFromLabelable(input:{labelableId:$d,labelIds:[$l]}){ clientMutationId } }' \
      -f d="$discussion" -f l="$label"
@@ -207,7 +208,8 @@ ask・判断ログ（`decision-log`）・実機確認（`needs-verify`）の書�
 3. **最終 PR はループ（または人間）が `epic-final` を付けて作る**。オーケストレーターは手で回す制御用 worktree を見られないので作らない。
    本文は state の「最終 PR に載せる内容」を使う:
    ```bash
-   gh pr create --base develop --head epic/<機能名> --title '【FEAT】…' --assignee @me --label epic-final --body-file <本文>
+   epic=epic/manual-loop body=final-pr-body.md   # epic のブランチと、「最終 PR に載せる内容」を書いたファイル
+   gh pr create --base develop --head "$epic" --title '【FEAT】…' --assignee @me --label epic-final --body-file "$body"
    ```
    制御用 worktree の `.claude/settings.json` の deny は `gh pr create --base develop` を塞ぐ（通常のループが最終 PR を作らないため）。
    **手で回すときは、制御用 worktree の外（メインの checkout や別のセッション）から作るか、人間が作る。**
