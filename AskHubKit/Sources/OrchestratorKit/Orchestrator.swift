@@ -112,7 +112,12 @@ extension LoopRuntime {
 /// 「ポーリング → 状態判定 → アクション」を繰り返す。
 /// 起動した Discussion（`LaunchTracker`）と回答済みの質問（`ResumeWatcher`）を覚えておくため actor にする
 public actor Orchestrator {
-    let config: OrchestratorConfig
+    /// 今の設定。`configStore` があれば、ポーリングのたびに読み直す
+    var config: OrchestratorConfig
+    /// 設定の読み直しと担当リポジトリの書き換え。`nil` なら起動時の設定のまま動く
+    let configStore: (any OrchestratorConfigStore)?
+    /// 最後に読み直しに失敗した理由。同じ失敗をポーリングのたびにログに出さない
+    var lastReloadFailure: String?
     let github: any OrchestratorGitHub
     private let inbox: any InboxSource
     let runtime: any LoopRuntime
@@ -146,16 +151,20 @@ public actor Orchestrator {
     /// 依頼から Discussion を作らせるコマンドの制限時間
     static let ideaCommandTimeout: Duration = .seconds(30 * 60)
 
-    /// - Parameter inbox: `needs-answer` の Discussion / PR と質問の取得元
+    /// - Parameters:
+    ///   - inbox: `needs-answer` の Discussion / PR と質問の取得元
+    ///   - configStore: 設定の読み直しと担当リポジトリの書き換え（担当リポジトリの作成・削除の依頼に使う）
     public init(
         config: OrchestratorConfig,
         github: any OrchestratorGitHub,
         inbox: any InboxSource,
         runtime: any LoopRuntime,
         log: @escaping @Sendable (String) -> Void,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        configStore: (any OrchestratorConfigStore)? = nil
     ) {
         self.config = config
+        self.configStore = configStore
         self.github = github
         self.inbox = inbox
         self.runtime = runtime
@@ -183,6 +192,8 @@ public actor Orchestrator {
     /// 1 回分のポーリング。実行した起動判定を返す
     @discardableResult
     public func pollOnce() async throws -> [LaunchDecision] {
+        // 手で書き換えた設定も、再起動せずに反映する
+        reloadConfig()
         // 固まったループを止める（止めた後は、異常終了したループとして再開する）
         await terminateHungLoops()
         var statuses: [String: LoopStatus] = [:]
