@@ -7,13 +7,13 @@ import Testing
 @MainActor
 struct LoopStatusModelTests {
     private struct FailingSource: LoopStatusSource {
-        func loopStatusRepositories(org: String) async throws -> [LoopStatusRepository] {
+        func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
             throw GitHubError.http(status: 401, message: nil)
         }
     }
 
     private struct EmptySource: LoopStatusSource {
-        func loopStatusRepositories(org: String) async throws -> [LoopStatusRepository] {
+        func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
             []
         }
     }
@@ -23,7 +23,7 @@ struct LoopStatusModelTests {
         var waiting: [WaitingDiscussion]?
         var usageLimited: [UsageLimitedRepository]?
 
-        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             []
         }
 
@@ -31,18 +31,18 @@ struct LoopStatusModelTests {
             []
         }
 
-        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
             []
         }
 
-        func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
+        func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion] {
             guard let waiting else {
                 throw GitHubError.http(status: 502, message: nil)
             }
             return waiting
         }
 
-        func usageLimitedRepositories(org: String, now: Date) async throws -> [UsageLimitedRepository] {
+        func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
             guard let usageLimited else {
                 throw GitHubError.http(status: 502, message: nil)
             }
@@ -201,14 +201,14 @@ struct LoopStatusModelTests {
 
     /// 担当の印のある 1 リポジトリを返す取得元
     private struct OneRepositorySource: LoopStatusSource {
-        func loopStatusRepositories(org: String) async throws -> [LoopStatusRepository] {
+        func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
             [LoopStatusRepository(repository: "o/r", heartbeatDescription: OrchestratorHeartbeat.description(at: .now), issues: [])]
         }
     }
 
     /// 「上限で待機中」の取得が終わらない受信箱の取得元（打ち切られると `CancellationError` を投げる）
     private struct HangingUsageLimitSource: InboxSource {
-        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             []
         }
 
@@ -216,11 +216,11 @@ struct LoopStatusModelTests {
             []
         }
 
-        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
             []
         }
 
-        func usageLimitedRepositories(org: String, now: Date) async throws -> [UsageLimitedRepository] {
+        func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
             try await Task.sleep(for: .seconds(60))
             return []
         }

@@ -3,8 +3,8 @@ import Foundation
 
 /// オーケストレーターが使う GitHub の操作。テストでは差し替える
 public protocol OrchestratorGitHub: Sendable {
-    /// org 全体の、`ready-for-loop` が付いた open な Discussion
-    func readyForLoopDiscussions(org: String) async throws -> [ReadyDiscussion]
+    /// organization 全体の、`ready-for-loop` が付いた open な Discussion
+    func readyForLoopDiscussions(orgs: [String]) async throws -> [ReadyDiscussion]
     /// Discussion から `ready-for-loop` を外す
     func removeReadyLabel(from discussion: ReadyDiscussion) async throws
     /// `ready-for-loop` の Discussion にコメントする
@@ -21,8 +21,8 @@ public protocol OrchestratorGitHub: Sendable {
     func addEpicFinalLabel(in repository: String, number: Int) async throws
     /// PR の本文を置き換える
     func updatePullRequestBody(in repository: String, number: Int, body: String) async throws
-    /// org 全体の、`idea-request` が付いた open な Issue
-    func ideaRequests(org: String) async throws -> [IdeaRequestIssue]
+    /// organization 全体の、`idea-request` が付いた open な Issue
+    func ideaRequests(orgs: [String]) async throws -> [IdeaRequestIssue]
     /// 依頼 Issue にコメントする
     func comment(on issue: IdeaRequestIssue, body: String) async throws
     /// 依頼 Issue をクローズする（完了として）
@@ -212,7 +212,7 @@ public actor Orchestrator {
         let unfinalized = await finalizeCompletedEpics(statuses: statuses)
 
         // ready-for-loop の検索は失敗しうるので、ここまで（回答・異常終了・固まったループの再開と最終 PR）を先に済ませる
-        let discussions = try await github.readyForLoopDiscussions(org: config.org)
+        let discussions = try await github.readyForLoopDiscussions(orgs: config.orgs)
 
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         let snapshots = await epicSnapshots()
@@ -271,7 +271,7 @@ public actor Orchestrator {
     }
 
     private func handleIdeaRequests() async throws {
-        let issues = try await github.ideaRequests(org: config.org)
+        let issues = try await github.ideaRequests(orgs: config.orgs)
         ideaTracker.prune(keeping: issues)
 
         // 依頼 Issue への後処理（リンクのコメント・クローズ・失敗の通知）。失敗したら次のポーリングで続きから
@@ -349,7 +349,7 @@ public actor Orchestrator {
 
     private func handleAnswers(statuses: inout [String: LoopStatus]) async throws {
         var snapshots: [AnswerSnapshot] = []
-        for subject in try await inbox.subjectsNeedingAnswer(org: config.org)
+        for subject in try await inbox.subjectsNeedingAnswer(orgs: config.orgs)
         where config.repository(named: subject.repository) != nil {
             // 1 件の失敗（権限不足など）で、ほかの Discussion / PR の再開とラベルの削除を止めない
             do {

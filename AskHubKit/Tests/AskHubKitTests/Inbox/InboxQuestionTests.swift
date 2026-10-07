@@ -65,7 +65,7 @@ struct InboxFetcherTests {
         var issues: [InboxIssue] = []
         var waiting: [WaitingDiscussion] = []
 
-        func subjectsNeedingAnswer(org: String) async throws -> [InboxSubject] {
+        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             subjects
         }
 
@@ -73,11 +73,11 @@ struct InboxFetcherTests {
             threads[subject.nodeID] ?? []
         }
 
-        func lowPriorityIssues(org: String) async throws -> [InboxIssue] {
+        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
             issues
         }
 
-        func waitingDiscussions(org: String) async throws -> [WaitingDiscussion] {
+        func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion] {
             waiting
         }
     }
@@ -95,7 +95,7 @@ struct InboxFetcherTests {
             waiting("D_1", number: 1, author: "mrs1669")
         ])
         let discussions = try await InboxFetcher(source: source, trustedAuthors: TrustedAuthors(["mrs1669"]))
-            .waitingDiscussions(org: "o")
+            .waitingDiscussions(orgs: ["o"])
         #expect(discussions.map(\.subject.nodeID) == ["D_1", "D_2"])
     }
 
@@ -116,7 +116,7 @@ struct InboxFetcherTests {
             ]
         )
         let questions = try await InboxFetcher(source: source, trustedAuthors: TrustedAuthors(["mrs1669"]))
-            .unansweredQuestions(org: "shilokuma-inc")
+            .unansweredQuestions(orgs: ["shilokuma-inc"])
         #expect(questions.map(\.id) == ["C_old", "C_new"])
         #expect(questions.map(\.subject) == [pullRequest, discussion])
     }
@@ -148,7 +148,7 @@ struct InboxIssueTests {
             issue("deleted", author: nil, updatedAt: 4),
             issue("new", author: "MRS1669", updatedAt: 2)
         ])
-        let issues = try await InboxFetcher(source: source, trustedAuthors: TrustedAuthors(["mrs1669"])).lowPriorityIssues(org: "o")
+        let issues = try await InboxFetcher(source: source, trustedAuthors: TrustedAuthors(["mrs1669"])).lowPriorityIssues(orgs: ["o"])
         #expect(issues.map(\.id) == ["new", "old"])
     }
 }

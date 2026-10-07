@@ -33,6 +33,8 @@
   Search API ではないので 30 回/分の制限も検索インデックスによる件数のずれも無い
 - 別の worktree で checkout 中のブランチの PR を `gh pr merge --delete-branch` すると、ローカルのブランチと一緒にその worktree のディレクトリまで消えることがある。
   先に `git -C <worktree> checkout --detach` しておくと消えない
+- 検索クエリの `org:a org:b` は OR になる（Issue でも Discussion でも件数がそれぞれの合計になる）。organization が増えても検索は 1 回で済む。
+  修飾子を 1 つも付けないと GitHub 全体を検索するので、organization が空なら検索しない
 
 ## ビルド・テスト
 

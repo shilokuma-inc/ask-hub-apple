@@ -96,7 +96,7 @@ struct LoopStatusRowTests {
     @Test func fetcherFiltersThroughTrustedAuthors() async throws {
         struct Source: LoopStatusSource {
             let repositories: [LoopStatusRepository]
-            func loopStatusRepositories(org: String) async throws -> [LoopStatusRepository] {
+            func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
                 repositories
             }
         }
@@ -105,9 +105,9 @@ struct LoopStatusRowTests {
                 repository: "o/r", heartbeatDescription: nil, issues: [issue(1, author: "someone", report: report(.running))]
             )
         ])
-        #expect(try await LoopStatusFetcher(source: source, trustedAuthors: trusted).rows(org: "o").isEmpty)
+        #expect(try await LoopStatusFetcher(source: source, trustedAuthors: trusted).rows(orgs: ["o"]).isEmpty)
         let trustingSomeone = LoopStatusFetcher(source: source, trustedAuthors: TrustedAuthors(["someone"]))
-        #expect(try await trustingSomeone.rows(org: "o").map(\.repository) == ["o/r"])
+        #expect(try await trustingSomeone.rows(orgs: ["o"]).map(\.repository) == ["o/r"])
     }
 
     @Test func statusIssuesAreNotLowPriorityIssues() {
@@ -170,7 +170,7 @@ struct GitHubLoopStatusSourceTests {
         let http = pagedResponses(heartbeat: heartbeat, body: body)
         let source = GitHubLoopStatusSource(client: GitHubClient(token: "github_pat_secret", http: http, sleep: { _ in }))
 
-        let repositories = try await source.loopStatusRepositories(org: "shilokuma-inc")
+        let repositories = try await source.loopStatusRepositories(orgs: ["shilokuma-inc"])
 
         #expect(repositories.map(\.repository) == ["o/a", "o/b"])
         #expect(repositories[0].heartbeatDescription == heartbeat)
@@ -200,11 +200,33 @@ struct GitHubLoopStatusSourceTests {
         #expect(variables[3]["after"] as? String == "i2")
     }
 
+    @Test func readsEachOrganizationInOrder() async throws {
+        let http = MockHTTPClient(["a/x", "b/y"].map { name in
+            .init(status: 200, body: #"""
+                { "data": { "organization": { "repositories": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
+                  { "nameWithOwner": "\#(name)", "label": null,
+                    "issues": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [] } }
+                ] } } } }
+                """#)
+        })
+        let source = GitHubLoopStatusSource(client: GitHubClient(token: "github_pat_secret", http: http, sleep: { _ in }))
+
+        let repositories = try await source.loopStatusRepositories(orgs: ["a", "b"])
+
+        #expect(repositories.map(\.repository) == ["a/x", "b/y"])
+        let orgs = try http.requests.map { request in
+            let data = try #require(request.httpBody)
+            let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            return (object["variables"] as? [String: Any])?["org"] as? String
+        }
+        #expect(orgs == ["a", "b"])
+    }
+
     @Test func failsWhenOrganizationIsMissing() async {
         let http = MockHTTPClient([.init(status: 200, body: #"{ "data": { "organization": null } }"#)])
         let source = GitHubLoopStatusSource(client: GitHubClient(token: "github_pat_secret", http: http, sleep: { _ in }))
         await #expect(throws: GitHubError.self) {
-            try await source.loopStatusRepositories(org: "o")
+            try await source.loopStatusRepositories(orgs: ["o"])
         }
     }
 }

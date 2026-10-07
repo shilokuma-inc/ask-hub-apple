@@ -41,7 +41,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **上限で待機中**（ループの先頭）: `askhub-orchestrator` の説明に解除の時刻があるリポジトリ。再開の時刻を出す
 - **ループの開始待ち**（ループの先頭。上限で待機中の下）: `ready-for-loop` の Discussion。`askhub-orchestrator` の時刻が 30 分より古い・無いリポジトリは「担当 PC なし」。担当 PC が上限で待機中なら「上限で待機中（〇時に再開）」
 
-対象は `shilokuma-inc` org 全体で、ラベルで検索する（リポジトリの列挙は設定しない）。
+対象はアプリの設定（「取得する organization」）に並べた organization 全体で、ラベルで検索する（リポジトリの列挙は設定しない）。
+既定は `shilokuma-inc` だけ。検索は `org:a org:b` と並べて 1 回で行い、`organization.repositories` を読む取得（ループ・上限で待機中・依頼先）は organization ごとに順に行う。
 
 ## ループの状態
 
@@ -208,13 +209,14 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 ## 依頼先のリポジトリ
 
-アプリの「新しい依頼」で依頼先に選べるリポジトリは、**対象の org（`shilokuma-inc`）のアーカイブ済みでないリポジトリすべて**とする
+アプリの「新しい依頼」で依頼先に選べるリポジトリは、**対象の organization（アプリの設定に並べたもの。既定は `shilokuma-inc`）のアーカイブ済みでないリポジトリすべて**とする
 （[Discussion #115](https://github.com/shilokuma-inc/ask-hub-apple/discussions/115) の Q4 で確定）。
 
 - 担当 PC（オーケストレーター）のいるリポジトリだけに絞らない。担当 PC がいないリポジトリに出した依頼は、担当が付くまで処理されない
-- 一覧は REST の `orgs/{org}/repos` からページングを最後まで追って取得する（`GitHubIdeaRequester`）
+- 一覧は REST の `orgs/{org}/repos` から organization ごとにページングを最後まで追って取得する（`GitHubIdeaRequester`）。並びは設定の順で、organization の中は最近 push された順
 - 一覧はアプリに保存したトークンで取得するため、対象を一部のリポジトリに限った Fine-grained PAT では、そのリポジトリしか候補に出ない。
   すべてを出すには、トークンの Repository access を org の全リポジトリにする
+- Fine-grained PAT は resource owner を 1 つしか選べない。複数の organization に回答・依頼するなら、すべてに書き込めるトークン（classic PAT など）を使う
 - 前に選んだ依頼先は保存しない（Q6）
 
 ## 流れ

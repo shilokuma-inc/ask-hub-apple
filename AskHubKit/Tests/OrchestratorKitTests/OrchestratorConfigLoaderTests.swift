@@ -11,14 +11,12 @@ struct OrchestratorConfigLoaderTests {
 
     private func config(
         trustedAuthors: String? = nil,
-        org: String = #""shilokuma-inc""#,
         repositories: String = #"[{ "repository": "shilokuma-inc/ask-hub-apple", "path": "~/src/ask-hub-apple" }]"#,
         pollIntervalSeconds: Int? = nil,
         iterationTimeoutMinutes: Int? = nil,
         loopCommand: String = #"["/usr/local/bin/start-loop", "{repository}"]"#
     ) -> String {
         var fields = [
-            #""org": \#(org)"#,
             #""repositories": \#(repositories)"#,
             #""loopCommand": \#(loopCommand)"#
         ]
@@ -39,7 +37,7 @@ struct OrchestratorConfigLoaderTests {
 
         #expect(result.trustedAuthorLogins == ["mrs1669", "partner"])
         #expect(result.trustedAuthors.contains("Partner"))
-        #expect(result.org == "shilokuma-inc")
+        #expect(result.orgs == ["shilokuma-inc"])
         #expect(result.repositories == [
             RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/Users/tester/src/ask-hub-apple")
         ])
@@ -55,11 +53,12 @@ struct OrchestratorConfigLoaderTests {
 
     @Test func readsIdeaCommandOrUsesDefault() throws {
         #expect(try decode(config()).ideaCommand == IdeaCommandTemplate.standard)
-        let customField = #""ideaCommand": ["/opt/bin/claude", "-p", "--add-dir", "{checkoutPath}"], "org""#
-        let custom = config().replacingOccurrences(of: #""org""#, with: customField)
+        let customField = #""ideaCommand": ["/opt/bin/claude", "-p", "--add-dir", "{checkoutPath}"], "repositories""#
+        let custom = config().replacingOccurrences(of: #""repositories""#, with: customField)
         #expect(try decode(custom).ideaCommand.arguments == ["/opt/bin/claude", "-p", "--add-dir", "{checkoutPath}"])
         // プロンプトは標準入力で渡すので、{prompt} は使えない（古い書き方は設定エラーで気づける）
-        let old = config().replacingOccurrences(of: #""org""#, with: #""ideaCommand": ["claude", "-p", "{prompt}"], "org""#)
+        let oldField = #""ideaCommand": ["claude", "-p", "{prompt}"], "repositories""#
+        let old = config().replacingOccurrences(of: #""repositories""#, with: oldField)
         #expect(throws: OrchestratorConfigError.unknownIdeaPlaceholder("prompt")) {
             try decode(old)
         }
@@ -73,8 +72,8 @@ struct OrchestratorConfigLoaderTests {
     }
 
     @Test func reportsMissingKey() {
-        #expect(throws: OrchestratorConfigError.invalidJSON(reason: ".org がありません")) {
-            try decode(#"{ "repositories": [], "loopCommand": ["x"] }"#)
+        #expect(throws: OrchestratorConfigError.invalidJSON(reason: ".repositories がありません")) {
+            try decode(#"{ "loopCommand": ["x"] }"#)
         }
         #expect(throws: OrchestratorConfigError.invalidJSON(reason: ".repositories[0].path がありません")) {
             try decode(config(repositories: #"[{ "repository": "shilokuma-inc/a" }]"#))
@@ -83,7 +82,7 @@ struct OrchestratorConfigLoaderTests {
 
     @Test func reportsTypeMismatchAndBrokenJSON() {
         #expect(throws: OrchestratorConfigError.invalidJSON(reason: ".pollIntervalSeconds の型が違います")) {
-            try decode(config().replacingOccurrences(of: #""org""#, with: #""pollIntervalSeconds": "60", "org""#))
+            try decode(config().replacingOccurrences(of: #""repositories""#, with: #""pollIntervalSeconds": "60", "repositories""#))
         }
         #expect(throws: OrchestratorConfigError.invalidJSON(reason: "JSON として読めません")) {
             try decode("{")
@@ -96,9 +95,6 @@ struct OrchestratorConfigLoaderTests {
         }
         #expect(throws: OrchestratorConfigError.emptyTrustedAuthors) {
             try decode(config(trustedAuthors: #"[" ", "\n"]"#))
-        }
-        #expect(throws: OrchestratorConfigError.emptyOrg) {
-            try decode(config(org: #"" ""#))
         }
         #expect(throws: OrchestratorConfigError.noRepositories) {
             try decode(config(repositories: "[]"))
@@ -120,14 +116,17 @@ struct OrchestratorConfigLoaderTests {
         }
     }
 
-    @Test func rejectsRepositoryOutsideOrg() {
-        #expect(throws: OrchestratorConfigError.repositoryOutsideOrg(repository: "someone/app", org: "shilokuma-inc")) {
-            try decode(config(repositories: #"[{ "repository": "someone/app", "path": "/src/app" }]"#))
-        }
-        // org の大文字・小文字は区別しない
-        #expect(throws: Never.self) {
-            try decode(config(repositories: #"[{ "repository": "Shilokuma-Inc/app", "path": "/src/app" }]"#))
-        }
+    @Test func searchesOwnersOfRepositories() throws {
+        let repositories = #"""
+            [{ "repository": "shilokuma-inc/a", "path": "/src/a" },
+             { "repository": "BeaconFun4/b", "path": "/src/b" },
+             { "repository": "Shilokuma-Inc/c", "path": "/src/c" }]
+            """#
+        // owner は大文字・小文字を区別せずに重ねない
+        #expect(try decode(config(repositories: repositories)).orgs == ["shilokuma-inc", "BeaconFun4"])
+        // 以前の設定の org は無視する（担当リポジトリが別の organization にあっても読める）
+        let legacy = config().replacingOccurrences(of: #""repositories""#, with: #""org": "someone", "repositories""#)
+        #expect(try decode(legacy).orgs == ["shilokuma-inc"])
     }
 
     @Test func rejectsDuplicateRepositoryIgnoringCase() {
@@ -184,7 +183,7 @@ struct OrchestratorConfigLoaderTests {
 
         let homeLoader = OrchestratorConfigLoader(homeDirectory: directory.path)
         let result = try homeLoader.load(from: "~/orchestrator.json")
-        #expect(result.org == "shilokuma-inc")
+        #expect(result.orgs == ["shilokuma-inc"])
         #expect(result.repositories.first?.checkoutPath == directory.path + "/src/ask-hub-apple")
     }
 
