@@ -61,6 +61,11 @@ final class InboxModel {
         questions.filter { $0.subject.nodeID == question.subject.nodeID && $0.id != question.id }.count
     }
 
+    /// Discussion / PR を作ったのが信用する author か。信用外の author の Discussion に付いた `manual-loop` はオーケストレーターが無視する
+    func isTrustedAuthor(of subject: InboxSubject) -> Bool {
+        trustedAuthors.contains(subject.author)
+    }
+
     /// Discussion の回答を確定し、ループを始めてよい印（`ready-for-loop`）を付ける（Discussion #1 の Q3）。
     /// 手で回すなら、代わりに `manual-loop` を付ける（Discussion #273 の Q2）
     func startLoop(for discussion: InboxSubject, runner: LoopRunner = .orchestrator) async throws {

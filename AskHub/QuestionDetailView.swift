@@ -62,7 +62,7 @@ struct QuestionDetailView: View {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.red)
                     if form.loopStartFailed {
-                        Button(form.loopRunner == .manual ? "manual-loop を付ける（再試行）" : "ループを始める（再試行）") {
+                        Button((form.postedRunner ?? form.loopRunner) == .manual ? "manual-loop を付ける（再試行）" : "ループを始める（再試行）") {
                             Task {
                                 await form.startLoop(using: inbox)
                                 if !form.loopStartFailed {
@@ -127,12 +127,15 @@ struct QuestionDetailView: View {
         Section {
             if form.canStartLoop(in: inbox) {
                 Toggle("投稿したら、回答を確定してループを始める", isOn: $form.startsLoopAfterPosting)
-                if form.startsLoopAfterPosting {
+                    .disabled(form.isPosting)
+                // 信用外の author の Discussion に付いた manual-loop はオーケストレーターが無視するので、選ばせない
+                if form.startsLoopAfterPosting && form.canRunManually(in: inbox) {
                     Picker("回し方", selection: $form.loopRunner) {
                         ForEach(LoopRunner.allCases, id: \.self) { runner in
                             Text(runner.title).tag(runner)
                         }
                     }
+                    .disabled(form.isPosting)
                 }
             } else {
                 Text("この Discussion には、ほかに未回答の質問が \(remaining) 件あります")
@@ -149,7 +152,10 @@ struct QuestionDetailView: View {
         guard form.canStartLoop(in: inbox) else {
             return "すべての質問に答えると、回答を確定してループを始められます"
         }
-        if form.startsLoopAfterPosting && form.loopRunner == .manual {
+        guard form.startsLoopAfterPosting else {
+            return "回答だけを投稿します。オンにすると、回答を確定してループを始められます"
+        }
+        if form.loopRunner == .manual {
             return "Discussion に manual-loop を付けます。オーケストレーターはこのリポジトリでループを起動しません。ループは手で始めてください"
         }
         return "Discussion に ready-for-loop を付けます。担当 PC のオーケストレーターがループを起動します"

@@ -194,11 +194,37 @@ struct LoopStartTests {
         #expect(form.loopStartFailed)
         #expect(form.errorMessage?.hasPrefix("回答は投稿しました。手で回す印（manual-loop）を付けられませんでした") == true)
 
+        // 投稿の後に回し方を選び直しても、投稿を始めたときの回し方で付け直す
+        form.loopRunner = .orchestrator
         starter.setFails(false)
         await form.startLoop(using: inbox)
         #expect(!form.loopStartFailed)
         #expect(starter.markedManual.count == 1)
         #expect(starter.marked.isEmpty)
+    }
+
+    @Test func refusesManualLoopBeforePostingForUntrustedDiscussion() async throws {
+        let starter = RecordingStarter()
+        let inbox = await makeInbox(starter: starter)
+        let questions = discussionQuestions(in: inbox)
+        try await inbox.post(Answer(choice: "1時間"), to: questions[0])
+        // 信用する author の質問でも、Discussion を作ったのが信用外の author なら manual-loop は効かない
+        var question = questions[1]
+        question.subject.author = "someone"
+        let form = AnswerFormModel(question: question)
+        #expect(form.canStartLoop(in: inbox))
+        #expect(!form.canRunManually(in: inbox))
+
+        form.note = "朝だけにしたい"
+        form.startsLoopAfterPosting = true
+        form.loopRunner = .manual
+        await form.post(using: inbox)
+
+        // 回答も投稿せず、印も付けない
+        #expect(!form.isPosted)
+        #expect(starter.markedManual.isEmpty)
+        #expect(starter.marked.isEmpty)
+        #expect(form.errorMessage?.contains("信用する author が作ったものではない") == true)
     }
 
     @Test func doesNotMarkWithoutChoosingToStartLoop() async throws {

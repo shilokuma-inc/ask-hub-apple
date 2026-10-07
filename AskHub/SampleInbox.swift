@@ -224,7 +224,8 @@ struct SampleInboxSource: InboxSource {
             repository: repository,
             number: number,
             title: title,
-            url: URL(string: "https://github.com/\(repository)/\(path)/\(number)")!
+            url: URL(string: "https://github.com/\(repository)/\(path)/\(number)")!,
+            author: TrustedAuthors.defaultLogins[0]
         )
     }
 
