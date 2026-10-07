@@ -19,7 +19,7 @@ extension Orchestrator {
         }
         let pullRequests: [ConflictingPullRequest]
         do {
-            pullRequests = try await github.conflictingEpicFinalPullRequests(org: config.org)
+            pullRequests = try await github.conflictingEpicFinalPullRequests(orgs: config.orgs)
         } catch {
             log("コンフリクトした最終 PR を確認できませんでした: \(error)")
             return

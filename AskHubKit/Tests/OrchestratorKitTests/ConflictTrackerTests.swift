@@ -6,7 +6,6 @@ struct ConflictTrackerTests {
     private func config() throws -> OrchestratorConfig {
         OrchestratorConfig(
             trustedAuthorLogins: ["mrs1669"],
-            org: "shilokuma-inc",
             repositories: [RepositoryConfig(owner: "shilokuma-inc", name: "prime-pick-ios", checkoutPath: "/src/prime-pick-ios")],
             pollInterval: .seconds(60),
             loopCommand: try LoopCommandTemplate(arguments: ["/Users/me/.local/bin/askhub-start-loop", "{repository}"])

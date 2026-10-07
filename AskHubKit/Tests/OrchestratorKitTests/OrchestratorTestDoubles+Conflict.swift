@@ -19,7 +19,7 @@ extension FakeGitHub {
         state.withLock { $0.pullRequestComments }
     }
 
-    func conflictingEpicFinalPullRequests(org: String) async throws -> [ConflictingPullRequest] {
+    func conflictingEpicFinalPullRequests(orgs: [String]) async throws -> [ConflictingPullRequest] {
         state.withLock { $0.conflictingPullRequests }
     }
 
