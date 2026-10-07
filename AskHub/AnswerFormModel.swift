@@ -2,6 +2,30 @@ import AskHubKit
 import Foundation
 import Observation
 
+/// 回答を確定した後に、ループをだれが回すか（Discussion #273 の Q2）
+enum LoopRunner: Hashable, CaseIterable {
+    /// 担当 PC のオーケストレーターが起動する（`ready-for-loop` を付ける）
+    case orchestrator
+    /// 手で回す（`manual-loop` を付ける。オーケストレーターは起動しない）
+    case manual
+
+    /// 回し方の選択肢に出す名前
+    var title: String {
+        switch self {
+        case .orchestrator: "オーケストレーターで始める"
+        case .manual: "手動で回す"
+        }
+    }
+
+    /// 付けるラベル
+    var label: AskHubLabel {
+        switch self {
+        case .orchestrator: .readyForLoop
+        case .manual: .manualLoop
+        }
+    }
+}
+
 /// 質問の詳細画面の回答の入力と投稿の状態
 @MainActor
 @Observable
@@ -15,6 +39,8 @@ final class AnswerFormModel {
     /// 選べる質問（Discussion の最後の質問）では、設定画面の既定値（`LoopStartPreference`。初期値はオン）から始める
     /// （Issue #98・Discussion #244）。始める前には確認ダイアログを出す
     var startsLoopAfterPosting = false
+    /// `startsLoopAfterPosting` のとき、ループをだれが回すか。毎回オーケストレーターから始める
+    var loopRunner = LoopRunner.orchestrator
     private(set) var isPosting = false
     private(set) var isPosted = false
     /// 回答は投稿できたが、ループを始める印を付けられなかった
@@ -46,7 +72,7 @@ final class AnswerFormModel {
     }
 
     /// 回答を投稿する。失敗したら入力を残してエラーを出す。
-    /// `startsLoopAfterPosting` なら、投稿の後に Discussion へ `ready-for-loop` を付ける
+    /// `startsLoopAfterPosting` なら、投稿の後に Discussion へ `ready-for-loop`（手で回すなら `manual-loop`）を付ける
     func post(using inbox: InboxModel) async {
         guard canPost else {
             return
@@ -66,7 +92,7 @@ final class AnswerFormModel {
         }
     }
 
-    /// Discussion に `ready-for-loop` を付ける。投稿の後に失敗したときの再試行にも使う。
+    /// Discussion に `ready-for-loop`（手で回すなら `manual-loop`）を付ける。投稿の後に失敗したときの再試行にも使う。
     /// その時点の一覧で、この Discussion にほかの未回答の質問が無いことを確かめてから付ける
     func startLoop(using inbox: InboxModel) async {
         guard canStartLoop(in: inbox) else {
@@ -77,12 +103,13 @@ final class AnswerFormModel {
         isPosting = true
         defer { isPosting = false }
         do {
-            try await inbox.startLoop(for: question.subject)
+            try await inbox.startLoop(for: question.subject, runner: loopRunner)
             loopStartFailed = false
             errorMessage = nil
         } catch {
             loopStartFailed = true
-            errorMessage = "回答は投稿しました。ループを始める印（ready-for-loop）を付けられませんでした: " + InboxModel.message(for: error)
+            let mark = loopRunner == .manual ? "手で回す印" : "ループを始める印"
+            errorMessage = "回答は投稿しました。\(mark)（\(loopRunner.label.rawValue)）を付けられませんでした: " + InboxModel.message(for: error)
         }
     }
 }

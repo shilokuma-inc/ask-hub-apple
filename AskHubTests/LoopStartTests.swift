@@ -4,6 +4,15 @@ import Foundation
 import os
 import Testing
 
+/// `RecordingStarter` が記録した内容
+private struct RecordingStarterState {
+    /// `ready-for-loop` を付けた Discussion
+    var marked: [String] = []
+    /// `manual-loop` を付けた Discussion
+    var manual: [String] = []
+    var fails = false
+}
+
 /// 「回答を確定してループを始める」（Discussion #1 の Q3）
 @MainActor
 struct LoopStartTests {
@@ -16,10 +25,14 @@ struct LoopStartTests {
 
     /// 印を付けた Discussion を記録する。失敗させることもできる
     private final class RecordingStarter: LoopStarting {
-        private let state = OSAllocatedUnfairLock<(marked: [String], fails: Bool)>(initialState: ([], false))
+        private let state = OSAllocatedUnfairLock(initialState: RecordingStarterState())
 
         var marked: [String] {
             state.withLock { $0.marked }
+        }
+
+        var markedManual: [String] {
+            state.withLock { $0.manual }
         }
 
         func setFails(_ fails: Bool) {
@@ -32,6 +45,15 @@ struct LoopStartTests {
                     throw GitHubError.http(status: 403, message: "Resource not accessible by personal access token")
                 }
                 state.marked.append(discussion.nodeID)
+            }
+        }
+
+        func markManualLoop(_ discussion: InboxSubject) async throws {
+            try state.withLock { state in
+                if state.fails {
+                    throw GitHubError.http(status: 403, message: "Resource not accessible by personal access token")
+                }
+                state.manual.append(discussion.nodeID)
             }
         }
     }
@@ -132,6 +154,51 @@ struct LoopStartTests {
         #expect(form.isPosted)
         #expect(!form.loopStartFailed)
         #expect(starter.marked == [questions[1].subject.nodeID])
+    }
+
+    @Test func marksDiscussionManualInsteadOfReadyWhenRunningByHand() async throws {
+        let starter = RecordingStarter()
+        let inbox = await makeInbox(starter: starter)
+        let questions = discussionQuestions(in: inbox)
+        try await inbox.post(Answer(choice: "1時間"), to: questions[0])
+
+        let form = AnswerFormModel(question: questions[1])
+        // 既定はオーケストレーターで始める
+        #expect(form.loopRunner == .orchestrator)
+        form.note = "朝だけにしたい"
+        form.startsLoopAfterPosting = true
+        form.loopRunner = .manual
+        await form.post(using: inbox)
+
+        // manual-loop だけを付け、ready-for-loop は付けない
+        #expect(form.isPosted)
+        #expect(!form.loopStartFailed)
+        #expect(starter.markedManual == [questions[1].subject.nodeID])
+        #expect(starter.marked.isEmpty)
+    }
+
+    @Test func retriesManualMarkWhenItFailed() async throws {
+        let starter = RecordingStarter()
+        starter.setFails(true)
+        let inbox = await makeInbox(starter: starter)
+        let questions = discussionQuestions(in: inbox)
+        try await inbox.post(Answer(choice: "1時間"), to: questions[0])
+        let form = AnswerFormModel(question: questions[1])
+        form.note = "朝だけにしたい"
+        form.startsLoopAfterPosting = true
+        form.loopRunner = .manual
+        await form.post(using: inbox)
+
+        // 付けられなければ画面を閉じずに再試行できるようにする（オーケストレーターで始めるときと同じ）
+        #expect(form.isPosted)
+        #expect(form.loopStartFailed)
+        #expect(form.errorMessage?.hasPrefix("回答は投稿しました。手で回す印（manual-loop）を付けられませんでした") == true)
+
+        starter.setFails(false)
+        await form.startLoop(using: inbox)
+        #expect(!form.loopStartFailed)
+        #expect(starter.markedManual.count == 1)
+        #expect(starter.marked.isEmpty)
     }
 
     @Test func doesNotMarkWithoutChoosingToStartLoop() async throws {
