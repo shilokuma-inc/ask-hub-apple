@@ -60,6 +60,8 @@ public protocol IdeaRequesting: Sendable {
     func repositories(in orgs: [String]) async throws -> [RequestRepository]
     /// `idea-request` ラベル付きの Issue を作る
     func create(_ request: IdeaRequest) async throws -> CreatedIssue
+    /// `repo-request` ラベル付きの Issue（担当リポジトリの作成・削除の依頼）を `repository` に作る
+    func create(_ request: RepositoryRequest, in repository: String) async throws -> CreatedIssue
 }
 
 /// GitHub の REST API で依頼の Issue を作る
@@ -145,6 +147,18 @@ public struct GitHubIdeaRequester: IdeaRequesting {
                 body: request.body.trimmingCharacters(in: .whitespacesAndNewlines),
                 labels: [AskHubLabel.ideaRequest.rawValue]
             ),
+            as: CreatedIssue.self
+        )
+    }
+
+    public func create(_ request: RepositoryRequest, in repository: String) async throws -> CreatedIssue {
+        guard request.isValid, RepositoryName.isValidFullName(repository) else {
+            throw IdeaRequestError.invalidRequest
+        }
+        return try await client.send(
+            "POST",
+            "repos/\(repository)/issues",
+            body: NewIssue(title: request.title, body: request.body, labels: [RepositoryRequest.labelName]),
             as: CreatedIssue.self
         )
     }

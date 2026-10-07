@@ -96,4 +96,33 @@ struct IdeaRequestTests {
         }
         #expect(http.requests.isEmpty)
     }
+    @Test func createsRepositoryRequestIssueInGivenRepository() async throws {
+        let http = MockHTTPClient([
+            .init(status: 201, body: #"{ "number": 9, "html_url": "https://github.com/shilokuma-inc/ask-hub-apple/issues/9" }"#)
+        ])
+        let request = RepositoryRequest.create(NewRepository(
+            repository: "shilokuma-inc/my-quiz-ios",
+            template: .quiz,
+            appName: "MyQuiz",
+            bundleIdentifier: "jp.shilokuma.MyQuiz"
+        ))
+        _ = try await makeRequester(http).create(request, in: "shilokuma-inc/ask-hub-apple")
+
+        let sent = try #require(http.requests.first)
+        #expect(sent.url?.path() == "/repos/shilokuma-inc/ask-hub-apple/issues")
+        let data = try #require(sent.httpBody)
+        let body = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(body["title"] as? String == "【新規アプリ】shilokuma-inc/my-quiz-ios")
+        #expect(body["labels"] as? [String] == ["repo-request"])
+        #expect(RepositoryRequest.parse(try #require(body["body"] as? String)) == request)
+    }
+
+    @Test func rejectsInvalidRepositoryRequestWithoutSending() async {
+        let http = MockHTTPClient([])
+        let invalid = RepositoryRequest.remove(RepositoryRemoval(repository: "o/r;x", deletesLocalFiles: true))
+        await #expect(throws: IdeaRequestError.invalidRequest) {
+            try await makeRequester(http).create(invalid, in: "o/r")
+        }
+        #expect(http.requests.isEmpty)
+    }
 }

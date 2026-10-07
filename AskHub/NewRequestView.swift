@@ -12,6 +12,17 @@ struct NewRequestView: View {
         @Bindable var model = model
         Form {
             Section {
+                NavigationLink {
+                    NewAppView(model: model)
+                } label: {
+                    Label("新しいアプリを作る", systemImage: "plus.app")
+                }
+                .accessibilityIdentifier("new-app-link")
+            } footer: {
+                Text("テンプレートからリポジトリを作り、担当 PC に載せます")
+            }
+
+            Section {
                 repositoryPicker
             } header: {
                 Text("リポジトリ")
