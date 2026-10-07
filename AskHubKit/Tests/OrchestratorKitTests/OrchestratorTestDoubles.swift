@@ -48,6 +48,9 @@ struct FakeGitHubState {
     /// `manual-loop` の Discussion
     var manualLoops: [ManualLoopDiscussion] = []
     var manualLoopsFail = false
+    /// `repo-request` の Issue
+    var repositoryRequests: [RepositoryRequestIssue] = []
+    var deletedHeartbeats: [String] = []
 }
 
 struct FakeRuntimeState {
@@ -100,7 +103,7 @@ final class FakeGitHub: OrchestratorGitHub {
         }
     }
 
-    private static func isInside(_ orgs: [String], _ repository: String) -> Bool {
+    static func isInside(_ orgs: [String], _ repository: String) -> Bool {
         orgs.contains { repository.lowercased().hasPrefix($0.lowercased() + "/") }
     }
 

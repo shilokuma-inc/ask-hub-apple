@@ -164,10 +164,15 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
     }
 
     public func ideaRequests(orgs: [String]) async throws -> [IdeaRequestIssue] {
+        try await requestIssues(labeled: .ideaRequest, orgs: orgs)
+    }
+
+    /// organization 全体の、`label` が付いた open な Issue（アプリから出した依頼）
+    func requestIssues(labeled label: AskHubLabel, orgs: [String]) async throws -> [IdeaRequestIssue] {
         guard let scope = SearchScope.organizations(orgs) else {
             return []
         }
-        let query = "\(scope) is:issue is:open label:\(AskHubLabel.ideaRequest.rawValue)"
+        let query = "\(scope) is:issue is:open label:\(label.rawValue)"
         let nodes: [IdeaIssueNode] = try await collectGraphQLPages { after in
             let data = try await client.graphQL(
                 Self.ideaSearchQuery,

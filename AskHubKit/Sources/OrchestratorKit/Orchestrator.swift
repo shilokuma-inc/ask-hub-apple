@@ -33,6 +33,10 @@ public protocol OrchestratorGitHub: Sendable {
     func comment(on issue: IdeaRequestIssue, body: String) async throws
     /// 依頼 Issue をクローズする（完了として）
     func close(_ issue: IdeaRequestIssue) async throws
+    /// organization 全体の、`repo-request` が付いた open な Issue（担当リポジトリの作成・削除の依頼）
+    func repositoryRequests(orgs: [String]) async throws -> [RepositoryRequestIssue]
+    /// 担当リポジトリのラベル `askhub-orchestrator` を消す（担当から外したとき）。無ければ何もしない
+    func deleteHeartbeat(in repository: String) async throws
     /// 担当リポジトリのラベル `askhub-orchestrator` の説明を書き換える。ラベルが無ければ作る
     func updateHeartbeat(in repository: String, description: String) async throws
     /// リポジトリの、`decision-log` が付いた open な Issue（仮決め一覧）
@@ -139,6 +143,7 @@ public actor Orchestrator {
     var usageLimitedUntil: Date?
     let now: @Sendable () -> Date
     var ideaTracker = IdeaRequestTracker()
+    var repositoryRequestTracker = RepositoryRequestTracker()
     var conflictTracker = ConflictTracker()
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
@@ -257,6 +262,12 @@ public actor Orchestrator {
             try await handleIdeaRequests()
         } catch {
             log("依頼の確認に失敗しました: \(error)")
+        }
+        // 担当リポジトリの作成・削除の依頼（1 回のポーリングで 1 件）
+        do {
+            try await handleRepositoryRequests(statuses: statuses)
+        } catch {
+            log("リポジトリの作成・削除の依頼の確認に失敗しました: \(error)")
         }
         // 最終 PR のコンフリクトの解消と、ループの状態の書き出し（起動・再開を反映した後）
         await finishPoll(statuses: statuses)
