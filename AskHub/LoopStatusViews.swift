@@ -126,21 +126,63 @@ struct LoopStatusRowView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if display.progressText != nil || display.lastActivityAt != nil {
-                HStack(spacing: 6) {
-                    if let progressText = display.progressText {
-                        Text(progressText)
-                    }
-                    Spacer()
-                    if let lastActivityAt = display.lastActivityAt {
-                        Text("最後の動き: \(lastActivityAt, format: .relative(presentation: .named))")
-                    }
+            if let fraction = display.progressFraction, let stage = display.progressStage, let countText = display.progressCountText {
+                HStack(spacing: 8) {
+                    // 色だけに頼らないよう横に数を出すので、ゲージは読み上げない
+                    ProgressGauge(fraction: fraction, color: stage.color, deferredFraction: display.progressDeferredFraction ?? 0)
+                        .accessibilityHidden(true)
+                    Text(countText)
+                        .monospacedDigit()
+                        .accessibilityLabel(display.progressText ?? countText)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
+
+            if let lastActivityAt = display.lastActivityAt {
+                Text("最後の動き: \(lastActivityAt, format: .relative(presentation: .named))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// 進捗の横長のゲージ。`fraction`（0〜1）の分だけ `color` で塗り、その後ろに `deferredFraction` の分だけ保留の色で積む
+struct ProgressGauge: View {
+    let fraction: Double
+    let color: Color
+    /// 保留で閉じたタスクの割合。0 なら保留を区別しない（積まない）
+    var deferredFraction: Double = 0
+
+    /// ゲージの太さ
+    static let height: CGFloat = 6
+    /// 保留の色。段階の色（`ProgressStage.color`）・残り（`.quaternary`）のどちらとも見分けられる灰色にする
+    static let deferredColor: Color = .gray
+
+    var body: some View {
+        let done = min(max(fraction, 0), 1)
+        let deferred = min(max(deferredFraction, 0), 1 - done)
+        Capsule()
+            .fill(.quaternary)
+            .overlay(alignment: .leading) {
+                GeometryReader { proxy in
+                    // 保留を「完了 + 保留」の長さで敷き、その上に完了を重ねる（どちらの端も丸くなる）
+                    ZStack(alignment: .leading) {
+                        if deferred > 0 {
+                            Capsule()
+                                .fill(Self.deferredColor)
+                                .frame(width: proxy.size.width * (done + deferred))
+                        }
+                        Capsule()
+                            .fill(color)
+                            .frame(width: proxy.size.width * done)
+                    }
+                }
+            }
+            .frame(height: Self.height)
+            .frame(maxWidth: .infinity)
     }
 }
 
@@ -250,6 +292,26 @@ extension LoopStatusDisplay.Tone {
 
         case .inactive:
             .secondary
+        }
+    }
+}
+
+extension LoopStatusDisplay.ProgressStage {
+    /// ゲージの色。しきい値は `ProgressStage.init(fraction:)`、色はここの 1 か所で決める。
+    /// 始まったばかりの段階が「異常」に見えないよう、赤（`Tone.failure`）・橙（`Tone.paused`）は使わない
+    var color: Color {
+        switch self {
+        case .starting:
+            .indigo
+
+        case .halfway:
+            .blue
+
+        case .nearlyDone:
+            .teal
+
+        case .completed:
+            .green
         }
     }
 }
