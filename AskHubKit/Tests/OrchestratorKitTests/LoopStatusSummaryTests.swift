@@ -36,7 +36,7 @@ struct LoopStatusSummaryTests {
             state: .running,
             epic: "epic/loop-status",
             discussion: 197,
-            progress: .init(completed: 2, total: 4),
+            progress: .init(completed: 2, total: 4, deferred: 1),
             lastActivityAt: activity,
             checkedAt: now
         ))
@@ -82,7 +82,7 @@ struct LoopStatusSummaryTests {
         let waiting = Self.goal.replacingOccurrences(of: "- [ ] 【FEAT】D", with: "- [x] 【FEAT】D")
         let answer = report(.init(status: .idle, snapshot: Self.epic(goal: waiting)))
         #expect(answer.state == .waitingForAnswer)
-        #expect(answer.progress == .init(completed: 3, total: 4))
+        #expect(answer.progress == .init(completed: 3, total: 4, deferred: 1))
         // 回答が付いて再開を待っている（再開に失敗した）なら、人を待っていない
         let answered = report(.init(status: .idle, snapshot: Self.epic(goal: waiting), hasAnsweredQuestions: true))
         #expect(answered.state == .waitingToStart)
@@ -92,7 +92,7 @@ struct LoopStatusSummaryTests {
         let completed = report(.init(status: .idle, snapshot: Self.epic(goal: done), readyDiscussion: 300))
         #expect(completed.state == .completed)
         #expect(completed.discussion == 197)
-        #expect(completed.progress == .init(completed: 4, total: 4))
+        #expect(completed.progress == .init(completed: 4, total: 4, deferred: 1))
     }
 
     @Test func treatsMergedEpicAsNoLoop() {
@@ -130,11 +130,22 @@ struct LoopStatusSummaryTests {
     }
 
     @Test func countsOnlyChecklistLines() {
-        #expect(LoopStatusSummary.progress(in: Self.goal) == .init(completed: 2, total: 4))
-        #expect(LoopStatusSummary.progress(in: "  - [X] 大文字\n- [ ] 未完了\n- 普通の箇条書き\n") == .init(completed: 1, total: 2))
+        #expect(LoopStatusSummary.progress(in: Self.goal) == .init(completed: 2, total: 4, deferred: 1))
+        #expect(LoopStatusSummary.progress(in: "  - [X] 大文字\n- [ ] 未完了\n- 普通の箇条書き\n") == .init(completed: 1, total: 2, deferred: 0))
         #expect(LoopStatusSummary.progress(in: "# タスクなし\n") == nil)
         let report = report(.init(status: Self.running, snapshot: Self.epic(goal: "# タスクなし\n")))
         #expect(report.progress == nil)
+    }
+
+    @Test func countsDeferredTasksClosedWithMark() {
+        let goal = """
+            - [x] 【FEAT】A | label: enhancement  ※保留（2026-10-06）: 人の判断待ち
+            - [X] 【FEAT】B | label: enhancement  ※保留（2026-10-07）: 前提が違った
+            - [x] 【FEAT】C | label: enhancement
+            - [ ] 【FEAT】D | label: enhancement  ※保留にするか迷う（未完了なので数えない）
+            - [ ] 【FEAT】E | label: enhancement  ※回答待ち（PR #3 / ask id 4）
+            """
+        #expect(LoopStatusSummary.progress(in: goal) == .init(completed: 3, total: 5, deferred: 2))
     }
 
     @Test func picksLatestActivity() {

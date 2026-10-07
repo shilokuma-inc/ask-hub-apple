@@ -6,6 +6,8 @@ public enum AskHubLabel: String, CaseIterable, Sendable {
     case needsAnswer = "needs-answer"
     /// Discussion の回答が確定し、ループを始めてよい
     case readyForLoop = "ready-for-loop"
+    /// この Discussion のループは手で回す（オーケストレーターは起動しない）。信用する author の Discussion でだけ効く
+    case manualLoop = "manual-loop"
     /// epic ごとの仮決め一覧（判断ログ）の Issue
     case decisionLog = "decision-log"
     /// 実機・実データでの確認が必要な Issue

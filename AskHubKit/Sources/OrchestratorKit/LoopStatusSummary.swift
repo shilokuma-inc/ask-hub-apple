@@ -92,7 +92,11 @@ public enum LoopStatusSummary {
         return facts.readyDiscussion == nil ? .noLoop : .waitingToStart
     }
 
-    /// goal のチェックボックスの数。タスクが 1 つも無ければ `nil`
+    /// goal で保留として閉じたタスクの目印（playbook の「詰まったときの扱い」の `- [x] … ※保留（YYYY-MM-DD）: …`）
+    static let deferredMark = "※保留"
+
+    /// goal のチェックボックスの数。タスクが 1 つも無ければ `nil`。
+    /// 保留で閉じたタスクは `completed` に含めたまま（古いアプリとの互換）、`deferred` にも数える
     static func progress(in goal: String) -> LoopStatusReport.Progress? {
         let tasks = goal.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -100,8 +104,9 @@ public enum LoopStatusSummary {
         guard !tasks.isEmpty else {
             return nil
         }
-        let completed = tasks.filter { !$0.hasPrefix("- [ ]") }.count
-        return .init(completed: completed, total: tasks.count)
+        let completed = tasks.filter { !$0.hasPrefix("- [ ]") }
+        let deferred = completed.filter { $0.contains(deferredMark) }.count
+        return .init(completed: completed.count, total: tasks.count, deferred: deferred)
     }
 
     /// 最後に動いた時刻。いずれも無ければ `nil`

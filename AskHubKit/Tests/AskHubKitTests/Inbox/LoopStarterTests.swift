@@ -45,9 +45,29 @@ struct LoopStarterTests {
         #expect(try variables(of: http.requests[2])["labels"] as? [String] == ["LA_new"])
     }
 
+    @Test func addsManualLoopLabelCreatingItWhenMissing() async throws {
+        let http = MockHTTPClient([
+            .init(status: 200, body: #"{ "data": { "repository": { "label": null } } }"#),
+            .init(status: 201, body: #"{ "id": 2, "node_id": "LA_manual", "name": "manual-loop" }"#),
+            .init(status: 200, body: #"{ "data": { "addLabelsToLabelable": { "clientMutationId": null } } }"#)
+        ])
+        try await makeStarter(http).markManualLoop(discussion)
+
+        #expect(try variables(of: http.requests[0])["label"] as? String == "manual-loop")
+        let createdBody = try #require(http.requests[1].httpBody)
+        let created = try #require(try JSONSerialization.jsonObject(with: createdBody) as? [String: Any])
+        #expect(created["name"] as? String == "manual-loop")
+        let mutation = try variables(of: http.requests[2])
+        #expect(mutation["labelable"] as? String == "D_12")
+        #expect(mutation["labels"] as? [String] == ["LA_manual"])
+    }
+
     @Test func refusesPullRequest() async {
         await #expect(throws: LoopStartingError.notDiscussion) {
             try await makeStarter(MockHTTPClient([])).markReadyForLoop(.fixture(kind: .pullRequest))
+        }
+        await #expect(throws: LoopStartingError.notDiscussion) {
+            try await makeStarter(MockHTTPClient([])).markManualLoop(.fixture(kind: .pullRequest))
         }
     }
 }

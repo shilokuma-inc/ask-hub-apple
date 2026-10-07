@@ -191,6 +191,8 @@ extension InboxModel {
 /// デモモード・Preview・UI テスト用。ループを始める印を付けたことにして GitHub には送らない
 struct SampleLoopStarter: LoopStarting {
     func markReadyForLoop(_ discussion: InboxSubject) async throws {}
+
+    func markManualLoop(_ discussion: InboxSubject) async throws {}
 }
 
 /// デモモード・Preview・UI テスト用。投稿したことにして GitHub には送らない
@@ -222,7 +224,8 @@ struct SampleInboxSource: InboxSource {
             repository: repository,
             number: number,
             title: title,
-            url: URL(string: "https://github.com/\(repository)/\(path)/\(number)")!
+            url: URL(string: "https://github.com/\(repository)/\(path)/\(number)")!,
+            author: TrustedAuthors.defaultLogins[0]
         )
     }
 

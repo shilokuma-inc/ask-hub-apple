@@ -1,9 +1,11 @@
 import Foundation
 
-/// Discussion の回答を確定し、ループを始めてよい印（`ready-for-loop`）を付ける。テストでは差し替える
+/// Discussion の回答を確定し、ループを始めてよい印（`ready-for-loop`）か、手で回す印（`manual-loop`）を付ける。テストでは差し替える
 public protocol LoopStarting: Sendable {
     /// Discussion に `ready-for-loop` を付ける。既に付いていても失敗しない
     func markReadyForLoop(_ discussion: InboxSubject) async throws
+    /// Discussion に `manual-loop` を付ける（オーケストレーターは起動せず、ループは手で始める）。既に付いていても失敗しない
+    func markManualLoop(_ discussion: InboxSubject) async throws
 }
 
 /// ループを始める印を付けられないときのエラー
@@ -12,7 +14,7 @@ public enum LoopStartingError: Error, Equatable, Sendable {
     case notDiscussion
 }
 
-/// GitHub の API で `ready-for-loop` を付ける（Discussion #1 の Q3）
+/// GitHub の API で `ready-for-loop`（Discussion #1 の Q3）か `manual-loop`（Discussion #273 の Q2）を付ける
 public struct GitHubLoopStarter: LoopStarting {
     private let client: GitHubClient
 
@@ -21,10 +23,20 @@ public struct GitHubLoopStarter: LoopStarting {
     }
 
     public func markReadyForLoop(_ discussion: InboxSubject) async throws {
+        try await add(.readyForLoop, color: "0e8a16", description: "回答が確定し、ループを始めてよい（AskHub）", to: discussion)
+    }
+
+    public func markManualLoop(_ discussion: InboxSubject) async throws {
+        try await add(.manualLoop, color: "c5def5", description: "この Discussion のループは手で回す（AskHub）", to: discussion)
+    }
+
+    /// Discussion にラベルを付ける。リポジトリに無ければ `color` と `description` で作る
+    private func add(_ label: AskHubLabel, color: String, description: String, to discussion: InboxSubject) async throws {
         guard discussion.kind == .discussion else {
             throw LoopStartingError.notDiscussion
         }
-        let labelID = try await readyLabelID(in: discussion.repository)
+        let newLabel = NewLabel(name: label.rawValue, color: color, description: description)
+        let labelID = try await labelID(of: newLabel, in: discussion.repository)
         // Discussion のラベルは REST で付けられないため GraphQL で付ける
         _ = try await client.graphQL(
             Self.addLabelMutation,
@@ -33,16 +45,15 @@ public struct GitHubLoopStarter: LoopStarting {
         )
     }
 
-    /// リポジトリの `ready-for-loop` ラベルの node id。無ければ作る
-    private func readyLabelID(in repository: String) async throws -> String {
+    /// リポジトリのラベルの node id。無ければ作る
+    private func labelID(of label: NewLabel, in repository: String) async throws -> String {
         let parts = repository.split(separator: "/", maxSplits: 1).map(String.init)
         guard parts.count == 2 else {
             throw GitHubError.invalidResponse
         }
-        let label = AskHubLabel.readyForLoop.rawValue
         let data = try await client.graphQL(
             Self.labelQuery,
-            variables: ["owner": .string(parts[0]), "name": .string(parts[1]), "label": .string(label)],
+            variables: ["owner": .string(parts[0]), "name": .string(parts[1]), "label": .string(label.name)],
             as: LabelLookup.self
         )
         if let id = data.repository?.label?.id {
@@ -51,7 +62,7 @@ public struct GitHubLoopStarter: LoopStarting {
         let created = try await client.send(
             "POST",
             "repos/\(repository)/labels",
-            body: NewLabel(name: label, color: "0e8a16", description: "回答が確定し、ループを始めてよい（AskHub）"),
+            body: label,
             as: CreatedLabel.self
         )
         return created.nodeID

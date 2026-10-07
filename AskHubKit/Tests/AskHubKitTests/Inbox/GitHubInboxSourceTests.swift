@@ -34,7 +34,8 @@ struct GitHubInboxSourceTests {
             .init(status: 200, body: #"""
                 { "data": { "search": { "pageInfo": \#(Self.page(hasNext: true, cursor: "S1")), "nodes": [
                   { "id": "D_1", "number": 1, "title": "質問", "url": "https://github.com/o/r/discussions/1",
-                    "closed": false, "repository": { "nameWithOwner": "o/r" } },
+                    "closed": false, "repository": { "nameWithOwner": "o/r" }, "author": { "login": "mrs1669" },
+                    "labels": { "nodes": [{ "name": "needs-answer" }, null, { "name": "manual-loop" }] } },
                   {}
                 ] } } }
                 """#),
@@ -57,7 +58,16 @@ struct GitHubInboxSourceTests {
         let discussionURL = try #require(URL(string: "https://github.com/o/r/discussions/1"))
         let pullRequestURL = try #require(URL(string: "https://github.com/o/r2/pull/3"))
         #expect(subjects == [
-            InboxSubject(kind: .discussion, nodeID: "D_1", repository: "o/r", number: 1, title: "質問", url: discussionURL),
+            InboxSubject(
+                kind: .discussion,
+                nodeID: "D_1",
+                repository: "o/r",
+                number: 1,
+                title: "質問",
+                url: discussionURL,
+                author: "mrs1669",
+                labels: ["needs-answer", "manual-loop"]
+            ),
             InboxSubject(kind: .pullRequest, nodeID: "PR_3", repository: "o/r2", number: 3, title: "PR", url: pullRequestURL)
         ])
         let requests = http.requests
