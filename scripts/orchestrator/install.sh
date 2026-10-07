@@ -63,6 +63,8 @@ mkdir -p "$PREFIX" "$AGENTS_DIR" "$LOG_DIR"
 install -m 755 "$BIN_DIR/askhub-orchestrator" "$PREFIX/askhub-orchestrator"
 # loopCommand から呼ぶループの起動スクリプト。checkout の場所に依存しないよう、実行ファイルと同じ場所に置く
 install -m 755 "$REPO_ROOT/scripts/orchestrator/start-loop.sh" "$PREFIX/askhub-start-loop"
+# conflictCommand の既定（epic の最終 PR のコンフリクトを解消する）。loopCommand と同じ場所に置く
+install -m 755 "$REPO_ROOT/scripts/orchestrator/resolve-conflict.sh" "$PREFIX/askhub-resolve-conflict"
 
 # XML に入る値なので、& < > をエスケープしてから置き換える
 escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
@@ -83,6 +85,7 @@ cat <<MSG
 インストールしました
   実行ファイル: $PREFIX/askhub-orchestrator
   起動スクリプト: $PREFIX/askhub-start-loop（設定の loopCommand に指定する）
+  コンフリクトの解消: $PREFIX/askhub-resolve-conflict（conflictCommand の既定）
   plist:        $PLIST
   ログ:         $LOG_DIR/orchestrator.log
 
