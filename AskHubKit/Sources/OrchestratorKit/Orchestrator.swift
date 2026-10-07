@@ -5,6 +5,8 @@ import Foundation
 public protocol OrchestratorGitHub: Sendable {
     /// organization 全体の、`ready-for-loop` が付いた open な Discussion
     func readyForLoopDiscussions(orgs: [String]) async throws -> [ReadyDiscussion]
+    /// organization 全体の、`manual-loop` が付いた open な Discussion（手で回す epic）
+    func manualLoopDiscussions(orgs: [String]) async throws -> [ManualLoopDiscussion]
     /// Discussion から `ready-for-loop` を外す
     func removeReadyLabel(from discussion: ReadyDiscussion) async throws
     /// org 全体の open な `epic-final` PR のうち、GitHub が既定ブランチとコンフリクトすると判定したもの
@@ -218,6 +220,8 @@ public actor Orchestrator {
 
         // ready-for-loop の検索は失敗しうるので、ここまで（回答・異常終了・固まったループの再開と最終 PR）を先に済ませる
         let discussions = try await github.readyForLoopDiscussions(orgs: config.orgs)
+        // 手で回す epic があるリポジトリでは起動しない（Q4）。確かめられなければ、ready-for-loop の検索の失敗と同じく次のポーリングに回す
+        let manualLoops = try await github.manualLoopDiscussions(orgs: config.orgs)
 
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         let snapshots = await epicSnapshots()
@@ -229,8 +233,24 @@ public actor Orchestrator {
             config: config,
             statuses: statuses,
             excluding: tracker.blockedDiscussionIDs.union(handled),
-            epicsInProgress: Set(snapshots.filter(\.value.inProgress).keys).union(unfinalized)
+            epicsInProgress: Set(snapshots.filter(\.value.inProgress).keys).union(unfinalized),
+            manualLoops: manualLoops
         )
+        await carryOut(decisions, statuses: &statuses)
+
+        // 新機能の依頼: claude に質問付きの Discussion を作らせる（1 回のポーリングで 1 件）
+        do {
+            try await handleIdeaRequests()
+        } catch {
+            log("依頼の確認に失敗しました: \(error)")
+        }
+        // 最終 PR のコンフリクトの解消と、ループの状態の書き出し（起動・再開を反映した後）
+        await finishPoll(statuses: statuses)
+        return decisions
+    }
+
+    /// 起動判定のとおりに起動し、起動しない理由をログに出す
+    private func carryOut(_ decisions: [LaunchDecision], statuses: inout [String: LoopStatus]) async {
         for decision in decisions {
             switch decision {
             case let .launch(discussion, repository):
@@ -244,16 +264,6 @@ public actor Orchestrator {
                 }
             }
         }
-
-        // 新機能の依頼: claude に質問付きの Discussion を作らせる（1 回のポーリングで 1 件）
-        do {
-            try await handleIdeaRequests()
-        } catch {
-            log("依頼の確認に失敗しました: \(error)")
-        }
-        // 最終 PR のコンフリクトの解消と、ループの状態の書き出し（起動・再開を反映した後）
-        await finishPoll(statuses: statuses)
-        return decisions
     }
 
     /// 担当リポジトリに「担当している」印（最終確認の時刻）を書く。アプリが「担当 PC なし」を判断するのに使う。
@@ -465,6 +475,9 @@ public actor Orchestrator {
 
         case .manualLoop:
             "manual-loop（手で回す）が付いています。ループは手で始めてください"
+
+        case let .manualLoopInProgress(number):
+            "同じリポジトリの Discussion #\(number) を手で回しています（manual-loop）。その epic が終わるまで自動では起動しません"
 
         case .loopStateRemains:
             "制御用 worktree に .claude/ralph-loop.local.md が残っています"

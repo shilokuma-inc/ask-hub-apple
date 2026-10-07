@@ -72,6 +72,8 @@ public enum LaunchDecision: Sendable, Equatable {
         case untrustedAuthor
         /// 手で回す Discussion（`manual-loop`）。ループは手で始めるので、オーケストレーターは起動しない
         case manualLoop
+        /// 同じリポジトリに手で回す Discussion（open な `manual-loop`）があり、その epic が終わるのを待っている
+        case manualLoopInProgress(number: Int)
         /// 起動したループがまだ動いている
         case loopRunning
         /// ループの state ファイルが残っている（実行中か、終了後に片付いていない）
@@ -93,15 +95,18 @@ public enum LaunchPlanner {
     ///   - statuses: 担当リポジトリの `fullName` を小文字にしたキーごとのループの状態。無いものは停止中とみなす
     ///   - excluding: 起動済みで追跡中の Discussion の node id
     ///   - epicsInProgress: 途中の epic がある担当リポジトリ（`fullName` を小文字にしたもの）
+    ///   - manualLoops: open な `manual-loop` の Discussion。信用する author のものがあるリポジトリでは起動しない
     public static func decide(
         _ discussions: [ReadyDiscussion],
         config: OrchestratorConfig,
         statuses: [String: LoopStatus],
         excluding launched: Set<String> = [],
-        epicsInProgress: Set<String> = []
+        epicsInProgress: Set<String> = [],
+        manualLoops: [ManualLoopDiscussion] = []
     ) -> [LaunchDecision] {
         // 1 つのリポジトリで同時に動かすループは 1 つ。番号の小さい（先に作られた）Discussion から起動する
         var launching: [String: Int] = [:]
+        let manual = manualLoopNumbers(manualLoops, trustedAuthors: config.trustedAuthors)
         return discussions.sorted { $0.number < $1.number }.map { discussion in
             guard let repository = config.repository(named: discussion.repository) else {
                 return .skip(discussion, .notAssigned)
@@ -113,11 +118,10 @@ public enum LaunchPlanner {
             guard config.trustedAuthors.contains(discussion.author) else {
                 return .skip(discussion, .untrustedAuthor)
             }
-            // 手で回すループと二重に進めないよう、ready-for-loop が付いていても起動しない
-            if discussion.isManualLoop {
-                return .skip(discussion, .manualLoop)
-            }
             let key = repository.fullName.lowercased()
+            if let reason = manualLoopReason(for: discussion, manualLoopNumber: manual[key]) {
+                return .skip(discussion, reason)
+            }
             if let first = launching[key] {
                 return .skip(discussion, .waitingForAnotherDiscussion(number: first))
             }
@@ -143,5 +147,25 @@ public enum LaunchPlanner {
             launching[key] = discussion.number
             return .launch(discussion, repository)
         }
+    }
+
+    /// 担当リポジトリごとの、信用する author の open な `manual-loop` の Discussion の最も小さい番号。
+    /// 手で回す epic はオーケストレーターから見えないので、Discussion が open なあいだは終わっていないとみなす
+    /// （最終 PR のマージで Discussion は閉じられる）。信用外の author の `manual-loop` は無視する
+    private static func manualLoopNumbers(_ discussions: [ManualLoopDiscussion], trustedAuthors: TrustedAuthors) -> [String: Int] {
+        var numbers: [String: Int] = [:]
+        for discussion in discussions where trustedAuthors.contains(discussion.author) {
+            let key = discussion.repository.lowercased()
+            numbers[key] = min(numbers[key] ?? discussion.number, discussion.number)
+        }
+        return numbers
+    }
+
+    /// 手で回すループと二重に進めないよう、起動しない理由。手で回す Discussion そのものか、同じリポジトリに手で回す epic がある
+    private static func manualLoopReason(for discussion: ReadyDiscussion, manualLoopNumber: Int?) -> LaunchDecision.SkipReason? {
+        if discussion.isManualLoop {
+            return .manualLoop
+        }
+        return manualLoopNumber.map { .manualLoopInProgress(number: $0) }
     }
 }

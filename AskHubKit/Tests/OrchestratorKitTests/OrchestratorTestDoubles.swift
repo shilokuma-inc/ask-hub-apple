@@ -45,6 +45,8 @@ struct FakeGitHubState {
     var updatedLoopStatusIssues: [String] = []
     var loopStatusIssueListings = 0
     var loopStatusFails = false
+    /// `manual-loop` の Discussion
+    var manualLoops: [ManualLoopDiscussion] = []
 }
 
 struct FakeRuntimeState {
@@ -95,6 +97,14 @@ final class FakeGitHub: OrchestratorGitHub {
             }
             return try first.get().filter { Self.isInside(orgs, $0.repository) }
         }
+    }
+
+    func manualLoopDiscussions(orgs: [String]) async throws -> [ManualLoopDiscussion] {
+        state.withLock { $0.manualLoops.filter { Self.isInside(orgs, $0.repository) } }
+    }
+
+    func setManualLoops(_ discussions: [ManualLoopDiscussion]) {
+        state.withLock { $0.manualLoops = discussions }
     }
 
     private static func isInside(_ orgs: [String], _ repository: String) -> Bool {
