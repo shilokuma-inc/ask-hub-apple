@@ -12,6 +12,8 @@ permissions:
 
 jobs:
   check:
+    # ブランチ保護の必須チェックはこの名前で指定している。変えるときは保護の設定も合わせて変える
+    name: No AI Attribution
     runs-on: ubuntu-latest
     steps:
       - name: Check commits and PR body
