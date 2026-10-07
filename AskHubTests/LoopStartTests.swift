@@ -68,18 +68,54 @@ struct LoopStartTests {
         #expect(!AnswerFormModel(question: ask).canStartLoop(in: inbox))
     }
 
+    /// テストごとに別の UserDefaults を使い、端末に保存された設定に左右されないようにする
+    private func makeDefaults(startsLoopAfterPosting: Bool?) throws -> UserDefaults {
+        let suiteName = "LoopStartTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        if let startsLoopAfterPosting {
+            defaults.set(startsLoopAfterPosting, forKey: LoopStartPreference.defaultsKey)
+        }
+        return defaults
+    }
+
     @Test func startsLoopByDefaultOnlyForLastQuestionOfDiscussion() async throws {
+        let defaults = try makeDefaults(startsLoopAfterPosting: true)
         let inbox = await makeInbox(starter: RecordingStarter())
         let questions = discussionQuestions(in: inbox)
-        #expect(!AnswerFormModel(question: questions[0], inbox: inbox).startsLoopAfterPosting)
+        #expect(!AnswerFormModel(question: questions[0], inbox: inbox, defaults: defaults).startsLoopAfterPosting)
 
         // 1 つ目に答えると、最後の質問では既定でオンになる
         try await inbox.post(Answer(choice: "1時間"), to: questions[0])
-        #expect(AnswerFormModel(question: questions[1], inbox: inbox).startsLoopAfterPosting)
+        #expect(AnswerFormModel(question: questions[1], inbox: inbox, defaults: defaults).startsLoopAfterPosting)
 
         // PR の ask ではオンにしない
         let ask = try #require(inbox.questions.first { $0.subject.kind == .pullRequest })
-        #expect(!AnswerFormModel(question: ask, inbox: inbox).startsLoopAfterPosting)
+        #expect(!AnswerFormModel(question: ask, inbox: inbox, defaults: defaults).startsLoopAfterPosting)
+    }
+
+    @Test func doesNotStartLoopByDefaultWhenSettingIsOff() async throws {
+        let defaults = try makeDefaults(startsLoopAfterPosting: false)
+        let inbox = await makeInbox(starter: RecordingStarter())
+        let questions = discussionQuestions(in: inbox)
+        try await inbox.post(Answer(choice: "1時間"), to: questions[0])
+
+        // 設定画面でオフにしていれば、最後の質問でもオフから始める。トグルは出るので、オンにはできる
+        let form = AnswerFormModel(question: questions[1], inbox: inbox, defaults: defaults)
+        #expect(!form.startsLoopAfterPosting)
+        #expect(form.canStartLoop(in: inbox))
+    }
+
+    @Test func loopStartPreferenceIsOnUntilChanged() throws {
+        let defaults = try makeDefaults(startsLoopAfterPosting: nil)
+        #expect(LoopStartPreference.startsLoopAfterPosting(in: defaults))
+
+        defaults.set(false, forKey: LoopStartPreference.defaultsKey)
+        #expect(!LoopStartPreference.startsLoopAfterPosting(in: defaults))
+
+        // 既定値に戻すと、またオンになる
+        LoopStartPreference.reset(in: defaults)
+        #expect(LoopStartPreference.startsLoopAfterPosting(in: defaults))
     }
 
     @Test func marksDiscussionReadyAfterPosting() async throws {
@@ -103,6 +139,7 @@ struct LoopStartTests {
         let inbox = await makeInbox(starter: starter)
         let form = AnswerFormModel(question: discussionQuestions(in: inbox)[0])
         form.choice = "1時間"
+        form.startsLoopAfterPosting = false
         await form.post(using: inbox)
 
         #expect(form.isPosted)

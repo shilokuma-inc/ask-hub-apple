@@ -18,6 +18,15 @@ struct AskHub: App {
     @Environment(\.scenePhase)
     private var scenePhase
 
+    init() {
+        #if DEBUG
+        // UI テスト（サンプルデータの起動引数）は、前回の起動で設定画面から切り替えた値に左右されないよう既定値から始める
+        if ProcessInfo.processInfo.arguments.contains(InboxModel.sampleLaunchArgument) {
+            LoopStartPreference.reset()
+        }
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView(model: inbox, requestModel: requests, mergeModel: mergeQueue, loopModel: loopStatus)
