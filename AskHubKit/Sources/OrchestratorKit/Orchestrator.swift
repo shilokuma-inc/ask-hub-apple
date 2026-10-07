@@ -463,6 +463,9 @@ public actor Orchestrator {
         case .untrustedAuthor:
             "Discussion の author が信用する author ではありません"
 
+        case .manualLoop:
+            "manual-loop（手で回す）が付いています。ループは手で始めてください"
+
         case .loopStateRemains:
             "制御用 worktree に .claude/ralph-loop.local.md が残っています"
 

@@ -34,6 +34,16 @@ struct LaunchPlannerTests {
         #expect(decisions == [.skip(untrusted, .untrustedAuthor), .skip(deleted, .untrustedAuthor)])
     }
 
+    @Test func skipsManualLoopDiscussion() throws {
+        let manual = ReadyDiscussion.fixture(number: 1, isManualLoop: true)
+        let next = ReadyDiscussion.fixture(number: 2)
+        let decisions = LaunchPlanner.decide([manual, next], config: try config(), statuses: [:])
+        #expect(decisions == [.skip(manual, .manualLoop), .launch(next, app)])
+        // 信用外の author なら、manual-loop より先に信用外として扱う
+        let untrusted = ReadyDiscussion.fixture(number: 3, author: "someone", isManualLoop: true)
+        #expect(LaunchPlanner.decide([untrusted], config: try config(), statuses: [:]) == [.skip(untrusted, .untrustedAuthor)])
+    }
+
     @Test func skipsWhileLoopIsRunningOrStateRemains() throws {
         let running = ReadyDiscussion.fixture(repository: "shilokuma-inc/ask-hub-apple")
         let remaining = ReadyDiscussion.fixture(repository: "shilokuma-inc/beat-tap-ios")
@@ -107,7 +117,8 @@ extension ReadyDiscussion {
     static func fixture(
         repository: String = "shilokuma-inc/ask-hub-apple",
         number: Int = 1,
-        author: String? = "mrs1669"
+        author: String? = "mrs1669",
+        isManualLoop: Bool = false
     ) -> Self {
         Self(
             nodeID: "D_\(number)",
@@ -116,7 +127,8 @@ extension ReadyDiscussion {
             title: "Discussion \(number)",
             url: URL(string: "https://github.com/\(repository)/discussions/\(number)")!,
             author: author,
-            readyLabelID: "LA_ready"
+            readyLabelID: "LA_ready",
+            isManualLoop: isManualLoop
         )
     }
 }
