@@ -203,6 +203,22 @@ struct LoopStartTests {
         #expect(starter.marked.isEmpty)
     }
 
+    @Test func postsAnswerWhenManualChosenButOtherQuestionsRemain() async throws {
+        let starter = RecordingStarter()
+        let inbox = await makeInbox(starter: starter)
+        // 手動を選んだ後に、同じ Discussion の未回答の質問が増えた（一覧の取り直し）場合と同じ状態
+        let form = AnswerFormModel(question: discussionQuestions(in: inbox)[0])
+        form.choice = "1時間"
+        form.startsLoopAfterPosting = true
+        form.loopRunner = .manual
+        await form.post(using: inbox)
+
+        // 信用する author の Discussion なので回答は投稿し、印は付けずに理由を出す
+        #expect(form.isPosted)
+        #expect(starter.markedManual.isEmpty)
+        #expect(form.errorMessage == "この Discussion には、ほかに未回答の質問が 1 件あるため、ループを始めませんでした")
+    }
+
     @Test func refusesManualLoopBeforePostingForUntrustedDiscussion() async throws {
         let starter = RecordingStarter()
         let inbox = await makeInbox(starter: starter)

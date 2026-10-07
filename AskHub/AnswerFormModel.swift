@@ -87,8 +87,9 @@ final class AnswerFormModel {
             return
         }
         let runner = startsLoopAfterPosting ? loopRunner : nil
-        if runner == .manual && !canRunManually(in: inbox) {
-            // 回答を投稿してから断ると、手で回すつもりの回答がオーケストレーターに拾われうるので、投稿する前に止める
+        if runner == .manual && !inbox.isTrustedAuthor(of: question.subject) {
+            // 回答を投稿してから断ると、手で回すつもりの回答がオーケストレーターに拾われうるので、投稿する前に止める。
+            // ほかに未回答の質問が残っているかは、投稿の後に startLoop(using:) が確かめ直す（回答そのものは投稿してよい）
             errorMessage = "この Discussion は信用する author が作ったものではないため、手動で回す印（manual-loop）は付けられません"
             return
         }
