@@ -61,6 +61,30 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         }
     }
 
+    /// 状態用の Issue を書いたもの
+    public enum Writer: String, Sendable, CaseIterable, Codable {
+        /// オーケストレーター。キーが無い目印（`writer` を足す前に書かれたもの）もこれとして読む
+        case orchestrator
+        /// 手で回しているループ（`manual-loop` の Discussion）
+        case manual
+        /// このアプリが知らない書き手。書き出しには使わない
+        case unknown
+
+        public init(from decoder: any Decoder) throws {
+            let rawValue = try decoder.singleValueContainer().decode(String.self)
+            self = Self(rawValue: rawValue) ?? .unknown
+        }
+
+        /// 人が読む表に出す名前
+        public var title: String {
+            switch self {
+            case .orchestrator: "オーケストレーター"
+            case .manual: "手動"
+            case .unknown: "不明"
+            }
+        }
+    }
+
     /// goal のチェックボックスから数えたタスクの進捗
     public struct Progress: Sendable, Equatable, Codable {
         /// 終わったタスク（`[x]`。保留で閉じたものを含む）
@@ -80,6 +104,8 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     }
 
     public var state: State
+    /// 書いたもの。手動のあいだはオーケストレーターが書かない
+    public var writer: Writer
     /// 統合ブランチ（例: `epic/loop-status`）。ループが無ければ `nil`
     public var epic: String?
     /// ゴール元の Discussion の番号。手で始めた epic など、記録が無ければ `nil`
@@ -96,13 +122,14 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     public var usageLimitedUntil: Date? {
         didSet { usageLimitedUntil = usageLimitedUntil.map(Self.wholeSeconds) }
     }
-    /// オーケストレーターが最後に確かめた時刻。状態が変わらなくても `updateInterval` ごとに書き直す
+    /// 書き手（`writer`）が最後に確かめた時刻。状態が変わらなくても `updateInterval` ごとに書き直す
     public var checkedAt: Date {
         didSet { checkedAt = Self.wholeSeconds(checkedAt) }
     }
 
     public init(
         state: State,
+        writer: Writer = .orchestrator,
         epic: String? = nil,
         discussion: Int? = nil,
         progress: Progress? = nil,
@@ -111,12 +138,31 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         checkedAt: Date
     ) {
         self.state = state
+        self.writer = writer
         self.epic = epic
         self.discussion = discussion
         self.progress = progress
         self.lastActivityAt = lastActivityAt.map(Self.wholeSeconds)
         self.usageLimitedUntil = usageLimitedUntil.map(Self.wholeSeconds)
         self.checkedAt = Self.wholeSeconds(checkedAt)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case state, writer, epic, discussion, progress, lastActivityAt, usageLimitedUntil, checkedAt
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            state: try container.decode(State.self, forKey: .state),
+            writer: try container.decodeIfPresent(Writer.self, forKey: .writer) ?? .orchestrator,
+            epic: try container.decodeIfPresent(String.self, forKey: .epic),
+            discussion: try container.decodeIfPresent(Int.self, forKey: .discussion),
+            progress: try container.decodeIfPresent(Progress.self, forKey: .progress),
+            lastActivityAt: try container.decodeIfPresent(Date.self, forKey: .lastActivityAt),
+            usageLimitedUntil: try container.decodeIfPresent(Date.self, forKey: .usageLimitedUntil),
+            checkedAt: try container.decode(Date.self, forKey: .checkedAt)
+        )
     }
 
     private static func wholeSeconds(_ date: Date) -> Date {
@@ -143,7 +189,7 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
 
     /// 状態用の Issue の本文。先頭に目印、続けて人が読める表を置く
     public var issueBody: String {
-        var rows = [("状態", state.title)]
+        var rows = [("状態", state.title), ("書き手", writer.title)]
         if let epic {
             rows.append(("epic", Self.tableCell(epic)))
         }
@@ -165,7 +211,7 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         \(marker)
         ## ループの状態
 
-        AskHub のオーケストレーターが書き換える Issue です。編集・クローズしないでください。
+        \(writer == .manual ? "手で回しているループ" : "AskHub のオーケストレーター")が書き換える Issue です。編集・クローズしないでください。
 
         | 項目 | 値 |
         | --- | --- |
