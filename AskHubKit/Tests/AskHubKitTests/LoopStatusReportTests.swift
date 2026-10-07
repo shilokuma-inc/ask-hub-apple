@@ -116,7 +116,11 @@ struct LoopStatusReportTests {
 
     @Test func readsUnknownWriters() {
         let body = #"<!-- ask-hub:loop-status {"checkedAt":"2027-01-15T08:00:00Z","state":"running","writer":"robot"} -->"#
-        #expect(LoopStatusReport.parse(body)?.writer == .unknown)
+        let report = LoopStatusReport.parse(body)
+        #expect(report?.writer == .unknown)
+        // 書き直しても、オーケストレーターが書いたとは表示しない
+        #expect(report?.issueBody.contains("| 書き手 | 不明 |") == true)
+        #expect(report?.issueBody.contains("AskHub のループ（書き手は不明）が書き換える Issue です。") == true)
     }
 
     @Test func rejectsBodiesWithoutMarker() {

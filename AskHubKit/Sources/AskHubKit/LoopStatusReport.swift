@@ -83,6 +83,15 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
             case .unknown: "不明"
             }
         }
+
+        /// 本文の前置きの文の主語
+        var bodySubject: String {
+            switch self {
+            case .orchestrator: "AskHub のオーケストレーター"
+            case .manual: "手で回しているループ"
+            case .unknown: "AskHub のループ（書き手は不明）"
+            }
+        }
     }
 
     /// goal のチェックボックスから数えたタスクの進捗
@@ -211,7 +220,7 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         \(marker)
         ## ループの状態
 
-        \(writer == .manual ? "手で回しているループ" : "AskHub のオーケストレーター")が書き換える Issue です。編集・クローズしないでください。
+        \(writer.bodySubject)が書き換える Issue です。編集・クローズしないでください。
 
         | 項目 | 値 |
         | --- | --- |
