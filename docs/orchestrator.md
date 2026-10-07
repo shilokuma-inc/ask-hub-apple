@@ -164,6 +164,9 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 - 再開の理由は、オーケストレーターが起動ごとに環境変数 `ASKHUB_RESUME_REASON` で渡す（今は仮決め一覧への指示による再開の `decision-log` だけ。`loopCommand` に書く必要は無い）
 - オーケストレーターも PID ファイルを読み、state ファイルが残っていても PID のプロセスが居なければ「止まっている」とみなして再開する
 - 準備が途中で失敗した場合（完了語を読み取れない等）は、オーケストレーターの再試行で、同じ Discussion の途中の worktree を片付けてやり直す
+- 再開（`discussion` が空）では、前のループの state ファイルをループの起動の直前まで残す（その間は起動スクリプト自身の PID を記録し、
+  state の時刻を更新する）。`ralph-setup.sh` などが一時的なエラーで落ちても state が残るので、オーケストレーターは異常終了として再試行する
+  （先に消していたころは「タスクを残して止まっている」＝開始待ちに見え、再試行されずに止まったままになっていた）
 - ループは `claude -p --permission-mode bypassPermissions` を `exec` で起動する。このプロセスの寿命がループの寿命になる。
   ralph の Stop hook はヘッドレスでも周回する（標準入力は `/dev/null`）
 - ログは `~/Library/Logs/askhub/loops/<リポジトリ>-bootstrap-*.log`（準備）と `<リポジトリ>-loop-*.log`（ループ）
