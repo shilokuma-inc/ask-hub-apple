@@ -95,7 +95,10 @@ public struct OrchestratorConfigLoader: Sendable {
             pollInterval: .seconds(seconds),
             loopCommand: try LoopCommandTemplate(arguments: file.loopCommand),
             ideaCommand: try IdeaCommandTemplate(arguments: file.ideaCommand ?? IdeaCommandTemplate.defaultArguments),
-            iterationTimeout: .seconds(timeoutMinutes * 60)
+            iterationTimeout: .seconds(timeoutMinutes * 60),
+            conflictCommand: try file.conflictCommand.map { arguments throws(OrchestratorConfigError) in
+                try ConflictCommandTemplate(arguments: arguments)
+            }
         )
     }
 
@@ -163,4 +166,5 @@ private struct ConfigFile: Decodable {
     let loopCommand: [String]
     let ideaCommand: [String]?
     let iterationTimeoutMinutes: Int?
+    let conflictCommand: [String]?
 }

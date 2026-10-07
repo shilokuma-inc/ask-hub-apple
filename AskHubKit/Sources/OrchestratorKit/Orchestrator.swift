@@ -7,6 +7,10 @@ public protocol OrchestratorGitHub: Sendable {
     func readyForLoopDiscussions(orgs: [String]) async throws -> [ReadyDiscussion]
     /// Discussion から `ready-for-loop` を外す
     func removeReadyLabel(from discussion: ReadyDiscussion) async throws
+    /// org 全体の open な `epic-final` PR のうち、GitHub が既定ブランチとコンフリクトすると判定したもの
+    func conflictingEpicFinalPullRequests(org: String) async throws -> [ConflictingPullRequest]
+    /// PR にコメントする
+    func comment(onPullRequest number: Int, in repository: String, body: String) async throws
     /// `ready-for-loop` の Discussion にコメントする
     func comment(on discussion: ReadyDiscussion, body: String) async throws
     /// Discussion / PR から `needs-answer` を外す
@@ -128,6 +132,7 @@ public actor Orchestrator {
     var usageLimitedUntil: Date?
     let now: @Sendable () -> Date
     private var ideaTracker = IdeaRequestTracker()
+    var conflictTracker = ConflictTracker()
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
     var loopStatusPublisher = LoopStatusPublisher()
@@ -246,8 +251,8 @@ public actor Orchestrator {
         } catch {
             log("依頼の確認に失敗しました: \(error)")
         }
-        // ループの状態を状態用の Issue に書き出す（起動・再開を反映した後）
-        await publishLoopStatuses(statuses: statuses)
+        // 最終 PR のコンフリクトの解消と、ループの状態の書き出し（起動・再開を反映した後）
+        await finishPoll(statuses: statuses)
         return decisions
     }
 
