@@ -27,7 +27,13 @@ if [[ -n "$LEFTOVER" ]]; then
 fi
 
 TASKS=$(grep -c '^- \[ \]' "$GOAL" || true)
-[[ "$TASKS" -gt 0 ]] || { echo "$GOAL に未完了タスクがありません" >&2; exit 1; }
+# 仮決め一覧への指示による再開（askhub-start-loop が ASKHUB_RESUME_REASON=decision-log を渡す）では、
+# 指示はループが周回の最初（B-0）に読んで修正タスクにする。epic の完了後に付いた指示ではタスクが残っていないので、0 件でも起動する
+RESUME_REASON="${ASKHUB_RESUME_REASON:-}"
+if [[ "$TASKS" -eq 0 && "$RESUME_REASON" != "decision-log" ]]; then
+  echo "$GOAL に未完了タスクがありません" >&2
+  exit 1
+fi
 # goal.template.md の雛形のまま（{{日本語タイトル}} などが残る）でも未完了タスクの数は数えられてしまう。
 # 起動すると STEP A を飛ばして雛形のタスクに着手するので、プレースホルダが残っていれば止める
 GOAL_LEFTOVER=$(grep -o '{{[^}]*}}' "$GOAL" | sort -u || true)
@@ -51,6 +57,12 @@ if [[ "$MAX" -eq 0 ]]; then
   fi
 fi
 
+RESUME_NOTE=""
+if [[ "$TASKS" -eq 0 ]]; then
+  RESUME_NOTE="未完了タスクは 0 件だが、判断ログ Issue（仮決め一覧）への指示を処理するために再開した。
+STEP B-0 で指示を読んで修正タスクにしてから、STEP D の終了判定に進むこと。"
+fi
+
 cat > "$STATE" <<STATE_EOF
 ---
 active: true
@@ -63,6 +75,7 @@ started_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 $PLAYBOOK を読み、そこに書かれた手順を厳密に実行する。1ステップも省略しない。
 ゴールは $GOAL に展開済みなので STEP A は不要。
+$RESUME_NOTE
 
 完了条件を満たしたときだけ <promise>$PROMISE</promise> を出力すること。
 行き詰まったからといって、条件が真でないのに promise を出してはならない。

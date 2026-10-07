@@ -289,7 +289,9 @@ fi
 # state を作る前に PID を記録する。state を作った直後にこのプロセスが終わっても、
 # 「PID の記録が無い state」（手で起動したループとみなされ、誰も片付けない）を残さないため
 printf '%s\n' "$$" > "$PID_FILE"
-(cd "$CTL" && "$CHECKOUT/scripts/ralph-start.sh" "$PROMISE" >/dev/null)
+# 再開の理由は ralph-start.sh にも渡す（decision-log なら、未完了タスクが 0 件でも state を作る）。
+# 継承に頼らず、このスクリプトが判断に使った値を明示して渡し、両者の判断を揃える
+(cd "$CTL" && ASKHUB_RESUME_REASON="$RESUME_REASON" "$CHECKOUT/scripts/ralph-start.sh" "$PROMISE" >/dev/null)
 [[ -f "$STATE" ]] || fail "state ファイルを作れませんでした: $STATE"
 
 LOOP_LOG="$LOG_DIR/$REPO_NAME-loop-$(date +%Y%m%d-%H%M%S).log"
