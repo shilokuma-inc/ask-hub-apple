@@ -20,4 +20,6 @@ public enum AskHubLabel: String, CaseIterable, Sendable {
     case orchestratorHeartbeat = "askhub-orchestrator"
     /// オーケストレーターがループの状態を書き出す Issue（リポジトリごとに 1 つ）
     case loopStatus = "loop-status"
+    /// アプリから出した、担当リポジトリの作成・削除の依頼の Issue
+    case repoRequest = "repo-request"
 }
