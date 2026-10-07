@@ -192,4 +192,32 @@ struct OrchestratorConfigLoaderTests {
             try loader.load(from: loader.defaultPath)
         }
     }
+    @Test func readsRepositoryCommandsOrUsesDefaults() throws {
+        let standard = try decode(config()).repositoryCommands
+        #expect(standard == RepositoryCommands(
+            create: ["/Users/tester/.local/bin/askhub-create-repo"],
+            remove: ["/Users/tester/.local/bin/askhub-remove-repo"],
+            // 最初の担当リポジトリと同じ場所に clone する
+            newCheckoutDirectory: "/Users/tester/src"
+        ))
+        #expect(standard.checkoutPath(for: "my-quiz-ios") == "/Users/tester/src/my-quiz-ios")
+
+        let fields = #""createRepositoryCommand": ["~/bin/create", "-v"], "removeRepositoryCommand": ["/opt/remove"], "#
+            + #""newRepositoryDirectory": "~/Desktop/ios/", "repositories""#
+        let custom = try decode(config().replacingOccurrences(of: #""repositories""#, with: fields)).repositoryCommands
+        #expect(custom == RepositoryCommands(
+            create: ["/Users/tester/bin/create", "-v"],
+            remove: ["/opt/remove"],
+            newCheckoutDirectory: "/Users/tester/Desktop/ios"
+        ))
+    }
+
+    @Test func rejectsEmptyRepositoryCommandOrRelativeDirectory() {
+        #expect(throws: OrchestratorConfigError.emptyRepositoryCommand(key: "createRepositoryCommand")) {
+            try decode(config().replacingOccurrences(of: #""repositories""#, with: #""createRepositoryCommand": [], "repositories""#))
+        }
+        #expect(throws: OrchestratorConfigError.relativeNewRepositoryDirectory("src")) {
+            try decode(config().replacingOccurrences(of: #""repositories""#, with: #""newRepositoryDirectory": "src", "repositories""#))
+        }
+    }
 }

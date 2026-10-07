@@ -28,6 +28,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public let conflictCommand: ConflictCommandTemplate
     /// ループの 1 周（state ファイルが書き直されてから）がこれより長く進まなければ、固まったとみなして止める
     public let iterationTimeout: Duration
+    /// 担当リポジトリの作成・削除の依頼（`repo-request`）に使うコマンドと場所
+    public let repositoryCommands: RepositoryCommands
 
     public var trustedAuthors: TrustedAuthors {
         TrustedAuthors(trustedAuthorLogins)
@@ -50,7 +52,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
         loopCommand: LoopCommandTemplate,
         ideaCommand: IdeaCommandTemplate = .standard,
         iterationTimeout: Duration = defaultIterationTimeout,
-        conflictCommand: ConflictCommandTemplate? = nil
+        conflictCommand: ConflictCommandTemplate? = nil,
+        repositoryCommands: RepositoryCommands? = nil
     ) {
         self.trustedAuthorLogins = trustedAuthorLogins
         self.repositories = repositories
@@ -59,6 +62,10 @@ public struct OrchestratorConfig: Sendable, Equatable {
         self.ideaCommand = ideaCommand
         self.iterationTimeout = iterationTimeout
         self.conflictCommand = conflictCommand ?? .standard(besides: loopCommand)
+        self.repositoryCommands = repositoryCommands ?? .standard(
+            homeDirectory: NSHomeDirectory(),
+            newCheckoutDirectory: RepositoryCommands.defaultCheckoutDirectory(for: repositories, homeDirectory: NSHomeDirectory())
+        )
     }
 
     /// 担当リポジトリを `owner/repo` で探す。GitHub の名前は大文字・小文字を区別しない
@@ -95,6 +102,48 @@ public struct RepositoryConfig: Sendable, Equatable {
         }
         return checkout.deletingLastPathComponent()
             .appendingPathComponent("\(directoryName)-ralph-ctl", isDirectory: true)
+            .path
+    }
+}
+
+/// 担当リポジトリの作成・削除の依頼（`repo-request`）に使うコマンドと場所
+public struct RepositoryCommands: Sendable, Equatable {
+    /// テンプレートからリポジトリを作るコマンド。
+    /// 末尾に `<テンプレート> <owner/repo> <アプリ名> <Bundle ID> <checkout のパス（clone しないなら空）>` を足して実行する
+    public let create: [String]
+    /// ローカルの checkout・ループの worktree・DerivedData を消すコマンド。
+    /// 末尾に `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する
+    public let remove: [String]
+    /// 新しいリポジトリを clone するディレクトリ（絶対パス）。checkout は `<ここ>/<リポジトリ名>` になる
+    public let newCheckoutDirectory: String
+
+    public init(create: [String], remove: [String], newCheckoutDirectory: String) {
+        self.create = create
+        self.remove = remove
+        self.newCheckoutDirectory = newCheckoutDirectory
+    }
+
+    /// `scripts/orchestrator/install.sh` が置く既定のコマンド
+    public static func standard(homeDirectory: String, newCheckoutDirectory: String) -> Self {
+        Self(
+            create: ["\(homeDirectory)/.local/bin/askhub-create-repo"],
+            remove: ["\(homeDirectory)/.local/bin/askhub-remove-repo"],
+            newCheckoutDirectory: newCheckoutDirectory
+        )
+    }
+
+    /// clone 先の既定。最初の担当リポジトリの checkout と同じ場所（無ければホームディレクトリ）
+    public static func defaultCheckoutDirectory(for repositories: [RepositoryConfig], homeDirectory: String) -> String {
+        guard let first = repositories.first else {
+            return homeDirectory
+        }
+        return URL(fileURLWithPath: first.checkoutPath, isDirectory: true).deletingLastPathComponent().path
+    }
+
+    /// 新しいリポジトリの checkout のパス
+    public func checkoutPath(for repositoryName: String) -> String {
+        URL(fileURLWithPath: newCheckoutDirectory, isDirectory: true)
+            .appendingPathComponent(repositoryName, isDirectory: true)
             .path
     }
 }

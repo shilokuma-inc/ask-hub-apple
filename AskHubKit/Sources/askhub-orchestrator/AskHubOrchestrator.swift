@@ -99,6 +99,7 @@ enum AskHubOrchestrator {
             "orgs: \(config.orgs.joined(separator: ", "))",
             "trusted authors: \(config.trustedAuthorLogins.joined(separator: ", "))",
             "poll interval: \(config.pollInterval.components.seconds) 秒",
+            "new repositories: \(config.repositoryCommands.newCheckoutDirectory)",
             "repositories:"
         ]
         for repository in config.repositories {
