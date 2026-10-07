@@ -1,9 +1,11 @@
 import AskHubKit
 import SwiftUI
 
-/// GitHub のトークンを設定する画面
+/// GitHub のトークンなどを設定する画面
 struct SettingsView: View {
     @State private var model: TokenSettingsModel
+    @AppStorage(LoopStartPreference.defaultsKey)
+    private var startsLoopAfterPosting = LoopStartPreference.defaultValue
     /// キーボードの「完了」でキーボードを閉じ、下のボタンが隠れないようにする
     @FocusState private var isEditingToken: Bool
     @Environment(\.dismiss)
@@ -38,6 +40,14 @@ struct SettingsView: View {
                     if model.hasSavedToken {
                         Button("トークンを削除", role: .destructive) { model.delete() }
                     }
+                }
+
+                Section {
+                    Toggle("投稿したらループを始める", isOn: $startsLoopAfterPosting)
+                } header: {
+                    Text("ループ")
+                } footer: {
+                    Text("Discussion の最後の未回答の質問に答えるとき、回答画面の「投稿したら、回答を確定してループを始める」をこの値から始めます。回答画面で切り替えることもでき、ループを始める前には確認を出します。")
                 }
 
                 if let setDemoMode {
