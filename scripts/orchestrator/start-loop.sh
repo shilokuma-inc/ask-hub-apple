@@ -20,6 +20,9 @@
 #   ASKHUB_TRUSTED_AUTHORS   指示として扱う GitHub アカウント（カンマ区切り。既定: mrs1669）
 #   ASKHUB_BOOTSTRAP_MODEL   準備に使うモデル（既定: claude の既定）
 #   ASKHUB_RESUME_REASON     再開の理由。オーケストレーターが起動ごとに渡す（decision-log: 仮決め一覧への指示）
+#   ASKHUB_XCODEBUILD_WRAPPER  ループに xcodebuild の代わりに使わせるラッパー（既定: ~/.config/askhub/xcodebuild が実行可能ならそれ）。
+#                            `<ラッパー> <作業ツリー> <xcodebuild の引数…>` の形で呼べ、Simulator と DerivedData を作業ツリーごとに
+#                            分けるもの（ビルド専用機へ回すなど）。指定すると、新しい epic の playbook の検証コマンドがこれ経由になる
 set -euo pipefail
 
 # Git hook や launchd から継承した経路変数が別のチェックアウトを指すことがある
@@ -40,6 +43,10 @@ LOG_DIR="${ASKHUB_LOG_DIR:-$HOME/Library/Logs/askhub/loops}"
 ARCHIVE_DIR="${ASKHUB_ARCHIVE_DIR:-$HOME/Library/Logs/askhub/archive}"
 TRUSTED="${ASKHUB_TRUSTED_AUTHORS:-mrs1669}"
 RESUME_REASON="${ASKHUB_RESUME_REASON:-}"
+XCODEBUILD_WRAPPER="${ASKHUB_XCODEBUILD_WRAPPER:-}"
+if [[ -z "$XCODEBUILD_WRAPPER" && -x "$HOME/.config/askhub/xcodebuild" ]]; then
+  XCODEBUILD_WRAPPER="$HOME/.config/askhub/xcodebuild"
+fi
 REPO_NAME="${REPOSITORY#*/}"
 # 最新のログ（準備・ループ）を指すリンク。名前はオーケストレーター（LocalLoopRuntime）と揃える
 LATEST_LOG="$LOG_DIR/${REPO_NAME}-latest.log"
@@ -179,6 +186,22 @@ if [[ -n "$DISCUSSION" ]]; then
         | (select(ok) | "\n## コメント（\(.author.login)）\n\(.body)\n"),
           ( .replies.nodes[] | select(ok) | "\n### 返信（\(.author.login)）\n\(.body)\n" ) )
   ') || fail "Discussion #$DISCUSSION を読み取れませんでした（author が信用する author ではない可能性があります）"
+  if [[ -n "$XCODEBUILD_WRAPPER" ]]; then
+    if [[ ! -x "$XCODEBUILD_WRAPPER" ]]; then
+      fail "ASKHUB_XCODEBUILD_WRAPPER が実行できません: $XCODEBUILD_WRAPPER"
+    fi
+    log "検証の xcodebuild は $XCODEBUILD_WRAPPER 経由にします"
+    VERIFY_RULE="リポジトリの CLAUDE.md の検証コマンド。ただし xcodebuild は直接書かず、すべて
+     \"$XCODEBUILD_WRAPPER\" \"\$PWD\" <xcodebuild の引数…> の形にする（スロットの中のサブシェルで実行し、第 1 引数にスロットのパスを渡す）。
+     このラッパーが Simulator と DerivedData をスロットごとに分けるので、Simulator は CLAUDE.md の name= のまま指定し（UDID の id= にしない）、
+     -derivedDataPath と DEVELOPER_DIR は付けない。xcodegen・swiftlint・git などの xcodebuild 以外のコマンドはそのまま書く
+   - 「このアプリ固有の前提」の先頭に、次の 1 行を必ず入れる:
+     「xcodebuild は直接実行せず、必ず $XCODEBUILD_WRAPPER \"\$PWD\" <引数…> 経由で実行する（自作のスクリプトの中でも同じ）。
+     Simulator は name= で指定し、id=・-derivedDataPath・DEVELOPER_DIR は付けない。枠が満杯なら待つが、それは失敗ではない」"
+  else
+    VERIFY_RULE="リポジトリの CLAUDE.md の検証コマンド。Simulator は xcrun simctl list devices available で UDID を調べて id= で指定し、
+     -derivedDataPath はスロットごとにリポジトリの外へ分ける"
+  fi
   PROMPT=$(cat <<PROMPT
 あなたは ralph-loop で自律開発を始める前の準備担当です。リポジトリ $REPOSITORY の Discussion #$DISCUSSION をゴール元として、
 新しい epic のループを準備してください。**ループそのものは起動しない**（このスクリプトが後で起動する）。
@@ -197,8 +220,7 @@ if [[ -n "$DISCUSSION" ]]; then
    - GOAL_SOURCE: Discussion #${DISCUSSION}（信用する author の回答・決定）
    - TRUSTED_AUTHORS: $TRUSTED / OWNER_ORG・REPO: $REPOSITORY から / BASE_BRANCH: develop
    - WORKTREE_CTL・A・B: 実際のパス（ralph-setup.sh の出力）
-   - VERIFY_COMMANDS: リポジトリの CLAUDE.md の検証コマンド。Simulator は xcrun simctl list devices available で UDID を調べて id= で指定し、
-     -derivedDataPath はスロットごとにリポジトリの外へ分ける
+   - VERIFY_COMMANDS: $VERIFY_RULE
    - PROMISE: epic 名を大文字にして末尾に DONE（例: NOTIFICATION DONE）
    - 「このアプリ固有の前提」には、リポジトリの CLAUDE.md と LEARNINGS.md から、毎周回思い出すべきことを書く
 4. playbook の STEP A（取得の後の手順）に従って $GOAL を作る（確定済みの決定事項・1 タスク = 1 PR = 半日以内のチェックリスト・注意点・対象外）。
