@@ -43,6 +43,8 @@ LOG_DIR="${ASKHUB_LOG_DIR:-$HOME/Library/Logs/askhub/loops}"
 ARCHIVE_DIR="${ASKHUB_ARCHIVE_DIR:-$HOME/Library/Logs/askhub/archive}"
 TRUSTED="${ASKHUB_TRUSTED_AUTHORS:-mrs1669}"
 RESUME_REASON="${ASKHUB_RESUME_REASON:-}"
+# 再開で、前のループの state ファイル（異常終了の目印）を起動の直前まで残しているか
+STALE_STATE=""
 XCODEBUILD_WRAPPER="${ASKHUB_XCODEBUILD_WRAPPER:-}"
 if [[ -z "$XCODEBUILD_WRAPPER" && -x "$HOME/.config/askhub/xcodebuild" ]]; then
   XCODEBUILD_WRAPPER="$HOME/.config/askhub/xcodebuild"
@@ -112,7 +114,16 @@ if [[ -f "$STATE" ]]; then
     [[ -n "$DISCUSSION" ]] && previous_epic_unfinished && fail "$UNFINISHED_MESSAGE"
     # 記録したプロセスが居ない。落ちたか止められて state ファイルだけ残っている
     log "state ファイルが残っていますが、ループのプロセス（PID ${RECORDED}）は終わっています。state を片付けて続けます"
-    rm -f "$STATE"
+    if [[ -n "$DISCUSSION" ]]; then
+      rm -f "$STATE"
+    else
+      # 再開では、state ファイル（異常終了の目印）をループの起動の直前まで残す。先に消すと、ralph-setup.sh などが
+      # 一時的なエラーで落ちたとき「タスクを残して止まっただけ」に見え、オーケストレーターが再試行しなくなる。
+      # その間はこのプロセスの PID を記録し、state の時刻を今にする（動いている・固まっていないとみなさせ、二重に起動させない）
+      printf '%s\n' "$$" > "$PID_FILE"
+      touch "$STATE"
+      STALE_STATE=1
+    fi
   else
     # PID が生きている、または PID の記録が無い（手で起動したループ）。どちらも動いているとみなして触らない
     log "ループは既に動いています（${STATE}）。何もしません"
@@ -274,6 +285,8 @@ else
   if [[ "$(open_tasks)" -eq 0 ]]; then
     if [[ "$RESUME_REASON" != "decision-log" ]]; then
       log "未完了のタスクがありません。再開しません（最終 PR はオーケストレーターが作ります）"
+      # 残しておいた異常終了の目印も片付ける（残すと、このプロセスの終了を異常終了とみなして再開し続ける）
+      [[ -n "$STALE_STATE" ]] && rm -f "$STATE"
       exit 0
     fi
     # 仮決め一覧への指示は、ループが周回の最初に読んで修正タスクにする。タスクが無くても起動しないと指示が処理されない
@@ -289,6 +302,8 @@ fi
 # state を作る前に PID を記録する。state を作った直後にこのプロセスが終わっても、
 # 「PID の記録が無い state」（手で起動したループとみなされ、誰も片付けない）を残さないため
 printf '%s\n' "$$" > "$PID_FILE"
+# 再開の準備が済んだので、残しておいた前のループの state を片付ける（ralph-start.sh は state があると起動しない）
+[[ -n "$STALE_STATE" ]] && rm -f "$STATE"
 (cd "$CTL" && "$CHECKOUT/scripts/ralph-start.sh" "$PROMISE" >/dev/null)
 [[ -f "$STATE" ]] || fail "state ファイルを作れませんでした: $STATE"
 
