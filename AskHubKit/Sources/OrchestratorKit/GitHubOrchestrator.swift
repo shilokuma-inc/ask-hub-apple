@@ -39,7 +39,8 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
                 title: title,
                 url: url,
                 author: node.author?.login,
-                readyLabelID: labelID
+                readyLabelID: labelID,
+                isManualLoop: node.labelID(named: AskHubLabel.manualLoop.rawValue) != nil
             )
         }
     }

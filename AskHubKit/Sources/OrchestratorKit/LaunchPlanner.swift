@@ -14,6 +14,8 @@ public struct ReadyDiscussion: Sendable, Equatable {
     public let author: String?
     /// `ready-for-loop` ラベルの node id
     public let readyLabelID: String
+    /// `manual-loop`（手で回す）が付いているか
+    public let isManualLoop: Bool
 
     public init(
         nodeID: String,
@@ -22,7 +24,8 @@ public struct ReadyDiscussion: Sendable, Equatable {
         title: String,
         url: URL,
         author: String?,
-        readyLabelID: String
+        readyLabelID: String,
+        isManualLoop: Bool = false
     ) {
         self.nodeID = nodeID
         self.repository = repository
@@ -31,6 +34,7 @@ public struct ReadyDiscussion: Sendable, Equatable {
         self.url = url
         self.author = author
         self.readyLabelID = readyLabelID
+        self.isManualLoop = isManualLoop
     }
 }
 
@@ -66,6 +70,8 @@ public enum LaunchDecision: Sendable, Equatable {
         case notAssigned
         /// Discussion の author が信用する author ではない
         case untrustedAuthor
+        /// 手で回す Discussion（`manual-loop`）。ループは手で始めるので、オーケストレーターは起動しない
+        case manualLoop
         /// 起動したループがまだ動いている
         case loopRunning
         /// ループの state ファイルが残っている（実行中か、終了後に片付いていない）
@@ -106,6 +112,10 @@ public enum LaunchPlanner {
             // public リポジトリでは誰でも Discussion を作れるため、信用する author のものだけを指示として扱う
             guard config.trustedAuthors.contains(discussion.author) else {
                 return .skip(discussion, .untrustedAuthor)
+            }
+            // 手で回すループと二重に進めないよう、ready-for-loop が付いていても起動しない
+            if discussion.isManualLoop {
+                return .skip(discussion, .manualLoop)
             }
             let key = repository.fullName.lowercased()
             if let first = launching[key] {
