@@ -1,10 +1,21 @@
 import AskHubKit
 import SwiftUI
 
-/// 「ループ」タブ。先頭に「上限で待機中」「ループの開始待ち」（どちらも空なら出さない）、その下にリポジトリごとのループの状態を出す（表示だけ）
+/// 「ループ」タブ。先頭に「上限で待機中」「ループの開始待ち」（どちらも空なら出さない）、その下にリポジトリごとのループの状態を出す。
+/// 行から担当 PC の担当を外す依頼を出せる（ループを止める・再開する操作は持たない）
 struct LoopStatusListView: View {
     let model: LoopStatusModel
+    /// 担当から外す依頼（`repo-request`）を送るのに使う
+    let requestModel: IdeaRequestModel
     let openSettings: () -> Void
+    /// 担当から外す依頼のシートを開いているリポジトリ
+    @State private var removing: RemovalTarget?
+
+    /// シートの対象（`sheet(item:)` に渡すため Identifiable にする）
+    private struct RemovalTarget: Identifiable {
+        let repository: String
+        var id: String { repository }
+    }
 
     var body: some View {
         List {
@@ -21,6 +32,8 @@ struct LoopStatusListView: View {
                 Section("リポジトリ") {
                     ForEach(model.rows) { row in
                         rowView(row)
+                            .contextMenu { removeButton(for: row) }
+                            .swipeActions(edge: .trailing) { removeButton(for: row) }
                     }
                 }
             }
@@ -43,9 +56,21 @@ struct LoopStatusListView: View {
                 Button("設定", systemImage: "gearshape", action: openSettings)
             }
         }
+        .sheet(item: $removing) { target in
+            RemoveRepositoryView(repository: target.repository, model: requestModel)
+        }
         // 起動時やフォアグラウンド復帰時に取得済みなら、タブを開いただけでは取り直さない
         // デモモードの切り替えでモデルが差し替わったら、新しいモデルで取り直す
         .task(id: ObjectIdentifier(model)) { await model.refreshIfStale() }
+    }
+
+    /// 担当 PC がいる行だけに出す（いなければ外す相手がいない）
+    @ViewBuilder private func removeButton(for row: LoopStatusRow) -> some View {
+        if row.status(now: Date()) != .unassigned {
+            Button("担当から外す", systemImage: "minus.circle", role: .destructive) {
+                removing = RemovalTarget(repository: row.repository)
+            }
+        }
     }
 
     @ViewBuilder private func rowView(_ row: LoopStatusRow) -> some View {
@@ -319,13 +344,13 @@ extension LoopStatusDisplay.ProgressStage {
 #if DEBUG
 #Preview("ループ") {
     NavigationStack {
-        LoopStatusListView(model: .sample()) {}
+        LoopStatusListView(model: .sample(), requestModel: .sample()) {}
     }
 }
 #endif
 
 #Preview("トークン未設定") {
     NavigationStack {
-        LoopStatusListView(model: LoopStatusModel(tokenStore: InMemoryTokenStore())) {}
+        LoopStatusListView(model: LoopStatusModel(tokenStore: InMemoryTokenStore()), requestModel: .sample()) {}
     }
 }
