@@ -92,7 +92,8 @@ extension Orchestrator {
             request.repository,
             request.appName,
             request.bundleIdentifier,
-            checkoutPath
+            checkoutPath,
+            request.isPrivate ? "private" : "public"
         ]
         let result: CommandResult
         do {

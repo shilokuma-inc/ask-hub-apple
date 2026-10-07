@@ -234,18 +234,18 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 続けて人が読める表を置く。
 
 ```html
-<!-- ask-hub:repo-request {"action":"create","appName":"MyQuiz","bundleIdentifier":"jp.shilokuma.MyQuiz","clone":true,"repository":"shilokuma-inc/my-quiz-ios","template":"shilokuma-inc/template-quiz-app-ios"} -->
+<!-- ask-hub:repo-request {"action":"create","appName":"MyQuiz","bundleIdentifier":"jp.shilokuma.MyQuiz","clone":true,"private":false,"repository":"shilokuma-inc/my-quiz-ios","template":"shilokuma-inc/template-quiz-app-ios"} -->
 <!-- ask-hub:repo-request {"action":"remove","deleteLocal":true,"force":false,"repository":"shilokuma-inc/notti-ios"} -->
 ```
 
 | action | 依頼 Issue を作る場所 | キー |
 | --- | --- | --- |
-| `create` | 作成を任せたい PC の担当リポジトリ（その PC のオーケストレーターが処理する） | `repository`（作るリポジトリ）・`template`（`shilokuma-inc/template-app-ios` か `shilokuma-inc/template-quiz-app-ios` のどちらか）・`appName`（英字で始まる英数字。テンプレートの `scripts/rename.sh` に渡す）・`bundleIdentifier`（省略時は `jp.shilokuma.<appName>`）・`clone`（担当 PC に clone して担当リポジトリに加えるか。`false` なら GitHub に作るだけ。省略時は `true`） |
+| `create` | 作成を任せたい PC の担当リポジトリ（その PC のオーケストレーターが処理する） | `repository`（作るリポジトリ）・`template`（`shilokuma-inc/template-app-ios` か `shilokuma-inc/template-quiz-app-ios` のどちらか）・`appName`（英字で始まる英数字。テンプレートの `scripts/rename.sh` に渡す）・`bundleIdentifier`（省略時は `jp.shilokuma.<appName>`）・`clone`（担当 PC に clone して担当リポジトリに加えるか。`false` なら GitHub に作るだけ。省略時は `true`）・`private`（private で作るか。省略時は `false` = public） |
 | `remove` | 担当から外したいリポジトリそのもの | `repository`（Issue のリポジトリと同じであること）・`deleteLocal`（checkout・ループの worktree・DerivedData を消すか）・`force`（未コミット・未 push・stash の確認と、ループの state ファイルの確認をしない） |
 
 - オーケストレーターは、担当リポジトリにある**信用する author**（作った人と、編集した人がいればその人も）の依頼だけを処理する。
   目印が読めない・値が不正な依頼には理由をコメントして、Issue は開いたままにする
-- 作成では GitHub に private のリポジトリを作り、名前を変えて `develop` に**直接 push** する。
+- 作成では GitHub に**既定で public** のリポジトリを作り（private では GitHub Actions の実行時間が課金の対象になるため）、名前を変えて `develop` に**直接 push** する。
   App Store Connect でのアプリの作成は Web でしかできないため、新しいリポジトリに `needs-verify` の Issue を立てる（アプリの「急がない」に出る）
 - 削除では GitHub のリポジトリは消さない。ループのプロセスが動いていれば、強制でも外さない。最後の担当リポジトリは外せない
 - 処理できたら結果をコメントしてクローズする。処理できなければ理由をコメントする（直したら、その Issue を閉じて依頼し直す）。

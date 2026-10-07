@@ -325,9 +325,9 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 
 **作成**（`createRepositoryCommand`。既定は `scripts/orchestrator/create-repo.sh`）:
 
-1. 末尾に `<テンプレート> <owner/repo> <アプリ名> <Bundle ID> <checkout のパス>` を足して実行する（30 分で打ち切る）。
+1. 末尾に `<テンプレート> <owner/repo> <アプリ名> <Bundle ID> <checkout のパス> <public|private>` を足して実行する（30 分で打ち切る）。
    checkout のパスは `newRepositoryDirectory/<リポジトリ名>`。GitHub に作るだけの依頼では空文字列
-2. スクリプトは、テンプレートから private のリポジトリを作り、clone して `scripts/rename.sh` でアプリ名を変え、
+2. スクリプトは、テンプレートからリポジトリを作り（依頼の `private` が `true` でなければ public）、clone して `scripts/rename.sh` でアプリ名を変え、
    `Configs/Project.xcconfig` の `APP_BUNDLE_IDENTIFIER` を書いて `develop` に直接 push する。
    AskHub のラベルを作り、App Store Connect への登録を `needs-verify` の Issue にする。
    途中で失敗しても、やり直すと続きから進む（テンプレートから作った同名のリポジトリ・同じ origin の checkout は使い回す）

@@ -69,7 +69,7 @@ struct OrchestratorRepositoryRequestTests {
 
         let expected = [
             "/bin/create", "shilokuma-inc/template-quiz-app-ios", "shilokuma-inc/my-quiz-ios",
-            "MyQuiz", "jp.shilokuma.MyQuiz", "/src/my-quiz-ios"
+            "MyQuiz", "jp.shilokuma.MyQuiz", "/src/my-quiz-ios", "public"
         ]
         #expect(runtime.ran == [expected])
         #expect(store.added == ["shilokuma-inc/my-quiz-ios /src/my-quiz-ios"])
@@ -94,7 +94,8 @@ struct OrchestratorRepositoryRequestTests {
             template: .standard,
             appName: "SideApp",
             bundleIdentifier: "jp.shilokuma.SideApp",
-            clonesToOrchestrator: false
+            clonesToOrchestrator: false,
+            isPrivate: true
         ))
         let github = FakeGitHub([.success([])])
         github.setRepositoryRequests([Self.issue(request, in: "shilokuma-inc/ask-hub-apple")])
@@ -103,7 +104,8 @@ struct OrchestratorRepositoryRequestTests {
 
         try await orchestrator.pollOnce()
 
-        #expect(runtime.ran.first?.last?.isEmpty == true)
+        // checkout のパスは空で、private を選べば private で作る
+        #expect(runtime.ran.first?.suffix(2) == ["", "private"])
         #expect(store.added.isEmpty)
         #expect(github.ideaComments.first?.contains("担当 PC には clone していません") == true)
         #expect(github.closedIdeas == [5])

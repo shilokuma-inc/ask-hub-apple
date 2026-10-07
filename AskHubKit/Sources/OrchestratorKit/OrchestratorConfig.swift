@@ -109,7 +109,7 @@ public struct RepositoryConfig: Sendable, Equatable {
 /// 担当リポジトリの作成・削除の依頼（`repo-request`）に使うコマンドと場所
 public struct RepositoryCommands: Sendable, Equatable {
     /// テンプレートからリポジトリを作るコマンド。
-    /// 末尾に `<テンプレート> <owner/repo> <アプリ名> <Bundle ID> <checkout のパス（clone しないなら空）>` を足して実行する
+    /// 末尾に `<テンプレート> <owner/repo> <アプリ名> <Bundle ID> <checkout のパス（clone しないなら空）> <public|private>` を足して実行する
     public let create: [String]
     /// ローカルの checkout・ループの worktree・DerivedData を消すコマンド。
     /// 末尾に `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する

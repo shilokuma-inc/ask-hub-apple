@@ -13,6 +13,8 @@ struct NewAppView: View {
     /// 空なら `jp.shilokuma.<アプリ名>`
     @State private var bundleIdentifier = ""
     @State private var clonesToOrchestrator = true
+    /// 既定は public（private では GitHub Actions の実行時間が課金の対象になるため）
+    @State private var isPrivate = false
     /// 作成を任せる担当リポジトリ（`owner/repo`）
     @State private var hub: String?
     @FocusState private var isEditing: Bool
@@ -23,7 +25,8 @@ struct NewAppView: View {
             template: template,
             appName: appName.trimmingCharacters(in: .whitespaces),
             bundleIdentifier: resolvedBundleIdentifier,
-            clonesToOrchestrator: clonesToOrchestrator
+            clonesToOrchestrator: clonesToOrchestrator,
+            isPrivate: isPrivate
         ))
     }
 
@@ -58,6 +61,8 @@ struct NewAppView: View {
                     .focused($isEditing)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("repository-name")
+                Toggle("private で作る", isOn: $isPrivate)
+                    .accessibilityIdentifier("private-toggle")
             } header: {
                 Text("リポジトリ")
             } footer: {
@@ -65,7 +70,9 @@ struct NewAppView: View {
                     Text("英数字と - _ . だけにしてください")
                         .foregroundStyle(.red)
                 } else {
-                    Text("private のリポジトリとして作ります")
+                    Text(isPrivate
+                        ? "private で作ります。GitHub Actions の実行時間が課金の対象になります"
+                        : "public で作ります（GitHub Actions を無料で使えます）。誰でもコードを読めます")
                 }
             }
 

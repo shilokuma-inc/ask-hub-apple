@@ -59,6 +59,7 @@ public enum RepositoryRequest: Sendable, Equatable {
                 | テンプレート | \(request.template.title)（\(request.template.repository)） |
                 | アプリ名 | \(request.appName) |
                 | Bundle ID | \(request.bundleIdentifier) |
+                | 公開範囲 | \(request.isPrivate ? "private" : "public") |
                 | 担当 PC への clone | \(request.clonesToOrchestrator ? "する（担当リポジトリに加える）" : "しない（GitHub に作るだけ）") |
                 """
 
@@ -92,7 +93,7 @@ public enum RepositoryRequest: Sendable, Equatable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         // 自分の型の値だけなのでエンコードは失敗しない
-        let encoded = (try? encoder.encode(Payload(self))).flatMap { String(bytes: $0, encoding: .utf8) } ?? "{}"
+        let encoded = (try? encoder.encode(RepositoryRequestPayload(self))).flatMap { String(bytes: $0, encoding: .utf8) } ?? "{}"
         // `>` をエスケープして、目印の終わり（`-->`）と取り違えないようにする
         let json = encoded.replacingOccurrences(of: ">", with: "\\u003e")
         return "\(Self.commentOpen) \(Self.keyword) \(json) \(Self.commentClose)"
@@ -113,67 +114,75 @@ public enum RepositoryRequest: Sendable, Equatable {
         let rest = inner.dropFirst(keyword.count)
         // `ask-hub:repo-requests` のような別の語を誤って拾わないよう、直後は空白に限る
         guard rest.first?.isWhitespace == true,
-              let payload = try? JSONDecoder().decode(Payload.self, from: Data(rest.utf8)),
+              let payload = try? JSONDecoder().decode(RepositoryRequestPayload.self, from: Data(rest.utf8)),
               let request = payload.request,
               request.isValid else {
             return nil
         }
         return request
     }
+}
 
-    /// 目印の JSON の形
-    private struct Payload: Codable {
-        let action: String
-        let repository: String
-        var template: String?
-        var appName: String?
-        var bundleIdentifier: String?
-        var clone: Bool?
-        var deleteLocal: Bool?
-        var force: Bool?
+/// 依頼の目印の JSON の形（`RepositoryRequest` の書き出しと読み取りに使う）
+private struct RepositoryRequestPayload: Codable {
+    let action: String
+    let repository: String
+    var template: String?
+    var appName: String?
+    var bundleIdentifier: String?
+    var clone: Bool?
+    var isPrivate: Bool?
+    var deleteLocal: Bool?
+    var force: Bool?
 
-        init(_ request: RepositoryRequest) {
-            repository = request.repository
-            switch request {
-            case let .create(create):
-                action = "create"
-                template = create.template.repository
-                appName = create.appName
-                bundleIdentifier = create.bundleIdentifier
-                clone = create.clonesToOrchestrator
+    private enum CodingKeys: String, CodingKey {
+        case action, repository, template, appName, bundleIdentifier, clone, deleteLocal, force
+        case isPrivate = "private"
+    }
 
-            case let .remove(remove):
-                action = "remove"
-                deleteLocal = remove.deletesLocalFiles
-                force = remove.force
-            }
+    init(_ request: RepositoryRequest) {
+        repository = request.repository
+        switch request {
+        case let .create(create):
+            action = "create"
+            template = create.template.repository
+            appName = create.appName
+            bundleIdentifier = create.bundleIdentifier
+            clone = create.clonesToOrchestrator
+            isPrivate = create.isPrivate
+
+        case let .remove(remove):
+            action = "remove"
+            deleteLocal = remove.deletesLocalFiles
+            force = remove.force
         }
+    }
 
-        var request: RepositoryRequest? {
-            switch action {
-            case "create":
-                guard let template = template.flatMap(NewRepository.Template.init(repository:)),
-                      let appName else {
-                    return nil
-                }
-                return .create(NewRepository(
-                    repository: repository,
-                    template: template,
-                    appName: appName,
-                    bundleIdentifier: bundleIdentifier ?? NewRepository.defaultBundleIdentifier(appName: appName),
-                    clonesToOrchestrator: clone ?? true
-                ))
-
-            case "remove":
-                return .remove(RepositoryRemoval(
-                    repository: repository,
-                    deletesLocalFiles: deleteLocal ?? false,
-                    force: force ?? false
-                ))
-
-            default:
+    var request: RepositoryRequest? {
+        switch action {
+        case "create":
+            guard let template = template.flatMap(NewRepository.Template.init(repository:)),
+                  let appName else {
                 return nil
             }
+            return .create(NewRepository(
+                repository: repository,
+                template: template,
+                appName: appName,
+                bundleIdentifier: bundleIdentifier ?? NewRepository.defaultBundleIdentifier(appName: appName),
+                clonesToOrchestrator: clone ?? true,
+                isPrivate: isPrivate ?? false
+            ))
+
+        case "remove":
+            return .remove(RepositoryRemoval(
+                repository: repository,
+                deletesLocalFiles: deleteLocal ?? false,
+                force: force ?? false
+            ))
+
+        default:
+            return nil
         }
     }
 }
@@ -224,19 +233,23 @@ public struct NewRepository: Sendable, Equatable {
     public var bundleIdentifier: String
     /// 担当 PC に clone し、担当リポジトリに加えるか（`false` なら GitHub に作るだけ）
     public var clonesToOrchestrator: Bool
+    /// private で作るか。既定は public（private では GitHub Actions の実行時間が課金の対象になるため）
+    public var isPrivate: Bool
 
     public init(
         repository: String,
         template: Template,
         appName: String,
         bundleIdentifier: String,
-        clonesToOrchestrator: Bool = true
+        clonesToOrchestrator: Bool = true,
+        isPrivate: Bool = false
     ) {
         self.repository = repository
         self.template = template
         self.appName = appName
         self.bundleIdentifier = bundleIdentifier
         self.clonesToOrchestrator = clonesToOrchestrator
+        self.isPrivate = isPrivate
     }
 
     /// アプリ名から決まる既定の Bundle ID（テンプレートの rename.sh と同じ規則）

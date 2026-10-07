@@ -1,8 +1,8 @@
 #!/bin/bash
 # テンプレートから新しいアプリのリポジトリを作る。オーケストレーターの createRepositoryCommand から呼ぶ。
-#   usage: create-repo.sh <テンプレート owner/repo> <owner/repo> <アプリ名> <Bundle ID> [checkout のパス]
+#   usage: create-repo.sh <テンプレート owner/repo> <owner/repo> <アプリ名> <Bundle ID> [checkout のパス] [public|private]
 #
-# 1. GitHub にテンプレートから private リポジトリを作る（既にテンプレートから作られていれば続きから）
+# 1. GitHub にテンプレートからリポジトリを作る（既定は public。既にテンプレートから作られていれば続きから）
 # 2. checkout のパスに clone する（空なら一時ディレクトリで作業し、最後に消す = GitHub に作るだけ）
 # 3. テンプレートの scripts/rename.sh でアプリ名を変え、Bundle ID を書き、develop に直接 push する
 # 4. AskHub のラベルを作り、App Store Connect への登録を needs-verify の Issue にする
@@ -20,6 +20,7 @@ REPOSITORY="${2:-}"
 APP_NAME="${3:-}"
 BUNDLE_ID="${4:-}"
 CHECKOUT="${5:-}"
+VISIBILITY="${6:-public}"
 BRANCH="develop"
 
 result() { echo "ASKHUB_RESULT: $*"; }
@@ -36,6 +37,7 @@ NAME_PATTERN='^[A-Za-z0-9_.][A-Za-z0-9_.-]*/[A-Za-z0-9_.][A-Za-z0-9_.-]*$'
 [[ "$REPOSITORY" =~ $NAME_PATTERN ]] || reject "リポジトリ名が不正です: $REPOSITORY"
 [[ "$APP_NAME" =~ ^[A-Za-z][A-Za-z0-9]*$ ]] || reject "アプリ名は英字で始まる英数字にしてください: $APP_NAME"
 [[ "$BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]] || reject "Bundle ID が不正です: $BUNDLE_ID"
+[[ "$VISIBILITY" == public || "$VISIBILITY" == private ]] || reject "公開範囲は public か private にしてください: $VISIBILITY"
 if [[ -n "$CHECKOUT" && "$CHECKOUT" != /* ]]; then
   reject "clone 先は絶対パスにしてください"
 fi
@@ -50,9 +52,9 @@ if created_from=$(gh api "repos/$REPOSITORY" --jq '.template_repository.full_nam
   fi
   echo "既にテンプレートから作られています: $REPOSITORY"
 else
-  gh repo create "$REPOSITORY" --template "$TEMPLATE" --private >/dev/null \
+  gh repo create "$REPOSITORY" --template "$TEMPLATE" "--$VISIBILITY" >/dev/null \
     || fail "$TEMPLATE から $REPOSITORY を作れませんでした（gh の権限とリポジトリ名を確認してください）"
-  echo "テンプレートから作りました: $REPOSITORY"
+  echo "テンプレートから $VISIBILITY で作りました: $REPOSITORY"
 fi
 # テンプレートからの作成は非同期で、直後はブランチがまだ無いことがある
 for _ in $(seq 1 30); do

@@ -21,6 +21,9 @@ struct RepositoryRequestTests {
 
         #expect(body.hasPrefix("<!-- ask-hub:repo-request {"))
         #expect(body.contains("| テンプレート | クイズ（shilokuma-inc/template-quiz-app-ios） |"))
+        // 既定は public
+        #expect(body.contains(#""private":false"#))
+        #expect(body.contains("| 公開範囲 | public |"))
         #expect(RepositoryRequest.parse(body) == Self.create)
         #expect(Self.create.title == "【新規アプリ】shilokuma-inc/my-quiz-ios")
     }
@@ -44,7 +47,8 @@ struct RepositoryRequestTests {
             template: .standard,
             appName: "Foo",
             bundleIdentifier: "jp.shilokuma.Foo",
-            clonesToOrchestrator: true
+            clonesToOrchestrator: true,
+            isPrivate: false
         )))
 
         let remove = #"<!-- ask-hub:repo-request {"action":"remove","repository":"o/r"} -->"#
@@ -98,5 +102,17 @@ struct RepositoryRequestTests {
         #expect(RepositoryName.isValidFullName("shilokuma-inc/my_app.ios"))
         #expect(!RepositoryName.isValidFullName("shilokuma-inc/-app"))
         #expect(!RepositoryName.isValidFullName("o/r/x"))
+    }
+
+    @Test func roundTripsPrivateCreateRequest() {
+        let request = RepositoryRequest.create(NewRepository(
+            repository: "shilokuma-inc/secret-ios",
+            template: .standard,
+            appName: "Secret",
+            bundleIdentifier: "jp.shilokuma.Secret",
+            isPrivate: true
+        ))
+        #expect(request.body.contains(#""private":true"#))
+        #expect(RepositoryRequest.parse(request.body) == request)
     }
 }
