@@ -8,7 +8,7 @@ public protocol OrchestratorGitHub: Sendable {
     /// Discussion から `ready-for-loop` を外す
     func removeReadyLabel(from discussion: ReadyDiscussion) async throws
     /// org 全体の open な `epic-final` PR のうち、GitHub が既定ブランチとコンフリクトすると判定したもの
-    func conflictingEpicFinalPullRequests(org: String) async throws -> [ConflictingPullRequest]
+    func conflictingEpicFinalPullRequests(orgs: [String]) async throws -> [ConflictingPullRequest]
     /// PR にコメントする
     func comment(onPullRequest number: Int, in repository: String, body: String) async throws
     /// `ready-for-loop` の Discussion にコメントする

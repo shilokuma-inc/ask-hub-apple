@@ -2,12 +2,15 @@ import AskHubKit
 import Foundation
 
 extension GitHubOrchestrator {
-    public func conflictingEpicFinalPullRequests(org: String) async throws -> [ConflictingPullRequest] {
+    public func conflictingEpicFinalPullRequests(orgs: [String]) async throws -> [ConflictingPullRequest] {
+        guard let scope = SearchScope.organizations(orgs) else {
+            return []
+        }
         let nodes: [ConflictPullRequestNode] = try await collectGraphQLPages { after in
             let data = try await client.graphQL(
                 Self.conflictQuery,
                 variables: [
-                    "query": .string("org:\(org) is:pr is:open label:\(AskHubLabel.epicFinal.rawValue)"),
+                    "query": .string("\(scope) is:pr is:open label:\(AskHubLabel.epicFinal.rawValue)"),
                     "after": after.map(GraphQLVariable.string) ?? .null
                 ],
                 as: ConflictSearchData.self
