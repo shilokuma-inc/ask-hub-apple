@@ -130,41 +130,6 @@ public struct GitHubInboxSource: InboxSource {
         }
     }
 
-    // MARK: - 検索
-
-    private func search(query: String, type: String, kind: InboxSubject.Kind) async throws -> [InboxSubject] {
-        let nodes: [SearchNode] = try await collectGraphQLPages { after in
-            let data = try await client.graphQL(
-                Self.searchQuery(type: type),
-                variables: ["query": .string(query), "after": after.map(GraphQLVariable.string) ?? .null],
-                as: SearchData.self
-            )
-            return (data.search.nodes.compactMap(\.self), data.search.pageInfo)
-        }
-        return nodes.compactMap { node in
-            // 検索の型に合わないノードは `{}` で返るので、必要な値が揃ったものだけを使う
-            guard let id = node.id, let number = node.number, let title = node.title, let url = node.url,
-                  let repository = node.repository?.nameWithOwner, node.closed != true else {
-                return nil
-            }
-            return InboxSubject(kind: kind, nodeID: id, repository: repository, number: number, title: title, url: url)
-        }
-    }
-
-    private static func searchQuery(type: String) -> String {
-        """
-        query($query: String!, $after: String) {
-          search(query: $query, type: \(type), first: 50, after: $after) {
-            pageInfo { hasNextPage endCursor }
-            nodes {
-              ... on Discussion { id number title url closed repository { nameWithOwner } }
-              ... on PullRequest { id number title url closed repository { nameWithOwner } }
-            }
-          }
-        }
-        """
-    }
-
     // MARK: - Discussion
 
     private func discussionThreads(id: String) async throws -> [QuestionThread] {
@@ -333,6 +298,53 @@ public struct GitHubInboxSource: InboxSource {
     private static let commentFields = "id databaseId url createdAt body author { login }"
 }
 
+// MARK: - 検索
+
+extension GitHubInboxSource {
+    private func search(query: String, type: String, kind: InboxSubject.Kind) async throws -> [InboxSubject] {
+        let nodes: [SearchNode] = try await collectGraphQLPages { after in
+            let data = try await client.graphQL(
+                Self.searchQuery(type: type),
+                variables: ["query": .string(query), "after": after.map(GraphQLVariable.string) ?? .null],
+                as: SearchData.self
+            )
+            return (data.search.nodes.compactMap(\.self), data.search.pageInfo)
+        }
+        return nodes.compactMap { node in
+            // 検索の型に合わないノードは `{}` で返るので、必要な値が揃ったものだけを使う
+            guard let id = node.id, let number = node.number, let title = node.title, let url = node.url,
+                  let repository = node.repository?.nameWithOwner, node.closed != true else {
+                return nil
+            }
+            return InboxSubject(
+                kind: kind,
+                nodeID: id,
+                repository: repository,
+                number: number,
+                title: title,
+                url: url,
+                author: node.author?.login,
+                labels: node.labels?.nodes.compactMap(\.self).map(\.name) ?? []
+            )
+        }
+    }
+
+    private static func searchQuery(type: String) -> String {
+        let fields = "id number title url closed repository { nameWithOwner } author { login } labels(first: 100) { nodes { name } }"
+        return """
+        query($query: String!, $after: String) {
+          search(query: $query, type: \(type), first: 50, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              ... on Discussion { \(fields) }
+              ... on PullRequest { \(fields) }
+            }
+          }
+        }
+        """
+    }
+}
+
 // MARK: - レスポンスの形
 
 private struct IssueSearchData: Decodable {
@@ -389,6 +401,8 @@ private struct SearchNode: Decodable {
     let url: URL?
     let closed: Bool?
     let repository: Repository?
+    let author: Author?
+    let labels: IssueSearchNode.Labels?
 }
 
 private struct NodeData<Node: Decodable>: Decodable {

@@ -209,6 +209,9 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 5. 信用する author の質問がすべて回答済みになった Discussion / PR から `needs-answer` を外す。
    **Discussion の場合は、先に `ready-for-loop` を付ける**（全問回答でループを始める。Discussion #1 の Q3 の変更）。
    付けられなかったときは `needs-answer` も外さず、次のポーリングで再試行する
+   ただし、信用する author の Discussion に `manual-loop` が付いていれば（手で回す Discussion）、`ready-for-loop` は付けずに
+   `needs-answer` だけを外す（ログに「manual-loop（手で回す）なので、ready-for-loop は付けません」と出す）。
+   `manual-loop` と author は `needs-answer` の検索結果から読む。信用外の author の Discussion に付いた `manual-loop` は無視し、今までどおり扱う
 
 回答済みの質問はメモリ上でだけ覚えるため、オーケストレーターを再起動した直後は、回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
 

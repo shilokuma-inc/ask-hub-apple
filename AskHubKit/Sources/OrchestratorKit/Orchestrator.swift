@@ -367,7 +367,10 @@ public actor Orchestrator {
         for action in watcher.update(snapshots: snapshots, statuses: statuses) {
             switch action {
             case let .removeNeedsAnswer(subject):
-                await handleFullyAnswered(subject)
+                await handleFullyAnswered(subject, addsReadyLabel: true)
+
+            case let .removeNeedsAnswerOfManualLoop(subject):
+                await handleFullyAnswered(subject, addsReadyLabel: false)
 
             case let .resume(key):
                 guard let repository = config.repository(named: key) else {
@@ -465,33 +468,6 @@ public actor Orchestrator {
 
         case .loopStatusUnknown:
             "制御用 worktree の .claude/ralph-loop.local.md の有無を確かめられません（アクセス権を確認してください）"
-        }
-    }
-}
-
-// MARK: - 回答の後処理
-
-extension Orchestrator {
-    /// 質問がすべて回答された Discussion / PR の後処理
-    private func handleFullyAnswered(_ subject: InboxSubject) async {
-        let name = "\(subject.repository)#\(subject.number)"
-        // Discussion（※1）の質問がすべて回答されたら、ループを始める（Discussion #1 の Q3 の変更）。
-        // ready-for-loop を付けられなければ needs-answer も外さず、次のポーリングで再試行する
-        // （先に外すと、この Discussion が回答待ちの検索に出なくなり、二度と付け直せない）
-        if subject.kind == .discussion {
-            do {
-                try await github.addReadyLabel(to: subject)
-                log("\(name) の質問がすべて回答されたので、ready-for-loop を付けました（ループを始めます）")
-            } catch {
-                log("\(name) に ready-for-loop を付けられませんでした（次のポーリングで再試行します）: \(error)")
-                return
-            }
-        }
-        do {
-            try await github.removeNeedsAnswerLabel(from: subject)
-            log("\(name) の質問がすべて回答済みになったので、needs-answer を外しました")
-        } catch {
-            log("\(name) の needs-answer を外せませんでした（次のポーリングで再試行します）: \(error)")
         }
     }
 }
