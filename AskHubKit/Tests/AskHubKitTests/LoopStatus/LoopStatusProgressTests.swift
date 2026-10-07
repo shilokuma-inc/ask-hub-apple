@@ -50,6 +50,8 @@ struct LoopStatusProgressTests {
         let shown = display(Progress(completed: 5, total: 12))
         #expect(shown.progressFraction == 5.0 / 12.0)
         #expect(shown.progressStage == .halfway)
+        #expect(shown.progressCountText == "5 / 12")
+        #expect(shown.progressText == "5 / 12 タスク完了")
         #expect(display(Progress(completed: 0, total: 0)).progressStage == .starting)
     }
 
@@ -57,6 +59,7 @@ struct LoopStatusProgressTests {
         let shown = display(nil)
         #expect(shown.progressFraction == nil)
         #expect(shown.progressStage == nil)
+        #expect(shown.progressCountText == nil)
         // 担当 PC がいない行にも出さない
         let unassigned = LoopStatusRow(repository: "o/r", report: nil).display(now: now)
         #expect(unassigned.progressFraction == nil)

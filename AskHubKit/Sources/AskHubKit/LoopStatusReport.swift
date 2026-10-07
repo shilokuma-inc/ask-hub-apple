@@ -73,9 +73,14 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
             self.total = total
         }
 
+        /// 「5 / 12」（進捗のゲージの横に出す数）
+        public var countText: String {
+            "\(completed) / \(total)"
+        }
+
         /// 「5 / 12 タスク完了」
         public var text: String {
-            "\(completed) / \(total) タスク完了"
+            "\(countText) タスク完了"
         }
     }
 
