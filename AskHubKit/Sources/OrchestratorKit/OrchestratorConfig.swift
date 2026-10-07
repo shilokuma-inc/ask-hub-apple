@@ -26,6 +26,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public let loopCommand: LoopCommandTemplate
     /// 依頼から Discussion を作らせるコマンド
     public let ideaCommand: IdeaCommandTemplate
+    /// epic の最終 PR のコンフリクトを解消させるコマンド
+    public let conflictCommand: ConflictCommandTemplate
     /// ループの 1 周（state ファイルが書き直されてから）がこれより長く進まなければ、固まったとみなして止める
     public let iterationTimeout: Duration
 
@@ -40,7 +42,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
         pollInterval: Duration,
         loopCommand: LoopCommandTemplate,
         ideaCommand: IdeaCommandTemplate = .standard,
-        iterationTimeout: Duration = defaultIterationTimeout
+        iterationTimeout: Duration = defaultIterationTimeout,
+        conflictCommand: ConflictCommandTemplate? = nil
     ) {
         self.trustedAuthorLogins = trustedAuthorLogins
         self.org = org
@@ -49,6 +52,7 @@ public struct OrchestratorConfig: Sendable, Equatable {
         self.loopCommand = loopCommand
         self.ideaCommand = ideaCommand
         self.iterationTimeout = iterationTimeout
+        self.conflictCommand = conflictCommand ?? .standard(besides: loopCommand)
     }
 
     /// 担当リポジトリを `owner/repo` で探す。GitHub の名前は大文字・小文字を区別しない

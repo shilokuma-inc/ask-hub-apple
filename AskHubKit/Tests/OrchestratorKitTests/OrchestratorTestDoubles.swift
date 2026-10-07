@@ -27,6 +27,8 @@ struct FakeGitHubState {
     var ideaCommentFails = false
     var heartbeats: [String] = []
     var discussionComments: [String] = []
+    var conflictingPullRequests: [ConflictingPullRequest] = []
+    var pullRequestComments: [String] = []
     var heartbeatFails = false
     var ideaCloseFails = false
     var decisionLogs: [DecisionLogIssue] = []
@@ -86,7 +88,7 @@ struct FakeRuntimeState {
 }
 
 final class FakeGitHub: OrchestratorGitHub {
-    private let state: OSAllocatedUnfairLock<FakeGitHubState>
+    let state: OSAllocatedUnfairLock<FakeGitHubState>
 
     init(_ results: [Result<[ReadyDiscussion], TestError>]) {
         state = OSAllocatedUnfairLock(initialState: FakeGitHubState(results: results))
@@ -353,14 +355,6 @@ final class FakeGitHub: OrchestratorGitHub {
             }
             state.removed.append(discussion.nodeID)
         }
-    }
-
-    var discussionComments: [String] {
-        state.withLock { $0.discussionComments }
-    }
-
-    func comment(on discussion: ReadyDiscussion, body: String) async throws {
-        state.withLock { $0.discussionComments.append("\(discussion.nodeID): \(body)") }
     }
 }
 
