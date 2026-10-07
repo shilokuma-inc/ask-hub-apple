@@ -26,7 +26,8 @@ extension LoopStatusModel {
     }
 }
 
-/// デモモード・Preview・UI テスト用の固定のループの状態。すべての状態（停滞・担当 PC なし・状態なしを含む）を 1 行ずつ出す
+/// デモモード・Preview・UI テスト用の固定のループの状態。すべての状態（停滞・担当 PC なし・状態なしを含む）を 1 行ずつ出す。
+/// 進捗のゲージは 0%・各段階・100%・進捗なしの行が出るようにしている
 struct SampleLoopStatusSource: LoopStatusSource {
     func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
         // サンプルのリポジトリは先頭の organization に置く
@@ -72,7 +73,7 @@ struct SampleLoopStatusSource: LoopStatusSource {
             // 担当 PC はいるが、状態用の Issue がまだ無い
             Self.repository(org, "pocket-budget", heartbeat: minutesAgo(5), issues: []),
             // 手で始めた epic（ゴール元の記録が無い）
-            reported("recipe-box", issue: 3, .waitingToStart, "epic/search", progress: (1, 6), active: 300),
+            reported("recipe-box", issue: 3, .waitingToStart, "epic/search", progress: (0, 6), active: 300),
             // 担当の印も状態の確認時刻も古い
             Self.repository(org, "weather-mini", heartbeat: minutesAgo(3 * 60), issues: [
                 Self.issue(
