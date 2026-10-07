@@ -25,6 +25,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | --- | --- | --- | --- | --- |
 | `needs-answer` | Discussion / PR / Issue | 未回答の質問がある | 質問を出した側（Claude / ループ） | オーケストレーター（すべて回答済みになったとき） |
 | `ready-for-loop` | Discussion | 回答が確定し、ループを始めてよい | オーケストレーター（質問がすべて回答されたとき）／アプリ（最後の未回答の質問を「投稿したら、回答を確定してループを始める」で投稿したとき） | オーケストレーター（ループを起動したとき） |
+| `manual-loop` | Discussion | この Discussion のループは手で回す。オーケストレーターは `ready-for-loop` を付けず、起動もしない（信用する author の Discussion に付いたときだけ効く） | アプリ（最後の未回答の質問を「手動で回す」で投稿したとき）／人間（GitHub で手で付けてもよい） | — （epic が終われば Discussion ごと閉じる） |
 | `decision-log` | Issue | epic ごとの仮決め一覧（判断ログ） | ループ | — （最終 PR がマージされたら、オーケストレーターが Issue を閉じる。下記「仮決め一覧」） |
 | `needs-verify` | Issue | 実機・実データでの確認が必要 | ループ | — （人間が確認して閉じる） |
 | `idea-request` | Issue | アプリから出した新機能の依頼 | アプリ | — （オーケストレーターが Discussion を作ってクローズする） |
