@@ -63,7 +63,8 @@ push() {
     || unresolved "${HEAD_BRANCH} に push できませんでした（取り込みの間に ${HEAD_BRANCH} が更新された可能性があります）"
 }
 
-if git -C "$WORKTREE" merge -q --no-edit "origin/$BASE_BRANCH" >/dev/null 2>&1; then
+# 失敗したときの理由（コンフリクト以外: 未追跡ファイルの上書きの拒否・コミットする人の未設定など）を残すため、出力を取っておく
+if MERGE_OUTPUT=$(git -C "$WORKTREE" merge -q --no-edit "origin/$BASE_BRANCH" 2>&1); then
   push
   log "${BASE_BRANCH} をコンフリクトなしで取り込み、${HEAD_BRANCH} に push しました（$(git -C "$WORKTREE" rev-parse --short HEAD)）"
   echo "ASKHUB_RESULT: merged"
@@ -71,7 +72,7 @@ if git -C "$WORKTREE" merge -q --no-edit "origin/$BASE_BRANCH" >/dev/null 2>&1; 
 fi
 
 CONFLICTS=$(git -C "$WORKTREE" diff --name-only --diff-filter=U)
-[[ -n "$CONFLICTS" ]] || unresolved "${BASE_BRANCH} の取り込みに失敗しましたが、コンフリクトしたファイルがありません"
+[[ -n "$CONFLICTS" ]] || unresolved "${BASE_BRANCH} の取り込みに失敗しました（コンフリクト以外）: $(printf '%s' "$MERGE_OUTPUT" | grep -v '^\s*$' | tail -n 1)"
 log "コンフリクトしたファイル: $(printf '%s' "$CONFLICTS" | tr '\n' ' ')。claude に解消させます（ログ: ${CLAUDE_LOG}）"
 
 PROMPT=$(cat <<EOF
