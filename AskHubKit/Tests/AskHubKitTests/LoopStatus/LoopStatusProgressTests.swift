@@ -55,10 +55,58 @@ struct LoopStatusProgressTests {
         #expect(display(Progress(completed: 0, total: 0)).progressStage == .starting)
     }
 
+    @Test func separatesDeferredTasks() {
+        let progress = Progress(completed: 5, total: 12, deferred: 2)
+        #expect(progress.deferredCount == 2)
+        #expect(progress.doneFraction == 3.0 / 12.0)
+        #expect(progress.deferredFraction == 2.0 / 12.0)
+        #expect(progress.countTextWithDeferred == "5 / 12（保留 2）")
+        #expect(progress.textWithDeferred == "5 / 12 タスク完了（うち保留 2）")
+    }
+
+    @Test func clampsAbnormalDeferredCount() {
+        #expect(Progress(completed: 5, total: 12, deferred: -1).deferredCount == 0)
+        #expect(Progress(completed: 5, total: 12, deferred: 9).deferredCount == 5)
+        #expect(Progress(completed: 5, total: 12, deferred: 9).doneFraction == 0)
+        #expect(Progress(completed: 3, total: 0, deferred: 1).deferredFraction == 0)
+        // 完了と保留を足しても 1 を超えない
+        let over = Progress(completed: 13, total: 12, deferred: 2)
+        #expect(over.doneFraction == 11.0 / 12.0)
+        #expect(over.doneFraction + over.deferredFraction == 1)
+    }
+
+    @Test func displayStacksDeferredTasks() {
+        let shown = display(Progress(completed: 5, total: 12, deferred: 2))
+        #expect(shown.progressFraction == 3.0 / 12.0)
+        #expect(shown.progressDeferredFraction == 2.0 / 12.0)
+        // 段階は保留を除いた割合で決める
+        #expect(shown.progressStage == .starting)
+        #expect(shown.progressCountText == "5 / 12（保留 2）")
+        #expect(shown.progressText == "5 / 12 タスク完了（うち保留 2）")
+
+        // すべて閉じても、保留があれば「完了」の段階にはしない
+        let finished = display(Progress(completed: 9, total: 9, deferred: 2))
+        #expect(finished.progressFraction == 7.0 / 9.0)
+        #expect(finished.progressStage == .nearlyDone)
+    }
+
+    @Test func fallsBackWithoutDeferredCount() {
+        // 古いオーケストレーター（キーが無い）・保留が 0 件なら、保留を区別しない今までの表示
+        for progress in [Progress(completed: 5, total: 12), Progress(completed: 5, total: 12, deferred: 0)] {
+            let shown = display(progress)
+            #expect(shown.progressFraction == 5.0 / 12.0)
+            #expect(shown.progressDeferredFraction == nil)
+            #expect(shown.progressStage == .halfway)
+            #expect(shown.progressCountText == "5 / 12")
+            #expect(shown.progressText == "5 / 12 タスク完了")
+        }
+    }
+
     @Test func noFractionWithoutProgress() {
         let shown = display(nil)
         #expect(shown.progressFraction == nil)
         #expect(shown.progressStage == nil)
+        #expect(shown.progressDeferredFraction == nil)
         #expect(shown.progressCountText == nil)
         // 担当 PC がいない行にも出さない
         let unassigned = LoopStatusRow(repository: "o/r", report: nil).display(now: now)

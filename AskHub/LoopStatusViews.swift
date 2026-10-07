@@ -129,7 +129,7 @@ struct LoopStatusRowView: View {
             if let fraction = display.progressFraction, let stage = display.progressStage, let countText = display.progressCountText {
                 HStack(spacing: 8) {
                     // 色だけに頼らないよう横に数を出すので、ゲージは読み上げない
-                    ProgressGauge(fraction: fraction, color: stage.color)
+                    ProgressGauge(fraction: fraction, color: stage.color, deferredFraction: display.progressDeferredFraction ?? 0)
                         .accessibilityHidden(true)
                     Text(countText)
                         .monospacedDigit()
@@ -149,22 +149,36 @@ struct LoopStatusRowView: View {
     }
 }
 
-/// 進捗の横長のゲージ。`fraction`（0〜1）の分だけ `color` で塗る
+/// 進捗の横長のゲージ。`fraction`（0〜1）の分だけ `color` で塗り、その後ろに `deferredFraction` の分だけ保留の色で積む
 struct ProgressGauge: View {
     let fraction: Double
     let color: Color
+    /// 保留で閉じたタスクの割合。0 なら保留を区別しない（積まない）
+    var deferredFraction: Double = 0
 
     /// ゲージの太さ
     static let height: CGFloat = 6
+    /// 保留の色。段階の色（`ProgressStage.color`）・残り（`.quaternary`）のどちらとも見分けられる灰色にする
+    static let deferredColor: Color = .gray
 
     var body: some View {
+        let done = min(max(fraction, 0), 1)
+        let deferred = min(max(deferredFraction, 0), 1 - done)
         Capsule()
             .fill(.quaternary)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in
-                    Capsule()
-                        .fill(color)
-                        .frame(width: proxy.size.width * min(max(fraction, 0), 1))
+                    // 保留を「完了 + 保留」の長さで敷き、その上に完了を重ねる（どちらの端も丸くなる）
+                    ZStack(alignment: .leading) {
+                        if deferred > 0 {
+                            Capsule()
+                                .fill(Self.deferredColor)
+                                .frame(width: proxy.size.width * (done + deferred))
+                        }
+                        Capsule()
+                            .fill(color)
+                            .frame(width: proxy.size.width * done)
+                    }
                 }
             }
             .frame(height: Self.height)

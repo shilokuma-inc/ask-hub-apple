@@ -50,13 +50,16 @@ public struct LoopStatusDisplay: Sendable, Equatable {
     public var epic: String?
     /// 「ゴール元: Discussion #12」
     public var discussionText: String?
-    /// 「5 / 12 タスク完了」
+    /// 「5 / 12 タスク完了」。保留があれば「5 / 12 タスク完了（うち保留 2）」
     public var progressText: String?
-    /// 「5 / 12」（ゲージの横に出す数。読み上げは `progressText`）
+    /// 「5 / 12」（ゲージの横に出す数。読み上げは `progressText`）。保留があれば「5 / 12（保留 2）」
     public var progressCountText: String?
-    /// 終わったタスクの割合（0〜1）。進捗が無ければ `nil`
+    /// 保留を除いた、終わったタスクの割合（0〜1）。進捗が無ければ `nil`
     public var progressFraction: Double?
-    /// 進捗のゲージの段階。進捗が無ければ `nil`
+    /// 保留で閉じたタスクの割合（0〜1。`progressFraction` の後ろに積む）。
+    /// 進捗が無い・保留が 0 件・古いオーケストレーターで保留の数が無いときは `nil`（保留を区別しない表示）
+    public var progressDeferredFraction: Double?
+    /// 進捗のゲージの段階（保留を除いた割合で決める）。進捗が無ければ `nil`
     public var progressStage: ProgressStage?
     /// ループが最後に動いた時刻（「最後の動き: 3 分前」に使う）
     public var lastActivityAt: Date?
@@ -91,10 +94,11 @@ extension LoopStatusRow {
             tone: Self.tone(of: status),
             epic: report?.epic,
             discussionText: report?.discussion.map { "ゴール元: Discussion #\($0)" },
-            progressText: report?.progress?.text,
-            progressCountText: report?.progress?.countText,
-            progressFraction: report?.progress?.fraction,
-            progressStage: report?.progress.map { LoopStatusDisplay.ProgressStage(fraction: $0.fraction) },
+            progressText: report?.progress?.textWithDeferred,
+            progressCountText: report?.progress?.countTextWithDeferred,
+            progressFraction: report?.progress?.doneFraction,
+            progressDeferredFraction: report?.progress.flatMap { $0.deferredCount > 0 ? $0.deferredFraction : nil },
+            progressStage: report?.progress.map { LoopStatusDisplay.ProgressStage(fraction: $0.doneFraction) },
             lastActivityAt: report?.lastActivityAt,
             isStuck: isStuck(now: now),
             // 担当 PC がいないときはゴール元を出さないので、開くのも状態用の Issue にそろえる
@@ -154,6 +158,33 @@ extension LoopStatusReport.Progress {
     public var fraction: Double {
         guard total > 0 else { return 0 }
         return min(max(Double(completed) / Double(total), 0), 1)
+    }
+
+    /// 保留で閉じたタスクの数。キーが無い（古いオーケストレーター）なら 0。異常値でも 0〜`completed` に収める
+    public var deferredCount: Int {
+        min(max(deferred ?? 0, 0), max(completed, 0))
+    }
+
+    /// 保留を除いた、終わったタスクの割合（0〜1）。保留が無ければ `fraction` と同じ
+    public var doneFraction: Double {
+        guard total > 0 else { return 0 }
+        return min(max(Double(completed - deferredCount) / Double(total), 0), 1)
+    }
+
+    /// 保留で閉じたタスクの割合。`doneFraction` と足して 1 を超えないように収める
+    public var deferredFraction: Double {
+        guard total > 0 else { return 0 }
+        return min(max(Double(deferredCount) / Double(total), 0), 1 - doneFraction)
+    }
+
+    /// 「5 / 12（保留 2）」。保留が無ければ `countText` と同じ
+    public var countTextWithDeferred: String {
+        deferredCount > 0 ? "\(countText)（保留 \(deferredCount)）" : countText
+    }
+
+    /// 「5 / 12 タスク完了（うち保留 2）」。保留が無ければ `text` と同じ
+    public var textWithDeferred: String {
+        deferredCount > 0 ? "\(text)（うち保留 \(deferredCount)）" : text
     }
 }
 
