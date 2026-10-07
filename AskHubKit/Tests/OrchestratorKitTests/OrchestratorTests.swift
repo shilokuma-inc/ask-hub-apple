@@ -150,7 +150,7 @@ struct OrchestratorTests {
         )
     }
 
-    private static func ask(_ id: String, replies: [String?]) -> QuestionThread {
+    static func ask(_ id: String, replies: [String?]) -> QuestionThread {
         QuestionThread(
             comment: InboxComment(
                 nodeID: id,
