@@ -304,7 +304,9 @@ fi
 printf '%s\n' "$$" > "$PID_FILE"
 # 再開の準備が済んだので、残しておいた前のループの state を片付ける（ralph-start.sh は state があると起動しない）
 [[ -n "$STALE_STATE" ]] && rm -f "$STATE"
-(cd "$CTL" && "$CHECKOUT/scripts/ralph-start.sh" "$PROMISE" >/dev/null)
+# 再開の理由は ralph-start.sh にも渡す（decision-log なら、未完了タスクが 0 件でも state を作る）。
+# 継承に頼らず、このスクリプトが判断に使った値を明示して渡し、両者の判断を揃える
+(cd "$CTL" && ASKHUB_RESUME_REASON="$RESUME_REASON" "$CHECKOUT/scripts/ralph-start.sh" "$PROMISE" >/dev/null)
 [[ -f "$STATE" ]] || fail "state ファイルを作れませんでした: $STATE"
 
 LOOP_LOG="$LOG_DIR/$REPO_NAME-loop-$(date +%Y%m%d-%H%M%S).log"
