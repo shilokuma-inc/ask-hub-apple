@@ -29,6 +29,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `decision-log` | Issue | epic ごとの仮決め一覧（判断ログ） | ループ | — （最終 PR がマージされたら、オーケストレーターが Issue を閉じる。下記「仮決め一覧」） |
 | `needs-verify` | Issue | 実機・実データでの確認が必要 | ループ | — （人間が確認して閉じる） |
 | `idea-request` | Issue | アプリから出した新機能の依頼 | アプリ | — （オーケストレーターが Discussion を作ってクローズする） |
+| `repo-request` | Issue | アプリから出した担当リポジトリの作成・削除の依頼（下記「リポジトリの作成・削除」） | アプリ | — （オーケストレーターが処理して結果をコメントし、クローズする） |
 | `epic-final` | PR | epic → `develop` の最終 PR | オーケストレーター | — （アプリからマージする） |
 | `askhub-orchestrator` | （リポジトリのラベルとして置くだけ） | このリポジトリを担当する PC のオーケストレーターがいる。説明に最終確認の時刻（Claude の利用上限で待機中なら、解除の時刻も）を書く | オーケストレーター（10 分ごとに説明を書き換える） | — |
 | `loop-status` | Issue | ループの状態を書き出す Issue（リポジトリごとに 1 つ。下記「ループの状態」） | オーケストレーター | — |
@@ -225,6 +226,30 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   すべてを出すには、トークンの Repository access を org の全リポジトリにする
 - Fine-grained PAT は resource owner を 1 つしか選べない。複数の organization に回答・依頼するなら、すべてに書き込めるトークン（classic PAT など）を使う
 - 前に選んだ依頼先は保存しない（Q6）
+
+## リポジトリの作成・削除
+
+アプリから、テンプレートで新しいアプリのリポジトリを作り担当 PC に載せる・担当から外してローカルから消す、を依頼できる。
+依頼は `repo-request` の Issue で、本文の**先頭**に機械が読める目印（JSON）を置く（`AskHubKit` の `RepositoryRequest`）。
+続けて人が読める表を置く。
+
+```html
+<!-- ask-hub:repo-request {"action":"create","appName":"MyQuiz","bundleIdentifier":"jp.shilokuma.MyQuiz","clone":true,"repository":"shilokuma-inc/my-quiz-ios","template":"shilokuma-inc/template-quiz-app-ios"} -->
+<!-- ask-hub:repo-request {"action":"remove","deleteLocal":true,"force":false,"repository":"shilokuma-inc/notti-ios"} -->
+```
+
+| action | 依頼 Issue を作る場所 | キー |
+| --- | --- | --- |
+| `create` | 作成を任せたい PC の担当リポジトリ（その PC のオーケストレーターが処理する） | `repository`（作るリポジトリ）・`template`（`shilokuma-inc/template-app-ios` か `shilokuma-inc/template-quiz-app-ios` のどちらか）・`appName`（英字で始まる英数字。テンプレートの `scripts/rename.sh` に渡す）・`bundleIdentifier`（省略時は `jp.shilokuma.<appName>`）・`clone`（担当 PC に clone して担当リポジトリに加えるか。`false` なら GitHub に作るだけ。省略時は `true`） |
+| `remove` | 担当から外したいリポジトリそのもの | `repository`（Issue のリポジトリと同じであること）・`deleteLocal`（checkout・ループの worktree・DerivedData を消すか）・`force`（未コミット・未 push・stash の確認と、ループの state ファイルの確認をしない） |
+
+- オーケストレーターは、担当リポジトリにある**信用する author**（作った人と、編集した人がいればその人も）の依頼だけを処理する。
+  目印が読めない・値が不正な依頼には理由をコメントして、Issue は開いたままにする
+- 作成では GitHub に private のリポジトリを作り、名前を変えて `develop` に**直接 push** する。
+  App Store Connect でのアプリの作成は Web でしかできないため、新しいリポジトリに `needs-verify` の Issue を立てる（アプリの「急がない」に出る）
+- 削除では GitHub のリポジトリは消さない。ループのプロセスが動いていれば、強制でも外さない。最後の担当リポジトリは外せない
+- 処理できたら結果をコメントしてクローズする。処理できなければ理由をコメントする（直したら、その Issue を閉じて依頼し直す）。
+  コメントにはローカルのパスを書かない（public のリポジトリでは誰でも読めるため）
 
 ## 流れ
 

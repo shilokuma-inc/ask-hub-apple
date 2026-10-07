@@ -115,6 +115,9 @@
   日本語が続く変数は `${CONFIG}` と波かっこで囲む
 - launchd の LaunchAgent は既定でジョブの終了時にプロセスグループごと止める。子プロセス（ループなど）を残したいときは `AbandonProcessGroup` を `true` にする
 - zsh では `$C:refs/...` のように変数の直後に `:r` などが続くと修飾子（拡張子の除去など）として解釈される。`git push origin "${C}:refs/heads/…"` のように波かっこで囲む
+- `git status --porcelain` は、中身がすべて未追跡のディレクトリを `?? .claude/` のように 1 行にまとめる。ファイル名で除外したいときは `--untracked-files=all` を付ける
+- `git remote get-url origin` は `url.<base>.insteadOf` で書き換えた後の URL を返す。設定に書かれた URL と比べるときは `git config --get remote.origin.url` を使う
+- squash merge 済みのブランチは、コミットがどのリモートにも無いので「未 push」に見える。`git merge-tree --write-tree <既定ブランチ> <ブランチ>` の木が既定ブランチの木（`<既定ブランチ>^{tree}`）と同じなら、取り込んでも何も変わらない（変更はすべて既定ブランチにある）と判定できる（git 2.38 以降）
 
 ## SwiftUI
 

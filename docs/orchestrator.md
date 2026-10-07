@@ -131,9 +131,17 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `loopCommand` | ✓ | ループを起動するコマンド。シェルを経由せず引数の配列のまま実行する |
 | `ideaCommand` | | 依頼から質問付きの Discussion を作らせるコマンド。シェルを経由せず実行し、終わるまで待つ（30 分で打ち切る）。プロンプトは標準入力で渡す（依頼の本文をプロセスの引数に出さないため）。省略時は `["claude", "-p", "--allowedTools", "Bash(gh:*)"]`。`{repository}` / `{checkoutPath}` が使える |
 | `iterationTimeoutMinutes` | | ループの 1 周がこれより長く進まなければ、固まったとみなして止める（分。省略時は 90、10 以上 1440 以下）。下の「固まったループを止める」を参照 |
+| `createRepositoryCommand` | | テンプレートからリポジトリを作るコマンド（下記「担当リポジトリの作成・削除」）。省略時は `~/.local/bin/askhub-create-repo`（`install.sh` が置く） |
+| `removeRepositoryCommand` | | ローカルの checkout・ループの worktree・DerivedData を消すコマンド。省略時は `~/.local/bin/askhub-remove-repo`（`install.sh` が置く） |
+| `newRepositoryDirectory` | | 新しく作ったリポジトリを clone するディレクトリ（`~` 可）。省略時は最初の担当リポジトリの checkout と同じ場所 |
 | `conflictCommand` | | epic の最終 PR のコンフリクトを解消させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-resolve-conflict`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` が使える |
 
 以前の設定にあった `org` は不要になった（書いてあっても無視する）。
+
+設定ファイルは**ポーリングのたびに読み直す**。担当リポジトリの追加・削除などは、オーケストレーターを再起動しなくても次のポーリングから効く。
+読めないとき（書きかけ・JSON の誤り）はログに 1 回だけ理由を出し、直るまで前の設定のまま動く。
+ただし `trustedAuthors` を起動スクリプトへ渡す環境変数（`ASKHUB_TRUSTED_AUTHORS`）は起動時の値のままなので、`trustedAuthors` を変えたら再起動する。
+アプリからの担当リポジトリの作成・削除の依頼では、オーケストレーターが `repositories` を書き換える（下記）。
 
 ### `loopCommand` のプレースホルダ
 
@@ -309,6 +317,37 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 
 処理の進み具合はメモリ上でだけ覚えるため、オーケストレーターを再起動すると、諦めた依頼をもう一度試す。
 1 件の処理の間はポーリングが止まる（`claude` を同時に 1 つしか動かさないため）。
+
+## 担当リポジトリの作成・削除
+
+アプリから出した `repo-request` の Issue（形式は `docs/protocol.md` の「リポジトリの作成・削除」）を、毎回のポーリングで 1 件ずつ処理する。
+担当リポジトリにある、信用する author の依頼だけを対象にする。
+
+**作成**（`createRepositoryCommand`。既定は `scripts/orchestrator/create-repo.sh`）:
+
+1. 末尾に `<テンプレート> <owner/repo> <アプリ名> <Bundle ID> <checkout のパス>` を足して実行する（30 分で打ち切る）。
+   checkout のパスは `newRepositoryDirectory/<リポジトリ名>`。GitHub に作るだけの依頼では空文字列
+2. スクリプトは、テンプレートから private のリポジトリを作り、clone して `scripts/rename.sh` でアプリ名を変え、
+   `Configs/Project.xcconfig` の `APP_BUNDLE_IDENTIFIER` を書いて `develop` に直接 push する。
+   AskHub のラベルを作り、App Store Connect への登録を `needs-verify` の Issue にする。
+   途中で失敗しても、やり直すと続きから進む（テンプレートから作った同名のリポジトリ・同じ origin の checkout は使い回す）
+3. 成功したら、clone した場合は設定ファイルの `repositories` に加える（元のファイルは `orchestrator.json.bak` に写す）。
+   次のポーリングを待たずに担当リポジトリとして扱う
+
+**削除**:
+
+1. ループのプロセスが動いていれば外さない。制御用 worktree に state ファイルが残っていれば、強制の依頼でなければ外さない
+2. ローカルも消す依頼なら、`removeRepositoryCommand`（既定は `scripts/orchestrator/remove-repo.sh`）に
+   `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する。スクリプトは、強制でなければ
+   未コミットの変更（ループの作業ファイル `.claude/askhub-*`・`.claude/ralph-*.local.*` は除く）・stash・どのリモートにも無いコミットを持つブランチがないかを確かめる。
+   ブランチは、既定ブランチに取り込んでも木が変わらなければ（squash merge 済みなど）消してよいものとして扱う。
+   消してよければ、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/<名前>/removed-<日時>/` に退避してから、
+   checkout・ループの worktree・checkout の隣の DerivedData（`<名前>-ralph-dd*` など）・Xcode の既定の DerivedData のうちそのプロジェクトのものを消す
+3. 設定ファイルの `repositories` から外し、担当の印（`askhub-orchestrator` のラベル）を消す（アプリで「担当 PC なし」になる）
+
+スクリプトは人に伝える行を `ASKHUB_RESULT: …`、失敗の理由を `ASKHUB_ERROR: …` で出す。依頼 Issue にはこの行だけを書き、ほかの出力はログにだけ残す。
+前提を満たさない（既に同名のリポジトリがある・未 push の変更がある など）ときは終了コード 3 で終わり、やり直さずに理由をコメントする。
+それ以外の失敗は 1 回だけやり直し、それでも失敗したら理由をコメントする。
 
 ## 担当の印（askhub-orchestrator）
 
