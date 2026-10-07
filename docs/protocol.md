@@ -91,6 +91,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - アプリが知らない `writer` も「不明」として扱う
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
 - オーケストレーターは、`checkedAt` 以外が変わったときに本文を書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す
+- 手で回すループ（`manual-loop` の Discussion）は、`writer` を `manual` にして状態・epic・進捗を書き、10 分ごとに `checkedAt` を書き直す。
+  書き手が `manual` で `checkedAt` が 30 分以内のあいだ、オーケストレーターは書かない。30 分を過ぎたら、オーケストレーターが書き直す
 
 アプリの読み方（`LoopStatusFetcher`。GitHub からの取得は `GitHubLoopStatusSource`）:
 
