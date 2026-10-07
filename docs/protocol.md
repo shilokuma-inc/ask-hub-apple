@@ -56,7 +56,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - public リポジトリでは誰でも読めるので、epic 名・Discussion の番号・件数・時刻だけを書く。**ローカルパス・ログの中身・PC 名・トークンは書かない**
 
 ```html
-<!-- ask-hub:loop-status {"checkedAt":"2026-10-06T00:10:00Z","discussion":197,"epic":"epic/loop-status","lastActivityAt":"2026-10-06T00:07:00Z","progress":{"completed":5,"total":12},"state":"running"} -->
+<!-- ask-hub:loop-status {"checkedAt":"2026-10-06T00:10:00Z","discussion":197,"epic":"epic/loop-status","lastActivityAt":"2026-10-06T00:07:00Z","progress":{"completed":5,"total":12},"state":"running","writer":"orchestrator"} -->
 ```
 
 目印の中身は JSON（キーの順は問わない。知らないキーは無視する）。時刻は秒までの ISO 8601（UTC）。
@@ -65,7 +65,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | キー | 必須 | 内容 |
 | --- | --- | --- |
 | `state` | 必須 | 状態の分類（下表） |
-| `checkedAt` | 必須 | オーケストレーターが最後に確かめた時刻。状態が変わらなくても 10 分ごとに書き直す |
+| `checkedAt` | 必須 | 書き手が最後に確かめた時刻。状態が変わらなくても 10 分ごとに書き直す |
+| `writer` | 任意 | 書き手。`orchestrator`（オーケストレーター）か `manual`（手で回しているループ）。キーが無ければ `orchestrator` として読む（`writer` を足す前の目印との互換）。オーケストレーターも明示して書く |
 | `epic` | 任意 | 統合ブランチ（例: `epic/loop-status`） |
 | `discussion` | 任意 | ゴール元の Discussion の番号 |
 | `progress` | 任意 | goal のチェックボックスの数。`completed`（`[x]`。保留で閉じたものを含む）と `total` |
@@ -87,6 +88,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - `epic`・`discussion`・`progress`・`lastActivityAt` は、制御用 worktree が準備を終えた `epic/` のブランチにあるときだけ書く。
   epic が無く `ready-for-loop` を待っているときは、`discussion` にその Discussion の番号を書く
 - アプリが知らない `state` は「不明」として扱う（新しいオーケストレーターが分類を足しても読めなくならないように）
+- アプリが知らない `writer` も「不明」として扱う
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
 - オーケストレーターは、`checkedAt` 以外が変わったときに本文を書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す
 
