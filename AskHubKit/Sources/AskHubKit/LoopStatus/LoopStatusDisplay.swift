@@ -18,6 +18,30 @@ public struct LoopStatusDisplay: Sendable, Equatable {
         case inactive
     }
 
+    /// 進捗のゲージの段階の分類。色そのものはアプリが決める
+    ///
+    /// しきい値は `ProgressStage.init(fraction:)` の 1 か所にまとめる。境界ちょうどの割合は上の段階に含める
+    public enum ProgressStage: Sendable, Equatable, CaseIterable {
+        /// 3 分の 1 未満
+        case starting
+        /// 3 分の 1 以上、3 分の 2 未満
+        case halfway
+        /// 3 分の 2 以上、すべて終わる前
+        case nearlyDone
+        /// すべて終わった
+        case completed
+
+        /// 0〜1 の割合から段階を決める
+        public init(fraction: Double) {
+            self = switch fraction {
+            case 1...: .completed
+            case (2.0 / 3.0)...: .nearlyDone
+            case (1.0 / 3.0)...: .halfway
+            default: .starting
+            }
+        }
+    }
+
     /// 「実行中」「担当 PC なし」など。上限で待機中なら再開の時刻も付ける
     public var statusText: String
     /// 状態の SF Symbol
@@ -28,6 +52,10 @@ public struct LoopStatusDisplay: Sendable, Equatable {
     public var discussionText: String?
     /// 「5 / 12 タスク完了」
     public var progressText: String?
+    /// 終わったタスクの割合（0〜1）。進捗が無ければ `nil`
+    public var progressFraction: Double?
+    /// 進捗のゲージの段階。進捗が無ければ `nil`
+    public var progressStage: ProgressStage?
     /// ループが最後に動いた時刻（「最後の動き: 3 分前」に使う）
     public var lastActivityAt: Date?
     /// 実行中なのに、`LoopStatusRow.stuckThreshold` より長く動きが無い
@@ -62,6 +90,8 @@ extension LoopStatusRow {
             epic: report?.epic,
             discussionText: report?.discussion.map { "ゴール元: Discussion #\($0)" },
             progressText: report?.progress?.text,
+            progressFraction: report?.progress?.fraction,
+            progressStage: report?.progress.map { LoopStatusDisplay.ProgressStage(fraction: $0.fraction) },
             lastActivityAt: report?.lastActivityAt,
             isStuck: isStuck(now: now),
             // 担当 PC がいないときはゴール元を出さないので、開くのも状態用の Issue にそろえる
@@ -113,6 +143,14 @@ extension LoopStatusRow {
             case .noLoop, .unknown: .inactive
             }
         }
+    }
+}
+
+extension LoopStatusReport.Progress {
+    /// 終わったタスクの割合。`total` が 0 以下・`completed` が範囲外などの異常値でも 0〜1 に収める
+    public var fraction: Double {
+        guard total > 0 else { return 0 }
+        return min(max(Double(completed) / Double(total), 0), 1)
     }
 }
 
