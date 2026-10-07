@@ -30,6 +30,9 @@ extension Orchestrator {
             let report = LoopStatusSummary.report(for: facts, now: current)
             do {
                 try await publish(report, to: repository)
+            } catch let GitHubError.rateLimited(retryAfter) {
+                loopStatusPublisher.forget(repositoryKey: key, retryAfter: retryAfter, now: current)
+                log("\(repository.fullName) にループの状態を書けませんでした（レート制限。\(retryAfter.components.seconds) 秒後に再試行します）")
             } catch {
                 loopStatusPublisher.forget(repositoryKey: key)
                 log("\(repository.fullName) にループの状態を書けませんでした（次のポーリングで再試行します）: \(error)")

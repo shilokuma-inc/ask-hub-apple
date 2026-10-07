@@ -98,6 +98,17 @@ struct LoopStatusPublisherTests {
         #expect(!LoopStatusPublisher.isWrittenByManualLoop(nil, now: now))
     }
 
+    @Test func waitsUntilRetryAfterWhenRateLimited() {
+        var publisher = LoopStatusPublisher()
+        publisher.forget(repositoryKey: key, retryAfter: .seconds(300), now: now)
+        let running = report(.running, at: now)
+        #expect(publisher.action(repositoryKey: key, report: running, now: now.addingTimeInterval(299)) == .none)
+        #expect(publisher.action(repositoryKey: key, report: running, now: now.addingTimeInterval(300)) == .lookUp)
+        // 書けたあとに忘れたときは待たない
+        publisher.forget(repositoryKey: key)
+        #expect(publisher.action(repositoryKey: key, report: running, now: now) == .lookUp)
+    }
+
     @Test func looksUpAgainAfterForgetting() {
         var publisher = LoopStatusPublisher()
         publisher.recordWritten(report(.running, at: now), number: 7, repositoryKey: key)

@@ -44,10 +44,16 @@ public struct LoopStatusPublisher: Sendable, Equatable {
 
     /// キーは担当リポジトリの `fullName` を小文字にしたもの
     private(set) var entries: [String: Entry] = [:]
+    /// レート制限で `Retry-After` を示されたリポジトリと、次に試してよい時刻
+    private(set) var retryAt: [String: Date] = [:]
 
     public init() {}
 
     public func action(repositoryKey key: String, report: LoopStatusReport, now: Date) -> Action {
+        // ポーリングの間隔より長い `Retry-After` を示されたら、それまで一覧も本文も取りに行かない
+        if let retryAt = retryAt[key], now < retryAt {
+            return .none
+        }
         guard let entry = entries[key] else {
             return .lookUp
         }
@@ -91,8 +97,10 @@ public struct LoopStatusPublisher: Sendable, Equatable {
         entries[key] = Entry(number: number, report: report)
     }
 
-    /// 書けなかった。次のポーリングで一覧から取り直す（Issue が消された・移された場合に備える）
-    public mutating func forget(repositoryKey key: String) {
+    /// 書けなかった。次のポーリングで一覧から取り直す（Issue が消された・移された場合に備える）。
+    /// レート制限なら、`retryAfter` が過ぎるまで試さない
+    public mutating func forget(repositoryKey key: String, retryAfter: Duration? = nil, now: Date = Date()) {
         entries[key] = nil
+        retryAt[key] = retryAfter.map { now.addingTimeInterval(TimeInterval($0.components.seconds)) }
     }
 }
