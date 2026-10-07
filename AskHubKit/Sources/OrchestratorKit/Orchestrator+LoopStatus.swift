@@ -40,7 +40,8 @@ extension Orchestrator {
     private func publish(_ report: LoopStatusReport, to repository: RepositoryConfig) async throws {
         let key = repository.fullName.lowercased()
         var action = loopStatusPublisher.action(repositoryKey: key, report: report, now: report.checkedAt)
-        if action == .lookUp {
+        // 書き換える前に Issue を読み直す。手で回すループ（書き手が manual）が書いていれば、その間は書かない
+        if Self.needsLookUp(before: action) {
             let issues = try await github.loopStatusIssues(in: repository.fullName)
             loopStatusPublisher.adopt(issues, repositoryKey: key, trustedAuthors: config.trustedAuthors)
             action = loopStatusPublisher.action(repositoryKey: key, report: report, now: report.checkedAt)
@@ -57,6 +58,13 @@ extension Orchestrator {
         case let .update(number, body):
             try await github.updateLoopStatusIssue(in: repository.fullName, number: number, body: body)
             loopStatusPublisher.recordWritten(report, number: number, repositoryKey: key)
+        }
+    }
+
+    private static func needsLookUp(before action: LoopStatusPublisher.Action) -> Bool {
+        switch action {
+        case .lookUp, .update: true
+        case .create, .none: false
         }
     }
 

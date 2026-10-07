@@ -22,7 +22,8 @@ public struct LoopStatusIssueRecord: Sendable, Equatable {
 /// 状態用の Issue に、いつ何を書くかを決める（副作用なし）。
 ///
 /// 書いた内容を覚えておき、状態が変わったときだけ本文を書き換える。変わらなければ
-/// `LoopStatusReport.updateInterval` ごとに確認時刻だけを書き直す（API の呼び出しを増やしすぎない）
+/// `LoopStatusReport.updateInterval` ごとに確認時刻だけを書き直す（API の呼び出しを増やしすぎない）。
+/// 手で回しているループ（書き手が `manual`）が確認時刻を `LoopStatusReport.freshness` 以内に書いていれば、書かない
 public struct LoopStatusPublisher: Sendable, Equatable {
     public enum Action: Sendable, Equatable {
         /// 状態用の Issue がまだ無い（覚えていない）。一覧を取得して `adopt` してから決め直す
@@ -53,11 +54,23 @@ public struct LoopStatusPublisher: Sendable, Equatable {
         guard let number = entry.number else {
             return .create(body: report.issueBody)
         }
+        if Self.isWrittenByManualLoop(entry.report, now: now) {
+            return .none
+        }
         if let previous = entry.report, previous.hasSameStatus(as: report),
            now.timeIntervalSince(previous.checkedAt) < LoopStatusReport.updateInterval {
             return .none
         }
         return .update(number: number, body: report.issueBody)
+    }
+
+    /// 手で回しているループが書いている（書き手が `manual` で、確認時刻が `LoopStatusReport.freshness` 以内）。
+    /// 手で回すループが止まって確認時刻が古くなれば、オーケストレーターが書き直す
+    public static func isWrittenByManualLoop(_ report: LoopStatusReport?, now: Date) -> Bool {
+        guard let report, report.writer == .manual else {
+            return false
+        }
+        return report.isAssigned(now: now)
     }
 
     /// 取得した状態用の Issue から、使うものを覚える。
