@@ -35,4 +35,42 @@ extension OrchestratorTests {
         try await orchestrator.pollOnce()
         #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "12"]])
     }
+
+    @Test func skipsOnlyLaunchesWhenManualLoopSearchFails() async throws {
+        let github = FakeGitHub([.success([.fixture(number: 12)])])
+        github.setManualLoopsFail(true)
+        let runtime = FakeRuntime()
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+        try await orchestrator.pollOnce()
+
+        // 手で回す epic を確かめられなければ起動しないが、ループの状態の書き出しなどの後処理は続ける
+        #expect(runtime.launched.isEmpty)
+        #expect(logs.recorded.contains { $0.hasPrefix("manual-loop の Discussion を検索できませんでした") })
+        #expect(github.createdLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#101"])
+
+        github.setManualLoopsFail(false)
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "12"]])
+    }
+}
+
+extension FakeGitHub {
+    func manualLoopDiscussions(orgs: [String]) async throws -> [ManualLoopDiscussion] {
+        try state.withLock { state in
+            if state.manualLoopsFail {
+                throw TestError()
+            }
+            return state.manualLoops.filter { discussion in
+                orgs.contains { discussion.repository.lowercased().hasPrefix($0.lowercased() + "/") }
+            }
+        }
+    }
+
+    func setManualLoopsFail(_ fails: Bool) {
+        state.withLock { $0.manualLoopsFail = fails }
+    }
+
+    func setManualLoops(_ discussions: [ManualLoopDiscussion]) {
+        state.withLock { $0.manualLoops = discussions }
+    }
 }

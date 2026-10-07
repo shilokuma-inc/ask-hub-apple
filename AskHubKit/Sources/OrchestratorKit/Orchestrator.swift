@@ -220,23 +220,26 @@ public actor Orchestrator {
 
         // ready-for-loop の検索は失敗しうるので、ここまで（回答・異常終了・固まったループの再開と最終 PR）を先に済ませる
         let discussions = try await github.readyForLoopDiscussions(orgs: config.orgs)
-        // 手で回す epic があるリポジトリでは起動しない（Q4）。確かめられなければ、ready-for-loop の検索の失敗と同じく次のポーリングに回す
-        let manualLoops = try await github.manualLoopDiscussions(orgs: config.orgs)
 
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         let snapshots = await epicSnapshots()
         recordReadyDiscussions(discussions, snapshots: snapshots)
         let handled = await advanceLaunchedDiscussions(discussions, statuses: statuses, snapshots: snapshots)
 
-        let decisions = LaunchPlanner.decide(
-            discussions,
-            config: config,
-            statuses: statuses,
-            excluding: tracker.blockedDiscussionIDs.union(handled),
-            epicsInProgress: Set(snapshots.filter(\.value.inProgress).keys).union(unfinalized),
-            manualLoops: manualLoops
-        )
-        await carryOut(decisions, statuses: &statuses)
+        // 手で回す epic があるリポジトリでは起動しない（Q4）。確かめられなければ、このポーリングでは起動しない
+        // （依頼・最終 PR のコンフリクト・ループの状態の書き出しは続ける）
+        var decisions: [LaunchDecision] = []
+        if let manualLoops = await searchManualLoops() {
+            decisions = LaunchPlanner.decide(
+                discussions,
+                config: config,
+                statuses: statuses,
+                excluding: tracker.blockedDiscussionIDs.union(handled),
+                epicsInProgress: Set(snapshots.filter(\.value.inProgress).keys).union(unfinalized),
+                manualLoops: manualLoops
+            )
+            await carryOut(decisions, statuses: &statuses)
+        }
 
         // 新機能の依頼: claude に質問付きの Discussion を作らせる（1 回のポーリングで 1 件）
         do {

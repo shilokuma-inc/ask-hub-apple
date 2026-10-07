@@ -35,7 +35,7 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
 ループの状態の取得と起動は `LocalLoopRuntime` が担う。
 
 1. 担当リポジトリの owner の organization 全体から `ready-for-loop` が付いた open な Discussion を検索する（担当リポジトリごとではなく、`org:a org:b` の 1 回の検索で）
-   あわせて `manual-loop` が付いた open な Discussion も 1 回の検索で取る（失敗したら、`ready-for-loop` の検索の失敗と同じく次のポーリングで判定する）
+   あわせて `manual-loop` が付いた open な Discussion も 1 回の検索で取る（失敗したらログに出し、そのポーリングでは起動しない。依頼・最終 PR のコンフリクト・ループの状態の書き出しは続ける）
 2. 担当リポジトリごとにループの状態を調べる
    - 制御用 worktree に `.claude/ralph-loop.local.md` があるか（アクセス権が無いなどで確かめられないときは「不明」）
    - このオーケストレーターが起動したプロセスが生きているか
