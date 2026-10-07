@@ -2,7 +2,7 @@ import AskHubKit
 import SwiftUI
 
 /// 新しいアプリのリポジトリを、テンプレートから作る依頼を出す画面（`repo-request` の Issue を作るだけ）。
-/// 作成・名前の変更・担当 PC への clone は、依頼先の担当リポジトリの担当 PC のオーケストレーターが行う
+/// 作成・名前の変更・担当 PC への clone と担当への追加は、依頼先の担当リポジトリの担当 PC のオーケストレーターが行う
 struct NewAppView: View {
     let model: IdeaRequestModel
 
@@ -12,7 +12,6 @@ struct NewAppView: View {
     @State private var appName = ""
     /// 空なら `jp.shilokuma.<アプリ名>`
     @State private var bundleIdentifier = ""
-    @State private var clonesToOrchestrator = true
     /// 既定は public（private では GitHub Actions の実行時間が課金の対象になるため）
     @State private var isPrivate = false
     /// 作成を任せる担当リポジトリ（`owner/repo`）
@@ -25,7 +24,6 @@ struct NewAppView: View {
             template: template,
             appName: appName.trimmingCharacters(in: .whitespaces),
             bundleIdentifier: resolvedBundleIdentifier,
-            clonesToOrchestrator: clonesToOrchestrator,
             isPrivate: isPrivate
         ))
     }
@@ -107,13 +105,11 @@ struct NewAppView: View {
                     }
                 }
                 .accessibilityIdentifier("hub-picker")
-                Toggle("担当 PC に clone してオーケストレーターに載せる", isOn: $clonesToOrchestrator)
             } header: {
                 Text("担当 PC")
             } footer: {
-                Text(clonesToOrchestrator
-                    ? "選んだリポジトリの担当 PC がリポジトリを作り、clone して担当リポジトリに加えます。epic ごとに自動で回すか手で回すかは、Discussion で選べます"
-                    : "選んだリポジトリの担当 PC がリポジトリを作り、名前を変えて push するだけです。担当 PC には残しません")
+                Text("選んだリポジトリの担当 PC がリポジトリを作り、clone して担当リポジトリに加えます。"
+                    + "epic ごとにオーケストレーターで回すか手で回すかは、回答画面の「回し方」で選べます")
             }
 
             if let errorMessage = model.repositoryRequestError {
