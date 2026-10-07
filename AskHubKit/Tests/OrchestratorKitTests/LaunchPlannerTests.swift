@@ -44,6 +44,23 @@ struct LaunchPlannerTests {
         #expect(LaunchPlanner.decide([untrusted], config: try config(), statuses: [:]) == [.skip(untrusted, .untrustedAuthor)])
     }
 
+    @Test func waitsForManualLoopOfTrustedAuthorInSameRepositoryOnly() throws {
+        let discussion = ReadyDiscussion.fixture(repository: "shilokuma-inc/ask-hub-apple", number: 5)
+        let otherRepository = ReadyDiscussion.fixture(repository: "shilokuma-inc/beat-tap-ios", number: 6)
+        let decisions = LaunchPlanner.decide(
+            [discussion, otherRepository],
+            config: try config(),
+            statuses: [:],
+            manualLoops: [
+                ManualLoopDiscussion(repository: "Shilokuma-Inc/Ask-Hub-Apple", number: 4, author: "mrs1669"),
+                ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 2, author: "mrs1669"),
+                // 信用外の author の manual-loop は無視する
+                ManualLoopDiscussion(repository: "shilokuma-inc/beat-tap-ios", number: 3, author: "someone")
+            ]
+        )
+        #expect(decisions == [.skip(discussion, .manualLoopInProgress(number: 2)), .launch(otherRepository, other)])
+    }
+
     @Test func skipsWhileLoopIsRunningOrStateRemains() throws {
         let running = ReadyDiscussion.fixture(repository: "shilokuma-inc/ask-hub-apple")
         let remaining = ReadyDiscussion.fixture(repository: "shilokuma-inc/beat-tap-ios")

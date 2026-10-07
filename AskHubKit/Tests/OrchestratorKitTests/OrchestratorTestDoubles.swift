@@ -45,6 +45,9 @@ struct FakeGitHubState {
     var updatedLoopStatusIssues: [String] = []
     var loopStatusIssueListings = 0
     var loopStatusFails = false
+    /// `manual-loop` の Discussion
+    var manualLoops: [ManualLoopDiscussion] = []
+    var manualLoopsFail = false
 }
 
 struct FakeRuntimeState {

@@ -35,6 +35,7 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
 ループの状態の取得と起動は `LocalLoopRuntime` が担う。
 
 1. 担当リポジトリの owner の organization 全体から `ready-for-loop` が付いた open な Discussion を検索する（担当リポジトリごとではなく、`org:a org:b` の 1 回の検索で）
+   あわせて `manual-loop` が付いた open な Discussion も 1 回の検索で取る（失敗したらログに出し、そのポーリングでは起動しない。依頼・最終 PR のコンフリクト・ループの状態の書き出しは続ける）
 2. 担当リポジトリごとにループの状態を調べる
    - 制御用 worktree に `.claude/ralph-loop.local.md` があるか（アクセス権が無いなどで確かめられないときは「不明」）
    - このオーケストレーターが起動したプロセスが生きているか
@@ -56,6 +57,7 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
    | 起動済みで追跡中 | 何もしない（3. で扱う） |
    | Discussion の author が信用する author ではない | 起動しない（ログに出す） |
    | `manual-loop` が付いている（手で回す Discussion） | 起動しない（ログに出す）。`ready-for-loop` も外さない（手で回すループが始めるときに外す） |
+   | 同じリポジトリに、信用する author の open な `manual-loop` の Discussion がある（手で回す epic が終わっていない） | 起動しない（ログに出す。Discussion #273 の Q4: 1 リポジトリにつきループは 1 つ）。手で回す epic は見えないので、Discussion が閉じられる（最終 PR のマージ）まで待つ。質問が残っている `manual-loop` の Discussion も含む |
    | 起動したプロセスが生きている | 起動しない（終わるのを待つ） |
    | 途中の epic がある（準備を終えた `epic/` のブランチに、回答待ちでない未完了のタスクが残っている） | 起動しない（epic が終わるのを待つ。起動の失敗としては数えない） |
    | 完了した epic の最終 PR を作り終えていない | 起動しない（起動すると前の epic の作業ファイルが退避され、最終 PR を作れなくなる） |
