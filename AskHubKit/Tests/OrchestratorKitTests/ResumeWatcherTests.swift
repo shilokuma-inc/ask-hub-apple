@@ -88,6 +88,32 @@ struct ResumeWatcherTests {
         #expect(watcher.resumes.isEmpty)
     }
 
+    @Test func manualLoopDiscussionRemovesOnlyNeedsAnswer() {
+        var watcher = ResumeWatcher()
+        let discussion = AnswerSnapshot(
+            subject: subject(.discussion),
+            questions: [.init(id: "Q1", isAnswered: true)],
+            isManualLoop: true
+        )
+        #expect(watcher.update(snapshots: [discussion], statuses: [:]) == [.removeNeedsAnswerOfManualLoop(discussion.subject)])
+        #expect(watcher.resumes.isEmpty)
+    }
+
+    @Test func readsManualLoopOnlyFromTrustedDiscussions() {
+        func snapshot(kind: InboxSubject.Kind, author: String?, labels: [String]) -> AnswerSnapshot {
+            var subject = subject(kind)
+            subject.author = author
+            subject.labels = labels
+            return AnswerSnapshot(subject: subject, threads: [], trustedAuthors: TrustedAuthors(["mrs1669"]))
+        }
+        #expect(snapshot(kind: .discussion, author: "mrs1669", labels: ["needs-answer", "manual-loop"]).isManualLoop)
+        #expect(!snapshot(kind: .discussion, author: "someone", labels: ["manual-loop"]).isManualLoop)
+        #expect(!snapshot(kind: .discussion, author: nil, labels: ["manual-loop"]).isManualLoop)
+        #expect(!snapshot(kind: .discussion, author: "mrs1669", labels: ["needs-answer"]).isManualLoop)
+        // PR に付いた manual-loop は Discussion の目印ではない
+        #expect(!snapshot(kind: .pullRequest, author: "mrs1669", labels: ["manual-loop"]).isManualLoop)
+    }
+
     @Test func retriesUntilMaxAttemptsThenGivesUpUntilNextAnswer() {
         var watcher = ResumeWatcher()
         let first = snapshot([("A", true), ("B", false)])

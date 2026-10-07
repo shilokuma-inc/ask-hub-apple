@@ -5,6 +5,8 @@ public struct AnswerSnapshot: Sendable, Equatable {
     public let subject: InboxSubject
     /// 信用する author の質問のコメントの node id と、回答済みか
     public let questions: [Question]
+    /// 手で回す Discussion か（信用する author の Discussion に `manual-loop` が付いている）
+    public let isManualLoop: Bool
 
     public struct Question: Sendable, Equatable {
         public let id: String
@@ -16,9 +18,10 @@ public struct AnswerSnapshot: Sendable, Equatable {
         }
     }
 
-    public init(subject: InboxSubject, questions: [Question]) {
+    public init(subject: InboxSubject, questions: [Question], isManualLoop: Bool = false) {
         self.subject = subject
         self.questions = questions
+        self.isManualLoop = isManualLoop
     }
 
     /// スレッドから、信用する author の質問とその回答状況を読み取る（`docs/protocol.md` の「回答済みの判定」）
@@ -29,7 +32,7 @@ public struct AnswerSnapshot: Sendable, Equatable {
             }
             return Question(id: thread.comment.nodeID, isAnswered: trustedAuthors.isAnswered(replyAuthors: thread.replyAuthors))
         }
-        self.init(subject: subject, questions: questions)
+        self.init(subject: subject, questions: questions, isManualLoop: subject.isManualLoop(trustedAuthors: trustedAuthors))
     }
 
     /// 質問が 1 つ以上あり、すべて回答済みか
@@ -62,8 +65,10 @@ public struct ResumeWatcher: Sendable, Equatable {
     }
 
     public enum Action: Sendable, Equatable {
-        /// すべての質問に回答が付いたので `needs-answer` を外す
+        /// すべての質問に回答が付いたので `needs-answer` を外す（Discussion なら `ready-for-loop` を付ける）
         case removeNeedsAnswer(InboxSubject)
+        /// 手で回す Discussion の質問がすべて回答されたので、`ready-for-loop` は付けずに `needs-answer` だけを外す
+        case removeNeedsAnswerOfManualLoop(InboxSubject)
         /// 止まっているループを再開する（キーは担当リポジトリの `fullName` を小文字にしたもの）
         case resume(repositoryKey: String)
         /// 上限まで試しても再開を確かめられなかった
@@ -106,7 +111,9 @@ public struct ResumeWatcher: Sendable, Equatable {
             }
             seenAnswers.formUnion(newlyAnswered.map(\.id))
             if snapshot.isFullyAnswered {
-                actions.append(.removeNeedsAnswer(snapshot.subject))
+                actions.append(
+                    snapshot.isManualLoop ? .removeNeedsAnswerOfManualLoop(snapshot.subject) : .removeNeedsAnswer(snapshot.subject)
+                )
             }
         }
         return actions

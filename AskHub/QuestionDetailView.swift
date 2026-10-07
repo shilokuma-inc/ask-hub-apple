@@ -62,7 +62,7 @@ struct QuestionDetailView: View {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.red)
                     if form.loopStartFailed {
-                        Button("ループを始める（再試行）") {
+                        Button((form.postedRunner ?? form.loopRunner) == .manual ? "manual-loop を付ける（再試行）" : "ループを始める（再試行）") {
                             Task {
                                 await form.startLoop(using: inbox)
                                 if !form.loopStartFailed {
@@ -98,7 +98,7 @@ struct QuestionDetailView: View {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                         } else {
-                            Text(form.startsLoopAfterPosting ? "回答を投稿してループを始める" : "回答を投稿")
+                            Text(postButtonTitle)
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -106,15 +106,15 @@ struct QuestionDetailView: View {
                 }
             }
         }
-        // ループの起動は取り消せず、トークンも消費するので、確かめてから始める
+        // ループの起動は取り消せず、トークンも消費するので、確かめてから始める。手で回すときも、オーケストレーターが起動しなくなるので確かめる
         .confirmationDialog(
-            "回答を投稿して、ループを始めますか？",
+            form.loopRunner == .manual ? "回答を投稿して、手動で回しますか？" : "回答を投稿して、ループを始めますか？",
             isPresented: $isConfirmingLoopStart,
             titleVisibility: .visible
         ) {
-            Button("投稿してループを始める") { post() }
+            Button(form.loopRunner == .manual ? "投稿して手動で回す" : "投稿してループを始める") { post() }
         } message: {
-            Text("\(question.subject.shortReference)「\(question.subject.title)」に ready-for-loop を付け、担当 PC のオーケストレーターがループを起動します")
+            Text(loopStartConfirmation)
         }
         .formStyle(.grouped)
         .keyboardDoneButton($isEditingNote)
@@ -127,6 +127,16 @@ struct QuestionDetailView: View {
         Section {
             if form.canStartLoop(in: inbox) {
                 Toggle("投稿したら、回答を確定してループを始める", isOn: $form.startsLoopAfterPosting)
+                    .disabled(form.isPosting)
+                // 信用外の author の Discussion に付いた manual-loop はオーケストレーターが無視するので、選ばせない
+                if form.startsLoopAfterPosting && form.canRunManually(in: inbox) {
+                    Picker("回し方", selection: $form.loopRunner) {
+                        ForEach(LoopRunner.allCases, id: \.self) { runner in
+                            Text(runner.title).tag(runner)
+                        }
+                    }
+                    .disabled(form.isPosting)
+                }
             } else {
                 Text("この Discussion には、ほかに未回答の質問が \(remaining) 件あります")
                     .foregroundStyle(.secondary)
@@ -134,10 +144,35 @@ struct QuestionDetailView: View {
         } header: {
             Text("ループ")
         } footer: {
-            Text(form.canStartLoop(in: inbox)
-                ? "Discussion に ready-for-loop を付けます。担当 PC のオーケストレーターがループを起動します"
-                : "すべての質問に答えると、回答を確定してループを始められます")
+            Text(loopFooter)
         }
+    }
+
+    private var loopFooter: String {
+        guard form.canStartLoop(in: inbox) else {
+            return "すべての質問に答えると、回答を確定してループを始められます"
+        }
+        guard form.startsLoopAfterPosting else {
+            return "回答だけを投稿します。オンにすると、回答を確定してループを始められます"
+        }
+        if form.loopRunner == .manual {
+            return "Discussion に manual-loop を付けます。オーケストレーターはこのリポジトリでループを起動しません。ループは手で始めてください"
+        }
+        return "Discussion に ready-for-loop を付けます。担当 PC のオーケストレーターがループを起動します"
+    }
+
+    private var postButtonTitle: String {
+        guard form.startsLoopAfterPosting else {
+            return "回答を投稿"
+        }
+        return form.loopRunner == .manual ? "回答を投稿して手動で回す" : "回答を投稿してループを始める"
+    }
+
+    private var loopStartConfirmation: String {
+        let discussion = "\(question.subject.shortReference)「\(question.subject.title)」"
+        return form.loopRunner == .manual
+            ? "\(discussion)に manual-loop を付けます。この Discussion の epic が終わるまで、オーケストレーターはこのリポジトリでループを起動しません"
+            : "\(discussion)に ready-for-loop を付け、担当 PC のオーケストレーターがループを起動します"
     }
 
     private func post() {

@@ -58,7 +58,8 @@ struct GitHubOrchestratorTests {
         """#
     }
 
-    private static let otherAndCapitalizedReadyLabels = #"{ "id": "LA_X", "name": "bug" }, { "id": "LA_9", "name": "Ready-For-Loop" }"#
+    private static let otherAndCapitalizedReadyLabels =
+        #"{ "id": "LA_X", "name": "bug" }, { "id": "LA_9", "name": "Ready-For-Loop" }, { "id": "LA_M", "name": "Manual-Loop" }"#
 
     @Test func searchesReadyDiscussionsAcrossPagesAndSkipsUnusableNodes() async throws {
         let http = StubHTTPClient([
@@ -81,6 +82,7 @@ struct GitHubOrchestratorTests {
 
         #expect(discussions.map(\.nodeID) == ["D_1", "D_3"])
         #expect(discussions.map(\.readyLabelID) == ["LA_1", "LA_9"])
+        #expect(discussions.map(\.isManualLoop) == [false, true])
         #expect(discussions.first?.author == "mrs1669")
         #expect(discussions.first?.repository == "o/r")
         let first = try requestJSON(http.requests[0])

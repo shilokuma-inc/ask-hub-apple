@@ -78,6 +78,37 @@ struct LoopStatusPublisherTests {
         #expect(edited.action(repositoryKey: key, report: running, now: now) == .update(number: 4, body: running.issueBody))
     }
 
+    @Test func doesNotWriteWhileManualLoopWritesRecently() {
+        var publisher = LoopStatusPublisher()
+        let manual = LoopStatusReport(state: .running, writer: .manual, epic: "epic/manual-loop", checkedAt: now)
+        publisher.adopt([record(7, body: manual.issueBody)], repositoryKey: key, trustedAuthors: trusted)
+
+        // 手で回すループの確認時刻が 30 分以内なら、状態が違っても間隔を過ぎても書かない
+        let within = now.addingTimeInterval(LoopStatusReport.freshness - 1)
+        #expect(publisher.action(repositoryKey: key, report: report(.noLoop, at: within), now: within) == .none)
+
+        // 30 分を過ぎたら、今までどおり書き直す
+        let stale = now.addingTimeInterval(LoopStatusReport.freshness + 1)
+        let rewritten = report(.noLoop, at: stale)
+        #expect(publisher.action(repositoryKey: key, report: rewritten, now: stale) == .update(number: 7, body: rewritten.issueBody))
+
+        // 書き手がオーケストレーター・不明なら、手で回すループとはみなさない
+        #expect(LoopStatusPublisher.isWrittenByManualLoop(manual, now: now))
+        #expect(!LoopStatusPublisher.isWrittenByManualLoop(report(.running, at: now), now: now))
+        #expect(!LoopStatusPublisher.isWrittenByManualLoop(nil, now: now))
+    }
+
+    @Test func waitsUntilRetryAfterWhenRateLimited() {
+        var publisher = LoopStatusPublisher()
+        publisher.forget(repositoryKey: key, retryAfter: .seconds(300), now: now)
+        let running = report(.running, at: now)
+        #expect(publisher.action(repositoryKey: key, report: running, now: now.addingTimeInterval(299)) == .none)
+        #expect(publisher.action(repositoryKey: key, report: running, now: now.addingTimeInterval(300)) == .lookUp)
+        // 書けたあとに忘れたときは待たない
+        publisher.forget(repositoryKey: key)
+        #expect(publisher.action(repositoryKey: key, report: running, now: now) == .lookUp)
+    }
+
     @Test func looksUpAgainAfterForgetting() {
         var publisher = LoopStatusPublisher()
         publisher.recordWritten(report(.running, at: now), number: 7, repositoryKey: key)
@@ -132,6 +163,35 @@ extension OrchestratorTests {
         try await orchestrator.pollOnce()
         #expect(github.updatedLoopStatusIssues.count == 2)
         #expect(github.createdLoopStatusIssues.count == 1)
+    }
+
+    @Test func leavesStatusIssueToManualLoopUntilItGoesStale() async throws {
+        let github = FakeGitHub([.success([])])
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = OSAllocatedUnfairLock(initialState: start)
+        let orchestrator = try makeOrchestrator(github: github, runtime: FakeRuntime()) { clock.withLock { $0 } }
+        try await orchestrator.pollOnce()
+        #expect(github.createdLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#101"])
+
+        // 手で回すループが同じ Issue に書いた
+        let manual = LoopStatusReport(state: .running, writer: .manual, epic: "epic/manual-loop", checkedAt: start.addingTimeInterval(300))
+        github.setLoopStatusIssues([
+            LoopStatusIssueRecord(number: 101, author: "mrs1669", isOpen: true, updatedAt: start, body: manual.issueBody)
+        ])
+
+        // 間隔を過ぎて書き直す前に読み直し、手で回すループが書いていれば書かない
+        clock.withLock { $0 = start.addingTimeInterval(LoopStatusReport.updateInterval) }
+        try await orchestrator.pollOnce()
+        #expect(github.updatedLoopStatusIssues.isEmpty)
+        #expect(github.loopStatusIssuesByNumber[101].flatMap { LoopStatusReport.parse($0.body) }?.writer == .manual)
+
+        // 手で回すループが止まり、確認時刻から 30 分を過ぎたら書き直す
+        clock.withLock { $0 = start.addingTimeInterval(300 + LoopStatusReport.freshness + 1) }
+        try await orchestrator.pollOnce()
+        #expect(github.updatedLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#101"])
+        let rewritten = github.loopStatusIssuesByNumber[101].flatMap { LoopStatusReport.parse($0.body) }
+        #expect(rewritten?.writer == .orchestrator)
+        #expect(rewritten?.state == .noLoop)
     }
 
     @Test func reusesExistingTrustedIssueAndRetriesAfterFailure() async throws {

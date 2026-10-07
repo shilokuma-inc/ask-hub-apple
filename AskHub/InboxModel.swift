@@ -61,12 +61,25 @@ final class InboxModel {
         questions.filter { $0.subject.nodeID == question.subject.nodeID && $0.id != question.id }.count
     }
 
-    /// Discussion の回答を確定し、ループを始めてよい印（`ready-for-loop`）を付ける（Discussion #1 の Q3）
-    func startLoop(for discussion: InboxSubject) async throws {
+    /// Discussion / PR を作ったのが信用する author か。信用外の author の Discussion に付いた `manual-loop` はオーケストレーターが無視する
+    func isTrustedAuthor(of subject: InboxSubject) -> Bool {
+        trustedAuthors.contains(subject.author)
+    }
+
+    /// Discussion の回答を確定し、ループを始めてよい印（`ready-for-loop`）を付ける（Discussion #1 の Q3）。
+    /// 手で回すなら、代わりに `manual-loop` を付ける（Discussion #273 の Q2）
+    func startLoop(for discussion: InboxSubject, runner: LoopRunner = .orchestrator) async throws {
         guard let token = try tokenStore.load() else {
             throw MissingTokenError()
         }
-        try await makeStarter(token).markReadyForLoop(discussion)
+        let starter = makeStarter(token)
+        switch runner {
+        case .orchestrator:
+            try await starter.markReadyForLoop(discussion)
+
+        case .manual:
+            try await starter.markManualLoop(discussion)
+        }
     }
 
     /// 質問に回答を投稿する。成功したらその質問を一覧から外し、一覧を取り直す
