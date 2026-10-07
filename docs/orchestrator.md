@@ -165,6 +165,12 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
   ralph の Stop hook はヘッドレスでも周回する（標準入力は `/dev/null`）
 - ログは `~/Library/Logs/askhub/loops/<リポジトリ>-bootstrap-*.log`（準備）と `<リポジトリ>-loop-*.log`（ループ）
 - 環境変数で `claude` の場所・ログの場所・信用する author・準備のモデルを変えられる（スクリプト冒頭のコメントを参照）
+- **xcodebuild のラッパー**: 環境変数 `ASKHUB_XCODEBUILD_WRAPPER`、または `~/.config/askhub/xcodebuild`（実行可能なとき）に
+  ラッパーを置くと、新しい epic の準備で playbook の検証コマンドを `<ラッパー> "$PWD" <xcodebuild の引数…>` の形で書かせ、
+  「このアプリ固有の前提」にも同じ規則を入れさせる。ラッパーは第 1 引数に作業ツリーのパスを取り、残りを xcodebuild にそのまま渡し、
+  終了コードを返すこと。Simulator（`name=` 指定）と DerivedData の作業ツリーごとの分離もラッパーが受け持つ
+  （例: ビルド専用機へ ssh で回す・同時実行数を絞る）。置かなければ従来どおり、UDID の `id=` とスロットごとの `-derivedDataPath` で書かせる。
+  既存の epic の playbook は作り直さないので、変えるときは手で書き換える
 
 ## Mac ごとのセットアップ
 
