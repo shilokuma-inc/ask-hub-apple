@@ -17,14 +17,35 @@ public struct InboxSubject: Sendable, Equatable, Hashable {
     public var number: Int
     public var title: String
     public var url: URL
+    /// Discussion / PR を作った人。削除済みのユーザーや取得していないときは `nil`
+    public var author: String?
+    /// 付いているラベルの名前（`manual-loop` の判定に使う）
+    public var labels: [String]
 
-    public init(kind: Kind, nodeID: String, repository: String, number: Int, title: String, url: URL) {
+    public init(
+        kind: Kind,
+        nodeID: String,
+        repository: String,
+        number: Int,
+        title: String,
+        url: URL,
+        author: String? = nil,
+        labels: [String] = []
+    ) {
         self.kind = kind
         self.nodeID = nodeID
         self.repository = repository
         self.number = number
         self.title = title
         self.url = url
+        self.author = author
+        self.labels = labels
+    }
+
+    /// 手で回す Discussion か（`manual-loop` が付いた、信用する author の Discussion）。
+    /// 信用外の author の Discussion に付いた `manual-loop` は無視する（誰でも Discussion を立てられるため）
+    public func isManualLoop(trustedAuthors: TrustedAuthors) -> Bool {
+        kind == .discussion && labels.contains(AskHubLabel.manualLoop.rawValue) && trustedAuthors.contains(author)
     }
 }
 

@@ -24,7 +24,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | ラベル | 付ける対象 | 意味 | 付ける側 | 外す側 |
 | --- | --- | --- | --- | --- |
 | `needs-answer` | Discussion / PR / Issue | 未回答の質問がある | 質問を出した側（Claude / ループ） | オーケストレーター（すべて回答済みになったとき） |
-| `ready-for-loop` | Discussion | 回答が確定し、ループを始めてよい | オーケストレーター（質問がすべて回答されたとき）／アプリ（最後の未回答の質問を「投稿したら、回答を確定してループを始める」で投稿したとき） | オーケストレーター（ループを起動したとき） |
+| `ready-for-loop` | Discussion | 回答が確定し、ループを始めてよい | オーケストレーター（質問がすべて回答されたとき）／アプリ（最後の未回答の質問を「投稿したら、回答を確定してループを始める」で、回し方を「オーケストレーターで始める」にして投稿したとき） | オーケストレーター（ループを起動したとき）／手で回すループ（始めるとき） |
+| `manual-loop` | Discussion | この Discussion のループは手で回す。オーケストレーターは `ready-for-loop` を付けず、起動もしない（信用する author の Discussion に付いたときだけ効く） | アプリ（最後の未回答の質問を「投稿したら、回答を確定してループを始める」で、回し方を「手動で回す」にして投稿したとき。`ready-for-loop` は付けない）／人間（GitHub で手で付けてもよい） | — （epic が終われば Discussion ごと閉じる） |
 | `decision-log` | Issue | epic ごとの仮決め一覧（判断ログ） | ループ | — （最終 PR がマージされたら、オーケストレーターが Issue を閉じる。下記「仮決め一覧」） |
 | `needs-verify` | Issue | 実機・実データでの確認が必要 | ループ | — （人間が確認して閉じる） |
 | `idea-request` | Issue | アプリから出した新機能の依頼 | アプリ | — （オーケストレーターが Discussion を作ってクローズする） |
@@ -55,7 +56,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - public リポジトリでは誰でも読めるので、epic 名・Discussion の番号・件数・時刻だけを書く。**ローカルパス・ログの中身・PC 名・トークンは書かない**
 
 ```html
-<!-- ask-hub:loop-status {"checkedAt":"2026-10-06T00:10:00Z","discussion":197,"epic":"epic/loop-status","lastActivityAt":"2026-10-06T00:07:00Z","progress":{"completed":5,"deferred":1,"total":12},"state":"running"} -->
+<!-- ask-hub:loop-status {"checkedAt":"2026-10-06T00:10:00Z","discussion":197,"epic":"epic/loop-status","lastActivityAt":"2026-10-06T00:07:00Z","progress":{"completed":5,"deferred":1,"total":12},"state":"running","writer":"orchestrator"} -->
 ```
 
 目印の中身は JSON（キーの順は問わない。知らないキーは無視する）。時刻は秒までの ISO 8601（UTC）。
@@ -64,7 +65,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | キー | 必須 | 内容 |
 | --- | --- | --- |
 | `state` | 必須 | 状態の分類（下表） |
-| `checkedAt` | 必須 | オーケストレーターが最後に確かめた時刻。状態が変わらなくても 10 分ごとに書き直す |
+| `checkedAt` | 必須 | 書き手が最後に確かめた時刻。状態が変わらなくても 10 分ごとに書き直す |
+| `writer` | 任意 | 書き手。`orchestrator`（オーケストレーター）か `manual`（手で回しているループ）。キーが無ければ `orchestrator` として読む（`writer` を足す前の目印との互換）。オーケストレーターも明示して書く |
 | `epic` | 任意 | 統合ブランチ（例: `epic/loop-status`） |
 | `discussion` | 任意 | ゴール元の Discussion の番号 |
 | `progress` | 任意 | goal のチェックボックスの数。`completed`（`[x]`。保留で閉じたものを含む）と `total`、任意で `deferred`（`completed` のうち保留で閉じたもの。`[x]` かつ `※保留` を含む行） |
@@ -88,8 +90,11 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - `progress.deferred` は `completed` の内訳で、`completed` の意味は変えない（古いアプリは `deferred` を無視して今と同じ表示になる）。
   古いオーケストレーターは書かないので、アプリは `deferred` が無ければ保留を区別しない表示にする。新しいオーケストレーターは 0 件でも書く
 - アプリが知らない `state` は「不明」として扱う（新しいオーケストレーターが分類を足しても読めなくならないように）
+- アプリが知らない `writer` も「不明」として扱う
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
 - オーケストレーターは、`checkedAt` 以外が変わったときに本文を書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す
+- 手で回すループ（`manual-loop` の Discussion）は、`writer` を `manual` にして状態・epic・進捗を書き、10 分ごとに `checkedAt` を書き直す。
+  書き手が `manual` で `checkedAt` が 30 分以内のあいだ、オーケストレーターは書かない。30 分を過ぎたら、オーケストレーターが書き直す
 
 アプリの読み方（`LoopStatusFetcher`。GitHub からの取得は `GitHubLoopStatusSource`）:
 

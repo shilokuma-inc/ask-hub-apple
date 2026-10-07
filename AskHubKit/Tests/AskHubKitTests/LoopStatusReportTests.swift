@@ -119,6 +119,37 @@ struct LoopStatusReportTests {
         #expect(report?.checkedAt == Date(timeIntervalSince1970: 1_800_000_000))
     }
 
+    @Test func roundTripsWriter() {
+        #expect(running.writer == .orchestrator)
+        #expect(running.issueBody.contains(#""writer":"orchestrator""#))
+        #expect(running.issueBody.contains("| 書き手 | オーケストレーター |"))
+
+        let manual = LoopStatusReport(state: .running, writer: .manual, epic: "epic/manual-loop", checkedAt: now)
+        let body = manual.issueBody
+        #expect(body.contains(#""writer":"manual""#))
+        #expect(body.contains("| 書き手 | 手動 |"))
+        #expect(body.contains("手で回しているループが書き換える Issue です。"))
+        #expect(LoopStatusReport.parse(body) == manual)
+        #expect(!manual.hasSameStatus(as: running))
+    }
+
+    @Test func readsMarkersWithoutWriterAsOrchestrator() {
+        // `writer` を足す前のオーケストレーターが書いた目印
+        let body = #"<!-- ask-hub:loop-status {"checkedAt":"2027-01-15T08:00:00Z","epic":"epic/x","state":"running"} -->"#
+        let report = LoopStatusReport.parse(body)
+        #expect(report?.writer == .orchestrator)
+        #expect(report?.epic == "epic/x")
+    }
+
+    @Test func readsUnknownWriters() {
+        let body = #"<!-- ask-hub:loop-status {"checkedAt":"2027-01-15T08:00:00Z","state":"running","writer":"robot"} -->"#
+        let report = LoopStatusReport.parse(body)
+        #expect(report?.writer == .unknown)
+        // 書き直しても、オーケストレーターが書いたとは表示しない
+        #expect(report?.issueBody.contains("| 書き手 | 不明 |") == true)
+        #expect(report?.issueBody.contains("AskHub のループ（書き手は不明）が書き換える Issue です。") == true)
+    }
+
     @Test func rejectsBodiesWithoutMarker() {
         #expect(LoopStatusReport.parse("") == nil)
         #expect(LoopStatusReport.parse("人が書いた本文") == nil)
