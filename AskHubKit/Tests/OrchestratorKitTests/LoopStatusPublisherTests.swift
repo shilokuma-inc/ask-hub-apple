@@ -139,7 +139,7 @@ extension OrchestratorTests {
             state: .running,
             epic: "epic/mvp",
             discussion: 12,
-            progress: .init(completed: 1, total: 2),
+            progress: .init(completed: 1, total: 2, deferred: 0),
             lastActivityAt: activity,
             checkedAt: Date(timeIntervalSince1970: 1_800_000_000)
         ))

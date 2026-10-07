@@ -100,15 +100,24 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         public var completed: Int
         /// すべてのタスク
         public var total: Int
+        /// `completed` のうち、保留で閉じたタスク（`[x]` かつ `※保留`）。
+        /// 古いオーケストレーターは書かないので、無ければ `nil`（保留を区別しない表示にする）
+        public var deferred: Int?
 
-        public init(completed: Int, total: Int) {
+        public init(completed: Int, total: Int, deferred: Int? = nil) {
             self.completed = completed
             self.total = total
+            self.deferred = deferred
+        }
+
+        /// 「5 / 12」（進捗のゲージの横に出す数）
+        public var countText: String {
+            "\(completed) / \(total)"
         }
 
         /// 「5 / 12 タスク完了」
         public var text: String {
-            "\(completed) / \(total) タスク完了"
+            "\(countText) タスク完了"
         }
     }
 
@@ -206,7 +215,11 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
             rows.append(("ゴール元", "Discussion #\(discussion)"))
         }
         if let progress {
-            rows.append(("進捗", progress.text))
+            if let deferred = progress.deferred, deferred > 0 {
+                rows.append(("進捗", "\(progress.text)（うち保留 \(deferred)）"))
+            } else {
+                rows.append(("進捗", progress.text))
+            }
         }
         if let lastActivityAt {
             rows.append(("最後の動き", lastActivityAt.formatted(.iso8601)))

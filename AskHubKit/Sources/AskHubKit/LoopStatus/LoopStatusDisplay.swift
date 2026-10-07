@@ -18,6 +18,30 @@ public struct LoopStatusDisplay: Sendable, Equatable {
         case inactive
     }
 
+    /// 進捗のゲージの段階の分類。色そのものはアプリが決める
+    ///
+    /// しきい値は `ProgressStage.init(fraction:)` の 1 か所にまとめる。境界ちょうどの割合は上の段階に含める
+    public enum ProgressStage: Sendable, Equatable, CaseIterable {
+        /// 3 分の 1 未満
+        case starting
+        /// 3 分の 1 以上、3 分の 2 未満
+        case halfway
+        /// 3 分の 2 以上、すべて終わる前
+        case nearlyDone
+        /// すべて終わった
+        case completed
+
+        /// 0〜1 の割合から段階を決める
+        public init(fraction: Double) {
+            self = switch fraction {
+            case 1...: .completed
+            case (2.0 / 3.0)...: .nearlyDone
+            case (1.0 / 3.0)...: .halfway
+            default: .starting
+            }
+        }
+    }
+
     /// 「実行中」「担当 PC なし」など。上限で待機中なら再開の時刻も付ける
     public var statusText: String
     /// 状態の SF Symbol
@@ -26,8 +50,17 @@ public struct LoopStatusDisplay: Sendable, Equatable {
     public var epic: String?
     /// 「ゴール元: Discussion #12」
     public var discussionText: String?
-    /// 「5 / 12 タスク完了」
+    /// 「5 / 12 タスク完了」。保留があれば「5 / 12 タスク完了（うち保留 2）」
     public var progressText: String?
+    /// 「5 / 12」（ゲージの横に出す数。読み上げは `progressText`）。保留があれば「5 / 12（保留 2）」
+    public var progressCountText: String?
+    /// 保留を除いた、終わったタスクの割合（0〜1）。進捗が無ければ `nil`
+    public var progressFraction: Double?
+    /// 保留で閉じたタスクの割合（0〜1。`progressFraction` の後ろに積む）。
+    /// 進捗が無い・保留が 0 件・古いオーケストレーターで保留の数が無いときは `nil`（保留を区別しない表示）
+    public var progressDeferredFraction: Double?
+    /// 進捗のゲージの段階（保留を除いた割合で決める）。進捗が無ければ `nil`
+    public var progressStage: ProgressStage?
     /// ループが最後に動いた時刻（「最後の動き: 3 分前」に使う）
     public var lastActivityAt: Date?
     /// 実行中なのに、`LoopStatusRow.stuckThreshold` より長く動きが無い
@@ -61,7 +94,11 @@ extension LoopStatusRow {
             tone: Self.tone(of: status),
             epic: report?.epic,
             discussionText: report?.discussion.map { "ゴール元: Discussion #\($0)" },
-            progressText: report?.progress?.text,
+            progressText: report?.progress?.textWithDeferred,
+            progressCountText: report?.progress?.countTextWithDeferred,
+            progressFraction: report?.progress?.doneFraction,
+            progressDeferredFraction: report?.progress.flatMap { $0.deferredCount > 0 ? $0.deferredFraction : nil },
+            progressStage: report?.progress.map { LoopStatusDisplay.ProgressStage(fraction: $0.doneFraction) },
             lastActivityAt: report?.lastActivityAt,
             isStuck: isStuck(now: now),
             // 担当 PC がいないときはゴール元を出さないので、開くのも状態用の Issue にそろえる
@@ -113,6 +150,41 @@ extension LoopStatusRow {
             case .noLoop, .unknown: .inactive
             }
         }
+    }
+}
+
+extension LoopStatusReport.Progress {
+    /// 終わったタスクの割合。`total` が 0 以下・`completed` が範囲外などの異常値でも 0〜1 に収める
+    public var fraction: Double {
+        guard total > 0 else { return 0 }
+        return min(max(Double(completed) / Double(total), 0), 1)
+    }
+
+    /// 保留で閉じたタスクの数。キーが無い（古いオーケストレーター）なら 0。異常値でも 0〜`completed` に収める
+    public var deferredCount: Int {
+        min(max(deferred ?? 0, 0), max(completed, 0))
+    }
+
+    /// 保留を除いた、終わったタスクの割合（0〜1）。保留が無ければ `fraction` と同じ
+    public var doneFraction: Double {
+        guard total > 0 else { return 0 }
+        return min(max(Double(completed - deferredCount) / Double(total), 0), 1)
+    }
+
+    /// 保留で閉じたタスクの割合。`doneFraction` と足して 1 を超えないように収める
+    public var deferredFraction: Double {
+        guard total > 0 else { return 0 }
+        return min(max(Double(deferredCount) / Double(total), 0), 1 - doneFraction)
+    }
+
+    /// 「5 / 12（保留 2）」。保留が無ければ `countText` と同じ
+    public var countTextWithDeferred: String {
+        deferredCount > 0 ? "\(countText)（保留 \(deferredCount)）" : countText
+    }
+
+    /// 「5 / 12 タスク完了（うち保留 2）」。保留が無ければ `text` と同じ
+    public var textWithDeferred: String {
+        deferredCount > 0 ? "\(text)（うち保留 \(deferredCount)）" : text
     }
 }
 

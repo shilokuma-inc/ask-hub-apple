@@ -26,7 +26,8 @@ extension LoopStatusModel {
     }
 }
 
-/// デモモード・Preview・UI テスト用の固定のループの状態。すべての状態（停滞・担当 PC なし・状態なしを含む）を 1 行ずつ出す
+/// デモモード・Preview・UI テスト用の固定のループの状態。すべての状態（停滞・担当 PC なし・状態なしを含む）を 1 行ずつ出す。
+/// 進捗のゲージは 0%・各段階・100%・進捗なしの行が出るようにしている
 struct SampleLoopStatusSource: LoopStatusSource {
     func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
         // サンプルのリポジトリは先頭の organization に置く
@@ -36,7 +37,7 @@ struct SampleLoopStatusSource: LoopStatusSource {
         func minutesAgo(_ minutes: Double) -> Date {
             now.addingTimeInterval(-minutes * 60)
         }
-        /// 信用する author の状態用の Issue があるリポジトリ。`progress` は（終わったタスク, すべてのタスク）、`active` は最後の動きが何分前か、`resumesIn` は上限の解除が何分後か
+        /// 信用する author の状態用の Issue があるリポジトリ。`progress` は（終わったタスク, すべてのタスク）、`deferred` はそのうち保留で閉じたタスク、`active` は最後の動きが何分前か、`resumesIn` は上限の解除が何分後か
         func reported(
             _ name: String,
             issue number: Int,
@@ -44,6 +45,7 @@ struct SampleLoopStatusSource: LoopStatusSource {
             _ epic: String? = nil,
             goal discussion: Int? = nil,
             progress: (Int, Int)? = nil,
+            deferred: Int? = nil,
             active: Double? = nil,
             resumesIn: Double? = nil
         ) -> LoopStatusRepository {
@@ -51,7 +53,7 @@ struct SampleLoopStatusSource: LoopStatusSource {
                 state: state,
                 epic: epic,
                 discussion: discussion,
-                progress: progress.map { LoopStatusReport.Progress(completed: $0.0, total: $0.1) },
+                progress: progress.map { LoopStatusReport.Progress(completed: $0.0, total: $0.1, deferred: deferred) },
                 lastActivityAt: active.map(minutesAgo),
                 usageLimitedUntil: resumesIn.map { now.addingTimeInterval($0 * 60) },
                 checkedAt: minutesAgo(2)
@@ -66,13 +68,14 @@ struct SampleLoopStatusSource: LoopStatusSource {
             reported("beat-tap-ios", issue: 7, .running, "epic/practice-mode", goal: 3, progress: (2, 8), active: 95),
             reported("claude-plugins", issue: 14, .waitingForAnswer, "epic/hooks", goal: 9, progress: (6, 7), active: 40),
             reported("dotfiles", issue: 2, .noLoop),
-            reported("habit-log-ios", issue: 31, .gaveUp, "epic/widgets", goal: 22, progress: (3, 10), active: 180),
-            reported("lingo-cards", issue: 5, .completed, "epic/mvp", goal: 1, progress: (9, 9), active: 600),
+            // 保留で閉じたタスクがある
+            reported("habit-log-ios", issue: 31, .gaveUp, "epic/widgets", goal: 22, progress: (3, 10), deferred: 1, active: 180),
+            reported("lingo-cards", issue: 5, .completed, "epic/mvp", goal: 1, progress: (9, 9), deferred: 2, active: 600),
             reported("notti-ios", issue: 44, .usageLimited, "epic/notification", goal: 12, progress: (4, 11), active: 20, resumesIn: 120),
             // 担当 PC はいるが、状態用の Issue がまだ無い
             Self.repository(org, "pocket-budget", heartbeat: minutesAgo(5), issues: []),
             // 手で始めた epic（ゴール元の記録が無い）
-            reported("recipe-box", issue: 3, .waitingToStart, "epic/search", progress: (1, 6), active: 300),
+            reported("recipe-box", issue: 3, .waitingToStart, "epic/search", progress: (0, 6), active: 300),
             // 担当の印も状態の確認時刻も古い
             Self.repository(org, "weather-mini", heartbeat: minutesAgo(3 * 60), issues: [
                 Self.issue(

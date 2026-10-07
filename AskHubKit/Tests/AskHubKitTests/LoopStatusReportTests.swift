@@ -46,6 +46,33 @@ struct LoopStatusReportTests {
         #expect(!body.contains("上限の解除"))
     }
 
+    @Test func decodesProgressWithAndWithoutDeferredCount() {
+        // 古いオーケストレーターは `deferred` を書かない
+        let old = #"<!-- ask-hub:loop-status {"checkedAt":"2027-01-15T08:00:00Z","#
+            + #""progress":{"completed":5,"total":12},"state":"running"} -->"#
+        #expect(LoopStatusReport.parse(old)?.progress == .init(completed: 5, total: 12))
+        #expect(LoopStatusReport.parse(old)?.progress?.deferred == nil)
+
+        let new = #"<!-- ask-hub:loop-status {"checkedAt":"2027-01-15T08:00:00Z","#
+            + #""progress":{"completed":5,"deferred":2,"total":12},"state":"running"} -->"#
+        #expect(LoopStatusReport.parse(new)?.progress == .init(completed: 5, total: 12, deferred: 2))
+    }
+
+    @Test func writesDeferredCountOnlyWhenKnown() {
+        var report = running
+        #expect(!report.issueBody.contains("deferred"))
+        report.progress = .init(completed: 5, total: 12, deferred: 2)
+        let body = report.issueBody
+        #expect(body.contains(#""progress":{"completed":5,"deferred":2,"total":12}"#))
+        #expect(body.contains("| 進捗 | 5 / 12 タスク完了（うち保留 2） |"))
+        #expect(LoopStatusReport.parse(body) == report)
+
+        // 保留が 0 件なら表は今と同じ
+        report.progress = .init(completed: 5, total: 12, deferred: 0)
+        #expect(report.issueBody.contains("| 進捗 | 5 / 12 タスク完了 |"))
+        #expect(LoopStatusReport.parse(report.issueBody) == report)
+    }
+
     @Test func keepsMarkerIntactWhenValuesContainCommentClose() {
         let report = LoopStatusReport(state: .running, epic: "epic/a-->b|c\nd", checkedAt: now)
         let body = report.issueBody
