@@ -52,6 +52,8 @@ public struct LoopStatusDisplay: Sendable, Equatable {
     public var discussionText: String?
     /// 「5 / 12 タスク完了」
     public var progressText: String?
+    /// 「5 / 12」（ゲージの横に出す数。読み上げは `progressText`）
+    public var progressCountText: String?
     /// 終わったタスクの割合（0〜1）。進捗が無ければ `nil`
     public var progressFraction: Double?
     /// 進捗のゲージの段階。進捗が無ければ `nil`
@@ -90,6 +92,7 @@ extension LoopStatusRow {
             epic: report?.epic,
             discussionText: report?.discussion.map { "ゴール元: Discussion #\($0)" },
             progressText: report?.progress?.text,
+            progressCountText: report?.progress?.countText,
             progressFraction: report?.progress?.fraction,
             progressStage: report?.progress.map { LoopStatusDisplay.ProgressStage(fraction: $0.fraction) },
             lastActivityAt: report?.lastActivityAt,

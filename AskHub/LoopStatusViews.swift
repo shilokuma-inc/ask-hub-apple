@@ -126,21 +126,49 @@ struct LoopStatusRowView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if display.progressText != nil || display.lastActivityAt != nil {
-                HStack(spacing: 6) {
-                    if let progressText = display.progressText {
-                        Text(progressText)
-                    }
-                    Spacer()
-                    if let lastActivityAt = display.lastActivityAt {
-                        Text("最後の動き: \(lastActivityAt, format: .relative(presentation: .named))")
-                    }
+            if let fraction = display.progressFraction, let stage = display.progressStage, let countText = display.progressCountText {
+                HStack(spacing: 8) {
+                    // 色だけに頼らないよう横に数を出すので、ゲージは読み上げない
+                    ProgressGauge(fraction: fraction, color: stage.color)
+                        .accessibilityHidden(true)
+                    Text(countText)
+                        .monospacedDigit()
+                        .accessibilityLabel(display.progressText ?? countText)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
+
+            if let lastActivityAt = display.lastActivityAt {
+                Text("最後の動き: \(lastActivityAt, format: .relative(presentation: .named))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// 進捗の横長のゲージ。`fraction`（0〜1）の分だけ `color` で塗る
+struct ProgressGauge: View {
+    let fraction: Double
+    let color: Color
+
+    /// ゲージの太さ
+    static let height: CGFloat = 6
+
+    var body: some View {
+        Capsule()
+            .fill(.quaternary)
+            .overlay(alignment: .leading) {
+                GeometryReader { proxy in
+                    Capsule()
+                        .fill(color)
+                        .frame(width: proxy.size.width * min(max(fraction, 0), 1))
+                }
+            }
+            .frame(height: Self.height)
+            .frame(maxWidth: .infinity)
     }
 }
 
@@ -250,6 +278,26 @@ extension LoopStatusDisplay.Tone {
 
         case .inactive:
             .secondary
+        }
+    }
+}
+
+extension LoopStatusDisplay.ProgressStage {
+    /// ゲージの色。しきい値は `ProgressStage.init(fraction:)`、色はここの 1 か所で決める。
+    /// 始まったばかりの段階が「異常」に見えないよう、赤（`Tone.failure`）・橙（`Tone.paused`）は使わない
+    var color: Color {
+        switch self {
+        case .starting:
+            .indigo
+
+        case .halfway:
+            .blue
+
+        case .nearlyDone:
+            .teal
+
+        case .completed:
+            .green
         }
     }
 }
