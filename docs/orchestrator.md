@@ -129,6 +129,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `loopCommand` | ✓ | ループを起動するコマンド。シェルを経由せず引数の配列のまま実行する |
 | `ideaCommand` | | 依頼から質問付きの Discussion を作らせるコマンド。シェルを経由せず実行し、終わるまで待つ（30 分で打ち切る）。プロンプトは標準入力で渡す（依頼の本文をプロセスの引数に出さないため）。省略時は `["claude", "-p", "--allowedTools", "Bash(gh:*)"]`。`{repository}` / `{checkoutPath}` が使える |
 | `iterationTimeoutMinutes` | | ループの 1 周がこれより長く進まなければ、固まったとみなして止める（分。省略時は 90、10 以上 1440 以下）。下の「固まったループを止める」を参照 |
+| `conflictCommand` | | epic の最終 PR のコンフリクトを解消させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-resolve-conflict`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` が使える |
 
 ### `loopCommand` のプレースホルダ
 
@@ -320,6 +321,23 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 - 書けなかったときはログに出し、次のポーリングで Issue の一覧から取り直して書き直す
 - 本文に書くのは epic 名・Discussion の番号・件数・時刻だけ。ローカルパス・ログの中身・PC 名は書かない（public リポジトリでは誰でも読める）
 - `ready-for-loop` の検索に失敗したポーリングでは書き出さない（次のポーリングで書く）
+
+## epic の最終 PR のコンフリクトを解消する
+
+epic の最終 PR が既定ブランチとコンフリクトすると、AskHub のアプリからはマージも解消もできない。ポーリングの最後に（1 回のポーリングで 1 件）、次を行う。
+
+1. org 全体の open な `epic-final` PR のうち、GitHub が `CONFLICTING` と判定したものを探す（`UNKNOWN` はまだ判定中なので次のポーリングに回す）。担当リポジトリのものだけを扱う
+2. `conflictCommand`（既定は `askhub-resolve-conflict`）を、終わるまで待って実行する。スクリプトはループの作業場所（制御用 worktree・スロット）とは別の一時 worktree で、head に base を取り込む
+   - コンフリクトしなければ、そのまま head に push する（`ASKHUB_RESULT: merged`）
+   - コンフリクトしたら `claude -p` に解消させ、CLAUDE.md の検証コマンドを通させてからマージコミットを作らせる。
+     スクリプトが、マージが完了していること・コンフリクトの印が残っていないこと・head と base の両方を含むことを確かめてから、
+     `--force-with-lease` で push する（`ASKHUB_RESULT: resolved`）。確かめられなければ push しない（`ASKHUB_RESULT: unresolved <理由>`）
+3. 結果を PR にコメントする。解消できなかったときは理由と、手元での解消が要ることを書く
+4. 同じ組み合わせ（head と base のコミット）では 1 回しか試さない。解消できなかったのが 3 回続いたら、その PR はあきらめる。
+   コンフリクトが無くなった（検索に出なくなった）PR は忘れる。記録はメモリ上だけなので、再起動すると数え直す
+5. Claude の利用上限で終わったときは試したことにせず、解除の後に試し直す
+
+ログは `~/Library/Logs/askhub/loops/<リポジトリ>-conflict-<PR 番号>-*.log`（claude の出力）。
 
 ## 固まったループを止める
 
