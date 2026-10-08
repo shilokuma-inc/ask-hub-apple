@@ -102,11 +102,14 @@ public enum LaunchPlanner {
         statuses: [String: LoopStatus],
         excluding launched: Set<String> = [],
         epicsInProgress: Set<String> = [],
-        manualLoops: [ManualLoopDiscussion] = []
+        manualLoops: [ManualLoopDiscussion] = [],
+        trust: TrustDirectory? = nil
     ) -> [LaunchDecision] {
+        // 省略したときは設定の一覧だけを信用する
+        let trust = trust ?? TrustDirectory(base: config.trustedAuthors)
         // 1 つのリポジトリで同時に動かすループは 1 つ。番号の小さい（先に作られた）Discussion から起動する
         var launching: [String: Int] = [:]
-        let manual = manualLoopNumbers(manualLoops, trustedAuthors: config.trustedAuthors)
+        let manual = manualLoopNumbers(manualLoops, trust: trust)
         return discussions.sorted { $0.number < $1.number }.map { discussion in
             guard let repository = config.repository(named: discussion.repository) else {
                 return .skip(discussion, .notAssigned)
@@ -115,7 +118,7 @@ public enum LaunchPlanner {
                 return .skip(discussion, .alreadyLaunched)
             }
             // public リポジトリでは誰でも Discussion を作れるため、信用する author のものだけを指示として扱う
-            guard config.trustedAuthors.contains(discussion.author) else {
+            guard trust.authors(for: discussion.repository).contains(discussion.author) else {
                 return .skip(discussion, .untrustedAuthor)
             }
             let key = repository.fullName.lowercased()
@@ -152,9 +155,9 @@ public enum LaunchPlanner {
     /// 担当リポジトリごとの、信用する author の open な `manual-loop` の Discussion の最も小さい番号。
     /// 手で回す epic はオーケストレーターから見えないので、Discussion が open なあいだは終わっていないとみなす
     /// （最終 PR のマージで Discussion は閉じられる）。信用外の author の `manual-loop` は無視する
-    private static func manualLoopNumbers(_ discussions: [ManualLoopDiscussion], trustedAuthors: TrustedAuthors) -> [String: Int] {
+    private static func manualLoopNumbers(_ discussions: [ManualLoopDiscussion], trust: TrustDirectory) -> [String: Int] {
         var numbers: [String: Int] = [:]
-        for discussion in discussions where trustedAuthors.contains(discussion.author) {
+        for discussion in discussions where trust.authors(for: discussion.repository).contains(discussion.author) {
             let key = discussion.repository.lowercased()
             numbers[key] = min(numbers[key] ?? discussion.number, discussion.number)
         }

@@ -50,7 +50,9 @@ enum AskHubOrchestrator {
             ]),
             log: log,
             // ポーリングのたびに設定を読み直し、担当リポジトリの作成・削除の依頼で書き換える
-            configStore: configStore
+            configStore: configStore,
+            // 担当リポジトリに書き込み権限を持つアカウントも信用する（設定の trustRepositoryWriters が有効なとき）
+            repositoryWriters: RepositoryWriters(source: GitHubRepositoryWriters(client: client))
         )
         if arguments.runsOnce {
             do {
@@ -100,7 +102,8 @@ enum AskHubOrchestrator {
     private static func summary(of config: OrchestratorConfig) -> String {
         var lines = [
             "orgs: \(config.orgs.joined(separator: ", "))",
-            "trusted authors: \(config.trustedAuthorLogins.joined(separator: ", "))",
+            "trusted authors: \(config.trustedAuthorLogins.joined(separator: ", "))"
+                + (config.trustsRepositoryWriters ? "（ほかに担当リポジトリへの書き込み権限を持つアカウント）" : ""),
             "poll interval: \(config.pollInterval.components.seconds) 秒",
             "new repositories: \(config.repositoryCommands.newCheckoutDirectory)",
             "repositories:"

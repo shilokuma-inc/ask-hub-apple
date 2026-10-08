@@ -34,7 +34,11 @@ extension Orchestrator {
         case let .resume(attempt):
             do {
                 // 再開では Discussion を伴わないので `{discussion}` は空になる
-                try await runtime.launch(config.loopCommand.render(for: repository), for: repository)
+                try await runtime.launch(
+                    config.loopCommand.render(for: repository),
+                    environment: loopEnvironment(for: repository),
+                    for: repository
+                )
             } catch {
                 // 同じポーリングで、途中の epic に新しい Discussion のループを被せない
                 statuses[key] = LoopStatus(stateFileExists: true, processAlive: false, stalled: true)

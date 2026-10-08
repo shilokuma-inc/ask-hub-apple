@@ -18,6 +18,7 @@ import Foundation
 /// （既定値は `TrustedAuthors.default`・60 秒・`IdeaCommandTemplate.defaultArguments`・90 分）。
 /// `createRepositoryCommand`・`removeRepositoryCommand`・`newRepositoryDirectory` も省略でき、既定は
 /// `~/.local/bin/askhub-create-repo`・`~/.local/bin/askhub-remove-repo`・最初の担当リポジトリと同じディレクトリ。
+/// `trustRepositoryWriters`（担当リポジトリに書き込み権限を持つアカウントも信用するか）も省略でき、既定は `true`。
 /// 検索する organization は担当リポジトリの owner から決める。以前の `org` が残っていても無視する
 public struct OrchestratorConfigLoader: Sendable {
     /// `~` の展開に使うホームディレクトリ。テストで差し替える
@@ -103,7 +104,8 @@ public struct OrchestratorConfigLoader: Sendable {
             conflictCommand: try file.conflictCommand.map { arguments throws(OrchestratorConfigError) in
                 try ConflictCommandTemplate(arguments: arguments)
             },
-            repositoryCommands: repositoryCommands
+            repositoryCommands: repositoryCommands,
+            trustsRepositoryWriters: file.trustRepositoryWriters ?? true
         )
     }
 
@@ -206,4 +208,5 @@ private struct ConfigFile: Decodable {
     let createRepositoryCommand: [String]?
     let removeRepositoryCommand: [String]?
     let newRepositoryDirectory: String?
+    let trustRepositoryWriters: Bool?
 }

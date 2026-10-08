@@ -122,6 +122,10 @@ public actor Orchestrator {
     let configStore: (any OrchestratorConfigStore)?
     /// 最後に読み直しに失敗した理由。同じ失敗をポーリングのたびにログに出さない
     var lastReloadFailure: String?
+    /// 担当リポジトリごとの信用する author。ポーリングのはじめに求め直す
+    var trust: TrustDirectory
+    /// 担当リポジトリに書き込み権限を持つアカウントの取得元。`nil` なら設定の一覧だけを信用する
+    let repositoryWriters: RepositoryWriters?
     let github: any OrchestratorGitHub
     private let inbox: any InboxSource
     let runtime: any LoopRuntime
@@ -159,6 +163,7 @@ public actor Orchestrator {
     /// - Parameters:
     ///   - inbox: `needs-answer` の Discussion / PR と質問の取得元
     ///   - configStore: 設定の読み直しと担当リポジトリの書き換え（担当リポジトリの作成・削除の依頼に使う）
+    ///   - repositoryWriters: 担当リポジトリに書き込み権限を持つアカウントの取得元（設定の `trustRepositoryWriters` が有効なときに使う）
     public init(
         config: OrchestratorConfig,
         github: any OrchestratorGitHub,
@@ -166,10 +171,13 @@ public actor Orchestrator {
         runtime: any LoopRuntime,
         log: @escaping @Sendable (String) -> Void,
         now: @escaping @Sendable () -> Date = { Date() },
-        configStore: (any OrchestratorConfigStore)? = nil
+        configStore: (any OrchestratorConfigStore)? = nil,
+        repositoryWriters: RepositoryWriters? = nil
     ) {
         self.config = config
         self.configStore = configStore
+        self.trust = TrustDirectory(base: config.trustedAuthors)
+        self.repositoryWriters = repositoryWriters
         self.github = github
         self.inbox = inbox
         self.runtime = runtime
@@ -197,8 +205,8 @@ public actor Orchestrator {
     /// 1 回分のポーリング。実行した起動判定を返す
     @discardableResult
     public func pollOnce() async throws -> [LaunchDecision] {
-        // 手で書き換えた設定も、再起動せずに反映する
-        reloadConfig()
+        // 手で書き換えた設定と、担当リポジトリごとの信用する author（書き込み権限を持つアカウント）を、再起動せずに反映する
+        await refreshConfigAndTrust()
         // 固まったループを止める（止めた後は、異常終了したループとして再開する）
         await terminateHungLoops()
         var statuses: [String: LoopStatus] = [:]
@@ -252,7 +260,8 @@ public actor Orchestrator {
                 statuses: statuses,
                 excluding: tracker.blockedDiscussionIDs.union(handled),
                 epicsInProgress: Set(snapshots.filter(\.value.inProgress).keys).union(unfinalized),
-                manualLoops: manualLoops
+                manualLoops: manualLoops,
+                trust: trust
             )
             await carryOut(decisions, statuses: &statuses)
         }
@@ -317,7 +326,7 @@ public actor Orchestrator {
             // 1 件の失敗（権限不足など）で、ほかの Discussion / PR の再開とラベルの削除を止めない
             do {
                 let threads = try await inbox.questionThreads(of: subject)
-                snapshots.append(AnswerSnapshot(subject: subject, threads: threads, trustedAuthors: config.trustedAuthors))
+                snapshots.append(AnswerSnapshot(subject: subject, threads: threads, trustedAuthors: trust.authors(for: subject.repository)))
             } catch {
                 log("\(subject.repository)#\(subject.number) の質問を取得できませんでした: \(error)")
             }
@@ -350,7 +359,11 @@ public actor Orchestrator {
         let key = repository.fullName.lowercased()
         do {
             // 再開では Discussion を伴わないので `{discussion}` は空になる
-            try await runtime.launch(config.loopCommand.render(for: repository), for: repository)
+            try await runtime.launch(
+                config.loopCommand.render(for: repository),
+                environment: loopEnvironment(for: repository),
+                for: repository
+            )
         } catch {
             let entry = watcher.recordLaunchFailure(repositoryKey: key)
             log("\(repository.fullName) のループを再開できませんでした（\(entry.attempts)/\(ResumeWatcher.maxAttempts) 回目）: \(error)")
@@ -375,7 +388,11 @@ public actor Orchestrator {
     private func launch(_ discussion: ReadyDiscussion, in repository: RepositoryConfig) async -> Bool {
         let key = repository.fullName.lowercased()
         do {
-            try await runtime.launch(config.loopCommand.render(for: repository, discussionNumber: discussion.number), for: repository)
+            try await runtime.launch(
+                config.loopCommand.render(for: repository, discussionNumber: discussion.number),
+                environment: loopEnvironment(for: repository),
+                for: repository
+            )
         } catch {
             let entry = tracker.recordLaunchFailure(of: discussion, repositoryKey: key)
             let next = entry.phase == .gaveUp ? "起動をやめます（ready-for-loop は残します）" : "次のポーリングで再試行します"

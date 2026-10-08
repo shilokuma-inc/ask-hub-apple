@@ -61,7 +61,7 @@ extension Orchestrator {
         // コメントした後にクローズだけ失敗していたら、コメントを重ねない
         let comments = try await github.comments(in: issue.repository, issue: issue.number)
         let commented = comments.contains {
-            DecisionLog.isTrustedMarked($0, with: DecisionLog.closeMarker, trustedAuthors: config.trustedAuthors)
+            DecisionLog.isTrustedMarked($0, with: DecisionLog.closeMarker, trustedAuthors: trust.authors(for: issue.repository))
         }
         if !commented {
             let body = DecisionLog.closingComment(pullRequest: pullRequest, uncheckedItems: DecisionLog.uncheckedItems(in: issue.body))
@@ -89,7 +89,7 @@ extension Orchestrator {
             return
         }
         let comments = try await github.comments(in: issue.repository, issue: issue.number)
-        let instructions = DecisionLog.unprocessedInstructions(in: comments, trustedAuthors: config.trustedAuthors)
+        let instructions = DecisionLog.unprocessedInstructions(in: comments, trustedAuthors: trust.authors(for: issue.repository))
         let attempts = pending.map { settleUnconfirmedResume($0, instructions: instructions, in: repository) } ?? 0
         guard let latest = instructions.last else {
             return
@@ -110,7 +110,8 @@ extension Orchestrator {
             // epic のタスクがすべて完了していても起動するよう、起動スクリプトに再開の理由を渡す
             try await runtime.launch(
                 config.loopCommand.render(for: repository),
-                environment: [Self.resumeReasonVariable: Self.decisionLogResumeReason],
+                environment: loopEnvironment(for: repository)
+                    .merging([Self.resumeReasonVariable: Self.decisionLogResumeReason]) { _, new in new },
                 for: repository
             )
         } catch {
