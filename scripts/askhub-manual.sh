@@ -7,13 +7,15 @@
 #          scripts/askhub-manual.sh final
 #
 # 流れ（担当者の Claude Code が、AskHub からコピーした指示を受けて行う）:
-#   1. start:  担当者が自分か確かめ、ready-for-loop を外し、ralph-setup.sh で制御用 worktree とスロットを作る。
+#   1. start:  担当者が自分か確かめ、ralph-setup.sh で制御用 worktree とスロットを作り、epic を origin に push してから ready-for-loop を外す。
 #              信用する author（このリポジトリに書き込み権限を持つ人）を表示し、状態用の Issue を「開始待ち」で書く
 #   2. （Claude が playbook の {{...}} を埋め、STEP A に沿って goal を作る）
 #   3. launch: 完了語を記録し、ralph-start.sh で state を作り、制御用 worktree で claude -p のループをバックグラウンドで起動する
+#              （bypassPermissions で起動する。MDM などで禁止された Mac では auto モード。どちらも使えなければ起動しない）
 #   4. status: 状態用の Issue を書き手 manual・回している人つきで書き直す（playbook の STEP D から呼ぶ。10 分に 1 回まで）
 #   5. resume: 回答が付いた後などに、記録した完了語でループを起動し直す
 #   6. final:  ループが終わったら、ゴール元の目印つきの最終 PR（epic-final）を作る。制御用 worktree の外から呼ぶ
+#              goal に未完了のタスクが残っていれば作らない（回答待ちの PR だけが残っているときは作る）
 #
 # 必要なもの: gh（このリポジトリに書き込み権限のあるアカウントでログイン済み）・git・claude（ralph-loop プラグイン入り）
 set -euo pipefail
@@ -62,6 +64,12 @@ state_set() {
   { [[ -n "$rest" ]] && printf '%s\n' "$rest"; printf '%s=%s\n' "$1" "$2"; } > "$STATE_FILE.tmp"
   mv "$STATE_FILE.tmp" "$STATE_FILE"
 }
+
+# start で記録した base branch を、resume・final でも使う（ASKHUB_BASE_BRANCH を付け忘れても、開始時と同じ base になるように）
+if [[ "$COMMAND" != start ]]; then
+  RECORDED_BASE=$(state_get base_branch)
+  if [[ -n "$RECORDED_BASE" ]]; then BASE_BRANCH="$RECORDED_BASE"; fi
+fi
 
 viewer() { gh api user --jq .login; }
 
@@ -145,7 +153,7 @@ write_status() {
   epic=$(state_get epic)
   runner=$(state_get runner)
   [[ -n "$discussion" && -n "$epic" && -n "$runner" ]] || fail "手動ループの記録がありません（先に start を実行してください）"
-  waiting=$(gh pr list -R "$REPOSITORY" --base "$epic" --label needs-answer --state open --json number --jq '.[].number' | sort -n | paste -sd, -)
+  waiting=$(gh pr list -R "$REPOSITORY" --base "$epic" --label needs-answer --state open --limit 1000 --json number --jq '.[].number' | sort -n | paste -sd, -)
   state=$(compute_state "$stopping" "$waiting")
   total=$(count_lines '^- \[[ x]\]' "$GOAL")
   completed=$(count_lines '^- \[x\]' "$GOAL")
@@ -184,13 +192,26 @@ write_status() {
 BODY
 )
   # 信用する author が作った状態用の Issue のうち、open で最も新しく更新されたもの（無ければ閉じたもので最も新しく更新されたもの）を使う
-  local trusted
-  trusted=$(trusted_authors)
-  issue=""
-  while IFS=$'\t' read -r number author; do
-    if is_trusted "$author" "$trusted"; then issue="$number"; break; fi
-  done < <(gh issue list -R "$REPOSITORY" --label loop-status --state all --limit 100 --json number,author,state,updatedAt \
-             --jq 'sort_by([(if .state == "OPEN" then 0 else 1 end), (.updatedAt | fromdateiso8601 | -.)]) | .[] | "\(.number)\t\(.author.login)"')
+  # 信用する author ごとに探す（信用外の author が loop-status の Issue を大量に作っても、件数の上限で取りこぼさない）
+  local trusted author candidates=""
+  trusted=$(trusted_authors) || trusted=""
+  # 取得できないときは状態用の Issue を作らない。ループ（STEP D や launch の後）を止めないよう、警告だけ出して成功で返す
+  if [[ -z "$trusted" ]]; then
+    echo "warning: 信用する author を取得できないため、状態用の Issue を更新しません（gh auth status と、このリポジトリの権限を確認してください）" >&2
+    return 0
+  fi
+  local result
+  while IFS= read -r author; do
+    [[ -n "$author" ]] || continue
+    # 取得に失敗したときも、上と同じく警告だけ出して成功で返す（取りこぼしたまま新しい Issue を作らない）
+    if ! result=$(gh issue list -R "$REPOSITORY" --label loop-status --state all --author "$author" --limit 1000 --json number,state,updatedAt \
+                    --jq '.[] | "\(if .state == "OPEN" then 0 else 1 end)\t\(.updatedAt)\t\(.number)"'); then
+      echo "warning: @$author の状態用の Issue を取得できないため、状態用の Issue を更新しません（gh auth status を確認してください）" >&2
+      return 0
+    fi
+    candidates+="$result"$'\n'
+  done < <(printf '%s\n' "${trusted//,/$'\n'}")
+  issue=$(printf '%s' "$candidates" | sed '/^$/d' | sort -t $'\t' -k1,1n -k2,2r | head -n 1 | cut -f 3)
   if [[ -z "$issue" ]]; then
     gh label create loop-status -R "$REPOSITORY" --color bfdadc --description "AskHub のループの状態を書き出す Issue" >/dev/null 2>&1 || true
     gh issue create -R "$REPOSITORY" --title "【AskHub】ループの状態" --label loop-status --body "$body" >/dev/null
@@ -205,13 +226,96 @@ BODY
 
 # ---- ループの起動 --------------------------------------------------------------------------
 
+# claude を指定の権限モードで起動したとき、実際に効く権限モード（起動時の init イベントから読む）。
+# MDM や組織の管理設定で bypassPermissions が禁止されていると、エラーにならずに default で起動し、
+# 確認の要る操作（ファイルの編集・コマンド）がすべて黙って拒否されるので、起動の前に確かめる。
+# 本番のループと同じプロジェクト設定（制御用 worktree の .claude/settings.json など）で判定するよう、制御用 worktree で起動する。
+# ループの Stop hook に捕まらないよう、hook を止めて起動し、ループの state ファイルをよけた後に呼ぶ（launch_loop）。
+# init の行が出たら（または ASKHUB_PROBE_TIMEOUT 秒（既定 60）たったら）、子プロセスごと止める
+# （固まっても launch を止めない。claude の子プロセスが出力を開いたまま残っても待たないよう、新しいプロセスグループで起動する）。読めなければ空
+effective_permission_mode() {
+  local mode="$1" ticks=0 found="" limit=$(( ${ASKHUB_PROBE_TIMEOUT:-60} * 10 ))
+  # 確認の claude には Ctrl-C の SIGINT が届かないので、途中で中断（Ctrl-C・TERM）されたときも止めて、一時ディレクトリを消す。
+  # trap からは関数の local 変数が見えないので、PROBE_DIR・PROBE_PID に入れる（コマンド置換の中で呼ぶので、呼び出し元の変数と trap は変えない）
+  PROBE_DIR="" PROBE_PID=""
+  trap 'stop_probe "${PROBE_PID:-}"; [[ -z "${PROBE_DIR:-}" ]] || rm -rf "$PROBE_DIR"' EXIT
+  trap 'exit 130' INT TERM
+  PROBE_DIR=$(mktemp -d)
+  (cd "$CTL" && exec perl -e 'setpgrp(0, 0); exec @ARGV or exit 127' "${ASKHUB_CLAUDE:-claude}" -p --permission-mode "$mode" \
+      --settings '{"disableAllHooks":true}' --no-session-persistence --output-format stream-json --verbose --max-turns 1 \
+      "OK とだけ答えてください" </dev/null >"$PROBE_DIR/out" 2>/dev/null) &
+  PROBE_PID=$!
+  while (( ticks < limit )); do
+    found=$(grep -m 1 '"subtype":"init"' "$PROBE_DIR/out" 2>/dev/null | sed -n -E 's/.*"permissionMode": *"([^"]*)".*/\1/p' || true)
+    [[ -n "$found" ]] && break
+    kill -0 "$PROBE_PID" 2>/dev/null || break
+    sleep 0.1
+    ticks=$(( ticks + 1 ))
+  done
+  # 終わる直前に書かれた init も拾う
+  [[ -n "$found" ]] || found=$(grep -m 1 '"subtype":"init"' "$PROBE_DIR/out" 2>/dev/null | sed -n -E 's/.*"permissionMode": *"([^"]*)".*/\1/p' || true)
+  stop_probe "$PROBE_PID"
+  trap - EXIT INT TERM
+  rm -rf "$PROBE_DIR"
+  printf '%s' "$found"
+}
+
+# 確認の claude を、子プロセスごと止める。
+# TERM で止まらないプロセスが残っても wait が戻らなくならないよう、2 秒待って残っていれば KILL する。
+# プロセスグループを作る前（setpgrp の前）に中断されたときはグループがないので、PID にも送る
+stop_probe() {
+  local pid="$1" grace=0
+  [[ -n "$pid" ]] || return 0
+  kill -TERM -- "-$pid" 2>/dev/null || true
+  kill -TERM "$pid" 2>/dev/null || true
+  while kill -0 -- "-$pid" 2>/dev/null && (( grace < 20 )); do
+    sleep 0.1
+    grace=$(( grace + 1 ))
+  done
+  kill -KILL -- "-$pid" 2>/dev/null || true
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
+
+# ループを起動する権限モード。bypassPermissions が使えなければ auto にする。どちらも使えなければ起動しない。
+# 確認が中断されたとき（コマンド置換が失敗したとき）は、次の確認に進まずに失敗を返す
+loop_permission_mode() {
+  local mode
+  mode=$(effective_permission_mode bypassPermissions) || return 1
+  if [[ "$mode" == bypassPermissions ]]; then
+    echo bypassPermissions
+    return 0
+  fi
+  echo "この Mac では bypassPermissions が使えないため（起動時の権限モード: ${mode:-不明}）、auto モードで起動します" >&2
+  mode=$(effective_permission_mode auto) || return 1
+  if [[ "$mode" != auto ]]; then
+    fail "この Mac では bypassPermissions も auto モードも使えません（起動時の権限モード: ${mode:-不明}）。確認の要る操作がすべて拒否されてループが進まないため、起動しません"
+  fi
+  echo auto
+}
+
 launch_loop() {
   local promise="$1"
   command -v "${ASKHUB_CLAUDE:-claude}" >/dev/null 2>&1 || fail "claude が見つかりません"
   loop_alive && fail "ループは既に動いています（PID $(cat "$PID_FILE")）。止めるには scripts/ralph-stop.sh"
-  [[ -f "$LOOP_STATE" ]] && rm -f "$LOOP_STATE"
+  # 権限モードは、ループの state ファイルをよけてから確かめる（確認の起動がループの Stop hook に捕まらないように）。
+  # 確かめられない・新しい state を作れない・途中で中断されたときは元に戻して止める（止まったループの状態を status が正しく出せるように）
+  local saved_state="" permission_mode
+  if [[ -f "$LOOP_STATE" ]]; then
+    saved_state="$LOOP_STATE.probe"
+    mv "$LOOP_STATE" "$saved_state"
+    # 確かめられなかったとき・途中で中断されたときは、よけた state を元に戻す
+    trap "mv $(printf '%q' "$saved_state") $(printf '%q' "$LOOP_STATE") 2>/dev/null || true" EXIT
+    trap 'exit 130' INT TERM
+  fi
+  permission_mode=$(loop_permission_mode) || exit 1
   (cd "$CTL" && "$MAIN/scripts/ralph-start.sh" "$promise" >/dev/null)
   [[ -f "$LOOP_STATE" ]] || fail "state ファイルを作れませんでした: $LOOP_STATE"
+  # 新しい state を作り終えてから、よけた state を消す（ralph-start.sh が失敗したときも元に戻せるように）
+  if [[ -n "$saved_state" ]]; then
+    trap - EXIT INT TERM
+    rm -f "$saved_state"
+  fi
   mkdir -p "$LOG_DIR"
   local log initial
   log="$LOG_DIR/$STEM-loop-$(date +%Y%m%d-%H%M%S).log"
@@ -220,11 +324,12 @@ launch_loop() {
   (
     cd "$CTL"
     nohup "${ASKHUB_CLAUDE:-claude}" -p --add-dir "${CTL%-ctl}-a" --add-dir "${CTL%-ctl}-b" \
-      --permission-mode bypassPermissions "$initial" </dev/null >>"$log" 2>&1 &
+      --permission-mode "$permission_mode" "$initial" </dev/null >>"$log" 2>&1 &
     echo $! > "$PID_FILE"
   )
   state_set log "$log"
-  echo "ループを起動しました（PID $(cat "$PID_FILE")、ログ: $log）"
+  state_set permission_mode "$permission_mode"
+  echo "ループを起動しました（PID $(cat "$PID_FILE")、権限モード: $permission_mode、ログ: $log）"
   echo "進み具合を見るには: tail -f \"$log\""
   write_status false true
 }
@@ -267,16 +372,22 @@ case "$COMMAND" in
     if [[ "$(printf '%s' "$ASSIGNEE" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$ME" | tr '[:upper:]' '[:lower:]')" && "${ASKHUB_MANUAL_FORCE:-}" != 1 ]]; then
       fail "この手動ループの担当者は @$ASSIGNEE です（あなたは @$ME）。担当を変えるときは、Discussion に担当のコメントを付け直してください"
     fi
+    # 同じ Discussion でも、動いているループの記録（完了語など）を消さないように拒否する
+    loop_alive && fail "制御用 worktree でループが動いています（PID $(cat "$PID_FILE")）。止めてから start を実行してください（止めるには scripts/ralph-stop.sh）"
     PREVIOUS=$(state_get discussion)
     if [[ -n "$PREVIOUS" && "$PREVIOUS" != "$DISCUSSION" && -f "$LOOP_STATE" ]]; then
       fail "制御用 worktree で Discussion #$PREVIOUS の手動ループが途中です。終わってから始めてください"
     fi
+    (cd "$MAIN" && scripts/ralph-setup.sh "$EPIC" "$BASE_BRANCH" >/dev/null)
+    # 子 PR の base になるので、epic を origin に置いておく（ralph-setup.sh は push しない）
+    git -C "$MAIN" push --quiet -u origin "$EPIC" || fail "$EPIC を origin に push できません"
+    # 準備と push が済んでから ready-for-loop を外す（途中で失敗したとき、ラベルだけ外れた状態を残さない）
     remove_ready_label "$DISCUSSION_ID"
-    (cd "$MAIN" && scripts/ralph-setup.sh "$EPIC" >/dev/null)
     rm -f "$STATE_FILE"
     state_set repository "$REPOSITORY"
     state_set discussion "$DISCUSSION"
     state_set epic "$EPIC"
+    state_set base_branch "$BASE_BRANCH"
     state_set runner "$ME"
     write_status false true
     cat <<NEXT
@@ -317,20 +428,47 @@ NEXT
     [[ -n "$PROMISE" ]] || fail "完了語の記録がありません（launch で起動してください）"
     EPIC=$(state_get epic)
     # 片付け済みのスロットを作り直す（ralph-setup.sh は既存の worktree を再利用する）
-    (cd "$MAIN" && scripts/ralph-setup.sh "$EPIC" >/dev/null)
+    (cd "$MAIN" && scripts/ralph-setup.sh "$EPIC" "$BASE_BRANCH" >/dev/null)
     refresh_trusted_authors "$(trusted_authors)"
     launch_loop "$PROMISE"
     ;;
 
   final)
     [[ -f "$STATE_FILE" ]] || fail "手動ループの記録がありません"
-    if [[ -d "$CTL" && "$(pwd -P)" == "$(cd "$CTL" && pwd -P)"* ]]; then
-      fail "制御用 worktree の外（メインの checkout など）で実行してください"
+    # 制御用 worktree そのものか、その中なら拒否する（前方一致だと …-ralph-ctl2 のような別のディレクトリも拒否してしまう）
+    if [[ -d "$CTL" ]]; then
+      CTL_REAL=$(cd "$CTL" && pwd -P)
+      HERE=$(pwd -P)
+      if [[ "$HERE" == "$CTL_REAL" || "$HERE" == "$CTL_REAL/"* ]]; then
+        fail "制御用 worktree の外（メインの checkout など）で実行してください"
+      fi
     fi
     loop_alive && fail "ループがまだ動いています。終わってから最終 PR を作ってください"
     DISCUSSION=$(state_get discussion)
     EPIC=$(state_get epic)
-    EXISTING=$(gh pr list -R "$REPOSITORY" --head "$EPIC" --base "$BASE_BRANCH" --state all --json url --jq '.[0].url // ""')
+    # status と同じ判定で状態を求め、goal のタスクが終わっているときだけ進める
+    # 回答待ちの PR が残っていても作る（自動ループと同じ。回答待ちの PR は下で本文に載せる）
+    # goal が読めないと未完了のタスクを 0 件と数えてしまうので、先に拒否する
+    [[ -f "$GOAL" && -r "$GOAL" ]] || fail "goal がありません、または読み込めません: $GOAL"
+    WAITING=$(gh pr list -R "$REPOSITORY" --base "$EPIC" --label needs-answer --state open --limit 1000 --json number --jq '.[].number' | sort -n | paste -sd, -)
+    # ※回答待ちの未完了タスクごとに、goal に書いた PR（※回答待ち（PR #123 / ask id 456））が open な回答待ちの PR か確かめる
+    # PR を閉じた・ラベルを外したタスクは、compute_state では完了扱いになり、本文の「回答待ちの PR」にも載らないので拒否する
+    while IFS= read -r TASK; do
+      if [[ "${TASK#*※回答待ち}" =~ PR[[:space:]]*#([0-9]+) ]]; then
+        [[ ",$WAITING," == *",${BASH_REMATCH[1]},"* ]] \
+          || fail "goal の ※回答待ち のタスクの PR #${BASH_REMATCH[1]} が、open な回答待ちの PR（needs-answer）ではありません。goal を直すか、resume でループを再開してください: $TASK"
+      else
+        fail "goal の ※回答待ち のタスクに PR 番号がありません。goal を直してください: $TASK"
+      fi
+    done < <(grep -E '^- \[ \].*※回答待ち' "$GOAL" || true)
+    FINAL_STATE=$(compute_state true "$WAITING")
+    case "$FINAL_STATE" in
+      completed | waiting-for-answer) ;;
+      waiting-to-start) fail "goal に未完了のタスクが残っています（$GOAL）。scripts/askhub-manual.sh resume でループを再開してください" ;;
+      *) fail "ループの状態が「$(state_title "$FINAL_STATE")」のため、最終 PR を作れません" ;;
+    esac
+    # マージせずに閉じた PR は既存として扱わない（作り直せるように）。open かマージ済みがあれば作らない
+    EXISTING=$(gh pr list -R "$REPOSITORY" --head "$EPIC" --base "$BASE_BRANCH" --state all --json url,state --jq '[.[] | select(.state != "CLOSED")][0].url // ""')
     if [[ -n "$EXISTING" ]]; then
       echo "最終 PR は既にあります: $EXISTING"
       exit 0
@@ -338,12 +476,19 @@ NEXT
     SUMMARY=$(awk '/^## 最終 PR に載せる内容/{f=1; next} /^## /{f=0} f' "$RALPH_STATE" 2>/dev/null | grep -v '^<!--.*-->$' || true)
     [[ -n "$(printf '%s' "$SUMMARY" | tr -d '[:space:]')" ]] || fail "$RALPH_STATE の「最終 PR に載せる内容」が空です（ループが STEP D で埋めます）"
     gh label create epic-final -R "$REPOSITORY" --color B60205 --description "epic から develop への最終 PR" >/dev/null 2>&1 || true
+    # 回答待ちの PR は、ループが書いた内容に頼らず、この時点で open なものを本文に載せる（ask の内容は各 PR を見てもらう）
+    if [[ -n "$WAITING" ]]; then
+      SUMMARY=$(printf '%s\n\n## 回答待ちの PR\n\n%s\n\n質問の内容はそれぞれの PR の ask を確認してください。' "$SUMMARY" "$(printf '%s\n' "${WAITING//,/$'\n'}" | sed 's/^/- #/')")
+    fi
     # 先頭の 2 行は、マージ時にゴール元の Discussion を閉じるワークフロー（close-goal-discussion.yml）が読む目印
     BODY=$(printf 'ゴール元: Discussion #%s\n<!-- ask-hub:discussion %s -->\n\n%s\n\n---\nこの PR は手動ループ（@%s）が作成しました。AskHub アプリの「要対応」タブの「マージ待ち」から確認して、merge commit でマージしてください。\n' \
       "$DISCUSSION" "$DISCUSSION" "$SUMMARY" "$(state_get runner)")
     URL=$(gh pr create -R "$REPOSITORY" --base "$BASE_BRANCH" --head "$EPIC" --title "【FEAT】$EPIC を $BASE_BRANCH に取り込む" \
       --assignee @me --label epic-final --body "$BODY")
     echo "最終 PR を作りました: $URL"
+    if [[ "$BASE_BRANCH" != develop ]]; then
+      echo "注意: base が develop ではないため、マージしてもゴール元の Discussion は自動で閉じません（close-goal-discussion.yml は develop へのマージだけを見る）。マージ後に Discussion #$DISCUSSION を手で閉じてください" >&2
+    fi
     write_status true true
     ;;
 
