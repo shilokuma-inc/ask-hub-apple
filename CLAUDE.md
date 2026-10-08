@@ -95,4 +95,5 @@ CodeRabbit と Claude のセルフレビューで共通に使う。
 ```
 <リポジトリ> で Discussion #N の epic を手動ループで回して（scripts/askhub-manual.sh を使う）
 <リポジトリ> の Discussion #N の手動ループを再開して（scripts/askhub-manual.sh resume）
+<リポジトリ> の Discussion #N の手動ループの最終 PR を作って（scripts/askhub-manual.sh final）
 ```

@@ -290,9 +290,11 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - 担当者の Claude Code への指示（`ManualLoopInstruction`）:
   - 開始: `<owner/repo> で Discussion #N の epic を手動ループで回して（scripts/askhub-manual.sh を使う）`
   - 再開: `<owner/repo> の Discussion #N の手動ループを再開して（scripts/askhub-manual.sh resume）`
+  - 最終 PR: `<owner/repo> の Discussion #N の手動ループの最終 PR を作って（scripts/askhub-manual.sh final）`
 - 受けた Claude は、リポジトリの `scripts/askhub-manual.sh`（テンプレートから引き継ぐ）で準備・起動・状態の書き出し・最終 PR を行う
   （手順は各リポジトリの `.claude/ralph/README.md` の「手で回す（manual-loop）」）
-- アプリのステータスタブの「手動ループ」は、開いている手動ループを担当者・状態・最終更新つきで並べ、担当者が自分なら開始・再開の指示のコピーを出す。
+- アプリのステータスタブの「手動ループ」は、開いている手動ループを担当者・状態・最終更新つきで並べ、担当者が自分なら指示のコピーを出す
+  （状態が無ければ開始、`completed` なら最終 PR、それ以外は再開）。
   `waitingPullRequests` の `needs-answer` がすべて外れ、ループが止まっていれば「回答がそろいました」と出す
 - 手動ループのあるリポジトリでは、オーケストレーターは ask への回答でループを再開しない（ループは担当者の Mac にある。担当者がアプリの知らせを見て再開する）
 
