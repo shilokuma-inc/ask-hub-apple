@@ -22,6 +22,8 @@ final class IdeaRequestModel {
         RepositorySection.grouping(repositories, now: now)
     }
     private(set) var repositoriesState = RepositoriesState.idle
+    /// 直前に依頼先の一覧の取得を始めた時刻。定期の取り直し（`reloadRepositoriesIfStale`）の間隔の判断に使う
+    private(set) var repositoriesLastLoaded: Date?
     /// 選んだリポジトリ（`owner/repo`）
     var repository: String?
     var summary = ""
@@ -72,6 +74,22 @@ final class IdeaRequestModel {
         } while needsReloadAfterLoading
     }
 
+    /// 定期の取り直し。取得済みか前回失敗したときだけ、直前の取得から間もなければ飛ばして取り直す。
+    /// まだ一度も取得していない（画面を開いたときに取得する）・取得中・トークンが無いときは何もしない。
+    /// macOS で複数のウィンドウから同時に呼ばれても、取得は重ねない
+    func reloadRepositoriesIfStale(now: Date = .now) async {
+        switch repositoriesState {
+        case .loaded, .failed:
+            guard AutoRefresh.isStale(lastRefreshed: repositoriesLastLoaded, now: now) else {
+                return
+            }
+            await loadRepositories()
+
+        case .idle, .loading, .needsToken:
+            break
+        }
+    }
+
     private func loadRepositoriesOnce() async {
         let token: String
         do {
@@ -85,6 +103,7 @@ final class IdeaRequestModel {
             repositoriesState = .failed(Self.message(for: error))
             return
         }
+        repositoriesLastLoaded = .now
         repositoriesState = .loading
         do {
             repositories = try await makeRequester(token).repositories(in: organizations())

@@ -9,6 +9,7 @@ struct IdeaRequestModelTests {
     /// 作った依頼を記録する。失敗させることもできる
     private final class RecordingRequester: IdeaRequesting {
         private let created = OSAllocatedUnfairLock<[IdeaRequest]>(initialState: [])
+        private let listed = OSAllocatedUnfairLock(initialState: 0)
         private let failure: (any Error & Sendable)?
 
         init(failure: (any Error & Sendable)? = nil) {
@@ -19,7 +20,13 @@ struct IdeaRequestModelTests {
             created.withLock { $0 }
         }
 
+        /// 依頼先の一覧を取得した回数
+        var listCount: Int {
+            listed.withLock { $0 }
+        }
+
         func repositories(in orgs: [String]) async throws -> [RequestRepository] {
+            listed.withLock { $0 += 1 }
             if let failure {
                 throw failure
             }
@@ -117,6 +124,47 @@ struct IdeaRequestModelTests {
         let model = makeModel(token: nil, requester: RecordingRequester())
         await model.loadRepositories()
         #expect(model.repositoriesState == .needsToken)
+    }
+
+    @Test func periodicReloadSkipsWhileRepositoriesAreFresh() async throws {
+        let requester = RecordingRequester()
+        let model = makeModel(requester: requester)
+        // まだ一度も取得していなければ、定期の取り直しでは取得しない（画面を開いたときに取得する）
+        await model.reloadRepositoriesIfStale()
+        #expect(requester.listCount == 0)
+
+        await model.loadRepositories()
+        let loaded = try #require(model.repositoriesLastLoaded)
+        // 直前の取得から間もなければ取り直さない（macOS で複数のウィンドウから呼ばれても重ねない）
+        await model.reloadRepositoriesIfStale(now: loaded.addingTimeInterval(AutoRefresh.minimumInterval - 1))
+        #expect(requester.listCount == 1)
+        await model.reloadRepositoriesIfStale(now: loaded.addingTimeInterval(AutoRefresh.minimumInterval))
+        #expect(requester.listCount == 2)
+    }
+
+    @Test func periodicReloadRetriesFailedListAfterInterval() async throws {
+        let requester = RecordingRequester(failure: URLError(.notConnectedToInternet))
+        let model = makeModel(requester: requester)
+        await model.loadRepositories()
+        let loaded = try #require(model.repositoriesLastLoaded)
+        guard case .failed = model.repositoriesState else {
+            Issue.record("取得に失敗していません: \(model.repositoriesState)")
+            return
+        }
+
+        await model.reloadRepositoriesIfStale(now: loaded.addingTimeInterval(AutoRefresh.minimumInterval - 1))
+        #expect(requester.listCount == 1)
+        await model.reloadRepositoriesIfStale(now: loaded.addingTimeInterval(AutoRefresh.minimumInterval))
+        #expect(requester.listCount == 2)
+    }
+
+    @Test func periodicReloadDoesNothingWithoutToken() async {
+        let requester = RecordingRequester()
+        let model = makeModel(token: nil, requester: requester)
+        await model.loadRepositories()
+        await model.reloadRepositoriesIfStale(now: .distantFuture)
+        #expect(model.repositoriesState == .needsToken)
+        #expect(requester.listCount == 0)
     }
 
     @Test func sendsRequestAndClearsTextButKeepsRepository() async {
