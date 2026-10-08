@@ -341,6 +341,7 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
    `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する。スクリプトは、強制でなければ
    未コミットの変更（ループの作業ファイル `.claude/askhub-*`・`.claude/ralph-*.local.*` は除く）・stash・どのリモートにも無いコミットを持つブランチがないかを確かめる。
    ブランチは、既定ブランチに取り込んでも木が変わらなければ（squash merge 済みなど）消してよいものとして扱う。
+   checkout やループの worktree が git の作業ツリーとして読めない・確かめるための git が失敗したときも、確かめられないので消さない。
    消してよければ、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/<名前>/removed-<日時>/` に退避してから、
    checkout・ループの worktree・checkout の隣の DerivedData（`<名前>-ralph-dd*` など）・Xcode の既定の DerivedData のうちそのプロジェクトのものを消す
 3. 設定ファイルの `repositories` から外し、担当の印（`askhub-orchestrator` のラベル）を消す（アプリで「担当 PC なし」になる）
