@@ -187,7 +187,9 @@ extension InboxModel {
             tokenStore: InMemoryTokenStore(token: "sample"),
             makeSource: { _ in SampleInboxSource() },
             makePoster: { _ in SampleAnswerPoster() },
-            makeStarter: { _ in SampleLoopStarter() }
+            makeStarter: { _ in SampleLoopStarter() },
+            // サンプルは GitHub に権限を問い合わせない
+            makeTrust: { _ in TrustedAuthors.default }
         )
     }
 }

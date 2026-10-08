@@ -21,7 +21,9 @@ extension LoopStatusModel {
         LoopStatusModel(
             tokenStore: InMemoryTokenStore(token: "sample"),
             makeSource: { _ in SampleLoopStatusSource() },
-            makeInboxSource: { _ in SampleInboxSource() }
+            makeInboxSource: { _ in SampleInboxSource() },
+            // サンプルは GitHub に権限を問い合わせない
+            makeTrust: { _ in TrustedAuthors.default }
         )
     }
 }

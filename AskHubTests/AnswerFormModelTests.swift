@@ -39,7 +39,8 @@ struct AnswerFormModelTests {
         InboxModel(
             tokenStore: InMemoryTokenStore(token: token),
             makeSource: { _ in SampleInboxSource() },
-            makePoster: { _ in poster }
+            makePoster: { _ in poster },
+            makeTrust: { _ in TrustedAuthors.default }
         )
     }
 
@@ -102,7 +103,12 @@ struct AnswerFormModelTests {
 
     @Test func forgetsAnsweredQuestionsWhenTokenChanges() async throws {
         let store = InMemoryTokenStore(token: "github_pat_old")
-        let inbox = InboxModel(tokenStore: store, makeSource: { _ in SampleInboxSource() }, makePoster: { _ in RecordingPoster() })
+        let inbox = InboxModel(
+            tokenStore: store,
+            makeSource: { _ in SampleInboxSource() },
+            makePoster: { _ in RecordingPoster() },
+            makeTrust: { _ in TrustedAuthors.default }
+        )
         await inbox.refresh()
         try await inbox.post(Answer(choice: "1時間"), to: question)
         #expect(!inbox.questions.contains { $0.id == question.id })
@@ -166,7 +172,12 @@ struct AnswerFormModelTests {
     @Test func discardsResultFetchedWithOldTokenAfterAnsweringWithNewToken() async throws {
         let store = InMemoryTokenStore(token: "github_pat_old")
         let source = GatedSource()
-        let inbox = InboxModel(tokenStore: store, makeSource: { _ in source }, makePoster: { _ in RecordingPoster() })
+        let inbox = InboxModel(
+            tokenStore: store,
+            makeSource: { _ in source },
+            makePoster: { _ in RecordingPoster() },
+            makeTrust: { _ in TrustedAuthors.default }
+        )
 
         let first = Task { await inbox.refresh() }
         while !inbox.isLoading {

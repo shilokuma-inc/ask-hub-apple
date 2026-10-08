@@ -63,7 +63,8 @@ struct LoopStartTests {
             tokenStore: InMemoryTokenStore(token: "github_pat_saved"),
             makeSource: { _ in SampleInboxSource() },
             makePoster: { _ in AcceptingPoster() },
-            makeStarter: { _ in starter }
+            makeStarter: { _ in starter },
+            makeTrust: { _ in TrustedAuthors.default }
         )
         await inbox.refresh()
         return inbox

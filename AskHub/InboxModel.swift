@@ -33,20 +33,23 @@ final class InboxModel {
     private let makeSource: @Sendable (String) -> any InboxSource
     private let makePoster: @Sendable (String) -> any AnswerPosting
     private let makeStarter: @Sendable (String) -> any LoopStarting
-    private let trustedAuthors: TrustedAuthors
+    /// リポジトリごとの信用する author（トークンごと）
+    private let makeTrust: @Sendable (String) -> any TrustedAuthorsResolving
+    /// 直前の取得で求めた、リポジトリごとの信用する author（画面での判定に使う。キーは `owner/repo` の小文字）
+    private var trustedAuthorsByRepository: [String: TrustedAuthors] = [:]
     /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
     private let organizations: () -> [String]
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
-        trustedAuthors: TrustedAuthors = .default,
         makeSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) },
         makePoster: @escaping @Sendable (String) -> any AnswerPosting = { GitHubAnswerPoster(client: GitHubClient(token: $0)) },
         makeStarter: @escaping @Sendable (String) -> any LoopStarting = { GitHubLoopStarter(client: GitHubClient(token: $0)) },
-        organizations: @escaping () -> [String] = { OrganizationSettings.load() }
+        organizations: @escaping () -> [String] = { OrganizationSettings.load() },
+        makeTrust: @escaping @Sendable (String) -> any TrustedAuthorsResolving = { RepositoryTrustCache.trust(token: $0) }
     ) {
         self.tokenStore = tokenStore
-        self.trustedAuthors = trustedAuthors
+        self.makeTrust = makeTrust
         self.organizations = organizations
         self.makeSource = makeSource
         self.makePoster = makePoster
@@ -63,7 +66,7 @@ final class InboxModel {
 
     /// Discussion / PR を作ったのが信用する author か。信用外の author の Discussion に付いた `manual-loop` はオーケストレーターが無視する
     func isTrustedAuthor(of subject: InboxSubject) -> Bool {
-        trustedAuthors.contains(subject.author)
+        (trustedAuthorsByRepository[subject.repository.lowercased()] ?? .default).contains(subject.author)
     }
 
     /// Discussion の回答を確定し、ループを始めてよい印（`ready-for-loop`）を付ける（Discussion #1 の Q3）。
@@ -156,7 +159,7 @@ final class InboxModel {
         let previous = (state: state, lastRefreshed: lastRefreshed)
         state = .loading
         lastRefreshed = .now
-        let fetcher = InboxFetcher(source: makeSource(token), trustedAuthors: trustedAuthors)
+        let fetcher = InboxFetcher(source: makeSource(token), trustedAuthors: makeTrust(token))
         let orgs = organizations()
         do {
             async let questions = fetcher.unansweredQuestions(orgs: orgs)
@@ -172,6 +175,12 @@ final class InboxModel {
             answeredQuestionIDs.formIntersection(fetchedQuestions.map(\.id))
             self.questions = fetchedQuestions.filter { !answeredQuestionIDs.contains($0.id) }
             self.issues = fetchedIssues
+            // 手で回す印を付けてよいかの判定（Discussion の author）に使う。取得は書き込み権限の結果を使い回すので、追加の問い合わせは少ない
+            var trusted: [String: TrustedAuthors] = [:]
+            for repository in Set(fetchedQuestions.map { $0.subject.repository.lowercased() }) {
+                trusted[repository] = await fetcher.trustedAuthors(for: repository)
+            }
+            trustedAuthorsByRepository = trusted
             state = .loaded
         } catch {
             // バックグラウンドの取得が打ち切られた。失敗とは表示せず、次の自動更新で取り直せるようにする

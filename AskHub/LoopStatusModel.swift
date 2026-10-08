@@ -27,7 +27,8 @@ final class LoopStatusModel {
     private(set) var lastRefreshed: Date?
 
     private let tokenStore: any TokenStore
-    private let trustedAuthors: TrustedAuthors
+    /// リポジトリごとの信用する author（トークンごと）
+    private let makeTrust: @Sendable (String) -> any TrustedAuthorsResolving
     private let makeSource: @Sendable (String) -> any LoopStatusSource
     /// 「上限で待機中」「ループの開始待ち」の取得元（受信箱と同じ取得元を使う）
     private let makeInboxSource: @Sendable (String) -> any InboxSource
@@ -38,13 +39,13 @@ final class LoopStatusModel {
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
-        trustedAuthors: TrustedAuthors = .default,
         makeSource: @escaping @Sendable (String) -> any LoopStatusSource = { GitHubLoopStatusSource(client: GitHubClient(token: $0)) },
         makeInboxSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) },
-        organizations: @escaping () -> [String] = { OrganizationSettings.load() }
+        organizations: @escaping () -> [String] = { OrganizationSettings.load() },
+        makeTrust: @escaping @Sendable (String) -> any TrustedAuthorsResolving = { RepositoryTrustCache.trust(token: $0) }
     ) {
         self.tokenStore = tokenStore
-        self.trustedAuthors = trustedAuthors
+        self.makeTrust = makeTrust
         self.organizations = organizations
         self.makeSource = makeSource
         self.makeInboxSource = makeInboxSource
@@ -98,8 +99,9 @@ final class LoopStatusModel {
         state = .loading
         lastRefreshed = .now
         let orgs = organizations()
-        let fetcher = LoopStatusFetcher(source: makeSource(token), trustedAuthors: trustedAuthors)
-        let inboxFetcher = InboxFetcher(source: makeInboxSource(token), trustedAuthors: trustedAuthors)
+        let trust = makeTrust(token)
+        let fetcher = LoopStatusFetcher(source: makeSource(token), trustedAuthors: trust)
+        let inboxFetcher = InboxFetcher(source: makeInboxSource(token), trustedAuthors: trust)
         do {
             async let rows = fetcher.rows(orgs: orgs)
             async let waiting = inboxFetcher.waitingDiscussions(orgs: orgs)
