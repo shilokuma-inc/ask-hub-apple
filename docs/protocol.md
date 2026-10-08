@@ -43,9 +43,9 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **ステータス**: リポジトリごとのループの状態と回し方（自動ループ・手動ループ・ループなし）。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」。
   バッジは**異常だけ**を数える（異常終了・長く動きが無い・進行中の epic があるのに担当 PC がいない・30 分以上状態が書き直されていない手動ループ）
 - **実機確認**: `needs-verify` の Issue
-- **ループ**: 担当リポジトリごとのループの状態。`loop-status` の Issue から読む（下の「ループの状態」）
-- **上限で待機中**（ループの先頭）: `askhub-orchestrator` の説明に解除の時刻があるリポジトリ。再開の時刻を出す
-- **ループの開始待ち**（ループの先頭。上限で待機中の下）: `ready-for-loop` の Discussion。`askhub-orchestrator` の時刻が 30 分より古い・無いリポジトリは「担当 PC なし」。担当 PC が上限で待機中なら「上限で待機中（〇時に再開）」
+- ステータスの行は `loop-status` の Issue から読む（下の「ループの状態」）
+- **上限で待機中**（ステータスの先頭）: `askhub-orchestrator` の説明に解除の時刻があるリポジトリ。再開の時刻を出す
+- **ループの開始待ち**（ステータスの先頭。上限で待機中の下）: `ready-for-loop` の Discussion。`askhub-orchestrator` の時刻が 30 分より古い・無いリポジトリは「担当 PC なし」。担当 PC が上限で待機中なら「上限で待機中（〇時に再開）」
 
 対象はアプリの設定（「取得する organization」）に並べた organization 全体で、ラベルで検索する（リポジトリの列挙は設定しない）。
 既定は `shilokuma-inc` だけ。検索は `org:a org:b` と並べて 1 回で行い、`organization.repositories` を読む取得（ループ・上限で待機中・依頼先）は organization ごとに順に行う。
@@ -188,7 +188,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 <!-- ask-hub:discussion 12 -->
 ```
 
-- 番号は、起動スクリプト（askhub-start-loop）が制御用 worktree に残す `.claude/askhub-bootstrap.local.txt` から読む。手で始めた epic には付かない
+- 番号は、起動スクリプト（askhub-start-loop）が制御用 worktree に残す `.claude/askhub-bootstrap.local.txt` から読む。
+  手動ループの epic では、`scripts/askhub-manual.sh final` が最終 PR を作るときに付ける
 - 最終 PR が `develop` にマージされると、ワークフロー（`.github/workflows/close-goal-discussion.yml`）がこの目印を読み、
   Discussion に PR へのリンクをコメントしてから解決済みで閉じる
 
@@ -304,8 +305,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
    Discussion の最後の未回答の質問では、アプリの回答画面に「投稿したら、回答を確定してループを始める」のトグルが出て、
    オンのまま投稿するとアプリがその場で `ready-for-loop` を付ける（オーケストレーターの次のポーリングを待たない）。
    トグルの初期値は設定画面の「投稿したらループを始める」（初期値オン。UserDefaults に保存）で、回答画面でオフにして投稿することもできる。
-   回し方を「手動で回す」にして投稿し `manual-loop` を付けられたら、画面を閉じずに Claude Code に渡す 1 行の指示
-   （`ManualLoopInstruction`。CLAUDE.md の依頼の形式の末尾に「手動で回して」を付けたもの）とコピーのボタンを出す。
+   回し方を「手動で回す」にして投稿し `manual-loop` を付けられたら、担当のコメントを付け、画面を閉じずに担当者が Claude Code に渡す 1 行の指示
+   （`ManualLoopInstruction`。上記「手動ループ（manual-loop）の担当者」）とコピーのボタンを出す。
    オンのときは投稿の前に確認ダイアログを出す。`ready-for-loop` を付けられなかったときは、回答は投稿済みのまま画面を閉じず、
    エラーと「ループを始める（再試行）」を出す
 4. オーケストレーターがループを起動する。ループは子 PR の ask で `needs-answer` を付けることがある
