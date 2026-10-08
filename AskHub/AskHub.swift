@@ -83,20 +83,8 @@ struct AskHub: App {
     /// 定期の取り直し。全タブの一覧と依頼先のリポジトリを取り直す。直前の取得から間もない一覧（手で更新した直後など）は飛ばす
     private func refreshPeriodically() async {
         async let listsRefreshed: Void = refreshIfStale()
-        async let repositoriesReloaded: Void = reloadRequestRepositories()
+        async let repositoriesReloaded: Void = requests.reloadRepositoriesIfStale()
         _ = await (listsRefreshed, repositoriesReloaded)
-    }
-
-    /// 依頼タブの依頼先のリポジトリ（担当 PC の有無）を取り直す。
-    /// 取得中・トークンが無い・まだ一度も取得していない（画面を開いたときに取得する）ときは取り直さない
-    private func reloadRequestRepositories() async {
-        switch requests.repositoriesState {
-        case .loaded, .failed:
-            await requests.loadRepositories()
-
-        case .idle, .loading, .needsToken:
-            break
-        }
     }
 
     private func refreshIfStale() async {
