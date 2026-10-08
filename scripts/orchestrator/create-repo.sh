@@ -46,9 +46,14 @@ for command in gh git; do
 done
 
 # 1. リポジトリを作る。やり直しで呼ばれたときは、同じテンプレートから作ったものなら続きから進める
-if created_from=$(gh api "repos/$REPOSITORY" --jq '.template_repository.full_name // ""' 2>/dev/null); then
+if existing=$(gh api "repos/$REPOSITORY" --jq '[.template_repository.full_name // "", .visibility] | @tsv' 2>/dev/null); then
+  IFS=$'\t' read -r created_from existing_visibility <<<"$existing"
   if [[ "$(printf '%s' "$created_from" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$TEMPLATE" | tr '[:upper:]' '[:lower:]')" ]]; then
     reject "$REPOSITORY は既にあります（$TEMPLATE から作ったものではありません）。別の名前で依頼してください"
+  fi
+  # 公開範囲が依頼と違うまま続けると、private のつもりのコードを public に push しうる
+  if [[ "$existing_visibility" != "$VISIBILITY" ]]; then
+    reject "$REPOSITORY は既に $existing_visibility で作られています（依頼は $VISIBILITY）。GitHub で公開範囲を確かめてから依頼し直してください"
   fi
   echo "既にテンプレートから作られています: $REPOSITORY"
 else
