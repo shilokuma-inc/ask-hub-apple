@@ -183,14 +183,14 @@ write_status() {
 | 確認時刻 | $checked |
 BODY
 )
-  # 信用する author が作った状態用の Issue のうち、open で最も新しく更新されたもの（無ければ閉じたもの）を使う
+  # 信用する author が作った状態用の Issue のうち、open で最も新しく更新されたもの（無ければ閉じたもので最も新しく更新されたもの）を使う
   local trusted
   trusted=$(trusted_authors)
   issue=""
-  while IFS=$'\t' read -r number author state_label; do
-    if is_trusted "$author" "$trusted"; then issue="$number"; [[ "$state_label" == OPEN ]] && break; fi
+  while IFS=$'\t' read -r number author; do
+    if is_trusted "$author" "$trusted"; then issue="$number"; break; fi
   done < <(gh issue list -R "$REPOSITORY" --label loop-status --state all --limit 100 --json number,author,state,updatedAt \
-             --jq 'sort_by(.updatedAt) | reverse | sort_by(.state != "OPEN") | .[] | "\(.number)\t\(.author.login)\t\(.state)"')
+             --jq 'sort_by([(if .state == "OPEN" then 0 else 1 end), (.updatedAt | fromdateiso8601 | -.)]) | .[] | "\(.number)\t\(.author.login)"')
   if [[ -z "$issue" ]]; then
     gh label create loop-status -R "$REPOSITORY" --color bfdadc --description "AskHub のループの状態を書き出す Issue" >/dev/null 2>&1 || true
     gh issue create -R "$REPOSITORY" --title "【AskHub】ループの状態" --label loop-status --body "$body" >/dev/null
