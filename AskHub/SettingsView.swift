@@ -53,7 +53,7 @@ struct SettingsView: View {
                 } header: {
                     Text("取得する organization")
                 } footer: {
-                    Text("要回答・急がない・マージ待ち・ループ・依頼に、ここに並べた organization のリポジトリを出します。")
+                    Text("依頼・要対応・任意判断・ステータス・実機確認に、ここに並べた organization のリポジトリを出します。")
                 }
 
                 Section {

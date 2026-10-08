@@ -1,7 +1,7 @@
 import AskHubKit
 import SwiftUI
 
-/// 「要回答」の 1 行
+/// 「要対応」の要回答の 1 行
 struct QuestionRow: View {
     let question: InboxQuestion
 
@@ -34,7 +34,7 @@ struct QuestionRow: View {
     }
 }
 
-/// 「急がない」の 1 行
+/// 「任意判断」「実機確認」の 1 行
 struct IssueRow: View {
     let issue: InboxIssue
 
@@ -71,13 +71,13 @@ extension InboxSubject {
 }
 
 extension InboxIssue.Kind {
-    /// 「急がない」のセクションの並び（判断ログが上、実機確認が下）
+    /// 種類のセクションの並び（仮決め一覧が上、実機確認が下）
     static let sectionOrder: [Self] = [.decisionLog, .needsVerify]
 
     var title: String {
         switch self {
         case .decisionLog:
-            "判断ログ"
+            "仮決め一覧"
 
         case .needsVerify:
             "実機確認"

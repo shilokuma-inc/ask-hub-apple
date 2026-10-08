@@ -28,7 +28,7 @@ struct InboxIssueSectionsTests {
 
         let sections = InboxIssue.sections(of: issues)
 
-        #expect(sections.map(\.header?.title) == ["判断ログ", "実機確認"])
+        #expect(sections.map(\.header?.title) == ["仮決め一覧", "実機確認"])
         #expect(sections.map(\.header?.systemImage) == ["list.bullet.clipboard", "iphone"])
         // 見出しのアイコンは行のラベルと同じ種類の色
         #expect(sections.map(\.header?.tint) == [InboxIssue.Kind.decisionLog.color, InboxIssue.Kind.needsVerify.color])
