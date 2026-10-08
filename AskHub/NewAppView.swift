@@ -6,6 +6,25 @@ import SwiftUI
 struct NewAppView: View {
     let model: IdeaRequestModel
 
+    @FocusState private var isEditing: Bool
+
+    var body: some View {
+        Form {
+            NewAppFormSections(model: model, isEditing: $isEditing)
+        }
+        .formStyle(.grouped)
+        .keyboardDoneButton($isEditing)
+        .navigationTitle("新しいアプリ")
+    }
+}
+
+/// 新しいアプリの作成を依頼する入力欄（`Form` の中に置く `Section` 群）。
+/// `Form`・`.formStyle`・`.keyboardDoneButton` は付けないので、埋め込む側の `Form` で 1 回だけ付ける
+struct NewAppFormSections: View {
+    let model: IdeaRequestModel
+    /// キーボードの「完了」は埋め込む側の `Form` に付けるので、フォーカスも埋め込む側が持つ
+    let isEditing: FocusState<Bool>.Binding
+
     @State private var template = NewRepository.Template.standard
     @State private var owner = ""
     @State private var name = ""
@@ -16,7 +35,6 @@ struct NewAppView: View {
     @State private var isPrivate = false
     /// 作成を任せる担当リポジトリ（`owner/repo`）
     @State private var hub: String?
-    @FocusState private var isEditing: Bool
 
     private var request: RepositoryRequest {
         .create(NewRepository(
@@ -38,7 +56,7 @@ struct NewAppView: View {
     }
 
     var body: some View {
-        Form {
+        Group {
             Section("テンプレート") {
                 Picker("テンプレート", selection: $template) {
                     ForEach(NewRepository.Template.allCases) { template in
@@ -56,7 +74,7 @@ struct NewAppView: View {
                     }
                 }
                 TextField("例: my-app-ios", text: $name)
-                    .focused($isEditing)
+                    .focused(isEditing)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("repository-name")
                 Toggle("private で作る", isOn: $isPrivate)
@@ -76,11 +94,11 @@ struct NewAppView: View {
 
             Section {
                 TextField("例: MyApp", text: $appName)
-                    .focused($isEditing)
+                    .focused(isEditing)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("app-name")
                 TextField(NewRepository.defaultBundleIdentifier(appName: appName.isEmpty ? "<アプリ名>" : appName), text: $bundleIdentifier)
-                    .focused($isEditing)
+                    .focused(isEditing)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("bundle-identifier")
             } header: {
@@ -136,7 +154,7 @@ struct NewAppView: View {
 
             Section {
                 Button {
-                    isEditing = false
+                    isEditing.wrappedValue = false
                     Task {
                         if await model.send(request, to: hub ?? "") != nil {
                             name = ""
@@ -156,9 +174,6 @@ struct NewAppView: View {
                 .disabled(!canSend)
             }
         }
-        .formStyle(.grouped)
-        .keyboardDoneButton($isEditing)
-        .navigationTitle("新しいアプリ")
         .onAppear {
             if owner.isEmpty {
                 owner = model.organizationChoices.first ?? ""
