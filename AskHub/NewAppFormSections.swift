@@ -1,25 +1,9 @@
 import AskHubKit
 import SwiftUI
 
-/// 新しいアプリのリポジトリを、テンプレートから作る依頼を出す画面（`repo-request` の Issue を作るだけ）。
-/// 作成・名前の変更・担当 PC への clone と担当への追加は、依頼先の担当リポジトリの担当 PC のオーケストレーターが行う
-struct NewAppView: View {
-    let model: IdeaRequestModel
-
-    @FocusState private var isEditing: Bool
-
-    var body: some View {
-        Form {
-            NewAppFormSections(model: model, isEditing: $isEditing)
-        }
-        .formStyle(.grouped)
-        .keyboardDoneButton($isEditing)
-        .navigationTitle("新しいアプリ")
-    }
-}
-
-/// 新しいアプリの作成を依頼する入力欄（`Form` の中に置く `Section` 群）。
-/// `Form`・`.formStyle`・`.keyboardDoneButton` は付けないので、埋め込む側の `Form` で 1 回だけ付ける
+/// 新しいアプリのリポジトリを、テンプレートから作る依頼の入力欄（`repo-request` の Issue を作るだけ）。依頼タブで「新しいアプリ」を選ぶと出る。
+/// 作成・名前の変更・担当 PC への clone と担当への追加は、依頼先の担当リポジトリの担当 PC のオーケストレーターが行う。
+/// `Form` の中に置く `Section` 群で、`Form`・`.formStyle`・`.keyboardDoneButton` は付けないので、埋め込む側の `Form` で 1 回だけ付ける
 struct NewAppFormSections: View {
     let model: IdeaRequestModel
     /// キーボードの「完了」は埋め込む側の `Form` に付けるので、フォーカスも埋め込む側が持つ
@@ -57,7 +41,7 @@ struct NewAppFormSections: View {
 
     var body: some View {
         Group {
-            Section("テンプレート") {
+            Section {
                 Picker("テンプレート", selection: $template) {
                     ForEach(NewRepository.Template.allCases) { template in
                         Text(template.title).tag(template)
@@ -65,6 +49,10 @@ struct NewAppFormSections: View {
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("template-picker")
+            } header: {
+                Text("テンプレート")
+            } footer: {
+                Text("テンプレートからリポジトリを作り、担当 PC に載せます")
             }
 
             Section {
@@ -197,11 +185,3 @@ struct SentRepositoryRequestRow: View {
         }
     }
 }
-
-#if DEBUG
-#Preview {
-    NavigationStack {
-        NewAppView(model: .sample())
-    }
-}
-#endif

@@ -61,6 +61,8 @@ final class AskHubUITests: XCTestCase {
         let summary = app.textFields["例: 通知の頻度を調整したい"]
         summary.tap()
         summary.typeText("通知の頻度を調整したい")
+        // 上の「依頼の種類」のぶん依頼文が下がり、要約の入力中はキーボードの「完了」の帯に隠れるので、キーボードを閉じてから押す
+        app.buttons["keyboard-done"].tap()
         let body = app.textFields["やりたいこと・背景・決まっていることなど"]
         body.tap()
         body.typeText("朝だけにしたい")
@@ -84,6 +86,8 @@ final class AskHubUITests: XCTestCase {
         summary.typeText("通知の頻度を調整したい")
 
         // 依頼文の Return は改行のままで、キーボードは閉じない
+        // 上の「依頼の種類」のぶん依頼文が下がり、要約の入力中はキーボードの「完了」の帯に隠れるので、キーボードを閉じてから押す
+        app.buttons["keyboard-done"].tap()
         let body = app.textFields["やりたいこと・背景・決まっていることなど"]
         body.tap()
         body.typeText("朝だけにしたい\n夜は止めたい")
