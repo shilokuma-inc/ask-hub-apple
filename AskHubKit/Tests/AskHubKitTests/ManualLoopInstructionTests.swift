@@ -11,6 +11,9 @@ struct ManualLoopInstructionTests {
         #expect(start.contains("scripts/askhub-manual.sh"))
         #expect(resume.contains("Discussion #12 の手動ループを再開して"))
         #expect(resume.contains("scripts/askhub-manual.sh resume"))
+        let final = ManualLoopInstruction.final(repository: "shilokuma-inc/notti-ios", discussionNumber: 12)
+        #expect(final.contains("Discussion #12 の手動ループの最終 PR を作って"))
+        #expect(final.contains("scripts/askhub-manual.sh final"))
     }
 
     @Test func roundTripsAssigneeThroughComment() {

@@ -14,6 +14,11 @@ public enum ManualLoopInstruction {
     public static func resume(repository: String, discussionNumber: Int) -> String {
         "\(repository) の Discussion #\(discussionNumber) の手動ループを再開して（scripts/askhub-manual.sh resume）"
     }
+
+    /// ループが全タスクを終えた後に、最終 PR（`epic-final`）を作るときの指示
+    public static func final(repository: String, discussionNumber: Int) -> String {
+        "\(repository) の Discussion #\(discussionNumber) の手動ループの最終 PR を作って（scripts/askhub-manual.sh final）"
+    }
 }
 
 /// 手動ループの担当者を表す、Discussion のコメント。

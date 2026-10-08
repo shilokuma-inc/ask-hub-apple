@@ -49,6 +49,11 @@ public struct ManualLoopEpic: Sendable, Equatable, Identifiable {
     public var resumeInstruction: String {
         ManualLoopInstruction.resume(repository: subject.repository, discussionNumber: subject.number)
     }
+
+    /// 最終 PR を作るときに Claude Code に渡す指示
+    public var finalInstruction: String {
+        ManualLoopInstruction.final(repository: subject.repository, discussionNumber: subject.number)
+    }
 }
 
 extension GitHubInboxSource {

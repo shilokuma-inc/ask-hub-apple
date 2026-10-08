@@ -65,11 +65,17 @@ struct ManualLoopRow: View {
                     .foregroundStyle(.green)
             }
             if item.isMine {
-                // まだ始めていなければ開始、始めていれば再開の指示を出す
-                if item.report == nil {
+                // まだ始めていなければ開始、全タスクを終えていれば最終 PR、それ以外は再開の指示を出す
+                switch item.report?.state {
+                case nil:
                     CopyTextButton(text: item.epic.startInstruction, title: "開始の指示をコピー")
                         .accessibilityIdentifier("copy-manual-start")
-                } else {
+
+                case .completed:
+                    CopyTextButton(text: item.epic.finalInstruction, title: "最終 PR の指示をコピー")
+                        .accessibilityIdentifier("copy-manual-final")
+
+                default:
                     CopyTextButton(text: item.epic.resumeInstruction, title: "再開の指示をコピー")
                         .accessibilityIdentifier("copy-manual-resume")
                 }
