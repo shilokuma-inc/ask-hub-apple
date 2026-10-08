@@ -1,6 +1,6 @@
 import Foundation
 
-/// 「ループ」タブの 1 行に出す内容。UI に依存しない部分（文言・記号・停滞の判定・開く URL）をまとめる
+/// 「ステータス」タブの 1 行に出す内容。UI に依存しない部分（文言・記号・停滞の判定・開く URL）をまとめる
 public struct LoopStatusDisplay: Sendable, Equatable {
     /// 状態の色の分類。色そのものはアプリが決める
     public enum Tone: Sendable, Equatable {
@@ -189,8 +189,8 @@ extension LoopStatusReport.Progress {
 }
 
 extension LoopStatusReport.State {
-    /// 「ループ」タブに出す SF Symbol
-    var systemImage: String {
+    /// 「ステータス」タブに出す SF Symbol
+    public var systemImage: String {
         switch self {
         case .running: "play.circle.fill"
         case .waitingForAnswer: "questionmark.bubble.fill"

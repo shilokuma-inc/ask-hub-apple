@@ -34,7 +34,7 @@ public struct LoopStatusRepository: Sendable, Equatable {
     }
 }
 
-/// 「ループ」タブの 1 行（リポジトリ 1 つ）
+/// 「ステータス」タブの 1 行（リポジトリ 1 つ）
 public struct LoopStatusRow: Sendable, Equatable, Identifiable {
     /// 行に出す状態
     public enum Status: Sendable, Equatable {
@@ -111,13 +111,13 @@ public struct LoopStatusRow: Sendable, Equatable, Identifiable {
     }
 }
 
-/// 「ループ」タブの取得元。テストやサンプルデータでは差し替える
+/// 「ステータス」タブの取得元。テストやサンプルデータでは差し替える
 public protocol LoopStatusSource: Sendable {
     /// organization のアーカイブ済みでないリポジトリごとの、担当の印と open な状態用の Issue
     func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository]
 }
 
-/// 「ループ」タブに出す行を集める
+/// 「ステータス」タブに出す行を集める
 public struct LoopStatusFetcher: Sendable {
     private let source: any LoopStatusSource
     private let trust: any TrustedAuthorsResolving

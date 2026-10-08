@@ -10,6 +10,8 @@ private struct RecordingStarterState {
     var marked: [String] = []
     /// `manual-loop` を付けた Discussion
     var manual: [String] = []
+    /// 担当者を知らせた Discussion と login
+    var assigned: [String] = []
     var fails = false
 }
 
@@ -55,6 +57,23 @@ struct LoopStartTests {
                 }
                 state.manual.append(discussion.nodeID)
             }
+        }
+
+        /// 担当者を知らせたもの（`<Discussion の node id> <login>`）
+        var assigned: [String] {
+            state.withLock { $0.assigned }
+        }
+
+        func assignManualLoop(_ discussion: InboxSubject, to login: String) async throws {
+            state.withLock { $0.assigned.append("\(discussion.nodeID) \(login)") }
+        }
+
+        func assigneeCandidates(in repository: String) async throws -> [String] {
+            ["mrs1669", "partner"]
+        }
+
+        func viewerLogin() async throws -> String {
+            "mrs1669"
         }
     }
 
@@ -169,6 +188,11 @@ struct LoopStartTests {
         form.note = "朝だけにしたい"
         form.startsLoopAfterPosting = true
         form.loopRunner = .manual
+        await form.loadAssignees(using: inbox)
+        // 担当者の既定は自分。共同開発者を選ぶ
+        #expect(form.assignee == "mrs1669")
+        #expect(form.assigneeCandidates == ["mrs1669", "partner"])
+        form.assignee = "partner"
         await form.post(using: inbox)
 
         // manual-loop だけを付け、ready-for-loop は付けない
@@ -178,7 +202,10 @@ struct LoopStartTests {
         #expect(starter.marked.isEmpty)
         // Claude Code に渡す指示を出す
         let subject = questions[1].subject
-        #expect(form.manualLoopInstruction == ManualLoopInstruction.make(repository: subject.repository, discussionNumber: subject.number))
+        #expect(form.manualLoopInstruction == ManualLoopInstruction.start(repository: subject.repository, discussionNumber: subject.number))
+        // 担当者を Discussion に知らせる。担当者が自分ではないので、通知したことを伝える
+        #expect(starter.assigned == ["\(subject.nodeID) partner"])
+        #expect(!form.isAssignedToViewer)
     }
 
     @Test func retriesManualMarkWhenItFailed() async throws {
@@ -191,6 +218,7 @@ struct LoopStartTests {
         form.note = "朝だけにしたい"
         form.startsLoopAfterPosting = true
         form.loopRunner = .manual
+        form.assignee = "mrs1669"
         await form.post(using: inbox)
 
         // 付けられなければ画面を閉じずに再試行できるようにする（オーケストレーターで始めるときと同じ）
@@ -218,6 +246,7 @@ struct LoopStartTests {
         form.choice = "1時間"
         form.startsLoopAfterPosting = true
         form.loopRunner = .manual
+        form.assignee = "mrs1669"
         await form.post(using: inbox)
 
         // 信用する author の Discussion なので回答は投稿し、印は付けずに理由を出す

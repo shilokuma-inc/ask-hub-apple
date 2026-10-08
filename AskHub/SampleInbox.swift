@@ -199,6 +199,16 @@ struct SampleLoopStarter: LoopStarting {
     func markReadyForLoop(_ discussion: InboxSubject) async throws {}
 
     func markManualLoop(_ discussion: InboxSubject) async throws {}
+
+    func assignManualLoop(_ discussion: InboxSubject, to login: String) async throws {}
+
+    func assigneeCandidates(in repository: String) async throws -> [String] {
+        ["mrs1669", "partner"]
+    }
+
+    func viewerLogin() async throws -> String {
+        "mrs1669"
+    }
 }
 
 /// デモモード・Preview・UI テスト用。投稿したことにして GitHub には送らない
@@ -326,6 +336,22 @@ struct SampleInboxSource: InboxSource {
 
     func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
         [UsageLimitedRepository(repository: "shilokuma-inc/notti-ios", until: Self.now.addingTimeInterval(2 * 60 * 60))]
+    }
+
+    /// 自分（mrs1669）が担当の手動ループと、共同開発者（partner）が担当の手動ループ
+    func manualLoopRecords(orgs: [String]) async throws -> [ManualLoopRecord] {
+        [
+            Self.manualLoop(repository: "shilokuma-inc/prime-pick-ios", number: 21, title: "難易度だけで選べるようにしたい", assignee: "mrs1669"),
+            Self.manualLoop(repository: "shilokuma-inc/zankyo-apple", number: 8, title: "MVP を作る", assignee: "partner")
+        ]
+    }
+
+    private static func manualLoop(repository: String, number: Int, title: String, assignee: String) -> ManualLoopRecord {
+        let comment = ManualLoopAssignment.comment(assignee: assignee, repository: repository, discussionNumber: number)
+        return ManualLoopRecord(
+            subject: subject(.discussion, repository: repository, number: number, title: title),
+            comments: [ManualLoopComment(author: "mrs1669", body: comment)]
+        )
     }
 
     func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {

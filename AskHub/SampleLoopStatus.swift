@@ -23,7 +23,8 @@ extension LoopStatusModel {
             makeSource: { _ in SampleLoopStatusSource() },
             makeInboxSource: { _ in SampleInboxSource() },
             // サンプルは GitHub に権限を問い合わせない
-            makeTrust: { _ in TrustedAuthors.default }
+            makeTrust: { _ in TrustedAuthors.default },
+            makeStarter: { _ in SampleLoopStarter() }
         )
     }
 }

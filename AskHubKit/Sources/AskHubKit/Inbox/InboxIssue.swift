@@ -1,6 +1,6 @@
 import Foundation
 
-/// 受信箱の「急がない」に出す Issue（判断ログ・実機確認）
+/// 受信箱の「任意判断」「実機確認」に出す Issue（仮決め一覧・実機確認）
 public struct InboxIssue: Sendable, Equatable, Identifiable {
     public enum Kind: Sendable, Equatable {
         /// epic ごとの仮決め一覧（`decision-log`）
@@ -8,7 +8,7 @@ public struct InboxIssue: Sendable, Equatable, Identifiable {
         /// 実機・実データでの確認（`needs-verify`）
         case needsVerify
 
-        /// 「急がない」に出すラベル
+        /// 「任意判断」「実機確認」に出すラベル
         public static let labels: [AskHubLabel] = [.decisionLog, .needsVerify]
 
         /// Issue のラベル名から種類を決める。両方付いていれば判断ログを優先する

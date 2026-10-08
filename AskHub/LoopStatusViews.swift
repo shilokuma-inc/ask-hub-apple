@@ -1,8 +1,8 @@
 import AskHubKit
 import SwiftUI
 
-/// 「ループ」タブ。先頭に「上限で待機中」「ループの開始待ち」（どちらも空なら出さない）、その下にリポジトリごとのループの状態を出す。
-/// 行から担当 PC の担当を外す依頼を出せる（ループを止める・再開する操作は持たない）
+/// 「ステータス」タブ。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」（空なら出さない）、その下にリポジトリごとのループの状態と
+/// 回し方（自動ループ・手動ループ・ループなし）を出す。行から担当 PC の担当を外す依頼を出せる（ループを止める・再開する操作は持たない）
 struct LoopStatusListView: View {
     let model: LoopStatusModel
     /// 担当から外す依頼（`repo-request`）を送るのに使う
@@ -28,6 +28,7 @@ struct LoopStatusListView: View {
             }
             UsageLimitedSection(repositories: model.usageLimited)
             WaitingDiscussionsSection(waiting: model.waiting)
+            ManualLoopSection(items: model.manualLoopItems(now: Date()))
             if !model.rows.isEmpty {
                 Section("リポジトリ") {
                     ForEach(model.rows) { row in
@@ -44,7 +45,7 @@ struct LoopStatusListView: View {
             }
         }
         .refreshable { await model.refresh() }
-        .navigationTitle("ループ")
+        .navigationTitle("ステータス")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("更新", systemImage: "arrow.clockwise") {
@@ -78,7 +79,7 @@ struct LoopStatusListView: View {
         if let destination = display.destination {
             // ゴール元の Discussion（無ければ状態用の Issue）を GitHub で開く
             Link(destination: destination) {
-                LoopStatusRowView(repository: row.repository, display: display)
+                LoopStatusRowView(repository: row.repository, display: display, mode: model.mode(of: row))
                     // 行全体をタップできるように幅を広げる
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(.rect)
@@ -86,7 +87,7 @@ struct LoopStatusListView: View {
             // Link の既定のスタイルは行の文字をすべてアクセントカラーにするため、行の配色を使う
             .buttonStyle(.plain)
         } else {
-            LoopStatusRowView(repository: row.repository, display: display)
+            LoopStatusRowView(repository: row.repository, display: display, mode: model.mode(of: row))
         }
     }
 
@@ -116,10 +117,12 @@ struct LoopStatusListView: View {
     }
 }
 
-/// 「ループ」タブの 1 行
+/// 「ステータス」タブの 1 行
 struct LoopStatusRowView: View {
     let repository: String
     let display: LoopStatusDisplay
+    /// だれが回しているか
+    var mode: LoopMode = .none
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -132,6 +135,11 @@ struct LoopStatusRowView: View {
                     .font(.caption)
                     .foregroundStyle(display.tone.color)
             }
+
+            Label(mode.title, systemImage: mode.systemImage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("loop-mode")
 
             if display.isStuck {
                 Label(LoopStatusRow.stuckWarning, systemImage: "exclamationmark.triangle.fill")
@@ -352,5 +360,16 @@ extension LoopStatusDisplay.ProgressStage {
 #Preview("トークン未設定") {
     NavigationStack {
         LoopStatusListView(model: LoopStatusModel(tokenStore: InMemoryTokenStore()), requestModel: .sample()) {}
+    }
+}
+
+extension LoopMode {
+    /// 回し方の記号
+    var systemImage: String {
+        switch self {
+        case .automatic: "gearshape.2"
+        case .manual: "person.fill"
+        case .none: "minus.circle"
+        }
     }
 }
