@@ -5,11 +5,12 @@
 //  Created by 村石 拓海 on 2024/05/12.
 //
 
+import AskHubKit
 import SwiftUI
 
 @main
 struct AskHub: App {
-    // フォアグラウンド復帰時の自動更新で使うため、一覧のモデルは App が持つ
+    // フォアグラウンド復帰時と定期の自動更新で使うため、一覧のモデルは App が持つ
     @State private var inbox = InboxModel.launchDefault()
     @State private var requests = IdeaRequestModel.launchDefault()
     @State private var mergeQueue = MergeQueueModel.launchDefault()
@@ -32,6 +33,16 @@ struct AskHub: App {
             ContentView(model: inbox, requestModel: requests, mergeModel: mergeQueue, loopModel: loopStatus)
                 .environment(\.isDemoMode, isDemoMode)
                 .environment(\.setDemoMode) { setDemoMode($0) }
+                // アプリを開いているあいだ（バックグラウンド以外）は、全タブの一覧を定期的に取り直す（Issue #299）。
+                // バックグラウンドに移ると取り消されて止まり、戻ると数え直す（戻った直後の取り直しは onChange が行う）
+                .task(id: scenePhase == .background) {
+                    guard scenePhase != .background else {
+                        return
+                    }
+                    await AutoRefresh.repeating(every: AutoRefresh.foregroundInterval) {
+                        await refreshPeriodically()
+                    }
+                }
         }
         .onChange(of: scenePhase) { _, phase in
             // フォアグラウンドに戻ったら取り直す（Discussion #1 の Q7）。直前の取得から間もなければ取り直さない
@@ -67,6 +78,25 @@ struct AskHub: App {
         requests = enabled ? .sample() : IdeaRequestModel()
         mergeQueue = enabled ? .sample() : MergeQueueModel()
         loopStatus = enabled ? .sample() : LoopStatusModel()
+    }
+
+    /// 定期の取り直し。全タブの一覧と依頼先のリポジトリを取り直す。直前の取得から間もない一覧（手で更新した直後など）は飛ばす
+    private func refreshPeriodically() async {
+        async let listsRefreshed: Void = refreshIfStale()
+        async let repositoriesReloaded: Void = reloadRequestRepositories()
+        _ = await (listsRefreshed, repositoriesReloaded)
+    }
+
+    /// 依頼タブの依頼先のリポジトリ（担当 PC の有無）を取り直す。
+    /// 取得中・トークンが無い・まだ一度も取得していない（画面を開いたときに取得する）ときは取り直さない
+    private func reloadRequestRepositories() async {
+        switch requests.repositoriesState {
+        case .loaded, .failed:
+            await requests.loadRepositories()
+
+        case .idle, .loading, .needsToken:
+            break
+        }
     }
 
     private func refreshIfStale() async {
