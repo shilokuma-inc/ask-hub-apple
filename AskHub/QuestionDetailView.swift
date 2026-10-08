@@ -77,7 +77,10 @@ struct QuestionDetailView: View {
             }
 
             if let instruction = form.manualLoopInstruction {
-                ManualLoopInstructionSection(instruction: instruction) { dismiss() }
+                ManualLoopInstructionSection(
+                    instruction: instruction,
+                    assignee: form.isAssignedToViewer ? nil : form.postedAssignee
+                ) { dismiss() }
             }
 
             if !form.isPosted {
@@ -141,6 +144,19 @@ struct QuestionDetailView: View {
                         }
                     }
                     .disabled(form.isPosting)
+                    if form.loopRunner == .manual {
+                        Picker("担当者", selection: $form.assignee) {
+                            if form.assigneeCandidates.isEmpty {
+                                Text("読み込み中…").tag(String?.none)
+                            }
+                            ForEach(form.assigneeCandidates, id: \.self) { login in
+                                Text(login == form.viewerLogin ? "@\(login)（自分）" : "@\(login)").tag(Optional(login))
+                            }
+                        }
+                        .disabled(form.isPosting)
+                        .accessibilityIdentifier("manual-loop-assignee")
+                        .task { await form.loadAssignees(using: inbox) }
+                    }
                 }
             } else {
                 Text("この Discussion には、ほかに未回答の質問が \(remaining) 件あります")
@@ -161,7 +177,8 @@ struct QuestionDetailView: View {
             return "回答だけを投稿します。オンにすると、回答を確定してループを始められます"
         }
         if form.loopRunner == .manual {
-            return "Discussion に manual-loop を付けます。オーケストレーターはこのリポジトリでループを起動しません。ループは手で始めてください"
+            return "Discussion に manual-loop を付け、担当者を @メンションで知らせます。オーケストレーターはこのリポジトリでループを起動しません。"
+                + "担当者が自分の Mac の Claude Code でループを回します（指示はステータスタブの「手動ループ」からもコピーできます）"
         }
         return "Discussion に ready-for-loop を付けます。担当 PC のオーケストレーターがループを起動します"
     }

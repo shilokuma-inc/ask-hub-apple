@@ -83,9 +83,19 @@ public struct ResumeWatcher: Sendable, Equatable {
     public init() {}
 
     /// 担当リポジトリの `needs-answer` の一覧とループの状態から、行うことを返す
-    /// - Parameter snapshots: 担当リポジトリのものだけを渡す
-    public mutating func update(snapshots: [AnswerSnapshot], statuses: [String: LoopStatus]) -> [Action] {
-        var actions = recordAnswers(in: snapshots)
+    /// - Parameters:
+    ///   - snapshots: 担当リポジトリのものだけを渡す
+    ///   - manualLoopRepositories: 手動ループ（open な `manual-loop` の Discussion）があるリポジトリ（`fullName` の小文字）。
+    ///     ループは担当者の Mac で動いているので、この PC からは再開しない（担当者がアプリの知らせを見て再開する）
+    public mutating func update(
+        snapshots: [AnswerSnapshot],
+        statuses: [String: LoopStatus],
+        manualLoopRepositories: Set<String> = []
+    ) -> [Action] {
+        for key in manualLoopRepositories {
+            resumes[key] = nil
+        }
+        var actions = recordAnswers(in: snapshots, skipping: manualLoopRepositories)
         for key in resumes.keys.sorted() {
             guard let entry = resumes[key] else {
                 continue
@@ -98,13 +108,13 @@ public struct ResumeWatcher: Sendable, Equatable {
     }
 
     /// 新しく付いた回答を覚え、PR の回答なら再開待ちにする。すべて回答済みの Discussion / PR はラベルを外す
-    private mutating func recordAnswers(in snapshots: [AnswerSnapshot]) -> [Action] {
+    private mutating func recordAnswers(in snapshots: [AnswerSnapshot], skipping manualLoopRepositories: Set<String>) -> [Action] {
         var actions: [Action] = []
         for snapshot in snapshots {
             let newlyAnswered = snapshot.questions.filter { $0.isAnswered && !seenAnswers.contains($0.id) }
+            let key = snapshot.subject.repository.lowercased()
             // Discussion（※1）の回答では再開しない。ループは「回答を確定してループを始める」（ready-for-loop）で始まる
-            if snapshot.subject.kind == .pullRequest && !newlyAnswered.isEmpty {
-                let key = snapshot.subject.repository.lowercased()
+            if snapshot.subject.kind == .pullRequest && !newlyAnswered.isEmpty && !manualLoopRepositories.contains(key) {
                 if resumes[key] == nil || resumes[key]?.phase == .gaveUp {
                     resumes[key] = Entry(attempts: 0, phase: .waiting)
                 }

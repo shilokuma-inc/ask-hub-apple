@@ -6,10 +6,16 @@ extension Orchestrator {
     /// 起動スクリプトに信用する author を渡す環境変数
     static let trustedAuthorsVariable = "ASKHUB_TRUSTED_AUTHORS"
 
-    /// 設定を読み直してから、信用する author を求め直す（毎回のポーリングのはじめ）
-    func refreshConfigAndTrust() async {
+    /// 毎回のポーリングのはじめに、設定を読み直し、信用する author を求め直し、手動ループを取得する
+    func preparePoll() async {
         reloadConfig()
         await refreshTrust()
+        manualLoops = await searchManualLoops()
+        if let manualLoops {
+            manualLoopRepositories = Set(manualLoops
+                .filter { trust.authors(for: $0.repository).contains($0.author) }
+                .map { $0.repository.lowercased() })
+        }
     }
 
     /// 設定の一覧に、担当リポジトリごとの書き込み権限を持つアカウントを加え直す。

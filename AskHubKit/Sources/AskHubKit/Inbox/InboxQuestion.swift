@@ -84,7 +84,7 @@ public struct QuestionThread: Sendable, Equatable {
     }
 }
 
-/// 受信箱の「要回答」に出す、未回答の質問
+/// 受信箱の「要対応」の要回答に出す、未回答の質問
 public struct InboxQuestion: Sendable, Equatable, Hashable, Identifiable {
     public var subject: InboxSubject
     public var comment: InboxComment

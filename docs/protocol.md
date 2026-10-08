@@ -6,7 +6,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 このドキュメントで実装済みの仕様を変更するときは、`AskHubKit` の対応する実装も合わせて更新すること。
 ラベルは `AskHubLabel`、質問の目印は `QuestionMarker`、回答の形式は `Answer`、
 信用する author と回答済みの判定は `TrustedAuthors` が実装している。
-「要回答」に出す未回答の質問と「急がない」に出す Issue の取得は `InboxFetcher`（GitHub からの取得は `GitHubInboxSource`）が実装している。
+「要対応」に出す未回答の質問と「任意判断」「実機確認」に出す Issue の取得は `InboxFetcher`（GitHub からの取得は `GitHubInboxSource`）が実装している。
 
 ## 登場するもの
 
@@ -36,12 +36,16 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 アプリの一覧での扱い:
 
-- **要回答**: `needs-answer` が付いた Discussion（※1）と PR（※2）
-- **急がない**: `decision-log` と `needs-verify` の Issue
-- **マージ待ち**: `epic-final` の PR
-- **ループ**: 担当リポジトリごとのループの状態。`loop-status` の Issue から読む（下の「ループの状態」）
-- **上限で待機中**（ループの先頭）: `askhub-orchestrator` の説明に解除の時刻があるリポジトリ。再開の時刻を出す
-- **ループの開始待ち**（ループの先頭。上限で待機中の下）: `ready-for-loop` の Discussion。`askhub-orchestrator` の時刻が 30 分より古い・無いリポジトリは「担当 PC なし」。担当 PC が上限で待機中なら「上限で待機中（〇時に再開）」
+タブは左から 依頼・要対応・任意判断・ステータス・実機確認 の順。開いたときは「要対応」を出す。
+
+- **要対応**: 上に「要回答」（`needs-answer` が付いた Discussion（※1）と PR（※2））、その下に「マージ待ち」（`epic-final` の PR）。バッジは両方の件数の合計
+- **任意判断**: `decision-log` の Issue（仮決め一覧）
+- **ステータス**: リポジトリごとのループの状態と回し方（自動ループ・手動ループ・ループなし）。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」。
+  バッジは**異常だけ**を数える（異常終了・長く動きが無い・進行中の epic があるのに担当 PC がいない・30 分以上状態が書き直されていない手動ループ）
+- **実機確認**: `needs-verify` の Issue
+- ステータスの行は `loop-status` の Issue から読む（下の「ループの状態」）
+- **上限で待機中**（ステータスの先頭）: `askhub-orchestrator` の説明に解除の時刻があるリポジトリ。再開の時刻を出す
+- **ループの開始待ち**（ステータスの先頭。上限で待機中の下）: `ready-for-loop` の Discussion。`askhub-orchestrator` の時刻が 30 分より古い・無いリポジトリは「担当 PC なし」。担当 PC が上限で待機中なら「上限で待機中（〇時に再開）」
 
 対象はアプリの設定（「取得する organization」）に並べた organization 全体で、ラベルで検索する（リポジトリの列挙は設定しない）。
 既定は `shilokuma-inc` だけ。検索は `org:a org:b` と並べて 1 回で行い、`organization.repositories` を読む取得（ループ・上限で待機中・依頼先）は organization ごとに順に行う。
@@ -73,6 +77,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `progress` | 任意 | goal のチェックボックスの数。`completed`（`[x]`。保留で閉じたものを含む）と `total`、任意で `deferred`（`completed` のうち保留で閉じたもの。`[x]` かつ `※保留` を含む行） |
 | `lastActivityAt` | 任意 | ループが最後に動いた時刻 |
 | `usageLimitedUntil` | 任意 | Claude の利用上限の解除の時刻（`usage-limited` のとき） |
+| `runner` | 任意 | 手動ループを回している人の login（`writer` が `manual` のとき）。オーケストレーターは書かない |
+| `waitingPullRequests` | 任意 | 手動ループで回答を待っている PR の番号。これらの `needs-answer` がすべて外れ、ループが止まっていれば、アプリが担当者に再開を促す |
 
 | `state` | 表の表記 | 意味 |
 | --- | --- | --- |
@@ -94,8 +100,10 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - アプリが知らない `writer` も「不明」として扱う
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
 - オーケストレーターは、`checkedAt` 以外が変わったときに本文を書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す
-- 手で回すループ（`manual-loop` の Discussion）は、`writer` を `manual` にして状態・epic・進捗を書き、10 分ごとに `checkedAt` を書き直す。
-  書き手が `manual` で `checkedAt` が 30 分以内のあいだ、オーケストレーターは書かない。30 分を過ぎたら、オーケストレーターが書き直す
+- 手動ループ（`manual-loop` の Discussion）は、担当者の Claude が `scripts/askhub-manual.sh status` で `writer` を `manual`・`runner` を担当者にして、
+  状態・epic・進捗・回答待ちの PR を書き、10 分ごとに `checkedAt` を書き直す。
+  信用する author の open な `manual-loop` の Discussion があるあいだ、オーケストレーターは書き手が `manual` の状態を（`checkedAt` が古くなっても）上書きしない。
+  古くなったことはアプリが知らせる。Discussion が閉じた後、`checkedAt` が 30 分を過ぎていれば、オーケストレーターが書き直す
 
 アプリの読み方（`LoopStatusFetcher`。GitHub からの取得は `GitHubLoopStatusSource`）:
 
@@ -104,7 +112,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - 信用する author が作り、目印を読める Issue のうち、最も新しく更新されたものを使う
 - 行にするのは、担当の印か信用する author の状態用の Issue があるリポジトリ（Q4: 担当 PC のいるリポジトリをすべて出す）。
   担当の印も `checkedAt` も 30 分より古ければ「担当 PC なし」、担当 PC はいるが状態用の Issue が無ければ「状態なし」とする
-- `loop-status` の Issue は「急がない」などの一覧には出さない（一覧はラベルで検索しており、`loop-status` を含めない）
+- `loop-status` の Issue は「任意判断」「実機確認」などの一覧には出さない（一覧はラベルで検索しており、`loop-status` を含めない）
+- 担当から外したリポジトリの状態用の Issue は、オーケストレーターが閉じる（ステータスタブに「担当 PC なし」の行を残さない）
 
 ## 質問の目印
 
@@ -143,7 +152,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 質問を出したら、その Discussion / PR に `needs-answer` を付ける。
 
 `needs-answer` は Discussion #1 の決定どおり Issue にも付けられるが、MVP では Issue 上の質問の書き方を定義しない。
-アプリの「要回答」に出すのは Discussion（※1）と PR（※2）だけで、`needs-answer` の付いた Issue は一覧に出さない。
+アプリの「要対応」の「要回答」に出すのは Discussion（※1）と PR（※2）だけで、`needs-answer` の付いた Issue は一覧に出さない。
 
 ## 回答済みの判定
 
@@ -179,7 +188,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 <!-- ask-hub:discussion 12 -->
 ```
 
-- 番号は、起動スクリプト（askhub-start-loop）が制御用 worktree に残す `.claude/askhub-bootstrap.local.txt` から読む。手で始めた epic には付かない
+- 番号は、起動スクリプト（askhub-start-loop）が制御用 worktree に残す `.claude/askhub-bootstrap.local.txt` から読む。
+  手動ループの epic では、`scripts/askhub-manual.sh final` が最終 PR を作るときに付ける
 - 最終 PR が `develop` にマージされると、ワークフロー（`.github/workflows/close-goal-discussion.yml`）がこの目印を読み、
   Discussion に PR へのリンクをコメントしてから解決済みで閉じる
 
@@ -259,10 +269,34 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - オーケストレーターは、担当リポジトリにある**信用する author**（作った人と、編集した人がいればその人も）の依頼だけを処理する。
   目印が読めない・値が不正な依頼には理由をコメントして、Issue は開いたままにする
 - 作成では GitHub に**既定で public** のリポジトリを作り（private では GitHub Actions の実行時間が課金の対象になるため）、名前を変えて `develop` に**直接 push** する。
-  App Store Connect でのアプリの作成は Web でしかできないため、新しいリポジトリに `needs-verify` の Issue を立てる（アプリの「急がない」に出る）
+  App Store Connect でのアプリの作成は Web でしかできないため、新しいリポジトリに `needs-verify` の Issue を立てる（アプリの「実機確認」に出る）
 - 削除では GitHub のリポジトリは消さない。ループのプロセスが動いていれば、強制でも外さない。最後の担当リポジトリは外せない
 - 処理できたら結果をコメントしてクローズする。処理できなければ理由をコメントする（直したら、その Issue を閉じて依頼し直す）。
   コメントにはローカルのパスを書かない（public のリポジトリでは誰でも読めるため）
+
+## 手動ループ（manual-loop）の担当者
+
+手動ループは、Discussion に `manual-loop` を付け、担当者が自分の Mac の Claude Code で回す。GitHub の Discussion には担当者（Assignees）の欄が無いので、
+**担当のコメント**で表す（`AskHubKit` の `ManualLoopAssignment`）。
+
+```html
+<!-- ask-hub:manual-assignee login="partner" -->
+@partner さんが、この epic を手動ループで回します（AskHub から）。
+```
+
+- アプリは、最後の回答を「手動で回す」で投稿するとき、担当者（そのリポジトリに書き込み権限を持つ人。既定は自分）を選ばせ、`manual-loop` を付けた後にこのコメントを付ける。
+  @メンションなので、担当者に GitHub の通知が届く。本文には担当者が Claude Code に貼る指示も書く
+- 信用する author が書いた担当のコメントのうち、最後のものを担当者とする（担当者を変えるときは、新しいコメントを足す）
+- 担当者の Claude Code への指示（`ManualLoopInstruction`）:
+  - 開始: `<owner/repo> で Discussion #N の epic を手動ループで回して（scripts/askhub-manual.sh を使う）`
+  - 再開: `<owner/repo> の Discussion #N の手動ループを再開して（scripts/askhub-manual.sh resume）`
+  - 最終 PR: `<owner/repo> の Discussion #N の手動ループの最終 PR を作って（scripts/askhub-manual.sh final）`
+- 受けた Claude は、リポジトリの `scripts/askhub-manual.sh`（テンプレートから引き継ぐ）で準備・起動・状態の書き出し・最終 PR を行う
+  （手順は各リポジトリの `.claude/ralph/README.md` の「手で回す（manual-loop）」）
+- アプリのステータスタブの「手動ループ」は、開いている手動ループを担当者・状態・最終更新つきで並べ、担当者が自分なら指示のコピーを出す
+  （状態が無ければ開始、`completed` なら最終 PR、それ以外は再開）。
+  `waitingPullRequests` の `needs-answer` がすべて外れ、ループが止まっていれば「回答がそろいました」と出す
+- 手動ループのあるリポジトリでは、オーケストレーターは ask への回答でループを再開しない（ループは担当者の Mac にある。担当者がアプリの知らせを見て再開する）
 
 ## 流れ
 
@@ -273,13 +307,13 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
    Discussion の最後の未回答の質問では、アプリの回答画面に「投稿したら、回答を確定してループを始める」のトグルが出て、
    オンのまま投稿するとアプリがその場で `ready-for-loop` を付ける（オーケストレーターの次のポーリングを待たない）。
    トグルの初期値は設定画面の「投稿したらループを始める」（初期値オン。UserDefaults に保存）で、回答画面でオフにして投稿することもできる。
-   回し方を「手動で回す」にして投稿し `manual-loop` を付けられたら、画面を閉じずに Claude Code に渡す 1 行の指示
-   （`ManualLoopInstruction`。CLAUDE.md の依頼の形式の末尾に「手動で回して」を付けたもの）とコピーのボタンを出す。
+   回し方を「手動で回す」にして投稿し `manual-loop` を付けられたら、担当のコメントを付け、画面を閉じずに担当者が Claude Code に渡す 1 行の指示
+   （`ManualLoopInstruction`。上記「手動ループ（manual-loop）の担当者」）とコピーのボタンを出す。
    オンのときは投稿の前に確認ダイアログを出す。`ready-for-loop` を付けられなかったときは、回答は投稿済みのまま画面を閉じず、
    エラーと「ループを始める（再試行）」を出す
 4. オーケストレーターがループを起動する。ループは子 PR の ask で `needs-answer` を付けることがある
 5. ask に回答が付くと、オーケストレーターが終了済みのループを再開し、回答済みの `needs-answer` を外す
 6. epic の全タスクが完了すると、オーケストレーターが `develop` 向けの最終 PR（`epic-final`）を作る
-7. 人間がアプリの「マージ待ち」から確認して merge commit でマージする
+7. 人間がアプリの「要対応」の「マージ待ち」から確認して merge commit でマージする
 8. マージされると、ワークフローがゴール元の Discussion を解決済みで閉じる（上記「ゴール元の Discussion の目印」）。
    オーケストレーターは epic の仮決め一覧を閉じる（上記「仮決め一覧」）

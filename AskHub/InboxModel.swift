@@ -71,7 +71,8 @@ final class InboxModel {
 
     /// Discussion の回答を確定し、ループを始めてよい印（`ready-for-loop`）を付ける（Discussion #1 の Q3）。
     /// 手で回すなら、代わりに `manual-loop` を付ける（Discussion #273 の Q2）
-    func startLoop(for discussion: InboxSubject, runner: LoopRunner = .orchestrator) async throws {
+    /// 手で回すときは、`assignee` を担当者として Discussion に知らせる（@メンション付きのコメント）
+    func startLoop(for discussion: InboxSubject, runner: LoopRunner = .orchestrator, assignee: String? = nil) async throws {
         guard let token = try tokenStore.load() else {
             throw MissingTokenError()
         }
@@ -82,7 +83,25 @@ final class InboxModel {
 
         case .manual:
             try await starter.markManualLoop(discussion)
+            if let assignee {
+                try await starter.assignManualLoop(discussion, to: assignee)
+            }
         }
+    }
+
+    /// 手動ループの担当者に選べるアカウント（そのリポジトリに書き込み権限を持つ人）と、自分の login。
+    /// 候補を取れなかったときは、自分だけを返す
+    func assigneeChoices(in repository: String) async -> (candidates: [String], viewer: String?) {
+        guard let token = try? tokenStore.load() else {
+            return ([], nil)
+        }
+        let starter = makeStarter(token)
+        let viewer = try? await starter.viewerLogin()
+        let candidates = (try? await starter.assigneeCandidates(in: repository)) ?? []
+        guard let viewer else {
+            return (candidates, nil)
+        }
+        return (candidates.contains { $0.caseInsensitiveCompare(viewer) == .orderedSame } ? candidates : [viewer] + candidates, viewer)
     }
 
     /// 質問に回答を投稿する。成功したらその質問を一覧から外し、一覧を取り直す

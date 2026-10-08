@@ -43,6 +43,14 @@ final class AnswerFormModel {
     var loopRunner = LoopRunner.orchestrator
     /// 投稿を始めた時点の回し方。投稿中に選び直しても、確認したとおりの印を付ける（再試行でも使う）
     private(set) var postedRunner: LoopRunner?
+    /// 手で回すときの担当者（login）。既定は自分
+    var assignee: String?
+    /// 担当者に選べるアカウント（そのリポジトリに書き込み権限を持つ人）
+    private(set) var assigneeCandidates: [String] = []
+    /// トークンの持ち主の login
+    private(set) var viewerLogin: String?
+    /// 投稿を始めた時点の担当者（再試行でも使う）
+    private(set) var postedAssignee: String?
     private(set) var isPosting = false
     private(set) var isPosted = false
     /// 回答は投稿できたが、ループを始める印を付けられなかった
@@ -75,7 +83,28 @@ final class AnswerFormModel {
         guard startedManualLoop else {
             return nil
         }
-        return ManualLoopInstruction.make(repository: question.subject.repository, discussionNumber: question.subject.number)
+        return ManualLoopInstruction.start(repository: question.subject.repository, discussionNumber: question.subject.number)
+    }
+
+    /// 担当者が自分か（自分なら、投稿後の指示をそのまま使える）
+    var isAssignedToViewer: Bool {
+        guard let viewerLogin, let assignee = postedAssignee ?? assignee else {
+            return true
+        }
+        return viewerLogin.caseInsensitiveCompare(assignee) == .orderedSame
+    }
+
+    /// 担当者の候補を読み込む。担当者を選んでいなければ自分にする
+    func loadAssignees(using inbox: InboxModel) async {
+        guard assigneeCandidates.isEmpty else {
+            return
+        }
+        let (candidates, viewer) = await inbox.assigneeChoices(in: question.subject.repository)
+        assigneeCandidates = candidates
+        viewerLogin = viewer
+        if assignee == nil {
+            assignee = viewer ?? candidates.first
+        }
     }
 
     /// 「投稿したらループを始める」を選べるか。Discussion で、未回答の質問がこれだけのとき
@@ -103,7 +132,12 @@ final class AnswerFormModel {
             errorMessage = "この Discussion は信用する author が作ったものではないため、手動で回す印（manual-loop）は付けられません"
             return
         }
+        if runner == .manual && assignee == nil {
+            errorMessage = "手動ループの担当者を選んでください"
+            return
+        }
         postedRunner = runner
+        postedAssignee = runner == .manual ? assignee : nil
         isPosting = true
         errorMessage = nil
         defer { isPosting = false }
@@ -131,7 +165,8 @@ final class AnswerFormModel {
         isPosting = true
         defer { isPosting = false }
         do {
-            try await inbox.startLoop(for: question.subject, runner: runner)
+            let manualAssignee = runner == .manual ? (postedAssignee ?? assignee) : nil
+            try await inbox.startLoop(for: question.subject, runner: runner, assignee: manualAssignee)
             loopStartFailed = false
             errorMessage = nil
             startedManualLoop = runner == .manual

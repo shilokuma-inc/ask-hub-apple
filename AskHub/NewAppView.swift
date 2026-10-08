@@ -130,7 +130,7 @@ struct NewAppView: View {
                 } header: {
                     Text("送った依頼")
                 } footer: {
-                    Text("作り終えると、依頼 Issue に結果がコメントされます。App Store Connect でのアプリの作成は、新しいリポジトリの Issue（急がない）に出ます")
+                    Text("作り終えると、依頼 Issue に結果がコメントされます。App Store Connect でのアプリの作成は、新しいリポジトリの Issue として実機確認タブに出ます")
                 }
             }
 

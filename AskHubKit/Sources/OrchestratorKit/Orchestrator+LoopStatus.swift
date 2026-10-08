@@ -42,12 +42,13 @@ extension Orchestrator {
 
     private func publish(_ report: LoopStatusReport, to repository: RepositoryConfig) async throws {
         let key = repository.fullName.lowercased()
-        var action = loopStatusPublisher.action(repositoryKey: key, report: report, now: report.checkedAt)
+        let manualLoopOpen = manualLoopRepositories.contains(key)
+        var action = loopStatusPublisher.action(repositoryKey: key, report: report, now: report.checkedAt, manualLoopOpen: manualLoopOpen)
         // 書き換える前に Issue を読み直す。手で回すループ（書き手が manual）が書いていれば、その間は書かない
         if Self.needsLookUp(before: action) {
             let issues = try await github.loopStatusIssues(in: repository.fullName)
             loopStatusPublisher.adopt(issues, repositoryKey: key, trustedAuthors: trust.authors(for: repository.fullName))
-            action = loopStatusPublisher.action(repositoryKey: key, report: report, now: report.checkedAt)
+            action = loopStatusPublisher.action(repositoryKey: key, report: report, now: report.checkedAt, manualLoopOpen: manualLoopOpen)
         }
         switch action {
         case .lookUp, .none:

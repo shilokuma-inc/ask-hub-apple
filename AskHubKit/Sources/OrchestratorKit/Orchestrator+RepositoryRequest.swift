@@ -171,7 +171,21 @@ extension Orchestrator {
             log("\(repository.fullName) の担当の印を消せませんでした: \(error)")
         }
         lastHeartbeats[repository.fullName.lowercased()] = nil
+        await closeLoopStatusIssues(of: repository)
         return .succeeded(lines.joined(separator: "\n"))
+    }
+
+    /// 状態用の Issue を閉じる。閉じられなくても担当からは外れているので、ログに出すだけにする
+    private func closeLoopStatusIssues(of repository: RepositoryConfig) async {
+        let trusted = trust.authors(for: repository.fullName)
+        do {
+            for issue in try await github.loopStatusIssues(in: repository.fullName) where issue.isOpen && trusted.contains(issue.author) {
+                try await github.closeLoopStatusIssue(in: repository.fullName, number: issue.number)
+            }
+        } catch {
+            log("\(repository.fullName) の状態用の Issue を閉じられませんでした: \(error)")
+        }
+        loopStatusPublisher.forget(repositoryKey: repository.fullName.lowercased())
     }
 
     /// コマンドが失敗していれば、その結果。成功していれば `nil`

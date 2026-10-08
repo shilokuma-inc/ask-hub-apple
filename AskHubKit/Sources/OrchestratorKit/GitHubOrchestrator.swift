@@ -295,7 +295,7 @@ public struct GitHubOrchestrator: OrchestratorGitHub {
 
         ---
         この PR は askhub-orchestrator が epic の完了を検知して作成しました。
-        AskHub アプリの「マージ待ち」から確認して、merge commit でマージしてください。
+        AskHub アプリの「要対応」タブの「マージ待ち」から確認して、merge commit でマージしてください。
         """
 
     private static func owner(of repository: String) throws -> String {

@@ -129,6 +129,10 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     /// ゴール元の Discussion の番号。手で始めた epic など、記録が無ければ `nil`
     public var discussion: Int?
     public var progress: Progress?
+    /// 手で回しているループを回している人の login（`writer` が `manual` のとき）。オーケストレーターは書かない
+    public var runner: String?
+    /// 回答を待っている PR の番号（手で回しているループが書く）。これらの `needs-answer` が外れたら、アプリが再開の指示を出す
+    public var waitingPullRequests: [Int]?
     // 時刻は目印に秒までしか書かないので、読み戻した値と比べられるよう代入のたびに秒未満を切り捨てる
     // （`didSet` は init では呼ばれないので、init でも切り捨てる）
 
@@ -153,20 +157,24 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         progress: Progress? = nil,
         lastActivityAt: Date? = nil,
         usageLimitedUntil: Date? = nil,
-        checkedAt: Date
+        checkedAt: Date,
+        runner: String? = nil,
+        waitingPullRequests: [Int]? = nil
     ) {
         self.state = state
         self.writer = writer
         self.epic = epic
         self.discussion = discussion
         self.progress = progress
+        self.runner = runner
+        self.waitingPullRequests = waitingPullRequests
         self.lastActivityAt = lastActivityAt.map(Self.wholeSeconds)
         self.usageLimitedUntil = usageLimitedUntil.map(Self.wholeSeconds)
         self.checkedAt = Self.wholeSeconds(checkedAt)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case state, writer, epic, discussion, progress, lastActivityAt, usageLimitedUntil, checkedAt
+        case state, writer, epic, discussion, progress, lastActivityAt, usageLimitedUntil, checkedAt, runner, waitingPullRequests
     }
 
     public init(from decoder: any Decoder) throws {
@@ -179,7 +187,9 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
             progress: try container.decodeIfPresent(Progress.self, forKey: .progress),
             lastActivityAt: try container.decodeIfPresent(Date.self, forKey: .lastActivityAt),
             usageLimitedUntil: try container.decodeIfPresent(Date.self, forKey: .usageLimitedUntil),
-            checkedAt: try container.decode(Date.self, forKey: .checkedAt)
+            checkedAt: try container.decode(Date.self, forKey: .checkedAt),
+            runner: try container.decodeIfPresent(String.self, forKey: .runner),
+            waitingPullRequests: try container.decodeIfPresent([Int].self, forKey: .waitingPullRequests)
         )
     }
 
@@ -208,6 +218,9 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     /// 状態用の Issue の本文。先頭に目印、続けて人が読める表を置く
     public var issueBody: String {
         var rows = [("状態", state.title), ("書き手", writer.title)]
+        if let runner {
+            rows.append(("回している人", "@" + Self.tableCell(runner)))
+        }
         if let epic {
             rows.append(("epic", Self.tableCell(epic)))
         }
@@ -226,6 +239,9 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         }
         if let usageLimitedUntil {
             rows.append(("上限の解除", usageLimitedUntil.formatted(.iso8601)))
+        }
+        if let waitingPullRequests, !waitingPullRequests.isEmpty {
+            rows.append(("回答待ちの PR", waitingPullRequests.map { "#\($0)" }.joined(separator: " ")))
         }
         rows.append(("確認時刻", checkedAt.formatted(.iso8601)))
         let table = rows.map { "| \($0.0) | \($0.1) |" }.joined(separator: "\n")

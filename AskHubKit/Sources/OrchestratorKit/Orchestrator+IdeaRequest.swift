@@ -55,7 +55,7 @@ extension Orchestrator {
                 try await github.comment(on: issue, body: """
                     質問付きの Discussion を作りました: \(url.absoluteString)
 
-                    AskHub アプリの「要回答」から回答し、「回答を確定してループを始める」を押してください。（askhub-orchestrator）
+                    AskHub アプリの「要対応」タブの「要回答」から回答し、最後の質問で「回答を確定してループを始める」を選んでください。（askhub-orchestrator）
                     """)
                 ideaTracker.recordCommented(issue)
                 try await github.close(issue)

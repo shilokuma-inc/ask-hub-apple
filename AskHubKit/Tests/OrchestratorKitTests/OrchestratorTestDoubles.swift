@@ -51,6 +51,7 @@ struct FakeGitHubState {
     /// `repo-request` の Issue
     var repositoryRequests: [RepositoryRequestIssue] = []
     var deletedHeartbeats: [String] = []
+    var closedLoopStatusIssues: [String] = []
 }
 
 struct FakeRuntimeState {

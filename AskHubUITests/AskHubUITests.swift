@@ -23,34 +23,25 @@ final class AskHubUITests: XCTestCase {
     }
 
     @MainActor
-    func testInboxShowsBothTabs() throws {
+    func testActionTabShowsQuestionsAndMergeQueue() throws {
         let app = XCUIApplication()
         // GitHub に接続せず、アプリに組み込んだサンプルデータを表示する
         app.launchArguments += ["-AskHubSampleInbox"]
         app.launch()
 
+        // 開いたときは「要対応」タブ。上に「要回答」、その下に「マージ待ち」
+        XCTAssertTrue(app.navigationBars["要対応"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["通知の頻度を調整したい"].firstMatch.waitForExistence(timeout: 5))
         // HTML タグと Markdown が混ざった質問のサンプルも一覧に出る
         XCTAssertTrue(app.staticTexts["HTMLタグの有効化"].firstMatch.exists)
-
-        // 「上限で待機中」「ループの開始待ち」は「ループ」タブに出し、要回答・急がないには出さない
+        let questions = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "要回答（")).firstMatch
+        XCTAssertTrue(questions.exists)
+        // マージ待ちの見出しは要回答の下にあり、スクロールすると出てくる
+        let mergeQueue = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "マージ待ち（")).firstMatch
+        XCTAssertFalse(mergeQueue.isHittable)
+        scrollUntilHittable(mergeQueue, in: app)
+        // 「上限で待機中」「ループの開始待ち」は「ステータス」タブに出し、要対応には出さない
         XCTAssertFalse(app.staticTexts["上限で待機中"].exists)
-
-        app.tabBars.buttons["急がない"].tap()
-        XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
-        // 判断ログ（上）と実機確認（下）のセクションに分け、見出しに件数を出す
-        let decisionLogHeader = app.staticTexts["判断ログ（2 件）"]
-        let needsVerifyHeader = app.staticTexts["実機確認（1 件）"]
-        XCTAssertTrue(decisionLogHeader.exists)
-        XCTAssertTrue(needsVerifyHeader.exists)
-        XCTAssertLessThan(decisionLogHeader.frame.minY, needsVerifyHeader.frame.minY)
-        // 更新が実機確認より古い判断ログも、判断ログのセクション（実機確認の見出しより上）に入る
-        XCTAssertLessThan(
-            app.staticTexts["【CHORE】epic/notification の仮決め一覧"].frame.minY,
-            needsVerifyHeader.frame.minY
-        )
-        XCTAssertFalse(app.staticTexts["上限で待機中"].exists)
-        XCTAssertFalse(app.staticTexts["ループの開始待ち"].exists)
     }
 
     @MainActor
@@ -135,7 +126,7 @@ final class AskHubUITests: XCTestCase {
         post.tap()
 
         // 投稿すると一覧に戻る
-        XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["要対応"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -168,7 +159,7 @@ final class AskHubUITests: XCTestCase {
         post.tap()
 
         // 投稿すると一覧に戻る
-        XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["要対応"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -226,7 +217,7 @@ final class AskHubUITests: XCTestCase {
         let confirm = app.buttons["投稿してループを始める"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         confirm.tap()
-        XCTAssertTrue(app.navigationBars["要回答"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["要対応"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -276,8 +267,10 @@ final class AskHubUITests: XCTestCase {
         app.launchArguments += ["-AskHubSampleInbox"]
         app.launch()
 
-        app.tabBars.buttons["マージ待ち"].tap()
+        // マージ待ちは「要対応」タブの要回答の下にある（一覧が出るのを待ってからスクロールする）
+        XCTAssertTrue(app.staticTexts["通知の頻度を調整したい"].firstMatch.waitForExistence(timeout: 5))
         let row = app.staticTexts["【FEAT】epic/html-rendering を develop に取り込む"]
+        scrollUntilHittable(row, in: app)
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
 
@@ -306,8 +299,10 @@ final class AskHubUITests: XCTestCase {
         app.launchArguments += ["-AskHubSampleInbox"]
         app.launch()
 
-        app.tabBars.buttons["マージ待ち"].tap()
+        // マージ待ちは「要対応」タブの要回答の下にある（一覧が出るのを待ってからスクロールする）
+        XCTAssertTrue(app.staticTexts["通知の頻度を調整したい"].firstMatch.waitForExistence(timeout: 5))
         let row = app.staticTexts["【FEAT】epic/mvp を develop に取り込む"]
+        scrollUntilHittable(row, in: app)
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
 
@@ -321,7 +316,7 @@ final class AskHubUITests: XCTestCase {
         let confirm = app.buttons["develop にマージする"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         confirm.tap()
-        XCTAssertTrue(app.navigationBars["マージ待ち"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["要対応"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["【FEAT】epic/mvp を develop に取り込む"].exists)
     }
 
@@ -331,7 +326,7 @@ final class AskHubUITests: XCTestCase {
         app.launchArguments += ["-AskHubSampleInbox"]
         app.launch()
 
-        app.tabBars.buttons["ループ"].tap()
+        app.tabBars.buttons["ステータス"].tap()
         // 一覧の先頭に「上限で待機中」と「ループの開始待ち」の節がある
         XCTAssertTrue(app.staticTexts["上限で待機中"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["shilokuma-inc/notti-ios"].exists)
@@ -340,6 +335,11 @@ final class AskHubUITests: XCTestCase {
         // 担当の印が無いリポジトリの開始待ちは「担当 PC なし」と出る
         XCTAssertTrue(app.staticTexts["beat-tap-ios#3"].exists)
         XCTAssertTrue(app.staticTexts["担当 PC なし"].exists)
+
+        // 手動ループの欄に、担当者と（自分が担当なら）開始の指示のコピーを出す
+        scrollUntilHittable(app.staticTexts["prime-pick-ios#21"], in: app)
+        XCTAssertTrue(app.buttons["copy-manual-start"].exists)
+        XCTAssertTrue(app.staticTexts["zankyo-apple#8"].exists)
 
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "loop-status-tab"
@@ -395,5 +395,26 @@ final class AskHubUITests: XCTestCase {
         let save = app.buttons["保存"]
         XCTAssertTrue(save.isEnabled)
         XCTAssertTrue(save.isHittable)
+    }
+}
+
+// タブの分け方（任意判断と実機確認）
+extension AskHubUITests {
+    @MainActor
+    func testDecisionAndVerificationTabsAreSeparated() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        // 任意判断には仮決め一覧だけを出す
+        app.tabBars.buttons["任意判断"].tap()
+        XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["【CHORE】epic/notification の仮決め一覧"].exists)
+        XCTAssertFalse(app.staticTexts["【CHORE】実機確認: PAT の Keychain への保存と macOS の設定画面の見た目"].exists)
+
+        // 実機確認は別のタブ
+        app.tabBars.buttons["実機確認"].tap()
+        XCTAssertTrue(app.staticTexts["【CHORE】実機確認: PAT の Keychain への保存と macOS の設定画面の見た目"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].exists)
     }
 }

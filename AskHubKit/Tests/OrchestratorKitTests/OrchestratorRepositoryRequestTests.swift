@@ -188,6 +188,9 @@ struct OrchestratorRepositoryRequestTests {
     @Test func removesRepositoryDeletesLocalFilesAndHeartbeat() async throws {
         let github = FakeGitHub([.success([])])
         github.setRepositoryRequests([Self.issue(Self.removeRequest(), in: "shilokuma-inc/notti-ios")])
+        github.setLoopStatusIssues([
+            LoopStatusIssueRecord(number: 101, author: "mrs1669", isOpen: true, updatedAt: .distantPast, body: "")
+        ])
         let runtime = FakeRuntime()
         runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: 約 4.2 GB を消しました\n")])
         let (orchestrator, store) = try makeOrchestrator(github: github, runtime: runtime)
@@ -198,6 +201,8 @@ struct OrchestratorRepositoryRequestTests {
         #expect(store.removed == ["shilokuma-inc/notti-ios"])
         #expect(await orchestrator.config.repository(named: "shilokuma-inc/notti-ios") == nil)
         #expect(github.deletedHeartbeats == ["shilokuma-inc/notti-ios"])
+        // ステータスタブに行を残さないよう、状態用の Issue も閉じる
+        #expect(github.closedLoopStatusIssues == ["shilokuma-inc/notti-ios#101"])
         let comment = try #require(github.ideaComments.first)
         #expect(comment.hasPrefix("#5: shilokuma-inc/notti-ios をこの PC の担当リポジトリから外しました"))
         #expect(comment.contains("- 約 4.2 GB を消しました"))
