@@ -125,7 +125,8 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 
 | キー | 必須 | 説明 |
 | --- | --- | --- |
-| `trustedAuthors` | | 指示として扱う GitHub アカウント。省略時は `["mrs1669"]` |
+| `trustedAuthors` | | どの担当リポジトリでも指示として扱う GitHub アカウント。省略時は `["mrs1669"]` |
+| `trustRepositoryWriters` | | 担当リポジトリに書き込み権限（write 以上）を持つアカウントも、そのリポジトリで指示として扱うか。省略時は `true`（`docs/protocol.md` の「信用する author」） |
 | `repositories` | ✓ | この PC が担当するリポジトリ。`repository` は `owner/repo`、`path` はメインの checkout の絶対パス（`~` 可）。owner は別の organization でもよい（`needs-answer` などは、担当リポジトリの owner の organization をまとめて検索する）。PC 間で担当を重ねない（Q10） |
 | `pollIntervalSeconds` | | ポーリング間隔（秒）。既定 60、下限 30（Search API は認証済みでも 30 回/分のため） |
 | `loopCommand` | ✓ | ループを起動するコマンド。シェルを経由せず引数の配列のまま実行する |
@@ -140,7 +141,8 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 
 設定ファイルは**ポーリングのたびに読み直す**。担当リポジトリの追加・削除などは、オーケストレーターを再起動しなくても次のポーリングから効く。
 読めないとき（書きかけ・JSON の誤り）はログに 1 回だけ理由を出し、直るまで前の設定のまま動く。
-ただし `trustedAuthors` を起動スクリプトへ渡す環境変数（`ASKHUB_TRUSTED_AUTHORS`）は起動時の値のままなので、`trustedAuthors` を変えたら再起動する。
+信用する author（設定の `trustedAuthors` と、担当リポジトリへの書き込み権限を持つアカウント）は、ポーリングのはじめに担当リポジトリごとに求め直し（書き込み権限は 10 分ごとに取り直す）、
+変わったらログに `<リポジトリ> で信用する author: …` と出す。ループには起動ごとに `ASKHUB_TRUSTED_AUTHORS` で渡す。
 アプリからの担当リポジトリの作成・削除の依頼では、オーケストレーターが `repositories` を書き換える（下記）。
 
 ### `loopCommand` のプレースホルダ
@@ -168,7 +170,8 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 - 前の epic が完了済み（未完了のタスクが無い）なら、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/` に退避してから worktree を片付ける。
   未完了なら新しい epic は始めない（1 リポジトリにつきループは 1 つ）。
   worktree にコミットしていない変更がある・退避に失敗したときは、片付けずに失敗として返す
-- 信用する author は、オーケストレーターが設定の `trustedAuthors` を環境変数 `ASKHUB_TRUSTED_AUTHORS` で渡す（手で設定する必要は無い）
+- 信用する author は、オーケストレーターが起動ごとに環境変数 `ASKHUB_TRUSTED_AUTHORS` で渡す（設定の `trustedAuthors` と、そのリポジトリへの書き込み権限を持つアカウント。手で設定する必要は無い）。
+  再開では、制御用 worktree の playbook の「信用する author」もこの値に書き直す
 - 再開の理由は、オーケストレーターが起動ごとに環境変数 `ASKHUB_RESUME_REASON` で渡す（今は仮決め一覧への指示による再開の `decision-log` だけ。`loopCommand` に書く必要は無い）
 - オーケストレーターも PID ファイルを読み、state ファイルが残っていても PID のプロセスが居なければ「止まっている」とみなして再開する
 - 準備が途中で失敗した場合（完了語を読み取れない等）は、オーケストレーターの再試行で、同じ Discussion の途中の worktree を片付けてやり直す

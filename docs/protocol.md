@@ -204,16 +204,29 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 ## 信用する author
 
-アプリとオーケストレーターの設定で列挙する。既定は `mrs1669`。
+リポジトリごとに決まる。次のどちらかに当てはまるアカウントを、そのリポジトリで信用する。
+
+1. 設定で列挙したアカウント（アプリは `TrustedAuthors.default`、オーケストレーターは設定の `trustedAuthors`。既定は `mrs1669`）。どのリポジトリでも信用する
+2. **そのリポジトリに書き込み権限（write・maintain・admin）を持つアカウント**。REST の `repos/{owner}/{repo}/collaborators?affiliation=all` から求める
+   （直接の collaborator・チーム・organization の既定の権限・organization の owner を含む）
+
+共同開発者を加えるときは、GitHub でリポジトリ（またはチーム）に write 以上の権限で招待する。招待そのものを「信用する」という明示的な判断として扱う
+（以前は「collaborator から自動で導出しない」としていたが、共同開発者の参加にあたって改めた。ラベルの付け外しとマージにはどのみち write 権限が要るので、
+「権限がある人 = 指示として扱ってよい人」とそろえる）。権限はリポジトリごとなので、あるリポジトリの collaborator を、ほかのリポジトリで信用することはない。
+
+- 書き込み権限の一覧は 10 分ごとに取り直す（`RepositoryWriters`）。取得に失敗したら前回の結果、一度も取れていなければ設定の一覧だけを使う
+- collaborator の一覧の API はトークンの持ち主に push 権限が要る。権限の無いリポジトリでは、そのアプリは設定の一覧だけを信用する
+- オーケストレーターは設定の `trustRepositoryWriters: false` で 2. を止められる（設定の一覧だけを信用する）
+- ループには、オーケストレーターが起動ごとにそのリポジトリの信用する author を `ASKHUB_TRUSTED_AUTHORS` で渡す。
+  起動スクリプトは epic の準備で playbook に書き、再開のたびに playbook の値を書き直す（epic の途中で招待した人も、次の再開から信用する）
 
 信用する author の書いたものだけを、次の用途に使う。
 
 - 質問の目印（それ以外の author の目印は無視する）
 - 回答（それ以外の author の返信は回答とみなさない）
-- 新機能の依頼（`idea-request` の Issue）
+- 新機能の依頼（`idea-request` の Issue）・担当リポジトリの作成・削除の依頼（`repo-request` の Issue）
 - 仮決め一覧への指示（それ以外の author のコメントではループを再開しない）
-
-信用リストを collaborator から自動で導出しない。増やす操作は明示的な判断として行う。
+- `ready-for-loop` / `manual-loop` の付いた Discussion・最終 PR・状態用の Issue（それ以外の author が作ったものは扱わない）
 
 ## 依頼先のリポジトリ
 
