@@ -96,6 +96,15 @@ fi
 cd "$WORK"
 git checkout --quiet "$BRANCH"
 git pull --quiet --ff-only origin "$BRANCH"
+# 既にある checkout に無関係なコミットがあれば、まとめて push してしまわないよう止める。
+# 前回このスクリプトが作ったコミット 1 件だけ（push に失敗したやり直し）は許す
+COMMIT_MESSAGE="[chore] テンプレートから $APP_NAME を作成する"
+AHEAD=$(git rev-list --count "origin/$BRANCH..$BRANCH")
+if (( AHEAD > 0 )); then
+  if (( AHEAD != 1 )) || [[ "$(git log -1 --format=%s "$BRANCH")" != "$COMMIT_MESSAGE" ]]; then
+    reject "checkout の $BRANCH に、push していない無関係なコミットがあります"
+  fi
+fi
 
 # 3. アプリ名を変え、Bundle ID を書いて push する
 [[ -x scripts/rename.sh ]] || reject "テンプレートに scripts/rename.sh がありません"
@@ -117,7 +126,7 @@ else
 fi
 if [[ -n "$(git status --porcelain)" ]]; then
   git add -A
-  git commit --quiet -m "[chore] テンプレートから $APP_NAME を作成する"
+  git commit --quiet -m "$COMMIT_MESSAGE"
 fi
 git push --quiet origin "$BRANCH" || fail "$BRANCH に push できませんでした"
 result "アプリ名を $APP_NAME、Bundle ID を $BUNDLE_ID にして $BRANCH に push しました"
