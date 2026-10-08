@@ -17,7 +17,8 @@
 #   ASKHUB_CLAUDE            claude の実行ファイル（既定: claude）
 #   ASKHUB_LOG_DIR           ループのログの置き場所（既定: ~/Library/Logs/askhub/loops）
 #   ASKHUB_ARCHIVE_DIR       完了した epic の goal / state の退避先（既定: ~/Library/Logs/askhub/archive）
-#   ASKHUB_TRUSTED_AUTHORS   指示として扱う GitHub アカウント（カンマ区切り。既定: mrs1669）
+#   ASKHUB_TRUSTED_AUTHORS   指示として扱う GitHub アカウント（カンマ区切り。既定: mrs1669）。オーケストレーターが起動ごとに、
+#                            設定の一覧と担当リポジトリへの書き込み権限を持つアカウントを合わせて渡す。再開では playbook の値も書き直す
 #   ASKHUB_BOOTSTRAP_MODEL   準備に使うモデル（既定: claude の既定）
 #   ASKHUB_RESUME_REASON     再開の理由。オーケストレーターが起動ごとに渡す（decision-log: 仮決め一覧への指示）
 #   ASKHUB_XCODEBUILD_WRAPPER  ループに xcodebuild の代わりに使わせるラッパー（既定: ~/.config/askhub/xcodebuild が実行可能ならそれ）。
@@ -66,6 +67,15 @@ PID_FILE="$CTL/.claude/askhub-loop.pid"
 
 log() { echo "[$(date '+%F %T')] [start-loop $REPOSITORY] $*"; }
 fail() { log "error: $*"; exit 1; }
+# playbook の「信用する author」を今の値（ASKHUB_TRUSTED_AUTHORS）に書き直す。
+# 信用する author は担当リポジトリへの書き込み権限で変わるので、epic の途中で招待した共同開発者も、次の再開から信用する
+refresh_trusted_authors() {
+  local current
+  current=$(sed -n -E 's/.*\*\*信用する author: `([^`]*)`\*\*.*/\1/p' "$PLAYBOOK" | head -n 1)
+  [[ -n "$current" && "$current" != "$TRUSTED" ]] || return 0
+  OLD="$current" NEW="$TRUSTED" perl -pi -e 's/\Q`$ENV{OLD}`\E/`$ENV{NEW}`/g' "$PLAYBOOK"
+  log "playbook の信用する author を更新しました（${TRUSTED}）"
+}
 
 # 未完了のタスク（回答待ちを除く）の数。ゴールファイルが無ければ 0
 open_tasks() {
@@ -282,6 +292,7 @@ else
   # 片付け済みのスロットを作り直す（ralph-setup.sh は既存の worktree を再利用する）
   EPIC=$(git -C "$CTL" symbolic-ref --short HEAD)
   (cd "$CHECKOUT" && scripts/ralph-setup.sh "$EPIC" >/dev/null)
+  refresh_trusted_authors
   log "ループを再開します（${EPIC}）"
 fi
 
