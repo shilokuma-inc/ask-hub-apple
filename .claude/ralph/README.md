@@ -171,6 +171,10 @@ promise は完全一致でしか成立せず「詰まった」を表現できな
 AskHub の回答画面で、最後の質問を「投稿したら、回答を確定してループを始める」の回し方「手動で回す」にし、担当者を選んで投稿すると、
 Discussion に `manual-loop` と担当のコメント（`<!-- ask-hub:manual-assignee login="…" -->`。担当者を @メンションするので通知が届く）が付く。
 **信用する author（このリポジトリに書き込み権限を持つ人）の Discussion に付いたときだけ効く。** 担当者は、担当のコメントのうち最後のもの。
+GitHub で手で付けるときは、**最後の質問に回答する前に** `manual-loop` を付け、担当のコメント（先頭に上の目印を置き、担当者を @メンションする）を書く。
+全問回答した時点で `manual-loop` が無いと、オーケストレーターが `ready-for-loop` を付けて自動で起動することがある。
+ラベルは `ralph-setup.sh` が作る（AskHub も「手動で回す」で投稿するときに無ければ作る）。セットアップ前で無いときは
+`gh label create manual-loop --color C5DEF5 --description 'この Discussion のループは手で回す（オーケストレーターは起動しない）'` で作る。
 
 `manual-loop` の付いた Discussion について、オーケストレーターは次のように動く:
 
@@ -197,6 +201,8 @@ Discussion に `manual-loop` と担当のコメント（`<!-- ask-hub:manual-ass
    （指示を受けた会話そのものはループにならない。ログは `~/Library/Logs/askhub/manual/`）
 4. 周回中は、playbook の STEP D が `scripts/askhub-manual.sh status` を呼び、loop-status を書き手 `manual`・回している人つきで書く（10 分に 1 回まで）。
    promise を出す直前に `status --stopping` を呼ぶ（回答待ちの PR を書き、AskHub が回答のそろったところで担当者に再開を促す）
+   書き込む Issue はオーケストレーターと同じ選び方で決める（信用する author が作った `loop-status` の Issue のうち、open で最も新しく更新されたもの。
+   無ければ閉じたもののうち最も新しく更新されたものを開き直す。1 つも無ければ担当者のアカウントで作る）
 5. 回答がそろったら（AskHub に「回答がそろいました」が出る）、再開の指示を受けて `scripts/askhub-manual.sh resume`
 6. ループが終わったら、**制御用 worktree の外で** `scripts/askhub-manual.sh final`。ゴール元の目印つきの最終 PR（`epic-final`）を作る。
    マージは AskHub の「要対応」タブの「マージ待ち」から（マージするとゴール元の Discussion が閉じる）
