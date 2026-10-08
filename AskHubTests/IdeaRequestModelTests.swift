@@ -47,6 +47,21 @@ struct IdeaRequestModelTests {
             }
             return CreatedIssue(number: number, htmlURL: URL(string: "https://github.com/\(request.repository)/issues/\(number)")!)
         }
+
+        private let repositoryRequests = OSAllocatedUnfairLock<[String]>(initialState: [])
+
+        /// 作った作成・削除の依頼（`<依頼 Issue のリポジトリ> <タイトル>`）
+        var sentRepositoryRequests: [String] {
+            repositoryRequests.withLock { $0 }
+        }
+
+        func create(_ request: RepositoryRequest, in repository: String) async throws -> CreatedIssue {
+            if let failure {
+                throw failure
+            }
+            repositoryRequests.withLock { $0.append("\(repository) \(request.title)") }
+            return CreatedIssue(number: 9, htmlURL: URL(string: "https://github.com/\(repository)/issues/9")!)
+        }
     }
 
     private func makeModel(token: String? = "github_pat_saved", requester: RecordingRequester) -> IdeaRequestModel {
@@ -96,6 +111,10 @@ struct IdeaRequestModelTests {
         }
 
         func create(_ request: IdeaRequest) async throws -> CreatedIssue {
+            throw IdeaRequestError.invalidRequest
+        }
+
+        func create(_ request: RepositoryRequest, in repository: String) async throws -> CreatedIssue {
             throw IdeaRequestError.invalidRequest
         }
     }
@@ -270,5 +289,54 @@ struct IdeaRequestModelTests {
         model.body = "依頼文"
         await model.send()
         #expect(model.errorMessage == "トークンが未設定です。設定で保存してください")
+    }
+    // MARK: - 担当リポジトリの作成・削除の依頼
+
+    private static let createRequest = RepositoryRequest.create(NewRepository(
+        repository: "shilokuma-inc/my-quiz-ios",
+        template: .quiz,
+        appName: "MyQuiz",
+        bundleIdentifier: "jp.shilokuma.MyQuiz"
+    ))
+
+    @Test func sendsRepositoryRequestToGivenRepository() async {
+        let requester = RecordingRequester()
+        let model = makeModel(requester: requester)
+
+        let sent = await model.send(Self.createRequest, to: "shilokuma-inc/ask-hub-apple")
+
+        #expect(requester.sentRepositoryRequests == ["shilokuma-inc/ask-hub-apple 【新規アプリ】shilokuma-inc/my-quiz-ios"])
+        #expect(sent?.message == "my-quiz-ios の作成を依頼しました")
+        #expect(sent?.linkTitle == "ask-hub-apple#9 を GitHub で開く")
+        #expect(model.sentRepositoryRequests.count == 1)
+        #expect(model.repositoryRequestError == nil)
+    }
+
+    @Test func refusesInvalidRepositoryRequestWithoutSending() async {
+        let requester = RecordingRequester()
+        let model = makeModel(requester: requester)
+
+        // 依頼先を選んでいない
+        #expect(await model.send(Self.createRequest, to: "") == nil)
+
+        #expect(requester.sentRepositoryRequests.isEmpty)
+        #expect(model.repositoryRequestError == "依頼先を選び、各項目を正しい形式で入力してください")
+    }
+
+    @Test func showsErrorWhenRepositoryRequestFails() async {
+        let model = makeModel(token: nil, requester: RecordingRequester())
+
+        let removal = RepositoryRequest.remove(RepositoryRemoval(repository: "shilokuma-inc/notti-ios", deletesLocalFiles: true))
+        #expect(await model.send(removal, to: "shilokuma-inc/notti-ios") == nil)
+
+        #expect(model.repositoryRequestError == "トークンが未設定です。設定で保存してください")
+        #expect(model.sentRepositoryRequests.isEmpty)
+    }
+
+    @Test func listsOnlyAssignedRepositoriesForCreation() async {
+        let model = makeModel(requester: RecordingRequester())
+        await model.loadRepositories()
+
+        #expect(model.assignedRepositories(now: Date(timeIntervalSince1970: 1_800_000_000)) == ["shilokuma-inc/ask-hub-apple"])
     }
 }

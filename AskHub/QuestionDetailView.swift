@@ -65,7 +65,8 @@ struct QuestionDetailView: View {
                         Button((form.postedRunner ?? form.loopRunner) == .manual ? "manual-loop を付ける（再試行）" : "ループを始める（再試行）") {
                             Task {
                                 await form.startLoop(using: inbox)
-                                if !form.loopStartFailed {
+                                // 手で回すなら、指示を見せるため閉じない
+                                if !form.loopStartFailed && form.manualLoopInstruction == nil {
                                     dismiss()
                                 }
                             }
@@ -73,6 +74,10 @@ struct QuestionDetailView: View {
                         .disabled(form.isPosting)
                     }
                 }
+            }
+
+            if let instruction = form.manualLoopInstruction {
+                ManualLoopInstructionSection(instruction: instruction) { dismiss() }
             }
 
             if !form.isPosted {
@@ -178,8 +183,8 @@ struct QuestionDetailView: View {
     private func post() {
         Task {
             await form.post(using: inbox)
-            // ループを始めなかった理由（errorMessage）があるときは、閉じずに見せる
-            if form.isPosted && !form.loopStartFailed && form.errorMessage == nil {
+            // ループを始めなかった理由（errorMessage）や、手で回すときの指示があるときは、閉じずに見せる
+            if form.isPosted && !form.loopStartFailed && form.errorMessage == nil && form.manualLoopInstruction == nil {
                 dismiss()
             }
         }

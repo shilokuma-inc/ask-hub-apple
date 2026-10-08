@@ -12,9 +12,10 @@ struct AskHubLabelTests {
         #expect(AskHubLabel.epicFinal.rawValue == "epic-final")
         #expect(AskHubLabel.orchestratorHeartbeat.rawValue == "askhub-orchestrator")
         #expect(AskHubLabel.loopStatus.rawValue == "loop-status")
+        #expect(AskHubLabel.repoRequest.rawValue == "repo-request")
     }
 
     @Test func coversAllProtocolLabels() {
-        #expect(AskHubLabel.allCases.count == 9)
+        #expect(AskHubLabel.allCases.count == 10)
     }
 }

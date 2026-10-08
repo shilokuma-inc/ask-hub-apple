@@ -32,6 +32,10 @@ final class IdeaRequestModel {
     /// この画面で送った依頼（新しい順）。メモリにだけ持ち、保存しない。アプリを終了するかモデルを作り直すと消える
     private(set) var sent: [SentRequest]
     private(set) var errorMessage: String?
+    /// この画面で送った、担当リポジトリの作成・削除の依頼（新しい順）。`sent` と同じくメモリにだけ持つ
+    private(set) var sentRepositoryRequests: [SentRepositoryRequest] = []
+    private(set) var isSendingRepositoryRequest = false
+    private(set) var repositoryRequestError: String?
 
     private let tokenStore: any TokenStore
     private let makeRequester: @Sendable (String) -> any IdeaRequesting
@@ -137,6 +141,43 @@ final class IdeaRequestModel {
             body = ""
         } catch {
             errorMessage = Self.message(for: error)
+        }
+    }
+
+    /// 新しいアプリのリポジトリを作る organization の候補（設定の「取得する organization」）
+    var organizationChoices: [String] {
+        organizations()
+    }
+
+    /// 作成を任せられる担当リポジトリ（担当 PC がいるもの）。そのリポジトリの担当 PC が作成し、担当に加える
+    func assignedRepositories(now: Date) -> [String] {
+        repositories.filter { $0.isAssigned(now: now) }.map(\.fullName)
+    }
+
+    /// 担当リポジトリの作成・削除の依頼（`repo-request` の Issue）を `repository` に作る。送れたら送った依頼を返す
+    @discardableResult
+    func send(_ request: RepositoryRequest, to repository: String) async -> SentRepositoryRequest? {
+        guard !isSendingRepositoryRequest else {
+            return nil
+        }
+        guard request.isValid, RepositoryName.isValidFullName(repository) else {
+            repositoryRequestError = "依頼先を選び、各項目を正しい形式で入力してください"
+            return nil
+        }
+        isSendingRepositoryRequest = true
+        repositoryRequestError = nil
+        defer { isSendingRepositoryRequest = false }
+        do {
+            guard let token = try tokenStore.load() else {
+                throw MissingTokenError()
+            }
+            let issue = try await makeRequester(token).create(request, in: repository)
+            let sent = SentRepositoryRequest(request: request, repository: repository, issue: issue)
+            sentRepositoryRequests.insert(sent, at: 0)
+            return sent
+        } catch {
+            repositoryRequestError = Self.message(for: error)
+            return nil
         }
     }
 

@@ -28,3 +28,27 @@ struct SentRequest: Equatable, Identifiable {
         "\(InboxSubject.shortRepository(repository))#\(issue.number) を GitHub で開く"
     }
 }
+
+/// 送った、担当リポジトリの作成・削除の依頼
+struct SentRepositoryRequest: Equatable, Identifiable {
+    let request: RepositoryRequest
+    /// 依頼 Issue を作ったリポジトリ（`owner/repo`）
+    let repository: String
+    let issue: CreatedIssue
+    let id = UUID()
+
+    /// 例: `my-quiz-ios の作成を依頼しました`
+    var message: String {
+        switch request {
+        case .create:
+            "\(InboxSubject.shortRepository(request.repository)) の作成を依頼しました"
+
+        case .remove:
+            "\(InboxSubject.shortRepository(request.repository)) を担当から外す依頼をしました"
+        }
+    }
+
+    var linkTitle: String {
+        "\(InboxSubject.shortRepository(repository))#\(issue.number) を GitHub で開く"
+    }
+}

@@ -16,6 +16,8 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
     case unknownIdeaPlaceholder(String)
     case emptyConflictCommand
     case unknownConflictPlaceholder(String)
+    case emptyRepositoryCommand(key: String)
+    case relativeNewRepositoryDirectory(String)
 
     public var description: String {
         switch self {
@@ -61,6 +63,12 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
             "conflictCommand に未知のプレースホルダ {\(name)} があります（使えるもの: "
                 + ConflictCommandTemplate.Placeholder.allCases.map { "{\($0.rawValue)}" }.joined(separator: " ")
                 + "）"
+
+        case let .emptyRepositoryCommand(key):
+            "\(key) が空です。実行するコマンドを引数の配列で指定してください"
+
+        case let .relativeNewRepositoryDirectory(path):
+            "newRepositoryDirectory は絶対パス（または ~ から始まるパス）にしてください: \(path)"
         }
     }
 }

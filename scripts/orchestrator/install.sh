@@ -65,6 +65,9 @@ install -m 755 "$BIN_DIR/askhub-orchestrator" "$PREFIX/askhub-orchestrator"
 install -m 755 "$REPO_ROOT/scripts/orchestrator/start-loop.sh" "$PREFIX/askhub-start-loop"
 # conflictCommand の既定（epic の最終 PR のコンフリクトを解消する）。loopCommand と同じ場所に置く
 install -m 755 "$REPO_ROOT/scripts/orchestrator/resolve-conflict.sh" "$PREFIX/askhub-resolve-conflict"
+# createRepositoryCommand / removeRepositoryCommand の既定（担当リポジトリの作成・削除の依頼）
+install -m 755 "$REPO_ROOT/scripts/orchestrator/create-repo.sh" "$PREFIX/askhub-create-repo"
+install -m 755 "$REPO_ROOT/scripts/orchestrator/remove-repo.sh" "$PREFIX/askhub-remove-repo"
 
 # XML に入る値なので、& < > をエスケープしてから置き換える
 escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
@@ -86,6 +89,7 @@ cat <<MSG
   実行ファイル: $PREFIX/askhub-orchestrator
   起動スクリプト: $PREFIX/askhub-start-loop（設定の loopCommand に指定する）
   コンフリクトの解消: $PREFIX/askhub-resolve-conflict（conflictCommand の既定）
+  リポジトリの作成・削除: $PREFIX/askhub-create-repo / askhub-remove-repo（createRepositoryCommand / removeRepositoryCommand の既定）
   plist:        $PLIST
   ログ:         $LOG_DIR/orchestrator.log
 

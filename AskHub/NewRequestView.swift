@@ -76,6 +76,18 @@ struct NewRequestView: View {
                 }
                 .disabled(!model.canSend)
             }
+
+            // 依頼の入力欄より上に置くと、キーボードで入力欄が隠れやすくなるので末尾に置く
+            Section {
+                NavigationLink {
+                    NewAppView(model: model)
+                } label: {
+                    Label("新しいアプリを作る", systemImage: "plus.app")
+                }
+                .accessibilityIdentifier("new-app-link")
+            } footer: {
+                Text("テンプレートからリポジトリを作り、担当 PC に載せます")
+            }
         }
         .formStyle(.grouped)
         .keyboardDoneButton($isEditing)

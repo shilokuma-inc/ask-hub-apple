@@ -47,6 +47,8 @@ final class AnswerFormModel {
     private(set) var isPosted = false
     /// 回答は投稿できたが、ループを始める印を付けられなかった
     private(set) var loopStartFailed = false
+    /// `manual-loop` を付けられた（手で回す epic を始める指示を出す）
+    private(set) var startedManualLoop = false
     private(set) var errorMessage: String?
 
     init(question: InboxQuestion) {
@@ -66,6 +68,14 @@ final class AnswerFormModel {
 
     var canPost: Bool {
         !isPosting && !isPosted && answer.isValid(for: question.marker)
+    }
+
+    /// 手で回す epic を始めるときに Claude Code に渡す指示。`manual-loop` を付けられたときだけ
+    var manualLoopInstruction: String? {
+        guard startedManualLoop else {
+            return nil
+        }
+        return ManualLoopInstruction.make(repository: question.subject.repository, discussionNumber: question.subject.number)
     }
 
     /// 「投稿したらループを始める」を選べるか。Discussion で、未回答の質問がこれだけのとき
@@ -124,6 +134,7 @@ final class AnswerFormModel {
             try await inbox.startLoop(for: question.subject, runner: runner)
             loopStartFailed = false
             errorMessage = nil
+            startedManualLoop = runner == .manual
         } catch {
             loopStartFailed = true
             let mark = runner == .manual ? "手で回す印" : "ループを始める印"

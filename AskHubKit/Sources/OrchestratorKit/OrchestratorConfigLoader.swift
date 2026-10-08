@@ -16,6 +16,8 @@ import Foundation
 /// ```
 /// `trustedAuthors`・`pollIntervalSeconds`・`ideaCommand`・`iterationTimeoutMinutes` は省略できる
 /// （既定値は `TrustedAuthors.default`・60 秒・`IdeaCommandTemplate.defaultArguments`・90 分）。
+/// `createRepositoryCommand`・`removeRepositoryCommand`・`newRepositoryDirectory` も省略でき、既定は
+/// `~/.local/bin/askhub-create-repo`・`~/.local/bin/askhub-remove-repo`・最初の担当リポジトリと同じディレクトリ。
 /// 検索する organization は担当リポジトリの owner から決める。以前の `org` が残っていても無視する
 public struct OrchestratorConfigLoader: Sendable {
     /// `~` の展開に使うホームディレクトリ。テストで差し替える
@@ -89,6 +91,8 @@ public struct OrchestratorConfigLoader: Sendable {
             throw .iterationTimeoutOutOfRange(minutes: timeoutMinutes, minimum: minimumMinutes, maximum: maximumMinutes)
         }
 
+        let repositoryCommands = try repositoryCommands(from: file, repositories: repositories)
+
         return OrchestratorConfig(
             trustedAuthorLogins: trustedAuthors,
             repositories: repositories,
@@ -98,8 +102,40 @@ public struct OrchestratorConfigLoader: Sendable {
             iterationTimeout: .seconds(timeoutMinutes * 60),
             conflictCommand: try file.conflictCommand.map { arguments throws(OrchestratorConfigError) in
                 try ConflictCommandTemplate(arguments: arguments)
-            }
+            },
+            repositoryCommands: repositoryCommands
         )
+    }
+
+    /// 担当リポジトリの作成・削除に使うコマンドと場所。省略されたものは既定にする
+    private func repositoryCommands(
+        from file: ConfigFile,
+        repositories: [RepositoryConfig]
+    ) throws(OrchestratorConfigError) -> RepositoryCommands {
+        let directory = try file.newRepositoryDirectory.map { path throws(OrchestratorConfigError) in
+            let expanded = expandingTilde(in: path)
+            guard expanded.hasPrefix("/") else {
+                throw .relativeNewRepositoryDirectory(path)
+            }
+            return URL(fileURLWithPath: expanded).standardizedFileURL.path
+        } ?? RepositoryCommands.defaultCheckoutDirectory(for: repositories, homeDirectory: homeDirectory)
+        let standard = RepositoryCommands.standard(homeDirectory: homeDirectory, newCheckoutDirectory: directory)
+        return RepositoryCommands(
+            create: try commandArguments(file.createRepositoryCommand, key: "createRepositoryCommand") ?? standard.create,
+            remove: try commandArguments(file.removeRepositoryCommand, key: "removeRepositoryCommand") ?? standard.remove,
+            newCheckoutDirectory: directory
+        )
+    }
+
+    /// 引数の配列のコマンド。省略されていれば `nil`、空なら設定エラー。先頭の `~` は展開する
+    private func commandArguments(_ arguments: [String]?, key: String) throws(OrchestratorConfigError) -> [String]? {
+        guard let arguments else {
+            return nil
+        }
+        guard let executable = arguments.first, !executable.isEmpty else {
+            throw .emptyRepositoryCommand(key: key)
+        }
+        return [expandingTilde(in: executable)] + arguments.dropFirst()
     }
 
     private func repositoryConfig(
@@ -126,7 +162,7 @@ public struct OrchestratorConfigLoader: Sendable {
     }
 
     /// 先頭の `~` だけを展開する（`~user` の形式は扱わない）
-    private func expandingTilde(in path: String) -> String {
+    func expandingTilde(in path: String) -> String {
         if path == "~" {
             return homeDirectory
         }
@@ -167,4 +203,7 @@ private struct ConfigFile: Decodable {
     let ideaCommand: [String]?
     let iterationTimeoutMinutes: Int?
     let conflictCommand: [String]?
+    let createRepositoryCommand: [String]?
+    let removeRepositoryCommand: [String]?
+    let newRepositoryDirectory: String?
 }

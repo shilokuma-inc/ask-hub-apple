@@ -33,6 +33,10 @@ public protocol OrchestratorGitHub: Sendable {
     func comment(on issue: IdeaRequestIssue, body: String) async throws
     /// 依頼 Issue をクローズする（完了として）
     func close(_ issue: IdeaRequestIssue) async throws
+    /// organization 全体の、`repo-request` が付いた open な Issue（担当リポジトリの作成・削除の依頼）
+    func repositoryRequests(orgs: [String]) async throws -> [RepositoryRequestIssue]
+    /// 担当リポジトリのラベル `askhub-orchestrator` を消す（担当から外したとき）。無ければ何もしない
+    func deleteHeartbeat(in repository: String) async throws
     /// 担当リポジトリのラベル `askhub-orchestrator` の説明を書き換える。ラベルが無ければ作る
     func updateHeartbeat(in repository: String, description: String) async throws
     /// リポジトリの、`decision-log` が付いた open な Issue（仮決め一覧）
@@ -112,7 +116,12 @@ extension LoopRuntime {
 /// 「ポーリング → 状態判定 → アクション」を繰り返す。
 /// 起動した Discussion（`LaunchTracker`）と回答済みの質問（`ResumeWatcher`）を覚えておくため actor にする
 public actor Orchestrator {
-    let config: OrchestratorConfig
+    /// 今の設定。`configStore` があれば、ポーリングのたびに読み直す
+    var config: OrchestratorConfig
+    /// 設定の読み直しと担当リポジトリの書き換え。`nil` なら起動時の設定のまま動く
+    let configStore: (any OrchestratorConfigStore)?
+    /// 最後に読み直しに失敗した理由。同じ失敗をポーリングのたびにログに出さない
+    var lastReloadFailure: String?
     let github: any OrchestratorGitHub
     private let inbox: any InboxSource
     let runtime: any LoopRuntime
@@ -133,7 +142,8 @@ public actor Orchestrator {
     /// Claude の利用上限の解除の時刻。それまでこの Mac のループの起動・再開を止める（アカウントは Mac ごとに共通）
     var usageLimitedUntil: Date?
     let now: @Sendable () -> Date
-    private var ideaTracker = IdeaRequestTracker()
+    var ideaTracker = IdeaRequestTracker()
+    var repositoryRequestTracker = RepositoryRequestTracker()
     var conflictTracker = ConflictTracker()
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
@@ -146,16 +156,20 @@ public actor Orchestrator {
     /// 依頼から Discussion を作らせるコマンドの制限時間
     static let ideaCommandTimeout: Duration = .seconds(30 * 60)
 
-    /// - Parameter inbox: `needs-answer` の Discussion / PR と質問の取得元
+    /// - Parameters:
+    ///   - inbox: `needs-answer` の Discussion / PR と質問の取得元
+    ///   - configStore: 設定の読み直しと担当リポジトリの書き換え（担当リポジトリの作成・削除の依頼に使う）
     public init(
         config: OrchestratorConfig,
         github: any OrchestratorGitHub,
         inbox: any InboxSource,
         runtime: any LoopRuntime,
         log: @escaping @Sendable (String) -> Void,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        configStore: (any OrchestratorConfigStore)? = nil
     ) {
         self.config = config
+        self.configStore = configStore
         self.github = github
         self.inbox = inbox
         self.runtime = runtime
@@ -183,6 +197,8 @@ public actor Orchestrator {
     /// 1 回分のポーリング。実行した起動判定を返す
     @discardableResult
     public func pollOnce() async throws -> [LaunchDecision] {
+        // 手で書き換えた設定も、再起動せずに反映する
+        reloadConfig()
         // 固まったループを止める（止めた後は、異常終了したループとして再開する）
         await terminateHungLoops()
         var statuses: [String: LoopStatus] = [:]
@@ -247,6 +263,12 @@ public actor Orchestrator {
         } catch {
             log("依頼の確認に失敗しました: \(error)")
         }
+        // 担当リポジトリの作成・削除の依頼（1 回のポーリングで 1 件）
+        do {
+            try await handleRepositoryRequests(statuses: statuses)
+        } catch {
+            log("リポジトリの作成・削除の依頼の確認に失敗しました: \(error)")
+        }
         // 最終 PR のコンフリクトの解消と、ループの状態の書き出し（起動・再開を反映した後）
         await finishPoll(statuses: statuses)
         return decisions
@@ -285,83 +307,6 @@ public actor Orchestrator {
             } catch {
                 log("\(repository.fullName) に担当の印を書けませんでした（次のポーリングで再試行します）: \(error)")
             }
-        }
-    }
-
-    private func handleIdeaRequests() async throws {
-        let issues = try await github.ideaRequests(orgs: config.orgs)
-        ideaTracker.prune(keeping: issues)
-
-        // 依頼 Issue への後処理（リンクのコメント・クローズ・失敗の通知）。失敗したら次のポーリングで続きから
-        for (issue, followUp) in ideaTracker.followUps(in: issues) {
-            await perform(followUp, on: issue)
-        }
-
-        guard let (issue, repository) = ideaTracker.next(in: issues, config: config) else {
-            return
-        }
-        let name = "\(issue.repository)#\(issue.number)"
-        log("\(name) の依頼から、質問付きの Discussion を作らせます")
-        let prompt = IdeaPrompt.make(for: issue, trustedAuthors: config.trustedAuthorLogins)
-        let arguments = config.ideaCommand.render(for: repository)
-        let reason: String
-        do {
-            // プロンプト（依頼の本文を含む）は引数ではなく標準入力で渡す
-            let result = try await runtime.run(arguments, input: prompt, for: repository, timeout: Self.ideaCommandTimeout)
-            if result.status == 0, let url = IdeaPrompt.discussionURL(in: result.output, repository: issue.repository) {
-                ideaTracker.recordCreated(url, for: issue)
-                log("\(name) の依頼から Discussion を作りました: \(url.absoluteString)")
-                await perform(.commentAndClose(url), on: issue)
-                return
-            }
-            // 利用上限で失敗したなら、失敗に数えず解除を待つ
-            if recordUsageLimit(in: result.output) {
-                log("\(name) の Discussion を作る claude が利用上限で終わりました。解除の後に作り直します")
-                return
-            }
-            reason = "Discussion の URL を受け取れませんでした（終了コード \(result.status)）"
-        } catch {
-            reason = "ideaCommand を起動できませんでした（\(error)）"
-        }
-        if ideaTracker.recordFailure(for: issue, reason: reason) {
-            log("\(name) の Discussion を \(IdeaRequestTracker.maxAttempts) 回作れなかったので、やめます: \(reason)")
-            await perform(.reportFailure(reason: reason), on: issue)
-        } else {
-            log("\(name) の Discussion を作れませんでした。次のポーリングで再試行します: \(reason)")
-        }
-    }
-
-    /// 依頼 Issue への後処理を 1 段ずつ進める。コメントを重ねないよう、済んだ段は記録してから次へ進む
-    private func perform(_ followUp: IdeaRequestTracker.FollowUp, on issue: IdeaRequestIssue) async {
-        let name = "\(issue.repository)#\(issue.number)"
-        do {
-            switch followUp {
-            case let .commentAndClose(url):
-                try await github.comment(on: issue, body: """
-                    質問付きの Discussion を作りました: \(url.absoluteString)
-
-                    AskHub アプリの「要回答」から回答し、「回答を確定してループを始める」を押してください。（askhub-orchestrator）
-                    """)
-                ideaTracker.recordCommented(issue)
-                try await github.close(issue)
-                ideaTracker.recordCompleted(issue)
-                log("\(name) に Discussion へのリンクをコメントしてクローズしました")
-
-            case .close:
-                try await github.close(issue)
-                ideaTracker.recordCompleted(issue)
-                log("\(name) をクローズしました")
-
-            case let .reportFailure(reason):
-                // 人が気づけるよう、依頼 Issue に書き残す（Issue は開いたまま）
-                try await github.comment(on: issue, body: """
-                    質問付きの Discussion を作れませんでした（\(IdeaRequestTracker.maxAttempts) 回試行）: \(reason)
-                    担当 PC のオーケストレーターのログと ideaCommand の設定を確認してください。（askhub-orchestrator）
-                    """)
-                ideaTracker.recordFailureReported(issue)
-            }
-        } catch {
-            log("\(name) の後処理に失敗しました（次のポーリングで続きから再試行します）: \(error)")
         }
     }
 

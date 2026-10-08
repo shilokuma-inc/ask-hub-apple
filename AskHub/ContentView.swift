@@ -77,7 +77,7 @@ struct ContentView: View {
 
             // iOS のタブバーは 5 つまで（6 つ目からは「その他」にまとめられる）
             NavigationStack {
-                LoopStatusListView(model: loopModel) { isShowingSettings = true }
+                LoopStatusListView(model: loopModel, requestModel: requestModel) { isShowingSettings = true }
                     .demoModeBanner()
             }
             .tabItem { Label("ループ", systemImage: "arrow.triangle.2.circlepath") }

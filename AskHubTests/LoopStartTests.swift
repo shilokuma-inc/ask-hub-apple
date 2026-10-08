@@ -175,6 +175,9 @@ struct LoopStartTests {
         #expect(!form.loopStartFailed)
         #expect(starter.markedManual == [questions[1].subject.nodeID])
         #expect(starter.marked.isEmpty)
+        // Claude Code に渡す指示を出す
+        let subject = questions[1].subject
+        #expect(form.manualLoopInstruction == ManualLoopInstruction.make(repository: subject.repository, discussionNumber: subject.number))
     }
 
     @Test func retriesManualMarkWhenItFailed() async throws {
@@ -193,6 +196,8 @@ struct LoopStartTests {
         #expect(form.isPosted)
         #expect(form.loopStartFailed)
         #expect(form.errorMessage?.hasPrefix("回答は投稿しました。手で回す印（manual-loop）を付けられませんでした") == true)
+        // 印を付けられるまでは、指示を出さない
+        #expect(form.manualLoopInstruction == nil)
 
         // 投稿の後に回し方を選び直しても、投稿を始めたときの回し方で付け直す
         form.loopRunner = .orchestrator
@@ -201,6 +206,7 @@ struct LoopStartTests {
         #expect(!form.loopStartFailed)
         #expect(starter.markedManual.count == 1)
         #expect(starter.marked.isEmpty)
+        #expect(form.manualLoopInstruction != nil)
     }
 
     @Test func postsAnswerWhenManualChosenButOtherQuestionsRemain() async throws {

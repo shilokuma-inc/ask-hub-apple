@@ -174,6 +174,10 @@ struct SampleIdeaRequester: IdeaRequesting {
     func create(_ request: IdeaRequest) async throws -> CreatedIssue {
         CreatedIssue(number: 41, htmlURL: URL(string: "https://github.com/\(request.repository)/issues/41")!)
     }
+
+    func create(_ request: RepositoryRequest, in repository: String) async throws -> CreatedIssue {
+        CreatedIssue(number: 43, htmlURL: URL(string: "https://github.com/\(repository)/issues/43")!)
+    }
 }
 
 extension InboxModel {
