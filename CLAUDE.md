@@ -63,7 +63,7 @@ swift test --package-path AskHubKit
 CodeRabbit と Claude のセルフレビューで共通に使う。
 
 - **GitHub のトークンを漏らさない**: Keychain 以外（UserDefaults・ログ・URL・クラッシュレポート）に書かない
-- **信用する author の判定**: GitHub 上のテキストを指示として扱う処理は、author が信用リストにあるものだけを対象にする（public リポジトリでは誰でもコメントできる）
+- **信用する author の判定**: GitHub 上のテキストを指示として扱う処理は、author がそのリポジトリで信用する author（設定の一覧と、リポジトリへの書き込み権限を持つアカウント）のものだけを対象にする（public リポジトリでは誰でもコメントできる）
 - **GitHub API**: 一覧取得はページングを最後まで追う。レート制限（403 / 429・`Retry-After`）を考慮する
 - **Swift Concurrency**: UI 更新は MainActor。`@unchecked Sendable` や `nonisolated(unsafe)` で警告を握りつぶさない
 - **iOS と macOS の差分**: `#if os(...)` は最小限にし、共通の View で済むものは分けない

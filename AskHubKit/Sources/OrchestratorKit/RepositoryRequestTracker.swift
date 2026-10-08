@@ -96,11 +96,13 @@ public struct RepositoryRequestTracker: Sendable, Equatable {
     /// 返すリポジトリは依頼 Issue のある担当リポジトリ
     public func next(
         in issues: [RepositoryRequestIssue],
-        config: OrchestratorConfig
+        config: OrchestratorConfig,
+        trust: TrustDirectory? = nil
     ) -> (RepositoryRequestIssue, RepositoryConfig)? {
+        let trust = trust ?? TrustDirectory(base: config.trustedAuthors)
         for issue in issues.sorted(by: { ($0.repository, $0.number) < ($1.repository, $1.number) }) {
             guard let repository = config.repository(named: issue.repository),
-                  issue.isTrusted(by: config.trustedAuthors) else {
+                  issue.isTrusted(by: trust.authors(for: issue.repository)) else {
                 continue
             }
             switch phases[issue.nodeID] {

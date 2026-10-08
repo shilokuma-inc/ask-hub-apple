@@ -25,7 +25,7 @@ extension Orchestrator {
             await perform(followUp, on: issue)
         }
 
-        guard let (issue, hub) = repositoryRequestTracker.next(in: issues, config: config) else {
+        guard let (issue, hub) = repositoryRequestTracker.next(in: issues, config: config, trust: trust) else {
             return
         }
         let name = "\(issue.repository)#\(issue.number)"

@@ -220,4 +220,10 @@ struct OrchestratorConfigLoaderTests {
             try decode(config().replacingOccurrences(of: #""repositories""#, with: #""newRepositoryDirectory": "src", "repositories""#))
         }
     }
+
+    @Test func trustsRepositoryWritersUnlessDisabled() throws {
+        #expect(try decode(config()).trustsRepositoryWriters)
+        let disabled = config().replacingOccurrences(of: #""repositories""#, with: #""trustRepositoryWriters": false, "repositories""#)
+        #expect(try decode(disabled).trustsRepositoryWriters == false)
+    }
 }

@@ -3,10 +3,10 @@ import Foundation
 /// GitHub の API で「マージ待ち」を取得し、マージする
 public struct GitHubMergeQueue: MergeQueueProviding {
     private let client: GitHubClient
-    private let trustedAuthors: TrustedAuthors
+    private let trustedAuthors: any TrustedAuthorsResolving
 
     /// - Parameter trustedAuthors: 信用する author が作った PR だけを出す（ラベルは書き込み権限があれば誰でも付けられる）
-    public init(client: GitHubClient, trustedAuthors: TrustedAuthors = .default) {
+    public init(client: GitHubClient, trustedAuthors: any TrustedAuthorsResolving = TrustedAuthors.default) {
         self.client = client
         self.trustedAuthors = trustedAuthors
     }
@@ -26,7 +26,12 @@ public struct GitHubMergeQueue: MergeQueueProviding {
         }
         // 最終 PR だけを出す: 同じリポジトリの epic ブランチから既定ブランチ（develop）への PR で、信用する author が作ったもの。
         // fork からの PR は、マージ後に削除するブランチがこのリポジトリに無いので扱わない
-        return nodes.compactMap(\.pullRequest).filter { trustedAuthors.contains($0.author) }
+        var trusted: [EpicPullRequest] = []
+        for pullRequest in nodes.compactMap(\.pullRequest)
+        where await trustedAuthors.trustedAuthors(for: pullRequest.repository).contains(pullRequest.author) {
+            trusted.append(pullRequest)
+        }
+        return trusted
     }
 
     public func merge(_ pullRequest: EpicPullRequest) async throws {

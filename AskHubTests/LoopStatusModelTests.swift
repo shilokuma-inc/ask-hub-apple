@@ -73,7 +73,8 @@ struct LoopStatusModelTests {
         LoopStatusModel(
             tokenStore: InMemoryTokenStore(token: token),
             makeSource: { _ in rows },
-            makeInboxSource: { _ in sections }
+            makeInboxSource: { _ in sections },
+            makeTrust: { _ in TrustedAuthors.default }
         )
     }
 
@@ -165,7 +166,8 @@ struct LoopStatusModelTests {
         let model = LoopStatusModel(
             tokenStore: tokenStore,
             makeSource: { _ in SampleLoopStatusSource() },
-            makeInboxSource: { _ in SampleInboxSource() }
+            makeInboxSource: { _ in SampleInboxSource() },
+            makeTrust: { _ in TrustedAuthors.default }
         )
         await model.refresh()
         #expect(!model.waiting.isEmpty)
@@ -233,7 +235,8 @@ struct LoopStatusModelTests {
             makeSource: { _ in hangs.withLock { $0 } ? OneRepositorySource() as any LoopStatusSource : EmptySource() },
             makeInboxSource: { _ in
                 hangs.withLock { $0 } ? HangingUsageLimitSource() as any InboxSource : SectionsSource(waiting: [], usageLimited: [])
-            }
+            },
+            makeTrust: { _ in TrustedAuthors.default }
         )
         await model.refresh()
         let lastRefreshed = model.lastRefreshed

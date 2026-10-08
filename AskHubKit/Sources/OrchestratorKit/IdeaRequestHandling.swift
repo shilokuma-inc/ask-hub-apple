@@ -182,10 +182,15 @@ public struct IdeaRequestTracker: Sendable, Equatable {
     }
 
     /// この周回で Discussion を作らせる依頼。担当リポジトリで信用する author のものを、古い順に 1 件だけ
-    public func next(in issues: [IdeaRequestIssue], config: OrchestratorConfig) -> (IdeaRequestIssue, RepositoryConfig)? {
+    public func next(
+        in issues: [IdeaRequestIssue],
+        config: OrchestratorConfig,
+        trust: TrustDirectory? = nil
+    ) -> (IdeaRequestIssue, RepositoryConfig)? {
+        let trust = trust ?? TrustDirectory(base: config.trustedAuthors)
         for issue in issues.sorted(by: { ($0.repository, $0.number) < ($1.repository, $1.number) }) {
             guard let repository = config.repository(named: issue.repository),
-                  issue.isTrusted(by: config.trustedAuthors) else {
+                  issue.isTrusted(by: trust.authors(for: issue.repository)) else {
                 continue
             }
             switch phases[issue.nodeID] {

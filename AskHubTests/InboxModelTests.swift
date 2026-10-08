@@ -87,7 +87,8 @@ struct InboxModelTests {
         let model = InboxModel(
             tokenStore: InMemoryTokenStore(token: "github_pat_saved"),
             makeSource: { _ in source },
-            organizations: { configured }
+            organizations: { configured },
+            makeTrust: { _ in TrustedAuthors.default }
         )
         await model.refresh()
         // 設定で変えたら、次の取得から反映する
@@ -100,7 +101,7 @@ struct InboxModelTests {
     }
 
     @Test func needsTokenWithoutSavedToken() async {
-        let model = InboxModel(tokenStore: InMemoryTokenStore()) { _ in StubSource() }
+        let model = InboxModel(tokenStore: InMemoryTokenStore()) { _ in StubSource() } makeTrust: { _ in TrustedAuthors.default }
         await model.refresh()
         #expect(model.state == .needsToken)
         #expect(model.questions.isEmpty)
@@ -111,7 +112,7 @@ struct InboxModelTests {
         let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { token in
             tokens.withLock { $0.append(token) }
             return StubSource()
-        }
+        } makeTrust: { _ in TrustedAuthors.default }
         await model.refresh()
         #expect(model.state == .loaded)
         #expect(model.questions.map(\.id) == ["C_1"])
@@ -123,7 +124,7 @@ struct InboxModelTests {
         let fails = OSAllocatedUnfairLock(initialState: false)
         let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in
             fails.withLock { $0 } ? StubSource(failure: .http(status: 401, message: "Bad credentials")) : StubSource()
-        }
+        } makeTrust: { _ in TrustedAuthors.default }
         await model.refresh()
         fails.withLock { $0 = true }
         await model.refresh()
@@ -173,7 +174,7 @@ struct InboxModelTests {
     @Test func refreshDuringLoadingReloadsWithLatestToken() async throws {
         let store = InMemoryTokenStore(token: "github_pat_old")
         let source = GatedSource()
-        let model = InboxModel(tokenStore: store) { _ in source }
+        let model = InboxModel(tokenStore: store) { _ in source } makeTrust: { _ in TrustedAuthors.default }
 
         let first = Task { await model.refresh() }
         while model.state != .loading {
@@ -195,7 +196,7 @@ struct InboxModelTests {
         let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in
             loads.withLock { $0 += 1 }
             return StubSource()
-        }
+        } makeTrust: { _ in TrustedAuthors.default }
         await model.refreshIfStale()
         let lastRefreshed = try #require(model.lastRefreshed)
 
@@ -228,7 +229,7 @@ struct InboxModelTests {
         let hangs = OSAllocatedUnfairLock(initialState: false)
         let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in
             hangs.withLock { $0 } ? HangingSource() as any InboxSource : StubSource()
-        }
+        } makeTrust: { _ in TrustedAuthors.default }
         await model.refresh()
         let lastRefreshed = model.lastRefreshed
         hangs.withLock { $0 = true }
@@ -269,5 +270,27 @@ struct InboxModelTests {
             marker: QuestionMarker(id: "pr1-1")
         )
         #expect(question.summary == "Q1. 単位 送信の上限は？")
+    }
+
+    /// o/r に書き込み権限を持つ partner を信用する
+    private struct PartnerTrust: TrustedAuthorsResolving {
+        func trustedAuthors(for repository: String) async -> TrustedAuthors {
+            repository == "o/r" ? TrustedAuthors(["mrs1669", "partner"]) : .default
+        }
+    }
+
+    @Test func judgesDiscussionAuthorWithTrustOfItsRepository() async {
+        let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in
+            StubSource()
+        } makeTrust: { _ in PartnerTrust() }
+        await model.refresh()
+
+        // 手で回す印を付けてよいかは、Discussion のリポジトリで信用する author かで決める
+        var partners = StubSource.subject
+        partners.author = "partner"
+        #expect(model.isTrustedAuthor(of: partners))
+        var elsewhere = partners
+        elsewhere.repository = "o/other"
+        #expect(!model.isTrustedAuthor(of: elsewhere))
     }
 }

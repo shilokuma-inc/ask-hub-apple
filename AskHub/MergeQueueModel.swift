@@ -32,7 +32,9 @@ final class MergeQueueModel {
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
-        makeProvider: @escaping @Sendable (String) -> any MergeQueueProviding = { GitHubMergeQueue(client: GitHubClient(token: $0)) },
+        makeProvider: @escaping @Sendable (String) -> any MergeQueueProviding = {
+            GitHubMergeQueue(client: GitHubClient(token: $0), trustedAuthors: RepositoryTrustCache.trust(token: $0))
+        },
         organizations: @escaping () -> [String] = { OrganizationSettings.load() }
     ) {
         self.tokenStore = tokenStore

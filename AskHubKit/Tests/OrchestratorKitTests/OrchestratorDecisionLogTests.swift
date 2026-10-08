@@ -83,7 +83,7 @@ extension OrchestratorTests {
         try await orchestrator.pollOnce()
         #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", ""]])
         // epic のタスクがすべて完了していても起動スクリプトがループを起動するよう、再開の理由を渡す
-        #expect(runtime.launchEnvironments == [["ASKHUB_RESUME_REASON": "decision-log"]])
+        #expect(runtime.launchEnvironments == [["ASKHUB_TRUSTED_AUTHORS": "mrs1669", "ASKHUB_RESUME_REASON": "decision-log"]])
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#20 の仮決め一覧に指示が付いたので、ループを再開しました"))
 
         // ループが始まった（state ファイルが現れた）

@@ -30,6 +30,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public let iterationTimeout: Duration
     /// 担当リポジトリの作成・削除の依頼（`repo-request`）に使うコマンドと場所
     public let repositoryCommands: RepositoryCommands
+    /// 担当リポジトリに書き込み権限（write 以上）を持つアカウントも、そのリポジトリで信用する author とみなすか
+    public let trustsRepositoryWriters: Bool
 
     public var trustedAuthors: TrustedAuthors {
         TrustedAuthors(trustedAuthorLogins)
@@ -53,7 +55,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
         ideaCommand: IdeaCommandTemplate = .standard,
         iterationTimeout: Duration = defaultIterationTimeout,
         conflictCommand: ConflictCommandTemplate? = nil,
-        repositoryCommands: RepositoryCommands? = nil
+        repositoryCommands: RepositoryCommands? = nil,
+        trustsRepositoryWriters: Bool = true
     ) {
         self.trustedAuthorLogins = trustedAuthorLogins
         self.repositories = repositories
@@ -62,6 +65,7 @@ public struct OrchestratorConfig: Sendable, Equatable {
         self.ideaCommand = ideaCommand
         self.iterationTimeout = iterationTimeout
         self.conflictCommand = conflictCommand ?? .standard(besides: loopCommand)
+        self.trustsRepositoryWriters = trustsRepositoryWriters
         self.repositoryCommands = repositoryCommands ?? .standard(
             homeDirectory: NSHomeDirectory(),
             newCheckoutDirectory: RepositoryCommands.defaultCheckoutDirectory(for: repositories, homeDirectory: NSHomeDirectory())

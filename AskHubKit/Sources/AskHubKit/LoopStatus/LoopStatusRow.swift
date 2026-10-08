@@ -120,14 +120,21 @@ public protocol LoopStatusSource: Sendable {
 /// 「ループ」タブに出す行を集める
 public struct LoopStatusFetcher: Sendable {
     private let source: any LoopStatusSource
-    private let trustedAuthors: TrustedAuthors
+    private let trust: any TrustedAuthorsResolving
 
-    public init(source: any LoopStatusSource, trustedAuthors: TrustedAuthors) {
+    /// - Parameter trustedAuthors: リポジトリごとの信用する author（固定の一覧なら `TrustedAuthors` をそのまま渡す）
+    public init(source: any LoopStatusSource, trustedAuthors: any TrustedAuthorsResolving) {
         self.source = source
-        self.trustedAuthors = trustedAuthors
+        self.trust = trustedAuthors
     }
 
     public func rows(orgs: [String]) async throws -> [LoopStatusRow] {
-        LoopStatusRow.rows(from: try await source.loopStatusRepositories(orgs: orgs), trustedAuthors: trustedAuthors)
+        var rows: [LoopStatusRow] = []
+        // 状態用の Issue があるリポジトリだけ、信用する author を求める（organization の全リポジトリには問い合わせない）
+        for repository in try await source.loopStatusRepositories(orgs: orgs) {
+            let trusted = repository.issues.isEmpty ? TrustedAuthors([]) : await trust.trustedAuthors(for: repository.repository)
+            rows += LoopStatusRow.rows(from: [repository], trustedAuthors: trusted)
+        }
+        return rows.sorted { $0.repository.lowercased() < $1.repository.lowercased() }
     }
 }

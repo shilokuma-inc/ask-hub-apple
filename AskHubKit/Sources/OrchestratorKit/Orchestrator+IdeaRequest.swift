@@ -12,12 +12,12 @@ extension Orchestrator {
             await perform(followUp, on: issue)
         }
 
-        guard let (issue, repository) = ideaTracker.next(in: issues, config: config) else {
+        guard let (issue, repository) = ideaTracker.next(in: issues, config: config, trust: trust) else {
             return
         }
         let name = "\(issue.repository)#\(issue.number)"
         log("\(name) の依頼から、質問付きの Discussion を作らせます")
-        let prompt = IdeaPrompt.make(for: issue, trustedAuthors: config.trustedAuthorLogins)
+        let prompt = IdeaPrompt.make(for: issue, trustedAuthors: trust.authors(for: issue.repository).sortedLogins)
         let arguments = config.ideaCommand.render(for: repository)
         let reason: String
         do {
