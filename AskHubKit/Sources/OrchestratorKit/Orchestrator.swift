@@ -37,6 +37,8 @@ public protocol OrchestratorGitHub: Sendable {
     func repositoryRequests(orgs: [String]) async throws -> [RepositoryRequestIssue]
     /// 担当リポジトリのラベル `askhub-orchestrator` を消す（担当から外したとき）。無ければ何もしない
     func deleteHeartbeat(in repository: String) async throws
+    /// 状態用の Issue を閉じる（担当から外したとき。アプリのステータスタブに行を残さない）
+    func closeLoopStatusIssue(in repository: String, number: Int) async throws
     /// 担当リポジトリのラベル `askhub-orchestrator` の説明を書き換える。ラベルが無ければ作る
     func updateHeartbeat(in repository: String, description: String) async throws
     /// リポジトリの、`decision-log` が付いた open な Issue（仮決め一覧）
@@ -124,6 +126,11 @@ public actor Orchestrator {
     var lastReloadFailure: String?
     /// 担当リポジトリごとの信用する author。ポーリングのはじめに求め直す
     var trust: TrustDirectory
+    /// このポーリングで取得した `manual-loop` の open な Discussion。取得に失敗したら `nil`（そのポーリングでは起動しない）
+    var manualLoops: [ManualLoopDiscussion]?
+    /// 手動ループ（信用する author の open な `manual-loop` の Discussion）があるリポジトリ（`fullName` の小文字）。
+    /// 取得に失敗したポーリングでは前回の値を使う
+    var manualLoopRepositories: Set<String> = []
     /// 担当リポジトリに書き込み権限を持つアカウントの取得元。`nil` なら設定の一覧だけを信用する
     let repositoryWriters: RepositoryWriters?
     let github: any OrchestratorGitHub
@@ -205,8 +212,8 @@ public actor Orchestrator {
     /// 1 回分のポーリング。実行した起動判定を返す
     @discardableResult
     public func pollOnce() async throws -> [LaunchDecision] {
-        // 手で書き換えた設定と、担当リポジトリごとの信用する author（書き込み権限を持つアカウント）を、再起動せずに反映する
-        await refreshConfigAndTrust()
+        // 手で書き換えた設定・担当リポジトリごとの信用する author（書き込み権限を持つアカウント）・手動ループを、再起動せずに反映する
+        await preparePoll()
         // 固まったループを止める（止めた後は、異常終了したループとして再開する）
         await terminateHungLoops()
         var statuses: [String: LoopStatus] = [:]
@@ -253,7 +260,7 @@ public actor Orchestrator {
         // 手で回す epic があるリポジトリでは起動しない（Q4）。確かめられなければ、このポーリングでは起動しない
         // （依頼・最終 PR のコンフリクト・ループの状態の書き出しは続ける）
         var decisions: [LaunchDecision] = []
-        if let manualLoops = await searchManualLoops() {
+        if let manualLoops {
             decisions = LaunchPlanner.decide(
                 discussions,
                 config: config,
@@ -331,7 +338,7 @@ public actor Orchestrator {
                 log("\(subject.repository)#\(subject.number) の質問を取得できませんでした: \(error)")
             }
         }
-        for action in watcher.update(snapshots: snapshots, statuses: statuses) {
+        for action in watcher.update(snapshots: snapshots, statuses: statuses, manualLoopRepositories: manualLoopRepositories) {
             switch action {
             case let .removeNeedsAnswer(subject):
                 await handleFullyAnswered(subject, addsReadyLabel: true)

@@ -15,6 +15,21 @@ extension FakeGitHub {
         state.withLock { $0.deletedHeartbeats }
     }
 
+    var closedLoopStatusIssues: [String] {
+        state.withLock { $0.closedLoopStatusIssues }
+    }
+
+    func closeLoopStatusIssue(in repository: String, number: Int) async throws {
+        state.withLock { state in
+            state.closedLoopStatusIssues.append("\(repository)#\(number)")
+            if let issue = state.loopStatusIssues[number] {
+                state.loopStatusIssues[number] = LoopStatusIssueRecord(
+                    number: number, author: issue.author, isOpen: false, updatedAt: issue.updatedAt, body: issue.body
+                )
+            }
+        }
+    }
+
     func deleteHeartbeat(in repository: String) async throws {
         state.withLock { $0.deletedHeartbeats.append(repository) }
     }

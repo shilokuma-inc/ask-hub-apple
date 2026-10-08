@@ -7,6 +7,10 @@ extension GitHubOrchestrator {
         try await requestIssues(labeled: .repoRequest, orgs: orgs)
     }
 
+    public func closeLoopStatusIssue(in repository: String, number: Int) async throws {
+        try await client.send("PATCH", "repos/\(repository)/issues/\(number)", body: ["state": "closed"], as: ClosedIssue.self)
+    }
+
     public func deleteHeartbeat(in repository: String) async throws {
         do {
             try await client.send("DELETE", "repos/\(repository)/labels/\(OrchestratorHeartbeat.labelName)")
@@ -14,4 +18,8 @@ extension GitHubOrchestrator {
             // 既に無い
         }
     }
+}
+
+private struct ClosedIssue: Decodable {
+    let number: Int
 }

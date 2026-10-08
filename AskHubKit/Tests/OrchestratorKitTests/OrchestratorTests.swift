@@ -139,7 +139,7 @@ struct OrchestratorTests {
 
     // MARK: - ask への回答
 
-    private static func pullRequest(repository: String = "shilokuma-inc/ask-hub-apple", number: Int = 34) -> InboxSubject {
+    static func pullRequest(repository: String = "shilokuma-inc/ask-hub-apple", number: Int = 34) -> InboxSubject {
         InboxSubject(
             kind: .pullRequest,
             nodeID: "PR_\(number)",

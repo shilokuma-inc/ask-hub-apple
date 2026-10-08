@@ -49,7 +49,9 @@ public struct LoopStatusPublisher: Sendable, Equatable {
 
     public init() {}
 
-    public func action(repositoryKey key: String, report: LoopStatusReport, now: Date) -> Action {
+    /// - Parameter manualLoopOpen: このリポジトリに手動ループ（open な `manual-loop` の Discussion）がある。
+    ///   手動ループが書いた状態は、確認時刻が古くなっても上書きしない（担当者の情報を消さないため。アプリが古さを知らせる）
+    public func action(repositoryKey key: String, report: LoopStatusReport, now: Date, manualLoopOpen: Bool = false) -> Action {
         // ポーリングの間隔より長い `Retry-After` を示されたら、それまで一覧も本文も取りに行かない
         if let retryAt = retryAt[key], now < retryAt {
             return .none
@@ -60,7 +62,7 @@ public struct LoopStatusPublisher: Sendable, Equatable {
         guard let number = entry.number else {
             return .create(body: report.issueBody)
         }
-        if Self.isWrittenByManualLoop(entry.report, now: now) {
+        if Self.isWrittenByManualLoop(entry.report, now: now) || (manualLoopOpen && entry.report?.writer == .manual) {
             return .none
         }
         if let previous = entry.report, previous.hasSameStatus(as: report),
