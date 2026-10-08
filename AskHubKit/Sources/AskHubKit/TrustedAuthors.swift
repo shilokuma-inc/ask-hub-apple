@@ -41,4 +41,9 @@ public struct TrustedAuthors: Sendable, Equatable {
     public func isAnswered(replyAuthors: some Sequence<String?>) -> Bool {
         replyAuthors.contains { contains($0) }
     }
+
+    /// どちらかに含まれる author
+    public func union(_ other: Self) -> Self {
+        Self(logins.union(other.logins))
+    }
 }
