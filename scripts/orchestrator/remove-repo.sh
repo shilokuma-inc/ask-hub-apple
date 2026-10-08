@@ -64,7 +64,8 @@ if [[ -f "$PID_FILE" ]]; then
 fi
 
 # 消してよいかを確かめる
-if [[ "$FORCE" != true && -d "$CHECKOUT/.git" ]]; then
+# worktree などで .git がファイルの checkout も確かめる
+if [[ "$FORCE" != true && -e "$CHECKOUT/.git" ]]; then
   problems=()
   for dir in "$CHECKOUT" "$CTL" "$SLOT_A" "$SLOT_B"; do
     [[ -e "$dir/.git" ]] || continue
