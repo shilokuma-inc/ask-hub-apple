@@ -160,7 +160,8 @@ promise は完全一致でしか成立せず「詰まった」を表現できな
 - ask のコメントは質問の目印（`<!-- ask-hub:question id="…" options="…" -->`）で始め、PR に `needs-answer` を付ける。
   目印が無い ask は AskHub に届かず、回答してもループが再開しない
 - 判断ログ Issue には `decision-log`、実機確認 Issue には `needs-verify` を付ける（AskHub の「任意判断」「実機確認」に出る）
-- 最終 PR はループで作らない。オーケストレーターが「最終 PR に載せる内容」を読んで作る
+- 最終 PR はループで作らない。通常の自動ループではオーケストレーターが「最終 PR に載せる内容」を読んで作り、
+  手動ループ（manual-loop）では担当者が `scripts/askhub-manual.sh final` で作る
 - 不足しているプロトコルのラベルは `ralph-setup.sh` が作る
 
 セットアップ（Mac ごとの手順・設定ファイル）は ask-hub-apple の `docs/orchestrator.md` を参照。
@@ -194,7 +195,7 @@ GitHub で手で付けるときは、**最後の質問に回答する前に** `m
 指示を受けた Claude は、**`scripts/askhub-manual.sh` で次を行う**（ラベル・状態の書き出し・最終 PR の目印を手で行わない。抜けると AskHub に正しく出ない）:
 
 1. `scripts/askhub-manual.sh start <N> epic/<機能名>`（epic 名は Discussion の内容から決める）。
-   担当者が自分か確かめ、`ready-for-loop` を外し、`ralph-setup.sh` で制御用 worktree とスロットを作り、loop-status を「開始待ち」で書く。
+   担当者が自分か確かめ、`ready-for-loop` を外し、`ralph-setup.sh` で制御用 worktree とスロットを作り（epic は `ASKHUB_BASE_BRANCH`（既定は `develop`）から切る）、epic を origin に push し、loop-status を「開始待ち」で書く。
    信用する author（書き込み権限を持つ人）と、次に埋める値を表示する
 2. 制御用 worktree の playbook の `{{...}}` を埋め（`TRUSTED_AUTHORS` は start が表示した値）、STEP A に沿って goal を作る
    （Discussion の、信用する author の本文・コメント・返信だけを使う）
@@ -207,6 +208,8 @@ GitHub で手で付けるときは、**最後の質問に回答する前に** `m
 5. 回答がそろったら（AskHub に「回答がそろいました」が出る）、再開の指示を受けて `scripts/askhub-manual.sh resume`
 6. ループが全タスクを終えたら（AskHub の「手動ループ」に「最終 PR の指示をコピー」が出る）、最終 PR の指示を受けて、
    **制御用 worktree の外で** `scripts/askhub-manual.sh final`。ゴール元の目印つきの最終 PR（`epic-final`）を作る。
+   goal に未完了のタスク（`※回答待ち` のものを除く）が残っていれば作らない。回答待ちの PR だけが残っているときは作り（自動ループと同じ）、その時点で open な回答待ちの PR を本文の「回答待ちの PR」に載せる。
+   `※回答待ち` のタスクは、goal に書いた PR（`※回答待ち（PR #123 / ask id 456）`）が open な回答待ちの PR（`needs-answer`）でなければ作らない。
    マージは AskHub の「要対応」タブの「マージ待ち」から（マージするとゴール元の Discussion が閉じる）
 
 ask・判断ログ（`decision-log`）・実機確認（`needs-verify`）の書き方は自動のときと同じ（AskHub の受信箱でそのまま扱える）。
