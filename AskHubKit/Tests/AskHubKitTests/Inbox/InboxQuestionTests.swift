@@ -139,6 +139,7 @@ struct InboxIssueTests {
                 title: id,
                 url: URL(string: "https://github.com/o/r/issues/1")!,
                 author: author,
+                createdAt: Date(timeIntervalSince1970: 0),
                 updatedAt: Date(timeIntervalSince1970: updatedAt)
             )
         }
@@ -150,6 +151,31 @@ struct InboxIssueTests {
         ])
         let issues = try await InboxFetcher(source: source, trustedAuthors: TrustedAuthors(["mrs1669"])).lowPriorityIssues(orgs: ["o"])
         #expect(issues.map(\.id) == ["new", "old"])
+    }
+
+    @Test func verifyMarkerIsReadOnlyFromNeedsVerify() {
+        func issue(_ kind: InboxIssue.Kind, body: String) -> InboxIssue {
+            InboxIssue(
+                id: "I_1",
+                kind: kind,
+                repository: "o/r",
+                number: 1,
+                title: "タイトル",
+                url: URL(string: "https://github.com/o/r/issues/1")!,
+                author: "mrs1669",
+                createdAt: Date(timeIntervalSince1970: 0),
+                updatedAt: Date(timeIntervalSince1970: 0),
+                body: body
+            )
+        }
+        let marked = #"<!-- ask-hub:verify {"pullRequest":12,"epic":"epic/x"} -->"# + "\n元の PR: #12\n\n確認手順"
+
+        #expect(issue(.needsVerify, body: marked).verifyMarker == VerifyMarker(pullRequest: 12, epic: "epic/x"))
+        #expect(issue(.needsVerify, body: "<!-- ask-hub:verify {} -->\n確認手順").verifyMarker == VerifyMarker())
+        // 目印の無い既存の Issue では、本文に PR 番号が書かれていても拾わない
+        #expect(issue(.needsVerify, body: "元の PR: #12\n\n確認手順").verifyMarker == nil)
+        // 仮決め一覧の目印は読まない
+        #expect(issue(.decisionLog, body: marked).verifyMarker == nil)
     }
 }
 

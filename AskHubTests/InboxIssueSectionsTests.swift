@@ -14,6 +14,7 @@ struct InboxIssueSectionsTests {
             title: id,
             url: URL(string: "https://github.com/o/r/issues/1")!,
             author: "mrs1669",
+            createdAt: Date(timeIntervalSince1970: 0),
             updatedAt: Date(timeIntervalSince1970: 0)
         )
     }

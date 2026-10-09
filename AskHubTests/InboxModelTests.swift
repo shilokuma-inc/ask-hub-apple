@@ -47,6 +47,7 @@ struct InboxModelTests {
                     title: "仮決め",
                     url: Self.subject.url,
                     author: "mrs1669",
+                    createdAt: Date(timeIntervalSince1970: 0),
                     updatedAt: Date(timeIntervalSince1970: 0)
                 )
             ]
