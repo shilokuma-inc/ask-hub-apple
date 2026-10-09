@@ -1,8 +1,8 @@
 import Foundation
 
 /// 受信箱の「任意判断」「実機確認」に出す Issue（仮決め一覧・実機確認）
-public struct InboxIssue: Sendable, Equatable, Identifiable {
-    public enum Kind: Sendable, Equatable {
+public struct InboxIssue: Sendable, Equatable, Hashable, Identifiable {
+    public enum Kind: Sendable, Equatable, Hashable {
         /// epic ごとの仮決め一覧（`decision-log`）
         case decisionLog
         /// 実機・実データでの確認（`needs-verify`）
