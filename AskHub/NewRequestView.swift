@@ -3,14 +3,73 @@ import SwiftUI
 
 /// 新機能の依頼を出す画面（Discussion #1 の Q12）。`idea-request` の Issue を作るだけで、Claude は呼ばない
 struct NewRequestView: View {
+    /// 依頼の種類。フォームの最上部のセグメントで切り替える（Discussion #306）
+    enum Kind: CaseIterable, Identifiable {
+        /// 既存のリポジトリへの機能追加・修正の依頼（`idea-request`）
+        case change
+        /// テンプレートから新しいアプリのリポジトリを作る依頼（`repo-request`）
+        case newApp
+
+        var id: Self { self }
+
+        var title: String {
+            switch self {
+            case .change: "機能追加・修正"
+            case .newApp: "新しいアプリ"
+            }
+        }
+    }
+
     let model: IdeaRequestModel
     let openSettings: () -> Void
+    /// タブを切り替えても選んだ側を保つ。アプリを起動し直すと「機能追加・修正」に戻る
+    @State private var kind: Kind
     /// 送信後とキーボードの「完了」でキーボードを閉じ、結果やボタンが隠れないようにする
     @FocusState private var isEditing: Bool
 
+    init(model: IdeaRequestModel, openSettings: @escaping () -> Void, kind: Kind = .change) {
+        self.model = model
+        self.openSettings = openSettings
+        _kind = State(initialValue: kind)
+    }
+
     var body: some View {
-        @Bindable var model = model
         Form {
+            Section {
+                Picker("依頼の種類", selection: $kind) {
+                    ForEach(Kind.allCases) { kind in
+                        Text(kind.title).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityIdentifier("request-kind-picker")
+            }
+
+            switch kind {
+            case .change:
+                changeSections
+            case .newApp:
+                NewAppFormSections(model: model, isEditing: $isEditing)
+            }
+        }
+        .formStyle(.grouped)
+        .keyboardDoneButton($isEditing)
+        .navigationTitle(kind == .change ? "新しい依頼" : "新しいアプリ")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("設定", systemImage: "gearshape", action: openSettings)
+            }
+        }
+        // デモモードの切り替えでモデルが差し替わったら、新しいモデルで読み直す
+        .task(id: ObjectIdentifier(model)) { await model.loadRepositories() }
+        .refreshable { await model.loadRepositories() }
+    }
+
+    /// 既存のリポジトリへの依頼（機能追加・修正）の入力欄
+    @ViewBuilder private var changeSections: some View {
+        @Bindable var model = model
+        Group {
             Section {
                 repositoryPicker
             } header: {
@@ -76,30 +135,7 @@ struct NewRequestView: View {
                 }
                 .disabled(!model.canSend)
             }
-
-            // 依頼の入力欄より上に置くと、キーボードで入力欄が隠れやすくなるので末尾に置く
-            Section {
-                NavigationLink {
-                    NewAppView(model: model)
-                } label: {
-                    Label("新しいアプリを作る", systemImage: "plus.app")
-                }
-                .accessibilityIdentifier("new-app-link")
-            } footer: {
-                Text("テンプレートからリポジトリを作り、担当 PC に載せます")
-            }
         }
-        .formStyle(.grouped)
-        .keyboardDoneButton($isEditing)
-        .navigationTitle("新しい依頼")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("設定", systemImage: "gearshape", action: openSettings)
-            }
-        }
-        // デモモードの切り替えでモデルが差し替わったら、新しいモデルで読み直す
-        .task(id: ObjectIdentifier(model)) { await model.loadRepositories() }
-        .refreshable { await model.loadRepositories() }
     }
 
     @ViewBuilder private var repositoryPicker: some View {
@@ -138,6 +174,12 @@ struct NewRequestView: View {
 #Preview {
     NavigationStack {
         NewRequestView(model: .sample(), openSettings: {})
+    }
+}
+
+#Preview("新しいアプリ") {
+    NavigationStack {
+        NewRequestView(model: .sample(), openSettings: {}, kind: .newApp)
     }
 }
 
