@@ -122,7 +122,8 @@ final class InboxModel {
         await refresh()
     }
 
-    /// 実機確認の Issue を確認済み（完了）として閉じる（Discussion #331 の Q5）。成功したらその Issue を一覧から外し、一覧を取り直す
+    /// 実機確認の Issue を確認済み（完了）として閉じる（Discussion #331 の Q5）。成功したらその Issue を一覧から外し、一覧を取り直す。
+    /// 取り直しは待たずに返す（一覧からは外し終えているので、詳細画面をすぐ閉じられるようにする）
     func closeAsVerified(_ issue: InboxIssue) async throws {
         guard let token = try tokenStore.load() else {
             throw MissingTokenError()
@@ -132,7 +133,7 @@ final class InboxModel {
         useToken(token)
         closedIssueIDs.insert(issue.id)
         issues.removeAll { $0.id == issue.id }
-        await refresh()
+        Task { await refresh() }
     }
 
     /// トークンが変わったら（別のアカウントになりうるので）回答済み・閉じた記録を捨てる
