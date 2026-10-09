@@ -160,6 +160,7 @@ promise は完全一致でしか成立せず「詰まった」を表現できな
 - ask のコメントは質問の目印（`<!-- ask-hub:question id="…" options="…" -->`）で始め、PR に `needs-answer` を付ける。
   目印が無い ask は AskHub に届かず、回答してもループが再開しない
 - 判断ログ Issue には `decision-log`、実機確認 Issue には `needs-verify` を付ける（AskHub の「任意判断」「実機確認」に出る）
+- 実機確認 Issue の本文の**先頭**に `ask-hub:verify` の目印を置く（AskHub が元の PR 番号を一覧に出す。「実機確認の扱い」の例を参照）
 - 最終 PR はループで作らない。通常の自動ループではオーケストレーターが「最終 PR に載せる内容」を読んで作り、
   手動ループ（manual-loop）では担当者が `scripts/askhub-manual.sh final` で作る
 - 不足しているプロトコルのラベルは `ralph-setup.sh` が作る

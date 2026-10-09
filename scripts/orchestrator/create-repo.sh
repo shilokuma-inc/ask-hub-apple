@@ -149,6 +149,7 @@ asc_issue=$(gh issue list --repo "$REPOSITORY" --state all --label needs-verify 
   --json url --jq '.[0].url // ""' 2>/dev/null || true)
 if [[ -z "$asc_issue" ]]; then
   asc_issue=$(gh issue create --repo "$REPOSITORY" --title "$ASC_TITLE" --label needs-verify --body "$(cat <<BODY
+<!-- ask-hub:verify {} -->
 App Store Connect でのアプリの作成は Web でしか行えないため、手で行ってください。
 
 - [ ] [App Store Connect](https://appstoreconnect.apple.com/apps) で新規 App を作成する（Bundle ID: \`$BUNDLE_ID\`）
