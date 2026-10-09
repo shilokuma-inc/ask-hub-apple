@@ -80,4 +80,13 @@ struct BodySummaryTests {
         #expect(BodySummary.oneLine("| A | a \\\\| b |\n| - | - |") == "A a \\ b")
         #expect(BodySummary.oneLine("<table><tr><th>名前</th><th>値</th></tr><tr><td>A</td><td>1</td></tr></table>") == "名前 値 A 1")
     }
+
+    @Test func pipeLineWithoutDelimiterRowIsNotTable() {
+        #expect(BodySummary.oneLine("| 障害対応が必要\n次の行") == "| 障害対応が必要 次の行")
+        // 1 列の表（`| 見出し` と `| ---`）は GFM でも表になる
+        #expect(BodySummary.oneLine("| 見出し\n| ---") == "見出し")
+        #expect(BodySummary.oneLine("| a | b |\n| 1 | 2 |") == "| a | b | | 1 | 2 |")
+        // 表の後の `|` で始まらない行で表が終わる
+        #expect(BodySummary.oneLine("| a |\n| - |\n| 1 |\n後\n| x") == "a 1 後 | x")
+    }
 }

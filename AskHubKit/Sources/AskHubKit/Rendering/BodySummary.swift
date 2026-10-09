@@ -15,7 +15,10 @@ public enum BodySummary {
     private static func strippingBlockMarkers(_ markdown: String) -> [String] {
         var lines: [String] = []
         var openFence: Fence?
-        for rawLine in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+        /// 表の中の行か（ヘッダー行と区切り行の組から、`|` で始まらない行まで）
+        var isInTable = false
+        let rawLines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
+        for (index, rawLine) in rawLines.enumerated() {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if let fence = Fence(line: rawLine) {
                 if let open = openFence {
@@ -29,8 +32,22 @@ public enum BodySummary {
                     continue
                 }
             }
-            let stripped = openFence != nil ? line : strippingTableRow(line.replacing(blockMarkerPattern, with: ""))
-                .trimmingCharacters(in: .whitespaces)
+            guard openFence == nil else {
+                isInTable = false
+                if !line.isEmpty {
+                    lines.append(line)
+                }
+                continue
+            }
+            let content = line.replacing(blockMarkerPattern, with: "")
+            if content.hasPrefix("|"), !isInTable, index + 1 < rawLines.count {
+                // GFM と同じく、直後が区切り行のときだけ表の始まりとみなす（`| 単独の行` は表ではない）
+                let next = rawLines[index + 1].trimmingCharacters(in: .whitespaces).replacing(blockMarkerPattern, with: "")
+                isInTable = isDelimiterRow(next)
+            } else if !content.hasPrefix("|") {
+                isInTable = false
+            }
+            let stripped = (isInTable ? strippingTableRow(content) : content).trimmingCharacters(in: .whitespaces)
             if !stripped.isEmpty {
                 lines.append(stripped)
             }
@@ -64,12 +81,21 @@ public enum BodySummary {
         }
     }
 
-    /// 表の行（`|` で始まる行）なら、セルの区切りの `|` を空白にする。区切り行（`| --- | :-: |`）は空にする。
-    /// エスケープされた `\|`（直前の `\` が奇数個）はセルの文字なので残す（後のインラインの解釈で `|` になる）
+    /// 表の行の、セルの区切りの `|` を空白にする。区切り行（`| --- | :-: |`）は空にする
     private static func strippingTableRow(_ line: String) -> String {
-        guard line.hasPrefix("|") else {
-            return line
-        }
+        let cells = tableCells(line)
+        return isDelimiterRow(line) ? "" : cells.joined(separator: " ")
+    }
+
+    /// 区切り行（`| --- | :-: |`）か
+    private static func isDelimiterRow(_ line: String) -> Bool {
+        let cells = tableCells(line)
+        return line.hasPrefix("|") && !cells.isEmpty && cells.allSatisfy { $0.wholeMatch(of: delimiterCellPattern) != nil }
+    }
+
+    /// 表の行を `|` で分けたセル（前後の空白を除き、空のセルは除く）。
+    /// エスケープされた `\|`（直前の `\` が奇数個）はセルの文字なので残す（後のインラインの解釈で `|` になる）
+    private static func tableCells(_ line: String) -> [String] {
         var cells: [String] = []
         var cell = ""
         var backslashes = 0
@@ -83,11 +109,7 @@ public enum BodySummary {
             backslashes = char == "\\" ? backslashes + 1 : 0
         }
         cells.append(cell)
-        let trimmed = cells.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        if trimmed.allSatisfy({ $0.wholeMatch(of: delimiterCellPattern) != nil }) {
-            return ""
-        }
-        return trimmed.joined(separator: " ")
+        return cells.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
     /// 表の区切り行のセル（`---`・`:-:` など）
