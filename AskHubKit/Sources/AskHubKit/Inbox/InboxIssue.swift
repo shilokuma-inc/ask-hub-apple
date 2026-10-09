@@ -36,7 +36,10 @@ public struct InboxIssue: Sendable, Equatable, Identifiable {
     public var url: URL
     /// 削除済みのユーザーでは `nil`
     public var author: String?
+    public var createdAt: Date
     public var updatedAt: Date
+    /// 本文（Markdown）
+    public var body: String
 
     public init(
         id: String,
@@ -46,7 +49,9 @@ public struct InboxIssue: Sendable, Equatable, Identifiable {
         title: String,
         url: URL,
         author: String?,
-        updatedAt: Date
+        createdAt: Date,
+        updatedAt: Date,
+        body: String = ""
     ) {
         self.id = id
         self.kind = kind
@@ -55,6 +60,15 @@ public struct InboxIssue: Sendable, Equatable, Identifiable {
         self.title = title
         self.url = url
         self.author = author
+        self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.body = body
+    }
+
+    /// 実機確認の本文の先頭にある目印（元の PR 番号と epic）。
+    /// 仮決め一覧と、目印の無い Issue では `nil`（自由文からは推測しない）。
+    /// 信用する author の Issue だけを扱うのは `InboxFetcher` の役割
+    public var verifyMarker: VerifyMarker? {
+        kind == .needsVerify ? VerifyMarker.parse(body) : nil
     }
 }

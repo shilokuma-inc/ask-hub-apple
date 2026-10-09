@@ -58,7 +58,7 @@ public struct GitHubInboxSource: InboxSource {
         }
         return nodes.compactMap { node in
             guard let id = node.id, let number = node.number, let title = node.title, let url = node.url,
-                  let updatedAt = node.updatedAt, let repository = node.repository?.nameWithOwner,
+                  let createdAt = node.createdAt, let updatedAt = node.updatedAt, let repository = node.repository?.nameWithOwner,
                   let kind = InboxIssue.Kind(labelNames: node.labels?.nodes.compactMap(\.self).map(\.name) ?? []) else {
                 return nil
             }
@@ -70,18 +70,21 @@ public struct GitHubInboxSource: InboxSource {
                 title: title,
                 url: url,
                 author: node.author?.login,
-                updatedAt: updatedAt
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                body: node.body ?? ""
             )
         }
     }
 
+    // 詳細画面と実機確認の目印のために本文も読む（検索の回数は変えない）
     private static let issueSearchQuery = """
         query($query: String!, $after: String) {
           search(query: $query, type: ISSUE, first: 50, after: $after) {
             pageInfo { hasNextPage endCursor }
             nodes {
               ... on Issue {
-                id number title url updatedAt
+                id number title url createdAt updatedAt body
                 author { login }
                 repository { nameWithOwner }
                 labels(first: 100) { nodes { name } }
@@ -369,7 +372,9 @@ private struct IssueSearchNode: Decodable {
     let number: Int?
     let title: String?
     let url: URL?
+    let createdAt: Date?
     let updatedAt: Date?
+    let body: String?
     let author: Author?
     let repository: Repository?
     let labels: Labels?
