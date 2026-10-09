@@ -99,7 +99,7 @@ struct ContentView: View {
         }
     }
 
-    /// 任意判断・実機確認の一覧。Issue は GitHub で読み書きする
+    /// 任意判断・実機確認の一覧。行を開くと詳細画面で本文を読め、そこから GitHub でも開ける
     private func issueList(title: String, kind: InboxIssue.Kind, emptyTitle: String, emptySystemImage: String) -> some View {
         InboxListView(
             title: title,
@@ -108,17 +108,15 @@ struct ContentView: View {
             emptySystemImage: emptySystemImage,
             model: model,
             row: { issue in
-                Link(destination: issue.url) {
+                NavigationLink(value: issue) {
                     IssueRow(issue: issue)
-                        // 行全体をタップできるように幅を広げる
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(.rect)
                 }
-                // Link の既定のスタイルは行の文字をすべてアクセントカラーにするため、行の配色を使う
-                .buttonStyle(.plain)
             },
             openSettings: { isShowingSettings = true }
         )
+        .navigationDestination(for: InboxIssue.self) { issue in
+            IssueDetailView(issue: issue)
+        }
         .demoModeBanner()
     }
 }
