@@ -188,10 +188,16 @@ extension InboxModel {
             makeSource: { _ in SampleInboxSource() },
             makePoster: { _ in SampleAnswerPoster() },
             makeStarter: { _ in SampleLoopStarter() },
+            makeCloser: { _ in SampleIssueCloser() },
             // サンプルは GitHub に権限を問い合わせない
             makeTrust: { _ in TrustedAuthors.default }
         )
     }
+}
+
+/// デモモード・Preview・UI テスト用。実機確認の Issue を閉じたことにして GitHub には送らない
+struct SampleIssueCloser: IssueClosing {
+    func closeAsVerified(_ issue: InboxIssue) async throws {}
 }
 
 /// デモモード・Preview・UI テスト用。ループを始める印を付けたことにして GitHub には送らない
