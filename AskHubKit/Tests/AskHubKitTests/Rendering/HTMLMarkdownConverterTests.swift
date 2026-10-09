@@ -163,9 +163,9 @@ struct HTMLMarkdownConverterTests {
         #expect(convert("<details><summary>概要</summary>中身</details>") == "概要\n中身")
     }
 
-    @Test func tableBecomesTextOnly() {
+    @Test func tableBecomesMarkdownTable() {
         let html = "<table><tr><th>名前</th><th>値</th></tr><tr><td>A</td><td>1</td></tr></table>"
-        #expect(convert(html) == "名前 値\nA 1")
+        #expect(convert(html) == "| 名前 | 値 |\n| --- | --- |\n| A | 1 |")
     }
 
     @Test func removesHTMLComments() {

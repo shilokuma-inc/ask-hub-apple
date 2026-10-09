@@ -195,7 +195,7 @@ private struct BlockBuilder {
         let components = run.presentationIntent?.components ?? []
 
         if let table = Self.tableComponents(components) {
-            appendTableCell(piece, table: table)
+            appendTableCell(Self.unescapingPipesInCode(piece), table: table)
         } else if let code = components.first(where: { if case .codeBlock = $0.kind { return true } else { return false } }) {
             appendCode(piece, component: code)
         } else if let lists = Self.listComponents(components), !lists.isEmpty {
@@ -315,6 +315,19 @@ private struct BlockBuilder {
             table.rows[row][position.columnIndex].append(piece)
         }
         current = .table(identity: position.identity, table: table)
+    }
+
+    /// 表のセルの中のコードスパンでは、列の区切りにしないための `\|` を `|` に戻す（GitHub と同じ）。
+    /// Foundation はコードの外の `\|` は戻すが、コードの中では `\` を残す
+    private static func unescapingPipesInCode(_ piece: AttributedString) -> AttributedString {
+        guard piece.runs.contains(where: { $0.inlinePresentationIntent?.contains(.code) == true }) else {
+            return piece
+        }
+        var result = piece
+        while let range = result.range(of: "\\|") {
+            result.characters.replaceSubrange(range, with: "|")
+        }
+        return result
     }
 
     private static func alignment(_ column: PresentationIntent.TableColumn) -> RenderedBody.ColumnAlignment {

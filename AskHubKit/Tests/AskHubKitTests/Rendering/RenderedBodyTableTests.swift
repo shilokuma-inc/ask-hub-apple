@@ -120,4 +120,26 @@ struct RenderedBodyTableTests {
         }
         #expect(body.plainText.contains("| a | b |"))
     }
+
+    @Test func unescapesPipesInsideCodeOfCells() throws {
+        let body = RenderedBody(markdown: "| `a \\| b` | c \\| d |\n| - | - |")
+        let table = try #require(tableBlock(body.blocks.first))
+        #expect(cells(table.header) == ["a | b", "c | d"])
+        #expect(table.header[0].runs.allSatisfy { $0.inlinePresentationIntent == .code })
+    }
+
+    @Test func htmlTableBecomesTable() throws {
+        let body = RenderedBody(body: """
+        <p>前</p>
+        <table>
+          <thead><tr><th align="center">名前</th><th>コード</th></tr></thead>
+          <tbody><tr><td><b>A</b><br>改行</td><td><code>x|y</code> &amp; z</td></tr></tbody>
+        </table>
+        """)
+        #expect(body.blocks.count == 2)
+        let table = try #require(tableBlock(body.blocks.last))
+        #expect(table.alignments == [.center, .leading])
+        #expect(cells(table.header) == ["名前", "コード"])
+        #expect(table.rows.map(cells) == [["A 改行", "x|y & z"]])
+    }
 }
