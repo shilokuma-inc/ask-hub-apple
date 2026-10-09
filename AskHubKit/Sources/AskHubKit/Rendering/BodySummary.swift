@@ -65,22 +65,22 @@ public enum BodySummary {
     }
 
     /// 表の行（`|` で始まる行）なら、セルの区切りの `|` を空白にする。区切り行（`| --- | :-: |`）は空にする。
-    /// エスケープされた `\|` はセルの文字なので残す（後のインラインの解釈で `|` になる）
+    /// エスケープされた `\|`（直前の `\` が奇数個）はセルの文字なので残す（後のインラインの解釈で `|` になる）
     private static func strippingTableRow(_ line: String) -> String {
         guard line.hasPrefix("|") else {
             return line
         }
         var cells: [String] = []
         var cell = ""
-        var previous: Character?
+        var backslashes = 0
         for char in line {
-            if char == "|", previous != "\\" {
+            if char == "|", backslashes.isMultiple(of: 2) {
                 cells.append(cell)
                 cell = ""
             } else {
                 cell.append(char)
             }
-            previous = char
+            backslashes = char == "\\" ? backslashes + 1 : 0
         }
         cells.append(cell)
         let trimmed = cells.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }

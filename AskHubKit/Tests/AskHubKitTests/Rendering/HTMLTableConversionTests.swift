@@ -40,7 +40,12 @@ struct HTMLTableConversionTests {
         #expect(convert(html) == "| a\\|b | x \\| y |\n| --- | --- |\n| 1 行目 2 行目 3 行目 | 段落 2 つ目 |")
     }
 
-    @Test func convertsInlineTagsInsideCells() {
+    @Test func escapesPipeAfterEscapedBackslash() {
+        // `\\` はエスケープされた `\` なので、続く `|` はエスケープされていない
+        #expect(convert("<table><tr><td>a\\\\|b</td><td>c\\\\\\|d</td></tr></table>") == "| a\\\\\\|b | c\\\\\\|d |\n| --- | --- |")
+    }
+
+        @Test func convertsInlineTagsInsideCells() {
         let html = #"<table><tr><th><b>太字</b></th><th><code>a|b</code></th><th><a href="https://example.com">リンク</a></th></tr></table>"#
         #expect(convert(html) == "| **太字** | `a\\|b` | [リンク](https://example.com) |\n| --- | --- | --- |")
     }

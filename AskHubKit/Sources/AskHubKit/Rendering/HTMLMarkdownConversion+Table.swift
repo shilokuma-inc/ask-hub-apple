@@ -181,22 +181,22 @@ extension HTMLMarkdownConversion {
     }
 
     /// セルの Markdown を 1 行にする。改行（`<br>` のハードブレークや、セルの中のブロック要素の境界）は空白にまとめ、
-    /// 列の区切りと読まれないよう `|` を `\|` にエスケープする（既にエスケープされたものはそのまま）
+    /// 列の区切りと読まれないよう `|` を `\|` にエスケープする（既にエスケープされたもの、つまり直前の `\` が奇数個のものはそのまま）
     static func singleLineCell(_ content: [Character]) -> String {
         var result: [Character] = []
-        var previous: Character?
+        var backslashes = 0
         for char in content {
             if char.isWhitespace {
                 if let last = result.last, last != " " {
                     result.append(" ")
                 }
             } else {
-                if char == "|", previous != "\\" {
+                if char == "|", backslashes.isMultiple(of: 2) {
                     result.append("\\")
                 }
                 result.append(char)
             }
-            previous = char
+            backslashes = char == "\\" ? backslashes + 1 : 0
         }
         return String(result).trimmingCharacters(in: .whitespaces)
     }
