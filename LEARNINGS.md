@@ -108,6 +108,10 @@
 - アプリのターゲットは MainActor 既定なので、`InboxModel.org` のようなモデルの `static let` も MainActor に隔離される。
   `Sendable` なプロトコル（`LoopStatusSource` など）に準拠するサンプルの型で `private static let org = InboxModel.org` と書くと、
   「main actor-isolated default value in a nonisolated context」になる。メソッドの引数（`org`）を使うか、文字列を直接書く
+- `AttributedString(markdown:)` の `.full` は GFM の表を解釈し、セルの run の `presentationIntent` に `tableCell(columnIndex:)`・
+  `tableHeaderRow`（ヘッダー）か `tableRow(rowIndex:)`（本文。1 から）・`table(columns:)`（列の揃え）が内側から外側の順に並ぶ。
+  空のセルや空の行には run が無いので、列・行の番号で位置を決めて空のセルを埋める。区切り行より多いセルは落ちる。
+  空行を挟まずに表の直後に書いた行は、GitHub と同じく表の行になる
 
 ## シェルスクリプト
 
