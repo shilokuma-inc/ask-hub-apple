@@ -364,6 +364,11 @@ struct SampleInboxSource: InboxSource {
         Self.issues
     }
 
+    /// 目印（`ask-hub:verify`）のある実機確認の Issue（Preview 用）
+    static var sampleVerifyIssue: InboxIssue {
+        issues.first { $0.verifyMarker != nil } ?? issues[0]
+    }
+
     /// 実機確認には、目印（`ask-hub:verify`）のあるものと無いものの両方を入れる
     private static let issues = [
         InboxIssue(
