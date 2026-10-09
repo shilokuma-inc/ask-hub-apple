@@ -29,7 +29,8 @@ public enum BodySummary {
                     continue
                 }
             }
-            let stripped = openFence != nil ? line : line.replacing(blockMarkerPattern, with: "").trimmingCharacters(in: .whitespaces)
+            let stripped = openFence != nil ? line : strippingTableRow(line.replacing(blockMarkerPattern, with: ""))
+                .trimmingCharacters(in: .whitespaces)
             if !stripped.isEmpty {
                 lines.append(stripped)
             }
@@ -61,6 +62,37 @@ public enum BodySummary {
         func closes(_ open: Fence) -> Bool {
             character == open.character && length >= open.length && isAlone
         }
+    }
+
+    /// 表の行（`|` で始まる行）なら、セルの区切りの `|` を空白にする。区切り行（`| --- | :-: |`）は空にする。
+    /// エスケープされた `\|` はセルの文字なので残す（後のインラインの解釈で `|` になる）
+    private static func strippingTableRow(_ line: String) -> String {
+        guard line.hasPrefix("|") else {
+            return line
+        }
+        var cells: [String] = []
+        var cell = ""
+        var previous: Character?
+        for char in line {
+            if char == "|", previous != "\\" {
+                cells.append(cell)
+                cell = ""
+            } else {
+                cell.append(char)
+            }
+            previous = char
+        }
+        cells.append(cell)
+        let trimmed = cells.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if trimmed.allSatisfy({ $0.wholeMatch(of: delimiterCellPattern) != nil }) {
+            return ""
+        }
+        return trimmed.joined(separator: " ")
+    }
+
+    /// 表の区切り行のセル（`---`・`:-:` など）
+    private static var delimiterCellPattern: Regex<Substring> {
+        /:?-+:?/
     }
 
     /// 行頭の `>`・`#`・`-` `*` `+`・`1.` `1)`（組み合わせも）。`Regex` は Sendable でないので computed property にする

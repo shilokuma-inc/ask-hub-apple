@@ -74,4 +74,9 @@ struct BodySummaryTests {
     func emptyBodyGivesEmptySummary(body: String) {
         #expect(BodySummary.oneLine(body).isEmpty)
     }
+
+    @Test func tableBecomesCellTextWithoutDelimiters() {
+        #expect(BodySummary.oneLine("| 名前 | 値 |\n| :--- | --: |\n| **A** | a \\| b |") == "名前 値 A a | b")
+        #expect(BodySummary.oneLine("<table><tr><th>名前</th><th>値</th></tr><tr><td>A</td><td>1</td></tr></table>") == "名前 値 A 1")
+    }
 }
