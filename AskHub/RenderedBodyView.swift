@@ -43,7 +43,21 @@ struct RenderedBodyView: View {
                 .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
 
         case .table(let table):
+            tableView(table)
+        }
+    }
+
+    /// 表示できる幅が足りれば表、足りなければ行ごとのカードで描画する（`#if os` ではなく幅で切り替える）。
+    /// 本文の行が無い表はカードにすると文字が消えるので、いつも表にする
+    @ViewBuilder private func tableView(_ table: RenderedBody.Table) -> some View {
+        if table.rows.isEmpty {
             RenderedTableView(table: table)
+        } else {
+            ViewThatFits(in: .horizontal) {
+                RenderedTableView(table: table)
+                    .frame(minWidth: table.minimumTableWidth, idealWidth: table.minimumTableWidth, maxWidth: .infinity)
+                RenderedTableCardsView(table: table)
+            }
         }
     }
 
