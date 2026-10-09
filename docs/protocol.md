@@ -193,6 +193,25 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - 最終 PR が `develop` にマージされると、ワークフロー（`.github/workflows/close-goal-discussion.yml`）がこの目印を読み、
   Discussion に PR へのリンクをコメントしてから解決済みで閉じる
 
+## 実機確認 Issue の目印
+
+ループは、実機確認 Issue（`needs-verify`）の本文の**先頭**に目印を置く。
+アプリはこの目印を読んで、元の PR 番号と統合ブランチを取り出す（`AskHubKit` の `VerifyMarker`）。
+
+```html
+<!-- ask-hub:verify {"epic":"epic/xxx","pullRequest":123} -->
+```
+
+| キー | 必須 | 内容 |
+| --- | --- | --- |
+| `pullRequest` | 任意 | 実機確認のきっかけになった PR の番号 |
+| `epic` | 任意 | 統合ブランチ（例: `epic/verify-tab-ui`）。元の PR が無い場合も書いてよい |
+
+- キーの順は問わない。知らないキーは無視する
+- 文字列の中の `>` は `\u003e` にエスケープし、目印の終わり（`-->`）と取り違えないようにする
+- 目印が無い既存の Issue では、元の PR 番号と epic は取り出さない（自由文からの推測は行わない）
+- **信用する author が作った Issue の目印だけを読む**（public リポジトリでは誰でも同じ Issue を作れる）
+
 ## 仮決め一覧
 
 ループは、ask にしない判断（仮決め）を epic ごとの Issue（`decision-log`、タイトル `【CHORE】<epic ブランチ> の仮決め一覧`）に 1 行ずつ書く。
