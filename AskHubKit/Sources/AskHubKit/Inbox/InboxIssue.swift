@@ -71,4 +71,23 @@ public struct InboxIssue: Sendable, Equatable, Identifiable {
     public var verifyMarker: VerifyMarker? {
         kind == .needsVerify ? VerifyMarker.parse(body) : nil
     }
+
+    /// 一覧に出すタイトル。起票の規約で先頭に付く `【CHORE】` と、実機確認ではさらに `実機確認: ` を省く
+    /// （タブごとに種類が 1 つなので、表示では重複する）。GitHub 上のタイトルは変えない。
+    /// 省くと何も残らないタイトルは、そのまま出す
+    public var displayTitle: String {
+        var rest = Substring(title)
+        rest = Self.dropping("【CHORE】", from: rest)
+        if kind == .needsVerify {
+            rest = Self.dropping("実機確認:", from: rest)
+            rest = Self.dropping("実機確認：", from: rest)
+        }
+        return rest.isEmpty ? title : String(rest)
+    }
+
+    /// `text` が `prefix` で始まっていれば、`prefix` と直後の空白を省く
+    private static func dropping(_ prefix: String, from text: Substring) -> Substring {
+        guard text.hasPrefix(prefix) else { return text }
+        return text.dropFirst(prefix.count).drop(while: \.isWhitespace)
+    }
 }

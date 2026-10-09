@@ -177,6 +177,34 @@ struct InboxIssueTests {
         // 仮決め一覧の目印は読まない
         #expect(issue(.decisionLog, body: marked).verifyMarker == nil)
     }
+
+    @Test func displayTitleDropsKindPrefix() {
+        func issue(_ kind: InboxIssue.Kind, title: String) -> InboxIssue {
+            InboxIssue(
+                id: "I_1",
+                kind: kind,
+                repository: "o/r",
+                number: 1,
+                title: title,
+                url: URL(string: "https://github.com/o/r/issues/1")!,
+                author: "mrs1669",
+                createdAt: Date(timeIntervalSince1970: 0),
+                updatedAt: Date(timeIntervalSince1970: 0)
+            )
+        }
+
+        #expect(issue(.needsVerify, title: "【CHORE】実機確認: 通知の表示").displayTitle == "通知の表示")
+        #expect(issue(.needsVerify, title: "【CHORE】実機確認：通知の表示").displayTitle == "通知の表示")
+        // オーケストレーターの App Store Connect の Issue には `実機確認: ` が無い
+        #expect(issue(.needsVerify, title: "【CHORE】App Store Connect にアプリを登録する").displayTitle == "App Store Connect にアプリを登録する")
+        #expect(issue(.decisionLog, title: "【CHORE】epic/mvp の仮決め一覧").displayTitle == "epic/mvp の仮決め一覧")
+        // 仮決め一覧では `実機確認: ` を省かない。規約に沿わないタイトルはそのまま
+        #expect(issue(.decisionLog, title: "【CHORE】実機確認: の仮決め一覧").displayTitle == "実機確認: の仮決め一覧")
+        #expect(issue(.needsVerify, title: "【FIX】実機確認: 通知").displayTitle == "【FIX】実機確認: 通知")
+        #expect(issue(.needsVerify, title: "通知の表示（実機確認: 済み）").displayTitle == "通知の表示（実機確認: 済み）")
+        // 省くと空になるタイトルはそのまま出す
+        #expect(issue(.needsVerify, title: "【CHORE】実機確認: ").displayTitle == "【CHORE】実機確認: ")
+    }
 }
 
 extension InboxSubject {
