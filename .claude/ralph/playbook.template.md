@@ -324,7 +324,7 @@ Simulator・ローカルビルドでは確かめられず、実機や実デー�
    BODY
    )"
    ```
-   元の PR 番号が無い場合は `pullRequest` キーを省く。epic が無い場合は `epic` キーを省く
+   元の PR 番号が無い場合は `pullRequest` キーと「元の PR」行を省く。epic が無い場合は `epic` キーを省く
 2. PR の該当行に `memo-badge` で起票した旨だけを書く:
    ```
    ![memo-badge](https://img.shields.io/badge/review-memo-lightgrey)
