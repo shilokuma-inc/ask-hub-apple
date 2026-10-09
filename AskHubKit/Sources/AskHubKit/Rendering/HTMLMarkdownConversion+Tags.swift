@@ -30,8 +30,8 @@ extension HTMLMarkdownConversion {
         case .code(let codeKind):
             codeBuffer = CodeBuffer(kind: codeKind)
 
-        case .tableCell:
-            separateTableCell()
+        case .table, .tableSection, .tableRow, .tableCell:
+            openTablePart(kind, tag: tag)
 
         case .ignored:
             break
@@ -57,8 +57,8 @@ extension HTMLMarkdownConversion {
         }
     }
 
-    /// 表のセルの区切り。前のセルと 1 つの空白で区切る
-    private mutating func separateTableCell() {
+    /// 表のセルの区切り。前のセルと 1 つの空白で区切る（表の中の表など、Markdown の表にしないとき）
+    mutating func separateTableCell() {
         guard !output.isAtLineStart else {
             return
         }
@@ -81,13 +81,16 @@ extension HTMLMarkdownConversion {
         case .listItem, .block:
             beginBlock(blankLine: false)
 
-        case .lineBreak, .code, .tableCell, .ignored:
+        case .table, .tableSection, .tableRow, .tableCell:
+            closeTablePart(HTMLTag.Kind(name: tag.name))
+
+        case .lineBreak, .code, .ignored:
             break
         }
     }
 
     /// ブロック要素の境界。開いているインライン要素を閉じ、整形用の空白を捨てて改行（または空行）を入れる
-    private mutating func beginBlock(blankLine: Bool) {
+    mutating func beginBlock(blankLine: Bool) {
         closeAllInline()
         pendingWhitespace.removeAll()
         if blankLine {
@@ -136,7 +139,7 @@ extension HTMLMarkdownConversion {
         }
     }
 
-    private mutating func finish(_ marker: InlineMarker) {
+    mutating func finish(_ marker: InlineMarker) {
         let content = output.suffix(from: marker.contentStart)
         let replacement = marker.kind.markdown(content: content)
         output.replaceSuffix(from: marker.markerStart, with: replacement)

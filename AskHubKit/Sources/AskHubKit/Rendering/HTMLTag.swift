@@ -113,9 +113,14 @@ struct HTMLTag {
         case list(ordered: Bool)
         case listItem
         case code(CodeBuffer.Kind)
-        /// 中身の文字だけ残し、前後で改行する（表の行・`<details>`・`<div>` など）
+        /// 中身の文字だけ残し、前後で改行する（`<details>`・`<div>` など）
         case block
-        /// 表のセル。前のセルと空白で区切る
+        /// `<table>`。Markdown の表にする
+        case table
+        /// `<thead>`（`isHead` が真）・`<tbody>`・`<tfoot>`
+        case tableSection(isHead: Bool)
+        case tableRow
+        /// `<th>`・`<td>`
         case tableCell
         /// タグだけ取り除く（`<span>` `<img>` など）
         case ignored
@@ -143,12 +148,13 @@ struct HTMLTag {
             "a": .link, "br": .lineBreak, "p": .paragraph,
             "ul": .list(ordered: false), "ol": .list(ordered: true), "li": .listItem,
             "pre": .code(.block), "code": .code(.inline),
-            "td": .tableCell, "th": .tableCell
+            "table": .table, "thead": .tableSection(isHead: true), "tbody": .tableSection(isHead: false),
+            "tfoot": .tableSection(isHead: false), "tr": .tableRow, "td": .tableCell, "th": .tableCell
         ]
 
         private static let blockNames: Set<String> = [
             "div", "section", "article", "header", "footer", "nav", "aside", "main", "address", "center",
-            "table", "thead", "tbody", "tfoot", "tr", "caption",
+            "caption",
             "details", "summary", "blockquote", "hr", "dl", "dt", "dd", "figure", "figcaption"
         ]
     }
