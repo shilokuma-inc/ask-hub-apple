@@ -115,7 +115,7 @@ struct ContentView: View {
             openSettings: { isShowingSettings = true }
         )
         .navigationDestination(for: InboxIssue.self) { issue in
-            IssueDetailView(issue: issue)
+            IssueDetailView(issue: issue, inbox: model)
         }
         .demoModeBanner()
     }

@@ -58,10 +58,46 @@ extension AskHubUITests {
         let decision = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "自動更新の間隔")).firstMatch
         XCTAssertTrue(decision.waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["GitHub で開く"].exists)
+        // 仮決め一覧はオーケストレーターが閉じるので、アプリからは閉じさせない
+        XCTAssertFalse(app.buttons["確認済みとして閉じる"].exists)
 
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "issue-detail-decision-log"
         screenshot.lifetime = .keepAlways
         add(screenshot)
+    }
+
+    @MainActor
+    func testCloseVerificationIssueAfterConfirmation() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは閉じたことにして GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["実機確認"].tap()
+        let row = app.staticTexts["PAT の Keychain への保存と macOS の設定画面の見た目"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        // ボタンは本文の下にある（Form は画面の外の行を作らないので、出るまでスクロールする）
+        let close = app.buttons["確認済みとして閉じる"]
+        XCTAssertTrue(app.staticTexts["確認手順"].waitForExistence(timeout: 5))
+        for _ in 0..<3 where !close.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+
+        // 確かめてから閉じる。閉じたら一覧に戻り、その行が消える
+        let confirm = app.buttons["閉じる"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "issue-detail-close-confirmation"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        confirm.tap()
+        XCTAssertTrue(app.navigationBars["実機確認"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["通知の許可ダイアログと届いた通知の表示"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["PAT の Keychain への保存と macOS の設定画面の見た目"].exists)
     }
 }
