@@ -88,5 +88,6 @@ struct BodySummaryTests {
         #expect(BodySummary.oneLine("| a | b |\n| 1 | 2 |") == "| a | b | | 1 | 2 |")
         // 表の後の `|` で始まらない行で表が終わる
         #expect(BodySummary.oneLine("| a |\n| - |\n| 1 |\n後\n| x") == "a 1 後 | x")
+        #expect(BodySummary.oneLine("| a |\n| - |\n```\n```\n| 単独") == "a | 単独")
     }
 }

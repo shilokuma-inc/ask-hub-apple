@@ -21,6 +21,8 @@ public enum BodySummary {
         for (index, rawLine) in rawLines.enumerated() {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if let fence = Fence(line: rawLine) {
+                // フェンスは表を終わらせる（中身の無いフェンスでも、後の行は新しい区切り行があるときだけ表にする）
+                isInTable = false
                 if let open = openFence {
                     // 同じ文字で同じ長さ以上のフェンスだけが閉じる（```` の中の ``` は中身）
                     if fence.closes(open) {
