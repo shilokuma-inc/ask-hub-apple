@@ -101,6 +101,63 @@ struct InboxModelCloseTests {
         #expect(closer.closed.withLock { $0 }.isEmpty)
     }
 
+    /// 閉じるのを、テストが開けるまで止めておく
+    private final class GatedCloser: IssueClosing {
+        private let gate = OSAllocatedUnfairLock<(opened: Bool, waiters: [CheckedContinuation<Void, Never>])>(initialState: (false, []))
+
+        var isWaiting: Bool {
+            gate.withLock { !$0.waiters.isEmpty }
+        }
+
+        func open() {
+            let waiters = gate.withLock { state in
+                state.opened = true
+                defer { state.waiters = [] }
+                return state.waiters
+            }
+            waiters.forEach { $0.resume() }
+        }
+
+        func closeAsVerified(_ issue: InboxIssue) async throws {
+            await withCheckedContinuation { continuation in
+                let opened = gate.withLock { state in
+                    if !state.opened {
+                        state.waiters.append(continuation)
+                    }
+                    return state.opened
+                }
+                if opened {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    @Test func closeFinishedAfterTokenChangeKeepsNewTokensList() async throws {
+        let store = InMemoryTokenStore(token: "github_pat_old")
+        let closer = GatedCloser()
+        let model = InboxModel(
+            tokenStore: store,
+            makeSource: { _ in IssuesSource() },
+            makeCloser: { _ in closer },
+            makeTrust: { _ in TrustedAuthors.default }
+        )
+        await model.refresh()
+
+        let closing = Task { try await model.closeAsVerified(IssuesSource.issue("I_1")) }
+        while !closer.isWaiting {
+            await Task.yield()
+        }
+        // 閉じるのを待つ間に、設定で別のトークンを保存して取り直した
+        try store.save("github_pat_new")
+        await model.refresh()
+        closer.open()
+        try await closing.value
+
+        // 古いトークンで閉じた結果で、新しいトークンの一覧を書き換えない
+        #expect(Set(model.issues.map(\.id)) == ["I_1", "I_2"])
+    }
+
     @Test func closeMessageExplainsMissingPermission() {
         let expected = "閉じられませんでした。トークンに、このリポジトリの Issues の書き込み権限（Read and write）があるか確かめてください"
         #expect(InboxModel.closeMessage(for: GitHubError.http(status: 403, message: "Resource not accessible")) == expected)
