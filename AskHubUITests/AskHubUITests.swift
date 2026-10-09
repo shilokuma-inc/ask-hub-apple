@@ -410,16 +410,19 @@ extension AskHubUITests {
         app.launchArguments += ["-AskHubSampleInbox"]
         app.launch()
 
-        // 任意判断には仮決め一覧だけを出す
+        // 任意判断には仮決め一覧だけを出す。タイトルの先頭の【CHORE】は表示で省く
         app.tabBars.buttons["任意判断"].tap()
-        XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["【CHORE】epic/notification の仮決め一覧"].exists)
-        XCTAssertFalse(app.staticTexts["【CHORE】実機確認: PAT の Keychain への保存と macOS の設定画面の見た目"].exists)
+        XCTAssertTrue(app.staticTexts["epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["epic/notification の仮決め一覧"].exists)
+        XCTAssertFalse(app.staticTexts["PAT の Keychain への保存と macOS の設定画面の見た目"].exists)
 
-        // 実機確認は別のタブ
+        // 実機確認は別のタブ。タイトルの先頭の「【CHORE】実機確認: 」は表示で省く
         app.tabBars.buttons["実機確認"].tap()
-        XCTAssertTrue(app.staticTexts["【CHORE】実機確認: PAT の Keychain への保存と macOS の設定画面の見た目"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].exists)
+        XCTAssertTrue(app.staticTexts["PAT の Keychain への保存と macOS の設定画面の見た目"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["epic/mvp の仮決め一覧"].exists)
+        // 元の PR 番号は本文の目印からだけ出す（目印の無い notti-ios#52 の本文の「元の PR: #41」は拾わない）
+        XCTAssertTrue(app.staticTexts["元の PR #17"].exists)
+        XCTAssertFalse(app.staticTexts["元の PR #41"].exists)
     }
 }
 
