@@ -7,7 +7,7 @@ struct RenderedBodyTableTests {
         row.map { String($0.characters) }
     }
 
-    private func table(_ block: RenderedBody.Block?) -> RenderedBody.Table? {
+    private func tableBlock(_ block: RenderedBody.Block?) -> RenderedBody.Table? {
         guard case .table(let table) = block else {
             Issue.record("表ではない: \(String(describing: block))")
             return nil
@@ -23,7 +23,7 @@ struct RenderedBodyTableTests {
         | みかん | 2 | 甘い |
         """)
         #expect(body.blocks.count == 1)
-        let table = try #require(table(body.blocks.first))
+        let table = try #require(tableBlock(body.blocks.first))
         #expect(table.alignments == [.leading, .center, .trailing])
         #expect(cells(table.header) == ["名前", "数", "備考"])
         #expect(table.rows.map(cells) == [["りんご", "1", "赤い"], ["みかん", "2", "甘い"]])
@@ -31,7 +31,7 @@ struct RenderedBodyTableTests {
 
     @Test func alignmentDefaultsToLeading() throws {
         let body = RenderedBody(markdown: "| a | b |\n| --- | --- |\n| 1 | 2 |")
-        let table = try #require(table(body.blocks.first))
+        let table = try #require(tableBlock(body.blocks.first))
         #expect(table.alignments == [.leading, .leading])
     }
 
@@ -43,7 +43,7 @@ struct RenderedBodyTableTests {
         | | | |
         | 4 | 5 | 6 | 7 |
         """)
-        let table = try #require(table(body.blocks.first))
+        let table = try #require(tableBlock(body.blocks.first))
         #expect(table.columnCount == 3)
         #expect(cells(table.header) == ["a", "", "c"])
         // 空の行にも行の番号があるので、行は詰めない。区切り行より多いセルは Markdown の仕様どおり落ちる
@@ -52,14 +52,14 @@ struct RenderedBodyTableTests {
 
     @Test func emptyHeaderKeepsColumns() throws {
         let body = RenderedBody(markdown: "|  |  |\n| - | - |\n| x | y |")
-        let table = try #require(table(body.blocks.first))
+        let table = try #require(tableBlock(body.blocks.first))
         #expect(cells(table.header) == ["", ""])
         #expect(table.rows.map(cells) == [["x", "y"]])
     }
 
     @Test func keepsInlineStylesInsideCells() throws {
         let body = RenderedBody(markdown: "| **太字** と `code` | [リンク](https://example.com) |\n| - | - |\n| *斜体* | a \\| b |")
-        let table = try #require(table(body.blocks.first))
+        let table = try #require(tableBlock(body.blocks.first))
         #expect(cells(table.header) == ["太字 と code", "リンク"])
         #expect(table.rows.map(cells) == [["斜体", "a | b"]])
         let first = table.header[0]
@@ -88,7 +88,7 @@ struct RenderedBodyTableTests {
         }
         #expect(String(before.characters) == "前の段落")
         #expect(String(after.characters) == "後の段落")
-        let table = try #require(table(body.blocks[2]))
+        let table = try #require(tableBlock(body.blocks[2]))
         #expect(table.rows.map(cells) == [["1", "2"]])
     }
 
@@ -107,7 +107,7 @@ struct RenderedBodyTableTests {
         let body = RenderedBody(markdown: "- 項目\n\n  | a | b |\n  | - | - |\n  | 1 | 2 |")
         #expect(body.blocks.count == 2)
         #expect(body.plainText == "項目\na | b\n1 | 2")
-        let table = try #require(table(body.blocks.last))
+        let table = try #require(tableBlock(body.blocks.last))
         #expect(table.rows.map(cells) == [["1", "2"]])
     }
 
