@@ -81,6 +81,11 @@
 - `let table = try #require(table(x))` のように、`#require` の中で呼ぶ関数と受け取る変数が同じ名前だと、CI の Xcode 26.3 では
   マクロの展開で変数のほうが参照され「cannot call value of non-function type」でテストのビルドが落ちる（新しい Xcode のローカルでは通る）。
   テストのヘルパー関数は受け取る変数と別の名前にする
+- iOS の UI テストで `app.keyboards.firstMatch.frame` はキーの部分だけで、`ToolbarItemGroup(placement: .keyboard)` の「完了」の帯はその上に重なる。
+  入力欄の中心がこの帯にかかると、`tap()` が帯に当たり「Neither element nor any descendant has keyboard focus」で落ちる。
+  `swipeUp()` しても `Form` の中身が画面に収まっていればスクロールしないので、下の入力欄に移る前に `keyboard-done` でキーボードを閉じる
+- iOS の `Form` は画面の外の行を作らないので、UI テストで下のほうのボタン（例: 「作成を依頼する」）は `exists` が `false` になる。
+  入力欄が切り替わったことは、画面の上にある要素（`template-picker` など）で確かめる。セグメントの `Picker` は `app.segmentedControls["<ID>"].buttons["<文言>"]` で引け、`isSelected` で選択中かが分かる
 
 ## Keychain
 
@@ -136,3 +141,8 @@
   Preview と同じサンプルを使い回せ、GitHub にもトークンにも依存しない
 - `ToolbarItemGroup(placement: .keyboard)` は Deployment Target が macOS 14 でもビルドエラーにならない（`#if os(iOS)` で囲まなくてよい）。
   同じ画面で重複して出ないよう、入力欄ごとではなく `Form` に 1 回だけ付ける
+- `Form` の `Section` 群を別の View に切り出して他の `Form` に埋め込むときは、`.keyboardDoneButton` を付ける埋め込み先と同じフォーカスを使うため、
+  `@FocusState` は埋め込み先で持ち、切り出した View には `FocusState<Bool>.Binding` で渡す（`.focused(isEditing)`、閉じるときは `isEditing.wrappedValue = false`）。
+  切り出した View の `body` は `Group { Section … }` にすると、`.onAppear` などの修飾子を `Section` 群にまとめて付けられる
+- `.background(.bar)` のような `ShapeStyle` の背景は既定で safe area まで広がるため、`safeAreaInset(edge: .top)` の帯に付けると iOS の大きいタイトルを覆ってぼかす。
+  帯の中だけに付けるときは `.background(.bar, ignoresSafeAreaEdges: [])` にする

@@ -61,6 +61,8 @@ final class AskHubUITests: XCTestCase {
         let summary = app.textFields["例: 通知の頻度を調整したい"]
         summary.tap()
         summary.typeText("通知の頻度を調整したい")
+        // 上の「依頼の種類」のぶん依頼文が下がり、要約の入力中はキーボードの「完了」の帯に隠れるので、キーボードを閉じてから押す
+        app.buttons["keyboard-done"].tap()
         let body = app.textFields["やりたいこと・背景・決まっていることなど"]
         body.tap()
         body.typeText("朝だけにしたい")
@@ -84,6 +86,8 @@ final class AskHubUITests: XCTestCase {
         summary.typeText("通知の頻度を調整したい")
 
         // 依頼文の Return は改行のままで、キーボードは閉じない
+        // 上の「依頼の種類」のぶん依頼文が下がり、要約の入力中はキーボードの「完了」の帯に隠れるので、キーボードを閉じてから押す
+        app.buttons["keyboard-done"].tap()
         let body = app.textFields["やりたいこと・背景・決まっていることなど"]
         body.tap()
         body.typeText("朝だけにしたい\n夜は止めたい")
@@ -416,5 +420,46 @@ extension AskHubUITests {
         app.tabBars.buttons["実機確認"].tap()
         XCTAssertTrue(app.staticTexts["【CHORE】実機確認: PAT の Keychain への保存と macOS の設定画面の見た目"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].exists)
+    }
+}
+
+// 依頼タブの「機能追加・修正 / 新しいアプリ」の切り替え（Discussion #306）
+extension AskHubUITests {
+    @MainActor
+    func testSwitchRequestKindInNewRequest() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["依頼"].tap()
+        let picker = app.segmentedControls["request-kind-picker"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        let change = picker.buttons["機能追加・修正"]
+        let newApp = picker.buttons["新しいアプリ"]
+
+        // 既定は「機能追加・修正」で、既存のリポジトリへの依頼の入力欄が出る
+        XCTAssertTrue(change.isSelected)
+        XCTAssertFalse(newApp.isSelected)
+        XCTAssertTrue(app.buttons["依頼を送る"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["repository-picker"].exists)
+        XCTAssertFalse(app.textFields["repository-name"].exists)
+
+        // 「新しいアプリ」に切り替えると、画面遷移せずに新しいアプリの入力欄に変わる
+        newApp.tap()
+        XCTAssertTrue(newApp.isSelected)
+        XCTAssertTrue(app.textFields["repository-name"].waitForExistence(timeout: 5))
+        // 「作成を依頼する」は画面の外にあり `Form` が作らないので、上にある入力欄で確かめる
+        XCTAssertTrue(app.segmentedControls["template-picker"].exists)
+        XCTAssertTrue(app.navigationBars["新しいアプリ"].exists)
+        XCTAssertFalse(app.buttons["依頼を送る"].exists)
+        XCTAssertFalse(app.buttons["repository-picker"].exists)
+
+        // 戻すと依頼の入力欄に戻る
+        change.tap()
+        XCTAssertTrue(change.isSelected)
+        XCTAssertTrue(app.buttons["依頼を送る"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["repository-picker"].exists)
+        XCTAssertTrue(app.navigationBars["新しい依頼"].exists)
+        XCTAssertFalse(app.textFields["repository-name"].exists)
     }
 }
