@@ -25,9 +25,11 @@ struct HTMLTableConversionTests {
             == "| a | b |\n| --- | --- |\n| 1 | 2 |")
     }
 
-    @Test func padsShortRowsAndKeepsEmptyCells() {
+    @Test func padsOnlyHeaderAndKeepsEmptyCells() {
         let html = "<table><tr><th>a</th><th>b</th><th>c</th></tr><tr><td>1</td></tr><tr><td></td><td>2</td><td> </td></tr></table>"
-        #expect(convert(html) == "| a | b | c |\n| --- | --- | --- |\n| 1 |  |  |\n|  | 2 |  |")
+        #expect(convert(html) == "| a | b | c |\n| --- | --- | --- |\n| 1 |\n|  | 2 |  |")
+        // 本文の行のほうが列が多いときは、ヘッダー行を空のセルで埋める
+        #expect(convert("<table><tr><th>a</th></tr><tr><td>1</td><td>2</td></tr></table>") == "| a |  |\n| --- | --- |\n| 1 | 2 |")
     }
 
     @Test func convertsAlignAttributeOfHeaderCells() {
@@ -52,7 +54,7 @@ struct HTMLTableConversionTests {
 
     @Test func colspanKeepsSingleCell() {
         let html = #"<table><tr><th>a</th><th>b</th></tr><tr><td colspan="2">結合</td></tr><tr><td rowspan="2">縦</td><td>1</td></tr></table>"#
-        #expect(convert(html) == "| a | b |\n| --- | --- |\n| 結合 |  |\n| 縦 | 1 |")
+        #expect(convert(html) == "| a | b |\n| --- | --- |\n| 結合 |\n| 縦 | 1 |")
     }
 
     @Test func nestedTableAndListBecomeTextOfTheCell() {

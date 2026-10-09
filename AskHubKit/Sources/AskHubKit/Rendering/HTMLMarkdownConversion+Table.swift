@@ -202,7 +202,8 @@ extension HTMLMarkdownConversion {
     }
 
     /// 行を Markdown の表にする。ヘッダーは `<thead>` の行、無ければ `<th>` だけの行、それも無ければ先頭の行。
-    /// 列の数はいちばん多い行にそろえ、足りないセルは空にする（`colspan` / `rowspan` はセルを分けない）
+    /// ヘッダー行と区切り行の列の数はいちばん多い行にそろえる。本文の行は埋めない（Markdown の表は足りないセルを空として扱う。
+    /// 埋めると、列の多い行が 1 つあるだけで行数 × 列数に膨らむ）。`colspan` / `rowspan` はセルを分けない
     static func markdownTable(_ rows: [HTMLTableContext.Row]) -> String? {
         guard !rows.isEmpty else {
             return nil
@@ -213,9 +214,9 @@ extension HTMLMarkdownConversion {
         var body = rows
         let header = body.remove(at: headerIndex)
         let columnCount = rows.map(\.cells.count).max() ?? 1
-        func line(_ cells: [String]) -> String {
-            let padded = cells + Array(repeating: "", count: columnCount - cells.count)
-            return "| " + padded.joined(separator: " | ") + " |"
+        func line(_ cells: [String], padded: Bool = false) -> String {
+            let cells = padded ? cells + Array(repeating: "", count: columnCount - cells.count) : cells
+            return "| " + cells.joined(separator: " | ") + " |"
         }
         let delimiters = (0..<columnCount).map { column in
             switch column < header.cells.count ? header.cells[column].alignment : nil {
@@ -232,7 +233,7 @@ extension HTMLMarkdownConversion {
                 "---"
             }
         }
-        let lines = [line(header.cells.map(\.markdown)), line(delimiters)] + body.map { line($0.cells.map(\.markdown)) }
+        let lines = [line(header.cells.map(\.markdown), padded: true), line(delimiters)] + body.map { line($0.cells.map(\.markdown)) }
         return lines.joined(separator: "\n")
     }
 }
