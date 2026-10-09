@@ -13,6 +13,9 @@ struct RenderedBodyTests {
 
         case .codeBlock(_, let code):
             code
+
+        case .table(let table):
+            table.plainText
         }
     }
 

@@ -78,6 +78,9 @@
   `NSAppearance(named: .aqua / .darkAqua)` を window と hosting view に設定すればライト・ダークを撮り分けられる（撮影用のテストはコミットしない）
 - `xcode-select` が CommandLineTools を指している Mac では、`swift test --package-path AskHubKit` もテストのビルド中に
   `sourcekitdInProc` の読み込みで Fatal error になり「Build failed」で止まる。swiftlint と同じく `DEVELOPER_DIR` を Xcode.app に向けて実行する
+- `let table = try #require(table(x))` のように、`#require` の中で呼ぶ関数と受け取る変数が同じ名前だと、CI の Xcode 26.3 では
+  マクロの展開で変数のほうが参照され「cannot call value of non-function type」でテストのビルドが落ちる（新しい Xcode のローカルでは通る）。
+  テストのヘルパー関数は受け取る変数と別の名前にする
 
 ## Keychain
 
@@ -108,6 +111,10 @@
 - アプリのターゲットは MainActor 既定なので、`InboxModel.org` のようなモデルの `static let` も MainActor に隔離される。
   `Sendable` なプロトコル（`LoopStatusSource` など）に準拠するサンプルの型で `private static let org = InboxModel.org` と書くと、
   「main actor-isolated default value in a nonisolated context」になる。メソッドの引数（`org`）を使うか、文字列を直接書く
+- `AttributedString(markdown:)` の `.full` は GFM の表を解釈し、セルの run の `presentationIntent` に `tableCell(columnIndex:)`・
+  `tableHeaderRow`（ヘッダー）か `tableRow(rowIndex:)`（本文。1 から）・`table(columns:)`（列の揃え）が内側から外側の順に並ぶ。
+  空のセルや空の行には run が無いので、列・行の番号で位置を決めて空のセルを埋める。区切り行より多いセルは落ちる。
+  空行を挟まずに表の直後に書いた行は、GitHub と同じく表の行になる
 
 ## シェルスクリプト
 

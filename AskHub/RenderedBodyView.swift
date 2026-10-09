@@ -1,7 +1,7 @@
 import AskHubKit
 import SwiftUI
 
-/// 本文（`RenderedBody`）を見出し・段落・箇条書き・コードブロックとして描画する。
+/// 本文（`RenderedBody`）を見出し・段落・箇条書き・コードブロック・表として描画する。
 ///
 /// 質問の詳細とマージ待ちの PR 本文で共通に使う（iOS / macOS 共通。Discussion #128 の Q3）。
 /// 太字・斜体・コード・リンクは `Text(AttributedString)` の解釈に任せる。文字は選択できる
@@ -41,7 +41,28 @@ struct RenderedBodyView: View {
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+
+        case .table(let table):
+            // 暫定の描画: 1 行を 1 つの段落にし、セルを ` / ` で区切る（表としての描画は後続の PR で行う）
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Self.joinedCells(table.header))
+                    .bold()
+                ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
+                    Text(Self.joinedCells(row))
+                }
+            }
         }
+    }
+
+    private static func joinedCells(_ cells: [AttributedString]) -> AttributedString {
+        var joined = AttributedString()
+        for (index, cell) in cells.enumerated() {
+            if index > 0 {
+                joined.append(AttributedString(" / "))
+            }
+            joined.append(cell)
+        }
+        return joined
     }
 
     private func listItemView(_ item: RenderedBody.ListItem) -> some View {
@@ -87,6 +108,10 @@ struct RenderedBodyView: View {
                 ```swift
                 let a = 1
                 ```
+
+                | 項目 | 値 |
+                | --- | :-: |
+                | **太字** | `code` |
                 """))
         }
     }
