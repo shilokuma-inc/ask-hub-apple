@@ -34,26 +34,34 @@ struct QuestionRow: View {
     }
 }
 
-/// 「任意判断」「実機確認」の 1 行
+/// 「任意判断」「実機確認」の 1 行。タブごとに種類が 1 つなので、種類のラベルは出さない
 struct IssueRow: View {
     let issue: InboxIssue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Label(issue.kind.title, systemImage: issue.kind.systemImage)
-                    .foregroundStyle(issue.kind.color)
                 Text("\(InboxSubject.shortRepository(issue.repository))#\(issue.number)")
-                    .foregroundStyle(.secondary)
                 Spacer()
                 Text(issue.updatedAt, format: .relative(presentation: .named))
-                    .foregroundStyle(.secondary)
             }
             .font(.caption)
+            .foregroundStyle(.secondary)
 
-            Text(issue.title)
+            Text(issue.displayTitle)
                 .foregroundStyle(.primary)
                 .lineLimit(2)
+
+            HStack(spacing: 12) {
+                // 目印の無い実機確認と仮決め一覧には、元の PR 番号を出さない
+                if let pullRequest = issue.verifyMarker?.pullRequest {
+                    Text("元の PR #\(pullRequest)")
+                }
+                // 何日放置されているかが分かるように、作成からの経過で出す
+                Text("作成: \(issue.createdAt, format: .relative(presentation: .named))")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
     }
