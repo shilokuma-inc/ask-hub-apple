@@ -43,26 +43,8 @@ struct RenderedBodyView: View {
                 .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
 
         case .table(let table):
-            // 暫定の描画: 1 行を 1 つの段落にし、セルを ` / ` で区切る（表としての描画は後続の PR で行う）
-            VStack(alignment: .leading, spacing: 4) {
-                Text(Self.joinedCells(table.header))
-                    .bold()
-                ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
-                    Text(Self.joinedCells(row))
-                }
-            }
+            RenderedTableView(table: table)
         }
-    }
-
-    private static func joinedCells(_ cells: [AttributedString]) -> AttributedString {
-        var joined = AttributedString()
-        for (index, cell) in cells.enumerated() {
-            if index > 0 {
-                joined.append(AttributedString(" / "))
-            }
-            joined.append(cell)
-        }
-        return joined
     }
 
     private func listItemView(_ item: RenderedBody.ListItem) -> some View {
@@ -112,6 +94,7 @@ struct RenderedBodyView: View {
                 | 項目 | 値 |
                 | --- | :-: |
                 | **太字** | `code` |
+                | 長い文字のセルは折り返して表示します。長い文字のセルは折り返して表示します。 | [リンク](https://example.com) |
                 """))
         }
     }
