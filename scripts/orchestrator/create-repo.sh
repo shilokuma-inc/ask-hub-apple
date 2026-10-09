@@ -53,7 +53,7 @@ if existing=$(gh api "repos/$REPOSITORY" --jq '[.template_repository.full_name /
   fi
   # 公開範囲が依頼と違うまま続けると、private のつもりのコードを public に push しうる
   if [[ "$existing_visibility" != "$VISIBILITY" ]]; then
-    reject "$REPOSITORY は既に $existing_visibility で作られています（依頼は $VISIBILITY）。GitHub で公開範囲を確かめてから依頼し直してください"
+    reject "$REPOSITORY は既に $existing_visibility で作られています（依頼は ${VISIBILITY}）。GitHub で公開範囲を確かめてから依頼し直してください"
   fi
   echo "既にテンプレートから作られています: $REPOSITORY"
 else
@@ -129,7 +129,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
   git commit --quiet -m "$COMMIT_MESSAGE"
 fi
 git push --quiet origin "$BRANCH" || fail "$BRANCH に push できませんでした"
-result "アプリ名を $APP_NAME、Bundle ID を $BUNDLE_ID にして $BRANCH に push しました"
+result "アプリ名を ${APP_NAME}、Bundle ID を $BUNDLE_ID にして $BRANCH に push しました"
 
 # 4. AskHub のラベル（scripts/ralph-setup.sh と同じ）と、App Store Connect への登録の Issue
 while IFS='|' read -r name color description; do
