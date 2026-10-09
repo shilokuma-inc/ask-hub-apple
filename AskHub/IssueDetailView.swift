@@ -62,7 +62,7 @@ struct IssueDetailView: View {
             isPresented: $isConfirmingClose,
             titleVisibility: .visible
         ) {
-            Button("確認済みとして閉じる") { close() }
+            Button("閉じる") { close() }
         } message: {
             Text("\(issue.displayTitle)\n\(issue.repository)#\(issue.number) を完了として閉じます")
         }
