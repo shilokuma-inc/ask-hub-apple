@@ -128,9 +128,13 @@ final class InboxModel {
         guard let token = try tokenStore.load() else {
             throw MissingTokenError()
         }
-        try await makeCloser(token).closeAsVerified(issue)
-        // 検索の反映を待たずに、閉じた Issue はすぐ一覧から消す。取り直しても戻さない
         useToken(token)
+        try await makeCloser(token).closeAsVerified(issue)
+        // 閉じるのを待つ間に別のトークンで取り直した場合は、新しいトークンの一覧と記録に手を付けない
+        guard Self.fingerprint(of: token) == lastTokenFingerprint else {
+            return
+        }
+        // 検索の反映を待たずに、閉じた Issue はすぐ一覧から消す。取り直しても戻さない
         closedIssueIDs.insert(issue.id)
         issues.removeAll { $0.id == issue.id }
         Task { await refresh() }
