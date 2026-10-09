@@ -17,7 +17,8 @@ import Foundation
 /// | `<code>` / `<pre>` | コードスパン / フェンスドコードブロック |
 /// | `<a href>` | `[文字](URL)`。`http(s)` 以外のスキームは文字だけ残す |
 /// | HTML コメント | 取り除く（先頭の `<!-- ask-hub:question … -->` も含む） |
-/// | それ以外のタグ | タグだけ取り除いて中の文字を残す（表・`<details>`・`<img>` など。`<img>` の alt も出さない） |
+/// | `<table>` `<tr>` `<th>` `<td>` | Markdown の表（`\| a \| b \|` と区切り行）。セルは 1 行にし、`\|` をエスケープする |
+/// | それ以外のタグ | タグだけ取り除いて中の文字を残す（`<details>`・`<img>` など。`<img>` の alt も出さない） |
 ///
 /// - Markdown のコードスパン・フェンスドコードブロックの中はタグもエンティティも解釈せず、そのまま残す
 /// - `&amp;` などのエンティティは、`<pre>` / `<code>` の中だけこの変換でデコードする。
@@ -54,6 +55,8 @@ struct HTMLMarkdownConversion {
     var listStack: [ListContext] = []
     /// `<pre>` / `<code>` の中を読んでいる間の内容
     var codeBuffer: CodeBuffer?
+    /// 開いたままの表。入れ子の表は外側の表のセルの文字として扱うので、同時に開くのは 1 つだけ
+    var table: HTMLTableContext?
 
     init(input: String) {
         let normalized = input.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
@@ -71,6 +74,10 @@ struct HTMLMarkdownConversion {
         if let buffer = codeBuffer {
             codeBuffer = nil
             emit(code: buffer)
+        }
+        // 閉じられていない表（入れ子も）を閉じて、読んだところまでを表にする
+        while table != nil {
+            closeTablePart(.table)
         }
         closeAllInline()
         return output.finish()

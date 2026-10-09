@@ -1,7 +1,7 @@
 import AskHubKit
 import SwiftUI
 
-/// 本文（`RenderedBody`）を見出し・段落・箇条書き・コードブロックとして描画する。
+/// 本文（`RenderedBody`）を見出し・段落・箇条書き・コードブロック・表として描画する。
 ///
 /// 質問の詳細とマージ待ちの PR 本文で共通に使う（iOS / macOS 共通。Discussion #128 の Q3）。
 /// 太字・斜体・コード・リンクは `Text(AttributedString)` の解釈に任せる。文字は選択できる
@@ -41,6 +41,23 @@ struct RenderedBodyView: View {
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+
+        case .table(let table):
+            tableView(table)
+        }
+    }
+
+    /// 表示できる幅が足りれば表、足りなければ行ごとのカードで描画する（`#if os` ではなく幅で切り替える）。
+    /// 本文の行が無い表はカードにすると文字が消えるので、いつも表にする
+    @ViewBuilder private func tableView(_ table: RenderedBody.Table) -> some View {
+        if table.rows.isEmpty {
+            RenderedTableView(table: table)
+        } else {
+            ViewThatFits(in: .horizontal) {
+                RenderedTableView(table: table)
+                    .frame(minWidth: table.minimumTableWidth, idealWidth: table.minimumTableWidth, maxWidth: .infinity)
+                RenderedTableCardsView(table: table)
+            }
         }
     }
 
@@ -87,6 +104,11 @@ struct RenderedBodyView: View {
                 ```swift
                 let a = 1
                 ```
+
+                | 項目 | 値 |
+                | --- | :-: |
+                | **太字** | `code` |
+                | 長い文字のセルは折り返して表示します。長い文字のセルは折り返して表示します。 | [リンク](https://example.com) |
                 """))
         }
     }

@@ -3,7 +3,7 @@ import Foundation
 /// 質問や PR の本文（Markdown と HTML の混在）を、画面で描画しやすいブロック要素に分けたもの。
 ///
 /// `HTMLMarkdownConverter` で HTML を Markdown に変換したうえで、`AttributedString(markdown:)` の full 解釈と
-/// `presentationIntent` を使って見出し・段落・箇条書き・コードブロックに分ける（Discussion #128 の決定）。
+/// `presentationIntent` を使って見出し・段落・箇条書き・コードブロック・表に分ける（Discussion #128 の決定）。
 /// 太字・斜体・コード・リンクは各ブロックの `AttributedString` に `inlinePresentationIntent` / `link` として残る。
 ///
 /// - Markdown の見出し（`### Q1.`）と HTML の見出し（`<h3>`）は同じ `heading` になる
@@ -26,6 +26,39 @@ public struct RenderedBody: Sendable, Equatable {
         }
     }
 
+    /// 表の列の揃え（区切り行の `:---:` など）
+    public enum ColumnAlignment: Sendable, Equatable {
+        case leading
+        case center
+        case trailing
+    }
+
+    /// 表。ヘッダー行と各行のセルの数は、いつも列の数（`alignments.count`）にそろえる
+    public struct Table: Sendable, Equatable {
+        public var alignments: [ColumnAlignment]
+        /// ヘッダー行のセル。ヘッダーが空の列は空の文字列
+        public var header: [AttributedString]
+        /// 本文の行。足りないセルは空の文字列で埋める
+        public var rows: [[AttributedString]]
+
+        public init(alignments: [ColumnAlignment], header: [AttributedString], rows: [[AttributedString]]) {
+            self.alignments = alignments
+            self.header = header
+            self.rows = rows
+        }
+
+        public var columnCount: Int {
+            alignments.count
+        }
+
+        /// ヘッダー行と本文の行を、セルを ` | ` で区切って 1 行ずつ改行でつなげたもの
+        public var plainText: String {
+            ([header] + rows)
+                .map { $0.map { String($0.characters) }.joined(separator: " | ") }
+                .joined(separator: "\n")
+        }
+    }
+
     public enum Block: Sendable, Equatable {
         /// 見出し。`level` は 1〜6
         case heading(level: Int, text: AttributedString)
@@ -34,6 +67,8 @@ public struct RenderedBody: Sendable, Equatable {
         case list([ListItem])
         /// コードブロック。`language` はフェンスの言語指定（無ければ `nil`）
         case codeBlock(language: String?, code: String)
+        /// 表。セルの太字・コード・リンクは `AttributedString` に残る
+        case table(Table)
     }
 
     public var blocks: [Block]
@@ -76,6 +111,9 @@ public struct RenderedBody: Sendable, Equatable {
 
             case .codeBlock(_, let code):
                 code
+
+            case .table(let table):
+                table.plainText
             }
         }
         .joined(separator: "\n")
@@ -140,6 +178,7 @@ private struct BlockBuilder {
         /// `itemIdentity` は直近の項目、`paragraphIdentity` はその項目の中の直近の段落（2 つ目の段落で改行を挟むため）
         case list(identity: Int, items: [RenderedBody.ListItem], itemIdentity: Int?, paragraphIdentity: Int?)
         case codeBlock(identity: Int, language: String?, code: String)
+        case table(identity: Int, table: RenderedBody.Table)
     }
 
     private var current: Current?
@@ -155,7 +194,9 @@ private struct BlockBuilder {
         piece.presentationIntent = nil
         let components = run.presentationIntent?.components ?? []
 
-        if let code = components.first(where: { if case .codeBlock = $0.kind { return true } else { return false } }) {
+        if let table = Self.tableComponents(components) {
+            appendTableCell(Self.unescapingPipesInCode(piece), table: table)
+        } else if let code = components.first(where: { if case .codeBlock = $0.kind { return true } else { return false } }) {
             appendCode(piece, component: code)
         } else if let lists = Self.listComponents(components), !lists.isEmpty {
             appendListItem(piece, components: components, lists: lists)
@@ -204,6 +245,101 @@ private struct BlockBuilder {
         } else {
             flush()
             current = .codeBlock(identity: component.identity, language: language, code: String(piece.characters))
+        }
+    }
+
+    /// 表のセルの run なら、表・行・セルの intent を取り出す。表を含むリストの項目でも表として扱う
+    private static func tableComponents(_ components: [PresentationIntent.IntentType]) -> TableComponents? {
+        var columns: [PresentationIntent.TableColumn]?
+        var tableIdentity: Int?
+        var rowIndex: Int?
+        var columnIndex: Int?
+        for component in components {
+            switch component.kind {
+            case .table(let tableColumns) where tableIdentity == nil:
+                columns = tableColumns
+                tableIdentity = component.identity
+
+            case .tableHeaderRow where rowIndex == nil:
+                rowIndex = 0
+
+            case .tableRow(let index) where rowIndex == nil:
+                rowIndex = index
+
+            case .tableCell(let index) where columnIndex == nil:
+                columnIndex = index
+
+            default:
+                break
+            }
+        }
+        guard let columns, let tableIdentity, let rowIndex, let columnIndex else {
+            return nil
+        }
+        return TableComponents(identity: tableIdentity, columns: columns, rowIndex: rowIndex, columnIndex: columnIndex)
+    }
+
+    /// 表のセルの位置。`rowIndex` はヘッダー行が 0、本文の行が 1 から
+    private struct TableComponents {
+        let identity: Int
+        let columns: [PresentationIntent.TableColumn]
+        let rowIndex: Int
+        let columnIndex: Int
+    }
+
+    /// セルの文字を表に足す。空のセル・空の行には run が無いので、位置（行・列の番号）で埋める
+    private mutating func appendTableCell(_ piece: AttributedString, table position: TableComponents) {
+        var table: RenderedBody.Table
+        if case .table(let identity, let currentTable) = current, identity == position.identity {
+            table = currentTable
+        } else {
+            flush()
+            let alignments = position.columns.map(Self.alignment)
+            table = RenderedBody.Table(alignments: alignments, header: alignments.map { _ in AttributedString() }, rows: [])
+        }
+        // 区切り行より多いセルは Foundation が落とすが、念のため列を増やして文字を失わない
+        while table.columnCount <= position.columnIndex {
+            table.alignments.append(.leading)
+            table.header.append(AttributedString())
+            for row in table.rows.indices {
+                table.rows[row].append(AttributedString())
+            }
+        }
+        if position.rowIndex == 0 {
+            table.header[position.columnIndex].append(piece)
+        } else {
+            let row = position.rowIndex - 1
+            while table.rows.count <= row {
+                table.rows.append(table.alignments.map { _ in AttributedString() })
+            }
+            table.rows[row][position.columnIndex].append(piece)
+        }
+        current = .table(identity: position.identity, table: table)
+    }
+
+    /// 表のセルの中のコードスパンでは、列の区切りにしないための `\|` を `|` に戻す（GitHub と同じ）。
+    /// Foundation はコードの外の `\|` は戻すが、コードの中では `\` を残す
+    private static func unescapingPipesInCode(_ piece: AttributedString) -> AttributedString {
+        guard piece.runs.contains(where: { $0.inlinePresentationIntent?.contains(.code) == true }) else {
+            return piece
+        }
+        var result = piece
+        while let range = result.range(of: "\\|") {
+            result.characters.replaceSubrange(range, with: "|")
+        }
+        return result
+    }
+
+    private static func alignment(_ column: PresentationIntent.TableColumn) -> RenderedBody.ColumnAlignment {
+        switch column.alignment {
+        case .center:
+            .center
+
+        case .right:
+            .trailing
+
+        default:
+            .leading
         }
     }
 
@@ -285,6 +421,11 @@ private struct BlockBuilder {
                 trimmedCode = trimmedCode.dropLast()
             }
             blocks.append(.codeBlock(language: language, code: String(trimmedCode)))
+
+        case .table(_, var table):
+            table.header = table.header.map(Self.trimmed)
+            table.rows = table.rows.map { $0.map(Self.trimmed) }
+            blocks.append(.table(table))
 
         case nil:
             break
