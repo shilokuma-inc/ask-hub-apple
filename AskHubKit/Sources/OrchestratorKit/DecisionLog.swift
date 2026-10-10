@@ -47,15 +47,10 @@ public enum DecisionLog {
     /// オーケストレーターが閉じるときのコメントに置く目印
     public static let closeMarker = "<!-- ask-hub:decision-close -->"
 
-    /// まだ確認されていない（チェックの付いていない）仮決めの行。先頭の `- [ ] ` は除く
+    /// まだ確認されていない（チェックの付いていない）仮決めの行。先頭の `- [ ] ` は除く。
+    /// アプリと同じ読み方にするため、行の読み取りは `DecisionLogItem` に任せる（形式に合わない行も含める）
     public static func uncheckedItems(in body: String) -> [String] {
-        body.split(whereSeparator: \.isNewline).compactMap { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("- [ ]") else {
-                return nil
-            }
-            return trimmed.dropFirst("- [ ]".count).trimmingCharacters(in: .whitespaces)
-        }
+        DecisionLogItem.items(in: body).filter { !$0.isChecked }.map(\.text)
     }
 
     /// ループがまだ処理していない、信用する author のコメント。
