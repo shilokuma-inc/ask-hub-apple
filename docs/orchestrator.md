@@ -390,6 +390,19 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
   Discussion が閉じた後に 30 分を過ぎていれば、オーケストレーターが自分の材料で今までどおりの優先順位で書き直す
   （オーケストレーターからは手で回す制御用 worktree が見えないので、多くは「ループなし」か `ready-for-loop` の「開始待ち」になる）
 
+## GitHub の情報から最終 PR を作る
+
+制御用 worktree の「最終 PR に載せる内容」が使えない epic は、次の場合に GitHub の情報から最終 PR を作る（ポーリングの最後、リポジトリごとに 10 分に 1 回まで）。
+
+- **手動ループ**（`manual-loop` の Discussion が open なリポジトリ）: 信用する author の状態用の Issue の書き手が `manual`・状態が `completed` で、
+  epic とゴール元の Discussion が書かれていて、書かれてから 30 分（`LoopStatusReport.freshness`）たった。
+  担当者が `scripts/askhub-manual.sh final`（手元の state の内容で作る）を流すのを、その間は待つ
+- **自動ループ**: ループが正常に止まり（異常終了したものは再開して内容を書かせるので除く）、タスクもすべて終わっているのに「最終 PR に載せる内容」が空
+
+材料は、epic にマージされた子 PR・epic 宛てでまだ open の子 PR・タイトルか本文で epic に触れている open な仮決め一覧（`decision-log`）と実機確認（`needs-verify`）の Issue。
+本文の先頭にゴール元の Discussion の目印を置き、`epic-final` を付ける。GitHub の情報から作ったことも書き添える。
+同じ epic では 1 回だけ作る（閉じた PR を含め、既存の PR があれば作らない）。マージされた子 PR が 1 つも無い epic は作らない。
+
 ## epic の最終 PR のコンフリクトを解消する
 
 epic の最終 PR が既定ブランチとコンフリクトすると、AskHub のアプリからはマージも解消もできない。ポーリングの最後に（1 回のポーリングで 1 件）、次を行う。

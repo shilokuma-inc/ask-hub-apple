@@ -11,6 +11,8 @@ extension Orchestrator {
     func finishPoll(statuses: [String: LoopStatus]) async {
         await resolveConflictingFinalPullRequest()
         await publishLoopStatuses(statuses: statuses)
+        // 状態用の Issue を読み直した後に、手動ループの完了を見る
+        await finalizeEpicsFromGitHub(statuses: statuses)
     }
 
     func resolveConflictingFinalPullRequest() async {

@@ -13,6 +13,8 @@ public protocol OrchestratorGitHub: Sendable {
     func conflictingEpicFinalPullRequests(orgs: [String]) async throws -> [ConflictingPullRequest]
     /// PR にコメントする
     func comment(onPullRequest number: Int, in repository: String, body: String) async throws
+    /// epic の最終 PR の材料（子 PR・仮決め一覧・実機確認）を GitHub から集める
+    func epicMaterials(in repository: String, branch: String) async throws -> EpicMaterials
     /// `ready-for-loop` の Discussion にコメントする
     func comment(on discussion: ReadyDiscussion, body: String) async throws
     /// Discussion / PR から `needs-answer` を外す
@@ -141,6 +143,8 @@ public actor Orchestrator {
     private var watcher = ResumeWatcher()
     /// epic の最終 PR を作った（または既にあった）リポジトリ。毎回 GitHub に問い合わせないために覚える
     var finalizedEpics: Set<String> = []
+    /// GitHub の情報から最終 PR を作れるかを最後に確かめた時刻（キーは `<repo小文字> <epic ブランチ>`）
+    var fallbackFinalChecks: [String: Date] = [:]
     /// 仮決め一覧への指示を受けてループを再開した epic。再び完了したら、最終 PR の本文を書き直す
     var epicsToRefresh: Set<String> = []
     /// 処理済みとして扱う仮決め一覧のコメント（`<repo小文字>#<コメント id>`）。同じコメントで何度も再開しない。
