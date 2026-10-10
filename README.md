@@ -7,7 +7,7 @@ Discussion の質問や PR の ask を 1 つの一覧にまとめ、アプリで
 
 ## Environment
 
-- Xcode 26.3
+- Xcode 26.6
 - iOS 17.0 以上 / macOS 14.0 以上（SwiftUI マルチプラットフォーム）
 - Swift 6（Swift 6 言語モード / Strict Concurrency）
 - SwiftUI / Swift Testing / XCTest（UI テスト）
