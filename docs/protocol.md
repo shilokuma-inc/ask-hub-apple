@@ -5,7 +5,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 このドキュメントで実装済みの仕様を変更するときは、`AskHubKit` の対応する実装も合わせて更新すること。
 ラベルは `AskHubLabel`、質問の目印は `QuestionMarker`、回答の形式は `Answer`、
-信用する author と回答済みの判定は `TrustedAuthors` が実装している。
+信用する author と回答済みの判定は `TrustedAuthors`、仮決め一覧の行の読み取りは `DecisionLogItem` が実装している。
 「要対応」に出す未回答の質問と「任意判断」「実機確認」に出す Issue の取得は `InboxFetcher`（GitHub からの取得は `GitHubInboxSource`）が実装している。
 
 ## 登場するもの
