@@ -31,6 +31,8 @@ struct FakeGitHubState {
     var discussionComments: [String] = []
     var conflictingPullRequests: [ConflictingPullRequest] = []
     var pullRequestComments: [String] = []
+    /// epic のブランチごとの、最終 PR の材料
+    var epicMaterials: [String: EpicMaterials] = [:]
     var heartbeatFails = false
     var ideaCloseFails = false
     var decisionLogs: [DecisionLogIssue] = []
