@@ -34,7 +34,10 @@ struct SettingsView: View {
                 } header: {
                     Text("GitHub の Personal Access Token")
                 } footer: {
-                    Text("Fine-grained PAT を入力してください。トークンはこの端末の Keychain にだけ保存します。")
+                    Text("""
+                        Fine-grained PAT を入力してください。依頼の作成と、実機確認の Issue を閉じるのに \
+                        Issues の書き込み（Read and write）が要ります。トークンはこの端末の Keychain にだけ保存します。
+                        """)
                 }
 
                 Section("状態") {

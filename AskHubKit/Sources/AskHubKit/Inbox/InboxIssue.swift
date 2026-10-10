@@ -1,8 +1,8 @@
 import Foundation
 
 /// 受信箱の「任意判断」「実機確認」に出す Issue（仮決め一覧・実機確認）
-public struct InboxIssue: Sendable, Equatable, Identifiable {
-    public enum Kind: Sendable, Equatable {
+public struct InboxIssue: Sendable, Equatable, Hashable, Identifiable {
+    public enum Kind: Sendable, Equatable, Hashable {
         /// epic ごとの仮決め一覧（`decision-log`）
         case decisionLog
         /// 実機・実データでの確認（`needs-verify`）
@@ -36,7 +36,10 @@ public struct InboxIssue: Sendable, Equatable, Identifiable {
     public var url: URL
     /// 削除済みのユーザーでは `nil`
     public var author: String?
+    public var createdAt: Date
     public var updatedAt: Date
+    /// 本文（Markdown）
+    public var body: String
 
     public init(
         id: String,
@@ -46,7 +49,9 @@ public struct InboxIssue: Sendable, Equatable, Identifiable {
         title: String,
         url: URL,
         author: String?,
-        updatedAt: Date
+        createdAt: Date,
+        updatedAt: Date,
+        body: String = ""
     ) {
         self.id = id
         self.kind = kind
@@ -55,6 +60,34 @@ public struct InboxIssue: Sendable, Equatable, Identifiable {
         self.title = title
         self.url = url
         self.author = author
+        self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.body = body
+    }
+
+    /// 実機確認の本文の先頭にある目印（元の PR 番号と epic）。
+    /// 仮決め一覧と、目印の無い Issue では `nil`（自由文からは推測しない）。
+    /// 信用する author の Issue だけを扱うのは `InboxFetcher` の役割
+    public var verifyMarker: VerifyMarker? {
+        kind == .needsVerify ? VerifyMarker.parse(body) : nil
+    }
+
+    /// 一覧に出すタイトル。起票の規約で先頭に付く `【CHORE】` と、実機確認ではさらに `実機確認: ` を省く
+    /// （タブごとに種類が 1 つなので、表示では重複する）。GitHub 上のタイトルは変えない。
+    /// 省くと何も残らないタイトルは、そのまま出す
+    public var displayTitle: String {
+        var rest = Substring(title)
+        rest = Self.dropping("【CHORE】", from: rest)
+        if kind == .needsVerify {
+            rest = Self.dropping("実機確認:", from: rest)
+            rest = Self.dropping("実機確認：", from: rest)
+        }
+        return rest.isEmpty ? title : String(rest)
+    }
+
+    /// `text` が `prefix` で始まっていれば、`prefix` と直後の空白を省く
+    private static func dropping(_ prefix: String, from text: Substring) -> Substring {
+        guard text.hasPrefix(prefix) else { return text }
+        return text.dropFirst(prefix.count).drop(while: \.isWhitespace)
     }
 }

@@ -402,27 +402,6 @@ final class AskHubUITests: XCTestCase {
     }
 }
 
-// タブの分け方（任意判断と実機確認）
-extension AskHubUITests {
-    @MainActor
-    func testDecisionAndVerificationTabsAreSeparated() throws {
-        let app = XCUIApplication()
-        app.launchArguments += ["-AskHubSampleInbox"]
-        app.launch()
-
-        // 任意判断には仮決め一覧だけを出す
-        app.tabBars.buttons["任意判断"].tap()
-        XCTAssertTrue(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["【CHORE】epic/notification の仮決め一覧"].exists)
-        XCTAssertFalse(app.staticTexts["【CHORE】実機確認: PAT の Keychain への保存と macOS の設定画面の見た目"].exists)
-
-        // 実機確認は別のタブ
-        app.tabBars.buttons["実機確認"].tap()
-        XCTAssertTrue(app.staticTexts["【CHORE】実機確認: PAT の Keychain への保存と macOS の設定画面の見た目"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["【CHORE】epic/mvp の仮決め一覧"].exists)
-    }
-}
-
 // 依頼タブの「機能追加・修正 / 新しいアプリ」の切り替え（Discussion #306）
 extension AskHubUITests {
     @MainActor

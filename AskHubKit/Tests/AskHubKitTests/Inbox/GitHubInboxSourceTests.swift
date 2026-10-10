@@ -82,21 +82,36 @@ struct GitHubInboxSourceTests {
             .init(status: 200, body: #"""
                 { "data": { "search": { "pageInfo": \#(Self.page(hasNext: false, cursor: nil)), "nodes": [
                   { "id": "I_9", "number": 9, "title": "仮決め一覧", "url": "https://github.com/o/r/issues/9",
-                    "updatedAt": "2026-10-04T01:00:00Z", "author": { "login": "mrs1669" }, "repository": { "nameWithOwner": "o/r" },
+                    "createdAt": "2026-10-01T00:00:00Z", "updatedAt": "2026-10-04T01:00:00Z", "body": "- [ ] #1 既定値",
+                    "author": { "login": "mrs1669" }, "repository": { "nameWithOwner": "o/r" },
                     "labels": { "nodes": [{ "name": "decision-log" }] } },
                   { "id": "I_10", "number": 10, "title": "ラベルが外れた", "url": "https://github.com/o/r/issues/10",
-                    "updatedAt": "2026-10-04T01:00:00Z", "author": null, "repository": { "nameWithOwner": "o/r" },
+                    "createdAt": "2026-10-01T00:00:00Z", "updatedAt": "2026-10-04T01:00:00Z", "body": "",
+                    "author": null, "repository": { "nameWithOwner": "o/r" },
                     "labels": { "nodes": [] } },
+                  { "id": "I_11", "number": 11, "title": "【CHORE】実機確認: 通知", "url": "https://github.com/o/r/issues/11",
+                    "createdAt": "2026-10-02T00:00:00Z", "updatedAt": "2026-10-03T00:00:00Z",
+                    "body": "<!-- ask-hub:verify {\"epic\":\"epic/x\",\"pullRequest\":5} -->\n確認手順",
+                    "author": { "login": "mrs1669" }, "repository": { "nameWithOwner": "o/r" },
+                    "labels": { "nodes": [{ "name": "needs-verify" }] } },
                   {}
                 ] } } }
                 """#)
         ])
         let issues = try await makeSource(http).lowPriorityIssues(orgs: ["shilokuma-inc"])
 
-        #expect(issues.map(\.id) == ["I_9"])
-        #expect(issues.first?.kind == .decisionLog)
-        #expect(issues.first?.author == "mrs1669")
-        #expect(issues.first?.updatedAt == (try Date("2026-10-04T01:00:00Z", strategy: .iso8601)))
+        #expect(issues.map(\.id) == ["I_9", "I_11"])
+        let decisionLog = try #require(issues.first)
+        #expect(decisionLog.kind == .decisionLog)
+        #expect(decisionLog.author == "mrs1669")
+        #expect(decisionLog.createdAt == (try Date("2026-10-01T00:00:00Z", strategy: .iso8601)))
+        #expect(decisionLog.updatedAt == (try Date("2026-10-04T01:00:00Z", strategy: .iso8601)))
+        #expect(decisionLog.body == "- [ ] #1 既定値")
+        #expect(decisionLog.verifyMarker == nil)
+        let needsVerify = try #require(issues.last)
+        #expect(needsVerify.kind == .needsVerify)
+        #expect(needsVerify.body == "<!-- ask-hub:verify {\"epic\":\"epic/x\",\"pullRequest\":5} -->\n確認手順")
+        #expect(needsVerify.verifyMarker == VerifyMarker(pullRequest: 5, epic: "epic/x"))
         #expect(try variables(of: http.requests[0]) == [
             "query": "org:shilokuma-inc is:issue is:open label:decision-log,needs-verify",
             "after": nil

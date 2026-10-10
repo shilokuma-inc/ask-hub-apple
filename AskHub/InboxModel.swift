@@ -25,6 +25,8 @@ final class InboxModel {
     /// トークンの値そのものはモデルに残さない
     private var lastTokenFingerprint: String?
     private(set) var issues: [InboxIssue] = []
+    /// アプリから閉じた実機確認の Issue。GitHub の検索に反映されるまで、取り直しても一覧に出さない
+    private var closedIssueIDs: Set<String> = []
     private(set) var state = LoadState.idle
     /// 直前に取得を始めた時刻。自動更新（`refreshIfStale`）の間隔の判断に使う
     private(set) var lastRefreshed: Date?
@@ -33,6 +35,7 @@ final class InboxModel {
     private let makeSource: @Sendable (String) -> any InboxSource
     private let makePoster: @Sendable (String) -> any AnswerPosting
     private let makeStarter: @Sendable (String) -> any LoopStarting
+    private let makeCloser: @Sendable (String) -> any IssueClosing
     /// リポジトリごとの信用する author（トークンごと）
     private let makeTrust: @Sendable (String) -> any TrustedAuthorsResolving
     /// 直前の取得で求めた、リポジトリごとの信用する author（画面での判定に使う。キーは `owner/repo` の小文字）
@@ -45,6 +48,7 @@ final class InboxModel {
         makeSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) },
         makePoster: @escaping @Sendable (String) -> any AnswerPosting = { GitHubAnswerPoster(client: GitHubClient(token: $0)) },
         makeStarter: @escaping @Sendable (String) -> any LoopStarting = { GitHubLoopStarter(client: GitHubClient(token: $0)) },
+        makeCloser: @escaping @Sendable (String) -> any IssueClosing = { GitHubIssueCloser(client: GitHubClient(token: $0)) },
         organizations: @escaping () -> [String] = { OrganizationSettings.load() },
         makeTrust: @escaping @Sendable (String) -> any TrustedAuthorsResolving = { RepositoryTrustCache.trust(token: $0) }
     ) {
@@ -54,6 +58,7 @@ final class InboxModel {
         self.makeSource = makeSource
         self.makePoster = makePoster
         self.makeStarter = makeStarter
+        self.makeCloser = makeCloser
     }
 
     /// 回答を投稿するときのトークンが無い
@@ -117,11 +122,30 @@ final class InboxModel {
         await refresh()
     }
 
-    /// トークンが変わったら（別のアカウントになりうるので）回答済みの記録を捨てる
+    /// 実機確認の Issue を確認済み（完了）として閉じる（Discussion #331 の Q5）。成功したらその Issue を一覧から外し、一覧を取り直す。
+    /// 取り直しは待たずに返す（一覧からは外し終えているので、詳細画面をすぐ閉じられるようにする）
+    func closeAsVerified(_ issue: InboxIssue) async throws {
+        guard let token = try tokenStore.load() else {
+            throw MissingTokenError()
+        }
+        useToken(token)
+        try await makeCloser(token).closeAsVerified(issue)
+        // 閉じるのを待つ間に別のトークンで取り直した場合は、新しいトークンの一覧と記録に手を付けない
+        guard Self.fingerprint(of: token) == lastTokenFingerprint else {
+            return
+        }
+        // 検索の反映を待たずに、閉じた Issue はすぐ一覧から消す。取り直しても戻さない
+        closedIssueIDs.insert(issue.id)
+        issues.removeAll { $0.id == issue.id }
+        Task { await refresh() }
+    }
+
+    /// トークンが変わったら（別のアカウントになりうるので）回答済み・閉じた記録を捨てる
     private func useToken(_ token: String) {
         let fingerprint = Self.fingerprint(of: token)
         if fingerprint != lastTokenFingerprint {
             answeredQuestionIDs.removeAll()
+            closedIssueIDs.removeAll()
             lastTokenFingerprint = fingerprint
         }
     }
@@ -193,7 +217,8 @@ final class InboxModel {
             // 取得結果に出てこなくなった（検索に回答が反映された）質問は、覚えておく必要がない
             answeredQuestionIDs.formIntersection(fetchedQuestions.map(\.id))
             self.questions = fetchedQuestions.filter { !answeredQuestionIDs.contains($0.id) }
-            self.issues = fetchedIssues
+            closedIssueIDs.formIntersection(fetchedIssues.map(\.id))
+            self.issues = fetchedIssues.filter { !closedIssueIDs.contains($0.id) }
             // 手で回す印を付けてよいかの判定（Discussion の author）に使う。取得は書き込み権限の結果を使い回すので、追加の問い合わせは少ない
             var trusted: [String: TrustedAuthors] = [:]
             for repository in Set(fetchedQuestions.map { $0.subject.repository.lowercased() }) {
@@ -208,6 +233,18 @@ final class InboxModel {
                 return
             }
             state = .failed(Self.message(for: error))
+        }
+    }
+
+    /// 実機確認の Issue を閉じられなかったときの説明。トークンの値は含めない
+    static func closeMessage(for error: any Error) -> String {
+        switch error {
+        // Issues の書き込み権限が無いと 403、リポジトリが見えないトークンでは 404 になる
+        case GitHubError.http(status: 403, _), GitHubError.http(status: 404, _):
+            "閉じられませんでした。トークンに、このリポジトリの Issues の書き込み権限（Read and write）があるか確かめてください"
+
+        default:
+            message(for: error)
         }
     }
 

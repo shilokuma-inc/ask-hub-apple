@@ -35,6 +35,9 @@
   先に `git -C <worktree> checkout --detach` しておくと消えない
 - 検索クエリの `org:a org:b` は OR になる（Issue でも Discussion でも件数がそれぞれの合計になる）。organization が増えても検索は 1 回で済む。
   修飾子を 1 つも付けないと GitHub 全体を検索するので、organization が空なら検索しない
+- リモートに `assets` という名前のブランチがあると、`assets/issue-<N>` のブランチは push できない（git の ref はファイルとディレクトリを兼ねられず、`cannot lock ref … 'refs/heads/assets' exists` で拒否される）。
+  `assets` ブランチが残っている間は、スクリーンショットを `assets` ブランチの `issue-<N>/` に足す（`git commit-tree <木> -p origin/assets` で作ったコミットを fast-forward で push する）。
+  画像だけの orphan ブランチにはワークフローのファイルが無いので、push しても Build は走らない
 
 ## ビルド・テスト
 
@@ -86,6 +89,8 @@
   `swipeUp()` しても `Form` の中身が画面に収まっていればスクロールしないので、下の入力欄に移る前に `keyboard-done` でキーボードを閉じる
 - iOS の `Form` は画面の外の行を作らないので、UI テストで下のほうのボタン（例: 「作成を依頼する」）は `exists` が `false` になる。
   入力欄が切り替わったことは、画面の上にある要素（`template-picker` など）で確かめる。セグメントの `Picker` は `app.segmentedControls["<ID>"].buttons["<文言>"]` で引け、`isSelected` で選択中かが分かる
+- iOS の UI テストでは、`Form` の中の `LabeledContent("元の PR", value: "#17")` は名前だけの StaticText（`元の PR`）と、名前と値をつないだ StaticText（`元の PR, #17`）になり、
+  値だけ（`#17`）では引けない。値を確かめるときは `app.staticTexts["元の PR, #17"]` で引く
 
 ## Keychain
 
