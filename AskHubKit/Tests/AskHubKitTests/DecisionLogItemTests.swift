@@ -35,6 +35,13 @@ struct DecisionLogItemTests {
         #expect(decision?.change == "別案 1（タブ区切り）")
     }
 
+    @Test func splitsChangeAtLastSeparator() {
+        // 採用の値に区切りと同じ文字列があっても、ループが末尾に追記した変更と取り違えない
+        let decision = DecisionLogItem.parse(line: "- [x] #6 区切り → 採用: 「 → 変更: 」 → 変更: 短縮")?.decision
+        #expect(decision?.adopted == "「 → 変更: 」")
+        #expect(decision?.change == "短縮")
+    }
+
     @Test func keepsParenthesesInsideValues() {
         // 採用・別案の中の括弧は、末尾の（別案: …）と取り違えない
         let line = "- [ ] #4 文言 → 採用: 「保存」（短い）（別案: 「完了」（丁寧） / 「済」）"
@@ -56,7 +63,9 @@ struct DecisionLogItemTests {
             "- [ ] #12 採用の無い判断",
             "- [ ] #abc 色 → 採用: 青",
             "- [ ] #8  → 採用: 青",
-            "- [ ] #9 色 → 採用: （別案: 赤）"
+            "- [ ] #9 色 → 採用: （別案: 赤）",
+            "- [ ] #10 色 → 採用: 青（別案: 赤 / ）",
+            "- [ ] #11 色 → 採用: 青（別案: ）"
         ]
         for line in lines {
             let item = try #require(DecisionLogItem.parse(line: line))

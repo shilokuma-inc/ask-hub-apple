@@ -85,7 +85,8 @@ public struct DecisionLogItem: Sendable, Equatable {
         let subject = match.2[..<adoptedRange.lowerBound].trimmingCharacters(in: .whitespaces)
         var body = match.2[adoptedRange.upperBound...]
         var change: String?
-        if let changeRange = body.range(of: changeSeparator) {
+        // ループは行の末尾に追記するので、採用の値に同じ文字列があっても最後の区切りで分ける
+        if let changeRange = body.range(of: changeSeparator, options: .backwards) {
             change = body[changeRange.upperBound...].trimmingCharacters(in: .whitespaces)
             body = body[..<changeRange.lowerBound]
         }
@@ -96,7 +97,10 @@ public struct DecisionLogItem: Sendable, Equatable {
             alternatives = adopted[openRange.upperBound..<adopted.index(before: adopted.endIndex)]
                 .components(separatedBy: alternativesSeparator)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
+            // 空の別案があると番号（別案 N）がずれるので、形式に合わない行として扱う
+            guard !alternatives.contains(where: \.isEmpty) else {
+                return nil
+            }
             adopted = adopted[..<openRange.lowerBound].trimmingCharacters(in: .whitespaces)
         }
         guard !subject.isEmpty, !adopted.isEmpty else {
