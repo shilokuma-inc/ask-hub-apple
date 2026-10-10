@@ -50,6 +50,21 @@ struct DecisionLogCheckTests {
         #expect(DecisionLogCheck.check("#5 余白 → 採用: 16pt", in: "#5 余白 → 採用: 16pt") == .notFound)
         #expect(DecisionLogCheck.check("#5 余白 → 採用: 16pt", in: "") == .notFound)
     }
+
+    @Test func agreesWithItemParserOnText() {
+        // アプリは `DecisionLogItem.text` を渡すので、パーサーと同じ読み方で一致させる
+        let body = "説明\n  - [ ] #4 文言 → 採用: 保存  \r\n- [x] #3 色 → 採用: 青\n- [ ] 形式に合わない行\n- [ ]#5 詰めて書いた行 → 採用: 8pt"
+        for item in DecisionLogItem.items(in: body) {
+            let result = DecisionLogCheck.check(item.text, in: body)
+            if item.isChecked {
+                #expect(result == .alreadyChecked)
+            } else if case let .checked(updated) = result {
+                #expect(DecisionLogItem.items(in: updated).first { $0.text == item.text }?.isChecked == true)
+            } else {
+                Issue.record("\(item.text) にチェックを付けられない")
+            }
+        }
+    }
 }
 
 struct GitHubDecisionApproverTests {
