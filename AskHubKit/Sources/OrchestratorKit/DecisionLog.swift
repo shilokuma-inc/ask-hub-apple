@@ -43,9 +43,9 @@ public struct IssueComment: Sendable, Equatable {
 public enum DecisionLog {
     /// ループが仮決め一覧への指示に返信するときに置く目印。
     /// ループと人間は同じアカウントでコメントするため、author ではなくこの目印で返信を見分ける
-    public static let replyMarker = "<!-- ask-hub:decision-reply -->"
+    public static let replyMarker = DecisionLogMarker.reply
     /// オーケストレーターが閉じるときのコメントに置く目印
-    public static let closeMarker = "<!-- ask-hub:decision-close -->"
+    public static let closeMarker = DecisionLogMarker.close
 
     /// まだ確認されていない（チェックの付いていない）仮決めの行。先頭の `- [ ] ` は除く。
     /// アプリと同じ読み方にするため、行の読み取りは `DecisionLogItem` に任せる（形式に合わない行も含める）
