@@ -25,20 +25,6 @@ public struct DecisionLogIssue: Sendable, Equatable {
     }
 }
 
-/// Issue のコメント
-public struct IssueComment: Sendable, Equatable {
-    public let id: Int
-    /// 削除済みのユーザーでは `nil`
-    public let author: String?
-    public let body: String
-
-    public init(id: Int, author: String?, body: String) {
-        self.id = id
-        self.author = author
-        self.body = body
-    }
-}
-
 /// 仮決め一覧の読み取りと、閉じるときのコメント（副作用なし）
 public enum DecisionLog {
     /// ループが仮決め一覧への指示に返信するときに置く目印。
@@ -54,20 +40,14 @@ public enum DecisionLog {
     }
 
     /// ループがまだ処理していない、信用する author のコメント。
-    /// ループは扱ったコメントに目印付きで返信するので、最後の返信より後のコメントを未処理とみなす
+    /// アプリの詳細画面と判定をそろえるため、`DecisionLogHistory` に任せる
     public static func unprocessedInstructions(in comments: [IssueComment], trustedAuthors: TrustedAuthors) -> [IssueComment] {
-        let isMarked = { (comment: IssueComment) in
-            isTrustedMarked(comment, with: replyMarker, trustedAuthors: trustedAuthors)
-                || isTrustedMarked(comment, with: closeMarker, trustedAuthors: trustedAuthors)
-        }
-        let start = comments.lastIndex(where: isMarked).map { $0 + 1 } ?? comments.startIndex
-        return comments[start...].filter { !isMarked($0) && trustedAuthors.contains($0.author) }
+        DecisionLogHistory.unprocessedInstructions(in: comments, trustedAuthors: trustedAuthors)
     }
 
-    /// 信用する author が書いた、`marker` 付きのコメントか。
-    /// public リポジトリでは誰でも目印を書けるので、それ以外の author の目印で未処理の指示や閉じるときのコメントを消させない
+    /// 信用する author が書いた、`marker` 付きのコメントか
     public static func isTrustedMarked(_ comment: IssueComment, with marker: String, trustedAuthors: TrustedAuthors) -> Bool {
-        trustedAuthors.contains(comment.author) && comment.body.contains(marker)
+        DecisionLogHistory.isTrustedMarked(comment, with: marker, trustedAuthors: trustedAuthors)
     }
 
     /// 最終 PR のマージを受けて閉じるときのコメント

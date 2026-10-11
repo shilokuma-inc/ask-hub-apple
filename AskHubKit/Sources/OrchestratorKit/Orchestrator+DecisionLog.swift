@@ -1,3 +1,4 @@
+import AskHubKit
 import Foundation
 
 // 仮決め一覧（decision-log）の扱い。最終 PR のマージで閉じ、マージ前に付いた指示ではループを再開する
