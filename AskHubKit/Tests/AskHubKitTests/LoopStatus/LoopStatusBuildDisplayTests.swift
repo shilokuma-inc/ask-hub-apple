@@ -51,6 +51,13 @@ struct LoopStatusBuildDisplayTests {
         )
         #expect(builds.rowTexts == ["直近のテスト a: 失敗（終了コード 1）・m1", "ビルド中 b: m4（1 回目）"])
         #expect(LoopStatusBuilds().rowTexts.isEmpty)
+
+        // 同じスロットで並べて流したビルドは 1 行にまとめ、最も新しく始まったものを出す
+        let parallel = LoopStatusBuilds(running: [
+            LoopStatusBuild(slot: "a", action: "build", host: "m1", startedAt: now),
+            LoopStatusBuild(slot: "a", action: "test", host: "m4", startedAt: now.addingTimeInterval(30))
+        ])
+        #expect(parallel.rowTexts == ["テスト中 a: m4"])
     }
 
     @Test func rowDisplayCarriesBuildsWithoutCountingThemAsAbnormal() {

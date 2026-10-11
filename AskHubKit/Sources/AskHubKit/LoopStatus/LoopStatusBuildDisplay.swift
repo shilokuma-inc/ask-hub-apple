@@ -4,6 +4,10 @@ extension LoopStatusBuilds {
     /// ステータスタブの行に出すビルドの行（スロットごとに 1 行）。実行中のビルドがあればそれを、無ければ直近に終わったビルドを出す。
     /// 移動や失敗はバッジ（異常の件数）には数えない（Discussion #366 の Q7。表示だけ）
     public var rowTexts: [String] {
+        // 同じスロットで並べて流したビルドは、最も新しく始まったものだけを出す
+        let running = Dictionary(grouping: running, by: \.slot).values.compactMap { builds in
+            builds.max { ($0.startedAt ?? .distantPast) < ($1.startedAt ?? .distantPast) }
+        }
         let runningSlots = Set(running.map(\.slot))
         let finished = latest.filter { !runningSlots.contains($0.slot) }
         return (running + finished)
