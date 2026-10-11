@@ -129,6 +129,8 @@
   空行を挟まずに表の直後に書いた行は、GitHub と同じく表の行になる
 - GFM の表のセルの中では、列の区切りにしないため `|` を `\|` と書く。`AttributedString(markdown:)` はコードスパンの外の `\|` は `|` に戻すが、
   コードスパンの中（`` `a \| b` ``）では `\` を残す（GitHub は `|` に戻す）。表のセルのコードの run だけ `\|` を `|` に戻す
+- 配列リテラルの要素に `x.map { … } ?? "-"` や `+` での文字列の連結を何個も並べると、「the compiler is unable to type-check this expression in reasonable time」でビルドが止まる。
+  表の 1 行のような組み立ては、要素ごとに `var` で作ってから配列にする（`BuildHost.tableCells`）
 
 ## シェルスクリプト
 
