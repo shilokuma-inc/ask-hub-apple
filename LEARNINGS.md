@@ -39,7 +39,7 @@
   `assets` ブランチが残っている間は、スクリーンショットを `assets` ブランチの `issue-<N>/` に足す（`git commit-tree <木> -p origin/assets` で作ったコミットを fast-forward で push する）。
   画像だけの orphan ブランチにはワークフローのファイルが無いので、push しても Build は走らない
 - CodeRabbit の無料枠は 1 時間に 1 回のレビューで、上限に当たった PR には「Review rate limited」と出る。上限が戻っても自動ではレビューされないので、
-  PR に `@coderabbitai review` とコメントして頼む（1 回で 1 本の PR を使い切る）。rebase で積み直したコミットは差分が無ければ「No actionable comments」で済む
+  PR に `@coderabbitai review` とコメントして頼む（1 回で 1 本の PR を使い切る。上限中に push した続きのコミットは、そのまま未レビューで残る）
 
 ## ビルド・テスト
 
