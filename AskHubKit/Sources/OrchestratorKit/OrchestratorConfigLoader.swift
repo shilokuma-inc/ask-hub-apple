@@ -19,7 +19,13 @@ import Foundation
 /// `createRepositoryCommand`・`removeRepositoryCommand`・`newRepositoryDirectory` も省略でき、既定は
 /// `~/.local/bin/askhub-create-repo`・`~/.local/bin/askhub-remove-repo`・最初の担当リポジトリと同じディレクトリ。
 /// `trustRepositoryWriters`（担当リポジトリに書き込み権限を持つアカウントも信用するか）も省略でき、既定は `true`。
-/// 検索する organization は担当リポジトリの owner から決める。以前の `org` が残っていても無視する
+/// 検索する organization は担当リポジトリの owner から決める。以前の `org` が残っていても無視する。
+/// `buildHosts`（xcb のビルドの Mac の情報の書き出し）も省略でき、省略するとその機能を止める:
+///
+/// ```json
+/// "buildHosts": { "xcb": "~/.config/askhub/xcodebuild", "issueRepository": "shilokuma-inc/ask-hub-apple" }
+/// ```
+/// `eventsDirectory`（xcb の `events.jsonl` の場所）の既定は `BuildHostsConfig.defaultEventsDirectory`
 public struct OrchestratorConfigLoader: Sendable {
     /// `~` の展開に使うホームディレクトリ。テストで差し替える
     public let homeDirectory: String
@@ -105,7 +111,32 @@ public struct OrchestratorConfigLoader: Sendable {
                 try ConflictCommandTemplate(arguments: arguments)
             },
             repositoryCommands: repositoryCommands,
-            trustsRepositoryWriters: file.trustRepositoryWriters ?? true
+            trustsRepositoryWriters: file.trustRepositoryWriters ?? true,
+            buildHosts: try file.buildHosts.map { entry throws(OrchestratorConfigError) in try buildHostsConfig(from: entry) }
+        )
+    }
+
+    /// xcb の場所は絶対パス（`~` 可）。`issueRepository` は `owner/repo` の形だけを確かめる（担当リポジトリかは使うときに照らす）
+    private func buildHostsConfig(from entry: ConfigFile.BuildHosts) throws(OrchestratorConfigError) -> BuildHostsConfig {
+        let absolutePath = { (key: String, path: String) throws(OrchestratorConfigError) -> String in
+            let expanded = expandingTilde(in: path.trimmingCharacters(in: .whitespacesAndNewlines))
+            guard expanded.hasPrefix("/") else {
+                throw .relativeBuildHostsPath(key: key, path: path)
+            }
+            return URL(fileURLWithPath: expanded).standardizedFileURL.path
+        }
+        let issueRepository = entry.issueRepository?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let issueRepository {
+            guard Self.isRepositoryName(issueRepository.split(separator: "/", omittingEmptySubsequences: false)) else {
+                throw .invalidBuildHostsRepository(issueRepository)
+            }
+        }
+        return BuildHostsConfig(
+            xcbPath: try absolutePath("buildHosts.xcb", entry.xcb),
+            eventsDirectory: try absolutePath(
+                "buildHosts.eventsDirectory", entry.eventsDirectory ?? BuildHostsConfig.defaultEventsDirectory
+            ),
+            issueRepository: issueRepository
         )
     }
 
@@ -144,12 +175,7 @@ public struct OrchestratorConfigLoader: Sendable {
         from entry: ConfigFile.Repository
     ) throws(OrchestratorConfigError) -> RepositoryConfig {
         let parts = entry.repository.split(separator: "/", omittingEmptySubsequences: false)
-        let isValidPart = { (part: Substring) in
-            !part.isEmpty && !part.unicodeScalars.contains {
-                CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0)
-            }
-        }
-        guard parts.count == 2, parts.allSatisfy(isValidPart) else {
+        guard Self.isRepositoryName(parts) else {
             throw .invalidRepositoryName(entry.repository)
         }
         let path = expandingTilde(in: entry.path)
@@ -164,6 +190,15 @@ public struct OrchestratorConfigLoader: Sendable {
     }
 
     /// 先頭の `~` だけを展開する（`~user` の形式は扱わない）
+    /// `owner/repo` を `/` で分けたもの。どちらも空でなく、空白・改行・制御文字を含まない
+    private static func isRepositoryName(_ parts: [Substring]) -> Bool {
+        parts.count == 2 && parts.allSatisfy { part in
+            !part.isEmpty && !part.unicodeScalars.contains {
+                CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0)
+            }
+        }
+    }
+
     func expandingTilde(in path: String) -> String {
         if path == "~" {
             return homeDirectory
@@ -209,4 +244,11 @@ private struct ConfigFile: Decodable {
     let removeRepositoryCommand: [String]?
     let newRepositoryDirectory: String?
     let trustRepositoryWriters: Bool?
+    let buildHosts: BuildHosts?
+
+    struct BuildHosts: Decodable {
+        let xcb: String
+        let eventsDirectory: String?
+        let issueRepository: String?
+    }
 }
