@@ -103,8 +103,9 @@ public struct XcbBuildTracker: Sendable {
 
     private mutating func finish(_ finished: XcbEvent.Finished, at time: Date) {
         let job = jobs.removeValue(forKey: finished.id)
-        // 始まりのイベントを読んでいない（読み始める前に始まった）ジョブは、終わりのイベントの path で決める
-        guard let owner = job?.owner ?? finished.path.flatMap(resolveSlot),
+        // 始まりのイベントを読んでいない（読み始める前に始まった）ジョブだけ、終わりのイベントの path で決める
+        let resolved = job.map(\.owner) ?? finished.path.flatMap(resolveSlot)
+        guard let owner = resolved,
               let action = finished.action ?? job?.action
         else {
             return
