@@ -136,6 +136,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `removeRepositoryCommand` | | ローカルの checkout・ループの worktree・DerivedData を消すコマンド。省略時は `~/.local/bin/askhub-remove-repo`（`install.sh` が置く） |
 | `newRepositoryDirectory` | | 新しく作ったリポジトリを clone するディレクトリ（`~` 可）。省略時は最初の担当リポジトリの checkout と同じ場所 |
 | `conflictCommand` | | epic の最終 PR のコンフリクトを解消させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-resolve-conflict`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` が使える |
+| `buildHosts` | | ループのビルドの Mac（xcb）の情報を GitHub に書き出す設定（下の「`buildHosts`」）。**xcb を動かしている Mac のオーケストレーターだけに書く**。省略するとこの機能を止める |
 
 以前の設定にあった `org` は不要になった（書いてあっても無視する）。
 
@@ -144,6 +145,23 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 信用する author（設定の `trustedAuthors` と、担当リポジトリへの書き込み権限を持つアカウント）は、ポーリングのはじめに担当リポジトリごとに求め直し（書き込み権限は 10 分ごとに取り直す）、
 変わったらログに `<リポジトリ> で信用する author: …` と出す。ループには起動ごとに `ASKHUB_TRUSTED_AUTHORS` で渡す。
 アプリからの担当リポジトリの作成・削除の依頼では、オーケストレーターが `repositories` を書き換える（下記）。
+
+### `buildHosts`
+
+```json
+"buildHosts": {
+  "xcb": "~/.config/askhub/xcodebuild",
+  "issueRepository": "shilokuma-inc/ask-hub-apple"
+}
+```
+
+| キー | 必須 | 説明 |
+| --- | --- | --- |
+| `xcb` | ✓ | xcb（ループ共通の xcodebuild の入口）の実行ファイルの絶対パス（`~` 可）。`status --json` で load・空きメモリ・コア数・枠を取る |
+| `eventsDirectory` | | xcb のイベントログ（`events.jsonl` と、5MB を超えて回した `events.jsonl.1`）のディレクトリ（`~` 可）。省略時は `~/Library/Logs/askhub/xcb`（xcb の `XCB_EVENTS_DIR` の既定と同じ） |
+| `issueRepository` | | ビルドの Mac の状態の Issue（ラベル `build-hosts`。`docs/protocol.md` の「ビルドの Mac の状態」）を置くリポジトリ（`owner/repo`）。担当リポジトリのどれかにする。省略したとき・担当から外したときは、その Issue を書かない（各リポジトリの `loop-status` のビルドの情報は書く） |
+
+`issueRepository` が担当リポジトリに無くても設定ファイルは読める（アプリからの依頼で担当から外したときに、設定ごと読めなくならないように）。
 
 ### `loopCommand` のプレースホルダ
 
