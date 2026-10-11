@@ -13,7 +13,8 @@ public enum DecisionInstruction: Sendable, Equatable {
         let note: String
         switch self {
         case let .alternative(number, rawNote):
-            guard let decision = item.decision, decision.alternatives.indices.contains(number - 1) else {
+            // `number - 1` が桁あふれしないよう、先に下限を確かめる
+            guard let decision = item.decision, number > 0, decision.alternatives.indices.contains(number - 1) else {
                 return nil
             }
             firstLine = "#\(decision.pullRequest) の「\(decision.subject)」は別案 \(number)（\(decision.alternatives[number - 1])）で"

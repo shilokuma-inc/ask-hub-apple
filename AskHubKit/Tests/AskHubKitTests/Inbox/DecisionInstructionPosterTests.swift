@@ -21,6 +21,7 @@ struct DecisionInstructionTests {
 
     @Test func rejectsAlternativeOutOfRangeOrForMalformedItem() {
         #expect(DecisionInstruction.alternative(0, note: "").body(for: Self.item) == nil)
+        #expect(DecisionInstruction.alternative(.min, note: "").body(for: Self.item) == nil)
         #expect(DecisionInstruction.alternative(3, note: "").body(for: Self.item) == nil)
         #expect(DecisionInstruction.alternative(1, note: "").body(for: Self.malformed) == nil)
     }
