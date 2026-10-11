@@ -57,6 +57,21 @@ struct BuildSlotResolverTests {
         #expect(resolver.slot(forPath: link.path(percentEncoded: false)) == expected)
     }
 
+    @Test func resolvesSlotsCreatedAfterResolver() throws {
+        // スロットを作る前に作った resolver でも、作った後の xcb の解決したパスと照らせる
+        let parent = FileManager.default.temporaryDirectory.appending(path: "slots-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let checkout = parent.appending(path: "app", directoryHint: .isDirectory).path(percentEncoded: false)
+        let resolver = BuildSlotResolver(repositories: [RepositoryConfig(owner: "o", name: "app", checkoutPath: checkout)])
+
+        let slot = parent.appending(path: "app-ralph-b", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: slot, withIntermediateDirectories: true)
+        let real = try #require(realpath(slot.path(percentEncoded: false), nil))
+        defer { free(real) }
+        #expect(resolver.slot(forPath: String(cString: real)) == BuildSlot(repository: "o/app", slot: "b"))
+    }
+
     @Test func slotWorktreesAreNextToCheckout() {
         let repository = RepositoryConfig(owner: "shilokuma-inc", name: "app", checkoutPath: "/src/ninjacord-ios")
         #expect(repository.slotWorktreePath("a") == "/src/ninjacord-ralph-a")

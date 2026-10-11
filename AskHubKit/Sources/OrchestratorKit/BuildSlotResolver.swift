@@ -46,10 +46,24 @@ public struct BuildSlotResolver: Sendable {
     }
 
     /// シンボリックリンクを解決した形。`URL.resolvingSymlinksInPath()` は `/private` を外すので `realpath(3)` を使う。
-    /// 解決できなければ（まだ無いパスなど）`normalized` と同じ
+    /// まだ無いパス（スロットを作る前）は親のディレクトリを解決して名前を足す。親も解決できなければ `normalized` と同じ
     private static func resolved(_ path: String) -> String {
-        guard let pointer = realpath(path, nil) else {
+        if let real = realPath(path) {
+            return real
+        }
+        let url = URL(fileURLWithPath: normalized(path))
+        guard let parent = realPath(url.deletingLastPathComponent().path(percentEncoded: false)) else {
             return normalized(path)
+        }
+        return URL(fileURLWithPath: parent, isDirectory: true)
+            .appending(path: url.lastPathComponent, directoryHint: .isDirectory)
+            .path(percentEncoded: false)
+            .trimmingTrailingSlashes
+    }
+
+    private static func realPath(_ path: String) -> String? {
+        guard let pointer = realpath(path, nil) else {
+            return nil
         }
         defer { free(pointer) }
         return String(cString: pointer).trimmingTrailingSlashes
