@@ -93,6 +93,12 @@
   値だけ（`#17`）では引けない。値を確かめるときは `app.staticTexts["元の PR, #17"]` で引く
 - ralph-loop の xcodebuild のラッパー（別の Mac で実行する）で UI テストを流すと、`.xcresult` は実行した Mac に残り、ログの末尾にそのパスが出る。
   `-resultBundlePath` で手元に書かせることはできないので、スクリーンショットはそのパスを `rsync` で取り寄せてから `xcrun xcresulttool export attachments` で取り出す
+- ssh 越しに流した `xcodebuild` では、macOS 向けの署名が `errSecInternalComponent` で失敗する（ssh のセッションからはログインのキーチェーンの鍵を使えない）。
+  `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=`（アドホック署名）にすれば通る。xcb は署名の指定が無ければ自動で足す。
+  一度失敗した DerivedData のまま流し直すと、作りかけの署名（`.cstemp`）が残って `invalid or unsupported format for signature` になるので、別の DerivedData でやり直す
+- macOS 27.2 beta の Mac では、Xcode 26.6 の iOS Simulator のテストランナーが起動しない（7〜9 分待って失敗する）。macOS のテストとビルドは通る。
+  Xcode 27.1 なら起動する見込みだが、Swift の並行性チェックが厳しくなり、Xcode 26 で通るコードが `#ConformanceIsolation` のエラーでビルドできないことがある（Zankyo で発生）。
+  xcb のビルド先の設定では、macOS 27 の Mac を `nosimtest` にする
 
 ## Keychain
 
