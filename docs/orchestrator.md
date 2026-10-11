@@ -290,7 +290,7 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
 | コマンド | 説明 |
 | --- | --- |
 | `askhub-xcb <作業ツリー> <xcodebuild の引数…>` | ビルド・テストを振り分けて実行する |
-| `askhub-xcb status [--json]` | 各 Mac の状態・load・空きメモリ・実行中の本数。`--json` はオーケストレーター向け。`local` の `state` は、空いていてリモートと並べて選べるときは `ok`、それ以外は `standby`（外していれば `drained`） |
+| `askhub-xcb status [--json]` | 各 Mac の状態・load・空きメモリ・実行中の本数。`--json` はオーケストレーター向け。`local` の `state` は `standby`（外していれば `drained`）。`local` にもコア数・load・空きメモリを載せる |
 | `askhub-xcb drain <Host>` / `undrain <Host>` | その Mac を候補から外す / 戻す（実行中のものは止めない。`local` も指定できる） |
 
 | 置き場 | 内容 |

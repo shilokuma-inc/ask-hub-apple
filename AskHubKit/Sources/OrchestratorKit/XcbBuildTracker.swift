@@ -219,7 +219,7 @@ public struct XcbBuildTracker: Sendable {
     }
 
     /// イベントに出てきた Mac の状態（`build-hosts` の `hosts`）。load・空きメモリ・枠は `xcb status --json` で足す。
-    /// `local`（xcb を動かしている Mac）は、使えるときは待機（リモートが無いときだけ使う）とする
+    /// `local`（xcb を動かしている Mac）は、使えるときは待機（空いているとき、またはリモートが無いときだけ使う）とする
     public var hosts: [BuildHost] {
         hostOrder.compactMap { name in
             hostStates[name].map { host in
