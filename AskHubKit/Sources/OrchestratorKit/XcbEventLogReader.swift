@@ -43,36 +43,49 @@ public struct XcbEventLogReader: Sendable {
     public mutating func readNewEvents() -> [XcbEvent] {
         let current = Self.fileNumber(of: currentURL)
         let rotated = Self.fileNumber(of: rotatedURL)
-        var events: [XcbEvent] = []
 
         // 前回読んだファイルがまだ `events.jsonl` なら、その続きだけを読む
         if let position, position.fileNumber == current {
             let start = Self.fileSize(of: currentURL) < position.offset ? 0 : position.offset
-            events += read(currentURL, fileNumber: position.fileNumber, from: start, keepsPartialLine: true)
-            return events
+            return read(currentURL, fileNumber: position.fileNumber, from: start, keepsPartialLine: true) ?? []
         }
 
         // 前回読んだファイルが `.1` に移った・まだ読んでいない・前回のファイルがもう無い（続けて 2 回回った）
+        var events: [XcbEvent] = []
         if let rotated {
             let start = position?.fileNumber == rotated ? position?.offset ?? 0 : 0
-            // 回したファイルにはもう書かれないので、改行で終わっていない最後の行も読む
-            events += read(rotatedURL, fileNumber: rotated, from: start, keepsPartialLine: false)
+            // 回したファイルにはもう書かれないので、改行で終わっていない最後の行も読む。
+            // 読めなければ `events.jsonl` に進まない（位置を進めると `.1` の残りを読み直せなくなる）
+            guard let rotatedEvents = read(rotatedURL, fileNumber: rotated, from: start, keepsPartialLine: false) else {
+                return []
+            }
+            events += rotatedEvents
         }
         if let current {
-            events += read(currentURL, fileNumber: current, from: 0, keepsPartialLine: true)
+            events += read(currentURL, fileNumber: current, from: 0, keepsPartialLine: true) ?? []
         }
         return events
     }
 
-    /// `start` バイト目から読み、読み終えた位置を覚える
-    private mutating func read(_ url: URL, fileNumber: UInt64, from start: UInt64, keepsPartialLine: Bool) -> [XcbEvent] {
+    /// `start` バイト目から読み、読み終えた位置を覚える。
+    /// 開けない・読めない・開いたファイルが `fileNumber` と違う（調べてから開くまでに回った）ときは位置を変えずに `nil`（次に読み直す）
+    private mutating func read(_ url: URL, fileNumber: UInt64, from start: UInt64, keepsPartialLine: Bool) -> [XcbEvent]? {
         guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return []
+            return nil
         }
         defer { try? handle.close() }
-        guard (try? handle.seek(toOffset: start)) != nil, let data = try? handle.readToEnd() else {
-            position = Position(fileNumber: fileNumber, offset: start)
-            return []
+        var info = stat()
+        guard fstat(handle.fileDescriptor, &info) == 0, UInt64(info.st_ino) == fileNumber,
+              (try? handle.seek(toOffset: start)) != nil
+        else {
+            return nil
+        }
+        // 読み終えたファイルの `readToEnd()` は `nil` を返すので、空として扱う（読めなかったのは throw だけ）
+        let data: Data
+        do {
+            data = try handle.readToEnd() ?? Data()
+        } catch {
+            return nil
         }
         let newline = UInt8(ascii: "\n")
         var end = data.endIndex

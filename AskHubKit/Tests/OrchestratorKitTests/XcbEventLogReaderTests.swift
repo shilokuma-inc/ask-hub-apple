@@ -102,6 +102,36 @@ struct XcbEventLogReaderTests {
         #expect(ids(reader.readNewEvents()) == ["3"])
     }
 
+    @Test func keepsPositionWhenRotatedLogCannotBeRead() throws {
+        try append(line("job_waiting", "1") + "\n", to: currentURL)
+        var reader = XcbEventLogReader(directory: directory)
+        #expect(ids(reader.readNewEvents()) == ["1"])
+
+        try append(line("job_waiting", "2") + "\n", to: currentURL)
+        try rotate()
+        try append(line("job_waiting", "3") + "\n", to: currentURL)
+        // `.1` が読めないあいだは `events.jsonl` に進まない
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: rotatedURL.path(percentEncoded: false))
+        let position = reader.position
+        #expect(reader.readNewEvents().isEmpty)
+        #expect(reader.position == position)
+
+        // 読めるようになったら `.1` の残りから読む
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: rotatedURL.path(percentEncoded: false))
+        #expect(ids(reader.readNewEvents()) == ["2", "3"])
+    }
+
+    @Test func movesOnFromFullyReadRotatedLog() throws {
+        try append(line("job_waiting", "1") + "\n", to: currentURL)
+        try rotate()
+        var reader = XcbEventLogReader(directory: directory)
+        #expect(ids(reader.readNewEvents()) == ["1"])
+        // `.1` を読み終えていても、新しい `events.jsonl` に進む
+        try append(line("job_waiting", "2") + "\n", to: currentURL)
+        #expect(ids(reader.readNewEvents()) == ["2"])
+        #expect(reader.readNewEvents().isEmpty)
+    }
+
     @Test func readsRotatedAndCurrentLogsFromStartOnFirstRead() throws {
         try append(line("job_waiting", "1") + "\n" + line("job_waiting", "2"), to: rotatedURL)
         try append(line("job_waiting", "3") + "\n", to: currentURL)
