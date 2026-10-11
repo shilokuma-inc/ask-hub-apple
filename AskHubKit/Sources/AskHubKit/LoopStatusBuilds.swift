@@ -110,9 +110,9 @@ public struct LoopStatusBuild: Sendable, Equatable, Codable {
         )
     }
 
-    /// 終わったか
+    /// 終わったか（終了コードか終わった時刻のどちらかがあれば終わったものとする。どちらも任意のキーのため）
     public var isFinished: Bool {
-        exitCode != nil
+        exitCode != nil || finishedAt != nil
     }
 
     /// 成功したか。実行中は `nil`

@@ -117,6 +117,15 @@ struct LoopStatusBuildsTests {
         #expect(report.issueBody.contains("・2027-01-15T07:55:00Z<br>b: test macbookpro-m1pro・1 回目 |"))
     }
 
+    @Test func treatsBuildsWithExitCodeOrFinishTimeAsFinished() {
+        #expect(!LoopStatusBuild(slot: "a", action: "build", startedAt: now).isFinished)
+        #expect(LoopStatusBuild(slot: "a", action: "build", exitCode: 1).isFinished)
+        // 終了コードの無い終わったビルドも終わったものとして扱う（成否は分からない）
+        let finished = LoopStatusBuild(slot: "a", action: "build", finishedAt: now)
+        #expect(finished.isFinished)
+        #expect(finished.succeeded == nil)
+    }
+
     @Test func escapesTableCells() {
         let build = LoopStatusBuild(slot: "a", action: "build|x\ny", host: "m|1")
         #expect(build.tableText == #"a: build\|x y m\|1"#)
