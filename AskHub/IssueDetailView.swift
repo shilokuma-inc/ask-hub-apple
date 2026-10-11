@@ -73,6 +73,10 @@ struct IssueDetailView: View {
             }
         }
         .formStyle(.grouped)
+        // 投稿した指示を未処理として履歴に出す
+        .onChange(of: decisionModel.postedInstructions) {
+            Task { await historyModel.load(using: inbox) }
+        }
         .keyboardDoneButton($isEditingNote)
         .navigationTitle(reference)
         // 承認・指示は GitHub に書き込むので、送る内容を見せて確かめる
