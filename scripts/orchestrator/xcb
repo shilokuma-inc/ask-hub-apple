@@ -218,10 +218,11 @@ case ${1-} in
     reap_stale
     if [[ ${2-} == --json ]]; then
       # オーケストレーター向け: 各 Mac の状態と、実行中のビルドを JSON で出す
-      # local は、空いていてリモートと並べて選べるときは ok、それ以外（優先度 0・混んでいる）は standby
+      # local の状態は、オーケストレーターがイベントから組み立てるときと同じく standby（空いているとき・リモートが無いときだけ使う）。
+      # 外していれば drained。コア数・load・空きメモリはリモートと同じく載せる
       local_json() {
         local st=standby t kind a b c
-        probe_local; local_idle && st=ok; [[ -f $STATE/drain/local ]] && st=drained
+        probe_local; [[ -f $STATE/drain/local ]] && st=drained
         read -r t kind a b c <<<"$REPLY"
         if [[ $kind == ok ]]; then
           print -rn -- "{\"name\":\"local\",\"state\":$(jstr $st),\"cores\":$a,\"load\":$b,\"memoryFreePercent\":$c,\"running\":$(running local),\"slots\":${H_SLOTS[local]}}"
@@ -260,14 +261,14 @@ case ${1-} in
       else printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' $h down - - - "$(running $h)/${H_SLOTS[$h]}" "${REPLY#* down } $note"; fi
     done
     rm -f $STATE/probe/local; probe_local; read -r t kind a b c <<<"$REPLY"
-    st=standby; local_idle && st=ok
     if (( H_WEIGHT[local] > 0 )); then
       note="空いているときだけ（空きメモリ ${LOCAL_MIN_FREE_MEMORY}% 以上・load ÷ コア数 ${LOCAL_MAX_LOAD} 以下）"
+      if local_idle; then note+="。今は候補に入る"; else note+="。今は混んでいるので使わない"; fi
     else
       note="リモートが無いときだけ"
     fi
     [[ -f $STATE/drain/local ]] && note+=" drain 中（候補から外している）"
-    if [[ $kind == ok ]]; then printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' local $st $a $b "$c%" "$(running local)/${H_SLOTS[local]}" "$note"
+    if [[ $kind == ok ]]; then printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' local standby $a $b "$c%" "$(running local)/${H_SLOTS[local]}" "$note"
     else printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' local down - - - "$(running local)/${H_SLOTS[local]}" "${REPLY#* down } $note"; fi
     exit 0 ;;
   drain)   [[ -n ${2-} ]] || { log "usage: xcb drain <Host>"; exit 64; }; : > $STATE/drain/$2; emit host_drained host $2; log "$2 を候補から外しました"; exit 0 ;;
