@@ -178,6 +178,51 @@ struct LoopStatusModelTests {
         #expect(model.buildHosts?.repository == "shilokuma-inc/ask-hub-apple")
     }
 
+    @Test func sampleShowsBuildHostsAndMoves() async {
+        let model = Self.model(rows: SampleLoopStatusSource(), sections: SampleInboxSource())
+        await model.refresh()
+        let hosts = model.buildHosts?.hostDisplays ?? []
+        #expect(hosts.map(\.tone) == [.available, .unavailable, .idle])
+        #expect(hosts.first?.jobTexts.isEmpty == false)
+        // 成功と失敗の移動が 1 件ずつ、新しい順
+        #expect(model.buildMoves(now: .now).map(\.succeeded) == [true, false])
+        #expect(!model.isEmpty)
+    }
+
+    @Test func doesNotCountBuildTroubleAsAbnormal() async {
+        // 切断の Mac・別の Mac への移動・失敗したビルドは、バッジ（異常の件数）に数えない（Q7。表示だけ）
+        struct TroubleSource: LoopStatusSource {
+            func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
+                let failed = LoopStatusBuild(
+                    slot: "a",
+                    action: "build",
+                    host: "local",
+                    moves: [LoopStatusBuildMove(from: "macbookpro-m1pro", to: "local", reason: .disconnected)],
+                    exitCode: 65,
+                    finishedAt: .now
+                )
+                let report = LoopStatusReport(
+                    state: .running, lastActivityAt: .now, checkedAt: .now, builds: LoopStatusBuilds(latest: [failed], moved: [failed])
+                )
+                let down = BuildHost(name: "macbookpro-m1pro", state: .down, reason: .disconnected)
+                let hosts = BuildHostsReport(hosts: [down], checkedAt: .now)
+                let url = URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/1")!
+                let repository = LoopStatusRepository(
+                    repository: "shilokuma-inc/ask-hub-apple",
+                    heartbeatDescription: OrchestratorHeartbeat.description(at: .now),
+                    issues: [LoopStatusIssue(number: 1, url: url, author: "mrs1669", updatedAt: .now, body: report.issueBody)],
+                    buildHostsIssues: [LoopStatusIssue(number: 2, url: url, author: "mrs1669", updatedAt: .now, body: hosts.issueBody)]
+                )
+                return [repository]
+            }
+        }
+        let model = Self.model(rows: TroubleSource(), sections: SectionsSource(waiting: [], usageLimited: []))
+        await model.refresh()
+        #expect(model.buildMoves(now: .now).count == 1)
+        #expect(model.buildHosts?.report.hosts.first?.state == .down)
+        #expect(model.abnormalCount(now: .now) == 0)
+    }
+
     @Test func needsToken() async {
         let model = Self.model(token: nil, rows: SampleLoopStatusSource(), sections: SampleInboxSource())
         await model.refresh()

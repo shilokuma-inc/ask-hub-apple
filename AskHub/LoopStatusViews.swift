@@ -38,6 +38,9 @@ struct LoopStatusListView: View {
                     }
                 }
             }
+            // ビルドの Mac はループの状態の補足なので、リポジトリの後ろに置く（バッジには数えない）
+            BuildHostsSection(status: model.buildHosts)
+            BuildMovesSection(moves: model.buildMoves(now: Date()))
         }
         .overlay {
             if model.isEmpty {

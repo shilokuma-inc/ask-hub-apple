@@ -69,7 +69,12 @@ final class LoopStatusModel {
 
     /// 行も「上限で待機中」「ループの開始待ち」も無い（空の表示を出す）
     var isEmpty: Bool {
-        rows.isEmpty && waiting.isEmpty && usageLimited.isEmpty && manualLoops.isEmpty
+        rows.isEmpty && waiting.isEmpty && usageLimited.isEmpty && manualLoops.isEmpty && buildHosts == nil
+    }
+
+    /// 全リポジトリの、直近 24 時間に別の Mac に移ったビルド（新しい順）
+    func buildMoves(now: Date) -> [BuildMoveItem] {
+        LoopStatusRow.buildMoves(in: rows, now: now)
     }
 
     /// 「手動ループ」の行

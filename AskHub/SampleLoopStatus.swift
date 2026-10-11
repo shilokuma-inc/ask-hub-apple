@@ -31,7 +31,8 @@ extension LoopStatusModel {
 
 /// デモモード・Preview・UI テスト用の固定のループの状態。すべての状態（停滞・担当 PC なし・状態なしを含む）を 1 行ずつ出す。
 /// 進捗のゲージは 0%・各段階・100%・進捗なしの行が出るようにしている。
-/// ビルドの行は、別の Mac に移って実行中・Mac の空き待ち・直近の成功と失敗が出るようにしている
+/// ビルドの行は、別の Mac に移って実行中・Mac の空き待ち・直近の成功と失敗が出るようにしている。
+/// 「ビルドの Mac」は、使える・切断・待機の Mac と、24 時間の移動（成功・失敗）が出るようにしている
 struct SampleLoopStatusSource: LoopStatusSource {
     func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
         // サンプルのリポジトリは先頭の organization に置く
@@ -68,6 +69,7 @@ struct SampleLoopStatusSource: LoopStatusSource {
         }
 
         return [
+            // ビルドの Mac の状態の Issue もここに置く
             reported("ask-hub-apple", issue: 219, .running, "epic/loop-status", goal: 211, progress: (5, 12), active: 3),
             // 実行中なのに長く動きが無い
             reported("beat-tap-ios", issue: 7, .running, "epic/practice-mode", goal: 3, progress: (2, 8), active: 95),
@@ -131,6 +133,18 @@ struct SampleLoopStatusSource: LoopStatusSource {
                     seconds: 95,
                     finishedAt: now.addingTimeInterval(-12 * 60)
                 )
+            ],
+            moved: [
+                LoopStatusBuild(
+                    slot: "b",
+                    action: "test",
+                    platform: "iOS",
+                    host: "macbookpro-m4max",
+                    attempt: 2,
+                    moves: [LoopStatusBuildMove(from: "macbookpro-m1pro", to: "macbookpro-m4max", reason: .disconnected)],
+                    exitCode: 0,
+                    finishedAt: now.addingTimeInterval(-2 * 60 * 60)
+                )
             ]
         )
     }
@@ -149,6 +163,21 @@ struct SampleLoopStatusSource: LoopStatusSource {
                     exitCode: 65,
                     finishedAt: now.addingTimeInterval(-30 * 60)
                 )
+            ],
+            moved: [
+                LoopStatusBuild(
+                    slot: "a",
+                    action: "build",
+                    platform: "iOS",
+                    host: "local",
+                    attempt: 3,
+                    moves: [
+                        LoopStatusBuildMove(from: "macbookpro-m1pro", to: "macbookpro-m4max", reason: .disconnected),
+                        LoopStatusBuildMove(from: "macbookpro-m4max", to: "local", reason: .disconnected)
+                    ],
+                    exitCode: 65,
+                    finishedAt: now.addingTimeInterval(-5 * 60 * 60)
+                )
             ]
         )
     }
@@ -157,17 +186,55 @@ struct SampleLoopStatusSource: LoopStatusSource {
         LoopStatusRepository(
             repository: "\(org)/\(name)",
             heartbeatDescription: OrchestratorHeartbeat.description(at: heartbeat),
-            issues: issues
+            issues: issues,
+            // 担当の印は数分前に書かれているので、その時刻を今として作る
+            buildHostsIssues: buildHostsIssues(org, name, now: heartbeat.addingTimeInterval(2 * 60))
         )
     }
 
     private static func issue(_ org: String, _ name: String, number: Int, report: LoopStatusReport, updatedAt: Date) -> LoopStatusIssue {
+        issue(org, name, number: number, body: report.issueBody, updatedAt: updatedAt)
+    }
+
+    private static func issue(_ org: String, _ name: String, number: Int, body: String, updatedAt: Date) -> LoopStatusIssue {
         LoopStatusIssue(
             number: number,
             url: URL(string: "https://github.com/\(org)/\(name)/issues/\(number)")!,
             author: TrustedAuthors.defaultLogins[0],
             updatedAt: updatedAt,
-            body: report.issueBody
+            body: body
+        )
+    }
+
+    /// ビルドの Mac の状態の Issue は ask-hub-apple にだけ置く
+    private static func buildHostsIssues(_ org: String, _ name: String, now: Date) -> [LoopStatusIssue] {
+        guard name == "ask-hub-apple" else {
+            return []
+        }
+        return [issue(org, name, number: 366, body: buildHosts(org, now).issueBody, updatedAt: now.addingTimeInterval(-3 * 60))]
+    }
+
+    /// 3 台の Mac（使える・持ち出しで切断）と、リモートが無いときだけ使う Mac mini（local）
+    private static func buildHosts(_ org: String, _ now: Date) -> BuildHostsReport {
+        BuildHostsReport(
+            hosts: [
+                BuildHost(name: "macbookpro-m4max", state: .ok, cores: 14, load: 3.25, memoryFreePercent: 41, running: 1, slots: 2),
+                BuildHost(name: "macbookpro-m1pro", state: .down, reason: .unreachable, running: 0, slots: 1),
+                BuildHost(name: "local", state: .standby, running: 0, slots: 1)
+            ],
+            jobs: [
+                BuildHostJob(
+                    host: "macbookpro-m4max",
+                    repository: "\(org)/ask-hub-apple",
+                    slot: "a",
+                    action: "build",
+                    platform: "iOS",
+                    attempt: 2,
+                    startedAt: now.addingTimeInterval(-6 * 60)
+                )
+            ],
+            measuredAt: now.addingTimeInterval(-3 * 60),
+            checkedAt: now.addingTimeInterval(-3 * 60)
         )
     }
 }
