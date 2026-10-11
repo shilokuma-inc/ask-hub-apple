@@ -44,6 +44,10 @@ struct BuildHostsConfigTests {
         #expect(throws: OrchestratorConfigError.invalidBuildHostsRepository("ask-hub-apple")) {
             try decode(buildHosts: #"{ "xcb": "/opt/xcb", "issueRepository": "ask-hub-apple" }"#)
         }
+        // repositories と同じく、空白・制御文字を含む名前も拒否する
+        #expect(throws: OrchestratorConfigError.invalidBuildHostsRepository("shilokuma-inc/ask\thub")) {
+            try decode(buildHosts: #"{ "xcb": "/opt/xcb", "issueRepository": "shilokuma-inc/ask\thub" }"#)
+        }
         #expect(throws: OrchestratorConfigError.self) {
             try decode(buildHosts: #"{ "issueRepository": "shilokuma-inc/ask-hub-apple" }"#)
         }

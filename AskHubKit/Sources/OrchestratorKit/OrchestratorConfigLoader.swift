@@ -127,8 +127,7 @@ public struct OrchestratorConfigLoader: Sendable {
         }
         let issueRepository = entry.issueRepository?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let issueRepository {
-            let parts = issueRepository.split(separator: "/", omittingEmptySubsequences: false)
-            guard parts.count == 2, parts.allSatisfy({ !$0.isEmpty && !$0.contains(" ") }) else {
+            guard Self.isRepositoryName(issueRepository.split(separator: "/", omittingEmptySubsequences: false)) else {
                 throw .invalidBuildHostsRepository(issueRepository)
             }
         }
@@ -176,12 +175,7 @@ public struct OrchestratorConfigLoader: Sendable {
         from entry: ConfigFile.Repository
     ) throws(OrchestratorConfigError) -> RepositoryConfig {
         let parts = entry.repository.split(separator: "/", omittingEmptySubsequences: false)
-        let isValidPart = { (part: Substring) in
-            !part.isEmpty && !part.unicodeScalars.contains {
-                CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0)
-            }
-        }
-        guard parts.count == 2, parts.allSatisfy(isValidPart) else {
+        guard Self.isRepositoryName(parts) else {
             throw .invalidRepositoryName(entry.repository)
         }
         let path = expandingTilde(in: entry.path)
@@ -196,6 +190,15 @@ public struct OrchestratorConfigLoader: Sendable {
     }
 
     /// 先頭の `~` だけを展開する（`~user` の形式は扱わない）
+    /// `owner/repo` を `/` で分けたもの。どちらも空でなく、空白・改行・制御文字を含まない
+    private static func isRepositoryName(_ parts: [Substring]) -> Bool {
+        parts.count == 2 && parts.allSatisfy { part in
+            !part.isEmpty && !part.unicodeScalars.contains {
+                CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0)
+            }
+        }
+    }
+
     func expandingTilde(in path: String) -> String {
         if path == "~" {
             return homeDirectory
