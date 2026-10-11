@@ -3,7 +3,8 @@ import Foundation
 /// GitHub の GraphQL API から、リポジトリごとの担当の印と状態用の Issue を取得する。
 ///
 /// 検索ではなく `organization.repositories` を最後のページまでたどる（Search API の 30 回/分の制限と、検索の件数のずれを避ける）。
-/// 状態用の Issue はリポジトリに 1 つの想定だが、誰でも同じラベルで作れるので、1 ページに収まらなければそのリポジトリだけ続きを取る
+/// 状態用の Issue はリポジトリに 1 つの想定だが、誰でも同じラベルで作れるので、1 ページに収まらなければそのリポジトリだけ続きを取る。
+/// ビルドの Mac の状態の Issue（`build-hosts`）も同じ問い合わせで取る（`labels:` は OR なので回数は増えない）。どちらかはラベルで分ける
 public struct GitHubLoopStatusSource: LoopStatusSource {
     let client: GitHubClient
 
@@ -28,7 +29,7 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
                     "org": .string(org),
                     "after": after.map(GraphQLVariable.string) ?? .null,
                     "label": .string(OrchestratorHeartbeat.labelName),
-                    "statusLabel": .string(LoopStatusReport.labelName)
+                    "statusLabels": Self.statusLabels
                 ],
                 as: RepositoriesData.self
             )
@@ -47,7 +48,9 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
             repositories.append(LoopStatusRepository(
                 repository: node.nameWithOwner,
                 heartbeatDescription: node.label?.description,
-                issues: issues.compactMap(\.issue)
+                // `build-hosts` の付いたものだけを分け、ほかは今までどおり状態用の Issue として扱う（目印で読み分けもする）
+                issues: issues.filter { !$0.hasLabel(BuildHostsReport.labelName) }.compactMap(\.issue),
+                buildHostsIssues: issues.filter { $0.hasLabel(BuildHostsReport.labelName) }.compactMap(\.issue)
             ))
         }
         return repositories
@@ -67,7 +70,7 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
                     "owner": .string(parts[0]),
                     "name": .string(parts[1]),
                     "after": .string(after ?? cursor),
-                    "statusLabel": .string(LoopStatusReport.labelName)
+                    "statusLabels": Self.statusLabels
                 ],
                 as: IssuesData.self
             )
@@ -78,21 +81,26 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
         }
     }
 
+    /// 一緒に取る Issue のラベル（どれかが付いたもの）
+    private static var statusLabels: GraphQLVariable {
+        .strings([LoopStatusReport.labelName, BuildHostsReport.labelName])
+    }
+
     /// 本文は状態の目印と短い表だけなので、まとめて取っても大きくならない
     private static let issueFields = """
         pageInfo { hasNextPage endCursor }
-        nodes { number url updatedAt body author { login } }
+        nodes { number url updatedAt body author { login } labels(first: 20) { nodes { name } } }
         """
 
     static let repositoriesQuery = """
-        query($org: String!, $after: String, $label: String!, $statusLabel: String!) {
+        query($org: String!, $after: String, $label: String!, $statusLabels: [String!]!) {
           organization(login: $org) {
             repositories(first: 50, after: $after, isArchived: false) {
               pageInfo { hasNextPage endCursor }
               nodes {
                 nameWithOwner
                 label(name: $label) { description }
-                issues(first: 20, states: OPEN, labels: [$statusLabel], orderBy: { field: UPDATED_AT, direction: DESC }) {
+                issues(first: 20, states: OPEN, labels: $statusLabels, orderBy: { field: UPDATED_AT, direction: DESC }) {
                   \(issueFields)
                 }
               }
@@ -102,9 +110,9 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
         """
 
     static let issuesQuery = """
-        query($owner: String!, $name: String!, $after: String, $statusLabel: String!) {
+        query($owner: String!, $name: String!, $after: String, $statusLabels: [String!]!) {
           repository(owner: $owner, name: $name) {
-            issues(first: 100, after: $after, states: OPEN, labels: [$statusLabel], orderBy: { field: UPDATED_AT, direction: DESC }) {
+            issues(first: 100, after: $after, states: OPEN, labels: $statusLabels, orderBy: { field: UPDATED_AT, direction: DESC }) {
               \(issueFields)
             }
           }
@@ -159,6 +167,12 @@ private struct IssueNode: Decodable {
     let updatedAt: Date?
     let body: String?
     let author: Author?
+    let labels: IssueLabels?
+
+    /// ラベルの名前は大文字・小文字を区別しない
+    func hasLabel(_ name: String) -> Bool {
+        labels?.nodes.contains { $0?.name.caseInsensitiveCompare(name) == .orderedSame } == true
+    }
 
     var issue: LoopStatusIssue? {
         guard let number, let url, let updatedAt, let body else {
@@ -166,4 +180,12 @@ private struct IssueNode: Decodable {
         }
         return LoopStatusIssue(number: number, url: url, author: author?.login, updatedAt: updatedAt, body: body)
     }
+}
+
+private struct IssueLabels: Decodable {
+    struct Label: Decodable {
+        let name: String
+    }
+
+    let nodes: [Label?]
 }

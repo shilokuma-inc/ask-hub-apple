@@ -110,6 +110,59 @@ struct LoopStatusRowTests {
         #expect(try await trustingSomeone.rows(orgs: ["o"]).map(\.repository) == ["o/r"])
     }
 
+    @Test func fetcherReadsNewestTrustedBuildHostsIssue() async throws {
+        struct Source: LoopStatusSource {
+            let repositories: [LoopStatusRepository]
+            func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
+                repositories
+            }
+        }
+        func hostsIssue(
+            _ number: Int, author: String, repository: String, checkedMinutesAgo: Double, updatedMinutesAgo: Double = 0
+        ) -> LoopStatusIssue {
+            let checkedAt = now.addingTimeInterval(-checkedMinutesAgo * 60)
+            let report = BuildHostsReport(hosts: [.init(name: "m\(number)", state: .ok)], checkedAt: checkedAt)
+            return LoopStatusIssue(
+                number: number,
+                url: URL(string: "https://github.com/\(repository)/issues/\(number)")!,
+                author: author,
+                updatedAt: now.addingTimeInterval(-updatedMinutesAgo * 60),
+                body: report.issueBody
+            )
+        }
+        let source = Source(repositories: [
+            LoopStatusRepository(
+                repository: "o/a",
+                heartbeatDescription: nil,
+                issues: [issue(1, report: report(.running))],
+                buildHostsIssues: [
+                    // 信用しない author のもの・読めないものは使わない
+                    hostsIssue(2, author: "someone", repository: "o/a", checkedMinutesAgo: 0),
+                    LoopStatusIssue(
+                        number: 3, url: URL(string: "https://github.com/o/a/issues/3")!, author: "mrs1669", updatedAt: now, body: "人が書いた"
+                    ),
+                    hostsIssue(4, author: "mrs1669", repository: "o/a", checkedMinutesAgo: 20, updatedMinutesAgo: 5)
+                ]
+            ),
+            LoopStatusRepository(
+                repository: "o/b",
+                heartbeatDescription: nil,
+                issues: [],
+                buildHostsIssues: [hostsIssue(5, author: "mrs1669", repository: "o/b", checkedMinutesAgo: 40)]
+            )
+        ])
+        let snapshot = try await LoopStatusFetcher(source: source, trustedAuthors: trusted).status(orgs: ["o"])
+        // 状態用の Issue の行は今までどおり。build-hosts だけのリポジトリは行にしない
+        #expect(snapshot.rows.map(\.repository) == ["o/a"])
+        // 複数のリポジトリにあれば、最も新しく確かめたもの
+        #expect(snapshot.buildHosts?.repository == "o/a")
+        #expect(snapshot.buildHosts?.issueURL.absoluteString == "https://github.com/o/a/issues/4")
+        #expect(snapshot.buildHosts?.report.hosts.map(\.name) == ["m4"])
+
+        let untrusted = try await LoopStatusFetcher(source: source, trustedAuthors: TrustedAuthors(["nobody"])).status(orgs: ["o"])
+        #expect(untrusted.buildHosts == nil)
+    }
+
     @Test func statusIssuesAreNotLowPriorityIssues() {
         // 「急がない」はラベルで検索するので、状態用のラベルを含めない
         #expect(!InboxIssue.Kind.labels.contains(.loopStatus))
@@ -120,15 +173,18 @@ struct LoopStatusRowTests {
 struct GitHubLoopStatusSourceTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private func issueJSON(_ number: Int, repository: String, author: String?, body: String) -> String {
+    private func issueJSON(_ number: Int, repository: String, author: String?, body: String, labels: [String]? = nil) -> String {
         let escaped = body
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
         let authorJSON = author.map { #"{ "login": "\#($0)" }"# } ?? "null"
+        let labelsJSON = labels.map { names in
+            #"{ "nodes": [\#(names.map { #"{ "name": "\#($0)" }"# }.joined(separator: ","))] }"#
+        } ?? "null"
         return #"""
             { "number": \#(number), "url": "https://github.com/\#(repository)/issues/\#(number)", "updatedAt": "2027-01-15T08:00:00Z",
-              "body": "\#(escaped)", "author": \#(authorJSON) }
+              "body": "\#(escaped)", "author": \#(authorJSON), "labels": \#(labelsJSON) }
             """#
     }
 
@@ -191,13 +247,38 @@ struct GitHubLoopStatusSourceTests {
         #expect(variables.count == 4)
         #expect(variables[0]["org"] as? String == "shilokuma-inc")
         #expect(variables[0]["label"] as? String == "askhub-orchestrator")
-        #expect(variables[0]["statusLabel"] as? String == "loop-status")
+        // build-hosts の Issue も同じ問い合わせで取る
+        #expect(variables[0]["statusLabels"] as? [String] == ["loop-status", "build-hosts"])
+        #expect(variables[2]["statusLabels"] as? [String] == ["loop-status", "build-hosts"])
         // リポジトリの一覧を最後まで取ってから、Issue の続きを 1 ページ目のカーソルから取る
         #expect(variables[1]["after"] as? String == "r1")
         #expect(variables[2]["owner"] as? String == "o")
         #expect(variables[2]["name"] as? String == "a")
         #expect(variables[2]["after"] as? String == "i1")
         #expect(variables[3]["after"] as? String == "i2")
+    }
+
+    @Test func separatesBuildHostsIssuesByLabel() async throws {
+        let status = LoopStatusReport(state: .running, checkedAt: now).issueBody
+        let hosts = BuildHostsReport(hosts: [.init(name: "m4max", state: .ok)], checkedAt: now).issueBody
+        let response = #"""
+            { "data": { "organization": { "repositories": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
+              { "nameWithOwner": "o/a", "label": null,
+                "issues": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
+                  \#(issueJSON(1, repository: "o/a", author: "mrs1669", body: status, labels: ["loop-status"])),
+                  \#(issueJSON(2, repository: "o/a", author: "mrs1669", body: hosts, labels: ["Build-Hosts", "bug"]))
+                ] } }
+            ] } } } }
+            """#
+        let http = MockHTTPClient([.init(status: 200, body: response)])
+        let source = GitHubLoopStatusSource(client: GitHubClient(token: "github_pat_secret", http: http, sleep: { _ in }))
+
+        let repositories = try await source.loopStatusRepositories(orgs: ["o"])
+
+        #expect(repositories.first?.issues.map(\.number) == [1])
+        #expect(repositories.first?.buildHostsIssues.map(\.number) == [2])
+        let query = try #require(http.requests.first?.httpBody.flatMap { String(bytes: $0, encoding: .utf8) })
+        #expect(query.contains("labels(first: 20) { nodes { name } }"))
     }
 
     @Test func readsEachOrganizationInOrder() async throws {
