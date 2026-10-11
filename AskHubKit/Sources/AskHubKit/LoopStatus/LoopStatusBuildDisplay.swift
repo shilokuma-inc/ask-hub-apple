@@ -37,21 +37,12 @@ extension LoopStatusBuild {
             let place = host ?? "Mac の空き待ち"
             return "\(actionTitle)中 \(slot): \(place)\(detailText)"
         }
-        let result = switch succeeded {
-        case true?: "成功"
-        case false?: exitCode.map { "失敗（終了コード \($0)）" } ?? "失敗"
-        case nil: "終了"
-        }
         let place = host.map { "・\($0)" } ?? ""
-        return "直近の\(actionTitle) \(slot): \(result)\(place)\(detailText)"
+        return "直近の\(actionTitle) \(slot): \(resultText)\(place)\(detailText)"
     }
 
     /// xcb の `action` の日本語。知らないものはそのまま
     var actionTitle: String {
-        switch action {
-        case "build": "ビルド"
-        case "test": "テスト"
-        default: action
-        }
+        Self.actionTitle(of: action)
     }
 }
