@@ -24,10 +24,13 @@ extension Orchestrator {
     /// 書けなかったリポジトリはログに出し、次のポーリングで書き直す
     func publishLoopStatuses(statuses: [String: LoopStatus]) async {
         let current = now()
+        // xcb のビルドの情報（イベントで分かる変化）も、状態と同じく変わったときと間隔ごとに載せる
+        refreshBuildActivity()
         for repository in config.repositories {
             let key = repository.fullName.lowercased()
             let facts = await loopStatusFacts(of: repository, status: statuses[key] ?? .idle, now: current)
-            let report = LoopStatusSummary.report(for: facts, now: current)
+            var report = LoopStatusSummary.report(for: facts, now: current)
+            report.builds = builds(for: repository)
             do {
                 try await publish(report, to: repository)
             } catch let GitHubError.rateLimited(retryAfter) {
@@ -38,6 +41,7 @@ extension Orchestrator {
                 log("\(repository.fullName) にループの状態を書けませんでした（次のポーリングで再試行します）: \(error)")
             }
         }
+        await publishBuildHosts(now: current)
     }
 
     private func publish(_ report: LoopStatusReport, to repository: RepositoryConfig) async throws {

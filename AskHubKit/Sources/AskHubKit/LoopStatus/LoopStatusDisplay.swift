@@ -65,6 +65,8 @@ public struct LoopStatusDisplay: Sendable, Equatable {
     public var lastActivityAt: Date?
     /// 実行中なのに、`LoopStatusRow.stuckThreshold` より長く動きが無い
     public var isStuck: Bool
+    /// ループのスロットのビルド（スロットごとに 1 行。`LoopStatusBuilds.rowTexts`）。ビルドの情報が無ければ空
+    public var buildTexts: [String] = []
     /// 行をタップしたときに開く URL（ゴール元の Discussion、無ければ状態用の Issue）
     public var destination: URL?
 }
@@ -101,6 +103,7 @@ extension LoopStatusRow {
             progressStage: report?.progress.map { LoopStatusDisplay.ProgressStage(fraction: $0.doneFraction) },
             lastActivityAt: report?.lastActivityAt,
             isStuck: isStuck(now: now),
+            buildTexts: report?.builds?.rowTexts ?? [],
             // 担当 PC がいないときはゴール元を出さないので、開くのも状態用の Issue にそろえる
             destination: (report == nil ? nil : discussionURL) ?? issueURL
         )

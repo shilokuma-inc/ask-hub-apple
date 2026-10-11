@@ -38,6 +38,9 @@ struct LoopStatusListView: View {
                     }
                 }
             }
+            // ビルドの Mac はループの状態の補足なので、リポジトリの後ろに置く（バッジには数えない）
+            BuildHostsSection(status: model.buildHosts)
+            BuildMovesSection(moves: model.buildMoves(now: Date()))
         }
         .overlay {
             if model.isEmpty {
@@ -176,6 +179,15 @@ struct LoopStatusRowView: View {
                 Text("最後の動き: \(lastActivityAt, format: .relative(presentation: .named))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            // 移動や失敗も異常としては扱わず、表示だけにする（バッジに数えない）
+            ForEach(display.buildTexts, id: \.self) { text in
+                Label(text, systemImage: "hammer")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .accessibilityIdentifier("loop-build")
             }
         }
         .padding(.vertical, 2)

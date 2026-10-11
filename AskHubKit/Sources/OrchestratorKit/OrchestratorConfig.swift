@@ -32,6 +32,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public let repositoryCommands: RepositoryCommands
     /// 担当リポジトリに書き込み権限（write 以上）を持つアカウントも、そのリポジトリで信用する author とみなすか
     public let trustsRepositoryWriters: Bool
+    /// ループのビルドの Mac（xcb）の情報を書き出す設定。無ければ書き出さない
+    public let buildHosts: BuildHostsConfig?
 
     public var trustedAuthors: TrustedAuthors {
         TrustedAuthors(trustedAuthorLogins)
@@ -56,7 +58,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
         iterationTimeout: Duration = defaultIterationTimeout,
         conflictCommand: ConflictCommandTemplate? = nil,
         repositoryCommands: RepositoryCommands? = nil,
-        trustsRepositoryWriters: Bool = true
+        trustsRepositoryWriters: Bool = true,
+        buildHosts: BuildHostsConfig? = nil
     ) {
         self.trustedAuthorLogins = trustedAuthorLogins
         self.repositories = repositories
@@ -66,6 +69,7 @@ public struct OrchestratorConfig: Sendable, Equatable {
         self.iterationTimeout = iterationTimeout
         self.conflictCommand = conflictCommand ?? .standard(besides: loopCommand)
         self.trustsRepositoryWriters = trustsRepositoryWriters
+        self.buildHosts = buildHosts
         self.repositoryCommands = repositoryCommands ?? .standard(
             homeDirectory: NSHomeDirectory(),
             newCheckoutDirectory: RepositoryCommands.defaultCheckoutDirectory(for: repositories, homeDirectory: NSHomeDirectory())
@@ -96,16 +100,28 @@ public struct RepositoryConfig: Sendable, Equatable {
         "\(owner)/\(name)"
     }
 
+    /// ループのスロット（作業用 worktree）の名前。`scripts/ralph-setup.sh` が作る `-ralph-a` / `-ralph-b` の末尾
+    public static let loopSlots = ["a", "b"]
+
     /// ループの制御用 worktree のパス。
     /// `scripts/ralph-setup.sh` と同じく、checkout の隣に `<ディレクトリ名から -ios を除いたもの>-ralph-ctl` を置く
     public var controlWorktreePath: String {
+        loopWorktreePath(suffix: "ctl")
+    }
+
+    /// ループのスロット（`a` / `b`）の worktree のパス。制御用 worktree と同じく checkout の隣に `<…>-ralph-<スロット>` を置く
+    public func slotWorktreePath(_ slot: String) -> String {
+        loopWorktreePath(suffix: slot)
+    }
+
+    private func loopWorktreePath(suffix: String) -> String {
         let checkout = URL(fileURLWithPath: checkoutPath, isDirectory: true)
         var directoryName = checkout.lastPathComponent
         if directoryName.hasSuffix("-ios") {
             directoryName.removeLast("-ios".count)
         }
         return checkout.deletingLastPathComponent()
-            .appendingPathComponent("\(directoryName)-ralph-ctl", isDirectory: true)
+            .appendingPathComponent("\(directoryName)-ralph-\(suffix)", isDirectory: true)
             .path
     }
 }

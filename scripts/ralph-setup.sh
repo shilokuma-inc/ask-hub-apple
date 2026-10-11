@@ -70,6 +70,7 @@ idea-request|5319E7|アプリから出した新機能の依頼
 decision-log|1D76DB|epic ごとの仮決め一覧（判断ログ）
 needs-verify|FBCA04|実機・実データでの確認が必要
 epic-final|B60205|epic から develop への最終 PR
+build-hosts|BFD4F2|ビルドの Mac の状態（オーケストレーターが書き換える）
 LABELS
 else
   echo "警告: gh が無いため、AskHub のラベルを確認できませんでした" >&2
