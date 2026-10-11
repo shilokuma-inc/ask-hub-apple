@@ -95,7 +95,7 @@ struct ContentView: View {
                 await loopModel.refresh()
             }
         } content: {
-            SettingsView()
+            SettingsView(loopModel: loopModel)
         }
     }
 

@@ -3,7 +3,9 @@ import Foundation
 /// GitHub の GraphQL API から、リポジトリごとの担当の印と状態用の Issue を取得する。
 ///
 /// 検索ではなく `organization.repositories` を最後のページまでたどる（Search API の 30 回/分の制限と、検索の件数のずれを避ける）。
-/// 状態用の Issue はリポジトリに 1 つの想定だが、誰でも同じラベルで作れるので、1 ページに収まらなければそのリポジトリだけ続きを取る
+/// 状態用の Issue はリポジトリに 1 つの想定だが、誰でも同じラベルで作れるので、1 ページに収まらなければそのリポジトリだけ続きを取る。
+/// ビルドの Mac の状態の Issue（`build-hosts`）も同じ問い合わせで取る（`labels:` は OR なので回数は増えない）。
+/// どちらかは本文の目印で分ける（Issue のラベルは 1 ページに収まるとは限らないので、ラベルの一覧は読まない）
 public struct GitHubLoopStatusSource: LoopStatusSource {
     let client: GitHubClient
 
@@ -28,7 +30,7 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
                     "org": .string(org),
                     "after": after.map(GraphQLVariable.string) ?? .null,
                     "label": .string(OrchestratorHeartbeat.labelName),
-                    "statusLabel": .string(LoopStatusReport.labelName)
+                    "statusLabels": Self.statusLabels
                 ],
                 as: RepositoriesData.self
             )
@@ -47,7 +49,9 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
             repositories.append(LoopStatusRepository(
                 repository: node.nameWithOwner,
                 heartbeatDescription: node.label?.description,
-                issues: issues.compactMap(\.issue)
+                // `build-hosts` の目印を読めるものだけを分け、ほかは今までどおり状態用の Issue として扱う
+                issues: issues.compactMap(\.issue).filter { !$0.isBuildHosts },
+                buildHostsIssues: issues.compactMap(\.issue).filter(\.isBuildHosts)
             ))
         }
         return repositories
@@ -67,7 +71,7 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
                     "owner": .string(parts[0]),
                     "name": .string(parts[1]),
                     "after": .string(after ?? cursor),
-                    "statusLabel": .string(LoopStatusReport.labelName)
+                    "statusLabels": Self.statusLabels
                 ],
                 as: IssuesData.self
             )
@@ -78,6 +82,11 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
         }
     }
 
+    /// 一緒に取る Issue のラベル（どれかが付いたもの）
+    private static var statusLabels: GraphQLVariable {
+        .strings([LoopStatusReport.labelName, BuildHostsReport.labelName])
+    }
+
     /// 本文は状態の目印と短い表だけなので、まとめて取っても大きくならない
     private static let issueFields = """
         pageInfo { hasNextPage endCursor }
@@ -85,14 +94,14 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
         """
 
     static let repositoriesQuery = """
-        query($org: String!, $after: String, $label: String!, $statusLabel: String!) {
+        query($org: String!, $after: String, $label: String!, $statusLabels: [String!]!) {
           organization(login: $org) {
             repositories(first: 50, after: $after, isArchived: false) {
               pageInfo { hasNextPage endCursor }
               nodes {
                 nameWithOwner
                 label(name: $label) { description }
-                issues(first: 20, states: OPEN, labels: [$statusLabel], orderBy: { field: UPDATED_AT, direction: DESC }) {
+                issues(first: 20, states: OPEN, labels: $statusLabels, orderBy: { field: UPDATED_AT, direction: DESC }) {
                   \(issueFields)
                 }
               }
@@ -102,9 +111,9 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
         """
 
     static let issuesQuery = """
-        query($owner: String!, $name: String!, $after: String, $statusLabel: String!) {
+        query($owner: String!, $name: String!, $after: String, $statusLabels: [String!]!) {
           repository(owner: $owner, name: $name) {
-            issues(first: 100, after: $after, states: OPEN, labels: [$statusLabel], orderBy: { field: UPDATED_AT, direction: DESC }) {
+            issues(first: 100, after: $after, states: OPEN, labels: $statusLabels, orderBy: { field: UPDATED_AT, direction: DESC }) {
               \(issueFields)
             }
           }
@@ -165,5 +174,12 @@ private struct IssueNode: Decodable {
             return nil
         }
         return LoopStatusIssue(number: number, url: url, author: author?.login, updatedAt: updatedAt, body: body)
+    }
+}
+
+private extension LoopStatusIssue {
+    /// ビルドの Mac の状態の目印（`ask-hub:build-hosts`）を読める
+    var isBuildHosts: Bool {
+        BuildHostsReport.parse(body) != nil
     }
 }

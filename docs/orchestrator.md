@@ -136,6 +136,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `removeRepositoryCommand` | | ローカルの checkout・ループの worktree・DerivedData を消すコマンド。省略時は `~/.local/bin/askhub-remove-repo`（`install.sh` が置く） |
 | `newRepositoryDirectory` | | 新しく作ったリポジトリを clone するディレクトリ（`~` 可）。省略時は最初の担当リポジトリの checkout と同じ場所 |
 | `conflictCommand` | | epic の最終 PR のコンフリクトを解消させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-resolve-conflict`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` が使える |
+| `buildHosts` | | ループのビルドの Mac（xcb）の情報を GitHub に書き出す設定（下の「`buildHosts`」）。**xcb を動かしている Mac のオーケストレーターだけに書く**。省略するとこの機能を止める |
 
 以前の設定にあった `org` は不要になった（書いてあっても無視する）。
 
@@ -144,6 +145,23 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 信用する author（設定の `trustedAuthors` と、担当リポジトリへの書き込み権限を持つアカウント）は、ポーリングのはじめに担当リポジトリごとに求め直し（書き込み権限は 10 分ごとに取り直す）、
 変わったらログに `<リポジトリ> で信用する author: …` と出す。ループには起動ごとに `ASKHUB_TRUSTED_AUTHORS` で渡す。
 アプリからの担当リポジトリの作成・削除の依頼では、オーケストレーターが `repositories` を書き換える（下記）。
+
+### `buildHosts`
+
+```json
+"buildHosts": {
+  "xcb": "~/.config/askhub/xcodebuild",
+  "issueRepository": "shilokuma-inc/ask-hub-apple"
+}
+```
+
+| キー | 必須 | 説明 |
+| --- | --- | --- |
+| `xcb` | ✓ | xcb（ループ共通の xcodebuild の入口）の実行ファイルの絶対パス（`~` 可）。`status --json` で load・空きメモリ・コア数・枠を取る |
+| `eventsDirectory` | | xcb のイベントログ（`events.jsonl` と、5MB を超えて回した `events.jsonl.1`）のディレクトリ（`~` 可）。省略時は `~/Library/Logs/askhub/xcb`（xcb の `XCB_EVENTS_DIR` の既定と同じ） |
+| `issueRepository` | | ビルドの Mac の状態の Issue（ラベル `build-hosts`。`docs/protocol.md` の「ビルドの Mac の状態」）を置くリポジトリ（`owner/repo`）。担当リポジトリのどれかにする。省略したとき・担当から外したときは、その Issue を書かない（各リポジトリの `loop-status` のビルドの情報は書く） |
+
+`issueRepository` が担当リポジトリに無くても設定ファイルは読める（アプリからの依頼で担当から外したときに、設定ごと読めなくならないように）。
 
 ### `loopCommand` のプレースホルダ
 
@@ -382,13 +400,33 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 - 本文は状態が変わったときだけ書き換え、変わらなければ 10 分ごとに確認時刻だけを書き直す。
   オーケストレーターを再起動した直後は Issue の本文を読み、同じ状態なら書き直さない
 - 書けなかったときはログに出し、次のポーリングで Issue の一覧から取り直して書き直す
-- 本文に書くのは epic 名・Discussion の番号・件数・時刻だけ。ローカルパス・ログの中身・PC 名は書かない（public リポジトリでは誰でも読める）
+- 本文に書くのは epic 名・Discussion の番号・件数・時刻と、ビルドの情報の Mac の Host 名・スロットだけ。ローカルパス・ログの中身は書かない（public リポジトリでは誰でも読める）
+- 設定の `buildHosts` があれば、ポーリングのたびに xcb のイベントログ（`events.jsonl`。回した `events.jsonl.1` も）を前回の続きから読み、
+  ループのスロット（`<名前>-ralph-a` / `-b`）のビルドを `builds`（実行中・スロットごとの直近・24 時間の移動）に載せる（`docs/protocol.md` の「ビルドの情報」）。
+  ほかのビルド（メインの checkout・制御用 worktree・手で流したビルド）は載せない。ビルドが 1 つも無ければキーを書かない。
+  ビルドが変わったら（始まった・別の Mac に移った・終わった）状態の変化として書き換え、変わらなければ今までどおり 10 分ごとの確認時刻の書き直しに載せる。
+  オーケストレーターを再起動したら、残っているイベントログを頭から読み直して組み立て直す（読んだ位置は保存しない）
+- 手動ループの状態（書き手が `manual`）は今までどおり上書きしないので、そのあいだはビルドの情報も書かない
 - `ready-for-loop` の検索に失敗したポーリングでは書き出さない（次のポーリングで書く）
 - 本文を書き換える前に Issue の一覧を取り直して本文を読む。手で回しているループ（目印の `writer` が `manual`）が書いていて、
   `checkedAt` が 30 分以内なら書かない（`LoopStatusPublisher`。Discussion #273 の Q3）。手で回すループは 10 分ごとに `checkedAt` を書き直す。
   ただし、信用する author の open な `manual-loop` の Discussion があるリポジトリでは、手動ループの状態を（`checkedAt` が古くなっても）上書きしない（担当者の情報を残す。古さはアプリが知らせる）。
   Discussion が閉じた後に 30 分を過ぎていれば、オーケストレーターが自分の材料で今までどおりの優先順位で書き直す
   （オーケストレーターからは手で回す制御用 worktree が見えないので、多くは「ループなし」か `ready-for-loop` の「開始待ち」になる）
+
+## ビルドの Mac の状態を書き出す（build-hosts）
+
+設定の `buildHosts.issueRepository` が担当リポジトリにあれば、ループの状態を書き出した後に、xcb のビルド先の Mac の状態を
+そのリポジトリの Issue（ラベル `build-hosts`、タイトル `【AskHub】ビルドの Mac の状態`。`docs/protocol.md` の「ビルドの Mac の状態」）に書き出す。
+
+- Mac の状態（使える・切断・外している・待機）・使えない理由の分類・実行中の本数・ループのスロットの実行中のビルドは、xcb のイベントログから組み立てる。
+  変わったら（Mac が切断された・戻った・`xcb drain` された・ビルドが始まった・移った・終わった）、間隔を待たずに書き換える
+- コア数・load・空きメモリ・同時に実行できる本数は、10 分ごとの確認時刻の書き直しのときだけ `xcb status --json` を呼んで載せる（各 Mac に ssh で問い合わせるため、毎回は呼ばない）。
+  load・空きメモリの揺れは変化として扱わない。`xcb status --json` が失敗したら、ログに出して前の値のまま書く
+- Mac の並びは `xcb status --json` の順。状態は変わるたびに記録されるイベントのほうを使う（`xcb status --json` の値は最大 10 分古い）
+- xcb の理由の文（`host_state` の `reason`）はローカルパスを含むことがあるので、分類（接続できない・実行中に切断・Xcode が未準備）だけを書く
+- Issue は信用する author が作った open なもののうち最も新しく更新されたものを使い、無ければ閉じたものを開き直し、それも無ければ作る（ラベルが無ければ作る）
+- オーケストレーターを再起動した直後は Issue の本文を読み、同じ状態なら書き直さない
 
 ## GitHub の情報から最終 PR を作る
 
