@@ -54,6 +54,11 @@ struct FakeGitHubState {
     var repositoryRequests: [RepositoryRequestIssue] = []
     var deletedHeartbeats: [String] = []
     var closedLoopStatusIssues: [String] = []
+    /// ビルドの Mac の状態の Issue（キーは番号）
+    var buildHostsIssues: [Int: LoopStatusIssueRecord] = [:]
+    var createdBuildHostsIssues: [String] = []
+    var updatedBuildHostsIssues: [String] = []
+    var buildHostsFails = false
 }
 
 struct FakeRuntimeState {

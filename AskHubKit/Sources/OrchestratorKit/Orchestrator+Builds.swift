@@ -52,3 +52,61 @@ extension Orchestrator {
         return builds
     }
 }
+
+// ビルドの Mac の状態を `build-hosts` の Issue に書き出す（Discussion #366 の Q2・Q3）
+extension Orchestrator {
+    /// 設定の `buildHosts.issueRepository` があり、担当リポジトリのときだけ書く。`refreshBuildActivity()` の後に呼ぶ
+    func publishBuildHosts(now current: Date) async {
+        guard let settings = config.buildHosts, let repository = settings.issueRepository(in: config), let activity = buildActivity else {
+            return
+        }
+        // load・空きメモリは、確認時刻を書き直すときだけ取り直す（各 Mac に ssh で問い合わせるので毎回は呼ばない）
+        if buildHostsPublisher.needsMeasurement(lastAttemptAt: lastXcbStatusAttemptAt, now: current) {
+            lastXcbStatusAttemptAt = current
+            do {
+                lastXcbStatus = (try await xcbStatus.status(xcbPath: settings.xcbPath), current)
+            } catch {
+                log("xcb status --json を読めませんでした（load・空きメモリは前の値のまま書きます）: \(error)")
+            }
+        }
+        let report = BuildHostsReport.merging(
+            hosts: activity.tracker.hosts,
+            jobs: activity.tracker.hostJobs,
+            status: lastXcbStatus?.status,
+            measuredAt: lastXcbStatus?.measuredAt,
+            checkedAt: current
+        )
+        do {
+            try await publishBuildHosts(report, to: repository)
+        } catch let GitHubError.rateLimited(retryAfter) {
+            buildHostsPublisher.forget(retryAfter: retryAfter, now: current)
+            log("\(repository.fullName) にビルドの Mac の状態を書けませんでした（レート制限。\(retryAfter.components.seconds) 秒後に再試行します）")
+        } catch {
+            buildHostsPublisher.forget()
+            log("\(repository.fullName) にビルドの Mac の状態を書けませんでした（次のポーリングで再試行します）: \(error)")
+        }
+    }
+
+    private func publishBuildHosts(_ report: BuildHostsReport, to repository: RepositoryConfig) async throws {
+        let key = repository.fullName.lowercased()
+        var action = buildHostsPublisher.action(repositoryKey: key, report: report, now: report.checkedAt)
+        if action == .lookUp {
+            let issues = try await github.buildHostsIssues(in: repository.fullName)
+            buildHostsPublisher.adopt(issues, repositoryKey: key, trustedAuthors: trust.authors(for: repository.fullName))
+            action = buildHostsPublisher.action(repositoryKey: key, report: report, now: report.checkedAt)
+        }
+        switch action {
+        case .lookUp, .none:
+            return
+
+        case let .create(body):
+            let number = try await github.createBuildHostsIssue(in: repository.fullName, body: body)
+            buildHostsPublisher.recordWritten(report, number: number, repositoryKey: key)
+            log("\(repository.fullName) にビルドの Mac の状態の Issue #\(number) を作りました")
+
+        case let .update(number, body):
+            try await github.updateBuildHostsIssue(in: repository.fullName, number: number, body: body)
+            buildHostsPublisher.recordWritten(report, number: number, repositoryKey: key)
+        }
+    }
+}

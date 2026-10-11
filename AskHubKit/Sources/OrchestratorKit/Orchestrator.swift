@@ -57,6 +57,12 @@ public protocol OrchestratorGitHub: Sendable {
     func createLoopStatusIssue(in repository: String, body: String) async throws -> Int
     /// 状態用の Issue の本文を置き換える。閉じられていれば開き直す
     func updateLoopStatusIssue(in repository: String, number: Int, body: String) async throws
+    /// リポジトリの、`build-hosts` が付いた Issue（閉じたものも含む）
+    func buildHostsIssues(in repository: String) async throws -> [LoopStatusIssueRecord]
+    /// ビルドの Mac の状態の Issue を作る（ラベルが無ければ作る）。Issue の番号を返す
+    func createBuildHostsIssue(in repository: String, body: String) async throws -> Int
+    /// ビルドの Mac の状態の Issue の本文を置き換える。閉じられていれば開き直す
+    func updateBuildHostsIssue(in repository: String, number: Int, body: String) async throws
 }
 
 /// 終わるまで待って実行したコマンドの結果
@@ -165,6 +171,13 @@ public actor Orchestrator {
     var loopStatusPublisher = LoopStatusPublisher()
     /// xcb のイベントログから組み立てたビルドの情報。設定の `buildHosts` が無ければ `nil`
     var buildActivity: BuildActivity?
+    /// ビルドの Mac の状態の Issue に書いた内容
+    var buildHostsPublisher = BuildHostsPublisher()
+    /// 最後に取れた `xcb status --json` と、取った時刻
+    var lastXcbStatus: (status: XcbStatus, measuredAt: Date)?
+    /// 最後に `xcb status --json` を呼んだ時刻（失敗したときも含む）
+    var lastXcbStatusAttemptAt: Date?
+    let xcbStatus: any XcbStatusFetching
     /// 担当リポジトリごとの、まだ起動していない `ready-for-loop` の Discussion の番号（最後に取得できたもの）
     var readyDiscussionNumbers: [String: Int] = [:]
     /// epic の最終 PR がマージ済みか（キーは `<repo小文字> <branch>`）。未マージなら確かめた時刻も持ち、問い合わせを間引く
@@ -177,6 +190,7 @@ public actor Orchestrator {
     ///   - inbox: `needs-answer` の Discussion / PR と質問の取得元
     ///   - configStore: 設定の読み直しと担当リポジトリの書き換え（担当リポジトリの作成・削除の依頼に使う）
     ///   - repositoryWriters: 担当リポジトリに書き込み権限を持つアカウントの取得元（設定の `trustRepositoryWriters` が有効なときに使う）
+    ///   - xcbStatus: `xcb status --json` の呼び出し（設定の `buildHosts` があるときだけ使う）
     public init(
         config: OrchestratorConfig,
         github: any OrchestratorGitHub,
@@ -185,9 +199,11 @@ public actor Orchestrator {
         log: @escaping @Sendable (String) -> Void,
         now: @escaping @Sendable () -> Date = { Date() },
         configStore: (any OrchestratorConfigStore)? = nil,
-        repositoryWriters: RepositoryWriters? = nil
+        repositoryWriters: RepositoryWriters? = nil,
+        xcbStatus: any XcbStatusFetching = XcbStatusCommand()
     ) {
         self.config = config
+        self.xcbStatus = xcbStatus
         self.configStore = configStore
         self.trust = TrustDirectory(base: config.trustedAuthors)
         self.repositoryWriters = repositoryWriters
