@@ -13,14 +13,16 @@
 # - iOS Simulator の name= 指定は、リモートでは作業ツリーごとの専用 Simulator に置き換える（同時テストの取り合いを防ぐ）
 # - -derivedDataPath は無視し、Mac ごと・作業ツリーごとのパスを使う
 # - 1 回の実行ごとに xcb.log へ「実行場所・所要時間・終了コード」を 1 行残す
+# - 状態（問い合わせの結果・外した Mac・実行中のビルド）と枠のロックは ~/.local/state/askhub/xcb（XCB_STATE_DIR で変更可）、
+#   xcb.log はイベントと同じ ~/Library/Logs/askhub/xcb（XCB_LOG で変更可）に置く。スクリプトを置く場所には依存しない
 set -uo pipefail
 zmodload zsh/datetime   # EPOCHSECONDS
 
-BASE=${0:A:h}
 HOSTS_FILE=${XCB_HOSTS:-$HOME/.config/xcb/hosts}
-STATE=$BASE/.xcb-state
-LOCKDIR=$BASE/.xcb-locks
-LOG=$BASE/xcb.log
+STATE=${XCB_STATE_DIR:-$HOME/.local/state/askhub/xcb}
+LOCKDIR=$STATE/locks
+EVENTS_DIR=${XCB_EVENTS_DIR:-$HOME/Library/Logs/askhub/xcb}
+LOG=${XCB_LOG:-$EVENTS_DIR/xcb.log}
 PROBE_TTL=15        # 問い合わせ結果を使い回す秒数
 DOWN_TTL=60         # 切断した Mac を候補から外しておく秒数
 MAX_ATTEMPTS=4      # 切断による別の Mac でのやり直しの上限
@@ -29,12 +31,11 @@ TEST_WAIT=${XCB_TEST_WAIT:-1800}  # テストを動かせる Mac が無いとき
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=3
           -o ControlMaster=no -o ControlPath=none)
 
-mkdir -p $STATE/probe $STATE/drain $STATE/jobs $LOCKDIR
+mkdir -p $STATE/probe $STATE/drain $STATE/jobs $LOCKDIR ${LOG:h}
 log() { print -u2 "[xcb] $*"; }
 
 # ---- イベントの記録（オーケストレーターが読み、GitHub 経由で AskHub アプリに出す） ----
 # 1 行 1 イベントの JSON（JSON Lines）。5MB を超えたら events.jsonl.1 に回す
-EVENTS_DIR=${XCB_EVENTS_DIR:-$HOME/Library/Logs/askhub/xcb}
 EVENTS=$EVENTS_DIR/events.jsonl
 mkdir -p $EVENTS_DIR
 jstr() { local s=${1-}; s=${s//\\/\\\\}; s=${s//\"/\\\"}; print -rn -- "\"$s\""; }
