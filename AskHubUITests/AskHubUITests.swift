@@ -11,14 +11,14 @@ final class AskHubUITests: XCTestCase {
     override func setUpWithError() throws {
         // UI テストでは失敗した時点で即座に止める
         continueAfterFailure = false
-    }
-
-    @MainActor
-    override func setUp() async throws {
         // Simulator が横向きのまま残っていると（ほかの UI テストが回したなど）、レイアウトが変わって要素を見つけられない。
-        // 向きは iOS にしか無い（UI テストは macOS でもビルドする）
+        // 向きは iOS にしか無い（UI テストは macOS でもビルドする）。
+        // async の setUp にすると、失敗したときにテストランナーごと再起動し、CI の -retry-tests-on-failure の再試行が走らない。
+        // 同期の setUp はメインスレッドで呼ばれるので、ここで MainActor として向きを戻す
         #if os(iOS)
-        XCUIDevice.shared.orientation = .portrait
+        MainActor.assumeIsolated {
+            XCUIDevice.shared.orientation = .portrait
+        }
         #endif
     }
 
