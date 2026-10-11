@@ -73,6 +73,12 @@ struct IssueDetailView: View {
             }
         }
         .formStyle(.grouped)
+        // 履歴は画面を開いたときに読む。表示の位置（Form の行）と取得の始まりを分け、行が画面の外に出ても打ち切らない
+        .task {
+            if issue.kind == .decisionLog && historyModel.state == .idle {
+                await historyModel.load(using: inbox)
+            }
+        }
         // 投稿した指示を未処理として履歴に出す
         .onChange(of: decisionModel.postedInstructions) {
             Task { await historyModel.load(using: inbox) }

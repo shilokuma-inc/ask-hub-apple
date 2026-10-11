@@ -20,22 +20,16 @@ struct DecisionLogHistorySection: View {
         } header: {
             Text("指示と返信の履歴")
         } footer: {
-            Text("ループは返信の先頭に目印を置きます。最後の返信より後にある指示が未処理です。信用する author 以外のコメントは指示として扱いません")
-        }
-        .task {
-            if model.state == .idle {
-                await model.load(using: inbox)
-            }
+            Text("ループは返信の先頭に目印を置きます。最後のループの返信（または閉じたときのコメント）より後にある指示が未処理です。信用する author 以外のコメントは指示として扱いません")
         }
     }
 
     @ViewBuilder private var summary: some View {
         switch model.state {
         case .idle, .loading:
-            if model.rows.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-            }
+            // 取り直しの間も、進んでいることが分かるようにする
+            ProgressView()
+                .frame(maxWidth: .infinity)
 
         case let .failed(message):
             Label(message, systemImage: "exclamationmark.triangle")
