@@ -4,7 +4,7 @@
 #   xcb status                              各 Mac の空き具合・実行中の本数・外しているかを表示する
 #   xcb drain <Host> / xcb undrain <Host>   その Mac を候補から外す / 戻す（実行中のものは止めない）
 #
-# - ビルド先は ~/.config/xcb/hosts（XCB_HOSTS で変更可）。1 行 1 台で「Host 名・同時実行の上限・優先度・Xcode」
+# - ビルド先は ~/.config/xcb/hosts（XCB_HOSTS で変更可）。1 行 1 台で「Host 名・同時実行の上限・優先度・Xcode・テストを受けるか」
 # - リモートの候補ごとに、CPU のコア数・load average・空きメモリ・Xcode の準備状況を ssh で調べ（15 秒は使い回す）、
 #   空き具合 = 優先度 × 空きメモリの割合 × (コア数 − load average) ÷ (1 + その Mac で実行中の xcb の本数) が最大の Mac を選ぶ。
 #   つながる Mac がすべて満杯なら空くまで待つ。リモートが 1 台もつながらないときだけ Mac mini（local）で実行する
@@ -63,6 +63,16 @@ load_hosts() {
   [[ -n ${H_SLOTS[local]-} ]] || { H_SLOTS[local]=1; H_DEVDIR[local]=/Applications/Xcode.app/Contents/Developer; }
 }
 remote_hosts() { local h; for h in $H_NAMES; do [[ $h != local ]] && print $h; done }
+# その Mac が今回の action を受け持つか（設定の 5 列目）
+#   test（省略時）… すべて受ける / nosimtest … Simulator のテストだけ受けない（macOS のテストとビルドは受ける）/ notest … テストを受けない
+accepts() {  # $1=Host
+  [[ $ACTION == test* ]] || return 0
+  case ${H_TEST[$1]-test} in
+    notest) return 1 ;;
+    nosimtest) [[ $DEST != *Simulator* ]] ;;
+    *) return 0 ;;
+  esac
+}
 
 # ---- 問い合わせ（キャッシュ: "<時刻> ok <コア数> <load> <空きメモリ%>" か "<時刻> down <理由>"） ----
 probe_script() {  # $1=Developer ディレクトリ（空なら xcode-select のまま）
@@ -131,8 +141,8 @@ pick_remote() {
   for h in $(remote_hosts); do
     (( ${EXCLUDED[(Ie)$h]} )) && continue
     [[ -f $STATE/drain/$h ]] && continue
-    # テスト（Simulator を起動するもの）を受け持たない Mac（設定の 5 列目が notest）は、test 系に使わない
-    [[ $ACTION == test* && ${H_TEST[$h]-test} == notest ]] && continue
+    # テストを受け持たない Mac（設定の 5 列目が notest / nosimtest）は、受け持たない test 系に使わない
+    accepts $h || continue
     # このプラットフォーム（iOS / visionOS など）が入っていないと分かった Mac は 1 時間外す
     if [[ -f $STATE/noplatform/$h-$PLAT ]] && (( EPOCHSECONDS - $(<$STATE/noplatform/$h-$PLAT) < 3600 )); then continue; fi
     probe $h; read -r t kind ncpu load mem <<<"$REPLY"
@@ -261,6 +271,11 @@ REMOTE
       [[ ${rargs[i]} == $DEST ]] && rargs[i]="platform=iOS Simulator,id=$udid"
     done
   fi
+  # ssh 越しではログインのキーチェーンを使えず、macOS の署名が errSecInternalComponent で失敗する。
+  # 署名の指定が無ければアドホック署名にする（ビルド・テストの確認には足りる。CI の macOS のテストと同じ。archive は対象外）
+  if [[ $PLAT == macOS && $ACTION != archive && ${(j: :)args} != *CODE_SIGN* ]]; then
+    rargs+=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=)
+  fi
   ssh $SSH_OPTS $h "mkdir -p remote-builds/src/$NAME remote-builds/dd" || return 255
   rsync -az --delete --timeout=30 -e "ssh ${SSH_OPTS[*]}" \
     --exclude '.git/' --exclude 'DerivedData/' --exclude '.build/' \
@@ -333,7 +348,7 @@ while true; do
       job_file waiting 0; emit job_waiting id $JOB_ID
     fi
     sleep 5; (( waited += 5 )); continue
-  elif [[ $ACTION == test* && ${H_TEST[local]-test} == notest ]]; then
+  elif ! accepts local; then
     # テストを動かせる Mac が 1 台もつながっていない。Mac mini でも動かせないので、つながるまで待つ
     if (( test_waited == 0 )); then
       log "テストを動かせる Mac がつながっていないので、つながるまで待つ（最長 $(( TEST_WAIT / 60 )) 分）"
