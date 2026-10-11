@@ -163,6 +163,8 @@ public actor Orchestrator {
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
     var loopStatusPublisher = LoopStatusPublisher()
+    /// xcb のイベントログから組み立てたビルドの情報。設定の `buildHosts` が無ければ `nil`
+    var buildActivity: BuildActivity?
     /// 担当リポジトリごとの、まだ起動していない `ready-for-loop` の Discussion の番号（最後に取得できたもの）
     var readyDiscussionNumbers: [String: Int] = [:]
     /// epic の最終 PR がマージ済みか（キーは `<repo小文字> <branch>`）。未マージなら確かめた時刻も持ち、問い合わせを間引く
