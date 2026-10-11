@@ -42,9 +42,11 @@ public struct BuildMoveItem: Sendable, Equatable, Identifiable {
     public var resultText: String
     public var succeeded: Bool?
     public var finishedAt: Date?
+    /// 試行の回数（同じ経路をたどった別のビルドと id を分けるため）
+    public var attempt: Int?
 
     public var id: String {
-        "\(repository) \(text) \(finishedAt?.timeIntervalSince1970 ?? 0)"
+        "\(repository) \(text) \(finishedAt?.timeIntervalSince1970 ?? 0) \(attempt ?? 0)"
     }
 }
 
@@ -120,6 +122,7 @@ extension BuildHostsStatus {
 
 extension LoopStatusRow {
     /// 全リポジトリの、直近 24 時間に別の Mac に移ったビルド（新しい順）。担当 PC がいる行の目印だけを読む
+    /// （担当 PC がいない行は、状態そのものを出さないのに合わせる。担当 PC が戻れば 24 時間分がまた出る）
     public static func buildMoves(in rows: [LoopStatusRow], now: Date, within interval: TimeInterval = 24 * 60 * 60) -> [BuildMoveItem] {
         rows.flatMap { row -> [BuildMoveItem] in
             guard case let .reported(report) = row.status(now: now), let moved = report.builds?.moved else {
@@ -134,7 +137,8 @@ extension LoopStatusRow {
                     text: build.moveText,
                     resultText: build.resultText,
                     succeeded: build.succeeded,
-                    finishedAt: build.finishedAt
+                    finishedAt: build.finishedAt,
+                    attempt: build.attempt
                 )
             }
         }

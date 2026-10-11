@@ -72,12 +72,12 @@ final class LoopStatusModel {
         rows.isEmpty && waiting.isEmpty && usageLimited.isEmpty && manualLoops.isEmpty && buildHosts == nil
     }
 
-    /// 「手動ループ」の行
     /// 全リポジトリの、直近 24 時間に別の Mac に移ったビルド（新しい順）
     func buildMoves(now: Date) -> [BuildMoveItem] {
         LoopStatusRow.buildMoves(in: rows, now: now)
     }
 
+    /// 「手動ループ」の行
     func manualLoopItems(now: Date) -> [ManualLoopItem] {
         ManualLoopItem.items(epics: manualLoops, rows: rows, viewer: viewerLogin, needsAnswer: needsAnswer, now: now)
     }

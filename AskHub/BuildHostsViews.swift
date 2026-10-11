@@ -9,8 +9,10 @@ struct BuildHostsSection: View {
     var body: some View {
         if let status {
             Section {
+                // 書き手がいないあいだは今の状態とは限らないので、状態の色を落とす
+                let isStale = status.isStale(now: Date())
                 ForEach(status.hostDisplays) { host in
-                    BuildHostRow(host: host)
+                    BuildHostRow(host: host, isStale: isStale)
                 }
             } header: {
                 Text("ビルドの Mac")
@@ -39,6 +41,8 @@ struct BuildHostsSection: View {
 /// 「ビルドの Mac」の 1 台
 struct BuildHostRow: View {
     let host: BuildHostDisplay
+    /// 書き手が 30 分以上書き直していない（色を落とす）
+    var isStale = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -49,7 +53,7 @@ struct BuildHostRow: View {
                 Spacer()
                 Label(host.statusText, systemImage: host.systemImage)
                     .font(.caption)
-                    .foregroundStyle(host.tone.color)
+                    .foregroundStyle(isStale ? Color.secondary : host.tone.color)
             }
             if let loadText = host.loadText {
                 Text(loadText)
