@@ -36,6 +36,8 @@ final class InboxModel {
     private let makePoster: @Sendable (String) -> any AnswerPosting
     private let makeStarter: @Sendable (String) -> any LoopStarting
     private let makeCloser: @Sendable (String) -> any IssueClosing
+    private let makeApprover: @Sendable (String) -> any DecisionApproving
+    private let makeInstructionPoster: @Sendable (String) -> any DecisionInstructionPosting
     /// リポジトリごとの信用する author（トークンごと）
     private let makeTrust: @Sendable (String) -> any TrustedAuthorsResolving
     /// 直前の取得で求めた、リポジトリごとの信用する author（画面での判定に使う。キーは `owner/repo` の小文字）
@@ -49,6 +51,10 @@ final class InboxModel {
         makePoster: @escaping @Sendable (String) -> any AnswerPosting = { GitHubAnswerPoster(client: GitHubClient(token: $0)) },
         makeStarter: @escaping @Sendable (String) -> any LoopStarting = { GitHubLoopStarter(client: GitHubClient(token: $0)) },
         makeCloser: @escaping @Sendable (String) -> any IssueClosing = { GitHubIssueCloser(client: GitHubClient(token: $0)) },
+        makeApprover: @escaping @Sendable (String) -> any DecisionApproving = { GitHubDecisionApprover(client: GitHubClient(token: $0)) },
+        makeInstructionPoster: @escaping @Sendable (String) -> any DecisionInstructionPosting = {
+            GitHubDecisionInstructionPoster(client: GitHubClient(token: $0))
+        },
         organizations: @escaping () -> [String] = { OrganizationSettings.load() },
         makeTrust: @escaping @Sendable (String) -> any TrustedAuthorsResolving = { RepositoryTrustCache.trust(token: $0) }
     ) {
@@ -59,6 +65,8 @@ final class InboxModel {
         self.makePoster = makePoster
         self.makeStarter = makeStarter
         self.makeCloser = makeCloser
+        self.makeApprover = makeApprover
+        self.makeInstructionPoster = makeInstructionPoster
     }
 
     /// 回答を投稿するときのトークンが無い
@@ -138,6 +146,36 @@ final class InboxModel {
         closedIssueIDs.insert(issue.id)
         issues.removeAll { $0.id == issue.id }
         Task { await refresh() }
+    }
+
+    /// 仮決め一覧の 1 項目を承認する（本文のチェックを付ける。Discussion #349 の Q2）。
+    /// 承認器が読み直した本文を一覧の Issue にも反映し、詳細画面を開き直しても古い本文に戻らないようにする
+    func approve(_ item: DecisionLogItem, in issue: InboxIssue) async throws -> DecisionApproval {
+        guard let token = try tokenStore.load() else {
+            throw MissingTokenError()
+        }
+        useToken(token)
+        let result = try await makeApprover(token).approve(item.text, in: issue)
+        guard Self.fingerprint(of: token) == lastTokenFingerprint else {
+            return result
+        }
+        let body = switch result {
+        case let .approved(body), let .alreadyApproved(body), let .notFound(body):
+            body
+        }
+        if let index = issues.firstIndex(where: { $0.id == issue.id }) {
+            issues[index].body = body
+        }
+        return result
+    }
+
+    /// 仮決めの 1 項目への指示（別案・自由記述）を 1 件のコメントとして投稿し、コメントの URL を返す（Discussion #349 の Q3）
+    func post(_ instruction: DecisionInstruction, for item: DecisionLogItem, to issue: InboxIssue) async throws -> URL {
+        guard let token = try tokenStore.load() else {
+            throw MissingTokenError()
+        }
+        useToken(token)
+        return try await makeInstructionPoster(token).post(instruction, for: item, to: issue)
     }
 
     /// トークンが変わったら（別のアカウントになりうるので）回答済み・閉じた記録を捨てる
@@ -242,6 +280,24 @@ final class InboxModel {
         // Issues の書き込み権限が無いと 403、リポジトリが見えないトークンでは 404 になる
         case GitHubError.http(status: 403, _), GitHubError.http(status: 404, _):
             "閉じられませんでした。トークンに、このリポジトリの Issues の書き込み権限（Read and write）があるか確かめてください"
+
+        default:
+            message(for: error)
+        }
+    }
+
+    /// 仮決めの承認・指示を送れなかったときの説明。トークンの値は含めない
+    static func decisionMessage(for error: any Error) -> String {
+        switch error {
+        // Issues の書き込み権限が無いと 403、リポジトリが見えないトークンでは 404 になる
+        case GitHubError.http(status: 403, _), GitHubError.http(status: 404, _):
+            "送れませんでした。トークンに、このリポジトリの Issues の書き込み権限（Read and write）があるか確かめてください"
+
+        case DecisionInstructionError.invalidInstruction:
+            "別案を選ぶか、補足を入力してください"
+
+        case DecisionInstructionError.notDecisionLog, DecisionApprovalError.notDecisionLog:
+            "仮決め一覧ではない Issue には送れません"
 
         default:
             message(for: error)
