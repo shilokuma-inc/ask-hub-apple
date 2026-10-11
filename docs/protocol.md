@@ -308,6 +308,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 アプリの詳細画面は、仮決め一覧のコメント（ページングを最後まで追い、古い順（作成順）に並べる）から指示とループの返信の履歴を出す。
 処理済みの判定はオーケストレーター（`DecisionLog.unprocessedInstructions`）と同じにする。
+判定は `DecisionLogHistory`（オーケストレーターもこれを使う）、コメントの取得は `GitHubDecisionLogComments` が実装している。
 
 - 信用する author が書いた、`<!-- ask-hub:decision-reply -->` か `<!-- ask-hub:decision-close -->` を含むコメントが返信（目印）
 - 最後の目印より後にある、信用する author の目印でないコメントが**未処理の指示**。それより前の信用する author のコメントは処理済み
