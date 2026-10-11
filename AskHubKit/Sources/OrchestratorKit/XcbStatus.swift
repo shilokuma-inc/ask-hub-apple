@@ -101,11 +101,21 @@ public enum XcbStatusError: Error, Equatable, CustomStringConvertible {
 public struct XcbStatusCommand: XcbStatusFetching {
     /// 各 Mac に ssh で問い合わせるので数秒〜十数秒かかる。これを過ぎたら止める
     public static let defaultTimeout: Duration = .seconds(60)
+    /// 終わった後に出力の読み切りを待つ上限（xcb が起動した ssh などがパイプを持ち続けても戻れるように）
+    static let outputDrainTimeout: Duration = .seconds(5)
+    /// 出力の上限（Mac の一覧と実行中のジョブだけなので、ふつうは数 KB）
+    static let maxOutputBytes = 1_000_000
 
     private let timeout: Duration
+    private let outputDrainTimeout: Duration
 
     public init(timeout: Duration = defaultTimeout) {
+        self.init(timeout: timeout, outputDrainTimeout: Self.outputDrainTimeout)
+    }
+
+    init(timeout: Duration, outputDrainTimeout: Duration) {
         self.timeout = timeout
+        self.outputDrainTimeout = outputDrainTimeout
     }
 
     public func status(xcbPath: String) async throws -> XcbStatus {
@@ -126,9 +136,8 @@ public struct XcbStatusCommand: XcbStatusFetching {
         } catch {
             throw XcbStatusError.launchFailed(reason: error.localizedDescription)
         }
-        // パイプが一杯になって xcb が止まらないよう、終了を待つ前から読み切る
-        let reader = output.fileHandleForReading
-        let reading = Task.detached { (try? reader.readToEnd()) ?? Data() }
+        // パイプが一杯になって xcb が止まらないよう、終了を待つ前から読み続ける
+        let collector = OutputCollector(reading: output.fileHandleForReading, limit: Self.maxOutputBytes)
         let pid = process.processIdentifier
         let timeout = timeout
         let timer = Task {
@@ -141,14 +150,15 @@ public struct XcbStatusCommand: XcbStatusFetching {
             status = value
         }
         timer.cancel()
-        let data = await reading.value
+        // 止めた xcb の子プロセス（ssh など）がパイプを持ち続けても、読み切りを待つのは `outputDrainTimeout` まで
+        let text = await collector.finish(waitingAtMost: outputDrainTimeout)
         if (try? await timer.value) == true {
             throw XcbStatusError.timedOut
         }
         guard status == 0 else {
             throw XcbStatusError.failed(status: status)
         }
-        guard let decoded = XcbStatus.decode(data) else {
+        guard let decoded = XcbStatus.decode(Data(text.utf8)) else {
             throw XcbStatusError.unreadableOutput
         }
         return decoded

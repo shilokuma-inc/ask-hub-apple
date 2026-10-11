@@ -62,4 +62,18 @@ struct XcbStatusTests {
             try await XcbStatusCommand(timeout: .milliseconds(200)).status(xcbPath: try script("exec sleep 30"))
         }
     }
+
+    @Test func returnsEvenIfChildKeepsOutputOpen() async throws {
+        // xcb を止めても、xcb が起動した子プロセス（ssh など）が標準出力のパイプを持ち続ける
+        let start = ContinuousClock.now
+        await #expect(throws: XcbStatusError.timedOut) {
+            try await XcbStatusCommand(timeout: .milliseconds(200), outputDrainTimeout: .milliseconds(300))
+                .status(xcbPath: try script("sleep 30 &\nwait"))
+        }
+        // xcb が先に終わって子プロセスだけが残っても、出力を読み切りの上限まで待って返る
+        let detached = try script(#"echo '{"hosts":[]}'; sleep 30 &"#)
+        let status = try await XcbStatusCommand(timeout: .seconds(10), outputDrainTimeout: .milliseconds(300)).status(xcbPath: detached)
+        #expect(status == XcbStatus(hosts: []))
+        #expect(ContinuousClock.now - start < .seconds(10))
+    }
 }
