@@ -140,6 +140,8 @@ pick_remote() {
   local any=0
   reap_stale
   for h in $(remote_hosts); do
+    # test-without-building は、build-for-testing を実行した Mac だけを候補にする（ビルド結果がその Mac の DerivedData にある）
+    [[ -n $PINNED && $h != $PINNED ]] && continue
     (( ${EXCLUDED[(Ie)$h]} )) && continue
     [[ -f $STATE/drain/$h ]] && continue
     # テストを受け持たない Mac（設定の 5 列目が notest / nosimtest）は、受け持たない test 系に使わない
@@ -230,7 +232,28 @@ case $DEST in
   *macOS*) PLAT=macOS ;;
   *) PLAT=other ;;
 esac
-mkdir -p $STATE/noplatform
+mkdir -p $STATE/noplatform $STATE/affinity
+
+# build-for-testing を実行した Mac を、作業ツリーとプラットフォームごとに覚えておく。DerivedData は Mac ごとなので、
+# test-without-building はその Mac で流す。その Mac で流せなければ test（ビルドしてからテスト）に置き換え、流せる Mac でやり直す
+AFFINITY=$STATE/affinity/$NAME-$PLAT
+PINNED=""
+to_test() {  # $1=理由
+  log "${1}ので、test-without-building を test（ビルドしてからテスト）に置き換える"
+  local i
+  for i in {1..$#args}; do [[ ${args[i]} == test-without-building ]] && args[i]=test; done
+  ACTION=test; PINNED=""
+}
+# -xctestrun で渡されたビルド結果を使うときは、置き換えも固定もしない
+if [[ $ACTION == test-without-building && ${(j: :)args} != *-xctestrun* ]]; then
+  [[ -f $AFFINITY ]] && PINNED=$(<$AFFINITY)
+  if [[ -z $PINNED ]]; then
+    to_test "build-for-testing を実行した Mac が分からない"
+  elif ! accepts $PINNED; then
+    to_test "build-for-testing を実行した ${PINNED} ではこのテストを動かせない"
+  fi
+fi
+
 OUT=$(mktemp -t xcb-out)
 JOB_ID="$(strftime '%Y%m%d%H%M%S' $EPOCHSECONDS)-$$"
 JOB_FILE=$STATE/jobs/$JOB_ID
@@ -355,6 +378,9 @@ while true; do
       job_file waiting 0; emit job_waiting id $JOB_ID
     fi
     sleep 5; (( waited += 5 )); continue
+  elif [[ -n $PINNED && $PINNED != local ]]; then
+    to_test "build-for-testing を実行した ${PINNED} につながらない"
+    continue
   elif ! accepts local; then
     # テストを動かせる Mac が 1 台もつながっていない（持ち出し中など）。Mac mini でも動かせない。
     # 既定では待たずに 75 で返し、テストは PR の CI に任せる。XCB_TEST_WAIT を指定すれば、その秒数だけつながるのを待つ
@@ -381,6 +407,10 @@ while true; do
   run_local; rc=$?
   break
 done
+
+if [[ $ACTION == build-for-testing ]]; then
+  if (( rc == 0 )); then print -r -- ${${WHERE:#local*}:-local} > $AFFINITY; else rm -f $AFFINITY; fi
+fi
 
 emit job_finished id $JOB_ID path $SRC action $ACTION platform $PLAT host ${WHERE:-none} \
   '#rc' $rc '#seconds' $(( SECONDS - start )) '#attempts' $attempt '#moves' $MOVES
