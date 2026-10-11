@@ -18,6 +18,8 @@ struct IssueDetailView: View {
     @State private var pendingAction: DecisionLogDetailModel.Action?
     /// 送る前とキーボードの「完了」でキーボードを閉じ、確認や結果が隠れないようにする
     @FocusState private var isEditingNote: Bool
+    /// 仮決め一覧の指示とループの返信の履歴
+    @State private var historyModel: DecisionLogHistoryModel
     @Environment(\.dismiss)
     private var dismiss
 
@@ -26,6 +28,7 @@ struct IssueDetailView: View {
         self.inbox = inbox
         renderedBody = RenderedBody(body: issue.body)
         _decisionModel = State(initialValue: DecisionLogDetailModel(issue: issue))
+        _historyModel = State(initialValue: DecisionLogHistoryModel(issue: issue))
     }
 
     private var reference: String {
@@ -59,6 +62,10 @@ struct IssueDetailView: View {
                 } else {
                     RenderedBodyView(content: displayedBody)
                 }
+            }
+
+            if issue.kind == .decisionLog {
+                DecisionLogHistorySection(model: historyModel, inbox: inbox)
             }
 
             if issue.kind == .needsVerify {
