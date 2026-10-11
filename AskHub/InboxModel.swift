@@ -321,6 +321,18 @@ final class InboxModel {
         }
     }
 
+    /// 仮決め一覧の履歴を読めなかったときの説明。トークンの値は含めない
+    static func historyMessage(for error: any Error) -> String {
+        switch error {
+        // リポジトリが見えないトークンでは 404、権限が足りなければ 403 になる
+        case GitHubError.http(status: 403, _), GitHubError.http(status: 404, _):
+            "履歴を読めませんでした。トークンに、このリポジトリの Issues の読み取り権限があるか確かめてください"
+
+        default:
+            message(for: error)
+        }
+    }
+
     /// 取得・投稿の失敗の説明。トークンの値は含めない
     static func message(for error: any Error) -> String {
         if error is MissingTokenError {

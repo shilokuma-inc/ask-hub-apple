@@ -39,10 +39,23 @@ final class DecisionLogHistoryModel {
         state == .loading
     }
 
+    /// 取得中に `load` が呼ばれたか（指示を投稿した直後など）。取得が終わったら取り直す
+    private var needsReloadAfterLoading = false
+
+    /// 履歴を取り直す。取得中に呼ばれたら、その取得が終わってから取り直す（投稿したばかりの指示を取りこぼさないため）
     func load(using inbox: InboxModel) async {
         guard !isLoading else {
+            needsReloadAfterLoading = true
             return
         }
+        repeat {
+            needsReloadAfterLoading = false
+            await fetch(using: inbox)
+        } while needsReloadAfterLoading && !Task.isCancelled
+    }
+
+    private func fetch(using inbox: InboxModel) async {
+        let previous = state
         state = .loading
         do {
             let history = try await inbox.decisionHistory(for: issue)
@@ -50,7 +63,12 @@ final class DecisionLogHistoryModel {
             unprocessedCount = history.unprocessedInstructions.count
             state = .loaded
         } catch {
-            state = .failed(InboxModel.message(for: error))
+            // 画面から外れて取得が打ち切られた。失敗とは表示せず、次に表示したときに取り直せるようにする
+            if Task.isCancelled || error is CancellationError {
+                state = previous == .loading ? .idle : previous
+                return
+            }
+            state = .failed(InboxModel.historyMessage(for: error))
         }
     }
 }
