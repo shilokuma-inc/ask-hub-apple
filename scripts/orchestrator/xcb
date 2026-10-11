@@ -31,6 +31,9 @@ PROBE_TTL=15        # 問い合わせ結果を使い回す秒数
 DOWN_TTL=60         # 切断した Mac を候補から外しておく秒数
 MAX_ATTEMPTS=4      # 切断による別の Mac でのやり直しの上限
 TEST_WAIT=${XCB_TEST_WAIT:-0}  # テストを動かせる Mac が無いときに待つ秒数（過ぎたら 75 で返す。既定は待たない）
+# リモートの作業ツリーと DerivedData の置き場（ホームからの相対パス）。名前を .noindex で終わらせて Spotlight の索引から外す
+# （ビルドのたびに索引を作り直し、load を押し上げて選ばれにくくなるため）
+REMOTE_ROOT=${XCB_REMOTE_ROOT:-remote-builds.noindex}
 LOCAL_MIN_FREE_MEMORY=${XCB_LOCAL_MIN_FREE_MEMORY:-50}  # Mac mini を空いているとみなす空きメモリの下限（%）
 LOCAL_MAX_LOAD=${XCB_LOCAL_MAX_LOAD:-0.5}               # Mac mini を空いているとみなす load ÷ コア数の上限
 # 長く動く ssh は接続を使い回さず、自分で生存確認する（5 秒ごと × 3 回、約 15 秒で切断に気づく）
@@ -363,10 +366,10 @@ REMOTE
   if [[ $PLAT == macOS && $ACTION != archive && ${(j: :)args} != *CODE_SIGN* ]]; then
     rargs+=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=)
   fi
-  ssh $SSH_OPTS $h "mkdir -p remote-builds/src/$NAME remote-builds/dd" || return 255
+  ssh $SSH_OPTS $h "mkdir -p $REMOTE_ROOT/src/$NAME $REMOTE_ROOT/dd" || return 255
   rsync -az --delete --timeout=30 -e "ssh ${SSH_OPTS[*]}" \
     --exclude '.git/' --exclude 'DerivedData/' --exclude '.build/' \
-    "$SRC/" "${h}:remote-builds/src/$NAME/" || return 255
+    "$SRC/" "${h}:$REMOTE_ROOT/src/$NAME/" || return 255
   # 前に切断された同じ作業ツリーのビルドがその Mac に残っていれば止める（同じ作業ツリーを別の xcb が使っていないときだけ）
   local other=0 d p
   for d in $LOCKDIR/$h-<->(N/); do
@@ -374,15 +377,16 @@ REMOTE
     p=$(<$d/pid 2>/dev/null) || continue
     [[ ${p#* } == $NAME ]] && other=1
   done
-  (( other )) || ssh $SSH_OPTS $h "pkill -f -- 'remote-build[s]/dd/$NAME -skipPackagePluginValidation' 2>/dev/null; true" || return 255
+  # 末尾の 1 文字を [] で囲み、pkill を実行するシェル自身のコマンドラインには一致しないようにする
+  (( other )) || ssh $SSH_OPTS $h "pkill -f -- '${REMOTE_ROOT[1,-2]}[${REMOTE_ROOT[-1]}]/dd/$NAME -skipPackagePluginValidation' 2>/dev/null; true" || return 255
   # リモート側に見張りを付ける。ssh のセッションが消えるか、接続元（Mac mini）に 15 秒届かなければ xcodebuild を止める
   # （ネットワークから外れると、Mac mini 側は別の Mac でやり直すが、リモートのビルドは放っておくと動き続けるため）
-  ssh $SSH_OPTS $h zsh -s -- ${(q)NAME} ${(q)dev} ${(q)rargs[@]} <<'REMOTE'
-name=$1; dev=$2; shift 2
-cd ~/remote-builds/src/$name || exit 1
+  ssh $SSH_OPTS $h zsh -s -- ${(q)REMOTE_ROOT} ${(q)NAME} ${(q)dev} ${(q)rargs[@]} <<'REMOTE'
+root=$1; name=$2; dev=$3; shift 3
+cd ~/$root/src/$name || exit 1
 [[ -n $dev ]] && export DEVELOPER_DIR=$dev
 client=${SSH_CLIENT%% *}
-xcodebuild "$@" -derivedDataPath $HOME/remote-builds/dd/$name -skipPackagePluginValidation </dev/null &
+xcodebuild "$@" -derivedDataPath $HOME/$root/dd/$name -skipPackagePluginValidation </dev/null &
 pid=$!
 miss=0
 while kill -0 $pid 2>/dev/null; do
