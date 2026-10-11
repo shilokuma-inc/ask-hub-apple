@@ -41,6 +41,7 @@ extension Orchestrator {
                 log("\(repository.fullName) にループの状態を書けませんでした（次のポーリングで再試行します）: \(error)")
             }
         }
+        await publishBuildHosts(now: current)
     }
 
     private func publish(_ report: LoopStatusReport, to repository: RepositoryConfig) async throws {
