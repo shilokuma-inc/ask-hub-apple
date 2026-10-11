@@ -95,6 +95,8 @@
   値だけ（`#17`）では引けない。値を確かめるときは `app.staticTexts["元の PR, #17"]` で引く
 - `AskHubKit` の public な型の名前を変えた直後の `swift test --package-path AskHubKit` は、別のターゲット（`OrchestratorKitTests` など）の古いオブジェクトが残り、
   「Undefined symbols」（古い型名の `init`）でリンクが落ちることがある。コードの誤りではないので、`AskHubKit/.build` を消してビルドし直す
+- ralph-loop の xcodebuild のラッパー（別の Mac で実行する）で UI テストを流すと、`.xcresult` は実行した Mac に残り、ログの末尾にそのパスが出る。
+  `-resultBundlePath` で手元に書かせることはできないので、スクリーンショットはそのパスを `rsync` で取り寄せてから `xcrun xcresulttool export attachments` で取り出す
 
 ## Keychain
 

@@ -101,3 +101,100 @@ extension AskHubUITests {
         XCTAssertFalse(app.staticTexts["PAT の Keychain への保存と macOS の設定画面の見た目"].exists)
     }
 }
+
+// 任意判断の詳細画面での承認・指示（Discussion #349）
+extension AskHubUITests {
+    @MainActor
+    func testApproveAndInstructDecisionItems() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは承認・投稿したことにして GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["任意判断"].tap()
+        let decisionLog = app.staticTexts["epic/mvp の仮決め一覧"]
+        XCTAssertTrue(decisionLog.waitForExistence(timeout: 5))
+        decisionLog.tap()
+
+        // 確認済みの項目は承認済み・変更済みとして出す
+        XCTAssertTrue(app.staticTexts["承認済み"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["変更済み: 別案 1（52pt）"].exists)
+        let overview = XCTAttachment(screenshot: app.screenshot())
+        overview.name = "decision-items"
+        overview.lifetime = .keepAlways
+        add(overview)
+
+        // 別案を選ぶと、送るコメントを見せて確かめる
+        let changeInterval = app.buttons["別案 2: 15 分"]
+        for _ in 0..<3 where !changeInterval.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(changeInterval.waitForExistence(timeout: 5))
+        changeInterval.tap()
+        let confirmInstruction = app.buttons["投稿する"]
+        XCTAssertTrue(confirmInstruction.waitForExistence(timeout: 5))
+        let instructionDialog = XCTAttachment(screenshot: app.screenshot())
+        instructionDialog.name = "decision-instruction-confirmation"
+        instructionDialog.lifetime = .keepAlways
+        add(instructionDialog)
+        confirmInstruction.tap()
+        XCTAssertTrue(app.staticTexts["指示を送りました。ループが次の周回で読みます"].waitForExistence(timeout: 5))
+        let instructed = XCTAttachment(screenshot: app.screenshot())
+        instructed.name = "decision-instructed"
+        instructed.lifetime = .keepAlways
+        add(instructed)
+
+        // 採用のまま承認する。確かめてから本文のチェックを付け、承認済みとして出し直す
+        let approve = app.buttons["採用のまま（承認）"].firstMatch
+        XCTAssertTrue(approve.waitForExistence(timeout: 5))
+        approve.tap()
+        let confirmApproval = app.buttons["承認する"]
+        XCTAssertTrue(confirmApproval.waitForExistence(timeout: 5))
+        let approvalDialog = XCTAttachment(screenshot: app.screenshot())
+        approvalDialog.name = "decision-approve-confirmation"
+        approvalDialog.lifetime = .keepAlways
+        add(approvalDialog)
+        confirmApproval.tap()
+        XCTAssertTrue(app.staticTexts["承認しました"].waitForExistence(timeout: 5))
+        XCTAssertFalse(changeInterval.exists, "承認した項目には別案のボタンを出さない")
+        let approved = XCTAttachment(screenshot: app.screenshot())
+        approved.name = "decision-approved"
+        approved.lifetime = .keepAlways
+        add(approved)
+    }
+}
+
+// 任意判断の詳細画面の、指示とループの返信の履歴（Discussion #349）
+extension AskHubUITests {
+    @MainActor
+    func testDecisionLogShowsInstructionHistory() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["任意判断"].tap()
+        let decisionLog = app.staticTexts["epic/mvp の仮決め一覧"]
+        XCTAssertTrue(decisionLog.waitForExistence(timeout: 5))
+        decisionLog.tap()
+
+        // 履歴は本文の下にある（Form は画面の外の行を作らないので、出るまでスクロールする）
+        let unprocessed = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "未処理の指示が 1 件あります")).firstMatch
+        for _ in 0..<12 where !unprocessed.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(unprocessed.waitForExistence(timeout: 5))
+        let untrusted = app.staticTexts["信用外（指示として扱わない）"]
+        for _ in 0..<3 where !untrusted.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(untrusted.exists)
+        XCTAssertTrue(app.staticTexts["指示・処理済み"].exists || app.staticTexts["ループの返信"].exists)
+        // ループの返信の目印は本文に出さない
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "ask-hub:decision-reply")).firstMatch.exists)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "decision-history"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+}
