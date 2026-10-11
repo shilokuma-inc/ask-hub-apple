@@ -26,11 +26,19 @@ public struct LoopStatusRepository: Sendable, Equatable {
     public var heartbeatDescription: String?
     /// open な `loop-status` の Issue（author を問わない）
     public var issues: [LoopStatusIssue]
+    /// open な `build-hosts` の Issue（author を問わない）
+    public var buildHostsIssues: [LoopStatusIssue]
 
-    public init(repository: String, heartbeatDescription: String?, issues: [LoopStatusIssue]) {
+    public init(
+        repository: String,
+        heartbeatDescription: String?,
+        issues: [LoopStatusIssue],
+        buildHostsIssues: [LoopStatusIssue] = []
+    ) {
         self.repository = repository
         self.heartbeatDescription = heartbeatDescription
         self.issues = issues
+        self.buildHostsIssues = buildHostsIssues
     }
 }
 
@@ -129,12 +137,63 @@ public struct LoopStatusFetcher: Sendable {
     }
 
     public func rows(orgs: [String]) async throws -> [LoopStatusRow] {
+        try await status(orgs: orgs).rows
+    }
+
+    /// 「ステータス」タブの行と、ビルドの Mac の状態
+    public func status(orgs: [String]) async throws -> LoopStatusSnapshot {
         var rows: [LoopStatusRow] = []
+        var buildHosts: [BuildHostsStatus] = []
         // 状態用の Issue があるリポジトリだけ、信用する author を求める（organization の全リポジトリには問い合わせない）
         for repository in try await source.loopStatusRepositories(orgs: orgs) {
-            let trusted = repository.issues.isEmpty ? TrustedAuthors([]) : await trust.trustedAuthors(for: repository.repository)
+            let hasIssues = !repository.issues.isEmpty || !repository.buildHostsIssues.isEmpty
+            let trusted = hasIssues ? await trust.trustedAuthors(for: repository.repository) : TrustedAuthors([])
             rows += LoopStatusRow.rows(from: [repository], trustedAuthors: trusted)
+            buildHosts += BuildHostsStatus.statuses(from: repository, trustedAuthors: trusted)
         }
-        return rows.sorted { $0.repository.lowercased() < $1.repository.lowercased() }
+        return LoopStatusSnapshot(
+            rows: rows.sorted { $0.repository.lowercased() < $1.repository.lowercased() },
+            // 書き手は 1 台の Mac だけの想定。複数のリポジトリにあれば、最も新しく確かめたものを使う
+            buildHosts: buildHosts.max { ($0.report.checkedAt, $0.repository) < ($1.report.checkedAt, $1.repository) }
+        )
+    }
+}
+
+/// `LoopStatusFetcher.status(orgs:)` の結果
+public struct LoopStatusSnapshot: Sendable, Equatable {
+    public var rows: [LoopStatusRow]
+    /// ビルドの Mac の状態。信用する author の `build-hosts` の Issue が無ければ `nil`
+    public var buildHosts: BuildHostsStatus?
+
+    public init(rows: [LoopStatusRow], buildHosts: BuildHostsStatus? = nil) {
+        self.rows = rows
+        self.buildHosts = buildHosts
+    }
+}
+
+/// ビルドの Mac の状態の Issue（`build-hosts`）から読んだもの
+public struct BuildHostsStatus: Sendable, Equatable {
+    /// Issue を置いたリポジトリ（`owner/name`）
+    public var repository: String
+    public var issueURL: URL
+    public var report: BuildHostsReport
+
+    public init(repository: String, issueURL: URL, report: BuildHostsReport) {
+        self.repository = repository
+        self.issueURL = issueURL
+        self.report = report
+    }
+
+    /// 信用する author が作り、目印を読める Issue のうち最も新しく更新されたもの（public リポジトリでは誰でも同じラベルで作れる）
+    static func statuses(from repository: LoopStatusRepository, trustedAuthors: TrustedAuthors) -> [Self] {
+        let newest = repository.buildHostsIssues
+            .filter { trustedAuthors.contains($0.author) }
+            .sorted { ($0.updatedAt, $0.number) > ($1.updatedAt, $1.number) }
+            .lazy
+            .compactMap { issue in
+                BuildHostsReport.parse(issue.body).map { Self(repository: repository.repository, issueURL: issue.url, report: $0) }
+            }
+            .first
+        return newest.map { [$0] } ?? []
     }
 }

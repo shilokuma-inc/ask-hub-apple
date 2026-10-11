@@ -210,6 +210,14 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - `checkedAt` が 30 分より古ければ、アプリは書き手がいない（Mac の状態が分からない）とみなす
 - Mac の切断はステータスのバッジ（異常の件数）には数えない（Q7。表示だけ）
 
+アプリの読み方（`LoopStatusFetcher.status(orgs:)`。GitHub からの取得は `GitHubLoopStatusSource`）:
+
+- 「ループの状態」と同じ `organization.repositories` の GraphQL で、`loop-status` と一緒に open な `build-hosts` の Issue も取る
+  （`labels:` は OR なので問い合わせの回数は増えない。Search API は使わない）。本文の目印（`ask-hub:build-hosts`）で `build-hosts` かを分ける（Issue のラベルの一覧は 1 ページに収まるとは限らないため読まない）
+- リポジトリごとの信用する author が作り、目印を読める Issue のうち、最も新しく更新されたものを使う。
+  複数のリポジトリにあれば、`checkedAt` が最も新しいものを使う
+- `build-hosts` の Issue だけがあるリポジトリは、ステータスの行にしない
+
 ## 質問の目印
 
 質問のコメント本文の**先頭**に、次の HTML コメントを置く。GitHub 上では表示されない。
