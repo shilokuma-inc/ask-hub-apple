@@ -136,28 +136,43 @@ struct BuildHostsView: View {
             BuildMovesSection(moves: model.buildMoves(now: Date()))
         }
         .overlay {
-            if model.buildHosts == nil {
-                if model.isLoading {
-                    ProgressView()
-                } else {
-                    ContentUnavailableView(
-                        "ビルドの Mac の情報はありません",
-                        systemImage: "desktopcomputer",
-                        description: Text("xcb でビルドを振り分けている Mac のオーケストレーターが、設定の buildHosts を持つと、ここに出ます")
-                    )
-                }
+            // 移動の記録だけがあるときは、空の表示で覆わない
+            if model.buildHosts == nil, model.buildMoves(now: Date()).isEmpty {
+                emptyState
             }
         }
         .refreshable { await model.refresh() }
         .navigationTitle("ビルドの Mac")
         .task { await model.refreshIfStale() }
     }
+
+    /// 取得の状態で分ける（取得の失敗やトークン未設定を「Issue が無い」と言い換えない）
+    @ViewBuilder private var emptyState: some View {
+        switch model.state {
+        case .idle, .loading:
+            ProgressView()
+
+        case .needsToken:
+            ContentUnavailableView("トークンが未設定です", systemImage: "key")
+
+        case let .failed(message):
+            ContentUnavailableView("取得できませんでした", systemImage: "exclamationmark.triangle", description: Text(message))
+
+        case .loaded:
+            ContentUnavailableView(
+                "ビルドの Mac の情報はありません",
+                systemImage: "desktopcomputer",
+                description: Text("xcb でビルドを振り分けている Mac のオーケストレーターが、設定の buildHosts を持つと、ここに出ます")
+            )
+        }
+    }
 }
 
 extension BuildHostsStatus {
-    /// 設定画面の入口に出す「3 台・実行中 1」
-    var summaryText: String {
+    /// 設定画面の入口に出す「3 台・実行中 1」。30 分以上書き直されていなければ「（古い）」を付ける
+    func summaryText(now: Date) -> String {
         let running = report.jobs.count
-        return running > 0 ? "\(report.hosts.count) 台・実行中 \(running)" : "\(report.hosts.count) 台"
+        let text = running > 0 ? "\(report.hosts.count) 台・実行中 \(running)" : "\(report.hosts.count) 台"
+        return isStale(now: now) ? text + "（古い）" : text
     }
 }

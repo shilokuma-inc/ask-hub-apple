@@ -71,7 +71,10 @@ struct SettingsView: View {
                         NavigationLink {
                             BuildHostsView(model: loopModel)
                         } label: {
-                            LabeledContent("ビルドの Mac", value: loopModel.buildHosts?.summaryText ?? "情報なし")
+                            LabeledContent(
+                                "ビルドの Mac",
+                                value: loopModel.buildHosts?.summaryText(now: Date()) ?? (loopModel.isLoading ? "取得中" : "情報なし")
+                            )
                         }
                         .accessibilityIdentifier("build-hosts-link")
                     } header: {
