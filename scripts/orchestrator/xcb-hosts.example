@@ -1,0 +1,10 @@
+# xcb のビルド先。~/.config/xcb/hosts（XCB_HOSTS で変更可）にコピーし、xcb を動かす Mac から ssh で入れる Mac を書く。
+# 1 行 1 台: <ssh の Host 名> <同時実行の上限> <優先度> <Xcode の Developer ディレクトリ（- はその Mac の xcode-select のまま）> <テストを受けるか>
+#   優先度: 空き具合に掛ける重み（大きいほど選ばれやすい）。行を消すかコメントにすれば候補から外れる
+#   テストを受けるか: test（省略時。すべて受ける）/ nosimtest（Simulator のテストだけ受けない。macOS のテストとビルドは受ける）/ notest（ビルドだけ）
+# local は xcb を動かす Mac 自身。優先度が 0（省略時）なら、リモートが 1 台もつながらないときだけ使う。
+#   0 より大きくすると、空きメモリと負荷がしきい値の内側のときだけリモートと並べて選ぶ
+#   （しきい値は環境変数 XCB_LOCAL_MIN_FREE_MEMORY（既定 50%）・XCB_LOCAL_MAX_LOAD（load ÷ コア数。既定 0.5））
+build-mac-1  4  1.0  -
+build-mac-2  2  0.7  /Applications/Xcode-26.6.app/Contents/Developer  nosimtest
+local        1  0.3  /Applications/Xcode.app/Contents/Developer  notest

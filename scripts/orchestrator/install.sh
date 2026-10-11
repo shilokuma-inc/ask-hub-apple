@@ -68,6 +68,9 @@ install -m 755 "$REPO_ROOT/scripts/orchestrator/resolve-conflict.sh" "$PREFIX/as
 # createRepositoryCommand / removeRepositoryCommand の既定（担当リポジトリの作成・削除の依頼）
 install -m 755 "$REPO_ROOT/scripts/orchestrator/create-repo.sh" "$PREFIX/askhub-create-repo"
 install -m 755 "$REPO_ROOT/scripts/orchestrator/remove-repo.sh" "$PREFIX/askhub-remove-repo"
+# ループの xcodebuild を空いている Mac に振り分ける xcb。置くだけでは使われない。
+# 使う Mac だけ ~/.config/askhub/xcodebuild からリンクし、~/.config/xcb/hosts を書く（docs/orchestrator.md の「xcb」）
+install -m 755 "$REPO_ROOT/scripts/orchestrator/xcb" "$PREFIX/askhub-xcb"
 
 # XML に入る値なので、& < > をエスケープしてから置き換える
 escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
@@ -90,6 +93,7 @@ cat <<MSG
   起動スクリプト: $PREFIX/askhub-start-loop（設定の loopCommand に指定する）
   コンフリクトの解消: $PREFIX/askhub-resolve-conflict（conflictCommand の既定）
   リポジトリの作成・削除: $PREFIX/askhub-create-repo / askhub-remove-repo（createRepositoryCommand / removeRepositoryCommand の既定）
+  xcodebuild の振り分け: $PREFIX/askhub-xcb（使う Mac だけ ~/.config/askhub/xcodebuild からリンクする）
   plist:        $PLIST
   ログ:         $LOG_DIR/orchestrator.log
 
