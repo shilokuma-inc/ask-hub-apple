@@ -58,6 +58,7 @@ struct FakeGitHubState {
     var buildHostsIssues: [Int: LoopStatusIssueRecord] = [:]
     var createdBuildHostsIssues: [String] = []
     var updatedBuildHostsIssues: [String] = []
+    var buildHostsFails = false
 }
 
 struct FakeRuntimeState {

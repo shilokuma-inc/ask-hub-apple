@@ -20,8 +20,17 @@ extension FakeGitHub {
         state.withLock { $0.buildHostsIssues = Dictionary(uniqueKeysWithValues: issues.map { ($0.number, $0) }) }
     }
 
+    func setBuildHostsFails(_ fails: Bool) {
+        state.withLock { $0.buildHostsFails = fails }
+    }
+
     func buildHostsIssues(in repository: String) async throws -> [LoopStatusIssueRecord] {
-        state.withLock { $0.buildHostsIssues.values.sorted { $0.number < $1.number } }
+        try state.withLock { state in
+            if state.buildHostsFails {
+                throw TestError()
+            }
+            return state.buildHostsIssues.values.sorted { $0.number < $1.number }
+        }
     }
 
     func createBuildHostsIssue(in repository: String, body: String) async throws -> Int {

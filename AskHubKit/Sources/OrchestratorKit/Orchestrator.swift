@@ -175,6 +175,8 @@ public actor Orchestrator {
     var buildHostsPublisher = BuildHostsPublisher()
     /// 最後に取れた `xcb status --json` と、取った時刻
     var lastXcbStatus: (status: XcbStatus, measuredAt: Date)?
+    /// 最後に `xcb status --json` を呼んだ時刻（失敗したときも含む）
+    var lastXcbStatusAttemptAt: Date?
     let xcbStatus: any XcbStatusFetching
     /// 担当リポジトリごとの、まだ起動していない `ready-for-loop` の Discussion の番号（最後に取得できたもの）
     var readyDiscussionNumbers: [String: Int] = [:]

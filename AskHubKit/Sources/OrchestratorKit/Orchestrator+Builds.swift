@@ -60,9 +60,9 @@ extension Orchestrator {
         guard let settings = config.buildHosts, let repository = settings.issueRepository(in: config), let activity = buildActivity else {
             return
         }
-        let key = repository.fullName.lowercased()
         // load・空きメモリは、確認時刻を書き直すときだけ取り直す（各 Mac に ssh で問い合わせるので毎回は呼ばない）
-        if buildHostsPublisher.needsMeasurement(repositoryKey: key, now: current) {
+        if buildHostsPublisher.needsMeasurement(lastAttemptAt: lastXcbStatusAttemptAt, now: current) {
+            lastXcbStatusAttemptAt = current
             do {
                 lastXcbStatus = (try await xcbStatus.status(xcbPath: settings.xcbPath), current)
             } catch {

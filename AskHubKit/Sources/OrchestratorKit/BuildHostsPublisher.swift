@@ -32,12 +32,16 @@ public struct BuildHostsPublisher: Sendable, Equatable {
 
     public init() {}
 
-    /// load・空きメモリを取り直すか（確認時刻を書き直すとき。まだ書いていなければ取る）
-    public func needsMeasurement(repositoryKey key: String, now: Date) -> Bool {
-        guard let entry, entry.repositoryKey == key, let report = entry.report else {
+    /// load・空きメモリを取り直すか。最後に `xcb status --json` を呼んでから `BuildHostsReport.updateInterval` たったとき
+    /// （まだ呼んでいなければ取る）。書き込みに失敗し続けても、呼ぶのは間隔ごとだけにする。レート制限で待っている間は呼ばない
+    public func needsMeasurement(lastAttemptAt: Date?, now: Date) -> Bool {
+        if let retryAt, now < retryAt {
+            return false
+        }
+        guard let lastAttemptAt else {
             return true
         }
-        return now.timeIntervalSince(report.checkedAt) >= BuildHostsReport.updateInterval
+        return now.timeIntervalSince(lastAttemptAt) >= BuildHostsReport.updateInterval
     }
 
     public func action(repositoryKey key: String, report: BuildHostsReport, now: Date) -> Action {

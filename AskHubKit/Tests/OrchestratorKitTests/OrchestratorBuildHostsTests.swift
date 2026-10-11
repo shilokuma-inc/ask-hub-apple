@@ -127,6 +127,33 @@ struct OrchestratorBuildHostsTests {
         #expect(github.buildHostsIssuesByNumber[201]?.body.contains("接続できない（") == false)
     }
 
+    @Test func callsStatusOnlyEveryIntervalWhileWritesFail() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setBuildHostsFails(true)
+        let xcb = FakeXcbStatus([status(load: 1), status(load: 2)])
+        let clock = OSAllocatedUnfairLock(initialState: start)
+        let orchestrator = try makeOrchestrator(github: github, xcb: xcb) { clock.withLock { $0 } }
+
+        // GitHub に書けない間も、xcb status --json（各 Mac に ssh で問い合わせる）は間隔ごとにしか呼ばない
+        for minute in 0..<5 {
+            clock.withLock { $0 = start.addingTimeInterval(TimeInterval(minute * 60)) }
+            try await orchestrator.pollOnce()
+        }
+        #expect(xcb.calls == 1)
+        #expect(github.createdBuildHostsIssues.isEmpty)
+
+        // 書けるようになったら、取ってあった値で書く
+        github.setBuildHostsFails(false)
+        clock.withLock { $0 = start.addingTimeInterval(6 * 60) }
+        try await orchestrator.pollOnce()
+        #expect(xcb.calls == 1)
+        #expect(report(github)?.hosts.first?.load == 1)
+
+        clock.withLock { $0 = start.addingTimeInterval(BuildHostsReport.updateInterval) }
+        try await orchestrator.pollOnce()
+        #expect(xcb.calls == 2)
+    }
+
     @Test func reusesTrustedIssueAndSkipsWhenRepositoryIsNotAssigned() async throws {
         let github = FakeGitHub([.success([])])
         // 信用しない author の Issue は使わず、信用する author の閉じた Issue を開き直して使う
