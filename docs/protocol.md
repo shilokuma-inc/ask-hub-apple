@@ -65,7 +65,9 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - Issue はリポジトリごとに 1 つ。ラベル `loop-status`、タイトル `【AskHub】ループの状態`
 - 本文の**先頭**に機械が読める目印を置き、続けて人が読める表を置く。アプリが読むのは目印だけ
 - **信用する author が作った Issue だけを読む**（public リポジトリでは誰でも同じラベルの Issue を作れる）
-- public リポジトリでは誰でも読めるので、epic 名・Discussion の番号・件数・時刻だけを書く。**ローカルパス・ログの中身・PC 名・トークンは書かない**
+- public リポジトリでは誰でも読めるので、epic 名・Discussion の番号・件数・時刻と、ビルドの情報（`builds`）の Mac の Host 名・スロットだけを書く。
+  **ローカルパス・ログの中身・トークンは書かない**。Mac の名前は xcb の `host`（ssh の Host 名。例 `macbookpro-m4max`）だけを書いてよい
+  （[Discussion #366](https://github.com/shilokuma-inc/ask-hub-apple/discussions/366) の Q1。それ以外の PC 固有の情報（ユーザー名・ssh の接続先アドレス）は書かない）
 
 ```html
 <!-- ask-hub:loop-status {"checkedAt":"2026-10-06T00:10:00Z","discussion":197,"epic":"epic/loop-status","lastActivityAt":"2026-10-06T00:07:00Z","progress":{"completed":5,"deferred":1,"total":12},"state":"running","writer":"orchestrator"} -->
@@ -86,6 +88,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `usageLimitedUntil` | 任意 | Claude の利用上限の解除の時刻（`usage-limited` のとき） |
 | `runner` | 任意 | 手動ループを回している人の login（`writer` が `manual` のとき）。オーケストレーターは書かない |
 | `waitingPullRequests` | 任意 | 手動ループで回答を待っている PR の番号。これらの `needs-answer` がすべて外れ、ループが止まっていれば、アプリが担当者に再開を促す |
+| `builds` | 任意 | ループのスロットで動いた xcb のビルド・テスト（下記「ビルドの情報」）。オーケストレーターが xcb のイベントから書く |
 
 | `state` | 表の表記 | 意味 |
 | --- | --- | --- |
@@ -121,6 +124,45 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   担当の印も `checkedAt` も 30 分より古ければ「担当 PC なし」、担当 PC はいるが状態用の Issue が無ければ「状態なし」とする
 - `loop-status` の Issue は「任意判断」「実機確認」などの一覧には出さない（一覧はラベルで検索しており、`loop-status` を含めない）
 - 担当から外したリポジトリの状態用の Issue は、オーケストレーターが閉じる（ステータスタブに「担当 PC なし」の行を残さない）
+
+### ビルドの情報（`builds`）
+
+ループのビルド・テストを xcb が複数の Mac に振り分けているとき、リポジトリのスロットのビルドが今どの Mac で動いているか・別の Mac に移ったか・結果を書く
+（[Discussion #366](https://github.com/shilokuma-inc/ask-hub-apple/discussions/366)）。形式は `LoopStatusBuilds` が実装している。
+
+```json
+"builds": {
+  "running": [{"action":"build","attempt":2,"host":"macbookpro-m4max","moves":[{"from":"macbookpro-m1pro","movedAt":"2026-10-11T00:05:00Z","reason":"disconnected","to":"macbookpro-m4max"}],"platform":"iOS","slot":"a","startedAt":"2026-10-11T00:00:00Z"}],
+  "latest": [{"action":"test","attempt":1,"exitCode":0,"finishedAt":"2026-10-10T23:50:00Z","host":"local","platform":"macOS","seconds":95,"slot":"b","startedAt":"2026-10-10T23:48:25Z"}],
+  "moved": []
+}
+```
+
+| キー | 内容 |
+| --- | --- |
+| `running` | 実行中のビルド |
+| `latest` | 直近に終わったビルド。スロットごとに 1 件（移動の有無を問わない） |
+| `moved` | 直近 24 時間に終わった、移動のあったビルド（新しい順） |
+
+3 つとも任意で、無ければ空として読む。ビルドの項目:
+
+| キー | 必須 | 内容 |
+| --- | --- | --- |
+| `slot` | 必須 | ループのスロット（`a` / `b`。`<名前>-ralph-a` / `-b` の末尾）。**ローカルパスは書かない** |
+| `action` | 必須 | xcb の `action`（`build` / `test` など） |
+| `platform` | 任意 | xcb の `platform`（`iOS` / `macOS` など） |
+| `host` | 任意 | 今（終わったものは最後に）動いた Mac の Host 名。`local` は xcb を動かしている Mac。どこでも動かなかったら書かない |
+| `attempt` | 任意 | 何回目の試行か（終わったものは試行の回数） |
+| `moves` | 任意 | 別の Mac への移動（古い順）。`from`（移動元の Host 名。必須）・`to`（移動先の Host 名）・`reason`・`movedAt` |
+| `exitCode` | 任意 | 終わったときの終了コード（0 が成功）。実行中は書かない |
+| `seconds` | 任意 | かかった秒数（終わったもの） |
+| `startedAt` / `finishedAt` | 任意 | 始まった時刻・終わった時刻 |
+
+- `reason` は xcb の `job_moved` の理由。`disconnected`（移動元の Mac が切断された）・`no_platform`（移動元にその platform のビルド環境が無い）。知らない値は「不明」として扱う
+- 対象はループのスロットのビルドだけ（Discussion #366 の Q6）。メインの checkout・制御用 worktree・手で流したビルドは書かない
+- ビルドの移動や失敗は、ステータスのバッジ（異常の件数）には数えない（Q7。表示だけ）
+- `builds` の形が崩れていても、アプリは状態そのもの（`state` など）は読み、ビルドの情報だけを無いものとして扱う
+- `builds` が変わったら本文を書き換える（`checkedAt` 以外の変化として扱う）
 
 ## 質問の目印
 
