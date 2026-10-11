@@ -76,8 +76,10 @@ load_hosts() {
 remote_hosts() { local h; for h in $H_NAMES; do [[ $h != local ]] && print $h; done }
 # その Mac が今回の action を受け持つか（設定の 5 列目）
 #   test（省略時）… すべて受ける / nosimtest … Simulator のテストだけ受けない（macOS のテストとビルドは受ける）/ notest … テストを受けない
+#   build-for-testing も、PREFER_TEST_HOST が 1 のあいだは続くテストを受けられる Mac だけにする
+#   （DerivedData は Mac ごとなので、テストを受けない Mac でビルドすると、続く test-without-building が別の Mac でビルドし直しになる）
 accepts() {  # $1=Host
-  [[ $ACTION == test* ]] || return 0
+  [[ $ACTION == test* || ( $ACTION == build-for-testing && $PREFER_TEST_HOST == 1 ) ]] || return 0
   case ${H_TEST[$1]-test} in
     notest) return 1 ;;
     nosimtest) [[ $DEST != *Simulator* ]] ;;
@@ -304,6 +306,9 @@ mkdir -p $STATE/noplatform $STATE/affinity
 # test-without-building はその Mac で流す。その Mac で流せなければ test（ビルドしてからテスト）に置き換え、流せる Mac でやり直す
 AFFINITY=$STATE/affinity/$NAME-$PLAT
 PINNED=""
+# build-for-testing は、続くテストを受けられる Mac を優先する。1 台もつながっていなければ、ビルドの確認を止めないよう 0 に戻してほかの Mac で実行する
+PREFER_TEST_HOST=0
+[[ $ACTION == build-for-testing ]] && PREFER_TEST_HOST=1
 to_test() {  # $1=理由
   log "${1}ので、test-without-building を test（ビルドしてからテスト）に置き換える"
   local i
@@ -452,6 +457,9 @@ while true; do
   elif [[ -n $PINNED && $PINNED != local ]]; then
     to_test "build-for-testing を実行した ${PINNED} につながらない"
     continue
+  elif (( PREFER_TEST_HOST )); then
+    log "続くテストを動かせる Mac がつながっていないので、build-for-testing はほかの Mac で実行する"
+    PREFER_TEST_HOST=0; continue
   elif ! accepts local; then
     # テストを動かせる Mac が 1 台もつながっていない（持ち出し中など）。Mac mini でも動かせない。
     # 既定では待たずに 75 で返し、テストは PR の CI に任せる。XCB_TEST_WAIT を指定すれば、その秒数だけつながるのを待つ
@@ -469,6 +477,7 @@ while true; do
     log "つながるリモートの Mac が無いので Mac mini で実行"
   fi
   # Mac mini で実行（切断でやり直しの上限に達したときもここに来る。Mac mini で動かせないテストは流さずに返す）
+  PREFER_TEST_HOST=0
   if ! accepts local; then skip_test; rc=75; WHERE=none; break; fi
   until try_acquire local; do reap_stale; sleep 5; done
   WHERE=local; [[ -n ${EXCLUDED-} ]] && WHERE=local-fallback
