@@ -124,3 +124,55 @@ extension BuildHostDisplay.Tone {
         }
     }
 }
+
+/// 設定画面から開く「ビルドの Mac」の画面。どの Mac でどのループのビルドが動いているかと、各 Mac の処理負荷を出す。
+/// ステータスタブと同じ取得結果（`LoopStatusModel`）を使い、同じ節の部品を並べる
+struct BuildHostsView: View {
+    let model: LoopStatusModel
+
+    var body: some View {
+        List {
+            BuildHostsSection(status: model.buildHosts)
+            BuildMovesSection(moves: model.buildMoves(now: Date()))
+        }
+        .overlay {
+            // 移動の記録だけがあるときは、空の表示で覆わない
+            if model.buildHosts == nil, model.buildMoves(now: Date()).isEmpty {
+                emptyState
+            }
+        }
+        .refreshable { await model.refresh() }
+        .navigationTitle("ビルドの Mac")
+        .task { await model.refreshIfStale() }
+    }
+
+    /// 取得の状態で分ける（取得の失敗やトークン未設定を「Issue が無い」と言い換えない）
+    @ViewBuilder private var emptyState: some View {
+        switch model.state {
+        case .idle, .loading:
+            ProgressView()
+
+        case .needsToken:
+            ContentUnavailableView("トークンが未設定です", systemImage: "key")
+
+        case let .failed(message):
+            ContentUnavailableView("取得できませんでした", systemImage: "exclamationmark.triangle", description: Text(message))
+
+        case .loaded:
+            ContentUnavailableView(
+                "ビルドの Mac の情報はありません",
+                systemImage: "desktopcomputer",
+                description: Text("xcb でビルドを振り分けている Mac のオーケストレーターが、設定の buildHosts を持つと、ここに出ます")
+            )
+        }
+    }
+}
+
+extension BuildHostsStatus {
+    /// 設定画面の入口に出す「3 台・実行中 1」。30 分以上書き直されていなければ「（古い）」を付ける
+    func summaryText(now: Date) -> String {
+        let running = report.jobs.count
+        let text = running > 0 ? "\(report.hosts.count) 台・実行中 \(running)" : "\(report.hosts.count) 台"
+        return isStale(now: now) ? text + "（古い）" : text
+    }
+}

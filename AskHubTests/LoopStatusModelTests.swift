@@ -187,6 +187,15 @@ struct LoopStatusModelTests {
         // 成功と失敗の移動が 1 件ずつ、新しい順
         #expect(model.buildMoves(now: .now).map(\.succeeded) == [true, false])
         #expect(!model.isEmpty)
+        // 設定画面の「ビルドの Mac」の入口に出す要約
+        #expect(model.buildHosts?.summaryText(now: .now) == "3 台・実行中 1")
+        // 実行中のビルドが無い・30 分以上書き直されていない
+        let idle = BuildHostsStatus(
+            repository: "o/r",
+            issueURL: URL(string: "https://github.com/o/r/issues/1")!,
+            report: BuildHostsReport(hosts: [BuildHost(name: "m1", state: .ok)], checkedAt: Date(timeIntervalSinceNow: -31 * 60))
+        )
+        #expect(idle.summaryText(now: .now) == "1 台（古い）")
     }
 
     @Test func doesNotCountBuildTroubleAsAbnormal() async {
