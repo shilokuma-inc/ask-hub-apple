@@ -189,6 +189,8 @@ extension InboxModel {
             makePoster: { _ in SampleAnswerPoster() },
             makeStarter: { _ in SampleLoopStarter() },
             makeCloser: { _ in SampleIssueCloser() },
+            makeApprover: { _ in SampleDecisionApprover() },
+            makeInstructionPoster: { _ in SampleDecisionInstructionPoster() },
             // サンプルは GitHub に権限を問い合わせない
             makeTrust: { _ in TrustedAuthors.default }
         )
@@ -198,6 +200,32 @@ extension InboxModel {
 /// デモモード・Preview・UI テスト用。実機確認の Issue を閉じたことにして GitHub には送らない
 struct SampleIssueCloser: IssueClosing {
     func closeAsVerified(_ issue: InboxIssue) async throws {}
+}
+
+/// デモモード・Preview・UI テスト用。渡された Issue の本文のチェックを付けたことにして GitHub には送らない
+struct SampleDecisionApprover: DecisionApproving {
+    func approve(_ text: String, in issue: InboxIssue) async throws -> DecisionApproval {
+        switch DecisionLogCheck.check(text, in: issue.body) {
+        case let .checked(body):
+            .approved(body: body)
+
+        case .alreadyChecked:
+            .alreadyApproved(body: issue.body)
+
+        case .notFound:
+            .notFound(body: issue.body)
+        }
+    }
+}
+
+/// デモモード・Preview・UI テスト用。指示を投稿したことにして GitHub には送らない
+struct SampleDecisionInstructionPoster: DecisionInstructionPosting {
+    func post(_ instruction: DecisionInstruction, for item: DecisionLogItem, to issue: InboxIssue) async throws -> URL {
+        guard instruction.body(for: item) != nil else {
+            throw DecisionInstructionError.invalidInstruction
+        }
+        return URL(string: "\(issue.url.absoluteString)#issuecomment-1")!
+    }
 }
 
 /// デモモード・Preview・UI テスト用。ループを始める印を付けたことにして GitHub には送らない
@@ -375,6 +403,11 @@ struct SampleInboxSource: InboxSource {
         issues.first { $0.verifyMarker != nil } ?? issues[0]
     }
 
+    /// 承認済み・変更済み・未確認・形式に合わない項目を含む仮決め一覧（Preview 用）
+    static var sampleDecisionLog: InboxIssue {
+        issues[0]
+    }
+
     /// 実機確認には、目印（`ask-hub:verify`）のあるものと無いものの両方を入れる
     private static let issues = [
         InboxIssue(
@@ -391,7 +424,10 @@ struct SampleInboxSource: InboxSource {
                 チェックを付けたものは承認。変更したいものはコメントで `#<PR番号> は別案 1 で` のように指示。返答のないものは既定値のまま確定する。
 
                 - [x] #12 一覧の並び順 → 採用: 更新の新しい順（別案: 作成の古い順）
+                - [x] #13 行の高さ → 採用: 44pt（別案: 52pt） → 変更: 別案 1（52pt）
                 - [ ] #14 自動更新の間隔 → 採用: 5 分（別案: 1 分 / 15 分）
+                - [ ] #15 空の一覧の文言 → 採用: 「ありません」
+                - [ ] 通知の文言は実機で見てから決める
                 """
         ),
         InboxIssue(
