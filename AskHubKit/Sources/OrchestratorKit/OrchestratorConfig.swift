@@ -32,6 +32,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public let repositoryCommands: RepositoryCommands
     /// 担当リポジトリに書き込み権限（write 以上）を持つアカウントも、そのリポジトリで信用する author とみなすか
     public let trustsRepositoryWriters: Bool
+    /// ループのビルドの Mac（xcb）の情報を書き出す設定。無ければ書き出さない
+    public let buildHosts: BuildHostsConfig?
 
     public var trustedAuthors: TrustedAuthors {
         TrustedAuthors(trustedAuthorLogins)
@@ -56,7 +58,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
         iterationTimeout: Duration = defaultIterationTimeout,
         conflictCommand: ConflictCommandTemplate? = nil,
         repositoryCommands: RepositoryCommands? = nil,
-        trustsRepositoryWriters: Bool = true
+        trustsRepositoryWriters: Bool = true,
+        buildHosts: BuildHostsConfig? = nil
     ) {
         self.trustedAuthorLogins = trustedAuthorLogins
         self.repositories = repositories
@@ -66,6 +69,7 @@ public struct OrchestratorConfig: Sendable, Equatable {
         self.iterationTimeout = iterationTimeout
         self.conflictCommand = conflictCommand ?? .standard(besides: loopCommand)
         self.trustsRepositoryWriters = trustsRepositoryWriters
+        self.buildHosts = buildHosts
         self.repositoryCommands = repositoryCommands ?? .standard(
             homeDirectory: NSHomeDirectory(),
             newCheckoutDirectory: RepositoryCommands.defaultCheckoutDirectory(for: repositories, homeDirectory: NSHomeDirectory())
