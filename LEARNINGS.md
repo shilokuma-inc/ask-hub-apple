@@ -38,6 +38,8 @@
 - リモートに `assets` という名前のブランチがあると、`assets/issue-<N>` のブランチは push できない（git の ref はファイルとディレクトリを兼ねられず、`cannot lock ref … 'refs/heads/assets' exists` で拒否される）。
   `assets` ブランチが残っている間は、スクリーンショットを `assets` ブランチの `issue-<N>/` に足す（`git commit-tree <木> -p origin/assets` で作ったコミットを fast-forward で push する）。
   画像だけの orphan ブランチにはワークフローのファイルが無いので、push しても Build は走らない
+- CodeRabbit の無料枠は 1 時間に 1 回のレビューで、上限に当たった PR には「Review rate limited」と出る。上限が戻っても自動ではレビューされないので、
+  PR に `@coderabbitai review` とコメントして頼む（1 回で 1 本の PR を使い切る。上限中に push した続きのコミットは、そのまま未レビューで残る）
 
 ## ビルド・テスト
 
@@ -131,6 +133,8 @@
   コードスパンの中（`` `a \| b` ``）では `\` を残す（GitHub は `|` に戻す）。表のセルのコードの run だけ `\|` を `|` に戻す
 - 配列リテラルの要素に `x.map { … } ?? "-"` や `+` での文字列の連結を何個も並べると、「the compiler is unable to type-check this expression in reasonable time」でビルドが止まる。
   表の 1 行のような組み立ては、要素ごとに `var` で作ってから配列にする（`BuildHost.tableCells`）
+- `FileHandle.readToEnd()` は、読む位置がファイルの終わりにあると空の `Data` ではなく `nil` を返す。`try?` で受けると読めなかったのと区別できないので、
+  `try handle.readToEnd() ?? Data()` で受け、`catch` だけを失敗として扱う
 
 ## シェルスクリプト
 
