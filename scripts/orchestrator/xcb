@@ -7,7 +7,10 @@
 # - ビルド先は ~/.config/xcb/hosts（XCB_HOSTS で変更可）。1 行 1 台で「Host 名・同時実行の上限・優先度・Xcode・テストを受けるか」
 # - リモートの候補ごとに、CPU のコア数・load average・空きメモリ・Xcode の準備状況を ssh で調べ（15 秒は使い回す）、
 #   空き具合 = 優先度 × 空きメモリの割合 × (コア数 − load average) ÷ (1 + その Mac で実行中の xcb の本数) が最大の Mac を選ぶ。
-#   つながる Mac がすべて満杯なら空くまで待つ。リモートが 1 台もつながらないときだけ Mac mini（local）で実行する
+#   つながる Mac がすべて満杯なら空くまで待つ
+# - Mac mini（local）は、設定で優先度を付けると、空きメモリと負荷がしきい値の内側のときだけリモートと並べて選ぶ
+#   （XCB_LOCAL_MIN_FREE_MEMORY: 空きメモリの下限 %・既定 50 / XCB_LOCAL_MAX_LOAD: load ÷ コア数の上限・既定 0.5）。
+#   優先度が 0（既定）なら、リモートが 1 台もつながらないときだけ使う。どちらでも、リモートが 1 台もつながらなければ使う
 # - 途中で ssh が切れたら（持ち出し・スリープ・ネットワークの切断）、その Mac をしばらく候補から外し、別の Mac でやり直す
 # - テストを動かせる Mac が 1 台もつながっていなければ、待たずに 75 で返す（テストの失敗ではない。テストは PR の CI に任せる）
 # - 枠は Mac mini 上の mkdir ロックで、すべてのループ・スロットで共有する
@@ -28,6 +31,8 @@ PROBE_TTL=15        # 問い合わせ結果を使い回す秒数
 DOWN_TTL=60         # 切断した Mac を候補から外しておく秒数
 MAX_ATTEMPTS=4      # 切断による別の Mac でのやり直しの上限
 TEST_WAIT=${XCB_TEST_WAIT:-0}  # テストを動かせる Mac が無いときに待つ秒数（過ぎたら 75 で返す。既定は待たない）
+LOCAL_MIN_FREE_MEMORY=${XCB_LOCAL_MIN_FREE_MEMORY:-50}  # Mac mini を空いているとみなす空きメモリの下限（%）
+LOCAL_MAX_LOAD=${XCB_LOCAL_MAX_LOAD:-0.5}               # Mac mini を空いているとみなす load ÷ コア数の上限
 # 長く動く ssh は接続を使い回さず、自分で生存確認する（5 秒ごと × 3 回、約 15 秒で切断に気づく）
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=3
           -o ControlMaster=no -o ControlPath=none)
@@ -59,9 +64,11 @@ load_hosts() {
   while read -r name slots weight devdir testok rest; do
     [[ -z $name || $name == \#* ]] && continue
     H_NAMES+=($name); H_SLOTS[$name]=${slots:-1}; H_WEIGHT[$name]=${weight:-1}
+    # local の優先度は、省略すると 0（リモートが 1 台もつながらないときだけ使う）
+    [[ $name == local ]] && H_WEIGHT[$name]=${weight:-0}
     H_DEVDIR[$name]=${${devdir:--}:#-}; H_TEST[$name]=${testok:-test}
   done < $HOSTS_FILE
-  [[ -n ${H_SLOTS[local]-} ]] || { H_SLOTS[local]=1; H_DEVDIR[local]=/Applications/Xcode.app/Contents/Developer; }
+  [[ -n ${H_SLOTS[local]-} ]] || { H_SLOTS[local]=1; H_WEIGHT[local]=0; H_DEVDIR[local]=/Applications/Xcode.app/Contents/Developer; }
 }
 remote_hosts() { local h; for h in $H_NAMES; do [[ $h != local ]] && print $h; done }
 # その Mac が今回の action を受け持つか（設定の 5 列目）
@@ -132,10 +139,47 @@ try_acquire() {  # $1=Host
 }
 release() { [[ -n $SLOT ]] || return 0; rm -f $SLOT/pid; rmdir $SLOT 2>/dev/null; SLOT=""; }
 
-# いちばん空いているリモートを選んで枠を取る。0: 取れた（HOST に入る）/ 1: つながる Mac が無い / 2: 満杯
+# Mac mini 自身（local）の空き具合を、リモートと同じ形で REPLY に入れる（ssh を使わない。host_state は記録しない）
+probe_local() {
+  local f=$STATE/probe/local now=$EPOCHSECONDS line out
+  if [[ -f $f ]]; then
+    line=$(<$f)
+    if (( now - ${line%% *} < PROBE_TTL )); then REPLY=$line; return; fi
+  fi
+  out=$(zsh -c "$(probe_script ${H_DEVDIR[local]-})" 2>/dev/null)
+  if [[ $out == notready ]]; then
+    REPLY="$now down Xcode が未準備（${H_DEVDIR[local]:-xcode-select}）"
+  elif [[ $out =~ "^[0-9]+ [0-9.]+ [0-9]+$" ]]; then
+    REPLY="$now ok $out"
+  else
+    REPLY="$now down 空き具合を取得できない"
+  fi
+  print -r -- $REPLY > $f
+}
+# Mac mini を空いているとみなすか（probe_local の結果で判定する）。優先度が 0 なら空いていても使わない
+local_idle() {
+  local t kind ncpu load mem
+  read -r t kind ncpu load mem <<<"$REPLY"
+  (( H_WEIGHT[local] > 0 )) && [[ $kind == ok && ! -f $STATE/drain/local ]] &&
+    (( mem >= LOCAL_MIN_FREE_MEMORY && load <= ncpu * LOCAL_MAX_LOAD ))
+}
+# このプラットフォーム（iOS / visionOS など）が入っていないと分かった Mac は 1 時間外す
+no_platform() { [[ -f $STATE/noplatform/$1-$PLAT ]] && (( EPOCHSECONDS - $(<$STATE/noplatform/$1-$PLAT) < 3600 )); }
+# 枠が空いていれば空き具合を計算し、いちばん空いている Mac を best に残す（$1=Host。REPLY は問い合わせの結果。pick_host の中で呼ぶ）
+consider() {
+  local t kind ncpu load mem n free
+  read -r t kind ncpu load mem <<<"$REPLY"
+  n=$(running $1)
+  (( n < H_SLOTS[$1] )) || return
+  free=$(( ncpu - load )); (( free < 0.1 )) && free=0.1
+  score=$(( H_WEIGHT[$1] * mem / 100.0 * free / (1 + n) ))
+  if (( score > bestscore )); then bestscore=$score; best=$1; fi
+}
+
+# いちばん空いている Mac を選んで枠を取る。0: 取れた（HOST に入る）/ 1: つながるリモートが無い / 2: 満杯
 typeset -a EXCLUDED
-pick_remote() {
-  local h best="" t kind ncpu load mem n free
+pick_host() {
+  local h best="" t kind
   typeset -F 4 score bestscore=-1
   local any=0
   reap_stale
@@ -146,17 +190,17 @@ pick_remote() {
     [[ -f $STATE/drain/$h ]] && continue
     # テストを受け持たない Mac（設定の 5 列目が notest / nosimtest）は、受け持たない test 系に使わない
     accepts $h || continue
-    # このプラットフォーム（iOS / visionOS など）が入っていないと分かった Mac は 1 時間外す
-    if [[ -f $STATE/noplatform/$h-$PLAT ]] && (( EPOCHSECONDS - $(<$STATE/noplatform/$h-$PLAT) < 3600 )); then continue; fi
-    probe $h; read -r t kind ncpu load mem <<<"$REPLY"
+    no_platform $h && continue
+    probe $h; read -r t kind _ <<<"$REPLY"
     [[ $kind == ok ]] || continue
     any=1
-    n=$(running $h)
-    (( n < H_SLOTS[$h] )) || continue
-    free=$(( ncpu - load )); (( free < 0.1 )) && free=0.1
-    score=$(( H_WEIGHT[$h] * mem / 100.0 * free / (1 + n) ))
-    if (( score > bestscore )); then bestscore=$score; best=$h; fi
+    consider $h
   done
+  # Mac mini は、優先度を付けていて空いているときだけリモートと並べる（つながるリモートには数えない）
+  if [[ -z $PINNED ]] && ! (( ${EXCLUDED[(Ie)local]} )) && accepts local && ! no_platform local; then
+    probe_local
+    local_idle && consider local
+  fi
   if [[ -n $best ]] && try_acquire $best; then HOST=$best; return 0; fi
   (( any )) && return 2
   return 1
@@ -169,7 +213,17 @@ case ${1-} in
     reap_stale
     if [[ ${2-} == --json ]]; then
       # オーケストレーター向け: 各 Mac の状態と、実行中のビルドを JSON で出す
-      local_json() { print -rn -- "{\"name\":\"local\",\"state\":\"standby\",\"running\":$(running local),\"slots\":${H_SLOTS[local]}}"; }
+      # local は、空いていてリモートと並べて選べるときは ok、それ以外（優先度 0・混んでいる）は standby
+      local_json() {
+        local st=standby t kind a b c
+        probe_local; local_idle && st=ok; [[ -f $STATE/drain/local ]] && st=drained
+        read -r t kind a b c <<<"$REPLY"
+        if [[ $kind == ok ]]; then
+          print -rn -- "{\"name\":\"local\",\"state\":$(jstr $st),\"cores\":$a,\"load\":$b,\"memoryFreePercent\":$c,\"running\":$(running local),\"slots\":${H_SLOTS[local]}}"
+        else
+          print -rn -- "{\"name\":\"local\",\"state\":$(jstr $st),\"running\":$(running local),\"slots\":${H_SLOTS[local]}}"
+        fi
+      }
       out="{\"updatedAt\":$(jstr $(iso)),\"hosts\":["
       sep=""
       for h in $(remote_hosts); do
@@ -200,7 +254,16 @@ case ${1-} in
       if [[ $kind == ok ]]; then printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' $h ok $a $b "$c%" "$(running $h)/${H_SLOTS[$h]}" "$note"
       else printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' $h down - - - "$(running $h)/${H_SLOTS[$h]}" "${REPLY#* down } $note"; fi
     done
-    printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' local - - - - "$(running local)/${H_SLOTS[local]}" "リモートが無いときだけ"
+    rm -f $STATE/probe/local; probe_local; read -r t kind a b c <<<"$REPLY"
+    st=standby; local_idle && st=ok
+    if (( H_WEIGHT[local] > 0 )); then
+      note="空いているときだけ（空きメモリ ${LOCAL_MIN_FREE_MEMORY}% 以上・load ÷ コア数 ${LOCAL_MAX_LOAD} 以下）"
+    else
+      note="リモートが無いときだけ"
+    fi
+    [[ -f $STATE/drain/local ]] && note+=" drain 中（候補から外している）"
+    if [[ $kind == ok ]]; then printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' local $st $a $b "$c%" "$(running local)/${H_SLOTS[local]}" "$note"
+    else printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' local down - - - "$(running local)/${H_SLOTS[local]}" "${REPLY#* down } $note"; fi
     exit 0 ;;
   drain)   [[ -n ${2-} ]] || { log "usage: xcb drain <Host>"; exit 64; }; : > $STATE/drain/$2; emit host_drained host $2; log "$2 を候補から外しました"; exit 0 ;;
   undrain) [[ -n ${2-} ]] || { log "usage: xcb undrain <Host>"; exit 64; }; rm -f $STATE/drain/$2; emit host_undrained host $2; log "$2 を候補に戻しました"; exit 0 ;;
@@ -349,21 +412,25 @@ run_local() {
 
 start=$SECONDS; HOST=""; WHERE=""; rc=1; attempt=0; waited=0; test_waited=0; MOVES=0
 while true; do
-  pick_remote; r=$?
+  pick_host; r=$?
   if (( r == 0 )); then
     (( waited > 0 )) && log "${waited} 秒待って ${SLOT:t} を取得"
     waited=0; attempt=$(( attempt + 1 ))
     log "$NAME の $ACTION を $HOST で実行（${SLOT:t}）"
     job_file $HOST $attempt
     emit job_attempt id $JOB_ID host $HOST slot ${SLOT:t} '#attempt' $attempt
-    run_remote $HOST | tee $OUT; rc=${pipestatus[1]}
+    if [[ $HOST == local ]]; then
+      run_local | tee $OUT; rc=${pipestatus[1]}
+    else
+      run_remote $HOST | tee $OUT; rc=${pipestatus[1]}
+    fi
     if (( rc == 70 )) && grep -q "is not installed. Please download" $OUT 2>/dev/null; then
       # ビルドの失敗ではなく、その Mac の Xcode に必要なプラットフォームが無い
       log "$HOST の Xcode に $PLAT のプラットフォームが無いので、別の Mac でやり直す（1 時間は $HOST に $PLAT を割り当てない）"
       emit job_moved id $JOB_ID from $HOST reason no_platform; (( MOVES++ ))
       print $EPOCHSECONDS > $STATE/noplatform/$HOST-$PLAT; EXCLUDED+=($HOST); release
       (( attempt < MAX_ATTEMPTS )) && continue
-    elif (( rc == 255 )); then
+    elif (( rc == 255 )) && [[ $HOST != local ]]; then
       log "$HOST との接続が切れた／できなかったので、別の Mac でやり直す"
       emit job_moved id $JOB_ID from $HOST reason disconnected; (( MOVES++ ))
       mark_down $HOST "実行中に切断"; EXCLUDED+=($HOST); release
