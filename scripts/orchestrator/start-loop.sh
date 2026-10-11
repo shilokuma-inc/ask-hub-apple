@@ -218,7 +218,9 @@ if [[ -n "$DISCUSSION" ]]; then
      -derivedDataPath と DEVELOPER_DIR は付けない。xcodegen・swiftlint・git などの xcodebuild 以外のコマンドはそのまま書く
    - 「このアプリ固有の前提」の先頭に、次の 1 行を必ず入れる:
      「xcodebuild は直接実行せず、必ず $XCODEBUILD_WRAPPER \"\$PWD\" <引数…> 経由で実行する（自作のスクリプトの中でも同じ）。
-     Simulator は name= で指定し、id=・-derivedDataPath・DEVELOPER_DIR は付けない。枠が満杯なら待つが、それは失敗ではない」"
+     Simulator は name= で指定し、id=・-derivedDataPath・DEVELOPER_DIR は付けない。枠が満杯なら待つが、それは失敗ではない。
+     終了コード 75 は、テストを動かせる Mac が無くてテストを流していないという意味で、テストの失敗ではない。
+     コードを直そうとせず、テスト未実施として PR を出し、CI のテストで確かめる（PR 本文に「ローカルのテストは未実施」と書く）」"
   else
     VERIFY_RULE="リポジトリの CLAUDE.md の検証コマンド。Simulator は xcrun simctl list devices available で UDID を調べて id= で指定し、
      -derivedDataPath はスロットごとにリポジトリの外へ分ける"
