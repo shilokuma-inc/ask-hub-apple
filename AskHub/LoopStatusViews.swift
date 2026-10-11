@@ -177,6 +177,15 @@ struct LoopStatusRowView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            // 移動や失敗も異常としては扱わず、表示だけにする（バッジに数えない）
+            ForEach(display.buildTexts, id: \.self) { text in
+                Label(text, systemImage: "hammer")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .accessibilityIdentifier("loop-build")
+            }
         }
         .padding(.vertical, 2)
     }
