@@ -178,6 +178,17 @@ struct LoopStatusModelTests {
         #expect(model.buildHosts?.repository == "shilokuma-inc/ask-hub-apple")
     }
 
+    @Test func sampleShowsBuildHostsAndMoves() async {
+        let model = Self.model(rows: SampleLoopStatusSource(), sections: SampleInboxSource())
+        await model.refresh()
+        let hosts = model.buildHosts?.hostDisplays ?? []
+        #expect(hosts.map(\.tone) == [.available, .unavailable, .idle])
+        #expect(hosts.first?.jobTexts.isEmpty == false)
+        // 成功と失敗の移動が 1 件ずつ、新しい順
+        #expect(model.buildMoves(now: .now).map(\.succeeded) == [true, false])
+        #expect(!model.isEmpty)
+    }
+
     @Test func needsToken() async {
         let model = Self.model(token: nil, rows: SampleLoopStatusSource(), sections: SampleInboxSource())
         await model.refresh()
