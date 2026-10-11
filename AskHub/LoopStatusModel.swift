@@ -18,6 +18,8 @@ final class LoopStatusModel {
     }
 
     private(set) var rows: [LoopStatusRow] = []
+    /// ビルドの Mac の状態（信用する author の `build-hosts` の Issue）。無ければ `nil`
+    private(set) var buildHosts: BuildHostsStatus?
     /// `ready-for-loop` を付けて、ループの開始を待っている Discussion
     private(set) var waiting: [WaitingDiscussion] = []
     /// 担当 PC が Claude の利用上限で待機しているリポジトリ
@@ -114,6 +116,7 @@ final class LoopStatusModel {
         do {
             guard let saved = try tokenStore.load() else {
                 rows = []
+                buildHosts = nil
                 waiting = []
                 usageLimited = []
                 manualLoops = []
@@ -133,7 +136,7 @@ final class LoopStatusModel {
         let fetcher = LoopStatusFetcher(source: makeSource(token), trustedAuthors: trust)
         let inboxFetcher = InboxFetcher(source: makeInboxSource(token), trustedAuthors: trust)
         do {
-            async let rows = fetcher.rows(orgs: orgs)
+            async let snapshot = fetcher.status(orgs: orgs)
             async let waiting = inboxFetcher.waitingDiscussions(orgs: orgs)
             // 上限の表示は補助なので、取得に失敗してもループの状態は出す（次の更新で取り直す）
             async let usageLimited = (try? await inboxFetcher.usageLimitedRepositories(orgs: orgs, now: .now)) ?? []
@@ -142,11 +145,12 @@ final class LoopStatusModel {
             async let needsAnswer = (try? await inboxFetcher.subjectsNeedingAnswer(orgs: orgs)) ?? []
             // トークンを変えると別のアカウントになりうるので、毎回取り直す（軽い GraphQL 1 回）
             async let viewer = try? await makeStarter(token).viewerLogin()
-            let fetched = try await (rows, waiting, usageLimited)
+            let fetched = try await (snapshot, waiting, usageLimited)
             let (fetchedManualLoops, fetchedNeedsAnswer, fetchedViewer) = try await (manualLoops, needsAnswer, viewer)
             // 上限の取得の `try?` は打ち切りも空として返すので、打ち切られていれば途中の結果で一覧を上書きしない
             try Task.checkCancellation()
-            (self.rows, self.waiting, self.usageLimited) = fetched
+            (self.rows, self.buildHosts) = (fetched.0.rows, fetched.0.buildHosts)
+            (self.waiting, self.usageLimited) = (fetched.1, fetched.2)
             self.manualLoops = fetchedManualLoops
             self.needsAnswer = Set(fetchedNeedsAnswer.map { "\($0.repository)#\($0.number)".lowercased() })
             self.viewerLogin = fetchedViewer

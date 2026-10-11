@@ -155,6 +155,29 @@ struct LoopStatusModelTests {
         #expect(empty.isEmpty)
     }
 
+    @Test func keepsBuildHostsFromTrustedIssue() async {
+        struct HostsSource: LoopStatusSource {
+            func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
+                let report = BuildHostsReport(hosts: [BuildHost(name: "macbookpro-m4max", state: .ok)], checkedAt: .now)
+                let issue = LoopStatusIssue(
+                    number: 9,
+                    url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/9")!,
+                    author: "mrs1669",
+                    updatedAt: .now,
+                    body: report.issueBody
+                )
+                let repository = LoopStatusRepository(
+                    repository: "shilokuma-inc/ask-hub-apple", heartbeatDescription: nil, issues: [], buildHostsIssues: [issue]
+                )
+                return [repository]
+            }
+        }
+        let model = Self.model(rows: HostsSource(), sections: SectionsSource(waiting: [], usageLimited: []))
+        await model.refresh()
+        #expect(model.buildHosts?.report.hosts.map(\.name) == ["macbookpro-m4max"])
+        #expect(model.buildHosts?.repository == "shilokuma-inc/ask-hub-apple")
+    }
+
     @Test func needsToken() async {
         let model = Self.model(token: nil, rows: SampleLoopStatusSource(), sections: SampleInboxSource())
         await model.refresh()
