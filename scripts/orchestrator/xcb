@@ -9,6 +9,7 @@
 #   空き具合 = 優先度 × 空きメモリの割合 × (コア数 − load average) ÷ (1 + その Mac で実行中の xcb の本数) が最大の Mac を選ぶ。
 #   つながる Mac がすべて満杯なら空くまで待つ。リモートが 1 台もつながらないときだけ Mac mini（local）で実行する
 # - 途中で ssh が切れたら（持ち出し・スリープ・ネットワークの切断）、その Mac をしばらく候補から外し、別の Mac でやり直す
+# - テストを動かせる Mac が 1 台もつながっていなければ、待たずに 75 で返す（テストの失敗ではない。テストは PR の CI に任せる）
 # - 枠は Mac mini 上の mkdir ロックで、すべてのループ・スロットで共有する
 # - iOS Simulator の name= 指定は、リモートでは作業ツリーごとの専用 Simulator に置き換える（同時テストの取り合いを防ぐ）
 # - -derivedDataPath は無視し、Mac ごと・作業ツリーごとのパスを使う
@@ -26,7 +27,7 @@ LOG=${XCB_LOG:-$EVENTS_DIR/xcb.log}
 PROBE_TTL=15        # 問い合わせ結果を使い回す秒数
 DOWN_TTL=60         # 切断した Mac を候補から外しておく秒数
 MAX_ATTEMPTS=4      # 切断による別の Mac でのやり直しの上限
-TEST_WAIT=${XCB_TEST_WAIT:-1800}  # テストを動かせる Mac が無いときに待つ秒数（過ぎたら 75 で返す）
+TEST_WAIT=${XCB_TEST_WAIT:-0}  # テストを動かせる Mac が無いときに待つ秒数（過ぎたら 75 で返す。既定は待たない）
 # 長く動く ssh は接続を使い回さず、自分で生存確認する（5 秒ごと × 3 回、約 15 秒で切断に気づく）
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=3
           -o ControlMaster=no -o ControlPath=none)
@@ -311,6 +312,12 @@ wait $pid
 REMOTE
 }
 
+# テストを動かせる Mac が無いので流さない。出力はループ（Claude）が読むので、どう扱うかまで書く
+skip_test() {
+  log "テストを動かせる Mac がつながっていないので、テストを流さずに終了コード 75 で返します（テストの失敗ではありません）"
+  log "この検証はテスト未実施として扱い、コードを直そうとせずに PR を出して CI のテストで確かめてください（PR 本文に「ローカルのテストは未実施（テストを動かせる Mac が無かった）」と書く）"
+}
+
 # ---- Mac mini で実行 ----
 run_local() {
   (cd $SRC && DEVELOPER_DIR=${H_DEVDIR[local]:-/Applications/Xcode.app/Contents/Developer} xcodebuild "${args[@]}" \
@@ -349,22 +356,23 @@ while true; do
     fi
     sleep 5; (( waited += 5 )); continue
   elif ! accepts local; then
-    # テストを動かせる Mac が 1 台もつながっていない。Mac mini でも動かせないので、つながるまで待つ
-    if (( test_waited == 0 )); then
-      log "テストを動かせる Mac がつながっていないので、つながるまで待つ（最長 $(( TEST_WAIT / 60 )) 分）"
-      job_file waiting 0; emit job_waiting id $JOB_ID reason no_test_host
+    # テストを動かせる Mac が 1 台もつながっていない（持ち出し中など）。Mac mini でも動かせない。
+    # 既定では待たずに 75 で返し、テストは PR の CI に任せる。XCB_TEST_WAIT を指定すれば、その秒数だけつながるのを待つ
+    if (( test_waited < TEST_WAIT )); then
+      if (( test_waited == 0 )); then
+        log "テストを動かせる Mac がつながっていないので、つながるまで待つ（最長 $(( TEST_WAIT / 60 )) 分）"
+        job_file waiting 0; emit job_waiting id $JOB_ID reason no_test_host
+      fi
+      # 切断で外した Mac も、戻ってきたら使えるように外し直しをやめる（切断の直後は mark_down で 60 秒外れる）
+      EXCLUDED=()
+      sleep 15; (( test_waited += 15 )); continue
     fi
-    if (( test_waited >= TEST_WAIT )); then
-      log "$(( TEST_WAIT / 60 )) 分待ってもテストを動かせる Mac がつながらなかった。テストの失敗ではない"
-      rc=75; WHERE=none; break
-    fi
-    # 切断で外した Mac も、戻ってきたら使えるように外し直しをやめる（切断の直後は mark_down で 60 秒外れる）
-    EXCLUDED=()
-    sleep 15; (( test_waited += 15 )); continue
+    skip_test; rc=75; WHERE=none; break
   else
     log "つながるリモートの Mac が無いので Mac mini で実行"
   fi
-  # Mac mini で実行
+  # Mac mini で実行（切断でやり直しの上限に達したときもここに来る。Mac mini で動かせないテストは流さずに返す）
+  if ! accepts local; then skip_test; rc=75; WHERE=none; break; fi
   until try_acquire local; do reap_stale; sleep 5; done
   WHERE=local; [[ -n ${EXCLUDED-} ]] && WHERE=local-fallback
   attempt=$(( attempt + 1 ))
