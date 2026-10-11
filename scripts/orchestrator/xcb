@@ -1,0 +1,365 @@
+#!/bin/zsh
+# xcb — ralph-loop 共通の xcodebuild の入口。
+#   xcb <作業ツリー> <xcodebuild の引数…>   ビルド・テストを、いちばん空いている Mac で実行する
+#   xcb status                              各 Mac の空き具合・実行中の本数・外しているかを表示する
+#   xcb drain <Host> / xcb undrain <Host>   その Mac を候補から外す / 戻す（実行中のものは止めない）
+#
+# - ビルド先は ~/.config/xcb/hosts（XCB_HOSTS で変更可）。1 行 1 台で「Host 名・同時実行の上限・優先度・Xcode」
+# - リモートの候補ごとに、CPU のコア数・load average・空きメモリ・Xcode の準備状況を ssh で調べ（15 秒は使い回す）、
+#   空き具合 = 優先度 × 空きメモリの割合 × (コア数 − load average) ÷ (1 + その Mac で実行中の xcb の本数) が最大の Mac を選ぶ。
+#   つながる Mac がすべて満杯なら空くまで待つ。リモートが 1 台もつながらないときだけ Mac mini（local）で実行する
+# - 途中で ssh が切れたら（持ち出し・スリープ・ネットワークの切断）、その Mac をしばらく候補から外し、別の Mac でやり直す
+# - 枠は Mac mini 上の mkdir ロックで、すべてのループ・スロットで共有する
+# - iOS Simulator の name= 指定は、リモートでは作業ツリーごとの専用 Simulator に置き換える（同時テストの取り合いを防ぐ）
+# - -derivedDataPath は無視し、Mac ごと・作業ツリーごとのパスを使う
+# - 1 回の実行ごとに xcb.log へ「実行場所・所要時間・終了コード」を 1 行残す
+set -uo pipefail
+zmodload zsh/datetime   # EPOCHSECONDS
+
+BASE=${0:A:h}
+HOSTS_FILE=${XCB_HOSTS:-$HOME/.config/xcb/hosts}
+STATE=$BASE/.xcb-state
+LOCKDIR=$BASE/.xcb-locks
+LOG=$BASE/xcb.log
+PROBE_TTL=15        # 問い合わせ結果を使い回す秒数
+DOWN_TTL=60         # 切断した Mac を候補から外しておく秒数
+MAX_ATTEMPTS=4      # 切断による別の Mac でのやり直しの上限
+TEST_WAIT=${XCB_TEST_WAIT:-1800}  # テストを動かせる Mac が無いときに待つ秒数（過ぎたら 75 で返す）
+# 長く動く ssh は接続を使い回さず、自分で生存確認する（5 秒ごと × 3 回、約 15 秒で切断に気づく）
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=3
+          -o ControlMaster=no -o ControlPath=none)
+
+mkdir -p $STATE/probe $STATE/drain $STATE/jobs $LOCKDIR
+log() { print -u2 "[xcb] $*"; }
+
+# ---- イベントの記録（オーケストレーターが読み、GitHub 経由で AskHub アプリに出す） ----
+# 1 行 1 イベントの JSON（JSON Lines）。5MB を超えたら events.jsonl.1 に回す
+EVENTS_DIR=${XCB_EVENTS_DIR:-$HOME/Library/Logs/askhub/xcb}
+EVENTS=$EVENTS_DIR/events.jsonl
+mkdir -p $EVENTS_DIR
+jstr() { local s=${1-}; s=${s//\\/\\\\}; s=${s//\"/\\\"}; print -rn -- "\"$s\""; }
+iso() { TZ=UTC strftime '%Y-%m-%dT%H:%M:%SZ' ${1:-$EPOCHSECONDS}; }
+emit() {  # emit <type> <キー> <値>…（キーが # で始まれば値を数値のまま書く）
+  local line="{\"time\":$(jstr $(iso)),\"type\":$(jstr $1)"; shift
+  while (( $# >= 2 )); do
+    if [[ $1 == \#* ]]; then line+=",$(jstr "${1#\#}"):${2:-null}"; else line+=",$(jstr "$1"):$(jstr "$2")"; fi
+    shift 2
+  done
+  print -r -- "$line}" >> $EVENTS
+  if [[ -f $EVENTS ]] && (( $(stat -f %z $EVENTS) > 5000000 )); then mv -f $EVENTS $EVENTS.1; fi
+}
+
+# ---- 設定 ----
+typeset -a H_NAMES; typeset -A H_SLOTS H_WEIGHT H_DEVDIR H_TEST
+load_hosts() {
+  local name slots weight devdir testok rest
+  [[ -f $HOSTS_FILE ]] || { log "設定ファイルがありません: $HOSTS_FILE"; exit 78; }
+  while read -r name slots weight devdir testok rest; do
+    [[ -z $name || $name == \#* ]] && continue
+    H_NAMES+=($name); H_SLOTS[$name]=${slots:-1}; H_WEIGHT[$name]=${weight:-1}
+    H_DEVDIR[$name]=${${devdir:--}:#-}; H_TEST[$name]=${testok:-test}
+  done < $HOSTS_FILE
+  [[ -n ${H_SLOTS[local]-} ]] || { H_SLOTS[local]=1; H_DEVDIR[local]=/Applications/Xcode.app/Contents/Developer; }
+}
+remote_hosts() { local h; for h in $H_NAMES; do [[ $h != local ]] && print $h; done }
+
+# ---- 問い合わせ（キャッシュ: "<時刻> ok <コア数> <load> <空きメモリ%>" か "<時刻> down <理由>"） ----
+probe_script() {  # $1=Developer ディレクトリ（空なら xcode-select のまま）
+  print -r -- "${1:+export DEVELOPER_DIR=${(q)1}; }"'xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1 || { echo notready; exit 0; }
+echo "$(sysctl -n hw.ncpu) $(sysctl -n vm.loadavg | awk "{print \$2}") $(memory_pressure | awk -F": " "/free percentage/{print \$2+0}")"'
+}
+probe() {  # $1=Host。結果を REPLY に入れる
+  local h=$1 f=$STATE/probe/$1 now=$EPOCHSECONDS line out
+  if [[ -f $f ]]; then
+    line=$(<$f)
+    local t=${line%% *} kind=${${line#* }%% *}
+    if [[ $kind == down ]] && (( now - t < DOWN_TTL )); then REPLY=$line; return; fi
+    if [[ $kind == ok ]] && (( now - t < PROBE_TTL )); then REPLY=$line; return; fi
+  fi
+  out=$(ssh -o BatchMode=yes -o ConnectTimeout=3 -o ControlMaster=no -o ControlPath=none $h "$(probe_script ${H_DEVDIR[$h]-})" 2>/dev/null)
+  if [[ $out == notready ]]; then
+    REPLY="$now down Xcode が未準備（${H_DEVDIR[$h]:-xcode-select}）"
+  elif [[ $out =~ "^[0-9]+ [0-9.]+ [0-9]+$" ]]; then
+    REPLY="$now ok $out"
+  else
+    REPLY="$now down 接続できない"
+  fi
+  print -r -- $REPLY > $f
+  local k=${${REPLY#* }%% *}
+  note_host_state $h $k "${${REPLY#* down }:#$REPLY}"
+}
+mark_down() { print -r -- "$EPOCHSECONDS down $2" > $STATE/probe/$1; note_host_state $1 down "$2"; }
+# Mac の状態（ok / down）が前回と変わったときだけ host_state を記録する
+note_host_state() {  # $1=Host $2=ok|down $3=理由
+  local f=$STATE/hoststate/$1 prev=""
+  mkdir -p $STATE/hoststate
+  [[ -f $f ]] && prev=$(<$f)
+  [[ $prev == $2 ]] && return
+  print -r -- $2 > $f
+  emit host_state host $1 state $2 reason "${3-}"
+}
+running() { local -a l; l=($LOCKDIR/$1-<->(N/)); print ${#l}; }
+
+# ---- 枠（ロック。pid ファイルに "<PID> <作業ツリー>"） ----
+SLOT=""
+reap_stale() {
+  local d p
+  for d in $LOCKDIR/*(N/); do
+    p=$(<$d/pid 2>/dev/null) || p=""
+    if [[ -n $p ]] && ! kill -0 ${p%% *} 2>/dev/null; then rm -f $d/pid; rmdir $d 2>/dev/null
+    elif [[ -z $p && -n $(find $d -maxdepth 0 -mmin +1 2>/dev/null) ]]; then rmdir $d 2>/dev/null; fi
+  done
+}
+try_acquire() {  # $1=Host
+  local i d
+  for i in {1..${H_SLOTS[$1]}}; do
+    d=$LOCKDIR/$1-$i
+    if mkdir $d 2>/dev/null; then print "$$ $NAME" > $d/pid; SLOT=$d; return 0; fi
+  done
+  return 1
+}
+release() { [[ -n $SLOT ]] || return 0; rm -f $SLOT/pid; rmdir $SLOT 2>/dev/null; SLOT=""; }
+
+# いちばん空いているリモートを選んで枠を取る。0: 取れた（HOST に入る）/ 1: つながる Mac が無い / 2: 満杯
+typeset -a EXCLUDED
+pick_remote() {
+  local h best="" t kind ncpu load mem n free
+  typeset -F 4 score bestscore=-1
+  local any=0
+  reap_stale
+  for h in $(remote_hosts); do
+    (( ${EXCLUDED[(Ie)$h]} )) && continue
+    [[ -f $STATE/drain/$h ]] && continue
+    # テスト（Simulator を起動するもの）を受け持たない Mac（設定の 5 列目が notest）は、test 系に使わない
+    [[ $ACTION == test* && ${H_TEST[$h]-test} == notest ]] && continue
+    # このプラットフォーム（iOS / visionOS など）が入っていないと分かった Mac は 1 時間外す
+    if [[ -f $STATE/noplatform/$h-$PLAT ]] && (( EPOCHSECONDS - $(<$STATE/noplatform/$h-$PLAT) < 3600 )); then continue; fi
+    probe $h; read -r t kind ncpu load mem <<<"$REPLY"
+    [[ $kind == ok ]] || continue
+    any=1
+    n=$(running $h)
+    (( n < H_SLOTS[$h] )) || continue
+    free=$(( ncpu - load )); (( free < 0.1 )) && free=0.1
+    score=$(( H_WEIGHT[$h] * mem / 100.0 * free / (1 + n) ))
+    if (( score > bestscore )); then bestscore=$score; best=$h; fi
+  done
+  if [[ -n $best ]] && try_acquire $best; then HOST=$best; return 0; fi
+  (( any )) && return 2
+  return 1
+}
+
+# ---- サブコマンド ----
+load_hosts
+case ${1-} in
+  status)
+    reap_stale
+    if [[ ${2-} == --json ]]; then
+      # オーケストレーター向け: 各 Mac の状態と、実行中のビルドを JSON で出す
+      local_json() { print -rn -- "{\"name\":\"local\",\"state\":\"standby\",\"running\":$(running local),\"slots\":${H_SLOTS[local]}}"; }
+      out="{\"updatedAt\":$(jstr $(iso)),\"hosts\":["
+      sep=""
+      for h in $(remote_hosts); do
+        probe $h; read -r t kind a b c <<<"$REPLY"
+        st=$kind; [[ -f $STATE/drain/$h ]] && st=drained
+        if [[ $kind == ok ]]; then
+          out+="$sep{\"name\":$(jstr $h),\"state\":$(jstr $st),\"cores\":$a,\"load\":$b,\"memoryFreePercent\":$c,\"running\":$(running $h),\"slots\":${H_SLOTS[$h]}}"
+        else
+          out+="$sep{\"name\":$(jstr $h),\"state\":$(jstr $st),\"reason\":$(jstr "${REPLY#* down }"),\"running\":$(running $h),\"slots\":${H_SLOTS[$h]}}"
+        fi
+        sep=","
+      done
+      out+="$sep$(local_json)],\"jobs\":["
+      sep=""
+      for jf in $STATE/jobs/*(N); do
+        read -r jid jpid jpath jaction jplat jhost jattempt jstart < $jf
+        kill -0 $jpid 2>/dev/null || { rm -f $jf; continue; }
+        out+="$sep{\"id\":$(jstr $jid),\"path\":$(jstr $jpath),\"action\":$(jstr $jaction),\"platform\":$(jstr $jplat),\"host\":$(jstr $jhost),\"attempt\":$jattempt,\"startedAt\":$(jstr $(iso $jstart))}"
+        sep=","
+      done
+      print -r -- "$out]}"
+      exit 0
+    fi
+    printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' Host 状態 コア load 空きMem 実行中 備考
+    for h in $(remote_hosts); do
+      rm -f $STATE/probe/$h; probe $h; read -r t kind a b c <<<"$REPLY"
+      note=""; [[ -f $STATE/drain/$h ]] && note="drain 中（候補から外している）"
+      if [[ $kind == ok ]]; then printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' $h ok $a $b "$c%" "$(running $h)/${H_SLOTS[$h]}" "$note"
+      else printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' $h down - - - "$(running $h)/${H_SLOTS[$h]}" "${REPLY#* down } $note"; fi
+    done
+    printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' local - - - - "$(running local)/${H_SLOTS[local]}" "リモートが無いときだけ"
+    exit 0 ;;
+  drain)   [[ -n ${2-} ]] || { log "usage: xcb drain <Host>"; exit 64; }; : > $STATE/drain/$2; emit host_drained host $2; log "$2 を候補から外しました"; exit 0 ;;
+  undrain) [[ -n ${2-} ]] || { log "usage: xcb undrain <Host>"; exit 64; }; rm -f $STATE/drain/$2; emit host_undrained host $2; log "$2 を候補に戻しました"; exit 0 ;;
+esac
+
+# ---- 引数 ----
+if (( $# < 2 )); then
+  print -u2 "usage: xcb <作業ツリー> <xcodebuild の引数…> | xcb status | xcb drain|undrain <Host>"
+  exit 64
+fi
+SRC=${1:A}; shift
+NAME=${SRC:t}
+[[ -d $SRC ]] || { log "作業ツリーが見つからない: $SRC"; exit 66; }
+
+# -derivedDataPath を取り除き、destination と action を控えておく
+args=(); DEST=""; ACTION="build"
+while (( $# )); do
+  case $1 in
+    -derivedDataPath) shift 2; continue ;;
+    -destination) DEST=$2; args+=("$1" "$2"); shift 2; continue ;;
+    build|test|build-for-testing|test-without-building|clean|analyze|archive) ACTION=$1 ;;
+  esac
+  args+=("$1"); shift
+done
+
+case $DEST in
+  *visionOS*|*xrOS*) PLAT=visionOS ;;
+  *iOS*) PLAT=iOS ;;
+  *macOS*) PLAT=macOS ;;
+  *) PLAT=other ;;
+esac
+mkdir -p $STATE/noplatform
+OUT=$(mktemp -t xcb-out)
+JOB_ID="$(strftime '%Y%m%d%H%M%S' $EPOCHSECONDS)-$$"
+JOB_FILE=$STATE/jobs/$JOB_ID
+# 実行中のビルドの記録（xcb status --json が読む）: <id> <PID> <作業ツリー> <action> <platform> <実行先> <何回目> <開始時刻>
+job_file() { print -r -- "$JOB_ID $$ $SRC $ACTION $PLAT $1 $2 $JOB_START" > $JOB_FILE; }
+JOB_START=$EPOCHSECONDS
+trap 'release; rm -f $OUT $JOB_FILE' EXIT
+trap 'release; rm -f $OUT $JOB_FILE; exit 130' INT TERM
+emit job_started id $JOB_ID path $SRC action $ACTION platform $PLAT destination "$DEST"
+
+# ---- リモートで実行（ssh / rsync 自体の失敗・切断は 255） ----
+run_remote() {  # $1=Host
+  local h=$1 dev=${H_DEVDIR[$1]-} rargs=("${args[@]}") i devname udid envp=""
+  [[ -n $dev ]] && envp="DEVELOPER_DIR=${(q)dev} "
+  # iOS Simulator の name= は作業ツリー専用の Simulator（無ければ作る）に置き換える
+  if [[ $DEST == *"platform=iOS Simulator"*"name="* ]]; then
+    devname=${${DEST##*name=}%%,*}
+    udid=$(ssh $SSH_OPTS $h ${envp}zsh -s -- ${(q)${:-xcb-$NAME-$devname}} ${(q)devname} <<'REMOTE'
+dev=$2
+# この Xcode が動かせる iOS ランタイム（SDK と同じか古いもののうち最新）を選ぶ。新しい Xcode が入れた
+# 新しいランタイムを既定で使うと、テストランナーが起動しない（The test runner hung …）
+sdk=$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null)
+rt=$(xcrun simctl list runtimes available | sed -nE 's/^iOS ([0-9.]+) .* - (com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+)$/\1 \2/p' \
+  | awk -v sdk="$sdk" 'function v(x, a){split(x,a,"."); return a[1]*10000+a[2]*100+a[3]} v($1)<=v(sdk){print v($1), $2}' \
+  | sort -n | tail -1 | cut -d" " -f2)
+[[ -n $rt ]] || { print -- "この Xcode（iOS SDK $sdk）で使える iOS ランタイムがありません"; exit 0; }
+# 名前にランタイムを入れ、ランタイムが変わったら別の Simulator にする
+n="$1-${rt##*iOS-}"
+u=$(xcrun simctl list devices available | grep -F "    $n (" | head -1 | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+[[ -n $u ]] || u=$(xcrun simctl create "$n" "$dev" "$rt")
+print -- $u
+REMOTE
+) || return 255
+    if [[ ! $udid =~ ^[0-9A-F-]{36}$ ]]; then
+      log "$h で Simulator を用意できなかった（$devname）: $udid"
+      return 255
+    fi
+    for i in {1..$#rargs}; do
+      [[ ${rargs[i]} == $DEST ]] && rargs[i]="platform=iOS Simulator,id=$udid"
+    done
+  fi
+  ssh $SSH_OPTS $h "mkdir -p remote-builds/src/$NAME remote-builds/dd" || return 255
+  rsync -az --delete --timeout=30 -e "ssh ${SSH_OPTS[*]}" \
+    --exclude '.git/' --exclude 'DerivedData/' --exclude '.build/' \
+    "$SRC/" "${h}:remote-builds/src/$NAME/" || return 255
+  # 前に切断された同じ作業ツリーのビルドがその Mac に残っていれば止める（同じ作業ツリーを別の xcb が使っていないときだけ）
+  local other=0 d p
+  for d in $LOCKDIR/$h-<->(N/); do
+    [[ $d == $SLOT ]] && continue
+    p=$(<$d/pid 2>/dev/null) || continue
+    [[ ${p#* } == $NAME ]] && other=1
+  done
+  (( other )) || ssh $SSH_OPTS $h "pkill -f -- 'remote-build[s]/dd/$NAME -skipPackagePluginValidation' 2>/dev/null; true" || return 255
+  # リモート側に見張りを付ける。ssh のセッションが消えるか、接続元（Mac mini）に 15 秒届かなければ xcodebuild を止める
+  # （ネットワークから外れると、Mac mini 側は別の Mac でやり直すが、リモートのビルドは放っておくと動き続けるため）
+  ssh $SSH_OPTS $h zsh -s -- ${(q)NAME} ${(q)dev} ${(q)rargs[@]} <<'REMOTE'
+name=$1; dev=$2; shift 2
+cd ~/remote-builds/src/$name || exit 1
+[[ -n $dev ]] && export DEVELOPER_DIR=$dev
+client=${SSH_CLIENT%% *}
+xcodebuild "$@" -derivedDataPath $HOME/remote-builds/dd/$name -skipPackagePluginValidation </dev/null &
+pid=$!
+miss=0
+while kill -0 $pid 2>/dev/null; do
+  sleep 5
+  if ! kill -0 $PPID 2>/dev/null; then kill -TERM $pid 2>/dev/null; break; fi
+  if [[ -n $client ]] && ! nc -z -G 2 "$client" 22 >/dev/null 2>&1; then
+    (( ++miss >= 3 )) && { kill -TERM $pid 2>/dev/null; break; }
+  else
+    miss=0
+  fi
+done
+wait $pid
+REMOTE
+}
+
+# ---- Mac mini で実行 ----
+run_local() {
+  (cd $SRC && DEVELOPER_DIR=${H_DEVDIR[local]:-/Applications/Xcode.app/Contents/Developer} xcodebuild "${args[@]}" \
+    -derivedDataPath "$HOME/Library/Developer/Xcode/DerivedData/xcb-$NAME")
+}
+
+start=$SECONDS; HOST=""; WHERE=""; rc=1; attempt=0; waited=0; test_waited=0; MOVES=0
+while true; do
+  pick_remote; r=$?
+  if (( r == 0 )); then
+    (( waited > 0 )) && log "${waited} 秒待って ${SLOT:t} を取得"
+    waited=0; attempt=$(( attempt + 1 ))
+    log "$NAME の $ACTION を $HOST で実行（${SLOT:t}）"
+    job_file $HOST $attempt
+    emit job_attempt id $JOB_ID host $HOST slot ${SLOT:t} '#attempt' $attempt
+    run_remote $HOST | tee $OUT; rc=${pipestatus[1]}
+    if (( rc == 70 )) && grep -q "is not installed. Please download" $OUT 2>/dev/null; then
+      # ビルドの失敗ではなく、その Mac の Xcode に必要なプラットフォームが無い
+      log "$HOST の Xcode に $PLAT のプラットフォームが無いので、別の Mac でやり直す（1 時間は $HOST に $PLAT を割り当てない）"
+      emit job_moved id $JOB_ID from $HOST reason no_platform; (( MOVES++ ))
+      print $EPOCHSECONDS > $STATE/noplatform/$HOST-$PLAT; EXCLUDED+=($HOST); release
+      (( attempt < MAX_ATTEMPTS )) && continue
+    elif (( rc == 255 )); then
+      log "$HOST との接続が切れた／できなかったので、別の Mac でやり直す"
+      emit job_moved id $JOB_ID from $HOST reason disconnected; (( MOVES++ ))
+      mark_down $HOST "実行中に切断"; EXCLUDED+=($HOST); release
+      (( attempt < MAX_ATTEMPTS )) && continue
+      log "やり直しの上限（${MAX_ATTEMPTS} 回）に達したので Mac mini で実行する"
+    else
+      WHERE=$HOST; break
+    fi
+  elif (( r == 2 )); then
+    if (( waited == 0 )); then
+      log "つながる Mac の枠がすべて満杯なので空くまで待つ"
+      job_file waiting 0; emit job_waiting id $JOB_ID
+    fi
+    sleep 5; (( waited += 5 )); continue
+  elif [[ $ACTION == test* && ${H_TEST[local]-test} == notest ]]; then
+    # テストを動かせる Mac が 1 台もつながっていない。Mac mini でも動かせないので、つながるまで待つ
+    if (( test_waited == 0 )); then
+      log "テストを動かせる Mac がつながっていないので、つながるまで待つ（最長 $(( TEST_WAIT / 60 )) 分）"
+      job_file waiting 0; emit job_waiting id $JOB_ID reason no_test_host
+    fi
+    if (( test_waited >= TEST_WAIT )); then
+      log "$(( TEST_WAIT / 60 )) 分待ってもテストを動かせる Mac がつながらなかった。テストの失敗ではない"
+      rc=75; WHERE=none; break
+    fi
+    # 切断で外した Mac も、戻ってきたら使えるように外し直しをやめる（切断の直後は mark_down で 60 秒外れる）
+    EXCLUDED=()
+    sleep 15; (( test_waited += 15 )); continue
+  else
+    log "つながるリモートの Mac が無いので Mac mini で実行"
+  fi
+  # Mac mini で実行
+  until try_acquire local; do reap_stale; sleep 5; done
+  WHERE=local; [[ -n ${EXCLUDED-} ]] && WHERE=local-fallback
+  attempt=$(( attempt + 1 ))
+  job_file local $attempt
+  emit job_attempt id $JOB_ID host local slot ${SLOT:t} '#attempt' $attempt
+  run_local; rc=$?
+  break
+done
+
+emit job_finished id $JOB_ID path $SRC action $ACTION platform $PLAT host ${WHERE:-none} \
+  '#rc' $rc '#seconds' $(( SECONDS - start )) '#attempts' $attempt '#moves' $MOVES
+
+print "$(date '+%Y-%m-%d %H:%M:%S') where=$WHERE slot=${SLOT:t} tree=$NAME action=$ACTION dest=${DEST:-none} attempts=$attempt secs=$(( SECONDS - start )) rc=$rc" >> $LOG
+exit $rc
