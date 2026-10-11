@@ -225,6 +225,8 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
 ```
 
 - ビルド先の Mac には、振り分け元から鍵で ssh で入れるようにしておく（`BatchMode=yes` で入れること）。Xcode と Simulator のランタイムも入れておく
+- 振り分け元の Mac は「リモートログイン」を有効にし、22 番ポートで接続を受けるようにしておく。ビルド先の見張りは、振り分け元の 22 番ポートに届くかで
+  ネットワークから外れたことに気づく。受けない設定でもビルドはできるが、そのときは ssh のセッションが消えたときにしか止まらない
 - 以前の配置（スクリプトの隣の `.xcb-state`・`.xcb-locks`・`xcb.log`、ビルド先の `~/remote-builds`）は使わなくなる。
   xcb が動いていないときに、外した Mac の記録（`.xcb-state/drain/`）だけ新しい状態の置き場へ移し、ビルド先の `~/remote-builds` は消してよい
 
@@ -251,7 +253,8 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
   出力で、テスト未実施として PR を出し CI のテストで確かめるようループに伝える。待たせたいときは `XCB_TEST_WAIT`（秒）を指定する
 - **`build-for-testing` → `test-without-building`**: DerivedData は Mac ごとなので、`build-for-testing` を実行した Mac を作業ツリーとプラットフォームごとに覚え、
   `test-without-building` はその Mac に回す。記録が無い・その Mac で流せない（テストを受けない・つながらない・外している）ときは、
-  `test`（ビルドしてからテスト）に置き換えて流せる Mac でやり直す（`-xctestrun` を渡したときは置き換えない）
+  `test`（ビルドしてからテスト）に置き換えて流せる Mac でやり直す（`-xctestrun` を渡したときは置き換えない）。
+  ビルドし直しを減らすため、`build-for-testing` は続くテストを受けられる Mac に優先して回す（1 台もつながっていなければ、ほかの Mac でビルドだけ確かめる）
 - **署名**: ssh 越しではログインのキーチェーンを使えず、macOS の署名が `errSecInternalComponent` で失敗する。
   macOS 宛てのビルド・テストで署名の指定（`CODE_SIGN…`）が無ければ、アドホック署名の設定を足す（archive は除く。CI の macOS のテストと同じ）
 - **Simulator**: リモートでは `platform=iOS Simulator,name=…` を作業ツリー専用の Simulator（`xcb-<作業ツリー>-<機種>-<ランタイム>`。無ければ作る）に置き換える。
@@ -261,7 +264,7 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
   名前を `.noindex` で終わらせて Spotlight の索引から外す（ビルドのたびに索引を作り直して load が上がり、選ばれにくくなるため）。`XCB_REMOTE_ROOT` で変えられる。
   `local` は `~/Library/Developer/Xcode/DerivedData/xcb-<作業ツリー>`
 - **切断**: ssh の生存確認（5 秒ごと × 3 回）で切断に気づいたら、その Mac を 60 秒候補から外し、別の Mac で最初からやり直す（最大 4 回）。
-  リモート側の見張りが、振り分け元に 15 秒届かなければ xcodebuild を止める
+  リモート側の見張りが、ssh のセッションが消えるか、振り分け元の 22 番ポートに一度つながった後に 15 秒届かなければ xcodebuild を止める
 - **プラットフォーム**: visionOS などのプラットフォームが入っていない Mac に当たったら、1 時間そのプラットフォームの候補から外して別の Mac でやり直す
 
 ### コマンドと状態
