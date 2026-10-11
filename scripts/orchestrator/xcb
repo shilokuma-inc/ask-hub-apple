@@ -279,7 +279,7 @@ sdk=$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null)
 rt=$(xcrun simctl list runtimes available | sed -nE 's/^iOS ([0-9.]+) .* - (com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+)$/\1 \2/p' \
   | awk -v sdk="$sdk" 'function v(x, a){split(x,a,"."); return a[1]*10000+a[2]*100+a[3]} v($1)<=v(sdk){print v($1), $2}' \
   | sort -n | tail -1 | cut -d" " -f2)
-[[ -n $rt ]] || { print -- "この Xcode（iOS SDK $sdk）で使える iOS ランタイムがありません"; exit 0; }
+[[ -n $rt ]] || { print -- "この Xcode（iOS SDK ${sdk}）で使える iOS ランタイムがありません"; exit 0; }
 # 名前にランタイムを入れ、ランタイムが変わったら別の Simulator にする
 n="$1-${rt##*iOS-}"
 u=$(xcrun simctl list devices available | grep -F "    $n (" | head -1 | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
@@ -288,7 +288,7 @@ print -- $u
 REMOTE
 ) || return 255
     if [[ ! $udid =~ ^[0-9A-F-]{36}$ ]]; then
-      log "$h で Simulator を用意できなかった（$devname）: $udid"
+      log "$h で Simulator を用意できなかった（${devname}）: $udid"
       return 255
     fi
     for i in {1..$#rargs}; do
