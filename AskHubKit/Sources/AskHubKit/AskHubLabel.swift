@@ -22,4 +22,6 @@ public enum AskHubLabel: String, CaseIterable, Sendable {
     case loopStatus = "loop-status"
     /// アプリから出した、担当リポジトリの作成・削除の依頼の Issue
     case repoRequest = "repo-request"
+    /// オーケストレーターが xcb のビルド先の Mac の状態を書き出す Issue（設定で指定した 1 つのリポジトリに 1 つ）
+    case buildHosts = "build-hosts"
 }
