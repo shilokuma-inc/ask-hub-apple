@@ -385,7 +385,8 @@ REMOTE
   # 末尾の 1 文字を [] で囲み、pkill を実行するシェル自身のコマンドラインには一致しないようにする
   (( other )) || ssh $SSH_OPTS $h "pkill -f -- '${REMOTE_ROOT[1,-2]}[${REMOTE_ROOT[-1]}]/dd/$NAME -skipPackagePluginValidation' 2>/dev/null; true" || return 255
   # リモート側に見張りを付ける。ssh のセッションが消えるか、接続元（Mac mini）に 15 秒届かなければ xcodebuild を止める
-  # （ネットワークから外れると、Mac mini 側は別の Mac でやり直すが、リモートのビルドは放っておくと動き続けるため）
+  # （ネットワークから外れると、Mac mini 側は別の Mac でやり直すが、リモートのビルドは放っておくと動き続けるため）。
+  # 接続元に届くかは 22 番ポートで確かめるので、一度つながってから数える（22 番で受けない接続元では、セッションの消失だけで止める）
   ssh $SSH_OPTS $h zsh -s -- ${(q)REMOTE_ROOT} ${(q)NAME} ${(q)dev} ${(q)rargs[@]} <<'REMOTE'
 root=$1; name=$2; dev=$3; shift 3
 cd ~/$root/src/$name || exit 1
@@ -393,14 +394,15 @@ cd ~/$root/src/$name || exit 1
 client=${SSH_CLIENT%% *}
 xcodebuild "$@" -derivedDataPath $HOME/$root/dd/$name -skipPackagePluginValidation </dev/null &
 pid=$!
-miss=0
+miss=0; seen=0
 while kill -0 $pid 2>/dev/null; do
   sleep 5
   if ! kill -0 $PPID 2>/dev/null; then kill -TERM $pid 2>/dev/null; break; fi
-  if [[ -n $client ]] && ! nc -z -G 2 "$client" 22 >/dev/null 2>&1; then
+  [[ -n $client ]] || continue
+  if nc -z -G 2 "$client" 22 >/dev/null 2>&1; then
+    seen=1; miss=0
+  elif (( seen )); then
     (( ++miss >= 3 )) && { kill -TERM $pid 2>/dev/null; break; }
-  else
-    miss=0
   fi
 done
 wait $pid
