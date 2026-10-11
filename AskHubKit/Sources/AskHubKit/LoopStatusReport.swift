@@ -10,7 +10,8 @@ import Foundation
 /// ```
 ///
 /// 詳細は `docs/protocol.md` の「ループの状態」を参照。
-/// public リポジトリでは誰でも読めるので、ローカルパス・ログの中身・PC 名は持たない
+/// public リポジトリでは誰でも読めるので、ローカルパス・ログの中身は持たない。Mac の名前はビルドの情報（`builds`）の
+/// xcb の Host 名だけを持つ
 public struct LoopStatusReport: Sendable, Equatable, Codable {
     /// 状態用の Issue に付けるラベル
     public static let labelName = AskHubLabel.loopStatus.rawValue
@@ -133,6 +134,8 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     public var runner: String?
     /// 回答を待っている PR の番号（手で回しているループが書く）。これらの `needs-answer` が外れたら、アプリが再開の指示を出す
     public var waitingPullRequests: [Int]?
+    /// ループのスロットで動いた xcb のビルド（オーケストレーターが書く）。キーが無い古い目印は `nil`
+    public var builds: LoopStatusBuilds?
     // 時刻は目印に秒までしか書かないので、読み戻した値と比べられるよう代入のたびに秒未満を切り捨てる
     // （`didSet` は init では呼ばれないので、init でも切り捨てる）
 
@@ -159,7 +162,8 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         usageLimitedUntil: Date? = nil,
         checkedAt: Date,
         runner: String? = nil,
-        waitingPullRequests: [Int]? = nil
+        waitingPullRequests: [Int]? = nil,
+        builds: LoopStatusBuilds? = nil
     ) {
         self.state = state
         self.writer = writer
@@ -168,13 +172,14 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         self.progress = progress
         self.runner = runner
         self.waitingPullRequests = waitingPullRequests
+        self.builds = builds
         self.lastActivityAt = lastActivityAt.map(Self.wholeSeconds)
         self.usageLimitedUntil = usageLimitedUntil.map(Self.wholeSeconds)
         self.checkedAt = Self.wholeSeconds(checkedAt)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case state, writer, epic, discussion, progress, lastActivityAt, usageLimitedUntil, checkedAt, runner, waitingPullRequests
+        case state, writer, epic, discussion, progress, lastActivityAt, usageLimitedUntil, checkedAt, runner, waitingPullRequests, builds
     }
 
     public init(from decoder: any Decoder) throws {
@@ -189,11 +194,13 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
             usageLimitedUntil: try container.decodeIfPresent(Date.self, forKey: .usageLimitedUntil),
             checkedAt: try container.decode(Date.self, forKey: .checkedAt),
             runner: try container.decodeIfPresent(String.self, forKey: .runner),
-            waitingPullRequests: try container.decodeIfPresent([Int].self, forKey: .waitingPullRequests)
+            waitingPullRequests: try container.decodeIfPresent([Int].self, forKey: .waitingPullRequests),
+            // ビルドの情報は表示のためだけの付け足し。形が崩れていても状態そのものは読めるようにする
+            builds: try? container.decodeIfPresent(LoopStatusBuilds.self, forKey: .builds)
         )
     }
 
-    private static func wholeSeconds(_ date: Date) -> Date {
+    static func wholeSeconds(_ date: Date) -> Date {
         Date(timeIntervalSince1970: date.timeIntervalSince1970.rounded(.down))
     }
 
@@ -242,6 +249,9 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         }
         if let waitingPullRequests, !waitingPullRequests.isEmpty {
             rows.append(("回答待ちの PR", waitingPullRequests.map { "#\($0)" }.joined(separator: " ")))
+        }
+        if let builds {
+            rows += builds.tableRows
         }
         rows.append(("確認時刻", checkedAt.formatted(.iso8601)))
         let table = rows.map { "| \($0.0) | \($0.1) |" }.joined(separator: "\n")
@@ -293,7 +303,7 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     }
 
     /// 表のセルに置けるよう、改行を空白にし `|` をエスケープする
-    private static func tableCell(_ text: String) -> String {
+    static func tableCell(_ text: String) -> String {
         text.components(separatedBy: .newlines).joined(separator: " ").replacingOccurrences(of: "|", with: "\\|")
     }
 }
