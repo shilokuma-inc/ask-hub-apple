@@ -1,10 +1,12 @@
 import AskHubKit
 import SwiftUI
 
-/// GitHub のトークン、一覧を取得する organization、ループの既定値を設定する画面
+/// GitHub のトークン、一覧を取得する organization、ループの既定値を設定する画面。ビルドの Mac の画面もここから開く
 struct SettingsView: View {
     @State private var model: TokenSettingsModel
     @State private var organizationModel: OrganizationSettingsModel
+    /// ビルドの Mac の画面に使う、ステータスタブの取得結果。無ければ入口を出さない（Preview など）
+    private let loopModel: LoopStatusModel?
     @AppStorage(LoopStartPreference.defaultsKey)
     private var startsLoopAfterPosting = LoopStartPreference.defaultValue
     /// キーボードの「完了」でキーボードを閉じ、下のボタンが隠れないようにする
@@ -16,9 +18,14 @@ struct SettingsView: View {
     @Environment(\.setDemoMode)
     private var setDemoMode
 
-    init(model: TokenSettingsModel = TokenSettingsModel(), organizationModel: OrganizationSettingsModel = OrganizationSettingsModel()) {
+    init(
+        model: TokenSettingsModel = TokenSettingsModel(),
+        organizationModel: OrganizationSettingsModel = OrganizationSettingsModel(),
+        loopModel: LoopStatusModel? = nil
+    ) {
         _model = State(initialValue: model)
         _organizationModel = State(initialValue: organizationModel)
+        self.loopModel = loopModel
     }
 
     var body: some View {
@@ -57,6 +64,21 @@ struct SettingsView: View {
                     Text("取得する organization")
                 } footer: {
                     Text("依頼・要対応・任意判断・ステータス・実機確認に、ここに並べた organization のリポジトリを出します。")
+                }
+
+                if let loopModel {
+                    Section {
+                        NavigationLink {
+                            BuildHostsView(model: loopModel)
+                        } label: {
+                            LabeledContent("ビルドの Mac", value: loopModel.buildHosts?.summaryText ?? "情報なし")
+                        }
+                        .accessibilityIdentifier("build-hosts-link")
+                    } header: {
+                        Text("ビルド")
+                    } footer: {
+                        Text("ループのビルド・テストを振り分けている Mac の状態と処理負荷、どの Mac でどのループのビルドが動いているかを見られます。")
+                    }
                 }
 
                 Section {

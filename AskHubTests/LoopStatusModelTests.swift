@@ -187,6 +187,8 @@ struct LoopStatusModelTests {
         // 成功と失敗の移動が 1 件ずつ、新しい順
         #expect(model.buildMoves(now: .now).map(\.succeeded) == [true, false])
         #expect(!model.isEmpty)
+        // 設定画面の「ビルドの Mac」の入口に出す要約
+        #expect(model.buildHosts?.summaryText == "3 台・実行中 1")
     }
 
     @Test func doesNotCountBuildTroubleAsAbnormal() async {

@@ -124,3 +124,40 @@ extension BuildHostDisplay.Tone {
         }
     }
 }
+
+/// 設定画面から開く「ビルドの Mac」の画面。どの Mac でどのループのビルドが動いているかと、各 Mac の処理負荷を出す。
+/// ステータスタブと同じ取得結果（`LoopStatusModel`）を使い、同じ節の部品を並べる
+struct BuildHostsView: View {
+    let model: LoopStatusModel
+
+    var body: some View {
+        List {
+            BuildHostsSection(status: model.buildHosts)
+            BuildMovesSection(moves: model.buildMoves(now: Date()))
+        }
+        .overlay {
+            if model.buildHosts == nil {
+                if model.isLoading {
+                    ProgressView()
+                } else {
+                    ContentUnavailableView(
+                        "ビルドの Mac の情報はありません",
+                        systemImage: "desktopcomputer",
+                        description: Text("xcb でビルドを振り分けている Mac のオーケストレーターが、設定の buildHosts を持つと、ここに出ます")
+                    )
+                }
+            }
+        }
+        .refreshable { await model.refresh() }
+        .navigationTitle("ビルドの Mac")
+        .task { await model.refreshIfStale() }
+    }
+}
+
+extension BuildHostsStatus {
+    /// 設定画面の入口に出す「3 台・実行中 1」
+    var summaryText: String {
+        let running = report.jobs.count
+        return running > 0 ? "\(report.hosts.count) 台・実行中 \(running)" : "\(report.hosts.count) 台"
+    }
+}
