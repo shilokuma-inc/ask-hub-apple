@@ -173,18 +173,15 @@ struct LoopStatusRowTests {
 struct GitHubLoopStatusSourceTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private func issueJSON(_ number: Int, repository: String, author: String?, body: String, labels: [String]? = nil) -> String {
+    private func issueJSON(_ number: Int, repository: String, author: String?, body: String) -> String {
         let escaped = body
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
         let authorJSON = author.map { #"{ "login": "\#($0)" }"# } ?? "null"
-        let labelsJSON = labels.map { names in
-            #"{ "nodes": [\#(names.map { #"{ "name": "\#($0)" }"# }.joined(separator: ","))] }"#
-        } ?? "null"
         return #"""
             { "number": \#(number), "url": "https://github.com/\#(repository)/issues/\#(number)", "updatedAt": "2027-01-15T08:00:00Z",
-              "body": "\#(escaped)", "author": \#(authorJSON), "labels": \#(labelsJSON) }
+              "body": "\#(escaped)", "author": \#(authorJSON) }
             """#
     }
 
@@ -258,15 +255,16 @@ struct GitHubLoopStatusSourceTests {
         #expect(variables[3]["after"] as? String == "i2")
     }
 
-    @Test func separatesBuildHostsIssuesByLabel() async throws {
+    @Test func separatesBuildHostsIssuesByMarker() async throws {
         let status = LoopStatusReport(state: .running, checkedAt: now).issueBody
         let hosts = BuildHostsReport(hosts: [.init(name: "m4max", state: .ok)], checkedAt: now).issueBody
         let response = #"""
             { "data": { "organization": { "repositories": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
               { "nameWithOwner": "o/a", "label": null,
                 "issues": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
-                  \#(issueJSON(1, repository: "o/a", author: "mrs1669", body: status, labels: ["loop-status"])),
-                  \#(issueJSON(2, repository: "o/a", author: "mrs1669", body: hosts, labels: ["Build-Hosts", "bug"]))
+                  \#(issueJSON(1, repository: "o/a", author: "mrs1669", body: status)),
+                  \#(issueJSON(2, repository: "o/a", author: "mrs1669", body: hosts)),
+                  \#(issueJSON(3, repository: "o/a", author: "mrs1669", body: "人が書いた本文"))
                 ] } }
             ] } } } }
             """#
@@ -275,10 +273,9 @@ struct GitHubLoopStatusSourceTests {
 
         let repositories = try await source.loopStatusRepositories(orgs: ["o"])
 
-        #expect(repositories.first?.issues.map(\.number) == [1])
+        // 読めない本文は今までどおり状態用の Issue として扱う（信用する author のものなら行を残す）
+        #expect(repositories.first?.issues.map(\.number) == [1, 3])
         #expect(repositories.first?.buildHostsIssues.map(\.number) == [2])
-        let query = try #require(http.requests.first?.httpBody.flatMap { String(bytes: $0, encoding: .utf8) })
-        #expect(query.contains("labels(first: 20) { nodes { name } }"))
     }
 
     @Test func readsEachOrganizationInOrder() async throws {

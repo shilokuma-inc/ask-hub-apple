@@ -213,7 +213,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 アプリの読み方（`LoopStatusFetcher.status(orgs:)`。GitHub からの取得は `GitHubLoopStatusSource`）:
 
 - 「ループの状態」と同じ `organization.repositories` の GraphQL で、`loop-status` と一緒に open な `build-hosts` の Issue も取る
-  （`labels:` は OR なので問い合わせの回数は増えない。Search API は使わない）。Issue のラベルで `build-hosts` かを分ける
+  （`labels:` は OR なので問い合わせの回数は増えない。Search API は使わない）。本文の目印（`ask-hub:build-hosts`）で `build-hosts` かを分ける（Issue のラベルの一覧は 1 ページに収まるとは限らないため読まない）
 - リポジトリごとの信用する author が作り、目印を読める Issue のうち、最も新しく更新されたものを使う。
   複数のリポジトリにあれば、`checkedAt` が最も新しいものを使う
 - `build-hosts` の Issue だけがあるリポジトリは、ステータスの行にしない

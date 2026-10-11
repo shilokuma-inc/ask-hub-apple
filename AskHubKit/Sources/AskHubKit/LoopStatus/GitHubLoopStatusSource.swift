@@ -4,7 +4,8 @@ import Foundation
 ///
 /// 検索ではなく `organization.repositories` を最後のページまでたどる（Search API の 30 回/分の制限と、検索の件数のずれを避ける）。
 /// 状態用の Issue はリポジトリに 1 つの想定だが、誰でも同じラベルで作れるので、1 ページに収まらなければそのリポジトリだけ続きを取る。
-/// ビルドの Mac の状態の Issue（`build-hosts`）も同じ問い合わせで取る（`labels:` は OR なので回数は増えない）。どちらかはラベルで分ける
+/// ビルドの Mac の状態の Issue（`build-hosts`）も同じ問い合わせで取る（`labels:` は OR なので回数は増えない）。
+/// どちらかは本文の目印で分ける（Issue のラベルは 1 ページに収まるとは限らないので、ラベルの一覧は読まない）
 public struct GitHubLoopStatusSource: LoopStatusSource {
     let client: GitHubClient
 
@@ -48,9 +49,9 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
             repositories.append(LoopStatusRepository(
                 repository: node.nameWithOwner,
                 heartbeatDescription: node.label?.description,
-                // `build-hosts` の付いたものだけを分け、ほかは今までどおり状態用の Issue として扱う（目印で読み分けもする）
-                issues: issues.filter { !$0.hasLabel(BuildHostsReport.labelName) }.compactMap(\.issue),
-                buildHostsIssues: issues.filter { $0.hasLabel(BuildHostsReport.labelName) }.compactMap(\.issue)
+                // `build-hosts` の目印を読めるものだけを分け、ほかは今までどおり状態用の Issue として扱う
+                issues: issues.compactMap(\.issue).filter { !$0.isBuildHosts },
+                buildHostsIssues: issues.compactMap(\.issue).filter(\.isBuildHosts)
             ))
         }
         return repositories
@@ -89,7 +90,7 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
     /// 本文は状態の目印と短い表だけなので、まとめて取っても大きくならない
     private static let issueFields = """
         pageInfo { hasNextPage endCursor }
-        nodes { number url updatedAt body author { login } labels(first: 20) { nodes { name } } }
+        nodes { number url updatedAt body author { login } }
         """
 
     static let repositoriesQuery = """
@@ -167,12 +168,6 @@ private struct IssueNode: Decodable {
     let updatedAt: Date?
     let body: String?
     let author: Author?
-    let labels: IssueLabels?
-
-    /// ラベルの名前は大文字・小文字を区別しない
-    func hasLabel(_ name: String) -> Bool {
-        labels?.nodes.contains { $0?.name.caseInsensitiveCompare(name) == .orderedSame } == true
-    }
 
     var issue: LoopStatusIssue? {
         guard let number, let url, let updatedAt, let body else {
@@ -182,10 +177,9 @@ private struct IssueNode: Decodable {
     }
 }
 
-private struct IssueLabels: Decodable {
-    struct Label: Decodable {
-        let name: String
+private extension LoopStatusIssue {
+    /// ビルドの Mac の状態の目印（`ask-hub:build-hosts`）を読める
+    var isBuildHosts: Bool {
+        BuildHostsReport.parse(body) != nil
     }
-
-    let nodes: [Label?]
 }
