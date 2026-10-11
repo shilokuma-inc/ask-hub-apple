@@ -163,3 +163,38 @@ extension AskHubUITests {
         add(approved)
     }
 }
+
+// 任意判断の詳細画面の、指示とループの返信の履歴（Discussion #349）
+extension AskHubUITests {
+    @MainActor
+    func testDecisionLogShowsInstructionHistory() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["任意判断"].tap()
+        let decisionLog = app.staticTexts["epic/mvp の仮決め一覧"]
+        XCTAssertTrue(decisionLog.waitForExistence(timeout: 5))
+        decisionLog.tap()
+
+        // 履歴は本文の下にある（Form は画面の外の行を作らないので、出るまでスクロールする）
+        let unprocessed = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "未処理の指示が 1 件あります")).firstMatch
+        for _ in 0..<12 where !unprocessed.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(unprocessed.waitForExistence(timeout: 5))
+        let untrusted = app.staticTexts["信用外（指示として扱わない）"]
+        for _ in 0..<3 where !untrusted.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(untrusted.exists)
+        XCTAssertTrue(app.staticTexts["指示・処理済み"].exists || app.staticTexts["ループの返信"].exists)
+        // ループの返信の目印は本文に出さない
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "ask-hub:decision-reply")).firstMatch.exists)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "decision-history"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+}

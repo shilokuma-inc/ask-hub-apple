@@ -52,6 +52,8 @@ final class DecisionLogDetailModel {
     private(set) var notice: String?
     /// 送っている最中の操作。送っている間はほかの操作をさせない
     private(set) var sending: Action?
+    /// この画面から投稿した指示の数。増えたら指示と返信の履歴を取り直す
+    private(set) var postedInstructions = 0
 
     init(issue: InboxIssue) {
         self.issue = issue
@@ -120,6 +122,7 @@ final class DecisionLogDetailModel {
                 let url = try await inbox.post(instruction, for: item, to: issue)
                 outcomes[item.text] = .instructed(url)
                 notes[item.text] = nil
+                postedInstructions += 1
             }
         } catch {
             outcomes[item.text] = .failed(InboxModel.decisionMessage(for: error))

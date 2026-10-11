@@ -18,6 +18,8 @@ struct IssueDetailView: View {
     @State private var pendingAction: DecisionLogDetailModel.Action?
     /// 送る前とキーボードの「完了」でキーボードを閉じ、確認や結果が隠れないようにする
     @FocusState private var isEditingNote: Bool
+    /// 仮決め一覧の指示とループの返信の履歴
+    @State private var historyModel: DecisionLogHistoryModel
     @Environment(\.dismiss)
     private var dismiss
 
@@ -26,6 +28,7 @@ struct IssueDetailView: View {
         self.inbox = inbox
         renderedBody = RenderedBody(body: issue.body)
         _decisionModel = State(initialValue: DecisionLogDetailModel(issue: issue))
+        _historyModel = State(initialValue: DecisionLogHistoryModel(issue: issue))
     }
 
     private var reference: String {
@@ -61,11 +64,25 @@ struct IssueDetailView: View {
                 }
             }
 
+            if issue.kind == .decisionLog {
+                DecisionLogHistorySection(model: historyModel, inbox: inbox)
+            }
+
             if issue.kind == .needsVerify {
                 closeSection
             }
         }
         .formStyle(.grouped)
+        // 履歴は画面を開いたときに読む。表示の位置（Form の行）と取得の始まりを分け、行が画面の外に出ても打ち切らない
+        .task {
+            if issue.kind == .decisionLog && historyModel.state == .idle {
+                await historyModel.load(using: inbox)
+            }
+        }
+        // 投稿した指示を未処理として履歴に出す
+        .onChange(of: decisionModel.postedInstructions) {
+            Task { await historyModel.load(using: inbox) }
+        }
         .keyboardDoneButton($isEditingNote)
         .navigationTitle(reference)
         // 承認・指示は GitHub に書き込むので、送る内容を見せて確かめる

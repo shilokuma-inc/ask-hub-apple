@@ -40,6 +40,8 @@ final class InboxModel {
     private let makeInstructionPoster: @Sendable (String) -> any DecisionInstructionPosting
     /// リポジトリごとの信用する author（トークンごと）
     private let makeTrust: @Sendable (String) -> any TrustedAuthorsResolving
+    /// 仮決め一覧のコメントの取得元（トークンごと）
+    private let makeCommentsFetcher: @Sendable (String) -> any DecisionLogCommentsFetching
     /// 直前の取得で求めた、リポジトリごとの信用する author（画面での判定に使う。キーは `owner/repo` の小文字）
     private var trustedAuthorsByRepository: [String: TrustedAuthors] = [:]
     /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
@@ -56,8 +58,12 @@ final class InboxModel {
             GitHubDecisionInstructionPoster(client: GitHubClient(token: $0))
         },
         organizations: @escaping () -> [String] = { OrganizationSettings.load() },
-        makeTrust: @escaping @Sendable (String) -> any TrustedAuthorsResolving = { RepositoryTrustCache.trust(token: $0) }
+        makeTrust: @escaping @Sendable (String) -> any TrustedAuthorsResolving = { RepositoryTrustCache.trust(token: $0) },
+        makeCommentsFetcher: @escaping @Sendable (String) -> any DecisionLogCommentsFetching = {
+            GitHubDecisionLogComments(client: GitHubClient(token: $0))
+        }
     ) {
+        self.makeCommentsFetcher = makeCommentsFetcher
         self.tokenStore = tokenStore
         self.makeTrust = makeTrust
         self.organizations = organizations
@@ -80,6 +86,17 @@ final class InboxModel {
     /// Discussion / PR を作ったのが信用する author か。信用外の author の Discussion に付いた `manual-loop` はオーケストレーターが無視する
     func isTrustedAuthor(of subject: InboxSubject) -> Bool {
         (trustedAuthorsByRepository[subject.repository.lowercased()] ?? .default).contains(subject.author)
+    }
+
+    /// 仮決め一覧の指示とループの返信の履歴。コメントはページングを最後まで追って古い順に読み、
+    /// 処理済みかはオーケストレーターと同じ規則（`DecisionLogHistory`）で、そのリポジトリの信用する author をもとに判定する
+    func decisionHistory(for issue: InboxIssue) async throws -> DecisionLogHistory {
+        guard let token = try tokenStore.load() else {
+            throw MissingTokenError()
+        }
+        async let comments = makeCommentsFetcher(token).comments(of: issue)
+        async let trusted = makeTrust(token).trustedAuthors(for: issue.repository)
+        return try await DecisionLogHistory(comments: comments, trustedAuthors: trusted)
     }
 
     /// Discussion の回答を確定し、ループを始めてよい印（`ready-for-loop`）を付ける（Discussion #1 の Q3）。
@@ -298,6 +315,18 @@ final class InboxModel {
 
         case DecisionInstructionError.notDecisionLog, DecisionApprovalError.notDecisionLog:
             "仮決め一覧ではない Issue には送れません"
+
+        default:
+            message(for: error)
+        }
+    }
+
+    /// 仮決め一覧の履歴を読めなかったときの説明。トークンの値は含めない
+    static func historyMessage(for error: any Error) -> String {
+        switch error {
+        // リポジトリが見えないトークンでは 404、権限が足りなければ 403 になる
+        case GitHubError.http(status: 403, _), GitHubError.http(status: 404, _):
+            "履歴を読めませんでした。トークンに、このリポジトリの Issues の読み取り権限があるか確かめてください"
 
         default:
             message(for: error)
