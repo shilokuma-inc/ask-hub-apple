@@ -42,15 +42,13 @@ public enum DecisionLogCheck {
     /// 一致の判定では行頭・行末の空白を比べない。ほかの行・改行コード・行の残りはそのまま残す
     public static func check(_ text: String, in body: String) -> Result {
         let target = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // `\r\n` を 1 文字として扱わないよう、Foundation の `\n` 区切りで分けて改行コードを残す
-        var lines = body.components(separatedBy: "\n")
+        // 行の区切りは `DecisionLogItem` と同じにする。置き換えは元の本文の上で行い、改行コードを残す
         var foundChecked = false
-        for (index, line) in lines.enumerated() {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        for line in body.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix(unchecked), rest(of: trimmed, after: unchecked) == target,
-               let range = line.range(of: unchecked) {
-                lines[index] = line.replacingCharacters(in: range, with: checked)
-                return .checked(lines.joined(separator: "\n"))
+               let range = body.range(of: unchecked, range: line.startIndex..<line.endIndex) {
+                return .checked(body.replacingCharacters(in: range, with: checked))
             }
             if let prefix = checkedPrefixes.first(where: { trimmed.hasPrefix($0) }), rest(of: trimmed, after: prefix) == target {
                 foundChecked = true

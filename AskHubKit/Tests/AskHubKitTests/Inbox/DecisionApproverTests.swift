@@ -28,6 +28,15 @@ struct DecisionLogCheckTests {
             == .checked("冒頭\r\n  - [x] #4 文言 → 採用: 保存  \r\n- [ ] #5 余白 → 採用: 16pt\r\n"))
     }
 
+    @Test func findsLinesSeparatedByOtherLineBreaks() {
+        // `DecisionLogItem` と同じく、CR だけ・Unicode の改行で区切られた行も 1 行として扱う
+        for separator in ["\r", "\u{2028}", "\u{85}"] {
+            let body = "- [ ] #4 文言 → 採用: 保存\(separator)- [ ] #5 余白 → 採用: 16pt"
+            #expect(DecisionLogCheck.check("#5 余白 → 採用: 16pt", in: body)
+                == .checked("- [ ] #4 文言 → 採用: 保存\(separator)- [x] #5 余白 → 採用: 16pt"))
+        }
+    }
+
     @Test func checksFirstOfDuplicatedLines() {
         let body = "- [ ] #4 文言 → 採用: 保存\n- [ ] #4 文言 → 採用: 保存"
         #expect(DecisionLogCheck.check("#4 文言 → 採用: 保存", in: body) == .checked("- [x] #4 文言 → 採用: 保存\n- [ ] #4 文言 → 採用: 保存"))
