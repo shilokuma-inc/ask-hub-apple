@@ -6,16 +6,18 @@ extension Orchestrator {
     /// 解消させるコマンドの制限時間。ビルドと検証を含むので長めにとる
     static let conflictCommandTimeout: Duration = .seconds(30 * 60)
 
-    /// ポーリングの最後に行うこと。epic の最終 PR が既定ブランチとコンフリクトしていたら解消させ（1 回のポーリングで 1 件）、
+    /// ポーリングの最後に行うこと。epic の最終 PR が既定ブランチとコンフリクトしていたら裏で解消させ（終わるのは待たない）、
     /// ループの状態を状態用の Issue に書き出す
     func finishPoll(statuses: [String: LoopStatus]) async {
-        await resolveConflictingFinalPullRequest()
+        await startConflictResolutions()
         await publishLoopStatuses(statuses: statuses)
         // 状態用の Issue を読み直した後に、手動ループの完了を見る
         await finalizeEpicsFromGitHub(statuses: statuses)
     }
 
-    func resolveConflictingFinalPullRequest() async {
+    /// コンフリクトした最終 PR を探し、解消を裏で始める。
+    /// 解消は最長 30 分かかるので、ポーリングを止めないよう終わるのを待たない。同じリポジトリでは 1 件ずつ、別のリポジトリは並列に解消する
+    func startConflictResolutions() async {
         guard activeUsageLimit(at: now()) == nil else {
             return
         }
@@ -26,10 +28,43 @@ extension Orchestrator {
             log("コンフリクトした最終 PR を確認できませんでした: \(error)")
             return
         }
+        conflictingPullRequests = pullRequests
         conflictTracker.prune(keeping: pullRequests)
-        guard let (pullRequest, repository) = conflictTracker.next(in: pullRequests, config: config) else {
+        startConflictResolutions(among: pullRequests)
+    }
+
+    /// 裏で実行中の解消がすべて終わるまで待つ（`--once` で終わる前・`run` の終わりなど）。
+    /// 子プロセスはオーケストレーターの終了で止まらないので、結果を PR にコメントしてから終わる。
+    /// 待っている間は新しい解消を始めない（同じリポジトリの次の PR は、次のポーリングで始める）
+    public func waitForConflictResolutions() async {
+        drainsConflictResolutions = true
+        defer { drainsConflictResolutions = false }
+        while let task = conflictResolutions.values.first {
+            await task.value
+        }
+    }
+
+    /// 取得済みの一覧から、始められる解消を裏で始める
+    private func startConflictResolutions(among pullRequests: [ConflictingPullRequest]) {
+        guard activeUsageLimit(at: now()) == nil, !drainsConflictResolutions else {
             return
         }
+        for (pullRequest, repository) in conflictTracker.startable(in: pullRequests, config: config) {
+            let key = pullRequest.repository.lowercased()
+            conflictTracker.start(pullRequest)
+            conflictResolutions[key] = Task {
+                await resolveConflict(of: pullRequest, in: repository)
+                conflictTracker.finish(pullRequest)
+                conflictResolutions[key] = nil
+                // 同じリポジトリでほかの最終 PR もコンフリクトしていれば、次のポーリングを待たずに始める
+                // （一覧は最後に取得したもの。古くても、同じ組み合わせは試し直さず、スクリプトが取得し直してから取り込む）。
+                // 今終わった PR は push で head が変わっているので、古い一覧の組み合わせでは試し直さず、次のポーリングで取得し直す
+                startConflictResolutions(among: conflictingPullRequests.filter { $0.key != pullRequest.key })
+            }
+        }
+    }
+
+    private func resolveConflict(of pullRequest: ConflictingPullRequest, in repository: RepositoryConfig) async {
         let name = "\(pullRequest.repository)#\(pullRequest.number)"
         log("\(name)（\(pullRequest.headBranch) → \(pullRequest.baseBranch)）がコンフリクトしているので、解消させます")
         let output: String

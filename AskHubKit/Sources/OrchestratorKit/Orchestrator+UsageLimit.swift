@@ -29,6 +29,10 @@ extension Orchestrator {
                 latest = max(latest ?? reset, reset)
             }
         }
+        // 待っている間に、裏の処理（最終 PR のコンフリクトの解消）が上限を記録したかもしれないので、読み直して消さない
+        if let recorded = activeUsageLimit(at: current) {
+            latest = max(latest ?? recorded, recorded)
+        }
         updateUsageLimit(latest)
     }
 

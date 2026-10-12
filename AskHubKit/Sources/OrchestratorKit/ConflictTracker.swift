@@ -30,7 +30,7 @@ public struct ConflictingPullRequest: Sendable, Equatable {
     }
 }
 
-/// 最終 PR のコンフリクトの解消をどこまで試したかを覚える（副作用なし）
+/// 最終 PR のコンフリクトの解消をどこまで試したか・どのリポジトリで実行中かを覚える（副作用なし）
 public struct ConflictTracker: Sendable {
     /// 解消できなかったのがこの回数続いたら、その PR はあきらめる（人に任せる）
     public static let maxFailures = 3
@@ -50,22 +50,47 @@ public struct ConflictTracker: Sendable {
     }
 
     private(set) var entries: [String: Entry] = [:]
+    /// 解消を実行中のリポジトリ（名前の小文字）
+    private(set) var runningRepositories: Set<String> = []
 
     public init() {}
 
-    /// 次に試す PR。担当リポジトリのもので、あきらめておらず、まだ試していない組み合わせのもの
-    public func next(in pullRequests: [ConflictingPullRequest], config: OrchestratorConfig) -> (ConflictingPullRequest, RepositoryConfig)? {
+    /// 今から始める PR。担当リポジトリのもので、あきらめておらず、まだ試していない組み合わせのもの。
+    /// 解消はメインの checkout に一時 worktree を作るので、同じリポジトリでは 1 件ずつにする
+    /// （実行中のリポジトリのものは選ばず、リポジトリごとに 1 件まで）。別のリポジトリのものは並べて返す
+    public func startable(
+        in pullRequests: [ConflictingPullRequest], config: OrchestratorConfig
+    ) -> [(ConflictingPullRequest, RepositoryConfig)] {
+        var chosen = runningRepositories
+        var startable: [(ConflictingPullRequest, RepositoryConfig)] = []
         for pullRequest in pullRequests {
-            guard let repository = config.repository(named: pullRequest.repository) else {
+            let repositoryKey = pullRequest.repository.lowercased()
+            guard !chosen.contains(repositoryKey), let repository = config.repository(named: pullRequest.repository) else {
                 continue
             }
             let entry = entries[pullRequest.key] ?? Entry()
             if entry.gaveUp || entry.triedAttempts.contains(pullRequest.attemptKey) {
                 continue
             }
-            return (pullRequest, repository)
+            chosen.insert(repositoryKey)
+            startable.append((pullRequest, repository))
         }
-        return nil
+        return startable
+    }
+
+    /// 解消を始めた。終わるまで、同じリポジトリのほかの PR は選ばない
+    public mutating func start(_ pullRequest: ConflictingPullRequest) {
+        runningRepositories.insert(pullRequest.repository.lowercased())
+    }
+
+    /// 解消が終わった（結果を記録しないとき（利用上限で終わったなど）も呼ぶ）
+    public mutating func finish(_ pullRequest: ConflictingPullRequest) {
+        runningRepositories.remove(pullRequest.repository.lowercased())
+    }
+
+    /// そのリポジトリで解消を実行中か
+    public func isRunning(in repository: String) -> Bool {
+        runningRepositories.contains(repository.lowercased())
     }
 
     /// 結果を記録する。あきらめることになったら `true`
