@@ -47,6 +47,10 @@ struct FakeGitHubState {
     var updatedLoopStatusIssues: [String] = []
     var loopStatusIssueListings = 0
     var loopStatusFails = false
+    /// 状態用の Issue のコメント（キーは Issue の番号。古い順）
+    var loopStatusComments: [Int: [LoopStatusComment]] = [:]
+    var createdLoopStatusComments: [String] = []
+    var updatedLoopStatusComments: [String] = []
     /// `manual-loop` の Discussion
     var manualLoops: [ManualLoopDiscussion] = []
     var manualLoopsFail = false

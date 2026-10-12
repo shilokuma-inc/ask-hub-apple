@@ -437,3 +437,48 @@ extension GitHubOrchestratorTests {
         #expect(updated == ["body": "新しい状態", "state": "open"])
     }
 }
+
+// MARK: - 状態用の Issue のコメント（ループごとの状態）
+
+extension GitHubOrchestratorTests {
+    @Test func listsLoopStatusCommentsAcrossPages() async throws {
+        let next = "https://api.github.com/repos/o/r/issues/7/comments?per_page=100&page=2"
+        let http = StubHTTPClient(withHeaders: [
+            StubHTTPResponse(body: #"""
+            [{ "id": 11, "body": "本文", "user": { "login": "mrs1669" }, "updated_at": "2027-01-15T08:00:00Z" },
+             { "id": 12, "body": null, "user": null, "updated_at": "2027-01-15T07:00:00Z" }]
+            """#, headers: ["Link": "<\(next)>; rel=\"next\""]),
+            StubHTTPResponse(
+                body: #"[{ "id": 13, "body": "2 ページ目", "user": { "login": "partner" }, "updated_at": "2027-01-15T08:00:00Z" }]"#
+            )
+        ])
+        let comments = try await makeGitHub(http).loopStatusComments(in: "o/r", issue: 7)
+
+        let updatedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(comments == [
+            LoopStatusComment(id: 11, author: "mrs1669", updatedAt: updatedAt, body: "本文"),
+            LoopStatusComment(id: 12, author: nil, updatedAt: updatedAt.addingTimeInterval(-3600), body: ""),
+            LoopStatusComment(id: 13, author: "partner", updatedAt: updatedAt, body: "2 ページ目")
+        ])
+        #expect(http.requests.map { $0.url?.absoluteString } == [
+            "https://api.github.com/repos/o/r/issues/7/comments?per_page=100", next
+        ])
+    }
+
+    @Test func createsAndUpdatesLoopStatusComment() async throws {
+        let http = StubHTTPClient(responses: [(201, #"{ "id": 21 }"#), (200, #"{ "id": 21 }"#)])
+        let github = makeGitHub(http)
+        #expect(try await github.createLoopStatusComment(in: "o/r", issue: 7, body: "ループの状態") == 21)
+        try await github.updateLoopStatusComment(in: "o/r", id: 21, body: "新しい状態")
+
+        #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" } == [
+            "POST /repos/o/r/issues/7/comments",
+            "PATCH /repos/o/r/issues/comments/21"
+        ])
+        let bodies = try http.requests.map { request in
+            let data = try #require(request.httpBody)
+            return try JSONSerialization.jsonObject(with: data) as? [String: String]
+        }
+        #expect(bodies == [["body": "ループの状態"], ["body": "新しい状態"]])
+    }
+}
