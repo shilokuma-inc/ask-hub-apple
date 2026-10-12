@@ -99,6 +99,18 @@ struct LoopStatusLoopItemTests {
         #expect(gone.map { $0.row.status(now: now) } == [.unassigned, .unassigned])
     }
 
+    @Test func listsOnlyNewestAutomaticLoop() {
+        // 終わった自動ループ（#5）のコメントが残っていても、自動ループは 1 つしか回らないので最も新しい #12 だけを並べる
+        let finished = loop(.gaveUp, discussion: 5, checkedMinutesAgo: 60)
+        let current = loop(.running, discussion: 12)
+        let manual = loop(.waitingForAnswer, writer: .manual, discussion: 30)
+        let items = row([finished, current, manual]).loopItems(manualLoops: [])
+        #expect(items.map(\.id) == ["o/r#12", "o/r#30"])
+        #expect(row([finished, current, manual]).abnormalLoopKeys(manualLoops: [], now: now).isEmpty)
+        // 自動ループが 2 つ残っているだけなら、並べない（1 行）
+        #expect(row([finished, current]).loopItems(manualLoops: []).isEmpty)
+    }
+
     @Test func headingShowsRepositoryWideStatus() {
         let loops = [loop(.running, discussion: 12), loop(.running, writer: .manual, discussion: 30)]
         let calendar = Calendar(identifier: .gregorian)

@@ -38,10 +38,13 @@ extension LoopStatusRow {
     }
 
     /// リポジトリの見出しの下に並べるループ（Discussion の番号の順）。「ループなし」を除いたループが 2 つ以上あるときだけ返し、
-    /// 1 つ以下なら空（今までと同じ 1 行で出す）
+    /// 1 つ以下なら空（今までと同じ 1 行で出す）。
+    /// 自動ループは同じリポジトリで 1 つしか回らないので、`checkedAt` が最も新しいものだけを並べる（終わったループのコメントが残っていても 2 行にしない）
     /// - Parameter manualLoops: 開いている手動ループ（担当者を出すのに使う。無ければ状態の `runner`）
     public func loopItems(manualLoops: [ManualLoopEpic]) -> [LoopStatusLoopItem] {
-        let loops = board?.loops.filter { $0.report.state != .noLoop } ?? []
+        let active = board?.loops.filter { $0.report.state != .noLoop } ?? []
+        let automatic = active.filter { $0.report.writer != .manual }.max { $0.report.checkedAt < $1.report.checkedAt }
+        let loops = active.filter { $0.report.writer == .manual || $0 == automatic }
         guard loops.count >= 2 else {
             return []
         }
