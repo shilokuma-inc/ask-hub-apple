@@ -80,6 +80,24 @@ extension OrchestratorTests {
         #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", ""]])
     }
 
+    @Test func resumesAutomaticLoopEvenWhenManualLoopSearchFails() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setManualLoops([Self.manualLoop])
+        let runtime = FakeRuntime()
+        runtime.setEpic(Self.automaticEpic)
+        let inbox = FakeInbox()
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime, inbox: inbox)
+        try await orchestrator.pollOnce()
+
+        // manual-loop の検索が失敗したポーリングで、自動ループの epic 宛ての PR に回答が付く
+        github.setManualLoopsFail(true)
+        inbox.set([Self.pullRequest(base: "epic/mvp")], threads: ["PR_34": [Self.ask("C_3", replies: ["mrs1669"])]])
+        try await orchestrator.pollOnce()
+
+        // ゴール元の記録がある epic は自動ループのものなので、回答を見送らずに再開する
+        #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", ""]])
+    }
+
     // この PC の制御用 worktree で手動ループ（#273）を回している。ゴール元の記録が無い epic も自動ループとみなさない
     @Test(arguments: [273, nil])
     func doesNotResumeWhenControlWorktreeHoldsManualLoopEpic(discussion: Int?) async throws {
