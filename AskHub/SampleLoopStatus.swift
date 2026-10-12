@@ -125,18 +125,6 @@ struct SampleLoopStatusSource: LoopStatusSource {
                     waitingPullRequests: [58]
                 )
             ]),
-            // 完了した epic（最終 PR のマージ待ち）が残ったまま、次の Discussion の自動ループを起動した（自動ループも Discussion ごとのコメント）
-            Self.loops(org, "focus-timer-ios", issue: 6, checkedAt: minutesAgo(2), [
-                LoopStatusReport(
-                    state: .completed,
-                    epic: "epic/themes",
-                    discussion: 70,
-                    progress: .init(completed: 6, total: 6, deferred: 0),
-                    lastActivityAt: minutesAgo(90),
-                    checkedAt: minutesAgo(2)
-                ),
-                LoopStatusReport(state: .running, discussion: 74, checkedAt: minutesAgo(2))
-            ]),
             // 同じリポジトリで、手動ループが 2 つ回っている
             Self.loops(org, "story-maker", issue: 4, checkedAt: minutesAgo(2), [
                 LoopStatusReport(
@@ -159,8 +147,25 @@ struct SampleLoopStatusSource: LoopStatusSource {
                     checkedAt: minutesAgo(8),
                     runner: "partner"
                 )
-            ])
+            ]),
+            Self.launchedAfterCompletedEpic(org, now: now)
         ]
+    }
+
+    /// 完了した epic（最終 PR のマージ待ち）が残ったまま、次の Discussion の自動ループを起動した例（自動ループも Discussion ごとのコメント）
+    private static func launchedAfterCompletedEpic(_ org: String, now: Date) -> LoopStatusRepository {
+        let checkedAt = now.addingTimeInterval(-2 * 60)
+        return Self.loops(org, "focus-timer-ios", issue: 6, checkedAt: checkedAt, [
+            LoopStatusReport(
+                state: .completed,
+                epic: "epic/themes",
+                discussion: 70,
+                progress: .init(completed: 6, total: 6, deferred: 0),
+                lastActivityAt: now.addingTimeInterval(-90 * 60),
+                checkedAt: checkedAt
+            ),
+            LoopStatusReport(state: .running, discussion: 74, checkedAt: checkedAt)
+        ])
     }
 
     /// ループごとの状態はサンプルの一覧に入れておき、取得の口（`LoopStatusFetcher` が使う Issue だけを取る）でもそこから返す
