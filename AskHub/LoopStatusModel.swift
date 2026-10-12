@@ -100,7 +100,8 @@ final class LoopStatusModel {
             loops.formUnion(row.abnormalLoopKeys(manualLoops: manualLoops, now: now))
         }
         for item in manualLoopItems(now: now) where item.isStale {
-            loops.insert("\(item.epic.subject.repository.lowercased())#\(item.epic.subject.number)")
+            // 行のキー（`loopKey`）と同じく、読んだ状態から求める（番号の無い古い形の本文の手動ループを 2 回数えない）
+            loops.insert(LoopStatusRow(repository: item.epic.subject.repository, report: item.report).loopKey)
         }
         return loops.count
     }
