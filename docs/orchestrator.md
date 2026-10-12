@@ -305,7 +305,10 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
 
 1. 担当リポジトリの owner の organization 全体から `needs-answer` の open な Discussion / PR を取得し（`GitHubInboxSource`）、担当リポジトリのものだけを扱う
 2. 信用する author の質問と、その回答状況を読み取る（回答済み = 信用する author の返信が 1 件以上）
-3. PR の ask（※2）に**新しく**回答が付いたら、そのリポジトリを再開待ちにする。Discussion（※1）の回答では再開しない（ループは `ready-for-loop` で始まる）
+3. PR の ask（※2）に**新しく**回答が付き、その PR の base がこの PC の自動ループの epic（制御用 worktree のブランチ）なら、そのリポジトリを再開待ちにする。
+   Discussion（※1）の回答では再開しない（ループは `ready-for-loop` で始まる）。
+   同じリポジトリで自動ループと手動ループが回るので、ほかの epic（手動ループ・`develop` など）宛ての PR の回答では再開しない
+   （[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425)）。PR の base は `needs-answer` の検索で一緒に取る（`baseRefName`。検索の回数は増やさない）
 4. 再開待ちのリポジトリ
 
    | 状態 | 動作 |
@@ -323,8 +326,15 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
    ただし、信用する author の Discussion に `manual-loop` が付いていれば（手で回す Discussion）、`ready-for-loop` は付けずに
    `needs-answer` だけを外す（ログに「manual-loop（手で回す）なので、ready-for-loop は付けません」と出す）。
    `manual-loop` と author は `needs-answer` の検索結果から読む。信用外の author の Discussion に付いた `manual-loop` は無視し、今までどおり扱う
-6. 信用する author の open な `manual-loop` の Discussion があるリポジトリ（手動ループ）では、PR の ask に回答が付いても再開待ちにしない。
-   ループは担当者の Mac で動いているので、担当者がアプリの「回答がそろいました」を見て再開する
+6. 信用する author の open な `manual-loop` の Discussion があるリポジトリ（手動ループ）では、手動ループの epic 宛ての PR の回答で再開待ちにしない。
+   ループは担当者の Mac で動いているので、担当者がアプリの「回答がそろいました」を見て再開する。
+   手動ループのあるリポジトリでは、次のときも自動ループの epic とみなさない（ralph-kit が作業場所を Discussion ごとに分けるまでは、
+   この PC で回す手動ループも制御用 worktree を使うため）。このとき、そのリポジトリの再開待ちもやめる
+   - 制御用 worktree の epic のゴール元（起動スクリプトの記録）が `manual-loop` の Discussion
+   - ゴール元の記録が無い（手で始めた epic）
+   - そのポーリングで `manual-loop` の Discussion を取得できなかった
+
+   base が分からない PR（古いアプリ・取得の失敗）は、手動ループの無いリポジトリでだけ今までどおり再開待ちにする
 
 回答済みの質問はメモリ上でだけ覚えるため、オーケストレーターを再起動した直後は、回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
 
