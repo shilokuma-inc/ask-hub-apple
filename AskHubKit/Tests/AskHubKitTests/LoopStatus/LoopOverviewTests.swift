@@ -91,6 +91,54 @@ struct LoopOverviewTests {
         #expect(notStarted.first?.statusText == "未開始")
     }
 
+    @Test func readsEachManualLoopOfSameRepositoryFromItsComment() throws {
+        // 同じリポジトリで、自動ループ（#9）と手動ループ 2 つ（#12・#20）が回っている（ループごとのコメント）
+        func report(
+            _ state: LoopStatusReport.State, writer: LoopStatusReport.Writer, discussion: Int, waiting: [Int]?
+        ) -> LoopStatusReport {
+            LoopStatusReport(
+                state: state,
+                writer: writer,
+                discussion: discussion,
+                checkedAt: Self.now.addingTimeInterval(-60),
+                waitingPullRequests: waiting
+            )
+        }
+        let automatic = report(.running, writer: .orchestrator, discussion: 9, waiting: nil)
+        let first = report(.waitingForAnswer, writer: .manual, discussion: 12, waiting: [34])
+        let second = report(.waitingForAnswer, writer: .manual, discussion: 20, waiting: [40])
+        let body = #"<!-- ask-hub:repository-status {"checkedAt":"2027-01-15T07:59:00Z"} -->"#
+        let comments = [automatic, first, second].enumerated().map { index, report in
+            LoopStatusComment(id: index + 1, author: "mrs1669", updatedAt: Self.now, body: report.issueBody)
+        }
+        let issue = LoopStatusIssue(
+            number: 1,
+            url: try #require(URL(string: "https://github.com/o/r/issues/1")),
+            author: "mrs1669",
+            updatedAt: Self.now,
+            body: body,
+            comments: comments
+        )
+        let heartbeat = OrchestratorHeartbeat.description(at: Self.now)
+        let repository = LoopStatusRepository(repository: "o/r", heartbeatDescription: heartbeat, issues: [issue])
+        let rows = LoopStatusRow.rows(from: [repository], trustedAuthors: TrustedAuthors(["mrs1669"]))
+        // 1 行に出す状態は自動ループでも、手動ループの行はそれぞれのループの状態を読む
+        #expect(rows.first?.report == automatic)
+
+        // #12 の回答待ちの PR #34 だけ needs-answer が外れた
+        let items = ManualLoopItem.items(
+            epics: [Self.epic("o/r", number: 12), Self.epic("o/r", number: 20), Self.epic("o/r", number: 9)],
+            rows: rows,
+            viewer: nil,
+            needsAnswer: ["o/r#40"],
+            now: Self.now
+        )
+        #expect(items.map(\.report) == [first, second, nil])
+        #expect(items.map(\.answersReady) == [true, false, false])
+        // 自動ループの Discussion を手動ループとして扱わない（未開始）
+        #expect(items.last?.statusText == "未開始")
+    }
+
     @Test func roundTripsRunnerAndWaitingPullRequests() throws {
         let report = LoopStatusReport(
             state: .waitingForAnswer,
