@@ -26,8 +26,11 @@ public struct LoopStatusIssueRecord: Sendable, Equatable {
 /// 書いた内容を覚えておき、状態が変わったときだけ書き換える。変わらなければ `LoopStatusReport.updateInterval` ごとに確認時刻だけを書き直す。
 ///
 /// - 古い形（目印 1 つ）の本文を手で回しているループ（書き手が `manual`）が書いている間は、本文を上書きしない
+/// - 自動ループのコメントは Discussion ごとに 1 つ。同時に動く自動ループはリポジトリに 1 つでも、準備を終えた epic と
+///   起動した・待っている Discussion が違えば、それぞれのコメントに書く（PR #437 の担当者の判断）
 /// - 1 つの Discussion の書き手は 1 つ。手動ループのコメントがある Discussion には書かない
-/// - 自動ループのコメントは今のループのものだけを残し、前のループ（と重複）のコメントは消す
+/// - コメントを消すのは、その Discussion のループが終わったとき（自動ループの一覧から消えた）と、重複したときだけ。
+///   どの Discussion のものか分からないループがある間は、一覧に無い Discussion のコメントも消さない
 public struct LoopStatusPublisher: Sendable, Equatable {
     public enum Action: Sendable, Equatable {
         /// 状態用の Issue とコメントを覚えていない（または書く前に読み直す）。一覧を取得して `adopt` してから決め直す
@@ -36,11 +39,11 @@ public struct LoopStatusPublisher: Sendable, Equatable {
         case createIssue(body: String)
         /// 本文を書き換える（閉じられていれば開き直す）
         case updateIssue(number: Int, body: String)
-        /// 自動ループのコメントを作る
-        case createComment(issue: Int, body: String)
-        /// 自動ループのコメントを書き換える
-        case updateComment(id: Int, body: String)
-        /// 前のループ・重複した自動ループのコメントを消す
+        /// 自動ループのコメントを作る（本文は `report.commentBody`）
+        case createComment(issue: Int, report: LoopStatusReport)
+        /// 自動ループのコメントを書き換える（本文は `report.commentBody`）
+        case updateComment(id: Int, report: LoopStatusReport)
+        /// 終わったループ・重複した自動ループのコメントを消す
         case deleteComment(id: Int)
     }
 
@@ -70,13 +73,13 @@ public struct LoopStatusPublisher: Sendable, Equatable {
     /// 書くこと。空なら書かない
     /// - Parameters:
     ///   - repository: 本文に書くリポジトリ全体の状態
-    ///   - loop: この PC の自動ループの状態。Discussion の番号が無ければ（ループが無い・ゴール元の記録が無い）コメントに書かない
+    ///   - loops: この PC の自動ループの、Discussion ごとの状態
     ///   - manualLoopOpen: このリポジトリに手動ループ（open な `manual-loop` の Discussion）がある。
     ///     手動ループが書いた状態は、確認時刻が古くなっても上書きしない（担当者の情報を消さないため。アプリが古さを知らせる）
     public func actions(
         repositoryKey key: String,
         repository: RepositoryStatusReport,
-        loop: LoopStatusReport,
+        loops: AutomaticLoops,
         now: Date,
         manualLoopOpen: Bool = false
     ) -> [Action] {
@@ -94,25 +97,28 @@ public struct LoopStatusPublisher: Sendable, Equatable {
         if let body = bodyAction(entry, number: number, repository: repository, now: now, manualLoopOpen: manualLoopOpen) {
             actions.append(body)
         }
-        let current = loop.discussion.flatMap { discussion in
-            isWrittenByOtherWriter(entry.otherWriters[discussion], now: now, manualLoopOpen: manualLoopOpen) ? nil : discussion
-        }
-        let kept = current.flatMap { discussion in entry.comments.last { $0.report.discussion == discussion } }
-        if current != nil {
-            if let kept {
-                if !Self.isFresh(kept.report, comparedTo: loop, now: now) {
-                    actions.append(.updateComment(id: kept.id, body: loop.commentBody))
+        var kept: Set<Int> = []
+        for loop in loops.reports {
+            guard let discussion = loop.discussion,
+                  !isWrittenByOtherWriter(entry.otherWriters[discussion], now: now, manualLoopOpen: manualLoopOpen) else {
+                continue
+            }
+            if let comment = entry.comments.last(where: { $0.report.discussion == discussion }) {
+                kept.insert(comment.id)
+                if !Self.isFresh(comment.report, comparedTo: loop, now: now) {
+                    actions.append(.updateComment(id: comment.id, report: loop))
                 }
             } else {
-                actions.append(.createComment(issue: number, body: loop.commentBody))
+                actions.append(.createComment(issue: number, report: loop))
             }
         }
-        // どの Discussion のループか分からない状態（ループが無い以外）では、取り違えて消さないよう前のコメントを残す
-        guard loop.discussion != nil || loop.state == .noLoop else {
-            return actions
-        }
-        for comment in entry.comments where comment.id != kept?.id {
-            actions.append(.deleteComment(id: comment.id))
+        // 書いたコメントの後に消す（途中で失敗しても、今のループのコメントは残る）。今のループの重複と、ほかの書き手が書いている
+        // Discussion の自分のコメントは消す。一覧に無い（ループが終わった）Discussion のコメントは、分からないループがある間は残す
+        let current = Set(loops.reports.compactMap(\.discussion))
+        for comment in entry.comments where !kept.contains(comment.id) {
+            if comment.report.discussion.map(current.contains) == true || !loops.includesUnknownLoop {
+                actions.append(.deleteComment(id: comment.id))
+            }
         }
         return actions
     }

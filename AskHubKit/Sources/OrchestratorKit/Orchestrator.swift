@@ -152,8 +152,9 @@ public actor Orchestrator {
     /// 最後に `xcb status --json` を呼んだ時刻（失敗したときも含む）
     var lastXcbStatusAttemptAt: Date?
     let xcbStatus: any XcbStatusFetching
-    /// 担当リポジトリごとの、制御用 worktree が準備を終えていない `ready-for-loop` の Discussion の番号（最後に取得できたもの。手動ループ・信用しない author のものを除く）
-    var readyDiscussionNumbers: [String: Int] = [:]
+    /// 担当リポジトリごとの、制御用 worktree が準備を終えていない `ready-for-loop` の Discussion の番号（最後に取得できたもの。手動ループ・信用しない author のものを除く）。
+    /// 起動してからまだ一度も取得できていなければ `nil`（開始待ちのループのコメントを、終わったものとして消さない）
+    var readyDiscussionNumbers: [String: [Int]]?
     /// epic の最終 PR がマージ済みか（キーは `<repo小文字> <branch>`）。未マージなら確かめた時刻も持ち、問い合わせを間引く
     var epicMergeChecks: [String: (merged: Bool, checkedAt: Date)] = [:]
 

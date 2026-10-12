@@ -8,103 +8,142 @@ public struct LoopStatusFacts: Sendable, Equatable {
     public var snapshot: EpicSnapshot?
     /// Claude の利用上限の解除の時刻（この Mac で待機中なら）
     public var usageLimitedUntil: Date?
-    /// 異常終了したループの再開（`StallWatcher`）か、ループの起動（`LaunchTracker`）を諦めた
+    /// 制御用 worktree の epic の再開（異常終了したループの `StallWatcher`・回答による再開）を諦めた
     public var gaveUp: Bool
     /// このリポジトリの `ready-for-loop` の Discussion のうち、制御用 worktree が準備を終えていないものの番号
-    /// （手動ループ・信用しない author のものは除く）
-    public var readyDiscussion: Int?
+    /// （手動ループ・信用しない author のものは除く）。オーケストレーターを起動してからまだ一度も取得できていなければ `nil`
+    public var readyDiscussions: [Int]?
     /// 起動して、ループの開始を待っている・確かめた Discussion の番号（`LaunchTracker`）
-    public var launchedDiscussion: Int?
+    public var launchedDiscussions: [Int]
     /// 起動を諦めた Discussion の番号（`LaunchTracker`）
-    public var givenUpDiscussion: Int?
+    public var givenUpDiscussions: [Int]
     /// ask に回答が付き、ループの再開を待っている（goal の `※回答待ち` はループが再開して外すまで残る）
     public var hasAnsweredQuestions: Bool
     /// epic の最終 PR が `develop` にマージ済み（制御用 worktree が次の epic に切り替わるまで、完了の goal が残る）
     public var epicMerged: Bool
     /// ループが最後に動いた時刻（state ファイル・ログの更新時刻のうち新しいもの）
     public var lastActivityAt: Date?
+    /// ループのスロットのビルドの情報。準備を終えた epic のループ（スロットを使うループ）に載せる
+    public var builds: LoopStatusBuilds?
 
     public init(
         status: LoopStatus,
         snapshot: EpicSnapshot?,
         usageLimitedUntil: Date? = nil,
         gaveUp: Bool = false,
-        readyDiscussion: Int? = nil,
-        launchedDiscussion: Int? = nil,
-        givenUpDiscussion: Int? = nil,
+        readyDiscussions: [Int]? = [],
+        launchedDiscussions: [Int] = [],
+        givenUpDiscussions: [Int] = [],
         hasAnsweredQuestions: Bool = false,
         epicMerged: Bool = false,
-        lastActivityAt: Date? = nil
+        lastActivityAt: Date? = nil,
+        builds: LoopStatusBuilds? = nil
     ) {
         self.status = status
         self.snapshot = snapshot
         self.usageLimitedUntil = usageLimitedUntil
         self.gaveUp = gaveUp
-        self.readyDiscussion = readyDiscussion
-        self.launchedDiscussion = launchedDiscussion
-        self.givenUpDiscussion = givenUpDiscussion
+        self.readyDiscussions = readyDiscussions
+        self.launchedDiscussions = launchedDiscussions
+        self.givenUpDiscussions = givenUpDiscussions
         self.hasAnsweredQuestions = hasAnsweredQuestions
         self.epicMerged = epicMerged
         self.lastActivityAt = lastActivityAt
+        self.builds = builds
     }
 }
 
-/// 担当リポジトリごとのループの状態（`LoopStatusReport`）をまとめる（副作用なし）。
+/// 担当リポジトリの、この PC の自動ループの状態。ループ（Discussion）ごとに 1 つ
+public struct AutomaticLoops: Sendable, Equatable {
+    /// Discussion ごとの状態（番号の小さい順。どれも `discussion` を持つ）
+    public var reports: [LoopStatusReport]
+    /// どの Discussion のものか分からないループがある（手で始めた epic・起動の記録の無いループが動いている・
+    /// `ready-for-loop` の一覧をまだ取得していない）。その間は、ここに無い Discussion のループが終わったのか分からない
+    public var includesUnknownLoop: Bool
+
+    public init(reports: [LoopStatusReport], includesUnknownLoop: Bool = false) {
+        self.reports = reports
+        self.includesUnknownLoop = includesUnknownLoop
+    }
+}
+
+/// 担当リポジトリの自動ループの状態（`LoopStatusReport`）を、ループ（Discussion）ごとにまとめる（副作用なし）。
 ///
-/// 複数の状態に当てはまるときは、人がいま気にすべきものを優先する:
-/// 上限で待機中 → 実行中 → 異常終了 → epic の進み具合（回答待ち・開始待ち・完了）→ `ready-for-loop` の開始待ち → ループなし
+/// 自動ループが同時に動くのはリポジトリに 1 つだが、状態は Discussion ごとに持つ（Discussion #425 の Q1 と、PR #437 の担当者の判断）。
+/// 制御用 worktree に準備を終えた epic（例: 完了して最終 PR のマージ待ちの #12）が残ったまま、別の Discussion（#30）を起動した・起動を諦めた・
+/// 待っているときは、#12 には epic の状態を、#30 には起動の状態を出す:
+///
+/// - 準備を終えた epic: 上限で待機中 → 実行中 → 異常終了 → epic の進み具合（回答待ち・開始待ち・完了）。
+///   制御用 worktree のプロセス・state ファイルは、epic と別の Discussion を起動していればそのループのものとし、epic の実行中にしない
+/// - 起動した Discussion: 上限で待機中 → 実行中（ループの開始を待っている・確かめた）・異常終了（起動を諦めた）
+/// - `ready-for-loop` の Discussion: 上限で待機中 → 開始待ち
 public enum LoopStatusSummary {
-    public static func report(for facts: LoopStatusFacts, now: Date) -> LoopStatusReport {
+    public static func loops(for facts: LoopStatusFacts, now: Date) -> AutomaticLoops {
         let epic = facts.epicMerged ? nil : facts.snapshot.flatMap(PreparedEpic.init)
-        var report = LoopStatusReport(
-            state: state(for: facts, epic: epic, now: now),
-            epic: epic?.branch,
-            discussion: epic?.discussion,
-            progress: epic?.progress,
-            lastActivityAt: epic == nil ? nil : facts.lastActivityAt,
-            checkedAt: now
-        )
-        if case .usageLimited = report.state {
-            report.usageLimitedUntil = facts.usageLimitedUntil
-        }
-        // 準備を終えた epic が無いときは、どの Discussion のループかを起動の記録から決める（ループの状態は Discussion ごとのコメントに書くので、
-        // 番号が無いとどこにも出せない）。起動したが準備が終わっていない（実行中）は起動した Discussion、起動を諦めた（異常終了）はその Discussion、
-        // 開始待ち・上限で待機中は待っている Discussion。分からなければ番号を付けない（別の Discussion と取り違えない）
-        if epic == nil {
-            switch report.state {
-            case .running: report.discussion = facts.launchedDiscussion
-            case .gaveUp: report.discussion = facts.givenUpDiscussion
-            case .usageLimited: report.discussion = facts.launchedDiscussion ?? facts.readyDiscussion
-            case .waitingToStart: report.discussion = facts.readyDiscussion
-            case .waitingForAnswer, .completed, .noLoop, .unknown: break
+        // 上限に達するとループは終わるので、プロセスや state ファイルより先に見る（この Mac のすべての自動ループが待つ）
+        let limitedUntil = OrchestratorHeartbeat.isUsageLimited(until: facts.usageLimitedUntil, now: now) ? facts.usageLimitedUntil : nil
+        // 再開に失敗したループは state ファイルが残ったまま `stalled` になる。動いてはいないので実行中としない
+        let active = facts.status.processAlive || (facts.status.stateFileExists == true && !facts.status.stalled)
+        var reports: [Int: LoopStatusReport] = [:]
+        var unknown = facts.readyDiscussions == nil
+        if let epic {
+            if let report = epicReport(epic, active: active, limitedUntil: limitedUntil, facts: facts, now: now),
+               let number = report.discussion {
+                reports[number] = report
+            } else {
+                // 手で始めた epic（ゴール元の記録が無い）は、どの Discussion のループか分からない
+                unknown = true
             }
+        } else if active && facts.launchedDiscussions.isEmpty {
+            // 準備を終えた epic も起動の記録も無いのに動いている（手で始めたループなど）
+            unknown = true
         }
-        return report
+        let started = facts.launchedDiscussions.map { ($0, LoopStatusReport.State.running) }
+        let givenUp = facts.givenUpDiscussions.map { ($0, LoopStatusReport.State.gaveUp) }
+        let waiting = (facts.readyDiscussions ?? []).map { ($0, LoopStatusReport.State.waitingToStart) }
+        // 準備を終えた epic と同じ Discussion は epic の状態を、起動を追っている Discussion は ready の開始待ちより起動の状態を使う
+        for (number, state) in started + givenUp + waiting where reports[number] == nil {
+            reports[number] = LoopStatusReport(
+                state: limitedUntil == nil ? state : .usageLimited, discussion: number, usageLimitedUntil: limitedUntil, checkedAt: now
+            )
+        }
+        return AutomaticLoops(reports: reports.keys.sorted().compactMap { reports[$0] }, includesUnknownLoop: unknown)
     }
 
-    private static func state(for facts: LoopStatusFacts, epic: PreparedEpic?, now: Date) -> LoopStatusReport.State {
-        // 上限に達するとループは終わるので、プロセスや state ファイルより先に見る
-        if OrchestratorHeartbeat.isUsageLimited(until: facts.usageLimitedUntil, now: now) {
-            return .usageLimited
+    /// 準備を終えた epic のループ。制御用 worktree のプロセス・state ファイルは、epic と別の Discussion を起動していればそのループのもの
+    private static func epicReport(
+        _ epic: PreparedEpic, active: Bool, limitedUntil: Date?, facts: LoopStatusFacts, now: Date
+    ) -> LoopStatusReport? {
+        guard let number = epic.discussion else {
+            return nil
         }
-        // 再開に失敗したループは state ファイルが残ったまま `stalled` になる。動いてはいないので実行中としない
-        if facts.status.processAlive || (facts.status.stateFileExists == true && !facts.status.stalled) {
-            return .running
-        }
-        if facts.gaveUp {
-            return .gaveUp
-        }
-        if let epic {
+        let state: LoopStatusReport.State
+        if limitedUntil != nil {
+            state = .usageLimited
+        } else if active && !facts.launchedDiscussions.contains(where: { $0 != number }) {
+            state = .running
+        } else if facts.gaveUp || facts.givenUpDiscussions.contains(number) {
+            state = .gaveUp
+        } else {
             switch epic.phase {
             // 止まったまま（手で止めた・異常終了して再開を待っている）。次の起動・再開を待つ
-            case .tasksRemain: return .waitingToStart
+            case .tasksRemain: state = .waitingToStart
             // 回答が付いていれば、もう人を待っていない（再開に失敗して止まっている間も含む）
-            case .waitingForAnswer: return facts.hasAnsweredQuestions ? .waitingToStart : .waitingForAnswer
-            // 最終 PR のマージを待つ間は、次の Discussion が `ready-for-loop` でも始まらない
-            case .done: return .completed
+            case .waitingForAnswer: state = facts.hasAnsweredQuestions ? .waitingToStart : .waitingForAnswer
+            // 最終 PR のマージを待っている。次の Discussion を起動しても、この epic の状態として残す
+            case .done: state = .completed
             }
         }
-        return facts.readyDiscussion == nil ? .noLoop : .waitingToStart
+        return LoopStatusReport(
+            state: state,
+            epic: epic.branch,
+            discussion: number,
+            progress: epic.progress,
+            lastActivityAt: facts.lastActivityAt,
+            usageLimitedUntil: limitedUntil,
+            checkedAt: now,
+            builds: facts.builds
+        )
     }
 
     /// goal で保留として閉じたタスクの目印（playbook の「詰まったときの扱い」の `- [x] … ※保留（YYYY-MM-DD）: …`）

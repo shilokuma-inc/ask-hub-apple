@@ -31,11 +31,23 @@ struct LoopStatusPublisherTests {
     private func decide(
         _ publisher: LoopStatusPublisher,
         _ body: RepositoryStatusReport,
+        _ loops: [LoopStatusReport],
+        unknown: Bool = false,
+        at date: Date,
+        manualLoopOpen: Bool = false
+    ) -> [LoopStatusPublisher.Action] {
+        let loops = AutomaticLoops(reports: loops, includesUnknownLoop: unknown)
+        return publisher.actions(repositoryKey: key, repository: body, loops: loops, now: date, manualLoopOpen: manualLoopOpen)
+    }
+
+    private func decide(
+        _ publisher: LoopStatusPublisher,
+        _ body: RepositoryStatusReport,
         _ loop: LoopStatusReport,
         at date: Date,
         manualLoopOpen: Bool = false
     ) -> [LoopStatusPublisher.Action] {
-        publisher.actions(repositoryKey: key, repository: body, loop: loop, now: date, manualLoopOpen: manualLoopOpen)
+        decide(publisher, body, [loop], at: date, manualLoopOpen: manualLoopOpen)
     }
 
     /// Issue #7 に、オーケストレーターが本文とコメントを書いた状態
@@ -57,7 +69,7 @@ struct LoopStatusPublisherTests {
         #expect(decide(publisher, body, running, at: now) == [.createIssue(body: body.issueBody)])
         publisher.recordIssueCreated(number: 8, body: body, repositoryKey: key)
         #expect(decide(publisher, body, running, at: now)
-            == [.createComment(issue: 8, body: running.commentBody)])
+            == [.createComment(issue: 8, report: running)])
     }
 
     @Test func writesRepositoryStatusToBodyAndLoopToItsComment() {
@@ -70,12 +82,11 @@ struct LoopStatusPublisherTests {
         let body = repository(at: now)
         #expect(decide(publisher, body, running, at: now) == [
             .updateIssue(number: 7, body: body.issueBody),
-            .createComment(issue: 7, body: running.commentBody)
+            .createComment(issue: 7, report: running)
         ])
 
-        // ゴール元の Discussion が無い（ループが無いなど）ときは、本文だけを書く
-        #expect(decide(publisher, body, loop(.noLoop, discussion: nil, at: now), at: now)
-            == [.updateIssue(number: 7, body: body.issueBody)])
+        // 自動ループが無いときは、本文だけを書く
+        #expect(decide(publisher, body, [], at: now) == [.updateIssue(number: 7, body: body.issueBody)])
     }
 
     @Test func writesOnlyWhenStatusChangesOrIntervalPasses() {
@@ -87,8 +98,7 @@ struct LoopStatusPublisherTests {
 
         // ループの状態が変われば、コメントだけを書き換える
         let changed = loop(.waitingForAnswer, at: later)
-        #expect(decide(publisher, repository(at: later), changed, at: later)
-            == [.updateComment(id: 70, body: changed.commentBody)])
+        #expect(decide(publisher, repository(at: later), changed, at: later) == [.updateComment(id: 70, report: changed)])
 
         // リポジトリ全体の状態が変われば、本文だけを書き換える
         let limited = repository(at: later, usageLimitedUntil: later.addingTimeInterval(3600))
@@ -100,7 +110,7 @@ struct LoopStatusPublisherTests {
         let refreshed = loop(.running, at: interval)
         #expect(decide(publisher, repository(at: interval), refreshed, at: interval) == [
             .updateIssue(number: 7, body: repository(at: interval).issueBody),
-            .updateComment(id: 70, body: refreshed.commentBody)
+            .updateComment(id: 70, report: refreshed)
         ])
     }
 
@@ -120,8 +130,7 @@ struct LoopStatusPublisherTests {
         // 前回のオーケストレーターが書いた本文・コメントと同じなら、書き直さない
         #expect(decide(publisher, repository(at: now), loop(.running, at: now), at: now).isEmpty)
         let changed = loop(.gaveUp, at: now)
-        #expect(decide(publisher, repository(at: now), changed, at: now)
-            == [.updateComment(id: 21, body: changed.commentBody)])
+        #expect(decide(publisher, repository(at: now), changed, at: now) == [.updateComment(id: 21, report: changed)])
     }
 
     @Test func reopensClosedIssueAndRewritesUnreadableBody() {
@@ -147,14 +156,13 @@ struct LoopStatusPublisherTests {
         // 手で回すループ（古い形）が本文を 30 分以内に書いていれば、本文は書かない。自動ループのコメントは書く
         let within = now.addingTimeInterval(LoopStatusReport.freshness - 1)
         let running = loop(.running, at: within)
-        #expect(decide(publisher, repository(at: within), running, at: within)
-            == [.createComment(issue: 7, body: running.commentBody)])
+        #expect(decide(publisher, repository(at: within), running, at: within) == [.createComment(issue: 7, report: running)])
 
         // 手動ループの Discussion が開いている間は、確認時刻が古くなっても本文を上書きしない
         let stale = now.addingTimeInterval(LoopStatusReport.freshness + 1)
         let stillRunning = loop(.running, at: stale)
         #expect(decide(publisher, repository(at: stale), stillRunning, at: stale, manualLoopOpen: true)
-            == [.createComment(issue: 7, body: stillRunning.commentBody)])
+            == [.createComment(issue: 7, report: stillRunning)])
 
         // 手動ループが終わって古くなれば、本文をリポジトリ全体の状態で書き直す
         #expect(decide(publisher, repository(at: stale), stillRunning, at: stale).first
@@ -197,7 +205,7 @@ struct LoopStatusPublisherTests {
         )
         // 信用しない author の手動ループの目印では止まらない（public リポジトリでは誰でもコメントできる）。
         // 手動ループのコメントが古く、manual-loop の Discussion も無ければ、オーケストレーターが書く（手動ループのコメントは消さない）
-        #expect(decide(publisher, repository(at: now), mine, at: now) == [.createComment(issue: 7, body: mine.commentBody)])
+        #expect(decide(publisher, repository(at: now), mine, at: now) == [.createComment(issue: 7, report: mine)])
         // manual-loop の Discussion が開いていれば、古くなっても書かない
         #expect(decide(publisher, repository(at: now), mine, at: now, manualLoopOpen: true).isEmpty)
     }
@@ -231,10 +239,29 @@ struct LoopStatusPublisherTests {
             repositoryKey: key,
             trustedAuthors: trusted
         )
-        // 次のループのコメントを作ってから、前のループのコメントを消す（途中で失敗しても、どちらかは残る）
+        // 次のループのコメントを作ってから、終わったループのコメントを消す（途中で失敗しても、どちらかは残る）
         let next = loop(.waitingToStart, discussion: 20, at: now)
         #expect(decide(publisher, repository(at: now), next, at: now)
-            == [.createComment(issue: 7, body: next.commentBody), .deleteComment(id: 1)])
+            == [.createComment(issue: 7, report: next), .deleteComment(id: 1)])
+    }
+
+    @Test func writesEachLoopToItsOwnDiscussionComment() {
+        var publisher = written(loop(.completed, discussion: 12, at: now), commentID: 12)
+        // 完了した #12 の最終 PR のマージ待ちの間に #30 を起動した。#12 のコメントは残し、#30 のコメントを作る
+        let launched = loop(.running, discussion: 30, at: now)
+        #expect(decide(publisher, repository(at: now), [loop(.completed, discussion: 12, at: now), launched], at: now)
+            == [.createComment(issue: 7, report: launched)])
+        publisher.recordCommentWritten(launched, id: 30, repositoryKey: key)
+
+        // 変わったループのコメントだけを書き換える
+        let later = now.addingTimeInterval(60)
+        let gaveUp = loop(.gaveUp, discussion: 30, at: later)
+        #expect(decide(publisher, repository(at: later), [loop(.completed, discussion: 12, at: later), gaveUp], at: later)
+            == [.updateComment(id: 30, report: gaveUp)])
+
+        // epic が退避されて #12 が一覧から消えたら（ループが終わった）、#12 のコメントだけを消す
+        #expect(decide(publisher, repository(at: later), [loop(.running, discussion: 30, at: later)], at: later)
+            == [.deleteComment(id: 12)])
     }
 
     @Test func keepsCommentsWhileLoopDiscussionIsUnknown() {
@@ -245,10 +272,13 @@ struct LoopStatusPublisherTests {
             repositoryKey: key,
             trustedAuthors: trusted
         )
-        // どの Discussion のループか分からない（上限で待機中のまま再起動した・手で始めたループが動いている）間は、前のコメントを消さない
-        let limited = loop(.usageLimited, discussion: nil, at: now)
-        #expect(decide(publisher, repository(at: now), limited, at: now).isEmpty)
-        #expect(decide(publisher, repository(at: now), loop(.running, discussion: nil, at: now), at: now).isEmpty)
+        // どの Discussion のループか分からない（上限で待機中のまま再起動した・手で始めたループが動いている）間は、
+        // 一覧に無い Discussion のコメントを、終わったものとして消さない
+        #expect(decide(publisher, repository(at: now), [], unknown: true, at: now).isEmpty)
+        let epic = loop(.running, discussion: 12, at: now)
+        #expect(decide(publisher, repository(at: now), [epic], unknown: true, at: now) == [.createComment(issue: 7, report: epic)])
+        // 分かるようになって一覧に無ければ消す
+        #expect(decide(publisher, repository(at: now), [], at: now) == [.deleteComment(id: 1)])
     }
 
     @Test func deletesCommentsOfPreviousLoopAndDuplicates() {
@@ -273,12 +303,15 @@ struct LoopStatusPublisherTests {
             == [.deleteComment(id: 1), .deleteComment(id: 2)])
 
         // ループが無くなれば（最終 PR がマージされた）、自動ループのコメントをすべて消す
-        #expect(decide(publisher, repository(at: now), loop(.noLoop, discussion: nil, at: now), at: now)
+        #expect(decide(publisher, repository(at: now), [], at: now)
             == [.deleteComment(id: 1), .deleteComment(id: 2), .deleteComment(id: 3)])
+        // 分からないループがあっても、今のループの重複は消す
+        #expect(decide(publisher, repository(at: now), [current], unknown: true, at: now) == [.deleteComment(id: 1)])
     }
 
     @Test func readsAgainBeforeRewritingButNotBeforeCreatingIssue() {
-        #expect(LoopStatusPublisher.needsLookUp(before: [.updateComment(id: 1, body: "")]))
+        #expect(LoopStatusPublisher.needsLookUp(before: [.updateComment(id: 1, report: loop(.running, at: now))]))
+        #expect(LoopStatusPublisher.needsLookUp(before: [.createComment(issue: 1, report: loop(.running, at: now))]))
         #expect(LoopStatusPublisher.needsLookUp(before: [.deleteComment(id: 1)]))
         #expect(!LoopStatusPublisher.needsLookUp(before: [.createIssue(body: "")]))
         #expect(!LoopStatusPublisher.needsLookUp(before: []))
@@ -307,6 +340,13 @@ struct LoopStatusPublisherTests {
 
 extension OrchestratorTests {
     private static let doneGoal = "- [x] 【FEAT】A\n- [x] 【FEAT】B\n"
+
+    /// 状態用の Issue のコメントに書かれた、ループの Discussion の番号と状態（コメントの順）
+    private static func loopComments(_ github: FakeGitHub, onIssue number: Int = 101) -> [String] {
+        (github.loopStatusCommentsByIssue[number] ?? []).compactMap { comment in
+            LoopStatusReport.parse(comment.body).map { "#\($0.discussion ?? 0) \($0.state.rawValue)" }
+        }
+    }
 
     @Test func createsStatusIssueWithLoopCommentAndRewritesOnlyOnChangeOrInterval() async throws {
         let github = FakeGitHub([.success([])])
@@ -460,30 +500,59 @@ extension OrchestratorTests {
         #expect(github.loopStatusCommentsByIssue[101]?.count == 1)
     }
 
-    @Test func movesCommentToNextLoopAfterEpicIsMerged() async throws {
+    @Test func deletesCommentOfMergedEpicAndKeepsWaitingDiscussions() async throws {
         let github = FakeGitHub([.success([.fixture(number: 30), .fixture(number: 20), .fixture(repository: "other/repo", number: 5)])])
         let runtime = FakeRuntime()
-        // 前の epic（#12）は完了し、最終 PR のマージを待っている
+        // 前の epic（#12）は完了し、最終 PR のマージを待っている。次の Discussion（#20・#30）は起動を待っている
+        // （state ファイルを確かめられない間は起動しない）
         runtime.set(LoopStatus(stateFileExists: nil, processAlive: false))
         runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: Self.doneGoal, state: nil, discussion: 12, loopPrepared: true))
         let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
         try await orchestrator.pollOnce()
-        #expect(github.loopCommentReport()?.state == .completed)
-        #expect(github.loopCommentReport()?.discussion == 12)
+        #expect(runtime.launched.isEmpty)
+        #expect(Self.loopComments(github) == ["#12 completed", "#20 waiting-to-start", "#30 waiting-to-start"])
 
-        // 最終 PR がマージされた。次の Discussion は起動を待っている（state ファイルを確かめられない間は起動しない）
+        // 最終 PR がマージされた。#12 のループは終わったのでコメントを消し、待っている #20・#30 のコメントは残す
         github.addExistingPullRequest(head: "epic/mvp", ExistingPullRequest(number: 40, isOpen: false, isMerged: true))
         let clock = Date(timeIntervalSince1970: 1_800_000_000).addingTimeInterval(LoopStatusReport.updateInterval)
         let next = try makeOrchestrator(github: github, runtime: runtime) { clock }
         try await next.pollOnce()
         #expect(runtime.launched.isEmpty)
-        // 前のループのコメントを消し、次のループ（#20）のコメントを作る
-        let comments = github.loopStatusCommentsByIssue[101] ?? []
-        #expect(comments.count == 1)
-        let waiting = try #require(comments.first.flatMap { LoopStatusReport.parse($0.body) })
-        #expect(waiting.state == .waitingToStart)
-        #expect(waiting.discussion == 20)
+        #expect(Self.loopComments(github) == ["#20 waiting-to-start", "#30 waiting-to-start"])
         #expect(github.deletedLoopStatusComments.count == 1)
+        #expect(github.createdLoopStatusComments.count == 3)
+    }
+
+    @Test func writesCompletedEpicAndLaunchedDiscussionToSeparateComments() async throws {
+        let github = FakeGitHub([.success([.fixture(number: 30)])])
+        let runtime = FakeRuntime()
+        // 完了した #12 の最終 PR がマージを待っている間に、次の #30 を起動する
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: Self.doneGoal, state: nil, discussion: 12, loopPrepared: true))
+        github.addExistingPullRequest(head: "epic/mvp", ExistingPullRequest(number: 40, isOpen: true, isMerged: false))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.count == 1)
+        // 動いているプロセスは #30 のもの。#12 は完了のまま、#30 は実行中として、それぞれのコメントに書く
+        #expect(Self.loopComments(github) == ["#12 completed", "#30 running"])
+        #expect(github.deletedLoopStatusComments.isEmpty)
+    }
+
+    @Test func keepsWaitingLoopCommentsWhileReadyDiscussionsAreUnknown() async throws {
+        let github = FakeGitHub([.success([.fixture(number: 20)])])
+        let runtime = FakeRuntime()
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let waiting = LoopStatusReport(state: .waitingToStart, discussion: 20, checkedAt: start.addingTimeInterval(-60))
+        let body = RepositoryStatusReport(checkedAt: start).issueBody
+        github.setLoopStatusIssues([LoopStatusIssueRecord(number: 9, author: "mrs1669", isOpen: true, updatedAt: start, body: body)])
+        let comment = LoopStatusComment(id: 90, author: "mrs1669", updatedAt: start, body: waiting.commentBody)
+        github.setLoopStatusComments([comment], onIssue: 9)
+        // 上限で待機中に再起動した。ready-for-loop の一覧を取り直さないので、#20 のループが終わったのか分からない
+        runtime.setUsageLimitReset(start.addingTimeInterval(3600))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime) { start }
+        try await orchestrator.pollOnce()
+        #expect(github.deletedLoopStatusComments.isEmpty)
+        #expect(Self.loopComments(github, onIssue: 9) == ["#20 waiting-to-start"])
+        #expect(github.repositoryStatus(onIssue: 9)?.usageLimitedUntil == start.addingTimeInterval(3600))
     }
 
     @Test func reportsWaitingForAnswerWhileOnlyAskedTasksRemain() async throws {

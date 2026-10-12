@@ -44,22 +44,19 @@ public struct LaunchTracker: Sendable, Equatable {
 
     public init() {}
 
-    /// `repositoryKey` の Discussion のうち、ループの起動を諦めたものがあるか
-    public func hasGivenUp(repositoryKey: String) -> Bool {
-        entries.values.contains { $0.repositoryKey == repositoryKey && $0.phase == .gaveUp }
+    /// `repositoryKey` で起動し、ループの開始を待っている・確かめた Discussion の番号（小さい順）。
+    /// 準備を終えた epic がほかの Discussion のものでも、制御用 worktree で動いているのはこのループ
+    public func launchedDiscussions(repositoryKey: String) -> [Int] {
+        numbers(repositoryKey: repositoryKey) { [.starting, .started, .labelRemoved].contains($0) }
     }
 
-    /// `repositoryKey` で起動し、ループの開始を待っている・確かめた Discussion の番号（準備を終える前の、実行中のループ）
-    public func launchedDiscussion(repositoryKey: String) -> Int? {
-        entries.values
-            .filter { $0.repositoryKey == repositoryKey && [.starting, .started, .labelRemoved].contains($0.phase) }
-            .map(\.number)
-            .max()
+    /// `repositoryKey` で起動を諦めた Discussion の番号（小さい順）
+    public func givenUpDiscussions(repositoryKey: String) -> [Int] {
+        numbers(repositoryKey: repositoryKey) { $0 == .gaveUp }
     }
 
-    /// `repositoryKey` で起動を諦めた Discussion の番号
-    public func givenUpDiscussion(repositoryKey: String) -> Int? {
-        entries.values.filter { $0.repositoryKey == repositoryKey && $0.phase == .gaveUp }.map(\.number).min()
+    private func numbers(repositoryKey: String, where matches: (Phase) -> Bool) -> [Int] {
+        entries.values.filter { $0.repositoryKey == repositoryKey && matches($0.phase) }.map(\.number).sorted()
     }
 
     /// 起動判定で起動しない Discussion（追跡中で、起動し直す番ではないもの）

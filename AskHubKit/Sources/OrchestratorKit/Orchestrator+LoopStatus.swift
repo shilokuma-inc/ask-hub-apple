@@ -3,9 +3,9 @@ import Foundation
 
 // ループの状態を、担当リポジトリごとの状態用の Issue（loop-status）の本文とループごとのコメントに書き出す。アプリはそれを読む
 extension Orchestrator {
-    /// 取得した `ready-for-loop` の Discussion のうち、担当リポジトリごとに、制御用 worktree が準備を終えていない最も古いものを覚える
+    /// 取得した `ready-for-loop` の Discussion のうち、担当リポジトリごとに、制御用 worktree が準備を終えていないものを覚える
     func recordReadyDiscussions(_ discussions: [ReadyDiscussion], snapshots: [String: EpicSnapshot]) {
-        var numbers: [String: Int] = [:]
+        var numbers: [String: [Int]] = [:]
         for discussion in discussions {
             // 手で回す・信用しない author の Discussion は起動しないので、この PC の開始待ちとして数えない
             // （手動ループの Discussion に、オーケストレーターの書き手でコメントを書かないため）
@@ -18,13 +18,13 @@ extension Orchestrator {
             if let snapshot = snapshots[key], snapshot.loopPrepared, snapshot.discussion == discussion.number {
                 continue
             }
-            numbers[key] = min(numbers[key] ?? discussion.number, discussion.number)
+            numbers[key, default: []].append(discussion.number)
         }
         readyDiscussionNumbers = numbers
     }
 
     /// 担当リポジトリごとに状態をまとめ、変わったとき（変わらなければ `LoopStatusReport.updateInterval` ごと）に書き出す。
-    /// 本文にはリポジトリ全体の状態を、自動ループの状態はそのループ（Discussion）のコメントに書く。
+    /// 本文にはリポジトリ全体の状態を、自動ループの状態はループ（Discussion）ごとのコメントに書く。
     /// 書けなかったリポジトリはログに出し、次のポーリングで書き直す
     func publishLoopStatuses(statuses: [String: LoopStatus]) async {
         let current = now()
@@ -33,11 +33,10 @@ extension Orchestrator {
         for repository in config.repositories {
             let key = repository.fullName.lowercased()
             let facts = await loopStatusFacts(of: repository, status: statuses[key] ?? .idle, now: current)
-            var loop = LoopStatusSummary.report(for: facts, now: current)
-            loop.builds = builds(for: repository)
+            let loops = LoopStatusSummary.loops(for: facts, now: current)
             let body = RepositoryStatusReport(usageLimitedUntil: activeUsageLimit(at: current), checkedAt: current)
             do {
-                try await publish(body, loop: loop, to: repository)
+                try await publish(body, loops: loops, to: repository)
             } catch let GitHubError.rateLimited(retryAfter) {
                 loopStatusPublisher.forget(repositoryKey: key, retryAfter: retryAfter, now: current)
                 log("\(repository.fullName) にループの状態を書けませんでした（レート制限。\(retryAfter.components.seconds) 秒後に再試行します）")
@@ -49,12 +48,12 @@ extension Orchestrator {
         await publishBuildHosts(now: current)
     }
 
-    private func publish(_ body: RepositoryStatusReport, loop: LoopStatusReport, to repository: RepositoryConfig) async throws {
+    private func publish(_ body: RepositoryStatusReport, loops: AutomaticLoops, to repository: RepositoryConfig) async throws {
         let key = repository.fullName.lowercased()
         let manualLoopOpen = manualLoopRepositories.contains(key)
         func actions() -> [LoopStatusPublisher.Action] {
             loopStatusPublisher.actions(
-                repositoryKey: key, repository: body, loop: loop, now: body.checkedAt, manualLoopOpen: manualLoopOpen
+                repositoryKey: key, repository: body, loops: loops, now: body.checkedAt, manualLoopOpen: manualLoopOpen
             )
         }
         var pending = actions()
@@ -71,7 +70,7 @@ extension Orchestrator {
             pending = actions()
         }
         for action in pending {
-            try await perform(action, body: body, loop: loop, in: repository)
+            try await perform(action, body: body, in: repository)
         }
     }
 
@@ -86,9 +85,7 @@ extension Orchestrator {
         loopStatusPublisher.adopt(issues, comments: comments, repositoryKey: repository.fullName.lowercased(), trustedAuthors: trusted)
     }
 
-    private func perform(
-        _ action: LoopStatusPublisher.Action, body: RepositoryStatusReport, loop: LoopStatusReport, in repository: RepositoryConfig
-    ) async throws {
+    private func perform(_ action: LoopStatusPublisher.Action, body: RepositoryStatusReport, in repository: RepositoryConfig) async throws {
         let key = repository.fullName.lowercased()
         switch action {
         case .lookUp, .createIssue:
@@ -99,12 +96,12 @@ extension Orchestrator {
             try await github.updateLoopStatusIssue(in: repository.fullName, number: number, body: issueBody)
             loopStatusPublisher.recordBodyWritten(body, repositoryKey: key)
 
-        case let .createComment(number, commentBody):
-            let id = try await github.createLoopStatusComment(in: repository.fullName, issue: number, body: commentBody)
+        case let .createComment(number, loop):
+            let id = try await github.createLoopStatusComment(in: repository.fullName, issue: number, body: loop.commentBody)
             loopStatusPublisher.recordCommentWritten(loop, id: id, repositoryKey: key)
 
-        case let .updateComment(id, commentBody):
-            try await github.updateLoopStatusComment(in: repository.fullName, id: id, body: commentBody)
+        case let .updateComment(id, loop):
+            try await github.updateLoopStatusComment(in: repository.fullName, id: id, body: loop.commentBody)
             loopStatusPublisher.recordCommentWritten(loop, id: id, repositoryKey: key)
 
         case let .deleteComment(id):
@@ -120,15 +117,14 @@ extension Orchestrator {
             status: status,
             snapshot: snapshot,
             usageLimitedUntil: activeUsageLimit(at: now),
-            gaveUp: stallWatcher.hasGivenUp(repositoryKey: key, snapshot: snapshot)
-                || tracker.hasGivenUp(repositoryKey: key)
-                || pendingResumes[key]?.phase == .gaveUp,
-            readyDiscussion: readyDiscussionNumbers[key],
-            launchedDiscussion: tracker.launchedDiscussion(repositoryKey: key),
-            givenUpDiscussion: tracker.givenUpDiscussion(repositoryKey: key),
+            gaveUp: stallWatcher.hasGivenUp(repositoryKey: key, snapshot: snapshot) || pendingResumes[key]?.phase == .gaveUp,
+            readyDiscussions: readyDiscussionNumbers.map { $0[key] ?? [] },
+            launchedDiscussions: tracker.launchedDiscussions(repositoryKey: key),
+            givenUpDiscussions: tracker.givenUpDiscussions(repositoryKey: key),
             hasAnsweredQuestions: pendingResumes[key].map { $0.phase != .gaveUp } ?? false,
             epicMerged: await isEpicMerged(snapshot, in: repository, now: now),
-            lastActivityAt: await runtime.lastActivity(of: repository)
+            lastActivityAt: await runtime.lastActivity(of: repository),
+            builds: builds(for: repository)
         )
     }
 

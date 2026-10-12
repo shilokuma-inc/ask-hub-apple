@@ -27,14 +27,28 @@ struct LaunchTrackerTests {
         for _ in 0..<LaunchTracker.maxAttempts {
             tracker.recordLaunchFailure(of: older, repositoryKey: key)
         }
-        #expect(tracker.givenUpDiscussion(repositoryKey: key) == 10)
-        #expect(tracker.launchedDiscussion(repositoryKey: key) == nil)
+        #expect(tracker.givenUpDiscussions(repositoryKey: key) == [10])
+        #expect(tracker.launchedDiscussions(repositoryKey: key).isEmpty)
 
-        // 続けて #12 を起動した。実行中のループは #12 のもの
+        // 続けて #12 を起動した。実行中のループは #12 のもので、#10 は諦めたまま
         tracker.recordLaunch(of: discussion, repositoryKey: key)
-        #expect(tracker.launchedDiscussion(repositoryKey: key) == 12)
-        #expect(tracker.givenUpDiscussion(repositoryKey: key) == 10)
-        #expect(tracker.launchedDiscussion(repositoryKey: "other/repo") == nil)
+        #expect(tracker.launchedDiscussions(repositoryKey: key) == [12])
+        #expect(tracker.givenUpDiscussions(repositoryKey: key) == [10])
+        #expect(tracker.launchedDiscussions(repositoryKey: "other/repo").isEmpty)
+
+        // ループの開始を確かめた・ラベルを外した後も、検索結果から消えるまでは起動した Discussion
+        let prepared = statuses(LoopStatus(stateFileExists: true, processAlive: true))
+        let actions = tracker.update(discussions: [older, discussion], statuses: prepared, preparedDiscussions: [key: 12])
+        #expect(actions == [.removeLabel(discussion)])
+        #expect(tracker.launchedDiscussions(repositoryKey: key) == [12])
+        tracker.recordLabelRemoved(from: discussion)
+        #expect(tracker.launchedDiscussions(repositoryKey: key) == [12])
+        // 開始を確かめられないまま終わった（次の起動を待っている）Discussion は、起動した・諦めたのどちらにも入れない
+        tracker.forgiveFailures(repositoryKey: key)
+        #expect(tracker.givenUpDiscussions(repositoryKey: key).isEmpty)
+        #expect(tracker.launchedDiscussions(repositoryKey: key) == [12])
+        _ = tracker.update(discussions: [older], statuses: prepared)
+        #expect(tracker.launchedDiscussions(repositoryKey: key).isEmpty)
     }
 
     @Test func adoptsLoopStartedBeforeRestartOnlyWhenUntracked() {
