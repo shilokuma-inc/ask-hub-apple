@@ -1,5 +1,6 @@
 import Foundation
 import os
+import Testing
 
 /// テストが決めた時まで処理を返さないようにする。`FakeRuntime.run` が、裏の処理の途中で止まったままになるようにして確かめるのに使う
 final class RunGate: Sendable {
@@ -55,6 +56,10 @@ final class RunGate: Sendable {
         while state.withLock({ $0.held.count }) < count, waited < 5_000 {
             try? await Task.sleep(for: .milliseconds(1))
             waited += 1
+        }
+        let held = state.withLock { $0.held.count }
+        if held < count {
+            Issue.record("待たせている処理が \(count) 件になりませんでした（\(held) 件）")
         }
     }
 }
