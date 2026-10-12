@@ -1,6 +1,7 @@
 import AskHubKit
 
-// 回答の後処理。質問がすべて回答された Discussion / PR のラベルを付け替え、回答で再開する自動ループの epic を求める
+// 回答の後処理。質問がすべて回答された Discussion / PR のラベルを付け替える。
+// あわせて、この PC の自動ループの epic を求める（回答による再開と、GitHub の情報からの最終 PR の作成に使う）
 extension Orchestrator {
     /// 質問がすべて回答された Discussion / PR の後処理。
     /// 手で回す Discussion（`manual-loop`）では `addsReadyLabel` を `false` にし、ループを始めない
