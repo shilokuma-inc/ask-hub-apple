@@ -94,6 +94,29 @@ struct LoopStatusRowCommentsTests {
         #expect(row([issue(1, body: body, comments: [comment(11, older), comment(12, newer)])])?.report == newer)
     }
 
+    @Test func keepsOldManualBodyRowNextToAutomaticLoopComment() throws {
+        // オーケストレーターが自動ループ（#12）をコメントに書き、手動ループ（#30）は古い形で本文に書いている
+        let manual = loop(.waitingForAnswer, writer: .manual, discussion: 30)
+        let automatic = loop(.running, discussion: 12)
+        let result = try #require(row([issue(1, body: manual.issueBody, comments: [comment(11, automatic)])]))
+        // 1 行は今までどおり手動ループの本文。両方のループを読める
+        #expect(result.report == manual)
+        #expect(result.board?.loops.map(\.discussion) == [12, 30])
+        let epic = ManualLoopEpic(
+            subject: InboxSubject(
+                kind: .discussion,
+                nodeID: "D_30",
+                repository: "o/r",
+                number: 30,
+                title: "手動",
+                url: URL(string: "https://github.com/o/r/discussions/30")!
+            ),
+            assignee: "mrs1669"
+        )
+        // 手動ループの行も、今までどおり本文の状態を読む
+        #expect(ManualLoopItem.items(epics: [epic], rows: [result], viewer: "mrs1669", needsAnswer: [], now: now).first?.report == manual)
+    }
+
     @Test func choosesNewestTrustedIssueWhoseBodyIsReadable() {
         let issues = [
             issue(1, updatedMinutesAgo: 30, body: RepositoryStatusReport(checkedAt: now).marker),
@@ -149,6 +172,25 @@ struct LoopStatusRowCommentsTests {
         #expect(rows.map(\.repository) == ["o/r", "o/s"])
     }
 
+    @Test func fetcherFailsWhenCommentsCannotBeRead() async {
+        struct Source: LoopStatusSource {
+            let repositories: [LoopStatusRepository]
+            func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
+                repositories
+            }
+
+            func loopStatusComments(repository: String, issue number: Int) async throws -> [LoopStatusComment] {
+                throw GitHubError.invalidResponse
+            }
+        }
+        let source = Source(repositories: [
+            LoopStatusRepository(repository: "o/r", heartbeatDescription: nil, issues: [issue(1, body: "人が書いた本文")])
+        ])
+        // 本文を読めない Issue でもコメントを取りに行き、取れなければ今の取得の失敗と同じく全体を失敗にする（前回の行は残る）
+        await #expect(throws: GitHubError.self) {
+            try await LoopStatusFetcher(source: source, trustedAuthors: trusted).rows(orgs: ["o"])
+        }
+    }
 }
 
 struct GitHubLoopStatusSourceCommentsTests {
