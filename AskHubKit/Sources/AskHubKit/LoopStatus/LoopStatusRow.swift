@@ -8,13 +8,16 @@ public struct LoopStatusIssue: Sendable, Equatable {
     public var author: String?
     public var updatedAt: Date
     public var body: String
+    /// コメント（ループごとの状態。author の判定前）。取得元は一覧では取らず、`LoopStatusFetcher` が使う Issue のものだけを取って入れる
+    public var comments: [LoopStatusComment]
 
-    public init(number: Int, url: URL, author: String?, updatedAt: Date, body: String) {
+    public init(number: Int, url: URL, author: String?, updatedAt: Date, body: String, comments: [LoopStatusComment] = []) {
         self.number = number
         self.url = url
         self.author = author
         self.updatedAt = updatedAt
         self.body = body
+        self.comments = comments
     }
 }
 
@@ -55,16 +58,21 @@ public struct LoopStatusRow: Sendable, Equatable, Identifiable {
 
     /// `owner/name`
     public var repository: String
-    /// 信用する author が作った状態用の Issue から読んだ状態
+    /// 信用する author が作った状態用の Issue から読んだ状態（1 行に出す 1 つ。`board` から選ぶ）
     public var report: LoopStatusReport?
+    /// 状態用の Issue の本文とループごとのコメントから読んだ状態。信用する author の状態用の Issue が無ければ `nil`
+    public var board: LoopStatusBoard?
     /// 状態用の Issue
     public var issueURL: URL?
     /// 担当の印（`askhub-orchestrator`）の最終確認の時刻
     public var lastSeen: Date?
 
-    public init(repository: String, report: LoopStatusReport?, issueURL: URL? = nil, lastSeen: Date? = nil) {
+    public init(
+        repository: String, report: LoopStatusReport?, board: LoopStatusBoard? = nil, issueURL: URL? = nil, lastSeen: Date? = nil
+    ) {
         self.repository = repository
         self.report = report
+        self.board = board
         self.issueURL = issueURL
         self.lastSeen = lastSeen
     }
@@ -96,26 +104,57 @@ public struct LoopStatusRow: Sendable, Equatable, Identifiable {
     /// 取得したリポジトリを行にまとめ、リポジトリ名の順に返す。
     ///
     /// 担当の印か、信用する author の状態用の Issue があるリポジトリを行にする（担当 PC が古いものも「担当 PC なし」として出す）。
-    /// 状態用の Issue は誰でも同じラベルで作れるので、信用する author が作ったものだけを読み、複数あれば目印を読めるうち最も新しく更新されたものを使う
+    /// 状態用の Issue は誰でも同じラベルで作れるので、信用する author が作ったものだけを読む（`statusIssue(in:trustedAuthors:)`）。
+    /// コメント（ループごとの状態）は、その Issue のもののうち信用する author のものだけを読む（`LoopStatusBoard`）
     public static func rows(from repositories: [LoopStatusRepository], trustedAuthors: TrustedAuthors) -> [Self] {
         repositories.compactMap { repository in
-            let trusted = repository.issues
-                .filter { trustedAuthors.contains($0.author) }
-                .sorted { ($0.updatedAt, $0.number) > ($1.updatedAt, $1.number) }
-            let parsed = trusted.lazy.compactMap { issue in LoopStatusReport.parse(issue.body).map { (issue, $0) } }.first
+            let issue = statusIssue(in: repository.issues, trustedAuthors: trustedAuthors)
             let lastSeen = OrchestratorHeartbeat.lastSeen(in: repository.heartbeatDescription)
             // 本文を読めなくても（人が編集したなど）、信用する author の Issue があれば行は残す
-            guard !trusted.isEmpty || lastSeen != nil else {
+            guard issue != nil || lastSeen != nil else {
                 return nil
             }
+            let board = issue.map { LoopStatusBoard(issueBody: $0.body, comments: $0.comments, trustedAuthors: trustedAuthors) }
             return Self(
                 repository: repository.repository,
-                report: parsed?.1,
-                issueURL: parsed?.0.url ?? trusted.first?.url,
+                report: board.flatMap(Self.report(of:)),
+                board: board,
+                issueURL: issue?.url,
                 lastSeen: lastSeen
             )
         }
         .sorted { $0.repository.lowercased() < $1.repository.lowercased() }
+    }
+
+    /// 読む状態用の Issue。信用する author が作ったもののうち、目印（本文の新しい形・古い形）を読めるもので最も新しく更新されたもの。
+    /// 読めるものが無ければ、信用する author の最も新しく更新されたもの（行と Issue へのリンクだけを出す）
+    public static func statusIssue(in issues: [LoopStatusIssue], trustedAuthors: TrustedAuthors) -> LoopStatusIssue? {
+        let trusted = issues
+            .filter { trustedAuthors.contains($0.author) }
+            .sorted { ($0.updatedAt, $0.number) > ($1.updatedAt, $1.number) }
+        let readable = trusted.first { issue in
+            LoopStatusBoard(issueBody: issue.body, comments: [], trustedAuthors: trustedAuthors).body != .unreadable
+        }
+        return readable ?? trusted.first
+    }
+
+    /// 1 行に出す状態。複数のループを並べるまでは、今までと同じ見た目になるように選ぶ:
+    /// 古い形の本文ならそのループ（同じ Discussion のコメントが新しければそちら）、新しい形なら自動ループ（書き手が `orchestrator`）、
+    /// 無ければ最初のループ。ループが 1 つも無ければ、リポジトリ全体の状態から「ループなし」（上限で待機中ならその状態）を作る
+    static func report(of board: LoopStatusBoard) -> LoopStatusReport? {
+        if case let .loop(legacy) = board.body {
+            return legacy.discussion.flatMap { board.loop(discussion: $0)?.report } ?? legacy
+        }
+        if let loop = board.loops.first(where: { $0.report.writer == .orchestrator }) ?? board.loops.first {
+            return loop.report
+        }
+        return board.repository.map { repository in
+            LoopStatusReport(
+                state: repository.usageLimitedUntil == nil ? .noLoop : .usageLimited,
+                usageLimitedUntil: repository.usageLimitedUntil,
+                checkedAt: repository.checkedAt
+            )
+        }
     }
 }
 
@@ -123,6 +162,15 @@ public struct LoopStatusRow: Sendable, Equatable, Identifiable {
 public protocol LoopStatusSource: Sendable {
     /// organization のアーカイブ済みでないリポジトリごとの、担当の印と open な状態用の Issue
     func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository]
+    /// 状態用の Issue のコメント（古い順。author を問わない。続きのページも最後まで）
+    func loopStatusComments(repository: String, issue number: Int) async throws -> [LoopStatusComment]
+}
+
+extension LoopStatusSource {
+    /// コメントを持たない取得元（古い形の本文だけのサンプルなど）
+    public func loopStatusComments(repository: String, issue number: Int) async throws -> [LoopStatusComment] {
+        []
+    }
 }
 
 /// 「ステータス」タブに出す行を集める
@@ -145,9 +193,16 @@ public struct LoopStatusFetcher: Sendable {
         var rows: [LoopStatusRow] = []
         var buildHosts: [BuildHostsStatus] = []
         // 状態用の Issue があるリポジトリだけ、信用する author を求める（organization の全リポジトリには問い合わせない）
-        for repository in try await source.loopStatusRepositories(orgs: orgs) {
+        for var repository in try await source.loopStatusRepositories(orgs: orgs) {
             let hasIssues = !repository.issues.isEmpty || !repository.buildHostsIssues.isEmpty
             let trusted = hasIssues ? await trust.trustedAuthors(for: repository.repository) : TrustedAuthors([])
+            // コメントは、読む Issue（信用する author のもの）だけ取る。組織全体の問い合わせに入れ子で足すとコストが大きいため
+            if let issue = LoopStatusRow.statusIssue(in: repository.issues, trustedAuthors: trusted),
+               let index = repository.issues.firstIndex(of: issue) {
+                repository.issues[index].comments = try await source.loopStatusComments(
+                    repository: repository.repository, issue: issue.number
+                )
+            }
             rows += LoopStatusRow.rows(from: [repository], trustedAuthors: trusted)
             buildHosts += BuildHostsStatus.statuses(from: repository, trustedAuthors: trusted)
         }
