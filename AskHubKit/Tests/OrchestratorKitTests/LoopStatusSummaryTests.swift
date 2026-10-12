@@ -69,8 +69,12 @@ struct LoopStatusSummaryTests {
 
         // 上限はこの Mac のすべての自動ループが待つ（epic・起動した Discussion・待っている Discussion）
         let all = loops(.init(
-            status: Self.running, snapshot: Self.epic(), usageLimitedUntil: until,
-            readyDiscussions: [300], launchedDiscussions: [250], givenUpDiscussions: [240]
+            status: Self.running,
+            snapshot: Self.epic(),
+            usageLimitedUntil: until,
+            readyDiscussions: [300],
+            launchedDiscussions: [250],
+            givenUpDiscussions: [240]
         ))
         #expect(all.reports.map(\.discussion) == [197, 240, 250, 300])
         #expect(all.reports.allSatisfy { $0.state == .usageLimited && $0.usageLimitedUntil == until })
