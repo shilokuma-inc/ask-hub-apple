@@ -96,7 +96,8 @@ extension OrchestratorTests {
             [manual("epic/a", discussion: 331), manual("epic/b", discussion: 340), manual("epic/c", discussion: 345, state: .running)],
             onIssue: 229
         )
-        for branch in ["epic/a", "epic/b", "epic/mvp"] {
+        // まだ回っているループ（epic/c）にも材料があるが、完了していないので作らない
+        for branch in ["epic/a", "epic/b", "epic/c", "epic/mvp"] {
             github.setEpicMaterials(Self.materials, for: branch)
         }
         let runtime = FakeRuntime()
@@ -123,6 +124,34 @@ extension OrchestratorTests {
         // この PC の制御用 worktree で手動ループ（ゴール元の記録が無い）が終わった。自動ループの経路では作らない（手動ループの完了は状態から見る）
         runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】A", state: "## メモ\n", loopPrepared: true))
         try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
+        #expect(github.createdEpicPullRequests.isEmpty)
+    }
+
+    @Test func ignoresUntrustedCommentsAndClosedManualLoops() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setManualLoops([ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 331, author: "mrs1669")])
+        let checkedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        func completed(_ epic: String, discussion: Int, author: String) -> LoopStatusComment {
+            let report = LoopStatusReport(state: .completed, writer: .manual, epic: epic, discussion: discussion, checkedAt: checkedAt)
+            return LoopStatusComment(id: discussion, author: author, updatedAt: checkedAt, body: report.issueBody)
+        }
+        let body = #"<!-- ask-hub:repository-status {"checkedAt":"2027-01-15T08:00:00Z"} -->"#
+        github.setLoopStatusIssues([LoopStatusIssueRecord(number: 229, author: "mrs1669", isOpen: true, updatedAt: checkedAt, body: body)])
+        github.setLoopStatusComments(
+            [
+                // public リポジトリでは誰でもコメントできる。信用しない author の目印からは作らない
+                completed("epic/spam", discussion: 331, author: "stranger"),
+                // manual-loop の Discussion が閉じた（終わった）昔のループのコメントは、毎回は確かめない
+                completed("epic/old", discussion: 300, author: "mrs1669")
+            ],
+            onIssue: 229
+        )
+        for branch in ["epic/spam", "epic/old"] {
+            github.setEpicMaterials(Self.materials, for: branch)
+        }
+        let clock = TestClock(checkedAt.addingTimeInterval(LoopStatusReport.freshness))
+        try await makeOrchestrator(github: github, runtime: FakeRuntime(), now: { clock.now }).pollOnce()
+
         #expect(github.createdEpicPullRequests.isEmpty)
     }
 }

@@ -52,12 +52,20 @@ extension Orchestrator {
         guard let board = await loopStatusBoard(of: repository) else {
             return []
         }
+        // 開いている手動ループ（`manual-loop` の Discussion）のものだけにする。終わった昔のループのコメントが残っていても、毎回は確かめない
+        // （このポーリングで取得できなければ絞らない。同じ epic では既にある PR を確かめてから作る）
+        let open = manualLoops.map { loops in
+            Set(loops.filter { $0.repository.lowercased() == key }.map(\.number))
+        }
         return board.loops.compactMap { loop in
             let report = loop.report
             // 担当者が `askhub-manual.sh final`（手元の state の内容で作る）を流すのを、完了から `freshness` のあいだ待つ
             guard report.writer == .manual, report.state == .completed,
                   current.timeIntervalSince(report.checkedAt) >= LoopStatusReport.freshness,
                   let branch = report.epic, branch.hasPrefix("epic/") else {
+                return nil
+            }
+            if let open, let discussion = report.discussion, !open.contains(discussion) {
                 return nil
             }
             return FallbackCandidate(branch: branch, discussion: report.discussion, reason: .manualLoop)
