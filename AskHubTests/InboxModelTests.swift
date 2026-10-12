@@ -134,6 +134,18 @@ struct InboxModelTests {
         #expect(model.groupedQuestions.map(\.marker.id) == ["d12-q1", "d12-q2", "pr34-1", "d128-q1"])
     }
 
+    @Test func colorsSampleDiscussionQuestionsOnly() async {
+        let model = InboxModel.sample()
+        await model.refresh()
+        let colors = model.groupedQuestions.map(\.subject.groupColor)
+        // notti-ios#12 の 2 問は同じ色、ask-hub-apple#128 は別の色。PR の ask（ask-hub-apple#34）には色を付けない
+        #expect(colors[0] != nil)
+        #expect(colors[1] == colors[0])
+        #expect(colors[2] == nil)
+        #expect(colors[3] != nil)
+        #expect(colors[3] != colors[0])
+    }
+
     @Test func failureKeepsPreviousResultsAndExplainsInvalidToken() async {
         let fails = OSAllocatedUnfairLock(initialState: false)
         let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in
