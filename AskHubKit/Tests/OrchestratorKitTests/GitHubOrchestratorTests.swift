@@ -4,17 +4,30 @@ import Foundation
 import os
 import Testing
 
+/// `StubHTTPClient` が返すレスポンス
+struct StubHTTPResponse {
+    var status = 200
+    var body: String
+    /// ページングの `Link` など
+    var headers: [String: String] = [:]
+}
+
 struct GitHubOrchestratorTests {
     /// 登録した順に 200 のレスポンスを返し、送られたリクエストを記録する
     final class StubHTTPClient: HTTPClient {
-        private let state: OSAllocatedUnfairLock<(responses: [(status: Int, body: String)], requests: [URLRequest])>
+        private let state: OSAllocatedUnfairLock<(responses: [StubHTTPResponse], requests: [URLRequest])>
 
         /// すべて 200 で返す
         convenience init(_ bodies: [String]) {
             self.init(responses: bodies.map { (200, $0) })
         }
 
-        init(responses: [(status: Int, body: String)]) {
+        convenience init(responses: [(status: Int, body: String)]) {
+            self.init(withHeaders: responses.map { StubHTTPResponse(status: $0.status, body: $0.body) })
+        }
+
+        /// ヘッダー（ページングの `Link` など）も返す
+        init(withHeaders responses: [StubHTTPResponse]) {
             state = OSAllocatedUnfairLock(initialState: (responses, []))
         }
 
@@ -31,7 +44,7 @@ struct GitHubOrchestratorTests {
                 return state.responses.removeFirst()
             }
             guard let url = request.url,
-                  let response = HTTPURLResponse(url: url, statusCode: next.status, httpVersion: nil, headerFields: nil) else {
+                  let response = HTTPURLResponse(url: url, statusCode: next.status, httpVersion: nil, headerFields: next.headers) else {
                 throw GitHubError.invalidResponse
             }
             return (Data(next.body.utf8), response)
