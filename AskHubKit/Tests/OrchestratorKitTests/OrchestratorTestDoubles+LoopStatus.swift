@@ -140,4 +140,14 @@ extension FakeGitHub {
             state.deletedLoopStatusComments.append("\(repository) \(id)")
         }
     }
+
+    /// Issue のコメントから読んだ、自動ループの状態（最後に作ったコメント）
+    func loopCommentReport(onIssue number: Int = 101) -> LoopStatusReport? {
+        loopStatusCommentsByIssue[number]?.last.flatMap { LoopStatusReport.parse($0.body) }
+    }
+
+    /// 本文から読んだ、リポジトリ全体の状態
+    func repositoryStatus(onIssue number: Int = 101) -> RepositoryStatusReport? {
+        loopStatusIssuesByNumber[number].flatMap { RepositoryStatusReport.parse($0.body) }
+    }
 }

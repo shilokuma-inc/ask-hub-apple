@@ -289,7 +289,7 @@ struct OrchestratorTests {
         let github = FakeGitHub([.success([])])
         let runtime = FakeRuntime()
         // 全タスクが完了した epic（最終 PR のマージ待ち）。起動スクリプトは「未完了のタスクがありません」で再開を断る
-        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】A", state: nil, loopPrepared: true))
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】A", state: nil, discussion: 12, loopPrepared: true))
         let inbox = FakeInbox()
         // epic とは関係のない PR の ask に回答が付いた
         inbox.set([Self.pullRequest()], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
@@ -307,7 +307,7 @@ struct OrchestratorTests {
             "shilokuma-inc/ask-hub-apple の ask に回答が付きましたが、途中の epic（回答待ちでない未完了のタスク）が無いので、ループは再開しません"
         ))
         // ループの状態は「異常終了（再開を諦めた）」ではなく「完了（最終 PR のマージ待ち）」のまま
-        let report = try #require(github.loopStatusIssuesByNumber.values.first.flatMap { LoopStatusReport.parse($0.body) })
+        let report = try #require(github.loopCommentReport())
         #expect(report.state == .completed)
     }
 
