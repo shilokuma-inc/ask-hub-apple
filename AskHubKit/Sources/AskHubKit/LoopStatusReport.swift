@@ -222,8 +222,18 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     private static let commentClose = "-->"
     private static let keyword = "ask-hub:loop-status"
 
-    /// 状態用の Issue の本文。先頭に目印、続けて人が読める表を置く
+    /// 状態用の Issue の本文（古い形。目印 1 つ）。先頭に目印、続けて人が読める表を置く
     public var issueBody: String {
+        text(heading: "ループの状態", notice: "\(writer.bodySubject)が書き換える Issue です。編集・クローズしないでください。")
+    }
+
+    /// 状態用の Issue に置く、このループ（Discussion）のコメントの本文。先頭に目印（`discussion` 付き）、続けて人が読める表を置く
+    public var commentBody: String {
+        let heading = discussion.map { "ループの状態（Discussion #\($0)）" } ?? "ループの状態"
+        return text(heading: heading, notice: "\(writer.bodySubject)が書き換えるコメントです。編集・削除しないでください。")
+    }
+
+    private func text(heading: String, notice: String) -> String {
         var rows = [("状態", state.title), ("書き手", writer.title)]
         if let runner {
             rows.append(("回している人", "@" + Self.tableCell(runner)))
@@ -257,9 +267,9 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         let table = rows.map { "| \($0.0) | \($0.1) |" }.joined(separator: "\n")
         return """
         \(marker)
-        ## ループの状態
+        ## \(heading)
 
-        \(writer.bodySubject)が書き換える Issue です。編集・クローズしないでください。
+        \(notice)
 
         | 項目 | 値 |
         | --- | --- |
