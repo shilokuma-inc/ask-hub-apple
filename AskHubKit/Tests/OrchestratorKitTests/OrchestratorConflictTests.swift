@@ -11,9 +11,9 @@ extension OrchestratorTests {
         repository: "shilokuma-inc/ask-hub-apple", number: 50, headBranch: "epic/mvp", baseBranch: "develop", headSHA: "h1", baseSHA: "b1"
     )
 
-    private static func conflicting(_ repository: String, _ number: Int, head: String) -> ConflictingPullRequest {
+    private static func conflicting(_ repository: String, _ number: Int, head: String, base: String = "b1") -> ConflictingPullRequest {
         ConflictingPullRequest(
-            repository: repository, number: number, headBranch: head, baseBranch: "develop", headSHA: "h\(number)", baseSHA: "b1"
+            repository: repository, number: number, headBranch: head, baseBranch: "develop", headSHA: "h\(number)", baseSHA: base
         )
     }
 
@@ -130,6 +130,30 @@ extension OrchestratorTests {
         #expect(github.pullRequestComments.map { $0.prefix { $0 != ":" } }.sorted() == [
             "shilokuma-inc/ask-hub-apple#50", "shilokuma-inc/ask-hub-apple#51", "shilokuma-inc/prime-pick-ios#60"
         ])
+    }
+
+    @Test func leavesFinishedPullRequestToNextPollEvenIfBaseMovedMeanwhile() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setConflictingPullRequests([Self.conflicting("shilokuma-inc/ask-hub-apple", 50, head: "epic/mvp")])
+        let runtime = FakeRuntime()
+        runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: resolved\n")])
+        runtime.setHoldsRuns(true)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+        try await orchestrator.pollOnce()
+        await runtime.waitForHeldRuns(1)
+
+        // 解消している間に develop が進み、ポーリングの一覧には新しい base との組み合わせが入る
+        github.setConflictingPullRequests([Self.conflicting("shilokuma-inc/ask-hub-apple", 50, head: "epic/mvp", base: "b2")])
+        try await orchestrator.pollOnce()
+        runtime.setHoldsRuns(false)
+        await orchestrator.waitForConflictResolutions()
+
+        // 解消の push で head が変わっているので、古い一覧の組み合わせではすぐに試し直さない
+        #expect(runtime.ran.count == 1)
+        // 次のポーリングで、まだコンフリクトしていれば試す
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+        #expect(runtime.ran.count == 2)
     }
 
     @Test func doesNotStartNextResolutionAfterUsageLimit() async throws {

@@ -54,8 +54,9 @@ extension Orchestrator {
                 conflictTracker.finish(pullRequest)
                 conflictResolutions[key] = nil
                 // 同じリポジトリでほかの最終 PR もコンフリクトしていれば、次のポーリングを待たずに始める
-                // （一覧は最後に取得したもの。古くても、同じ組み合わせは試し直さず、スクリプトが取得し直してから取り込む）
-                startConflictResolutions(among: conflictingPullRequests)
+                // （一覧は最後に取得したもの。古くても、同じ組み合わせは試し直さず、スクリプトが取得し直してから取り込む）。
+                // 今終わった PR は push で head が変わっているので、古い一覧の組み合わせでは試し直さず、次のポーリングで取得し直す
+                startConflictResolutions(among: conflictingPullRequests.filter { $0.key != pullRequest.key })
             }
         }
     }

@@ -524,7 +524,8 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 （[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425) の Q3）。解消は最長 30 分かかるが、ポーリングはその終わりを待たずに続ける。
 
 - 同じリポジトリでは 1 件ずつ、別のリポジトリは並列に解消する（`askhub-resolve-conflict` はメインの checkout に一時 worktree を作るため、同じリポジトリでは並べない）
-- 同じリポジトリでほかの最終 PR（自動ループと手動ループの epic など）もコンフリクトしていれば、前の解消が終わったところで、次のポーリングを待たずに始める
+- 同じリポジトリでほかの最終 PR（自動ループと手動ループの epic など）もコンフリクトしていれば、前の解消が終わったところで、次のポーリングを待たずに始める。
+  今終わった PR は push で head が変わっているので、まだコンフリクトしていれば次のポーリングで取得し直してから試す
 
 1. org 全体の open な `epic-final` PR のうち、GitHub が `CONFLICTING` と判定したものを探す（`UNKNOWN` はまだ判定中なので次のポーリングに回す）。担当リポジトリのものだけを扱う
 2. `conflictCommand`（既定は `askhub-resolve-conflict`）を実行し、終わるまで裏で待つ。スクリプトはループの作業場所（制御用 worktree・スロット）とは別の一時 worktree で、head に base を取り込む
