@@ -118,11 +118,16 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - アプリが知らない `state` は「不明」として扱う（新しいオーケストレーターが分類を足しても読めなくならないように）
 - アプリが知らない `writer` も「不明」として扱う
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
-- オーケストレーターは、`checkedAt` 以外が変わったときに本文を書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す
+- オーケストレーターは、本文（新しい形。リポジトリ全体の状態）と、この PC の自動ループのコメント（`writer` は `orchestrator`）を書く。
+  それぞれ `checkedAt` 以外が変わったときに書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す。手動ループの有無で書き出しを止めない
+- オーケストレーターは、自動ループのコメントを今のループ（Discussion）のものだけ残し、前のループ（最終 PR がマージされた・次の Discussion に移った）と重複したコメントは消す。
+  ゴール元の Discussion の番号が無い自動ループ（ループが無い・手で始めた epic）の状態はコメントに書かない
+- 1 つの Discussion の書き手は 1 つ。手動ループ（`writer` が `manual`）のコメントがあり、`checkedAt` が 30 分以内か `manual-loop` の Discussion が開いている Discussion には、
+  オーケストレーターは書かない
 - 手動ループ（`manual-loop` の Discussion）は、担当者の Claude が `scripts/askhub-manual.sh status` で `writer` を `manual`・`runner` を担当者にして、
-  状態・epic・進捗・回答待ちの PR を書き、10 分ごとに `checkedAt` を書き直す。
-  信用する author の open な `manual-loop` の Discussion があるあいだ、オーケストレーターは書き手が `manual` の状態を（`checkedAt` が古くなっても）上書きしない。
-  古くなったことはアプリが知らせる。Discussion が閉じた後、`checkedAt` が 30 分を過ぎていれば、オーケストレーターが書き直す
+  状態・epic・進捗・回答待ちの PR を書き、10 分ごとに `checkedAt` を書き直す。ralph-kit が新しい形で書くようになるまでは、本文に古い形で書く。
+  オーケストレーターは、古い形の手動ループの本文を、`checkedAt` が 30 分以内か、信用する author の open な `manual-loop` の Discussion があるあいだ（`checkedAt` が古くなっても）上書きしない。
+  古くなったことはアプリが知らせる。Discussion が閉じた後、`checkedAt` が 30 分を過ぎていれば、オーケストレーターが本文を新しい形で書き直す
 
 アプリの読み方（`LoopStatusFetcher`。GitHub からの取得は `GitHubLoopStatusSource`）:
 
@@ -196,7 +201,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - 対象はループのスロットのビルドだけ（Discussion #366 の Q6）。メインの checkout・制御用 worktree・手で流したビルドは書かない
 - ビルドの移動や失敗は、ステータスのバッジ（異常の件数）には数えない（Q7。表示だけ）
 - `builds` の形が崩れていても、アプリは状態そのもの（`state` など）は読み、ビルドの情報だけを無いものとして扱う
-- `builds` が変わったら本文を書き換える（`checkedAt` 以外の変化として扱う）
+- `builds` は自動ループのコメントに書き、変わったら書き換える（`checkedAt` 以外の変化として扱う）
 
 ## ビルドの Mac の状態
 
