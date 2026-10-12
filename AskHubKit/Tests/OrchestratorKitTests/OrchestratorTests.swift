@@ -285,6 +285,32 @@ struct OrchestratorTests {
         #expect(runtime.launched.count == 1)
     }
 
+    @Test func doesNotResumeOrGiveUpWhenEpicHasNoUnfinishedTasks() async throws {
+        let github = FakeGitHub([.success([])])
+        let runtime = FakeRuntime()
+        // 全タスクが完了した epic（最終 PR のマージ待ち）。起動スクリプトは「未完了のタスクがありません」で再開を断る
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】A", state: nil, loopPrepared: true))
+        let inbox = FakeInbox()
+        // epic とは関係のない PR の ask に回答が付いた
+        inbox.set([Self.pullRequest()], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime, inbox: inbox)
+
+        for _ in 0...ResumeWatcher.maxAttempts {
+            try await orchestrator.pollOnce()
+        }
+
+        #expect(runtime.launched.isEmpty)
+        // テストの Inbox はラベルを外しても PR を返し続けるので、外した PR を集合で比べる
+        #expect(Set(github.removedNeedsAnswer) == ["PR_34"])
+        #expect(await orchestrator.pendingResumes.isEmpty)
+        #expect(logs.recorded.contains(
+            "shilokuma-inc/ask-hub-apple の ask に回答が付きましたが、途中の epic（回答待ちでない未完了のタスク）が無いので、ループは再開しません"
+        ))
+        // ループの状態は「異常終了（再開を諦めた）」ではなく「完了（最終 PR のマージ待ち）」のまま
+        let report = try #require(github.loopStatusIssuesByNumber.values.first.flatMap { LoopStatusReport.parse($0.body) })
+        #expect(report.state == .completed)
+    }
+
     @Test func runContinuesAfterFailedPollAndStopsWhenSleepThrows() async throws {
         let github = FakeGitHub([.failure(TestError()), .success([.fixture(number: 12)])])
         let runtime = FakeRuntime()

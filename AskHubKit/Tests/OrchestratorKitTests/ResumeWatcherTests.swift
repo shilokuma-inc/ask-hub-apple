@@ -137,6 +137,34 @@ struct ResumeWatcherTests {
         #expect(watcher.recordLaunchFailure(repositoryKey: key).phase == .waiting)
         #expect(watcher.recordLaunchFailure(repositoryKey: key).phase == .gaveUp)
     }
+
+    @Test func doesNotResumeWithoutEpicInProgress() {
+        var watcher = ResumeWatcher()
+        // epic とは関係のない PR の ask に回答が付いても、途中の epic が無ければ起動スクリプトも断るので再開しない
+        let full = snapshot([("A", true)])
+        #expect(
+            watcher.update(snapshots: [full], statuses: [:], epicsInProgress: [])
+                == [.removeNeedsAnswer(full.subject), .noEpicInProgress(repositoryKey: key)]
+        )
+        #expect(watcher.resumes.isEmpty)
+        // 同じ回答では知らせ直さない
+        #expect(watcher.update(snapshots: [full], statuses: [:], epicsInProgress: []) == [.removeNeedsAnswer(full.subject)])
+    }
+
+    @Test func forgetsGaveUpOnceEpicIsNoLongerInProgress() {
+        var watcher = ResumeWatcher()
+        let partial = snapshot([("A", true), ("B", false)])
+        for _ in 0..<ResumeWatcher.maxAttempts {
+            _ = watcher.update(snapshots: [partial], statuses: [:])
+            watcher.recordLaunch(repositoryKey: key)
+        }
+        #expect(watcher.update(snapshots: [partial], statuses: [:]) == [.giveUp(repositoryKey: key, attempts: ResumeWatcher.maxAttempts)])
+        #expect(watcher.resumes[key]?.phase == .gaveUp)
+
+        // epic が終われば（残りが回答待ちだけ・マージして片付いた）、諦めた記録を残さない（ループの状態が「異常終了」のまま残らない）
+        #expect(watcher.update(snapshots: [partial], statuses: [:], epicsInProgress: []).isEmpty)
+        #expect(watcher.resumes.isEmpty)
+    }
 }
 
 private extension ResumeWatcher {
