@@ -129,6 +129,8 @@ public actor Orchestrator {
     var conflictResolutions: [String: Task<Void, Never>] = [:]
     /// 最後に取得した、コンフリクトした最終 PR。解消が終わったリポジトリで、次の PR をポーリングを待たずに始めるのに使う
     var conflictingPullRequests: [ConflictingPullRequest] = []
+    /// 裏の解消が終わるのを待っている（`--once`・`run` の終わり）。その間は新しい解消を始めない
+    var drainsConflictResolutions = false
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
     var loopStatusPublisher = LoopStatusPublisher()

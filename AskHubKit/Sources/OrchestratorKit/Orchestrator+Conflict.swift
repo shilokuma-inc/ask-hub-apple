@@ -34,8 +34,11 @@ extension Orchestrator {
     }
 
     /// 裏で実行中の解消がすべて終わるまで待つ（`--once` で終わる前・`run` の終わりなど）。
-    /// 子プロセスはオーケストレーターの終了で止まらないので、結果を PR にコメントしてから終わる
+    /// 子プロセスはオーケストレーターの終了で止まらないので、結果を PR にコメントしてから終わる。
+    /// 待っている間は新しい解消を始めない（同じリポジトリの次の PR は、次のポーリングで始める）
     public func waitForConflictResolutions() async {
+        drainsConflictResolutions = true
+        defer { drainsConflictResolutions = false }
         while let task = conflictResolutions.values.first {
             await task.value
         }
@@ -43,7 +46,7 @@ extension Orchestrator {
 
     /// 取得済みの一覧から、始められる解消を裏で始める
     private func startConflictResolutions(among pullRequests: [ConflictingPullRequest]) {
-        guard activeUsageLimit(at: now()) == nil else {
+        guard activeUsageLimit(at: now()) == nil, !drainsConflictResolutions else {
             return
         }
         for (pullRequest, repository) in conflictTracker.startable(in: pullRequests, config: config) {

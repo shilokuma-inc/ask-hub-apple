@@ -181,7 +181,10 @@ extension OrchestratorTests {
 
     @Test func runWaitsForConflictResolutionBeforeReturning() async throws {
         let github = FakeGitHub([.success([])])
-        github.setConflictingPullRequests([Self.conflicting])
+        github.setConflictingPullRequests([
+            Self.conflicting("shilokuma-inc/ask-hub-apple", 50, head: "epic/auto"),
+            Self.conflicting("shilokuma-inc/ask-hub-apple", 51, head: "epic/manual")
+        ])
         let runtime = FakeRuntime()
         runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: resolved\n")])
         runtime.setHoldsRuns(true)
@@ -202,5 +205,7 @@ extension OrchestratorTests {
         await running.value
         #expect(returned.withLock { $0 })
         #expect(github.pullRequestComments.count == 1)
+        // 終わるのを待っている間は、同じリポジトリの次の PR を始めない
+        #expect(runtime.ran.count == 1)
     }
 }
