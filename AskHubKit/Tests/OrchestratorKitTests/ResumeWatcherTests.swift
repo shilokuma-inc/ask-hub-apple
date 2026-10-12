@@ -138,3 +138,10 @@ struct ResumeWatcherTests {
         #expect(watcher.recordLaunchFailure(repositoryKey: key).phase == .gaveUp)
     }
 }
+
+private extension ResumeWatcher {
+    /// 途中の epic がある（回答で再開できる）リポジトリとして進める。途中の epic が無いときは `epicsInProgress` を渡して確かめる
+    mutating func update(snapshots: [AnswerSnapshot], statuses: [String: LoopStatus]) -> [Action] {
+        update(snapshots: snapshots, statuses: statuses, epicsInProgress: ["shilokuma-inc/ask-hub-apple"])
+    }
+}

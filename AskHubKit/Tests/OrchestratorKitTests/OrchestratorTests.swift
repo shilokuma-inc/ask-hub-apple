@@ -8,6 +8,8 @@ struct OrchestratorTests {
     let logs = LogRecorder()
     static let started = LoopStatus(stateFileExists: true, processAlive: true)
     static let exitedWithoutStarting = LoopStatus(stateFileExists: false, processAlive: false)
+    /// ask への回答で再開する epic（回答待ちでない未完了のタスクが残っている）
+    static let unfinishedEpic = EpicSnapshot(branch: "epic/mvp", goal: "- [ ] 【FEAT】A", state: nil, loopPrepared: true)
 
     func makeOrchestrator(
         github: FakeGitHub,
@@ -167,6 +169,7 @@ struct OrchestratorTests {
     @Test func resumesStoppedLoopWhenAskIsAnsweredAndRemovesNeedsAnswer() async throws {
         let github = FakeGitHub([.success([])])
         let runtime = FakeRuntime()
+        runtime.setEpic(Self.unfinishedEpic)
         let inbox = FakeInbox()
         let subject = Self.pullRequest()
         inbox.set([subject], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
@@ -260,6 +263,7 @@ struct OrchestratorTests {
     @Test func skipsOnlySubjectWhoseQuestionsCannotBeFetched() async throws {
         let github = FakeGitHub([.success([])])
         let runtime = FakeRuntime()
+        runtime.setEpic(Self.unfinishedEpic)
         let inbox = FakeInbox()
         // PR_1 はスレッドを登録していないので取得に失敗する
         inbox.set([Self.pullRequest(number: 1), Self.pullRequest()], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
@@ -273,6 +277,7 @@ struct OrchestratorTests {
     @Test func resumeAndReadyForLoopDoNotLaunchTwiceInOnePoll() async throws {
         let github = FakeGitHub([.success([.fixture(number: 12)])])
         let runtime = FakeRuntime()
+        runtime.setEpic(Self.unfinishedEpic)
         let inbox = FakeInbox()
         inbox.set([Self.pullRequest()], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
         try await makeOrchestrator(github: github, runtime: runtime, inbox: inbox).pollOnce()
