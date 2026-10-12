@@ -220,7 +220,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
    `~/.claude/settings.json` の `skipDangerousModePermissionPrompt` は `true` のまま（無人で `bypassPermissions` を使うため）
 5. **ralph-loop プラグイン**: `claude plugin install ralph-loop@claude-plugins-official` を、制御用 worktree（`*-ralph-ctl`）の外で実行する。
    `~/.claude/settings.json` の `enabledPlugins` に入っていれば有効。周回は このプラグインの Stop hook が回すので、無いとループが 1 周で黙って終わる（`askhub-start-loop` は起動前にエラーで止める）
-6. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには template-app-ios の ralph 一式（`.claude/ralph/`・`scripts/ralph-*.sh`）とプロトコルのラベルが必要
+6. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには ralph-kit の中継（`scripts/ralph-*.sh`。[ralph-kit](https://github.com/shilokuma-inc/ralph-kit) の `install.sh` で入れる）とプロトコルのラベルが必要
 7. **オーケストレーター**: このリポジトリを clone して `scripts/orchestrator/install.sh` を実行し、
    `~/.config/askhub/orchestrator.json` を `orchestrator.example.json` から作る（担当リポジトリだけを書く。ほかの Mac と重ねない）
 8. **確認と登録**: `~/.local/bin/askhub-orchestrator --once` でエラーが出ないことを確かめてから `launchctl bootstrap` する。
