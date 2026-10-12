@@ -201,9 +201,9 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | キー | 必須 | 内容 |
 | --- | --- | --- |
 | `name` | 必須 | xcb の `host`（ssh の Host 名）。`local` は xcb を動かしている Mac |
-| `state` | 必須 | `ok`（使える）・`down`（切断）・`drained`（外している。`xcb drain`）・`standby`（待機。リモートがつながらないときだけ使う `local`）。知らない値は「不明」 |
+| `state` | 必須 | `ok`（使える）・`down`（切断）・`drained`（外している。`xcb drain`）・`standby`（待機。xcb を動かしている Mac 自身（`local`）で、空いているとき、またはリモートがつながらないときだけ使う）。知らない値は「不明」 |
 | `reason` | 任意 | 使えない理由の分類。`unreachable`（接続できない）・`disconnected`（実行中に切断）・`xcode-not-ready`（Xcode が未準備）。知らない値は「不明」 |
-| `cores` / `load` / `memoryFreePercent` | 任意 | CPU のコア数・load average・空きメモリの割合（0〜100）。`xcb status --json` の値（`local` は持たない） |
+| `cores` / `load` / `memoryFreePercent` | 任意 | CPU のコア数・load average・空きメモリの割合（0〜100）。`xcb status --json` の値（`local` は、xcb が古いと持たない） |
 | `running` / `slots` | 任意 | その Mac で実行中の xcb のビルドの本数（ループのスロット以外も含める）・同時に実行できる本数 |
 
 `jobs` の項目: `host`（動いている Mac）・`repository`（`owner/name`）・`slot`（`a` / `b`）・`action`（`build` / `test` など）は必須。

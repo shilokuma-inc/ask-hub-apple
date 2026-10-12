@@ -1,0 +1,502 @@
+#!/bin/zsh
+# xcb — ralph-loop 共通の xcodebuild の入口。
+#   xcb <作業ツリー> <xcodebuild の引数…>   ビルド・テストを、いちばん空いている Mac で実行する
+#   xcb status                              各 Mac の空き具合・実行中の本数・外しているかを表示する
+#   xcb drain <Host> / xcb undrain <Host>   その Mac を候補から外す / 戻す（実行中のものは止めない）
+#
+# - ビルド先は ~/.config/xcb/hosts（XCB_HOSTS で変更可）。1 行 1 台で「Host 名・同時実行の上限・優先度・Xcode・テストを受けるか」
+# - リモートの候補ごとに、CPU のコア数・load average・空きメモリ・Xcode の準備状況を ssh で調べ（15 秒は使い回す）、
+#   空き具合 = 優先度 × 空きメモリの割合 × (コア数 − load average) ÷ (1 + その Mac で実行中の xcb の本数) が最大の Mac を選ぶ。
+#   つながる Mac がすべて満杯なら空くまで待つ
+# - Mac mini（local）は、設定で優先度を付けると、空きメモリと負荷がしきい値の内側のときだけリモートと並べて選ぶ
+#   （XCB_LOCAL_MIN_FREE_MEMORY: 空きメモリの下限 %・既定 50 / XCB_LOCAL_MAX_LOAD: load ÷ コア数の上限・既定 0.5）。
+#   優先度が 0（既定）なら、リモートが 1 台もつながらないときだけ使う。どちらでも、リモートが 1 台もつながらなければ使う
+# - 途中で ssh が切れたら（持ち出し・スリープ・ネットワークの切断）、その Mac をしばらく候補から外し、別の Mac でやり直す
+# - テストを動かせる Mac が 1 台もつながっていなければ、待たずに 75 で返す（テストの失敗ではない。テストは PR の CI に任せる）
+# - 枠は Mac mini 上の mkdir ロックで、すべてのループ・スロットで共有する
+# - iOS Simulator の name= 指定は、リモートでは作業ツリーごとの専用 Simulator に置き換える（同時テストの取り合いを防ぐ）
+# - -derivedDataPath は無視し、Mac ごと・作業ツリーごとのパスを使う
+# - 1 回の実行ごとに xcb.log へ「実行場所・所要時間・終了コード」を 1 行残す
+# - 状態（問い合わせの結果・外した Mac・実行中のビルド）と枠のロックは ~/.local/state/askhub/xcb（XCB_STATE_DIR で変更可）、
+#   xcb.log はイベントと同じ ~/Library/Logs/askhub/xcb（XCB_LOG で変更可）に置く。スクリプトを置く場所には依存しない
+set -uo pipefail
+zmodload zsh/datetime   # EPOCHSECONDS
+
+HOSTS_FILE=${XCB_HOSTS:-$HOME/.config/xcb/hosts}
+STATE=${XCB_STATE_DIR:-$HOME/.local/state/askhub/xcb}
+LOCKDIR=$STATE/locks
+EVENTS_DIR=${XCB_EVENTS_DIR:-$HOME/Library/Logs/askhub/xcb}
+LOG=${XCB_LOG:-$EVENTS_DIR/xcb.log}
+PROBE_TTL=15        # 問い合わせ結果を使い回す秒数
+DOWN_TTL=60         # 切断した Mac を候補から外しておく秒数
+MAX_ATTEMPTS=4      # 切断による別の Mac でのやり直しの上限
+TEST_WAIT=${XCB_TEST_WAIT:-0}  # テストを動かせる Mac が無いときに待つ秒数（過ぎたら 75 で返す。既定は待たない）
+# リモートの作業ツリーと DerivedData の置き場（ホームからの相対パス）。名前を .noindex で終わらせて Spotlight の索引から外す
+# （ビルドのたびに索引を作り直し、load を押し上げて選ばれにくくなるため）
+REMOTE_ROOT=${XCB_REMOTE_ROOT:-remote-builds.noindex}
+LOCAL_MIN_FREE_MEMORY=${XCB_LOCAL_MIN_FREE_MEMORY:-50}  # Mac mini を空いているとみなす空きメモリの下限（%）
+LOCAL_MAX_LOAD=${XCB_LOCAL_MAX_LOAD:-0.5}               # Mac mini を空いているとみなす load ÷ コア数の上限
+# 長く動く ssh は接続を使い回さず、自分で生存確認する（5 秒ごと × 3 回、約 15 秒で切断に気づく）
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=3
+          -o ControlMaster=no -o ControlPath=none)
+
+mkdir -p $STATE/probe $STATE/drain $STATE/jobs $LOCKDIR ${LOG:h}
+log() { print -u2 "[xcb] $*"; }
+
+# ---- イベントの記録（オーケストレーターが読み、GitHub 経由で AskHub アプリに出す） ----
+# 1 行 1 イベントの JSON（JSON Lines）。5MB を超えたら events.jsonl.1 に回す
+EVENTS=$EVENTS_DIR/events.jsonl
+mkdir -p $EVENTS_DIR
+jstr() { local s=${1-}; s=${s//\\/\\\\}; s=${s//\"/\\\"}; print -rn -- "\"$s\""; }
+iso() { TZ=UTC strftime '%Y-%m-%dT%H:%M:%SZ' ${1:-$EPOCHSECONDS}; }
+emit() {  # emit <type> <キー> <値>…（キーが # で始まれば値を数値のまま書く）
+  local line="{\"time\":$(jstr $(iso)),\"type\":$(jstr $1)"; shift
+  while (( $# >= 2 )); do
+    if [[ $1 == \#* ]]; then line+=",$(jstr "${1#\#}"):${2:-null}"; else line+=",$(jstr "$1"):$(jstr "$2")"; fi
+    shift 2
+  done
+  print -r -- "$line}" >> $EVENTS
+  if [[ -f $EVENTS ]] && (( $(stat -f %z $EVENTS) > 5000000 )); then mv -f $EVENTS $EVENTS.1; fi
+}
+
+# ---- 設定 ----
+typeset -a H_NAMES; typeset -A H_SLOTS H_WEIGHT H_DEVDIR H_TEST
+load_hosts() {
+  local name slots weight devdir testok rest
+  [[ -f $HOSTS_FILE ]] || { log "設定ファイルがありません: $HOSTS_FILE"; exit 78; }
+  while read -r name slots weight devdir testok rest; do
+    [[ -z $name || $name == \#* ]] && continue
+    H_NAMES+=($name); H_SLOTS[$name]=${slots:-1}; H_WEIGHT[$name]=${weight:-1}
+    # local の優先度は、省略すると 0（リモートが 1 台もつながらないときだけ使う）
+    [[ $name == local ]] && H_WEIGHT[$name]=${weight:-0}
+    H_DEVDIR[$name]=${${devdir:--}:#-}; H_TEST[$name]=${testok:-test}
+  done < $HOSTS_FILE
+  [[ -n ${H_SLOTS[local]-} ]] || { H_SLOTS[local]=1; H_WEIGHT[local]=0; H_DEVDIR[local]=/Applications/Xcode.app/Contents/Developer; }
+}
+remote_hosts() { local h; for h in $H_NAMES; do [[ $h != local ]] && print $h; done }
+# その Mac が今回の action を受け持つか（設定の 5 列目）
+#   test（省略時）… すべて受ける / nosimtest … Simulator のテストだけ受けない（macOS のテストとビルドは受ける）/ notest … テストを受けない
+#   build-for-testing も、PREFER_TEST_HOST が 1 のあいだは続くテストを受けられる Mac だけにする
+#   （DerivedData は Mac ごとなので、テストを受けない Mac でビルドすると、続く test-without-building が別の Mac でビルドし直しになる）
+accepts() {  # $1=Host
+  [[ $ACTION == test* || ( $ACTION == build-for-testing && $PREFER_TEST_HOST == 1 ) ]] || return 0
+  case ${H_TEST[$1]-test} in
+    notest) return 1 ;;
+    nosimtest) [[ $DEST != *Simulator* ]] ;;
+    *) return 0 ;;
+  esac
+}
+
+# ---- 問い合わせ（キャッシュ: "<時刻> ok <コア数> <load> <空きメモリ%>" か "<時刻> down <理由>"） ----
+probe_script() {  # $1=Developer ディレクトリ（空なら xcode-select のまま）
+  print -r -- "${1:+export DEVELOPER_DIR=${(q)1}; }"'xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1 || { echo notready; exit 0; }
+echo "$(sysctl -n hw.ncpu) $(sysctl -n vm.loadavg | awk "{print \$2}") $(memory_pressure | awk -F": " "/free percentage/{print \$2+0}")"'
+}
+probe() {  # $1=Host。結果を REPLY に入れる
+  local h=$1 f=$STATE/probe/$1 now=$EPOCHSECONDS line out
+  if [[ -f $f ]]; then
+    line=$(<$f)
+    local t=${line%% *} kind=${${line#* }%% *}
+    if [[ $kind == down ]] && (( now - t < DOWN_TTL )); then REPLY=$line; return; fi
+    if [[ $kind == ok ]] && (( now - t < PROBE_TTL )); then REPLY=$line; return; fi
+  fi
+  out=$(ssh -o BatchMode=yes -o ConnectTimeout=3 -o ControlMaster=no -o ControlPath=none $h "$(probe_script ${H_DEVDIR[$h]-})" 2>/dev/null)
+  if [[ $out == notready ]]; then
+    REPLY="$now down Xcode が未準備（${H_DEVDIR[$h]:-xcode-select}）"
+  elif [[ $out =~ "^[0-9]+ [0-9.]+ [0-9]+$" ]]; then
+    REPLY="$now ok $out"
+  else
+    REPLY="$now down 接続できない"
+  fi
+  print -r -- $REPLY > $f
+  local k=${${REPLY#* }%% *}
+  note_host_state $h $k "${${REPLY#* down }:#$REPLY}"
+}
+mark_down() { print -r -- "$EPOCHSECONDS down $2" > $STATE/probe/$1; note_host_state $1 down "$2"; }
+# Mac の状態（ok / down）が前回と変わったときだけ host_state を記録する
+note_host_state() {  # $1=Host $2=ok|down $3=理由
+  local f=$STATE/hoststate/$1 prev=""
+  mkdir -p $STATE/hoststate
+  [[ -f $f ]] && prev=$(<$f)
+  [[ $prev == $2 ]] && return
+  print -r -- $2 > $f
+  emit host_state host $1 state $2 reason "${3-}"
+}
+running() { local -a l; l=($LOCKDIR/$1-<->(N/)); print ${#l}; }
+
+# ---- 枠（ロック。pid ファイルに "<PID> <作業ツリー>"） ----
+SLOT=""
+reap_stale() {
+  local d p
+  for d in $LOCKDIR/*(N/); do
+    p=$(<$d/pid 2>/dev/null) || p=""
+    if [[ -n $p ]] && ! kill -0 ${p%% *} 2>/dev/null; then rm -f $d/pid; rmdir $d 2>/dev/null
+    elif [[ -z $p && -n $(find $d -maxdepth 0 -mmin +1 2>/dev/null) ]]; then rmdir $d 2>/dev/null; fi
+  done
+}
+try_acquire() {  # $1=Host
+  local i d
+  for i in {1..${H_SLOTS[$1]}}; do
+    d=$LOCKDIR/$1-$i
+    if mkdir $d 2>/dev/null; then print "$$ $NAME" > $d/pid; SLOT=$d; return 0; fi
+  done
+  return 1
+}
+release() { [[ -n $SLOT ]] || return 0; rm -f $SLOT/pid; rmdir $SLOT 2>/dev/null; SLOT=""; }
+
+# Mac mini 自身（local）の空き具合を、リモートと同じ形で REPLY に入れる（ssh を使わない。host_state は記録しない）
+probe_local() {
+  local f=$STATE/probe/local now=$EPOCHSECONDS line out
+  if [[ -f $f ]]; then
+    line=$(<$f)
+    if (( now - ${line%% *} < PROBE_TTL )); then REPLY=$line; return; fi
+  fi
+  out=$(zsh -c "$(probe_script ${H_DEVDIR[local]-})" 2>/dev/null)
+  if [[ $out == notready ]]; then
+    REPLY="$now down Xcode が未準備（${H_DEVDIR[local]:-xcode-select}）"
+  elif [[ $out =~ "^[0-9]+ [0-9.]+ [0-9]+$" ]]; then
+    REPLY="$now ok $out"
+  else
+    REPLY="$now down 空き具合を取得できない"
+  fi
+  print -r -- $REPLY > $f
+}
+# Mac mini を空いているとみなすか（probe_local の結果で判定する）。優先度が 0 なら空いていても使わない
+local_idle() {
+  local t kind ncpu load mem
+  read -r t kind ncpu load mem <<<"$REPLY"
+  (( H_WEIGHT[local] > 0 )) && [[ $kind == ok && ! -f $STATE/drain/local ]] &&
+    (( mem >= LOCAL_MIN_FREE_MEMORY && load <= ncpu * LOCAL_MAX_LOAD ))
+}
+# このプラットフォーム（iOS / visionOS など）が入っていないと分かった Mac は 1 時間外す
+no_platform() { [[ -f $STATE/noplatform/$1-$PLAT ]] && (( EPOCHSECONDS - $(<$STATE/noplatform/$1-$PLAT) < 3600 )); }
+# 枠が空いていれば空き具合を計算し、いちばん空いている Mac を best に残す（$1=Host。REPLY は問い合わせの結果。pick_host の中で呼ぶ）
+consider() {
+  local t kind ncpu load mem n free
+  read -r t kind ncpu load mem <<<"$REPLY"
+  n=$(running $1)
+  (( n < H_SLOTS[$1] )) || return
+  free=$(( ncpu - load )); (( free < 0.1 )) && free=0.1
+  score=$(( H_WEIGHT[$1] * mem / 100.0 * free / (1 + n) ))
+  if (( score > bestscore )); then bestscore=$score; best=$1; fi
+}
+
+# いちばん空いている Mac を選んで枠を取る。0: 取れた（HOST に入る）/ 1: つながるリモートが無い / 2: 満杯
+typeset -a EXCLUDED
+pick_host() {
+  local h best="" t kind
+  typeset -F 4 score bestscore=-1
+  local any=0
+  reap_stale
+  for h in $(remote_hosts); do
+    # test-without-building は、build-for-testing を実行した Mac だけを候補にする（ビルド結果がその Mac の DerivedData にある）
+    [[ -n $PINNED && $h != $PINNED ]] && continue
+    (( ${EXCLUDED[(Ie)$h]} )) && continue
+    [[ -f $STATE/drain/$h ]] && continue
+    # テストを受け持たない Mac（設定の 5 列目が notest / nosimtest）は、受け持たない test 系に使わない
+    accepts $h || continue
+    no_platform $h && continue
+    probe $h; read -r t kind _ <<<"$REPLY"
+    [[ $kind == ok ]] || continue
+    any=1
+    consider $h
+  done
+  # Mac mini は、優先度を付けていて空いているときだけリモートと並べる（つながるリモートには数えない）
+  if [[ -z $PINNED ]] && ! (( ${EXCLUDED[(Ie)local]} )) && accepts local && ! no_platform local; then
+    probe_local
+    local_idle && consider local
+  fi
+  if [[ -n $best ]] && try_acquire $best; then HOST=$best; return 0; fi
+  (( any )) && return 2
+  return 1
+}
+
+# ---- サブコマンド ----
+load_hosts
+case ${1-} in
+  status)
+    reap_stale
+    if [[ ${2-} == --json ]]; then
+      # オーケストレーター向け: 各 Mac の状態と、実行中のビルドを JSON で出す
+      # local の状態は、オーケストレーターがイベントから組み立てるときと同じく standby（空いているとき・リモートが無いときだけ使う）。
+      # 外していれば drained。コア数・load・空きメモリはリモートと同じく載せる
+      local_json() {
+        local st=standby t kind a b c
+        probe_local; [[ -f $STATE/drain/local ]] && st=drained
+        read -r t kind a b c <<<"$REPLY"
+        if [[ $kind == ok ]]; then
+          print -rn -- "{\"name\":\"local\",\"state\":$(jstr $st),\"cores\":$a,\"load\":$b,\"memoryFreePercent\":$c,\"running\":$(running local),\"slots\":${H_SLOTS[local]}}"
+        else
+          print -rn -- "{\"name\":\"local\",\"state\":$(jstr $st),\"running\":$(running local),\"slots\":${H_SLOTS[local]}}"
+        fi
+      }
+      out="{\"updatedAt\":$(jstr $(iso)),\"hosts\":["
+      sep=""
+      for h in $(remote_hosts); do
+        probe $h; read -r t kind a b c <<<"$REPLY"
+        st=$kind; [[ -f $STATE/drain/$h ]] && st=drained
+        if [[ $kind == ok ]]; then
+          out+="$sep{\"name\":$(jstr $h),\"state\":$(jstr $st),\"cores\":$a,\"load\":$b,\"memoryFreePercent\":$c,\"running\":$(running $h),\"slots\":${H_SLOTS[$h]}}"
+        else
+          out+="$sep{\"name\":$(jstr $h),\"state\":$(jstr $st),\"reason\":$(jstr "${REPLY#* down }"),\"running\":$(running $h),\"slots\":${H_SLOTS[$h]}}"
+        fi
+        sep=","
+      done
+      out+="$sep$(local_json)],\"jobs\":["
+      sep=""
+      for jf in $STATE/jobs/*(N); do
+        read -r jid jpid jpath jaction jplat jhost jattempt jstart < $jf
+        kill -0 $jpid 2>/dev/null || { rm -f $jf; continue; }
+        out+="$sep{\"id\":$(jstr $jid),\"path\":$(jstr $jpath),\"action\":$(jstr $jaction),\"platform\":$(jstr $jplat),\"host\":$(jstr $jhost),\"attempt\":$jattempt,\"startedAt\":$(jstr $(iso $jstart))}"
+        sep=","
+      done
+      print -r -- "$out]}"
+      exit 0
+    fi
+    printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' Host 状態 コア load 空きMem 実行中 備考
+    for h in $(remote_hosts); do
+      rm -f $STATE/probe/$h; probe $h; read -r t kind a b c <<<"$REPLY"
+      note=""; [[ -f $STATE/drain/$h ]] && note="drain 中（候補から外している）"
+      if [[ $kind == ok ]]; then printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' $h ok $a $b "$c%" "$(running $h)/${H_SLOTS[$h]}" "$note"
+      else printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' $h down - - - "$(running $h)/${H_SLOTS[$h]}" "${REPLY#* down } $note"; fi
+    done
+    rm -f $STATE/probe/local; probe_local; read -r t kind a b c <<<"$REPLY"
+    if (( H_WEIGHT[local] > 0 )); then
+      note="空いているときだけ（空きメモリ ${LOCAL_MIN_FREE_MEMORY}% 以上・load ÷ コア数 ${LOCAL_MAX_LOAD} 以下）"
+      if local_idle; then note+="。今は候補に入る"; else note+="。今は混んでいるので使わない"; fi
+    else
+      note="リモートが無いときだけ"
+    fi
+    [[ -f $STATE/drain/local ]] && note+=" drain 中（候補から外している）"
+    if [[ $kind == ok ]]; then printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' local standby $a $b "$c%" "$(running local)/${H_SLOTS[local]}" "$note"
+    else printf '%-18s %-6s %-5s %-6s %-6s %-7s %s\n' local down - - - "$(running local)/${H_SLOTS[local]}" "${REPLY#* down } $note"; fi
+    exit 0 ;;
+  drain)   [[ -n ${2-} ]] || { log "usage: xcb drain <Host>"; exit 64; }; : > $STATE/drain/$2; emit host_drained host $2; log "$2 を候補から外しました"; exit 0 ;;
+  undrain) [[ -n ${2-} ]] || { log "usage: xcb undrain <Host>"; exit 64; }; rm -f $STATE/drain/$2; emit host_undrained host $2; log "$2 を候補に戻しました"; exit 0 ;;
+esac
+
+# ---- 引数 ----
+if (( $# < 2 )); then
+  print -u2 "usage: xcb <作業ツリー> <xcodebuild の引数…> | xcb status | xcb drain|undrain <Host>"
+  exit 64
+fi
+SRC=${1:A}; shift
+NAME=${SRC:t}
+[[ -d $SRC ]] || { log "作業ツリーが見つからない: $SRC"; exit 66; }
+
+# -derivedDataPath を取り除き、destination と action を控えておく
+args=(); DEST=""; ACTION="build"
+while (( $# )); do
+  case $1 in
+    -derivedDataPath) shift 2; continue ;;
+    -destination) DEST=$2; args+=("$1" "$2"); shift 2; continue ;;
+    build|test|build-for-testing|test-without-building|clean|analyze|archive) ACTION=$1 ;;
+  esac
+  args+=("$1"); shift
+done
+
+case $DEST in
+  *visionOS*|*xrOS*) PLAT=visionOS ;;
+  *iOS*) PLAT=iOS ;;
+  *macOS*) PLAT=macOS ;;
+  *) PLAT=other ;;
+esac
+mkdir -p $STATE/noplatform $STATE/affinity
+
+# build-for-testing を実行した Mac を、作業ツリーとプラットフォームごとに覚えておく。DerivedData は Mac ごとなので、
+# test-without-building はその Mac で流す。その Mac で流せなければ test（ビルドしてからテスト）に置き換え、流せる Mac でやり直す
+AFFINITY=$STATE/affinity/$NAME-$PLAT
+PINNED=""
+# build-for-testing は、続くテストを受けられる Mac を優先する。1 台もつながっていなければ、ビルドの確認を止めないよう 0 に戻してほかの Mac で実行する
+PREFER_TEST_HOST=0
+[[ $ACTION == build-for-testing ]] && PREFER_TEST_HOST=1
+to_test() {  # $1=理由
+  log "${1}ので、test-without-building を test（ビルドしてからテスト）に置き換える"
+  local i
+  for i in {1..$#args}; do [[ ${args[i]} == test-without-building ]] && args[i]=test; done
+  ACTION=test; PINNED=""
+}
+# -xctestrun で渡されたビルド結果を使うときは、置き換えも固定もしない
+if [[ $ACTION == test-without-building && ${(j: :)args} != *-xctestrun* ]]; then
+  [[ -f $AFFINITY ]] && PINNED=$(<$AFFINITY)
+  if [[ -z $PINNED ]]; then
+    to_test "build-for-testing を実行した Mac が分からない"
+  elif ! accepts $PINNED; then
+    to_test "build-for-testing を実行した ${PINNED} ではこのテストを動かせない"
+  fi
+fi
+
+OUT=$(mktemp -t xcb-out)
+JOB_ID="$(strftime '%Y%m%d%H%M%S' $EPOCHSECONDS)-$$"
+JOB_FILE=$STATE/jobs/$JOB_ID
+# 実行中のビルドの記録（xcb status --json が読む）: <id> <PID> <作業ツリー> <action> <platform> <実行先> <何回目> <開始時刻>
+job_file() { print -r -- "$JOB_ID $$ $SRC $ACTION $PLAT $1 $2 $JOB_START" > $JOB_FILE; }
+JOB_START=$EPOCHSECONDS
+trap 'release; rm -f $OUT $JOB_FILE' EXIT
+trap 'release; rm -f $OUT $JOB_FILE; exit 130' INT TERM
+emit job_started id $JOB_ID path $SRC action $ACTION platform $PLAT destination "$DEST"
+
+# ---- リモートで実行（ssh / rsync 自体の失敗・切断は 255） ----
+run_remote() {  # $1=Host
+  local h=$1 dev=${H_DEVDIR[$1]-} rargs=("${args[@]}") i devname udid envp=""
+  [[ -n $dev ]] && envp="DEVELOPER_DIR=${(q)dev} "
+  # iOS Simulator の name= は作業ツリー専用の Simulator（無ければ作る）に置き換える
+  if [[ $DEST == *"platform=iOS Simulator"*"name="* ]]; then
+    devname=${${DEST##*name=}%%,*}
+    udid=$(ssh $SSH_OPTS $h ${envp}zsh -s -- ${(q)${:-xcb-$NAME-$devname}} ${(q)devname} <<'REMOTE'
+dev=$2
+# この Xcode が動かせる iOS ランタイム（SDK と同じか古いもののうち最新）を選ぶ。新しい Xcode が入れた
+# 新しいランタイムを既定で使うと、テストランナーが起動しない（The test runner hung …）
+sdk=$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null)
+rt=$(xcrun simctl list runtimes available | sed -nE 's/^iOS ([0-9.]+) .* - (com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+)$/\1 \2/p' \
+  | awk -v sdk="$sdk" 'function v(x, a){split(x,a,"."); return a[1]*10000+a[2]*100+a[3]} v($1)<=v(sdk){print v($1), $2}' \
+  | sort -n | tail -1 | cut -d" " -f2)
+[[ -n $rt ]] || { print -- "この Xcode（iOS SDK ${sdk}）で使える iOS ランタイムがありません"; exit 0; }
+# 名前にランタイムを入れ、ランタイムが変わったら別の Simulator にする
+n="$1-${rt##*iOS-}"
+u=$(xcrun simctl list devices available | grep -F "    $n (" | head -1 | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+[[ -n $u ]] || u=$(xcrun simctl create "$n" "$dev" "$rt")
+print -- $u
+REMOTE
+) || return 255
+    if [[ ! $udid =~ ^[0-9A-F-]{36}$ ]]; then
+      log "$h で Simulator を用意できなかった（${devname}）: $udid"
+      return 255
+    fi
+    for i in {1..$#rargs}; do
+      [[ ${rargs[i]} == $DEST ]] && rargs[i]="platform=iOS Simulator,id=$udid"
+    done
+  fi
+  # ssh 越しではログインのキーチェーンを使えず、macOS の署名が errSecInternalComponent で失敗する。
+  # 署名の指定が無ければアドホック署名にする（ビルド・テストの確認には足りる。CI の macOS のテストと同じ。archive は対象外）
+  if [[ $PLAT == macOS && $ACTION != archive && ${(j: :)args} != *CODE_SIGN* ]]; then
+    rargs+=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=)
+  fi
+  ssh $SSH_OPTS $h "mkdir -p $REMOTE_ROOT/src/$NAME $REMOTE_ROOT/dd" || return 255
+  rsync -az --delete --timeout=30 -e "ssh ${SSH_OPTS[*]}" \
+    --exclude '.git/' --exclude 'DerivedData/' --exclude '.build/' \
+    "$SRC/" "${h}:$REMOTE_ROOT/src/$NAME/" || return 255
+  # 前に切断された同じ作業ツリーのビルドがその Mac に残っていれば止める（同じ作業ツリーを別の xcb が使っていないときだけ）
+  local other=0 d p
+  for d in $LOCKDIR/$h-<->(N/); do
+    [[ $d == $SLOT ]] && continue
+    p=$(<$d/pid 2>/dev/null) || continue
+    [[ ${p#* } == $NAME ]] && other=1
+  done
+  # 末尾の 1 文字を [] で囲み、pkill を実行するシェル自身のコマンドラインには一致しないようにする
+  (( other )) || ssh $SSH_OPTS $h "pkill -f -- '${REMOTE_ROOT[1,-2]}[${REMOTE_ROOT[-1]}]/dd/$NAME -skipPackagePluginValidation' 2>/dev/null; true" || return 255
+  # リモート側に見張りを付ける。ssh のセッションが消えるか、接続元（Mac mini）に 15 秒届かなければ xcodebuild を止める
+  # （ネットワークから外れると、Mac mini 側は別の Mac でやり直すが、リモートのビルドは放っておくと動き続けるため）。
+  # 接続元に届くかは 22 番ポートで確かめるので、一度つながってから数える（22 番で受けない接続元では、セッションの消失だけで止める）
+  ssh $SSH_OPTS $h zsh -s -- ${(q)REMOTE_ROOT} ${(q)NAME} ${(q)dev} ${(q)rargs[@]} <<'REMOTE'
+root=$1; name=$2; dev=$3; shift 3
+cd ~/$root/src/$name || exit 1
+[[ -n $dev ]] && export DEVELOPER_DIR=$dev
+client=${SSH_CLIENT%% *}
+xcodebuild "$@" -derivedDataPath $HOME/$root/dd/$name -skipPackagePluginValidation </dev/null &
+pid=$!
+miss=0; seen=0
+while kill -0 $pid 2>/dev/null; do
+  sleep 5
+  if ! kill -0 $PPID 2>/dev/null; then kill -TERM $pid 2>/dev/null; break; fi
+  [[ -n $client ]] || continue
+  if nc -z -G 2 "$client" 22 >/dev/null 2>&1; then
+    seen=1; miss=0
+  elif (( seen )); then
+    (( ++miss >= 3 )) && { kill -TERM $pid 2>/dev/null; break; }
+  fi
+done
+wait $pid
+REMOTE
+}
+
+# テストを動かせる Mac が無いので流さない。出力はループ（Claude）が読むので、どう扱うかまで書く
+skip_test() {
+  log "テストを動かせる Mac がつながっていないので、テストを流さずに終了コード 75 で返します（テストの失敗ではありません）"
+  log "この検証はテスト未実施として扱い、コードを直そうとせずに PR を出して CI のテストで確かめてください（PR 本文に「ローカルのテストは未実施（テストを動かせる Mac が無かった）」と書く）"
+}
+
+# ---- Mac mini で実行 ----
+run_local() {
+  (cd $SRC && DEVELOPER_DIR=${H_DEVDIR[local]:-/Applications/Xcode.app/Contents/Developer} xcodebuild "${args[@]}" \
+    -derivedDataPath "$HOME/Library/Developer/Xcode/DerivedData/xcb-$NAME")
+}
+
+start=$SECONDS; HOST=""; WHERE=""; rc=1; attempt=0; waited=0; test_waited=0; MOVES=0
+while true; do
+  pick_host; r=$?
+  if (( r == 0 )); then
+    (( waited > 0 )) && log "${waited} 秒待って ${SLOT:t} を取得"
+    waited=0; attempt=$(( attempt + 1 ))
+    log "$NAME の $ACTION を $HOST で実行（${SLOT:t}）"
+    job_file $HOST $attempt
+    emit job_attempt id $JOB_ID host $HOST slot ${SLOT:t} '#attempt' $attempt
+    if [[ $HOST == local ]]; then
+      run_local | tee $OUT; rc=${pipestatus[1]}
+    else
+      run_remote $HOST | tee $OUT; rc=${pipestatus[1]}
+    fi
+    if (( rc == 70 )) && grep -q "is not installed. Please download" $OUT 2>/dev/null; then
+      # ビルドの失敗ではなく、その Mac の Xcode に必要なプラットフォームが無い
+      log "$HOST の Xcode に $PLAT のプラットフォームが無いので、別の Mac でやり直す（1 時間は $HOST に $PLAT を割り当てない）"
+      emit job_moved id $JOB_ID from $HOST reason no_platform; (( MOVES++ ))
+      print $EPOCHSECONDS > $STATE/noplatform/$HOST-$PLAT; EXCLUDED+=($HOST); release
+      (( attempt < MAX_ATTEMPTS )) && continue
+    elif (( rc == 255 )) && [[ $HOST != local ]]; then
+      log "$HOST との接続が切れた／できなかったので、別の Mac でやり直す"
+      emit job_moved id $JOB_ID from $HOST reason disconnected; (( MOVES++ ))
+      mark_down $HOST "実行中に切断"; EXCLUDED+=($HOST); release
+      (( attempt < MAX_ATTEMPTS )) && continue
+      log "やり直しの上限（${MAX_ATTEMPTS} 回）に達したので Mac mini で実行する"
+    else
+      WHERE=$HOST; break
+    fi
+  elif (( r == 2 )); then
+    if (( waited == 0 )); then
+      log "つながる Mac の枠がすべて満杯なので空くまで待つ"
+      job_file waiting 0; emit job_waiting id $JOB_ID
+    fi
+    sleep 5; (( waited += 5 )); continue
+  elif [[ -n $PINNED && $PINNED != local ]]; then
+    to_test "build-for-testing を実行した ${PINNED} につながらない"
+    continue
+  elif (( PREFER_TEST_HOST )); then
+    log "続くテストを動かせる Mac がつながっていないので、build-for-testing はほかの Mac で実行する"
+    PREFER_TEST_HOST=0; continue
+  elif ! accepts local; then
+    # テストを動かせる Mac が 1 台もつながっていない（持ち出し中など）。Mac mini でも動かせない。
+    # 既定では待たずに 75 で返し、テストは PR の CI に任せる。XCB_TEST_WAIT を指定すれば、その秒数だけつながるのを待つ
+    if (( test_waited < TEST_WAIT )); then
+      if (( test_waited == 0 )); then
+        log "テストを動かせる Mac がつながっていないので、つながるまで待つ（最長 $(( TEST_WAIT / 60 )) 分）"
+        job_file waiting 0; emit job_waiting id $JOB_ID reason no_test_host
+      fi
+      # 切断で外した Mac も、戻ってきたら使えるように外し直しをやめる（切断の直後は mark_down で 60 秒外れる）
+      EXCLUDED=()
+      sleep 15; (( test_waited += 15 )); continue
+    fi
+    skip_test; rc=75; WHERE=none; break
+  else
+    log "つながるリモートの Mac が無いので Mac mini で実行"
+  fi
+  # Mac mini で実行（切断でやり直しの上限に達したときもここに来る。Mac mini で動かせないテストは流さずに返す）
+  PREFER_TEST_HOST=0
+  if ! accepts local; then skip_test; rc=75; WHERE=none; break; fi
+  until try_acquire local; do reap_stale; sleep 5; done
+  WHERE=local; [[ -n ${EXCLUDED-} ]] && WHERE=local-fallback
+  attempt=$(( attempt + 1 ))
+  job_file local $attempt
+  emit job_attempt id $JOB_ID host local slot ${SLOT:t} '#attempt' $attempt
+  run_local; rc=$?
+  break
+done
+
+if [[ $ACTION == build-for-testing ]]; then
+  if (( rc == 0 )); then print -r -- ${${WHERE:#local*}:-local} > $AFFINITY; else rm -f $AFFINITY; fi
+fi
+
+emit job_finished id $JOB_ID path $SRC action $ACTION platform $PLAT host ${WHERE:-none} \
+  '#rc' $rc '#seconds' $(( SECONDS - start )) '#attempts' $attempt '#moves' $MOVES
+
+print "$(date '+%Y-%m-%d %H:%M:%S') where=$WHERE slot=${SLOT:t} tree=$NAME action=$ACTION dest=${DEST:-none} attempts=$attempt secs=$(( SECONDS - start )) rc=$rc" >> $LOG
+exit $rc

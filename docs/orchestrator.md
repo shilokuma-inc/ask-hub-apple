@@ -205,7 +205,9 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
   「このアプリ固有の前提」にも同じ規則を入れさせる。ラッパーは第 1 引数に作業ツリーのパスを取り、残りを xcodebuild にそのまま渡し、
   終了コードを返すこと。Simulator（`name=` 指定）と DerivedData の作業ツリーごとの分離もラッパーが受け持つ
   （例: ビルド専用機へ ssh で回す・同時実行数を絞る）。置かなければ従来どおり、UDID の `id=` とスロットごとの `-derivedDataPath` で書かせる。
-  既存の epic の playbook は作り直さないので、変えるときは手で書き換える
+  既存の epic の playbook は作り直さないので、変えるときは手で書き換える。
+  このリポジトリの xcb（下の「xcb」）がこのラッパーの実装で、終了コード 75（テストを動かせる Mac が無いので流していない）を
+  テスト未実施として扱い、PR の CI のテストで確かめる規則も playbook に書かせる
 
 ## Mac ごとのセットアップ
 
@@ -223,6 +225,79 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
    `~/.config/askhub/orchestrator.json` を `orchestrator.example.json` から作る（担当リポジトリだけを書く。ほかの Mac と重ねない）
 8. **確認と登録**: `~/.local/bin/askhub-orchestrator --once` でエラーが出ないことを確かめてから `launchctl bootstrap` する。
    ログは `~/Library/Logs/askhub/orchestrator.log`
+
+## xcb（ループの xcodebuild を空いている Mac に振り分ける）
+
+`scripts/orchestrator/xcb`（zsh）。`install.sh` が `~/.local/bin/askhub-xcb` に配置する。
+ループを動かす Mac（振り分け元）で xcodebuild を受け、ssh でつながる Mac のうち最も空いている Mac で実行して、出力と終了コードをそのまま返す。
+上の「xcodebuild のラッパー」として使う。
+
+### 有効にする
+
+振り分け元の Mac で次を行う。置くだけでは使われない（`~/.config/askhub/xcodebuild` があるときだけ、新しい epic の playbook が xcb 経由になる）。
+
+```bash
+ln -s ~/.local/bin/askhub-xcb ~/.config/askhub/xcodebuild
+mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xcb/hosts   # ビルド先を書き換える
+~/.local/bin/askhub-xcb status
+```
+
+- ビルド先の Mac には、振り分け元から鍵で ssh で入れるようにしておく（`BatchMode=yes` で入れること）。Xcode と Simulator のランタイムも入れておく
+- 振り分け元の Mac は「リモートログイン」を有効にし、22 番ポートで接続を受けるようにしておく。ビルド先の見張りは、振り分け元の 22 番ポートに届くかで
+  ネットワークから外れたことに気づく。受けない設定でもビルドはできるが、そのときは ssh のセッションが消えたときにしか止まらない
+- 以前の配置（スクリプトの隣の `.xcb-state`・`.xcb-locks`・`xcb.log`、ビルド先の `~/remote-builds`）は使わなくなる。
+  xcb が動いていないときに、外した Mac の記録（`.xcb-state/drain/`）だけ新しい状態の置き場へ移し、ビルド先の `~/remote-builds` は消してよい
+
+### ビルド先の設定（`~/.config/xcb/hosts`）
+
+1 行 1 台で `<ssh の Host 名> <同時実行の上限> <優先度> <Xcode の Developer ディレクトリ> <テストを受けるか>`。例は `scripts/orchestrator/xcb-hosts.example`。
+
+| 列 | 説明 |
+| --- | --- |
+| 優先度 | 空き具合に掛ける重み（大きいほど選ばれやすい）。行を消すかコメントにすれば候補から外れる |
+| Xcode の Developer ディレクトリ | `-` ならその Mac の `xcode-select` のまま |
+| テストを受けるか | `test`（省略時。すべて受ける）/ `nosimtest`（Simulator のテストだけ受けない。macOS のテストとビルドは受ける）/ `notest`（ビルドだけ） |
+
+`local` の行は振り分け元の Mac 自身。優先度が 0（省略時）なら、リモートが 1 台もつながらないときだけ使う。
+0 より大きくすると、空きメモリが `XCB_LOCAL_MIN_FREE_MEMORY`（既定 50%）以上で、load ÷ コア数が `XCB_LOCAL_MAX_LOAD`（既定 0.5）以下のときだけ、リモートと並べて選ぶ。
+ループの Claude も動く Mac なので、混んでいるときには回さない。
+
+### 振り分けの規則
+
+- **選び方**: 空き具合 = 優先度 × 空きメモリの割合 × (コア数 − load average) ÷ (1 + その Mac で実行中の本数) が最大の Mac。
+  リモートは ssh で問い合わせ、結果を 15 秒使い回す。枠は振り分け元の mkdir ロックで、すべてのループ・スロットで共有する。満杯なら空くまで待つ
+- **テスト**: test 系の action（`test` / `test-without-building`）は、その種類のテストを受ける Mac にだけ回す。
+  受けられる Mac が 1 台もつながっていなければ（持ち出し中など）、**待たずに終了コード 75 で返す**（テストの失敗ではない）。
+  出力で、テスト未実施として PR を出し CI のテストで確かめるようループに伝える。待たせたいときは `XCB_TEST_WAIT`（秒）を指定する
+- **`build-for-testing` → `test-without-building`**: DerivedData は Mac ごとなので、`build-for-testing` を実行した Mac を作業ツリーとプラットフォームごとに覚え、
+  `test-without-building` はその Mac に回す。記録が無い・その Mac で流せない（テストを受けない・つながらない・外している）ときは、
+  `test`（ビルドしてからテスト）に置き換えて流せる Mac でやり直す（`-xctestrun` を渡したときは置き換えない）。
+  ビルドし直しを減らすため、`build-for-testing` は続くテストを受けられる Mac に優先して回す（1 台もつながっていなければ、ほかの Mac でビルドだけ確かめる）
+- **署名**: ssh 越しではログインのキーチェーンを使えず、macOS の署名が `errSecInternalComponent` で失敗する。
+  macOS 宛てのビルド・テストで署名の指定（`CODE_SIGN…`）が無ければ、アドホック署名の設定を足す（archive は除く。CI の macOS のテストと同じ）
+- **Simulator**: リモートでは `platform=iOS Simulator,name=…` を作業ツリー専用の Simulator（`xcb-<作業ツリー>-<機種>-<ランタイム>`。無ければ作る）に置き換える。
+  ランタイムはその Xcode の SDK と同じか古いもののうち最新
+- **置き場**: リモートは `~/remote-builds.noindex/src/<作業ツリー>`（rsync で同期。`.git`・DerivedData・`.build` は送らない）と
+  `~/remote-builds.noindex/dd/<作業ツリー>`（DerivedData。ループが付けた `-derivedDataPath` は使わない）。
+  名前を `.noindex` で終わらせて Spotlight の索引から外す（ビルドのたびに索引を作り直して load が上がり、選ばれにくくなるため）。`XCB_REMOTE_ROOT` で変えられる。
+  `local` は `~/Library/Developer/Xcode/DerivedData/xcb-<作業ツリー>`
+- **切断**: ssh の生存確認（5 秒ごと × 3 回）で切断に気づいたら、その Mac を 60 秒候補から外し、別の Mac で最初からやり直す（最大 4 回）。
+  リモート側の見張りが、ssh のセッションが消えるか、振り分け元の 22 番ポートに一度つながった後に 15 秒届かなければ xcodebuild を止める
+- **プラットフォーム**: visionOS などのプラットフォームが入っていない Mac に当たったら、1 時間そのプラットフォームの候補から外して別の Mac でやり直す
+
+### コマンドと状態
+
+| コマンド | 説明 |
+| --- | --- |
+| `askhub-xcb <作業ツリー> <xcodebuild の引数…>` | ビルド・テストを振り分けて実行する |
+| `askhub-xcb status [--json]` | 各 Mac の状態・load・空きメモリ・実行中の本数。`--json` はオーケストレーター向け。`local` の `state` は `standby`（外していれば `drained`）。`local` にもコア数・load・空きメモリを載せる |
+| `askhub-xcb drain <Host>` / `undrain <Host>` | その Mac を候補から外す / 戻す（実行中のものは止めない。`local` も指定できる） |
+
+| 置き場 | 内容 |
+| --- | --- |
+| `~/.local/state/askhub/xcb`（`XCB_STATE_DIR`） | 問い合わせの結果・外した Mac・実行中のビルド・枠のロック・`build-for-testing` を実行した Mac |
+| `~/Library/Logs/askhub/xcb/events.jsonl`（`XCB_EVENTS_DIR`） | イベント（1 行 1 JSON。5MB を超えたら `.1` に回す）。オーケストレーターが読む |
+| `~/Library/Logs/askhub/xcb/xcb.log`（`XCB_LOG`） | 1 回の実行ごとに、実行した Mac・所要時間・終了コード |
 
 ## ask に回答が付いたらループを再開する
 

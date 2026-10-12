@@ -46,7 +46,7 @@ public struct BuildHost: Sendable, Equatable, Codable {
         case down
         /// 候補から外している（`xcb drain`）
         case drained
-        /// 待機（リモートがつながらないときだけ使う Mac。xcb の `local`）
+        /// 待機（xcb を動かしている Mac 自身。空いているとき、またはリモートがつながらないときだけ使う。xcb の `local`）
         case standby
         /// このアプリが知らない状態。書き出しには使わない
         case unknown
