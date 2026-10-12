@@ -112,7 +112,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - 複数に当てはまるときは、上限で待機中 → 実行中 → 異常終了 → epic の進み具合（開始待ち・回答待ち・完了）→ `ready-for-loop` の開始待ち → ループなし の順に優先する（`OrchestratorKit` の `LoopStatusSummary`）。
   完了した epic の最終 PR がマージされるまでは、次の Discussion に `ready-for-loop` が付いていても「完了」を出す
 - `epic`・`discussion`・`progress`・`lastActivityAt` は、制御用 worktree が準備を終えた `epic/` のブランチにあるときだけ書く。
-  epic が無く `ready-for-loop` を待っているときは、`discussion` にその Discussion の番号を書く
+  準備を終えた epic が無く、`ready-for-loop` の Discussion を待っている（開始待ち）・起動したが準備が終わっていない（実行中）・起動を諦めた（異常終了）・
+  上限で待機しているときは、`discussion` にその Discussion の番号を書く（ループの状態は Discussion ごとのコメントに書くため）
 - `progress.deferred` は `completed` の内訳で、`completed` の意味は変えない（古いアプリは `deferred` を無視して今と同じ表示になる）。
   古いオーケストレーターは書かないので、アプリは `deferred` が無ければ保留を区別しない表示にする。新しいオーケストレーターは 0 件でも書く
 - アプリが知らない `state` は「不明」として扱う（新しいオーケストレーターが分類を足しても読めなくならないように）

@@ -55,14 +55,14 @@ public enum LoopStatusSummary {
             lastActivityAt: epic == nil ? nil : facts.lastActivityAt,
             checkedAt: now
         )
-        switch report.state {
-        case .usageLimited:
+        if case .usageLimited = report.state {
             report.usageLimitedUntil = facts.usageLimitedUntil
-        case .waitingToStart where epic == nil:
-            // 前の epic が無く、`ready-for-loop` の Discussion を待っている
+        }
+        // 準備を終えた epic が無いときは、`ready-for-loop` の Discussion のループとして書く:
+        // 待っている（開始待ち）・起動したが準備が終わっていない（実行中）・起動を諦めた（異常終了）・上限で待機している。
+        // ループの状態は Discussion ごとのコメントに書くので、番号が無いとどこにも出せない
+        if epic == nil, [.waitingToStart, .running, .gaveUp, .usageLimited].contains(report.state) {
             report.discussion = facts.readyDiscussion
-        default:
-            break
         }
         return report
     }

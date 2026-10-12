@@ -104,6 +104,19 @@ struct LoopStatusSummaryTests {
         #expect(next == LoopStatusReport(state: .waitingToStart, discussion: 300, checkedAt: now))
     }
 
+    @Test func writesReadyDiscussionForLoopBeingStartedWithoutPreparedEpic() {
+        // 起動したが準備が終わっていない・起動を諦めた・上限で待機している間も、ready-for-loop の Discussion のループとして書く
+        // （ループの状態は Discussion ごとのコメントに書くので、番号が無いとどこにも出せない）
+        let started = report(.init(status: Self.running, snapshot: Self.epic(prepared: false), readyDiscussion: 300))
+        #expect(started == LoopStatusReport(state: .running, discussion: 300, checkedAt: now))
+        #expect(report(.init(status: .idle, snapshot: nil, gaveUp: true, readyDiscussion: 300)).discussion == 300)
+        let limited = report(.init(status: .idle, snapshot: nil, usageLimitedUntil: now.addingTimeInterval(60), readyDiscussion: 300))
+        #expect(limited.state == .usageLimited)
+        #expect(limited.discussion == 300)
+        // 待っている Discussion が無ければ番号は無い
+        #expect(report(.init(status: Self.running, snapshot: nil)).discussion == nil)
+    }
+
     @Test func reportsReadyDiscussionOrNoLoopWithoutPreparedEpic() {
         let ready = report(.init(status: .idle, snapshot: nil, readyDiscussion: 300))
         #expect(ready == LoopStatusReport(state: .waitingToStart, discussion: 300, checkedAt: now))
