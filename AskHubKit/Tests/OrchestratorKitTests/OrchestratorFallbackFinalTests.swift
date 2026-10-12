@@ -77,4 +77,52 @@ extension OrchestratorTests {
         #expect(emptyGitHub.createdEpicPullRequests.isEmpty)
         #expect(logs.recorded.contains { $0.contains("epic にマージされた子 PR が無いので最終 PR を作りません") })
     }
+
+    @Test func createsFinalPullRequestForEachCompletedManualLoopAndAutomaticLoop() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setManualLoops([
+            ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 331, author: "mrs1669"),
+            ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 340, author: "mrs1669")
+        ])
+        let checkedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        func manual(_ epic: String, discussion: Int, state: LoopStatusReport.State = .completed) -> LoopStatusComment {
+            let report = LoopStatusReport(state: state, writer: .manual, epic: epic, discussion: discussion, checkedAt: checkedAt)
+            return LoopStatusComment(id: discussion, author: "mrs1669", updatedAt: checkedAt, body: report.issueBody)
+        }
+        // 本文は新しい形。同じリポジトリの手動ループ 2 つが完了し、1 つはまだ回っている（ループごとのコメント）
+        let body = #"<!-- ask-hub:repository-status {"checkedAt":"2027-01-15T08:00:00Z"} -->"#
+        github.setLoopStatusIssues([LoopStatusIssueRecord(number: 229, author: "mrs1669", isOpen: true, updatedAt: checkedAt, body: body)])
+        github.setLoopStatusComments(
+            [manual("epic/a", discussion: 331), manual("epic/b", discussion: 340), manual("epic/c", discussion: 345, state: .running)],
+            onIssue: 229
+        )
+        for branch in ["epic/a", "epic/b", "epic/mvp"] {
+            github.setEpicMaterials(Self.materials, for: branch)
+        }
+        let runtime = FakeRuntime()
+        // 手動ループがあっても、制御用 worktree の自動ループ（ゴール元 #12）の「最終 PR に載せる内容」が空なら作る
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】A", state: "## メモ\n", discussion: 12, loopPrepared: true))
+        let clock = TestClock(checkedAt.addingTimeInterval(LoopStatusReport.freshness))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime, now: { clock.now })
+
+        try await orchestrator.pollOnce()
+        // 同じ epic では 1 回だけ作る
+        clock.now = clock.now.addingTimeInterval(Orchestrator.fallbackFinalCheckInterval)
+        try await orchestrator.pollOnce()
+
+        let created = github.createdEpicPullRequests.map { $0.prefix { $0 != ":" } }.sorted()
+        #expect(created == ["epic/a", "epic/b", "epic/mvp"].map { "shilokuma-inc/ask-hub-apple \($0)" })
+        #expect(github.createdEpicPullRequests.contains { $0.hasPrefix("shilokuma-inc/ask-hub-apple epic/b: ゴール元: Discussion #340") })
+    }
+
+    @Test func doesNotTreatManualLoopInControlWorktreeAsAutomaticLoop() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setManualLoops([ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 331, author: "mrs1669")])
+        github.setEpicMaterials(Self.materials, for: "epic/mvp")
+        let runtime = FakeRuntime()
+        // この PC の制御用 worktree で手動ループ（ゴール元の記録が無い）が終わった。自動ループの経路では作らない（手動ループの完了は状態から見る）
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】A", state: "## メモ\n", loopPrepared: true))
+        try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
+        #expect(github.createdEpicPullRequests.isEmpty)
+    }
 }

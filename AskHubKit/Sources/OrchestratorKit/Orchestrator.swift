@@ -114,7 +114,8 @@ public actor Orchestrator {
     private var watcher = ResumeWatcher()
     /// epic の最終 PR を作った（または既にあった）リポジトリ。毎回 GitHub に問い合わせないために覚える
     var finalizedEpics: Set<String> = []
-    /// GitHub の情報から最終 PR を作れるかを最後に確かめた時刻（キーは `<repo小文字> <epic ブランチ>`）
+    /// GitHub の情報から最終 PR を作れるかを最後に確かめた時刻（キーは `<repo小文字> <epic ブランチ>`）と、
+    /// 手動ループの完了を見るために状態用の Issue を最後に読んだ時刻（キーは `<repo小文字>`）
     var fallbackFinalChecks: [String: Date] = [:]
     /// 仮決め一覧への指示を受けてループを再開した epic。再び完了したら、最終 PR の本文を書き直す
     var epicsToRefresh: Set<String> = []

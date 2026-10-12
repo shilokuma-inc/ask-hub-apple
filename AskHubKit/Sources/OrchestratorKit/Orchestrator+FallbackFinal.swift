@@ -2,26 +2,31 @@ import AskHubKit
 import Foundation
 
 // 制御用 worktree の「最終 PR に載せる内容」が使えない epic の最終 PR を、GitHub の情報から作る。
-// - 手動ループ（manual-loop）: 状態用の Issue の書き手が manual で、状態が completed
-// - 自動ループ: 正常に止まり、タスクも終わっているのに「最終 PR に載せる内容」が空
+// 同じリポジトリで複数のループ（自動ループと手動ループ・複数の手動ループ）が回るので、候補はループ（epic）ごとに出す。
+// - 手動ループ（manual-loop）: 状態用の Issue の本文・ループごとのコメントのうち、書き手が manual で状態が completed のループ
+// - 自動ループ: 正常に止まり、タスクも終わっているのに「最終 PR に載せる内容」が空（手動ループの有無に関わらず見る）
 extension Orchestrator {
-    /// 同じリポジトリを確かめ直す間隔（GitHub への問い合わせを減らす）
+    /// 同じリポジトリの状態用の Issue を読み直す間隔・同じ epic の最終 PR を作れるかを確かめ直す間隔（GitHub への問い合わせを減らす）
     static let fallbackFinalCheckInterval: TimeInterval = 10 * 60
 
     func finalizeEpicsFromGitHub(statuses: [String: LoopStatus]) async {
         let current = now()
         for repository in config.repositories {
             let key = repository.fullName.lowercased()
-            // GitHub への問い合わせ（状態用の Issue・材料）は、リポジトリごとに間隔を空ける
-            if let checkedAt = fallbackFinalChecks[key], current.timeIntervalSince(checkedAt) < Self.fallbackFinalCheckInterval {
-                continue
+            var candidates = await manualLoopCandidates(for: repository, now: current)
+            if let automatic = await automaticCandidate(for: repository, status: statuses[key] ?? .idle) {
+                candidates.append(automatic)
             }
-            guard let candidate = await fallbackCandidate(for: repository, status: statuses[key] ?? .idle) else {
-                continue
-            }
-            fallbackFinalChecks[key] = current
-            let epicKey = "\(key) \(candidate.branch)"
-            if !finalizedEpics.contains(epicKey) {
+            for candidate in candidates {
+                let epicKey = "\(key) \(candidate.branch)"
+                // GitHub への問い合わせ（既にある PR・材料）は、epic ごとに間隔を空ける
+                if finalizedEpics.contains(epicKey) {
+                    continue
+                }
+                if let checkedAt = fallbackFinalChecks[epicKey], current.timeIntervalSince(checkedAt) < Self.fallbackFinalCheckInterval {
+                    continue
+                }
+                fallbackFinalChecks[epicKey] = current
                 await createFallbackFinalPullRequest(candidate, in: repository, epicKey: epicKey)
             }
         }
@@ -33,40 +38,58 @@ extension Orchestrator {
         let reason: EpicMaterials.Reason
     }
 
-    private func fallbackCandidate(for repository: RepositoryConfig, status: LoopStatus) async -> FallbackCandidate? {
+    /// 手動ループ: 手で回している人が書いた状態（オーケストレーターの写しは古いことがある）のうち、完了したループ。
+    /// 状態用の Issue の読み直しは、リポジトリごとに間隔を空ける
+    private func manualLoopCandidates(for repository: RepositoryConfig, now current: Date) async -> [FallbackCandidate] {
         let key = repository.fullName.lowercased()
-        // 手動ループ: 手で回している人が書いた状態用の Issue を読む（オーケストレーターの写しは古いことがある）
-        if manualLoopRepositories.contains(key) {
-            fallbackFinalChecks[key] = now()
+        guard manualLoopRepositories.contains(key) else {
+            return []
+        }
+        if let checkedAt = fallbackFinalChecks[key], current.timeIntervalSince(checkedAt) < Self.fallbackFinalCheckInterval {
+            return []
+        }
+        fallbackFinalChecks[key] = current
+        guard let board = await loopStatusBoard(of: repository) else {
+            return []
+        }
+        return board.loops.compactMap { loop in
+            let report = loop.report
             // 担当者が `askhub-manual.sh final`（手元の state の内容で作る）を流すのを、完了から `freshness` のあいだ待つ
-            guard let report = await manualLoopReport(of: repository),
-                  report.writer == .manual, report.state == .completed,
-                  now().timeIntervalSince(report.checkedAt) >= LoopStatusReport.freshness,
+            guard report.writer == .manual, report.state == .completed,
+                  current.timeIntervalSince(report.checkedAt) >= LoopStatusReport.freshness,
                   let branch = report.epic, branch.hasPrefix("epic/") else {
                 return nil
             }
             return FallbackCandidate(branch: branch, discussion: report.discussion, reason: .manualLoop)
         }
-        // 自動ループ: 異常終了で止まったものは、再開して内容を書かせる（ここでは作らない）
+    }
+
+    /// 自動ループ: 異常終了で止まったものは、再開して内容を書かせる（ここでは作らない）。
+    /// 制御用 worktree をこの PC の手動ループが使っているときは、自動ループの epic とみなさない（回答による再開と同じ判定）
+    private func automaticCandidate(for repository: RepositoryConfig, status: LoopStatus) async -> FallbackCandidate? {
         guard !status.stalled else {
             return nil
         }
+        let key = repository.fullName.lowercased()
         let snapshot = await runtime.epicSnapshot(of: repository)
         guard snapshot.loopPrepared, case .incomplete(.summaryMissing) = EpicCompletion(snapshot: snapshot, status: status),
-              let branch = snapshot.branch else {
+              let branch = snapshot.branch, automaticEpicBranches(in: [key: snapshot])[key] == branch else {
             return nil
         }
         return FallbackCandidate(branch: branch, discussion: snapshot.discussion, reason: .summaryMissing)
     }
 
-    /// 状態用の Issue のうち、信用する author が作った open なもので最も新しいものの目印
-    private func manualLoopReport(of repository: RepositoryConfig) async -> LoopStatusReport? {
+    /// 状態用の Issue（信用する author が作った open なもので最も新しいもの）の本文とループごとのコメント
+    private func loopStatusBoard(of repository: RepositoryConfig) async -> LoopStatusBoard? {
         do {
             let authors = trust.authors(for: repository.fullName)
-            return try await github.loopStatusIssues(in: repository.fullName)
-                .filter { $0.isOpen && authors.contains($0.author) }
-                .max { ($0.updatedAt, $0.number) < ($1.updatedAt, $1.number) }
-                .flatMap { LoopStatusReport.parse($0.body) }
+            guard let issue = try await github.loopStatusIssues(in: repository.fullName)
+                .filter({ $0.isOpen && authors.contains($0.author) })
+                .max(by: { ($0.updatedAt, $0.number) < ($1.updatedAt, $1.number) }) else {
+                return nil
+            }
+            let comments = try await github.loopStatusComments(in: repository.fullName, issue: issue.number)
+            return LoopStatusBoard(issueBody: issue.body, comments: comments, trustedAuthors: authors)
         } catch {
             log("\(repository.fullName) の状態用の Issue を読めませんでした（手動ループの完了は次の確認で見ます）: \(error)")
             return nil
