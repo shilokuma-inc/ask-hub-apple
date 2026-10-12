@@ -123,8 +123,9 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   それぞれ `checkedAt` 以外が変わったときに書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す。手動ループの有無で書き出しを止めない
 - オーケストレーターは、自動ループのコメントを今のループ（Discussion）のものだけ残し、前のループ（最終 PR がマージされた・次の Discussion に移った）と重複したコメントは消す。
   ゴール元の Discussion の番号が無い自動ループ（ループが無い・手で始めた epic）の状態はコメントに書かない
-- 1 つの Discussion の書き手は 1 つ。手動ループ（`writer` が `manual`）のコメントがあり、`checkedAt` が 30 分以内か `manual-loop` の Discussion が開いている Discussion には、
-  オーケストレーターは書かない
+- 1 つの Discussion の書き手は 1 つ。信用する author の手動ループ（`writer` が `manual`）のコメント・古い形の本文がある Discussion には、
+  `checkedAt` が 30 分以内か、そのリポジトリに信用する author の open な `manual-loop` の Discussion があるあいだ（`checkedAt` が古くなっても）、オーケストレーターは書かない。
+  知らない `writer` のコメントがある Discussion にも書かない（消しもしない）
 - 手動ループ（`manual-loop` の Discussion）は、担当者の Claude が `scripts/askhub-manual.sh status` で `writer` を `manual`・`runner` を担当者にして、
   状態・epic・進捗・回答待ちの PR を書き、10 分ごとに `checkedAt` を書き直す。ralph-kit が新しい形で書くようになるまでは、本文に古い形で書く。
   オーケストレーターは、古い形の手動ループの本文を、`checkedAt` が 30 分以内か、信用する author の open な `manual-loop` の Discussion があるあいだ（`checkedAt` が古くなっても）上書きしない。

@@ -7,7 +7,10 @@ extension Orchestrator {
     func recordReadyDiscussions(_ discussions: [ReadyDiscussion], snapshots: [String: EpicSnapshot]) {
         var numbers: [String: Int] = [:]
         for discussion in discussions {
-            guard let repository = config.repository(named: discussion.repository) else {
+            // 手で回す・信用しない author の Discussion は起動しないので、この PC の開始待ちとして数えない
+            // （手動ループの Discussion に、オーケストレーターの書き手でコメントを書かないため）
+            guard let repository = config.repository(named: discussion.repository), !discussion.isManualLoop,
+                  trust.authors(for: repository.fullName).contains(discussion.author) else {
                 continue
             }
             let key = repository.fullName.lowercased()
@@ -55,7 +58,7 @@ extension Orchestrator {
             )
         }
         var pending = actions()
-        // 書き換える前に Issue とコメントを読み直す。手で回すループ（書き手が manual）が書いていれば、その間は書かない
+        // 書き換える前に Issue とコメントを読み直す。手で回すループ（書き手が manual）が本文やその Discussion を書いていれば、そこは書かない
         if LoopStatusPublisher.needsLookUp(before: pending) {
             try await lookUpLoopStatus(of: repository)
             pending = actions()

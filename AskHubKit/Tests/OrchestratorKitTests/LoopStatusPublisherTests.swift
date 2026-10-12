@@ -182,6 +182,61 @@ struct LoopStatusPublisherTests {
             == [.deleteComment(id: 71)])
     }
 
+    @Test func writesDiscussionAgainWhenOnlyUntrustedOrStaleManualCommentExists() {
+        let mine = loop(.running, at: now)
+        let stale = LoopStatusReport(
+            state: .running, writer: .manual, epic: "epic/d12", discussion: 12, checkedAt: now.addingTimeInterval(-3600)
+        )
+        let fake = LoopStatusReport(state: .running, writer: .manual, epic: "epic/d12", discussion: 12, checkedAt: now)
+        var publisher = LoopStatusPublisher()
+        publisher.adopt(
+            [record(7, body: repository(at: now).issueBody)],
+            comments: [comment(71, stale), comment(72, author: "someone", fake)],
+            repositoryKey: key,
+            trustedAuthors: trusted
+        )
+        // 信用しない author の手動ループの目印では止まらない（public リポジトリでは誰でもコメントできる）。
+        // 手動ループのコメントが古く、manual-loop の Discussion も無ければ、オーケストレーターが書く（手動ループのコメントは消さない）
+        #expect(decide(publisher, repository(at: now), mine, at: now) == [.createComment(issue: 7, body: mine.commentBody)])
+        // manual-loop の Discussion が開いていれば、古くなっても書かない
+        #expect(decide(publisher, repository(at: now), mine, at: now, manualLoopOpen: true).isEmpty)
+    }
+
+    @Test func leavesDiscussionOfUnknownWriterOrOldManualBody() {
+        let mine = loop(.running, at: now)
+        var unknown = LoopStatusPublisher()
+        let future = #"<!-- ask-hub:loop-status {"checkedAt":"2027-01-15T08:00:00Z","discussion":12,"#
+            + #""state":"running","writer":"robot"} -->"#
+        unknown.adopt(
+            [record(7, body: repository(at: now).issueBody)],
+            comments: [LoopStatusComment(id: 71, author: "mrs1669", updatedAt: now, body: future)],
+            repositoryKey: key,
+            trustedAuthors: trusted
+        )
+        // 知らない書き手のコメントがある Discussion には書かない（消しもしない）
+        #expect(decide(unknown, repository(at: now), mine, at: now).isEmpty)
+
+        // 古い形の本文に手動ループが書いている Discussion にも、コメントを書かない
+        var legacy = LoopStatusPublisher()
+        let manual = LoopStatusReport(state: .running, writer: .manual, epic: "epic/d12", discussion: 12, checkedAt: now)
+        legacy.adopt([record(7, body: manual.issueBody)], comments: [], repositoryKey: key, trustedAuthors: trusted)
+        #expect(decide(legacy, repository(at: now), mine, at: now).isEmpty)
+    }
+
+    @Test func writesCurrentLoopBeforeDeletingPreviousOne() {
+        var publisher = LoopStatusPublisher()
+        publisher.adopt(
+            [record(7, body: repository(at: now).issueBody)],
+            comments: [comment(1, loop(.completed, discussion: 9, at: now))],
+            repositoryKey: key,
+            trustedAuthors: trusted
+        )
+        // 次のループのコメントを作ってから、前のループのコメントを消す（途中で失敗しても、どちらかは残る）
+        let next = loop(.waitingToStart, discussion: 20, at: now)
+        #expect(decide(publisher, repository(at: now), next, at: now)
+            == [.createComment(issue: 7, body: next.commentBody), .deleteComment(id: 1)])
+    }
+
     @Test func deletesCommentsOfPreviousLoopAndDuplicates() {
         var publisher = LoopStatusPublisher()
         let previous = loop(.completed, discussion: 9, at: now)
@@ -372,6 +427,23 @@ extension OrchestratorTests {
         #expect(github.loopStatusIssuesByNumber[9]?.isOpen == true)
         #expect(github.repositoryStatus(onIssue: 9) != nil)
         #expect(github.createdLoopStatusComments.isEmpty)
+    }
+
+    @Test func writesLoopBeingStartedAndGivenUpUnderItsDiscussion() async throws {
+        let github = FakeGitHub([
+            .success([.fixture(number: 20), .fixture(number: 25, isManualLoop: true), .fixture(number: 15, author: "someone")])
+        ])
+        let runtime = FakeRuntime()
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        // ready-for-loop の #20 を起動した。準備が終わる前（ゴール元の記録も promise も無い）も、#20 のループとして書く。
+        // 手動ループ・信用しない author の Discussion（#25・#15）は、この PC の開始待ちとして数えない
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.count == 1)
+        let started = try #require(github.loopCommentReport())
+        #expect(started.state == .running)
+        #expect(started.discussion == 20)
+        #expect(github.loopStatusCommentsByIssue[101]?.count == 1)
     }
 
     @Test func movesCommentToNextLoopAfterEpicIsMerged() async throws {

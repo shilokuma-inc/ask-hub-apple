@@ -130,7 +130,8 @@ public struct LoopStatusPublisher: Sendable, Equatable {
         }
     }
 
-    /// ほかの書き手（手動ループ）がその Discussion を書いている
+    /// ほかの書き手（手動ループ）がその Discussion を書いている。手動ループは確認時刻が 30 分以内か、
+    /// このリポジトリに open な `manual-loop` の Discussion があるあいだ。知らない書き手（新しい書き手の種類）には書かない
     private func isWrittenByOtherWriter(_ report: LoopStatusReport?, now: Date, manualLoopOpen: Bool) -> Bool {
         guard let report else {
             return false
@@ -185,6 +186,10 @@ public struct LoopStatusPublisher: Sendable, Equatable {
         var entry = Entry(number: issue.number)
         if issue.isOpen {
             entry.body = LoopStatusBoard(issueBody: issue.body, comments: [], trustedAuthors: trustedAuthors).body
+        }
+        // 古い形の本文に手動ループが書いている Discussion にも、コメントを書かない（1 つの Discussion の書き手は 1 つ）
+        if case let .loop(legacy) = entry.body, legacy.writer != .orchestrator, let discussion = legacy.discussion {
+            entry.otherWriters[discussion] = legacy
         }
         for comment in comments.sorted(by: { $0.id < $1.id }) where trustedAuthors.contains(comment.author) {
             guard let report = LoopStatusReport.parse(comment.body), let discussion = report.discussion else {

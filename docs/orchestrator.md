@@ -493,7 +493,10 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
   古い形で本文を書いていて、`checkedAt` が 30 分以内なら本文は書かない（Discussion #273 の Q3）。手で回すループは 10 分ごとに `checkedAt` を書き直す。
   信用する author の open な `manual-loop` の Discussion があるリポジトリでは、手動ループの本文を（`checkedAt` が古くなっても）上書きしない（担当者の情報を残す。古さはアプリが知らせる）。
   Discussion が閉じた後に 30 分を過ぎていれば、本文をリポジトリ全体の状態で書き直す。どちらの間も、自動ループのコメントは書き続ける
-- 手動ループのコメント（新しい形）がある Discussion には書かない（1 つの Discussion の書き手は 1 つ）
+- 手動ループのコメント（新しい形）・古い形の本文がある Discussion には、`checkedAt` が 30 分以内か、そのリポジトリに open な `manual-loop` の Discussion があるあいだ、
+  自動ループのコメントを書かない（1 つの Discussion の書き手は 1 つ）。知らない書き手のコメントがある Discussion にも書かない。
+  `manual-loop` の Discussion と信用しない author の Discussion は起動しないので、`ready-for-loop` が付いていても開始待ちとして書かない
+- 準備を終えた epic が無いとき（`ready-for-loop` の Discussion を起動した直後・起動を諦めた・上限で待機している）は、その Discussion のループとして書く
 
 ## ビルドの Mac の状態を書き出す（build-hosts）
 
