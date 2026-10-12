@@ -140,12 +140,14 @@ public struct LoopStatusRow: Sendable, Equatable, Identifiable {
 
     /// 1 行に出す状態。複数のループを並べるまでは、今までと同じ見た目になるように選ぶ:
     /// 古い形の本文ならそのループ（同じ Discussion のコメントが新しければそちら）、新しい形なら自動ループ（書き手が `orchestrator`）、
-    /// 無ければ最初のループ。ループが 1 つも無ければ、リポジトリ全体の状態から「ループなし」（上限で待機中ならその状態）を作る
+    /// 無ければいずれかのループ。どちらも確認時刻（`checkedAt`）が最も新しいものを使う（終わったループのコメントが残っていても、今のループを出す）。
+    /// ループが 1 つも無ければ、リポジトリ全体の状態から「ループなし」（上限で待機中ならその状態）を作る
     static func report(of board: LoopStatusBoard) -> LoopStatusReport? {
         if case let .loop(legacy) = board.body {
             return legacy.discussion.flatMap { board.loop(discussion: $0)?.report } ?? legacy
         }
-        if let loop = board.loops.first(where: { $0.report.writer == .orchestrator }) ?? board.loops.first {
+        let automatic = board.loops.filter { $0.report.writer == .orchestrator }
+        if let loop = (automatic.isEmpty ? board.loops : automatic).max(by: { $0.report.checkedAt < $1.report.checkedAt }) {
             return loop.report
         }
         return board.repository.map { repository in

@@ -79,6 +79,21 @@ struct LoopStatusRowCommentsTests {
         #expect(unreadable.report == manual)
     }
 
+    @Test func showsNewestLoopEvenWhenFinishedLoopCommentRemains() {
+        // 終わったループ（#5）のコメントが残っていても、今のループ（#12）を出す（Discussion の番号の順ではなく確認時刻で選ぶ）
+        var finished = loop(.gaveUp, discussion: 5)
+        finished.checkedAt = now.addingTimeInterval(-3600)
+        let current = loop(.running, discussion: 12)
+        let body = RepositoryStatusReport(checkedAt: now).marker
+        #expect(row([issue(1, body: body, comments: [comment(11, finished), comment(12, current)])])?.report == current)
+
+        // 自動ループが無ければ、手動ループのうち最も新しく確かめたもの
+        var older = loop(.running, writer: .manual, discussion: 20)
+        older.checkedAt = now.addingTimeInterval(-600)
+        let newer = loop(.waitingForAnswer, writer: .manual, discussion: 30)
+        #expect(row([issue(1, body: body, comments: [comment(11, older), comment(12, newer)])])?.report == newer)
+    }
+
     @Test func choosesNewestTrustedIssueWhoseBodyIsReadable() {
         let issues = [
             issue(1, updatedMinutesAgo: 30, body: RepositoryStatusReport(checkedAt: now).marker),
@@ -133,6 +148,7 @@ struct LoopStatusRowCommentsTests {
         #expect(rows.first?.report == automatic)
         #expect(rows.map(\.repository) == ["o/r", "o/s"])
     }
+
 }
 
 struct GitHubLoopStatusSourceCommentsTests {
