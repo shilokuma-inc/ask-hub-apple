@@ -17,6 +17,16 @@ extension OrchestratorTests {
         )
     }
 
+    /// 裏の解消がすべて終わる（次の解消も始まらない）まで待つ。`waitForConflictResolutions` は待つ間に次の解消を始めないので、
+    /// 次の解消を始めるかを確かめるテストではこちらを使う。数秒で諦める
+    private func waitUntilNoConflictResolution(_ orchestrator: Orchestrator) async {
+        var waited = 0
+        while await !orchestrator.conflictResolutions.isEmpty, waited < 5_000 {
+            try? await Task.sleep(for: .milliseconds(1))
+            waited += 1
+        }
+    }
+
     private static let twoRepositories = [
         RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple"),
         RepositoryConfig(owner: "shilokuma-inc", name: "prime-pick-ios", checkoutPath: "/src/prime-pick-ios")
@@ -172,11 +182,37 @@ extension OrchestratorTests {
         let orchestrator = try makeOrchestrator(github: github, runtime: runtime, now: { clock.now })
 
         try await orchestrator.pollOnce()
-        await orchestrator.waitForConflictResolutions()
+        await waitUntilNoConflictResolution(orchestrator)
 
         // 利用上限が解除されるまで、同じリポジトリの次の PR も始めない
         #expect(runtime.ran.count == 1)
         #expect(github.pullRequestComments.isEmpty)
+    }
+
+    @Test func letsRunningResolutionFinishWhenLoopHitsUsageLimit() async throws {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_800_000_000))
+        let github = FakeGitHub([.success([])])
+        github.setConflictingPullRequests([
+            Self.conflicting("shilokuma-inc/ask-hub-apple", 50, head: "epic/auto"),
+            Self.conflicting("shilokuma-inc/ask-hub-apple", 51, head: "epic/manual")
+        ])
+        let runtime = FakeRuntime()
+        runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: resolved\n")])
+        runtime.setHoldsRuns(true)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime, now: { clock.now })
+        try await orchestrator.pollOnce()
+        await runtime.waitForHeldRuns(1)
+
+        // 解消している間に、止まったループが利用上限で終わっていたと分かる
+        runtime.setUsageLimitReset(clock.now.addingTimeInterval(3600))
+        try await orchestrator.pollOnce()
+        runtime.setHoldsRuns(false)
+        await waitUntilNoConflictResolution(orchestrator)
+
+        // 実行中の解消は終わりまで続けて結果をコメントし、次の PR は解除まで始めない
+        #expect(github.pullRequestComments.count == 1)
+        #expect(github.pullRequestComments.first?.hasPrefix("shilokuma-inc/ask-hub-apple#50: ") == true)
+        #expect(runtime.ran.count == 1)
     }
 
     @Test func runWaitsForConflictResolutionBeforeReturning() async throws {
