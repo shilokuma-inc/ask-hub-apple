@@ -219,7 +219,8 @@ public actor Orchestrator {
     }
 
     /// `pollInterval` ごとにポーリングする。タスクがキャンセルされるまで戻らない。
-    /// 1 回のポーリングの失敗（ネットワークの断など）はログに出して次の回に持ち越す
+    /// 1 回のポーリングの失敗（ネットワークの断など）はログに出して次の回に持ち越す。
+    /// 戻る前に、裏で実行中の最終 PR のコンフリクトの解消が終わるのを待つ
     public func run(sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) async {
         while !Task.isCancelled {
             do {
@@ -230,9 +231,10 @@ public actor Orchestrator {
             do {
                 try await sleep(config.pollInterval)
             } catch {
-                return
+                break
             }
         }
+        await waitForConflictResolutions()
     }
 
     /// 1 回分のポーリング。実行した起動判定を返す

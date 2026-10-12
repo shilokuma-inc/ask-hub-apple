@@ -1,6 +1,7 @@
 import AskHubKit
 import Foundation
 @testable import OrchestratorKit
+import os
 import Testing
 
 // MARK: - 最終 PR のコンフリクトの解消
@@ -152,5 +153,30 @@ extension OrchestratorTests {
         // 利用上限が解除されるまで、同じリポジトリの次の PR も始めない
         #expect(runtime.ran.count == 1)
         #expect(github.pullRequestComments.isEmpty)
+    }
+
+    @Test func runWaitsForConflictResolutionBeforeReturning() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setConflictingPullRequests([Self.conflicting])
+        let runtime = FakeRuntime()
+        runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: resolved\n")])
+        runtime.setHoldsRuns(true)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+        let returned = OSAllocatedUnfairLock(initialState: false)
+
+        // 1 回ポーリングしたら終わる
+        let running = Task {
+            await orchestrator.run { _ in throw CancellationError() }
+            returned.withLock { $0 = true }
+        }
+        await runtime.waitForHeldRuns(1)
+        try await Task.sleep(for: .milliseconds(20))
+        // 解消の結果をコメントするまで戻らない（子プロセスはオーケストレーターの終了で止まらないため）
+        #expect(!returned.withLock { $0 })
+
+        runtime.setHoldsRuns(false)
+        await running.value
+        #expect(returned.withLock { $0 })
+        #expect(github.pullRequestComments.count == 1)
     }
 }

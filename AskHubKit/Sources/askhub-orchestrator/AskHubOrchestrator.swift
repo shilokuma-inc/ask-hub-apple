@@ -60,6 +60,8 @@ enum AskHubOrchestrator {
             } catch {
                 fail("ポーリングに失敗しました: \(error)", status: EX_TEMPFAIL)
             }
+            // 最終 PR のコンフリクトの解消は裏で進むので、結果をコメントするまで待ってから終わる
+            await orchestrator.waitForConflictResolutions()
             return
         }
         await orchestrator.run()
