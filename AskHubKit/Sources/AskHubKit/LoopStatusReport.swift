@@ -1,6 +1,6 @@
 import Foundation
 
-/// オーケストレーターが状態用の Issue（ラベル `loop-status`）の本文に書き出す、リポジトリのループの状態。
+/// 状態用の Issue（ラベル `loop-status`）に書き出す、ループの状態。ループ（Discussion）ごとのコメントか、古い形の本文に書く。
 ///
 /// アプリは GitHub だけを見るので、Mac の中にしか無いループの状態をオーケストレーターがここに書き、アプリが読む。
 /// 本文の先頭に機械が読める目印（JSON）を置き、続けて人が読める表を置く:
@@ -123,7 +123,7 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     }
 
     public var state: State
-    /// 書いたもの。手動のあいだはオーケストレーターが書かない
+    /// 書いたもの。手動ループが書いている Discussion（と古い形の本文）には、オーケストレーターは書かない
     public var writer: Writer
     /// 統合ブランチ（例: `epic/loop-status`）。ループが無ければ `nil`
     public var epic: String?
