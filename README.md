@@ -103,10 +103,8 @@ SKU は Bundle ID と同じ値にします。SKU はユーザーには見えな�
 | その他の作業ブランチ | ✅（Unit テストのみ。macOS で実行） | | |
 | Pull Request の作成時（opened / reopened / ready_for_review） | ✅ | | |
 | Fork からの Pull Request | ✅ | | |
-| `assets/**`（スクリーンショット置き場） | | | |
 
 - Upload は Archive → IPA Export を含むため、`develop` / `release/**` では Archive を別途実行しません
-- `assets/**` はアプリのコードを含まないため、どのワークフローも実行しません
 - ドキュメントだけの変更（`**/*.md`、`docs/**`）では Build を実行しません。Upload（`develop` / `release/**` への push）と Archive（`main` への push）は、ドキュメントだけの変更でも実行します
 - 作業ブランチへの push では、Simulator の起動に時間がかかるため iOS はビルドの確認だけにし、UI テスト（`AskHubUITests`）を省いた Unit テストを macOS 上で実行します（アドホック署名・App Sandbox 無効）。UI テストは Pull Request の作成時と `main` / `develop` / `release/**` への push で実行します。Fork からの Pull Request は push で実行されないため、更新（synchronize）を含むすべてのイベントで UI テストまで実行します
 - Xcode のバージョンは [.github/workflows/_build.yml](.github/workflows/_build.yml) と [.github/workflows/_archive.yml](.github/workflows/_archive.yml) の `xcode-version` で固定しています。Environment の更新時はあわせて変更してください
@@ -164,8 +162,7 @@ gh pr view <番号> --json body -q .body \
         ├── _archive.yml     # 共通処理: Archive → Export（→ Upload）（workflow_call）
         ├── build.yml        # 全ブランチの push / PR の作成時 / Fork からの PR
         ├── archive.yml      # main の push
-        ├── upload.yml       # develop / release/** の push
-        └── cleanup-assets-branch.yml # PR マージ時に assets/issue-<番号> ブランチを削除
+        └── upload.yml       # develop / release/** の push
 ```
 
 - プロジェクトはフォルダ同期グループ（Xcode 16 以降の形式）で管理しているため、ファイルの追加・削除で pbxproj は変わりません
