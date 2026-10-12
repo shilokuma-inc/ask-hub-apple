@@ -79,13 +79,22 @@ extension FakeGitHub {
         state.withLock { $0.updatedLoopStatusComments }
     }
 
+    /// 消したコメント（`<repo> <コメントの id>`）
+    var deletedLoopStatusComments: [String] {
+        state.withLock { $0.deletedLoopStatusComments }
+    }
+
     func setLoopStatusComments(_ comments: [LoopStatusComment], onIssue number: Int) {
         state.withLock { $0.loopStatusComments[number] = comments }
     }
 
+    func setLoopStatusCommentsFail(_ fails: Bool) {
+        state.withLock { $0.loopStatusCommentsFail = fails }
+    }
+
     func loopStatusComments(in repository: String, issue number: Int) async throws -> [LoopStatusComment] {
         try state.withLock { state in
-            if state.loopStatusFails {
+            if state.loopStatusFails || state.loopStatusCommentsFail {
                 throw TestError()
             }
             return state.loopStatusComments[number] ?? []
@@ -94,7 +103,7 @@ extension FakeGitHub {
 
     func createLoopStatusComment(in repository: String, issue number: Int, body: String) async throws -> Int {
         try state.withLock { state in
-            guard !state.loopStatusFails, state.loopStatusIssues[number] != nil else {
+            guard !state.loopStatusFails, !state.loopStatusCommentsFail, state.loopStatusIssues[number] != nil else {
                 throw TestError()
             }
             // GitHub と同じく、id はリポジトリの Issue をまたいで一意
@@ -109,13 +118,26 @@ extension FakeGitHub {
 
     func updateLoopStatusComment(in repository: String, id: Int, body: String) async throws {
         try state.withLock { state in
-            guard !state.loopStatusFails,
+            guard !state.loopStatusFails, !state.loopStatusCommentsFail,
                   let number = state.loopStatusComments.first(where: { $0.value.contains { $0.id == id } })?.key,
                   let index = state.loopStatusComments[number]?.firstIndex(where: { $0.id == id }) else {
                 throw TestError()
             }
             state.loopStatusComments[number]?[index].body = body
             state.updatedLoopStatusComments.append("\(repository) \(id)")
+        }
+    }
+
+    func deleteLoopStatusComment(in repository: String, id: Int) async throws {
+        try state.withLock { state in
+            if state.loopStatusFails || state.loopStatusCommentsFail {
+                throw TestError()
+            }
+            // GitHub と同じく、既に無いコメントを消しても失敗しない
+            for number in state.loopStatusComments.keys {
+                state.loopStatusComments[number]?.removeAll { $0.id == id }
+            }
+            state.deletedLoopStatusComments.append("\(repository) \(id)")
         }
     }
 }

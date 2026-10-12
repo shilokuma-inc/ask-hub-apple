@@ -63,6 +63,8 @@ public protocol OrchestratorGitHub: Sendable {
     func createLoopStatusComment(in repository: String, issue number: Int, body: String) async throws -> Int
     /// 状態用の Issue のコメントの本文を置き換える
     func updateLoopStatusComment(in repository: String, id: Int, body: String) async throws
+    /// 状態用の Issue のコメントを消す（終わったループのもの）。既に無ければ何もしない
+    func deleteLoopStatusComment(in repository: String, id: Int) async throws
     /// リポジトリの、`build-hosts` が付いた Issue（閉じたものも含む）
     func buildHostsIssues(in repository: String) async throws -> [LoopStatusIssueRecord]
     /// ビルドの Mac の状態の Issue を作る（ラベルが無ければ作る）。Issue の番号を返す
