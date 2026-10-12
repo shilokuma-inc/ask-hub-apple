@@ -518,12 +518,17 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 
 ## GitHub の情報から最終 PR を作る
 
-制御用 worktree の「最終 PR に載せる内容」が使えない epic は、次の場合に GitHub の情報から最終 PR を作る（ポーリングの最後、リポジトリごとに 10 分に 1 回まで）。
+制御用 worktree の「最終 PR に載せる内容」が使えない epic は、次の場合に GitHub の情報から最終 PR を作る（ポーリングの最後）。
+同じリポジトリで複数のループ（自動ループと手動ループ・複数の手動ループ）が回るので、候補はループ（epic）ごとに出し、両方の経路を並べて見る
+（[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425)）。GitHub への問い合わせ（既にある PR・材料）は epic ごとに 10 分に 1 回まで。
 
-- **手動ループ**（`manual-loop` の Discussion が open なリポジトリ）: 信用する author の状態用の Issue の書き手が `manual`・状態が `completed` で、
-  epic とゴール元の Discussion が書かれていて、書かれてから 30 分（`LoopStatusReport.freshness`）たった。
-  担当者が `scripts/askhub-manual.sh final`（手元の state の内容で作る）を流すのを、その間は待つ
-- **自動ループ**: ループが正常に止まり（異常終了したものは再開して内容を書かせるので除く）、タスクもすべて終わっているのに「最終 PR に載せる内容」が空
+- **手動ループ**（`manual-loop` の Discussion が open なリポジトリ）: 信用する author が作った状態用の Issue の本文と、信用する author のループごとのコメント（`LoopStatusBoard`）のうち、
+  書き手が `manual`・状態が `completed` で、epic が書かれていて、書かれてから 30 分（`LoopStatusReport.freshness`）たった、open な `manual-loop` の Discussion のループ
+  （`manual-loop` の Discussion を取得できなかったポーリングでは絞らない）。
+  担当者が `scripts/askhub-manual.sh final`（手元の state の内容で作る）を流すのを、その間は待つ。状態用の Issue の読み直しはリポジトリごとに 10 分に 1 回まで
+- **自動ループ**: ループが正常に止まり（異常終了したものは再開して内容を書かせるので除く）、タスクもすべて終わっているのに「最終 PR に載せる内容」が空。
+  手動ループがあっても見る。ただし手動ループのあるリポジトリでは、制御用 worktree の epic のゴール元が `manual-loop` の Discussion のとき・記録が無いときは、
+  この PC の手動ループのものとして自動ループの経路では作らない（回答による再開と同じ判定）
 
 材料は、epic にマージされた子 PR・epic 宛てでまだ open の子 PR・タイトルか本文で epic に触れている open な仮決め一覧（`decision-log`）と実機確認（`needs-verify`）の Issue。
 本文の先頭にゴール元の Discussion の目印を置き、`epic-final` を付ける。GitHub の情報から作ったことも書き添える。
