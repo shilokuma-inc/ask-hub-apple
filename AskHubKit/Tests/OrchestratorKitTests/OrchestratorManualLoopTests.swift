@@ -42,18 +42,57 @@ extension OrchestratorTests {
 extension OrchestratorTests {
     static let manualLoop = ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 273, author: "mrs1669")
 
-    @Test func doesNotResumeLoopOfRepositoryWithManualLoop() async throws {
+    /// 制御用 worktree で自動ループ（Discussion #12）の epic が途中
+    static let automaticEpic = EpicSnapshot(branch: "epic/mvp", goal: "- [ ] 【FEAT】A", state: nil, discussion: 12, loopPrepared: true)
+
+    static func pullRequest(base: String?, number: Int = 34) -> InboxSubject {
+        var subject = pullRequest(number: number)
+        subject.baseBranch = base
+        return subject
+    }
+
+    @Test func doesNotResumeLoopForAnswerOnManualLoopPullRequest() async throws {
         let github = FakeGitHub([.success([])])
         github.setManualLoops([Self.manualLoop])
         let runtime = FakeRuntime()
+        runtime.setEpic(Self.automaticEpic)
         let inbox = FakeInbox()
-        inbox.set([Self.pullRequest()], threads: ["PR_34": [Self.ask("C_3", replies: ["mrs1669"])]])
+        inbox.set([Self.pullRequest(base: "epic/manual")], threads: ["PR_34": [Self.ask("C_3", replies: ["mrs1669"])]])
 
         try await makeOrchestrator(github: github, runtime: runtime, inbox: inbox).pollOnce()
 
-        // ループは担当者の Mac で動いているので、この PC のループは再開しない（needs-answer は外す）
+        // 手動ループの epic 宛ての PR の回答では、この PC の自動ループは再開しない（担当者が再開する。needs-answer は外す）
         #expect(runtime.launched.isEmpty)
         #expect(github.removedNeedsAnswer == ["PR_34"])
+    }
+
+    @Test func resumesAutomaticLoopForAnswerOnItsEpicEvenWithManualLoop() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setManualLoops([Self.manualLoop])
+        let runtime = FakeRuntime()
+        runtime.setEpic(Self.automaticEpic)
+        let inbox = FakeInbox()
+        inbox.set([Self.pullRequest(base: "epic/mvp")], threads: ["PR_34": [Self.ask("C_3", replies: ["mrs1669"])]])
+
+        try await makeOrchestrator(github: github, runtime: runtime, inbox: inbox).pollOnce()
+
+        // 同じリポジトリで手動ループが回っていても、自動ループの epic 宛ての PR の回答では再開する
+        #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", ""]])
+    }
+
+    // この PC の制御用 worktree で手動ループ（#273）を回している。ゴール元の記録が無い epic も自動ループとみなさない
+    @Test(arguments: [273, nil])
+    func doesNotResumeWhenControlWorktreeHoldsManualLoopEpic(discussion: Int?) async throws {
+        let github = FakeGitHub([.success([])])
+        github.setManualLoops([Self.manualLoop])
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [ ] 【FEAT】A", state: nil, discussion: discussion, loopPrepared: true))
+        let inbox = FakeInbox()
+        inbox.set([Self.pullRequest(base: "epic/mvp")], threads: ["PR_34": [Self.ask("C_3", replies: ["mrs1669"])]])
+
+        try await makeOrchestrator(github: github, runtime: runtime, inbox: inbox).pollOnce()
+
+        #expect(runtime.launched.isEmpty)
     }
 
     @Test func keepsStatusOfManualLoopEvenAfterItGoesStale() async throws {
