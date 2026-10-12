@@ -333,11 +333,12 @@ public actor Orchestrator {
                 log("\(subject.repository)#\(subject.number) の質問を取得できませんでした: \(error)")
             }
         }
-        let epicsInProgress = Set(await epicSnapshots().filter(\.value.inProgress).keys)
+        let epics = await epicSnapshots()
         let actions = watcher.update(
             snapshots: snapshots,
             statuses: statuses,
-            epicsInProgress: epicsInProgress,
+            epicsInProgress: Set(epics.filter(\.value.inProgress).keys),
+            automaticEpics: automaticEpicBranches(in: epics),
             manualLoopRepositories: manualLoopRepositories
         )
         for action in actions {

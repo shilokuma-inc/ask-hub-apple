@@ -167,6 +167,96 @@ struct ResumeWatcherTests {
     }
 }
 
+// MARK: - 同じリポジトリの自動ループと手動ループ（PR の base で振り分ける）
+
+extension ResumeWatcherTests {
+    /// 新しく回答が付いた PR。ほかの質問は未回答のまま（再開だけを確かめるため、needs-answer は外れない）
+    private func answered(_ id: String, base: String?, number: Int) -> AnswerSnapshot {
+        var subject = subject(.pullRequest, number: number)
+        subject.baseBranch = base
+        return AnswerSnapshot(subject: subject, questions: [.init(id: id, isAnswered: true), .init(id: id + "-2", isAnswered: false)])
+    }
+
+    private var automatic: [String: String] {
+        [key: "epic/auto"]
+    }
+
+    @Test func resumesOnlyForAnswersOnPullRequestsToAutomaticEpic() {
+        // 手動ループがあっても、自動ループの epic 宛ての PR の回答では再開する
+        var watcher = ResumeWatcher()
+        let toAutomatic = watcher.update(
+            snapshots: [answered("A", base: "epic/auto", number: 34)],
+            statuses: [:],
+            epicsInProgress: [key],
+            automaticEpics: automatic,
+            manualLoopRepositories: [key]
+        )
+        #expect(toAutomatic == [.resume(repositoryKey: key)])
+
+        // 手動ループの epic 宛ての PR の回答では再開しない（担当者が再開する）
+        var manual = ResumeWatcher()
+        let toManual = manual.update(
+            snapshots: [answered("B", base: "epic/manual", number: 35)],
+            statuses: [:],
+            epicsInProgress: [key],
+            automaticEpics: automatic,
+            manualLoopRepositories: [key]
+        )
+        #expect(toManual.isEmpty)
+        #expect(manual.resumes.isEmpty)
+
+        // 手動ループが無くても、自動ループの epic 以外（develop など）宛ての PR の回答では再開しない
+        var other = ResumeWatcher()
+        let toDevelop = other.update(
+            snapshots: [answered("C", base: "develop", number: 36)], statuses: [:], epicsInProgress: [key], automaticEpics: automatic
+        )
+        #expect(toDevelop.isEmpty)
+    }
+
+    @Test func treatsPullRequestWithoutBaseAsBeforeOnlyWithoutManualLoop() {
+        var watcher = ResumeWatcher()
+        let withoutManualLoop = watcher.update(
+            snapshots: [answered("A", base: nil, number: 34)], statuses: [:], epicsInProgress: [key], automaticEpics: automatic
+        )
+        #expect(withoutManualLoop == [.resume(repositoryKey: key)])
+
+        // 手動ループのあるリポジトリでは、どのループの PR か分からないので再開しない
+        var manual = ResumeWatcher()
+        let withManualLoop = manual.update(
+            snapshots: [answered("B", base: nil, number: 35)],
+            statuses: [:],
+            epicsInProgress: [key],
+            automaticEpics: automatic,
+            manualLoopRepositories: [key]
+        )
+        #expect(withManualLoop.isEmpty)
+    }
+
+    @Test func keepsWaitingResumeOfAutomaticEpicWhileManualLoopRuns() {
+        var watcher = ResumeWatcher()
+        // 制御用 worktree の状態を確かめられない間は、再開待ちのまま残る
+        let unknown = [key: LoopStatus(stateFileExists: nil, processAlive: false)]
+        #expect(watcher.update(
+            snapshots: [answered("A", base: "epic/auto", number: 34)], statuses: unknown, epicsInProgress: [key], automaticEpics: automatic
+        ).isEmpty)
+        #expect(watcher.resumes[key]?.phase == .waiting)
+
+        // 同じリポジトリで手動ループが始まっても、自動ループの再開待ちは消さない
+        let resumed = watcher.update(
+            snapshots: [], statuses: [:], epicsInProgress: [key], automaticEpics: automatic, manualLoopRepositories: [key]
+        )
+        #expect(resumed == [.resume(repositoryKey: key)])
+
+        // 制御用 worktree を手動ループが使っている（自動ループの epic が無い）なら、再開待ちをやめる
+        var occupied = ResumeWatcher()
+        _ = occupied.update(
+            snapshots: [answered("B", base: "epic/auto", number: 35)], statuses: unknown, epicsInProgress: [key], automaticEpics: automatic
+        )
+        _ = occupied.update(snapshots: [], statuses: [:], epicsInProgress: [key], manualLoopRepositories: [key])
+        #expect(occupied.resumes.isEmpty)
+    }
+}
+
 private extension ResumeWatcher {
     /// 途中の epic がある（回答で再開できる）リポジトリとして進める。途中の epic が無いときは `epicsInProgress` を渡して確かめる
     mutating func update(snapshots: [AnswerSnapshot], statuses: [String: LoopStatus]) -> [Action] {

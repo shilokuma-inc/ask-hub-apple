@@ -21,6 +21,8 @@ public struct InboxSubject: Sendable, Equatable, Hashable {
     public var author: String?
     /// 付いているラベルの名前（`manual-loop` の判定に使う）
     public var labels: [String]
+    /// PR の base のブランチ（例: `epic/mvp`。どのループの PR かを見分けるのに使う）。Discussion や、取得していないときは `nil`
+    public var baseBranch: String?
 
     public init(
         kind: Kind,
@@ -30,7 +32,8 @@ public struct InboxSubject: Sendable, Equatable, Hashable {
         title: String,
         url: URL,
         author: String? = nil,
-        labels: [String] = []
+        labels: [String] = [],
+        baseBranch: String? = nil
     ) {
         self.kind = kind
         self.nodeID = nodeID
@@ -40,6 +43,7 @@ public struct InboxSubject: Sendable, Equatable, Hashable {
         self.url = url
         self.author = author
         self.labels = labels
+        self.baseBranch = baseBranch
     }
 
     /// 手で回す Discussion か（`manual-loop` が付いた、信用する author の Discussion）。
