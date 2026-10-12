@@ -79,7 +79,7 @@ final class InboxModel {
     /// 回答を投稿するときのトークンが無い
     struct MissingTokenError: Error {}
 
-    /// 要回答の一覧に出す順。同じ Discussion の質問を続けて並べ、PR の ask はそれぞれの作成日時の位置に置く（Discussion #418 の Q1・Q2）
+    /// 要回答の一覧に出す順。同じ Discussion の質問を続けて並べ（Discussion #418 の Q1）、PR の ask はそれぞれの作成日時の位置に置く（仮決め #421）
     var groupedQuestions: [InboxQuestion] {
         InboxQuestion.groupedByDiscussion(questions)
     }
