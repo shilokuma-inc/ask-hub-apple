@@ -360,7 +360,14 @@ public actor Orchestrator {
                 log("\(subject.repository)#\(subject.number) の質問を取得できませんでした: \(error)")
             }
         }
-        for action in watcher.update(snapshots: snapshots, statuses: statuses, manualLoopRepositories: manualLoopRepositories) {
+        let epicsInProgress = Set(await epicSnapshots().filter(\.value.inProgress).keys)
+        let actions = watcher.update(
+            snapshots: snapshots,
+            statuses: statuses,
+            epicsInProgress: epicsInProgress,
+            manualLoopRepositories: manualLoopRepositories
+        )
+        for action in actions {
             switch action {
             case let .removeNeedsAnswer(subject):
                 await handleFullyAnswered(subject, addsReadyLabel: true)
@@ -379,6 +386,9 @@ public actor Orchestrator {
 
             case let .giveUp(key, attempts):
                 log("\(key) のループの再開を \(attempts) 回確かめられませんでした。次の回答が付くまで再開しません（loopCommand を確認してください）")
+
+            case let .noEpicInProgress(key):
+                log("\(key) の ask に回答が付きましたが、途中の epic（回答待ちでない未完了のタスク）が無いので、ループは再開しません")
             }
         }
     }

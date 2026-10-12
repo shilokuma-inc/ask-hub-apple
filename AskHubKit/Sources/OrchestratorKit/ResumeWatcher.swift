@@ -46,6 +46,7 @@ public struct AnswerSnapshot: Sendable, Equatable {
 /// 回答済みの質問はメモリ上で覚え、新しく回答が付いた PR のリポジトリだけを再開する
 /// （回答済みの質問は回答済みのまま残るため、覚えておかないとループが終わるたびに再開してしまう）。
 /// オーケストレーターを再起動すると忘れるので、その直後は回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
+/// 途中の epic が無いリポジトリは再開しない（起動スクリプトも断る。`LaunchPlanner` の `epicsInProgress` と同じ判断）
 public struct ResumeWatcher: Sendable, Equatable {
     /// ループの開始を確かめられないまま再開を試す回数の上限
     public static let maxAttempts = 3
@@ -73,6 +74,8 @@ public struct ResumeWatcher: Sendable, Equatable {
         case resume(repositoryKey: String)
         /// 上限まで試しても再開を確かめられなかった
         case giveUp(repositoryKey: String, attempts: Int)
+        /// 途中の epic が無いので再開しない（未完了のタスクが回答待ちのものだけ・epic が無い）
+        case noEpicInProgress(repositoryKey: String)
     }
 
     /// 回答済みとして扱い終えた質問の node id
@@ -85,11 +88,14 @@ public struct ResumeWatcher: Sendable, Equatable {
     /// 担当リポジトリの `needs-answer` の一覧とループの状態から、行うことを返す
     /// - Parameters:
     ///   - snapshots: 担当リポジトリのものだけを渡す
+    ///   - epicsInProgress: 途中の epic（`EpicSnapshot.inProgress`）があるリポジトリ（`fullName` の小文字）。
+    ///     それ以外は起動スクリプトが「未完了のタスクがありません」で断り、state ファイルを作らずに終わる
     ///   - manualLoopRepositories: 手動ループ（open な `manual-loop` の Discussion）があるリポジトリ（`fullName` の小文字）。
     ///     ループは担当者の Mac で動いているので、この PC からは再開しない（担当者がアプリの知らせを見て再開する）
     public mutating func update(
         snapshots: [AnswerSnapshot],
         statuses: [String: LoopStatus],
+        epicsInProgress: Set<String>,
         manualLoopRepositories: Set<String> = []
     ) -> [Action] {
         for key in manualLoopRepositories {
@@ -98,6 +104,15 @@ public struct ResumeWatcher: Sendable, Equatable {
         var actions = recordAnswers(in: snapshots, skipping: manualLoopRepositories)
         for key in resumes.keys.sorted() {
             guard let entry = resumes[key] else {
+                continue
+            }
+            // 起動スクリプトが断る再開を失敗と数えると、ループは落ちていないのに「再開を諦めた」になり、
+            // 次の回答が付くまで残り続ける。再開待ちごと（諦めた記録も）やめる
+            guard epicsInProgress.contains(key) else {
+                resumes[key] = nil
+                if entry.phase == .waiting {
+                    actions.append(.noEpicInProgress(repositoryKey: key))
+                }
                 continue
             }
             let (next, action) = Self.advance(entry, key: key, status: statuses[key] ?? .idle)

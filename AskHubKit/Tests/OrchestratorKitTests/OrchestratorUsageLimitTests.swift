@@ -8,7 +8,6 @@ import Testing
 
 extension OrchestratorTests {
     private static let stalledLoop = LoopStatus(stateFileExists: false, processAlive: false, stalled: true)
-    private static let unfinishedEpic = EpicSnapshot(branch: "epic/mvp", goal: "- [ ] 【FEAT】A", state: nil, loopPrepared: true)
 
     @Test func waitsForUsageLimitResetThenResumesWithoutCounting() async throws {
         let clock = TestClock(Date(timeIntervalSince1970: 1_800_000_000))
