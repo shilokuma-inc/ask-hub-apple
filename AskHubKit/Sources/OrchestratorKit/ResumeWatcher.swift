@@ -95,7 +95,8 @@ public struct ResumeWatcher: Sendable, Equatable {
     ///   - automaticEpics: リポジトリ（`fullName` の小文字）ごとの、この PC の自動ループの epic（制御用 worktree のブランチ）。
     ///     PR の base がこれと同じときだけ再開する
     ///   - manualLoopRepositories: 手動ループ（open な `manual-loop` の Discussion）があるリポジトリ（`fullName` の小文字）。
-    ///     base が分からない PR の回答では、このリポジトリのループは再開しない（担当者の Mac のループかもしれないため）
+    ///     base が分からない PR の回答では、このリポジトリのループは再開しない（担当者の Mac のループかもしれないため）。
+    ///     `automaticEpics` に無い（制御用 worktree を手動ループが使っている）なら、このリポジトリの再開待ちをやめる
     public mutating func update(
         snapshots: [AnswerSnapshot],
         statuses: [String: LoopStatus],
