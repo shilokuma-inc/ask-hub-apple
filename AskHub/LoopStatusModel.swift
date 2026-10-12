@@ -87,13 +87,22 @@ final class LoopStatusModel {
         row.mode(manualLoops: manualLoops)
     }
 
-    /// 人が見るべき異常の数（タブのバッジ）。異常終了・長く動きが無い・担当 PC がいない進行中の epic・状態が途絶えた手動ループ
+    /// リポジトリの見出しの下に並べるループ。ループが 1 つ以下なら空（今までと同じ 1 行で出す）
+    func loopItems(of row: LoopStatusRow) -> [LoopStatusLoopItem] {
+        row.loopItems(manualLoops: manualLoops)
+    }
+
+    /// 人が見るべき異常の数（タブのバッジ）。異常終了・長く動きが無い・担当 PC がいない進行中の epic・状態が途絶えた手動ループ。
+    /// 同じリポジトリで複数のループが回るので、ループ（Discussion）ごとに数える
     func abnormalCount(now: Date) -> Int {
-        var repositories = Set(rows.filter { $0.isAbnormal(now: now) }.map { $0.repository.lowercased() })
-        for item in manualLoopItems(now: now) where item.isStale {
-            repositories.insert(item.epic.subject.repository.lowercased())
+        var loops = Set<String>()
+        for row in rows {
+            loops.formUnion(row.abnormalLoopKeys(manualLoops: manualLoops, now: now))
         }
-        return repositories.count
+        for item in manualLoopItems(now: now) where item.isStale {
+            loops.insert("\(item.epic.subject.repository.lowercased())#\(item.epic.subject.number)")
+        }
+        return loops.count
     }
 
     /// ループの状態を取り直す

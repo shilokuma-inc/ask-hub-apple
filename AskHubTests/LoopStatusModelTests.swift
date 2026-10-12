@@ -96,6 +96,23 @@ struct LoopStatusModelTests {
         #expect(reported == Set(LoopStatusReport.State.allCases).subtracting([.unknown]))
     }
 
+    @Test func loadsSampleLoopsRunningInSameRepository() async {
+        let model = LoopStatusModel.sample()
+        await model.refresh()
+        let now = Date()
+        func items(_ name: String) -> [LoopStatusLoopItem] {
+            model.rows.first { $0.repository.hasSuffix("/\(name)") }.map(model.loopItems(of:)) ?? []
+        }
+        // 自動ループと手動ループ・手動ループ 2 つは、リポジトリの見出しの下にループを並べる
+        #expect(items("pair-quiz-ios").map(\.mode) == [.automatic, .manual(assignee: "partner")])
+        #expect(items("pair-quiz-ios").map { $0.display(now: now).statusText } == ["実行中", "回答待ち"])
+        #expect(items("story-maker").map(\.mode) == [.manual(assignee: TrustedAuthors.defaultLogins[0]), .manual(assignee: "partner")])
+        // ループが 1 つのリポジトリは、今までどおり 1 行
+        #expect(items("ask-hub-apple").isEmpty)
+        // サンプルの異常（異常終了・長く動きが無い・担当 PC なしの進行中の epic）はループごとに数え、並べたループには異常が無い
+        #expect(model.abnormalCount(now: now) == 3)
+    }
+
     @Test func loadsSampleWaitingDiscussionsAndUsageLimitedWithRows() async {
         let model = LoopStatusModel.sample()
         await model.refresh()
