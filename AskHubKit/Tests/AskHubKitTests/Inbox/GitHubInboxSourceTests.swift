@@ -49,7 +49,7 @@ struct GitHubInboxSourceTests {
             .init(status: 200, body: #"""
                 { "data": { "search": { "pageInfo": \#(Self.page(hasNext: false, cursor: nil)), "nodes": [
                   { "id": "PR_3", "number": 3, "title": "PR", "url": "https://github.com/o/r2/pull/3",
-                    "closed": false, "repository": { "nameWithOwner": "o/r2" } }
+                    "closed": false, "repository": { "nameWithOwner": "o/r2" }, "baseRefName": "epic/mvp" }
                 ] } } }
                 """#)
         ])
@@ -68,13 +68,30 @@ struct GitHubInboxSourceTests {
                 author: "mrs1669",
                 labels: ["needs-answer", "manual-loop"]
             ),
-            InboxSubject(kind: .pullRequest, nodeID: "PR_3", repository: "o/r2", number: 3, title: "PR", url: pullRequestURL)
+            InboxSubject(
+                kind: .pullRequest, nodeID: "PR_3", repository: "o/r2", number: 3, title: "PR", url: pullRequestURL, baseBranch: "epic/mvp"
+            )
         ])
         let requests = http.requests
         #expect(requests.count == 3)
         #expect(try variables(of: requests[0]) == ["query": "org:shilokuma-inc label:needs-answer is:open", "after": nil])
         #expect(try variables(of: requests[1]) == ["query": "org:shilokuma-inc label:needs-answer is:open", "after": "S1"])
         #expect(try variables(of: requests[2]) == ["query": "org:shilokuma-inc label:needs-answer is:pr is:open", "after": nil])
+    }
+
+    @Test func readsBaseOfPullRequestsInSameSearch() async throws {
+        let http = MockHTTPClient([
+            .init(status: 200, body: #"{ "data": { "search": { "pageInfo": \#(Self.page(hasNext: false, cursor: nil)), "nodes": [] } } }"#),
+            .init(status: 200, body: #"{ "data": { "search": { "pageInfo": \#(Self.page(hasNext: false, cursor: nil)), "nodes": [] } } }"#)
+        ])
+        _ = try await makeSource(http).subjectsNeedingAnswer(orgs: ["shilokuma-inc"])
+
+        // PR の base は検索を増やさずに同じ検索で取る（Discussion の側には無い）
+        #expect(http.requests.count == 2)
+        let body = try #require(http.requests.last?.httpBody)
+        let query = (try JSONSerialization.jsonObject(with: body) as? [String: Any])?["query"] as? String
+        #expect(query?.contains("labels(first: 100) { nodes { name } } baseRefName }") == true)
+        #expect(query?.components(separatedBy: "baseRefName").count == 2)
     }
 
     @Test func searchesLowPriorityIssuesWithOneQuery() async throws {
