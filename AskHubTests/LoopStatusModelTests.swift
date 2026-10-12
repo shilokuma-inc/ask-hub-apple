@@ -83,7 +83,7 @@ struct LoopStatusModelTests {
         let model = LoopStatusModel.sample()
         await model.refresh()
         #expect(model.state == .loaded)
-        #expect(model.rows.count == 10)
+        #expect(model.rows.count == 12)
         let now = Date()
         let displays = model.rows.map { $0.display(now: now) }
         #expect(displays.contains { $0.isStuck })

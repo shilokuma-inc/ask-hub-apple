@@ -30,6 +30,7 @@ extension LoopStatusModel {
 }
 
 /// デモモード・Preview・UI テスト用の固定のループの状態。すべての状態（停滞・担当 PC なし・状態なしを含む）を 1 行ずつ出す。
+/// 同じリポジトリで自動ループと手動ループ・手動ループ 2 つが同時に回っている例（リポジトリの見出しの下にループを並べる）も出す。
 /// 進捗のゲージは 0%・各段階・100%・進捗なしの行が出るようにしている。
 /// ビルドの行は、別の Mac に移って実行中・Mac の空き待ち・直近の成功と失敗が出るようにしている。
 /// 「ビルドの Mac」は、使える・切断・待機の Mac と、24 時間の移動（成功・失敗）が出るようにしている
@@ -93,7 +94,86 @@ struct SampleLoopStatusSource: LoopStatusSource {
                     updatedAt: minutesAgo(3 * 60)
                 )
             ])
+        ] + Self.concurrentLoops(org, now: now)
+    }
+
+    /// 同じリポジトリで複数のループが同時に回っている例（リポジトリの見出しの下にループを並べる）
+    private static func concurrentLoops(_ org: String, now: Date) -> [LoopStatusRepository] {
+        func minutesAgo(_ minutes: Double) -> Date {
+            now.addingTimeInterval(-minutes * 60)
+        }
+        return [
+            // 同じリポジトリで、自動ループと手動ループが同時に回っている（ループごとのコメント）
+            Self.loops(org, "pair-quiz-ios", issue: 9, checkedAt: minutesAgo(2), [
+                LoopStatusReport(
+                    state: .running,
+                    epic: "epic/ranking",
+                    discussion: 50,
+                    progress: .init(completed: 3, total: 7, deferred: 0),
+                    lastActivityAt: minutesAgo(4),
+                    checkedAt: minutesAgo(2)
+                ),
+                LoopStatusReport(
+                    state: .waitingForAnswer,
+                    writer: .manual,
+                    epic: "epic/share",
+                    discussion: 52,
+                    progress: .init(completed: 4, total: 6, deferred: 0),
+                    lastActivityAt: minutesAgo(25),
+                    checkedAt: minutesAgo(5),
+                    runner: "partner",
+                    waitingPullRequests: [58]
+                )
+            ]),
+            // 同じリポジトリで、手動ループが 2 つ回っている
+            Self.loops(org, "story-maker", issue: 4, checkedAt: minutesAgo(2), [
+                LoopStatusReport(
+                    state: .running,
+                    writer: .manual,
+                    epic: "epic/illustrations",
+                    discussion: 61,
+                    progress: .init(completed: 1, total: 5, deferred: 0),
+                    lastActivityAt: minutesAgo(1),
+                    checkedAt: minutesAgo(1),
+                    runner: TrustedAuthors.defaultLogins[0]
+                ),
+                LoopStatusReport(
+                    state: .waitingToStart,
+                    writer: .manual,
+                    epic: "epic/voice",
+                    discussion: 63,
+                    progress: .init(completed: 2, total: 8, deferred: 0),
+                    lastActivityAt: minutesAgo(50),
+                    checkedAt: minutesAgo(8),
+                    runner: "partner"
+                )
+            ])
         ]
+    }
+
+    /// ループごとの状態はサンプルの一覧に入れておき、取得の口（`LoopStatusFetcher` が使う Issue だけを取る）でもそこから返す
+    func loopStatusComments(repository: String, issue number: Int) async throws -> [LoopStatusComment] {
+        let owner = String(repository.split(separator: "/").first ?? "")
+        return try await loopStatusRepositories(orgs: [owner])
+            .first { $0.repository == repository }?
+            .issues.first { $0.number == number }?
+            .comments ?? []
+    }
+
+    /// 状態用の Issue の本文（新しい形。リポジトリ全体の状態）と、ループごとのコメントを持つリポジトリ
+    private static func loops(
+        _ org: String, _ name: String, issue number: Int, checkedAt: Date, _ reports: [LoopStatusReport]
+    ) -> LoopStatusRepository {
+        // 本文の目印（`ask-hub:repository-status`）。オーケストレーターが書く形と同じ
+        let body = #"<!-- ask-hub:repository-status {"checkedAt":""# + checkedAt.formatted(.iso8601) + #""} -->"#
+        let comments = reports.enumerated().map { index, report in
+            LoopStatusComment(
+                id: number * 100 + index, author: TrustedAuthors.defaultLogins[0], updatedAt: report.checkedAt, body: report.issueBody
+            )
+        }
+        var issue = issue(org, name, number: number, body: body, updatedAt: checkedAt)
+        issue.comments = comments
+        return repository(org, name, heartbeat: checkedAt, issues: [issue])
     }
 
     /// ビルドの行のサンプル。ほかのリポジトリはビルドの情報を持たない
