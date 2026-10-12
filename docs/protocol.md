@@ -111,12 +111,16 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `completed` | 完了（最終 PR のマージ待ち） | 全タスクが終わり、最終 PR のマージを待っている |
 | `no-loop` | ループなし | ループが無い |
 
-- 複数に当てはまるときは、上限で待機中 → 実行中 → 異常終了 → epic の進み具合（開始待ち・回答待ち・完了）→ `ready-for-loop` の開始待ち → ループなし の順に優先する（`OrchestratorKit` の `LoopStatusSummary`）。
-  完了した epic の最終 PR がマージされるまでは、次の Discussion に `ready-for-loop` が付いていても「完了」を出す
-- `epic`・`discussion`・`progress`・`lastActivityAt` は、制御用 worktree が準備を終えた `epic/` のブランチにあるときだけ書く。
-  準備を終えた epic が無いときは、どの Discussion のループかをオーケストレーターの起動の記録から決めて `discussion` に書く（ループの状態は Discussion ごとのコメントに書くため）:
-  開始待ちは待っている `ready-for-loop` の Discussion、起動したが準備が終わっていない（実行中）は起動した Discussion、起動を諦めた（異常終了）はその Discussion、
-  上限で待機中は起動した Discussion か待っている Discussion。分からなければ書かない（別の Discussion と取り違えない）
+- オーケストレーターは、自動ループの状態を Discussion ごとに決める（`OrchestratorKit` の `LoopStatusSummary`）。同時に動く自動ループはリポジトリに 1 つだが、
+  制御用 worktree に準備を終えた epic（例: 完了して最終 PR のマージ待ちの #12）が残ったまま、別の Discussion（#30）を起動した・起動を諦めた・待っているときは、
+  #12 には epic の状態を、#30 には起動の状態を、それぞれのコメントに書く（PR #437 の担当者の判断）:
+  - 準備を終えた epic の Discussion: 上限で待機中 → 実行中 → 異常終了 → epic の進み具合（開始待ち・回答待ち・完了）の順に優先する。
+    制御用 worktree のプロセス・state ファイルは、epic と別の Discussion を起動していればそのループのものとし、epic の実行中にしない
+  - 起動した Discussion: 上限で待機中 → 実行中（ループの開始を待っている・確かめた）・異常終了（起動を諦めた）
+  - 準備を終えていない `ready-for-loop` の Discussion（手動ループ・信用しない author のものを除く）: 上限で待機中 → 開始待ち
+  - 上限で待機中は、この Mac のすべての自動ループに出す
+- `epic`・`progress`・`lastActivityAt`・`builds` は、制御用 worktree が準備を終えた `epic/` のブランチのループにだけ書く。
+  起動した・待っている Discussion のループには `discussion` だけを書く
 - `progress.deferred` は `completed` の内訳で、`completed` の意味は変えない（古いアプリは `deferred` を無視して今と同じ表示になる）。
   古いオーケストレーターは書かないので、アプリは `deferred` が無ければ保留を区別しない表示にする。新しいオーケストレーターは 0 件でも書く
 - アプリが知らない `state` は「不明」として扱う（新しいオーケストレーターが分類を足しても読めなくならないように）
@@ -124,9 +128,10 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
 - オーケストレーターは、本文（新しい形。リポジトリ全体の状態）と、この PC の自動ループのコメント（`writer` は `orchestrator`）を書く。
   それぞれ `checkedAt` 以外が変わったときに書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す。手動ループの有無で書き出しを止めない
-- オーケストレーターは、自動ループのコメントを今のループ（Discussion）のものだけ残し、前のループ（最終 PR がマージされた・次の Discussion に移った）と重複したコメントは消す。
-  ゴール元の Discussion の番号が無い自動ループ（ループが無い・手で始めた epic）の状態はコメントに書かない。
-  番号が分からない状態（ループが無い以外）の間は、前のコメントを消さない
+- オーケストレーターが自動ループのコメントを消すのは、その Discussion のループが終わったとき（最終 PR がマージされた・epic が退避されて起動の記録にも
+  `ready-for-loop` にも無い）と、同じ Discussion のコメントが重複したときだけ。ゴール元の Discussion の番号が無い自動ループ（手で始めた epic）の状態はコメントに書かない。
+  どの Discussion のものか分からないループがある間（手で始めた epic・起動の記録の無いループが動いている・オーケストレーターを起動してから `ready-for-loop` の一覧をまだ取得していない）は、
+  終わったのか分からないので、一覧に無い Discussion のコメントも消さない
 - 1 つの Discussion の書き手は 1 つ。信用する author の手動ループ（`writer` が `manual`）のコメント・古い形の本文がある Discussion には、
   `checkedAt` が 30 分以内か、そのリポジトリに信用する author の open な `manual-loop` の Discussion があるあいだ（`checkedAt` が古くなっても）、オーケストレーターは書かない。
   知らない `writer` のコメントがある Discussion にも書かない（消しもしない）
