@@ -104,17 +104,23 @@ struct LoopStatusSummaryTests {
         #expect(next == LoopStatusReport(state: .waitingToStart, discussion: 300, checkedAt: now))
     }
 
-    @Test func writesReadyDiscussionForLoopBeingStartedWithoutPreparedEpic() {
-        // 起動したが準備が終わっていない・起動を諦めた・上限で待機している間も、ready-for-loop の Discussion のループとして書く
-        // （ループの状態は Discussion ごとのコメントに書くので、番号が無いとどこにも出せない）
-        let started = report(.init(status: Self.running, snapshot: Self.epic(prepared: false), readyDiscussion: 300))
-        #expect(started == LoopStatusReport(state: .running, discussion: 300, checkedAt: now))
-        #expect(report(.init(status: .idle, snapshot: nil, gaveUp: true, readyDiscussion: 300)).discussion == 300)
-        let limited = report(.init(status: .idle, snapshot: nil, usageLimitedUntil: now.addingTimeInterval(60), readyDiscussion: 300))
-        #expect(limited.state == .usageLimited)
-        #expect(limited.discussion == 300)
-        // 待っている Discussion が無ければ番号は無い
-        #expect(report(.init(status: Self.running, snapshot: nil)).discussion == nil)
+    @Test func writesDiscussionFromLaunchRecordsWithoutPreparedEpic() {
+        // 起動したが準備が終わっていない間は、起動した Discussion のループとして書く（次に起動する ready の Discussion ではない）
+        let started = report(
+            .init(status: Self.running, snapshot: Self.epic(prepared: false), readyDiscussion: 20, launchedDiscussion: 30)
+        )
+        #expect(started == LoopStatusReport(state: .running, discussion: 30, checkedAt: now))
+        // 起動を諦めたら、諦めた Discussion
+        let givenUp = report(.init(status: .idle, snapshot: nil, gaveUp: true, readyDiscussion: 20, givenUpDiscussion: 25))
+        #expect(givenUp.discussion == 25)
+        // 上限で待機中は、起動した Discussion か、無ければ待っている Discussion
+        let limit = now.addingTimeInterval(60)
+        #expect(report(.init(status: .idle, snapshot: nil, usageLimitedUntil: limit, readyDiscussion: 20)).discussion == 20)
+        let launched = report(.init(status: .idle, snapshot: nil, usageLimitedUntil: limit, readyDiscussion: 20, launchedDiscussion: 30))
+        #expect(launched.discussion == 30)
+        // 起動の記録が無ければ（手で始めたループなど）、ready の Discussion があっても番号を付けない
+        #expect(report(.init(status: Self.running, snapshot: Self.epic(prepared: false), readyDiscussion: 20)).discussion == nil)
+        #expect(report(.init(status: .idle, snapshot: nil, gaveUp: true, readyDiscussion: 20)).discussion == nil)
     }
 
     @Test func reportsReadyDiscussionOrNoLoopWithoutPreparedEpic() {

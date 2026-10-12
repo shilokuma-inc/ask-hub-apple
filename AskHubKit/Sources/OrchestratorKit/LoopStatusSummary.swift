@@ -10,8 +10,13 @@ public struct LoopStatusFacts: Sendable, Equatable {
     public var usageLimitedUntil: Date?
     /// 異常終了したループの再開（`StallWatcher`）か、ループの起動（`LaunchTracker`）を諦めた
     public var gaveUp: Bool
-    /// このリポジトリの `ready-for-loop` の Discussion のうち、まだ起動していないものの番号
+    /// このリポジトリの `ready-for-loop` の Discussion のうち、制御用 worktree が準備を終えていないものの番号
+    /// （手動ループ・信用しない author のものは除く）
     public var readyDiscussion: Int?
+    /// 起動して、ループの開始を待っている・確かめた Discussion の番号（`LaunchTracker`）
+    public var launchedDiscussion: Int?
+    /// 起動を諦めた Discussion の番号（`LaunchTracker`）
+    public var givenUpDiscussion: Int?
     /// ask に回答が付き、ループの再開を待っている（goal の `※回答待ち` はループが再開して外すまで残る）
     public var hasAnsweredQuestions: Bool
     /// epic の最終 PR が `develop` にマージ済み（制御用 worktree が次の epic に切り替わるまで、完了の goal が残る）
@@ -25,6 +30,8 @@ public struct LoopStatusFacts: Sendable, Equatable {
         usageLimitedUntil: Date? = nil,
         gaveUp: Bool = false,
         readyDiscussion: Int? = nil,
+        launchedDiscussion: Int? = nil,
+        givenUpDiscussion: Int? = nil,
         hasAnsweredQuestions: Bool = false,
         epicMerged: Bool = false,
         lastActivityAt: Date? = nil
@@ -34,6 +41,8 @@ public struct LoopStatusFacts: Sendable, Equatable {
         self.usageLimitedUntil = usageLimitedUntil
         self.gaveUp = gaveUp
         self.readyDiscussion = readyDiscussion
+        self.launchedDiscussion = launchedDiscussion
+        self.givenUpDiscussion = givenUpDiscussion
         self.hasAnsweredQuestions = hasAnsweredQuestions
         self.epicMerged = epicMerged
         self.lastActivityAt = lastActivityAt
@@ -58,11 +67,17 @@ public enum LoopStatusSummary {
         if case .usageLimited = report.state {
             report.usageLimitedUntil = facts.usageLimitedUntil
         }
-        // 準備を終えた epic が無いときは、`ready-for-loop` の Discussion のループとして書く:
-        // 待っている（開始待ち）・起動したが準備が終わっていない（実行中）・起動を諦めた（異常終了）・上限で待機している。
-        // ループの状態は Discussion ごとのコメントに書くので、番号が無いとどこにも出せない
-        if epic == nil, [.waitingToStart, .running, .gaveUp, .usageLimited].contains(report.state) {
-            report.discussion = facts.readyDiscussion
+        // 準備を終えた epic が無いときは、どの Discussion のループかを起動の記録から決める（ループの状態は Discussion ごとのコメントに書くので、
+        // 番号が無いとどこにも出せない）。起動したが準備が終わっていない（実行中）は起動した Discussion、起動を諦めた（異常終了）はその Discussion、
+        // 開始待ち・上限で待機中は待っている Discussion。分からなければ番号を付けない（別の Discussion と取り違えない）
+        if epic == nil {
+            switch report.state {
+            case .running: report.discussion = facts.launchedDiscussion
+            case .gaveUp: report.discussion = facts.givenUpDiscussion
+            case .usageLimited: report.discussion = facts.launchedDiscussion ?? facts.readyDiscussion
+            case .waitingToStart: report.discussion = facts.readyDiscussion
+            case .waitingForAnswer, .completed, .noLoop, .unknown: break
+            }
         }
         return report
     }

@@ -20,6 +20,23 @@ struct LaunchTrackerTests {
         #expect(tracker.blockedDiscussionIDs == ["D_12"])
     }
 
+    @Test func tellsLaunchedAndGivenUpDiscussionOfRepository() {
+        var tracker = LaunchTracker()
+        let older = ReadyDiscussion.fixture(number: 10)
+        // #10 は 3 回起動しても始まらなかった（諦めた）
+        for _ in 0..<LaunchTracker.maxAttempts {
+            tracker.recordLaunchFailure(of: older, repositoryKey: key)
+        }
+        #expect(tracker.givenUpDiscussion(repositoryKey: key) == 10)
+        #expect(tracker.launchedDiscussion(repositoryKey: key) == nil)
+
+        // 続けて #12 を起動した。実行中のループは #12 のもの
+        tracker.recordLaunch(of: discussion, repositoryKey: key)
+        #expect(tracker.launchedDiscussion(repositoryKey: key) == 12)
+        #expect(tracker.givenUpDiscussion(repositoryKey: key) == 10)
+        #expect(tracker.launchedDiscussion(repositoryKey: "other/repo") == nil)
+    }
+
     @Test func adoptsLoopStartedBeforeRestartOnlyWhenUntracked() {
         var tracker = LaunchTracker()
         tracker.adoptStarted(discussion, repositoryKey: key)

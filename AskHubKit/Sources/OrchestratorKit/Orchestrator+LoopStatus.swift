@@ -3,7 +3,7 @@ import Foundation
 
 // ループの状態を、担当リポジトリごとの状態用の Issue（loop-status）の本文とループごとのコメントに書き出す。アプリはそれを読む
 extension Orchestrator {
-    /// 取得した `ready-for-loop` の Discussion のうち、担当リポジトリごとに、まだ起動していない最も古いものを覚える
+    /// 取得した `ready-for-loop` の Discussion のうち、担当リポジトリごとに、制御用 worktree が準備を終えていない最も古いものを覚える
     func recordReadyDiscussions(_ discussions: [ReadyDiscussion], snapshots: [String: EpicSnapshot]) {
         var numbers: [String: Int] = [:]
         for discussion in discussions {
@@ -124,6 +124,8 @@ extension Orchestrator {
                 || tracker.hasGivenUp(repositoryKey: key)
                 || pendingResumes[key]?.phase == .gaveUp,
             readyDiscussion: readyDiscussionNumbers[key],
+            launchedDiscussion: tracker.launchedDiscussion(repositoryKey: key),
+            givenUpDiscussion: tracker.givenUpDiscussion(repositoryKey: key),
             hasAnsweredQuestions: pendingResumes[key].map { $0.phase != .gaveUp } ?? false,
             epicMerged: await isEpicMerged(snapshot, in: repository, now: now),
             lastActivityAt: await runtime.lastActivity(of: repository)

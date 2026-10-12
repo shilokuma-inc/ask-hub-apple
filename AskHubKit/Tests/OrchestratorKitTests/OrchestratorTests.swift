@@ -122,7 +122,7 @@ struct OrchestratorTests {
         try await orchestrator.pollOnce()
         #expect(runtime.launched.count == 1)
         let entry = await orchestrator.trackedEntries["D_12"]
-        #expect(entry == LaunchTracker.Entry(repositoryKey: "shilokuma-inc/ask-hub-apple", attempts: 2, phase: .starting))
+        #expect(entry == LaunchTracker.Entry(repositoryKey: "shilokuma-inc/ask-hub-apple", number: 12, attempts: 2, phase: .starting))
     }
 
     @Test func doesNotLaunchWhileStateFileRemains() async throws {
