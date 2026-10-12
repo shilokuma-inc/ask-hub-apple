@@ -362,6 +362,8 @@ final class FakeGitHub: OrchestratorGitHub {
 /// 起動したコマンドを記録するだけで、実際には起動しない。ループの状態はテストから変える
 final class FakeRuntime: LoopRuntime {
     private let state = OSAllocatedUnfairLock(initialState: FakeRuntimeState())
+    /// `run` を、テストが決めた時まで返さないようにする（`OrchestratorTestDoubles+RunGate.swift`）
+    let runGate = RunGate()
 
     var launched: [[String]] {
         state.withLock { $0.launched }
@@ -470,7 +472,7 @@ final class FakeRuntime: LoopRuntime {
     }
 
     func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult {
-        state.withLock { state in
+        let result = state.withLock { state in
             state.ran.append(arguments)
             state.inputs.append(input)
             let result = state.runResults[0]
@@ -479,6 +481,8 @@ final class FakeRuntime: LoopRuntime {
             }
             return result
         }
+        await runGate.pass()
+        return result
     }
 }
 
