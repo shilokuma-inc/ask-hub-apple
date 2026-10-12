@@ -86,15 +86,17 @@ struct LoopStatusLoopItemTests {
         #expect(LoopStatusRow(repository: "o/r", report: loop(.running, discussion: 12)).loopItems(manualLoops: []).isEmpty)
     }
 
-    @Test func judgesManualLoopAssignmentByItsOwnCheckedTime() {
-        // 担当の印（オーケストレーターの PC）が新しくても、手動ループの確認時刻が古ければ担当者の PC が書いていない
-        let stale = loop(.running, writer: .manual, discussion: 30, checkedMinutesAgo: 120, runner: "partner")
-        let items = row([loop(.running, discussion: 12), stale]).loopItems(manualLoops: [])
-        #expect(items[0].row.status(now: now) == .reported(items[0].row.report!))
-        #expect(items[1].row.status(now: now) == .unassigned)
-        // 自動ループは、担当の印が新しければ確認時刻が古くても担当 PC はいる
-        let oldAutomatic = loop(.waitingToStart, discussion: 12, checkedMinutesAgo: 120)
-        #expect(row([oldAutomatic, stale]).loopItems(manualLoops: [])[0].row.isAssigned(now: now))
+    @Test func keepsStoppedManualLoopReportedLikeSingleRow() {
+        // 回答待ち・開始待ちで止まった手動ループは確認時刻を書き直さないので、古くなっても状態を出し続ける（異常にも数えない）
+        let waiting = loop(.waitingForAnswer, writer: .manual, discussion: 30, checkedMinutesAgo: 120, runner: "partner")
+        let items = row([loop(.running, discussion: 12), waiting]).loopItems(manualLoops: [])
+        #expect(items[1].row.status(now: now) == .reported(waiting))
+        #expect(items[1].display(now: now).statusText == "回答待ち")
+        #expect(!items[1].row.isAbnormal(now: now))
+        // 担当の印も確認時刻も古ければ、今までどおり担当 PC なし
+        let oldAutomatic = loop(.running, discussion: 12, checkedMinutesAgo: 120)
+        let gone = row([oldAutomatic, waiting], heartbeatMinutesAgo: nil).loopItems(manualLoops: [])
+        #expect(gone.map { $0.row.status(now: now) } == [.unassigned, .unassigned])
     }
 
     @Test func headingShowsRepositoryWideStatus() {
@@ -106,7 +108,7 @@ struct LoopStatusLoopItemTests {
         #expect(limited.statusText.hasPrefix("上限で待機中（"))
         #expect(limited.tone == .paused)
 
-        // 担当の印も本文の確認時刻も古い
+        // 担当の印も、1 行に出すループの確認時刻も古い
         var old = row(loops.map { report in
             var report = report
             report.checkedAt = now.addingTimeInterval(-3 * 3600)

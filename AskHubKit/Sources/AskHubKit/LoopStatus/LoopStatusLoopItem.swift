@@ -46,14 +46,10 @@ extension LoopStatusRow {
             return []
         }
         return loops.map { loop in
-            let manual = loop.report.writer == .manual
-            let row = LoopStatusRow(
-                repository: repository,
-                report: loop.report,
-                issueURL: issueURL,
-                // 担当の印はオーケストレーターの PC のもの。手動ループは担当者が書いた確認時刻だけで決める
-                lastSeen: manual ? nil : lastSeen
-            )
+            // 担当 PC の判定は 1 行の表示と同じ（担当の印か、そのループの確認時刻）。手動ループは止まると確認時刻を書き直さないので、
+            // 確認時刻だけで決めると、回答待ち・開始待ちで止まった手動ループが「担当 PC なし」になってしまう。
+            // 実行中のまま書かれなくなった手動ループは、手動ループの節（`ManualLoopItem.isStale`）が知らせる
+            let row = LoopStatusRow(repository: repository, report: loop.report, issueURL: issueURL, lastSeen: lastSeen)
             return LoopStatusLoopItem(row: row, mode: Self.mode(of: loop.report, in: repository, manualLoops: manualLoops))
         }
     }
