@@ -125,6 +125,18 @@ struct SampleLoopStatusSource: LoopStatusSource {
                     waitingPullRequests: [58]
                 )
             ]),
+            // 完了した epic（最終 PR のマージ待ち）が残ったまま、次の Discussion の自動ループを起動した（自動ループも Discussion ごとのコメント）
+            Self.loops(org, "focus-timer-ios", issue: 6, checkedAt: minutesAgo(2), [
+                LoopStatusReport(
+                    state: .completed,
+                    epic: "epic/themes",
+                    discussion: 70,
+                    progress: .init(completed: 6, total: 6, deferred: 0),
+                    lastActivityAt: minutesAgo(90),
+                    checkedAt: minutesAgo(2)
+                ),
+                LoopStatusReport(state: .running, discussion: 74, checkedAt: minutesAgo(2))
+            ]),
             // 同じリポジトリで、手動ループが 2 つ回っている
             Self.loops(org, "story-maker", issue: 4, checkedAt: minutesAgo(2), [
                 LoopStatusReport(

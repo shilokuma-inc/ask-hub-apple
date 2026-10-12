@@ -83,7 +83,7 @@ struct LoopStatusModelTests {
         let model = LoopStatusModel.sample()
         await model.refresh()
         #expect(model.state == .loaded)
-        #expect(model.rows.count == 12)
+        #expect(model.rows.count == 13)
         let now = Date()
         let displays = model.rows.map { $0.display(now: now) }
         #expect(displays.contains { $0.isStuck })
@@ -107,6 +107,9 @@ struct LoopStatusModelTests {
         #expect(items("pair-quiz-ios").map(\.mode) == [.automatic, .manual(assignee: "partner")])
         #expect(items("pair-quiz-ios").map { $0.display(now: now).statusText } == ["実行中", "回答待ち"])
         #expect(items("story-maker").map(\.mode) == [.manual(assignee: TrustedAuthors.defaultLogins[0]), .manual(assignee: "partner")])
+        // 完了した epic と次に起動した Discussion の自動ループも、Discussion ごとに並べる
+        #expect(items("focus-timer-ios").map(\.mode) == [.automatic, .automatic])
+        #expect(items("focus-timer-ios").map { $0.display(now: now).statusText } == ["完了（最終 PR のマージ待ち）", "実行中"])
         // ループが 1 つのリポジトリは、今までどおり 1 行
         #expect(items("ask-hub-apple").isEmpty)
         // サンプルの異常（異常終了・長く動きが無い・担当 PC なしの進行中の epic）はループごとに数え、並べたループには異常が無い
