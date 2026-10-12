@@ -188,6 +188,8 @@ struct LoopStatusRowView: View {
                 } else {
                     Label(mode.title, systemImage: mode.systemImage)
                         .font(.subheadline.weight(.semibold))
+                        // アイコンも文字と同じ色にする（既定ではアイコンだけアクセントカラーになる）
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                         .accessibilityIdentifier("loop-mode")
                 }
