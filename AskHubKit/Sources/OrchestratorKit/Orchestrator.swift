@@ -166,6 +166,10 @@ public actor Orchestrator {
     var ideaTracker = IdeaRequestTracker()
     var repositoryRequestTracker = RepositoryRequestTracker()
     var conflictTracker = ConflictTracker()
+    /// 裏で実行中の最終 PR のコンフリクトの解消（キーはリポジトリの `owner/name` の小文字。同じリポジトリでは 1 件ずつ）
+    var conflictResolutions: [String: Task<Void, Never>] = [:]
+    /// 最後に取得した、コンフリクトした最終 PR。解消が終わったリポジトリで、次の PR をポーリングを待たずに始めるのに使う
+    var conflictingPullRequests: [ConflictingPullRequest] = []
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
     var loopStatusPublisher = LoopStatusPublisher()
