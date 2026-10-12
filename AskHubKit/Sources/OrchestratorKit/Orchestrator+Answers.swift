@@ -1,6 +1,7 @@
 import AskHubKit
 
-// 回答の後処理。質問がすべて回答された Discussion / PR のラベルを付け替える
+// 回答の後処理。質問がすべて回答された Discussion / PR のラベルを付け替える。
+// あわせて、この PC の自動ループの epic を求める（回答による再開と、GitHub の情報からの最終 PR の作成に使う）
 extension Orchestrator {
     /// 質問がすべて回答された Discussion / PR の後処理。
     /// 手で回す Discussion（`manual-loop`）では `addsReadyLabel` を `false` にし、ループを始めない
@@ -26,5 +27,36 @@ extension Orchestrator {
         } catch {
             log("\(name) の needs-answer を外せませんでした（次のポーリングで再試行します）: \(error)")
         }
+    }
+
+    /// 担当リポジトリ（`fullName` の小文字）ごとの、この PC の自動ループの epic（制御用 worktree の `epic/` のブランチ）。
+    ///
+    /// ralph-kit が作業場所を Discussion ごとに分けるまでは、この PC で回す手動ループも制御用 worktree を使う。
+    /// 手動ループのあるリポジトリでは、制御用 worktree の epic のゴール元が手動ループの Discussion のとき・記録が無いときは含めない
+    /// （ゴール元を記録するのは自動ループの起動スクリプトだけ）
+    func automaticEpicBranches(in epics: [String: EpicSnapshot]) -> [String: String] {
+        var branches: [String: String] = [:]
+        for (key, epic) in epics {
+            guard let branch = epic.branch, branch.hasPrefix("epic/") else {
+                continue
+            }
+            if manualLoopRepositories.contains(key) {
+                guard let discussion = epic.discussion, !isManualLoop(discussion, in: key) else {
+                    continue
+                }
+            }
+            branches[key] = branch
+        }
+        return branches
+    }
+
+    /// 手動ループ（`manual-loop`）の Discussion か。このポーリングで取得できていなければ `false`。
+    /// ゴール元の記録がある epic は自動ループのもの（`manual-loop` の Discussion は自動では起動しない）。
+    /// 取得の失敗で自動ループとみなさないと、その回に付いた回答を処理済みにしてしまい、次のポーリングで再開できなくなる
+    private func isManualLoop(_ discussion: Int, in repositoryKey: String) -> Bool {
+        guard let manualLoops else {
+            return false
+        }
+        return manualLoops.contains { $0.repository.lowercased() == repositoryKey && $0.number == discussion }
     }
 }

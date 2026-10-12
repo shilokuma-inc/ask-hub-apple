@@ -68,7 +68,7 @@ public struct ManualLoopItem: Sendable, Equatable, Identifiable {
     public static let staleThreshold: TimeInterval = 30 * 60
 
     public var epic: ManualLoopEpic
-    /// 担当者が書いた状態（`writer` が `manual` で、この Discussion のもの）。まだ始めていなければ `nil`
+    /// 担当者が書いた状態（`writer` が `manual` で、この Discussion のループのもの）。まだ始めていなければ `nil`
     public var report: LoopStatusReport?
     /// 担当者が自分か
     public var isMine: Bool
@@ -86,6 +86,17 @@ public struct ManualLoopItem: Sendable, Equatable, Identifiable {
         report?.state.title ?? "未開始"
     }
 
+    /// この Discussion の手動ループの状態。同じリポジトリで複数のループが回るので、本文とループごとのコメント（`board`）から
+    /// その Discussion のループを読む。無ければ、ゴール元の番号を書いていない古い形の本文の手動ループ（1 つしか回せなかった頃の形）を使う
+    static func manualReport(of discussion: Int, in row: LoopStatusRow) -> LoopStatusReport? {
+        if let report = row.board?.loop(discussion: discussion)?.report {
+            return report.writer == .manual ? report : nil
+        }
+        return row.report.flatMap { report in
+            report.writer == .manual && (report.discussion == nil || report.discussion == discussion) ? report : nil
+        }
+    }
+
     /// ステータスタブの「手動ループ」に出す行を組み立てる
     /// - Parameters:
     ///   - viewer: トークンの持ち主の login
@@ -99,9 +110,7 @@ public struct ManualLoopItem: Sendable, Equatable, Identifiable {
     ) -> [Self] {
         epics.map { epic in
             let row = rows.first { $0.repository.caseInsensitiveCompare(epic.subject.repository) == .orderedSame }
-            let report = row?.report.flatMap { report in
-                report.writer == .manual && (report.discussion == nil || report.discussion == epic.subject.number) ? report : nil
-            }
+            let report = row.flatMap { manualReport(of: epic.subject.number, in: $0) }
             let waiting = report?.waitingPullRequests ?? []
             let answered = waiting.allSatisfy { !needsAnswer.contains("\(epic.subject.repository)#\($0)".lowercased()) }
             let isRunning = report?.state == .running

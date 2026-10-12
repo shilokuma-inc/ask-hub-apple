@@ -327,20 +327,22 @@ extension GitHubInboxSource {
                 title: title,
                 url: url,
                 author: node.author?.login,
-                labels: node.labels?.nodes.compactMap(\.self).map(\.name) ?? []
+                labels: node.labels?.nodes.compactMap(\.self).map(\.name) ?? [],
+                baseBranch: node.baseRefName
             )
         }
     }
 
     private static func searchQuery(type: String) -> String {
         let fields = "id number title url closed repository { nameWithOwner } author { login } labels(first: 100) { nodes { name } }"
+        // PR の base は同じ検索で取る（どのループの PR かを見分けるため。検索の回数は増やさない）
         return """
         query($query: String!, $after: String) {
           search(query: $query, type: \(type), first: 50, after: $after) {
             pageInfo { hasNextPage endCursor }
             nodes {
               ... on Discussion { \(fields) }
-              ... on PullRequest { \(fields) }
+              ... on PullRequest { \(fields) baseRefName }
             }
           }
         }
@@ -408,6 +410,8 @@ private struct SearchNode: Decodable {
     let repository: Repository?
     let author: Author?
     let labels: IssueSearchNode.Labels?
+    /// PR の base のブランチ（Discussion には無い）
+    let baseRefName: String?
 }
 
 private struct NodeData<Node: Decodable>: Decodable {

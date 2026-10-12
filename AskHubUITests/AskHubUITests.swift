@@ -359,6 +359,12 @@ final class AskHubUITests: XCTestCase {
         scrollUntilHittable(app.staticTexts["長く動きがありません"], in: app)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "最後の動き: ")).firstMatch.exists)
 
+        // 同じリポジトリで自動ループと手動ループが回っていれば、リポジトリの見出しの下にループを並べる
+        scrollUntilHittable(app.staticTexts["pair-quiz-ios"], in: app)
+        scrollUntilHittable(app.staticTexts["epic/share"], in: app)
+        XCTAssertTrue(app.staticTexts["ループ 2 つ"].exists)
+        XCTAssertTrue(app.staticTexts["手動ループ（@partner）"].exists)
+
         // 担当 PC がいないリポジトリ（weather-mini）と状態の無いリポジトリは、一覧の下のほうにある
         scrollUntilHittable(app.staticTexts["状態なし"], in: app)
         scrollUntilHittable(app.staticTexts["weather-mini"], in: app)
