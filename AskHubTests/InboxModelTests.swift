@@ -121,6 +121,19 @@ struct InboxModelTests {
         #expect(tokens.withLock { $0 } == ["github_pat_saved"])
     }
 
+    @Test func groupsSampleQuestionsByDiscussion() async {
+        let model = InboxModel.sample()
+        await model.refresh()
+        // 取得した順（古い順）では notti-ios#12 の 2 問目が最後にあり、一覧では 1 問目に続けて並ぶ。PR の ask はまとめない
+        #expect(model.questions.map(\.subject.shortReference) == [
+            "notti-ios#12", "ask-hub-apple#34", "ask-hub-apple#128", "notti-ios#12"
+        ])
+        #expect(model.groupedQuestions.map(\.subject.shortReference) == [
+            "notti-ios#12", "notti-ios#12", "ask-hub-apple#34", "ask-hub-apple#128"
+        ])
+        #expect(model.groupedQuestions.map(\.marker.id) == ["d12-q1", "d12-q2", "pr34-1", "d128-q1"])
+    }
+
     @Test func failureKeepsPreviousResultsAndExplainsInvalidToken() async {
         let fails = OSAllocatedUnfairLock(initialState: false)
         let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in
