@@ -438,7 +438,8 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 
 **削除**:
 
-1. ループのプロセスが動いていれば外さない。制御用 worktree に state ファイルが残っていれば、強制の依頼でなければ外さない
+1. ループのプロセスが動いていれば外さない。最終 PR のコンフリクトを裏で解消している間も外さない（解消はメインの checkout に一時 worktree を作るため）。
+   制御用 worktree に state ファイルが残っていれば、強制の依頼でなければ外さない
 2. ローカルも消す依頼なら、`removeRepositoryCommand`（既定は `scripts/orchestrator/remove-repo.sh`）に
    `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する。スクリプトは、強制でなければ
    未コミットの変更（ループの作業ファイル `.claude/askhub-*`・`.claude/ralph-*.local.*` は除く）・stash・どのリモートにも無いコミットを持つブランチがないかを確かめる。
