@@ -237,6 +237,20 @@ struct LoopStatusPublisherTests {
             == [.createComment(issue: 7, body: next.commentBody), .deleteComment(id: 1)])
     }
 
+    @Test func keepsCommentsWhileLoopDiscussionIsUnknown() {
+        var publisher = LoopStatusPublisher()
+        publisher.adopt(
+            [record(7, body: repository(at: now).issueBody)],
+            comments: [comment(1, loop(.waitingToStart, discussion: 20, at: now))],
+            repositoryKey: key,
+            trustedAuthors: trusted
+        )
+        // どの Discussion のループか分からない（上限で待機中のまま再起動した・手で始めたループが動いている）間は、前のコメントを消さない
+        let limited = loop(.usageLimited, discussion: nil, at: now)
+        #expect(decide(publisher, repository(at: now), limited, at: now).isEmpty)
+        #expect(decide(publisher, repository(at: now), loop(.running, discussion: nil, at: now), at: now).isEmpty)
+    }
+
     @Test func deletesCommentsOfPreviousLoopAndDuplicates() {
         var publisher = LoopStatusPublisher()
         let previous = loop(.completed, discussion: 9, at: now)
@@ -429,15 +443,15 @@ extension OrchestratorTests {
         #expect(github.createdLoopStatusComments.isEmpty)
     }
 
-    @Test func writesLoopBeingStartedAndGivenUpUnderItsDiscussion() async throws {
+    @Test func writesLoopBeingStartedUnderLaunchedDiscussion() async throws {
         let github = FakeGitHub([
-            .success([.fixture(number: 20), .fixture(number: 25, isManualLoop: true), .fixture(number: 15, author: "someone")])
+            .success([.fixture(number: 20), .fixture(number: 10, isManualLoop: true), .fixture(number: 15, author: "someone")])
         ])
         let runtime = FakeRuntime()
         let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
 
-        // ready-for-loop の #20 を起動した。準備が終わる前（ゴール元の記録も promise も無い）も、#20 のループとして書く。
-        // 手動ループ・信用しない author の Discussion（#25・#15）は、この PC の開始待ちとして数えない
+        // ready-for-loop の #20 を起動した。準備が終わる前（ゴール元の記録も promise も無い）も、起動した #20 のループとして書く。
+        // 手動ループ・信用しない author の Discussion（#10・#15）は、この PC の開始待ちとして数えない
         try await orchestrator.pollOnce()
         #expect(runtime.launched.count == 1)
         let started = try #require(github.loopCommentReport())

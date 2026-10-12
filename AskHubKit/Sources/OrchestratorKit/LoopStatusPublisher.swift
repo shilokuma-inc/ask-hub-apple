@@ -107,6 +107,10 @@ public struct LoopStatusPublisher: Sendable, Equatable {
                 actions.append(.createComment(issue: number, body: loop.commentBody))
             }
         }
+        // どの Discussion のループか分からない状態（ループが無い以外）では、取り違えて消さないよう前のコメントを残す
+        guard loop.discussion != nil || loop.state == .noLoop else {
+            return actions
+        }
         for comment in entry.comments where comment.id != kept?.id {
             actions.append(.deleteComment(id: comment.id))
         }
@@ -188,7 +192,7 @@ public struct LoopStatusPublisher: Sendable, Equatable {
             entry.body = LoopStatusBoard(issueBody: issue.body, comments: [], trustedAuthors: trustedAuthors).body
         }
         // 古い形の本文に手動ループが書いている Discussion にも、コメントを書かない（1 つの Discussion の書き手は 1 つ）
-        if case let .loop(legacy) = entry.body, legacy.writer != .orchestrator, let discussion = legacy.discussion {
+        if case let .loop(legacy) = entry.body, legacy.writer == .manual, let discussion = legacy.discussion {
             entry.otherWriters[discussion] = legacy
         }
         for comment in comments.sorted(by: { $0.id < $1.id }) where trustedAuthors.contains(comment.author) {
