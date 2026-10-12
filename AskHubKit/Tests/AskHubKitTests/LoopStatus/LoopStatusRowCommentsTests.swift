@@ -156,9 +156,11 @@ struct GitHubLoopStatusSourceCommentsTests {
         let http = MockHTTPClient([
             .init(status: 200, body: #"""
                 { "data": { "repository": { "issue": { "comments": { "pageInfo": { "hasNextPage": true, "endCursor": "c1" }, "nodes": [
-                  { "databaseId": 11, "updatedAt": "2027-01-15T08:00:00Z", "body": "本文", "author": { "login": "mrs1669" } },
+                  { "databaseId": 6122919485, "fullDatabaseId": "6122919485", "updatedAt": "2027-01-15T08:00:00Z", "body": "本文",
+                    "author": { "login": "mrs1669" } },
                   null,
-                  { "databaseId": 12, "updatedAt": "2027-01-15T08:00:00Z", "body": "消されたユーザー", "author": null },
+                  { "databaseId": null, "fullDatabaseId": "9007199254740993", "updatedAt": "2027-01-15T08:00:00Z", "body": "消されたユーザー",
+                    "author": null },
                   { "databaseId": 13 }
                 ] } } } } }
                 """#),
@@ -173,9 +175,10 @@ struct GitHubLoopStatusSourceCommentsTests {
         let comments = try await source.loopStatusComments(repository: "o/r", issue: 7)
 
         let updatedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        // id は 32 bit を超える（fullDatabaseId を先に読み、無ければ databaseId）
         #expect(comments == [
-            LoopStatusComment(id: 11, author: "mrs1669", updatedAt: updatedAt, body: "本文"),
-            LoopStatusComment(id: 12, author: nil, updatedAt: updatedAt, body: "消されたユーザー"),
+            LoopStatusComment(id: 6_122_919_485, author: "mrs1669", updatedAt: updatedAt, body: "本文"),
+            LoopStatusComment(id: 9_007_199_254_740_993, author: nil, updatedAt: updatedAt, body: "消されたユーザー"),
             LoopStatusComment(id: 14, author: "partner", updatedAt: updatedAt.addingTimeInterval(-3600), body: "2 ページ目")
         ])
         let variables = try http.requests.map { request in
@@ -184,6 +187,7 @@ struct GitHubLoopStatusSourceCommentsTests {
             return try #require(object["variables"] as? [String: Any])
         }
         #expect(variables.count == 2)
+        #expect(variables[0]["after"] is NSNull)
         #expect(variables[0]["owner"] as? String == "o")
         #expect(variables[0]["name"] as? String == "r")
         #expect(variables[0]["number"] as? Int == 7)

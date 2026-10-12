@@ -143,7 +143,7 @@ public struct GitHubLoopStatusSource: LoopStatusSource {
             issue(number: $number) {
               comments(first: 100, after: $after) {
                 pageInfo { hasNextPage endCursor }
-                nodes { databaseId updatedAt body author { login } }
+                nodes { databaseId fullDatabaseId updatedAt body author { login } }
               }
             }
           }
@@ -236,15 +236,17 @@ private struct CommentConnection: Decodable {
 
 private struct CommentNode: Decodable {
     let databaseId: Int?
+    /// コメントの id は GraphQL の `Int`（32 bit）を超えるので、`BigInt`（文字列）の方を先に読む
+    let fullDatabaseId: String?
     let updatedAt: Date?
     let body: String?
     let author: IssueNode.Author?
 
     var comment: LoopStatusComment? {
-        guard let databaseId, let updatedAt, let body else {
+        guard let id = fullDatabaseId.flatMap({ Int($0) }) ?? databaseId, let updatedAt, let body else {
             return nil
         }
-        return LoopStatusComment(id: databaseId, author: author?.login, updatedAt: updatedAt, body: body)
+        return LoopStatusComment(id: id, author: author?.login, updatedAt: updatedAt, body: body)
     }
 }
 
