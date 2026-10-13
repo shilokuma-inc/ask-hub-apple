@@ -57,24 +57,18 @@ public protocol OrchestratorGitHub: Sendable {
     func createLoopStatusIssue(in repository: String, body: String) async throws -> Int
     /// 状態用の Issue の本文を置き換える。閉じられていれば開き直す
     func updateLoopStatusIssue(in repository: String, number: Int, body: String) async throws
+    /// 状態用の Issue のコメント（古い順。author を問わない）。ループ（Discussion）ごとの状態はコメントに書く
+    func loopStatusComments(in repository: String, issue number: Int) async throws -> [LoopStatusComment]
+    /// 状態用の Issue にコメントを足す。コメントの id を返す
+    func createLoopStatusComment(in repository: String, issue number: Int, body: String) async throws -> Int
+    /// 状態用の Issue のコメントの本文を置き換える
+    func updateLoopStatusComment(in repository: String, id: Int, body: String) async throws
     /// リポジトリの、`build-hosts` が付いた Issue（閉じたものも含む）
     func buildHostsIssues(in repository: String) async throws -> [LoopStatusIssueRecord]
     /// ビルドの Mac の状態の Issue を作る（ラベルが無ければ作る）。Issue の番号を返す
     func createBuildHostsIssue(in repository: String, body: String) async throws -> Int
     /// ビルドの Mac の状態の Issue の本文を置き換える。閉じられていれば開き直す
     func updateBuildHostsIssue(in repository: String, number: Int, body: String) async throws
-}
-
-/// 終わるまで待って実行したコマンドの結果
-public struct CommandResult: Sendable, Equatable {
-    public let status: Int32
-    /// 標準出力と標準エラー
-    public let output: String
-
-    public init(status: Int32, output: String) {
-        self.status = status
-        self.output = output
-    }
 }
 
 /// 既にある PR
@@ -91,35 +85,6 @@ public struct ExistingPullRequest: Sendable, Equatable {
         self.isOpen = isOpen
         self.body = body
         self.isMerged = isMerged
-    }
-}
-
-/// ループの状態の取得と起動。テストでは差し替える
-public protocol LoopRuntime: Sendable {
-    func status(of repository: RepositoryConfig) async -> LoopStatus
-    /// `arguments` をシェルを経由せずに実行する。終了は待たない。
-    /// `environment` は、この起動にだけ追加で渡す環境変数（起動の理由を起動スクリプトに伝えるのに使う）
-    func launch(_ arguments: [String], environment: [String: String], for repository: RepositoryConfig) async throws
-    /// 制御用 worktree のブランチ・ゴール・state を読む
-    func epicSnapshot(of repository: RepositoryConfig) async -> EpicSnapshot
-    /// 最新のループ（準備を含む）が Claude の利用上限で終わっていれば、解除の時刻。そうでなければ `nil`
-    func usageLimitReset(of repository: RepositoryConfig) async -> Date?
-    /// ループのプロセスが生きているのに、今の周回が `timeout` より長く進んでいなければ、そのプロセス
-    func hungLoop(of repository: RepositoryConfig, timeout: Duration, now: Date) async -> HungLoop?
-    /// 固まったループのプロセスを止める（SIGTERM、猶予の後も残れば SIGKILL）
-    func terminate(_ loop: HungLoop) async
-    /// 「goal にタスクが無かった」目印を消す（Discussion に知らせた後。追記してラベルを付け直せば、もう一度準備する）
-    func clearNoTasksMarker(of repository: RepositoryConfig) async
-    /// ループが最後に動いた時刻（state ファイル・goal・最新のログの更新時刻のうち新しいもの）。無ければ `nil`
-    func lastActivity(of repository: RepositoryConfig) async -> Date?
-    /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める
-    func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
-}
-
-extension LoopRuntime {
-    /// 追加の環境変数なしで `arguments` を実行する。終了は待たない
-    public func launch(_ arguments: [String], for repository: RepositoryConfig) async throws {
-        try await launch(arguments, environment: [:], for: repository)
     }
 }
 
@@ -147,9 +112,10 @@ public actor Orchestrator {
     let log: @Sendable (String) -> Void
     var tracker = LaunchTracker()
     private var watcher = ResumeWatcher()
-    /// epic の最終 PR を作った（または既にあった）リポジトリ。毎回 GitHub に問い合わせないために覚える
+    /// epic の最終 PR を作った（または既にあった）epic（キーは `<repo小文字> <epic ブランチ>`）。毎回 GitHub に問い合わせないために覚える
     var finalizedEpics: Set<String> = []
-    /// GitHub の情報から最終 PR を作れるかを最後に確かめた時刻（キーは `<repo小文字> <epic ブランチ>`）
+    /// GitHub の情報から最終 PR を作れるかを最後に確かめた時刻（キーは `<repo小文字> <epic ブランチ>`）と、
+    /// 手動ループの完了を見るために状態用の Issue を最後に読んだ時刻（キーは `<repo小文字>`）
     var fallbackFinalChecks: [String: Date] = [:]
     /// 仮決め一覧への指示を受けてループを再開した epic。再び完了したら、最終 PR の本文を書き直す
     var epicsToRefresh: Set<String> = []
@@ -166,6 +132,12 @@ public actor Orchestrator {
     var ideaTracker = IdeaRequestTracker()
     var repositoryRequestTracker = RepositoryRequestTracker()
     var conflictTracker = ConflictTracker()
+    /// 裏で実行中の最終 PR のコンフリクトの解消（キーはリポジトリの `owner/name` の小文字。同じリポジトリでは 1 件ずつ）
+    var conflictResolutions: [String: Task<Void, Never>] = [:]
+    /// 最後に取得した、コンフリクトした最終 PR。解消が終わったリポジトリで、次の PR をポーリングを待たずに始めるのに使う
+    var conflictingPullRequests: [ConflictingPullRequest] = []
+    /// 裏の解消が終わるのを待っている（`--once`・`run` の終わり）。その間は新しい解消を始めない
+    var drainsConflictResolutions = false
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
     var loopStatusPublisher = LoopStatusPublisher()
@@ -215,7 +187,8 @@ public actor Orchestrator {
     }
 
     /// `pollInterval` ごとにポーリングする。タスクがキャンセルされるまで戻らない。
-    /// 1 回のポーリングの失敗（ネットワークの断など）はログに出して次の回に持ち越す
+    /// 1 回のポーリングの失敗（ネットワークの断など）はログに出して次の回に持ち越す。
+    /// 戻る前に、裏で実行中の最終 PR のコンフリクトの解消が終わるのを待つ
     public func run(sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) async {
         while !Task.isCancelled {
             do {
@@ -226,9 +199,10 @@ public actor Orchestrator {
             do {
                 try await sleep(config.pollInterval)
             } catch {
-                return
+                break
             }
         }
+        await waitForConflictResolutions()
     }
 
     /// 1 回分のポーリング。実行した起動判定を返す
@@ -360,11 +334,12 @@ public actor Orchestrator {
                 log("\(subject.repository)#\(subject.number) の質問を取得できませんでした: \(error)")
             }
         }
-        let epicsInProgress = Set(await epicSnapshots().filter(\.value.inProgress).keys)
+        let epics = await epicSnapshots()
         let actions = watcher.update(
             snapshots: snapshots,
             statuses: statuses,
-            epicsInProgress: epicsInProgress,
+            epicsInProgress: Set(epics.filter(\.value.inProgress).keys),
+            automaticEpics: automaticEpicBranches(in: epics),
             manualLoopRepositories: manualLoopRepositories
         )
         for action in actions {

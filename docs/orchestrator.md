@@ -305,7 +305,10 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
 
 1. 担当リポジトリの owner の organization 全体から `needs-answer` の open な Discussion / PR を取得し（`GitHubInboxSource`）、担当リポジトリのものだけを扱う
 2. 信用する author の質問と、その回答状況を読み取る（回答済み = 信用する author の返信が 1 件以上）
-3. PR の ask（※2）に**新しく**回答が付いたら、そのリポジトリを再開待ちにする。Discussion（※1）の回答では再開しない（ループは `ready-for-loop` で始まる）
+3. PR の ask（※2）に**新しく**回答が付き、その PR の base がこの PC の自動ループの epic（制御用 worktree のブランチ）なら、そのリポジトリを再開待ちにする。
+   Discussion（※1）の回答では再開しない（ループは `ready-for-loop` で始まる）。
+   同じリポジトリで自動ループと手動ループが回るので、ほかの epic（手動ループ・`develop` など）宛ての PR の回答では再開しない
+   （[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425)）。PR の base は `needs-answer` の検索で一緒に取る（`baseRefName`。検索の回数は増やさない）
 4. 再開待ちのリポジトリ
 
    | 状態 | 動作 |
@@ -323,8 +326,16 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
    ただし、信用する author の Discussion に `manual-loop` が付いていれば（手で回す Discussion）、`ready-for-loop` は付けずに
    `needs-answer` だけを外す（ログに「manual-loop（手で回す）なので、ready-for-loop は付けません」と出す）。
    `manual-loop` と author は `needs-answer` の検索結果から読む。信用外の author の Discussion に付いた `manual-loop` は無視し、今までどおり扱う
-6. 信用する author の open な `manual-loop` の Discussion があるリポジトリ（手動ループ）では、PR の ask に回答が付いても再開待ちにしない。
-   ループは担当者の Mac で動いているので、担当者がアプリの「回答がそろいました」を見て再開する
+6. 信用する author の open な `manual-loop` の Discussion があるリポジトリ（手動ループ）では、手動ループの epic 宛ての PR の回答で再開待ちにしない。
+   ループは担当者の Mac で動いているので、担当者がアプリの「回答がそろいました」を見て再開する。
+   手動ループのあるリポジトリでは、次のときも自動ループの epic とみなさない（ralph-kit が作業場所を Discussion ごとに分けるまでは、
+   この PC で回す手動ループも制御用 worktree を使うため）。このとき、そのリポジトリの再開待ちもやめる
+   - 制御用 worktree の epic のゴール元（起動スクリプトの記録）が `manual-loop` の Discussion
+   - ゴール元の記録が無い（手で始めた epic）
+
+   そのポーリングで `manual-loop` の Discussion を取得できなかったときは、ゴール元の記録がある epic を自動ループの epic とみなす
+   （ゴール元を記録するのは自動ループの起動スクリプトだけ。取得の失敗で見送ると、その回に付いた回答を処理済みにしてしまい再開できなくなる）。
+   base が分からない PR（base を埋めない取得元から来たもの。GitHub の検索では必ず取れる）は、手動ループの無いリポジトリでだけ今までどおり再開待ちにする
 
 回答済みの質問はメモリ上でだけ覚えるため、オーケストレーターを再起動した直後は、回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
 
@@ -438,7 +449,8 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 
 **削除**:
 
-1. ループのプロセスが動いていれば外さない。制御用 worktree に state ファイルが残っていれば、強制の依頼でなければ外さない
+1. ループのプロセスが動いていれば外さない。最終 PR のコンフリクトを裏で解消している間も外さない（解消はメインの checkout に一時 worktree を作るため）。
+   制御用 worktree に state ファイルが残っていれば、強制の依頼でなければ外さない
 2. ローカルも消す依頼なら、`removeRepositoryCommand`（既定は `scripts/orchestrator/remove-repo.sh`）に
    `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する。スクリプトは、強制でなければ
    未コミットの変更（ループの作業ファイル `.claude/askhub-*`・`.claude/ralph-*.local.*` は除く）・stash・どのリモートにも無いコミットを持つブランチがないかを確かめる。
@@ -506,12 +518,17 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 
 ## GitHub の情報から最終 PR を作る
 
-制御用 worktree の「最終 PR に載せる内容」が使えない epic は、次の場合に GitHub の情報から最終 PR を作る（ポーリングの最後、リポジトリごとに 10 分に 1 回まで）。
+制御用 worktree の「最終 PR に載せる内容」が使えない epic は、次の場合に GitHub の情報から最終 PR を作る（ポーリングの最後）。
+同じリポジトリで複数のループ（自動ループと手動ループ・複数の手動ループ）が回るので、候補はループ（epic）ごとに出し、両方の経路を並べて見る
+（[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425)）。GitHub への問い合わせ（既にある PR・材料）は epic ごとに 10 分に 1 回まで。
 
-- **手動ループ**（`manual-loop` の Discussion が open なリポジトリ）: 信用する author の状態用の Issue の書き手が `manual`・状態が `completed` で、
-  epic とゴール元の Discussion が書かれていて、書かれてから 30 分（`LoopStatusReport.freshness`）たった。
-  担当者が `scripts/askhub-manual.sh final`（手元の state の内容で作る）を流すのを、その間は待つ
-- **自動ループ**: ループが正常に止まり（異常終了したものは再開して内容を書かせるので除く）、タスクもすべて終わっているのに「最終 PR に載せる内容」が空
+- **手動ループ**（`manual-loop` の Discussion が open なリポジトリ）: 信用する author が作った状態用の Issue の本文と、信用する author のループごとのコメント（`LoopStatusBoard`）のうち、
+  書き手が `manual`・状態が `completed` で、epic が書かれていて、書かれてから 30 分（`LoopStatusReport.freshness`）たった、open な `manual-loop` の Discussion のループ
+  （`manual-loop` の Discussion を取得できなかったポーリングでは絞らない）。
+  担当者が `scripts/askhub-manual.sh final`（手元の state の内容で作る）を流すのを、その間は待つ。状態用の Issue の読み直しはリポジトリごとに 10 分に 1 回まで
+- **自動ループ**: ループが正常に止まり（異常終了したものは再開して内容を書かせるので除く）、タスクもすべて終わっているのに「最終 PR に載せる内容」が空。
+  手動ループがあっても見る。ただし手動ループのあるリポジトリでは、制御用 worktree の epic のゴール元が `manual-loop` の Discussion のとき・記録が無いときは、
+  この PC の手動ループのものとして自動ループの経路では作らない（回答による再開と同じ判定）
 
 材料は、epic にマージされた子 PR・epic 宛てでまだ open の子 PR・タイトルか本文で epic に触れている open な仮決め一覧（`decision-log`）と実機確認（`needs-verify`）の Issue。
 本文の先頭にゴール元の Discussion の目印を置き、`epic-final` を付ける。GitHub の情報から作ったことも書き添える。
@@ -519,10 +536,15 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 
 ## epic の最終 PR のコンフリクトを解消する
 
-epic の最終 PR が既定ブランチとコンフリクトすると、AskHub のアプリからはマージも解消もできない。ポーリングの最後に（1 回のポーリングで 1 件）、次を行う。
+epic の最終 PR が既定ブランチとコンフリクトすると、AskHub のアプリからはマージも解消もできない。ポーリングの最後に探し、見つけたら次を**裏で**行う
+（[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425) の Q3）。解消は最長 30 分かかるが、ポーリングはその終わりを待たずに続ける。
+
+- 同じリポジトリでは 1 件ずつ、別のリポジトリは並列に解消する（`askhub-resolve-conflict` はメインの checkout に一時 worktree を作るため、同じリポジトリでは並べない）
+- 同じリポジトリでほかの最終 PR（自動ループと手動ループの epic など）もコンフリクトしていれば、前の解消が終わったところで、次のポーリングを待たずに始める。
+  今終わった PR は push で head が変わっているので、まだコンフリクトしていれば次のポーリングで取得し直してから試す
 
 1. org 全体の open な `epic-final` PR のうち、GitHub が `CONFLICTING` と判定したものを探す（`UNKNOWN` はまだ判定中なので次のポーリングに回す）。担当リポジトリのものだけを扱う
-2. `conflictCommand`（既定は `askhub-resolve-conflict`）を、終わるまで待って実行する。スクリプトはループの作業場所（制御用 worktree・スロット）とは別の一時 worktree で、head に base を取り込む
+2. `conflictCommand`（既定は `askhub-resolve-conflict`）を実行し、終わるまで裏で待つ。スクリプトはループの作業場所（制御用 worktree・スロット）とは別の一時 worktree で、head に base を取り込む
    - コンフリクトしなければ、そのまま head に push する（`ASKHUB_RESULT: merged`）
    - コンフリクトしたら `claude -p` に解消させ、CLAUDE.md の検証コマンドを通させてからマージコミットを作らせる。
      スクリプトが、マージが完了していること・コンフリクトの印が残っていないこと・head と base の両方を含むことを確かめてから、
@@ -530,7 +552,11 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 3. 結果を PR にコメントする。解消できなかったときは理由と、手元での解消が要ることを書く
 4. 同じ組み合わせ（head と base のコミット）では 1 回しか試さない。解消できなかったのが 3 回続いたら、その PR はあきらめる。
    コンフリクトが無くなった（検索に出なくなった）PR は忘れる。記録はメモリ上だけなので、再起動すると数え直す
-5. Claude の利用上限で終わったときは試したことにせず、解除の後に試し直す
+5. Claude の利用上限で終わったときは試したことにせず、解除の後に試し直す。上限で待機しているあいだは、新しい解消を始めない（実行中の解消は終わるまで待つ）
+
+`--once` で 1 回だけポーリングしたときと、ポーリングを終えるとき（`run` が戻るとき）は、実行中の解消が終わって結果を PR にコメントするまで待ってから終わる
+（解消の子プロセスはオーケストレーターが終わっても止まらないため）。待っている間は、同じリポジトリの次の最終 PR を始めない。launchd の停止・再起動ではプロセスがすぐに終わるので待たない（`AbandonProcessGroup` で子プロセスは残る）。
+記録はメモリ上だけなので、再起動した後に、まだコンフリクトしている PR を試し直すことがある（今までと同じ）
 
 ログは `~/Library/Logs/askhub/loops/<リポジトリ>-conflict-<PR 番号>-*.log`（claude の出力）。
 
