@@ -114,6 +114,28 @@ public struct InboxQuestion: Sendable, Equatable, Hashable, Identifiable {
         return body[close.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// 要回答の一覧に出す順に並べ替える。同じ Discussion の質問を、そのうち最初に出てくる質問の位置にまとめて続けて並べる（Discussion #418 の Q1）。
+    ///
+    /// 古い順の質問（`InboxFetcher.unansweredQuestions(orgs:)`）を渡すと、グループはそれぞれで最も古い質問の順に、
+    /// グループの中は古い順に並ぶ。PR の ask は同じ PR のものでもまとめず、渡された位置に置く（Q2 では決まっていない。仮決め #421）
+    public static func groupedByDiscussion(_ questions: [Self]) -> [Self] {
+        var discussions: [String: [Self]] = [:]
+        for question in questions where question.subject.kind == .discussion {
+            discussions[question.subject.nodeID, default: []].append(question)
+        }
+        var grouped: [Self] = []
+        var placed: Set<String> = []
+        for question in questions {
+            if question.subject.kind != .discussion {
+                grouped.append(question)
+            } else if placed.insert(question.subject.nodeID).inserted {
+                // 2 問目以降は、ここで 1 問目に続けて置く
+                grouped += discussions[question.subject.nodeID] ?? []
+            }
+        }
+        return grouped
+    }
+
     /// スレッドのうち、未回答の質問だけを返す。
     ///
     /// 信用する author が書いた目印だけを質問とみなし、信用する author の返信が 1 件以上あれば回答済みとして除く

@@ -34,6 +34,10 @@ final class AskHubUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["通知の頻度を調整したい"].firstMatch.waitForExistence(timeout: 5))
         // HTML タグと Markdown が混ざった質問のサンプルも一覧に出る
         XCTAssertTrue(app.staticTexts["HTMLタグの有効化"].firstMatch.exists)
+        // 同じ Discussion の質問は続けて並ぶ。作成日時では PR の ask より後の notti-ios#12 の Q2 が、PR の ask より上に来る（Discussion #418 の Q1）
+        let secondQuestion = app.staticTexts["Q2. 通知の文言 通知に表示する文言の案があれば教えてください。"]
+        let ask = app.staticTexts["【FEAT】受信箱の一覧を追加する"]
+        XCTAssertLessThan(secondQuestion.frame.minY, ask.frame.minY)
         let questions = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "要回答（")).firstMatch
         XCTAssertTrue(questions.exists)
         // マージ待ちの見出しは要回答の下にあり、スクロールすると出てくる

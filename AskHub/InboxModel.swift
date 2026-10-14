@@ -18,6 +18,7 @@ final class InboxModel {
         case failed(String)
     }
 
+    /// 未回答の質問（作成日時の古い順）。一覧に出す順は `groupedQuestions`
     private(set) var questions: [InboxQuestion] = []
     /// アプリから回答した質問。GitHub の検索に回答が反映されるまで、取り直しても一覧に出さない
     private var answeredQuestionIDs: Set<String> = []
@@ -77,6 +78,11 @@ final class InboxModel {
 
     /// 回答を投稿するときのトークンが無い
     struct MissingTokenError: Error {}
+
+    /// 要回答の一覧に出す順。同じ Discussion の質問を続けて並べ（Discussion #418 の Q1）、PR の ask はそれぞれの作成日時の位置に置く（仮決め #421）
+    var groupedQuestions: [InboxQuestion] {
+        InboxQuestion.groupedByDiscussion(questions)
+    }
 
     /// 同じ Discussion / PR に残っている、ほかの未回答の質問の数
     func remainingQuestions(besides question: InboxQuestion) -> Int {
