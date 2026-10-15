@@ -94,7 +94,7 @@ half_done() {
 previous_epic_unfinished() {
   [[ -d "$CTL" ]] && ! half_done && [[ "$(open_tasks)" -gt 0 ]]
 }
-UNFINISHED_MESSAGE="前の epic に未完了のタスクが残っています（${GOAL}）。1 リポジトリにつきループは 1 つなので、新しい epic は始めません"
+UNFINISHED_MESSAGE="前の epic に未完了のタスクが残っています（${GOAL}）。1 リポジトリにつき自動ループは 1 つなので、新しい epic は始めません"
 
 [[ -d "$CHECKOUT/.git" || -f "$CHECKOUT/.git" ]] || fail "checkout が見つかりません: $CHECKOUT"
 [[ -x "$CHECKOUT/scripts/ralph-setup.sh" && -x "$CHECKOUT/scripts/ralph-start.sh" ]] \
