@@ -29,7 +29,8 @@ public struct LoopStatusIssueRecord: Sendable, Equatable {
 /// - 自動ループのコメントは Discussion ごとに 1 つ。同時に動く自動ループはリポジトリに 1 つでも、準備を終えた epic と
 ///   起動した・待っている Discussion が違えば、それぞれのコメントに書く（PR #437 の担当者の判断）
 /// - 1 つの Discussion の書き手は 1 つ。手動ループのコメントがある Discussion には書かない
-/// - コメントを消すのは、その Discussion のループが終わったとき（自動ループの一覧から消えた）と、重複したときだけ。
+/// - コメントを消すのは、その Discussion のループが終わったとき（自動ループの一覧から消えた）と、重複したとき、
+///   ほかの書き手がその Discussion を書いているとき（自分のコメントだけ）。
 ///   どの Discussion のものか分からないループがある間は、一覧に無い Discussion のコメントも消さない
 public struct LoopStatusPublisher: Sendable, Equatable {
     public enum Action: Sendable, Equatable {

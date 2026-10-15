@@ -490,8 +490,9 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
   ゴール元の Discussion の番号が無い状態（手で始めた epic）はコメントに書かない
 - 自動ループのコメントは Discussion ごとに 1 つ。同時に動く自動ループはリポジトリに 1 つのままだが、制御用 worktree に準備を終えた epic（例: 完了して最終 PR のマージ待ちの #12）が
   残ったまま別の Discussion（#30）を起動した・起動を諦めた・待っているときは、#12 のコメントに epic の状態を、#30 のコメントに起動の状態を書く（PR #437 の担当者の判断）。
-  準備を終えた epic と別の Discussion を起動していれば、制御用 worktree のプロセス・state ファイルはそのループのものとし、epic を実行中にしない
-- 自動ループのコメントを消すのは、その Discussion のループが終わったとき（最終 PR がマージされた・epic が退避されて起動の記録にも `ready-for-loop` にも無い）と、重複したときだけ。
+  準備を終えた epic と別の Discussion を起動して開始を待っていれば、制御用 worktree のプロセス・state ファイルはそのループのものとし、epic を実行中にしない
+- 自動ループのコメントを消すのは、その Discussion のループが終わったとき（最終 PR がマージされた・epic が退避されて起動の記録にも `ready-for-loop` にも無い）と、重複したとき、
+  ほかの書き手（手動ループ・知らない書き手）がその Discussion を書いているとき（自分のコメントだけを消す）だけ。
   どの Discussion のものか分からないループがある間（手で始めた epic・起動の記録の無いループが動いている・起動してから `ready-for-loop` の一覧をまだ取得していない。
   上限で待機中に再起動したときなど）は、一覧に無い Discussion のコメントも消さない
 - 本文もコメントも、状態が変わったときだけ書き換え、変わらなければ 10 分ごとに確認時刻だけを書き直す。
@@ -513,7 +514,8 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
   自動ループのコメントを書かない（1 つの Discussion の書き手は 1 つ）。知らない書き手のコメントがある Discussion にも書かない。
   `manual-loop` の Discussion と信用しない author の Discussion は起動しないので、`ready-for-loop` が付いていても開始待ちとして書かない
 - 起動した Discussion は、準備が終わる前（ゴール元の記録も promise も無い）も、起動の記録（`LaunchTracker`）から実行中として書く。起動を諦めたら異常終了として書く。
-  準備を終えていない `ready-for-loop` の Discussion は、すべて開始待ちとして書く
+  開始を確かめた後にラベルを外せないまま残った Discussion は、制御用 worktree が別の epic に替わったら（別の Discussion の epic を準備した・別の Discussion を起動した）、終わったループとして書かない。
+  準備を終えていない `ready-for-loop` の Discussion は、すべて開始待ちとして書く（準備の結果やることが無かった Discussion は除く）
 
 ## ビルドの Mac の状態を書き出す（build-hosts）
 
