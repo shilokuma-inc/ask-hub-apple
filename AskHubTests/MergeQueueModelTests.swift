@@ -126,10 +126,10 @@ struct MergeQueueModelTests {
     @Test func describesUploadWorkflowErrorsWithPermissionGuidance() {
         // レート制限でない 403 は権限不足。設定画面への案内を付ける
         let denied = MergeQueueModel.message(for: UploadWorkflowError.permissionDenied)
-        #expect(denied.contains("Actions の書き込み権限（Read and write）"))
-        #expect(denied.contains("設定で"))
-        #expect(!denied.contains("github_pat"))
-        #expect(MergeQueueModel.message(for: UploadWorkflowError.workflowNotFound).contains("upload.yml"))
+        #expect(denied == "TestFlight に上げられませんでした。トークンに、このリポジトリの Actions の書き込み権限（Read and write）があるか確かめてください。"
+            + "設定で権限を付けたトークンを保存し直してください")
+        let notFound = MergeQueueModel.message(for: UploadWorkflowError.workflowNotFound)
+        #expect(notFound == "TestFlight に上げられませんでした。このリポジトリに Upload ワークフロー（upload.yml）が無いか、Actions が無効か、トークンから見えません")
         let unsupported = MergeQueueModel.message(for: UploadWorkflowError.dispatchNotSupported(message: "No ref found for: epic/x"))
         #expect(unsupported.contains("workflow_dispatch"))
         #expect(unsupported.hasSuffix("（No ref found for: epic/x）"))
