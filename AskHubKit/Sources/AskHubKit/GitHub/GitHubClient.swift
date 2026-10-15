@@ -91,6 +91,14 @@ public struct GitHubClient: Sendable {
         return try Self.decode(type, from: data)
     }
 
+    /// 本文付きのリクエストを送り、レスポンスの本文は読まない（204 を返す API や、本文を使わない API 向け）
+    public func send<Body: Encodable & Sendable>(_ method: String, _ path: String, body: Body) async throws {
+        var request = makeRequest(url: url(for: path, query: []), method: method)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+        _ = try await perform(request)
+    }
+
     /// 本文の無いリクエスト（ラベルの削除など）を送る。レスポンスの本文は読まない
     public func send(_ method: String, _ path: String) async throws {
         _ = try await perform(makeRequest(url: url(for: path, query: []), method: method))
