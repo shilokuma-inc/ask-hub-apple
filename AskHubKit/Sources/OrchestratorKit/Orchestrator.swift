@@ -99,7 +99,7 @@ public actor Orchestrator {
     var lastReloadFailure: String?
     /// 担当リポジトリごとの信用する author。ポーリングのはじめに求め直す
     var trust: TrustDirectory
-    /// このポーリングで取得した `manual-loop` の open な Discussion。取得に失敗したら `nil`（そのポーリングでは起動しない）
+    /// このポーリングで取得した `manual-loop` の open な Discussion。取得に失敗したら `nil`
     var manualLoops: [ManualLoopDiscussion]?
     /// 手動ループ（信用する author の open な `manual-loop` の Discussion）があるリポジトリ（`fullName` の小文字）。
     /// 取得に失敗したポーリングでは前回の値を使う
@@ -253,21 +253,17 @@ public actor Orchestrator {
         recordReadyDiscussions(discussions, snapshots: snapshots)
         let handled = await advanceLaunchedDiscussions(discussions, statuses: statuses, snapshots: snapshots)
 
-        // 手で回す epic があるリポジトリでは起動しない（Q4）。確かめられなければ、このポーリングでは起動しない
-        // （依頼・最終 PR のコンフリクト・ループの状態の書き出しは続ける）
-        var decisions: [LaunchDecision] = []
-        if let manualLoops {
-            decisions = LaunchPlanner.decide(
-                discussions,
-                config: config,
-                statuses: statuses,
-                excluding: tracker.blockedDiscussionIDs.union(handled),
-                epicsInProgress: Set(snapshots.filter(\.value.inProgress).keys).union(unfinalized),
-                manualLoops: manualLoops,
-                trust: trust
-            )
-            await carryOut(decisions, statuses: &statuses)
-        }
+        // 手動ループ（open な `manual-loop` の Discussion）があるリポジトリでも、自動ループは 1 つ起動する（Discussion #425）。
+        // リポジトリごとに 1 つの制限は、制御用 worktree の state ファイル・途中の epic・同じポーリングの起動で守る
+        let decisions = LaunchPlanner.decide(
+            discussions,
+            config: config,
+            statuses: statuses,
+            excluding: tracker.blockedDiscussionIDs.union(handled),
+            epicsInProgress: Set(snapshots.filter(\.value.inProgress).keys).union(unfinalized),
+            trust: trust
+        )
+        await carryOut(decisions, statuses: &statuses)
 
         // 新機能の依頼: claude に質問付きの Discussion を作らせる（1 回のポーリングで 1 件）
         do {
@@ -454,9 +450,6 @@ public actor Orchestrator {
 
         case .manualLoop:
             "manual-loop（手で回す）が付いています。ループは手で始めてください"
-
-        case let .manualLoopInProgress(number):
-            "同じリポジトリの Discussion #\(number) を手で回しています（manual-loop）。その epic が終わるまで自動では起動しません"
 
         case .loopStateRemains:
             "制御用 worktree に .claude/ralph-loop.local.md が残っています"

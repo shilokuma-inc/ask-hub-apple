@@ -18,39 +18,38 @@ extension OrchestratorTests {
         ))
     }
 
-    @Test func doesNotLaunchOtherDiscussionWhileManualLoopEpicIsOpen() async throws {
-        let github = FakeGitHub([.success([.fixture(number: 12)])])
+    @Test func launchesOneAutomaticLoopWhileManualLoopEpicIsOpen() async throws {
+        // 手で回している #10（ready-for-loop も残っている）と、自動で回す #12・#14
+        let ready: [ReadyDiscussion] = [.fixture(number: 10, isManualLoop: true), .fixture(number: 12), .fixture(number: 14)]
+        let github = FakeGitHub([.success(ready)])
         github.setManualLoops([ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 10, author: "mrs1669")])
         let runtime = FakeRuntime()
         let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
         try await orchestrator.pollOnce()
 
-        #expect(runtime.launched.isEmpty)
+        // 手動ループがあるリポジトリでも、自動ループは 1 つ起動する（Discussion #425）。手で回す #10 は起動しない
+        #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "12"]])
         #expect(logs.recorded.contains(
-            "shilokuma-inc/ask-hub-apple#12 は起動しません: 同じリポジトリの Discussion #10 を手で回しています（manual-loop）。その epic が終わるまで自動では起動しません"
+            "shilokuma-inc/ask-hub-apple#10 は起動しません: manual-loop（手で回す）が付いています。ループは手で始めてください"
         ))
+        #expect(!logs.recorded.contains { $0.contains("を手で回しています") })
 
-        // 手で回す Discussion が閉じられたら（最終 PR のマージ）、起動する
-        github.setManualLoops([])
+        // 自動ループが動いている間は、手動ループの有無にかかわらず 2 つ目を起動しない（リポジトリに 1 つ）
         try await orchestrator.pollOnce()
         #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "12"]])
     }
 
-    @Test func skipsOnlyLaunchesWhenManualLoopSearchFails() async throws {
+    @Test func launchesEvenWhenManualLoopSearchFails() async throws {
         let github = FakeGitHub([.success([.fixture(number: 12)])])
         github.setManualLoopsFail(true)
         let runtime = FakeRuntime()
         let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
         try await orchestrator.pollOnce()
 
-        // 手で回す epic を確かめられなければ起動しないが、ループの状態の書き出しなどの後処理は続ける
-        #expect(runtime.launched.isEmpty)
+        // 起動の判定は手動ループを見ないので、manual-loop の Discussion を検索できなくても起動する。ループの状態の書き出しなども続ける
+        #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "12"]])
         #expect(logs.recorded.contains { $0.hasPrefix("manual-loop の Discussion を検索できませんでした") })
         #expect(github.createdLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#101"])
-
-        github.setManualLoopsFail(false)
-        try await orchestrator.pollOnce()
-        #expect(runtime.launched == [["/usr/local/bin/start-loop", "shilokuma-inc/ask-hub-apple", "12"]])
     }
 }
 
