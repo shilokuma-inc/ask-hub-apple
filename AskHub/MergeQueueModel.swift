@@ -138,6 +138,18 @@ final class MergeQueueModel {
         case GitHubError.http(status: 405, let message):
             return "GitHub がマージを受け付けませんでした" + (message.map { "（\($0)）" } ?? "")
 
+        case UploadWorkflowError.permissionDenied:
+            // レート制限の 403 は GitHubError.rateLimited として上で区別済み
+            return "TestFlight に上げられませんでした。トークンに、このリポジトリの Actions の書き込み権限（Read and write）がありません。"
+                + "設定で権限を付けたトークンを保存し直してください"
+
+        case UploadWorkflowError.workflowNotFound:
+            return "TestFlight に上げられませんでした。このリポジトリに Upload ワークフロー（upload.yml）が無いか、トークンから見えません"
+
+        case let UploadWorkflowError.dispatchNotSupported(message):
+            return "TestFlight に上げられませんでした。この epic ブランチの Upload ワークフローは手動実行（workflow_dispatch）に対応していません"
+                + (message.map { "（\($0)）" } ?? "")
+
         default:
             return InboxModel.message(for: error)
         }

@@ -43,7 +43,8 @@ struct SettingsView: View {
                 } footer: {
                     Text("""
                         Fine-grained PAT を入力してください。依頼の作成と、実機確認の Issue を閉じるのに \
-                        Issues の書き込み（Read and write）が要ります。トークンはこの端末の Keychain にだけ保存します。
+                        Issues の書き込み（Read and write）、マージ待ちの最終 PR を TestFlight に上げるのに \
+                        Actions の書き込み（Read and write）が要ります。トークンはこの端末の Keychain にだけ保存します。
                         """)
                 }
 

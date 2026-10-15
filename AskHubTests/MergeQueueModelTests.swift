@@ -123,6 +123,21 @@ struct MergeQueueModelTests {
         #expect(message == "マージしましたが、ブランチ epic/mvp を削除できませんでした。GitHub で削除してください")
     }
 
+    @Test func describesUploadWorkflowErrorsWithPermissionGuidance() {
+        // レート制限でない 403 は権限不足。設定画面への案内を付ける
+        let denied = MergeQueueModel.message(for: UploadWorkflowError.permissionDenied)
+        #expect(denied.contains("Actions の書き込み権限（Read and write）"))
+        #expect(denied.contains("設定で"))
+        #expect(!denied.contains("github_pat"))
+        #expect(MergeQueueModel.message(for: UploadWorkflowError.workflowNotFound).contains("upload.yml"))
+        let unsupported = MergeQueueModel.message(for: UploadWorkflowError.dispatchNotSupported(message: "No ref found for: epic/x"))
+        #expect(unsupported.contains("workflow_dispatch"))
+        #expect(unsupported.hasSuffix("（No ref found for: epic/x）"))
+        #expect(!MergeQueueModel.message(for: UploadWorkflowError.dispatchNotSupported(message: nil)).hasSuffix("）"))
+        // レート制限は今までどおりの文言
+        #expect(MergeQueueModel.message(for: GitHubError.rateLimited(retryAfter: .seconds(30))).contains("レート制限中"))
+    }
+
     @Test func blockedPullRequestCannotBeMerged() {
         // サンプルの 2 件目は CI が実行中
         #expect(!SampleMergeQueue.pullRequests[1].canMerge)
