@@ -220,8 +220,17 @@ struct LoopStatusPublisherTests {
             repositoryKey: key,
             trustedAuthors: trusted
         )
-        // 知らない書き手のコメントがある Discussion には書かない（消しもしない）
+        // 知らない書き手のコメントがある Discussion には書かない（そのコメントは消さない）
         #expect(decide(unknown, repository(at: now), mine, at: now).isEmpty)
+        // その Discussion に残った自分のコメントだけを消す（1 つの Discussion の書き手は 1 つ）
+        var both = LoopStatusPublisher()
+        both.adopt(
+            [record(7, body: repository(at: now).issueBody)],
+            comments: [comment(70, mine), LoopStatusComment(id: 71, author: "mrs1669", updatedAt: now, body: future)],
+            repositoryKey: key,
+            trustedAuthors: trusted
+        )
+        #expect(decide(both, repository(at: now), mine, at: now) == [.deleteComment(id: 70)])
 
         // 古い形の本文に手動ループが書いている Discussion にも、コメントを書かない
         var legacy = LoopStatusPublisher()
