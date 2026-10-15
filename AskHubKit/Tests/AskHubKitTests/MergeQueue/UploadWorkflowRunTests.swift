@@ -46,7 +46,7 @@ struct UploadWorkflowRunTests {
         #expect(UploadWorkflowRun.Status(rawValue: "requested") == .other("requested"))
         #expect(UploadWorkflowRun.Conclusion(rawValue: "timed_out") == .other("timed_out"))
         #expect(LatestUploadRun.run(.fixture()).run == .fixture())
-        #expect(LatestUploadRun.none.run == nil)
+        #expect(LatestUploadRun.noRuns.run == nil)
     }
 }
 
@@ -66,15 +66,19 @@ struct GitHubUploadWorkflowTests {
 
     private static func runJSON(
         id: Int,
-        status: String,
+        status: String?,
         conclusion: String?,
         event: String = "workflow_dispatch",
-        runStartedAt: String? = "2026-10-15T09:00:00Z"
+        runStartedAt: String? = "2026-10-15T09:00:00Z",
+        headBranch: String? = "epic/mvp"
     ) -> String {
+        let statusJSON = status.map { #""\#($0)""# } ?? "null"
         let conclusionJSON = conclusion.map { #""\#($0)""# } ?? "null"
         let startedJSON = runStartedAt.map { #""\#($0)""# } ?? "null"
+        let branchJSON = headBranch.map { #""\#($0)""# } ?? "null"
         return #"""
-            { "id": \#(id), "head_branch": "epic/mvp", "head_sha": "sha\#(id)", "status": "\#(status)", "conclusion": \#(conclusionJSON),
+            { "id": \#(id), "head_branch": \#(branchJSON), "head_sha": "sha\#(id)",
+              "status": \#(statusJSON), "conclusion": \#(conclusionJSON),
               "event": "\#(event)", "run_started_at": \#(startedJSON), "created_at": "2026-10-15T08:59:00Z",
               "html_url": "https://github.com/o/r/actions/runs/\#(id)" }
             """#
@@ -127,7 +131,24 @@ struct GitHubUploadWorkflowTests {
     @Test func reportsNoRunsForBranch() async throws {
         let http = MockHTTPClient([.init(status: 200, body: #"{ "total_count": 0, "workflow_runs": [] }"#)])
         let result = try await makeWorkflow(http).latestRun(repository: "o/r", branch: "epic/mvp")
-        #expect(result == .none)
+        #expect(result == .noRuns)
+    }
+
+    @Test func keepsUnknownStatusAndFallsBackToRequestedBranch() async throws {
+        // status は API の定義上 null になりうる。head_branch が無ければ問い合わせたブランチを入れる
+        let waiting = Self.runJSON(id: 4, status: "waiting", conclusion: nil, headBranch: nil)
+        let http = MockHTTPClient([
+            .init(status: 200, body: #"{ "total_count": 1, "workflow_runs": [\#(waiting)] }"#),
+            .init(status: 200, body: #"{ "total_count": 1, "workflow_runs": [\#(Self.runJSON(id: 5, status: nil, conclusion: nil))] }"#)
+        ])
+        let workflow = makeWorkflow(http)
+        let run4 = try #require(try await workflow.latestRun(repository: "o/r", branch: "epic/mvp").run)
+        #expect(run4.status == .other("waiting"))
+        #expect(run4.isRunning)
+        #expect(run4.branch == "epic/mvp")
+        let run5 = try #require(try await workflow.latestRun(repository: "o/r", branch: "epic/mvp").run)
+        #expect(run5.status == .other(""))
+        #expect(run5.isRunning)
     }
 
     @Test func treatsMissingWorkflowAsUnsupported() async throws {
@@ -150,8 +171,16 @@ struct GitHubUploadWorkflowTests {
             .init(status: 200, body: #"{ "total_count": 0, "workflow_runs": [] }"#)
         ])
         let result = try await makeWorkflow(limited).latestRun(repository: "o/r", branch: "epic/mvp")
-        #expect(result == .none)
+        #expect(result == .noRuns)
         #expect(sleeper.recorded == [.seconds(11)])
+
+        // Retry-After の無い 429 も 60 秒待つレート制限で、権限不足にはしない
+        let secondary = MockHTTPClient([
+            .init(status: 429, body: "{}"),
+            .init(status: 200, body: #"{ "total_count": 0, "workflow_runs": [] }"#)
+        ])
+        #expect(try await makeWorkflow(secondary).latestRun(repository: "o/r", branch: "epic/mvp") == .noRuns)
+        #expect(sleeper.recorded == [.seconds(11), .seconds(60)])
     }
 
     @Test func surfacesRateLimitWhenRetriesAreExhausted() async {

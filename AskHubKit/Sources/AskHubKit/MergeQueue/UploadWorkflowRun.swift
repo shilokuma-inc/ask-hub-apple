@@ -110,10 +110,12 @@ public struct UploadWorkflowRun: Sendable, Equatable, Hashable, Identifiable {
 
 /// Upload ワークフローの直近の run の問い合わせの結果
 public enum LatestUploadRun: Sendable, Equatable, Hashable {
-    /// ワークフロー（`upload.yml`）がリポジトリに無い（404）。ボタンを出さない
+    /// ワークフロー（`upload.yml`）がリポジトリに無い（404）。トークンからリポジトリが見えない・Actions が無効のときも 404 になる。
+    /// いずれもボタンを出さない
     case unsupported
     /// ワークフローはあるが、このブランチの run がまだ無い
-    case none
+    /// （`Optional<LatestUploadRun>` で未取得を表したときに `.none` と紛れないよう、`noRuns` と呼ぶ）
+    case noRuns
     /// 直近の run
     case run(UploadWorkflowRun)
 
@@ -128,7 +130,8 @@ public enum LatestUploadRun: Sendable, Equatable, Hashable {
 
 /// Upload ワークフローの操作で起きるエラー。`GitHubError` の HTTP の状態から、アプリで表示を分けるものを区別する
 public enum UploadWorkflowError: Error, Equatable, Sendable {
-    /// トークンに Actions の権限（Fine-grained PAT の Actions: Read and write）が無い。
+    /// トークンに Actions の権限が無い。run の取得は Actions の Read で足りるが、起動（dispatch）を含めて
+    /// Fine-grained PAT の Actions: Read and write を求める（Discussion #449）。
     /// レート制限の 403（`x-ratelimit-remaining: 0`・`Retry-After`）は `GitHubError.rateLimited` のままで、ここには来ない
     case permissionDenied
 }
@@ -170,14 +173,15 @@ public struct GitHubUploadWorkflow: UploadWorkflowProviding {
             throw UploadWorkflowError.permissionDenied
         }
         guard let run = page.workflowRuns.first else {
-            return .none
+            return .noRuns
         }
         return .run(UploadWorkflowRun(
             id: run.id,
             repository: repository,
             branch: run.headBranch ?? branch,
             headSHA: run.headSha,
-            status: .init(rawValue: run.status),
+            // status は API の定義上 null になりうる。知らない値と同じく other で保持する
+            status: .init(rawValue: run.status ?? ""),
             conclusion: run.conclusion.map(UploadWorkflowRun.Conclusion.init(rawValue:)),
             event: run.event,
             startedAt: run.runStartedAt ?? run.createdAt,
@@ -200,7 +204,7 @@ private struct RunNode: Decodable {
     let id: Int
     let headBranch: String?
     let headSha: String
-    let status: String
+    let status: String?
     let conclusion: String?
     let event: String
     let runStartedAt: Date?
