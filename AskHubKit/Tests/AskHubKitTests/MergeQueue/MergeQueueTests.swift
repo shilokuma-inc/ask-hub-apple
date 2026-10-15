@@ -100,6 +100,11 @@ private final class RecordingUploadWorkflow: UploadWorkflowProviding {
         }
         return try result.get()
     }
+
+    func dispatch(repository: String, ref: String) async throws {
+        // マージ待ちの取得では起動しない
+        Issue.record("dispatch should not be called: \(repository) \(ref)")
+    }
 }
 
 struct GitHubMergeQueueTests {
