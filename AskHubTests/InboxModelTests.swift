@@ -121,6 +121,31 @@ struct InboxModelTests {
         #expect(tokens.withLock { $0 } == ["github_pat_saved"])
     }
 
+    @Test func groupsSampleQuestionsByDiscussion() async {
+        let model = InboxModel.sample()
+        await model.refresh()
+        // 取得した順（古い順）では notti-ios#12 の 2 問目が最後にあり、一覧では 1 問目に続けて並ぶ。PR の ask はまとめない
+        #expect(model.questions.map(\.subject.shortReference) == [
+            "notti-ios#12", "ask-hub-apple#34", "ask-hub-apple#128", "notti-ios#12"
+        ])
+        #expect(model.groupedQuestions.map(\.subject.shortReference) == [
+            "notti-ios#12", "notti-ios#12", "ask-hub-apple#34", "ask-hub-apple#128"
+        ])
+        #expect(model.groupedQuestions.map(\.marker.id) == ["d12-q1", "d12-q2", "pr34-1", "d128-q1"])
+    }
+
+    @Test func colorsSampleDiscussionQuestionsOnly() async {
+        let model = InboxModel.sample()
+        await model.refresh()
+        let colors = model.groupedQuestions.map(\.subject.groupColor)
+        // notti-ios#12 の 2 問は同じ色、ask-hub-apple#128 は別の色。PR の ask（ask-hub-apple#34）には色を付けない
+        #expect(colors[0] != nil)
+        #expect(colors[1] == colors[0])
+        #expect(colors[2] == nil)
+        #expect(colors[3] != nil)
+        #expect(colors[3] != colors[0])
+    }
+
     @Test func failureKeepsPreviousResultsAndExplainsInvalidToken() async {
         let fails = OSAllocatedUnfairLock(initialState: false)
         let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in
