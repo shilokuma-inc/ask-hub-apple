@@ -373,5 +373,7 @@ struct OrchestratorTests {
         #expect(github.removed == ["D_12"])
         #expect(runtime.clearedNoTasksMarkers == 1)
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#12 は準備の結果やることが残っていなかったので、知らせて ready-for-loop を外しました"))
+        // ループは始まらないので、状態用の Issue にも開始待ちとして書かない
+        #expect(github.createdLoopStatusComments.isEmpty)
     }
 }

@@ -253,8 +253,9 @@ public actor Orchestrator {
 
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         let snapshots = await epicSnapshots()
-        recordReadyDiscussions(discussions, snapshots: snapshots)
         let handled = await advanceLaunchedDiscussions(discussions, statuses: statuses, snapshots: snapshots)
+        // 準備の結果やることが無かった Discussion（ラベルを外した・外し直す）は、開始待ちとして書かない
+        recordReadyDiscussions(discussions.filter { !handled.contains($0.nodeID) }, snapshots: snapshots)
 
         // 手で回す epic があるリポジトリでは起動しない（Q4）。確かめられなければ、このポーリングでは起動しない
         // （依頼・最終 PR のコンフリクト・ループの状態の書き出しは続ける）
