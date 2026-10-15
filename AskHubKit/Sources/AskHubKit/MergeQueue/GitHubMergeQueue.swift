@@ -4,11 +4,19 @@ import Foundation
 public struct GitHubMergeQueue: MergeQueueProviding {
     private let client: GitHubClient
     private let trustedAuthors: any TrustedAuthorsResolving
+    private let uploadWorkflow: (any UploadWorkflowProviding)?
 
-    /// - Parameter trustedAuthors: 信用する author が作った PR だけを出す（ラベルは書き込み権限があれば誰でも付けられる）
-    public init(client: GitHubClient, trustedAuthors: any TrustedAuthorsResolving = TrustedAuthors.default) {
+    /// - Parameters:
+    ///   - trustedAuthors: 信用する author が作った PR だけを出す（ラベルは書き込み権限があれば誰でも付けられる）
+    ///   - uploadWorkflow: 最終 PR ごとに Upload ワークフローの直近の run を読む。`nil` なら読まない（`uploadStatus` は `notLoaded`）
+    public init(
+        client: GitHubClient,
+        trustedAuthors: any TrustedAuthorsResolving = TrustedAuthors.default,
+        uploadWorkflow: (any UploadWorkflowProviding)? = nil
+    ) {
         self.client = client
         self.trustedAuthors = trustedAuthors
+        self.uploadWorkflow = uploadWorkflow
     }
 
     public func epicPullRequests(orgs: [String]) async throws -> [EpicPullRequest] {
@@ -31,7 +39,73 @@ public struct GitHubMergeQueue: MergeQueueProviding {
         where await trustedAuthors.trustedAuthors(for: pullRequest.repository).contains(pullRequest.author) {
             trusted.append(pullRequest)
         }
-        return trusted
+        return try await attachUploadStatus(to: trusted)
+    }
+
+    /// 最終 PR ごとに Upload ワークフローの直近の run を読んで付ける。リポジトリ・ブランチが同じ PR は 1 回の取得を共有し、
+    /// ワークフローが無い（404）リポジトリは 2 本目以降のブランチも読まない。
+    /// 取得に失敗しても、マージ待ちそのもの（PR・CI・コンフリクト・まとめ）は返す。
+    /// ただし取得が打ち切られた（キャンセル）ときは投げ、呼び出し側が前の状態に戻せるようにする。
+    /// レート制限で待てなくなったら、残りは読まずに `unavailable` にする（キーの数だけ待ち時間を重ねない）
+    private func attachUploadStatus(to pullRequests: [EpicPullRequest]) async throws -> [EpicPullRequest] {
+        guard let uploadWorkflow else {
+            return pullRequests
+        }
+        var statuses: [UploadKey: EpicPullRequest.UploadStatus] = [:]
+        var unsupportedRepositories: Set<String> = []
+        var rateLimited = false
+        var result = pullRequests
+        for index in result.indices {
+            let key = UploadKey(repository: result[index].repository, branch: result[index].headBranch)
+            if statuses[key] == nil {
+                if unsupportedRepositories.contains(key.repository) {
+                    statuses[key] = .unsupported
+                } else if rateLimited {
+                    statuses[key] = .unavailable
+                } else {
+                    let status = try await Self.uploadStatus(uploadWorkflow, repository: key.repository, branch: key.branch)
+                    statuses[key] = status.status
+                    rateLimited = status.rateLimited
+                    if status.status == .unsupported {
+                        unsupportedRepositories.insert(key.repository)
+                    }
+                }
+            }
+            result[index].uploadStatus = statuses[key] ?? .unavailable
+        }
+        return result
+    }
+
+    /// 1 つのリポジトリ・ブランチの run の状況と、レート制限で待てなくなったか
+    private static func uploadStatus(
+        _ uploadWorkflow: any UploadWorkflowProviding,
+        repository: String,
+        branch: String
+    ) async throws -> (status: EpicPullRequest.UploadStatus, rateLimited: Bool) {
+        do {
+            switch try await uploadWorkflow.latestRun(repository: repository, branch: branch) {
+            case .unsupported:
+                return (.unsupported, false)
+
+            case .noRuns:
+                return (.noRuns, false)
+
+            case .run(let run):
+                return (.run(run), false)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch UploadWorkflowError.permissionDenied {
+            return (.permissionDenied, false)
+        } catch GitHubError.rateLimited {
+            return (.unavailable, true)
+        } catch {
+            // 打ち切られた取得（URLSession のキャンセル）は失敗として確定させない
+            if Task.isCancelled {
+                throw CancellationError()
+            }
+            return (.unavailable, false)
+        }
     }
 
     public func merge(_ pullRequest: EpicPullRequest) async throws {
@@ -71,6 +145,12 @@ public struct GitHubMergeQueue: MergeQueueProviding {
 }
 
 // MARK: - リクエストとレスポンスの形
+
+/// run の取得をまとめる単位（リポジトリ・ブランチごとに 1 回）
+private struct UploadKey: Hashable {
+    let repository: String
+    let branch: String
+}
 
 private struct MergeRequest: Encodable, Sendable {
     let mergeMethod: String

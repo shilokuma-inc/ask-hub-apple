@@ -33,7 +33,13 @@ final class MergeQueueModel {
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
         makeProvider: @escaping @Sendable (String) -> any MergeQueueProviding = {
-            GitHubMergeQueue(client: GitHubClient(token: $0), trustedAuthors: RepositoryTrustCache.trust(token: $0))
+            let client = GitHubClient(token: $0)
+            // 最終 PR ごとに Upload ワークフローの直近の run も読む（TestFlight へのアップロードの状況。Discussion #449）
+            return GitHubMergeQueue(
+                client: client,
+                trustedAuthors: RepositoryTrustCache.trust(token: $0),
+                uploadWorkflow: GitHubUploadWorkflow(client: client)
+            )
         },
         organizations: @escaping () -> [String] = { OrganizationSettings.load() }
     ) {
