@@ -134,12 +134,22 @@ public enum UploadWorkflowError: Error, Equatable, Sendable {
     /// Fine-grained PAT の Actions: Read and write を求める（Discussion #449）。
     /// レート制限の 403（`x-ratelimit-remaining: 0`・`Retry-After`）は `GitHubError.rateLimited` のままで、ここには来ない
     case permissionDenied
+    /// ワークフロー（`upload.yml`）がリポジトリに無い（起動が 404）。トークンからリポジトリが見えない・Actions が無効のときも 404 になる。
+    /// run の取得では `LatestUploadRun.unsupported` で返す
+    case workflowNotFound
+    /// 起動が 422 で断られた。多くは `workflow_dispatch` に対応していない（以後ボタンを出さない）が、
+    /// 対応しているかは既定ブランチではなく指定した `ref` 側の `upload.yml` で判定される（`workflow_dispatch` を足す前に切った epic では 422 になる）ほか、
+    /// `ref` が無いとき（`No ref found for: …`）にも返る。`message` は GitHub の説明で、アプリが表示に使う
+    case dispatchNotSupported(message: String?)
 }
 
-/// Upload ワークフローの run の取得。テストでは差し替える
+/// Upload ワークフローの run の取得と起動。テストでは差し替える
 public protocol UploadWorkflowProviding: Sendable {
     /// `repository`（`owner/repo`）の `branch` で実行した Upload ワークフローの直近の run
     func latestRun(repository: String, branch: String) async throws -> LatestUploadRun
+    /// `repository` の Upload ワークフローを `ref`（最終 PR の head ブランチ）で起動する（`workflow_dispatch`）。
+    /// 起動の直後は run の一覧に新しい run がすぐには出ないので、呼び出し側は「起動した」状態を保つ
+    func dispatch(repository: String, ref: String) async throws
 }
 
 /// GitHub の REST API で Upload ワークフローの run を読む
@@ -175,7 +185,29 @@ public struct GitHubUploadWorkflow: UploadWorkflowProviding {
         guard let run = page.workflowRuns.first else {
             return .noRuns
         }
-        return .run(UploadWorkflowRun(
+        return .run(Self.makeRun(run, repository: repository, branch: branch))
+    }
+
+    public func dispatch(repository: String, ref: String) async throws {
+        // 入力（inputs）は無い（upload.yml はブランチの選択だけで動く）。
+        // 成功は 204。新しい API では 200 で run の情報を返すことがあるが、どちらも 2xx なので本文は読まない
+        do {
+            try await client.send(
+                "POST",
+                "repos/\(repository)/actions/workflows/\(Self.workflowFile)/dispatches",
+                body: DispatchRequest(ref: ref)
+            )
+        } catch GitHubError.http(status: 404, _) {
+            throw UploadWorkflowError.workflowNotFound
+        } catch GitHubError.http(status: 422, let message) {
+            throw UploadWorkflowError.dispatchNotSupported(message: message)
+        } catch GitHubError.http(status: 403, _) {
+            throw UploadWorkflowError.permissionDenied
+        }
+    }
+
+    private static func makeRun(_ run: RunNode, repository: String, branch: String) -> UploadWorkflowRun {
+        UploadWorkflowRun(
             id: run.id,
             repository: repository,
             branch: run.headBranch ?? branch,
@@ -186,11 +218,15 @@ public struct GitHubUploadWorkflow: UploadWorkflowProviding {
             event: run.event,
             startedAt: run.runStartedAt ?? run.createdAt,
             url: run.htmlUrl
-        ))
+        )
     }
 }
 
-// MARK: - レスポンスの形
+// MARK: - リクエストとレスポンスの形
+
+private struct DispatchRequest: Encodable, Sendable {
+    let ref: String
+}
 
 private struct RunsPage: Decodable {
     let workflowRuns: [RunNode]

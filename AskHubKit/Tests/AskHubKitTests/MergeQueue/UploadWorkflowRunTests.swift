@@ -196,4 +196,68 @@ struct GitHubUploadWorkflowTests {
             try await makeWorkflow(http).latestRun(repository: "o/r", branch: "epic/mvp")
         }
     }
+
+    // MARK: - 起動（workflow_dispatch）
+
+    @Test(arguments: [204, 200])
+    func dispatchesWorkflowOnBranchWithoutInputs(status: Int) async throws {
+        // 204 が成功。新しい API では 200 で run の情報を返すことがあり、どちらも成功として本文は読まない
+        let body = status == 200 ? #"{ "id": 9, "status": "queued" }"# : ""
+        let http = MockHTTPClient([.init(status: status, body: body)])
+        try await makeWorkflow(http).dispatch(repository: "o/r", ref: "epic/mvp")
+
+        #expect(http.requests.count == 1)
+        let request = try #require(http.requests.first)
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path() == "/repos/o/r/actions/workflows/upload.yml/dispatches")
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+        let data = try #require(request.httpBody)
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: String])
+        #expect(json == ["ref": "epic/mvp"])
+    }
+
+    @Test func distinguishesDispatchFailures() async {
+        // 404: ワークフローが無い / 422: workflow_dispatch に対応していない / 403（レート制限でない）: 権限不足
+        let notFound = MockHTTPClient([.init(status: 404, body: #"{ "message": "Not Found" }"#)])
+        await #expect(throws: UploadWorkflowError.workflowNotFound) {
+            try await makeWorkflow(notFound).dispatch(repository: "o/r", ref: "epic/mvp")
+        }
+        // 422 の説明は保持する（ref 側のファイルに workflow_dispatch が無い・ref が無い、を人が見分けられるように）
+        let noDispatch = MockHTTPClient([
+            .init(status: 422, body: #"{ "message": "Workflow does not have 'workflow_dispatch' trigger" }"#)
+        ])
+        await #expect(throws: UploadWorkflowError.dispatchNotSupported(message: "Workflow does not have 'workflow_dispatch' trigger")) {
+            try await makeWorkflow(noDispatch).dispatch(repository: "o/r", ref: "epic/mvp")
+        }
+        let noRef = MockHTTPClient([.init(status: 422, body: "")])
+        await #expect(throws: UploadWorkflowError.dispatchNotSupported(message: nil)) {
+            try await makeWorkflow(noRef).dispatch(repository: "o/r", ref: "epic/gone")
+        }
+        let denied = MockHTTPClient([.init(status: 403, body: #"{ "message": "Resource not accessible by personal access token" }"#)])
+        await #expect(throws: UploadWorkflowError.permissionDenied) {
+            try await makeWorkflow(denied).dispatch(repository: "o/r", ref: "epic/mvp")
+        }
+        #expect(sleeper.recorded.isEmpty)
+    }
+
+    @Test func dispatchWaitsForRateLimitAndPropagatesOtherErrors() async throws {
+        let limited = MockHTTPClient([
+            .init(status: 403, body: "{}", headers: ["Retry-After": "7"]),
+            .init(status: 204, body: "")
+        ])
+        try await makeWorkflow(limited).dispatch(repository: "o/r", ref: "epic/mvp")
+        #expect(sleeper.recorded == [.seconds(7)])
+        #expect(limited.requests.count == 2)
+
+        // 待てないほど長いレート制限は rateLimited のまま伝える（permissionDenied にしない）
+        let exhausted = MockHTTPClient([.init(status: 403, body: "{}", headers: ["Retry-After": "3600"])])
+        await #expect(throws: GitHubError.rateLimited(retryAfter: .seconds(3600))) {
+            try await makeWorkflow(exhausted).dispatch(repository: "o/r", ref: "epic/mvp")
+        }
+
+        let failed = MockHTTPClient([.init(status: 500, body: #"{ "message": "boom" }"#)])
+        await #expect(throws: GitHubError.http(status: 500, message: "boom")) {
+            try await makeWorkflow(failed).dispatch(repository: "o/r", ref: "epic/mvp")
+        }
+    }
 }
