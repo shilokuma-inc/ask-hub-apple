@@ -68,7 +68,7 @@ Discussion の質問や PR の ask を 1 つの一覧にまとめ、アプリで
 |---|---|
 | `DEVELOPMENT_TEAM` | Apple Developer Program の Team ID |
 | `APP_BUNDLE_IDENTIFIER` | アプリ本体の Bundle Identifier。テストターゲットは `.Tests` / `.UITests` を付けて自動で派生します |
-| `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` | アプリのバージョン / ビルド番号 |
+| `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` | アプリのバージョン / ビルド番号。ビルド番号は Upload のときに App Store Connect の最新ビルドを見て Xcode が自動で増やす（`manageAppVersionAndBuildNumber`）ため、手で上げる必要はありません |
 | `IPHONEOS_DEPLOYMENT_TARGET` / `MACOSX_DEPLOYMENT_TARGET` | 最低サポート OS |
 
 ### 2. GitHub Secrets を設定する
