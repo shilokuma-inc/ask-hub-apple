@@ -1,12 +1,14 @@
 @testable import AskHubKit
 import Foundation
+import os
 import Testing
 
 extension EpicPullRequest {
     static func fixture(
         checks: ChecksState = .success,
         mergeability: Mergeability = .mergeable,
-        author: String? = "mrs1669"
+        author: String? = "mrs1669",
+        uploadStatus: UploadStatus = .notLoaded
     ) -> Self {
         Self(
             id: "PR_50",
@@ -20,7 +22,8 @@ extension EpicPullRequest {
             headSHA: "abc123",
             author: author,
             checks: checks,
-            mergeability: mergeability
+            mergeability: mergeability,
+            uploadStatus: uploadStatus
         )
     }
 }
@@ -36,12 +39,73 @@ struct EpicPullRequestTests {
         #expect(!EpicPullRequest.fixture(mergeability: .unknown).canMerge)
         #expect(EpicPullRequest.fixture().filesURL.absoluteString == "https://github.com/shilokuma-inc/ask-hub-apple/pull/50/files")
     }
+
+    @Test func canUploadWhenChecksPassAndNoRunningRun() {
+        // CI が成功していれば、コンフリクトしていても run が無くても上げられる
+        #expect(EpicPullRequest.fixture(mergeability: .conflicting, uploadStatus: .noRuns).canUpload)
+        #expect(EpicPullRequest.fixture(uploadStatus: .noRuns).uploadBlockingReason == nil)
+        #expect(EpicPullRequest.fixture(uploadStatus: .run(.fixture())).canUpload)
+        // 実行中の run があるあいだは押せない
+        let running = EpicPullRequest.fixture(uploadStatus: .run(.fixture(status: .inProgress, conclusion: nil)))
+        #expect(!running.canUpload)
+        #expect(running.uploadBlockingReason == "同じ epic ブランチで Upload を実行中です")
+        // CI の条件はマージボタンと同じ
+        #expect(EpicPullRequest.fixture(checks: .pending, uploadStatus: .noRuns).uploadBlockingReason == "CI が終わっていません")
+        #expect(EpicPullRequest.fixture(checks: .failure, uploadStatus: .noRuns).uploadBlockingReason == "CI が失敗しています")
+        #expect(EpicPullRequest.fixture(checks: .none, uploadStatus: .noRuns).uploadBlockingReason == "CI が実行されていません")
+        // ワークフローが無いリポジトリではボタンを出さない（理由も出さない）
+        let unsupported = EpicPullRequest.fixture(uploadStatus: .unsupported)
+        #expect(!unsupported.uploadStatus.showsUploadButton)
+        #expect(!unsupported.canUpload)
+        #expect(unsupported.uploadBlockingReason == nil)
+        // 読んでいない・権限不足・取得できなかったときはボタンは出す（押した結果で分かる）
+        #expect(EpicPullRequest.fixture().canUpload)
+        #expect(EpicPullRequest.fixture(uploadStatus: .permissionDenied).canUpload)
+        #expect(EpicPullRequest.fixture(uploadStatus: .unavailable).canUpload)
+    }
+
+    @Test func reportsWhetherLatestHeadWasUploaded() {
+        #expect(EpicPullRequest.fixture().uploadedLatestHead == nil)
+        #expect(EpicPullRequest.fixture(uploadStatus: .run(.fixture(headSHA: "abc123"))).uploadedLatestHead == true)
+        #expect(EpicPullRequest.fixture(uploadStatus: .run(.fixture(headSHA: "old"))).uploadedLatestHead == false)
+        #expect(EpicPullRequest.fixture(uploadStatus: .run(.fixture())).uploadStatus.run == .fixture())
+    }
+}
+
+/// 呼ばれた（リポジトリ, ブランチ）を記録し、登録した結果を返す `UploadWorkflowProviding`
+private final class RecordingUploadWorkflow: UploadWorkflowProviding {
+    private struct State {
+        var results: [String: Result<LatestUploadRun, any Error>]
+        var calls: [String] = []
+    }
+
+    private let state: OSAllocatedUnfairLock<State>
+
+    init(_ results: [String: Result<LatestUploadRun, any Error>]) {
+        state = OSAllocatedUnfairLock(initialState: State(results: results))
+    }
+
+    var recordedCalls: [String] {
+        state.withLock { $0.calls }
+    }
+
+    func latestRun(repository: String, branch: String) async throws -> LatestUploadRun {
+        let key = "\(repository) \(branch)"
+        let result = state.withLock { state -> Result<LatestUploadRun, any Error>? in
+            state.calls.append(key)
+            return state.results[key]
+        }
+        guard let result else {
+            throw GitHubError.invalidResponse
+        }
+        return try result.get()
+    }
 }
 
 struct GitHubMergeQueueTests {
-    private func makeQueue(_ http: MockHTTPClient) -> GitHubMergeQueue {
+    private func makeQueue(_ http: MockHTTPClient, uploadWorkflow: (any UploadWorkflowProviding)? = nil) -> GitHubMergeQueue {
         let client = GitHubClient(token: "github_pat_secret", http: http, sleep: { _ in })
-        return GitHubMergeQueue(client: client, trustedAuthors: TrustedAuthors(["mrs1669"]))
+        return GitHubMergeQueue(client: client, trustedAuthors: TrustedAuthors(["mrs1669"]), uploadWorkflow: uploadWorkflow)
     }
 
     private static func node(
@@ -90,6 +154,63 @@ struct GitHubMergeQueueTests {
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let variables = try #require(object["variables"] as? [String: Any])
         #expect(variables["query"] as? String == "org:shilokuma-inc is:pr is:open label:epic-final")
+    }
+
+    private static func searchResponse(_ nodes: [String]) -> MockHTTPClient.Response {
+        let body = #"{ "data": { "search": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [ "#
+            + nodes.joined(separator: ",") + " ] } } }"
+        return .init(status: 200, body: body)
+    }
+
+    @Test func leavesUploadStatusNotLoadedWithoutWorkflowProvider() async throws {
+        let nodes = [Self.node(number: 1, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS")]
+        let http = MockHTTPClient([Self.searchResponse(nodes)])
+        let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
+        #expect(pulls.map(\.uploadStatus) == [.notLoaded])
+    }
+
+    @Test func attachesLatestUploadRunOncePerRepositoryAndBranch() async throws {
+        // 1 と 2 は同じリポジトリの別の epic、3 は 1 と同じブランチ（取得を共有する）
+        let node3 = Self.node(number: 3, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS")
+            .replacingOccurrences(of: #""headRefName": "epic/e3""#, with: #""headRefName": "epic/e1""#)
+        let nodes = [
+            Self.node(number: 1, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS"),
+            Self.node(number: 2, author: "mrs1669", mergeable: "CONFLICTING", rollup: "SUCCESS"),
+            node3,
+            // 信用しない author の PR では run を読まない
+            Self.node(number: 4, author: "someone", mergeable: "MERGEABLE", rollup: "SUCCESS")
+        ]
+        let http = MockHTTPClient([Self.searchResponse(nodes)])
+        let run = UploadWorkflowRun.fixture(headSHA: "sha1")
+        let workflow = RecordingUploadWorkflow([
+            "o/r epic/e1": .success(.run(run)),
+            "o/r epic/e2": .success(.noRuns)
+        ])
+        let pulls = try await makeQueue(http, uploadWorkflow: workflow).epicPullRequests(orgs: ["shilokuma-inc"])
+
+        #expect(pulls.map(\.number) == [1, 2, 3])
+        #expect(pulls.map(\.uploadStatus) == [.run(run), .noRuns, .run(run)])
+        #expect(pulls.map(\.uploadedLatestHead) == [true, nil, false])
+        // コンフリクトしていても CI が成功していれば上げられる
+        #expect(pulls[1].canUpload)
+        #expect(workflow.recordedCalls == ["o/r epic/e1", "o/r epic/e2"])
+    }
+
+    @Test func keepsPullRequestsWhenUploadRunCannotBeRead() async throws {
+        let nodes = (1...4).map { Self.node(number: $0, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS") }
+        let http = MockHTTPClient([Self.searchResponse(nodes)])
+        let workflow = RecordingUploadWorkflow([
+            "o/r epic/e1": .success(.unsupported),
+            "o/r epic/e2": .failure(UploadWorkflowError.permissionDenied),
+            "o/r epic/e3": .failure(GitHubError.rateLimited(retryAfter: .seconds(60)))
+            // e4 は登録が無く invalidResponse になる
+        ])
+        let pulls = try await makeQueue(http, uploadWorkflow: workflow).epicPullRequests(orgs: ["shilokuma-inc"])
+
+        #expect(pulls.map(\.number) == [1, 2, 3, 4])
+        #expect(pulls.map(\.uploadStatus) == [.unsupported, .permissionDenied, .unavailable, .unavailable])
+        #expect(pulls.map(\.canMerge) == [true, true, true, true])
+        #expect(pulls.map(\.canUpload) == [false, true, true, true])
     }
 
     @Test func mergesWithMergeCommitAtConfirmedHeadAndDeletesBranch() async throws {

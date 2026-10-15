@@ -19,6 +19,35 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         case unknown
     }
 
+    /// TestFlight へのアップロード（Upload ワークフロー）の状況（Discussion #449 の Q4）
+    public enum UploadStatus: Sendable, Equatable, Hashable {
+        /// まだ読んでいない（run の取得を行わない構成）
+        case notLoaded
+        /// ワークフローが無い・リポジトリが見えない（404）。ボタンを出さない
+        case unsupported
+        /// ワークフローはあるが、この epic ブランチの run がまだ無い
+        case noRuns
+        /// 直近の run
+        case run(UploadWorkflowRun)
+        /// トークンに Actions の権限が無い（レート制限ではない 403）
+        case permissionDenied
+        /// run を取得できなかった（通信・レート制限など）。マージ待ちそのものは出す
+        case unavailable
+
+        /// 直近の run（無ければ `nil`）
+        public var run: UploadWorkflowRun? {
+            if case .run(let run) = self {
+                return run
+            }
+            return nil
+        }
+
+        /// 「TestFlight に上げる」を出すか。ワークフローが無い（404）リポジトリでは出さない
+        public var showsUploadButton: Bool {
+            self != .unsupported
+        }
+    }
+
     /// GraphQL の node id
     public var id: String
     /// `owner/repo`
@@ -38,6 +67,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     public var author: String?
     public var checks: ChecksState
     public var mergeability: Mergeability
+    /// Upload ワークフローの直近の run の状況。既定は `notLoaded`
+    public var uploadStatus: UploadStatus
 
     public init(
         id: String,
@@ -51,7 +82,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         headSHA: String,
         author: String?,
         checks: ChecksState,
-        mergeability: Mergeability
+        mergeability: Mergeability,
+        uploadStatus: UploadStatus = .notLoaded
     ) {
         self.id = id
         self.repository = repository
@@ -65,6 +97,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         self.author = author
         self.checks = checks
         self.mergeability = mergeability
+        self.uploadStatus = uploadStatus
     }
 
     /// マージボタンを押せるか。CI が成功していて、コンフリクトしていないこと（Q13）
@@ -93,6 +126,40 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         case (.success, .mergeable):
             nil
         }
+    }
+
+    /// 「TestFlight に上げる」を押せるか。CI が成功していて、同じ epic ブランチで実行中の run が無いこと（Discussion #449 の Q3）。
+    /// コンフリクトの有無は問わない（解消前でも実機で確かめられる）。起動した直後の判定は呼び出し側（アプリ）で持つ
+    public var canUpload: Bool {
+        uploadStatus.showsUploadButton && checks == .success && !(uploadStatus.run?.isRunning ?? false)
+    }
+
+    /// 「TestFlight に上げる」を押せない理由（押せるなら `nil`。ボタンを出さないときも `nil`）
+    public var uploadBlockingReason: String? {
+        guard uploadStatus.showsUploadButton else {
+            return nil
+        }
+        if uploadStatus.run?.isRunning == true {
+            return "同じ epic ブランチで Upload を実行中です"
+        }
+        switch checks {
+        case .success:
+            return nil
+
+        case .failure:
+            return "CI が失敗しています"
+
+        case .pending:
+            return "CI が終わっていません"
+
+        case .none:
+            return "CI が実行されていません"
+        }
+    }
+
+    /// 直近の run がビルドしたコミットが、PR の最新の head と同じか（run が無ければ `nil`）
+    public var uploadedLatestHead: Bool? {
+        uploadStatus.run?.builtHead(headSHA)
     }
 
     /// 差分の URL
