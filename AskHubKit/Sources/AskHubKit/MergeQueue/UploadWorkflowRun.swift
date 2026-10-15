@@ -134,10 +134,13 @@ public enum UploadWorkflowError: Error, Equatable, Sendable {
     /// Fine-grained PAT の Actions: Read and write を求める（Discussion #449）。
     /// レート制限の 403（`x-ratelimit-remaining: 0`・`Retry-After`）は `GitHubError.rateLimited` のままで、ここには来ない
     case permissionDenied
-    /// ワークフロー（`upload.yml`）がリポジトリに無い（起動が 404）。run の取得では `LatestUploadRun.unsupported` で返す
+    /// ワークフロー（`upload.yml`）がリポジトリに無い（起動が 404）。トークンからリポジトリが見えない・Actions が無効のときも 404 になる。
+    /// run の取得では `LatestUploadRun.unsupported` で返す
     case workflowNotFound
-    /// ワークフローはあるが `workflow_dispatch` に対応していない（起動が 422）。以後ボタンを出さない
-    case dispatchNotSupported
+    /// 起動が 422 で断られた。多くは `workflow_dispatch` に対応していない（以後ボタンを出さない）が、
+    /// 対応しているかは既定ブランチではなく指定した `ref` 側の `upload.yml` で判定される（`workflow_dispatch` を足す前に切った epic では 422 になる）ほか、
+    /// `ref` が無いとき（`No ref found for: …`）にも返る。`message` は GitHub の説明で、アプリが表示に使う
+    case dispatchNotSupported(message: String?)
 }
 
 /// Upload ワークフローの run の取得と起動。テストでは差し替える
@@ -196,8 +199,8 @@ public struct GitHubUploadWorkflow: UploadWorkflowProviding {
             )
         } catch GitHubError.http(status: 404, _) {
             throw UploadWorkflowError.workflowNotFound
-        } catch GitHubError.http(status: 422, _) {
-            throw UploadWorkflowError.dispatchNotSupported
+        } catch GitHubError.http(status: 422, let message) {
+            throw UploadWorkflowError.dispatchNotSupported(message: message)
         } catch GitHubError.http(status: 403, _) {
             throw UploadWorkflowError.permissionDenied
         }

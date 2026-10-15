@@ -84,19 +84,13 @@ public struct GitHubClient: Sendable {
         body: Body,
         as type: T.Type = T.self
     ) async throws -> T {
-        var request = makeRequest(url: url(for: path, query: []), method: method)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(body)
-        let (data, _) = try await perform(request)
+        let (data, _) = try await perform(makeJSONRequest(method: method, path: path, body: body))
         return try Self.decode(type, from: data)
     }
 
     /// 本文付きのリクエストを送り、レスポンスの本文は読まない（204 を返す API や、本文を使わない API 向け）
     public func send<Body: Encodable & Sendable>(_ method: String, _ path: String, body: Body) async throws {
-        var request = makeRequest(url: url(for: path, query: []), method: method)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(body)
-        _ = try await perform(request)
+        _ = try await perform(makeJSONRequest(method: method, path: path, body: body))
     }
 
     /// 本文の無いリクエスト（ラベルの削除など）を送る。レスポンスの本文は読まない
@@ -131,6 +125,14 @@ public struct GitHubClient: Sendable {
     private func url(for path: String, query: [URLQueryItem]) -> URL {
         let url = baseURL.appending(path: path)
         return query.isEmpty ? url : url.appending(queryItems: query)
+    }
+
+    /// JSON の本文を付けたリクエストを組み立てる
+    private func makeJSONRequest<Body: Encodable>(method: String, path: String, body: Body) throws -> URLRequest {
+        var request = makeRequest(url: url(for: path, query: []), method: method)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+        return request
     }
 
     private func makeRequest(url: URL, method: String) -> URLRequest {
