@@ -44,10 +44,16 @@ public struct LaunchTracker: Sendable, Equatable {
 
     public init() {}
 
-    /// `repositoryKey` で起動し、ループの開始を待っている・確かめた Discussion の番号（小さい順）。
+    /// `repositoryKey` で起動し、ループの開始を待っている Discussion の番号（小さい順）。
     /// 準備を終えた epic がほかの Discussion のものでも、制御用 worktree で動いているのはこのループ
-    public func launchedDiscussions(repositoryKey: String) -> [Int] {
-        numbers(repositoryKey: repositoryKey) { [.starting, .started, .labelRemoved].contains($0) }
+    public func startingDiscussions(repositoryKey: String) -> [Int] {
+        numbers(repositoryKey: repositoryKey) { $0 == .starting }
+    }
+
+    /// `repositoryKey` で起動し、ループの開始を確かめた Discussion の番号（小さい順。ラベルを外し終えていない・検索結果から消えていないもの）。
+    /// ループは制御用 worktree の準備を終えた epic のもの。ラベルを外せないまま残ると、epic が替わった後も残る
+    public func startedDiscussions(repositoryKey: String) -> [Int] {
+        numbers(repositoryKey: repositoryKey) { [.started, .labelRemoved].contains($0) }
     }
 
     /// `repositoryKey` で起動を諦めた Discussion の番号（小さい順）

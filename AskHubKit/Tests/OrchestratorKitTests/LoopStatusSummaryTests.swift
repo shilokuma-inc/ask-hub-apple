@@ -73,7 +73,7 @@ struct LoopStatusSummaryTests {
             snapshot: Self.epic(),
             usageLimitedUntil: until,
             readyDiscussions: [300],
-            launchedDiscussions: [250],
+            startingDiscussions: [250],
             givenUpDiscussions: [240]
         ))
         #expect(all.reports.map(\.discussion) == [197, 240, 250, 300])
@@ -139,7 +139,7 @@ struct LoopStatusSummaryTests {
         let done = "- [x] 【FEAT】A\n"
         // 完了した #197 の最終 PR のマージ待ちの間に #30 を起動した。動いているプロセスは #30 のもので、#197 は完了のまま
         let facts = LoopStatusFacts(
-            status: Self.running, snapshot: Self.epic(goal: done), readyDiscussions: [30, 40], launchedDiscussions: [30]
+            status: Self.running, snapshot: Self.epic(goal: done), readyDiscussions: [30, 40], startingDiscussions: [30]
         )
         #expect(states(facts) == ["#30 running", "#40 waiting-to-start", "#197 completed"])
         #expect(loops(facts).reports.first == LoopStatusReport(state: .running, discussion: 30, checkedAt: now))
@@ -152,7 +152,7 @@ struct LoopStatusSummaryTests {
         #expect(states(givenUp) == ["#10 gave-up", "#20 waiting-for-answer"])
 
         // ループの開始を確かめた・ラベルを外した Discussion が準備を終えた epic のものなら、epic のループとして実行中にする
-        let started = onlyReport(.init(status: Self.running, snapshot: Self.epic(), launchedDiscussions: [197]))
+        let started = onlyReport(.init(status: Self.running, snapshot: Self.epic(), startedDiscussions: [197]))
         #expect(started?.state == .running)
         #expect(started?.progress == .init(completed: 2, total: 4, deferred: 1))
     }
@@ -160,7 +160,7 @@ struct LoopStatusSummaryTests {
     @Test func writesLaunchedDiscussionsWithoutPreparedEpic() {
         // 起動したが準備が終わっていない間は、起動した Discussion のループとして実行中（待っている ready の Discussion は開始待ち）
         let preparing = Self.epic(prepared: false)
-        let started = loops(.init(status: Self.running, snapshot: preparing, readyDiscussions: [20, 30], launchedDiscussions: [30]))
+        let started = loops(.init(status: Self.running, snapshot: preparing, readyDiscussions: [20, 30], startingDiscussions: [30]))
         #expect(started.reports == [
             LoopStatusReport(state: .waitingToStart, discussion: 20, checkedAt: now),
             LoopStatusReport(state: .running, discussion: 30, checkedAt: now)
@@ -169,6 +169,24 @@ struct LoopStatusSummaryTests {
         // 起動の記録が無いのに動いている（手で始めたループなど）なら、どの Discussion のループか分からない
         let manual = loops(.init(status: Self.running, snapshot: preparing, readyDiscussions: [20], givenUpDiscussions: [10]))
         #expect(manual.reports.map(\.state) == [.gaveUp, .waitingToStart])
+        #expect(manual.includesUnknownLoop)
+    }
+
+    @Test func dropsConfirmedDiscussionAfterControlWorktreeMovesOn() {
+        // #12 の開始を確かめたが ready-for-loop を外せないまま、#12 が終わって #197 を準備し、動かしている。
+        // #12 のループは終わっている。動いているのは #197 の epic
+        #expect(states(.init(status: Self.running, snapshot: Self.epic(), startedDiscussions: [12])) == ["#197 running"])
+        // 制御用 worktree を退避して #30 を起動し、開始を待っている間も、#12 は終わったループ
+        let launching = loops(.init(status: Self.running, snapshot: nil, startingDiscussions: [30], startedDiscussions: [12]))
+        #expect(launching.reports == [LoopStatusReport(state: .running, discussion: 30, checkedAt: now)])
+        #expect(!launching.includesUnknownLoop)
+        // 準備を終えた epic を読めない（準備の途中など）なら、開始を確かめた #12 のループとして実行中
+        let preparing = loops(.init(status: Self.running, snapshot: Self.epic(prepared: false), startedDiscussions: [12]))
+        #expect(preparing.reports == [LoopStatusReport(state: .running, discussion: 12, checkedAt: now)])
+        #expect(!preparing.includesUnknownLoop)
+        // 手で始めた epic に替わったら、#12 は書かない
+        let manual = loops(.init(status: Self.running, snapshot: Self.epic(discussion: nil), startedDiscussions: [12]))
+        #expect(manual.reports.isEmpty)
         #expect(manual.includesUnknownLoop)
     }
 

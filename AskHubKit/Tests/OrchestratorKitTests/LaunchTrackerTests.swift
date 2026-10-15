@@ -20,7 +20,7 @@ struct LaunchTrackerTests {
         #expect(tracker.blockedDiscussionIDs == ["D_12"])
     }
 
-    @Test func tellsLaunchedAndGivenUpDiscussionOfRepository() {
+    @Test func tellsStartingStartedAndGivenUpDiscussionsOfRepository() {
         var tracker = LaunchTracker()
         let older = ReadyDiscussion.fixture(number: 10)
         // #10 は 3 回起動しても始まらなかった（諦めた）
@@ -28,27 +28,30 @@ struct LaunchTrackerTests {
             tracker.recordLaunchFailure(of: older, repositoryKey: key)
         }
         #expect(tracker.givenUpDiscussions(repositoryKey: key) == [10])
-        #expect(tracker.launchedDiscussions(repositoryKey: key).isEmpty)
+        #expect(tracker.startingDiscussions(repositoryKey: key).isEmpty)
 
-        // 続けて #12 を起動した。実行中のループは #12 のもので、#10 は諦めたまま
+        // 続けて #12 を起動した。開始を待っているのは #12 で、#10 は諦めたまま
         tracker.recordLaunch(of: discussion, repositoryKey: key)
-        #expect(tracker.launchedDiscussions(repositoryKey: key) == [12])
+        #expect(tracker.startingDiscussions(repositoryKey: key) == [12])
+        #expect(tracker.startedDiscussions(repositoryKey: key).isEmpty)
         #expect(tracker.givenUpDiscussions(repositoryKey: key) == [10])
-        #expect(tracker.launchedDiscussions(repositoryKey: "other/repo").isEmpty)
+        #expect(tracker.startingDiscussions(repositoryKey: "other/repo").isEmpty)
 
-        // ループの開始を確かめた・ラベルを外した後も、検索結果から消えるまでは起動した Discussion
+        // ループの開始を確かめた・ラベルを外した後は、検索結果から消えるまで開始を確かめた Discussion
         let prepared = statuses(LoopStatus(stateFileExists: true, processAlive: true))
         let actions = tracker.update(discussions: [older, discussion], statuses: prepared, preparedDiscussions: [key: 12])
         #expect(actions == [.removeLabel(discussion)])
-        #expect(tracker.launchedDiscussions(repositoryKey: key) == [12])
+        #expect(tracker.startingDiscussions(repositoryKey: key).isEmpty)
+        #expect(tracker.startedDiscussions(repositoryKey: key) == [12])
         tracker.recordLabelRemoved(from: discussion)
-        #expect(tracker.launchedDiscussions(repositoryKey: key) == [12])
-        // 開始を確かめられないまま終わった（次の起動を待っている）Discussion は、起動した・諦めたのどちらにも入れない
+        #expect(tracker.startedDiscussions(repositoryKey: key) == [12])
+        // 開始を確かめられないまま終わった（次の起動を待っている）Discussion は、どれにも入れない
         tracker.forgiveFailures(repositoryKey: key)
         #expect(tracker.givenUpDiscussions(repositoryKey: key).isEmpty)
-        #expect(tracker.launchedDiscussions(repositoryKey: key) == [12])
+        #expect(tracker.startingDiscussions(repositoryKey: key).isEmpty)
+        #expect(tracker.startedDiscussions(repositoryKey: key) == [12])
         _ = tracker.update(discussions: [older], statuses: prepared)
-        #expect(tracker.launchedDiscussions(repositoryKey: key).isEmpty)
+        #expect(tracker.startedDiscussions(repositoryKey: key).isEmpty)
     }
 
     @Test func adoptsLoopStartedBeforeRestartOnlyWhenUntracked() {

@@ -13,8 +13,10 @@ public struct LoopStatusFacts: Sendable, Equatable {
     /// このリポジトリの `ready-for-loop` の Discussion のうち、制御用 worktree が準備を終えていないものの番号
     /// （手動ループ・信用しない author のものは除く）。オーケストレーターを起動してからまだ一度も取得できていなければ `nil`
     public var readyDiscussions: [Int]?
-    /// 起動して、ループの開始を待っている・確かめた Discussion の番号（`LaunchTracker`）
-    public var launchedDiscussions: [Int]
+    /// 起動して、ループの開始を待っている Discussion の番号（`LaunchTracker`）
+    public var startingDiscussions: [Int]
+    /// 起動して、ループの開始を確かめた Discussion の番号（`LaunchTracker`。ラベルを外し終えて検索結果から消えるまで）
+    public var startedDiscussions: [Int]
     /// 起動を諦めた Discussion の番号（`LaunchTracker`）
     public var givenUpDiscussions: [Int]
     /// ask に回答が付き、ループの再開を待っている（goal の `※回答待ち` はループが再開して外すまで残る）
@@ -32,7 +34,8 @@ public struct LoopStatusFacts: Sendable, Equatable {
         usageLimitedUntil: Date? = nil,
         gaveUp: Bool = false,
         readyDiscussions: [Int]? = [],
-        launchedDiscussions: [Int] = [],
+        startingDiscussions: [Int] = [],
+        startedDiscussions: [Int] = [],
         givenUpDiscussions: [Int] = [],
         hasAnsweredQuestions: Bool = false,
         epicMerged: Bool = false,
@@ -44,7 +47,8 @@ public struct LoopStatusFacts: Sendable, Equatable {
         self.usageLimitedUntil = usageLimitedUntil
         self.gaveUp = gaveUp
         self.readyDiscussions = readyDiscussions
-        self.launchedDiscussions = launchedDiscussions
+        self.startingDiscussions = startingDiscussions
+        self.startedDiscussions = startedDiscussions
         self.givenUpDiscussions = givenUpDiscussions
         self.hasAnsweredQuestions = hasAnsweredQuestions
         self.epicMerged = epicMerged
@@ -74,8 +78,9 @@ public struct AutomaticLoops: Sendable, Equatable {
 /// 待っているときは、#12 には epic の状態を、#30 には起動の状態を出す:
 ///
 /// - 準備を終えた epic: 上限で待機中 → 実行中 → 異常終了 → epic の進み具合（回答待ち・開始待ち・完了）。
-///   制御用 worktree のプロセス・state ファイルは、epic と別の Discussion を起動していればそのループのものとし、epic の実行中にしない
-/// - 起動した Discussion: 上限で待機中 → 実行中（ループの開始を待っている・確かめた）・異常終了（起動を諦めた）
+///   制御用 worktree のプロセス・state ファイルは、epic と別の Discussion を起動して開始を待っていればそのループのものとし、epic の実行中にしない
+/// - 起動した Discussion: 上限で待機中 → 実行中（ループの開始を待っている・確かめた）・異常終了（起動を諦めた）。
+///   開始を確かめた Discussion は、制御用 worktree が別の epic に替わっていれば（ラベルを外せないまま残った記録）、ループは終わったものとして書かない
 /// - `ready-for-loop` の Discussion: 上限で待機中 → 開始待ち
 public enum LoopStatusSummary {
     public static func loops(for facts: LoopStatusFacts, now: Date) -> AutomaticLoops {
@@ -94,11 +99,17 @@ public enum LoopStatusSummary {
                 // 手で始めた epic（ゴール元の記録が無い）は、どの Discussion のループか分からない
                 unknown = true
             }
-        } else if active && facts.launchedDiscussions.isEmpty {
+        }
+        // 開始を確かめた Discussion のループは、制御用 worktree の epic のもの。準備を終えた epic が別の Discussion のもの・
+        // 別の Discussion を起動して開始を待っているときは、制御用 worktree は替わっているので、そのループは終わっている
+        let confirmed = facts.startedDiscussions.filter { number in
+            (epic.map { $0.discussion == number } ?? true) && !facts.startingDiscussions.contains { $0 != number }
+        }
+        if epic == nil && active && facts.startingDiscussions.isEmpty && confirmed.isEmpty {
             // 準備を終えた epic も起動の記録も無いのに動いている（手で始めたループなど）
             unknown = true
         }
-        let started = facts.launchedDiscussions.map { ($0, LoopStatusReport.State.running) }
+        let started = (facts.startingDiscussions + confirmed).map { ($0, LoopStatusReport.State.running) }
         let givenUp = facts.givenUpDiscussions.map { ($0, LoopStatusReport.State.gaveUp) }
         let waiting = (facts.readyDiscussions ?? []).map { ($0, LoopStatusReport.State.waitingToStart) }
         // 準備を終えた epic と同じ Discussion は epic の状態を、起動を追っている Discussion は ready の開始待ちより起動の状態を使う
@@ -110,7 +121,7 @@ public enum LoopStatusSummary {
         return AutomaticLoops(reports: reports.keys.sorted().compactMap { reports[$0] }, includesUnknownLoop: unknown)
     }
 
-    /// 準備を終えた epic のループ。制御用 worktree のプロセス・state ファイルは、epic と別の Discussion を起動していればそのループのもの
+    /// 準備を終えた epic のループ。制御用 worktree のプロセス・state ファイルは、epic と別の Discussion を起動して開始を待っていればそのループのもの
     private static func epicReport(
         _ epic: PreparedEpic, active: Bool, limitedUntil: Date?, facts: LoopStatusFacts, now: Date
     ) -> LoopStatusReport? {
@@ -120,7 +131,7 @@ public enum LoopStatusSummary {
         let state: LoopStatusReport.State
         if limitedUntil != nil {
             state = .usageLimited
-        } else if active && !facts.launchedDiscussions.contains(where: { $0 != number }) {
+        } else if active && !facts.startingDiscussions.contains(where: { $0 != number }) {
             state = .running
         } else if facts.gaveUp || facts.givenUpDiscussions.contains(number) {
             state = .gaveUp
