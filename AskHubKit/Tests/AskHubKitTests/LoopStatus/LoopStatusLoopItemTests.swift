@@ -99,16 +99,20 @@ struct LoopStatusLoopItemTests {
         #expect(gone.map { $0.row.status(now: now) } == [.unassigned, .unassigned])
     }
 
-    @Test func listsOnlyNewestAutomaticLoop() {
-        // 終わった自動ループ（#5）のコメントが残っていても、自動ループは 1 つしか回らないので最も新しい #12 だけを並べる
-        let finished = loop(.gaveUp, discussion: 5, checkedMinutesAgo: 60)
-        let current = loop(.running, discussion: 12)
+    @Test func listsEveryAutomaticLoopDiscussion() {
+        // 完了した #5 の最終 PR のマージ待ちの間に、次の #12 を起動した。自動ループも Discussion ごとに並べる
+        let completed = loop(.completed, discussion: 5, checkedMinutesAgo: 5)
+        let launched = loop(.running, discussion: 12)
+        let automatic = row([completed, launched]).loopItems(manualLoops: [])
+        #expect(automatic.map(\.id) == ["o/r#5", "o/r#12"])
+        #expect(automatic.map(\.mode) == [.automatic, .automatic])
+        #expect(automatic.map { $0.display(now: now).statusText } == ["完了（最終 PR のマージ待ち）", "実行中"])
+
+        // 起動を諦めた自動ループも、異常としてループごとに数える
+        let gaveUp = loop(.gaveUp, discussion: 5)
         let manual = loop(.waitingForAnswer, writer: .manual, discussion: 30)
-        let items = row([finished, current, manual]).loopItems(manualLoops: [])
-        #expect(items.map(\.id) == ["o/r#12", "o/r#30"])
-        #expect(row([finished, current, manual]).abnormalLoopKeys(manualLoops: [], now: now).isEmpty)
-        // 自動ループが 2 つ残っているだけなら、並べない（1 行）
-        #expect(row([finished, current]).loopItems(manualLoops: []).isEmpty)
+        #expect(row([gaveUp, launched, manual]).loopItems(manualLoops: []).map(\.id) == ["o/r#5", "o/r#12", "o/r#30"])
+        #expect(row([gaveUp, launched, manual]).abnormalLoopKeys(manualLoops: [], now: now) == ["o/r#5"])
     }
 
     @Test func headingShowsRepositoryWideStatus() {

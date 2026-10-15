@@ -63,6 +63,8 @@ public protocol OrchestratorGitHub: Sendable {
     func createLoopStatusComment(in repository: String, issue number: Int, body: String) async throws -> Int
     /// 状態用の Issue のコメントの本文を置き換える
     func updateLoopStatusComment(in repository: String, id: Int, body: String) async throws
+    /// 状態用の Issue のコメントを消す（終わったループのもの）。既に無ければ何もしない
+    func deleteLoopStatusComment(in repository: String, id: Int) async throws
     /// リポジトリの、`build-hosts` が付いた Issue（閉じたものも含む）
     func buildHostsIssues(in repository: String) async throws -> [LoopStatusIssueRecord]
     /// ビルドの Mac の状態の Issue を作る（ラベルが無ければ作る）。Issue の番号を返す
@@ -150,8 +152,9 @@ public actor Orchestrator {
     /// 最後に `xcb status --json` を呼んだ時刻（失敗したときも含む）
     var lastXcbStatusAttemptAt: Date?
     let xcbStatus: any XcbStatusFetching
-    /// 担当リポジトリごとの、まだ起動していない `ready-for-loop` の Discussion の番号（最後に取得できたもの）
-    var readyDiscussionNumbers: [String: Int] = [:]
+    /// 担当リポジトリごとの、制御用 worktree が準備を終えていない `ready-for-loop` の Discussion の番号（最後に取得できたもの。手動ループ・信用しない author のものを除く）。
+    /// 起動してからまだ一度も取得できていなければ `nil`（開始待ちのループのコメントを、終わったものとして消さない）
+    var readyDiscussionNumbers: [String: [Int]]?
     /// epic の最終 PR がマージ済みか（キーは `<repo小文字> <branch>`）。未マージなら確かめた時刻も持ち、問い合わせを間引く
     var epicMergeChecks: [String: (merged: Bool, checkedAt: Date)] = [:]
 
@@ -250,8 +253,9 @@ public actor Orchestrator {
 
         // 起動済みの Discussion: ループの開始を確かめたらラベルを外す
         let snapshots = await epicSnapshots()
-        recordReadyDiscussions(discussions, snapshots: snapshots)
         let handled = await advanceLaunchedDiscussions(discussions, statuses: statuses, snapshots: snapshots)
+        // 準備の結果やることが無かった Discussion（ラベルを外した・外し直す）は、開始待ちとして書かない
+        recordReadyDiscussions(discussions.filter { !handled.contains($0.nodeID) }, snapshots: snapshots)
 
         // 手で回す epic があるリポジトリでは起動しない（Q4）。確かめられなければ、このポーリングでは起動しない
         // （依頼・最終 PR のコンフリクト・ループの状態の書き出しは続ける）

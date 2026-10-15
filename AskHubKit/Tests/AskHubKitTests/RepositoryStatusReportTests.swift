@@ -46,6 +46,25 @@ struct RepositoryStatusReportTests {
         #expect(RepositoryStatusReport.parse("人が書いた本文\n" + repository.marker) == nil)
     }
 
+    @Test func writesIssueBodyWithMarkerFirstAndReadableTable() {
+        let report = RepositoryStatusReport(usageLimitedUntil: now.addingTimeInterval(3600), checkedAt: now)
+        let body = report.issueBody
+        #expect(body.hasPrefix(#"<!-- ask-hub:repository-status {"checkedAt":"#))
+        #expect(body.contains("| 担当 PC の確認時刻 | "))
+        #expect(body.contains("| 上限の解除 | "))
+        #expect(body.contains("この Issue のコメントにあります"))
+        #expect(RepositoryStatusReport.parse(body) == report)
+        // 古いアプリ（ループの状態の目印だけを読む）は、この本文を読まない
+        #expect(LoopStatusReport.parse(body) == nil)
+        #expect(!RepositoryStatusReport(checkedAt: now).issueBody.contains("上限の解除"))
+    }
+
+    @Test func comparesStatusWithoutCheckedTime() {
+        let report = RepositoryStatusReport(checkedAt: now)
+        #expect(report.hasSameStatus(as: RepositoryStatusReport(checkedAt: now.addingTimeInterval(600))))
+        #expect(!report.hasSameStatus(as: RepositoryStatusReport(usageLimitedUntil: now, checkedAt: now)))
+    }
+
     @Test func isAssignedWhileCheckedRecently() {
         let report = RepositoryStatusReport(checkedAt: now)
         #expect(report.isAssigned(now: now.addingTimeInterval(LoopStatusReport.freshness - 1)))

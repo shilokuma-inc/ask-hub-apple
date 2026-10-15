@@ -20,6 +20,40 @@ struct LaunchTrackerTests {
         #expect(tracker.blockedDiscussionIDs == ["D_12"])
     }
 
+    @Test func tellsStartingStartedAndGivenUpDiscussionsOfRepository() {
+        var tracker = LaunchTracker()
+        let older = ReadyDiscussion.fixture(number: 10)
+        // #10 は 3 回起動しても始まらなかった（諦めた）
+        for _ in 0..<LaunchTracker.maxAttempts {
+            tracker.recordLaunchFailure(of: older, repositoryKey: key)
+        }
+        #expect(tracker.givenUpDiscussions(repositoryKey: key) == [10])
+        #expect(tracker.startingDiscussions(repositoryKey: key).isEmpty)
+
+        // 続けて #12 を起動した。開始を待っているのは #12 で、#10 は諦めたまま
+        tracker.recordLaunch(of: discussion, repositoryKey: key)
+        #expect(tracker.startingDiscussions(repositoryKey: key) == [12])
+        #expect(tracker.startedDiscussions(repositoryKey: key).isEmpty)
+        #expect(tracker.givenUpDiscussions(repositoryKey: key) == [10])
+        #expect(tracker.startingDiscussions(repositoryKey: "other/repo").isEmpty)
+
+        // ループの開始を確かめた・ラベルを外した後は、検索結果から消えるまで開始を確かめた Discussion
+        let prepared = statuses(LoopStatus(stateFileExists: true, processAlive: true))
+        let actions = tracker.update(discussions: [older, discussion], statuses: prepared, preparedDiscussions: [key: 12])
+        #expect(actions == [.removeLabel(discussion)])
+        #expect(tracker.startingDiscussions(repositoryKey: key).isEmpty)
+        #expect(tracker.startedDiscussions(repositoryKey: key) == [12])
+        tracker.recordLabelRemoved(from: discussion)
+        #expect(tracker.startedDiscussions(repositoryKey: key) == [12])
+        // 開始を確かめられないまま終わった（次の起動を待っている）Discussion は、どれにも入れない
+        tracker.forgiveFailures(repositoryKey: key)
+        #expect(tracker.givenUpDiscussions(repositoryKey: key).isEmpty)
+        #expect(tracker.startingDiscussions(repositoryKey: key).isEmpty)
+        #expect(tracker.startedDiscussions(repositoryKey: key) == [12])
+        _ = tracker.update(discussions: [older], statuses: prepared)
+        #expect(tracker.startedDiscussions(repositoryKey: key).isEmpty)
+    }
+
     @Test func adoptsLoopStartedBeforeRestartOnlyWhenUntracked() {
         var tracker = LaunchTracker()
         tracker.adoptStarted(discussion, repositoryKey: key)
