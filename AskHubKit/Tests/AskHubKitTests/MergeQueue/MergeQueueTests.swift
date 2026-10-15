@@ -200,17 +200,48 @@ struct GitHubMergeQueueTests {
         let nodes = (1...4).map { Self.node(number: $0, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS") }
         let http = MockHTTPClient([Self.searchResponse(nodes)])
         let workflow = RecordingUploadWorkflow([
-            "o/r epic/e1": .success(.unsupported),
-            "o/r epic/e2": .failure(UploadWorkflowError.permissionDenied),
+            "o/r epic/e1": .failure(UploadWorkflowError.permissionDenied),
+            "o/r epic/e2": .failure(GitHubError.invalidResponse),
             "o/r epic/e3": .failure(GitHubError.rateLimited(retryAfter: .seconds(60)))
-            // e4 は登録が無く invalidResponse になる
+            // e4 は、レート制限で待てなくなった後なので読まない
         ])
         let pulls = try await makeQueue(http, uploadWorkflow: workflow).epicPullRequests(orgs: ["shilokuma-inc"])
 
         #expect(pulls.map(\.number) == [1, 2, 3, 4])
-        #expect(pulls.map(\.uploadStatus) == [.unsupported, .permissionDenied, .unavailable, .unavailable])
+        #expect(pulls.map(\.uploadStatus) == [.permissionDenied, .unavailable, .unavailable, .unavailable])
         #expect(pulls.map(\.canMerge) == [true, true, true, true])
-        #expect(pulls.map(\.canUpload) == [false, true, true, true])
+        #expect(pulls.map(\.canUpload) == [true, true, true, true])
+        #expect(workflow.recordedCalls == ["o/r epic/e1", "o/r epic/e2", "o/r epic/e3"])
+    }
+
+    @Test func skipsOtherBranchesOfRepositoryWithoutWorkflow() async throws {
+        // ワークフローが無い（404）のはリポジトリの性質なので、同じリポジトリの別の epic は読まない
+        let node3 = Self.node(number: 3, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS")
+            .replacingOccurrences(of: #""nameWithOwner": "o/r""#, with: #""nameWithOwner": "o/other""#)
+        let nodes = [
+            Self.node(number: 1, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS"),
+            Self.node(number: 2, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS"),
+            node3
+        ]
+        let http = MockHTTPClient([Self.searchResponse(nodes)])
+        let workflow = RecordingUploadWorkflow([
+            "o/r epic/e1": .success(.unsupported),
+            "o/other epic/e3": .success(.noRuns)
+        ])
+        let pulls = try await makeQueue(http, uploadWorkflow: workflow).epicPullRequests(orgs: ["shilokuma-inc"])
+
+        #expect(pulls.map(\.uploadStatus) == [.unsupported, .unsupported, .noRuns])
+        #expect(workflow.recordedCalls == ["o/r epic/e1", "o/other epic/e3"])
+    }
+
+    @Test func propagatesCancellationWhileReadingUploadRuns() async throws {
+        // 取得が打ち切られたときは unavailable で確定させず、呼び出し側（MergeQueueModel）が前の状態に戻せるよう投げる
+        let nodes = [Self.node(number: 1, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS")]
+        let http = MockHTTPClient([Self.searchResponse(nodes)])
+        let workflow = RecordingUploadWorkflow(["o/r epic/e1": .failure(CancellationError())])
+        await #expect(throws: CancellationError.self) {
+            try await makeQueue(http, uploadWorkflow: workflow).epicPullRequests(orgs: ["shilokuma-inc"])
+        }
     }
 
     @Test func mergesWithMergeCommitAtConfirmedHeadAndDeletesBranch() async throws {

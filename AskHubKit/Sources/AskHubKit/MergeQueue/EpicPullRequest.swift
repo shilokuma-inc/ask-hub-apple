@@ -128,7 +128,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         }
     }
 
-    /// 「TestFlight に上げる」を押せるか。CI が成功していて、同じ epic ブランチで実行中の run が無いこと（Discussion #449 の Q3）。
+    /// 「TestFlight に上げる」を押せるか。CI（最新コミットのチェックのまとめ。マージボタンと同じ基準）が成功していて、
+    /// 同じ epic ブランチで実行中の run が無いこと（Discussion #449 の Q3）。
     /// コンフリクトの有無は問わない（解消前でも実機で確かめられる）。起動した直後の判定は呼び出し側（アプリ）で持つ
     public var canUpload: Bool {
         uploadStatus.showsUploadButton && checks == .success && !(uploadStatus.run?.isRunning ?? false)
