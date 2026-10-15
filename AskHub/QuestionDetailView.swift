@@ -114,7 +114,7 @@ struct QuestionDetailView: View {
                 }
             }
         }
-        // ループの起動は取り消せず、トークンも消費するので、確かめてから始める。手で回すときも、オーケストレーターが起動しなくなるので確かめる
+        // ループの起動は取り消せず、トークンも消費するので、確かめてから始める。手で回すときも、オーケストレーターがこの Discussion を起動しなくなるので確かめる
         .confirmationDialog(
             form.loopRunner == .manual ? "回答を投稿して、手動で回しますか？" : "回答を投稿して、ループを始めますか？",
             isPresented: $isConfirmingLoopStart,
@@ -177,7 +177,7 @@ struct QuestionDetailView: View {
             return "回答だけを投稿します。オンにすると、回答を確定してループを始められます"
         }
         if form.loopRunner == .manual {
-            return "Discussion に manual-loop を付け、担当者を @メンションで知らせます。オーケストレーターはこのリポジトリでループを起動しません。"
+            return "Discussion に manual-loop を付け、担当者を @メンションで知らせます。オーケストレーターはこの Discussion のループを起動しません（このリポジトリのほかの自動ループは止めません）。"
                 + "担当者が自分の Mac の Claude Code でループを回します（指示はステータスタブの「手動ループ」からもコピーできます）"
         }
         return "Discussion に ready-for-loop を付けます。担当 PC のオーケストレーターがループを起動します"
@@ -193,7 +193,7 @@ struct QuestionDetailView: View {
     private var loopStartConfirmation: String {
         let discussion = "\(question.subject.shortReference)「\(question.subject.title)」"
         return form.loopRunner == .manual
-            ? "\(discussion)に manual-loop を付けます。この Discussion の epic が終わるまで、オーケストレーターはこのリポジトリでループを起動しません"
+            ? "\(discussion)に manual-loop を付けます。オーケストレーターはこの Discussion のループを起動しません（このリポジトリのほかの自動ループは止めません）"
             : "\(discussion)に ready-for-loop を付け、担当 PC のオーケストレーターがループを起動します"
     }
 
