@@ -104,6 +104,9 @@
   再起動し（ログに `Restarting after unexpected exit, crash, or test timeout` が出る）、`-retry-tests-on-failure` の再試行が走らないまま
   `TEST FAILED` になる（Xcode 26.3 / 26.6 で確認）。MainActor の処理（`XCUIDevice.shared.orientation` など）は、同期の `setUpWithError()` の中で
   `MainActor.assumeIsolated { … }` で呼ぶ。CI の UI テストが 1 回の揺らぎで落ちたら、まずログで失敗したテストが `Iteration 2 of 2` で再試行されているかを見る
+- worktree ごとに分けた新しい DerivedData（`-derivedDataPath`）で `xcodebuild` すると、SwiftLint の Build Tool Plugin の検証
+  （`Validate plug-in "SwiftLintBuildToolPlugin"`）で止まる。手元では `-skipPackagePluginValidation` を付ける（CI は `IDESkipPackagePluginFingerprintValidatation` の `defaults write`）。
+  `swiftlint` が `PATH` に無い Mac では、その DerivedData の `SourcePackages/artifacts/swiftlintplugins/SwiftLintBinary/SwiftLintBinary.artifactbundle/macos/swiftlint` で `lint --strict` を流せる（CI と同じバイナリ）
 
 ## Keychain
 
