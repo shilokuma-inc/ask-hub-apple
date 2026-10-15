@@ -41,6 +41,13 @@ public struct RepositoryStatusReport: Sendable, Equatable, Codable {
         )
     }
 
+    /// 確認時刻を除いて同じ状態か。違うときだけ本文を書き換え、同じなら `LoopStatusReport.updateInterval` ごとに確認時刻だけ書き直す
+    public func hasSameStatus(as other: Self) -> Bool {
+        var other = other
+        other.checkedAt = checkedAt
+        return self == other
+    }
+
     /// 担当 PC がいるか（確認時刻が `LoopStatusReport.freshness` より新しいか）
     public func isAssigned(now: Date) -> Bool {
         OrchestratorHeartbeat.isAssigned(lastSeen: checkedAt, now: now)
@@ -51,6 +58,27 @@ public struct RepositoryStatusReport: Sendable, Equatable, Codable {
     private static let commentOpen = "<!--"
     private static let commentClose = "-->"
     private static let keyword = "ask-hub:repository-status"
+
+    /// 状態用の Issue の本文（新しい形）。先頭に目印、続けて人が読める表を置く。ループごとの状態はコメントにある
+    public var issueBody: String {
+        var rows = [("担当 PC の確認時刻", checkedAt.formatted(.iso8601))]
+        if let usageLimitedUntil {
+            rows.append(("上限の解除", usageLimitedUntil.formatted(.iso8601)))
+        }
+        let table = rows.map { "| \($0.0) | \($0.1) |" }.joined(separator: "\n")
+        return """
+        \(marker)
+        ## ループの状態
+
+        AskHub のオーケストレーターが書き換える Issue です。編集・クローズしないでください。
+        ループ（Discussion）ごとの状態は、この Issue のコメントにあります。
+
+        | 項目 | 値 |
+        | --- | --- |
+        \(table)
+
+        """
+    }
 
     /// 本文の先頭に置く目印
     var marker: String {

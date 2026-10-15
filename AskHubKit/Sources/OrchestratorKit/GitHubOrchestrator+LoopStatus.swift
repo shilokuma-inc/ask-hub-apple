@@ -87,6 +87,14 @@ extension GitHubOrchestrator {
         )
     }
 
+    public func deleteLoopStatusComment(in repository: String, id: Int) async throws {
+        do {
+            try await client.send("DELETE", "repos/\(repository)/issues/comments/\(id)")
+        } catch GitHubError.http(status: 404, _) {
+            // 既に無い
+        }
+    }
+
     /// 状態を書き出す Issue の本文を置き換える
     func updateStatusIssue(in repository: String, number: Int, body: String) async throws {
         // 閉じられていれば開き直す（open のままなら何も変わらない）
