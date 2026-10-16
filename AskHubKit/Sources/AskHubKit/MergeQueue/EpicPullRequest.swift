@@ -2,12 +2,16 @@ import Foundation
 
 /// アプリの「マージ待ち」に出す、epic → develop の最終 PR（`epic-final`。Discussion #1 の Q13）
 public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
-    /// CI（最新コミットのチェック）の状態
+    /// CI の状態。最新コミットの **GitHub Actions の check run だけ**から決める（Discussion #460）。
+    /// CodeRabbit などの commit status は含めない（処理中のまま止まることがあり、マージ条件にしない）
     public enum ChecksState: String, Sendable, Equatable, Hashable {
+        /// GitHub Actions の check run がすべて成功（NEUTRAL / SKIPPED を含む）
         case success
+        /// 失敗は無いが、まだ終わっていない check run がある
         case pending
+        /// 失敗（TIMED_OUT / CANCELLED などを含む）した check run が 1 つでもある
         case failure
-        /// チェックが 1 つも無い
+        /// GitHub Actions の check run が 1 つも無い
         case none
     }
 
@@ -67,7 +71,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         self.mergeability = mergeability
     }
 
-    /// マージボタンを押せるか。CI が成功していて、コンフリクトしていないこと（Q13）
+    /// マージボタンを押せるか。GitHub Actions の CI が成功していて、コンフリクトしていないこと（Q13・Discussion #460）
     public var canMerge: Bool {
         checks == .success && mergeability == .mergeable
     }
