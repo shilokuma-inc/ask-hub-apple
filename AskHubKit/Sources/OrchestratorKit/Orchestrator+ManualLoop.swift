@@ -7,7 +7,7 @@ extension Orchestrator {
         do {
             return try await github.manualLoopDiscussions(orgs: config.orgs)
         } catch {
-            log("manual-loop の Discussion を検索できませんでした（ループの起動は次のポーリングで判定します）: \(error)")
+            log("manual-loop の Discussion を検索できませんでした（次のポーリングで検索し直します）: \(error)")
             return nil
         }
     }

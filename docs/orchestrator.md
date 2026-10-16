@@ -35,7 +35,8 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
 ループの状態の取得と起動は `LocalLoopRuntime` が担う。
 
 1. 担当リポジトリの owner の organization 全体から `ready-for-loop` が付いた open な Discussion を検索する（担当リポジトリごとではなく、`org:a org:b` の 1 回の検索で）
-   あわせて `manual-loop` が付いた open な Discussion も 1 回の検索で取る（失敗したらログに出し、そのポーリングでは起動しない。依頼・最終 PR のコンフリクト・ループの状態の書き出しは続ける）
+   あわせて `manual-loop` が付いた open な Discussion も 1 回の検索で取る（回答による再開・ループの状態の書き出し・GitHub の情報からの最終 PR で手動ループを見分けるのに使う。
+   起動の判定には使わないので、失敗してもログに出して起動は続ける）
 2. 担当リポジトリごとにループの状態を調べる
    - 制御用 worktree に `.claude/ralph-loop.local.md` があるか（アクセス権が無いなどで確かめられないときは「不明」）
    - このオーケストレーターが起動したプロセスが生きているか
@@ -56,13 +57,12 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
    | 担当リポジトリではない | 何もしない（別の PC の担当） |
    | 起動済みで追跡中 | 何もしない（3. で扱う） |
    | Discussion の author が信用する author ではない | 起動しない（ログに出す） |
-   | `manual-loop` が付いている（手で回す Discussion） | 起動しない（ログに出す）。`ready-for-loop` も外さない（手で回すループが始めるときに外す） |
-   | 同じリポジトリに、信用する author の open な `manual-loop` の Discussion がある（手で回す epic が終わっていない） | 起動しない（ログに出す。Discussion #273 の Q4: 1 リポジトリにつきループは 1 つ）。手で回す epic は見えないので、Discussion が閉じられる（最終 PR のマージ）まで待つ。質問が残っている `manual-loop` の Discussion も含む |
+   | `manual-loop` が付いている（手で回す Discussion） | 起動しない（ログに出す）。`ready-for-loop` も外さない（手で回すループが始めるときに外す）。同じリポジトリのほかの Discussion は起動する |
    | 起動したプロセスが生きている | 起動しない（終わるのを待つ） |
    | 途中の epic がある（準備を終えた `epic/` のブランチに、回答待ちでない未完了のタスクが残っている） | 起動しない（epic が終わるのを待つ。起動の失敗としては数えない） |
    | 完了した epic の最終 PR を作り終えていない | 起動しない（起動すると前の epic の作業ファイルが退避され、最終 PR を作れなくなる） |
    | state ファイルが残っている / 有無が不明 | 起動しない（ログに出す） |
-   | 同じリポジトリに番号の小さい起動対象がある | 起動しない（1 リポジトリにつきループは 1 つ） |
+   | 同じリポジトリに番号の小さい起動対象がある | 起動しない（1 リポジトリにつき自動ループは 1 つ） |
    | それ以外 | `loopCommand` を起動する（実行ファイルが無いなどで起動できなければ、3 回まで再試行） |
 
 `loopCommand` はメインの checkout を作業ディレクトリにして、シェルを経由せずに起動する（終了は待たない）。
@@ -71,6 +71,20 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
 その場合も state ファイルが残っていれば二重には起動しない。
 `loopCommand` は、ループを始めたら制御用 worktree に `.claude/ralph-loop.local.md` を作ること（`scripts/ralph-start.sh` が作る）。
 作らないと開始を確かめられず、起動に失敗したとみなされる。
+
+### 手動ループと同時に回す
+
+自動ループは 1 リポジトリにつき 1 つ、手動ループ（`manual-loop` の Discussion）は同じリポジトリでもいくつでも回せる
+（[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425)。Discussion #273 の Q4「1 リポジトリにつきループは 1 つ」を改めた）。
+手動ループがあるリポジトリでも、`ready-for-loop` の Discussion から自動ループを起動する。
+自動ループの数は、オーケストレーターの制御用 worktree（`<名前>-ralph-ctl`）の state ファイル・プロセス・途中の epic と、同じポーリングで起動した Discussion で数える（手動ループは数えない）。
+
+- **オーケストレーターの Mac では、担当リポジトリの手動ループを回さない**（手動ループは担当者の別の Mac で回す）。
+  ralph-kit が手動ループの作業場所を Discussion ごとに分けるまでは、手動ループ（`scripts/askhub-manual.sh`）も同じ制御用 worktree（`<名前>-ralph-ctl`）と
+  PID ファイル（`.claude/askhub-loop.pid`）を使うので、自動ループとぶつかる（PID ファイルを上書きし合う、手動ループの state ファイル・途中の epic が残って自動ループを起動できない、
+  自動ループの起動が完了した手動ループの epic を退避するなど）
+- 回答による再開・GitHub の情報からの最終 PR は、制御用 worktree の epic のゴール元が `manual-loop` の Discussion のとき・記録が無いときは、
+  この Mac の手動ループのものとして自動ループの経路では扱わない（「ask に回答が付いたらループを再開する」「GitHub の情報から最終 PR を作る」）
 
 ## 常駐させる（launchd）
 
@@ -136,6 +150,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `removeRepositoryCommand` | | ローカルの checkout・ループの worktree・DerivedData を消すコマンド。省略時は `~/.local/bin/askhub-remove-repo`（`install.sh` が置く） |
 | `newRepositoryDirectory` | | 新しく作ったリポジトリを clone するディレクトリ（`~` 可）。省略時は最初の担当リポジトリの checkout と同じ場所 |
 | `conflictCommand` | | epic の最終 PR のコンフリクトを解消させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-resolve-conflict`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` が使える |
+| `buildHosts` | | ループのビルドの Mac（xcb）の情報を GitHub に書き出す設定（下の「`buildHosts`」）。**xcb を動かしている Mac のオーケストレーターだけに書く**。省略するとこの機能を止める |
 
 以前の設定にあった `org` は不要になった（書いてあっても無視する）。
 
@@ -144,6 +159,23 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 信用する author（設定の `trustedAuthors` と、担当リポジトリへの書き込み権限を持つアカウント）は、ポーリングのはじめに担当リポジトリごとに求め直し（書き込み権限は 10 分ごとに取り直す）、
 変わったらログに `<リポジトリ> で信用する author: …` と出す。ループには起動ごとに `ASKHUB_TRUSTED_AUTHORS` で渡す。
 アプリからの担当リポジトリの作成・削除の依頼では、オーケストレーターが `repositories` を書き換える（下記）。
+
+### `buildHosts`
+
+```json
+"buildHosts": {
+  "xcb": "~/.config/askhub/xcodebuild",
+  "issueRepository": "shilokuma-inc/ask-hub-apple"
+}
+```
+
+| キー | 必須 | 説明 |
+| --- | --- | --- |
+| `xcb` | ✓ | xcb（ループ共通の xcodebuild の入口）の実行ファイルの絶対パス（`~` 可）。`status --json` で load・空きメモリ・コア数・枠を取る |
+| `eventsDirectory` | | xcb のイベントログ（`events.jsonl` と、5MB を超えて回した `events.jsonl.1`）のディレクトリ（`~` 可）。省略時は `~/Library/Logs/askhub/xcb`（xcb の `XCB_EVENTS_DIR` の既定と同じ） |
+| `issueRepository` | | ビルドの Mac の状態の Issue（ラベル `build-hosts`。`docs/protocol.md` の「ビルドの Mac の状態」）を置くリポジトリ（`owner/repo`）。担当リポジトリのどれかにする。省略したとき・担当から外したときは、その Issue を書かない（各リポジトリの `loop-status` のビルドの情報は書く） |
+
+`issueRepository` が担当リポジトリに無くても設定ファイルは読める（アプリからの依頼で担当から外したときに、設定ごと読めなくならないように）。
 
 ### `loopCommand` のプレースホルダ
 
@@ -168,7 +200,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | state ファイルがある | ループが動いているので何もしない。ただし記録した PID（`.claude/askhub-loop.pid`）のプロセスが終わっていれば、残った state を片付けて続ける |
 
 - 前の epic が完了済み（未完了のタスクが無い）なら、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/` に退避してから worktree を片付ける。
-  未完了なら新しい epic は始めない（1 リポジトリにつきループは 1 つ）。
+  未完了なら新しい epic は始めない（1 リポジトリにつき自動ループは 1 つ）。
   worktree にコミットしていない変更がある・退避に失敗したときは、片付けずに失敗として返す
 - 信用する author は、オーケストレーターが起動ごとに環境変数 `ASKHUB_TRUSTED_AUTHORS` で渡す（設定の `trustedAuthors` と、そのリポジトリへの書き込み権限を持つアカウント。手で設定する必要は無い）。
   再開では、制御用 worktree の playbook の「信用する author」もこの値に書き直す
@@ -187,7 +219,9 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
   「このアプリ固有の前提」にも同じ規則を入れさせる。ラッパーは第 1 引数に作業ツリーのパスを取り、残りを xcodebuild にそのまま渡し、
   終了コードを返すこと。Simulator（`name=` 指定）と DerivedData の作業ツリーごとの分離もラッパーが受け持つ
   （例: ビルド専用機へ ssh で回す・同時実行数を絞る）。置かなければ従来どおり、UDID の `id=` とスロットごとの `-derivedDataPath` で書かせる。
-  既存の epic の playbook は作り直さないので、変えるときは手で書き換える
+  既存の epic の playbook は作り直さないので、変えるときは手で書き換える。
+  このリポジトリの xcb（下の「xcb」）がこのラッパーの実装で、終了コード 75（テストを動かせる Mac が無いので流していない）を
+  テスト未実施として扱い、PR の CI のテストで確かめる規則も playbook に書かせる
 
 ## Mac ごとのセットアップ
 
@@ -200,11 +234,84 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
    `~/.claude/settings.json` の `skipDangerousModePermissionPrompt` は `true` のまま（無人で `bypassPermissions` を使うため）
 5. **ralph-loop プラグイン**: `claude plugin install ralph-loop@claude-plugins-official` を、制御用 worktree（`*-ralph-ctl`）の外で実行する。
    `~/.claude/settings.json` の `enabledPlugins` に入っていれば有効。周回は このプラグインの Stop hook が回すので、無いとループが 1 周で黙って終わる（`askhub-start-loop` は起動前にエラーで止める）
-6. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには template-app-ios の ralph 一式（`.claude/ralph/`・`scripts/ralph-*.sh`）とプロトコルのラベルが必要
+6. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには ralph-kit の中継（`scripts/ralph-*.sh`。[ralph-kit](https://github.com/shilokuma-inc/ralph-kit) の `install.sh` で入れる）とプロトコルのラベルが必要
 7. **オーケストレーター**: このリポジトリを clone して `scripts/orchestrator/install.sh` を実行し、
    `~/.config/askhub/orchestrator.json` を `orchestrator.example.json` から作る（担当リポジトリだけを書く。ほかの Mac と重ねない）
 8. **確認と登録**: `~/.local/bin/askhub-orchestrator --once` でエラーが出ないことを確かめてから `launchctl bootstrap` する。
    ログは `~/Library/Logs/askhub/orchestrator.log`
+
+## xcb（ループの xcodebuild を空いている Mac に振り分ける）
+
+`scripts/orchestrator/xcb`（zsh）。`install.sh` が `~/.local/bin/askhub-xcb` に配置する。
+ループを動かす Mac（振り分け元）で xcodebuild を受け、ssh でつながる Mac のうち最も空いている Mac で実行して、出力と終了コードをそのまま返す。
+上の「xcodebuild のラッパー」として使う。
+
+### 有効にする
+
+振り分け元の Mac で次を行う。置くだけでは使われない（`~/.config/askhub/xcodebuild` があるときだけ、新しい epic の playbook が xcb 経由になる）。
+
+```bash
+ln -s ~/.local/bin/askhub-xcb ~/.config/askhub/xcodebuild
+mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xcb/hosts   # ビルド先を書き換える
+~/.local/bin/askhub-xcb status
+```
+
+- ビルド先の Mac には、振り分け元から鍵で ssh で入れるようにしておく（`BatchMode=yes` で入れること）。Xcode と Simulator のランタイムも入れておく
+- 振り分け元の Mac は「リモートログイン」を有効にし、22 番ポートで接続を受けるようにしておく。ビルド先の見張りは、振り分け元の 22 番ポートに届くかで
+  ネットワークから外れたことに気づく。受けない設定でもビルドはできるが、そのときは ssh のセッションが消えたときにしか止まらない
+- 以前の配置（スクリプトの隣の `.xcb-state`・`.xcb-locks`・`xcb.log`、ビルド先の `~/remote-builds`）は使わなくなる。
+  xcb が動いていないときに、外した Mac の記録（`.xcb-state/drain/`）だけ新しい状態の置き場へ移し、ビルド先の `~/remote-builds` は消してよい
+
+### ビルド先の設定（`~/.config/xcb/hosts`）
+
+1 行 1 台で `<ssh の Host 名> <同時実行の上限> <優先度> <Xcode の Developer ディレクトリ> <テストを受けるか>`。例は `scripts/orchestrator/xcb-hosts.example`。
+
+| 列 | 説明 |
+| --- | --- |
+| 優先度 | 空き具合に掛ける重み（大きいほど選ばれやすい）。行を消すかコメントにすれば候補から外れる |
+| Xcode の Developer ディレクトリ | `-` ならその Mac の `xcode-select` のまま |
+| テストを受けるか | `test`（省略時。すべて受ける）/ `nosimtest`（Simulator のテストだけ受けない。macOS のテストとビルドは受ける）/ `notest`（ビルドだけ） |
+
+`local` の行は振り分け元の Mac 自身。優先度が 0（省略時）なら、リモートが 1 台もつながらないときだけ使う。
+0 より大きくすると、空きメモリが `XCB_LOCAL_MIN_FREE_MEMORY`（既定 50%）以上で、load ÷ コア数が `XCB_LOCAL_MAX_LOAD`（既定 0.5）以下のときだけ、リモートと並べて選ぶ。
+ループの Claude も動く Mac なので、混んでいるときには回さない。
+
+### 振り分けの規則
+
+- **選び方**: 空き具合 = 優先度 × 空きメモリの割合 × (コア数 − load average) ÷ (1 + その Mac で実行中の本数) が最大の Mac。
+  リモートは ssh で問い合わせ、結果を 15 秒使い回す。枠は振り分け元の mkdir ロックで、すべてのループ・スロットで共有する。満杯なら空くまで待つ
+- **テスト**: test 系の action（`test` / `test-without-building`）は、その種類のテストを受ける Mac にだけ回す。
+  受けられる Mac が 1 台もつながっていなければ（持ち出し中など）、**待たずに終了コード 75 で返す**（テストの失敗ではない）。
+  出力で、テスト未実施として PR を出し CI のテストで確かめるようループに伝える。待たせたいときは `XCB_TEST_WAIT`（秒）を指定する
+- **`build-for-testing` → `test-without-building`**: DerivedData は Mac ごとなので、`build-for-testing` を実行した Mac を作業ツリーとプラットフォームごとに覚え、
+  `test-without-building` はその Mac に回す。記録が無い・その Mac で流せない（テストを受けない・つながらない・外している）ときは、
+  `test`（ビルドしてからテスト）に置き換えて流せる Mac でやり直す（`-xctestrun` を渡したときは置き換えない）。
+  ビルドし直しを減らすため、`build-for-testing` は続くテストを受けられる Mac に優先して回す（1 台もつながっていなければ、ほかの Mac でビルドだけ確かめる）
+- **署名**: ssh 越しではログインのキーチェーンを使えず、macOS の署名が `errSecInternalComponent` で失敗する。
+  macOS 宛てのビルド・テストで署名の指定（`CODE_SIGN…`）が無ければ、アドホック署名の設定を足す（archive は除く。CI の macOS のテストと同じ）
+- **Simulator**: リモートでは `platform=iOS Simulator,name=…` を作業ツリー専用の Simulator（`xcb-<作業ツリー>-<機種>-<ランタイム>`。無ければ作る）に置き換える。
+  ランタイムはその Xcode の SDK と同じか古いもののうち最新
+- **置き場**: リモートは `~/remote-builds.noindex/src/<作業ツリー>`（rsync で同期。`.git`・DerivedData・`.build` は送らない）と
+  `~/remote-builds.noindex/dd/<作業ツリー>`（DerivedData。ループが付けた `-derivedDataPath` は使わない）。
+  名前を `.noindex` で終わらせて Spotlight の索引から外す（ビルドのたびに索引を作り直して load が上がり、選ばれにくくなるため）。`XCB_REMOTE_ROOT` で変えられる。
+  `local` は `~/Library/Developer/Xcode/DerivedData/xcb-<作業ツリー>`
+- **切断**: ssh の生存確認（5 秒ごと × 3 回）で切断に気づいたら、その Mac を 60 秒候補から外し、別の Mac で最初からやり直す（最大 4 回）。
+  リモート側の見張りが、ssh のセッションが消えるか、振り分け元の 22 番ポートに一度つながった後に 15 秒届かなければ xcodebuild を止める
+- **プラットフォーム**: visionOS などのプラットフォームが入っていない Mac に当たったら、1 時間そのプラットフォームの候補から外して別の Mac でやり直す
+
+### コマンドと状態
+
+| コマンド | 説明 |
+| --- | --- |
+| `askhub-xcb <作業ツリー> <xcodebuild の引数…>` | ビルド・テストを振り分けて実行する |
+| `askhub-xcb status [--json]` | 各 Mac の状態・load・空きメモリ・実行中の本数。`--json` はオーケストレーター向け。`local` の `state` は `standby`（外していれば `drained`）。`local` にもコア数・load・空きメモリを載せる |
+| `askhub-xcb drain <Host>` / `undrain <Host>` | その Mac を候補から外す / 戻す（実行中のものは止めない。`local` も指定できる） |
+
+| 置き場 | 内容 |
+| --- | --- |
+| `~/.local/state/askhub/xcb`（`XCB_STATE_DIR`） | 問い合わせの結果・外した Mac・実行中のビルド・枠のロック・`build-for-testing` を実行した Mac |
+| `~/Library/Logs/askhub/xcb/events.jsonl`（`XCB_EVENTS_DIR`） | イベント（1 行 1 JSON。5MB を超えたら `.1` に回す）。オーケストレーターが読む |
+| `~/Library/Logs/askhub/xcb/xcb.log`（`XCB_LOG`） | 1 回の実行ごとに、実行した Mac・所要時間・終了コード |
 
 ## ask に回答が付いたらループを再開する
 
@@ -212,11 +319,15 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 
 1. 担当リポジトリの owner の organization 全体から `needs-answer` の open な Discussion / PR を取得し（`GitHubInboxSource`）、担当リポジトリのものだけを扱う
 2. 信用する author の質問と、その回答状況を読み取る（回答済み = 信用する author の返信が 1 件以上）
-3. PR の ask（※2）に**新しく**回答が付いたら、そのリポジトリを再開待ちにする。Discussion（※1）の回答では再開しない（ループは `ready-for-loop` で始まる）
+3. PR の ask（※2）に**新しく**回答が付き、その PR の base がこの PC の自動ループの epic（制御用 worktree のブランチ）なら、そのリポジトリを再開待ちにする。
+   Discussion（※1）の回答では再開しない（ループは `ready-for-loop` で始まる）。
+   同じリポジトリで自動ループと手動ループが回るので、ほかの epic（手動ループ・`develop` など）宛ての PR の回答では再開しない
+   （[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425)）。PR の base は `needs-answer` の検索で一緒に取る（`baseRefName`。検索の回数は増やさない）
 4. 再開待ちのリポジトリ
 
    | 状態 | 動作 |
    | --- | --- |
+   | 途中の epic が無い（準備を終えた `epic/` のブランチに、回答待ちでない未完了のタスクが無い） | 起動しない。再開待ちをやめ（諦めた記録も消す）、ログに出す。起動スクリプトも「未完了のタスクがありません」で断るので、起動しても state ファイルが現れないまま終わり、ループは落ちていないのに「異常終了（再開を諦めた）」になってしまうため |
    | ループが動いている（プロセスが生きている / state ファイルがある） | 起動しない。回答はループ自身が拾う |
    | state ファイルの有無が不明 | 待つ |
    | 止まっている | `loopCommand` を起動する（`{discussion}` は空文字列） |
@@ -229,8 +340,16 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
    ただし、信用する author の Discussion に `manual-loop` が付いていれば（手で回す Discussion）、`ready-for-loop` は付けずに
    `needs-answer` だけを外す（ログに「manual-loop（手で回す）なので、ready-for-loop は付けません」と出す）。
    `manual-loop` と author は `needs-answer` の検索結果から読む。信用外の author の Discussion に付いた `manual-loop` は無視し、今までどおり扱う
-6. 信用する author の open な `manual-loop` の Discussion があるリポジトリ（手動ループ）では、PR の ask に回答が付いても再開待ちにしない。
-   ループは担当者の Mac で動いているので、担当者がアプリの「回答がそろいました」を見て再開する
+6. 信用する author の open な `manual-loop` の Discussion があるリポジトリ（手動ループ）では、手動ループの epic 宛ての PR の回答で再開待ちにしない。
+   ループは担当者の Mac で動いているので、担当者がアプリの「回答がそろいました」を見て再開する。
+   手動ループのあるリポジトリでは、次のときも自動ループの epic とみなさない（ralph-kit が作業場所を Discussion ごとに分けるまでは、
+   この PC で回す手動ループも制御用 worktree を使うため）。このとき、そのリポジトリの再開待ちもやめる
+   - 制御用 worktree の epic のゴール元（起動スクリプトの記録）が `manual-loop` の Discussion
+   - ゴール元の記録が無い（手で始めた epic）
+
+   そのポーリングで `manual-loop` の Discussion を取得できなかったときは、ゴール元の記録がある epic を自動ループの epic とみなす
+   （ゴール元を記録するのは自動ループの起動スクリプトだけ。取得の失敗で見送ると、その回に付いた回答を処理済みにしてしまい再開できなくなる）。
+   base が分からない PR（base を埋めない取得元から来たもの。GitHub の検索では必ず取れる）は、手動ループの無いリポジトリでだけ今までどおり再開待ちにする
 
 回答済みの質問はメモリ上でだけ覚えるため、オーケストレーターを再起動した直後は、回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
 
@@ -344,7 +463,8 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 
 **削除**:
 
-1. ループのプロセスが動いていれば外さない。制御用 worktree に state ファイルが残っていれば、強制の依頼でなければ外さない
+1. ループのプロセスが動いていれば外さない。最終 PR のコンフリクトを裏で解消している間も外さない（解消はメインの checkout に一時 worktree を作るため）。
+   制御用 worktree に state ファイルが残っていれば、強制の依頼でなければ外さない
 2. ローカルも消す依頼なら、`removeRepositoryCommand`（既定は `scripts/orchestrator/remove-repo.sh`）に
    `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する。スクリプトは、強制でなければ
    未コミットの変更（ループの作業ファイル `.claude/askhub-*`・`.claude/ralph-*.local.*` は除く）・stash・どのリモートにも無いコミットを持つブランチがないかを確かめる。
@@ -372,32 +492,75 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 アプリの「ステータス」タブは、オーケストレーターが担当リポジトリごとに書き出す状態用の Issue を読む
 （[Discussion #197](https://github.com/shilokuma-inc/ask-hub-apple/discussions/197)。形式は [`docs/protocol.md`](protocol.md) の「ループの状態」）。
 
-- 毎回のポーリングの最後（利用上限で待機している間は、最終 PR の確認の後）に、`LoopStatusSummary` で担当リポジトリごとの状態をまとめる。
+- 毎回のポーリングの最後（利用上限で待機している間は、最終 PR の確認の後）に、`LoopStatusSummary` で担当リポジトリごとに、自動ループの状態を Discussion ごとにまとめる。
   材料は、ループのプロセスと state ファイル、制御用 worktree の epic（ブランチ・goal・`askhub-bootstrap.local.txt`）、利用上限の解除の時刻、
-  異常終了・起動・再開を諦めたか、回答が付いて再開を待っているか、まだ起動していない `ready-for-loop` の Discussion、
+  異常終了・再開を諦めたか、起動を追っている Discussion（起動した・起動を諦めた。`LaunchTracker`）、回答が付いて再開を待っているか、まだ起動していない `ready-for-loop` の Discussion、
   最終 PR がマージ済みか（完了した epic だけ、10 分に 1 回まで問い合わせる）、最後に動いた時刻
   （`.claude/ralph-loop.local.md`・`ralph-state.local.md`・`ralph-goal.local.md`・最新のループのログの更新時刻のうち新しいもの）
 - 状態用の Issue（ラベル `loop-status`、タイトル `【AskHub】ループの状態`）は、信用する author が作った open なもののうち最も新しく更新されたものを使う。
   無ければ閉じたものを開き直し、それも無ければ作る（ラベルが無ければ作る）。人が閉じても、次に書くときに開き直す
-- 本文は状態が変わったときだけ書き換え、変わらなければ 10 分ごとに確認時刻だけを書き直す。
-  オーケストレーターを再起動した直後は Issue の本文を読み、同じ状態なら書き直さない
-- 書けなかったときはログに出し、次のポーリングで Issue の一覧から取り直して書き直す
-- 本文に書くのは epic 名・Discussion の番号・件数・時刻だけ。ローカルパス・ログの中身・PC 名は書かない（public リポジトリでは誰でも読める）
+- 本文にはリポジトリ全体の状態（担当 PC の確認時刻・利用上限の解除の時刻）を、自動ループの状態はそのループ（Discussion）のコメントに書く
+  （[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425) の Q1。同じリポジトリで自動ループと手動ループが同時に回るため）。
+  ゴール元の Discussion の番号が無い状態（手で始めた epic）はコメントに書かない
+- 自動ループのコメントは Discussion ごとに 1 つ。同時に動く自動ループはリポジトリに 1 つのままだが、制御用 worktree に準備を終えた epic（例: 完了して最終 PR のマージ待ちの #12）が
+  残ったまま別の Discussion（#30）を起動した・起動を諦めた・待っているときは、#12 のコメントに epic の状態を、#30 のコメントに起動の状態を書く（PR #437 の担当者の判断）。
+  準備を終えた epic と別の Discussion を起動して開始を待っていれば、制御用 worktree のプロセス・state ファイルはそのループのものとし、epic を実行中にしない
+- 自動ループのコメントを消すのは、その Discussion のループが終わったとき（最終 PR がマージされた・epic が退避されて起動の記録にも `ready-for-loop` にも無い）と、重複したとき、
+  ほかの書き手（手動ループ・知らない書き手）がその Discussion を書いているとき（自分のコメントだけを消す）だけ。
+  どの Discussion のものか分からないループがある間（手で始めた epic・起動の記録の無いループが動いている・起動してから `ready-for-loop` の一覧をまだ取得していない。
+  上限で待機中に再起動したときなど）は、一覧に無い Discussion のコメントも消さない
+- 本文もコメントも、状態が変わったときだけ書き換え、変わらなければ 10 分ごとに確認時刻だけを書き直す。
+  オーケストレーターを再起動した直後は Issue の本文とコメントを読み、同じ状態なら書き直さない
+- 書けなかったとき（コメントを読めなかったときも）はログに出し、次のポーリングで Issue とコメントの一覧から取り直して書き直す（読めないまま作らないので、コメントは重複しない）
+- 書くのは epic 名・Discussion の番号・件数・時刻と、ビルドの情報の Mac の Host 名・スロットだけ。ローカルパス・ログの中身は書かない（public リポジトリでは誰でも読める）
+- 設定の `buildHosts` があれば、ポーリングのたびに xcb のイベントログ（`events.jsonl`。回した `events.jsonl.1` も）を前回の続きから読み、
+  ループのスロット（`<名前>-ralph-a` / `-b`）のビルドを `builds`（実行中・スロットごとの直近・24 時間の移動）に載せる（`docs/protocol.md` の「ビルドの情報」）。
+  ほかのビルド（メインの checkout・制御用 worktree・手で流したビルド）は載せない。ビルドが 1 つも無ければキーを書かない。
+  ビルドが変わったら（始まった・別の Mac に移った・終わった）状態の変化として書き換え、変わらなければ今までどおり 10 分ごとの確認時刻の書き直しに載せる。
+  オーケストレーターを再起動したら、残っているイベントログを頭から読み直して組み立て直す（読んだ位置は保存しない）
+- ビルドの情報は、準備を終えた epic の自動ループのコメントに書く。手動ループが本文を書いていても、自動ループのコメントには書く
 - `ready-for-loop` の検索に失敗したポーリングでは書き出さない（次のポーリングで書く）
-- 本文を書き換える前に Issue の一覧を取り直して本文を読む。手で回しているループ（目印の `writer` が `manual`）が書いていて、
-  `checkedAt` が 30 分以内なら書かない（`LoopStatusPublisher`。Discussion #273 の Q3）。手で回すループは 10 分ごとに `checkedAt` を書き直す。
-  ただし、信用する author の open な `manual-loop` の Discussion があるリポジトリでは、手動ループの状態を（`checkedAt` が古くなっても）上書きしない（担当者の情報を残す。古さはアプリが知らせる）。
-  Discussion が閉じた後に 30 分を過ぎていれば、オーケストレーターが自分の材料で今までどおりの優先順位で書き直す
-  （オーケストレーターからは手で回す制御用 worktree が見えないので、多くは「ループなし」か `ready-for-loop` の「開始待ち」になる）
+- 書き換える前に Issue の一覧とコメントを取り直して読む（`LoopStatusPublisher`）。手で回しているループ（目印の `writer` が `manual`）が
+  古い形で本文を書いていて、`checkedAt` が 30 分以内なら本文は書かない（Discussion #273 の Q3）。手で回すループは 10 分ごとに `checkedAt` を書き直す。
+  本文の Discussion が信用する author の open な `manual-loop` の Discussion のあいだ（本文に Discussion の番号が無ければ、そのリポジトリに信用する author の
+  open な `manual-loop` の Discussion があるあいだ）は、手動ループの本文を（`checkedAt` が古くなっても）上書きしない（担当者の情報を残す。古さはアプリが知らせる）。
+  Discussion が閉じた後に 30 分を過ぎていれば、本文をリポジトリ全体の状態で書き直す。どちらの間も、自動ループのコメントは書き続ける
+- 手動ループのコメント（新しい形）・古い形の本文がある Discussion には、`checkedAt` が 30 分以内か、その Discussion が信用する author の open な `manual-loop` の
+  Discussion のあいだ、自動ループのコメントを書かない（1 つの Discussion の書き手は 1 つ）。手動ループから自動ループに切り替えた Discussion は、
+  同じリポジトリでほかの Discussion を手で回していても、残った古い手動ループのコメントでは止めない。`manual-loop` の Discussion を検索できなかったポーリングでは、
+  前回取得できた番号を使う。知らない書き手のコメントがある Discussion にも書かない。
+  `manual-loop` の Discussion と信用しない author の Discussion は起動しないので、`ready-for-loop` が付いていても開始待ちとして書かない
+- 起動した Discussion は、準備が終わる前（ゴール元の記録も promise も無い）も、起動の記録（`LaunchTracker`）から実行中として書く。起動を諦めたら異常終了として書く。
+  開始を確かめた後にラベルを外せないまま残った Discussion は、制御用 worktree が別の epic に替わったら（別の Discussion の epic を準備した・別の Discussion を起動した）、終わったループとして書かない。
+  準備を終えていない `ready-for-loop` の Discussion は、すべて開始待ちとして書く（準備の結果やることが無かった Discussion は除く）
+
+## ビルドの Mac の状態を書き出す（build-hosts）
+
+設定の `buildHosts.issueRepository` が担当リポジトリにあれば、ループの状態を書き出した後に、xcb のビルド先の Mac の状態を
+そのリポジトリの Issue（ラベル `build-hosts`、タイトル `【AskHub】ビルドの Mac の状態`。`docs/protocol.md` の「ビルドの Mac の状態」）に書き出す。
+
+- Mac の状態（使える・切断・外している・待機）・使えない理由の分類・実行中の本数・ループのスロットの実行中のビルドは、xcb のイベントログから組み立てる。
+  変わったら（Mac が切断された・戻った・`xcb drain` された・ビルドが始まった・移った・終わった）、間隔を待たずに書き換える
+- コア数・load・空きメモリ・同時に実行できる本数は、10 分ごとの確認時刻の書き直しのときだけ `xcb status --json` を呼んで載せる（各 Mac に ssh で問い合わせるため、毎回は呼ばない）。
+  load・空きメモリの揺れは変化として扱わない。`xcb status --json` が失敗したら、ログに出して前の値のまま書く
+- Mac の並びは `xcb status --json` の順。状態は変わるたびに記録されるイベントのほうを使う（`xcb status --json` の値は最大 10 分古い）
+- xcb の理由の文（`host_state` の `reason`）はローカルパスを含むことがあるので、分類（接続できない・実行中に切断・Xcode が未準備）だけを書く
+- Issue は信用する author が作った open なもののうち最も新しく更新されたものを使い、無ければ閉じたものを開き直し、それも無ければ作る（ラベルが無ければ作る）
+- オーケストレーターを再起動した直後は Issue の本文を読み、同じ状態なら書き直さない
 
 ## GitHub の情報から最終 PR を作る
 
-制御用 worktree の「最終 PR に載せる内容」が使えない epic は、次の場合に GitHub の情報から最終 PR を作る（ポーリングの最後、リポジトリごとに 10 分に 1 回まで）。
+制御用 worktree の「最終 PR に載せる内容」が使えない epic は、次の場合に GitHub の情報から最終 PR を作る（ポーリングの最後）。
+同じリポジトリで複数のループ（自動ループと手動ループ・複数の手動ループ）が回るので、候補はループ（epic）ごとに出し、両方の経路を並べて見る
+（[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425)）。GitHub への問い合わせ（既にある PR・材料）は epic ごとに 10 分に 1 回まで。
 
-- **手動ループ**（`manual-loop` の Discussion が open なリポジトリ）: 信用する author の状態用の Issue の書き手が `manual`・状態が `completed` で、
-  epic とゴール元の Discussion が書かれていて、書かれてから 30 分（`LoopStatusReport.freshness`）たった。
-  担当者が `scripts/askhub-manual.sh final`（手元の state の内容で作る）を流すのを、その間は待つ
-- **自動ループ**: ループが正常に止まり（異常終了したものは再開して内容を書かせるので除く）、タスクもすべて終わっているのに「最終 PR に載せる内容」が空
+- **手動ループ**（`manual-loop` の Discussion が open なリポジトリ）: 信用する author が作った状態用の Issue の本文と、信用する author のループごとのコメント（`LoopStatusBoard`）のうち、
+  書き手が `manual`・状態が `completed` で、epic が書かれていて、書かれてから 30 分（`LoopStatusReport.freshness`）たった、open な `manual-loop` の Discussion のループ
+  （`manual-loop` の Discussion を取得できなかったポーリングでは絞らない）。
+  担当者が `scripts/askhub-manual.sh final`（手元の state の内容で作る）を流すのを、その間は待つ。状態用の Issue の読み直しはリポジトリごとに 10 分に 1 回まで
+- **自動ループ**: ループが正常に止まり（異常終了したものは再開して内容を書かせるので除く）、タスクもすべて終わっているのに「最終 PR に載せる内容」が空。
+  手動ループがあっても見る。ただし手動ループのあるリポジトリでは、制御用 worktree の epic のゴール元が `manual-loop` の Discussion のとき・記録が無いときは、
+  この PC の手動ループのものとして自動ループの経路では作らない（回答による再開と同じ判定）
 
 材料は、epic にマージされた子 PR・epic 宛てでまだ open の子 PR・タイトルか本文で epic に触れている open な仮決め一覧（`decision-log`）と実機確認（`needs-verify`）の Issue。
 本文の先頭にゴール元の Discussion の目印を置き、`epic-final` を付ける。GitHub の情報から作ったことも書き添える。
@@ -405,10 +568,15 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 
 ## epic の最終 PR のコンフリクトを解消する
 
-epic の最終 PR が既定ブランチとコンフリクトすると、AskHub のアプリからはマージも解消もできない。ポーリングの最後に（1 回のポーリングで 1 件）、次を行う。
+epic の最終 PR が既定ブランチとコンフリクトすると、AskHub のアプリからはマージも解消もできない。ポーリングの最後に探し、見つけたら次を**裏で**行う
+（[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425) の Q3）。解消は最長 30 分かかるが、ポーリングはその終わりを待たずに続ける。
+
+- 同じリポジトリでは 1 件ずつ、別のリポジトリは並列に解消する（`askhub-resolve-conflict` はメインの checkout に一時 worktree を作るため、同じリポジトリでは並べない）
+- 同じリポジトリでほかの最終 PR（自動ループと手動ループの epic など）もコンフリクトしていれば、前の解消が終わったところで、次のポーリングを待たずに始める。
+  今終わった PR は push で head が変わっているので、まだコンフリクトしていれば次のポーリングで取得し直してから試す
 
 1. org 全体の open な `epic-final` PR のうち、GitHub が `CONFLICTING` と判定したものを探す（`UNKNOWN` はまだ判定中なので次のポーリングに回す）。担当リポジトリのものだけを扱う
-2. `conflictCommand`（既定は `askhub-resolve-conflict`）を、終わるまで待って実行する。スクリプトはループの作業場所（制御用 worktree・スロット）とは別の一時 worktree で、head に base を取り込む
+2. `conflictCommand`（既定は `askhub-resolve-conflict`）を実行し、終わるまで裏で待つ。スクリプトはループの作業場所（制御用 worktree・スロット）とは別の一時 worktree で、head に base を取り込む
    - コンフリクトしなければ、そのまま head に push する（`ASKHUB_RESULT: merged`）
    - コンフリクトしたら `claude -p` に解消させ、CLAUDE.md の検証コマンドを通させてからマージコミットを作らせる。
      スクリプトが、マージが完了していること・コンフリクトの印が残っていないこと・head と base の両方を含むことを確かめてから、
@@ -416,7 +584,11 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 3. 結果を PR にコメントする。解消できなかったときは理由と、手元での解消が要ることを書く
 4. 同じ組み合わせ（head と base のコミット）では 1 回しか試さない。解消できなかったのが 3 回続いたら、その PR はあきらめる。
    コンフリクトが無くなった（検索に出なくなった）PR は忘れる。記録はメモリ上だけなので、再起動すると数え直す
-5. Claude の利用上限で終わったときは試したことにせず、解除の後に試し直す
+5. Claude の利用上限で終わったときは試したことにせず、解除の後に試し直す。上限で待機しているあいだは、新しい解消を始めない（実行中の解消は終わるまで待つ）
+
+`--once` で 1 回だけポーリングしたときと、ポーリングを終えるとき（`run` が戻るとき）は、実行中の解消が終わって結果を PR にコメントするまで待ってから終わる
+（解消の子プロセスはオーケストレーターが終わっても止まらないため）。待っている間は、同じリポジトリの次の最終 PR を始めない。launchd の停止・再起動ではプロセスがすぐに終わるので待たない（`AbandonProcessGroup` で子プロセスは残る）。
+記録はメモリ上だけなので、再起動した後に、まだコンフリクトしている PR を試し直すことがある（今までと同じ）
 
 ログは `~/Library/Logs/askhub/loops/<リポジトリ>-conflict-<PR 番号>-*.log`（claude の出力）。
 

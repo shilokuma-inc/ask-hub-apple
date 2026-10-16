@@ -1,7 +1,7 @@
 import AskHubKit
 import SwiftUI
 
-/// 「要対応」タブ。上に「要回答」（Discussion の質問・PR の ask）、その下に「マージ待ち」（epic の最終 PR）を出す
+/// 「要対応」タブ。上に「要回答」（Discussion の質問・PR の ask。同じ Discussion の質問は続けて並べる）、その下に「マージ待ち」（epic の最終 PR）を出す
 struct ActionListView: View {
     let inbox: InboxModel
     let mergeQueue: MergeQueueModel
@@ -19,7 +19,7 @@ struct ActionListView: View {
             }
             if !inbox.questions.isEmpty {
                 Section {
-                    ForEach(inbox.questions) { question in
+                    ForEach(inbox.groupedQuestions) { question in
                         NavigationLink(value: question) {
                             QuestionRow(question: question)
                         }

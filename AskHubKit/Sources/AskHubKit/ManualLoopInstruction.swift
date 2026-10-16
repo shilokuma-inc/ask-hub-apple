@@ -3,7 +3,7 @@ import Foundation
 /// 手動ループ（`manual-loop`）の epic を始める・再開するときに、担当者が Claude Code に渡す指示。
 ///
 /// 受けた Claude は、リポジトリの `scripts/askhub-manual.sh` で準備・起動・状態の書き出し・最終 PR を行う
-/// （手順はリポジトリの `.claude/ralph/README.md` の「手で回す（manual-loop）」）
+/// （手順は ralph-kit の `README.md` の「手で回す（manual-loop）」）
 public enum ManualLoopInstruction {
     /// 始めるときの指示。例: `shilokuma-inc/notti-ios で Discussion #12 の epic を手動ループで回して`
     public static func start(repository: String, discussionNumber: Int) -> String {

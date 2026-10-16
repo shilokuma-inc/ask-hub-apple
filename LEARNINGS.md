@@ -35,9 +35,8 @@
   先に `git -C <worktree> checkout --detach` しておくと消えない
 - 検索クエリの `org:a org:b` は OR になる（Issue でも Discussion でも件数がそれぞれの合計になる）。organization が増えても検索は 1 回で済む。
   修飾子を 1 つも付けないと GitHub 全体を検索するので、organization が空なら検索しない
-- リモートに `assets` という名前のブランチがあると、`assets/issue-<N>` のブランチは push できない（git の ref はファイルとディレクトリを兼ねられず、`cannot lock ref … 'refs/heads/assets' exists` で拒否される）。
-  `assets` ブランチが残っている間は、スクリーンショットを `assets` ブランチの `issue-<N>/` に足す（`git commit-tree <木> -p origin/assets` で作ったコミットを fast-forward で push する）。
-  画像だけの orphan ブランチにはワークフローのファイルが無いので、push しても Build は走らない
+- CodeRabbit の無料枠は 1 時間に 1 回のレビューで、上限に当たった PR には「Review rate limited」と出る。上限が戻っても自動ではレビューされないので、
+  PR に `@coderabbitai review` とコメントして頼む（1 回で 1 本の PR を使い切る。上限中に push した続きのコミットは、そのまま未レビューで残る）
 
 ## ビルド・テスト
 
@@ -91,8 +90,23 @@
   入力欄が切り替わったことは、画面の上にある要素（`template-picker` など）で確かめる。セグメントの `Picker` は `app.segmentedControls["<ID>"].buttons["<文言>"]` で引け、`isSelected` で選択中かが分かる
 - iOS の UI テストでは、`Form` の中の `LabeledContent("元の PR", value: "#17")` は名前だけの StaticText（`元の PR`）と、名前と値をつないだ StaticText（`元の PR, #17`）になり、
   値だけ（`#17`）では引けない。値を確かめるときは `app.staticTexts["元の PR, #17"]` で引く
+- `AskHubKit` の public な型の名前を変えた直後の `swift test --package-path AskHubKit` は、別のターゲット（`OrchestratorKitTests` など）の古いオブジェクトが残り、
+  「Undefined symbols」（古い型名の `init`）でリンクが落ちることがある。コードの誤りではないので、`AskHubKit/.build` を消してビルドし直す
 - ralph-loop の xcodebuild のラッパー（別の Mac で実行する）で UI テストを流すと、`.xcresult` は実行した Mac に残り、ログの末尾にそのパスが出る。
   `-resultBundlePath` で手元に書かせることはできないので、スクリーンショットはそのパスを `rsync` で取り寄せてから `xcrun xcresulttool export attachments` で取り出す
+- ssh 越しに流した `xcodebuild` では、macOS 向けの署名が `errSecInternalComponent` で失敗する（ssh のセッションからはログインのキーチェーンの鍵を使えない）。
+  `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=`（アドホック署名）にすれば通る。xcb は署名の指定が無ければ自動で足す。
+  一度失敗した DerivedData のまま流し直すと、作りかけの署名（`.cstemp`）が残って `invalid or unsupported format for signature` になるので、別の DerivedData でやり直す
+- macOS 27.2 beta の Mac では、Xcode 26.6 の iOS Simulator のテストランナーが起動しない（7〜9 分待って失敗する）。macOS のテストとビルドは通る。
+  Xcode 27.1 なら起動する見込みだが、Swift の並行性チェックが厳しくなり、Xcode 26 で通るコードが `#ConformanceIsolation` のエラーでビルドできないことがある（Zankyo で発生）。
+  xcb のビルド先の設定では、macOS 27 の Mac を `nosimtest` にする
+- `continueAfterFailure = false` の UI テストで `override func setUp() async throws` を使うと、テストが失敗した直後にテストランナーが
+  再起動し（ログに `Restarting after unexpected exit, crash, or test timeout` が出る）、`-retry-tests-on-failure` の再試行が走らないまま
+  `TEST FAILED` になる（Xcode 26.3 / 26.6 で確認）。MainActor の処理（`XCUIDevice.shared.orientation` など）は、同期の `setUpWithError()` の中で
+  `MainActor.assumeIsolated { … }` で呼ぶ。CI の UI テストが 1 回の揺らぎで落ちたら、まずログで失敗したテストが `Iteration 2 of 2` で再試行されているかを見る
+- worktree ごとに分けた新しい DerivedData（`-derivedDataPath`）で `xcodebuild` すると、SwiftLint の Build Tool Plugin の検証
+  （`Validate plug-in "SwiftLintBuildToolPlugin"`）で止まる。手元では `-skipPackagePluginValidation` を付ける（CI は `IDESkipPackagePluginFingerprintValidatation` の `defaults write`）。
+  `swiftlint` が `PATH` に無い Mac では、その DerivedData の `SourcePackages/artifacts/swiftlintplugins/SwiftLintBinary/SwiftLintBinary.artifactbundle/macos/swiftlint` で `lint --strict` を流せる（CI と同じバイナリ）
 
 ## Keychain
 
@@ -129,6 +143,10 @@
   空行を挟まずに表の直後に書いた行は、GitHub と同じく表の行になる
 - GFM の表のセルの中では、列の区切りにしないため `|` を `\|` と書く。`AttributedString(markdown:)` はコードスパンの外の `\|` は `|` に戻すが、
   コードスパンの中（`` `a \| b` ``）では `\` を残す（GitHub は `|` に戻す）。表のセルのコードの run だけ `\|` を `|` に戻す
+- 配列リテラルの要素に `x.map { … } ?? "-"` や `+` での文字列の連結を何個も並べると、「the compiler is unable to type-check this expression in reasonable time」でビルドが止まる。
+  表の 1 行のような組み立ては、要素ごとに `var` で作ってから配列にする（`BuildHost.tableCells`）
+- `FileHandle.readToEnd()` は、読む位置がファイルの終わりにあると空の `Data` ではなく `nil` を返す。`try?` で受けると読めなかったのと区別できないので、
+  `try handle.readToEnd() ?? Data()` で受け、`catch` だけを失敗として扱う
 
 ## シェルスクリプト
 

@@ -46,6 +46,20 @@ struct LoopStatusReportTests {
         #expect(!body.contains("上限の解除"))
     }
 
+    @Test func writesCommentBodyForEachLoop() {
+        let body = running.commentBody
+        // コメントも本文と同じ目印で、Discussion の番号で見分ける
+        #expect(body.hasPrefix(#"<!-- ask-hub:loop-status {"checkedAt":"#))
+        #expect(body.contains(#""discussion":197"#))
+        #expect(body.contains("## ループの状態（Discussion #197）"))
+        #expect(body.contains("書き換えるコメントです"))
+        #expect(body.contains("| 状態 | 実行中 |"))
+        #expect(LoopStatusReport.parse(body) == running)
+        // 本文（古い形）の見出しと注意書きは今のまま
+        #expect(running.issueBody.contains("## ループの状態\n"))
+        #expect(running.issueBody.contains("書き換える Issue です。編集・クローズしないでください。"))
+    }
+
     @Test func decodesProgressWithAndWithoutDeferredCount() {
         // 古いオーケストレーターは `deferred` を書かない
         let old = #"<!-- ask-hub:loop-status {"checkedAt":"2027-01-15T08:00:00Z","#

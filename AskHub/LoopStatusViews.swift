@@ -32,12 +32,13 @@ struct LoopStatusListView: View {
             if !model.rows.isEmpty {
                 Section("リポジトリ") {
                     ForEach(model.rows) { row in
-                        rowView(row)
-                            .contextMenu { removeButton(for: row) }
-                            .swipeActions(edge: .trailing) { removeButton(for: row) }
+                        repositoryRows(row)
                     }
                 }
             }
+            // ビルドの Mac はループの状態の補足なので、リポジトリの後ろに置く（バッジには数えない）
+            BuildHostsSection(status: model.buildHosts)
+            BuildMovesSection(moves: model.buildMoves(now: Date()))
         }
         .overlay {
             if model.isEmpty {
@@ -71,6 +72,38 @@ struct LoopStatusListView: View {
             Button("担当から外す", systemImage: "minus.circle", role: .destructive) {
                 removing = RemovalTarget(repository: row.repository)
             }
+        }
+    }
+
+    /// リポジトリの行。同じリポジトリでループが 2 つ以上回っていれば、見出しの下にループごとの行を並べる（1 つなら今までどおり 1 行）
+    @ViewBuilder private func repositoryRows(_ row: LoopStatusRow) -> some View {
+        let items = model.loopItems(of: row)
+        if items.isEmpty {
+            rowView(row)
+                .contextMenu { removeButton(for: row) }
+                .swipeActions(edge: .trailing) { removeButton(for: row) }
+        } else {
+            LoopStatusHeadingView(repository: row.repository, heading: row.heading(loopCount: items.count, now: Date()))
+                .contextMenu { removeButton(for: row) }
+                .swipeActions(edge: .trailing) { removeButton(for: row) }
+            ForEach(items) { item in
+                loopRowView(item)
+            }
+        }
+    }
+
+    @ViewBuilder private func loopRowView(_ item: LoopStatusLoopItem) -> some View {
+        let display = item.display(now: Date())
+        let content = LoopStatusRowView(repository: item.row.repository, display: display, mode: item.mode, showsRepository: false)
+        if let destination = display.destination {
+            Link(destination: destination) {
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+        } else {
+            content
         }
     }
 
@@ -117,29 +150,61 @@ struct LoopStatusListView: View {
     }
 }
 
+/// ループが 2 つ以上あるリポジトリの見出し。リポジトリ単位の状態（担当 PC・利用上限）を出し、下にループごとの行を並べる
+struct LoopStatusHeadingView: View {
+    let repository: String
+    let heading: LoopStatusHeading
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(InboxSubject.shortRepository(repository))
+                .font(.headline)
+                .lineLimit(1)
+            Spacer()
+            Label(heading.statusText, systemImage: heading.systemImage)
+                .font(.caption)
+                .foregroundStyle(heading.tone.color)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 /// 「ステータス」タブの 1 行
 struct LoopStatusRowView: View {
     let repository: String
     let display: LoopStatusDisplay
     /// だれが回しているか
     var mode: LoopMode = .none
+    /// 先頭にリポジトリ名を出す。リポジトリの見出しの下に並べるループの行では `false` にし、回し方を見出しにして字下げする
+    var showsRepository = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Text(InboxSubject.shortRepository(repository))
-                    .font(.headline)
-                    .lineLimit(1)
+                if showsRepository {
+                    Text(InboxSubject.shortRepository(repository))
+                        .font(.headline)
+                        .lineLimit(1)
+                } else {
+                    Label(mode.title, systemImage: mode.systemImage)
+                        .font(.subheadline.weight(.semibold))
+                        // アイコンも文字と同じ色にする（既定ではアイコンだけアクセントカラーになる）
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .accessibilityIdentifier("loop-mode")
+                }
                 Spacer()
                 Label(display.statusText, systemImage: display.systemImage)
                     .font(.caption)
                     .foregroundStyle(display.tone.color)
             }
 
-            Label(mode.title, systemImage: mode.systemImage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("loop-mode")
+            if showsRepository {
+                Label(mode.title, systemImage: mode.systemImage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("loop-mode")
+            }
 
             if display.isStuck {
                 Label(LoopStatusRow.stuckWarning, systemImage: "exclamationmark.triangle.fill")
@@ -177,8 +242,19 @@ struct LoopStatusRowView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            // 移動や失敗も異常としては扱わず、表示だけにする（バッジに数えない）
+            ForEach(display.buildTexts, id: \.self) { text in
+                Label(text, systemImage: "hammer")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .accessibilityIdentifier("loop-build")
+            }
         }
         .padding(.vertical, 2)
+        // リポジトリの見出しの下に並べるループは、見出しより字下げする
+        .padding(.leading, showsRepository ? 0 : 16)
     }
 }
 

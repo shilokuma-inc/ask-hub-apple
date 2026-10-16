@@ -11,14 +11,14 @@ final class AskHubUITests: XCTestCase {
     override func setUpWithError() throws {
         // UI テストでは失敗した時点で即座に止める
         continueAfterFailure = false
-    }
-
-    @MainActor
-    override func setUp() async throws {
         // Simulator が横向きのまま残っていると（ほかの UI テストが回したなど）、レイアウトが変わって要素を見つけられない。
-        // 向きは iOS にしか無い（UI テストは macOS でもビルドする）
+        // 向きは iOS にしか無い（UI テストは macOS でもビルドする）。
+        // async の setUp にすると、失敗したときにテストランナーごと再起動し、CI の -retry-tests-on-failure の再試行が走らない。
+        // 同期の setUp はメインスレッドで呼ばれるので、ここで MainActor として向きを戻す
         #if os(iOS)
-        XCUIDevice.shared.orientation = .portrait
+        MainActor.assumeIsolated {
+            XCUIDevice.shared.orientation = .portrait
+        }
         #endif
     }
 
@@ -34,6 +34,10 @@ final class AskHubUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["通知の頻度を調整したい"].firstMatch.waitForExistence(timeout: 5))
         // HTML タグと Markdown が混ざった質問のサンプルも一覧に出る
         XCTAssertTrue(app.staticTexts["HTMLタグの有効化"].firstMatch.exists)
+        // 同じ Discussion の質問は続けて並ぶ。作成日時では PR の ask より後の notti-ios#12 の Q2 が、PR の ask より上に来る（Discussion #418 の Q1）
+        let secondQuestion = app.staticTexts["Q2. 通知の文言 通知に表示する文言の案があれば教えてください。"]
+        let ask = app.staticTexts["【FEAT】受信箱の一覧を追加する"]
+        XCTAssertLessThan(secondQuestion.frame.minY, ask.frame.minY)
         let questions = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "要回答（")).firstMatch
         XCTAssertTrue(questions.exists)
         // マージ待ちの見出しは要回答の下にあり、スクロールすると出てくる
@@ -358,6 +362,12 @@ final class AskHubUITests: XCTestCase {
         // 実行中なのに長く動きが無いループは知らせる
         scrollUntilHittable(app.staticTexts["長く動きがありません"], in: app)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "最後の動き: ")).firstMatch.exists)
+
+        // 同じリポジトリで自動ループと手動ループが回っていれば、リポジトリの見出しの下にループを並べる
+        scrollUntilHittable(app.staticTexts["pair-quiz-ios"], in: app)
+        scrollUntilHittable(app.staticTexts["epic/share"], in: app)
+        XCTAssertTrue(app.staticTexts["ループ 2 つ"].exists)
+        XCTAssertTrue(app.staticTexts["手動ループ（@partner）"].exists)
 
         // 担当 PC がいないリポジトリ（weather-mini）と状態の無いリポジトリは、一覧の下のほうにある
         scrollUntilHittable(app.staticTexts["状態なし"], in: app)

@@ -1,6 +1,5 @@
 name: Build
 
-# assets/** はスクリーンショット置き場でアプリのコードを含まないため除外する。
 on:
   push:
     # ドキュメントだけの変更では、macOS ランナーの枠を使わないよう Build を実行しない
@@ -9,7 +8,6 @@ on:
       - 'docs/**'
     branches:
       - '**'
-      - '!assets/**'
   pull_request:
     # ドキュメントだけの変更では、macOS ランナーの枠を使わないよう Build を実行しない
     paths-ignore:

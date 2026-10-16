@@ -18,6 +18,8 @@ final class LoopStatusModel {
     }
 
     private(set) var rows: [LoopStatusRow] = []
+    /// ビルドの Mac の状態（信用する author の `build-hosts` の Issue）。無ければ `nil`
+    private(set) var buildHosts: BuildHostsStatus?
     /// `ready-for-loop` を付けて、ループの開始を待っている Discussion
     private(set) var waiting: [WaitingDiscussion] = []
     /// 担当 PC が Claude の利用上限で待機しているリポジトリ
@@ -67,7 +69,12 @@ final class LoopStatusModel {
 
     /// 行も「上限で待機中」「ループの開始待ち」も無い（空の表示を出す）
     var isEmpty: Bool {
-        rows.isEmpty && waiting.isEmpty && usageLimited.isEmpty && manualLoops.isEmpty
+        rows.isEmpty && waiting.isEmpty && usageLimited.isEmpty && manualLoops.isEmpty && buildHosts == nil
+    }
+
+    /// 全リポジトリの、直近 24 時間に別の Mac に移ったビルド（新しい順）
+    func buildMoves(now: Date) -> [BuildMoveItem] {
+        LoopStatusRow.buildMoves(in: rows, now: now)
     }
 
     /// 「手動ループ」の行
@@ -80,13 +87,23 @@ final class LoopStatusModel {
         row.mode(manualLoops: manualLoops)
     }
 
-    /// 人が見るべき異常の数（タブのバッジ）。異常終了・長く動きが無い・担当 PC がいない進行中の epic・状態が途絶えた手動ループ
+    /// リポジトリの見出しの下に並べるループ。ループが 1 つ以下なら空（今までと同じ 1 行で出す）
+    func loopItems(of row: LoopStatusRow) -> [LoopStatusLoopItem] {
+        row.loopItems(manualLoops: manualLoops)
+    }
+
+    /// 人が見るべき異常の数（タブのバッジ）。異常終了・長く動きが無い・担当 PC がいない進行中の epic・状態が途絶えた手動ループ。
+    /// 同じリポジトリで複数のループが回るので、ループ（Discussion）ごとに数える
     func abnormalCount(now: Date) -> Int {
-        var repositories = Set(rows.filter { $0.isAbnormal(now: now) }.map { $0.repository.lowercased() })
-        for item in manualLoopItems(now: now) where item.isStale {
-            repositories.insert(item.epic.subject.repository.lowercased())
+        var loops = Set<String>()
+        for row in rows {
+            loops.formUnion(row.abnormalLoopKeys(manualLoops: manualLoops, now: now))
         }
-        return repositories.count
+        for item in manualLoopItems(now: now) where item.isStale {
+            // 行のキー（`loopKey`）と同じく、読んだ状態から求める（番号の無い古い形の本文の手動ループを 2 回数えない）
+            loops.insert(LoopStatusRow(repository: item.epic.subject.repository, report: item.report).loopKey)
+        }
+        return loops.count
     }
 
     /// ループの状態を取り直す
@@ -114,6 +131,7 @@ final class LoopStatusModel {
         do {
             guard let saved = try tokenStore.load() else {
                 rows = []
+                buildHosts = nil
                 waiting = []
                 usageLimited = []
                 manualLoops = []
@@ -133,7 +151,7 @@ final class LoopStatusModel {
         let fetcher = LoopStatusFetcher(source: makeSource(token), trustedAuthors: trust)
         let inboxFetcher = InboxFetcher(source: makeInboxSource(token), trustedAuthors: trust)
         do {
-            async let rows = fetcher.rows(orgs: orgs)
+            async let snapshot = fetcher.status(orgs: orgs)
             async let waiting = inboxFetcher.waitingDiscussions(orgs: orgs)
             // 上限の表示は補助なので、取得に失敗してもループの状態は出す（次の更新で取り直す）
             async let usageLimited = (try? await inboxFetcher.usageLimitedRepositories(orgs: orgs, now: .now)) ?? []
@@ -142,11 +160,12 @@ final class LoopStatusModel {
             async let needsAnswer = (try? await inboxFetcher.subjectsNeedingAnswer(orgs: orgs)) ?? []
             // トークンを変えると別のアカウントになりうるので、毎回取り直す（軽い GraphQL 1 回）
             async let viewer = try? await makeStarter(token).viewerLogin()
-            let fetched = try await (rows, waiting, usageLimited)
+            let fetched = try await (snapshot, waiting, usageLimited)
             let (fetchedManualLoops, fetchedNeedsAnswer, fetchedViewer) = try await (manualLoops, needsAnswer, viewer)
             // 上限の取得の `try?` は打ち切りも空として返すので、打ち切られていれば途中の結果で一覧を上書きしない
             try Task.checkCancellation()
-            (self.rows, self.waiting, self.usageLimited) = fetched
+            (self.rows, self.buildHosts) = (fetched.0.rows, fetched.0.buildHosts)
+            (self.waiting, self.usageLimited) = (fetched.1, fetched.2)
             self.manualLoops = fetchedManualLoops
             self.needsAnswer = Set(fetchedNeedsAnswer.map { "\($0.repository)#\($0.number)".lowercased() })
             self.viewerLogin = fetchedViewer

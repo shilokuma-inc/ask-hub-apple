@@ -1,6 +1,6 @@
 import Foundation
 
-/// オーケストレーターが状態用の Issue（ラベル `loop-status`）の本文に書き出す、リポジトリのループの状態。
+/// 状態用の Issue（ラベル `loop-status`）に書き出す、ループの状態。ループ（Discussion）ごとのコメントか、古い形の本文に書く。
 ///
 /// アプリは GitHub だけを見るので、Mac の中にしか無いループの状態をオーケストレーターがここに書き、アプリが読む。
 /// 本文の先頭に機械が読める目印（JSON）を置き、続けて人が読める表を置く:
@@ -10,7 +10,8 @@ import Foundation
 /// ```
 ///
 /// 詳細は `docs/protocol.md` の「ループの状態」を参照。
-/// public リポジトリでは誰でも読めるので、ローカルパス・ログの中身・PC 名は持たない
+/// public リポジトリでは誰でも読めるので、ローカルパス・ログの中身は持たない。Mac の名前はビルドの情報（`builds`）の
+/// xcb の Host 名だけを持つ
 public struct LoopStatusReport: Sendable, Equatable, Codable {
     /// 状態用の Issue に付けるラベル
     public static let labelName = AskHubLabel.loopStatus.rawValue
@@ -122,7 +123,7 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     }
 
     public var state: State
-    /// 書いたもの。手動のあいだはオーケストレーターが書かない
+    /// 書いたもの。手動ループが書いている Discussion（と古い形の本文）には、オーケストレーターは書かない
     public var writer: Writer
     /// 統合ブランチ（例: `epic/loop-status`）。ループが無ければ `nil`
     public var epic: String?
@@ -133,6 +134,8 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     public var runner: String?
     /// 回答を待っている PR の番号（手で回しているループが書く）。これらの `needs-answer` が外れたら、アプリが再開の指示を出す
     public var waitingPullRequests: [Int]?
+    /// ループのスロットで動いた xcb のビルド（オーケストレーターが書く）。キーが無い古い目印は `nil`
+    public var builds: LoopStatusBuilds?
     // 時刻は目印に秒までしか書かないので、読み戻した値と比べられるよう代入のたびに秒未満を切り捨てる
     // （`didSet` は init では呼ばれないので、init でも切り捨てる）
 
@@ -159,7 +162,8 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         usageLimitedUntil: Date? = nil,
         checkedAt: Date,
         runner: String? = nil,
-        waitingPullRequests: [Int]? = nil
+        waitingPullRequests: [Int]? = nil,
+        builds: LoopStatusBuilds? = nil
     ) {
         self.state = state
         self.writer = writer
@@ -168,13 +172,14 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         self.progress = progress
         self.runner = runner
         self.waitingPullRequests = waitingPullRequests
+        self.builds = builds
         self.lastActivityAt = lastActivityAt.map(Self.wholeSeconds)
         self.usageLimitedUntil = usageLimitedUntil.map(Self.wholeSeconds)
         self.checkedAt = Self.wholeSeconds(checkedAt)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case state, writer, epic, discussion, progress, lastActivityAt, usageLimitedUntil, checkedAt, runner, waitingPullRequests
+        case state, writer, epic, discussion, progress, lastActivityAt, usageLimitedUntil, checkedAt, runner, waitingPullRequests, builds
     }
 
     public init(from decoder: any Decoder) throws {
@@ -189,11 +194,13 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
             usageLimitedUntil: try container.decodeIfPresent(Date.self, forKey: .usageLimitedUntil),
             checkedAt: try container.decode(Date.self, forKey: .checkedAt),
             runner: try container.decodeIfPresent(String.self, forKey: .runner),
-            waitingPullRequests: try container.decodeIfPresent([Int].self, forKey: .waitingPullRequests)
+            waitingPullRequests: try container.decodeIfPresent([Int].self, forKey: .waitingPullRequests),
+            // ビルドの情報は表示のためだけの付け足し。形が崩れていても状態そのものは読めるようにする
+            builds: try? container.decodeIfPresent(LoopStatusBuilds.self, forKey: .builds)
         )
     }
 
-    private static func wholeSeconds(_ date: Date) -> Date {
+    static func wholeSeconds(_ date: Date) -> Date {
         Date(timeIntervalSince1970: date.timeIntervalSince1970.rounded(.down))
     }
 
@@ -215,8 +222,18 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     private static let commentClose = "-->"
     private static let keyword = "ask-hub:loop-status"
 
-    /// 状態用の Issue の本文。先頭に目印、続けて人が読める表を置く
+    /// 状態用の Issue の本文（古い形。目印 1 つ）。先頭に目印、続けて人が読める表を置く
     public var issueBody: String {
+        text(heading: "ループの状態", notice: "\(writer.bodySubject)が書き換える Issue です。編集・クローズしないでください。")
+    }
+
+    /// 状態用の Issue に置く、このループ（Discussion）のコメントの本文。先頭に目印（`discussion` 付き）、続けて人が読める表を置く
+    public var commentBody: String {
+        let heading = discussion.map { "ループの状態（Discussion #\($0)）" } ?? "ループの状態"
+        return text(heading: heading, notice: "\(writer.bodySubject)が書き換えるコメントです。編集・削除しないでください。")
+    }
+
+    private func text(heading: String, notice: String) -> String {
         var rows = [("状態", state.title), ("書き手", writer.title)]
         if let runner {
             rows.append(("回している人", "@" + Self.tableCell(runner)))
@@ -243,13 +260,16 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
         if let waitingPullRequests, !waitingPullRequests.isEmpty {
             rows.append(("回答待ちの PR", waitingPullRequests.map { "#\($0)" }.joined(separator: " ")))
         }
+        if let builds {
+            rows += builds.tableRows
+        }
         rows.append(("確認時刻", checkedAt.formatted(.iso8601)))
         let table = rows.map { "| \($0.0) | \($0.1) |" }.joined(separator: "\n")
         return """
         \(marker)
-        ## ループの状態
+        ## \(heading)
 
-        \(writer.bodySubject)が書き換える Issue です。編集・クローズしないでください。
+        \(notice)
 
         | 項目 | 値 |
         | --- | --- |
@@ -293,7 +313,7 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     }
 
     /// 表のセルに置けるよう、改行を空白にし `|` をエスケープする
-    private static func tableCell(_ text: String) -> String {
+    static func tableCell(_ text: String) -> String {
         text.components(separatedBy: .newlines).joined(separator: " ").replacingOccurrences(of: "|", with: "\\|")
     }
 }

@@ -123,6 +123,22 @@ extension Orchestrator {
         return .succeeded(lines.joined(separator: "\n"))
     }
 
+    /// ループや解消が動いているなど、今は外せない理由。外せるなら `nil`
+    private func refusalToRemove(_ repository: RepositoryConfig, force: Bool, statuses: [String: LoopStatus]) -> String? {
+        let status = statuses[repository.fullName.lowercased()] ?? LoopStatus(stateFileExists: nil, processAlive: false)
+        if status.processAlive {
+            return "ループが動いています。止めてから依頼し直してください"
+        }
+        // 解消はポーリングと並んで、メインの checkout に一時 worktree を作って動く。その下で checkout を消さない
+        if conflictTracker.isRunning(in: repository.fullName) {
+            return "最終 PR のコンフリクトを解消しています。終わってから依頼し直してください"
+        }
+        if status.stateFileExists != false, !force {
+            return "制御用 worktree にループの state ファイルが残っている（または確かめられない）ため外しません。ループを止めてから依頼し直すか、強制して依頼し直してください"
+        }
+        return nil
+    }
+
     private func remove(_ request: RepositoryRemoval, statuses: [String: LoopStatus]) async -> RepositoryRequestOutcome {
         guard let repository = config.repository(named: request.repository) else {
             return .rejected("\(request.repository) はこの PC の担当リポジトリではありません")
@@ -133,12 +149,8 @@ extension Orchestrator {
         guard let configStore else {
             return .rejected("設定ファイルの場所が分からないため、担当リポジトリから外せません")
         }
-        let status = statuses[repository.fullName.lowercased()] ?? LoopStatus(stateFileExists: nil, processAlive: false)
-        if status.processAlive {
-            return .rejected("ループが動いています。止めてから依頼し直してください")
-        }
-        if status.stateFileExists != false, !request.force {
-            return .rejected("制御用 worktree にループの state ファイルが残っている（または確かめられない）ため外しません。ループを止めてから依頼し直すか、強制して依頼し直してください")
+        if let refusal = refusalToRemove(repository, force: request.force, statuses: statuses) {
+            return .rejected(refusal)
         }
 
         var lines = ["\(request.repository) をこの PC の担当リポジトリから外しました（GitHub のリポジトリは残っています）"]

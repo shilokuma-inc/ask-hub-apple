@@ -315,7 +315,7 @@ public actor LocalLoopRuntime: LoopRuntime {
 
 /// コマンドの出力を届いた分から読み、末尾の `limit` バイトだけを保持する。
 /// パイプが一杯になってコマンドが止まらないよう、終了を待つ前から読み続ける
-private final class OutputCollector: Sendable {
+final class OutputCollector: Sendable {
     private let handle: FileHandle
     private let data = OSAllocatedUnfairLock(initialState: Data())
     private let closed: AsyncStream<Void>

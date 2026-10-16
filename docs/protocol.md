@@ -32,7 +32,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `repo-request` | Issue | アプリから出した担当リポジトリの作成・削除の依頼（下記「リポジトリの作成・削除」） | アプリ | — （オーケストレーターが処理して結果をコメントし、クローズする） |
 | `epic-final` | PR | epic → `develop` の最終 PR | オーケストレーター | — （アプリからマージする） |
 | `askhub-orchestrator` | （リポジトリのラベルとして置くだけ） | このリポジトリを担当する PC のオーケストレーターがいる。説明に最終確認の時刻（Claude の利用上限で待機中なら、解除の時刻も）を書く | オーケストレーター（10 分ごとに説明を書き換える） | — |
-| `loop-status` | Issue | ループの状態を書き出す Issue（リポジトリごとに 1 つ。下記「ループの状態」） | オーケストレーター | — |
+| `loop-status` | Issue | ループの状態を書き出す Issue（リポジトリごとに 1 つ。ループの状態はループごとのコメントに書く。下記「ループの状態」） | オーケストレーター | — |
+| `build-hosts` | Issue | xcb のビルド先の Mac の状態を書き出す Issue（設定で指定した 1 つのリポジトリに 1 つ。下記「ビルドの Mac の状態」） | オーケストレーター（xcb を動かしている Mac のもの） | — |
 
 アプリの一覧での扱い:
 
@@ -42,7 +43,9 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **任意判断**: `decision-log` の Issue（仮決め一覧）。行には `repo#番号`・タイトル（先頭の `【CHORE】` は表示で省く）・更新の相対時刻・作成からの経過を出す。
   タブの中身はすべて同じ種類なので、行に種類のラベルは出さない
 - **ステータス**: リポジトリごとのループの状態と回し方（自動ループ・手動ループ・ループなし）。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」。
-  バッジは**異常だけ**を数える（異常終了・長く動きが無い・進行中の epic があるのに担当 PC がいない・30 分以上状態が書き直されていない手動ループ）
+  同じリポジトリで 2 つ以上のループ（自動ループと手動ループ・複数の手動ループ）が回っていれば、リポジトリの見出しの下にループごとの行（回し方・担当者・epic・状態・進み具合）を並べ、
+  リポジトリ単位の情報（担当 PC・利用上限）は見出しに出す（[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425) の Q2）。ループが 1 つなら今までどおり 1 行。
+  バッジは**異常だけ**をループごとに数える（異常終了・長く動きが無い・進行中の epic があるのに担当 PC がいない・30 分以上状態が書き直されていない手動ループ）
 - **実機確認**: `needs-verify` の Issue。行は任意判断と同じで、タイトルの先頭の `【CHORE】` と `実機確認: ` を表示で省き（GitHub 上のタイトルと起票の規約は変えない）、
   本文の目印（下の「実機確認 Issue の目印」）に元の PR 番号があれば `元の PR #N` を出す
 - 任意判断・実機確認の行を開くと、アプリ内の詳細画面で本文を Markdown で表示する（先頭の目印などの HTML コメントは出さない）。
@@ -69,9 +72,14 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 （[Discussion #197](https://github.com/shilokuma-inc/ask-hub-apple/discussions/197) の Q1・Q2）。形式は `AskHubKit` の `LoopStatusReport` が実装している。
 
 - Issue はリポジトリごとに 1 つ。ラベル `loop-status`、タイトル `【AskHub】ループの状態`
-- 本文の**先頭**に機械が読める目印を置き、続けて人が読める表を置く。アプリが読むのは目印だけ
-- **信用する author が作った Issue だけを読む**（public リポジトリでは誰でも同じラベルの Issue を作れる）
-- public リポジトリでは誰でも読めるので、epic 名・Discussion の番号・件数・時刻だけを書く。**ローカルパス・ログの中身・PC 名・トークンは書かない**
+- 同じリポジトリで複数のループ（自動ループと手動ループ・複数の手動ループ）が同時に回れるよう、ループ（Discussion）ごとに 1 つのコメントを置き、
+  ループの状態はそのコメントに書く。書き手は自分のループのコメントだけを書き換える。本文はオーケストレーターがリポジトリ全体の状態に使う
+  （[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425) の Q1。下記「ループごとのコメントと本文の形」）
+- 本文とコメントの**先頭**に機械が読める目印を置き、続けて人が読める表を置く。アプリが読むのは目印だけ
+- **信用する author が作った Issue と、信用する author のコメントだけを読む**（public リポジトリでは誰でも同じラベルの Issue を作れ、コメントも書ける）
+- public リポジトリでは誰でも読めるので、epic 名・Discussion の番号・件数・時刻と、ビルドの情報（`builds`）の Mac の Host 名・スロットだけを書く。
+  **ローカルパス・ログの中身・トークンは書かない**。Mac の名前は xcb の `host`（ssh の Host 名。例 `macbookpro-m4max`）だけを書いてよい
+  （[Discussion #366](https://github.com/shilokuma-inc/ask-hub-apple/discussions/366) の Q1。それ以外の PC 固有の情報（ユーザー名・ssh の接続先アドレス）は書かない）
 
 ```html
 <!-- ask-hub:loop-status {"checkedAt":"2026-10-06T00:10:00Z","discussion":197,"epic":"epic/loop-status","lastActivityAt":"2026-10-06T00:07:00Z","progress":{"completed":5,"deferred":1,"total":12},"state":"running","writer":"orchestrator"} -->
@@ -86,12 +94,13 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `checkedAt` | 必須 | 書き手が最後に確かめた時刻。状態が変わらなくても 10 分ごとに書き直す |
 | `writer` | 任意 | 書き手。`orchestrator`（オーケストレーター）か `manual`（手で回しているループ）。キーが無ければ `orchestrator` として読む（`writer` を足す前の目印との互換）。オーケストレーターも明示して書く |
 | `epic` | 任意 | 統合ブランチ（例: `epic/loop-status`） |
-| `discussion` | 任意 | ゴール元の Discussion の番号 |
+| `discussion` | 任意（コメントでは必須） | ゴール元の Discussion の番号。ループのコメントでは、どのループの状態かをこれで見分ける |
 | `progress` | 任意 | goal のチェックボックスの数。`completed`（`[x]`。保留で閉じたものを含む）と `total`、任意で `deferred`（`completed` のうち保留で閉じたもの。`[x]` かつ `※保留` を含む行） |
 | `lastActivityAt` | 任意 | ループが最後に動いた時刻 |
 | `usageLimitedUntil` | 任意 | Claude の利用上限の解除の時刻（`usage-limited` のとき） |
 | `runner` | 任意 | 手動ループを回している人の login（`writer` が `manual` のとき）。オーケストレーターは書かない |
 | `waitingPullRequests` | 任意 | 手動ループで回答を待っている PR の番号。これらの `needs-answer` がすべて外れ、ループが止まっていれば、アプリが担当者に再開を促す |
+| `builds` | 任意 | ループのスロットで動いた xcb のビルド・テスト（下記「ビルドの情報」）。オーケストレーターが xcb のイベントから書く |
 
 | `state` | 表の表記 | 意味 |
 | --- | --- | --- |
@@ -103,30 +112,176 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `completed` | 完了（最終 PR のマージ待ち） | 全タスクが終わり、最終 PR のマージを待っている |
 | `no-loop` | ループなし | ループが無い |
 
-- 複数に当てはまるときは、上限で待機中 → 実行中 → 異常終了 → epic の進み具合（開始待ち・回答待ち・完了）→ `ready-for-loop` の開始待ち → ループなし の順に優先する（`OrchestratorKit` の `LoopStatusSummary`）。
-  完了した epic の最終 PR がマージされるまでは、次の Discussion に `ready-for-loop` が付いていても「完了」を出す
-- `epic`・`discussion`・`progress`・`lastActivityAt` は、制御用 worktree が準備を終えた `epic/` のブランチにあるときだけ書く。
-  epic が無く `ready-for-loop` を待っているときは、`discussion` にその Discussion の番号を書く
+- オーケストレーターは、自動ループの状態を Discussion ごとに決める（`OrchestratorKit` の `LoopStatusSummary`）。同時に動く自動ループはリポジトリに 1 つだが、
+  制御用 worktree に準備を終えた epic（例: 完了して最終 PR のマージ待ちの #12）が残ったまま、別の Discussion（#30）を起動した・起動を諦めた・待っているときは、
+  #12 には epic の状態を、#30 には起動の状態を、それぞれのコメントに書く（PR #437 の担当者の判断）:
+  - 準備を終えた epic の Discussion: 上限で待機中 → 実行中 → 異常終了 → epic の進み具合（開始待ち・回答待ち・完了）の順に優先する。
+    制御用 worktree のプロセス・state ファイルは、epic と別の Discussion を起動していればそのループのものとし、epic の実行中にしない
+  - 起動した Discussion: 上限で待機中 → 実行中（ループの開始を待っている・確かめた）・異常終了（起動を諦めた）
+  - 準備を終えていない `ready-for-loop` の Discussion（手動ループ・信用しない author のものを除く）: 上限で待機中 → 開始待ち
+  - 上限で待機中は、この Mac のすべての自動ループに出す
+- `epic`・`progress`・`lastActivityAt`・`builds` は、制御用 worktree が準備を終えた `epic/` のブランチのループにだけ書く。
+  起動した・待っている Discussion のループには `discussion` だけを書く
 - `progress.deferred` は `completed` の内訳で、`completed` の意味は変えない（古いアプリは `deferred` を無視して今と同じ表示になる）。
   古いオーケストレーターは書かないので、アプリは `deferred` が無ければ保留を区別しない表示にする。新しいオーケストレーターは 0 件でも書く
 - アプリが知らない `state` は「不明」として扱う（新しいオーケストレーターが分類を足しても読めなくならないように）
 - アプリが知らない `writer` も「不明」として扱う
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
-- オーケストレーターは、`checkedAt` 以外が変わったときに本文を書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す
+- オーケストレーターは、本文（新しい形。リポジトリ全体の状態）と、この PC の自動ループのコメント（`writer` は `orchestrator`）を書く。
+  それぞれ `checkedAt` 以外が変わったときに書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す。手動ループの有無で書き出しを止めない
+- オーケストレーターが自動ループのコメントを消すのは、その Discussion のループが終わったとき（最終 PR がマージされた・epic が退避されて起動の記録にも
+  `ready-for-loop` にも無い）と、同じ Discussion のコメントが重複したとき、ほかの書き手（下の手動ループ・知らない `writer`）がその Discussion を書いているときだけ。ゴール元の Discussion の番号が無い自動ループ（手で始めた epic）の状態はコメントに書かない。
+  どの Discussion のものか分からないループがある間（手で始めた epic・起動の記録の無いループが動いている・オーケストレーターを起動してから `ready-for-loop` の一覧をまだ取得していない）は、
+  終わったのか分からないので、一覧に無い Discussion のコメントも消さない
+- 1 つの Discussion の書き手は 1 つ。信用する author の手動ループ（`writer` が `manual`）のコメント・古い形の本文がある Discussion には、
+  `checkedAt` が 30 分以内か、その Discussion が信用する author の open な `manual-loop` の Discussion のあいだ（`checkedAt` が古くなっても）、オーケストレーターは書かない。
+  手動ループから自動ループに切り替えた Discussion は、同じリポジトリでほかの Discussion を手で回していても、残った古い手動ループのコメントでは止めない。
+  知らない `writer` のコメントがある Discussion にも書かない（ほかの書き手のコメントは消さない。その Discussion に残った自分のコメントは消す）
 - 手動ループ（`manual-loop` の Discussion）は、担当者の Claude が `scripts/askhub-manual.sh status` で `writer` を `manual`・`runner` を担当者にして、
-  状態・epic・進捗・回答待ちの PR を書き、10 分ごとに `checkedAt` を書き直す。
-  信用する author の open な `manual-loop` の Discussion があるあいだ、オーケストレーターは書き手が `manual` の状態を（`checkedAt` が古くなっても）上書きしない。
-  古くなったことはアプリが知らせる。Discussion が閉じた後、`checkedAt` が 30 分を過ぎていれば、オーケストレーターが書き直す
+  状態・epic・進捗・回答待ちの PR を書き、10 分ごとに `checkedAt` を書き直す。ralph-kit が新しい形で書くようになるまでは、本文に古い形で書く。
+  オーケストレーターは、古い形の手動ループの本文を、`checkedAt` が 30 分以内か、本文の `discussion` が信用する author の open な `manual-loop` の Discussion のあいだ
+  （`discussion` が無ければ、そのリポジトリに信用する author の open な `manual-loop` の Discussion があるあいだ）、`checkedAt` が古くなっても上書きしない。
+  古くなったことはアプリが知らせる。Discussion が閉じた後、`checkedAt` が 30 分を過ぎていれば、オーケストレーターが本文を新しい形で書き直す
 
 アプリの読み方（`LoopStatusFetcher`。GitHub からの取得は `GitHubLoopStatusSource`）:
 
 - `organization.repositories` の GraphQL で、リポジトリごとに担当の印（`askhub-orchestrator` の説明）と open な `loop-status` の Issue を一緒に読む（Search API は使わない）。
   リポジトリも Issue もページングを最後まで追う
-- 信用する author が作り、目印を読める Issue のうち、最も新しく更新されたものを使う
+- 信用する author が作り、目印（本文の新しい形・古い形）を読める Issue のうち、最も新しく更新されたものを使う（読めるものが無ければ、信用する author の最も新しいもの）
+- 使う Issue のコメント（ループごとの状態）を、別の GraphQL（`repository.issue.comments`）でページングを最後まで追って読む。
+  組織全体の問い合わせに入れ子で足すと GraphQL のコスト（レート制限の点数）が大きいので、使う Issue のコメントだけを取る。
+  信用する author のコメントだけを読む（下記「ループごとのコメントと本文の形」）
+- ループ（「ループなし」を除く）が 2 つ以上あれば、見出しの下にループを Discussion の番号の順に並べる。自動ループも Discussion ごとに並べる
+  （同時に動く自動ループは 1 つでも、完了して最終 PR のマージを待っている epic と、次に起動した・待っている Discussion は別のコメントに書かれる。
+  終わったループのコメントはオーケストレーターが消す）。ループの行の担当 PC の判定は 1 行の表示と同じ
+  （担当の印か、そのループの `checkedAt`。手動ループは止まると `checkedAt` を書き直さないため。実行中のまま書かれなくなった手動ループは「手動ループ」の節が知らせる）。
+  ループが 1 つ以下のときの 1 行には、次のループを出す。古い形の本文ならそのループ（同じ Discussion のコメントが新しければそちら）、
+  新しい形なら自動ループ（`writer` が `orchestrator`）、無ければいずれかのループを出す（どちらも `checkedAt` が最も新しいもの）。
+  ループが無ければ、本文のリポジトリ全体の状態から「ループなし」（上限で待機中ならその状態）を出す
+- 本文が古い形の手動ループのあいだは、本文からリポジトリ全体の状態を読めない。担当 PC は担当の印（`askhub-orchestrator` の説明）とループの `checkedAt` から決め、
+  利用上限の解除の時刻は担当の印の説明から読む（今までと同じ）
+- コメントの id は GraphQL の `fullDatabaseId`（文字列）を先に読む（`databaseId` は `Int` で 32 bit を超えうる）
 - 行にするのは、担当の印か信用する author の状態用の Issue があるリポジトリ（Q4: 担当 PC のいるリポジトリをすべて出す）。
   担当の印も `checkedAt` も 30 分より古ければ「担当 PC なし」、担当 PC はいるが状態用の Issue が無ければ「状態なし」とする
 - `loop-status` の Issue は「任意判断」「実機確認」などの一覧には出さない（一覧はラベルで検索しており、`loop-status` を含めない）
 - 担当から外したリポジトリの状態用の Issue は、オーケストレーターが閉じる（ステータスタブに「担当 PC なし」の行を残さない）
+
+### ループごとのコメントと本文の形
+
+状態用の Issue 1 つから、本文とコメントをまとめて読む（`AskHubKit` の `LoopStatusBoard`）。
+
+- **ループのコメント**: 先頭に上と同じ `ask-hub:loop-status` の目印を置く。**`discussion` は必須**で、無いコメントは読まない。
+  同じアカウント（担当者）がオーケストレーターと手動ループの両方の書き手になりうるので、どのループのものかは author ではなく `discussion` で見分ける。
+  自動か手動かは `writer` で分かる
+- **本文（新しい形）**: 先頭に `ask-hub:repository-status` の目印を置き、リポジトリ全体の状態を書く（`RepositoryStatusReport`）。
+  ループの状態は書かない。古い形と目印の語を分けているので、古いアプリはこの本文を読めず「状態なし」と出す
+
+  ```html
+  <!-- ask-hub:repository-status {"checkedAt":"2026-10-12T00:10:00Z","usageLimitedUntil":"2026-10-12T03:00:00Z"} -->
+  ```
+
+  | キー | 必須 | 内容 |
+  | --- | --- | --- |
+  | `checkedAt` | 必須 | オーケストレーターが最後に確かめた時刻。30 分より古ければ、アプリは担当 PC がいないとみなす |
+  | `usageLimitedUntil` | 任意 | Claude の利用上限の解除の時刻（上限で待機しているとき） |
+
+- **本文（古い形）**: 先頭に `ask-hub:loop-status` の目印 1 つ（ループの状態）。1 つのループとして読む（`writer` が `manual` なら手動ループ、`orchestrator` なら自動ループ）。
+  `discussion` が無くても読む（ループが無いときのオーケストレーターの `no-loop` など）。ralph-kit が新しい形で書くようになるまで、手動ループはこの形で書く
+- 同じ Discussion の状態が複数あれば（同じループのコメントが重複した・古い形の本文が残ったままコメントが書かれた）、`checkedAt` が最も新しいものを使う。
+  `checkedAt` が同じなら、古い形の本文よりコメントを、コメント同士では更新の新しいものを使う
+- 目印を読めない本文（人が編集したなど）でも、コメントは読む
+
+### ビルドの情報（`builds`）
+
+ループのビルド・テストを xcb が複数の Mac に振り分けているとき、リポジトリのスロットのビルドが今どの Mac で動いているか・別の Mac に移ったか・結果を書く
+（[Discussion #366](https://github.com/shilokuma-inc/ask-hub-apple/discussions/366)）。形式は `LoopStatusBuilds` が実装している。
+
+```json
+"builds": {
+  "running": [{"action":"build","attempt":2,"host":"macbookpro-m4max","moves":[{"from":"macbookpro-m1pro","movedAt":"2026-10-11T00:05:00Z","reason":"disconnected","to":"macbookpro-m4max"}],"platform":"iOS","slot":"a","startedAt":"2026-10-11T00:00:00Z"}],
+  "latest": [{"action":"test","attempt":1,"exitCode":0,"finishedAt":"2026-10-10T23:50:00Z","host":"local","platform":"macOS","seconds":95,"slot":"b","startedAt":"2026-10-10T23:48:25Z"}],
+  "moved": []
+}
+```
+
+| キー | 内容 |
+| --- | --- |
+| `running` | 実行中のビルド |
+| `latest` | 直近に終わったビルド。スロットごとに 1 件（移動の有無を問わない） |
+| `moved` | 直近 24 時間に終わった、移動のあったビルド（新しい順） |
+
+3 つとも任意で、無ければ空として読む。ビルドの項目:
+
+| キー | 必須 | 内容 |
+| --- | --- | --- |
+| `slot` | 必須 | ループのスロット（`a` / `b`。`<名前>-ralph-a` / `-b` の末尾）。**ローカルパスは書かない** |
+| `action` | 必須 | xcb の `action`（`build` / `test` など） |
+| `platform` | 任意 | xcb の `platform`（`iOS` / `macOS` など） |
+| `host` | 任意 | 今（終わったものは最後に）動いた Mac の Host 名。`local` は xcb を動かしている Mac。どこでも動かなかったら書かない |
+| `attempt` | 任意 | 何回目の試行か（終わったものは試行の回数） |
+| `moves` | 任意 | 別の Mac への移動（古い順）。`from`（移動元の Host 名。必須）・`to`（移動先の Host 名）・`reason`・`movedAt` |
+| `exitCode` | 任意 | 終わったときの終了コード（0 が成功）。実行中は書かない |
+| `seconds` | 任意 | かかった秒数（終わったもの） |
+| `startedAt` / `finishedAt` | 任意 | 始まった時刻・終わった時刻 |
+
+- `reason` は xcb の `job_moved` の理由。`disconnected`（移動元の Mac が切断された）・`no_platform`（移動元にその platform のビルド環境が無い）。知らない値は「不明」として扱う
+- 対象はループのスロットのビルドだけ（Discussion #366 の Q6）。メインの checkout・制御用 worktree・手で流したビルドは書かない
+- ビルドの移動や失敗は、ステータスのバッジ（異常の件数）には数えない（Q7。表示だけ）
+- `builds` の形が崩れていても、アプリは状態そのもの（`state` など）は読み、ビルドの情報だけを無いものとして扱う
+- `builds` は自動ループのコメントに書き、変わったら書き換える（`checkedAt` 以外の変化として扱う）
+
+## ビルドの Mac の状態
+
+ループのビルド・テストを xcb が複数の Mac に振り分けているとき、xcb を動かしている Mac のオーケストレーターが、
+各 Mac の状態と実行中のループのビルドを専用の Issue に書き出し、アプリはそれを読む
+（[Discussion #366](https://github.com/shilokuma-inc/ask-hub-apple/discussions/366) の Q2）。形式は `AskHubKit` の `BuildHostsReport` が実装している。
+
+- Issue は 1 つ。ラベル `build-hosts`、タイトル `【AskHub】ビルドの Mac の状態`。オーケストレーターの担当リポジトリのうち、設定で指定した 1 つに置く
+- 本文の**先頭**に機械が読める目印を置き、続けて人が読める表を置く。アプリが読むのは目印だけ
+- **信用する author が作った Issue だけを読む**（public リポジトリでは誰でも同じラベルの Issue を作れる）
+- Mac の名前は xcb の `host`（ssh の Host 名）をそのまま書く（Q1）。**ローカルパス・ssh の接続先アドレス・ユーザー名・ログの中身・トークンは書かない**。
+  xcb の理由の文（`host_state` の `reason`）はローカルパスを含むことがあるので、そのまま書かず分類（下表の `reason`）にする
+
+```html
+<!-- ask-hub:build-hosts {"checkedAt":"2026-10-11T00:10:00Z","hosts":[{"cores":14,"load":3.2,"memoryFreePercent":41,"name":"macbookpro-m4max","running":1,"slots":2,"state":"ok"},{"name":"macbookpro-m1pro","reason":"unreachable","state":"down"},{"name":"local","running":0,"slots":1,"state":"standby"}],"jobs":[{"action":"build","attempt":2,"host":"macbookpro-m4max","platform":"iOS","repository":"shilokuma-inc/ask-hub-apple","slot":"a","startedAt":"2026-10-11T00:05:00Z"}],"measuredAt":"2026-10-11T00:10:00Z"} -->
+```
+
+目印の中身は JSON（キーの順は問わない。知らないキーは無視する）。時刻は秒までの ISO 8601（UTC）。
+文字列の中の `>` は `\u003e` にエスケープする。
+
+| キー | 必須 | 内容 |
+| --- | --- | --- |
+| `checkedAt` | 必須 | 書き手が最後に確かめた時刻。状態が変わらなくても 10 分ごとに書き直す |
+| `hosts` | 任意 | ビルド先の Mac（下表）。無ければ空として読む |
+| `jobs` | 任意 | 実行中の、ループのスロット（`<名前>-ralph-a` / `-b`）のビルド。無ければ空として読む |
+| `measuredAt` | 任意 | load・空きメモリを `xcb status --json` から取った時刻 |
+
+`hosts` の項目:
+
+| キー | 必須 | 内容 |
+| --- | --- | --- |
+| `name` | 必須 | xcb の `host`（ssh の Host 名）。`local` は xcb を動かしている Mac |
+| `state` | 必須 | `ok`（使える）・`down`（切断）・`drained`（外している。`xcb drain`）・`standby`（待機。xcb を動かしている Mac 自身（`local`）で、空いているとき、またはリモートがつながらないときだけ使う）。知らない値は「不明」 |
+| `reason` | 任意 | 使えない理由の分類。`unreachable`（接続できない）・`disconnected`（実行中に切断）・`xcode-not-ready`（Xcode が未準備）。知らない値は「不明」 |
+| `cores` / `load` / `memoryFreePercent` | 任意 | CPU のコア数・load average・空きメモリの割合（0〜100）。`xcb status --json` の値（`local` は、xcb が古いと持たない） |
+| `running` / `slots` | 任意 | その Mac で実行中の xcb のビルドの本数（ループのスロット以外も含める）・同時に実行できる本数 |
+
+`jobs` の項目: `host`（動いている Mac）・`repository`（`owner/name`）・`slot`（`a` / `b`）・`action`（`build` / `test` など）は必須。
+`platform`・`attempt`（何回目の試行か）・`startedAt` は任意。ループのスロット以外のビルドは書かない（Discussion #366 の Q6）。
+
+- 書き手は xcb を動かしている Mac のオーケストレーターだけ
+- 本文は状態が変わったとき（Mac の状態・理由・実行中の本数・ループのビルド）に書き換える。load・空きメモリ・コア数の揺れは変化として扱わない（`BuildHostsReport.hasSameStatus`）。
+  変わらなければ 10 分ごとに `checkedAt` を書き直し、そのときだけ `xcb status --json` の load・空きメモリを載せる（Q3。値は最大 10 分古くてよい）
+- `checkedAt` が 30 分より古ければ、アプリは書き手がいない（Mac の状態が分からない）とみなす
+- Mac の切断はステータスのバッジ（異常の件数）には数えない（Q7。表示だけ）
+
+アプリの読み方（`LoopStatusFetcher.status(orgs:)`。GitHub からの取得は `GitHubLoopStatusSource`）:
+
+- 「ループの状態」と同じ `organization.repositories` の GraphQL で、`loop-status` と一緒に open な `build-hosts` の Issue も取る
+  （`labels:` は OR なので問い合わせの回数は増えない。Search API は使わない）。本文の目印（`ask-hub:build-hosts`）で `build-hosts` かを分ける（Issue のラベルの一覧は 1 ページに収まるとは限らないため読まない）
+- リポジトリごとの信用する author が作り、目印を読める Issue のうち、最も新しく更新されたものを使う。
+  複数のリポジトリにあれば、`checkedAt` が最も新しいものを使う
+- `build-hosts` の Issue だけがあるリポジトリは、ステータスの行にしない
 
 ## 質問の目印
 
@@ -418,11 +573,14 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   - 再開: `<owner/repo> の Discussion #N の手動ループを再開して（scripts/askhub-manual.sh resume）`
   - 最終 PR: `<owner/repo> の Discussion #N の手動ループの最終 PR を作って（scripts/askhub-manual.sh final）`
 - 受けた Claude は、リポジトリの `scripts/askhub-manual.sh`（テンプレートから引き継ぐ）で準備・起動・状態の書き出し・最終 PR を行う
-  （手順は各リポジトリの `.claude/ralph/README.md` の「手で回す（manual-loop）」）
+  （手順は ralph-kit の `README.md` の「手で回す（manual-loop）」）
 - アプリのステータスタブの「手動ループ」は、開いている手動ループを担当者・状態・最終更新つきで並べ、担当者が自分なら指示のコピーを出す
   （状態が無ければ開始、`completed` なら最終 PR、それ以外は再開）。
-  `waitingPullRequests` の `needs-answer` がすべて外れ、ループが止まっていれば「回答がそろいました」と出す
-- 手動ループのあるリポジトリでは、オーケストレーターは ask への回答でループを再開しない（ループは担当者の Mac にある。担当者がアプリの知らせを見て再開する）
+  `waitingPullRequests` の `needs-answer` がすべて外れ、ループが止まっていれば「回答がそろいました」と出す。
+  同じリポジトリで複数のループが回るので、状態・回答待ちの PR・止まっている知らせは、その Discussion のループの状態（本文とループごとのコメント）から決める。
+  ゴール元の番号を書いていない古い形の本文の手動ループは、今までどおりそのリポジトリの手動ループの状態として読む
+- 手動ループの epic 宛ての PR の ask への回答では、オーケストレーターはループを再開しない（ループは担当者の Mac にある。担当者がアプリの知らせを見て再開する）。
+  同じリポジトリでも、オーケストレーターの自動ループの epic 宛ての PR の回答では、手動ループの無いリポジトリと同じく再開する（どのループの PR かは PR の base で見分ける）
 
 ## 流れ
 

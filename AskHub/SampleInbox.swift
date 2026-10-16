@@ -192,7 +192,8 @@ extension InboxModel {
             makeApprover: { _ in SampleDecisionApprover() },
             makeInstructionPoster: { _ in SampleDecisionInstructionPoster() },
             // サンプルは GitHub に権限を問い合わせない
-            makeTrust: { _ in TrustedAuthors.default }
+            makeTrust: { _ in TrustedAuthors.default },
+            makeCommentsFetcher: { _ in SampleDecisionLogComments() }
         )
     }
 }
@@ -319,7 +320,8 @@ struct SampleInboxSource: InboxSource {
                     ### Q1. レート制限の単位
                     送信の上限をどの単位で数えますか？
                     """),
-                Self.thread(subject, id: "q2", minutesAgo: 170, body: """
+                // 作成日時では、間に PR の ask と別の Discussion の質問が入る（一覧では Q1 に続けて並ぶ。Discussion #418 の Q1）
+                Self.thread(subject, id: "q2", minutesAgo: 15, body: """
                     <!-- ask-hub:question id="d12-q2" -->
                     ### Q2. 通知の文言
                     通知に表示する文言の案があれば教えてください。
@@ -328,7 +330,7 @@ struct SampleInboxSource: InboxSource {
         }
         if subject == Self.htmlDiscussion {
             return [
-                Self.thread(subject, id: "q1", minutesAgo: 10, body: """
+                Self.thread(subject, id: "q1", minutesAgo: 60, body: """
                     <!-- ask-hub:question id="d128-q1" options="よく使うタグ|すべてのタグ" -->
                     <h3>Q1. 解釈するタグの範囲</h3>
                     <p>質問の本文に <code>&lt;h3&gt;</code> のような HTML が混ざります。どこまで解釈しますか？</p>
@@ -351,7 +353,7 @@ struct SampleInboxSource: InboxSource {
             ]
         }
         return [
-            Self.thread(subject, id: "1", minutesAgo: 25, body: """
+            Self.thread(subject, id: "1", minutesAgo: 120, body: """
                 <!-- ask-hub:question id="pr34-1" options="App Store Connect で登録する|今回は見送る" -->
                 ![ask-badge](https://img.shields.io/badge/review-ask-yellowgreen.svg)
                 新しい課金商品の Product ID を `jp.shilokuma.notti.pro` で登録してよいですか？

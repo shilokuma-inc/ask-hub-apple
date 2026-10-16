@@ -21,6 +21,8 @@ public struct InboxSubject: Sendable, Equatable, Hashable {
     public var author: String?
     /// 付いているラベルの名前（`manual-loop` の判定に使う）
     public var labels: [String]
+    /// PR の base のブランチ（例: `epic/mvp`。どのループの PR かを見分けるのに使う）。Discussion や、取得していないときは `nil`
+    public var baseBranch: String?
 
     public init(
         kind: Kind,
@@ -30,7 +32,8 @@ public struct InboxSubject: Sendable, Equatable, Hashable {
         title: String,
         url: URL,
         author: String? = nil,
-        labels: [String] = []
+        labels: [String] = [],
+        baseBranch: String? = nil
     ) {
         self.kind = kind
         self.nodeID = nodeID
@@ -40,6 +43,7 @@ public struct InboxSubject: Sendable, Equatable, Hashable {
         self.url = url
         self.author = author
         self.labels = labels
+        self.baseBranch = baseBranch
     }
 
     /// 手で回す Discussion か（`manual-loop` が付いた、信用する author の Discussion）。
@@ -108,6 +112,28 @@ public struct InboxQuestion: Sendable, Equatable, Hashable, Identifiable {
             return String(body)
         }
         return body[close.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 要回答の一覧に出す順に並べ替える。同じ Discussion の質問を、そのうち最初に出てくる質問の位置にまとめて続けて並べる（Discussion #418 の Q1）。
+    ///
+    /// 古い順の質問（`InboxFetcher.unansweredQuestions(orgs:)`）を渡すと、グループはそれぞれで最も古い質問の順に、
+    /// グループの中は古い順に並ぶ。PR の ask は同じ PR のものでもまとめず、渡された位置に置く（Q2 では決まっていない。仮決め #421）
+    public static func groupedByDiscussion(_ questions: [Self]) -> [Self] {
+        var discussions: [String: [Self]] = [:]
+        for question in questions where question.subject.kind == .discussion {
+            discussions[question.subject.nodeID, default: []].append(question)
+        }
+        var grouped: [Self] = []
+        var placed: Set<String> = []
+        for question in questions {
+            if question.subject.kind != .discussion {
+                grouped.append(question)
+            } else if placed.insert(question.subject.nodeID).inserted {
+                // 2 問目以降は、ここで 1 問目に続けて置く
+                grouped += discussions[question.subject.nodeID] ?? []
+            }
+        }
+        return grouped
     }
 
     /// スレッドのうち、未回答の質問だけを返す。

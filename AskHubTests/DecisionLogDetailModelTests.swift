@@ -128,6 +128,7 @@ struct DecisionLogDetailModelTests {
         #expect(poster.bodies.withLock { $0 } == ["#14 の「間隔」は別案 2（15 分）で\n夜間は長めに"])
         #expect(model.outcomes[Self.pending.text] == .instructed(URL(string: "https://github.com/o/r/issues/9#issuecomment-1")!))
         #expect(model.notes[Self.pending.text] == nil)
+        #expect(model.postedInstructions == 1)
     }
 
     @Test func freeTextNeedsNote() {

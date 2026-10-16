@@ -45,7 +45,10 @@ public struct AnswerSnapshot: Sendable, Equatable {
 ///
 /// 回答済みの質問はメモリ上で覚え、新しく回答が付いた PR のリポジトリだけを再開する
 /// （回答済みの質問は回答済みのまま残るため、覚えておかないとループが終わるたびに再開してしまう）。
+/// 同じリポジトリで自動ループと手動ループが回るので、PR の base が自動ループの epic のときだけ再開する
+/// （手動ループの epic 宛ての PR の回答は、担当者が自分の Mac で再開する）。
 /// オーケストレーターを再起動すると忘れるので、その直後は回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
+/// 途中の epic が無いリポジトリは再開しない（起動スクリプトも断る。`LaunchPlanner` の `epicsInProgress` と同じ判断）
 public struct ResumeWatcher: Sendable, Equatable {
     /// ループの開始を確かめられないまま再開を試す回数の上限
     public static let maxAttempts = 3
@@ -73,6 +76,8 @@ public struct ResumeWatcher: Sendable, Equatable {
         case resume(repositoryKey: String)
         /// 上限まで試しても再開を確かめられなかった
         case giveUp(repositoryKey: String, attempts: Int)
+        /// 途中の epic が無いので再開しない（未完了のタスクが回答待ちのものだけ・epic が無い）
+        case noEpicInProgress(repositoryKey: String)
     }
 
     /// 回答済みとして扱い終えた質問の node id
@@ -85,19 +90,36 @@ public struct ResumeWatcher: Sendable, Equatable {
     /// 担当リポジトリの `needs-answer` の一覧とループの状態から、行うことを返す
     /// - Parameters:
     ///   - snapshots: 担当リポジトリのものだけを渡す
+    ///   - epicsInProgress: 途中の epic（`EpicSnapshot.inProgress`）があるリポジトリ（`fullName` の小文字）。
+    ///     それ以外は起動スクリプトが「未完了のタスクがありません」で断り、state ファイルを作らずに終わる
+    ///   - automaticEpics: リポジトリ（`fullName` の小文字）ごとの、この PC の自動ループの epic（制御用 worktree のブランチ）。
+    ///     PR の base がこれと同じときだけ再開する
     ///   - manualLoopRepositories: 手動ループ（open な `manual-loop` の Discussion）があるリポジトリ（`fullName` の小文字）。
-    ///     ループは担当者の Mac で動いているので、この PC からは再開しない（担当者がアプリの知らせを見て再開する）
+    ///     base が分からない PR の回答では、このリポジトリのループは再開しない（担当者の Mac のループかもしれないため）。
+    ///     `automaticEpics` に無い（制御用 worktree を手動ループが使っている）なら、このリポジトリの再開待ちをやめる
     public mutating func update(
         snapshots: [AnswerSnapshot],
         statuses: [String: LoopStatus],
+        epicsInProgress: Set<String>,
+        automaticEpics: [String: String] = [:],
         manualLoopRepositories: Set<String> = []
     ) -> [Action] {
-        for key in manualLoopRepositories {
+        // 制御用 worktree に自動ループの epic が無い（手動ループが使っている）なら、再開待ちをやめる
+        for key in manualLoopRepositories where automaticEpics[key] == nil {
             resumes[key] = nil
         }
-        var actions = recordAnswers(in: snapshots, skipping: manualLoopRepositories)
+        var actions = recordAnswers(in: snapshots, automaticEpics: automaticEpics, manualLoopRepositories: manualLoopRepositories)
         for key in resumes.keys.sorted() {
             guard let entry = resumes[key] else {
+                continue
+            }
+            // 起動スクリプトが断る再開を失敗と数えると、ループは落ちていないのに「再開を諦めた」になり、
+            // 次の回答が付くまで残り続ける。再開待ちごと（諦めた記録も）やめる
+            guard epicsInProgress.contains(key) else {
+                resumes[key] = nil
+                if entry.phase == .waiting {
+                    actions.append(.noEpicInProgress(repositoryKey: key))
+                }
                 continue
             }
             let (next, action) = Self.advance(entry, key: key, status: statuses[key] ?? .idle)
@@ -107,14 +129,19 @@ public struct ResumeWatcher: Sendable, Equatable {
         return actions
     }
 
-    /// 新しく付いた回答を覚え、PR の回答なら再開待ちにする。すべて回答済みの Discussion / PR はラベルを外す
-    private mutating func recordAnswers(in snapshots: [AnswerSnapshot], skipping manualLoopRepositories: Set<String>) -> [Action] {
+    /// 新しく付いた回答を覚え、自動ループの PR の回答なら再開待ちにする。すべて回答済みの Discussion / PR はラベルを外す
+    private mutating func recordAnswers(
+        in snapshots: [AnswerSnapshot],
+        automaticEpics: [String: String],
+        manualLoopRepositories: Set<String>
+    ) -> [Action] {
         var actions: [Action] = []
         for snapshot in snapshots {
             let newlyAnswered = snapshot.questions.filter { $0.isAnswered && !seenAnswers.contains($0.id) }
             let key = snapshot.subject.repository.lowercased()
             // Discussion（※1）の回答では再開しない。ループは「回答を確定してループを始める」（ready-for-loop）で始まる
-            if snapshot.subject.kind == .pullRequest && !newlyAnswered.isEmpty && !manualLoopRepositories.contains(key) {
+            if snapshot.subject.kind == .pullRequest && !newlyAnswered.isEmpty,
+               Self.isForAutomaticLoop(snapshot.subject, automaticEpics: automaticEpics, manualLoopRepositories: manualLoopRepositories) {
                 if resumes[key] == nil || resumes[key]?.phase == .gaveUp {
                     resumes[key] = Entry(attempts: 0, phase: .waiting)
                 }
@@ -127,6 +154,20 @@ public struct ResumeWatcher: Sendable, Equatable {
             }
         }
         return actions
+    }
+
+    /// この PC の自動ループの PR か。PR の base が自動ループの epic と同じときだけ `true`。
+    /// base が分からない PR は、手動ループの無いリポジトリでだけ自動ループのものとみなす（base を足す前と同じ）
+    static func isForAutomaticLoop(
+        _ subject: InboxSubject,
+        automaticEpics: [String: String],
+        manualLoopRepositories: Set<String>
+    ) -> Bool {
+        let key = subject.repository.lowercased()
+        guard let base = subject.baseBranch else {
+            return !manualLoopRepositories.contains(key)
+        }
+        return automaticEpics[key] == base
     }
 
     /// 再開待ちのリポジトリを 1 つ進める。戻り値の `Entry` が `nil` なら再開待ちを終える

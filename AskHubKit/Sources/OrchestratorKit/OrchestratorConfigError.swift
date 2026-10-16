@@ -18,6 +18,8 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
     case unknownConflictPlaceholder(String)
     case emptyRepositoryCommand(key: String)
     case relativeNewRepositoryDirectory(String)
+    case relativeBuildHostsPath(key: String, path: String)
+    case invalidBuildHostsRepository(String)
 
     public var description: String {
         switch self {
@@ -69,6 +71,12 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
 
         case let .relativeNewRepositoryDirectory(path):
             "newRepositoryDirectory は絶対パス（または ~ から始まるパス）にしてください: \(path)"
+
+        case let .relativeBuildHostsPath(key, path):
+            "\(key) は絶対パス（または ~ から始まるパス）にしてください: \(path)"
+
+        case let .invalidBuildHostsRepository(name):
+            "buildHosts.issueRepository は owner/repo の形式にしてください: \(name)"
         }
     }
 }

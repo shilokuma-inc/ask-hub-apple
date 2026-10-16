@@ -8,6 +8,8 @@ struct OrchestratorTests {
     let logs = LogRecorder()
     static let started = LoopStatus(stateFileExists: true, processAlive: true)
     static let exitedWithoutStarting = LoopStatus(stateFileExists: false, processAlive: false)
+    /// ask への回答で再開する epic（回答待ちでない未完了のタスクが残っている）
+    static let unfinishedEpic = EpicSnapshot(branch: "epic/mvp", goal: "- [ ] 【FEAT】A", state: nil, loopPrepared: true)
 
     func makeOrchestrator(
         github: FakeGitHub,
@@ -120,7 +122,7 @@ struct OrchestratorTests {
         try await orchestrator.pollOnce()
         #expect(runtime.launched.count == 1)
         let entry = await orchestrator.trackedEntries["D_12"]
-        #expect(entry == LaunchTracker.Entry(repositoryKey: "shilokuma-inc/ask-hub-apple", attempts: 2, phase: .starting))
+        #expect(entry == LaunchTracker.Entry(repositoryKey: "shilokuma-inc/ask-hub-apple", number: 12, attempts: 2, phase: .starting))
     }
 
     @Test func doesNotLaunchWhileStateFileRemains() async throws {
@@ -167,6 +169,7 @@ struct OrchestratorTests {
     @Test func resumesStoppedLoopWhenAskIsAnsweredAndRemovesNeedsAnswer() async throws {
         let github = FakeGitHub([.success([])])
         let runtime = FakeRuntime()
+        runtime.setEpic(Self.unfinishedEpic)
         let inbox = FakeInbox()
         let subject = Self.pullRequest()
         inbox.set([subject], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
@@ -260,6 +263,7 @@ struct OrchestratorTests {
     @Test func skipsOnlySubjectWhoseQuestionsCannotBeFetched() async throws {
         let github = FakeGitHub([.success([])])
         let runtime = FakeRuntime()
+        runtime.setEpic(Self.unfinishedEpic)
         let inbox = FakeInbox()
         // PR_1 はスレッドを登録していないので取得に失敗する
         inbox.set([Self.pullRequest(number: 1), Self.pullRequest()], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
@@ -273,11 +277,38 @@ struct OrchestratorTests {
     @Test func resumeAndReadyForLoopDoNotLaunchTwiceInOnePoll() async throws {
         let github = FakeGitHub([.success([.fixture(number: 12)])])
         let runtime = FakeRuntime()
+        runtime.setEpic(Self.unfinishedEpic)
         let inbox = FakeInbox()
         inbox.set([Self.pullRequest()], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
         try await makeOrchestrator(github: github, runtime: runtime, inbox: inbox).pollOnce()
 
         #expect(runtime.launched.count == 1)
+    }
+
+    @Test func doesNotResumeOrGiveUpWhenEpicHasNoUnfinishedTasks() async throws {
+        let github = FakeGitHub([.success([])])
+        let runtime = FakeRuntime()
+        // 全タスクが完了した epic（最終 PR のマージ待ち）。起動スクリプトは「未完了のタスクがありません」で再開を断る
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】A", state: nil, discussion: 12, loopPrepared: true))
+        let inbox = FakeInbox()
+        // epic とは関係のない PR の ask に回答が付いた
+        inbox.set([Self.pullRequest()], threads: ["PR_34": [Self.ask("C_1", replies: ["mrs1669"])]])
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime, inbox: inbox)
+
+        for _ in 0...ResumeWatcher.maxAttempts {
+            try await orchestrator.pollOnce()
+        }
+
+        #expect(runtime.launched.isEmpty)
+        // テストの Inbox はラベルを外しても PR を返し続けるので、外した PR を集合で比べる
+        #expect(Set(github.removedNeedsAnswer) == ["PR_34"])
+        #expect(await orchestrator.pendingResumes.isEmpty)
+        #expect(logs.recorded.contains(
+            "shilokuma-inc/ask-hub-apple の ask に回答が付きましたが、途中の epic（回答待ちでない未完了のタスク）が無いので、ループは再開しません"
+        ))
+        // ループの状態は「異常終了（再開を諦めた）」ではなく「完了（最終 PR のマージ待ち）」のまま
+        let report = try #require(github.loopCommentReport())
+        #expect(report.state == .completed)
     }
 
     @Test func runContinuesAfterFailedPollAndStopsWhenSleepThrows() async throws {
@@ -342,5 +373,7 @@ struct OrchestratorTests {
         #expect(github.removed == ["D_12"])
         #expect(runtime.clearedNoTasksMarkers == 1)
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#12 は準備の結果やることが残っていなかったので、知らせて ready-for-loop を外しました"))
+        // ループは始まらないので、状態用の Issue にも開始待ちとして書かない
+        #expect(github.createdLoopStatusComments.isEmpty)
     }
 }

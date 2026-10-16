@@ -83,7 +83,7 @@ struct LoopStatusModelTests {
         let model = LoopStatusModel.sample()
         await model.refresh()
         #expect(model.state == .loaded)
-        #expect(model.rows.count == 10)
+        #expect(model.rows.count == 13)
         let now = Date()
         let displays = model.rows.map { $0.display(now: now) }
         #expect(displays.contains { $0.isStuck })
@@ -94,6 +94,26 @@ struct LoopStatusModelTests {
             if case let .reported(report) = row.status(now: now) { report.state } else { nil }
         })
         #expect(reported == Set(LoopStatusReport.State.allCases).subtracting([.unknown]))
+    }
+
+    @Test func loadsSampleLoopsRunningInSameRepository() async {
+        let model = LoopStatusModel.sample()
+        await model.refresh()
+        let now = Date()
+        func items(_ name: String) -> [LoopStatusLoopItem] {
+            model.rows.first { $0.repository.hasSuffix("/\(name)") }.map(model.loopItems(of:)) ?? []
+        }
+        // 自動ループと手動ループ・手動ループ 2 つは、リポジトリの見出しの下にループを並べる
+        #expect(items("pair-quiz-ios").map(\.mode) == [.automatic, .manual(assignee: "partner")])
+        #expect(items("pair-quiz-ios").map { $0.display(now: now).statusText } == ["実行中", "回答待ち"])
+        #expect(items("story-maker").map(\.mode) == [.manual(assignee: TrustedAuthors.defaultLogins[0]), .manual(assignee: "partner")])
+        // 完了した epic と次に起動した Discussion の自動ループも、Discussion ごとに並べる
+        #expect(items("focus-timer-ios").map(\.mode) == [.automatic, .automatic])
+        #expect(items("focus-timer-ios").map { $0.display(now: now).statusText } == ["完了（最終 PR のマージ待ち）", "実行中"])
+        // ループが 1 つのリポジトリは、今までどおり 1 行
+        #expect(items("ask-hub-apple").isEmpty)
+        // サンプルの異常（異常終了・長く動きが無い・担当 PC なしの進行中の epic）はループごとに数え、並べたループには異常が無い
+        #expect(model.abnormalCount(now: now) == 3)
     }
 
     @Test func loadsSampleWaitingDiscussionsAndUsageLimitedWithRows() async {
@@ -153,6 +173,83 @@ struct LoopStatusModelTests {
         await empty.refresh()
         #expect(empty.state == .loaded)
         #expect(empty.isEmpty)
+    }
+
+    @Test func keepsBuildHostsFromTrustedIssue() async {
+        struct HostsSource: LoopStatusSource {
+            func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
+                let report = BuildHostsReport(hosts: [BuildHost(name: "macbookpro-m4max", state: .ok)], checkedAt: .now)
+                let issue = LoopStatusIssue(
+                    number: 9,
+                    url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/9")!,
+                    author: "mrs1669",
+                    updatedAt: .now,
+                    body: report.issueBody
+                )
+                let repository = LoopStatusRepository(
+                    repository: "shilokuma-inc/ask-hub-apple", heartbeatDescription: nil, issues: [], buildHostsIssues: [issue]
+                )
+                return [repository]
+            }
+        }
+        let model = Self.model(rows: HostsSource(), sections: SectionsSource(waiting: [], usageLimited: []))
+        await model.refresh()
+        #expect(model.buildHosts?.report.hosts.map(\.name) == ["macbookpro-m4max"])
+        #expect(model.buildHosts?.repository == "shilokuma-inc/ask-hub-apple")
+    }
+
+    @Test func sampleShowsBuildHostsAndMoves() async {
+        let model = Self.model(rows: SampleLoopStatusSource(), sections: SampleInboxSource())
+        await model.refresh()
+        let hosts = model.buildHosts?.hostDisplays ?? []
+        #expect(hosts.map(\.tone) == [.available, .unavailable, .idle])
+        #expect(hosts.first?.jobTexts.isEmpty == false)
+        // 成功と失敗の移動が 1 件ずつ、新しい順
+        #expect(model.buildMoves(now: .now).map(\.succeeded) == [true, false])
+        #expect(!model.isEmpty)
+        // 設定画面の「ビルドの Mac」の入口に出す要約
+        #expect(model.buildHosts?.summaryText(now: .now) == "3 台・実行中 1")
+        // 実行中のビルドが無い・30 分以上書き直されていない
+        let idle = BuildHostsStatus(
+            repository: "o/r",
+            issueURL: URL(string: "https://github.com/o/r/issues/1")!,
+            report: BuildHostsReport(hosts: [BuildHost(name: "m1", state: .ok)], checkedAt: Date(timeIntervalSinceNow: -31 * 60))
+        )
+        #expect(idle.summaryText(now: .now) == "1 台（古い）")
+    }
+
+    @Test func doesNotCountBuildTroubleAsAbnormal() async {
+        // 切断の Mac・別の Mac への移動・失敗したビルドは、バッジ（異常の件数）に数えない（Q7。表示だけ）
+        struct TroubleSource: LoopStatusSource {
+            func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
+                let failed = LoopStatusBuild(
+                    slot: "a",
+                    action: "build",
+                    host: "local",
+                    moves: [LoopStatusBuildMove(from: "macbookpro-m1pro", to: "local", reason: .disconnected)],
+                    exitCode: 65,
+                    finishedAt: .now
+                )
+                let report = LoopStatusReport(
+                    state: .running, lastActivityAt: .now, checkedAt: .now, builds: LoopStatusBuilds(latest: [failed], moved: [failed])
+                )
+                let down = BuildHost(name: "macbookpro-m1pro", state: .down, reason: .disconnected)
+                let hosts = BuildHostsReport(hosts: [down], checkedAt: .now)
+                let url = URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/1")!
+                let repository = LoopStatusRepository(
+                    repository: "shilokuma-inc/ask-hub-apple",
+                    heartbeatDescription: OrchestratorHeartbeat.description(at: .now),
+                    issues: [LoopStatusIssue(number: 1, url: url, author: "mrs1669", updatedAt: .now, body: report.issueBody)],
+                    buildHostsIssues: [LoopStatusIssue(number: 2, url: url, author: "mrs1669", updatedAt: .now, body: hosts.issueBody)]
+                )
+                return [repository]
+            }
+        }
+        let model = Self.model(rows: TroubleSource(), sections: SectionsSource(waiting: [], usageLimited: []))
+        await model.refresh()
+        #expect(model.buildMoves(now: .now).count == 1)
+        #expect(model.buildHosts?.report.hosts.first?.state == .down)
+        #expect(model.abnormalCount(now: .now) == 0)
     }
 
     @Test func needsToken() async {

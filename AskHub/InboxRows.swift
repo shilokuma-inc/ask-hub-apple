@@ -31,6 +31,17 @@ struct QuestionRow: View {
                 .foregroundStyle(.tint)
         }
         .padding(.vertical, 2)
+        // 同じ Discussion の質問に同じ色のバーを付ける（Discussion #418 の Q1）。PR の ask には付けない（Q2）。
+        // 行の中身はずらさず、左の余白（iOS / macOS とも 16pt ほど）に置く。色だけに頼らないよう `repo#番号` は残し、バーは読み上げない
+        .overlay(alignment: .leading) {
+            if let color = question.subject.groupColor {
+                Capsule()
+                    .fill(color)
+                    .frame(width: 4)
+                    .offset(x: -10)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 }
 
@@ -68,6 +79,15 @@ struct IssueRow: View {
 }
 
 extension InboxSubject {
+    /// 要回答の行の左端に出す、Discussion ごとの色。PR の ask には付けないので `nil`。
+    /// 色は node id から決まるので、取り直しても起動し直しても変わらない
+    var groupColor: Color? {
+        colorIndex(paletteCount: Self.groupPalette.count).map { Self.groupPalette[$0] }
+    }
+
+    /// ライト / ダークの両方で見分けられるシステムカラー。数を変えると、どの Discussion がどの色になるかも変わる
+    private static let groupPalette: [Color] = [.blue, .orange, .green, .purple, .pink, .teal]
+
     /// 一覧に出す `repo#番号`。organization をまたいで同じ名前のリポジトリは置かない前提で、owner は省く
     var shortReference: String {
         "\(Self.shortRepository(repository))#\(number)"
