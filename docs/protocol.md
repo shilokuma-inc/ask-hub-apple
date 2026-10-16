@@ -41,6 +41,12 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 - **要対応**: 上に「要回答」（`needs-answer` が付いた Discussion（※1）と PR（※2））、その下に「マージ待ち」（`epic-final` の PR）。バッジは両方の件数の合計。
   マージ待ちの詳細では、マージの前に epic ブランチを TestFlight に上げて実機で確かめられる（下記「マージ待ちと TestFlight への手動アップロード」）
+  - 「マージ待ち」のマージ条件は **GitHub Actions の check run がすべて成功していること**と**コンフリクトしていないこと**だけ
+    （[Discussion #460](https://github.com/shilokuma-inc/ask-hub-apple/discussions/460)。check run が 1 つも無いときと、
+    GitHub がコンフリクトの有無を計算中のときも押せない）。CI の状態は最新コミットの `statusCheckRollup.contexts` のうち
+    GitHub Actions（`checkSuite.app.slug` が `github-actions`）の check run だけから決め、CodeRabbit などの commit status は使わない
+    （CodeRabbit の処理中が長く続いてもマージを止めないため）。CodeRabbit の状態（処理中 / 完了 / レート制限 / 失敗 / なし）は
+    commit status `CodeRabbit` から読み、詳細画面の「状態」に**情報として**出す。レビューを見てからマージしたい人はそれを見て判断する
 - **任意判断**: `decision-log` の Issue（仮決め一覧）。行には `repo#番号`・タイトル（先頭の `【CHORE】` は表示で省く）・更新の相対時刻・作成からの経過を出す。
   タブの中身はすべて同じ種類なので、行に種類のラベルは出さない
 - **ステータス**: リポジトリごとのループの状態と回し方（自動ループ・手動ループ・ループなし）。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」。
@@ -112,20 +118,36 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 | `completed` | 完了（最終 PR のマージ待ち） | 全タスクが終わり、最終 PR のマージを待っている |
 | `no-loop` | ループなし | ループが無い |
 
-- 複数に当てはまるときは、上限で待機中 → 実行中 → 異常終了 → epic の進み具合（開始待ち・回答待ち・完了）→ `ready-for-loop` の開始待ち → ループなし の順に優先する（`OrchestratorKit` の `LoopStatusSummary`）。
-  完了した epic の最終 PR がマージされるまでは、次の Discussion に `ready-for-loop` が付いていても「完了」を出す
-- `epic`・`discussion`・`progress`・`lastActivityAt` は、制御用 worktree が準備を終えた `epic/` のブランチにあるときだけ書く。
-  epic が無く `ready-for-loop` を待っているときは、`discussion` にその Discussion の番号を書く
+- オーケストレーターは、自動ループの状態を Discussion ごとに決める（`OrchestratorKit` の `LoopStatusSummary`）。同時に動く自動ループはリポジトリに 1 つだが、
+  制御用 worktree に準備を終えた epic（例: 完了して最終 PR のマージ待ちの #12）が残ったまま、別の Discussion（#30）を起動した・起動を諦めた・待っているときは、
+  #12 には epic の状態を、#30 には起動の状態を、それぞれのコメントに書く（PR #437 の担当者の判断）:
+  - 準備を終えた epic の Discussion: 上限で待機中 → 実行中 → 異常終了 → epic の進み具合（開始待ち・回答待ち・完了）の順に優先する。
+    制御用 worktree のプロセス・state ファイルは、epic と別の Discussion を起動していればそのループのものとし、epic の実行中にしない
+  - 起動した Discussion: 上限で待機中 → 実行中（ループの開始を待っている・確かめた）・異常終了（起動を諦めた）
+  - 準備を終えていない `ready-for-loop` の Discussion（手動ループ・信用しない author のものを除く）: 上限で待機中 → 開始待ち
+  - 上限で待機中は、この Mac のすべての自動ループに出す
+- `epic`・`progress`・`lastActivityAt`・`builds` は、制御用 worktree が準備を終えた `epic/` のブランチのループにだけ書く。
+  起動した・待っている Discussion のループには `discussion` だけを書く
 - `progress.deferred` は `completed` の内訳で、`completed` の意味は変えない（古いアプリは `deferred` を無視して今と同じ表示になる）。
   古いオーケストレーターは書かないので、アプリは `deferred` が無ければ保留を区別しない表示にする。新しいオーケストレーターは 0 件でも書く
 - アプリが知らない `state` は「不明」として扱う（新しいオーケストレーターが分類を足しても読めなくならないように）
 - アプリが知らない `writer` も「不明」として扱う
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
-- オーケストレーターは、`checkedAt` 以外が変わったときに本文を書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す
+- オーケストレーターは、本文（新しい形。リポジトリ全体の状態）と、この PC の自動ループのコメント（`writer` は `orchestrator`）を書く。
+  それぞれ `checkedAt` 以外が変わったときに書き換え、変わらなければ 10 分ごとに `checkedAt` だけを書き直す。手動ループの有無で書き出しを止めない
+- オーケストレーターが自動ループのコメントを消すのは、その Discussion のループが終わったとき（最終 PR がマージされた・epic が退避されて起動の記録にも
+  `ready-for-loop` にも無い）と、同じ Discussion のコメントが重複したとき、ほかの書き手（下の手動ループ・知らない `writer`）がその Discussion を書いているときだけ。ゴール元の Discussion の番号が無い自動ループ（手で始めた epic）の状態はコメントに書かない。
+  どの Discussion のものか分からないループがある間（手で始めた epic・起動の記録の無いループが動いている・オーケストレーターを起動してから `ready-for-loop` の一覧をまだ取得していない）は、
+  終わったのか分からないので、一覧に無い Discussion のコメントも消さない
+- 1 つの Discussion の書き手は 1 つ。信用する author の手動ループ（`writer` が `manual`）のコメント・古い形の本文がある Discussion には、
+  `checkedAt` が 30 分以内か、その Discussion が信用する author の open な `manual-loop` の Discussion のあいだ（`checkedAt` が古くなっても）、オーケストレーターは書かない。
+  手動ループから自動ループに切り替えた Discussion は、同じリポジトリでほかの Discussion を手で回していても、残った古い手動ループのコメントでは止めない。
+  知らない `writer` のコメントがある Discussion にも書かない（ほかの書き手のコメントは消さない。その Discussion に残った自分のコメントは消す）
 - 手動ループ（`manual-loop` の Discussion）は、担当者の Claude が `scripts/askhub-manual.sh status` で `writer` を `manual`・`runner` を担当者にして、
-  状態・epic・進捗・回答待ちの PR を書き、10 分ごとに `checkedAt` を書き直す。
-  信用する author の open な `manual-loop` の Discussion があるあいだ、オーケストレーターは書き手が `manual` の状態を（`checkedAt` が古くなっても）上書きしない。
-  古くなったことはアプリが知らせる。Discussion が閉じた後、`checkedAt` が 30 分を過ぎていれば、オーケストレーターが書き直す
+  状態・epic・進捗・回答待ちの PR を書き、10 分ごとに `checkedAt` を書き直す。ralph-kit が新しい形で書くようになるまでは、本文に古い形で書く。
+  オーケストレーターは、古い形の手動ループの本文を、`checkedAt` が 30 分以内か、本文の `discussion` が信用する author の open な `manual-loop` の Discussion のあいだ
+  （`discussion` が無ければ、そのリポジトリに信用する author の open な `manual-loop` の Discussion があるあいだ）、`checkedAt` が古くなっても上書きしない。
+  古くなったことはアプリが知らせる。Discussion が閉じた後、`checkedAt` が 30 分を過ぎていれば、オーケストレーターが本文を新しい形で書き直す
 
 アプリの読み方（`LoopStatusFetcher`。GitHub からの取得は `GitHubLoopStatusSource`）:
 
@@ -135,8 +157,9 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - 使う Issue のコメント（ループごとの状態）を、別の GraphQL（`repository.issue.comments`）でページングを最後まで追って読む。
   組織全体の問い合わせに入れ子で足すと GraphQL のコスト（レート制限の点数）が大きいので、使う Issue のコメントだけを取る。
   信用する author のコメントだけを読む（下記「ループごとのコメントと本文の形」）
-- ループ（「ループなし」を除く）が 2 つ以上あれば、見出しの下にループを Discussion の番号の順に並べる。自動ループは同じリポジトリで 1 つしか回らないので、
-  `checkedAt` が最も新しいものだけを並べる（終わったループのコメントが残っていても 2 行にしない）。ループの行の担当 PC の判定は 1 行の表示と同じ
+- ループ（「ループなし」を除く）が 2 つ以上あれば、見出しの下にループを Discussion の番号の順に並べる。自動ループも Discussion ごとに並べる
+  （同時に動く自動ループは 1 つでも、完了して最終 PR のマージを待っている epic と、次に起動した・待っている Discussion は別のコメントに書かれる。
+  終わったループのコメントはオーケストレーターが消す）。ループの行の担当 PC の判定は 1 行の表示と同じ
   （担当の印か、そのループの `checkedAt`。手動ループは止まると `checkedAt` を書き直さないため。実行中のまま書かれなくなった手動ループは「手動ループ」の節が知らせる）。
   ループが 1 つ以下のときの 1 行には、次のループを出す。古い形の本文ならそのループ（同じ Discussion のコメントが新しければそちら）、
   新しい形なら自動ループ（`writer` が `orchestrator`）、無ければいずれかのループを出す（どちらも `checkedAt` が最も新しいもの）。
@@ -211,7 +234,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - 対象はループのスロットのビルドだけ（Discussion #366 の Q6）。メインの checkout・制御用 worktree・手で流したビルドは書かない
 - ビルドの移動や失敗は、ステータスのバッジ（異常の件数）には数えない（Q7。表示だけ）
 - `builds` の形が崩れていても、アプリは状態そのもの（`state` など）は読み、ビルドの情報だけを無いものとして扱う
-- `builds` が変わったら本文を書き換える（`checkedAt` 以外の変化として扱う）
+- `builds` は自動ループのコメントに書き、変わったら書き換える（`checkedAt` 以外の変化として扱う）
 
 ## ビルドの Mac の状態
 
@@ -585,6 +608,9 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 5. ask に回答が付くと、オーケストレーターが終了済みのループを再開し、回答済みの `needs-answer` を外す
 6. epic の全タスクが完了すると、オーケストレーターが `develop` 向けの最終 PR（`epic-final`）を作る
 7. 人間がアプリの「要対応」の「マージ待ち」から確認して merge commit でマージする。
+   マージできるのは GitHub Actions の check run がすべて成功していて、コンフリクトしていないときだけ
+   （check run が 1 つも無いときと、GitHub がコンフリクトの有無を計算中のときも押せない。上記「要対応」）。
+   CodeRabbit の状態は詳細画面に情報として出るだけで、処理中でもマージできる。
    マージの前に実機で確かめたいときは、詳細の「TestFlight に上げる」で epic ブランチを Upload ワークフローに掛け、run の成功を見てから TestFlight でテストする（上記「マージ待ちと TestFlight への手動アップロード」）
 8. マージされると、ワークフローがゴール元の Discussion を解決済みで閉じる（上記「ゴール元の Discussion の目印」）。
    オーケストレーターは epic の仮決め一覧を閉じる（上記「仮決め一覧」）

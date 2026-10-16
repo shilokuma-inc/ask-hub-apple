@@ -39,6 +39,15 @@
   PR に `@coderabbitai review` とコメントして頼む（1 回で 1 本の PR を使い切る。上限中に push した続きのコミットは、そのまま未レビューで残る）
 - `workflow_dispatch`（`POST /repos/{owner}/{repo}/actions/workflows/{file}/dispatches`）は 204 を返すだけで run の id を返さず、直後に `runs?branch=` を読んでも新しい run はまだ一覧に出ない（数秒かかる）。アプリでは「起動した」状態を持ち、少し後に取り直す。
   run の `run_started_at` / `created_at` は秒精度なので、起動時刻（サブ秒）との比較で新旧を判定するときは同じ秒内の run に注意する
+- コミットの `statusCheckRollup.contexts` は check run（`CheckRun`。GitHub Actions など）と commit status（`StatusContext`。CodeRabbit など）が混ざった connection。
+  `__typename` で見分け、GitHub Actions の check run は `checkSuite.app.slug == "github-actions"` で選ぶ。`CheckRun.conclusion` は実行中なら `null`、
+  `StatusContext.description` やアプリが削除された check run の `checkSuite.app` も `null` になり得るので optional で受ける
+- 同じコミットに `push` と `pull_request` の両方で同じワークフローが走ると、`statusCheckRollup.contexts` に同名の check run（`build / build`）が 2 件並ぶ。
+  名前で 1 件に絞らず、全件を見て「1 つでも失敗なら失敗」で判定する
+- CodeRabbit は PR の head のコミットに commit status `CodeRabbit` を付ける。レビュー中は `pending`（"Review in progress"）、完了は `success`（"Review completed"）で、
+  無料枠の上限に当たったときも `success`（"Review rate limited"）になる。レート制限かどうかは `description` の文言でしか見分けられない
+- コミットの `statusCheckRollup.state` は check run と commit status をまとめた値なので、CodeRabbit が `pending` の間は GitHub Actions が全部成功していても `PENDING` になる。
+  GitHub Actions だけで判定したいときは `state` ではなく `contexts` を取り、check run だけを見る
 
 ## ビルド・テスト
 
@@ -106,6 +115,9 @@
   再起動し（ログに `Restarting after unexpected exit, crash, or test timeout` が出る）、`-retry-tests-on-failure` の再試行が走らないまま
   `TEST FAILED` になる（Xcode 26.3 / 26.6 で確認）。MainActor の処理（`XCUIDevice.shared.orientation` など）は、同期の `setUpWithError()` の中で
   `MainActor.assumeIsolated { … }` で呼ぶ。CI の UI テストが 1 回の揺らぎで落ちたら、まずログで失敗したテストが `Iteration 2 of 2` で再試行されているかを見る
+- worktree ごとに分けた新しい DerivedData（`-derivedDataPath`）で `xcodebuild` すると、SwiftLint の Build Tool Plugin の検証
+  （`Validate plug-in "SwiftLintBuildToolPlugin"`）で止まる。手元では `-skipPackagePluginValidation` を付ける（CI は `IDESkipPackagePluginFingerprintValidatation` の `defaults write`）。
+  `swiftlint` が `PATH` に無い Mac では、その DerivedData の `SourcePackages/artifacts/swiftlintplugins/SwiftLintBinary/SwiftLintBinary.artifactbundle/macos/swiftlint` で `lint --strict` を流せる（CI と同じバイナリ）
 
 ## Keychain
 

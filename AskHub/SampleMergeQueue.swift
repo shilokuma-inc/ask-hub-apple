@@ -27,6 +27,7 @@ struct SampleMergeQueue: MergeQueueProviding {
             author: "mrs1669",
             checks: .success,
             mergeability: .mergeable,
+            codeRabbit: .completed,
             // 最新の head を TestFlight に上げ終わっている
             uploadStatus: .run(sampleUploadRun(id: 501, branch: "epic/mvp", headSHA: "0000000", conclusion: .success))
         ),
@@ -43,6 +44,8 @@ struct SampleMergeQueue: MergeQueueProviding {
             author: "mrs1669",
             checks: .pending,
             mergeability: .mergeable,
+            // 無料枠の上限に当たった PR（"Review rate limited"）。CI が終わればマージできる
+            codeRabbit: .rateLimited,
             // 上げている最中（CI も実行中なので、終わってももう一度は押せない）
             uploadStatus: .run(sampleUploadRun(
                 id: 801,
@@ -80,8 +83,36 @@ struct SampleMergeQueue: MergeQueueProviding {
             author: "mrs1669",
             checks: .success,
             mergeability: .mergeable,
+            codeRabbit: .completed,
             // 前のコミット（1111111）で失敗している（PR の最新の head と SHA が違う）。CI は成功しているので上げ直せる
             uploadStatus: .run(sampleUploadRun(id: 1_201, branch: "epic/html-rendering", headSHA: "1111111", conclusion: .failure))
+        ),
+        // GitHub Actions は成功・CodeRabbit は処理中。CodeRabbit はマージ条件ではないのでマージできる（Discussion #460）
+        EpicPullRequest(
+            id: "PR_130",
+            repository: "shilokuma-inc/notti-ios",
+            number: 130,
+            title: "【FEAT】epic/widget を develop に取り込む",
+            body: """
+                ### 回答待ちの PR
+                - なし
+
+                ### 返答のない仮決め（既定値のまま確定）
+                - #125 の 3 件
+
+                ### 実機確認 Issue
+                - #128 ウィジェットの更新間隔
+                """,
+            url: URL(string: "https://github.com/shilokuma-inc/notti-ios/pull/130")!,
+            baseBranch: "develop",
+            headBranch: "epic/widget",
+            headSHA: "0000003",
+            author: "mrs1669",
+            checks: .success,
+            mergeability: .mergeable,
+            codeRabbit: .inProgress,
+            // まだ TestFlight に上げていない
+            uploadStatus: .noRuns
         )
     ]
 

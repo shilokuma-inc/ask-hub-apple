@@ -23,6 +23,8 @@ public struct LaunchTracker: Sendable, Equatable {
     public struct Entry: Sendable, Equatable {
         /// 担当リポジトリの `fullName` を小文字にしたもの
         public var repositoryKey: String
+        /// Discussion の番号（ループの状態をどの Discussion のものとして書くかに使う）
+        public var number: Int
         public var attempts: Int
         public var phase: Phase
     }
@@ -42,9 +44,25 @@ public struct LaunchTracker: Sendable, Equatable {
 
     public init() {}
 
-    /// `repositoryKey` の Discussion のうち、ループの起動を諦めたものがあるか
-    public func hasGivenUp(repositoryKey: String) -> Bool {
-        entries.values.contains { $0.repositoryKey == repositoryKey && $0.phase == .gaveUp }
+    /// `repositoryKey` で起動し、ループの開始を待っている Discussion の番号（小さい順）。
+    /// 準備を終えた epic がほかの Discussion のものでも、制御用 worktree で動いているのはこのループ
+    public func startingDiscussions(repositoryKey: String) -> [Int] {
+        numbers(repositoryKey: repositoryKey) { $0 == .starting }
+    }
+
+    /// `repositoryKey` で起動し、ループの開始を確かめた Discussion の番号（小さい順。ラベルを外し終えていない・検索結果から消えていないもの）。
+    /// ループは制御用 worktree の準備を終えた epic のもの。ラベルを外せないまま残ると、epic が替わった後も残る
+    public func startedDiscussions(repositoryKey: String) -> [Int] {
+        numbers(repositoryKey: repositoryKey) { [.started, .labelRemoved].contains($0) }
+    }
+
+    /// `repositoryKey` で起動を諦めた Discussion の番号（小さい順）
+    public func givenUpDiscussions(repositoryKey: String) -> [Int] {
+        numbers(repositoryKey: repositoryKey) { $0 == .gaveUp }
+    }
+
+    private func numbers(repositoryKey: String, where matches: (Phase) -> Bool) -> [Int] {
+        entries.values.filter { $0.repositoryKey == repositoryKey && matches($0.phase) }.map(\.number).sorted()
     }
 
     /// 起動判定で起動しない Discussion（追跡中で、起動し直す番ではないもの）
@@ -98,14 +116,15 @@ public struct LaunchTracker: Sendable, Equatable {
     /// プロセスを起動した
     public mutating func recordLaunch(of discussion: ReadyDiscussion, repositoryKey: String) {
         let attempts = (entries[discussion.nodeID]?.attempts ?? 0) + 1
-        entries[discussion.nodeID] = Entry(repositoryKey: repositoryKey, attempts: attempts, phase: .starting)
+        entries[discussion.nodeID] = Entry(repositoryKey: repositoryKey, number: discussion.number, attempts: attempts, phase: .starting)
     }
 
     /// プロセスを起動できなかった（実行ファイルが無いなど）。上限に達したら諦める
     @discardableResult
     public mutating func recordLaunchFailure(of discussion: ReadyDiscussion, repositoryKey: String) -> Entry {
         let attempts = (entries[discussion.nodeID]?.attempts ?? 0) + 1
-        let entry = Entry(repositoryKey: repositoryKey, attempts: attempts, phase: attempts >= Self.maxAttempts ? .gaveUp : .failed)
+        let phase: Phase = attempts >= Self.maxAttempts ? .gaveUp : .failed
+        let entry = Entry(repositoryKey: repositoryKey, number: discussion.number, attempts: attempts, phase: phase)
         entries[discussion.nodeID] = entry
         return entry
     }
@@ -115,7 +134,7 @@ public struct LaunchTracker: Sendable, Equatable {
     public mutating func forgiveFailures(repositoryKey: String) {
         for (id, entry) in entries where entry.repositoryKey == repositoryKey
             && [.starting, .failed, .gaveUp].contains(entry.phase) {
-            entries[id] = Entry(repositoryKey: repositoryKey, attempts: 0, phase: .failed)
+            entries[id] = Entry(repositoryKey: repositoryKey, number: entry.number, attempts: 0, phase: .failed)
         }
     }
 
@@ -125,7 +144,7 @@ public struct LaunchTracker: Sendable, Equatable {
         guard entries[discussion.nodeID] == nil else {
             return
         }
-        entries[discussion.nodeID] = Entry(repositoryKey: repositoryKey, attempts: 0, phase: .started)
+        entries[discussion.nodeID] = Entry(repositoryKey: repositoryKey, number: discussion.number, attempts: 0, phase: .started)
     }
 
     /// 追跡をやめる（知らせて止めた Discussion。ラベルを付け直したら、改めて起動する）

@@ -35,7 +35,8 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
 ループの状態の取得と起動は `LocalLoopRuntime` が担う。
 
 1. 担当リポジトリの owner の organization 全体から `ready-for-loop` が付いた open な Discussion を検索する（担当リポジトリごとではなく、`org:a org:b` の 1 回の検索で）
-   あわせて `manual-loop` が付いた open な Discussion も 1 回の検索で取る（失敗したらログに出し、そのポーリングでは起動しない。依頼・最終 PR のコンフリクト・ループの状態の書き出しは続ける）
+   あわせて `manual-loop` が付いた open な Discussion も 1 回の検索で取る（回答による再開・ループの状態の書き出し・GitHub の情報からの最終 PR で手動ループを見分けるのに使う。
+   起動の判定には使わないので、失敗してもログに出して起動は続ける）
 2. 担当リポジトリごとにループの状態を調べる
    - 制御用 worktree に `.claude/ralph-loop.local.md` があるか（アクセス権が無いなどで確かめられないときは「不明」）
    - このオーケストレーターが起動したプロセスが生きているか
@@ -56,13 +57,12 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
    | 担当リポジトリではない | 何もしない（別の PC の担当） |
    | 起動済みで追跡中 | 何もしない（3. で扱う） |
    | Discussion の author が信用する author ではない | 起動しない（ログに出す） |
-   | `manual-loop` が付いている（手で回す Discussion） | 起動しない（ログに出す）。`ready-for-loop` も外さない（手で回すループが始めるときに外す） |
-   | 同じリポジトリに、信用する author の open な `manual-loop` の Discussion がある（手で回す epic が終わっていない） | 起動しない（ログに出す。Discussion #273 の Q4: 1 リポジトリにつきループは 1 つ）。手で回す epic は見えないので、Discussion が閉じられる（最終 PR のマージ）まで待つ。質問が残っている `manual-loop` の Discussion も含む |
+   | `manual-loop` が付いている（手で回す Discussion） | 起動しない（ログに出す）。`ready-for-loop` も外さない（手で回すループが始めるときに外す）。同じリポジトリのほかの Discussion は起動する |
    | 起動したプロセスが生きている | 起動しない（終わるのを待つ） |
    | 途中の epic がある（準備を終えた `epic/` のブランチに、回答待ちでない未完了のタスクが残っている） | 起動しない（epic が終わるのを待つ。起動の失敗としては数えない） |
    | 完了した epic の最終 PR を作り終えていない | 起動しない（起動すると前の epic の作業ファイルが退避され、最終 PR を作れなくなる） |
    | state ファイルが残っている / 有無が不明 | 起動しない（ログに出す） |
-   | 同じリポジトリに番号の小さい起動対象がある | 起動しない（1 リポジトリにつきループは 1 つ） |
+   | 同じリポジトリに番号の小さい起動対象がある | 起動しない（1 リポジトリにつき自動ループは 1 つ） |
    | それ以外 | `loopCommand` を起動する（実行ファイルが無いなどで起動できなければ、3 回まで再試行） |
 
 `loopCommand` はメインの checkout を作業ディレクトリにして、シェルを経由せずに起動する（終了は待たない）。
@@ -71,6 +71,20 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
 その場合も state ファイルが残っていれば二重には起動しない。
 `loopCommand` は、ループを始めたら制御用 worktree に `.claude/ralph-loop.local.md` を作ること（`scripts/ralph-start.sh` が作る）。
 作らないと開始を確かめられず、起動に失敗したとみなされる。
+
+### 手動ループと同時に回す
+
+自動ループは 1 リポジトリにつき 1 つ、手動ループ（`manual-loop` の Discussion）は同じリポジトリでもいくつでも回せる
+（[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425)。Discussion #273 の Q4「1 リポジトリにつきループは 1 つ」を改めた）。
+手動ループがあるリポジトリでも、`ready-for-loop` の Discussion から自動ループを起動する。
+自動ループの数は、オーケストレーターの制御用 worktree（`<名前>-ralph-ctl`）の state ファイル・プロセス・途中の epic と、同じポーリングで起動した Discussion で数える（手動ループは数えない）。
+
+- **オーケストレーターの Mac では、担当リポジトリの手動ループを回さない**（手動ループは担当者の別の Mac で回す）。
+  ralph-kit が手動ループの作業場所を Discussion ごとに分けるまでは、手動ループ（`scripts/askhub-manual.sh`）も同じ制御用 worktree（`<名前>-ralph-ctl`）と
+  PID ファイル（`.claude/askhub-loop.pid`）を使うので、自動ループとぶつかる（PID ファイルを上書きし合う、手動ループの state ファイル・途中の epic が残って自動ループを起動できない、
+  自動ループの起動が完了した手動ループの epic を退避するなど）
+- 回答による再開・GitHub の情報からの最終 PR は、制御用 worktree の epic のゴール元が `manual-loop` の Discussion のとき・記録が無いときは、
+  この Mac の手動ループのものとして自動ループの経路では扱わない（「ask に回答が付いたらループを再開する」「GitHub の情報から最終 PR を作る」）
 
 ## 常駐させる（launchd）
 
@@ -186,7 +200,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | state ファイルがある | ループが動いているので何もしない。ただし記録した PID（`.claude/askhub-loop.pid`）のプロセスが終わっていれば、残った state を片付けて続ける |
 
 - 前の epic が完了済み（未完了のタスクが無い）なら、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/` に退避してから worktree を片付ける。
-  未完了なら新しい epic は始めない（1 リポジトリにつきループは 1 つ）。
+  未完了なら新しい epic は始めない（1 リポジトリにつき自動ループは 1 つ）。
   worktree にコミットしていない変更がある・退避に失敗したときは、片付けずに失敗として返す
 - 信用する author は、オーケストレーターが起動ごとに環境変数 `ASKHUB_TRUSTED_AUTHORS` で渡す（設定の `trustedAuthors` と、そのリポジトリへの書き込み権限を持つアカウント。手で設定する必要は無い）。
   再開では、制御用 worktree の playbook の「信用する author」もこの値に書き直す
@@ -478,29 +492,47 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 アプリの「ステータス」タブは、オーケストレーターが担当リポジトリごとに書き出す状態用の Issue を読む
 （[Discussion #197](https://github.com/shilokuma-inc/ask-hub-apple/discussions/197)。形式は [`docs/protocol.md`](protocol.md) の「ループの状態」）。
 
-- 毎回のポーリングの最後（利用上限で待機している間は、最終 PR の確認の後）に、`LoopStatusSummary` で担当リポジトリごとの状態をまとめる。
+- 毎回のポーリングの最後（利用上限で待機している間は、最終 PR の確認の後）に、`LoopStatusSummary` で担当リポジトリごとに、自動ループの状態を Discussion ごとにまとめる。
   材料は、ループのプロセスと state ファイル、制御用 worktree の epic（ブランチ・goal・`askhub-bootstrap.local.txt`）、利用上限の解除の時刻、
-  異常終了・起動・再開を諦めたか、回答が付いて再開を待っているか、まだ起動していない `ready-for-loop` の Discussion、
+  異常終了・再開を諦めたか、起動を追っている Discussion（起動した・起動を諦めた。`LaunchTracker`）、回答が付いて再開を待っているか、まだ起動していない `ready-for-loop` の Discussion、
   最終 PR がマージ済みか（完了した epic だけ、10 分に 1 回まで問い合わせる）、最後に動いた時刻
   （`.claude/ralph-loop.local.md`・`ralph-state.local.md`・`ralph-goal.local.md`・最新のループのログの更新時刻のうち新しいもの）
 - 状態用の Issue（ラベル `loop-status`、タイトル `【AskHub】ループの状態`）は、信用する author が作った open なもののうち最も新しく更新されたものを使う。
   無ければ閉じたものを開き直し、それも無ければ作る（ラベルが無ければ作る）。人が閉じても、次に書くときに開き直す
-- 本文は状態が変わったときだけ書き換え、変わらなければ 10 分ごとに確認時刻だけを書き直す。
-  オーケストレーターを再起動した直後は Issue の本文を読み、同じ状態なら書き直さない
-- 書けなかったときはログに出し、次のポーリングで Issue の一覧から取り直して書き直す
-- 本文に書くのは epic 名・Discussion の番号・件数・時刻と、ビルドの情報の Mac の Host 名・スロットだけ。ローカルパス・ログの中身は書かない（public リポジトリでは誰でも読める）
+- 本文にはリポジトリ全体の状態（担当 PC の確認時刻・利用上限の解除の時刻）を、自動ループの状態はそのループ（Discussion）のコメントに書く
+  （[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425) の Q1。同じリポジトリで自動ループと手動ループが同時に回るため）。
+  ゴール元の Discussion の番号が無い状態（手で始めた epic）はコメントに書かない
+- 自動ループのコメントは Discussion ごとに 1 つ。同時に動く自動ループはリポジトリに 1 つのままだが、制御用 worktree に準備を終えた epic（例: 完了して最終 PR のマージ待ちの #12）が
+  残ったまま別の Discussion（#30）を起動した・起動を諦めた・待っているときは、#12 のコメントに epic の状態を、#30 のコメントに起動の状態を書く（PR #437 の担当者の判断）。
+  準備を終えた epic と別の Discussion を起動して開始を待っていれば、制御用 worktree のプロセス・state ファイルはそのループのものとし、epic を実行中にしない
+- 自動ループのコメントを消すのは、その Discussion のループが終わったとき（最終 PR がマージされた・epic が退避されて起動の記録にも `ready-for-loop` にも無い）と、重複したとき、
+  ほかの書き手（手動ループ・知らない書き手）がその Discussion を書いているとき（自分のコメントだけを消す）だけ。
+  どの Discussion のものか分からないループがある間（手で始めた epic・起動の記録の無いループが動いている・起動してから `ready-for-loop` の一覧をまだ取得していない。
+  上限で待機中に再起動したときなど）は、一覧に無い Discussion のコメントも消さない
+- 本文もコメントも、状態が変わったときだけ書き換え、変わらなければ 10 分ごとに確認時刻だけを書き直す。
+  オーケストレーターを再起動した直後は Issue の本文とコメントを読み、同じ状態なら書き直さない
+- 書けなかったとき（コメントを読めなかったときも）はログに出し、次のポーリングで Issue とコメントの一覧から取り直して書き直す（読めないまま作らないので、コメントは重複しない）
+- 書くのは epic 名・Discussion の番号・件数・時刻と、ビルドの情報の Mac の Host 名・スロットだけ。ローカルパス・ログの中身は書かない（public リポジトリでは誰でも読める）
 - 設定の `buildHosts` があれば、ポーリングのたびに xcb のイベントログ（`events.jsonl`。回した `events.jsonl.1` も）を前回の続きから読み、
   ループのスロット（`<名前>-ralph-a` / `-b`）のビルドを `builds`（実行中・スロットごとの直近・24 時間の移動）に載せる（`docs/protocol.md` の「ビルドの情報」）。
   ほかのビルド（メインの checkout・制御用 worktree・手で流したビルド）は載せない。ビルドが 1 つも無ければキーを書かない。
   ビルドが変わったら（始まった・別の Mac に移った・終わった）状態の変化として書き換え、変わらなければ今までどおり 10 分ごとの確認時刻の書き直しに載せる。
   オーケストレーターを再起動したら、残っているイベントログを頭から読み直して組み立て直す（読んだ位置は保存しない）
-- 手動ループの状態（書き手が `manual`）は今までどおり上書きしないので、そのあいだはビルドの情報も書かない
+- ビルドの情報は、準備を終えた epic の自動ループのコメントに書く。手動ループが本文を書いていても、自動ループのコメントには書く
 - `ready-for-loop` の検索に失敗したポーリングでは書き出さない（次のポーリングで書く）
-- 本文を書き換える前に Issue の一覧を取り直して本文を読む。手で回しているループ（目印の `writer` が `manual`）が書いていて、
-  `checkedAt` が 30 分以内なら書かない（`LoopStatusPublisher`。Discussion #273 の Q3）。手で回すループは 10 分ごとに `checkedAt` を書き直す。
-  ただし、信用する author の open な `manual-loop` の Discussion があるリポジトリでは、手動ループの状態を（`checkedAt` が古くなっても）上書きしない（担当者の情報を残す。古さはアプリが知らせる）。
-  Discussion が閉じた後に 30 分を過ぎていれば、オーケストレーターが自分の材料で今までどおりの優先順位で書き直す
-  （オーケストレーターからは手で回す制御用 worktree が見えないので、多くは「ループなし」か `ready-for-loop` の「開始待ち」になる）
+- 書き換える前に Issue の一覧とコメントを取り直して読む（`LoopStatusPublisher`）。手で回しているループ（目印の `writer` が `manual`）が
+  古い形で本文を書いていて、`checkedAt` が 30 分以内なら本文は書かない（Discussion #273 の Q3）。手で回すループは 10 分ごとに `checkedAt` を書き直す。
+  本文の Discussion が信用する author の open な `manual-loop` の Discussion のあいだ（本文に Discussion の番号が無ければ、そのリポジトリに信用する author の
+  open な `manual-loop` の Discussion があるあいだ）は、手動ループの本文を（`checkedAt` が古くなっても）上書きしない（担当者の情報を残す。古さはアプリが知らせる）。
+  Discussion が閉じた後に 30 分を過ぎていれば、本文をリポジトリ全体の状態で書き直す。どちらの間も、自動ループのコメントは書き続ける
+- 手動ループのコメント（新しい形）・古い形の本文がある Discussion には、`checkedAt` が 30 分以内か、その Discussion が信用する author の open な `manual-loop` の
+  Discussion のあいだ、自動ループのコメントを書かない（1 つの Discussion の書き手は 1 つ）。手動ループから自動ループに切り替えた Discussion は、
+  同じリポジトリでほかの Discussion を手で回していても、残った古い手動ループのコメントでは止めない。`manual-loop` の Discussion を検索できなかったポーリングでは、
+  前回取得できた番号を使う。知らない書き手のコメントがある Discussion にも書かない。
+  `manual-loop` の Discussion と信用しない author の Discussion は起動しないので、`ready-for-loop` が付いていても開始待ちとして書かない
+- 起動した Discussion は、準備が終わる前（ゴール元の記録も promise も無い）も、起動の記録（`LaunchTracker`）から実行中として書く。起動を諦めたら異常終了として書く。
+  開始を確かめた後にラベルを外せないまま残った Discussion は、制御用 worktree が別の epic に替わったら（別の Discussion の epic を準備した・別の Discussion を起動した）、終わったループとして書かない。
+  準備を終えていない `ready-for-loop` の Discussion は、すべて開始待ちとして書く（準備の結果やることが無かった Discussion は除く）
 
 ## ビルドの Mac の状態を書き出す（build-hosts）
 

@@ -24,7 +24,10 @@ struct OrchestratorBuildsTests {
             loopCommand: try LoopCommandTemplate(arguments: ["/usr/local/bin/start-loop", "{repository}"]),
             buildHosts: buildHosts
         )
-        return Orchestrator(config: config, github: github, inbox: FakeInbox(), runtime: FakeRuntime(), log: { _ in }, now: now)
+        // ビルドの情報は自動ループのコメントに書くので、ゴール元の記録がある epic にする
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [ ] 【FEAT】A", state: nil, discussion: 12, loopPrepared: true))
+        return Orchestrator(config: config, github: github, inbox: FakeInbox(), runtime: runtime, log: { _ in }, now: now)
     }
 
     private var settings: BuildHostsConfig {
@@ -45,7 +48,7 @@ struct OrchestratorBuildsTests {
     }
 
     private func report(_ github: FakeGitHub) -> LoopStatusReport? {
-        github.loopStatusIssuesByNumber[101].flatMap { LoopStatusReport.parse($0.body) }
+        github.loopCommentReport()
     }
 
     @Test func writesBuildsOfLoopSlotsAndRewritesWhenTheyChange() async throws {
@@ -68,7 +71,7 @@ struct OrchestratorBuildsTests {
         )
         #expect(running == [expected])
         // 本文にローカルパスを書かない
-        #expect(github.loopStatusIssuesByNumber[101]?.body.contains("/src/") == false)
+        #expect(github.loopStatusCommentsByIssue[101]?.contains { $0.body.contains("/src/") } == false)
 
         // イベントで分かる変化（移動）があれば、間隔を待たずに書き換える
         clock.withLock { $0 = start.addingTimeInterval(60) }
@@ -77,14 +80,14 @@ struct OrchestratorBuildsTests {
             #"{"time":"2027-01-15T08:00:31Z","type":"job_attempt","id":"j1","host":"macbookpro-m1pro","slot":"1","attempt":2}"#
         ])
         try await orchestrator.pollOnce()
-        #expect(github.updatedLoopStatusIssues.count == 1)
+        #expect(github.updatedLoopStatusComments.count == 1)
         #expect(report(github)?.builds?.running.first?.host == "macbookpro-m1pro")
         #expect(report(github)?.builds?.running.first?.moves.first?.from == "macbookpro-m4max")
 
         // 変化が無ければ書かない
         clock.withLock { $0 = start.addingTimeInterval(120) }
         try await orchestrator.pollOnce()
-        #expect(github.updatedLoopStatusIssues.count == 1)
+        #expect(github.updatedLoopStatusComments.count == 1)
 
         // 終われば直近のビルドと 24 時間の移動に移る
         try append([

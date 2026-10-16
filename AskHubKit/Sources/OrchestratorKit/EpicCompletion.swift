@@ -33,7 +33,7 @@ public struct EpicSnapshot: Sendable, Equatable {
     }
 
     /// 途中の epic がある（準備を終えた `epic/` のブランチに、回答待ちでない未完了のタスクが残っている）。
-    /// 1 リポジトリにつきループは 1 つなので、新しい epic はこれが終わるまで始めない
+    /// 1 リポジトリにつき自動ループは 1 つなので、新しい epic はこれが終わるまで始めない
     public var inProgress: Bool {
         loopPrepared && branch?.hasPrefix("epic/") == true && goal.map(EpicCompletion.hasUnfinishedTasks(in:)) == true
     }

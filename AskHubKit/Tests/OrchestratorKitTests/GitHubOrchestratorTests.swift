@@ -481,4 +481,17 @@ extension GitHubOrchestratorTests {
         }
         #expect(bodies == [["body": "ループの状態"], ["body": "新しい状態"]])
     }
+
+    @Test func deletesLoopStatusCommentAndIgnoresMissingOne() async throws {
+        let http = StubHTTPClient(responses: [(204, ""), (404, #"{ "message": "Not Found" }"#)])
+        let github = makeGitHub(http)
+        try await github.deleteLoopStatusComment(in: "o/r", id: 21)
+        // 既に消えていても失敗しない
+        try await github.deleteLoopStatusComment(in: "o/r", id: 22)
+
+        #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" } == [
+            "DELETE /repos/o/r/issues/comments/21",
+            "DELETE /repos/o/r/issues/comments/22"
+        ])
+    }
 }

@@ -51,6 +51,9 @@ struct FakeGitHubState {
     var loopStatusComments: [Int: [LoopStatusComment]] = [:]
     var createdLoopStatusComments: [String] = []
     var updatedLoopStatusComments: [String] = []
+    var deletedLoopStatusComments: [String] = []
+    /// コメントの操作だけを失敗させる（Issue の操作は `loopStatusFails`）
+    var loopStatusCommentsFail = false
     /// `manual-loop` の Discussion
     var manualLoops: [ManualLoopDiscussion] = []
     var manualLoopsFail = false

@@ -7,7 +7,7 @@ import Testing
 struct SampleMergeQueueTests {
     @Test func samplesCoverUploadRunStates() throws {
         let pulls = SampleMergeQueue.pullRequests
-        #expect(pulls.map(\.number) == [50, 80, 120])
+        #expect(pulls.map(\.number) == [50, 80, 120, 130])
 
         // 50: 最新の head を上げ終わっている → 成功・head と同じ・上げ直せる
         let done = try #require(pulls[0].uploadStatus.run)
@@ -27,8 +27,15 @@ struct SampleMergeQueueTests {
         #expect(pulls[2].uploadedLatestHead == false)
         #expect(pulls[2].canUpload)
 
+        // 130: まだ上げていない（CodeRabbit は処理中だが CI は成功）→ run は無し・上げられる
+        #expect(pulls[3].uploadStatus == .noRuns)
+        #expect(pulls[3].uploadedLatestHead == nil)
+        #expect(pulls[3].canUpload)
+
         // サンプルは GitHub に依存しない固定の値
-        #expect(Set(pulls.compactMap { $0.uploadStatus.run?.startedAt }).count == 1)
-        #expect(pulls.allSatisfy { $0.uploadStatus.run?.url.host() == "github.com" })
+        let runs = pulls.compactMap { $0.uploadStatus.run }
+        #expect(runs.count == 3)
+        #expect(Set(runs.map(\.startedAt)).count == 1)
+        #expect(runs.allSatisfy { $0.url.host() == "github.com" })
     }
 }
