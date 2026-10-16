@@ -19,7 +19,10 @@
 #   ASKHUB_ARCHIVE_DIR       完了した epic の goal / state の退避先（既定: ~/Library/Logs/askhub/archive）
 #   ASKHUB_TRUSTED_AUTHORS   指示として扱う GitHub アカウント（カンマ区切り。既定: mrs1669）。オーケストレーターが起動ごとに、
 #                            設定の一覧と担当リポジトリへの書き込み権限を持つアカウントを合わせて渡す。再開では playbook の値も書き直す
-#   ASKHUB_BOOTSTRAP_MODEL   準備に使うモデル（既定: claude の既定）
+#   ASKHUB_BOOTSTRAP_MODEL   準備に使うモデル（既定: ループと同じモデル）
+#   ANTHROPIC_MODEL          claude の既定のモデル。オーケストレーターが設定の model（既定: claude-opus-5-5）を渡す
+#   CLAUDE_CODE_EFFORT_LEVEL claude の既定のエフォート。オーケストレーターが設定の effort を渡す（省略時は claude の既定）
+#                            Discussion にモデル・エフォートの目印（ask-hub:loop-options）があれば、そちらを --model / --effort で渡す
 #   ASKHUB_RESUME_REASON     再開の理由。オーケストレーターが起動ごとに渡す（decision-log: 仮決め一覧への指示）
 #   ASKHUB_XCODEBUILD_WRAPPER  ループに xcodebuild の代わりに使わせるラッパー（既定: ~/.config/askhub/xcodebuild が実行可能ならそれ）。
 #                            `<ラッパー> <作業ツリー> <xcodebuild の引数…>` の形で呼べ、Simulator と DerivedData を作業ツリーごとに
@@ -63,12 +66,41 @@ PROMISE_FILE="$CTL/.claude/askhub-promise.local.txt"
 BOOTSTRAP_FILE="$CTL/.claude/askhub-bootstrap.local.txt"
 # 準備の結果、goal にタスクが無かった Discussion の番号。オーケストレーターはこれを見て、やり直さずに知らせて止める
 NO_TASKS_FILE="$CTL/.claude/askhub-no-tasks.local.txt"
+# ループのモデルとエフォート（Discussion の目印から読んだもの）。再開でも同じものを使うので覚えておく
+OPTIONS_FILE="$CTL/.claude/askhub-loop-options.local.txt"
 # ループのプロセスの PID（exec するので、このスクリプトの PID がそのままループの PID になる）。
 # オーケストレーターも読み、state ファイルが残ったままプロセスが死んだことを見分ける
 PID_FILE="$CTL/.claude/askhub-loop.pid"
 
 log() { echo "[$(date '+%F %T')] [start-loop $REPOSITORY] $*"; }
 fail() { log "error: $*"; exit 1; }
+
+# claude の --model に渡せる形（モデル ID か opus などの別名）と、--effort に渡せる値。それ以外は使わない（Discussion は誰でも書けるため）
+valid_model() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]; }
+valid_effort() { [[ "$1" =~ ^(low|medium|high|xhigh|max)$ ]]; }
+LOOP_MODEL=""
+LOOP_EFFORT=""
+# 標準入力の `model=…` / `effort=…` の行から読み、使えない値は捨てて担当 PC の既定に戻す
+read_loop_options() {
+  local lines
+  lines=$(cat)
+  LOOP_MODEL=$(printf '%s\n' "$lines" | sed -n 's/^model=//p' | head -n 1)
+  LOOP_EFFORT=$(printf '%s\n' "$lines" | sed -n 's/^effort=//p' | head -n 1)
+  check_loop_options
+}
+check_loop_options() {
+  if [[ -n "$LOOP_MODEL" ]] && ! valid_model "$LOOP_MODEL"; then
+    log "モデルの指定が不正なので、担当 PC の既定を使います: $LOOP_MODEL"
+    LOOP_MODEL=""
+  fi
+  if [[ -n "$LOOP_EFFORT" ]] && ! valid_effort "$LOOP_EFFORT"; then
+    log "エフォートの指定が不正なので、担当 PC の既定を使います: $LOOP_EFFORT"
+    LOOP_EFFORT=""
+  fi
+}
+describe_loop_options() {
+  echo "モデル: ${LOOP_MODEL:-${ANTHROPIC_MODEL:-claude の既定}}${LOOP_MODEL:+（Discussion の指定）}、エフォート: ${LOOP_EFFORT:-${CLAUDE_CODE_EFFORT_LEVEL:-claude の既定}}${LOOP_EFFORT:+（Discussion の指定）}"
+}
 # playbook の「信用する author」を今の値（ASKHUB_TRUSTED_AUTHORS）に書き直す。
 # 信用する author は担当リポジトリへの書き込み権限で変わるので、epic の途中で招待した共同開発者も、次の再開から信用する
 refresh_trusted_authors() {
@@ -207,6 +239,21 @@ if [[ -n "$DISCUSSION" ]]; then
         | (select(ok) | "\n## コメント（\(.author.login)）\n\(.body)\n"),
           ( .replies.nodes[] | select(ok) | "\n### 返信（\(.author.login)）\n\(.body)\n" ) )
   ') || fail "Discussion #$DISCUSSION を読み取れませんでした（author が信用する author ではない可能性があります）"
+  # モデルとエフォートの目印（docs/protocol.md の「ループのモデルとエフォート」）。アプリが ready-for-loop の前にコメントで付ける。
+  # 信用する author のコメント（返信は見ない）のうち、先頭に目印があるものの最後を使う
+  LOOP_OPTIONS=$(printf '%s' "$RAW" | jq -rs --arg trusted "$TRUSTED" '
+    ($trusted | ascii_downcase | split(",") | map(gsub("^ +| +$"; ""))) as $t
+    | def ok: ((.author.login // "") | ascii_downcase) as $a | ($t | index($a)) != null;
+    [ .[].data.repository.discussion.comments.nodes[] | select(ok) | .body
+      | select(test("^\\s*<!-- ask-hub:loop-options\\s")) ]
+    | (last // "") as $body
+    | ($body | capture("<!-- ask-hub:loop-options(?<attrs>[^>]*)-->") // {attrs: ""}).attrs as $attrs
+    | def value($name): ($attrs | capture(" \($name)=\"(?<v>[^\"]*)\"") // {v: ""}).v | gsub("[\\r\\n]"; "");
+    # 再開のときの記録（OPTIONS_FILE）と同じ形の 2 行で返す（タブ区切りを read で読むと、先頭の空の値が詰められる）
+    "model=\(value("model"))", "effort=\(value("effort"))"
+  ') || fail "Discussion #$DISCUSSION のモデルとエフォートの指定を読み取れませんでした"
+  read_loop_options <<<"$LOOP_OPTIONS"
+  log "$(describe_loop_options)"
   if [[ -n "$XCODEBUILD_WRAPPER" ]]; then
     if [[ ! -x "$XCODEBUILD_WRAPPER" ]]; then
       fail "ASKHUB_XCODEBUILD_WRAPPER が実行できません: $XCODEBUILD_WRAPPER"
@@ -265,7 +312,9 @@ PROMPT
   # --add-dir は値を複数受け取るので、プロンプトの直前に置くとプロンプトまでディレクトリとして読まれる。
   # 必ず --add-dir を先に置き、値を 1 つだけ取るオプション（--permission-mode）を挟んでからプロンプトを渡す
   BOOT_ARGS=(-p --add-dir "$(dirname "$CHECKOUT")" --permission-mode bypassPermissions)
-  [[ -n "${ASKHUB_BOOTSTRAP_MODEL:-}" ]] && BOOT_ARGS+=(--model "$ASKHUB_BOOTSTRAP_MODEL")
+  BOOT_MODEL="${ASKHUB_BOOTSTRAP_MODEL:-$LOOP_MODEL}"
+  [[ -n "$BOOT_MODEL" ]] && BOOT_ARGS+=(--model "$BOOT_MODEL")
+  [[ -n "$LOOP_EFFORT" ]] && BOOT_ARGS+=(--effort "$LOOP_EFFORT")
   set +e
   # shellcheck disable=SC2094  # 標準エラーと出力を同じログに追記するだけで、読み出しはしない
   OUTPUT=$(cd "$CHECKOUT" && "$CLAUDE_BIN" "${BOOT_ARGS[@]}" "$PROMPT" </dev/null 2>>"$BOOT_LOG" | tee -a "$BOOT_LOG")
@@ -287,6 +336,7 @@ PROMPT
     fail "goal にタスクがありません（Discussion #${DISCUSSION} にはやることが残っていません）: $GOAL"
   fi
   printf '%s\n' "$PROMISE" > "$PROMISE_FILE"
+  printf 'model=%s\neffort=%s\n' "$LOOP_MODEL" "$LOOP_EFFORT" > "$OPTIONS_FILE"
   log "準備が完了しました（完了語: ${PROMISE}）"
 
 # ---- 再開 -------------------------------------------------------------------------
@@ -308,7 +358,9 @@ else
   EPIC=$(git -C "$CTL" symbolic-ref --short HEAD)
   (cd "$CHECKOUT" && scripts/ralph-setup.sh "$EPIC" >/dev/null)
   refresh_trusted_authors
-  log "ループを再開します（${EPIC}）"
+  # 準備のときに Discussion から読んだモデルとエフォートで再開する（記録が無い古い epic は担当 PC の既定）
+  [[ -f "$OPTIONS_FILE" ]] && read_loop_options <"$OPTIONS_FILE"
+  log "ループを再開します（${EPIC}。$(describe_loop_options)）"
 fi
 
 # ---- ループの起動 ---------------------------------------------------------------------
@@ -327,7 +379,8 @@ ln -sfn "$LOOP_LOG" "$LATEST_LOG"
 INITIAL=$(sed -n '/^---$/,/^---$/!p' "$STATE" | sed '/^$/d')
 log "ループを起動します（ログ: ${LOOP_LOG}）"
 cd "$CTL"
-# --add-dir は値を複数受け取るので、プロンプトの直前には置かない（準備の claude と同じ理由）
-exec "$CLAUDE_BIN" -p --add-dir "${CTL%-ctl}-a" --add-dir "${CTL%-ctl}-b" \
-  --permission-mode bypassPermissions \
-  "$INITIAL" </dev/null >>"$LOOP_LOG" 2>&1
+LOOP_ARGS=(-p --add-dir "${CTL%-ctl}-a" --add-dir "${CTL%-ctl}-b" --permission-mode bypassPermissions)
+[[ -n "$LOOP_MODEL" ]] && LOOP_ARGS+=(--model "$LOOP_MODEL")
+[[ -n "$LOOP_EFFORT" ]] && LOOP_ARGS+=(--effort "$LOOP_EFFORT")
+# --add-dir は値を複数受け取るので、プロンプトの直前には置かない（準備の claude と同じ理由。間に --permission-mode を挟む）
+exec "$CLAUDE_BIN" "${LOOP_ARGS[@]}" "$INITIAL" </dev/null >>"$LOOP_LOG" 2>&1
