@@ -33,10 +33,10 @@ struct LoopStatusPublisherTests {
         _ loops: [LoopStatusReport],
         unknown: Bool = false,
         at date: Date,
-        manualLoopOpen: Bool = false
+        manualLoopNumbers: Set<Int> = []
     ) -> [LoopStatusPublisher.Action] {
         let loops = AutomaticLoops(reports: loops, includesUnknownLoop: unknown)
-        return publisher.actions(repositoryKey: key, repository: body, loops: loops, now: date, manualLoopOpen: manualLoopOpen)
+        return publisher.actions(repositoryKey: key, repository: body, loops: loops, now: date, manualLoopNumbers: manualLoopNumbers)
     }
 
     private func decide(
@@ -44,9 +44,9 @@ struct LoopStatusPublisherTests {
         _ body: RepositoryStatusReport,
         _ loop: LoopStatusReport,
         at date: Date,
-        manualLoopOpen: Bool = false
+        manualLoopNumbers: Set<Int> = []
     ) -> [LoopStatusPublisher.Action] {
-        decide(publisher, body, [loop], at: date, manualLoopOpen: manualLoopOpen)
+        decide(publisher, body, [loop], at: date, manualLoopNumbers: manualLoopNumbers)
     }
 
     /// Issue #7 に、オーケストレーターが本文とコメントを書いた状態
@@ -160,7 +160,7 @@ struct LoopStatusPublisherTests {
         // 手動ループの Discussion が開いている間は、確認時刻が古くなっても本文を上書きしない
         let stale = now.addingTimeInterval(LoopStatusReport.freshness + 1)
         let stillRunning = loop(.running, at: stale)
-        #expect(decide(publisher, repository(at: stale), stillRunning, at: stale, manualLoopOpen: true)
+        #expect(decide(publisher, repository(at: stale), stillRunning, at: stale, manualLoopNumbers: [30])
             == [.createComment(issue: 7, report: stillRunning)])
 
         // 手動ループが終わって古くなれば、本文をリポジトリ全体の状態で書き直す
@@ -206,7 +206,7 @@ struct LoopStatusPublisherTests {
         // 手動ループのコメントが古く、manual-loop の Discussion も無ければ、オーケストレーターが書く（手動ループのコメントは消さない）
         #expect(decide(publisher, repository(at: now), mine, at: now) == [.createComment(issue: 7, report: mine)])
         // manual-loop の Discussion が開いていれば、古くなっても書かない
-        #expect(decide(publisher, repository(at: now), mine, at: now, manualLoopOpen: true).isEmpty)
+        #expect(decide(publisher, repository(at: now), mine, at: now, manualLoopNumbers: [12]).isEmpty)
     }
 
     @Test func leavesDiscussionOfUnknownWriterOrOldManualBody() {

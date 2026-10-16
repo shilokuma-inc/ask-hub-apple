@@ -50,10 +50,10 @@ extension Orchestrator {
 
     private func publish(_ body: RepositoryStatusReport, loops: AutomaticLoops, to repository: RepositoryConfig) async throws {
         let key = repository.fullName.lowercased()
-        let manualLoopOpen = manualLoopRepositories.contains(key)
+        let manualLoopNumbers = self.manualLoopNumbers[key] ?? []
         func actions() -> [LoopStatusPublisher.Action] {
             loopStatusPublisher.actions(
-                repositoryKey: key, repository: body, loops: loops, now: body.checkedAt, manualLoopOpen: manualLoopOpen
+                repositoryKey: key, repository: body, loops: loops, now: body.checkedAt, manualLoopNumbers: manualLoopNumbers
             )
         }
         var pending = actions()
