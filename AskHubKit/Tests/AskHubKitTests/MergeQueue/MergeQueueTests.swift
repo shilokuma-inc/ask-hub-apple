@@ -232,15 +232,29 @@ struct GitHubMergeQueueTests {
                     Self.checkRun("CodeRabbit", app: "coderabbitai")
                 ])),
                 // statusCheckRollup が無い
-                Self.node(number: 7, author: "mrs1669", mergeable: "MERGEABLE", contexts: nil)
+                Self.node(number: 7, author: "mrs1669", mergeable: "MERGEABLE", contexts: nil),
+                // ERROR も失敗
+                Self.node(number: 8, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "ERROR", description: "Something went wrong")
+                ])),
+                // レート制限の見分けは大文字小文字を区別しない
+                Self.node(number: 9, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "SUCCESS", description: "Review Rate Limited")
+                ])),
+                // 知らない state は なし
+                Self.node(number: 10, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "SOMETHING_NEW", description: nil)
+                ]))
             ]))
         ])
         let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
 
-        #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7])
-        #expect(pulls.map(\.codeRabbit) == [.inProgress, .completed, .rateLimited, .failed, .inProgress, .none, .none])
-        // CodeRabbit の状態はマージ条件に関係しない（GitHub Actions が成功なら 1〜6 はマージできる）
-        #expect(pulls.map(\.canMerge) == [true, true, true, true, true, true, false])
+        #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        #expect(pulls.map(\.codeRabbit) == [
+            .inProgress, .completed, .rateLimited, .failed, .inProgress, .none, .none, .failed, .rateLimited, .none
+        ])
+        // CodeRabbit の状態はマージ条件に関係しない（GitHub Actions が成功なら 7 以外はマージできる）
+        #expect(pulls.map(\.canMerge) == [true, true, true, true, true, true, false, true, true, true])
     }
 
     @Test func fetchesRemainingContextsWhenFirstPageIsNotLast() async throws {

@@ -230,7 +230,7 @@ private struct EpicNode: Decodable {
 
     /// commit status `CodeRabbit` から CodeRabbit の状態を決める。マージ条件には使わない（Discussion #460）。
     /// `PENDING` / `EXPECTED` → 処理中、`SUCCESS` は `description` に "rate limited" を含めばレート制限・それ以外は完了、
-    /// `ERROR` / `FAILURE` → 失敗、無ければ なし。レート制限の見分けは文言の照合なので、CodeRabbit が文言を変えると完了に見える
+    /// `ERROR` / `FAILURE` → 失敗、無ければ なし（知らない `state` も なし）。レート制限の見分けは文言の照合なので、CodeRabbit が文言を変えると完了に見える
     static func codeRabbit(_ contexts: [RollupContextNode]) -> EpicPullRequest.CodeRabbitState {
         guard let status = contexts.first(where: { $0.typename == "StatusContext" && $0.context == "CodeRabbit" }) else {
             return .none
@@ -240,7 +240,7 @@ private struct EpicNode: Decodable {
             return .inProgress
 
         case "SUCCESS":
-            return status.description?.localizedCaseInsensitiveContains("rate limited") == true ? .rateLimited : .completed
+            return status.description?.range(of: "rate limited", options: .caseInsensitive) != nil ? .rateLimited : .completed
 
         case "ERROR", "FAILURE":
             return .failed

@@ -18,7 +18,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     /// CodeRabbit のレビューの状態（commit status `CodeRabbit` から）。
     /// レビューを見てからマージしたい人のための**情報**で、マージ条件（`canMerge`）には使わない（Discussion #460）
     public enum CodeRabbitState: String, Sendable, Equatable, Hashable {
-        /// 処理中（レビュー中。commit status が `PENDING`）
+        /// 処理中（レビュー中。commit status が `PENDING` か `EXPECTED`）
         case inProgress
         /// 完了（レビュー済み）
         case completed
@@ -26,7 +26,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         case rateLimited
         /// 失敗（commit status が `ERROR` / `FAILURE`）
         case failed
-        /// commit status `CodeRabbit` が無い
+        /// commit status `CodeRabbit` が無い（知らない `state` のときも含む）
         case none
     }
 
