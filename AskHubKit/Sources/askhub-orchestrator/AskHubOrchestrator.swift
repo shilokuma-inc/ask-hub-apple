@@ -107,6 +107,8 @@ enum AskHubOrchestrator {
             "trusted authors: \(config.trustedAuthorLogins.joined(separator: ", "))"
                 + (config.trustsRepositoryWriters ? "（ほかに担当リポジトリへの書き込み権限を持つアカウント）" : ""),
             "poll interval: \(config.pollInterval.components.seconds) 秒",
+            "claude: model \(config.claudeModel)、effort \(config.claudeEffort?.rawValue ?? "（claude の既定）")"
+                + "（Discussion でモデル・エフォートを指定したループはそちらを使う）",
             "new repositories: \(config.repositoryCommands.newCheckoutDirectory)",
             "repositories:"
         ]

@@ -1,3 +1,5 @@
+import AskHubKit
+
 /// 設定ファイルを読み込めない理由。メッセージは CLI からそのまま表示する
 public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
     case fileNotFound(path: String)
@@ -20,6 +22,8 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
     case relativeNewRepositoryDirectory(String)
     case relativeBuildHostsPath(key: String, path: String)
     case invalidBuildHostsRepository(String)
+    case invalidModel(String)
+    case invalidEffort(String)
 
     public var description: String {
         switch self {
@@ -77,6 +81,12 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
 
         case let .invalidBuildHostsRepository(name):
             "buildHosts.issueRepository は owner/repo の形式にしてください: \(name)"
+
+        case let .invalidModel(name):
+            "model は claude のモデル ID（例: \(LoopModel.standard.rawValue)）か別名（opus など）にしてください: \(name)"
+
+        case let .invalidEffort(value):
+            "effort は " + LoopEffort.allCases.map(\.rawValue).joined(separator: " / ") + " のどれかにしてください: \(value)"
         }
     }
 }

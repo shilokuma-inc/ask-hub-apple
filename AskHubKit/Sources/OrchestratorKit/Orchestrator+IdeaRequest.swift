@@ -22,7 +22,9 @@ extension Orchestrator {
         let reason: String
         do {
             // プロンプト（依頼の本文を含む）は引数ではなく標準入力で渡す
-            let result = try await runtime.run(arguments, input: prompt, for: repository, timeout: Self.ideaCommandTimeout)
+            let result = try await runtime.run(
+                arguments, input: prompt, environment: config.claudeEnvironment, for: repository, timeout: Self.ideaCommandTimeout
+            )
             if result.status == 0, let url = IdeaPrompt.discussionURL(in: result.output, repository: issue.repository) {
                 ideaTracker.recordCreated(url, for: issue)
                 log("\(name) の依頼から Discussion を作りました: \(url.absoluteString)")

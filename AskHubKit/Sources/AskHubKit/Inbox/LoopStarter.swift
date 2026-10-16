@@ -6,6 +6,8 @@ public protocol LoopStarting: Sendable {
     func markReadyForLoop(_ discussion: InboxSubject) async throws
     /// Discussion に `manual-loop` を付ける（オーケストレーターは起動せず、ループは手で始める）。既に付いていても失敗しない
     func markManualLoop(_ discussion: InboxSubject) async throws
+    /// 自動ループのモデルとエフォートを知らせるコメント（`LoopOptions`）を Discussion に付ける。`ready-for-loop` を付ける前に呼ぶ
+    func setLoopOptions(_ options: LoopOptions, on discussion: InboxSubject) async throws
     /// 手動ループの担当者を知らせるコメント（`ManualLoopAssignment`）を Discussion に付ける
     func assignManualLoop(_ discussion: InboxSubject, to login: String) async throws
     /// 手動ループの担当者に選べるアカウント（そのリポジトリに書き込み権限を持つ人）
@@ -38,6 +40,13 @@ public struct GitHubLoopStarter: LoopStarting {
         try await add(.manualLoop, color: "c5def5", description: "この Discussion のループは手で回す（AskHub）", to: discussion)
     }
 
+    public func setLoopOptions(_ options: LoopOptions, on discussion: InboxSubject) async throws {
+        guard discussion.kind == .discussion else {
+            throw LoopStartingError.notDiscussion
+        }
+        try await addComment(options.comment, to: discussion)
+    }
+
     public func assignManualLoop(_ discussion: InboxSubject, to login: String) async throws {
         guard discussion.kind == .discussion else {
             throw LoopStartingError.notDiscussion
@@ -46,6 +55,10 @@ public struct GitHubLoopStarter: LoopStarting {
             throw LoopStartingError.invalidAssignee
         }
         let body = ManualLoopAssignment.comment(assignee: login, repository: discussion.repository, discussionNumber: discussion.number)
+        try await addComment(body, to: discussion)
+    }
+
+    private func addComment(_ body: String, to discussion: InboxSubject) async throws {
         _ = try await client.graphQL(
             Self.addCommentMutation,
             variables: ["discussion": .string(discussion.nodeID), "body": .string(body)],

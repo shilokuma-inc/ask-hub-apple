@@ -43,6 +43,12 @@ final class AnswerFormModel {
     var loopRunner = LoopRunner.orchestrator
     /// 投稿を始めた時点の回し方。投稿中に選び直しても、確認したとおりの印を付ける（再試行でも使う）
     private(set) var postedRunner: LoopRunner?
+    /// オーケストレーターで始めるときのモデル。`nil` は担当 PC の設定のまま（既定は Opus 5.5）
+    var loopModel: LoopModel?
+    /// オーケストレーターで始めるときのエフォート。`nil` は担当 PC の設定のまま
+    var loopEffort: LoopEffort?
+    /// 投稿を始めた時点のモデルとエフォート（再試行でも使う）
+    private(set) var postedOptions: LoopOptions?
     /// 手で回すときの担当者（login）。既定は自分
     var assignee: String?
     /// 担当者に選べるアカウント（そのリポジトリに書き込み権限を持つ人）
@@ -84,6 +90,11 @@ final class AnswerFormModel {
             return nil
         }
         return ManualLoopInstruction.start(repository: question.subject.repository, discussionNumber: question.subject.number)
+    }
+
+    /// オーケストレーターで始めるときに Discussion に残すモデルとエフォート（いま選んでいるもの）
+    var loopOptions: LoopOptions {
+        LoopOptions(model: loopModel, effort: loopEffort)
     }
 
     /// 担当者が自分か（自分なら、投稿後の指示をそのまま使える）
@@ -138,6 +149,8 @@ final class AnswerFormModel {
         }
         postedRunner = runner
         postedAssignee = runner == .manual ? assignee : nil
+        // モデルとエフォートはオーケストレーターの自動ループにだけ効く（手動ループは担当者の Claude Code の設定で回る）
+        postedOptions = runner == .orchestrator ? loopOptions : nil
         isPosting = true
         errorMessage = nil
         defer { isPosting = false }
@@ -166,7 +179,8 @@ final class AnswerFormModel {
         defer { isPosting = false }
         do {
             let manualAssignee = runner == .manual ? (postedAssignee ?? assignee) : nil
-            try await inbox.startLoop(for: question.subject, runner: runner, assignee: manualAssignee)
+            let options = runner == .orchestrator ? (postedOptions ?? loopOptions) : LoopOptions()
+            try await inbox.startLoop(for: question.subject, runner: runner, assignee: manualAssignee, options: options)
             loopStartFailed = false
             errorMessage = nil
             startedManualLoop = runner == .manual

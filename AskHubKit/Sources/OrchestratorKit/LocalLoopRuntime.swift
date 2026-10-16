@@ -240,10 +240,12 @@ public actor LocalLoopRuntime: LoopRuntime {
     public func run(
         _ arguments: [String],
         input: String,
+        environment extraEnvironment: [String: String],
         for repository: RepositoryConfig,
         timeout: Duration
     ) async throws -> CommandResult {
-        let process = try Self.makeProcess(arguments, in: repository, environment: environment)
+        let merged = environment.merging(extraEnvironment) { _, new in new }
+        let process = try Self.makeProcess(arguments, in: repository, environment: merged)
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe

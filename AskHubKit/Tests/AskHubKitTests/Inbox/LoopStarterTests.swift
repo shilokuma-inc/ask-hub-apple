@@ -62,12 +62,28 @@ struct LoopStarterTests {
         #expect(mutation["labels"] as? [String] == ["LA_manual"])
     }
 
+    @Test func commentsLoopOptionsOnDiscussion() async throws {
+        let http = MockHTTPClient([
+            .init(status: 200, body: #"{ "data": { "addDiscussionComment": { "comment": { "id": "DC_1" } } } }"#)
+        ])
+        let options = LoopOptions(model: .opus, effort: .max)
+        try await makeStarter(http).setLoopOptions(options, on: discussion)
+
+        #expect(http.requests.count == 1)
+        let mutation = try variables(of: http.requests[0])
+        #expect(mutation["discussion"] as? String == "D_12")
+        #expect(mutation["body"] as? String == options.comment)
+    }
+
     @Test func refusesPullRequest() async {
         await #expect(throws: LoopStartingError.notDiscussion) {
             try await makeStarter(MockHTTPClient([])).markReadyForLoop(.fixture(kind: .pullRequest))
         }
         await #expect(throws: LoopStartingError.notDiscussion) {
             try await makeStarter(MockHTTPClient([])).markManualLoop(.fixture(kind: .pullRequest))
+        }
+        await #expect(throws: LoopStartingError.notDiscussion) {
+            try await makeStarter(MockHTTPClient([])).setLoopOptions(LoopOptions(model: .opus), on: .fixture(kind: .pullRequest))
         }
     }
 }

@@ -43,8 +43,8 @@ extension Orchestrator {
         trust = updated
     }
 
-    /// ループを起動するときに渡す環境変数（このリポジトリで信用する author）
+    /// ループを起動するときに渡す環境変数（このリポジトリで信用する author と、設定の claude のモデル・エフォート）
     func loopEnvironment(for repository: RepositoryConfig) -> [String: String] {
-        [Self.trustedAuthorsVariable: trust.environmentValue(for: repository.fullName)]
+        config.claudeEnvironment.merging([Self.trustedAuthorsVariable: trust.environmentValue(for: repository.fullName)]) { _, new in new }
     }
 }

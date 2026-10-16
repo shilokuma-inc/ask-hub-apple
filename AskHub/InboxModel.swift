@@ -108,13 +108,23 @@ final class InboxModel {
     /// Discussion の回答を確定し、ループを始めてよい印（`ready-for-loop`）を付ける（Discussion #1 の Q3）。
     /// 手で回すなら、代わりに `manual-loop` を付ける（Discussion #273 の Q2）
     /// 手で回すときは、`assignee` を担当者として Discussion に知らせる（@メンション付きのコメント）
-    func startLoop(for discussion: InboxSubject, runner: LoopRunner = .orchestrator, assignee: String? = nil) async throws {
+    /// オーケストレーターで始めるときは、`options` が既定でなければ、`ready-for-loop` より先にモデルとエフォートのコメントを付ける
+    /// （起動スクリプトが準備のときに読むので、ラベルより後だと間に合わないことがある）
+    func startLoop(
+        for discussion: InboxSubject,
+        runner: LoopRunner = .orchestrator,
+        assignee: String? = nil,
+        options: LoopOptions = LoopOptions()
+    ) async throws {
         guard let token = try tokenStore.load() else {
             throw MissingTokenError()
         }
         let starter = makeStarter(token)
         switch runner {
         case .orchestrator:
+            if !options.isDefault {
+                try await starter.setLoopOptions(options, on: discussion)
+            }
             try await starter.markReadyForLoop(discussion)
 
         case .manual:

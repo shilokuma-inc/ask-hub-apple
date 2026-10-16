@@ -170,6 +170,11 @@
 - squash merge 済みのブランチは、コミットがどのリモートにも無いので「未 push」に見える。`git merge-tree --write-tree <既定ブランチ> <ブランチ>` の木が既定ブランチの木（`<既定ブランチ>^{tree}`）と同じなら、取り込んでも何も変わらない（変更はすべて既定ブランチにある）と判定できる（git 2.38 以降）
 - 変数の直後の全角文字は、見つけた 1 か所だけ直すと同じ書き方がほかのスクリプトに残る（#133 で start-loop.sh だけを直し、askhub-manual.sh などに残っていた）。
   直すときは `LC_ALL=C grep -rnE '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' scripts` で、変数の直後に ASCII 以外が続く箇所をすべて洗い出す
+- `--model` を付けない `claude -p` は、アカウントの既定のモデルで動き、その既定は知らせなく変わる（2026-10-15 にループが Opus 5.5 から Fable 5.1 に切り替わっていた）。
+  オーケストレーターは設定の `model`（既定 Opus 5.5）を `ANTHROPIC_MODEL` で、`effort` を `CLAUDE_CODE_EFFORT_LEVEL` で渡す（どちらも claude が読む環境変数。引数の `--model` / `--effort` が優先）。
+  ループのログはテキスト出力でモデル名が残らないので、実際のモデルは `~/.claude/projects/<作業ディレクトリ>/*.jsonl` の `message.model` で確かめる
+- bash の `IFS=$'\t' read -r a b` は、タブが IFS の空白文字なので先頭の空の値を詰める（`\txhigh` が a=xhigh になる）。
+  空になりうる値を受け渡すときは、`key=value` の行にして `sed -n 's/^key=//p'` で読む
 
 ## SwiftUI
 

@@ -221,6 +221,30 @@ struct OrchestratorConfigLoaderTests {
         }
     }
 
+    @Test func usesOpusForClaudeUnlessConfigured() throws {
+        let standard = try decode(config())
+        #expect(standard.claudeModel == "claude-opus-5-5")
+        #expect(standard.claudeEffort == nil)
+        // エフォートを指定しなければ auto（claude の既定）を渡し、起動元から継承した値を使わせない
+        #expect(standard.claudeEnvironment == ["ANTHROPIC_MODEL": "claude-opus-5-5", "CLAUDE_CODE_EFFORT_LEVEL": "auto"])
+
+        let configured = try decode(
+            config().replacingOccurrences(of: #""repositories""#, with: #""model": " sonnet ", "effort": "xhigh", "repositories""#)
+        )
+        #expect(configured.claudeModel == "sonnet")
+        #expect(configured.claudeEffort == .xhigh)
+        #expect(configured.claudeEnvironment == ["ANTHROPIC_MODEL": "sonnet", "CLAUDE_CODE_EFFORT_LEVEL": "xhigh"])
+    }
+
+    @Test func rejectsInvalidModelOrEffort() {
+        for model in ["", "--model", "claude opus", "claude;rm"] {
+            let json = config().replacingOccurrences(of: #""repositories""#, with: #""model": "\#(model)", "repositories""#)
+            #expect(throws: OrchestratorConfigError.invalidModel(model)) { try decode(json) }
+        }
+        let effort = config().replacingOccurrences(of: #""repositories""#, with: #""effort": "ultra", "repositories""#)
+        #expect(throws: OrchestratorConfigError.invalidEffort("ultra")) { try decode(effort) }
+    }
+
     @Test func trustsRepositoryWritersUnlessDisabled() throws {
         #expect(try decode(config()).trustsRepositoryWriters)
         let disabled = config().replacingOccurrences(of: #""repositories""#, with: #""trustRepositoryWriters": false, "repositories""#)
