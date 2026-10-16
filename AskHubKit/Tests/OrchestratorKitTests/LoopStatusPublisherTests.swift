@@ -33,10 +33,10 @@ struct LoopStatusPublisherTests {
         _ loops: [LoopStatusReport],
         unknown: Bool = false,
         at date: Date,
-        manualLoopOpen: Bool = false
+        manualLoopNumbers: Set<Int> = []
     ) -> [LoopStatusPublisher.Action] {
         let loops = AutomaticLoops(reports: loops, includesUnknownLoop: unknown)
-        return publisher.actions(repositoryKey: key, repository: body, loops: loops, now: date, manualLoopOpen: manualLoopOpen)
+        return publisher.actions(repositoryKey: key, repository: body, loops: loops, now: date, manualLoopNumbers: manualLoopNumbers)
     }
 
     private func decide(
@@ -44,9 +44,9 @@ struct LoopStatusPublisherTests {
         _ body: RepositoryStatusReport,
         _ loop: LoopStatusReport,
         at date: Date,
-        manualLoopOpen: Bool = false
+        manualLoopNumbers: Set<Int> = []
     ) -> [LoopStatusPublisher.Action] {
-        decide(publisher, body, [loop], at: date, manualLoopOpen: manualLoopOpen)
+        decide(publisher, body, [loop], at: date, manualLoopNumbers: manualLoopNumbers)
     }
 
     /// Issue #7 に、オーケストレーターが本文とコメントを書いた状態
@@ -160,7 +160,7 @@ struct LoopStatusPublisherTests {
         // 手動ループの Discussion が開いている間は、確認時刻が古くなっても本文を上書きしない
         let stale = now.addingTimeInterval(LoopStatusReport.freshness + 1)
         let stillRunning = loop(.running, at: stale)
-        #expect(decide(publisher, repository(at: stale), stillRunning, at: stale, manualLoopOpen: true)
+        #expect(decide(publisher, repository(at: stale), stillRunning, at: stale, manualLoopNumbers: [30])
             == [.createComment(issue: 7, report: stillRunning)])
 
         // 手動ループが終わって古くなれば、本文をリポジトリ全体の状態で書き直す
@@ -206,7 +206,49 @@ struct LoopStatusPublisherTests {
         // 手動ループのコメントが古く、manual-loop の Discussion も無ければ、オーケストレーターが書く（手動ループのコメントは消さない）
         #expect(decide(publisher, repository(at: now), mine, at: now) == [.createComment(issue: 7, report: mine)])
         // manual-loop の Discussion が開いていれば、古くなっても書かない
-        #expect(decide(publisher, repository(at: now), mine, at: now, manualLoopOpen: true).isEmpty)
+        #expect(decide(publisher, repository(at: now), mine, at: now, manualLoopNumbers: [12]).isEmpty)
+    }
+
+    @Test func writesDiscussionSwitchedFromManualLoopWhileAnotherManualLoopIsOpen() {
+        let mine = loop(.running, at: now)
+        let stale = LoopStatusReport(
+            state: .running, writer: .manual, epic: "epic/d12", discussion: 12, checkedAt: now.addingTimeInterval(-3600)
+        )
+        let later = now.addingTimeInterval(LoopStatusReport.updateInterval)
+        var publisher = LoopStatusPublisher()
+        publisher.adopt(
+            [record(7, body: repository(at: later).issueBody)],
+            comments: [comment(71, stale), comment(72, mine)],
+            repositoryKey: key,
+            trustedAuthors: trusted
+        )
+        // #12 を手動ループから自動ループに切り替えた。ほかの Discussion（#30）の手動ループが開いていても、
+        // #12 の古い手動ループのコメントでは止まらず、自分のコメントを書き続ける（消さない）
+        let refreshed = loop(.running, at: later)
+        #expect(decide(publisher, repository(at: later), refreshed, at: later, manualLoopNumbers: [30])
+            == [.updateComment(id: 72, report: refreshed)])
+        // #12 自身が manual-loop の Discussion なら、書かずに自分のコメントを消す
+        #expect(decide(publisher, repository(at: later), refreshed, at: later, manualLoopNumbers: [12, 30])
+            == [.deleteComment(id: 72)])
+    }
+
+    @Test func keepsOldManualBodyByItsDiscussionOrByRepositoryWithoutNumber() {
+        let stale = now.addingTimeInterval(LoopStatusReport.freshness + 1)
+        let rewrite = LoopStatusPublisher.Action.updateIssue(number: 7, body: repository(at: stale).issueBody)
+
+        // 古い形の本文に Discussion の番号があれば、その Discussion が manual-loop のあいだだけ残す
+        var numbered = LoopStatusPublisher()
+        let manual = LoopStatusReport(state: .running, writer: .manual, epic: "epic/manual-loop", discussion: 30, checkedAt: now)
+        numbered.adopt([record(7, body: manual.issueBody)], comments: [], repositoryKey: key, trustedAuthors: trusted)
+        #expect(decide(numbered, repository(at: stale), [], at: stale, manualLoopNumbers: [30]).isEmpty)
+        #expect(decide(numbered, repository(at: stale), [], at: stale, manualLoopNumbers: [40]) == [rewrite])
+
+        // 番号の無い本文（どの Discussion のものか分からない）は、このリポジトリに manual-loop の Discussion があるあいだ残す
+        var unnumbered = LoopStatusPublisher()
+        let legacy = LoopStatusReport(state: .running, writer: .manual, epic: "epic/manual-loop", checkedAt: now)
+        unnumbered.adopt([record(7, body: legacy.issueBody)], comments: [], repositoryKey: key, trustedAuthors: trusted)
+        #expect(decide(unnumbered, repository(at: stale), [], at: stale, manualLoopNumbers: [40]).isEmpty)
+        #expect(decide(unnumbered, repository(at: stale), [], at: stale) == [rewrite])
     }
 
     @Test func leavesDiscussionOfUnknownWriterOrOldManualBody() {

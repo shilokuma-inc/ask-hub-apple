@@ -101,6 +101,65 @@ extension OrchestratorTests {
         #expect(github.repositoryStatus() != nil)
     }
 
+    /// Issue #9 に、Discussion #12 の手動ループが 1 時間前に書いたコメントがある
+    private static func staleManualLoopComment(on github: FakeGitHub, at start: Date) {
+        let body = RepositoryStatusReport(checkedAt: start).issueBody
+        github.setLoopStatusIssues([LoopStatusIssueRecord(number: 9, author: "mrs1669", isOpen: true, updatedAt: start, body: body)])
+        let manual = LoopStatusReport(
+            state: .running, writer: .manual, epic: "epic/mvp", discussion: 12, checkedAt: start.addingTimeInterval(-3600)
+        )
+        github.setLoopStatusComments([LoopStatusComment(id: 90, author: "mrs1669", updatedAt: start, body: manual.commentBody)], onIssue: 9)
+    }
+
+    @Test func writesDiscussionSwitchedFromManualLoopWhileAnotherManualLoopIsOpen() async throws {
+        let github = FakeGitHub([.success([])])
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        Self.staleManualLoopComment(on: github, at: start)
+        // #12 を手動ループから自動ループに切り替えた。同じリポジトリでは #30 を手で回している
+        github.setManualLoops([ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 30, author: "mrs1669")])
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [ ] B\n", state: nil, discussion: 12, loopPrepared: true))
+        try await makeOrchestrator(github: github, runtime: runtime) { start }.pollOnce()
+
+        // ほかの Discussion の手動ループがあっても、#12 の古い手動ループのコメントでは止まらず、自動ループのコメントを書く
+        #expect(github.createdLoopStatusComments == ["shilokuma-inc/ask-hub-apple#9"])
+        #expect(github.loopCommentReport(onIssue: 9)?.writer == .orchestrator)
+        #expect(github.loopCommentReport(onIssue: 9)?.discussion == 12)
+        #expect(github.deletedLoopStatusComments.isEmpty)
+    }
+
+    @Test func keepsManualLoopDiscussionWithPreviousNumbersWhenSearchFails() async throws {
+        let github = FakeGitHub([.success([])])
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        Self.staleManualLoopComment(on: github, at: start)
+        // 自動ループの #12 を手動ループに切り替えた（制御用 worktree には #12 の epic が残っている）
+        github.setManualLoops([ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 12, author: "mrs1669")])
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [ ] B\n", state: nil, discussion: 12, loopPrepared: true))
+        let clock = OSAllocatedUnfairLock(initialState: start)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime) { clock.withLock { $0 } }
+
+        // #12 が manual-loop の Discussion のあいだは、手動ループのコメントが古くなっても書かない
+        try await orchestrator.pollOnce()
+        #expect(github.createdLoopStatusComments.isEmpty)
+
+        // manual-loop の Discussion を検索できなかったポーリングでは、前回取得できた番号を使う
+        github.setManualLoopsFail(true)
+        clock.withLock { $0 = start.addingTimeInterval(LoopStatusReport.updateInterval) }
+        try await orchestrator.pollOnce()
+        #expect(logs.recorded.contains { $0.hasPrefix("manual-loop の Discussion を検索できませんでした") })
+        #expect(github.updatedLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#9"])
+        #expect(github.createdLoopStatusComments.isEmpty)
+
+        // #12 の manual-loop の Discussion が閉じたら、自動ループのコメントを書く（手動ループのコメントは消さない）
+        github.setManualLoopsFail(false)
+        github.setManualLoops([])
+        try await orchestrator.pollOnce()
+        #expect(github.createdLoopStatusComments == ["shilokuma-inc/ask-hub-apple#9"])
+        #expect(github.loopCommentReport(onIssue: 9)?.writer == .orchestrator)
+        #expect(github.deletedLoopStatusComments.isEmpty)
+    }
+
     @Test func doesNotCreateDuplicateCommentWhenCommentsCannotBeRead() async throws {
         let github = FakeGitHub([.success([])])
         let runtime = FakeRuntime()

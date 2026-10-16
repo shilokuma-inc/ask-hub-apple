@@ -75,14 +75,14 @@ public struct LoopStatusPublisher: Sendable, Equatable {
     /// - Parameters:
     ///   - repository: 本文に書くリポジトリ全体の状態
     ///   - loops: この PC の自動ループの、Discussion ごとの状態
-    ///   - manualLoopOpen: このリポジトリに手動ループ（open な `manual-loop` の Discussion）がある。
+    ///   - manualLoopNumbers: このリポジトリの手動ループ（信用する author の open な `manual-loop` の Discussion）の番号。
     ///     手動ループが書いた状態は、確認時刻が古くなっても上書きしない（担当者の情報を消さないため。アプリが古さを知らせる）
     public func actions(
         repositoryKey key: String,
         repository: RepositoryStatusReport,
         loops: AutomaticLoops,
         now: Date,
-        manualLoopOpen: Bool = false
+        manualLoopNumbers: Set<Int> = []
     ) -> [Action] {
         // ポーリングの間隔より長い `Retry-After` を示されたら、それまで一覧も本文も取りに行かない
         if let retryAt = retryAt[key], now < retryAt {
@@ -95,13 +95,13 @@ public struct LoopStatusPublisher: Sendable, Equatable {
             return [.createIssue(body: repository.issueBody)]
         }
         var actions: [Action] = []
-        if let body = bodyAction(entry, number: number, repository: repository, now: now, manualLoopOpen: manualLoopOpen) {
+        if let body = bodyAction(entry, number: number, repository: repository, now: now, manualLoopNumbers: manualLoopNumbers) {
             actions.append(body)
         }
         var kept: Set<Int> = []
         for loop in loops.reports {
             guard let discussion = loop.discussion,
-                  !isWrittenByOtherWriter(entry.otherWriters[discussion], now: now, manualLoopOpen: manualLoopOpen) else {
+                  !isWrittenByOtherWriter(entry.otherWriters[discussion], now: now, manualLoopNumbers: manualLoopNumbers) else {
                 continue
             }
             if let comment = entry.comments.last(where: { $0.report.discussion == discussion }) {
@@ -125,10 +125,10 @@ public struct LoopStatusPublisher: Sendable, Equatable {
     }
 
     private func bodyAction(
-        _ entry: Entry, number: Int, repository: RepositoryStatusReport, now: Date, manualLoopOpen: Bool
+        _ entry: Entry, number: Int, repository: RepositoryStatusReport, now: Date, manualLoopNumbers: Set<Int>
     ) -> Action? {
         switch entry.body {
-        case let .loop(legacy) where legacy.writer == .manual && (Self.isWrittenByManualLoop(legacy, now: now) || manualLoopOpen):
+        case let .loop(legacy) where Self.isKeptForManualLoop(legacy, now: now, manualLoopNumbers: manualLoopNumbers):
             // 古い形の手動ループの本文は上書きしない（ralph-kit が新しい形で書くようになるまで、手動ループはここに書く）
             return nil
 
@@ -141,13 +141,26 @@ public struct LoopStatusPublisher: Sendable, Equatable {
         }
     }
 
-    /// ほかの書き手（手動ループ）がその Discussion を書いている。手動ループは確認時刻が 30 分以内か、
-    /// このリポジトリに open な `manual-loop` の Discussion があるあいだ。知らない書き手（新しい書き手の種類）には書かない
-    private func isWrittenByOtherWriter(_ report: LoopStatusReport?, now: Date, manualLoopOpen: Bool) -> Bool {
+    /// ほかの書き手（手動ループ）がその Discussion を書いている（`isKeptForManualLoop`）。
+    /// 知らない書き手（新しい書き手の種類）には書かない
+    private func isWrittenByOtherWriter(_ report: LoopStatusReport?, now: Date, manualLoopNumbers: Set<Int>) -> Bool {
         guard let report else {
             return false
         }
-        return report.writer != .manual || Self.isWrittenByManualLoop(report, now: now) || manualLoopOpen
+        return report.writer != .manual || Self.isKeptForManualLoop(report, now: now, manualLoopNumbers: manualLoopNumbers)
+    }
+
+    /// 手動ループ（書き手が `manual`）が書いた状態を残す。確認時刻が 30 分以内か、その Discussion が open な `manual-loop` の
+    /// Discussion のあいだ。手動ループから自動ループに切り替えた Discussion に古い状態が残っていても、ほかの手動ループがあるだけでは残さない。
+    /// Discussion の番号が無い状態（古い形の本文）は、このリポジトリに手動ループがあるあいだ残す
+    private static func isKeptForManualLoop(_ report: LoopStatusReport, now: Date, manualLoopNumbers: Set<Int>) -> Bool {
+        guard report.writer == .manual else {
+            return false
+        }
+        if isWrittenByManualLoop(report, now: now) {
+            return true
+        }
+        return report.discussion.map(manualLoopNumbers.contains) ?? !manualLoopNumbers.isEmpty
     }
 
     /// 前に書いた状態と同じで、書き直しの間隔より前か

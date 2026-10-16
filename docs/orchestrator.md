@@ -522,10 +522,13 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 - `ready-for-loop` の検索に失敗したポーリングでは書き出さない（次のポーリングで書く）
 - 書き換える前に Issue の一覧とコメントを取り直して読む（`LoopStatusPublisher`）。手で回しているループ（目印の `writer` が `manual`）が
   古い形で本文を書いていて、`checkedAt` が 30 分以内なら本文は書かない（Discussion #273 の Q3）。手で回すループは 10 分ごとに `checkedAt` を書き直す。
-  信用する author の open な `manual-loop` の Discussion があるリポジトリでは、手動ループの本文を（`checkedAt` が古くなっても）上書きしない（担当者の情報を残す。古さはアプリが知らせる）。
+  本文の Discussion が信用する author の open な `manual-loop` の Discussion のあいだ（本文に Discussion の番号が無ければ、そのリポジトリに信用する author の
+  open な `manual-loop` の Discussion があるあいだ）は、手動ループの本文を（`checkedAt` が古くなっても）上書きしない（担当者の情報を残す。古さはアプリが知らせる）。
   Discussion が閉じた後に 30 分を過ぎていれば、本文をリポジトリ全体の状態で書き直す。どちらの間も、自動ループのコメントは書き続ける
-- 手動ループのコメント（新しい形）・古い形の本文がある Discussion には、`checkedAt` が 30 分以内か、そのリポジトリに open な `manual-loop` の Discussion があるあいだ、
-  自動ループのコメントを書かない（1 つの Discussion の書き手は 1 つ）。知らない書き手のコメントがある Discussion にも書かない。
+- 手動ループのコメント（新しい形）・古い形の本文がある Discussion には、`checkedAt` が 30 分以内か、その Discussion が信用する author の open な `manual-loop` の
+  Discussion のあいだ、自動ループのコメントを書かない（1 つの Discussion の書き手は 1 つ）。手動ループから自動ループに切り替えた Discussion は、
+  同じリポジトリでほかの Discussion を手で回していても、残った古い手動ループのコメントでは止めない。`manual-loop` の Discussion を検索できなかったポーリングでは、
+  前回取得できた番号を使う。知らない書き手のコメントがある Discussion にも書かない。
   `manual-loop` の Discussion と信用しない author の Discussion は起動しないので、`ready-for-loop` が付いていても開始待ちとして書かない
 - 起動した Discussion は、準備が終わる前（ゴール元の記録も promise も無い）も、起動の記録（`LaunchTracker`）から実行中として書く。起動を諦めたら異常終了として書く。
   開始を確かめた後にラベルを外せないまま残った Discussion は、制御用 worktree が別の epic に替わったら（別の Discussion の epic を準備した・別の Discussion を起動した）、終わったループとして書かない。

@@ -12,9 +12,9 @@ extension Orchestrator {
         await refreshTrust()
         manualLoops = await searchManualLoops()
         if let manualLoops {
-            manualLoopRepositories = Set(manualLoops
+            manualLoopNumbers = manualLoops
                 .filter { trust.authors(for: $0.repository).contains($0.author) }
-                .map { $0.repository.lowercased() })
+                .reduce(into: [:]) { $0[$1.repository.lowercased(), default: []].insert($1.number) }
         }
     }
 
