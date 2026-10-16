@@ -44,15 +44,46 @@ struct GitHubMergeQueueTests {
         return GitHubMergeQueue(client: client, trustedAuthors: TrustedAuthors(["mrs1669"]))
     }
 
+    /// GitHub Actions の check run（`statusCheckRollup.contexts` の 1 件）
+    private static func checkRun(
+        _ name: String,
+        status: String = "COMPLETED",
+        conclusion: String? = "SUCCESS",
+        app: String = "github-actions"
+    ) -> String {
+        let conclusionJSON = conclusion.map { #""\#($0)""# } ?? "null"
+        return #"""
+            { "__typename": "CheckRun", "name": "\#(name)", "status": "\#(status)", "conclusion": \#(conclusionJSON),
+              "checkSuite": { "app": { "slug": "\#(app)" } } }
+            """#
+    }
+
+    /// commit status（`statusCheckRollup.contexts` の 1 件）。既定は CodeRabbit のレビュー中
+    private static func status(
+        _ context: String = "CodeRabbit",
+        state: String = "PENDING",
+        description: String = "Review in progress"
+    ) -> String {
+        #"{ "__typename": "StatusContext", "context": "\#(context)", "state": "\#(state)", "description": "\#(description)" }"#
+    }
+
+    /// `statusCheckRollup.contexts` の 1 ページ
+    private static func contexts(_ nodes: [String], hasNextPage: Bool = false, endCursor: String? = nil) -> String {
+        let cursorJSON = endCursor.map { #""\#($0)""# } ?? "null"
+        let pageInfo = #"{ "hasNextPage": \#(hasNextPage), "endCursor": \#(cursorJSON) }"#
+        return #"{ "pageInfo": \#(pageInfo), "nodes": [\#(nodes.joined(separator: ", "))] }"#
+    }
+
+    /// 検索の結果の PR 1 件。`contexts` が `nil` なら `statusCheckRollup` 自体が `null`（コミットにチェックが 1 つも無い）
     private static func node(
         number: Int,
         author: String,
         mergeable: String,
-        rollup: String?,
+        contexts: String?,
         base: String = "develop",
         headRepository: String? = "o/r"
     ) -> String {
-        let rollupJSON = rollup.map { #"{ "state": "\#($0)" }"# } ?? "null"
+        let rollupJSON = contexts.map { #"{ "contexts": \#($0) }"# } ?? "null"
         let headJSON = headRepository.map { #"{ "nameWithOwner": "\#($0)" }"# } ?? "null"
         return #"""
             { "id": "PR_\#(number)", "number": \#(number), "title": "T\#(number)", "body": "まとめ", "url": "https://github.com/o/r/pull/\#(number)",
@@ -64,20 +95,35 @@ struct GitHubMergeQueueTests {
             """#
     }
 
+    private static func searchPage(_ nodes: [String]) -> String {
+        #"""
+        { "data": { "search": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
+          \#(nodes.joined(separator: ",\n"))
+        ] } } }
+        """#
+    }
+
+    private static func variables(of request: URLRequest?) throws -> [String: Any] {
+        let data = try #require(request?.httpBody)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return try #require(object["variables"] as? [String: Any])
+    }
+
     @Test func listsTrustedEpicFinalPullRequestsWithStatus() async throws {
+        let success = Self.contexts([Self.checkRun("build / build"), Self.status(state: "SUCCESS", description: "Review completed")])
         let http = MockHTTPClient([
-            .init(status: 200, body: #"""
-                { "data": { "search": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
-                  \#(Self.node(number: 1, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS")),
-                  \#(Self.node(number: 2, author: "MRS1669", mergeable: "CONFLICTING", rollup: "PENDING")),
-                  \#(Self.node(number: 3, author: "someone", mergeable: "MERGEABLE", rollup: "SUCCESS")),
-                  \#(Self.node(number: 4, author: "mrs1669", mergeable: "UNKNOWN", rollup: nil)),
-                  \#(Self.node(number: 5, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS", base: "epic/mvp")),
-                  \#(Self.node(number: 6, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS", headRepository: "fork/r")),
-                  \#(Self.node(number: 7, author: "mrs1669", mergeable: "MERGEABLE", rollup: "SUCCESS", headRepository: nil)),
-                  {}
-                ] } } }
-                """#)
+            .init(status: 200, body: Self.searchPage([
+                Self.node(number: 1, author: "mrs1669", mergeable: "MERGEABLE", contexts: success),
+                Self.node(number: 2, author: "MRS1669", mergeable: "CONFLICTING", contexts: Self.contexts([
+                    Self.checkRun("build / build", status: "IN_PROGRESS", conclusion: nil)
+                ])),
+                Self.node(number: 3, author: "someone", mergeable: "MERGEABLE", contexts: success),
+                Self.node(number: 4, author: "mrs1669", mergeable: "UNKNOWN", contexts: nil),
+                Self.node(number: 5, author: "mrs1669", mergeable: "MERGEABLE", contexts: success, base: "epic/mvp"),
+                Self.node(number: 6, author: "mrs1669", mergeable: "MERGEABLE", contexts: success, headRepository: "fork/r"),
+                Self.node(number: 7, author: "mrs1669", mergeable: "MERGEABLE", contexts: success, headRepository: nil),
+                "{}"
+            ]))
         ])
         let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
 
@@ -86,10 +132,84 @@ struct GitHubMergeQueueTests {
         #expect(pulls.map(\.checks) == [.success, .pending, .none])
         #expect(pulls.map(\.mergeability) == [.mergeable, .conflicting, .unknown])
         #expect(pulls.first?.headSHA == "sha1")
-        let data = try #require(http.requests.first?.httpBody)
-        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let variables = try #require(object["variables"] as? [String: Any])
+        let variables = try Self.variables(of: http.requests.first)
         #expect(variables["query"] as? String == "org:shilokuma-inc is:pr is:open label:epic-final")
+        #expect(http.requests.count == 1)
+    }
+
+    @Test func decidesChecksFromGitHubActionsCheckRunsOnly() async throws {
+        let http = MockHTTPClient([
+            .init(status: 200, body: Self.searchPage([
+                // CodeRabbit がレビュー中（commit status が PENDING）でも、GitHub Actions が成功なら成功
+                Self.node(number: 1, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.checkRun("No AI Attribution"), Self.status()
+                ])),
+                // GitHub Actions が 1 つでも実行中なら実行中（CodeRabbit は完了）
+                Self.node(number: 2, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.checkRun("test", status: "QUEUED", conclusion: nil),
+                    Self.status(state: "SUCCESS", description: "Review completed")
+                ])),
+                // 失敗が 1 つでもあれば、実行中があっても失敗
+                Self.node(number: 3, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build", conclusion: "TIMED_OUT"), Self.checkRun("test", status: "IN_PROGRESS", conclusion: nil)
+                ])),
+                // GitHub Actions の check run が無ければ なし（CodeRabbit の commit status や、他のアプリの check run があっても）
+                Self.node(number: 4, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.status(state: "SUCCESS", description: "Review rate limited"), Self.checkRun("lint", app: "some-other-app")
+                ])),
+                // contexts が空
+                Self.node(number: 5, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([])),
+                // NEUTRAL / SKIPPED は成功。他のアプリの失敗は見ない
+                Self.node(number: 6, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build", conclusion: "NEUTRAL"), Self.checkRun("docs", conclusion: "SKIPPED"),
+                    Self.checkRun("lint", conclusion: "FAILURE", app: "some-other-app")
+                ])),
+                // COMPLETED なのに conclusion が無い check run は失敗として扱う
+                Self.node(number: 7, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build", conclusion: nil)
+                ]))
+            ]))
+        ])
+        let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
+
+        #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7])
+        #expect(pulls.map(\.checks) == [.success, .pending, .failure, .none, .none, .success, .failure])
+        #expect(pulls[0].canMerge)
+        #expect(pulls[3].blockingReason == "CI が実行されていません")
+    }
+
+    @Test func fetchesRemainingContextsWhenFirstPageIsNotLast() async throws {
+        let http = MockHTTPClient([
+            // 1 ページ目は成功だけだが、まだ続きがある
+            .init(status: 200, body: Self.searchPage([
+                Self.node(number: 1, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts(
+                    [Self.checkRun("build / build")], hasNextPage: true, endCursor: "c1"
+                )),
+                // 続きが無い PR は取り直さない
+                Self.node(number: 2, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([Self.checkRun("build / build")]))
+            ])),
+            // 2 ページ目も続きがあり、3 ページ目に失敗がある
+            .init(status: 200, body: #"""
+                { "data": { "repository": { "pullRequest": { "commits": { "nodes": [{ "commit": { "statusCheckRollup":
+                  { "contexts": \#(Self.contexts([Self.status()], hasNextPage: true, endCursor: "c2")) } } }] } } } } }
+                """#),
+            .init(status: 200, body: #"""
+                { "data": { "repository": { "pullRequest": { "commits": { "nodes": [{ "commit": { "statusCheckRollup":
+                  { "contexts": \#(Self.contexts([Self.checkRun("test", conclusion: "FAILURE")])) } } }] } } } } }
+                """#)
+        ])
+        let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
+
+        #expect(pulls.map(\.number) == [1, 2])
+        #expect(pulls.map(\.checks) == [.failure, .success])
+        #expect(http.requests.count == 3)
+        let second = try Self.variables(of: http.requests[1])
+        #expect(second["owner"] as? String == "o")
+        #expect(second["name"] as? String == "r")
+        #expect(second["number"] as? Int == 1)
+        #expect(second["after"] as? String == "c1")
+        let third = try Self.variables(of: http.requests[2])
+        #expect(third["after"] as? String == "c2")
     }
 
     @Test func mergesWithMergeCommitAtConfirmedHeadAndDeletesBranch() async throws {

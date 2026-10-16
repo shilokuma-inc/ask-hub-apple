@@ -27,11 +27,42 @@ public struct GitHubMergeQueue: MergeQueueProviding {
         // 最終 PR だけを出す: 同じリポジトリの epic ブランチから既定ブランチ（develop）への PR で、信用する author が作ったもの。
         // fork からの PR は、マージ後に削除するブランチがこのリポジトリに無いので扱わない
         var trusted: [EpicPullRequest] = []
-        for pullRequest in nodes.compactMap(\.pullRequest)
-        where await trustedAuthors.trustedAuthors(for: pullRequest.repository).contains(pullRequest.author) {
+        for node in nodes {
+            guard var pullRequest = node.pullRequest,
+                  await trustedAuthors.trustedAuthors(for: pullRequest.repository).contains(pullRequest.author) else {
+                continue
+            }
+            // contexts が 1 ページ（100 件）に収まらない PR は、残りを取り直してから CI の状態を決める
+            if let contexts = node.rollupContexts, contexts.pageInfo.hasNextPage, let cursor = contexts.pageInfo.endCursor {
+                let rest = try await remainingContexts(of: pullRequest, after: cursor)
+                pullRequest.checks = EpicNode.checks(contexts.nodes.compactMap(\.self) + rest)
+            }
             trusted.append(pullRequest)
         }
         return trusted
+    }
+
+    /// 検索で取れた最初のページより後ろの `statusCheckRollup.contexts` を、最後まで取る
+    private func remainingContexts(of pullRequest: EpicPullRequest, after cursor: String) async throws -> [RollupContextNode] {
+        let parts = pullRequest.repository.split(separator: "/", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else {
+            throw GitHubError.invalidResponse
+        }
+        return try await collectGraphQLPages { after in
+            let data = try await client.graphQL(
+                Self.contextsQuery,
+                variables: [
+                    "owner": .string(parts[0]), "name": .string(parts[1]), "number": .int(pullRequest.number),
+                    "after": .string(after ?? cursor)
+                ],
+                as: ContextsData.self
+            )
+            let commit = data.repository?.pullRequest?.commits.nodes.compactMap(\.self).last?.commit
+            guard let contexts = commit?.statusCheckRollup?.contexts else {
+                return ([], GraphQLPageInfo(hasNextPage: false, endCursor: nil))
+            }
+            return (contexts.nodes.compactMap(\.self), contexts.pageInfo)
+        }
     }
 
     public func merge(_ pullRequest: EpicPullRequest) async throws {
@@ -62,9 +93,35 @@ public struct GitHubMergeQueue: MergeQueueProviding {
                 author { login }
                 repository { nameWithOwner defaultBranchRef { name } }
                 headRepository { nameWithOwner }
-                commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+                commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { ...Contexts } } } } }
               }
             }
+          }
+        }
+        \(contextsFragment)
+        """
+
+    /// 1 ページ目に収まらなかった `statusCheckRollup.contexts` を取り直す
+    private static let contextsQuery = """
+        query($owner: String!, $name: String!, $number: Int!, $after: String) {
+          repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+              commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $after) { ...Contexts } } } } }
+            }
+          }
+        }
+        \(contextsFragment)
+        """
+
+    /// check run（GitHub Actions など）と commit status（CodeRabbit など）の一覧。
+    /// CI の状態は check run だけから決め、commit status は情報としてだけ使う（Discussion #460）
+    private static let contextsFragment = """
+        fragment Contexts on StatusCheckRollupContextConnection {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            __typename
+            ... on CheckRun { name status conclusion checkSuite { app { slug } } }
+            ... on StatusContext { context state description }
           }
         }
         """
@@ -143,26 +200,27 @@ private struct EpicNode: Decodable {
             headBranch: headRefName,
             headSHA: headRefOid,
             author: author?.login,
-            checks: Self.checks(commits?.nodes.compactMap(\.self).last?.commit.statusCheckRollup?.state),
+            checks: Self.checks(rollupContexts?.nodes.compactMap(\.self) ?? []),
             mergeability: Self.mergeability(mergeable)
         )
     }
 
-    /// `statusCheckRollup.state`（EXPECTED / ERROR / FAILURE / PENDING / SUCCESS）
-    static func checks(_ state: String?) -> EpicPullRequest.ChecksState {
-        switch state {
-        case "SUCCESS":
-            .success
+    /// 最新コミットの `statusCheckRollup.contexts`（検索で取れた 1 ページ目）
+    var rollupContexts: RollupContexts? {
+        commits?.nodes.compactMap(\.self).last?.commit.statusCheckRollup?.contexts
+    }
 
-        case "PENDING", "EXPECTED":
-            .pending
-
-        case "FAILURE", "ERROR":
-            .failure
-
-        default:
-            .none
+    /// GitHub Actions の check run だけから CI の状態を決める。commit status（CodeRabbit など）は見ない（Discussion #460）。
+    /// 1 つでも失敗なら失敗、失敗が無く 1 つでも実行中なら実行中、check run が 1 つも無ければ なし
+    static func checks(_ contexts: [RollupContextNode]) -> EpicPullRequest.ChecksState {
+        let runs = contexts.filter(\.isGitHubActionsCheckRun).map(\.checkRunState)
+        if runs.contains(.failure) {
+            return .failure
         }
+        if runs.contains(.pending) {
+            return .pending
+        }
+        return runs.isEmpty ? .none : .success
     }
 
     static func mergeability(_ value: String?) -> EpicPullRequest.Mergeability {
@@ -196,5 +254,73 @@ private struct HeadRepository: Decodable {
 }
 
 private struct CheckRollup: Decodable {
-    let state: String
+    let contexts: RollupContexts?
+}
+
+/// `statusCheckRollup.contexts`（ページングされる connection）
+private struct RollupContexts: Decodable {
+    let pageInfo: GraphQLPageInfo
+    let nodes: [RollupContextNode?]
+}
+
+/// `CheckRun` か `StatusContext`。どちらのフィールドも optional に取り、`__typename` で見分ける
+private struct RollupContextNode: Decodable {
+    struct CheckSuite: Decodable {
+        let app: CheckSuiteApp?
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case typename = "__typename"
+        case name, status, conclusion, checkSuite, context, state, description
+    }
+
+    let typename: String?
+    // CheckRun
+    let name: String?
+    let status: String?
+    let conclusion: String?
+    let checkSuite: CheckSuite?
+    // StatusContext
+    let context: String?
+    let state: String?
+    let description: String?
+
+    /// GitHub Actions が作った check run か（`checkSuite.app.slug` が `github-actions`）
+    var isGitHubActionsCheckRun: Bool {
+        typename == "CheckRun" && checkSuite?.app?.slug == "github-actions"
+    }
+
+    /// check run 1 件の状態。`status` が `COMPLETED` 以外（QUEUED / IN_PROGRESS / WAITING など）は実行中。
+    /// `conclusion` が SUCCESS / NEUTRAL / SKIPPED なら成功、それ以外（FAILURE / TIMED_OUT / CANCELLED / ACTION_REQUIRED /
+    /// STARTUP_FAILURE / STALE。知らない値や `null` も）は失敗として扱う
+    var checkRunState: EpicPullRequest.ChecksState {
+        guard status == "COMPLETED" else {
+            return .pending
+        }
+        switch conclusion {
+        case "SUCCESS", "NEUTRAL", "SKIPPED":
+            return .success
+
+        default:
+            return .failure
+        }
+    }
+}
+
+/// check run を作ったアプリ（GitHub Actions は `github-actions`）
+private struct CheckSuiteApp: Decodable {
+    let slug: String
+}
+
+/// `contextsQuery` のレスポンス
+private struct ContextsData: Decodable {
+    struct Repository: Decodable {
+        let pullRequest: PullRequest?
+    }
+
+    struct PullRequest: Decodable {
+        let commits: EpicNode.Commits
+    }
+
+    let repository: Repository?
 }
