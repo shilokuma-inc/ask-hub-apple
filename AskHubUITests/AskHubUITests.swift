@@ -239,11 +239,10 @@ final class AskHubUITests: XCTestCase {
         let settings = app.buttons["設定"].firstMatch
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
+        // スイッチはトークンの案内などの下にあり、Form は画面の外の行を作らないので、設定画面が開いてから出るまでスクロールする
+        XCTAssertTrue(app.navigationBars["設定"].waitForExistence(timeout: 5))
         let preference = app.switches["投稿したらループを始める"]
-        XCTAssertTrue(preference.waitForExistence(timeout: 5))
-        if !preference.isHittable {
-            app.swipeUp()
-        }
+        scrollUntilHittable(preference, in: app)
         XCTAssertEqual(preference.value as? String, "1")
         preference.switches.firstMatch.tap()
         XCTAssertEqual(preference.value as? String, "0")
