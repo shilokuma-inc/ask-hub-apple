@@ -31,7 +31,7 @@ extension Orchestrator {
 
     /// 担当リポジトリ（`fullName` の小文字）ごとの、この PC の自動ループの epic（制御用 worktree の `epic/` のブランチ）。
     ///
-    /// ralph-kit が作業場所を Discussion ごとに分けるまでは、この PC で回す手動ループも制御用 worktree を使う。
+    /// kit 1.3 までに始めた手動ループは、この PC の制御用 worktree を使っていることがある（ralph-kit 1.4.0 からは `<名前>-ralph-d<番号>-ctl` を使う）。
     /// 手動ループのあるリポジトリでは、制御用 worktree の epic のゴール元が手動ループの Discussion のとき・記録が無いときは含めない
     /// （ゴール元を記録するのは自動ループの起動スクリプトだけ）
     func automaticEpicBranches(in epics: [String: EpicSnapshot]) -> [String: String] {
