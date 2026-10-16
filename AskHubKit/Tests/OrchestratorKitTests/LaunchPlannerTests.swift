@@ -37,28 +37,13 @@ struct LaunchPlannerTests {
     @Test func skipsManualLoopDiscussion() throws {
         let manual = ReadyDiscussion.fixture(number: 1, isManualLoop: true)
         let next = ReadyDiscussion.fixture(number: 2)
-        let decisions = LaunchPlanner.decide([manual, next], config: try config(), statuses: [:])
-        #expect(decisions == [.skip(manual, .manualLoop), .launch(next, app)])
+        let after = ReadyDiscussion.fixture(number: 3)
+        let decisions = LaunchPlanner.decide([manual, next, after], config: try config(), statuses: [:])
+        // 手で回す Discussion があっても、同じリポジトリのほかの Discussion から自動ループを 1 つ起動する（Discussion #425）
+        #expect(decisions == [.skip(manual, .manualLoop), .launch(next, app), .skip(after, .waitingForAnotherDiscussion(number: 2))])
         // 信用外の author なら、manual-loop より先に信用外として扱う
-        let untrusted = ReadyDiscussion.fixture(number: 3, author: "someone", isManualLoop: true)
+        let untrusted = ReadyDiscussion.fixture(number: 4, author: "someone", isManualLoop: true)
         #expect(LaunchPlanner.decide([untrusted], config: try config(), statuses: [:]) == [.skip(untrusted, .untrustedAuthor)])
-    }
-
-    @Test func waitsForManualLoopOfTrustedAuthorInSameRepositoryOnly() throws {
-        let discussion = ReadyDiscussion.fixture(repository: "shilokuma-inc/ask-hub-apple", number: 5)
-        let otherRepository = ReadyDiscussion.fixture(repository: "shilokuma-inc/beat-tap-ios", number: 6)
-        let decisions = LaunchPlanner.decide(
-            [discussion, otherRepository],
-            config: try config(),
-            statuses: [:],
-            manualLoops: [
-                ManualLoopDiscussion(repository: "Shilokuma-Inc/Ask-Hub-Apple", number: 4, author: "mrs1669"),
-                ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 2, author: "mrs1669"),
-                // 信用外の author の manual-loop は無視する
-                ManualLoopDiscussion(repository: "shilokuma-inc/beat-tap-ios", number: 3, author: "someone")
-            ]
-        )
-        #expect(decisions == [.skip(discussion, .manualLoopInProgress(number: 2)), .launch(otherRepository, other)])
     }
 
     @Test func skipsWhileLoopIsRunningOrStateRemains() throws {
