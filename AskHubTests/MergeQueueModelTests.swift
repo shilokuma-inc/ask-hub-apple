@@ -201,7 +201,8 @@ struct MergeQueueModelTests {
         let model = makeModel(queue: RecordingQueue(), uploadWorkflow: workflow)
         await model.refresh()
         let target = model.pullRequests[0]
-        let now = Date(timeIntervalSince1970: 1_000)
+        // サンプルの PR_50 には上げ終わった run（固定の開始時刻）が付いているので、「今」はそれより後に取る
+        let now = try #require(target.uploadStatus.run?.startedAt).addingTimeInterval(3_600)
         #expect(model.canUpload(target, now: now))
         #expect(model.uploadBlockingReason(target, now: now) == nil)
 
@@ -248,9 +249,11 @@ struct MergeQueueModelTests {
         pullRequest.uploadStatus = .unsupported
         #expect(!model.showsUploadButton(pullRequest))
         #expect(!model.canUpload(pullRequest))
-        // CI が実行中の PR は、run が無くても押せない
-        #expect(!model.canUpload(SampleMergeQueue.pullRequests[1]))
-        #expect(model.uploadBlockingReason(SampleMergeQueue.pullRequests[1]) == "CI が終わっていません")
+        // CI が実行中の PR は、run が無くても押せない（サンプルの PR_80 は run が実行中なので、run 無しに差し替えて確かめる）
+        var ciPending = SampleMergeQueue.pullRequests[1]
+        ciPending.uploadStatus = .noRuns
+        #expect(!model.canUpload(ciPending))
+        #expect(model.uploadBlockingReason(ciPending) == "CI が終わっていません")
     }
 
     @Test func describesRunStates() {
