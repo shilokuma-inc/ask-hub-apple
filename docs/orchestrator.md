@@ -235,7 +235,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 3. **共有設定**: `git clone git@github.com:mrs1669/agents-config.git ~/.agents && ~/.agents/install.sh`（AGENTS.md と LEARNINGS の hook）
 4. **常駐の前提**: スリープを止める・停電後に自動で起動する・ログインしたままにする（LaunchAgent はログイン中のユーザーで動く）。
    `~/.claude/settings.json` の `skipDangerousModePermissionPrompt` は `true` のまま（無人で `bypassPermissions` を使うため）
-5. **ralph-loop プラグイン**: `claude plugin install ralph-loop@claude-plugins-official` を、制御用 worktree（`*-ralph-ctl`）の外で実行する。
+5. **ralph-loop プラグイン**: `claude plugin install ralph-loop@claude-plugins-official` を、制御用 worktree（`*-ralph-ctl`・手動ループの `*-ralph-d<番号>-ctl`）の外で実行する。
    `~/.claude/settings.json` の `enabledPlugins` に入っていれば有効。周回は このプラグインの Stop hook が回すので、無いとループが 1 周で黙って終わる（`askhub-start-loop` は起動前にエラーで止める）
 6. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには ralph-kit の中継（`scripts/ralph-*.sh`。[ralph-kit](https://github.com/shilokuma-inc/ralph-kit) の `install.sh` で入れる）とプロトコルのラベルが必要
 7. **オーケストレーター**: このリポジトリを clone して `scripts/orchestrator/install.sh` を実行し、
@@ -520,7 +520,7 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 - 書くのは epic 名・Discussion の番号・件数・時刻と、ビルドの情報の Mac の Host 名・スロットだけ。ローカルパス・ログの中身は書かない（public リポジトリでは誰でも読める）
 - 設定の `buildHosts` があれば、ポーリングのたびに xcb のイベントログ（`events.jsonl`。回した `events.jsonl.1` も）を前回の続きから読み、
   ループのスロット（`<名前>-ralph-a` / `-b`）のビルドを `builds`（実行中・スロットごとの直近・24 時間の移動）に載せる（`docs/protocol.md` の「ビルドの情報」）。
-  ほかのビルド（メインの checkout・制御用 worktree・手で流したビルド）は載せない。ビルドが 1 つも無ければキーを書かない。
+  ほかのビルド（メインの checkout・制御用 worktree・手動ループのスロット `<名前>-ralph-d<番号>-a` / `-b`・手で流したビルド）は載せない。ビルドが 1 つも無ければキーを書かない。
   ビルドが変わったら（始まった・別の Mac に移った・終わった）状態の変化として書き換え、変わらなければ今までどおり 10 分ごとの確認時刻の書き直しに載せる。
   オーケストレーターを再起動したら、残っているイベントログを頭から読み直して組み立て直す（読んだ位置は保存しない）
 - ビルドの情報は、準備を終えた epic の自動ループのコメントに書く。kit 1.3 までの手動ループが本文を書いていても、自動ループのコメントには書く
