@@ -150,6 +150,8 @@ struct SampleLoopStarter: LoopStarting {
 
     func markManualLoop(_ discussion: InboxSubject) async throws {}
 
+    func setLoopOptions(_ options: LoopOptions, on discussion: InboxSubject) async throws {}
+
     func assignManualLoop(_ discussion: InboxSubject, to login: String) async throws {}
 
     func assigneeCandidates(in repository: String) async throws -> [String] {
