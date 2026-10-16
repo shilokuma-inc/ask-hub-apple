@@ -80,8 +80,8 @@ struct SampleMergeQueue: MergeQueueProviding {
             author: "mrs1669",
             checks: .success,
             mergeability: .mergeable,
-            // 前のコミットで失敗している（PR の最新の head と SHA が違う）。CI は成功しているので上げ直せる
-            uploadStatus: .run(sampleUploadRun(id: 1_201, branch: "epic/html-rendering", headSHA: "0000001", conclusion: .failure))
+            // 前のコミット（1111111）で失敗している（PR の最新の head と SHA が違う）。CI は成功しているので上げ直せる
+            uploadStatus: .run(sampleUploadRun(id: 1_201, branch: "epic/html-rendering", headSHA: "1111111", conclusion: .failure))
         )
     ]
 
