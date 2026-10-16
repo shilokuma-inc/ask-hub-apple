@@ -173,10 +173,11 @@ struct QuestionDetailView: View {
         }
     }
 
-    /// 自動ループのモデルとエフォート。既定は担当 PC の設定（orchestrator.json の model / effort。model の既定は Opus 5.5）
+    /// 自動ループのモデルとエフォート。既定は担当 PC の設定（orchestrator.json の model / effort）。
+    /// 担当 PC の設定はアプリから見えないので、既定の選択肢にモデル名は出さない
     @ViewBuilder private var loopOptionPickers: some View {
         Picker("モデル", selection: $form.loopModel) {
-            Text("担当 PC の既定（\(LoopModel.standard.title)）").tag(LoopModel?.none)
+            Text("担当 PC の既定").tag(LoopModel?.none)
             ForEach(LoopModel.allCases, id: \.self) { model in
                 Text(model.title).tag(Optional(model))
             }
