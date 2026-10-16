@@ -103,9 +103,13 @@ public actor Orchestrator {
     var trust: TrustDirectory
     /// このポーリングで取得した `manual-loop` の open な Discussion。取得に失敗したら `nil`
     var manualLoops: [ManualLoopDiscussion]?
-    /// 手動ループ（信用する author の open な `manual-loop` の Discussion）があるリポジトリ（`fullName` の小文字）。
+    /// 手動ループ（信用する author の open な `manual-loop` の Discussion）の番号。キーはリポジトリ（`fullName` の小文字）。
     /// 取得に失敗したポーリングでは前回の値を使う
-    var manualLoopRepositories: Set<String> = []
+    var manualLoopNumbers: [String: Set<Int>] = [:]
+    /// 手動ループがあるリポジトリ（`fullName` の小文字）
+    var manualLoopRepositories: Set<String> {
+        Set(manualLoopNumbers.keys)
+    }
     /// 担当リポジトリに書き込み権限を持つアカウントの取得元。`nil` なら設定の一覧だけを信用する
     let repositoryWriters: RepositoryWriters?
     let github: any OrchestratorGitHub
