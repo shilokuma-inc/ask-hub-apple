@@ -40,6 +40,11 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 タブは左から 依頼・要対応・任意判断・ステータス・実機確認 の順。開いたときは「要対応」を出す。
 
 - **要対応**: 上に「要回答」（`needs-answer` が付いた Discussion（※1）と PR（※2））、その下に「マージ待ち」（`epic-final` の PR）。バッジは両方の件数の合計
+  「マージ待ち」のマージ条件は **GitHub Actions の check run がすべて成功していること**と**コンフリクトしていないこと**だけ
+  （[Discussion #460](https://github.com/shilokuma-inc/ask-hub-apple/discussions/460)）。CI の状態は最新コミットの `statusCheckRollup.contexts` のうち
+  GitHub Actions（`checkSuite.app.slug` が `github-actions`）の check run だけから決め、CodeRabbit などの commit status は使わない
+  （CodeRabbit の処理中が長く続いてもマージを止めないため）。CodeRabbit の状態（処理中 / 完了 / レート制限 / 失敗 / なし）は
+  commit status `CodeRabbit` から読み、詳細画面の「状態」に**情報として**出す。レビューを見てからマージしたい人はそれを見て判断する
 - **任意判断**: `decision-log` の Issue（仮決め一覧）。行には `repo#番号`・タイトル（先頭の `【CHORE】` は表示で省く）・更新の相対時刻・作成からの経過を出す。
   タブの中身はすべて同じ種類なので、行に種類のラベルは出さない
 - **ステータス**: リポジトリごとのループの状態と回し方（自動ループ・手動ループ・ループなし）。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」。
@@ -574,6 +579,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 4. オーケストレーターがループを起動する。ループは子 PR の ask で `needs-answer` を付けることがある
 5. ask に回答が付くと、オーケストレーターが終了済みのループを再開し、回答済みの `needs-answer` を外す
 6. epic の全タスクが完了すると、オーケストレーターが `develop` 向けの最終 PR（`epic-final`）を作る
-7. 人間がアプリの「要対応」の「マージ待ち」から確認して merge commit でマージする
+7. 人間がアプリの「要対応」の「マージ待ち」から確認して merge commit でマージする。
+   マージできるのは GitHub Actions の check run がすべて成功していて、コンフリクトしていないときだけ（上記「要対応」）。
+   CodeRabbit の状態は詳細画面に情報として出るだけで、処理中でもマージできる
 8. マージされると、ワークフローがゴール元の Discussion を解決済みで閉じる（上記「ゴール元の Discussion の目印」）。
    オーケストレーターは epic の仮決め一覧を閉じる（上記「仮決め一覧」）
