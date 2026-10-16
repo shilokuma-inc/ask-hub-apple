@@ -32,8 +32,11 @@ public struct GitHubMergeQueue: MergeQueueProviding {
                   await trustedAuthors.trustedAuthors(for: pullRequest.repository).contains(pullRequest.author) else {
                 continue
             }
-            // contexts が 1 ページ（100 件）に収まらない PR は、残りを取り直してから CI の状態を決める
-            if let contexts = node.rollupContexts, contexts.pageInfo.hasNextPage, let cursor = contexts.pageInfo.endCursor {
+            // contexts が 1 ページ（100 件）に収まらない PR は、残りを取り直してから CI の状態を決める（1 ページ目だけで黙って決めない）
+            if let contexts = node.rollupContexts, contexts.pageInfo.hasNextPage {
+                guard let cursor = contexts.pageInfo.endCursor else {
+                    throw GitHubError.invalidResponse
+                }
                 let rest = try await remainingContexts(of: pullRequest, after: cursor)
                 pullRequest.checks = EpicNode.checks(contexts.nodes.compactMap(\.self) + rest)
             }
@@ -42,7 +45,8 @@ public struct GitHubMergeQueue: MergeQueueProviding {
         return trusted
     }
 
-    /// 検索で取れた最初のページより後ろの `statusCheckRollup.contexts` を、最後まで取る
+    /// 検索で取れた最初のページより後ろの `statusCheckRollup.contexts` を、最後まで取る。
+    /// 検索の後に push されても同じコミットの続きを取るよう、`commits(last: 1)` ではなく確認した head のコミットを指定する
     private func remainingContexts(of pullRequest: EpicPullRequest, after cursor: String) async throws -> [RollupContextNode] {
         let parts = pullRequest.repository.split(separator: "/", maxSplits: 1).map(String.init)
         guard parts.count == 2 else {
@@ -52,13 +56,12 @@ public struct GitHubMergeQueue: MergeQueueProviding {
             let data = try await client.graphQL(
                 Self.contextsQuery,
                 variables: [
-                    "owner": .string(parts[0]), "name": .string(parts[1]), "number": .int(pullRequest.number),
+                    "owner": .string(parts[0]), "name": .string(parts[1]), "oid": .string(pullRequest.headSHA),
                     "after": .string(after ?? cursor)
                 ],
                 as: ContextsData.self
             )
-            let commit = data.repository?.pullRequest?.commits.nodes.compactMap(\.self).last?.commit
-            guard let contexts = commit?.statusCheckRollup?.contexts else {
+            guard let contexts = data.repository?.object?.statusCheckRollup?.contexts else {
                 return ([], GraphQLPageInfo(hasNextPage: false, endCursor: nil))
             }
             return (contexts.nodes.compactMap(\.self), contexts.pageInfo)
@@ -101,12 +104,12 @@ public struct GitHubMergeQueue: MergeQueueProviding {
         \(contextsFragment)
         """
 
-    /// 1 ページ目に収まらなかった `statusCheckRollup.contexts` を取り直す
+    /// 1 ページ目に収まらなかった `statusCheckRollup.contexts` を、head のコミットを指定して取り直す
     private static let contextsQuery = """
-        query($owner: String!, $name: String!, $number: Int!, $after: String) {
+        query($owner: String!, $name: String!, $oid: GitObjectID!, $after: String) {
           repository(owner: $owner, name: $name) {
-            pullRequest(number: $number) {
-              commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $after) { ...Contexts } } } } }
+            object(oid: $oid) {
+              ... on Commit { statusCheckRollup { contexts(first: 100, after: $after) { ...Contexts } } }
             }
           }
         }
@@ -312,14 +315,10 @@ private struct CheckSuiteApp: Decodable {
     let slug: String
 }
 
-/// `contextsQuery` のレスポンス
+/// `contextsQuery` のレスポンス。`object` が Commit 以外（または無い）なら `{}` / `null`
 private struct ContextsData: Decodable {
     struct Repository: Decodable {
-        let pullRequest: PullRequest?
-    }
-
-    struct PullRequest: Decodable {
-        let commits: EpicNode.Commits
+        let object: CommitNode.Commit?
     }
 
     let repository: Repository?

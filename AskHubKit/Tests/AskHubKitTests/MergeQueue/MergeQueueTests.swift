@@ -49,12 +49,14 @@ struct GitHubMergeQueueTests {
         _ name: String,
         status: String = "COMPLETED",
         conclusion: String? = "SUCCESS",
-        app: String = "github-actions"
+        app: String? = "github-actions"
     ) -> String {
         let conclusionJSON = conclusion.map { #""\#($0)""# } ?? "null"
+        // アプリが削除された check run では `app` が `null` になる
+        let appJSON = app.map { #"{ "slug": "\#($0)" }"# } ?? "null"
         return #"""
             { "__typename": "CheckRun", "name": "\#(name)", "status": "\#(status)", "conclusion": \#(conclusionJSON),
-              "checkSuite": { "app": { "slug": "\#(app)" } } }
+              "checkSuite": { "app": \#(appJSON) } }
             """#
     }
 
@@ -62,9 +64,10 @@ struct GitHubMergeQueueTests {
     private static func status(
         _ context: String = "CodeRabbit",
         state: String = "PENDING",
-        description: String = "Review in progress"
+        description: String? = "Review in progress"
     ) -> String {
-        #"{ "__typename": "StatusContext", "context": "\#(context)", "state": "\#(state)", "description": "\#(description)" }"#
+        let descriptionJSON = description.map { #""\#($0)""# } ?? "null"
+        return #"{ "__typename": "StatusContext", "context": "\#(context)", "state": "\#(state)", "description": \#(descriptionJSON) }"#
     }
 
     /// `statusCheckRollup.contexts` の 1 ページ
@@ -167,13 +170,21 @@ struct GitHubMergeQueueTests {
                 // COMPLETED なのに conclusion が無い check run は失敗として扱う
                 Self.node(number: 7, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
                     Self.checkRun("build / build", conclusion: nil)
+                ])),
+                // push と pull_request で同じコミットに同名の check run が 2 件並ぶことがある。片方が失敗なら失敗
+                Self.node(number: 8, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build", conclusion: "FAILURE"), Self.checkRun("build / build")
+                ])),
+                // description が無い commit status と、アプリが削除された（app が null の）check run もデコードできる
+                Self.node(number: 9, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.status(description: nil), Self.checkRun("orphan", conclusion: "FAILURE", app: nil), Self.checkRun("build / build")
                 ]))
             ]))
         ])
         let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
 
-        #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7])
-        #expect(pulls.map(\.checks) == [.success, .pending, .failure, .none, .none, .success, .failure])
+        #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7, 8, 9])
+        #expect(pulls.map(\.checks) == [.success, .pending, .failure, .none, .none, .success, .failure, .failure, .success])
         #expect(pulls[0].canMerge)
         #expect(pulls[3].blockingReason == "CI が実行されていません")
     }
@@ -188,14 +199,14 @@ struct GitHubMergeQueueTests {
                 // 続きが無い PR は取り直さない
                 Self.node(number: 2, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([Self.checkRun("build / build")]))
             ])),
-            // 2 ページ目も続きがあり、3 ページ目に失敗がある
+            // 2 ページ目も続きがあり、3 ページ目に失敗がある（検索で確認した head のコミットを指定して取る）
             .init(status: 200, body: #"""
-                { "data": { "repository": { "pullRequest": { "commits": { "nodes": [{ "commit": { "statusCheckRollup":
-                  { "contexts": \#(Self.contexts([Self.status()], hasNextPage: true, endCursor: "c2")) } } }] } } } } }
+                { "data": { "repository": { "object": { "statusCheckRollup":
+                  { "contexts": \#(Self.contexts([Self.status()], hasNextPage: true, endCursor: "c2")) } } } } }
                 """#),
             .init(status: 200, body: #"""
-                { "data": { "repository": { "pullRequest": { "commits": { "nodes": [{ "commit": { "statusCheckRollup":
-                  { "contexts": \#(Self.contexts([Self.checkRun("test", conclusion: "FAILURE")])) } } }] } } } } }
+                { "data": { "repository": { "object": { "statusCheckRollup":
+                  { "contexts": \#(Self.contexts([Self.checkRun("test", conclusion: "FAILURE")])) } } } } }
                 """#)
         ])
         let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
@@ -206,10 +217,24 @@ struct GitHubMergeQueueTests {
         let second = try Self.variables(of: http.requests[1])
         #expect(second["owner"] as? String == "o")
         #expect(second["name"] as? String == "r")
-        #expect(second["number"] as? Int == 1)
+        #expect(second["oid"] as? String == "sha1")
         #expect(second["after"] as? String == "c1")
         let third = try Self.variables(of: http.requests[2])
         #expect(third["after"] as? String == "c2")
+    }
+
+    @Test func failsWhenNextPageHasNoCursor() async {
+        // hasNextPage なのに endCursor が無いレスポンスは、1 ページ目だけで黙って決めずにエラーにする
+        let http = MockHTTPClient([
+            .init(status: 200, body: Self.searchPage([
+                Self.node(number: 1, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts(
+                    [Self.checkRun("build / build")], hasNextPage: true
+                ))
+            ]))
+        ])
+        await #expect(throws: GitHubError.invalidResponse) {
+            try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
+        }
     }
 
     @Test func mergesWithMergeCommitAtConfirmedHeadAndDeletesBranch() async throws {
