@@ -281,9 +281,11 @@ final class AskHubUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
 
+        // まとめは「状態」「TestFlight」の下にあり、Form は画面の外の行を作らないので、詳細が開いてから出るまでスクロールする
+        XCTAssertTrue(app.navigationBars["#120"].waitForExistence(timeout: 5))
         // <h3> と ### の見出し、<li> と - の箇条書きが、タグや記号の無い文字として出る
         let heading = app.staticTexts["回答待ちの PR"]
-        XCTAssertTrue(heading.waitForExistence(timeout: 5))
+        scrollUntilHittable(heading, in: app)
         XCTAssertTrue(app.staticTexts["返答のない仮決め（既定値のまま確定）"].exists)
         XCTAssertTrue(app.staticTexts["実機確認 Issue"].exists)
         // 「状態」の「コンフリクト: なし」と区別するため、「まとめ」の見出しより下から始まる「なし」を箇条書きの項目とみなす
