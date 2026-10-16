@@ -7,7 +7,8 @@ extension EpicPullRequest {
         checks: ChecksState = .success,
         mergeability: Mergeability = .mergeable,
         author: String? = "mrs1669",
-        codeRabbit: CodeRabbitState = .none
+        codeRabbit: CodeRabbitState = .none,
+        uploadStatus: UploadStatus = .notLoaded
     ) -> Self {
         Self(
             id: "PR_50",
@@ -22,7 +23,8 @@ extension EpicPullRequest {
             author: author,
             checks: checks,
             mergeability: mergeability,
-            codeRabbit: codeRabbit
+            codeRabbit: codeRabbit,
+            uploadStatus: uploadStatus
         )
     }
 }
@@ -37,6 +39,37 @@ struct EpicPullRequestTests {
         #expect(EpicPullRequest.fixture(checks: .none).blockingReason == "CI が実行されていません")
         #expect(!EpicPullRequest.fixture(mergeability: .unknown).canMerge)
         #expect(EpicPullRequest.fixture().filesURL.absoluteString == "https://github.com/shilokuma-inc/ask-hub-apple/pull/50/files")
+    }
+
+    @Test func canUploadWhenChecksPassAndNoRunningRun() {
+        // CI が成功していれば、コンフリクトしていても run が無くても上げられる
+        #expect(EpicPullRequest.fixture(mergeability: .conflicting, uploadStatus: .noRuns).canUpload)
+        #expect(EpicPullRequest.fixture(uploadStatus: .noRuns).uploadBlockingReason == nil)
+        #expect(EpicPullRequest.fixture(uploadStatus: .run(.fixture())).canUpload)
+        // 実行中の run があるあいだは押せない
+        let running = EpicPullRequest.fixture(uploadStatus: .run(.fixture(status: .inProgress, conclusion: nil)))
+        #expect(!running.canUpload)
+        #expect(running.uploadBlockingReason == "同じ epic ブランチで Upload を実行中です")
+        // CI の条件はマージボタンと同じ
+        #expect(EpicPullRequest.fixture(checks: .pending, uploadStatus: .noRuns).uploadBlockingReason == "CI が終わっていません")
+        #expect(EpicPullRequest.fixture(checks: .failure, uploadStatus: .noRuns).uploadBlockingReason == "CI が失敗しています")
+        #expect(EpicPullRequest.fixture(checks: .none, uploadStatus: .noRuns).uploadBlockingReason == "CI が実行されていません")
+        // ワークフローが無いリポジトリではボタンを出さない（理由も出さない）
+        let unsupported = EpicPullRequest.fixture(uploadStatus: .unsupported)
+        #expect(!unsupported.uploadStatus.showsUploadButton)
+        #expect(!unsupported.canUpload)
+        #expect(unsupported.uploadBlockingReason == nil)
+        // 読んでいない・権限不足・取得できなかったときはボタンは出す（押した結果で分かる）
+        #expect(EpicPullRequest.fixture().canUpload)
+        #expect(EpicPullRequest.fixture(uploadStatus: .permissionDenied).canUpload)
+        #expect(EpicPullRequest.fixture(uploadStatus: .unavailable).canUpload)
+    }
+
+    @Test func reportsWhetherLatestHeadWasUploaded() {
+        #expect(EpicPullRequest.fixture().uploadedLatestHead == nil)
+        #expect(EpicPullRequest.fixture(uploadStatus: .run(.fixture(headSHA: "abc123"))).uploadedLatestHead == true)
+        #expect(EpicPullRequest.fixture(uploadStatus: .run(.fixture(headSHA: "old"))).uploadedLatestHead == false)
+        #expect(EpicPullRequest.fixture(uploadStatus: .run(.fixture())).uploadStatus.run == .fixture())
     }
 
     @Test func codeRabbitStateDoesNotAffectMergeability() {
@@ -58,7 +91,7 @@ struct GitHubMergeQueueTests {
     }
 
     /// GitHub Actions の check run（`statusCheckRollup.contexts` の 1 件）
-    private static func checkRun(
+    static func checkRun(
         _ name: String,
         status: String = "COMPLETED",
         conclusion: String? = "SUCCESS",
@@ -74,7 +107,7 @@ struct GitHubMergeQueueTests {
     }
 
     /// commit status（`statusCheckRollup.contexts` の 1 件）。既定は CodeRabbit のレビュー中
-    private static func status(
+    static func status(
         _ context: String = "CodeRabbit",
         state: String = "PENDING",
         description: String? = "Review in progress"
@@ -84,14 +117,14 @@ struct GitHubMergeQueueTests {
     }
 
     /// `statusCheckRollup.contexts` の 1 ページ
-    private static func contexts(_ nodes: [String], hasNextPage: Bool = false, endCursor: String? = nil) -> String {
+    static func contexts(_ nodes: [String], hasNextPage: Bool = false, endCursor: String? = nil) -> String {
         let cursorJSON = endCursor.map { #""\#($0)""# } ?? "null"
         let pageInfo = #"{ "hasNextPage": \#(hasNextPage), "endCursor": \#(cursorJSON) }"#
         return #"{ "pageInfo": \#(pageInfo), "nodes": [\#(nodes.joined(separator: ", "))] }"#
     }
 
     /// 検索の結果の PR 1 件。`contexts` が `nil` なら `statusCheckRollup` 自体が `null`（コミットにチェックが 1 つも無い）
-    private static func node(
+    static func node(
         number: Int,
         author: String,
         mergeable: String,
@@ -111,7 +144,7 @@ struct GitHubMergeQueueTests {
             """#
     }
 
-    private static func searchPage(_ nodes: [String]) -> String {
+    static func searchPage(_ nodes: [String]) -> String {
         #"""
         { "data": { "search": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [
           \#(nodes.joined(separator: ",\n"))

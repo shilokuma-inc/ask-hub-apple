@@ -39,7 +39,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 タブは左から 依頼・要対応・任意判断・ステータス・実機確認 の順。開いたときは「要対応」を出す。
 
-- **要対応**: 上に「要回答」（`needs-answer` が付いた Discussion（※1）と PR（※2））、その下に「マージ待ち」（`epic-final` の PR）。バッジは両方の件数の合計
+- **要対応**: 上に「要回答」（`needs-answer` が付いた Discussion（※1）と PR（※2））、その下に「マージ待ち」（`epic-final` の PR）。バッジは両方の件数の合計。
+  マージ待ちの詳細では、マージの前に epic ブランチを TestFlight に上げて実機で確かめられる（下記「マージ待ちと TestFlight への手動アップロード」）
   - 「マージ待ち」のマージ条件は **GitHub Actions の check run がすべて成功していること**と**コンフリクトしていないこと**だけ
     （[Discussion #460](https://github.com/shilokuma-inc/ask-hub-apple/discussions/460)。check run が 1 つも無いときと、
     GitHub がコンフリクトの有無を計算中のときも押せない）。CI の状態は最新コミットの `statusCheckRollup.contexts` のうち
@@ -366,6 +367,32 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - 最終 PR が `develop` にマージされると、ワークフロー（`.github/workflows/close-goal-discussion.yml`）がこの目印を読み、
   Discussion に PR へのリンクをコメントしてから解決済みで閉じる
 
+## マージ待ちと TestFlight への手動アップロード
+
+最終 PR（`epic-final`）は、CI が通っていてコンフリクトが無ければアプリからマージできる（[Discussion #1](https://github.com/shilokuma-inc/ask-hub-apple/discussions/1) の Q13）。マージの前に実機で確かめたいときは、
+マージ待ちの詳細から epic ブランチを TestFlight に上げられる（[Discussion #449](https://github.com/shilokuma-inc/ask-hub-apple/discussions/449)）。
+アプリは GitHub だけを見るクライアントのまま、Upload ワークフロー（`.github/workflows/upload.yml`）を `workflow_dispatch` で起動し、
+その run の状態を読む。TestFlight 側（App Store Connect）の処理は追わない。run の取得と起動は `AskHubKit` の `UploadWorkflowRun` / `GitHubUploadWorkflow` が実装する。
+
+- **自動では上げない**。「TestFlight に上げる」を押したときだけ起動する（App Store Connect の 24 時間あたりのアップロード上限に当たらないため）。
+  押す前に確認ダイアログを出す
+- **押せる条件**: 最終 PR の最新の head の CI（Build）が成功している（マージボタンの CI の条件と同じ）、かつ同じ epic ブランチで実行中（queued / in_progress など完了していない）の run が無い、
+  かつ起動した直後でない。**コンフリクトの有無は問わない**（コンフリクトの解消前でも実機で確かめられる）
+- **起動**: `POST /repos/{owner}/{repo}/actions/workflows/upload.yml/dispatches`（`ref` = 最終 PR の head ブランチ。入力は無い）。
+  204（新しい API では 200）が成功。起動の直後は run の一覧に新しい run がすぐには出ないので、アプリは「起動した」状態を保ち、少し後に取り直して二重に押せないようにする
+- **run の取得**: `GET /repos/{owner}/{repo}/actions/workflows/upload.yml/runs?branch=<epic ブランチ>` の直近の 1 件（`per_page` は小さくし、ページングはしない）。
+  `branch` で絞ると `push` と `workflow_dispatch` の両方の run が返り、どちらも対象にする（epic ブランチへの push では Upload は走らない）。
+  マージ待ちの取得で、リポジトリ・ブランチごとに 1 回読む。取得に失敗しても、マージ待ちの一覧そのもの（PR・CI・コンフリクト・まとめ）は今までどおり出す
+- **表示**: 「実行中 / 成功 / 失敗」、ビルドしたコミット（run の `head_sha`）が PR の最新の head と同じか、開始時刻、GitHub の run ページへのリンク。
+  TestFlight でテストできるようになったかは出さない（App Store Connect API の鍵をアプリに持たせない）。
+  ビルド番号は Upload ワークフローが App Store Connect の最新から自動で増やすので、同じバージョンのままビルド番号だけが増えて TestFlight に並ぶ
+- **ワークフローの有無**: `upload.yml` が無い（run の取得が 404）リポジトリではボタンを出さない。dispatch が 422 を返したら、そのリポジトリは `workflow_dispatch` に対応していないものとして以後ボタンを出さない
+- **トークンの権限**: Fine-grained PAT に **Actions の Read and write** が要る（run の取得は Read、起動は Write）。
+  権限が無いと 403 が返る。403 はレート制限でも返るので、`x-ratelimit-remaining: 0`・`Retry-After`（と 429）はレート制限として今までどおり待って再試行し、
+  それ以外の 403 を「権限不足」として、設定画面への案内と一緒にその旨を出す
+- **サンプルデータ（デモモード）**: run の状態（実行中 / 成功 / 失敗・ビルドした SHA が PR の最新の head と違う）もサンプルに含め、GitHub にもトークンにも依存しない。起動はしない
+- ループは Upload を実行しない（`gh workflow run` や dispatch API を呼ばない）。実際に TestFlight に並んだかは、人間が TestFlight アプリで確かめる
+
 ## 実機確認 Issue の目印
 
 ループは、実機確認 Issue（`needs-verify`）の本文の**先頭**に目印を置く。
@@ -583,6 +610,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 7. 人間がアプリの「要対応」の「マージ待ち」から確認して merge commit でマージする。
    マージできるのは GitHub Actions の check run がすべて成功していて、コンフリクトしていないときだけ
    （check run が 1 つも無いときと、GitHub がコンフリクトの有無を計算中のときも押せない。上記「要対応」）。
-   CodeRabbit の状態は詳細画面に情報として出るだけで、処理中でもマージできる
+   CodeRabbit の状態は詳細画面に情報として出るだけで、処理中でもマージできる。
+   マージの前に実機で確かめたいときは、詳細の「TestFlight に上げる」で epic ブランチを Upload ワークフローに掛け、run の成功を見てから TestFlight でテストする（上記「マージ待ちと TestFlight への手動アップロード」）
 8. マージされると、ワークフローがゴール元の Discussion を解決済みで閉じる（上記「ゴール元の Discussion の目印」）。
    オーケストレーターは epic の仮決め一覧を閉じる（上記「仮決め一覧」）

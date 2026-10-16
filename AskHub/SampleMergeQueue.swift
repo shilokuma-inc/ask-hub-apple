@@ -1,13 +1,6 @@
 import AskHubKit
 import Foundation
 
-extension MergeQueueModel {
-    /// デモモード・Preview・UI テスト用。GitHub には接続しない
-    static func sample() -> MergeQueueModel {
-        MergeQueueModel(tokenStore: InMemoryTokenStore(token: "sample")) { _ in SampleMergeQueue() }
-    }
-}
-
 /// デモモード・Preview・UI テスト用。マージしたことにして GitHub には送らない
 struct SampleMergeQueue: MergeQueueProviding {
     static let pullRequests = [
@@ -34,7 +27,9 @@ struct SampleMergeQueue: MergeQueueProviding {
             author: "mrs1669",
             checks: .success,
             mergeability: .mergeable,
-            codeRabbit: .completed
+            codeRabbit: .completed,
+            // 最新の head を TestFlight に上げ終わっている
+            uploadStatus: .run(sampleUploadRun(id: 501, branch: "epic/mvp", headSHA: "0000000", conclusion: .success))
         ),
         EpicPullRequest(
             id: "PR_80",
@@ -50,7 +45,16 @@ struct SampleMergeQueue: MergeQueueProviding {
             checks: .pending,
             mergeability: .mergeable,
             // 無料枠の上限に当たった PR（"Review rate limited"）。CI が終わればマージできる
-            codeRabbit: .rateLimited
+            codeRabbit: .rateLimited,
+            // 上げている最中（CI も実行中なので、終わってももう一度は押せない）
+            uploadStatus: .run(sampleUploadRun(
+                id: 801,
+                repository: "shilokuma-inc/notti-ios",
+                branch: "epic/notification",
+                headSHA: "0000001",
+                status: .inProgress,
+                conclusion: nil
+            ))
         ),
         EpicPullRequest(
             id: "PR_120",
@@ -79,7 +83,9 @@ struct SampleMergeQueue: MergeQueueProviding {
             author: "mrs1669",
             checks: .success,
             mergeability: .mergeable,
-            codeRabbit: .completed
+            codeRabbit: .completed,
+            // 前のコミット（1111111）で失敗している（PR の最新の head と SHA が違う）。CI は成功しているので上げ直せる
+            uploadStatus: .run(sampleUploadRun(id: 1_201, branch: "epic/html-rendering", headSHA: "1111111", conclusion: .failure))
         ),
         // GitHub Actions は成功・CodeRabbit は処理中。CodeRabbit はマージ条件ではないのでマージできる（Discussion #460）
         EpicPullRequest(
@@ -104,9 +110,33 @@ struct SampleMergeQueue: MergeQueueProviding {
             author: "mrs1669",
             checks: .success,
             mergeability: .mergeable,
-            codeRabbit: .inProgress
+            codeRabbit: .inProgress,
+            // まだ TestFlight に上げていない
+            uploadStatus: .noRuns
         )
     ]
+
+    /// サンプルの Upload ワークフローの run。開始時刻は固定（スクリーンショットで変わらないように）
+    private static func sampleUploadRun(
+        id: Int,
+        repository: String = "shilokuma-inc/ask-hub-apple",
+        branch: String,
+        headSHA: String,
+        status: UploadWorkflowRun.Status = .completed,
+        conclusion: UploadWorkflowRun.Conclusion?
+    ) -> UploadWorkflowRun {
+        UploadWorkflowRun(
+            id: id,
+            repository: repository,
+            branch: branch,
+            headSHA: headSHA,
+            status: status,
+            conclusion: conclusion,
+            event: "workflow_dispatch",
+            startedAt: Date(timeIntervalSince1970: 1_792_054_800),
+            url: URL(string: "https://github.com/\(repository)/actions/runs/\(id)")!
+        )
+    }
 
     func epicPullRequests(orgs: [String]) async throws -> [EpicPullRequest] {
         Self.pullRequests

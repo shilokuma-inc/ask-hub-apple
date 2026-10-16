@@ -4,6 +4,26 @@ import Foundation
 import os
 import Testing
 
+private extension UploadWorkflowRun {
+    static func fixture(
+        status: Status = .completed,
+        conclusion: Conclusion? = .success,
+        startedAt: Date = Date(timeIntervalSince1970: 900)
+    ) -> Self {
+        Self(
+            id: 1,
+            repository: "shilokuma-inc/ask-hub-apple",
+            branch: "epic/mvp",
+            headSHA: "0000000",
+            status: status,
+            conclusion: conclusion,
+            event: "workflow_dispatch",
+            startedAt: startedAt,
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/actions/runs/1")!
+        )
+    }
+}
+
 /// `RecordingQueue` でマージを失敗させる方法
 private enum MergeFailure: Sendable {
     case headChanged
@@ -46,8 +66,44 @@ struct MergeQueueModelTests {
         }
     }
 
-    private func makeModel(token: String? = "github_pat_saved", queue: RecordingQueue) -> MergeQueueModel {
-        MergeQueueModel(tokenStore: InMemoryTokenStore(token: token)) { _ in queue }
+    /// Upload の起動を記録する。失敗させることもできる
+    private final class RecordingUploadWorkflow: UploadWorkflowProviding {
+        private let state = OSAllocatedUnfairLock<(dispatched: [String], failure: UploadWorkflowError?)>(initialState: ([], nil))
+
+        var dispatched: [String] {
+            state.withLock { $0.dispatched }
+        }
+
+        func setFailure(_ failure: UploadWorkflowError?) {
+            state.withLock { $0.failure = failure }
+        }
+
+        func latestRun(repository: String, branch: String) async throws -> LatestUploadRun {
+            .noRuns
+        }
+
+        func dispatch(repository: String, ref: String) async throws {
+            try state.withLock { state in
+                if let failure = state.failure {
+                    throw failure
+                }
+                state.dispatched.append("\(repository) \(ref)")
+            }
+        }
+    }
+
+    private func makeModel(
+        token: String? = "github_pat_saved",
+        queue: RecordingQueue,
+        uploadWorkflow: RecordingUploadWorkflow = RecordingUploadWorkflow()
+    ) -> MergeQueueModel {
+        MergeQueueModel(
+            tokenStore: InMemoryTokenStore(token: token),
+            makeProvider: { _ in queue },
+            makeUploadWorkflow: { _ in uploadWorkflow },
+            // テストでは取り直しを待たない
+            dispatchRefreshDelay: .zero
+        )
     }
 
     @Test func loadsEpicFinalPullRequests() async {
@@ -121,6 +177,92 @@ struct MergeQueueModelTests {
         #expect(model.pullRequests.map(\.number) == [80, 120, 130])
         let message = MergeQueueModel.message(for: MergeQueueError.branchNotDeleted("epic/mvp"))
         #expect(message == "マージしましたが、ブランチ epic/mvp を削除できませんでした。GitHub で削除してください")
+    }
+
+    @Test func describesUploadWorkflowErrorsWithPermissionGuidance() {
+        // レート制限でない 403 は権限不足。設定画面への案内を付ける
+        let denied = MergeQueueModel.message(for: UploadWorkflowError.permissionDenied)
+        #expect(denied == "TestFlight に上げられませんでした。トークンに、このリポジトリの Actions の書き込み権限（Read and write）があるか確かめてください。"
+            + "設定で権限を付けたトークンを保存し直してください")
+        let notFound = MergeQueueModel.message(for: UploadWorkflowError.workflowNotFound)
+        #expect(notFound == "TestFlight に上げられませんでした。このリポジトリに Upload ワークフロー（upload.yml）が無いか、Actions が無効か、トークンから見えません")
+        let unsupported = MergeQueueModel.message(for: UploadWorkflowError.dispatchNotSupported(message: "No ref found for: epic/x"))
+        #expect(unsupported.contains("workflow_dispatch"))
+        #expect(unsupported.hasSuffix("（No ref found for: epic/x）"))
+        #expect(!MergeQueueModel.message(for: UploadWorkflowError.dispatchNotSupported(message: nil)).hasSuffix("）"))
+        // レート制限は今までどおりの文言
+        #expect(MergeQueueModel.message(for: GitHubError.rateLimited(retryAfter: .seconds(30))).contains("レート制限中"))
+    }
+
+    // MARK: - TestFlight へのアップロード
+
+    @Test func dispatchesUploadOnHeadBranchAndKeepsPendingUntilRunAppears() async throws {
+        let workflow = RecordingUploadWorkflow()
+        let model = makeModel(queue: RecordingQueue(), uploadWorkflow: workflow)
+        await model.refresh()
+        let target = model.pullRequests[0]
+        // サンプルの PR_50 には上げ終わった run（固定の開始時刻）が付いているので、「今」はそれより後に取る
+        let now = try #require(target.uploadStatus.run?.startedAt).addingTimeInterval(3_600)
+        #expect(model.canUpload(target, now: now))
+        #expect(model.uploadBlockingReason(target, now: now) == nil)
+
+        try await model.upload(target, now: now)
+
+        #expect(workflow.dispatched == ["shilokuma-inc/ask-hub-apple epic/mvp"])
+        // run がまだ出ていないあいだは「起動した」状態で、もう一度は押せない
+        #expect(model.isDispatchPending(target, now: now))
+        #expect(!model.canUpload(target, now: now))
+        #expect(model.uploadBlockingReason(target, now: now)?.contains("起動しました") == true)
+        // 起動より後に始まった run が付けば終わる。古い run では終わらない
+        var withOldRun = target
+        withOldRun.uploadStatus = .run(.fixture(startedAt: now.addingTimeInterval(-60)))
+        #expect(model.isDispatchPending(withOldRun, now: now))
+        var withNewRun = target
+        withNewRun.uploadStatus = .run(.fixture(status: .inProgress, conclusion: nil, startedAt: now.addingTimeInterval(5)))
+        #expect(!model.isDispatchPending(withNewRun, now: now))
+        #expect(model.uploadBlockingReason(withNewRun, now: now) == "同じ epic ブランチで Upload を実行中です")
+        // 長く待っても run が出なければ押し直せる
+        #expect(!model.isDispatchPending(target, now: now.addingTimeInterval(MergeQueueModel.dispatchPendingLimit + 1)))
+    }
+
+    @Test func hidesUploadButtonWhenDispatchIsNotSupported() async {
+        let workflow = RecordingUploadWorkflow()
+        workflow.setFailure(.dispatchNotSupported(message: "Workflow does not have 'workflow_dispatch' trigger"))
+        let model = makeModel(queue: RecordingQueue(), uploadWorkflow: workflow)
+        await model.refresh()
+        let target = model.pullRequests[0]
+        #expect(model.showsUploadButton(target))
+
+        await #expect(throws: UploadWorkflowError.dispatchNotSupported(message: "Workflow does not have 'workflow_dispatch' trigger")) {
+            try await model.upload(target)
+        }
+        // 422 のリポジトリでは以後ボタンを出さない。別のリポジトリには影響しない
+        #expect(!model.showsUploadButton(target))
+        #expect(model.uploadBlockingReason(target) == nil)
+        #expect(model.showsUploadButton(model.pullRequests[1]))
+        #expect(!model.isDispatchPending(target))
+    }
+
+    @Test func doesNotShowUploadButtonWithoutWorkflow() {
+        let model = makeModel(queue: RecordingQueue())
+        var pullRequest = SampleMergeQueue.pullRequests[0]
+        pullRequest.uploadStatus = .unsupported
+        #expect(!model.showsUploadButton(pullRequest))
+        #expect(!model.canUpload(pullRequest))
+        // CI が実行中の PR は、run が無くても押せない（サンプルの PR_80 は run が実行中なので、run 無しに差し替えて確かめる）
+        var ciPending = SampleMergeQueue.pullRequests[1]
+        ciPending.uploadStatus = .noRuns
+        #expect(!model.canUpload(ciPending))
+        #expect(model.uploadBlockingReason(ciPending) == "CI が終わっていません")
+    }
+
+    @Test func describesRunStates() {
+        #expect(UploadRunSection.runText(.fixture(status: .queued, conclusion: nil)) == "実行中")
+        #expect(UploadRunSection.runText(.fixture()) == "成功")
+        #expect(UploadRunSection.runText(.fixture(conclusion: .failure)) == "失敗")
+        #expect(UploadRunSection.runText(.fixture(conclusion: .cancelled)) == "キャンセル")
+        #expect(UploadRunSection.runText(.fixture(conclusion: .other("timed_out"))) == "終了（timed_out）")
+        #expect(UploadRunSection.runText(.fixture(conclusion: nil)) == "終了（結論なし）")
     }
 
     @Test func blockedPullRequestCannotBeMerged() {

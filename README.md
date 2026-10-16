@@ -68,7 +68,7 @@ Discussion の質問や PR の ask を 1 つの一覧にまとめ、アプリで
 |---|---|
 | `DEVELOPMENT_TEAM` | Apple Developer Program の Team ID |
 | `APP_BUNDLE_IDENTIFIER` | アプリ本体の Bundle Identifier。テストターゲットは `.Tests` / `.UITests` を付けて自動で派生します |
-| `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` | アプリのバージョン / ビルド番号 |
+| `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` | アプリのバージョン / ビルド番号。ビルド番号は Upload のときに App Store Connect の最新ビルドを見て Xcode が自動で増やす（`manageAppVersionAndBuildNumber`）ため、手で上げる必要はありません |
 | `IPHONEOS_DEPLOYMENT_TARGET` / `MACOSX_DEPLOYMENT_TARGET` | 最低サポート OS |
 
 ### 2. GitHub Secrets を設定する
@@ -105,7 +105,9 @@ SKU は Bundle ID と同じ値にします。SKU はユーザーには見えな�
 | Fork からの Pull Request | ✅ | | |
 
 - Upload は Archive → IPA Export を含むため、`develop` / `release/**` では Archive を別途実行しません
-- ドキュメントだけの変更（`**/*.md`、`docs/**`）では Build を実行しません。Upload（`develop` / `release/**` への push）と Archive（`main` への push）は、ドキュメントだけの変更でも実行します
+- Upload は Actions タブから手動でも実行できます（Run workflow）。epic → `develop` の最終 PR をマージする前に TestFlight で実機確認したいときは、Actions → Upload → Run workflow で epic ブランチ（最終 PR の head）を選んで実行します。AskHub アプリのマージ待ちの「TestFlight に上げる」も同じ手動実行（`workflow_dispatch`）を呼びます。ビルド番号は App Store Connect の最新から自動で増えるため、同じバージョンのままビルド番号だけが増えて TestFlight に並びます。App Store Connect には 24 時間あたりのアップロード上限があるため、作業ブランチの push では自動では上げません
+- リポジトリ変数（Settings → Secrets and variables → Actions → Variables）に `ENABLE_DELIVERY=false` を設定すると Upload をスキップします（Archive は App Store Connect にアプリが無くても通るため止めません）。何もしなければ従来どおり実行されます
+- ドキュメントだけの変更（`**/*.md`、`docs/**`）では Build を実行しません。Upload（`develop` / `release/**` への push・手動実行）と Archive（`main` への push）は、ドキュメントだけの変更でも実行します
 - 作業ブランチへの push では、Simulator の起動に時間がかかるため iOS はビルドの確認だけにし、UI テスト（`AskHubUITests`）を省いた Unit テストを macOS 上で実行します（アドホック署名・App Sandbox 無効）。UI テストは Pull Request の作成時と `main` / `develop` / `release/**` への push で実行します。Fork からの Pull Request は push で実行されないため、更新（synchronize）を含むすべてのイベントで UI テストまで実行します
 - Xcode のバージョンは [.github/workflows/_build.yml](.github/workflows/_build.yml) と [.github/workflows/_archive.yml](.github/workflows/_archive.yml) の `xcode-version` で固定しています。Environment の更新時はあわせて変更してください
 
@@ -163,7 +165,7 @@ body=$(gh pr view <番号> --json body -q .body) &&
         ├── _archive.yml     # 共通処理: Archive → Export（→ Upload）（workflow_call）
         ├── build.yml        # 全ブランチの push / PR の作成時 / Fork からの PR
         ├── archive.yml      # main の push
-        └── upload.yml       # develop / release/** の push
+        └── upload.yml       # develop / release/** の push・手動実行（workflow_dispatch）
 ```
 
 - プロジェクトはフォルダ同期グループ（Xcode 16 以降の形式）で管理しているため、ファイルの追加・削除で pbxproj は変わりません
