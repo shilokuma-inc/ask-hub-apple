@@ -79,12 +79,15 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
 手動ループがあるリポジトリでも、`ready-for-loop` の Discussion から自動ループを起動する。
 自動ループの数は、オーケストレーターの制御用 worktree（`<名前>-ralph-ctl`）の state ファイル・プロセス・途中の epic と、同じポーリングで起動した Discussion で数える（手動ループは数えない）。
 
-- **オーケストレーターの Mac では、担当リポジトリの手動ループを回さない**（手動ループは担当者の別の Mac で回す）。
-  ralph-kit が手動ループの作業場所を Discussion ごとに分けるまでは、手動ループ（`scripts/askhub-manual.sh`）も同じ制御用 worktree（`<名前>-ralph-ctl`）と
-  PID ファイル（`.claude/askhub-loop.pid`）を使うので、自動ループとぶつかる（PID ファイルを上書きし合う、手動ループの state ファイル・途中の epic が残って自動ループを起動できない、
-  自動ループの起動が完了した手動ループの epic を退避するなど）
+- 手動ループ（`scripts/askhub-manual.sh`）の作業場所は、ralph-kit 1.4.0 から Discussion ごとに分かれる
+  （制御用 worktree `<名前>-ralph-d<番号>-ctl`・スロット `<名前>-ralph-d<番号>-a` / `-b`。PID ファイル `.claude/askhub-loop.pid` もその制御用 worktree に置く）。
+  オーケストレーターの制御用 worktree（`<名前>-ralph-ctl`・`-a`・`-b`）と PID ファイルには触らないので、オーケストレーターの Mac でも担当リポジトリの手動ループを `start` して回せる。
+  同じ epic は 1 つの worktree でしか checkout できないので、同じ Mac のほかのループが使っている epic 名では、手動ループの `start` も自動ループの準備（`ralph-setup.sh`）も止まる
+- kit 1.3 までに `<名前>-ralph-ctl` で始めた手動ループは、移さずにその場所のまま最後まで回る（`resume` / `final` / `status` もそこを使う）。
+  このループだけは自動ループと同じ制御用 worktree と PID ファイルを使うので、終わるまでオーケストレーターの Mac では回さない
+  （PID ファイルを上書きし合う、手動ループの state ファイル・途中の epic が残って自動ループを起動できない、自動ループの起動が完了した手動ループの epic を退避するなど、自動ループとぶつかる）
 - 回答による再開・GitHub の情報からの最終 PR は、制御用 worktree の epic のゴール元が `manual-loop` の Discussion のとき・記録が無いときは、
-  この Mac の手動ループのものとして自動ループの経路では扱わない（「ask に回答が付いたらループを再開する」「GitHub の情報から最終 PR を作る」）
+  この Mac の手動ループ（kit 1.3 までに `<名前>-ralph-ctl` で始めたもの）のものとして自動ループの経路では扱わない（「ask に回答が付いたらループを再開する」「GitHub の情報から最終 PR を作る」）
 
 ## 常駐させる（launchd）
 
@@ -342,8 +345,8 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
    `manual-loop` と author は `needs-answer` の検索結果から読む。信用外の author の Discussion に付いた `manual-loop` は無視し、今までどおり扱う
 6. 信用する author の open な `manual-loop` の Discussion があるリポジトリ（手動ループ）では、手動ループの epic 宛ての PR の回答で再開待ちにしない。
    ループは担当者の Mac で動いているので、担当者がアプリの「回答がそろいました」を見て再開する。
-   手動ループのあるリポジトリでは、次のときも自動ループの epic とみなさない（ralph-kit が作業場所を Discussion ごとに分けるまでは、
-   この PC で回す手動ループも制御用 worktree を使うため）。このとき、そのリポジトリの再開待ちもやめる
+   手動ループのあるリポジトリでは、次のときも自動ループの epic とみなさない（kit 1.3 までに始めた手動ループは、この PC の制御用 worktree を使っていることがあるため。
+   kit 1.4.0 から始めた手動ループは `<名前>-ralph-d<番号>-ctl` を使い、制御用 worktree には現れない）。このとき、そのリポジトリの再開待ちもやめる
    - 制御用 worktree の epic のゴール元（起動スクリプトの記録）が `manual-loop` の Discussion
    - ゴール元の記録が無い（手で始めた epic）
 
