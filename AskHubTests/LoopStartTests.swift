@@ -12,6 +12,8 @@ private struct RecordingStarterState {
     var manual: [String] = []
     /// 担当者を知らせた Discussion と login
     var assigned: [String] = []
+    /// ラベルとモデル・エフォートのコメントを付けた順（`ready <node id>` / `options <node id> <目印の行>`）
+    var calls: [String] = []
     var fails = false
 }
 
@@ -47,6 +49,20 @@ struct LoopStartTests {
                     throw GitHubError.http(status: 403, message: "Resource not accessible by personal access token")
                 }
                 state.marked.append(discussion.nodeID)
+                state.calls.append("ready \(discussion.nodeID)")
+            }
+        }
+
+        var calls: [String] {
+            state.withLock { $0.calls }
+        }
+
+        func setLoopOptions(_ options: LoopOptions, on discussion: InboxSubject) async throws {
+            try state.withLock { state in
+                if state.fails {
+                    throw GitHubError.http(status: 403, message: "Resource not accessible by personal access token")
+                }
+                state.calls.append("options \(discussion.nodeID) " + (options.comment.split(separator: "\n").first.map(String.init) ?? ""))
             }
         }
 
@@ -338,5 +354,61 @@ struct LoopStartTests {
         #expect(!form.loopStartFailed)
         #expect(form.errorMessage == nil)
         #expect(starter.marked.count == 1)
+    }
+}
+
+/// 自動ループのモデルとエフォート（`LoopOptions`）
+extension LoopStartTests {
+    @Test func leavesModelAndEffortBeforeMarkingReady() async throws {
+        let starter = RecordingStarter()
+        let inbox = await makeInbox(starter: starter)
+        let questions = discussionQuestions(in: inbox)
+        try await inbox.post(Answer(choice: "1時間"), to: questions[0])
+
+        let form = AnswerFormModel(question: questions[1])
+        form.note = "朝だけにしたい"
+        form.startsLoopAfterPosting = true
+        form.loopModel = .sonnet
+        form.loopEffort = .high
+        await form.post(using: inbox)
+        // 投稿した後に選び直しても、投稿したときの指定のまま
+        form.loopModel = .fable
+
+        // 起動スクリプトが準備のときに読むので、ready-for-loop より先にコメントを付ける
+        let id = questions[1].subject.nodeID
+        #expect(starter.calls == [
+            #"options \#(id) <!-- ask-hub:loop-options model="claude-sonnet-5-5" effort="high" -->"#,
+            "ready \(id)"
+        ])
+        #expect(form.postedOptions == LoopOptions(model: .sonnet, effort: .high))
+    }
+
+    @Test func leavesNoOptionsCommentForDefaultsOrManualLoop() async throws {
+        let starter = RecordingStarter()
+        let inbox = await makeInbox(starter: starter)
+        let questions = discussionQuestions(in: inbox)
+        try await inbox.post(Answer(choice: "1時間"), to: questions[0])
+
+        // モデルもエフォートも担当 PC の既定なら、コメントは付けずにラベルだけ
+        let form = AnswerFormModel(question: questions[1])
+        form.note = "朝だけにしたい"
+        form.startsLoopAfterPosting = true
+        await form.post(using: inbox)
+        #expect(starter.calls == ["ready \(questions[1].subject.nodeID)"])
+
+        // 手で回すときは、選んでいても残さない（担当者の Claude Code の設定で回る）
+        let manualStarter = RecordingStarter()
+        let manualInbox = await makeInbox(starter: manualStarter)
+        let manualQuestions = discussionQuestions(in: manualInbox)
+        try await manualInbox.post(Answer(choice: "1時間"), to: manualQuestions[0])
+        let manual = AnswerFormModel(question: manualQuestions[1])
+        manual.note = "朝だけにしたい"
+        manual.startsLoopAfterPosting = true
+        manual.loopModel = .sonnet
+        manual.loopRunner = .manual
+        manual.assignee = "mrs1669"
+        await manual.post(using: manualInbox)
+        #expect(manualStarter.calls.isEmpty)
+        #expect(manualStarter.markedManual == [manualQuestions[1].subject.nodeID])
     }
 }

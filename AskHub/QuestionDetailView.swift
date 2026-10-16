@@ -158,6 +158,10 @@ struct QuestionDetailView: View {
                         .task { await form.loadAssignees(using: inbox) }
                     }
                 }
+                // モデルとエフォートはオーケストレーターの自動ループにだけ効くので、手で回すときは出さない
+                if form.startsLoopAfterPosting && form.loopRunner == .orchestrator {
+                    loopOptionPickers
+                }
             } else {
                 Text("この Discussion には、ほかに未回答の質問が \(remaining) 件あります")
                     .foregroundStyle(.secondary)
@@ -167,6 +171,26 @@ struct QuestionDetailView: View {
         } footer: {
             Text(loopFooter)
         }
+    }
+
+    /// 自動ループのモデルとエフォート。既定は担当 PC の設定（orchestrator.json の model / effort。model の既定は Opus 5.5）
+    @ViewBuilder private var loopOptionPickers: some View {
+        Picker("モデル", selection: $form.loopModel) {
+            Text("担当 PC の既定（\(LoopModel.standard.title)）").tag(LoopModel?.none)
+            ForEach(LoopModel.allCases, id: \.self) { model in
+                Text(model.title).tag(Optional(model))
+            }
+        }
+        .disabled(form.isPosting)
+        .accessibilityIdentifier("loop-model")
+        Picker("エフォート", selection: $form.loopEffort) {
+            Text("担当 PC の既定").tag(LoopEffort?.none)
+            ForEach(LoopEffort.allCases, id: \.self) { effort in
+                Text(effort.title).tag(Optional(effort))
+            }
+        }
+        .disabled(form.isPosting)
+        .accessibilityIdentifier("loop-effort")
     }
 
     private var loopFooter: String {
@@ -180,7 +204,10 @@ struct QuestionDetailView: View {
             return "Discussion に manual-loop を付け、担当者を @メンションで知らせます。オーケストレーターはこの Discussion のループを起動しません（このリポジトリのほかの自動ループは止めません）。"
                 + "担当者が自分の Mac の Claude Code でループを回します（指示はステータスタブの「手動ループ」からもコピーできます）"
         }
-        return "Discussion に ready-for-loop を付けます。担当 PC のオーケストレーターがループを起動します"
+        let options = form.loopOptions.isDefault
+            ? ""
+            : "先にモデルとエフォート（\(form.loopOptions.summary)）をコメントで残し、準備・ループ・再開で使わせます。"
+        return "Discussion に ready-for-loop を付けます。担当 PC のオーケストレーターがループを起動します。" + options
     }
 
     private var postButtonTitle: String {
@@ -194,7 +221,7 @@ struct QuestionDetailView: View {
         let discussion = "\(question.subject.shortReference)「\(question.subject.title)」"
         return form.loopRunner == .manual
             ? "\(discussion)に manual-loop を付けます。オーケストレーターはこの Discussion のループを起動しません（このリポジトリのほかの自動ループは止めません）"
-            : "\(discussion)に ready-for-loop を付け、担当 PC のオーケストレーターがループを起動します"
+            : "\(discussion)に ready-for-loop を付け、担当 PC のオーケストレーターが \(form.loopOptions.summary) でループを起動します"
     }
 
     private func post() {
