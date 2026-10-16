@@ -130,6 +130,8 @@ struct MergeDetailView: View {
             Section("状態") {
                 LabeledContent("CI", value: checksText)
                 LabeledContent("コンフリクト", value: mergeabilityText)
+                // 情報として出すだけで、マージできるか（canMerge）には関係しない（Discussion #460）
+                LabeledContent("CodeRabbit", value: codeRabbitText)
             }
 
             Section("まとめ") {
@@ -205,6 +207,25 @@ struct MergeDetailView: View {
 
         case .unknown:
             "確認中"
+        }
+    }
+
+    private var codeRabbitText: String {
+        switch pullRequest.codeRabbit {
+        case .inProgress:
+            "処理中"
+
+        case .completed:
+            "完了"
+
+        case .rateLimited:
+            "レート制限"
+
+        case .failed:
+            "失敗"
+
+        case .none:
+            "なし"
         }
     }
 
