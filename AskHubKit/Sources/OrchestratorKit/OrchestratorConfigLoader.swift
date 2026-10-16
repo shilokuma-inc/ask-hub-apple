@@ -25,7 +25,8 @@ import Foundation
 /// ```json
 /// "buildHosts": { "xcb": "~/.config/askhub/xcodebuild", "issueRepository": "shilokuma-inc/ask-hub-apple" }
 /// ```
-/// `eventsDirectory`（xcb の `events.jsonl` の場所）の既定は `BuildHostsConfig.defaultEventsDirectory`
+/// `eventsDirectory`（xcb の `events.jsonl` の場所）の既定は `BuildHostsConfig.defaultEventsDirectory`。
+/// `model`（起動する claude のモデル。既定は `LoopModel.standard`）と `effort`（`low` / `medium` / `high` / `xhigh` / `max`。既定は claude の既定）も省略できる
 public struct OrchestratorConfigLoader: Sendable {
     /// `~` の展開に使うホームディレクトリ。テストで差し替える
     public let homeDirectory: String
@@ -99,6 +100,7 @@ public struct OrchestratorConfigLoader: Sendable {
         }
 
         let repositoryCommands = try repositoryCommands(from: file, repositories: repositories)
+        let (model, effort) = try claudeOptions(from: file)
 
         return OrchestratorConfig(
             trustedAuthorLogins: trustedAuthors,
@@ -112,8 +114,25 @@ public struct OrchestratorConfigLoader: Sendable {
             },
             repositoryCommands: repositoryCommands,
             trustsRepositoryWriters: file.trustRepositoryWriters ?? true,
-            buildHosts: try file.buildHosts.map { entry throws(OrchestratorConfigError) in try buildHostsConfig(from: entry) }
+            buildHosts: try file.buildHosts.map { entry throws(OrchestratorConfigError) in try buildHostsConfig(from: entry) },
+            claudeModel: model,
+            claudeEffort: effort
         )
+    }
+
+    /// 起動する claude のモデル（省略時は `LoopModel.standard`）とエフォート（省略時は claude の既定）
+    private func claudeOptions(from file: ConfigFile) throws(OrchestratorConfigError) -> (model: String, effort: LoopEffort?) {
+        let model = file.model?.trimmingCharacters(in: .whitespacesAndNewlines) ?? LoopModel.standard.rawValue
+        guard Self.isModelName(model) else {
+            throw .invalidModel(model)
+        }
+        guard let value = file.effort else {
+            return (model, nil)
+        }
+        guard let effort = LoopEffort(rawValue: value.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw .invalidEffort(value)
+        }
+        return (model, effort)
     }
 
     /// xcb の場所は絶対パス（`~` 可）。`issueRepository` は `owner/repo` の形だけを確かめる（担当リポジトリかは使うときに照らす）
@@ -191,6 +210,17 @@ public struct OrchestratorConfigLoader: Sendable {
 
     /// 先頭の `~` だけを展開する（`~user` の形式は扱わない）
     /// `owner/repo` を `/` で分けたもの。どちらも空でなく、空白・改行・制御文字を含まない
+    /// claude の `--model` に渡せる形（モデル ID か `opus` などの別名）。英数字で始まり、英数字・`.`・`_`・`-` だけ
+    static func isModelName(_ name: String) -> Bool {
+        let isAlphanumeric = { (scalar: Unicode.Scalar) in
+            ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar) || ("0"..."9").contains(scalar)
+        }
+        guard (1...100).contains(name.count), let first = name.unicodeScalars.first, isAlphanumeric(first) else {
+            return false
+        }
+        return name.unicodeScalars.allSatisfy { isAlphanumeric($0) || "._-".unicodeScalars.contains($0) }
+    }
+
     private static func isRepositoryName(_ parts: [Substring]) -> Bool {
         parts.count == 2 && parts.allSatisfy { part in
             !part.isEmpty && !part.unicodeScalars.contains {
@@ -245,6 +275,8 @@ private struct ConfigFile: Decodable {
     let newRepositoryDirectory: String?
     let trustRepositoryWriters: Bool?
     let buildHosts: BuildHosts?
+    let model: String?
+    let effort: String?
 
     struct BuildHosts: Decodable {
         let xcb: String

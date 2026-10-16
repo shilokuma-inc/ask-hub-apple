@@ -72,6 +72,7 @@ extension Orchestrator {
             let result = try await runtime.run(
                 config.conflictCommand.render(for: repository, pullRequest: pullRequest),
                 input: "",
+                environment: config.claudeEnvironment,
                 for: repository,
                 timeout: Self.conflictCommandTimeout
             )

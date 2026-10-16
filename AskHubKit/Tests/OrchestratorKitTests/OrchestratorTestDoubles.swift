@@ -83,6 +83,7 @@ struct FakeRuntimeState {
     var runResults: [CommandResult] = [CommandResult(status: 0, output: "")]
     var ran: [[String]] = []
     var inputs: [String] = []
+    var runEnvironments: [[String: String]] = [] // run ごとに追加で渡した環境変数（`ran` と同じ順）
 }
 
 final class FakeGitHub: OrchestratorGitHub {
@@ -418,10 +419,21 @@ final class FakeRuntime: LoopRuntime {
         state.withLock { $0.inputs }
     }
 
-    func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult {
+    var runEnvironments: [[String: String]] {
+        state.withLock { $0.runEnvironments }
+    }
+
+    func run(
+        _ arguments: [String],
+        input: String,
+        environment: [String: String],
+        for repository: RepositoryConfig,
+        timeout: Duration
+    ) async throws -> CommandResult {
         let result = state.withLock { state in
             state.ran.append(arguments)
             state.inputs.append(input)
+            state.runEnvironments.append(environment)
             let result = state.runResults[0]
             if state.runResults.count > 1 {
                 state.runResults.removeFirst()

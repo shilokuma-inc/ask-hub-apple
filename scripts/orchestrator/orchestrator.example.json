@@ -4,5 +4,6 @@
     { "repository": "shilokuma-inc/ask-hub-apple", "path": "~/Desktop/ios/ask-hub-apple" }
   ],
   "pollIntervalSeconds": 60,
+  "model": "claude-opus-5-5",
   "loopCommand": ["/Users/<ユーザー名>/.local/bin/askhub-start-loop", "{repository}", "{checkoutPath}", "{controlPath}", "{discussion}"]
 }

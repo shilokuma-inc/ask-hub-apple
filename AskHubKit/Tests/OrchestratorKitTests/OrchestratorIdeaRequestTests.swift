@@ -23,6 +23,8 @@ extension OrchestratorTests {
 
         // プロンプト（依頼の本文を含む）は引数ではなく標準入力で渡す
         #expect(runtime.ran.first == IdeaCommandTemplate.defaultArguments)
+        // 依頼から Discussion を作る claude も、設定のモデル（既定は Opus 5.5）で動かす
+        #expect(runtime.runEnvironments.first == ["ANTHROPIC_MODEL": "claude-opus-5-5"])
         #expect(runtime.inputs.first?.contains("依頼 Issue: #7") == true)
         #expect(runtime.ran.first?.contains { $0.contains("朝だけにしたい") } == false)
         #expect(github.ideaComments.count == 1)

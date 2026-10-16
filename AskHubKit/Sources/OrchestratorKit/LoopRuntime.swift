@@ -18,14 +18,31 @@ public protocol LoopRuntime: Sendable {
     func clearNoTasksMarker(of repository: RepositoryConfig) async
     /// ループが最後に動いた時刻（state ファイル・goal・最新のログの更新時刻のうち新しいもの）。無ければ `nil`
     func lastActivity(of repository: RepositoryConfig) async -> Date?
-    /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める
-    func run(_ arguments: [String], input: String, for repository: RepositoryConfig, timeout: Duration) async throws -> CommandResult
+    /// `arguments` をシェルを経由せずに実行し、終わるまで待つ。`input` は標準入力に渡す。`timeout` を過ぎたら止める。
+    /// `environment` は、この実行にだけ追加で渡す環境変数（claude のモデルとエフォートを渡すのに使う）
+    func run(
+        _ arguments: [String],
+        input: String,
+        environment: [String: String],
+        for repository: RepositoryConfig,
+        timeout: Duration
+    ) async throws -> CommandResult
 }
 
 extension LoopRuntime {
     /// 追加の環境変数なしで `arguments` を実行する。終了は待たない
     public func launch(_ arguments: [String], for repository: RepositoryConfig) async throws {
         try await launch(arguments, environment: [:], for: repository)
+    }
+
+    /// 追加の環境変数なしで `arguments` を実行し、終わるまで待つ
+    public func run(
+        _ arguments: [String],
+        input: String,
+        for repository: RepositoryConfig,
+        timeout: Duration
+    ) async throws -> CommandResult {
+        try await run(arguments, input: input, environment: [:], for: repository, timeout: timeout)
     }
 }
 

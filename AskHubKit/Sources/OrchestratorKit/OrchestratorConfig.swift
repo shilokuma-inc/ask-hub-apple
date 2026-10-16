@@ -34,6 +34,26 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public let trustsRepositoryWriters: Bool
     /// ループのビルドの Mac（xcb）の情報を書き出す設定。無ければ書き出さない
     public let buildHosts: BuildHostsConfig?
+    /// 起動する claude（ループ・準備・コンフリクトの解消・依頼からの Discussion 作成）のモデル。
+    /// Discussion のモデルの指定（`LoopOptions`）が無いループもこれで回る
+    public let claudeModel: String
+    /// 起動する claude のエフォート。`nil` は claude の既定
+    public let claudeEffort: LoopEffort?
+
+    /// 起動するコマンドに渡す、claude のモデルとエフォートの環境変数。
+    /// claude はコマンドラインの `--model` / `--effort` が無ければこれを使う（起動スクリプトは Discussion の指定を引数で上書きする）
+    public var claudeEnvironment: [String: String] {
+        var environment = [Self.modelVariable: claudeModel]
+        if let claudeEffort {
+            environment[Self.effortVariable] = claudeEffort.rawValue
+        }
+        return environment
+    }
+
+    /// claude がモデルを読む環境変数
+    public static let modelVariable = "ANTHROPIC_MODEL"
+    /// claude がエフォートを読む環境変数
+    public static let effortVariable = "CLAUDE_CODE_EFFORT_LEVEL"
 
     public var trustedAuthors: TrustedAuthors {
         TrustedAuthors(trustedAuthorLogins)
@@ -59,7 +79,9 @@ public struct OrchestratorConfig: Sendable, Equatable {
         conflictCommand: ConflictCommandTemplate? = nil,
         repositoryCommands: RepositoryCommands? = nil,
         trustsRepositoryWriters: Bool = true,
-        buildHosts: BuildHostsConfig? = nil
+        buildHosts: BuildHostsConfig? = nil,
+        claudeModel: String = LoopModel.standard.rawValue,
+        claudeEffort: LoopEffort? = nil
     ) {
         self.trustedAuthorLogins = trustedAuthorLogins
         self.repositories = repositories
@@ -70,6 +92,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
         self.conflictCommand = conflictCommand ?? .standard(besides: loopCommand)
         self.trustsRepositoryWriters = trustsRepositoryWriters
         self.buildHosts = buildHosts
+        self.claudeModel = claudeModel
+        self.claudeEffort = claudeEffort
         self.repositoryCommands = repositoryCommands ?? .standard(
             homeDirectory: NSHomeDirectory(),
             newCheckoutDirectory: RepositoryCommands.defaultCheckoutDirectory(for: repositories, homeDirectory: NSHomeDirectory())
