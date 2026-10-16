@@ -37,6 +37,15 @@
   修飾子を 1 つも付けないと GitHub 全体を検索するので、organization が空なら検索しない
 - CodeRabbit の無料枠は 1 時間に 1 回のレビューで、上限に当たった PR には「Review rate limited」と出る。上限が戻っても自動ではレビューされないので、
   PR に `@coderabbitai review` とコメントして頼む（1 回で 1 本の PR を使い切る。上限中に push した続きのコミットは、そのまま未レビューで残る）
+- コミットの `statusCheckRollup.contexts` は check run（`CheckRun`。GitHub Actions など）と commit status（`StatusContext`。CodeRabbit など）が混ざった connection。
+  `__typename` で見分け、GitHub Actions の check run は `checkSuite.app.slug == "github-actions"` で選ぶ。`CheckRun.conclusion` は実行中なら `null`、
+  `StatusContext.description` やアプリが削除された check run の `checkSuite.app` も `null` になり得るので optional で受ける
+- 同じコミットに `push` と `pull_request` の両方で同じワークフローが走ると、`statusCheckRollup.contexts` に同名の check run（`build / build`）が 2 件並ぶ。
+  名前で 1 件に絞らず、全件を見て「1 つでも失敗なら失敗」で判定する
+- CodeRabbit は PR の head のコミットに commit status `CodeRabbit` を付ける。レビュー中は `pending`（"Review in progress"）、完了は `success`（"Review completed"）で、
+  無料枠の上限に当たったときも `success`（"Review rate limited"）になる。レート制限かどうかは `description` の文言でしか見分けられない
+- コミットの `statusCheckRollup.state` は check run と commit status をまとめた値なので、CodeRabbit が `pending` の間は GitHub Actions が全部成功していても `PENDING` になる。
+  GitHub Actions だけで判定したいときは `state` ではなく `contexts` を取り、check run だけを見る
 
 ## ビルド・テスト
 

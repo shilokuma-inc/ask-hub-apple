@@ -2,12 +2,31 @@ import Foundation
 
 /// アプリの「マージ待ち」に出す、epic → develop の最終 PR（`epic-final`。Discussion #1 の Q13）
 public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
-    /// CI（最新コミットのチェック）の状態
+    /// CI の状態。最新コミットの **GitHub Actions の check run だけ**から決める（Discussion #460）。
+    /// CodeRabbit などの commit status は含めない（処理中のまま止まることがあり、マージ条件にしない）
     public enum ChecksState: String, Sendable, Equatable, Hashable {
+        /// GitHub Actions の check run がすべて成功（NEUTRAL / SKIPPED を含む）
         case success
+        /// 失敗は無いが、まだ終わっていない check run がある
         case pending
+        /// 失敗（TIMED_OUT / CANCELLED などを含む）した check run が 1 つでもある
         case failure
-        /// チェックが 1 つも無い
+        /// GitHub Actions の check run が 1 つも無い
+        case none
+    }
+
+    /// CodeRabbit のレビューの状態（commit status `CodeRabbit` から）。
+    /// レビューを見てからマージしたい人のための**情報**で、マージ条件（`canMerge`）には使わない（Discussion #460）
+    public enum CodeRabbitState: String, Sendable, Equatable, Hashable {
+        /// 処理中（レビュー中。commit status が `PENDING` か `EXPECTED`）
+        case inProgress
+        /// 完了（レビュー済み）
+        case completed
+        /// レート制限（無料枠の上限で止まった。"Review rate limited"）
+        case rateLimited
+        /// 失敗（commit status が `ERROR` / `FAILURE`）
+        case failed
+        /// commit status `CodeRabbit` が無い（知らない `state` のときも含む）
         case none
     }
 
@@ -38,6 +57,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     public var author: String?
     public var checks: ChecksState
     public var mergeability: Mergeability
+    /// CodeRabbit の状態。情報として出すだけで、マージできるかには関係しない
+    public var codeRabbit: CodeRabbitState
 
     public init(
         id: String,
@@ -51,7 +72,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         headSHA: String,
         author: String?,
         checks: ChecksState,
-        mergeability: Mergeability
+        mergeability: Mergeability,
+        codeRabbit: CodeRabbitState = .none
     ) {
         self.id = id
         self.repository = repository
@@ -65,9 +87,11 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         self.author = author
         self.checks = checks
         self.mergeability = mergeability
+        self.codeRabbit = codeRabbit
     }
 
-    /// マージボタンを押せるか。CI が成功していて、コンフリクトしていないこと（Q13）
+    /// マージボタンを押せるか。GitHub Actions の CI が成功していて、コンフリクトしていないこと（Q13・Discussion #460）。
+    /// `codeRabbit` は見ない
     public var canMerge: Bool {
         checks == .success && mergeability == .mergeable
     }
