@@ -4,9 +4,10 @@
 #
 # 消すもの（checkout の隣にあるもの。<stem> はディレクトリ名から -ios を除いたもの）:
 #   - checkout と、ループの worktree（<stem>-ralph-ctl / -ralph-a / -ralph-b）
+#   - 手動ループの worktree（ralph-kit 1.4.0 から Discussion ごとに作る <stem>-ralph-d<番号>-ctl / -a / -b）
 #   - xcodebuild のラッパーなどが作る DerivedData（<stem>-ralph-dd*・<ディレクトリ名>-ralph-dd*・<ディレクトリ名>-DerivedData）
 #   - ~/Library/Developer/Xcode/DerivedData のうち、消す場所のプロジェクトのもの
-# 制御用 worktree の .claude/ は、消す前に ASKHUB_ARCHIVE_DIR（既定: ~/Library/Logs/askhub/archive）へ退避する。
+# 制御用 worktree（手動ループのものも）の .claude/ は、消す前に ASKHUB_ARCHIVE_DIR（既定: ~/Library/Logs/askhub/archive）へ退避する。
 #
 # --force を付けなければ、消す前に次を確かめ、1 つでもあれば消さずに終了コード 3 で終わる:
 #   - 未コミットの変更（ループの作業ファイル .claude/askhub-* と .claude/ralph-*.local.* は除く）
@@ -14,7 +15,7 @@
 #   - どのリモートにも無いコミットを持つブランチのうち、既定ブランチ（origin）に取り込んでも何も変わらないもの以外
 #     （squash merge 済みのブランチは、取り込んでも変わらないので消してよいものとして扱う）
 #   - 確かめられないこと（checkout やループの worktree が git の作業ツリーとして読めない・確かめるための git が失敗した）
-# ループのプロセスが動いていれば、--force でも消さない。
+# ループ（手動ループも）のプロセスが動いていれば、--force でも消さない。
 #
 # 人に伝える行は `ASKHUB_RESULT: …`、失敗の理由は `ASKHUB_ERROR: …` で出す（依頼 Issue にはこの行だけが書かれる。
 # ローカルのパスを含めない）。
@@ -54,22 +55,38 @@ STEM="${NAME%-ios}"
 [[ "$(dirname "$CTL")" == "$PARENT" ]] || reject "制御用 worktree が checkout の隣にありません"
 SLOT_A="$PARENT/$STEM-ralph-a"
 SLOT_B="$PARENT/$STEM-ralph-b"
+# ループの制御用 worktree と、ループの worktree（制御用 worktree とスロット）。
+# 手動ループ（ralph-kit 1.4.0 の askhub-manual.sh）は Discussion ごとに <stem>-ralph-d<番号>-ctl / -a / -b を作るので、それも含める。
+# DerivedData の <stem>-ralph-dd* と取り違えないよう、ralph- の後が d<数字>-ctl / -a / -b のものだけを拾う
+CONTROLS=("$CTL")
+WORKTREES=("$CTL" "$SLOT_A" "$SLOT_B")
+for path in "$PARENT/$STEM"-ralph-d*; do
+  rest="${path#"$PARENT/$STEM-ralph-"}"
+  [[ -e "$path" && "$rest" =~ ^d[0-9]+-(ctl|a|b)$ ]] || continue
+  WORKTREES+=("$path")
+  [[ "${BASH_REMATCH[1]}" != ctl ]] || CONTROLS+=("$path")
+done
 
-# ループのプロセスが生きていれば消さない（--force でも）
-PID_FILE="$CTL/.claude/askhub-loop.pid"
-if [[ -f "$PID_FILE" ]]; then
+# ループのプロセスが生きていれば消さない（--force でも）。手動ループも、制御用 worktree ごとに PID を記録する
+for control in "${CONTROLS[@]}"; do
+  PID_FILE="$control/.claude/askhub-loop.pid"
+  [[ -f "$PID_FILE" ]] || continue
   pid=$(tr -d '[:space:]' < "$PID_FILE")
   if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-    reject "ループのプロセスが動いています。止めてから依頼し直してください"
+    if [[ "$control" == "$CTL" ]]; then
+      reject "ループのプロセスが動いています。止めてから依頼し直してください"
+    fi
+    discussion="${control#"$PARENT/$STEM-ralph-d"}"
+    reject "手動ループ（Discussion #${discussion%-ctl}）のプロセスが動いています。止めてから依頼し直してください"
   fi
-fi
+done
 
 # 消してよいかを確かめる。確かめるための git が失敗したら、消してよいとは判断しない
 # （失敗を「変更なし」と取り違えると、未コミットの変更や未 push のコミットごと消してしまう）
 if [[ "$FORCE" != true ]]; then
   problems=()
   checkout_readable=false
-  for dir in "$CHECKOUT" "$CTL" "$SLOT_A" "$SLOT_B"; do
+  for dir in "$CHECKOUT" "${WORKTREES[@]}"; do
     [[ -e "$dir" ]] || continue
     label=$(basename "$dir")
     # 親のディレクトリのリポジトリを読まないよう、その場所自体が作業ツリーの最上位であることも確かめる
@@ -127,7 +144,7 @@ fi
 
 # 消す場所。checkout の隣の DerivedData は、ラッパーの命名に合わせて拾う
 targets=()
-for path in "$CHECKOUT" "$CTL" "$SLOT_A" "$SLOT_B" \
+for path in "$CHECKOUT" "${WORKTREES[@]}" \
   "$PARENT/$STEM"-ralph-dd "$PARENT/$STEM"-ralph-dd-* \
   "$PARENT/$NAME"-ralph-dd "$PARENT/$NAME"-ralph-dd-* "$PARENT/$NAME"-DerivedData; do
   [[ -e "$path" ]] || continue
@@ -139,7 +156,7 @@ if [[ -d "$XCODE_DERIVED" ]]; then
   for info in "$XCODE_DERIVED"/*/info.plist; do
     [[ -f "$info" ]] || continue
     workspace=$(plutil -extract WorkspacePath raw -o - "$info" 2>/dev/null || true)
-    for root in "$CHECKOUT" "$CTL" "$SLOT_A" "$SLOT_B"; do
+    for root in "$CHECKOUT" "${WORKTREES[@]}"; do
       if [[ -n "$workspace" && ( "$workspace" == "$root" || "$workspace" == "$root/"* ) ]]; then
         targets+=("$(dirname "$info")")
         break
@@ -153,12 +170,20 @@ if [[ ${#targets[@]} -eq 0 ]]; then
   exit 0
 fi
 
-# 制御用 worktree の goal・playbook・state を退避する（完了した epic の退避と同じ場所）
-if [[ -d "$CTL/.claude" ]]; then
-  DEST="$ARCHIVE_DIR/$STEM/removed-$(date +%Y%m%d-%H%M%S)"
-  mkdir -p "$DEST"
-  cp -R "$CTL/.claude" "$DEST/"
-  git -C "$CTL" branch --show-current > "$DEST/branch.txt" 2>/dev/null || true
+# 制御用 worktree の goal・playbook・state を退避する（完了した epic の退避と同じ場所）。
+# 手動ループの制御用 worktree は、その名前のディレクトリの下に退避する
+DEST="$ARCHIVE_DIR/$STEM/removed-$(date +%Y%m%d-%H%M%S)"
+archived=false
+for control in "${CONTROLS[@]}"; do
+  [[ -d "$control/.claude" ]] || continue
+  dest="$DEST"
+  [[ "$control" == "$CTL" ]] || dest="$DEST/$(basename "$control")"
+  mkdir -p "$dest"
+  cp -R "$control/.claude" "$dest/"
+  git -C "$control" branch --show-current > "$dest/branch.txt" 2>/dev/null || true
+  archived=true
+done
+if [[ "$archived" == true ]]; then
   result "制御用 worktree の .claude/ を担当 PC のアーカイブに退避しました"
 fi
 
