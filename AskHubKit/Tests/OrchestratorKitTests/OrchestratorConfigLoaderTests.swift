@@ -225,8 +225,8 @@ struct OrchestratorConfigLoaderTests {
         let standard = try decode(config())
         #expect(standard.claudeModel == "claude-opus-5-5")
         #expect(standard.claudeEffort == nil)
-        // エフォートを指定しなければ、claude の既定に任せる（環境変数を渡さない）
-        #expect(standard.claudeEnvironment == ["ANTHROPIC_MODEL": "claude-opus-5-5"])
+        // エフォートを指定しなければ auto（claude の既定）を渡し、起動元から継承した値を使わせない
+        #expect(standard.claudeEnvironment == ["ANTHROPIC_MODEL": "claude-opus-5-5", "CLAUDE_CODE_EFFORT_LEVEL": "auto"])
 
         let configured = try decode(
             config().replacingOccurrences(of: #""repositories""#, with: #""model": " sonnet ", "effort": "xhigh", "repositories""#)

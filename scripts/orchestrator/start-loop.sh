@@ -21,7 +21,7 @@
 #                            設定の一覧と担当リポジトリへの書き込み権限を持つアカウントを合わせて渡す。再開では playbook の値も書き直す
 #   ASKHUB_BOOTSTRAP_MODEL   準備に使うモデル（既定: ループと同じモデル）
 #   ANTHROPIC_MODEL          claude の既定のモデル。オーケストレーターが設定の model（既定: claude-opus-5-5）を渡す
-#   CLAUDE_CODE_EFFORT_LEVEL claude の既定のエフォート。オーケストレーターが設定の effort を渡す（省略時は claude の既定）
+#   CLAUDE_CODE_EFFORT_LEVEL claude の既定のエフォート。オーケストレーターが設定の effort を渡す（省略時は auto = claude の既定）
 #                            Discussion にモデル・エフォートの目印（ask-hub:loop-options）があれば、そちらを --model / --effort で渡す
 #   ASKHUB_RESUME_REASON     再開の理由。オーケストレーターが起動ごとに渡す（decision-log: 仮決め一覧への指示）
 #   ASKHUB_XCODEBUILD_WRAPPER  ループに xcodebuild の代わりに使わせるラッパー（既定: ~/.config/askhub/xcodebuild が実行可能ならそれ）。

@@ -91,7 +91,10 @@ struct OrchestratorTrustTests {
 
         #expect(runtime.launched.count == 1)
         // 起動スクリプトが playbook に書く、信用する author
-        #expect(runtime.launchEnvironments == [["ASKHUB_TRUSTED_AUTHORS": "mrs1669,partner", "ANTHROPIC_MODEL": "claude-opus-5-5"]])
+        let expected = [
+            "ASKHUB_TRUSTED_AUTHORS": "mrs1669,partner", "ANTHROPIC_MODEL": "claude-opus-5-5", "CLAUDE_CODE_EFFORT_LEVEL": "auto"
+        ]
+        #expect(runtime.launchEnvironments == [expected])
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple で信用する author: mrs1669, partner"))
     }
 

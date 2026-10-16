@@ -37,23 +37,22 @@ public struct OrchestratorConfig: Sendable, Equatable {
     /// 起動する claude（ループ・準備・コンフリクトの解消・依頼からの Discussion 作成）のモデル。
     /// Discussion のモデルの指定（`LoopOptions`）が無いループもこれで回る
     public let claudeModel: String
-    /// 起動する claude のエフォート。`nil` は claude の既定
+    /// 起動する claude のエフォート。`nil` は claude の既定（モデルごとの既定。`auto` を渡す）
     public let claudeEffort: LoopEffort?
 
     /// 起動するコマンドに渡す、claude のモデルとエフォートの環境変数。
-    /// claude はコマンドラインの `--model` / `--effort` が無ければこれを使う（起動スクリプトは Discussion の指定を引数で上書きする）
+    /// claude はコマンドラインの `--model` / `--effort` が無ければこれを使う（起動スクリプトは Discussion の指定を引数で上書きする）。
+    /// エフォートを指定しないときも `auto` を渡し、オーケストレーターの起動元から継承した値を使わせない
     public var claudeEnvironment: [String: String] {
-        var environment = [Self.modelVariable: claudeModel]
-        if let claudeEffort {
-            environment[Self.effortVariable] = claudeEffort.rawValue
-        }
-        return environment
+        [Self.modelVariable: claudeModel, Self.effortVariable: claudeEffort?.rawValue ?? Self.defaultEffort]
     }
 
     /// claude がモデルを読む環境変数
     public static let modelVariable = "ANTHROPIC_MODEL"
     /// claude がエフォートを読む環境変数
     public static let effortVariable = "CLAUDE_CODE_EFFORT_LEVEL"
+    /// エフォートを指定しないときに渡す値（claude のモデルごとの既定）
+    public static let defaultEffort = "auto"
 
     public var trustedAuthors: TrustedAuthors {
         TrustedAuthors(trustedAuthorLogins)
