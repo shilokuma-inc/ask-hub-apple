@@ -32,13 +32,14 @@ public struct GitHubMergeQueue: MergeQueueProviding {
                   await trustedAuthors.trustedAuthors(for: pullRequest.repository).contains(pullRequest.author) else {
                 continue
             }
-            // contexts が 1 ページ（100 件）に収まらない PR は、残りを取り直してから CI の状態を決める（1 ページ目だけで黙って決めない）
+            // contexts が 1 ページ（100 件）に収まらない PR は、残りを取り直してから CI と CodeRabbit の状態を決める（1 ページ目だけで黙って決めない）
             if let contexts = node.rollupContexts, contexts.pageInfo.hasNextPage {
                 guard let cursor = contexts.pageInfo.endCursor else {
                     throw GitHubError.invalidResponse
                 }
-                let rest = try await remainingContexts(of: pullRequest, after: cursor)
-                pullRequest.checks = EpicNode.checks(contexts.nodes.compactMap(\.self) + rest)
+                let all = try await contexts.nodes.compactMap(\.self) + remainingContexts(of: pullRequest, after: cursor)
+                pullRequest.checks = EpicNode.checks(all)
+                pullRequest.codeRabbit = EpicNode.codeRabbit(all)
             }
             trusted.append(pullRequest)
         }
@@ -204,7 +205,8 @@ private struct EpicNode: Decodable {
             headSHA: headRefOid,
             author: author?.login,
             checks: Self.checks(rollupContexts?.nodes.compactMap(\.self) ?? []),
-            mergeability: Self.mergeability(mergeable)
+            mergeability: Self.mergeability(mergeable),
+            codeRabbit: Self.codeRabbit(rollupContexts?.nodes.compactMap(\.self) ?? [])
         )
     }
 
@@ -224,6 +226,28 @@ private struct EpicNode: Decodable {
             return .pending
         }
         return runs.isEmpty ? .none : .success
+    }
+
+    /// commit status `CodeRabbit` から CodeRabbit の状態を決める。マージ条件には使わない（Discussion #460）。
+    /// `PENDING` / `EXPECTED` → 処理中、`SUCCESS` は `description` に "rate limited" を含めばレート制限・それ以外は完了、
+    /// `ERROR` / `FAILURE` → 失敗、無ければ なし。レート制限の見分けは文言の照合なので、CodeRabbit が文言を変えると完了に見える
+    static func codeRabbit(_ contexts: [RollupContextNode]) -> EpicPullRequest.CodeRabbitState {
+        guard let status = contexts.first(where: { $0.typename == "StatusContext" && $0.context == "CodeRabbit" }) else {
+            return .none
+        }
+        switch status.state {
+        case "PENDING", "EXPECTED":
+            return .inProgress
+
+        case "SUCCESS":
+            return status.description?.localizedCaseInsensitiveContains("rate limited") == true ? .rateLimited : .completed
+
+        case "ERROR", "FAILURE":
+            return .failed
+
+        default:
+            return .none
+        }
     }
 
     static func mergeability(_ value: String?) -> EpicPullRequest.Mergeability {

@@ -6,7 +6,8 @@ extension EpicPullRequest {
     static func fixture(
         checks: ChecksState = .success,
         mergeability: Mergeability = .mergeable,
-        author: String? = "mrs1669"
+        author: String? = "mrs1669",
+        codeRabbit: CodeRabbitState = .none
     ) -> Self {
         Self(
             id: "PR_50",
@@ -20,7 +21,8 @@ extension EpicPullRequest {
             headSHA: "abc123",
             author: author,
             checks: checks,
-            mergeability: mergeability
+            mergeability: mergeability,
+            codeRabbit: codeRabbit
         )
     }
 }
@@ -35,6 +37,17 @@ struct EpicPullRequestTests {
         #expect(EpicPullRequest.fixture(checks: .none).blockingReason == "CI が実行されていません")
         #expect(!EpicPullRequest.fixture(mergeability: .unknown).canMerge)
         #expect(EpicPullRequest.fixture().filesURL.absoluteString == "https://github.com/shilokuma-inc/ask-hub-apple/pull/50/files")
+    }
+
+    @Test func codeRabbitStateDoesNotAffectMergeability() {
+        // CodeRabbit の状態は情報として出すだけで、マージ条件には使わない（Discussion #460）
+        for state in [EpicPullRequest.CodeRabbitState.inProgress, .completed, .rateLimited, .failed, .none] {
+            #expect(EpicPullRequest.fixture(codeRabbit: state).canMerge)
+            #expect(EpicPullRequest.fixture(codeRabbit: state).blockingReason == nil)
+            #expect(EpicPullRequest.fixture(checks: .failure, codeRabbit: state).blockingReason == "CI が失敗しています")
+        }
+        // 既定値は なし
+        #expect(EpicPullRequest.fixture().codeRabbit == .none)
     }
 }
 
@@ -134,6 +147,7 @@ struct GitHubMergeQueueTests {
         #expect(pulls.map(\.number) == [1, 2, 4])
         #expect(pulls.map(\.checks) == [.success, .pending, .none])
         #expect(pulls.map(\.mergeability) == [.mergeable, .conflicting, .unknown])
+        #expect(pulls.map(\.codeRabbit) == [.completed, .none, .none])
         #expect(pulls.first?.headSHA == "sha1")
         let variables = try Self.variables(of: http.requests.first)
         #expect(variables["query"] as? String == "org:shilokuma-inc is:pr is:open label:epic-final")
@@ -189,6 +203,46 @@ struct GitHubMergeQueueTests {
         #expect(pulls[3].blockingReason == "CI が実行されていません")
     }
 
+    @Test func fillsCodeRabbitStateFromCommitStatus() async throws {
+        let http = MockHTTPClient([
+            .init(status: 200, body: Self.searchPage([
+                // レビュー中（PENDING）。GitHub Actions が成功ならマージできる
+                Self.node(number: 1, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status()
+                ])),
+                // 完了
+                Self.node(number: 2, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "SUCCESS", description: "Review completed")
+                ])),
+                // レート制限（SUCCESS だが description が "Review rate limited"）
+                Self.node(number: 3, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "SUCCESS", description: "Review rate limited")
+                ])),
+                // 失敗
+                Self.node(number: 4, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "FAILURE", description: "Review failed")
+                ])),
+                // EXPECTED はまだ報告が無い状態なので処理中
+                Self.node(number: 5, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "EXPECTED", description: nil)
+                ])),
+                // 別の context の commit status や、CodeRabbit という名前の check run は見ない
+                Self.node(number: 6, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status("ci/other", state: "PENDING"),
+                    Self.checkRun("CodeRabbit", app: "coderabbitai")
+                ])),
+                // statusCheckRollup が無い
+                Self.node(number: 7, author: "mrs1669", mergeable: "MERGEABLE", contexts: nil)
+            ]))
+        ])
+        let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
+
+        #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7])
+        #expect(pulls.map(\.codeRabbit) == [.inProgress, .completed, .rateLimited, .failed, .inProgress, .none, .none])
+        // CodeRabbit の状態はマージ条件に関係しない（GitHub Actions が成功なら 1〜6 はマージできる）
+        #expect(pulls.map(\.canMerge) == [true, true, true, true, true, true, false])
+    }
+
     @Test func fetchesRemainingContextsWhenFirstPageIsNotLast() async throws {
         let http = MockHTTPClient([
             // 1 ページ目は成功だけだが、まだ続きがある
@@ -213,6 +267,8 @@ struct GitHubMergeQueueTests {
 
         #expect(pulls.map(\.number) == [1, 2])
         #expect(pulls.map(\.checks) == [.failure, .success])
+        // 2 ページ目にあった CodeRabbit の commit status も拾う
+        #expect(pulls.map(\.codeRabbit) == [.inProgress, .none])
         #expect(http.requests.count == 3)
         let second = try Self.variables(of: http.requests[1])
         #expect(second["owner"] as? String == "o")
