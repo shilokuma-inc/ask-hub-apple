@@ -49,13 +49,6 @@ extension MergeQueueModel {
     }
 }
 
-extension MergeQueueModel {
-    /// デモモード・Preview・UI テスト用。GitHub には接続しない
-    static func sample() -> MergeQueueModel {
-        MergeQueueModel(tokenStore: InMemoryTokenStore(token: "sample")) { _ in SampleMergeQueue() }
-    }
-}
-
 /// デモモード・Preview・UI テスト用。マージしたことにして GitHub には送らない
 struct SampleMergeQueue: MergeQueueProviding {
     static let pullRequests = [
