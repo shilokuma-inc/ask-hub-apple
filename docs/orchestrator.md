@@ -151,6 +151,8 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `newRepositoryDirectory` | | 新しく作ったリポジトリを clone するディレクトリ（`~` 可）。省略時は最初の担当リポジトリの checkout と同じ場所 |
 | `conflictCommand` | | epic の最終 PR のコンフリクトを解消させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-resolve-conflict`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` が使える |
 | `buildHosts` | | ループのビルドの Mac（xcb）の情報を GitHub に書き出す設定（下の「`buildHosts`」）。**xcb を動かしている Mac のオーケストレーターだけに書く**。省略するとこの機能を止める |
+| `model` | | 起動する `claude`（ループ・準備・コンフリクトの解消・依頼からの Discussion 作成）のモデル。省略時は `claude-opus-5-5`。`opus` などの別名も書ける。環境変数 `ANTHROPIC_MODEL` で渡すので、`ideaCommand` などを書き換えても効く。Discussion でモデルを指定したループ（`docs/protocol.md` の「ループのモデルとエフォート」）はそちらを使う |
+| `effort` | | 起動する `claude` のエフォート（`low` / `medium` / `high` / `xhigh` / `max`）。省略時は claude の既定。環境変数 `CLAUDE_CODE_EFFORT_LEVEL` で渡す。Discussion で指定したループはそちらを使う |
 
 以前の設定にあった `org` は不要になった（書いてあっても無視する）。
 
@@ -210,6 +212,10 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 - 再開（`discussion` が空）では、前のループの state ファイルをループの起動の直前まで残す（その間は起動スクリプト自身の PID を記録し、
   state の時刻を更新する）。`ralph-setup.sh` などが一時的なエラーで落ちても state が残るので、オーケストレーターは異常終了として再試行する
   （先に消していたころは「タスクを残して止まっている」＝開始待ちに見え、再試行されずに止まったままになっていた）
+- **モデルとエフォート**: 新しい epic の準備では、Discussion の信用する author のコメントからモデルとエフォートの目印（`ask-hub:loop-options`。`docs/protocol.md` の「ループのモデルとエフォート」）を読み、
+  準備とループ本体の `claude` に `--model` / `--effort` で渡す。読んだ値は制御用 worktree の `.claude/askhub-loop-options.local.txt` に残し、再開でも同じ値を使う。
+  目印が無い・値が不正なとき（`--model` に渡せない形、知らないエフォート）は使わず、オーケストレーターが渡す設定の `model` / `effort`（環境変数）に任せる。
+  使うモデルとエフォートは、準備と再開のときにログに出す。`ASKHUB_BOOTSTRAP_MODEL` を設定すると、準備のモデルだけをそれにする
 - ループは `claude -p --permission-mode bypassPermissions` を `exec` で起動する。このプロセスの寿命がループの寿命になる。
   ralph の Stop hook はヘッドレスでも周回する（標準入力は `/dev/null`）
 - ログは `~/Library/Logs/askhub/loops/<リポジトリ>-bootstrap-*.log`（準備）と `<リポジトリ>-loop-*.log`（ループ）
