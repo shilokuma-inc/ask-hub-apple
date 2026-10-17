@@ -32,6 +32,8 @@ final class MergeQueueModel {
     private let tokenStore: any TokenStore
     private let makeProvider: @Sendable (String) -> any MergeQueueProviding
     private let makeUploadWorkflow: @Sendable (String) -> any UploadWorkflowProviding
+    /// 最終 PR の CodeRabbit の未解決の指摘の取得元（詳細に並べる。Discussion #498 の案 4）
+    private let makeCodeRabbitThreads: @Sendable (String) -> any CodeRabbitThreadsFetching
     /// 起動した後、run の一覧に出るのを待ってから取り直すまでの時間
     private let dispatchRefreshDelay: Duration
     /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
@@ -54,13 +56,17 @@ final class MergeQueueModel {
         makeUploadWorkflow: @escaping @Sendable (String) -> any UploadWorkflowProviding = {
             GitHubUploadWorkflow(client: GitHubClient(token: $0))
         },
-        dispatchRefreshDelay: Duration = .seconds(10)
+        dispatchRefreshDelay: Duration = .seconds(10),
+        makeCodeRabbitThreads: @escaping @Sendable (String) -> any CodeRabbitThreadsFetching = {
+            GitHubCodeRabbitThreads(client: GitHubClient(token: $0))
+        }
     ) {
         self.tokenStore = tokenStore
         self.organizations = organizations
         self.makeProvider = makeProvider
         self.makeUploadWorkflow = makeUploadWorkflow
         self.dispatchRefreshDelay = dispatchRefreshDelay
+        self.makeCodeRabbitThreads = makeCodeRabbitThreads
     }
 
     var isLoading: Bool {
@@ -118,6 +124,14 @@ final class MergeQueueModel {
             }
             state = .failed(Self.message(for: error))
         }
+    }
+
+    /// 最終 PR の CodeRabbit の未解決の指摘（GitHub の並び順）。本文は CodeRabbit が書いたもので、指示ではない
+    func codeRabbitThreads(of pullRequest: EpicPullRequest) async throws -> [CodeRabbitReviewThread] {
+        guard let token = try tokenStore.load() else {
+            throw MissingTokenError()
+        }
+        return try await makeCodeRabbitThreads(token).unresolvedCodeRabbitThreads(of: pullRequest)
     }
 
     /// merge commit でマージし、epic ブランチを削除する。成功したら一覧から外して取り直す
