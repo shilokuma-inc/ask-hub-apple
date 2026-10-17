@@ -216,12 +216,15 @@ restore_archived_epic() {
       [[ "$(open_tasks)" -eq 0 ]] || fail "今の epic（${current}）に未完了のタスクが残っています（${GOAL}）。${RESTORE_EPIC} は戻しません"
       archive_control_worktree
     fi
-    # 制御用 worktree とスロットを、戻す epic で作り直す（作業ファイルは無ければテンプレートで作られるので、退避したもので上書きする）
-    (cd "$CHECKOUT" && scripts/ralph-setup.sh "$RESTORE_EPIC" >/dev/null) || fail "${RESTORE_EPIC} の worktree を作れませんでした"
   fi
+  # 制御用 worktree とスロットを、戻す epic で作り直す（作業ファイルは無ければテンプレートで作られるので、退避したもので上書きする）。
+  # 前回の作り直しの途中で失敗していたときも呼び直す（スロットの作成や deny の確認が途中で止まっていることがある）
+  (cd "$CHECKOUT" && scripts/ralph-setup.sh "$RESTORE_EPIC" >/dev/null) || fail "${RESTORE_EPIC} の worktree を作れませんでした"
   [[ "$(git -C "$CTL" symbolic-ref --short HEAD 2>/dev/null)" == "$RESTORE_EPIC" ]] \
     || fail "制御用 worktree を ${RESTORE_EPIC} にできませんでした: $CTL"
   cp -R "$archive/.claude/." "$CTL/.claude/" || fail "作業ファイルを戻せませんでした（${archive}）"
+  # git 管理下のファイル（.claude/settings.json など）は、退避した古い版ではなく epic の版にする
+  git -C "$CTL" checkout --quiet -- .claude 2>/dev/null || true
   # 前のループの state・PID・知らせ済みの目印は持ち込まない（state は ralph-start.sh が作り直す）
   rm -f "$STATE" "$PID_FILE" "$NO_TASKS_FILE"
   log "${RESTORE_EPIC} の作業ファイルを戻しました（${archive}）"
@@ -422,7 +425,10 @@ PROMPT
 # ---- 再開 -------------------------------------------------------------------------
 else
   # 最終 PR への指示で、制御用 worktree が別の epic に移った後の epic を再開する
-  [[ -n "$RESTORE_EPIC" ]] && restore_archived_epic
+  # 関数を && の中で呼ぶと、関数の中で set -e が効かないので if で呼ぶ
+  if [[ -n "$RESTORE_EPIC" ]]; then
+    restore_archived_epic
+  fi
   [[ -f "$GOAL" && -f "$PLAYBOOK" ]] || fail "再開する制御用 worktree がありません: $CTL"
   [[ -f "$PROMISE_FILE" ]] || fail "完了語の記録がありません（${PROMISE_FILE}）。手で書くか、Discussion から始め直してください"
   PROMISE=$(head -1 "$PROMISE_FILE")
