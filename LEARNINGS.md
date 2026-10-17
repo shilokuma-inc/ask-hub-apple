@@ -50,6 +50,8 @@
   GitHub Actions だけで判定したいときは `state` ではなく `contexts` を取り、check run だけを見る
 - CodeRabbit がレビューしなかったときも commit status `CodeRabbit` は `success` で、`description` が "Review skipped" か、理由付きの
   "Review skipped: reviews are disabled for this base branch"（`.coderabbit.yaml` で自動レビューの対象外にした base 宛ての PR）になる。完了・レート制限と同じく文言でしか見分けられない
+- PR の timeline（GraphQL の `timelineItems`）からは、通常の push の時刻は取れない（取れるのは force push の `HeadRefForcePushedEvent` だけ）。
+  head を GitHub が受け取った時刻の目安には、commit status の `createdAt`（CodeRabbit は push を受け取ると付ける）か、コミットの `committedDate`（push より前になりうる）を使う
 
 ## ビルド・テスト
 
@@ -160,6 +162,9 @@
   表の 1 行のような組み立ては、要素ごとに `var` で作ってから配列にする（`BuildHost.tableCells`）
 - `FileHandle.readToEnd()` は、読む位置がファイルの終わりにあると空の `Data` ではなく `nil` を返す。`try?` で受けると読めなかったのと区別できないので、
   `try handle.readToEnd() ?? Data()` で受け、`catch` だけを失敗として扱う
+- Swift Testing の `#expect(...)` の中では mutating なメソッドを呼べない（「cannot use mutating member on immutable value」）。結果を `let` で受けてから `#expect` に渡す
+- 引数の型だけが違う同名のメソッド（`record(_ outcome: ReviewOutcome, …)` と `record(_ outcome: FixOutcome, …)`）に、両方の enum にある `.failed(reason:)` を渡すと
+  「ambiguous use of」になる。`FinalReviewTracker.ReviewOutcome.failed(reason:)` のように型を書く
 
 ## シェルスクリプト
 
@@ -180,6 +185,11 @@
 - `claude` の `--tools` / `--allowedTools` / `--disallowedTools` / `--add-dir` は値を複数とる（`<tools...>`）。直後に位置引数のプロンプトを置くと、ツール名として飲み込まれて
   プロンプトが空になり、`-p` が失敗する（偽の claude では気づけない）。プロンプトは標準入力で渡すか、`--` で区切る。
   差分などの信用しきれない文を読ませるときは、`--restricted --strict-mcp-config --tools "Read,Grep,Glob" --add-dir <読ませる場所>` で、読むツールだけ・作業ディレクトリの中だけに限れる
+- コマンド置換（`$(f)`）の中で呼んだ関数の `exit` は、サブシェルしか終わらせない。失敗の行も置換の値に吸い込まれる。
+  `set -e` のスクリプトでも、単独の代入（`v=$(f)`）なら止まるが、条件（`[[ "$(f)" == … ]]`・`if`）・ほかのコマンドの引数（`echo "$(f)"`）・`local v=$(f)` の中では止まらずに進む。
+  失敗で終わらせたい関数（`failed` など）は置換の外で呼び、値はグローバル変数で受け渡す
+- `set -o pipefail` のもとで `cmd | grep -q` を使うと、出力が長いとき `grep -q` が先に終わって `cmd` が SIGPIPE（141）で終わり、一致したのにパイプ全体が失敗になる。
+  出力を変数に入れてから調べるか、`grep ... >/dev/null` にする
 
 ## SwiftUI
 

@@ -78,7 +78,8 @@ read_remote_head() {
 
 # 公開のコメントに書かれうる文に、トークンらしい文字列が無いか
 contains_token() {
-  printf '%s' "$1" | grep -q -E 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'
+  # pipefail のもとで grep -q に渡すと、文が大きいとき printf が SIGPIPE で終わって見逃すので、-q を使わない
+  printf '%s' "$1" | grep -E 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' >/dev/null
 }
 
 git -C "$CHECKOUT" fetch -q origin "$HEAD_BRANCH" "$BASE_BRANCH" || failed "origin から ${HEAD_BRANCH} / ${BASE_BRANCH} を取得できませんでした"
@@ -164,7 +165,7 @@ fi
 check_remote_unchanged() {
   read_remote_head
   [[ "$REMOTE_HEAD" == "$HEAD_SHA" ]] && return 0
-  if [[ -n "$REMOTE_HEAD" ]] && git -C "$WORKTREE" rev-list "${HEAD_SHA}..${NEW_HEAD}" | grep -q -x "$REMOTE_HEAD"; then
+  if [[ -n "$REMOTE_HEAD" ]] && git -C "$WORKTREE" rev-list "${HEAD_SHA}..${NEW_HEAD}" | grep -x "$REMOTE_HEAD" >/dev/null; then
     failed "claude が ${HEAD_BRANCH} に push しました（${REMOTE_HEAD:0:7}）。push の前の確認をしていないので、内容を確かめてください"
   fi
   stale "$1"

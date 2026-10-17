@@ -630,6 +630,48 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 
 ログは `~/Library/Logs/askhub/loops/<リポジトリ>-review-<PR 番号>-*.log` と `…-fix-review-<PR 番号>-*.log`（claude の出力）。
 
+### 状態と遷移
+
+`FinalReviewTracker` が最終 PR ごとに持つ状態。状態コメントの目印の `state` と同じ（`docs/protocol.md` の「最終 PR の第三者レビューの進み具合」）。
+
+| 状態 | 意味 | 次に行うこと |
+| --- | --- | --- |
+| `waiting` | head を見始めた（CodeRabbit を待っている） | 10 分経つか、CodeRabbit がレート制限・失敗・スキップなら第三者レビュー → `reviewing` |
+| `reviewing` | `reviewCommand` を実行中 | 要修正 0 件 → `done`、要修正あり → `fixing`（3 回目なら `gave-up`）、head が進んでいた → `waiting`（新しい head が見えるまで待つ）、失敗 → `waiting`（3 回続いたら `gave-up`） |
+| `fixing` | 要修正を直す（`fixCommand`）。push した後は新しい head が見えるまで待つ | push で head が変わる → 新しい head で `waiting`（回数は引き継ぐ）、head が進んでいた → `waiting`（新しい head が見えるまで待つ）、失敗 → 直し直す（3 回続いたら `gave-up`） |
+| `done` | 今の head の第三者レビューで要修正が 0 件 | 何もしない（アプリからマージできる） |
+| `done-coderabbit` | CodeRabbit が今の head をレビューした（どの状態からでもなる。Q2） | 何もしない（アプリからマージできる） |
+| `gave-up` | 要修正が 3 回続いた・コマンドが同じ head で 3 回続けて失敗した | PR にあきらめたことをコメントする。アプリからはマージできない（GitHub の画面からはできる） |
+
+- head が変わったら、どの状態からでも `waiting` に戻り、待ち始めから数え直す（Q3）。要修正が続いた回数は、自分の修正の push で変わったときだけ引き継ぎ、
+  人の push・コンフリクトの解消・develop の取り込みなら 0 に戻す（人が直して push すればまた回る。Q1）
+- 一覧から消えた（マージ・クローズされた）PR は追跡をやめる
+- Claude の利用上限などで結果を記録せずに終えたときは、`reviewing` は `waiting` に戻り、`fixing` はそのまま（解除の後に試し直す）
+
+### `askhub-review-final`（第三者レビュー）
+
+`scripts/orchestrator/review-final.sh`。引数は `reviewCommand` の既定と同じ `<owner/repo> <checkoutPath> <headBranch> <baseBranch> <pullRequest> <headSHA>`。
+
+1. origin の head が `headSHA` のままかを確かめ、進んでいれば何もしない（`ASKHUB_RESULT: stale`）
+2. 一時 worktree に `headSHA` を checkout し、差分（`origin/<base>...<headSHA>`）と前回の第三者レビュー（`ASKHUB_TRUSTED_AUTHORS` の author が書いた目印付きのコメントのうち最新）を worktree の外に置く
+3. 実装の文脈を持たない `claude -p` にレビューさせる。プロンプトは標準入力で渡し、`--restricted --strict-mcp-config --tools "Read,Grep,Glob" --add-dir <一時ディレクトリ>` で
+   読むツールだけ・一時ディレクトリの中だけに限る（差分の文によるプロンプトインジェクションへの備え）。本文は `ASKHUB_REVIEW_BEGIN` 〜 `ASKHUB_REVIEW_END` の間に返させる
+4. 件数は claude の申告ではなく、本文の表の行（`🔴 要修正` / `🟡 提案`。対応が「修正済み」の行は数えない）から数える。重要度を読み取れない行・トークンらしい文字列があれば投稿しない。
+   HTML コメントは文字参照に書き換える
+5. コメントの直前に head をもう一度確かめ、目印（`ralph:third-party-review sha must may`）と見出しを付けて PR にコメントする（`ASKHUB_RESULT: reviewed must=N may=M`）
+
+### `askhub-fix-review`（要修正の修正）
+
+`scripts/orchestrator/fix-review.sh`。引数は `askhub-review-final` と同じ。
+
+1. origin の head が `headSHA` のままかを確かめ、`headSHA` の第三者レビュー（信用する author のもの・最新）を読む。レビューが無い・要修正が 0 件なら失敗（`failed`）にする（オーケストレーターは失敗に数える）
+2. 一時 worktree で `claude -p` に `🔴 要修正` だけを直させ、CLAUDE.md の検証を通させてコミットさせる（push・rebase・amend はさせない）
+3. push の前に確かめる: コミットしていない変更が無い・コミットが増えた・`headSHA` の上に積んだ・マージコミットが無い・差分がある・AI の帰属行が無い
+4. origin の head が `headSHA` のままなら `--force-with-lease=refs/heads/<epic>:<headSHA>` で push する（`ASKHUB_RESULT: fixed <新しい head>`）。
+   進んでいれば push しない（`stale`）。claude が自分で push していたら失敗にする
+
+どちらも、失敗は `ASKHUB_RESULT: failed <理由>`（終了コード 2）。origin を読めなかったときも `stale` ではなく失敗にする。
+
 ## 固まったループを止める
 
 `claude -p` が API の応答待ちなどで止まり、プロセスは生きたまま周回が進まなくなることがある。プロセスが生きていれば「動いている」とみなすだけでは気付けないので、毎回のポーリングの最初に次を確かめる。
