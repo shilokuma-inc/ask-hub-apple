@@ -201,7 +201,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | 呼ばれ方 | 動作 |
 | --- | --- |
 | `discussion` あり（`ready-for-loop` から） | 新しい epic を準備してからループを起動する。準備はヘッドレスの `claude` が行う（`ralph-setup.sh`・playbook のプレースホルダの置き換え・STEP A に沿った goal の作成・epic の push）。最後の行の `ASKHUB_PROMISE: <完了語>` を読み取る。Discussion はスクリプトが `gh` で取得し、**信用する author の本文・コメント・返信だけ**を `claude` に渡す |
-| `discussion` が空（ask への回答・仮決め一覧への指示・異常終了で再開） | 既存の制御用 worktree でループを起動し直す。片付け済みのスロットは作り直す。未完了のタスクが無ければ何もしない。ただし環境変数 `ASKHUB_RESUME_REASON=decision-log`（仮決め一覧への指示による再開）のときは、タスクが無くても起動する（指示はループが周回の最初に読んで修正タスクにするため） |
+| `discussion` が空（ask への回答・仮決め一覧や最終 PR への指示・異常終了で再開） | 既存の制御用 worktree でループを起動し直す。片付け済みのスロットは作り直す。未完了のタスクが無ければ何もしない。ただし環境変数 `ASKHUB_RESUME_REASON` が `decision-log`（仮決め一覧への指示による再開）か `final-pr`（最終 PR への指示による再開）のときは、タスクが無くても起動する（指示はループが周回の最初に読んで修正タスクにするため） |
 | state ファイルがある | ループが動いているので何もしない。ただし記録した PID（`.claude/askhub-loop.pid`）のプロセスが終わっていれば、残った state を片付けて続ける |
 
 - 前の epic が完了済み（未完了のタスクが無い）なら、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/` に退避してから worktree を片付ける。
@@ -209,7 +209,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
   worktree にコミットしていない変更がある・退避に失敗したときは、片付けずに失敗として返す
 - 信用する author は、オーケストレーターが起動ごとに環境変数 `ASKHUB_TRUSTED_AUTHORS` で渡す（設定の `trustedAuthors` と、そのリポジトリへの書き込み権限を持つアカウント。手で設定する必要は無い）。
   再開では、制御用 worktree の playbook の「信用する author」もこの値に書き直す
-- 再開の理由は、オーケストレーターが起動ごとに環境変数 `ASKHUB_RESUME_REASON` で渡す（今は仮決め一覧への指示による再開の `decision-log` だけ。`loopCommand` に書く必要は無い）
+- 再開の理由は、オーケストレーターが起動ごとに環境変数 `ASKHUB_RESUME_REASON` で渡す（仮決め一覧への指示による再開の `decision-log` と、最終 PR への指示による再開の `final-pr`。`loopCommand` に書く必要は無い）
 - オーケストレーターも PID ファイルを読み、state ファイルが残っていても PID のプロセスが居なければ「止まっている」とみなして再開する
 - 準備が途中で失敗した場合（完了語を読み取れない等）は、オーケストレーターの再試行で、同じ Discussion の途中の worktree を片付けてやり直す
 - 再開（`discussion` が空）では、前のループの state ファイルをループの起動の直前まで残す（その間は起動スクリプト自身の PID を記録し、
@@ -429,6 +429,21 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
   | state ファイルが現れないままプロセスが終わり、その間にループが指示へ返信している | 開始を確かめた（ポーリングの間に始まって終わった） |
   | state ファイルが現れないままプロセスが終わり、指示が未処理のまま | 最終 PR は書き直さず、起動し直す。3 回確かめられなければ、そのコメントでは再開しない（新しい指示が付けば、また再開する） |
 
+
+## 最終 PR への指示でループを再開する
+
+仮決め一覧の後に、担当リポジトリの open な `epic-final` の PR（信用する author が作ったもの）のコメントを見る
+（ページングを最後まで追う。扱いの決まりは `docs/protocol.md` の「最終 PR への指示」）。仮決め一覧が無い epic でも、最終 PR に付いた指摘を人間の指示で直させるため。
+
+- 信用する author の、最後のループの返信（`<!-- ask-hub:final-reply -->`）より後のコメントのうち、目印の無いものが未処理の指示。
+  CodeRabbit を含む信用しない author のコメント・オーケストレーターのコメント（`<!-- ask-hub:orchestrator -->` と、目印を付ける前の `（askhub-orchestrator）` で終わるもの）・
+  `@coderabbitai` で始まる CodeRabbit への依頼では再開しない
+- ループが止まっていて（state ファイルが無く、異常終了でもない）、制御用 worktree がその PR の epic（head のブランチ）にあり、未処理の指示があれば、ループを再開する
+- 再開の進め方（同じコメントでは 1 回だけ・制御用 worktree が別の epic ならログに 1 回出して再開しない・開始の確かめ方・3 回まで・再び完了したら最終 PR の本文を書き直す）は、
+  上記の仮決め一覧と同じ。仮決め一覧と最終 PR の両方に指示があっても、1 回のポーリングで起動するループは 1 つ（ループは周回の最初に両方を読む）
+- 再開では `loopCommand` に環境変数 `ASKHUB_RESUME_REASON=final-pr` を足して起動する。起動スクリプトは `decision-log` と同じく、タスクが 0 件でも起動し、
+  `scripts/ralph-start.sh` にも同じ値を渡す。担当リポジトリの `ralph-start.sh` が `final-pr` に対応していないと、タスク 0 件の再開は失敗する
+- ループは指示を読み、指した CodeRabbit の指摘をデータとして読んで修正タスクにし、指示に `<!-- ask-hub:final-reply -->` 付きで返信する（ralph-kit の playbook の手順）
 
 ## 新機能の依頼から質問付きの Discussion を作る
 
