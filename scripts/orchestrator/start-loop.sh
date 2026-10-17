@@ -9,6 +9,8 @@
 #     既存の制御用 worktree でループを起動し直す。未完了のタスクが無ければ起動しない。
 #     ただし ASKHUB_RESUME_REASON が decision-log（仮決め一覧への指示）か final-pr（最終 PR への指示）なら、タスクが無くても起動する
 #     （指示はループが周回の最初に読んで修正タスクにするため。epic の完了後に付いた指示ではタスクが残っていない）
+#     ASKHUB_RESTORE_EPIC に epic ブランチがあり、制御用 worktree が別の epic なら、今の epic の作業ファイルを退避してから、
+#     退避先から戻す epic の作業ファイルを戻して、その epic で再開する（最終 PR への指示で、前の epic を再開するため）
 #
 # ループは exec で起動するので、このプロセスの寿命 = ループの寿命になる（オーケストレーターはそれを見て生死を判断する）。
 # ralph の Stop hook はヘッドレス（claude -p）でも周回する。標準入力は /dev/null にする（待ちが発生するため）。
@@ -24,6 +26,9 @@
 #   CLAUDE_CODE_EFFORT_LEVEL claude の既定のエフォート。オーケストレーターが設定の effort を渡す（省略時は auto = claude の既定）
 #                            Discussion にモデル・エフォートの目印（ask-hub:loop-options）があれば、そちらを --model / --effort で渡す
 #   ASKHUB_RESUME_REASON     再開の理由。オーケストレーターが起動ごとに渡す（decision-log: 仮決め一覧への指示、final-pr: 最終 PR への指示）
+#   ASKHUB_RESTORE_EPIC      再開で戻す epic ブランチ（例: epic/xxx）。制御用 worktree が別の epic のとき、退避先から作業ファイルを戻す。
+#                            戻せない（退避が見つからない・今の epic が未完了・未コミットの変更がある・今のループの state が残っている）ときは
+#                            何も変えずに終了コード 1 で終わる
 #   ASKHUB_XCODEBUILD_WRAPPER  ループに xcodebuild の代わりに使わせるラッパー（既定: ~/.config/askhub/xcodebuild が実行可能ならそれ）。
 #                            `<ラッパー> <作業ツリー> <xcodebuild の引数…>` の形で呼べ、Simulator と DerivedData を作業ツリーごとに
 #                            分けるもの（ビルド専用機へ回すなど）。指定すると、新しい epic の playbook の検証コマンドがこれ経由になる
@@ -47,6 +52,7 @@ LOG_DIR="${ASKHUB_LOG_DIR:-$HOME/Library/Logs/askhub/loops}"
 ARCHIVE_DIR="${ASKHUB_ARCHIVE_DIR:-$HOME/Library/Logs/askhub/archive}"
 TRUSTED="${ASKHUB_TRUSTED_AUTHORS:-mrs1669}"
 RESUME_REASON="${ASKHUB_RESUME_REASON:-}"
+RESTORE_EPIC="${ASKHUB_RESTORE_EPIC:-}"
 # 再開で、前のループの state ファイル（異常終了の目印）を起動の直前まで残しているか
 STALE_STATE=""
 XCODEBUILD_WRAPPER="${ASKHUB_XCODEBUILD_WRAPPER:-}"
@@ -128,6 +134,77 @@ previous_epic_unfinished() {
 }
 UNFINISHED_MESSAGE="前の epic に未完了のタスクが残っています（${GOAL}）。1 リポジトリにつき自動ループは 1 つなので、新しい epic は始めません"
 
+# 制御用 worktree とスロットを片付ける前に、コミットしていない変更が無いことを確かめ、goal / state などの作業ファイル（.claude/）を
+# 退避先（$ARCHIVE_DIR/<リポジトリ名>/<時刻>-<epic の / を - にしたもの>/）に退避してから、worktree を削除する。
+# 退避先には epic ブランチの名前（branch.txt）も残す（後で戻すときに、名前の / と - の違いで取り違えないため）
+archive_control_worktree() {
+  local slot dirty previous dest worktrees=()
+  for slot in "${CTL%-ctl}-a" "${CTL%-ctl}-b" "$CTL"; do
+    if git -C "$CHECKOUT" worktree list --porcelain | grep -qxF "worktree $slot"; then
+      worktrees+=("$slot")
+      # 作業ファイル（.claude/ 配下。.git/info/exclude で除外している）は退避するので見ない
+      dirty=$(git -C "$slot" status --porcelain --untracked-files=all -- . ':(exclude).claude' 2>/dev/null || echo "?")
+      [[ -z "$dirty" ]] || fail "worktree にコミットしていない変更があるため片付けません: ${slot}（${dirty}）"
+    fi
+  done
+  previous=$(git -C "$CTL" symbolic-ref --short HEAD 2>/dev/null || echo detached)
+  dest="$ARCHIVE_DIR/$REPO_NAME/$(date +%Y%m%d-%H%M%S)-${previous//\//-}"
+  if ! { mkdir -p "$dest" && cp -R "$CTL/.claude" "$dest/" && printf '%s\n' "$previous" > "$dest/branch.txt"; }; then
+    fail "作業ファイルを退避できなかったため、worktree を片付けません（退避先: ${dest}）"
+  fi
+  log "前の epic（${previous}）の作業ファイルを退避しました: $dest"
+  # bash 3.2 の set -u では空の配列の展開が unbound variable になる
+  for slot in ${worktrees[@]+"${worktrees[@]}"}; do
+    git -C "$CHECKOUT" worktree remove --force "$slot"
+    log "worktree を削除しました: $slot"
+  done
+}
+
+# 退避先から、epic ブランチ $1 の作業ファイルの退避を探す（最も新しいもの）。見つからなければ空
+find_archive() {
+  local epic="$1" dir name recorded found=""
+  [[ -d "$ARCHIVE_DIR/$REPO_NAME" ]] || return 0
+  for dir in "$ARCHIVE_DIR/$REPO_NAME"/*; do
+    [[ -d "$dir" ]] || continue
+    name=$(basename "$dir")
+    # 名前は <YYYYmmdd>-<HHMMSS>-<epic の / を - にしたもの>。時刻の順に並ぶので、最後に合ったものが最も新しい
+    [[ "$name" =~ ^[0-9]{8}-[0-9]{6}-(.+)$ && "${BASH_REMATCH[1]}" == "${epic//\//-}" ]] || continue
+    # ブランチの名前が残っていれば、それで確かめる（epic/a-b と epic/a/b は同じ名前になる）。古い退避には無い
+    recorded=$(head -1 "$dir/branch.txt" 2>/dev/null || true)
+    [[ -z "$recorded" || "$recorded" == "$epic" ]] || continue
+    # 再開に要る作業ファイル（goal・playbook・完了語）が揃っているものだけ
+    [[ -f "$dir/.claude/ralph-goal.local.md" && -f "$dir/.claude/ralph-playbook.local.md" \
+      && -f "$dir/.claude/askhub-promise.local.txt" ]] || continue
+    found="$dir"
+  done
+  printf '%s' "$found"
+}
+
+# 制御用 worktree を、退避した epic（${RESTORE_EPIC}）に切り替える。今の epic の作業ファイルは退避する（後でまた戻せる）。
+# 戻せないときは何も変えずに終わる
+restore_archived_epic() {
+  local current archive
+  [[ "$RESTORE_EPIC" =~ ^epic/[A-Za-z0-9._/-]+$ ]] || fail "戻す epic の名前が不正です: $RESTORE_EPIC"
+  current=""
+  [[ -d "$CTL" ]] && current=$(git -C "$CTL" symbolic-ref --short HEAD 2>/dev/null || echo detached)
+  [[ "$current" == "$RESTORE_EPIC" ]] && return 0
+  archive=$(find_archive "$RESTORE_EPIC")
+  [[ -n "$archive" ]] || fail "${RESTORE_EPIC} の作業ファイルの退避が見つかりません（${ARCHIVE_DIR}/${REPO_NAME}）。戻しません"
+  if [[ -d "$CTL" ]]; then
+    # 異常終了した今のループの state が残っていれば、今の epic を先に再開する（退避すると異常終了の目印が消える）
+    [[ -z "$STALE_STATE" ]] || fail "今の epic（${current}）のループが異常終了したままです。${RESTORE_EPIC} は戻しません"
+    [[ "$(open_tasks)" -eq 0 ]] || fail "今の epic（${current}）に未完了のタスクが残っています（${GOAL}）。${RESTORE_EPIC} は戻しません"
+    archive_control_worktree
+  fi
+  # 制御用 worktree とスロットを、戻す epic で作り直す（作業ファイルは無ければテンプレートで作られるので、退避したもので上書きする）
+  git -C "$CHECKOUT" fetch --quiet origin || fail "origin を取得できませんでした"
+  (cd "$CHECKOUT" && scripts/ralph-setup.sh "$RESTORE_EPIC" >/dev/null) || fail "${RESTORE_EPIC} の worktree を作れませんでした"
+  cp -R "$archive/.claude/." "$CTL/.claude/" || fail "作業ファイルを戻せませんでした（${archive}）"
+  # 前のループの state・PID・知らせ済みの目印は持ち込まない（state は ralph-start.sh が作り直す）
+  rm -f "$STATE" "$PID_FILE" "$NO_TASKS_FILE"
+  log "${RESTORE_EPIC} の作業ファイルを戻しました（${archive}）"
+}
+
 [[ -d "$CHECKOUT/.git" || -f "$CHECKOUT/.git" ]] || fail "checkout が見つかりません: $CHECKOUT"
 [[ -x "$CHECKOUT/scripts/ralph-setup.sh" && -x "$CHECKOUT/scripts/ralph-start.sh" ]] \
   || fail "scripts/ralph-setup.sh / ralph-start.sh がありません（ralph-kit の install.sh で中継を入れてください）"
@@ -186,27 +263,8 @@ if [[ -n "$DISCUSSION" ]]; then
   if [[ -d "$CTL" ]]; then
     previous_epic_unfinished && fail "$UNFINISHED_MESSAGE"
     half_done && log "同じ Discussion の準備が途中で失敗していたので、やり直します"
-    # 前の epic は完了済み（または同じ Discussion の準備の途中）。worktree を片付ける前に、
-    # コミットしていない変更が無いことを確かめ、goal / state などの作業ファイルを退避する
-    WORKTREES=()
-    for slot in "${CTL%-ctl}-a" "${CTL%-ctl}-b" "$CTL"; do
-      if git -C "$CHECKOUT" worktree list --porcelain | grep -qxF "worktree $slot"; then
-        WORKTREES+=("$slot")
-        # 作業ファイル（.claude/ 配下。.git/info/exclude で除外している）は退避するので見ない
-        DIRTY=$(git -C "$slot" status --porcelain --untracked-files=all -- . ':(exclude).claude' 2>/dev/null || echo "?")
-        [[ -z "$DIRTY" ]] || fail "worktree にコミットしていない変更があるため片付けません: ${slot}（${DIRTY}）"
-      fi
-    done
-    PREVIOUS=$(git -C "$CTL" symbolic-ref --short HEAD 2>/dev/null || echo detached)
-    DEST="$ARCHIVE_DIR/$REPO_NAME/$(date +%Y%m%d-%H%M%S)-${PREVIOUS//\//-}"
-    if ! { mkdir -p "$DEST" && cp -R "$CTL/.claude" "$DEST/"; }; then
-      fail "作業ファイルを退避できなかったため、worktree を片付けません（退避先: ${DEST}）"
-    fi
-    log "前の epic（${PREVIOUS}）の作業ファイルを退避しました: $DEST"
-    for slot in "${WORKTREES[@]}"; do
-      git -C "$CHECKOUT" worktree remove --force "$slot"
-      log "worktree を削除しました: $slot"
-    done
+    # 前の epic は完了済み（または同じ Discussion の準備の途中）
+    archive_control_worktree
   fi
 
   BOOT_LOG="$LOG_DIR/$REPO_NAME-bootstrap-$(date +%Y%m%d-%H%M%S).log"
@@ -341,6 +399,8 @@ PROMPT
 
 # ---- 再開 -------------------------------------------------------------------------
 else
+  # 最終 PR への指示で、制御用 worktree が別の epic に移った後の epic を再開する
+  [[ -n "$RESTORE_EPIC" ]] && restore_archived_epic
   [[ -f "$GOAL" && -f "$PLAYBOOK" ]] || fail "再開する制御用 worktree がありません: $CTL"
   [[ -f "$PROMISE_FILE" ]] || fail "完了語の記録がありません（${PROMISE_FILE}）。手で書くか、Discussion から始め直してください"
   PROMISE=$(head -1 "$PROMISE_FILE")
