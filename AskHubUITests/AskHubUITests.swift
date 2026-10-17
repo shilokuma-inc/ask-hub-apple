@@ -356,7 +356,8 @@ final class AskHubUITests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
 
-        // その下にリポジトリごとの状態がある
+        // その下に organization ごとの節（見出しは login のまま）でリポジトリごとの状態がある
+        scrollUntilHittable(app.staticTexts["shilokuma-inc"], in: app)
         scrollUntilHittable(app.staticTexts["ask-hub-apple"], in: app)
         scrollUntilHittable(app.staticTexts["5 / 12 タスク完了"], in: app)
         XCTAssertTrue(app.staticTexts["epic/loop-status"].exists)
