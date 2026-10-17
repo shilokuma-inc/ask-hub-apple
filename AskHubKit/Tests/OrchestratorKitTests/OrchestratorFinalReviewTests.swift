@@ -281,4 +281,77 @@ extension OrchestratorTests {
         await orchestrator.waitForConflictResolutions()
         #expect(runtime.ran.count == 3)
     }
+
+    // MARK: - 進み具合の状態コメント
+
+    @Test func writesOneStatusCommentAndRewritesItWhenStateChanges() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setFinalReviewCandidates([Self.finalCandidate()])
+        let runtime = FakeRuntime()
+        runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: reviewed must=0 may=0\n")])
+        runtime.setHoldsRuns(true)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        // レビューを始めたら、目印付きの状態コメントを 1 件作る
+        try await orchestrator.pollOnce()
+        await runtime.waitForHeldRuns(1)
+        #expect(github.createdComments.count == 1)
+        let reviewing = try #require(try await github.comments(in: "shilokuma-inc/ask-hub-apple", issue: 70).first)
+        #expect(FinalReviewMarker.parse(reviewing.body) == FinalReviewMarker(state: .reviewing, sha: Self.head1))
+        #expect(reviewing.body.contains("第三者レビューの進み具合: レビュー中"))
+
+        // 終わったら同じコメントを書き換える（増やさない）
+        runtime.setHoldsRuns(false)
+        await orchestrator.waitForConflictResolutions()
+        let comments = try await github.comments(in: "shilokuma-inc/ask-hub-apple", issue: 70)
+        #expect(comments.count == 1)
+        #expect(FinalReviewMarker.parse(comments[0].body)?.state == .done)
+        #expect(github.updatedComments == ["shilokuma-inc/ask-hub-apple \(comments[0].id)"])
+
+        // 同じ内容は書き直さない
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+        #expect(github.createdComments.count == 1)
+        #expect(github.updatedComments.count == 1)
+    }
+
+    @Test func doesNotCreateStatusCommentWhileCodeRabbitCanReview() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setFinalReviewCandidates([Self.finalCandidate(codeRabbit: .inProgress)])
+        let runtime = FakeRuntime()
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        // CodeRabbit を待っている間と、CodeRabbit がレビューしたときは、コメントを作らない
+        try await orchestrator.pollOnce()
+        github.setFinalReviewCandidates([Self.finalCandidate(codeRabbit: .completed)])
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+
+        #expect(runtime.ran.isEmpty)
+        #expect(github.createdComments.isEmpty)
+        #expect(github.updatedComments.isEmpty)
+    }
+
+    @Test func rewritesTrustedStatusCommentLeftBeforeRestart() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setFinalReviewCandidates([Self.finalCandidate(codeRabbit: .completed)])
+        // 再起動の前に書いた状態コメントと、信用しない author が真似たコメント
+        let old = try #require(FinalReviewMarker(state: .reviewing, sha: Self.head1).htmlComment)
+        github.setIssueComments([
+            IssueComment(id: 11, author: "mrs1669", body: old),
+            IssueComment(id: 12, author: "someone", body: old)
+        ], issue: 70)
+        let runtime = FakeRuntime()
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+
+        // CodeRabbit がレビューしたので、信用する author の状態コメントを済み（CodeRabbit）に書き換える（作らない）
+        #expect(github.createdComments.isEmpty)
+        #expect(github.updatedComments == ["shilokuma-inc/ask-hub-apple 11"])
+        let comments = try await github.comments(in: "shilokuma-inc/ask-hub-apple", issue: 70)
+        #expect(FinalReviewMarker.parse(comments[0].body)?.state == .doneCodeRabbit)
+        #expect(comments[1].body == old)
+    }
 }

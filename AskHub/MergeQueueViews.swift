@@ -138,7 +138,7 @@ struct MergeDetailView: View {
                 // 今の head をレビュー済みにしたもの（CodeRabbit か第三者レビュー）と、第三者レビューの進み具合
                 LabeledContent("レビュー", value: MergeReviewText.source(pullRequest))
                 if let finalReview = pullRequest.finalReview {
-                    LabeledContent("第三者レビュー", value: MergeReviewText.progress(finalReview))
+                    LabeledContent("第三者レビュー", value: MergeReviewText.progress(finalReview, codeRabbit: pullRequest.codeRabbit))
                 }
             }
 

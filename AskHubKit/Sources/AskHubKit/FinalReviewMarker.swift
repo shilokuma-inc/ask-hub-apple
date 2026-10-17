@@ -37,6 +37,29 @@ public struct FinalReviewMarker: Sendable, Equatable, Hashable {
         self.attempts = attempts
     }
 
+    /// 進み具合の説明（アプリの詳細画面と、オーケストレーターの状態コメントで使う）
+    public var progressText: String {
+        switch state {
+        case .waiting:
+            "CodeRabbit を待っています"
+
+        case .reviewing:
+            "レビュー中"
+
+        case .fixing:
+            attempts > 0 ? "修正中（\(attempts) 回目）" : "修正中"
+
+        case .done:
+            "済み"
+
+        case .doneCodeRabbit:
+            "済み（CodeRabbit）"
+
+        case .gaveUp:
+            attempts > 0 ? "あきらめました（要修正が \(attempts) 回続きました）" : "あきらめました"
+        }
+    }
+
     /// コメント本文の先頭に置く HTML コメント。`sha` が目印で表せない値なら `nil`
     public var htmlComment: String? {
         guard ThirdPartyReviewMarker.isValidSHA(sha), attempts >= 0 else {
