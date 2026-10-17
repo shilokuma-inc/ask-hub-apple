@@ -70,4 +70,44 @@ struct CodeRabbitFindingsModelTests {
             return
         }
     }
+
+    private struct UntrustedPoster: FinalPullRequestInstructionPosting {
+        func post(fixing thread: CodeRabbitReviewThread, note: String, to pullRequest: EpicPullRequest) async throws -> URL {
+            throw FinalPullRequestInstructionError.untrustedAccount("someone")
+        }
+    }
+
+    @Test func postsInstructionForOneFinding() async throws {
+        let mergeQueue = MergeQueueModel.sample()
+        let model = CodeRabbitFindingsModel(pullRequest: Self.pullRequest(id: SampleCodeRabbitThreads.pullRequestID))
+        await model.load(using: mergeQueue)
+        let row = try #require(model.rows.first)
+
+        #expect(await model.instruct(fixing: row, note: "文言をそろえる", using: mergeQueue) == nil)
+        #expect(model.instructed[row.id]?.absoluteString == "https://github.com/shilokuma-inc/ask-hub-apple/pull/50#issuecomment-1")
+        // ほかの指摘には投稿していない
+        #expect(model.instructed.count == 1)
+
+        // 補足でほかの指摘を指すと、1 件ずつの指示にならないので投稿しない
+        let other = try #require(model.rows.last)
+        let failure = await model.instruct(fixing: other, note: "#discussion_r1 も", using: mergeQueue)
+        #expect(failure?.contains("ほかの指摘へのリンク") == true)
+        #expect(model.instructed[other.id] == nil)
+    }
+
+    @Test func explainsWhyUntrustedAccountCannotInstruct() async throws {
+        let mergeQueue = MergeQueueModel(
+            tokenStore: InMemoryTokenStore(token: "github_pat_saved"),
+            makeProvider: { _ in SampleMergeQueue() },
+            makeCodeRabbitThreads: { _ in SampleCodeRabbitThreads() },
+            makeInstructionPoster: { _ in UntrustedPoster() }
+        )
+        let model = CodeRabbitFindingsModel(pullRequest: Self.pullRequest(id: SampleCodeRabbitThreads.pullRequestID))
+        await model.load(using: mergeQueue)
+        let row = try #require(model.rows.first)
+
+        let failure = await model.instruct(fixing: row, note: "", using: mergeQueue)
+        #expect(failure?.contains("@someone はこのリポジトリで信用する author ではない") == true)
+        #expect(model.instructed.isEmpty)
+    }
 }

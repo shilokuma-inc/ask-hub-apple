@@ -9,7 +9,8 @@ extension MergeQueueModel {
             makeProvider: { _ in SampleMergeQueue() },
             makeUploadWorkflow: { _ in SampleUploadWorkflow() },
             dispatchRefreshDelay: .seconds(1),
-            makeCodeRabbitThreads: { _ in SampleCodeRabbitThreads() }
+            makeCodeRabbitThreads: { _ in SampleCodeRabbitThreads() },
+            makeInstructionPoster: { _ in SampleFinalInstructionPoster() }
         )
     }
 }
@@ -76,5 +77,15 @@ struct SampleCodeRabbitThreads: CodeRabbitThreadsFetching {
                 ]
             )
         ]
+    }
+}
+
+/// デモモード・Preview・UI テスト用。指示を投稿したことにして GitHub には送らない（本文の組み立てと確かめは本物と同じ）
+struct SampleFinalInstructionPoster: FinalPullRequestInstructionPosting {
+    func post(fixing thread: CodeRabbitReviewThread, note: String, to pullRequest: EpicPullRequest) async throws -> URL {
+        guard FinalPullRequestInstruction.body(for: thread, note: note) != nil else {
+            throw FinalPullRequestInstructionError.invalidInstruction
+        }
+        return URL(string: "\(pullRequest.url.absoluteString)#issuecomment-1")!
     }
 }

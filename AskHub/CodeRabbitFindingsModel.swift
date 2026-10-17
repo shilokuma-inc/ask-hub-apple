@@ -32,6 +32,8 @@ final class CodeRabbitFindingsModel {
     let pullRequest: EpicPullRequest
     private(set) var rows: [Row] = []
     private(set) var state = LoadState.idle
+    /// この画面で「ループに直させる」を投稿した指摘（スレッドの id → 投稿したコメントの URL）
+    private(set) var instructed: [String: URL] = [:]
 
     init(pullRequest: EpicPullRequest) {
         self.pullRequest = pullRequest
@@ -39,6 +41,16 @@ final class CodeRabbitFindingsModel {
 
     var isLoading: Bool {
         state == .loading
+    }
+
+    /// 指摘 1 件を直させる指示を最終 PR に投稿する。失敗したら説明を返す（投稿できたら `nil`）
+    func instruct(fixing row: Row, note: String, using model: MergeQueueModel) async -> String? {
+        do {
+            instructed[row.id] = try await model.instructLoop(fixing: row.thread, note: note, in: pullRequest)
+            return nil
+        } catch {
+            return MergeQueueModel.message(for: error)
+        }
     }
 
     /// 指摘を取り直す
