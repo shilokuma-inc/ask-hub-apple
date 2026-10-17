@@ -74,7 +74,7 @@ struct EpicPullRequestTests {
 
     @Test func codeRabbitStateDoesNotAffectMergeability() {
         // CodeRabbit の状態は情報として出すだけで、マージ条件には使わない（Discussion #460）
-        for state in [EpicPullRequest.CodeRabbitState.inProgress, .completed, .rateLimited, .failed, .none] {
+        for state in [EpicPullRequest.CodeRabbitState.inProgress, .completed, .rateLimited, .skipped, .failed, .none] {
             #expect(EpicPullRequest.fixture(codeRabbit: state).canMerge)
             #expect(EpicPullRequest.fixture(codeRabbit: state).blockingReason == nil)
             #expect(EpicPullRequest.fixture(checks: .failure, codeRabbit: state).blockingReason == "CI が失敗しています")
@@ -277,17 +277,30 @@ struct GitHubMergeQueueTests {
                 // 知らない state は なし
                 Self.node(number: 10, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
                     Self.checkRun("build / build"), Self.status(state: "SOMETHING_NEW", description: nil)
+                ])),
+                // スキップ（SUCCESS だが description が "Review skipped"。理由が続く文言もある）
+                Self.node(number: 11, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "SUCCESS", description: "Review skipped")
+                ])),
+                Self.node(number: 12, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"),
+                    Self.status(state: "SUCCESS", description: "Review skipped: reviews are disabled for this base branch")
+                ])),
+                // description が無い SUCCESS は完了
+                Self.node(number: 13, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "SUCCESS", description: nil)
                 ]))
             ]))
         ])
         let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
 
-        #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
         #expect(pulls.map(\.codeRabbit) == [
-            .inProgress, .completed, .rateLimited, .failed, .inProgress, .none, .none, .failed, .rateLimited, .none
+            .inProgress, .completed, .rateLimited, .failed, .inProgress, .none, .none, .failed, .rateLimited, .none,
+            .skipped, .skipped, .completed
         ])
         // CodeRabbit の状態はマージ条件に関係しない（GitHub Actions が成功なら 7 以外はマージできる）
-        #expect(pulls.map(\.canMerge) == [true, true, true, true, true, true, false, true, true, true])
+        #expect(pulls.map(\.canMerge) == [true, true, true, true, true, true, false, true, true, true, true, true, true])
     }
 
     @Test func fetchesRemainingContextsWhenFirstPageIsNotLast() async throws {

@@ -24,6 +24,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         case completed
         /// レート制限（無料枠の上限で止まった。"Review rate limited"）
         case rateLimited
+        /// スキップ（レビューしなかった。"Review skipped" や "Review skipped: reviews are disabled for this base branch"）
+        case skipped
         /// 失敗（commit status が `ERROR` / `FAILURE`）
         case failed
         /// commit status `CodeRabbit` が無い（知らない `state` のときも含む）

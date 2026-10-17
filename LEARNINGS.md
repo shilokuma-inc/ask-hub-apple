@@ -48,6 +48,8 @@
   無料枠の上限に当たったときも `success`（"Review rate limited"）になる。レート制限かどうかは `description` の文言でしか見分けられない
 - コミットの `statusCheckRollup.state` は check run と commit status をまとめた値なので、CodeRabbit が `pending` の間は GitHub Actions が全部成功していても `PENDING` になる。
   GitHub Actions だけで判定したいときは `state` ではなく `contexts` を取り、check run だけを見る
+- CodeRabbit がレビューしなかったときも commit status `CodeRabbit` は `success` で、`description` が "Review skipped" か、理由付きの
+  "Review skipped: reviews are disabled for this base branch"（`.coderabbit.yaml` で自動レビューの対象外にした base 宛ての PR）になる。完了・レート制限と同じく文言でしか見分けられない
 
 ## ビルド・テスト
 
