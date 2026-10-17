@@ -281,6 +281,41 @@ struct OrchestratorRepositoryRequestTests {
         await orchestrator.waitForConflictResolutions()
     }
 
+    // 断れなければ、待たせている run で removeRepositoryCommand が止まるので、時間で打ち切る
+    @Test(.timeLimit(.minutes(1)))
+    func refusesToRemoveWhileFinalReviewIsRunning() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setFinalReviewCandidates([
+            FinalReviewCandidate(
+                pullRequest: FinalReviewPullRequest(
+                    repository: "shilokuma-inc/notti-ios",
+                    number: 50,
+                    headBranch: "epic/mvp",
+                    baseBranch: "develop",
+                    headSHA: String(repeating: "a", count: 40)
+                ),
+                codeRabbit: .rateLimited,
+                isConflicting: false
+            )
+        ])
+        let runtime = FakeRuntime()
+        runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: fixed \(String(repeating: "b", count: 40))\n")])
+        runtime.setHoldsRuns(true)
+        let (orchestrator, store) = try makeOrchestrator(github: github, runtime: runtime)
+        // 第三者レビュー・修正が裏で動いている間に、ローカルも消す依頼が来る
+        try await orchestrator.pollOnce()
+        await runtime.waitForHeldRuns(1)
+        github.setRepositoryRequests([Self.issue(Self.removeRequest(force: true), in: "shilokuma-inc/notti-ios")])
+
+        try await orchestrator.pollOnce()
+
+        #expect(!runtime.ran.contains { $0.first == "/bin/remove" })
+        #expect(store.removed.isEmpty)
+        #expect(github.ideaComments.first?.contains("最終 PR の第三者レビュー・修正をしています") == true)
+        runtime.setHoldsRuns(false)
+        await orchestrator.waitForConflictResolutions()
+    }
+
     @Test func refusesToRemoveFromAnotherRepositoryOrTheLastOne() async throws {
         let github = FakeGitHub([.success([])])
         // 外すリポジトリとは別のリポジトリの Issue
