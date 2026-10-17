@@ -7,7 +7,7 @@ import Testing
 struct SampleMergeQueueTests {
     @Test func samplesCoverUploadRunStates() throws {
         let pulls = SampleMergeQueue.pullRequests
-        #expect(pulls.map(\.number) == [50, 80, 120, 130])
+        #expect(pulls.map(\.number) == [50, 80, 120, 130, 140, 150])
 
         // 50: 最新の head を上げ終わっている → 成功・head と同じ・上げ直せる
         let done = try #require(pulls[0].uploadStatus.run)

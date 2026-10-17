@@ -135,6 +135,11 @@ struct MergeDetailView: View {
                 LabeledContent("コンフリクト", value: mergeabilityText)
                 // 完了なら今の head はレビュー済み（canMerge の条件の 1 つ。Discussion #503）
                 LabeledContent("CodeRabbit", value: codeRabbitText)
+                // 今の head をレビュー済みにしたもの（CodeRabbit か第三者レビュー）と、第三者レビューの進み具合
+                LabeledContent("レビュー", value: MergeReviewText.source(pullRequest))
+                if let finalReview = pullRequest.finalReview {
+                    LabeledContent("第三者レビュー", value: MergeReviewText.progress(finalReview))
+                }
             }
 
             if model.showsUploadButton(latest) {
