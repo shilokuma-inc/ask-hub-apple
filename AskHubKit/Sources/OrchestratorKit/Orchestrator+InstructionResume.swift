@@ -73,9 +73,17 @@ extension Orchestrator {
         guard !resumedInstructionComments.contains(commentKey) else {
             return
         }
-        guard await controlWorktreeAccepts(place, name: name, in: repository) else {
+        switch await controlWorktreeAcceptance(of: place, name: name, in: repository) {
+        case .accepted:
+            break
+
+        case .rejected:
             pendingInstructionResumes[key] = nil
             resumedInstructionComments.insert(commentKey)
+            return
+
+        case .undecided:
+            // 処理済みにはせず、次のポーリングで確かめ直す
             return
         }
         do {
@@ -103,20 +111,29 @@ extension Orchestrator {
         log("\(name)に指示が付いたので、ループを再開しました")
     }
 
-    /// 制御用 worktree が指示の epic にあり、それが自動ループの epic か。違えば理由をログに出して `false`
-    private func controlWorktreeAccepts(_ place: InstructionPlace, name: String, in repository: RepositoryConfig) async -> Bool {
+    /// 制御用 worktree が指示の epic にあり、それが自動ループの epic か。再開しないときは理由をログに出す
+    private func controlWorktreeAcceptance(
+        of place: InstructionPlace,
+        name: String,
+        in repository: RepositoryConfig
+    ) async -> ControlWorktreeAcceptance {
         let key = repository.fullName.lowercased()
         let snapshot = await runtime.epicSnapshot(of: repository)
         guard snapshot.branch == place.branch else {
             log("\(name)に指示が付きましたが、制御用 worktree が \(place.branch) ではないのでループを再開できません")
-            return false
+            return .rejected
+        }
+        // 手動ループの Discussion を取得できなかった回は、手動ループの epic かを決められない。
+        // `automaticEpicBranches` は取得の失敗で自動ループとみなすが、再開はプロセスを起動するので、見送って次のポーリングで確かめる
+        if manualLoops == nil {
+            return .undecided
         }
         // 手動ループ（kit 1.3 までは、この PC の制御用 worktree を使うことがある）の epic は、担当者が再開する
         guard automaticEpicBranches(in: [key: snapshot])[key] == place.branch else {
             log("\(name)に指示が付きましたが、\(place.branch) は手動ループの epic なので再開しません（担当者が再開します）")
-            return false
+            return .rejected
         }
-        return true
+        return .accepted
     }
 
     /// 起動したループの開始を state ファイルで確かめる。
@@ -173,6 +190,15 @@ extension Orchestrator {
     static let finalPullRequestResumeReason = "final-pr"
     /// 指示で、ループの開始を確かめられないまま起動を試す回数の上限（仮決め一覧・最終 PR で共通）
     static let maxDecisionResumeAttempts = 3
+}
+
+/// 制御用 worktree で、指示による再開を受け付けるか
+enum ControlWorktreeAcceptance: Sendable, Equatable {
+    case accepted
+    /// 別の epic・手動ループの epic。この指示では再開しない
+    case rejected
+    /// 手動ループの Discussion を取得できず、決められない。次のポーリングで確かめ直す
+    case undecided
 }
 
 /// 仮決め一覧・最終 PR への指示で起動し、開始をまだ確かめていないループ

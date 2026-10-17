@@ -375,7 +375,7 @@ printf '%s\n' "$$" > "$PID_FILE"
 [[ -n "$STALE_STATE" ]] && rm -f "$STATE"
 # 再開の理由は ralph-start.sh にも渡す（decision-log なら、未完了タスクが 0 件でも state を作る）。
 # 継承に頼らず、このスクリプトが判断に使った値を明示して渡し、両者の判断を揃える。
-# ralph-start.sh（ralph-kit 1.5.0 まで）が 0 件を許すのは decision-log だけなので、最終 PR への指示による再開（final-pr）も
+# ralph-start.sh（ralph-kit 1.4.0 時点）が 0 件を許すのは decision-log だけなので、最終 PR への指示による再開（final-pr）も
 # 「人の指示による再開」として decision-log で渡す（どちらもタスクが 0 件でも起動するという意味は同じ）
 START_REASON="$RESUME_REASON"
 [[ "$RESUME_REASON" == "final-pr" ]] && START_REASON="decision-log"

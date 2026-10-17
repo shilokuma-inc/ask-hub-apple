@@ -167,4 +167,39 @@ extension OrchestratorTests {
         #expect(github.epicFinalListings == 2)
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#61 の最終 PR の指示で再開したループの開始を確かめました"))
     }
+
+    @Test func postponesResumeWhileManualLoopsCannotBeFetched() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setManualLoops([ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 331, author: "mrs1669")])
+        github.setManualLoopsFail(true)
+        github.setEpicFinalPullRequests([Self.finalPullRequest], comments: [61: [Self.finalInstruction]])
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】完了済み", state: nil, discussion: 331))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        // 手動ループかを決められない回は再開せず、処理済みにもしない
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.isEmpty)
+
+        // 取得できたら、手動ループの epic なので再開しない
+        github.setManualLoopsFail(false)
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.isEmpty)
+        #expect(logs.recorded.contains { $0.contains("epic/mvp は手動ループの epic なので再開しません") })
+    }
+
+    @Test func doesNotResumeManualLoopEpicFromDecisionLog() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setManualLoops([ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 331, author: "mrs1669")])
+        let decisionLog = DecisionLogIssue(repository: "shilokuma-inc/ask-hub-apple", number: 20, title: "【CHORE】epic/mvp の仮決め一覧", body: "")
+        github.setDecisionLogs([decisionLog], comments: [20: [IssueComment(id: 1, author: "mrs1669", body: "#3 は別案 1 で")]])
+        github.addExistingPullRequest(head: "epic/mvp", ExistingPullRequest(number: 61, isOpen: true))
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】完了済み", state: nil, discussion: 331))
+
+        try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
+
+        #expect(runtime.launched.isEmpty)
+        #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#20 の仮決め一覧に指示が付きましたが、epic/mvp は手動ループの epic なので再開しません（担当者が再開します）"))
+    }
 }
