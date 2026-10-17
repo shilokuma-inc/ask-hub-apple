@@ -41,12 +41,20 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 - **要対応**: 上に「要回答」（`needs-answer` が付いた Discussion（※1）と PR（※2））、その下に「マージ待ち」（`epic-final` の PR）。バッジは両方の件数の合計。
   マージ待ちの詳細では、マージの前に epic ブランチを TestFlight に上げて実機で確かめられる（下記「マージ待ちと TestFlight への手動アップロード」）
-  - 「マージ待ち」のマージ条件は **GitHub Actions の check run がすべて成功していること**と**コンフリクトしていないこと**だけ
-    （[Discussion #460](https://github.com/shilokuma-inc/ask-hub-apple/discussions/460)。check run が 1 つも無いときと、
-    GitHub がコンフリクトの有無を計算中のときも押せない）。CI の状態は最新コミットの `statusCheckRollup.contexts` のうち
-    GitHub Actions（`checkSuite.app.slug` が `github-actions`）の check run だけから決め、CodeRabbit などの commit status は使わない
-    （CodeRabbit の処理中が長く続いてもマージを止めないため）。CodeRabbit の状態（処理中 / 完了 / レート制限 / スキップ / 失敗 / なし）は
-    commit status `CodeRabbit` から読み、詳細画面の「状態」に**情報として**出す。レビューを見てからマージしたい人はそれを見て判断する
+  - 「マージ待ち」のマージ条件は次の 3 つ（すべて満たしたときだけ押せる）
+    1. **GitHub Actions の check run がすべて成功していること**（[Discussion #460](https://github.com/shilokuma-inc/ask-hub-apple/discussions/460)。
+       check run が 1 つも無いときも押せない）。CI の状態は最新コミットの `statusCheckRollup.contexts` のうち
+       GitHub Actions（`checkSuite.app.slug` が `github-actions`）の check run だけから決め、CodeRabbit などの commit status は使わない
+    2. **コンフリクトしていないこと**（GitHub がコンフリクトの有無を計算中のときも押せない）
+    3. **今の head がレビュー済みであること**（[Discussion #503](https://github.com/shilokuma-inc/ask-hub-apple/discussions/503)）:
+       今の head の CodeRabbit のレビューが**完了**している（commit status `CodeRabbit` が完了。レート制限・スキップ・失敗・処理中は含めない）か、
+       信用する author が書いた今の head の第三者レビューの目印が `must="0"`（下記「最終 PR の第三者レビュー」）。
+       head が変わったら（レビューの修正・コンフリクトの解消・develop の取り込みのどれでも）レビューをやり直し、前の head のレビュー済みは引き継がない。
+       Discussion #460 の「CodeRabbit は情報だけ」は、最終 PR についてはこの条件に変わった（子 PR の運用は変えない）
+  - 押せない理由は CI・コンフリクトの順に出し、それらを満たしたうえでレビュー済みでなければ「レビュー待ちです（CodeRabbit か第三者レビュー）」、
+    今の head の第三者レビューに要修正があれば「第三者レビューで要修正が N 件あります」と出す。アプリのマージ（`GitHubMergeQueue.merge`）も、送る前に同じ条件を確かめる。
+    第三者レビューがあきらめた（要修正が 3 回続いて収まらない）PR はアプリからはマージできない（GitHub の画面からはマージできる）
+  - CodeRabbit の状態（処理中 / 完了 / レート制限 / スキップ / 失敗 / なし）は、詳細画面の「状態」にも出す
 - **任意判断**: `decision-log` の Issue（仮決め一覧）。行には `repo#番号`・タイトル（先頭の `【CHORE】` は表示で省く）・更新の相対時刻・作成からの経過を出す。
   タブの中身はすべて同じ種類なので、行に種類のラベルは出さない
 - **ステータス**: リポジトリごとのループの状態と回し方（自動ループ・手動ループ・ループなし）。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」。
@@ -727,9 +735,9 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 5. ask に回答が付くと、オーケストレーターが終了済みのループを再開し、回答済みの `needs-answer` を外す
 6. epic の全タスクが完了すると、オーケストレーターが `develop` 向けの最終 PR（`epic-final`）を作る
 7. 人間がアプリの「要対応」の「マージ待ち」から確認して merge commit でマージする。
-   マージできるのは GitHub Actions の check run がすべて成功していて、コンフリクトしていないときだけ
-   （check run が 1 つも無いときと、GitHub がコンフリクトの有無を計算中のときも押せない。上記「要対応」）。
-   CodeRabbit の状態は詳細画面に情報として出るだけで、処理中でもマージできる。
+   マージできるのは GitHub Actions の check run がすべて成功していて、コンフリクトしていなくて、今の head がレビュー済み
+   （CodeRabbit のレビューが完了か、第三者レビューで要修正が 0 件）のときだけ（上記「要対応」）。
+   CodeRabbit がレビューできないときは、オーケストレーターが第三者レビューを行う（上記「最終 PR の第三者レビュー」）。
    マージの前に実機で確かめたいときは、詳細の「TestFlight に上げる」で epic ブランチを Upload ワークフローに掛け、run の成功を見てから TestFlight でテストする（上記「マージ待ちと TestFlight への手動アップロード」）
 8. マージされると、ワークフローがゴール元の Discussion を解決済みで閉じる（上記「ゴール元の Discussion の目印」）。
    オーケストレーターは epic の仮決め一覧を閉じる（上記「仮決め一覧」）

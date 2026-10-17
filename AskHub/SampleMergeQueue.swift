@@ -44,7 +44,7 @@ struct SampleMergeQueue: MergeQueueProviding {
             author: "mrs1669",
             checks: .pending,
             mergeability: .mergeable,
-            // 無料枠の上限に当たった PR（"Review rate limited"）。CI が終わればマージできる
+            // 無料枠の上限に当たった PR（"Review rate limited"）。CI が終わっても、第三者レビューが済むまでマージできない
             codeRabbit: .rateLimited,
             // 上げている最中（CI も実行中なので、終わってももう一度は押せない）
             uploadStatus: .run(sampleUploadRun(
@@ -87,7 +87,7 @@ struct SampleMergeQueue: MergeQueueProviding {
             // 前のコミット（1111111）で失敗している（PR の最新の head と SHA が違う）。CI は成功しているので上げ直せる
             uploadStatus: .run(sampleUploadRun(id: 1_201, branch: "epic/html-rendering", headSHA: "1111111", conclusion: .failure))
         ),
-        // GitHub Actions は成功・CodeRabbit は処理中。CodeRabbit はマージ条件ではないのでマージできる（Discussion #460）
+        // GitHub Actions は成功・CodeRabbit は処理中。今の head のレビューが済むまでマージできない（Discussion #503）
         EpicPullRequest(
             id: "PR_130",
             repository: "shilokuma-inc/notti-ios",

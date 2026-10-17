@@ -7,8 +7,9 @@ extension EpicPullRequest {
         checks: ChecksState = .success,
         mergeability: Mergeability = .mergeable,
         author: String? = "mrs1669",
-        codeRabbit: CodeRabbitState = .none,
-        uploadStatus: UploadStatus = .notLoaded
+        codeRabbit: CodeRabbitState = .completed,
+        uploadStatus: UploadStatus = .notLoaded,
+        thirdPartyReview: ThirdPartyReviewMarker? = nil
     ) -> Self {
         Self(
             id: "PR_50",
@@ -24,7 +25,8 @@ extension EpicPullRequest {
             checks: checks,
             mergeability: mergeability,
             codeRabbit: codeRabbit,
-            uploadStatus: uploadStatus
+            uploadStatus: uploadStatus,
+            thirdPartyReview: thirdPartyReview
         )
     }
 }
@@ -72,15 +74,47 @@ struct EpicPullRequestTests {
         #expect(EpicPullRequest.fixture(uploadStatus: .run(.fixture())).uploadStatus.run == .fixture())
     }
 
-    @Test func codeRabbitStateDoesNotAffectMergeability() {
-        // CodeRabbit の状態は情報として出すだけで、マージ条件には使わない（Discussion #460）
-        for state in [EpicPullRequest.CodeRabbitState.inProgress, .completed, .rateLimited, .skipped, .failed, .none] {
-            #expect(EpicPullRequest.fixture(codeRabbit: state).canMerge)
-            #expect(EpicPullRequest.fixture(codeRabbit: state).blockingReason == nil)
+    @Test func requiresCompletedCodeRabbitReviewOrCleanThirdPartyReview() {
+        // CodeRabbit のレビューが完了していればマージできる（Discussion #503）
+        #expect(EpicPullRequest.fixture(codeRabbit: .completed).isReviewed)
+        #expect(EpicPullRequest.fixture(codeRabbit: .completed).canMerge)
+        // 完了以外（処理中・レート制限・スキップ・失敗・なし）はレビュー待ち
+        for state in [EpicPullRequest.CodeRabbitState.inProgress, .rateLimited, .skipped, .failed, .none] {
+            let pullRequest = EpicPullRequest.fixture(codeRabbit: state)
+            #expect(!pullRequest.isReviewed)
+            #expect(!pullRequest.canMerge)
+            #expect(pullRequest.blockingReason == "レビュー待ちです（CodeRabbit か第三者レビュー）")
+            // CI とコンフリクトの理由を先に出す
             #expect(EpicPullRequest.fixture(checks: .failure, codeRabbit: state).blockingReason == "CI が失敗しています")
+            #expect(EpicPullRequest.fixture(mergeability: .conflicting, codeRabbit: state).blockingReason == "develop とコンフリクトしています")
+            #expect(EpicPullRequest.fixture(mergeability: .unknown, codeRabbit: state).blockingReason?.hasPrefix("マージできるかを") == true)
         }
-        // 既定値は なし
-        #expect(EpicPullRequest.fixture().codeRabbit == .none)
+    }
+
+    @Test func thirdPartyReviewWithoutMustFixItemsAllowsMerge() {
+        let sha = "0123456789abcdef0123456789abcdef01234567"
+        // CodeRabbit がレート制限でも、今の head の第三者レビューで要修正が 0 件ならマージできる
+        let clean = EpicPullRequest.fixture(codeRabbit: .rateLimited, thirdPartyReview: ThirdPartyReviewMarker(sha: sha, must: 0, may: 2))
+        #expect(clean.isReviewed)
+        #expect(clean.canMerge)
+        #expect(clean.blockingReason == nil)
+        // 要修正があればマージできない
+        let blocked = EpicPullRequest.fixture(codeRabbit: .skipped, thirdPartyReview: ThirdPartyReviewMarker(sha: sha, must: 2, may: 0))
+        #expect(!blocked.isReviewed)
+        #expect(!blocked.canMerge)
+        #expect(blocked.blockingReason == "第三者レビューで要修正が 2 件あります")
+        // CodeRabbit が完了していれば、第三者レビューに要修正が残っていてもマージできる（Q2: CodeRabbit のレビューで止める）
+        let reviewedByCodeRabbit = EpicPullRequest.fixture(
+            codeRabbit: .completed, thirdPartyReview: ThirdPartyReviewMarker(sha: sha, must: 1, may: 0)
+        )
+        #expect(reviewedByCodeRabbit.canMerge)
+        #expect(reviewedByCodeRabbit.blockingReason == nil)
+        // CI が失敗していればレビュー済みでもマージできない
+        let ciFailed = EpicPullRequest.fixture(
+            checks: .failure, codeRabbit: .rateLimited, thirdPartyReview: ThirdPartyReviewMarker(sha: sha, must: 0, may: 0)
+        )
+        #expect(!ciFailed.canMerge)
+        #expect(ciFailed.blockingReason == "CI が失敗しています")
     }
 }
 
@@ -236,7 +270,8 @@ struct GitHubMergeQueueTests {
 
         #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7, 8, 9])
         #expect(pulls.map(\.checks) == [.success, .pending, .failure, .none, .none, .success, .failure, .failure, .success])
-        #expect(pulls[0].canMerge)
+        // 1 は CI が成功していて、CodeRabbit のレビュー中（処理中）だけが残る
+        #expect(pulls[0].blockingReason == "レビュー待ちです（CodeRabbit か第三者レビュー）")
         #expect(pulls[3].blockingReason == "CI が実行されていません")
     }
 
@@ -303,8 +338,8 @@ struct GitHubMergeQueueTests {
             .inProgress, .completed, .rateLimited, .failed, .inProgress, .none, .none, .failed, .rateLimited, .none,
             .skipped, .skipped, .completed
         ])
-        // CodeRabbit の状態はマージ条件に関係しない（GitHub Actions が成功なら 7 以外はマージできる）
-        #expect(pulls.map(\.canMerge) == [true, true, true, true, true, true, false, true, true, true, true, true, true])
+        // GitHub Actions が成功していても、CodeRabbit のレビューが完了した PR（2・13）しかマージできない（Discussion #503）
+        #expect(pulls.map(\.canMerge) == [false, true, false, false, false, false, false, false, false, false, false, false, true])
     }
 
     @Test func fetchesRemainingContextsWhenFirstPageIsNotLast() async throws {
@@ -377,6 +412,14 @@ struct GitHubMergeQueueTests {
         let http = MockHTTPClient([])
         await #expect(throws: MergeQueueError.notMergeable(reason: "CI が失敗しています")) {
             try await makeQueue(http).merge(.fixture(checks: .failure))
+        }
+        // レビュー待ち・第三者レビューの要修正も、送る前に断る
+        await #expect(throws: MergeQueueError.notMergeable(reason: "レビュー待ちです（CodeRabbit か第三者レビュー）")) {
+            try await makeQueue(http).merge(.fixture(codeRabbit: .rateLimited))
+        }
+        let review = ThirdPartyReviewMarker(sha: "0123456789abcdef0123456789abcdef01234567", must: 1, may: 0)
+        await #expect(throws: MergeQueueError.notMergeable(reason: "第三者レビューで要修正が 1 件あります")) {
+            try await makeQueue(http).merge(.fixture(codeRabbit: .skipped, thirdPartyReview: review))
         }
         #expect(http.requests.isEmpty)
     }

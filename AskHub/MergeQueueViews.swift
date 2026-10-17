@@ -133,7 +133,7 @@ struct MergeDetailView: View {
             Section("状態") {
                 LabeledContent("CI", value: checksText)
                 LabeledContent("コンフリクト", value: mergeabilityText)
-                // 情報として出すだけで、マージできるか（canMerge）には関係しない（Discussion #460）
+                // 完了なら今の head はレビュー済み（canMerge の条件の 1 つ。Discussion #503）
                 LabeledContent("CodeRabbit", value: codeRabbitText)
             }
 

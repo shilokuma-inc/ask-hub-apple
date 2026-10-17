@@ -16,7 +16,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     }
 
     /// CodeRabbit のレビューの状態（commit status `CodeRabbit` から）。
-    /// レビューを見てからマージしたい人のための**情報**で、マージ条件（`canMerge`）には使わない（Discussion #460）
+    /// 完了（`completed`）だけが最終 PR のレビューの条件（`isReviewed`）を満たす（Discussion #503）。処理中・レート制限・スキップ・失敗は満たさない
     public enum CodeRabbitState: String, Sendable, Equatable, Hashable {
         /// 処理中（レビュー中。commit status が `PENDING` か `EXPECTED`）
         case inProgress
@@ -88,7 +88,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     public var author: String?
     public var checks: ChecksState
     public var mergeability: Mergeability
-    /// CodeRabbit の状態。情報として出すだけで、マージできるかには関係しない
+    /// CodeRabbit の状態。完了なら今の head はレビュー済み（`isReviewed`）
     public var codeRabbit: CodeRabbitState
     /// Upload ワークフローの直近の run の状況。既定は `notLoaded`
     public var uploadStatus: UploadStatus
@@ -133,10 +133,16 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         self.finalReview = finalReview
     }
 
-    /// マージボタンを押せるか。GitHub Actions の CI が成功していて、コンフリクトしていないこと（Q13・Discussion #460）。
-    /// `codeRabbit` は見ない
+    /// マージボタンを押せるか。GitHub Actions の CI が成功していて、コンフリクトしていなくて（Q13・Discussion #460）、
+    /// 今の head がレビュー済みであること（`isReviewed`。Discussion #503）
     public var canMerge: Bool {
-        checks == .success && mergeability == .mergeable
+        checks == .success && mergeability == .mergeable && isReviewed
+    }
+
+    /// 今の head がレビュー済みか。CodeRabbit のレビューが完了しているか、今の head の第三者レビューで要修正が 0 件（`must="0"`）なら済み（Discussion #503）。
+    /// CodeRabbit のレート制限・スキップ・失敗・処理中は済みにしない。`thirdPartyReview` は信用する author が書いた今の head のものだけが入る
+    public var isReviewed: Bool {
+        codeRabbit == .completed || thirdPartyReview?.isClean == true
     }
 
     /// 押せない理由（押せるなら `nil`）
@@ -158,8 +164,19 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
             "マージできるかを GitHub が確認中です。少し待ってから更新してください"
 
         case (.success, .mergeable):
-            nil
+            reviewBlockingReason
         }
+    }
+
+    /// レビューの条件で押せない理由（レビュー済みなら `nil`）
+    private var reviewBlockingReason: String? {
+        if isReviewed {
+            return nil
+        }
+        if let review = thirdPartyReview {
+            return "第三者レビューで要修正が \(review.must) 件あります"
+        }
+        return "レビュー待ちです（CodeRabbit か第三者レビュー）"
     }
 
     /// 「TestFlight に上げる」を押せるか。CI（最新コミットのチェックのまとめ。マージボタンと同じ基準）が成功していて、
