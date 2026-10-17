@@ -57,15 +57,46 @@ public struct CodeRabbitReviewThread: Sendable, Equatable, Hashable, Identifiabl
     /// 一覧に出す指摘の要約。CodeRabbit の指摘は先頭に区分（`_⚠️ Potential issue_ | _🟠 Major_`）、続けて太字の見出しを書くので、
     /// 最初の太字の行を見出しとして使う。無ければ、HTML のコメントやタグ・区分の行を除いた最初の行
     public var summary: String {
-        let lines = finding.body
-            .split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && !$0.hasPrefix("<") }
+        let lines = Self.visibleLines(of: finding.body)
         if let heading = lines.first(where: { $0.hasPrefix("**") && $0.dropFirst(2).contains("**") }) {
             return Self.stripEmphasis(heading)
         }
         let text = lines.first { !($0.hasPrefix("_") && $0.contains("|")) } ?? lines.first ?? ""
         return Self.stripEmphasis(text)
+    }
+
+    /// 見出しの候補になる行。空行・HTML の行（`<!-- … -->` を含む）・`<details>` の中・コードフェンスの中は除く
+    /// （CodeRabbit は先頭に解析の経過を `<details>` で付け、その中のスクリプトの出力に太字の行が混じることがある）
+    private static func visibleLines(of body: String) -> [String] {
+        var result: [String] = []
+        var detailsDepth = 0
+        var inFence = false
+        var inComment = false
+        for raw in body.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if inComment {
+                inComment = !line.contains("-->")
+                continue
+            }
+            if line.hasPrefix("```") {
+                inFence.toggle()
+                continue
+            }
+            if inFence {
+                continue
+            }
+            if line.hasPrefix("<!--") {
+                inComment = !line.contains("-->")
+                continue
+            }
+            detailsDepth += line.components(separatedBy: "<details").count - 1
+            detailsDepth = max(0, detailsDepth - (line.components(separatedBy: "</details>").count - 1))
+            if detailsDepth > 0 || line.isEmpty || line.hasPrefix("<") {
+                continue
+            }
+            result.append(line)
+        }
+        return result
     }
 
     /// 行の太字（`**`）と前後の `_`（斜体）を外す。コード（`` ` ``）は残す

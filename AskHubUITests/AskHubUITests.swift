@@ -315,8 +315,9 @@ final class AskHubUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
 
-        app.swipeUp()
+        // まとめと CodeRabbit の指摘の下にあるので、ボタンが押せるところまでスクロールする（Form は画面の外の行を作らない）
         let merge = app.buttons["develop にマージ"]
+        scrollUntilHittable(merge, in: app)
         XCTAssertTrue(merge.waitForExistence(timeout: 5))
         XCTAssertTrue(merge.isEnabled)
         merge.tap()

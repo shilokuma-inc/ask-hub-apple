@@ -149,5 +149,24 @@ struct CodeRabbitThreadsTests {
         #expect(thread(finding).summary == "トークンをログに出している")
         #expect(thread("<!-- comment -->\n_🧹 Nitpick_ | _🔵 Trivial_\n命名をそろえる").summary == "命名をそろえる")
         #expect(thread("").summary.isEmpty)
+        // 解析の経過（details）やコードの中の太字の行は見出しにしない
+        let withAnalysis = """
+            _⚠️ Potential issue_ | _🟠 Major_
+
+            <details>
+            <summary>🧩 Analysis chain</summary>
+
+            **README の見出し**
+            </details>
+
+            ```swift
+            **コードの中**
+            ```
+            <!--
+            **コメントの中**
+            -->
+            **本当の見出し**
+            """
+        #expect(thread(withAnalysis).summary == "本当の見出し")
     }
 }
