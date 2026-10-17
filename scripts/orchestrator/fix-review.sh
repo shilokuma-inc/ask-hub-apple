@@ -67,11 +67,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# origin の head（読めなければ failed）
-remote_head() {
+# origin の head を REMOTE_HEAD に入れる。読めなければ failed で終わる
+# （コマンド置換の中で failed を呼ぶとサブシェルしか終わらないので、置換の外で呼ぶ）
+REMOTE_HEAD=""
+read_remote_head() {
   local remote
   remote=$(git -C "$CHECKOUT" ls-remote origin "refs/heads/${HEAD_BRANCH}") || failed "origin の ${HEAD_BRANCH} を確かめられませんでした"
-  printf '%s' "$remote" | cut -f1
+  REMOTE_HEAD=$(printf '%s' "$remote" | cut -f1)
+}
+
+# 公開のコメントに書かれうる文に、トークンらしい文字列が無いか
+contains_token() {
+  printf '%s' "$1" | grep -q -E 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'
 }
 
 git -C "$CHECKOUT" fetch -q origin "$HEAD_BRANCH" "$BASE_BRANCH" || failed "origin から ${HEAD_BRANCH} / ${BASE_BRANCH} を取得できませんでした"
@@ -90,7 +97,8 @@ fi
 [[ -s "$TMP/review.b64" ]] || failed "${HEAD_SHA:0:7} の第三者レビュー（信用する author のもの）がありません"
 REVIEW_FILE="$TMP/review.md"
 tail -n 1 "$TMP/review.b64" | base64 --decode > "$REVIEW_FILE"
-MUST=$(sed -n '1s/.*must="\([0-9]*\)".*/\1/p' "$REVIEW_FILE")
+# 目印は本文の先頭（前の空白・空行は許す。jq の絞り込みと同じ）
+MUST=$(grep -m 1 -E "<!-- ${MARKER} " "$REVIEW_FILE" | sed -n 's/.*must="\([0-9]*\)".*/\1/p')
 [[ "$MUST" =~ ^[0-9]+$ && "$MUST" -gt 0 ]] || failed "${HEAD_SHA:0:7} の第三者レビューに要修正がありません"
 
 git -C "$CHECKOUT" worktree add -q --detach "$WORKTREE" "$HEAD_SHA"
@@ -127,7 +135,13 @@ printf '%s\n' "$OUTPUT" | tail -n 5
 RESULT=$(printf '%s\n' "$OUTPUT" | sed -n 's/^ASKHUB_RESULT: *//p' | tail -1)
 case "$RESULT" in
   fixed) ;;
-  failed*) failed "${RESULT#failed }" ;;
+  failed*)
+    REASON=$(printf '%s' "${RESULT#failed}" | sed 's/^ *//')
+    [[ -n "$REASON" ]] || REASON="claude が理由を出力しませんでした（${CLAUDE_LOG}）"
+    # 理由はオーケストレーターが PR にコメントしうるので、トークンらしい文字列は出さない
+    contains_token "$REASON" && REASON="claude が直せませんでした（理由はログを見てください: ${CLAUDE_LOG}）"
+    failed "$REASON"
+    ;;
   *) failed "claude の出力から結果を読み取れませんでした（${CLAUDE_LOG}）" ;;
 esac
 
@@ -137,14 +151,27 @@ NEW_HEAD=$(git -C "$WORKTREE" rev-parse HEAD)
 [[ "$NEW_HEAD" != "$HEAD_SHA" ]] || failed "修正のコミットがありません"
 git -C "$WORKTREE" merge-base --is-ancestor "$HEAD_SHA" "$NEW_HEAD" || failed "レビューした head（${HEAD_SHA:0:7}）の上にコミットが積まれていません"
 [[ -z "$(git -C "$WORKTREE" rev-list --merges "${HEAD_SHA}..${NEW_HEAD}")" ]] || failed "マージコミットが含まれています"
-if git -C "$WORKTREE" log --format=%B "${HEAD_SHA}..${NEW_HEAD}" | grep -q -i -E '^co-authored-by:|generated with \[?claude'; then
+# 空のコミットや元に戻すだけのコミットでは「直した」とみなさない
+! git -C "$WORKTREE" diff --quiet "$HEAD_SHA" "$NEW_HEAD" || failed "修正のコミットに変更がありません"
+# pipefail のもとで grep -q に渡すと、出力が長いとき git log が SIGPIPE で失敗扱いになるので、変数に入れてから調べる
+MESSAGES=$(git -C "$WORKTREE" log --format=%B "${HEAD_SHA}..${NEW_HEAD}")
+if printf '%s\n' "$MESSAGES" | grep -i -E '^co-authored-by:|generated with \[?claude' >/dev/null; then
   failed "コミットメッセージに AI の帰属行が含まれています"
 fi
 
-# 直している間に head が進んでいたら上書きしない（lease は確認した head）
-[[ "$(remote_head)" == "$HEAD_SHA" ]] || stale "直している間に ${HEAD_BRANCH} が ${HEAD_SHA:0:7} から進んだので、push しません"
+# origin の head が確認した head から進んでいたら上書きしない。claude が指示に背いて自分で push した
+# （origin の head が直したコミットのどれか）ときは、確かめていない push なので stale ではなく failed にする
+check_remote_unchanged() {
+  read_remote_head
+  [[ "$REMOTE_HEAD" == "$HEAD_SHA" ]] && return 0
+  if [[ -n "$REMOTE_HEAD" ]] && git -C "$WORKTREE" rev-list "${HEAD_SHA}..${NEW_HEAD}" | grep -q -x "$REMOTE_HEAD"; then
+    failed "claude が ${HEAD_BRANCH} に push しました（${REMOTE_HEAD:0:7}）。push の前の確認をしていないので、内容を確かめてください"
+  fi
+  stale "$1"
+}
+check_remote_unchanged "直している間に ${HEAD_BRANCH} が ${HEAD_SHA:0:7} から進んだので、push しません"
 if ! git -C "$WORKTREE" push -q --force-with-lease="refs/heads/${HEAD_BRANCH}:${HEAD_SHA}" origin "HEAD:refs/heads/${HEAD_BRANCH}"; then
-  [[ "$(remote_head)" == "$HEAD_SHA" ]] || stale "push の直前に ${HEAD_BRANCH} が ${HEAD_SHA:0:7} から進んだので、push しませんでした"
+  check_remote_unchanged "push の直前に ${HEAD_BRANCH} が ${HEAD_SHA:0:7} から進んだので、push しませんでした"
   failed "${HEAD_BRANCH} に push できませんでした"
 fi
 
