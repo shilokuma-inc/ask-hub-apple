@@ -111,4 +111,43 @@ struct CodeRabbitThreadsTests {
         #expect(!CodeRabbitReviewThread.isCodeRabbit("mrs1669"))
         #expect(!CodeRabbitReviewThread.isCodeRabbit(nil))
     }
+
+    @Test func skipsFindingWithoutDatabaseIDAndDoesNotReadMoreOfOtherThreads() async throws {
+        let http = MockHTTPClient([
+            Self.threadsPage([
+                // 指摘の id（databaseId）が無いものは指示で指せないので出さない
+                Self.thread("T1", comments: [Self.comment(nil, "coderabbitai")]),
+                // CodeRabbit 以外のスレッドは、続きのコメントがあっても読まない
+                Self.thread("T2", comments: [Self.comment(2, "mrs1669")], hasNext: true, cursor: #""C2""#)
+            ])
+        ])
+        let threads = try await Self.fetcher(http).unresolvedCodeRabbitThreads(of: .fixture())
+        #expect(threads.isEmpty)
+        #expect(http.requests.count == 1)
+    }
+
+    @Test func failsWhenCommentPageHasNoCursor() async throws {
+        let http = MockHTTPClient([
+            Self.threadsPage([Self.thread("T1", comments: [Self.comment(1, "coderabbitai")], hasNext: true, cursor: "null")])
+        ])
+        await #expect(throws: GitHubError.invalidResponse) {
+            try await Self.fetcher(http).unresolvedCodeRabbitThreads(of: .fixture())
+        }
+    }
+
+    @Test func summarizesFindingByItsBoldHeading() throws {
+        func thread(_ body: String) -> CodeRabbitReviewThread {
+            CodeRabbitReviewThread(
+                id: "T",
+                path: "A.swift",
+                line: 1,
+                isOutdated: false,
+                finding: .init(id: 1, author: "coderabbitai", body: body, url: URL(string: "https://github.com/o/r/pull/1#discussion_r1")!, createdAt: Date())
+            )
+        }
+        let finding = "_⚠️ Potential issue_ | _🟠 Major_\n\n**トークンをログに出している**\n\n説明…\n<details>…</details>"
+        #expect(thread(finding).summary == "トークンをログに出している")
+        #expect(thread("<!-- comment -->\n_🧹 Nitpick_ | _🔵 Trivial_\n命名をそろえる").summary == "命名をそろえる")
+        #expect(thread("").summary.isEmpty)
+    }
 }

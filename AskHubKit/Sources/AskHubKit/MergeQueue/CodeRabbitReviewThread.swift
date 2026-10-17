@@ -37,7 +37,7 @@ public struct CodeRabbitReviewThread: Sendable, Equatable, Hashable, Identifiabl
     public var isOutdated: Bool
     /// CodeRabbit の指摘（スレッドの最初のコメント）
     public var finding: Comment
-    /// 指摘への返信（古い順）
+    /// 指摘への返信（古い順）。信用する author 以外（CodeRabbit 自身を含む）の返信も含むので、指示として扱わない
     public var replies: [Comment]
 
     public init(id: String, path: String, line: Int?, isOutdated: Bool, finding: Comment, replies: [Comment] = []) {
@@ -52,5 +52,25 @@ public struct CodeRabbitReviewThread: Sendable, Equatable, Hashable, Identifiabl
     /// CodeRabbit が書いたコメントか
     public static func isCodeRabbit(_ author: String?) -> Bool {
         author.map(authorLogins.contains) ?? false
+    }
+
+    /// 一覧に出す指摘の要約。CodeRabbit の指摘は先頭に区分（`_⚠️ Potential issue_ | _🟠 Major_`）、続けて太字の見出しを書くので、
+    /// 最初の太字の行を見出しとして使う。無ければ、HTML のコメントやタグ・区分の行を除いた最初の行
+    public var summary: String {
+        let lines = finding.body
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("<") }
+        if let heading = lines.first(where: { $0.hasPrefix("**") && $0.dropFirst(2).contains("**") }) {
+            return Self.stripEmphasis(heading)
+        }
+        let text = lines.first { !($0.hasPrefix("_") && $0.contains("|")) } ?? lines.first ?? ""
+        return Self.stripEmphasis(text)
+    }
+
+    /// 行の太字（`**`）と前後の `_`（斜体）を外す。コード（`` ` ``）は残す
+    private static func stripEmphasis(_ line: String) -> String {
+        line.replacingOccurrences(of: "**", with: "")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "_ "))
     }
 }
