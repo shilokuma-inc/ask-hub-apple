@@ -33,6 +33,7 @@ struct FakeGitHubState {
     var finalReviewCandidates: [FinalReviewCandidate] = []
     var createdComments: [String] = []
     var updatedComments: [String] = []
+    var commentUpdateFailures: [Int: Int] = [:]
     var pullRequestComments: [String] = []
     /// epic のブランチごとの、最終 PR の材料
     var epicMaterials: [String: EpicMaterials] = [:]

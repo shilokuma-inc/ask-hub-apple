@@ -162,6 +162,8 @@ public actor Orchestrator {
     var finalReviewStatusComments: [String: Int] = [:]
     /// 状態コメントを書き出している PR。actor の再入（ポーリングと裏の処理の終わりが重なる）でコメントを二重に作らない
     var publishingFinalReviews: Set<String> = []
+    /// 書き換えられなかった（消された・権限が無い）状態コメントの id。探すときに選ばない
+    var unusableFinalReviewComments: Set<Int> = []
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
     var loopStatusPublisher = LoopStatusPublisher()

@@ -42,15 +42,17 @@ extension Orchestrator {
             let key = pullRequest.repository.lowercased()
             finalReviewTracker.start(start.action, for: pullRequest)
             finalReviews[key] = Task {
+                // 始めたこと（レビュー中）と結果を書き出してから取り除く（`--once` が書き出しの前に終わらないように）
+                await publishFinalReviewStatuses()
                 await runFinalReview(start)
                 finalReviewTracker.finish(pullRequest)
+                await publishFinalReviewStatuses()
                 finalReviews[key] = nil
                 // 同じリポジトリで待たせていたものを、次のポーリングを待たずに始める。コンフリクトの解消を先にする
                 // （待たせ続けないため。解消で head が変わればレビューはやり直しになる）。
                 // 今終わった PR は head が変わりうるので、次のポーリングで取得し直してから扱う
                 startConflictResolutions(among: conflictingPullRequests)
                 startFinalReviews(among: finalReviewCandidates.filter { $0.pullRequest.key != pullRequest.key })
-                await publishFinalReviewStatuses()
             }
         }
     }
