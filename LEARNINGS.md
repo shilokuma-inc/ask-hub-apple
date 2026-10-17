@@ -177,6 +177,9 @@
   ループのログはテキスト出力でモデル名が残らないので、実際のモデルは `~/.claude/projects/<作業ディレクトリ>/*.jsonl` の `message.model` で確かめる
 - bash の `IFS=$'\t' read -r a b` は、タブが IFS の空白文字なので先頭の空の値を詰める（`\txhigh` が a=xhigh になる）。
   空になりうる値を受け渡すときは、`key=value` の行にして `sed -n 's/^key=//p'` で読む
+- `claude` の `--tools` / `--allowedTools` / `--disallowedTools` / `--add-dir` は値を複数とる（`<tools...>`）。直後に位置引数のプロンプトを置くと、ツール名として飲み込まれて
+  プロンプトが空になり、`-p` が失敗する（偽の claude では気づけない）。プロンプトは標準入力で渡すか、`--` で区切る。
+  差分などの信用しきれない文を読ませるときは、`--restricted --strict-mcp-config --tools "Read,Grep,Glob" --add-dir <読ませる場所>` で、読むツールだけ・作業ディレクトリの中だけに限れる
 
 ## SwiftUI
 
