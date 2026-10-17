@@ -45,13 +45,19 @@ struct FinalPullRequestHistoryTests {
         #expect(history.unprocessedInstructions == [comments[0]])
     }
 
-    @Test func treatsReplyMarkerAsReplyEvenWithOrchestratorMarker() {
+    @Test func readsMarkerOnlyAtTheBeginningOfBody() {
         let comments = [
             Self.comment(1, "mrs1669", "直して"),
-            Self.comment(2, "mrs1669", "\(FinalPullRequestMarker.orchestrator)\n\(FinalPullRequestMarker.reply)")
+            Self.comment(2, "mrs1669", "\n  \(FinalPullRequestMarker.reply)\n直しました"),
+            // 指示が引用した指摘の中に目印があっても、指示のまま扱う
+            Self.comment(3, "mrs1669", "#discussion_r100 を直して\n> \(FinalPullRequestMarker.reply)"),
+            Self.comment(4, "mrs1669", "#discussion_r200 を直して\n> \(FinalPullRequestMarker.orchestrator)")
         ]
         let history = FinalPullRequestHistory(comments: comments, trustedAuthors: Self.trusted)
-        #expect(history.entries.map(\.kind) == [.instruction(isProcessed: true), .reply])
+        #expect(history.entries.map(\.kind) == [
+            .instruction(isProcessed: true), .reply, .instruction(isProcessed: false), .instruction(isProcessed: false)
+        ])
+        #expect(history.unprocessedInstructions == [comments[2], comments[3]])
     }
 
     @Test func doesNotTreatDecisionLogMarkersAsReplies() {

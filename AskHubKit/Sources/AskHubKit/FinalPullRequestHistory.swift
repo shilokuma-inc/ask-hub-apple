@@ -69,15 +69,17 @@ public struct FinalPullRequestHistory: Sendable, Equatable {
         /#discussion_r(\d+)/
     }
 
-    /// 返信の目印を優先し、どちらの目印も無ければ指示（処理済みかは後で決める）
+    /// 目印は本文の先頭（前の空白・改行は無視する）にあるときだけ認める。
+    /// 指示が CodeRabbit の指摘などを引用し、その中に目印が含まれていても、指示を返信や無視するコメントと取り違えないため
     private static func kind(of comment: IssueComment, trustedAuthors: TrustedAuthors) -> Kind {
         guard trustedAuthors.contains(comment.author) else {
             return .untrusted
         }
-        if comment.body.contains(FinalPullRequestMarker.reply) {
+        let body = comment.body.drop { $0.isWhitespace }
+        if body.hasPrefix(FinalPullRequestMarker.reply) {
             return .reply
         }
-        if comment.body.contains(FinalPullRequestMarker.orchestrator) {
+        if body.hasPrefix(FinalPullRequestMarker.orchestrator) {
             return .orchestrator
         }
         return .instruction(isProcessed: false)
