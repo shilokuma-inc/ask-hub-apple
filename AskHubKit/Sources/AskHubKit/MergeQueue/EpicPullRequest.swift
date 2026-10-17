@@ -175,6 +175,11 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         if isReviewed {
             return nil
         }
+        if finalReview?.state == .gaveUp {
+            // 3 回続けて要修正が収まらなかった（Discussion #503 の Q1）。アプリからはマージさせない
+            let count = thirdPartyReview.map { "要修正が \($0.must) 件残り、" } ?? ""
+            return "第三者レビューで\(count)自動の修正をあきらめました。直して push するか、GitHub の画面からマージしてください"
+        }
         if let review = thirdPartyReview {
             return "第三者レビューで要修正が \(review.must) 件あります"
         }

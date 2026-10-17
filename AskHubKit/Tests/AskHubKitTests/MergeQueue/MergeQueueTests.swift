@@ -103,6 +103,13 @@ struct EpicPullRequestTests {
         #expect(!blocked.isReviewed)
         #expect(!blocked.canMerge)
         #expect(blocked.blockingReason == "第三者レビューで要修正が 2 件あります")
+        // あきらめた PR は、GitHub の画面からマージできることを伝える
+        var gaveUp = blocked
+        gaveUp.finalReview = FinalReviewMarker(state: .gaveUp, sha: sha, attempts: 3)
+        #expect(!gaveUp.canMerge)
+        #expect(gaveUp.blockingReason == "第三者レビューで要修正が 2 件残り、自動の修正をあきらめました。直して push するか、GitHub の画面からマージしてください")
+        gaveUp.thirdPartyReview = nil
+        #expect(gaveUp.blockingReason == "第三者レビューで自動の修正をあきらめました。直して push するか、GitHub の画面からマージしてください")
         // CodeRabbit が完了していれば、第三者レビューに要修正が残っていてもマージできる（Q2: CodeRabbit のレビューで止める）
         let reviewedByCodeRabbit = EpicPullRequest.fixture(
             codeRabbit: .completed, thirdPartyReview: ThirdPartyReviewMarker(sha: sha, must: 1, may: 0)
