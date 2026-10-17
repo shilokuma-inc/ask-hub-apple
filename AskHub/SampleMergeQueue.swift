@@ -44,7 +44,7 @@ struct SampleMergeQueue: MergeQueueProviding {
             author: "mrs1669",
             checks: .pending,
             mergeability: .mergeable,
-            // 無料枠の上限に当たった PR（"Review rate limited"）。CI が終わっても、第三者レビューが済むまでマージできない
+            // 無料枠の上限に当たった PR（"Review rate limited"）。第三者レビューの要修正を直している最中
             codeRabbit: .rateLimited,
             // 上げている最中（CI も実行中なので、終わってももう一度は押せない）
             uploadStatus: .run(sampleUploadRun(
@@ -54,7 +54,9 @@ struct SampleMergeQueue: MergeQueueProviding {
                 headSHA: "0000001",
                 status: .inProgress,
                 conclusion: nil
-            ))
+            )),
+            thirdPartyReview: ThirdPartyReviewMarker(sha: "0000001", must: 2, may: 1),
+            finalReview: FinalReviewMarker(state: .fixing, sha: "0000001", attempts: 1)
         ),
         EpicPullRequest(
             id: "PR_120",
@@ -85,7 +87,9 @@ struct SampleMergeQueue: MergeQueueProviding {
             mergeability: .mergeable,
             codeRabbit: .completed,
             // 前のコミット（1111111）で失敗している（PR の最新の head と SHA が違う）。CI は成功しているので上げ直せる
-            uploadStatus: .run(sampleUploadRun(id: 1_201, branch: "epic/html-rendering", headSHA: "1111111", conclusion: .failure))
+            uploadStatus: .run(sampleUploadRun(id: 1_201, branch: "epic/html-rendering", headSHA: "1111111", conclusion: .failure)),
+            // 第三者レビューを待っている間に CodeRabbit がレビューした
+            finalReview: FinalReviewMarker(state: .doneCodeRabbit, sha: "0000002")
         ),
         // GitHub Actions は成功・CodeRabbit は処理中。今の head のレビューが済むまでマージできない（Discussion #503）
         EpicPullRequest(
@@ -112,7 +116,47 @@ struct SampleMergeQueue: MergeQueueProviding {
             mergeability: .mergeable,
             codeRabbit: .inProgress,
             // まだ TestFlight に上げていない
-            uploadStatus: .noRuns
+            uploadStatus: .noRuns,
+            // head が変わってから 10 分は CodeRabbit を待つ
+            finalReview: FinalReviewMarker(state: .waiting, sha: "0000003")
+        ),
+        // CodeRabbit がスキップしたので第三者レビューをした。要修正が 0 件なのでマージできる（Discussion #503）
+        EpicPullRequest(
+            id: "PR_140",
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 140,
+            title: "【FEAT】epic/final-review を develop に取り込む",
+            body: "### 回答待ちの PR\n- なし",
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/pull/140")!,
+            baseBranch: "develop",
+            headBranch: "epic/final-review",
+            headSHA: "0000004",
+            author: "mrs1669",
+            checks: .success,
+            mergeability: .mergeable,
+            codeRabbit: .skipped,
+            uploadStatus: .noRuns,
+            thirdPartyReview: ThirdPartyReviewMarker(sha: "0000004", must: 0, may: 3),
+            finalReview: FinalReviewMarker(state: .done, sha: "0000004")
+        ),
+        // 要修正が 3 回続けて収まらず、第三者レビューがあきらめた。アプリからはマージできない（Q1）
+        EpicPullRequest(
+            id: "PR_150",
+            repository: "shilokuma-inc/notti-ios",
+            number: 150,
+            title: "【FEAT】epic/sync を develop に取り込む",
+            body: "### 回答待ちの PR\n- なし",
+            url: URL(string: "https://github.com/shilokuma-inc/notti-ios/pull/150")!,
+            baseBranch: "develop",
+            headBranch: "epic/sync",
+            headSHA: "0000005",
+            author: "mrs1669",
+            checks: .success,
+            mergeability: .mergeable,
+            codeRabbit: .rateLimited,
+            uploadStatus: .noRuns,
+            thirdPartyReview: ThirdPartyReviewMarker(sha: "0000005", must: 1, may: 0),
+            finalReview: FinalReviewMarker(state: .gaveUp, sha: "0000005", attempts: 3)
         )
     ]
 
