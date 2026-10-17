@@ -678,6 +678,10 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
 - アプリのステータスタブの「手動ループ」は、開いている手動ループを担当者・状態・最終更新つきで並べ、担当者が自分なら指示のコピーを出す
   （状態が無ければ開始、`completed` なら最終 PR、それ以外は再開）。
   `waitingPullRequests` の `needs-answer` がすべて外れ、ループが止まっていれば「回答がそろいました」と出す。
+  epic の最終 PR（下記）に信用する author の未処理の指示（「最終 PR への指示」）があり、ループが止まっていれば「最終 PR に指示が付きました」と出し、
+  担当者が自分なら、状態が `completed` でも再開の指示をコピーさせる（オーケストレーターは手動ループを再開しない。[Discussion #498](https://github.com/shilokuma-inc/ask-hub-apple/discussions/498) の Q5）。
+  手動ループの最終 PR は、同じリポジトリの、信用する author が作った open な `epic-final` の PR のうち、本文の先頭のゴール元の Discussion の目印がその Discussion のもの。
+  目印の無い PR は、head のブランチがその手動ループの状態の `epic` のものとする（`GitHubManualLoopFinalInstructions`。一覧もコメントもページングを最後まで追う）
   同じリポジトリで複数のループが回るので、状態・回答待ちの PR・止まっている知らせは、その Discussion のループの状態（本文とループごとのコメント）から決める。
   ゴール元の番号を書いていない古い形の本文の手動ループは、今までどおりそのリポジトリの手動ループの状態として読む
 - 手動ループの epic 宛ての PR の ask への回答では、オーケストレーターはループを再開しない（ループは担当者の Mac にある。担当者がアプリの知らせを見て再開する）。
