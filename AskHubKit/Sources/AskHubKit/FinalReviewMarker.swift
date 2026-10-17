@@ -26,14 +26,14 @@ public struct FinalReviewMarker: Sendable, Equatable, Hashable {
     }
 
     public var state: State
-    /// この状態を判断した head のコミットの SHA（小文字の 16 進）
+    /// この状態を判断した head のコミットの SHA（40 文字の小文字の 16 進。`init` で小文字にそろえる）
     public var sha: String
     /// 今の追跡で要修正が続いた回数
     public var attempts: Int
 
     public init(state: State, sha: String, attempts: Int = 0) {
         self.state = state
-        self.sha = sha
+        self.sha = sha.lowercased()
         self.attempts = attempts
     }
 
@@ -48,7 +48,7 @@ public struct FinalReviewMarker: Sendable, Equatable, Hashable {
     /// コメント本文から目印を読み取る。
     ///
     /// 目印は本文の先頭（前後の空白・改行は無視する）にある場合だけ認める。
-    /// 知らない `state`・16 進でない `sha`・0 以上の整数でない `attempts` は `nil`。`attempts` が無ければ 0 とみなす。
+    /// 知らない `state`・40 文字の 16 進でない `sha`・0 以上の整数でない `attempts` は `nil`。`attempts` が無ければ 0 とみなす。
     /// author が信用できるか・`sha` が今の head かはここでは判定しない
     public static func parse(_ body: String) -> Self? {
         guard let attributes = MarkerComment.attributes(body, keyword: keyword),
@@ -65,7 +65,7 @@ public struct FinalReviewMarker: Sendable, Equatable, Hashable {
         } else {
             attempts = 0
         }
-        return Self(state: state, sha: sha.lowercased(), attempts: attempts)
+        return Self(state: state, sha: sha, attempts: attempts)
     }
 
     static let keyword = "ask-hub:final-review"

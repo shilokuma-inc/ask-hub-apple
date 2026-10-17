@@ -21,21 +21,23 @@ struct FinalReviewMarkerTests {
         ("gave-up", .gaveUp)
     ])
     func parsesEveryState(raw: String, state: FinalReviewMarker.State) {
-        let marker = FinalReviewMarker.parse(#"<!-- ask-hub:final-review state="\#(raw)" sha="abc1234" -->"#)
-        #expect(marker == FinalReviewMarker(state: state, sha: "abc1234", attempts: 0))
+        let sha = "abc1234abc1234abc1234abc1234abc1234abc12"
+        let marker = FinalReviewMarker.parse(#"<!-- ask-hub:final-review state="\#(raw)" sha="\#(sha)" -->"#)
+        #expect(marker == FinalReviewMarker(state: state, sha: "abc1234abc1234abc1234abc1234abc1234abc12", attempts: 0))
     }
 
     @Test(arguments: [
         "",
-        #"<!-- ask-hub:final-review sha="abc1234" -->"#,
-        #"<!-- ask-hub:final-review state="unknown" sha="abc1234" -->"#,
-        #"<!-- ask-hub:final-review state="Done" sha="abc1234" -->"#,
+        #"<!-- ask-hub:final-review sha="abc1234abc1234abc1234abc1234abc1234abc12" -->"#,
+        #"<!-- ask-hub:final-review state="unknown" sha="abc1234abc1234abc1234abc1234abc1234abc12" -->"#,
+        #"<!-- ask-hub:final-review state="Done" sha="abc1234abc1234abc1234abc1234abc1234abc12" -->"#,
         #"<!-- ask-hub:final-review state="done" -->"#,
         #"<!-- ask-hub:final-review state="done" sha="not-a-sha" -->"#,
-        #"<!-- ask-hub:final-review state="done" sha="abc1234" attempts="x" -->"#,
-        #"<!-- ask-hub:final-reviews state="done" sha="abc1234" -->"#,
-        #"<!-- ralph:third-party-review sha="abc1234" must="0" may="0" -->"#,
-        #"前置き <!-- ask-hub:final-review state="done" sha="abc1234" -->"#
+        #"<!-- ask-hub:final-review state="done" sha="abc1234" -->"#,
+        #"<!-- ask-hub:final-review state="done" sha="abc1234abc1234abc1234abc1234abc1234abc12" attempts="x" -->"#,
+        #"<!-- ask-hub:final-reviews state="done" sha="abc1234abc1234abc1234abc1234abc1234abc12" -->"#,
+        #"<!-- ralph:third-party-review sha="abc1234abc1234abc1234abc1234abc1234abc12" must="0" may="0" -->"#,
+        #"前置き <!-- ask-hub:final-review state="done" sha="abc1234abc1234abc1234abc1234abc1234abc12" -->"#
     ])
     func rejectsMalformedMarkers(body: String) {
         #expect(FinalReviewMarker.parse(body) == nil)
@@ -47,6 +49,10 @@ struct FinalReviewMarkerTests {
             let comment = try #require(marker.htmlComment)
             #expect(FinalReviewMarker.parse(comment) == marker)
         }
+    }
+
+    @Test func initLowercasesSha() {
+        #expect(FinalReviewMarker(state: .waiting, sha: Self.sha.uppercased()).sha == Self.sha)
     }
 
     @Test func htmlCommentRejectsUnrepresentableValues() {

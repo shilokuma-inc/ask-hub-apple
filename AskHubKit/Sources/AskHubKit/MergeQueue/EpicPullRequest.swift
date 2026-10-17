@@ -92,6 +92,10 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     public var codeRabbit: CodeRabbitState
     /// Upload ワークフローの直近の run の状況。既定は `notLoaded`
     public var uploadStatus: UploadStatus
+    /// 今の head（`headSHA`）に対する第三者レビューの目印。信用する author のコメントのうち最新のもの。無ければ `nil`
+    public var thirdPartyReview: ThirdPartyReviewMarker?
+    /// 今の head（`headSHA`）に対する第三者レビューの進み具合（オーケストレーターの状態コメント）。信用する author のコメントのうち最新のもの。無ければ `nil`
+    public var finalReview: FinalReviewMarker?
 
     public init(
         id: String,
@@ -107,7 +111,9 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         checks: ChecksState,
         mergeability: Mergeability,
         codeRabbit: CodeRabbitState = .none,
-        uploadStatus: UploadStatus = .notLoaded
+        uploadStatus: UploadStatus = .notLoaded,
+        thirdPartyReview: ThirdPartyReviewMarker? = nil,
+        finalReview: FinalReviewMarker? = nil
     ) {
         self.id = id
         self.repository = repository
@@ -123,6 +129,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         self.mergeability = mergeability
         self.codeRabbit = codeRabbit
         self.uploadStatus = uploadStatus
+        self.thirdPartyReview = thirdPartyReview
+        self.finalReview = finalReview
     }
 
     /// マージボタンを押せるか。GitHub Actions の CI が成功していて、コンフリクトしていないこと（Q13・Discussion #460）。

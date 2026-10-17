@@ -2,7 +2,7 @@ import Foundation
 
 /// GitHub の API で「マージ待ち」を取得し、マージする
 public struct GitHubMergeQueue: MergeQueueProviding {
-    private let client: GitHubClient
+    let client: GitHubClient
     private let trustedAuthors: any TrustedAuthorsResolving
     private let uploadWorkflow: (any UploadWorkflowProviding)?
 
@@ -36,8 +36,11 @@ public struct GitHubMergeQueue: MergeQueueProviding {
         // fork からの PR は、マージ後に削除するブランチがこのリポジトリに無いので扱わない
         var trusted: [EpicPullRequest] = []
         for node in nodes {
-            guard var pullRequest = node.pullRequest,
-                  await trustedAuthors.trustedAuthors(for: pullRequest.repository).contains(pullRequest.author) else {
+            guard var pullRequest = node.pullRequest else {
+                continue
+            }
+            let authors = await trustedAuthors.trustedAuthors(for: pullRequest.repository)
+            guard authors.contains(pullRequest.author) else {
                 continue
             }
             // contexts が 1 ページ（100 件）に収まらない PR は、残りを取り直してから CI と CodeRabbit の状態を決める（1 ページ目だけで黙って決めない）
@@ -49,6 +52,15 @@ public struct GitHubMergeQueue: MergeQueueProviding {
                 pullRequest.checks = EpicNode.checks(all)
                 pullRequest.codeRabbit = EpicNode.codeRabbit(all)
             }
+            // 第三者レビューの目印と進み具合は、PR のコメントを最後まで読んでから決める（状態コメントは古いコメントを書き換えて使うため）
+            var comments = node.comments?.nodes.compactMap(\.self) ?? []
+            if let page = node.comments, page.pageInfo.hasNextPage {
+                guard let cursor = page.pageInfo.endCursor else {
+                    throw GitHubError.invalidResponse
+                }
+                comments += try await remainingComments(of: pullRequest, after: cursor)
+            }
+            Self.attachFinalReview(to: &pullRequest, comments: comments, trustedAuthors: authors)
             trusted.append(pullRequest)
         }
         return try await attachUploadStatus(to: trusted)
@@ -172,11 +184,13 @@ public struct GitHubMergeQueue: MergeQueueProviding {
                 repository { nameWithOwner defaultBranchRef { name } }
                 headRepository { nameWithOwner }
                 commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { ...Contexts } } } } }
+                comments(first: 100) { ...Comments }
               }
             }
           }
         }
         \(contextsFragment)
+        \(commentsFragment)
         """
 
     /// 1 ページ目に収まらなかった `statusCheckRollup.contexts` を、head のコミットを指定して取り直す
@@ -263,6 +277,7 @@ private struct EpicNode: Decodable {
     let repository: Repository?
     let headRepository: HeadRepository?
     let commits: Commits?
+    let comments: PullRequestComments?
 
     /// 検索の型に合わないノード（`{}`）では `nil`
     var pullRequest: EpicPullRequest? {
