@@ -73,6 +73,26 @@ struct ManualLoopFinalInstructionsTests {
         #expect(paths == ["/repos/o/r/pulls", "/repos/o/r/issues/70/comments", "/repos/o/r/issues/72/comments"])
     }
 
+    @Test func checksEachRepositoryAndToleratesFailureOfOne() async throws {
+        let marked = "ゴール元: Discussion #5\n<!-- ask-hub:discussion 5 -->"
+        let http = MockHTTPClient([
+            // リポジトリは名前（小文字）の順に読む。a/one は一覧の取得に失敗する
+            .init(status: 500, body: "{}"),
+            .init(status: 200, body: "[" + Self.pull(80, head: "epic/z", body: marked) + "]"),
+            .init(status: 200, body: "[" + Self.comment(1, "mrs1669", "#discussion_r1 を直して", at: 0) + "]")
+        ])
+        let loops = [
+            ManualLoopTarget(repository: "B/Two", discussion: 5, epic: nil),
+            ManualLoopTarget(repository: "a/one", discussion: 3, epic: "epic/y")
+        ]
+
+        let pending = try await Self.checker(http).loopsWithUnprocessedInstructions(loops)
+
+        #expect(pending == ["b/two#5"])
+        let paths = http.requests.compactMap { $0.url?.path() }
+        #expect(paths == ["/repos/a/one/pulls", "/repos/B/Two/pulls", "/repos/B/Two/issues/80/comments"])
+    }
+
     @Test func doesNotMatchMarkedPullRequestOfAnotherDiscussionByBranch() {
         let pulls = [
             FinalPullRequestSummary(

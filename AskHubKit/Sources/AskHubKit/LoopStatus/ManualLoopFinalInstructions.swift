@@ -72,16 +72,24 @@ public struct GitHubManualLoopFinalInstructions: ManualLoopFinalInstructionsChec
             guard let repository = targets.first?.repository else {
                 continue
             }
-            let trusted = await trustedAuthors.trustedAuthors(for: repository)
-            let pulls = try await finalPullRequests(in: repository, trustedAuthors: trusted)
-            for target in targets {
-                guard let pull = Self.finalPullRequest(of: target, in: pulls) else {
-                    continue
-                }
-                let comments = try await comments(in: repository, number: pull.number)
-                if !FinalPullRequestHistory.unprocessedInstructions(in: comments, trustedAuthors: trusted).isEmpty {
-                    result.insert(target.key)
-                }
+            // 1 つのリポジトリで読めなくても、ほかのリポジトリの促しは出す
+            result.formUnion((try? await pending(targets, in: repository)) ?? [])
+        }
+        return result
+    }
+
+    /// 1 つのリポジトリの手動ループのうち、最終 PR に未処理の指示があるもの
+    private func pending(_ targets: [ManualLoopTarget], in repository: String) async throws -> Set<String> {
+        let trusted = await trustedAuthors.trustedAuthors(for: repository)
+        let pulls = try await finalPullRequests(in: repository, trustedAuthors: trusted)
+        var result = Set<String>()
+        for target in targets {
+            guard let pull = Self.finalPullRequest(of: target, in: pulls) else {
+                continue
+            }
+            let comments = try await comments(in: repository, number: pull.number)
+            if !FinalPullRequestHistory.unprocessedInstructions(in: comments, trustedAuthors: trusted).isEmpty {
+                result.insert(target.key)
             }
         }
         return result
