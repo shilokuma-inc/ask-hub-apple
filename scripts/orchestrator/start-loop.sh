@@ -27,8 +27,9 @@
 #                            Discussion にモデル・エフォートの目印（ask-hub:loop-options）があれば、そちらを --model / --effort で渡す
 #   ASKHUB_RESUME_REASON     再開の理由。オーケストレーターが起動ごとに渡す（decision-log: 仮決め一覧への指示、final-pr: 最終 PR への指示）
 #   ASKHUB_RESTORE_EPIC      再開で戻す epic ブランチ（例: epic/xxx）。制御用 worktree が別の epic のとき、退避先から作業ファイルを戻す。
-#                            戻せない（退避が見つからない・今の epic が未完了・未コミットの変更がある・今のループの state が残っている）ときは
-#                            何も変えずに終了コード 1 で終わる
+#                            戻せない（退避が見つからない・今の epic が未完了・未コミットの変更がある・今のループの state が残っている・
+#                            origin を取得できない・ブランチが無い・別の worktree がそのブランチを checkout している）ときは、
+#                            何も変えずに終了コード 1 で終わる。作り直しの途中で失敗したときは、同じ値で呼び直すと続きから戻す
 #   ASKHUB_XCODEBUILD_WRAPPER  ループに xcodebuild の代わりに使わせるラッパー（既定: ~/.config/askhub/xcodebuild が実行可能ならそれ）。
 #                            `<ラッパー> <作業ツリー> <xcodebuild の引数…>` の形で呼べ、Simulator と DerivedData を作業ツリーごとに
 #                            分けるもの（ビルド専用機へ回すなど）。指定すると、新しい epic の playbook の検証コマンドがこれ経由になる
@@ -187,16 +188,21 @@ restore_archived_epic() {
   [[ "$RESTORE_EPIC" =~ ^epic/[A-Za-z0-9._/-]+$ && "$RESTORE_EPIC" != *..* ]] || fail "戻す epic の名前が不正です: $RESTORE_EPIC"
   current=""
   [[ -d "$CTL" ]] && current=$(git -C "$CTL" symbolic-ref --short HEAD 2>/dev/null || echo detached)
-  # すでにその epic で、作業ファイル（完了語の記録）も揃っていれば、そのまま再開する
-  [[ "$current" == "$RESTORE_EPIC" && -f "$PROMISE_FILE" ]] && return 0
+  # すでにその epic なら、そのまま再開する。ただし前回の作り直しの途中で失敗していれば（完了語の記録も準備の記録も無く、
+  # テンプレートの作業ファイルしか無い）、退避から戻し直す
+  [[ "$current" == "$RESTORE_EPIC" ]] && { [[ -f "$PROMISE_FILE" || -f "$BOOTSTRAP_FILE" ]]; } && return 0
   archive=$(find_archive "$RESTORE_EPIC")
   [[ -n "$archive" ]] || fail "${RESTORE_EPIC} の作業ファイルの退避が見つかりません（${ARCHIVE_DIR}/${REPO_NAME}）。戻しません"
   if [[ "$current" != "$RESTORE_EPIC" ]]; then
     # 片付ける前に、戻す epic で制御用 worktree を作れることを確かめる（作れないと、今の epic も戻す epic も無いまま残る）
     git -C "$CHECKOUT" fetch --quiet origin || fail "origin を取得できませんでした。${RESTORE_EPIC} は戻しません"
-    git -C "$CHECKOUT" rev-parse --verify --quiet "refs/remotes/origin/$RESTORE_EPIC" >/dev/null \
-      || git -C "$CHECKOUT" rev-parse --verify --quiet "refs/heads/$RESTORE_EPIC" >/dev/null \
-      || fail "${RESTORE_EPIC} のブランチがありません。戻しません"
+    # ralph-setup.sh はローカルのブランチが無いと既定ブランチから作るので、origin にだけあれば先にそこから作る
+    if ! git -C "$CHECKOUT" rev-parse --verify --quiet "refs/heads/$RESTORE_EPIC" >/dev/null; then
+      git -C "$CHECKOUT" rev-parse --verify --quiet "refs/remotes/origin/$RESTORE_EPIC" >/dev/null \
+        || fail "${RESTORE_EPIC} のブランチがありません。戻しません"
+      git -C "$CHECKOUT" branch --quiet --track "$RESTORE_EPIC" "origin/$RESTORE_EPIC" \
+        || fail "${RESTORE_EPIC} のブランチを origin から作れませんでした。戻しません"
+    fi
     # 制御用 worktree とスロットのほかに、そのブランチを checkout している worktree（手動ループなど）があれば戻さない
     holder=$(git -C "$CHECKOUT" worktree list --porcelain | awk -v branch="branch refs/heads/$RESTORE_EPIC" \
       -v ctl="$CTL" -v a="${CTL%-ctl}-a" -v b="${CTL%-ctl}-b" '
