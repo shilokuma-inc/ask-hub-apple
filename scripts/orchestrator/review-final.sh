@@ -4,8 +4,9 @@
 #
 # 実装の文脈を持たない claude -p に、確認した head（headSHA）の差分（base...head）をレビューさせる。
 # claude には読むことだけを許し（ファイルの変更・コミット・push・コメントはさせない）、レビューの本文だけを返させる。
-# 差分の文章でプロンプトインジェクションされても困らないよう、シェル・書き込み・ネットワークのツールを拒否し、ホームディレクトリ
-# （gh の認証情報など）も読ませない。投稿する本文にトークンらしい文字列があれば投稿しない。
+# 差分の文章でプロンプトインジェクションされても困らないよう、使えるツールを読むもの（Read / Grep / Glob）だけに限り、
+# --restricted で読める範囲を一時ディレクトリに閉じ込め、ユーザーの設定（許可のルール）と MCP サーバーも読ませない。
+# 投稿する本文にトークンらしい文字列があれば投稿しない。
 # 目印（<!-- ralph:third-party-review sha="<headSHA>" must="N" may="M" -->）と見出しはこのスクリプトが付け、PR にコメントする。
 # 件数は claude の申告ではなく、本文の表の行（🔴 要修正 / 🟡 提案）からこのスクリプトが数える。
 # 最後の行に結果を出す（オーケストレーターが読む）:
@@ -118,7 +119,7 @@ PROMPT=$(cat <<EOF
 1. まず CLAUDE.md を読み、「コードレビュー観点」に従う（LEARNINGS.md があればそれも読む）
 2. 差分を読み、必要なら周りのコードも読んで、バグ・仕様との食い違い・テストの抜け・セキュリティを見る
 3. 次はしない: ファイルの変更、git commit / push / checkout、PR へのコメント（コメントはこのスクリプトが行う）。
-   使えるのはファイルを読むツール（Read / Grep / Glob）だけ。読むのは作業ディレクトリと ${TMP} の中だけにする
+   使えるのはファイルを読むツール（Read / Grep / Glob）だけで、読めるのは作業ディレクトリと ${TMP} の中だけ
 
 指摘ごとに重要度を 2 つから選ぶ:
 - 🔴 要修正: マージ前に必ず直す（バグ・仕様との食い違い・データの破損や消失・セキュリティ・クラッシュ・テストが無くて壊れても気づけないもの）
@@ -149,9 +150,9 @@ EOF
 )
 
 set +e
-OUTPUT=$(cd "$WORKTREE" && "$CLAUDE_BIN" -p \
-  --disallowedTools "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task,Read(~/**)" \
-  "$PROMPT" </dev/null 2>&1 | tee -a "$CLAUDE_LOG")
+# --tools / --add-dir は値を複数とるので、プロンプトは引数ではなく標準入力で渡す（引数だとツール名として飲み込まれる）
+OUTPUT=$(cd "$WORKTREE" && printf '%s\n' "$PROMPT" \
+  | "$CLAUDE_BIN" -p --restricted --strict-mcp-config --tools "Read,Grep,Glob" --add-dir "$TMP" 2>&1 | tee -a "$CLAUDE_LOG")
 STATUS=$?
 set -e
 # 利用上限で終わったときは、オーケストレーターが末尾から解除の時刻を読む
@@ -169,20 +170,20 @@ REVIEW=$(printf '%s\n' "$OUTPUT" | awk '
   END { if (found) printf "%s", last }
 ')
 [[ -n "$(printf '%s' "$REVIEW" | tr -d '[:space:]')" ]] || failed "claude の出力にレビューの本文がありません（${CLAUDE_LOG}）"
-# 目印は本文の先頭（スクリプトが付ける）でしか読まれないが、HTML コメントは GitHub で見えない文を隠せるので受け付けない
-if printf '%s' "$REVIEW" | grep -q -F '<!--'; then
-  failed "レビューの本文に HTML コメントが含まれています（${CLAUDE_LOG}）"
-fi
+# 目印は本文の先頭（スクリプトが付ける）でしか読まれないが、HTML コメントは GitHub で見えない文を隠せる。
+# 目印を扱うコードを引用しただけで失敗にしないよう、文字参照に書き換えて見える文にする
+REVIEW=${REVIEW//<!--/&lt;!--}
 # トークンらしい文字列を公開のコメントに出さない
 if printf '%s' "$REVIEW" | grep -q -E 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'; then
   failed "レビューの本文にトークンらしい文字列が含まれているので、投稿しません（${CLAUDE_LOG}）"
 fi
 
 # 件数は表の行から数える（claude の申告は使わない）。前回の指摘で直ったもの（対応が「修正済み」）は数えない。
-# 書式がずれた行を黙って数え落とすと要修正 0 件（マージ可）に倒れるので、指摘の行（先頭のセルが番号）は
-# 重要度のセルが 🔴 / 🟡 のどちらか 1 つだけを含むことを確かめ、そうでなければ失敗にする
+# 書式がずれた行を黙って数え落とすと要修正 0 件（マージ可）に倒れるので、表の行（見出しと区切りの行を除く）はすべて、
+# 重要度のセル（2 列目）が 🔴 / 🟡 のどちらか 1 つだけを含むことを確かめ、そうでなければ失敗にする
 COUNTS=$(printf '%s\n' "$REVIEW" | awk -F'|' '
-  /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|/ {
+  /^[[:space:]]*\|/ {
+    if ($0 ~ /重要度/ || $0 ~ /^[[:space:]|:-]+$/) next
     severity = $3; last = $(NF - 1)
     must = index(severity, "🔴") > 0; may = index(severity, "🟡") > 0
     if (must == may) { bad++; next }
