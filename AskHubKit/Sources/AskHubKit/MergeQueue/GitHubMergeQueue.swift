@@ -51,7 +51,7 @@ public struct GitHubMergeQueue: MergeQueueProviding {
                 let all = try await contexts.nodes.compactMap(\.self) + remainingContexts(of: pullRequest, after: cursor)
                 pullRequest.checks = EpicNode.checks(all)
                 pullRequest.codeRabbit = EpicNode.codeRabbit(all)
-                pullRequest.headSince = EpicNode.codeRabbitCreatedAt(all) ?? node.headCommittedDate
+                pullRequest.headSince = node.headSince(codeRabbitCreatedAt: EpicNode.codeRabbitCreatedAt(all))
             }
             // 第三者レビューの目印と進み具合は、PR のコメントを最後まで読んでから決める（状態コメントは古いコメントを書き換えて使うため）
             var comments = node.comments?.nodes.compactMap(\.self) ?? []
@@ -180,7 +180,7 @@ public struct GitHubMergeQueue: MergeQueueProviding {
             pageInfo { hasNextPage endCursor }
             nodes {
               ... on PullRequest {
-                id number title body url baseRefName headRefName headRefOid mergeable
+                id number title body url createdAt baseRefName headRefName headRefOid mergeable
                 author { login }
                 repository { nameWithOwner defaultBranchRef { name } }
                 headRepository { nameWithOwner }
@@ -270,6 +270,7 @@ private struct EpicNode: Decodable {
     let title: String?
     let body: String?
     let url: URL?
+    let createdAt: Date?
     let baseRefName: String?
     let headRefName: String?
     let headRefOid: String?
@@ -303,8 +304,17 @@ private struct EpicNode: Decodable {
             checks: Self.checks(rollupContexts?.nodes.compactMap(\.self) ?? []),
             mergeability: Self.mergeability(mergeable),
             codeRabbit: Self.codeRabbit(rollupContexts?.nodes.compactMap(\.self) ?? []),
-            headSince: Self.codeRabbitCreatedAt(rollupContexts?.nodes.compactMap(\.self) ?? []) ?? headCommittedDate
+            headSince: headSince(codeRabbitCreatedAt: Self.codeRabbitCreatedAt(rollupContexts?.nodes.compactMap(\.self) ?? []))
         )
+    }
+
+    /// 今の head を GitHub が受け取った時刻の推定。CodeRabbit の commit status の時刻、無ければ head のコミットの日時。
+    /// PR を開く前のコミット（epic の head は古いことが多い）で、開いたばかりの PR をすぐレビューしないよう、PR の作成時刻を下限にする
+    func headSince(codeRabbitCreatedAt: Date?) -> Date? {
+        guard let estimate = codeRabbitCreatedAt ?? headCommittedDate else {
+            return createdAt
+        }
+        return createdAt.map { max($0, estimate) } ?? estimate
     }
 
     /// 最新コミットの日時（commit status `CodeRabbit` が無いときの、head を見始めた時刻の代わり）
@@ -312,7 +322,8 @@ private struct EpicNode: Decodable {
         commits?.nodes.compactMap(\.self).last?.commit.committedDate
     }
 
-    /// commit status `CodeRabbit` が作られた時刻。CodeRabbit が今の head の push を受け取った時刻にあたる
+    /// commit status `CodeRabbit` の時刻（rollup は最新の status なので、CodeRabbit が状態を書き換えた時刻）。
+    /// head の push を受け取った時刻以後になるので、待ち始めを遅らせる側（CodeRabbit を長めに待つ側）にずれる
     static func codeRabbitCreatedAt(_ contexts: [RollupContextNode]) -> Date? {
         contexts.first { $0.typename == "StatusContext" && $0.context == "CodeRabbit" }?.createdAt
     }

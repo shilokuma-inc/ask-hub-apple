@@ -49,7 +49,9 @@ extension Orchestrator {
             }
             publishedFinalReviews[pullRequest.key] = marker
             return true
-        } catch let GitHubError.http(status, _) where status == 403 || status == 404 {
+        } catch let GitHubError.http(status, message)
+                    where status == 404 || (status == 403 && message?.localizedCaseInsensitiveContains("rate limit") != true) {
+            // ヘッダーの無い 403 でもセカンダリレート制限（message に "rate limit"）なら、コメントは使えるので作り直さない
             // 状態コメントが消された（404）か、書き換えられない（403。人が書いた目印付きのコメントなど）。
             // その id は忘れ、次のポーリングで探し直すか作り直す
             if let id = finalReviewStatusComments.removeValue(forKey: pullRequest.key) {

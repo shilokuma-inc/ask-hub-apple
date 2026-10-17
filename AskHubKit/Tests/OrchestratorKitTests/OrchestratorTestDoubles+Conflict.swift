@@ -60,14 +60,14 @@ extension FakeGitHub {
     }
 
     /// その id のコメントの書き換えを、HTTP の状態コードで失敗させる（消された・権限が無い）
-    func setCommentUpdateFailure(id: Int, status: Int) {
-        state.withLock { $0.commentUpdateFailures[id] = status }
+    func setCommentUpdateFailure(id: Int, status: Int, message: String? = nil) {
+        state.withLock { $0.commentUpdateFailures[id] = (status, message) }
     }
 
     func updateComment(in repository: String, id: Int, body: String) async throws {
         try state.withLock { state in
-            if let status = state.commentUpdateFailures[id] {
-                throw GitHubError.http(status: status, message: nil)
+            if let failure = state.commentUpdateFailures[id] {
+                throw GitHubError.http(status: failure.status, message: failure.message)
             }
             for (number, comments) in state.issueComments {
                 if let index = comments.firstIndex(where: { $0.id == id }) {

@@ -379,6 +379,24 @@ extension OrchestratorTests {
         #expect(github.createdComments.count == 1)
     }
 
+    @Test func keepsStatusCommentWhenRewriteHitsSecondaryRateLimit() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setFinalReviewCandidates([Self.finalCandidate()])
+        let old = try #require(FinalReviewMarker(state: .reviewing, sha: Self.head1).htmlComment)
+        github.setIssueComments([IssueComment(id: 11, author: "mrs1669", body: old)], issue: 70)
+        // ヘッダーの無い 403 でも、セカンダリレート制限ならコメントは使えるので作り直さない
+        github.setCommentUpdateFailure(id: 11, status: 403, message: "You have exceeded a secondary rate limit")
+        let runtime = FakeRuntime()
+        runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: reviewed must=0 may=0\n")])
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+
+        #expect(github.createdComments.isEmpty)
+        #expect(logs.recorded.contains { $0.contains("#70 に第三者レビューの進み具合を書き出せませんでした") })
+    }
+
     @Test func statusBodyUsesTrackerSettings() throws {
         let body = try #require(Orchestrator.statusBody(FinalReviewMarker(state: .fixing, sha: Self.head1, attempts: 1)))
         #expect(body.hasPrefix(#"<!-- ask-hub:final-review state="fixing" sha="\#(Self.head1)" attempts="1" -->"#))
