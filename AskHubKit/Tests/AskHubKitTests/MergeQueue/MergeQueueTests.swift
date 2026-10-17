@@ -130,17 +130,21 @@ struct GitHubMergeQueueTests {
         mergeable: String,
         contexts: String?,
         base: String = "develop",
-        headRepository: String? = "o/r"
+        headRepository: String? = "o/r",
+        head: String? = nil,
+        comments: String? = nil
     ) -> String {
+        let commentsJSON = comments.map { #", "comments": \#($0)"# } ?? ""
         let rollupJSON = contexts.map { #"{ "contexts": \#($0) }"# } ?? "null"
         let headJSON = headRepository.map { #"{ "nameWithOwner": "\#($0)" }"# } ?? "null"
         return #"""
             { "id": "PR_\#(number)", "number": \#(number), "title": "T\#(number)", "body": "まとめ", "url": "https://github.com/o/r/pull/\#(number)",
-              "baseRefName": "\#(base)", "headRefName": "epic/e\#(number)", "headRefOid": "sha\#(number)", "mergeable": "\#(mergeable)",
+              "baseRefName": "\#(base)", "headRefName": "epic/e\#(number)",
+              "headRefOid": "\#(head ?? "sha\(number)")", "mergeable": "\#(mergeable)",
               "author": { "login": "\#(author)" },
               "repository": { "nameWithOwner": "o/r", "defaultBranchRef": { "name": "develop" } },
               "headRepository": \#(headJSON),
-              "commits": { "nodes": [{ "commit": { "statusCheckRollup": \#(rollupJSON) } }] } }
+              "commits": { "nodes": [{ "commit": { "statusCheckRollup": \#(rollupJSON) } }] }\#(commentsJSON) }
             """#
     }
 
