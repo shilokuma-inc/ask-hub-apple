@@ -98,6 +98,9 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     public var thirdPartyReview: ThirdPartyReviewMarker?
     /// 今の head（`headSHA`）に対する第三者レビューの進み具合（オーケストレーターの状態コメント）。信用する author のコメントのうち最新のもの。無ければ `nil`
     public var finalReview: FinalReviewMarker?
+    /// 今の head を GitHub が受け取った時刻の推定。commit status `CodeRabbit` の時刻、無ければ head のコミットの日時（PR の作成時刻を下限にする）。
+    /// オーケストレーターが再起動した後、CodeRabbit を待ち始めた時刻の代わりに使う（Discussion #503）
+    public var headSince: Date?
 
     public init(
         id: String,
@@ -115,7 +118,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         codeRabbit: CodeRabbitState = .none,
         uploadStatus: UploadStatus = .notLoaded,
         thirdPartyReview: ThirdPartyReviewMarker? = nil,
-        finalReview: FinalReviewMarker? = nil
+        finalReview: FinalReviewMarker? = nil,
+        headSince: Date? = nil
     ) {
         self.id = id
         self.repository = repository
@@ -133,6 +137,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         self.uploadStatus = uploadStatus
         self.thirdPartyReview = thirdPartyReview
         self.finalReview = finalReview
+        self.headSince = headSince
     }
 
     /// マージボタンを押せるか。GitHub Actions の CI が成功していて、コンフリクトしていなくて（Q13・Discussion #460）、

@@ -159,6 +159,50 @@ struct MergeQueueFinalReviewTests {
         }
     }
 
+    @Test func estimatesWhenHeadWasReceived() async throws {
+        let codeRabbit = GitHubMergeQueueTests.status(
+            state: "SUCCESS", description: "Review rate limited", createdAt: "2026-10-17T10:00:00Z"
+        )
+        let http = MockHTTPClient([
+            .init(status: 200, body: GitHubMergeQueueTests.searchPage([
+                // commit status CodeRabbit の作成時刻を使う
+                GitHubMergeQueueTests.node(
+                    number: 1,
+                    author: "mrs1669",
+                    mergeable: "MERGEABLE",
+                    contexts: GitHubMergeQueueTests.contexts([codeRabbit]),
+                    committedDate: "2026-10-17T09:00:00Z"
+                ),
+                // CodeRabbit が無ければ head のコミットの日時
+                GitHubMergeQueueTests.node(
+                    number: 2,
+                    author: "mrs1669",
+                    mergeable: "MERGEABLE",
+                    contexts: GitHubMergeQueueTests.contexts([GitHubMergeQueueTests.checkRun("build / build")]),
+                    committedDate: "2026-10-17T09:30:00Z"
+                ),
+                // どちらも無ければ分からない
+                GitHubMergeQueueTests.node(number: 3, author: "mrs1669", mergeable: "MERGEABLE", contexts: nil),
+                // PR を開く前のコミットなら、PR の作成時刻から（開いたばかりの PR をすぐレビューしない）
+                GitHubMergeQueueTests.node(
+                    number: 4,
+                    author: "mrs1669",
+                    mergeable: "MERGEABLE",
+                    contexts: nil,
+                    committedDate: "2026-10-16T09:00:00Z",
+                    createdAt: "2026-10-17T11:00:00Z"
+                )
+            ]))
+        ])
+        let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
+
+        let formatter = ISO8601DateFormatter()
+        #expect(pulls.map(\.headSince) == [
+            formatter.date(from: "2026-10-17T10:00:00Z"), formatter.date(from: "2026-10-17T09:30:00Z"), nil,
+            formatter.date(from: "2026-10-17T11:00:00Z")
+        ])
+    }
+
     private static func variables(of request: URLRequest?) throws -> [String: Any] {
         let data = try #require(request?.httpBody)
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])

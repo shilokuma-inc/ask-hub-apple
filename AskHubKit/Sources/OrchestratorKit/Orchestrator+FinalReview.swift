@@ -34,23 +34,26 @@ extension Orchestrator {
         guard activeUsageLimit(at: now()) == nil, !drainsConflictResolutions else {
             return
         }
-        let starts = finalReviewTracker.startable(
-            in: candidates, config: config, now: now(), busyRepositories: Set(conflictResolutions.keys)
-        )
+        // 実行中の解消と、終わった後の書き出しを待っているレビュー・修正（`finish` の後も `finalReviews` に残る）のリポジトリは選ばない。
+        // 選ぶと、書き出しを待つ間（actor の再入）に同じリポジトリで次を始め、`finalReviews` の Task を上書きして見失う
+        let busy = Set(conflictResolutions.keys).union(finalReviews.keys)
+        let starts = finalReviewTracker.startable(in: candidates, config: config, now: now(), busyRepositories: busy)
         for start in starts {
             let pullRequest = start.pullRequest
             let key = pullRequest.repository.lowercased()
             finalReviewTracker.start(start.action, for: pullRequest)
             finalReviews[key] = Task {
+                // 始めたこと（レビュー中）と結果を書き出してから取り除く（`--once` が書き出しの前に終わらないように）
+                await publishFinalReviewStatuses()
                 await runFinalReview(start)
                 finalReviewTracker.finish(pullRequest)
+                await publishFinalReviewStatuses()
                 finalReviews[key] = nil
                 // 同じリポジトリで待たせていたものを、次のポーリングを待たずに始める。コンフリクトの解消を先にする
                 // （待たせ続けないため。解消で head が変わればレビューはやり直しになる）。
                 // 今終わった PR は head が変わりうるので、次のポーリングで取得し直してから扱う
                 startConflictResolutions(among: conflictingPullRequests)
                 startFinalReviews(among: finalReviewCandidates.filter { $0.pullRequest.key != pullRequest.key })
-                await publishFinalReviewStatuses()
             }
         }
     }
