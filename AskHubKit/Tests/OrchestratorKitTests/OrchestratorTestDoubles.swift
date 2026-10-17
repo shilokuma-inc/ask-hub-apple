@@ -36,6 +36,7 @@ struct FakeGitHubState {
     var heartbeatFails = false
     var ideaCloseFails = false
     var decisionLogs: [DecisionLogIssue] = []
+    var epicFinalPullRequests: [EpicFinalPullRequest] = []
     /// 仮決め一覧のコメント（キーは Issue の番号）
     var issueComments: [Int: [IssueComment]] = [:]
     var decisionComments: [String] = []
@@ -222,6 +223,18 @@ final class FakeGitHub: OrchestratorGitHub {
 
     func comments(in repository: String, issue number: Int) async throws -> [IssueComment] {
         state.withLock { $0.issueComments[number] ?? [] }
+    }
+
+    /// 最終 PR と、そのコメント（キーは PR の番号。仮決め一覧のコメントと同じ所に入れる）
+    func setEpicFinalPullRequests(_ pullRequests: [EpicFinalPullRequest], comments: [Int: [IssueComment]] = [:]) {
+        state.withLock {
+            $0.epicFinalPullRequests = pullRequests
+            $0.issueComments.merge(comments) { _, new in new }
+        }
+    }
+
+    func epicFinalPullRequests(in repository: String) async throws -> [EpicFinalPullRequest] {
+        state.withLock { $0.epicFinalPullRequests.filter { $0.repository == repository } }
     }
 
     /// コメントは、次の取得で返るように Issue のコメントにも足す
