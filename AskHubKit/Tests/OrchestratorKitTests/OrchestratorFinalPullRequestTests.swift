@@ -261,4 +261,65 @@ extension OrchestratorTests {
         #expect(runtime.launched.isEmpty)
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#20 の仮決め一覧に指示が付きましたが、epic/mvp は手動ループの epic なので再開しません（担当者が再開します）"))
     }
+
+    @Test func keepsRestoringWhenRestoreFailedAfterSwitchingControlWorktree() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setManualLoops([ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 331, author: "mrs1669")])
+        github.setEpicFinalPullRequests([Self.finalPullRequest], comments: [61: [Self.finalInstruction]])
+        github.addExistingPullRequest(head: "epic/next", ExistingPullRequest(number: 70, isOpen: true))
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/next", goal: "- [x] 【FEAT】完了済み", state: nil, discussion: 12))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+        #expect(runtime.launchEnvironments.last?["ASKHUB_RESTORE_EPIC"] == "epic/mvp")
+
+        // 起動スクリプトが制御用 worktree を epic/mvp に切り替えた後に失敗した（作業ファイルはテンプレートのまま、ゴール元の記録も無い）
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [ ] テンプレート", state: nil))
+        runtime.set(Self.exitedWithoutStarting)
+        try await orchestrator.pollOnce()
+
+        // 手動ループの epic とはみなさず、同じ epic を戻すよう呼び直す（起動スクリプトが退避から続きを戻す）
+        #expect(runtime.launched.count == 2)
+        #expect(runtime.launchEnvironments.last?["ASKHUB_RESTORE_EPIC"] == "epic/mvp")
+        #expect(!logs.recorded.contains { $0.contains("手動ループの epic なので再開しません") })
+    }
+
+    @Test func waitsForResumedEpicToRewriteItsFinalPullRequestBeforeRestoring() async throws {
+        let github = FakeGitHub([.success([])])
+        let current = EpicFinalPullRequest(
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 70,
+            headBranch: "epic/next",
+            author: "mrs1669"
+        )
+        let currentInstruction = IssueComment(id: 201, author: "mrs1669", body: "#discussion_r700 を直して")
+        // 今の epic（#70）の指示を先に扱う並び
+        github.setEpicFinalPullRequests(
+            [current, Self.finalPullRequest],
+            comments: [61: [Self.finalInstruction], 70: [currentInstruction]]
+        )
+        github.addExistingPullRequest(head: "epic/next", ExistingPullRequest(number: 70, isOpen: true, body: "- 古いまとめ"))
+        let runtime = FakeRuntime()
+        runtime.setEpic(EpicSnapshot(branch: "epic/next", goal: "- [x] 【FIX】#discussion_r700", state: "## 最終 PR に載せる内容\n- 新しいまとめ\n"))
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        // 今の epic（epic/next）の最終 PR への指示で再開し、ループが始まった
+        try await orchestrator.pollOnce()
+        #expect(runtime.launchEnvironments.last?["ASKHUB_RESTORE_EPIC"] == nil)
+        runtime.set(Self.started)
+        try await orchestrator.pollOnce()
+
+        // ループが再び完了した回は、epic/next の最終 PR の本文を書き直し、epic/mvp はまだ戻さない
+        runtime.set(.idle)
+        try await orchestrator.pollOnce()
+        #expect(github.updatedPullRequestBodies == ["#70: - 新しいまとめ" + GitHubOrchestrator.epicFinalFooter])
+        #expect(runtime.launched.count == 1)
+        #expect(logs.recorded.contains { $0.contains("指示で再開した epic/next の最終 PR の本文を書き直すまで待ちます") })
+
+        // 書き直した後のポーリングで戻す
+        try await orchestrator.pollOnce()
+        #expect(runtime.launched.count == 2)
+        #expect(runtime.launchEnvironments.last?["ASKHUB_RESTORE_EPIC"] == "epic/mvp")
+    }
 }

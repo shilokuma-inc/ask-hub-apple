@@ -75,7 +75,7 @@ extension Orchestrator {
         guard !resumedInstructionComments.contains(commentKey) else {
             return
         }
-        let acceptance = await controlWorktreeAcceptance(of: place, name: name, commentKey: commentKey, in: repository)
+        let acceptance = await acceptance(of: place, pending: pending, name: name, commentKey: commentKey, in: repository)
         switch acceptance {
         case .accepted, .restore:
             break
@@ -98,15 +98,31 @@ extension Orchestrator {
             commentID: latest.id,
             commentKey: commentKey,
             epicKey: "\(key) \(place.branch)",
-            attempts: attempts + 1
+            attempts: attempts + 1,
+            restoring: acceptance == .restore
         )
         statuses[key] = LoopStatus(stateFileExists: false, processAlive: true)
-        loggedRestoreWaits.remove(commentKey)
+        loggedRestoreWaits = loggedRestoreWaits.filter { !$0.hasPrefix("\(commentKey) ") }
         if acceptance == .restore {
             log("\(name)に指示が付いたので、制御用 worktree を \(place.branch) に戻してループを再開しました")
         } else {
             log("\(name)に指示が付いたので、ループを再開しました")
         }
+    }
+
+    /// 指示で起動してよいか。戻して起動したのに開始を確かめられていない（起動スクリプトが作り直しの途中で失敗した）なら、
+    /// 制御用 worktree がすでに指示の epic でも、同じ epic を戻すよう呼び直す（起動スクリプトが退避から続きを戻す）
+    private func acceptance(
+        of place: InstructionPlace,
+        pending: InstructionResume?,
+        name: String,
+        commentKey: String,
+        in repository: RepositoryConfig
+    ) async -> ControlWorktreeAcceptance {
+        if pending?.restoring == true, pendingInstructionResumes[repository.fullName.lowercased()] != nil {
+            return .restore
+        }
+        return await controlWorktreeAcceptance(of: place, name: name, commentKey: commentKey, in: repository)
     }
 
     /// 指示を処理させるためにループを起動する。起動できなければ理由をログに出して `false`
@@ -194,13 +210,19 @@ extension Orchestrator {
                 logRestoreWait(commentKey, "\(name)に指示が付きましたが、制御用 worktree の \(current) の最終 PR がまだ無いので、作り終えるまで待ちます")
                 return .undecided
             }
+            // 今の epic を指示で再開した後は、再び完了して最終 PR の本文を書き直すまで退避しない（まとめが退避先に移ってしまう）。
+            // タスクを残したまま止まった（再開した指示を処理しきれていない）ときも待つ
+            guard !epicsToRefresh.contains("\(key) \(current)") else {
+                logRestoreWait(commentKey, "\(name)に指示が付きましたが、指示で再開した \(current) の最終 PR の本文を書き直すまで待ちます")
+                return .undecided
+            }
         }
         return .restore
     }
 
-    /// 戻すのを待っていることを、同じ指示では 1 回だけログに出す
+    /// 戻すのを待っていることを、同じ指示・同じ理由では 1 回だけログに出す（理由が変われば出す）
     private func logRestoreWait(_ commentKey: String, _ message: String) {
-        guard loggedRestoreWaits.insert(commentKey).inserted else {
+        guard loggedRestoreWaits.insert("\(commentKey) \(message)").inserted else {
             return
         }
         log(message)
@@ -287,4 +309,6 @@ struct InstructionResume: Sendable, Equatable {
     let epicKey: String
     /// 起動した回数
     let attempts: Int
+    /// 制御用 worktree を指示の epic に戻すよう起動した（`ASKHUB_RESTORE_EPIC` を渡した）
+    var restoring = false
 }
