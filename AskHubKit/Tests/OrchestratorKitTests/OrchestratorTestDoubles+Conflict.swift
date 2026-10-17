@@ -1,3 +1,4 @@
+import AskHubKit
 import Foundation
 @testable import OrchestratorKit
 
@@ -36,5 +37,41 @@ extension FakeGitHub {
 
     func finalReviewCandidates(orgs: [String], trust: TrustDirectory) async throws -> [FinalReviewCandidate] {
         state.withLock { $0.finalReviewCandidates }
+    }
+}
+
+// FakeGitHub の、最終 PR の状態コメント。作ったコメントは次の取得（comments(in:issue:)）で返る
+extension FakeGitHub {
+    func setIssueComments(_ comments: [IssueComment], issue number: Int) {
+        state.withLock { $0.issueComments[number] = comments }
+    }
+
+    var updatedComments: [String] {
+        state.withLock { $0.updatedComments }
+    }
+
+    func createComment(onPullRequest number: Int, in repository: String, body: String) async throws -> Int {
+        state.withLock { state in
+            let id = 7_000 + state.issueComments.values.joined().count
+            state.issueComments[number, default: []].append(IssueComment(id: id, author: "mrs1669", body: body))
+            state.createdComments.append("\(repository)#\(number) \(id)")
+            return id
+        }
+    }
+
+    func updateComment(in repository: String, id: Int, body: String) async throws {
+        state.withLock { state in
+            for (number, comments) in state.issueComments {
+                if let index = comments.firstIndex(where: { $0.id == id }) {
+                    let old = comments[index]
+                    state.issueComments[number]?[index] = IssueComment(id: id, author: old.author, body: body)
+                }
+            }
+            state.updatedComments.append("\(repository) \(id)")
+        }
+    }
+
+    var createdComments: [String] {
+        state.withLock { $0.createdComments }
     }
 }

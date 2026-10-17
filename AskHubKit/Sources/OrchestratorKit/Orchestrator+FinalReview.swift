@@ -20,6 +20,8 @@ extension Orchestrator {
         finalReviewCandidates = candidates
         finalReviewTracker.update(with: candidates, now: now())
         startFinalReviews(among: candidates)
+        // 始めたもの（レビュー中）も含めて、進み具合を最終 PR に書き出す
+        await publishFinalReviewStatuses()
     }
 
     /// 裏で実行中のレビュー・修正のリポジトリ（名前の小文字）。コンフリクトの解消はこのリポジトリでは始めない
@@ -48,6 +50,7 @@ extension Orchestrator {
                 // 今終わった PR は head が変わりうるので、次のポーリングで取得し直してから扱う
                 startConflictResolutions(among: conflictingPullRequests)
                 startFinalReviews(among: finalReviewCandidates.filter { $0.pullRequest.key != pullRequest.key })
+                await publishFinalReviewStatuses()
             }
         }
     }

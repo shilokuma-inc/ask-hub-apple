@@ -13,6 +13,10 @@ public protocol OrchestratorGitHub: Sendable {
     func conflictingEpicFinalPullRequests(orgs: [String]) async throws -> [ConflictingPullRequest]
     /// org 全体の open な `epic-final` PR（信用する author が作ったもの）の、第三者レビューの対象を決めるための状態（Discussion #503）
     func finalReviewCandidates(orgs: [String], trust: TrustDirectory) async throws -> [FinalReviewCandidate]
+    /// PR の会話にコメントし、コメントの id を返す（最終 PR の第三者レビューの状態コメント）
+    func createComment(onPullRequest number: Int, in repository: String, body: String) async throws -> Int
+    /// Issue・PR のコメントを書き換える
+    func updateComment(in repository: String, id: Int, body: String) async throws
     /// PR にコメントする
     func comment(onPullRequest number: Int, in repository: String, body: String) async throws
     /// epic の最終 PR の材料（子 PR・仮決め一覧・実機確認）を GitHub から集める
@@ -152,6 +156,12 @@ public actor Orchestrator {
     var finalReviews: [String: Task<Void, Never>] = [:]
     /// 最後に取得した第三者レビューの対象。終わった直後に、同じリポジトリの次の PR を始めるのに使う
     var finalReviewCandidates: [FinalReviewCandidate] = []
+    /// 最終 PR に書き出した第三者レビューの進み具合（キーは PR）。同じ内容は書き直さない
+    var publishedFinalReviews: [String: FinalReviewMarker] = [:]
+    /// 最終 PR の状態コメントの id（キーは PR）。見つけたものと作ったもの
+    var finalReviewStatusComments: [String: Int] = [:]
+    /// 状態コメントを書き出している PR。actor の再入（ポーリングと裏の処理の終わりが重なる）でコメントを二重に作らない
+    var publishingFinalReviews: Set<String> = []
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
     var loopStatusPublisher = LoopStatusPublisher()
