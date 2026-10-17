@@ -19,8 +19,11 @@ public struct FinalPullRequestHistory: Sendable, Equatable {
         case instruction(isProcessed: Bool)
         /// ループの返信（信用する author の `FinalPullRequestMarker.reply` 付きのコメント）
         case reply
-        /// オーケストレーターのコメント（信用する author の `FinalPullRequestMarker.orchestrator` 付きのコメント）。指示でも返信でもない
+        /// オーケストレーターのコメント（信用する author の `FinalPullRequestMarker.orchestrator` で始まるコメントと、
+        /// 目印を付ける前の形（末尾が `FinalPullRequestMarker.legacyOrchestratorSuffix`）のコメント）。指示でも返信でもない
         case orchestrator
+        /// CodeRabbit への依頼（`@coderabbitai review` など、`@coderabbitai` で始まるコメント）。ループへの指示ではない
+        case codeRabbitCommand
         /// 信用する author 以外のコメント（CodeRabbit を含む）。指示として扱わず、目印を含んでいても処理済みの判定に使わない
         case untrusted
     }
@@ -81,8 +84,12 @@ public struct FinalPullRequestHistory: Sendable, Equatable {
         if body.hasPrefix(FinalPullRequestMarker.reply) {
             return .reply
         }
-        if body.hasPrefix(FinalPullRequestMarker.orchestrator) {
+        if body.hasPrefix(FinalPullRequestMarker.orchestrator)
+            || body.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(FinalPullRequestMarker.legacyOrchestratorSuffix) {
             return .orchestrator
+        }
+        if body.lowercased().hasPrefix(FinalPullRequestMarker.codeRabbitMention) {
+            return .codeRabbitCommand
         }
         return .instruction(isProcessed: false)
     }

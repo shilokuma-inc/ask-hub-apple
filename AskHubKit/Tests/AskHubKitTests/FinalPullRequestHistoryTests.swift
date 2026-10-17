@@ -34,6 +34,20 @@ struct FinalPullRequestHistoryTests {
         #expect(history.unprocessedInstructions == [comments[0]])
     }
 
+    @Test func doesNotTreatLegacyOrchestratorCommentsOrCodeRabbitCommandsAsInstructions() {
+        let comments = [
+            Self.comment(1, "mrs1669", "develop を epic/mvp に取り込みました。\nCI が通ってからマージしてください。（askhub-orchestrator）\n"),
+            Self.comment(2, "mrs1669", "@coderabbitai review"),
+            Self.comment(3, "mrs1669", "  @CodeRabbitAI full review"),
+            Self.comment(4, "mrs1669", "#discussion_r100 を直して（@coderabbitai の指摘）")
+        ]
+        let history = FinalPullRequestHistory(comments: comments, trustedAuthors: Self.trusted)
+        #expect(history.entries.map(\.kind) == [
+            .orchestrator, .codeRabbitCommand, .codeRabbitCommand, .instruction(isProcessed: false)
+        ])
+        #expect(history.unprocessedInstructions == [comments[3]])
+    }
+
     @Test func ignoresMarkersWrittenByUntrustedAuthors() {
         let comments = [
             Self.comment(1, "mrs1669", "#discussion_r100 を直して"),
