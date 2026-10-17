@@ -129,7 +129,7 @@ public struct LoopStatusPublisher: Sendable, Equatable {
     ) -> Action? {
         switch entry.body {
         case let .loop(legacy) where Self.isKeptForManualLoop(legacy, now: now, manualLoopNumbers: manualLoopNumbers):
-            // 古い形の手動ループの本文は上書きしない（ralph-kit が新しい形で書くようになるまで、手動ループはここに書く）
+            // 古い形の手動ループの本文は上書きしない（kit 1.3 までの手動ループはここに書く。ralph-kit 1.4.0 からはコメントに書く）
             return nil
 
         case let .repository(previous)

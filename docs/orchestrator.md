@@ -79,12 +79,15 @@ GitHub のトークンは起動時に `gh auth token` で得る（Discussion #1 
 手動ループがあるリポジトリでも、`ready-for-loop` の Discussion から自動ループを起動する。
 自動ループの数は、オーケストレーターの制御用 worktree（`<名前>-ralph-ctl`）の state ファイル・プロセス・途中の epic と、同じポーリングで起動した Discussion で数える（手動ループは数えない）。
 
-- **オーケストレーターの Mac では、担当リポジトリの手動ループを回さない**（手動ループは担当者の別の Mac で回す）。
-  ralph-kit が手動ループの作業場所を Discussion ごとに分けるまでは、手動ループ（`scripts/askhub-manual.sh`）も同じ制御用 worktree（`<名前>-ralph-ctl`）と
-  PID ファイル（`.claude/askhub-loop.pid`）を使うので、自動ループとぶつかる（PID ファイルを上書きし合う、手動ループの state ファイル・途中の epic が残って自動ループを起動できない、
-  自動ループの起動が完了した手動ループの epic を退避するなど）
+- 手動ループ（`scripts/askhub-manual.sh`）の作業場所は、ralph-kit 1.4.0 から Discussion ごとに分かれる
+  （制御用 worktree `<名前>-ralph-d<番号>-ctl`・スロット `<名前>-ralph-d<番号>-a` / `-b`。PID ファイル `.claude/askhub-loop.pid` もその制御用 worktree に置く）。
+  オーケストレーターの制御用 worktree（`<名前>-ralph-ctl`・`-a`・`-b`）と PID ファイルには触らないので、オーケストレーターの Mac でも担当リポジトリの手動ループを `start` して回せる。
+  同じ epic は 1 つの worktree でしか checkout できないので、同じ Mac のほかのループが使っている epic 名では、手動ループの `start` も自動ループの準備（`ralph-setup.sh`）も止まる
+- kit 1.3 までに `<名前>-ralph-ctl` で始めた手動ループは、移さずにその場所のまま最後まで回る（`resume` / `final` / `status` もそこを使う）。
+  このループだけは自動ループと同じ制御用 worktree と PID ファイルを使うので、終わるまでオーケストレーターの Mac では回さない
+  （PID ファイルを上書きし合う、手動ループの state ファイル・途中の epic が残って自動ループを起動できない、自動ループの起動が完了した手動ループの epic を退避するなど、自動ループとぶつかる）
 - 回答による再開・GitHub の情報からの最終 PR は、制御用 worktree の epic のゴール元が `manual-loop` の Discussion のとき・記録が無いときは、
-  この Mac の手動ループのものとして自動ループの経路では扱わない（「ask に回答が付いたらループを再開する」「GitHub の情報から最終 PR を作る」）
+  この Mac の手動ループ（kit 1.3 までに `<名前>-ralph-ctl` で始めたもの）のものとして自動ループの経路では扱わない（「ask に回答が付いたらループを再開する」「GitHub の情報から最終 PR を作る」）
 
 ## 常駐させる（launchd）
 
@@ -238,7 +241,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 3. **共有設定**: `git clone git@github.com:mrs1669/agents-config.git ~/.agents && ~/.agents/install.sh`（AGENTS.md と LEARNINGS の hook）
 4. **常駐の前提**: スリープを止める・停電後に自動で起動する・ログインしたままにする（LaunchAgent はログイン中のユーザーで動く）。
    `~/.claude/settings.json` の `skipDangerousModePermissionPrompt` は `true` のまま（無人で `bypassPermissions` を使うため）
-5. **ralph-loop プラグイン**: `claude plugin install ralph-loop@claude-plugins-official` を、制御用 worktree（`*-ralph-ctl`）の外で実行する。
+5. **ralph-loop プラグイン**: `claude plugin install ralph-loop@claude-plugins-official` を、制御用 worktree（`*-ralph-ctl`・手動ループの `*-ralph-d<番号>-ctl`）の外で実行する。
    `~/.claude/settings.json` の `enabledPlugins` に入っていれば有効。周回は このプラグインの Stop hook が回すので、無いとループが 1 周で黙って終わる（`askhub-start-loop` は起動前にエラーで止める）
 6. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには ralph-kit の中継（`scripts/ralph-*.sh`。[ralph-kit](https://github.com/shilokuma-inc/ralph-kit) の `install.sh` で入れる）とプロトコルのラベルが必要
 7. **オーケストレーター**: このリポジトリを clone して `scripts/orchestrator/install.sh` を実行し、
@@ -348,8 +351,8 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
    `manual-loop` と author は `needs-answer` の検索結果から読む。信用外の author の Discussion に付いた `manual-loop` は無視し、今までどおり扱う
 6. 信用する author の open な `manual-loop` の Discussion があるリポジトリ（手動ループ）では、手動ループの epic 宛ての PR の回答で再開待ちにしない。
    ループは担当者の Mac で動いているので、担当者がアプリの「回答がそろいました」を見て再開する。
-   手動ループのあるリポジトリでは、次のときも自動ループの epic とみなさない（ralph-kit が作業場所を Discussion ごとに分けるまでは、
-   この PC で回す手動ループも制御用 worktree を使うため）。このとき、そのリポジトリの再開待ちもやめる
+   手動ループのあるリポジトリでは、次のときも自動ループの epic とみなさない（kit 1.3 までに始めた手動ループは、この PC の制御用 worktree を使っていることがあるため。
+   kit 1.4.0 から始めた手動ループは `<名前>-ralph-d<番号>-ctl` を使い、制御用 worktree には現れない）。このとき、そのリポジトリの再開待ちもやめる
    - 制御用 worktree の epic のゴール元（起動スクリプトの記録）が `manual-loop` の Discussion
    - ゴール元の記録が無い（手で始めた epic）
 
@@ -472,11 +475,13 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 1. ループのプロセスが動いていれば外さない。最終 PR のコンフリクトを裏で解消している間も外さない（解消はメインの checkout に一時 worktree を作るため）。
    制御用 worktree に state ファイルが残っていれば、強制の依頼でなければ外さない
 2. ローカルも消す依頼なら、`removeRepositoryCommand`（既定は `scripts/orchestrator/remove-repo.sh`）に
-   `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する。スクリプトは、強制でなければ
+   `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する。ループの worktree には、オーケストレーターの `<名前>-ralph-ctl`・`-a`・`-b` に加えて、
+   この Mac の手動ループの `<名前>-ralph-d<番号>-ctl`・`-a`・`-b`（ralph-kit 1.4.0 から）も含める。手動ループのプロセスが動いていれば、強制でも消さない。
+   スクリプトは、強制でなければ
    未コミットの変更（ループの作業ファイル `.claude/askhub-*`・`.claude/ralph-*.local.*` は除く）・stash・どのリモートにも無いコミットを持つブランチがないかを確かめる。
    ブランチは、既定ブランチに取り込んでも木が変わらなければ（squash merge 済みなど）消してよいものとして扱う。
    checkout やループの worktree が git の作業ツリーとして読めない・確かめるための git が失敗したときも、確かめられないので消さない。
-   消してよければ、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/<名前>/removed-<日時>/` に退避してから、
+   消してよければ、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/<名前>/removed-<日時>/`（手動ループの制御用 worktree は、その下の制御用 worktree の名前のディレクトリ）に退避してから、
    checkout・ループの worktree・checkout の隣の DerivedData（`<名前>-ralph-dd*` など）・Xcode の既定の DerivedData のうちそのプロジェクトのものを消す
 3. 設定ファイルの `repositories` から外し、担当の印（`askhub-orchestrator` のラベル）を消す（アプリで「担当 PC なし」になる）
 
@@ -521,12 +526,14 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 - 書くのは epic 名・Discussion の番号・件数・時刻と、ビルドの情報の Mac の Host 名・スロットだけ。ローカルパス・ログの中身は書かない（public リポジトリでは誰でも読める）
 - 設定の `buildHosts` があれば、ポーリングのたびに xcb のイベントログ（`events.jsonl`。回した `events.jsonl.1` も）を前回の続きから読み、
   ループのスロット（`<名前>-ralph-a` / `-b`）のビルドを `builds`（実行中・スロットごとの直近・24 時間の移動）に載せる（`docs/protocol.md` の「ビルドの情報」）。
-  ほかのビルド（メインの checkout・制御用 worktree・手で流したビルド）は載せない。ビルドが 1 つも無ければキーを書かない。
+  ほかのビルド（メインの checkout・制御用 worktree・手動ループのスロット `<名前>-ralph-d<番号>-a` / `-b`・手で流したビルド）は載せない。ビルドが 1 つも無ければキーを書かない。
   ビルドが変わったら（始まった・別の Mac に移った・終わった）状態の変化として書き換え、変わらなければ今までどおり 10 分ごとの確認時刻の書き直しに載せる。
   オーケストレーターを再起動したら、残っているイベントログを頭から読み直して組み立て直す（読んだ位置は保存しない）
-- ビルドの情報は、準備を終えた epic の自動ループのコメントに書く。手動ループが本文を書いていても、自動ループのコメントには書く
+- ビルドの情報は、準備を終えた epic の自動ループのコメントに書く。kit 1.3 までの手動ループが本文を書いていても、自動ループのコメントには書く
 - `ready-for-loop` の検索に失敗したポーリングでは書き出さない（次のポーリングで書く）
-- 書き換える前に Issue の一覧とコメントを取り直して読む（`LoopStatusPublisher`）。手で回しているループ（目印の `writer` が `manual`）が
+- 手動ループ（ralph-kit 1.4.0 から）は、本文ではなく、そのループ（ゴール元の Discussion）のコメントに書き手 `manual` で書き、
+  ゴール元の Discussion が閉じたら手動ループの側（`scripts/askhub-manual.sh` の見張り役）が消す。オーケストレーターは手動ループのコメントを書き換えず、消さない
+- 書き換える前に Issue の一覧とコメントを取り直して読む（`LoopStatusPublisher`）。kit 1.3 までの手動ループ（目印の `writer` が `manual`）が
   古い形で本文を書いていて、`checkedAt` が 30 分以内なら本文は書かない（Discussion #273 の Q3）。手で回すループは 10 分ごとに `checkedAt` を書き直す。
   本文の Discussion が信用する author の open な `manual-loop` の Discussion のあいだ（本文に Discussion の番号が無ければ、そのリポジトリに信用する author の
   open な `manual-loop` の Discussion があるあいだ）は、手動ループの本文を（`checkedAt` が古くなっても）上書きしない（担当者の情報を残す。古さはアプリが知らせる）。

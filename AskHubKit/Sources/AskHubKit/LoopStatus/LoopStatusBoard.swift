@@ -22,7 +22,7 @@ public struct LoopStatusComment: Sendable, Equatable {
 /// 状態用の Issue はリポジトリに 1 つのまま、ループ（Discussion）ごとに 1 つのコメントを置き、書き手は自分のループのコメントだけを書き換える
 /// （[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425) の Q1）。
 /// コメントには `LoopStatusReport` の目印を `discussion` 付きで書き、本文はオーケストレーターがリポジトリ全体の状態（`RepositoryStatusReport`）に使う。
-/// ralph-kit が新しい形で書くようになるまで手動ループは古い形（本文に `LoopStatusReport` の目印 1 つ）で書くので、古い形の本文も 1 つのループとして読む。
+/// kit 1.3 までの手動ループは古い形（本文に `LoopStatusReport` の目印 1 つ）で書くので、古い形の本文も 1 つのループとして読む（ralph-kit 1.4.0 からはコメントに書く）。
 ///
 /// public リポジトリでは誰でもコメントできるので、信用する author のコメントだけを読む。同じアカウントがオーケストレーターと手動ループの両方の
 /// 書き手になりうるので、どのループのものかは author ではなく目印の Discussion の番号で見分ける。

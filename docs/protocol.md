@@ -144,7 +144,12 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   手動ループから自動ループに切り替えた Discussion は、同じリポジトリでほかの Discussion を手で回していても、残った古い手動ループのコメントでは止めない。
   知らない `writer` のコメントがある Discussion にも書かない（ほかの書き手のコメントは消さない。その Discussion に残った自分のコメントは消す）
 - 手動ループ（`manual-loop` の Discussion）は、担当者の Claude が `scripts/askhub-manual.sh status` で `writer` を `manual`・`runner` を担当者にして、
-  状態・epic・進捗・回答待ちの PR を書き、10 分ごとに `checkedAt` を書き直す。ralph-kit が新しい形で書くようになるまでは、本文に古い形で書く。
+  状態・epic・進捗・回答待ちの PR を書き、10 分ごとに `checkedAt` を書き直す。ralph-kit 1.4.0 からは、そのループのコメント（`discussion` はゴール元の Discussion）に書き、本文には書かない。
+  自分のコメントは、信用する author のコメントのうち `discussion` と `writer` が合うもので見つける（担当者が替わっても同じコメントを書き換える）。
+  コメントは、ゴール元の Discussion が閉じたら手動ループの側が消す（見張り役が 10 分おきに確かめる。見張り役が動いていなければ、同じ Mac・同じリポジトリの次の `start`）。
+  Discussion が open なあいだは消さない。Discussion を閉じずにやめるときは `scripts/askhub-manual.sh end <番号>` で消す
+- kit 1.3 までの手動ループは、本文に古い形で書く。1.4.0 で起動し直す（`resume`）とコメントに書くようになり、本文に残ったそのループの古い形の状態は、
+  手動ループが Issue を作るときの本文（ループの状態を書かない）に置き換えて片付ける。
   オーケストレーターは、古い形の手動ループの本文を、`checkedAt` が 30 分以内か、本文の `discussion` が信用する author の open な `manual-loop` の Discussion のあいだ
   （`discussion` が無ければ、そのリポジトリに信用する author の open な `manual-loop` の Discussion があるあいだ）、`checkedAt` が古くなっても上書きしない。
   古くなったことはアプリが知らせる。Discussion が閉じた後、`checkedAt` が 30 分を過ぎていれば、オーケストレーターが本文を新しい形で書き直す
@@ -192,7 +197,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   | `usageLimitedUntil` | 任意 | Claude の利用上限の解除の時刻（上限で待機しているとき） |
 
 - **本文（古い形）**: 先頭に `ask-hub:loop-status` の目印 1 つ（ループの状態）。1 つのループとして読む（`writer` が `manual` なら手動ループ、`orchestrator` なら自動ループ）。
-  `discussion` が無くても読む（ループが無いときのオーケストレーターの `no-loop` など）。ralph-kit が新しい形で書くようになるまで、手動ループはこの形で書く
+  `discussion` が無くても読む（ループが無いときのオーケストレーターの `no-loop` など）。kit 1.3 までの手動ループはこの形で書く（ralph-kit 1.4.0 からはループのコメントに書く）
 - 同じ Discussion の状態が複数あれば（同じループのコメントが重複した・古い形の本文が残ったままコメントが書かれた）、`checkedAt` が最も新しいものを使う。
   `checkedAt` が同じなら、古い形の本文よりコメントを、コメント同士では更新の新しいものを使う
 - 目印を読めない本文（人が編集したなど）でも、コメントは読む
