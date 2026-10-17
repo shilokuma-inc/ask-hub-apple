@@ -207,6 +207,21 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 - 前の epic が完了済み（未完了のタスクが無い）なら、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/` に退避してから worktree を片付ける。
   未完了なら新しい epic は始めない（1 リポジトリにつき自動ループは 1 つ）。
   worktree にコミットしていない変更がある・退避に失敗したときは、片付けずに失敗として返す
+- 退避先は `~/Library/Logs/askhub/archive/<リポジトリ名>/<時刻>-<epic の / を - にしたもの>/` で、`.claude/` と epic ブランチの名前（`branch.txt`）を置く
+- **退避した epic を戻して再開する**: 再開（`discussion` が空）で環境変数 `ASKHUB_RESTORE_EPIC` に epic ブランチがあり、制御用 worktree が別の epic なら、
+  今の epic の `.claude/` を上と同じ形で退避して worktree を片付け、戻す epic で制御用 worktree とスロットを作り直して、退避先の `.claude/` を戻してから再開する
+  （最終 PR への指示で、制御用 worktree が別の epic に移った後の epic を再開するため。Discussion #498 の Q4）
+  - 戻すのは、名前（と `branch.txt`。古い退避には無い）が合い、goal・playbook・完了語が揃っている退避のうち最も新しいもの。戻した退避は消さない
+  - 前のループの state・PID・「やることが無い」目印は持ち込まない（state は `ralph-start.sh` が作り直す）
+  - 戻す epic の退避が無い・今の epic に未完了のタスクが残っている・今のループが異常終了したまま（state が残っている）・worktree にコミットしていない変更がある・
+    origin を取得できない・戻す epic のブランチが無い・戻す epic を別の worktree（手動ループなど）が checkout しているときは、片付ける前に何も変えずに失敗として返す。
+    今のループが動いているときは、ほかの再開と同じく何もしない（終了コード 0）
+  - 戻す epic のブランチがローカルに無く origin にだけあれば、origin から作ってから作り直す（`ralph-setup.sh` はローカルに無いと既定ブランチから作るため）
+  - 制御用 worktree を作り直した後に失敗した（`ralph-setup.sh` の途中など）ときは、**同じ `ASKHUB_RESTORE_EPIC` で呼び直す**と、
+    制御用 worktree が戻す epic で完了語と準備の記録が無ければ（テンプレートの作業ファイルしか無ければ）、退避から戻し直す。
+    `ASKHUB_RESTORE_EPIC` なしで呼ぶと、完了語の記録が無いので再開できない（オーケストレーターは戻せたことを確かめるまで同じ値で呼び直す）
+  - 制御用 worktree がすでにその epic なら、そのまま再開する
+  - 今の epic の最終 PR を作り終えたかは見ない（オーケストレーターが確かめてから呼ぶ）
 - 信用する author は、オーケストレーターが起動ごとに環境変数 `ASKHUB_TRUSTED_AUTHORS` で渡す（設定の `trustedAuthors` と、そのリポジトリへの書き込み権限を持つアカウント。手で設定する必要は無い）。
   再開では、制御用 worktree の playbook の「信用する author」もこの値に書き直す
 - 再開の理由は、オーケストレーターが起動ごとに環境変数 `ASKHUB_RESUME_REASON` で渡す（仮決め一覧への指示による再開の `decision-log` と、最終 PR への指示による再開の `final-pr`。`loopCommand` に書く必要は無い）
