@@ -240,6 +240,87 @@ struct FinalReviewTrackerTests {
         #expect(tracker.marker(for: pullRequest(head: Self.head2)) == nil)
     }
 
+    @Test func keepsDoneCodeRabbitWhenLateResultsArrive() throws {
+        // レビュー中に CodeRabbit が今の head をレビューした。後から届いた結果で上書きしない（Q2）
+        var tracker = FinalReviewTracker()
+        tracker.update(with: [candidate(pullRequest(), codeRabbit: .rateLimited)], now: start)
+        tracker.start(.review, for: pullRequest())
+        tracker.update(with: [candidate(pullRequest(), codeRabbit: .completed)], now: minutes(2))
+        let gaveUp1 = tracker.record(FinalReviewTracker.ReviewOutcome.reviewed(must: 2, may: 0), for: pullRequest())
+        #expect(!gaveUp1)
+        tracker.finish(pullRequest())
+        #expect(tracker.marker(for: pullRequest()) == FinalReviewMarker(state: .doneCodeRabbit, sha: Self.head1))
+        let gaveUp2 = tracker.record(FinalReviewTracker.FixOutcome.failed(reason: "x"), for: pullRequest())
+        #expect(!gaveUp2)
+        #expect(tracker.marker(for: pullRequest())?.state == .doneCodeRabbit)
+    }
+
+    @Test func doesNotFixWhenCodeRabbitCompletedAfterMustFixReview() throws {
+        var tracker = FinalReviewTracker()
+        tracker.update(with: [candidate(pullRequest(), codeRabbit: .rateLimited)], now: start)
+        tracker.record(FinalReviewTracker.ReviewOutcome.reviewed(must: 1, may: 0), for: pullRequest())
+        // 次の取得の前でも、CodeRabbit が完了した PR は直さない
+        #expect(try actions(tracker, [candidate(pullRequest(), codeRabbit: .completed)], at: start).isEmpty)
+    }
+
+    @Test func retriesFixAndGivesUpAfterRepeatedFixFailures() throws {
+        var tracker = FinalReviewTracker()
+        let candidates = [candidate(pullRequest(), codeRabbit: .rateLimited)]
+        tracker.update(with: candidates, now: start)
+        tracker.record(FinalReviewTracker.ReviewOutcome.reviewed(must: 1, may: 0), for: pullRequest())
+        // 修正の失敗は修正をやり直す。今の head と同じ SHA を「直した」と返したときも失敗に数える
+        let gaveUp3 = tracker.record(FinalReviewTracker.FixOutcome.failed(reason: "検証が通らない"), for: pullRequest())
+        #expect(!gaveUp3)
+        #expect(try actions(tracker, candidates, at: start) == ["503:fix"])
+        let gaveUp4 = tracker.record(FinalReviewTracker.FixOutcome.fixed(head: Self.head1.uppercased()), for: pullRequest())
+        #expect(!gaveUp4)
+        #expect(try actions(tracker, candidates, at: start) == ["503:fix"])
+        let gaveUp5 = tracker.record(FinalReviewTracker.FixOutcome.failed(reason: "x"), for: pullRequest())
+        #expect(gaveUp5)
+        #expect(tracker.marker(for: pullRequest())?.state == .gaveUp)
+        #expect(try actions(tracker, candidates, at: start).isEmpty)
+    }
+
+    @Test func waitsForNewHeadAfterStaleResult() throws {
+        var tracker = FinalReviewTracker()
+        let candidates = [candidate(pullRequest(), codeRabbit: .rateLimited)]
+        tracker.update(with: candidates, now: start)
+        tracker.start(.review, for: pullRequest())
+        tracker.record(FinalReviewTracker.ReviewOutcome.stale, for: pullRequest())
+        tracker.finish(pullRequest())
+        // GitHub の検索にまだ新しい head が出ていなくても、古い head のレビューを繰り返さない
+        tracker.update(with: candidates, now: minutes(1))
+        #expect(tracker.marker(for: pullRequest())?.state == .waiting)
+        #expect(try actions(tracker, candidates, at: minutes(30)).isEmpty)
+        // 新しい head が見えたら、また回る
+        let moved = [candidate(pullRequest(head: Self.head2), codeRabbit: .rateLimited)]
+        tracker.update(with: moved, now: minutes(2))
+        #expect(try actions(tracker, moved, at: minutes(2)) == ["503:review"])
+
+        // 修正の stale も同じ
+        tracker.record(FinalReviewTracker.ReviewOutcome.reviewed(must: 1, may: 0), for: pullRequest(head: Self.head2))
+        tracker.record(FinalReviewTracker.FixOutcome.stale, for: pullRequest(head: Self.head2))
+        #expect(try actions(tracker, moved, at: minutes(3)).isEmpty)
+    }
+
+    @Test func ignoresCleanReviewOfAnotherHeadAndKeepsGaveUp() throws {
+        var tracker = FinalReviewTracker()
+        // 呼び出し側が誤って前の head のレビューを渡しても、済みにしない（Q3）
+        let oldReview = ThirdPartyReviewMarker(sha: Self.head2, must: 0, may: 0)
+        tracker.update(with: [candidate(pullRequest(head: Self.head1.uppercased()), review: oldReview)], now: start)
+        #expect(tracker.marker(for: pullRequest())?.state == .waiting)
+        // head の大文字小文字は区別しない
+        #expect(tracker.marker(for: pullRequest())?.sha == Self.head1)
+
+        // あきらめた後に要修正 0 件のレビューが付いても、あきらめたまま（人が push するまで）
+        for _ in 0..<FinalReviewTracker.maxFailures {
+            tracker.record(FinalReviewTracker.ReviewOutcome.failed(reason: "x"), for: pullRequest())
+        }
+        let clean = ThirdPartyReviewMarker(sha: Self.head1, must: 0, may: 0)
+        tracker.update(with: [candidate(pullRequest(), review: clean)], now: minutes(1))
+        #expect(tracker.marker(for: pullRequest())?.state == .gaveUp)
+    }
+
     @Test func readsOutcomesFromLastResultLine() {
         let output = "ログ\nASKHUB_RESULT: reviewed\nASKHUB_RESULT: reviewed must=2 may=1\n"
         #expect(FinalReviewTracker.reviewOutcome(in: output) == .reviewed(must: 2, may: 1))
