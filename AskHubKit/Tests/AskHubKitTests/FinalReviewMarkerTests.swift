@@ -59,4 +59,19 @@ struct FinalReviewMarkerTests {
         #expect(FinalReviewMarker(state: .done, sha: "", attempts: 0).htmlComment == nil)
         #expect(FinalReviewMarker(state: .done, sha: Self.sha, attempts: -1).htmlComment == nil)
     }
+
+    @Test func describesProgress() {
+        func text(_ state: FinalReviewMarker.State, attempts: Int = 0) -> String {
+            FinalReviewMarker(state: state, sha: Self.sha, attempts: attempts).progressText
+        }
+        #expect(text(.waiting) == "CodeRabbit を待っています")
+        #expect(text(.reviewing) == "レビュー中")
+        #expect(text(.fixing) == "修正中")
+        #expect(text(.fixing, attempts: 2) == "修正中（2 回目）")
+        #expect(text(.done) == "済み")
+        #expect(text(.doneCodeRabbit) == "済み（CodeRabbit）")
+        #expect(text(.gaveUp, attempts: 3) == "あきらめました（要修正が 3 回続きました）")
+        // 回数が無い（コマンドの失敗であきらめた・attempts を省いた目印）ときは回数を出さない
+        #expect(text(.gaveUp) == "あきらめました")
+    }
 }

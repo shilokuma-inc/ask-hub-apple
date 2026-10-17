@@ -625,6 +625,8 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 - 待ち始めた時刻もメモリ上だけなので、起動・再起動の後に初めて見た最終 PR では、今の head を GitHub が受け取った時刻の推定から 10 分を数える
   （commit status `CodeRabbit` の作成時刻。無ければ head のコミットの日時。未来の時刻なら見た時刻）。再起動のたびに 10 分待ち直さない。
   追跡中に head が変わったのを見たときは、見た時刻から数える
+- 進み具合は、最終 PR に目印（`ask-hub:final-review`）付きの状態コメント 1 件として書き出し、変わったら書き換える（`docs/protocol.md` の「最終 PR の第三者レビューの進み具合」）。
+  CodeRabbit を待っている間と CodeRabbit がレビューしたときは、まだコメントが無ければ作らない。書き出しに失敗したら次のポーリングで書き直す
 
 ログは `~/Library/Logs/askhub/loops/<リポジトリ>-review-<PR 番号>-*.log` と `…-fix-review-<PR 番号>-*.log`（claude の出力）。
 

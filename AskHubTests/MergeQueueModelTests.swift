@@ -298,12 +298,11 @@ struct MergeQueueModelTests {
 
     @Test func describesFinalReviewProgress() {
         let sha = "0123456789abcdef0123456789abcdef01234567"
-        #expect(MergeReviewText.progress(FinalReviewMarker(state: .waiting, sha: sha)) == "CodeRabbit を待っています")
-        #expect(MergeReviewText.progress(FinalReviewMarker(state: .reviewing, sha: sha)) == "レビュー中")
-        #expect(MergeReviewText.progress(FinalReviewMarker(state: .fixing, sha: sha)) == "修正中")
-        #expect(MergeReviewText.progress(FinalReviewMarker(state: .fixing, sha: sha, attempts: 2)) == "修正中（2 回目）")
-        #expect(MergeReviewText.progress(FinalReviewMarker(state: .done, sha: sha)) == "済み")
-        #expect(MergeReviewText.progress(FinalReviewMarker(state: .doneCodeRabbit, sha: sha)) == "済み（CodeRabbit）")
-        #expect(MergeReviewText.progress(FinalReviewMarker(state: .gaveUp, sha: sha, attempts: 3)) == "あきらめました（要修正が 3 回続きました）")
+        let waiting = FinalReviewMarker(state: .waiting, sha: sha)
+        #expect(MergeReviewText.progress(waiting, codeRabbit: .inProgress) == "CodeRabbit を待っています")
+        // 状態コメントが書き換わる前でも、CodeRabbit が今の head をレビューしたら済み（CodeRabbit）と出す（Q2）
+        let fixing = FinalReviewMarker(state: .fixing, sha: sha, attempts: 2)
+        #expect(MergeReviewText.progress(fixing, codeRabbit: .rateLimited) == "修正中（2 回目）")
+        #expect(MergeReviewText.progress(fixing, codeRabbit: .completed) == "済み（CodeRabbit）")
     }
 }

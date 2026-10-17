@@ -32,3 +32,27 @@ extension GitHubOrchestrator {
         .sorted { ($0.pullRequest.repository, $0.pullRequest.number) < ($1.pullRequest.repository, $1.pullRequest.number) }
     }
 }
+
+extension GitHubOrchestrator {
+    public func createComment(onPullRequest number: Int, in repository: String, body: String) async throws -> Int {
+        try await client.send(
+            "POST",
+            "repos/\(repository)/issues/\(number)/comments",
+            body: ["body": body],
+            as: FinalReviewCommentID.self
+        ).id
+    }
+
+    public func updateComment(in repository: String, id: Int, body: String) async throws {
+        _ = try await client.send(
+            "PATCH",
+            "repos/\(repository)/issues/comments/\(id)",
+            body: ["body": body],
+            as: FinalReviewCommentID.self
+        )
+    }
+}
+
+private struct FinalReviewCommentID: Decodable {
+    let id: Int
+}
