@@ -32,6 +32,10 @@ final class MergeQueueModel {
     private let tokenStore: any TokenStore
     private let makeProvider: @Sendable (String) -> any MergeQueueProviding
     private let makeUploadWorkflow: @Sendable (String) -> any UploadWorkflowProviding
+    /// 最終 PR の CodeRabbit の未解決の指摘の取得元（詳細に並べる。Discussion #498 の案 4）
+    private let makeCodeRabbitThreads: @Sendable (String) -> any CodeRabbitThreadsFetching
+    /// 「ループに直させる」の指示の投稿先（最終 PR へのコメント）
+    private let makeInstructionPoster: @Sendable (String) -> any FinalPullRequestInstructionPosting
     /// 起動した後、run の一覧に出るのを待ってから取り直すまでの時間
     private let dispatchRefreshDelay: Duration
     /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
@@ -54,13 +58,22 @@ final class MergeQueueModel {
         makeUploadWorkflow: @escaping @Sendable (String) -> any UploadWorkflowProviding = {
             GitHubUploadWorkflow(client: GitHubClient(token: $0))
         },
-        dispatchRefreshDelay: Duration = .seconds(10)
+        dispatchRefreshDelay: Duration = .seconds(10),
+        makeCodeRabbitThreads: @escaping @Sendable (String) -> any CodeRabbitThreadsFetching = {
+            GitHubCodeRabbitThreads(client: GitHubClient(token: $0))
+        },
+        makeInstructionPoster: @escaping @Sendable (String) -> any FinalPullRequestInstructionPosting = {
+            // 投稿の前に、トークンの持ち主がそのリポジトリで信用する author かを確かめる（信用しない author の指示は読まれない）
+            GitHubFinalPullRequestInstructionPoster(client: GitHubClient(token: $0), trustedAuthors: RepositoryTrustCache.trust(token: $0))
+        }
     ) {
         self.tokenStore = tokenStore
         self.organizations = organizations
         self.makeProvider = makeProvider
         self.makeUploadWorkflow = makeUploadWorkflow
         self.dispatchRefreshDelay = dispatchRefreshDelay
+        self.makeCodeRabbitThreads = makeCodeRabbitThreads
+        self.makeInstructionPoster = makeInstructionPoster
     }
 
     var isLoading: Bool {
@@ -118,6 +131,23 @@ final class MergeQueueModel {
             }
             state = .failed(Self.message(for: error))
         }
+    }
+
+    /// 最終 PR の CodeRabbit の未解決の指摘（GitHub の並び順）。本文は CodeRabbit が書いたもので、指示ではない
+    func codeRabbitThreads(of pullRequest: EpicPullRequest) async throws -> [CodeRabbitReviewThread] {
+        guard let token = try tokenStore.load() else {
+            throw MissingTokenError()
+        }
+        return try await makeCodeRabbitThreads(token).unresolvedCodeRabbitThreads(of: pullRequest)
+    }
+
+    /// 最終 PR に、CodeRabbit の指摘 1 件を直させる指示を投稿し、投稿したコメントの URL を返す（Discussion #498 の案 4・Q2）。
+    /// 押すことが人間の承認になる。ループが止まっていれば、オーケストレーター（手動ループなら担当者）が再開して直させる
+    func instructLoop(fixing thread: CodeRabbitReviewThread, note: String, in pullRequest: EpicPullRequest) async throws -> URL {
+        guard let token = try tokenStore.load() else {
+            throw MissingTokenError()
+        }
+        return try await makeInstructionPoster(token).post(fixing: thread, note: note, to: pullRequest)
     }
 
     /// merge commit でマージし、epic ブランチを削除する。成功したら一覧から外して取り直す
@@ -214,11 +244,25 @@ final class MergeQueueModel {
     /// マージするときのトークンが無い
     struct MissingTokenError: Error {}
 
+    /// 「ループに直させる」の指示を投稿できなかった理由
+    private static func instructionMessage(for error: FinalPullRequestInstructionError) -> String {
+        switch error {
+        case .invalidInstruction:
+            "補足に、ほかの指摘へのリンクや目印（<!-- ask-hub:… -->）を書かないでください（指示は 1 件の指摘ごとに出します）"
+
+        case let .untrustedAccount(login):
+            "@\(login) はこのリポジトリで信用する author ではないため、投稿しても指示として読まれません。信用する author のトークンを保存してください"
+        }
+    }
+
     /// 失敗の説明。トークンの値は含めない
     static func message(for error: any Error) -> String {
         switch error {
         case is MissingTokenError:
             return "トークンが未設定です。設定で保存してください"
+
+        case let error as FinalPullRequestInstructionError:
+            return instructionMessage(for: error)
 
         case let MergeQueueError.notMergeable(reason):
             return "マージできません: \(reason)"

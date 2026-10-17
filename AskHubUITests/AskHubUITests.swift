@@ -315,8 +315,9 @@ final class AskHubUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
 
-        app.swipeUp()
+        // まとめと CodeRabbit の指摘の下にあるので、ボタンが押せるところまでスクロールする（Form は画面の外の行を作らない）
         let merge = app.buttons["develop にマージ"]
+        scrollUntilHittable(merge, in: app)
         XCTAssertTrue(merge.waitForExistence(timeout: 5))
         XCTAssertTrue(merge.isEnabled)
         merge.tap()
@@ -367,7 +368,8 @@ final class AskHubUITests: XCTestCase {
         // 同じリポジトリで自動ループと手動ループが回っていれば、リポジトリの見出しの下にループを並べる
         scrollUntilHittable(app.staticTexts["pair-quiz-ios"], in: app)
         scrollUntilHittable(app.staticTexts["epic/share"], in: app)
-        XCTAssertTrue(app.staticTexts["ループ 2 つ"].exists)
+        // pair-quiz-ios は自動ループ 1 つと手動ループ 2 つ（回答待ち・自分の完了済み）
+        XCTAssertTrue(app.staticTexts["ループ 3 つ"].exists)
         XCTAssertTrue(app.staticTexts["手動ループ（@partner）"].exists)
 
         // 担当 PC がいないリポジトリ（weather-mini）と状態の無いリポジトリは、一覧の下のほうにある

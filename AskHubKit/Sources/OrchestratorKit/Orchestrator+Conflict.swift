@@ -1,3 +1,4 @@
+import AskHubKit
 import Foundation
 
 // epic の最終 PR が既定ブランチとコンフリクトしたら、conflictCommand（askhub-resolve-conflict）に解消させる。
@@ -125,7 +126,12 @@ extension Orchestrator {
                 """
         }
         do {
-            try await github.comment(onPullRequest: pullRequest.number, in: pullRequest.repository, body: body)
+            // 人間・ループと同じアカウントで書くので、目印で最終 PR への指示と見分けさせる（docs/protocol.md の「最終 PR への指示」）
+            try await github.comment(
+                onPullRequest: pullRequest.number,
+                in: pullRequest.repository,
+                body: "\(FinalPullRequestMarker.orchestrator)\n\(body)"
+            )
         } catch {
             log("\(name) に結果をコメントできませんでした: \(error)")
         }

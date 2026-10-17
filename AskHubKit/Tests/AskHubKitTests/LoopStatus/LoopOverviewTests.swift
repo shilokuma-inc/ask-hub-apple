@@ -75,6 +75,47 @@ struct LoopOverviewTests {
         #expect(ready.map(\.isMine) == [false])
     }
 
+    @Test func flagsManualLoopWithUnprocessedFinalPullRequestInstruction() {
+        let completed = LoopStatusReport(state: .completed, writer: .manual, epic: "epic/x", discussion: 12, checkedAt: Self.now)
+        let rows = [Self.row("o/r", report: completed)]
+        let epics = [Self.epic("O/R")]
+
+        #expect(ManualLoopItem.targets(epics: epics, rows: rows) == [ManualLoopTarget(repository: "O/R", discussion: 12, epic: "epic/x")])
+        let items = ManualLoopItem.items(
+            epics: epics, rows: rows, viewer: nil, needsAnswer: [], pendingFinalInstructions: ["o/r#12"], now: Self.now
+        )
+        #expect(items.map(\.finalInstructionsPending) == [true])
+        // 全タスクを終えていても、最終 PR ではなく再開の指示を出す
+        #expect(items.map(\.instruction) == [.resume])
+        let none = ManualLoopItem.items(epics: epics, rows: rows, viewer: nil, needsAnswer: [], now: Self.now)
+        #expect(none.map(\.finalInstructionsPending) == [false])
+
+        // 動いているループは周回の最初に指示を読むので、促さない
+        let running = LoopStatusReport(state: .running, writer: .manual, epic: "epic/x", discussion: 12, checkedAt: Self.now)
+        let whileRunning = ManualLoopItem.items(
+            epics: epics,
+            rows: [Self.row("o/r", report: running)],
+            viewer: nil,
+            needsAnswer: [],
+            pendingFinalInstructions: ["o/r#12"],
+            now: Self.now
+        )
+        #expect(whileRunning.map(\.finalInstructionsPending) == [false])
+    }
+
+    @Test func choosesInstructionToCopyFromState() {
+        func instruction(_ state: LoopStatusReport.State?) -> ManualLoopItem.Instruction? {
+            let report = state.map { LoopStatusReport(state: $0, writer: .manual, discussion: 12, checkedAt: Self.now) }
+            let rows = report.map { [Self.row("o/r", report: $0)] } ?? []
+            let items = ManualLoopItem.items(epics: [Self.epic("o/r")], rows: rows, viewer: nil, needsAnswer: [], now: Self.now)
+            return items.first?.instruction
+        }
+        #expect(instruction(nil) == .start)
+        #expect(instruction(.completed) == .final)
+        #expect(instruction(.waitingForAnswer) == .resume)
+        #expect(instruction(.running) == .resume)
+    }
+
     @Test func flagsManualLoopThatStoppedReporting() {
         let running = LoopStatusReport(state: .running, writer: .manual, discussion: 12, checkedAt: Self.now.addingTimeInterval(-31 * 60))
         let items = ManualLoopItem.items(

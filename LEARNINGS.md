@@ -52,6 +52,10 @@
   "Review skipped: reviews are disabled for this base branch"（`.coderabbit.yaml` で自動レビューの対象外にした base 宛ての PR）になる。完了・レート制限と同じく文言でしか見分けられない
 - PR の timeline（GraphQL の `timelineItems`）からは、通常の push の時刻は取れない（取れるのは force push の `HeadRefForcePushedEvent` だけ）。
   head を GitHub が受け取った時刻の目安には、commit status の `createdAt`（CodeRabbit は push を受け取ると付ける）か、コミットの `committedDate`（push より前になりうる）を使う
+- bot のアカウントの login は、GraphQL（`author { login }`）では `coderabbitai`、REST（`user.login`）では `coderabbitai[bot]` のように `[bot]` が付く。
+  CodeRabbit などの bot を author で見分けるときは、両方の形を受け付ける（`CodeRabbitReviewThread.authorLogins`）
+- PR のコメントに CodeRabbit のアカウント名を `@` 付きで書くと、コードスパンの中（`` `@coderabbitai review` ``）でもメンションとして扱われ、CodeRabbit が返信する。
+  説明として書くだけなら `@` を付けない
 
 ## ビルド・テスト
 
@@ -165,6 +169,8 @@
 - Swift Testing の `#expect(...)` の中では mutating なメソッドを呼べない（「cannot use mutating member on immutable value」）。結果を `let` で受けてから `#expect` に渡す
 - 引数の型だけが違う同名のメソッド（`record(_ outcome: ReviewOutcome, …)` と `record(_ outcome: FixOutcome, …)`）に、両方の enum にある `.failed(reason:)` を渡すと
   「ambiguous use of」になる。`FinalReviewTracker.ReviewOutcome.failed(reason:)` のように型を書く
+- Swift の `String` は `"\r\n"` を 1 つの `Character` として扱うので、`split(separator: "\n")` では CRLF の行を区切れない。
+  `split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)` で区切る
 
 ## シェルスクリプト
 
