@@ -1,0 +1,81 @@
+@testable import AskHubKit
+import Testing
+
+struct FinalPullRequestHistoryTests {
+    private static let trusted = TrustedAuthors(["mrs1669"])
+
+    private static func comment(_ id: Int, _ author: String?, _ body: String) -> IssueComment {
+        IssueComment(id: id, author: author, body: body)
+    }
+
+    @Test func classifiesCommentsAndMarksInstructionsBeforeLastReplyAsProcessed() {
+        let comments = [
+            Self.comment(1, "mrs1669", "https://github.com/o/r/pull/12#discussion_r100 を直して"),
+            Self.comment(2, "coderabbitai[bot]", "Actionable comments posted: 1"),
+            Self.comment(3, "mrs1669", "\(FinalPullRequestMarker.reply)\n直しました"),
+            Self.comment(4, "mrs1669", "\(FinalPullRequestMarker.orchestrator)\ndevelop を取り込みました"),
+            Self.comment(5, "MRS1669", "https://github.com/o/r/pull/12#discussion_r200 も直して")
+        ]
+        let history = FinalPullRequestHistory(comments: comments, trustedAuthors: Self.trusted)
+
+        #expect(history.entries.map(\.kind) == [
+            .instruction(isProcessed: true), .untrusted, .reply, .orchestrator, .instruction(isProcessed: false)
+        ])
+        #expect(history.unprocessedInstructions == [comments[4]])
+    }
+
+    @Test func doesNotTreatOrchestratorCommentAsInstructionOrReply() {
+        let comments = [
+            Self.comment(1, "mrs1669", "#discussion_r100 を直して"),
+            Self.comment(2, "mrs1669", "\(FinalPullRequestMarker.orchestrator)\nコンフリクトを解消しました")
+        ]
+        let history = FinalPullRequestHistory(comments: comments, trustedAuthors: Self.trusted)
+        #expect(history.entries.map(\.kind) == [.instruction(isProcessed: false), .orchestrator])
+        #expect(history.unprocessedInstructions == [comments[0]])
+    }
+
+    @Test func ignoresMarkersWrittenByUntrustedAuthors() {
+        let comments = [
+            Self.comment(1, "mrs1669", "#discussion_r100 を直して"),
+            Self.comment(2, "someone", "\(FinalPullRequestMarker.reply)\n直しました"),
+            Self.comment(3, nil, FinalPullRequestMarker.reply)
+        ]
+        let history = FinalPullRequestHistory(comments: comments, trustedAuthors: Self.trusted)
+        #expect(history.entries.map(\.kind) == [.instruction(isProcessed: false), .untrusted, .untrusted])
+        #expect(history.unprocessedInstructions == [comments[0]])
+    }
+
+    @Test func treatsReplyMarkerAsReplyEvenWithOrchestratorMarker() {
+        let comments = [
+            Self.comment(1, "mrs1669", "直して"),
+            Self.comment(2, "mrs1669", "\(FinalPullRequestMarker.orchestrator)\n\(FinalPullRequestMarker.reply)")
+        ]
+        let history = FinalPullRequestHistory(comments: comments, trustedAuthors: Self.trusted)
+        #expect(history.entries.map(\.kind) == [.instruction(isProcessed: true), .reply])
+    }
+
+    @Test func doesNotTreatDecisionLogMarkersAsReplies() {
+        let comments = [Self.comment(1, "mrs1669", "\(DecisionLogMarker.reply)\n直して")]
+        #expect(FinalPullRequestHistory.unprocessedInstructions(in: comments, trustedAuthors: Self.trusted) == comments)
+    }
+
+    @Test func treatsAllTrustedCommentsAsUnprocessedWithoutReply() {
+        let comments = [Self.comment(1, "mrs1669", "OK"), Self.comment(2, "mrs1669", "#discussion_r1 を直して")]
+        #expect(FinalPullRequestHistory.unprocessedInstructions(in: comments, trustedAuthors: Self.trusted) == comments)
+        #expect(FinalPullRequestHistory(comments: [], trustedAuthors: Self.trusted).entries.isEmpty)
+    }
+
+    @Test func readsReferencedReviewCommentsInOrderWithoutDuplicates() {
+        let body = """
+            https://github.com/o/r/pull/12#discussion_r2412345678 を直して
+            > 引用（https://github.com/o/r/pull/12#discussion_r99 と #discussion_r2412345678）
+            """
+        #expect(FinalPullRequestHistory.referencedReviewComments(in: body) == [2_412_345_678, 99])
+    }
+
+    @Test func readsNoReviewCommentsWithoutAnchor() {
+        #expect(FinalPullRequestHistory.referencedReviewComments(in: "README の誤字を直して").isEmpty)
+        #expect(FinalPullRequestHistory.referencedReviewComments(in: "#discussion_r を直して").isEmpty)
+        #expect(FinalPullRequestHistory.referencedReviewComments(in: "#issuecomment-123 を見て").isEmpty)
+    }
+}
