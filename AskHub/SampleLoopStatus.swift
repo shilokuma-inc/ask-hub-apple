@@ -24,8 +24,18 @@ extension LoopStatusModel {
             makeInboxSource: { _ in SampleInboxSource() },
             // サンプルは GitHub に権限を問い合わせない
             makeTrust: { _ in TrustedAuthors.default },
-            makeStarter: { _ in SampleLoopStarter() }
+            makeStarter: { _ in SampleLoopStarter() },
+            makeFinalInstructions: { _, _ in SampleManualLoopFinalInstructions() }
         )
+    }
+}
+
+/// デモモード・Preview・UI テスト用。zankyo-apple #8 の手動ループの最終 PR に未処理の指示がある（担当者に再開を促す）
+struct SampleManualLoopFinalInstructions: ManualLoopFinalInstructionsChecking {
+    static let pending: Set<String> = [ManualLoopTarget.key(repository: "shilokuma-inc/zankyo-apple", discussion: 8)]
+
+    func loopsWithUnprocessedInstructions(_ loops: [ManualLoopTarget]) async throws -> Set<String> {
+        Self.pending.intersection(loops.map(\.key))
     }
 }
 
