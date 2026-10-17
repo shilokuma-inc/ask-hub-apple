@@ -36,9 +36,7 @@ struct LoopStatusListView: View {
                         repositoryRows(row)
                     }
                 } header: {
-                    // GitHub の login をそのまま出す（iOS の見出しの大文字への変換をしない）
-                    Text(section.organization)
-                        .textCase(nil)
+                    OrganizationHeaderView(organization: section.organization, avatars: model.avatars)
                 }
             }
             // ビルドの Mac はループの状態の補足なので、リポジトリの後ろに置く（バッジには数えない）

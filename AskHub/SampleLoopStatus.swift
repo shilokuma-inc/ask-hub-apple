@@ -25,7 +25,9 @@ extension LoopStatusModel {
             // サンプルは GitHub に権限を問い合わせない
             makeTrust: { _ in TrustedAuthors.default },
             makeStarter: { _ in SampleLoopStarter() },
-            makeFinalInstructions: { _, _ in SampleManualLoopFinalInstructions() }
+            makeFinalInstructions: { _, _ in SampleManualLoopFinalInstructions() },
+            // サンプルはアバター画像を取りに行かない（UI テストをネットワークに依存させない。見出しは代わりのアイコンになる）
+            avatars: .offline()
         )
     }
 }
