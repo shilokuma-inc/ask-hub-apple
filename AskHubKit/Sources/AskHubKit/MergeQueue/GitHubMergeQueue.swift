@@ -206,7 +206,7 @@ public struct GitHubMergeQueue: MergeQueueProviding {
         """
 
     /// check run（GitHub Actions など）と commit status（CodeRabbit など）の一覧。
-    /// CI の状態は check run だけから決め、commit status は情報としてだけ使う（Discussion #460）
+    /// CI の状態は check run だけから決め（Discussion #460）、commit status `CodeRabbit` は最終 PR のレビューの条件に使う（Discussion #503）
     private static let contextsFragment = """
         fragment Contexts on StatusCheckRollupContextConnection {
           pageInfo { hasNextPage endCursor }
@@ -323,9 +323,10 @@ private struct EpicNode: Decodable {
         return runs.isEmpty ? .none : .success
     }
 
-    /// commit status `CodeRabbit` から CodeRabbit の状態を決める。マージ条件には使わない（Discussion #460）。
-    /// `PENDING` / `EXPECTED` → 処理中、`SUCCESS` は `description` に "rate limited" を含めばレート制限・"skipped" を含めばスキップ・それ以外は完了、
-    /// `ERROR` / `FAILURE` → 失敗、無ければ なし（知らない `state` も なし）。レート制限・スキップの見分けは文言の照合なので、CodeRabbit が文言を変えると完了に見える
+    /// commit status `CodeRabbit` から CodeRabbit の状態を決める。完了は最終 PR のレビューの条件になる（Discussion #503）。
+    /// `PENDING` / `EXPECTED` → 処理中、`SUCCESS` は `description` の文言で レート制限・スキップ・完了 を見分け、どれにも当たらなければ 不明、
+    /// `ERROR` / `FAILURE` → 失敗、無ければ なし（知らない `state` も なし）。
+    /// 完了でマージできるようになるので、CodeRabbit が文言を変えたときは完了ではなく 不明 に倒す（レビュー済みにしない）
     static func codeRabbit(_ contexts: [RollupContextNode]) -> EpicPullRequest.CodeRabbitState {
         guard let status = contexts.first(where: { $0.typename == "StatusContext" && $0.context == "CodeRabbit" }) else {
             return .none
@@ -345,10 +346,11 @@ private struct EpicNode: Decodable {
         }
     }
 
-    /// `SUCCESS` の commit status `CodeRabbit` の `description` から、完了・レート制限・スキップを見分ける（大文字小文字は区別しない）
+    /// `SUCCESS` の commit status `CodeRabbit` の `description` から、完了・レート制限・スキップを見分ける（大文字小文字は区別しない）。
+    /// "completed" を含むときだけ完了。`description` が無い・知らない文言は 不明
     private static func codeRabbitSuccess(_ description: String?) -> EpicPullRequest.CodeRabbitState {
         guard let description else {
-            return .completed
+            return .unknown
         }
         if description.range(of: "rate limited", options: .caseInsensitive) != nil {
             return .rateLimited
@@ -356,7 +358,10 @@ private struct EpicNode: Decodable {
         if description.range(of: "skipped", options: .caseInsensitive) != nil {
             return .skipped
         }
-        return .completed
+        if description.range(of: "completed", options: .caseInsensitive) != nil {
+            return .completed
+        }
+        return .unknown
     }
 
     static func mergeability(_ value: String?) -> EpicPullRequest.Mergeability {

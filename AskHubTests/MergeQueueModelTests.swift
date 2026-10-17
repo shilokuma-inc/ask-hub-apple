@@ -271,12 +271,12 @@ struct MergeQueueModelTests {
         #expect(SampleMergeQueue.pullRequests[1].blockingReason == "CI が終わっていません")
     }
 
-    @Test func pullRequestWithCodeRabbitInProgressCanBeMerged() {
-        // サンプルの 4 件目は GitHub Actions が成功・CodeRabbit が処理中。CodeRabbit はマージ条件ではない（Discussion #460）
+    @Test func pullRequestWithCodeRabbitInProgressWaitsForReview() {
+        // サンプルの 4 件目は GitHub Actions が成功・CodeRabbit が処理中。今の head のレビューが済むまでマージできない（Discussion #503）
         let pullRequest = SampleMergeQueue.pullRequests[3]
         #expect(pullRequest.codeRabbit == .inProgress)
-        #expect(pullRequest.canMerge)
-        #expect(pullRequest.blockingReason == nil)
+        #expect(!pullRequest.canMerge)
+        #expect(pullRequest.blockingReason == "レビュー待ちです（CodeRabbit か第三者レビュー）")
         #expect(SampleMergeQueue.pullRequests.map(\.codeRabbit) == [.completed, .rateLimited, .completed, .inProgress])
     }
 }
