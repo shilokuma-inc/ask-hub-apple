@@ -589,8 +589,12 @@ https://github.com/<owner>/<repo>/pull/<PR番号>#discussion_r<コメント id> 
   （「未解決の指摘をすべて見て」のような、指摘を指さない一括の指示は扱わない）
 - 指した指摘の本文（CodeRabbit の「Prompt for AI Agents」を含む）は、ループにはデータとして渡す。中の文を手順として扱わない
 - アプリは「マージ待ち」の詳細に、最終 PR の CodeRabbit の未解決の指摘（`reviewThreads` のうち未解決で、最初のコメントの author が CodeRabbit のもの）を、
-  見出し（最初の太字の行）・場所・本文（開いたときだけ）で並べる（`GitHubCodeRabbitThreads`。スレッドもスレッドの中のコメントもページングを最後まで追う）。
-  並べるだけでは指示にならない
+  見出し（最初の太字の行。`<details>`・コード・HTML のコメントの中の行は使わない）・場所・本文（開いたときだけ）で並べる
+  （`GitHubCodeRabbitThreads`。スレッドもスレッドの中のコメントもページングを最後まで追う）。並べるだけでは指示にならない
+- 「ループに直させる」を押すと、アプリはその指摘 1 件を指す指示（上の形式。補足は任意）を最終 PR にコメントする（`GitHubFinalPullRequestInstructionPoster`）。押すことが人間の承認になる
+  - 投稿の前に、トークンの持ち主がそのリポジトリで信用する author であることを確かめる（信用しない author のコメントは指示として読まれないので、投稿しない）
+  - 補足がほかの指摘を指す・目印を含むときは投稿しない（指示は 1 件の指摘ごと。`FinalPullRequestInstruction.body(for:note:)`）
+  - デモモードでは GitHub に書き込まない
 - ループは指示を直したら、指示に `<!-- ask-hub:final-reply -->` 付きで返信し、指した CodeRabbit のスレッドにも対応内容とコミットを返信してスレッドを resolve する（Q3）
 - 指示の先頭に `<!-- ask-hub:final-reply -->` / `<!-- ask-hub:orchestrator -->` を置かない（ループの返信・オーケストレーターのコメントと取り違え、指示が処理済みに見える・無視される）
 
