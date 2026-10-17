@@ -30,6 +30,8 @@ final class LoopStatusModel {
     private(set) var needsAnswer: Set<String> = []
     /// トークンの持ち主の login。自分が担当の手動ループを見分けるのに使う
     private(set) var viewerLogin: String?
+    /// epic の最終 PR に未処理の指示がある手動ループ（`ManualLoopTarget.key`）。担当者に再開を促すのに使う
+    private(set) var pendingFinalInstructions: Set<String> = []
     private(set) var state = LoadState.idle
     /// 直前に取得を始めた時刻。自動更新（`refreshIfStale`）の間隔の判断に使う
     private(set) var lastRefreshed: Date?
@@ -42,6 +44,8 @@ final class LoopStatusModel {
     private let makeSource: @Sendable (String) -> any LoopStatusSource
     /// 「上限で待機中」「ループの開始待ち」の取得元（受信箱と同じ取得元を使う）
     private let makeInboxSource: @Sendable (String) -> any InboxSource
+    /// 手動ループの epic の最終 PR への指示の確認（トークンと信用する author ごと）
+    private let makeFinalInstructions: @Sendable (String, any TrustedAuthorsResolving) -> any ManualLoopFinalInstructionsChecking
     /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
     private let organizations: () -> [String]
     /// 取得中に `refresh()` が呼ばれたか。取得が終わったら最新のトークンで取り直す
@@ -53,7 +57,10 @@ final class LoopStatusModel {
         makeInboxSource: @escaping @Sendable (String) -> any InboxSource = { GitHubInboxSource(client: GitHubClient(token: $0)) },
         organizations: @escaping () -> [String] = { OrganizationSettings.load() },
         makeTrust: @escaping @Sendable (String) -> any TrustedAuthorsResolving = { RepositoryTrustCache.trust(token: $0) },
-        makeStarter: @escaping @Sendable (String) -> any LoopStarting = { GitHubLoopStarter(client: GitHubClient(token: $0)) }
+        makeStarter: @escaping @Sendable (String) -> any LoopStarting = { GitHubLoopStarter(client: GitHubClient(token: $0)) },
+        makeFinalInstructions: @escaping @Sendable (String, any TrustedAuthorsResolving) -> any ManualLoopFinalInstructionsChecking = {
+            GitHubManualLoopFinalInstructions(client: GitHubClient(token: $0), trustedAuthors: $1)
+        }
     ) {
         self.tokenStore = tokenStore
         self.makeTrust = makeTrust
@@ -61,6 +68,7 @@ final class LoopStatusModel {
         self.organizations = organizations
         self.makeSource = makeSource
         self.makeInboxSource = makeInboxSource
+        self.makeFinalInstructions = makeFinalInstructions
     }
 
     var isLoading: Bool {
@@ -79,7 +87,14 @@ final class LoopStatusModel {
 
     /// 「手動ループ」の行
     func manualLoopItems(now: Date) -> [ManualLoopItem] {
-        ManualLoopItem.items(epics: manualLoops, rows: rows, viewer: viewerLogin, needsAnswer: needsAnswer, now: now)
+        ManualLoopItem.items(
+            epics: manualLoops,
+            rows: rows,
+            viewer: viewerLogin,
+            needsAnswer: needsAnswer,
+            pendingFinalInstructions: pendingFinalInstructions,
+            now: now
+        )
     }
 
     /// リポジトリのループをだれが回しているか
@@ -126,6 +141,20 @@ final class LoopStatusModel {
         await refresh()
     }
 
+    /// 最終 PR に未処理の指示がある手動ループ。補助なので、取れなくても空として状態は出す
+    private func finalInstructions(
+        of epics: [ManualLoopEpic],
+        rows: [LoopStatusRow],
+        token: String,
+        trust: any TrustedAuthorsResolving
+    ) async -> Set<String> {
+        let targets = ManualLoopItem.targets(epics: epics, rows: rows)
+        guard !targets.isEmpty else {
+            return []
+        }
+        return (try? await makeFinalInstructions(token, trust).loopsWithUnprocessedInstructions(targets)) ?? []
+    }
+
     private func load() async {
         let token: String
         do {
@@ -135,6 +164,7 @@ final class LoopStatusModel {
                 waiting = []
                 usageLimited = []
                 manualLoops = []
+                pendingFinalInstructions = []
                 state = .needsToken
                 return
             }
@@ -162,6 +192,8 @@ final class LoopStatusModel {
             async let viewer = try? await makeStarter(token).viewerLogin()
             let fetched = try await (snapshot, waiting, usageLimited)
             let (fetchedManualLoops, fetchedNeedsAnswer, fetchedViewer) = try await (manualLoops, needsAnswer, viewer)
+            // 最終 PR への指示は手動ループの状態（epic）を使って探すので、それらの後に読む
+            let fetchedFinalInstructions = await finalInstructions(of: fetchedManualLoops, rows: fetched.0.rows, token: token, trust: trust)
             // 上限の取得の `try?` は打ち切りも空として返すので、打ち切られていれば途中の結果で一覧を上書きしない
             try Task.checkCancellation()
             (self.rows, self.buildHosts) = (fetched.0.rows, fetched.0.buildHosts)
@@ -169,6 +201,7 @@ final class LoopStatusModel {
             self.manualLoops = fetchedManualLoops
             self.needsAnswer = Set(fetchedNeedsAnswer.map { "\($0.repository)#\($0.number)".lowercased() })
             self.viewerLogin = fetchedViewer
+            self.pendingFinalInstructions = fetchedFinalInstructions
             state = .loaded
         } catch {
             // バックグラウンドの取得が打ち切られた。失敗とは表示せず、次の自動更新で取り直せるようにする
