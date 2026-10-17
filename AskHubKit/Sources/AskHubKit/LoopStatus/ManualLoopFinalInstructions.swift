@@ -72,8 +72,19 @@ public struct GitHubManualLoopFinalInstructions: ManualLoopFinalInstructionsChec
             guard let repository = targets.first?.repository else {
                 continue
             }
-            // 1 つのリポジトリで読めなくても、ほかのリポジトリの促しは出す
-            result.formUnion((try? await pending(targets, in: repository)) ?? [])
+            // 1 つのリポジトリで読めなくても、ほかのリポジトリの促しは出す。
+            // レート制限（待っても戻らなかったもの）と打ち切りは、ほかのリポジトリも同じなので、そこで止める
+            do {
+                result.formUnion(try await pending(targets, in: repository))
+            } catch let error as GitHubError {
+                if case .rateLimited = error {
+                    throw error
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                continue
+            }
         }
         return result
     }

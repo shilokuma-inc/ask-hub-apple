@@ -93,6 +93,18 @@ struct ManualLoopFinalInstructionsTests {
         #expect(paths == ["/repos/a/one/pulls", "/repos/B/Two/pulls", "/repos/B/Two/issues/80/comments"])
     }
 
+    @Test func stopsAtRateLimit() async throws {
+        let http = MockHTTPClient([.init(status: 429, body: "{}", headers: ["Retry-After": "3600"])])
+        let loops = [
+            ManualLoopTarget(repository: "a/one", discussion: 3, epic: nil),
+            ManualLoopTarget(repository: "b/two", discussion: 5, epic: nil)
+        ]
+        await #expect(throws: GitHubError.rateLimited(retryAfter: .seconds(3600))) {
+            try await Self.checker(http).loopsWithUnprocessedInstructions(loops)
+        }
+        #expect(http.requests.count == 1)
+    }
+
     @Test func doesNotMatchMarkedPullRequestOfAnotherDiscussionByBranch() {
         let pulls = [
             FinalPullRequestSummary(
