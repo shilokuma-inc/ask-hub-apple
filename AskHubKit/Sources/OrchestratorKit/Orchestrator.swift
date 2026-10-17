@@ -47,6 +47,8 @@ public protocol OrchestratorGitHub: Sendable {
     func decisionLogs(in repository: String) async throws -> [DecisionLogIssue]
     /// Issue のコメント（古い順）
     func comments(in repository: String, issue number: Int) async throws -> [IssueComment]
+    /// リポジトリの、`epic-final` が付いた open な PR（epic の最終 PR）
+    func epicFinalPullRequests(in repository: String) async throws -> [EpicFinalPullRequest]
     /// 仮決め一覧にコメントする
     func comment(on issue: DecisionLogIssue, body: String) async throws
     /// 仮決め一覧をクローズする（完了として）
@@ -71,6 +73,27 @@ public protocol OrchestratorGitHub: Sendable {
     func createBuildHostsIssue(in repository: String, body: String) async throws -> Int
     /// ビルドの Mac の状態の Issue の本文を置き換える。閉じられていれば開き直す
     func updateBuildHostsIssue(in repository: String, number: Int, body: String) async throws
+}
+
+/// epic の最終 PR（`epic-final` が付いた open な PR）
+public struct EpicFinalPullRequest: Sendable, Equatable {
+    /// `owner/repo`
+    public let repository: String
+    public let number: Int
+    /// epic ブランチ
+    public let headBranch: String
+    /// 作った人。削除済みのユーザーでは `nil`
+    public let author: String?
+    /// 本文の先頭のゴール元の Discussion の目印（`<!-- ask-hub:discussion N -->`）の番号。無ければ `nil`
+    public let goalDiscussion: Int?
+
+    public init(repository: String, number: Int, headBranch: String, author: String?, goalDiscussion: Int? = nil) {
+        self.repository = repository
+        self.number = number
+        self.headBranch = headBranch
+        self.author = author
+        self.goalDiscussion = goalDiscussion
+    }
 }
 
 /// 既にある PR
@@ -110,6 +133,8 @@ public actor Orchestrator {
     var manualLoopRepositories: Set<String> {
         Set(manualLoopNumbers.keys)
     }
+    /// 制御用 worktree を別の epic に戻すのを待っていることをログに出した指示（`<repo小文字>#<コメント id>`）。待つ間、同じことを毎回出さない
+    var loggedRestoreWaits: Set<String> = []
     /// 担当リポジトリに書き込み権限を持つアカウントの取得元。`nil` なら設定の一覧だけを信用する
     let repositoryWriters: RepositoryWriters?
     let github: any OrchestratorGitHub
@@ -123,13 +148,13 @@ public actor Orchestrator {
     /// GitHub の情報から最終 PR を作れるかを最後に確かめた時刻（キーは `<repo小文字> <epic ブランチ>`）と、
     /// 手動ループの完了を見るために状態用の Issue を最後に読んだ時刻（キーは `<repo小文字>`）
     var fallbackFinalChecks: [String: Date] = [:]
-    /// 仮決め一覧への指示を受けてループを再開した epic。再び完了したら、最終 PR の本文を書き直す
+    /// 仮決め一覧・最終 PR への指示を受けてループを再開した epic。再び完了したら、最終 PR の本文を書き直す
     var epicsToRefresh: Set<String> = []
-    /// 処理済みとして扱う仮決め一覧のコメント（`<repo小文字>#<コメント id>`）。同じコメントで何度も再開しない。
+    /// 処理済みとして扱う仮決め一覧・最終 PR のコメント（`<repo小文字>#<コメント id>`）。同じコメントで何度も再開しない。
     /// ループの開始を確かめてから（または上限まで試して諦めてから）入れる
-    var resumedDecisionComments: Set<String> = []
-    /// 仮決め一覧への指示でループを起動し、開始をまだ確かめていないもの（キーは担当リポジトリの `fullName` を小文字にしたもの）
-    var pendingDecisionResumes: [String: DecisionLogResume] = [:]
+    var resumedInstructionComments: Set<String> = []
+    /// 仮決め一覧・最終 PR への指示でループを起動し、開始をまだ確かめていないもの（キーは担当リポジトリの `fullName` を小文字にしたもの）
+    var pendingInstructionResumes: [String: InstructionResume] = [:]
     /// 担当の印を最後に書いた時刻（キーは担当リポジトリの `fullName` を小文字にしたもの）
     var lastHeartbeats: [String: Date] = [:]
     /// Claude の利用上限の解除の時刻。それまでこの Mac のループの起動・再開を止める（アカウントは Mac ごとに共通）
@@ -247,6 +272,9 @@ public actor Orchestrator {
 
         // 仮決め一覧: 最終 PR がマージされたら閉じ、マージ前に付いた指示ではループを再開する
         await handleDecisionLogs(statuses: &statuses)
+
+        // 最終 PR への指示: マージ待ちの間に付いた指示ではループを再開する（仮決め一覧が無い epic でも直させる）
+        await handleFinalPullRequestInstructions(statuses: &statuses)
 
         // 止まったループの epic が完了していたら、既定ブランチへの最終 PR（epic-final）を作る。
         // 新しい Discussion の起動（前の epic の作業ファイルを退避する）より先に行う

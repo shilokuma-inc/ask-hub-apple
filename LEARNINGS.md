@@ -48,6 +48,10 @@
   無料枠の上限に当たったときも `success`（"Review rate limited"）になる。レート制限かどうかは `description` の文言でしか見分けられない
 - コミットの `statusCheckRollup.state` は check run と commit status をまとめた値なので、CodeRabbit が `pending` の間は GitHub Actions が全部成功していても `PENDING` になる。
   GitHub Actions だけで判定したいときは `state` ではなく `contexts` を取り、check run だけを見る
+- bot のアカウントの login は、GraphQL（`author { login }`）では `coderabbitai`、REST（`user.login`）では `coderabbitai[bot]` のように `[bot]` が付く。
+  CodeRabbit などの bot を author で見分けるときは、両方の形を受け付ける（`CodeRabbitReviewThread.authorLogins`）
+- PR のコメントに CodeRabbit のアカウント名を `@` 付きで書くと、コードスパンの中（`` `@coderabbitai review` ``）でもメンションとして扱われ、CodeRabbit が返信する。
+  説明として書くだけなら `@` を付けない
 
 ## ビルド・テスト
 
@@ -158,6 +162,8 @@
   表の 1 行のような組み立ては、要素ごとに `var` で作ってから配列にする（`BuildHost.tableCells`）
 - `FileHandle.readToEnd()` は、読む位置がファイルの終わりにあると空の `Data` ではなく `nil` を返す。`try?` で受けると読めなかったのと区別できないので、
   `try handle.readToEnd() ?? Data()` で受け、`catch` だけを失敗として扱う
+- Swift の `String` は `"\r\n"` を 1 つの `Character` として扱うので、`split(separator: "\n")` では CRLF の行を区切れない。
+  `split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)` で区切る
 
 ## シェルスクリプト
 

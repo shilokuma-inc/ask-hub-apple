@@ -18,38 +18,6 @@ struct LoopStatusModelTests {
         }
     }
 
-    /// 「上限で待機中」「ループの開始待ち」だけを返す受信箱の取得元。`nil` の取得は失敗させる
-    private struct SectionsSource: InboxSource {
-        var waiting: [WaitingDiscussion]?
-        var usageLimited: [UsageLimitedRepository]?
-
-        func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
-            []
-        }
-
-        func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
-            []
-        }
-
-        func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
-            []
-        }
-
-        func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion] {
-            guard let waiting else {
-                throw GitHubError.http(status: 502, message: nil)
-            }
-            return waiting
-        }
-
-        func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
-            guard let usageLimited else {
-                throw GitHubError.http(status: 502, message: nil)
-            }
-            return usageLimited
-        }
-    }
-
     private static func waiting(_ repository: String, number: Int, author: String) -> WaitingDiscussion {
         WaitingDiscussion(
             subject: InboxSubject(
@@ -65,17 +33,19 @@ struct LoopStatusModelTests {
         )
     }
 
-    private static func model(
+    static func model(
         token: String? = "sample",
         rows: any LoopStatusSource = EmptySource(),
-        sections: any InboxSource
+        sections: any InboxSource,
+        finalInstructions: any ManualLoopFinalInstructionsChecking = RecordingFinalInstructions()
     ) -> LoopStatusModel {
         LoopStatusModel(
             tokenStore: InMemoryTokenStore(token: token),
             makeSource: { _ in rows },
             makeInboxSource: { _ in sections },
             makeTrust: { _ in TrustedAuthors.default },
-            makeStarter: { _ in SampleLoopStarter() }
+            makeStarter: { _ in SampleLoopStarter() },
+            makeFinalInstructions: { _, _ in finalInstructions }
         )
     }
 
@@ -103,9 +73,10 @@ struct LoopStatusModelTests {
         func items(_ name: String) -> [LoopStatusLoopItem] {
             model.rows.first { $0.repository.hasSuffix("/\(name)") }.map(model.loopItems(of:)) ?? []
         }
-        // 自動ループと手動ループ・手動ループ 2 つは、リポジトリの見出しの下にループを並べる
-        #expect(items("pair-quiz-ios").map(\.mode) == [.automatic, .manual(assignee: "partner")])
-        #expect(items("pair-quiz-ios").map { $0.display(now: now).statusText } == ["実行中", "回答待ち"])
+        // 自動ループと手動ループ 2 つ（pair-quiz-ios）・手動ループ 2 つ（story-maker）は、リポジトリの見出しの下にループを並べる
+        let mine = LoopMode.manual(assignee: TrustedAuthors.defaultLogins[0])
+        #expect(items("pair-quiz-ios").map(\.mode) == [.automatic, .manual(assignee: "partner"), mine])
+        #expect(items("pair-quiz-ios").map { $0.display(now: now).statusText } == ["実行中", "回答待ち", "完了（最終 PR のマージ待ち）"])
         #expect(items("story-maker").map(\.mode) == [.manual(assignee: TrustedAuthors.defaultLogins[0]), .manual(assignee: "partner")])
         // 完了した epic と次に起動した Discussion の自動ループも、Discussion ごとに並べる
         #expect(items("focus-timer-ios").map(\.mode) == [.automatic, .automatic])
@@ -266,7 +237,8 @@ struct LoopStatusModelTests {
             makeSource: { _ in SampleLoopStatusSource() },
             makeInboxSource: { _ in SampleInboxSource() },
             makeTrust: { _ in TrustedAuthors.default },
-            makeStarter: { _ in SampleLoopStarter() }
+            makeStarter: { _ in SampleLoopStarter() },
+            makeFinalInstructions: { _, _ in SampleManualLoopFinalInstructions() }
         )
         await model.refresh()
         #expect(!model.waiting.isEmpty)
@@ -336,7 +308,8 @@ struct LoopStatusModelTests {
                 hangs.withLock { $0 } ? HangingUsageLimitSource() as any InboxSource : SectionsSource(waiting: [], usageLimited: [])
             },
             makeTrust: { _ in TrustedAuthors.default },
-            makeStarter: { _ in SampleLoopStarter() }
+            makeStarter: { _ in SampleLoopStarter() },
+            makeFinalInstructions: { _, _ in SampleManualLoopFinalInstructions() }
         )
         await model.refresh()
         let lastRefreshed = model.lastRefreshed
@@ -353,5 +326,42 @@ struct LoopStatusModelTests {
         #expect(model.state == .loaded)
         #expect(model.rows.isEmpty)
         #expect(model.lastRefreshed == lastRefreshed)
+    }
+}
+
+/// 「上限で待機中」「ループの開始待ち」だけを返す受信箱の取得元。`nil` の取得は失敗させる
+struct SectionsSource: InboxSource {
+    var waiting: [WaitingDiscussion]?
+    var usageLimited: [UsageLimitedRepository]?
+    var manualLoops: [ManualLoopRecord] = []
+
+    func manualLoopRecords(orgs: [String]) async throws -> [ManualLoopRecord] {
+        manualLoops
+    }
+
+    func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
+        []
+    }
+
+    func questionThreads(of subject: InboxSubject) async throws -> [QuestionThread] {
+        []
+    }
+
+    func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
+        []
+    }
+
+    func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion] {
+        guard let waiting else {
+            throw GitHubError.http(status: 502, message: nil)
+        }
+        return waiting
+    }
+
+    func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
+        guard let usageLimited else {
+            throw GitHubError.http(status: 502, message: nil)
+        }
+        return usageLimited
     }
 }

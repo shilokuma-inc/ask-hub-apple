@@ -48,7 +48,8 @@ extension OrchestratorTests {
         #expect(runtime.ran.count == 1)
         #expect(runtime.ran.first?.contains("epic/mvp") == true)
         #expect(github.pullRequestComments.count == 1)
-        #expect(github.pullRequestComments.first?.hasPrefix("shilokuma-inc/ask-hub-apple#50: develop とのコンフリクトを解消し") == true)
+        let expected = "shilokuma-inc/ask-hub-apple#50: \(FinalPullRequestMarker.orchestrator)\ndevelop とのコンフリクトを解消し"
+        #expect(github.pullRequestComments.first?.hasPrefix(expected) == true)
     }
 
     @Test func tellsWhyConflictCouldNotBeResolved() async throws {

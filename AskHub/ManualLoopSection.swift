@@ -64,18 +64,23 @@ struct ManualLoopRow: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.green)
             }
+            if item.finalInstructionsPending {
+                Label("最終 PR に指示が付きました。ループを再開してください", systemImage: "text.bubble.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+                    .accessibilityIdentifier("manual-final-instructions")
+            }
             if item.isMine {
-                // まだ始めていなければ開始、全タスクを終えていれば最終 PR、それ以外は再開の指示を出す
-                switch item.report?.state {
-                case nil:
+                switch item.instruction {
+                case .start:
                     CopyTextButton(text: item.epic.startInstruction, title: "開始の指示をコピー")
                         .accessibilityIdentifier("copy-manual-start")
 
-                case .completed:
+                case .final:
                     CopyTextButton(text: item.epic.finalInstruction, title: "最終 PR の指示をコピー")
                         .accessibilityIdentifier("copy-manual-final")
 
-                default:
+                case .resume:
                     CopyTextButton(text: item.epic.resumeInstruction, title: "再開の指示をコピー")
                         .accessibilityIdentifier("copy-manual-resume")
                 }

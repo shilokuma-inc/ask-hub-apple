@@ -53,7 +53,7 @@ extension Orchestrator {
     /// 手動ループ（`manual-loop`）の Discussion か。このポーリングで取得できていなければ `false`。
     /// ゴール元の記録がある epic は自動ループのもの（`manual-loop` の Discussion は自動では起動しない）。
     /// 取得の失敗で自動ループとみなさないと、その回に付いた回答を処理済みにしてしまい、次のポーリングで再開できなくなる
-    private func isManualLoop(_ discussion: Int, in repositoryKey: String) -> Bool {
+    func isManualLoop(_ discussion: Int, in repositoryKey: String) -> Bool {
         guard let manualLoops else {
             return false
         }
