@@ -13,26 +13,12 @@ enum MergeReviewText {
         return "まだありません"
     }
 
-    /// オーケストレーターが書いた第三者レビューの進み具合
-    static func progress(_ marker: FinalReviewMarker) -> String {
-        switch marker.state {
-        case .waiting:
-            "CodeRabbit を待っています"
-
-        case .reviewing:
-            "レビュー中"
-
-        case .fixing:
-            marker.attempts > 0 ? "修正中（\(marker.attempts) 回目）" : "修正中"
-
-        case .done:
-            "済み"
-
-        case .doneCodeRabbit:
-            "済み（CodeRabbit）"
-
-        case .gaveUp:
-            "あきらめました（要修正が \(marker.attempts) 回続きました）"
+    /// オーケストレーターが書いた第三者レビューの進み具合。CodeRabbit が今の head をレビューしたら、
+    /// オーケストレーターが状態コメントを書き換える前でも「済み（CodeRabbit）」と出す（Q2。第三者レビュー・修正はやめるため）
+    static func progress(_ marker: FinalReviewMarker, codeRabbit: EpicPullRequest.CodeRabbitState) -> String {
+        if codeRabbit == .completed {
+            return FinalReviewMarker(state: .doneCodeRabbit, sha: marker.sha, attempts: marker.attempts).progressText
         }
+        return marker.progressText
     }
 }
