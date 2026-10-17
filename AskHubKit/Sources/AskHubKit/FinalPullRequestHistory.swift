@@ -52,11 +52,12 @@ public struct FinalPullRequestHistory: Sendable, Equatable {
         Self(comments: comments, trustedAuthors: trustedAuthors).unprocessedInstructions
     }
 
-    /// 指示が指す PR のレビューコメント（CodeRabbit の指摘など）の id。本文の `#discussion_r<id>` のリンクから、出てきた順に重複なく読む。
+    /// 指示が指す PR のレビューコメント（CodeRabbit の指摘など）の id。本文の `#discussion_r<id>`（会話のタブのリンク）と
+    /// `#r<id>`（Files changed のタブのリンク）から、出てきた順に重複なく読む。
     /// id は REST のレビューコメントの id（GraphQL の `databaseId`）。指示が指摘を指していなければ空
     public static func referencedReviewComments(in body: String) -> [Int] {
         var ids: [Int] = []
-        for match in body.matches(of: discussionAnchor) {
+        for match in body.matches(of: reviewCommentAnchor) {
             if let id = Int(match.output.1), !ids.contains(id) {
                 ids.append(id)
             }
@@ -64,9 +65,10 @@ public struct FinalPullRequestHistory: Sendable, Equatable {
         return ids
     }
 
-    /// `#discussion_r<id>` のアンカー。`Regex` は `Sendable` ではないので computed property にする
-    private static var discussionAnchor: Regex<(Substring, Substring)> {
-        /#discussion_r(\d+)/
+    /// `#discussion_r<id>` / `#r<id>` のアンカー（`#readme` などを拾わないよう、数字が続くものだけ）。
+    /// `Regex` は `Sendable` ではないので computed property にする
+    private static var reviewCommentAnchor: Regex<(Substring, Substring)> {
+        /#(?:discussion_)?r(\d+)\b/
     }
 
     /// 目印は本文の先頭（前の空白・改行は無視する）にあるときだけ認める。

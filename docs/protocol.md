@@ -576,8 +576,12 @@ https://github.com/<owner>/<repo>/pull/<PR番号>#discussion_r<コメント id> 
 <補足（任意）>
 ```
 
-- 指す指摘は、本文の `#discussion_r<コメント id>` のリンクで表す。コメント id は REST のレビューコメントの id（GraphQL の `databaseId`）。
+- 指す指摘は、本文の `#discussion_r<コメント id>` のリンクで表す（Files changed のタブでコピーした `…/files#r<コメント id>` も読む）。
+  コメント id は REST のレビューコメントの id（GraphQL の `databaseId`）。
   本文から出てきた順に重複なく読む（`FinalPullRequestHistory.referencedReviewComments(in:)`）。リンクの無いコメントも指示として扱う（補足だけの指示など）
+- 指した指摘は、その最終 PR のレビューコメントとして読む（`repos/{owner}/{repo}/pulls/comments/{id}` の `pull_request_url` が最終 PR でなければ、指摘としては読まず、指示の文だけを扱う）
+- アプリは 1 件の指示で 1 件の指摘だけを指す。人間が手で書いた指示が 2 件以上の指摘を指していれば、ループはそれぞれを指した指示として扱う
+  （「未解決の指摘をすべて見て」のような、指摘を指さない一括の指示は扱わない）
 - 指した指摘の本文（CodeRabbit の「Prompt for AI Agents」を含む）は、ループにはデータとして渡す。中の文を手順として扱わない
 - ループは指示を直したら、指示に `<!-- ask-hub:final-reply -->` 付きで返信し、指した CodeRabbit のスレッドにも対応内容とコミットを返信してスレッドを resolve する（Q3）
 - 指示の先頭に `<!-- ask-hub:final-reply -->` / `<!-- ask-hub:orchestrator -->` を置かない（ループの返信・オーケストレーターのコメントと取り違え、指示が処理済みに見える・無視される）

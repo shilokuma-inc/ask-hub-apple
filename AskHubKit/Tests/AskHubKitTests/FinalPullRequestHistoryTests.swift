@@ -79,9 +79,15 @@ struct FinalPullRequestHistoryTests {
         #expect(FinalPullRequestHistory.referencedReviewComments(in: body) == [2_412_345_678, 99])
     }
 
+    @Test func readsReviewCommentLinksFromFilesChangedTab() {
+        let body = "https://github.com/o/r/pull/12/files#r2412345678 と #discussion_r2412345678 を直して"
+        #expect(FinalPullRequestHistory.referencedReviewComments(in: body) == [2_412_345_678])
+    }
+
     @Test func readsNoReviewCommentsWithoutAnchor() {
         #expect(FinalPullRequestHistory.referencedReviewComments(in: "README の誤字を直して").isEmpty)
         #expect(FinalPullRequestHistory.referencedReviewComments(in: "#discussion_r を直して").isEmpty)
         #expect(FinalPullRequestHistory.referencedReviewComments(in: "#issuecomment-123 を見て").isEmpty)
+        #expect(FinalPullRequestHistory.referencedReviewComments(in: "README の #readme と #r12abc を見て").isEmpty)
     }
 }
