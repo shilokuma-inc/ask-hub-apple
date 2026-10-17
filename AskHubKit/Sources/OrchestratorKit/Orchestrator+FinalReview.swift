@@ -34,9 +34,10 @@ extension Orchestrator {
         guard activeUsageLimit(at: now()) == nil, !drainsConflictResolutions else {
             return
         }
-        let starts = finalReviewTracker.startable(
-            in: candidates, config: config, now: now(), busyRepositories: Set(conflictResolutions.keys)
-        )
+        // 実行中の解消と、終わった後の書き出しを待っているレビュー・修正（`finish` の後も `finalReviews` に残る）のリポジトリは選ばない。
+        // 選ぶと、書き出しを待つ間（actor の再入）に同じリポジトリで次を始め、`finalReviews` の Task を上書きして見失う
+        let busy = Set(conflictResolutions.keys).union(finalReviews.keys)
+        let starts = finalReviewTracker.startable(in: candidates, config: config, now: now(), busyRepositories: busy)
         for start in starts {
             let pullRequest = start.pullRequest
             let key = pullRequest.repository.lowercased()
