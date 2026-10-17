@@ -73,7 +73,7 @@ struct LoopStatusModelTests {
         func items(_ name: String) -> [LoopStatusLoopItem] {
             model.rows.first { $0.repository.hasSuffix("/\(name)") }.map(model.loopItems(of:)) ?? []
         }
-        // 自動ループと手動ループ・手動ループ 2 つは、リポジトリの見出しの下にループを並べる
+        // 自動ループと手動ループ 2 つ（pair-quiz-ios）・手動ループ 2 つ（story-maker）は、リポジトリの見出しの下にループを並べる
         let mine = LoopMode.manual(assignee: TrustedAuthors.defaultLogins[0])
         #expect(items("pair-quiz-ios").map(\.mode) == [.automatic, .manual(assignee: "partner"), mine])
         #expect(items("pair-quiz-ios").map { $0.display(now: now).statusText } == ["実行中", "回答待ち", "完了（最終 PR のマージ待ち）"])
