@@ -1,7 +1,7 @@
 import AskHubKit
 import SwiftUI
 
-/// 「ステータス」タブ。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」（空なら出さない）、その下にリポジトリごとのループの状態と
+/// 「ステータス」タブ。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」（空なら出さない）、その下に organization ごとの節に分けてリポジトリごとのループの状態と
 /// 回し方（自動ループ・手動ループ・ループなし）を出す。行から担当 PC の担当を外す依頼を出せる（ループを止める・再開する操作は持たない）
 struct LoopStatusListView: View {
     let model: LoopStatusModel
@@ -29,11 +29,16 @@ struct LoopStatusListView: View {
             UsageLimitedSection(repositories: model.usageLimited)
             WaitingDiscussionsSection(waiting: model.waiting)
             ManualLoopSection(items: model.manualLoopItems(now: Date()))
-            if !model.rows.isEmpty {
-                Section("リポジトリ") {
-                    ForEach(model.rows) { row in
+            // リポジトリは organization ごとの節に分ける（organization が 1 つでも見出しを出す）
+            ForEach(LoopStatusOrganizationSection.sections(from: model.rows)) { section in
+                Section {
+                    ForEach(section.rows) { row in
                         repositoryRows(row)
                     }
+                } header: {
+                    // GitHub の login をそのまま出す（iOS の見出しの大文字への変換をしない）
+                    Text(section.organization)
+                        .textCase(nil)
                 }
             }
             // ビルドの Mac はループの状態の補足なので、リポジトリの後ろに置く（バッジには数えない）
