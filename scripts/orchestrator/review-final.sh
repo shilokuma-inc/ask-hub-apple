@@ -4,6 +4,8 @@
 #
 # 実装の文脈を持たない claude -p に、確認した head（headSHA）の差分（base...head）をレビューさせる。
 # claude には読むことだけを許し（ファイルの変更・コミット・push・コメントはさせない）、レビューの本文だけを返させる。
+# 差分の文章でプロンプトインジェクションされても困らないよう、シェル・書き込み・ネットワークのツールを拒否し、ホームディレクトリ
+# （gh の認証情報など）も読ませない。投稿する本文にトークンらしい文字列があれば投稿しない。
 # 目印（<!-- ralph:third-party-review sha="<headSHA>" must="N" may="M" -->）と見出しはこのスクリプトが付け、PR にコメントする。
 # 件数は claude の申告ではなく、本文の表の行（🔴 要修正 / 🟡 提案）からこのスクリプトが数える。
 # 最後の行に結果を出す（オーケストレーターが読む）:
@@ -67,11 +69,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# origin の head が、確かめた headSHA のままか（進んでいたら、そのレビューは古い head のものになる）
+# origin の head が、確かめた headSHA のままか（進んでいたら、そのレビューは古い head のものになる）。
+# origin を読めなかったときは head が進んだのと区別して failed にする
 head_is_current() {
   local remote
-  remote=$(git -C "$CHECKOUT" ls-remote origin "refs/heads/${HEAD_BRANCH}" | cut -f1)
-  [[ "$remote" == "$HEAD_SHA" ]]
+  remote=$(git -C "$CHECKOUT" ls-remote origin "refs/heads/${HEAD_BRANCH}") || failed "origin の ${HEAD_BRANCH} を確かめられませんでした"
+  [[ "$(printf '%s' "$remote" | cut -f1)" == "$HEAD_SHA" ]]
 }
 
 git -C "$CHECKOUT" fetch -q origin "$HEAD_BRANCH" "$BASE_BRANCH" || failed "origin から ${HEAD_BRANCH} / ${BASE_BRANCH} を取得できませんでした"
@@ -114,7 +117,8 @@ PROMPT=$(cat <<EOF
 手順:
 1. まず CLAUDE.md を読み、「コードレビュー観点」に従う（LEARNINGS.md があればそれも読む）
 2. 差分を読み、必要なら周りのコードも読んで、バグ・仕様との食い違い・テストの抜け・セキュリティを見る
-3. 次はしない: ファイルの変更、git commit / push / checkout、PR へのコメント（コメントはこのスクリプトが行う）
+3. 次はしない: ファイルの変更、git commit / push / checkout、PR へのコメント（コメントはこのスクリプトが行う）。
+   使えるのはファイルを読むツール（Read / Grep / Glob）だけ。読むのは作業ディレクトリと ${TMP} の中だけにする
 
 指摘ごとに重要度を 2 つから選ぶ:
 - 🔴 要修正: マージ前に必ず直す（バグ・仕様との食い違い・データの破損や消失・セキュリティ・クラッシュ・テストが無くて壊れても気づけないもの）
@@ -137,7 +141,7 @@ ASKHUB_REVIEW_END
 - 表は 1 指摘 1 行。🔴 要修正を先に並べ、「#」は 1 からの番号にする。重要度の列には「🔴 要修正」か「🟡 提案」だけを書く
 - 「対応」は要修正なら「修正する」、提案なら「見送り可」。前回の指摘がこの head で直っていれば、その行を「修正済み」として残す（件数には数えない）
 - 指摘が無ければ表は書かず、「確認した点」だけを書く
-- セル の中で | を使うときは \| と書く
+- セルの中で | を使うときは \\| と書く。HTML コメント（<!-- -->）は書かない
 
 最後の行には、次の 1 行だけを出力する:
 ASKHUB_RESULT: reviewed
@@ -145,7 +149,8 @@ EOF
 )
 
 set +e
-OUTPUT=$(cd "$WORKTREE" && "$CLAUDE_BIN" -p --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*)" \
+OUTPUT=$(cd "$WORKTREE" && "$CLAUDE_BIN" -p \
+  --disallowedTools "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task,Read(~/**)" \
   "$PROMPT" </dev/null 2>&1 | tee -a "$CLAUDE_LOG")
 STATUS=$?
 set -e
@@ -164,17 +169,30 @@ REVIEW=$(printf '%s\n' "$OUTPUT" | awk '
   END { if (found) printf "%s", last }
 ')
 [[ -n "$(printf '%s' "$REVIEW" | tr -d '[:space:]')" ]] || failed "claude の出力にレビューの本文がありません（${CLAUDE_LOG}）"
-# 本文に目印が混ざると、古い・偽の目印として読まれうるので受け付けない
-if printf '%s' "$REVIEW" | grep -q -e "$MARKER" -e 'ask-hub:'; then
-  failed "レビューの本文に目印が含まれています（${CLAUDE_LOG}）"
+# 目印は本文の先頭（スクリプトが付ける）でしか読まれないが、HTML コメントは GitHub で見えない文を隠せるので受け付けない
+if printf '%s' "$REVIEW" | grep -q -F '<!--'; then
+  failed "レビューの本文に HTML コメントが含まれています（${CLAUDE_LOG}）"
+fi
+# トークンらしい文字列を公開のコメントに出さない
+if printf '%s' "$REVIEW" | grep -q -E 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'; then
+  failed "レビューの本文にトークンらしい文字列が含まれているので、投稿しません（${CLAUDE_LOG}）"
 fi
 
-# 件数は表の行から数える（claude の申告は使わない）。前回の指摘で直ったもの（対応が「修正済み」）は数えない
-count_rows() {
-  printf '%s\n' "$REVIEW" | grep -E "^\\| *[0-9]+ *\\| *$1 *\\|" | grep -c -v -E '\| *修正済み[^|]*\| *$' || true
-}
-MUST=$(count_rows '🔴 要修正')
-MAY=$(count_rows '🟡 提案')
+# 件数は表の行から数える（claude の申告は使わない）。前回の指摘で直ったもの（対応が「修正済み」）は数えない。
+# 書式がずれた行を黙って数え落とすと要修正 0 件（マージ可）に倒れるので、指摘の行（先頭のセルが番号）は
+# 重要度のセルが 🔴 / 🟡 のどちらか 1 つだけを含むことを確かめ、そうでなければ失敗にする
+COUNTS=$(printf '%s\n' "$REVIEW" | awk -F'|' '
+  /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|/ {
+    severity = $3; last = $(NF - 1)
+    must = index(severity, "🔴") > 0; may = index(severity, "🟡") > 0
+    if (must == may) { bad++; next }
+    if (last ~ /修正済み/) next
+    if (must) m++; else y++
+  }
+  END { printf "%d %d %d", m, y, bad }
+')
+read -r MUST MAY BAD <<< "$COUNTS"
+[[ "$BAD" -eq 0 ]] || failed "レビューの表に重要度（🔴 要修正 / 🟡 提案）を読み取れない行が ${BAD} 行あります（${CLAUDE_LOG}）"
 
 # claude が worktree を変えていても push はしないが、ログに残す
 if [[ -n "$(git -C "$WORKTREE" status --porcelain)" || "$(git -C "$WORKTREE" rev-parse HEAD)" != "$HEAD_SHA" ]]; then
