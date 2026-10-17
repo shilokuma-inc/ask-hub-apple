@@ -48,7 +48,12 @@ extension LoopStatusModelTests {
         let model = LoopStatusModel.sample()
         await model.refresh()
         let items = model.manualLoopItems(now: Date())
-        #expect(items.filter(\.finalInstructionsPending).map(\.epic.subject.shortReference) == ["zankyo-apple#8"])
+        let pending = items.filter(\.finalInstructionsPending)
+        #expect(pending.map(\.epic.subject.shortReference) == ["pair-quiz-ios#54"])
+        // 自分が担当で全タスクを終えていても、最終 PR ではなく再開の指示をコピーさせる
+        #expect(pending.map(\.isMine) == [true])
+        #expect(pending.first?.report?.state == .completed)
+        #expect(pending.map(\.instruction) == [.resume])
     }
 
     @Test func checksFinalPullRequestInstructionsOfManualLoops() async {

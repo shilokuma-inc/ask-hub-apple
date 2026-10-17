@@ -74,8 +74,9 @@ struct LoopStatusModelTests {
             model.rows.first { $0.repository.hasSuffix("/\(name)") }.map(model.loopItems(of:)) ?? []
         }
         // 自動ループと手動ループ・手動ループ 2 つは、リポジトリの見出しの下にループを並べる
-        #expect(items("pair-quiz-ios").map(\.mode) == [.automatic, .manual(assignee: "partner")])
-        #expect(items("pair-quiz-ios").map { $0.display(now: now).statusText } == ["実行中", "回答待ち"])
+        let mine = LoopMode.manual(assignee: TrustedAuthors.defaultLogins[0])
+        #expect(items("pair-quiz-ios").map(\.mode) == [.automatic, .manual(assignee: "partner"), mine])
+        #expect(items("pair-quiz-ios").map { $0.display(now: now).statusText } == ["実行中", "回答待ち", "完了（最終 PR のマージ待ち）"])
         #expect(items("story-maker").map(\.mode) == [.manual(assignee: TrustedAuthors.defaultLogins[0]), .manual(assignee: "partner")])
         // 完了した epic と次に起動した Discussion の自動ループも、Discussion ごとに並べる
         #expect(items("focus-timer-ios").map(\.mode) == [.automatic, .automatic])

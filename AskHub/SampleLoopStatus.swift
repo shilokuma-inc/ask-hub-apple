@@ -30,9 +30,10 @@ extension LoopStatusModel {
     }
 }
 
-/// デモモード・Preview・UI テスト用。zankyo-apple #8 の手動ループの最終 PR に未処理の指示がある（担当者に再開を促す）
+/// デモモード・Preview・UI テスト用。pair-quiz-ios #54（自分が担当で完了済み）の手動ループの最終 PR に未処理の指示がある
+/// （担当者に再開を促し、最終 PR ではなく再開の指示をコピーさせる）
 struct SampleManualLoopFinalInstructions: ManualLoopFinalInstructionsChecking {
-    static let pending: Set<String> = [ManualLoopTarget.key(repository: "shilokuma-inc/zankyo-apple", discussion: 8)]
+    static let pending: Set<String> = [ManualLoopTarget.key(repository: "shilokuma-inc/pair-quiz-ios", discussion: 54)]
 
     func loopsWithUnprocessedInstructions(_ loops: [ManualLoopTarget]) async throws -> Set<String> {
         Self.pending.intersection(loops.map(\.key))
@@ -107,34 +108,52 @@ struct SampleLoopStatusSource: LoopStatusSource {
         ] + Self.concurrentLoops(org, now: now)
     }
 
+    /// 同じリポジトリで、自動ループと手動ループ 2 つ（回答待ち・自分の完了済み）が回っている例
+    private static func pairQuizLoops(_ org: String, now: Date) -> LoopStatusRepository {
+        func minutesAgo(_ minutes: Double) -> Date {
+            now.addingTimeInterval(-minutes * 60)
+        }
+        return Self.loops(org, "pair-quiz-ios", issue: 9, checkedAt: minutesAgo(2), [
+            LoopStatusReport(
+                state: .running,
+                epic: "epic/ranking",
+                discussion: 50,
+                progress: .init(completed: 3, total: 7, deferred: 0),
+                lastActivityAt: minutesAgo(4),
+                checkedAt: minutesAgo(2)
+            ),
+            LoopStatusReport(
+                state: .waitingForAnswer,
+                writer: .manual,
+                epic: "epic/share",
+                discussion: 52,
+                progress: .init(completed: 4, total: 6, deferred: 0),
+                lastActivityAt: minutesAgo(25),
+                checkedAt: minutesAgo(5),
+                runner: "partner",
+                waitingPullRequests: [58]
+            ),
+            // 自分の手動ループ。全タスクを終えたが、最終 PR に指示が付いている（SampleManualLoopFinalInstructions）
+            LoopStatusReport(
+                state: .completed,
+                writer: .manual,
+                epic: "epic/hints",
+                discussion: 54,
+                progress: .init(completed: 5, total: 5, deferred: 0),
+                lastActivityAt: minutesAgo(90),
+                checkedAt: minutesAgo(6),
+                runner: TrustedAuthors.defaultLogins[0]
+            )
+        ])
+    }
+
     /// 同じリポジトリで複数のループが同時に回っている例（リポジトリの見出しの下にループを並べる）
     private static func concurrentLoops(_ org: String, now: Date) -> [LoopStatusRepository] {
         func minutesAgo(_ minutes: Double) -> Date {
             now.addingTimeInterval(-minutes * 60)
         }
         return [
-            // 同じリポジトリで、自動ループと手動ループが同時に回っている（ループごとのコメント）
-            Self.loops(org, "pair-quiz-ios", issue: 9, checkedAt: minutesAgo(2), [
-                LoopStatusReport(
-                    state: .running,
-                    epic: "epic/ranking",
-                    discussion: 50,
-                    progress: .init(completed: 3, total: 7, deferred: 0),
-                    lastActivityAt: minutesAgo(4),
-                    checkedAt: minutesAgo(2)
-                ),
-                LoopStatusReport(
-                    state: .waitingForAnswer,
-                    writer: .manual,
-                    epic: "epic/share",
-                    discussion: 52,
-                    progress: .init(completed: 4, total: 6, deferred: 0),
-                    lastActivityAt: minutesAgo(25),
-                    checkedAt: minutesAgo(5),
-                    runner: "partner",
-                    waitingPullRequests: [58]
-                )
-            ]),
+            pairQuizLoops(org, now: now),
             // 同じリポジトリで、手動ループが 2 つ回っている
             Self.loops(org, "story-maker", issue: 4, checkedAt: minutesAgo(2), [
                 LoopStatusReport(

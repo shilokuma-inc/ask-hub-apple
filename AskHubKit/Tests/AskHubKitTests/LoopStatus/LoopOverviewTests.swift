@@ -85,6 +85,8 @@ struct LoopOverviewTests {
             epics: epics, rows: rows, viewer: nil, needsAnswer: [], pendingFinalInstructions: ["o/r#12"], now: Self.now
         )
         #expect(items.map(\.finalInstructionsPending) == [true])
+        // 全タスクを終えていても、最終 PR ではなく再開の指示を出す
+        #expect(items.map(\.instruction) == [.resume])
         let none = ManualLoopItem.items(epics: epics, rows: rows, viewer: nil, needsAnswer: [], now: Self.now)
         #expect(none.map(\.finalInstructionsPending) == [false])
 
@@ -99,6 +101,19 @@ struct LoopOverviewTests {
             now: Self.now
         )
         #expect(whileRunning.map(\.finalInstructionsPending) == [false])
+    }
+
+    @Test func choosesInstructionToCopyFromState() {
+        func instruction(_ state: LoopStatusReport.State?) -> ManualLoopItem.Instruction? {
+            let report = state.map { LoopStatusReport(state: $0, writer: .manual, discussion: 12, checkedAt: Self.now) }
+            let rows = report.map { [Self.row("o/r", report: $0)] } ?? []
+            let items = ManualLoopItem.items(epics: [Self.epic("o/r")], rows: rows, viewer: nil, needsAnswer: [], now: Self.now)
+            return items.first?.instruction
+        }
+        #expect(instruction(nil) == .start)
+        #expect(instruction(.completed) == .final)
+        #expect(instruction(.waitingForAnswer) == .resume)
+        #expect(instruction(.running) == .resume)
     }
 
     @Test func flagsManualLoopThatStoppedReporting() {

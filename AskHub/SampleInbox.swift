@@ -297,11 +297,13 @@ struct SampleInboxSource: InboxSource {
         [UsageLimitedRepository(repository: "shilokuma-inc/notti-ios", until: Self.now.addingTimeInterval(2 * 60 * 60))]
     }
 
-    /// 自分（mrs1669）が担当の手動ループと、共同開発者（partner）が担当の手動ループ
+    /// 自分（mrs1669）が担当の手動ループ 2 つと、共同開発者（partner）が担当の手動ループ
     func manualLoopRecords(orgs: [String]) async throws -> [ManualLoopRecord] {
         [
             Self.manualLoop(repository: "shilokuma-inc/prime-pick-ios", number: 21, title: "難易度だけで選べるようにしたい", assignee: "mrs1669"),
-            Self.manualLoop(repository: "shilokuma-inc/zankyo-apple", number: 8, title: "MVP を作る", assignee: "partner")
+            Self.manualLoop(repository: "shilokuma-inc/zankyo-apple", number: 8, title: "MVP を作る", assignee: "partner"),
+            // 全タスクを終えたが、最終 PR に指示が付いた（ステータスタブで再開を促す）
+            Self.manualLoop(repository: "shilokuma-inc/pair-quiz-ios", number: 54, title: "ヒントを出せるようにしたい", assignee: "mrs1669")
         ]
     }
 

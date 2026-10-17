@@ -84,6 +84,33 @@ public struct ManualLoopItem: Sendable, Equatable, Identifiable {
         epic.id
     }
 
+    /// 担当者に出す指示のコピー
+    public enum Instruction: Sendable, Equatable {
+        /// 開始（`scripts/askhub-manual.sh`）
+        case start
+        /// 再開（`scripts/askhub-manual.sh resume`）
+        case resume
+        /// 最終 PR を作る（`scripts/askhub-manual.sh final`）
+        case final
+    }
+
+    /// 担当者に出す指示。最終 PR に指示があれば再開、まだ始めていなければ開始、全タスクを終えていれば最終 PR、それ以外は再開
+    public var instruction: Instruction {
+        if finalInstructionsPending {
+            return .resume
+        }
+        switch report?.state {
+        case nil:
+            return .start
+
+        case .completed:
+            return .final
+
+        default:
+            return .resume
+        }
+    }
+
     /// 「実行中」「回答待ち」など。まだ始めていなければ「未開始」
     public var statusText: String {
         report?.state.title ?? "未開始"

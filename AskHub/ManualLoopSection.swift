@@ -71,17 +71,16 @@ struct ManualLoopRow: View {
                     .accessibilityIdentifier("manual-final-instructions")
             }
             if item.isMine {
-                // 最終 PR に指示があれば再開、まだ始めていなければ開始、全タスクを終えていれば最終 PR、それ以外は再開の指示を出す
-                switch item.finalInstructionsPending ? .running : item.report?.state {
-                case nil:
+                switch item.instruction {
+                case .start:
                     CopyTextButton(text: item.epic.startInstruction, title: "開始の指示をコピー")
                         .accessibilityIdentifier("copy-manual-start")
 
-                case .completed:
+                case .final:
                     CopyTextButton(text: item.epic.finalInstruction, title: "最終 PR の指示をコピー")
                         .accessibilityIdentifier("copy-manual-final")
 
-                default:
+                case .resume:
                     CopyTextButton(text: item.epic.resumeInstruction, title: "再開の指示をコピー")
                         .accessibilityIdentifier("copy-manual-resume")
                 }
