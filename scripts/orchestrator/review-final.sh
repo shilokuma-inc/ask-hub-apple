@@ -174,7 +174,8 @@ REVIEW=$(printf '%s\n' "$OUTPUT" | awk '
 # 目印を扱うコードを引用しただけで失敗にしないよう、文字参照に書き換えて見える文にする
 REVIEW=${REVIEW//<!--/&lt;!--}
 # トークンらしい文字列を公開のコメントに出さない
-if printf '%s' "$REVIEW" | grep -q -E 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'; then
+# pipefail のもとで grep -q に渡すと、本文が大きいとき printf が SIGPIPE で終わってパイプ全体が失敗になり、見逃す。-q を使わない
+if printf '%s' "$REVIEW" | grep -E 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' >/dev/null; then
   failed "レビューの本文にトークンらしい文字列が含まれているので、投稿しません（${CLAUDE_LOG}）"
 fi
 
