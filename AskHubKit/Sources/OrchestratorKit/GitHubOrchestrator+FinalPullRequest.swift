@@ -10,7 +10,15 @@ extension GitHubOrchestrator {
         )
         return pulls
             .filter { $0.labels.contains { $0.name == AskHubLabel.epicFinal.rawValue } }
-            .map { EpicFinalPullRequest(repository: repository, number: $0.number, headBranch: $0.head.ref, author: $0.user?.login) }
+            .map {
+                EpicFinalPullRequest(
+                    repository: repository,
+                    number: $0.number,
+                    headBranch: $0.head.ref,
+                    author: $0.user?.login,
+                    goalDiscussion: GoalDiscussionMarker.discussion(in: $0.body ?? "")
+                )
+            }
     }
 }
 
@@ -28,6 +36,7 @@ private struct OpenPullRequestSummary: Decodable {
     }
 
     let number: Int
+    let body: String?
     let head: Ref
     /// 削除済みのユーザーでは `nil`
     let user: User?

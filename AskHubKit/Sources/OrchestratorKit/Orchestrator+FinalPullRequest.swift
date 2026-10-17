@@ -26,7 +26,8 @@ extension Orchestrator {
                     kind: .finalPullRequest,
                     repository: pull.repository,
                     number: pull.number,
-                    branch: pull.headBranch
+                    branch: pull.headBranch,
+                    goalDiscussion: pull.goalDiscussion
                 )
                 // 1 件の失敗で、ほかの最終 PR の処理を止めない
                 do {
