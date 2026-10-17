@@ -181,24 +181,40 @@ find_archive() {
 }
 
 # 制御用 worktree を、退避した epic（${RESTORE_EPIC}）に切り替える。今の epic の作業ファイルは退避する（後でまた戻せる）。
-# 戻せないときは何も変えずに終わる
+# 戻せないと分かったときは、片付ける前に何も変えずに終わる。作り直しの途中で失敗したときは、次の起動で続きから戻す
 restore_archived_epic() {
-  local current archive
-  [[ "$RESTORE_EPIC" =~ ^epic/[A-Za-z0-9._/-]+$ ]] || fail "戻す epic の名前が不正です: $RESTORE_EPIC"
+  local current archive holder
+  [[ "$RESTORE_EPIC" =~ ^epic/[A-Za-z0-9._/-]+$ && "$RESTORE_EPIC" != *..* ]] || fail "戻す epic の名前が不正です: $RESTORE_EPIC"
   current=""
   [[ -d "$CTL" ]] && current=$(git -C "$CTL" symbolic-ref --short HEAD 2>/dev/null || echo detached)
-  [[ "$current" == "$RESTORE_EPIC" ]] && return 0
+  # すでにその epic で、作業ファイル（完了語の記録）も揃っていれば、そのまま再開する
+  [[ "$current" == "$RESTORE_EPIC" && -f "$PROMISE_FILE" ]] && return 0
   archive=$(find_archive "$RESTORE_EPIC")
   [[ -n "$archive" ]] || fail "${RESTORE_EPIC} の作業ファイルの退避が見つかりません（${ARCHIVE_DIR}/${REPO_NAME}）。戻しません"
-  if [[ -d "$CTL" ]]; then
-    # 異常終了した今のループの state が残っていれば、今の epic を先に再開する（退避すると異常終了の目印が消える）
-    [[ -z "$STALE_STATE" ]] || fail "今の epic（${current}）のループが異常終了したままです。${RESTORE_EPIC} は戻しません"
-    [[ "$(open_tasks)" -eq 0 ]] || fail "今の epic（${current}）に未完了のタスクが残っています（${GOAL}）。${RESTORE_EPIC} は戻しません"
-    archive_control_worktree
+  if [[ "$current" != "$RESTORE_EPIC" ]]; then
+    # 片付ける前に、戻す epic で制御用 worktree を作れることを確かめる（作れないと、今の epic も戻す epic も無いまま残る）
+    git -C "$CHECKOUT" fetch --quiet origin || fail "origin を取得できませんでした。${RESTORE_EPIC} は戻しません"
+    git -C "$CHECKOUT" rev-parse --verify --quiet "refs/remotes/origin/$RESTORE_EPIC" >/dev/null \
+      || git -C "$CHECKOUT" rev-parse --verify --quiet "refs/heads/$RESTORE_EPIC" >/dev/null \
+      || fail "${RESTORE_EPIC} のブランチがありません。戻しません"
+    # 制御用 worktree とスロットのほかに、そのブランチを checkout している worktree（手動ループなど）があれば戻さない
+    holder=$(git -C "$CHECKOUT" worktree list --porcelain | awk -v branch="branch refs/heads/$RESTORE_EPIC" \
+      -v ctl="$CTL" -v a="${CTL%-ctl}-a" -v b="${CTL%-ctl}-b" '
+      /^worktree / { wt = substr($0, 10) }
+      $0 == branch && wt != ctl && wt != a && wt != b && found == "" { found = wt }
+      END { if (found != "") print found }')
+    [[ -z "$holder" ]] || fail "${RESTORE_EPIC} は、別の worktree（${holder}）が checkout しています。戻しません"
+    if [[ -d "$CTL" ]]; then
+      # 異常終了した今のループの state が残っていれば、今の epic を先に再開する（退避すると異常終了の目印が消える）
+      [[ -z "$STALE_STATE" ]] || fail "今の epic（${current}）のループが異常終了したままです。${RESTORE_EPIC} は戻しません"
+      [[ "$(open_tasks)" -eq 0 ]] || fail "今の epic（${current}）に未完了のタスクが残っています（${GOAL}）。${RESTORE_EPIC} は戻しません"
+      archive_control_worktree
+    fi
+    # 制御用 worktree とスロットを、戻す epic で作り直す（作業ファイルは無ければテンプレートで作られるので、退避したもので上書きする）
+    (cd "$CHECKOUT" && scripts/ralph-setup.sh "$RESTORE_EPIC" >/dev/null) || fail "${RESTORE_EPIC} の worktree を作れませんでした"
   fi
-  # 制御用 worktree とスロットを、戻す epic で作り直す（作業ファイルは無ければテンプレートで作られるので、退避したもので上書きする）
-  git -C "$CHECKOUT" fetch --quiet origin || fail "origin を取得できませんでした"
-  (cd "$CHECKOUT" && scripts/ralph-setup.sh "$RESTORE_EPIC" >/dev/null) || fail "${RESTORE_EPIC} の worktree を作れませんでした"
+  [[ "$(git -C "$CTL" symbolic-ref --short HEAD 2>/dev/null)" == "$RESTORE_EPIC" ]] \
+    || fail "制御用 worktree を ${RESTORE_EPIC} にできませんでした: $CTL"
   cp -R "$archive/.claude/." "$CTL/.claude/" || fail "作業ファイルを戻せませんでした（${archive}）"
   # 前のループの state・PID・知らせ済みの目印は持ち込まない（state は ralph-start.sh が作り直す）
   rm -f "$STATE" "$PID_FILE" "$NO_TASKS_FILE"
