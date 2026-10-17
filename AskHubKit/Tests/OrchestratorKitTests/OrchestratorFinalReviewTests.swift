@@ -211,4 +211,74 @@ extension OrchestratorTests {
         #expect(runtime.ran.count == 2)
         #expect(github.pullRequestComments.isEmpty)
     }
+
+    @Test func givesUpAndTellsAfterThreeReviewsWithMustFixItems() async throws {
+        let github = FakeGitHub([.success([])])
+        let runtime = FakeRuntime()
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+        let heads = [Self.head1, Self.head2, String(repeating: "c", count: 40)]
+        for (index, head) in heads.enumerated() {
+            // レビューで要修正があり、直して push すると次の head になる（自分の push なので回数を引き継ぐ）
+            github.setFinalReviewCandidates([Self.finalCandidate(head: head)])
+            runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: reviewed must=1 may=0\n")])
+            try await orchestrator.pollOnce()
+            await orchestrator.waitForConflictResolutions()
+            if index < heads.count - 1 {
+                runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: fixed \(heads[index + 1])\n")])
+                try await orchestrator.pollOnce()
+                await orchestrator.waitForConflictResolutions()
+            }
+        }
+
+        // 要修正が 3 回続いたらあきらめ、PR に知らせる（Q1）。それ以上は直さない
+        #expect(runtime.ran.count == 5)
+        #expect(github.pullRequestComments.count == 1)
+        let comment = try #require(github.pullRequestComments.first)
+        #expect(comment.contains("第三者レビューの要修正が 3 回続けて収まりませんでした（最新のレビューで要修正 1 件）"))
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+        #expect(runtime.ran.count == 5)
+    }
+
+    @Test func keepsFinishedResultEvenIfOutputMentionsUsageLimit() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setFinalReviewCandidates([Self.finalCandidate()])
+        let runtime = FakeRuntime()
+        let reset = Int(Date(timeIntervalSince1970: 1_800_000_000).timeIntervalSince1970) + 3600
+        // claude の出力の末尾に利用上限の文言が混ざっても、レビューが終わっていれば結果を使う（投稿済みのレビューを捨てない）
+        runtime.setRunResults([
+            CommandResult(status: 0, output: "Claude AI usage limit reached|\(reset)\nASKHUB_RESULT: reviewed must=0 may=0\n")
+        ])
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+
+        #expect(await orchestrator.finalReviewTracker.marker(for: Self.finalCandidate().pullRequest)?.state == .done)
+        #expect(await orchestrator.usageLimitedUntil == nil)
+    }
+
+    @Test func treatsFixReturningSameHeadAsFailureAndWaitsAfterStale() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setFinalReviewCandidates([Self.finalCandidate()])
+        let runtime = FakeRuntime()
+        runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: reviewed must=1 may=0\n")])
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+
+        // 今の head と同じ SHA を「直した」と返したら、失敗として直し直す
+        runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: fixed \(Self.head1)\n")])
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+        #expect(logs.recorded.contains { $0.contains("要修正を直せませんでした（次のポーリングで試し直します）: 今の head と同じ SHA を直したと返しました") })
+
+        // head が進んでいた（stale）なら、新しい head が見えるまで同じ head では始めない
+        runtime.setRunResults([CommandResult(status: 0, output: "ASKHUB_RESULT: stale\n")])
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+        try await orchestrator.pollOnce()
+        await orchestrator.waitForConflictResolutions()
+        #expect(runtime.ran.count == 3)
+    }
 }

@@ -43,8 +43,10 @@ extension Orchestrator {
                 await runFinalReview(start)
                 finalReviewTracker.finish(pullRequest)
                 finalReviews[key] = nil
-                // 同じリポジトリでほかの最終 PR を待たせていれば、次のポーリングを待たずに始める。
+                // 同じリポジトリで待たせていたものを、次のポーリングを待たずに始める。コンフリクトの解消を先にする
+                // （待たせ続けないため。解消で head が変わればレビューはやり直しになる）。
                 // 今終わった PR は head が変わりうるので、次のポーリングで取得し直してから扱う
+                startConflictResolutions(among: conflictingPullRequests)
                 startFinalReviews(among: finalReviewCandidates.filter { $0.pullRequest.key != pullRequest.key })
             }
         }
@@ -71,23 +73,33 @@ extension Orchestrator {
             await record(start, failure: "\(kind.configKey) を起動できませんでした（\(error)）")
             return
         }
-        // 利用上限で終わったなら、試したことにせず解除を待つ
-        if recordUsageLimit(in: output) {
-            log("\(name) の\(Self.describe(start.action))をする claude が利用上限で終わりました。解除の後に試し直します")
-            return
-        }
         switch start.action {
         case .review:
-            let outcome = FinalReviewTracker.reviewOutcome(in: output) ?? .failed(reason: "コマンドの出力から結果を読み取れませんでした")
-            await record(outcome, for: start)
+            let outcome = FinalReviewTracker.reviewOutcome(in: output)
+            // 終わった結果が読めたら、claude の出力に利用上限の文言が混ざっていても結果を使う（投稿済みのレビューを捨てない）
+            if case .failed = outcome ?? .failed(reason: ""), recordUsageLimit(in: output) {
+                logUsageLimit(start)
+                return
+            }
+            await record(outcome ?? .failed(reason: "コマンドの出力から結果を読み取れませんでした"), for: start)
 
         case .fix:
-            var outcome = FinalReviewTracker.fixOutcome(in: output) ?? .failed(reason: "コマンドの出力から結果を読み取れませんでした")
+            var outcome = FinalReviewTracker.fixOutcome(in: output)
+            if case .failed = outcome ?? .failed(reason: ""), recordUsageLimit(in: output) {
+                logUsageLimit(start)
+                return
+            }
             if case let .fixed(head) = outcome, head == pullRequest.headSHA.lowercased() {
                 outcome = .failed(reason: "今の head と同じ SHA を直したと返しました")
             }
-            await record(outcome, for: start)
+            await record(outcome ?? .failed(reason: "コマンドの出力から結果を読み取れませんでした"), for: start)
         }
+    }
+
+    /// 利用上限で終わったときは、試したことにせず解除を待つ
+    private func logUsageLimit(_ start: FinalReviewTracker.Start) {
+        let name = "\(start.pullRequest.repository)#\(start.pullRequest.number)"
+        log("\(name) の\(Self.describe(start.action))をする claude が利用上限で終わりました。解除の後に試し直します")
     }
 
     private func record(_ start: FinalReviewTracker.Start, failure reason: String) async {

@@ -47,7 +47,7 @@ extension Orchestrator {
     }
 
     /// 取得済みの一覧から、始められる解消を裏で始める
-    private func startConflictResolutions(among pullRequests: [ConflictingPullRequest]) {
+    func startConflictResolutions(among pullRequests: [ConflictingPullRequest]) {
         guard activeUsageLimit(at: now()) == nil, !drainsConflictResolutions else {
             return
         }
@@ -65,6 +65,8 @@ extension Orchestrator {
                 // （一覧は最後に取得したもの。古くても、同じ組み合わせは試し直さず、スクリプトが取得し直してから取り込む）。
                 // 今終わった PR は push で head が変わっているので、古い一覧の組み合わせでは試し直さず、次のポーリングで取得し直す
                 startConflictResolutions(among: conflictingPullRequests.filter { $0.key != pullRequest.key })
+                // 同じリポジトリで待たせていた第三者レビュー・修正も、解消の後に始める
+                startFinalReviews(among: finalReviewCandidates)
             }
         }
     }
