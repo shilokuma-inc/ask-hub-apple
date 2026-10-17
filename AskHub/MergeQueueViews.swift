@@ -112,6 +112,7 @@ struct MergeDetailView: View {
     @State private var isConfirmingUpload = false
     @State private var isUploading = false
     @State private var errorMessage: String?
+    @State private var findings: CodeRabbitFindingsModel
     @Environment(\.dismiss)
     private var dismiss
 
@@ -119,6 +120,7 @@ struct MergeDetailView: View {
         self.pullRequest = pullRequest
         self.model = model
         renderedBody = RenderedBody(body: pullRequest.body)
+        _findings = State(initialValue: CodeRabbitFindingsModel(pullRequest: pullRequest))
     }
 
     var body: some View {
@@ -157,6 +159,8 @@ struct MergeDetailView: View {
                 }
             }
 
+            CodeRabbitFindingsSection(model: findings, mergeQueue: model)
+
             if let errorMessage {
                 Section {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
@@ -183,6 +187,11 @@ struct MergeDetailView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("#\(pullRequest.number)")
+        .task {
+            if findings.state == .idle {
+                await findings.load(using: model)
+            }
+        }
         // マージは取り消せないので、マージ先と PR のタイトルを見せて確かめる
         .confirmationDialog(
             "\(pullRequest.baseBranch) にマージしますか？",
