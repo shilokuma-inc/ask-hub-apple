@@ -6,7 +6,7 @@ public struct FinalReviewCandidate: Sendable, Equatable {
     public let pullRequest: FinalReviewPullRequest
     /// 今の head の CodeRabbit の状態
     public let codeRabbit: EpicPullRequest.CodeRabbitState
-    /// 既定ブランチとコンフリクトしているか（解消で head が変わるので、レビューしない）
+    /// 既定ブランチとコンフリクトしているか、GitHub がまだ判定していないか（解消で head が変わるので、レビューしない）
     public let isConflicting: Bool
     /// 信用する author が書いた今の head の第三者レビュー（無ければ `nil`）
     public let thirdPartyReview: ThirdPartyReviewMarker?

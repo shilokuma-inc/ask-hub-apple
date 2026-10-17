@@ -11,6 +11,8 @@ public protocol OrchestratorGitHub: Sendable {
     func removeReadyLabel(from discussion: ReadyDiscussion) async throws
     /// org 全体の open な `epic-final` PR のうち、GitHub が既定ブランチとコンフリクトすると判定したもの
     func conflictingEpicFinalPullRequests(orgs: [String]) async throws -> [ConflictingPullRequest]
+    /// org 全体の open な `epic-final` PR（信用する author が作ったもの）の、第三者レビューの対象を決めるための状態（Discussion #503）
+    func finalReviewCandidates(orgs: [String], trust: TrustDirectory) async throws -> [FinalReviewCandidate]
     /// PR にコメントする
     func comment(onPullRequest number: Int, in repository: String, body: String) async throws
     /// epic の最終 PR の材料（子 PR・仮決め一覧・実機確認）を GitHub から集める
@@ -144,6 +146,12 @@ public actor Orchestrator {
     var conflictingPullRequests: [ConflictingPullRequest] = []
     /// 裏の解消が終わるのを待っている（`--once`・`run` の終わり）。その間は新しい解消を始めない
     var drainsConflictResolutions = false
+    /// 最終 PR の第三者レビュー・修正の進み具合（Discussion #503）
+    var finalReviewTracker = FinalReviewTracker()
+    /// 裏で実行中の第三者レビュー・修正。キーはリポジトリ名の小文字
+    var finalReviews: [String: Task<Void, Never>] = [:]
+    /// 最後に取得した第三者レビューの対象。終わった直後に、同じリポジトリの次の PR を始めるのに使う
+    var finalReviewCandidates: [FinalReviewCandidate] = []
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
     var loopStatusPublisher = LoopStatusPublisher()
