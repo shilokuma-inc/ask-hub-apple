@@ -183,7 +183,8 @@ fi
 # 重要度のセル（2 列目）が 🔴 / 🟡 のどちらか 1 つだけを含むことを確かめ、そうでなければ失敗にする
 COUNTS=$(printf '%s\n' "$REVIEW" | awk -F'|' '
   /^[[:space:]]*\|/ {
-    if ($0 ~ /重要度/ || $0 ~ /^[[:space:]|:-]+$/) next
+    # 見出し（先頭のセルが #）と区切りの行は飛ばす。本文に「重要度」と書いた行を見出しと取り違えない
+    if ($2 ~ /^[[:space:]]*#[[:space:]]*$/ || $0 ~ /^[[:space:]|:-]+$/) next
     severity = $3; last = $(NF - 1)
     must = index(severity, "🔴") > 0; may = index(severity, "🟡") > 0
     if (must == may) { bad++; next }
