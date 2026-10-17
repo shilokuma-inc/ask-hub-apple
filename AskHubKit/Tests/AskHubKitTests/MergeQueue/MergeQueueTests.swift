@@ -151,10 +151,13 @@ struct GitHubMergeQueueTests {
     static func status(
         _ context: String = "CodeRabbit",
         state: String = "PENDING",
-        description: String? = "Review in progress"
+        description: String? = "Review in progress",
+        createdAt: String? = nil
     ) -> String {
         let descriptionJSON = description.map { #""\#($0)""# } ?? "null"
-        return #"{ "__typename": "StatusContext", "context": "\#(context)", "state": "\#(state)", "description": \#(descriptionJSON) }"#
+        let createdAtJSON = createdAt.map { #", "createdAt": "\#($0)""# } ?? ""
+        let fields = #""context": "\#(context)", "state": "\#(state)", "description": \#(descriptionJSON)\#(createdAtJSON)"#
+        return #"{ "__typename": "StatusContext", \#(fields) }"#
     }
 
     /// `statusCheckRollup.contexts` の 1 ページ
@@ -173,8 +176,10 @@ struct GitHubMergeQueueTests {
         base: String = "develop",
         headRepository: String? = "o/r",
         head: String? = nil,
-        comments: String? = nil
+        comments: String? = nil,
+        committedDate: String? = nil
     ) -> String {
+        let committedJSON = committedDate.map { #""committedDate": "\#($0)", "# } ?? ""
         let commentsJSON = comments.map { #", "comments": \#($0)"# } ?? ""
         let rollupJSON = contexts.map { #"{ "contexts": \#($0) }"# } ?? "null"
         let headJSON = headRepository.map { #"{ "nameWithOwner": "\#($0)" }"# } ?? "null"
@@ -185,7 +190,7 @@ struct GitHubMergeQueueTests {
               "author": { "login": "\#(author)" },
               "repository": { "nameWithOwner": "o/r", "defaultBranchRef": { "name": "develop" } },
               "headRepository": \#(headJSON),
-              "commits": { "nodes": [{ "commit": { "statusCheckRollup": \#(rollupJSON) } }] }\#(commentsJSON) }
+              "commits": { "nodes": [{ "commit": { \#(committedJSON)"statusCheckRollup": \#(rollupJSON) } }] }\#(commentsJSON) }
             """#
     }
 

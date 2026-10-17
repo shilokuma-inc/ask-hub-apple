@@ -51,6 +51,7 @@ public struct GitHubMergeQueue: MergeQueueProviding {
                 let all = try await contexts.nodes.compactMap(\.self) + remainingContexts(of: pullRequest, after: cursor)
                 pullRequest.checks = EpicNode.checks(all)
                 pullRequest.codeRabbit = EpicNode.codeRabbit(all)
+                pullRequest.headSince = EpicNode.codeRabbitCreatedAt(all) ?? node.headCommittedDate
             }
             // 第三者レビューの目印と進み具合は、PR のコメントを最後まで読んでから決める（状態コメントは古いコメントを書き換えて使うため）
             var comments = node.comments?.nodes.compactMap(\.self) ?? []
@@ -183,7 +184,7 @@ public struct GitHubMergeQueue: MergeQueueProviding {
                 author { login }
                 repository { nameWithOwner defaultBranchRef { name } }
                 headRepository { nameWithOwner }
-                commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { ...Contexts } } } } }
+                commits(last: 1) { nodes { commit { committedDate statusCheckRollup { contexts(first: 100) { ...Contexts } } } } }
                 comments(first: 100) { ...Comments }
               }
             }
@@ -213,7 +214,7 @@ public struct GitHubMergeQueue: MergeQueueProviding {
           nodes {
             __typename
             ... on CheckRun { name status conclusion checkSuite { app { slug } } }
-            ... on StatusContext { context state description }
+            ... on StatusContext { context state description createdAt }
           }
         }
         """
@@ -301,8 +302,19 @@ private struct EpicNode: Decodable {
             author: author?.login,
             checks: Self.checks(rollupContexts?.nodes.compactMap(\.self) ?? []),
             mergeability: Self.mergeability(mergeable),
-            codeRabbit: Self.codeRabbit(rollupContexts?.nodes.compactMap(\.self) ?? [])
+            codeRabbit: Self.codeRabbit(rollupContexts?.nodes.compactMap(\.self) ?? []),
+            headSince: Self.codeRabbitCreatedAt(rollupContexts?.nodes.compactMap(\.self) ?? []) ?? headCommittedDate
         )
+    }
+
+    /// 最新コミットの日時（commit status `CodeRabbit` が無いときの、head を見始めた時刻の代わり）
+    var headCommittedDate: Date? {
+        commits?.nodes.compactMap(\.self).last?.commit.committedDate
+    }
+
+    /// commit status `CodeRabbit` が作られた時刻。CodeRabbit が今の head の push を受け取った時刻にあたる
+    static func codeRabbitCreatedAt(_ contexts: [RollupContextNode]) -> Date? {
+        contexts.first { $0.typename == "StatusContext" && $0.context == "CodeRabbit" }?.createdAt
     }
 
     /// 最新コミットの `statusCheckRollup.contexts`（検索で取れた 1 ページ目）
@@ -380,6 +392,8 @@ private struct EpicNode: Decodable {
 
 private struct CommitNode: Decodable {
     struct Commit: Decodable {
+        /// 取り直し（`contextsQuery`）では読まないので optional
+        let committedDate: Date?
         let statusCheckRollup: CheckRollup?
     }
 
@@ -412,7 +426,7 @@ private struct RollupContextNode: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case typename = "__typename"
-        case name, status, conclusion, checkSuite, context, state, description
+        case name, status, conclusion, checkSuite, context, state, description, createdAt
     }
 
     let typename: String?
@@ -425,6 +439,7 @@ private struct RollupContextNode: Decodable {
     let context: String?
     let state: String?
     let description: String?
+    let createdAt: Date?
 
     /// GitHub Actions が作った check run か（`checkSuite.app.slug` が `github-actions`）
     var isGitHubActionsCheckRun: Bool {

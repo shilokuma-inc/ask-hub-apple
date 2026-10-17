@@ -25,7 +25,8 @@ extension GitHubOrchestrator {
                 codeRabbit: pullRequest.codeRabbit,
                 // GitHub がまだコンフリクトの有無を判定していない PR も、判定してから扱う
                 isConflicting: pullRequest.mergeability != .mergeable,
-                thirdPartyReview: pullRequest.thirdPartyReview
+                thirdPartyReview: pullRequest.thirdPartyReview,
+                headSince: pullRequest.headSince
             )
         }
         .sorted { ($0.pullRequest.repository, $0.pullRequest.number) < ($1.pullRequest.repository, $1.pullRequest.number) }
