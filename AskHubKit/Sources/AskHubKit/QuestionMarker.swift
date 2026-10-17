@@ -42,11 +42,8 @@ public struct QuestionMarker: Sendable, Equatable, Hashable {
     ///
     /// `id` と選択肢は空でなく、`"`・改行・`-->` を含まないこと。選択肢は `|` を含まず、前後に空白を持たないこと
     public var isRepresentable: Bool {
-        func isValidValue(_ value: String) -> Bool {
-            !value.isEmpty && !value.contains("\"") && !value.contains(where: \.isNewline) && !value.contains(Self.commentClose)
-        }
-        return isValidValue(id) && options.allSatisfy { option in
-            isValidValue(option)
+        MarkerComment.isValidValue(id) && options.allSatisfy { option in
+            MarkerComment.isValidValue(option)
                 && !option.contains(Self.optionSeparator)
                 && option == option.trimmingCharacters(in: .whitespaces)
         }
@@ -58,22 +55,7 @@ public struct QuestionMarker: Sendable, Equatable, Hashable {
     /// `id` が無い・空の場合や、形式が崩れている場合は `nil` を返す。
     /// author が信用できるかはここでは判定しない（`TrustedAuthors` を使う）。
     public static func parse(_ body: String) -> Self? {
-        let trimmed = body.drop { $0.isWhitespace || $0.isNewline }
-        guard trimmed.hasPrefix(commentOpen),
-              let closeRange = trimmed.range(of: commentClose) else {
-            return nil
-        }
-        let inner = trimmed[trimmed.index(trimmed.startIndex, offsetBy: commentOpen.count)..<closeRange.lowerBound]
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard inner.hasPrefix(keyword) else {
-            return nil
-        }
-        let rest = inner.dropFirst(keyword.count)
-        // `ask-hub:questionnaire` のような別の語を誤って拾わないよう、直後は空白か終端に限る
-        if let next = rest.first, !next.isWhitespace {
-            return nil
-        }
-        guard let attributes = parseAttributes(rest),
+        guard let attributes = MarkerComment.attributes(body, keyword: keyword),
               let id = attributes["id"], !id.isEmpty else {
             return nil
         }
@@ -86,26 +68,4 @@ public struct QuestionMarker: Sendable, Equatable, Hashable {
 
     static let keyword = "ask-hub:question"
     static let optionSeparator = "|"
-    private static let commentOpen = "<!--"
-    static let commentClose = "-->"
-
-    /// `name="value"` の並びを読み取る。並びとして崩れていれば `nil`。同じ名前は最初のものを採用する
-    private static func parseAttributes(_ text: Substring) -> [String: String]? {
-        var attributes: [String: String] = [:]
-        var rest = text[...]
-        while true {
-            rest = rest.drop { $0.isWhitespace }
-            if rest.isEmpty {
-                return attributes
-            }
-            guard let match = rest.prefixMatch(of: /([A-Za-z][A-Za-z0-9_-]*)="([^"]*)"/) else {
-                return nil
-            }
-            let name = String(match.output.1)
-            if attributes[name] == nil {
-                attributes[name] = String(match.output.2)
-            }
-            rest = rest[match.range.upperBound...]
-        }
-    }
 }
