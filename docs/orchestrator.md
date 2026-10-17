@@ -638,14 +638,15 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 | --- | --- | --- |
 | `waiting` | head を見始めた（CodeRabbit を待っている） | 10 分経つか、CodeRabbit がレート制限・失敗・スキップなら第三者レビュー → `reviewing` |
 | `reviewing` | `reviewCommand` を実行中 | 要修正 0 件 → `done`、要修正あり → `fixing`（3 回目なら `gave-up`）、head が進んでいた → `waiting`（新しい head が見えるまで待つ）、失敗 → `waiting`（3 回続いたら `gave-up`） |
-| `fixing` | 要修正を直す（`fixCommand`）。push した後は新しい head が見えるまで待つ | push で head が変わる → 新しい head で `waiting`（回数は引き継ぐ）、失敗 → 直し直す（3 回続いたら `gave-up`） |
+| `fixing` | 要修正を直す（`fixCommand`）。push した後は新しい head が見えるまで待つ | push で head が変わる → 新しい head で `waiting`（回数は引き継ぐ）、head が進んでいた → `waiting`（新しい head が見えるまで待つ）、失敗 → 直し直す（3 回続いたら `gave-up`） |
 | `done` | 今の head の第三者レビューで要修正が 0 件 | 何もしない（アプリからマージできる） |
 | `done-coderabbit` | CodeRabbit が今の head をレビューした（どの状態からでもなる。Q2） | 何もしない（アプリからマージできる） |
 | `gave-up` | 要修正が 3 回続いた・コマンドが同じ head で 3 回続けて失敗した | PR にあきらめたことをコメントする。アプリからはマージできない（GitHub の画面からはできる） |
 
 - head が変わったら、どの状態からでも `waiting` に戻り、待ち始めから数え直す（Q3）。要修正が続いた回数は、自分の修正の push で変わったときだけ引き継ぎ、
   人の push・コンフリクトの解消・develop の取り込みなら 0 に戻す（人が直して push すればまた回る。Q1）
-- 一覧から消えた（マージ・クローズされた）PR は追跡をやめる。追跡はメモリ上だけで、再起動すると数え直す（待ち始めの時刻は GitHub の時刻で補う）
+- 一覧から消えた（マージ・クローズされた）PR は追跡をやめる
+- Claude の利用上限などで結果を記録せずに終えたときは、`reviewing` は `waiting` に戻り、`fixing` はそのまま（解除の後に試し直す）
 
 ### `askhub-review-final`（第三者レビュー）
 
@@ -663,7 +664,7 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 
 `scripts/orchestrator/fix-review.sh`。引数は `askhub-review-final` と同じ。
 
-1. origin の head が `headSHA` のままかを確かめ、`headSHA` の第三者レビュー（信用する author のもの・最新）を読む。要修正が 0 件なら直さない
+1. origin の head が `headSHA` のままかを確かめ、`headSHA` の第三者レビュー（信用する author のもの・最新）を読む。レビューが無い・要修正が 0 件なら失敗（`failed`）にする（オーケストレーターは失敗に数える）
 2. 一時 worktree で `claude -p` に `🔴 要修正` だけを直させ、CLAUDE.md の検証を通させてコミットさせる（push・rebase・amend はさせない）
 3. push の前に確かめる: コミットしていない変更が無い・コミットが増えた・`headSHA` の上に積んだ・マージコミットが無い・差分がある・AI の帰属行が無い
 4. origin の head が `headSHA` のままなら `--force-with-lease=refs/heads/<epic>:<headSHA>` で push する（`ASKHUB_RESULT: fixed <新しい head>`）。
