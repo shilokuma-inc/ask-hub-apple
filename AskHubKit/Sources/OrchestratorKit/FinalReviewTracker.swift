@@ -10,17 +10,21 @@ public struct FinalReviewCandidate: Sendable, Equatable {
     public let isConflicting: Bool
     /// 信用する author が書いた今の head の第三者レビュー（無ければ `nil`）
     public let thirdPartyReview: ThirdPartyReviewMarker?
+    /// 今の head を GitHub が受け取った時刻の推定（`EpicPullRequest.headSince`）。分からなければ `nil`
+    public let headSince: Date?
 
     public init(
         pullRequest: FinalReviewPullRequest,
         codeRabbit: EpicPullRequest.CodeRabbitState,
         isConflicting: Bool,
-        thirdPartyReview: ThirdPartyReviewMarker? = nil
+        thirdPartyReview: ThirdPartyReviewMarker? = nil,
+        headSince: Date? = nil
     ) {
         self.pullRequest = pullRequest
         self.codeRabbit = codeRabbit
         self.isConflicting = isConflicting
         self.thirdPartyReview = thirdPartyReview
+        self.headSince = headSince
     }
 }
 
@@ -111,7 +115,10 @@ public struct FinalReviewTracker: Sendable {
                 // 新しい PR か、head が変わった。待ち始めからやり直す
                 let previous = entries[candidate.pullRequest.key]
                 let pushedByFix = previous?.pushedHead.map { $0 == head } ?? false
-                entry = Entry(head: head, since: now, attempts: pushedByFix ? previous?.attempts ?? 0 : 0)
+                // 初めて見る PR（オーケストレーターの起動・再起動の後など）は、head を GitHub が受け取った時刻から待つ
+                // （再起動のたびに 10 分待ち直さない）。追跡中に head が変わったのを見たときは、見た時刻から待つ
+                let since = previous == nil ? min(candidate.headSince ?? now, now) : now
+                entry = Entry(head: head, since: since, attempts: pushedByFix ? previous?.attempts ?? 0 : 0)
             }
             if candidate.codeRabbit == .completed {
                 // CodeRabbit が今の head をレビューしたら、第三者レビュー・修正はやめる（Q2）

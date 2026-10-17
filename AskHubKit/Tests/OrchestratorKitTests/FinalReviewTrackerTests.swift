@@ -321,6 +321,31 @@ struct FinalReviewTrackerTests {
         #expect(tracker.marker(for: pullRequest())?.state == .gaveUp)
     }
 
+    @Test func startsWaitingFromWhenGitHubReceivedHeadAfterRestart() throws {
+        // 再起動の後に初めて見た PR は、head を GitHub が受け取った時刻から 10 分を数える（再起動のたびに待ち直さない）
+        var tracker = FinalReviewTracker()
+        let received = FinalReviewCandidate(
+            pullRequest: pullRequest(), codeRabbit: .inProgress, isConflicting: false, headSince: minutes(-8)
+        )
+        tracker.update(with: [received], now: start)
+        #expect(try actions(tracker, [received], at: minutes(1.9)).isEmpty)
+        #expect(try actions(tracker, [received], at: minutes(2)) == ["503:review"])
+
+        // 時刻が未来（時計のずれ）なら、見た時刻から待つ
+        var skewed = FinalReviewTracker()
+        let future = FinalReviewCandidate(pullRequest: pullRequest(), codeRabbit: .inProgress, isConflicting: false, headSince: minutes(5))
+        skewed.update(with: [future], now: start)
+        #expect(try actions(skewed, [future], at: minutes(10)) == ["503:review"])
+
+        // 追跡中に head が変わったのを見たときは、受け取った時刻ではなく見た時刻から待つ
+        let moved = FinalReviewCandidate(
+            pullRequest: pullRequest(head: Self.head2), codeRabbit: .inProgress, isConflicting: false, headSince: minutes(-30)
+        )
+        tracker.update(with: [moved], now: minutes(3))
+        #expect(try actions(tracker, [moved], at: minutes(12.9)).isEmpty)
+        #expect(try actions(tracker, [moved], at: minutes(13)) == ["503:review"])
+    }
+
     @Test func readsOutcomesFromLastResultLine() {
         let output = "ログ\nASKHUB_RESULT: reviewed\nASKHUB_RESULT: reviewed must=2 may=1\n"
         #expect(FinalReviewTracker.reviewOutcome(in: output) == .reviewed(must: 2, may: 1))
