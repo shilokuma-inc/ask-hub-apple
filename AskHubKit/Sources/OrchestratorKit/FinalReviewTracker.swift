@@ -6,7 +6,7 @@ public struct FinalReviewCandidate: Sendable, Equatable {
     public let pullRequest: FinalReviewPullRequest
     /// 今の head の CodeRabbit の状態
     public let codeRabbit: EpicPullRequest.CodeRabbitState
-    /// 既定ブランチとコンフリクトしているか（解消で head が変わるので、レビューしない）
+    /// 既定ブランチとコンフリクトしているか、GitHub がまだ判定していないか（解消で head が変わるので、レビューしない）
     public let isConflicting: Bool
     /// 信用する author が書いた今の head の第三者レビュー（無ければ `nil`）
     public let thirdPartyReview: ThirdPartyReviewMarker?
@@ -89,6 +89,8 @@ public struct FinalReviewTracker: Sendable {
         var failures = 0
         /// 修正の push で次になるはずの head（自分の push か人の push かを見分ける）
         var pushedHead: String?
+        /// コマンドが head が進んだ（`stale`）と返した。新しい head が見えるまで、古い head では始めない
+        var awaitingNewHead = false
     }
 
     private(set) var entries: [String: Entry] = [:]
@@ -114,7 +116,7 @@ public struct FinalReviewTracker: Sendable {
             if candidate.codeRabbit == .completed {
                 // CodeRabbit が今の head をレビューしたら、第三者レビュー・修正はやめる（Q2）
                 entry.state = .doneCodeRabbit
-            } else if candidate.thirdPartyReview?.isClean == true, entry.state != .gaveUp {
+            } else if let review = candidate.thirdPartyReview, review.sha == head, review.isClean, entry.state != .gaveUp {
                 entry.state = .done
             }
             updated[candidate.pullRequest.key] = entry
@@ -150,6 +152,10 @@ public struct FinalReviewTracker: Sendable {
 
     /// その PR で今行うこと（無ければ `nil`）
     private static func action(for entry: Entry, candidate: FinalReviewCandidate, now: Date) -> Action? {
+        // CodeRabbit が今の head をレビューしたら始めない（Q2）。head が進んだと分かったら、新しい head が見えるまで待つ
+        if candidate.codeRabbit == .completed || entry.awaitingNewHead {
+            return nil
+        }
         switch entry.state {
         case .waiting:
             let codeRabbitCannotReview = [.rateLimited, .failed, .skipped].contains(candidate.codeRabbit)
@@ -189,10 +195,13 @@ public struct FinalReviewTracker: Sendable {
         runningRepositories.contains(repository.lowercased())
     }
 
-    /// レビューの結果を記録する。レビューした head がもう追跡している head でなければ何もしない
-    public mutating func record(_ outcome: ReviewOutcome, for pullRequest: FinalReviewPullRequest) {
-        guard var entry = entries[pullRequest.key], entry.head == pullRequest.headSHA.lowercased() else {
-            return
+    /// レビューの結果を記録する。あきらめることになったら `true`。
+    /// レビューした head がもう追跡している head でないとき・CodeRabbit が先にレビューした（済み（CodeRabbit））ときは何もしない
+    @discardableResult
+    public mutating func record(_ outcome: ReviewOutcome, for pullRequest: FinalReviewPullRequest) -> Bool {
+        guard var entry = entries[pullRequest.key], entry.head == pullRequest.headSHA.lowercased(),
+              entry.state != .doneCodeRabbit else {
+            return false
         }
         switch outcome {
         case let .reviewed(must, _):
@@ -207,34 +216,42 @@ public struct FinalReviewTracker: Sendable {
         case .stale:
             // 次の取得で新しい head から待ち直す
             entry.state = .waiting
+            entry.awaitingNewHead = true
 
         case .failed:
             entry.failures += 1
             entry.state = entry.failures >= Self.maxFailures ? .gaveUp : .waiting
         }
         entries[pullRequest.key] = entry
+        return entry.state == .gaveUp
     }
 
-    /// 修正の結果を記録する。直した head がもう追跡している head でなければ何もしない
-    public mutating func record(_ outcome: FixOutcome, for pullRequest: FinalReviewPullRequest) {
-        guard var entry = entries[pullRequest.key], entry.head == pullRequest.headSHA.lowercased() else {
-            return
+    /// 修正の結果を記録する。あきらめることになったら `true`。
+    /// 直した head がもう追跡している head でないとき・CodeRabbit が先にレビューしたときは何もしない
+    @discardableResult
+    public mutating func record(_ outcome: FixOutcome, for pullRequest: FinalReviewPullRequest) -> Bool {
+        guard var entry = entries[pullRequest.key], entry.head == pullRequest.headSHA.lowercased(),
+              entry.state != .doneCodeRabbit else {
+            return false
         }
         switch outcome {
-        case let .fixed(head):
+        case let .fixed(head) where head.lowercased() != entry.head:
             entry.failures = 0
             entry.pushedHead = head.lowercased()
 
-        case .stale:
-            entry.state = .waiting
-
-        case .failed:
+        case .fixed, .failed:
+            // 今の head と同じ SHA を「直した」と返したときも、直っていないので失敗に数える
             entry.failures += 1
             if entry.failures >= Self.maxFailures {
                 entry.state = .gaveUp
             }
+
+        case .stale:
+            entry.state = .waiting
+            entry.awaitingNewHead = true
         }
         entries[pullRequest.key] = entry
+        return entry.state == .gaveUp
     }
 
     /// 最終 PR に書き出す進み具合（追跡していなければ `nil`）

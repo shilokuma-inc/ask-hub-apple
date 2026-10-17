@@ -156,7 +156,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `reviewCommand` | | epic の最終 PR に第三者レビューをさせるコマンド（Discussion #503。30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-review-final`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` / `{headSHA}`（レビューの対象として確認した head）が使える |
 | `fixCommand` | | epic の最終 PR の第三者レビューの `要修正` を直させるコマンド（ビルドとテストまで行うので 60 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-fix-review`（`install.sh` が置く）。使えるプレースホルダは `reviewCommand` と同じ（`{headSHA}` は push の lease に使う） |
 | `buildHosts` | | ループのビルドの Mac（xcb）の情報を GitHub に書き出す設定（下の「`buildHosts`」）。**xcb を動かしている Mac のオーケストレーターだけに書く**。省略するとこの機能を止める |
-| `model` | | 起動する `claude`（ループ・準備・コンフリクトの解消・依頼からの Discussion 作成）のモデル。省略時は `claude-opus-5-5`。`opus` などの別名も書ける。環境変数 `ANTHROPIC_MODEL` で渡すので、`ideaCommand` などを書き換えても効く。Discussion でモデルを指定したループ（`docs/protocol.md` の「ループのモデルとエフォート」）はそちらを使う |
+| `model` | | 起動する `claude`（ループ・準備・コンフリクトの解消・最終 PR の第三者レビューと修正・依頼からの Discussion 作成）のモデル。省略時は `claude-opus-5-5`。`opus` などの別名も書ける。環境変数 `ANTHROPIC_MODEL` で渡すので、`ideaCommand` などを書き換えても効く。Discussion でモデルを指定したループ（`docs/protocol.md` の「ループのモデルとエフォート」）はそちらを使う |
 | `effort` | | 起動する `claude` のエフォート（`low` / `medium` / `high` / `xhigh` / `max`）。省略時は claude の既定（`auto` を渡し、オーケストレーターの起動元の値は引き継がない）。環境変数 `CLAUDE_CODE_EFFORT_LEVEL` で渡す。Discussion で指定したループはそちらを使う |
 
 以前の設定にあった `org` は不要になった（書いてあっても無視する）。
@@ -606,6 +606,24 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 記録はメモリ上だけなので、再起動した後に、まだコンフリクトしている PR を試し直すことがある（今までと同じ）
 
 ログは `~/Library/Logs/askhub/loops/<リポジトリ>-conflict-<PR 番号>-*.log`（claude の出力）。
+
+## epic の最終 PR を第三者レビューする
+
+最終 PR（`epic-final`）で CodeRabbit がレビューできないときは、ポーリングの最後（コンフリクトの解消の後）に、
+`reviewCommand`（既定は `askhub-review-final`）で第三者レビューを、要修正があれば `fixCommand`（既定は `askhub-fix-review`）で修正を**裏で**行う
+（[Discussion #503](https://github.com/shilokuma-inc/ask-hub-apple/discussions/503)。進み具合の追跡は `FinalReviewTracker`）。
+アプリはマージ待ちと同じ取得（`GitHubMergeQueue`）で、信用する author が作った PR の CodeRabbit の状態と、信用する author が書いた今の head の第三者レビューを読む。
+
+- 今の head を見始めてから 10 分経っても CodeRabbit のレビューが完了しないか、CodeRabbit がレート制限・失敗・スキップなら第三者レビューを始める。
+  コンフリクトしている（GitHub がまだ判定していないものも）PR は始めない。CodeRabbit が今の head をレビューしたら、レビュー・修正はやめる
+- 要修正があれば次のポーリングで直させ、push で head が変わったら新しい head をまたレビューする。要修正が 3 回続いたら、あきらめて PR にコメントする
+  （人が直して push すれば、また 10 分待ちから回る。自分の修正の push 以外で head が変わったら回数を 0 に戻す）。コマンドが同じ head で 3 回続けて失敗したときもあきらめる
+- コンフリクトの解消と合わせて、同じリポジトリでは 1 件ずつ（どちらもメインの checkout に一時 worktree を作るため）。別のリポジトリは並列に行う
+- コマンドには、ループと同じく信用する author（`ASKHUB_TRUSTED_AUTHORS`）と設定の `model` / `effort` を渡す。制限時間はレビュー 30 分・修正 60 分
+- Claude の利用上限で終わったときは試したことにせず、解除の後に試し直す。上限で待機しているあいだは始めない
+- `--once` とポーリングを終えるときは、コンフリクトの解消と同じく、実行中のレビュー・修正が終わるまで待つ。記録はメモリ上だけなので、再起動すると数え直す
+
+ログは `~/Library/Logs/askhub/loops/<リポジトリ>-review-<PR 番号>-*.log` と `…-fix-review-<PR 番号>-*.log`（claude の出力）。
 
 ## 固まったループを止める
 

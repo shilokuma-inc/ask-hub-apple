@@ -10,6 +10,8 @@ extension Orchestrator {
     /// ループの状態を状態用の Issue に書き出す
     func finishPoll(statuses: [String: LoopStatus]) async {
         await startConflictResolutions()
+        // 同じリポジトリではコンフリクトの解消を先に始め、第三者レビュー・修正はその後に空いているリポジトリで始める
+        await startFinalReviews()
         await publishLoopStatuses(statuses: statuses)
         // 状態用の Issue を読み直した後に、手動ループの完了を見る
         await finalizeEpicsFromGitHub(statuses: statuses)
@@ -33,23 +35,26 @@ extension Orchestrator {
         startConflictResolutions(among: pullRequests)
     }
 
-    /// 裏で実行中の解消がすべて終わるまで待つ（`--once` で終わる前・`run` の終わりなど）。
+    /// 裏で実行中の解消と、最終 PR の第三者レビュー・修正がすべて終わるまで待つ（`--once` で終わる前・`run` の終わりなど）。
     /// 子プロセスはオーケストレーターの終了で止まらないので、結果を PR にコメントしてから終わる。
-    /// 待っている間は新しい解消を始めない（同じリポジトリの次の PR は、次のポーリングで始める）
+    /// 待っている間は新しい解消・レビュー・修正を始めない（同じリポジトリの次の PR は、次のポーリングで始める）
     public func waitForConflictResolutions() async {
         drainsConflictResolutions = true
         defer { drainsConflictResolutions = false }
-        while let task = conflictResolutions.values.first {
+        while let task = conflictResolutions.values.first ?? finalReviews.values.first {
             await task.value
         }
     }
 
     /// 取得済みの一覧から、始められる解消を裏で始める
-    private func startConflictResolutions(among pullRequests: [ConflictingPullRequest]) {
+    func startConflictResolutions(among pullRequests: [ConflictingPullRequest]) {
         guard activeUsageLimit(at: now()) == nil, !drainsConflictResolutions else {
             return
         }
-        for (pullRequest, repository) in conflictTracker.startable(in: pullRequests, config: config) {
+        // 第三者レビュー・修正を実行中のリポジトリでは始めない（同じ checkout に一時 worktree を作るため）
+        let busy = finalReviewRepositories
+        let available = pullRequests.filter { !busy.contains($0.repository.lowercased()) }
+        for (pullRequest, repository) in conflictTracker.startable(in: available, config: config) {
             let key = pullRequest.repository.lowercased()
             conflictTracker.start(pullRequest)
             conflictResolutions[key] = Task {
@@ -60,6 +65,8 @@ extension Orchestrator {
                 // （一覧は最後に取得したもの。古くても、同じ組み合わせは試し直さず、スクリプトが取得し直してから取り込む）。
                 // 今終わった PR は push で head が変わっているので、古い一覧の組み合わせでは試し直さず、次のポーリングで取得し直す
                 startConflictResolutions(among: conflictingPullRequests.filter { $0.key != pullRequest.key })
+                // 同じリポジトリで待たせていた第三者レビュー・修正も、解消の後に始める
+                startFinalReviews(among: finalReviewCandidates)
             }
         }
     }

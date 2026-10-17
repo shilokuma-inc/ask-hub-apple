@@ -27,3 +27,14 @@ extension FakeGitHub {
         state.withLock { $0.pullRequestComments.append("\(repository)#\(number): \(body)") }
     }
 }
+
+// FakeGitHub の、最終 PR の第三者レビューの対象
+extension FakeGitHub {
+    func setFinalReviewCandidates(_ candidates: [FinalReviewCandidate]) {
+        state.withLock { $0.finalReviewCandidates = candidates }
+    }
+
+    func finalReviewCandidates(orgs: [String], trust: TrustDirectory) async throws -> [FinalReviewCandidate] {
+        state.withLock { $0.finalReviewCandidates }
+    }
+}
