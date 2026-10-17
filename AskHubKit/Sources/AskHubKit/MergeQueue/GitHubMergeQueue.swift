@@ -309,8 +309,8 @@ private struct EpicNode: Decodable {
     }
 
     /// commit status `CodeRabbit` から CodeRabbit の状態を決める。マージ条件には使わない（Discussion #460）。
-    /// `PENDING` / `EXPECTED` → 処理中、`SUCCESS` は `description` に "rate limited" を含めばレート制限・それ以外は完了、
-    /// `ERROR` / `FAILURE` → 失敗、無ければ なし（知らない `state` も なし）。レート制限の見分けは文言の照合なので、CodeRabbit が文言を変えると完了に見える
+    /// `PENDING` / `EXPECTED` → 処理中、`SUCCESS` は `description` に "rate limited" を含めばレート制限・"skipped" を含めばスキップ・それ以外は完了、
+    /// `ERROR` / `FAILURE` → 失敗、無ければ なし（知らない `state` も なし）。レート制限・スキップの見分けは文言の照合なので、CodeRabbit が文言を変えると完了に見える
     static func codeRabbit(_ contexts: [RollupContextNode]) -> EpicPullRequest.CodeRabbitState {
         guard let status = contexts.first(where: { $0.typename == "StatusContext" && $0.context == "CodeRabbit" }) else {
             return .none
@@ -320,7 +320,7 @@ private struct EpicNode: Decodable {
             return .inProgress
 
         case "SUCCESS":
-            return status.description?.range(of: "rate limited", options: .caseInsensitive) != nil ? .rateLimited : .completed
+            return codeRabbitSuccess(status.description)
 
         case "ERROR", "FAILURE":
             return .failed
@@ -328,6 +328,20 @@ private struct EpicNode: Decodable {
         default:
             return .none
         }
+    }
+
+    /// `SUCCESS` の commit status `CodeRabbit` の `description` から、完了・レート制限・スキップを見分ける（大文字小文字は区別しない）
+    private static func codeRabbitSuccess(_ description: String?) -> EpicPullRequest.CodeRabbitState {
+        guard let description else {
+            return .completed
+        }
+        if description.range(of: "rate limited", options: .caseInsensitive) != nil {
+            return .rateLimited
+        }
+        if description.range(of: "skipped", options: .caseInsensitive) != nil {
+            return .skipped
+        }
+        return .completed
     }
 
     static func mergeability(_ value: String?) -> EpicPullRequest.Mergeability {

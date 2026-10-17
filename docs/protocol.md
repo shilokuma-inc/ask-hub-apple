@@ -45,7 +45,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
     （[Discussion #460](https://github.com/shilokuma-inc/ask-hub-apple/discussions/460)。check run が 1 つも無いときと、
     GitHub がコンフリクトの有無を計算中のときも押せない）。CI の状態は最新コミットの `statusCheckRollup.contexts` のうち
     GitHub Actions（`checkSuite.app.slug` が `github-actions`）の check run だけから決め、CodeRabbit などの commit status は使わない
-    （CodeRabbit の処理中が長く続いてもマージを止めないため）。CodeRabbit の状態（処理中 / 完了 / レート制限 / 失敗 / なし）は
+    （CodeRabbit の処理中が長く続いてもマージを止めないため）。CodeRabbit の状態（処理中 / 完了 / レート制限 / スキップ / 失敗 / なし）は
     commit status `CodeRabbit` から読み、詳細画面の「状態」に**情報として**出す。レビューを見てからマージしたい人はそれを見て判断する
 - **任意判断**: `decision-log` の Issue（仮決め一覧）。行には `repo#番号`・タイトル（先頭の `【CHORE】` は表示で省く）・更新の相対時刻・作成からの経過を出す。
   タブの中身はすべて同じ種類なので、行に種類のラベルは出さない

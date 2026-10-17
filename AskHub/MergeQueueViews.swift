@@ -250,6 +250,9 @@ struct MergeDetailView: View {
         case .rateLimited:
             "レート制限"
 
+        case .skipped:
+            "スキップ"
+
         case .failed:
             "失敗"
 
