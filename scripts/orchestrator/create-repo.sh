@@ -5,7 +5,7 @@
 # 1. GitHub にテンプレートからリポジトリを作る（既定は public。既にテンプレートから作られていれば続きから）
 # 2. checkout のパスに clone する（空なら一時ディレクトリで作業し、最後に消す = GitHub に作るだけ）
 # 3. テンプレートの scripts/rename.sh でアプリ名を変え、Bundle ID を書き、develop に直接 push する
-# 4. AskHub のラベルを作り、App Store Connect への登録を needs-verify の Issue にする
+# 4. Discussions を有効にし、AskHub のラベルを作り、App Store Connect への登録を needs-verify の Issue にする
 #
 # 人に伝える行は `ASKHUB_RESULT: …`、失敗の理由は `ASKHUB_ERROR: …` で出す（依頼 Issue にはこの行だけが書かれる。
 # ローカルのパスを含めない）。前提を満たさず、やり直しても成功しないときは終了コード 3 で終わる。
@@ -131,7 +131,27 @@ fi
 git push --quiet origin "$BRANCH" || fail "$BRANCH に push できませんでした"
 result "アプリ名を ${APP_NAME}、Bundle ID を $BUNDLE_ID にして $BRANCH に push しました"
 
-# 4. AskHub のラベル（scripts/ralph-setup.sh と同じ）と、App Store Connect への登録の Issue
+# 4. Discussions を有効にする。テンプレートから作ったリポジトリでは無効のままで、
+#    依頼から質問付きの Discussion を作るときに「Ideas」カテゴリが無いと失敗する
+gh repo edit "$REPOSITORY" --enable-discussions >/dev/null \
+  || fail "$REPOSITORY の Discussions を有効にできませんでした"
+# 既定のカテゴリは有効にした直後に作られる。少し待っても無ければ、人に作ってもらう
+# shellcheck disable=SC2016 # GraphQL の変数で、シェルでは展開しない
+IDEAS_QUERY='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { discussionCategories(first: 50) { nodes { name } } } }'
+has_ideas=""
+for _ in $(seq 1 10); do
+  has_ideas=$(gh api graphql -f query="$IDEAS_QUERY" -f owner="${REPOSITORY%%/*}" -f name="${REPOSITORY#*/}" \
+    --jq '[.data.repository.discussionCategories.nodes[].name] | index("Ideas") != null' 2>/dev/null || true)
+  [[ "$has_ideas" == true ]] && break
+  sleep 2
+done
+if [[ "$has_ideas" == true ]]; then
+  result "Discussions を有効にしました"
+else
+  result "Discussions を有効にしましたが、カテゴリ「Ideas」がありません。GitHub の Discussions で作ってください（依頼からの Discussion の作成に使います）"
+fi
+
+# AskHub のラベル（scripts/ralph-setup.sh と同じ）と、App Store Connect への登録の Issue
 while IFS='|' read -r name color description; do
   gh label create "$name" --repo "$REPOSITORY" --color "$color" --description "$description" >/dev/null 2>&1 || true
 done <<'LABELS'
