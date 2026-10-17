@@ -2,7 +2,7 @@ import Foundation
 
 /// GitHub の API で「マージ待ち」を取得し、マージする
 public struct GitHubMergeQueue: MergeQueueProviding {
-    private let client: GitHubClient
+    let client: GitHubClient
     private let trustedAuthors: any TrustedAuthorsResolving
     private let uploadWorkflow: (any UploadWorkflowProviding)?
 
@@ -36,8 +36,11 @@ public struct GitHubMergeQueue: MergeQueueProviding {
         // fork からの PR は、マージ後に削除するブランチがこのリポジトリに無いので扱わない
         var trusted: [EpicPullRequest] = []
         for node in nodes {
-            guard var pullRequest = node.pullRequest,
-                  await trustedAuthors.trustedAuthors(for: pullRequest.repository).contains(pullRequest.author) else {
+            guard var pullRequest = node.pullRequest else {
+                continue
+            }
+            let authors = await trustedAuthors.trustedAuthors(for: pullRequest.repository)
+            guard authors.contains(pullRequest.author) else {
                 continue
             }
             // contexts が 1 ページ（100 件）に収まらない PR は、残りを取り直してから CI と CodeRabbit の状態を決める（1 ページ目だけで黙って決めない）
@@ -48,7 +51,17 @@ public struct GitHubMergeQueue: MergeQueueProviding {
                 let all = try await contexts.nodes.compactMap(\.self) + remainingContexts(of: pullRequest, after: cursor)
                 pullRequest.checks = EpicNode.checks(all)
                 pullRequest.codeRabbit = EpicNode.codeRabbit(all)
+                pullRequest.headSince = node.headSince(codeRabbitCreatedAt: EpicNode.codeRabbitCreatedAt(all))
             }
+            // 第三者レビューの目印と進み具合は、PR のコメントを最後まで読んでから決める（状態コメントは古いコメントを書き換えて使うため）
+            var comments = node.comments?.nodes.compactMap(\.self) ?? []
+            if let page = node.comments, page.pageInfo.hasNextPage {
+                guard let cursor = page.pageInfo.endCursor else {
+                    throw GitHubError.invalidResponse
+                }
+                comments += try await remainingComments(of: pullRequest, after: cursor)
+            }
+            Self.attachFinalReview(to: &pullRequest, comments: comments, trustedAuthors: authors)
             trusted.append(pullRequest)
         }
         return try await attachUploadStatus(to: trusted)
@@ -167,16 +180,18 @@ public struct GitHubMergeQueue: MergeQueueProviding {
             pageInfo { hasNextPage endCursor }
             nodes {
               ... on PullRequest {
-                id number title body url baseRefName headRefName headRefOid mergeable
+                id number title body url createdAt baseRefName headRefName headRefOid mergeable
                 author { login }
                 repository { nameWithOwner defaultBranchRef { name } }
                 headRepository { nameWithOwner }
-                commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { ...Contexts } } } } }
+                commits(last: 1) { nodes { commit { committedDate statusCheckRollup { contexts(first: 100) { ...Contexts } } } } }
+                comments(first: 100) { ...Comments }
               }
             }
           }
         }
         \(contextsFragment)
+        \(commentsFragment)
         """
 
     /// 1 ページ目に収まらなかった `statusCheckRollup.contexts` を、head のコミットを指定して取り直す
@@ -192,14 +207,14 @@ public struct GitHubMergeQueue: MergeQueueProviding {
         """
 
     /// check run（GitHub Actions など）と commit status（CodeRabbit など）の一覧。
-    /// CI の状態は check run だけから決め、commit status は情報としてだけ使う（Discussion #460）
+    /// CI の状態は check run だけから決め（Discussion #460）、commit status `CodeRabbit` は最終 PR のレビューの条件に使う（Discussion #503）
     private static let contextsFragment = """
         fragment Contexts on StatusCheckRollupContextConnection {
           pageInfo { hasNextPage endCursor }
           nodes {
             __typename
             ... on CheckRun { name status conclusion checkSuite { app { slug } } }
-            ... on StatusContext { context state description }
+            ... on StatusContext { context state description createdAt }
           }
         }
         """
@@ -255,6 +270,7 @@ private struct EpicNode: Decodable {
     let title: String?
     let body: String?
     let url: URL?
+    let createdAt: Date?
     let baseRefName: String?
     let headRefName: String?
     let headRefOid: String?
@@ -263,6 +279,7 @@ private struct EpicNode: Decodable {
     let repository: Repository?
     let headRepository: HeadRepository?
     let commits: Commits?
+    let comments: PullRequestComments?
 
     /// 検索の型に合わないノード（`{}`）では `nil`
     var pullRequest: EpicPullRequest? {
@@ -286,8 +303,29 @@ private struct EpicNode: Decodable {
             author: author?.login,
             checks: Self.checks(rollupContexts?.nodes.compactMap(\.self) ?? []),
             mergeability: Self.mergeability(mergeable),
-            codeRabbit: Self.codeRabbit(rollupContexts?.nodes.compactMap(\.self) ?? [])
+            codeRabbit: Self.codeRabbit(rollupContexts?.nodes.compactMap(\.self) ?? []),
+            headSince: headSince(codeRabbitCreatedAt: Self.codeRabbitCreatedAt(rollupContexts?.nodes.compactMap(\.self) ?? []))
         )
+    }
+
+    /// 今の head を GitHub が受け取った時刻の推定。CodeRabbit の commit status の時刻、無ければ head のコミットの日時。
+    /// PR を開く前のコミット（epic の head は古いことが多い）で、開いたばかりの PR をすぐレビューしないよう、PR の作成時刻を下限にする
+    func headSince(codeRabbitCreatedAt: Date?) -> Date? {
+        guard let estimate = codeRabbitCreatedAt ?? headCommittedDate else {
+            return createdAt
+        }
+        return createdAt.map { max($0, estimate) } ?? estimate
+    }
+
+    /// 最新コミットの日時（commit status `CodeRabbit` が無いときの、head を見始めた時刻の代わり）
+    var headCommittedDate: Date? {
+        commits?.nodes.compactMap(\.self).last?.commit.committedDate
+    }
+
+    /// commit status `CodeRabbit` の時刻（rollup は最新の status なので、CodeRabbit が状態を書き換えた時刻）。
+    /// head の push を受け取った時刻以後になるので、待ち始めを遅らせる側（CodeRabbit を長めに待つ側）にずれる
+    static func codeRabbitCreatedAt(_ contexts: [RollupContextNode]) -> Date? {
+        contexts.first { $0.typename == "StatusContext" && $0.context == "CodeRabbit" }?.createdAt
     }
 
     /// 最新コミットの `statusCheckRollup.contexts`（検索で取れた 1 ページ目）
@@ -308,9 +346,10 @@ private struct EpicNode: Decodable {
         return runs.isEmpty ? .none : .success
     }
 
-    /// commit status `CodeRabbit` から CodeRabbit の状態を決める。マージ条件には使わない（Discussion #460）。
-    /// `PENDING` / `EXPECTED` → 処理中、`SUCCESS` は `description` に "rate limited" を含めばレート制限・それ以外は完了、
-    /// `ERROR` / `FAILURE` → 失敗、無ければ なし（知らない `state` も なし）。レート制限の見分けは文言の照合なので、CodeRabbit が文言を変えると完了に見える
+    /// commit status `CodeRabbit` から CodeRabbit の状態を決める。完了は最終 PR のレビューの条件になる（Discussion #503）。
+    /// `PENDING` / `EXPECTED` → 処理中、`SUCCESS` は `description` の文言で レート制限・スキップ・完了 を見分け、どれにも当たらなければ 不明、
+    /// `ERROR` / `FAILURE` → 失敗、無ければ なし（知らない `state` も なし）。
+    /// 完了でマージできるようになるので、CodeRabbit が文言を変えたときは完了ではなく 不明 に倒す（レビュー済みにしない）
     static func codeRabbit(_ contexts: [RollupContextNode]) -> EpicPullRequest.CodeRabbitState {
         guard let status = contexts.first(where: { $0.typename == "StatusContext" && $0.context == "CodeRabbit" }) else {
             return .none
@@ -320,7 +359,7 @@ private struct EpicNode: Decodable {
             return .inProgress
 
         case "SUCCESS":
-            return status.description?.range(of: "rate limited", options: .caseInsensitive) != nil ? .rateLimited : .completed
+            return codeRabbitSuccess(status.description)
 
         case "ERROR", "FAILURE":
             return .failed
@@ -328,6 +367,24 @@ private struct EpicNode: Decodable {
         default:
             return .none
         }
+    }
+
+    /// `SUCCESS` の commit status `CodeRabbit` の `description` から、完了・レート制限・スキップを見分ける（大文字小文字は区別しない）。
+    /// "completed" を含むときだけ完了。`description` が無い・知らない文言は 不明
+    private static func codeRabbitSuccess(_ description: String?) -> EpicPullRequest.CodeRabbitState {
+        guard let description else {
+            return .unknown
+        }
+        if description.range(of: "rate limited", options: .caseInsensitive) != nil {
+            return .rateLimited
+        }
+        if description.range(of: "skipped", options: .caseInsensitive) != nil {
+            return .skipped
+        }
+        if description.range(of: "completed", options: .caseInsensitive) != nil {
+            return .completed
+        }
+        return .unknown
     }
 
     static func mergeability(_ value: String?) -> EpicPullRequest.Mergeability {
@@ -346,6 +403,8 @@ private struct EpicNode: Decodable {
 
 private struct CommitNode: Decodable {
     struct Commit: Decodable {
+        /// 取り直し（`contextsQuery`）では読まないので optional
+        let committedDate: Date?
         let statusCheckRollup: CheckRollup?
     }
 
@@ -378,7 +437,7 @@ private struct RollupContextNode: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case typename = "__typename"
-        case name, status, conclusion, checkSuite, context, state, description
+        case name, status, conclusion, checkSuite, context, state, description, createdAt
     }
 
     let typename: String?
@@ -391,6 +450,7 @@ private struct RollupContextNode: Decodable {
     let context: String?
     let state: String?
     let description: String?
+    let createdAt: Date?
 
     /// GitHub Actions が作った check run か（`checkSuite.app.slug` が `github-actions`）
     var isGitHubActionsCheckRun: Bool {

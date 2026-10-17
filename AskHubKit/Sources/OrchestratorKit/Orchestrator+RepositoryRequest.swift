@@ -133,6 +133,10 @@ extension Orchestrator {
         if conflictTracker.isRunning(in: repository.fullName) {
             return "最終 PR のコンフリクトを解消しています。終わってから依頼し直してください"
         }
+        // 第三者レビュー・修正も同じく一時 worktree で動き、修正は push までする
+        if finalReviewTracker.isRunning(in: repository.fullName) {
+            return "最終 PR の第三者レビュー・修正をしています。終わってから依頼し直してください"
+        }
         if status.stateFileExists != false, !force {
             return "制御用 worktree にループの state ファイルが残っている（または確かめられない）ため外しません。ループを止めてから依頼し直すか、強制して依頼し直してください"
         }

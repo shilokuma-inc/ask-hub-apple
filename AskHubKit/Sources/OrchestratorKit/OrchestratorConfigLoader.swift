@@ -101,6 +101,7 @@ public struct OrchestratorConfigLoader: Sendable {
 
         let repositoryCommands = try repositoryCommands(from: file, repositories: repositories)
         let (model, effort) = try claudeOptions(from: file)
+        let (reviewCommand, fixCommand) = try finalReviewCommands(from: file)
 
         return OrchestratorConfig(
             trustedAuthorLogins: trustedAuthors,
@@ -112,12 +113,27 @@ public struct OrchestratorConfigLoader: Sendable {
             conflictCommand: try file.conflictCommand.map { arguments throws(OrchestratorConfigError) in
                 try ConflictCommandTemplate(arguments: arguments)
             },
+            reviewCommand: reviewCommand,
+            fixCommand: fixCommand,
             repositoryCommands: repositoryCommands,
             trustsRepositoryWriters: file.trustRepositoryWriters ?? true,
             buildHosts: try file.buildHosts.map { entry throws(OrchestratorConfigError) in try buildHostsConfig(from: entry) },
             claudeModel: model,
             claudeEffort: effort
         )
+    }
+
+    /// 最終 PR の第三者レビューと修正のコマンド。省略したものは `nil`（`OrchestratorConfig` が `loopCommand` の隣の既定を使う）
+    private func finalReviewCommands(
+        from file: ConfigFile
+    ) throws(OrchestratorConfigError) -> (review: FinalReviewCommandTemplate?, fix: FinalReviewCommandTemplate?) {
+        let review = try file.reviewCommand.map { arguments throws(OrchestratorConfigError) in
+            try FinalReviewCommandTemplate(.review, arguments: arguments)
+        }
+        let fix = try file.fixCommand.map { arguments throws(OrchestratorConfigError) in
+            try FinalReviewCommandTemplate(.fix, arguments: arguments)
+        }
+        return (review, fix)
     }
 
     /// 起動する claude のモデル（省略時は `LoopModel.standard`）とエフォート（省略時は claude の既定）
@@ -270,6 +286,8 @@ private struct ConfigFile: Decodable {
     let ideaCommand: [String]?
     let iterationTimeoutMinutes: Int?
     let conflictCommand: [String]?
+    let reviewCommand: [String]?
+    let fixCommand: [String]?
     let createRepositoryCommand: [String]?
     let removeRepositoryCommand: [String]?
     let newRepositoryDirectory: String?

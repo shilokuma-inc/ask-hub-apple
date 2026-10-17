@@ -16,7 +16,10 @@ struct GitHubMergeQueueUploadStatusTests {
             number: number,
             author: author,
             mergeable: mergeable,
-            contexts: GitHubMergeQueueTests.contexts([GitHubMergeQueueTests.checkRun("build / build")])
+            contexts: GitHubMergeQueueTests.contexts([
+                GitHubMergeQueueTests.checkRun("build / build"),
+                GitHubMergeQueueTests.status(state: "SUCCESS", description: "Review completed")
+            ])
         )
     }
 

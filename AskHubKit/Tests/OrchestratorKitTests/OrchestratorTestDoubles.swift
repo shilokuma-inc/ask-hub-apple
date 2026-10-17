@@ -30,6 +30,10 @@ struct FakeGitHubState {
     var heartbeats: [String] = []
     var discussionComments: [String] = []
     var conflictingPullRequests: [ConflictingPullRequest] = []
+    var finalReviewCandidates: [FinalReviewCandidate] = []
+    var createdComments: [String] = []
+    var updatedComments: [String] = []
+    var commentUpdateFailures: [Int: (status: Int, message: String?)] = [:]
     var pullRequestComments: [String] = []
     /// epic のブランチごとの、最終 PR の材料
     var epicMaterials: [String: EpicMaterials] = [:]

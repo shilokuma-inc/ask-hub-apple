@@ -108,7 +108,7 @@ public struct InboxQuestion: Sendable, Equatable, Hashable, Identifiable {
     /// 先頭の目印を除いた質問の本文（表示用）
     public var questionBody: String {
         let body = comment.body.drop { $0.isWhitespace || $0.isNewline }
-        guard let close = body.range(of: QuestionMarker.commentClose) else {
+        guard let close = body.range(of: MarkerComment.close) else {
             return String(body)
         }
         return body[close.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)

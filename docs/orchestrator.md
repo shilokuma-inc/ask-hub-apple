@@ -153,8 +153,10 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `removeRepositoryCommand` | | ローカルの checkout・ループの worktree・DerivedData を消すコマンド。省略時は `~/.local/bin/askhub-remove-repo`（`install.sh` が置く） |
 | `newRepositoryDirectory` | | 新しく作ったリポジトリを clone するディレクトリ（`~` 可）。省略時は最初の担当リポジトリの checkout と同じ場所 |
 | `conflictCommand` | | epic の最終 PR のコンフリクトを解消させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-resolve-conflict`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` が使える |
+| `reviewCommand` | | epic の最終 PR に第三者レビューをさせるコマンド（Discussion #503。30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-review-final`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` / `{headSHA}`（レビューの対象として確認した head）が使える |
+| `fixCommand` | | epic の最終 PR の第三者レビューの `要修正` を直させるコマンド（ビルドとテストまで行うので 60 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-fix-review`（`install.sh` が置く）。使えるプレースホルダは `reviewCommand` と同じ（`{headSHA}` は push の lease に使う） |
 | `buildHosts` | | ループのビルドの Mac（xcb）の情報を GitHub に書き出す設定（下の「`buildHosts`」）。**xcb を動かしている Mac のオーケストレーターだけに書く**。省略するとこの機能を止める |
-| `model` | | 起動する `claude`（ループ・準備・コンフリクトの解消・依頼からの Discussion 作成）のモデル。省略時は `claude-opus-5-5`。`opus` などの別名も書ける。環境変数 `ANTHROPIC_MODEL` で渡すので、`ideaCommand` などを書き換えても効く。Discussion でモデルを指定したループ（`docs/protocol.md` の「ループのモデルとエフォート」）はそちらを使う |
+| `model` | | 起動する `claude`（ループ・準備・コンフリクトの解消・最終 PR の第三者レビューと修正・依頼からの Discussion 作成）のモデル。省略時は `claude-opus-5-5`。`opus` などの別名も書ける。環境変数 `ANTHROPIC_MODEL` で渡すので、`ideaCommand` などを書き換えても効く。Discussion でモデルを指定したループ（`docs/protocol.md` の「ループのモデルとエフォート」）はそちらを使う |
 | `effort` | | 起動する `claude` のエフォート（`low` / `medium` / `high` / `xhigh` / `max`）。省略時は claude の既定（`auto` を渡し、オーケストレーターの起動元の値は引き継がない）。環境変数 `CLAUDE_CODE_EFFORT_LEVEL` で渡す。Discussion で指定したループはそちらを使う |
 
 以前の設定にあった `org` は不要になった（書いてあっても無視する）。
@@ -651,6 +653,71 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 記録はメモリ上だけなので、再起動した後に、まだコンフリクトしている PR を試し直すことがある（今までと同じ）
 
 ログは `~/Library/Logs/askhub/loops/<リポジトリ>-conflict-<PR 番号>-*.log`（claude の出力）。
+
+## epic の最終 PR を第三者レビューする
+
+最終 PR（`epic-final`）で CodeRabbit がレビューできないときは、ポーリングの最後（コンフリクトの解消の後）に、
+`reviewCommand`（既定は `askhub-review-final`）で第三者レビューを、要修正があれば `fixCommand`（既定は `askhub-fix-review`）で修正を**裏で**行う
+（[Discussion #503](https://github.com/shilokuma-inc/ask-hub-apple/discussions/503)。進み具合の追跡は `FinalReviewTracker`）。
+アプリはマージ待ちと同じ取得（`GitHubMergeQueue`）で、信用する author が作った PR の CodeRabbit の状態と、信用する author が書いた今の head の第三者レビューを読む。
+
+- 今の head を見始めてから 10 分経っても CodeRabbit のレビューが完了しないか、CodeRabbit がレート制限・失敗・スキップなら第三者レビューを始める。
+  コンフリクトしている（GitHub がまだ判定していないものも）PR は始めない。CodeRabbit が今の head をレビューしたら、レビュー・修正はやめる
+- 要修正があれば次のポーリングで直させ、push で head が変わったら新しい head をまたレビューする。要修正が 3 回続いたら、あきらめて PR にコメントする
+  （人が直して push すれば、また 10 分待ちから回る。自分の修正の push 以外で head が変わったら回数を 0 に戻す）。コマンドが同じ head で 3 回続けて失敗したときもあきらめる
+- コンフリクトの解消と合わせて、同じリポジトリでは 1 件ずつ（どちらもメインの checkout に一時 worktree を作るため）。別のリポジトリは並列に行う
+- コマンドには、ループと同じく信用する author（`ASKHUB_TRUSTED_AUTHORS`）と設定の `model` / `effort` を渡す。制限時間はレビュー 30 分・修正 60 分
+- Claude の利用上限で終わったときは試したことにせず、解除の後に試し直す。上限で待機しているあいだは始めない
+- `--once` とポーリングを終えるときは、コンフリクトの解消と同じく、実行中のレビュー・修正が終わるまで待つ。記録はメモリ上だけなので、再起動すると数え直す
+- 待ち始めた時刻もメモリ上だけなので、起動・再起動の後に初めて見た最終 PR では、今の head を GitHub が受け取った時刻の推定から 10 分を数える
+  （commit status `CodeRabbit` の時刻。無ければ head のコミットの日時。PR の作成時刻より前なら作成時刻、未来の時刻なら見た時刻）。再起動のたびに 10 分待ち直さない。
+  追跡中に head が変わったのを見たときは、見た時刻から数える
+- 進み具合は、最終 PR に目印（`ask-hub:final-review`）付きの状態コメント 1 件として書き出し、変わったら書き換える（`docs/protocol.md` の「最終 PR の第三者レビューの進み具合」）。
+  CodeRabbit を待っている間と CodeRabbit がレビューしたときは、まだコメントが無ければ作らない。書き出しに失敗したら次のポーリングで書き直す
+
+ログは `~/Library/Logs/askhub/loops/<リポジトリ>-review-<PR 番号>-*.log` と `…-fix-review-<PR 番号>-*.log`（claude の出力）。
+
+### 状態と遷移
+
+`FinalReviewTracker` が最終 PR ごとに持つ状態。状態コメントの目印の `state` と同じ（`docs/protocol.md` の「最終 PR の第三者レビューの進み具合」）。
+
+| 状態 | 意味 | 次に行うこと |
+| --- | --- | --- |
+| `waiting` | head を見始めた（CodeRabbit を待っている） | 10 分経つか、CodeRabbit がレート制限・失敗・スキップなら第三者レビュー → `reviewing` |
+| `reviewing` | `reviewCommand` を実行中 | 要修正 0 件 → `done`、要修正あり → `fixing`（3 回目なら `gave-up`）、head が進んでいた → `waiting`（新しい head が見えるまで待つ）、失敗 → `waiting`（3 回続いたら `gave-up`） |
+| `fixing` | 要修正を直す（`fixCommand`）。push した後は新しい head が見えるまで待つ | push で head が変わる → 新しい head で `waiting`（回数は引き継ぐ）、head が進んでいた → `waiting`（新しい head が見えるまで待つ）、失敗 → 直し直す（3 回続いたら `gave-up`） |
+| `done` | 今の head の第三者レビューで要修正が 0 件 | 何もしない（アプリからマージできる） |
+| `done-coderabbit` | CodeRabbit が今の head をレビューした（どの状態からでもなる。Q2） | 何もしない（アプリからマージできる） |
+| `gave-up` | 要修正が 3 回続いた・コマンドが同じ head で 3 回続けて失敗した | PR にあきらめたことをコメントする。アプリからはマージできない（GitHub の画面からはできる） |
+
+- head が変わったら、どの状態からでも `waiting` に戻り、待ち始めから数え直す（Q3）。要修正が続いた回数は、自分の修正の push で変わったときだけ引き継ぎ、
+  人の push・コンフリクトの解消・develop の取り込みなら 0 に戻す（人が直して push すればまた回る。Q1）
+- 一覧から消えた（マージ・クローズされた）PR は追跡をやめる
+- Claude の利用上限などで結果を記録せずに終えたときは、`reviewing` は `waiting` に戻り、`fixing` はそのまま（解除の後に試し直す）
+
+### `askhub-review-final`（第三者レビュー）
+
+`scripts/orchestrator/review-final.sh`。引数は `reviewCommand` の既定と同じ `<owner/repo> <checkoutPath> <headBranch> <baseBranch> <pullRequest> <headSHA>`。
+
+1. origin の head が `headSHA` のままかを確かめ、進んでいれば何もしない（`ASKHUB_RESULT: stale`）
+2. 一時 worktree に `headSHA` を checkout し、差分（`origin/<base>...<headSHA>`）と前回の第三者レビュー（`ASKHUB_TRUSTED_AUTHORS` の author が書いた目印付きのコメントのうち最新）を worktree の外に置く
+3. 実装の文脈を持たない `claude -p` にレビューさせる。プロンプトは標準入力で渡し、`--restricted --strict-mcp-config --tools "Read,Grep,Glob" --add-dir <一時ディレクトリ>` で
+   読むツールだけ・一時ディレクトリの中だけに限る（差分の文によるプロンプトインジェクションへの備え）。本文は `ASKHUB_REVIEW_BEGIN` 〜 `ASKHUB_REVIEW_END` の間に返させる
+4. 件数は claude の申告ではなく、本文の表の行（`🔴 要修正` / `🟡 提案`。対応が「修正済み」の行は数えない）から数える。重要度を読み取れない行・トークンらしい文字列があれば投稿しない。
+   HTML コメントは文字参照に書き換える
+5. コメントの直前に head をもう一度確かめ、目印（`ralph:third-party-review sha must may`）と見出しを付けて PR にコメントする（`ASKHUB_RESULT: reviewed must=N may=M`）
+
+### `askhub-fix-review`（要修正の修正）
+
+`scripts/orchestrator/fix-review.sh`。引数は `askhub-review-final` と同じ。
+
+1. origin の head が `headSHA` のままかを確かめ、`headSHA` の第三者レビュー（信用する author のもの・最新）を読む。レビューが無い・要修正が 0 件なら失敗（`failed`）にする（オーケストレーターは失敗に数える）
+2. 一時 worktree で `claude -p` に `🔴 要修正` だけを直させ、CLAUDE.md の検証を通させてコミットさせる（push・rebase・amend はさせない）
+3. push の前に確かめる: コミットしていない変更が無い・コミットが増えた・`headSHA` の上に積んだ・マージコミットが無い・差分がある・AI の帰属行が無い
+4. origin の head が `headSHA` のままなら `--force-with-lease=refs/heads/<epic>:<headSHA>` で push する（`ASKHUB_RESULT: fixed <新しい head>`）。
+   進んでいれば push しない（`stale`）。claude が自分で push していたら失敗にする
+
+どちらも、失敗は `ASKHUB_RESULT: failed <理由>`（終了コード 2）。origin を読めなかったときも `stale` ではなく失敗にする。
 
 ## 固まったループを止める
 
