@@ -73,10 +73,9 @@ extension Orchestrator {
         guard !resumedInstructionComments.contains(commentKey) else {
             return
         }
-        guard await runtime.epicSnapshot(of: repository).branch == place.branch else {
+        guard await controlWorktreeAccepts(place, name: name, in: repository) else {
             pendingInstructionResumes[key] = nil
             resumedInstructionComments.insert(commentKey)
-            log("\(name)に指示が付きましたが、制御用 worktree が \(place.branch) ではないのでループを再開できません")
             return
         }
         do {
@@ -102,6 +101,22 @@ extension Orchestrator {
         )
         statuses[key] = LoopStatus(stateFileExists: false, processAlive: true)
         log("\(name)に指示が付いたので、ループを再開しました")
+    }
+
+    /// 制御用 worktree が指示の epic にあり、それが自動ループの epic か。違えば理由をログに出して `false`
+    private func controlWorktreeAccepts(_ place: InstructionPlace, name: String, in repository: RepositoryConfig) async -> Bool {
+        let key = repository.fullName.lowercased()
+        let snapshot = await runtime.epicSnapshot(of: repository)
+        guard snapshot.branch == place.branch else {
+            log("\(name)に指示が付きましたが、制御用 worktree が \(place.branch) ではないのでループを再開できません")
+            return false
+        }
+        // 手動ループ（kit 1.3 までは、この PC の制御用 worktree を使うことがある）の epic は、担当者が再開する
+        guard automaticEpicBranches(in: [key: snapshot])[key] == place.branch else {
+            log("\(name)に指示が付きましたが、\(place.branch) は手動ループの epic なので再開しません（担当者が再開します）")
+            return false
+        }
+        return true
     }
 
     /// 起動したループの開始を state ファイルで確かめる。

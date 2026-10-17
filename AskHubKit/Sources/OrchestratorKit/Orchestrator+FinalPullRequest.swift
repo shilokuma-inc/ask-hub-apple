@@ -6,6 +6,12 @@ import Foundation
 extension Orchestrator {
     func handleFinalPullRequestInstructions(statuses: inout [String: LoopStatus]) async {
         for repository in config.repositories {
+            let key = repository.fullName.lowercased()
+            let status = statuses[key] ?? .idle
+            // 動いている・異常終了したループは再開しないので、開始を確かめる記録も無ければ一覧を取らない（ポーリングごとの API 呼び出しを減らす）
+            if pendingInstructionResumes[key] == nil, status.processAlive || status.stateFileExists != false || status.stalled {
+                continue
+            }
             let pullRequests: [EpicFinalPullRequest]
             do {
                 pullRequests = try await github.epicFinalPullRequests(in: repository.fullName)

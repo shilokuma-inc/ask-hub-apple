@@ -127,4 +127,44 @@ extension OrchestratorTests {
         #expect(runtime.launched.count == 2)
         #expect(runtime.launchEnvironments.last?["ASKHUB_RESUME_REASON"] == "final-pr")
     }
+
+    @Test func doesNotResumeManualLoopEpicFromFinalPullRequest() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setManualLoops([ManualLoopDiscussion(repository: "shilokuma-inc/ask-hub-apple", number: 331, author: "mrs1669")])
+        github.setEpicFinalPullRequests([Self.finalPullRequest], comments: [61: [Self.finalInstruction]])
+        let runtime = FakeRuntime()
+        // kit 1.3 までの手動ループは、この PC の制御用 worktree を使うことがある（ゴール元の記録が無い・手動ループの Discussion）
+        for discussion: Int? in [nil, 331] {
+            runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] 【FEAT】完了済み", state: nil, discussion: discussion))
+            let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+            try await orchestrator.pollOnce()
+            try await orchestrator.pollOnce()
+        }
+
+        #expect(runtime.launched.isEmpty)
+        let message = "shilokuma-inc/ask-hub-apple#61 の最終 PR に指示が付きましたが、epic/mvp は手動ループの epic なので再開しません（担当者が再開します）"
+        #expect(logs.recorded.filter { $0 == message }.count == 2)
+    }
+
+    @Test func doesNotListFinalPullRequestsWhileLoopIsRunning() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setEpicFinalPullRequests([Self.finalPullRequest], comments: [61: [Self.finalInstruction]])
+        let runtime = FakeRuntime()
+        runtime.set(Self.started)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime)
+
+        try await orchestrator.pollOnce()
+        #expect(github.epicFinalListings == 0)
+
+        runtime.set(.idle)
+        try await orchestrator.pollOnce()
+        #expect(github.epicFinalListings == 1)
+        #expect(runtime.launched.count == 1)
+
+        // 開始を確かめる間は、ループが動いていても一覧を取る
+        runtime.set(Self.started)
+        try await orchestrator.pollOnce()
+        #expect(github.epicFinalListings == 2)
+        #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#61 の最終 PR の指示で再開したループの開始を確かめました"))
+    }
 }
