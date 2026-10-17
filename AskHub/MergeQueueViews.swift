@@ -256,6 +256,9 @@ struct MergeDetailView: View {
         case .failed:
             "失敗"
 
+        case .unknown:
+            "不明"
+
         case .none:
             "なし"
         }

@@ -79,7 +79,7 @@ struct EpicPullRequestTests {
         #expect(EpicPullRequest.fixture(codeRabbit: .completed).isReviewed)
         #expect(EpicPullRequest.fixture(codeRabbit: .completed).canMerge)
         // 完了以外（処理中・レート制限・スキップ・失敗・なし）はレビュー待ち
-        for state in [EpicPullRequest.CodeRabbitState.inProgress, .rateLimited, .skipped, .failed, .none] {
+        for state in [EpicPullRequest.CodeRabbitState.inProgress, .rateLimited, .skipped, .failed, .unknown, .none] {
             let pullRequest = EpicPullRequest.fixture(codeRabbit: state)
             #expect(!pullRequest.isReviewed)
             #expect(!pullRequest.canMerge)
@@ -324,22 +324,41 @@ struct GitHubMergeQueueTests {
                 Self.node(number: 12, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
                     Self.checkRun("build / build"),
                     Self.status(state: "SUCCESS", description: "Review skipped: reviews are disabled for this base branch")
-                ])),
-                // description が無い SUCCESS は完了
-                Self.node(number: 13, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
-                    Self.checkRun("build / build"), Self.status(state: "SUCCESS", description: nil)
                 ]))
             ]))
         ])
         let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
 
-        #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
+        #expect(pulls.map(\.number) == Array(1...12))
         #expect(pulls.map(\.codeRabbit) == [
             .inProgress, .completed, .rateLimited, .failed, .inProgress, .none, .none, .failed, .rateLimited, .none,
-            .skipped, .skipped, .completed
+            .skipped, .skipped
         ])
-        // GitHub Actions が成功していても、CodeRabbit のレビューが完了した PR（2・13）しかマージできない（Discussion #503）
-        #expect(pulls.map(\.canMerge) == [false, true, false, false, false, false, false, false, false, false, false, false, true])
+        // GitHub Actions が成功していても、CodeRabbit のレビューが完了した PR（2）しかマージできない（Discussion #503）
+        #expect(pulls.map(\.canMerge) == (1...12).map { $0 == 2 })
+    }
+
+    @Test func treatsUnknownSuccessDescriptionAsNotReviewed() async throws {
+        // 完了でマージできるようになるので、"completed" を含まない SUCCESS は完了とみなさない
+        let http = MockHTTPClient([
+            .init(status: 200, body: Self.searchPage([
+                // description が無い・知らない文言の SUCCESS は完了とみなさない（不明）
+                Self.node(number: 13, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "SUCCESS", description: nil)
+                ])),
+                Self.node(number: 14, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "SUCCESS", description: "Review paused")
+                ])),
+                // 完了の見分けも大文字小文字を区別しない
+                Self.node(number: 15, author: "mrs1669", mergeable: "MERGEABLE", contexts: Self.contexts([
+                    Self.checkRun("build / build"), Self.status(state: "SUCCESS", description: "REVIEW COMPLETED")
+                ]))
+            ]))
+        ])
+        let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
+
+        #expect(pulls.map(\.codeRabbit) == [.unknown, .unknown, .completed])
+        #expect(pulls.map(\.canMerge) == [false, false, true])
     }
 
     @Test func fetchesRemainingContextsWhenFirstPageIsNotLast() async throws {

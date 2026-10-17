@@ -3,7 +3,7 @@ import Foundation
 /// アプリの「マージ待ち」に出す、epic → develop の最終 PR（`epic-final`。Discussion #1 の Q13）
 public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     /// CI の状態。最新コミットの **GitHub Actions の check run だけ**から決める（Discussion #460）。
-    /// CodeRabbit などの commit status は含めない（処理中のまま止まることがあり、マージ条件にしない）
+    /// CodeRabbit などの commit status は含めない（処理中のまま止まることがあるため。CodeRabbit は `isReviewed` で別に見る）
     public enum ChecksState: String, Sendable, Equatable, Hashable {
         /// GitHub Actions の check run がすべて成功（NEUTRAL / SKIPPED を含む）
         case success
@@ -16,7 +16,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     }
 
     /// CodeRabbit のレビューの状態（commit status `CodeRabbit` から）。
-    /// 完了（`completed`）だけが最終 PR のレビューの条件（`isReviewed`）を満たす（Discussion #503）。処理中・レート制限・スキップ・失敗は満たさない
+    /// 完了（`completed`）だけが最終 PR のレビューの条件（`isReviewed`）を満たす（Discussion #503）。処理中・レート制限・スキップ・失敗・不明は満たさない
     public enum CodeRabbitState: String, Sendable, Equatable, Hashable {
         /// 処理中（レビュー中。commit status が `PENDING` か `EXPECTED`）
         case inProgress
@@ -28,6 +28,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         case skipped
         /// 失敗（commit status が `ERROR` / `FAILURE`）
         case failed
+        /// `SUCCESS` だが `description` が無い・知らない文言（CodeRabbit が文言を変えたときなど）。完了とはみなさない
+        case unknown
         /// commit status `CodeRabbit` が無い（知らない `state` のときも含む）
         case none
     }

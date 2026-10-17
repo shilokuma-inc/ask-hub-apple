@@ -47,14 +47,15 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
        GitHub Actions（`checkSuite.app.slug` が `github-actions`）の check run だけから決め、CodeRabbit などの commit status は使わない
     2. **コンフリクトしていないこと**（GitHub がコンフリクトの有無を計算中のときも押せない）
     3. **今の head がレビュー済みであること**（[Discussion #503](https://github.com/shilokuma-inc/ask-hub-apple/discussions/503)）:
-       今の head の CodeRabbit のレビューが**完了**している（commit status `CodeRabbit` が完了。レート制限・スキップ・失敗・処理中は含めない）か、
+       今の head の CodeRabbit のレビューが**完了**している（commit status `CodeRabbit` が `success` で、`description` に "completed" を含む。
+       レート制限・スキップ・失敗・処理中と、`description` が無い・知らない文言（不明）は含めない）か、
        信用する author が書いた今の head の第三者レビューの目印が `must="0"`（下記「最終 PR の第三者レビュー」）。
        head が変わったら（レビューの修正・コンフリクトの解消・develop の取り込みのどれでも）レビューをやり直し、前の head のレビュー済みは引き継がない。
        Discussion #460 の「CodeRabbit は情報だけ」は、最終 PR についてはこの条件に変わった（子 PR の運用は変えない）
   - 押せない理由は CI・コンフリクトの順に出し、それらを満たしたうえでレビュー済みでなければ「レビュー待ちです（CodeRabbit か第三者レビュー）」、
     今の head の第三者レビューに要修正があれば「第三者レビューで要修正が N 件あります」と出す。アプリのマージ（`GitHubMergeQueue.merge`）も、送る前に同じ条件を確かめる。
     第三者レビューがあきらめた（要修正が 3 回続いて収まらない）PR はアプリからはマージできない（GitHub の画面からはマージできる）
-  - CodeRabbit の状態（処理中 / 完了 / レート制限 / スキップ / 失敗 / なし）は、詳細画面の「状態」にも出す
+  - CodeRabbit の状態（処理中 / 完了 / レート制限 / スキップ / 失敗 / 不明 / なし）は、詳細画面の「状態」にも出す
 - **任意判断**: `decision-log` の Issue（仮決め一覧）。行には `repo#番号`・タイトル（先頭の `【CHORE】` は表示で省く）・更新の相対時刻・作成からの経過を出す。
   タブの中身はすべて同じ種類なので、行に種類のラベルは出さない
 - **ステータス**: リポジトリごとのループの状態と回し方（自動ループ・手動ループ・ループなし）。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」。
