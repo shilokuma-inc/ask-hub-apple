@@ -456,3 +456,40 @@ extension AskHubUITests {
         XCTAssertFalse(app.textFields["repository-name"].exists)
     }
 }
+
+// 依頼先・作成を任せる PC の Picker の owner ごとの区切り（Discussion #572）
+extension AskHubUITests {
+    @MainActor
+    func testRepositoryPickerShowsOwnerSections() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["依頼"].tap()
+        let repositoryPicker = app.buttons["repository-picker"]
+        XCTAssertTrue(repositoryPicker.waitForExistence(timeout: 5))
+        repositoryPicker.tap()
+
+        // 担当 PC の有無で分けた中を owner ごとに分け、見出しに owner 名を出す。行は owner を省いた名前。
+        // メニューの Section の見出しの要素の型は OS で変わりうるので、型を問わずに文言で引く
+        let menuHeading = { (title: String) in app.descendants(matching: .any)[title] }
+        XCTAssertTrue(menuHeading("担当 PC あり・shilokuma-inc").waitForExistence(timeout: 5))
+        XCTAssertTrue(menuHeading("担当 PC あり・shilokuma-labs").exists)
+        XCTAssertTrue(menuHeading("担当 PC なし・shilokuma-inc").exists)
+        XCTAssertTrue(menuHeading("担当 PC なし・shilokuma-labs").exists)
+        XCTAssertTrue(app.buttons["web-tools"].exists)
+        XCTAssertTrue(app.buttons["sandbox"].exists)
+        app.buttons["web-tools"].tap()
+
+        // 作成を任せる PC の Picker は担当 PC のいるリポジトリだけを owner だけで分ける
+        app.segmentedControls["request-kind-picker"].buttons["新しいアプリ"].tap()
+        let hubPicker = app.buttons["hub-picker"]
+        scrollUntilHittable(hubPicker, in: app)
+        hubPicker.tap()
+        XCTAssertTrue(menuHeading("shilokuma-inc").waitForExistence(timeout: 5))
+        XCTAssertTrue(menuHeading("shilokuma-labs").exists)
+        XCTAssertTrue(app.buttons["web-tools"].exists)
+        XCTAssertFalse(app.buttons["sandbox"].exists)
+        XCTAssertFalse(menuHeading("担当 PC なし・shilokuma-labs").exists)
+    }
+}

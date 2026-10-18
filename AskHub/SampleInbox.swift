@@ -82,7 +82,10 @@ struct SampleIdeaRequester: IdeaRequesting {
             RequestRepository(fullName: "shilokuma-inc/notti-ios"),
             RequestRepository(fullName: "shilokuma-inc/claude-plugins"),
             RequestRepository(fullName: "shilokuma-inc/beat-tap-ios", lastSeen: Date()),
-            RequestRepository(fullName: "shilokuma-inc/dotfiles")
+            RequestRepository(fullName: "shilokuma-inc/dotfiles"),
+            // 依頼先の Picker の owner ごとの区切り（Discussion #572）を見せるため、2 つ目の organization のリポジトリも出す
+            RequestRepository(fullName: "shilokuma-labs/web-tools", lastSeen: Date()),
+            RequestRepository(fullName: "shilokuma-labs/sandbox")
         ]
     }
 
