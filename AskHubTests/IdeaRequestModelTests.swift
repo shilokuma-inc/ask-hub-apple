@@ -338,5 +338,9 @@ struct IdeaRequestModelTests {
         await model.loadRepositories()
 
         #expect(model.assignedRepositories(now: Date(timeIntervalSince1970: 1_800_000_000)) == ["shilokuma-inc/ask-hub-apple"])
+        // 作成を任せる PC の Picker は担当の有無では分けず、owner だけで分ける（owner が 1 つでも見出しを出す）
+        #expect(model.assignedRepositorySections(now: Date(timeIntervalSince1970: 1_800_000_000)) == [
+            RepositorySection(title: "shilokuma-inc", repositories: ["shilokuma-inc/ask-hub-apple"])
+        ])
     }
 }
