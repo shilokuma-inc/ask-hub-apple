@@ -81,6 +81,27 @@ struct MergeQueueFinalReviewTests {
         #expect(http.requests.count == 1)
     }
 
+    @Test func attachesCIFixRecordFromTrustedOrchestratorComments() async throws {
+        func marker(_ action: CIFixMarker.Action, _ sha: String) -> String {
+            "\(FinalPullRequestMarker.orchestrator)\n\(CIFixMarker(action: action, sha: sha).htmlComment ?? "")\n本文"
+        }
+        let http = MockHTTPClient([
+            .init(status: 200, body: GitHubMergeQueueTests.searchPage([
+                Self.node(comments: Self.comments([
+                    // CI の修正の記録は head を問わず読む。取り消した試行は数えない
+                    Self.comment("mrs1669", marker(.attempt, Self.oldHead)),
+                    Self.comment("mrs1669", marker(.attempt, Self.head)),
+                    Self.comment("mrs1669", marker(.cancel, Self.head)),
+                    // 信用しない author の目印は読まない
+                    Self.comment("someone", marker(.gaveUp, Self.head))
+                ]))
+            ]))
+        ])
+        let pulls = try await makeQueue(http).epicPullRequests(orgs: ["shilokuma-inc"])
+
+        #expect(pulls.first?.ciFix == CIFixRecord(attemptedSHAs: [Self.oldHead], gaveUp: false))
+    }
+
     @Test func leavesMarkersNilWithoutMarkersForCurrentHead() async throws {
         let http = MockHTTPClient([
             .init(status: 200, body: GitHubMergeQueueTests.searchPage([

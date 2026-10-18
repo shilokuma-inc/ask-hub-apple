@@ -50,6 +50,7 @@ public struct GitHubMergeQueue: MergeQueueProviding {
                 }
                 let all = try await contexts.nodes.compactMap(\.self) + remainingContexts(of: pullRequest, after: cursor)
                 pullRequest.checks = EpicNode.checks(all)
+                pullRequest.hasRunningChecks = EpicNode.hasRunningChecks(all)
                 pullRequest.codeRabbit = EpicNode.codeRabbit(all)
                 pullRequest.headSince = node.headSince(codeRabbitCreatedAt: EpicNode.codeRabbitCreatedAt(all))
             }
@@ -302,6 +303,7 @@ private struct EpicNode: Decodable {
             headSHA: headRefOid,
             author: author?.login,
             checks: Self.checks(rollupContexts?.nodes.compactMap(\.self) ?? []),
+            hasRunningChecks: Self.hasRunningChecks(rollupContexts?.nodes.compactMap(\.self) ?? []),
             mergeability: Self.mergeability(mergeable),
             codeRabbit: Self.codeRabbit(rollupContexts?.nodes.compactMap(\.self) ?? []),
             headSince: headSince(codeRabbitCreatedAt: Self.codeRabbitCreatedAt(rollupContexts?.nodes.compactMap(\.self) ?? []))
@@ -344,6 +346,11 @@ private struct EpicNode: Decodable {
             return .pending
         }
         return runs.isEmpty ? .none : .success
+    }
+
+    /// まだ終わっていない GitHub Actions の check run があるか（失敗した check run があっても見る）
+    static func hasRunningChecks(_ contexts: [RollupContextNode]) -> Bool {
+        contexts.filter(\.isGitHubActionsCheckRun).contains { $0.checkRunState == .pending }
     }
 
     /// commit status `CodeRabbit` から CodeRabbit の状態を決める。完了は最終 PR のレビューの条件になる（Discussion #503）。

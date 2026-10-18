@@ -89,6 +89,9 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     /// 削除済みのユーザーでは `nil`
     public var author: String?
     public var checks: ChecksState
+    /// まだ終わっていない GitHub Actions の check run があるか。`checks` が `failure` でも、残りが終わるまで `true`
+    /// （オーケストレーターは、すべて終わってから失敗したジョブのログで直させる）
+    public var hasRunningChecks: Bool
     public var mergeability: Mergeability
     /// CodeRabbit の状態。完了なら今の head はレビュー済み（`isReviewed`）
     public var codeRabbit: CodeRabbitState
@@ -101,6 +104,8 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     /// 今の head を GitHub が受け取った時刻の推定。commit status `CodeRabbit` の時刻、無ければ head のコミットの日時（PR の作成時刻を下限にする）。
     /// オーケストレーターが再起動した後、CodeRabbit を待ち始めた時刻の代わりに使う（Discussion #503）
     public var headSince: Date?
+    /// オーケストレーターが CI の失敗を直させた記録（信用する author のコメントの目印から）
+    public var ciFix: CIFixRecord
 
     public init(
         id: String,
@@ -114,12 +119,14 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         headSHA: String,
         author: String?,
         checks: ChecksState,
+        hasRunningChecks: Bool = false,
         mergeability: Mergeability,
         codeRabbit: CodeRabbitState = .none,
         uploadStatus: UploadStatus = .notLoaded,
         thirdPartyReview: ThirdPartyReviewMarker? = nil,
         finalReview: FinalReviewMarker? = nil,
-        headSince: Date? = nil
+        headSince: Date? = nil,
+        ciFix: CIFixRecord = CIFixRecord()
     ) {
         self.id = id
         self.repository = repository
@@ -132,12 +139,14 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         self.headSHA = headSHA
         self.author = author
         self.checks = checks
+        self.hasRunningChecks = hasRunningChecks
         self.mergeability = mergeability
         self.codeRabbit = codeRabbit
         self.uploadStatus = uploadStatus
         self.thirdPartyReview = thirdPartyReview
         self.finalReview = finalReview
         self.headSince = headSince
+        self.ciFix = ciFix
     }
 
     /// マージボタンを押せるか。GitHub Actions の CI が成功していて、コンフリクトしていなくて（Q13・Discussion #460）、

@@ -475,6 +475,25 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   アプリは同じ head の目印が複数あれば最後のものを使う
 - アプリは、CodeRabbit が今の head をレビューしていれば、状態コメントが書き換わる前でも「済み（CodeRabbit）」と出す
 
+### 最終 PR の CI の修正の記録
+
+オーケストレーターは、最終 PR の CI の失敗を直させる前・試せなかったとき・あきらめたときに、PR にコメントを書く。
+本文の先頭に `<!-- ask-hub:orchestrator -->` を置き、**次の行**に次の目印を置く（`docs/orchestrator.md` の「CI の失敗を直す」）。
+
+```html
+<!-- ask-hub:orchestrator -->
+<!-- ask-hub:ci-fix action="<attempt | cancel | gave-up>" sha="<対象の head の SHA>" -->
+```
+
+| `action` | 意味 |
+| --- | --- |
+| `attempt` | この head で 1 回直させた（始める前に書く）。同じ head では試し直さない |
+| `cancel` | 同じ head の `attempt` を取り消す（Claude の利用上限・head の更新で試せなかった） |
+| `gave-up` | 上限（3 回）まで試したので、この PR では自動の修正をやめた |
+
+- 試した回数は、取り消されていない `attempt` の head の数（PR ごと。head を問わない）
+- 信用する author のコメントの目印だけを読む（public リポジトリでは誰でもコメントできる）
+
 ## 実機確認 Issue の目印
 
 ループは、実機確認 Issue（`needs-verify`）の本文の**先頭**に目印を置く。

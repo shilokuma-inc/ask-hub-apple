@@ -1,6 +1,6 @@
 import Foundation
 
-/// 最終 PR のコメントから、第三者レビューと進み具合の目印を読む（Discussion #503）
+/// 最終 PR のコメントから、第三者レビューと進み具合の目印と、CI の修正の記録を読む（Discussion #503）
 extension GitHubMergeQueue {
     /// 検索で取れた最初のページより後ろの PR のコメントを、最後まで取る
     func remainingComments(of pullRequest: EpicPullRequest, after cursor: String) async throws -> [PullRequestCommentNode] {
@@ -24,7 +24,8 @@ extension GitHubMergeQueue {
         }
     }
 
-    /// 信用する author が書いたコメントのうち、今の head（`headSHA`）に対する最新の第三者レビューの目印と進み具合の目印を付ける。
+    /// 信用する author が書いたコメントのうち、今の head（`headSHA`）に対する最新の第三者レビューの目印と進み具合の目印と、
+    /// CI の修正の記録（head を問わない）を付ける。
     /// public リポジトリでは誰でも目印を書けるので、信用しない author のコメントは読まない。`sha` が今の head と違う目印（前の head のもの）は使わない
     static func attachFinalReview(
         to pullRequest: inout EpicPullRequest,
@@ -35,6 +36,7 @@ extension GitHubMergeQueue {
         let bodies = comments.filter { trustedAuthors.contains($0.author?.login) }.compactMap(\.body)
         pullRequest.thirdPartyReview = bodies.compactMap(ThirdPartyReviewMarker.parse).last { $0.sha == head }
         pullRequest.finalReview = bodies.compactMap(FinalReviewMarker.parse).last { $0.sha == head }
+        pullRequest.ciFix = CIFixRecord(markers: bodies.compactMap(CIFixMarker.parse))
     }
 
     /// 1 ページ目に収まらなかった PR のコメントを取り直す
