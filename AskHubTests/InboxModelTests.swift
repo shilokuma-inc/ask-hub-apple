@@ -146,6 +146,47 @@ struct InboxModelTests {
         #expect(colors[3] != colors[0])
     }
 
+    @Test func colorsSampleIssuesByRepository() async {
+        let model = InboxModel.sample()
+        await model.refresh()
+        let colors = Dictionary(uniqueKeysWithValues: model.issues.map { ($0.id, $0.repositoryColor) })
+        // 任意判断（I_9・I_31）と実機確認（I_18・I_36）のどちらにも色を付け、同じリポジトリなら種類によらず同じ色
+        #expect(colors["I_9"] != nil)
+        #expect(colors["I_18"] == colors["I_9"])
+        #expect(colors["I_36"] == colors["I_31"])
+        // ask-hub-apple と beat-tap-ios は別の色
+        #expect(colors["I_31"] != colors["I_9"])
+    }
+
+    @Test func issueRowsShareQuestionPalette() {
+        // 「要対応」の Discussion の色を変えずに、同じ 6 色のパレットを使う
+        let discussion = InboxSubject(
+            kind: .discussion,
+            nodeID: "D_kwDOU6o4_M4AhV9r",
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 1,
+            title: "タイトル",
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/discussions/1")!
+        )
+        #expect(discussion.groupColor == .orange)
+        #expect(Self.colorIssue(repository: "shilokuma-inc/ask-hub-apple").repositoryColor == .green)
+        #expect(Self.colorIssue(repository: "shilokuma-inc/ralph-kit").repositoryColor == .blue)
+    }
+
+    private static func colorIssue(repository: String) -> InboxIssue {
+        InboxIssue(
+            id: "I_1",
+            kind: .needsVerify,
+            repository: repository,
+            number: 1,
+            title: "【CHORE】実機確認: 表示",
+            url: URL(string: "https://github.com/\(repository)/issues/1")!,
+            author: "mrs1669",
+            createdAt: Date(timeIntervalSince1970: 0),
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+    }
+
     @Test func failureKeepsPreviousResultsAndExplainsInvalidToken() async {
         let fails = OSAllocatedUnfairLock(initialState: false)
         let model = InboxModel(tokenStore: InMemoryTokenStore(token: "github_pat_saved")) { _ in
