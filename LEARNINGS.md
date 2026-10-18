@@ -56,6 +56,10 @@
   CodeRabbit などの bot を author で見分けるときは、両方の形を受け付ける（`CodeRabbitReviewThread.authorLogins`）
 - PR のコメントに CodeRabbit のアカウント名を `@` 付きで書くと、コードスパンの中（`` `@coderabbitai review` ``）でもメンションとして扱われ、CodeRabbit が返信する。
   説明として書くだけなら `@` を付けない
+- OAuth のデバイスフロー（`login/device/code`・`login/oauth/access_token`）は、`Accept: application/json` を付けないと応答が form-urlencoded になる。
+  承認待ち（`authorization_pending`）・`slow_down`・`expired_token`・`access_denied` は **HTTP 200** の本文の `error` で返るので、ステータスではなく本文で分ける（`GitHubDeviceFlow`）。
+  GitHub App のユーザーのトークンは、App の設定の「Expire user authorization tokens」がオンだと 8 時間で切れ、更新（`refresh_token`）に client secret が要る。
+  secret をアプリに入れないなら、この設定をオフにする
 
 ## ビルド・テスト
 
