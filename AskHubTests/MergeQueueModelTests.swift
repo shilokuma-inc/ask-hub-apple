@@ -110,7 +110,7 @@ struct MergeQueueModelTests {
         let model = makeModel(queue: RecordingQueue())
         await model.refresh()
         #expect(model.state == .loaded)
-        #expect(model.pullRequests.map(\.number) == [50, 80, 120, 130])
+        #expect(model.pullRequests.map(\.number) == [50, 80, 120, 130, 140, 150])
     }
 
     @Test func refreshIfStaleSkipsRecentRefresh() async throws {
@@ -138,7 +138,7 @@ struct MergeQueueModelTests {
         try await model.merge(model.pullRequests[0])
 
         #expect(queue.merged == [50])
-        #expect(model.pullRequests.map(\.number) == [80, 120, 130])
+        #expect(model.pullRequests.map(\.number) == [80, 120, 130, 140, 150])
     }
 
     @Test func doesNotShowMergedPullRequestBeforeSearchCatchesUp() async throws {
@@ -148,7 +148,7 @@ struct MergeQueueModelTests {
         try await model.merge(model.pullRequests[0])
         await model.refresh()
 
-        #expect(model.pullRequests.map(\.number) == [80, 120, 130])
+        #expect(model.pullRequests.map(\.number) == [80, 120, 130, 140, 150])
     }
 
     @Test func keepsPullRequestWhenHeadChanged() async {
@@ -160,7 +160,7 @@ struct MergeQueueModelTests {
         await #expect(throws: GitHubError.self) {
             try await model.merge(model.pullRequests[0])
         }
-        #expect(model.pullRequests.count == 4)
+        #expect(model.pullRequests.count == 6)
         #expect(MergeQueueModel.message(for: GitHubError.http(status: 409, message: nil)) == "確認した後に PR が更新されました。内容を確かめ直してからマージしてください")
     }
 
@@ -174,7 +174,7 @@ struct MergeQueueModelTests {
             try await model.merge(model.pullRequests[0])
         }
         // マージはできているので、一覧からは外す
-        #expect(model.pullRequests.map(\.number) == [80, 120, 130])
+        #expect(model.pullRequests.map(\.number) == [80, 120, 130, 140, 150])
         let message = MergeQueueModel.message(for: MergeQueueError.branchNotDeleted("epic/mvp"))
         #expect(message == "マージしましたが、ブランチ epic/mvp を削除できませんでした。GitHub で削除してください")
     }
@@ -271,12 +271,38 @@ struct MergeQueueModelTests {
         #expect(SampleMergeQueue.pullRequests[1].blockingReason == "CI が終わっていません")
     }
 
-    @Test func pullRequestWithCodeRabbitInProgressCanBeMerged() {
-        // サンプルの 4 件目は GitHub Actions が成功・CodeRabbit が処理中。CodeRabbit はマージ条件ではない（Discussion #460）
+    @Test func pullRequestWithCodeRabbitInProgressWaitsForReview() {
+        // サンプルの 4 件目は GitHub Actions が成功・CodeRabbit が処理中。今の head のレビューが済むまでマージできない（Discussion #503）
         let pullRequest = SampleMergeQueue.pullRequests[3]
         #expect(pullRequest.codeRabbit == .inProgress)
-        #expect(pullRequest.canMerge)
-        #expect(pullRequest.blockingReason == nil)
-        #expect(SampleMergeQueue.pullRequests.map(\.codeRabbit) == [.completed, .rateLimited, .completed, .inProgress])
+        #expect(!pullRequest.canMerge)
+        #expect(pullRequest.blockingReason == "レビュー待ちです（CodeRabbit か第三者レビュー）")
+        #expect(SampleMergeQueue.pullRequests.map(\.codeRabbit) == [
+            .completed, .rateLimited, .completed, .inProgress, .skipped, .rateLimited
+        ])
+    }
+
+    @Test func samplesCoverFinalReviewStates() {
+        // 最終 PR の第三者レビューの各状態（Discussion #503）
+        let pulls = SampleMergeQueue.pullRequests
+        #expect(pulls.map { $0.finalReview?.state } == [nil, .fixing, .doneCodeRabbit, .waiting, .done, .gaveUp])
+        #expect(pulls.map(MergeReviewText.source) == [
+            "CodeRabbit", "第三者（要修正 2・提案 1）", "CodeRabbit", "まだありません", "第三者（要修正 0・提案 3）", "第三者（要修正 1・提案 0）"
+        ])
+        // CodeRabbit がスキップしても、第三者レビューで要修正が 0 件ならマージできる
+        #expect(pulls[4].canMerge)
+        // あきらめた PR は GitHub の画面からマージするよう案内する
+        #expect(!pulls[5].canMerge)
+        #expect(pulls[5].blockingReason?.contains("GitHub の画面からマージ") == true)
+    }
+
+    @Test func describesFinalReviewProgress() {
+        let sha = "0123456789abcdef0123456789abcdef01234567"
+        let waiting = FinalReviewMarker(state: .waiting, sha: sha)
+        #expect(MergeReviewText.progress(waiting, codeRabbit: .inProgress) == "CodeRabbit を待っています")
+        // 状態コメントが書き換わる前でも、CodeRabbit が今の head をレビューしたら済み（CodeRabbit）と出す（Q2）
+        let fixing = FinalReviewMarker(state: .fixing, sha: sha, attempts: 2)
+        #expect(MergeReviewText.progress(fixing, codeRabbit: .rateLimited) == "修正中（2 回目）")
+        #expect(MergeReviewText.progress(fixing, codeRabbit: .completed) == "済み（CodeRabbit）")
     }
 }

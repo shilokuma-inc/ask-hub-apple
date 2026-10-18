@@ -42,12 +42,24 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 - **要対応**: 上に「要回答」（`needs-answer` が付いた Discussion（※1）と PR（※2））、その下に「マージ待ち」（`epic-final` の PR）。バッジは両方の件数の合計。
   マージ待ちの詳細では、マージの前に epic ブランチを TestFlight に上げて実機で確かめられる（下記「マージ待ちと TestFlight への手動アップロード」）
-  - 「マージ待ち」のマージ条件は **GitHub Actions の check run がすべて成功していること**と**コンフリクトしていないこと**だけ
-    （[Discussion #460](https://github.com/shilokuma-inc/ask-hub-apple/discussions/460)。check run が 1 つも無いときと、
-    GitHub がコンフリクトの有無を計算中のときも押せない）。CI の状態は最新コミットの `statusCheckRollup.contexts` のうち
-    GitHub Actions（`checkSuite.app.slug` が `github-actions`）の check run だけから決め、CodeRabbit などの commit status は使わない
-    （CodeRabbit の処理中が長く続いてもマージを止めないため）。CodeRabbit の状態（処理中 / 完了 / レート制限 / 失敗 / なし）は
-    commit status `CodeRabbit` から読み、詳細画面の「状態」に**情報として**出す。レビューを見てからマージしたい人はそれを見て判断する
+  - 「マージ待ち」のマージ条件は次の 3 つ（すべて満たしたときだけ押せる）
+    1. **GitHub Actions の check run がすべて成功していること**（[Discussion #460](https://github.com/shilokuma-inc/ask-hub-apple/discussions/460)。
+       check run が 1 つも無いときも押せない）。CI の状態は最新コミットの `statusCheckRollup.contexts` のうち
+       GitHub Actions（`checkSuite.app.slug` が `github-actions`）の check run だけから決め、CodeRabbit などの commit status は使わない
+    2. **コンフリクトしていないこと**（GitHub がコンフリクトの有無を計算中のときも押せない）
+    3. **今の head がレビュー済みであること**（[Discussion #503](https://github.com/shilokuma-inc/ask-hub-apple/discussions/503)）:
+       今の head の CodeRabbit のレビューが**完了**している（commit status `CodeRabbit` が `success` で、`description` に "completed" を含む。
+       レート制限・スキップ・失敗・処理中と、`description` が無い・知らない文言（不明）は含めない）か、
+       信用する author が書いた今の head の第三者レビューの目印が `must="0"`（下記「最終 PR の第三者レビュー」）。
+       head が変わったら（レビューの修正・コンフリクトの解消・develop の取り込みのどれでも）レビューをやり直し、前の head のレビュー済みは引き継がない。
+       Discussion #460 の「CodeRabbit は情報だけ」は、最終 PR についてはこの条件に変わった（子 PR の運用は変えない）
+  - 押せない理由は CI・コンフリクトの順に出し、それらを満たしたうえでレビュー済みでなければ「レビュー待ちです（CodeRabbit か第三者レビュー）」、
+    今の head の第三者レビューに要修正があれば「第三者レビューで要修正が N 件あります」、
+    第三者レビューがあきらめた（進み具合が `gave-up`）なら「第三者レビューで要修正が N 件残り、自動の修正をあきらめました。直して push するか、GitHub の画面からマージしてください」と出す。アプリのマージ（`GitHubMergeQueue.merge`）も、送る前に同じ条件を確かめる。
+    第三者レビューがあきらめた（要修正が 3 回続いて収まらない）PR はアプリからはマージできない（GitHub の画面からはマージできる）
+  - CodeRabbit の状態（処理中 / 完了 / レート制限 / スキップ / 失敗 / 不明 / なし）は、詳細画面の「状態」にも出す
+  - 詳細画面の「状態」には、今の head をレビュー済みにしたもの（「レビュー」: `CodeRabbit` / `第三者（要修正 N・提案 M）` / `まだありません`）と、
+    オーケストレーターの状態コメントがあれば第三者レビューの進み具合（「第三者レビュー」: CodeRabbit を待っています / レビュー中 / 修正中（N 回目） / 済み / 済み（CodeRabbit） / あきらめました）も出す
 - **任意判断**: `decision-log` の Issue（仮決め一覧）。行には `repo#番号`・タイトル（先頭の `【CHORE】` は表示で省く）・更新の相対時刻・作成からの経過を出す。
   タブの中身はすべて同じ種類なので、行に種類のラベルは出さない
 - **ステータス**: リポジトリごとのループの状態と回し方（自動ループ・手動ループ・ループなし）。先頭に「上限で待機中」「ループの開始待ち」「手動ループ」。
@@ -400,6 +412,69 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **サンプルデータ（デモモード）**: run の状態（実行中 / 成功 / 失敗・ビルドした SHA が PR の最新の head と違う）もサンプルに含め、GitHub にもトークンにも依存しない。起動はしない
 - ループは Upload を実行しない（`gh workflow run` や dispatch API を呼ばない）。実際に TestFlight に並んだかは、人間が TestFlight アプリで確かめる
 
+## 最終 PR の第三者レビュー
+
+最終 PR（`epic-final`）で CodeRabbit がレビューできない（レート制限・失敗・スキップ、または head が変わってから 10 分経ってもレビューが付かない）ときは、
+オーケストレーターが実装の文脈を持たない別の `claude` に第三者レビューをさせ、結果を PR にコメントする
+（[Discussion #503](https://github.com/shilokuma-inc/ask-hub-apple/discussions/503)）。アプリとオーケストレーターは、次の 2 つの目印を読む。
+どちらも**信用する author が書いたコメントだけ**を読み（public リポジトリでは誰でも目印を書けるため）、`sha` が PR の今の head と違う目印は使わない。
+同じ head の目印が複数あれば最新のもの（コメントの並びで後ろのもの）を使う。
+
+- `sha` は今の head（`headRefOid`）と**完全一致**で比べる（大文字小文字は問わない）。短い SHA は認めない
+- アプリはマージ待ちの取得で、最終 PR の会話のコメント（`comments`）をページングで最後まで読み、
+  今の head の目印を `EpicPullRequest.thirdPartyReview` / `finalReview` に載せる（`AskHubKit` の `GitHubMergeQueue`）。
+  状態コメントは古いコメントを書き換えて使うので、最初のページだけで打ち切らない
+
+### 第三者レビューの目印
+
+第三者レビューのコメント本文の**先頭**に置く。書式は ralph-kit の playbook の「B-2a. 第三者としてのセルフレビュー」（ralph-kit#17）と同じで、
+子 PR でループのサブエージェントが書くものと最終 PR でオーケストレーターが書くもので共通。**ralph-kit#17 の書式が変わったら、`ThirdPartyReviewMarker` も追随させる**。
+
+```html
+<!-- ralph:third-party-review sha="<レビューした head の SHA>" must="<要修正の件数>" may="<提案の件数>" -->
+```
+
+| 属性 | 必須 | 内容 |
+| --- | --- | --- |
+| `sha` | 必須 | レビューした head のコミットの SHA（`headRefOid` と同じ 40 文字の 16 進。大文字小文字は問わない） |
+| `must` | 必須 | `🔴 要修正` の件数（0 以上の整数）。`0` なら、この head のレビューではマージを止めない |
+| `may` | 任意 | `🟡 提案` の件数（0 以上の整数）。省略したら 0 |
+
+- `must` の無い以前の書式（見出しが「第三者としてのセルフレビュー」のもの）は、件数が分からないので目印として扱わない
+- 読み取りは `AskHubKit` の `ThirdPartyReviewMarker`
+
+### 最終 PR の第三者レビューの進み具合
+
+オーケストレーターは、最終 PR に進み具合の**状態コメントを 1 件**置き、状態が変わったらそのコメントを書き換える（コメントを増やさない）。
+本文の**先頭**に次の目印を置き、続けて人が読む説明を書く。
+
+```html
+<!-- ask-hub:final-review state="<状態>" sha="<今の head の SHA>" attempts="<要修正が続いた回数>" -->
+```
+
+| 属性 | 必須 | 内容 |
+| --- | --- | --- |
+| `state` | 必須 | 下の表のどれか |
+| `sha` | 必須 | この状態を判断した head のコミットの SHA（40 文字の 16 進） |
+| `attempts` | 任意 | 今の追跡で第三者レビューが `要修正` を出し続けた回数（0 以上の整数）。省略したら 0 |
+
+| `state` | 意味 |
+| --- | --- |
+| `waiting` | CodeRabbit のレビューを待っている（head が変わってから 10 分） |
+| `reviewing` | 第三者レビュー中 |
+| `fixing` | 第三者レビューの `要修正` を直している |
+| `done` | 済み（今の head の第三者レビューで `must="0"`） |
+| `done-coderabbit` | 済み（CodeRabbit が今の head をレビューした。第三者レビュー・修正はやめる） |
+| `gave-up` | あきらめた（`要修正` が 3 回続けて収まらなかった）。人が直して push すれば（head が変わる）また `waiting` から回る |
+
+- 値に `"`・改行・`-->` は入らない（状態は上の表の語、`sha` は 16 進、`attempts` は整数）
+- 知らない `state` の目印は無視する
+- 読み取りは `AskHubKit` の `FinalReviewMarker`
+- 状態コメントは PR に **1 件だけ**置く。オーケストレーターは信用する author が書いた目印付きのコメントのうち最後のものを書き換え（再起動の後も同じコメント）、無ければ作る。
+  ただし、まだ第三者レビューに関わっていない間（`waiting` と `done-coderabbit`）はコメントを作らない（CodeRabbit がレビューできる PR にコメントを増やさない）。
+  アプリは同じ head の目印が複数あれば最後のものを使う
+- アプリは、CodeRabbit が今の head をレビューしていれば、状態コメントが書き換わる前でも「済み（CodeRabbit）」と出す
+
 ## 実機確認 Issue の目印
 
 ループは、実機確認 Issue（`needs-verify`）の本文の**先頭**に目印を置く。
@@ -736,9 +811,9 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
 5. ask に回答が付くと、オーケストレーターが終了済みのループを再開し、回答済みの `needs-answer` を外す
 6. epic の全タスクが完了すると、オーケストレーターが `develop` 向けの最終 PR（`epic-final`）を作る
 7. 人間がアプリの「要対応」の「マージ待ち」から確認して merge commit でマージする。
-   マージできるのは GitHub Actions の check run がすべて成功していて、コンフリクトしていないときだけ
-   （check run が 1 つも無いときと、GitHub がコンフリクトの有無を計算中のときも押せない。上記「要対応」）。
-   CodeRabbit の状態は詳細画面に情報として出るだけで、処理中でもマージできる。
+   マージできるのは GitHub Actions の check run がすべて成功していて、コンフリクトしていなくて、今の head がレビュー済み
+   （CodeRabbit のレビューが完了か、第三者レビューで要修正が 0 件）のときだけ（上記「要対応」）。
+   CodeRabbit がレビューできないときは、オーケストレーターが第三者レビューを行う（上記「最終 PR の第三者レビュー」）。
    マージの前に実機で確かめたいときは、詳細の「TestFlight に上げる」で epic ブランチを Upload ワークフローに掛け、run の成功を見てから TestFlight でテストする（上記「マージ待ちと TestFlight への手動アップロード」）
 8. マージされると、ワークフローがゴール元の Discussion を解決済みで閉じる（上記「ゴール元の Discussion の目印」）。
    オーケストレーターは epic の仮決め一覧を閉じる（上記「仮決め一覧」）

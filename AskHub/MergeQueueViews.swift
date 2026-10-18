@@ -135,8 +135,13 @@ struct MergeDetailView: View {
             Section("状態") {
                 LabeledContent("CI", value: checksText)
                 LabeledContent("コンフリクト", value: mergeabilityText)
-                // 情報として出すだけで、マージできるか（canMerge）には関係しない（Discussion #460）
+                // 完了なら今の head はレビュー済み（canMerge の条件の 1 つ。Discussion #503）
                 LabeledContent("CodeRabbit", value: codeRabbitText)
+                // 今の head をレビュー済みにしたもの（CodeRabbit か第三者レビュー）と、第三者レビューの進み具合
+                LabeledContent("レビュー", value: MergeReviewText.source(pullRequest))
+                if let finalReview = pullRequest.finalReview {
+                    LabeledContent("第三者レビュー", value: MergeReviewText.progress(finalReview, codeRabbit: pullRequest.codeRabbit))
+                }
             }
 
             if model.showsUploadButton(latest) {
@@ -259,8 +264,14 @@ struct MergeDetailView: View {
         case .rateLimited:
             "レート制限"
 
+        case .skipped:
+            "スキップ"
+
         case .failed:
             "失敗"
+
+        case .unknown:
+            "不明"
 
         case .none:
             "なし"

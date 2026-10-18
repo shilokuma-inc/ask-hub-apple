@@ -3,7 +3,7 @@ import Foundation
 /// アプリの「マージ待ち」に出す、epic → develop の最終 PR（`epic-final`。Discussion #1 の Q13）
 public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     /// CI の状態。最新コミットの **GitHub Actions の check run だけ**から決める（Discussion #460）。
-    /// CodeRabbit などの commit status は含めない（処理中のまま止まることがあり、マージ条件にしない）
+    /// CodeRabbit などの commit status は含めない（処理中のまま止まることがあるため。CodeRabbit は `isReviewed` で別に見る）
     public enum ChecksState: String, Sendable, Equatable, Hashable {
         /// GitHub Actions の check run がすべて成功（NEUTRAL / SKIPPED を含む）
         case success
@@ -16,7 +16,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     }
 
     /// CodeRabbit のレビューの状態（commit status `CodeRabbit` から）。
-    /// レビューを見てからマージしたい人のための**情報**で、マージ条件（`canMerge`）には使わない（Discussion #460）
+    /// 完了（`completed`）だけが最終 PR のレビューの条件（`isReviewed`）を満たす（Discussion #503）。処理中・レート制限・スキップ・失敗・不明は満たさない
     public enum CodeRabbitState: String, Sendable, Equatable, Hashable {
         /// 処理中（レビュー中。commit status が `PENDING` か `EXPECTED`）
         case inProgress
@@ -24,8 +24,12 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         case completed
         /// レート制限（無料枠の上限で止まった。"Review rate limited"）
         case rateLimited
+        /// スキップ（レビューしなかった。"Review skipped" や "Review skipped: reviews are disabled for this base branch"）
+        case skipped
         /// 失敗（commit status が `ERROR` / `FAILURE`）
         case failed
+        /// `SUCCESS` だが `description` が無い・知らない文言（CodeRabbit が文言を変えたときなど）。完了とはみなさない
+        case unknown
         /// commit status `CodeRabbit` が無い（知らない `state` のときも含む）
         case none
     }
@@ -86,10 +90,17 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     public var author: String?
     public var checks: ChecksState
     public var mergeability: Mergeability
-    /// CodeRabbit の状態。情報として出すだけで、マージできるかには関係しない
+    /// CodeRabbit の状態。完了なら今の head はレビュー済み（`isReviewed`）
     public var codeRabbit: CodeRabbitState
     /// Upload ワークフローの直近の run の状況。既定は `notLoaded`
     public var uploadStatus: UploadStatus
+    /// 今の head（`headSHA`）に対する第三者レビューの目印。信用する author のコメントのうち最新のもの。無ければ `nil`
+    public var thirdPartyReview: ThirdPartyReviewMarker?
+    /// 今の head（`headSHA`）に対する第三者レビューの進み具合（オーケストレーターの状態コメント）。信用する author のコメントのうち最新のもの。無ければ `nil`
+    public var finalReview: FinalReviewMarker?
+    /// 今の head を GitHub が受け取った時刻の推定。commit status `CodeRabbit` の時刻、無ければ head のコミットの日時（PR の作成時刻を下限にする）。
+    /// オーケストレーターが再起動した後、CodeRabbit を待ち始めた時刻の代わりに使う（Discussion #503）
+    public var headSince: Date?
 
     public init(
         id: String,
@@ -105,7 +116,10 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         checks: ChecksState,
         mergeability: Mergeability,
         codeRabbit: CodeRabbitState = .none,
-        uploadStatus: UploadStatus = .notLoaded
+        uploadStatus: UploadStatus = .notLoaded,
+        thirdPartyReview: ThirdPartyReviewMarker? = nil,
+        finalReview: FinalReviewMarker? = nil,
+        headSince: Date? = nil
     ) {
         self.id = id
         self.repository = repository
@@ -121,12 +135,21 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         self.mergeability = mergeability
         self.codeRabbit = codeRabbit
         self.uploadStatus = uploadStatus
+        self.thirdPartyReview = thirdPartyReview
+        self.finalReview = finalReview
+        self.headSince = headSince
     }
 
-    /// マージボタンを押せるか。GitHub Actions の CI が成功していて、コンフリクトしていないこと（Q13・Discussion #460）。
-    /// `codeRabbit` は見ない
+    /// マージボタンを押せるか。GitHub Actions の CI が成功していて、コンフリクトしていなくて（Q13・Discussion #460）、
+    /// 今の head がレビュー済みであること（`isReviewed`。Discussion #503）
     public var canMerge: Bool {
-        checks == .success && mergeability == .mergeable
+        checks == .success && mergeability == .mergeable && isReviewed
+    }
+
+    /// 今の head がレビュー済みか。CodeRabbit のレビューが完了しているか、今の head の第三者レビューで要修正が 0 件（`must="0"`）なら済み（Discussion #503）。
+    /// CodeRabbit のレート制限・スキップ・失敗・処理中は済みにしない。`thirdPartyReview` は信用する author が書いた今の head のものだけが入る
+    public var isReviewed: Bool {
+        codeRabbit == .completed || thirdPartyReview?.isClean == true
     }
 
     /// 押せない理由（押せるなら `nil`）
@@ -148,8 +171,24 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
             "マージできるかを GitHub が確認中です。少し待ってから更新してください"
 
         case (.success, .mergeable):
-            nil
+            reviewBlockingReason
         }
+    }
+
+    /// レビューの条件で押せない理由（レビュー済みなら `nil`）
+    private var reviewBlockingReason: String? {
+        if isReviewed {
+            return nil
+        }
+        if finalReview?.state == .gaveUp {
+            // 3 回続けて要修正が収まらなかった（Discussion #503 の Q1）。アプリからはマージさせない
+            let count = thirdPartyReview.map { "要修正が \($0.must) 件残り、" } ?? ""
+            return "第三者レビューで\(count)自動の修正をあきらめました。直して push するか、GitHub の画面からマージしてください"
+        }
+        if let review = thirdPartyReview {
+            return "第三者レビューで要修正が \(review.must) 件あります"
+        }
+        return "レビュー待ちです（CodeRabbit か第三者レビュー）"
     }
 
     /// 「TestFlight に上げる」を押せるか。CI（最新コミットのチェックのまとめ。マージボタンと同じ基準）が成功していて、

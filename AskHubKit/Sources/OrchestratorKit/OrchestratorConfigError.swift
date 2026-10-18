@@ -18,6 +18,8 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
     case unknownIdeaPlaceholder(String)
     case emptyConflictCommand
     case unknownConflictPlaceholder(String)
+    case emptyFinalReviewCommand(key: String)
+    case unknownFinalReviewPlaceholder(key: String, name: String)
     case emptyRepositoryCommand(key: String)
     case relativeNewRepositoryDirectory(String)
     case relativeBuildHostsPath(key: String, path: String)
@@ -68,6 +70,14 @@ public enum OrchestratorConfigError: Error, Equatable, CustomStringConvertible {
         case let .unknownConflictPlaceholder(name):
             "conflictCommand に未知のプレースホルダ {\(name)} があります（使えるもの: "
                 + ConflictCommandTemplate.Placeholder.allCases.map { "{\($0.rawValue)}" }.joined(separator: " ")
+                + "）"
+
+        case let .emptyFinalReviewCommand(key):
+            "\(key) が空です。実行するコマンドを引数の配列で指定してください"
+
+        case let .unknownFinalReviewPlaceholder(key, name):
+            "\(key) に未知のプレースホルダ {\(name)} があります（使えるもの: "
+                + FinalReviewCommandTemplate.Placeholder.allCases.map { "{\($0.rawValue)}" }.joined(separator: " ")
                 + "）"
 
         case let .emptyRepositoryCommand(key):
