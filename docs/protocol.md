@@ -406,7 +406,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   TestFlight でテストできるようになったかは出さない（App Store Connect API の鍵をアプリに持たせない）。
   ビルド番号は Upload ワークフローが App Store Connect の最新から自動で増やすので、同じバージョンのままビルド番号だけが増えて TestFlight に並ぶ
 - **ワークフローの有無**: `upload.yml` が無い（run の取得が 404）リポジトリではボタンを出さない。dispatch が 422 を返したら、そのリポジトリは `workflow_dispatch` に対応していないものとして以後ボタンを出さない
-- **トークンの権限**: Fine-grained PAT に **Actions の Read and write** が要る（run の取得は Read、起動は Write）。
+- **トークンの権限**: Fine-grained PAT・GitHub App に **Actions の Read and write** が要る（OAuth App は `repo` スコープ。「アプリのトークンと権限」）（run の取得は Read、起動は Write）。
   権限が無いと 403 が返る。403 はレート制限でも返るので、`x-ratelimit-remaining: 0`・`Retry-After`（と 429）はレート制限として今までどおり待って再試行し、
   それ以外の 403 を「権限不足」として、設定画面への案内と一緒にその旨を出す
 - **サンプルデータ（デモモード）**: run の状態（実行中 / 成功 / 失敗・ビルドした SHA が PR の最新の head と違う）もサンプルに含め、GitHub にもトークンにも依存しない。起動はしない
@@ -707,6 +707,37 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
 - 最終 PR への指示（それ以外の author のコメント・CodeRabbit の指摘ではループを再開しない）
 - `ready-for-loop` / `manual-loop` の付いた Discussion・最終 PR・状態用の Issue（それ以外の author が作ったものは扱わない）
 
+## アプリのトークンと権限
+
+アプリは GitHub のトークンを Keychain（`KeychainTokenStore.gitHub`）にだけ保存し、`api.github.com` にだけ送る。トークンの得かたは 2 つある。
+
+- **GitHub でサインイン**（既定）: OAuth のデバイスフロー（`AskHubKit` の `GitHubDeviceFlow`）。`POST https://github.com/login/device/code` でユーザーコードを受け取って画面に出し、
+  ユーザーが `verification_uri` の画面でコードを入力するまで `https://github.com/login/oauth/access_token` を `interval` ごとに問い合わせる。
+  `slow_down` は返った `interval`（無ければ 5 秒足した値）に延ばし、`expired_token`・`access_denied`・期限（`expires_in`）切れで終える。
+  client ID は `Configs/Project.xcconfig` の `GITHUB_CLIENT_ID`（Info.plist の `AskHubGitHubClientID`）に置く。空なら設定画面にサインインを出さない。
+  client secret はアプリに入れない（デバイスフローでは不要。アプリに入れると誰でも取り出せる）
+- **Personal Access Token**（上級者向け）: 設定画面に Fine-grained PAT を貼る。Fine-grained PAT は resource owner を 1 つしか選べない
+
+アプリが使う API と、GitHub App のユーザーのトークン・Fine-grained PAT に要る権限:
+
+| 権限（GitHub App / Fine-grained PAT） | 使うところ |
+| --- | --- |
+| Metadata: Read（必須） | `orgs/{org}/repos`（依頼先の一覧）・`collaborators`（信用する author）・検索 |
+| Discussions: Read and write | 質問の取得と回答（`addDiscussionComment`）・`ready-for-loop` などのラベル |
+| Issues: Read and write | 依頼の作成・実機確認や任意判断の Issue のコメント・本文の書き換え・クローズ・ラベル |
+| Pull requests: Read and write | PR の会話・レビュースレッドへの回答と返信 |
+| Contents: Read and write | PR のマージ（`pulls/{n}/merge`）とブランチの削除（`git/refs/heads/…`） |
+| Actions: Read and write | TestFlight への手動アップロード（`upload.yml` の run の取得と `workflow_dispatch`） |
+| Workflows: Read and write | `.github/workflows/` を変える PR のマージ（無いと、その PR だけマージが拒否される） |
+| Checks・Commit statuses: Read | マージ待ちの CI と CodeRabbit の状態（`statusCheckRollup`） |
+
+- **GitHub App のとき**: 権限は App の設定で上の表に絞り、ユーザーのトークンはその App をインストールした organization（とインストールで選んだリポジトリ）にだけ効く。
+  トークンの権限は「App の権限」と「ユーザー自身の権限」の重なりになる。1 つのトークンで、インストール済みの複数の organization に回答・依頼できる。
+  App の設定で **Enable Device Flow** をオンにし、**Expire user authorization tokens** をオフにする（オンだと 8 時間で期限が切れ、更新に client secret が要る）
+- **OAuth App のとき**: スコープ（`GITHUB_OAUTH_SCOPE`）は `repo workflow`。`repo` は private を含むすべてのリポジトリへの書き込みになる（細かく絞れない）。
+  organization が OAuth App のアクセスを制限していると、organization の管理者の承認が要る
+- サインインをやめるときは、設定画面の「トークンを削除」に加え、GitHub の Settings → Applications で承認を取り消す（取り消しの API は client secret が要るため、アプリからは取り消さない）
+
 ## 依頼先のリポジトリ
 
 アプリの「新しい依頼」で依頼先に選べるリポジトリは、**対象の organization（アプリの設定に並べたもの。既定は `shilokuma-inc`）のアーカイブ済みでないリポジトリすべて**とする
@@ -716,7 +747,7 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
 - 一覧は REST の `orgs/{org}/repos` から organization ごとにページングを最後まで追って取得する（`GitHubIdeaRequester`）。並びは設定の順で、organization の中は最近 push された順
 - 一覧はアプリに保存したトークンで取得するため、対象を一部のリポジトリに限った Fine-grained PAT では、そのリポジトリしか候補に出ない。
   すべてを出すには、トークンの Repository access を org の全リポジトリにする
-- Fine-grained PAT は resource owner を 1 つしか選べない。複数の organization に回答・依頼するなら、すべてに書き込めるトークン（classic PAT など）を使う
+- Fine-grained PAT は resource owner を 1 つしか選べない。複数の organization に回答・依頼するなら、「GitHub でサインイン」を使うか、すべてに書き込めるトークン（classic PAT など）を使う
 - 前に選んだ依頼先は保存しない（Q6）
 
 ## リポジトリの作成・削除
