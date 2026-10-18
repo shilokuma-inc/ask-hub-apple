@@ -412,6 +412,44 @@ struct SampleInboxSource: InboxSource {
                 ## 期待する結果
                 - 設定した時刻に通知が届き、タップするとアプリが開く
                 """
+        ),
+        // ask-hub-apple と notti-ios は同じ色になるので、行の左の線の色が分かれるよう別の色のリポジトリを足す
+        InboxIssue(
+            id: "I_31",
+            kind: .decisionLog,
+            repository: "shilokuma-inc/beat-tap-ios",
+            number: 31,
+            title: "【CHORE】epic/practice-mode の仮決め一覧",
+            url: URL(string: "https://github.com/shilokuma-inc/beat-tap-ios/issues/31")!,
+            author: "mrs1669",
+            createdAt: Self.now.addingTimeInterval(-2 * 24 * 60 * 60),
+            updatedAt: Self.now.addingTimeInterval(-5 * 60 * 60),
+            body: """
+                チェックを付けたものは承認。変更したいものはコメントで `#<PR番号> は別案 1 で` のように指示。返答のないものは既定値のまま確定する。
+
+                - [ ] #33 練習モードの既定のテンポ → 採用: 80 BPM（別案: 60 BPM / 100 BPM）
+                """
+        ),
+        InboxIssue(
+            id: "I_36",
+            kind: .needsVerify,
+            repository: "shilokuma-inc/beat-tap-ios",
+            number: 36,
+            title: "【CHORE】実機確認: 練習モードの音とタップのずれ",
+            url: URL(string: "https://github.com/shilokuma-inc/beat-tap-ios/issues/36")!,
+            author: "mrs1669",
+            createdAt: Self.now.addingTimeInterval(-1 * 24 * 60 * 60),
+            updatedAt: Self.now.addingTimeInterval(-6 * 60 * 60),
+            body: """
+                \(VerifyMarker(pullRequest: 35, epic: "epic/practice-mode").marker)
+                元の PR: #35
+
+                ## 確認手順
+                1. 実機で練習モードを開き、イヤホンで音を聞きながらタップする
+
+                ## 期待する結果
+                - 音とタップの判定がずれない
+                """
         )
     ]
 }
