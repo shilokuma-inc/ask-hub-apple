@@ -85,6 +85,9 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
     /// 削除済みのユーザーでは `nil`
     public var author: String?
     public var checks: ChecksState
+    /// まだ終わっていない GitHub Actions の check run があるか。`checks` が `failure` でも、残りが終わるまで `true`
+    /// （オーケストレーターは、すべて終わってから失敗したジョブのログで直させる）
+    public var hasRunningChecks: Bool
     public var mergeability: Mergeability
     /// CodeRabbit の状態。情報として出すだけで、マージできるかには関係しない
     public var codeRabbit: CodeRabbitState
@@ -103,6 +106,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         headSHA: String,
         author: String?,
         checks: ChecksState,
+        hasRunningChecks: Bool = false,
         mergeability: Mergeability,
         codeRabbit: CodeRabbitState = .none,
         uploadStatus: UploadStatus = .notLoaded
@@ -118,6 +122,7 @@ public struct EpicPullRequest: Sendable, Equatable, Hashable, Identifiable {
         self.headSHA = headSHA
         self.author = author
         self.checks = checks
+        self.hasRunningChecks = hasRunningChecks
         self.mergeability = mergeability
         self.codeRabbit = codeRabbit
         self.uploadStatus = uploadStatus
