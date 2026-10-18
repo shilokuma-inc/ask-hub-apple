@@ -77,8 +77,8 @@ struct IdeaRequestModelTests {
         #expect(model.repositories.map(\.fullName) == ["shilokuma-inc/ask-hub-apple", "shilokuma-inc/notti-ios"])
         #expect(model.repository == nil)
         #expect(model.repositorySections(now: Date(timeIntervalSince1970: 1_800_000_000)) == [
-            RepositorySection(title: "担当 PC あり", repositories: ["shilokuma-inc/ask-hub-apple"]),
-            RepositorySection(title: "担当 PC なし", repositories: ["shilokuma-inc/notti-ios"])
+            RepositorySection(title: "担当 PC あり・shilokuma-inc", repositories: ["shilokuma-inc/ask-hub-apple"]),
+            RepositorySection(title: "担当 PC なし・shilokuma-inc", repositories: ["shilokuma-inc/notti-ios"])
         ])
     }
 

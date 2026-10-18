@@ -718,6 +718,10 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
   すべてを出すには、トークンの Repository access を org の全リポジトリにする
 - Fine-grained PAT は resource owner を 1 つしか選べない。複数の organization に回答・依頼するなら、すべてに書き込めるトークン（classic PAT など）を使う
 - 前に選んだ依頼先は保存しない（Q6）
+- Picker は Section で分ける（Q5）。まず担当 PC の有無で分け、その中を owner（`owner/repo` の `/` の前）ごとに分けて、
+  「担当 PC あり・<owner>」…「担当 PC なし・<owner>」の 1 段の Section の並びにする（[Discussion #572](https://github.com/shilokuma-inc/ask-hub-apple/discussions/572) の Q1。Picker の Section は入れ子にできない）。
+  owner の区切りは organization が 1 つだけのときも出す（Q2）。owner の Section は一覧に現れた順、Section の中は一覧の順で、空の Section は出さない。
+  担当の印を確認できなかったときは、「担当 PC なし」と誤って見せないよう担当の有無では分けず、「担当 PC の有無を確認できませんでした・<owner>」と owner だけで分ける（`AskHubKit` の `RepositorySection`）
 
 ## リポジトリの作成・削除
 
