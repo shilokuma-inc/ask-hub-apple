@@ -4,6 +4,7 @@ import SwiftUI
 /// GitHub のトークン、一覧を取得する organization、ループの既定値を設定する画面。ビルドの Mac の画面もここから開く
 struct SettingsView: View {
     @State private var model: TokenSettingsModel
+    @State private var signInModel: GitHubSignInModel
     @State private var organizationModel: OrganizationSettingsModel
     /// ビルドの Mac の画面に使う、ステータスタブの取得結果。無ければ入口を出さない（Preview など）
     private let loopModel: LoopStatusModel?
@@ -20,17 +21,35 @@ struct SettingsView: View {
 
     init(
         model: TokenSettingsModel = TokenSettingsModel(),
+        signInModel: GitHubSignInModel = GitHubSignInModel(),
         organizationModel: OrganizationSettingsModel = OrganizationSettingsModel(),
         loopModel: LoopStatusModel? = nil
     ) {
         _model = State(initialValue: model)
+        _signInModel = State(initialValue: signInModel)
         _organizationModel = State(initialValue: organizationModel)
         self.loopModel = loopModel
+    }
+
+    /// PAT の入力欄の説明。サインインを使えるときは、上級者向けの代わりの手段として案内する
+    private var patFooter: String {
+        let lead = signInModel.isAvailable
+            ? "サインインの代わりに Fine-grained PAT を使うこともできます。"
+            : "Fine-grained PAT を入力してください。"
+        return lead + """
+            依頼の作成と、実機確認の Issue を閉じるのに \
+            Issues の書き込み（Read and write）が要ります。マージ待ちの最終 PR を TestFlight に上げるには \
+            Actions の書き込み（Read and write）も要ります。トークンはこの端末の Keychain にだけ保存します。
+            """
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                if signInModel.isAvailable {
+                    GitHubSignInSection(model: signInModel)
+                }
+
                 Section {
                     SecureField("github_pat_…", text: $model.input)
                         .autocorrectionDisabled()
@@ -39,13 +58,9 @@ struct SettingsView: View {
                     Button("保存") { model.save() }
                         .disabled(!model.canSave)
                 } header: {
-                    Text("GitHub の Personal Access Token")
+                    Text(signInModel.isAvailable ? "Personal Access Token（上級者向け）" : "GitHub の Personal Access Token")
                 } footer: {
-                    Text("""
-                        Fine-grained PAT を入力してください。依頼の作成と、実機確認の Issue を閉じるのに \
-                        Issues の書き込み（Read and write）が要ります。マージ待ちの最終 PR を TestFlight に上げるには \
-                        Actions の書き込み（Read and write）も要ります。トークンはこの端末の Keychain にだけ保存します。
-                        """)
+                    Text(patFooter)
                 }
 
                 Section("状態") {
@@ -129,6 +144,11 @@ struct SettingsView: View {
                 }
             }
             .task { model.load() }
+            .onChange(of: signInModel.phase) { _, phase in
+                if phase == .signedIn {
+                    model.load()
+                }
+            }
         }
         #if os(macOS)
         // macOS のシートは内容の大きさに縮むため、フォームが読める幅を確保する
@@ -157,8 +177,8 @@ struct OrganizationSettingsView: View {
             } footer: {
                 Text("""
                     並べた順に取得します。最後の 1 つは削除できません。\
-                    Fine-grained PAT は 1 つの owner にしか使えないので、\
-                    複数の organization に回答・依頼するなら、すべてに書き込めるトークンを保存してください。
+                    Fine-grained PAT は 1 つの owner にしか使えないので、複数の organization に回答・依頼するなら、\
+                    「GitHub でサインイン」を使うか、すべてに書き込めるトークンを保存してください。
                     """)
             }
 
