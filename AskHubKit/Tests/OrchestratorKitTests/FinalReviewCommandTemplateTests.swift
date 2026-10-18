@@ -33,11 +33,15 @@ struct FinalReviewCommandTemplateTests {
             == ["/Users/me/.local/bin/askhub-review-final"] + arguments)
         #expect(config.fixCommand.render(for: repository, pullRequest: pullRequest)
             == ["/Users/me/.local/bin/askhub-fix-review"] + arguments)
+        #expect(config.ciFixCommand.kind == .fixCI)
+        #expect(config.ciFixCommand.render(for: repository, pullRequest: pullRequest)
+            == ["/Users/me/.local/bin/askhub-fix-ci"] + arguments)
     }
 
     @Test func fixWaitsLongerThanReview() {
         #expect(FinalReviewCommandTemplate.Kind.review.timeout == .seconds(30 * 60))
         #expect(FinalReviewCommandTemplate.Kind.fix.timeout == .seconds(60 * 60))
+        #expect(FinalReviewCommandTemplate.Kind.fixCI.timeout == .seconds(60 * 60))
     }
 
     @Test func defaultCommandsUseScriptNameWhenLoopCommandIsRelative() throws {
@@ -68,6 +72,9 @@ struct FinalReviewCommandTemplateTests {
         }
         #expect(throws: OrchestratorConfigError.unknownFinalReviewPlaceholder(key: "fixCommand", name: "controlPath")) {
             try decode(#", "fixCommand": ["/opt/fix", "{controlPath}"]"#)
+        }
+        #expect(throws: OrchestratorConfigError.unknownFinalReviewPlaceholder(key: "ciFixCommand", name: "run")) {
+            try decode(#", "ciFixCommand": ["/opt/fix-ci", "{run}"]"#)
         }
         #expect(throws: OrchestratorConfigError.unknownFinalReviewPlaceholder(key: "reviewCommand", name: "sha")) {
             try FinalReviewCommandTemplate(.review, arguments: ["x", "{sha}"])

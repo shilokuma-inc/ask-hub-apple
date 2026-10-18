@@ -56,6 +56,9 @@
   CodeRabbit などの bot を author で見分けるときは、両方の形を受け付ける（`CodeRabbitReviewThread.authorLogins`）
 - PR のコメントに CodeRabbit のアカウント名を `@` 付きで書くと、コードスパンの中（`` `@coderabbitai review` ``）でもメンションとして扱われ、CodeRabbit が返信する。
   説明として書くだけなら `@` を付けない
+- `gh run view <run> --log-failed` は失敗したジョブのログだけを出すが、run がまだ実行中だと全ジョブのログが揃わない。
+  「マージ待ち」の `checks` は失敗が 1 つでもあれば実行中の check run が残っていても `failure` になるので、
+  失敗したログで直させる処理は `hasRunningChecks` が `false`（すべて終わった）になってから始める
 
 ## ビルド・テスト
 

@@ -69,6 +69,8 @@ install -m 755 "$REPO_ROOT/scripts/orchestrator/resolve-conflict.sh" "$PREFIX/as
 install -m 755 "$REPO_ROOT/scripts/orchestrator/review-final.sh" "$PREFIX/askhub-review-final"
 # fixCommand の既定（第三者レビューの要修正を直して push する）
 install -m 755 "$REPO_ROOT/scripts/orchestrator/fix-review.sh" "$PREFIX/askhub-fix-review"
+# ciFixCommand の既定（最終 PR の CI の失敗を、失敗したジョブのログを読ませて直して push する）
+install -m 755 "$REPO_ROOT/scripts/orchestrator/fix-ci.sh" "$PREFIX/askhub-fix-ci"
 # createRepositoryCommand / removeRepositoryCommand の既定（担当リポジトリの作成・削除の依頼）
 install -m 755 "$REPO_ROOT/scripts/orchestrator/create-repo.sh" "$PREFIX/askhub-create-repo"
 install -m 755 "$REPO_ROOT/scripts/orchestrator/remove-repo.sh" "$PREFIX/askhub-remove-repo"
@@ -98,6 +100,7 @@ cat <<MSG
   コンフリクトの解消: $PREFIX/askhub-resolve-conflict（conflictCommand の既定）
   最終 PR の第三者レビュー: $PREFIX/askhub-review-final（reviewCommand の既定）
   第三者レビューの要修正の修正: $PREFIX/askhub-fix-review（fixCommand の既定）
+  CI の失敗の修正: $PREFIX/askhub-fix-ci（ciFixCommand の既定）
   リポジトリの作成・削除: $PREFIX/askhub-create-repo / askhub-remove-repo（createRepositoryCommand / removeRepositoryCommand の既定）
   xcodebuild の振り分け: $PREFIX/askhub-xcb（使う Mac だけ ~/.config/askhub/xcodebuild からリンクする）
   plist:        $PLIST

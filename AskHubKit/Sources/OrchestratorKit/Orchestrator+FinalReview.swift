@@ -2,7 +2,8 @@ import AskHubKit
 import Foundation
 
 // epic の最終 PR で CodeRabbit がレビューできないときは、reviewCommand（askhub-review-final）に第三者レビューをさせ、
-// 要修正があれば fixCommand（askhub-fix-review）に直させる（Discussion #503）。
+// 要修正があれば fixCommand（askhub-fix-review）に直させる（Discussion #503）。CI が失敗していれば、先に ciFixCommand（askhub-fix-ci）に
+// 失敗したジョブのログを読ませて直させる（Orchestrator+FinalReviewCIFix.swift）。
 // レビュー・修正はメインの checkout に一時 worktree を作るので、コンフリクトの解消と合わせて同じリポジトリでは 1 件ずつにする
 extension Orchestrator {
     /// 最終 PR の第三者レビューの対象を取得し、始められるレビュー・修正を裏で始める（終わるのは待たない）
@@ -19,6 +20,7 @@ extension Orchestrator {
         }
         finalReviewCandidates = candidates
         finalReviewTracker.update(with: candidates, now: now())
+        await tellCIFixGiveUps(among: candidates)
         startFinalReviews(among: candidates)
         // 始めたもの（レビュー中）も含めて、進み具合を最終 PR に書き出す
         await publishFinalReviewStatuses()
@@ -59,6 +61,11 @@ extension Orchestrator {
     }
 
     private func runFinalReview(_ start: FinalReviewTracker.Start) async {
+        // CI の修正は、始める前に PR へ記録を残す
+        if start.action == .fixCI {
+            await runCIFix(start)
+            return
+        }
         let pullRequest = start.pullRequest
         let name = "\(pullRequest.repository)#\(pullRequest.number)"
         let kind: FinalReviewCommandTemplate.Kind = start.action == .review ? .review : .fix
@@ -99,6 +106,10 @@ extension Orchestrator {
                 outcome = .failed(reason: "今の head と同じ SHA を直したと返しました")
             }
             await record(outcome ?? .failed(reason: "コマンドの出力から結果を読み取れませんでした"), for: start)
+
+        case .fixCI:
+            // 始める前に PR へ記録を残すので、runCIFix で扱う（ここには来ない）
+            break
         }
     }
 
@@ -115,6 +126,9 @@ extension Orchestrator {
 
         case .fix:
             await record(FinalReviewTracker.FixOutcome.failed(reason: reason), for: start)
+
+        case .fixCI:
+            await recordCIFix(.failed(reason: reason), for: start)
         }
     }
 
@@ -182,6 +196,9 @@ extension Orchestrator {
 
         case .fix:
             "第三者レビューの要修正の修正"
+
+        case .fixCI:
+            "CI の失敗の修正"
         }
     }
 }

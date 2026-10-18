@@ -1,16 +1,18 @@
 import Foundation
 
 /// epic の最終 PR に第三者レビューをさせるコマンド（既定は `askhub-review-final`）と、
-/// その `要修正` を直させるコマンド（既定は `askhub-fix-review`）のテンプレート（Discussion #503）。
+/// その `要修正` を直させるコマンド（既定は `askhub-fix-review`）と、CI の失敗を直させるコマンド（既定は `askhub-fix-ci`）のテンプレート（Discussion #503）。
 ///
 /// `ConflictCommandTemplate` と同じく、シェルを経由せず引数の配列のまま実行する
 public struct FinalReviewCommandTemplate: Sendable, Equatable {
-    /// レビューと修正のどちらのコマンドか
+    /// レビュー・修正・CI の修正のどのコマンドか
     public enum Kind: String, Sendable, Equatable, CaseIterable {
         /// 第三者レビュー（`reviewCommand`）
         case review
         /// 第三者レビューの `要修正` の修正（`fixCommand`）
         case fix
+        /// 失敗したジョブのログを読ませる CI の失敗の修正（`ciFixCommand`）
+        case fixCI
 
         /// 起動スクリプトの名前。`install.sh` が `loopCommand` の起動スクリプトと同じ場所に置く
         public var scriptName: String {
@@ -20,6 +22,9 @@ public struct FinalReviewCommandTemplate: Sendable, Equatable {
 
             case .fix:
                 "askhub-fix-review"
+
+            case .fixCI:
+                "askhub-fix-ci"
             }
         }
 
@@ -29,7 +34,7 @@ public struct FinalReviewCommandTemplate: Sendable, Equatable {
             case .review:
                 .seconds(30 * 60)
 
-            case .fix:
+            case .fix, .fixCI:
                 .seconds(60 * 60)
             }
         }
@@ -42,6 +47,9 @@ public struct FinalReviewCommandTemplate: Sendable, Equatable {
 
             case .fix:
                 "fixCommand"
+
+            case .fixCI:
+                "ciFixCommand"
             }
         }
     }

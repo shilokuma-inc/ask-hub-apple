@@ -25,7 +25,16 @@ extension FakeGitHub {
     }
 
     func comment(onPullRequest number: Int, in repository: String, body: String) async throws {
-        state.withLock { $0.pullRequestComments.append("\(repository)#\(number): \(body)") }
+        try state.withLock { state in
+            if state.pullRequestCommentFails {
+                throw TestError()
+            }
+            state.pullRequestComments.append("\(repository)#\(number): \(body)")
+        }
+    }
+
+    func setPullRequestCommentFails(_ fails: Bool) {
+        state.withLock { $0.pullRequestCommentFails = fails }
     }
 }
 
