@@ -75,6 +75,29 @@ struct IssueRow: View {
             .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
+        // 同じリポジトリの Issue に同じ色の線を付ける（Discussion #563 の Q1・Q4）。形は `QuestionRow` の線と同じ。
+        // 色だけに頼らないよう `repo#番号` は残し、線は読み上げない
+        .overlay(alignment: .leading) {
+            if let color = issue.repositoryColor {
+                Capsule()
+                    .fill(color)
+                    .frame(width: 4)
+                    .offset(x: -10)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
+/// 一覧の行の左端の線に使う色。ライト / ダークの両方で見分けられるシステムカラー。
+/// 数や順番を変えると、どの Discussion・リポジトリがどの色になるかも変わる
+private let rowLinePalette: [Color] = [.blue, .orange, .green, .purple, .pink, .teal]
+
+extension InboxIssue {
+    /// 「任意判断」「実機確認」の行の左端に出す、リポジトリごとの色。
+    /// 色はリポジトリ名から決まるので、取り直しても起動し直しても変わらない
+    var repositoryColor: Color? {
+        repositoryColorIndex(paletteCount: rowLinePalette.count).map { rowLinePalette[$0] }
     }
 }
 
@@ -82,11 +105,8 @@ extension InboxSubject {
     /// 要回答の行の左端に出す、Discussion ごとの色。PR の ask には付けないので `nil`。
     /// 色は node id から決まるので、取り直しても起動し直しても変わらない
     var groupColor: Color? {
-        colorIndex(paletteCount: Self.groupPalette.count).map { Self.groupPalette[$0] }
+        colorIndex(paletteCount: rowLinePalette.count).map { rowLinePalette[$0] }
     }
-
-    /// ライト / ダークの両方で見分けられるシステムカラー。数を変えると、どの Discussion がどの色になるかも変わる
-    private static let groupPalette: [Color] = [.blue, .orange, .green, .purple, .pink, .teal]
 
     /// 一覧に出す `repo#番号`。organization をまたいで同じ名前のリポジトリは置かない前提で、owner は省く
     var shortReference: String {
