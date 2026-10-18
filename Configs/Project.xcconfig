@@ -21,3 +21,9 @@ CURRENT_PROJECT_VERSION = 1
 // 最低サポート OS
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
 MACOSX_DEPLOYMENT_TARGET = 14.0
+
+// GitHub でサインイン（OAuth のデバイスフロー）に使うアプリの client ID（秘密ではない）。
+// 空なら設定画面にサインインを出さず、PAT の入力だけにする。client secret はアプリに入れない
+GITHUB_CLIENT_ID =
+// OAuth App のときに求めるスコープ（空白区切り）。GitHub App では空のままにする（権限はアプリの設定で決まる）
+GITHUB_OAUTH_SCOPE =
