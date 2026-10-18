@@ -26,6 +26,8 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public let ideaCommand: IdeaCommandTemplate
     /// epic の最終 PR のコンフリクトを解消させるコマンド
     public let conflictCommand: ConflictCommandTemplate
+    /// epic の最終 PR の CI の失敗を直させるコマンド
+    public let ciFixCommand: CIFixCommandTemplate
     /// ループの 1 周（state ファイルが書き直されてから）がこれより長く進まなければ、固まったとみなして止める
     public let iterationTimeout: Duration
     /// 担当リポジトリの作成・削除の依頼（`repo-request`）に使うコマンドと場所
@@ -76,6 +78,7 @@ public struct OrchestratorConfig: Sendable, Equatable {
         ideaCommand: IdeaCommandTemplate = .standard,
         iterationTimeout: Duration = defaultIterationTimeout,
         conflictCommand: ConflictCommandTemplate? = nil,
+        ciFixCommand: CIFixCommandTemplate? = nil,
         repositoryCommands: RepositoryCommands? = nil,
         trustsRepositoryWriters: Bool = true,
         buildHosts: BuildHostsConfig? = nil,
@@ -89,6 +92,7 @@ public struct OrchestratorConfig: Sendable, Equatable {
         self.ideaCommand = ideaCommand
         self.iterationTimeout = iterationTimeout
         self.conflictCommand = conflictCommand ?? .standard(besides: loopCommand)
+        self.ciFixCommand = ciFixCommand ?? .standard(besides: loopCommand)
         self.trustsRepositoryWriters = trustsRepositoryWriters
         self.buildHosts = buildHosts
         self.claudeModel = claudeModel

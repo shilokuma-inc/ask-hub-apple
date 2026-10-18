@@ -153,6 +153,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `removeRepositoryCommand` | | ローカルの checkout・ループの worktree・DerivedData を消すコマンド。省略時は `~/.local/bin/askhub-remove-repo`（`install.sh` が置く） |
 | `newRepositoryDirectory` | | 新しく作ったリポジトリを clone するディレクトリ（`~` 可）。省略時は最初の担当リポジトリの checkout と同じ場所 |
 | `conflictCommand` | | epic の最終 PR のコンフリクトを解消させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-resolve-conflict`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` が使える |
+| `ciFixCommand` | | epic の最終 PR の CI の失敗を直させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-fix-ci`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{pullRequest}` / `{headSHA}` が使える |
 | `buildHosts` | | ループのビルドの Mac（xcb）の情報を GitHub に書き出す設定（下の「`buildHosts`」）。**xcb を動かしている Mac のオーケストレーターだけに書く**。省略するとこの機能を止める |
 | `model` | | 起動する `claude`（ループ・準備・コンフリクトの解消・依頼からの Discussion 作成）のモデル。省略時は `claude-opus-5-5`。`opus` などの別名も書ける。環境変数 `ANTHROPIC_MODEL` で渡すので、`ideaCommand` などを書き換えても効く。Discussion でモデルを指定したループ（`docs/protocol.md` の「ループのモデルとエフォート」）はそちらを使う |
 | `effort` | | 起動する `claude` のエフォート（`low` / `medium` / `high` / `xhigh` / `max`）。省略時は claude の既定（`auto` を渡し、オーケストレーターの起動元の値は引き継がない）。環境変数 `CLAUDE_CODE_EFFORT_LEVEL` で渡す。Discussion で指定したループはそちらを使う |
@@ -518,7 +519,7 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 
 **削除**:
 
-1. ループのプロセスが動いていれば外さない。最終 PR のコンフリクトを裏で解消している間も外さない（解消はメインの checkout に一時 worktree を作るため）。
+1. ループのプロセスが動いていれば外さない。最終 PR のコンフリクトを裏で解消している間・CI の失敗を直させている間も外さない（どちらもメインの checkout に一時 worktree を作るため）。
    制御用 worktree に state ファイルが残っていれば、強制の依頼でなければ外さない
 2. ローカルも消す依頼なら、`removeRepositoryCommand`（既定は `scripts/orchestrator/remove-repo.sh`）に
    `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する。ループの worktree には、オーケストレーターの `<名前>-ralph-ctl`・`-a`・`-b` に加えて、
@@ -651,6 +652,31 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 記録はメモリ上だけなので、再起動した後に、まだコンフリクトしている PR を試し直すことがある（今までと同じ）
 
 ログは `~/Library/Logs/askhub/loops/<リポジトリ>-conflict-<PR 番号>-*.log`（claude の出力）。
+
+## epic の最終 PR の CI の失敗を直す
+
+epic が完了するとループは終わっているので、最終 PR の CI が失敗すると、誰かが気付くまで失敗したまま残る。
+ポーリングの最後（コンフリクトの解消を始めた後）に探し、見つけたら次を**裏で**行う。直すのは最長 30 分かかるが、ポーリングはその終わりを待たずに続ける。
+
+1. org 全体の open な `epic-final` PR を「マージ待ち」と同じ取得で読み、head のコミットで GitHub Actions の check run が失敗し、
+   **すべての check run が終わった**ものを探す（実行中のものが残っていれば、終わってから次のポーリングで扱う）。
+   信用する author が作った同じリポジトリの PR で、担当リポジトリのものだけを扱う。コンフリクトしている PR は先に解消させるので扱わない
+2. 次のときは今回は見送る: 同じリポジトリでコンフリクトの解消・ほかの CI の修正をしている（同じ checkout に一時 worktree を作り、同じ epic ブランチに push するため、合わせて 1 件ずつ）。
+   ループが同じ epic ブランチで動いている・指示による再開を待っている（ループの push とぶつかるため）。別の epic のループなら、制御用 worktree には触れずに直させる
+3. 直させる前に、PR に `<!-- ask-hub:ci-fix attempt <head の SHA> -->` を置いたコメントを書く。書けなければ始めない
+4. `ciFixCommand`（既定は `askhub-fix-ci`）を実行し、終わるまで裏で待つ。スクリプトはループの作業場所とは別の一時 worktree に head のコミットを checkout し、
+   失敗した run のログ（`gh run view <run> --log-failed`。run ごとに末尾 400 行）を `claude -p` に読ませて直させ、CLAUDE.md の検証コマンドを通させてからコミットさせる。
+   スクリプトが、コミットが足されていること・元の head を含むこと・未コミットの変更が無いことを確かめてから、`--force-with-lease` で push する（`ASKHUB_RESULT: fixed`）。
+   確かめられなければ push しない（`ASKHUB_RESULT: unresolved <理由>`）。始める前に head が進んでいたら直さずに終える（`ASKHUB_RESULT: stale`）
+5. 結果を PR にコメントする（先頭に `<!-- ask-hub:orchestrator -->`）。直せなかったときは理由と、手元での修正が要ることを書く
+6. 同じ head のコミットでは 1 回しか試さない。PR ごとに 3 回まで試し、3 回目も直せなかったとき・3 回試した後にまた失敗したときは、
+   `<!-- ask-hub:ci-fix gave-up -->` を置いてあきらめたことをコメントし、ログに残す
+7. Claude の利用上限で終わったとき・head が進んでいたときは試したことにせず、`<!-- ask-hub:ci-fix cancel <head の SHA> -->` を置いたコメントで取り消す
+
+試した記録の正本は PR のコメントの目印で、PR を初めて見たとき（再起動の後・CI が通って一覧から外れた後にまた失敗したとき）にコメントから読み直す。
+そのため、再起動しても同じ head のコミットでは試し直さず、試した回数も数え直さない。目印はオーケストレーターのコメント（`<!-- ask-hub:orchestrator -->` で始まるもの）からだけ拾う。
+
+ログは `~/Library/Logs/askhub/loops/<リポジトリ>-ci-fix-<PR 番号>-*.log`（claude の出力）と、同じ名前の `-failed-jobs.log`（claude に渡した失敗したジョブのログ）。
 
 ## 固まったループを止める
 

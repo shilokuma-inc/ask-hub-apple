@@ -11,6 +11,8 @@ public protocol OrchestratorGitHub: Sendable {
     func removeReadyLabel(from discussion: ReadyDiscussion) async throws
     /// org 全体の open な `epic-final` PR のうち、GitHub が既定ブランチとコンフリクトすると判定したもの
     func conflictingEpicFinalPullRequests(orgs: [String]) async throws -> [ConflictingPullRequest]
+    /// org 全体の open な `epic-final` PR のうち、head のコミットの CI が失敗し、すべての check run が終わったもの（信用する author が作ったもの）
+    func failingEpicFinalPullRequests(orgs: [String], trust: TrustDirectory) async throws -> [FailingPullRequest]
     /// PR にコメントする
     func comment(onPullRequest number: Int, in repository: String, body: String) async throws
     /// epic の最終 PR の材料（子 PR・仮決め一覧・実機確認）を GitHub から集める
@@ -148,6 +150,9 @@ public actor Orchestrator {
     var conflictingPullRequests: [ConflictingPullRequest] = []
     /// 裏の解消が終わるのを待っている（`--once`・`run` の終わり）。その間は新しい解消を始めない
     var drainsConflictResolutions = false
+    var ciFixTracker = CIFixTracker()
+    /// 裏で実行中の最終 PR の CI の修正（キーはリポジトリの `owner/name` の小文字。コンフリクトの解消と合わせて、同じリポジトリでは 1 件ずつ）
+    var ciFixes: [String: Task<Void, Never>] = [:]
     var stallWatcher = StallWatcher()
     /// 状態用の Issue に書いた内容
     var loopStatusPublisher = LoopStatusPublisher()

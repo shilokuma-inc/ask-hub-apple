@@ -68,6 +68,7 @@ extension OrchestratorConfig {
             ideaCommand: ideaCommand,
             iterationTimeout: iterationTimeout,
             conflictCommand: conflictCommand,
+            ciFixCommand: ciFixCommand,
             repositoryCommands: repositoryCommands,
             trustsRepositoryWriters: trustsRepositoryWriters
         )

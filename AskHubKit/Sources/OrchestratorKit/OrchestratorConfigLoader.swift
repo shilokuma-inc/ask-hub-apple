@@ -112,6 +112,9 @@ public struct OrchestratorConfigLoader: Sendable {
             conflictCommand: try file.conflictCommand.map { arguments throws(OrchestratorConfigError) in
                 try ConflictCommandTemplate(arguments: arguments)
             },
+            ciFixCommand: try file.ciFixCommand.map { arguments throws(OrchestratorConfigError) in
+                try CIFixCommandTemplate(arguments: arguments)
+            },
             repositoryCommands: repositoryCommands,
             trustsRepositoryWriters: file.trustRepositoryWriters ?? true,
             buildHosts: try file.buildHosts.map { entry throws(OrchestratorConfigError) in try buildHostsConfig(from: entry) },
@@ -270,6 +273,7 @@ private struct ConfigFile: Decodable {
     let ideaCommand: [String]?
     let iterationTimeoutMinutes: Int?
     let conflictCommand: [String]?
+    let ciFixCommand: [String]?
     let createRepositoryCommand: [String]?
     let removeRepositoryCommand: [String]?
     let newRepositoryDirectory: String?

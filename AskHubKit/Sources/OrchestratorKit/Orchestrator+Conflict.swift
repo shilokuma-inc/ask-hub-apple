@@ -7,10 +7,11 @@ extension Orchestrator {
     /// 解消させるコマンドの制限時間。ビルドと検証を含むので長めにとる
     static let conflictCommandTimeout: Duration = .seconds(30 * 60)
 
-    /// ポーリングの最後に行うこと。epic の最終 PR が既定ブランチとコンフリクトしていたら裏で解消させ（終わるのは待たない）、
-    /// ループの状態を状態用の Issue に書き出す
+    /// ポーリングの最後に行うこと。epic の最終 PR が既定ブランチとコンフリクトしていたら裏で解消させ、
+    /// CI が失敗していたら裏で直させ（どちらも終わるのは待たない）、ループの状態を状態用の Issue に書き出す
     func finishPoll(statuses: [String: LoopStatus]) async {
         await startConflictResolutions()
+        await startCIFixes(statuses: statuses)
         await publishLoopStatuses(statuses: statuses)
         // 状態用の Issue を読み直した後に、手動ループの完了を見る
         await finalizeEpicsFromGitHub(statuses: statuses)
@@ -34,13 +35,13 @@ extension Orchestrator {
         startConflictResolutions(among: pullRequests)
     }
 
-    /// 裏で実行中の解消がすべて終わるまで待つ（`--once` で終わる前・`run` の終わりなど）。
+    /// 裏で実行中の解消・CI の修正がすべて終わるまで待つ（`--once` で終わる前・`run` の終わりなど）。
     /// 子プロセスはオーケストレーターの終了で止まらないので、結果を PR にコメントしてから終わる。
-    /// 待っている間は新しい解消を始めない（同じリポジトリの次の PR は、次のポーリングで始める）
+    /// 待っている間は新しい解消・修正を始めない（同じリポジトリの次の PR は、次のポーリングで始める）
     public func waitForConflictResolutions() async {
         drainsConflictResolutions = true
         defer { drainsConflictResolutions = false }
-        while let task = conflictResolutions.values.first {
+        while let task = conflictResolutions.values.first ?? ciFixes.values.first {
             await task.value
         }
     }
@@ -50,7 +51,9 @@ extension Orchestrator {
         guard activeUsageLimit(at: now()) == nil, !drainsConflictResolutions else {
             return
         }
-        for (pullRequest, repository) in conflictTracker.startable(in: pullRequests, config: config) {
+        // CI を直させているリポジトリでは始めない（同じ checkout に一時 worktree を作り、同じ epic ブランチに push するため）
+        let available = pullRequests.filter { ciFixes[$0.repository.lowercased()] == nil }
+        for (pullRequest, repository) in conflictTracker.startable(in: available, config: config) {
             let key = pullRequest.repository.lowercased()
             conflictTracker.start(pullRequest)
             conflictResolutions[key] = Task {

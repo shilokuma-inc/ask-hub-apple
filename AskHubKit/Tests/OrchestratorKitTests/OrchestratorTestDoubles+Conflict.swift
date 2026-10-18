@@ -1,3 +1,4 @@
+import AskHubKit
 import Foundation
 @testable import OrchestratorKit
 
@@ -23,7 +24,27 @@ extension FakeGitHub {
         state.withLock { $0.conflictingPullRequests }
     }
 
+    /// コメントは、次の取得で返るように Issue のコメントにも足す
     func comment(onPullRequest number: Int, in repository: String, body: String) async throws {
-        state.withLock { $0.pullRequestComments.append("\(repository)#\(number): \(body)") }
+        try state.withLock { state in
+            if state.pullRequestCommentFails {
+                throw TestError()
+            }
+            state.pullRequestComments.append("\(repository)#\(number): \(body)")
+            let id = 900_000 + state.pullRequestComments.count
+            state.issueComments[number, default: []].append(IssueComment(id: id, author: "mrs1669", body: body))
+        }
+    }
+
+    func setPullRequestCommentFails(_ fails: Bool) {
+        state.withLock { $0.pullRequestCommentFails = fails }
+    }
+
+    func setFailingPullRequests(_ pullRequests: [FailingPullRequest]) {
+        state.withLock { $0.failingPullRequests = pullRequests }
+    }
+
+    func failingEpicFinalPullRequests(orgs: [String], trust: TrustDirectory) async throws -> [FailingPullRequest] {
+        state.withLock { $0.failingPullRequests }
     }
 }
