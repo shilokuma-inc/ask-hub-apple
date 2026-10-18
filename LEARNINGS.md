@@ -126,6 +126,9 @@
 - worktree ごとに分けた新しい DerivedData（`-derivedDataPath`）で `xcodebuild` すると、SwiftLint の Build Tool Plugin の検証
   （`Validate plug-in "SwiftLintBuildToolPlugin"`）で止まる。手元では `-skipPackagePluginValidation` を付ける（CI は `IDESkipPackagePluginFingerprintValidatation` の `defaults write`）。
   `swiftlint` が `PATH` に無い Mac では、その DerivedData の `SourcePackages/artifacts/swiftlintplugins/SwiftLintBinary/SwiftLintBinary.artifactbundle/macos/swiftlint` で `lint --strict` を流せる（CI と同じバイナリ）
+- アプリのテストターゲット（`AskHubTests`）も MainActor 既定なので、`@MainActor final class X: XCTestCase` や注釈なしの `XCTestCase` のサブクラスは
+  「main actor-isolated initializer 'init(invocation:)' has different actor isolation from nonisolated overridden declaration」でビルドが落ちる。
+  `nonisolated final class X: XCTestCase` にして、View を扱うテストメソッドにだけ `@MainActor` を付ける（`NSHostingView` で撮るスクリーンショットのテストなど）
 
 ## Keychain
 

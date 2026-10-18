@@ -50,6 +50,8 @@ final class LoopStatusModel {
     private let organizations: () -> [String]
     /// 取得中に `refresh()` が呼ばれたか。取得が終わったら最新のトークンで取り直す
     private var needsRefreshAfterLoading = false
+    /// organization の節の見出しに出すアバター画像（一覧を取り直しても画像は取り直さない）
+    let avatars: OrganizationAvatarStore
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
@@ -60,9 +62,11 @@ final class LoopStatusModel {
         makeStarter: @escaping @Sendable (String) -> any LoopStarting = { GitHubLoopStarter(client: GitHubClient(token: $0)) },
         makeFinalInstructions: @escaping @Sendable (String, any TrustedAuthorsResolving) -> any ManualLoopFinalInstructionsChecking = {
             GitHubManualLoopFinalInstructions(client: GitHubClient(token: $0), trustedAuthors: $1)
-        }
+        },
+        avatars: OrganizationAvatarStore = OrganizationAvatarStore()
     ) {
         self.tokenStore = tokenStore
+        self.avatars = avatars
         self.makeTrust = makeTrust
         self.makeStarter = makeStarter
         self.organizations = organizations
