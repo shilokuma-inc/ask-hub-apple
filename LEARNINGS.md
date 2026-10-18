@@ -129,6 +129,9 @@
 - アプリのテストターゲット（`AskHubTests`）も MainActor 既定なので、`@MainActor final class X: XCTestCase` や注釈なしの `XCTestCase` のサブクラスは
   「main actor-isolated initializer 'init(invocation:)' has different actor isolation from nonisolated overridden declaration」でビルドが落ちる。
   `nonisolated final class X: XCTestCase` にして、View を扱うテストメソッドにだけ `@MainActor` を付ける（`NSHostingView` で撮るスクリーンショットのテストなど）
+- プライバシーマニフェスト（`AskHub/PrivacyInfo.xcprivacy`）は `PBXFileSystemSynchronizedRootGroup` のフォルダに置くだけでリソースに入る
+  （iOS は `AskHub.app/PrivacyInfo.xcprivacy`、macOS は `Contents/Resources/PrivacyInfo.xcprivacy`）。
+  理由の申告が漏れていても Upload（TestFlight）は成功するので、CI では気づけない。`UserDefaults` 以外の理由の申告が要る API を使い始めたら、ここに理由を足す（`docs/app-review.md`）
 
 ## Keychain
 
