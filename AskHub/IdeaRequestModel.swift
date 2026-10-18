@@ -17,7 +17,7 @@ final class IdeaRequestModel {
 
     private(set) var repositories: [RequestRepository] = []
 
-    /// Picker に出すまとまり（担当 PC の有無）。候補は絞らない
+    /// Picker に出すまとまり（担当 PC の有無と owner の組）。候補は絞らない
     func repositorySections(now: Date) -> [RepositorySection] {
         RepositorySection.grouping(repositories, now: now)
     }
@@ -152,6 +152,11 @@ final class IdeaRequestModel {
     /// 作成を任せられる担当リポジトリ（担当 PC がいるもの）。そのリポジトリの担当 PC が作成し、担当に加える
     func assignedRepositories(now: Date) -> [String] {
         repositories.filter { $0.isAssigned(now: now) }.map(\.fullName)
+    }
+
+    /// 作成を任せる PC の Picker に出すまとまり。候補は担当 PC のいるものだけなので、owner だけで分ける（Discussion #572 Q4）
+    func assignedRepositorySections(now: Date) -> [RepositorySection] {
+        RepositorySection.byOwner(assignedRepositories(now: now))
     }
 
     /// 担当リポジトリの作成・削除の依頼（`repo-request` の Issue）を `repository` に作る。送れたら送った依頼を返す

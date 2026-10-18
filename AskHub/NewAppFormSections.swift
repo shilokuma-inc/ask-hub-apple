@@ -106,8 +106,12 @@ struct NewAppFormSections: View {
             Section {
                 Picker("作成を任せる PC", selection: $hub) {
                     Text("選択してください").tag(String?.none)
-                    ForEach(model.assignedRepositories(now: Date()), id: \.self) { repository in
-                        Text(InboxSubject.shortRepository(repository)).tag(Optional(repository))
+                    ForEach(model.assignedRepositorySections(now: Date())) { section in
+                        Section(section.title) {
+                            ForEach(section.repositories, id: \.self) { repository in
+                                Text(InboxSubject.shortRepository(repository)).tag(Optional(repository))
+                            }
+                        }
                     }
                 }
                 .accessibilityIdentifier("hub-picker")

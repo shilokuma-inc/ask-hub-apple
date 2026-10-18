@@ -744,6 +744,7 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
 - 作成では GitHub に**既定で public** のリポジトリを作り（private では GitHub Actions の実行時間が課金の対象になるため）、名前を変えて `develop` に**直接 push** する。
   App Store Connect でのアプリの作成は Web でしかできないため、新しいリポジトリに `needs-verify` の Issue を立てる（アプリの「実機確認」に出る）
 - 削除では GitHub のリポジトリは消さない。ループのプロセスが動いていれば、強制でも外さない。最後の担当リポジトリは外せない
+- アプリの「新しいアプリ」で作成を任せる PC を選ぶ Picker は、担当 PC のいるリポジトリだけを候補にし、owner ごとの Section に分ける（見出しは owner 名。organization が 1 つだけでも出す。[Discussion #572](https://github.com/shilokuma-inc/ask-hub-apple/discussions/572) の Q4）。並べ方は「依頼先のリポジトリ」と同じ（`RepositorySection.byOwner`）
 - 処理できたら結果をコメントしてクローズする。処理できなければ理由をコメントする（直したら、その Issue を閉じて依頼し直す）。
   コメントにはローカルのパスを書かない（public のリポジトリでは誰でも読めるため）
 
