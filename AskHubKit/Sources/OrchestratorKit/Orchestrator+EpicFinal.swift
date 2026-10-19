@@ -118,6 +118,8 @@ extension Orchestrator {
             let body = EpicSnapshot.pullRequestBody(summary: summary, discussion: snapshot.discussion)
             let number = try await github.createEpicFinalPullRequest(in: repository.fullName, head: branch, body: body)
             log("\(repository.fullName) の \(branch) が完了したので、最終 PR #\(number) を作りました")
+            // 今の「最終 PR に載せる内容」で作ったので、書き直しの対象（最終 PR を作る前に ask の回答で再開したもの）から外す
+            epicsToRefresh.remove(key)
             // ラベルの付与に失敗しても、次のポーリングで既存の PR として付け直す
             try await github.addEpicFinalLabel(in: repository.fullName, number: number)
             finalizedEpics.insert(key)
