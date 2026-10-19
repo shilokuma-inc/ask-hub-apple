@@ -54,6 +54,20 @@ done
 if [[ ! -f "$CONFIG" ]]; then
   echo "警告: 設定ファイルがありません: ${CONFIG}（docs/orchestrator.md の「設定ファイル」を参照）" >&2
 fi
+# launchd から動くコマンド（第三者レビューの要修正の修正など）が Simulator でテストを流すには、開発者モードが要る。
+# 無効だと、テストのホストに接続する権限を得るたびに認証を求められ、画面の無い launchd のジョブでは
+# 「DTServiceHubClient failed to bless service hub」で失敗する
+if command -v DevToolsSecurity >/dev/null 2>&1; then
+  DEVTOOLS_STATUS=$(DevToolsSecurity -status 2>&1 || true)
+  if [[ "$DEVTOOLS_STATUS" != *"currently enabled"* ]]; then
+    echo "警告: 開発者モードが無効です。launchd から動くコマンドが Simulator でテストを流せません。sudo DevToolsSecurity -enable で有効にしてください" >&2
+  fi
+fi
+# pipefail のもとで grep -q に渡すと、前のコマンドが SIGPIPE で失敗扱いになりうるので、変数に入れてから調べる
+USER_GROUPS=" $(id -Gn) "
+if [[ "$USER_GROUPS" != *" _developer "* ]]; then
+  echo "警告: $(id -un) が _developer グループに入っていません。開発者モードを有効にしても Simulator でテストを流せないことがあります（sudo dseditgroup -o edit -a $(id -un) -t user _developer で足せます）" >&2
+fi
 
 echo "release ビルド中…"
 swift build --package-path "$REPO_ROOT/AskHubKit" -c release --product askhub-orchestrator >/dev/null

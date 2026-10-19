@@ -135,6 +135,10 @@
 - プライバシーマニフェスト（`AskHub/PrivacyInfo.xcprivacy`）は `PBXFileSystemSynchronizedRootGroup` のフォルダに置くだけでリソースに入る
   （iOS は `AskHub.app/PrivacyInfo.xcprivacy`、macOS は `Contents/Resources/PrivacyInfo.xcprivacy`）。
   理由の申告が漏れていても Upload（TestFlight）は成功するので、CI では気づけない。`UserDefaults` 以外の理由の申告が要る API を使い始めたら、ここに理由を足す（`docs/app-review.md`）
+- 開発者モード（`DevToolsSecurity -status` が disabled）の Mac では、launchd から動く `xcodebuild test` の Simulator のテストが
+  「unable to connect to "com.apple.instruments.deviceservice.lockdown" … DTServiceHubClient failed to bless service hub」の後に始まらず、`** BUILD INTERRUPTED **` で終わる。
+  Simulator の再起動・作り直し・`testmanagerd` の停止では直らない。テストのホストに接続する権限を得るたびに認証を求められ、launchd のジョブには認証の画面が無いため。
+  `sudo DevToolsSecurity -enable` で直る（`_developer` グループへの所属も要る）
 
 ## Keychain
 
