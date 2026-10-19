@@ -48,7 +48,7 @@ public struct AnswerSnapshot: Sendable, Equatable {
 /// 同じリポジトリで自動ループと手動ループが回るので、PR の base が自動ループの epic のときだけ再開する
 /// （手動ループの epic 宛ての PR の回答は、担当者が自分の Mac で再開する）。
 /// オーケストレーターを再起動すると忘れるので、その直後は回答済みの ask が残る PR のリポジトリを 1 回再開しうる。
-/// 途中の epic が無いリポジトリは再開しない（起動スクリプトも断る。`LaunchPlanner` の `epicsInProgress` と同じ判断）
+/// 未完了のタスク（回答待ちのものを含む）が残る epic が無いリポジトリは再開しない（起動スクリプトも断る）
 public struct ResumeWatcher: Sendable, Equatable {
     /// ループの開始を確かめられないまま再開を試す回数の上限
     public static let maxAttempts = 3
@@ -76,7 +76,7 @@ public struct ResumeWatcher: Sendable, Equatable {
         case resume(repositoryKey: String)
         /// 上限まで試しても再開を確かめられなかった
         case giveUp(repositoryKey: String, attempts: Int)
-        /// 途中の epic が無いので再開しない（未完了のタスクが回答待ちのものだけ・epic が無い）
+        /// 再開する epic が無いので再開しない（未完了のタスクが無い・epic が無い）
         case noEpicInProgress(repositoryKey: String)
     }
 
@@ -90,7 +90,7 @@ public struct ResumeWatcher: Sendable, Equatable {
     /// 担当リポジトリの `needs-answer` の一覧とループの状態から、行うことを返す
     /// - Parameters:
     ///   - snapshots: 担当リポジトリのものだけを渡す
-    ///   - epicsInProgress: 途中の epic（`EpicSnapshot.inProgress`）があるリポジトリ（`fullName` の小文字）。
+    ///   - epicsInProgress: 未完了のタスクが残る epic（`EpicSnapshot.inProgress` か `awaitingAnswer`）があるリポジトリ（`fullName` の小文字）。
     ///     それ以外は起動スクリプトが「未完了のタスクがありません」で断り、state ファイルを作らずに終わる
     ///   - automaticEpics: リポジトリ（`fullName` の小文字）ごとの、この PC の自動ループの epic（制御用 worktree のブランチ）。
     ///     PR の base がこれと同じときだけ再開する

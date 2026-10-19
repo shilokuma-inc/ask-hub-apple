@@ -310,7 +310,8 @@ public actor Orchestrator {
         let actions = watcher.update(
             snapshots: snapshots,
             statuses: statuses,
-            epicsInProgress: Set(epics.filter(\.value.inProgress).keys),
+            // 回答待ちのタスクしか残っていない epic（最終 PR のマージ待ちも）も、回答を処理させるために再開する
+            epicsInProgress: Set(epics.filter { $0.value.inProgress || $0.value.awaitingAnswer }.keys),
             automaticEpics: automaticEpicBranches(in: epics),
             manualLoopRepositories: manualLoopRepositories
         )
@@ -326,7 +327,7 @@ public actor Orchestrator {
                 guard let repository = config.repository(named: key) else {
                     continue
                 }
-                if await resume(repository) {
+                if await resume(repository, branch: epics[key]?.branch) {
                     // 同じ周回の ready-for-loop の判定で、二重に起動しない
                     statuses[key] = LoopStatus(stateFileExists: false, processAlive: true)
                 }
@@ -335,19 +336,21 @@ public actor Orchestrator {
                 log("\(key) のループの再開を \(attempts) 回確かめられませんでした。次の回答が付くまで再開しません（loopCommand を確認してください）")
 
             case let .noEpicInProgress(key):
-                log("\(key) の ask に回答が付きましたが、途中の epic（回答待ちでない未完了のタスク）が無いので、ループは再開しません")
+                log("\(key) の ask に回答が付きましたが、途中の epic（回答待ちを含む未完了のタスク）が無いので、ループは再開しません")
             }
         }
     }
 
-    /// 回答を受けてループを再開する。起動できたら `true`
-    private func resume(_ repository: RepositoryConfig) async -> Bool {
+    /// 回答を受けてループを再開する。起動できたら `true`。`branch` は制御用 worktree の epic
+    private func resume(_ repository: RepositoryConfig, branch: String?) async -> Bool {
         let key = repository.fullName.lowercased()
+        // 回答待ちのタスクしか残っていなくても起動スクリプトが起動するよう、ask への回答による再開だと伝える
+        let reason = [Self.resumeReasonVariable: Self.answerResumeReason]
         do {
             // 再開では Discussion を伴わないので `{discussion}` は空になる
             try await runtime.launch(
                 config.loopCommand.render(for: repository),
-                environment: loopEnvironment(for: repository),
+                environment: loopEnvironment(for: repository).merging(reason) { _, new in new },
                 for: repository
             )
         } catch {
@@ -356,6 +359,13 @@ public actor Orchestrator {
             return false
         }
         watcher.recordLaunch(repositoryKey: key)
+        if let branch {
+            // 最終 PR を作った後の epic でも、ループが再び完了したら「最終 PR に載せる内容」で本文を書き直す
+            // （回答待ちの PR の扱いが変わるため）。最終 PR がまだ無ければ、作るときに外す
+            let epicKey = "\(key) \(branch)"
+            finalizedEpics.remove(epicKey)
+            epicsToRefresh.insert(epicKey)
+        }
         log("\(repository.fullName) の ask に回答が付いたので、ループを再開しました")
         return true
     }

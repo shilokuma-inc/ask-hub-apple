@@ -280,6 +280,8 @@ extension Orchestrator {
     static let decisionLogResumeReason = "decision-log"
     /// 最終 PR への指示による再開。起動スクリプトは、未完了のタスクが無くてもループを起動する
     static let finalPullRequestResumeReason = "final-pr"
+    /// ask への回答による再開。起動スクリプトは、未完了のタスクが回答待ちのものだけでもループを起動する
+    static let answerResumeReason = "answer"
     /// 起動スクリプトに、制御用 worktree を戻す epic を伝える環境変数（制御用 worktree が別の epic に移っているとき）
     static let restoreEpicVariable = "ASKHUB_RESTORE_EPIC"
     /// 指示で、ループの開始を確かめられないまま起動を試す回数の上限（仮決め一覧・最終 PR で共通）
