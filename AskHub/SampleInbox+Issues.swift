@@ -124,6 +124,64 @@ extension SampleInboxSource {
                 ## 期待する結果
                 - 音とタップの判定がずれない
                 """
+        ),
+        // 以下はリポジトリでの絞り込み・作成日と更新日の並び替えを試すためのもの（Discussion #586）。
+        // ask-hub-apple を 2 件にして絞り込みで件数が変わるようにし、作成が古いのに更新も古いものを入れて並び替えで順が変わるようにする
+        InboxIssue(
+            id: "I_61",
+            kind: .decisionLog,
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 61,
+            title: "【CHORE】epic/settings-ui の仮決め一覧",
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/61")!,
+            author: "mrs1669",
+            createdAt: Self.now.addingTimeInterval(-14 * 24 * 60 * 60),
+            updatedAt: Self.now.addingTimeInterval(-1 * 24 * 60 * 60),
+            body: """
+                チェックを付けたものは承認。変更したいものはコメントで `#<PR番号> は別案 1 で` のように指示。返答のないものは既定値のまま確定する。
+
+                - [ ] #62 設定画面の項目の順 → 採用: トークン・リポジトリ・表示の順（別案: 表示を先頭に）
+                """
+        ),
+        InboxIssue(
+            id: "I_44",
+            kind: .needsVerify,
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 44,
+            title: "【CHORE】実機確認: iPad での受信箱の 2 列表示",
+            url: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/44")!,
+            author: "mrs1669",
+            createdAt: Self.now.addingTimeInterval(-20 * 24 * 60 * 60),
+            updatedAt: Self.now.addingTimeInterval(-2 * 24 * 60 * 60),
+            body: """
+                \(VerifyMarker(pullRequest: 43, epic: "epic/ipad-layout").marker)
+                元の PR: #43
+
+                ## 確認手順
+                1. iPad で AskHub を開き、横向きにする
+
+                ## 期待する結果
+                - 一覧と詳細が 2 列で並び、行を選ぶと右に詳細が出る
+                """
+        ),
+        // 別の owner の同じ名前のリポジトリ。絞り込みの候補では owner/repo で見分ける
+        InboxIssue(
+            id: "I_8",
+            kind: .needsVerify,
+            repository: "mrs1669/beat-tap-ios",
+            number: 8,
+            title: "【CHORE】実機確認: 個人のフォークでのメトロノームの音量",
+            url: URL(string: "https://github.com/mrs1669/beat-tap-ios/issues/8")!,
+            author: "mrs1669",
+            createdAt: Self.now.addingTimeInterval(-4 * 60 * 60),
+            updatedAt: Self.now.addingTimeInterval(-4 * 60 * 60),
+            body: """
+                ## 確認手順
+                1. 実機で練習モードを開き、メトロノームを鳴らす
+
+                ## 期待する結果
+                - 消音モードでもメトロノームの音が出る
+                """
         )
     ]
 }
