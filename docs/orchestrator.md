@@ -514,7 +514,7 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
    checkout のパスは `newRepositoryDirectory/<リポジトリ名>`。GitHub に作るだけの依頼では空文字列
 2. スクリプトは、テンプレートからリポジトリを作り（依頼の `private` が `true` でなければ public）、clone して `scripts/rename.sh` でアプリ名を変え、
    `Configs/Project.xcconfig` の `APP_BUNDLE_IDENTIFIER` を書いて `develop` に直接 push する。
-   AskHub のラベルを作り、App Store Connect への登録を `needs-verify` の Issue にする。
+   Discussions を有効にし（依頼から作る Discussion のカテゴリ「Ideas」が要る）、AskHub のラベルを作り、App Store Connect への登録を `needs-verify` の Issue にする。
    途中で失敗しても、やり直すと続きから進む（テンプレートから作った同名のリポジトリ・同じ origin の checkout は使い回す）
 3. 成功したら、clone した場合は設定ファイルの `repositories` に加える（元のファイルは `orchestrator.json.bak` に写す）。
    次のポーリングを待たずに担当リポジトリとして扱う
