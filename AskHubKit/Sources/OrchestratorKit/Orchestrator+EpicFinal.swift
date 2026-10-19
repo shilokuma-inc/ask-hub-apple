@@ -112,6 +112,8 @@ extension Orchestrator {
                     }
                     try await github.addEpicFinalLabel(in: repository.fullName, number: existing.number)
                 }
+                // 閉じた PR は書き直さないので、書き直しの対象に残さない（残すと、ほかの epic を戻す指示が書き直しを待ち続ける）
+                epicsToRefresh.remove(key)
                 finalizedEpics.insert(key)
                 return false
             }
