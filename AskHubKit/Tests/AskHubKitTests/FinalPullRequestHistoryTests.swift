@@ -50,6 +50,19 @@ struct FinalPullRequestHistoryTests {
         #expect(history.unprocessedInstructions == [comments[3], comments[4]])
     }
 
+    @Test func doesNotTreatReviewStatusOrThirdPartyReviewAsInstructions() {
+        let sha = String(repeating: "a", count: 40)
+        let comments = [
+            Self.comment(1, "mrs1669", "<!-- ask-hub:final-review state=\"waiting\" sha=\"\(sha)\" attempts=\"0\" -->\n### 第三者レビューの進み具合"),
+            Self.comment(2, "mrs1669", "\n<!-- ralph:third-party-review sha=\"\(sha)\" must=\"2\" may=\"3\" -->\n## 🔍 コードレビュー（第三者）"),
+            // 指示が引用した中にあっても、指示のまま扱う
+            Self.comment(3, "mrs1669", "要修正 1 を直して\n> <!-- ralph:third-party-review sha=\"\(sha)\" must=\"2\" -->")
+        ]
+        let history = FinalPullRequestHistory(comments: comments, trustedAuthors: Self.trusted)
+        #expect(history.entries.map(\.kind) == [.orchestrator, .orchestrator, .instruction(isProcessed: false)])
+        #expect(history.unprocessedInstructions == [comments[2]])
+    }
+
     @Test func ignoresMarkersWrittenByUntrustedAuthors() {
         let comments = [
             Self.comment(1, "mrs1669", "#discussion_r100 を直して"),
