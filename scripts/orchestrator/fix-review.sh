@@ -66,6 +66,8 @@ cleanup() {
   rm -rf "$TMP"
 }
 trap cleanup EXIT
+# 制限時間を過ぎたオーケストレーターの SIGTERM でも、EXIT の trap（後片付け）を走らせてから終わる
+trap 'exit 143' TERM
 
 # origin の head を REMOTE_HEAD に入れる。読めなければ failed で終わる
 # （コマンド置換の中で failed を呼ぶとサブシェルしか終わらないので、置換の外で呼ぶ）

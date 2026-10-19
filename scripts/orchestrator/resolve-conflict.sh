@@ -52,6 +52,8 @@ cleanup() {
   rm -rf "$TMP"
 }
 trap cleanup EXIT
+# 制限時間を過ぎたオーケストレーターの SIGTERM でも、EXIT の trap（後片付け）を走らせてから終わる
+trap 'exit 143' TERM
 
 git -C "$CHECKOUT" fetch -q origin "$HEAD_BRANCH" "$BASE_BRANCH" || unresolved "origin から ${HEAD_BRANCH} / ${BASE_BRANCH} を取得できませんでした"
 HEAD_SHA=$(git -C "$CHECKOUT" rev-parse "origin/$HEAD_BRANCH")
