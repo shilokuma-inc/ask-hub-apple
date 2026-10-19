@@ -257,6 +257,9 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 
 1. **アカウント**: `claude` にログインする（Mac ごとに別のアカウントでよい）。`gh auth login` は信用する author のアカウントで行う
 2. **開発ツール**: Xcode と iOS Simulator のランタイム、`brew install gh jq swiftlint`
+   開発者モードを有効にする（`sudo DevToolsSecurity -enable`。`DevToolsSecurity -status` が `enabled` になる）。ユーザーが `_developer` グループに入っていることも確かめる（`id -Gn`）。
+   無効だと、テストのホストに接続する権限を得るたびに認証を求められる。launchd から動くコマンド（`askhub-fix-review` など）には認証の画面が無いので、
+   Simulator のテストが「DTServiceHubClient failed to bless service hub」で始まらず、修正を push できない。`scripts/orchestrator/install.sh` は、無効なら警告する
 3. **共有設定**: `git clone git@github.com:mrs1669/agents-config.git ~/.agents && ~/.agents/install.sh`（AGENTS.md と LEARNINGS の hook）
 4. **常駐の前提**: スリープを止める・停電後に自動で起動する・ログインしたままにする（LaunchAgent はログイン中のユーザーで動く）。
    `~/.claude/settings.json` の `skipDangerousModePermissionPrompt` は `true` のまま（無人で `bypassPermissions` を使うため）
