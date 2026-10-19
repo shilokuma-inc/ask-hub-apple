@@ -135,6 +135,8 @@
 - プライバシーマニフェスト（`AskHub/PrivacyInfo.xcprivacy`）は `PBXFileSystemSynchronizedRootGroup` のフォルダに置くだけでリソースに入る
   （iOS は `AskHub.app/PrivacyInfo.xcprivacy`、macOS は `Contents/Resources/PrivacyInfo.xcprivacy`）。
   理由の申告が漏れていても Upload（TestFlight）は成功するので、CI では気づけない。`UserDefaults` 以外の理由の申告が要る API を使い始めたら、ここに理由を足す（`docs/app-review.md`）
+- ツールバーの `Menu` の中の `Picker`（`.pickerStyle(.inline)`）の項目は、iOS の UI テストでは `app.buttons["<項目の文言>"]` で引けて、`tap()` で選べる。メニュー自体は `app.buttons["<Menu のラベル>"].firstMatch` で開く。
+  一覧の並びは行の `staticTexts[…].frame.minY` を比べて確かめる
 
 ## Keychain
 
@@ -219,3 +221,4 @@
   切り出した View の `body` は `Group { Section … }` にすると、`.onAppear` などの修飾子を `Section` 群にまとめて付けられる
 - `.background(.bar)` のような `ShapeStyle` の背景は既定で safe area まで広がるため、`safeAreaInset(edge: .top)` の帯に付けると iOS の大きいタイトルを覆ってぼかす。
   帯の中だけに付けるときは `.background(.bar, ignoresSafeAreaEdges: [])` にする
+- `Menu` の中で `Section("見出し") { Picker(…).pickerStyle(.inline) }` と包んでも、iOS 26 のメニューには見出しが出ず、区切り線だけになる（`Picker` の中に置く `Section` とは違う）
