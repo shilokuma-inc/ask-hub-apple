@@ -35,6 +35,7 @@ struct FakeGitHubState {
     var updatedComments: [String] = []
     var commentUpdateFailures: [Int: (status: Int, message: String?)] = [:]
     var pullRequestComments: [String] = []
+    var pullRequestCommentFails = false
     /// epic のブランチごとの、最終 PR の材料
     var epicMaterials: [String: EpicMaterials] = [:]
     var heartbeatFails = false

@@ -70,6 +70,7 @@ extension OrchestratorConfig {
             conflictCommand: conflictCommand,
             reviewCommand: reviewCommand,
             fixCommand: fixCommand,
+            ciFixCommand: ciFixCommand,
             repositoryCommands: repositoryCommands,
             trustsRepositoryWriters: trustsRepositoryWriters
         )

@@ -284,6 +284,8 @@ struct GitHubMergeQueueTests {
 
         #expect(pulls.map(\.number) == [1, 2, 3, 4, 5, 6, 7, 8, 9])
         #expect(pulls.map(\.checks) == [.success, .pending, .failure, .none, .none, .success, .failure, .failure, .success])
+        // 失敗していても、終わっていない check run があれば分かる（オーケストレーターはすべて終わってから直させる）
+        #expect(pulls.map(\.hasRunningChecks) == [false, true, true, false, false, false, false, false, false])
         // 1 は CI が成功していて、CodeRabbit のレビュー中（処理中）だけが残る
         #expect(pulls[0].blockingReason == "レビュー待ちです（CodeRabbit か第三者レビュー）")
         #expect(pulls[3].blockingReason == "CI が実行されていません")

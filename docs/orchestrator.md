@@ -155,6 +155,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `conflictCommand` | | epic の最終 PR のコンフリクトを解消させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-resolve-conflict`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` が使える |
 | `reviewCommand` | | epic の最終 PR に第三者レビューをさせるコマンド（Discussion #503。30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-review-final`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` / `{headSHA}`（レビューの対象として確認した head）が使える |
 | `fixCommand` | | epic の最終 PR の第三者レビューの `要修正` を直させるコマンド（ビルドとテストまで行うので 60 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-fix-review`（`install.sh` が置く）。使えるプレースホルダは `reviewCommand` と同じ（`{headSHA}` は push の lease に使う） |
+| `ciFixCommand` | | epic の最終 PR の CI の失敗を、失敗したジョブのログを読ませて直させるコマンド（60 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-fix-ci`（`install.sh` が置く）。使えるプレースホルダは `reviewCommand` と同じ（`{headSHA}` は CI が失敗した head。push の lease に使う） |
 | `buildHosts` | | ループのビルドの Mac（xcb）の情報を GitHub に書き出す設定（下の「`buildHosts`」）。**xcb を動かしている Mac のオーケストレーターだけに書く**。省略するとこの機能を止める |
 | `model` | | 起動する `claude`（ループ・準備・コンフリクトの解消・最終 PR の第三者レビューと修正・依頼からの Discussion 作成）のモデル。省略時は `claude-opus-5-5`。`opus` などの別名も書ける。環境変数 `ANTHROPIC_MODEL` で渡すので、`ideaCommand` などを書き換えても効く。Discussion でモデルを指定したループ（`docs/protocol.md` の「ループのモデルとエフォート」）はそちらを使う |
 | `effort` | | 起動する `claude` のエフォート（`low` / `medium` / `high` / `xhigh` / `max`）。省略時は claude の既定（`auto` を渡し、オーケストレーターの起動元の値は引き継がない）。環境変数 `CLAUDE_CODE_EFFORT_LEVEL` で渡す。Discussion で指定したループはそちらを使う |
@@ -675,7 +676,24 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 - 進み具合は、最終 PR に目印（`ask-hub:final-review`）付きの状態コメント 1 件として書き出し、変わったら書き換える（`docs/protocol.md` の「最終 PR の第三者レビューの進み具合」）。
   CodeRabbit を待っている間と CodeRabbit がレビューしたときは、まだコメントが無ければ作らない。書き出しに失敗したら次のポーリングで書き直す
 
-ログは `~/Library/Logs/askhub/loops/<リポジトリ>-review-<PR 番号>-*.log` と `…-fix-review-<PR 番号>-*.log`（claude の出力）。
+ログは `~/Library/Logs/askhub/loops/<リポジトリ>-review-<PR 番号>-*.log` と `…-fix-review-<PR 番号>-*.log`・`…-ci-fix-<PR 番号>-*.log`（claude の出力）と、
+`…-ci-fix-<PR 番号>-*-failed-jobs.log`（claude に渡した失敗したジョブのログ）。
+
+### CI の失敗を直す
+
+epic が完了した後はループが終わっているので、最終 PR の CI が失敗すると、誰かが気付くまで失敗したまま残る。
+第三者レビューと同じ取得・同じ追跡（`FinalReviewTracker` の `fixCI`）で、CI の失敗を直させる。
+
+- 今の head で GitHub Actions の check run が失敗し、**すべての check run が終わった**（`EpicPullRequest.hasRunningChecks` が `false`）ら、
+  第三者レビューより先に `ciFixCommand`（既定は `askhub-fix-ci`）を実行する。CodeRabbit が今の head をレビューした後でも直させる。
+  コンフリクトしている PR は始めない（解消で head が変わる）。同じリポジトリでは、コンフリクトの解消・第三者レビュー・修正と合わせて 1 件ずつ
+- 同じ head では 1 回だけ、PR ごとに 3 回まで試す。3 回目も直せなかったとき・3 回試した後にまた失敗したときは、あきらめたことを PR にコメントし、ログに残す。
+  直せなかった head では試し直さない（人が push して head が変われば、上限まで試す）
+- 直させる前に、PR に目印（`ask-hub:ci-fix action="attempt"`）付きのコメントを書く。書けなければ始めない。
+  記録の正本はこの目印で、オーケストレーターを再起動しても同じ head では試し直さず、回数も数え直さない（`docs/protocol.md` の「最終 PR の CI の修正の記録」）
+- Claude の利用上限で終わったとき・始める前に head が進んでいたとき（`stale`）は、`action="cancel"` の目印で取り消し、試したことにしない
+- 結果（直して push した・直せなかった理由）を PR にコメントする。先頭に `<!-- ask-hub:orchestrator -->` を置き、最終 PR への指示と見分けさせる
+- ループの制御用 worktree には触れない（一時 worktree で直す）。push は `headSHA` を lease にするので、ループが同じ epic ブランチに push していたら上書きしない
 
 ### 状態と遷移
 
@@ -717,7 +735,18 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
 4. origin の head が `headSHA` のままなら `--force-with-lease=refs/heads/<epic>:<headSHA>` で push する（`ASKHUB_RESULT: fixed <新しい head>`）。
    進んでいれば push しない（`stale`）。claude が自分で push していたら失敗にする
 
-どちらも、失敗は `ASKHUB_RESULT: failed <理由>`（終了コード 2）。origin を読めなかったときも `stale` ではなく失敗にする。
+### `askhub-fix-ci`（CI の失敗の修正）
+
+`scripts/orchestrator/fix-ci.sh`。引数は `askhub-review-final` と同じ。
+
+1. origin の head が `headSHA` のままかを確かめ、進んでいれば何もしない（`stale`）
+2. `gh run list --commit <headSHA> --status failure` で失敗した run を探し、`gh run view <run> --log-failed` のログ（run ごとに末尾 400 行）を worktree の外に置く。
+   失敗した run が見つからなければ失敗にする
+3. 一時 worktree で `claude -p` にログを読ませて直させ、失敗したジョブに対応する CLAUDE.md の検証を通させてコミットさせる。
+   テストの削除・スキップや lint・CI の設定を緩めて失敗を隠すことはさせない。CI の環境による一時的な失敗なら、直さずに失敗として理由を返させる
+4. push の前の確認と push の仕方は `askhub-fix-review` と同じ（`ASKHUB_RESULT: fixed <新しい head>`）
+
+いずれも、失敗は `ASKHUB_RESULT: failed <理由>`（終了コード 2）。origin を読めなかったときも `stale` ではなく失敗にする。
 
 ## 固まったループを止める
 

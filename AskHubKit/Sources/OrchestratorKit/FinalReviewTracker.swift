@@ -12,19 +12,36 @@ public struct FinalReviewCandidate: Sendable, Equatable {
     public let thirdPartyReview: ThirdPartyReviewMarker?
     /// 今の head を GitHub が受け取った時刻の推定（`EpicPullRequest.headSince`）。分からなければ `nil`
     public let headSince: Date?
+    /// 今の head の CI（GitHub Actions）の状態
+    public let checks: EpicPullRequest.ChecksState
+    /// まだ終わっていない check run があるか（失敗していても、すべて終わってから直させる）
+    public let hasRunningChecks: Bool
+    /// CI の失敗を直させた記録（PR のコメントの目印から）
+    public let ciFix: CIFixRecord
 
     public init(
         pullRequest: FinalReviewPullRequest,
         codeRabbit: EpicPullRequest.CodeRabbitState,
         isConflicting: Bool,
         thirdPartyReview: ThirdPartyReviewMarker? = nil,
-        headSince: Date? = nil
+        headSince: Date? = nil,
+        checks: EpicPullRequest.ChecksState = .success,
+        hasRunningChecks: Bool = false,
+        ciFix: CIFixRecord = CIFixRecord()
     ) {
         self.pullRequest = pullRequest
         self.codeRabbit = codeRabbit
         self.isConflicting = isConflicting
         self.thirdPartyReview = thirdPartyReview
         self.headSince = headSince
+        self.checks = checks
+        self.hasRunningChecks = hasRunningChecks
+        self.ciFix = ciFix
+    }
+
+    /// CI が失敗し、すべての check run が終わった（失敗したジョブのログが揃っている）
+    var ciFailed: Bool {
+        checks == .failure && !hasRunningChecks
     }
 }
 
@@ -42,6 +59,9 @@ extension FinalReviewPullRequest {
 /// - CodeRabbit が今の head をレビューしたら、第三者レビュー・修正はやめる（済み（CodeRabbit）。Q2）
 /// - head が変わったら待ち始めからやり直す（Q3）。要修正が続いた回数は、自分の修正の push で変わったときだけ引き継ぎ、
 ///   人の push・コンフリクトの解消・develop の取り込みで変わったときは 0 に戻す（人が直して push すればまた回る。Q1）
+/// - CI が失敗し、すべての check run が終わったら、レビューより先に失敗したジョブのログで直させる（`fixCI`）。
+///   同じ head では 1 回だけ、PR ごとに `maxCIFixAttempts`（3 回）まで。記録の正本は PR のコメントの目印（`CIFixMarker`）で、
+///   オーケストレーターを再起動しても同じ head では試し直さない
 public struct FinalReviewTracker: Sendable {
     /// head が変わってから CodeRabbit のレビューを待つ時間
     public static let codeRabbitWait: Duration = .seconds(10 * 60)
@@ -49,11 +69,15 @@ public struct FinalReviewTracker: Sendable {
     public static let maxAttempts = 3
     /// レビュー・修正のコマンドが同じ head でこの回数続けて失敗したらあきらめる
     public static let maxFailures = 3
+    /// CI の失敗を直させるのは、PR ごとにこの回数まで（head が変わるたびに 1 回）
+    public static let maxCIFixAttempts = 3
 
     /// 裏で行うこと
     public enum Action: Sendable, Equatable {
         case review
         case fix
+        /// CI の失敗を、失敗したジョブのログを読ませて直させる
+        case fixCI
     }
 
     /// 今から始めること 1 件
@@ -95,6 +119,10 @@ public struct FinalReviewTracker: Sendable {
         var pushedHead: String?
         /// コマンドが head が進んだ（`stale`）と返した。新しい head が見えるまで、古い head では始めない
         var awaitingNewHead = false
+        /// この head で CI の失敗を直させた（PR のコメントの目印が次の取得で見えるまでの間も、二重に始めない）
+        var ciFixAttempted = false
+        /// CI の修正をあきらめたことを伝えた（PR のコメントの目印が次の取得で見えるまでの間も、二重に伝えない）
+        var ciFixGaveUp = false
     }
 
     private(set) var entries: [String: Entry] = [:]
@@ -112,13 +140,14 @@ public struct FinalReviewTracker: Sendable {
             if let previous = entries[candidate.pullRequest.key], previous.head == head {
                 entry = previous
             } else {
-                // 新しい PR か、head が変わった。待ち始めからやり直す
+                // 新しい PR か、head が変わった。待ち始めからやり直す（あきらめたことを伝えたかは、PR のコメントの目印が見えるまで持ち越す）
                 let previous = entries[candidate.pullRequest.key]
                 let pushedByFix = previous?.pushedHead.map { $0 == head } ?? false
                 // 初めて見る PR（オーケストレーターの起動・再起動の後など）は、head を GitHub が受け取った時刻から待つ
                 // （再起動のたびに 10 分待ち直さない）。追跡中に head が変わったのを見たときは、見た時刻から待つ
                 let since = previous == nil ? min(candidate.headSince ?? now, now) : now
                 entry = Entry(head: head, since: since, attempts: pushedByFix ? previous?.attempts ?? 0 : 0)
+                entry.ciFixGaveUp = previous?.ciFixGaveUp ?? false
             }
             if candidate.codeRabbit == .completed {
                 // CodeRabbit が今の head をレビューしたら、第三者レビュー・修正はやめる（Q2）
@@ -159,8 +188,16 @@ public struct FinalReviewTracker: Sendable {
 
     /// その PR で今行うこと（無ければ `nil`）
     private static func action(for entry: Entry, candidate: FinalReviewCandidate, now: Date) -> Action? {
-        // CodeRabbit が今の head をレビューしたら始めない（Q2）。head が進んだと分かったら、新しい head が見えるまで待つ
-        if candidate.codeRabbit == .completed || entry.awaitingNewHead {
+        // head が進んだと分かったら、新しい head が見えるまで待つ。修正を push した後も、新しい head が見えるまで何もしない
+        if entry.awaitingNewHead || entry.pushedHead != nil {
+            return nil
+        }
+        // CI の失敗は、CodeRabbit がレビューした後でも、レビューより先に直させる（直せば head が変わり、レビューもやり直しになる）
+        if canFixCI(entry, candidate: candidate) {
+            return .fixCI
+        }
+        // CodeRabbit が今の head をレビューしたら始めない（Q2）
+        if candidate.codeRabbit == .completed {
             return nil
         }
         switch entry.state {
@@ -178,9 +215,63 @@ public struct FinalReviewTracker: Sendable {
         }
     }
 
+    /// CI の失敗を直させた回数（PR のコメントの目印と、まだ目印が見えていない今の head の分）
+    private static func ciFixAttempts(_ entry: Entry, candidate: FinalReviewCandidate) -> Int {
+        let attempts = candidate.ciFix.attemptedSHAs.count
+        return entry.ciFixAttempted && !candidate.ciFix.attempted(entry.head) ? attempts + 1 : attempts
+    }
+
+    private static func ciFixGaveUp(_ entry: Entry, candidate: FinalReviewCandidate) -> Bool {
+        candidate.ciFix.gaveUp || entry.ciFixGaveUp
+    }
+
+    /// 今の head で CI の失敗を直させてよいか（失敗していて、この head ではまだ試しておらず、上限に達していない）
+    private static func canFixCI(_ entry: Entry, candidate: FinalReviewCandidate) -> Bool {
+        candidate.ciFailed && !entry.ciFixAttempted && !candidate.ciFix.attempted(entry.head)
+            && !ciFixGaveUp(entry, candidate: candidate) && ciFixAttempts(entry, candidate: candidate) < maxCIFixAttempts
+    }
+
+    /// CI の修正を上限まで試した後に、まだ直させていない head でまた CI が失敗した PR（あきらめたことを伝える）
+    public func ciFixGiveUps(in candidates: [FinalReviewCandidate]) -> [FinalReviewPullRequest] {
+        candidates.compactMap { candidate in
+            guard let entry = entries[candidate.pullRequest.key], entry.head == candidate.pullRequest.headSHA.lowercased(),
+                  candidate.ciFailed, !entry.ciFixAttempted, !candidate.ciFix.attempted(entry.head),
+                  !Self.ciFixGaveUp(entry, candidate: candidate),
+                  Self.ciFixAttempts(entry, candidate: candidate) >= Self.maxCIFixAttempts else {
+                return nil
+            }
+            return candidate.pullRequest
+        }
+    }
+
+    /// CI の修正の上限まで試したか（`candidate` は最後に取得したもの）
+    public func reachedCIFixLimit(_ candidate: FinalReviewCandidate) -> Bool {
+        guard let entry = entries[candidate.pullRequest.key] else {
+            return false
+        }
+        return Self.ciFixAttempts(entry, candidate: candidate) >= Self.maxCIFixAttempts
+    }
+
+    /// CI の修正をあきらめた（伝えた）
+    public mutating func giveUpCIFix(_ pullRequest: FinalReviewPullRequest) {
+        entries[pullRequest.key]?.ciFixGaveUp = true
+    }
+
+    /// CI の修正を試したことを取り消す（利用上限で終わった・PR に記録を残せなかったなど）。次に試し直す
+    public mutating func cancelCIFix(_ pullRequest: FinalReviewPullRequest) {
+        if var entry = entries[pullRequest.key], entry.head == pullRequest.headSHA.lowercased() {
+            entry.ciFixAttempted = false
+            entries[pullRequest.key] = entry
+        }
+    }
+
     /// レビュー・修正を始めた。終わるまで、同じリポジトリのほかの PR は選ばない
     public mutating func start(_ action: Action, for pullRequest: FinalReviewPullRequest) {
         runningRepositories.insert(pullRequest.repository.lowercased())
+        if action == .fixCI, var entry = entries[pullRequest.key], entry.head == pullRequest.headSHA.lowercased() {
+            entry.ciFixAttempted = true
+            entries[pullRequest.key] = entry
+        }
         if action == .review, var entry = entries[pullRequest.key], entry.head == pullRequest.headSHA.lowercased() {
             entry.state = .reviewing
             entries[pullRequest.key] = entry
@@ -259,6 +350,27 @@ public struct FinalReviewTracker: Sendable {
         }
         entries[pullRequest.key] = entry
         return entry.state == .gaveUp
+    }
+
+    /// CI の修正の結果を記録する。直した head がもう追跡している head でないときは何もしない。
+    /// 直せなかったときは、この head では試し直さない（head が変わったら、上限まで試す）
+    public mutating func recordCIFix(_ outcome: FixOutcome, for pullRequest: FinalReviewPullRequest) {
+        guard var entry = entries[pullRequest.key], entry.head == pullRequest.headSHA.lowercased() else {
+            return
+        }
+        switch outcome {
+        case let .fixed(head) where head.lowercased() != entry.head:
+            // 自分の push なので、新しい head でも要修正が続いた回数を引き継ぐ
+            entry.pushedHead = head.lowercased()
+
+        case .fixed, .failed:
+            break
+
+        case .stale:
+            entry.ciFixAttempted = false
+            entry.awaitingNewHead = true
+        }
+        entries[pullRequest.key] = entry
     }
 
     /// 最終 PR に書き出す進み具合（追跡していなければ `nil`）
