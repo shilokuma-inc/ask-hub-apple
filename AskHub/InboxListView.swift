@@ -24,8 +24,13 @@ struct InboxListView<Row: View>: View {
         InboxRepositoryOption.options(in: items)
     }
 
+    /// 今の一覧に効く絞り込み。絞り込み中のリポジトリが消えた直後（`onChange` で戻す前）の描画でも「すべて」として扱う
+    private var activeFilter: InboxRepositoryFilter {
+        repositoryFilter.resolved(in: items)
+    }
+
     var body: some View {
-        let shownItems = items.arranged(filter: repositoryFilter, order: sortOrder)
+        let shownItems = items.arranged(filter: activeFilter, order: sortOrder)
         List {
             // 一覧の中身があるときは、空の表示の代わりにここで失敗を知らせる
             if case let .failed(message) = model.state, !items.isEmpty {
@@ -94,7 +99,8 @@ struct InboxListView<Row: View>: View {
     private var filterMenu: some View {
         Menu {
             Section("リポジトリ") {
-                Picker("リポジトリ", selection: $repositoryFilter) {
+                // 消えたリポジトリが選ばれたまま（どの項目にも合わない）にならないよう、今の一覧に効く値を出す
+                Picker("リポジトリ", selection: Binding { activeFilter } set: { repositoryFilter = $0 }) {
                     Text("すべて（\(items.count)）").tag(InboxRepositoryFilter.all)
                     ForEach(repositoryOptions) { option in
                         Text("\(option.displayName)（\(option.count)）")
@@ -114,12 +120,22 @@ struct InboxListView<Row: View>: View {
         } label: {
             Label(
                 "絞り込みと並び替え",
-                systemImage: repositoryFilter == .all
+                systemImage: activeFilter == .all
                     ? "line.3.horizontal.decrease.circle"
                     : "line.3.horizontal.decrease.circle.fill"
             )
         }
+        .accessibilityValue(filterAccessibilityValue)
         .disabled(items.isEmpty)
+    }
+
+    /// VoiceOver に読ませる、絞り込み中のリポジトリ（アイコンの塗りでしか見分けられないため）
+    private var filterAccessibilityValue: String {
+        guard case let .repository(repository) = activeFilter else {
+            return "すべて"
+        }
+        let name = repositoryOptions.first { $0.repository == repository }?.displayName ?? repository
+        return "\(name) で絞り込み中"
     }
 
     /// 絞り込んだ結果が空のとき。「すべて」に戻せるようにする
