@@ -68,4 +68,17 @@ struct EpicCompletionTests {
             #expect(evaluate(branch: branch, goal: goal, state: state) == .incomplete(.notEpicBranch))
         }
     }
+
+    @Test func awaitsAnswerOnlyWhenWaitingTaskRemainsInPreparedEpic() {
+        // 回答待ちのタスクしか残っていない epic は、途中の epic ではないが、回答を待っている
+        let waiting = EpicSnapshot(branch: "epic/mvp", goal: goal, state: state, loopPrepared: true)
+        #expect(!waiting.inProgress)
+        #expect(waiting.awaitingAnswer)
+
+        let answered = "- [x] 【FEAT】A\n- [x] 【FEAT】C  ※回答待ち（PR #12 / ask id 3）"
+        #expect(!EpicSnapshot(branch: "epic/mvp", goal: answered, state: state, loopPrepared: true).awaitingAnswer)
+        #expect(!EpicSnapshot(branch: "epic/mvp", goal: goal, state: state, loopPrepared: false).awaitingAnswer)
+        #expect(!EpicSnapshot(branch: "develop", goal: goal, state: state, loopPrepared: true).awaitingAnswer)
+        #expect(!EpicSnapshot(branch: "epic/mvp", goal: nil, state: state, loopPrepared: true).awaitingAnswer)
+    }
 }
