@@ -455,7 +455,8 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 （ページングを最後まで追う。扱いの決まりは `docs/protocol.md` の「最終 PR への指示」）。仮決め一覧が無い epic でも、最終 PR に付いた指摘を人間の指示で直させるため。
 
 - 信用する author の、最後のループの返信（`<!-- ask-hub:final-reply -->`）より後のコメントのうち、目印の無いものが未処理の指示。
-  CodeRabbit を含む信用しない author のコメント・オーケストレーターのコメント（`<!-- ask-hub:orchestrator -->` と、目印を付ける前の `（askhub-orchestrator）` で終わるもの）・
+  CodeRabbit を含む信用しない author のコメント・オーケストレーターのコメント（`<!-- ask-hub:orchestrator -->` と、目印を付ける前の `（askhub-orchestrator）` で終わるもの、
+  第三者レビューの進み具合の状態コメント・第三者レビュー）・
   `@coderabbitai` で始まる CodeRabbit への依頼では再開しない
 - ループが止まっていて（state ファイルが無く、異常終了でもない）、制御用 worktree がその PR の epic（head のブランチ）にあり、未処理の指示があれば、ループを再開する
 - **制御用 worktree が別の epic に移っていたら**（Discussion #498 の Q4）、その epic の作業ファイルを退避から戻して再開する。自動ループの制御用 worktree はリポジトリに 1 つなので、
