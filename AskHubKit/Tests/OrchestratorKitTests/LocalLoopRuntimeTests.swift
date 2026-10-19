@@ -342,3 +342,71 @@ struct LocalLoopRuntimeTests {
         #expect(await runtime.status(of: repository) == .idle)
     }
 }
+
+// MARK: - 制限時間を過ぎたコマンドの子孫
+
+extension LocalLoopRuntimeTests {
+    /// コマンドが `child.pid` に書いた子孫の PID
+    private func recordedChildPID(in repository: RepositoryConfig) throws -> pid_t {
+        let file = URL(fileURLWithPath: repository.checkoutPath).appendingPathComponent("child.pid")
+        let text = try String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        return try #require(pid_t(text))
+    }
+
+    @Test func runStopsDescendantsAfterTimeout() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // スクリプトが起動した claude の代わりに、子の sleep を置く。親に SIGTERM を送るだけでは、子は動き続ける
+        let result = try await LocalLoopRuntime(killGracePeriod: .milliseconds(300), outputDrainTimeout: .milliseconds(300)).run(
+            ["/bin/sh", "-c", "sleep 30 & echo $! > child.pid; wait"],
+            input: "",
+            for: repository,
+            timeout: .milliseconds(500)
+        )
+        #expect(result.status != 0)
+        let child = try recordedChildPID(in: repository)
+        #expect(try await waitUntil { kill(child, 0) != 0 })
+    }
+
+    @Test func runKillsDescendantsThatIgnoreSIGTERMAfterCommandExits() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // コマンド（sh）は SIGTERM ですぐ終わるが、孫の sleep は SIGTERM を無視する。猶予の後に SIGKILL で止める
+        let result = try await LocalLoopRuntime(killGracePeriod: .milliseconds(300), outputDrainTimeout: .milliseconds(300)).run(
+            ["/bin/sh", "-c", "(trap '' TERM; sleep 30 & echo $! > child.pid; wait) & wait"],
+            input: "",
+            for: repository,
+            timeout: .milliseconds(500)
+        )
+        #expect(result.status != 0)
+        let grandchild = try recordedChildPID(in: repository)
+        #expect(try await waitUntil { kill(grandchild, 0) != 0 })
+    }
+
+    @Test func runLetsScriptCleanUpWhenItTrapsSIGTERM() async throws {
+        let (repository, root) = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // scripts/orchestrator/*.sh と同じ形: EXIT で後片付けし、SIGTERM では exit して EXIT の trap を走らせる。
+        // 子（コマンド置換の中の sleep）も止まるので、後片付けまで進む
+        let script = URL(fileURLWithPath: repository.checkoutPath).appendingPathComponent("script.sh")
+        try """
+            #!/bin/bash
+            set -euo pipefail
+            trap 'echo cleaned > cleaned.txt' EXIT
+            trap 'exit 143' TERM
+            OUTPUT=$(sleep 30 | cat)
+            """.write(to: script, atomically: true, encoding: .utf8)
+        let result = try await LocalLoopRuntime(killGracePeriod: .seconds(3), outputDrainTimeout: .milliseconds(300)).run(
+            ["/bin/bash", script.path],
+            input: "",
+            for: repository,
+            timeout: .milliseconds(500)
+        )
+        #expect(result.status == 143)
+        let cleaned = URL(fileURLWithPath: repository.checkoutPath).appendingPathComponent("cleaned.txt")
+        #expect(FileManager.default.fileExists(atPath: cleaned.path))
+    }
+}
