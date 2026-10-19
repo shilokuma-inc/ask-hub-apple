@@ -19,8 +19,9 @@ public struct FinalPullRequestHistory: Sendable, Equatable {
         case instruction(isProcessed: Bool)
         /// ループの返信（信用する author の `FinalPullRequestMarker.reply` 付きのコメント）
         case reply
-        /// オーケストレーターのコメント（信用する author の `FinalPullRequestMarker.orchestrator` で始まるコメントと、
-        /// 目印を付ける前の形（末尾が `FinalPullRequestMarker.legacyOrchestratorSuffix`）のコメント）。指示でも返信でもない
+        /// オーケストレーターのコメント（信用する author の `FinalPullRequestMarker.orchestrator` で始まるコメント、
+        /// 目印を付ける前の形（末尾が `FinalPullRequestMarker.legacyOrchestratorSuffix`）のコメント、
+        /// 第三者レビューの進み具合の状態コメント（`FinalReviewMarker`）と第三者レビュー（`ThirdPartyReviewMarker`）で始まるコメント）。指示でも返信でもない
         case orchestrator
         /// CodeRabbit への依頼（`@coderabbitai review` など、`@coderabbitai` で始まり、指摘を指していないコメント）。ループへの指示ではない
         case codeRabbitCommand
@@ -85,7 +86,8 @@ public struct FinalPullRequestHistory: Sendable, Equatable {
             return .reply
         }
         if body.hasPrefix(FinalPullRequestMarker.orchestrator)
-            || body.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(FinalPullRequestMarker.legacyOrchestratorSuffix) {
+            || body.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(FinalPullRequestMarker.legacyOrchestratorSuffix)
+            || isReviewComment(comment.body) {
             return .orchestrator
         }
         // CodeRabbit の指摘を指すものは、書き出しが CodeRabbit 宛てでもループへの指示として扱う
@@ -93,5 +95,13 @@ public struct FinalPullRequestHistory: Sendable, Equatable {
             return .codeRabbitCommand
         }
         return .instruction(isProcessed: false)
+    }
+
+    /// オーケストレーターが最終 PR に書く、第三者レビューの進み具合の状態コメントか第三者レビューか。
+    /// どちらも本文の先頭の目印を読む処理（アプリ・`askhub-fix-review` など）があり、先頭に `FinalPullRequestMarker.orchestrator` を置けないので、目印で見分ける
+    private static func isReviewComment(_ body: String) -> Bool {
+        [FinalReviewMarker.keyword, ThirdPartyReviewMarker.keyword].contains {
+            MarkerComment.attributes(body, keyword: $0) != nil
+        }
     }
 }
