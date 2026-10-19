@@ -235,7 +235,8 @@ public actor LocalLoopRuntime: LoopRuntime {
 
     /// `arguments` を実行して終了を待ち、終了コードと出力（標準出力と標準エラー）を返す。
     ///
-    /// `timeout` を過ぎたら SIGTERM を送り、`killGracePeriod` 待っても終わらなければ SIGKILL で止める。
+    /// `timeout` を過ぎたら、コマンドとその子孫（スクリプトが起動した `claude` など）に SIGTERM を送り、
+    /// `killGracePeriod` 待っても残っているものは SIGKILL で止める。
     /// 出力は終了後に最長 `outputDrainTimeout` だけ読み切りを待つ（パイプを継承した子プロセスが残っても戻れるように）
     public func run(
         _ arguments: [String],
@@ -271,17 +272,20 @@ public actor LocalLoopRuntime: LoopRuntime {
 
         let pid = process.processIdentifier
         let killGracePeriod = killGracePeriod
+        // 制限時間を過ぎたか。過ぎた後は、コマンドが SIGTERM で先に終わっても、残った子孫への SIGKILL まで続ける
+        let expired = OSAllocatedUnfairLock(initialState: false)
         let timer = Task {
             try await Task.sleep(for: timeout)
-            kill(pid, SIGTERM)
-            try await Task.sleep(for: killGracePeriod)
-            kill(pid, SIGKILL)
+            expired.withLock { $0 = true }
+            await Self.terminateTree(of: pid, gracePeriod: killGracePeriod)
         }
         var status: Int32 = -1
         for await value in exited {
             status = value
         }
-        timer.cancel()
+        if !expired.withLock({ $0 }) {
+            timer.cancel()
+        }
 
         let output = await collector.finish(waitingAtMost: outputDrainTimeout)
         return CommandResult(status: status, output: output)
@@ -289,6 +293,50 @@ public actor LocalLoopRuntime: LoopRuntime {
 
     /// `run` で保持する出力の上限（末尾から）
     static let maxOutputBytes = 1_000_000
+
+    /// `pid` とその子孫に SIGTERM を送り、`gracePeriod` 待っても残っているものに SIGKILL を送る。
+    /// 子孫はコマンドと同じプロセスグループ（オーケストレーターのグループ）にいるのでグループごとには送れず、
+    /// 親が先に終わると launchd に付け替えられて辿れなくなるので、送る前に集める。
+    /// 待つ間に終わって PID が再利用されていたら送らないよう、起動時刻で同じプロセスかを確かめる
+    static func terminateTree(of pid: pid_t, gracePeriod: Duration) async {
+        let targets = ([pid] + descendants(of: pid)).compactMap { target in
+            processStartDate(pid: target).map { (pid: target, startedAt: $0) }
+        }
+        for target in targets {
+            kill(target.pid, SIGTERM)
+        }
+        try? await Task.sleep(for: gracePeriod)
+        for target in targets where processStartDate(pid: target.pid) == target.startedAt {
+            kill(target.pid, SIGKILL)
+        }
+    }
+
+    /// `pid` の子孫（子・孫…）の PID。浅いものから順に並べる
+    static func descendants(of pid: pid_t) -> [pid_t] {
+        var found: [pid_t] = []
+        var queue = [pid]
+        while !queue.isEmpty, found.count < maxDescendants {
+            let parent = queue.removeFirst()
+            let children = childProcesses(of: parent).filter { $0 != pid && !found.contains($0) }
+            found += children
+            queue += children
+        }
+        return found
+    }
+
+    /// 集める子孫の上限（念のため。スクリプトの子孫はふつう数個）
+    private static let maxDescendants = 1_000
+
+    /// `pid` の子の PID（`proc_listchildpids`）。無ければ・読めなければ空
+    private static func childProcesses(of pid: pid_t) -> [pid_t] {
+        var buffer = [pid_t](repeating: 0, count: 256)
+        let count = proc_listchildpids(pid, &buffer, Int32(buffer.count * MemoryLayout<pid_t>.stride))
+        guard count > 0 else {
+            return []
+        }
+        // 戻り値を件数として読む（バイト数を返す版でも、余りは 0 なので除ける）
+        return buffer.prefix(min(Int(count), buffer.count)).filter { $0 > 0 }
+    }
 
     /// 先頭が絶対パスでなければ `PATH` から探す。作業ディレクトリはメインの checkout
     private static func makeProcess(

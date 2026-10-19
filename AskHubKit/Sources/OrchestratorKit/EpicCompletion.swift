@@ -38,6 +38,12 @@ public struct EpicSnapshot: Sendable, Equatable {
         loopPrepared && branch?.hasPrefix("epic/") == true && goal.map(EpicCompletion.hasUnfinishedTasks(in:)) == true
     }
 
+    /// 準備を終えた `epic/` のブランチに、回答待ちのタスクが残っている。
+    /// ask に回答が付いたら、回答待ちのタスクしか残っていなくても（最終 PR のマージ待ちでも）ループを再開して回答を処理させる
+    public var awaitingAnswer: Bool {
+        loopPrepared && branch?.hasPrefix("epic/") == true && goal.map(EpicCompletion.hasWaitingTasks(in:)) == true
+    }
+
     /// 最終 PR の本文。ゴール元の Discussion があれば、先頭にその番号と機械が読める目印を置く
     /// （最終 PR がマージされたら、ワークフローがこの目印を読んで Discussion を閉じる）
     public static func pullRequestBody(summary: String, discussion: Int?) -> String {
@@ -103,6 +109,13 @@ public enum EpicCompletion: Sendable, Equatable {
     static func hasUnfinishedTasks(in goal: String) -> Bool {
         goal.split(whereSeparator: \.isNewline).contains { line in
             line.trimmingCharacters(in: .whitespaces).hasPrefix("- [ ]") && !line.contains(waitingMark)
+        }
+    }
+
+    /// `- [ ]` のタスクのうち、回答待ちのものがあるか
+    static func hasWaitingTasks(in goal: String) -> Bool {
+        goal.split(whereSeparator: \.isNewline).contains { line in
+            line.trimmingCharacters(in: .whitespaces).hasPrefix("- [ ]") && line.contains(waitingMark)
         }
     }
 

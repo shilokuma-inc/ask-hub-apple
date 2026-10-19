@@ -73,6 +73,8 @@ gh api "repos/$REPOSITORY/branches/$BRANCH" >/dev/null 2>&1 \
 TEMP_DIR=""
 cleanup() { [[ -n "$TEMP_DIR" ]] && rm -rf "$TEMP_DIR"; return 0; }
 trap cleanup EXIT
+# 制限時間を過ぎたオーケストレーターの SIGTERM でも、EXIT の trap（後片付け）を走らせてから終わる
+trap 'exit 143' TERM
 if [[ -z "$CHECKOUT" ]]; then
   TEMP_DIR=$(mktemp -d)
   WORK="$TEMP_DIR/repo"

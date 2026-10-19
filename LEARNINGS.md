@@ -137,6 +137,10 @@
   理由の申告が漏れていても Upload（TestFlight）は成功するので、CI では気づけない。`UserDefaults` 以外の理由の申告が要る API を使い始めたら、ここに理由を足す（`docs/app-review.md`）
 - ツールバーの `Menu` の中の `Picker`（`.pickerStyle(.inline)`）の項目は、iOS の UI テストでは `app.buttons["<項目の文言>"]` で引けて、`tap()` で選べる。メニュー自体は `app.buttons["<Menu のラベル>"].firstMatch` で開く。
   一覧の並びは行の `staticTexts[…].frame.minY` を比べて確かめる
+- 開発者モード（`DevToolsSecurity -status` が disabled）の Mac では、launchd から動く `xcodebuild test` の Simulator のテストが
+  「unable to connect to "com.apple.instruments.deviceservice.lockdown" … DTServiceHubClient failed to bless service hub」の後に始まらず、`** BUILD INTERRUPTED **` で終わる。
+  Simulator の再起動・作り直し・`testmanagerd` の停止では直らない。テストのホストに接続する権限を得るたびに認証を求められ、launchd のジョブには認証の画面が無いため。
+  `sudo DevToolsSecurity -enable` で直る（`_developer` グループへの所属も要る）
 
 ## Keychain
 
@@ -207,6 +211,9 @@
   失敗で終わらせたい関数（`failed` など）は置換の外で呼び、値はグローバル変数で受け渡す
 - `set -o pipefail` のもとで `cmd | grep -q` を使うと、出力が長いとき `grep -q` が先に終わって `cmd` が SIGPIPE（141）で終わり、一致したのにパイプ全体が失敗になる。
   出力を変数に入れてから調べるか、`grep ... >/dev/null` にする
+- `Process` で起動したスクリプトに `kill(pid, SIGTERM)` を送っても、スクリプトが起動した `claude` などの子孫は止まらない（オーケストレーターと同じプロセスグループにいるので、グループごとにも送れない）。
+  bash は前景の子（コマンド置換の中のパイプなど）を待つ間は SIGTERM の処理を待たせるので、子が動き続ける限りスクリプトも終わらず、SIGKILL で終わると `trap … EXIT` の後片付けも走らない。
+  制限時間で止めるときは、送る前に `proc_listchildpids` で子孫を集め（親が先に終わると launchd に付け替えられて辿れない）、まとめて送る。スクリプトには `trap 'exit 143' TERM` を置いて後片付けを走らせる
 
 ## SwiftUI
 

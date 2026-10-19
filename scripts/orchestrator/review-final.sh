@@ -69,6 +69,8 @@ cleanup() {
   rm -rf "$TMP"
 }
 trap cleanup EXIT
+# 制限時間を過ぎたオーケストレーターの SIGTERM でも、EXIT の trap（後片付け）を走らせてから終わる
+trap 'exit 143' TERM
 
 # origin の head が、確かめた headSHA のままか（進んでいたら、そのレビューは古い head のものになる）。
 # origin を読めなかったときは head が進んだのと区別して failed にする

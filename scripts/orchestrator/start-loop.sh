@@ -8,7 +8,8 @@
 #   discussion が空（ask への回答・仮決め一覧や最終 PR への指示・異常終了による再開）:
 #     既存の制御用 worktree でループを起動し直す。未完了のタスクが無ければ起動しない。
 #     ただし ASKHUB_RESUME_REASON が decision-log（仮決め一覧への指示）か final-pr（最終 PR への指示）なら、タスクが無くても起動する
-#     （指示はループが周回の最初に読んで修正タスクにするため。epic の完了後に付いた指示ではタスクが残っていない）
+#     （指示はループが周回の最初に読んで修正タスクにするため。epic の完了後に付いた指示ではタスクが残っていない）。
+#     answer（ask への回答）なら、回答待ちのタスクが残っていれば起動する（回答はループが周回の最初に拾う。最終 PR のマージ待ちでも同じ）
 #     ASKHUB_RESTORE_EPIC に epic ブランチがあり、制御用 worktree が別の epic なら、今の epic の作業ファイルを退避してから、
 #     退避先から戻す epic の作業ファイルを戻して、その epic で再開する（最終 PR への指示で、前の epic を再開するため）
 #
@@ -25,7 +26,8 @@
 #   ANTHROPIC_MODEL          claude の既定のモデル。オーケストレーターが設定の model（既定: claude-opus-5-5）を渡す
 #   CLAUDE_CODE_EFFORT_LEVEL claude の既定のエフォート。オーケストレーターが設定の effort を渡す（省略時は auto = claude の既定）
 #                            Discussion にモデル・エフォートの目印（ask-hub:loop-options）があれば、そちらを --model / --effort で渡す
-#   ASKHUB_RESUME_REASON     再開の理由。オーケストレーターが起動ごとに渡す（decision-log: 仮決め一覧への指示、final-pr: 最終 PR への指示）
+#   ASKHUB_RESUME_REASON     再開の理由。オーケストレーターが起動ごとに渡す（decision-log: 仮決め一覧への指示、final-pr: 最終 PR への指示、
+#                            answer: ask への回答）
 #   ASKHUB_RESTORE_EPIC      再開で戻す epic ブランチ（例: epic/xxx）。制御用 worktree が別の epic のとき、退避先から作業ファイルを戻す。
 #                            戻せない（退避が見つからない・今の epic が未完了・未コミットの変更がある・今のループの state が残っている・
 #                            origin を取得できない・ブランチが無い・別の worktree がそのブランチを checkout している）ときは、
@@ -122,6 +124,12 @@ refresh_trusted_authors() {
 open_tasks() {
   [[ -f "$GOAL" ]] || { echo 0; return; }
   grep '^- \[ \]' "$GOAL" | grep -vc '※回答待ち' || true
+}
+
+# 回答待ちのタスクの数。ゴールファイルが無ければ 0
+waiting_tasks() {
+  [[ -f "$GOAL" ]] || { echo 0; return; }
+  grep '^- \[ \]' "$GOAL" | grep -c '※回答待ち' || true
 }
 
 # 同じ Discussion の準備が途中で失敗している（完了語が無く、準備を始めた Discussion の番号が同じ）
@@ -433,14 +441,16 @@ else
   [[ -f "$PROMISE_FILE" ]] || fail "完了語の記録がありません（${PROMISE_FILE}）。手で書くか、Discussion から始め直してください"
   PROMISE=$(head -1 "$PROMISE_FILE")
   if [[ "$(open_tasks)" -eq 0 ]]; then
-    if [[ "$RESUME_REASON" != "decision-log" && "$RESUME_REASON" != "final-pr" ]]; then
+    # ask への回答は、ループが周回の最初に拾って回答待ちの PR を進める。回答待ちのタスクしか残っていなくても起動しないと回答が処理されない
+    if [[ "$RESUME_REASON" == "answer" && "$(waiting_tasks)" -gt 0 ]]; then
+      log "未完了のタスクは回答待ちのものだけですが、ask への回答を処理するために再開します"
+    elif [[ "$RESUME_REASON" != "decision-log" && "$RESUME_REASON" != "final-pr" ]]; then
       log "未完了のタスクがありません。再開しません（最終 PR はオーケストレーターが作ります）"
       # 残しておいた異常終了の目印も片付ける（残すと、このプロセスの終了を異常終了とみなして再開し続ける）
       [[ -n "$STALE_STATE" ]] && rm -f "$STATE"
       exit 0
-    fi
     # 仮決め一覧・最終 PR への指示は、ループが周回の最初に読んで修正タスクにする。タスクが無くても起動しないと指示が処理されない
-    if [[ "$RESUME_REASON" == "final-pr" ]]; then
+    elif [[ "$RESUME_REASON" == "final-pr" ]]; then
       log "未完了のタスクはありませんが、最終 PR への指示を処理するために再開します"
     else
       log "未完了のタスクはありませんが、仮決め一覧への指示を処理するために再開します"
@@ -464,7 +474,8 @@ printf '%s\n' "$$" > "$PID_FILE"
 # 再開の理由は ralph-start.sh にも渡す（decision-log なら、未完了タスクが 0 件でも state を作る）。
 # 継承に頼らず、このスクリプトが判断に使った値を明示して渡し、両者の判断を揃える。
 # ralph-start.sh（ralph-kit 1.4.0 時点）が 0 件を許すのは decision-log だけなので、最終 PR への指示による再開（final-pr）も
-# 「人の指示による再開」として decision-log で渡す（どちらもタスクが 0 件でも起動するという意味は同じ）
+# 「人の指示による再開」として decision-log で渡す（どちらもタスクが 0 件でも起動するという意味は同じ）。
+# ask への回答による再開（answer）はそのまま渡す（ralph-start.sh は回答待ちのタスクも未完了として数えるので、0 件にならない）
 START_REASON="$RESUME_REASON"
 [[ "$RESUME_REASON" == "final-pr" ]] && START_REASON="decision-log"
 (cd "$CTL" && ASKHUB_RESUME_REASON="$START_REASON" "$CHECKOUT/scripts/ralph-start.sh" "$PROMISE" >/dev/null)

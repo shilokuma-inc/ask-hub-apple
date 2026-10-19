@@ -204,7 +204,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | 呼ばれ方 | 動作 |
 | --- | --- |
 | `discussion` あり（`ready-for-loop` から） | 新しい epic を準備してからループを起動する。準備はヘッドレスの `claude` が行う（`ralph-setup.sh`・playbook のプレースホルダの置き換え・STEP A に沿った goal の作成・epic の push）。最後の行の `ASKHUB_PROMISE: <完了語>` を読み取る。Discussion はスクリプトが `gh` で取得し、**信用する author の本文・コメント・返信だけ**を `claude` に渡す |
-| `discussion` が空（ask への回答・仮決め一覧や最終 PR への指示・異常終了で再開） | 既存の制御用 worktree でループを起動し直す。片付け済みのスロットは作り直す。未完了のタスクが無ければ何もしない。ただし環境変数 `ASKHUB_RESUME_REASON` が `decision-log`（仮決め一覧への指示による再開）か `final-pr`（最終 PR への指示による再開）のときは、タスクが無くても起動する（指示はループが周回の最初に読んで修正タスクにするため） |
+| `discussion` が空（ask への回答・仮決め一覧や最終 PR への指示・異常終了で再開） | 既存の制御用 worktree でループを起動し直す。片付け済みのスロットは作り直す。未完了のタスクが無ければ何もしない。ただし環境変数 `ASKHUB_RESUME_REASON` が `decision-log`（仮決め一覧への指示による再開）か `final-pr`（最終 PR への指示による再開）のときは、タスクが無くても起動する（指示はループが周回の最初に読んで修正タスクにするため）。`answer`（ask への回答による再開）のときは、回答待ちのタスクが残っていれば起動する（回答はループが周回の最初に拾う） |
 | state ファイルがある | ループが動いているので何もしない。ただし記録した PID（`.claude/askhub-loop.pid`）のプロセスが終わっていれば、残った state を片付けて続ける |
 
 - 前の epic が完了済み（未完了のタスクが無い）なら、制御用 worktree の `.claude/` を `~/Library/Logs/askhub/archive/` に退避してから worktree を片付ける。
@@ -228,7 +228,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
   - 戻した後、git 管理下の `.claude/` のファイル（`settings.json` など）は退避の古い版ではなく epic の版にする。作り直しの途中で失敗した後の戻し直しでも `ralph-setup.sh` を呼び直す
 - 信用する author は、オーケストレーターが起動ごとに環境変数 `ASKHUB_TRUSTED_AUTHORS` で渡す（設定の `trustedAuthors` と、そのリポジトリへの書き込み権限を持つアカウント。手で設定する必要は無い）。
   再開では、制御用 worktree の playbook の「信用する author」もこの値に書き直す
-- 再開の理由は、オーケストレーターが起動ごとに環境変数 `ASKHUB_RESUME_REASON` で渡す（仮決め一覧への指示による再開の `decision-log` と、最終 PR への指示による再開の `final-pr`。`loopCommand` に書く必要は無い）
+- 再開の理由は、オーケストレーターが起動ごとに環境変数 `ASKHUB_RESUME_REASON` で渡す（仮決め一覧への指示による再開の `decision-log`、最終 PR への指示による再開の `final-pr`、ask への回答による再開の `answer`。`loopCommand` に書く必要は無い）
 - オーケストレーターも PID ファイルを読み、state ファイルが残っていても PID のプロセスが居なければ「止まっている」とみなして再開する
 - 準備が途中で失敗した場合（完了語を読み取れない等）は、オーケストレーターの再試行で、同じ Discussion の途中の worktree を片付けてやり直す
 - 再開（`discussion` が空）では、前のループの state ファイルをループの起動の直前まで残す（その間は起動スクリプト自身の PID を記録し、
@@ -257,6 +257,9 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 
 1. **アカウント**: `claude` にログインする（Mac ごとに別のアカウントでよい）。`gh auth login` は信用する author のアカウントで行う
 2. **開発ツール**: Xcode と iOS Simulator のランタイム、`brew install gh jq swiftlint`
+   開発者モードを有効にする（`sudo DevToolsSecurity -enable`。`DevToolsSecurity -status` が `enabled` になる）。ユーザーが `_developer` グループに入っていることも確かめる（`id -Gn`）。
+   無効だと、テストのホストに接続する権限を得るたびに認証を求められる。launchd から動くコマンド（`askhub-fix-review` など）には認証の画面が無いので、
+   Simulator のテストが「DTServiceHubClient failed to bless service hub」で始まらず、修正を push できない。`scripts/orchestrator/install.sh` は、無効なら警告する
 3. **共有設定**: `git clone git@github.com:mrs1669/agents-config.git ~/.agents && ~/.agents/install.sh`（AGENTS.md と LEARNINGS の hook）
 4. **常駐の前提**: スリープを止める・停電後に自動で起動する・ログインしたままにする（LaunchAgent はログイン中のユーザーで動く）。
    `~/.claude/settings.json` の `skipDangerousModePermissionPrompt` は `true` のまま（無人で `bypassPermissions` を使うため）
@@ -355,10 +358,10 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
 
    | 状態 | 動作 |
    | --- | --- |
-   | 途中の epic が無い（準備を終えた `epic/` のブランチに、回答待ちでない未完了のタスクが無い） | 起動しない。再開待ちをやめ（諦めた記録も消す）、ログに出す。起動スクリプトも「未完了のタスクがありません」で断るので、起動しても state ファイルが現れないまま終わり、ループは落ちていないのに「異常終了（再開を諦めた）」になってしまうため |
+   | 再開する epic が無い（準備を終えた `epic/` のブランチに、未完了のタスクが無い。回答待ちのタスクだけが残っている epic は再開する） | 起動しない。再開待ちをやめ（諦めた記録も消す）、ログに出す。起動スクリプトも「未完了のタスクがありません」で断るので、起動しても state ファイルが現れないまま終わり、ループは落ちていないのに「異常終了（再開を諦めた）」になってしまうため |
    | ループが動いている（プロセスが生きている / state ファイルがある） | 起動しない。回答はループ自身が拾う |
    | state ファイルの有無が不明 | 待つ |
-   | 止まっている | `loopCommand` を起動する（`{discussion}` は空文字列） |
+   | 止まっている | `loopCommand` を起動する（`{discussion}` は空文字列。環境変数 `ASKHUB_RESUME_REASON=answer` を足す）。最終 PR を作った後の epic なら、ループが再び完了したら最終 PR の本文を「最終 PR に載せる内容」で書き直す（回答待ちの PR の扱いが変わるため） |
    | 起動後に state ファイルが現れた | 再開できたとみなす |
    | state ファイルが現れないままプロセスが終わった | 起動し直す。3 回確かめられなければ、次の回答が付くまで再開しない |
 
@@ -455,7 +458,8 @@ epic ブランチはタイトル（`【CHORE】<epic ブランチ> の仮決め�
 （ページングを最後まで追う。扱いの決まりは `docs/protocol.md` の「最終 PR への指示」）。仮決め一覧が無い epic でも、最終 PR に付いた指摘を人間の指示で直させるため。
 
 - 信用する author の、最後のループの返信（`<!-- ask-hub:final-reply -->`）より後のコメントのうち、目印の無いものが未処理の指示。
-  CodeRabbit を含む信用しない author のコメント・オーケストレーターのコメント（`<!-- ask-hub:orchestrator -->` と、目印を付ける前の `（askhub-orchestrator）` で終わるもの）・
+  CodeRabbit を含む信用しない author のコメント・オーケストレーターのコメント（`<!-- ask-hub:orchestrator -->` と、目印を付ける前の `（askhub-orchestrator）` で終わるもの、
+  第三者レビューの進み具合の状態コメント・第三者レビュー）・
   `@coderabbitai` で始まる CodeRabbit への依頼では再開しない
 - ループが止まっていて（state ファイルが無く、異常終了でもない）、制御用 worktree がその PR の epic（head のブランチ）にあり、未処理の指示があれば、ループを再開する
 - **制御用 worktree が別の epic に移っていたら**（Discussion #498 の Q4）、その epic の作業ファイルを退避から戻して再開する。自動ループの制御用 worktree はリポジトリに 1 つなので、
@@ -668,6 +672,7 @@ epic の最終 PR が既定ブランチとコンフリクトすると、AskHub �
   （人が直して push すれば、また 10 分待ちから回る。自分の修正の push 以外で head が変わったら回数を 0 に戻す）。コマンドが同じ head で 3 回続けて失敗したときもあきらめる
 - コンフリクトの解消と合わせて、同じリポジトリでは 1 件ずつ（どちらもメインの checkout に一時 worktree を作るため）。別のリポジトリは並列に行う
 - コマンドには、ループと同じく信用する author（`ASKHUB_TRUSTED_AUTHORS`）と設定の `model` / `effort` を渡す。制限時間はレビュー 30 分・修正 60 分
+  （過ぎたら、コマンドとその子孫（スクリプトが起動した `claude` など）に SIGTERM を送り、10 秒待っても残っているものは SIGKILL で止める。スクリプトは SIGTERM でも一時 worktree を片付けてから終わる）
 - Claude の利用上限で終わったときは試したことにせず、解除の後に試し直す。上限で待機しているあいだは始めない
 - `--once` とポーリングを終えるときは、コンフリクトの解消と同じく、実行中のレビュー・修正が終わるまで待つ。記録はメモリ上だけなので、再起動すると数え直す
 - 待ち始めた時刻もメモリ上だけなので、起動・再起動の後に初めて見た最終 PR では、今の head を GitHub が受け取った時刻の推定から 10 分を数える

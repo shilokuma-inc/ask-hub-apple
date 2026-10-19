@@ -304,7 +304,7 @@ struct OrchestratorTests {
         #expect(Set(github.removedNeedsAnswer) == ["PR_34"])
         #expect(await orchestrator.pendingResumes.isEmpty)
         #expect(logs.recorded.contains(
-            "shilokuma-inc/ask-hub-apple の ask に回答が付きましたが、途中の epic（回答待ちでない未完了のタスク）が無いので、ループは再開しません"
+            "shilokuma-inc/ask-hub-apple の ask に回答が付きましたが、途中の epic（回答待ちを含む未完了のタスク）が無いので、ループは再開しません"
         ))
         // ループの状態は「異常終了（再開を諦めた）」ではなく「完了（最終 PR のマージ待ち）」のまま
         let report = try #require(github.loopCommentReport())
