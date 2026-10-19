@@ -16,6 +16,7 @@ public enum InboxIssueSortOrder: String, Sendable, CaseIterable, Identifiable {
     /// 既定の並び順。今までの一覧と同じ並びになる
     public static let `default` = Self.updatedNewest
 
+    /// `Identifiable` の id。並び順そのもの（`Picker` の `ForEach` で使う）
     public var id: Self { self }
 
     /// メニューに出す文言
@@ -51,8 +52,10 @@ public struct InboxRepositoryOption: Sendable, Equatable, Hashable, Identifiable
     /// メニューに出す名前。owner を省いた名前で、同じ名前のリポジトリが別の owner にあるときだけ `owner/repo`
     public var displayName: String
 
+    /// `Identifiable` の id。`owner/repo`
     public var id: String { repository }
 
+    /// 候補を作る。ふつうは `options(in:)` で一覧から作る
     public init(repository: String, count: Int, displayName: String) {
         self.repository = repository
         self.count = count

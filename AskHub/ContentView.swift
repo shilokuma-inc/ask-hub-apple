@@ -50,6 +50,7 @@ struct ContentView: View {
                     title: "任意判断",
                     kind: .decisionLog,
                     emptyTitle: "任意判断（仮決め一覧）はありません",
+                    filteredEmptyTitle: "このリポジトリの任意判断はありません",
                     emptySystemImage: "checklist"
                 )
             }
@@ -71,6 +72,7 @@ struct ContentView: View {
                     title: "実機確認",
                     kind: .needsVerify,
                     emptyTitle: "実機確認はありません",
+                    filteredEmptyTitle: "このリポジトリの実機確認はありません",
                     emptySystemImage: "iphone"
                 )
             }
@@ -100,11 +102,18 @@ struct ContentView: View {
     }
 
     /// 任意判断・実機確認の一覧。行を開くと詳細画面で本文を読め、そこから GitHub でも開ける
-    private func issueList(title: String, kind: InboxIssue.Kind, emptyTitle: String, emptySystemImage: String) -> some View {
+    private func issueList(
+        title: String,
+        kind: InboxIssue.Kind,
+        emptyTitle: String,
+        filteredEmptyTitle: String,
+        emptySystemImage: String
+    ) -> some View {
         InboxListView(
             title: title,
             items: model.issues.filter { $0.kind == kind },
             emptyTitle: emptyTitle,
+            filteredEmptyTitle: filteredEmptyTitle,
             emptySystemImage: emptySystemImage,
             model: model,
             row: { issue in
