@@ -71,17 +71,27 @@ struct NewRequestView: View {
         .keyboardDoneButton($isEditing)
         .navigationTitle(kind.navigationTitle)
         .toolbar {
+            // macOS では引っぱって更新（refreshable）が効かないので、ほかの画面と同じくボタンでも読み直せるようにする
+            ToolbarItem(placement: .primaryAction) {
+                Button("更新", systemImage: "arrow.clockwise") {
+                    Task { await refresh() }
+                }
+                .disabled(model.repositoriesState == .loading || (kind == .release && model.release.isLoading))
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button("設定", systemImage: "gearshape", action: openSettings)
             }
         }
         // デモモードの切り替えでモデルが差し替わったら、新しいモデルで読み直す
         .task(id: ObjectIdentifier(model)) { await model.loadRepositories() }
-        .refreshable {
-            await model.loadRepositories()
-            if kind == .release {
-                await model.release.refresh()
-            }
+        .refreshable { await refresh() }
+    }
+
+    /// 依頼先の一覧と、「リリース準備」ならリリースの状態を読み直す
+    private func refresh() async {
+        await model.loadRepositories()
+        if kind == .release {
+            await model.release.refresh()
         }
     }
 
