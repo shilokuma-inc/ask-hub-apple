@@ -479,6 +479,53 @@ class DraftEdgeTests(RepoTestCase):
         self.assertEqual(draft["pullRequests"], [])
         self.assertEqual(draft["whatsNew"], {"ja": release_prepare.INITIAL_TEXT})
 
+    def release_history(self, first_release: bool) -> None:
+        """リリース後作業（タスク 10）の形の履歴を作る。
+
+        release/1.0.0 を develop から切って MARKETING_VERSION のコミットと release 宛ての修正（#10）を積み、
+        main に取り込んで（初回は release の先頭から main を作る）タグ v1.0.0 を main に打ち、release を develop に取り込む（#12）。
+        release を切った後に develop に入った #2 と、取り込みの後の #3 は 1.1.0 の下書きに載る
+        """
+        self.repo.merge_pr("develop", 1, "feat/before", "【FEAT】1.0.0 に入った機能")
+        if not first_release:
+            self.repo.git("branch", "main", "develop~1")  # 前のリリースで作った main（develop より古い）
+        self.repo.git("checkout", "-q", "-b", "release/1.0.0", "develop")
+        self.repo.commit("bump-1.0.0")
+        self.repo.merge_pr("release/1.0.0", 10, "fix/release-only", "【FIX】release で直した不具合")
+        self.repo.merge_pr("develop", 2, "feat/after-cut", "【FEAT】release を切った後に入った機能")
+        if first_release:
+            self.repo.git("branch", "main", "release/1.0.0")
+            self.repo.git("checkout", "-q", "main")
+        else:
+            self.repo.git("checkout", "-q", "main")
+            self.repo.git("merge", "-q", "--no-ff", "release/1.0.0", "-m", "Merge pull request #11 from org/release/1.0.0",
+                          "-m", "【CHORE】release/1.0.0 を main に取り込む")
+        self.repo.git("tag", "-a", "v1.0.0", "-m", "1.0.0")
+        self.repo.git("checkout", "-q", "develop")
+        self.repo.git("merge", "-q", "--no-ff", "release/1.0.0", "-m", "Merge pull request #12 from org/release/1.0.0",
+                      "-m", "【CHORE】release/1.0.0 を develop に取り込む")
+        self.repo.merge_pr("develop", 3, "fix/after-release", "【FIX】リリースの後に直した不具合")
+
+    def test_mainのマージコミットに打ったタグからdevelopに入ったPRだけを並べる(self) -> None:
+        # 第三者レビューの提案 5: タグは develop の first-parent の上ではなく main のマージコミットにある
+        self.release_history(first_release=False)
+
+        draft = self.draft(token=None)
+
+        self.assertEqual(draft["base"]["tag"], "v1.0.0")
+        self.assertEqual(draft["base"]["sha"], self.repo.git("rev-parse", "main").strip())
+        # 1.0.0 に入った #1・release 宛ての #10・main / develop への取り込み（#11・#12）は載せない
+        self.assertEqual([pull["number"] for pull in draft["pullRequests"]], [2, 3])
+        self.assertEqual(draft["whatsNew"], {"ja": "・release を切った後に入った機能\n・リリースの後に直した不具合"})
+
+    def test_初回にreleaseの先頭から作ったmainのタグでも同じに並べる(self) -> None:
+        self.release_history(first_release=True)
+
+        draft = self.draft(token=None)
+
+        self.assertEqual(draft["base"]["sha"], self.repo.git("rev-parse", "release/1.0.0").strip())
+        self.assertEqual([pull["number"] for pull in draft["pullRequests"]], [2, 3])
+
     def test_載せるPRが無ければ決まった文にする(self) -> None:
         self.repo.git("tag", "v1.0.0")
         self.repo.merge_pr("develop", 2, "ci/a", "【CI】ワークフロー")
