@@ -255,6 +255,9 @@
 - MainActor 既定のアプリのターゲットに App Intents の型（`AppEntity`・`EntityQuery`）を置くときは、`nonisolated struct` にする（フレームワークは任意のスレッドから呼ぶので、Sendable な nonisolated の準拠が要る）。
   `nonisolated` の `async` のメソッドからは、MainActor の型（Keychain・UserDefaults・`IdeaRequestModel.message(for:)` を使うもの）を `await` で呼べばよく、警告は出ない。
   ビルドすると `AskHub.app/Metadata.appintents/extract.actionsdata`（JSON）の `entities` に型が出る。macOS の `xcodebuild test` のログに出る `com.apple.linkd.autoShortcut` への接続の失敗は、テストの結果に関係しない
+- `@Parameter` を持つ `AppIntent` は `nonisolated struct` にできない（「'nonisolated' cannot be applied to mutable stored properties」）。MainActor 既定のまま `struct` にすると、Swift 6 でも警告なしでビルドでき、
+  `perform()` は MainActor で動く（async の要件なので MainActor の実装で満たせる）。`@Parameter` の `inputOptions` は `requestValueDialog` より前に書く（逆だと「argument 'inputOptions' must precede argument 'requestValueDialog'」）。
+  `extract.actionsdata` の `actions.<型名>` で `openAppWhenRun`・`authenticationPolicy`（`.requiresAuthentication` にすると `1`）・`parameters` を確かめられる
 
 ## シェルスクリプト
 

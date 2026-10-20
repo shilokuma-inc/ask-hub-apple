@@ -57,13 +57,15 @@ struct RepositoryEntityTests {
         madeTokens: OSAllocatedUnfairLock<[String]> = OSAllocatedUnfairLock(initialState: [])
     ) -> RepositoryCandidates {
         RepositoryCandidates(
-            tokenStore: tokenStore,
-            makeRequester: { token in
-                madeTokens.withLock { $0.append(token) }
-                return requester
-            },
-            organizations: { ["shilokuma-inc", "shilokuma-labs"] },
-            usesSampleData: { usesSampleData }
+            requesters: IntentRequesterSource(
+                tokenStore: tokenStore,
+                makeRequester: { token in
+                    madeTokens.withLock { $0.append(token) }
+                    return requester
+                },
+                usesSampleData: { usesSampleData }
+            ),
+            organizations: { ["shilokuma-inc", "shilokuma-labs"] }
         )
     }
 
@@ -120,6 +122,13 @@ struct RepositoryEntityTests {
         #expect(error?.message == expected)
         #expect(error?.message == IdeaRequestModel.message(for: failure))
         #expect(error?.message.contains("github_pat_secret") == false)
+    }
+
+    @Test func passesCancellationThrough() async {
+        // Siri を閉じたなどのキャンセルは、失敗の文言にしない
+        await #expect(throws: CancellationError.self) {
+            try await makeCandidates(requester: ListingRequester(failure: CancellationError())).all(now: now)
+        }
     }
 
     @Test func usesSampleRepositoriesWithoutReadingTokenInDemoMode() async throws {
