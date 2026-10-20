@@ -164,6 +164,11 @@ struct NewRequestView: View {
                 }
                 .disabled(!model.canSend)
             }
+
+            Section {
+                SiriShortcutsHelpLink(title: "Siri・ショートカットからも依頼できます")
+                    .accessibilityIdentifier("siri-help-request-link")
+            }
         }
     }
 
