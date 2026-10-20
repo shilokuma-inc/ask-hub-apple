@@ -96,9 +96,15 @@ extension AskHubUITests {
         XCTAssertTrue(confirmed.exists)
         XCTAssertTrue(app.staticTexts["確定の run, 成功"].exists)
 
-        // 進み具合も確定済みになり、配信を待つ
+        // 進み具合も確定済みになり、配信を待つ。戻った画面は最新情報の画面を開く前にスクロールした位置のままで、
+        // スクロールの量によっては最新情報の段が画面の外（作られていない）にあるので、上に戻してから探す
         app.navigationBars["最新情報"].buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.staticTexts["確定しました"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["リリース準備"].waitForExistence(timeout: 5))
+        let notesConfirmed = app.staticTexts["確定しました"]
+        for _ in 0..<3 where !notesConfirmed.exists {
+            app.swipeDown()
+        }
+        XCTAssertTrue(notesConfirmed.waitForExistence(timeout: 5))
     }
 
     /// サンプルの準備中・配信待ち・完了のリリースの進み具合
