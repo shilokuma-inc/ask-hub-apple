@@ -131,7 +131,7 @@ final class ReleaseRequestModel {
                 workflow: makeWorkflow(token)
             ))
         } catch {
-            result = .failed(Self.message(for: error))
+            result = .failed(Self.readingMessage(for: error))
         }
         // 読んでいるあいだに別のリポジトリを選んだり、同じリポジトリを読み直したりしたら、古い結果は捨てる（後から始めた読み取りの結果を出す）
         guard generation == loadGeneration, repository == self.repository else {
@@ -297,6 +297,19 @@ final class ReleaseRequestModel {
     }
 
     // MARK: - 文言
+
+    /// リリースの状態を読むときの失敗の説明。読む段階の 403 は起動の失敗ではないので、起動の文言にしない
+    static func readingMessage(for error: any Error) -> String {
+        switch error {
+        case WorkflowError.permissionDenied:
+            // レート制限の 403 は GitHubClient が rateLimited にするのでここには来ない
+            return "リリースの状態を読めませんでした。トークンに、このリポジトリの Actions の Read and write と Contents の Read があるか確かめてください。"
+                + "設定で権限を付けたトークンを保存し直してください"
+
+        default:
+            return message(for: error)
+        }
+    }
 
     /// 失敗の説明。トークンの値は含めない
     static func message(for error: any Error) -> String {
