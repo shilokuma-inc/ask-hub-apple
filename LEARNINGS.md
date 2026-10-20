@@ -258,6 +258,9 @@
 - `@Parameter` を持つ `AppIntent` は `nonisolated struct` にできない（「'nonisolated' cannot be applied to mutable stored properties」）。MainActor 既定のまま `struct` にすると、Swift 6 でも警告なしでビルドでき、
   `perform()` は MainActor で動く（async の要件なので MainActor の実装で満たせる）。`@Parameter` の `inputOptions` は `requestValueDialog` より前に書く（逆だと「argument 'inputOptions' must precede argument 'requestValueDialog'」）。
   `extract.actionsdata` の `actions.<型名>` で `openAppWhenRun`・`authenticationPolicy`（`.requiresAuthentication` にすると `1`）・`parameters` を確かめられる
+- App Shortcuts のフレーズのローカライズは `AppShortcuts.xcstrings`（名前は固定）に書き、キーはコードのフレーズの `\(.applicationName)` を `${applicationName}` にしたもの。
+  `knownRegions` に `ja` が無くても `ja` の訳があればビルドしたアプリに `ja.lproj/AppShortcuts.strings` が入る（`en` の値も書くと `en.lproj` もできる）。登録の結果は `extract.actionsdata` の `autoShortcuts` で確かめられる。
+  `ja.lproj` ができると、日本語の端末ではアプリの言語が `en` ではなく `ja` に解決される（`Bundle.preferredLocalizations(from: ["en", "ja"], forPreferences: ["ja-JP"])` が `["ja"]`）ので、システムが出す文言（標準のボタンなど）が日本語になる。実機での見え方は実機確認で確かめる
 
 ## シェルスクリプト
 
