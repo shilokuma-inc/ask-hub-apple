@@ -83,9 +83,11 @@ jobs:
         run: |
           set -euo pipefail
           if python3 Tools/release_notes.py check --version "$VERSION" > "$RUNNER_TEMP/check.json"; then
-            jq -r '.warnings // [] | .[]' "$RUNNER_TEMP/check.json" > "$RUNNER_TEMP/warnings.txt"
+            # 注意は Summary の補足なので、読めなくても止めない
+            jq -r '.warnings // [] | .[]' "$RUNNER_TEMP/check.json" > "$RUNNER_TEMP/warnings.txt" 2> /dev/null || : > "$RUNNER_TEMP/warnings.txt"
           else
-            error=$(jq -r '.error // "検査に失敗しました"' "$RUNNER_TEMP/check.json")
+            # 結果の JSON が壊れていても（Python が落ちたなど）、set -e で jq ごと止まらず理由を Summary に出す
+            error=$(jq -r '.error // "検査に失敗しました"' "$RUNNER_TEMP/check.json" 2> /dev/null) || error="検査の結果を読めませんでした（ログを見てください）"
             echo "::error::${error}"
             echo "- 確定しませんでした: ${error}" >> "$SUMMARY"
             exit 1
@@ -115,11 +117,13 @@ jobs:
               jq -r 'if .draftRemoved then "- 下書き `AppStore/whats-new-draft.json` を消した" else "- 下書き `AppStore/whats-new-draft.json` はもう無い（前に確定済み）" end' "$RUNNER_TEMP/apply.json"
             } >> "$SUMMARY"
           else
-            error=$(jq -r '.error // "最新情報を書けませんでした"' "$RUNNER_TEMP/apply.json")
+            # 結果の JSON が壊れていても、set -e で jq ごと止まらず理由を Summary に出す
+            error=$(jq -r '.error // "最新情報を書けませんでした"' "$RUNNER_TEMP/apply.json" 2> /dev/null) || error="結果を読めませんでした（ログを見てください）"
             echo "::error::${error}"
             {
-              echo "- 確定しませんでした（release ブランチは変えていません）: $(jq -r 'if .problems then "whats_new に問題があります" else .error // "最新情報を書けませんでした" end' "$RUNNER_TEMP/apply.json")"
-              jq -r '.problems // [] | .[] | "  - \(.)"' "$RUNNER_TEMP/apply.json"
+              reason=$(jq -r 'if .problems then "whats_new に問題があります" else .error // "最新情報を書けませんでした" end' "$RUNNER_TEMP/apply.json" 2> /dev/null) || reason="$error"
+              echo "- 確定しませんでした（release ブランチは変えていません）: ${reason}"
+              jq -r '.problems // [] | .[] | "  - \(.)"' "$RUNNER_TEMP/apply.json" 2> /dev/null || true
             } >> "$SUMMARY"
             exit 1
           fi
@@ -154,6 +158,7 @@ jobs:
           set -euo pipefail
           branch="release/${VERSION}"
           failed=0
+          started=0
           {
             echo
             echo "### 起動したワークフロー（\`${branch}\`）"
@@ -161,6 +166,7 @@ jobs:
             if ! git cat-file -e "HEAD:.github/workflows/app-store-metadata.yml" 2> /dev/null; then
               echo "- メタデータ（\`app-store-metadata.yml\`）: 飛ばした（release ブランチにファイルが無い）"
             elif gh workflow run app-store-metadata.yml --ref "$branch" -f "app_version=${VERSION}" -f dry_run=false; then
+              started=1
               echo "- メタデータ（\`app-store-metadata.yml\`・\`dry_run: false\`・\`app_version: ${VERSION}\`）: 起動した。"
               echo "  反映の結果は [Metadata/App Store](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/app-store-metadata.yml) の run の Job Summary で見られます（起動の直後は一覧に出るまで数秒かかります）"
             else
@@ -169,6 +175,7 @@ jobs:
             fi
           } >> "$SUMMARY"
           echo "failed=${failed}" >> "$GITHUB_OUTPUT"
+          echo "started=${started}" >> "$GITHUB_OUTPUT"
 
       - name: Summary
         if: always()
@@ -176,6 +183,8 @@ jobs:
           DELIVERY: ${{ vars.ENABLE_DELIVERY != 'false' }}
           APPLIED: ${{ steps.apply.outcome == 'success' }}
           PUSHED: ${{ steps.commit.outcome == 'success' }}
+          # Metadata/App Store を起動できたか（ENABLE_DELIVERY が false・release ブランチにファイルが無い・起動の失敗では false）
+          STARTED: ${{ steps.dispatch.outputs.started == '1' }}
           FAILED: ${{ job.status != 'success' || steps.dispatch.outputs.failed == '1' }}
         run: |
           set -euo pipefail
@@ -205,7 +214,12 @@ jobs:
             echo
             echo "### 次にすること"
             echo
-            echo "1. Metadata/App Store の run の Job Summary で、iOS / macOS に最新情報が書き込まれたかを確かめる"
+            if [ "$STARTED" = "true" ]; then
+              echo "1. Metadata/App Store の run の Job Summary で、iOS / macOS に最新情報が書き込まれたかを確かめる"
+            else
+              # 反映を起動していないので、run を確かめる手順は出さない（理由は上の節）
+              echo "1. Metadata/App Store は起動していません（上の理由を見てください）。App Store Connect に反映するときは、Actions から Metadata/App Store を \`release/${VERSION}\`・\`dry_run\` オフで起動する"
+            fi
             echo "2. 直したくなったら、AskHub か Actions の Release/Notes から同じバージョンで確定し直す（上書きする）"
             echo "3. App Store Connect で審査に提出する（人が行う）"
             if [ "$FAILED" = "true" ]; then

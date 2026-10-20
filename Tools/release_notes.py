@@ -92,11 +92,20 @@ def command_check(args: argparse.Namespace) -> dict:
 # MARK: apply
 
 
+def quoted(keys: list[str]) -> str:
+    """入力から来たキーを JSON の文字列として並べる。
+
+    キーは任意の文字列なので、改行を含むとワークフローの `::error::` の行を割って別のワークフローコマンドを差し込める。
+    `json.dumps` で `\\n` などにエスケープして 1 行に収める（日本語はそのまま）。
+    """
+    return ", ".join(json.dumps(key, ensure_ascii=False) for key in keys)
+
+
 def _reject_duplicates(pairs: list[tuple[str, object]]) -> dict:
     keys = [key for key, _ in pairs]
     duplicated = sorted({key for key in keys if keys.count(key) > 1})
     if duplicated:
-        raise InvalidWhatsNew([f"同じ言語が 2 回以上あります: {', '.join(duplicated)}"])
+        raise InvalidWhatsNew([f"同じ言語が 2 回以上あります: {quoted(duplicated)}"])
     return dict(pairs)
 
 
@@ -112,7 +121,7 @@ def parse_whats_new(raw: str, languages: list[str], limit: int = WHATS_NEW_LIMIT
     problems = []
     unknown = [key for key in value if key not in languages]
     if unknown:
-        problems.append(f"AppStore/languages.json に無い言語があります: {', '.join(unknown)}（使える言語: {', '.join(languages)}）")
+        problems.append(f"AppStore/languages.json に無い言語があります: {quoted(unknown)}（使える言語: {', '.join(languages)}）")
     missing = [language for language in languages if language not in value]
     if missing:
         problems.append(f"本文の無い言語があります: {', '.join(missing)}（AppStore/languages.json のすべての言語を書いてください）")

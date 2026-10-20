@@ -1,0 +1,240 @@
+name: Release/Finish
+# AskHub アプリ（AskHubKit の WorkflowRun.displayTitle）が、どのバージョンの run かを一覧から見分けるための表示名。
+# runs の一覧の API は inputs を返さないので、バージョンは run-name に入れる（表示だけでシェルには渡らない。run: には env で渡す）
+run-name: Release/Finish ${{ inputs.version }}
+
+# リリース後作業（Discussion #605 の Q6・Q7）。App Store での配信を検知した Release/Sync（release-sync.yml）が workflow_dispatch で起動する
+# （Actions から手で起動してもよい。ブランチは develop か release/<version>）。
+#
+# 1. check: version の形・起動した ref、release/<version> があること、main・develop・v<version> にどこまで入っているか、
+#    release ブランチにしかないコミットに AI 帰属行が無いこと（Tools/release_finish.py check）
+# 2. build: release の先頭で CI（_build.yml。SwiftLint・ビルド・UI テスト・AskHubKit）を流す（main・develop への取り込みが残っているときだけ）
+# 3. finish:
+#    a. main が無ければ release の先頭から作り、あれば release → main をマージコミットで取り込む
+#    b. main へのマージコミット（初回は main の先頭）に v<version> のタグを打つ
+#    c. GitHub Release を公開する（本文は確定した最新情報。無ければ下書き、どちらも無ければ PR の一覧。Tools/release_finish.py notes）
+#    d. release → develop をマージコミットで取り込み、develop の MARKETING_VERSION を次のパッチにする
+#       （人が PR をマージした後の起動し直しで develop がもう release を含んでいても、MARKETING_VERSION が <version> 以下なら次のパッチにする）
+#    取り込みは Tools/release_finish_merge.sh。コンフリクト・push を断られたときは、release の先頭から作った一時ブランチ → 取り込み先の PR
+#    （作れなければ Issue）を残して止める（人はその一時ブランチでコンフリクトを解く。release ブランチは進めない）
+#
+# GITHUB_TOKEN で作った PR・push では build.yml・no-ai-attribution.yml が動かないので、2 で CI を、1 で AI 帰属の検査を同じ release の先頭に流し、
+# 通ったらローカルでマージして push する（develop の必須チェック「No AI Attribution」は、push するコミットに GITHUB_TOKEN で check run を付けて満たす）。
+# 途中で止まったら、原因を直してから同じバージョンで起動し直すと、済んだ所を飛ばして残りを行う。release ブランチは消さない。
+# 手順と失敗したときは docs/release.md の「リリース後作業」。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'リリースのバージョン（MAJOR.MINOR.PATCH。release/<version> があるもの）'
+        required: true
+        type: string
+
+permissions: {}
+
+# リリース後作業は同時に 1 つだけ（main・develop への push を取り合わない）。Release/Sync が続けて起動しても、後の run は済んだ所を飛ばす
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      release_sha: ${{ steps.check.outputs.release_sha }}
+      merge: ${{ steps.check.outputs.merge }}
+      tag_state: ${{ steps.check.outputs.tag_state }}
+      main_state: ${{ steps.check.outputs.main_state }}
+    env:
+      # 入力はシェルに直接展開せず、環境変数で渡す（インジェクション対策）
+      VERSION: ${{ inputs.version }}
+
+    steps:
+      - name: Validate input
+        run: |
+          set -euo pipefail
+          if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::バージョンは MAJOR.MINOR.PATCH の形で指定してください"
+            printf '%s\n\n%s\n' "## リリース後作業" "- 始めませんでした: バージョンは MAJOR.MINOR.PATCH の形で指定してください" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          # Tools/ は起動した ref のものを使う。develop（Release/Sync・手で起動）か release/<version> だけを受け付ける
+          if [ "$GITHUB_REF" != "refs/heads/develop" ] && [ "$GITHUB_REF" != "refs/heads/release/${VERSION}" ]; then
+            echo "::error::develop か release/${VERSION} から起動してください（${GITHUB_REF}）"
+            printf '%s\n\n%s\n' "## リリース後作業 ${VERSION}" "- 始めませんでした: develop か release/${VERSION} から起動してください（起動したブランチ: \`${GITHUB_REF#refs/heads/}\`）" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # main・develop・タグにどこまで入っているかと、release ブランチにしかないコミットを読む
+          fetch-depth: 0
+
+      - name: Check release
+        id: check
+        run: |
+          set -euo pipefail
+          printf '%s\n\n' "## リリース後作業 ${VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          if python3 Tools/release_finish.py check --version "$VERSION" > "$RUNNER_TEMP/check.json"; then
+            release_sha=$(jq -r '.releaseSha' "$RUNNER_TEMP/check.json")
+            {
+              echo "release_sha=${release_sha}"
+              echo "merge=$(jq -r '.main != "done" or .develop != "done"' "$RUNNER_TEMP/check.json")"
+              echo "tag_state=$(jq -r '.tagState' "$RUNNER_TEMP/check.json")"
+              echo "main_state=$(jq -r '.main' "$RUNNER_TEMP/check.json")"
+            } >> "$GITHUB_OUTPUT"
+            {
+              echo "- release ブランチ: \`release/${VERSION}\` の [\`${release_sha:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${release_sha})"
+              jq -r '.messages[1:][] | "- \(.)"' "$RUNNER_TEMP/check.json"
+              jq -r 'if .pending then empty else "\nすべて済んでいます（何もしません）。" end' "$RUNNER_TEMP/check.json"
+              jq -r 'if .main != "done" or .develop != "done" then "\nrelease の先頭で CI（build）を流してから取り込みます。" else empty end' "$RUNNER_TEMP/check.json"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            # 結果の JSON が壊れていても（Python が落ちたなど）、set -e で jq ごと止まらず理由を Summary に出す
+            error=$(jq -r '.error // "検査に失敗しました"' "$RUNNER_TEMP/check.json" 2> /dev/null) || error="検査の結果を読めませんでした（ログを見てください）"
+            echo "::error::${error}"
+            {
+              echo "- 始めませんでした: ${error}"
+              echo
+              echo "main・develop・タグ・Release は何も変えていません。理由を直してから、同じバージョンで起動し直してください（docs/release.md の「リリース後作業」の「失敗したとき」）。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+  build:
+    needs: check
+    # 取り込みが残っていないとき（タグ・Release だけが残った再実行）は流さない
+    if: needs.check.outputs.merge == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_build.yml
+    with:
+      # check で確かめた release の先頭（起動した ref の develop ではない）。release / main / develop の push と同じく UI テストまで流す
+      ref: ${{ needs.check.outputs.release_sha }}
+      ui-tests: true
+
+  finish:
+    name: finish
+    needs: [check, build]
+    # build を飛ばしたとき（取り込みが残っていない）も進む。build が失敗・取り消しなら進まない
+    if: ${{ !cancelled() && needs.check.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write       # main・develop・一時ブランチの push、タグ、GitHub Release
+      checks: write         # push するコミットへの check run「No AI Attribution」（develop の必須チェック）
+      pull-requests: write  # 取り込めなかったときに残す release → main / develop の PR
+      issues: write         # PR を作れなかったとき（Actions に PR の作成を許していないリポジトリ）に知らせる Issue
+    env:
+      VERSION: ${{ inputs.version }}
+      RELEASE_SHA: ${{ needs.check.outputs.release_sha }}
+      TAG_STATE: ${{ needs.check.outputs.tag_state }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # 起動した ref（ワークフローのファイルと同じコミット）の Tools/ を使う。取り込みは git worktree で別に作る
+          fetch-depth: 0
+
+      - name: Prepare
+        run: |
+          set -euo pipefail
+          SUMMARY="$RUNNER_TEMP/summary.md"
+          echo "SUMMARY=${SUMMARY}" >> "$GITHUB_ENV"
+          : > "$SUMMARY"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # CI を流している間に release ブランチが進んでいたら、CI を通っていないコミットを取り込まないよう止める
+          git fetch --quiet --tags origin "+refs/heads/release/${VERSION}:refs/remotes/origin/release/${VERSION}"
+          head=$(git rev-parse "refs/remotes/origin/release/${VERSION}")
+          if [ "$head" != "$RELEASE_SHA" ]; then
+            echo "::error::CI を流している間に release/${VERSION} が進みました（${RELEASE_SHA:0:7} → ${head:0:7}）"
+            echo "- 止めました: CI を流している間に \`release/${VERSION}\` が進みました（${RELEASE_SHA:0:7} → ${head:0:7}）。同じバージョンで起動し直すと、新しい先頭で CI からやり直します" >> "$SUMMARY"
+            exit 1
+          fi
+
+      - name: Merge into main
+        id: main
+        env:
+          # check の判定。done なら取り込まない（タグを打った後に release ブランチが進んだときは、進んだ分を develop にだけ取り込む）
+          PLANNED: ${{ needs.check.outputs.main_state }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin '+refs/heads/main:refs/remotes/origin/main' 2> /dev/null || true
+          bash Tools/release_finish_merge.sh main
+
+      - name: Tag
+        id: tag
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          if [ "$TAG_STATE" = "done" ]; then
+            echo "- タグ: \`${tag}\` はもうあります（前の run で打ち済み）" >> "$SUMMARY"
+            exit 0
+          fi
+          git fetch --quiet origin '+refs/heads/main:refs/remotes/origin/main'
+          python3 Tools/release_finish.py tag-target --version "$VERSION" --release-ref "$RELEASE_SHA" > "$RUNNER_TEMP/tag.json"
+          target=$(jq -r '.target' "$RUNNER_TEMP/tag.json")
+          git tag -a "$tag" -m "AskHub ${VERSION}" "$target"
+          # 同じ名前のタグが先にできていたら、上書きせずに失敗する（--force は付けない）
+          git push --quiet origin "refs/tags/${tag}"
+          echo "- タグ: \`${tag}\` を main の [\`${target:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${target}) に打ちました" >> "$SUMMARY"
+
+      - name: Publish GitHub Release
+        id: release
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          if gh release view "$tag" --json url --jq .url > "$RUNNER_TEMP/release-url.txt" 2> /dev/null; then
+            echo "- GitHub Release: もうあります（$(cat "$RUNNER_TEMP/release-url.txt")。本文は変えていません）" >> "$SUMMARY"
+            exit 0
+          fi
+          # 本文は release の先頭の AppStore/ から作る（作業ツリーの Tools/ は起動した ref のもの）
+          git worktree add --quiet --detach "$RUNNER_TEMP/release" "$RELEASE_SHA"
+          python3 Tools/release_finish.py --root "$RUNNER_TEMP/release" notes --version "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" > "$RUNNER_TEMP/notes.json"
+          jq -r '.body' "$RUNNER_TEMP/notes.json" > "$RUNNER_TEMP/notes.md"
+          url=$(gh release create "$tag" --verify-tag --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest)
+          source=$(jq -r '{"whatsNew": "確定した最新情報", "draft": "最新情報の下書き（確定していなかった）", "pullRequests": "PR の一覧（最新情報が無かった）"}[.source]' "$RUNNER_TEMP/notes.json")
+          echo "- GitHub Release: ${url} を公開しました（本文: ${source}）" >> "$SUMMARY"
+
+      - name: Merge into develop
+        id: develop
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin '+refs/heads/develop:refs/remotes/origin/develop'
+          bash Tools/release_finish_merge.sh develop
+
+      - name: Summary
+        if: always()
+        env:
+          DONE: ${{ job.status == 'success' }}
+          MAIN_STATE: ${{ steps.main.outputs.state }}
+          DEVELOP_STATE: ${{ steps.develop.outputs.state }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### 取り込み・タグ・Release"
+            echo
+            cat "$SUMMARY" 2> /dev/null || true
+            echo
+            if [ "$DONE" = "true" ]; then
+              echo "リリース後作業が終わりました。release ブランチ \`release/${VERSION}\` は残してあります（要らなければ人が消す）。"
+            else
+              echo "この run は途中で止まりました。上の理由を直してから、同じバージョンで起動し直してください（済んだ所は飛ばします。docs/release.md の「リリース後作業」の「失敗したとき」）。"
+              if [ "$MAIN_STATE" = "conflict" ] || [ "$DEVELOP_STATE" = "conflict" ] || [ "$MAIN_STATE" = "rejected" ] || [ "$DEVELOP_STATE" = "rejected" ]; then
+                echo "取り込めなかった先の PR（release の先頭から作った一時ブランチ \`release-finish/${VERSION}/pr-<取り込み先>\` → 取り込み先。作れなかったときは Issue）を残しました。"
+                echo "人がそのブランチでコンフリクトを解いてマージコミットでマージしてから、起動し直してください。\`release/${VERSION}\` には push しないでください（release の先頭が進むと、タグと合わなくなって起動し直しが止まります）。"
+              elif [ "$DEVELOP_STATE" = "version-rejected" ]; then
+                echo "取り込みは済んでいます。develop の MARKETING_VERSION を次のパッチにするコミットだけを push できませんでした。起動し直すか、人が develop で直してください。"
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -450,7 +450,8 @@ App Store Connect は、そのプラットフォームの最初のバージョ�
 アプリは `release-notes.yml` を **`release/<v>` の ref で**起動する（inputs は `version` と `whats_new`。`ReleaseWorkflow.notesInputs`）。
 
 - アプリが送る前に見るのは形だけでよい（言語・字数・空でないことの正本はこのワークフローの検査）。止まったときの理由は run の Job Summary に出る
-- `release/<v>` を切った時点の `develop` に `release-notes.yml` が無かった release ブランチでは、`release/<v>` の ref では起動できない（dispatch がエラーになる）。そのときは Actions から `develop` を選んで起動する
+- `release/<v>` を切った時点の `develop` に `release-notes.yml` が無かった release ブランチでは、`release/<v>` の ref では起動できない（dispatch がエラーになる）。そのときは Actions から `develop` を選んで起動する。
+  このとき確定は `develop` の `Tools/` で行うが、起動される Metadata/App Store は `release/<v>` で動き、release ブランチの古い `Tools/upload_metadata.py` を使うので、上の「初めてのリリースの最新情報」の `whatsNew` の除外が効かない（初めてのリリースでは、App Store Connect が `whatsNew` を弾くと Metadata/App Store が失敗しうる）
 - 確定すると、release ブランチの `AppStore/whats-new-draft.json` が消え、すべての言語の `whatsNew.version` が `<v>` になる（アプリの「確定済み」）
 
 ### 人がすること
@@ -475,6 +476,120 @@ App Store Connect は、そのプラットフォームの最初のバージョ�
 
 - ジョブの権限は `contents: write`（release ブランチの push）・`actions: write`（`workflow_dispatch`）。`GITHUB_TOKEN` だけを使う
 - このワークフローは App Store Connect の Secrets を使わない（反映は Metadata/App Store が行う）。新しい Secret・vars は要らない。vars は任意の `ENABLE_DELIVERY`
+
+## リリース後作業
+
+App Store で配信されたリリースを `main` と `develop` に取り込み、タグ `v<v>` と GitHub Release を作る（Discussion #605 の Q6・Q7）。
+ワークフローは `.github/workflows/release-finish.yml`（Release/Finish）。配信を検知した Release/Sync（`release-sync.yml`）が `workflow_dispatch` で起動する。Actions から手で起動してもよい。
+
+### 流れ
+
+| 順 | ジョブ | すること | 使うもの |
+| --- | --- | --- | --- |
+| 1 | check | `version` の形・起動した ref（`develop` か `release/<v>`）。`release/<v>` があること、`main`・`develop`・`v<v>` にどこまで入っているか、release ブランチにしかないコミット（`develop..release/<v>`）に AI 帰属行が無いこと | `Tools/release_finish.py check` |
+| 2 | build | release の先頭で CI（`_build.yml`。SwiftLint・iOS の UI テスト・AskHubKit・macOS のビルド）を流す。`main`・`develop` への取り込みが済んでいれば飛ばす | `_build.yml` の `ref` |
+| 3 | finish | `main` が無ければ release の先頭から作り（初回）、あれば release → `main` をマージコミット（`Merge branch 'release/<v>' into main`）で取り込む | `Tools/release_finish_merge.sh main` |
+| 4 | finish | `main` の first-parent のうち release の先頭を初めて含むコミット（取り込んだマージコミット。初回は `main` の先頭）に注釈付きタグ `v<v>` を打つ | `Tools/release_finish.py tag-target` |
+| 5 | finish | GitHub Release `v<v>`（タイトルは `<v>`、Latest）を公開する。本文は下の「Release の本文」 | `Tools/release_finish.py notes` |
+| 6 | finish | release → `develop` をマージコミットで取り込み、`develop` の `MARKETING_VERSION` を次のパッチにするコミットを足す（下の「develop のバージョン」）。`develop` がもう release を含んでいても（人が PR をマージした後の起動し直し）、`MARKETING_VERSION` が `<v>` 以下ならそのコミットだけを足す | `Tools/release_finish_merge.sh develop`・`Tools/release_finish.py develop-version` |
+| 7 | finish | Job Summary に結果を出す | |
+
+- inputs は `version`（必須）だけ。run の表示名（`run-name`）は `Release/Finish <version>`。inputs は `run-name` の表示にだけ式で使い、`run:` の中には環境変数で渡す
+- `Tools/` は起動した ref（ワークフローのファイルと同じコミット）のものを使う。`develop` と `release/<v>` 以外から起動すると止まる
+- **CI を流している間に release ブランチが進んだら止める**（CI を通っていないコミットを取り込まない）。同じバージョンで起動し直すと、新しい先頭で CI からやり直す
+- **同じバージョンで何度起動してもよい。** 済んだ所（`main`・`develop` が release の先頭を含む・タグがある・Release がある）は飛ばし、残りだけを行う。
+  タグがあっても、release の先頭を含んでいれば再実行とみなす。取り込みが両方済んでいれば CI も流さない。
+  タグが `main` にあって release の先頭を含まない（タグを打った後に release ブランチが進んだ）ときは、`main` とタグは済みとみなし、進んだ release を CI を流してから `develop` にだけ取り込む
+  （進んだ分は `main` に入れない。タグと release の共通の祖先が `develop` にもあるとき＝タグの打ち間違いは止める）
+- release ブランチは消さない（要らなければ人が消す）。リリース後作業は同時に 1 つだけ動く（`concurrency`）
+- コミット・タグの作者は `github-actions[bot]`。マージコミットのメッセージは `Merge branch 'release/<v>' into <main|develop>`（最新情報の下書きは `Merge pull request` だけを PR とみなすので、次のリリースの下書きには入らない）
+
+### GITHUB_TOKEN だけで取り込む仕組み
+
+新しい Secret（PAT・GitHub App）やリポジトリの設定の変更を足さずに、Q6（CI が通ったら自動でマージ・マージコミット）を満たすための作り。
+
+- `GITHUB_TOKEN` で作った PR・push では `build.yml`・`no-ai-attribution.yml` が動かない。そこで、CI は 2 の build ジョブで（`_build.yml` を `workflow_call`）、
+  AI 帰属の検査は 1 の check ジョブで（`no-ai-attribution.yml` と同じ正規表現）、取り込む release の先頭に流してから取り込む
+- `develop` はブランチ保護で必須チェック「No AI Attribution」（GitHub Actions のチェック）が要る。PR は必須ではないが、push するコミットにもこのチェックが要る。
+  取り込みはローカルで `git merge --no-ff` し、できたコミットをいったん一時ブランチ `release-finish/<v>/develop` に push してから、
+  先頭に check run「No AI Attribution」（`checks: write`。GitHub Actions のものになるので必須チェックを満たす）を付けて、`develop` に fast-forward で push する。一時ブランチはすぐ消す
+  （中断した run の一時ブランチが残っていても、一時ブランチだけは `+` で上書きするので断られない）
+- `main` にはブランチ保護が無いので、一時ブランチも check run も使わずにそのまま push する（`main` に必須チェックを足すなら、`develop` と同じ手順に変える）
+- AI 帰属の検査は、release ブランチにしかないコミット（`develop..release/<v>`）だけを見る。`develop` に入ったコミットは PR の No AI Attribution を通っている
+  （初回の `main` は `develop` の全履歴を含むので、検査ができる前の履歴まで見ない）
+- **`GITHUB_TOKEN` は workflows の権限を持てないので、`.github/workflows/` のファイルが変わる取り込みは push を断られる**
+  （`refusing to allow a GitHub App to create or update workflow … without workflows permission`）。
+  初回は `main` を release の先頭（リモートにあるコミット）から作るだけなので当たらない見込み（未確認。#645 で確かめる）。取り込み待ちの一時ブランチ `release-finish/<v>/pr-<取り込み先>` を作るのも同じ。`develop` への取り込みも、release ブランチでワークフローを直していなければ当たらない。
+  **2 回目以降の `main` への取り込みは、前のリリースから `develop` でワークフローを変えていれば断られる**。
+  **workflows が変わる取り込みは断られ、PR / Issue を残して人がマージする**（下の「取り込めなかったとき」。PR #644 の ask の回答で今のままと決めた。workflows の権限を持つトークンで自動にする改善は #647）
+- push は `--force` を付けない。起動した後に取り込み先が進んでいて non-fast-forward で断られたときは、取り込み先を取り直して 1 回だけやり直す。2 回とも断られたら PR を残して止める
+
+### Release の本文
+
+release の先頭の `AppStore/` から作る（上から順に、あるものを使う）。
+
+1. 確定した最新情報: `AppStore/languages.json` のすべての言語で `AppStore/metadata/<言語>.json` の `whatsNew.version` が `<v>` なら、その `text`
+2. 最新情報の下書き: `AppStore/whats-new-draft.json` の `version` が `<v>` なら、その `whatsNew`（「確定する前の下書きから作った本文です」と添える）
+3. PR の一覧: 前のタグから release の先頭までに `develop` に入った PR（`- タイトル (#N)`。下書きと同じたどり方で、【TYPE】を外し、CI などの PR も載せる）。無ければ「細かな改善と不具合の修正を行いました。」
+
+言語が 1 つなら本文だけ、複数なら言語ごとに `### <言語>` の見出しを付ける。前のタグがあれば、末尾に `compare/<前のタグ>...v<v>` のリンクを付ける。
+Release がもうあるときは本文を変えない（直したいときは GitHub の画面で直す）。
+
+### develop のバージョン
+
+release → `develop` の取り込みの後、`develop` の `MARKETING_VERSION` は配信したバージョン（`<v>`）になる。そのままだと、次に `develop` に push したときの Upload が、
+App Store Connect で閉じたバージョン（配信済み）に上げようとして失敗する。そこで、`develop` の `MARKETING_VERSION` が `<v>` 以下なら、**次のパッチ**（`1.1.0` → `1.1.1`）にするコミット
+`[chore] MARKETING_VERSION を <次のパッチ> にする` を取り込みのマージコミットの後に足す（`<v>` より大きければ変えない）。
+
+- `develop` への取り込みで止まって人が PR をマージした後も、同じバージョンで起動し直すと、`develop` がもう release を含んでいても `MARKETING_VERSION` が `<v>` 以下ならこのコミットだけを足す
+  （取り込みと同じく、一時ブランチ → check run → fast-forward で push する）。人のマージの push では Upload が動き、配信済みの `<v>` に上げようとして失敗することがある（起動し直してバージョンを上げれば、次の push から通る）
+- アプリのリリース準備の既定値は `develop` の次のマイナーなので、`1.1.1` → `1.2.0` になり、飛ばない（次のマイナーにすると既定値が `1.3.0` になる）
+- リリース準備は `develop` の `MARKETING_VERSION` より大きいバージョンしか受け付けないので、配信した `1.1.0` の不具合を直すリリースは `1.1.2` 以上にする（`1.1.1` は `develop` の TestFlight 用）
+
+### 人がすること
+
+1. ふだんは何もしない（Release/Sync が配信を検知して起動する）。手で起動するときは Actions → **Release/Finish** → Run workflow で、ブランチは `develop` のまま `version` を入れる
+2. run の Job Summary で、`main`・タグ・Release・`develop` を確かめる
+3. 「取り込めませんでした」のときは、下の「取り込めなかったとき」
+
+### 取り込めなかったとき
+
+コンフリクトしたとき・push を断られたときは、release の先頭から一時ブランチ `release-finish/<v>/pr-<main|develop>` を作り、そこ → 取り込み先（`main` / `develop`）の PR を作って（もうあれば使って）止め、run を失敗にする（AskHub のリリースの進み具合に「リリース後作業 失敗」と出る）。
+PR のタイトルは `【CHORE】release/<v> を <main|develop> に取り込む`、本文に理由とすることを書く。
+**PR を作れないとき**（リポジトリの Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」が無効。ask-hub-apple は 2026-10 の時点で無効）は、
+代わりに Issue `【CHORE】release/<v> を <main|develop> に取り込めませんでした`（同じタイトルの開いた Issue があれば作らない）で知らせ、人がその一時ブランチから PR を作る。
+
+**`release/<v>` には push しない（release ブランチは進めない）。** コンフリクトは一時ブランチで解く。release の先頭が進むと、起動し直したときに CI を通した先頭・タグと合わなくなり、
+人の push で release ブランチの Upload（App Store Connect へのアップロード）も動く。
+
+1. PR のブランチ `release-finish/<v>/pr-<取り込み先>` で、コンフリクトを解く（取り込み先を取り込むなど）
+2. PR を**マージコミットで**マージする（Squash しない）。`develop` 宛ての PR には、PR の head（release の先頭）に check run「No AI Attribution」を付けてあるので、
+   コンフリクトが無ければそのままマージできる。一時ブランチにコミットを足したときは、人の push なので `no-ai-attribution.yml` が PR で動く
+3. Actions → Release/Finish を同じバージョンで起動し直す（済んだ所は飛ばして、タグ・Release・残りの取り込みと、`develop` の `MARKETING_VERSION` を次のパッチにするコミットを行う）。一時ブランチは要らなければ消す
+
+- 起動し直したときに一時ブランチがもうあれば、作り直さずにそのまま使う（人がコンフリクトを解いたコミットは消さない）。前の run の古い release の先頭のままなら fast-forward で進める
+- `main` へは止まっているのでタグと Release は作られていない。`develop` への取り込みだけが止まったときは、`main`・タグ・Release はもうある（Release/Sync はタグのある release ブランチを見ないので、起動し直すのは人）
+- 誤って `release/<v>` でコンフリクトを解いてしまった（タグを打った後に release が進んだ）ときも、起動し直せば、進んだ release を `develop` にだけ取り込む（上の「流れ」の再実行）
+
+### 失敗したとき
+
+| 起きたこと | 見るところ・すること |
+| --- | --- |
+| 「始めませんでした」 | check の Job Summary の理由のとおり。何も変えていない |
+| 「AI 帰属行があります」 | release ブランチの該当するコミットを直す（release 宛ての PR）。直してから起動し直す |
+| 「タグ v<v> がありますが、release の先頭を含まず、このリリースを main に取り込んだコミットでもありません」 | タグの打ち間違い（`main` に無い、または `develop` のコミットに打った）。人が確かめる（タグは消さずに、次のバージョンで出すかを決める）。タグを打った後に release が進んだだけなら止まらない |
+| build が失敗した | build ジョブのログ（`_build.yml`）。release ブランチで直してから起動し直す。何も取り込んでいない |
+| 「CI を流している間に release が進みました」 | そのまま同じバージョンで起動し直す |
+| 「取り込めませんでした」 | 上の「取り込めなかったとき」 |
+| 「check run「No AI Attribution」を付けられませんでした」 | `develop` には push していない。理由（gh の HTTP の状態）を見て、`checks: write` が付いているか・GitHub の障害でないかを確かめ、起動し直す |
+| 「develop の MARKETING_VERSION: 次のパッチにするコミットを push できませんでした」 | 取り込みは済んでいる。起動し直すか、人が `develop` で `Configs/Project.xcconfig` を次のパッチにする |
+| タグの push に失敗した | 同じ名前のタグが先にできていないか確かめる。あれば、release の先頭を含むかを確かめて起動し直す |
+
+### 権限・Secrets / vars
+
+- check・build は `contents: read`。finish は `contents: write`（`main`・`develop`・一時ブランチの push、タグ、Release）・`checks: write`（check run）・`pull-requests: write`（取り込めなかったときの PR）・`issues: write`（PR を作れなかったときの Issue）。`GITHUB_TOKEN` だけを使う
+- App Store Connect の Secrets・vars は使わない。新しい Secret・vars は要らない
+- PR を残すには、リポジトリの Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」が要る（無効でも取り込み・タグ・Release は動き、取り込めなかったときに PR の代わりに Issue で知らせる）。この設定は変えなくてよい
 
 ## AskHub アプリが読むもの・起動するもの
 
