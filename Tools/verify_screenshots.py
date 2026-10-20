@@ -8,6 +8,13 @@ App Store Connect は寸法が 1 px でも違えば弾き、アルファ付き�
         --directory build/screenshots/APP_IPHONE_67 \\
         --sizes 1320x2868,1290x2796
 
+寸法は `--display-type` を渡すと `AppStore/screenshots.json` のその表示サイズの sizes を使う
+（Mac の APP_DESKTOP は 2880x1800・2560x1600・1440x900・1280x800 の 16:10 の 4 つ）。
+
+    python3 Tools/verify_screenshots.py \\
+        --directory build/screenshots/APP_DESKTOP \\
+        --display-type APP_DESKTOP
+
 `<directory>/<言語>/*.png` をすべて見る。枚数が `AppStore/screenshots.json` の scenes と
 揃っているかも確かめる（途中の画面だけ撮れていない、に気づくため）。
 """
@@ -21,7 +28,7 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from app_store_config import scenes
+from app_store_config import display_type, scenes
 
 #: PNG の色タイプ。2 = RGB（アルファ無し）、6 = RGBA
 PNG_COLOR_TYPE_RGB = 2
@@ -95,9 +102,13 @@ def parse_sizes(raw: str) -> set[tuple[int, int]]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--directory", type=Path, required=True, help="<ここ>/<言語>/*.png を見る")
-    parser.add_argument("--sizes", required=True, help="受け付ける寸法（カンマ区切り。例: 1320x2868,1290x2796）")
+    accepted_group = parser.add_mutually_exclusive_group(required=True)
+    accepted_group.add_argument("--sizes", help="受け付ける寸法（カンマ区切り。例: 1320x2868,1290x2796）")
+    accepted_group.add_argument("--display-type", help="screenshots.json のこの表示サイズの sizes を受け付ける（例: APP_DESKTOP）")
     args = parser.parse_args()
 
+    if args.display_type:
+        args.sizes = ",".join(display_type(args.display_type)["sizes"])
     accepted = parse_sizes(args.sizes)
     expected_files = [f"{scene.file}.png" for scene in scenes()]
 
