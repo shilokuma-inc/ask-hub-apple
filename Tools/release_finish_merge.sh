@@ -3,7 +3,8 @@
 #
 #   Tools/release_finish_merge.sh main|develop
 #
-# 1. 取り込み先が release の先頭を含んでいれば何もしない（再実行）。main が無ければ release の先頭から作る
+# 1. 取り込み先が release の先頭を含んでいれば取り込まない（再実行。人が PR をマージした後など）。ただし develop の MARKETING_VERSION が
+#    <v> 以下のままなら、次のパッチにするコミットだけを 3 と同じ手順で push する。main が無ければ release の先頭から作る
 # 2. 取り込み先の先頭で `git merge --no-ff` する（マージコミット）。develop では MARKETING_VERSION を次のパッチにするコミットを足す
 #    （配信したバージョンのままだと develop の Upload が閉じたバージョンに上げようとして失敗する。Tools/release_finish.py develop-version）
 # 3. develop では、作ったコミットを一時ブランチ（release-finish/<v>/develop）に push し、先頭に check run「No AI Attribution」を付けてから、
@@ -18,7 +19,7 @@
 # 環境変数: VERSION・RELEASE_SHA（check ジョブで確かめた release の先頭）・GITHUB_REPOSITORY・GH_TOKEN・
 #           SUMMARY（Job Summary に載せる行をためるファイル）・RUNNER_TEMP・GITHUB_OUTPUT。
 #           PLANNED（任意。check ジョブの main の判定。done なら main には取り込まない。タグを打った後に release が進んだとき）
-# 出力（GITHUB_OUTPUT）: state（created / merged / done / conflict / rejected）・sha（取り込み先の新しい先頭）・pr（PR の URL）・issue（PR を作れなかったときの Issue の URL）
+# 出力（GITHUB_OUTPUT）: state（created / merged / done / conflict / rejected / version-rejected（取り込み済みの develop のバージョンのコミットを push できなかった））・sha（取り込み先の新しい先頭）・pr（PR の URL）・issue（PR を作れなかったときの Issue の URL）
 set -euo pipefail
 
 target="${1:?main か develop を指定してください}"
@@ -239,16 +240,69 @@ publish_error() {
   fi
 }
 
+# $1: develop の作業ツリー。MARKETING_VERSION が <v> 以下なら次のパッチにするコミットを足し、version_message に Summary の行を入れる
+# （変えなければ空）。条件文の中で呼ぶと set -e が効かないので、文として呼ぶ
+bump_version() {
+  local result="$RUNNER_TEMP/develop-version.json" next
+  version_message=""
+  if ! python3 "$tools/release_finish.py" --root "$1" develop-version --version "$VERSION" > "$result"; then
+    summary "- develop の MARKETING_VERSION を確かめられませんでした（$(jq -r '.error // "ログを見てください"' "$result" 2> /dev/null || echo "ログを見てください")）"
+    echo "::error::develop の MARKETING_VERSION を確かめられませんでした"
+    exit 1
+  fi
+  if [ "$(jq -r '.changed' "$result")" = "true" ]; then
+    next=$(jq -r '.version' "$result")
+    git -C "$1" add Configs/Project.xcconfig
+    git -C "$1" commit --quiet -m "[chore] MARKETING_VERSION を ${next} にする"
+    version_message="- develop の MARKETING_VERSION: $(jq -r '.previous' "$result") → ${next}（配信した ${VERSION} のままだと develop の Upload が失敗するため）"
+  fi
+}
+
 # 起動した後に取り込み先が進んで push が non-fast-forward で断られたときは、取り込み先を取り直して 1 回だけやり直す
 retried=""
 for attempt in 1 2; do
   current=$(git rev-parse --verify --quiet "refs/remotes/origin/${target}^{commit}" || true)
 
   if [ -n "$current" ] && git merge-base --is-ancestor "$RELEASE_SHA" "$current"; then
-    output state "done"
-    output sha "$current"
-    summary "- ${target}: すでに \`${branch}\` を含んでいます（$(commit_link "$current")。前の run か人が取り込み済み）"
-    exit 0
+    done_message="- ${target}: すでに \`${branch}\` を含んでいます（$(commit_link "$current")。前の run か人が取り込み済み）"
+    if [ "$target" = "main" ]; then
+      output state "done"
+      output sha "$current"
+      summary "$done_message"
+      exit 0
+    fi
+    # 人が PR をマージした後の起動し直しでは、develop の MARKETING_VERSION が配信した <v> のままになっている。
+    # 取り込みと同じ手順（一時ブランチ → check run → fast-forward）で、次のパッチにするコミットだけを push する
+    worktree="$RUNNER_TEMP/version-${target}-${attempt}"
+    git worktree add --quiet --detach "$worktree" "$current"
+    bump_version "$worktree"
+    if [ -z "$version_message" ]; then
+      output state "done"
+      output sha "$current"
+      summary "$done_message"
+      exit 0
+    fi
+    bumped=$(git -C "$worktree" rev-parse HEAD)
+    rc=0
+    publish "$bumped" "release を取り込んだ develop の MARKETING_VERSION を次のパッチにするコミットです（Release/Finish が作りました）。" || rc=$?
+    if [ "$rc" = "0" ]; then
+      output state "done"
+      output sha "$bumped"
+      summary "$done_message"
+      summary "${version_message}。コミット $(commit_link "$bumped")${retried:+（起動した後に develop が進んでいたので、新しい先頭で作り直しました）}"
+      exit 0
+    fi
+    if [ "$rc" = "1" ] && [ "$attempt" = "1" ]; then
+      retried=1
+      git fetch --quiet origin "+refs/heads/${target}:refs/remotes/origin/${target}" || true
+      continue
+    fi
+    # 取り込みは済んでいるので PR は作らない。人が develop の MARKETING_VERSION を直す
+    output state "version-rejected"
+    summary "$done_message"
+    summary "- develop の MARKETING_VERSION: **次のパッチにするコミットを push できませんでした**（$(publish_error "$rc")）。人が develop で \`Configs/Project.xcconfig\` を直すか、起動し直してください"
+    echo "::error::develop の MARKETING_VERSION を次のパッチにできませんでした（Job Summary を見てください）"
+    exit 1
   fi
 
   if [ "$target" = "main" ] && [ "${PLANNED:-}" = "done" ] && [ -n "$current" ]; then
@@ -293,13 +347,7 @@ for attempt in 1 2; do
 
   version_message=""
   if [ "$target" = "develop" ]; then
-    python3 "$tools/release_finish.py" --root "$worktree" develop-version --version "$VERSION" > "$RUNNER_TEMP/develop-version.json"
-    if [ "$(jq -r '.changed' "$RUNNER_TEMP/develop-version.json")" = "true" ]; then
-      next=$(jq -r '.version' "$RUNNER_TEMP/develop-version.json")
-      git -C "$worktree" add Configs/Project.xcconfig
-      git -C "$worktree" commit --quiet -m "[chore] MARKETING_VERSION を ${next} にする"
-      version_message="- develop の MARKETING_VERSION: $(jq -r '.previous' "$RUNNER_TEMP/develop-version.json") → ${next}（配信した ${VERSION} のままだと develop の Upload が失敗するため）"
-    fi
+    bump_version "$worktree"
   fi
 
   merged=$(git -C "$worktree" rev-parse HEAD)

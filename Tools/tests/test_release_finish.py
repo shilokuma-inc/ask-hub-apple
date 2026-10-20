@@ -95,8 +95,19 @@ class CheckTests(FinishTestCase):
         # develop への取り込みだけが残っている（前の run がそこで止まった）
         self.assertEqual((result["main"], result["tagState"], result["develop"]), ("done", "done", "merge"))
         self.assertTrue(result["pending"])
+        self.assertFalse(result["developVersionBump"])
         self.repo.merge_into("develop", "release/1.1.0")
-        self.assertFalse(self.check()["pending"])
+        # 人が PR をマージした後: develop は 1.1.0 のままなので、次のパッチにするコミットが残っている
+        result = self.check()
+        self.assertEqual(result["develop"], "done")
+        self.assertTrue(result["developVersionBump"])
+        self.assertTrue(result["pending"])
+        self.assertIn("1.1.1", result["messages"][3])
+        self.repo.commit_file("Configs/Project.xcconfig", "MARKETING_VERSION = 1.1.1\n", "[chore] MARKETING_VERSION を 1.1.1 にする")
+        self.repo.publish("develop")
+        result = self.check()
+        self.assertFalse(result["developVersionBump"])
+        self.assertFalse(result["pending"])
 
     def test_release_advanced_after_tag_merges_into_develop_only(self):
         self.repo.cut_release()

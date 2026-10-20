@@ -12,7 +12,8 @@
 - `check`: `<remote>/release/<v>` があること、`<remote>/main`・`<remote>/develop`・`v<v>` のタグにどこまで入っているか
   （`create` / `merge` / `done`）、release ブランチにしかないコミット（`<remote>/develop..release`）に AI 帰属行が無いことを確かめる。
   タグがあっても、release の先頭を含んでいれば再実行とみなし、残りの作業だけを返す。タグが main にあって release の先頭を含まない
-  （タグを打った後に release ブランチが進んだ）ときは、main とタグは済みとみなし、進んだ release を develop にだけ取り込む
+  （タグを打った後に release ブランチが進んだ）ときは、main とタグは済みとみなし、進んだ release を develop にだけ取り込む。
+  develop にもう入っていても、`MARKETING_VERSION` が `<v>` 以下なら `developVersionBump`（次のパッチにするコミットが残っている）
 - `tag-target`: `main` の first-parent をたどり、release の先頭を初めて含むコミット（release を取り込んだマージコミット。
   初回に release の先頭から `main` を作ったときはその先頭）
 - `notes`: `--root`（release ブランチの作業ツリー）の確定した最新情報（`AppStore/metadata/<言語>.json` の `whatsNew` で
@@ -101,6 +102,14 @@ def merge_base(root: Path, first: str, second: str) -> str:
     return git(root, "merge-base", first, second).strip()
 
 
+def develop_marketing_version(root: Path, develop: str) -> str | None:
+    """develop の先頭の MARKETING_VERSION。読めなければ None（ここでは止めず、取り込みの手順で確かめる）。"""
+    try:
+        return marketing_version(git(root, "show", f"{develop}:{XCCONFIG}"))
+    except Failure:
+        return None
+
+
 # MARK: check
 
 
@@ -151,12 +160,18 @@ def check_finish(root: Path, version: str, remote: str = "origin") -> dict:
         raise Failure(f"{branch} のコミットのメッセージに AI 帰属行があります（{listed}{more}）。"
                       "release ブランチで直してから起動し直してください。")
 
+    # develop にもう入っていても（人が PR をマージした後の起動し直し）、MARKETING_VERSION が配信したバージョンのままなら次のパッチにする
+    develop_version = develop_marketing_version(root, develop) if develop_state == "done" else None
+    develop_key = version_key(develop_version or "")
+    bump = develop_key is not None and develop_key <= version_key(version)  # type: ignore[operator]
+
     labels = {"create": "作る", "merge": "マージコミットで取り込む", "done": "済み"}
     messages = [
         f"{branch} の先頭は {release[:7]} です。",
         f"main: {'release の先頭から' if main_state == 'create' else ''}{labels[main_state]}",
         f"タグ {tag}: {'打つ' if tag_state == 'create' else '済み'}",
-        f"develop: {labels[develop_state]}",
+        f"develop: {labels[develop_state]}"
+        + (f"（MARKETING_VERSION が {develop_version} のままなので、次のパッチ {next_patch(version)} にする）" if bump else ""),
     ]
     if advanced:
         messages.append(f"{branch} はタグ {tag} を打った後に進んでいます（{tagged[:7]} の後）。main とタグはそのままにして、"
@@ -165,8 +180,8 @@ def check_finish(root: Path, version: str, remote: str = "origin") -> dict:
         "ok": True, "version": version, "branch": branch, "tag": tag,
         "releaseSha": release, "mainSha": main, "developSha": develop, "tagSha": tagged,
         "main": main_state, "develop": develop_state, "tagState": tag_state,
-        "initial": main is None, "releaseAdvanced": advanced,
-        "pending": main_state != "done" or develop_state != "done" or tag_state != "done",
+        "initial": main is None, "releaseAdvanced": advanced, "developVersionBump": bump,
+        "pending": main_state != "done" or develop_state != "done" or tag_state != "done" or bump,
         "messages": messages,
     }
 
