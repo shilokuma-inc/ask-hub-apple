@@ -129,6 +129,9 @@ final class ReleaseRequestModel {
         guard let repository else {
             contextState = .idle
             isLoading = false
+            // 読んでいた途中の読み取りの結果は捨てるので、ここで読み取り中を戻す
+            notes.isReading = false
+            notes.update(repository: nil, progress: nil)
             return
         }
         isLoading = true
