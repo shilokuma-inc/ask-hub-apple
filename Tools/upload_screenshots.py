@@ -16,6 +16,16 @@ App Store Connect API で言語ごとにアップロードする。
         --display-type APP_IPHONE_67 \\
         --languages ja
 
+Mac の表示サイズ（APP_DESKTOP）は macOS のバージョンに反映する。反映先のプラットフォームは
+`AppStore/screenshots.json` の表示サイズの platform（省略すると IOS）で決まる（`--platform` は確かめのために渡せる）。
+`--missing-version skip` を付けると、反映先のバージョンが無いとき（macOS のプラットフォームを追加していないなど）に
+止めずに飛ばして終了コード 0 で終わる。
+
+    python3 Tools/upload_screenshots.py \\
+        --screenshots-dir build/screenshots/APP_DESKTOP \\
+        --display-type APP_DESKTOP \\
+        --missing-version skip
+
 認証は App Store Connect API Key（.p8）。次の環境変数でも渡せる。
 
     APP_STORE_CONNECT_KEY_ID / APP_STORE_CONNECT_ISSUER_ID / APP_STORE_CONNECT_PRIVATE_KEY_PATH
@@ -36,13 +46,25 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from app_store_config import MAX_SCREENSHOTS, bundle_id, languages, parse_list
+from app_store_config import MAX_SCREENSHOTS, bundle_id, display_type_platform, languages, parse_list
 from app_store_connect import AppStoreConnect
+from app_store_platform import PLATFORMS, missing_version_reason, platform_label, skipped_message
 
 
 def screenshots_for(directory: Path) -> list[Path]:
     """ファイル名の順に並べる。この順がそのまま App Store の並び順になる。"""
     return sorted(p for p in directory.glob("*.png"))
+
+
+def resolve_platform(display_type: str, requested: str | None) -> str:
+    """反映先のプラットフォーム。表示サイズの platform と違うものを指定されたら止める
+    （iOS のバージョンに Mac の画像を載せる、などの取り違えを防ぐ）。"""
+    configured = display_type_platform(display_type)
+    if requested and requested != configured:
+        raise SystemExit(
+            f"{display_type} は {platform_label(configured)} の表示サイズです（--platform {requested} とは合いません）"
+        )
+    return configured
 
 
 def main() -> int:
@@ -52,6 +74,14 @@ def main() -> int:
     parser.add_argument("--display-type", required=True, help="App Store Connect の表示サイズ（例: APP_IPHONE_67）")
     parser.add_argument("--languages", help="対象の言語（カンマ区切り）。省略すると全言語")
     parser.add_argument("--app-version", help="反映先のバージョン。省略すると編集できるバージョンを自動で選ぶ")
+    parser.add_argument("--platform", choices=tuple(PLATFORMS),
+                        help="反映先のバージョンのプラットフォーム。省略すると screenshots.json の表示サイズの platform")
+    parser.add_argument(
+        "--missing-version",
+        choices=("fail", "skip"),
+        default="fail",
+        help="反映先のバージョンが無いときの扱い。fail: 止める（既定） / skip: 飛ばして終了コード 0 で終わる",
+    )
     parser.add_argument("--key-id", default=os.environ.get("APP_STORE_CONNECT_KEY_ID"))
     parser.add_argument("--issuer-id", default=os.environ.get("APP_STORE_CONNECT_ISSUER_ID"))
     parser.add_argument(
@@ -71,6 +101,7 @@ def main() -> int:
     args = parser.parse_args()
 
     targets = languages(parse_list(args.languages))
+    platform = resolve_platform(args.display_type, args.platform)
 
     missing_key = [
         name for name, value in
@@ -85,10 +116,15 @@ def main() -> int:
     )
 
     app = client.find_app(args.bundle_id or bundle_id())
-    version = client.find_version(app["id"], args.app_version)
+    if args.missing_version == "skip":
+        reason = missing_version_reason(client, app["id"], args.app_version, platform)
+        if reason:
+            print(skipped_message(platform, reason))
+            return 0
+    version = client.find_version(app["id"], args.app_version, platform)
     version_string = version["attributes"]["versionString"]
     print(f"対象: {app['attributes']['name']} {version_string} "
-          f"({version['attributes']['appStoreState']}) / {args.display_type}")
+          f"({version['attributes']['appStoreState']}) / {platform_label(platform)} / {args.display_type}")
     if args.dry_run:
         print("--dry-run: App Store Connect には何も書き込みません")
 

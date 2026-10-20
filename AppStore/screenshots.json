@@ -10,7 +10,10 @@
     "              deriveFrom を書いた表示サイズは撮らずに、その表示サイズを縮めて作る（ubuntu で動くので macOS の枠を使わない）。",
     "              6.3 inch（1206x2622）は 6.9 inch（1320x2868）と縦横比がほぼ同じなので縮めて作る。",
     "              GitHub のホストランナー（macos-latest）で撮れる iPhone 6.9 inch と iPad 13 inch を撮る。",
-    "              テンプレートの iPhone Duo（xcode-27 のランナーが要る）は載せない。"
+    "              テンプレートの iPhone Duo（xcode-27 のランナーが要る）は載せない。",
+    "              platform は反映先の App Store Connect のバージョンのプラットフォーム（IOS / MAC_OS。省略すると IOS）。",
+    "              Mac（APP_DESKTOP）は 16:10 の 4 つの寸法を受け付ける。Simulator が無いので devices は書かず、",
+    "              撮り方ができるまでは撮影・反映の matrix から外す（Tools/app_store_config.py の capture_method）。"
   ],
   "scenes": [
     { "file": "01_action", "scene": "action" },
@@ -38,6 +41,11 @@
       "sizes": ["2064x2752", "2048x2732"],
       "runsOn": "macos-latest",
       "xcodeVersion": "26.6"
+    },
+    "APP_DESKTOP": {
+      "label": "Mac",
+      "platform": "MAC_OS",
+      "sizes": ["2880x1800", "2560x1600", "1440x900", "1280x800"]
     }
   }
 }

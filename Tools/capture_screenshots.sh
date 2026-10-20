@@ -48,6 +48,12 @@ if [ -n "$($CONFIG derive-from "$DISPLAY_TYPE")" ]; then
     exit 1
 fi
 
+# このスクリプトは iOS Simulator で撮る。Mac（APP_DESKTOP）などの iOS 以外の表示サイズは撮れない
+if [ "$($CONFIG platform "$DISPLAY_TYPE")" != "IOS" ]; then
+    echo "$DISPLAY_TYPE は iOS の表示サイズではないので、このスクリプトでは撮りません（iOS Simulator で撮るため）" >&2
+    exit 1
+fi
+
 # project.yml から .xcodeproj を作るリポジトリでは、先に生成する
 if [ "$($CONFIG app xcodegen)" = "true" ] && [ ! -d "$PROJECT" ]; then
     command -v xcodegen >/dev/null || brew install xcodegen
