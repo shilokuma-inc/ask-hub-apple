@@ -89,6 +89,33 @@ class MissingVersionReasonTests(unittest.TestCase):
         self.assertIn("編集できる状態のバージョンがありません", reason)
         self.assertIn("READY_FOR_SALE", reason)
 
+    def test_finished_versions_only(self):
+        client = FakeClient([version("1.0.0", "REPLACED_WITH_NEW_VERSION", "v1"),
+                             version("1.1.0", "READY_FOR_SALE", "v2")])
+        reason = app_store_platform.missing_version_reason(client, "app", None, "MAC_OS")
+        self.assertIn("編集できる状態のバージョンがありません", reason)
+
+    def test_version_in_review_is_not_skipped(self):
+        # バージョンを指定しないとき（ワークフローの既定）も、審査中・公開待ちは飛ばさずに find_version に止めさせる
+        for state in ("WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_DEVELOPER_RELEASE"):
+            with self.subTest(state=state):
+                client = FakeClient([version("1.0.0", "READY_FOR_SALE", "v1"), version("1.1.0", state, "v2")])
+                self.assertIsNone(app_store_platform.missing_version_reason(client, "app", None, "MAC_OS"))
+
+    def test_app_version_state_is_preferred(self):
+        # appVersionState だけを持つバージョンも見分ける（appStoreState は非推奨）
+        in_review = {"id": "v1", "attributes": {"versionString": "1.1.0", "appVersionState": "IN_REVIEW"}}
+        self.assertIsNone(app_store_platform.missing_version_reason(FakeClient([in_review]), "app", None, "MAC_OS"))
+        released = {"id": "v1", "attributes": {"versionString": "1.0.0", "appVersionState": "READY_FOR_DISTRIBUTION"}}
+        reason = app_store_platform.missing_version_reason(FakeClient([released]), "app", None, "MAC_OS")
+        self.assertIn("READY_FOR_DISTRIBUTION", reason)
+
+    def test_multiple_editable_versions_are_not_skipped(self):
+        # 候補が複数あるのは人が直すことなので、飛ばさずに find_version に止めさせる
+        client = FakeClient([version("1.1.0", "PREPARE_FOR_SUBMISSION", "v1"),
+                             version("1.2.0", "REJECTED", "v2")])
+        self.assertIsNone(app_store_platform.missing_version_reason(client, "app", None, "MAC_OS"))
+
     def test_editable_version_exists(self):
         client = FakeClient([version("1.0.0", "READY_FOR_SALE"), version("1.1.0", "PREPARE_FOR_SUBMISSION")])
         self.assertIsNone(app_store_platform.missing_version_reason(client, "app", None, "MAC_OS"))
