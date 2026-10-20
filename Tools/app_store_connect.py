@@ -16,6 +16,7 @@ PyJWT が要る: `python3 -m pip install pyjwt cryptography`
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import time
 import urllib.error
@@ -146,7 +147,10 @@ class AppStoreConnect:
                 with self._urlopen(request, timeout=REQUEST_TIMEOUT) as response:
                     raw = response.read()
             except urllib.error.HTTPError as error:
-                detail = error.read().decode(errors="replace")
+                try:
+                    detail = error.read().decode(errors="replace")
+                except (http.client.HTTPException, OSError):  # エラーの本文の途中で切れたときも、ステータスで知らせる
+                    detail = ""
                 if error.code == 429 and attempt < RATE_LIMIT_RETRIES:
                     # 429 は処理されずに断られているので、POST / PATCH でも同じ内容で送り直してよい
                     wait = retry_after_seconds(error.headers, attempt)
@@ -161,8 +165,9 @@ class AppStoreConnect:
                 raise ApiError(
                     f"{method} {url} が {error.code} で失敗しました{hint}\n{detail}", error.code
                 ) from None
-            except (urllib.error.URLError, OSError) as error:
-                # 名前解決・接続・タイムアウトの失敗（HTTPError は URLError の子なので上で先に受ける）。
+            except (urllib.error.URLError, OSError, http.client.HTTPException) as error:
+                # 名前解決・接続・タイムアウトの失敗と、応答の途中での切断（IncompleteRead などの HTTPException。
+                # OSError の子ではない）。HTTPError は URLError の子なので上で先に受ける。
                 # 送れたかどうか分からないので送り直さない。呼び出し側が ApiError だけを受ければ済むようにそろえる
                 reason = getattr(error, "reason", None) or error
                 raise ApiError(f"{method} {url} の通信に失敗しました（{reason}）") from None
@@ -432,7 +437,10 @@ class AppStoreConnect:
                 with self._urlopen(request, timeout=REQUEST_TIMEOUT):
                     pass
             except urllib.error.HTTPError as error:
-                detail = error.read().decode(errors="replace")
+                try:
+                    detail = error.read().decode(errors="replace")
+                except (http.client.HTTPException, OSError):  # エラーの本文の途中で切れたときも、ステータスで知らせる
+                    detail = ""
                 raise ApiError(
                     f"{path.name} の転送が {error.code} で失敗しました\n{detail}", error.code
                 ) from None
@@ -499,9 +507,16 @@ def make_token(key_id: str, issuer_id: str, private_key: str) -> str:
         ) from None
 
     now = int(time.time())
-    return jwt.encode(
-        {"iss": issuer_id, "iat": now, "exp": now + TOKEN_LIFETIME, "aud": "appstoreconnect-v1"},
-        private_key,
-        algorithm="ES256",
-        headers={"kid": key_id, "typ": "JWT"},
-    )
+    try:
+        return jwt.encode(
+            {"iss": issuer_id, "iat": now, "exp": now + TOKEN_LIFETIME, "aud": "appstoreconnect-v1"},
+            private_key,
+            algorithm="ES256",
+            headers={"kid": key_id, "typ": "JWT"},
+        )
+    except Exception as error:  # noqa: BLE001  鍵の形の誤り（PyJWT の PyJWTError・cryptography の ValueError など）
+        # 呼び出し側が ApiError だけを受ければ済むようにそろえる。鍵の中身はメッセージに入れない（例外の型と説明だけ）
+        raise ApiError(
+            f"App Store Connect のトークンを作れませんでした（{type(error).__name__}: {error}）。"
+            "APPLE_API_KEY_BASE64（.p8）・APPLE_API_KEY_ID・APPLE_API_ISSUER_ID を確かめてください。"
+        ) from None
