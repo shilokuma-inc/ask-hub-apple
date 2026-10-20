@@ -9,16 +9,106 @@ private struct RecordingWorkflowState {
     var availability = WorkflowAvailability.active
     var runs: [WorkflowRun] = []
     var failure: WorkflowError?
+    /// ワークフローの有無を読むときの失敗
+    var readFailure: WorkflowError?
     var dispatched: [String] = []
     var dispatchedInputs: [[String: String]] = []
 }
 
+/// `Gate` の中身
+nonisolated private struct GateState {
+    var opened = false
+    /// 待ちに入った数
+    var waiting = 0
+    var waiters: [CheckedContinuation<Void, Never>] = []
+}
+
+/// テストが開けるまで待たせる。待ちに入った数を数えるので、テストは待ちに入ったのを確かめてから次へ進められる
+nonisolated private final class Gate: Sendable {
+    private let state = OSAllocatedUnfairLock(initialState: GateState())
+
+    var waiting: Int {
+        state.withLock { $0.waiting }
+    }
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            let opened = state.withLock { state in
+                state.waiting += 1
+                if !state.opened {
+                    state.waiters.append(continuation)
+                }
+                return state.opened
+            }
+            if opened {
+                continuation.resume()
+            }
+        }
+    }
+
+    func open() {
+        let waiters = state.withLock { state in
+            state.opened = true
+            defer { state.waiters = [] }
+            return state.waiters
+        }
+        waiters.forEach { $0.resume() }
+    }
+
+    /// 待ちに入るまで待つ
+    func waitUntilWaiting() async {
+        while waiting == 0 {
+            await Task.yield()
+        }
+    }
+}
+
+/// `gatedCall` 回目の release ブランチ / タグの読み取りを `gate` が開くまで止める。何回目の読み取りの結果かを、タグ `v<回数>.0.0` で返す
+nonisolated private final class GatedReader: ReleaseReading {
+    let gate = Gate()
+    private let gatedCall: Int
+    private let calls = OSAllocatedUnfairLock(initialState: 0)
+
+    init(gatedCall: Int) {
+        self.gatedCall = gatedCall
+    }
+
+    func refs(repository: String) async throws -> ReleaseRefs {
+        let call = calls.withLock { calls in
+            calls += 1
+            return calls
+        }
+        if call == gatedCall {
+            await gate.wait()
+        }
+        let tag = "v\(call).0.0"
+        return ReleaseRefs(branches: [], tags: [ReleaseRef(name: tag, sha: "0000000", version: ReleaseVersion(tag: tag))])
+    }
+
+    func marketingVersion(repository: String, ref: String) async throws -> MarketingVersion {
+        MarketingVersion(raw: "1.0.0")
+    }
+
+    func whatsNewDraft(repository: String, version: ReleaseVersion) async throws -> WhatsNewDraft? {
+        nil
+    }
+
+    func releaseNotes(repository: String, version: ReleaseVersion) async throws -> ReleaseNotes {
+        ReleaseNotes(version: version, status: .missing, languages: [], whatsNew: [:])
+    }
+}
+
 @MainActor
 struct ReleaseRequestModelTests {
-    /// 起動を記録するリリース準備のワークフロー。有無・run・失敗を差し替えられる
+    /// 起動を記録するリリース準備のワークフロー。有無・run・失敗を差し替えられる。`dispatchGate` を渡すと、起動をそれが開くまで止める
     private final class RecordingWorkflow: WorkflowProviding {
         nonisolated let file = ReleaseWorkflow.prepare.file
         private let state = OSAllocatedUnfairLock(initialState: RecordingWorkflowState())
+        private let dispatchGate: Gate?
+
+        init(dispatchGate: Gate? = nil) {
+            self.dispatchGate = dispatchGate
+        }
 
         var dispatched: [String] {
             state.withLock { $0.dispatched }
@@ -33,7 +123,12 @@ struct ReleaseRequestModelTests {
         }
 
         func availability(repository: String) async throws -> WorkflowAvailability {
-            state.withLock { $0.availability }
+            try state.withLock { state in
+                if let readFailure = state.readFailure {
+                    throw readFailure
+                }
+                return state.availability
+            }
         }
 
         func latestRun(repository: String, branch: String) async throws -> LatestWorkflowRun {
@@ -45,6 +140,7 @@ struct ReleaseRequestModelTests {
         }
 
         func dispatch(repository: String, ref: String, inputs: [String: String]) async throws {
+            await dispatchGate?.wait()
             try state.withLock { state in
                 if let failure = state.failure {
                     throw failure
@@ -80,10 +176,11 @@ struct ReleaseRequestModelTests {
     }
 
     private static let repository = "shilokuma-inc/ask-hub-apple"
+    private static let otherRepository = "shilokuma-inc/notti-ios"
 
     private func makeModel(
         token: String? = "github_pat_saved",
-        reader: FixedReader = FixedReader(),
+        reader: any ReleaseReading = FixedReader(),
         workflow: RecordingWorkflow = RecordingWorkflow()
     ) -> ReleaseRequestModel {
         ReleaseRequestModel(
@@ -99,9 +196,9 @@ struct ReleaseRequestModelTests {
         ReleaseRef(name: name, sha: "0000000", version: ReleaseVersion(branch: name) ?? ReleaseVersion(tag: name))
     }
 
-    private static func run(startedAt: Date, status: WorkflowRun.Status = .completed) -> WorkflowRun {
+    private static func run(id: Int = 1, startedAt: Date, status: WorkflowRun.Status = .completed) -> WorkflowRun {
         WorkflowRun(
-            id: 1,
+            id: id,
             repository: repository,
             branch: "develop",
             headSHA: "0000000",
@@ -184,13 +281,35 @@ struct ReleaseRequestModelTests {
         workflow.update { $0.availability = .disabled(state: "disabled_manually") }
         await model.refresh()
         #expect(model.blockingReason()?.contains("無効にされています（disabled_manually）") == true)
+
+        // 消したワークフローは、有効にしても戻らないので「無い」と同じに扱う
+        workflow.update { $0.availability = .disabled(state: "deleted") }
+        await model.refresh()
+        #expect(model.context?.availability == .notFound)
+        #expect(model.blockingReason() == "このリポジトリにはリリースのワークフロー（release-prepare.yml）がありません")
+    }
+
+    @Test func describesPermissionErrorWhileReadingAsReadFailure() async {
+        let workflow = RecordingWorkflow()
+        workflow.update { $0.readFailure = .permissionDenied }
+        let model = makeModel(workflow: workflow)
+        await model.select(Self.repository)
+        guard case .failed(let message) = model.contextState else {
+            Issue.record("読めないはず: \(model.contextState)")
+            return
+        }
+        #expect(message.hasPrefix("リリースの状態を読めませんでした。"))
+        #expect(!message.contains("起動できませんでした"))
     }
 
     @Test func dispatchesOnDevelopAndKeepsPendingUntilRunAppears() async {
         let workflow = RecordingWorkflow()
         let model = makeModel(workflow: workflow)
-        await model.select(Self.repository)
         let now = Date(timeIntervalSince1970: 10_000.6)
+        // 端末の時計が遅れていると、起動より前の run の開始時刻が起動の時刻より後に見える
+        let oldRun = Self.run(id: 1, startedAt: now.addingTimeInterval(120))
+        workflow.update { $0.runs = [oldRun] }
+        await model.select(Self.repository)
 
         await model.start(now: now)
 
@@ -201,17 +320,44 @@ struct ReleaseRequestModelTests {
         #expect(!model.canStart(now: now))
         #expect(model.blockingReason(now: now)?.contains("起動しました") == true)
 
-        // 起動より前の run が出ても終わらない
-        let oldRun = Self.run(startedAt: now.addingTimeInterval(-60))
-        workflow.update { $0.runs = [oldRun] }
+        // 起動したときに出ていた run のままなら、開始時刻が起動より後でも終わらない
         await model.refresh()
         #expect(model.isDispatchPending(now: now))
-        // run の開始時刻は秒精度なので、同じ秒に始まった run で終える。実行中の run があるあいだは始められない
-        let sameSecondRun = Self.run(startedAt: Date(timeIntervalSince1970: 10_000), status: .inProgress)
-        workflow.update { $0.runs = [sameSecondRun] }
+        // id の大きい run が出たら終える。端末の時計が進んでいて、開始時刻が起動より前に見えても見分けられる。実行中の run があるあいだは始められない
+        let newRun = Self.run(id: 2, startedAt: now.addingTimeInterval(-300), status: .inProgress)
+        workflow.update { $0.runs = [newRun] }
         await model.refresh()
         #expect(!model.isDispatchPending(now: now))
         #expect(model.blockingReason(now: now) == "リリース準備の run が実行中です。終わってから始めてください")
+    }
+
+    @Test func clearsPendingWhenFirstRunAppears() async {
+        let workflow = RecordingWorkflow()
+        let model = makeModel(workflow: workflow)
+        await model.select(Self.repository)
+        let now = Date(timeIntervalSince1970: 10_000)
+        await model.start(now: now)
+        #expect(model.isDispatchPending(now: now))
+
+        // 起動したときに run が 1 件も無ければ、出てきた run が起動した run
+        let firstRun = Self.run(id: 7, startedAt: now.addingTimeInterval(-300))
+        workflow.update { $0.runs = [firstRun] }
+        await model.refresh()
+        #expect(!model.isDispatchPending(now: now))
+    }
+
+    @Test func explainsWhyStartDidNothing() async {
+        let workflow = RecordingWorkflow()
+        let model = makeModel(workflow: workflow)
+        await model.select(Self.repository)
+        // 確認のダイアログを出したあとに取り直して、実行中の run が見つかった
+        let runningRun = Self.run(startedAt: Date(), status: .inProgress)
+        workflow.update { $0.runs = [runningRun] }
+        await model.refresh()
+
+        await model.start()
+        #expect(workflow.dispatched.isEmpty)
+        #expect(model.errorMessage == "リリース準備を始めませんでした。リリース準備の run が実行中です。終わってから始めてください")
     }
 
     @Test func pendingExpiresAfterLimit() async {
@@ -268,5 +414,72 @@ struct ReleaseRequestModelTests {
         #expect(model.blockingReason()?.contains("release/2.1.0") == true)
         await model.select("shilokuma-inc/dotfiles")
         #expect(model.context?.availability == .notFound)
+    }
+}
+
+/// 読み取り・起動が重なったとき（古い結果を出さない）
+extension ReleaseRequestModelTests {
+    @Test func discardsStaleResultOfOverlappingRefresh() async {
+        let reader = GatedReader(gatedCall: 2)
+        let model = makeModel(reader: reader)
+        await model.select(Self.repository)
+        #expect(model.context?.refs?.latestTaggedVersion == ReleaseVersion("1.0.0"))
+
+        // 2 回目の読み取りが終わる前に、3 回目の読み取りを始めて先に終える
+        let stale = Task { await model.refresh() }
+        await reader.gate.waitUntilWaiting()
+        #expect(model.isLoading)
+        await model.refresh()
+        #expect(model.context?.refs?.latestTaggedVersion == ReleaseVersion("3.0.0"))
+        #expect(!model.isLoading)
+
+        // 遅れて終わった 2 回目の結果で上書きしない
+        reader.gate.open()
+        await stale.value
+        #expect(model.context?.refs?.latestTaggedVersion == ReleaseVersion("3.0.0"))
+        #expect(!model.isLoading)
+    }
+
+    @Test func discardsResultOfPreviousRepository() async {
+        let reader = GatedReader(gatedCall: 1)
+        let model = makeModel(reader: reader)
+
+        let stale = Task { await model.select(Self.repository) }
+        await reader.gate.waitUntilWaiting()
+        await model.select(Self.otherRepository)
+        #expect(model.context?.refs?.latestTaggedVersion == ReleaseVersion("2.0.0"))
+
+        reader.gate.open()
+        await stale.value
+        #expect(model.repository == Self.otherRepository)
+        #expect(model.context?.refs?.latestTaggedVersion == ReleaseVersion("2.0.0"))
+    }
+
+    @Test func reselectingSameRepositoryRefreshesAndKeepsVersion() async {
+        let workflow = RecordingWorkflow()
+        let model = makeModel(workflow: workflow)
+        await model.select(Self.repository)
+        model.versionText = "2.0.0"
+
+        workflow.update { $0.availability = .disabled(state: "disabled_manually") }
+        await model.select(Self.repository)
+        #expect(model.blockingReason()?.contains("無効にされています") == true)
+        #expect(model.versionText == "2.0.0")
+    }
+
+    @Test func showsDispatchErrorOnlyForDispatchedRepository() async {
+        let gate = Gate()
+        let workflow = RecordingWorkflow(dispatchGate: gate)
+        workflow.update { $0.failure = .permissionDenied }
+        let model = makeModel(workflow: workflow)
+        await model.select(Self.repository)
+
+        let starting = Task { await model.start() }
+        await gate.waitUntilWaiting()
+        // 送っているあいだに別のリポジトリを選んだ
+        await model.select(Self.otherRepository)
+        gate.open()
+        await starting.value
+        #expect(model.errorMessage == nil)
     }
 }
