@@ -76,6 +76,10 @@
   `run-name: <名前> ${{ inputs.version }}` を書くと `display_title` に入る（`run-name` は表示だけでシェルには渡らない。`run:` には今までどおり env で渡す）
 - `if: always()` のステップの `job.status` は、それまでに**失敗したステップ**があるかだけを表す。`|| true` で続けて `$GITHUB_OUTPUT` に結果を出したステップ（後で run を失敗にする）は含まれないので、
   Summary の出し分けには `steps.<id>.outcome` と `steps.<id>.outputs.*` を合わせて見る
+- `concurrency` の同じ group で `cancel-in-progress: false` にしても、待てるのは 1 つだけ。実行中の run があるときに 2 つ続けて起動すると、先に待っていた run は取り消され（`cancelled`）、最後に起動したものだけが動く。
+  「最後に送った内容が勝つ」でよい処理（Release/Notes の確定など）はこのままでよいが、アプリなどで run を追うときは、取り消された run も出ることを前提にする
+- ワークフローのファイルと同じコミットの `Tools/` を使いながら別のブランチを書き換えたいときは、`actions/checkout` を `path:` を変えて 2 回使う（起動した ref を `tools`、書き換えるブランチを `ref:` で `release`）。
+  `python3 tools/Tools/x.py --root release …` のように、スクリプトとリポジトリのルートを分けて渡す（release-notes.yml）
 
 ## ビルド・テスト
 
@@ -259,6 +263,8 @@
   制限時間で止めるときは、送る前に `proc_listchildpids` で子孫を集め（親が先に終わると launchd に付け替えられて辿れない）、まとめて送る。スクリプトには `trap 'exit 143' TERM` を置いて後片付けを走らせる
 - `trap 'status=$?; …; exit "$status"' EXIT` のように trap の文字列の中で代入すると、shellcheck は代入を見つけられず SC2154（referenced but not assigned）の警告を出す（`-S warning` で落ちる）。
   処理を関数（`on_exit() { status=$?; …; }`）にして `trap on_exit EXIT` にする。関数の先頭の `$?` は trap が起きたときの終了コードのまま
+- macOS の `/bin/bash`（3.2）には連想配列（`declare -A`）が無い（`declare: -A: invalid option`）。bash 3.2 で動かすスクリプト（`capture_screenshots.sh` など・ワークフローの `run:` を手元で流す道具）では、
+  `eval "name_$key=…"` か、`key=value` の行のファイルで代わりにする
 
 ## SwiftUI
 

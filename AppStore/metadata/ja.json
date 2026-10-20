@@ -4,7 +4,7 @@
     "アプリ名とカテゴリ名はもともと検索対象なので keywords に入れなくてよい。",
     "promotionalText は省略できる（省略すると App Store Connect 側の値をそのまま残す）。",
     "whatsNew は「このバージョンの最新情報」。{\"version\": \"1.1.0\", \"text\": \"…\"} の形で書き、version が反映先のバージョンと一致するときだけ書き込む。",
-    "最初のバージョン（1.0.0）には最新情報の欄が無いので、2 つ目のバージョンから足す。",
+    "whatsNew はリリースのたびに Release/Notes（release-notes.yml）が release ブランチで書く。最初のバージョンには最新情報の欄が無いので、書いてあっても App Store Connect には反映しない。",
     "文言の元は docs/app-review.md の「説明文（日本語）」。審査で指摘されやすい点（4.2・4.2.3）への対応を崩さないよう、書き換えるときはそちらも見る。"
   ],
   "promotionalText": "ループが止まって待っている判断だけを、iPhone と Mac で 1 つの一覧に。",

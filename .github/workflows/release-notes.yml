@@ -1,0 +1,221 @@
+name: Release/Notes
+# AskHub アプリ（AskHubKit の WorkflowRun.displayTitle）が、どのバージョンの run かを一覧から見分けるための表示名。
+# runs の一覧の API は inputs を返さないので、バージョンは run-name に入れる（表示だけでシェルには渡らない。run: には env で渡す）
+run-name: Release/Notes ${{ inputs.version }}
+
+# 最新情報の確定と反映（Discussion #605 の Q5）。AskHub アプリが、人が確かめて直した最新情報を workflow_dispatch で送る
+# （アプリは release/<version> の ref で起動する。Actions から手で起動するときは develop を選んでもよい）。
+#
+# 1. 入力の検査: version の形・起動した ref（release/<version> か develop）
+# 2. release/<version> があり、v<version> のタグが無いこと（Tools/release_notes.py check）
+# 3. whats_new（言語コード → 本文の JSON）を検査し、release ブランチの AppStore/metadata/<言語>.json の whatsNew を
+#    {version, text} にして、下書き AppStore/whats-new-draft.json を消す（Tools/release_notes.py apply）
+# 4. 変化があれば [chore] のコミットを積んで release ブランチに push する（同じ内容で起動し直してもコミットしない）
+# 5. release ブランチで Metadata/App Store（dry_run: false）を起動する（変化が無くても起動する。反映のやり直しに使える）
+# 6. Job Summary に結果を出す
+#
+# Tools/ は起動した ref（ワークフローのファイルと同じコミット）のものを使い、書き換えるのは release ブランチの作業ツリー。
+# GITHUB_TOKEN での push は新しいワークフローの run を起こさない（Upload も動かず、余計なバイナリは上がらない）ので、5 で明示的に起動する。
+# 手順と失敗したときは docs/release.md の「最新情報の確定」。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'リリースのバージョン（MAJOR.MINOR.PATCH。release/<version> があり、v<version> のタグが無いもの）'
+        required: true
+        type: string
+      whats_new:
+        description: '確定する最新情報。言語コード → 本文の JSON（例: {"ja":"・…"}）。AppStore/languages.json のすべての言語を書く。1 言語 4000 字まで'
+        required: true
+        type: string
+
+permissions: {}
+
+# 確定は同時に 1 つだけ（release ブランチへの push を取り合わない）。続けて起動したときは、待っているもののうち最後に起動したものだけが動く
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  notes:
+    name: notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # release ブランチへの確定のコミットの push
+      actions: write    # Metadata/App Store の workflow_dispatch
+    env:
+      # 入力はシェルに直接展開せず、環境変数で渡す（インジェクション対策。whats_new は任意の文字列）
+      VERSION: ${{ inputs.version }}
+
+    steps:
+      - name: Validate input
+        run: |
+          set -euo pipefail
+          # 各ステップが Job Summary に載せる行をためる（最後の Summary でまとめて出す）
+          SUMMARY="$RUNNER_TEMP/summary.md"
+          echo "SUMMARY=${SUMMARY}" >> "$GITHUB_ENV"
+          : > "$SUMMARY"
+          if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::バージョンは MAJOR.MINOR.PATCH の形で指定してください"
+            printf '%s\n\n%s\n' "## 最新情報の確定" "- 確定しませんでした: バージョンは MAJOR.MINOR.PATCH の形で指定してください" >> "$SUMMARY"
+            exit 1
+          fi
+          printf '%s\n\n' "## 最新情報の確定 ${VERSION}" >> "$SUMMARY"
+          # Tools/ は起動した ref のものを使う。release/<version>（アプリ）か develop（手で起動）だけを受け付け、
+          # ほかのブランチ（別のバージョンの release ブランチ・作業中のブランチ）の Tools/ では書き換えない
+          if [ "$GITHUB_REF" != "refs/heads/release/${VERSION}" ] && [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+            echo "::error::release/${VERSION} か develop から起動してください（${GITHUB_REF}）"
+            echo "- 確定しませんでした: release/${VERSION} か develop から起動してください（起動したブランチ: \`${GITHUB_REF#refs/heads/}\`）" >> "$SUMMARY"
+            exit 1
+          fi
+
+      - name: Checkout tools
+        uses: actions/checkout@v7
+        with:
+          # 起動した ref（ワークフローのファイルと同じコミット）の Tools/ を使う。2 の ls-remote にも使う
+          path: tools
+
+      - name: Check release
+        id: check
+        working-directory: tools
+        run: |
+          set -euo pipefail
+          if python3 Tools/release_notes.py check --version "$VERSION" > "$RUNNER_TEMP/check.json"; then
+            jq -r '.warnings // [] | .[]' "$RUNNER_TEMP/check.json" > "$RUNNER_TEMP/warnings.txt"
+          else
+            error=$(jq -r '.error // "検査に失敗しました"' "$RUNNER_TEMP/check.json")
+            echo "::error::${error}"
+            echo "- 確定しませんでした: ${error}" >> "$SUMMARY"
+            exit 1
+          fi
+
+      - name: Checkout release branch
+        uses: actions/checkout@v7
+        with:
+          # 書き換えて push する作業ツリー（version は 1 で形を確かめてある）
+          ref: refs/heads/release/${{ inputs.version }}
+          path: release
+
+      - name: Apply whats new
+        id: apply
+        env:
+          WHATS_NEW: ${{ inputs.whats_new }}
+        run: |
+          set -euo pipefail
+          # 本文はシェルの引数に載せず、環境変数の名前だけを渡す
+          if python3 tools/Tools/release_notes.py --root release apply --version "$VERSION" \
+              --whats-new-env WHATS_NEW > "$RUNNER_TEMP/apply.json"; then
+            {
+              echo "| 言語 | 字数 | 変更 |"
+              echo "| --- | --- | --- |"
+              jq -r '.languages[] | "| \(.language) | \(.length) | \(if .changed then "書き換えた" else "同じ内容（変えていない）" end) |"' "$RUNNER_TEMP/apply.json"
+              echo
+              jq -r 'if .draftRemoved then "- 下書き `AppStore/whats-new-draft.json` を消した" else "- 下書き `AppStore/whats-new-draft.json` はもう無い（前に確定済み）" end' "$RUNNER_TEMP/apply.json"
+            } >> "$SUMMARY"
+          else
+            error=$(jq -r '.error // "最新情報を書けませんでした"' "$RUNNER_TEMP/apply.json")
+            echo "::error::${error}"
+            {
+              echo "- 確定しませんでした（release ブランチは変えていません）: $(jq -r 'if .problems then "whats_new に問題があります" else .error // "最新情報を書けませんでした" end' "$RUNNER_TEMP/apply.json")"
+              jq -r '.problems // [] | .[] | "  - \(.)"' "$RUNNER_TEMP/apply.json"
+            } >> "$SUMMARY"
+            exit 1
+          fi
+
+      - name: Commit and push
+        id: commit
+        working-directory: release
+        run: |
+          set -euo pipefail
+          branch="release/${VERSION}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # 書き換えるのは AppStore/metadata/<言語>.json と下書きの削除だけ
+          git add -A -- AppStore
+          if git diff --cached --quiet; then
+            echo "- コミット: 変化が無いので積んでいない（\`${branch}\` はすでにこの内容）" >> "$SUMMARY"
+            exit 0
+          fi
+          git commit --quiet -m "[chore] ${VERSION} の最新情報を確定する"
+          # 起動の後に release ブランチが進んでいたら、上書きせずに失敗する（--force は付けない）。起動し直せば最新の先頭に積む
+          git push --quiet origin "HEAD:refs/heads/${branch}"
+          sha=$(git rev-parse HEAD)
+          echo "- コミット: [\`${sha:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${sha}) を \`${branch}\` に積んだ" >> "$SUMMARY"
+
+      - name: Start metadata update
+        id: dispatch
+        if: vars.ENABLE_DELIVERY != 'false'
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="release/${VERSION}"
+          failed=0
+          {
+            echo
+            echo "### 起動したワークフロー（\`${branch}\`）"
+            echo
+            if ! git cat-file -e "HEAD:.github/workflows/app-store-metadata.yml" 2> /dev/null; then
+              echo "- メタデータ（\`app-store-metadata.yml\`）: 飛ばした（release ブランチにファイルが無い）"
+            elif gh workflow run app-store-metadata.yml --ref "$branch" -f "app_version=${VERSION}" -f dry_run=false; then
+              echo "- メタデータ（\`app-store-metadata.yml\`・\`dry_run: false\`・\`app_version: ${VERSION}\`）: 起動した。"
+              echo "  反映の結果は [Metadata/App Store](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/app-store-metadata.yml) の run の Job Summary で見られます（起動の直後は一覧に出るまで数秒かかります）"
+            else
+              echo "- メタデータ（\`app-store-metadata.yml\`）: **起動に失敗した**（ログを見てください）"
+              failed=1
+            fi
+          } >> "$SUMMARY"
+          echo "failed=${failed}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: always()
+        env:
+          DELIVERY: ${{ vars.ENABLE_DELIVERY != 'false' }}
+          APPLIED: ${{ steps.apply.outcome == 'success' }}
+          PUSHED: ${{ steps.commit.outcome == 'success' }}
+          FAILED: ${{ job.status != 'success' || steps.dispatch.outputs.failed == '1' }}
+        run: |
+          set -euo pipefail
+          {
+            cat "$SUMMARY" 2> /dev/null || true
+            if [ "$APPLIED" != "true" ]; then
+              echo
+              echo "release ブランチは何も変えていません。理由を直してから起動し直してください（docs/release.md の「最新情報の確定」の「失敗したとき」）。"
+              exit 0
+            fi
+            if [ "$PUSHED" != "true" ]; then
+              echo
+              echo "- release ブランチに push できませんでした（ログを見てください）。起動した後に release ブランチが進んでいたときは、同じ内容で起動し直すと最新の先頭に積みます。"
+              exit 0
+            fi
+            if [ -s "$RUNNER_TEMP/warnings.txt" ]; then
+              echo
+              echo "> [!NOTE]"
+              while IFS= read -r warning; do
+                echo "> ${warning}"
+              done < "$RUNNER_TEMP/warnings.txt"
+            fi
+            if [ "$DELIVERY" != "true" ]; then
+              echo
+              echo "- リポジトリ変数 ENABLE_DELIVERY が false なので、Metadata/App Store は起動していません（App Store Connect には触れていません）"
+            fi
+            echo
+            echo "### 次にすること"
+            echo
+            echo "1. Metadata/App Store の run の Job Summary で、iOS / macOS に最新情報が書き込まれたかを確かめる"
+            echo "2. 直したくなったら、AskHub か Actions の Release/Notes から同じバージョンで確定し直す（上書きする）"
+            echo "3. App Store Connect で審査に提出する（人が行う）"
+            if [ "$FAILED" = "true" ]; then
+              echo
+              echo "この run は途中で失敗しています。原因を直してから、同じバージョンと同じ内容で起動し直してください（確定のコミットは積み直さず、反映だけをやり直します）。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if dispatch failed
+        if: steps.dispatch.outputs.failed == '1'
+        run: |
+          echo "::error::Metadata/App Store の起動に失敗しました（Job Summary を見てください）"
+          exit 1

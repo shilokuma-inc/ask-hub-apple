@@ -65,6 +65,26 @@ def missing_version_reason(client, app_id: str, version_string: str | None, plat
     return f"{label} に{NO_EDITABLE_VERSION}（いまある状態: {states}）"
 
 
+def is_first_version(client, app_id: str, version: dict, platform: str) -> bool:
+    """`version` がそのプラットフォームの最初のバージョン（ほかに配信した・配信を終えたバージョンが無い）か。
+
+    App Store Connect は最初のバージョンに最新情報（`whatsNew`）の欄を持たない（Web の画面にも出ない）。
+    最初のバージョンに `whatsNew` を送ると、同じ言語の説明文などの書き込みごと弾かれうるので、`upload_metadata.py` は
+    最初のバージョンには `whatsNew` を送らない。iOS と macOS は別に数える（macOS を後から足すと、macOS の最初のバージョンになる）。
+    """
+    from app_store_connect import is_released, version_state
+
+    platform_label(platform)
+    versions = client.get_all(
+        f"/v1/apps/{app_id}/appStoreVersions",
+        {"filter[platform]": platform, "limit": 50},
+    )
+    return not any(
+        is_released(other["attributes"]) or version_state(other["attributes"]) in FINISHED_STATES
+        for other in versions if other.get("id") != version.get("id")
+    )
+
+
 def skipped_message(platform: str, reason: str) -> str:
     return f"{platform_label(platform)} {SKIPPED_MARKER}: {reason}"
 

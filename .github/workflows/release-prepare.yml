@@ -61,6 +61,8 @@ jobs:
           # Tools/ は develop のものを使うので、develop 以外から起動したものは止める
           if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
             echo "::error::develop から起動してください（${GITHUB_REF}）"
+            # 理由は Job Summary にも出す（::error:: は注釈とログにしか出ず、Summary には「何も作っていません」だけが出てしまう）
+            echo "- 準備を始めませんでした: develop から起動してください（起動したブランチ: \`${GITHUB_REF#refs/heads/}\`）" >> "$SUMMARY"
             exit 1
           fi
           if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
