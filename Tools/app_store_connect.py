@@ -36,6 +36,12 @@ EDITABLE_STATES = {
     "INVALID_BINARY",
 }
 
+#: 配信済み（App Store で入手できる）とみなす状態。`appVersionState` と非推奨の `appStoreState` の両方を見る。
+#: 承認後に人の公開待ち（PENDING_DEVELOPER_RELEASE）や配信の処理中（PROCESSING_FOR_DISTRIBUTION）は含めない。
+#: REPLACED_WITH_NEW_VERSION は配信された後に次のバージョンが出たもの（定期実行が遅れて気づいた場合）
+RELEASED_VERSION_STATES = {"READY_FOR_DISTRIBUTION"}
+RELEASED_STORE_STATES = {"READY_FOR_SALE", "REPLACED_WITH_NEW_VERSION"}
+
 #: アップロード後、Apple 側の取り込みが終わるのを待つ上限（秒）
 DELIVERY_TIMEOUT = 300
 
@@ -89,6 +95,12 @@ PLATFORM_NAMES = {PLATFORM_IOS: "iOS", PLATFORM_MAC_OS: "macOS"}
 def version_state(attributes: dict) -> str:
     """バージョンの状態。`appVersionState` を優先し、無ければ非推奨の `appStoreState` を使う。"""
     return attributes.get("appVersionState") or attributes.get("appStoreState") or ""
+
+
+def is_released(attributes: dict) -> bool:
+    """配信済みか。`appVersionState` と `appStoreState` のどちらかが配信済みを示せば True。"""
+    return (attributes.get("appVersionState") in RELEASED_VERSION_STATES
+            or attributes.get("appStoreState") in RELEASED_STORE_STATES)
 
 
 def is_editable(attributes: dict) -> bool:
@@ -227,6 +239,94 @@ class AppStoreConnect:
                 f"編集できるバージョンが複数あります（{names}）。--app-version で選んでください。"
             )
         return editable[0]
+
+    def version_with_string(self, app_id: str, version_string: str,
+                            platform: str = PLATFORM_IOS) -> dict | None:
+        """`versionString` が一致するバージョン（無ければ None）。状態は問わない。"""
+        for version in self.app_store_versions(app_id, platform):
+            if version["attributes"]["versionString"] == version_string:
+                return version
+        return None
+
+    def get_version(self, version_id: str) -> dict:
+        return self.get(f"/v1/appStoreVersions/{version_id}")["data"]
+
+    def create_version(self, app_id: str, version_string: str,
+                       platform: str = PLATFORM_IOS) -> dict:
+        """App Store のバージョンを作る（App Store Connect の「＋バージョン」と同じ）。
+
+        編集できるバージョンが残っているプラットフォームでは作れない（API が 409 を返す）。
+        リリースの方法（手動・自動）などは指定せず、App Store Connect の既定に任せる。
+        """
+        if self.dry_run:
+            return {"id": "dry-run", "type": "appStoreVersions",
+                    "attributes": {"versionString": version_string, "platform": platform}}
+        response = self.post(
+            "/v1/appStoreVersions",
+            {
+                "data": {
+                    "type": "appStoreVersions",
+                    "attributes": {"platform": platform, "versionString": version_string},
+                    "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+                }
+            },
+        )
+        return response["data"]
+
+    def update_version_string(self, version_id: str, version_string: str) -> dict:
+        """編集できるバージョンの `versionString` を書き換える。"""
+        if self.dry_run:
+            return {"id": version_id, "type": "appStoreVersions",
+                    "attributes": {"versionString": version_string}}
+        response = self.patch(
+            f"/v1/appStoreVersions/{version_id}",
+            {
+                "data": {
+                    "type": "appStoreVersions",
+                    "id": version_id,
+                    "attributes": {"versionString": version_string},
+                }
+            },
+        )
+        return response["data"]
+
+    # MARK: ビルド
+
+    def valid_builds(self, app_id: str, version_string: str,
+                     platform: str = PLATFORM_IOS) -> list[dict]:
+        """そのバージョン（`CFBundleShortVersionString`）・プラットフォームの、処理が終わったビルド。
+
+        新しいもの（`uploadedDate` が後のもの）から順に返す。期限切れのビルドは含めない。
+        """
+        builds = self.get_all(
+            "/v1/builds",
+            {
+                "filter[app]": app_id,
+                "filter[preReleaseVersion.version]": version_string,
+                "filter[preReleaseVersion.platform]": platform,
+                "filter[processingState]": "VALID",
+                "filter[expired]": "false",
+                "sort": "-uploadedDate",
+            },
+        )
+        # sort の指定に頼らず、ページをまたいでも新しい順になるよう並べ直す
+        return sorted(builds, key=lambda b: b["attributes"].get("uploadedDate") or "", reverse=True)
+
+    def attached_build_id(self, version_id: str) -> str | None:
+        """そのバージョンに紐付いているビルドの id（無ければ None）。"""
+        linkage = self.get(f"/v1/appStoreVersions/{version_id}/relationships/build").get("data")
+        return linkage["id"] if linkage else None
+
+    def attach_build(self, version_id: str, build_id: str) -> None:
+        """バージョンにビルドを紐付ける（すでに別のビルドが紐付いていれば差し替わる）。"""
+        if self.dry_run:
+            return
+        self.patch(
+            f"/v1/appStoreVersions/{version_id}/relationships/build",
+            {"data": {"type": "builds", "id": build_id}},
+        )
+
+    # MARK: 言語
 
     def localizations(self, version_id: str) -> dict[str, str]:
         return {locale: entry["id"] for locale, entry in self.localization_entries(version_id).items()}
