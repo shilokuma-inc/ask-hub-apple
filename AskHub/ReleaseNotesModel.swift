@@ -308,6 +308,10 @@ final class ReleaseNotesModel {
             return
         }
         dispatched["\(repository) \(version)"] = Dispatch(date: now, previousRunID: previousRunID)
+        if repository == self.repository, version == self.version {
+            // 入力中の本文を送った本文（前後の空白を外したもの）にそろえる。確定が反映されて読んだ本文と同じになれば「直した」扱いも終わる
+            texts.merge(whatsNew) { _, sent in sent }
+        }
         // dispatch は run の id を返さず、直後の一覧にはまだ出ないので、少し待ってから読み直す
         Task { [weak self, dispatchRefreshDelay] in
             try? await Task.sleep(for: dispatchRefreshDelay)
