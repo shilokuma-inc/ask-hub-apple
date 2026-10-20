@@ -39,7 +39,8 @@ public struct ReleaseRefs: Sendable, Equatable {
         tags.first { $0.version == version }
     }
 
-    /// `version` の release ブランチかタグがすでにあるか。あればリリース準備を始めない（ゴールの「既定の設計」）
+    /// `version` の release ブランチかタグがすでにあるか。あればリリース準備を始めない（ゴールの「既定の設計」）。
+    /// リリース準備のワークフローは、タグの無い別の release ブランチがあるときも止まる。起動の前には `unreleasedVersions` が空かも見る
     public func isTaken(_ version: ReleaseVersion) -> Bool {
         branch(for: version) != nil || tag(for: version) != nil
     }

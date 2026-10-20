@@ -74,7 +74,8 @@ public struct GitHubReleaseReader: ReleaseReading {
 
     /// `release/<version>` の下書きと、`AppStore/languages.json` の各言語の `AppStore/metadata/<言語>.json` の `whatsNew` を読み、
     /// 「下書きあり（未確定）」か「確定済み」（すべての言語で `whatsNew.version` がリリースのバージョン）かを決める。
-    /// 下書きの版が知らない値のときは投げずに `.unsupportedDraft` で返す（確定済みの本文は読む）
+    /// 下書きの版が知らない値のときは投げずに `.unsupportedDraft` で返す（確定済みの本文は読む）。
+    /// release ブランチが無いときも `languages.json` が無いときも `.missing` になるので、release ブランチがあるかは `refs(repository:)` で確かめる
     ///
     /// - Throws: `ReleaseReadError.invalidContent`・`.permissionDenied`
     public func releaseNotes(repository: String, version: ReleaseVersion) async throws -> ReleaseNotes {
