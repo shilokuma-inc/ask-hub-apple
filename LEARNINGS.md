@@ -85,7 +85,7 @@
   GitHub Actions のものになるので満たせる作り（release-finish.yml。実際に push が通るかはまだ確かめていない）。check run はリモートにあるコミットにしか付けられないので、先に一時ブランチへ push してから付ける
 - `GITHUB_TOKEN` は workflows の権限を持てない（`permissions:` に書けない）。`.github/workflows/` のファイルが変わるコミットを push すると
   `refusing to allow a GitHub App to create or update workflow … without workflows permission` で断られ、ほかのブランチの取り込み（マージコミット）でも同じ。
-  リモートにあるコミットからブランチを作るだけなら当たらない。避けるには workflows の権限を持つ PAT / GitHub App のトークンが要る
+  リモートにあるコミットからブランチを作るだけなら当たらない（と見込んでいるが未確認。#645 で確かめる）。避けるには workflows の権限を持つ PAT / GitHub App のトークンが要る
 - リポジトリの `GET /repos/{owner}/{repo}/actions/permissions/workflow` の `can_approve_pull_request_reviews` が `false`（Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」が無効）だと、
   `GITHUB_TOKEN` では PR を作れない（`gh pr create` が失敗する）。Issue（`issues: write`）は作れる
 - 再利用ワークフロー（`workflow_call`）の中の `actions/checkout` は、呼び出し元の run のコミット（`workflow_dispatch` なら起動した ref の先頭）を取り出す。別のコミットを検証したいときは、

@@ -519,7 +519,7 @@ App Store で配信されたリリースを `main` と `develop` に取り込み
   （初回の `main` は `develop` の全履歴を含むので、検査ができる前の履歴まで見ない）
 - **`GITHUB_TOKEN` は workflows の権限を持てないので、`.github/workflows/` のファイルが変わる取り込みは push を断られる**
   （`refusing to allow a GitHub App to create or update workflow … without workflows permission`）。
-  初回は `main` を release の先頭（リモートにあるコミット）から作るだけなので当たらない。`develop` への取り込みも、release ブランチでワークフローを直していなければ当たらない。
+  初回は `main` を release の先頭（リモートにあるコミット）から作るだけなので当たらない見込み（未確認。#645 で確かめる）。取り込み待ちの一時ブランチ `release-finish/<v>/pr-<取り込み先>` を作るのも同じ。`develop` への取り込みも、release ブランチでワークフローを直していなければ当たらない。
   **2 回目以降の `main` への取り込みは、前のリリースから `develop` でワークフローを変えていれば断られる**。
   **workflows が変わる取り込みは断られ、PR / Issue を残して人がマージする**（下の「取り込めなかったとき」。PR #644 の ask の回答で今のままと決めた。workflows の権限を持つトークンで自動にする改善は #647）
 - push は `--force` を付けない。起動した後に取り込み先が進んでいて non-fast-forward で断られたときは、取り込み先を取り直して 1 回だけやり直す。2 回とも断られたら PR を残して止める
