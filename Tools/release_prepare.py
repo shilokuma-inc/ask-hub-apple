@@ -8,7 +8,8 @@
     python3 Tools/release_prepare.py draft --version 1.1.0 --repo owner/name --output AppStore/whats-new-draft.json
 
 - `check`: バージョンの形（MAJOR.MINOR.PATCH）・`release/<v>` と `v<v>` の有無・ほかの準備中の release ブランチ・
-  `develop` の `MARKETING_VERSION` との大小を確かめる。refs は `git ls-remote <remote>`、`MARKETING_VERSION` は
+  `develop` の `MARKETING_VERSION` との大小を確かめる。`develop` と同じバージョンは、前の `v*` タグが 1 つも無い初回だけ
+  通す（`sameVersion: true` と `warnings` を返す）。refs は `git ls-remote <remote>`、`MARKETING_VERSION` は
   `git show <develop-ref>:Configs/Project.xcconfig` で読む
 - `set-version`: `Configs/Project.xcconfig` の `MARKETING_VERSION` を書き換える（同じなら何もしない）
 - `draft`: 前の `v*` タグから `--head` までに `develop` に入った PR のタイトルで、最新情報の下書きを作る
@@ -105,13 +106,30 @@ def marketing_version(xcconfig_text: str) -> str | None:
     return None
 
 
+def same_version_warning(version: str) -> str:
+    """初回に `develop` と同じバージョンで始めたときの注意（Job Summary に出す）。"""
+    return (
+        f"develop の MARKETING_VERSION と同じ {version} で始めます（前の v* タグが無い初回のため）。"
+        f"develop への push で上がったビルドも release ブランチのビルドも {version} になり、App Store Connect では見分けられません。"
+        "ビルドの紐付け（Release/Sync の attach-build）はアップロードの新しいものを選ぶので、"
+        "審査に出す前に、紐付いたビルドが release ブランチから上がったもの（ビルド番号・アップロードの時刻）か確かめてください。"
+    )
+
+
 def check_release(version: str, develop_version: str | None, release_branches: list[str],
                   tags: list[str], resume: bool = False) -> dict:
-    """リリース準備を始めてよいか。release_branches は `release/` を除いた名前、tags は `v` を含むタグ名。"""
+    """リリース準備を始めてよいか。release_branches は `release/` を除いた名前、tags は `v` を含むタグ名。
+
+    `develop` の `MARKETING_VERSION` と同じバージョンは、前の `v*` タグ（MAJOR.MINOR.PATCH の形のもの）が
+    1 つも無い初回だけ通す（PR #627 の ask pr627-1 の回答 B）。2 回目以降は `develop` より大きい値だけ。
+    """
     branch, tag = f"release/{version}", f"v{version}"
+    released = [key for key in (version_key(name[1:]) for name in tags if name.startswith("v")) if key]
+    same_version = develop_version == version
     result = {"ok": True, "version": version, "branch": branch, "tag": tag,
               "developVersion": develop_version, "resume": resume,
-              "bumpVersion": develop_version != version, "messages": []}
+              "bumpVersion": not same_version, "sameVersion": False, "initial": not released,
+              "messages": [], "warnings": []}
 
     if tag in tags:
         raise Failure(f"タグ {tag} がすでにあります（{version} はリリース済みです）。新しいバージョンを指定してください。")
@@ -134,6 +152,10 @@ def check_release(version: str, develop_version: str | None, release_branches: l
             )
         result["messages"].append(f"{branch} があるので、ブランチの作成を飛ばして続きから行います。")
         result["bumpVersion"] = False
+        if same_version and not released:
+            # 初回に同じバージョンで切った release ブランチの続き。紐付けの注意は resume でも出す
+            result["sameVersion"] = True
+            result["warnings"].append(same_version_warning(version))
         return result
     if resume:
         raise Failure(f"resume を指定しましたが {branch} がありません。resume をオフにして実行してください。")
@@ -142,13 +164,18 @@ def check_release(version: str, develop_version: str | None, release_branches: l
     develop_key = version_key(develop_version or "")
     if develop_key is None:
         raise Failure(f"develop の {XCCONFIG} の MARKETING_VERSION（{develop_version}）が MAJOR.MINOR.PATCH の形ではありません。")
-    if target <= develop_key:  # type: ignore[operator]
+    if target == develop_key and not released:
+        # 初回（前の v* タグが無い）だけ、develop の MARKETING_VERSION のまま出せる（App Store の最初のバージョンを 1.0.0 にするため）。
+        # ビルドはバージョンとプラットフォームだけで選ぶので、develop のビルドを紐付けうる。Summary で注意を出す
+        result["sameVersion"] = True
+        result["warnings"].append(same_version_warning(version))
+    elif target <= develop_key:  # type: ignore[operator]
         # ビルドはバージョンとプラットフォームだけで選ぶので、同じバージョンだと develop のビルドを紐付けうる
+        reason = "前のリリースのタグがあるので、同じバージョンは使えません。" if target == develop_key else ""
         raise Failure(
-            f"{version} は develop の MARKETING_VERSION（{develop_version}）より大きくしてください。"
+            f"{version} は develop の MARKETING_VERSION（{develop_version}）より大きくしてください。{reason}"
             "同じバージョンにすると、develop への push で上がったビルドと release ブランチのビルドを App Store Connect で見分けられません。"
         )
-    released = [key for key in (version_key(name[1:]) for name in tags if name.startswith("v")) if key]
     if released and target <= max(released):
         latest = ".".join(str(part) for part in max(released))
         raise Failure(f"{version} はリリース済みの最新のバージョン（v{latest}）より大きくしてください。")
@@ -442,6 +469,8 @@ COMMANDS = {"check": command_check, "set-version": command_set_version, "draft":
 def emit(result: dict) -> None:
     for message in result.get("messages", []):
         print(message, file=sys.stderr)
+    for warning in result.get("warnings", []):
+        print(f"注意: {warning}", file=sys.stderr)
     if result.get("error"):
         print(f"失敗: {result['error']}", file=sys.stderr)
     print(json.dumps(result, ensure_ascii=False, indent=2))

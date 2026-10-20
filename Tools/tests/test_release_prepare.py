@@ -148,14 +148,49 @@ class CheckReleaseTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
 
-    def test_developと同じバージョンは止める(self) -> None:
+    def test_前のタグが無い初回はdevelopと同じバージョンで始めてよく書き換えない(self) -> None:
+        # PR #627 の ask pr627-1 の回答 B。App Store の最初のバージョンを develop の MARKETING_VERSION のまま出せる
+        result = check_release("1.0.0", "1.0.0", [], [])
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["sameVersion"])
+        self.assertTrue(result["initial"])
+        self.assertFalse(result["bumpVersion"])
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertIn("見分けられません", result["warnings"][0])
+        self.assertIn("アップロードの新しいもの", result["warnings"][0])
+
+    def test_バージョンの形でないv付きのタグは前のタグに数えない(self) -> None:
+        result = check_release("1.0.0", "1.0.0", [], ["vtest", "v1.0"])
+
+        self.assertTrue(result["sameVersion"])
+
+    def test_前のタグがあればdevelopと同じバージョンは止める(self) -> None:
         # ビルドはバージョンとプラットフォームだけで選ぶので、develop のビルドを紐付けうる（#621 のレビュー）
-        with self.assertRaisesRegex(Failure, "見分けられません"):
-            check_release("1.0.0", "1.0.0", [], [])
+        with self.assertRaisesRegex(Failure, "前のリリースのタグがあるので"):
+            check_release("1.1.0", "1.1.0", [], ["v1.0.0"])
+
+    def test_大きいバージョンでは注意を出さない(self) -> None:
+        result = check_release("1.1.0", "1.0.0", [], [])
+
+        self.assertFalse(result["sameVersion"])
+        self.assertTrue(result["initial"])
+        self.assertEqual(result["warnings"], [])
+
+    def test_初回の同じバージョンのresumeでも注意を出す(self) -> None:
+        result = check_release("1.0.0", "1.0.0", ["1.0.0"], [], resume=True)
+
+        self.assertTrue(result["sameVersion"])
+        self.assertFalse(result["bumpVersion"])
+        self.assertEqual(len(result["warnings"]), 1)
 
     def test_developより小さいバージョンは止める(self) -> None:
         with self.assertRaisesRegex(Failure, "より大きく"):
             check_release("0.9.0", "1.0.0", [], [])
+
+    def test_初回でもdevelopより小さいバージョンは止める(self) -> None:
+        with self.assertRaisesRegex(Failure, "より大きく"):
+            check_release("0.9.9", "1.0.0", [], ["vtest"])
 
     def test_リリース済みの最新より小さいバージョンは止める(self) -> None:
         with self.assertRaisesRegex(Failure, "v1.2.0"):
@@ -217,6 +252,23 @@ class CheckCommandTests(RepoTestCase):
         self.assertEqual(code, 0)
         self.assertEqual(result["developVersion"], "1.0.0")
         self.assertTrue(result["bumpVersion"])
+
+    def test_タグの無い初回はdevelopと同じバージョンを通して書き換えない(self) -> None:
+        code, result = self.run_main("check", "--version", "1.0.0")
+
+        self.assertEqual(code, 0)
+        self.assertTrue(result["sameVersion"])
+        self.assertFalse(result["bumpVersion"])
+        self.assertEqual(len(result["warnings"]), 1)
+
+    def test_リモートにタグがあればdevelopと同じバージョンは止める(self) -> None:
+        self.repo.git("tag", "v0.9.0")
+        self.repo.git("push", "-q", "origin", "v0.9.0")
+
+        code, result = self.run_main("check", "--version", "1.0.0")
+
+        self.assertEqual(code, 1)
+        self.assertIn("前のリリースのタグがあるので", result["error"])
 
     def test_リモートにreleaseブランチがあれば止める(self) -> None:
         self.repo.git("push", "-q", "origin", "develop:refs/heads/release/1.1.0")
