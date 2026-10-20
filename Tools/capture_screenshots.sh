@@ -15,6 +15,10 @@ set -euo pipefail
 # 1 回ビルドしたものを使い回すので、言語を増やしても時間は大きく伸びない。
 #
 # 出力先: $SCREENSHOTS_DIR/<表示サイズ>/<言語>/01_….png …（既定は build/screenshots）
+#
+# 手元で試すときの例（作った Simulator は終わると消す。DerivedData は既定でリポジトリの外）:
+#
+#   SIMULATOR_NAME=AskHub-Screenshot-mine SKIP_PACKAGE_PLUGIN_VALIDATION=1 Tools/capture_screenshots.sh APP_IPHONE_67 ja
 
 DISPLAY_TYPE="${1:?表示サイズ（例: APP_IPHONE_67）を指定してください}"
 LANGUAGES="${2:-}"
@@ -27,6 +31,8 @@ PROJECT="$($CONFIG app project)"
 SCHEME="${SCHEME:-$($CONFIG app scheme)}"
 CONFIGURATION="${CONFIGURATION:-$($CONFIG app configuration)}"
 SIMULATOR_PREFIX="$($CONFIG app simulatorPrefix)"
+# 撮影のために作る Simulator の名前（終わったら消す）。手元で試すときは、ほかの Simulator と見分けられる名前を渡せる
+SIMULATOR_NAME="${SIMULATOR_NAME:-${SIMULATOR_PREFIX}-Screenshot-${DISPLAY_TYPE}}"
 SCREENSHOTS_DIR="${SCREENSHOTS_DIR:-$PWD/build/screenshots}"
 # DerivedData はリポジトリ外に置く。リポジトリ内に置くと、ビルドフェーズの SwiftLint が
 # SPM 依存のソース（DerivedData/SourcePackages/checkouts）まで lint して、ビルドが失敗することがある
@@ -93,7 +99,7 @@ UDID=""
 DEVICE_NAME=""
 while IFS= read -r -u 3 candidate; do
     if DEVICE_TYPE_ID="$(device_type_id_for_name "$candidate")" \
-        && UDID="$(xcrun simctl create "${SIMULATOR_PREFIX}-Screenshot-${DISPLAY_TYPE}" "$DEVICE_TYPE_ID" "$RUNTIME_ID" 2>/dev/null)"; then
+        && UDID="$(xcrun simctl create "$SIMULATOR_NAME" "$DEVICE_TYPE_ID" "$RUNTIME_ID" 2>/dev/null)"; then
         DEVICE_NAME="$candidate"
         break
     fi
