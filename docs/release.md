@@ -450,7 +450,8 @@ App Store Connect は、そのプラットフォームの最初のバージョ�
 アプリは `release-notes.yml` を **`release/<v>` の ref で**起動する（inputs は `version` と `whats_new`。`ReleaseWorkflow.notesInputs`）。
 
 - アプリが送る前に見るのは形だけでよい（言語・字数・空でないことの正本はこのワークフローの検査）。止まったときの理由は run の Job Summary に出る
-- `release/<v>` を切った時点の `develop` に `release-notes.yml` が無かった release ブランチでは、`release/<v>` の ref では起動できない（dispatch がエラーになる）。そのときは Actions から `develop` を選んで起動する
+- `release/<v>` を切った時点の `develop` に `release-notes.yml` が無かった release ブランチでは、`release/<v>` の ref では起動できない（dispatch がエラーになる）。そのときは Actions から `develop` を選んで起動する。
+  このとき確定は `develop` の `Tools/` で行うが、起動される Metadata/App Store は `release/<v>` で動き、release ブランチの古い `Tools/upload_metadata.py` を使うので、上の「初めてのリリースの最新情報」の `whatsNew` の除外が効かない（初めてのリリースでは、App Store Connect が `whatsNew` を弾くと Metadata/App Store が失敗しうる）
 - 確定すると、release ブランチの `AppStore/whats-new-draft.json` が消え、すべての言語の `whatsNew.version` が `<v>` になる（アプリの「確定済み」）
 
 ### 人がすること
