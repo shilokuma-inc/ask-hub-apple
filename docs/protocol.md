@@ -442,7 +442,10 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **トークンの権限**: Fine-grained PAT に、TestFlight への手動アップロードと同じ **Actions の Read and write** に加えて **Contents の Read** が要る
   （release ブランチ・タグ・下書き・`MARKETING_VERSION` の読み取り）。Contents の Write は要らない（書き込みはワークフローが `GITHUB_TOKEN` で行う）
 - **アプリの「リリース準備」**（依頼タブ）: 送る前に形・`isTaken`・`unreleasedVersions`（タグの無い別の release ブランチ）だけを見る。起動の直後は、
-  起動したときの直近の run より id の大きい `develop` の `workflow_dispatch` の run が出るまで「起動した」状態を保ち、二重に起動しない（端末の時計のずれに左右されないよう、開始時刻とは比べない）。画面の流れは [docs/release.md](release.md) の「アプリからのリリース準備」
+  起動の直前に読み直した直近の run より id の大きい `develop` の `workflow_dispatch` の run が出るまで「起動した」状態を保ち、二重に起動しない（端末の時計のずれに左右されないよう、開始時刻とは比べない）。画面の流れは [docs/release.md](release.md) の「アプリからのリリース準備」
+- **リリースの進み具合と最新情報の確定**（依頼タブの「リリース準備」）: 準備中のリリース（release ブランチがあってタグが無いもの）ごとに、
+  `upload.yml` の `release/<v>` の run・`release-notes.yml` と `release-finish.yml` の直近の run（`GET …/runs?per_page=20`。起動した ref が `release/<v>` か、`run-name` にバージョンが入っているもの）を読む。
+  `release-notes.yml` は `release/<v>` で起動する。起動の直前に直近の run を読み直し、実行中なら送らない。`release-finish.yml` はアプリから起動しない。画面の流れは [docs/release.md](release.md) の「アプリでのリリースの進み具合と最新情報の確定」
 - ループはリリースのワークフローを実行しない
 
 ## 最終 PR の第三者レビュー

@@ -102,11 +102,12 @@ nonisolated private final class GatedReader: ReleaseReading {
 struct ReleaseRequestModelTests {
     /// 起動を記録するリリース準備のワークフロー。有無・run・失敗を差し替えられる。`dispatchGate` を渡すと、起動をそれが開くまで止める
     private final class RecordingWorkflow: WorkflowProviding {
-        nonisolated let file = ReleaseWorkflow.prepare.file
+        nonisolated let file: String
         private let state = OSAllocatedUnfairLock(initialState: RecordingWorkflowState())
         private let dispatchGate: Gate?
 
-        init(dispatchGate: Gate? = nil) {
+        init(file: String = ReleaseWorkflow.prepare.file, dispatchGate: Gate? = nil) {
+            self.file = file
             self.dispatchGate = dispatchGate
         }
 
@@ -132,7 +133,12 @@ struct ReleaseRequestModelTests {
         }
 
         func latestRun(repository: String, branch: String) async throws -> LatestWorkflowRun {
-            state.withLock { $0.runs.first.map(LatestWorkflowRun.run) ?? .noRuns }
+            state.withLock { state in
+                guard state.availability != .notFound else {
+                    return .unsupported
+                }
+                return state.runs.first.map(LatestWorkflowRun.run) ?? .noRuns
+            }
         }
 
         func recentRuns(repository: String, branch: String?, event: String?, limit: Int) async throws -> [WorkflowRun] {
@@ -178,15 +184,19 @@ struct ReleaseRequestModelTests {
     private static let repository = "shilokuma-inc/ask-hub-apple"
     private static let otherRepository = "shilokuma-inc/notti-ios"
 
+    /// `workflows` に無いワークフロー（リリース準備のほか）は、無い（404）ものとして扱う
     private func makeModel(
         token: String? = "github_pat_saved",
         reader: any ReleaseReading = FixedReader(),
-        workflow: RecordingWorkflow = RecordingWorkflow()
+        workflow: RecordingWorkflow = RecordingWorkflow(),
+        workflows: [String: RecordingWorkflow] = [:]
     ) -> ReleaseRequestModel {
-        ReleaseRequestModel(
+        let missing = RecordingWorkflow(file: "missing.yml")
+        missing.update { $0.availability = .notFound }
+        return ReleaseRequestModel(
             tokenStore: InMemoryTokenStore(token: token),
             makeReader: { _ in reader },
-            makeWorkflow: { _ in workflow },
+            makeWorkflow: { _, file in file == workflow.file ? workflow : workflows[file] ?? missing },
             // テストでは取り直しを待たない
             dispatchRefreshDelay: .seconds(60)
         )

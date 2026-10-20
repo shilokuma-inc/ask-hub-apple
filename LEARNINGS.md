@@ -226,6 +226,9 @@
   「ambiguous use of」になる。`FinalReviewTracker.ReviewOutcome.failed(reason:)` のように型を書く
 - Swift の `String` は `"\r\n"` を 1 つの `Character` として扱うので、`split(separator: "\n")` では CRLF の行を区切れない。
   `split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)` で区切る
+- MainActor 既定のターゲットでは、型の中に入れ子にした型（`private struct X`）も MainActor になる。`nonisolated static func` の中でその型を作ると
+  「main actor-isolated initializer … cannot be called from outside of the actor」になるので、入れ子の型にも `nonisolated` を付ける。
+  `nonisolated` の関数から MainActor の文言の関数（`InboxModel.message(for:)` など）を呼びたいときは、エラーのまま返して MainActor の側で文言にする（`ReleaseProgress.load`）
 
 ## シェルスクリプト
 
@@ -271,3 +274,5 @@
 - `.background(.bar)` のような `ShapeStyle` の背景は既定で safe area まで広がるため、`safeAreaInset(edge: .top)` の帯に付けると iOS の大きいタイトルを覆ってぼかす。
   帯の中だけに付けるときは `.background(.bar, ignoresSafeAreaEdges: [])` にする
 - `Menu` の中で `Section("見出し") { Picker(…).pickerStyle(.inline) }` と包んでも、iOS 26 のメニューには見出しが出ず、区切り線だけになる（`Picker` の中に置く `Section` とは違う）
+- UI テストの Simulator は端末の言語が英語のままなので、`Locale.current.localizedString(forIdentifier: "ja")` は「Japanese」になる。
+  アプリの画面は日本語だけなので、言語名は `Locale(identifier: "ja").localizedString(forIdentifier:)` で日本語にする（「日本語」）

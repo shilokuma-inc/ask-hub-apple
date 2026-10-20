@@ -34,4 +34,43 @@ extension AskHubUITests {
         start.tap()
         XCTAssertTrue(app.staticTexts["1.3.0 のリリース準備を始めますか？"].waitForExistence(timeout: 5))
     }
+
+    /// 準備中のリリース（サンプルの notti-ios は release/2.1.0 に下書きがある）の進み具合から、最新情報の画面を開いて確定の確認ダイアログを出す
+    @MainActor
+    func testReleaseProgressOpensDraftAndConfirms() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["依頼"].tap()
+        let picker = app.segmentedControls["request-kind-picker"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.buttons["リリース準備"].tap()
+        let repositoryPicker = app.buttons["release-repository-picker"]
+        XCTAssertTrue(repositoryPicker.waitForExistence(timeout: 5))
+        repositoryPicker.tap()
+        let repository = app.buttons["notti-ios"]
+        XCTAssertTrue(repository.waitForExistence(timeout: 5))
+        repository.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["release-step-notes"].waitForExistence(timeout: 5))
+        // iOS の Form は画面の外の行を作らないので、下の行はスクロールしてから探す（LEARNINGS.md）
+        let openNotes = app.buttons["open-release-notes"]
+        for _ in 0..<3 where !openNotes.exists {
+            app.swipeUp()
+        }
+        openNotes.tap()
+        XCTAssertTrue(app.navigationBars["最新情報"].waitForExistence(timeout: 5))
+        let text = app.textViews["whats-new-ja"].exists ? app.textViews["whats-new-ja"] : app.textFields["whats-new-ja"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        XCTAssertTrue((text.value as? String)?.contains("曜日ごと") == true)
+
+        let confirm = app.buttons["confirm-release-notes"]
+        for _ in 0..<3 where !confirm.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(confirm.isEnabled)
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["2.1.0 の最新情報を確定しますか？"].waitForExistence(timeout: 5))
+    }
 }
