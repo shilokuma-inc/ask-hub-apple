@@ -97,6 +97,7 @@ jobs:
           fi
 
       - name: Create release branch
+        id: create
         if: inputs.resume != true
         env:
           BUMP: ${{ steps.check.outputs.bump }}
@@ -140,6 +141,7 @@ jobs:
           } >> "$SUMMARY"
 
       - name: Find release branch
+        id: find
         if: inputs.resume == true
         run: |
           set -euo pipefail
@@ -150,7 +152,8 @@ jobs:
           {
             echo "## リリース準備 ${VERSION}（resume）"
             echo
-            echo "- release ブランチ \`release/${VERSION}\` があるので、ブランチは作らずに App Store Connect のバージョンの用意と起動だけを行いました"
+            echo "- release ブランチ: [\`release/${VERSION}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/tree/release/${VERSION})（すでにあるので、ブランチ・コミット・最新情報の下書きは作り直しません）"
+            echo "- この run では、App Store Connect のバージョンの用意とワークフローの起動だけをやり直します（結果は下の節）"
           } >> "$SUMMARY"
 
       - name: Create Private Key
@@ -274,10 +277,27 @@ jobs:
         if: always()
         env:
           DELIVERY: ${{ vars.ENABLE_DELIVERY != 'false' }}
+          # 検査で止まった・release ブランチを作れなかったときは何も作っていないので、「次にすること」を出さない
+          BRANCH_READY: ${{ steps.create.outcome == 'success' || steps.find.outcome == 'success' }}
+          CHECKED: ${{ steps.check.outcome == 'success' }}
+          # App Store Connect の用意・起動の失敗は、そのステップを失敗にせず出力で受ける（最後のステップで run を失敗にする）
+          FAILED: ${{ job.status != 'success' || steps.asc.outputs.ok == 'false' || steps.dispatch.outputs.failed == '1' }}
         run: |
           set -euo pipefail
           {
             cat "$SUMMARY" 2> /dev/null || true
+            if [ "$CHECKED" != "true" ]; then
+              echo
+              echo "release ブランチ・コミット・App Store Connect のバージョンは何も作っていません。理由を直して、同じバージョンで起動し直してください。"
+              exit 0
+            fi
+            if [ "$BRANCH_READY" != "true" ]; then
+              echo
+              echo "- release ブランチを作れませんでした（ログを見てください）。App Store Connect には触れていません。"
+              echo "  push の前に止まったときはリモートに何も残っていないので、そのまま起動し直します。"
+              echo "  同じ名前の release ブランチが先にできていたときは、resume をオンにして続きから行います（docs/release.md の「リリース準備」の「失敗したとき」）。"
+              exit 0
+            fi
             if [ -s "$RUNNER_TEMP/warnings.txt" ]; then
               echo
               echo "> [!WARNING]"
@@ -295,8 +315,10 @@ jobs:
             echo "1. AskHub で最新情報の下書きを確かめて確定する（Release/Notes が \`whatsNew\` に書いて反映する）"
             echo "2. 処理が終わったビルドは定期実行（Release/Sync）がバージョンに紐付ける"
             echo "3. App Store Connect で審査に提出し、輸出コンプライアンスなどに答える（人が行う）"
-            echo
-            echo "途中で止まったときは、原因を直してから同じバージョンで resume をオンにして再実行します（docs/release.md の「リリース準備」）。"
+            if [ "$FAILED" = "true" ]; then
+              echo
+              echo "この run は途中で失敗しています。原因を直してから、同じバージョンで resume をオンにして再実行してください（docs/release.md の「リリース準備」の「失敗したとき」）。"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail if any step failed
