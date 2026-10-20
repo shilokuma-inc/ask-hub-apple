@@ -9,6 +9,8 @@ struct NewRequestView: View {
         case change
         /// テンプレートから新しいアプリのリポジトリを作る依頼（`repo-request`）
         case newApp
+        /// リリース準備のワークフロー（`release-prepare.yml`）の起動（Discussion #605）。Issue は作らない
+        case release
 
         var id: Self { self }
 
@@ -16,6 +18,16 @@ struct NewRequestView: View {
             switch self {
             case .change: "機能追加・修正"
             case .newApp: "新しいアプリ"
+            case .release: "リリース準備"
+            }
+        }
+
+        /// ナビゲーションバーのタイトル
+        var navigationTitle: String {
+            switch self {
+            case .change: "新しい依頼"
+            case .newApp: "新しいアプリ"
+            case .release: "リリース準備"
             }
         }
     }
@@ -51,11 +63,13 @@ struct NewRequestView: View {
                 changeSections
             case .newApp:
                 NewAppFormSections(model: model, isEditing: $isEditing)
+            case .release:
+                ReleaseRequestFormSections(requestModel: model, model: model.release, openSettings: openSettings, isEditing: $isEditing)
             }
         }
         .formStyle(.grouped)
         .keyboardDoneButton($isEditing)
-        .navigationTitle(kind == .change ? "新しい依頼" : "新しいアプリ")
+        .navigationTitle(kind.navigationTitle)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("設定", systemImage: "gearshape", action: openSettings)
@@ -63,7 +77,12 @@ struct NewRequestView: View {
         }
         // デモモードの切り替えでモデルが差し替わったら、新しいモデルで読み直す
         .task(id: ObjectIdentifier(model)) { await model.loadRepositories() }
-        .refreshable { await model.loadRepositories() }
+        .refreshable {
+            await model.loadRepositories()
+            if kind == .release {
+                await model.release.refresh()
+            }
+        }
     }
 
     /// 既存のリポジトリへの依頼（機能追加・修正）の入力欄

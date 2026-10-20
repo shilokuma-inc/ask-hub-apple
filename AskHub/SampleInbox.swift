@@ -52,7 +52,12 @@ extension MergeQueueModel {
 extension IdeaRequestModel {
     /// デモモード・Preview・UI テスト用。GitHub には接続しない
     static func sample(sent: [SentRequest] = []) -> IdeaRequestModel {
-        IdeaRequestModel(tokenStore: InMemoryTokenStore(token: "sample"), makeRequester: { _ in SampleIdeaRequester() }, sent: sent)
+        IdeaRequestModel(
+            tokenStore: InMemoryTokenStore(token: "sample"),
+            makeRequester: { _ in SampleIdeaRequester() },
+            sent: sent,
+            release: .sample()
+        )
     }
 }
 

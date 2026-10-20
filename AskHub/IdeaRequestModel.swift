@@ -37,6 +37,9 @@ final class IdeaRequestModel {
     private(set) var isSendingRepositoryRequest = false
     private(set) var repositoryRequestError: String?
 
+    /// 「リリース準備」の状態。依頼先の一覧はこのモデルのものを使う。デモモードの切り替えでこのモデルと一緒に差し替わる
+    let release: ReleaseRequestModel
+
     private let tokenStore: any TokenStore
     private let makeRequester: @Sendable (String) -> any IdeaRequesting
     /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
@@ -46,9 +49,11 @@ final class IdeaRequestModel {
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
         makeRequester: @escaping @Sendable (String) -> any IdeaRequesting = { GitHubIdeaRequester(client: GitHubClient(token: $0)) },
         sent: [SentRequest] = [],
-        organizations: @escaping () -> [String] = { OrganizationSettings.load() }
+        organizations: @escaping () -> [String] = { OrganizationSettings.load() },
+        release: ReleaseRequestModel? = nil
     ) {
         self.tokenStore = tokenStore
+        self.release = release ?? ReleaseRequestModel(tokenStore: tokenStore)
         self.organizations = organizations
         self.makeRequester = makeRequester
         self.sent = sent
