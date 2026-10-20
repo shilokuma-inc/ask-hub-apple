@@ -7,6 +7,7 @@
     python3 Tools/upload_metadata.py            # 反映する
     python3 Tools/upload_metadata.py --dry-run  # 現在値との差分だけ出す
     python3 Tools/upload_metadata.py --check    # App Store Connect につながず、手元のファイルだけ検査する
+    python3 Tools/upload_metadata.py --platform MAC_OS --missing-version skip  # macOS のバージョンに反映する（無ければ飛ばす）
 
 認証は App Store Connect API Key（.p8）。次の環境変数でも渡せる。
 
@@ -14,6 +15,10 @@
 
 触るのは **編集できる状態のバージョンだけ**。審査中や配信済みのバージョンは対象にしない。
 JSON に書いていない項目（例: 省略した promotionalText）は App Store Connect 側の値をそのまま残す。
+反映先は `--platform`（IOS / MAC_OS。既定は IOS）のバージョン。App Store Connect のバージョンはプラットフォームごとに
+別にあるので、iOS と macOS の両方に載せるときはプラットフォームごとに 1 回ずつ実行する（掲載文は同じ JSON を使う）。
+`--missing-version skip` を付けると、反映先のバージョンが無いとき（macOS のプラットフォームを追加していないなど）に
+止めずに飛ばして終了コード 0 で終わる。
 最新情報（whatsNew）はバージョンごとの文言なので、JSON の `whatsNew.version` が反映先のバージョンと
 一致するときだけ書き込む（前のバージョンの文言を次のバージョンに載せてしまわないため）。
 
@@ -32,6 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app_store_config import ROOT, Language, bundle_id, languages, parse_list
+from app_store_platform import PLATFORMS, missing_version_reason, platform_label, skipped_message
 
 METADATA_DIR = ROOT / "AppStore" / "metadata"
 
@@ -150,6 +156,14 @@ def main() -> int:
     parser.add_argument("--languages", help="対象の言語（カンマ区切り）。省略すると全言語")
     parser.add_argument("--bundle-id", help="省略すると project.pbxproj から読む")
     parser.add_argument("--app-version", help="反映先のバージョン。省略すると編集できるバージョンを自動で選ぶ")
+    parser.add_argument("--platform", choices=tuple(PLATFORMS), default="IOS",
+                        help="反映先のバージョンのプラットフォーム（既定: IOS）")
+    parser.add_argument(
+        "--missing-version",
+        choices=("fail", "skip"),
+        default="fail",
+        help="反映先のバージョンが無いときの扱い。fail: 止める（既定） / skip: 飛ばして終了コード 0 で終わる",
+    )
     parser.add_argument("--key-id", default=os.environ.get("APP_STORE_CONNECT_KEY_ID"))
     parser.add_argument("--issuer-id", default=os.environ.get("APP_STORE_CONNECT_ISSUER_ID"))
     parser.add_argument(
@@ -221,10 +235,15 @@ def main() -> int:
     )
 
     app = client.find_app(args.bundle_id or bundle_id())
-    version = client.find_version(app["id"], args.app_version)
+    if args.missing_version == "skip":
+        reason = missing_version_reason(client, app["id"], args.app_version, args.platform)
+        if reason:
+            print(skipped_message(args.platform, reason))
+            return 0
+    version = client.find_version(app["id"], args.app_version, args.platform)
     version_string = version["attributes"]["versionString"]
     print(f"対象: {app['attributes']['name']} {version_string} "
-          f"({version['attributes']['appStoreState']})")
+          f"({version['attributes']['appStoreState']}) / {platform_label(args.platform)}")
     if args.dry_run:
         print("--dry-run: App Store Connect には何も書き込みません")
 
