@@ -292,7 +292,22 @@ API と表示の決まりは [docs/protocol.md](protocol.md) の「リリース�
 | バージョンの既定値 | `develop` の `Configs/Project.xcconfig` の `MARKETING_VERSION` の次のマイナー（`1.0.0` → `1.1.0`。形が `MAJOR.MINOR.PATCH` でなければ既定値を入れない） |
 | 準備中のリリース | `release/<v>` のブランチがあって `v<v>` のタグが無いもの |
 | 最新情報 | `release/<v>` の `AppStore/whats-new-draft.json`（あれば未確定）と、`AppStore/languages.json` の言語ごとの `AppStore/metadata/<言語>.json` の `whatsNew`（すべての言語で `version` が `<v>` なら確定済み） |
-| ワークフローの有無と run | `release-prepare.yml`・`release-notes.yml`・`release-finish.yml`。無い（404）リポジトリでは「リリース準備」を出さない |
+| ワークフローの有無と run | `release-prepare.yml`・`release-notes.yml`・`release-finish.yml`。依頼の種類の「リリース準備」は常に出し、無い（404）リポジトリを選んだときにその旨を出してボタンを押せなくする（一覧を出す前に全リポジトリへ問い合わせない） |
+
+### アプリからのリリース準備
+
+依頼タブの種類で「リリース準備」を選び、リポジトリを選ぶと、バージョンの欄に `develop` の `MARKETING_VERSION` の次のマイナーが入る（書き換えられる。読めなければ空のまま）。
+「リリース準備を始める」で確認ダイアログ（`develop` から `release/<v>` を作ること・App Store Connect に iOS / macOS のバージョンを作ること・バイナリのアップロード・メタデータとスクリーンショットの反映）を出し、
+`release-prepare.yml` を `develop` で起動する（inputs は `version`）。
+
+- **アプリが止めるもの**: 形が `MAJOR.MINOR.PATCH` でない・`release/<v>` か `v<v>` がすでにある・タグの無い別の release ブランチがある（準備中のリリースを終えてから）・
+  リリース準備の run が実行中・起動した直後。`MARKETING_VERSION` との大小はアプリでは判定しない（ワークフローの入力の検査が正本）
+- **ワークフローが無い・無効**: `release-prepare.yml` が無い（404。`state` が `deleted` も同じ）リポジトリでは「このリポジトリにはリリースのワークフローがありません」と出し、ボタンを押せない。
+  無効にされている（`disabled_manually` など）ときは、Actions で有効にするよう案内する
+- **run の表示**: `develop` の `workflow_dispatch` の run の直近の 1 件（状態・`run-name`・開始時刻・GitHub へのリンク）。dispatch は run の id を返さないので、起動してから
+  起動したときの直近の run より id の大きい run が出るまで「起動しました」と出し、10 秒後に取り直す（ツールバーの「更新」か、iOS では下に引いても読み直せる）。
+  端末の時計がずれていても見分けられるよう、開始時刻とは比べない。10 分たっても出なければ押し直せる
+- **デモモード**: GitHub に送らず、起動したことにして実行中の run を出す
 
 ### アプリのトークンの権限
 

@@ -165,6 +165,9 @@
   また、一度描いた後にサンプルデータが入ると `List` の行の高さが計算し直されず、行が重なって写る（要対応のタブ）。待った後にウィンドウの大きさを 1pt 変えて戻すと計算し直される
 - `xcodebuild test` に `TEST_RUNNER_<名前>=値` の環境変数を付けると、テストのプロセスには `<名前>` で渡る（スキームを変えずにテストへ値を渡せる）。
   Swift Testing の `@Suite(.enabled(if: …))` の条件は MainActor の外で評価されるので、MainActor 既定のターゲットでは条件に使う型を `nonisolated` にする（しないと「main actor-isolated static property can not be referenced from a Sendable closure」）
+- iOS 26 の `confirmationDialog`（`titleVisibility: .visible`）は、押したボタンから出る吹き出し（popover）で出る。UI テストではタイトルを `app.staticTexts["<タイトル>"]` で引ける。
+  ダイアログのボタンが元のボタンと同じ文言だと `app.buttons["<文言>"]` が 2 つに当たるので、元のボタンに `accessibilityIdentifier` を付け、
+  ダイアログのボタンは `NSPredicate(format: "label == %@ AND identifier != %@", …)` で引く
 
 ## Keychain
 

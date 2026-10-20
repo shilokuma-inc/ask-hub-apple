@@ -408,7 +408,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **表示**: 「実行中 / 成功 / 失敗」、ビルドしたコミット（run の `head_sha`）が PR の最新の head と同じか、開始時刻、GitHub の run ページへのリンク。
   TestFlight でテストできるようになったかは出さない（App Store Connect API の鍵をアプリに持たせない）。
   ビルド番号は Upload ワークフローが App Store Connect の最新から自動で増やすので、同じバージョンのままビルド番号だけが増えて TestFlight に並ぶ
-- **ワークフローの有無**: `upload.yml` が無い（run の取得が 404）リポジトリではボタンを出さない。dispatch が 422 を返したら、そのリポジトリは `workflow_dispatch` に対応していないものとして以後ボタンを出さない
+- **ワークフローの有無**: `upload.yml` が無い（run の取得が 404）リポジトリではボタンを出さない。dispatch が 422 を返したら、そのリポジトリは `workflow_dispatch` に対応していないものとして以後ボタンを出さない。
+  ただし無効にされたワークフロー（`Cannot trigger a 'workflow_dispatch' on a disabled workflow`）は、Actions で有効にするよう案内してボタンを残す
 - **トークンの権限**: Fine-grained PAT に **Actions の Read and write** が要る（run の取得は Read、起動は Write）。
   権限が無いと 403 が返る。403 はレート制限でも返るので、`x-ratelimit-remaining: 0`・`Retry-After`（と 429）はレート制限として今までどおり待って再試行し、
   それ以外の 403 を「権限不足」として、設定画面への案内と一緒にその旨を出す
@@ -439,6 +440,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   `workflow_dispatch` が無い・`ref` が無い・inputs が合わないを見分ける（`WorkflowError.dispatchRejection`）。レート制限（403 / 429・`Retry-After`）は待って再試行する
 - **トークンの権限**: Fine-grained PAT に、TestFlight への手動アップロードと同じ **Actions の Read and write** に加えて **Contents の Read** が要る
   （release ブランチ・タグ・下書き・`MARKETING_VERSION` の読み取り）。Contents の Write は要らない（書き込みはワークフローが `GITHUB_TOKEN` で行う）
+- **アプリの「リリース準備」**（依頼タブ）: 送る前に形・`isTaken`・`unreleasedVersions`（タグの無い別の release ブランチ）だけを見る。起動の直後は、
+  起動したときの直近の run より id の大きい `develop` の `workflow_dispatch` の run が出るまで「起動した」状態を保ち、二重に起動しない（端末の時計のずれに左右されないよう、開始時刻とは比べない）。画面の流れは [docs/release.md](release.md) の「アプリからのリリース準備」
 - ループはリリースのワークフローを実行しない
 
 ## 最終 PR の第三者レビュー

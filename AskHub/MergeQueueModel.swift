@@ -21,7 +21,8 @@ final class MergeQueueModel {
     private var mergedIDs: Set<String> = []
     /// アプリから Upload を起動した PR（id → 起動した時刻）。run の一覧に新しい run が出るまで「起動した」状態を保ち、二重に押せないようにする
     private(set) var dispatchedAt: [String: Date] = [:]
-    /// Upload の起動が 422（`workflow_dispatch` に対応していない）で断られたリポジトリ。以後ボタンを出さない
+    /// Upload の起動が 422（`workflow_dispatch` に対応していない・ref が無いなど）で断られたリポジトリ。以後ボタンを出さない。
+    /// 無効にされたワークフロー（`DispatchRejection.workflowDisabled`）は有効にすれば起動できるので、ここには入れない
     private(set) var dispatchUnsupportedRepositories: Set<String> = []
     /// 「起動した」状態を保つ最長の時間。これを過ぎても run が出なければ、起動に失敗したものとして押し直せるようにする
     static let dispatchPendingLimit: TimeInterval = 10 * 60
@@ -212,16 +213,19 @@ final class MergeQueueModel {
     }
 
     /// Upload ワークフローを最終 PR の head ブランチで起動し（`workflow_dispatch`）、「起動した」状態にして少し後に取り直す。
-    /// 422 で断られたリポジトリは以後ボタンを出さない
+    /// 422 で断られたリポジトリは以後ボタンを出さない（無効にされたワークフローを除く）
     func upload(_ pullRequest: EpicPullRequest, now: Date = .now) async throws {
         guard let token = try tokenStore.load() else {
             throw MissingTokenError()
         }
         do {
             try await makeUploadWorkflow(token).dispatch(repository: pullRequest.repository, ref: pullRequest.headBranch)
-        } catch UploadWorkflowError.dispatchNotSupported(let message) {
-            dispatchUnsupportedRepositories.insert(pullRequest.repository)
-            throw UploadWorkflowError.dispatchNotSupported(message: message)
+        } catch let error as UploadWorkflowError {
+            // 無効にされたワークフローは GitHub の Actions で有効にすれば起動できるので、ボタンは消さない
+            if let rejection = error.dispatchRejection, rejection != .workflowDisabled {
+                dispatchUnsupportedRepositories.insert(pullRequest.repository)
+            }
+            throw error
         }
         dispatchedAt[pullRequest.id] = now
         // dispatch の直後は run の一覧に新しい run がすぐには出ないので、少し待ってから取り直す
@@ -255,6 +259,27 @@ final class MergeQueueModel {
         }
     }
 
+    /// TestFlight への起動（Upload ワークフロー）の失敗の説明
+    private static func uploadMessage(for error: UploadWorkflowError) -> String {
+        switch error {
+        case .permissionDenied:
+            // レート制限の 403 は GitHubClient が rateLimited にするのでここには来ない（表示は default の InboxModel.message）
+            return "TestFlight に上げられませんでした。トークンに、このリポジトリの Actions の書き込み権限（Read and write）があるか確かめてください。"
+                + "設定で権限を付けたトークンを保存し直してください"
+
+        case .workflowNotFound:
+            return "TestFlight に上げられませんでした。このリポジトリに Upload ワークフロー（upload.yml）が無いか、Actions が無効か、トークンから見えません"
+
+        case .dispatchNotSupported where error.dispatchRejection == .workflowDisabled:
+            return "TestFlight に上げられませんでした。このリポジトリの Upload ワークフロー（upload.yml）が無効にされています。"
+                + "GitHub のリポジトリの Actions で有効にしてから、もう一度上げてください"
+
+        case let .dispatchNotSupported(message):
+            return "TestFlight に上げられませんでした。この epic ブランチの Upload ワークフローは手動実行（workflow_dispatch）に対応していません"
+                + (message.map { "（\($0)）" } ?? "")
+        }
+    }
+
     /// 失敗の説明。トークンの値は含めない
     static func message(for error: any Error) -> String {
         switch error {
@@ -276,17 +301,8 @@ final class MergeQueueModel {
         case GitHubError.http(status: 405, let message):
             return "GitHub がマージを受け付けませんでした" + (message.map { "（\($0)）" } ?? "")
 
-        case UploadWorkflowError.permissionDenied:
-            // レート制限の 403 は GitHubClient が rateLimited にするのでここには来ない（表示は default の InboxModel.message）
-            return "TestFlight に上げられませんでした。トークンに、このリポジトリの Actions の書き込み権限（Read and write）があるか確かめてください。"
-                + "設定で権限を付けたトークンを保存し直してください"
-
-        case UploadWorkflowError.workflowNotFound:
-            return "TestFlight に上げられませんでした。このリポジトリに Upload ワークフロー（upload.yml）が無いか、Actions が無効か、トークンから見えません"
-
-        case let UploadWorkflowError.dispatchNotSupported(message):
-            return "TestFlight に上げられませんでした。この epic ブランチの Upload ワークフローは手動実行（workflow_dispatch）に対応していません"
-                + (message.map { "（\($0)）" } ?? "")
+        case let error as UploadWorkflowError:
+            return uploadMessage(for: error)
 
         default:
             return InboxModel.message(for: error)
