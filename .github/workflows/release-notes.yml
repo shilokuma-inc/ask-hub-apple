@@ -83,9 +83,11 @@ jobs:
         run: |
           set -euo pipefail
           if python3 Tools/release_notes.py check --version "$VERSION" > "$RUNNER_TEMP/check.json"; then
-            jq -r '.warnings // [] | .[]' "$RUNNER_TEMP/check.json" > "$RUNNER_TEMP/warnings.txt"
+            # 注意は Summary の補足なので、読めなくても止めない
+            jq -r '.warnings // [] | .[]' "$RUNNER_TEMP/check.json" > "$RUNNER_TEMP/warnings.txt" 2> /dev/null || : > "$RUNNER_TEMP/warnings.txt"
           else
-            error=$(jq -r '.error // "検査に失敗しました"' "$RUNNER_TEMP/check.json")
+            # 結果の JSON が壊れていても（Python が落ちたなど）、set -e で jq ごと止まらず理由を Summary に出す
+            error=$(jq -r '.error // "検査に失敗しました"' "$RUNNER_TEMP/check.json" 2> /dev/null) || error="検査の結果を読めませんでした（ログを見てください）"
             echo "::error::${error}"
             echo "- 確定しませんでした: ${error}" >> "$SUMMARY"
             exit 1
@@ -115,11 +117,13 @@ jobs:
               jq -r 'if .draftRemoved then "- 下書き `AppStore/whats-new-draft.json` を消した" else "- 下書き `AppStore/whats-new-draft.json` はもう無い（前に確定済み）" end' "$RUNNER_TEMP/apply.json"
             } >> "$SUMMARY"
           else
-            error=$(jq -r '.error // "最新情報を書けませんでした"' "$RUNNER_TEMP/apply.json")
+            # 結果の JSON が壊れていても、set -e で jq ごと止まらず理由を Summary に出す
+            error=$(jq -r '.error // "最新情報を書けませんでした"' "$RUNNER_TEMP/apply.json" 2> /dev/null) || error="結果を読めませんでした（ログを見てください）"
             echo "::error::${error}"
             {
-              echo "- 確定しませんでした（release ブランチは変えていません）: $(jq -r 'if .problems then "whats_new に問題があります" else .error // "最新情報を書けませんでした" end' "$RUNNER_TEMP/apply.json")"
-              jq -r '.problems // [] | .[] | "  - \(.)"' "$RUNNER_TEMP/apply.json"
+              reason=$(jq -r 'if .problems then "whats_new に問題があります" else .error // "最新情報を書けませんでした" end' "$RUNNER_TEMP/apply.json" 2> /dev/null) || reason="$error"
+              echo "- 確定しませんでした（release ブランチは変えていません）: ${reason}"
+              jq -r '.problems // [] | .[] | "  - \(.)"' "$RUNNER_TEMP/apply.json" 2> /dev/null || true
             } >> "$SUMMARY"
             exit 1
           fi
