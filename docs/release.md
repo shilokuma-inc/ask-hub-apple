@@ -253,3 +253,21 @@ python3 -m unittest discover -s Tools/tests -t .
 ```
 
 HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流すので、App Store Connect にはつながず、PyJWT も要らない。PR では Verify/App Store metadata が同じテストを流す。
+
+## AskHub アプリが読むもの・起動するもの
+
+AskHub アプリは App Store Connect を見られないので、リリースの進み具合は GitHub の情報（release ブランチ・タグ・各ワークフローの run・下書きのファイル）だけで出す。
+API と表示の決まりは [docs/protocol.md](protocol.md) の「リリース準備と最新情報の確定」。
+
+| 読むもの | 場所 |
+| --- | --- |
+| バージョンの既定値 | `develop` の `Configs/Project.xcconfig` の `MARKETING_VERSION` の次のマイナー（`1.0.0` → `1.1.0`。形が `MAJOR.MINOR.PATCH` でなければ既定値を入れない） |
+| 準備中のリリース | `release/<v>` のブランチがあって `v<v>` のタグが無いもの |
+| 最新情報 | `release/<v>` の `AppStore/whats-new-draft.json`（あれば未確定）と、`AppStore/languages.json` の言語ごとの `AppStore/metadata/<言語>.json` の `whatsNew`（すべての言語で `version` が `<v>` なら確定済み） |
+| ワークフローの有無と run | `release-prepare.yml`・`release-notes.yml`・`release-finish.yml`。無い（404）リポジトリでは「リリース準備」を出さない |
+
+### アプリのトークンの権限
+
+Fine-grained PAT に **Actions の Read and write**（起動と run の表示。TestFlight への手動アップロードと同じ）と **Contents の Read**（上の表の読み取り）を付ける。
+アプリからは push・タグ・Release の作成をしない（ワークフローが `GITHUB_TOKEN` で行う）ので、Contents の Write は要らない。
+

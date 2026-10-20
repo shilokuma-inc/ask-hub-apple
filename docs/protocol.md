@@ -415,6 +415,32 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **サンプルデータ（デモモード）**: run の状態（実行中 / 成功 / 失敗・ビルドした SHA が PR の最新の head と違う）もサンプルに含め、GitHub にもトークンにも依存しない。起動はしない
 - ループは Upload を実行しない（`gh workflow run` や dispatch API を呼ばない）。実際に TestFlight に並んだかは、人間が TestFlight アプリで確かめる
 
+## リリース準備と最新情報の確定（アプリが読むもの・起動するもの）
+
+アプリの「リリース準備」と、リリースの進み具合・最新情報の確定の画面は、TestFlight への手動アップロードと同じく、リリースのワークフローを `workflow_dispatch` で起動し、
+その run と GitHub の情報だけを読む（[Discussion #605](https://github.com/shilokuma-inc/ask-hub-apple/discussions/605) の Q1）。App Store Connect は見ない。
+手順の正本は各リポジトリのワークフローで、流れは [docs/release.md](release.md)。読み取りと起動は `AskHubKit` の `GitHubReleaseReader` / `GitHubWorkflow` / `ReleaseWorkflow` が実装する。
+
+- **読むもの**（どれも GET だけ。アプリからは push・タグ・Release の作成をしない）:
+
+  | 読むもの | API | 使い道 |
+  | --- | --- | --- |
+  | release ブランチ・タグ | `GET /repos/{owner}/{repo}/git/matching-refs/heads/release/`・`…/matching-refs/tags/v`（ページングを最後まで） | 準備中のリリース（release ブランチがあってタグが無い）・すでにあるバージョンの判定 |
+  | `MARKETING_VERSION` | `GET /repos/{owner}/{repo}/contents/Configs/Project.xcconfig?ref=develop` | バージョンの既定値（次のマイナー。`1.0.0` → `1.1.0`） |
+  | 最新情報の下書き | `GET …/contents/AppStore/whats-new-draft.json?ref=release/<v>` | 「下書きあり（未確定）」。`schemaVersion` が知らない値なら読まずに知らせる |
+  | 確定した最新情報 | `GET …/contents/AppStore/languages.json`・`…/contents/AppStore/metadata/<言語>.json?ref=release/<v>` の `whatsNew` | 下書きが無く、すべての言語の `whatsNew.version` がリリースのバージョンなら「確定済み」 |
+  | ワークフローの有無 | `GET /repos/{owner}/{repo}/actions/workflows/<file>` | 404 ならそのリポジトリでは「リリース準備」を出さない（`upload.yml` の 404 と同じ） |
+  | run | `GET …/actions/workflows/<file>/runs?branch=…&event=workflow_dispatch&per_page=…`（直近の数件。ページングはしない） | 起動した run の状態（dispatch は run の id を返さないので、開始時刻で見分ける） |
+
+- **起動するもの**: `POST /repos/{owner}/{repo}/actions/workflows/<file>/dispatches`。ファイル名と inputs はワークフローと約束したもの:
+  `release-prepare.yml`（`version`。任意で `resume`。`ref` は `develop`）・`release-notes.yml`（`version`・`whats_new` = 言語コード → 本文の JSON の文字列）・
+  `release-finish.yml`（`version`。ふだんは定期実行が起動する）。バージョンは `MAJOR.MINOR.PATCH`（先頭の 0 は不可）で、アプリは送る前に形だけを検査する（大小の決まりはワークフローの検査が正本）
+- **エラー**: 403（レート制限でない）は権限不足、ワークフローの 404 は「このリポジトリにはリリースのワークフローがありません」、422 は GitHub の説明から
+  `workflow_dispatch` が無い・`ref` が無い・inputs が合わないを見分ける（`WorkflowError.dispatchRejection`）。レート制限（403 / 429・`Retry-After`）は待って再試行する
+- **トークンの権限**: Fine-grained PAT に、TestFlight への手動アップロードと同じ **Actions の Read and write** に加えて **Contents の Read** が要る
+  （release ブランチ・タグ・下書き・`MARKETING_VERSION` の読み取り）。Contents の Write は要らない（書き込みはワークフローが `GITHUB_TOKEN` で行う）
+- ループはリリースのワークフローを実行しない
+
 ## 最終 PR の第三者レビュー
 
 最終 PR（`epic-final`）で CodeRabbit がレビューできない（レート制限・失敗・スキップ、または head が変わってから 10 分経ってもレビューが付かない）ときは、
