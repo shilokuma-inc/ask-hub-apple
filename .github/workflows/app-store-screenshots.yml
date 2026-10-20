@@ -5,17 +5,19 @@ name: Screenshots/App Store
 # 撮る画面・並び順・表示サイズは AppStore/screenshots.json、言語は AppStore/languages.json、
 # ビルドする Scheme は AppStore/app.json で決める。撮影は Tools/capture_screenshots.sh が、アプリの撮影モード
 # （AskHub/ScreenshotDemo.swift の -screenshot-demo / -screenshot-scene）を起動引数で切り替えながら行う。
+# Mac（APP_DESKTOP）は Simulator が無く、ランナーには画面収録の許可も無いので、Tools/capture_mac_screenshots.sh が
+# macOS のユニットテスト（AskHubTests/MacScreenshotCaptureTests）で撮影モードと同じ画面を描いて撮る（matrix の method）。
 #
 # macOS ランナーの枠を開発のビルドと取り合わないよう、次の 3 つを守る。
 # - release/** ブランチから実行したときだけ撮る（リリースのときだけ撮る）
-# - 撮影は 1 本ずつ（max-parallel: 1）。同時に使う macOS ランナーは常に 1 台
+# - 撮影は 1 本ずつ（max-parallel: 1）。同時に使う macOS ランナーは常に 1 台（Mac の撮影も同じ列に並ぶ）
 # - deriveFrom を書いた表示サイズ（6.3 inch）は撮らずに、元の表示サイズを ubuntu で縮めて作る。
 #   App Store Connect への反映も ubuntu で行う
 #
 # 反映先は「編集できる状態のバージョン」だけ。審査中・配信済みのバージョンには触らない。
 # 反映先のプラットフォームは表示サイズの platform で決まる（Mac の APP_DESKTOP は macOS のバージョン、それ以外は iOS）。
 # macOS のバージョンが無いときは macOS の表示サイズを飛ばして iOS だけで続け、Job Summary に知らせる。
-# 撮る方法がまだ無い表示サイズ（今は Mac）は、撮影・反映の matrix から外して Job Summary に知らせる。
+# 撮る方法が無い表示サイズ（devices を書いていない iOS の表示サイズ）は、撮影・反映の matrix から外して Job Summary に知らせる。
 # upload を外せば撮るだけで、結果は artifact から取れる。
 # 手順と人がすることは docs/release.md の「App Store のスクリーンショット」。
 
@@ -121,7 +123,7 @@ jobs:
             fi
           } >> "$GITHUB_OUTPUT"
 
-          # 撮る方法がまだ無い表示サイズ（Mac など）は飛ばしたことを知らせる
+          # 撮る方法が無い表示サイズは飛ばしたことを知らせる
           if [ "$(jq '.skipped | length' <<<"$matrix")" -gt 0 ]; then
             jq -r '.skipped[] | "::notice::\(.label)（\(.display_type)）: \(.reason)"' <<<"$matrix"
             {
@@ -162,8 +164,10 @@ jobs:
         with:
           persist-credentials: false
 
-      # ランナーのイメージには選んだ Xcode に合う iOS ランタイムが入っていないことがあるので、無ければ入れる
+      # ランナーのイメージには選んだ Xcode に合う iOS ランタイムが入っていないことがあるので、無ければ入れる。
+      # Mac の表示サイズ（method: macos-unit-test）は Simulator を使わないので要らない
       - name: Prepare iOS runtime
+        if: matrix.method == 'simulator'
         run: |
           set -euo pipefail
           sdk="$(xcrun --sdk iphonesimulator --show-sdk-version)"
@@ -176,6 +180,7 @@ jobs:
       - name: Allow SwiftLint build tool plugin
         run: defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
 
+      # Mac の表示サイズは capture_screenshots.sh が capture_mac_screenshots.sh に切り替える（WARMUP_SECONDS などは iOS だけで使う）
       - name: Capture screenshots
         env:
           LANGUAGES: ${{ inputs.languages }}
