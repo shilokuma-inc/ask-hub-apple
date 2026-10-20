@@ -61,6 +61,8 @@
   失敗したログで直させる処理は `hasRunningChecks` が `false`（すべて終わった）になってから始める
 - 再利用ワークフローの中で、条件付きで飛ばすジョブ（`if:` が偽で skipped）を `needs` にすると、後続のジョブも既定では skipped になる。
   後続を動かすには `if: ${{ !cancelled() && (needs.<id>.result == 'skipped' || needs.<id>.outputs.<名前> == 'true') }}` のように状態の関数を付ける（前のジョブが失敗したときは outputs が空になるので、この条件なら後続は飛ぶ）
+- `strategy.matrix.include: ${{ fromJSON(needs.plan.outputs.x) }}` に空の配列（`[]`）を渡すと、ジョブを作れず「Matrix must define at least one vector」で run が失敗する。
+  設定によって空になりうる matrix（例: Mac の表示サイズだけを指定したときの撮影）は、前のジョブで `has_x=$(jq -r 'length > 0')` を出し、ジョブの `if:` で飛ばす
 
 ## ビルド・テスト
 
@@ -151,6 +153,8 @@
   テストは `from .fake_app_store_connect import …` と相対で import し、`Tools/` のモジュールは偽物のモジュールが `sys.path` に足したうえで読む。
   PyJWT は `app_store_connect.make_token` の中でだけ import するので、`make_token` を `mock.patch` し、`AppStoreConnect(urlopen=…, sleep=…)` で HTTP と待ち時間を差し替えれば、PyJWT の無い Mac でもネットワークに出ずに流せる。
   `Tools/*.py` のモジュールの先頭で PyJWT などの外の依存を import しない（`--check` や unittest まで依存を求めてしまう）
+- App Store Connect のバージョン（`appStoreVersions`）は iOS と macOS で別にあり（`filter[platform]=IOS` / `MAC_OS`）、言語ごとの掲載文（`appStoreVersionLocalizations`）とスクリーンショットのセットもバージョンごとに持つ。
+  iOS だけに反映すると macOS の掲載文は空のまま。`Tools/upload_metadata.py`・`upload_screenshots.py` は `--platform` ごとに 1 回ずつ実行する。Mac のスクリーンショット（`APP_DESKTOP`）は 16:10 の 2880x1800・2560x1600・1440x900・1280x800 だけを受け付ける
 
 ## Keychain
 
