@@ -48,6 +48,7 @@ jobs:
       release_sha: ${{ steps.check.outputs.release_sha }}
       merge: ${{ steps.check.outputs.merge }}
       tag_state: ${{ steps.check.outputs.tag_state }}
+      main_state: ${{ steps.check.outputs.main_state }}
     env:
       # 入力はシェルに直接展開せず、環境変数で渡す（インジェクション対策）
       VERSION: ${{ inputs.version }}
@@ -85,6 +86,7 @@ jobs:
               echo "release_sha=${release_sha}"
               echo "merge=$(jq -r '.main != "done" or .develop != "done"' "$RUNNER_TEMP/check.json")"
               echo "tag_state=$(jq -r '.tagState' "$RUNNER_TEMP/check.json")"
+              echo "main_state=$(jq -r '.main' "$RUNNER_TEMP/check.json")"
             } >> "$GITHUB_OUTPUT"
             {
               echo "- release ブランチ: \`release/${VERSION}\` の [\`${release_sha:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${release_sha})"
@@ -160,6 +162,9 @@ jobs:
 
       - name: Merge into main
         id: main
+        env:
+          # check の判定。done なら取り込まない（タグを打った後に release ブランチが進んだときは、進んだ分を develop にだけ取り込む）
+          PLANNED: ${{ needs.check.outputs.main_state }}
         run: |
           set -euo pipefail
           git fetch --quiet origin '+refs/heads/main:refs/remotes/origin/main' 2> /dev/null || true

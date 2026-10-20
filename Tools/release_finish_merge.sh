@@ -17,6 +17,7 @@
 #
 # 環境変数: VERSION・RELEASE_SHA（check ジョブで確かめた release の先頭）・GITHUB_REPOSITORY・GH_TOKEN・
 #           SUMMARY（Job Summary に載せる行をためるファイル）・RUNNER_TEMP・GITHUB_OUTPUT。
+#           PLANNED（任意。check ジョブの main の判定。done なら main には取り込まない。タグを打った後に release が進んだとき）
 # 出力（GITHUB_OUTPUT）: state（created / merged / done / conflict / rejected）・sha（取り込み先の新しい先頭）・pr（PR の URL）・issue（PR を作れなかったときの Issue の URL）
 set -euo pipefail
 
@@ -247,6 +248,14 @@ for attempt in 1 2; do
     output state "done"
     output sha "$current"
     summary "- ${target}: すでに \`${branch}\` を含んでいます（$(commit_link "$current")。前の run か人が取り込み済み）"
+    exit 0
+  fi
+
+  if [ "$target" = "main" ] && [ "${PLANNED:-}" = "done" ] && [ -n "$current" ]; then
+    # check が「タグ v<v> を打った main に入っている」とみなした（タグを打った後に release ブランチが進んだ）。進んだ分は main に取り込まない
+    output state "done"
+    output sha "$current"
+    summary "- main: タグ \`v${VERSION}\` を打った main に入っています（\`${branch}\` はタグの後に進んでいますが、進んだ分は main には取り込みません）"
     exit 0
   fi
 

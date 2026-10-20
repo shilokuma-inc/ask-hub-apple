@@ -98,6 +98,21 @@ class CheckTests(FinishTestCase):
         self.repo.merge_into("develop", "release/1.1.0")
         self.assertFalse(self.check()["pending"])
 
+    def test_release_advanced_after_tag_merges_into_develop_only(self):
+        self.repo.cut_release()
+        self.repo.git("branch", "main", "release/1.1.0")
+        self.repo.publish("main")
+        self.repo.git("tag", "v1.1.0", "main")
+        # タグを打った後に、人が release ブランチでコンフリクトを解いた（前の案内どおり）
+        self.repo.git("checkout", "-q", "release/1.1.0")
+        self.repo.commit_file("resolve.txt", "resolve", "Merge branch 'develop' into release/1.1.0")
+        self.repo.git("checkout", "-q", "develop")
+        self.repo.publish("release/1.1.0")
+        result = self.check()
+        self.assertEqual((result["main"], result["tagState"], result["develop"]), ("done", "done", "merge"))
+        self.assertTrue(result["releaseAdvanced"])
+        self.assertIn("develop にだけ取り込みます", result["messages"][-1])
+
     def test_missing_release_branch(self):
         with self.assertRaisesRegex(Failure, "release/1.1.0 がありません"):
             self.check()
@@ -105,7 +120,15 @@ class CheckTests(FinishTestCase):
     def test_tag_without_release_head(self):
         self.repo.cut_release()
         self.repo.git("tag", "v1.1.0", "develop")
-        with self.assertRaisesRegex(Failure, "含みません"):
+        with self.assertRaisesRegex(Failure, "含まず、このリリースを main に取り込んだコミットでもありません"):
+            self.check()
+
+    def test_tag_without_release_head_off_main(self):
+        self.repo.cut_release()
+        self.repo.git("branch", "main", "release/1.1.0")
+        self.repo.publish("main")
+        self.repo.git("tag", "v1.1.0", "develop")
+        with self.assertRaisesRegex(Failure, "含まず、このリリースを main に取り込んだコミットでもありません"):
             self.check()
 
     def test_tag_without_main(self):
