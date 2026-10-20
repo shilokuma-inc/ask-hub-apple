@@ -15,6 +15,13 @@ final class ReleaseNotesModel {
         var previousRunID: Int?
     }
 
+    /// 1 つのリリースの入力中の本文
+    private struct Editing {
+        var languages: [String]
+        var texts: [String: String]
+        var loadedTexts: [String: String]
+    }
+
     /// 1 つの言語の本文の上限（App Store Connect の whatsNew の上限。`Tools/upload_metadata.py` と同じく Unicode のスカラー値で数える）
     static let maxLength = 4000
 
@@ -36,6 +43,8 @@ final class ReleaseNotesModel {
     private(set) var readFailure: String?
     /// `errorMessage` が送らなかった理由か（次の読み取りの成功で消す）
     private var errorIsNotSentReason = false
+    /// 別のリリースに切り替える前に直していた本文（`<リポジトリ> <バージョン>` → 本文）。戻ってきたら入力中の本文に戻す
+    @ObservationIgnored private var editingByRelease: [String: Editing] = [:]
     /// アプリから起動したリリース（`<リポジトリ> <バージョン>`）。起動より新しい run が出るまで「起動した」状態を保ち、二重に起動しない
     private(set) var dispatched: [String: Dispatch] = [:]
     /// 起動した後に、リリースの状態を読み直す
@@ -73,10 +82,15 @@ final class ReleaseNotesModel {
 
     // MARK: - 読み取りの反映
 
-    /// 読み直したリリースの状態を反映する。リポジトリかバージョンが変わったら、入力中の本文を読んだ本文に入れ替える。
+    /// 読み直したリリースの状態を反映する。リポジトリかバージョンが変わったら、入力中の本文をそのリリースのもの
+    /// （前に直していればその本文、無ければ読んだ本文）に入れ替える。前のリリースの直した本文は `editingByRelease` に残す。
     /// 同じリリースなら、直していない言語だけを新しい本文に入れ替える（直した本文は消さない）
     func update(repository: String?, progress: ReleaseProgress?) {
         let isSameRelease = repository == self.repository && progress?.version == self.progress?.version
+        if !isSameRelease, let previousKey = dispatchKey {
+            // リポジトリを切り替えて戻ってきたときに、直した本文が黙って消えないようにする
+            editingByRelease[previousKey] = isEdited ? Editing(languages: languages, texts: texts, loadedTexts: loadedTexts) : nil
+        }
         self.repository = repository
         self.progress = progress
         readFailure = nil
@@ -84,7 +98,13 @@ final class ReleaseNotesModel {
             errorMessage = nil
             errorIsNotSentReason = false
         }
-        if isSameRelease, case .failed = progress?.notes {
+        if !isSameRelease {
+            let editing = dispatchKey.flatMap { editingByRelease.removeValue(forKey: $0) }
+            languages = editing?.languages ?? []
+            texts = editing?.texts ?? [:]
+            loadedTexts = editing?.loadedTexts ?? [:]
+        }
+        if case .failed = progress?.notes {
             // 最新情報だけ読めなかった。読んだ本文（直したかを見分ける元）と言語は前のままにする
             // （空にすると、次に読めたときに直していない本文まで「直した」扱いで残る）。確定は blockingReason で止める
             clearDispatchedIfRunStarted()
@@ -92,12 +112,8 @@ final class ReleaseNotesModel {
         }
         let newTexts = Self.texts(of: progress?.releaseNotes)
         languages = Self.languages(of: progress?.releaseNotes)
-        if isSameRelease {
-            for language in languages where texts[language] == nil || texts[language] == loadedTexts[language] {
-                texts[language] = newTexts[language] ?? ""
-            }
-        } else {
-            texts = Dictionary(uniqueKeysWithValues: languages.map { ($0, newTexts[$0] ?? "") })
+        for language in languages where texts[language] == nil || texts[language] == loadedTexts[language] {
+            texts[language] = newTexts[language] ?? ""
         }
         loadedTexts = newTexts
         clearDispatchedIfRunStarted()
