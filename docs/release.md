@@ -303,13 +303,17 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 | 3 | 最新情報の下書き `AppStore/whats-new-draft.json` を作り、`[chore] <v> の最新情報の下書きを作る` を積んで push する | `Tools/release_prepare.py draft` |
 | 4 | App Store Connect に iOS / macOS のバージョン `<v>` を用意する（「App Store Connect のバージョンとビルド」） | `Tools/release_app_store.py prepare` |
 | 5 | release ブランチで Upload・Screenshots/App Store・Metadata/App Store（`dry_run: false`・`app_version: <v>`）を起動する | `gh workflow run … --ref release/<v>` |
-| 6 | Job Summary に結果と、人が次にすることを出す | |
+| 6 | Job Summary に結果と、人が次にすることを出す（1 の検査で止まったとき・release ブランチを作れなかったときは「次にすること」を出さない） | |
 
-- inputs は `version`（必須）と `resume`（任意。既定 `false`。下の「失敗したとき」）。`develop` 以外から起動すると止まる（`Tools/` は `develop` のものを使うため）
+- inputs は `version`（必須）と `resume`（任意。既定 `false`。下の「失敗したとき」）。`develop` 以外から起動すると止まる（`Tools/` は `develop` のものを使うため。
+  `resume` でも作業ツリーは `develop` のままで、release ブランチは先頭のコミットで起動するワークフローのファイルの有無を見るだけ）
+- run の表示名（`run-name`）は `Release/Prepare <version>`。runs の一覧の API は inputs を返さないので、AskHub アプリ（`WorkflowRun.displayTitle`）はこの名前でどのバージョンの run かを見分けられる。
+  inputs は `run-name` の表示にだけ式で使い、`run:` の中には環境変数で渡す
 - コミットの作者は `github-actions[bot]`。`GITHUB_TOKEN` での push は新しいワークフローの run を起こさないので、Upload などは 5 で `workflow_dispatch` する。
   同じ理由で、release ブランチの先頭では Build（CI）が動かない（リリース後作業が `main`・`develop` に取り込む前に流す）
 - 5 は、release ブランチにファイルが無いワークフローを飛ばして Summary に書く。バイナリは App Store Connect のバージョンが無くても上げられるので、4 が失敗しても Upload は起動する。
-  スクリーンショットとメタデータは 4 が成功したときだけ起動する
+  スクリーンショットとメタデータは、4 で iOS のバージョンを用意できた（`created`・`exists`・`renamed`）ときに起動する。macOS だけが `blocked` / `error` のときも iOS には反映し
+  （macOS の分は反映の側で飛ばされるか失敗する）、run は最後に失敗にする。iOS を用意できなかったときは起動しない
 - リリース準備は同時に 1 つだけ動く（`concurrency`）。macOS のランナーは、Upload の 2 台とスクリーンショットの 1 台を使う
 - リポジトリ変数 `ENABLE_DELIVERY=false` のときは 1〜3 だけを行う（App Store Connect には触れない）。`ENABLE_MACOS_DELIVERY=false` のときは 4 を iOS だけで行う
 
@@ -389,7 +393,7 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 | --- | --- |
 | 「準備を始めませんでした」 | Job Summary の理由のとおり。バージョンを直して起動し直す（何も作っていない） |
 | 「タグの無い release ブランチがあります」 | 前のリリースを終える（リリース後作業）か、やめたリリースの release ブランチを消す（App Store Connect の編集できるバージョンも確かめる） |
-| App Store Connect のバージョンが `blocked` / `error` | 「App Store Connect のバージョンとビルド」の「編集できるバージョンが残っているとき」。App Store Connect で直してから、同じバージョンで `resume` をオンにして起動し直す |
+| App Store Connect のバージョンが `blocked` / `error` | 「App Store Connect のバージョンとビルド」の「編集できるバージョンが残っているとき」。App Store Connect で直してから、同じバージョンで `resume` をオンにして起動し直す（macOS だけのときは iOS のスクリーンショット・メタデータはもう起動している。`resume` で起動し直すと iOS にも上書きで反映し直す） |
 | ワークフローの起動に失敗した | 失敗したワークフローを Actions から `release/<v>` を選んで手で起動するか、`resume` をオンにして起動し直す（Upload も起動し直すので、24 時間あたりのアップロード上限に気をつける） |
 | push に失敗した | 同じ名前の release ブランチが先にできていないか確かめる。ブランチがあれば `resume` で続ける |
 
