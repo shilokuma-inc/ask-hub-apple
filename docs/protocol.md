@@ -781,6 +781,18 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
   owner の区切りは organization が 1 つだけのときも出す（Q2）。owner の Section は一覧に現れた順、Section の中は一覧の順で、空の Section は出さない。
   担当の印を確認できなかったときは、「担当 PC なし」と誤って見せないよう担当の有無では分けず、「担当 PC の有無を確認できませんでした・<owner>」と owner だけで分ける（`AskHubKit` の `RepositorySection`）
 
+## Siri / ショートカットからの依頼
+
+アプリの App Intents で、Siri・ショートカット App・Spotlight からも「機能追加・修正」の依頼（`idea-request` の Issue）を出せる
+（[Discussion #655](https://github.com/shilokuma-inc/ask-hub-apple/discussions/655)）。Issue の形と、オーケストレーターの処理（「流れ」）はアプリから送ったものと同じ。
+
+- 依頼先は `RepositoryEntity`（`id` は `owner/repo`）。候補は「依頼先のリポジトリ」と同じく、設定の organization のアーカイブ済みでないリポジトリすべてで、
+  並びもアプリの Picker と同じ（担当 PC ありを先に、その中を owner ごとに）。前に選んだ依頼先は保存せず、毎回候補から選ぶ（Q1）
+- 名前での検索は、大文字小文字・`-`・`_`・空白の違いを無視して `owner/repo` の一部と照らし合わせる（「ask hub apple」で `shilokuma-inc/ask-hub-apple` が当たる。`AskHubKit` の `RepositorySearch`）
+- 保存したショートカットの依頼先は、id（`owner/repo`）の形式だけを確かめて使う（候補の一覧は取り直さない）
+- 候補はアプリに保存したトークンで取得する。トークンが無い・Keychain から読めない・GitHub の失敗（401・403・404・レート制限）は、アプリの「新しい依頼」と同じ文言で返し、トークンの値は出さない
+- デモモードでは GitHub に接続せず、サンプルのリポジトリを候補にする
+
 ## リポジトリの作成・削除
 
 アプリから、テンプレートで新しいアプリのリポジトリを作り担当 PC に載せる・担当から外してローカルから消す、を依頼できる。
