@@ -12,6 +12,10 @@ from __future__ import annotations
 #: App Store Connect の platform の値 → 表示名
 PLATFORMS = {"IOS": "iOS", "MAC_OS": "macOS"}
 
+#: 配信を終えて、もう反映先にならない状態（配信済みは `app_store_connect.is_released` で見る）。
+#: これ以外の編集できない状態（審査中・公開待ちなど）は人が直すことなので、飛ばさずに止める
+FINISHED_STATES = {"REPLACED_WITH_NEW_VERSION", "REMOVED_FROM_SALE", "DEVELOPER_REMOVED_FROM_SALE"}
+
 #: 反映先が無くて飛ばしたときに出す文言。ワークフローはこの文言でログを探し、Job Summary に知らせる
 SKIPPED_MARKER = "の反映を飛ばしました"
 
@@ -27,9 +31,10 @@ def missing_version_reason(client, app_id: str, version_string: str | None, plat
 
     `AppStoreConnect.find_version` が「見つからない」で止まる場合だけを拾う。
     見つかったが審査中などで編集できない・候補が複数あるといった、人が直すべき場合は None を返し、
-    `find_version` にそのまま止めさせる。
+    `find_version` にそのまま止めさせる。バージョンを指定しないときに飛ばすのは、
+    どのバージョンも配信を終えた（`FINISHED_STATES`）ときだけにする（審査中・公開待ちがあれば止める）。
     """
-    from app_store_connect import is_editable, version_state
+    from app_store_connect import is_editable, is_released, version_state
 
     label = platform_label(platform)
     versions = client.get_all(
@@ -44,6 +49,9 @@ def missing_version_reason(client, app_id: str, version_string: str | None, plat
             return None
         return f"{label} にバージョン {version_string} がありません"
     if any(is_editable(v["attributes"]) for v in versions):
+        return None
+    if not all(is_released(v["attributes"]) or version_state(v["attributes"]) in FINISHED_STATES
+               for v in versions):
         return None
     states = ", ".join(sorted({version_state(v["attributes"]) for v in versions}))
     return f"{label} に編集できる状態のバージョンがありません（いまある状態: {states}）"
