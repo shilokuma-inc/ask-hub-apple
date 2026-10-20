@@ -32,6 +32,8 @@ final class ReleaseRequestModel {
     /// 選んだリポジトリ（`owner/repo`）。変えたら `select(_:)` で読み直す
     private(set) var repository: String?
     private(set) var contextState = ContextState.idle
+    /// リリースの状態を読んでいるか（取り直しのあいだも前の状態を出したままにするので、`contextState` とは別に持つ）
+    private(set) var isLoading = false
     /// 入力中のバージョン。リポジトリを選ぶと既定値（`MARKETING_VERSION` の次のマイナー）が入る
     var versionText = ""
     private(set) var isStarting = false
@@ -55,6 +57,8 @@ final class ReleaseRequestModel {
     private let makeWorkflow: @Sendable (String) -> any WorkflowProviding
     /// 起動した後、run の一覧に出るのを待ってから取り直すまでの時間
     private let dispatchRefreshDelay: Duration
+    /// 読み取りの世代。読み取りを始めるたびに増やし、終わったときに変わっていたら（後から始めた読み取りがある）その結果を捨てる
+    private var loadGeneration = 0
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
@@ -80,9 +84,11 @@ final class ReleaseRequestModel {
         ReleaseVersion(versionText.trimmingCharacters(in: .whitespaces))
     }
 
-    /// リポジトリを選び、リリースの状態を読み直す。バージョンの欄には既定値（次のマイナー。読めなければ空）を入れる
+    /// リポジトリを選び、リリースの状態を読み直す。バージョンの欄には既定値（次のマイナー。読めなければ空）を入れる。
+    /// 同じリポジトリを選び直したときは、入力中のバージョンを残して読み直す
     func select(_ repository: String?) async {
         guard repository != self.repository else {
+            await refresh()
             return
         }
         self.repository = repository
@@ -99,10 +105,14 @@ final class ReleaseRequestModel {
     }
 
     private func reload(resetsVersion: Bool) async {
+        loadGeneration += 1
+        let generation = loadGeneration
         guard let repository else {
             contextState = .idle
+            isLoading = false
             return
         }
+        isLoading = true
         // 取り直しのあいだは前の状態を出したままにする（ボタンは押せない）
         if context == nil {
             contextState = .loading
@@ -120,10 +130,11 @@ final class ReleaseRequestModel {
         } catch {
             result = .failed(Self.message(for: error))
         }
-        // 読んでいるあいだに別のリポジトリを選んだら、古い結果は捨てる
-        guard repository == self.repository else {
+        // 読んでいるあいだに別のリポジトリを選んだり、同じリポジトリを読み直したりしたら、古い結果は捨てる（後から始めた読み取りの結果を出す）
+        guard generation == loadGeneration, repository == self.repository else {
             return
         }
+        isLoading = false
         contextState = result
         if case .loaded(let context) = result {
             clearDispatchedIfRunStarted(context.latestRun)
@@ -215,7 +226,7 @@ final class ReleaseRequestModel {
 
     /// 「リリース準備を始める」を押せるか
     func canStart(now: Date = .now) -> Bool {
-        !isStarting && context != nil && blockingReason(now: now) == nil
+        !isStarting && !isLoading && context != nil && blockingReason(now: now) == nil
     }
 
     /// リリース準備のワークフローを `develop` で起動し（`workflow_dispatch`。inputs は `version`）、「起動した」状態にして少し後に取り直す
