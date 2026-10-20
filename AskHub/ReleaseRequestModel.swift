@@ -247,7 +247,10 @@ final class ReleaseRequestModel {
                 inputs: ReleaseWorkflow.prepareInputs(version: version)
             )
         } catch {
-            errorMessage = Self.message(for: error)
+            // 送っているあいだに別のリポジトリを選んだら、そのリポジトリの画面には出さない
+            if repository == self.repository {
+                errorMessage = Self.message(for: error)
+            }
             return
         }
         dispatched[repository] = Dispatch(date: now, version: version)
