@@ -19,11 +19,17 @@ App Store の説明文・キーワード・プロモーションテキスト・�
 | `AppStore/metadata/shared.json` | 言語によらない `supportUrl`（必須）・`marketingUrl`（任意） |
 | `Tools/upload_metadata.py` | JSON を検査し（`--check`）、App Store Connect に反映する（`--dry-run` で差分だけ） |
 | `Tools/app_store_config.py` / `Tools/app_store_connect.py` | `AppStore/*.json` の読み取りと、App Store Connect API のクライアント |
+| `Tools/app_store_platform.py` | 反映先のプラットフォーム（iOS / macOS）の表示名と、反映先のバージョンが無いときの判定 |
 | `.github/workflows/verify-app-store-metadata.yml`（Verify/App Store metadata） | PR で `AppStore/`・`Tools/` などが変わると、欠損・文字数の上限・Bundle ID を検査する |
 | `.github/workflows/app-store-metadata.yml`（Metadata/App Store） | 手動実行で App Store Connect に反映する。既定は dry-run |
 
 - 上限は `description` 4000 字・`keywords` カンマ込みで 100 字・`promotionalText` 170 字・`whatsNew` 4000 字。超えると PR の検査で落ちる
-- 反映するのは「編集できる状態」（`PREPARE_FOR_SUBMISSION` など）の iOS のバージョンだけ。審査中・配信済みのバージョンには触らない
+- 反映するのは「編集できる状態」（`PREPARE_FOR_SUBMISSION` など）のバージョンだけ。審査中・配信済みのバージョンには触らない
+- iOS と macOS のバージョンの両方に、同じ JSON を反映する（App Store Connect のバージョンはプラットフォームごとに別にあり、言語ごとの掲載文もそれぞれにある）。
+  `Tools/upload_metadata.py` は `--platform`（`IOS` / `MAC_OS`。既定は `IOS`）で反映先を選び、ワークフローはプラットフォームごとに 1 回ずつ実行する
+- macOS のバージョンが無い（macOS のプラットフォームを追加していない・そのバージョンを作っていない・編集できるバージョンが無い）ときは、macOS を飛ばして iOS だけに反映し、Job Summary に知らせる（`--missing-version skip`）。
+  macOS のバージョンが審査中などで編集できない・候補が複数あるときは、iOS と同じく止まる（iOS の反映は先に終わっている）
+- リポジトリ変数 `ENABLE_MACOS_DELIVERY` が `false` なら、macOS には反映しない（「macOS 版のアップロード」と同じ変数）
 - JSON に書いていない項目（例: 省略した `promotionalText`・`marketingUrl`）は、App Store Connect 側の値をそのまま残す
 - `whatsNew` は `{"version": "1.1.0", "text": "…"}` の形で書き、`version` が反映先のバージョンと一致するときだけ書き込む。
   最初のバージョン（1.0.0）には最新情報の欄が無いので書かない
@@ -43,6 +49,8 @@ python3 Tools/app_store_config.py bundle-id
    - まず `dry_run` をオンのまま実行し、Job Summary の差分（App Store Connect の現在値 → JSON の値）を確かめる
    - よければ `dry_run` をオフにして再実行する
    - 編集できるバージョンが複数あるときは `app_version` で選ぶ。App Store Connect のバージョンに言語（`ja`）が無いときは `missing_locales` を `create` にする
+   - Job Summary は iOS と macOS に分かれる。macOS を飛ばしたときは「iOS だけに反映しました」と出る。macOS にも載せるときは、「macOS 版のアップロード」の「人がすること」の 1 で macOS のプラットフォームを追加し、
+     macOS のバージョン（iOS と同じバージョン番号）を用意してから再実行する
 3. サブタイトル・プライバシーポリシーの URL・カテゴリ・年齢制限は、この仕組みでは反映しない（App 情報の項目のため）。App Store Connect の画面で入力する（値は [docs/app-review.md](app-review.md)）
 
 `workflow_dispatch` はデフォルトブランチ（`develop`）にファイルがあるときしか起動できない。`develop` に入るまでは実行できない。
@@ -55,6 +63,7 @@ python3 Tools/app_store_config.py bundle-id
 | `APPLE_API_KEY_ID` | Secret | API Key の Key ID |
 | `APPLE_API_ISSUER_ID` | Secret | API Key の Issuer ID |
 | `ENABLE_DELIVERY` | vars（任意） | `false` にすると Metadata/App Store を実行しない（Upload と同じ）。未設定なら実行する |
+| `ENABLE_MACOS_DELIVERY` | vars（任意） | `false` にすると macOS のバージョンには反映しない（iOS だけ）。未設定なら、macOS のバージョンの有無を見て自動で決める |
 
 API Key には App Manager 以上の権限が要る。Verify/App Store metadata は Secrets を使わない（Fork からの PR でも動く）。
 
@@ -95,7 +104,8 @@ API Key には App Manager 以上の権限が要る。Verify/App Store metadata 
 
 ## App Store のスクリーンショット
 
-App Store のスクリーンショットを、アプリの撮影モードで撮り、App Store Connect に反映する。今は iOS（iPhone・iPad）だけ。
+App Store のスクリーンショットを、アプリの撮影モードで撮り、App Store Connect に反映する。撮れるのは今は iOS（iPhone・iPad）だけ。
+Mac の表示サイズ（`APP_DESKTOP`）は設定と反映の仕組みまであり、撮影の方法ができるまでは撮影・反映を飛ばす。
 
 ### 仕組み
 
@@ -119,6 +129,16 @@ App Store のスクリーンショットを、アプリの撮影モードで撮�
 | `APP_IPHONE_67`（iPhone 6.9 inch） | iPhone 17 Pro Max（無ければ 16 Pro Max）の Simulator で撮る | 1320x2868 |
 | `APP_IPHONE_61`（iPhone 6.3 inch） | 6.9 inch を縮めて作る（ubuntu で動く） | 1206x2622 |
 | `APP_IPAD_PRO_3GEN_129`（iPad 13 inch） | iPad Pro 13-inch（M5 / M4）の Simulator で撮る | 2064x2752 |
+| `APP_DESKTOP`（Mac） | 撮影の方法がまだ無い（撮影・反映の matrix から外し、Job Summary に「撮影・反映を飛ばした表示サイズ」として出す） | 2880x1800（ほかに 2560x1600・1440x900・1280x800 も受け付ける） |
+
+表示サイズの `platform`（`IOS` / `MAC_OS`。省略すると `IOS`）が反映先のバージョンのプラットフォームになる。`APP_DESKTOP` は `MAC_OS` で、macOS のバージョンに反映する。
+
+- `Tools/app_store_config.py display-types` は、撮る方法がある表示サイズ（`devices` を書いた iOS の表示サイズと、`deriveFrom` で縮めて作る表示サイズ）だけを `capture` / `derive` / `upload` に入れ、
+  残り（`APP_DESKTOP`）は理由を付けて `skipped` に入れる。`upload` の各項目には反映先の `platform` が付く
+- `Tools/upload_screenshots.py` は表示サイズの `platform` のバージョンに反映する（`--platform` を渡すと、表示サイズと合うかを確かめる）。
+  macOS の表示サイズはワークフローが `--missing-version skip` を付けるので、macOS のバージョンが無いときは飛ばして iOS の表示サイズだけを反映する
+- `Tools/verify_screenshots.py --display-type APP_DESKTOP` で、Mac の寸法（16:10 の 4 つ）として検査できる
+- `Tools/capture_screenshots.sh` は iOS Simulator で撮るので、iOS 以外の表示サイズを渡すと止まる
 
 テンプレートにある iPhone Duo（`APP_IPHONE_DUO`）は、GitHub のホストランナーでは撮れない（`xcode-27` のランナーと iOS 27.1 が要る）ので載せていない。
 
@@ -166,7 +186,7 @@ SIMULATOR_NAME=AskHub-Screenshot-mine SKIP_PACKAGE_PLUGIN_VALIDATION=1 Tools/cap
 macOS ランナーの枠を開発のビルドと取り合わないよう、撮影は 1 本ずつ（`max-parallel: 1`、ワークフロー全体で 1 つ）にしている。
 
 Secrets / vars は「App Store のメタデータ」と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`、任意の `ENABLE_DELIVERY`）。
-`ENABLE_DELIVERY=false` のときは撮るだけで反映しない。
+`ENABLE_DELIVERY=false` のときは撮るだけで反映しない。`ENABLE_MACOS_DELIVERY=false` のときは、Mac の表示サイズを macOS のバージョンに反映しない。
 
 ## App Store Connect のバージョンとビルド
 
