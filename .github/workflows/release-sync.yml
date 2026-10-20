@@ -1,0 +1,155 @@
+name: Release/Sync
+# AskHub アプリ・人が Actions の一覧で見分けるための表示名（inputs は無いので、バージョンは入れない）
+run-name: Release/Sync
+
+# 定期実行（Discussion #605 の Q4・Q7）。タグ v<v> の無い release/<v> ごとに、
+#
+# 1. 処理が終わった iOS / macOS のビルドが App Store Connect のバージョン <v> に紐付いていなければ紐付ける（Tools/release_app_store.py attach-build）
+# 2. 作ったプラットフォームすべてで配信済みか見る（Tools/release_app_store.py status。必須の iOS は必ず含める）
+# 3. 配信済みなら、Release/Finish（release-finish.yml）を develop で起動する。run-name が「Release/Finish <v>」の run が実行中・待ち・成功済み・失敗したとき、
+#    取り込み待ちの PR / Issue が開いているときは起動しない（二重に起動しない。失敗した後は人が直して手で起動し直す）
+#
+# release ブランチが 1 つも無ければ、App Store Connect を呼ばずに終わる（Secrets が無くても失敗しない）。どれかの release ブランチが失敗しても、ほかは続ける。
+# 判定は Tools/release_sync.py。手順・止め方は docs/release.md の「定期実行（Release/Sync）」。
+
+on:
+  schedule:
+    # 30 分ごと（毎時 7 分と 37 分。GitHub は 0 分ちょうどに混んで遅れやすいのでずらす）。
+    # public リポジトリでは、60 日リポジトリに動きが無いと定期実行が止まる（Actions の画面で有効にし直す。docs/release.md）
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+# 同時に 1 つだけ（続けて動くと、起動した Release/Finish の run が一覧に出る前に、もう一度起動してしまう）
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read        # Tools/ と、release ブランチ・タグの一覧（git ls-remote）
+      actions: write        # release-finish.yml の run の一覧と workflow_dispatch
+      pull-requests: read   # 取り込み待ちの PR（release-finish/<v>/pr-<main|develop>）
+      issues: read          # PR を作れなかったときの Issue
+
+    steps:
+      - name: Validate ref
+        run: |
+          set -euo pipefail
+          # 各ステップが Job Summary に載せる行をためる（最後の Summary でまとめて出す）
+          SUMMARY="$RUNNER_TEMP/summary.md"
+          echo "SUMMARY=${SUMMARY}" >> "$GITHUB_ENV"
+          : > "$SUMMARY"
+          # schedule はデフォルトブランチ（develop）で動く。手で起動するときも Tools/ は develop のものを使う
+          if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+            echo "::error::develop から起動してください（${GITHUB_REF}）"
+            echo "- 始めませんでした: develop から起動してください（起動したブランチ: \`${GITHUB_REF#refs/heads/}\`）" >> "$SUMMARY"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Find release branches
+        id: targets
+        run: |
+          set -euo pipefail
+          if ! python3 Tools/release_sync.py targets > "$RUNNER_TEMP/targets.json"; then
+            error=$(jq -r '.error // "release ブランチの一覧を読めませんでした"' "$RUNNER_TEMP/targets.json" 2> /dev/null) || error="結果を読めませんでした（ログを見てください）"
+            echo "::error::${error}"
+            echo "- 止めました: ${error}" >> "$SUMMARY"
+            exit 1
+          fi
+          echo "versions=$(jq -r '.versions | join(",")' "$RUNNER_TEMP/targets.json")" >> "$GITHUB_OUTPUT"
+          echo "count=$(jq -r '.versions | length' "$RUNNER_TEMP/targets.json")" >> "$GITHUB_OUTPUT"
+          {
+            jq -r '.messages[] | "- \(.)"' "$RUNNER_TEMP/targets.json"
+            jq -r '.warnings[] | "\n> [!WARNING]\n> \(.)"' "$RUNNER_TEMP/targets.json"
+            echo
+          } >> "$SUMMARY"
+
+      - name: Create Private Key
+        id: key
+        if: steps.targets.outputs.count != '0' && vars.ENABLE_DELIVERY != 'false'
+        # Secrets はシェル展開ではなく env 経由で渡す。.p8 は $RUNNER_TEMP に置き、リポジトリの中に置かない
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$APPLE_API_KEY_BASE64" ]; then
+            echo "::error::Secrets の APPLE_API_KEY_BASE64 がありません"
+            echo "- 止めました: Secrets の \`APPLE_API_KEY_BASE64\` がないので App Store Connect を見られません（App Store Connect にアプリが無いリポジトリでは、リポジトリ変数 \`ENABLE_DELIVERY\` を \`false\` にする）" >> "$SUMMARY"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/private_keys/AuthKey.p8"
+
+      - name: Sync App Store Connect and start Release/Finish
+        id: sync
+        if: steps.targets.outputs.count != '0' && vars.ENABLE_DELIVERY != 'false'
+        env:
+          VERSIONS: ${{ steps.targets.outputs.versions }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY_PATH: ${{ runner.temp }}/private_keys/AuthKey.p8
+          ENABLE_MACOS_DELIVERY: ${{ vars.ENABLE_MACOS_DELIVERY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # PyJWT は標準では入っていないので、この実行かぎりの venv に入れる（リポジトリの外に置く）
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check pyjwt cryptography
+
+          platforms="IOS,MAC_OS"
+          if [ "$ENABLE_MACOS_DELIVERY" = "false" ]; then
+            platforms="IOS"
+          fi
+          {
+            echo "### App Store Connect と Release/Finish"
+            echo
+          } >> "$SUMMARY"
+          # どれかの release ブランチが失敗しても、ほかは続けて結果を Summary に残す（失敗は最後のステップで run を失敗にする）
+          failed=0
+          python3 Tools/release_sync.py sync --versions "$VERSIONS" --repo "$GITHUB_REPOSITORY" \
+            --app-store-python "$RUNNER_TEMP/venv/bin/python" --platforms "$platforms" \
+            --summary "$SUMMARY" > "$RUNNER_TEMP/sync.json" || failed=1
+          if ! jq -e . "$RUNNER_TEMP/sync.json" > /dev/null 2>&1; then
+            echo "- 結果を読めませんでした（ログを見てください）" >> "$SUMMARY"
+            failed=1
+          elif [ "$failed" = "1" ]; then
+            jq -r '"\n- 失敗: \(.error // "ログを見てください")"' "$RUNNER_TEMP/sync.json" >> "$SUMMARY"
+          fi
+          if [ "$ENABLE_MACOS_DELIVERY" = "false" ]; then
+            echo "- macOS: リポジトリ変数 ENABLE_MACOS_DELIVERY が false なので見ていません（iOS だけで配信を判定しました）" >> "$SUMMARY"
+          fi
+          echo "failed=${failed}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: always()
+        env:
+          COUNT: ${{ steps.targets.outputs.count }}
+          DELIVERY: ${{ vars.ENABLE_DELIVERY != 'false' }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## 定期実行（Release/Sync）"
+            echo
+            cat "$SUMMARY" 2> /dev/null || true
+            if [ -n "$COUNT" ] && [ "$COUNT" != "0" ] && [ "$DELIVERY" != "true" ]; then
+              echo
+              echo "- リポジトリ変数 ENABLE_DELIVERY が false なので、App Store Connect は見ていません（ビルドの紐付けも配信の検知もしません）。配信したら Release/Finish を手で起動してください"
+            fi
+            echo
+            echo "止め方・手で起動するときは docs/release.md の「定期実行（Release/Sync）」。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any release failed
+        if: steps.sync.outputs.failed == '1'
+        run: |
+          echo "::error::どれかの release ブランチで失敗しました（Job Summary を見てください。ほかの release ブランチは続けました）"
+          exit 1

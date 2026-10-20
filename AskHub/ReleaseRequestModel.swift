@@ -1,0 +1,382 @@
+import AskHubKit
+import Foundation
+import Observation
+
+/// 「新しい依頼」の「リリース準備」（Discussion #605 の Q1・Q2）。リポジトリのリリース準備のワークフロー（`release-prepare.yml`）を
+/// `develop` で起動し、その run を表示する。アプリは GitHub だけを見る（release ブランチの作成や App Store Connect の操作はワークフローが行う）
+@MainActor
+@Observable
+final class ReleaseRequestModel {
+    /// 選んだリポジトリのリリースの状態
+    struct Context: Equatable {
+        /// リリース準備のワークフローがあるか
+        var availability: WorkflowAvailability
+        /// release ブランチとタグ。ワークフローが無いときは読まない（`nil`）
+        var refs: ReleaseRefs?
+        /// `develop` の `MARKETING_VERSION`。読めなかったら `nil`（既定値を入れず、人に入力してもらう）
+        var marketingVersion: MarketingVersion?
+        /// `MARKETING_VERSION` を読めなかった理由（読めたら `nil`）
+        var marketingVersionNote: String?
+        /// `develop` で起動したリリース準備の直近の run（新しい順の先頭）
+        var latestRun: WorkflowRun?
+        /// 準備中のリリース（タグの無い release ブランチ）の進み具合。無ければ `nil`
+        var progress: ReleaseProgress?
+    }
+
+    enum ContextState: Equatable {
+        /// リポジトリを選んでいない
+        case idle
+        case loading
+        case loaded(Context)
+        case failed(String)
+    }
+
+    /// 選んだリポジトリ（`owner/repo`）。変えたら `select(_:)` で読み直す
+    private(set) var repository: String?
+    private(set) var contextState = ContextState.idle
+    /// リリースの状態を読んでいるか（取り直しのあいだも前の状態を出したままにするので、`contextState` とは別に持つ）
+    private(set) var isLoading = false
+    /// 入力中のバージョン。リポジトリを選ぶと既定値（`MARKETING_VERSION` の次のマイナー）が入る
+    var versionText = ""
+    private(set) var isStarting = false
+    /// 直前の起動の失敗（起動できたら `nil`）
+    private(set) var errorMessage: String?
+    /// `errorMessage` が送らなかった理由（「リリース準備を始めませんでした。…」）か。理由は読み直すと消えうるので、次の読み取りの成功で消す
+    /// （GitHub が断った起動の失敗は、押し直すまで残す）
+    private var errorIsNotStartedReason = false
+    /// アプリから起動したリポジトリ（→ 起動した時刻とバージョン）。run の一覧に起動より後の run が出るまで「起動した」状態を保ち、二重に押せないようにする
+    private(set) var dispatched: [String: Dispatch] = [:]
+
+    struct Dispatch: Equatable {
+        /// 起動した時刻（端末の時計）。「起動した」状態を保つ最長の時間（`dispatchPendingLimit`）を数えるのに使う
+        var date: Date
+        var version: ReleaseVersion
+        /// 起動したときに出ていた直近の run の id（まだ run が無ければ `nil`）。これより大きい id の run が出たら、起動した run とみなす
+        var previousRunID: Int?
+    }
+
+    /// 「起動した」状態を保つ最長の時間。これを過ぎても run が出なければ、起動に失敗したものとして押し直せるようにする
+    static let dispatchPendingLimit: TimeInterval = 10 * 60
+    /// リリース準備を起動するブランチ（release ブランチを切る元）
+    nonisolated static let dispatchRef = GitHubReleaseReader.developBranch
+
+    private let tokenStore: any TokenStore
+    private let makeReader: @Sendable (String) -> any ReleaseReading
+    /// トークンとワークフローのファイル名から、そのワークフローのクライアントを作る
+    private let makeWorkflow: @Sendable (_ token: String, _ file: String) -> any WorkflowProviding
+    /// 起動した後、run の一覧に出るのを待ってから取り直すまでの時間
+    private let dispatchRefreshDelay: Duration
+    /// 読み取りの世代。読み取りを始めるたびに増やし、終わったときに変わっていたら（後から始めた読み取りがある）その結果を捨てる
+    private var loadGeneration = 0
+
+    init(
+        tokenStore: any TokenStore = KeychainTokenStore.gitHub,
+        makeReader: @escaping @Sendable (String) -> any ReleaseReading = { GitHubReleaseReader(client: GitHubClient(token: $0)) },
+        makeWorkflow: @escaping @Sendable (_ token: String, _ file: String) -> any WorkflowProviding = {
+            GitHubWorkflow(client: GitHubClient(token: $0), file: $1)
+        },
+        dispatchRefreshDelay: Duration = .seconds(10)
+    ) {
+        self.tokenStore = tokenStore
+        self.makeReader = makeReader
+        self.makeWorkflow = makeWorkflow
+        self.dispatchRefreshDelay = dispatchRefreshDelay
+        notes = ReleaseNotesModel(tokenStore: tokenStore, makeWorkflow: makeWorkflow, dispatchRefreshDelay: dispatchRefreshDelay)
+        notes.onNeedsRefresh = { [weak self] in
+            await self?.refresh()
+        }
+    }
+
+    /// 準備中のリリースの最新情報の確認・修正・確定。リリースの状態を読み直すたびに、読んだ最新情報を渡す
+    let notes: ReleaseNotesModel
+
+    var context: Context? {
+        if case .loaded(let context) = contextState {
+            return context
+        }
+        return nil
+    }
+
+    /// 入力したバージョン。形（`MAJOR.MINOR.PATCH`）が違えば `nil`
+    var version: ReleaseVersion? {
+        ReleaseVersion(versionText.trimmingCharacters(in: .whitespaces))
+    }
+
+    /// リポジトリを選び、リリースの状態を読み直す。バージョンの欄には既定値（次のマイナー。読めなければ空）を入れる。
+    /// 同じリポジトリを選び直したときは、入力中のバージョンを残して読み直す
+    func select(_ repository: String?) async {
+        guard repository != self.repository else {
+            await refresh()
+            return
+        }
+        self.repository = repository
+        // 前のリポジトリの状態を出さない
+        contextState = repository == nil ? .idle : .loading
+        versionText = ""
+        errorMessage = nil
+        errorIsNotStartedReason = false
+        await reload(resetsVersion: true)
+    }
+
+    /// 選んでいるリポジトリの状態を読み直す。入力中のバージョンは変えない
+    func refresh() async {
+        await reload(resetsVersion: false)
+    }
+
+    private func reload(resetsVersion: Bool) async {
+        loadGeneration += 1
+        let generation = loadGeneration
+        guard let repository else {
+            contextState = .idle
+            isLoading = false
+            // 読んでいた途中の読み取りの結果は捨てるので、ここで読み取り中を戻す
+            notes.isReading = false
+            notes.update(repository: nil, progress: nil)
+            return
+        }
+        isLoading = true
+        notes.isReading = true
+        // 取り直しのあいだは前の状態を出したままにする（ボタンは押せない）
+        if context == nil {
+            contextState = .loading
+        }
+        let result: ContextState
+        do {
+            guard let token = try tokenStore.load() else {
+                throw IdeaRequestModel.MissingTokenError()
+            }
+            let makeWorkflow = makeWorkflow
+            result = .loaded(try await Self.loadContext(
+                repository: repository,
+                reader: makeReader(token),
+                workflow: { makeWorkflow(token, $0) }
+            ))
+        } catch {
+            result = .failed(Self.readingMessage(for: error))
+        }
+        // 読んでいるあいだに別のリポジトリを選んだり、同じリポジトリを読み直したりしたら、古い結果は捨てる（後から始めた読み取りの結果を出す）
+        guard generation == loadGeneration, repository == self.repository else {
+            return
+        }
+        isLoading = false
+        notes.isReading = false
+        apply(result, repository: repository, resetsVersion: resetsVersion)
+    }
+
+    /// 読み取りの結果を反映する
+    private func apply(_ result: ContextState, repository: String, resetsVersion: Bool) {
+        contextState = result
+        switch result {
+        case .loaded(let context):
+            notes.update(repository: repository, progress: context.progress)
+            if errorIsNotStartedReason {
+                errorMessage = nil
+                errorIsNotStartedReason = false
+            }
+            clearDispatchedIfRunStarted(context.latestRun)
+            if resetsVersion || versionText.isEmpty {
+                versionText = context.marketingVersion?.nextMinor?.description ?? ""
+            }
+
+        case .failed(let message):
+            // 前に読んだ進み具合と入力中の本文は消さない（iOS で最新情報の画面を開いていても閉じない）。理由は最新情報の画面にも出す
+            notes.readFailed(repository: repository, message: message)
+
+        case .idle, .loading:
+            break
+        }
+    }
+
+    nonisolated private static func loadContext(
+        repository: String,
+        reader: any ReleaseReading,
+        workflow makeWorkflow: @escaping @Sendable (String) -> any WorkflowProviding
+    ) async throws -> Context {
+        let workflow = makeWorkflow(ReleaseWorkflow.prepare.file)
+        var availability = try await workflow.availability(repository: repository)
+        // 消したワークフロー（`state` が `deleted`）は、Actions で有効にしても戻らないので「無い」と同じに扱う
+        if availability == .disabled(state: "deleted") {
+            availability = .notFound
+        }
+        guard availability != .notFound else {
+            return Context(availability: availability)
+        }
+        async let refs = reader.refs(repository: repository)
+        // 準備中のリリースの run を run-name のバージョンで探すので、直近の 1 件より多めに読む
+        async let runs = workflow.recentRuns(repository: repository, branch: dispatchRef, event: "workflow_dispatch", limit: 20)
+        let prepareRuns = try await runs
+        var context = Context(availability: availability, refs: try await refs, latestRun: prepareRuns.first)
+        do {
+            context.marketingVersion = try await reader.marketingVersion(repository: repository, ref: dispatchRef)
+            if let marketingVersion = context.marketingVersion, marketingVersion.version == nil {
+                context.marketingVersionNote = "develop の MARKETING_VERSION（\(marketingVersion.raw)）が MAJOR.MINOR.PATCH の形ではありません。"
+                    + "バージョンを入力してください"
+            }
+        } catch ReleaseReadError.fileNotFound, ReleaseReadError.marketingVersionNotFound, ReleaseReadError.invalidContent {
+            // 既定値が入らないだけで、準備は始められる
+            context.marketingVersionNote = "develop の Configs/Project.xcconfig から MARKETING_VERSION を読めませんでした。バージョンを入力してください"
+        }
+        // 準備中のリリースはふつう 1 つ（ワークフローが 2 つ目を始めない）。複数あれば小さいほうから進める
+        if let version = context.refs?.unreleasedVersions.first {
+            context.progress = await ReleaseProgress.load(
+                repository: repository,
+                version: version,
+                // 直近の run は別のバージョンのもの（ブランチを切る前に失敗した run など）のことがあるので、
+                // run-name（`Release/Prepare <v>`）のバージョンで、このリリースの run を選ぶ
+                prepareRun: prepareRuns.first { ReleaseProgress.isRun($0, of: version) },
+                reader: reader,
+                workflow: makeWorkflow
+            )
+        }
+        return context
+    }
+
+    // MARK: - 起動
+
+    /// アプリから起動した直後で、まだその run が一覧に出ていないか
+    func isDispatchPending(now: Date = .now) -> Bool {
+        guard let repository, let dispatch = dispatched[repository] else {
+            return false
+        }
+        return now.timeIntervalSince(dispatch.date) <= Self.dispatchPendingLimit
+    }
+
+    /// 「リリース準備を始める」を押せない理由（押せるなら `nil`）。
+    /// アプリが見るのは形・すでにある release ブランチ / タグ・タグの無い別の release ブランチだけで、
+    /// `MARKETING_VERSION` との大小は判定しない（ワークフローの入力の検査が正本）
+    func blockingReason(now: Date = .now) -> String? {
+        guard repository != nil else {
+            return "リリースするリポジトリを選んでください"
+        }
+        guard let context else {
+            return nil
+        }
+        switch context.availability {
+        case .notFound:
+            return "このリポジトリにはリリースのワークフロー（\(ReleaseWorkflow.prepare.file)）がありません"
+
+        case .disabled(let state):
+            return "このリポジトリのリリース準備のワークフローは無効にされています（\(state)）。GitHub のリポジトリの Actions で有効にしてください"
+
+        case .active:
+            break
+        }
+        if isDispatchPending(now: now) {
+            return "リリース準備を起動しました。run が始まるまで少し待ってから更新してください"
+        }
+        if context.latestRun?.isRunning == true {
+            return "リリース準備の run が実行中です。終わってから始めてください"
+        }
+        return versionBlockingReason(context.refs)
+    }
+
+    /// 入力したバージョンで始められない理由（形・すでにある release ブランチ / タグ・タグの無い別の release ブランチ）
+    private func versionBlockingReason(_ refs: ReleaseRefs?) -> String? {
+        guard let version else {
+            return "バージョンは MAJOR.MINOR.PATCH の形（例: 1.1.0。先頭に 0 を付けない）で入力してください"
+        }
+        if let refs {
+            if refs.isTaken(version) {
+                return "\(version.branchName) のブランチか \(version.tagName) のタグがすでにあります。別のバージョンを入力してください"
+            }
+            if let unreleased = refs.unreleasedVersions.first {
+                return "タグの無い release ブランチ（\(unreleased.branchName)）があります。そのリリースを終えてから始めてください"
+            }
+        }
+        return nil
+    }
+
+    /// 「リリース準備を始める」を押せるか
+    func canStart(now: Date = .now) -> Bool {
+        !isStarting && !isLoading && context != nil && blockingReason(now: now) == nil
+    }
+
+    /// `canStart` が偽になる理由。`blockingReason` に出ないもの（読み取り中・状態を読めていない）も含める
+    private func notStartableReason(now: Date) -> String? {
+        if let reason = blockingReason(now: now) {
+            return reason
+        }
+        if isLoading {
+            return "リリースの状態を読み直しています。読み終わってからもう一度始めてください"
+        }
+        if context == nil {
+            return "リリースの状態を読めていません。更新してからもう一度始めてください"
+        }
+        return nil
+    }
+
+    /// リリース準備のワークフローを `develop` で起動し（`workflow_dispatch`。inputs は `version`）、「起動した」状態にして少し後に取り直す
+    func start(now: Date = .now) async {
+        // 送っている最中に押し直されたときは、何も出さない（二重に送らない）
+        guard !isStarting else {
+            return
+        }
+        // 確認のダイアログを出したあとに状態が変わって（取り直し・run の開始など）押せなくなったら、送らなかった理由を出す
+        guard canStart(now: now), let repository, let version else {
+            showNotStarted(notStartableReason(now: now))
+            return
+        }
+        isStarting = true
+        errorMessage = nil
+        errorIsNotStartedReason = false
+        defer { isStarting = false }
+        let previousRunID: Int?
+        do {
+            guard let token = try tokenStore.load() else {
+                throw IdeaRequestModel.MissingTokenError()
+            }
+            let workflow = makeWorkflow(token, ReleaseWorkflow.prepare.file)
+            // 最後に読んだ状態からは取らない（そのあいだに別の run が始まって終わると、それを起動した run と取り違える）。
+            // 送る直前に直近の run を読み直し、取れなければ最後に読んだ状態に戻る
+            let latestRuns = try? await workflow.recentRuns(
+                repository: repository,
+                branch: Self.dispatchRef,
+                event: "workflow_dispatch",
+                limit: 1
+            )
+            let latest = latestRuns?.first
+            guard repository == self.repository else {
+                return
+            }
+            if latest?.isRunning == true {
+                showNotStarted("リリース準備の run が実行中です。終わってから始めてください")
+                return
+            }
+            previousRunID = latest?.id ?? context?.latestRun?.id
+            try await workflow.dispatch(
+                repository: repository,
+                ref: Self.dispatchRef,
+                inputs: ReleaseWorkflow.prepareInputs(version: version)
+            )
+        } catch {
+            // 送っているあいだに別のリポジトリを選んだら、そのリポジトリの画面には出さない
+            if repository == self.repository {
+                errorMessage = Self.message(for: error)
+            }
+            return
+        }
+        dispatched[repository] = Dispatch(date: now, version: version, previousRunID: previousRunID)
+        // dispatch は run の id を返さず、直後の一覧にはまだ出ないので、少し待ってから取り直す
+        Task { [weak self, dispatchRefreshDelay] in
+            try? await Task.sleep(for: dispatchRefreshDelay)
+            await self?.refresh()
+        }
+    }
+
+    /// 送らなかった理由を出す。次の読み取りが成功したら消す
+    private func showNotStarted(_ reason: String?) {
+        errorMessage = "リリース準備を始めませんでした。" + (reason ?? "")
+        errorIsNotStartedReason = true
+    }
+
+    /// 起動したときより新しい run（id が大きい）が出たら「起動した」状態を終える。
+    /// run の id はリポジトリの中で増えていくので、端末の時計がずれていても見分けられる（開始時刻とは比べない）
+    private func clearDispatchedIfRunStarted(_ run: WorkflowRun?) {
+        guard let repository, let dispatch = dispatched[repository], let run else {
+            return
+        }
+        if dispatch.previousRunID.map({ run.id > $0 }) ?? true {
+            dispatched[repository] = nil
+        }
+    }
+}

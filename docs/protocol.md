@@ -408,12 +408,45 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **表示**: 「実行中 / 成功 / 失敗」、ビルドしたコミット（run の `head_sha`）が PR の最新の head と同じか、開始時刻、GitHub の run ページへのリンク。
   TestFlight でテストできるようになったかは出さない（App Store Connect API の鍵をアプリに持たせない）。
   ビルド番号は Upload ワークフローが App Store Connect の最新から自動で増やすので、同じバージョンのままビルド番号だけが増えて TestFlight に並ぶ
-- **ワークフローの有無**: `upload.yml` が無い（run の取得が 404）リポジトリではボタンを出さない。dispatch が 422 を返したら、そのリポジトリは `workflow_dispatch` に対応していないものとして以後ボタンを出さない
+- **ワークフローの有無**: `upload.yml` が無い（run の取得が 404）リポジトリではボタンを出さない。dispatch が 422 を返したら、そのリポジトリは `workflow_dispatch` に対応していないものとして以後ボタンを出さない。
+  ただし無効にされたワークフロー（`Cannot trigger a 'workflow_dispatch' on a disabled workflow`）は、Actions で有効にするよう案内してボタンを残す
 - **トークンの権限**: Fine-grained PAT に **Actions の Read and write** が要る（run の取得は Read、起動は Write）。
   権限が無いと 403 が返る。403 はレート制限でも返るので、`x-ratelimit-remaining: 0`・`Retry-After`（と 429）はレート制限として今までどおり待って再試行し、
   それ以外の 403 を「権限不足」として、設定画面への案内と一緒にその旨を出す
 - **サンプルデータ（デモモード）**: run の状態（実行中 / 成功 / 失敗・ビルドした SHA が PR の最新の head と違う）もサンプルに含め、GitHub にもトークンにも依存しない。起動はしない
 - ループは Upload を実行しない（`gh workflow run` や dispatch API を呼ばない）。実際に TestFlight に並んだかは、人間が TestFlight アプリで確かめる
+
+## リリース準備と最新情報の確定（アプリが読むもの・起動するもの）
+
+アプリの「リリース準備」と、リリースの進み具合・最新情報の確定の画面は、TestFlight への手動アップロードと同じく、リリースのワークフローを `workflow_dispatch` で起動し、
+その run と GitHub の情報だけを読む（[Discussion #605](https://github.com/shilokuma-inc/ask-hub-apple/discussions/605) の Q1）。App Store Connect は見ない。
+手順の正本は各リポジトリのワークフローで、流れは [docs/release.md](release.md)。読み取りと起動は `AskHubKit` の `GitHubReleaseReader` / `GitHubWorkflow` / `ReleaseWorkflow` が実装する。
+
+- **読むもの**（どれも GET だけ。アプリからは push・タグ・Release の作成をしない）:
+
+  | 読むもの | API | 使い道 |
+  | --- | --- | --- |
+  | release ブランチ・タグ | `GET /repos/{owner}/{repo}/git/matching-refs/heads/release/`・`…/matching-refs/tags/v`（ページングを最後まで） | 準備中のリリース（release ブランチがあってタグが無い）・すでにあるバージョンの判定 |
+  | `MARKETING_VERSION` | `GET /repos/{owner}/{repo}/contents/Configs/Project.xcconfig?ref=develop` | バージョンの既定値（次のマイナー。`1.0.0` → `1.1.0`） |
+  | 最新情報の下書き | `GET …/contents/AppStore/whats-new-draft.json?ref=release/<v>` | 「下書きあり（未確定）」。`schemaVersion` が知らない値なら読まずに知らせる |
+  | 確定した最新情報 | `GET …/contents/AppStore/languages.json`・`…/contents/AppStore/metadata/<言語>.json?ref=release/<v>` の `whatsNew` | 下書きが無く、すべての言語の `whatsNew.version` がリリースのバージョンなら「確定済み」 |
+  | ワークフローの有無 | `GET /repos/{owner}/{repo}/actions/workflows/<file>` | 404 ならそのリポジトリでは「リリース準備」を出さない（`upload.yml` の 404 と同じ） |
+  | run | `GET …/actions/workflows/<file>/runs?branch=…&event=workflow_dispatch&per_page=…`（直近の数件。ページングはしない） | 起動した run の状態（dispatch は run の id を返さないので、開始時刻で見分ける） |
+
+- **起動するもの**: `POST /repos/{owner}/{repo}/actions/workflows/<file>/dispatches`。ファイル名と inputs はワークフローと約束したもの:
+  `release-prepare.yml`（`version`。任意で `resume`。`ref` は `develop`）・`release-notes.yml`（`version`・`whats_new` = 言語コード → 本文の JSON の文字列。`ref` は `release/<v>`）・
+  `release-finish.yml`（`version`。ふだんは定期実行が起動する）。バージョンは `MAJOR.MINOR.PATCH`（先頭の 0 は不可）で、アプリは送る前に形だけを検査する（大小の決まりはワークフローの検査が正本）。
+  `release-prepare.yml` の run の `display_title` は `run-name` の `Release/Prepare <version>`（run の一覧は inputs を返さないので、どのバージョンの run かはこれで見分ける）
+- **エラー**: 403（レート制限でない）は権限不足、ワークフローの 404 は「このリポジトリにはリリースのワークフローがありません」、422 は GitHub の説明から
+  `workflow_dispatch` が無い・`ref` が無い・inputs が合わないを見分ける（`WorkflowError.dispatchRejection`）。レート制限（403 / 429・`Retry-After`）は待って再試行する
+- **トークンの権限**: Fine-grained PAT に、TestFlight への手動アップロードと同じ **Actions の Read and write** に加えて **Contents の Read** が要る
+  （release ブランチ・タグ・下書き・`MARKETING_VERSION` の読み取り）。Contents の Write は要らない（書き込みはワークフローが `GITHUB_TOKEN` で行う）
+- **アプリの「リリース準備」**（依頼タブ）: 送る前に形・`isTaken`・`unreleasedVersions`（タグの無い別の release ブランチ）だけを見る。起動の直後は、
+  起動の直前に読み直した直近の run より id の大きい `develop` の `workflow_dispatch` の run が出るまで「起動した」状態を保ち、二重に起動しない（端末の時計のずれに左右されないよう、開始時刻とは比べない）。画面の流れは [docs/release.md](release.md) の「アプリからのリリース準備」
+- **リリースの進み具合と最新情報の確定**（依頼タブの「リリース準備」）: 準備中のリリース（release ブランチがあってタグが無いもの）ごとに、
+  `upload.yml` の `release/<v>` の run・`release-notes.yml` と `release-finish.yml` の直近の run（`GET …/runs?per_page=20`。起動した ref が `release/<v>` か、`run-name` にバージョンが入っているもの）を読む。
+  `release-notes.yml` は `release/<v>` で起動する。起動の直前に直近の run を読み直し、実行中なら送らない。`release-finish.yml` はアプリから起動しない。画面の流れは [docs/release.md](release.md) の「アプリでのリリースの進み具合と最新情報の確定」
+- ループはリリースのワークフローを実行しない
 
 ## 最終 PR の第三者レビュー
 

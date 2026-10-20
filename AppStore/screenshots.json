@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "App Store 用スクリーンショットの撮影設定（shilokuma-inc/template-app-ios と同じ形）。",
+    "scenes:       撮る画面。この順が App Store の並び順になる（ファイル名の番号もこの順）。",
+    "              scene は起動引数 -screenshot-scene に渡す値で、ScreenshotDemo.Scene の rawValue と一致させる（AskHub/ScreenshotDemo.swift）。",
+    "              App Store Connect の上限は 1 言語・1 表示サイズにつき 10 枚。",
+    "displayTypes: App Store Connect の表示サイズ。devices は上から順に、ランナーに入っている機種を使う。",
+    "              sizes は受け付ける寸法（先頭が撮る画面の寸法）。",
+    "              runsOn / xcodeVersion は撮影するジョブの runs-on と Xcode（省略すると macos-latest / 26.6）。",
+    "              deriveFrom を書いた表示サイズは撮らずに、その表示サイズを縮めて作る（ubuntu で動くので macOS の枠を使わない）。",
+    "              6.3 inch（1206x2622）は 6.9 inch（1320x2868）と縦横比がほぼ同じなので縮めて作る。",
+    "              GitHub のホストランナー（macos-latest）で撮れる iPhone 6.9 inch と iPad 13 inch を撮る。",
+    "              テンプレートの iPhone Duo（xcode-27 のランナーが要る）は載せない。",
+    "              platform は反映先の App Store Connect のバージョンのプラットフォーム（IOS / MAC_OS。省略すると IOS）。",
+    "              Mac（APP_DESKTOP）は 16:10 の 4 つの寸法を受け付け、先頭の 2880x1800 で撮る。Simulator が無いので devices は書かず、",
+    "              macOS のユニットテストで撮影モードと同じ画面を描いて撮る（Tools/capture_mac_screenshots.sh。Tools/app_store_config.py の capture_method）。"
+  ],
+  "scenes": [
+    { "file": "01_action", "scene": "action" },
+    { "file": "02_request", "scene": "request" },
+    { "file": "03_decisions", "scene": "decisions" },
+    { "file": "04_status", "scene": "status" },
+    { "file": "05_verification", "scene": "verification" }
+  ],
+  "displayTypes": {
+    "APP_IPHONE_67": {
+      "label": "iPhone 6.9 inch",
+      "devices": ["iPhone 17 Pro Max", "iPhone 16 Pro Max"],
+      "sizes": ["1320x2868", "1290x2796"],
+      "runsOn": "macos-latest",
+      "xcodeVersion": "26.6"
+    },
+    "APP_IPHONE_61": {
+      "label": "iPhone 6.3 inch",
+      "deriveFrom": "APP_IPHONE_67",
+      "sizes": ["1206x2622"]
+    },
+    "APP_IPAD_PRO_3GEN_129": {
+      "label": "iPad 13 inch",
+      "devices": ["iPad Pro 13-inch (M5)", "iPad Pro 13-inch (M4)"],
+      "sizes": ["2064x2752", "2048x2732"],
+      "runsOn": "macos-latest",
+      "xcodeVersion": "26.6"
+    },
+    "APP_DESKTOP": {
+      "label": "Mac",
+      "platform": "MAC_OS",
+      "sizes": ["2880x1800", "2560x1600", "1440x900", "1280x800"]
+    }
+  }
+}

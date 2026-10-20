@@ -59,6 +59,43 @@
 - `gh run view <run> --log-failed` は失敗したジョブのログだけを出すが、run がまだ実行中だと全ジョブのログが揃わない。
   「マージ待ち」の `checks` は失敗が 1 つでもあれば実行中の check run が残っていても `failure` になるので、
   失敗したログで直させる処理は `hasRunningChecks` が `false`（すべて終わった）になってから始める
+- 再利用ワークフローの中で、条件付きで飛ばすジョブ（`if:` が偽で skipped）を `needs` にすると、後続のジョブも既定では skipped になる。
+  後続を動かすには `if: ${{ !cancelled() && (needs.<id>.result == 'skipped' || needs.<id>.outputs.<名前> == 'true') }}` のように状態の関数を付ける（前のジョブが失敗したときは outputs が空になるので、この条件なら後続は飛ぶ）
+- `strategy.matrix.include: ${{ fromJSON(needs.plan.outputs.x) }}` に空の配列（`[]`）を渡すと、ジョブを作れず「Matrix must define at least one vector」で run が失敗する。
+  設定によって空になりうる matrix（例: Mac の表示サイズだけを指定したときの撮影）は、前のジョブで `has_x=$(jq -r 'length > 0')` を出し、ジョブの `if:` で飛ばす
+- `GET /repos/{owner}/{repo}/git/matching-refs/{ref}` は前方一致で、合うものが無くても 404 ではなく `200` の空の配列を返す。`heads/release/` のように末尾の `/` を付けると
+  `release/…` だけに絞れる（付けないと `release-x` も合う）。`refs/heads/`・`refs/tags/` を付けた名前で返る
+- Contents API（`GET /repos/{owner}/{repo}/contents/{path}?ref=…`）の `content` は base64 を 60 文字ごとに改行した文字列。Swift では
+  `Data(base64Encoded:options: .ignoreUnknownCharacters)` で読む。ファイルもブランチも無ければ 404 で、ディレクトリなら配列が返る
+- ジョブの `env:` では `runner` コンテキスト（`${{ runner.temp }}`）を使えない（actionlint が「context "runner" is not allowed here」で落とす。ステップの `env:` では使える）。
+  ジョブ全体で使うパスは、最初のステップで `echo "NAME=$RUNNER_TEMP/…" >> "$GITHUB_ENV"` で渡す
+- GitHub の PR のマージコミットは、件名が `Merge pull request #N from <owner>/<branch>`、本文の 1 行目が PR のタイトル（既定のとき）。
+  `git log --first-parent --merges <前のタグ>..develop` で `develop` に直接入った PR が取れ、epic の PR（マージコミットの親が 2 つ）の中の子 PR は
+  `git log --first-parent --merges <親1>..<親2>` で取れる（`Merge remote-tracking branch …` の取り込みは件名で除く）。`Tools/release_prepare.py draft` がこれで最新情報の下書きを作る
+- `workflow_dispatch` の run の一覧（`GET …/actions/workflows/<file>/runs`）は inputs を返さない。どの入力で起動した run かを見分けたいときは、ワークフローに
+  `run-name: <名前> ${{ inputs.version }}` を書くと `display_title` に入る（`run-name` は表示だけでシェルには渡らない。`run:` には今までどおり env で渡す）
+- `if: always()` のステップの `job.status` は、それまでに**失敗したステップ**があるかだけを表す。`|| true` で続けて `$GITHUB_OUTPUT` に結果を出したステップ（後で run を失敗にする）は含まれないので、
+  Summary の出し分けには `steps.<id>.outcome` と `steps.<id>.outputs.*` を合わせて見る
+- `concurrency` の同じ group で `cancel-in-progress: false` にしても、待てるのは 1 つだけ。実行中の run があるときに 2 つ続けて起動すると、先に待っていた run は取り消され（`cancelled`）、最後に起動したものだけが動く。
+  「最後に送った内容が勝つ」でよい処理（Release/Notes の確定など）はこのままでよいが、アプリなどで run を追うときは、取り消された run も出ることを前提にする
+- ワークフローのファイルと同じコミットの `Tools/` を使いながら別のブランチを書き換えたいときは、`actions/checkout` を `path:` を変えて 2 回使う（起動した ref を `tools`、書き換えるブランチを `ref:` で `release`）。
+  `python3 tools/Tools/x.py --root release …` のように、スクリプトとリポジトリのルートを分けて渡す（release-notes.yml）
+- `develop` のブランチ保護は必須チェック「No AI Attribution」（`app_id` 15368 = GitHub Actions）だけで、PR は必須ではない（`gh api repos/<owner>/<repo>/branches/develop/protection` で読める）。
+  必須チェックは直接の push にも効き、push するコミット（新しい先頭）にそのチェックが要る。`GITHUB_TOKEN`（`checks: write`）で `POST /repos/{owner}/{repo}/check-runs` した check run は
+  GitHub Actions のものになるので満たせる作り（release-finish.yml。実際に push が通るかはまだ確かめていない）。check run はリモートにあるコミットにしか付けられないので、先に一時ブランチへ push してから付ける
+- `GITHUB_TOKEN` は workflows の権限を持てない（`permissions:` に書けない）。`.github/workflows/` のファイルが変わるコミットを push すると
+  `refusing to allow a GitHub App to create or update workflow … without workflows permission` で断られ、ほかのブランチの取り込み（マージコミット）でも同じ。
+  リモートにあるコミットからブランチを作るだけなら当たらない（と見込んでいるが未確認。#645 で確かめる）。避けるには workflows の権限を持つ PAT / GitHub App のトークンが要る
+- リポジトリの `GET /repos/{owner}/{repo}/actions/permissions/workflow` の `can_approve_pull_request_reviews` が `false`（Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」が無効）だと、
+  `GITHUB_TOKEN` では PR を作れない（`gh pr create` が失敗する）。Issue（`issues: write`）は作れる
+- 再利用ワークフロー（`workflow_call`）の中の `actions/checkout` は、呼び出し元の run のコミット（`workflow_dispatch` なら起動した ref の先頭）を取り出す。別のコミットを検証したいときは、
+  `_build.yml` の `ref` のように入力で SHA を渡して `with: ref:` に渡す（空文字なら既定のまま）
+- public リポジトリの `schedule` のワークフローは、リポジトリに 60 日動き（push など）が無いと GitHub が無効にする（Actions の画面で Enable workflow を押すと戻る）。
+  定期実行で何かを待つ処理（Release/Sync の配信の検知）は、止まったときに手で起動できるよう `workflow_dispatch` も付け、docs に有効にし直す手順を書く
+- `gh api --paginate <path> --jq '<式>'` は、ページごとに jq を当てて結果を 1 行に 1 つずつ出す（`--jq` なしだとページの JSON がつながって出て、そのままでは 1 つの JSON として読めない）。
+  Python では行ごとに `json.loads` する（`Tools/release_sync.py`）。`GET /repos/{owner}/{repo}/issues` は PR も返すので、`select(.pull_request == null)` で除く
+- workflow_dispatch で起動した run を「実行中・済み」で見分けるときは、run-name（`display_title`）をバージョンで完全に一致させ、`status != "completed"` を実行中とみなす（`queued`・`waiting`・`requested`・`pending` もある）。
+  public リポジトリでは誰でも Issue を作れるので、ワークフローが作った Issue を目印に使うときは author（`github-actions[bot]`）も確かめる
 
 ## ビルド・テスト
 
@@ -141,6 +178,32 @@
   「unable to connect to "com.apple.instruments.deviceservice.lockdown" … DTServiceHubClient failed to bless service hub」の後に始まらず、`** BUILD INTERRUPTED **` で終わる。
   Simulator の再起動・作り直し・`testmanagerd` の停止では直らない。テストのホストに接続する権限を得るたびに認証を求められ、launchd のジョブには認証の画面が無いため。
   `sudo DevToolsSecurity -enable` で直る（`_developer` グループへの所属も要る）
+- macOS を `CODE_SIGNING_ALLOWED=NO` でアーカイブすると、`ENABLE_APP_SANDBOX` などから作られるエンタイトルメントが実行ファイルに埋め込まれない（`codesign -d --entitlements -` で何も出ない）。
+  `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER=`（アドホック署名）でアーカイブすれば、証明書が無くても `com.apple.security.app-sandbox` などが埋め込まれる。
+  Mac App Store は App Sandbox を必須にしているので、`_archive.yml` の macOS はアドホック署名でアーカイブし、配布用の署名は Export に任せている
+- Mac App Store へのアップロードには Info.plist の `LSApplicationCategoryType` が要る（iOS では要らないので、iOS だけ上げていた間は無くても気づかない）
+- `Tools/` の Python の unittest は `python3 -m unittest discover -s Tools/tests -t .` で流す（`Tools/` に `__init__.py` は無いが、名前空間パッケージとして 3.9 でも見つかる）。
+  テストは `from .fake_app_store_connect import …` と相対で import し、`Tools/` のモジュールは偽物のモジュールが `sys.path` に足したうえで読む。
+  PyJWT は `app_store_connect.make_token` の中でだけ import するので、`make_token` を `mock.patch` し、`AppStoreConnect(urlopen=…, sleep=…)` で HTTP と待ち時間を差し替えれば、PyJWT の無い Mac でもネットワークに出ずに流せる。
+  `Tools/*.py` のモジュールの先頭で PyJWT などの外の依存を import しない（`--check` や unittest まで依存を求めてしまう）
+- App Store Connect のバージョン（`appStoreVersions`）は iOS と macOS で別にあり（`filter[platform]=IOS` / `MAC_OS`）、言語ごとの掲載文（`appStoreVersionLocalizations`）とスクリーンショットのセットもバージョンごとに持つ。
+  iOS だけに反映すると macOS の掲載文は空のまま。`Tools/upload_metadata.py`・`upload_screenshots.py` は `--platform` ごとに 1 回ずつ実行する。Mac のスクリーンショット（`APP_DESKTOP`）は 16:10 の 2880x1800・2560x1600・1440x900・1280x800 だけを受け付ける
+- `NSHostingView` を載せた `NSWindow` を `cacheDisplay(in:to:)` で PNG にするとき、`hostingView.superview`（ウィンドウの枠の View）を描くと、タイトルバーに出るタブ（`TabView`）とツールバーのボタンまで写る。
+  `NSBitmapImageRep(pixelsWide: 2880, pixelsHigh: 1800, …)` の `size` を 1440x900 ポイントにすると、画面の倍率によらず 2 倍で描ける
+- 上の方法で撮るウィンドウはマウスの操作を受けるので、手元の Mac ではポインタの下の `List` の行が選ばれ、`NavigationLink` の詳細が開いた状態で写った。`window.ignoresMouseEvents = true` にする。
+  また、一度描いた後にサンプルデータが入ると `List` の行の高さが計算し直されず、行が重なって写る（要対応のタブ）。待った後にウィンドウの大きさを 1pt 変えて戻すと計算し直される
+- `xcodebuild test` に `TEST_RUNNER_<名前>=値` の環境変数を付けると、テストのプロセスには `<名前>` で渡る（スキームを変えずにテストへ値を渡せる）。
+  Swift Testing の `@Suite(.enabled(if: …))` の条件は MainActor の外で評価されるので、MainActor 既定のターゲットでは条件に使う型を `nonisolated` にする（しないと「main actor-isolated static property can not be referenced from a Sendable closure」）
+- iOS 26 の `confirmationDialog`（`titleVisibility: .visible`）は、押したボタンから出る吹き出し（popover）で出る。UI テストではタイトルを `app.staticTexts["<タイトル>"]` で引ける。
+  ダイアログのボタンが元のボタンと同じ文言だと `app.buttons["<文言>"]` が 2 つに当たるので、元のボタンに `accessibilityIdentifier` を付け、
+  ダイアログのボタンは `NSPredicate(format: "label == %@ AND identifier != %@", …)` で引く
+- `Tools/tests/` で一時ディレクトリの git リポジトリを使うテストは、git を何十回も起動するので遅い（ローカルで 1 テスト数秒になることがある）。
+  読むだけのテストは履歴を `setUpClass` で 1 度だけ作り、履歴を変えるテストだけを別のクラスにする。テストの git は `GIT_CONFIG_GLOBAL=/dev/null` で手元の設定（署名・フック）を読ませない
+- Python の `http.client.IncompleteRead`（応答の途中での切断）は `http.client.HTTPException` の子で、`OSError`・`urllib.error.URLError` の子ではない。
+  `urlopen` の失敗を `except (URLError, OSError)` だけで受けると、`response.read()` の途中の切断が traceback になる（`Tools/app_store_connect.py` は `HTTPException` も受ける）
+- iOS の UI テストで `Form` の中の `NavigationLink` を開いて戻ると、開く前にスクロールした位置のままになる。`swipeUp()` でどこまで流れるかは Mac の負荷で変わり、
+  CI では上の行が画面の外（作られない）に出て、戻った後に上の行の文言を待つと手元では通るのに落ちた（#652）。戻った後に探す行は `swipeDown()` で戻してから探す。
+  手元で CI の状態を作るには、開く前のスワイプを一時的に `swipeUp(velocity: .fast)` にする
 
 ## Keychain
 
@@ -186,6 +249,9 @@
   「ambiguous use of」になる。`FinalReviewTracker.ReviewOutcome.failed(reason:)` のように型を書く
 - Swift の `String` は `"\r\n"` を 1 つの `Character` として扱うので、`split(separator: "\n")` では CRLF の行を区切れない。
   `split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)` で区切る
+- MainActor 既定のターゲットでは、型の中に入れ子にした型（`private struct X`）も MainActor になる。`nonisolated static func` の中でその型を作ると
+  「main actor-isolated initializer … cannot be called from outside of the actor」になるので、入れ子の型にも `nonisolated` を付ける。
+  `nonisolated` の関数から MainActor の文言の関数（`InboxModel.message(for:)` など）を呼びたいときは、エラーのまま返して MainActor の側で文言にする（`ReleaseProgress.load`）
 
 ## シェルスクリプト
 
@@ -214,6 +280,10 @@
 - `Process` で起動したスクリプトに `kill(pid, SIGTERM)` を送っても、スクリプトが起動した `claude` などの子孫は止まらない（オーケストレーターと同じプロセスグループにいるので、グループごとにも送れない）。
   bash は前景の子（コマンド置換の中のパイプなど）を待つ間は SIGTERM の処理を待たせるので、子が動き続ける限りスクリプトも終わらず、SIGKILL で終わると `trap … EXIT` の後片付けも走らない。
   制限時間で止めるときは、送る前に `proc_listchildpids` で子孫を集め（親が先に終わると launchd に付け替えられて辿れない）、まとめて送る。スクリプトには `trap 'exit 143' TERM` を置いて後片付けを走らせる
+- `trap 'status=$?; …; exit "$status"' EXIT` のように trap の文字列の中で代入すると、shellcheck は代入を見つけられず SC2154（referenced but not assigned）の警告を出す（`-S warning` で落ちる）。
+  処理を関数（`on_exit() { status=$?; …; }`）にして `trap on_exit EXIT` にする。関数の先頭の `$?` は trap が起きたときの終了コードのまま
+- macOS の `/bin/bash`（3.2）には連想配列（`declare -A`）が無い（`declare: -A: invalid option`）。bash 3.2 で動かすスクリプト（`capture_screenshots.sh` など・ワークフローの `run:` を手元で流す道具）では、
+  `eval "name_$key=…"` か、`key=value` の行のファイルで代わりにする
 
 ## SwiftUI
 
@@ -229,3 +299,5 @@
 - `.background(.bar)` のような `ShapeStyle` の背景は既定で safe area まで広がるため、`safeAreaInset(edge: .top)` の帯に付けると iOS の大きいタイトルを覆ってぼかす。
   帯の中だけに付けるときは `.background(.bar, ignoresSafeAreaEdges: [])` にする
 - `Menu` の中で `Section("見出し") { Picker(…).pickerStyle(.inline) }` と包んでも、iOS 26 のメニューには見出しが出ず、区切り線だけになる（`Picker` の中に置く `Section` とは違う）
+- UI テストの Simulator は端末の言語が英語のままなので、`Locale.current.localizedString(forIdentifier: "ja")` は「Japanese」になる。
+  アプリの画面は日本語だけなので、言語名は `Locale(identifier: "ja").localizedString(forIdentifier:)` で日本語にする（「日本語」）

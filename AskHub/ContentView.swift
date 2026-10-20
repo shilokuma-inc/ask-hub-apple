@@ -25,7 +25,22 @@ struct ContentView: View {
     let mergeModel: MergeQueueModel
     let loopModel: LoopStatusModel
     @State private var isShowingSettings = false
-    @State private var selection = AppTab.action
+    @State private var selection: AppTab
+
+    /// - Parameter initialTab: 開いたときのタブ。撮影モード（`ScreenshotDemo`）では撮る画面のタブを渡す
+    init(
+        model: InboxModel,
+        requestModel: IdeaRequestModel,
+        mergeModel: MergeQueueModel,
+        loopModel: LoopStatusModel,
+        initialTab: AppTab = .action
+    ) {
+        self.model = model
+        self.requestModel = requestModel
+        self.mergeModel = mergeModel
+        self.loopModel = loopModel
+        _selection = State(initialValue: initialTab)
+    }
 
     var body: some View {
         // iOS のタブバーは 5 つまで（6 つ目からは「その他」にまとめられる）
@@ -91,10 +106,13 @@ struct ContentView: View {
         .sheet(isPresented: $isShowingSettings) {
             // トークンを保存・削除した後に、取得し直す
             Task {
+                // リリースの状態はほかの読み直しと関係しないので、並べて読み、ほかの読み直しを遅らせない
+                async let releaseRefreshed: Void = requestModel.release.refresh()
                 await model.refresh()
                 await requestModel.loadRepositories()
                 await mergeModel.refresh()
                 await loopModel.refresh()
+                await releaseRefreshed
             }
         } content: {
             SettingsView(loopModel: loopModel)

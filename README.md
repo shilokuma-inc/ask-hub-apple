@@ -26,9 +26,11 @@ Discussion の質問や PR の ask を 1 つの一覧にまとめ、アプリで
       </tr>
       <tr>
         <td style="border:2px double #000080;text-align:left;">main</td>
-        <!-- main ブランチは初回リリースで作成する。作成までは実行履歴が無くバッジが「no status」になるため、
-             作成後に次のバッジを戻す:
-          build.yml/badge.svg?branch=main&event=push（Build）、archive.yml/badge.svg?branch=main（Archive） -->
+        <!-- main ブランチは初回リリースのリリース後作業（Release/Finish。release-finish.yml）が release ブランチの先頭から作る。
+             作成までは実行履歴が無くバッジが「no status」になるため、作成後に次のバッジを戻す:
+          build.yml/badge.svg?branch=main&event=push（Build）、archive.yml/badge.svg?branch=main（Archive）。
+             Release/Finish の push は GITHUB_TOKEN で行うので、main への取り込みでは Build・Archive の push の run が起きない。
+             バッジは人が main に push した（PR をマージした）ときの run を表す -->
         <td style="border:2px double #000080;text-align:center;">
           未作成
         </td>
@@ -95,18 +97,27 @@ SKU は Bundle ID と同じ値にします。SKU はユーザーには見えな�
 
 ### 4. ブランチ運用と CI
 
-| ブランチ | Build（ビルド + テスト + SwiftLint） | Archive（IPA Export） | Upload（App Store Connect） |
+| ブランチ | Build（ビルド + テスト + SwiftLint） | Archive（IPA / pkg の Export） | Upload（App Store Connect。iOS / macOS） |
 |---|:-:|:-:|:-:|
-| `main` | ✅ | ✅ | |
+| `main` | ✅（人の push） | ✅（人の push） | |
 | `develop` | ✅ | | ✅ |
 | `release/**` | ✅ | | ✅ |
 | その他の作業ブランチ | ✅（Unit テストのみ。macOS で実行） | | |
 | Pull Request の作成時（opened / reopened / ready_for_review） | ✅ | | |
 | Fork からの Pull Request | ✅ | | |
 
-- Upload は Archive → IPA Export を含むため、`develop` / `release/**` では Archive を別途実行しません
+- Upload は Archive → Export を含むため、`develop` / `release/**` では Archive を別途実行しません
+- Archive と Upload は iOS（IPA）と macOS（pkg）を別々のジョブで扱い、macOS が失敗しても iOS は止まりません。macOS のアップロードは App Store Connect のアプリに macOS のプラットフォームを追加するまで飛ばします（失敗にはせず、追加の手順を Job Summary に出します）。詳しくは [docs/release.md](docs/release.md) の「macOS 版のアップロード」を参照してください
+- `main` はリリースだけを受け取るブランチです。初回のリリースで、リリース後作業（Release/Finish。`.github/workflows/release-finish.yml`）が release ブランチの先頭から作ります。
+  App Store での配信を定期実行（Release/Sync。`.github/workflows/release-sync.yml`。30 分ごと）が検知すると、Release/Finish が release ブランチの先頭で Build（`_build.yml`）と AI 帰属の検査を流し、通ったら release → `main` と release → `develop` をマージコミットで取り込み、
+  `main` へのマージコミットにタグ `v<バージョン>` を打って GitHub Release を公開します。この push は `GITHUB_TOKEN` で行うため、`main`・`develop` の Build・Archive・Upload は push では動きません
+  （CI は取り込む前に流してあります。`develop` の必須チェック「No AI Attribution」は Release/Finish が check run で付けます）。
+  コンフリクトしたとき・`.github/workflows/` が変わる取り込みで push を断られたときは、PR（作れなければ Issue）を残して止まるので、人がマージコミットでマージします。詳しくは [docs/release.md](docs/release.md) の「リリース後作業」を参照してください
+- `release/**` は Release/Prepare（`.github/workflows/release-prepare.yml`。AskHub の「リリース準備」）が `develop` から作ります。このときの push は `GITHUB_TOKEN` で行うため Build・Upload は push では動かず、Release/Prepare が Upload・スクリーンショット・メタデータを `workflow_dispatch` で起動します。詳しくは [docs/release.md](docs/release.md) の「リリース準備」を参照してください
+- Release/Sync（`.github/workflows/release-sync.yml`）は 30 分ごとに、タグの無い release ブランチのビルドを App Store Connect のバージョンに紐付け、配信を検知したら Release/Finish を起動します。release ブランチが無ければ何もしません。public リポジトリの定期実行は 60 日リポジトリに動きが無いと止まるので、止まったら Actions で有効にし直します。詳しくは [docs/release.md](docs/release.md) の「定期実行（Release/Sync）」を参照してください
 - Upload は Actions タブから手動でも実行できます（Run workflow）。epic → `develop` の最終 PR をマージする前に TestFlight で実機確認したいときは、Actions → Upload → Run workflow で epic ブランチ（最終 PR の head）を選んで実行します。AskHub アプリのマージ待ちの「TestFlight に上げる」も同じ手動実行（`workflow_dispatch`）を呼びます。ビルド番号は App Store Connect の最新から自動で増えるため、同じバージョンのままビルド番号だけが増えて TestFlight に並びます。App Store Connect には 24 時間あたりのアップロード上限があるため、作業ブランチの push では自動では上げません
 - リポジトリ変数（Settings → Secrets and variables → Actions → Variables）に `ENABLE_DELIVERY=false` を設定すると Upload をスキップします（Archive は App Store Connect にアプリが無くても通るため止めません）。何もしなければ従来どおり実行されます
+- `ENABLE_MACOS_DELIVERY=false` を設定すると、Upload と Archive の macOS のジョブと、メタデータ・スクリーンショットの macOS のバージョンへの反映をスキップします。何もしなければ macOS のプラットフォームの有無を見て自動で決めます
 - ドキュメントだけの変更（`**/*.md`、`docs/**`）では Build を実行しません。Upload（`develop` / `release/**` への push・手動実行）と Archive（`main` への push）は、ドキュメントだけの変更でも実行します
 - 作業ブランチへの push では、Simulator の起動に時間がかかるため iOS はビルドの確認だけにし、UI テスト（`AskHubUITests`）を省いた Unit テストを macOS 上で実行します（アドホック署名・App Sandbox 無効）。UI テストは Pull Request の作成時と `main` / `develop` / `release/**` への push で実行します。Fork からの Pull Request は push で実行されないため、更新（synchronize）を含むすべてのイベントで UI テストまで実行します
 - Xcode のバージョンは [.github/workflows/_build.yml](.github/workflows/_build.yml) と [.github/workflows/_archive.yml](.github/workflows/_archive.yml) の `xcode-version` で固定しています。Environment の更新時はあわせて変更してください
@@ -153,19 +164,25 @@ body=$(gh pr view <番号> --json body -q .body) &&
 ├── AskHubTests/     # Unit テスト（Swift Testing）
 ├── AskHubUITests/   # UI テスト（XCTest）
 ├── AskHub.xcodeproj # 共有スキーム AskHub を含む
-├── docs/                    # ExportOptions.plist のサンプル
+├── AppStore/                # App Store のメタデータ（掲載文・言語・アプリの設定）。docs/release.md
+├── Tools/                   # App Store Connect への反映のスクリプト（Python）
+├── docs/                    # ExportOptions.plist のサンプル・審査の準備・リリース
 ├── scripts/                 # ralph-loop の setup / start / stop
 ├── .swiftlint.yml           # SwiftLint 設定
 └── .github/
     ├── ISSUE_TEMPLATE/      # Issue テンプレート
     ├── pull_request_template.md
-    ├── scripts/             # check-app-store-app.rb（App Store Connect のアプリの有無を確認）
+    ├── scripts/             # check-app-store-app.rb / check-app-store-platform.rb（App Store Connect のアプリ・macOS のプラットフォームの有無を確認）
     └── workflows/
         ├── _build.yml       # 共通処理: ビルド + テスト + SwiftLint（workflow_call）
-        ├── _archive.yml     # 共通処理: Archive → Export（→ Upload）（workflow_call）
+        ├── _archive.yml     # 共通処理: Archive → Export（→ Upload）。iOS / macOS（workflow_call）
         ├── build.yml        # 全ブランチの push / PR の作成時 / Fork からの PR
         ├── archive.yml      # main の push
-        └── upload.yml       # develop / release/** の push・手動実行（workflow_dispatch）
+        ├── upload.yml       # develop / release/** の push・手動実行（workflow_dispatch）
+        ├── release-prepare.yml / release-notes.yml / release-finish.yml  # リリース準備・最新情報の確定・リリース後作業（docs/release.md）
+        ├── release-sync.yml   # 定期実行: ビルドの紐付けと配信の検知、配信されたら Release/Finish を起動（docs/release.md）
+        ├── app-store-metadata.yml         # App Store のメタデータの反映（手動実行）
+        └── verify-app-store-metadata.yml  # PR でメタデータを検査
 ```
 
 - プロジェクトはフォルダ同期グループ（Xcode 16 以降の形式）で管理しているため、ファイルの追加・削除で pbxproj は変わりません

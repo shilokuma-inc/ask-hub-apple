@@ -1,0 +1,58 @@
+name: Verify/App Store metadata
+
+# App Store の説明文などは、文字数の上限を超えていると App Store Connect への反映時に弾かれる。
+# 反映（Metadata/App Store）の前に、PR の時点で欠損と文字数超過を機械的に落とす。
+# JSON を読むだけなので macOS ランナーもビルドも必要ない（ubuntu で数十秒で終わる）。
+# あわせて、スクリーンショットの撮影設定（枚数の上限、撮影モードの Scene との突き合わせなど）も読めるか確かめる。
+# Tools/ の Python の unittest（Tools/tests/）も同じジョブで流す。
+#
+# ドキュメントだけの変更では動かない（paths にドキュメントを含めない。Build の paths-ignore と同じ考え方）。
+# Build と違い ubuntu ランナーで軽いので、epic/** 宛ての子 PR でも更新（synchronize）のたびに流す。
+
+on:
+  pull_request:
+    paths:
+      - 'AppStore/**'
+      - 'Tools/**'
+      - 'Configs/Project.xcconfig'
+      - 'AskHub.xcodeproj/project.pbxproj'
+      - 'AskHub/ScreenshotDemo.swift'
+      - '.github/workflows/verify-app-store-metadata.yml'
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+# 同じ PR への連続 push では古い実行をキャンセルする（検査だけなので途中で止めても害は無い）
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Verify App Store metadata
+        run: python3 Tools/upload_metadata.py --check
+
+      - name: Verify screenshot config
+        # 反映先のアプリを探す Bundle ID が pbxproj と xcconfig から 1 つに決まるか、
+        # screenshots.json の scene が ScreenshotDemo.Scene にあり、表示サイズの設定が読めるかを確かめる
+        run: |
+          set -euo pipefail
+          python3 Tools/app_store_config.py bundle-id
+          python3 Tools/app_store_config.py scenes
+          python3 Tools/app_store_config.py display-types
+
+      - name: Test Tools
+        # Tools/ の Python の unittest。App Store Connect API は偽物に差し替えて呼ばない（Secrets も PyJWT も要らない）
+        run: python3 -m unittest discover -s Tools/tests -t . -v

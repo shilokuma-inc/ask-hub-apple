@@ -30,7 +30,14 @@ struct AskHub: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(model: inbox, requestModel: requests, mergeModel: mergeQueue, loopModel: loopStatus)
+            ContentView(
+                model: inbox,
+                requestModel: requests,
+                mergeModel: mergeQueue,
+                loopModel: loopStatus,
+                // 撮影モード（ScreenshotDemo）のときは、撮る画面のタブを開く
+                initialTab: ScreenshotDemo.scene?.tab ?? .action
+            )
                 .environment(\.isDemoMode, isDemoMode)
                 .environment(\.setDemoMode) { setDemoMode($0) }
                 // アプリを開いているあいだ（バックグラウンド以外）は、全タブの一覧を定期的に取り直す（Issue #299）。

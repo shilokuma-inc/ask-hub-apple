@@ -11,6 +11,12 @@ enum DemoMode {
         get { UserDefaults.standard.bool(forKey: defaultsKey) }
         set { UserDefaults.standard.set(newValue, forKey: defaultsKey) }
     }
+
+    /// 起動時にサンプルデータを使うか。デモモードのほか、撮影モード（`ScreenshotDemo`）でも使う。
+    /// 撮影モードは起動引数だけで切り替え、`isEnabled`（UserDefaults）は書き換えない
+    static var usesSampleData: Bool {
+        isEnabled || ScreenshotDemo.isEnabled
+    }
 }
 
 extension EnvironmentValues {
@@ -71,7 +77,8 @@ private struct DemoModeBannerModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .top, spacing: 0) {
-            if isDemoMode {
+            // 撮影モードでは、App Store のスクリーンショットに帯が写らないよう出さない
+            if isDemoMode && !ScreenshotDemo.isEnabled {
                 DemoModeBanner()
             }
         }

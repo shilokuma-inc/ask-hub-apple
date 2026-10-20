@@ -13,6 +13,12 @@ on:
         description: UI テスト（<プロジェクト名>UITests）も実行するか。false なら Unit テストだけ実行する
         type: boolean
         default: true
+      ref:
+        description: >-
+          ビルドするコミット（SHA かブランチ）。空なら起動したイベントのコミット（build.yml）。
+          Release/Finish は develop で動きながら release ブランチの先頭を検証するので SHA を渡す
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -27,6 +33,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Allow SwiftLint build tool plugin
         run: defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
