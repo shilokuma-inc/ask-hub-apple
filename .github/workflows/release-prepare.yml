@@ -1,4 +1,7 @@
 name: Release/Prepare
+# AskHub アプリ（AskHubKit の WorkflowRun.displayTitle）が、どのバージョンの run かを一覧から見分けるための表示名。
+# runs の一覧の API は inputs を返さないので、バージョンは run-name に入れる（表示だけでシェルには渡らない。run: には今までどおり env で渡す）
+run-name: Release/Prepare ${{ inputs.version }}
 
 # リリース準備（Discussion #605）。AskHub アプリの「リリース準備」が workflow_dispatch で起動する（Actions から手で起動してもよい）。
 #
