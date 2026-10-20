@@ -243,6 +243,25 @@ struct MergeQueueModelTests {
         #expect(!model.isDispatchPending(target))
     }
 
+    @Test func keepsUploadButtonWhenWorkflowIsDisabled() async {
+        let workflow = RecordingUploadWorkflow()
+        let disabled = UploadWorkflowError.dispatchNotSupported(message: "Cannot trigger a 'workflow_dispatch' on a disabled workflow")
+        workflow.setFailure(disabled)
+        let model = makeModel(queue: RecordingQueue(), uploadWorkflow: workflow)
+        await model.refresh()
+        let target = model.pullRequests[0]
+
+        await #expect(throws: disabled) {
+            try await model.upload(target)
+        }
+        // 無効にされたワークフローは有効にすれば起動できるので、ボタンを消さず、有効にする案内を出す
+        #expect(model.showsUploadButton(target))
+        #expect(!model.isDispatchPending(target))
+        let message = MergeQueueModel.message(for: disabled)
+        #expect(message.contains("無効にされています"))
+        #expect(!message.contains("workflow_dispatch"))
+    }
+
     @Test func doesNotShowUploadButtonWithoutWorkflow() {
         let model = makeModel(queue: RecordingQueue())
         var pullRequest = SampleMergeQueue.pullRequests[0]
