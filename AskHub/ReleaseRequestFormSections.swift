@@ -25,6 +25,10 @@ struct ReleaseRequestFormSections: View {
                 repositoryFooter
             }
 
+            if let context = model.context, let repository = model.repository, let progress = context.progress {
+                ReleaseProgressSection(repository: repository, progress: progress, notes: model.notes)
+            }
+
             if let context = model.context, context.availability != .notFound {
                 Section {
                     TextField("例: 1.1.0", text: $model.versionText)
