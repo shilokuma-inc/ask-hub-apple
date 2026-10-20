@@ -147,10 +147,11 @@ struct ReleaseProgress: Equatable {
             status: .notStarted,
             detail: "最新情報を確定したあと、審査への提出は App Store Connect で人が行います"
         )
-        if finishWorkflow.run != nil {
-            // リリース後作業は配信の検知のほか、GitHub で手で起動することもあるので、配信を確かめたとは言わない
+        if finishWorkflow.run?.isSuccessful == true {
+            // リリース後作業は配信の検知のほか、GitHub で手で起動することもあるので、配信を確かめたとは言わない。
+            // 実行中・失敗の run は、配信前に手で起動したものかもしれないので「済み」にしない
             step.status = .done
-            step.detail = "リリース後作業の run があります（配信の検知か、手での起動で始まります）。配信の状態は App Store Connect で確かめてください"
+            step.detail = "リリース後作業の run が成功しました（配信の検知か、手での起動で始まります）。配信の状態は App Store Connect で確かめてください"
         } else if releaseNotes?.status == .confirmed {
             step.status = .waiting
             step.detail = "審査への提出と配信を待っています。App Store Connect の状態はアプリでは見られません"

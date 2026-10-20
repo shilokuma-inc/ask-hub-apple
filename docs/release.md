@@ -513,7 +513,7 @@ GitHub の情報だけで出すので、App Store Connect の処理・審査の�
 | リリース準備 | `develop` の `release-prepare.yml` の `workflow_dispatch` の run のうち、`run-name`（`Release/Prepare <v>`）がこのバージョンの直近のもの | 実行中 / 済み / 失敗（run が見えなくても、release ブランチがあれば済み） |
 | アップロード | `release/<v>` の `upload.yml` の直近の run | 実行中 / 済み / 失敗 / まだ。`upload.yml` が無ければ不明 |
 | 最新情報 | 下書き（`AppStore/whats-new-draft.json`）と `AppStore/metadata/<言語>.json` の `whatsNew`、`release-notes.yml` の run | 下書きあり（待ち）/ 確定済み / 反映中 / 読めない下書き / どちらも無い。直近の確定の run が失敗していれば、確定済みでも失敗 |
-| 配信 | 最新情報が確定済みで、リリース後作業の run がまだ無い | 待ち（審査への提出と配信は App Store Connect で人が行う）。リリース後作業の run があれば済み（手で起動したこともあるので「配信を検知した」とは言わない） |
+| 配信 | 最新情報が確定済みで、リリース後作業の run がまだ成功していない | 待ち（審査への提出と配信は App Store Connect で人が行う）。リリース後作業の run が成功していれば済み（手で起動したこともあるので「配信を検知した」とは言わない。実行中・失敗の run は配信前に手で起動したものかもしれないので済みにしない） |
 | リリース後作業 | `release-finish.yml` の、このリリースの直近の run | 実行中 / 済み / 失敗 / まだ（配信を検知すると自動で始まる）。無ければ不明 |
 | タグと Release | `v<v>` のタグ | タグができると準備中のリリースではなくなり、この欄は消える |
 
