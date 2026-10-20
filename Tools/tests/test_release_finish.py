@@ -144,6 +144,20 @@ class CheckTests(FinishTestCase):
         self.assertTrue(result["releaseAdvanced"])
         self.assertTrue(result["developVersionBump"])
 
+    def test_release_advanced_after_everything_is_done_stops(self):
+        # develop への取り込みまで済んだ後に release が進んだ: 進んだ分がこのリリースのものか見分けられないので止める（docs/release.md）
+        self.repo.cut_release()
+        self.repo.git("branch", "main", "release/1.1.0")
+        self.repo.publish("main")
+        self.repo.git("tag", "v1.1.0", "main")
+        self.repo.merge_into("develop", "release/1.1.0")
+        self.repo.git("checkout", "-q", "release/1.1.0")
+        self.repo.commit_file("late.txt", "late", "[fix] 遅れて入ったコミット")
+        self.repo.git("checkout", "-q", "develop")
+        self.repo.publish("release/1.1.0")
+        with self.assertRaisesRegex(Failure, "タグの打ち間違いです"):
+            self.check()
+
     def test_tag_on_old_main_commit_is_rejected_after_develop_merge(self):
         # 前のリリース（1.1.0）を取り込んだ main の古いコミットに、誤って v1.2.0 を打った。release/1.2.0 は develop に取り込み済み
         self.repo.cut_release()
