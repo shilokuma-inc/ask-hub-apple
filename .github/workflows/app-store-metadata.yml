@@ -150,7 +150,9 @@ jobs:
             if [ "$ENABLE_MACOS_DELIVERY" = "false" ]; then
               echo "- macOS: リポジトリ変数 ENABLE_MACOS_DELIVERY が false なので反映していません"
             elif [ -f "$RUNNER_TEMP/upload-macos.log" ] && grep -qF "macOS の反映を飛ばしました" "$RUNNER_TEMP/upload-macos.log"; then
-              echo "- macOS: App Store Connect に反映先の macOS のバージョンが無いため、iOS だけに反映しました。"
+              # 飛ばした理由（未追加・指定のバージョンが無い・配信を終えたものだけ）は、ログの行をそのまま載せる
+              echo "- macOS: 反映先の macOS のバージョンが無いため、macOS には反映していません（iOS の結果は下の iOS の節を見てください）。"
+              echo "  理由: $(grep -F "macOS の反映を飛ばしました" "$RUNNER_TEMP/upload-macos.log" | head -1)"
               echo "  macOS にも載せるときは、App Store Connect でアプリに macOS のプラットフォームを追加し、バージョンを用意してから再実行してください（docs/release.md）"
             fi
             for platform in ios macos; do
