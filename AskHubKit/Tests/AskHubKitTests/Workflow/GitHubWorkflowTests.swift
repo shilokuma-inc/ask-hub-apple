@@ -147,6 +147,22 @@ struct GitHubWorkflowTests {
         #expect(String(bytes: data, encoding: .utf8)?.contains("github_pat_secret") == false)
     }
 
+    @Test func sendsWhatsNewAsJSONString() async throws {
+        // release-notes.yml の `whats_new` は文字列の input。入れ子のオブジェクトで送ると 422 になるので、文字列のまま送る
+        let http = MockHTTPClient([.init(status: 204, body: "")])
+        let version = try #require(ReleaseVersion("1.1.0"))
+        let inputs = try ReleaseWorkflow.notesInputs(version: version, whatsNew: ["ja": "・\"引用\"と改行\n・2 行目"])
+        try await makeWorkflow(http).dispatch(repository: "o/r", ref: "develop", inputs: inputs)
+
+        let data = try #require(http.requests.first?.httpBody)
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sent = try #require(json["inputs"] as? [String: Any])
+        let whatsNew = try #require(sent["whats_new"] as? String)
+        let decoded = try JSONDecoder().decode([String: String].self, from: Data(whatsNew.utf8))
+        #expect(decoded == ["ja": "・\"引用\"と改行\n・2 行目"])
+        #expect(sent["version"] as? String == "1.1.0")
+    }
+
     @Test func dispatchOmitsEmptyInputs() async throws {
         let http = MockHTTPClient([.init(status: 204, body: "")])
         try await makeWorkflow(http).dispatch(repository: "o/r", ref: "develop")
