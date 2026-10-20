@@ -80,6 +80,16 @@
   「最後に送った内容が勝つ」でよい処理（Release/Notes の確定など）はこのままでよいが、アプリなどで run を追うときは、取り消された run も出ることを前提にする
 - ワークフローのファイルと同じコミットの `Tools/` を使いながら別のブランチを書き換えたいときは、`actions/checkout` を `path:` を変えて 2 回使う（起動した ref を `tools`、書き換えるブランチを `ref:` で `release`）。
   `python3 tools/Tools/x.py --root release …` のように、スクリプトとリポジトリのルートを分けて渡す（release-notes.yml）
+- `develop` のブランチ保護は必須チェック「No AI Attribution」（`app_id` 15368 = GitHub Actions）だけで、PR は必須ではない（`gh api repos/<owner>/<repo>/branches/develop/protection` で読める）。
+  必須チェックは直接の push にも効き、push するコミット（新しい先頭）にそのチェックが要る。`GITHUB_TOKEN`（`checks: write`）で `POST /repos/{owner}/{repo}/check-runs` した check run は
+  GitHub Actions のものになるので満たせる作り（release-finish.yml。実際に push が通るかはまだ確かめていない）。check run はリモートにあるコミットにしか付けられないので、先に一時ブランチへ push してから付ける
+- `GITHUB_TOKEN` は workflows の権限を持てない（`permissions:` に書けない）。`.github/workflows/` のファイルが変わるコミットを push すると
+  `refusing to allow a GitHub App to create or update workflow … without workflows permission` で断られ、ほかのブランチの取り込み（マージコミット）でも同じ。
+  リモートにあるコミットからブランチを作るだけなら当たらない。避けるには workflows の権限を持つ PAT / GitHub App のトークンが要る
+- リポジトリの `GET /repos/{owner}/{repo}/actions/permissions/workflow` の `can_approve_pull_request_reviews` が `false`（Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」が無効）だと、
+  `GITHUB_TOKEN` では PR を作れない（`gh pr create` が失敗する）。Issue（`issues: write`）は作れる
+- 再利用ワークフロー（`workflow_call`）の中の `actions/checkout` は、呼び出し元の run のコミット（`workflow_dispatch` なら起動した ref の先頭）を取り出す。別のコミットを検証したいときは、
+  `_build.yml` の `ref` のように入力で SHA を渡して `with: ref:` に渡す（空文字なら既定のまま）
 
 ## ビルド・テスト
 
