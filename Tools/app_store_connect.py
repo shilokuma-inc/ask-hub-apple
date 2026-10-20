@@ -10,6 +10,7 @@
     APP_STORE_CONNECT_KEY_ID / APP_STORE_CONNECT_ISSUER_ID / APP_STORE_CONNECT_PRIVATE_KEY_PATH
 
 PyJWT が要る: `python3 -m pip install pyjwt cryptography`
+（import はトークンを作るときに行う。HTTP を差し替える unittest は PyJWT なしで動く）
 """
 
 from __future__ import annotations
@@ -21,13 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-
-try:
-    import jwt
-except ImportError:  # pragma: no cover - 実行環境の問題なので案内だけ出す
-    raise SystemExit(
-        "PyJWT が入っていません。`python3 -m pip install pyjwt cryptography` を実行してください。"
-    )
+from typing import Callable
 
 API = "https://api.appstoreconnect.apple.com"
 
@@ -59,12 +54,37 @@ class ApiError(RuntimeError):
     pass
 
 
+#: App Store のバージョンのプラットフォーム（`filter[platform]` などに渡す値）
+PLATFORM_IOS = "IOS"
+PLATFORM_MAC_OS = "MAC_OS"
+
+#: 人に見せるときのプラットフォームの名前
+PLATFORM_NAMES = {PLATFORM_IOS: "iOS", PLATFORM_MAC_OS: "macOS"}
+
+
+def version_state(attributes: dict) -> str:
+    """バージョンの状態。`appVersionState` を優先し、無ければ非推奨の `appStoreState` を使う。"""
+    return attributes.get("appVersionState") or attributes.get("appStoreState") or ""
+
+
+def is_editable(attributes: dict) -> bool:
+    """スクリーンショット・メタデータ・ビルドを差し替えられる状態か。
+
+    `EDITABLE_STATES` の名前は `appStoreState` と `appVersionState` の両方にある。
+    """
+    return version_state(attributes) in EDITABLE_STATES
+
+
 class AppStoreConnect:
-    def __init__(self, key_id: str, issuer_id: str, private_key: str, dry_run: bool = False):
+    def __init__(self, key_id: str, issuer_id: str, private_key: str, dry_run: bool = False,
+                 urlopen: Callable | None = None, sleep: Callable[[float], None] | None = None):
         self.key_id = key_id
         self.issuer_id = issuer_id
         self.private_key = private_key
         self.dry_run = dry_run
+        # unittest で HTTP と待ち時間を差し替えるための口。既定は標準ライブラリそのもの
+        self._urlopen = urlopen or urllib.request.urlopen
+        self._sleep = sleep or time.sleep
         self._token = ""
         self._token_expires_at = 0.0
 
@@ -85,7 +105,7 @@ class AppStoreConnect:
         if body is not None:
             request.add_header("Content-Type", "application/json")
         try:
-            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+            with self._urlopen(request, timeout=REQUEST_TIMEOUT) as response:
                 raw = response.read()
         except urllib.error.HTTPError as error:
             detail = error.read().decode(errors="replace")
@@ -132,18 +152,23 @@ class AppStoreConnect:
             raise SystemExit(f"bundleId が {bundle_id} のアプリが見つかりません")
         return apps[0]
 
-    def find_version(self, app_id: str, version_string: str | None) -> dict:
-        versions = self.get_all(
+    def app_store_versions(self, app_id: str, platform: str = PLATFORM_IOS) -> list[dict]:
+        """そのプラットフォームのバージョンをすべて返す（ページングを最後までたどる）。"""
+        return self.get_all(
             f"/v1/apps/{app_id}/appStoreVersions",
-            {"filter[platform]": "IOS", "limit": 50},
+            {"filter[platform]": platform, "limit": 50},
         )
-        editable = [v for v in versions if v["attributes"]["appStoreState"] in EDITABLE_STATES]
+
+    def find_version(self, app_id: str, version_string: str | None,
+                     platform: str = PLATFORM_IOS) -> dict:
+        versions = self.app_store_versions(app_id, platform)
+        editable = [v for v in versions if is_editable(v["attributes"])]
 
         if version_string:
             for version in versions:
                 if version["attributes"]["versionString"] == version_string:
-                    state = version["attributes"]["appStoreState"]
-                    if state not in EDITABLE_STATES:
+                    state = version_state(version["attributes"])
+                    if not is_editable(version["attributes"]):
                         raise SystemExit(
                             f"バージョン {version_string} は {state} のため編集できません"
                         )
@@ -151,7 +176,7 @@ class AppStoreConnect:
             raise SystemExit(f"バージョン {version_string} が見つかりません")
 
         if not editable:
-            states = ", ".join(sorted({v["attributes"]["appStoreState"] for v in versions}))
+            states = ", ".join(sorted({version_state(v["attributes"]) for v in versions}))
             raise SystemExit(
                 "編集できる状態のバージョンがありません"
                 f"（いまある状態: {states or 'なし'}）。"
@@ -255,7 +280,7 @@ class AppStoreConnect:
             for header in operation.get("requestHeaders", []):
                 request.add_header(header["name"], header["value"])
             try:
-                with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT):
+                with self._urlopen(request, timeout=REQUEST_TIMEOUT):
                     pass
             except urllib.error.HTTPError as error:
                 detail = error.read().decode(errors="replace")
@@ -313,6 +338,15 @@ class AppStoreConnect:
 
 
 def make_token(key_id: str, issuer_id: str, private_key: str) -> str:
+    # PyJWT は API を呼ぶときだけ要る。モジュールの先頭で import すると、
+    # --check や unittest のように API を呼ばない使い方まで PyJWT を求めてしまう
+    try:
+        import jwt
+    except ImportError:  # pragma: no cover - 実行環境の問題なので案内だけ出す
+        raise SystemExit(
+            "PyJWT が入っていません。`python3 -m pip install pyjwt cryptography` を実行してください。"
+        ) from None
+
     now = int(time.time())
     return jwt.encode(
         {"iss": issuer_id, "iat": now, "exp": now + TOKEN_LIFETIME, "aud": "appstoreconnect-v1"},
