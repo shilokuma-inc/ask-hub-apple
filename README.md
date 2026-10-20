@@ -153,7 +153,9 @@ body=$(gh pr view <番号> --json body -q .body) &&
 ├── AskHubTests/     # Unit テスト（Swift Testing）
 ├── AskHubUITests/   # UI テスト（XCTest）
 ├── AskHub.xcodeproj # 共有スキーム AskHub を含む
-├── docs/                    # ExportOptions.plist のサンプル
+├── AppStore/                # App Store のメタデータ（掲載文・言語・アプリの設定）。docs/release.md
+├── Tools/                   # App Store Connect への反映のスクリプト（Python）
+├── docs/                    # ExportOptions.plist のサンプル・審査の準備・リリース
 ├── scripts/                 # ralph-loop の setup / start / stop
 ├── .swiftlint.yml           # SwiftLint 設定
 └── .github/
@@ -165,7 +167,9 @@ body=$(gh pr view <番号> --json body -q .body) &&
         ├── _archive.yml     # 共通処理: Archive → Export（→ Upload）（workflow_call）
         ├── build.yml        # 全ブランチの push / PR の作成時 / Fork からの PR
         ├── archive.yml      # main の push
-        └── upload.yml       # develop / release/** の push・手動実行（workflow_dispatch）
+        ├── upload.yml       # develop / release/** の push・手動実行（workflow_dispatch）
+        ├── app-store-metadata.yml         # App Store のメタデータの反映（手動実行）
+        └── verify-app-store-metadata.yml  # PR でメタデータを検査
 ```
 
 - プロジェクトはフォルダ同期グループ（Xcode 16 以降の形式）で管理しているため、ファイルの追加・削除で pbxproj は変わりません

@@ -1,7 +1,7 @@
 # App Store 審査の準備
 
 App Store Connect に入力する値と、審査で指摘されやすい点への対応をまとめる（Issue #2）。
-プライバシーポリシーの URL とサポート URL は、担当者が App Store Connect に直接入力する。
+プライバシーポリシーの URL は、担当者が App Store Connect に直接入力する（サポート URL は `AppStore/metadata/shared.json` から反映する）。
 
 ## 審査で指摘されやすい点と対応
 
@@ -69,6 +69,9 @@ The UI is in Japanese.
 
 ### 説明文（日本語）
 
+プロモーションテキスト・説明・キーワードは `AppStore/metadata/ja.json` に同じ文言を置き、ワークフローで App Store Connect に反映する（[docs/release.md](release.md) の「App Store のメタデータ」）。
+ここを書き換えたら `ja.json` も合わせる。サブタイトルは反映の対象外なので、App Store Connect に直接入力する。
+
 - **サブタイトル**（30 文字以内）: `AI 開発ループの質問に答える GitHub クライアント`
 - **プロモーションテキスト**: `ループが止まって待っている判断だけを、iPhone と Mac で 1 つの一覧に。`
 - **説明**:
@@ -100,6 +103,6 @@ GitHub の Fine-grained personal access token を設定画面に入力します�
 
 ## まだ残っていること
 
-- プライバシーポリシーの URL・サポート URL（担当者が入力する）
+- プライバシーポリシーの URL（担当者が入力する）。サポート URL は `AppStore/metadata/shared.json` のリポジトリの URL を反映する
 - スクリーンショット（デモモードで撮る）
 - 認証を Fine-grained PAT から GitHub の OAuth のデバイスフローに切り替える（審査の必須ではない。一般公開するなら望ましい）
