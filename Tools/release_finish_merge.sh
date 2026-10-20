@@ -12,11 +12,11 @@
 #    GITHUB_TOKEN で作った check run は GitHub Actions のものになるので、必須チェックを満たせる。
 #    中身の検査（release ブランチにしかないコミットの AI 帰属行）は Release/Finish の check ジョブで済ませてある
 # 4. コンフリクトしたとき・push を断られたとき（GITHUB_TOKEN は workflows の権限を持てないので、.github/workflows/ が変わる
-#    取り込みは断られる）は、release → 取り込み先の PR を作り（あれば使い）、終了コード 1 で止める
+#    取り込みは断られる）は、release → 取り込み先の PR を作り（あれば使い。作れなければ Issue で知らせ）、終了コード 1 で止める
 #
 # 環境変数: VERSION・RELEASE_SHA（check ジョブで確かめた release の先頭）・GITHUB_REPOSITORY・GH_TOKEN・
 #           SUMMARY（Job Summary に載せる行をためるファイル）・RUNNER_TEMP・GITHUB_OUTPUT。
-# 出力（GITHUB_OUTPUT）: state（created / merged / done / conflict / rejected）・sha（取り込み先の新しい先頭）・pr（PR の URL）
+# 出力（GITHUB_OUTPUT）: state（created / merged / done / conflict / rejected）・sha（取り込み先の新しい先頭）・pr（PR の URL）・issue（PR を作れなかったときの Issue の URL）
 set -euo pipefail
 
 target="${1:?main か develop を指定してください}"
@@ -62,8 +62,38 @@ create_check_run() {
     -f "output[title]=Release/Finish が検査しました" -f "output[summary]=$2"
 }
 
+# $1: pr（PR の本文）か issue（PR を作れなかったときの Issue の本文）、$2: 理由
+write_body() {
+  local kind="$1" reason="$2"
+  echo "## 概要"
+  echo
+  if [ "$kind" = "pr" ]; then
+    echo "リリース後作業（Release/Finish ${VERSION}）が \`${branch}\` を \`${target}\` に自動で取り込めなかったので、この PR を残しました。"
+  else
+    echo "リリース後作業（Release/Finish ${VERSION}）が \`${branch}\` を \`${target}\` に自動で取り込めず、PR も作れなかったので、この Issue で知らせます。"
+  fi
+  echo
+  echo "- 理由: ${reason}"
+  echo "- 取り込む release の先頭: \`${RELEASE_SHA}\`"
+  echo
+  echo "## すること"
+  echo
+  if [ "$kind" = "pr" ]; then
+    echo "1. コンフリクトがあれば解いてから、この PR を**マージコミット**でマージする（Squash しない）"
+  else
+    echo "1. \`${branch}\` → \`${target}\` の PR を作り、コンフリクトがあれば解いてから**マージコミット**でマージする（Squash しない）"
+  fi
+  echo "2. Actions → Release/Finish → Run workflow で、同じバージョン \`${VERSION}\` で起動し直す（済んだ所は飛ばして、残りのタグ・Release・取り込みを行う）"
+  if [ "$kind" = "issue" ]; then
+    echo "3. 終わったらこの Issue を閉じる"
+  fi
+  echo
+  echo "手順は docs/release.md の「リリース後作業」の「取り込めなかったとき」を参照してください。"
+}
+
 # $1: state（conflict / rejected）、$2: 理由（Markdown の 1 行）
-# release → 取り込み先の PR を作って（あれば使って）止める。人がコンフリクトを解いて PR をマージし、Release/Finish を起動し直す
+# release → 取り込み先の PR を作って（あれば使って）止める。PR を作れなければ Issue で知らせる。
+# 人がコンフリクトを解いて PR をマージし、Release/Finish を起動し直す
 stop_with_pull_request() {
   local state="$1" reason="$2" pr="" body="$RUNNER_TEMP/pr-${target}.md"
   output state "$state"
@@ -85,30 +115,28 @@ stop_with_pull_request() {
   fi
   pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --base "$target" --head "$branch" --state open --json url --jq '.[0].url // ""' 2> /dev/null || true)
   if [ -z "$pr" ]; then
-    {
-      echo "## 概要"
-      echo
-      echo "リリース後作業（Release/Finish ${VERSION}）が \`${branch}\` を \`${target}\` に自動で取り込めなかったので、この PR を残しました。"
-      echo
-      echo "- 理由: ${reason}"
-      echo "- 取り込む release の先頭: \`${RELEASE_SHA}\`"
-      echo
-      echo "## すること"
-      echo
-      echo "1. コンフリクトがあれば解いてから、この PR を**マージコミット**でマージする（Squash しない）"
-      echo "2. Actions → Release/Finish → Run workflow で、同じバージョン \`${VERSION}\` で起動し直す（済んだ所は飛ばして、残りのタグ・Release・取り込みを行う）"
-      echo
-      echo "手順は docs/release.md の「リリース後作業」の「失敗したとき」を参照してください。"
-    } > "$body"
+    write_body pr "$reason" > "$body"
     pr=$(gh pr create --repo "$GITHUB_REPOSITORY" --base "$target" --head "$branch" \
       --title "【CHORE】${branch} を ${target} に取り込む" --body-file "$body" 2> "$RUNNER_TEMP/pr-${target}.err") || pr=""
   fi
   if [ -n "$pr" ]; then
     output pr "$pr"
-    summary "  PR: ${pr}（コンフリクトを解いてマージコミットでマージし、Release/Finish を同じバージョンで起動し直してください）"
+    summary "  PR: ${pr}（コンフリクトがあれば解いてマージコミットでマージし、Release/Finish を同じバージョンで起動し直してください）"
   else
     summary "  PR を作れませんでした（$(head -c 300 "$RUNNER_TEMP/pr-${target}.err" 2> /dev/null | tr '\n' ' ')）。"
-    summary "  「Allow GitHub Actions to create and approve pull requests」が無効なら、人が \`${branch}\` → \`${target}\` の PR を作ってください。"
+    summary "  リポジトリの「Allow GitHub Actions to create and approve pull requests」が無効なときは作れません。人が \`${branch}\` → \`${target}\` の PR を作ってください。"
+    # PR を作れなくても人が気づけるよう、Issue で知らせる（同じタイトルの開いた Issue があれば作らない）
+    local title="【CHORE】${branch} を ${target} に取り込めませんでした" issue=""
+    issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"${title}\" in:title" --json url,title \
+      --jq "map(select(.title == \"${title}\")) | .[0].url // \"\"" 2> /dev/null || true)
+    if [ -z "$issue" ]; then
+      write_body issue "$reason" > "$body"
+      issue=$(gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body" 2> /dev/null || true)
+    fi
+    if [ -n "$issue" ]; then
+      output issue "$issue"
+      summary "  Issue: ${issue}"
+    fi
   fi
   echo "::error::${branch} を ${target} に取り込めませんでした（${state}。Job Summary を見てください）"
   exit 1
