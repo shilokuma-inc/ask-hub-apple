@@ -39,6 +39,9 @@ final class ReleaseRequestModel {
     private(set) var isStarting = false
     /// 直前の起動の失敗（起動できたら `nil`）
     private(set) var errorMessage: String?
+    /// `errorMessage` が送らなかった理由（「リリース準備を始めませんでした。…」）か。理由は読み直すと消えうるので、次の読み取りの成功で消す
+    /// （GitHub が断った起動の失敗は、押し直すまで残す）
+    private var errorIsNotStartedReason = false
     /// アプリから起動したリポジトリ（→ 起動した時刻とバージョン）。run の一覧に起動より後の run が出るまで「起動した」状態を保ち、二重に押せないようにする
     private(set) var dispatched: [String: Dispatch] = [:]
 
@@ -99,6 +102,7 @@ final class ReleaseRequestModel {
         contextState = repository == nil ? .idle : .loading
         versionText = ""
         errorMessage = nil
+        errorIsNotStartedReason = false
         await reload(resetsVersion: true)
     }
 
@@ -140,6 +144,10 @@ final class ReleaseRequestModel {
         isLoading = false
         contextState = result
         if case .loaded(let context) = result {
+            if errorIsNotStartedReason {
+                errorMessage = nil
+                errorIsNotStartedReason = false
+            }
             clearDispatchedIfRunStarted(context.latestRun)
             if resetsVersion || versionText.isEmpty {
                 versionText = context.marketingVersion?.nextMinor?.description ?? ""
@@ -258,18 +266,37 @@ final class ReleaseRequestModel {
         }
         // 確認のダイアログを出したあとに状態が変わって（取り直し・run の開始など）押せなくなったら、送らなかった理由を出す
         guard canStart(now: now), let repository, let version else {
-            errorMessage = "リリース準備を始めませんでした。" + (notStartableReason(now: now) ?? "")
+            showNotStarted(notStartableReason(now: now))
             return
         }
-        let previousRunID = context?.latestRun?.id
         isStarting = true
         errorMessage = nil
+        errorIsNotStartedReason = false
         defer { isStarting = false }
+        let previousRunID: Int?
         do {
             guard let token = try tokenStore.load() else {
                 throw IdeaRequestModel.MissingTokenError()
             }
-            try await makeWorkflow(token).dispatch(
+            let workflow = makeWorkflow(token)
+            // 最後に読んだ状態からは取らない（そのあいだに別の run が始まって終わると、それを起動した run と取り違える）。
+            // 送る直前に直近の run を読み直し、取れなければ最後に読んだ状態に戻る
+            let latestRuns = try? await workflow.recentRuns(
+                repository: repository,
+                branch: Self.dispatchRef,
+                event: "workflow_dispatch",
+                limit: 1
+            )
+            let latest = latestRuns?.first
+            guard repository == self.repository else {
+                return
+            }
+            if latest?.isRunning == true {
+                showNotStarted("リリース準備の run が実行中です。終わってから始めてください")
+                return
+            }
+            previousRunID = latest?.id ?? context?.latestRun?.id
+            try await workflow.dispatch(
                 repository: repository,
                 ref: Self.dispatchRef,
                 inputs: ReleaseWorkflow.prepareInputs(version: version)
@@ -287,6 +314,12 @@ final class ReleaseRequestModel {
             try? await Task.sleep(for: dispatchRefreshDelay)
             await self?.refresh()
         }
+    }
+
+    /// 送らなかった理由を出す。次の読み取りが成功したら消す
+    private func showNotStarted(_ reason: String?) {
+        errorMessage = "リリース準備を始めませんでした。" + (reason ?? "")
+        errorIsNotStartedReason = true
     }
 
     /// 起動したときより新しい run（id が大きい）が出たら「起動した」状態を終える。
