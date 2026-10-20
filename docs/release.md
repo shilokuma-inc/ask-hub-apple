@@ -27,7 +27,7 @@ App Store の説明文・キーワード・プロモーションテキスト・�
 - 反映するのは「編集できる状態」（`PREPARE_FOR_SUBMISSION` など）のバージョンだけ。審査中・配信済みのバージョンには触らない
 - iOS と macOS のバージョンの両方に、同じ JSON を反映する（App Store Connect のバージョンはプラットフォームごとに別にあり、言語ごとの掲載文もそれぞれにある）。
   `Tools/upload_metadata.py` は `--platform`（`IOS` / `MAC_OS`。既定は `IOS`）で反映先を選び、ワークフローはプラットフォームごとに 1 回ずつ実行する
-- macOS のバージョンが無い（macOS のプラットフォームを追加していない・そのバージョンを作っていない・編集できるバージョンが無い）ときは、macOS を飛ばして iOS だけに反映し、Job Summary に知らせる（`--missing-version skip`）。
+- macOS のバージョンが無い（macOS のプラットフォームを追加していない・指定したバージョン番号の macOS のバージョンが無い・配信を終えたバージョンしか無い）ときは、macOS を飛ばして iOS だけに反映し、Job Summary に知らせる（`--missing-version skip`）。
   macOS のバージョンが審査中などで編集できない・候補が複数あるときは、iOS と同じく止まる（iOS の反映は先に終わっている）
 - リポジトリ変数 `ENABLE_MACOS_DELIVERY` が `false` なら、macOS には反映しない（「macOS 版のアップロード」と同じ変数）
 - JSON に書いていない項目（例: 省略した `promotionalText`・`marketingUrl`）は、App Store Connect 側の値をそのまま残す
@@ -49,8 +49,9 @@ python3 Tools/app_store_config.py bundle-id
    - まず `dry_run` をオンのまま実行し、Job Summary の差分（App Store Connect の現在値 → JSON の値）を確かめる
    - よければ `dry_run` をオフにして再実行する
    - 編集できるバージョンが複数あるときは `app_version` で選ぶ。App Store Connect のバージョンに言語（`ja`）が無いときは `missing_locales` を `create` にする
-   - Job Summary は iOS と macOS に分かれる。macOS を飛ばしたときは「iOS だけに反映しました」と出る。macOS にも載せるときは、「macOS 版のアップロード」の「人がすること」の 1 で macOS のプラットフォームを追加し、
-     macOS のバージョン（iOS と同じバージョン番号）を用意してから再実行する
+   - Job Summary は iOS と macOS に分かれる。macOS を飛ばしたときは「macOS には反映していません」と、飛ばした理由と、理由に合わせた人がすることが出る
+     （プラットフォームが無いなら「macOS 版のアップロード」の「人がすること」の 1 で追加する、配信を終えたバージョンしか無い・指定した番号が無いなら iOS と同じバージョン番号の macOS のバージョンを作る）。
+     用意してから再実行する
 3. サブタイトル・プライバシーポリシーの URL・カテゴリ・年齢制限は、この仕組みでは反映しない（App 情報の項目のため）。App Store Connect の画面で入力する（値は [docs/app-review.md](app-review.md)）
 
 `workflow_dispatch` はデフォルトブランチ（`develop`）にファイルがあるときしか起動できない。`develop` に入るまでは実行できない。
