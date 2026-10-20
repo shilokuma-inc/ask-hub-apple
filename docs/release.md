@@ -27,7 +27,7 @@ App Store の説明文・キーワード・プロモーションテキスト・�
 - 反映するのは「編集できる状態」（`PREPARE_FOR_SUBMISSION` など）のバージョンだけ。審査中・配信済みのバージョンには触らない
 - iOS と macOS のバージョンの両方に、同じ JSON を反映する（App Store Connect のバージョンはプラットフォームごとに別にあり、言語ごとの掲載文もそれぞれにある）。
   `Tools/upload_metadata.py` は `--platform`（`IOS` / `MAC_OS`。既定は `IOS`）で反映先を選び、ワークフローはプラットフォームごとに 1 回ずつ実行する
-- macOS のバージョンが無い（macOS のプラットフォームを追加していない・そのバージョンを作っていない・編集できるバージョンが無い）ときは、macOS を飛ばして iOS だけに反映し、Job Summary に知らせる（`--missing-version skip`）。
+- macOS のバージョンが無い（macOS のプラットフォームを追加していない・指定したバージョン番号の macOS のバージョンが無い・配信を終えたバージョンしか無い）ときは、macOS を飛ばして iOS だけに反映し、Job Summary に知らせる（`--missing-version skip`）。
   macOS のバージョンが審査中などで編集できない・候補が複数あるときは、iOS と同じく止まる（iOS の反映は先に終わっている）
 - リポジトリ変数 `ENABLE_MACOS_DELIVERY` が `false` なら、macOS には反映しない（「macOS 版のアップロード」と同じ変数）
 - JSON に書いていない項目（例: 省略した `promotionalText`・`marketingUrl`）は、App Store Connect 側の値をそのまま残す
@@ -49,8 +49,9 @@ python3 Tools/app_store_config.py bundle-id
    - まず `dry_run` をオンのまま実行し、Job Summary の差分（App Store Connect の現在値 → JSON の値）を確かめる
    - よければ `dry_run` をオフにして再実行する
    - 編集できるバージョンが複数あるときは `app_version` で選ぶ。App Store Connect のバージョンに言語（`ja`）が無いときは `missing_locales` を `create` にする
-   - Job Summary は iOS と macOS に分かれる。macOS を飛ばしたときは「iOS だけに反映しました」と出る。macOS にも載せるときは、「macOS 版のアップロード」の「人がすること」の 1 で macOS のプラットフォームを追加し、
-     macOS のバージョン（iOS と同じバージョン番号）を用意してから再実行する
+   - Job Summary は iOS と macOS に分かれる。macOS を飛ばしたときは「macOS には反映していません」と、飛ばした理由と、理由に合わせた人がすることが出る
+     （プラットフォームが無いなら「macOS 版のアップロード」の「人がすること」の 1 で追加する、配信を終えたバージョンしか無い・指定した番号が無いなら iOS と同じバージョン番号の macOS のバージョンを作る）。
+     用意してから再実行する
 3. サブタイトル・プライバシーポリシーの URL・カテゴリ・年齢制限は、この仕組みでは反映しない（App 情報の項目のため）。App Store Connect の画面で入力する（値は [docs/app-review.md](app-review.md)）
 
 `workflow_dispatch` はデフォルトブランチ（`develop`）にファイルがあるときしか起動できない。`develop` に入るまでは実行できない。
@@ -104,8 +105,7 @@ API Key には App Manager 以上の権限が要る。Verify/App Store metadata 
 
 ## App Store のスクリーンショット
 
-App Store のスクリーンショットを、アプリの撮影モードで撮り、App Store Connect に反映する。撮れるのは今は iOS（iPhone・iPad）だけ。
-Mac の表示サイズ（`APP_DESKTOP`）は設定と反映の仕組みまであり、撮影の方法ができるまでは撮影・反映を飛ばす。
+App Store のスクリーンショットを、アプリの撮影モードで撮り、App Store Connect に反映する。iOS（iPhone・iPad）と Mac（`APP_DESKTOP`）を撮る。
 
 ### 仕組み
 
@@ -114,10 +114,11 @@ Mac の表示サイズ（`APP_DESKTOP`）は設定と反映の仕組みまであ
 | `AskHub/ScreenshotDemo.swift` | 撮影モード。起動引数で、デモモードのサンプルデータのまま指定の画面（タブ）を開く |
 | `AppStore/screenshots.json` | 撮る画面（`scenes`。この順が App Store の並び順）と表示サイズ（`displayTypes`） |
 | `AppStore/app.json` | 撮影でビルドするプロジェクト・Scheme・構成（Release）と、撮影モードのファイル（`screenshotDemoSource`） |
-| `Tools/capture_screenshots.sh` | 1 つの表示サイズについて、Simulator を作ってビルドし、言語 × 画面ぶん撮る。撮り終えたら Simulator を消す |
+| `Tools/capture_screenshots.sh` | 1 つの表示サイズについて、Simulator を作ってビルドし、言語 × 画面ぶん撮る。撮り終えたら Simulator を消す。Mac の表示サイズは `capture_mac_screenshots.sh` に切り替える |
+| `Tools/capture_mac_screenshots.sh` / `AskHubTests/MacScreenshotCaptureTests.swift` | Mac の表示サイズを、macOS のユニットテストで撮る（下の「Mac の撮影」） |
 | `Tools/derive_screenshots.py` | `deriveFrom` を書いた表示サイズを、撮った表示サイズから縮めて作る（Pillow が要る） |
 | `Tools/verify_screenshots.py` | 寸法・アルファ・枚数が App Store Connect に通る形か確かめる |
-| `Tools/remove_alpha.swift` | Simulator の画像（RGBA）をアルファの無い PNG に描き直す（撮影スクリプトが使う） |
+| `Tools/remove_alpha.swift` | Simulator・Mac の撮影の画像（RGBA）をアルファの無い PNG に描き直す（撮影スクリプトが使う） |
 | `Tools/upload_screenshots.py` | 言語ごとに、その表示サイズのスクリーンショットのセットを入れ直す |
 | `.github/workflows/app-store-screenshots.yml`（Screenshots/App Store） | 手動実行で撮って反映する |
 | `.github/workflows/verify-app-store-metadata.yml`（Verify/App Store metadata） | PR で、`scenes` が撮影モードの `Scene` にあるか・枚数の上限（10）・表示サイズの設定を検査する |
@@ -129,16 +130,16 @@ Mac の表示サイズ（`APP_DESKTOP`）は設定と反映の仕組みまであ
 | `APP_IPHONE_67`（iPhone 6.9 inch） | iPhone 17 Pro Max（無ければ 16 Pro Max）の Simulator で撮る | 1320x2868 |
 | `APP_IPHONE_61`（iPhone 6.3 inch） | 6.9 inch を縮めて作る（ubuntu で動く） | 1206x2622 |
 | `APP_IPAD_PRO_3GEN_129`（iPad 13 inch） | iPad Pro 13-inch（M5 / M4）の Simulator で撮る | 2064x2752 |
-| `APP_DESKTOP`（Mac） | 撮影の方法がまだ無い（撮影・反映の matrix から外し、Job Summary に「撮影・反映を飛ばした表示サイズ」として出す） | 2880x1800（ほかに 2560x1600・1440x900・1280x800 も受け付ける） |
+| `APP_DESKTOP`（Mac） | macOS のユニットテストで撮る（下の「Mac の撮影」。`macos-latest` で動く） | 2880x1800（ほかに 2560x1600・1440x900・1280x800 も受け付ける） |
 
 表示サイズの `platform`（`IOS` / `MAC_OS`。省略すると `IOS`）が反映先のバージョンのプラットフォームになる。`APP_DESKTOP` は `MAC_OS` で、macOS のバージョンに反映する。
 
-- `Tools/app_store_config.py display-types` は、撮る方法がある表示サイズ（`devices` を書いた iOS の表示サイズと、`deriveFrom` で縮めて作る表示サイズ）だけを `capture` / `derive` / `upload` に入れ、
-  残り（`APP_DESKTOP`）は理由を付けて `skipped` に入れる。`upload` の各項目には反映先の `platform` が付く
+- `Tools/app_store_config.py display-types` は、撮る方法がある表示サイズ（`devices` を書いた iOS の表示サイズ・Mac の表示サイズ・`deriveFrom` で縮めて作る表示サイズ）を `capture` / `derive` / `upload` に入れ、
+  残り（`devices` の無い iOS の表示サイズ）は理由を付けて `skipped` に入れる。`capture` の各項目には撮り方の `method`（`simulator` / `macos-unit-test`）、`upload` の各項目には反映先の `platform` が付く
 - `Tools/upload_screenshots.py` は表示サイズの `platform` のバージョンに反映する（`--platform` を渡すと、表示サイズと合うかを確かめる）。
   macOS の表示サイズはワークフローが `--missing-version skip` を付けるので、macOS のバージョンが無いときは飛ばして iOS の表示サイズだけを反映する
 - `Tools/verify_screenshots.py --display-type APP_DESKTOP` で、Mac の寸法（16:10 の 4 つ）として検査できる
-- `Tools/capture_screenshots.sh` は iOS Simulator で撮るので、iOS 以外の表示サイズを渡すと止まる
+- `Tools/capture_screenshots.sh` に Mac の表示サイズを渡すと、`Tools/capture_mac_screenshots.sh` に切り替わる
 
 テンプレートにある iPhone Duo（`APP_IPHONE_DUO`）は、GitHub のホストランナーでは撮れない（`xcode-27` のランナーと iOS 27.1 が要る）ので載せていない。
 
@@ -174,9 +175,36 @@ SIMULATOR_NAME=AskHub-Screenshot-mine SKIP_PACKAGE_PLUGIN_VALIDATION=1 Tools/cap
 - macOS の `/bin/bash`（3.2）で動く。`xcode-select` が Command Line Tools を指している Mac では `DEVELOPER_DIR` を Xcode.app に向ける
 - 6.3 inch は撮らずに、`python3 Tools/derive_screenshots.py --display-type APP_IPHONE_61 --screenshots-dir build/screenshots` で作る（Pillow が要る）
 
+### Mac の撮影
+
+macOS には Simulator が無く、GitHub のホストランナー（`macos-latest`）には画面収録・アクセシビリティの許可が無いので、
+アプリを起動して画面を撮る方法（macOS の UI テストの `screenshot()`・`screencapture`）は使えないことがある。
+そこで、macOS のユニットテスト（`AskHubTests/MacScreenshotCaptureTests`）の中で、撮影モードと同じ画面
+（`ContentView` をサンプルデータで、`ScreenshotDemo.Scene` のタブを開いた状態）をウィンドウに出し、
+`cacheDisplay(in:to:)` でタイトルバー（タブとツールバー）ごと PNG にする。これなら画面収録の許可は要らない。
+
+- 寸法は `screenshots.json` の `sizes` の先頭（2880x1800）。1440x900 ポイントのウィンドウを 2 倍で描く。外観はライト
+- 撮る画面・言語・寸法・出力先は `capture_mac_screenshots.sh` が JSON に書き、`TEST_RUNNER_ASKHUB_SCREENSHOT_PLAN` でテストに渡す（`xcodebuild` は `TEST_RUNNER_` を外した名前でテストに渡す）。
+  この環境変数が無いとテストは飛ばされるので、Build（`build.yml`）の Unit テストでは撮らない
+- テストは `@testable import` でアプリの View を使うので Debug でビルドする（iOS の撮影は Release）。サンプルデータは同じ
+- 言語はロケール（`languages.json` の `appleLocale`）だけを渡す。アプリの文言は日本語だけなので、言語を足すときは文言の切り替えも見直す
+- アプリそのものを起動するわけではないので、`-screenshot-demo` / `-screenshot-scene` の起動引数は使わない（`ScreenshotDemo.Scene` と `tab` は同じものを使う）。
+  画面の中身は同じだが、メニューバー・Dock は写らない
+- 撮った後は iOS と同じく `remove_alpha.swift` でアルファを落とし、`verify_screenshots.py` で寸法と枚数を確かめる
+- ランナーは iOS と同じ `capture` の列に並ぶ（`max-parallel: 1`）。Mac の撮影のために macOS ランナーの同時実行は増えない
+
+手元で撮る:
+
+```bash
+SKIP_PACKAGE_PLUGIN_VALIDATION=1 Tools/capture_screenshots.sh APP_DESKTOP ja
+```
+
+`build/screenshots/APP_DESKTOP/ja/01_action.png …` に保存する。手元の Mac に画面収録の許可が無くても撮れる。
+「Mac Development」の署名用証明書が無くても撮れるよう、アドホック署名・App Sandbox なしでテストを流す。
+
 ### 人がすること
 
-1. App Store Connect に、反映先のバージョン（「準備中」の状態）を作っておく
+1. App Store Connect に、反映先のバージョン（「準備中」の状態）を作っておく。Mac にも載せるときは macOS のバージョンも要る（「macOS 版のアップロード」の「人がすること」）
 2. Actions → **Screenshots/App Store** → Run workflow で、`release/**` のブランチを選んで実行する
    - 撮るのはリリースのときだけ（`release/**` 以外では止まる）。撮影の仕組みだけを確かめるときは `allow_non_release` をオンにする（反映はしない）
    - `upload` を外すと撮るだけ。撮れた画像は run の artifact（`screenshots-<表示サイズ>`）から取れる
@@ -186,7 +214,7 @@ SIMULATOR_NAME=AskHub-Screenshot-mine SKIP_PACKAGE_PLUGIN_VALIDATION=1 Tools/cap
 macOS ランナーの枠を開発のビルドと取り合わないよう、撮影は 1 本ずつ（`max-parallel: 1`、ワークフロー全体で 1 つ）にしている。
 
 Secrets / vars は「App Store のメタデータ」と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`、任意の `ENABLE_DELIVERY`）。
-`ENABLE_DELIVERY=false` のときは撮るだけで反映しない。`ENABLE_MACOS_DELIVERY=false` のときは、Mac の表示サイズを macOS のバージョンに反映しない。
+`ENABLE_DELIVERY=false` のときは撮るだけで反映しない。`ENABLE_MACOS_DELIVERY=false` のときは、Mac の表示サイズを macOS のバージョンに反映しない（撮影はする。撮らないときは `display_types` で Mac を外す）。
 
 ## App Store Connect のバージョンとビルド
 

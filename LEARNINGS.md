@@ -155,6 +155,12 @@
   `Tools/*.py` のモジュールの先頭で PyJWT などの外の依存を import しない（`--check` や unittest まで依存を求めてしまう）
 - App Store Connect のバージョン（`appStoreVersions`）は iOS と macOS で別にあり（`filter[platform]=IOS` / `MAC_OS`）、言語ごとの掲載文（`appStoreVersionLocalizations`）とスクリーンショットのセットもバージョンごとに持つ。
   iOS だけに反映すると macOS の掲載文は空のまま。`Tools/upload_metadata.py`・`upload_screenshots.py` は `--platform` ごとに 1 回ずつ実行する。Mac のスクリーンショット（`APP_DESKTOP`）は 16:10 の 2880x1800・2560x1600・1440x900・1280x800 だけを受け付ける
+- `NSHostingView` を載せた `NSWindow` を `cacheDisplay(in:to:)` で PNG にするとき、`hostingView.superview`（ウィンドウの枠の View）を描くと、タイトルバーに出るタブ（`TabView`）とツールバーのボタンまで写る。
+  `NSBitmapImageRep(pixelsWide: 2880, pixelsHigh: 1800, …)` の `size` を 1440x900 ポイントにすると、画面の倍率によらず 2 倍で描ける
+- 上の方法で撮るウィンドウはマウスの操作を受けるので、手元の Mac ではポインタの下の `List` の行が選ばれ、`NavigationLink` の詳細が開いた状態で写った。`window.ignoresMouseEvents = true` にする。
+  また、一度描いた後にサンプルデータが入ると `List` の行の高さが計算し直されず、行が重なって写る（要対応のタブ）。待った後にウィンドウの大きさを 1pt 変えて戻すと計算し直される
+- `xcodebuild test` に `TEST_RUNNER_<名前>=値` の環境変数を付けると、テストのプロセスには `<名前>` で渡る（スキームを変えずにテストへ値を渡せる）。
+  Swift Testing の `@Suite(.enabled(if: …))` の条件は MainActor の外で評価されるので、MainActor 既定のターゲットでは条件に使う型を `nonisolated` にする（しないと「main actor-isolated static property can not be referenced from a Sendable closure」）
 
 ## Keychain
 

@@ -217,16 +217,26 @@ def display_type_platform(name: str) -> str:
     return display_type(name).get("platform") or DEFAULT_PLATFORM
 
 
-def capture_method(name: str) -> str | None:
-    """その表示サイズの撮り方。simulator: capture_screenshots.sh で撮る / derive: 縮めて作る / None: 撮る方法が無い。
+#: capture_method の値。simulator: iOS Simulator で撮る / macos-unit-test: macOS のユニットテストで撮る / derive: 縮めて作る
+CAPTURE_METHODS = ("simulator", "macos-unit-test", "derive")
 
-    capture_screenshots.sh は iOS Simulator で撮るので、devices を書いた iOS の表示サイズだけが対象。
-    Mac（APP_DESKTOP）は Simulator が無く、撮り方がまだ無いので None になる（撮影・反映の matrix から外す）。
+
+def capture_method(name: str) -> str | None:
+    """その表示サイズの撮り方（CAPTURE_METHODS のどれか）。撮る方法が無ければ None。
+
+    - simulator: devices を書いた iOS の表示サイズ。capture_screenshots.sh が iOS Simulator で撮る
+    - macos-unit-test: Mac（platform が MAC_OS）の表示サイズ。Simulator が無いので、capture_screenshots.sh から
+      capture_mac_screenshots.sh に切り替わり、macOS のユニットテストで撮影モードと同じ画面を描いて PNG にする
+    - derive: deriveFrom を書いた表示サイズ。撮らずに元の表示サイズを縮めて作る
+    - None: devices の無い iOS の表示サイズ（撮影・反映の matrix から外す）
     """
     entry = display_type(name)
     if entry.get("deriveFrom"):
         return "derive"
-    if entry.get("devices") and display_type_platform(name) == "IOS":
+    platform = display_type_platform(name)
+    if platform == "MAC_OS":
+        return "macos-unit-test"
+    if entry.get("devices"):
         return "simulator"
     return None
 
@@ -242,7 +252,8 @@ def matrix(selected: list[str] | None = None) -> dict:
     """GitHub Actions の matrix。撮る表示サイズ（capture）と、縮めて作る表示サイズ（derive）に分ける。
 
     縮めて作る表示サイズだけを指定したときも、元の表示サイズは撮る必要があるので capture に足す。
-    撮る方法が無い表示サイズ（Mac など）は、撮影にも反映にも入れず skipped に理由を付けて返す
+    capture の各項目の method は撮り方（simulator / macos-unit-test）で、ワークフローは iOS の準備をするかに使う。
+    撮る方法が無い表示サイズ（devices の無い iOS の表示サイズ）は、撮影にも反映にも入れず skipped に理由を付けて返す
     （ワークフローは Job Summary に出す）。
     """
     names = display_type_names(selected)
@@ -260,7 +271,7 @@ def matrix(selected: list[str] | None = None) -> dict:
             skipped.append({
                 "display_type": name,
                 "label": entry["label"],
-                "reason": "撮影の方法がまだ無いため、撮影と反映を飛ばします",
+                "reason": "撮影の方法が無い（devices を書いていない）ため、撮影と反映を飛ばします",
             })
         elif name not in capture:
             capture.append(name)
@@ -270,6 +281,7 @@ def matrix(selected: list[str] | None = None) -> dict:
         capture_entries.append({
             "display_type": name,
             "label": entry["label"],
+            "method": capture_method(name),
             "runs_on": entry.get("runsOn") or DEFAULT_RUNS_ON,
             "xcode_version": entry.get("xcodeVersion") or DEFAULT_XCODE_VERSION,
         })

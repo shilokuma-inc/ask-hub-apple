@@ -2,6 +2,7 @@
 set -euo pipefail
 
 # App Store 用のスクリーンショットを、1 つの表示サイズについて全言語・全画面ぶん撮る（iOS / iPadOS）。
+# Mac の表示サイズ（APP_DESKTOP）を渡すと Tools/capture_mac_screenshots.sh に切り替わる。
 #
 #   Tools/capture_screenshots.sh APP_IPHONE_67 [ja,en]
 #
@@ -48,10 +49,10 @@ if [ -n "$($CONFIG derive-from "$DISPLAY_TYPE")" ]; then
     exit 1
 fi
 
-# このスクリプトは iOS Simulator で撮る。Mac（APP_DESKTOP）などの iOS 以外の表示サイズは撮れない
-if [ "$($CONFIG platform "$DISPLAY_TYPE")" != "IOS" ]; then
-    echo "$DISPLAY_TYPE は iOS の表示サイズではないので、このスクリプトでは撮りません（iOS Simulator で撮るため）" >&2
-    exit 1
+# このスクリプトは iOS Simulator で撮る。Mac（APP_DESKTOP）の表示サイズは Simulator が無いので、
+# macOS のユニットテストで撮る Tools/capture_mac_screenshots.sh に任せる
+if [ "$($CONFIG platform "$DISPLAY_TYPE")" = "MAC_OS" ]; then
+    exec "$TOOLS_DIR/capture_mac_screenshots.sh" "$DISPLAY_TYPE" "$LANGUAGES"
 fi
 
 # project.yml から .xcodeproj を作るリポジトリでは、先に生成する

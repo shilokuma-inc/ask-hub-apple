@@ -9,6 +9,8 @@ macOS のバージョンが無いあいだも iOS の反映は止めたくない
 
 from __future__ import annotations
 
+import sys
+
 #: App Store Connect の platform の値 → 表示名
 PLATFORMS = {"IOS": "iOS", "MAC_OS": "macOS"}
 
@@ -18,6 +20,12 @@ FINISHED_STATES = {"REPLACED_WITH_NEW_VERSION", "REMOVED_FROM_SALE", "DEVELOPER_
 
 #: 反映先が無くて飛ばしたときに出す文言。ワークフローはこの文言でログを探し、Job Summary に知らせる
 SKIPPED_MARKER = "の反映を飛ばしました"
+
+
+#: 飛ばした理由（missing_version_reason）を見分ける文言。skipped_hint が理由ごとに人がすることを選ぶのに使う
+PLATFORM_NOT_ADDED = "のプラットフォームを追加していない"
+VERSION_NOT_FOUND = "にバージョン"
+NO_EDITABLE_VERSION = "編集できる状態のバージョンがありません"
 
 
 def platform_label(platform: str) -> str:
@@ -43,19 +51,50 @@ def missing_version_reason(client, app_id: str, version_string: str | None, plat
     )
     if not versions:
         return (f"App Store Connect のアプリに {label} のバージョンがありません"
-                f"（{label} のプラットフォームを追加していない）")
+                f"（{label} {PLATFORM_NOT_ADDED}）")
     if version_string:
         if any(v["attributes"]["versionString"] == version_string for v in versions):
             return None
-        return f"{label} にバージョン {version_string} がありません"
+        return f"{label} {VERSION_NOT_FOUND} {version_string} がありません"
     if any(is_editable(v["attributes"]) for v in versions):
         return None
     if not all(is_released(v["attributes"]) or version_state(v["attributes"]) in FINISHED_STATES
                for v in versions):
         return None
     states = ", ".join(sorted({version_state(v["attributes"]) for v in versions}))
-    return f"{label} に編集できる状態のバージョンがありません（いまある状態: {states}）"
+    return f"{label} に{NO_EDITABLE_VERSION}（いまある状態: {states}）"
 
 
 def skipped_message(platform: str, reason: str) -> str:
     return f"{platform_label(platform)} {SKIPPED_MARKER}: {reason}"
+
+
+def skipped_hint(message: str) -> str:
+    """飛ばしたときのログの行（skipped_message）から、反映するために人がすることを返す（Job Summary に載せる）。
+
+    理由によってすることが違う（プラットフォームの追加・そのバージョンの作成・新しいバージョンの作成）ので、
+    理由によらず「プラットフォームを追加して」と案内しない。
+    """
+    if PLATFORM_NOT_ADDED in message:
+        return ("App Store Connect でアプリに macOS のプラットフォームを追加し、macOS のバージョン（iOS と同じバージョン番号）を"
+                "用意してから再実行してください（docs/release.md の「macOS 版のアップロード」）。")
+    if NO_EDITABLE_VERSION in message:
+        return ("macOS には配信を終えたバージョンしかありません。App Store Connect で macOS の新しいバージョン"
+                "（iOS と同じバージョン番号）を作ってから再実行してください。")
+    if VERSION_NOT_FOUND in message:
+        return ("指定したバージョン番号の macOS のバージョンがありません。App Store Connect で同じ番号の macOS のバージョンを作るか、"
+                "app_version を見直してから再実行してください。")
+    return "理由を確かめ、App Store Connect の macOS のバージョンを用意してから再実行してください。"
+
+
+def main(argv: list[str]) -> int:
+    """ワークフローから使う。`hint <ログの行>` で、飛ばした理由に合う「人がすること」を 1 行で出す。"""
+    if len(argv) != 2 or argv[0] != "hint":
+        print("使い方: python3 Tools/app_store_platform.py hint '<macOS の反映を飛ばしました: … の行>'", file=sys.stderr)
+        return 2
+    print(skipped_hint(argv[1]))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
