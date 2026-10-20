@@ -16,7 +16,7 @@ final class ReleaseNotesModel {
     }
 
     /// 1 つのリリースの入力中の本文
-    private struct Editing {
+    struct Editing {
         var languages: [String]
         var texts: [String: String]
         var loadedTexts: [String: String]
@@ -44,7 +44,7 @@ final class ReleaseNotesModel {
     /// `errorMessage` が送らなかった理由か（次の読み取りの成功で消す）
     private var errorIsNotSentReason = false
     /// 別のリリースに切り替える前に直していた本文（`<リポジトリ> <バージョン>` → 本文）。戻ってきたら入力中の本文に戻す
-    @ObservationIgnored private var editingByRelease: [String: Editing] = [:]
+    @ObservationIgnored private(set) var editingByRelease: [String: Editing] = [:]
     /// アプリから起動したリリース（`<リポジトリ> <バージョン>`）。起動より新しい run が出るまで「起動した」状態を保ち、二重に起動しない
     private(set) var dispatched: [String: Dispatch] = [:]
     /// 起動した後に、リリースの状態を読み直す
@@ -103,6 +103,10 @@ final class ReleaseNotesModel {
             languages = editing?.languages ?? []
             texts = editing?.texts ?? [:]
             loadedTexts = editing?.loadedTexts ?? [:]
+        }
+        if let repository {
+            // このリポジトリの、今の準備中のリリース以外（タグができて終わったリリース）の直した本文は、戻す先が無いので捨てる
+            editingByRelease = editingByRelease.filter { !$0.key.hasPrefix("\(repository) ") }
         }
         if case .failed = progress?.notes {
             // 最新情報だけ読めなかった。読んだ本文（直したかを見分ける元）と言語は前のままにする

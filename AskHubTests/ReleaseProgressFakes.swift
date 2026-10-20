@@ -103,15 +103,22 @@ nonisolated final class FakeReader: ReleaseReading {
         notesFailure.withLock { $0 = notes }
     }
 
+    /// release/1.1.0 のタグ（v1.1.0）ができて、リリースが終わったか
+    private let isReleased = OSAllocatedUnfairLock(initialState: false)
+
+    func finishRelease() {
+        isReleased.withLock { $0 = true }
+    }
+
     func refs(repository: String) async throws -> ReleaseRefs {
         if let failure = refsFailure.withLock({ $0 }) {
             throw failure
         }
         let branch = "release/1.1.0"
-        let tag = "v1.0.0"
+        let tags = isReleased.withLock { $0 } ? ["v1.0.0", "v1.1.0"] : ["v1.0.0"]
         return ReleaseRefs(
             branches: [ReleaseRef(name: branch, sha: "1", version: ReleaseVersion(branch: branch))],
-            tags: [ReleaseRef(name: tag, sha: "0", version: ReleaseVersion(tag: tag))]
+            tags: tags.map { ReleaseRef(name: $0, sha: "0", version: ReleaseVersion(tag: $0)) }
         )
     }
 

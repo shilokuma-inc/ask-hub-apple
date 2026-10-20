@@ -220,9 +220,26 @@ struct ReleaseProgressTests {
         let finish = Self.run(id: 6, branch: "develop", status: .inProgress, title: "Release/Finish 1.1.0")
         fixture.finish.update { $0.runs = [other, finish] }
         await fixture.model.select(Self.repository)
-        #expect(statuses(fixture.model)[.distribution] == .done)
+        // 実行中のリリース後作業は配信前に手で起動したものかもしれないので、配信の段は「済み」にしない
+        #expect(statuses(fixture.model)[.distribution] == .waiting)
         #expect(statuses(fixture.model)[.finish] == .running)
         #expect(fixture.model.context?.progress?.finishWorkflow.run?.id == 6)
+    }
+
+    @Test func marksDistributionDoneOnlyWhenFinishRunSucceeded() async {
+        let fixture = makeFixture()
+        // 下書きのまま（確定前）に手で起動して失敗したリリース後作業
+        let failed = Self.run(id: 7, branch: "release/1.1.0", conclusion: .failure)
+        fixture.finish.update { $0.runs = [failed] }
+        await fixture.model.select(Self.repository)
+        #expect(statuses(fixture.model)[.distribution] == .notStarted)
+        #expect(statuses(fixture.model)[.finish] == .failed)
+
+        let succeeded = Self.run(id: 8, branch: "release/1.1.0")
+        fixture.finish.update { $0.runs = [succeeded] }
+        await fixture.model.refresh()
+        #expect(statuses(fixture.model)[.distribution] == .done)
+        #expect(statuses(fixture.model)[.finish] == .done)
     }
 
     @Test func matchesRunsOfVersion() {
