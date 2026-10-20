@@ -49,9 +49,33 @@ TOKEN_LIFETIME = 15 * 60
 #: スクリーンショットは取り込み待ちで 1 言語あたり数分かかるので、1 本のトークンでは足りなくなる
 TOKEN_REFRESH_MARGIN = 5 * 60
 
+#: 429（レート制限）のときに再試行する回数。App Store Connect の上限は 1 時間あたりのリクエスト数で決まる
+RATE_LIMIT_RETRIES = 4
+
+#: `Retry-After` が無いときの最初の待ち時間（秒）。再試行のたびに倍にする
+RATE_LIMIT_BACKOFF = 10
+
+#: 1 回に待つ時間の上限（秒）。`Retry-After` が長すぎるときは待たずに失敗させ、次の実行に任せる
+RATE_LIMIT_MAX_WAIT = 120
+
 
 class ApiError(RuntimeError):
-    pass
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        #: HTTP のステータスコード（転送の失敗などで無いときは None）
+        self.status = status
+
+
+def retry_after_seconds(headers, attempt: int) -> float:
+    """429 の応答から次の再試行までの秒数を決める。`Retry-After`（秒）があればそれに従う。"""
+    value = headers.get("Retry-After") if headers is not None else None
+    try:
+        seconds = float(value) if value is not None else None
+    except ValueError:  # HTTP 日付の形は App Store Connect では返らない想定。指数的に待つ
+        seconds = None
+    if seconds is None or seconds < 0:
+        seconds = RATE_LIMIT_BACKOFF * (2 ** attempt)
+    return seconds
 
 
 #: App Store のバージョンのプラットフォーム（`filter[platform]` などに渡す値）
@@ -100,17 +124,32 @@ class AppStoreConnect:
 
     def _request(self, method: str, url: str, payload: dict | None = None) -> dict:
         body = json.dumps(payload).encode() if payload is not None else None
-        request = urllib.request.Request(url, data=body, method=method)
-        request.add_header("Authorization", f"Bearer {self.token}")
-        if body is not None:
-            request.add_header("Content-Type", "application/json")
-        try:
-            with self._urlopen(request, timeout=REQUEST_TIMEOUT) as response:
-                raw = response.read()
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode(errors="replace")
-            raise ApiError(f"{method} {url} が {error.code} で失敗しました\n{detail}") from None
-        return json.loads(raw) if raw else {}
+        attempt = 0
+        while True:
+            request = urllib.request.Request(url, data=body, method=method)
+            request.add_header("Authorization", f"Bearer {self.token}")
+            if body is not None:
+                request.add_header("Content-Type", "application/json")
+            try:
+                with self._urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+                    raw = response.read()
+            except urllib.error.HTTPError as error:
+                detail = error.read().decode(errors="replace")
+                if error.code == 429 and attempt < RATE_LIMIT_RETRIES:
+                    # 429 は処理されずに断られているので、POST / PATCH でも同じ内容で送り直してよい
+                    wait = retry_after_seconds(error.headers, attempt)
+                    if wait <= RATE_LIMIT_MAX_WAIT:
+                        self._sleep(wait)
+                        attempt += 1
+                        continue
+                hint = ""
+                if error.code == 429:
+                    retry_after = error.headers.get("Retry-After") if error.headers else None
+                    hint = f"（レート制限。Retry-After: {retry_after or 'なし'}）"
+                raise ApiError(
+                    f"{method} {url} が {error.code} で失敗しました{hint}\n{detail}", error.code
+                ) from None
+            return json.loads(raw) if raw else {}
 
     def get(self, path: str, params: dict | None = None) -> dict:
         url = f"{API}{path}"
@@ -284,7 +323,9 @@ class AppStoreConnect:
                     pass
             except urllib.error.HTTPError as error:
                 detail = error.read().decode(errors="replace")
-                raise ApiError(f"{path.name} の転送が {error.code} で失敗しました\n{detail}") from None
+                raise ApiError(
+                    f"{path.name} の転送が {error.code} で失敗しました\n{detail}", error.code
+                ) from None
 
         self.patch(
             f"/v1/appScreenshots/{screenshot_id}",
