@@ -32,7 +32,8 @@ App Store の説明文・キーワード・プロモーションテキスト・�
 - リポジトリ変数 `ENABLE_MACOS_DELIVERY` が `false` なら、macOS には反映しない（「macOS 版のアップロード」と同じ変数）
 - JSON に書いていない項目（例: 省略した `promotionalText`・`marketingUrl`）は、App Store Connect 側の値をそのまま残す
 - `whatsNew` は `{"version": "1.1.0", "text": "…"}` の形で書き、`version` が反映先のバージョンと一致するときだけ書き込む。
-  最初のバージョン（1.0.0）には最新情報の欄が無いので書かない
+  そのプラットフォームの最初のバージョンには最新情報の欄が無いので、`whatsNew` が書いてあっても送らない（「最新情報の確定」の「初めてのリリースの最新情報」）。
+  リリースのたびの `whatsNew` は Release/Notes が release ブランチで書く
 - 掲載文の元は [docs/app-review.md](app-review.md) の「説明文（日本語）」。審査で指摘されやすい点（4.2・4.2.3）への対応を崩さないよう、書き換えるときは両方を見る
 
 手元で検査する（App Store Connect にはつながない）:
@@ -405,6 +406,75 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 - Secrets は Metadata/App Store と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`）。新しい Secret・vars は要らない
 - vars は任意の `ENABLE_DELIVERY`・`ENABLE_MACOS_DELIVERY`（上の「流れ」）
 - アプリのトークン（Fine-grained PAT）は、Actions の Read and write（起動と run の表示）と Contents の Read（release ブランチ・下書きの読み取り）があればよい
+
+## 最新情報の確定
+
+リリース準備が作った最新情報の下書きを人が確かめて直し、確定した本文を release ブランチに書いて App Store Connect に反映する（Discussion #605 の Q5）。
+ワークフローは `.github/workflows/release-notes.yml`（Release/Notes）。AskHub アプリの最新情報の確定が `workflow_dispatch` で起動する。Actions から手で起動してもよい。
+
+### 流れ
+
+| 順 | すること | 使うもの |
+| --- | --- | --- |
+| 1 | 入力の検査（`version` の形・起動した ref が `release/<v>` か `develop`） | |
+| 2 | `release/<v>` があり、`v<v>` のタグが無い（リリース済みでない）ことを確かめる | `Tools/release_notes.py check` |
+| 3 | `whats_new` を検査し、release ブランチの `AppStore/metadata/<言語>.json` の `whatsNew` を `{"version": "<v>", "text": "…"}` にして、下書き `AppStore/whats-new-draft.json` を消す | `Tools/release_notes.py apply` |
+| 4 | 変化があれば `[chore] <v> の最新情報を確定する` を積んで push する（作者は `github-actions[bot]`） | |
+| 5 | release ブランチで Metadata/App Store（`dry_run: false`・`app_version: <v>`）を起動する | `gh workflow run … --ref release/<v>` |
+| 6 | Job Summary に結果を出す（言語ごとの字数・書き換えたか・コミット・起動したワークフロー） | |
+
+- inputs は `version` と `whats_new`（どちらも必須）。`whats_new` は言語コード → 本文の JSON の文字列（例: `{"ja":"・受信箱を絞り込めるようにする"}`。形は「最新情報の下書き」の `whatsNew` と同じ）
+- `whats_new` の決まり（3 で検査し、1 つでも外れたら何も書かずに止める）:
+  - JSON のオブジェクト。キーは `AppStore/languages.json`（release ブランチのもの）の `language` を**すべて**（過不足なく。同じ言語を 2 回書かない）
+  - 値は文字列。前後の空白を外して空でなく、4000 字（Python の `len`。App Store Connect の上限）まで。テンプレートの仮の文言（`TODO:`）を含まない
+  - 本文は前後の空白を外して書く
+- run の表示名（`run-name`）は `Release/Notes <version>`。inputs は `run-name` の表示にだけ式で使い、`run:` の中には環境変数で渡す（`whats_new` は任意の文字列なので、シェルの引数にも載せない）
+- `Tools/` は起動した ref（ワークフローのファイルと同じコミット）のものを使い、書き換えるのは release ブランチの作業ツリー。`release/<v>` と `develop` 以外（別のバージョンの release ブランチ・作業中のブランチ）から起動すると止まる
+- **同じバージョンで何度起動してもよい。** 本文を変えて起動し直すと上書きする。同じ内容ならコミットを積まず、5 の反映だけをやり直す（Metadata/App Store が失敗したときのやり直しに使える）
+- 確定は同時に 1 つだけ動く（`concurrency`）。続けて起動すると、待っているもののうち最後に起動したものだけが動き、間のものは取り消される
+- `GITHUB_TOKEN` での push は新しいワークフローの run を起こさないので、確定のコミットで Upload（バイナリのアップロード）は動かない。メタデータは 5 で明示的に起動する
+- リポジトリ変数 `ENABLE_DELIVERY=false` のときは 1〜4 だけを行う（App Store Connect には触れない）
+
+### 初めてのリリースの最新情報
+
+App Store Connect は、そのプラットフォームの最初のバージョンに最新情報（`whatsNew`）の欄を持たない（Web の画面にも出ない）。
+
+- Release/Notes は初めてのリリース（前の `v*` タグが無い）でも、確定した本文（下書きの既定は「はじめてのリリースです。」）を `whatsNew` に書く。
+  アプリが「確定済み」と見分けられるように、また GitHub Release の本文に使うため。Job Summary に注意を出す
+- Metadata/App Store（`Tools/upload_metadata.py`）は、反映先がそのプラットフォームの最初のバージョン（ほかに配信した・配信を終えたバージョンが無い）なら `whatsNew` を送らず、ログに「最初のバージョンなので、whatsNew は書き込みません」と出す。
+  説明文などはそのまま反映する。iOS と macOS は別に数える（macOS を後から足したリリースでは、macOS にだけ送らない）
+- App Store Connect が最初のバージョンへの `whatsNew` を実際に弾くかは、まだ確かめていない（実機確認の Issue で確かめる）
+
+### アプリからの確定
+
+アプリは `release-notes.yml` を **`release/<v>` の ref で**起動する（inputs は `version` と `whats_new`。`ReleaseWorkflow.notesInputs`）。
+
+- アプリが送る前に見るのは形だけでよい（言語・字数・空でないことの正本はこのワークフローの検査）。止まったときの理由は run の Job Summary に出る
+- `release/<v>` を切った時点の `develop` に `release-notes.yml` が無かった release ブランチでは、`release/<v>` の ref では起動できない（dispatch がエラーになる）。そのときは Actions から `develop` を選んで起動する
+- 確定すると、release ブランチの `AppStore/whats-new-draft.json` が消え、すべての言語の `whatsNew.version` が `<v>` になる（アプリの「確定済み」）
+
+### 人がすること
+
+1. AskHub で最新情報の下書きを確かめ、直して確定する。手で起動するときは Actions → **Release/Notes** → Run workflow で、ブランチは `release/<v>`（無ければ `develop`）を選び、
+   `version` と `whats_new`（例: `{"ja":"・受信箱を絞り込めるようにする\n・起動時に落ちる不具合を直す"}`。改行は `\n`）を入れる
+2. run の Job Summary で、言語ごとの字数・コミットを確かめる。起動された Metadata/App Store の run の Job Summary で、iOS / macOS に最新情報が書き込まれたかを確かめる
+3. App Store Connect で審査に提出する（人が行う）。提出した後（審査中）は App Store Connect の最新情報を書き換えられないので、確定し直しても反映は失敗する
+
+### 失敗したとき
+
+| 起きたこと | 見るところ・すること |
+| --- | --- |
+| 「確定しませんでした」 | Job Summary の理由のとおり。`whats_new` の問題は 1 行ずつ出る。直して起動し直す（release ブランチは変えていない） |
+| 「release/<v> がありません」 | 先にリリース準備（Release/Prepare）を行う。バージョンの打ち間違いも確かめる |
+| 「タグ v<v> がすでにあります」 | リリース済み。最新情報は確定し直せない（次のバージョンで書く） |
+| release ブランチに push できなかった | 起動した後に release ブランチが進んだ（別の確定・人の push）。同じ内容で起動し直すと最新の先頭に積む |
+| Metadata/App Store の起動に失敗した | 確定のコミットは積んである。同じ内容で起動し直すと、コミットを積まずに反映だけを起動し直す。Actions から Metadata/App Store を `release/<v>`・`dry_run` オフで手で起動してもよい |
+| Metadata/App Store が失敗した | その run の Job Summary（「App Store のメタデータ」）。バージョンが審査中などで編集できないときは反映できない |
+
+### 権限・Secrets / vars
+
+- ジョブの権限は `contents: write`（release ブランチの push）・`actions: write`（`workflow_dispatch`）。`GITHUB_TOKEN` だけを使う
+- このワークフローは App Store Connect の Secrets を使わない（反映は Metadata/App Store が行う）。新しい Secret・vars は要らない。vars は任意の `ENABLE_DELIVERY`
 
 ## AskHub アプリが読むもの・起動するもの
 

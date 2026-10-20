@@ -434,7 +434,7 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   | run | `GET …/actions/workflows/<file>/runs?branch=…&event=workflow_dispatch&per_page=…`（直近の数件。ページングはしない） | 起動した run の状態（dispatch は run の id を返さないので、開始時刻で見分ける） |
 
 - **起動するもの**: `POST /repos/{owner}/{repo}/actions/workflows/<file>/dispatches`。ファイル名と inputs はワークフローと約束したもの:
-  `release-prepare.yml`（`version`。任意で `resume`。`ref` は `develop`）・`release-notes.yml`（`version`・`whats_new` = 言語コード → 本文の JSON の文字列）・
+  `release-prepare.yml`（`version`。任意で `resume`。`ref` は `develop`）・`release-notes.yml`（`version`・`whats_new` = 言語コード → 本文の JSON の文字列。`ref` は `release/<v>`）・
   `release-finish.yml`（`version`。ふだんは定期実行が起動する）。バージョンは `MAJOR.MINOR.PATCH`（先頭の 0 は不可）で、アプリは送る前に形だけを検査する（大小の決まりはワークフローの検査が正本）。
   `release-prepare.yml` の run の `display_title` は `run-name` の `Release/Prepare <version>`（run の一覧は inputs を返さないので、どのバージョンの run かはこれで見分ける）
 - **エラー**: 403（レート制限でない）は権限不足、ワークフローの 404 は「このリポジトリにはリリースのワークフローがありません」、422 は GitHub の説明から
