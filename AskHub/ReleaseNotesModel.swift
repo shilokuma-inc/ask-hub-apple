@@ -292,6 +292,11 @@ final class ReleaseNotesModel {
                 return
             }
             if latest?.isRunning == true {
+                // 最後に読んだ後に始まった run なので、状態を読み直して進み具合にも出す。理由は読み直しで消えないよう、その後に出す
+                await onNeedsRefresh?()
+                guard repository == self.repository, version == self.version else {
+                    return
+                }
                 showNotSent("最新情報の確定の run が実行中です。終わってから確定してください")
                 return
             }
@@ -307,6 +312,11 @@ final class ReleaseNotesModel {
             }
             return
         }
+        didDispatch(repository: repository, version: version, whatsNew: whatsNew, previousRunID: previousRunID, now: now)
+    }
+
+    /// 起動できたら「起動した」状態にして、少し後にリリースの状態を読み直す
+    private func didDispatch(repository: String, version: ReleaseVersion, whatsNew: [String: String], previousRunID: Int?, now: Date) {
         dispatched["\(repository) \(version)"] = Dispatch(date: now, previousRunID: previousRunID)
         if repository == self.repository, version == self.version {
             // 入力中の本文を送った本文（前後の空白を外したもの）にそろえる。確定が反映されて読んだ本文と同じになれば「直した」扱いも終わる
