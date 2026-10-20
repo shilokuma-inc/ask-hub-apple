@@ -57,6 +57,13 @@ push_error() {
   echo "${reason:-理由はログを見てください}"
 }
 
+# $1: gh api の標準エラーを書いたファイル。1 行にまとめる
+check_run_error() {
+  local reason
+  reason=$(sed '/^$/d' "$1" 2> /dev/null | head -2 | tr '\n' ' ')
+  echo "${reason:-理由はログを見てください}"
+}
+
 # $1: コミット、$2: check run の説明
 create_check_run() {
   gh api --silent -X POST "repos/${GITHUB_REPOSITORY}/check-runs" \
@@ -203,11 +210,17 @@ else
     cat "$RUNNER_TEMP/push-${target}.err" >&2
     stop_with_pull_request rejected "push を断られました: $(push_error "$RUNNER_TEMP/push-${target}.err")"
   fi
-  if create_check_run "$merged" "${branch} を ${target} に取り込むマージコミットです。${branch} にしかないコミットに AI 帰属行が無いことを、Release/Finish の check ジョブで確かめました。" &&
-    git push --quiet origin "${merged}:refs/heads/${target}" 2> "$RUNNER_TEMP/push-${target}.err"; then
+  if ! create_check_run "$merged" "${branch} を ${target} に取り込むマージコミットです。${branch} にしかないコミットに AI 帰属行が無いことを、Release/Finish の check ジョブで確かめました。" 2> "$RUNNER_TEMP/check-run-${target}.err"; then
+    # push を断られたのではない（develop には何も push していない）。API の失敗の理由を出す
+    cat "$RUNNER_TEMP/check-run-${target}.err" >&2
+    pushed=check-run
+  elif git push --quiet origin "${merged}:refs/heads/${target}" 2> "$RUNNER_TEMP/push-${target}.err"; then
     pushed=1
   fi
   git push --quiet origin --delete "$temp_branch" 2> /dev/null || echo "::warning::一時ブランチ ${temp_branch} を消せませんでした"
+fi
+if [ "$pushed" = "check-run" ]; then
+  stop_with_pull_request rejected "コミット $(commit_link "$merged") に check run「${check_name}」を付けられませんでした（${target} には push していません）: $(check_run_error "$RUNNER_TEMP/check-run-${target}.err")"
 fi
 if [ "$pushed" != "1" ]; then
   cat "$RUNNER_TEMP/push-${target}.err" >&2 2> /dev/null || true
