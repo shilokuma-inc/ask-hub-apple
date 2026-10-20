@@ -63,6 +63,10 @@
   後続を動かすには `if: ${{ !cancelled() && (needs.<id>.result == 'skipped' || needs.<id>.outputs.<名前> == 'true') }}` のように状態の関数を付ける（前のジョブが失敗したときは outputs が空になるので、この条件なら後続は飛ぶ）
 - `strategy.matrix.include: ${{ fromJSON(needs.plan.outputs.x) }}` に空の配列（`[]`）を渡すと、ジョブを作れず「Matrix must define at least one vector」で run が失敗する。
   設定によって空になりうる matrix（例: Mac の表示サイズだけを指定したときの撮影）は、前のジョブで `has_x=$(jq -r 'length > 0')` を出し、ジョブの `if:` で飛ばす
+- `GET /repos/{owner}/{repo}/git/matching-refs/{ref}` は前方一致で、合うものが無くても 404 ではなく `200` の空の配列を返す。`heads/release/` のように末尾の `/` を付けると
+  `release/…` だけに絞れる（付けないと `release-x` も合う）。`refs/heads/`・`refs/tags/` を付けた名前で返る
+- Contents API（`GET /repos/{owner}/{repo}/contents/{path}?ref=…`）の `content` は base64 を 60 文字ごとに改行した文字列。Swift では
+  `Data(base64Encoded:options: .ignoreUnknownCharacters)` で読む。ファイルもブランチも無ければ 404 で、ディレクトリなら配列が返る
 
 ## ビルド・テスト
 
