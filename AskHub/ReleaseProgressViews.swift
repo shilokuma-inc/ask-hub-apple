@@ -146,6 +146,8 @@ struct ReleaseNotesView: View {
                     TextField("最新情報", text: textBinding(language), axis: .vertical)
                         .lineLimit(4...16)
                         .focused($isEditing)
+                        // 欄が言語の数だけ並ぶので、読み上げでどの言語か分かるようにする
+                        .accessibilityLabel("\(languageTitle(language))の最新情報")
                         .accessibilityIdentifier("whats-new-\(language)")
                 } header: {
                     Text(languageTitle(language))
@@ -278,7 +280,7 @@ struct ReleaseDraftSourceSection: View {
         } header: {
             Text(header)
         } footer: {
-            Text("灰色の PR は本文に載せていません（CI・ドキュメントだけの PR など）")
+            Text("「（載せない）」の付いた PR は本文に載せていません（CI・ドキュメントだけの PR など）")
         }
     }
 
@@ -291,7 +293,9 @@ struct ReleaseDraftSourceSection: View {
 
     @ViewBuilder
     private func row(_ pullRequest: WhatsNewDraft.PullRequest) -> some View {
-        let text = Text("#\(pullRequest.number) \(pullRequest.type.map { "【\($0)】" } ?? "")\(pullRequest.title)")
+        // 色だけで区別しない（色の見分けにくい人・読み上げでも分かるよう、載せない PR には文字を付ける）
+        let suffix = pullRequest.included ? "" : "（載せない）"
+        let text = Text("#\(pullRequest.number) \(pullRequest.type.map { "【\($0)】" } ?? "")\(pullRequest.title)\(suffix)")
             .foregroundStyle(pullRequest.included ? .primary : .secondary)
         if let url = pullRequest.url {
             Link(destination: url) {
