@@ -43,8 +43,11 @@ final class ReleaseRequestModel {
     private(set) var dispatched: [String: Dispatch] = [:]
 
     struct Dispatch: Equatable {
+        /// 起動した時刻（端末の時計）。「起動した」状態を保つ最長の時間（`dispatchPendingLimit`）を数えるのに使う
         var date: Date
         var version: ReleaseVersion
+        /// 起動したときに出ていた直近の run の id（まだ run が無ければ `nil`）。これより大きい id の run が出たら、起動した run とみなす
+        var previousRunID: Int?
     }
 
     /// 「起動した」状態を保つ最長の時間。これを過ぎても run が出なければ、起動に失敗したものとして押し直せるようにする
@@ -254,6 +257,7 @@ final class ReleaseRequestModel {
             errorMessage = "リリース準備を始めませんでした。" + (notStartableReason(now: now) ?? "")
             return
         }
+        let previousRunID = context?.latestRun?.id
         isStarting = true
         errorMessage = nil
         defer { isStarting = false }
@@ -273,7 +277,7 @@ final class ReleaseRequestModel {
             }
             return
         }
-        dispatched[repository] = Dispatch(date: now, version: version)
+        dispatched[repository] = Dispatch(date: now, version: version, previousRunID: previousRunID)
         // dispatch は run の id を返さず、直後の一覧にはまだ出ないので、少し待ってから取り直す
         Task { [weak self, dispatchRefreshDelay] in
             try? await Task.sleep(for: dispatchRefreshDelay)
@@ -281,14 +285,13 @@ final class ReleaseRequestModel {
         }
     }
 
-    /// 起動より後に始まった run が出たら「起動した」状態を終える。
-    /// run の開始時刻は秒精度なので、起動した時刻は秒に切り捨てて比べる
+    /// 起動したときより新しい run（id が大きい）が出たら「起動した」状態を終える。
+    /// run の id はリポジトリの中で増えていくので、端末の時計がずれていても見分けられる（開始時刻とは比べない）
     private func clearDispatchedIfRunStarted(_ run: WorkflowRun?) {
         guard let repository, let dispatch = dispatched[repository], let run else {
             return
         }
-        let dispatchedSecond = Date(timeIntervalSince1970: dispatch.date.timeIntervalSince1970.rounded(.down))
-        if run.startedAt >= dispatchedSecond {
+        if dispatch.previousRunID.map({ run.id > $0 }) ?? true {
             dispatched[repository] = nil
         }
     }

@@ -71,6 +71,8 @@ actor SampleReleaseWorkflow: WorkflowProviding {
 
     /// 起動したリポジトリ → 起動した時刻とバージョン
     private var dispatched: [String: (date: Date, version: String)] = [:]
+    /// 起動したリポジトリ → 直近の run の id。本物と同じく、起動するたびに新しい（大きい）id の run にする
+    private var runIDs: [String: Int] = [:]
 
     func availability(repository: String) async throws -> WorkflowAvailability {
         SampleReleaseReader.marketingVersions[repository] == nil ? .notFound : .active
@@ -86,7 +88,7 @@ actor SampleReleaseWorkflow: WorkflowProviding {
         }
         return [
             WorkflowRun(
-                id: 1,
+                id: runIDs[repository, default: 1],
                 repository: repository,
                 branch: branch ?? GitHubReleaseReader.developBranch,
                 headSHA: "0000000",
@@ -101,6 +103,7 @@ actor SampleReleaseWorkflow: WorkflowProviding {
     }
 
     func dispatch(repository: String, ref: String, inputs: [String: String]) async throws {
+        runIDs[repository, default: 0] += 1
         dispatched[repository] = (Date(), inputs["version"] ?? "")
     }
 }
