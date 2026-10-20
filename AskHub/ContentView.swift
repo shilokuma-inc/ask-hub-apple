@@ -25,7 +25,22 @@ struct ContentView: View {
     let mergeModel: MergeQueueModel
     let loopModel: LoopStatusModel
     @State private var isShowingSettings = false
-    @State private var selection = AppTab.action
+    @State private var selection: AppTab
+
+    /// - Parameter initialTab: 開いたときのタブ。撮影モード（`ScreenshotDemo`）では撮る画面のタブを渡す
+    init(
+        model: InboxModel,
+        requestModel: IdeaRequestModel,
+        mergeModel: MergeQueueModel,
+        loopModel: LoopStatusModel,
+        initialTab: AppTab = .action
+    ) {
+        self.model = model
+        self.requestModel = requestModel
+        self.mergeModel = mergeModel
+        self.loopModel = loopModel
+        _selection = State(initialValue: initialTab)
+    }
 
     var body: some View {
         // iOS のタブバーは 5 つまで（6 つ目からは「その他」にまとめられる）

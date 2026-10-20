@@ -5,9 +5,9 @@ extension InboxModel {
     /// UI テストでサンプルデータを表示する起動引数
     static let sampleLaunchArgument = "-AskHubSampleInbox"
 
-    /// アプリの起動時に使うモデル。デモモードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
+    /// アプリの起動時に使うモデル。デモモード・撮影モードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
     static func launchDefault() -> InboxModel {
-        if DemoMode.isEnabled {
+        if DemoMode.usesSampleData {
             return sample()
         }
         #if DEBUG
@@ -20,9 +20,9 @@ extension InboxModel {
 }
 
 extension IdeaRequestModel {
-    /// アプリの起動時に使うモデル。デモモードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
+    /// アプリの起動時に使うモデル。デモモード・撮影モードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
     static func launchDefault() -> IdeaRequestModel {
-        if DemoMode.isEnabled {
+        if DemoMode.usesSampleData {
             return sample()
         }
         #if DEBUG
@@ -35,9 +35,9 @@ extension IdeaRequestModel {
 }
 
 extension MergeQueueModel {
-    /// アプリの起動時に使うモデル。デモモードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
+    /// アプリの起動時に使うモデル。デモモード・撮影モードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
     static func launchDefault() -> MergeQueueModel {
-        if DemoMode.isEnabled {
+        if DemoMode.usesSampleData {
             return sample()
         }
         #if DEBUG
