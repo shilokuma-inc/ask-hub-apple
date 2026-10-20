@@ -35,9 +35,9 @@ struct SendIdeaRequestIntent: AppIntent {
             let sent = try await IdeaRequestSubmission().send(repository: repository.id, summary: summary, body: body)
             return .result(value: sent.url, dialog: "\(sent.message)")
         } catch IdeaRequestInputError.summary {
-            throw $summary.needsValueError("要約を 1 行で教えてください")
+            throw $summary.needsValueError("要約が空か、2 行以上になっています。1 行で教えてください")
         } catch IdeaRequestInputError.body {
-            throw $body.needsValueError("依頼の内容を教えてください")
+            throw $body.needsValueError("依頼文が空です。依頼の内容を教えてください")
         }
     }
 }
@@ -62,7 +62,7 @@ struct IntentSentRequest: Equatable {
 struct IdeaRequestSubmission {
     var requesters = IntentRequesterSource()
 
-    /// 依頼の Issue を作る。要約・依頼文が送れない形なら `IdeaRequestInputError`、それ以外の失敗は `AppIntentError`（アプリと同じ文言）
+    /// 依頼の Issue を作る。要約・依頼文が送れない形なら `IdeaRequestInputError`、それ以外の失敗は `AskHubIntentError`（アプリと同じ文言）
     func send(repository: String, summary: String, body: String) async throws -> IntentSentRequest {
         let request = IdeaRequest(repository: repository, summary: summary, body: body)
         let trimmedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -77,13 +77,13 @@ struct IdeaRequestSubmission {
                 throw IdeaRequestError.invalidRequest
             }
             let isSample = requesters.usesSampleData()
-            let issue = try await requesters.requester().create(request)
+            let issue = try await requesters.requester(usesSampleData: isSample).create(request)
             let sent = SentRequest(request: request, issue: issue)
             // デモモードでは GitHub に書き込まないので、送っていないことを添える
             let message = isSample ? sent.message + "（デモモードのため、GitHub には送っていません）" : sent.message
             return IntentSentRequest(url: issue.htmlURL, message: message)
         } catch {
-            throw AppIntentError.wrapping(error)
+            throw AskHubIntentError.wrapping(error)
         }
     }
 }
