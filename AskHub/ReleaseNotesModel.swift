@@ -84,6 +84,12 @@ final class ReleaseNotesModel {
             errorMessage = nil
             errorIsNotSentReason = false
         }
+        if isSameRelease, case .failed = progress?.notes {
+            // 最新情報だけ読めなかった。読んだ本文（直したかを見分ける元）と言語は前のままにする
+            // （空にすると、次に読めたときに直していない本文まで「直した」扱いで残る）。確定は blockingReason で止める
+            clearDispatchedIfRunStarted()
+            return
+        }
         let newTexts = Self.texts(of: progress?.releaseNotes)
         languages = Self.languages(of: progress?.releaseNotes)
         if isSameRelease {
