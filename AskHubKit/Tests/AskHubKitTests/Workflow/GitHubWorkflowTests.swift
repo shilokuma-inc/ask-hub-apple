@@ -158,6 +158,7 @@ struct GitHubWorkflowTests {
     @Test func classifiesDispatchRejections() async throws {
         let cases: [(String?, DispatchRejection)] = [
             ("Workflow does not have 'workflow_dispatch' trigger", .noWorkflowDispatchTrigger),
+            ("Cannot trigger a 'workflow_dispatch' on a disabled workflow", .workflowDisabled),
             ("No ref found for: release/9.9.9", .refNotFound),
             (#"Unexpected inputs provided: ["foo"]"#, .invalidInputs),
             ("Required input 'version' not provided", .invalidInputs),

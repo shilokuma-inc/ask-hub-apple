@@ -159,6 +159,9 @@ public enum WorkflowError: Error, Equatable, Sendable {
 
 /// 起動（`workflow_dispatch`）が 422 で断られた理由
 public enum DispatchRejection: Sendable, Equatable, Hashable {
+    /// ワークフローが無効にされている（`Cannot trigger a 'workflow_dispatch' on a disabled workflow`）。
+    /// 定期実行のあるワークフローは、public リポジトリで 60 日動きが無いと `disabled_inactivity` になる
+    case workflowDisabled
     /// `ref` 側のファイルに `workflow_dispatch` が無い（`Workflow does not have 'workflow_dispatch' trigger`）
     case noWorkflowDispatchTrigger
     /// `ref` のブランチ・タグが無い（`No ref found for: …`）
@@ -170,7 +173,10 @@ public enum DispatchRejection: Sendable, Equatable, Hashable {
 
     init(message: String?) {
         let message = message?.lowercased() ?? ""
-        if message.contains("workflow_dispatch") {
+        // 無効のときの説明にも `workflow_dispatch` が入るので、先に見る
+        if message.contains("disabled workflow") {
+            self = .workflowDisabled
+        } else if message.contains("does not have 'workflow_dispatch'") {
             self = .noWorkflowDispatchTrigger
         } else if message.contains("no ref found") {
             self = .refNotFound
@@ -186,7 +192,7 @@ public enum DispatchRejection: Sendable, Equatable, Hashable {
 public enum WorkflowAvailability: Sendable, Equatable, Hashable {
     /// あって、有効（`state` が `active`）
     case active
-    /// あるが、無効にされている（`disabled_manually`・`disabled_inactivity` など。`state` をそのまま持つ）。起動は 422 になる
+    /// あるが、無効にされている（`disabled_manually`・`disabled_inactivity` など。`state` をそのまま持つ）。起動は 422（`DispatchRejection.workflowDisabled`）になる
     case disabled(state: String)
     /// 無い（404）。トークンからリポジトリが見えない・Actions が無効のときも 404 になる
     case notFound
