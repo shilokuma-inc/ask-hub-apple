@@ -1,7 +1,7 @@
 """メタデータ・スクリーンショットの反映先のプラットフォーム（iOS / macOS）の扱いのテスト。
 
 App Store Connect にはつながない（HTTP は差し替える）。PyJWT も import しない
-（`app_store_connect` が読み込み時に `import jwt` するので、空のモジュールを先に置く）。
+（`app_store_connect` は PyJWT をトークンを作る関数の中でだけ import する）。
 
     python3 -m unittest discover -s Tools/tests -t .
 """
@@ -12,15 +12,12 @@ import contextlib
 import io
 import sys
 import tempfile
-import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
 TOOLS = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS))
-# PyJWT はトークンを作るときにしか使わない。テストではトークンを作らないので空のモジュールで足りる
-sys.modules.setdefault("jwt", types.ModuleType("jwt"))
 
 import app_store_config  # noqa: E402
 import app_store_connect  # noqa: E402
