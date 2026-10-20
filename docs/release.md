@@ -167,3 +167,69 @@ macOS ランナーの枠を開発のビルドと取り合わないよう、撮�
 
 Secrets / vars は「App Store のメタデータ」と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`、任意の `ENABLE_DELIVERY`）。
 `ENABLE_DELIVERY=false` のときは撮るだけで反映しない。
+
+## App Store Connect のバージョンとビルド
+
+リリース準備（`release-prepare.yml`）と定期実行（`release-sync.yml`）は、App Store Connect のバージョンの用意・ビルドの紐付け・配信の検知を
+`Tools/release_app_store.py` で行う（Discussion #605 の Q4・Q7）。審査への提出と輸出コンプライアンスの回答は人が行う。
+
+### 使い方
+
+```bash
+python3 Tools/release_app_store.py prepare --version 1.1.0       # バージョンを用意する（無ければ作る）
+python3 Tools/release_app_store.py attach-build --version 1.1.0  # 処理が終わった最新のビルドを紐付ける
+python3 Tools/release_app_store.py status --version 1.1.0        # 状態を見て、配信済みかを判定する
+```
+
+- 対象は `--platforms`（既定 `IOS,MAC_OS`）。`--dry-run` を付けると読むだけで何も書き換えない
+- 認証は Metadata/App Store と同じ（`APP_STORE_CONNECT_KEY_ID`・`APP_STORE_CONNECT_ISSUER_ID`・`APP_STORE_CONNECT_PRIVATE_KEY_PATH`）。Bundle ID は `Configs/Project.xcconfig` から読む
+- 結果は JSON で標準出力に出る（人に向けた説明は標準エラー）。終了コードは 0 = 成功・1 = 失敗（`error` に理由）・2 = 引数の誤り
+
+```json
+{
+  "command": "prepare",
+  "ok": true,
+  "version": "1.1.0",
+  "bundleId": "jp.shilokuma.AskHub",
+  "appId": "…",
+  "dryRun": false,
+  "platforms": {
+    "IOS": {"status": "created", "versionId": "…", "versionString": "1.1.0", "state": "PREPARE_FOR_SUBMISSION", "editable": true, "released": false, "message": "…"},
+    "MAC_OS": {"status": "platform-missing", "message": "…"}
+  },
+  "messages": ["…", "…"]
+}
+```
+
+プラットフォームごとの `status`:
+
+| サブコマンド | status | 意味 |
+| --- | --- | --- |
+| すべて | `platform-missing` | App Store Connect のアプリにそのプラットフォームが無い（バージョンが 1 つも無い）。macOS なら飛ばして iOS だけで続ける（`--optional-platforms` に無い iOS なら失敗） |
+| `prepare` | `created` / `exists` / `renamed` | 作った / すでにあった / 残っていた編集できるバージョンの `versionString` を書き換えた（`previousVersionString` に元の値） |
+| `prepare` | `blocked` | 人が App Store Connect で直す必要がある（下の「編集できるバージョンが残っているとき」）。失敗になる |
+| `attach-build` | `attached` / `already-attached` | 最新のビルドを紐付けた（`previousBuildId` に前のビルド）/ すでに紐付いている |
+| `attach-build` | `waiting-for-build` / `locked` / `version-missing` | 処理が終わったビルドがまだ無い / 審査中・配信済みなので触らない / そのバージョンが無い |
+| `status` | `released` / `not-released` / `version-missing` | 配信済み / まだ / そのバージョンが無い。トップの `released` は、バージョンがあるプラットフォームすべてで配信済みのとき `true` |
+
+- ビルドは `/v1/builds` を、バージョン（`CFBundleShortVersionString`）・プラットフォーム・`processingState=VALID`・期限切れでないもので探し、`uploadedDate` が最も新しいものを選ぶ。
+  release ブランチへの push のたびにビルドが上がるので、審査に出す前なら新しいビルドに差し替える
+- 配信済みとみなすのは、`appVersionState` が `READY_FOR_DISTRIBUTION`、または非推奨の `appStoreState` が `READY_FOR_SALE`・`REPLACED_WITH_NEW_VERSION` のとき。
+  承認後の公開待ち（`PENDING_DEVELOPER_RELEASE`）や配信の処理中は含めない（手動で公開するまでリリース後作業を始めない）
+- 一覧はページングを最後までたどる。429（レート制限）は `Retry-After` の秒数（無ければ 10 秒から倍々）を待って 4 回まで送り直す。`Retry-After` が 120 秒を超えるときは待たずに失敗にして、次の実行に任せる
+
+### 編集できるバージョンが残っているとき
+
+App Store Connect では、編集できる状態（提出準備中・却下など）のバージョンはプラットフォームごとに 1 つしか持てず、残っていると新しいバージョンを作れない。
+`prepare` は、残っているバージョンがリリースのバージョン以下（例: プラットフォームを追加したときに自動で作られる `1.0`）なら `versionString` を書き換えて使う。
+入力済みの説明文・スクリーンショットは残り、メタデータとスクリーンショットの反映で上書きされる。
+
+残っているバージョンの方が新しい・形が違う・複数ある、または `--other-editable fail` のときは `blocked` で止まる。App Store Connect の画面でそのバージョンの番号を直すか消してから、リリース準備を再実行する。
+
+### 手元で確かめる
+
+```bash
+python3 -m unittest discover -s Tools/tests -t .
+```
+
+HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流すので、App Store Connect にはつながず、PyJWT も要らない。PR では Verify/App Store metadata が同じテストを流す。
