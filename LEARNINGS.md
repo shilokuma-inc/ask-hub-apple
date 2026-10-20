@@ -220,6 +220,8 @@
 - `Process` で起動したスクリプトに `kill(pid, SIGTERM)` を送っても、スクリプトが起動した `claude` などの子孫は止まらない（オーケストレーターと同じプロセスグループにいるので、グループごとにも送れない）。
   bash は前景の子（コマンド置換の中のパイプなど）を待つ間は SIGTERM の処理を待たせるので、子が動き続ける限りスクリプトも終わらず、SIGKILL で終わると `trap … EXIT` の後片付けも走らない。
   制限時間で止めるときは、送る前に `proc_listchildpids` で子孫を集め（親が先に終わると launchd に付け替えられて辿れない）、まとめて送る。スクリプトには `trap 'exit 143' TERM` を置いて後片付けを走らせる
+- `trap 'status=$?; …; exit "$status"' EXIT` のように trap の文字列の中で代入すると、shellcheck は代入を見つけられず SC2154（referenced but not assigned）の警告を出す（`-S warning` で落ちる）。
+  処理を関数（`on_exit() { status=$?; …; }`）にして `trap on_exit EXIT` にする。関数の先頭の `$?` は trap が起きたときの終了コードのまま
 
 ## SwiftUI
 
