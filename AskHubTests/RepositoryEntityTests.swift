@@ -93,7 +93,7 @@ struct RepositoryEntityTests {
 
     @Test func explainsMissingToken() async {
         let requester = ListingRequester()
-        let error = await #expect(throws: AppIntentError.self) {
+        let error = await #expect(throws: AskHubIntentError.self) {
             try await makeCandidates(tokenStore: InMemoryTokenStore(token: nil), requester: requester).all(now: now)
         }
 
@@ -102,7 +102,7 @@ struct RepositoryEntityTests {
     }
 
     @Test func explainsKeychainFailure() async {
-        let error = await #expect(throws: AppIntentError.self) {
+        let error = await #expect(throws: AskHubIntentError.self) {
             try await makeCandidates(tokenStore: FailingTokenStore(), requester: ListingRequester()).all(now: now)
         }
 
@@ -114,7 +114,7 @@ struct RepositoryEntityTests {
         (GitHubError.rateLimited(retryAfter: .seconds(60)), "GitHub のレート制限中です。60 秒ほど待ってから更新してください")
     ])
     func explainsGitHubFailureWithAppMessage(failure: GitHubError, expected: String) async {
-        let error = await #expect(throws: AppIntentError.self) {
+        let error = await #expect(throws: AskHubIntentError.self) {
             try await makeCandidates(requester: ListingRequester(failure: failure)).all(now: now)
         }
 

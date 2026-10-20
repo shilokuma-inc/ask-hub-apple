@@ -110,7 +110,7 @@ struct SendIdeaRequestIntentTests {
     @Test func rejectsInvalidRepository() async {
         let requester = RecordingRequester()
 
-        let error = await #expect(throws: AppIntentError.self) {
+        let error = await #expect(throws: AskHubIntentError.self) {
             try await makeSubmission(requester: requester).send(repository: "not a repo", summary: "要約", body: "依頼文")
         }
         #expect(error?.message == "リポジトリを選び、要約（1 行）と依頼文を入力してください")
@@ -120,7 +120,7 @@ struct SendIdeaRequestIntentTests {
     @Test func explainsMissingToken() async {
         let requester = RecordingRequester()
 
-        let error = await #expect(throws: AppIntentError.self) {
+        let error = await #expect(throws: AskHubIntentError.self) {
             try await makeSubmission(tokenStore: InMemoryTokenStore(token: nil), requester: requester)
                 .send(repository: "o/r", summary: "要約", body: "依頼文")
         }
@@ -129,7 +129,7 @@ struct SendIdeaRequestIntentTests {
     }
 
     @Test func explainsKeychainFailure() async {
-        let error = await #expect(throws: AppIntentError.self) {
+        let error = await #expect(throws: AskHubIntentError.self) {
             try await makeSubmission(tokenStore: FailingTokenStore(), requester: RecordingRequester())
                 .send(repository: "o/r", summary: "要約", body: "依頼文")
         }
@@ -143,7 +143,7 @@ struct SendIdeaRequestIntentTests {
         GitHubError.rateLimited(retryAfter: .seconds(60))
     ])
     func explainsGitHubFailureWithAppMessage(failure: GitHubError) async {
-        let error = await #expect(throws: AppIntentError.self) {
+        let error = await #expect(throws: AskHubIntentError.self) {
             try await makeSubmission(requester: RecordingRequester(failure: failure))
                 .send(repository: "o/r", summary: "要約", body: "依頼文")
         }
@@ -154,13 +154,19 @@ struct SendIdeaRequestIntentTests {
     }
 
     @Test func explainsGitHubFailureMessages() async {
-        let notFound = await #expect(throws: AppIntentError.self) {
+        let forbidden = await #expect(throws: AskHubIntentError.self) {
+            try await makeSubmission(requester: RecordingRequester(failure: GitHubError.http(status: 403, message: "Forbidden")))
+                .send(repository: "o/r", summary: "要約", body: "依頼文")
+        }
+        #expect(forbidden?.message == "GitHub とのやり取りに失敗しました（HTTP 403: Forbidden）")
+
+        let notFound = await #expect(throws: AskHubIntentError.self) {
             try await makeSubmission(requester: RecordingRequester(failure: GitHubError.http(status: 404, message: "Not Found")))
                 .send(repository: "o/r", summary: "要約", body: "依頼文")
         }
         #expect(notFound?.message == "GitHub とのやり取りに失敗しました（HTTP 404: Not Found）")
 
-        let limited = await #expect(throws: AppIntentError.self) {
+        let limited = await #expect(throws: AskHubIntentError.self) {
             try await makeSubmission(requester: RecordingRequester(failure: GitHubError.rateLimited(retryAfter: .seconds(60))))
                 .send(repository: "o/r", summary: "要約", body: "依頼文")
         }
@@ -172,6 +178,12 @@ struct SendIdeaRequestIntentTests {
             try await makeSubmission(requester: RecordingRequester(failure: CancellationError()))
                 .send(repository: "o/r", summary: "要約", body: "依頼文")
         }
+        // 通信中のキャンセル（URLSession）も、失敗の文言にしない
+        let error = await #expect(throws: URLError.self) {
+            try await makeSubmission(requester: RecordingRequester(failure: URLError(.cancelled)))
+                .send(repository: "o/r", summary: "要約", body: "依頼文")
+        }
+        #expect(error?.code == .cancelled)
     }
 
     @Test func doesNotSendToGitHubInDemoMode() async throws {

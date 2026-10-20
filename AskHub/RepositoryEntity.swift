@@ -43,7 +43,7 @@ struct RepositoryCandidates {
         do {
             repositories = try await requesters.requester().repositories(in: organizations())
         } catch {
-            throw AppIntentError.wrapping(error)
+            throw AskHubIntentError.wrapping(error)
         }
         return RepositorySection.grouping(repositories, now: now).flatMap(\.repositories)
     }
