@@ -1,117 +1,14 @@
 @testable import AskHub
 import AskHubKit
 import Foundation
-import os
 import Testing
-
-/// `FakeWorkflow` の中身
-private struct FakeWorkflowState {
-    var availability = WorkflowAvailability.active
-    var runs: [WorkflowRun] = []
-    /// 起動の直前の読み直しでだけ返す run（最後に読んだ状態より後に始まった run）
-    var runsAfterRead: [WorkflowRun]?
-    var failure: WorkflowError?
-    var dispatched: [String] = []
-    var dispatchedInputs: [[String: String]] = []
-    var recentRunsCalls = 0
-}
-
-/// 1 つのワークフロー。有無・run・起動の失敗を差し替えられ、起動を記録する
-nonisolated private final class FakeWorkflow: WorkflowProviding {
-    let file: String
-    private let state = OSAllocatedUnfairLock(initialState: FakeWorkflowState())
-
-    init(file: String) {
-        self.file = file
-    }
-
-    var dispatched: [String] {
-        state.withLock { $0.dispatched }
-    }
-
-    var dispatchedInputs: [[String: String]] {
-        state.withLock { $0.dispatchedInputs }
-    }
-
-    func update(_ change: @Sendable (inout FakeWorkflowState) -> Void) {
-        state.withLock { change(&$0) }
-    }
-
-    func availability(repository: String) async throws -> WorkflowAvailability {
-        state.withLock { $0.availability }
-    }
-
-    func latestRun(repository: String, branch: String) async throws -> LatestWorkflowRun {
-        state.withLock { state in
-            guard state.availability != .notFound else {
-                return .unsupported
-            }
-            return state.runs.first { $0.branch == branch }.map(LatestWorkflowRun.run) ?? .noRuns
-        }
-    }
-
-    func recentRuns(repository: String, branch: String?, event: String?, limit: Int) async throws -> [WorkflowRun] {
-        state.withLock { state in
-            state.recentRunsCalls += 1
-            if let runsAfterRead = state.runsAfterRead {
-                // 一度だけ返す（次の読み取りからは runs に入れたものを返す）
-                state.runsAfterRead = nil
-                state.runs = runsAfterRead
-            }
-            return state.runs.filter { branch == nil || $0.branch == branch }
-        }
-    }
-
-    func dispatch(repository: String, ref: String, inputs: [String: String]) async throws {
-        try state.withLock { state in
-            if let failure = state.failure {
-                throw failure
-            }
-            state.dispatched.append("\(repository) \(ref)")
-            state.dispatchedInputs.append(inputs)
-        }
-    }
-}
-
-/// release/1.1.0（タグなし）があるリポジトリ。最新情報の状態を差し替えられる
-nonisolated private final class FakeReader: ReleaseReading {
-    private let status = OSAllocatedUnfairLock<ReleaseNotes.Status?>(initialState: nil)
-    private let whatsNew = OSAllocatedUnfairLock<[String: ConfirmedWhatsNew]>(initialState: [:])
-
-    func set(status: ReleaseNotes.Status, whatsNew: [String: ConfirmedWhatsNew] = [:]) {
-        self.status.withLock { $0 = status }
-        self.whatsNew.withLock { $0 = whatsNew }
-    }
-
-    func refs(repository: String) async throws -> ReleaseRefs {
-        let branch = "release/1.1.0"
-        let tag = "v1.0.0"
-        return ReleaseRefs(
-            branches: [ReleaseRef(name: branch, sha: "1", version: ReleaseVersion(branch: branch))],
-            tags: [ReleaseRef(name: tag, sha: "0", version: ReleaseVersion(tag: tag))]
-        )
-    }
-
-    func marketingVersion(repository: String, ref: String) async throws -> MarketingVersion {
-        MarketingVersion(raw: "1.0.0")
-    }
-
-    func whatsNewDraft(repository: String, version: ReleaseVersion) async throws -> WhatsNewDraft? {
-        nil
-    }
-
-    func releaseNotes(repository: String, version: ReleaseVersion) async throws -> ReleaseNotes {
-        let status = status.withLock { $0 } ?? .draft(ReleaseProgressTests.draft(text: "・通知を直しました"))
-        return ReleaseNotes(version: version, status: status, languages: ["ja"], whatsNew: whatsNew.withLock { $0 })
-    }
-}
 
 @MainActor
 struct ReleaseProgressTests {
-    private static let repository = "shilokuma-inc/ask-hub-apple"
-    private static let version = ReleaseVersion(major: 1, minor: 1, patch: 0)
+    static let repository = "shilokuma-inc/ask-hub-apple"
+    static let version = ReleaseVersion(major: 1, minor: 1, patch: 0)
 
-    private struct Fixture {
+    struct Fixture {
         let model: ReleaseRequestModel
         let reader: FakeReader
         let workflows: [String: FakeWorkflow]
@@ -122,7 +19,7 @@ struct ReleaseProgressTests {
         var finish: FakeWorkflow { workflows[ReleaseWorkflow.finish.file]! }
     }
 
-    private func makeFixture() -> Fixture {
+    func makeFixture() -> Fixture {
         let reader = FakeReader()
         let files = [ReleaseProgress.uploadFile] + ReleaseWorkflow.allCases.map(\.file)
         let workflows = Dictionary(uniqueKeysWithValues: files.map { ($0, FakeWorkflow(file: $0)) })
@@ -150,7 +47,7 @@ struct ReleaseProgressTests {
         )
     }
 
-    private static func run(
+    static func run(
         id: Int,
         branch: String,
         status: WorkflowRun.Status = .completed,
@@ -171,7 +68,7 @@ struct ReleaseProgressTests {
         )
     }
 
-    private func statuses(_ model: ReleaseRequestModel) -> [ReleaseStep.Kind: ReleaseStep.Status] {
+    func statuses(_ model: ReleaseRequestModel) -> [ReleaseStep.Kind: ReleaseStep.Status] {
         Dictionary(uniqueKeysWithValues: (model.context?.progress?.steps ?? []).map { ($0.id, $0.status) })
     }
 
@@ -230,10 +127,14 @@ struct ReleaseProgressTests {
         #expect(fixture.model.notes.isDispatchPending())
         #expect(fixture.model.notes.blockingReason()?.contains("起動しました") == true)
 
-        // 起動したときの run のままなら「起動した」状態のまま。直した本文は読み直しても消さない
+        // 入力中の本文は送った本文（前後の空白を外したもの）にそろえる
+        let sent = "・通知を直しました\n・\"引用\"も直しました"
+        #expect(fixture.model.notes.texts["ja"] == sent)
+
+        // 起動したときの run のままなら「起動した」状態のまま。まだ下書きが残っていても、送った本文は読み直しで下書きに戻さない
         await fixture.model.refresh()
         #expect(fixture.model.notes.isDispatchPending())
-        #expect(fixture.model.notes.texts["ja"]?.hasPrefix("  ・通知") == true)
+        #expect(fixture.model.notes.texts["ja"] == sent)
         // id の大きい run が出たら終える。実行中のあいだは確定できない
         let newRun = Self.run(id: 4, branch: "release/1.1.0", status: .inProgress)
         fixture.notes.update { $0.runs = [newRun] }
@@ -283,6 +184,8 @@ struct ReleaseProgressTests {
         await fixture.model.notes.confirm()
         #expect(fixture.notes.dispatched.isEmpty)
         #expect(fixture.model.notes.errorMessage == "最新情報を確定しませんでした。最新情報の確定の run が実行中です。終わってから確定してください")
+        // 送らなかったときも読み直して、実行中の run を進み具合に出す
+        #expect(statuses(fixture.model)[.notes] == .running)
 
         // run が終わって読み直したら、送らなかった理由は消す
         let finished = Self.run(id: 9, branch: "release/1.1.0")
