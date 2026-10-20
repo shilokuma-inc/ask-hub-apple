@@ -186,6 +186,12 @@ jobs:
             --platforms "$platforms" > "$RUNNER_TEMP/asc.json" || true
           ok=$(jq -r '.ok // false' "$RUNNER_TEMP/asc.json" 2>/dev/null || echo false)
           echo "ok=${ok}" >> "$GITHUB_OUTPUT"
+          # iOS のバージョンを用意できたか（macOS だけが error / blocked でも、iOS の反映は続けるため）
+          ios=$(jq -r '.platforms.IOS.status // ""' "$RUNNER_TEMP/asc.json" 2>/dev/null || echo "")
+          case "$ios" in
+            created|exists|renamed) echo "ios_ready=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "ios_ready=false" >> "$GITHUB_OUTPUT" ;;
+          esac
           {
             echo
             echo "### App Store Connect のバージョン"
@@ -210,11 +216,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ASC_OK: ${{ steps.asc.outputs.ok }}
+          IOS_READY: ${{ steps.asc.outputs.ios_ready }}
         run: |
           set -euo pipefail
           branch="release/${VERSION}"
           failed=0
           rows=()
+          notes=()
 
           # $1: ワークフローのファイル名、$2: 説明、残り: gh workflow run に渡す -f
           dispatch() {
@@ -234,11 +242,16 @@ jobs:
 
           # バイナリは App Store Connect のバージョンが無くても上げられるので、バージョンの用意に失敗しても上げる
           dispatch upload.yml "アップロード（iOS / macOS）"
-          if [ "$ASC_OK" = "true" ]; then
+          # スクリーンショット・メタデータは iOS のバージョンを用意できたら起動する。macOS だけが error / blocked のときは、
+          # 反映の側が macOS のバージョンの無いものを飛ばすか macOS の分だけ失敗し、iOS には反映される
+          if [ "$ASC_OK" = "true" ] || [ "$IOS_READY" = "true" ]; then
             dispatch app-store-screenshots.yml "スクリーンショット" -f "app_version=${VERSION}"
             dispatch app-store-metadata.yml "メタデータ" -f "app_version=${VERSION}" -f dry_run=false
+            if [ "$ASC_OK" != "true" ]; then
+              notes+=("macOS のバージョンを用意できなかったので、スクリーンショット・メタデータは iOS にだけ反映されます（macOS の分は飛ばされるか失敗します）。App Store Connect で直してから resume をオンにして再実行すると、macOS にも反映します。")
+            fi
           else
-            rows+=("| スクリーンショット・メタデータ | 飛ばした（App Store Connect のバージョンを用意できなかった） |")
+            rows+=("| スクリーンショット・メタデータ | 飛ばした（iOS の App Store Connect のバージョンを用意できなかった） |")
           fi
 
           {
@@ -249,6 +262,10 @@ jobs:
             echo "| --- | --- |"
             printf '%s\n' "${rows[@]}"
             echo
+            for note in ${notes[@]+"${notes[@]}"}; do
+              echo "- ${note}"
+              echo
+            done
             echo "進み具合は [Actions](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions) の各ワークフローの run で見られます（起動の直後は一覧に出るまで数秒かかります）。"
           } >> "$SUMMARY"
           echo "failed=${failed}" >> "$GITHUB_OUTPUT"
