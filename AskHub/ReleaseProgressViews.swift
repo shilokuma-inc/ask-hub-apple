@@ -27,7 +27,11 @@ struct ReleaseProgressSection: View {
         } header: {
             Text("準備中のリリース \(progress.version.description)")
         } footer: {
-            Text("App Store Connect の処理・審査の状況はアプリでは見られません。リリース後作業は配信を検知すると自動で始まります")
+            if notes.readFailure != nil {
+                Text("読み直せなかったので、前に読んだ状態を出しています。App Store Connect の処理・審査の状況はアプリでは見られません")
+            } else {
+                Text("App Store Connect の処理・審査の状況はアプリでは見られません。リリース後作業は配信を検知すると自動で始まります")
+            }
         }
     }
 
@@ -112,6 +116,15 @@ struct ReleaseNotesView: View {
     var body: some View {
         @Bindable var model = model
         Form {
+            if let readFailure = model.readFailure {
+                Section {
+                    Label(readFailure, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                } footer: {
+                    Text("前に読んだ状態と入力中の本文を出しています。更新で読み直してください")
+                }
+            }
+
             if let notes = model.notes {
                 Section {
                     LabeledContent("状態", value: statusText(notes))

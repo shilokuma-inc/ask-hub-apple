@@ -157,9 +157,15 @@ final class ReleaseRequestModel {
         }
         isLoading = false
         notes.isReading = false
+        apply(result, repository: repository, resetsVersion: resetsVersion)
+    }
+
+    /// 読み取りの結果を反映する
+    private func apply(_ result: ContextState, repository: String, resetsVersion: Bool) {
         contextState = result
-        notes.update(repository: repository, progress: context?.progress)
-        if case .loaded(let context) = result {
+        switch result {
+        case .loaded(let context):
+            notes.update(repository: repository, progress: context.progress)
             if errorIsNotStartedReason {
                 errorMessage = nil
                 errorIsNotStartedReason = false
@@ -168,6 +174,13 @@ final class ReleaseRequestModel {
             if resetsVersion || versionText.isEmpty {
                 versionText = context.marketingVersion?.nextMinor?.description ?? ""
             }
+
+        case .failed(let message):
+            // 前に読んだ進み具合と入力中の本文は消さない（iOS で最新情報の画面を開いていても閉じない）。理由は最新情報の画面にも出す
+            notes.readFailed(repository: repository, message: message)
+
+        case .idle, .loading:
+            break
         }
     }
 

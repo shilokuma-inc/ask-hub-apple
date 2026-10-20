@@ -32,6 +32,8 @@ final class ReleaseNotesModel {
     var isReading = false
     private(set) var isConfirming = false
     private(set) var errorMessage: String?
+    /// リリースの状態を読み直せなかった理由（読めたら `nil`）。前に読んだ進み具合と入力中の本文は残したまま出す
+    private(set) var readFailure: String?
     /// `errorMessage` が送らなかった理由か（次の読み取りの成功で消す）
     private var errorIsNotSentReason = false
     /// アプリから起動したリリース（`<リポジトリ> <バージョン>`）。起動より新しい run が出るまで「起動した」状態を保ち、二重に起動しない
@@ -77,6 +79,7 @@ final class ReleaseNotesModel {
         let isSameRelease = repository == self.repository && progress?.version == self.progress?.version
         self.repository = repository
         self.progress = progress
+        readFailure = nil
         if errorIsNotSentReason || !isSameRelease {
             errorMessage = nil
             errorIsNotSentReason = false
@@ -92,6 +95,14 @@ final class ReleaseNotesModel {
         }
         loadedTexts = newTexts
         clearDispatchedIfRunStarted()
+    }
+
+    /// リリースの状態を読み直せなかったことを反映する。前に読んだ進み具合と入力中の本文は残す（別のリポジトリを読めなかったときは何もしない）
+    func readFailed(repository: String, message: String) {
+        guard repository == self.repository, progress != nil else {
+            return
+        }
+        readFailure = message
     }
 
     /// 読んだ本文。下書きがあれば下書き、無ければこのバージョンで確定した本文
@@ -167,14 +178,8 @@ final class ReleaseNotesModel {
         guard let progress else {
             return "準備中のリリースがありません"
         }
-        switch progress.notes {
-        case .failed(let message):
-            return message
-
-        case .loaded(let notes):
-            if case .unsupportedDraft(let schemaVersion) = notes.status {
-                return "下書きの形（schemaVersion \(schemaVersion)）に、このアプリは対応していません。アプリを新しくしてください"
-            }
+        if let reason = readingBlockingReason(progress) {
+            return reason
         }
         if let reason = workflowBlockingReason(progress.notesWorkflow) {
             return reason
@@ -195,6 +200,24 @@ final class ReleaseNotesModel {
             return "\(language) の最新情報が\(problem)"
         }
         return nil
+    }
+
+    /// 読み直せなかった・最新情報を読めなかった・読めない下書きのときの理由
+    private func readingBlockingReason(_ progress: ReleaseProgress) -> String? {
+        if readFailure != nil {
+            // 前に読んだ状態のまま送ると、そのあいだに変わった run や下書きを見落とす
+            return "リリースの状態を読み直せませんでした。更新してからもう一度確定してください"
+        }
+        switch progress.notes {
+        case .failed(let message):
+            return message
+
+        case .loaded(let notes):
+            if case .unsupportedDraft(let schemaVersion) = notes.status {
+                return "下書きの形（schemaVersion \(schemaVersion)）に、このアプリは対応していません。アプリを新しくしてください"
+            }
+            return nil
+        }
     }
 
     private func workflowBlockingReason(_ workflow: ReleaseProgress.WorkflowState) -> String? {

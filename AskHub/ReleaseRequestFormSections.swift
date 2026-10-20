@@ -25,7 +25,8 @@ struct ReleaseRequestFormSections: View {
                 repositoryFooter
             }
 
-            if let context = model.context, let repository = model.repository, let progress = context.progress {
+            // 進み具合は最新情報のモデルが持つものを出す。読み直しに失敗しても前に読んだものを残し、iOS で開いている最新情報の画面を閉じない
+            if let repository = model.repository, model.notes.repository == repository, let progress = model.notes.progress {
                 ReleaseProgressSection(repository: repository, progress: progress, notes: model.notes)
             }
 
