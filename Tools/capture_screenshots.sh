@@ -113,7 +113,16 @@ cleanup() {
 # bash 3.2 では unbound variable で止まったとき EXIT トラップに終了コード 0 が渡り、失敗したのにステップが成功扱いになる。
 # 最後まで到達した印（FINISHED）が無ければ失敗として返す
 FINISHED=0
-trap 'status=$?; if [ "$status" -eq 0 ] && [ "$FINISHED" -ne 1 ]; then status=1; fi; cleanup; exit "$status"' EXIT
+# trap の文字列の中で代入すると shellcheck が代入を見つけられない（SC2154）ので、関数にする
+on_exit() {
+    status=$?
+    if [ "$status" -eq 0 ] && [ "$FINISHED" -ne 1 ]; then
+        status=1
+    fi
+    cleanup
+    exit "$status"
+}
+trap on_exit EXIT
 
 echo "機種: ${DEVICE_NAME}（${UDID}）"
 
