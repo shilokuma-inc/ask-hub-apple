@@ -106,3 +106,7 @@ private_keys/
 # （ralph-loop の制御用 worktree に残ると、起動スクリプトが worktree を片付けられない）
 *.profraw
 *.profdata
+
+# Tools/ の Python を実行したときにできるもの（ワークフローは .venv に PyJWT を入れる）
+__pycache__/
+.venv/
