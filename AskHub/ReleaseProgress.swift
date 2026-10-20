@@ -238,15 +238,20 @@ struct ReleaseProgress: Equatable {
         return Self(
             version: version,
             prepareRun: prepareRun,
-            upload: state(await upload),
+            upload: state(await upload, name: "アップロード", file: uploadFile),
             notes: notesState,
-            notesWorkflow: state(await notesWorkflow),
-            finishWorkflow: state(await finishWorkflow)
+            notesWorkflow: state(await notesWorkflow, name: ReleaseWorkflow.notes.actionName, file: ReleaseWorkflow.notes.file),
+            finishWorkflow: state(await finishWorkflow, name: ReleaseWorkflow.finish.actionName, file: ReleaseWorkflow.finish.file)
         )
     }
 
-    private static func state(_ read: WorkflowRead) -> WorkflowState {
-        WorkflowState(availability: read.availability, run: read.run, failure: read.error.map(ReleaseRequestModel.readingMessage(for:)))
+    /// 読み取りの結果を段の状態にする。失敗の説明は、そのワークフローの名前で出す
+    private static func state(_ read: WorkflowRead, name: String, file: String) -> WorkflowState {
+        WorkflowState(
+            availability: read.availability,
+            run: read.run,
+            failure: read.error.map { ReleaseRequestModel.readingMessage(for: $0, workflow: (name: name, file: file)) }
+        )
     }
 
     nonisolated private static func readNotes(

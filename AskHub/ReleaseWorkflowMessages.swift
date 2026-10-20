@@ -65,13 +65,27 @@ extension ReleaseWorkflow {
 }
 
 extension ReleaseRequestModel {
-    /// リリースの状態を読むときの失敗の説明。読む段階の 403 は起動の失敗ではないので、起動の文言にしない
-    static func readingMessage(for error: any Error) -> String {
+    /// リリースの状態を読むときの失敗の説明。読む段階の 403 は起動の失敗ではないので、起動の文言にしない。
+    /// `workflow` は読んだワークフローの名前とファイル名（`nil` ならリリース準備。進み具合の各段は、その段のワークフローを渡す）
+    static func readingMessage(for error: any Error, workflow: (name: String, file: String)? = nil) -> String {
         switch error {
         case WorkflowError.permissionDenied:
             // レート制限の 403 は GitHubClient が rateLimited にするのでここには来ない
             return "リリースの状態を読めませんでした。トークンに、このリポジトリの Actions の Read and write と Contents の Read があるか確かめてください。"
                 + "設定で権限を付けたトークンを保存し直してください"
+
+        case WorkflowError.workflowNotFound:
+            guard let workflow else {
+                return message(for: error)
+            }
+            return "このリポジトリには\(workflow.name)のワークフロー（\(workflow.file)）がありません（Actions が無効か、トークンから見えないときも同じです）"
+
+        case WorkflowError.dispatchNotSupported(let detail):
+            guard let workflow else {
+                return message(for: error)
+            }
+            // 読み取りで 422 が来ても、起動の文言（リリース準備を起動できませんでした）にしない
+            return "\(workflow.name)の run を読めませんでした" + (detail.map { "（\($0)）" } ?? "")
 
         default:
             return message(for: error)
