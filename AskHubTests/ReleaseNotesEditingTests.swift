@@ -106,6 +106,29 @@ extension ReleaseProgressTests {
         #expect(fixture.model.notes.editingByRelease.isEmpty)
     }
 
+    @Test func endsEditedStateAfterConfirmedTextIsRead() async {
+        let fixture = makeFixture()
+        await fixture.model.select(Self.repository)
+        fixture.model.notes.texts["ja"] = "  ・直して確定する本文\n"
+        #expect(fixture.model.notes.isEdited)
+
+        await fixture.model.notes.confirm()
+        #expect(fixture.notes.dispatched.count == 1)
+        // 送った本文（前後の空白を外したもの）にそろえる。確定が反映されるまでは「直した」扱いのまま
+        #expect(fixture.model.notes.texts == ["ja": "・直して確定する本文"])
+        #expect(fixture.model.notes.isEdited)
+
+        // 確定済みとして読めたら、読んだ本文と同じなので「直した」扱いが終わる
+        let confirmedRun = Self.run(id: 4, branch: "release/1.1.0")
+        fixture.notes.update { $0.runs = [confirmedRun] }
+        fixture.reader.set(status: .confirmed, whatsNew: ["ja": ConfirmedWhatsNew(version: "1.1.0", text: "・直して確定する本文")])
+        await fixture.model.refresh()
+        #expect(fixture.model.notes.loadedTexts == ["ja": "・直して確定する本文"])
+        #expect(!fixture.model.notes.isEdited)
+        #expect(!fixture.model.notes.isDispatchPending())
+        #expect(statuses(fixture.model)[.notes] == .done)
+    }
+
     @Test func choosesPrepareRunOfVersion() async {
         let fixture = makeFixture()
         // 直近の run は別のバージョン（ブランチを切る前に失敗したものなど）
