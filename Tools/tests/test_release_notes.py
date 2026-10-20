@@ -106,8 +106,15 @@ class ParseWhatsNewTests(unittest.TestCase):
     def test_unknown_and_missing_languages(self):
         problems = self.problems(json.dumps({"fr": "Nouveau"}), ["ja", "en"])
         self.assertEqual(len(problems), 2)
-        self.assertIn("無い言語があります: fr", problems[0])
+        self.assertIn('無い言語があります: "fr"', problems[0])
         self.assertIn("本文の無い言語があります: ja, en", problems[1])
+
+    def test_unknown_language_key_is_escaped_to_one_line(self):
+        # 改行を含むキーで ::error:: の行を割り、別のワークフローコマンドを差し込めないこと
+        problems = self.problems(json.dumps({"ja": "本文", "x\n::warning::y": "z"}))
+        self.assertEqual(len(problems), 1)
+        self.assertNotIn("\n", problems[0])
+        self.assertIn('"x\\n::warning::y"', problems[0])
 
     def test_empty_object(self):
         self.assertIn("本文の無い言語があります: ja", self.problems("{}")[0])
@@ -132,7 +139,7 @@ class ParseWhatsNewTests(unittest.TestCase):
         self.assertIn("TODO:", self.problems(json.dumps({"ja": "TODO: 書く"}))[0])
 
     def test_duplicated_language(self):
-        self.assertIn("2 回以上", self.problems('{"ja": "一", "ja": "二"}')[0])
+        self.assertIn('2 回以上あります: "ja"', self.problems('{"ja": "一", "ja": "二"}')[0])
 
     def test_all_problems_are_reported_together(self):
         problems = self.problems(json.dumps({"ja": "", "en": 1}), ["ja", "en"])
