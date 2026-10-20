@@ -31,7 +31,8 @@ esac
 branch="release/${VERSION}"
 temp_branch="release-finish/${VERSION}/${target}"
 check_name="No AI Attribution"
-root=$(git rev-parse --show-toplevel)
+# release_finish.py はこのスクリプトと同じ Tools/ のもの（起動した ref。取り込みは作業ディレクトリのリポジトリで行う）
+tools=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 output() {
   echo "$1=$2" >> "$GITHUB_OUTPUT"
@@ -177,7 +178,7 @@ if ! git -C "$worktree" merge --quiet --no-ff --no-edit -m "Merge branch '${bran
 fi
 
 if [ "$target" = "develop" ]; then
-  python3 "$root/Tools/release_finish.py" --root "$worktree" develop-version --version "$VERSION" > "$RUNNER_TEMP/develop-version.json"
+  python3 "$tools/release_finish.py" --root "$worktree" develop-version --version "$VERSION" > "$RUNNER_TEMP/develop-version.json"
   if [ "$(jq -r '.changed' "$RUNNER_TEMP/develop-version.json")" = "true" ]; then
     next=$(jq -r '.version' "$RUNNER_TEMP/develop-version.json")
     git -C "$worktree" add Configs/Project.xcconfig
