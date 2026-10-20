@@ -800,6 +800,9 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
   失敗の文言は依頼先の候補と同じくアプリと同じで、トークンの値は出さない
 - デモモードでは GitHub に書き込まず、文言に「デモモードのため、GitHub には送っていません」を添える
 - 送った依頼はアプリの「送った依頼」の一覧（メモリにだけ持つ）には出ない。GitHub の Issue として残る
+- Siri のフレーズは `AskHubShortcuts`（`AppShortcutsProvider`）で登録する。日本語は「AskHub で依頼」「AskHub に依頼を送る」「AskHub で機能追加を依頼」、
+  英語は「Request with AskHub」「Send a request to AskHub」「Request a feature with AskHub」。フレーズはコードに英語（開発言語）で書き、日本語の訳は `AskHub/AppShortcuts.xcstrings` に置く。
+  ショートカット App・Spotlight には「依頼を送る」として出る
 
 ## リポジトリの作成・削除
 
