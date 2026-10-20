@@ -2,9 +2,9 @@ import AskHubKit
 import Foundation
 
 extension LoopStatusModel {
-    /// アプリの起動時に使うモデル。デモモードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
+    /// アプリの起動時に使うモデル。デモモード・撮影モードならサンプルデータ。DEBUG ビルドでは起動引数でも切り替えられる
     static func launchDefault() -> LoopStatusModel {
-        if DemoMode.isEnabled {
+        if DemoMode.usesSampleData {
             return sample()
         }
         #if DEBUG
