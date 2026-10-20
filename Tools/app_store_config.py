@@ -18,6 +18,7 @@
     python3 Tools/app_store_config.py devices APP_IPHONE_67
     python3 Tools/app_store_config.py sizes APP_IPHONE_67
     python3 Tools/app_store_config.py derive-from APP_IPHONE_61   # 縮めて作る元の表示サイズ（無ければ空）
+    python3 Tools/app_store_config.py platform APP_DESKTOP        # 反映先のプラットフォーム（IOS / MAC_OS）
     python3 Tools/app_store_config.py display-types [APP_IPHONE_67,...]  # GitHub Actions の matrix 用 JSON
     python3 Tools/app_store_config.py bundle-id
 """
@@ -43,6 +44,10 @@ MAX_SCREENSHOTS = 10
 #: screenshots.json の表示サイズで runsOn / xcodeVersion を省いたときの既定
 DEFAULT_RUNS_ON = "macos-latest"
 DEFAULT_XCODE_VERSION = "26.6"
+
+#: screenshots.json の表示サイズの platform（App Store Connect のバージョンのプラットフォーム）。省略すると IOS
+PLATFORMS = ("IOS", "MAC_OS")
+DEFAULT_PLATFORM = "IOS"
 
 
 class Language(NamedTuple):
@@ -190,11 +195,40 @@ def display_type(name: str) -> dict:
             f"指定できるのは: {', '.join(display_types)}"
         )
     entry = display_types[name]
+    platform = entry.get("platform") or DEFAULT_PLATFORM
+    if platform not in PLATFORMS:
+        raise SystemExit(
+            f"{SCREENSHOTS_FILE.name} の {name} の platform は {' / '.join(PLATFORMS)} のどれかにしてください: {platform}"
+        )
+    sizes = entry.get("sizes")
+    if not sizes or not all(isinstance(size, str) and re.fullmatch(r"[1-9][0-9]*x[1-9][0-9]*", size) for size in sizes):
+        raise SystemExit(f"{SCREENSHOTS_FILE.name} の {name} の sizes は \"2880x1800\" の形の寸法を 1 つ以上書いてください")
     source = entry.get("deriveFrom")
     if source:
-        if source not in display_types or display_types[source].get("deriveFrom"):
+        if source not in display_types or display_types[source].get("deriveFrom") or not display_types[source].get("devices"):
             raise SystemExit(f"{SCREENSHOTS_FILE.name} の {name} の deriveFrom は、撮影する表示サイズにしてください: {source}")
+        if (display_types[source].get("platform") or DEFAULT_PLATFORM) != platform:
+            raise SystemExit(f"{SCREENSHOTS_FILE.name} の {name} の deriveFrom は、同じ platform の表示サイズにしてください: {source}")
     return entry
+
+
+def display_type_platform(name: str) -> str:
+    """その表示サイズを反映する App Store Connect のバージョンのプラットフォーム（IOS / MAC_OS）。"""
+    return display_type(name).get("platform") or DEFAULT_PLATFORM
+
+
+def capture_method(name: str) -> str | None:
+    """その表示サイズの撮り方。simulator: capture_screenshots.sh で撮る / derive: 縮めて作る / None: 撮る方法が無い。
+
+    capture_screenshots.sh は iOS Simulator で撮るので、devices を書いた iOS の表示サイズだけが対象。
+    Mac（APP_DESKTOP）は Simulator が無く、撮り方がまだ無いので None になる（撮影・反映の matrix から外す）。
+    """
+    entry = display_type(name)
+    if entry.get("deriveFrom"):
+        return "derive"
+    if entry.get("devices") and display_type_platform(name) == "IOS":
+        return "simulator"
+    return None
 
 
 def display_type_names(selected: list[str] | None = None) -> list[str]:
@@ -208,16 +242,26 @@ def matrix(selected: list[str] | None = None) -> dict:
     """GitHub Actions の matrix。撮る表示サイズ（capture）と、縮めて作る表示サイズ（derive）に分ける。
 
     縮めて作る表示サイズだけを指定したときも、元の表示サイズは撮る必要があるので capture に足す。
+    撮る方法が無い表示サイズ（Mac など）は、撮影にも反映にも入れず skipped に理由を付けて返す
+    （ワークフローは Job Summary に出す）。
     """
     names = display_type_names(selected)
     capture: list[str] = []
     derive: list[dict] = []
+    skipped: list[dict] = []
     for name in names:
         entry = display_type(name)
-        if entry.get("deriveFrom"):
+        method = capture_method(name)
+        if method == "derive":
             derive.append({"display_type": name, "label": entry["label"], "source": entry["deriveFrom"]})
             if entry["deriveFrom"] not in capture:
                 capture.append(entry["deriveFrom"])
+        elif method is None:
+            skipped.append({
+                "display_type": name,
+                "label": entry["label"],
+                "reason": "撮影の方法がまだ無いため、撮影と反映を飛ばします",
+            })
         elif name not in capture:
             capture.append(name)
     capture_entries = []
@@ -230,8 +274,12 @@ def matrix(selected: list[str] | None = None) -> dict:
             "xcode_version": entry.get("xcodeVersion") or DEFAULT_XCODE_VERSION,
         })
     # 反映は、指定された表示サイズだけ（元にするために撮っただけのものは反映しない）
-    upload = [{"display_type": name, "label": display_type(name)["label"]} for name in names]
-    return {"capture": capture_entries, "derive": derive, "upload": upload}
+    skipped_names = {entry["display_type"] for entry in skipped}
+    upload = [
+        {"display_type": name, "label": display_type(name)["label"], "platform": display_type_platform(name)}
+        for name in names if name not in skipped_names
+    ]
+    return {"capture": capture_entries, "derive": derive, "upload": upload, "skipped": skipped}
 
 
 # MARK: - Bundle ID
@@ -345,7 +393,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "command",
-        choices=("app", "languages", "scenes", "devices", "sizes", "derive-from", "display-types", "bundle-id"),
+        choices=("app", "languages", "scenes", "devices", "sizes", "derive-from", "platform", "display-types", "bundle-id"),
     )
     parser.add_argument("argument", nargs="?", default=None)
     args = parser.parse_args()
@@ -369,6 +417,10 @@ def main() -> int:
         if not args.argument:
             raise SystemExit("表示サイズ（例: APP_IPHONE_61）を指定してください")
         print(display_type(args.argument).get("deriveFrom") or "")
+    elif args.command == "platform":
+        if not args.argument:
+            raise SystemExit("表示サイズ（例: APP_DESKTOP）を指定してください")
+        print(display_type_platform(args.argument))
     elif args.command == "bundle-id":
         print(bundle_id())
     else:
