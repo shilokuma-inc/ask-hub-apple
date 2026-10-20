@@ -147,6 +147,10 @@
   `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER=`（アドホック署名）でアーカイブすれば、証明書が無くても `com.apple.security.app-sandbox` などが埋め込まれる。
   Mac App Store は App Sandbox を必須にしているので、`_archive.yml` の macOS はアドホック署名でアーカイブし、配布用の署名は Export に任せている
 - Mac App Store へのアップロードには Info.plist の `LSApplicationCategoryType` が要る（iOS では要らないので、iOS だけ上げていた間は無くても気づかない）
+- `Tools/` の Python の unittest は `python3 -m unittest discover -s Tools/tests -t .` で流す（`Tools/` に `__init__.py` は無いが、名前空間パッケージとして 3.9 でも見つかる）。
+  テストは `from .fake_app_store_connect import …` と相対で import し、`Tools/` のモジュールは偽物のモジュールが `sys.path` に足したうえで読む。
+  PyJWT は `app_store_connect.make_token` の中でだけ import するので、`make_token` を `mock.patch` し、`AppStoreConnect(urlopen=…, sleep=…)` で HTTP と待ち時間を差し替えれば、PyJWT の無い Mac でもネットワークに出ずに流せる。
+  `Tools/*.py` のモジュールの先頭で PyJWT などの外の依存を import しない（`--check` や unittest まで依存を求めてしまう）
 
 ## Keychain
 
