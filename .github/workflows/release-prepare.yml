@@ -1,0 +1,270 @@
+name: Release/Prepare
+
+# リリース準備（Discussion #605）。AskHub アプリの「リリース準備」が workflow_dispatch で起動する（Actions から手で起動してもよい）。
+#
+# 1. 入力の検査: MAJOR.MINOR.PATCH・release/<v> と v<v> が無いこと・タグの無いほかの release ブランチが無いこと・
+#    develop の MARKETING_VERSION より大きいこと（Tools/release_prepare.py check）
+# 2. develop の先頭から release/<v> を作り、MARKETING_VERSION が違えば書き換えるコミットを積む
+# 3. 前の v* タグから develop に入った PR で最新情報の下書き（AppStore/whats-new-draft.json）を作ってコミットし、push する
+# 4. App Store Connect に iOS / macOS のバージョンを用意する（Tools/release_app_store.py prepare）
+# 5. release ブランチで Upload・Screenshots/App Store・Metadata/App Store（dry_run: false）を起動する
+# 6. Job Summary に結果と、人が次にすることを出す
+#
+# GITHUB_TOKEN での push は新しいワークフローの run を起こさない（upload.yml の push のトリガーも動かない）ので、5 で明示的に起動する。
+# 途中で止まったら、原因を直してから resume をオンにして同じバージョンで再実行すると、4・5 だけをやり直す。
+# 手順と人がすることは docs/release.md の「リリース準備」。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'リリースのバージョン（MAJOR.MINOR.PATCH。develop の MARKETING_VERSION より大きい値）'
+        required: true
+        type: string
+      resume:
+        description: 'release ブランチがすでにあれば作り直さず、App Store Connect のバージョンの用意と各ワークフローの起動だけを行う'
+        type: boolean
+        default: false
+
+permissions: {}
+
+# リリース準備は同時に 1 つだけ（2 つのバージョンを並べて準備すると、App Store Connect の編集できるバージョンを取り合う）
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write       # release ブランチの push
+      actions: write        # Upload などの workflow_dispatch
+      pull-requests: read   # 最新情報の下書きに使う PR のタイトルの読み取り
+    env:
+      # 入力はシェルに直接展開せず、環境変数で渡す（インジェクション対策）
+      VERSION: ${{ inputs.version }}
+      RESUME: ${{ inputs.resume }}
+
+    steps:
+      - name: Validate input
+        run: |
+          set -euo pipefail
+          # 各ステップが Job Summary に載せる行をためる（最後の Summary でまとめて出す）
+          SUMMARY="$RUNNER_TEMP/summary.md"
+          echo "SUMMARY=${SUMMARY}" >> "$GITHUB_ENV"
+          : > "$SUMMARY"
+          # Tools/ は develop のものを使うので、develop 以外から起動したものは止める
+          if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+            echo "::error::develop から起動してください（${GITHUB_REF}）"
+            exit 1
+          fi
+          if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::バージョンは MAJOR.MINOR.PATCH の形で指定してください"
+            echo "- バージョンの形が違うため止めました（MAJOR.MINOR.PATCH で指定してください）" >> "$SUMMARY"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: develop
+          # 下書きのために前のタグからの履歴を読み、release ブランチを push する
+          fetch-depth: 0
+
+      - name: Check release
+        id: check
+        run: |
+          set -euo pipefail
+          options=(--version "$VERSION")
+          if [ "$RESUME" = "true" ]; then
+            options+=(--resume)
+          fi
+          if python3 Tools/release_prepare.py check "${options[@]}" > "$RUNNER_TEMP/check.json"; then
+            echo "bump=$(jq -r '.bumpVersion' "$RUNNER_TEMP/check.json")" >> "$GITHUB_OUTPUT"
+            echo "develop=$(jq -r '.developVersion // ""' "$RUNNER_TEMP/check.json")" >> "$GITHUB_OUTPUT"
+          else
+            error=$(jq -r '.error // "検査に失敗しました"' "$RUNNER_TEMP/check.json")
+            echo "::error::${error}"
+            echo "- 準備を始めませんでした: ${error}" >> "$SUMMARY"
+            exit 1
+          fi
+
+      - name: Create release branch
+        if: inputs.resume != true
+        env:
+          BUMP: ${{ steps.check.outputs.bump }}
+          DEVELOP_VERSION: ${{ steps.check.outputs.develop }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="release/${VERSION}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch --quiet -c "$branch" origin/develop
+
+          if [ "$BUMP" = "true" ]; then
+            python3 Tools/release_prepare.py set-version --version "$VERSION" > /dev/null
+            git add Configs/Project.xcconfig
+            git commit --quiet -m "[chore] MARKETING_VERSION を ${VERSION} にする"
+          fi
+
+          python3 Tools/release_prepare.py draft --version "$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --head origin/develop > "$RUNNER_TEMP/draft.json"
+          git add AppStore/whats-new-draft.json
+          git commit --quiet -m "[chore] ${VERSION} の最新情報の下書きを作る"
+
+          # 同じ名前のブランチが先にできていたら、上書きせずに失敗する（--force は付けない）
+          git push --quiet origin "HEAD:refs/heads/${branch}"
+
+          {
+            echo "## リリース準備 ${VERSION}"
+            echo
+            echo "- release ブランチ: [\`${branch}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/tree/${branch})（develop の $(git rev-parse --short origin/develop) から）"
+            if [ "$BUMP" = "true" ]; then
+              echo "- MARKETING_VERSION: ${DEVELOP_VERSION} → ${VERSION}"
+            fi
+            jq -r '"- 最新情報の下書き: `AppStore/whats-new-draft.json`（" +
+              (if .initial then "前の v* タグが無いため、初めてのリリースの本文" else "\(.base.tag) から PR \(.pullRequests) 件、うち \(.included) 件を載せた" end) + "）"' \
+              "$RUNNER_TEMP/draft.json"
+          } >> "$SUMMARY"
+
+      - name: Switch to release branch
+        if: inputs.resume == true
+        run: |
+          set -euo pipefail
+          git switch --quiet "release/${VERSION}"
+          {
+            echo "## リリース準備 ${VERSION}（resume）"
+            echo
+            echo "- release ブランチ \`release/${VERSION}\` があるので、ブランチは作らずに App Store Connect のバージョンの用意と起動だけを行いました"
+          } >> "$SUMMARY"
+
+      - name: Create Private Key
+        if: vars.ENABLE_DELIVERY != 'false'
+        # Secrets はシェル展開ではなく env 経由で渡す。.p8 は $RUNNER_TEMP に置き、リポジトリの中に置かない
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/private_keys/AuthKey.p8"
+
+      - name: Prepare App Store Connect versions
+        id: asc
+        if: vars.ENABLE_DELIVERY != 'false'
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY_PATH: ${{ runner.temp }}/private_keys/AuthKey.p8
+          ENABLE_MACOS_DELIVERY: ${{ vars.ENABLE_MACOS_DELIVERY }}
+        run: |
+          set -euo pipefail
+          # PyJWT は標準では入っていないので、この実行かぎりの venv に入れる（リポジトリの外に置く）
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check pyjwt cryptography
+
+          platforms="IOS,MAC_OS"
+          if [ "$ENABLE_MACOS_DELIVERY" = "false" ]; then
+            platforms="IOS"
+          fi
+          # 失敗しても JSON は出る（ok: false）。結果は Summary に載せ、最後のステップで run を失敗にする
+          "$RUNNER_TEMP/venv/bin/python" Tools/release_app_store.py prepare --version "$VERSION" \
+            --platforms "$platforms" > "$RUNNER_TEMP/asc.json" || true
+          ok=$(jq -r '.ok // false' "$RUNNER_TEMP/asc.json" 2>/dev/null || echo false)
+          echo "ok=${ok}" >> "$GITHUB_OUTPUT"
+          {
+            echo
+            echo "### App Store Connect のバージョン"
+            echo
+            if ! jq -e . "$RUNNER_TEMP/asc.json" > /dev/null 2>&1; then
+              echo "- 結果を読めませんでした（ログを見てください）"
+            else
+              echo "| プラットフォーム | 結果 | 説明 |"
+              echo "| --- | --- | --- |"
+              jq -r '.platforms | to_entries[] | "| \(.key) | \(.value.status) | \(.value.message | gsub("\n"; " ") | gsub("\\|"; "\\|")) |"' "$RUNNER_TEMP/asc.json"
+              jq -r 'if .ok then empty else "\n- 失敗: \(.error | gsub("\n"; " "))" end' "$RUNNER_TEMP/asc.json"
+            fi
+            if [ "$ENABLE_MACOS_DELIVERY" = "false" ]; then
+              echo
+              echo "- macOS: リポジトリ変数 ENABLE_MACOS_DELIVERY が false なので用意していません"
+            fi
+          } >> "$SUMMARY"
+
+      - name: Start uploads and App Store updates
+        id: dispatch
+        if: vars.ENABLE_DELIVERY != 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASC_OK: ${{ steps.asc.outputs.ok }}
+        run: |
+          set -euo pipefail
+          branch="release/${VERSION}"
+          failed=0
+          rows=()
+
+          # $1: ワークフローのファイル名、$2: 説明、残り: gh workflow run に渡す -f
+          dispatch() {
+            local file="$1" label="$2"
+            shift 2
+            if ! git cat-file -e "HEAD:.github/workflows/${file}" 2> /dev/null; then
+              rows+=("| ${label}（\`${file}\`） | 飛ばした（release ブランチにファイルが無い） |")
+              return 0
+            fi
+            if gh workflow run "$file" --ref "$branch" "$@"; then
+              rows+=("| ${label}（\`${file}\`） | 起動した |")
+            else
+              rows+=("| ${label}（\`${file}\`） | **起動に失敗した**（ログを見てください） |")
+              failed=1
+            fi
+          }
+
+          # バイナリは App Store Connect のバージョンが無くても上げられるので、バージョンの用意に失敗しても上げる
+          dispatch upload.yml "アップロード（iOS / macOS）"
+          if [ "$ASC_OK" = "true" ]; then
+            dispatch app-store-screenshots.yml "スクリーンショット" -f "app_version=${VERSION}"
+            dispatch app-store-metadata.yml "メタデータ" -f "app_version=${VERSION}" -f dry_run=false
+          else
+            rows+=("| スクリーンショット・メタデータ | 飛ばした（App Store Connect のバージョンを用意できなかった） |")
+          fi
+
+          {
+            echo
+            echo "### 起動したワークフロー（\`${branch}\`）"
+            echo
+            echo "| ワークフロー | 結果 |"
+            echo "| --- | --- |"
+            printf '%s\n' "${rows[@]}"
+            echo
+            echo "進み具合は [Actions](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions) の各ワークフローの run で見られます（起動の直後は一覧に出るまで数秒かかります）。"
+          } >> "$SUMMARY"
+          echo "failed=${failed}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: always()
+        env:
+          DELIVERY: ${{ vars.ENABLE_DELIVERY != 'false' }}
+        run: |
+          set -euo pipefail
+          {
+            cat "$SUMMARY" 2> /dev/null || true
+            if [ "$DELIVERY" != "true" ]; then
+              echo
+              echo "- リポジトリ変数 ENABLE_DELIVERY が false なので、App Store Connect のバージョンの用意とアップロードなどの起動はしていません"
+            fi
+            echo
+            echo "### 次にすること"
+            echo
+            echo "1. AskHub で最新情報の下書きを確かめて確定する（Release/Notes が \`whatsNew\` に書いて反映する）"
+            echo "2. 処理が終わったビルドは定期実行（Release/Sync）がバージョンに紐付ける"
+            echo "3. App Store Connect で審査に提出し、輸出コンプライアンスなどに答える（人が行う）"
+            echo
+            echo "途中で止まったときは、原因を直してから同じバージョンで resume をオンにして再実行します（docs/release.md の「リリース準備」）。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any step failed
+        if: steps.asc.outputs.ok == 'false' || steps.dispatch.outputs.failed == '1'
+        run: |
+          echo "::error::App Store Connect のバージョンの用意か、ワークフローの起動に失敗しました（Job Summary を見てください）"
+          exit 1
