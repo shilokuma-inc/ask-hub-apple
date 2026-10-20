@@ -3,7 +3,7 @@ name: Release/Prepare
 # リリース準備（Discussion #605）。AskHub アプリの「リリース準備」が workflow_dispatch で起動する（Actions から手で起動してもよい）。
 #
 # 1. 入力の検査: MAJOR.MINOR.PATCH・release/<v> と v<v> が無いこと・タグの無いほかの release ブランチが無いこと・
-#    develop の MARKETING_VERSION より大きいこと（Tools/release_prepare.py check）
+#    develop の MARKETING_VERSION より大きいこと（前の v* タグが無い初回だけ同じ値も通す。Tools/release_prepare.py check）
 # 2. develop の先頭から release/<v> を作り、MARKETING_VERSION が違えば書き換えるコミットを積む
 # 3. 前の v* タグから develop に入った PR で最新情報の下書き（AppStore/whats-new-draft.json）を作ってコミットし、push する
 # 4. App Store Connect に iOS / macOS のバージョンを用意する（Tools/release_app_store.py prepare）
@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'リリースのバージョン（MAJOR.MINOR.PATCH。develop の MARKETING_VERSION より大きい値）'
+        description: 'リリースのバージョン（MAJOR.MINOR.PATCH。develop の MARKETING_VERSION より大きい値。前の v* タグが無い初回だけ同じ値も可）'
         required: true
         type: string
       resume:
@@ -84,6 +84,8 @@ jobs:
           if python3 Tools/release_prepare.py check "${options[@]}" > "$RUNNER_TEMP/check.json"; then
             echo "bump=$(jq -r '.bumpVersion' "$RUNNER_TEMP/check.json")" >> "$GITHUB_OUTPUT"
             echo "develop=$(jq -r '.developVersion // ""' "$RUNNER_TEMP/check.json")" >> "$GITHUB_OUTPUT"
+            # 初回に develop と同じバージョンで始めたときの、ビルドの取り違えの注意（Summary の先頭の近くに出す）
+            jq -r '.warnings // [] | .[]' "$RUNNER_TEMP/check.json" > "$RUNNER_TEMP/warnings.txt"
           else
             error=$(jq -r '.error // "検査に失敗しました"' "$RUNNER_TEMP/check.json")
             echo "::error::${error}"
@@ -124,6 +126,8 @@ jobs:
             echo "- release ブランチ: [\`${branch}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/tree/${branch})（develop の $(git rev-parse --short origin/develop) から）"
             if [ "$BUMP" = "true" ]; then
               echo "- MARKETING_VERSION: ${DEVELOP_VERSION} → ${VERSION}"
+            else
+              echo "- MARKETING_VERSION: develop と同じ ${VERSION} のまま（書き換えるコミットは積んでいません）"
             fi
             jq -r '"- 最新情報の下書き: `AppStore/whats-new-draft.json`（" +
               (if .initial then "前の v* タグが無いため、初めてのリリースの本文" else "\(.base.tag) から PR \(.pullRequests) 件、うち \(.included) 件を載せた" end) + "）"' \
@@ -249,6 +253,13 @@ jobs:
           set -euo pipefail
           {
             cat "$SUMMARY" 2> /dev/null || true
+            if [ -s "$RUNNER_TEMP/warnings.txt" ]; then
+              echo
+              echo "> [!WARNING]"
+              while IFS= read -r warning; do
+                echo "> ${warning}"
+              done < "$RUNNER_TEMP/warnings.txt"
+            fi
             if [ "$DELIVERY" != "true" ]; then
               echo
               echo "- リポジトリ変数 ENABLE_DELIVERY が false なので、App Store Connect のバージョンの用意とアップロードなどの起動はしていません"
