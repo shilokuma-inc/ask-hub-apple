@@ -106,11 +106,13 @@ struct ContentView: View {
         .sheet(isPresented: $isShowingSettings) {
             // トークンを保存・削除した後に、取得し直す
             Task {
+                // リリースの状態はほかの読み直しと関係しないので、並べて読み、ほかの読み直しを遅らせない
+                async let releaseRefreshed: Void = requestModel.release.refresh()
                 await model.refresh()
                 await requestModel.loadRepositories()
-                await requestModel.release.refresh()
                 await mergeModel.refresh()
                 await loopModel.refresh()
+                await releaseRefreshed
             }
         } content: {
             SettingsView(loopModel: loopModel)
