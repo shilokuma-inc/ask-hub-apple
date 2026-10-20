@@ -197,8 +197,9 @@ if [ "$target" = "main" ]; then
     pushed=1
   fi
 else
-  # 作ったコミットをリモートに置いてから check run を付ける（check run はリモートにあるコミットにしか付けられない）
-  if ! git push --quiet origin "${merged}:refs/heads/${temp_branch}" 2> "$RUNNER_TEMP/push-${target}.err"; then
+  # 作ったコミットをリモートに置いてから check run を付ける（check run はリモートにあるコミットにしか付けられない）。
+  # 中断した run の一時ブランチが残っていても断られないよう、一時ブランチだけは + で上書きする（develop への push には付けない）
+  if ! git push --quiet origin "+${merged}:refs/heads/${temp_branch}" 2> "$RUNNER_TEMP/push-${target}.err"; then
     cat "$RUNNER_TEMP/push-${target}.err" >&2
     stop_with_pull_request rejected "push を断られました: $(push_error "$RUNNER_TEMP/push-${target}.err")"
   fi
