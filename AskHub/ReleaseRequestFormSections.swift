@@ -61,6 +61,7 @@ struct ReleaseRequestFormSections: View {
                     if model.isStarting {
                         ProgressView()
                             .frame(maxWidth: .infinity)
+                            .accessibilityLabel("リリース準備を起動しています")
                     } else {
                         Text("リリース準備を始める")
                             .frame(maxWidth: .infinity)
