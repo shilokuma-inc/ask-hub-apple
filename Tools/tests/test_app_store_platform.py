@@ -125,6 +125,30 @@ class MissingVersionReasonTests(unittest.TestCase):
         # ワークフローはこの文言でログを探す（app-store-metadata.yml・app-store-screenshots.yml）
         self.assertIn("macOS の反映を飛ばしました", message)
 
+    def test_skipped_hint_depends_on_reason(self):
+        # 理由によって人がすることが違う（理由によらずプラットフォームの追加を案内しない）
+        def hint(versions: list[dict], version_string: str | None) -> str:
+            reason = app_store_platform.missing_version_reason(FakeClient(versions), "app", version_string, "MAC_OS")
+            return app_store_platform.skipped_hint(app_store_platform.skipped_message("MAC_OS", reason))
+
+        self.assertIn("プラットフォームを追加", hint([], None))
+        finished = hint([version("1.0.0", "READY_FOR_SALE")], None)
+        self.assertIn("配信を終えたバージョンしかありません", finished)
+        self.assertNotIn("プラットフォームを追加", finished)
+        missing = hint([version("1.0.0", "READY_FOR_SALE")], "1.1.0")
+        self.assertIn("指定したバージョン番号", missing)
+        self.assertNotIn("プラットフォームを追加", missing)
+        self.assertIn("再実行", app_store_platform.skipped_hint("macOS の反映を飛ばしました: ほかの理由"))
+
+    def test_hint_command(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            status = app_store_platform.main(["hint", "macOS の反映を飛ばしました: macOS に編集できる状態のバージョンがありません"])
+        self.assertEqual(status, 0)
+        self.assertIn("配信を終えたバージョンしかありません", output.getvalue())
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(app_store_platform.main([]), 2)
+
     def test_unknown_platform(self):
         with self.assertRaises(SystemExit):
             app_store_platform.platform_label("TV_OS")

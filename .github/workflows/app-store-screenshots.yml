@@ -385,8 +385,12 @@ jobs:
             echo "## スクリーンショット: ${LABEL}（${DISPLAY_TYPE}）"
             echo
             if [ -f "$RUNNER_TEMP/upload.log" ] && grep -qF "macOS の反映を飛ばしました" "$RUNNER_TEMP/upload.log"; then
+              # 飛ばした理由はログの行をそのまま載せ、人がすることは理由に合わせて出す（Tools/app_store_platform.py の skipped_hint）
+              skipped="$(grep -F "macOS の反映を飛ばしました" "$RUNNER_TEMP/upload.log" | head -1)"
               echo "App Store Connect に反映先の macOS のバージョンが無いため、この表示サイズは反映していません（iOS の表示サイズは反映します）。"
-              echo "macOS にも載せるときは、App Store Connect でアプリに macOS のプラットフォームを追加し、バージョンを用意してから再実行してください（docs/release.md）。"
+              echo
+              echo "- 理由: ${skipped}"
+              echo "- $(python3 Tools/app_store_platform.py hint "$skipped")"
               echo
             fi
             if [ -d "$SCREENSHOTS_DIR/$DISPLAY_TYPE" ]; then
