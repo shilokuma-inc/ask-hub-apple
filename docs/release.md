@@ -262,7 +262,7 @@ python3 Tools/release_app_store.py status --version 1.1.0        # 状態を見�
 | `prepare` | `blocked` | 人が App Store Connect で直す必要がある（下の「編集できるバージョンが残っているとき」）。失敗になる |
 | `attach-build` | `attached` / `already-attached` | 最新のビルドを紐付けた（`previousBuildId` に前のビルド）/ すでに紐付いている |
 | `attach-build` | `waiting-for-build` / `locked` / `version-missing` | 処理が終わったビルドがまだ無い / 審査中・配信済みなので触らない / そのバージョンが無い |
-| `status` | `released` / `not-released` / `version-missing` | 配信済み / まだ / そのバージョンが無い。トップの `released` は、バージョンがあるプラットフォームすべてで配信済みのとき `true`（`error` のプラットフォームがあれば `false`） |
+| `status` | `released` / `not-released` / `version-missing` | 配信済み / まだ / そのバージョンが無い。トップの `released` は、バージョンがあるプラットフォームすべてで配信済みのとき `true`（`error` のプラットフォームがあれば `false`。必須のプラットフォーム（`--optional-platforms` に無いもの。既定は iOS）は、バージョンが無ければ `false`） |
 | すべて | `error` | そのプラットフォームの API の呼び出しが失敗した（`httpStatus` に HTTP のステータスコード。通信の失敗では `null`）。失敗になるが、ほかのプラットフォームの結果は残る |
 
 - ビルドは `/v1/builds` を、バージョン（`CFBundleShortVersionString`）・プラットフォーム・`processingState=VALID`・期限切れでないもので探し、`uploadedDate` が最も新しいものを選ぶ。
@@ -270,7 +270,7 @@ python3 Tools/release_app_store.py status --version 1.1.0        # 状態を見�
 - ビルドは上がったブランチを区別できない（バージョンとプラットフォームだけで選ぶ）。`develop` の `MARKETING_VERSION` がリリースと同じだと、
   `develop` への push で上がったビルドを紐付けうるので、リリース準備は `develop` の `MARKETING_VERSION` より大きいバージョンでしか始めない。
   前の `v*` タグが無い初回だけは同じ値も許し、Job Summary で注意を出す（「リリース準備」の「バージョンの決まり」）
-- 配信済みとみなすのは、`appVersionState` が `READY_FOR_DISTRIBUTION`、または非推奨の `appStoreState` が `READY_FOR_SALE`・`REPLACED_WITH_NEW_VERSION` のとき。
+- 配信済みとみなすのは、`appVersionState` が `READY_FOR_DISTRIBUTION`・`REPLACED_WITH_NEW_VERSION`、または非推奨の `appStoreState` が `READY_FOR_SALE`・`REPLACED_WITH_NEW_VERSION` のとき。
   承認後の公開待ち（`PENDING_DEVELOPER_RELEASE`）や配信の処理中は含めない（手動で公開するまでリリース後作業を始めない）
 - 一覧はページングを最後までたどる。429（レート制限）は `Retry-After` の秒数（無ければ 10 秒から倍々）を待って 4 回まで送り直す。`Retry-After` が 120 秒を超えるときは待たずに失敗にして、次の実行に任せる
 
@@ -477,6 +477,72 @@ App Store Connect は、そのプラットフォームの最初のバージョ�
 - ジョブの権限は `contents: write`（release ブランチの push）・`actions: write`（`workflow_dispatch`）。`GITHUB_TOKEN` だけを使う
 - このワークフローは App Store Connect の Secrets を使わない（反映は Metadata/App Store が行う）。新しい Secret・vars は要らない。vars は任意の `ENABLE_DELIVERY`
 
+## 定期実行（Release/Sync）
+
+release ブランチごとに、処理が終わったビルドを App Store Connect のバージョンに紐付け、App Store での配信を検知したらリリース後作業（Release/Finish）を起動する（Discussion #605 の Q4・Q7）。
+ワークフローは `.github/workflows/release-sync.yml`（Release/Sync）。判定は `Tools/release_sync.py`。
+
+### 流れ
+
+| 順 | すること | 使うもの |
+| --- | --- | --- |
+| 1 | タグ `v<v>` の無い `release/<v>`（`MAJOR.MINOR.PATCH` の形のもの）を並べる。`release-finish/**` などは数えない。形の違う `release/…` は Job Summary で知らせて見ない。**1 つも無ければ、App Store Connect を呼ばずに終わる**（Secrets が無くても失敗しない） | `Tools/release_sync.py targets` |
+| 2 | release ブランチごとに、処理が終わった iOS / macOS の最新のビルドがバージョン `<v>` に紐付いていなければ紐付ける（審査に出した後は触らない） | `Tools/release_app_store.py attach-build` |
+| 3 | 作ったプラットフォームすべてで配信済みか見る（必須の iOS は、バージョンが無ければ配信済みとみなさない。「App Store Connect のバージョンとビルド」） | `Tools/release_app_store.py status` |
+| 4 | 配信済みなら、Release/Finish を `develop` で起動する（`gh workflow run release-finish.yml --ref develop -f version=<v>`）。下の「起動しないとき」に当てはまれば起動しない | `Tools/release_sync.py sync` |
+| 5 | Job Summary に release ブランチごとの結果（紐付け・配信・Release/Finish）を出す | |
+
+- どれかの release ブランチで失敗しても（App Store Connect の API の失敗など）、ほかの release ブランチは続ける。失敗があれば、最後に run を失敗にする
+- inputs は無い。run の表示名（`run-name`）は `Release/Sync`。同時に 1 つだけ動く（`concurrency`）
+- `Tools/` は `develop` のものを使う（`develop` 以外から手で起動すると止まる）
+
+### 起動しないとき
+
+Release/Finish は何度起動しても壊れない（済んだ所を飛ばす）が、二重に起動しない・失敗した後に定期実行のたびに起動し直さないよう、次のときは起動しない（Job Summary に理由とリンクを出す）。
+
+| 状態 | 見るもの | すること |
+| --- | --- | --- |
+| 実行中・待ち | run-name が `Release/Finish <v>` の run のうち、終わっていない（`completed` でない）もの | 何もしない（終われば済むか、下の「失敗した」になる） |
+| 取り込み待ち | 開いている PR のうち、head がこのリポジトリの `release-finish/<v>/pr-main`・`release-finish/<v>/pr-develop` のもの。開いている Issue のうち、タイトルが `【CHORE】release/<v> を <main\|develop> に取り込めませんでした` で github-actions[bot] が作ったもの | 人が取り込んでから、Release/Finish を手で起動し直す（「リリース後作業」の「取り込めなかったとき」） |
+| 成功した | `Release/Finish <v>` の run のうち成功したもの | 何もしない（タグができると、次の実行から対象から外れる） |
+| 失敗した | `Release/Finish <v>` の run のうち、成功していない（失敗・取り消しなど）もの | run の Job Summary の理由を直してから、Release/Finish を手で起動し直す（「リリース後作業」の「失敗したとき」）。手で起動した run が成功するまで、Release/Sync は起動しない |
+
+- Issue は誰でも作れるので、github-actions[bot]（Release/Finish の `GITHUB_TOKEN`）が作ったものだけを見る。PR はフォークの同じ名前のブランチを見ない
+- 起動した直後の run は、一覧に出るまで数秒かかる。Release/Sync は同時に 1 つしか動かず、次の定期実行は 30 分後なので、その間に一覧に出る
+- run・PR・Issue の一覧はページングを最後までたどる（`gh api --paginate`）。読めなかったとき（レート制限など）は起動せず、次の実行で読み直す
+
+### 間隔と止め方
+
+- 間隔は **30 分ごと**（毎時 7 分と 37 分。GitHub は 0 分ちょうどに混んで遅れやすい）。定期実行は混み具合で数分〜数十分遅れることがある。変えるときは `release-sync.yml` の `cron` を直す
+- **public リポジトリの定期実行は、リポジトリに 60 日動き（push など）が無いと GitHub が止める**（Actions の画面に「This scheduled workflow is disabled」と出る）。
+  配信を待つ間に止まると、配信してもリリース後作業が始まらない。Actions → Release/Sync で **Enable workflow** を押して有効にし直すか、下の「手で起動する」
+- 止めたいときは Actions → Release/Sync → **Disable workflow**（`develop` のファイルを消さなくてよい）。止めている間は、配信したら Release/Finish を手で起動する
+- 手で起動する: Actions → **Release/Sync** → Run workflow（ブランチは `develop` のまま）。配信を早く拾いたいとき・有効にし直した直後に使う
+- release ブランチが無い間も 30 分ごとに動くが、`git ls-remote` だけで終わる（ubuntu のランナーで数十秒）
+
+### ビルドの選び方（初回に develop と同じバージョンで始めたとき）
+
+紐付けるビルドは、App Store Connect で `<v>`・プラットフォーム・処理済みのもののうち、アップロードの新しいものを選ぶ（release ブランチの Upload の run には絞らない）。
+App Store Connect のビルドは上がったブランチを持たず、ビルド番号も App Store Connect が決める（`manageAppVersionAndBuildNumber`）ため、run とビルドを確実に結び付けられないから。
+
+ふつうは、リリース準備が `develop` の `MARKETING_VERSION` より大きいバージョンでしか始めないので、`develop` のビルドが混ざることは無い。
+**前の `v*` タグが無い初回だけは `develop` と同じバージョンで始められ、そのときは `develop` への push で上がったビルドも同じバージョンになる。**
+Release/Sync は Job Summary の先頭に注意を出し、紐付けたビルドの番号を表に出すので、審査に出す前に App Store Connect で、紐付いたビルドが release ブランチから上がったもの（ビルド番号・アップロードの時刻）か確かめる。
+違えば App Store Connect で release ブランチのビルドを選び直し、**すぐ審査に出す**（審査に出す前は、Release/Sync が次の実行でアップロードの新しいビルドに紐付け直す。選び直したビルドより新しいビルドが `develop` から上がっていると戻されるので、選び直してから審査に出すまでの間に `develop` へ push しない）。審査に出した後は触らない（`locked`）。
+
+### 人がすること
+
+1. ふだんは何もしない。リリース準備の後、ビルドの紐付け・配信の検知・リリース後作業の起動は Release/Sync が行う
+2. App Store Connect で審査に提出する（紐付いたビルドを確かめる）。手動で公開するリリースは、公開した後の実行で配信を検知する（公開待ち `PENDING_DEVELOPER_RELEASE` では起動しない）
+3. Job Summary に「起動し直さない」と出たら、上の「起動しないとき」のとおりに直して、Release/Finish を手で起動し直す
+
+### 権限・Secrets / vars
+
+- ジョブの権限は `contents: read`（`Tools/`・release ブランチとタグの一覧）・`actions: write`（Release/Finish の run の一覧と起動）・`pull-requests: read`・`issues: read`（取り込み待ちの PR / Issue）。`GITHUB_TOKEN` だけを使う
+- Secrets は Metadata/App Store と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`）。release ブランチがあるのに無いときは、Job Summary で知らせて失敗にする。新しい Secret・vars は要らない
+- リポジトリ変数 `ENABLE_DELIVERY=false` のときは、release ブランチを並べるだけで App Store Connect を見ない（紐付けも配信の検知もしない。Release/Finish は起動しないので、配信したら手で起動する）。
+  `ENABLE_MACOS_DELIVERY=false` のときは iOS だけで紐付け・配信の判定をする
+
 ## リリース後作業
 
 App Store で配信されたリリースを `main` と `develop` に取り込み、タグ `v<v>` と GitHub Release を作る（Discussion #605 の Q6・Q7）。
@@ -500,7 +566,7 @@ App Store で配信されたリリースを `main` と `develop` に取り込み
 - **同じバージョンで何度起動してもよい。** 済んだ所（`main`・`develop` が release の先頭を含む・タグがある・Release がある）は飛ばし、残りだけを行う。
   タグがあっても、release の先頭を含んでいれば再実行とみなす。取り込みが両方済んでいれば CI も流さない。
   タグが `main` にあって release の先頭を含まない（タグを打った後に release ブランチが進んだ）ときは、`main` とタグは済みとみなし、進んだ release を CI を流してから `develop` にだけ取り込む
-  （進んだ分は `main` に入れない。タグと release の共通の祖先が `develop` にもあるとき＝タグの打ち間違いは止める）
+  （進んだ分は `main` に入れない）。このリリースのタグとみなすのは、タグのコミットの `MARKETING_VERSION` が `<v>` で、タグと release の共通の祖先が release を切った後のコミットのときだけ。それ以外（`main` の古いコミットや `develop` のコミットに打った）はタグの打ち間違いとして止める。`develop` への取り込みまで全部済んだ後に release が進んだときも止まる（下の「失敗したとき」）
 - release ブランチは消さない（要らなければ人が消す）。リリース後作業は同時に 1 つだけ動く（`concurrency`）
 - コミット・タグの作者は `github-actions[bot]`。マージコミットのメッセージは `Merge branch 'release/<v>' into <main|develop>`（最新情報の下書きは `Merge pull request` だけを PR とみなすので、次のリリースの下書きには入らない）
 
@@ -577,11 +643,11 @@ PR のタイトルは `【CHORE】release/<v> を <main|develop> に取り込む
 | --- | --- |
 | 「始めませんでした」 | check の Job Summary の理由のとおり。何も変えていない |
 | 「AI 帰属行があります」 | release ブランチの該当するコミットを直す（release 宛ての PR）。直してから起動し直す |
-| 「タグ v<v> がありますが、release の先頭を含まず、このリリースを main に取り込んだコミットでもありません」 | タグの打ち間違い（`main` に無い、または `develop` のコミットに打った）。人が確かめる（タグは消さずに、次のバージョンで出すかを決める）。タグを打った後に release が進んだだけなら止まらない |
+| 「タグ v<v> がありますが、release の先頭を含まず、このリリースを main に取り込んだコミットでもありません」 | タグの打ち間違い（`main` に無い、`main` の古いコミットや `develop` のコミットに打った、タグのコミットの `MARKETING_VERSION` が `<v>` でない）。人が確かめる（タグは消さずに、次のバージョンで出すかを決める）。タグを打った後に release が進んだだけなら止まらない（進んだ分を `develop` にだけ取り込む）。**ただし、`develop` への取り込みまで全部済んだ後に release が進んだときも、このメッセージで止まる**（進んだ分は配信していない。release の先頭 → `develop` の PR を人が作ってマージコミットでマージする。Release/Sync はタグのある release を見ないので、起動し直されない） |
 | build が失敗した | build ジョブのログ（`_build.yml`）。release ブランチで直してから起動し直す。何も取り込んでいない |
 | 「CI を流している間に release が進みました」 | そのまま同じバージョンで起動し直す |
 | 「取り込めませんでした」 | 上の「取り込めなかったとき」 |
-| 「check run「No AI Attribution」を付けられませんでした」 | `develop` には push していない。理由（gh の HTTP の状態）を見て、`checks: write` が付いているか・GitHub の障害でないかを確かめ、起動し直す |
+| 「check run「No AI Attribution」を付けられませんでした」 | `develop` には push していない（コンフリクトではないので、PR・Issue は残さない）。理由（gh の HTTP の状態）を見て、`checks: write` が付いているか・GitHub の障害でないかを確かめ、起動し直す |
 | 「develop の MARKETING_VERSION: 次のパッチにするコミットを push できませんでした」 | 取り込みは済んでいる。起動し直すか、人が `develop` で `Configs/Project.xcconfig` を次のパッチにする |
 | タグの push に失敗した | 同じ名前のタグが先にできていないか確かめる。あれば、release の先頭を含むかを確かめて起動し直す |
 

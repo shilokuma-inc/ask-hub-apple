@@ -236,6 +236,34 @@ class StatusTests(ReleaseTestCase):
         self.assertTrue(missing_version["released"])
         self.assertEqual(missing_version["platforms"]["MAC_OS"]["status"], "version-missing")
 
+    def test_必須のiOSにバージョンが無ければmacOSが配信済みでもreleasedではない(self) -> None:
+        self.fake.add_version("IOS", "1.0.0", "READY_FOR_SALE")
+        self.fake.add_version("MAC_OS", "1.1.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+
+        code, result = self.invoke("status", "--version", "1.1.0")
+
+        self.assertEqual(code, 0)
+        self.assertFalse(result["released"])
+        self.assertEqual(result["platforms"]["IOS"]["status"], "version-missing")
+        self.assertIn("必須", result["platforms"]["IOS"]["message"])
+
+    def test_iOSも任意にすればmacOSだけで判定する(self) -> None:
+        self.fake.add_version("IOS", "1.0.0", "READY_FOR_SALE")
+        self.fake.add_version("MAC_OS", "1.1.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+
+        _, result = self.invoke("status", "--version", "1.1.0", "--optional-platforms", "IOS,MAC_OS")
+
+        self.assertTrue(result["released"])
+
+    def test_必須のiOSのプラットフォームが無ければreleasedではない(self) -> None:
+        self.fake.add_version("MAC_OS", "1.1.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+
+        code, result = self.invoke("status", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertFalse(result["released"])
+        self.assertEqual(result["platforms"]["IOS"]["status"], "platform-missing")
+
     def test_どこにもバージョンが無ければreleasedではない(self) -> None:
         self.fake.add_version("IOS", "1.0.0", "READY_FOR_SALE")
 

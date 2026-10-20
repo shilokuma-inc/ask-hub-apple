@@ -124,6 +124,83 @@ class CheckTests(FinishTestCase):
         self.assertTrue(result["releaseAdvanced"])
         self.assertIn("develop にだけ取り込みます", result["messages"][-1])
 
+    def advance_release_after_tag(self) -> None:
+        """main を release の先頭から作ってタグを打った後に、release ブランチが進む。"""
+        self.repo.cut_release()
+        self.repo.git("branch", "main", "release/1.1.0")
+        self.repo.publish("main")
+        self.repo.git("tag", "v1.1.0", "main")
+        self.repo.git("checkout", "-q", "release/1.1.0")
+        self.repo.commit_file("resolve.txt", "resolve", "[fix] release で直す")
+        self.repo.git("checkout", "-q", "develop")
+        self.repo.publish("release/1.1.0")
+
+    def test_release_advanced_after_tag_and_merged_into_develop_only_bumps_version(self):
+        # 進んだ release を人が develop に取り込んだ後の起動し直し: 残りは develop のバージョンだけ
+        self.advance_release_after_tag()
+        self.repo.merge_into("develop", "release/1.1.0")
+        result = self.check()
+        self.assertEqual((result["main"], result["tagState"], result["develop"]), ("done", "done", "done"))
+        self.assertTrue(result["releaseAdvanced"])
+        self.assertTrue(result["developVersionBump"])
+
+    def test_release_advanced_after_everything_is_done_stops(self):
+        # develop への取り込みまで済んだ後に release が進んだ: 進んだ分がこのリリースのものか見分けられないので止める（docs/release.md）
+        self.repo.cut_release()
+        self.repo.git("branch", "main", "release/1.1.0")
+        self.repo.publish("main")
+        self.repo.git("tag", "v1.1.0", "main")
+        self.repo.merge_into("develop", "release/1.1.0")
+        self.repo.git("checkout", "-q", "release/1.1.0")
+        self.repo.commit_file("late.txt", "late", "[fix] 遅れて入ったコミット")
+        self.repo.git("checkout", "-q", "develop")
+        self.repo.publish("release/1.1.0")
+        with self.assertRaisesRegex(Failure, "タグの打ち間違いです"):
+            self.check()
+
+    def test_tag_on_old_main_commit_is_rejected_after_develop_merge(self):
+        # 前のリリース（1.1.0）を取り込んだ main の古いコミットに、誤って v1.2.0 を打った。release/1.2.0 は develop に取り込み済み
+        self.repo.cut_release()
+        self.repo.git("branch", "main", "release/1.1.0")
+        self.repo.publish("main")
+        self.repo.merge_into("develop", "release/1.1.0")
+        self.repo.git("tag", "v1.1.0", "main")
+        self.repo.cut_release("1.2.0", "[chore] MARKETING_VERSION を 1.2.0 にする")
+        self.repo.merge_into("develop", "release/1.2.0")
+        self.repo.git("tag", "v1.2.0", "main")
+        with self.assertRaisesRegex(Failure, "タグの打ち間違いです"):
+            self.check("1.2.0")
+
+    def test_tag_on_develop_history_with_same_version_is_rejected_after_develop_merge(self):
+        # 初回に develop と同じ 1.0.0 で出した: develop の古いコミットも MARKETING_VERSION が 1.0.0 なので、
+        # バージョンだけでは見分けられない。release を切った所より前のコミットに打ったタグは止める
+        old = self.repo.sha("develop")
+        self.repo.commit("feature")
+        self.repo.git("checkout", "-q", "-b", "release/1.0.0", "develop")
+        self.repo.commit_file(DRAFT_FILE, "{}", "[chore] 1.0.0 の最新情報の下書きを作る")
+        self.repo.git("checkout", "-q", "develop")
+        self.repo.publish("develop", "release/1.0.0")
+        self.repo.git("branch", "main", "release/1.0.0")
+        self.repo.publish("main")
+        self.repo.git("tag", "v1.0.0", old)
+        self.repo.merge_into("develop", "release/1.0.0")
+        with self.assertRaisesRegex(Failure, "タグの打ち間違いです"):
+            self.check("1.0.0")
+
+    def test_tag_with_other_version_is_rejected(self):
+        # main にあって release を切った後のコミットでも、MARKETING_VERSION が違えば打ち間違い
+        self.advance_release_after_tag()
+        self.repo.git("checkout", "-q", "-b", "other", "develop")
+        self.repo.commit("other")
+        self.repo.git("checkout", "-q", "main")
+        self.repo.git("merge", "-q", "--no-ff", "other", "-m", "other")
+        self.repo.commit_file("Configs/Project.xcconfig", "MARKETING_VERSION = 9.9.9\n", "[chore] 9.9.9")
+        self.repo.git("tag", "-f", "v1.1.0", "main")
+        self.repo.git("checkout", "-q", "develop")
+        self.repo.publish("main")
+        with self.assertRaisesRegex(Failure, "タグの打ち間違いです"):
+            self.check()
+
     def test_missing_release_branch(self):
         with self.assertRaisesRegex(Failure, "release/1.1.0 がありません"):
             self.check()

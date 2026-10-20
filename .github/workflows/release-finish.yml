@@ -233,6 +233,8 @@ jobs:
               if [ "$MAIN_STATE" = "conflict" ] || [ "$DEVELOP_STATE" = "conflict" ] || [ "$MAIN_STATE" = "rejected" ] || [ "$DEVELOP_STATE" = "rejected" ]; then
                 echo "取り込めなかった先の PR（release の先頭から作った一時ブランチ \`release-finish/${VERSION}/pr-<取り込み先>\` → 取り込み先。作れなかったときは Issue）を残しました。"
                 echo "人がそのブランチでコンフリクトを解いてマージコミットでマージしてから、起動し直してください。\`release/${VERSION}\` には push しないでください（release の先頭が進むと、タグと合わなくなって起動し直しが止まります）。"
+              elif [ "$MAIN_STATE" = "check-run-failed" ] || [ "$DEVELOP_STATE" = "check-run-failed" ]; then
+                echo "取り込むコミットに check run「No AI Attribution」を付けられなかったので、取り込み先には何も push していません（コンフリクトではないので PR は残していません）。上の理由を確かめて、同じバージョンで起動し直してください。"
               elif [ "$DEVELOP_STATE" = "version-rejected" ]; then
                 echo "取り込みは済んでいます。develop の MARKETING_VERSION を次のパッチにするコミットだけを push できませんでした。起動し直すか、人が develop で直してください。"
               fi

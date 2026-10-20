@@ -90,6 +90,12 @@
   `GITHUB_TOKEN` では PR を作れない（`gh pr create` が失敗する）。Issue（`issues: write`）は作れる
 - 再利用ワークフロー（`workflow_call`）の中の `actions/checkout` は、呼び出し元の run のコミット（`workflow_dispatch` なら起動した ref の先頭）を取り出す。別のコミットを検証したいときは、
   `_build.yml` の `ref` のように入力で SHA を渡して `with: ref:` に渡す（空文字なら既定のまま）
+- public リポジトリの `schedule` のワークフローは、リポジトリに 60 日動き（push など）が無いと GitHub が無効にする（Actions の画面で Enable workflow を押すと戻る）。
+  定期実行で何かを待つ処理（Release/Sync の配信の検知）は、止まったときに手で起動できるよう `workflow_dispatch` も付け、docs に有効にし直す手順を書く
+- `gh api --paginate <path> --jq '<式>'` は、ページごとに jq を当てて結果を 1 行に 1 つずつ出す（`--jq` なしだとページの JSON がつながって出て、そのままでは 1 つの JSON として読めない）。
+  Python では行ごとに `json.loads` する（`Tools/release_sync.py`）。`GET /repos/{owner}/{repo}/issues` は PR も返すので、`select(.pull_request == null)` で除く
+- workflow_dispatch で起動した run を「実行中・済み」で見分けるときは、run-name（`display_title`）をバージョンで完全に一致させ、`status != "completed"` を実行中とみなす（`queued`・`waiting`・`requested`・`pending` もある）。
+  public リポジトリでは誰でも Issue を作れるので、ワークフローが作った Issue を目印に使うときは author（`github-actions[bot]`）も確かめる
 
 ## ビルド・テスト
 

@@ -258,12 +258,19 @@ class DevelopTests(MergeScriptTestCase):
         before = self.remote_sha("develop")
         code, outputs, summary = self.run_script("develop", GH_FAIL_CHECK_RUN="1")
         self.assertEqual(code, 1)
-        self.assertEqual(outputs["state"], "rejected")
+        self.assertEqual(outputs["state"], "check-run-failed")
         self.assertIn("check run「No AI Attribution」を付けられませんでした", summary)
         self.assertIn("HTTP 403", summary)
+        self.assertIn("起動し直してください", summary)
         self.assertNotIn("push を断られました", summary)
         self.assertEqual(self.remote_sha("develop"), before)
         self.assertIsNone(self.remote_sha(f"release-finish/{VERSION}/develop"))
+        # コンフリクトではないので、PR のブランチ・PR・Issue を残して「コンフリクトを解いて」と案内しない
+        self.assertNotIn("コンフリクトを解", summary)
+        self.assertIsNone(self.remote_sha(f"release-finish/{VERSION}/pr-develop"))
+        self.assertEqual([call for call in self.gh_calls() if call.startswith(("pr ", "issue "))], [])
+        self.assertNotIn("pr", outputs)
+        self.assertNotIn("issue", outputs)
 
     def test_retries_once_when_develop_moves_after_start(self):
         # 1 回目の check run の後に、ほかの PR が develop にマージされた（指摘 6）
