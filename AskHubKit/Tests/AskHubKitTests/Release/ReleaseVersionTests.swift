@@ -11,7 +11,8 @@ struct ReleaseVersionTests {
 
     @Test(arguments: [
         "", "1", "1.0", "1.0.0.0", "1..0", ".1.0", "1.0.", "01.0.0", "1.00.0", "1.0.01",
-        "-1.0.0", "+1.0.0", "1.0.0 ", " 1.0.0", "v1.0.0", "1.0.0-beta", "１.０.０", "1.a.0", "99999999999999999999.0.0"
+        "-1.0.0", "+1.0.0", "1.0.0 ", " 1.0.0", "v1.0.0", "1.0.0-beta", "１.０.０", "1.a.0", "99999999999999999999.0.0",
+        "1.9223372036854775807.0", "1.1000000000.0"
     ])
     func rejectsOtherForms(_ text: String) {
         #expect(ReleaseVersion(text) == nil)
@@ -21,6 +22,7 @@ struct ReleaseVersionTests {
         #expect(try #require(ReleaseVersion("1.0.0")).nextMinor == ReleaseVersion(major: 1, minor: 1, patch: 0))
         #expect(try #require(ReleaseVersion("1.9.7")).nextMinor.description == "1.10.0")
         #expect(try #require(ReleaseVersion("0.0.3")).nextMinor.description == "0.1.0")
+        #expect(try #require(ReleaseVersion("1.999999999.0")).nextMinor.description == "1.1000000000.0")
     }
 
     @Test func namesBranchAndTag() throws {

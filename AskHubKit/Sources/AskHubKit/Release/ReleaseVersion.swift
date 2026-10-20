@@ -23,8 +23,10 @@ public struct ReleaseVersion: Sendable, Hashable, Comparable, CustomStringConver
         }
         var numbers: [Int] = []
         for part in parts {
-            // ASCII の数字だけ（全角数字や符号を Int(_:) に通さない）。先頭の 0 は 0 そのものだけ認める
+            // ASCII の数字だけ（全角数字や符号を Int(_:) に通さない）。先頭の 0 は 0 そのものだけ認める。
+            // 桁は `maxDigits` まで（`nextMinor` の足し算があふれないように）
             guard !part.isEmpty,
+                  part.utf8.count <= Self.maxDigits,
                   part.utf8.allSatisfy({ (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) }),
                   part == "0" || !part.hasPrefix("0"),
                   let number = Int(part) else {
@@ -50,6 +52,9 @@ public struct ReleaseVersion: Sendable, Hashable, Comparable, CustomStringConver
         }
         self.init(String(tag.dropFirst(Self.tagPrefix.count)))
     }
+
+    /// 1 つの数の桁の上限
+    static let maxDigits = 9
 
     /// release ブランチの接頭辞
     public static let branchPrefix = "release/"
