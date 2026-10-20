@@ -29,7 +29,7 @@ def missing_version_reason(client, app_id: str, version_string: str | None, plat
     見つかったが審査中などで編集できない・候補が複数あるといった、人が直すべき場合は None を返し、
     `find_version` にそのまま止めさせる。
     """
-    from app_store_connect import EDITABLE_STATES
+    from app_store_connect import is_editable, version_state
 
     label = platform_label(platform)
     versions = client.get_all(
@@ -43,9 +43,9 @@ def missing_version_reason(client, app_id: str, version_string: str | None, plat
         if any(v["attributes"]["versionString"] == version_string for v in versions):
             return None
         return f"{label} にバージョン {version_string} がありません"
-    if any(v["attributes"]["appStoreState"] in EDITABLE_STATES for v in versions):
+    if any(is_editable(v["attributes"]) for v in versions):
         return None
-    states = ", ".join(sorted({v["attributes"]["appStoreState"] for v in versions}))
+    states = ", ".join(sorted({version_state(v["attributes"]) for v in versions}))
     return f"{label} に編集できる状態のバージョンがありません（いまある状態: {states}）"
 
 
