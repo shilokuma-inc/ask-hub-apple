@@ -277,16 +277,24 @@ def run(client: AppStoreConnect, command: str, bundle: str, version_string: str,
         if entry["status"] == "platform-missing" and platform not in optional_platforms:
             entry["message"] += f" {platform_name(platform)} は必須のため止めます。"
             failures.append(entry["message"])
+        if command == "status" and entry["status"] == "version-missing" and platform not in optional_platforms:
+            # 必須のプラットフォームは、バージョンが無ければ配信済みとみなさない（失敗にはしない。prepare の前など）
+            entry["message"] = (f"{platform_name(platform)} にバージョン {version_string} がありません。"
+                                f"{platform_name(platform)} は必須のため、配信済みとはみなしません。")
         result["platforms"][platform] = entry
         result["messages"].append(entry["message"])
 
     if command == "status":
         # 作ったプラットフォーム（バージョンがあるもの）すべてで配信済みなら、リリース後作業を始めてよい
-        statuses = [entry["status"] for entry in result["platforms"].values()]
-        considered = [s for s in statuses if s in ("released", "not-released")]
+        statuses = {platform: entry["status"] for platform, entry in result["platforms"].items()}
+        considered = [s for s in statuses.values() if s in ("released", "not-released")]
         # 状態を読めなかったプラットフォームがあるときは、配信済みと判定しない（次の実行で読み直す）
-        unknown = any(s in ("error", "blocked") for s in statuses)
-        result["released"] = not unknown and bool(considered) and all(s == "released" for s in considered)
+        unknown = any(s in ("error", "blocked") for s in statuses.values())
+        # 必須のプラットフォーム（--optional-platforms に無いもの。既定は iOS）は、バージョンもプラットフォームも無ければ
+        # 配信済みとみなさない（macOS だけが配信済みでも iOS が無ければリリース後作業を始めない）
+        required = all(statuses[platform] == "released" for platform in platforms if platform not in optional_platforms)
+        result["released"] = (not unknown and required and bool(considered)
+                              and all(s == "released" for s in considered))
 
     if failures:
         result["ok"] = False

@@ -262,7 +262,7 @@ python3 Tools/release_app_store.py status --version 1.1.0        # 状態を見�
 | `prepare` | `blocked` | 人が App Store Connect で直す必要がある（下の「編集できるバージョンが残っているとき」）。失敗になる |
 | `attach-build` | `attached` / `already-attached` | 最新のビルドを紐付けた（`previousBuildId` に前のビルド）/ すでに紐付いている |
 | `attach-build` | `waiting-for-build` / `locked` / `version-missing` | 処理が終わったビルドがまだ無い / 審査中・配信済みなので触らない / そのバージョンが無い |
-| `status` | `released` / `not-released` / `version-missing` | 配信済み / まだ / そのバージョンが無い。トップの `released` は、バージョンがあるプラットフォームすべてで配信済みのとき `true`（`error` のプラットフォームがあれば `false`） |
+| `status` | `released` / `not-released` / `version-missing` | 配信済み / まだ / そのバージョンが無い。トップの `released` は、バージョンがあるプラットフォームすべてで配信済みのとき `true`（`error` のプラットフォームがあれば `false`。必須のプラットフォーム（`--optional-platforms` に無いもの。既定は iOS）は、バージョンが無ければ `false`） |
 | すべて | `error` | そのプラットフォームの API の呼び出しが失敗した（`httpStatus` に HTTP のステータスコード。通信の失敗では `null`）。失敗になるが、ほかのプラットフォームの結果は残る |
 
 - ビルドは `/v1/builds` を、バージョン（`CFBundleShortVersionString`）・プラットフォーム・`processingState=VALID`・期限切れでないもので探し、`uploadedDate` が最も新しいものを選ぶ。
