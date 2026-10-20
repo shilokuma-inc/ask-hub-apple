@@ -5,11 +5,13 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import socket
 import sys
 import unittest
+import urllib.error
 from unittest import mock
 
-from .fake_app_store_connect import API, FakeAppStoreConnect, http_error
+from .fake_app_store_connect import API, FakeAppStoreConnect, FakeResponse, http_error
 
 import app_store_connect  # noqa: E402  (fake_app_store_connect が Tools/ を sys.path に足す)
 import release_app_store
@@ -116,7 +118,7 @@ class PrepareTests(ReleaseTestCase):
     def test_バージョンの形が違えば呼ばずに失敗する(self) -> None:
         code, result = self.invoke("prepare", "--version", "1.1")
 
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self.assertFalse(result["ok"])
         self.assertEqual(self.fake.requests, [])
 
@@ -236,6 +238,118 @@ class StatusTests(ReleaseTestCase):
 
         self.assertFalse(result["released"])
         self.assertEqual(self.fake.writes(), [])
+
+
+class FailureTests(ReleaseTestCase):
+    """どの失敗でも標準出力に JSON が 1 つ出て、ほかのプラットフォームの結果が消えないこと（#621 のレビュー）。"""
+
+    def run_main(self, *args: str) -> tuple[int, dict, str]:
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = release_app_store.main(list(args))
+        return code, json.loads(stdout.getvalue()), stderr.getvalue()
+
+    def test_片方のプラットフォームのAPIの失敗でももう片方の結果を残す(self) -> None:
+        self.fake.add_version("IOS", "1.0.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+        self.fake.add_version("MAC_OS", "1.0.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+        # macOS のバージョンの作成だけを 409 にする（iOS は作れる）
+        self.fake.route_failures.append((
+            lambda method, path, query, payload: method == "POST" and path == "/v1/appStoreVersions"
+            and payload["data"]["attributes"]["platform"] == "MAC_OS",
+            http_error(f"{API}/v1/appStoreVersions", 409)))
+
+        code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["platforms"]["IOS"]["status"], "created")
+        self.assertEqual(result["platforms"]["MAC_OS"]["status"], "error")
+        self.assertEqual(result["platforms"]["MAC_OS"]["httpStatus"], 409)
+        self.assertIn("macOS", result["error"])
+
+    def test_一覧の取得が失敗したプラットフォームだけをerrorにする(self) -> None:
+        self.fake.add_version("IOS", "1.1.0", "PREPARE_FOR_SUBMISSION", "PREPARE_FOR_SUBMISSION")
+        self.fake.route_failures.append((
+            lambda method, path, query, payload: path.endswith("/appStoreVersions")
+            and query.get("filter[platform]") == "MAC_OS",
+            http_error(f"{API}/v1/apps", 500)))
+
+        code, result = self.invoke("status", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertEqual(result["platforms"]["IOS"]["status"], "not-released")
+        self.assertEqual(result["platforms"]["MAC_OS"]["status"], "error")
+        self.assertFalse(result["released"])
+
+    def test_片方の状態を読めなければ配信済みにしない(self) -> None:
+        self.fake.add_version("IOS", "1.1.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+        self.fake.route_failures.append((
+            lambda method, path, query, payload: query.get("filter[platform]") == "MAC_OS",
+            http_error(f"{API}/v1/apps", 503)))
+
+        code, result = self.invoke("status", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertEqual(result["platforms"]["IOS"]["status"], "released")
+        self.assertFalse(result["released"])
+
+    def test_通信の失敗はJSONで返す(self) -> None:
+        self.fake.failures.append(urllib.error.URLError("Name or service not known"))
+
+        code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertFalse(result["ok"])
+        self.assertIn("通信に失敗しました", result["error"])
+        self.assertIsNone(result["httpStatus"])
+
+    def test_タイムアウトはJSONで返す(self) -> None:
+        self.fake.failures.append(socket.timeout("timed out"))
+
+        code, result = self.invoke("status", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertIn("timed out", result["error"])
+
+    def test_JSONでない応答はJSONで返す(self) -> None:
+        broken = FakeResponse(None)
+        broken._raw = b"<html>Bad Gateway</html>"
+        self.fake.urlopen = lambda request, timeout=None: broken
+
+        code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertIn("JSON ではありません", result["error"])
+
+    def test_鍵のファイルが無ければJSONで返す(self) -> None:
+        code, result, _ = self.run_main(
+            "prepare", "--version", "1.1.0", "--bundle-id", self.fake.bundle_id,
+            "--key-id", "key", "--issuer-id", "issuer", "--private-key", "/nonexistent/AuthKey.p8")
+
+        self.assertEqual(code, 1)
+        self.assertFalse(result["ok"])
+        self.assertIn("ファイルを読めません", result["error"])
+
+    def test_思わぬ例外でもJSONで返す(self) -> None:
+        with mock.patch.object(release_app_store, "run", side_effect=KeyError("attributes")):
+            code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertIn("KeyError", result["error"])
+
+    def test_引数の誤りは終了コード2でJSONを返す(self) -> None:
+        code, result, stderr = self.run_main("prepare", "--version", "1.1.0", "--platforms", "WATCH_OS")
+
+        self.assertEqual(code, 2)
+        self.assertFalse(result["ok"])
+        self.assertIn("引数の誤り", result["error"])
+        self.assertIn("usage", stderr)
+
+    def test_サブコマンドの誤りも終了コード2(self) -> None:
+        code, result, _ = self.run_main("publish", "--version", "1.1.0")
+
+        self.assertEqual(code, 2)
+        self.assertFalse(result["ok"])
 
 
 class ImportTests(unittest.TestCase):

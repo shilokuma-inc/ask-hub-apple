@@ -161,7 +161,17 @@ class AppStoreConnect:
                 raise ApiError(
                     f"{method} {url} が {error.code} で失敗しました{hint}\n{detail}", error.code
                 ) from None
-            return json.loads(raw) if raw else {}
+            except (urllib.error.URLError, OSError) as error:
+                # 名前解決・接続・タイムアウトの失敗（HTTPError は URLError の子なので上で先に受ける）。
+                # 送れたかどうか分からないので送り直さない。呼び出し側が ApiError だけを受ければ済むようにそろえる
+                reason = getattr(error, "reason", None) or error
+                raise ApiError(f"{method} {url} の通信に失敗しました（{reason}）") from None
+            if not raw:
+                return {}
+            try:
+                return json.loads(raw)
+            except ValueError:  # JSONDecodeError は ValueError の子
+                raise ApiError(f"{method} {url} の応答が JSON ではありません: {raw[:200]!r}") from None
 
     def get(self, path: str, params: dict | None = None) -> dict:
         url = f"{API}{path}"

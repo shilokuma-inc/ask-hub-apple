@@ -12,6 +12,7 @@ import urllib.error
 import urllib.parse
 from email.message import Message
 from pathlib import Path
+from typing import Callable
 
 TOOLS = Path(__file__).resolve().parent.parent
 if str(TOOLS) not in sys.path:
@@ -58,8 +59,10 @@ class FakeAppStoreConnect:
         self.attachments: dict[str, str] = {}
         #: 送られたリクエスト（method, path, query, payload）
         self.requests: list[tuple[str, str, dict, dict | None]] = []
-        #: 先頭から順に返す、割り込みの失敗（HTTPError）
-        self.failures: list[urllib.error.HTTPError] = []
+        #: 先頭から順に返す、割り込みの失敗（HTTPError。URLError などの例外でもよい）
+        self.failures: list[Exception] = []
+        #: 条件に合うリクエストにだけ返す失敗（(method, path, query, payload) を受ける条件, 例外）。合うたびに返す
+        self.route_failures: list[tuple[Callable[[str, str, dict, dict | None], bool], Exception]] = []
         self.sleeps: list[float] = []
         self._next_id = 1
 
@@ -105,6 +108,9 @@ class FakeAppStoreConnect:
             raise AssertionError("Authorization ヘッダーがありません")
         if self.failures:
             raise self.failures.pop(0)
+        for matches, error in self.route_failures:
+            if matches(request.get_method(), parsed.path, query, payload):
+                raise error
         return FakeResponse(self._route(request.get_method(), parsed.path, query, payload, url))
 
     def _page(self, items: list[dict], query: dict, path: str) -> dict:
