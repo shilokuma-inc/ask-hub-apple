@@ -215,6 +215,34 @@ struct GitHubReleaseReaderTests {
         #expect(goneNotes.languages.isEmpty)
     }
 
+    @Test func readsOnlySafeLanguageCodes() async throws {
+        // 言語コードはファイルのパスに入るので、`../x`・空・重複は読まない（ja だけを読み、metadata は 1 回だけ取りにいく）
+        let http = MockHTTPClient([
+            Self.file(#"{ "languages": [{ "language": "ja" }, { "language": "../x" }, { "language": "" }, { "language": "ja" }] }"#),
+            Self.file(#"{ "whatsNew": {"version": "1.1.0", "text": "・直した"} }"#),
+            Self.notFound
+        ])
+        let notes = try await makeReader(http).releaseNotes(repository: "o/r", version: version)
+        #expect(notes.languages == ["ja"])
+        #expect(notes.status == .confirmed)
+        let paths = http.requests.compactMap { $0.url?.path() }
+        #expect(paths.filter { $0.contains("AppStore/metadata/") } == ["/repos/o/r/contents/AppStore/metadata/ja.json"])
+        #expect(!paths.contains { $0.contains("..") })
+    }
+
+    @Test func reportsMissingWhenSomeLanguageIsNotConfirmed() async throws {
+        // languages.json にある言語のうち 1 つでも metadata が無ければ、確定済みにしない
+        let http = MockHTTPClient([
+            Self.file(#"{ "languages": [{ "language": "ja" }, { "language": "en" }] }"#),
+            Self.file(#"{ "whatsNew": {"version": "1.1.0", "text": "・直した"} }"#),
+            Self.notFound,
+            Self.notFound
+        ])
+        let notes = try await makeReader(http).releaseNotes(repository: "o/r", version: version)
+        #expect(notes.status == .missing)
+        #expect(notes.confirmedTexts == ["ja": "・直した"])
+    }
+
     @Test func reportsUnsupportedDraftWithoutThrowing() async throws {
         let http = MockHTTPClient([
             Self.file(#"{ "languages": [{ "language": "ja" }] }"#),
