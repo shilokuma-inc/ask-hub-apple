@@ -22,7 +22,8 @@ iOS だけで続ける（プラットフォームの追加は Web でしかで�
 
 ビルドは `versionString` とプラットフォームだけで選ぶ。`develop` の `MARKETING_VERSION` がリリースと同じだと、
 `develop` から上がったビルドを紐付けうるので、リリース準備（release-prepare.yml）は `develop` の `MARKETING_VERSION`
-より大きいバージョンでしか始めない（docs/release.md の「リリース準備」）。
+より大きいバージョンでしか始めない。前の `v*` タグが無い初回だけは同じ値も許し、Job Summary で注意を出す
+（docs/release.md の「リリース準備」の「バージョンの決まり」）。
 
 認証は upload_metadata.py と同じ（`--key-id` / `--issuer-id` / `--private-key`、または環境変数
 APP_STORE_CONNECT_KEY_ID / APP_STORE_CONNECT_ISSUER_ID / APP_STORE_CONNECT_PRIVATE_KEY_PATH）。

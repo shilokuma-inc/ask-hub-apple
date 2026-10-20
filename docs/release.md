@@ -267,7 +267,8 @@ python3 Tools/release_app_store.py status --version 1.1.0        # 状態を見�
 - ビルドは `/v1/builds` を、バージョン（`CFBundleShortVersionString`）・プラットフォーム・`processingState=VALID`・期限切れでないもので探し、`uploadedDate` が最も新しいものを選ぶ。
   release ブランチへの push のたびにビルドが上がるので、審査に出す前なら新しいビルドに差し替える
 - ビルドは上がったブランチを区別できない（バージョンとプラットフォームだけで選ぶ）。`develop` の `MARKETING_VERSION` がリリースと同じだと、
-  `develop` への push で上がったビルドを紐付けうるので、リリース準備は `develop` の `MARKETING_VERSION` より大きいバージョンでしか始めない（「リリース準備」の「バージョンの決まり」）
+  `develop` への push で上がったビルドを紐付けうるので、リリース準備は `develop` の `MARKETING_VERSION` より大きいバージョンでしか始めない。
+  前の `v*` タグが無い初回だけは同じ値も許し、Job Summary で注意を出す（「リリース準備」の「バージョンの決まり」）
 - 配信済みとみなすのは、`appVersionState` が `READY_FOR_DISTRIBUTION`、または非推奨の `appStoreState` が `READY_FOR_SALE`・`REPLACED_WITH_NEW_VERSION` のとき。
   承認後の公開待ち（`PENDING_DEVELOPER_RELEASE`）や配信の処理中は含めない（手動で公開するまでリリース後作業を始めない）
 - 一覧はページングを最後までたどる。429（レート制限）は `Retry-After` の秒数（無ければ 10 秒から倍々）を待って 4 回まで送り直す。`Retry-After` が 120 秒を超えるときは待たずに失敗にして、次の実行に任せる
@@ -318,9 +319,13 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 - `v<v>` のタグがあるバージョン（リリース済み）では始めない。`release/<v>` があるときは、`resume` をオンにしたときだけ続きから行う
 - **タグの無いほかの release ブランチがあるときは始めない。** App Store Connect の編集できるバージョンはプラットフォームごとに 1 つなので、
   並べて準備すると、前のリリースのバージョンの番号を書き換えてしまう（`prepare` は古い編集できるバージョンを書き換える）。やめたリリースは release ブランチを消す
-- **`develop` の `MARKETING_VERSION` より大きいバージョンでしか始めない（同じ値も不可）。** ビルドの紐付け（`attach-build`）はビルドをバージョンとプラットフォームだけで選び、
+- **`develop` の `MARKETING_VERSION` より大きいバージョンでしか始めない。** ビルドの紐付け（`attach-build`）はビルドをバージョンとプラットフォームだけで選び、
   上がったブランチを区別できない。同じバージョンだと、`develop` への push で上がったビルドが release ブランチのバージョンに紐付きうる。
   アプリの既定値は `develop` の次のマイナー（`1.0.0` → `1.1.0`）なので、ふつうは当たらない
+- **同じ値は、前の `v*` タグ（`MAJOR.MINOR.PATCH` の形のもの）が 1 つも無い初回だけ許す**（App Store の最初のバージョンを `develop` の `MARKETING_VERSION` のまま出すため。PR #627 の ask の回答 B）。
+  このときは `MARKETING_VERSION` を書き換えるコミットを積まない。`develop` への push で上がったビルドと release のビルドが同じバージョンになり、
+  Release/Sync の紐付けはアップロードの新しいものを選ぶので、Job Summary に注意を出す。審査に出す前に、紐付いたビルドが release ブランチから上がったもの（ビルド番号・アップロードの時刻）か確かめる。
+  2 回目以降（`v*` タグがある）は同じ値でも止める
 - リリース済みの最新のタグより大きいバージョンでしか始めない
 
 ### 最新情報の下書き
