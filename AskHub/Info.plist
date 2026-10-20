@@ -8,6 +8,8 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

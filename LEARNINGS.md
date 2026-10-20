@@ -59,6 +59,8 @@
 - `gh run view <run> --log-failed` は失敗したジョブのログだけを出すが、run がまだ実行中だと全ジョブのログが揃わない。
   「マージ待ち」の `checks` は失敗が 1 つでもあれば実行中の check run が残っていても `failure` になるので、
   失敗したログで直させる処理は `hasRunningChecks` が `false`（すべて終わった）になってから始める
+- 再利用ワークフローの中で、条件付きで飛ばすジョブ（`if:` が偽で skipped）を `needs` にすると、後続のジョブも既定では skipped になる。
+  後続を動かすには `if: ${{ !cancelled() && (needs.<id>.result == 'skipped' || needs.<id>.outputs.<名前> == 'true') }}` のように状態の関数を付ける（前のジョブが失敗したときは outputs が空になるので、この条件なら後続は飛ぶ）
 
 ## ビルド・テスト
 
@@ -141,6 +143,10 @@
   「unable to connect to "com.apple.instruments.deviceservice.lockdown" … DTServiceHubClient failed to bless service hub」の後に始まらず、`** BUILD INTERRUPTED **` で終わる。
   Simulator の再起動・作り直し・`testmanagerd` の停止では直らない。テストのホストに接続する権限を得るたびに認証を求められ、launchd のジョブには認証の画面が無いため。
   `sudo DevToolsSecurity -enable` で直る（`_developer` グループへの所属も要る）
+- macOS を `CODE_SIGNING_ALLOWED=NO` でアーカイブすると、`ENABLE_APP_SANDBOX` などから作られるエンタイトルメントが実行ファイルに埋め込まれない（`codesign -d --entitlements -` で何も出ない）。
+  `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER=`（アドホック署名）でアーカイブすれば、証明書が無くても `com.apple.security.app-sandbox` などが埋め込まれる。
+  Mac App Store は App Sandbox を必須にしているので、`_archive.yml` の macOS はアドホック署名でアーカイブし、配布用の署名は Export に任せている
+- Mac App Store へのアップロードには Info.plist の `LSApplicationCategoryType` が要る（iOS では要らないので、iOS だけ上げていた間は無くても気づかない）
 
 ## Keychain
 
