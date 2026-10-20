@@ -10,6 +10,7 @@
     APP_STORE_CONNECT_KEY_ID / APP_STORE_CONNECT_ISSUER_ID / APP_STORE_CONNECT_PRIVATE_KEY_PATH
 
 PyJWT が要る: `python3 -m pip install pyjwt cryptography`
+（import はトークンを作るときに行う。HTTP を差し替える unittest は PyJWT なしで動く）
 """
 
 from __future__ import annotations
@@ -21,13 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-
-try:
-    import jwt
-except ImportError:  # pragma: no cover - 実行環境の問題なので案内だけ出す
-    raise SystemExit(
-        "PyJWT が入っていません。`python3 -m pip install pyjwt cryptography` を実行してください。"
-    )
+from typing import Callable
 
 API = "https://api.appstoreconnect.apple.com"
 
@@ -40,6 +35,12 @@ EDITABLE_STATES = {
     "METADATA_REJECTED",
     "INVALID_BINARY",
 }
+
+#: 配信済み（App Store で入手できる）とみなす状態。`appVersionState` と非推奨の `appStoreState` の両方を見る。
+#: 承認後に人の公開待ち（PENDING_DEVELOPER_RELEASE）や配信の処理中（PROCESSING_FOR_DISTRIBUTION）は含めない。
+#: REPLACED_WITH_NEW_VERSION は配信された後に次のバージョンが出たもの（定期実行が遅れて気づいた場合）
+RELEASED_VERSION_STATES = {"READY_FOR_DISTRIBUTION"}
+RELEASED_STORE_STATES = {"READY_FOR_SALE", "REPLACED_WITH_NEW_VERSION"}
 
 #: アップロード後、Apple 側の取り込みが終わるのを待つ上限（秒）
 DELIVERY_TIMEOUT = 300
@@ -54,17 +55,72 @@ TOKEN_LIFETIME = 15 * 60
 #: スクリーンショットは取り込み待ちで 1 言語あたり数分かかるので、1 本のトークンでは足りなくなる
 TOKEN_REFRESH_MARGIN = 5 * 60
 
+#: 429（レート制限）のときに再試行する回数。App Store Connect の上限は 1 時間あたりのリクエスト数で決まる
+RATE_LIMIT_RETRIES = 4
+
+#: `Retry-After` が無いときの最初の待ち時間（秒）。再試行のたびに倍にする
+RATE_LIMIT_BACKOFF = 10
+
+#: 1 回に待つ時間の上限（秒）。`Retry-After` が長すぎるときは待たずに失敗させ、次の実行に任せる
+RATE_LIMIT_MAX_WAIT = 120
+
 
 class ApiError(RuntimeError):
-    pass
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        #: HTTP のステータスコード（転送の失敗などで無いときは None）
+        self.status = status
+
+
+def retry_after_seconds(headers, attempt: int) -> float:
+    """429 の応答から次の再試行までの秒数を決める。`Retry-After`（秒）があればそれに従う。"""
+    value = headers.get("Retry-After") if headers is not None else None
+    try:
+        seconds = float(value) if value is not None else None
+    except ValueError:  # HTTP 日付の形は App Store Connect では返らない想定。指数的に待つ
+        seconds = None
+    if seconds is None or seconds < 0:
+        seconds = RATE_LIMIT_BACKOFF * (2 ** attempt)
+    return seconds
+
+
+#: App Store のバージョンのプラットフォーム（`filter[platform]` などに渡す値）
+PLATFORM_IOS = "IOS"
+PLATFORM_MAC_OS = "MAC_OS"
+
+#: 人に見せるときのプラットフォームの名前
+PLATFORM_NAMES = {PLATFORM_IOS: "iOS", PLATFORM_MAC_OS: "macOS"}
+
+
+def version_state(attributes: dict) -> str:
+    """バージョンの状態。`appVersionState` を優先し、無ければ非推奨の `appStoreState` を使う。"""
+    return attributes.get("appVersionState") or attributes.get("appStoreState") or ""
+
+
+def is_released(attributes: dict) -> bool:
+    """配信済みか。`appVersionState` と `appStoreState` のどちらかが配信済みを示せば True。"""
+    return (attributes.get("appVersionState") in RELEASED_VERSION_STATES
+            or attributes.get("appStoreState") in RELEASED_STORE_STATES)
+
+
+def is_editable(attributes: dict) -> bool:
+    """スクリーンショット・メタデータ・ビルドを差し替えられる状態か。
+
+    `EDITABLE_STATES` の名前は `appStoreState` と `appVersionState` の両方にある。
+    """
+    return version_state(attributes) in EDITABLE_STATES
 
 
 class AppStoreConnect:
-    def __init__(self, key_id: str, issuer_id: str, private_key: str, dry_run: bool = False):
+    def __init__(self, key_id: str, issuer_id: str, private_key: str, dry_run: bool = False,
+                 urlopen: Callable | None = None, sleep: Callable[[float], None] | None = None):
         self.key_id = key_id
         self.issuer_id = issuer_id
         self.private_key = private_key
         self.dry_run = dry_run
+        # unittest で HTTP と待ち時間を差し替えるための口。既定は標準ライブラリそのもの
+        self._urlopen = urlopen or urllib.request.urlopen
+        self._sleep = sleep or time.sleep
         self._token = ""
         self._token_expires_at = 0.0
 
@@ -80,17 +136,32 @@ class AppStoreConnect:
 
     def _request(self, method: str, url: str, payload: dict | None = None) -> dict:
         body = json.dumps(payload).encode() if payload is not None else None
-        request = urllib.request.Request(url, data=body, method=method)
-        request.add_header("Authorization", f"Bearer {self.token}")
-        if body is not None:
-            request.add_header("Content-Type", "application/json")
-        try:
-            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
-                raw = response.read()
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode(errors="replace")
-            raise ApiError(f"{method} {url} が {error.code} で失敗しました\n{detail}") from None
-        return json.loads(raw) if raw else {}
+        attempt = 0
+        while True:
+            request = urllib.request.Request(url, data=body, method=method)
+            request.add_header("Authorization", f"Bearer {self.token}")
+            if body is not None:
+                request.add_header("Content-Type", "application/json")
+            try:
+                with self._urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+                    raw = response.read()
+            except urllib.error.HTTPError as error:
+                detail = error.read().decode(errors="replace")
+                if error.code == 429 and attempt < RATE_LIMIT_RETRIES:
+                    # 429 は処理されずに断られているので、POST / PATCH でも同じ内容で送り直してよい
+                    wait = retry_after_seconds(error.headers, attempt)
+                    if wait <= RATE_LIMIT_MAX_WAIT:
+                        self._sleep(wait)
+                        attempt += 1
+                        continue
+                hint = ""
+                if error.code == 429:
+                    retry_after = error.headers.get("Retry-After") if error.headers else None
+                    hint = f"（レート制限。Retry-After: {retry_after or 'なし'}）"
+                raise ApiError(
+                    f"{method} {url} が {error.code} で失敗しました{hint}\n{detail}", error.code
+                ) from None
+            return json.loads(raw) if raw else {}
 
     def get(self, path: str, params: dict | None = None) -> dict:
         url = f"{API}{path}"
@@ -132,18 +203,23 @@ class AppStoreConnect:
             raise SystemExit(f"bundleId が {bundle_id} のアプリが見つかりません")
         return apps[0]
 
-    def find_version(self, app_id: str, version_string: str | None) -> dict:
-        versions = self.get_all(
+    def app_store_versions(self, app_id: str, platform: str = PLATFORM_IOS) -> list[dict]:
+        """そのプラットフォームのバージョンをすべて返す（ページングを最後までたどる）。"""
+        return self.get_all(
             f"/v1/apps/{app_id}/appStoreVersions",
-            {"filter[platform]": "IOS", "limit": 50},
+            {"filter[platform]": platform, "limit": 50},
         )
-        editable = [v for v in versions if v["attributes"]["appStoreState"] in EDITABLE_STATES]
+
+    def find_version(self, app_id: str, version_string: str | None,
+                     platform: str = PLATFORM_IOS) -> dict:
+        versions = self.app_store_versions(app_id, platform)
+        editable = [v for v in versions if is_editable(v["attributes"])]
 
         if version_string:
             for version in versions:
                 if version["attributes"]["versionString"] == version_string:
-                    state = version["attributes"]["appStoreState"]
-                    if state not in EDITABLE_STATES:
+                    state = version_state(version["attributes"])
+                    if not is_editable(version["attributes"]):
                         raise SystemExit(
                             f"バージョン {version_string} は {state} のため編集できません"
                         )
@@ -151,7 +227,7 @@ class AppStoreConnect:
             raise SystemExit(f"バージョン {version_string} が見つかりません")
 
         if not editable:
-            states = ", ".join(sorted({v["attributes"]["appStoreState"] for v in versions}))
+            states = ", ".join(sorted({version_state(v["attributes"]) for v in versions}))
             raise SystemExit(
                 "編集できる状態のバージョンがありません"
                 f"（いまある状態: {states or 'なし'}）。"
@@ -163,6 +239,94 @@ class AppStoreConnect:
                 f"編集できるバージョンが複数あります（{names}）。--app-version で選んでください。"
             )
         return editable[0]
+
+    def version_with_string(self, app_id: str, version_string: str,
+                            platform: str = PLATFORM_IOS) -> dict | None:
+        """`versionString` が一致するバージョン（無ければ None）。状態は問わない。"""
+        for version in self.app_store_versions(app_id, platform):
+            if version["attributes"]["versionString"] == version_string:
+                return version
+        return None
+
+    def get_version(self, version_id: str) -> dict:
+        return self.get(f"/v1/appStoreVersions/{version_id}")["data"]
+
+    def create_version(self, app_id: str, version_string: str,
+                       platform: str = PLATFORM_IOS) -> dict:
+        """App Store のバージョンを作る（App Store Connect の「＋バージョン」と同じ）。
+
+        編集できるバージョンが残っているプラットフォームでは作れない（API が 409 を返す）。
+        リリースの方法（手動・自動）などは指定せず、App Store Connect の既定に任せる。
+        """
+        if self.dry_run:
+            return {"id": "dry-run", "type": "appStoreVersions",
+                    "attributes": {"versionString": version_string, "platform": platform}}
+        response = self.post(
+            "/v1/appStoreVersions",
+            {
+                "data": {
+                    "type": "appStoreVersions",
+                    "attributes": {"platform": platform, "versionString": version_string},
+                    "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+                }
+            },
+        )
+        return response["data"]
+
+    def update_version_string(self, version_id: str, version_string: str) -> dict:
+        """編集できるバージョンの `versionString` を書き換える。"""
+        if self.dry_run:
+            return {"id": version_id, "type": "appStoreVersions",
+                    "attributes": {"versionString": version_string}}
+        response = self.patch(
+            f"/v1/appStoreVersions/{version_id}",
+            {
+                "data": {
+                    "type": "appStoreVersions",
+                    "id": version_id,
+                    "attributes": {"versionString": version_string},
+                }
+            },
+        )
+        return response["data"]
+
+    # MARK: ビルド
+
+    def valid_builds(self, app_id: str, version_string: str,
+                     platform: str = PLATFORM_IOS) -> list[dict]:
+        """そのバージョン（`CFBundleShortVersionString`）・プラットフォームの、処理が終わったビルド。
+
+        新しいもの（`uploadedDate` が後のもの）から順に返す。期限切れのビルドは含めない。
+        """
+        builds = self.get_all(
+            "/v1/builds",
+            {
+                "filter[app]": app_id,
+                "filter[preReleaseVersion.version]": version_string,
+                "filter[preReleaseVersion.platform]": platform,
+                "filter[processingState]": "VALID",
+                "filter[expired]": "false",
+                "sort": "-uploadedDate",
+            },
+        )
+        # sort の指定に頼らず、ページをまたいでも新しい順になるよう並べ直す
+        return sorted(builds, key=lambda b: b["attributes"].get("uploadedDate") or "", reverse=True)
+
+    def attached_build_id(self, version_id: str) -> str | None:
+        """そのバージョンに紐付いているビルドの id（無ければ None）。"""
+        linkage = self.get(f"/v1/appStoreVersions/{version_id}/relationships/build").get("data")
+        return linkage["id"] if linkage else None
+
+    def attach_build(self, version_id: str, build_id: str) -> None:
+        """バージョンにビルドを紐付ける（すでに別のビルドが紐付いていれば差し替わる）。"""
+        if self.dry_run:
+            return
+        self.patch(
+            f"/v1/appStoreVersions/{version_id}/relationships/build",
+            {"data": {"type": "builds", "id": build_id}},
+        )
+
+    # MARK: 言語
 
     def localizations(self, version_id: str) -> dict[str, str]:
         return {locale: entry["id"] for locale, entry in self.localization_entries(version_id).items()}
@@ -255,11 +419,13 @@ class AppStoreConnect:
             for header in operation.get("requestHeaders", []):
                 request.add_header(header["name"], header["value"])
             try:
-                with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT):
+                with self._urlopen(request, timeout=REQUEST_TIMEOUT):
                     pass
             except urllib.error.HTTPError as error:
                 detail = error.read().decode(errors="replace")
-                raise ApiError(f"{path.name} の転送が {error.code} で失敗しました\n{detail}") from None
+                raise ApiError(
+                    f"{path.name} の転送が {error.code} で失敗しました\n{detail}", error.code
+                ) from None
 
         self.patch(
             f"/v1/appScreenshots/{screenshot_id}",
@@ -313,6 +479,15 @@ class AppStoreConnect:
 
 
 def make_token(key_id: str, issuer_id: str, private_key: str) -> str:
+    # PyJWT は API を呼ぶときだけ要る。モジュールの先頭で import すると、
+    # --check や unittest のように API を呼ばない使い方まで PyJWT を求めてしまう
+    try:
+        import jwt
+    except ImportError:  # pragma: no cover - 実行環境の問題なので案内だけ出す
+        raise SystemExit(
+            "PyJWT が入っていません。`python3 -m pip install pyjwt cryptography` を実行してください。"
+        ) from None
+
     now = int(time.time())
     return jwt.encode(
         {"iss": issuer_id, "iat": now, "exp": now + TOKEN_LIFETIME, "aud": "appstoreconnect-v1"},

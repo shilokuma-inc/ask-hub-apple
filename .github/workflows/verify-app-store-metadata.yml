@@ -4,6 +4,7 @@ name: Verify/App Store metadata
 # 反映（Metadata/App Store）の前に、PR の時点で欠損と文字数超過を機械的に落とす。
 # JSON を読むだけなので macOS ランナーもビルドも必要ない（ubuntu で数十秒で終わる）。
 # あわせて、スクリーンショットの撮影設定（枚数の上限、撮影モードの Scene との突き合わせなど）も読めるか確かめる。
+# Tools/ の Python の unittest（Tools/tests/）も同じジョブで流す。
 #
 # ドキュメントだけの変更では動かない（paths にドキュメントを含めない。Build の paths-ignore と同じ考え方）。
 # Build と違い ubuntu ランナーで軽いので、epic/** 宛ての子 PR でも更新（synchronize）のたびに流す。
@@ -51,3 +52,7 @@ jobs:
           python3 Tools/app_store_config.py bundle-id
           python3 Tools/app_store_config.py scenes
           python3 Tools/app_store_config.py display-types
+
+      - name: Test Tools
+        # Tools/ の Python の unittest。App Store Connect API は偽物に差し替えて呼ばない（Secrets も PyJWT も要らない）
+        run: python3 -m unittest discover -s Tools/tests -t . -v

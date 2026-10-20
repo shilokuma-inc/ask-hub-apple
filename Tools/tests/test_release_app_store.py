@@ -1,0 +1,247 @@
+"""Tools/release_app_store.py のテスト。HTTP は偽物に差し替え、PyJWT も使わない。"""
+
+from __future__ import annotations
+
+import contextlib
+import io
+import json
+import sys
+import unittest
+from unittest import mock
+
+from .fake_app_store_connect import API, FakeAppStoreConnect, http_error
+
+import app_store_connect  # noqa: E402  (fake_app_store_connect が Tools/ を sys.path に足す)
+import release_app_store
+from app_store_connect import AppStoreConnect
+
+
+class ReleaseTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch.object(app_store_connect, "make_token", return_value="test-token")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.fake = FakeAppStoreConnect()
+
+    def invoke(self, *args: str, dry_run: bool = False) -> tuple[int, dict]:
+        client = AppStoreConnect("key", "issuer", "private", dry_run=dry_run,
+                                 urlopen=self.fake.urlopen, sleep=self.fake.sleeps.append)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = release_app_store.main([*args, "--bundle-id", self.fake.bundle_id], client=client)
+        return code, json.loads(stdout.getvalue())
+
+
+class PrepareTests(ReleaseTestCase):
+    def test_バージョンを作りmacOSが無ければ飛ばして続ける(self) -> None:
+        self.fake.add_version("IOS", "1.0.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+
+        code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertEqual(code, 0)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["platforms"]["IOS"]["status"], "created")
+        self.assertEqual(result["platforms"]["IOS"]["versionString"], "1.1.0")
+        self.assertEqual(result["platforms"]["MAC_OS"]["status"], "platform-missing")
+        self.assertIn("macOS のプラットフォームがありません", result["platforms"]["MAC_OS"]["message"])
+        self.assertEqual([w[:2] for w in self.fake.writes()], [("POST", "/v1/appStoreVersions")])
+
+    def test_同じバージョンがあれば何もしない(self) -> None:
+        self.fake.add_version("IOS", "1.1.0", "PREPARE_FOR_SUBMISSION", "PREPARE_FOR_SUBMISSION")
+        self.fake.add_version("MAC_OS", "1.1.0", "WAITING_FOR_REVIEW", "WAITING_FOR_REVIEW")
+
+        code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["platforms"]["IOS"]["status"], "exists")
+        self.assertEqual(result["platforms"]["MAC_OS"]["status"], "exists")
+        self.assertFalse(result["platforms"]["MAC_OS"]["editable"])
+        self.assertEqual(self.fake.writes(), [])
+
+    def test_古い編集できるバージョンは書き換える(self) -> None:
+        version_id = self.fake.add_version("MAC_OS", "1.0", "PREPARE_FOR_SUBMISSION", "PREPARE_FOR_SUBMISSION")
+        self.fake.add_version("IOS", "1.1.0", "PREPARE_FOR_SUBMISSION")
+
+        code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertEqual(code, 0)
+        mac = result["platforms"]["MAC_OS"]
+        self.assertEqual(mac["status"], "renamed")
+        self.assertEqual(mac["previousVersionString"], "1.0")
+        self.assertEqual(mac["versionId"], version_id)
+        self.assertEqual(self.fake.versions[version_id]["attributes"]["versionString"], "1.1.0")
+
+    def test_新しい編集できるバージョンは書き換えずに止める(self) -> None:
+        self.fake.add_version("IOS", "2.0.0", "PREPARE_FOR_SUBMISSION")
+
+        code, result = self.invoke("prepare", "--version", "1.1.0", "--platforms", "IOS")
+
+        self.assertEqual(code, 1)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["platforms"]["IOS"]["status"], "blocked")
+        self.assertIn("2.0.0", result["error"])
+        self.assertEqual(self.fake.writes(), [])
+
+    def test_other_editableがfailなら古くても止める(self) -> None:
+        self.fake.add_version("IOS", "1.0.1", "REJECTED")
+
+        code, result = self.invoke("prepare", "--version", "1.1.0", "--other-editable", "fail")
+
+        self.assertEqual(code, 1)
+        self.assertEqual(result["platforms"]["IOS"]["status"], "blocked")
+        self.assertEqual(self.fake.writes(), [])
+
+    def test_iOSが無ければ失敗にする(self) -> None:
+        self.fake.add_version("MAC_OS", "1.0.0", "READY_FOR_SALE")
+
+        code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertEqual(result["platforms"]["IOS"]["status"], "platform-missing")
+        self.assertEqual(result["platforms"]["MAC_OS"]["status"], "created")
+        self.assertIn("必須", result["error"])
+
+    def test_dry_runでは作らない(self) -> None:
+        self.fake.add_version("IOS", "1.0.0", "READY_FOR_SALE")
+        self.fake.add_version("MAC_OS", "1.0", "PREPARE_FOR_SUBMISSION")
+
+        code, result = self.invoke("prepare", "--version", "1.1.0", dry_run=True)
+
+        self.assertEqual(code, 0)
+        self.assertTrue(result["dryRun"])
+        self.assertEqual(result["platforms"]["IOS"]["status"], "created")
+        self.assertEqual(result["platforms"]["MAC_OS"]["status"], "renamed")
+        self.assertEqual(self.fake.writes(), [])
+
+    def test_バージョンの形が違えば呼ばずに失敗する(self) -> None:
+        code, result = self.invoke("prepare", "--version", "1.1")
+
+        self.assertEqual(code, 1)
+        self.assertFalse(result["ok"])
+        self.assertEqual(self.fake.requests, [])
+
+    def test_APIの失敗はJSONで返す(self) -> None:
+        self.fake.add_version("IOS", "1.0.0", "READY_FOR_SALE")
+        self.fake.failures.append(http_error(f"{API}/v1/apps", 401))
+
+        code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertEqual(result["httpStatus"], 401)
+        self.assertIn("401", result["error"])
+
+
+class AttachBuildTests(ReleaseTestCase):
+    def test_最新の処理済みのビルドを紐付ける(self) -> None:
+        version_id = self.fake.add_version("IOS", "1.1.0", "PREPARE_FOR_SUBMISSION")
+        self.fake.add_build("IOS", "1.1.0", "10", "2026-10-01T00:00:00Z")
+        latest = self.fake.add_build("IOS", "1.1.0", "11", "2026-10-02T00:00:00Z")
+
+        code, result = self.invoke("attach-build", "--version", "1.1.0")
+
+        self.assertEqual(code, 0)
+        ios = result["platforms"]["IOS"]
+        self.assertEqual(ios["status"], "attached")
+        self.assertEqual(ios["build"]["buildNumber"], "11")
+        self.assertIsNone(ios["previousBuildId"])
+        self.assertEqual(self.fake.attachments[version_id], latest)
+        self.assertEqual(result["platforms"]["MAC_OS"]["status"], "platform-missing")
+
+    def test_古いビルドが紐付いていれば最新に差し替える(self) -> None:
+        version_id = self.fake.add_version("IOS", "1.1.0", "PREPARE_FOR_SUBMISSION")
+        old = self.fake.add_build("IOS", "1.1.0", "10", "2026-10-01T00:00:00Z")
+        latest = self.fake.add_build("IOS", "1.1.0", "11", "2026-10-02T00:00:00Z")
+        self.fake.attachments[version_id] = old
+
+        _, result = self.invoke("attach-build", "--version", "1.1.0", "--platforms", "IOS")
+
+        self.assertEqual(result["platforms"]["IOS"]["status"], "attached")
+        self.assertEqual(result["platforms"]["IOS"]["previousBuildId"], old)
+        self.assertEqual(self.fake.attachments[version_id], latest)
+
+    def test_最新が紐付いていれば何もしない(self) -> None:
+        version_id = self.fake.add_version("IOS", "1.1.0", "PREPARE_FOR_SUBMISSION")
+        self.fake.attachments[version_id] = self.fake.add_build("IOS", "1.1.0", "11", "2026-10-02T00:00:00Z")
+
+        _, result = self.invoke("attach-build", "--version", "1.1.0", "--platforms", "IOS")
+
+        self.assertEqual(result["platforms"]["IOS"]["status"], "already-attached")
+        self.assertEqual(self.fake.writes(), [])
+
+    def test_ビルドがまだ無ければ待つ(self) -> None:
+        self.fake.add_version("IOS", "1.1.0", "PREPARE_FOR_SUBMISSION")
+        self.fake.add_build("IOS", "1.1.0", "11", "2026-10-02T00:00:00Z", state="PROCESSING")
+
+        code, result = self.invoke("attach-build", "--version", "1.1.0", "--platforms", "IOS")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["platforms"]["IOS"]["status"], "waiting-for-build")
+
+    def test_審査中のバージョンは触らない(self) -> None:
+        version_id = self.fake.add_version("IOS", "1.1.0", "WAITING_FOR_REVIEW", "WAITING_FOR_REVIEW")
+        old = self.fake.add_build("IOS", "1.1.0", "10", "2026-10-01T00:00:00Z")
+        self.fake.add_build("IOS", "1.1.0", "11", "2026-10-02T00:00:00Z")
+        self.fake.attachments[version_id] = old
+
+        _, result = self.invoke("attach-build", "--version", "1.1.0", "--platforms", "IOS")
+
+        self.assertEqual(result["platforms"]["IOS"]["status"], "locked")
+        self.assertEqual(self.fake.attachments[version_id], old)
+
+    def test_バージョンが無ければ知らせる(self) -> None:
+        self.fake.add_version("IOS", "1.0.0", "READY_FOR_SALE")
+
+        code, result = self.invoke("attach-build", "--version", "1.1.0", "--platforms", "IOS")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["platforms"]["IOS"]["status"], "version-missing")
+
+
+class StatusTests(ReleaseTestCase):
+    def test_作ったプラットフォームがすべて配信済みならreleased(self) -> None:
+        self.fake.add_version("IOS", "1.1.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+        self.fake.add_version("MAC_OS", "1.1.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+
+        code, result = self.invoke("status", "--version", "1.1.0")
+
+        self.assertEqual(code, 0)
+        self.assertTrue(result["released"])
+        self.assertEqual(result["platforms"]["MAC_OS"]["status"], "released")
+
+    def test_片方がまだならreleasedではない(self) -> None:
+        self.fake.add_version("IOS", "1.1.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+        self.fake.add_version("MAC_OS", "1.1.0", "PENDING_DEVELOPER_RELEASE", "PENDING_DEVELOPER_RELEASE")
+
+        _, result = self.invoke("status", "--version", "1.1.0")
+
+        self.assertFalse(result["released"])
+        self.assertEqual(result["platforms"]["MAC_OS"]["status"], "not-released")
+
+    def test_macOSのプラットフォームやバージョンが無ければiOSだけで判定する(self) -> None:
+        self.fake.add_version("IOS", "1.1.0", "READY_FOR_SALE")
+        _, missing_platform = self.invoke("status", "--version", "1.1.0")
+
+        self.fake.add_version("MAC_OS", "1.0.0", "READY_FOR_SALE")
+        _, missing_version = self.invoke("status", "--version", "1.1.0")
+
+        self.assertTrue(missing_platform["released"])
+        self.assertEqual(missing_platform["platforms"]["MAC_OS"]["status"], "platform-missing")
+        self.assertTrue(missing_version["released"])
+        self.assertEqual(missing_version["platforms"]["MAC_OS"]["status"], "version-missing")
+
+    def test_どこにもバージョンが無ければreleasedではない(self) -> None:
+        self.fake.add_version("IOS", "1.0.0", "READY_FOR_SALE")
+
+        _, result = self.invoke("status", "--version", "1.1.0", "--platforms", "IOS")
+
+        self.assertFalse(result["released"])
+        self.assertEqual(self.fake.writes(), [])
+
+
+class ImportTests(unittest.TestCase):
+    def test_PyJWTをimportしない(self) -> None:
+        self.assertNotIn("jwt", sys.modules)
+
+
+if __name__ == "__main__":
+    unittest.main()
