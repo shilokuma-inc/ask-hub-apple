@@ -129,9 +129,12 @@ struct ReleaseProgress: Equatable {
                 step.detail = "下書きも確定した最新情報もありません"
             }
         }
-        if let run = notesWorkflow.run, run.status == .completed, run.conclusion != .success, step.status != .done {
+        // 確定済みでも、直近の確定の run（確定し直したもの）が失敗していれば、その本文は反映されていないことがある
+        if let run = notesWorkflow.run, run.status == .completed, run.conclusion != .success {
             step.status = .failed
-            step.detail = "最新情報の確定の run が失敗しました。確かめてもう一度確定してください"
+            step.detail = releaseNotes?.status == .confirmed
+                ? "最新情報を確定し直した run が失敗しました。直した本文が反映されていないことがあります。run のログを確かめて、もう一度確定してください"
+                : "最新情報の確定の run が失敗しました。確かめてもう一度確定してください"
             step.url = run.url
         }
         return step
