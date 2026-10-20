@@ -122,6 +122,8 @@ jobs:
 
           # 同じ名前のブランチが先にできていたら、上書きせずに失敗する（--force は付けない）
           git push --quiet origin "HEAD:refs/heads/${branch}"
+          # 起動するワークフローのファイルの有無は release ブランチの先頭で見る（作業ツリーの Tools/ は develop と同じ）
+          echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
           {
             echo "## リリース準備 ${VERSION}"
@@ -137,11 +139,14 @@ jobs:
               "$RUNNER_TEMP/draft.json"
           } >> "$SUMMARY"
 
-      - name: Switch to release branch
+      - name: Find release branch
         if: inputs.resume == true
         run: |
           set -euo pipefail
-          git switch --quiet "release/${VERSION}"
+          # 作業ツリーは develop のまま（Tools/ は develop のものを使う）。release ブランチは先頭のコミットだけを読み、
+          # 起動するワークフローのファイルの有無を確かめるのに使う（release ブランチの古い Tools/ は動かさない）
+          git fetch --quiet origin "refs/heads/release/${VERSION}"
+          echo "RELEASE_SHA=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_ENV"
           {
             echo "## リリース準備 ${VERSION}（resume）"
             echo
@@ -215,7 +220,7 @@ jobs:
           dispatch() {
             local file="$1" label="$2"
             shift 2
-            if ! git cat-file -e "HEAD:.github/workflows/${file}" 2> /dev/null; then
+            if ! git cat-file -e "${RELEASE_SHA}:.github/workflows/${file}" 2> /dev/null; then
               rows+=("| ${label}（\`${file}\`） | 飛ばした（release ブランチにファイルが無い） |")
               return 0
             fi
