@@ -6,8 +6,8 @@
 # 1. 取り込み先が release の先頭を含んでいれば何もしない（再実行）。main が無ければ release の先頭から作る
 # 2. 取り込み先の先頭で `git merge --no-ff` する（マージコミット）。develop では MARKETING_VERSION を次のパッチにするコミットを足す
 #    （配信したバージョンのままだと develop の Upload が閉じたバージョンに上げようとして失敗する。Tools/release_finish.py develop-version）
-# 3. 作ったコミットを一時ブランチ（release-finish/<v>/<取り込み先>）に push し、先頭に check run「No AI Attribution」を付けてから、
-#    取り込み先に fast-forward で push する（--force は付けない）。一時ブランチは消す
+# 3. develop では、作ったコミットを一時ブランチ（release-finish/<v>/develop）に push し、先頭に check run「No AI Attribution」を付けてから、
+#    develop に fast-forward で push する（--force は付けない）。一時ブランチは消す。main はブランチ保護が無いので、そのまま push する
 #    develop はブランチ保護で必須チェック「No AI Attribution」（GitHub Actions のチェック）が要り、push するコミットにそのチェックが要る。
 #    GITHUB_TOKEN で作った check run は GitHub Actions のものになるので、必須チェックを満たせる。
 #    中身の検査（release ブランチにしかないコミットの AI 帰属行）は Release/Finish の check ジョブで済ませてある
@@ -29,6 +29,7 @@ case "$target" in
 esac
 
 branch="release/${VERSION}"
+# develop に push する前に check run を付けるための一時ブランチ（main では使わない）
 temp_branch="release-finish/${VERSION}/${target}"
 check_name="No AI Attribution"
 # release_finish.py はこのスクリプトと同じ Tools/ のもの（起動した ref。取り込みは作業ディレクトリのリポジトリで行う）
@@ -189,17 +190,24 @@ fi
 
 merged=$(git -C "$worktree" rev-parse HEAD)
 
-# 作ったコミットをリモートに置いてから check run を付ける（check run はリモートにあるコミットにしか付けられない）
-if ! git push --quiet origin "${merged}:refs/heads/${temp_branch}" 2> "$RUNNER_TEMP/push-${target}.err"; then
-  cat "$RUNNER_TEMP/push-${target}.err" >&2
-  stop_with_pull_request rejected "push を断られました: $(push_error "$RUNNER_TEMP/push-${target}.err")"
-fi
 pushed=0
-if create_check_run "$merged" "${branch} を ${target} に取り込むマージコミットです。${branch} にしかないコミットに AI 帰属行が無いことを、Release/Finish の check ジョブで確かめました。" &&
-  git push --quiet origin "${merged}:refs/heads/${target}" 2> "$RUNNER_TEMP/push-${target}.err"; then
-  pushed=1
+if [ "$target" = "main" ]; then
+  # main にはブランチ保護が無い（必須チェックも無い）ので、一時ブランチも check run も使わずにそのまま push する
+  if git push --quiet origin "${merged}:refs/heads/main" 2> "$RUNNER_TEMP/push-${target}.err"; then
+    pushed=1
+  fi
+else
+  # 作ったコミットをリモートに置いてから check run を付ける（check run はリモートにあるコミットにしか付けられない）
+  if ! git push --quiet origin "${merged}:refs/heads/${temp_branch}" 2> "$RUNNER_TEMP/push-${target}.err"; then
+    cat "$RUNNER_TEMP/push-${target}.err" >&2
+    stop_with_pull_request rejected "push を断られました: $(push_error "$RUNNER_TEMP/push-${target}.err")"
+  fi
+  if create_check_run "$merged" "${branch} を ${target} に取り込むマージコミットです。${branch} にしかないコミットに AI 帰属行が無いことを、Release/Finish の check ジョブで確かめました。" &&
+    git push --quiet origin "${merged}:refs/heads/${target}" 2> "$RUNNER_TEMP/push-${target}.err"; then
+    pushed=1
+  fi
+  git push --quiet origin --delete "$temp_branch" 2> /dev/null || echo "::warning::一時ブランチ ${temp_branch} を消せませんでした"
 fi
-git push --quiet origin --delete "$temp_branch" 2> /dev/null || echo "::warning::一時ブランチ ${temp_branch} を消せませんでした"
 if [ "$pushed" != "1" ]; then
   cat "$RUNNER_TEMP/push-${target}.err" >&2 2> /dev/null || true
   stop_with_pull_request rejected "${target} への push を断られました（起動した後に ${target} が進んだか、ブランチ保護）: $(push_error "$RUNNER_TEMP/push-${target}.err")"
