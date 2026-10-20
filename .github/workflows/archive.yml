@@ -1,14 +1,13 @@
 name: Archive
 
-# main への push で Archive → IPA Export まで通ることを確認する（アップロードはしない）。
+# main への push で Archive → Export（iOS は IPA、macOS は pkg）まで通ることを確認する（アップロードはしない）。
 # develop / release/** は upload.yml が Archive を含むため、ここでは実行しない。
 on:
   push:
     branches:
       - main
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,7 +15,22 @@ concurrency:
 
 jobs:
   archive:
+    permissions:
+      contents: read
     uses: ./.github/workflows/_archive.yml
     with:
+      platform: iOS
+      upload: false
+    secrets: inherit
+
+  archive-macos:
+    # macOS だけを止めたいときはリポジトリ変数 ENABLE_MACOS_DELIVERY=false にする（Upload と同じ）。
+    # アップロードしないので、App Store Connect の macOS のプラットフォームの確認はしない
+    if: vars.ENABLE_MACOS_DELIVERY != 'false'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_archive.yml
+    with:
+      platform: macOS
       upload: false
     secrets: inherit
