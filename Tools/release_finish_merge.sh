@@ -19,7 +19,8 @@
 # 環境変数: VERSION・RELEASE_SHA（check ジョブで確かめた release の先頭）・GITHUB_REPOSITORY・GH_TOKEN・
 #           SUMMARY（Job Summary に載せる行をためるファイル）・RUNNER_TEMP・GITHUB_OUTPUT。
 #           PLANNED（任意。check ジョブの main の判定。done なら main には取り込まない。タグを打った後に release が進んだとき）
-# 出力（GITHUB_OUTPUT）: state（created / merged / done / conflict / rejected / version-rejected（取り込み済みの develop のバージョンのコミットを push できなかった））・sha（取り込み先の新しい先頭）・pr（PR の URL）・issue（PR を作れなかったときの Issue の URL）
+# 出力（GITHUB_OUTPUT）: state（created / merged / done / conflict / rejected / version-rejected（取り込み済みの develop のバージョンのコミットを push できなかった）/
+#                        check-run-failed（取り込むコミットに check run を付けられなかった。何も push しておらず、PR / Issue も作らない））・sha（取り込み先の新しい先頭）・pr（PR の URL）・issue（PR を作れなかったときの Issue の URL）
 set -euo pipefail
 
 target="${1:?main か develop を指定してください}"
@@ -369,6 +370,14 @@ for attempt in 1 2; do
   fi
   if [ "$rc" = "1" ]; then
     stop_with_pull_request rejected "取り込み直しても ${target} への push を断られました（取り込み先が進み続けています）: $(push_error "$RUNNER_TEMP/push-${target}.err")"
+  fi
+  if [ "$rc" = "3" ]; then
+    # check run を付けられなかっただけで、コンフリクトでも push の断りでもない（取り込み先には何も push していない）。
+    # PR / Issue を残して「コンフリクトを解いて」と案内すると誤るので、起動し直すよう知らせるだけにする
+    output state "check-run-failed"
+    summary "- ${target}: **取り込めませんでした**（$(publish_error "$rc")）。コンフリクトではありません。\`checks: write\` が付いているか・GitHub の障害でないかを確かめて、同じバージョンで起動し直してください"
+    echo "::error::${target} に取り込むコミットに check run を付けられませんでした（Job Summary を見てください）"
+    exit 1
   fi
   stop_with_pull_request rejected "$(publish_error "$rc")"
 done

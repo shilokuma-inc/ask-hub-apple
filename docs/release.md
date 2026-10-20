@@ -581,7 +581,7 @@ PR のタイトルは `【CHORE】release/<v> を <main|develop> に取り込む
 | build が失敗した | build ジョブのログ（`_build.yml`）。release ブランチで直してから起動し直す。何も取り込んでいない |
 | 「CI を流している間に release が進みました」 | そのまま同じバージョンで起動し直す |
 | 「取り込めませんでした」 | 上の「取り込めなかったとき」 |
-| 「check run「No AI Attribution」を付けられませんでした」 | `develop` には push していない。理由（gh の HTTP の状態）を見て、`checks: write` が付いているか・GitHub の障害でないかを確かめ、起動し直す |
+| 「check run「No AI Attribution」を付けられませんでした」 | `develop` には push していない（コンフリクトではないので、PR・Issue は残さない）。理由（gh の HTTP の状態）を見て、`checks: write` が付いているか・GitHub の障害でないかを確かめ、起動し直す |
 | 「develop の MARKETING_VERSION: 次のパッチにするコミットを push できませんでした」 | 取り込みは済んでいる。起動し直すか、人が `develop` で `Configs/Project.xcconfig` を次のパッチにする |
 | タグの push に失敗した | 同じ名前のタグが先にできていないか確かめる。あれば、release の先頭を含むかを確かめて起動し直す |
 
