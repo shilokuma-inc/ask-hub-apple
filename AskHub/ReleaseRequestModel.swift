@@ -152,7 +152,11 @@ final class ReleaseRequestModel {
         reader: any ReleaseReading,
         workflow: any WorkflowProviding
     ) async throws -> Context {
-        let availability = try await workflow.availability(repository: repository)
+        var availability = try await workflow.availability(repository: repository)
+        // 消したワークフロー（`state` が `deleted`）は、Actions で有効にしても戻らないので「無い」と同じに扱う
+        if availability == .disabled(state: "deleted") {
+            availability = .notFound
+        }
         guard availability != .notFound else {
             return Context(availability: availability)
         }
