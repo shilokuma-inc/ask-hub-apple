@@ -69,6 +69,9 @@ public struct WorkflowRun: Sendable, Equatable, Hashable, Identifiable {
     public var startedAt: Date
     /// GitHub の run ページ
     public var url: URL
+    /// run の表示名（`display_title`）。`workflow_dispatch` の run はワークフローの `run-name`（無ければワークフローの名前）になる。
+    /// 一覧の API は inputs を返さないので、どの入力（バージョンなど）で起動した run かは `run-name` に入れたときだけここで見分けられる
+    public var displayTitle: String?
 
     public init(
         id: Int,
@@ -79,7 +82,8 @@ public struct WorkflowRun: Sendable, Equatable, Hashable, Identifiable {
         conclusion: Conclusion?,
         event: String,
         startedAt: Date,
-        url: URL
+        url: URL,
+        displayTitle: String? = nil
     ) {
         self.id = id
         self.repository = repository
@@ -90,6 +94,7 @@ public struct WorkflowRun: Sendable, Equatable, Hashable, Identifiable {
         self.event = event
         self.startedAt = startedAt
         self.url = url
+        self.displayTitle = displayTitle
     }
 
     /// まだ終わっていないか（queued / in_progress / waiting など）。実行中はもう一度起動しない
@@ -141,6 +146,55 @@ public enum WorkflowError: Error, Equatable, Sendable {
     /// 対応しているかは既定ブランチではなく指定した `ref` 側のファイルで判定される（`workflow_dispatch` を足す前に切った epic では 422 になる）ほか、
     /// `ref` が無いとき（`No ref found for: …`）にも返る。`message` は GitHub の説明で、アプリが表示に使う
     case dispatchNotSupported(message: String?)
+
+    /// 起動の 422 を、GitHub の説明（`message`）から分けたもの。422 でなければ `nil`。
+    /// GitHub は 422 の理由をコードで返さないので、説明の文言で見分ける（文言が変わったら `.other` になる）
+    public var dispatchRejection: DispatchRejection? {
+        guard case .dispatchNotSupported(let message) = self else {
+            return nil
+        }
+        return DispatchRejection(message: message)
+    }
+}
+
+/// 起動（`workflow_dispatch`）が 422 で断られた理由
+public enum DispatchRejection: Sendable, Equatable, Hashable {
+    /// `ref` 側のファイルに `workflow_dispatch` が無い（`Workflow does not have 'workflow_dispatch' trigger`）
+    case noWorkflowDispatchTrigger
+    /// `ref` のブランチ・タグが無い（`No ref found for: …`）
+    case refNotFound
+    /// inputs が合わない（`Unexpected inputs provided: …`・`Required input '…' not provided`・選べない値など）
+    case invalidInputs
+    /// 説明が無い、または知らない説明
+    case other
+
+    init(message: String?) {
+        let message = message?.lowercased() ?? ""
+        if message.contains("workflow_dispatch") {
+            self = .noWorkflowDispatchTrigger
+        } else if message.contains("no ref found") {
+            self = .refNotFound
+        } else if message.contains("input") {
+            self = .invalidInputs
+        } else {
+            self = .other
+        }
+    }
+}
+
+/// ワークフローがリポジトリにあるか（`GET /repos/{owner}/{repo}/actions/workflows/{file}`）
+public enum WorkflowAvailability: Sendable, Equatable, Hashable {
+    /// あって、有効（`state` が `active`）
+    case active
+    /// あるが、無効にされている（`disabled_manually`・`disabled_inactivity` など。`state` をそのまま持つ）。起動は 422 になる
+    case disabled(state: String)
+    /// 無い（404）。トークンからリポジトリが見えない・Actions が無効のときも 404 になる
+    case notFound
+
+    /// 起動できそうか（有効なワークフローがある）
+    public var isActive: Bool {
+        self == .active
+    }
 }
 
 /// `upload.yml` 用に付けていた名前。`WorkflowRun` と同じ

@@ -1,8 +1,22 @@
 import Foundation
 
+/// 1 つのワークフローの有無・run の取得・起動。テストやデモモードでは差し替える
+public protocol WorkflowProviding: Sendable {
+    /// ワークフローのファイル名（例: `release-prepare.yml`）
+    var file: String { get }
+    /// ワークフローがリポジトリにあるか
+    func availability(repository: String) async throws -> WorkflowAvailability
+    /// `branch` で実行した直近の run
+    func latestRun(repository: String, branch: String) async throws -> LatestWorkflowRun
+    /// 新しい順の run を `limit` 件まで（ページングはしない）。`branch`・`event` が `nil` なら絞らない
+    func recentRuns(repository: String, branch: String?, event: String?, limit: Int) async throws -> [WorkflowRun]
+    /// `ref` で起動する（`workflow_dispatch`）。`inputs` が空なら送らない
+    func dispatch(repository: String, ref: String, inputs: [String: String]) async throws
+}
+
 /// GitHub の REST API で、1 つのワークフロー（`.github/workflows/<file>`）の run を読み、`workflow_dispatch` で起動する。
 /// `upload.yml`（`GitHubUploadWorkflow`）とリリースのワークフロー（`ReleaseWorkflow`）で共通に使う
-public struct GitHubWorkflow: Sendable {
+public struct GitHubWorkflow: WorkflowProviding {
     /// ワークフローのファイル名（例: `upload.yml`）。API の `workflow_id` にはファイル名をそのまま使える
     public let file: String
 
@@ -11,6 +25,22 @@ public struct GitHubWorkflow: Sendable {
     public init(client: GitHubClient, file: String) {
         self.client = client
         self.file = file
+    }
+
+    /// ワークフローがリポジトリにあるか。ファイルがあるかは既定ブランチ（と run のあるブランチ）で判定される。
+    /// アプリはこれが `.notFound` のリポジトリでは、そのワークフローを使う操作を出さない（`upload.yml` の 404 の扱いと同じ）
+    ///
+    /// - Throws: レート制限でない 403 は `WorkflowError.permissionDenied`。それ以外は `GitHubError` のまま
+    public func availability(repository: String) async throws -> WorkflowAvailability {
+        let workflow: WorkflowNode
+        do {
+            workflow = try await client.get("repos/\(repository)/actions/workflows/\(file)", as: WorkflowNode.self)
+        } catch GitHubError.http(status: 404, _) {
+            return .notFound
+        } catch GitHubError.http(status: 403, _) {
+            throw WorkflowError.permissionDenied
+        }
+        return workflow.state == "active" ? .active : .disabled(state: workflow.state)
     }
 
     /// `repository`（`owner/repo`）の `branch` で実行した直近の run。404 は `.unsupported` で返す
@@ -37,6 +67,32 @@ public struct GitHubWorkflow: Sendable {
             return .noRuns
         }
         return .run(Self.makeRun(run, repository: repository, branch: branch))
+    }
+
+    /// 新しい順の run を `limit` 件まで（1〜100 に丸める）。直近の数件だけが要るので、ページングはしない。
+    /// 起動の直後の run を探すとき（dispatch は run の id を返さない）は、`event: "workflow_dispatch"` で絞り、開始時刻で見分ける
+    ///
+    /// - Parameters:
+    ///   - branch: 実行したブランチで絞る（`nil` なら絞らない）
+    ///   - event: 起動のきっかけ（`workflow_dispatch`・`schedule` など）で絞る（`nil` なら絞らない）
+    /// - Throws: 404 は `WorkflowError.workflowNotFound`、レート制限でない 403 は `.permissionDenied`
+    public func recentRuns(repository: String, branch: String? = nil, event: String? = nil, limit: Int = 10) async throws -> [WorkflowRun] {
+        var query = [URLQueryItem(name: "per_page", value: String(min(max(limit, 1), 100)))]
+        if let branch {
+            query.append(URLQueryItem(name: "branch", value: branch))
+        }
+        if let event {
+            query.append(URLQueryItem(name: "event", value: event))
+        }
+        let page: RunsPage
+        do {
+            page = try await client.get("repos/\(repository)/actions/workflows/\(file)/runs", query: query, as: RunsPage.self)
+        } catch GitHubError.http(status: 404, _) {
+            throw WorkflowError.workflowNotFound
+        } catch GitHubError.http(status: 403, _) {
+            throw WorkflowError.permissionDenied
+        }
+        return page.workflowRuns.map { Self.makeRun($0, repository: repository, branch: branch ?? "") }
     }
 
     /// `repository` のワークフローを `ref`（ブランチ名）で起動する（`workflow_dispatch`）。
@@ -73,7 +129,8 @@ public struct GitHubWorkflow: Sendable {
             conclusion: run.conclusion.map(WorkflowRun.Conclusion.init(rawValue:)),
             event: run.event,
             startedAt: run.runStartedAt ?? run.createdAt,
-            url: run.htmlUrl
+            url: run.htmlUrl,
+            displayTitle: run.displayTitle
         )
     }
 }
@@ -104,6 +161,7 @@ private struct RunNode: Decodable {
     let runStartedAt: Date?
     let createdAt: Date
     let htmlUrl: URL
+    let displayTitle: String?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -115,5 +173,11 @@ private struct RunNode: Decodable {
         case runStartedAt = "run_started_at"
         case createdAt = "created_at"
         case htmlUrl = "html_url"
+        case displayTitle = "display_title"
     }
+}
+
+private struct WorkflowNode: Decodable {
+    /// `active`・`deleted`・`disabled_fork`・`disabled_inactivity`・`disabled_manually`
+    let state: String
 }
