@@ -21,6 +21,8 @@ JSON に書いていない項目（例: 省略した promotionalText）は App S
 止めずに飛ばして終了コード 0 で終わる。
 最新情報（whatsNew）はバージョンごとの文言なので、JSON の `whatsNew.version` が反映先のバージョンと
 一致するときだけ書き込む（前のバージョンの文言を次のバージョンに載せてしまわないため）。
+そのプラットフォームの最初のバージョン（ほかに配信した・配信を終えたバージョンが無い）には書き込まない
+（App Store Connect は最初のバージョンに最新情報の欄を持たない）。
 
 PyJWT が要る（--check では不要）: `python3 -m pip install pyjwt cryptography`
 """
@@ -37,7 +39,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app_store_config import ROOT, Language, bundle_id, languages, parse_list
-from app_store_platform import PLATFORMS, missing_version_reason, platform_label, skipped_message
+from app_store_platform import PLATFORMS, is_first_version, missing_version_reason, platform_label, skipped_message
 
 METADATA_DIR = ROOT / "AppStore" / "metadata"
 
@@ -253,6 +255,15 @@ def main() -> int:
         if "whatsNew" in attributes and whats_new_version != version_string:
             del attributes["whatsNew"]
             print(f"  {target.language}: whatsNew は {whats_new_version} 向けなので {version_string} には書き込みません")
+
+    # 最初のバージョンには最新情報の欄が無い。初めてのリリースで確定した本文（「はじめてのリリースです。」など）は
+    # JSON に残して GitHub Release に使い、App Store Connect には送らない
+    if any("whatsNew" in attributes for _, attributes in entries) and \
+            is_first_version(client, app["id"], version, args.platform):
+        for target, attributes in entries:
+            if attributes.pop("whatsNew", None) is not None:
+                print(f"  {target.language}: {version_string} は {platform_label(args.platform)} の最初のバージョンなので、"
+                      "whatsNew は書き込みません（App Store Connect は最初のバージョンに最新情報の欄を持たない）")
 
     available = client.localization_entries(version["id"])
 

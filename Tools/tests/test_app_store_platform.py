@@ -165,6 +165,31 @@ SCREENSHOTS = {
 }
 
 
+class FirstVersionTests(unittest.TestCase):
+    def test_only_version_is_first(self):
+        target = version("1.0.0", "PREPARE_FOR_SUBMISSION", "v1")
+        client = FakeClient([target])
+        self.assertTrue(app_store_platform.is_first_version(client, "app", target, "MAC_OS"))
+        self.assertEqual(client.calls, [("/v1/apps/app/appStoreVersions", {"filter[platform]": "MAC_OS", "limit": 50})])
+
+    def test_rejected_or_unreleased_others_do_not_count(self):
+        target = version("1.0.0", "PREPARE_FOR_SUBMISSION", "v2")
+        client = FakeClient([version("0.9.0", "DEVELOPER_REJECTED", "v1"), target])
+        self.assertTrue(app_store_platform.is_first_version(client, "app", target, "IOS"))
+
+    def test_released_or_finished_version_means_update(self):
+        target = version("1.1.0", "PREPARE_FOR_SUBMISSION", "v2")
+        for state in ("READY_FOR_SALE", "REPLACED_WITH_NEW_VERSION", "REMOVED_FROM_SALE"):
+            with self.subTest(state=state):
+                client = FakeClient([version("1.0.0", state, "v1"), target])
+                self.assertFalse(app_store_platform.is_first_version(client, "app", target, "IOS"))
+
+    def test_app_version_state_is_used(self):
+        target = version("1.1.0", "PREPARE_FOR_SUBMISSION", "v2")
+        released = {"id": "v1", "attributes": {"versionString": "1.0.0", "appVersionState": "READY_FOR_DISTRIBUTION"}}
+        self.assertFalse(app_store_platform.is_first_version(FakeClient([released, target]), "app", target, "IOS"))
+
+
 class ScreenshotConfigTests(unittest.TestCase):
     def patch_config(self, config: dict):
         return mock.patch.object(app_store_config, "_screenshots_config", return_value=config)
@@ -255,6 +280,7 @@ class FakeAppStoreConnect:
         self.dry_run = dry_run
         self.find_version_calls: list[tuple] = []
         self.patches: list[str] = []
+        self.payloads: list[dict] = []
         FakeAppStoreConnect.instances.append(self)
 
     def find_app(self, bundle_id):
@@ -272,6 +298,7 @@ class FakeAppStoreConnect:
 
     def patch(self, path, payload):
         self.patches.append(path)
+        self.payloads.append(payload)
 
 
 class UploadMetadataMainTests(unittest.TestCase):
@@ -312,6 +339,38 @@ class UploadMetadataMainTests(unittest.TestCase):
         self.assertEqual(client.find_version_calls, [("app", None, "MAC_OS")])
         self.assertEqual(client.patches, ["/v1/appStoreVersionLocalizations/loc"])
         self.assertIn("/ macOS", output)
+
+    def metadata_dir(self, whats_new_version: str) -> Path:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name)
+        (path / "shared.json").write_text('{"supportUrl": "https://example.com"}', encoding="utf-8")
+        (path / "ja.json").write_text(
+            '{"description": "説明", "keywords": ["a"], "whatsNew": {"version": "%s", "text": "最新情報"}}'
+            % whats_new_version, encoding="utf-8")
+        return path
+
+    def written_attributes(self) -> dict:
+        payloads = FakeAppStoreConnect.instances[0].payloads
+        self.assertEqual(len(payloads), 1)
+        return payloads[0]["data"]["attributes"]
+
+    def test_whats_new_is_written_to_update(self):
+        FakeAppStoreConnect.versions = [version("1.1.0", "PREPARE_FOR_SUBMISSION", "v2"),
+                                        version("1.0.0", "READY_FOR_SALE", "v1")]
+        status, output = self.run_main("--metadata-dir", str(self.metadata_dir("1.1.0")))
+        self.assertEqual(status, 0)
+        self.assertEqual(self.written_attributes()["whatsNew"], "最新情報")
+        self.assertNotIn("最初のバージョン", output)
+
+    def test_whats_new_is_not_written_to_first_version(self):
+        FakeAppStoreConnect.versions = [version("1.0.0", "PREPARE_FOR_SUBMISSION")]
+        status, output = self.run_main("--metadata-dir", str(self.metadata_dir("1.0.0")))
+        self.assertEqual(status, 0)
+        attributes = self.written_attributes()
+        self.assertNotIn("whatsNew", attributes)
+        self.assertEqual(attributes["description"], "説明")
+        self.assertIn("1.0.0 は iOS の最初のバージョンなので、whatsNew は書き込みません", output)
 
 
 if __name__ == "__main__":
