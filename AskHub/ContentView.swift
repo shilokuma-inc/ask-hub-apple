@@ -108,6 +108,7 @@ struct ContentView: View {
             Task {
                 await model.refresh()
                 await requestModel.loadRepositories()
+                await requestModel.release.refresh()
                 await mergeModel.refresh()
                 await loopModel.refresh()
             }
