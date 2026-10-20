@@ -292,7 +292,7 @@ API と表示の決まりは [docs/protocol.md](protocol.md) の「リリース�
 | バージョンの既定値 | `develop` の `Configs/Project.xcconfig` の `MARKETING_VERSION` の次のマイナー（`1.0.0` → `1.1.0`。形が `MAJOR.MINOR.PATCH` でなければ既定値を入れない） |
 | 準備中のリリース | `release/<v>` のブランチがあって `v<v>` のタグが無いもの |
 | 最新情報 | `release/<v>` の `AppStore/whats-new-draft.json`（あれば未確定）と、`AppStore/languages.json` の言語ごとの `AppStore/metadata/<言語>.json` の `whatsNew`（すべての言語で `version` が `<v>` なら確定済み） |
-| ワークフローの有無と run | `release-prepare.yml`・`release-notes.yml`・`release-finish.yml`。無い（404）リポジトリでは「リリース準備」を出さない |
+| ワークフローの有無と run | `release-prepare.yml`・`release-notes.yml`・`release-finish.yml`。依頼の種類の「リリース準備」は常に出し、無い（404）リポジトリを選んだときにその旨を出してボタンを押せなくする（一覧を出す前に全リポジトリへ問い合わせない） |
 
 ### アプリからのリリース準備
 
