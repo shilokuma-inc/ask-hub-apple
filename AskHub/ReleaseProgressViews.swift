@@ -264,7 +264,8 @@ struct ReleaseDraftSourceSection: View {
 
     var body: some View {
         Section {
-            ForEach(draft.messages, id: \.self) { message in
+            // 同じ説明が 2 回入っていても壊れないよう、並びの位置を id にする
+            ForEach(Array(draft.messages.enumerated()), id: \.offset) { _, message in
                 Text(message)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
