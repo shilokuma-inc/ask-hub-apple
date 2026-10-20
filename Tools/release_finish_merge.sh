@@ -151,82 +151,122 @@ stop_with_pull_request() {
   exit 1
 }
 
-current=$(git rev-parse --verify --quiet "refs/remotes/origin/${target}^{commit}" || true)
+# $1: push の標準エラーを書いたファイル。起動した後に取り込み先が進んだだけ（non-fast-forward）なら真
+is_non_fast_forward() {
+  grep -qE '\[rejected\].*\((non-fast-forward|fetch first)\)' "$1" 2> /dev/null
+}
 
-if [ -n "$current" ] && git merge-base --is-ancestor "$RELEASE_SHA" "$current"; then
-  output state "done"
-  output sha "$current"
-  summary "- ${target}: すでに \`${branch}\` を含んでいます（$(commit_link "$current")。前の run か人が取り込み済み）"
-  exit 0
-fi
-
-if [ -z "$current" ]; then
-  if [ "$target" != "main" ]; then
-    echo "::error::${target} がありません"
-    exit 1
+# 作ったコミット $1 を取り込み先に push する。$2: check run の説明（develop だけ）
+# 戻り値: 0 = push した / 1 = 取り込み先が進んでいた（non-fast-forward）/ 2 = 断られた / 3 = check run を付けられなかった
+publish() {
+  local commit="$1" err="$RUNNER_TEMP/push-${target}.err" result=0
+  : > "$err"
+  if [ "$target" = "main" ]; then
+    # main にはブランチ保護が無い（必須チェックも無い）ので、一時ブランチも check run も使わずにそのまま push する
+    if git push --quiet origin "${commit}:refs/heads/main" 2> "$err"; then
+      return 0
+    fi
+    is_non_fast_forward "$err" && return 1
+    return 2
   fi
-  # 初回のリリース: release の先頭から main を作る（コミットはもうリモートにあるので、一時ブランチも check run も要らない）
-  if ! git push --quiet origin "${RELEASE_SHA}:refs/heads/main" 2> "$RUNNER_TEMP/push-main.err"; then
-    cat "$RUNNER_TEMP/push-main.err" >&2
-    stop_with_pull_request rejected "main を作る push を断られました: $(push_error "$RUNNER_TEMP/push-main.err")"
-  fi
-  output state created
-  output sha "$RELEASE_SHA"
-  summary "- main: まだ無かったので、\`${branch}\` の先頭 $(commit_link "$RELEASE_SHA") から作りました"
-  exit 0
-fi
-
-worktree="$RUNNER_TEMP/merge-${target}"
-git worktree add --quiet --detach "$worktree" "$current"
-if ! git -C "$worktree" merge --quiet --no-ff --no-edit -m "Merge branch '${branch}' into ${target}" "$RELEASE_SHA"; then
-  # shellcheck disable=SC2016  # バッククォートは Markdown のコードスパン（展開しない）
-  conflicts=$(git -C "$worktree" diff --name-only --diff-filter=U | head -20 | sed 's/^/`/; s/$/`/' | paste -sd ' ' -)
-  git -C "$worktree" merge --abort || true
-  stop_with_pull_request conflict "コンフリクト: ${conflicts:-（ファイルを特定できませんでした）}"
-fi
-
-if [ "$target" = "develop" ]; then
-  python3 "$tools/release_finish.py" --root "$worktree" develop-version --version "$VERSION" > "$RUNNER_TEMP/develop-version.json"
-  if [ "$(jq -r '.changed' "$RUNNER_TEMP/develop-version.json")" = "true" ]; then
-    next=$(jq -r '.version' "$RUNNER_TEMP/develop-version.json")
-    git -C "$worktree" add Configs/Project.xcconfig
-    git -C "$worktree" commit --quiet -m "[chore] MARKETING_VERSION を ${next} にする"
-    summary "- develop の MARKETING_VERSION: $(jq -r '.previous' "$RUNNER_TEMP/develop-version.json") → ${next}（配信した ${VERSION} のままだと develop の Upload が失敗するため）"
-  fi
-fi
-
-merged=$(git -C "$worktree" rev-parse HEAD)
-
-pushed=0
-if [ "$target" = "main" ]; then
-  # main にはブランチ保護が無い（必須チェックも無い）ので、一時ブランチも check run も使わずにそのまま push する
-  if git push --quiet origin "${merged}:refs/heads/main" 2> "$RUNNER_TEMP/push-${target}.err"; then
-    pushed=1
-  fi
-else
   # 作ったコミットをリモートに置いてから check run を付ける（check run はリモートにあるコミットにしか付けられない）。
   # 中断した run の一時ブランチが残っていても断られないよう、一時ブランチだけは + で上書きする（develop への push には付けない）
-  if ! git push --quiet origin "+${merged}:refs/heads/${temp_branch}" 2> "$RUNNER_TEMP/push-${target}.err"; then
-    cat "$RUNNER_TEMP/push-${target}.err" >&2
-    stop_with_pull_request rejected "push を断られました: $(push_error "$RUNNER_TEMP/push-${target}.err")"
-  fi
-  if ! create_check_run "$merged" "${branch} を ${target} に取り込むマージコミットです。${branch} にしかないコミットに AI 帰属行が無いことを、Release/Finish の check ジョブで確かめました。" 2> "$RUNNER_TEMP/check-run-${target}.err"; then
+  git push --quiet origin "+${commit}:refs/heads/${temp_branch}" 2> "$err" || return 2
+  if ! create_check_run "$commit" "$2" 2> "$RUNNER_TEMP/check-run-${target}.err"; then
     # push を断られたのではない（develop には何も push していない）。API の失敗の理由を出す
-    cat "$RUNNER_TEMP/check-run-${target}.err" >&2
-    pushed=check-run
-  elif git push --quiet origin "${merged}:refs/heads/${target}" 2> "$RUNNER_TEMP/push-${target}.err"; then
-    pushed=1
+    result=3
+  elif ! git push --quiet origin "${commit}:refs/heads/${target}" 2> "$err"; then
+    if is_non_fast_forward "$err"; then result=1; else result=2; fi
   fi
   git push --quiet origin --delete "$temp_branch" 2> /dev/null || echo "::warning::一時ブランチ ${temp_branch} を消せませんでした"
-fi
-if [ "$pushed" = "check-run" ]; then
-  stop_with_pull_request rejected "コミット $(commit_link "$merged") に check run「${check_name}」を付けられませんでした（${target} には push していません）: $(check_run_error "$RUNNER_TEMP/check-run-${target}.err")"
-fi
-if [ "$pushed" != "1" ]; then
-  cat "$RUNNER_TEMP/push-${target}.err" >&2 2> /dev/null || true
-  stop_with_pull_request rejected "${target} への push を断られました（起動した後に ${target} が進んだか、ブランチ保護）: $(push_error "$RUNNER_TEMP/push-${target}.err")"
-fi
+  return "$result"
+}
 
-output state merged
-output sha "$merged"
-summary "- ${target}: \`${branch}\` をマージコミット $(commit_link "$merged") で取り込みました"
+# $1: publish の戻り値（2 か 3）。理由の 1 行
+publish_error() {
+  if [ "$1" = "3" ]; then
+    cat "$RUNNER_TEMP/check-run-${target}.err" >&2 2> /dev/null || true
+    echo "check run「${check_name}」を付けられませんでした（${target} には push していません）: $(check_run_error "$RUNNER_TEMP/check-run-${target}.err")"
+  else
+    cat "$RUNNER_TEMP/push-${target}.err" >&2 2> /dev/null || true
+    echo "${target} への push を断られました: $(push_error "$RUNNER_TEMP/push-${target}.err")"
+  fi
+}
+
+# 起動した後に取り込み先が進んで push が non-fast-forward で断られたときは、取り込み先を取り直して 1 回だけやり直す
+retried=""
+for attempt in 1 2; do
+  current=$(git rev-parse --verify --quiet "refs/remotes/origin/${target}^{commit}" || true)
+
+  if [ -n "$current" ] && git merge-base --is-ancestor "$RELEASE_SHA" "$current"; then
+    output state "done"
+    output sha "$current"
+    summary "- ${target}: すでに \`${branch}\` を含んでいます（$(commit_link "$current")。前の run か人が取り込み済み）"
+    exit 0
+  fi
+
+  if [ -z "$current" ]; then
+    if [ "$target" != "main" ]; then
+      echo "::error::${target} がありません"
+      exit 1
+    fi
+    # 初回のリリース: release の先頭から main を作る（コミットはもうリモートにあるので、一時ブランチも check run も要らない）
+    rc=0
+    publish "$RELEASE_SHA" "" || rc=$?
+    if [ "$rc" = "0" ]; then
+      output state created
+      output sha "$RELEASE_SHA"
+      summary "- main: まだ無かったので、\`${branch}\` の先頭 $(commit_link "$RELEASE_SHA") から作りました"
+      exit 0
+    fi
+    if [ "$rc" = "1" ] && [ "$attempt" = "1" ]; then
+      # 起動した後に main ができていた。取り直して取り込む
+      retried=1
+      git fetch --quiet origin '+refs/heads/main:refs/remotes/origin/main' || true
+      continue
+    fi
+    stop_with_pull_request rejected "main を作る push を断られました: $(push_error "$RUNNER_TEMP/push-main.err")"
+  fi
+
+  worktree="$RUNNER_TEMP/merge-${target}-${attempt}"
+  git worktree add --quiet --detach "$worktree" "$current"
+  if ! git -C "$worktree" merge --quiet --no-ff --no-edit -m "Merge branch '${branch}' into ${target}" "$RELEASE_SHA"; then
+    # shellcheck disable=SC2016  # バッククォートは Markdown のコードスパン（展開しない）
+    conflicts=$(git -C "$worktree" diff --name-only --diff-filter=U | head -20 | sed 's/^/`/; s/$/`/' | paste -sd ' ' -)
+    git -C "$worktree" merge --abort || true
+    stop_with_pull_request conflict "コンフリクト: ${conflicts:-（ファイルを特定できませんでした）}"
+  fi
+
+  version_message=""
+  if [ "$target" = "develop" ]; then
+    python3 "$tools/release_finish.py" --root "$worktree" develop-version --version "$VERSION" > "$RUNNER_TEMP/develop-version.json"
+    if [ "$(jq -r '.changed' "$RUNNER_TEMP/develop-version.json")" = "true" ]; then
+      next=$(jq -r '.version' "$RUNNER_TEMP/develop-version.json")
+      git -C "$worktree" add Configs/Project.xcconfig
+      git -C "$worktree" commit --quiet -m "[chore] MARKETING_VERSION を ${next} にする"
+      version_message="- develop の MARKETING_VERSION: $(jq -r '.previous' "$RUNNER_TEMP/develop-version.json") → ${next}（配信した ${VERSION} のままだと develop の Upload が失敗するため）"
+    fi
+  fi
+
+  merged=$(git -C "$worktree" rev-parse HEAD)
+  rc=0
+  publish "$merged" "${branch} を ${target} に取り込むマージコミットです。${branch} にしかないコミットに AI 帰属行が無いことを、Release/Finish の check ジョブで確かめました。" || rc=$?
+  if [ "$rc" = "0" ]; then
+    output state merged
+    output sha "$merged"
+    summary "- ${target}: \`${branch}\` をマージコミット $(commit_link "$merged") で取り込みました${retried:+（起動した後に ${target} が進んでいたので、新しい先頭で取り込み直しました）}"
+    if [ -n "$version_message" ]; then
+      summary "$version_message"
+    fi
+    exit 0
+  fi
+  if [ "$rc" = "1" ] && [ "$attempt" = "1" ]; then
+    retried=1
+    git fetch --quiet origin "+refs/heads/${target}:refs/remotes/origin/${target}" || true
+    continue
+  fi
+  if [ "$rc" = "1" ]; then
+    stop_with_pull_request rejected "取り込み直しても ${target} への push を断られました（取り込み先が進み続けています）: $(push_error "$RUNNER_TEMP/push-${target}.err")"
+  fi
+  stop_with_pull_request rejected "$(publish_error "$rc")"
+done
