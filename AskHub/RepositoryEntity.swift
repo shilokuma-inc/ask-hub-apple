@@ -32,46 +32,19 @@ nonisolated struct RepositoryEntityQuery: EntityStringQuery {
     }
 }
 
-/// App Intents から使う依頼先の候補の取り方。トークン・organization・requester の取り方はアプリの「新しい依頼」と同じ。テストでは差し替える
+/// App Intents から使う依頼先の候補の取り方。organization と requester の取り方はアプリの「新しい依頼」と同じ。テストでは差し替える
 struct RepositoryCandidates {
-    var tokenStore: any TokenStore = KeychainTokenStore.gitHub
-    var makeRequester: (String) -> any IdeaRequesting = { GitHubIdeaRequester(client: GitHubClient(token: $0)) }
+    var requesters = IntentRequesterSource()
     var organizations: () -> [String] = { OrganizationSettings.load() }
-    /// デモモードではトークンを読まず、GitHub に接続しない
-    var usesSampleData: () -> Bool = { DemoMode.usesSampleData }
 
     /// 候補の `owner/repo`。アプリの依頼先の Picker（`RepositorySection.grouping`）と同じ順
     func all(now: Date) async throws -> [String] {
         let repositories: [RequestRepository]
         do {
-            repositories = try await requester().repositories(in: organizations())
+            repositories = try await requesters.requester().repositories(in: organizations())
         } catch {
-            throw AppIntentError(error)
+            throw AppIntentError.wrapping(error)
         }
         return RepositorySection.grouping(repositories, now: now).flatMap(\.repositories)
-    }
-
-    private func requester() throws -> any IdeaRequesting {
-        if usesSampleData() {
-            return SampleIdeaRequester()
-        }
-        guard let token = try tokenStore.load() else {
-            throw IdeaRequestModel.MissingTokenError()
-        }
-        return makeRequester(token)
-    }
-}
-
-/// Siri・ショートカットに返す失敗。文言はアプリの「新しい依頼」と同じ（`IdeaRequestModel.message(for:)`）で、トークンの値は含めない
-nonisolated struct AppIntentError: Error, CustomLocalizedStringResourceConvertible {
-    let message: String
-
-    @MainActor
-    init(_ error: any Error) {
-        message = IdeaRequestModel.message(for: error)
-    }
-
-    var localizedStringResource: LocalizedStringResource {
-        "\(message)"
     }
 }
