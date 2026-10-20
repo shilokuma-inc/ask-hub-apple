@@ -158,6 +158,7 @@ jobs:
           set -euo pipefail
           branch="release/${VERSION}"
           failed=0
+          started=0
           {
             echo
             echo "### 起動したワークフロー（\`${branch}\`）"
@@ -165,6 +166,7 @@ jobs:
             if ! git cat-file -e "HEAD:.github/workflows/app-store-metadata.yml" 2> /dev/null; then
               echo "- メタデータ（\`app-store-metadata.yml\`）: 飛ばした（release ブランチにファイルが無い）"
             elif gh workflow run app-store-metadata.yml --ref "$branch" -f "app_version=${VERSION}" -f dry_run=false; then
+              started=1
               echo "- メタデータ（\`app-store-metadata.yml\`・\`dry_run: false\`・\`app_version: ${VERSION}\`）: 起動した。"
               echo "  反映の結果は [Metadata/App Store](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/app-store-metadata.yml) の run の Job Summary で見られます（起動の直後は一覧に出るまで数秒かかります）"
             else
@@ -173,6 +175,7 @@ jobs:
             fi
           } >> "$SUMMARY"
           echo "failed=${failed}" >> "$GITHUB_OUTPUT"
+          echo "started=${started}" >> "$GITHUB_OUTPUT"
 
       - name: Summary
         if: always()
@@ -180,6 +183,8 @@ jobs:
           DELIVERY: ${{ vars.ENABLE_DELIVERY != 'false' }}
           APPLIED: ${{ steps.apply.outcome == 'success' }}
           PUSHED: ${{ steps.commit.outcome == 'success' }}
+          # Metadata/App Store を起動できたか（ENABLE_DELIVERY が false・release ブランチにファイルが無い・起動の失敗では false）
+          STARTED: ${{ steps.dispatch.outputs.started == '1' }}
           FAILED: ${{ job.status != 'success' || steps.dispatch.outputs.failed == '1' }}
         run: |
           set -euo pipefail
@@ -209,7 +214,12 @@ jobs:
             echo
             echo "### 次にすること"
             echo
-            echo "1. Metadata/App Store の run の Job Summary で、iOS / macOS に最新情報が書き込まれたかを確かめる"
+            if [ "$STARTED" = "true" ]; then
+              echo "1. Metadata/App Store の run の Job Summary で、iOS / macOS に最新情報が書き込まれたかを確かめる"
+            else
+              # 反映を起動していないので、run を確かめる手順は出さない（理由は上の節）
+              echo "1. Metadata/App Store は起動していません（上の理由を見てください）。App Store Connect に反映するときは、Actions から Metadata/App Store を \`release/${VERSION}\`・\`dry_run\` オフで起動する"
+            fi
             echo "2. 直したくなったら、AskHub か Actions の Release/Notes から同じバージョンで確定し直す（上書きする）"
             echo "3. App Store Connect で審査に提出する（人が行う）"
             if [ "$FAILED" = "true" ]; then
