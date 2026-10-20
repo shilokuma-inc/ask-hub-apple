@@ -1,8 +1,9 @@
-# Archive → IPA Export（→ App Store Connect へアップロード）の共通処理。
-# archive.yml / upload.yml から workflow_call で呼び出される。
+# Archive → Export（iOS は IPA、macOS は pkg）（→ App Store Connect へアップロード）の共通処理。
+# archive.yml / upload.yml から workflow_call で呼び出される。1 回の呼び出しで 1 つのプラットフォームを扱う。
 #
 # 認証はすべて App Store Connect API Key で行う（Apple ID / App 用パスワードは使わない）。
 # アップロードは ExportOptions.plist の destination を upload にした xcodebuild -exportArchive で行う。
+# iOS と macOS で同じ EXPORT_OPTIONS（method=app-store-connect）を使う。
 name: _archive
 
 on:
@@ -13,8 +14,12 @@ on:
         type: string
         # README の Environment と揃える。ランナー側の更新でビルドが変わらないよう固定する
         default: '26.6'
+      platform:
+        description: アーカイブするプラットフォーム（iOS / macOS）
+        type: string
+        default: iOS
       upload:
-        description: Export した IPA を App Store Connect へアップロードするか
+        description: Export したもの（IPA / pkg）を App Store Connect へアップロードするか
         type: boolean
         default: false
     secrets:
@@ -32,9 +37,55 @@ on:
         required: true
 
 jobs:
+  platform:
+    # macOS のアップロードは、App Store Connect のアプリに macOS のプラットフォームが追加されているときだけ行う。
+    # 追加は Web でしかできず、追加する前にアップロードすると毎回失敗するため、先に読み取りだけで確かめる。
+    # 無ければ手順を Job Summary に出して archive を飛ばす（失敗にはしない）。macOS のランナーを使わないよう ubuntu で確かめる
+    if: inputs.platform == 'macOS' && inputs.upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Create API private key
+        # Secrets はシェル展開ではなく env 経由で渡す。鍵はリポジトリ配下ではなく RUNNER_TEMP に置く
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/private_keys/AuthKey.p8"
+
+      - name: Check macOS platform in App Store Connect
+        id: check
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          API_KEY_PATH: ${{ runner.temp }}/private_keys/AuthKey.p8
+        run: |
+          set -euo pipefail
+          # Bundle ID は Configs/Project.xcconfig の APP_BUNDLE_IDENTIFIER（アーカイブの前なので xcarchive からは読めない）
+          BUNDLE_ID=$(python3 Tools/app_store_config.py bundle-id) \
+          PLATFORM=MAC_OS \
+            ruby .github/scripts/check-app-store-platform.rb
+
   archive:
+    needs: platform
+    # platform を飛ばした（iOS・アップロードしない）ときと、macOS のプラットフォームがあったときだけ動く。
+    # needs が skipped だと既定では後続も飛ぶので !cancelled() を付ける。platform が失敗したら available は空なので飛ぶ
+    if: ${{ !cancelled() && (needs.platform.result == 'skipped' || needs.platform.outputs.available == 'true') }}
     runs-on: macos-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
 
     steps:
       - name: Select Xcode
@@ -53,25 +104,52 @@ jobs:
         # ExportOptions.plist と API 秘密鍵はリポジトリ配下ではなく RUNNER_TEMP に置く
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          PLATFORM: ${{ inputs.platform }}
         run: |
+          case "$PLATFORM" in
+            iOS) package_extension=ipa ;;
+            macOS) package_extension=pkg ;;
+            *)
+              echo "::error::platform は iOS か macOS を指定してください（${PLATFORM}）"
+              exit 1
+              ;;
+          esac
           project=$(basename -s .xcodeproj ./*.xcodeproj)
           {
             echo "PROJECT_NAME=$project"
             echo "SCHEME=$project"
+            echo "PACKAGE_EXTENSION=$package_extension"
             echo "EXPORT_OPTIONS_PATH=$RUNNER_TEMP/ExportOptions.plist"
             echo "API_KEY_PATH=$RUNNER_TEMP/private_keys/AuthKey_$APPLE_API_KEY_ID.p8"
           } >> "$GITHUB_ENV"
-          echo "project=$project scheme=$project"
+          echo "project=$project scheme=$project platform=$PLATFORM package=$package_extension"
 
       - name: Archive
+        env:
+          PLATFORM: ${{ inputs.platform }}
         run: |
-          xcodebuild archive \
-            -project "$PROJECT_NAME.xcodeproj" \
-            -scheme "$SCHEME" \
-            -sdk iphoneos \
-            -configuration Release \
-            -archivePath "$RUNNER_TEMP/build.xcarchive" \
-            CODE_SIGNING_ALLOWED=NO
+          if [ "$PLATFORM" = macOS ]; then
+            # macOS はアドホック署名でアーカイブする。CODE_SIGNING_ALLOWED=NO だと App Sandbox などのエンタイトルメント
+            # （ENABLE_APP_SANDBOX から作られる）が実行ファイルに埋め込まれず、Export で配布用に署名し直しても sandbox の無いアプリになる
+            # （Mac App Store は sandbox を必須にしている）。配布用の署名は iOS と同じく Export で行う
+            xcodebuild archive \
+              -project "$PROJECT_NAME.xcodeproj" \
+              -scheme "$SCHEME" \
+              -destination 'generic/platform=macOS' \
+              -configuration Release \
+              -archivePath "$RUNNER_TEMP/build.xcarchive" \
+              CODE_SIGN_IDENTITY=- \
+              CODE_SIGN_STYLE=Manual \
+              PROVISIONING_PROFILE_SPECIFIER=
+          else
+            xcodebuild archive \
+              -project "$PROJECT_NAME.xcodeproj" \
+              -scheme "$SCHEME" \
+              -sdk iphoneos \
+              -configuration Release \
+              -archivePath "$RUNNER_TEMP/build.xcarchive" \
+              CODE_SIGNING_ALLOWED=NO
+          fi
 
       - name: Create ExportOptions.plist and API private key
         # Secrets はシェル展開ではなく env 経由で渡す
@@ -84,7 +162,8 @@ jobs:
           mkdir -p "$(dirname "$API_KEY_PATH")"
           printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$API_KEY_PATH"
 
-      - name: Export IPA
+      - name: Export ${{ inputs.platform == 'macOS' && 'pkg' || 'IPA' }}
+        # method=app-store-connect のまま、iOS は IPA、macOS は pkg（Mac Installer Distribution で署名）が出る
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
@@ -99,18 +178,19 @@ jobs:
             -authenticationKeyID "$APPLE_API_KEY_ID" \
             -authenticationKeyIssuerID "$APPLE_API_ISSUER_ID"
 
-      - name: Upload IPA to GitHub
+      - name: Upload ${{ inputs.platform == 'macOS' && 'pkg' || 'IPA' }} to GitHub
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.PROJECT_NAME }}.ipa
-          path: ${{ runner.temp }}/export/*.ipa
+          name: ${{ env.PROJECT_NAME }}.${{ env.PACKAGE_EXTENSION }}
+          path: ${{ runner.temp }}/export/*.${{ env.PACKAGE_EXTENSION }}
           if-no-files-found: error
 
       - name: Check app exists in App Store Connect
         # App Store Connect にアプリが無いと、アップロードが "Error Downloading App Information" で失敗し原因が分かりにくい。
         # アプリの作成は API でできないため、ここでは読み取りだけで確認し、無ければ作成手順を Job Summary に出して止める。
-        # Bundle ID は直前の Export で Developer Portal に登録済みなので、この時点で Web 画面から選べる
-        if: ${{ inputs.upload }}
+        # Bundle ID は直前の Export で Developer Portal に登録済みなので、この時点で Web 画面から選べる。
+        # macOS は platform ジョブでアプリと macOS のプラットフォームを確かめ済みなので、iOS だけで行う
+        if: ${{ inputs.upload && inputs.platform == 'iOS' }}
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
@@ -121,7 +201,7 @@ jobs:
 
       - name: Upload to App Store Connect
         # ビルド番号は Xcode に採番させる（manageAppVersionAndBuildNumber）。App Store Connect 上の最新ビルド番号を見て
-        # 自動で増やすので、xcconfig の CURRENT_PROJECT_VERSION を手で上げる必要はない。
+        # 自動で増やすので、xcconfig の CURRENT_PROJECT_VERSION を手で上げる必要はない（iOS と macOS のビルドは別々に数える）。
         # epic ブランチから手動実行しても、同じ MARKETING_VERSION のままビルド番号だけ増えて TestFlight に並ぶ。
         # org 共有の EXPORT_OPTIONS Secret は他リポジトリでも使うため書き換えず、ランナー上のコピーだけを上書きする。
         # Archive だけのとき（upload: false）は上書きしない（App Store Connect の問い合わせを増やさない）
