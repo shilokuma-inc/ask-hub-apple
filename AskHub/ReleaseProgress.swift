@@ -33,7 +33,7 @@ struct ReleaseProgress: Equatable {
     }
 
     var version: ReleaseVersion
-    /// `develop` で起動したリリース準備の直近の run
+    /// `develop` で起動したリリース準備の、このリリースの直近の run（run-name のバージョンで見分ける）
     var prepareRun: WorkflowRun?
     /// release ブランチの `upload.yml` の run
     var upload: WorkflowState

@@ -202,8 +202,10 @@ final class ReleaseRequestModel {
             return Context(availability: availability)
         }
         async let refs = reader.refs(repository: repository)
-        async let runs = workflow.recentRuns(repository: repository, branch: dispatchRef, event: "workflow_dispatch", limit: 5)
-        var context = Context(availability: availability, refs: try await refs, latestRun: try await runs.first)
+        // 準備中のリリースの run を run-name のバージョンで探すので、直近の 1 件より多めに読む
+        async let runs = workflow.recentRuns(repository: repository, branch: dispatchRef, event: "workflow_dispatch", limit: 20)
+        let prepareRuns = try await runs
+        var context = Context(availability: availability, refs: try await refs, latestRun: prepareRuns.first)
         do {
             context.marketingVersion = try await reader.marketingVersion(repository: repository, ref: dispatchRef)
             if let marketingVersion = context.marketingVersion, marketingVersion.version == nil {
@@ -219,7 +221,9 @@ final class ReleaseRequestModel {
             context.progress = await ReleaseProgress.load(
                 repository: repository,
                 version: version,
-                prepareRun: context.latestRun,
+                // 直近の run は別のバージョンのもの（ブランチを切る前に失敗した run など）のことがあるので、
+                // run-name（`Release/Prepare <v>`）のバージョンで、このリリースの run を選ぶ
+                prepareRun: prepareRuns.first { ReleaseProgress.isRun($0, of: version) },
                 reader: reader,
                 workflow: makeWorkflow
             )
