@@ -77,6 +77,35 @@ extension ReleaseProgressTests {
         #expect(fixture.model.notes.texts == ["ja": "・A で直した本文"])
     }
 
+    @Test func dropsEditedTextOfFinishedRelease() async {
+        let fixture = makeFixture()
+        await fixture.model.select(Self.repository)
+        fixture.model.notes.texts["ja"] = "・A で直した本文"
+        // 別のリポジトリに切り替えると、直した本文を退避する
+        await fixture.model.select(Self.otherRepository)
+        #expect(fixture.model.notes.editingByRelease.keys.sorted() == ["\(Self.repository) 1.1.0"])
+
+        // A のリリースが終わってタグができたら、戻す先が無いので捨てる
+        fixture.reader.finishRelease()
+        await fixture.model.select(Self.repository)
+        #expect(fixture.model.notes.progress == nil)
+        #expect(fixture.model.notes.texts.isEmpty)
+        #expect(fixture.model.notes.editingByRelease.isEmpty)
+    }
+
+    @Test func dropsEditedTextWhenReleaseFinishesWhileShown() async {
+        let fixture = makeFixture()
+        await fixture.model.select(Self.repository)
+        fixture.model.notes.texts["ja"] = "・A で直した本文"
+
+        // 見ているあいだにリリースが終わった
+        fixture.reader.finishRelease()
+        await fixture.model.refresh()
+        #expect(fixture.model.notes.progress == nil)
+        #expect(!fixture.model.notes.isEdited)
+        #expect(fixture.model.notes.editingByRelease.isEmpty)
+    }
+
     @Test func choosesPrepareRunOfVersion() async {
         let fixture = makeFixture()
         // 直近の run は別のバージョン（ブランチを切る前に失敗したものなど）
