@@ -231,7 +231,10 @@ python3 Tools/release_app_store.py status --version 1.1.0        # 状態を見�
 
 - 対象は `--platforms`（既定 `IOS,MAC_OS`）。`--dry-run` を付けると読むだけで何も書き換えない
 - 認証は Metadata/App Store と同じ（`APP_STORE_CONNECT_KEY_ID`・`APP_STORE_CONNECT_ISSUER_ID`・`APP_STORE_CONNECT_PRIVATE_KEY_PATH`）。Bundle ID は `Configs/Project.xcconfig` から読む
-- 結果は JSON で標準出力に出る（人に向けた説明は標準エラー）。終了コードは 0 = 成功・1 = 失敗（`error` に理由）・2 = 引数の誤り
+- 結果は JSON で標準出力に出る（人に向けた説明は標準エラー）。終了コードは 0 = 成功・1 = 失敗（`error` に理由）・2 = 引数の誤り（バージョンの形の誤りを含む。App Store Connect は呼ばない）
+- どの失敗でも（API の 4xx / 5xx・通信の失敗やタイムアウト・JSON でない応答・`.p8` が無い・引数の誤り）、標準出力には `ok: false` と `error` を持つ JSON が 1 つ出る。
+  ワークフローは終了コードを見なくても `ok` で判定できる
+- 1 つのプラットフォームで API が失敗しても（macOS のバージョンの作成が 409 など）、ほかのプラットフォームは続けて、その結果も JSON に残る（全体は `ok: false`）
 
 ```json
 {
@@ -258,10 +261,13 @@ python3 Tools/release_app_store.py status --version 1.1.0        # 状態を見�
 | `prepare` | `blocked` | 人が App Store Connect で直す必要がある（下の「編集できるバージョンが残っているとき」）。失敗になる |
 | `attach-build` | `attached` / `already-attached` | 最新のビルドを紐付けた（`previousBuildId` に前のビルド）/ すでに紐付いている |
 | `attach-build` | `waiting-for-build` / `locked` / `version-missing` | 処理が終わったビルドがまだ無い / 審査中・配信済みなので触らない / そのバージョンが無い |
-| `status` | `released` / `not-released` / `version-missing` | 配信済み / まだ / そのバージョンが無い。トップの `released` は、バージョンがあるプラットフォームすべてで配信済みのとき `true` |
+| `status` | `released` / `not-released` / `version-missing` | 配信済み / まだ / そのバージョンが無い。トップの `released` は、バージョンがあるプラットフォームすべてで配信済みのとき `true`（`error` のプラットフォームがあれば `false`） |
+| すべて | `error` | そのプラットフォームの API の呼び出しが失敗した（`httpStatus` に HTTP のステータスコード。通信の失敗では `null`）。失敗になるが、ほかのプラットフォームの結果は残る |
 
 - ビルドは `/v1/builds` を、バージョン（`CFBundleShortVersionString`）・プラットフォーム・`processingState=VALID`・期限切れでないもので探し、`uploadedDate` が最も新しいものを選ぶ。
   release ブランチへの push のたびにビルドが上がるので、審査に出す前なら新しいビルドに差し替える
+- ビルドは上がったブランチを区別できない（バージョンとプラットフォームだけで選ぶ）。`develop` の `MARKETING_VERSION` がリリースと同じだと、
+  `develop` への push で上がったビルドを紐付けうるので、リリース準備は `develop` の `MARKETING_VERSION` より大きいバージョンでしか始めない（「リリース準備」の「バージョンの決まり」）
 - 配信済みとみなすのは、`appVersionState` が `READY_FOR_DISTRIBUTION`、または非推奨の `appStoreState` が `READY_FOR_SALE`・`REPLACED_WITH_NEW_VERSION` のとき。
   承認後の公開待ち（`PENDING_DEVELOPER_RELEASE`）や配信の処理中は含めない（手動で公開するまでリリース後作業を始めない）
 - 一覧はページングを最後までたどる。429（レート制限）は `Retry-After` の秒数（無ければ 10 秒から倍々）を待って 4 回まで送り直す。`Retry-After` が 120 秒を超えるときは待たずに失敗にして、次の実行に任せる
