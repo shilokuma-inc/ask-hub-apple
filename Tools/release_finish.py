@@ -12,7 +12,8 @@
 - `check`: `<remote>/release/<v>` があること、`<remote>/main`・`<remote>/develop`・`v<v>` のタグにどこまで入っているか
   （`create` / `merge` / `done`）、release ブランチにしかないコミット（`<remote>/develop..release`）に AI 帰属行が無いことを確かめる。
   タグがあっても、release の先頭を含んでいれば再実行とみなし、残りの作業だけを返す。タグが main にあって release の先頭を含まない
-  （タグを打った後に release ブランチが進んだ）ときは、main とタグは済みとみなし、進んだ release を develop にだけ取り込む。
+  （タグを打った後に release ブランチが進んだ）ときは、タグのコミットの MARKETING_VERSION が `<v>` で、タグと release の
+  共通の祖先が release を切った後のコミットなら、main とタグは済みとみなし、進んだ release を develop にだけ取り込む（それ以外は打ち間違いで止める）。
   develop にもう入っていても、`MARKETING_VERSION` が `<v>` 以下なら `developVersionBump`（次のパッチにするコミットが残っている）
 - `tag-target`: `main` の first-parent をたどり、release の先頭を初めて含むコミット（release を取り込んだマージコミット。
   初回に release の先頭から `main` を作ったときはその先頭）
@@ -104,10 +105,47 @@ def merge_base(root: Path, first: str, second: str) -> str:
 
 def develop_marketing_version(root: Path, develop: str) -> str | None:
     """develop の先頭の MARKETING_VERSION。読めなければ None（ここでは止めず、取り込みの手順で確かめる）。"""
+    return commit_marketing_version(root, develop)
+
+
+def commit_marketing_version(root: Path, commit: str) -> str | None:
+    """そのコミットの MARKETING_VERSION。読めなければ None。"""
     try:
-        return marketing_version(git(root, "show", f"{develop}:{XCCONFIG}"))
+        return marketing_version(git(root, "show", f"{commit}:{XCCONFIG}"))
     except Failure:
         return None
+
+
+def release_fork_point(root: Path, release: str, develop: str) -> str | None:
+    """release を切った develop のコミット（release の first-parent のうち、develop の first-parent にある最初のもの）。
+
+    release → develop の取り込みはマージコミット（`--no-ff`）なので、取り込んだ後も release のコミットは develop の first-parent に入らない。
+    見つからなければ None。
+    """
+    develop_line = set(git(root, "rev-list", "--first-parent", develop).split())
+    for sha in git(root, "rev-list", "--first-parent", release).split():
+        if sha in develop_line:
+            return sha
+    return None
+
+
+def is_release_tag(root: Path, version: str, tagged: str, release: str, develop: str, develop_state: str) -> bool:
+    """release の先頭を含まないタグが、このリリースを main に取り込んだコミット（タグの後に release が進んだ）か。
+
+    - タグのコミットの MARKETING_VERSION が version であること（main の古いコミットに打ったタグを除く）
+    - タグと release の共通の祖先が、release にしかないコミット（release を切った後のもの）であること
+      （develop のコミットに打ったタグを除く。初回に develop と同じバージョンで出したときは、develop の古いコミットも同じ
+      MARKETING_VERSION なので、バージョンだけでは見分けられない）
+    """
+    if commit_marketing_version(root, tagged) != version:
+        return False
+    base = merge_base(root, tagged, release)
+    if develop_state != "done":
+        # release にしかないコミットはまだ develop に無い
+        return not is_ancestor(root, base, develop)
+    # develop にもう入っている（人が進んだ release を develop に取り込んだ）ので、release を切った所と比べる
+    fork = release_fork_point(root, release, develop)
+    return fork is not None and not is_ancestor(root, base, fork)
 
 
 # MARK: check
@@ -140,11 +178,11 @@ def check_finish(root: Path, version: str, remote: str = "origin") -> dict:
         if main_state != "done":
             raise Failure(f"タグ {tag} はありますが、{branch} が main に入っていません。人が確かめてください。")
         tag_state = "done"
-    elif main is not None and is_ancestor(root, tagged, main) and (
-            develop_state == "done" or not is_ancestor(root, merge_base(root, tagged, release), develop)):
+    elif main is not None and is_ancestor(root, tagged, main) and is_release_tag(
+            root, version, tagged, release, develop, develop_state):
         # タグ（main に打ったもの）の後に release ブランチが進んだ（人が release でコンフリクトを解いたなど）。
-        # タグと release の共通の祖先が release にしかないコミット（develop にまだ無い）なら、このリリースのタグとみなす
-        # （develop のコミットに打ったタグの打ち間違いは止める。develop にもう入っていれば、残りは develop のバージョンだけなので止めない）。
+        # タグのコミットのバージョンが <v> で、タグと release の共通の祖先が release にしかないコミットなら、このリリースのタグとみなす
+        # （main の古いコミット・develop のコミットに打ったタグの打ち間違いは止める。is_release_tag）。
         # 配信したものは main とタグにあるので、main とタグはそのままにして、進んだ release を develop にだけ取り込む
         main_state, tag_state, advanced = "done", "done", True
     else:

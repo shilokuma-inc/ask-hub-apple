@@ -500,7 +500,7 @@ App Store で配信されたリリースを `main` と `develop` に取り込み
 - **同じバージョンで何度起動してもよい。** 済んだ所（`main`・`develop` が release の先頭を含む・タグがある・Release がある）は飛ばし、残りだけを行う。
   タグがあっても、release の先頭を含んでいれば再実行とみなす。取り込みが両方済んでいれば CI も流さない。
   タグが `main` にあって release の先頭を含まない（タグを打った後に release ブランチが進んだ）ときは、`main` とタグは済みとみなし、進んだ release を CI を流してから `develop` にだけ取り込む
-  （進んだ分は `main` に入れない。タグと release の共通の祖先が `develop` にもあるとき＝タグの打ち間違いは止める）
+  （進んだ分は `main` に入れない）。このリリースのタグとみなすのは、タグのコミットの `MARKETING_VERSION` が `<v>` で、タグと release の共通の祖先が release を切った後のコミットのときだけ。それ以外（`main` の古いコミットや `develop` のコミットに打った）はタグの打ち間違いとして止める
 - release ブランチは消さない（要らなければ人が消す）。リリース後作業は同時に 1 つだけ動く（`concurrency`）
 - コミット・タグの作者は `github-actions[bot]`。マージコミットのメッセージは `Merge branch 'release/<v>' into <main|develop>`（最新情報の下書きは `Merge pull request` だけを PR とみなすので、次のリリースの下書きには入らない）
 
