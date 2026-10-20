@@ -136,6 +136,7 @@ SCREENSHOTS = {
         "APP_IPHONE_67": {"label": "iPhone 6.9 inch", "devices": ["iPhone 17 Pro Max"], "sizes": ["1320x2868"]},
         "APP_IPHONE_61": {"label": "iPhone 6.3 inch", "deriveFrom": "APP_IPHONE_67", "sizes": ["1206x2622"]},
         "APP_DESKTOP": {"label": "Mac", "platform": "MAC_OS", "sizes": ["2880x1800", "1280x800"]},
+        "APP_IPAD_PRO_129": {"label": "iPad", "sizes": ["2048x2732"]},
     },
 }
 
@@ -154,24 +155,31 @@ class ScreenshotConfigTests(unittest.TestCase):
         with self.patch_config(SCREENSHOTS):
             self.assertEqual(app_store_config.capture_method("APP_IPHONE_67"), "simulator")
             self.assertEqual(app_store_config.capture_method("APP_IPHONE_61"), "derive")
-            self.assertIsNone(app_store_config.capture_method("APP_DESKTOP"))
+            self.assertEqual(app_store_config.capture_method("APP_DESKTOP"), "macos-unit-test")
+            # devices の無い iOS の表示サイズは撮れない
+            self.assertIsNone(app_store_config.capture_method("APP_IPAD_PRO_129"))
 
-    def test_matrix_skips_display_types_without_capture_method(self):
+    def test_matrix_captures_mac_and_skips_display_types_without_capture_method(self):
         with self.patch_config(SCREENSHOTS):
             result = app_store_config.matrix()
-        self.assertEqual([entry["display_type"] for entry in result["capture"]], ["APP_IPHONE_67"])
+        self.assertEqual(
+            [(entry["display_type"], entry["method"], entry["runs_on"]) for entry in result["capture"]],
+            [("APP_IPHONE_67", "simulator", "macos-latest"), ("APP_DESKTOP", "macos-unit-test", "macos-latest")],
+        )
         self.assertEqual([entry["display_type"] for entry in result["derive"]], ["APP_IPHONE_61"])
         self.assertEqual(
             [(entry["display_type"], entry["platform"]) for entry in result["upload"]],
-            [("APP_IPHONE_67", "IOS"), ("APP_IPHONE_61", "IOS")],
+            [("APP_IPHONE_67", "IOS"), ("APP_IPHONE_61", "IOS"), ("APP_DESKTOP", "MAC_OS")],
         )
-        self.assertEqual([entry["display_type"] for entry in result["skipped"]], ["APP_DESKTOP"])
+        self.assertEqual([entry["display_type"] for entry in result["skipped"]], ["APP_IPAD_PRO_129"])
 
-    def test_matrix_with_only_mac_is_empty(self):
+    def test_matrix_with_only_mac(self):
         with self.patch_config(SCREENSHOTS):
             result = app_store_config.matrix(["APP_DESKTOP"])
-        self.assertEqual((result["capture"], result["derive"], result["upload"]), ([], [], []))
-        self.assertEqual(len(result["skipped"]), 1)
+        self.assertEqual([entry["display_type"] for entry in result["capture"]], ["APP_DESKTOP"])
+        self.assertEqual(result["derive"], [])
+        self.assertEqual(result["upload"], [{"display_type": "APP_DESKTOP", "label": "Mac", "platform": "MAC_OS"}])
+        self.assertEqual(result["skipped"], [])
 
     def test_unknown_platform_is_rejected(self):
         config = {"scenes": [], "displayTypes": {"X": {"label": "X", "platform": "TV_OS", "sizes": ["1x1"]}}}
@@ -196,7 +204,9 @@ class ScreenshotConfigTests(unittest.TestCase):
         entry = app_store_config.display_type("APP_DESKTOP")
         self.assertEqual(app_store_config.display_type_platform("APP_DESKTOP"), "MAC_OS")
         self.assertEqual(entry["sizes"][0], "2880x1800")
-        self.assertIn("APP_DESKTOP", [skipped["display_type"] for skipped in app_store_config.matrix()["skipped"]])
+        result = app_store_config.matrix()
+        self.assertIn("APP_DESKTOP", [capture["display_type"] for capture in result["capture"]])
+        self.assertEqual(result["skipped"], [])
 
 
 class ResolvePlatformTests(unittest.TestCase):
