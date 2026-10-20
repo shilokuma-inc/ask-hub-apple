@@ -231,7 +231,10 @@ python3 Tools/release_app_store.py status --version 1.1.0        # 状態を見�
 
 - 対象は `--platforms`（既定 `IOS,MAC_OS`）。`--dry-run` を付けると読むだけで何も書き換えない
 - 認証は Metadata/App Store と同じ（`APP_STORE_CONNECT_KEY_ID`・`APP_STORE_CONNECT_ISSUER_ID`・`APP_STORE_CONNECT_PRIVATE_KEY_PATH`）。Bundle ID は `Configs/Project.xcconfig` から読む
-- 結果は JSON で標準出力に出る（人に向けた説明は標準エラー）。終了コードは 0 = 成功・1 = 失敗（`error` に理由）・2 = 引数の誤り
+- 結果は JSON で標準出力に出る（人に向けた説明は標準エラー）。終了コードは 0 = 成功・1 = 失敗（`error` に理由）・2 = 引数の誤り（バージョンの形の誤りを含む。App Store Connect は呼ばない）
+- どの失敗でも（API の 4xx / 5xx・通信の失敗やタイムアウト・JSON でない応答・`.p8` が無い・引数の誤り）、標準出力には `ok: false` と `error` を持つ JSON が 1 つ出る。
+  ワークフローは終了コードを見なくても `ok` で判定できる
+- 1 つのプラットフォームで API が失敗しても（macOS のバージョンの作成が 409 など）、ほかのプラットフォームは続けて、その結果も JSON に残る（全体は `ok: false`）
 
 ```json
 {
@@ -258,10 +261,14 @@ python3 Tools/release_app_store.py status --version 1.1.0        # 状態を見�
 | `prepare` | `blocked` | 人が App Store Connect で直す必要がある（下の「編集できるバージョンが残っているとき」）。失敗になる |
 | `attach-build` | `attached` / `already-attached` | 最新のビルドを紐付けた（`previousBuildId` に前のビルド）/ すでに紐付いている |
 | `attach-build` | `waiting-for-build` / `locked` / `version-missing` | 処理が終わったビルドがまだ無い / 審査中・配信済みなので触らない / そのバージョンが無い |
-| `status` | `released` / `not-released` / `version-missing` | 配信済み / まだ / そのバージョンが無い。トップの `released` は、バージョンがあるプラットフォームすべてで配信済みのとき `true` |
+| `status` | `released` / `not-released` / `version-missing` | 配信済み / まだ / そのバージョンが無い。トップの `released` は、バージョンがあるプラットフォームすべてで配信済みのとき `true`（`error` のプラットフォームがあれば `false`） |
+| すべて | `error` | そのプラットフォームの API の呼び出しが失敗した（`httpStatus` に HTTP のステータスコード。通信の失敗では `null`）。失敗になるが、ほかのプラットフォームの結果は残る |
 
 - ビルドは `/v1/builds` を、バージョン（`CFBundleShortVersionString`）・プラットフォーム・`processingState=VALID`・期限切れでないもので探し、`uploadedDate` が最も新しいものを選ぶ。
   release ブランチへの push のたびにビルドが上がるので、審査に出す前なら新しいビルドに差し替える
+- ビルドは上がったブランチを区別できない（バージョンとプラットフォームだけで選ぶ）。`develop` の `MARKETING_VERSION` がリリースと同じだと、
+  `develop` への push で上がったビルドを紐付けうるので、リリース準備は `develop` の `MARKETING_VERSION` より大きいバージョンでしか始めない。
+  前の `v*` タグが無い初回だけは同じ値も許し、Job Summary で注意を出す（「リリース準備」の「バージョンの決まり」）
 - 配信済みとみなすのは、`appVersionState` が `READY_FOR_DISTRIBUTION`、または非推奨の `appStoreState` が `READY_FOR_SALE`・`REPLACED_WITH_NEW_VERSION` のとき。
   承認後の公開待ち（`PENDING_DEVELOPER_RELEASE`）や配信の処理中は含めない（手動で公開するまでリリース後作業を始めない）
 - 一覧はページングを最後までたどる。429（レート制限）は `Retry-After` の秒数（無ければ 10 秒から倍々）を待って 4 回まで送り直す。`Retry-After` が 120 秒を超えるときは待たずに失敗にして、次の実行に任せる
@@ -281,6 +288,123 @@ python3 -m unittest discover -s Tools/tests -t .
 ```
 
 HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流すので、App Store Connect にはつながず、PyJWT も要らない。PR では Verify/App Store metadata が同じテストを流す。
+
+## リリース準備
+
+`develop` から release ブランチを切り、App Store Connect にバージョン・バイナリ・スクリーンショット・メタデータを用意する（Discussion #605 の「リリース準備」）。
+ワークフローは `.github/workflows/release-prepare.yml`（Release/Prepare）。AskHub アプリの「リリース準備」が `workflow_dispatch` で起動する。Actions から手で起動してもよい。
+
+### 流れ
+
+| 順 | すること | 使うもの |
+| --- | --- | --- |
+| 1 | 入力の検査（下の「バージョンの決まり」） | `Tools/release_prepare.py check` |
+| 2 | `develop` の先頭から `release/<v>` を作り、`MARKETING_VERSION` が違えば `[chore] MARKETING_VERSION を <v> にする` を積む | `Tools/release_prepare.py set-version` |
+| 3 | 最新情報の下書き `AppStore/whats-new-draft.json` を作り、`[chore] <v> の最新情報の下書きを作る` を積んで push する | `Tools/release_prepare.py draft` |
+| 4 | App Store Connect に iOS / macOS のバージョン `<v>` を用意する（「App Store Connect のバージョンとビルド」） | `Tools/release_app_store.py prepare` |
+| 5 | release ブランチで Upload・Screenshots/App Store・Metadata/App Store（`dry_run: false`・`app_version: <v>`）を起動する | `gh workflow run … --ref release/<v>` |
+| 6 | Job Summary に結果と、人が次にすることを出す（1 の検査で止まったとき・release ブランチを作れなかったときは「次にすること」を出さない） | |
+
+- inputs は `version`（必須）と `resume`（任意。既定 `false`。下の「失敗したとき」）。`develop` 以外から起動すると止まる（`Tools/` は `develop` のものを使うため。
+  `resume` でも作業ツリーは `develop` のままで、release ブランチは先頭のコミットで起動するワークフローのファイルの有無を見るだけ）
+- run の表示名（`run-name`）は `Release/Prepare <version>`。runs の一覧の API は inputs を返さないので、AskHub アプリ（`WorkflowRun.displayTitle`）はこの名前でどのバージョンの run かを見分けられる。
+  inputs は `run-name` の表示にだけ式で使い、`run:` の中には環境変数で渡す
+- コミットの作者は `github-actions[bot]`。`GITHUB_TOKEN` での push は新しいワークフローの run を起こさないので、Upload などは 5 で `workflow_dispatch` する。
+  同じ理由で、release ブランチの先頭では Build（CI）が動かない（リリース後作業が `main`・`develop` に取り込む前に流す）
+- 5 は、release ブランチにファイルが無いワークフローを飛ばして Summary に書く。バイナリは App Store Connect のバージョンが無くても上げられるので、4 が失敗しても Upload は起動する。
+  スクリーンショットとメタデータは、4 で iOS のバージョンを用意できた（`created`・`exists`・`renamed`）ときに起動する。macOS だけが `blocked` / `error` のときも iOS には反映し
+  （macOS の分は反映の側で飛ばされるか失敗する）、run は最後に失敗にする。iOS を用意できなかったときは起動しない
+- リリース準備は同時に 1 つだけ動く（`concurrency`）。macOS のランナーは、Upload の 2 台とスクリーンショットの 1 台を使う
+- リポジトリ変数 `ENABLE_DELIVERY=false` のときは 1〜3 だけを行う（App Store Connect には触れない）。`ENABLE_MACOS_DELIVERY=false` のときは 4 を iOS だけで行う
+
+### バージョンの決まり
+
+- 形は `MAJOR.MINOR.PATCH`（0 以上の整数 3 つ。先頭の 0 は不可）。release ブランチは `release/<v>`、タグは `v<v>`
+- `v<v>` のタグがあるバージョン（リリース済み）では始めない。`release/<v>` があるときは、`resume` をオンにしたときだけ続きから行う
+- **タグの無いほかの release ブランチがあるときは始めない。** App Store Connect の編集できるバージョンはプラットフォームごとに 1 つなので、
+  並べて準備すると、前のリリースのバージョンの番号を書き換えてしまう（`prepare` は古い編集できるバージョンを書き換える）。やめたリリースは release ブランチを消す
+- **`develop` の `MARKETING_VERSION` より大きいバージョンでしか始めない。** ビルドの紐付け（`attach-build`）はビルドをバージョンとプラットフォームだけで選び、
+  上がったブランチを区別できない。同じバージョンだと、`develop` への push で上がったビルドが release ブランチのバージョンに紐付きうる。
+  アプリの既定値は `develop` の次のマイナー（`1.0.0` → `1.1.0`）なので、ふつうは当たらない
+- **同じ値は、前の `v*` タグ（`MAJOR.MINOR.PATCH` の形のもの）が 1 つも無い初回だけ許す**（App Store の最初のバージョンを `develop` の `MARKETING_VERSION` のまま出すため。PR #627 の ask の回答 B）。
+  このときは `MARKETING_VERSION` を書き換えるコミットを積まない。`develop` への push で上がったビルドと release のビルドが同じバージョンになり、
+  Release/Sync の紐付けはアップロードの新しいものを選ぶので、Job Summary に注意を出す。審査に出す前に、紐付いたビルドが release ブランチから上がったもの（ビルド番号・アップロードの時刻）か確かめる。
+  2 回目以降（`v*` タグがある）は同じ値でも止める
+- リリース済みの最新のタグより大きいバージョンでしか始めない
+
+### 最新情報の下書き
+
+`AppStore/whats-new-draft.json`（release ブランチにだけある）。Release/Notes（`release-notes.yml`）が確定して `AppStore/metadata/<言語>.json` の `whatsNew` に書くと消える。
+アプリは Contents API でこのファイルを読み、「下書きあり（未確定）」を出す。
+
+```json
+{
+  "schemaVersion": 1,
+  "version": "1.1.0",
+  "generatedAt": "2026-10-20T01:02:03Z",
+  "base": {"tag": "v1.0.0", "sha": "…"},
+  "head": {"ref": "origin/develop", "sha": "…"},
+  "initial": false,
+  "whatsNew": {"ja": "・起動時に落ちる不具合を直す\n・受信箱を絞り込めるようにする"},
+  "omitted": 0,
+  "pullRequests": [
+    {"number": 2, "title": "起動時に落ちる不具合を直す", "type": "FIX", "url": "https://github.com/…/pull/2",
+     "mergedAt": "2026-10-01T00:00:00Z", "epic": null, "included": true},
+    {"number": 4, "title": "ワークフローを足す", "type": "CI", "url": "…", "mergedAt": "…", "epic": 7, "included": false}
+  ],
+  "messages": ["v1.0.0 から 2 件の PR を読み、1 件を最新情報に載せました。"]
+}
+```
+
+| キー | 意味 |
+| --- | --- |
+| `schemaVersion` | 形の版（今は `1`）。読む側は知らない版なら読まずに知らせる |
+| `version` | リリースのバージョン（release ブランチの `<v>` と同じ） |
+| `base` | 前のタグ（`v*` のうちリリースより小さい最大のもの）。初めてのリリースでは `null` |
+| `head` | 下書きを作ったときの `develop` |
+| `initial` | 前のタグが無い（初めてのリリース）なら `true` |
+| `whatsNew` | 言語コード（`AppStore/languages.json` の `language`）→ 本文。4000 字以内。Release/Notes の `whats_new` と同じ形 |
+| `omitted` | 4000 字に収まらず「・ほか N 件」にまとめた PR の数 |
+| `pullRequests` | 下書きの元にした PR（`develop` に入った順）。`title` は【TYPE】を外したもの、`type` は【TYPE】の中（無ければ `null`）、`epic` は epic の PR から開いたときの epic の PR 番号、`included` は本文に載せたか |
+| `messages` | 作ったときの説明（人に向けた文。読む側は表示するだけ） |
+
+作り方:
+
+- `base..develop` を first-parent でたどり、`Merge pull request #N from <owner>/<branch>` のマージコミットを PR とみなす（`develop` に直接入った PR）
+- head が `epic/` の PR（epic → `develop` の最終 PR）は、タイトルが「epic/xxx を develop に取り込む」なので、中の子 PR（epic に入った PR）に開いて並べる
+- head が `release/` の PR（リリース後作業の release → `develop` の取り込み）は除く
+- タイトルは GitHub API（`GITHUB_TOKEN`）で読み、読めなければ（レート制限など）マージコミットの本文の 1 行目を使う
+- 本文に載せるのは【FEAT】【FIX】【PERF】と、【TYPE】の無いタイトル。【CI】【DOCS】【TEST】【CHORE】【REFACTOR】などは一覧に `included: false` で残し、本文には載せない
+- 本文は「・タイトル」の箇条書き。載せるものが無ければ「細かな改善と不具合の修正を行いました。」
+- 前のタグが無い（初めてのリリース）ときは、PR を並べず「はじめてのリリースです。」にする（App Store は最初のバージョンに最新情報を出さない）
+- 言語が複数あっても、どの言語にも同じ（日本語の）本文を入れる。確定の前にアプリで直す
+
+### 人がすること
+
+1. 前もって: App Store Connect にアプリを作る（[docs/app-review.md](app-review.md)）。macOS も出すならプラットフォームを追加する（「macOS 版のアップロード」）
+2. AskHub の「新しい依頼」→「リリース準備」でリポジトリとバージョンを選んで起動する。手で起動するときは Actions → **Release/Prepare** → Run workflow で、ブランチは `develop` のまま `version` を入れる
+3. run の Job Summary で、release ブランチ・App Store Connect のバージョン・起動したワークフローを確かめる。起動された Upload・Screenshots/App Store・Metadata/App Store の run が成功するのを待つ
+4. AskHub で最新情報の下書きを確かめ、直して確定する（Release/Notes）
+5. 処理が終わったビルドは定期実行（Release/Sync）がバージョンに紐付ける。App Store Connect で審査に提出し、輸出コンプライアンスなどに答える
+
+### 失敗したとき
+
+| 起きたこと | 見るところ・すること |
+| --- | --- |
+| 「準備を始めませんでした」 | Job Summary の理由のとおり。バージョンを直して起動し直す（何も作っていない） |
+| 「タグの無い release ブランチがあります」 | 前のリリースを終える（リリース後作業）か、やめたリリースの release ブランチを消す（App Store Connect の編集できるバージョンも確かめる） |
+| App Store Connect のバージョンが `blocked` / `error` | 「App Store Connect のバージョンとビルド」の「編集できるバージョンが残っているとき」。App Store Connect で直してから、同じバージョンで `resume` をオンにして起動し直す（macOS だけのときは iOS のスクリーンショット・メタデータはもう起動している。`resume` で起動し直すと iOS にも上書きで反映し直す） |
+| ワークフローの起動に失敗した | 失敗したワークフローを Actions から `release/<v>` を選んで手で起動するか、`resume` をオンにして起動し直す（Upload も起動し直すので、24 時間あたりのアップロード上限に気をつける） |
+| push に失敗した | 同じ名前の release ブランチが先にできていないか確かめる。ブランチがあれば `resume` で続ける |
+
+`resume` は、`release/<v>` があってタグが無いときに、ブランチ・コミット・下書きは作り直さず、4・5 だけをやり直す。下書きを作り直したいときは、release ブランチの `AppStore/whats-new-draft.json` を直すか、アプリで確定する。
+
+### 権限・Secrets / vars
+
+- ジョブの権限は `contents: write`（release ブランチの push）・`actions: write`（`workflow_dispatch`）・`pull-requests: read`（PR のタイトル）。`GITHUB_TOKEN` だけを使う
+- Secrets は Metadata/App Store と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`）。新しい Secret・vars は要らない
+- vars は任意の `ENABLE_DELIVERY`・`ENABLE_MACOS_DELIVERY`（上の「流れ」）
+- アプリのトークン（Fine-grained PAT）は、Actions の Read and write（起動と run の表示）と Contents の Read（release ブランチ・下書きの読み取り）があればよい
 
 ## AskHub アプリが読むもの・起動するもの
 
@@ -313,4 +437,3 @@ API と表示の決まりは [docs/protocol.md](protocol.md) の「リリース�
 
 Fine-grained PAT に **Actions の Read and write**（起動と run の表示。TestFlight への手動アップロードと同じ）と **Contents の Read**（上の表の読み取り）を付ける。
 アプリからは push・タグ・Release の作成をしない（ワークフローが `GITHUB_TOKEN` で行う）ので、Contents の Write は要らない。
-

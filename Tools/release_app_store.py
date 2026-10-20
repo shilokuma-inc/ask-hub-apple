@@ -14,7 +14,16 @@ iOS だけで続ける（プラットフォームの追加は Web でしかで�
 
 `--dry-run` を付けると読むだけで、何も作らない・書き換えない（結果の status は、実行したらどうなるか）。
 
-終了コード: 0 = 成功（`ok: true`）/ 1 = 失敗（`ok: false`。`error` に理由）/ 2 = 引数の誤り。
+終了コード: 0 = 成功（`ok: true`）/ 1 = 失敗（`ok: false`。`error` に理由）/
+2 = 引数の誤り（バージョンの形の誤りを含む。`ok: false`。App Store Connect は呼ばない）。
+どの終了コードでも、標準出力には JSON を 1 つ出す（ワークフローは終了コードを見ずに `ok` で判定してよい）。
+1 つのプラットフォームで API が失敗しても（409 など）、ほかのプラットフォームは続けて結果に残す
+（失敗したプラットフォームは `status: "error"`。`httpStatus` に HTTP のステータスコード）。
+
+ビルドは `versionString` とプラットフォームだけで選ぶ。`develop` の `MARKETING_VERSION` がリリースと同じだと、
+`develop` から上がったビルドを紐付けうるので、リリース準備（release-prepare.yml）は `develop` の `MARKETING_VERSION`
+より大きいバージョンでしか始めない。前の `v*` タグが無い初回だけは同じ値も許し、Job Summary で注意を出す
+（docs/release.md の「リリース準備」の「バージョンの決まり」）。
 
 認証は upload_metadata.py と同じ（`--key-id` / `--issuer-id` / `--private-key`、または環境変数
 APP_STORE_CONNECT_KEY_ID / APP_STORE_CONNECT_ISSUER_ID / APP_STORE_CONNECT_PRIVATE_KEY_PATH）。
@@ -28,6 +37,7 @@ import json
 import os
 import re
 import sys
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -54,6 +64,14 @@ DEFAULT_OPTIONAL_PLATFORMS = PLATFORM_MAC_OS
 
 class Blocked(Exception):
     """人の判断・作業が要るので、それ以上進めない。"""
+
+
+class UsageError(Exception):
+    """引数の誤り（終了コード 2）。"""
+
+
+#: 引数の誤りの終了コード（argparse と同じ）
+EXIT_USAGE = 2
 
 
 def version_key(version_string: str) -> tuple[int, int, int] | None:
@@ -251,6 +269,11 @@ def run(client: AppStoreConnect, command: str, bundle: str, version_string: str,
         except Blocked as blocked:
             entry = {"status": "blocked", "message": str(blocked)}
             failures.append(entry["message"])
+        except ApiError as error:
+            # 1 つのプラットフォームの失敗（macOS の 409 など）で、ほかのプラットフォームの結果を消さない
+            entry = {"status": "error", "message": f"{platform_name(platform)}: {error}",
+                     "httpStatus": error.status}
+            failures.append(entry["message"])
         if entry["status"] == "platform-missing" and platform not in optional_platforms:
             entry["message"] += f" {platform_name(platform)} は必須のため止めます。"
             failures.append(entry["message"])
@@ -261,7 +284,9 @@ def run(client: AppStoreConnect, command: str, bundle: str, version_string: str,
         # 作ったプラットフォーム（バージョンがあるもの）すべてで配信済みなら、リリース後作業を始めてよい
         statuses = [entry["status"] for entry in result["platforms"].values()]
         considered = [s for s in statuses if s in ("released", "not-released")]
-        result["released"] = bool(considered) and all(s == "released" for s in considered)
+        # 状態を読めなかったプラットフォームがあるときは、配信済みと判定しない（次の実行で読み直す）
+        unknown = any(s in ("error", "blocked") for s in statuses)
+        result["released"] = not unknown and bool(considered) and all(s == "released" for s in considered)
 
     if failures:
         result["ok"] = False
@@ -279,8 +304,15 @@ def parse_platforms(raw: str) -> list[str]:
     return list(dict.fromkeys(platforms))
 
 
+class JsonArgumentParser(argparse.ArgumentParser):
+    """引数の誤りでも、標準出力の JSON をそろえるため、終了せずに UsageError を投げる。"""
+
+    def error(self, message: str):  # type: ignore[override]
+        raise UsageError(message)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = JsonArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=sorted(COMMANDS))
     parser.add_argument("--version", required=True, dest="version_string",
                         help="リリースのバージョン（MAJOR.MINOR.PATCH）")
@@ -311,13 +343,20 @@ def emit(result: dict) -> None:
 
 
 def main(argv: list[str] | None = None, client: AppStoreConnect | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    try:
+        args = parser.parse_args(argv)
+    except UsageError as error:
+        emit({"command": None, "ok": False, "version": None, "platforms": {}, "messages": [],
+              "error": f"引数の誤り: {error}"})
+        parser.print_usage(sys.stderr)
+        return EXIT_USAGE
     failure = {"command": args.command, "ok": False, "version": args.version_string,
                "platforms": {}, "messages": []}
 
     if not RELEASE_VERSION.match(args.version_string):
         emit({**failure, "error": f"バージョンは MAJOR.MINOR.PATCH の形で指定してください（{args.version_string}）"})
-        return 1
+        return EXIT_USAGE
 
     try:
         if args.bundle_id:
@@ -342,6 +381,13 @@ def main(argv: list[str] | None = None, client: AppStoreConnect | None = None) -
         if isinstance(error.code, int) or error.code is None:
             raise
         emit({**failure, "error": str(error.code)})
+        return 1
+    except OSError as error:  # .p8 が無い・読めないなど
+        emit({**failure, "error": f"ファイルを読めません: {error}"})
+        return 1
+    except Exception as error:  # noqa: BLE001  鍵の形の誤り（PyJWT）など。JSON を出さずに落ちない
+        traceback.print_exc(file=sys.stderr)
+        emit({**failure, "error": f"{type(error).__name__}: {error}"})
         return 1
 
     emit(result)

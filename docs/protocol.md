@@ -435,7 +435,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 
 - **起動するもの**: `POST /repos/{owner}/{repo}/actions/workflows/<file>/dispatches`。ファイル名と inputs はワークフローと約束したもの:
   `release-prepare.yml`（`version`。任意で `resume`。`ref` は `develop`）・`release-notes.yml`（`version`・`whats_new` = 言語コード → 本文の JSON の文字列）・
-  `release-finish.yml`（`version`。ふだんは定期実行が起動する）。バージョンは `MAJOR.MINOR.PATCH`（先頭の 0 は不可）で、アプリは送る前に形だけを検査する（大小の決まりはワークフローの検査が正本）
+  `release-finish.yml`（`version`。ふだんは定期実行が起動する）。バージョンは `MAJOR.MINOR.PATCH`（先頭の 0 は不可）で、アプリは送る前に形だけを検査する（大小の決まりはワークフローの検査が正本）。
+  `release-prepare.yml` の run の `display_title` は `run-name` の `Release/Prepare <version>`（run の一覧は inputs を返さないので、どのバージョンの run かはこれで見分ける）
 - **エラー**: 403（レート制限でない）は権限不足、ワークフローの 404 は「このリポジトリにはリリースのワークフローがありません」、422 は GitHub の説明から
   `workflow_dispatch` が無い・`ref` が無い・inputs が合わないを見分ける（`WorkflowError.dispatchRejection`）。レート制限（403 / 429・`Retry-After`）は待って再試行する
 - **トークンの権限**: Fine-grained PAT に、TestFlight への手動アップロードと同じ **Actions の Read and write** に加えて **Contents の Read** が要る

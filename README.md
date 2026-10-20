@@ -106,6 +106,7 @@ SKU は Bundle ID と同じ値にします。SKU はユーザーには見えな�
 
 - Upload は Archive → Export を含むため、`develop` / `release/**` では Archive を別途実行しません
 - Archive と Upload は iOS（IPA）と macOS（pkg）を別々のジョブで扱い、macOS が失敗しても iOS は止まりません。macOS のアップロードは App Store Connect のアプリに macOS のプラットフォームを追加するまで飛ばします（失敗にはせず、追加の手順を Job Summary に出します）。詳しくは [docs/release.md](docs/release.md) の「macOS 版のアップロード」を参照してください
+- `release/**` は Release/Prepare（`.github/workflows/release-prepare.yml`。AskHub の「リリース準備」）が `develop` から作ります。このときの push は `GITHUB_TOKEN` で行うため Build・Upload は push では動かず、Release/Prepare が Upload・スクリーンショット・メタデータを `workflow_dispatch` で起動します。詳しくは [docs/release.md](docs/release.md) の「リリース準備」を参照してください
 - Upload は Actions タブから手動でも実行できます（Run workflow）。epic → `develop` の最終 PR をマージする前に TestFlight で実機確認したいときは、Actions → Upload → Run workflow で epic ブランチ（最終 PR の head）を選んで実行します。AskHub アプリのマージ待ちの「TestFlight に上げる」も同じ手動実行（`workflow_dispatch`）を呼びます。ビルド番号は App Store Connect の最新から自動で増えるため、同じバージョンのままビルド番号だけが増えて TestFlight に並びます。App Store Connect には 24 時間あたりのアップロード上限があるため、作業ブランチの push では自動では上げません
 - リポジトリ変数（Settings → Secrets and variables → Actions → Variables）に `ENABLE_DELIVERY=false` を設定すると Upload をスキップします（Archive は App Store Connect にアプリが無くても通るため止めません）。何もしなければ従来どおり実行されます
 - `ENABLE_MACOS_DELIVERY=false` を設定すると、Upload と Archive の macOS のジョブと、メタデータ・スクリーンショットの macOS のバージョンへの反映をスキップします。何もしなければ macOS のプラットフォームの有無を見て自動で決めます
