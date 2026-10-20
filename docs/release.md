@@ -92,3 +92,78 @@ API Key には App Manager 以上の権限が要る。Verify/App Store metadata 
 | `ENABLE_MACOS_DELIVERY` | vars（任意） | `false` にすると Upload と Archive の macOS のジョブだけを実行しない（macOS の署名やアップロードがうまくいかない間、毎回の失敗を止めたいとき）。未設定なら、macOS のプラットフォームの有無を見て自動で決める |
 
 新しい Secret は要らない（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`・`EXPORT_OPTIONS` は iOS と同じ）。
+
+## App Store のスクリーンショット
+
+App Store のスクリーンショットを、アプリの撮影モードで撮り、App Store Connect に反映する。今は iOS（iPhone・iPad）だけ。
+
+### 仕組み
+
+| ファイル | 役割 |
+| --- | --- |
+| `AskHub/ScreenshotDemo.swift` | 撮影モード。起動引数で、デモモードのサンプルデータのまま指定の画面（タブ）を開く |
+| `AppStore/screenshots.json` | 撮る画面（`scenes`。この順が App Store の並び順）と表示サイズ（`displayTypes`） |
+| `AppStore/app.json` | 撮影でビルドするプロジェクト・Scheme・構成（Release）と、撮影モードのファイル（`screenshotDemoSource`） |
+| `Tools/capture_screenshots.sh` | 1 つの表示サイズについて、Simulator を作ってビルドし、言語 × 画面ぶん撮る。撮り終えたら Simulator を消す |
+| `Tools/derive_screenshots.py` | `deriveFrom` を書いた表示サイズを、撮った表示サイズから縮めて作る（Pillow が要る） |
+| `Tools/verify_screenshots.py` | 寸法・アルファ・枚数が App Store Connect に通る形か確かめる |
+| `Tools/remove_alpha.swift` | Simulator の画像（RGBA）をアルファの無い PNG に描き直す（撮影スクリプトが使う） |
+| `Tools/upload_screenshots.py` | 言語ごとに、その表示サイズのスクリーンショットのセットを入れ直す |
+| `.github/workflows/app-store-screenshots.yml`（Screenshots/App Store） | 手動実行で撮って反映する |
+| `.github/workflows/verify-app-store-metadata.yml`（Verify/App Store metadata） | PR で、`scenes` が撮影モードの `Scene` にあるか・枚数の上限（10）・表示サイズの設定を検査する |
+
+表示サイズ:
+
+| 表示サイズ | 撮り方 | 寸法 |
+| --- | --- | --- |
+| `APP_IPHONE_67`（iPhone 6.9 inch） | iPhone 17 Pro Max（無ければ 16 Pro Max）の Simulator で撮る | 1320x2868 |
+| `APP_IPHONE_61`（iPhone 6.3 inch） | 6.9 inch を縮めて作る（ubuntu で動く） | 1206x2622 |
+| `APP_IPAD_PRO_3GEN_129`（iPad 13 inch） | iPad Pro 13-inch（M5 / M4）の Simulator で撮る | 2064x2752 |
+
+テンプレートにある iPhone Duo（`APP_IPHONE_DUO`）は、GitHub のホストランナーでは撮れない（`xcode-27` のランナーと iOS 27.1 が要る）ので載せていない。
+
+### 撮影モード
+
+撮影スクリプトは、画面ごと・言語ごとにアプリを起動し直し、次の起動引数を渡す:
+
+```text
+-screenshot-demo -screenshot-scene <scene> -AppleLanguages (<言語>) -AppleLocale <ロケール>
+```
+
+- `-screenshot-demo` だけでサンプルデータ（デモモードと同じ `SampleInbox` など）になり、GitHub にもトークンにもつながない。
+  UserDefaults のデモモードの設定（`AskHubDemoMode`）は読み書きせず、デモモードの帯も出さない
+- `-screenshot-scene` には `ScreenshotDemo.Scene` の rawValue（今は `action` / `request` / `decisions` / `status` / `verification`）を渡す。
+  知らない値・値なしは「要対応」タブになる
+- 撮影は Release でビルドするので、撮影モードは `#if DEBUG` にしていない
+
+### 画面（scene）の足し方
+
+1. `AskHub/ScreenshotDemo.swift` の `enum Scene: String` に `case` を足し、`tab` で開くタブを返す。
+   `Tools/app_store_config.py` が `enum Scene: String {` から最初の `}` までの `case` を正規表現で読むので、`Scene` の中に `case` 以外の宣言を書かない（準拠やプロパティは extension に書く）
+2. `AppStore/screenshots.json` の `scenes` に `{ "file": "06_xxx", "scene": "<rawValue>" }` を足す（`file` の番号の順が App Store の並び順。1 表示サイズにつき 10 枚まで）
+3. 手元で検査する: `python3 Tools/app_store_config.py scenes`（`Scene` に無い名前なら止まる）
+
+### 手元で撮る
+
+```bash
+SIMULATOR_NAME=AskHub-Screenshot-mine SKIP_PACKAGE_PLUGIN_VALIDATION=1 Tools/capture_screenshots.sh APP_IPHONE_67 ja
+```
+
+- `build/screenshots/<表示サイズ>/<言語>/01_action.png …` に保存し、最後に `verify_screenshots.py` で寸法とアルファを確かめる。
+  Simulator はスクリプトが作って、終わったら消す（名前は `SIMULATOR_NAME`。既定は `AskHub-Screenshot-<表示サイズ>`）。DerivedData は既定でリポジトリの外（`$TMPDIR`）に置く
+- macOS の `/bin/bash`（3.2）で動く。`xcode-select` が Command Line Tools を指している Mac では `DEVELOPER_DIR` を Xcode.app に向ける
+- 6.3 inch は撮らずに、`python3 Tools/derive_screenshots.py --display-type APP_IPHONE_61 --screenshots-dir build/screenshots` で作る（Pillow が要る）
+
+### 人がすること
+
+1. App Store Connect に、反映先のバージョン（「準備中」の状態）を作っておく
+2. Actions → **Screenshots/App Store** → Run workflow で、`release/**` のブランチを選んで実行する
+   - 撮るのはリリースのときだけ（`release/**` 以外では止まる）。撮影の仕組みだけを確かめるときは `allow_non_release` をオンにする（反映はしない）
+   - `upload` を外すと撮るだけ。撮れた画像は run の artifact（`screenshots-<表示サイズ>`）から取れる
+   - `display_types`・`languages` で一部だけ撮り直せる。6.3 inch だけを指定しても、元の 6.9 inch を撮ってから縮める
+3. 反映すると、その言語・表示サイズの既存のスクリーンショットは消えて入れ替わる（編集できる状態のバージョンだけ。審査中・配信済みには触らない）
+
+macOS ランナーの枠を開発のビルドと取り合わないよう、撮影は 1 本ずつ（`max-parallel: 1`、ワークフロー全体で 1 つ）にしている。
+
+Secrets / vars は「App Store のメタデータ」と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`、任意の `ENABLE_DELIVERY`）。
+`ENABLE_DELIVERY=false` のときは撮るだけで反映しない。

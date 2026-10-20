@@ -3,7 +3,7 @@ name: Verify/App Store metadata
 # App Store の説明文などは、文字数の上限を超えていると App Store Connect への反映時に弾かれる。
 # 反映（Metadata/App Store）の前に、PR の時点で欠損と文字数超過を機械的に落とす。
 # JSON を読むだけなので macOS ランナーもビルドも必要ない（ubuntu で数十秒で終わる）。
-# スクリーンショットの撮影設定（AppStore/screenshots.json）の検査は、撮影の仕組みを取り込むときに足す。
+# あわせて、スクリーンショットの撮影設定（枚数の上限、撮影モードの Scene との突き合わせなど）も読めるか確かめる。
 #
 # ドキュメントだけの変更では動かない（paths にドキュメントを含めない。Build の paths-ignore と同じ考え方）。
 # Build と違い ubuntu ランナーで軽いので、epic/** 宛ての子 PR でも更新（synchronize）のたびに流す。
@@ -15,6 +15,7 @@ on:
       - 'Tools/**'
       - 'Configs/Project.xcconfig'
       - 'AskHub.xcodeproj/project.pbxproj'
+      - 'AskHub/ScreenshotDemo.swift'
       - '.github/workflows/verify-app-store-metadata.yml'
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -42,6 +43,11 @@ jobs:
       - name: Verify App Store metadata
         run: python3 Tools/upload_metadata.py --check
 
-      - name: Verify app config
-        # 反映先のアプリを探す Bundle ID が pbxproj と xcconfig から 1 つに決まるか確かめる
-        run: python3 Tools/app_store_config.py bundle-id
+      - name: Verify screenshot config
+        # 反映先のアプリを探す Bundle ID が pbxproj と xcconfig から 1 つに決まるか、
+        # screenshots.json の scene が ScreenshotDemo.Scene にあり、表示サイズの設定が読めるかを確かめる
+        run: |
+          set -euo pipefail
+          python3 Tools/app_store_config.py bundle-id
+          python3 Tools/app_store_config.py scenes
+          python3 Tools/app_store_config.py display-types

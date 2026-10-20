@@ -4,10 +4,11 @@
     "project / scheme: 撮影でビルドするプロジェクトと Scheme。",
     "configuration: 撮影でビルドする構成。",
     "Bundle ID は Configs/Project.xcconfig の APP_BUNDLE_IDENTIFIER から読む（ここに bundleId を書けばそちらを使う）。",
-    "screenshotDemoSource（撮影モードの Swift ファイル）は、スクリーンショットの撮影を取り込むときに足す。"
+    "screenshotDemoSource: 撮影モードの Swift ファイル。screenshots.json の scene が ScreenshotDemo.Scene にあるかを突き合わせる。"
   ],
   "project": "AskHub.xcodeproj",
   "scheme": "AskHub",
   "configuration": "Release",
-  "simulatorPrefix": "AskHub"
+  "simulatorPrefix": "AskHub",
+  "screenshotDemoSource": "AskHub/ScreenshotDemo.swift"
 }
