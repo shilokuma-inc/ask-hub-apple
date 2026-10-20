@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import contextlib
+import http.client
 import io
 import json
 import socket
 import sys
+import types
 import unittest
 import urllib.error
 from unittest import mock
@@ -16,6 +18,9 @@ from .fake_app_store_connect import API, FakeAppStoreConnect, FakeResponse, http
 import app_store_connect  # noqa: E402  (fake_app_store_connect が Tools/ を sys.path に足す)
 import release_app_store
 from app_store_connect import AppStoreConnect
+
+#: setUp で差し替える前の本物（トークンの作成の失敗を確かめるテストで使う）
+REAL_MAKE_TOKEN = app_store_connect.make_token
 
 
 class ReleaseTestCase(unittest.TestCase):
@@ -310,6 +315,57 @@ class FailureTests(ReleaseTestCase):
 
         self.assertEqual(code, 1)
         self.assertIn("timed out", result["error"])
+
+    def test_応答の途中で切れてもJSONで返す(self) -> None:
+        # IncompleteRead は http.client.HTTPException の子で、OSError ではない（第三者レビューの提案 7）
+        class Truncated(FakeResponse):
+            def read(self) -> bytes:
+                raise http.client.IncompleteRead(b'{"data": [', 100)
+
+        self.fake.urlopen = lambda request, timeout=None: Truncated(None)
+
+        code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertEqual(code, 1)
+        self.assertFalse(result["ok"])
+        self.assertIn("通信に失敗しました", result["error"])
+        self.assertIn("IncompleteRead", result["error"])
+        self.assertIsNone(result["httpStatus"])
+
+    def test_エラーの本文の途中で切れてもステータスを残す(self) -> None:
+        self.fake.add_version("IOS", "1.0.0", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION")
+        error = http_error(f"{API}/v1/appStoreVersions", 500)
+        error.read = mock.Mock(side_effect=http.client.IncompleteRead(b"{", 10))  # type: ignore[method-assign]
+        self.fake.route_failures.append((
+            lambda method, path, query, payload: method == "POST" and path == "/v1/appStoreVersions", error))
+
+        code, result = self.invoke("prepare", "--version", "1.1.0", "--platforms", "IOS")
+
+        self.assertEqual(code, 1)
+        self.assertEqual(result["platforms"]["IOS"]["status"], "error")
+        self.assertEqual(result["platforms"]["IOS"]["httpStatus"], 500)
+
+    def test_トークンを作れなければJSONで返す(self) -> None:
+        # 鍵の形の誤り（PyJWT・cryptography の例外）も ApiError にそろえる。PyJWT は偽物の jwt モジュールに差し替える
+        fake_jwt = types.ModuleType("jwt")
+
+        def encode(*args, **kwargs):
+            raise ValueError("Could not deserialize key data.")
+
+        fake_jwt.encode = encode  # type: ignore[attr-defined]
+        with mock.patch.dict(sys.modules, {"jwt": fake_jwt}), \
+                mock.patch.object(app_store_connect, "make_token", side_effect=REAL_MAKE_TOKEN):
+            with self.assertRaises(app_store_connect.ApiError) as raised:
+                REAL_MAKE_TOKEN("key", "issuer", "not a key")
+            code, result = self.invoke("prepare", "--version", "1.1.0")
+
+        self.assertIsNone(raised.exception.status)
+        self.assertEqual(code, 1)
+        self.assertFalse(result["ok"])
+        self.assertIn("トークンを作れませんでした", result["error"])
+        self.assertIn("ValueError", result["error"])
+        self.assertNotIn("not a key", result["error"])
+        self.assertEqual(self.fake.requests, [])
 
     def test_JSONでない応答はJSONで返す(self) -> None:
         broken = FakeResponse(None)
