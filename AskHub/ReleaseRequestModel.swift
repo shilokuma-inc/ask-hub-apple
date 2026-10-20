@@ -229,9 +229,29 @@ final class ReleaseRequestModel {
         !isStarting && !isLoading && context != nil && blockingReason(now: now) == nil
     }
 
+    /// `canStart` が偽になる理由。`blockingReason` に出ないもの（読み取り中・状態を読めていない）も含める
+    private func notStartableReason(now: Date) -> String? {
+        if let reason = blockingReason(now: now) {
+            return reason
+        }
+        if isLoading {
+            return "リリースの状態を読み直しています。読み終わってからもう一度始めてください"
+        }
+        if context == nil {
+            return "リリースの状態を読めていません。更新してからもう一度始めてください"
+        }
+        return nil
+    }
+
     /// リリース準備のワークフローを `develop` で起動し（`workflow_dispatch`。inputs は `version`）、「起動した」状態にして少し後に取り直す
     func start(now: Date = .now) async {
+        // 送っている最中に押し直されたときは、何も出さない（二重に送らない）
+        guard !isStarting else {
+            return
+        }
+        // 確認のダイアログを出したあとに状態が変わって（取り直し・run の開始など）押せなくなったら、送らなかった理由を出す
         guard canStart(now: now), let repository, let version else {
+            errorMessage = "リリース準備を始めませんでした。" + (notStartableReason(now: now) ?? "")
             return
         }
         isStarting = true
