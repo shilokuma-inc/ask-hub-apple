@@ -179,6 +179,7 @@ class StateTests(unittest.TestCase):
             {"appVersionState": "READY_FOR_DISTRIBUTION"},
             {"appStoreState": "READY_FOR_SALE"},
             {"appStoreState": "REPLACED_WITH_NEW_VERSION"},
+            {"appVersionState": "REPLACED_WITH_NEW_VERSION"},
         ]
         not_released = [
             {"appVersionState": "PENDING_DEVELOPER_RELEASE", "appStoreState": "PENDING_DEVELOPER_RELEASE"},

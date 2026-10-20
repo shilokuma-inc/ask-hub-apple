@@ -39,8 +39,9 @@ EDITABLE_STATES = {
 
 #: 配信済み（App Store で入手できる）とみなす状態。`appVersionState` と非推奨の `appStoreState` の両方を見る。
 #: 承認後に人の公開待ち（PENDING_DEVELOPER_RELEASE）や配信の処理中（PROCESSING_FOR_DISTRIBUTION）は含めない。
-#: REPLACED_WITH_NEW_VERSION は配信された後に次のバージョンが出たもの（定期実行が遅れて気づいた場合）
-RELEASED_VERSION_STATES = {"READY_FOR_DISTRIBUTION"}
+#: REPLACED_WITH_NEW_VERSION は配信された後に次のバージョンが出たもの（定期実行が遅れて気づいた場合）。
+#: `appVersionState` にも同じ名前の値があるので、両方に入れる（`appStoreState` が無い応答でも配信済みとみなす）
+RELEASED_VERSION_STATES = {"READY_FOR_DISTRIBUTION", "REPLACED_WITH_NEW_VERSION"}
 RELEASED_STORE_STATES = {"READY_FOR_SALE", "REPLACED_WITH_NEW_VERSION"}
 
 #: アップロード後、Apple 側の取り込みが終わるのを待つ上限（秒）

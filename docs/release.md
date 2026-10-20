@@ -270,7 +270,7 @@ python3 Tools/release_app_store.py status --version 1.1.0        # 状態を見�
 - ビルドは上がったブランチを区別できない（バージョンとプラットフォームだけで選ぶ）。`develop` の `MARKETING_VERSION` がリリースと同じだと、
   `develop` への push で上がったビルドを紐付けうるので、リリース準備は `develop` の `MARKETING_VERSION` より大きいバージョンでしか始めない。
   前の `v*` タグが無い初回だけは同じ値も許し、Job Summary で注意を出す（「リリース準備」の「バージョンの決まり」）
-- 配信済みとみなすのは、`appVersionState` が `READY_FOR_DISTRIBUTION`、または非推奨の `appStoreState` が `READY_FOR_SALE`・`REPLACED_WITH_NEW_VERSION` のとき。
+- 配信済みとみなすのは、`appVersionState` が `READY_FOR_DISTRIBUTION`・`REPLACED_WITH_NEW_VERSION`、または非推奨の `appStoreState` が `READY_FOR_SALE`・`REPLACED_WITH_NEW_VERSION` のとき。
   承認後の公開待ち（`PENDING_DEVELOPER_RELEASE`）や配信の処理中は含めない（手動で公開するまでリリース後作業を始めない）
 - 一覧はページングを最後までたどる。429（レート制限）は `Retry-After` の秒数（無ければ 10 秒から倍々）を待って 4 回まで送り直す。`Retry-After` が 120 秒を超えるときは待たずに失敗にして、次の実行に任せる
 
