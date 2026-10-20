@@ -67,6 +67,11 @@
   `release/…` だけに絞れる（付けないと `release-x` も合う）。`refs/heads/`・`refs/tags/` を付けた名前で返る
 - Contents API（`GET /repos/{owner}/{repo}/contents/{path}?ref=…`）の `content` は base64 を 60 文字ごとに改行した文字列。Swift では
   `Data(base64Encoded:options: .ignoreUnknownCharacters)` で読む。ファイルもブランチも無ければ 404 で、ディレクトリなら配列が返る
+- ジョブの `env:` では `runner` コンテキスト（`${{ runner.temp }}`）を使えない（actionlint が「context "runner" is not allowed here」で落とす。ステップの `env:` では使える）。
+  ジョブ全体で使うパスは、最初のステップで `echo "NAME=$RUNNER_TEMP/…" >> "$GITHUB_ENV"` で渡す
+- GitHub の PR のマージコミットは、件名が `Merge pull request #N from <owner>/<branch>`、本文の 1 行目が PR のタイトル（既定のとき）。
+  `git log --first-parent --merges <前のタグ>..develop` で `develop` に直接入った PR が取れ、epic の PR（マージコミットの親が 2 つ）の中の子 PR は
+  `git log --first-parent --merges <親1>..<親2>` で取れる（`Merge remote-tracking branch …` の取り込みは件名で除く）。`Tools/release_prepare.py draft` がこれで最新情報の下書きを作る
 
 ## ビルド・テスト
 
@@ -168,6 +173,8 @@
 - iOS 26 の `confirmationDialog`（`titleVisibility: .visible`）は、押したボタンから出る吹き出し（popover）で出る。UI テストではタイトルを `app.staticTexts["<タイトル>"]` で引ける。
   ダイアログのボタンが元のボタンと同じ文言だと `app.buttons["<文言>"]` が 2 つに当たるので、元のボタンに `accessibilityIdentifier` を付け、
   ダイアログのボタンは `NSPredicate(format: "label == %@ AND identifier != %@", …)` で引く
+- `Tools/tests/` で一時ディレクトリの git リポジトリを使うテストは、git を何十回も起動するので遅い（ローカルで 1 テスト数秒になることがある）。
+  読むだけのテストは履歴を `setUpClass` で 1 度だけ作り、履歴を変えるテストだけを別のクラスにする。テストの git は `GIT_CONFIG_GLOBAL=/dev/null` で手元の設定（署名・フック）を読ませない
 
 ## Keychain
 
