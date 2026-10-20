@@ -14,7 +14,8 @@ run-name: Release/Finish ${{ inputs.version }}
 #    b. main へのマージコミット（初回は main の先頭）に v<version> のタグを打つ
 #    c. GitHub Release を公開する（本文は確定した最新情報。無ければ下書き、どちらも無ければ PR の一覧。Tools/release_finish.py notes）
 #    d. release → develop をマージコミットで取り込み、develop の MARKETING_VERSION を次のパッチにする
-#    取り込みは Tools/release_finish_merge.sh。コンフリクト・push を断られたときは release → 取り込み先の PR（作れなければ Issue）を残して止める
+#    取り込みは Tools/release_finish_merge.sh。コンフリクト・push を断られたときは、release の先頭から作った一時ブランチ → 取り込み先の PR
+#    （作れなければ Issue）を残して止める（人はその一時ブランチでコンフリクトを解く。release ブランチは進めない）
 #
 # GITHUB_TOKEN で作った PR・push では build.yml・no-ai-attribution.yml が動かないので、2 で CI を、1 で AI 帰属の検査を同じ release の先頭に流し、
 # 通ったらローカルでマージして push する（develop の必須チェック「No AI Attribution」は、push するコミットに GITHUB_TOKEN で check run を付けて満たす）。
@@ -224,7 +225,8 @@ jobs:
             else
               echo "この run は途中で止まりました。上の理由を直してから、同じバージョンで起動し直してください（済んだ所は飛ばします。docs/release.md の「リリース後作業」の「失敗したとき」）。"
               if [ "$MAIN_STATE" = "conflict" ] || [ "$DEVELOP_STATE" = "conflict" ] || [ "$MAIN_STATE" = "rejected" ] || [ "$DEVELOP_STATE" = "rejected" ]; then
-                echo "取り込めなかった先の PR（作れなかったときは Issue）を残しました。人がコンフリクトを解いてマージコミットでマージしてから、起動し直してください。"
+                echo "取り込めなかった先の PR（release の先頭から作った一時ブランチ \`release-finish/${VERSION}/pr-<取り込み先>\` → 取り込み先。作れなかったときは Issue）を残しました。"
+                echo "人がそのブランチでコンフリクトを解いてマージコミットでマージしてから、起動し直してください。\`release/${VERSION}\` には push しないでください（release の先頭が進むと、タグと合わなくなって起動し直しが止まります）。"
               fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"

@@ -12,7 +12,8 @@
 #    GITHUB_TOKEN で作った check run は GitHub Actions のものになるので、必須チェックを満たせる。
 #    中身の検査（release ブランチにしかないコミットの AI 帰属行）は Release/Finish の check ジョブで済ませてある
 # 4. コンフリクトしたとき・push を断られたとき（GITHUB_TOKEN は workflows の権限を持てないので、.github/workflows/ が変わる
-#    取り込みは断られる）は、release → 取り込み先の PR を作り（あれば使い。作れなければ Issue で知らせ）、終了コード 1 で止める
+#    取り込みは断られる）は、release の先頭から一時ブランチ（release-finish/<v>/pr-<取り込み先>）を作って、そこ → 取り込み先の PR を作り
+#    （あれば使い。作れなければ Issue で知らせ）、終了コード 1 で止める。人はそのブランチでコンフリクトを解き、release ブランチは進めない
 #
 # 環境変数: VERSION・RELEASE_SHA（check ジョブで確かめた release の先頭）・GITHUB_REPOSITORY・GH_TOKEN・
 #           SUMMARY（Job Summary に載せる行をためるファイル）・RUNNER_TEMP・GITHUB_OUTPUT。
@@ -31,6 +32,9 @@ esac
 branch="release/${VERSION}"
 # develop に push する前に check run を付けるための一時ブランチ（main では使わない）
 temp_branch="release-finish/${VERSION}/${target}"
+# 取り込めなかったときに残す PR の head。release の先頭から作る（人はここでコンフリクトを解き、release ブランチは進めない）
+pr_branch="release-finish/${VERSION}/pr-${target}"
+pr_head=""
 check_name="No AI Attribution"
 # release_finish.py はこのスクリプトと同じ Tools/ のもの（起動した ref。取り込みは作業ディレクトリのリポジトリで行う）
 tools=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -71,6 +75,29 @@ create_check_run() {
     -f "output[title]=Release/Finish が検査しました" -f "output[summary]=$2"
 }
 
+# 取り込めなかったときに残す PR の head（pr_head）を用意する。release の先頭から一時ブランチ pr_branch を作り、
+# 人はこのブランチでコンフリクトを解く。release ブランチは進めない（進めるとタグと release の先頭が合わなくなり、
+# 人の push で release の Upload も動く）。作れなければ pr_head は空
+prepare_pr_branch() {
+  local remote
+  pr_head=""
+  remote=$(git ls-remote origin "refs/heads/${pr_branch}" 2> /dev/null | cut -f1 || true)
+  if [ -n "$remote" ] && git fetch --quiet origin "+refs/heads/${pr_branch}:refs/remotes/origin/${pr_branch}" 2> /dev/null &&
+    git merge-base --is-ancestor "$RELEASE_SHA" "$remote"; then
+    # 前の run で作ったもの（人がコンフリクトを解いたコミットがあれば、それも残す）
+    pr_head="$pr_branch"
+    return
+  fi
+  # 無ければ release の先頭から作る。前の run の古い release の先頭のままなら fast-forward で進める
+  # （--force は付けない。人のコミットがあって release の先頭を含まないときは断られるので、人に任せる）
+  if git push --quiet origin "${RELEASE_SHA}:refs/heads/${pr_branch}" 2> "$RUNNER_TEMP/pr-branch-${target}.err"; then
+    pr_head="$pr_branch"
+  else
+    cat "$RUNNER_TEMP/pr-branch-${target}.err" >&2
+    summary "  PR のブランチ \`${pr_branch}\` を release の先頭から作れませんでした（$(push_error "$RUNNER_TEMP/pr-branch-${target}.err")）。"
+  fi
+}
+
 # $1: pr（PR の本文）か issue（PR を作れなかったときの Issue の本文）、$2: 理由
 write_body() {
   local kind="$1" reason="$2"
@@ -78,62 +105,80 @@ write_body() {
   echo
   if [ "$kind" = "pr" ]; then
     echo "リリース後作業（Release/Finish ${VERSION}）が \`${branch}\` を \`${target}\` に自動で取り込めなかったので、この PR を残しました。"
+    echo "PR のブランチ \`${pr_branch}\` は \`${branch}\` の先頭から作った一時ブランチです。"
   else
     echo "リリース後作業（Release/Finish ${VERSION}）が \`${branch}\` を \`${target}\` に自動で取り込めず、PR も作れなかったので、この Issue で知らせます。"
   fi
   echo
   echo "- 理由: ${reason}"
   echo "- 取り込む release の先頭: \`${RELEASE_SHA}\`"
+  if [ "$target" = "develop" ]; then
+    echo "- \`main\` への取り込み・タグ \`v${VERSION}\`・GitHub Release は済んでいます。残っているのは \`develop\` への取り込みだけです"
+  else
+    echo "- \`main\` に取り込めていないので、タグ \`v${VERSION}\`・GitHub Release・\`develop\` への取り込みはまだです"
+  fi
   echo
   echo "## すること"
   echo
+  echo "**\`${branch}\` には push しないでください**（release の先頭が進むと、起動し直したときにタグ・CI を通した先頭と合わなくなり、release ブランチの Upload も動きます）。"
+  echo
   if [ "$kind" = "pr" ]; then
-    echo "1. コンフリクトがあれば解いてから、この PR を**マージコミット**でマージする（Squash しない）"
+    echo "1. コンフリクトがあれば、この PR のブランチ \`${pr_branch}\` で解く（\`${target}\` を取り込むなど）"
+    echo "2. この PR を**マージコミット**でマージする（Squash しない）"
+  elif [ -n "$pr_head" ]; then
+    echo "1. \`${pr_head}\`（\`${branch}\` の先頭から作った一時ブランチ）→ \`${target}\` の PR を作り、コンフリクトがあればそのブランチで解く"
+    echo "2. PR を**マージコミット**でマージする（Squash しない）"
   else
-    echo "1. \`${branch}\` → \`${target}\` の PR を作り、コンフリクトがあれば解いてから**マージコミット**でマージする（Squash しない）"
+    echo "1. \`${branch}\` の先頭 \`${RELEASE_SHA}\` から別のブランチを作り、そのブランチ → \`${target}\` の PR を作って、コンフリクトがあればそのブランチで解く"
+    echo "2. PR を**マージコミット**でマージする（Squash しない）"
   fi
-  echo "2. Actions → Release/Finish → Run workflow で、同じバージョン \`${VERSION}\` で起動し直す（済んだ所は飛ばして、残りのタグ・Release・取り込みを行う）"
+  echo "3. Actions → Release/Finish → Run workflow で、同じバージョン \`${VERSION}\` で起動し直す（済んだ所は飛ばして、残りのタグ・Release・取り込みと、\`develop\` の \`MARKETING_VERSION\` を次のパッチにするコミットを行う）"
   if [ "$kind" = "issue" ]; then
-    echo "3. 終わったらこの Issue を閉じる"
+    echo "4. 終わったらこの Issue を閉じる"
   fi
   echo
   echo "手順は docs/release.md の「リリース後作業」の「取り込めなかったとき」を参照してください。"
 }
 
 # $1: state（conflict / rejected）、$2: 理由（Markdown の 1 行）
-# release → 取り込み先の PR を作って（あれば使って）止める。PR を作れなければ Issue で知らせる。
-# 人がコンフリクトを解いて PR をマージし、Release/Finish を起動し直す
+# release の先頭から作った一時ブランチ → 取り込み先の PR を作って（あれば使って）止める。PR を作れなければ Issue で知らせる。
+# 人がそのブランチでコンフリクトを解いて PR をマージし、Release/Finish を起動し直す
 stop_with_pull_request() {
   local state="$1" reason="$2" pr="" body="$RUNNER_TEMP/pr-${target}.md"
   output state "$state"
   summary "- ${target}: **取り込めませんでした**（${reason}）"
   if [ "$state" = "rejected" ] && grep -q 'workflow' "$RUNNER_TEMP/push-${target}.err" 2> /dev/null; then
     # GITHUB_TOKEN は workflows の権限を持てない。.github/workflows/ が変わる取り込み（2 回目以降の main など）は自動では push できない
-    summary "  GITHUB_TOKEN は \`.github/workflows/\` を変えるコミットを push できません。PR を人がマージしてください（docs/release.md の「リリース後作業」）。"
+    summary "  GITHUB_TOKEN は \`.github/workflows/\` を変えるコミットを push できません。PR を人がマージしてください（docs/release.md の「リリース後作業」。改善は #647）。"
   fi
   if [ "$target" = "main" ] && [ -z "$(git rev-parse --verify --quiet "refs/remotes/origin/main^{commit}" || true)" ]; then
     summary "  main がまだ無いので PR は作れません。ログを見て、人が release の先頭から main を作ってから起動し直してください。"
     echo "::error::${target} に取り込めませんでした（${state}）"
     exit 1
   fi
-  # develop 宛ての PR は必須チェック「No AI Attribution」が要る。release の先頭は check ジョブで検査済みなので check run を付ける
+  prepare_pr_branch
+  # develop 宛ての PR は必須チェック「No AI Attribution」が要る。PR のブランチの先頭（release の先頭）は check ジョブで検査済みなので check run を付ける
   # （GITHUB_TOKEN で作った PR では no-ai-attribution.yml が動かない）
   if [ "$target" = "develop" ]; then
     create_check_run "$RELEASE_SHA" "${branch} にしかないコミットに AI 帰属行が無いことを、Release/Finish の check ジョブで確かめました。" ||
       summary "  （release の先頭に check run「${check_name}」を付けられませんでした。PR の必須チェックが待ちのままなら、人が確かめてマージしてください）"
   fi
-  pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --base "$target" --head "$branch" --state open --json url --jq '.[0].url // ""' 2> /dev/null || true)
-  if [ -z "$pr" ]; then
-    write_body pr "$reason" > "$body"
-    pr=$(gh pr create --repo "$GITHUB_REPOSITORY" --base "$target" --head "$branch" \
-      --title "【CHORE】${branch} を ${target} に取り込む" --body-file "$body" 2> "$RUNNER_TEMP/pr-${target}.err") || pr=""
+  if [ -n "$pr_head" ]; then
+    pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --base "$target" --head "$pr_head" --state open --json url --jq '.[0].url // ""' 2> /dev/null || true)
+    if [ -z "$pr" ]; then
+      write_body pr "$reason" > "$body"
+      pr=$(gh pr create --repo "$GITHUB_REPOSITORY" --base "$target" --head "$pr_head" \
+        --title "【CHORE】${branch} を ${target} に取り込む" --body-file "$body" 2> "$RUNNER_TEMP/pr-${target}.err") || pr=""
+    fi
   fi
   if [ -n "$pr" ]; then
     output pr "$pr"
-    summary "  PR: ${pr}（コンフリクトがあれば解いてマージコミットでマージし、Release/Finish を同じバージョンで起動し直してください）"
+    summary "  PR: ${pr}（コンフリクトがあれば PR のブランチ \`${pr_head}\` で解いてマージコミットでマージし、Release/Finish を同じバージョンで起動し直してください。\`${branch}\` には push しない）"
   else
-    summary "  PR を作れませんでした（$(head -c 300 "$RUNNER_TEMP/pr-${target}.err" 2> /dev/null | tr '\n' ' ')）。"
-    summary "  リポジトリの「Allow GitHub Actions to create and approve pull requests」が無効なときは作れません。人が \`${branch}\` → \`${target}\` の PR を作ってください。"
+    if [ -n "$pr_head" ]; then
+      summary "  PR を作れませんでした（$(head -c 300 "$RUNNER_TEMP/pr-${target}.err" 2> /dev/null | tr '\n' ' ')）。"
+      summary "  リポジトリの「Allow GitHub Actions to create and approve pull requests」が無効なときは作れません。人が \`${pr_head}\` → \`${target}\` の PR を作ってください（\`${branch}\` には push しない）。"
+    fi
     # PR を作れなくても人が気づけるよう、Issue で知らせる（同じタイトルの開いた Issue があれば作らない）
     local title="【CHORE】${branch} を ${target} に取り込めませんでした" issue=""
     issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"${title}\" in:title" --json url,title \
