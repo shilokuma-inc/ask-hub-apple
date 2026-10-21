@@ -86,6 +86,7 @@ struct AttachmentFileNameTests {
         ("design.png", "design.png"),
         ("a/b\\c.png", "abc.png"),
         ("..hidden.txt", "hidden.txt"),
+        (".\u{0301}hidden", "\u{0301}hidden"),
         ("tab\tand\nnewline.txt", "tabandnewline.txt"),
         ("  spaced.md  ", "spaced.md"),
         ("", "attachment"),

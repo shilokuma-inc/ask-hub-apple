@@ -18,7 +18,8 @@ public enum AttachmentFileName {
         // `. x.png` のように、先頭の `.` を除くと空白が先頭に出るので、変わらなくなるまで繰り返す
         var trimmed = String(String.UnicodeScalarView(scalars))
         while true {
-            let next = String(trimmed.trimmingCharacters(in: .whitespaces).drop { $0 == "." })
+            // `.` の直後に結合文字が続くと 1 つの Character になるので、Unicode スカラーの単位で落とす
+            let next = String(trimmed.trimmingCharacters(in: .whitespaces).unicodeScalars.drop { $0 == "." })
             if next == trimmed {
                 break
             }
