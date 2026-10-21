@@ -332,6 +332,7 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
   macOS 宛てのビルド・テストで署名の指定（`CODE_SIGN…`）が無ければ、アドホック署名の設定を足す（archive は除く。CI の macOS のテストと同じ）
 - **Simulator**: リモートでは `platform=iOS Simulator,name=…` と `platform=visionOS Simulator,name=…` を作業ツリー専用の Simulator（`xcb-<作業ツリー>-<機種>-<ランタイム>`。無ければ作る）に置き換える。
   ランタイムはその Xcode の SDK（iOS は `iphonesimulator`、visionOS は `xrsimulator`）と同じか古いもののうち最新（visionOS のランタイムの識別子は `…SimRuntime.xrOS-26-5` の形）。
+  その Mac に使えるランタイムが無ければ、xcodebuild の「is not installed」と同じく、そのプラットフォームだけ 1 時間その Mac に割り当てず、別の Mac でやり直す（切断としては扱わない）。
   `local`（Mac mini 自身）では置き換えない
 - **置き場**: リモートは `~/remote-builds.noindex/src/<作業ツリー>`（rsync で同期。`.git`・DerivedData・`.build` は送らない）と
   `~/remote-builds.noindex/dd/<作業ツリー>`（DerivedData。ループが付けた `-derivedDataPath` は使わない）。
