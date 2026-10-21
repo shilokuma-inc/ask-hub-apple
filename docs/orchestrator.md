@@ -226,9 +226,11 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
   - 制御用 worktree がすでにその epic なら、そのまま再開する
   - 今の epic の最終 PR を作り終えたかは見ない（オーケストレーターが確かめてから呼ぶ。下記「最終 PR への指示でループを再開する」）
   - 戻した後、git 管理下の `.claude/` のファイル（`settings.json` など）は退避の古い版ではなく epic の版にする。作り直しの途中で失敗した後の戻し直しでも `ralph-setup.sh` を呼び直す
-- **添付ファイル**（Discussion #669）: 準備の `claude` に渡す Discussion の本文・返信には、添付の目印（`docs/protocol.md` の「添付ファイル」）がそのまま入る。
-  準備の `claude` は、目印を goal の「## 添付」の節に書き写し（名前・種類・大きさ・出どころ・blob SHA・パス）、中身を読んで決定事項・タスクに反映する。
-  節の冒頭には読み方（`gh api repos/<owner>/<repo>/git/blobs/<sha> --jq .content | base64 -d > <置き場所>/<名前>`）を書かせる。置き場所は
+- **添付ファイル**（Discussion #669）: 準備の `claude` に渡す Discussion の本文・コメント・返信には、添付の目印（`docs/protocol.md` の「添付ファイル」）がそのまま入る。
+  準備の `claude` は、goal を作る前に添付を読んで決定事項・タスクに反映し、目印を goal の「## 添付」の節に書き写す（名前・種類・大きさ・出どころ・blob SHA・パス）。
+  節の冒頭には読み方（`gh api repos/<owner>/<repo>/git/blobs/<sha> --jq .content | base64 -d > "<置き場所>/<path の UUID>/<path のファイル名>"`）を書かせる。
+  名前は目印の `name`（元のファイル名）ではなく `path` から取る（同じ名前の添付を上書きしない・空白や `/` を含む名前でもコマンドが壊れない）。
+  目印の形はプロンプトに書く（ほかのリポジトリの checkout には `docs/protocol.md` が無いため。正本は ask-hub-apple の `docs/protocol.md`）。置き場所は
   `~/Library/Caches/askhub/attachments/<owner>/<repo>/discussion-<番号>/`（環境変数 `ASKHUB_ATTACHMENTS_DIR` で親を変えられる。制御用 worktree・スロットの外で、コミットしない）。
   ループは goal を毎周読むので、実装中もこの節から添付を読める
   - 返信は 1 つのコメントにつき 100 件までしか取らない。超えるコメントがあると回答や添付を読み落とすので、準備を止めて失敗として返す（ログに理由を出す）
