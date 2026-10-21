@@ -153,7 +153,8 @@ extension InboxModel {
             makeInstructionPoster: { _ in SampleDecisionInstructionPoster() },
             // サンプルは GitHub に権限を問い合わせない
             makeTrust: { _ in TrustedAuthors.default },
-            makeCommentsFetcher: { _ in SampleDecisionLogComments() }
+            makeCommentsFetcher: { _ in SampleDecisionLogComments() },
+            makeUploader: { _ in SampleAttachmentUploader() }
         )
     }
 }
