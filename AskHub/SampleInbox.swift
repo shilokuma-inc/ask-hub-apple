@@ -56,6 +56,7 @@ extension IdeaRequestModel {
             tokenStore: InMemoryTokenStore(token: "sample"),
             makeRequester: { _ in SampleIdeaRequester() },
             makeProblemCommenter: { _ in SampleVerifyProblemCommenter() },
+            makeUploader: { _ in SampleAttachmentUploader() },
             sent: sent,
             release: .sample()
         )
@@ -78,6 +79,25 @@ extension SentRequest {
             issue: CreatedIssue(number: 184, htmlURL: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/184")!)
         )
     ]
+}
+
+/// デモモード・Preview・UI テスト用。添付を上げたことにして GitHub には送らない（決まった blob SHA とコミットを返す）
+struct SampleAttachmentUploader: AttachmentUploading {
+    static let blob = String(repeating: "b", count: 40)
+    static let commit = String(repeating: "c", count: 40)
+
+    func upload(_ files: [AttachmentFile], to repository: String) async throws -> [AttachmentMarker] {
+        files.map { file in
+            AttachmentMarker(
+                path: AttachmentMarker.path(id: UUID(), fileName: file.name),
+                sha: Self.blob,
+                commit: Self.commit,
+                name: file.name,
+                size: file.data.count,
+                type: file.type
+            )
+        }
+    }
 }
 
 /// デモモード・Preview・UI テスト用。Issue を作ったことにして GitHub には送らない

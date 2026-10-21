@@ -89,6 +89,35 @@ struct IdeaRequestTests {
         #expect(body["labels"] as? [String] == ["idea-request"])
     }
 
+    @Test func createsIssueWithAttachmentSectionAtEnd() async throws {
+        let http = MockHTTPClient([
+            .init(status: 201, body: #"{ "number": 41, "html_url": "https://github.com/o/r/issues/41" }"#)
+        ])
+        let attachment = AttachmentMarker(
+            path: "files/3f2504e0-4f89-11d3-9a0c-0305e82c3301/design.png",
+            sha: String(repeating: "b", count: 40),
+            commit: String(repeating: "c", count: 40),
+            name: "design.png",
+            size: 2_048,
+            type: "image/png"
+        )
+        _ = try await makeRequester(http).create(
+            IdeaRequest(repository: "o/r", summary: "画面を直したい", body: "\nデザインのとおりにしたい\n", attachments: [attachment])
+        )
+
+        let data = try #require(http.requests.first?.httpBody)
+        let body = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let text = try #require(body["body"] as? String)
+        #expect(text == AttachmentSection.appending([attachment], to: "デザインのとおりにしたい", repository: "o/r"))
+        #expect(text.hasPrefix("デザインのとおりにしたい\n\n### 添付ファイル\n"))
+        #expect(AttachmentMarker.parseAll(text) == [attachment])
+    }
+
+    @Test func issueBodyWithoutAttachmentsIsTrimmedBody() {
+        // Siri / ショートカットからの依頼など、添付の無い依頼の本文は今までどおり
+        #expect(IdeaRequest(repository: "o/r", summary: "要約", body: "  依頼文\n").issueBody == "依頼文")
+    }
+
     @Test func rejectsInvalidRequestWithoutSending() async {
         let http = MockHTTPClient([])
         await #expect(throws: IdeaRequestError.invalidRequest) {
