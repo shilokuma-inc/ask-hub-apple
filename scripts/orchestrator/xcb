@@ -336,9 +336,10 @@ trap 'release; rm -f $OUT $JOB_FILE' EXIT
 trap 'release; rm -f $OUT $JOB_FILE; exit 130' INT TERM
 emit job_started id $JOB_ID path $SRC action $ACTION platform $PLAT destination "$DEST"
 
-# ---- リモートで実行（ssh / rsync 自体の失敗・切断は 255） ----
+# ---- リモートで実行（ssh / rsync 自体の失敗・切断は 255。Simulator のランタイムが無ければ XCB_NO_RUNTIME を出して 70） ----
+XCB_NO_RUNTIME="xcb: no-simulator-runtime"
 run_remote() {  # $1=Host
-  local h=$1 dev=${H_DEVDIR[$1]-} rargs=("${args[@]}") i devname udid envp="" simos="" simsdk="" simkey=""
+  local h=$1 dev=${H_DEVDIR[$1]-} rargs=("${args[@]}") i devname udid envp="" simos="" simsdk="" simkey="" simrc
   [[ -n $dev ]] && envp="DEVELOPER_DIR=${(q)dev} "
   # iOS / visionOS Simulator の name= は作業ツリー専用の Simulator（無ければ作る）に置き換える。
   # simos は destination とランタイムの一覧での名前、simsdk は SDK、simkey はランタイムの識別子の中の名前（visionOS は xrOS）
@@ -357,14 +358,23 @@ sdk=$(xcrun --sdk "$sdkname" --show-sdk-version 2>/dev/null)
 rt=$(xcrun simctl list runtimes available | sed -nE "s/^$os ([0-9.]+) .* - (com\.apple\.CoreSimulator\.SimRuntime\.$key-[0-9-]+)\$/\1 \2/p" \
   | awk -v sdk="$sdk" 'function v(x, a){split(x,a,"."); return a[1]*10000+a[2]*100+a[3]} v($1)<=v(sdk){print v($1), $2}' \
   | sort -n | tail -1 | cut -d" " -f2)
-[[ -n $rt ]] || { print -- "この Xcode（$os SDK ${sdk}）で使える $os ランタイムがありません"; exit 0; }
+# ランタイムが無いのは切断ではないので、終了コード 3 で返して呼び出し側で区別する
+[[ -n $rt ]] || { print -- "この Xcode（$os SDK ${sdk}）で使える $os ランタイムがありません"; exit 3; }
 # 名前にランタイムを入れ、ランタイムが変わったら別の Simulator にする（iOS は今までどおり xcb-…-<機種>-26-5 の形）
 n="$1-${rt##*.$key-}"
 u=$(xcrun simctl list devices available | grep -F "    $n (" | head -1 | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
 [[ -n $u ]] || u=$(xcrun simctl create "$n" "$dev" "$rt")
 print -- $u
 REMOTE
-) || return 255
+)
+    simrc=$?
+    if (( simrc == 3 )); then
+      # その Mac に必要なプラットフォームが無い。xcodebuild の「is not installed」と同じく、別の Mac でやり直させる
+      # （255 で返すと切断として扱い、その Mac をほかのプラットフォームのビルドからも外してしまう）
+      print -r -- "$XCB_NO_RUNTIME ${h}: $udid"
+      return 70
+    fi
+    (( simrc == 0 )) || return 255
     if [[ ! $udid =~ ^[0-9A-F-]{36}$ ]]; then
       log "$h で Simulator を用意できなかった（${devname}）: $udid"
       return 255
@@ -442,7 +452,7 @@ while true; do
     else
       run_remote $HOST | tee $OUT; rc=${pipestatus[1]}
     fi
-    if (( rc == 70 )) && grep -q "is not installed. Please download" $OUT 2>/dev/null; then
+    if (( rc == 70 )) && grep -qE "is not installed. Please download|^$XCB_NO_RUNTIME " $OUT 2>/dev/null; then
       # ビルドの失敗ではなく、その Mac の Xcode に必要なプラットフォームが無い
       log "$HOST の Xcode に $PLAT のプラットフォームが無いので、別の Mac でやり直す（1 時間は $HOST に $PLAT を割り当てない）"
       emit job_moved id $JOB_ID from $HOST reason no_platform; (( MOVES++ ))
