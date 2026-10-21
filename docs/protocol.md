@@ -852,9 +852,10 @@ GitHub には Issue / コメントにファイルを添付する公式の API �
 
 ### 添付ファイル
 - [design.png](https://github.com/<owner>/<repo>/blob/<commit>/files/<uuid>/design.png)（画像・117 KB）
-<!-- ask-hub:attachment {...} -->
+  <!-- ask-hub:attachment {...} -->
 ```
 
+- 目印は項目の下の行に 2 文字下げて置く（行頭の HTML コメントは箇条書きを途切れさせるため）。読むときは字下げの有無を問わない
 - リンクは `commit` の固定リンク（ブランチから消した後も履歴から開ける）。リンクの名前の Markdown の記号はエスケープし、改行などの制御文字は空白にする
 - 種類の表示は `テキスト` / `画像`（`image/` で始まる MIME）/ `PDF`（`application/pdf`）。大きさは 1 KB = 1,024 バイトで `B` / `KB`（整数）/ `MB`（小数 1 桁）
 - 添付が無ければ添付欄を付けない（本文は今までと同じ）

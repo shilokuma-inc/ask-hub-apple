@@ -30,7 +30,7 @@ struct AttachmentSectionTests {
 
         ### 添付ファイル
         - [design.png](https://github.com/shilokuma-inc/ask-hub-apple/blob/\(Self.commit)/files/\(Self.id)/design.png)（画像・117 KB）
-        \(attachment.marker)
+          \(attachment.marker)
         """)
     }
 

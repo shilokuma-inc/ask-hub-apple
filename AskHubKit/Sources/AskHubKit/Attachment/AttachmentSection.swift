@@ -6,8 +6,8 @@ import Foundation
 /// （本文）
 ///
 /// ### 添付ファイル
-/// - [design.png](https://github.com/<owner>/<repo>/blob/<commit>/files/<uuid>/design.png)（画像・120 KB）
-/// <!-- ask-hub:attachment {...} -->
+/// - [design.png](https://github.com/<owner>/<repo>/blob/<commit>/files/<uuid>/design.png)（画像・117 KB）
+///   <!-- ask-hub:attachment {...} -->
 /// ```
 ///
 /// 回答の 1 行目の `回答: ` や、本文の先頭に置くほかの目印を崩さないよう、いつも末尾に足す
@@ -21,9 +21,10 @@ public enum AttachmentSection {
         guard !attachments.isEmpty else {
             return body
         }
+        // 目印は 2 文字下げて項目の中に置く（行頭の HTML コメントは箇条書きを途切れさせ、項目ごとに別の箇条書きになるため）
         let lines = attachments.map { attachment in
             "- \(link(for: attachment, repository: repository))（\(attachment.kind.displayName)・"
-                + "\(AttachmentSize.displayText(bytes: attachment.size))）\n\(attachment.marker)"
+                + "\(AttachmentSize.displayText(bytes: attachment.size))）\n  \(attachment.marker)"
         }
         let section = ([heading] + lines).joined(separator: "\n")
         let trimmedBody = body.replacingOccurrences(of: #"\s+$"#, with: "", options: .regularExpression)
