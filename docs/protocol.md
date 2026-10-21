@@ -805,6 +805,73 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
   ショートカット App・Spotlight には「依頼を送る」として出る
 - 使い方（フレーズ・聞かれる順番・送るときの注意・依頼先を固定するショートカットの作り方）は、アプリの設定の「Siri とショートカット」と、「新しい依頼」の「機能追加・修正」の下の行から開ける（`SiriShortcutsHelpView`。Q1 の補足）
 
+## 添付ファイル
+
+アプリの「新しい依頼」（機能追加・修正）・質問への回答・実機確認の「問題あり」に、テキスト・画像・PDF を添付できる
+（[Discussion #669](https://github.com/shilokuma-inc/ask-hub-apple/discussions/669)）。
+GitHub には Issue / コメントにファイルを添付する公式の API が無いため、依頼先のリポジトリの専用ブランチに置き、本文の目印で指す（Q1）。
+
+### 置き場所
+
+- 依頼先のリポジトリ（依頼 Issue・Discussion・PR があるリポジトリ）の **`askhub/attachments` ブランチ**。親の無いブランチ（orphan）で、最初のコミットには `README.md`（このブランチの役割）だけを置く。
+  アプリのコードを含まないので、このブランチへの push では Build などのワークフローが動かない。開発に使わない・手で消さない
+- パス: `files/<UUID（小文字）>/<ファイル名>`。添付 1 つに UUID 1 つ。
+  ファイル名は元の名前から `/`・`\`・制御文字・先頭の `.` を除き、前後の空白を落として 100 文字まで（拡張子を残して前を詰める）にする。空になったら `attachment` にする（`AskHubKit` の `AttachmentFileName`）
+- アップロードには、トークンに依頼先のリポジトリの **Contents の書き込み権限**が要る
+- **public のリポジトリに置いたファイルは誰でも読める。** ブランチから消しても git の履歴に残る（アプリの添付欄に注意書きを出す。Q4）
+
+### 目印
+
+添付 1 つに目印 1 つ（`AskHubKit` の `AttachmentMarker`）。
+
+```html
+<!-- ask-hub:attachment {"commit":"<上げたコミットの SHA>","name":"design.png","path":"files/<uuid>/design.png","sha":"<blob SHA>","size":120000,"type":"image/png"} -->
+```
+
+| キー | 必須 | 内容 |
+| --- | --- | --- |
+| `path` | 必須 | `askhub/attachments` の中のパス（`files/<UUID（小文字）>/<ファイル名>`） |
+| `sha` | 必須 | ファイルの blob SHA（40 桁の小文字の 16 進） |
+| `commit` | 必須 | ファイルを上げたコミットの SHA（40 桁の小文字の 16 進）。添付欄のリンクに使う |
+| `name` | 必須 | 元のファイル名 |
+| `size` | 必須 | バイト数 |
+| `type` | 必須 | MIME タイプ（例: `image/png`・`application/pdf`・`text/markdown`） |
+
+- キーの順は問わない。知らないキーは無視する
+- 文字列の中の `>` は `>` にエスケープし、目印の終わり（`-->`）と取り違えないようにする（「実機確認 Issue の目印」と同じ）
+- 形の誤った目印は無視する: `path` が上の形でない（`..` を含む・UUID が大文字・ファイル名が安全にした形でない など）、`sha`・`commit` が 40 桁の小文字の 16 進でない、`size` が負、`name`・`type` が空、JSON として読めない
+- 目印は本文の**どこにあっても**読む（ほかの目印と違い、先頭に限らない）。同じ `path` の目印が重なっていれば最初のものだけを使う
+
+### 添付欄
+
+添付は本文の**末尾**に、見出しと 1 行ずつのリンク・目印を並べた「添付欄」として置く（`AskHubKit` の `AttachmentSection`）。
+回答の 1 行目の `回答: ` や、本文の先頭に置くほかの目印（`ask-hub:verify-problem` など）を崩さないため。
+
+```markdown
+（本文）
+
+### 添付ファイル
+- [design.png](https://github.com/<owner>/<repo>/blob/<commit>/files/<uuid>/design.png)（画像・117 KB）
+<!-- ask-hub:attachment {...} -->
+```
+
+- リンクは `commit` の固定リンク（ブランチから消した後も履歴から開ける）。リンクの名前の Markdown の記号はエスケープし、改行などの制御文字は空白にする
+- 種類の表示は `テキスト` / `画像`（`image/` で始まる MIME）/ `PDF`（`application/pdf`）。大きさは 1 KB = 1,024 バイトで `B` / `KB`（整数）/ `MB`（小数 1 桁）
+- 添付が無ければ添付欄を付けない（本文は今までと同じ）
+- アプリの本文の表示では HTML コメントを取り除くので、リンクの行だけが見える
+
+### 読み方
+
+- **目印の `sha`（blob SHA）で取る**（`GET repos/{owner}/{repo}/git/blobs/{sha}`。内容は base64）。ブランチの `path` からは読まない（ブランチ上のファイルは書き込み権限があれば変えられる）
+- 取った内容の大きさが `size` と合い、git の blob SHA（`"blob <バイト数>\0"` + 内容の SHA-1）が `sha` と合うことを確かめ、合わなければ使わない
+- **信用する author が書いた本文・返信の目印だけを読む**（依頼 Issue は作成者と編集者。Discussion の本文・コメント・返信、PR の ask の返信は author）。それ以外の author の目印は無視する
+
+### 種類と上限
+
+- 添付できるのは、`claude` が読めるテキスト（UTF-8 で読めるもの。`.md`・`.txt`・`.json`・`.csv`・`.yaml` など）・画像（PNG / JPEG / GIF / WebP）・PDF（Q2）。
+  `.fig` / `.sketch` / `.psd` などデザインツール固有のファイルは、書き出した画像や PDF にして添付する（Q3）
+- 上限の既定は 1 ファイル 10 MB・1 回の送信で 10 ファイルまで
+
 ## リポジトリの作成・削除
 
 アプリから、テンプレートで新しいアプリのリポジトリを作り担当 PC に載せる・担当から外してローカルから消す、を依頼できる。
