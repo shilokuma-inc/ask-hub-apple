@@ -83,4 +83,13 @@ public protocol OrchestratorGitHub: Sendable {
     func attachmentContent(_ marker: AttachmentMarker, in repository: String) async throws -> Data
     /// Discussion の本文の末尾に添付欄を足す。本文に既にある目印（同じパス）は足さない
     func appendAttachments(_ markers: [AttachmentMarker], toDiscussion number: Int, in repository: String) async throws
+    /// 最近更新された、マージ済みの最終 PR（`epic-final`）
+    func mergedEpicFinalPullRequests(in repository: String) async throws -> [MergedEpicFinalPullRequest]
+    /// Discussion の本文・コメント・返信（書いた人つき。コメントはページングを最後まで追う）
+    func discussionTexts(in repository: String, number: Int) async throws -> [AuthoredText]
+    /// `base` 宛ての子 PR（open・closed とも）のレビューコメント（ask と返信。書いた人つき）
+    func childPullRequestReviewComments(in repository: String, base branch: String) async throws -> [AuthoredText]
+    /// `askhub/attachments` から `paths` を 1 つのコミットで消し、消した数を返す。ブランチやパスが無ければ 0。
+    /// ref を更新できない（ブランチが先に進んだ）ときは `AttachmentCleanupError.conflict`
+    func deleteAttachments(at paths: [String], in repository: String) async throws -> Int
 }
