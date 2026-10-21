@@ -894,6 +894,16 @@ GitHub には Issue / コメントにファイルを添付する公式の API �
 - 依頼から作った Discussion の本文の末尾には、オーケストレーターが依頼と同じ添付欄（確かめられた添付の目印）を足す。ループの準備はこの目印から添付を読む。
   本文を書き換えるのはオーケストレーターのアカウントなので、そのアカウントが信用する author であること（本文の author は Discussion を作った claude の gh のアカウント）
 
+### 片付け
+
+epic の最終 PR（`epic-final`）がマージされたら、オーケストレーターがその epic の添付を `askhub/attachments` から消す（Discussion #669 の Q7。`docs/orchestrator.md` の「最終 PR のマージ後に添付を消す」）。
+
+- 消すのは、ゴール元の Discussion（本文の `<!-- ask-hub:discussion N -->` の番号）の本文・コメント・返信と、epic の子 PR（epic ブランチ宛て）のレビューコメント（ask と返信）にある、**信用する author の目印**が指すパスだけ。
+  ほかのパス・`README.md` は消さない（信用しない author の目印では、ほかの epic の添付を消させない）
+- Git Data API で、今のブランチの tree から消すパスを `sha: null` にした tree → コミット（親は今の head）→ ref の更新（`force: false`）の 1 つのコミットで消す。ブランチやパスが無ければ何もしない
+- 済んだら、最終 PR に `<!-- ask-hub:attachments-cleaned {"count":N} -->` で始まるコメントを付ける。信用する author のこの印がある最終 PR は二度と処理しない。添付の無い epic には付けない
+- ブランチから消しても git の履歴には残る。epic に要るファイルは、ループが実装の中でリポジトリに取り込む
+
 ### 種類と上限
 
 - 添付できるのは、`claude` が読めるテキスト（UTF-8 で読めるもの。`.md`・`.txt`・`.json`・`.csv`・`.yaml` など）・画像（PNG / JPEG / GIF / WebP）・PDF（Q2）。
