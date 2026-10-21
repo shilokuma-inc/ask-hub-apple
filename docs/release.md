@@ -405,7 +405,8 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 - ジョブの権限は `contents: write`（release ブランチの push）・`actions: write`（`workflow_dispatch`）・`pull-requests: read`（PR のタイトル）。`GITHUB_TOKEN` だけを使う
 - Secrets は Metadata/App Store と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`）。新しい Secret・vars は要らない
 - vars は任意の `ENABLE_DELIVERY`・`ENABLE_MACOS_DELIVERY`（上の「流れ」）
-- アプリのトークン（Fine-grained PAT）は、Actions の Read and write（起動と run の表示）と Contents の Read（release ブランチ・下書きの読み取り）があればよい
+- アプリのトークン（Fine-grained PAT）は、リリース準備には Actions の Read and write（起動と run の表示）と Contents の Read（release ブランチ・下書きの読み取り）があればよい
+  （依頼・回答・「問題あり」にファイルを添付するときは Contents の Read and write が要る。`docs/protocol.md` の「添付ファイル」）
 
 ## 最新情報の確定
 
@@ -730,4 +731,5 @@ GitHub の情報だけで出すので、App Store Connect の処理・審査の�
 ### アプリのトークンの権限
 
 Fine-grained PAT に **Actions の Read and write**（起動と run の表示。TestFlight への手動アップロードと同じ）と **Contents の Read**（上の表の読み取り）を付ける。
-アプリからは push・タグ・Release の作成をしない（ワークフローが `GITHUB_TOKEN` で行う）ので、Contents の Write は要らない。
+アプリからは push・タグ・Release の作成をしない（ワークフローが `GITHUB_TOKEN` で行う）ので、リリース準備には Contents の Write は要らない。
+ただし、依頼・回答・「問題あり」にファイルを添付するには、アプリが依頼先の `askhub/attachments` ブランチにファイルを上げるので、Contents の Read and write が要る（`docs/protocol.md` の「添付ファイル」）。
