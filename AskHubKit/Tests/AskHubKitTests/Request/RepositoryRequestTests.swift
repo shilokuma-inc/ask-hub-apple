@@ -172,6 +172,10 @@ struct RepositoryRequestTests {
             #expect(RepositoryRequest.parse(body) == nil, "\(body)")
         }
         #expect(RepositoryRequest.parse(Self.createMarker(#""appName":"Foo","platform":"ios""#)) != nil)
+        // テンプレート名の大文字・小文字の違いは、platform があっても受け付ける
+        let vision = #"<!-- ask-hub:repo-request {"action":"create","repository":"o/r","#
+            + #""template":"Shilokuma-Vision/Template-App-VisionOS","appName":"Foo","platform":"visionos"} -->"#
+        #expect(RepositoryRequest.parse(vision) != nil)
     }
 
     @Test func listsTemplatesByPlatform() {
