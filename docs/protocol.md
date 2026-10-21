@@ -820,6 +820,18 @@ GitHub には Issue / コメントにファイルを添付する公式の API �
 - アップロードには、トークンに依頼先のリポジトリの **Contents の書き込み権限**が要る
 - **public のリポジトリに置いたファイルは誰でも読める。** ブランチから消しても git の履歴に残る（アプリの添付欄に注意書きを出す。Q4）
 
+### アップロード
+
+アプリは、送るときに**先に添付をすべて上げてから**、添付欄を付けた本文で Issue・返信・コメントを作る（`AskHubKit` の `GitHubAttachmentUploader`）。
+
+- ファイルは 1 つずつ順に、Contents API の `PUT repos/{owner}/{repo}/contents/files/<uuid>/<ファイル名>` で上げる（本文は `branch: "askhub/attachments"`・`content`（base64）・`message: "[chore] 添付を追加: <ファイル名>"`）。
+  応答の `content.sha`（blob SHA）と `commit.sha` を目印の `sha`・`commit` にする
+- ブランチが無いと PUT は 404 か 422 になる。そのときは `GET repos/{owner}/{repo}/git/ref/heads/askhub/attachments` でブランチの有無を確かめ、無ければ Git Data API で作ってから上げ直す
+  （`POST git/trees`（`README.md` だけ）→ `POST git/commits`（`parents: []`）→ `POST git/refs`）。ref を作るときの 422（ほかの送信が先に作った）はそのまま使う。ブランチを作るのは 1 回の送信で 1 回まで
+- 409（ブランチが先に進んだ）は、同じパスで 3 回まで再試行する。それでも上げられなければ失敗にする
+- 403 / 404（ブランチがあるのに書き込めない・リポジトリが見えない・ブランチを作れない）は、トークンに Contents の書き込み権限が無い旨のエラーにする。レート制限は他の API と同じく待って再試行する
+- 1 つでも上げられなければ、何も投稿しない（それまでに上げたファイルはブランチに残る）
+
 ### 目印
 
 添付 1 つに目印 1 つ（`AskHubKit` の `AttachmentMarker`）。
