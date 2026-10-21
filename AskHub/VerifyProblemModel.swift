@@ -10,6 +10,8 @@ final class VerifyProblemModel {
     let issue: InboxIssue
     /// 問題の内容（何をしたら・どうなったか）。依頼を作った後は変えさせない（コメントを依頼の本文とそろえるため）
     var description = ""
+    /// 添付するファイル（選んだ順）。送るまで GitHub に上げず、メモリにだけ持つ。依頼を作った後は変えさせない
+    var attachments: [AttachmentFile] = []
     private(set) var isSending = false
     private(set) var errorMessage: String?
     /// 作った再修正の依頼。コメントだけ失敗したときは、これを使ってコメントだけを再試行する（依頼を重ねない）
@@ -22,17 +24,22 @@ final class VerifyProblemModel {
     private let tokenStore: any TokenStore
     private let makeRequester: @Sendable (String) -> any IdeaRequesting
     private let makeCommenter: @Sendable (String) -> any VerifyProblemCommenting
+    private let makeUploader: @Sendable (String) -> any AttachmentUploading
 
     init(
         issue: InboxIssue,
         tokenStore: any TokenStore,
         makeRequester: @escaping @Sendable (String) -> any IdeaRequesting,
-        makeCommenter: @escaping @Sendable (String) -> any VerifyProblemCommenting
+        makeCommenter: @escaping @Sendable (String) -> any VerifyProblemCommenting,
+        makeUploader: @escaping @Sendable (String) -> any AttachmentUploading = {
+            GitHubAttachmentUploader(client: GitHubClient(token: $0))
+        }
     ) {
         self.issue = issue
         self.tokenStore = tokenStore
         self.makeRequester = makeRequester
         self.makeCommenter = makeCommenter
+        self.makeUploader = makeUploader
     }
 
     private var problem: VerifyProblem {
@@ -50,11 +57,16 @@ final class VerifyProblemModel {
 
     /// 確認ダイアログに出す、作る依頼の説明
     var confirmation: String {
-        "\(issue.repository) に「\(problem.request.title)」を依頼し、この Issue に問題の内容をコメントします。Issue は閉じません"
+        if let createdRequest, !isCompleted {
+            return "再修正の依頼 #\(createdRequest.number) へのリンクを付けて、この Issue に問題の内容をコメントします。依頼は作り直しません"
+        }
+        let attachments = attachments.isEmpty ? "" : "添付 \(attachments.count) 件を \(issue.repository) に上げてから、"
+        return "\(attachments)\(issue.repository) に「\(problem.request.title)」を依頼し、この Issue に問題の内容をコメントします。Issue は閉じません"
     }
 
     /// 依頼を作り（まだ作っていなければ）、実機確認 Issue にコメントする。
-    /// 依頼を作れなければ何も投稿しない。コメントだけ失敗したら、次の呼び出しではコメントだけを再試行する
+    /// 添付があれば、依頼を作る前に実機確認 Issue のリポジトリへすべて上げ、依頼とコメントの両方に同じ添付欄を付ける。
+    /// 上げられない・依頼を作れなければ何も投稿しない。コメントだけ失敗したら、次の呼び出しではコメントだけを再試行する（上げ直さない）
     func send() async {
         guard canSend else {
             return
@@ -62,7 +74,7 @@ final class VerifyProblemModel {
         isSending = true
         errorMessage = nil
         defer { isSending = false }
-        let problem = problem
+        var problem = problem
         do {
             guard let token = try tokenStore.load() else {
                 throw IdeaRequestModel.MissingTokenError()
@@ -71,6 +83,10 @@ final class VerifyProblemModel {
             if let createdRequest {
                 request = createdRequest
             } else {
+                let files = attachments
+                if !files.isEmpty {
+                    problem.attachments = try await makeUploader(token).upload(files, to: issue.repository)
+                }
                 request = try await makeRequester(token).create(problem.request)
                 createdRequest = request
                 sentProblem = problem
@@ -84,6 +100,10 @@ final class VerifyProblemModel {
 
     /// 失敗の説明。トークンの値は含めない
     static func message(for error: any Error, createdRequest: CreatedIssue?) -> String {
+        // 添付を上げられなかった（Contents の書き込み権限・競合）。依頼はまだ作っていないので、そのまま説明する
+        if error is AttachmentUploadError {
+            return IdeaRequestModel.message(for: error)
+        }
         let reason = switch error {
         // Issues の書き込み権限が無いと 403、リポジトリが見えないトークンでは 404 になる
         case GitHubError.http(status: 403, _), GitHubError.http(status: 404, _):
@@ -105,12 +125,20 @@ final class VerifyProblemModel {
 extension IdeaRequestModel {
     /// 実機確認の「問題あり」のモデル。依頼はこのモデルと同じトークン・依頼の作り方で作る（デモモードでは GitHub に書き込まない）
     func verifyProblemModel(for issue: InboxIssue) -> VerifyProblemModel {
-        VerifyProblemModel(
+        let model = VerifyProblemModel(
             issue: issue,
             tokenStore: tokenStore,
             makeRequester: makeRequester,
-            makeCommenter: makeProblemCommenter
+            makeCommenter: makeProblemCommenter,
+            makeUploader: makeUploader
         )
+        #if DEBUG
+        // UI テストでは、システムのファイルピッカーを操作できないので、サンプルの添付を入れた状態から始める
+        if ProcessInfo.processInfo.arguments.contains(Self.sampleAttachmentsLaunchArgument) {
+            model.attachments = AttachmentFile.samples
+        }
+        #endif
+        return model
     }
 }
 
