@@ -34,7 +34,13 @@ extension OrchestratorTests {
         #expect(!prompt.contains("ask-hub:attachment"))
         // 画像は一時ディレクトリに置き、claude が読む時点で中身がある
         let directory = attachmentsDirectory.appending(path: "shilokuma-inc/ask-hub-apple/issue-7", directoryHint: .isDirectory)
-        #expect(prompt.contains("`\(directory.appending(path: "2-design.png").path(percentEncoded: false))` にあります"))
+        let base = directory.path(percentEncoded: false).dropLast()
+        #expect(prompt.contains("Read で開いて見てください。場所: \(base)/2-design.png"))
+        // 引数の並びを固定する。`Read` の規則は `//` で始まり、パスの末尾に `/` を重ねない
+        #expect(runtime.ran.first == [
+            "claude", "-p", "--allowedTools", "Bash(gh:*)", "Read(/\(base)/**)", "--add-dir", String(base)
+        ])
+        #expect(runtime.ran.first?.contains { $0.hasSuffix("//**)") } == false)
         #expect(runtime.directoryContentsDuringRun.first == ["2-design.png": Self.png])
         // コマンドの後に一時ディレクトリを消す
         #expect(!FileManager.default.fileExists(atPath: directory.path(percentEncoded: false)))

@@ -57,13 +57,14 @@ extension IdeaPrompt {
         var texts: [String] = []
         for attachment in attachments {
             let marker = attachment.marker
-            let label = "\(escape(marker.name))（\(marker.kind.displayName)・\(AttachmentSize.displayText(bytes: marker.size))）"
+            // 一覧の行はデータのタグの外に出るので、名前の改行・制御文字も空白にする（見出しや手順の行を足させない）
+            let label = "\(attribute(marker.name))（\(marker.kind.displayName)・\(AttachmentSize.displayText(bytes: marker.size))）"
             switch attachment.content {
             case .text:
                 lines.append("- \(label): 下の <request-attachment> に中身があります")
 
             case let .file(path):
-                lines.append("- \(label): `\(path)` にあります。Read で開いて見てください")
+                lines.append("- \(label): Read で開いて見てください。場所: \(attribute(path))")
 
             case let .skipped(reason):
                 lines.append("- \(label): \(reason)。中身は読めないので、推測せず、必要なら質問で確かめてください")
@@ -79,11 +80,12 @@ extension IdeaPrompt {
         return (lines + texts).joined(separator: "\n")
     }
 
-    /// タグの属性に入れる値。`"` と `<` を全角にし、改行を空白にする
+    /// タグの属性や一覧の行に入れる値。`"` と `<` を全角にし、改行などの制御文字を空白にする
     private static func attribute(_ text: String) -> String {
-        escape(text)
+        let scalars = escape(text)
             .replacingOccurrences(of: "\"", with: "＂")
-            .split(whereSeparator: \.isNewline)
-            .joined(separator: " ")
+            .unicodeScalars
+            .map { CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0) ? " " : $0 }
+        return String(String.UnicodeScalarView(scalars))
     }
 }

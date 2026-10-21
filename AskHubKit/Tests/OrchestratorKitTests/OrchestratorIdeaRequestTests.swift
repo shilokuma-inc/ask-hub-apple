@@ -26,7 +26,7 @@ extension OrchestratorTests {
         let directory = attachmentsDirectory.appending(path: "shilokuma-inc/ask-hub-apple/issue-7", directoryHint: .isDirectory)
         #expect(runtime.ran.first == IdeaCommandTemplate.standard.render(
             for: RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple"),
-            attachmentsPath: directory.path(percentEncoded: false)
+            attachmentsPath: Orchestrator.attachmentsPath(of: directory)
         ))
         // 依頼から Discussion を作る claude も、設定のモデル（既定は Opus 5.5）で動かす
         #expect(runtime.runEnvironments.first == ["ANTHROPIC_MODEL": "claude-opus-5-5", "CLAUDE_CODE_EFFORT_LEVEL": "auto"])

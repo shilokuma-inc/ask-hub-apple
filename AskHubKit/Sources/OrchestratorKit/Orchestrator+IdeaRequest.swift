@@ -21,7 +21,7 @@ extension Orchestrator {
         let directory = attachmentsDirectory(for: issue)
         let usesDirectory = config.ideaCommand.usesAttachmentsPath
         if usesDirectory {
-            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            prepareAttachmentsDirectory(directory, for: issue)
         }
         defer {
             if usesDirectory {
@@ -31,7 +31,7 @@ extension Orchestrator {
         let attachments = await prepareAttachments(for: issue, directory: usesDirectory ? directory : nil)
         let trustedAuthors = trust.authors(for: issue.repository).sortedLogins
         let prompt = IdeaPrompt.make(for: issue, trustedAuthors: trustedAuthors, attachments: attachments)
-        let arguments = config.ideaCommand.render(for: repository, attachmentsPath: directory.path(percentEncoded: false))
+        let arguments = config.ideaCommand.render(for: repository, attachmentsPath: Self.attachmentsPath(of: directory))
         let reason: String
         do {
             // プロンプト（依頼の本文を含む）は引数ではなく標準入力で渡す

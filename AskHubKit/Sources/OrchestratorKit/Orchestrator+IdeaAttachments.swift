@@ -15,6 +15,25 @@ extension Orchestrator {
             .appending(path: "issue-\(issue.number)", directoryHint: .isDirectory)
     }
 
+    /// `{attachmentsPath}` に渡すパス。末尾の `/` は付けない（`Read(/{attachmentsPath}/**)` が `//**` にならないように）
+    static func attachmentsPath(of directory: URL) -> String {
+        var path = directory.path(percentEncoded: false)
+        while path.count > 1, path.hasSuffix("/") {
+            path.removeLast()
+        }
+        return path
+    }
+
+    /// 一時ディレクトリを空にして作り直す（前の試行が途中で止まって残ったファイルを、別の依頼の内容として読ませない）
+    func prepareAttachmentsDirectory(_ directory: URL, for issue: IdeaRequestIssue) {
+        try? FileManager.default.removeItem(at: directory)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        } catch {
+            log("\(issue.repository)#\(issue.number) の添付を置くディレクトリを作れませんでした: \(error)")
+        }
+    }
+
     /// 依頼の本文の目印が指す添付を、blob SHA で取って確かめる。
     /// テキストはプロンプトに入れ、画像・PDF（と大きなテキスト）は `directory` に置く。`directory` が無ければ（独自の `ideaCommand` に
     /// `{attachmentsPath}` が無い）、画像・PDF は渡せない旨をプロンプトとログに書く。取れない・合わない添付は飛ばす（依頼全体は失敗にしない）。
@@ -49,7 +68,7 @@ extension Orchestrator {
             let file = directory.appending(path: "\(index + 1)-\(AttachmentFileName.sanitized(marker.name))", directoryHint: .notDirectory)
             do {
                 try data.write(to: file)
-                attachments.append(IdeaAttachment(marker: marker, content: .file(path: file.path(percentEncoded: false))))
+                attachments.append(IdeaAttachment(marker: marker, content: .file(path: Self.attachmentsPath(of: file))))
             } catch {
                 log("\(name) の添付 \(marker.name) を置けませんでした: \(error)")
                 attachments.append(IdeaAttachment(marker: marker, content: .skipped(reason: "担当 PC に置けませんでした"), isVerified: true))
