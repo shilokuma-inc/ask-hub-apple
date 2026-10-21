@@ -886,6 +886,9 @@ GitHub には Issue / コメントにファイルを添付する公式の API �
 - 404（blob が無い・リポジトリが見えない）は「見つからない」として扱う。形の誤った目印では GitHub に問い合わせない（`AskHubKit` の `GitHubAttachmentFetcher`・`GitBlobSHA`）
 - **信用する author が書いた本文・返信の目印だけを読む**（依頼 Issue は作成者と編集者。Discussion の本文・コメント・返信、PR の ask の返信は author）。それ以外の author の目印は無視する
 
+- 依頼から作った Discussion の本文の末尾には、オーケストレーターが依頼と同じ添付欄（確かめられた添付の目印）を足す。ループの準備はこの目印から添付を読む。
+  本文を書き換えるのはオーケストレーターのアカウントなので、そのアカウントが信用する author であること（本文の author は Discussion を作った claude の gh のアカウント）
+
 ### 種類と上限
 
 - 添付できるのは、`claude` が読めるテキスト（UTF-8 で読めるもの。`.md`・`.txt`・`.json`・`.csv`・`.yaml` など）・画像（PNG / JPEG / GIF / WebP）・PDF（Q2）。
@@ -975,6 +978,7 @@ GitHub には Issue / コメントにファイルを添付する公式の API �
 1. 人間がアプリから新機能を依頼する → `idea-request` の Issue（タイトル `【依頼】<要約>`）
    ファイルを添付したときは、先に依頼先の `askhub/attachments` へ上げ、Issue の本文の末尾に添付欄を付ける（上記「添付ファイル」）
 2. オーケストレーターが依頼を検知し、`claude` に質問付きの Discussion を作らせる（`needs-answer`）。
+   依頼に添付があれば、オーケストレーターが blob SHA で取得して `claude` に読ませ、作った Discussion の本文の末尾に同じ添付欄を足す（`docs/orchestrator.md`）。
    依頼 Issue には Discussion へのリンクをコメントしてクローズする
 3. 人間がアプリで質問に回答する。すべて回答されると、オーケストレーターが `ready-for-loop` を付ける。
    Discussion の最後の未回答の質問では、アプリの回答画面に「投稿したら、回答を確定してループを始める」のトグルが出て、

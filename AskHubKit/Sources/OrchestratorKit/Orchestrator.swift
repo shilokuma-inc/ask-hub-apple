@@ -121,6 +121,8 @@ public actor Orchestrator {
     /// 最後に `xcb status --json` を呼んだ時刻（失敗したときも含む）
     var lastXcbStatusAttemptAt: Date?
     let xcbStatus: any XcbStatusFetching
+    /// 依頼の添付（画像・PDF など）を claude に読ませるために置く場所（リポジトリの外）。依頼ごとに `<owner>/<repo>/issue-<番号>` を作り、コマンドの後に消す
+    let attachmentsDirectory: URL
     /// 担当リポジトリごとの、制御用 worktree が準備を終えていない `ready-for-loop` の Discussion の番号（最後に取得できたもの。手動ループ・信用しない author のものを除く）。
     /// 起動してからまだ一度も取得できていなければ `nil`（開始待ちのループのコメントを、終わったものとして消さない）
     var readyDiscussionNumbers: [String: [Int]]?
@@ -135,6 +137,7 @@ public actor Orchestrator {
     ///   - configStore: 設定の読み直しと担当リポジトリの書き換え（担当リポジトリの作成・削除の依頼に使う）
     ///   - repositoryWriters: 担当リポジトリに書き込み権限を持つアカウントの取得元（設定の `trustRepositoryWriters` が有効なときに使う）
     ///   - xcbStatus: `xcb status --json` の呼び出し（設定の `buildHosts` があるときだけ使う）
+    ///   - attachmentsDirectory: 依頼の添付を置く場所。既定は `~/Library/Caches/askhub/attachments`
     public init(
         config: OrchestratorConfig,
         github: any OrchestratorGitHub,
@@ -144,9 +147,11 @@ public actor Orchestrator {
         now: @escaping @Sendable () -> Date = { Date() },
         configStore: (any OrchestratorConfigStore)? = nil,
         repositoryWriters: RepositoryWriters? = nil,
-        xcbStatus: any XcbStatusFetching = XcbStatusCommand()
+        xcbStatus: any XcbStatusFetching = XcbStatusCommand(),
+        attachmentsDirectory: URL = Orchestrator.defaultAttachmentsDirectory
     ) {
         self.config = config
+        self.attachmentsDirectory = attachmentsDirectory
         self.xcbStatus = xcbStatus
         self.configStore = configStore
         self.trust = TrustDirectory(base: config.trustedAuthors)

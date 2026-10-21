@@ -27,6 +27,13 @@ struct FakeGitHubState {
     var ideaComments: [String] = []
     var closedIdeas: [Int] = []
     var ideaCommentFails = false
+    /// 添付の中身（キーは blob SHA）。無い SHA は 404 として扱う
+    var attachmentContents: [String: Data] = [:]
+    /// 中身を取った添付の名前（呼ばれた順）
+    var fetchedAttachments: [String] = []
+    /// Discussion の本文に足した添付（`#<番号>: <名前>,<名前>`）
+    var appendedAttachments: [String] = []
+    var appendAttachmentsFails = false
     var heartbeats: [String] = []
     var discussionComments: [String] = []
     var conflictingPullRequests: [ConflictingPullRequest] = []
@@ -91,6 +98,8 @@ struct FakeRuntimeState {
     var ran: [[String]] = []
     var inputs: [String] = []
     var runEnvironments: [[String: String]] = [] // run ごとに追加で渡した環境変数（`ran` と同じ順）
+    /// run の時点で、引数に渡されたディレクトリにあったファイル（ファイル名 → 中身）
+    var directoryContentsDuringRun: [[String: Data]] = []
 }
 
 final class FakeGitHub: OrchestratorGitHub {
@@ -335,7 +344,7 @@ final class FakeGitHub: OrchestratorGitHub {
 
 /// 起動したコマンドを記録するだけで、実際には起動しない。ループの状態はテストから変える
 final class FakeRuntime: LoopRuntime {
-    private let state = OSAllocatedUnfairLock(initialState: FakeRuntimeState())
+    let state = OSAllocatedUnfairLock(initialState: FakeRuntimeState())
     /// `run` を、テストが決めた時まで返さないようにする（`OrchestratorTestDoubles+RunGate.swift`）
     let runGate = RunGate()
 
@@ -456,7 +465,10 @@ final class FakeRuntime: LoopRuntime {
         for repository: RepositoryConfig,
         timeout: Duration
     ) async throws -> CommandResult {
+        // 依頼の添付を置いたディレクトリ（{attachmentsPath}）の中身を、claude が読む時点のものとして記録する
+        let snapshot = Self.directoryContents(in: arguments)
         let result = state.withLock { state in
+            state.directoryContentsDuringRun.append(snapshot)
             state.ran.append(arguments)
             state.inputs.append(input)
             state.runEnvironments.append(environment)

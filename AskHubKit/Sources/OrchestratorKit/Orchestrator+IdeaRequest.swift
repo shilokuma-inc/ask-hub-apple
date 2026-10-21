@@ -17,8 +17,21 @@ extension Orchestrator {
         }
         let name = "\(issue.repository)#\(issue.number)"
         log("\(name) の依頼から、質問付きの Discussion を作らせます")
-        let prompt = IdeaPrompt.make(for: issue, trustedAuthors: trust.authors(for: issue.repository).sortedLogins)
-        let arguments = config.ideaCommand.render(for: repository)
+        // 画像・PDF の添付は、リポジトリの外の一時ディレクトリに置いて claude に Read させる。添付が無くても空のディレクトリを作り、コマンドの後に消す
+        let directory = attachmentsDirectory(for: issue)
+        let usesDirectory = config.ideaCommand.usesAttachmentsPath
+        if usesDirectory {
+            prepareAttachmentsDirectory(directory, for: issue)
+        }
+        defer {
+            if usesDirectory {
+                try? FileManager.default.removeItem(at: directory)
+            }
+        }
+        let attachments = await prepareAttachments(for: issue, directory: usesDirectory ? directory : nil)
+        let trustedAuthors = trust.authors(for: issue.repository).sortedLogins
+        let prompt = IdeaPrompt.make(for: issue, trustedAuthors: trustedAuthors, attachments: attachments)
+        let arguments = config.ideaCommand.render(for: repository, attachmentsPath: Self.attachmentsPath(of: directory))
         let reason: String
         do {
             // プロンプト（依頼の本文を含む）は引数ではなく標準入力で渡す
@@ -28,6 +41,7 @@ extension Orchestrator {
             if result.status == 0, let url = IdeaPrompt.discussionURL(in: result.output, repository: issue.repository) {
                 ideaTracker.recordCreated(url, for: issue)
                 log("\(name) の依頼から Discussion を作りました: \(url.absoluteString)")
+                await appendAttachments(attachments, toDiscussion: url, of: issue)
                 await perform(.commentAndClose(url), on: issue)
                 return
             }

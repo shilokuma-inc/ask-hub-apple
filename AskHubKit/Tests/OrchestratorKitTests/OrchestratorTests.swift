@@ -6,29 +6,13 @@ import Testing
 
 struct OrchestratorTests {
     let logs = LogRecorder()
+    /// 依頼の添付を置く場所（テストごとに別の一時ディレクトリ）
+    let attachmentsDirectory = FileManager.default.temporaryDirectory
+        .appending(path: "askhub-orchestrator-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
     static let started = LoopStatus(stateFileExists: true, processAlive: true)
     static let exitedWithoutStarting = LoopStatus(stateFileExists: false, processAlive: false)
     /// ask への回答で再開する epic（回答待ちでない未完了のタスクが残っている）
     static let unfinishedEpic = EpicSnapshot(branch: "epic/mvp", goal: "- [ ] 【FEAT】A", state: nil, loopPrepared: true)
-
-    func makeOrchestrator(
-        github: FakeGitHub,
-        runtime: FakeRuntime,
-        inbox: FakeInbox = FakeInbox(),
-        repositories: [RepositoryConfig] = [
-            RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")
-        ],
-        now: @escaping @Sendable () -> Date = { Date(timeIntervalSince1970: 1_800_000_000) }
-    ) throws -> Orchestrator {
-        let config = OrchestratorConfig(
-            trustedAuthorLogins: ["mrs1669"],
-            repositories: repositories,
-            pollInterval: .seconds(60),
-            loopCommand: try LoopCommandTemplate(arguments: ["/usr/local/bin/start-loop", "{repository}", "{discussion}"])
-        )
-        let logs = logs
-        return Orchestrator(config: config, github: github, inbox: inbox, runtime: runtime, log: { logs.append($0) }, now: now)
-    }
 
     @Test func launchesLoopOfRepositoryInAnotherOrganization() async throws {
         let github = FakeGitHub([.success([.fixture(repository: "BeaconFun4/demomoni-remake-ios", number: 3)])])
@@ -375,5 +359,38 @@ struct OrchestratorTests {
         #expect(logs.recorded.contains("shilokuma-inc/ask-hub-apple#12 は準備の結果やることが残っていなかったので、知らせて ready-for-loop を外しました"))
         // ループは始まらないので、状態用の Issue にも開始待ちとして書かない
         #expect(github.createdLoopStatusComments.isEmpty)
+    }
+}
+
+// 型の本体の長さの上限（SwiftLint）に収めるため、組み立ては extension に置く
+extension OrchestratorTests {
+    func makeOrchestrator(
+        github: FakeGitHub,
+        runtime: FakeRuntime,
+        inbox: FakeInbox = FakeInbox(),
+        repositories: [RepositoryConfig] = [
+            RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")
+        ],
+        now: @escaping @Sendable () -> Date = { Date(timeIntervalSince1970: 1_800_000_000) },
+        ideaCommand: IdeaCommandTemplate = .standard
+    ) throws -> Orchestrator {
+        let config = OrchestratorConfig(
+            trustedAuthorLogins: ["mrs1669"],
+            repositories: repositories,
+            pollInterval: .seconds(60),
+            loopCommand: try LoopCommandTemplate(arguments: ["/usr/local/bin/start-loop", "{repository}", "{discussion}"]),
+            ideaCommand: ideaCommand
+        )
+        let logs = logs
+        // 依頼の添付はテストごとの一時ディレクトリに置く
+        return Orchestrator(
+            config: config,
+            github: github,
+            inbox: inbox,
+            runtime: runtime,
+            log: { logs.append($0) },
+            now: now,
+            attachmentsDirectory: attachmentsDirectory
+        )
     }
 }

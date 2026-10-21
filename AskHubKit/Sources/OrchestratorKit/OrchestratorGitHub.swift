@@ -79,4 +79,8 @@ public protocol OrchestratorGitHub: Sendable {
     func createBuildHostsIssue(in repository: String, body: String) async throws -> Int
     /// ビルドの Mac の状態の Issue の本文を置き換える。閉じられていれば開き直す
     func updateBuildHostsIssue(in repository: String, number: Int, body: String) async throws
+    /// 添付の目印の blob SHA で中身を取り、大きさと SHA を確かめて返す（`docs/protocol.md` の「添付ファイル」の「読み方」）
+    func attachmentContent(_ marker: AttachmentMarker, in repository: String) async throws -> Data
+    /// Discussion の本文の末尾に添付欄を足す。本文に既にある目印（同じパス）は足さない
+    func appendAttachments(_ markers: [AttachmentMarker], toDiscussion number: Int, in repository: String) async throws
 }
