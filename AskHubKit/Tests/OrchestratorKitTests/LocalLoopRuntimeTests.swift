@@ -277,14 +277,18 @@ struct LocalLoopRuntimeTests {
         #expect(result.output.hasSuffix("ASKHUB_DISCUSSION_URL: https://github.com/o/r/discussions/1\n"))
     }
 
+    /// 子プロセス（`sleep 30`）の終了を待たずに戻ったとみなす上限。
+    /// CI のランナーではテストのプロセス全体が 5 秒ほど止まることがあるので、ふだんの所要時間（1 秒未満）より大きく取る
+    private static let returnLimit: Duration = .seconds(10)
+
     @Test func runStopsCommandAfterTimeout() async throws {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }
 
         let start = ContinuousClock.now
-        let result = try await LocalLoopRuntime().run(["/bin/sleep", "10"], input: "", for: repository, timeout: .milliseconds(300))
+        let result = try await LocalLoopRuntime().run(["/bin/sleep", "30"], input: "", for: repository, timeout: .milliseconds(300))
         #expect(result.status != 0)
-        #expect(ContinuousClock.now - start < .seconds(5))
+        #expect(ContinuousClock.now - start < Self.returnLimit)
     }
 
     @Test func runKillsCommandThatIgnoresSIGTERM() async throws {
@@ -295,13 +299,13 @@ struct LocalLoopRuntimeTests {
         // sh が止まっても子の sleep がパイプを持ち続けるので、読み切りの上限も短くする
         let runtime = LocalLoopRuntime(killGracePeriod: .milliseconds(300), outputDrainTimeout: .milliseconds(300))
         let result = try await runtime.run(
-            ["/bin/sh", "-c", "trap '' TERM; sleep 10"],
+            ["/bin/sh", "-c", "trap '' TERM; sleep 30"],
             input: "",
             for: repository,
             timeout: .milliseconds(300)
         )
         #expect(result.status != 0)
-        #expect(ContinuousClock.now - start < .seconds(5))
+        #expect(ContinuousClock.now - start < Self.returnLimit)
     }
 
     @Test func runReturnsEvenIfChildKeepsPipeOpen() async throws {
@@ -311,14 +315,14 @@ struct LocalLoopRuntimeTests {
         // 子プロセス（sleep）がパイプを持ったまま残っても、決めた時間で読み切りをやめて戻る
         let start = ContinuousClock.now
         let result = try await LocalLoopRuntime(outputDrainTimeout: .milliseconds(500)).run(
-            ["/bin/sh", "-c", "sleep 10 & echo done"],
+            ["/bin/sh", "-c", "sleep 30 & echo done"],
             input: "",
             for: repository,
             timeout: .seconds(10)
         )
         #expect(result.status == 0)
         #expect(result.output.contains("done"))
-        #expect(ContinuousClock.now - start < .seconds(5))
+        #expect(ContinuousClock.now - start < Self.returnLimit)
     }
 
     @Test func resolvesRelativeExecutableFromPath() async throws {
