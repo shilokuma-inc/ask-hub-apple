@@ -55,6 +55,7 @@ extension IdeaRequestModel {
         IdeaRequestModel(
             tokenStore: InMemoryTokenStore(token: "sample"),
             makeRequester: { _ in SampleIdeaRequester() },
+            makeProblemCommenter: { _ in SampleVerifyProblemCommenter() },
             sent: sent,
             release: .sample()
         )

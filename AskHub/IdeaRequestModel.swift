@@ -40,14 +40,20 @@ final class IdeaRequestModel {
     /// 「リリース準備」の状態。依頼先の一覧はこのモデルのものを使う。デモモードの切り替えでこのモデルと一緒に差し替わる
     let release: ReleaseRequestModel
 
-    private let tokenStore: any TokenStore
-    private let makeRequester: @Sendable (String) -> any IdeaRequesting
+    // 実機確認の「問題あり」（`VerifyProblemModel`）も同じトークン・依頼の作り方を使う
+    let tokenStore: any TokenStore
+    let makeRequester: @Sendable (String) -> any IdeaRequesting
+    /// 実機確認の「問題あり」のコメントの投稿先（トークンごと）
+    let makeProblemCommenter: @Sendable (String) -> any VerifyProblemCommenting
     /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
     private let organizations: () -> [String]
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
         makeRequester: @escaping @Sendable (String) -> any IdeaRequesting = { GitHubIdeaRequester(client: GitHubClient(token: $0)) },
+        makeProblemCommenter: @escaping @Sendable (String) -> any VerifyProblemCommenting = {
+            GitHubVerifyProblemCommenter(client: GitHubClient(token: $0))
+        },
         sent: [SentRequest] = [],
         organizations: @escaping () -> [String] = { OrganizationSettings.load() },
         release: ReleaseRequestModel? = nil
@@ -56,6 +62,7 @@ final class IdeaRequestModel {
         self.release = release ?? ReleaseRequestModel(tokenStore: tokenStore)
         self.organizations = organizations
         self.makeRequester = makeRequester
+        self.makeProblemCommenter = makeProblemCommenter
         self.sent = sent
     }
 
