@@ -22,7 +22,12 @@ extension OrchestratorTests {
         try await orchestrator.pollOnce()
 
         // プロンプト（依頼の本文を含む）は引数ではなく標準入力で渡す
-        #expect(runtime.ran.first == IdeaCommandTemplate.defaultArguments)
+        // 添付が無くても、{attachmentsPath} には依頼ごとの一時ディレクトリを渡す
+        let directory = attachmentsDirectory.appending(path: "shilokuma-inc/ask-hub-apple/issue-7", directoryHint: .isDirectory)
+        #expect(runtime.ran.first == IdeaCommandTemplate.standard.render(
+            for: RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple"),
+            attachmentsPath: directory.path(percentEncoded: false)
+        ))
         // 依頼から Discussion を作る claude も、設定のモデル（既定は Opus 5.5）で動かす
         #expect(runtime.runEnvironments.first == ["ANTHROPIC_MODEL": "claude-opus-5-5", "CLAUDE_CODE_EFFORT_LEVEL": "auto"])
         #expect(runtime.inputs.first?.contains("依頼 Issue: #7") == true)
