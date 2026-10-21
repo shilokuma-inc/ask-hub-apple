@@ -50,6 +50,12 @@ struct AttachmentPickerSection: View {
         .fileImporter(isPresented: $isImporting, allowedContentTypes: Self.allowedContentTypes, allowsMultipleSelection: true) { result in
             add(result)
         }
+        // 送れて一覧が空になったら、前に足さなかったファイルの説明も消す
+        .onChange(of: attachments.isEmpty) { _, isEmpty in
+            if isEmpty {
+                notices = []
+            }
+        }
     }
 
     private func row(_ file: AttachmentFile, at index: Int) -> some View {
@@ -69,7 +75,11 @@ struct AttachmentPickerSection: View {
             Spacer()
             // macOS の Form にはスワイプの削除が無いので、どちらでもボタンで消せるようにする
             Button {
-                attachments.remove(at: index)
+                // 描画の後に一覧が変わっていても、範囲の外を消さない
+                if attachments.indices.contains(index) {
+                    attachments.remove(at: index)
+                }
+                notices = []
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
@@ -98,7 +108,10 @@ struct AttachmentPickerSection: View {
         case let .success(urls):
             var files: [AttachmentFile] = []
             var unreadable: [String] = []
-            for url in urls {
+            // 上限の数を超える分は、中身を読まずに断る（大きなファイルを多く選んだときに、読んでから捨てない）
+            let remaining = max(AttachmentLimits.maxCount - attachments.count, 0)
+            let overflow = urls.dropFirst(remaining).map { AttachmentLimits.Rejection.tooMany(name: $0.lastPathComponent).message }
+            for url in urls.prefix(remaining) {
                 switch AttachmentFileReader.read(url) {
                 case let .success(file):
                     files.append(file)
@@ -109,7 +122,7 @@ struct AttachmentPickerSection: View {
             }
             let added = AttachmentLimits.adding(files, to: attachments)
             attachments = added.attachments
-            notices = unreadable + added.rejections.map(\.message)
+            notices = unreadable + added.rejections.map(\.message) + overflow
 
         case .failure:
             notices = ["ファイルを読み込めませんでした"]

@@ -228,15 +228,8 @@ final class IdeaRequestModel {
         case is KeychainError:
             "Keychain からトークンを読み込めませんでした"
 
-        // 依頼先に書き込めないトークン。依頼の Issue は作っていない
-        case AttachmentUploadError.missingContentsPermission:
-            "添付を上げられませんでした。トークンに、依頼先のリポジトリの Contents の書き込み権限（Read and write）があるか確かめてください"
-
-        case AttachmentUploadError.conflict:
-            "添付を上げられませんでした。少し待ってから、もう一度送ってください"
-
         default:
-            InboxModel.message(for: error)
+            AttachmentUploadMessage.message(for: error) ?? InboxModel.message(for: error)
         }
     }
 }

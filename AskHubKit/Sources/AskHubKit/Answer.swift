@@ -13,6 +13,10 @@ public struct Answer: Sendable, Equatable {
     public var choice: String?
     /// 自由記述（補足・条件など）
     public var note: String
+    /// 上げ終えた添付の目印。返信の本文の末尾に添付欄として足す（`docs/protocol.md` の「添付ファイル」）
+    public var attachments: [AttachmentMarker] = []
+    /// 添付を置いたリポジトリ（`owner/repo`。添付欄のリンクに使う）
+    public var attachmentRepository = ""
 
     public init(choice: String? = nil, note: String = "") {
         self.choice = choice
@@ -38,8 +42,13 @@ public struct Answer: Sendable, Equatable {
         }
     }
 
-    /// 投稿する返信の本文
+    /// 投稿する返信の本文。1 行目の `回答: <選択肢>` は崩さず、添付があれば末尾に添付欄を足す
     public var body: String {
+        AttachmentSection.appending(attachments, to: textBody, repository: attachmentRepository)
+    }
+
+    /// 添付欄を除いた本文（`回答: <選択肢>` と自由記述）
+    private var textBody: String {
         let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let choice else {
             return note

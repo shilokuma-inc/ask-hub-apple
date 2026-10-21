@@ -53,6 +53,11 @@ struct QuestionDetailView: View {
                 Text(question.marker.isFreeForm ? "入力した内容を返信として投稿します" : "「回答: 選択肢」の次の行に続けて投稿します")
             }
 
+            if !form.isPosted {
+                // 添付は回答の返信の末尾に添付欄として付く。投稿中は一覧を変えさせない
+                AttachmentPickerSection(attachments: $form.attachments, isDisabled: form.isPosting)
+            }
+
             if question.subject.kind == .discussion && !form.isPosted {
                 loopSection
             }
