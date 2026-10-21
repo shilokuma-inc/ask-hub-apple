@@ -7,10 +7,13 @@ public struct VerifyProblem: Sendable, Equatable {
     public let issue: InboxIssue
     /// 問題の内容（何をしたら・どうなったか）
     public var description: String
+    /// 上げ終えた添付の目印。依頼の本文とコメントの両方の末尾に、同じ添付欄として足す（実機確認 Issue のリポジトリに上げたもの）
+    public var attachments: [AttachmentMarker]
 
-    public init(issue: InboxIssue, description: String) {
+    public init(issue: InboxIssue, description: String, attachments: [AttachmentMarker] = []) {
         self.issue = issue
         self.description = description
+        self.attachments = attachments
     }
 
     /// 実機確認 Issue へのコメントの先頭に置く目印
@@ -29,7 +32,12 @@ public struct VerifyProblem: Sendable, Equatable {
     /// 実機確認 Issue と同じリポジトリに作る再修正の依頼。
     /// タイトルは `【依頼】実機確認の問題: <一覧の表示と同じタイトル>`。本文は実機確認 Issue の URL・元の PR・epic と問題の内容
     public var request: IdeaRequest {
-        IdeaRequest(repository: issue.repository, summary: "実機確認の問題: \(Self.singleLine(issue.displayTitle))", body: requestBody)
+        IdeaRequest(
+            repository: issue.repository,
+            summary: "実機確認の問題: \(Self.singleLine(issue.displayTitle))",
+            body: requestBody,
+            attachments: attachments
+        )
     }
 
     /// 依頼の本文。`元の PR`・`epic` の行は、実機確認 Issue の目印にその値があるときだけ書く
@@ -44,9 +52,14 @@ public struct VerifyProblem: Sendable, Equatable {
         return header.joined(separator: "\n") + "\n\n" + trimmedDescription
     }
 
-    /// 実機確認 Issue へのコメント。目印を先頭に置き、問題の内容（依頼の本文と同じ）と作った依頼の番号を書く
+    /// 実機確認 Issue へのコメント。目印を先頭に置き、問題の内容（依頼の本文と同じ）と作った依頼の番号を書く。
+    /// 添付があれば、依頼と同じ添付欄を末尾に足す
     public func comment(request number: Int) -> String {
-        "\(Self.marker)\n\(trimmedDescription)\n\n再修正の依頼: #\(number)"
+        AttachmentSection.appending(
+            attachments,
+            to: "\(Self.marker)\n\(trimmedDescription)\n\n再修正の依頼: #\(number)",
+            repository: issue.repository
+        )
     }
 
     /// Issue のタイトルは 1 行だが、念のため改行を空白にする（依頼の要約は 1 行でないと送れない）
