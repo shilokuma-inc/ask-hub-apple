@@ -330,8 +330,9 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
   ビルドし直しを減らすため、`build-for-testing` は続くテストを受けられる Mac に優先して回す（1 台もつながっていなければ、ほかの Mac でビルドだけ確かめる）
 - **署名**: ssh 越しではログインのキーチェーンを使えず、macOS の署名が `errSecInternalComponent` で失敗する。
   macOS 宛てのビルド・テストで署名の指定（`CODE_SIGN…`）が無ければ、アドホック署名の設定を足す（archive は除く。CI の macOS のテストと同じ）
-- **Simulator**: リモートでは `platform=iOS Simulator,name=…` を作業ツリー専用の Simulator（`xcb-<作業ツリー>-<機種>-<ランタイム>`。無ければ作る）に置き換える。
-  ランタイムはその Xcode の SDK と同じか古いもののうち最新
+- **Simulator**: リモートでは `platform=iOS Simulator,name=…` と `platform=visionOS Simulator,name=…` を作業ツリー専用の Simulator（`xcb-<作業ツリー>-<機種>-<ランタイム>`。無ければ作る）に置き換える。
+  ランタイムはその Xcode の SDK（iOS は `iphonesimulator`、visionOS は `xrsimulator`）と同じか古いもののうち最新（visionOS のランタイムの識別子は `…SimRuntime.xrOS-26-5` の形）。
+  `local`（Mac mini 自身）では置き換えない
 - **置き場**: リモートは `~/remote-builds.noindex/src/<作業ツリー>`（rsync で同期。`.git`・DerivedData・`.build` は送らない）と
   `~/remote-builds.noindex/dd/<作業ツリー>`（DerivedData。ループが付けた `-derivedDataPath` は使わない）。
   名前を `.noindex` で終わらせて Spotlight の索引から外す（ビルドのたびに索引を作り直して load が上がり、選ばれにくくなるため）。`XCB_REMOTE_ROOT` で変えられる。
