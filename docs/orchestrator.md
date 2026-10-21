@@ -226,6 +226,14 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
   - 制御用 worktree がすでにその epic なら、そのまま再開する
   - 今の epic の最終 PR を作り終えたかは見ない（オーケストレーターが確かめてから呼ぶ。下記「最終 PR への指示でループを再開する」）
   - 戻した後、git 管理下の `.claude/` のファイル（`settings.json` など）は退避の古い版ではなく epic の版にする。作り直しの途中で失敗した後の戻し直しでも `ralph-setup.sh` を呼び直す
+- **添付ファイル**（Discussion #669）: 準備の `claude` に渡す Discussion の本文・返信には、添付の目印（`docs/protocol.md` の「添付ファイル」）がそのまま入る。
+  準備の `claude` は、目印を goal の「## 添付」の節に書き写し（名前・種類・大きさ・出どころ・blob SHA・パス）、中身を読んで決定事項・タスクに反映する。
+  節の冒頭には読み方（`gh api repos/<owner>/<repo>/git/blobs/<sha> --jq .content | base64 -d > <置き場所>/<名前>`）を書かせる。置き場所は
+  `~/Library/Caches/askhub/attachments/<owner>/<repo>/discussion-<番号>/`（環境変数 `ASKHUB_ATTACHMENTS_DIR` で親を変えられる。制御用 worktree・スロットの外で、コミットしない）。
+  ループは goal を毎周読むので、実装中もこの節から添付を読める
+  - 返信は 1 つのコメントにつき 100 件までしか取らない。超えるコメントがあると回答や添付を読み落とすので、準備を止めて失敗として返す（ログに理由を出す）
+  - Discussion の本文の添付欄は、依頼から Discussion を作ったときにオーケストレーターが本文を書き換えて足す。準備は本文の author（Discussion を作った `gh` のアカウント）が信用する author かだけを見るので、
+    オーケストレーターの `gh` のアカウントと、Discussion を作る `claude` の `gh` のアカウントは、どちらも信用する author にする（同じ担当 PC なら同じアカウント）
 - 信用する author は、オーケストレーターが起動ごとに環境変数 `ASKHUB_TRUSTED_AUTHORS` で渡す（設定の `trustedAuthors` と、そのリポジトリへの書き込み権限を持つアカウント。手で設定する必要は無い）。
   再開では、制御用 worktree の playbook の「信用する author」もこの値に書き直す
 - 再開の理由は、オーケストレーターが起動ごとに環境変数 `ASKHUB_RESUME_REASON` で渡す（仮決め一覧への指示による再開の `decision-log`、最終 PR への指示による再開の `final-pr`、ask への回答による再開の `answer`。`loopCommand` に書く必要は無い）
