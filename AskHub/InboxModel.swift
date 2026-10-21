@@ -32,7 +32,8 @@ final class InboxModel {
     /// 直前に取得を始めた時刻。自動更新（`refreshIfStale`）の間隔の判断に使う
     private(set) var lastRefreshed: Date?
 
-    private let tokenStore: any TokenStore
+    /// 回答の添付（`InboxModel+Attachments.swift`）も同じトークンで上げる
+    let tokenStore: any TokenStore
     private let makeSource: @Sendable (String) -> any InboxSource
     private let makePoster: @Sendable (String) -> any AnswerPosting
     private let makeStarter: @Sendable (String) -> any LoopStarting
@@ -43,6 +44,8 @@ final class InboxModel {
     private let makeTrust: @Sendable (String) -> any TrustedAuthorsResolving
     /// 仮決め一覧のコメントの取得元（トークンごと）
     private let makeCommentsFetcher: @Sendable (String) -> any DecisionLogCommentsFetching
+    /// 回答の添付を上げる先（トークンごと）
+    let makeUploader: @Sendable (String) -> any AttachmentUploading
     /// 直前の取得で求めた、リポジトリごとの信用する author（画面での判定に使う。キーは `owner/repo` の小文字）
     private var trustedAuthorsByRepository: [String: TrustedAuthors] = [:]
     /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
@@ -62,9 +65,13 @@ final class InboxModel {
         makeTrust: @escaping @Sendable (String) -> any TrustedAuthorsResolving = { RepositoryTrustCache.trust(token: $0) },
         makeCommentsFetcher: @escaping @Sendable (String) -> any DecisionLogCommentsFetching = {
             GitHubDecisionLogComments(client: GitHubClient(token: $0))
+        },
+        makeUploader: @escaping @Sendable (String) -> any AttachmentUploading = {
+            GitHubAttachmentUploader(client: GitHubClient(token: $0))
         }
     ) {
         self.makeCommentsFetcher = makeCommentsFetcher
+        self.makeUploader = makeUploader
         self.tokenStore = tokenStore
         self.makeTrust = makeTrust
         self.organizations = organizations

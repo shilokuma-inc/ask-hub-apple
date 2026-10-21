@@ -28,6 +28,8 @@ final class IdeaRequestModel {
     var repository: String?
     var summary = ""
     var body = ""
+    /// 依頼に添付するファイル（選んだ順）。送るまで GitHub に上げず、メモリにだけ持つ（ファイルの URL は保存しない）
+    var attachments: [AttachmentFile] = []
     private(set) var isSending = false
     /// この画面で送った依頼（新しい順）。メモリにだけ持ち、保存しない。アプリを終了するかモデルを作り直すと消える
     private(set) var sent: [SentRequest]
@@ -40,14 +42,25 @@ final class IdeaRequestModel {
     /// 「リリース準備」の状態。依頼先の一覧はこのモデルのものを使う。デモモードの切り替えでこのモデルと一緒に差し替わる
     let release: ReleaseRequestModel
 
-    private let tokenStore: any TokenStore
-    private let makeRequester: @Sendable (String) -> any IdeaRequesting
+    // 実機確認の「問題あり」（`VerifyProblemModel`）も同じトークン・依頼の作り方を使う
+    let tokenStore: any TokenStore
+    let makeRequester: @Sendable (String) -> any IdeaRequesting
+    /// 実機確認の「問題あり」のコメントの投稿先（トークンごと）
+    let makeProblemCommenter: @Sendable (String) -> any VerifyProblemCommenting
+    /// 添付を上げる先（トークンごと）
+    let makeUploader: @Sendable (String) -> any AttachmentUploading
     /// 一覧を取得する organization。取得のたびに読む（設定で変えたら次の取得から反映する）
     private let organizations: () -> [String]
 
     init(
         tokenStore: any TokenStore = KeychainTokenStore.gitHub,
         makeRequester: @escaping @Sendable (String) -> any IdeaRequesting = { GitHubIdeaRequester(client: GitHubClient(token: $0)) },
+        makeProblemCommenter: @escaping @Sendable (String) -> any VerifyProblemCommenting = {
+            GitHubVerifyProblemCommenter(client: GitHubClient(token: $0))
+        },
+        makeUploader: @escaping @Sendable (String) -> any AttachmentUploading = {
+            GitHubAttachmentUploader(client: GitHubClient(token: $0))
+        },
         sent: [SentRequest] = [],
         organizations: @escaping () -> [String] = { OrganizationSettings.load() },
         release: ReleaseRequestModel? = nil
@@ -56,6 +69,8 @@ final class IdeaRequestModel {
         self.release = release ?? ReleaseRequestModel(tokenStore: tokenStore)
         self.organizations = organizations
         self.makeRequester = makeRequester
+        self.makeProblemCommenter = makeProblemCommenter
+        self.makeUploader = makeUploader
         self.sent = sent
     }
 
@@ -126,7 +141,9 @@ final class IdeaRequestModel {
         }
     }
 
-    /// 依頼の Issue を作る。成功したら要約と依頼文を空にする（リポジトリは続けて依頼できるよう残す）
+    /// 依頼の Issue を作る。添付があれば、先にすべて依頼先へ上げてから、添付欄を付けた本文で作る。
+    /// 上げられなければ Issue を作らず、選んだ添付は残す（再送すると上げ直す）。
+    /// 成功したら要約・依頼文・添付を空にする（リポジトリは続けて依頼できるよう残す）
     func send() async {
         guard canSend else {
             return
@@ -139,11 +156,16 @@ final class IdeaRequestModel {
                 throw MissingTokenError()
             }
             // 送信中に Picker や入力が変わっても、送った時点の値で表示する
-            let request = request
+            var request = request
+            let files = attachments
+            if !files.isEmpty {
+                request.attachments = try await makeUploader(token).upload(files, to: request.repository)
+            }
             let issue = try await makeRequester(token).create(request)
             sent.insert(SentRequest(request: request, issue: issue), at: 0)
             summary = ""
             body = ""
+            attachments = []
         } catch {
             errorMessage = Self.message(for: error)
         }
@@ -207,7 +229,7 @@ final class IdeaRequestModel {
             "Keychain からトークンを読み込めませんでした"
 
         default:
-            InboxModel.message(for: error)
+            AttachmentUploadMessage.message(for: error) ?? InboxModel.message(for: error)
         }
     }
 }

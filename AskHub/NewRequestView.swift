@@ -125,6 +125,9 @@ struct NewRequestView: View {
                     .focused($isEditing)
             }
 
+            // 送信中は一覧を変えさせない（送った後に一覧を空にするので、送信中に足したものが消えないように）
+            AttachmentPickerSection(attachments: $model.attachments, isDisabled: model.isSending)
+
             if let errorMessage = model.errorMessage {
                 Section {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")

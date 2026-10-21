@@ -27,11 +27,27 @@ extension IdeaRequestModel {
         }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains(InboxModel.sampleLaunchArgument) {
-            return sample()
+            let model = sample()
+            // UI テストでは、システムのファイルピッカーを操作できないので、サンプルの添付を入れた状態から始める
+            if ProcessInfo.processInfo.arguments.contains(sampleAttachmentsLaunchArgument) {
+                model.attachments = AttachmentFile.samples
+            }
+            return model
         }
         #endif
         return IdeaRequestModel()
     }
+
+    /// UI テストで、サンプルの添付を入れた状態から始める起動引数（`-AskHubSampleInbox` と一緒に使う）
+    static let sampleAttachmentsLaunchArgument = "-AskHubSampleAttachments"
+}
+
+extension AttachmentFile {
+    /// UI テスト・Preview 用のサンプルの添付（画像と Markdown）。中身はダミー
+    static let samples = [
+        AttachmentFile(name: "design.png", type: "image/png", data: Data(repeating: 0x89, count: 120_000)),
+        AttachmentFile(name: "memo.md", type: "text/markdown", data: Data("# メモ\n朝だけにしたい\n".utf8))
+    ]
 }
 
 extension MergeQueueModel {
@@ -55,6 +71,8 @@ extension IdeaRequestModel {
         IdeaRequestModel(
             tokenStore: InMemoryTokenStore(token: "sample"),
             makeRequester: { _ in SampleIdeaRequester() },
+            makeProblemCommenter: { _ in SampleVerifyProblemCommenter() },
+            makeUploader: { _ in SampleAttachmentUploader() },
             sent: sent,
             release: .sample()
         )
@@ -77,6 +95,25 @@ extension SentRequest {
             issue: CreatedIssue(number: 184, htmlURL: URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/issues/184")!)
         )
     ]
+}
+
+/// デモモード・Preview・UI テスト用。添付を上げたことにして GitHub には送らない（決まった blob SHA とコミットを返す）
+struct SampleAttachmentUploader: AttachmentUploading {
+    static let blob = String(repeating: "b", count: 40)
+    static let commit = String(repeating: "c", count: 40)
+
+    func upload(_ files: [AttachmentFile], to repository: String) async throws -> [AttachmentMarker] {
+        files.map { file in
+            AttachmentMarker(
+                path: AttachmentMarker.path(id: UUID(), fileName: file.name),
+                sha: Self.blob,
+                commit: Self.commit,
+                name: file.name,
+                size: file.data.count,
+                type: file.type
+            )
+        }
+    }
 }
 
 /// デモモード・Preview・UI テスト用。Issue を作ったことにして GitHub には送らない
@@ -116,7 +153,8 @@ extension InboxModel {
             makeInstructionPoster: { _ in SampleDecisionInstructionPoster() },
             // サンプルは GitHub に権限を問い合わせない
             makeTrust: { _ in TrustedAuthors.default },
-            makeCommentsFetcher: { _ in SampleDecisionLogComments() }
+            makeCommentsFetcher: { _ in SampleDecisionLogComments() },
+            makeUploader: { _ in SampleAttachmentUploader() }
         )
     }
 }

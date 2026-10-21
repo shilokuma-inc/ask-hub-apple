@@ -49,7 +49,9 @@ struct OrchestratorTrustTests {
             runtime: runtime,
             log: { logs.append($0) },
             now: { Date(timeIntervalSince1970: 1_800_000_000) },
-            repositoryWriters: RepositoryWriters(source: writers)
+            repositoryWriters: RepositoryWriters(source: writers),
+            // 依頼の添付は既定の場所（~/Library/Caches）ではなく一時ディレクトリに置く
+            attachmentsDirectory: FileManager.default.temporaryDirectory.appending(path: "askhub-orchestrator-tests-\(UUID().uuidString)")
         )
     }
 

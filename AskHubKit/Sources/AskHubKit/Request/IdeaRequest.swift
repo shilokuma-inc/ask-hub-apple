@@ -8,11 +8,19 @@ public struct IdeaRequest: Sendable, Equatable {
     public var summary: String
     /// 依頼文（Issue の本文）
     public var body: String
+    /// 上げ終えた添付の目印。Issue の本文の末尾に添付欄として足す（無ければ本文は依頼文のまま）
+    public var attachments: [AttachmentMarker]
 
-    public init(repository: String, summary: String, body: String) {
+    public init(repository: String, summary: String, body: String, attachments: [AttachmentMarker] = []) {
         self.repository = repository
         self.summary = summary
         self.body = body
+        self.attachments = attachments
+    }
+
+    /// Issue の本文。依頼文の前後の空白を除き、添付があれば末尾に添付欄を足す（`docs/protocol.md` の「添付ファイル」）
+    public var issueBody: String {
+        AttachmentSection.appending(attachments, to: body.trimmingCharacters(in: .whitespacesAndNewlines), repository: repository)
     }
 
     /// Issue のタイトル
@@ -144,7 +152,7 @@ public struct GitHubIdeaRequester: IdeaRequesting {
             "repos/\(request.repository)/issues",
             body: NewIssue(
                 title: request.title,
-                body: request.body.trimmingCharacters(in: .whitespacesAndNewlines),
+                body: request.issueBody,
                 labels: [AskHubLabel.ideaRequest.rawValue]
             ),
             as: CreatedIssue.self

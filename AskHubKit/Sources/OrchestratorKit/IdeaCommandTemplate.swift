@@ -8,10 +8,19 @@ public struct IdeaCommandTemplate: Sendable, Equatable {
         case repository
         /// メインの checkout のパス
         case checkoutPath
+        /// 依頼の添付（画像・PDF など）を置く、リポジトリの外の一時ディレクトリの絶対パス。添付が無くても空のディレクトリを作る
+        case attachmentsPath
     }
 
-    /// 設定ファイルで省略したときの値。プロンプトを標準入力から読ませ、`gh` だけを許可して Discussion とコメントとラベルを作らせる
-    public static let defaultArguments = ["claude", "-p", "--allowedTools", "Bash(gh:*)"]
+    /// 設定ファイルで省略したときの値。プロンプトを標準入力から読ませ、`gh` と、添付を置いたディレクトリの `Read` だけを許可して
+    /// Discussion とコメントとラベルを作らせる。
+    /// `Read` の規則の絶対パスは `//` で始める（`/` で始まる `{attachmentsPath}` の前に `/` を 1 つ足す）。
+    /// `--allowedTools`・`--add-dir` は値を複数取るが、プロンプトは標準入力で渡すので食われない
+    public static let defaultArguments = [
+        "claude", "-p",
+        "--allowedTools", "Bash(gh:*)", "Read(/{attachmentsPath}/**)",
+        "--add-dir", "{attachmentsPath}"
+    ]
 
     public let arguments: [String]
 
@@ -35,10 +44,16 @@ public struct IdeaCommandTemplate: Sendable, Equatable {
         self.arguments = arguments
     }
 
-    public func render(for repository: RepositoryConfig) -> [String] {
+    /// `{attachmentsPath}` を使うか。使わない独自のコマンドには、画像・PDF の添付を渡せない（テキストだけをプロンプトに入れる）
+    public var usesAttachmentsPath: Bool {
+        arguments.flatMap(LoopCommandTemplate.placeholderNames(in:)).contains(Placeholder.attachmentsPath.rawValue)
+    }
+
+    public func render(for repository: RepositoryConfig, attachmentsPath: String = "") -> [String] {
         LoopCommandTemplate.substitute(arguments, values: [
             Placeholder.repository.rawValue: repository.fullName,
-            Placeholder.checkoutPath.rawValue: repository.checkoutPath
+            Placeholder.checkoutPath.rawValue: repository.checkoutPath,
+            Placeholder.attachmentsPath.rawValue: attachmentsPath
         ])
     }
 }

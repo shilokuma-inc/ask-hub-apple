@@ -35,6 +35,8 @@ final class AnswerFormModel {
     var choice: String?
     /// 自由記述（選択肢のある質問では補足）
     var note = ""
+    /// 回答に添付するファイル（選んだ順）。投稿するまで GitHub に上げず、メモリにだけ持つ
+    var attachments: [AttachmentFile] = []
     /// 投稿したら、Discussion の回答を確定してループを始める（`ready-for-loop` を付ける）。
     /// 選べる質問（Discussion の最後の質問）では、設定画面の既定値（`LoopStartPreference`。初期値はオン）から始める
     /// （Issue #98・Discussion #244）。始める前には確認ダイアログを出す
@@ -73,6 +75,12 @@ final class AnswerFormModel {
     convenience init(question: InboxQuestion, inbox: InboxModel, defaults: UserDefaults = .standard) {
         self.init(question: question)
         startsLoopAfterPosting = canStartLoop(in: inbox) && LoopStartPreference.startsLoopAfterPosting(in: defaults)
+        #if DEBUG
+        // UI テストでは、システムのファイルピッカーを操作できないので、サンプルの添付を入れた状態から始める
+        if ProcessInfo.processInfo.arguments.contains(IdeaRequestModel.sampleAttachmentsLaunchArgument) {
+            attachments = AttachmentFile.samples
+        }
+        #endif
     }
 
     /// 投稿する回答（`docs/protocol.md` の「回答の形式」）
@@ -155,10 +163,12 @@ final class AnswerFormModel {
         errorMessage = nil
         defer { isPosting = false }
         do {
-            try await inbox.post(answer, to: question)
+            // 添付があれば、先にすべて上げてから添付欄を付けて投稿する（1 行目の「回答: 」は崩さない）
+            try await inbox.post(answer, attachments: attachments, to: question)
             isPosted = true
+            attachments = []
         } catch {
-            errorMessage = InboxModel.message(for: error)
+            errorMessage = AttachmentUploadMessage.message(for: error) ?? InboxModel.message(for: error)
             return
         }
         if runner != nil {
