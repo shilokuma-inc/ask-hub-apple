@@ -27,6 +27,7 @@ struct FakeGitHubState {
     var ideaComments: [String] = []
     var closedIdeas: [Int] = []
     var ideaCommentFails = false
+    var discussions = FakeDiscussionSettingsState() // 依頼先の Discussions の設定（OrchestratorTestDoubles+IdeaDiscussions.swift）
     /// 添付の中身（キーは blob SHA）。無い SHA は 404 として扱う
     var attachmentContents: [String: Data] = [:]
     /// 中身を取った添付の名前（呼ばれた順）
