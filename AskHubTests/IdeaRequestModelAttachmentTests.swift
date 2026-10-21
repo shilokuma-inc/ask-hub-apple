@@ -22,6 +22,7 @@ struct IdeaRequestModelAttachmentTests {
 
     private struct Requester: IdeaRequesting {
         let log: Log
+        var failure: GitHubError?
         let created = OSAllocatedUnfairLock<[IdeaRequest]>(initialState: [])
 
         func repositories(in orgs: [String]) async throws -> [RequestRepository] {
@@ -30,6 +31,9 @@ struct IdeaRequestModelAttachmentTests {
 
         func create(_ request: IdeaRequest) async throws -> CreatedIssue {
             log.append("create \(request.repository)")
+            if let failure {
+                throw failure
+            }
             created.withLock { $0.append(request) }
             return CreatedIssue(number: 41, htmlURL: URL(string: "https://github.com/\(request.repository)/issues/41")!)
         }
@@ -126,6 +130,46 @@ struct IdeaRequestModelAttachmentTests {
         #expect(model.sent.isEmpty)
         #expect(model.errorMessage
             == "添付を上げられませんでした。トークンに、依頼先のリポジトリの Contents の書き込み権限（Read and write）があるか確かめてください")
+    }
+
+    @Test func keepsInputAndUploadsAgainWhenIssueCreationFails() async {
+        let log = Log()
+        let model = makeModel(log: log, requester: Requester(log: log, failure: .http(status: 500, message: "boom")))
+        model.attachments = [Self.png]
+        await model.send()
+
+        #expect(log.all == ["upload shilokuma-inc/ask-hub-apple design.png", "create shilokuma-inc/ask-hub-apple"])
+        #expect(model.attachments == [Self.png])
+        #expect(model.body == "デザインのとおりにしたい")
+        #expect(model.sent.isEmpty)
+
+        // もう一度送ると、添付を上げ直す（仮決め #683）
+        await model.send()
+        #expect(log.all.filter { $0.hasPrefix("upload") }.count == 2)
+    }
+
+    @Test func showsAttachmentCountInSentMessage() async {
+        let log = Log()
+        let model = makeModel(log: log, requester: Requester(log: log))
+        model.attachments = [Self.png, Self.memo]
+        await model.send()
+        #expect(model.sent.first?.message == "ask-hub-apple に「画面を直したい」を依頼しました（添付 2 件）")
+    }
+
+    @Test(arguments: [
+        AttachmentUploadError.missingContentsPermission as any Error & Sendable,
+        AttachmentUploadError.conflict,
+        GitHubError.rateLimited(retryAfter: .seconds(30)),
+        GitHubError.http(status: 403, message: "Resource not accessible by personal access token")
+    ])
+    func uploadFailureMessageDoesNotContainToken(error: any Error & Sendable) async {
+        let log = Log()
+        let model = makeModel(log: log, requester: Requester(log: log), uploadFailure: error)
+        model.attachments = [Self.png]
+        await model.send()
+        let message = model.errorMessage ?? ""
+        #expect(!message.isEmpty)
+        #expect(!message.contains("github_pat_saved"))
     }
 
     @Test func explainsConflictAndOtherFailuresWithoutToken() async {
