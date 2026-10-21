@@ -87,6 +87,15 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    SiriShortcutsHelpLink(title: "Siri とショートカットから依頼する")
+                        .accessibilityIdentifier("siri-help-link")
+                } header: {
+                    Text("Siri とショートカット")
+                } footer: {
+                    Text("Siri・Spotlight・ショートカット App から、機能追加・修正の依頼を送れます。")
+                }
+
+                Section {
                     Toggle("投稿したらループを始める", isOn: $startsLoopAfterPosting)
                 } header: {
                     Text("ループ")

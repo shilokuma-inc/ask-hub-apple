@@ -781,6 +781,30 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
   owner の区切りは organization が 1 つだけのときも出す（Q2）。owner の Section は一覧に現れた順、Section の中は一覧の順で、空の Section は出さない。
   担当の印を確認できなかったときは、「担当 PC なし」と誤って見せないよう担当の有無では分けず、「担当 PC の有無を確認できませんでした・<owner>」と owner だけで分ける（`AskHubKit` の `RepositorySection`）
 
+## Siri / ショートカットからの依頼
+
+アプリの App Intents で、Siri・ショートカット App・Spotlight からも「機能追加・修正」の依頼（`idea-request` の Issue）を出せる
+（[Discussion #655](https://github.com/shilokuma-inc/ask-hub-apple/discussions/655)）。Issue の形と、オーケストレーターの処理（「流れ」）はアプリから送ったものと同じ。
+
+- 依頼先は `RepositoryEntity`（`id` は `owner/repo`）。候補は「依頼先のリポジトリ」と同じく、設定の organization のアーカイブ済みでないリポジトリすべてで、
+  並びもアプリの Picker と同じ（担当 PC ありを先に、その中を owner ごとに）。前に選んだ依頼先は保存せず、毎回候補から選ぶ（Q1）
+- 名前での検索は、大文字小文字・`-`・`_`・空白の違いを無視して `owner/repo` の一部と照らし合わせる（「ask hub apple」で `shilokuma-inc/ask-hub-apple` が当たる。`AskHubKit` の `RepositorySearch`）
+- 保存したショートカットの依頼先は、id（`owner/repo`）の形式だけを確かめて使う（候補の一覧は取り直さない）
+- 候補はアプリに保存したトークンで取得する。トークンが無い・Keychain から読めない・GitHub の失敗（401・403・404・レート制限）は、アプリの「新しい依頼」と同じ文言で返し、トークンの値は出さない
+- デモモードでは GitHub に接続せず、サンプルのリポジトリを候補にする
+- Intent は `SendIdeaRequestIntent`（「機能追加・修正を依頼」）。依頼先 → 要約 → 依頼文の順に聞き、要約と依頼文は別々に聞く（Q2。依頼文から要約を切り出さない）。
+  Issue はアプリと同じ形（タイトル `【依頼】<要約>`・本文は依頼文・`idea-request` ラベル）で作る
+- 送る前に確認しない（Q3）。ロック中は Face ID / パスコードで解除してから送る（Q4。`authenticationPolicy = .requiresAuthentication`）。アプリは開かない
+- 要約が空・改行を含む、依頼文が空のときは送らず、その値を聞き直す
+- 送れたら Siri は「<repo> に「<要約>」を依頼しました」と返し、Intent の返り値は Issue の URL（ショートカットで次のアクションに渡せる）。
+  失敗の文言は依頼先の候補と同じくアプリと同じで、トークンの値は出さない
+- デモモードでは GitHub に書き込まず、文言に「デモモードのため、GitHub には送っていません」を添える
+- 送った依頼はアプリの「送った依頼」の一覧（メモリにだけ持つ）には出ない。GitHub の Issue として残る
+- Siri のフレーズは `AskHubShortcuts`（`AppShortcutsProvider`）で登録する。日本語は「AskHubで依頼」「AskHubに依頼を送る」「AskHubで機能追加を依頼」、
+  英語は「Request with AskHub」「Send a request to AskHub」「Request a feature with AskHub」。フレーズはコードに英語（開発言語）で書き、日本語の訳は `AskHub/AppShortcuts.xcstrings` に置く。
+  ショートカット App・Spotlight には「依頼を送る」として出る
+- 使い方（フレーズ・聞かれる順番・送るときの注意・依頼先を固定するショートカットの作り方）は、アプリの設定の「Siri とショートカット」と、「新しい依頼」の「機能追加・修正」の下の行から開ける（`SiriShortcutsHelpView`。Q1 の補足）
+
 ## リポジトリの作成・削除
 
 アプリから、テンプレートで新しいアプリのリポジトリを作り担当 PC に載せる・担当から外してローカルから消す、を依頼できる。

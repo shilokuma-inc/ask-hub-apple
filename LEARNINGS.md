@@ -252,6 +252,16 @@
 - MainActor 既定のターゲットでは、型の中に入れ子にした型（`private struct X`）も MainActor になる。`nonisolated static func` の中でその型を作ると
   「main actor-isolated initializer … cannot be called from outside of the actor」になるので、入れ子の型にも `nonisolated` を付ける。
   `nonisolated` の関数から MainActor の文言の関数（`InboxModel.message(for:)` など）を呼びたいときは、エラーのまま返して MainActor の側で文言にする（`ReleaseProgress.load`）
+- MainActor 既定のアプリのターゲットに App Intents の型（`AppEntity`・`EntityQuery`）を置くときは、`nonisolated struct` にする（フレームワークは任意のスレッドから呼ぶので、Sendable な nonisolated の準拠が要る）。
+  `nonisolated` の `async` のメソッドからは、MainActor の型（Keychain・UserDefaults・`IdeaRequestModel.message(for:)` を使うもの）を `await` で呼べばよく、警告は出ない。
+  ビルドすると `AskHub.app/Metadata.appintents/extract.actionsdata`（JSON）の `entities` に型が出る。macOS の `xcodebuild test` のログに出る `com.apple.linkd.autoShortcut` への接続の失敗は、テストの結果に関係しない
+- `@Parameter` を持つ `AppIntent` は `nonisolated struct` にできない（「'nonisolated' cannot be applied to mutable stored properties」）。MainActor 既定のまま `struct` にすると、Swift 6 でも警告なしでビルドでき、
+  `perform()` は MainActor で動く（async の要件なので MainActor の実装で満たせる）。`@Parameter` の `inputOptions` は `requestValueDialog` より前に書く（逆だと「argument 'inputOptions' must precede argument 'requestValueDialog'」）。
+  `extract.actionsdata` の `actions.<型名>` で `openAppWhenRun`・`authenticationPolicy`（`.requiresAuthentication` にすると `1`）・`parameters` を確かめられる
+- App Shortcuts のフレーズのローカライズは `AppShortcuts.xcstrings`（名前は固定）に書き、キーはコードのフレーズの `\(.applicationName)` を `${applicationName}` にしたもの。
+  `knownRegions` に `ja` が無くても `ja` の訳があればビルドしたアプリに `ja.lproj/AppShortcuts.strings` が入る（`en` の値も書くと `en.lproj` もできる）。登録の結果は `extract.actionsdata` の `autoShortcuts` で確かめられる。
+  `ja.lproj` ができると、日本語の端末ではアプリの言語が `en` ではなく `ja` に解決される（`Bundle.preferredLocalizations(from: ["en", "ja"], forPreferences: ["ja-JP"])` が `["ja"]`）ので、システムが出す文言（標準のボタンなど）が日本語になる。実機での見え方は実機確認で確かめる
+- App Intents の `SiriTipView` は macOS で使えず（`@available(macOS, unavailable)`）、`ShortcutsLink` も iOS の SDK にしか無い。iOS と macOS で同じ View を使うなら、どちらも使わずに文章で案内する（使うなら `#if os(iOS)` が要る）
 
 ## シェルスクリプト
 
