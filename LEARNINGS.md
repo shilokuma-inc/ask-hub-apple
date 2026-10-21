@@ -204,6 +204,8 @@
 - iOS の UI テストで `Form` の中の `NavigationLink` を開いて戻ると、開く前にスクロールした位置のままになる。`swipeUp()` でどこまで流れるかは Mac の負荷で変わり、
   CI では上の行が画面の外（作られない）に出て、戻った後に上の行の文言を待つと手元では通るのに落ちた（#652）。戻った後に探す行は `swipeDown()` で戻してから探す。
   手元で CI の状態を作るには、開く前のスワイプを一時的に `swipeUp(velocity: .fast)` にする
+- visionOS の Simulator は、destination では `platform=visionOS Simulator`、SDK は `xrsimulator`、`xcrun simctl list runtimes` では `visionOS 26.5 (…) - com.apple.CoreSimulator.SimRuntime.xrOS-26-5` の形（識別子だけ `xrOS`）。
+  ランタイムを選ぶ・Simulator を作るスクリプトでは、表示名と識別子の名前を別に持つ（`scripts/orchestrator/xcb`）
 
 ## Keychain
 
