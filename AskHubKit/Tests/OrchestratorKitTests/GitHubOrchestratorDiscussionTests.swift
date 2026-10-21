@@ -25,6 +25,45 @@ extension GitHubOrchestratorTests {
     }
 }
 
+// MARK: - 依頼先のリポジトリの Discussions の設定（Issue #719）
+
+extension GitHubOrchestratorTests {
+    @Test func readsDiscussionSettingsWithGraphQL() async throws {
+        let http = StubHTTPClient([
+            #"""
+            { "data": { "repository": { "hasDiscussionsEnabled": true,
+              "discussionCategories": { "nodes": [{ "name": "General" }, null, { "name": "Ideas" }] } } } }
+            """#,
+            // 無効なリポジトリでは、カテゴリは空で返る
+            #"{ "data": { "repository": { "hasDiscussionsEnabled": false, "discussionCategories": { "nodes": [] } } } }"#
+        ])
+        let github = makeGitHub(http)
+
+        #expect(try await github.discussionSettings(in: "o/r") == DiscussionSettings(isEnabled: true, categories: ["General", "Ideas"]))
+        #expect(try await github.discussionSettings(in: "o/r") == DiscussionSettings(isEnabled: false, categories: []))
+        let query = try requestJSON(http.requests[0])
+        #expect(query.query.contains("hasDiscussionsEnabled"))
+        #expect(query.variables["owner"] as? String == "o")
+        #expect(query.variables["name"] as? String == "r")
+    }
+
+    @Test func failsToReadDiscussionSettingsOfMissingRepository() async throws {
+        let http = StubHTTPClient([#"{ "data": { "repository": null } }"#])
+        await #expect(throws: (any Error).self) {
+            _ = try await self.makeGitHub(http).discussionSettings(in: "o/r")
+        }
+    }
+
+    @Test func enablesDiscussionsWithRepositoryPatch() async throws {
+        let http = StubHTTPClient([#"{ "full_name": "o/r", "has_discussions": true }"#])
+        try await makeGitHub(http).enableDiscussions(in: "o/r")
+
+        #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" } == ["PATCH /repos/o/r"])
+        let body = try #require(http.requests[0].httpBody)
+        #expect(try JSONSerialization.jsonObject(with: body) as? [String: Bool] == ["has_discussions": true])
+    }
+}
+
 // MARK: - 依頼から作った Discussion への添付欄（Discussion #669）
 
 extension GitHubOrchestratorTests {

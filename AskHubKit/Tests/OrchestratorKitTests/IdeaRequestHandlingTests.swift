@@ -138,6 +138,34 @@ struct IdeaRequestTrackerTests {
         tracker.prune(keeping: [])
         #expect(tracker.phases.isEmpty)
     }
+
+    @Test func listsCandidatesOldestFirstSkippingFinishedOnes() throws {
+        var tracker = IdeaRequestTracker()
+        let url = try #require(URL(string: "https://github.com/shilokuma-inc/ask-hub-apple/discussions/12"))
+        tracker.recordCreated(url, for: .fixture(number: 2))
+        tracker.recordFailure(for: .fixture(number: 6), reason: "1")
+        let issues: [IdeaRequestIssue] = [
+            .fixture(number: 6), .fixture(number: 2), .fixture(number: 3, author: "someone"), .fixture(number: 4)
+        ]
+
+        // 先頭の依頼先で Discussion を作れなくても次の依頼に進めるよう、作らせてよい依頼をすべて古い順に返す（Issue #719）
+        let candidates = tracker.candidates(in: issues, config: try config())
+        #expect(candidates.map(\.0.number) == [4, 6])
+        #expect(tracker.next(in: issues, config: try config())?.0.number == 4)
+    }
+
+    @Test func remembersReportedProblemUntilPruned() {
+        var tracker = IdeaRequestTracker()
+        let issue = IdeaRequestIssue.fixture()
+        #expect(tracker.needsReport(.disabled, for: issue))
+        tracker.recordReported(.disabled, for: issue)
+        #expect(!tracker.needsReport(.disabled, for: issue))
+        // 理由が変われば、もう一度書く
+        #expect(tracker.needsReport(.missingCategory, for: issue))
+
+        tracker.prune(keeping: [])
+        #expect(tracker.reportedProblems.isEmpty)
+    }
 }
 
 struct IdeaPromptAttachmentTests {

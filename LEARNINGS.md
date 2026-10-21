@@ -96,6 +96,9 @@
   Python では行ごとに `json.loads` する（`Tools/release_sync.py`）。`GET /repos/{owner}/{repo}/issues` は PR も返すので、`select(.pull_request == null)` で除く
 - workflow_dispatch で起動した run を「実行中・済み」で見分けるときは、run-name（`display_title`）をバージョンで完全に一致させ、`status != "completed"` を実行中とみなす（`queued`・`waiting`・`requested`・`pending` もある）。
   public リポジトリでは誰でも Issue を作れるので、ワークフローが作った Issue を目印に使うときは author（`github-actions[bot]`）も確かめる
+- `gh repo create --template` で作ったリポジトリは、テンプレートで Discussions を有効にしていても Discussions が無効のまま（カテゴリも 0 件）。
+  そのまま依頼から Discussion を作らせると、claude は `Discussions are disabled for this repo` を見て作らずに終わる（終了コード 0）。
+  REST の `PATCH /repos/{owner}/{repo}` に `has_discussions: true`（`gh repo edit --enable-discussions` と同じ）を送ると、GitHub が既定のカテゴリ（Ideas など）を作る。管理者の権限が要る（2026-10-21、Issue #719）
 
 ## ビルド・テスト
 

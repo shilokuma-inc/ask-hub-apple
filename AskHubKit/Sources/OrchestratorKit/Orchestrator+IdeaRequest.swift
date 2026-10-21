@@ -12,9 +12,18 @@ extension Orchestrator {
             await perform(followUp, on: issue)
         }
 
-        guard let (issue, repository) = ideaTracker.next(in: issues, config: config, trust: trust) else {
+        // 依頼先で Discussion を作れない依頼（Discussions が無効など）は claude を起動せずに飛ばし、次の依頼に進む
+        for (issue, repository) in ideaTracker.candidates(in: issues, config: config, trust: trust) {
+            guard await prepareDiscussions(for: issue) else {
+                continue
+            }
+            await createDiscussion(for: issue, in: repository)
             return
         }
+    }
+
+    /// claude に依頼を考察させ、質問付きの Discussion を作らせる
+    private func createDiscussion(for issue: IdeaRequestIssue, in repository: RepositoryConfig) async {
         let name = "\(issue.repository)#\(issue.number)"
         log("\(name) の依頼から、質問付きの Discussion を作らせます")
         // 画像・PDF の添付は、リポジトリの外の一時ディレクトリに置いて claude に Read させる。添付が無くても空のディレクトリを作り、コマンドの後に消す

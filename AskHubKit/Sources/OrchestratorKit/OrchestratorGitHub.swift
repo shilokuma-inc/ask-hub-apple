@@ -41,6 +41,10 @@ public protocol OrchestratorGitHub: Sendable {
     func comment(on issue: IdeaRequestIssue, body: String) async throws
     /// 依頼 Issue をクローズする（完了として）
     func close(_ issue: IdeaRequestIssue) async throws
+    /// リポジトリの Discussions の設定（有効か・カテゴリ）。依頼から Discussion を作る前に確かめる
+    func discussionSettings(in repository: String) async throws -> DiscussionSettings
+    /// リポジトリの Discussions を有効にする（リポジトリの管理者の権限が要る）
+    func enableDiscussions(in repository: String) async throws
     /// organization 全体の、`repo-request` が付いた open な Issue（担当リポジトリの作成・削除の依頼）
     func repositoryRequests(orgs: [String]) async throws -> [RepositoryRequestIssue]
     /// 担当リポジトリのラベル `askhub-orchestrator` を消す（担当から外したとき）。無ければ何もしない

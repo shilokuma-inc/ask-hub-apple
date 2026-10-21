@@ -156,6 +156,8 @@ public struct IdeaRequestTracker: Sendable, Equatable {
 
     /// キーは依頼 Issue の node id
     public private(set) var phases: [String: Phase] = [:]
+    /// 依頼 Issue に書いた、Discussion を作れない理由（キーは node id）。同じ理由を重ねて書かない
+    public private(set) var reportedProblems: [String: IdeaDiscussionProblem] = [:]
 
     public init() {}
 
@@ -163,6 +165,7 @@ public struct IdeaRequestTracker: Sendable, Equatable {
     public mutating func prune(keeping issues: [IdeaRequestIssue]) {
         let current = Set(issues.map(\.nodeID))
         phases = phases.filter { current.contains($0.key) }
+        reportedProblems = reportedProblems.filter { current.contains($0.key) }
     }
 
     /// 依頼 Issue に残っている後処理
@@ -190,21 +193,38 @@ public struct IdeaRequestTracker: Sendable, Equatable {
         config: OrchestratorConfig,
         trust: TrustDirectory? = nil
     ) -> (IdeaRequestIssue, RepositoryConfig)? {
+        candidates(in: issues, config: config, trust: trust).first
+    }
+
+    /// Discussion を作らせてよい依頼（古い順）。先頭の依頼先で Discussion を作れなければ、次の依頼に進むために使う
+    public func candidates(
+        in issues: [IdeaRequestIssue],
+        config: OrchestratorConfig,
+        trust: TrustDirectory? = nil
+    ) -> [(IdeaRequestIssue, RepositoryConfig)] {
         let trust = trust ?? TrustDirectory(base: config.trustedAuthors)
-        for issue in issues.sorted(by: { ($0.repository, $0.number) < ($1.repository, $1.number) }) {
+        return issues.sorted(by: { ($0.repository, $0.number) < ($1.repository, $1.number) }).compactMap { issue in
             guard let repository = config.repository(named: issue.repository),
                   issue.isTrusted(by: trust.authors(for: issue.repository)) else {
-                continue
+                return nil
             }
             switch phases[issue.nodeID] {
             case nil, .pending:
                 return (issue, repository)
 
             case .created, .commented, .completed, .failing, .gaveUp:
-                continue
+                return nil
             }
         }
-        return nil
+    }
+
+    /// Discussion を作れない理由を、まだ依頼 Issue に書いていないか
+    public func needsReport(_ problem: IdeaDiscussionProblem, for issue: IdeaRequestIssue) -> Bool {
+        reportedProblems[issue.nodeID] != problem
+    }
+
+    public mutating func recordReported(_ problem: IdeaDiscussionProblem, for issue: IdeaRequestIssue) {
+        reportedProblems[issue.nodeID] = problem
     }
 
     public mutating func recordCreated(_ url: URL, for issue: IdeaRequestIssue) {
