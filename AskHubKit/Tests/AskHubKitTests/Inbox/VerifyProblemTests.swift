@@ -124,3 +124,44 @@ struct GitHubVerifyProblemCommenterTests {
         }
     }
 }
+
+struct VerifyProblemAttachmentTests {
+    private static let marker = AttachmentMarker(
+        path: "files/3f2504e0-4f89-11d3-9a0c-0305e82c3301/crash.png",
+        sha: String(repeating: "b", count: 40),
+        commit: String(repeating: "c", count: 40),
+        name: "crash.png",
+        size: 2_048,
+        type: "image/png"
+    )
+
+    private static let issue = InboxIssue(
+        id: "I_18",
+        kind: .needsVerify,
+        repository: "o/r",
+        number: 18,
+        title: "【CHORE】実機確認: 通知",
+        url: URL(string: "https://github.com/o/r/issues/18")!,
+        author: "mrs1669",
+        createdAt: Date(timeIntervalSince1970: 0),
+        updatedAt: Date(timeIntervalSince1970: 0)
+    )
+
+    @Test func requestAndCommentHaveSameSectionAtEnd() {
+        let problem = VerifyProblem(issue: Self.issue, description: "落ちる", attachments: [Self.marker])
+        let section = AttachmentSection.appending([Self.marker], to: "", repository: "o/r")
+        #expect(problem.request.issueBody.hasSuffix(section))
+        #expect(problem.request.issueBody.hasPrefix("実機確認 Issue: https://github.com/o/r/issues/18\n\n落ちる\n\n### 添付ファイル\n"))
+        let comment = problem.comment(request: 41)
+        // 目印は先頭のまま。添付欄は末尾
+        #expect(comment.hasPrefix("<!-- ask-hub:verify-problem -->\n落ちる\n\n再修正の依頼: #41\n\n### 添付ファイル\n"))
+        #expect(comment.hasSuffix(section))
+        #expect(AttachmentMarker.parseAll(comment) == [Self.marker])
+    }
+
+    @Test func withoutAttachmentsIsUnchanged() {
+        let problem = VerifyProblem(issue: Self.issue, description: "落ちる")
+        #expect(problem.comment(request: 41) == "<!-- ask-hub:verify-problem -->\n落ちる\n\n再修正の依頼: #41")
+        #expect(problem.request.issueBody == "実機確認 Issue: https://github.com/o/r/issues/18\n\n落ちる")
+    }
+}
