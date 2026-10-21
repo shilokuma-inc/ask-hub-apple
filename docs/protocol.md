@@ -920,13 +920,14 @@ epic の最終 PR（`epic-final`）がマージされたら、オーケストレ
 続けて人が読める表を置く。
 
 ```html
-<!-- ask-hub:repo-request {"action":"create","appName":"MyQuiz","bundleIdentifier":"jp.shilokuma.MyQuiz","clone":true,"private":false,"repository":"shilokuma-inc/my-quiz-ios","template":"shilokuma-inc/template-quiz-app-ios"} -->
+<!-- ask-hub:repo-request {"action":"create","appName":"MyQuiz","bundleIdentifier":"jp.shilokuma.MyQuiz","clone":true,"platform":"ios","private":false,"repository":"shilokuma-inc/my-quiz-ios","template":"shilokuma-inc/template-quiz-app-ios"} -->
+<!-- ask-hub:repo-request {"action":"create","appName":"MyApp","bundleIdentifier":"jp.shilokuma.MyApp","clone":true,"platform":"visionos","private":false,"repository":"shilokuma-vision/my-app-visionos","template":"shilokuma-vision/template-app-visionos"} -->
 <!-- ask-hub:repo-request {"action":"remove","deleteLocal":true,"force":false,"repository":"shilokuma-inc/notti-ios"} -->
 ```
 
 | action | 依頼 Issue を作る場所 | キー |
 | --- | --- | --- |
-| `create` | 作成を任せたい PC の担当リポジトリ（その PC のオーケストレーターが処理する） | `repository`（作るリポジトリ）・`template`（`shilokuma-inc/template-app-ios` か `shilokuma-inc/template-quiz-app-ios` のどちらか）・`appName`（英字で始まる英数字。テンプレートの `scripts/rename.sh` に渡す）・`bundleIdentifier`（省略時は `jp.shilokuma.<appName>`）・`clone`（担当 PC に clone して担当リポジトリに加えるか。`false` なら GitHub に作るだけ。省略時は `true`）・`private`（private で作るか。省略時は `false` = public） |
+| `create` | 作成を任せたい PC の担当リポジトリ（その PC のオーケストレーターが処理する） | `repository`（作るリポジトリ）・`platform`（`ios` か `visionos`。下記「プラットフォームとテンプレート」）・`template`（下記の表のテンプレートのどれか。大文字・小文字は区別しない）・`appName`（英字で始まる英数字。テンプレートの `scripts/rename.sh` に渡す）・`bundleIdentifier`（省略時は `jp.shilokuma.<appName>`）・`clone`（担当 PC に clone して担当リポジトリに加えるか。`false` なら GitHub に作るだけ。省略時は `true`）・`private`（private で作るか。省略時は `false` = public） |
 | `remove` | 担当から外したいリポジトリそのもの | `repository`（Issue のリポジトリと同じであること）・`deleteLocal`（checkout・ループの worktree・DerivedData を消すか）・`force`（未コミット・未 push・stash の確認と、ループの state ファイルの確認をしない） |
 
 - オーケストレーターは、担当リポジトリにある**信用する author**（作った人と、編集した人がいればその人も）の依頼だけを処理する。
@@ -937,6 +938,22 @@ epic の最終 PR（`epic-final`）がマージされたら、オーケストレ
 - アプリの「新しいアプリ」で作成を任せる PC を選ぶ Picker は、担当 PC のいるリポジトリだけを候補にし、owner ごとの Section に分ける（見出しは owner 名。organization が 1 つだけでも出す。[Discussion #572](https://github.com/shilokuma-inc/ask-hub-apple/discussions/572) の Q4）。並べ方は「依頼先のリポジトリ」と同じ（`RepositorySection.byOwner`）
 - 処理できたら結果をコメントしてクローズする。処理できなければ理由をコメントする（直したら、その Issue を閉じて依頼し直す）。
   コメントにはローカルのパスを書かない（public のリポジトリでは誰でも読めるため）
+
+### プラットフォームとテンプレート
+
+作成の依頼は、先にプラットフォームを選び、次にそのプラットフォームのテンプレートを選ぶ（[Discussion #705](https://github.com/shilokuma-inc/ask-hub-apple/discussions/705) の Q3）。
+一覧は `AskHubKit` の `NewRepository.Platform` と `NewRepository.Template` にあり、オーケストレーターはこの一覧にあるテンプレートしか使わない（一覧に足すことが、そのテンプレートからの作成の許可になる）。
+
+| `platform` | 画面の名前 | `template`（並び順） | Organization の既定 | リポジトリ名の例 |
+| --- | --- | --- | --- | --- |
+| `ios` | iOS | `shilokuma-inc/template-app-ios`（通常）・`shilokuma-inc/template-quiz-app-ios`（クイズ） | なし（設定の一覧の先頭） | `my-app-ios` |
+| `visionos` | visionOS | `shilokuma-vision/template-app-visionos`（通常） | `shilokuma-vision`（設定の一覧にあるとき） | `my-app-visionos` |
+
+- アプリは `platform` を常に書く。`platform` が `template` のプラットフォームと合わない・知らない値（小文字で書く）のときは、値が不正な依頼として扱う
+- `platform` の無い目印（プラットフォームを書く前のアプリが書いたもの）は、`template` のプラットフォームとして読む
+- Issue の本文の表には、テンプレートの行の前に「プラットフォーム」の行を置く
+- **古いオーケストレーターは visionOS の依頼を断る。** 知らないキー（`platform`）は無視するので iOS の依頼は今までどおり処理されるが、
+  知らないテンプレート（`shilokuma-vision/template-app-visionos`）は値が不正として理由をコメントする。visionOS の依頼を出す前に、作成を担う PC のオーケストレーターを更新する
 
 ## 手動ループ（manual-loop）の担当者
 
