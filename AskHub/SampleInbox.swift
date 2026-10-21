@@ -74,6 +74,8 @@ extension IdeaRequestModel {
             makeProblemCommenter: { _ in SampleVerifyProblemCommenter() },
             makeUploader: { _ in SampleAttachmentUploader() },
             sent: sent,
+            // 「新しいアプリ」で visionOS を選ぶと shilokuma-vision に切り替わるのを見せるため、2 つ目の organization も出す
+            organizations: { ["shilokuma-inc", "shilokuma-vision"] },
             release: .sample()
         )
     }
