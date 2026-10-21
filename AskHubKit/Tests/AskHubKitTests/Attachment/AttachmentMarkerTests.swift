@@ -129,10 +129,20 @@ struct AttachmentMarkerTests {
         #expect(marker(path: AttachmentMarker.path(id: id, fileName: "...")).isWellFormed)
     }
 
+    @Test(arguments: [". x.png", "..  x.png", String(repeating: "a", count: 99) + " b", "", "../..", "a\nb.txt"])
+    func builtPathIsAlwaysWellFormed(fileName: String) {
+        // 自分で作ったパスを、読む側が形の誤った目印として捨てないこと
+        let original = marker(path: AttachmentMarker.path(id: UUID(), fileName: fileName))
+        #expect(original.isWellFormed)
+        #expect(AttachmentMarker.parseAll(original.marker) == [original])
+    }
+
     @Test func kindFollowsMIMEType() {
         #expect(marker(type: "image/png").kind == .image)
         #expect(marker(type: "IMAGE/WEBP").kind == .image)
         #expect(marker(type: "application/pdf").kind == .pdf)
+        #expect(marker(type: "application/pdf; name=a.pdf").kind == .pdf)
+        #expect(marker(type: "image/png ; charset=binary").kind == .image)
         #expect(marker(type: "text/markdown").kind == .text)
         #expect(marker(type: "application/json").kind == .text)
     }

@@ -8,15 +8,24 @@ public enum AttachmentFileName {
     /// 何も残らなかったときの名前
     public static let fallback = "attachment"
 
-    /// 元の名前から `/`・`\`・制御文字・先頭の `.` を除き、長さを上限に収める。空になったら `attachment` にする
+    /// 元の名前から `/`・`\`・制御文字・先頭の `.` と前後の空白を除き、長さを上限に収める。空になったら `attachment` にする。
+    ///
+    /// 2 回かけても結果が変わらない（読む側は、パスのファイル名がこの結果と一致することを確かめるため）
     public static func sanitized(_ name: String) -> String {
         let scalars = name.unicodeScalars.filter { scalar in
             scalar != "/" && scalar != "\\" && !CharacterSet.controlCharacters.contains(scalar)
         }
-        let trimmed = String(String.UnicodeScalarView(scalars))
-            .trimmingCharacters(in: .whitespaces)
-            .drop { $0 == "." }
-        let shortened = shorten(String(trimmed))
+        // `. x.png` のように、先頭の `.` を除くと空白が先頭に出るので、変わらなくなるまで繰り返す
+        var trimmed = String(String.UnicodeScalarView(scalars))
+        while true {
+            let next = String(trimmed.trimmingCharacters(in: .whitespaces).drop { $0 == "." })
+            if next == trimmed {
+                break
+            }
+            trimmed = next
+        }
+        // 詰めた結果の末尾が空白になることがある
+        let shortened = shorten(trimmed).trimmingCharacters(in: .whitespaces)
         return shortened.isEmpty ? fallback : shortened
     }
 
@@ -42,7 +51,9 @@ public enum AttachmentKind: Sendable, Equatable {
 
     /// MIME タイプから決める。`image/` で始まるものは画像、`application/pdf` は PDF、それ以外はテキスト
     public init(mimeType: String) {
-        let type = mimeType.lowercased()
+        // `application/pdf; charset=…` のような引数は落として判定する
+        let type = mimeType.split(separator: ";", maxSplits: 1).first.map(String.init)?
+            .trimmingCharacters(in: .whitespaces).lowercased() ?? ""
         if type.hasPrefix("image/") {
             self = .image
         } else if type == "application/pdf" {
@@ -75,8 +86,10 @@ public enum AttachmentSize {
         if value < kilo {
             return "\(Int(value)) B"
         }
-        if value < kilo * kilo {
-            return "\(Int((value / kilo).rounded())) KB"
+        // 1 MB の手前で「1024 KB」と出さないよう、KB に丸めた値が 1024 に届いたら MB で出す
+        let kilobytes = Int((value / kilo).rounded())
+        if kilobytes < 1_024 {
+            return "\(kilobytes) KB"
         }
         let megabytes = value / (kilo * kilo)
         return String(format: "%.1f MB", locale: Locale(identifier: "en_US_POSIX"), megabytes)

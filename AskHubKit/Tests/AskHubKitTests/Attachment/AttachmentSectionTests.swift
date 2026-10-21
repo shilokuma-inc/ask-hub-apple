@@ -102,6 +102,21 @@ struct AttachmentFileNameTests {
         #expect(result.hasSuffix("あ.png"))
     }
 
+    @Test(arguments: [
+        ". x.png",
+        "..  x.png",
+        " . .x.png",
+        String(repeating: "a", count: 99) + " b",
+        String(repeating: "a", count: 98) + " .png" + String(repeating: "b", count: 10),
+        "\u{3000}全角の空白.png\u{3000}",
+    ])
+    func sanitizingTwiceKeepsResult(input: String) {
+        let once = AttachmentFileName.sanitized(input)
+        #expect(AttachmentFileName.sanitized(once) == once)
+        #expect(once.first?.isWhitespace != true && once.last?.isWhitespace != true)
+        #expect(!once.hasPrefix("."))
+    }
+
     @Test func shortensWithoutExtension() {
         let result = AttachmentFileName.sanitized(String(repeating: "a", count: 150))
         #expect(result == String(repeating: "a", count: AttachmentFileName.maxLength))
@@ -113,6 +128,8 @@ struct AttachmentSizeTests {
         (0, "0 B"),
         (1_023, "1023 B"),
         (1_024, "1 KB"),
+        (1_048_063, "1023 KB"),
+        (1_048_575, "1.0 MB"),
         (120_000, "117 KB"),
         (1_048_576, "1.0 MB"),
         (10 * 1_048_576, "10.0 MB")
