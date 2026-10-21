@@ -27,11 +27,27 @@ extension IdeaRequestModel {
         }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains(InboxModel.sampleLaunchArgument) {
-            return sample()
+            let model = sample()
+            // UI テストでは、システムのファイルピッカーを操作できないので、サンプルの添付を入れた状態から始める
+            if ProcessInfo.processInfo.arguments.contains(sampleAttachmentsLaunchArgument) {
+                model.attachments = AttachmentFile.samples
+            }
+            return model
         }
         #endif
         return IdeaRequestModel()
     }
+
+    /// UI テストで、サンプルの添付を入れた状態から始める起動引数（`-AskHubSampleInbox` と一緒に使う）
+    static let sampleAttachmentsLaunchArgument = "-AskHubSampleAttachments"
+}
+
+extension AttachmentFile {
+    /// UI テスト・Preview 用のサンプルの添付（画像と Markdown）。中身はダミー
+    static let samples = [
+        AttachmentFile(name: "design.png", type: "image/png", data: Data(repeating: 0x89, count: 120_000)),
+        AttachmentFile(name: "memo.md", type: "text/markdown", data: Data("# メモ\n朝だけにしたい\n".utf8))
+    ]
 }
 
 extension MergeQueueModel {
