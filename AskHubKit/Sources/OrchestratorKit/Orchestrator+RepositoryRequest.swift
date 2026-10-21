@@ -106,7 +106,9 @@ extension Orchestrator {
             return outcome
         }
 
-        var lines = ["\(request.repository) を\(request.template.title)のテンプレートから作りました: https://github.com/\(request.repository)"]
+        // テンプレートの名前はプラットフォームの中でしか区別しないので、プラットフォームを添える（例: visionOS の通常）
+        let template = request.template.qualifiedTitle
+        var lines = ["\(request.repository) を \(template)のテンプレートから作りました: https://github.com/\(request.repository)"]
         lines += RepositoryCommandOutput.results(in: result.output).map { "- \($0)" }
         if request.clonesToOrchestrator {
             do {
