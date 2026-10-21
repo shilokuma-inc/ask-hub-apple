@@ -36,7 +36,7 @@ struct AttachmentMarkerTests {
         let text = original.marker
         // 目印の終わりは最後の `-->` だけ
         #expect(text.components(separatedBy: "-->").count == 2)
-        #expect(text.contains(#">"#))
+        #expect(text.contains(#"\u003e"#))
         #expect(AttachmentMarker.parseAll(text) == [original])
     }
 

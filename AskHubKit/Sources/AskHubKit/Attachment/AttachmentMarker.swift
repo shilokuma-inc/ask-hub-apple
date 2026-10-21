@@ -63,7 +63,7 @@ public struct AttachmentMarker: Sendable, Equatable, Hashable, Codable {
 
     /// 添付欄に置く HTML コメント。
     ///
-    /// 文字列の中の `>` は `>` にする（目印の終わりの `-->` と取り違えないため。`VerifyMarker` と同じ）
+    /// 文字列の中の `>` は `\u003e` にする（目印の終わりの `-->` と取り違えないため。`VerifyMarker` と同じ）
     public var marker: String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
