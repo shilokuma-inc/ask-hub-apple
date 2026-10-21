@@ -103,7 +103,11 @@ final class AskHubUITests: XCTestCase {
         // キーボード上の「完了」で閉じると、下の「依頼を送る」が押せる
         app.buttons["keyboard-done"].tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        // 依頼文の下に添付欄があるので、ボタンが画面の外にあればスクロールする（キーボードが閉じていればスクロールで届く）
         let send = app.buttons["依頼を送る"]
+        for _ in 0..<3 where !send.isHittable {
+            app.swipeUp()
+        }
         XCTAssertTrue(send.isHittable)
         send.tap()
 
