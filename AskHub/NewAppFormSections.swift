@@ -43,7 +43,8 @@ struct NewAppFormSections: View {
         Group {
             Section {
                 Picker("テンプレート", selection: $template) {
-                    ForEach(NewRepository.Template.allCases) { template in
+                    // プラットフォームを選べるようになるまでは、今までどおり iOS のテンプレートだけを出す
+                    ForEach(NewRepository.Platform.iOS.templates) { template in
                         Text(template.title).tag(template)
                     }
                 }
