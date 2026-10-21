@@ -9,6 +9,7 @@ struct NewAppFormSections: View {
     /// キーボードの「完了」は埋め込む側の `Form` に付けるので、フォーカスも埋め込む側が持つ
     let isEditing: FocusState<Bool>.Binding
 
+    @State private var platform = NewRepository.Platform.iOS
     @State private var template = NewRepository.Template.standard
     @State private var owner = ""
     @State private var name = ""
@@ -42,16 +43,23 @@ struct NewAppFormSections: View {
     var body: some View {
         Group {
             Section {
+                Picker("プラットフォーム", selection: $platform) {
+                    ForEach(NewRepository.Platform.allCases) { platform in
+                        Text(platform.title).tag(platform)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("platform-picker")
+                // テンプレートが 1 つだけのプラットフォームでも、ほかと同じ形で出す（選んだテンプレートが見え、今後増えても形が変わらない）
                 Picker("テンプレート", selection: $template) {
-                    // プラットフォームを選べるようになるまでは、今までどおり iOS のテンプレートだけを出す
-                    ForEach(NewRepository.Platform.iOS.templates) { template in
+                    ForEach(platform.templates) { template in
                         Text(template.title).tag(template)
                     }
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("template-picker")
             } header: {
-                Text("テンプレート")
+                Text("プラットフォームとテンプレート")
             } footer: {
                 Text("テンプレートからリポジトリを作り、担当 PC に載せます")
             }
@@ -62,7 +70,8 @@ struct NewAppFormSections: View {
                         Text(organization).tag(organization)
                     }
                 }
-                TextField("例: my-app-ios", text: $name)
+                .accessibilityIdentifier("organization-picker")
+                TextField("例: my-app\(platform.repositoryNameSuffix)", text: $name)
                     .focused(isEditing)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("repository-name")
@@ -71,13 +80,18 @@ struct NewAppFormSections: View {
             } header: {
                 Text("リポジトリ")
             } footer: {
-                if !name.isEmpty, !RepositoryName.isValidFullName("\(owner)/\(name)") {
-                    Text("英数字と - _ . だけにしてください")
-                        .foregroundStyle(.red)
-                } else {
-                    Text(isPrivate
-                        ? "private で作ります。GitHub Actions の実行時間が課金の対象になります"
-                        : "public で作ります（GitHub Actions を無料で使えます）。誰でもコードを読めます")
+                VStack(alignment: .leading, spacing: 4) {
+                    if let missing = model.missingDefaultOrganization(for: platform) {
+                        Text("設定の Organization に \(missing) を足すと、\(platform.title) では既定で選ばれます")
+                    }
+                    if !name.isEmpty, !RepositoryName.isValidFullName("\(owner)/\(name)") {
+                        Text("英数字と - _ . だけにしてください")
+                            .foregroundStyle(.red)
+                    } else {
+                        Text(isPrivate
+                            ? "private で作ります。GitHub Actions の実行時間が課金の対象になります"
+                            : "public で作ります（GitHub Actions を無料で使えます）。誰でもコードを読めます")
+                    }
                 }
             }
 
@@ -167,9 +181,14 @@ struct NewAppFormSections: View {
                 .disabled(!canSend)
             }
         }
+        .onChange(of: platform) {
+            // 切り替えたら、そのプラットフォームの先頭のテンプレートと既定の Organization にする（その後も選び直せる）
+            template = platform.templates.first ?? template
+            owner = model.defaultOrganization(for: platform) ?? ""
+        }
         .onAppear {
             if owner.isEmpty {
-                owner = model.organizationChoices.first ?? ""
+                owner = model.defaultOrganization(for: platform) ?? ""
             }
             if hub == nil {
                 hub = model.assignedRepositories(now: Date()).first
