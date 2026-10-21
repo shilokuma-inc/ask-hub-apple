@@ -102,6 +102,61 @@ extension AskHubUITests {
     }
 }
 
+// 実機確認の「問題あり」（Issue #483）
+extension AskHubUITests {
+    @MainActor
+    func testReportVerificationProblem() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは依頼とコメントを作ったことにして GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox"]
+        app.launch()
+
+        app.tabBars.buttons["実機確認"].tap()
+        let row = app.staticTexts["PAT の Keychain への保存と macOS の設定画面の見た目"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        // 「問題あり」は本文と「確認済みとして閉じる」の下にある（Form は画面の外の行を作らないので、出るまでスクロールする）
+        XCTAssertTrue(app.staticTexts["確認手順"].waitForExistence(timeout: 5))
+        let field = app.textFields["何をしたら・どうなったか"]
+        for _ in 0..<4 where !field.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        // 問題の内容が空なら送れない
+        let send = app.buttons["問題ありとして再修正を依頼する"]
+        XCTAssertFalse(send.isEnabled)
+        field.tap()
+        field.typeText("保存した PAT が再起動後に消える")
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(send.isEnabled)
+        send.tap()
+
+        // 送る内容を見せて確かめてから、依頼とコメントを送る
+        let confirm = app.buttons["依頼する"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        let title = NSPredicate(format: "label CONTAINS %@", "【依頼】実機確認の問題: PAT の Keychain への保存")
+        XCTAssertTrue(app.staticTexts.matching(title).firstMatch.exists)
+        let confirmation = XCTAttachment(screenshot: app.screenshot())
+        confirmation.name = "verify-problem-confirmation"
+        confirmation.lifetime = .keepAlways
+        add(confirmation)
+        confirm.tap()
+
+        XCTAssertTrue(app.staticTexts["再修正の依頼 #41 を作り、この Issue にコメントしました"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["依頼を GitHub で開く"].exists)
+        let sent = XCTAttachment(screenshot: app.screenshot())
+        sent.name = "verify-problem-sent"
+        sent.lifetime = .keepAlways
+        add(sent)
+
+        // 実機確認 Issue は閉じない（一覧に戻っても残る）
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["実機確認"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["PAT の Keychain への保存と macOS の設定画面の見た目"].exists)
+    }
+}
+
 // 任意判断の詳細画面での承認・指示（Discussion #349）
 extension AskHubUITests {
     @MainActor
