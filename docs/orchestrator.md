@@ -330,8 +330,10 @@ mkdir -p ~/.config/xcb && cp scripts/orchestrator/xcb-hosts.example ~/.config/xc
   ビルドし直しを減らすため、`build-for-testing` は続くテストを受けられる Mac に優先して回す（1 台もつながっていなければ、ほかの Mac でビルドだけ確かめる）
 - **署名**: ssh 越しではログインのキーチェーンを使えず、macOS の署名が `errSecInternalComponent` で失敗する。
   macOS 宛てのビルド・テストで署名の指定（`CODE_SIGN…`）が無ければ、アドホック署名の設定を足す（archive は除く。CI の macOS のテストと同じ）
-- **Simulator**: リモートでは `platform=iOS Simulator,name=…` を作業ツリー専用の Simulator（`xcb-<作業ツリー>-<機種>-<ランタイム>`。無ければ作る）に置き換える。
-  ランタイムはその Xcode の SDK と同じか古いもののうち最新
+- **Simulator**: リモートでは `platform=iOS Simulator,name=…` と `platform=visionOS Simulator,name=…` を作業ツリー専用の Simulator（`xcb-<作業ツリー>-<機種>-<ランタイム>`。無ければ作る）に置き換える。
+  ランタイムはその Xcode の SDK（iOS は `iphonesimulator`、visionOS は `xrsimulator`）と同じか古いもののうち最新（visionOS のランタイムの識別子は `…SimRuntime.xrOS-26-5` の形）。
+  その Mac に使えるランタイムが無ければ、xcodebuild の「is not installed」と同じく、そのプラットフォームだけ 1 時間その Mac に割り当てず、別の Mac でやり直す（切断としては扱わない）。
+  `local`（Mac mini 自身）では置き換えない
 - **置き場**: リモートは `~/remote-builds.noindex/src/<作業ツリー>`（rsync で同期。`.git`・DerivedData・`.build` は送らない）と
   `~/remote-builds.noindex/dd/<作業ツリー>`（DerivedData。ループが付けた `-derivedDataPath` は使わない）。
   名前を `.noindex` で終わらせて Spotlight の索引から外す（ビルドのたびに索引を作り直して load が上がり、選ばれにくくなるため）。`XCB_REMOTE_ROOT` で変えられる。
@@ -555,6 +557,29 @@ epic の最終 PR（`epic-final`）がマージされたら、その epic の添
    途中で失敗しても、やり直すと続きから進む（テンプレートから作った同名のリポジトリ・同じ origin の checkout は使い回す）
 3. 成功したら、clone した場合は設定ファイルの `repositories` に加える（元のファイルは `orchestrator.json.bak` に写す）。
    次のポーリングを待たずに担当リポジトリとして扱う
+
+テンプレートは `AskHubKit` の `NewRepository.Template` の一覧にあるものだけを使う（iOS の通常・クイズと、visionOS の `shilokuma-vision/template-app-visionos`）。
+プラットフォームで処理は分けず、どのテンプレートも同じスクリプトに渡す（visionOS のテンプレートも `scripts/rename.sh` と `Configs/Project.xcconfig` を持つ）。
+結果のコメントには、プラットフォームを添えたテンプレートの名前（例: 「visionOS の通常のテンプレートから作りました」）を書く。
+目印の `platform` がテンプレートと合わない依頼は、値が不正な依頼として作らずに理由をコメントする。
+
+visionOS のテンプレートから作るときの前提（[Discussion #705](https://github.com/shilokuma-inc/ask-hub-apple/discussions/705)）:
+
+- **オーケストレーターをアプリより先に更新する。** 古いオーケストレーターは visionOS のテンプレートを知らず、値が不正な依頼として断る（iOS の依頼は今までどおり処理する）。
+  全担当 PC で `scripts/orchestrator/install.sh` を流し直してから、visionOS の依頼を出す
+- 作成を担う PC の `gh` に、作成先の organization（既定は `shilokuma-vision`）でリポジトリを作る権限が要る。作ったリポジトリの owner は担当リポジトリに加わると検索の対象になるので、
+  その PC の `gh` とオーケストレーターのトークンが、今の担当の organization と同じ操作（検索・Issue / Discussion へのコメント・ラベル・push）を `shilokuma-vision` でもできるようにする
+  （fine-grained PAT なら organization ごとに承認が要る）
+- 全担当 PC とビルドの Mac（xcb のビルド先）に、visionOS の SDK と Apple Vision Pro の Simulator のランタイムが要る（Q2）。
+  Xcode の Settings → Components か `xcodebuild -downloadPlatform visionOS` で入れる
+
+visionOS のテンプレートで、作成の 2（名前の変更と Bundle ID）を手元で確かめた結果（2026-10-21・Xcode 26.6・visionOS 26.5 の Simulator。GitHub には作っていない）:
+
+- テンプレートを clone し、`scripts/rename.sh` から `OLD_NAME`（`VisionOSTemplateApp`）を読み、`scripts/rename.sh <アプリ名> <owner/repo>` と `APP_BUNDLE_IDENTIFIER` の書き換えを `create-repo.sh` と同じ手順で流すと、
+  旧名が `scripts/rename.sh` の中だけに残り、ビルドしたアプリの Bundle ID が依頼の値になる。`create-repo.sh` は直さずに使える
+- 名前を変えた後も、テンプレートの CI（`.github/workflows/_build.yml`）と同じ SwiftLint（`--strict`）と Apple Vision Pro の Simulator でのビルド・Unit テスト・UI テストが通る
+- ralph-kit の中継（`scripts/ralph-kit.sh version`）は名前を変えた後も使える。kit の `install.sh --check` は、リポジトリに CLAUDE.md の「ralph-loop による自律開発」の節が無いことだけを指摘する（iOS のテンプレートも CLAUDE.md を持たないので同じ）
+- 確かめるときは、`scripts/rename.sh` が最後に `gh repo view` / `gh repo edit --enable-discussions` を呼ぶので、`gh` を失敗するだけの偽物に差し替えた PATH で流す（Discussions は有効にできなかった旨の警告が出るだけで、名前の変更は終わる）
 
 **削除**:
 

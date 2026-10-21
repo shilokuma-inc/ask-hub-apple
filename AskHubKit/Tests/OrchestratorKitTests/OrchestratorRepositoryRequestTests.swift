@@ -76,7 +76,7 @@ struct OrchestratorRepositoryRequestTests {
         // 作ったリポジトリは、すぐに担当リポジトリとして扱う
         #expect(await orchestrator.config.repository(named: "shilokuma-inc/my-quiz-ios") != nil)
         let comment = try #require(github.ideaComments.first)
-        #expect(comment.hasPrefix("#5: shilokuma-inc/my-quiz-ios をクイズのテンプレートから作りました"))
+        #expect(comment.hasPrefix("#5: shilokuma-inc/my-quiz-ios を iOS のクイズのテンプレートから作りました"))
         #expect(comment.contains("- develop に push しました"))
         #expect(comment.contains("App Store Connect"))
         // コマンドのほかの出力（ローカルのパスを含みうる）は書かない

@@ -306,7 +306,7 @@ struct IdeaRequestModelTests {
         let sent = await model.send(Self.createRequest, to: "shilokuma-inc/ask-hub-apple")
 
         #expect(requester.sentRepositoryRequests == ["shilokuma-inc/ask-hub-apple 【新規アプリ】shilokuma-inc/my-quiz-ios"])
-        #expect(sent?.message == "my-quiz-ios の作成を依頼しました")
+        #expect(sent?.message == "my-quiz-ios（iOS）の作成を依頼しました")
         #expect(sent?.linkTitle == "ask-hub-apple#9 を GitHub で開く")
         #expect(model.sentRepositoryRequests.count == 1)
         #expect(model.repositoryRequestError == nil)
