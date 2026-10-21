@@ -56,6 +56,7 @@ public enum RepositoryRequest: Sendable, Equatable {
                 | 項目 | 値 |
                 | --- | --- |
                 | リポジトリ | \(request.repository) |
+                | プラットフォーム | \(request.platform.title) |
                 | テンプレート | \(request.template.title)（\(request.template.repository)） |
                 | アプリ名 | \(request.appName) |
                 | Bundle ID | \(request.bundleIdentifier) |
@@ -127,6 +128,7 @@ public enum RepositoryRequest: Sendable, Equatable {
 private struct RepositoryRequestPayload: Codable {
     let action: String
     let repository: String
+    var platform: String?
     var template: String?
     var appName: String?
     var bundleIdentifier: String?
@@ -136,7 +138,7 @@ private struct RepositoryRequestPayload: Codable {
     var force: Bool?
 
     private enum CodingKeys: String, CodingKey {
-        case action, repository, template, appName, bundleIdentifier, clone, deleteLocal, force
+        case action, repository, platform, template, appName, bundleIdentifier, clone, deleteLocal, force
         case isPrivate = "private"
     }
 
@@ -145,6 +147,7 @@ private struct RepositoryRequestPayload: Codable {
         switch request {
         case let .create(create):
             action = "create"
+            platform = create.platform.rawValue
             template = create.template.repository
             appName = create.appName
             bundleIdentifier = create.bundleIdentifier
@@ -163,6 +166,10 @@ private struct RepositoryRequestPayload: Codable {
         case "create":
             guard let template = template.flatMap(NewRepository.Template.init(repository:)),
                   let appName else {
+                return nil
+            }
+            // `platform` の無い目印（プラットフォームを書く前のアプリが書いたもの）は、テンプレートのプラットフォームとして読む
+            if let platform, NewRepository.Platform(rawValue: platform) != template.platform {
                 return nil
             }
             return .create(NewRepository(
@@ -189,12 +196,15 @@ private struct RepositoryRequestPayload: Codable {
 
 /// テンプレートから作る新しいアプリのリポジトリ
 public struct NewRepository: Sendable, Equatable {
-    /// 作成に使える GitHub のテンプレートリポジトリ。オーケストレーターはこの中のものだけを使う
+    /// 作成に使える GitHub のテンプレートリポジトリ。オーケストレーターはこの中のものだけを使う。
+    /// 画面ではプラットフォーム（`platform`）ごとに、この並び順で出す
     public enum Template: String, Sendable, CaseIterable, Identifiable {
-        /// 通常のアプリ
+        /// iOS の通常のアプリ
         case standard = "shilokuma-inc/template-app-ios"
-        /// クイズ系のアプリ
+        /// iOS のクイズ系のアプリ
         case quiz = "shilokuma-inc/template-quiz-app-ios"
+        /// visionOS の通常のアプリ
+        case visionOSStandard = "shilokuma-vision/template-app-visionos"
 
         public var id: String {
             rawValue
@@ -205,10 +215,10 @@ public struct NewRepository: Sendable, Equatable {
             rawValue
         }
 
-        /// 画面に出す名前
+        /// 画面に出す名前（プラットフォームの中での名前）。プラットフォームも添えるときは `qualifiedTitle`
         public var title: String {
             switch self {
-            case .standard: "通常"
+            case .standard, .visionOSStandard: "通常"
             case .quiz: "クイズ"
             }
         }
