@@ -877,6 +877,8 @@ GitHub には Issue / コメントにファイルを添付する公式の API �
 
 - **目印の `sha`（blob SHA）で取る**（`GET repos/{owner}/{repo}/git/blobs/{sha}`。内容は base64）。ブランチの `path` からは読まない（ブランチ上のファイルは書き込み権限があれば変えられる）
 - 取った内容の大きさが `size` と合い、git の blob SHA（`"blob <バイト数>\0"` + 内容の SHA-1）が `sha` と合うことを確かめ、合わなければ使わない
+- 応答の `content` は base64 で、60 文字ごとに改行が入る（改行は読み飛ばす）。`encoding` が `base64` でなければ使わない。応答の `size` が目印と合わなければ、中身を戻す前に断る
+- 404（blob が無い・リポジトリが見えない）は「見つからない」として扱う。形の誤った目印では GitHub に問い合わせない（`AskHubKit` の `GitHubAttachmentFetcher`・`GitBlobSHA`）
 - **信用する author が書いた本文・返信の目印だけを読む**（依頼 Issue は作成者と編集者。Discussion の本文・コメント・返信、PR の ask の返信は author）。それ以外の author の目印は無視する
 
 ### 種類と上限
