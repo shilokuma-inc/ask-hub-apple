@@ -104,6 +104,8 @@ struct FakeRuntimeState {
 
 final class FakeGitHub: OrchestratorGitHub {
     let state: OSAllocatedUnfairLock<FakeGitHubState>
+    /// 添付の片付け（`OrchestratorTestDoubles+AttachmentCleanup.swift`）
+    let cleanup = OSAllocatedUnfairLock(initialState: FakeAttachmentCleanupState())
 
     init(_ results: [Result<[ReadyDiscussion], TestError>]) {
         state = OSAllocatedUnfairLock(initialState: FakeGitHubState(results: results))

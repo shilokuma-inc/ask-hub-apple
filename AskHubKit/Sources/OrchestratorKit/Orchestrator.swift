@@ -123,6 +123,10 @@ public actor Orchestrator {
     let xcbStatus: any XcbStatusFetching
     /// 依頼の添付（画像・PDF など）を claude に読ませるために置く場所（リポジトリの外）。依頼ごとに `<owner>/<repo>/issue-<番号>` を作り、コマンドの後に消す
     let attachmentsDirectory: URL
+    /// 添付の片付けで、リポジトリごとに最後にマージ済みの最終 PR を探した時刻（`Orchestrator+AttachmentCleanup.swift`）
+    var attachmentCleanupChecks: [String: Date] = [:]
+    /// 添付を片付け終えた（または片付けるものが無かった）最終 PR（`owner/repo#番号` の小文字）。再起動までは探し直さない
+    var cleanedFinalPullRequests: Set<String> = []
     /// 担当リポジトリごとの、制御用 worktree が準備を終えていない `ready-for-loop` の Discussion の番号（最後に取得できたもの。手動ループ・信用しない author のものを除く）。
     /// 起動してからまだ一度も取得できていなければ `nil`（開始待ちのループのコメントを、終わったものとして消さない）
     var readyDiscussionNumbers: [String: [Int]]?
@@ -217,6 +221,9 @@ public actor Orchestrator {
 
         // 仮決め一覧: 最終 PR がマージされたら閉じ、マージ前に付いた指示ではループを再開する
         await handleDecisionLogs(statuses: &statuses)
+
+        // 添付: 最終 PR がマージされた epic の添付を askhub/attachments から消す（Discussion #669 の Q7）
+        await cleanUpAttachmentsOfMergedEpics()
 
         // 最終 PR への指示: マージ待ちの間に付いた指示ではループを再開する（仮決め一覧が無い epic でも直させる）
         await handleFinalPullRequestInstructions(statuses: &statuses)
