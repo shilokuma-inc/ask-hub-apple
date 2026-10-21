@@ -19,38 +19,49 @@ struct VerifyProblemSection: View {
                     .focused(isEditing)
                     // 依頼を作った後は、コメントを依頼の本文とそろえるため変えさせない
                     .disabled(model.isSending || model.createdRequest != nil)
-                if let errorMessage = model.errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
-                }
-                Button {
-                    isEditing.wrappedValue = false
-                    isConfirming = true
-                } label: {
-                    if model.isSending {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text(model.isRetryingComment ? "コメントだけを再送する" : "問題ありとして再修正を依頼する")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .disabled(!model.canSend)
-                // 依頼とコメントは GitHub に書き込むので、送る内容を見せて確かめる
-                .confirmationDialog(
-                    model.isRetryingComment ? "コメントだけを再送しますか？" : "再修正を依頼しますか？",
-                    isPresented: $isConfirming,
-                    titleVisibility: .visible
-                ) {
-                    Button(model.isRetryingComment ? "再送する" : "依頼する") {
-                        Task { await model.send() }
-                    }
-                } message: {
-                    Text(model.confirmation)
-                }
             }
         } header: {
             Text("問題あり")
+        }
+
+        if !model.isCompleted {
+            // 添付は依頼の本文とコメントの両方の末尾に付く。依頼を作った後は変えさせない（コメントの再試行で上げ直さない）
+            AttachmentPickerSection(attachments: $model.attachments, isDisabled: model.isSending || model.createdRequest != nil)
+            sendSection
+        }
+    }
+
+    private var sendSection: some View {
+        Section {
+            if let errorMessage = model.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+            }
+            Button {
+                isEditing.wrappedValue = false
+                isConfirming = true
+            } label: {
+                if model.isSending {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Text(model.isRetryingComment ? "コメントだけを再送する" : "問題ありとして再修正を依頼する")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .disabled(!model.canSend)
+            // 依頼とコメントは GitHub に書き込むので、送る内容を見せて確かめる
+            .confirmationDialog(
+                model.isRetryingComment ? "コメントだけを再送しますか？" : "再修正を依頼しますか？",
+                isPresented: $isConfirming,
+                titleVisibility: .visible
+            ) {
+                Button(model.isRetryingComment ? "再送する" : "依頼する") {
+                    Task { await model.send() }
+                }
+            } message: {
+                Text(model.confirmation)
+            }
         } footer: {
             Text("確認手順のとおりにならなかったら、同じリポジトリに再修正の依頼を作り、この Issue に問題の内容をコメントします。Issue は閉じません。再修正の後にもう一度確かめてください")
         }
