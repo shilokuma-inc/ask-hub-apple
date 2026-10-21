@@ -52,8 +52,8 @@ public enum AttachmentKind: Sendable, Equatable {
     /// MIME タイプから決める。`image/` で始まるものは画像、`application/pdf` は PDF、それ以外はテキスト
     public init(mimeType: String) {
         // `application/pdf; charset=…` のような引数は落として判定する
-        let type = mimeType.split(separator: ";", maxSplits: 1).first.map(String.init)?
-            .trimmingCharacters(in: .whitespaces).lowercased() ?? ""
+        let essence = mimeType.split(separator: ";", maxSplits: 1).first ?? ""
+        let type = essence.trimmingCharacters(in: .whitespaces).lowercased()
         if type.hasPrefix("image/") {
             self = .image
         } else if type == "application/pdf" {

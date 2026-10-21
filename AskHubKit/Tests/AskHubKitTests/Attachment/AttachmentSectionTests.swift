@@ -108,7 +108,7 @@ struct AttachmentFileNameTests {
         " . .x.png",
         String(repeating: "a", count: 99) + " b",
         String(repeating: "a", count: 98) + " .png" + String(repeating: "b", count: 10),
-        "\u{3000}全角の空白.png\u{3000}",
+        "\u{3000}全角の空白.png\u{3000}"
     ])
     func sanitizingTwiceKeepsResult(input: String) {
         let once = AttachmentFileName.sanitized(input)
