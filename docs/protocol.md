@@ -890,7 +890,10 @@ GitHub には Issue / コメントにファイルを添付する公式の API �
 
 - 添付できるのは、`claude` が読めるテキスト（UTF-8 で読めるもの。`.md`・`.txt`・`.json`・`.csv`・`.yaml` など）・画像（PNG / JPEG / GIF / WebP）・PDF（Q2）。
   `.fig` / `.sketch` / `.psd` などデザインツール固有のファイルは、書き出した画像や PDF にして添付する（Q3）
-- 上限の既定は 1 ファイル 10 MB・1 回の送信で 10 ファイルまで
+- 上限の既定は 1 ファイル 10 MB・1 回の送信で 10 ファイルまで（`AskHubKit` の `AttachmentLimits`）
+- アプリの添付欄（`AttachmentPickerSection`。依頼・回答・「問題あり」で共通）は、`fileImporter` で選べる種類をテキスト（プレーンテキスト・Markdown・JSON・CSV・YAML）・PNG・JPEG・GIF・WebP・PDF に絞る。
+  HEIC など、ほかの画像は選べない（書き出した PNG / JPEG を添付してもらう）。上限を超えるもの・UTF-8 で読めないテキスト・空のファイルは、選んだ時点で知らせて一覧に足さない
+- 選んだファイルは、読む間だけ security-scoped のアクセスを開いて `Data` にし、送るまでメモリにだけ持つ（ファイルの場所は保存しない）。添付欄には「public のリポジトリでは誰でも見られる（後から消しても履歴に残る）」旨を出す（確認ダイアログは出さない。Q4）
 
 ## リポジトリの作成・削除
 
