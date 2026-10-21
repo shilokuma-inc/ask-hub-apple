@@ -86,7 +86,13 @@ public struct AttachmentMarker: Sendable, Equatable, Hashable, Codable {
             guard let closeRange = afterOpen.range(of: MarkerComment.close) else {
                 break
             }
-            if let marker = parse(inner: afterOpen[..<closeRange.lowerBound]),
+            // 本文に閉じていない `<!--`（コードの例など）があると、次の目印の `-->` と組になる。
+            // 中にさらに `<!--` があれば、最後のものからを 1 つのコメントとみなす（目印を読み落とさないため）
+            var inner = afterOpen[..<closeRange.lowerBound]
+            if let lastOpen = inner.range(of: MarkerComment.open, options: .backwards) {
+                inner = inner[lastOpen.upperBound...]
+            }
+            if let marker = parse(inner: inner),
                seenPaths.insert(marker.path).inserted {
                 markers.append(marker)
             }

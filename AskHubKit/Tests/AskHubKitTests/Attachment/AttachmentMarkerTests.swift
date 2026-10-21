@@ -72,6 +72,14 @@ struct AttachmentMarkerTests {
         #expect(AttachmentMarker.parseAll(body).isEmpty)
     }
 
+    @Test func readsMarkersAfterUnclosedCommentInBody() {
+        // 本文のコードの例などにある閉じていない `<!--` が、最初の目印の `-->` と組になっても読み落とさない
+        let first = marker()
+        let second = marker(path: "files/\(UUID().uuidString.lowercased())/b.png", name: "b.png")
+        let body = "`<!--` の書き方について\n\n### 添付ファイル\n- a\n  \(first.marker)\n- b\n  \(second.marker)"
+        #expect(AttachmentMarker.parseAll(body) == [first, second])
+    }
+
     @Test func ignoresUnclosedComment() {
         let text = marker().marker
         #expect(AttachmentMarker.parseAll(String(text.dropLast(3))).isEmpty)
