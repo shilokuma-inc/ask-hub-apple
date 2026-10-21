@@ -440,7 +440,8 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - **エラー**: 403（レート制限でない）は権限不足、ワークフローの 404 は「このリポジトリにはリリースのワークフローがありません」、422 は GitHub の説明から
   `workflow_dispatch` が無い・`ref` が無い・inputs が合わないを見分ける（`WorkflowError.dispatchRejection`）。レート制限（403 / 429・`Retry-After`）は待って再試行する
 - **トークンの権限**: Fine-grained PAT に、TestFlight への手動アップロードと同じ **Actions の Read and write** に加えて **Contents の Read** が要る
-  （release ブランチ・タグ・下書き・`MARKETING_VERSION` の読み取り）。Contents の Write は要らない（書き込みはワークフローが `GITHUB_TOKEN` で行う）
+  （release ブランチ・タグ・下書き・`MARKETING_VERSION` の読み取り）。リリース準備には Contents の Write は要らない（書き込みはワークフローが `GITHUB_TOKEN` で行う）。
+  ただし、依頼・回答・「問題あり」にファイルを添付するには、依頼先の **Contents の Read and write** が要る（下の「添付ファイル」）
 - **アプリの「リリース準備」**（依頼タブ）: 送る前に形・`isTaken`・`unreleasedVersions`（タグの無い別の release ブランチ）だけを見る。起動の直後は、
   起動の直前に読み直した直近の run より id の大きい `develop` の `workflow_dispatch` の run が出るまで「起動した」状態を保ち、二重に起動しない（端末の時計のずれに左右されないよう、開始時刻とは比べない）。画面の流れは [docs/release.md](release.md) の「アプリからのリリース準備」
 - **リリースの進み具合と最新情報の確定**（依頼タブの「リリース準備」）: 準備中のリリース（release ブランチがあってタグが無いもの）ごとに、
@@ -817,7 +818,8 @@ GitHub には Issue / コメントにファイルを添付する公式の API �
   アプリのコードを含まないので、このブランチへの push では Build などのワークフローが動かない。開発に使わない・手で消さない
 - パス: `files/<UUID（小文字）>/<ファイル名>`。添付 1 つに UUID 1 つ。
   ファイル名は元の名前から `/`・`\`・制御文字・先頭の `.` を除き、前後の空白を落として 100 文字まで（拡張子を残して前を詰める）にする。空になったら `attachment` にする（`AskHubKit` の `AttachmentFileName`）
-- アップロードには、トークンに依頼先のリポジトリの **Contents の書き込み権限**が要る
+- アップロードには、トークンに依頼先のリポジトリの **Contents の書き込み権限（Read and write）**が要る（アプリの設定画面のトークンの説明にも書く）。
+  添付しないなら今までどおり Issues の書き込みだけでよい
 - **public のリポジトリに置いたファイルは誰でも読める。** ブランチから消しても git の履歴に残る（アプリの添付欄に注意書きを出す。Q4）
 
 ### アップロード
