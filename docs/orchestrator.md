@@ -567,9 +567,19 @@ visionOS のテンプレートから作るときの前提（[Discussion #705](ht
 
 - **オーケストレーターをアプリより先に更新する。** 古いオーケストレーターは visionOS のテンプレートを知らず、値が不正な依頼として断る（iOS の依頼は今までどおり処理する）。
   全担当 PC で `scripts/orchestrator/install.sh` を流し直してから、visionOS の依頼を出す
-- 作成を担う PC の `gh` に、作成先の organization（既定は `shilokuma-vision`）でリポジトリを作る権限が要る。作ったリポジトリの owner は担当リポジトリに加わると検索の対象になる
+- 作成を担う PC の `gh` に、作成先の organization（既定は `shilokuma-vision`）でリポジトリを作る権限が要る。作ったリポジトリの owner は担当リポジトリに加わると検索の対象になるので、
+  その PC の `gh` とオーケストレーターのトークンが、今の担当の organization と同じ操作（検索・Issue / Discussion へのコメント・ラベル・push）を `shilokuma-vision` でもできるようにする
+  （fine-grained PAT なら organization ごとに承認が要る）
 - 全担当 PC とビルドの Mac（xcb のビルド先）に、visionOS の SDK と Apple Vision Pro の Simulator のランタイムが要る（Q2）。
   Xcode の Settings → Components か `xcodebuild -downloadPlatform visionOS` で入れる
+
+visionOS のテンプレートで、作成の 2（名前の変更と Bundle ID）を手元で確かめた結果（2026-10-21・Xcode 26.6・visionOS 26.5 の Simulator。GitHub には作っていない）:
+
+- テンプレートを clone し、`scripts/rename.sh` から `OLD_NAME`（`VisionOSTemplateApp`）を読み、`scripts/rename.sh <アプリ名> <owner/repo>` と `APP_BUNDLE_IDENTIFIER` の書き換えを `create-repo.sh` と同じ手順で流すと、
+  旧名が `scripts/rename.sh` の中だけに残り、ビルドしたアプリの Bundle ID が依頼の値になる。`create-repo.sh` は直さずに使える
+- 名前を変えた後も、テンプレートの CI（`.github/workflows/_build.yml`）と同じ SwiftLint（`--strict`）と Apple Vision Pro の Simulator でのビルド・Unit テスト・UI テストが通る
+- ralph-kit の中継（`scripts/ralph-kit.sh version`）は名前を変えた後も使える。kit の `install.sh --check` は、リポジトリに CLAUDE.md の「ralph-loop による自律開発」の節が無いことだけを指摘する（iOS のテンプレートも CLAUDE.md を持たないので同じ）
+- 確かめるときは、`scripts/rename.sh` が最後に `gh repo view` / `gh repo edit --enable-discussions` を呼ぶので、`gh` を失敗するだけの偽物に差し替えた PATH で流す（Discussions は有効にできなかった旨の警告が出るだけで、名前の変更は終わる）
 
 **削除**:
 
