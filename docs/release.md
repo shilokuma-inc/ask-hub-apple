@@ -406,7 +406,7 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 - Secrets は Metadata/App Store と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`）。新しい Secret・vars は要らない
 - vars は任意の `ENABLE_DELIVERY`・`ENABLE_MACOS_DELIVERY`（上の「流れ」）
 - アプリのトークン（Fine-grained PAT）は、リリース準備には Actions の Read and write（起動と run の表示）と Contents の Read（release ブランチ・下書きの読み取り）があればよい
-  （依頼・回答にファイルを添付するときは Contents の Read and write が要る。`docs/protocol.md` の「添付ファイル」）
+  （依頼・回答・「問題あり」にファイルを添付するときは Contents の Read and write が要る。`docs/protocol.md` の「添付ファイル」）
 
 ## 最新情報の確定
 
