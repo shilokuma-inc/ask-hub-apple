@@ -157,6 +157,55 @@ extension AskHubUITests {
     }
 }
 
+// 実機確認の「問題あり」の添付（Discussion #669 のタスク 9）。システムのファイルピッカーは操作せず、サンプルの添付から確かめる
+extension AskHubUITests {
+    @MainActor
+    func testReportVerificationProblemWithAttachments() throws {
+        let app = XCUIApplication()
+        // サンプルデータでは添付を上げ、依頼とコメントを作ったことにして GitHub には送らない
+        app.launchArguments += ["-AskHubSampleInbox", "-AskHubSampleAttachments"]
+        app.launch()
+
+        app.tabBars.buttons["実機確認"].tap()
+        let row = app.staticTexts["PAT の Keychain への保存と macOS の設定画面の見た目"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        let field = app.textFields["何をしたら・どうなったか"]
+        scrollToHittable(field, in: app)
+        field.tap()
+        field.typeText("保存した PAT が再起動後に消える")
+        app.buttons["keyboard-done"].tap()
+
+        // 添付欄は「問題あり」の入力の下。名前・種類・大きさと注意書きを出し、削除できる
+        let memo = app.staticTexts["memo.md"]
+        scrollToHittable(memo, in: app)
+        XCTAssertTrue(app.staticTexts["design.png"].exists)
+        let notice = NSPredicate(format: "label CONTAINS %@", "public のリポジトリでは、添付したファイルは誰でも見られます")
+        XCTAssertTrue(app.staticTexts.matching(notice).firstMatch.exists)
+        let list = XCTAttachment(screenshot: app.screenshot())
+        list.name = "verify-problem-attachments"
+        list.lifetime = .keepAlways
+        add(list)
+        app.buttons["memo.md を削除"].tap()
+        XCTAssertTrue(memo.waitForNonExistence(timeout: 5))
+
+        let send = app.buttons["問題ありとして再修正を依頼する"]
+        scrollToHittable(send, in: app)
+        send.tap()
+        // 確認ダイアログで、添付を上げてから依頼する旨を出す
+        let confirm = app.buttons["依頼する"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        let withAttachments = NSPredicate(format: "label CONTAINS %@", "添付 1 件を shilokuma-inc/ask-hub-apple に上げてから")
+        XCTAssertTrue(app.staticTexts.matching(withAttachments).firstMatch.exists)
+        confirm.tap()
+
+        XCTAssertTrue(app.staticTexts["再修正の依頼 #41 を作り、この Issue にコメントしました"].waitForExistence(timeout: 5))
+        // 送り終えたら添付欄は出さない
+        XCTAssertFalse(app.buttons["ファイルを添付"].exists)
+    }
+}
+
 // 任意判断の詳細画面での承認・指示（Discussion #349）
 extension AskHubUITests {
     @MainActor
