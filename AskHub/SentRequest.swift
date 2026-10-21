@@ -41,11 +41,11 @@ struct SentRepositoryRequest: Equatable, Identifiable {
     let issue: CreatedIssue
     let id = UUID()
 
-    /// 例: `my-quiz-ios の作成を依頼しました`
+    /// 例: `my-quiz-ios（iOS）の作成を依頼しました`
     var message: String {
         switch request {
-        case .create:
-            "\(InboxSubject.shortRepository(request.repository)) の作成を依頼しました"
+        case let .create(newRepository):
+            "\(InboxSubject.shortRepository(request.repository))（\(newRepository.platform.title)）の作成を依頼しました"
 
         case .remove:
             "\(InboxSubject.shortRepository(request.repository)) を担当から外す依頼をしました"
