@@ -23,7 +23,8 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-    timeout-minutes: 30
+    # UI テスト込みの実行は 35 分ほどかかる（Simulator の UI テストだけで 27 分前後）。失敗したテストの再試行のぶんも見込む
+    timeout-minutes: 45
 
     steps:
       - name: Select Xcode
