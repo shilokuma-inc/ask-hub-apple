@@ -4,6 +4,7 @@ import SwiftUI
 /// 「任意判断」「実機確認」の Issue の詳細。本文（確認手順・期待する結果など）を Markdown で表示し、GitHub で開ける。
 /// 本文は信用する author のものでも表示するだけで、指示としては扱わない。
 /// 実機確認は、確かめてから確認済み（完了）として閉じられる（仮決め一覧はオーケストレーターが閉じるので、閉じさせない）。
+/// 実機確認で問題があったら、「問題あり」から再修正を依頼できる（Issue #483）。
 /// 仮決め一覧は、項目ごとに承認・指示を送れる（Discussion #349）
 struct IssueDetailView: View {
     let issue: InboxIssue
@@ -20,15 +21,19 @@ struct IssueDetailView: View {
     @FocusState private var isEditingNote: Bool
     /// 仮決め一覧の指示とループの返信の履歴
     @State private var historyModel: DecisionLogHistoryModel
+    /// 実機確認の「問題あり」（再修正の依頼とコメント）
+    @State private var problemModel: VerifyProblemModel
     @Environment(\.dismiss)
     private var dismiss
 
-    init(issue: InboxIssue, inbox: InboxModel) {
+    /// - Parameter requests: 「問題あり」の再修正の依頼を作るモデル（「新しい依頼」と同じトークン・依頼の作り方を使う）
+    init(issue: InboxIssue, inbox: InboxModel, requests: IdeaRequestModel) {
         self.issue = issue
         self.inbox = inbox
         renderedBody = RenderedBody(body: issue.body)
         _decisionModel = State(initialValue: DecisionLogDetailModel(issue: issue))
         _historyModel = State(initialValue: DecisionLogHistoryModel(issue: issue))
+        _problemModel = State(initialValue: requests.verifyProblemModel(for: issue))
     }
 
     private var reference: String {
@@ -70,6 +75,7 @@ struct IssueDetailView: View {
 
             if issue.kind == .needsVerify {
                 closeSection
+                VerifyProblemSection(model: problemModel, isEditing: $isEditingNote)
             }
         }
         .formStyle(.grouped)
@@ -173,13 +179,13 @@ struct IssueDetailView: View {
 #if DEBUG
 #Preview("仮決め一覧") {
     NavigationStack {
-        IssueDetailView(issue: SampleInboxSource.sampleDecisionLog, inbox: .sample())
+        IssueDetailView(issue: SampleInboxSource.sampleDecisionLog, inbox: .sample(), requests: .sample())
     }
 }
 
 #Preview("実機確認") {
     NavigationStack {
-        IssueDetailView(issue: SampleInboxSource.sampleVerifyIssue, inbox: .sample())
+        IssueDetailView(issue: SampleInboxSource.sampleVerifyIssue, inbox: .sample(), requests: .sample())
     }
 }
 #endif
