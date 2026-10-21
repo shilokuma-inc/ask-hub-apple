@@ -44,8 +44,9 @@ struct SettingsView: View {
                     Text("""
                         Fine-grained PAT を入力してください。依頼の作成と、実機確認の Issue を閉じるのに \
                         Issues の書き込み（Read and write）が要ります。マージ待ちの最終 PR を TestFlight に上げるには \
-                        Actions の書き込み（Read and write）も要ります。依頼タブの「リリース準備」には、Actions の書き込みに加えて \
-                        Contents の読み取り（Read）が要ります。トークンはこの端末の Keychain にだけ保存します。
+                        Actions の書き込み（Read and write）も要ります。Contents は、依頼・回答・「問題あり」にファイルを添付するのに \
+                        書き込み（Read and write）が、依頼タブの「リリース準備」に読み取り（Read）が要ります（リリース準備には Actions の書き込みも要ります）。\
+                        トークンはこの端末の Keychain にだけ保存します。
                         """)
                 }
 
