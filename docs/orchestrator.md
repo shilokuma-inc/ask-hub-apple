@@ -556,6 +556,19 @@ epic の最終 PR（`epic-final`）がマージされたら、その epic の添
 3. 成功したら、clone した場合は設定ファイルの `repositories` に加える（元のファイルは `orchestrator.json.bak` に写す）。
    次のポーリングを待たずに担当リポジトリとして扱う
 
+テンプレートは `AskHubKit` の `NewRepository.Template` の一覧にあるものだけを使う（iOS の通常・クイズと、visionOS の `shilokuma-vision/template-app-visionos`）。
+プラットフォームで処理は分けず、どのテンプレートも同じスクリプトに渡す（visionOS のテンプレートも `scripts/rename.sh` と `Configs/Project.xcconfig` を持つ）。
+結果のコメントには、プラットフォームを添えたテンプレートの名前（例: 「visionOS の通常のテンプレートから作りました」）を書く。
+目印の `platform` がテンプレートと合わない依頼は、値が不正な依頼として作らずに理由をコメントする。
+
+visionOS のテンプレートから作るときの前提（[Discussion #705](https://github.com/shilokuma-inc/ask-hub-apple/discussions/705)）:
+
+- **オーケストレーターをアプリより先に更新する。** 古いオーケストレーターは visionOS のテンプレートを知らず、値が不正な依頼として断る（iOS の依頼は今までどおり処理する）。
+  全担当 PC で `scripts/orchestrator/install.sh` を流し直してから、visionOS の依頼を出す
+- 作成を担う PC の `gh` に、作成先の organization（既定は `shilokuma-vision`）でリポジトリを作る権限が要る。作ったリポジトリの owner は担当リポジトリに加わると検索の対象になる
+- 全担当 PC とビルドの Mac（xcb のビルド先）に、visionOS の SDK と Apple Vision Pro の Simulator のランタイムが要る（Q2）。
+  Xcode の Settings → Components か `xcodebuild -downloadPlatform visionOS` で入れる
+
 **削除**:
 
 1. ループのプロセスが動いていれば外さない。最終 PR のコンフリクトを裏で解消している間も外さない（解消はメインの checkout に一時 worktree を作るため）。
