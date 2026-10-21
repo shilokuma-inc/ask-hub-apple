@@ -35,7 +35,8 @@ public enum AttachmentSection {
     public static func url(for attachment: AttachmentMarker, repository: String) -> URL? {
         var components: [String] = repository.split(separator: "/").map(String.init)
         components += ["blob", attachment.commit]
-        components += attachment.path.split(separator: "/").map(String.init)
+        // 結合文字などが `/` と 1 つの Character にまとまることがあるので、Unicode スカラーの単位で分ける
+        components += attachment.path.unicodeScalars.split(separator: "/").map { String(String.UnicodeScalarView($0)) }
         let path = components
             .map { $0.addingPercentEncoding(withAllowedCharacters: pathComponentAllowed) ?? $0 }
             .joined(separator: "/")

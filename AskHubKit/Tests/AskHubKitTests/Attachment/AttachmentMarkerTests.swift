@@ -72,6 +72,16 @@ struct AttachmentMarkerTests {
         #expect(AttachmentMarker.parseAll(body).isEmpty)
     }
 
+    @Test(arguments: ["x<!--y.png", "<!--.png", "a<!--b-->c.png", "<<>>.txt"])
+    func roundTripsNamesWithCommentDelimiters(name: String) {
+        // 名前の `<` も置き換えるので、目印の中に生の `<!--` や `-->` が出ない
+        let original = marker(path: AttachmentMarker.path(id: UUID(), fileName: name), name: name)
+        let text = original.marker
+        #expect(text.components(separatedBy: "<").count == 2)
+        #expect(text.components(separatedBy: ">").count == 2)
+        #expect(AttachmentMarker.parseAll("前置き `<!--` の例\n" + text) == [original])
+    }
+
     @Test func readsMarkersAfterUnclosedCommentInBody() {
         // 本文のコードの例などにある閉じていない `<!--` が、最初の目印の `-->` と組になっても読み落とさない
         let first = marker()
@@ -137,7 +147,11 @@ struct AttachmentMarkerTests {
         #expect(marker(path: AttachmentMarker.path(id: id, fileName: "...")).isWellFormed)
     }
 
-    @Test(arguments: [". x.png", "..  x.png", String(repeating: "a", count: 99) + " b", "", "../..", "a\nb.txt"])
+    @Test(arguments: [
+        ". x.png", "..  x.png", String(repeating: "a", count: 99) + " b", "", "../..", "a\nb.txt",
+        // 先頭の結合文字・肌の色の修飾子は、前の `/` と 1 つの Character にまとまる
+        ".\u{0301}x.png", "\u{0301}x.png", "\u{1F3FB}x.png"
+    ])
     func builtPathIsAlwaysWellFormed(fileName: String) {
         // 自分で作ったパスを、読む側が形の誤った目印として捨てないこと
         let original = marker(path: AttachmentMarker.path(id: UUID(), fileName: fileName))

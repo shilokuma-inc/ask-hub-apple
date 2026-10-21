@@ -63,12 +63,15 @@ public struct AttachmentMarker: Sendable, Equatable, Hashable, Codable {
 
     /// 添付欄に置く HTML コメント。
     ///
-    /// 文字列の中の `>` は `\u003e` にする（目印の終わりの `-->` と取り違えないため。`VerifyMarker` と同じ）
+    /// 文字列の中の `>` は `\u003e`、`<` は `\u003c` にする（目印の終わりの `-->` と取り違えないため。`VerifyMarker` と同じ）。
+    /// `<` も置き換えるのは、名前の `<!--` を、読む側が本文の閉じていないコメントと見分けられるようにするため（`parseAll`）
     public var marker: String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let encoded = (try? encoder.encode(self)).flatMap { String(bytes: $0, encoding: .utf8) } ?? "{}"
-        let json = encoded.replacingOccurrences(of: ">", with: "\\u003e")
+        let json = encoded
+            .replacingOccurrences(of: ">", with: "\\u003e")
+            .replacingOccurrences(of: "<", with: "\\u003c")
         return "\(MarkerComment.open) \(Self.keyword) \(json) \(MarkerComment.close)"
     }
 
@@ -118,7 +121,9 @@ public struct AttachmentMarker: Sendable, Equatable, Hashable, Codable {
     }
 
     private static func isWellFormedPath(_ path: String) -> Bool {
-        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        // 結合文字などが `/` と 1 つの Character にまとまることがあるので、Unicode スカラーの単位で分ける
+        let parts = path.unicodeScalars.split(separator: "/", omittingEmptySubsequences: false)
+            .map { String(String.UnicodeScalarView($0)) }
         guard parts.count == 3, parts[0] == "files",
               let id = UUID(uuidString: String(parts[1])),
               id.uuidString.lowercased() == parts[1] else {

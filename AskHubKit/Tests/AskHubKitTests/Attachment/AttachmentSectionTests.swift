@@ -61,6 +61,20 @@ struct AttachmentSectionTests {
             + "%E3%83%87%E3%82%B6%E3%82%A4%E3%83%B3%20%E6%A1%88.png")
     }
 
+    @Test func linkKeepsFileNameStartingWithCombiningCharacter() throws {
+        let name = "\u{0301}x.png"
+        let attachment = AttachmentMarker(
+            path: "files/\(Self.id)/\(name)",
+            sha: String(repeating: "b", count: 40),
+            commit: Self.commit,
+            name: name,
+            size: 1,
+            type: "image/png"
+        )
+        let url = try #require(AttachmentSection.url(for: attachment, repository: "o/r"))
+        #expect(url.absoluteString == "https://github.com/o/r/blob/\(Self.commit)/files/\(Self.id)/%CC%81x.png")
+    }
+
     @Test func escapesMarkdownInLinkText() {
         let result = AttachmentSection.appending([marker(name: "[a](b)*_.png")], to: "", repository: "o/r")
         #expect(result.contains(#"- [\[a\]\(b\)\*\_.png](https://"#))
