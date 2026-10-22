@@ -79,10 +79,11 @@ public struct InboxFetcher: Sendable {
     }
 
     /// 「任意判断」「実機確認」に出す Issue を、更新の新しい順に返す。
-    /// 信用する author が作ったものだけを扱う（public リポジトリでは誰でも Issue を作れ、ラベルの付いた Issue を装えるため）
+    /// 信用する author が作ったものだけを扱う（public リポジトリでは誰でも Issue を作れ、ラベルの付いた Issue を装えるため）。
+    /// search のページングで同じ Issue が 2 回来たら、先のものだけを残す（`List` の同じ `ForEach` に同じ id を出さない）
     public func lowPriorityIssues(orgs: [String]) async throws -> [InboxIssue] {
         var trusted: [InboxIssue] = []
-        for issue in try await source.lowPriorityIssues(orgs: orgs)
+        for issue in try await source.lowPriorityIssues(orgs: orgs).uniqued(by: \.id)
         where await trust.trustedAuthors(for: issue.repository).contains(issue.author) {
             trusted.append(issue)
         }
