@@ -153,6 +153,31 @@ struct InboxFetcherTests {
         #expect(epics[0].assignee == nil)
     }
 
+    @Test func keepsFirstOfSubjectsAndQuestionsListedTwice() async throws {
+        // search のページングの途中で順位が動き、同じ Discussion が 1 ページ目と 2 ページ目の両方に出る
+        let discussion = InboxSubject.fixture(kind: .discussion, nodeID: "D_1")
+        let pullRequest = InboxSubject.fixture(kind: .pullRequest, nodeID: "PR_1")
+        let first = InboxComment.fixture(nodeID: "C_1", body: #"<!-- ask-hub:question id="d1-q1" -->"#, createdAt: 100)
+        let second = InboxComment.fixture(nodeID: "C_2", body: #"<!-- ask-hub:question id="d1-q2" -->"#, createdAt: 300)
+        let ask = InboxComment.fixture(nodeID: "C_3", body: #"<!-- ask-hub:question id="pr1-1" -->"#, createdAt: 200)
+        let source = StubSource(
+            subjects: [discussion, pullRequest, discussion],
+            threads: [
+                // 同じスレッドが 2 回返っても、質問は 1 つ
+                "D_1": [
+                    QuestionThread(comment: first, replyAuthors: []),
+                    QuestionThread(comment: second, replyAuthors: []),
+                    QuestionThread(comment: first, replyAuthors: [])
+                ],
+                "PR_1": [QuestionThread(comment: ask, replyAuthors: [])]
+            ]
+        )
+        let questions = try await InboxFetcher(source: source, trustedAuthors: TrustedAuthors(["mrs1669"]))
+            .unansweredQuestions(orgs: ["shilokuma-inc"])
+        #expect(questions.map(\.id) == ["C_1", "C_3", "C_2"])
+        #expect(InboxQuestion.groupedByDiscussion(questions).map(\.id) == ["C_1", "C_2", "C_3"])
+    }
+
     @Test func collectsQuestionsAcrossSubjectsOldestFirst() async throws {
         let discussion = InboxSubject.fixture(kind: .discussion, nodeID: "D_1")
         let pullRequest = InboxSubject.fixture(kind: .pullRequest, nodeID: "PR_1")
