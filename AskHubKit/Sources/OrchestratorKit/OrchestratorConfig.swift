@@ -34,7 +34,7 @@ public struct OrchestratorConfig: Sendable, Equatable {
     public let ciFixCommand: FinalReviewCommandTemplate
     /// ループの 1 周（state ファイルが書き直されてから）がこれより長く進まなければ、固まったとみなして止める
     public let iterationTimeout: Duration
-    /// 担当リポジトリの作成・削除の依頼（`repo-request`）に使うコマンドと場所
+    /// 担当リポジトリの作成・追加・削除の依頼（`repo-request`）に使うコマンドと場所
     public let repositoryCommands: RepositoryCommands
     /// 担当リポジトリに書き込み権限（write 以上）を持つアカウントも、そのリポジトリで信用する author とみなすか
     public let trustsRepositoryWriters: Bool
@@ -161,7 +161,7 @@ public struct RepositoryConfig: Sendable, Equatable {
     }
 }
 
-/// 担当リポジトリの作成・削除の依頼（`repo-request`）に使うコマンドと場所
+/// 担当リポジトリの作成・追加・削除の依頼（`repo-request`）に使うコマンドと場所
 public struct RepositoryCommands: Sendable, Equatable {
     /// テンプレートからリポジトリを作るコマンド。
     /// 末尾に `<テンプレート> <owner/repo> <アプリ名> <Bundle ID> <checkout のパス（clone しないなら空）> <public|private>` を足して実行する
@@ -169,12 +169,16 @@ public struct RepositoryCommands: Sendable, Equatable {
     /// ローカルの checkout・ループの worktree・DerivedData を消すコマンド。
     /// 末尾に `[--force] <checkout のパス> <制御用 worktree のパス>` を足して実行する
     public let remove: [String]
+    /// GitHub にある既存のリポジトリを担当に入れる準備（clone・ラベル・Discussions・ralph-kit の中継）をするコマンド。
+    /// 末尾に `<owner/repo> <checkout のパス> <依頼 Issue のある担当リポジトリの checkout のパス>` を足して実行する
+    public let add: [String]
     /// 新しいリポジトリを clone するディレクトリ（絶対パス）。checkout は `<ここ>/<リポジトリ名>` になる
     public let newCheckoutDirectory: String
 
-    public init(create: [String], remove: [String], newCheckoutDirectory: String) {
+    public init(create: [String], remove: [String], add: [String], newCheckoutDirectory: String) {
         self.create = create
         self.remove = remove
+        self.add = add
         self.newCheckoutDirectory = newCheckoutDirectory
     }
 
@@ -183,6 +187,7 @@ public struct RepositoryCommands: Sendable, Equatable {
         Self(
             create: ["\(homeDirectory)/.local/bin/askhub-create-repo"],
             remove: ["\(homeDirectory)/.local/bin/askhub-remove-repo"],
+            add: ["\(homeDirectory)/.local/bin/askhub-add-repo"],
             newCheckoutDirectory: newCheckoutDirectory
         )
     }

@@ -8,7 +8,12 @@ struct OrchestratorRepositoryRequestTests {
 
     static let hub = RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")
     static let notti = RepositoryConfig(owner: "shilokuma-inc", name: "notti-ios", checkoutPath: "/src/notti-ios")
-    static let commands = RepositoryCommands(create: ["/bin/create"], remove: ["/bin/remove"], newCheckoutDirectory: "/src")
+    static let commands = RepositoryCommands(
+        create: ["/bin/create"],
+        remove: ["/bin/remove"],
+        add: ["/bin/add"],
+        newCheckoutDirectory: "/src"
+    )
 
     static let createRequest = RepositoryRequest.create(NewRepository(
         repository: "shilokuma-inc/my-quiz-ios",
