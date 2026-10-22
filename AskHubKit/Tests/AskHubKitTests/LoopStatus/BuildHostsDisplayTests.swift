@@ -41,6 +41,14 @@ struct BuildHostsDisplayTests {
         #expect(hosts[3].loadText == "空きメモリ 80%")
     }
 
+    @Test func showsHostsWithTheSameNameOnce() {
+        var status = status()
+        status.report.hosts.append(BuildHost(name: "m1pro", state: .ok))
+        let hosts = status.hostDisplays
+        #expect(hosts.map(\.id) == ["m4max", "m1pro", "local", "mini2"])
+        #expect(hosts[1].statusText == "切断（接続できない）")
+    }
+
     @Test func staleWhenNotRewrittenForThirtyMinutes() {
         #expect(!status(checkedMinutesAgo: 29).isStale(now: now))
         #expect(status(checkedMinutesAgo: 31).isStale(now: now))

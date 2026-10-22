@@ -56,9 +56,10 @@ extension BuildHostsStatus {
         !report.isAssigned(now: now)
     }
 
-    /// 各 Mac の行（`build-hosts` の Issue の並び）
+    /// 各 Mac の行（`build-hosts` の Issue の並び）。同じ名前の Mac が 2 つ書かれていたら、先のものだけを出す
+    /// （名前を行の id にするので、重なると `List` の差分を当てるときに落ちることがある）
     public var hostDisplays: [BuildHostDisplay] {
-        report.hosts.map { host in
+        report.hosts.uniqued(by: \.name).map { host in
             let jobs = report.jobs.filter { $0.host == host.name }
             return BuildHostDisplay(
                 name: host.name,
