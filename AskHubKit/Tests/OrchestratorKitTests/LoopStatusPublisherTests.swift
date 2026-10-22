@@ -385,3 +385,25 @@ struct LoopStatusPublisherTests {
         #expect(decide(publisher, repository(at: now), loop(.running, at: now), at: now) == [.lookUp])
     }
 }
+
+// 前に使った状態用の Issue の番号（一覧が空で返ったときの確かめ。Issue #739）
+extension LoopStatusPublisherTests {
+    @Test func remembersIssueNumberAcrossForgetUntilNoTrustedIssueIsAdopted() {
+        var publisher = LoopStatusPublisher()
+        let body = repository(at: now)
+        publisher.adopt([record(7)], comments: [], repositoryKey: key, trustedAuthors: trusted)
+        #expect(publisher.knownNumber(repositoryKey: key) == 7)
+
+        // 書けなくて忘れても、前に使った番号は残す（一覧が空で返ったときに、作る前に確かめる）
+        publisher.forget(repositoryKey: key)
+        #expect(decide(publisher, body, [], at: now) == [.lookUp])
+        #expect(publisher.knownNumber(repositoryKey: key) == 7)
+
+        // 確かめた上で信用する author の Issue が無ければ、番号も忘れて作る
+        publisher.adopt([], comments: [], repositoryKey: key, trustedAuthors: trusted)
+        #expect(publisher.knownNumber(repositoryKey: key) == nil)
+        #expect(decide(publisher, body, [], at: now) == [.createIssue(body: body.issueBody)])
+        publisher.recordIssueCreated(number: 8, body: body, repositoryKey: key)
+        #expect(publisher.knownNumber(repositoryKey: key) == 8)
+    }
+}

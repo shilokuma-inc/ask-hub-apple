@@ -628,6 +628,9 @@ visionOS のテンプレートで、作成の 2（名前の変更と Bundle ID�
   （`.claude/ralph-loop.local.md`・`ralph-state.local.md`・`ralph-goal.local.md`・最新のループのログの更新時刻のうち新しいもの）
 - 状態用の Issue（ラベル `loop-status`、タイトル `【AskHub】ループの状態`）は、信用する author が作った open なもののうち最も新しく更新されたものを使う。
   無ければ閉じたものを開き直し、それも無ければ作る（ラベルが無ければ作る）。人が閉じても、次に書くときに開き直す
+- GitHub は障害のときに、Issue の一覧を 200 の空の配列で返すことがある（2026-10-22 に担当の全リポジトリで重複して作った。Issue #739）。
+  そのため、一覧に信用する author の Issue が無ければ、作る前に確かめる。前に使った Issue（番号は書けなかったときも覚えておく）を番号で読み、
+  open で `loop-status` が付いていればそれを使う。消えた・閉じている・覚えていない（起動の直後など）ときは、一覧をもう一度だけ取り直す
 - 本文にはリポジトリ全体の状態（担当 PC の確認時刻・利用上限の解除の時刻）を、自動ループの状態はそのループ（Discussion）のコメントに書く
   （[Discussion #425](https://github.com/shilokuma-inc/ask-hub-apple/discussions/425) の Q1。同じリポジトリで自動ループと手動ループが同時に回るため）。
   ゴール元の Discussion の番号が無い状態（手で始めた epic）はコメントに書かない

@@ -42,18 +42,20 @@ extension OrchestratorTests {
         #expect(github.loopStatusIssuesByNumber[101]?.body.contains("/src/ask-hub-apple") == false)
         #expect(github.loopStatusCommentsByIssue[101]?.contains { $0.body.contains("/src/ask-hub-apple") } == false)
 
+        // 一覧が空なら、作る前にもう一度だけ取り直す（GitHub は障害のときに空の配列を返すことがある）
+        #expect(github.loopStatusIssueListings == 2)
+
         // 変わらなければ、間隔より前は書かず、一覧も取り直さない
-        #expect(github.loopStatusIssueListings == 1)
         clock.withLock { $0 = $0.addingTimeInterval(60) }
         try await orchestrator.pollOnce()
         #expect(github.updatedLoopStatusIssues.isEmpty)
         #expect(github.updatedLoopStatusComments.isEmpty)
-        #expect(github.loopStatusIssueListings == 1)
+        #expect(github.loopStatusIssueListings == 2)
 
         // ループの状態が変われば、読み直してからコメントだけを書き換える
         runtime.set(.idle)
         try await orchestrator.pollOnce()
-        #expect(github.loopStatusIssueListings == 2)
+        #expect(github.loopStatusIssueListings == 3)
         #expect(github.updatedLoopStatusIssues.isEmpty)
         #expect(github.updatedLoopStatusComments.count == 1)
         #expect(github.loopCommentReport()?.state == .waitingToStart)
@@ -207,6 +209,89 @@ extension OrchestratorTests {
         #expect(github.loopStatusIssuesByNumber[9]?.isOpen == true)
         #expect(github.repositoryStatus(onIssue: 9) != nil)
         #expect(github.createdLoopStatusComments.isEmpty)
+    }
+
+    @Test func keepsUsingKnownIssueWhileListingComesBackEmpty() async throws {
+        let github = FakeGitHub([.success([])])
+        let runtime = FakeRuntime()
+        runtime.set(LoopStatus(stateFileExists: true, processAlive: false))
+        runtime.setEpic(EpicSnapshot(branch: "epic/mvp", goal: "- [x] A\n- [ ] B\n", state: nil, discussion: 12, loopPrepared: true))
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = OSAllocatedUnfairLock(initialState: start)
+        let orchestrator = try makeOrchestrator(github: github, runtime: runtime) { clock.withLock { $0 } }
+        try await orchestrator.pollOnce()
+        #expect(github.createdLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#101"])
+
+        // GitHub の障害で、一覧が空で返り続ける。前に使った #101 を番号で読んで書き続け、作り直さない
+        github.setEmptyLoopStatusListings(.max)
+        runtime.set(.idle)
+        try await orchestrator.pollOnce()
+        #expect(github.readLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#101"])
+        #expect(github.createdLoopStatusIssues.count == 1)
+        #expect(github.loopCommentReport()?.state == .waitingToStart)
+
+        // 書けなかった（覚えた内容を忘れた）後も、前に使った番号は残す
+        github.setLoopStatusFails(true)
+        clock.withLock { $0 = start.addingTimeInterval(LoopStatusReport.updateInterval) }
+        try await orchestrator.pollOnce()
+        github.setLoopStatusFails(false)
+        try await orchestrator.pollOnce()
+        #expect(github.createdLoopStatusIssues.count == 1)
+        #expect(github.updatedLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#101"])
+        #expect(github.loopStatusCommentsByIssue[101]?.count == 1)
+    }
+
+    @Test func createsStatusIssueWhenKnownIssueIsGone() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setLoopStatusIssues([LoopStatusIssueRecord(number: 9, author: "mrs1669", isOpen: true, updatedAt: .distantPast, body: "")])
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = OSAllocatedUnfairLock(initialState: start)
+        let orchestrator = try makeOrchestrator(github: github, runtime: FakeRuntime()) { clock.withLock { $0 } }
+        try await orchestrator.pollOnce()
+        #expect(github.updatedLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#9"])
+
+        // #9 が消された（ラベルが外された）。番号で読んでも無く、取り直した一覧にも無いので作る
+        github.setLoopStatusIssue(9, isOpen: nil)
+        clock.withLock { $0 = start.addingTimeInterval(LoopStatusReport.updateInterval) }
+        try await orchestrator.pollOnce()
+        #expect(github.readLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#9"])
+        #expect(github.loopStatusIssueListings == 3)
+        #expect(github.createdLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#101"])
+    }
+
+    @Test func movesToOpenIssueInsteadOfReopeningClosedKnownIssue() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setLoopStatusIssues([
+            LoopStatusIssueRecord(number: 5, author: "mrs1669", isOpen: true, updatedAt: .distantPast, body: ""),
+            LoopStatusIssueRecord(number: 9, author: "mrs1669", isOpen: true, updatedAt: .distantFuture, body: "")
+        ])
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = OSAllocatedUnfairLock(initialState: start)
+        let orchestrator = try makeOrchestrator(github: github, runtime: FakeRuntime()) { clock.withLock { $0 } }
+        try await orchestrator.pollOnce()
+        #expect(github.updatedLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#9"])
+
+        // 重複を片付けて #9 を閉じた直後に、一覧が 1 回だけ空で返った。閉じた #9 は開き直さず、取り直した一覧の open な #5 を使う
+        github.setLoopStatusIssue(9, isOpen: false)
+        github.setEmptyLoopStatusListings(1)
+        clock.withLock { $0 = start.addingTimeInterval(LoopStatusReport.updateInterval) }
+        try await orchestrator.pollOnce()
+        #expect(github.readLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#9"])
+        #expect(github.updatedLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#9", "shilokuma-inc/ask-hub-apple#5"])
+        #expect(github.loopStatusIssuesByNumber[9]?.isOpen == false)
+        #expect(github.createdLoopStatusIssues.isEmpty)
+    }
+
+    @Test func retriesListingOnceBeforeCreatingWithoutKnownIssue() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setLoopStatusIssues([LoopStatusIssueRecord(number: 9, author: "mrs1669", isOpen: true, updatedAt: .distantPast, body: "")])
+        // 起動の直後（前に使った番号を覚えていない）に、一覧が 1 回だけ空で返った
+        github.setEmptyLoopStatusListings(1)
+        try await makeOrchestrator(github: github, runtime: FakeRuntime()).pollOnce()
+        #expect(github.loopStatusIssueListings == 2)
+        #expect(github.readLoopStatusIssues.isEmpty)
+        #expect(github.createdLoopStatusIssues.isEmpty)
+        #expect(github.updatedLoopStatusIssues == ["shilokuma-inc/ask-hub-apple#9"])
     }
 
     @Test func writesLoopBeingStartedUnderLaunchedDiscussion() async throws {

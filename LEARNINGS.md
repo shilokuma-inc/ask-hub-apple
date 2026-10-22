@@ -99,6 +99,9 @@
 - `gh repo create --template` で作ったリポジトリは、テンプレートで Discussions を有効にしていても Discussions が無効のまま（カテゴリも 0 件）。
   そのまま依頼から Discussion を作らせると、claude は `Discussions are disabled for this repo` を見て作らずに終わる（終了コード 0）。
   REST の `PATCH /repos/{owner}/{repo}` に `has_discussions: true`（`gh repo edit --enable-discussions` と同じ）を送ると、GitHub が既定のカテゴリ（Ideas など）を作る。管理者の権限が要る（2026-10-21、Issue #719）
+- GitHub の障害のとき（2026-10-22 の「Errors loading Issues, Pull Requests, and search results」）は、`GET /repos/{owner}/{repo}/issues?labels=…` が Issue があっても
+  エラーにならず 200 の空の配列を返すことがあった（8 回中 3〜4 回。`gh issue list --label` の GraphQL も 8 回中 1 回）。番号での取得（`GET …/issues/{番号}`）は安定していた。
+  「一覧が空なら作る」処理はこれで重複を作る（オーケストレーターが担当の全リポジトリで状態用の Issue を作り直した）ので、前に使った番号を覚えておき、作る前に番号で読んで確かめる（Issue #739）
 
 ## ビルド・テスト
 

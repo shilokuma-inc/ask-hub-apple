@@ -56,19 +56,8 @@ struct FakeGitHubState {
     var decisionComments: [String] = []
     var closedDecisionLogs: [Int] = []
     var decisionCloseFails = false
-    /// 状態用の Issue（キーは番号）
-    var loopStatusIssues: [Int: LoopStatusIssueRecord] = [:]
-    var createdLoopStatusIssues: [String] = []
-    var updatedLoopStatusIssues: [String] = []
-    var loopStatusIssueListings = 0
-    var loopStatusFails = false
-    /// 状態用の Issue のコメント（キーは Issue の番号。古い順）
-    var loopStatusComments: [Int: [LoopStatusComment]] = [:]
-    var createdLoopStatusComments: [String] = []
-    var updatedLoopStatusComments: [String] = []
-    var deletedLoopStatusComments: [String] = []
-    /// コメントの操作だけを失敗させる（Issue の操作は `loopStatusFails`）
-    var loopStatusCommentsFail = false
+    /// 状態用の Issue（loop-status）とそのコメント（`OrchestratorTestDoubles+LoopStatus.swift`）
+    var loopStatus = FakeLoopStatusState()
     /// `manual-loop` の Discussion
     var manualLoops: [ManualLoopDiscussion] = []
     var manualLoopsFail = false

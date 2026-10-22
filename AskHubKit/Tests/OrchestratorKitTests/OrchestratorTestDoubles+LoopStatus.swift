@@ -3,141 +3,198 @@ import Foundation
 @testable import OrchestratorKit
 import os
 
+/// FakeGitHub の、状態用の Issue（loop-status）とそのコメントの状態
+struct FakeLoopStatusState {
+    /// 状態用の Issue（キーは番号）
+    var issues: [Int: LoopStatusIssueRecord] = [:]
+    var createdIssues: [String] = []
+    var updatedIssues: [String] = []
+    var issueListings = 0
+    /// 一覧を空で返す残りの回数（GitHub の障害のときのように、200 の空の配列を返す。Issue #739）
+    var emptyListings = 0
+    /// 番号で読んだ状態用の Issue（`<repo>#<番号>`）
+    var readIssues: [String] = []
+    var fails = false
+    /// 状態用の Issue のコメント（キーは Issue の番号。古い順）
+    var comments: [Int: [LoopStatusComment]] = [:]
+    var createdComments: [String] = []
+    var updatedComments: [String] = []
+    var deletedComments: [String] = []
+    /// コメントの操作だけを失敗させる（Issue の操作は `fails`）
+    var commentsFail = false
+}
+
 // FakeGitHub の、状態用の Issue（loop-status）まわり
 extension FakeGitHub {
     var loopStatusIssuesByNumber: [Int: LoopStatusIssueRecord] {
-        state.withLock { $0.loopStatusIssues }
+        state.withLock { $0.loopStatus.issues }
     }
 
     var createdLoopStatusIssues: [String] {
-        state.withLock { $0.createdLoopStatusIssues }
+        state.withLock { $0.loopStatus.createdIssues }
     }
 
     var updatedLoopStatusIssues: [String] {
-        state.withLock { $0.updatedLoopStatusIssues }
+        state.withLock { $0.loopStatus.updatedIssues }
     }
 
     var loopStatusIssueListings: Int {
-        state.withLock { $0.loopStatusIssueListings }
+        state.withLock { $0.loopStatus.issueListings }
     }
 
     func setLoopStatusIssues(_ issues: [LoopStatusIssueRecord]) {
-        state.withLock { $0.loopStatusIssues = Dictionary(uniqueKeysWithValues: issues.map { ($0.number, $0) }) }
+        state.withLock { $0.loopStatus.issues = Dictionary(uniqueKeysWithValues: issues.map { ($0.number, $0) }) }
     }
 
     func setLoopStatusFails(_ fails: Bool) {
-        state.withLock { $0.loopStatusFails = fails }
+        state.withLock { $0.loopStatus.fails = fails }
+    }
+
+    /// 次の `count` 回の一覧を空で返す（GitHub の障害のときのように、Issue があっても 200 の空の配列を返す）
+    func setEmptyLoopStatusListings(_ count: Int) {
+        state.withLock { $0.loopStatus.emptyListings = count }
+    }
+
+    var readLoopStatusIssues: [String] {
+        state.withLock { $0.loopStatus.readIssues }
+    }
+
+    /// 状態用の Issue を閉じる・開く（手で片付けたときの代わり）。`nil` なら消す（ラベルを外したときも同じ）
+    func setLoopStatusIssue(_ number: Int, isOpen: Bool?) {
+        state.withLock { state in
+            guard let isOpen, let issue = state.loopStatus.issues[number] else {
+                state.loopStatus.issues[number] = nil
+                return
+            }
+            state.loopStatus.issues[number] = LoopStatusIssueRecord(
+                number: number, author: issue.author, isOpen: isOpen, updatedAt: issue.updatedAt, body: issue.body
+            )
+        }
     }
 
     func loopStatusIssues(in repository: String) async throws -> [LoopStatusIssueRecord] {
         try state.withLock { state in
-            if state.loopStatusFails {
+            if state.loopStatus.fails {
                 throw TestError()
             }
-            state.loopStatusIssueListings += 1
-            return state.loopStatusIssues.values.sorted { $0.number < $1.number }
+            state.loopStatus.issueListings += 1
+            if state.loopStatus.emptyListings > 0 {
+                state.loopStatus.emptyListings -= 1
+                return []
+            }
+            return state.loopStatus.issues.values.sorted { $0.number < $1.number }
+        }
+    }
+
+    func loopStatusIssue(in repository: String, number: Int) async throws -> LoopStatusIssueRecord? {
+        try state.withLock { state in
+            if state.loopStatus.fails {
+                throw TestError()
+            }
+            state.loopStatus.readIssues.append("\(repository)#\(number)")
+            return state.loopStatus.issues[number]
         }
     }
 
     func createLoopStatusIssue(in repository: String, body: String) async throws -> Int {
         try state.withLock { state in
-            if state.loopStatusFails {
+            if state.loopStatus.fails {
                 throw TestError()
             }
-            let number = (state.loopStatusIssues.keys.max() ?? 100) + 1
-            state.loopStatusIssues[number] = LoopStatusIssueRecord(
+            let number = (state.loopStatus.issues.keys.max() ?? 100) + 1
+            state.loopStatus.issues[number] = LoopStatusIssueRecord(
                 number: number, author: "mrs1669", isOpen: true, updatedAt: Date(timeIntervalSince1970: 0), body: body
             )
-            state.createdLoopStatusIssues.append("\(repository)#\(number)")
+            state.loopStatus.createdIssues.append("\(repository)#\(number)")
             return number
         }
     }
 
     func updateLoopStatusIssue(in repository: String, number: Int, body: String) async throws {
         try state.withLock { state in
-            guard !state.loopStatusFails, let issue = state.loopStatusIssues[number] else {
+            guard !state.loopStatus.fails, let issue = state.loopStatus.issues[number] else {
                 throw TestError()
             }
-            state.loopStatusIssues[number] = LoopStatusIssueRecord(
+            state.loopStatus.issues[number] = LoopStatusIssueRecord(
                 number: number, author: issue.author, isOpen: true, updatedAt: issue.updatedAt, body: body
             )
-            state.updatedLoopStatusIssues.append("\(repository)#\(number)")
+            state.loopStatus.updatedIssues.append("\(repository)#\(number)")
         }
     }
 
     var loopStatusCommentsByIssue: [Int: [LoopStatusComment]] {
-        state.withLock { $0.loopStatusComments }
+        state.withLock { $0.loopStatus.comments }
     }
 
     /// 作ったコメント（`<repo>#<Issue の番号>`）
     var createdLoopStatusComments: [String] {
-        state.withLock { $0.createdLoopStatusComments }
+        state.withLock { $0.loopStatus.createdComments }
     }
 
     /// 書き換えたコメント（`<repo> <コメントの id>`）
     var updatedLoopStatusComments: [String] {
-        state.withLock { $0.updatedLoopStatusComments }
+        state.withLock { $0.loopStatus.updatedComments }
     }
 
     /// 消したコメント（`<repo> <コメントの id>`）
     var deletedLoopStatusComments: [String] {
-        state.withLock { $0.deletedLoopStatusComments }
+        state.withLock { $0.loopStatus.deletedComments }
     }
 
     func setLoopStatusComments(_ comments: [LoopStatusComment], onIssue number: Int) {
-        state.withLock { $0.loopStatusComments[number] = comments }
+        state.withLock { $0.loopStatus.comments[number] = comments }
     }
 
     func setLoopStatusCommentsFail(_ fails: Bool) {
-        state.withLock { $0.loopStatusCommentsFail = fails }
+        state.withLock { $0.loopStatus.commentsFail = fails }
     }
 
     func loopStatusComments(in repository: String, issue number: Int) async throws -> [LoopStatusComment] {
         try state.withLock { state in
-            if state.loopStatusFails || state.loopStatusCommentsFail {
+            if state.loopStatus.fails || state.loopStatus.commentsFail {
                 throw TestError()
             }
-            return state.loopStatusComments[number] ?? []
+            return state.loopStatus.comments[number] ?? []
         }
     }
 
     func createLoopStatusComment(in repository: String, issue number: Int, body: String) async throws -> Int {
         try state.withLock { state in
-            guard !state.loopStatusFails, !state.loopStatusCommentsFail, state.loopStatusIssues[number] != nil else {
+            guard !state.loopStatus.fails, !state.loopStatus.commentsFail, state.loopStatus.issues[number] != nil else {
                 throw TestError()
             }
             // GitHub と同じく、id はリポジトリの Issue をまたいで一意
-            let id = (state.loopStatusComments.values.joined().map(\.id).max() ?? 1_000) + 1
-            state.loopStatusComments[number, default: []].append(
+            let id = (state.loopStatus.comments.values.joined().map(\.id).max() ?? 1_000) + 1
+            state.loopStatus.comments[number, default: []].append(
                 LoopStatusComment(id: id, author: "mrs1669", updatedAt: Date(timeIntervalSince1970: 0), body: body)
             )
-            state.createdLoopStatusComments.append("\(repository)#\(number)")
+            state.loopStatus.createdComments.append("\(repository)#\(number)")
             return id
         }
     }
 
     func updateLoopStatusComment(in repository: String, id: Int, body: String) async throws {
         try state.withLock { state in
-            guard !state.loopStatusFails, !state.loopStatusCommentsFail,
-                  let number = state.loopStatusComments.first(where: { $0.value.contains { $0.id == id } })?.key,
-                  let index = state.loopStatusComments[number]?.firstIndex(where: { $0.id == id }) else {
+            guard !state.loopStatus.fails, !state.loopStatus.commentsFail,
+                  let number = state.loopStatus.comments.first(where: { $0.value.contains { $0.id == id } })?.key,
+                  let index = state.loopStatus.comments[number]?.firstIndex(where: { $0.id == id }) else {
                 throw TestError()
             }
-            state.loopStatusComments[number]?[index].body = body
-            state.updatedLoopStatusComments.append("\(repository) \(id)")
+            state.loopStatus.comments[number]?[index].body = body
+            state.loopStatus.updatedComments.append("\(repository) \(id)")
         }
     }
 
     func deleteLoopStatusComment(in repository: String, id: Int) async throws {
         try state.withLock { state in
-            if state.loopStatusFails || state.loopStatusCommentsFail {
+            if state.loopStatus.fails || state.loopStatus.commentsFail {
                 throw TestError()
             }
             // GitHub と同じく、既に無いコメントを消しても失敗しない
-            for number in state.loopStatusComments.keys {
-                state.loopStatusComments[number]?.removeAll { $0.id == id }
+            for number in state.loopStatus.comments.keys {
+                state.loopStatus.comments[number]?.removeAll { $0.id == id }
             }
-            state.deletedLoopStatusComments.append("\(repository) \(id)")
+            state.loopStatus.deletedComments.append("\(repository) \(id)")
         }
     }
 
