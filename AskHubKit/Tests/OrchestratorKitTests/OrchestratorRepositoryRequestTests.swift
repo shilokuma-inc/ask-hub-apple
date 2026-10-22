@@ -188,22 +188,6 @@ struct OrchestratorRepositoryRequestTests {
         #expect(github.ideaComments.first?.contains("既にこの PC の担当リポジトリです") == true)
     }
 
-    // MARK: - 追加
-
-    @Test func rejectsAddingRepositoryUntilItIsSupported() async throws {
-        let request = RepositoryRequest.add(RepositoryAddition(repository: "shilokuma-inc/my-app-ios"))
-        let github = FakeGitHub([.success([])])
-        github.setRepositoryRequests([Self.issue(request, in: "shilokuma-inc/ask-hub-apple")])
-        let runtime = FakeRuntime()
-        let (orchestrator, store) = try makeOrchestrator(github: github, runtime: runtime)
-
-        try await orchestrator.pollOnce()
-
-        #expect(runtime.ran.isEmpty)
-        #expect(store.added.isEmpty)
-        #expect(github.ideaComments.first?.contains("担当に入れる依頼をまだ処理できません") == true)
-    }
-
     // MARK: - 削除
 
     @Test func removesRepositoryDeletesLocalFilesAndHeartbeat() async throws {

@@ -17,6 +17,7 @@ struct FakeRuntimeState {
     /// `run` が順に返す結果。尽きたら最後のものを返し続ける
     var runResults: [CommandResult] = [CommandResult(status: 0, output: "")]
     var ran: [[String]] = []
+    var ranFor: [String] = [] // run を実行したリポジトリ（`ran` と同じ順）
     var inputs: [String] = []
     var runEnvironments: [[String: String]] = [] // run ごとに追加で渡した環境変数（`ran` と同じ順）
     /// run の時点で、引数に渡されたディレクトリにあったファイル（ファイル名 → 中身）
@@ -131,6 +132,10 @@ final class FakeRuntime: LoopRuntime {
         state.withLock { $0.ran }
     }
 
+    var ranFor: [String] {
+        state.withLock { $0.ranFor }
+    }
+
     var inputs: [String] {
         state.withLock { $0.inputs }
     }
@@ -151,6 +156,7 @@ final class FakeRuntime: LoopRuntime {
         let result = state.withLock { state in
             state.directoryContentsDuringRun.append(snapshot)
             state.ran.append(arguments)
+            state.ranFor.append(repository.fullName)
             state.inputs.append(input)
             state.runEnvironments.append(environment)
             let result = state.runResults[0]
