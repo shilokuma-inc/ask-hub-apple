@@ -6,7 +6,7 @@ extension MergeQueueModel {
     static func sample() -> MergeQueueModel {
         MergeQueueModel(
             tokenStore: InMemoryTokenStore(token: "sample"),
-            makeProvider: { _ in SampleMergeQueue() },
+            makeProvider: { _ in SampleMergeQueue.launchDefault() },
             makeUploadWorkflow: { _ in SampleUploadWorkflow() },
             dispatchRefreshDelay: .seconds(1),
             makeCodeRabbitThreads: { _ in SampleCodeRabbitThreads() },
