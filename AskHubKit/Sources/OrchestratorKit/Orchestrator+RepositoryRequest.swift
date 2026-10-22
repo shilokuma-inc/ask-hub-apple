@@ -75,6 +75,10 @@ extension Orchestrator {
                 return .rejected("担当から外す依頼は、外したいリポジトリ（\(removal.repository)）に作ってください")
             }
             return await remove(removal, statuses: statuses)
+
+        case .add:
+            // 担当に入れる処理はまだ無い。知らない action と同じく断り、直してから依頼し直してもらう
+            return .rejected("このオーケストレーターは、担当に入れる依頼をまだ処理できません")
         }
     }
 
