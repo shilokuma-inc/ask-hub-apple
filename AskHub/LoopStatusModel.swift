@@ -111,6 +111,11 @@ final class LoopStatusModel {
         row.loopItems(manualLoops: manualLoops)
     }
 
+    /// リポジトリの節の中の行（1 要素 = `List` の 1 行）。ループが 2 つ以上のリポジトリは、見出しの直後にループの行を並べる
+    func listEntries(of rows: [LoopStatusRow]) -> [LoopStatusListEntry] {
+        LoopStatusListEntry.entries(of: rows, manualLoops: manualLoops)
+    }
+
     /// 人が見るべき異常の数（タブのバッジ）。異常終了・長く動きが無い・担当 PC がいない進行中の epic・状態が途絶えた手動ループ。
     /// 同じリポジトリで複数のループが回るので、ループ（Discussion）ごとに数える
     func abnormalCount(now: Date) -> Int {

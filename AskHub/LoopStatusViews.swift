@@ -32,8 +32,9 @@ struct LoopStatusListView: View {
             // リポジトリは organization ごとの節に分ける（organization が 1 つでも見出しを出す）
             ForEach(LoopStatusOrganizationSection.sections(from: model.rows)) { section in
                 Section {
-                    ForEach(section.rows) { row in
-                        repositoryRows(row)
+                    // 1 要素 = 1 行にする（リポジトリ 1 つを 1 要素にすると、ループの数が変わったときに 1 要素の行の数が変わり、差分を当てるときに落ちることがある）
+                    ForEach(model.listEntries(of: section.rows)) { entry in
+                        entryRow(entry)
                     }
                 } header: {
                     OrganizationHeaderView(organization: section.organization, avatars: model.avatars)
@@ -78,20 +79,21 @@ struct LoopStatusListView: View {
         }
     }
 
-    /// リポジトリの行。同じリポジトリでループが 2 つ以上回っていれば、見出しの下にループごとの行を並べる（1 つなら今までどおり 1 行）
-    @ViewBuilder private func repositoryRows(_ row: LoopStatusRow) -> some View {
-        let items = model.loopItems(of: row)
-        if items.isEmpty {
+    /// リポジトリの節の 1 行。同じリポジトリでループが 2 つ以上回っていれば、見出しとループごとの行が別の要素で並ぶ（1 つなら今までどおり 1 行）
+    @ViewBuilder private func entryRow(_ entry: LoopStatusListEntry) -> some View {
+        switch entry.kind {
+        case let .repository(row):
             rowView(row)
                 .contextMenu { removeButton(for: row) }
                 .swipeActions(edge: .trailing) { removeButton(for: row) }
-        } else {
-            LoopStatusHeadingView(repository: row.repository, heading: row.heading(loopCount: items.count, now: Date()))
+
+        case let .heading(row, loopCount):
+            LoopStatusHeadingView(repository: row.repository, heading: row.heading(loopCount: loopCount, now: Date()))
                 .contextMenu { removeButton(for: row) }
                 .swipeActions(edge: .trailing) { removeButton(for: row) }
-            ForEach(items) { item in
-                loopRowView(item)
-            }
+
+        case let .loop(item):
+            loopRowView(item)
         }
     }
 
