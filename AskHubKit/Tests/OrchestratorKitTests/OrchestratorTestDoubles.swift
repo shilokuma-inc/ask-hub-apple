@@ -47,6 +47,9 @@ struct FakeGitHubState {
     /// epic のブランチごとの、最終 PR の材料
     var epicMaterials: [String: EpicMaterials] = [:]
     var heartbeatFails = false
+    /// ほかのリポジトリの担当の印の最終確認の時刻（キーは owner/repo）。担当に入れる依頼で読む
+    var heartbeatLastSeen: [String: Date] = [:]
+    var heartbeatReadFails = false
     var ideaCloseFails = false
     var decisionLogs: [DecisionLogIssue] = []
     var epicFinalPullRequests: [EpicFinalPullRequest] = []
