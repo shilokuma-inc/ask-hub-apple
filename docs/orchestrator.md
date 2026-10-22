@@ -151,7 +151,8 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 | `iterationTimeoutMinutes` | | ループの 1 周がこれより長く進まなければ、固まったとみなして止める（分。省略時は 90、10 以上 1440 以下）。下の「固まったループを止める」を参照 |
 | `createRepositoryCommand` | | テンプレートからリポジトリを作るコマンド（下記「担当リポジトリの作成・削除」）。省略時は `~/.local/bin/askhub-create-repo`（`install.sh` が置く） |
 | `removeRepositoryCommand` | | ローカルの checkout・ループの worktree・DerivedData を消すコマンド。省略時は `~/.local/bin/askhub-remove-repo`（`install.sh` が置く） |
-| `newRepositoryDirectory` | | 新しく作ったリポジトリを clone するディレクトリ（`~` 可）。省略時は最初の担当リポジトリの checkout と同じ場所 |
+| `addRepositoryCommand` | | GitHub にある既存のリポジトリを担当に入れる準備（clone・ラベル・Discussions・ralph-kit の中継）をするコマンド（下記「担当リポジトリの作成・削除」の「追加」）。省略時は `~/.local/bin/askhub-add-repo`（`install.sh` が置く） |
+| `newRepositoryDirectory` | | 新しく作ったリポジトリ・担当に入れるリポジトリを clone するディレクトリ（`~` 可）。省略時は最初の担当リポジトリの checkout と同じ場所 |
 | `conflictCommand` | | epic の最終 PR のコンフリクトを解消させるコマンド（30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-resolve-conflict`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` が使える |
 | `reviewCommand` | | epic の最終 PR に第三者レビューをさせるコマンド（Discussion #503。30 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-review-final`（`install.sh` が置く）。`{repository}` / `{checkoutPath}` / `{headBranch}` / `{baseBranch}` / `{pullRequest}` / `{headSHA}`（レビューの対象として確認した head）が使える |
 | `fixCommand` | | epic の最終 PR の第三者レビューの `要修正` を直させるコマンド（ビルドとテストまで行うので 60 分で打ち切る）。省略時は `loopCommand` の実行ファイルと同じ場所の `askhub-fix-review`（`install.sh` が置く）。使えるプレースホルダは `reviewCommand` と同じ（`{headSHA}` は push の lease に使う） |
@@ -166,7 +167,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
 読めないとき（書きかけ・JSON の誤り）はログに 1 回だけ理由を出し、直るまで前の設定のまま動く。
 信用する author（設定の `trustedAuthors` と、担当リポジトリへの書き込み権限を持つアカウント）は、ポーリングのはじめに担当リポジトリごとに求め直し（書き込み権限は 10 分ごとに取り直す）、
 変わったらログに `<リポジトリ> で信用する author: …` と出す。ループには起動ごとに `ASKHUB_TRUSTED_AUTHORS` で渡す。
-アプリからの担当リポジトリの作成・削除の依頼では、オーケストレーターが `repositories` を書き換える（下記）。
+アプリからの担当リポジトリの作成・追加・削除の依頼では、オーケストレーターが `repositories` を書き換える（下記）。
 
 ### `buildHosts`
 
@@ -275,7 +276,8 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
    `~/.claude/settings.json` の `skipDangerousModePermissionPrompt` は `true` のまま（無人で `bypassPermissions` を使うため）
 5. **ralph-loop プラグイン**: `claude plugin install ralph-loop@claude-plugins-official` を、制御用 worktree（`*-ralph-ctl`・手動ループの `*-ralph-d<番号>-ctl`）の外で実行する。
    `~/.claude/settings.json` の `enabledPlugins` に入っていれば有効。周回は このプラグインの Stop hook が回すので、無いとループが 1 周で黙って終わる（`askhub-start-loop` は起動前にエラーで止める）
-6. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには ralph-kit の中継（`scripts/ralph-*.sh`。[ralph-kit](https://github.com/shilokuma-inc/ralph-kit) の `install.sh` で入れる）とプロトコルのラベルが必要
+6. **担当リポジトリ**: 設定の `path` に clone する。リポジトリには ralph-kit の中継（`scripts/ralph-*.sh`。[ralph-kit](https://github.com/shilokuma-inc/ralph-kit) の `install.sh` で入れる）とプロトコルのラベルが必要。
+   最初の 1 つを手で用意してオーケストレーターが動けば、2 つ目からは AskHub の依頼タブの「担当に入れる」でも用意できる（clone・ラベル・Discussions・中継まで行う。下記「担当リポジトリの作成・削除」の「追加」）
 7. **オーケストレーター**: このリポジトリを clone して `scripts/orchestrator/install.sh` を実行し、
    `~/.config/askhub/orchestrator.json` を `orchestrator.example.json` から作る（担当リポジトリだけを書く。ほかの Mac と重ねない）
 8. **確認と登録**: `~/.local/bin/askhub-orchestrator --once` でエラーが出ないことを確かめてから `launchctl bootstrap` する。
@@ -551,7 +553,7 @@ epic の最終 PR（`epic-final`）がマージされたら、その epic の添
 
 ## 担当リポジトリの作成・削除
 
-アプリから出した `repo-request` の Issue（形式は `docs/protocol.md` の「リポジトリの作成・削除」）を、毎回のポーリングで 1 件ずつ処理する。
+アプリから出した `repo-request` の Issue（作成・追加・削除）（形式は `docs/protocol.md` の「リポジトリの作成・削除」）を、毎回のポーリングで 1 件ずつ処理する。
 担当リポジトリにある、信用する author の依頼だけを対象にする。
 
 **作成**（`createRepositoryCommand`。既定は `scripts/orchestrator/create-repo.sh`）:
@@ -588,6 +590,37 @@ visionOS のテンプレートで、作成の 2（名前の変更と Bundle ID�
 - ralph-kit の中継（`scripts/ralph-kit.sh version`）は名前を変えた後も使える。kit の `install.sh --check` は、リポジトリに CLAUDE.md の「ralph-loop による自律開発」の節が無いことだけを指摘する（iOS のテンプレートも CLAUDE.md を持たないので同じ）
 - 確かめるときは、`scripts/rename.sh` が最後に `gh repo view` / `gh repo edit --enable-discussions` を呼ぶので、`gh` を失敗するだけの偽物に差し替えた PATH で流す（Discussions は有効にできなかった旨の警告が出るだけで、名前の変更は終わる）
 
+**追加**（`addRepositoryCommand`。既定は `scripts/orchestrator/add-repo.sh`。[Discussion #722](https://github.com/shilokuma-inc/ask-hub-apple/discussions/722)）:
+
+GitHub にある既存のリポジトリを、依頼 Issue のある担当リポジトリと同じ PC の担当に加える（Q2。アプリでは入れる先の PC の担当リポジトリを選んで依頼する）。
+
+1. 既にこの PC の担当なら断る。対象のリポジトリの担当の印（`askhub-orchestrator` のラベルの説明の最終確認の時刻）が 30 分以内なら、
+   別の PC が担当しているとして断る（Q3。PC を替えたいときは、先に元の PC で「担当から外す」をしてから入れる）。印を読めなかったときは次のポーリングでやり直す
+2. 末尾に `<owner/repo> <checkout のパス> <依頼 Issue のある担当リポジトリの checkout のパス>` を足し、依頼 Issue のある担当リポジトリで実行する（30 分で打ち切る）。
+   checkout のパスは `newRepositoryDirectory/<リポジトリ名>`（Q4）
+3. スクリプトは次の順に進める。途中で失敗しても、やり直すと続きから進む（clone 済み・ラベル作成済み・中継が `develop` に入っている、を見て飛ばす）
+   1. リポジトリを確かめる。見つからない（この PC の `gh` で読めない）・アーカイブ済み・push の権限が無い・`develop` ブランチが無いときは断る（`develop` は作らない）
+   2. checkout のパスに**同じ origin**（ssh / https を問わず `owner/repo` で比べる）の checkout があれば、そのまま使う（作業ツリー・ブランチ・未コミットの変更には触らない）。
+      別の origin の checkout・git でないディレクトリがあれば断る。無ければ `develop` を clone する。
+      **決まった場所しか見ない**ので、別の場所に clone してあるものは使われず、新しく clone される（容量を二重に使わないよう、先に手で `newRepositoryDirectory` の下に移す）
+   3. AskHub のラベルを作る（`create-repo.sh` と同じ一覧。共通の `scripts/orchestrator/repo-setup.sh` を `install.sh` が `askhub-repo-setup` として置く）。
+      Discussions が無効なら有効にし、カテゴリ「Ideas」を確かめる。有効にできない（管理者の権限が無いなど）・Ideas が無いときは失敗にせず、人にしてほしいことを結果に書いて続ける
+   4. ralph-kit の中継（`scripts/ralph-*.sh` など）と CLAUDE.md の「ralph-loop による自律開発」の節を、`origin/develop` の一時 worktree の中で kit の `install.sh` で入れる（Q5。メインの checkout ではコミットしない）。
+      kit は、依頼 Issue のある担当リポジトリの `scripts/ralph-kit.sh` が取る版を使う。CLAUDE.md に節が無ければ kit の雛形の節を末尾に足す（CLAUDE.md が無ければ作る）。
+      差分があれば `[chore] ralph-kit の中継を入れる` の 1 コミットにして **`develop` に直接 push する**（force しない）。既に入っていればコミットしない
+   5. `develop` に push できない（ブランチの保護・PR 必須など）ときは、同じコミットを `askhub/ralph-kit-relay` ブランチに push し、`develop` 宛ての PR（`【CHORE】ralph-kit の中継を入れる`）を作って結果に URL を書く（既にあれば使い回す）。
+      担当には加える（ラベル・Discussions・依頼は使える。ループは PR をマージして中継が入るまで回せない）。ブランチにも push できない・PR も作れないときは断る（担当に加えない）
+4. 成功したら、設定ファイルの `repositories` に加える（元のファイルは `orchestrator.json.bak` に写す）。次のポーリングを待たずに担当リポジトリとして扱い、
+   担当の印と状態用の Issue（外したときに閉じたものも）は次のポーリングで書く。GitHub のリポジトリの設定（公開範囲など）は変えない
+
+担当に入れるときの前提:
+
+- **オーケストレーターをアプリより先に更新する。** 古いオーケストレーターは `add` を知らず、値が不正な依頼として断る。全担当 PC で `scripts/orchestrator/install.sh` を流し直してから、アプリから依頼する
+- 入れる PC の `gh` に、対象のリポジトリの clone・push・ラベルの作成・PR の作成の権限が要る。Discussions を有効にするには管理者の権限が要る（無ければ結果で知らせる）
+- 中継のコミットには `.github/workflows/` のファイルが入るので、`gh` のトークンに `workflow` の権限が要る。無いと `develop` にも `askhub/ralph-kit-relay` にも push できず、断られる
+- 中継のコミットは、その PC の git の `user.name` / `user.email`（global の設定）で作る
+- 別の organization のリポジトリを入れると、その organization も検索の対象に加わる。オーケストレーターのトークンが、今の担当の organization と同じ操作をそこでもできるようにする（visionOS の前提と同じ）
+
 **削除**:
 
 1. ループのプロセスが動いていれば外さない。最終 PR のコンフリクトを裏で解消している間も外さない（解消はメインの checkout に一時 worktree を作るため）。
@@ -604,7 +637,7 @@ visionOS のテンプレートで、作成の 2（名前の変更と Bundle ID�
 3. 設定ファイルの `repositories` から外し、担当の印（`askhub-orchestrator` のラベル）を消す（アプリで「担当 PC なし」になる）
 
 スクリプトは人に伝える行を `ASKHUB_RESULT: …`、失敗の理由を `ASKHUB_ERROR: …` で出す。依頼 Issue にはこの行だけを書き、ほかの出力はログにだけ残す。
-前提を満たさない（既に同名のリポジトリがある・未 push の変更がある など）ときは終了コード 3 で終わり、やり直さずに理由をコメントする。
+前提を満たさない（既に同名のリポジトリがある・未 push の変更がある・別の origin の checkout が clone 先にある など）ときは終了コード 3 で終わり、やり直さずに理由をコメントする。
 それ以外の失敗は 1 回だけやり直し、それでも失敗したら理由をコメントする。
 
 ## 担当の印（askhub-orchestrator）
