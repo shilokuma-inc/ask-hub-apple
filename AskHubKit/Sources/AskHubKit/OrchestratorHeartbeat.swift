@@ -114,8 +114,9 @@ public struct UsageLimitedRepository: Sendable, Equatable, Identifiable {
         self.until = until
     }
 
+    /// GitHub はリポジトリ名の大文字小文字を区別しないので、小文字で見分ける
     public var id: String {
-        repository
+        repository.lowercased()
     }
 
     /// 「12:00 に再開」（今日でなければ「10月7日 9:00 に再開」）

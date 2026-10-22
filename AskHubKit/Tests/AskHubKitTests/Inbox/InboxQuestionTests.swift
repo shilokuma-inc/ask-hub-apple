@@ -64,6 +64,8 @@ struct InboxFetcherTests {
         var threads: [String: [QuestionThread]] = [:]
         var issues: [InboxIssue] = []
         var waiting: [WaitingDiscussion] = []
+        var usageLimited: [UsageLimitedRepository] = []
+        var manualLoops: [ManualLoopRecord] = []
 
         func subjectsNeedingAnswer(orgs: [String]) async throws -> [InboxSubject] {
             subjects
@@ -79,6 +81,14 @@ struct InboxFetcherTests {
 
         func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion] {
             waiting
+        }
+
+        func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
+            usageLimited
+        }
+
+        func manualLoopRecords(orgs: [String]) async throws -> [ManualLoopRecord] {
+            manualLoops
         }
     }
 
@@ -97,6 +107,50 @@ struct InboxFetcherTests {
         let discussions = try await InboxFetcher(source: source, trustedAuthors: TrustedAuthors(["mrs1669"]))
             .waitingDiscussions(orgs: ["o"])
         #expect(discussions.map(\.subject.nodeID) == ["D_1", "D_2"])
+    }
+
+    @Test func keepsFirstOfDuplicatedStatusTabItems() async throws {
+        // search のページングの途中で順位が動き、同じ Discussion が 2 ページに出る
+        func discussion(_ nodeID: String, number: Int, author: String? = "mrs1669") -> InboxSubject {
+            var subject = InboxSubject.fixture(kind: .discussion, nodeID: nodeID)
+            subject.number = number
+            subject.author = author
+            return subject
+        }
+        let until = Date(timeIntervalSince1970: 1_800_000_000)
+        let source = StubSource(
+            waiting: [
+                WaitingDiscussion(subject: discussion("D_1", number: 1), lastSeen: nil, author: "mrs1669"),
+                WaitingDiscussion(subject: discussion("D_2", number: 2), lastSeen: nil, author: "mrs1669"),
+                WaitingDiscussion(subject: discussion("D_1", number: 1), lastSeen: until, author: "mrs1669")
+            ],
+            usageLimited: [
+                UsageLimitedRepository(repository: "o/A", until: until),
+                UsageLimitedRepository(repository: "o/b", until: until),
+                // organization の設定の重複などで、同じリポジトリが大文字小文字だけ違えて来る
+                UsageLimitedRepository(repository: "o/a", until: until.addingTimeInterval(60))
+            ],
+            manualLoops: [
+                ManualLoopRecord(subject: discussion("D_3", number: 3), comments: []),
+                ManualLoopRecord(subject: discussion("D_3", number: 3), comments: [
+                    ManualLoopComment(
+                        author: "mrs1669",
+                        body: ManualLoopAssignment.comment(assignee: "someone", repository: "o/r", discussionNumber: 3)
+                    )
+                ]),
+                ManualLoopRecord(subject: discussion("D_4", number: 4), comments: [])
+            ]
+        )
+        let fetcher = InboxFetcher(source: source, trustedAuthors: TrustedAuthors(["mrs1669"]))
+        let waiting = try await fetcher.waitingDiscussions(orgs: ["o"])
+        #expect(waiting.map(\.id) == ["D_1", "D_2"])
+        #expect(waiting[0].lastSeen == nil)
+        let limited = try await fetcher.usageLimitedRepositories(orgs: ["o"], now: until)
+        #expect(limited.map(\.id) == ["o/a", "o/b"])
+        #expect(limited[0].repository == "o/A")
+        let epics = try await fetcher.manualLoopEpics(orgs: ["o"])
+        #expect(epics.map(\.id) == ["D_3", "D_4"])
+        #expect(epics[0].assignee == nil)
     }
 
     @Test func collectsQuestionsAcrossSubjectsOldestFirst() async throws {

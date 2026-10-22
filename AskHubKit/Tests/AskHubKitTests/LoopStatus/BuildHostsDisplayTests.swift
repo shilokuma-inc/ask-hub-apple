@@ -41,6 +41,14 @@ struct BuildHostsDisplayTests {
         #expect(hosts[3].loadText == "空きメモリ 80%")
     }
 
+    @Test func showsHostsWithTheSameNameOnce() {
+        var status = status()
+        status.report.hosts.append(BuildHost(name: "m1pro", state: .ok))
+        let hosts = status.hostDisplays
+        #expect(hosts.map(\.id) == ["m4max", "m1pro", "local", "mini2"])
+        #expect(hosts[1].statusText == "切断（接続できない）")
+    }
+
     @Test func staleWhenNotRewrittenForThirtyMinutes() {
         #expect(!status(checkedMinutesAgo: 29).isStale(now: now))
         #expect(status(checkedMinutesAgo: 31).isStale(now: now))
@@ -85,6 +93,30 @@ struct BuildHostsDisplayTests {
         #expect(moves.map(\.text) == ["b: テスト m1 → m4（切断）", "a: ビルド m1 → m4 → local（切断・ビルド環境なし）"])
         #expect(moves.map(\.resultText) == ["成功", "失敗（終了コード 65）"])
         #expect(moves.map(\.succeeded) == [true, false])
+    }
+
+    @Test func keepsMovesWithTheSameContentsWithUniqueIDs() {
+        // 終わっていない同じ移動（終了日時・試行が無い）が、同じリポジトリの 2 つのループに 1 件ずつある
+        let running = LoopStatusBuild(slot: "a", action: "build", host: "m4", moves: [
+            LoopStatusBuildMove(from: "m1", to: "m4", reason: .disconnected)
+        ])
+        let finished = LoopStatusBuild(slot: "b", action: "test", host: "m4", exitCode: 0, finishedAt: now.addingTimeInterval(-60))
+        func row(_ repository: String, moved: [LoopStatusBuild]) -> LoopStatusRow {
+            LoopStatusRow(
+                repository: repository,
+                report: LoopStatusReport(state: .running, checkedAt: now, builds: LoopStatusBuilds(moved: moved)),
+                lastSeen: now
+            )
+        }
+        let rows = [row("o/a", moved: [finished, running, running]), row("O/A", moved: [running])]
+        let moves = LoopStatusRow.buildMoves(in: rows, now: now)
+        #expect(moves.count == 4)
+        #expect(Set(moves.map(\.id)).count == 4)
+        #expect(moves.map(\.occurrence) == [1, 1, 2, 3])
+        #expect(moves[1].id == moves[1].contentKey)
+        #expect(moves[2].id == moves[1].id + "#2")
+        // 同じ並びなら、取り直しても id は変わらない
+        #expect(LoopStatusRow.buildMoves(in: rows, now: now).map(\.id) == moves.map(\.id))
     }
 
     @Test func describesMovedBuildWithoutMoveEvents() {
