@@ -42,18 +42,20 @@ extension OrchestratorTests {
         #expect(github.loopStatusIssuesByNumber[101]?.body.contains("/src/ask-hub-apple") == false)
         #expect(github.loopStatusCommentsByIssue[101]?.contains { $0.body.contains("/src/ask-hub-apple") } == false)
 
+        // 一覧が空なら、作る前にもう一度だけ取り直す（GitHub は障害のときに空の配列を返すことがある）
+        #expect(github.loopStatusIssueListings == 2)
+
         // 変わらなければ、間隔より前は書かず、一覧も取り直さない
-        #expect(github.loopStatusIssueListings == 1)
         clock.withLock { $0 = $0.addingTimeInterval(60) }
         try await orchestrator.pollOnce()
         #expect(github.updatedLoopStatusIssues.isEmpty)
         #expect(github.updatedLoopStatusComments.isEmpty)
-        #expect(github.loopStatusIssueListings == 1)
+        #expect(github.loopStatusIssueListings == 2)
 
         // ループの状態が変われば、読み直してからコメントだけを書き換える
         runtime.set(.idle)
         try await orchestrator.pollOnce()
-        #expect(github.loopStatusIssueListings == 2)
+        #expect(github.loopStatusIssueListings == 3)
         #expect(github.updatedLoopStatusIssues.isEmpty)
         #expect(github.updatedLoopStatusComments.count == 1)
         #expect(github.loopCommentReport()?.state == .waitingToStart)

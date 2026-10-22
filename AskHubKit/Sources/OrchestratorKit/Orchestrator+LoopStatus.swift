@@ -76,13 +76,38 @@ extension Orchestrator {
 
     private func lookUpLoopStatus(of repository: RepositoryConfig) async throws {
         let trusted = trust.authors(for: repository.fullName)
-        let issues = try await github.loopStatusIssues(in: repository.fullName)
+        let issues = try await loopStatusIssues(of: repository, trustedAuthors: trusted)
         // コメントを読めなければ、重複したコメントを作らないよう書かない（例外で次のポーリングに持ち越す）
         var comments: [LoopStatusComment] = []
         if let issue = LoopStatusPublisher.issue(in: issues, trustedAuthors: trusted) {
             comments = try await github.loopStatusComments(in: repository.fullName, issue: issue.number)
         }
         loopStatusPublisher.adopt(issues, comments: comments, repositoryKey: repository.fullName.lowercased(), trustedAuthors: trusted)
+    }
+
+    /// 状態用の Issue の一覧。GitHub は障害のときに一覧を 200 の空の配列で返すことがある（Issue #739）ので、
+    /// 信用する author の Issue が無ければ、作る前に確かめる。前に使った Issue が open で残っていればそれを足す。
+    /// 残っていない・閉じている・覚えていない（起動の直後など）ときは、一覧をもう一度だけ取り直す
+    private func loopStatusIssues(
+        of repository: RepositoryConfig, trustedAuthors trusted: TrustedAuthors
+    ) async throws -> [LoopStatusIssueRecord] {
+        let issues = try await github.loopStatusIssues(in: repository.fullName)
+        guard LoopStatusPublisher.issue(in: issues, trustedAuthors: trusted) == nil else {
+            return issues
+        }
+        var known: LoopStatusIssueRecord?
+        if let number = loopStatusPublisher.knownNumber(repositoryKey: repository.fullName.lowercased()) {
+            known = try await github.loopStatusIssue(in: repository.fullName, number: number)
+            if let known, known.isOpen {
+                return issues + [known]
+            }
+        }
+        // 閉じていた前の Issue は、取り直した一覧に open な Issue が無いときだけ使われる（開き直す）
+        let retried = try await github.loopStatusIssues(in: repository.fullName)
+        guard let known, !retried.contains(where: { $0.number == known.number }) else {
+            return retried
+        }
+        return retried + [known]
     }
 
     private func perform(_ action: LoopStatusPublisher.Action, body: RepositoryStatusReport, in repository: RepositoryConfig) async throws {

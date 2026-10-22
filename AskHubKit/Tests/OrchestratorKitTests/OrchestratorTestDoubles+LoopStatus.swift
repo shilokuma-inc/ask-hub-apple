@@ -10,6 +10,8 @@ struct FakeLoopStatusState {
     var createdIssues: [String] = []
     var updatedIssues: [String] = []
     var issueListings = 0
+    /// 番号で読んだ状態用の Issue（`<repo>#<番号>`）
+    var readIssues: [String] = []
     var fails = false
     /// 状態用の Issue のコメント（キーは Issue の番号。古い順）
     var comments: [Int: [LoopStatusComment]] = [:]
@@ -53,6 +55,16 @@ extension FakeGitHub {
             }
             state.loopStatus.issueListings += 1
             return state.loopStatus.issues.values.sorted { $0.number < $1.number }
+        }
+    }
+
+    func loopStatusIssue(in repository: String, number: Int) async throws -> LoopStatusIssueRecord? {
+        try state.withLock { state in
+            if state.loopStatus.fails {
+                throw TestError()
+            }
+            state.loopStatus.readIssues.append("\(repository)#\(number)")
+            return state.loopStatus.issues[number]
         }
     }
 

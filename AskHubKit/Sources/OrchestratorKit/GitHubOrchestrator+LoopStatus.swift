@@ -19,15 +19,25 @@ extension GitHubOrchestrator {
             of: LoopStatusIssueSummary.self
         )
         // Issue の API は PR も返すので除く
-        return issues.filter { $0.pullRequest == nil }.map {
-            LoopStatusIssueRecord(
-                number: $0.number,
-                author: $0.user?.login,
-                isOpen: $0.state == "open",
-                updatedAt: $0.updatedAt,
-                body: $0.body ?? ""
-            )
+        return issues.filter { $0.pullRequest == nil }.map(\.record)
+    }
+
+    public func loopStatusIssue(in repository: String, number: Int) async throws -> LoopStatusIssueRecord? {
+        try await statusIssue(labeled: LoopStatusReport.labelName, number: number, in: repository)
+    }
+
+    /// 状態を書き出す Issue を番号で読む（閉じたものも）。消えた（404 / 410）・ラベルが外れた・PR なら `nil`
+    func statusIssue(labeled label: String, number: Int, in repository: String) async throws -> LoopStatusIssueRecord? {
+        let issue: LoopStatusIssueSummary
+        do {
+            issue = try await client.get("repos/\(repository)/issues/\(number)", as: LoopStatusIssueSummary.self)
+        } catch GitHubError.http(status: 404, _), GitHubError.http(status: 410, _) {
+            return nil
         }
+        guard issue.pullRequest == nil, issue.labels?.contains(where: { $0.name == label }) == true else {
+            return nil
+        }
+        return issue.record
     }
 
     public func createLoopStatusIssue(in repository: String, body: String) async throws -> Int {
@@ -124,12 +134,17 @@ private struct LoopStatusIssueSummary: Decodable {
     /// PR のときだけある
     struct PullRequestLink: Decodable {}
 
+    struct Label: Decodable {
+        let name: String
+    }
+
     let number: Int
     let state: String
     let body: String?
     let user: User?
     let updatedAt: Date
     let pullRequest: PullRequestLink?
+    let labels: [Label]?
 
     private enum CodingKeys: String, CodingKey {
         case number
@@ -138,6 +153,11 @@ private struct LoopStatusIssueSummary: Decodable {
         case user
         case updatedAt = "updated_at"
         case pullRequest = "pull_request"
+        case labels
+    }
+
+    var record: LoopStatusIssueRecord {
+        LoopStatusIssueRecord(number: number, author: user?.login, isOpen: state == "open", updatedAt: updatedAt, body: body ?? "")
     }
 }
 

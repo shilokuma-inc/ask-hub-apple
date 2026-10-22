@@ -65,6 +65,9 @@ public protocol OrchestratorGitHub: Sendable {
     func close(_ issue: DecisionLogIssue) async throws
     /// リポジトリの、`loop-status` が付いた Issue（閉じたものも含む）
     func loopStatusIssues(in repository: String) async throws -> [LoopStatusIssueRecord]
+    /// 状態用の Issue を番号で読む（閉じたものも）。消えた・`loop-status` が外れた・PR なら `nil`。
+    /// 一覧に見当たらないときに、前に使った Issue が残っているかを確かめる
+    func loopStatusIssue(in repository: String, number: Int) async throws -> LoopStatusIssueRecord?
     /// 状態用の Issue を作る（ラベルが無ければ作る）。Issue の番号を返す
     func createLoopStatusIssue(in repository: String, body: String) async throws -> Int
     /// 状態用の Issue の本文を置き換える。閉じられていれば開き直す

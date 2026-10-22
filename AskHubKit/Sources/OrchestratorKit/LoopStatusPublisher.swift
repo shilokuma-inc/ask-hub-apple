@@ -68,6 +68,10 @@ public struct LoopStatusPublisher: Sendable, Equatable {
     private(set) var entries: [String: Entry] = [:]
     /// レート制限で `Retry-After` を示されたリポジトリと、次に試してよい時刻
     private(set) var retryAt: [String: Date] = [:]
+    /// 最後に使った（一覧から選んだ・作った）状態用の Issue の番号。キーは `entries` と同じ。
+    /// 書けなかったとき（`forget`）も消さない。GitHub は障害のときに一覧を 200 の空の配列で返すことがあり、
+    /// そのまま作ると状態用の Issue が重複するので、一覧に無ければこの番号の Issue を直接読んで確かめる（Issue #739）
+    private(set) var knownNumbers: [String: Int] = [:]
 
     public init() {}
 
@@ -205,8 +209,10 @@ public struct LoopStatusPublisher: Sendable, Equatable {
     ) {
         guard let issue = Self.issue(in: issues, trustedAuthors: trustedAuthors) else {
             entries[key] = Entry(number: nil)
+            knownNumbers[key] = nil
             return
         }
+        knownNumbers[key] = issue.number
         var entry = Entry(number: issue.number)
         if issue.isOpen {
             entry.body = LoopStatusBoard(issueBody: issue.body, comments: [], trustedAuthors: trustedAuthors).body
@@ -231,6 +237,12 @@ public struct LoopStatusPublisher: Sendable, Equatable {
     /// 状態用の Issue を作った（コメントはまだ無い）
     public mutating func recordIssueCreated(number: Int, body: RepositoryStatusReport, repositoryKey key: String) {
         entries[key] = Entry(number: number, body: .repository(body))
+        knownNumbers[key] = number
+    }
+
+    /// 最後に使った状態用の Issue の番号（`knownNumbers`）。一覧に信用する author の Issue が無いとき、作る前に確かめる
+    public func knownNumber(repositoryKey key: String) -> Int? {
+        knownNumbers[key]
     }
 
     /// 本文を書き終えた
@@ -257,7 +269,7 @@ public struct LoopStatusPublisher: Sendable, Equatable {
     }
 
     /// 書けなかった。次のポーリングで一覧から取り直す（Issue・コメントが消された・移された場合に備える）。
-    /// レート制限なら、`retryAfter` が過ぎるまで試さない
+    /// レート制限なら、`retryAfter` が過ぎるまで試さない。使った Issue の番号（`knownNumbers`）は残す
     public mutating func forget(repositoryKey key: String, retryAfter: Duration? = nil, now: Date = Date()) {
         entries[key] = nil
         retryAt[key] = retryAfter.map { now.addingTimeInterval(TimeInterval($0.components.seconds)) }
