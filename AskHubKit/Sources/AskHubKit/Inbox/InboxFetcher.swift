@@ -44,16 +44,20 @@ public struct InboxFetcher: Sendable {
         self.trust = trustedAuthors
     }
 
-    /// organization 全体の未回答の質問を、古い順に返す
+    /// organization 全体の未回答の質問を、古い順に返す。
+    /// search のページングで同じ Discussion / PR が 2 回来ても 1 回だけ読み、同じ質問（コメントの node id）は先のものだけを残す
+    /// （`List` の同じ `ForEach` に同じ id を出さない。同じ Discussion にまとめる `groupedByDiscussion` より前に除く）
     public func unansweredQuestions(orgs: [String]) async throws -> [InboxQuestion] {
         var questions: [InboxQuestion] = []
         // レート制限を考えて、Discussion / PR ごとに順番に取得する
-        for subject in try await source.subjectsNeedingAnswer(orgs: orgs) {
+        for subject in try await source.subjectsNeedingAnswer(orgs: orgs).uniqued(by: \.nodeID) {
             let threads = try await source.questionThreads(of: subject)
             let trusted = await trust.trustedAuthors(for: subject.repository)
             questions += InboxQuestion.unanswered(in: threads, of: subject, trustedAuthors: trusted)
         }
-        return questions.sorted { ($0.comment.createdAt, $0.id) < ($1.comment.createdAt, $1.id) }
+        return questions
+            .uniqued(by: \.id)
+            .sorted { ($0.comment.createdAt, $0.id) < ($1.comment.createdAt, $1.id) }
     }
 
     /// ループの開始を待っている Discussion を、番号の古い順に返す。
