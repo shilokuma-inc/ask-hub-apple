@@ -220,7 +220,8 @@ final class AskHubUITests: XCTestCase {
         // 手動ループの欄に、担当者と（自分が担当なら）開始の指示のコピーを出す
         scrollUntilHittable(app.staticTexts["prime-pick-ios#21"], in: app)
         XCTAssertTrue(app.buttons["copy-manual-start"].exists)
-        XCTAssertTrue(app.staticTexts["zankyo-apple#8"].exists)
+        // 画面の小さい端末（iPhone 12 など）では 2 行目が画面の外にあり、行が作られていないので、スクロールして探す
+        scrollUntilHittable(app.staticTexts["zankyo-apple#8"], in: app)
 
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "loop-status-tab"
