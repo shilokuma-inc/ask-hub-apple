@@ -18,7 +18,8 @@ struct NewRequestView: View {
 
         var title: String {
             switch self {
-            case .change: "機能追加・修正"
+            // セグメントが 4 つになり iPhone の幅では「機能追加・修正」が切れるので、短くする（Discussion #722）
+            case .change: "追加・修正"
             case .newApp: "新しいアプリ"
             case .addRepository: "担当に入れる"
             case .release: "リリース準備"
