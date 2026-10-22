@@ -300,6 +300,12 @@
 - macOS の `/bin/bash`（3.2）には連想配列（`declare -A`）が無い（`declare: -A: invalid option`）。bash 3.2 で動かすスクリプト（`capture_screenshots.sh` など・ワークフローの `run:` を手元で流す道具）では、
   `eval "name_$key=…"` か、`key=value` の行のファイルで代わりにする
 - テンプレートの `scripts/rename.sh` を手元で確かめるときは、最後に `gh repo view` / `gh repo edit --enable-discussions` を本物のリポジトリに向けて呼ぶので、`printf '#!/bin/sh\nexit 1\n'` の偽の `gh` を前に置いた PATH で流す。警告が出るだけで名前の変更は終わる（2026-10-21、visionOS のテンプレート）
+- ralph-kit の `install.sh <checkout>` は中継のファイルを置き、CLAUDE.md の ralph-kit:snippet の目印の間を書き換えるだけで、CLAUDE.md に「## ralph-loop による自律開発」の節が無いときは
+  案内を表示して終了コード 0 で終わる（節は足さない。コミットもしない）。節の無いリポジトリに入れるときは、先に kit の `templates/CLAUDE.snippet.md` の見出しから end の目印までを足してから流す（`add-repo.sh`）
+- 同じ内容のコミットを作り直してブランチに push し直すと、コミットの時刻が違うので fast-forward にならず断られる。やり直しで同じブランチに push するスクリプトは、
+  `git fetch origin refs/heads/<branch>` の後に `FETCH_HEAD^{tree}` と `HEAD^{tree}` を比べ、同じなら push を飛ばす（force しない）
+- 偽の `gh` とローカルの bare リポジトリでスクリプトを確かめるときは、clone した checkout の origin を `https://github.com/<owner>/<repo>.git` にしたうえで
+  `url.<bare のパス>.insteadOf` で書き換え、`GIT_ALLOW_PROTOCOL=file` を付けて流す。書き換えが漏れても https に出られないので、本物の GitHub に push しない
 
 ## SwiftUI
 
