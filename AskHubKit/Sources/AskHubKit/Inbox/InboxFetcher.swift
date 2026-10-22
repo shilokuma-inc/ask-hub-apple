@@ -57,19 +57,21 @@ public struct InboxFetcher: Sendable {
     }
 
     /// ループの開始を待っている Discussion を、番号の古い順に返す。
-    /// 信用する author が作ったものだけを扱う（public リポジトリでは誰でも Discussion を作れるため）
+    /// 信用する author が作ったものだけを扱う（public リポジトリでは誰でも Discussion を作れるため）。
+    /// search のページングで同じ Discussion が 2 回来たら、先のものだけを残す（`List` の同じ `ForEach` に同じ id を出さない）
     public func waitingDiscussions(orgs: [String]) async throws -> [WaitingDiscussion] {
         var trusted: [WaitingDiscussion] = []
-        for discussion in try await source.waitingDiscussions(orgs: orgs)
+        for discussion in try await source.waitingDiscussions(orgs: orgs).uniqued(by: \.id)
         where await trust.trustedAuthors(for: discussion.subject.repository).contains(discussion.author) {
             trusted.append(discussion)
         }
         return trusted.sorted { ($0.subject.repository, $0.subject.number) < ($1.subject.repository, $1.subject.number) }
     }
 
-    /// 担当 PC が Claude の利用上限で待機しているリポジトリを、解除の早い順に返す
+    /// 担当 PC が Claude の利用上限で待機しているリポジトリを、解除の早い順に返す。
+    /// 同じリポジトリが 2 回来たら（organization の設定の重複など）、先のものだけを残す
     public func usageLimitedRepositories(orgs: [String], now: Date) async throws -> [UsageLimitedRepository] {
-        try await source.usageLimitedRepositories(orgs: orgs, now: now)
+        try await source.usageLimitedRepositories(orgs: orgs, now: now).uniqued(by: \.id)
     }
 
     /// 「任意判断」「実機確認」に出す Issue を、更新の新しい順に返す。
@@ -84,10 +86,11 @@ public struct InboxFetcher: Sendable {
     }
 
     /// 手動ループの epic を、リポジトリと番号の順に返す。
-    /// 信用する author が作った Discussion だけを扱い、担当者は信用する author の担当のコメントのうち最後のものから読む
+    /// 信用する author が作った Discussion だけを扱い、担当者は信用する author の担当のコメントのうち最後のものから読む。
+    /// search のページングで同じ Discussion が 2 回来たら、先のものだけを残す
     public func manualLoopEpics(orgs: [String]) async throws -> [ManualLoopEpic] {
         var epics: [ManualLoopEpic] = []
-        for record in try await source.manualLoopRecords(orgs: orgs) {
+        for record in try await source.manualLoopRecords(orgs: orgs).uniqued(by: \.subject.nodeID) {
             let trusted = await trust.trustedAuthors(for: record.subject.repository)
             guard trusted.contains(record.subject.author) else {
                 continue
