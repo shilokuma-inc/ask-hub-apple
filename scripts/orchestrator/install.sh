@@ -85,10 +85,11 @@ install -m 755 "$REPO_ROOT/scripts/orchestrator/review-final.sh" "$PREFIX/askhub
 install -m 755 "$REPO_ROOT/scripts/orchestrator/fix-review.sh" "$PREFIX/askhub-fix-review"
 # ciFixCommand の既定（最終 PR の CI の失敗を、失敗したジョブのログを読ませて直して push する）
 install -m 755 "$REPO_ROOT/scripts/orchestrator/fix-ci.sh" "$PREFIX/askhub-fix-ci"
-# createRepositoryCommand / removeRepositoryCommand の既定（担当リポジトリの作成・削除の依頼）
+# createRepositoryCommand / addRepositoryCommand / removeRepositoryCommand の既定（担当リポジトリの作成・追加・削除の依頼）
 install -m 755 "$REPO_ROOT/scripts/orchestrator/create-repo.sh" "$PREFIX/askhub-create-repo"
+install -m 755 "$REPO_ROOT/scripts/orchestrator/add-repo.sh" "$PREFIX/askhub-add-repo"
 install -m 755 "$REPO_ROOT/scripts/orchestrator/remove-repo.sh" "$PREFIX/askhub-remove-repo"
-# 作成（と担当への追加）のスクリプトが source する、ラベル・Discussions の準備の共通の処理。呼ぶスクリプトと同じ場所に置く
+# 作成・追加のスクリプトが source する、ラベル・Discussions の準備の共通の処理。呼ぶスクリプトと同じ場所に置く
 install -m 644 "$REPO_ROOT/scripts/orchestrator/repo-setup.sh" "$PREFIX/askhub-repo-setup"
 # ループの xcodebuild を空いている Mac に振り分ける xcb。置くだけでは使われない。
 # 使う Mac だけ ~/.config/askhub/xcodebuild からリンクし、~/.config/xcb/hosts を書く（docs/orchestrator.md の「xcb」）
@@ -117,7 +118,7 @@ cat <<MSG
   最終 PR の第三者レビュー: $PREFIX/askhub-review-final（reviewCommand の既定）
   第三者レビューの要修正の修正: $PREFIX/askhub-fix-review（fixCommand の既定）
   CI の失敗の修正: $PREFIX/askhub-fix-ci（ciFixCommand の既定）
-  リポジトリの作成・削除: $PREFIX/askhub-create-repo / askhub-remove-repo（createRepositoryCommand / removeRepositoryCommand の既定）
+  リポジトリの作成・追加・削除: $PREFIX/askhub-create-repo / askhub-add-repo / askhub-remove-repo（createRepositoryCommand / addRepositoryCommand / removeRepositoryCommand の既定）
   xcodebuild の振り分け: $PREFIX/askhub-xcb（使う Mac だけ ~/.config/askhub/xcodebuild からリンクする）
   plist:        $PLIST
   ログ:         $LOG_DIR/orchestrator.log
