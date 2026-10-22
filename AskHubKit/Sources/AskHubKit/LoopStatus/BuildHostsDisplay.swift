@@ -44,9 +44,17 @@ public struct BuildMoveItem: Sendable, Equatable, Identifiable {
     public var finishedAt: Date?
     /// 試行の回数（同じ経路をたどった別のビルドと id を分けるため）
     public var attempt: Int?
+    /// 中身（リポジトリ・文言・終了日時・試行）が同じ移動の中で、一覧の何件目か（1 から）。
+    /// 終わっていない同じ移動が 2 件あると中身だけでは id が重なるので、2 件目から id に足す
+    public var occurrence = 1
 
     public var id: String {
-        "\(repository) \(text) \(finishedAt?.timeIntervalSince1970 ?? 0) \(attempt ?? 0)"
+        occurrence > 1 ? "\(contentKey)#\(occurrence)" : contentKey
+    }
+
+    /// 中身から作るキー。リポジトリ名は GitHub が大文字小文字を区別しないので小文字にする
+    var contentKey: String {
+        "\(repository.lowercased()) \(text) \(finishedAt?.timeIntervalSince1970 ?? 0) \(attempt ?? 0)"
     }
 }
 
@@ -123,8 +131,20 @@ extension BuildHostsStatus {
 
 extension LoopStatusRow {
     /// 全リポジトリの、直近 24 時間に別の Mac に移ったビルド（新しい順）。担当 PC がいる行の目印だけを読む
-    /// （担当 PC がいない行は、状態そのものを出さないのに合わせる。担当 PC が戻れば 24 時間分がまた出る）
+    /// （担当 PC がいない行は、状態そのものを出さないのに合わせる。担当 PC が戻れば 24 時間分がまた出る）。
+    /// 中身が同じ移動が 2 件以上あってもすべて出し、2 件目からは id に出現の順を足して一意にする（並びが変わらなければ id も変わらない）
     public static func buildMoves(in rows: [LoopStatusRow], now: Date, within interval: TimeInterval = 24 * 60 * 60) -> [BuildMoveItem] {
+        var counts: [String: Int] = [:]
+        return moves(in: rows, now: now, within: interval).map { move in
+            var move = move
+            let count = (counts[move.contentKey] ?? 0) + 1
+            counts[move.contentKey] = count
+            move.occurrence = count
+            return move
+        }
+    }
+
+    private static func moves(in rows: [LoopStatusRow], now: Date, within interval: TimeInterval) -> [BuildMoveItem] {
         rows.flatMap { row -> [BuildMoveItem] in
             guard case let .reported(report) = row.status(now: now), let moved = report.builds?.moved else {
                 return []
