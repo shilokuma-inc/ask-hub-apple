@@ -33,12 +33,14 @@ public struct GitHubMergeQueue: MergeQueueProviding {
             return (data.search.nodes.compactMap(\.self), data.search.pageInfo)
         }
         // 最終 PR だけを出す: 同じリポジトリの epic ブランチから既定ブランチ（develop）への PR で、信用する author が作ったもの。
-        // fork からの PR は、マージ後に削除するブランチがこのリポジトリに無いので扱わない
+        // fork からの PR は、マージ後に削除するブランチがこのリポジトリに無いので扱わない。
+        // search のページングで同じ PR が 2 回来たら、先のものだけを読む（`List` の同じ `ForEach` に同じ id を出さない・コメントを 2 回取らない）
         var trusted: [EpicPullRequest] = []
-        for node in nodes {
-            guard var pullRequest = node.pullRequest else {
-                continue
-            }
+        let candidates = nodes
+            .compactMap { node in node.pullRequest.map { (node: node, pullRequest: $0) } }
+            .uniqued(by: \.pullRequest.id)
+        for (node, candidate) in candidates {
+            var pullRequest = candidate
             let authors = await trustedAuthors.trustedAuthors(for: pullRequest.repository)
             guard authors.contains(pullRequest.author) else {
                 continue
