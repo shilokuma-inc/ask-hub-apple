@@ -40,6 +40,40 @@ struct RepositoryRequestTests {
         #expect(request.title == "【担当の解除】shilokuma-inc/notti-ios")
     }
 
+    @Test func roundTripsAddRequestThroughIssueBody() {
+        let request = RepositoryRequest.add(RepositoryAddition(repository: "shilokuma-inc/my-app-ios"))
+        let body = request.body
+
+        #expect(body.hasPrefix(#"<!-- ask-hub:repo-request {"action":"add","repository":"shilokuma-inc/my-app-ios"} -->"#))
+        #expect(body.contains("| リポジトリ | shilokuma-inc/my-app-ios |"))
+        #expect(body.contains("| 担当 PC への clone | 担当 PC の決まった場所に clone する（同じ origin の checkout が既にあればそれを使う） |"))
+        #expect(body.contains("| 準備 | AskHub のラベル・Discussions・ralph-kit の中継（無ければ develop に直接 push） |"))
+        #expect(body.contains("GitHub のリポジトリの設定（公開範囲など）は変えません。"))
+        #expect(RepositoryRequest.parse(body) == request)
+        #expect(request.title == "【担当の追加】shilokuma-inc/my-app-ios")
+        #expect(request.repository == "shilokuma-inc/my-app-ios")
+        #expect(request.isValid)
+    }
+
+    @Test func ignoresKeysOfOtherActionsInAddRequest() {
+        let body = #"<!-- ask-hub:repo-request {"action":"add","deleteLocal":true,"force":true,"#
+            + #""repository":"o/r","template":"evil/t","x":1} -->"#
+        #expect(RepositoryRequest.parse(body) == .add(RepositoryAddition(repository: "o/r")))
+    }
+
+    @Test func rejectsAddRequestWithUnsafeRepository() {
+        let bodies = [
+            #"<!-- ask-hub:repo-request {"action":"add","repository":"o/r;rm -rf ~"} -->"#,
+            #"<!-- ask-hub:repo-request {"action":"add","repository":"../r"} -->"#,
+            #"<!-- ask-hub:repo-request {"action":"add","repository":"o"} -->"#,
+            #"<!-- ask-hub:repo-request {"action":"add"} -->"#
+        ]
+        for body in bodies {
+            #expect(RepositoryRequest.parse(body) == nil, "\(body)")
+        }
+        #expect(!RepositoryRequest.add(RepositoryAddition(repository: "o/-r")).isValid)
+    }
+
     @Test func fillsDefaultsForOmittedKeys() {
         let body = #"<!-- ask-hub:repo-request {"action":"create","repository":"o/r","#
             + #""template":"Shilokuma-Inc/Template-App-iOS","appName":"Foo"} -->"#
