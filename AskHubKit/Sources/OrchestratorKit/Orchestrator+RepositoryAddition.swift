@@ -4,9 +4,13 @@ import Foundation
 /// 担当に入れる依頼（`repo-request` の `add`）の処理
 extension Orchestrator {
     /// GitHub にある既存のリポジトリを、この PC の決まった場所に用意して担当リポジトリに加える
-    func add(_ request: RepositoryAddition, hub: RepositoryConfig) async -> RepositoryRequestOutcome {
+    func add(_ request: RepositoryAddition, from issue: RepositoryRequestIssue, hub: RepositoryConfig) async -> RepositoryRequestOutcome {
         if config.repository(named: request.repository) != nil {
             return .rejected("\(request.repository) は既にこの PC の担当リポジトリです")
+        }
+        // 依頼 Issue のある担当リポジトリで信用するだけでは足りない。書き込む先（入れるリポジトリ）でも信用する人の依頼に限る
+        guard issue.isTrusted(by: await trustedAuthors(forAdding: request.repository)) else {
+            return .rejected("依頼した人が \(request.repository) で信用する author ではないため、担当に入れません")
         }
         guard let configStore else {
             return .rejected("設定ファイルの場所が分からないため、担当リポジトリに加えられません")
@@ -50,5 +54,16 @@ extension Orchestrator {
         var lines = ["\(request.repository) をこの PC の担当リポジトリに加えました"]
         lines += RepositoryCommandOutput.results(in: result.output).map { "- \($0)" }
         return .succeeded(lines.joined(separator: "\n"))
+    }
+
+    /// 入れるリポジトリで信用する author。設定の一覧に、そのリポジトリに書き込み権限を持つアカウントを加えたもの
+    /// （取得できなければ設定の一覧だけ）
+    private func trustedAuthors(forAdding repository: String) async -> TrustedAuthors {
+        let base = config.trustedAuthors
+        guard config.trustsRepositoryWriters, let repositoryWriters,
+              let writers = await repositoryWriters.writers(of: repository) else {
+            return base
+        }
+        return base.union(writers)
     }
 }

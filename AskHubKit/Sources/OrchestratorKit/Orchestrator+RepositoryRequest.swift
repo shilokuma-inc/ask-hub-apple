@@ -77,7 +77,7 @@ extension Orchestrator {
             return await remove(removal, statuses: statuses)
 
         case let .add(addition):
-            return await add(addition, hub: hub)
+            return await add(addition, from: issue, hub: hub)
         }
     }
 

@@ -55,6 +55,62 @@ extension OrchestratorRepositoryRequestTests {
         #expect(github.ideaComments.first?.contains("既にこの PC の担当リポジトリです") == true)
     }
 
+    @Test func rejectsAddRequestFromWriterOfHubWhoCannotWriteToRepository() async throws {
+        let github = FakeGitHub([.success([])])
+        // partner は依頼 Issue のある担当リポジトリには書き込めるが、入れるリポジトリには書き込めない
+        github.setRepositoryRequests([Self.issue(Self.addRequest, in: "shilokuma-inc/ask-hub-apple", author: "partner")])
+        let writers = FakeWritersSource(["shilokuma-inc/ask-hub-apple": ["partner"]])
+        let runtime = FakeRuntime()
+        let (orchestrator, store) = try makeOrchestrator(github: github, runtime: runtime, writers: writers)
+
+        try await orchestrator.pollOnce()
+        try await orchestrator.pollOnce()
+
+        #expect(runtime.ran.isEmpty)
+        #expect(store.added.isEmpty)
+        #expect(github.ideaComments.count == 1)
+        #expect(github.ideaComments.first?.contains("依頼した人が shilokuma-inc/my-app-ios で信用する author ではないため") == true)
+        #expect(github.closedIdeas.isEmpty)
+    }
+
+    @Test func rejectsAddRequestEditedByAccountUntrustedInRepository() async throws {
+        let github = FakeGitHub([.success([])])
+        // 作った人はどこでも信用するが、編集した partner は入れるリポジトリに書き込めない
+        let issue = RepositoryRequestIssue.fixture(
+            repository: "shilokuma-inc/ask-hub-apple",
+            number: 5,
+            editor: "partner",
+            title: Self.addRequest.title,
+            body: Self.addRequest.body
+        )
+        github.setRepositoryRequests([issue])
+        let writers = FakeWritersSource(["shilokuma-inc/ask-hub-apple": ["partner"]])
+        let runtime = FakeRuntime()
+        let (orchestrator, store) = try makeOrchestrator(github: github, runtime: runtime, writers: writers)
+
+        try await orchestrator.pollOnce()
+
+        #expect(runtime.ran.isEmpty)
+        #expect(store.added.isEmpty)
+        #expect(github.ideaComments.first?.contains("信用する author ではないため") == true)
+    }
+
+    @Test func addsRepositoryRequestedByWriterOfBothRepositories() async throws {
+        let github = FakeGitHub([.success([])])
+        github.setRepositoryRequests([Self.issue(Self.addRequest, in: "shilokuma-inc/ask-hub-apple", author: "partner")])
+        let writers = FakeWritersSource([
+            "shilokuma-inc/ask-hub-apple": ["partner"],
+            "shilokuma-inc/my-app-ios": ["partner"]
+        ])
+        let runtime = FakeRuntime()
+        let (orchestrator, store) = try makeOrchestrator(github: github, runtime: runtime, writers: writers)
+
+        try await orchestrator.pollOnce()
+
+        #expect(runtime.ran.count == 1)
+        #expect(store.added == ["shilokuma-inc/my-app-ios /src/my-app-ios"])
+    }
+
     @Test func rejectsAddingRepositoryAssignedToAnotherPC() async throws {
         let github = FakeGitHub([.success([])])
         github.setRepositoryRequests([Self.issue(Self.addRequest, in: "shilokuma-inc/ask-hub-apple")])
