@@ -1,6 +1,6 @@
 import Foundation
 
-/// アプリから出す、担当リポジトリの作成・削除の依頼（ラベル `repo-request` の Issue）。
+/// アプリから出す、担当リポジトリの作成・追加・削除の依頼（ラベル `repo-request` の Issue）。
 ///
 /// 本文の先頭に機械が読める目印（JSON）を置き、続けて人が読める説明を置く:
 ///
@@ -10,6 +10,8 @@ import Foundation
 ///
 /// - 作成（`create`）: 依頼 Issue は、作成を任せたい PC の担当リポジトリに作る。そのオーケストレーターがテンプレートから
 ///   リポジトリを作り、名前を変えて `develop` に push し、担当リポジトリに加える
+/// - 追加（`add`）: 依頼 Issue は、入れる先の PC の担当リポジトリに作る。そのオーケストレーターが既存のリポジトリを
+///   clone して AskHub とループで使える準備をし、担当リポジトリに加える（`RepositoryAddition`）
 /// - 削除（`remove`）: 依頼 Issue は、担当から外したいリポジトリそのものに作る。オーケストレーターが担当から外し、
 ///   選んだときはローカルの checkout・ループの worktree・DerivedData を消す。GitHub のリポジトリは消さない
 ///
@@ -17,6 +19,7 @@ import Foundation
 public enum RepositoryRequest: Sendable, Equatable {
     case create(NewRepository)
     case remove(RepositoryRemoval)
+    case add(RepositoryAddition)
 
     /// 依頼 Issue に付けるラベル
     public static let labelName = AskHubLabel.repoRequest.rawValue
@@ -26,6 +29,7 @@ public enum RepositoryRequest: Sendable, Equatable {
         switch self {
         case let .create(request): request.repository
         case let .remove(request): request.repository
+        case let .add(request): request.repository
         }
     }
 
@@ -34,6 +38,7 @@ public enum RepositoryRequest: Sendable, Equatable {
         switch self {
         case let .create(request): request.isValid
         case let .remove(request): RepositoryName.isValidFullName(request.repository)
+        case let .add(request): request.isValid
         }
     }
 
@@ -42,6 +47,7 @@ public enum RepositoryRequest: Sendable, Equatable {
         switch self {
         case let .create(request): "【新規アプリ】\(request.repository)"
         case let .remove(request): "【担当の解除】\(request.repository)"
+        case let .add(request): "【担当の追加】\(request.repository)"
         }
     }
 
@@ -76,6 +82,9 @@ public enum RepositoryRequest: Sendable, Equatable {
 
                 GitHub のリポジトリは削除しません。
                 """
+
+        case let .add(request):
+            description = request.issueDescription
         }
         return """
             \(marker)
@@ -158,6 +167,9 @@ private struct RepositoryRequestPayload: Codable {
             action = "remove"
             deleteLocal = remove.deletesLocalFiles
             force = remove.force
+
+        case .add:
+            action = "add"
         }
     }
 
@@ -187,6 +199,10 @@ private struct RepositoryRequestPayload: Codable {
                 deletesLocalFiles: deleteLocal ?? false,
                 force: force ?? false
             ))
+
+        case "add":
+            // 置き場所も準備も決まっているので、ほかの action のキー（`deleteLocal` など）が付いていても使わない
+            return .add(RepositoryAddition(repository: repository))
 
         default:
             return nil
