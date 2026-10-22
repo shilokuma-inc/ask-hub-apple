@@ -10,6 +10,8 @@ struct FakeLoopStatusState {
     var createdIssues: [String] = []
     var updatedIssues: [String] = []
     var issueListings = 0
+    /// 一覧を空で返す残りの回数（GitHub の障害のときのように、200 の空の配列を返す。Issue #739）
+    var emptyListings = 0
     /// 番号で読んだ状態用の Issue（`<repo>#<番号>`）
     var readIssues: [String] = []
     var fails = false
@@ -48,12 +50,38 @@ extension FakeGitHub {
         state.withLock { $0.loopStatus.fails = fails }
     }
 
+    /// 次の `count` 回の一覧を空で返す（GitHub の障害のときのように、Issue があっても 200 の空の配列を返す）
+    func setEmptyLoopStatusListings(_ count: Int) {
+        state.withLock { $0.loopStatus.emptyListings = count }
+    }
+
+    var readLoopStatusIssues: [String] {
+        state.withLock { $0.loopStatus.readIssues }
+    }
+
+    /// 状態用の Issue を閉じる・開く（手で片付けたときの代わり）。`nil` なら消す（ラベルを外したときも同じ）
+    func setLoopStatusIssue(_ number: Int, isOpen: Bool?) {
+        state.withLock { state in
+            guard let isOpen, let issue = state.loopStatus.issues[number] else {
+                state.loopStatus.issues[number] = nil
+                return
+            }
+            state.loopStatus.issues[number] = LoopStatusIssueRecord(
+                number: number, author: issue.author, isOpen: isOpen, updatedAt: issue.updatedAt, body: issue.body
+            )
+        }
+    }
+
     func loopStatusIssues(in repository: String) async throws -> [LoopStatusIssueRecord] {
         try state.withLock { state in
             if state.loopStatus.fails {
                 throw TestError()
             }
             state.loopStatus.issueListings += 1
+            if state.loopStatus.emptyListings > 0 {
+                state.loopStatus.emptyListings -= 1
+                return []
+            }
             return state.loopStatus.issues.values.sorted { $0.number < $1.number }
         }
     }
