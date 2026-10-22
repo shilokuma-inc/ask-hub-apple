@@ -1,9 +1,9 @@
 import AskHubKit
 import Foundation
 
-/// 担当リポジトリの作成・削除の依頼（`repo-request`）の処理
+/// 担当リポジトリの作成・追加・削除の依頼（`repo-request`）の処理（追加は `Orchestrator+RepositoryAddition.swift`）
 extension Orchestrator {
-    /// 作成・削除のコマンドの制限時間（テンプレートからの作成と clone を含む）
+    /// 作成・追加・削除のコマンドの制限時間（テンプレートからの作成と clone を含む）
     static let repositoryCommandTimeout: Duration = .seconds(30 * 60)
 
     /// 依頼 1 件を処理した結果
@@ -76,9 +76,8 @@ extension Orchestrator {
             }
             return await remove(removal, statuses: statuses)
 
-        case .add:
-            // 担当に入れる処理はまだ無い。知らない action と同じく断り、直してから依頼し直してもらう
-            return .rejected("このオーケストレーターは、担当に入れる依頼をまだ処理できません")
+        case let .add(addition):
+            return await add(addition, hub: hub)
         }
     }
 
@@ -211,7 +210,7 @@ extension Orchestrator {
     }
 
     /// コマンドが失敗していれば、その結果。成功していれば `nil`
-    private static func failure(of result: CommandResult, command: String) -> RepositoryRequestOutcome? {
+    static func failure(of result: CommandResult, command: String) -> RepositoryRequestOutcome? {
         guard result.status != 0 else {
             return nil
         }

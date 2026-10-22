@@ -8,7 +8,12 @@ struct OrchestratorRepositoryRequestTests {
 
     static let hub = RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")
     static let notti = RepositoryConfig(owner: "shilokuma-inc", name: "notti-ios", checkoutPath: "/src/notti-ios")
-    static let commands = RepositoryCommands(create: ["/bin/create"], remove: ["/bin/remove"], newCheckoutDirectory: "/src")
+    static let commands = RepositoryCommands(
+        create: ["/bin/create"],
+        remove: ["/bin/remove"],
+        add: ["/bin/add"],
+        newCheckoutDirectory: "/src"
+    )
 
     static let createRequest = RepositoryRequest.create(NewRepository(
         repository: "shilokuma-inc/my-quiz-ios",
@@ -181,22 +186,6 @@ struct OrchestratorRepositoryRequestTests {
 
         #expect(runtime.ran.isEmpty)
         #expect(github.ideaComments.first?.contains("既にこの PC の担当リポジトリです") == true)
-    }
-
-    // MARK: - 追加
-
-    @Test func rejectsAddingRepositoryUntilItIsSupported() async throws {
-        let request = RepositoryRequest.add(RepositoryAddition(repository: "shilokuma-inc/my-app-ios"))
-        let github = FakeGitHub([.success([])])
-        github.setRepositoryRequests([Self.issue(request, in: "shilokuma-inc/ask-hub-apple")])
-        let runtime = FakeRuntime()
-        let (orchestrator, store) = try makeOrchestrator(github: github, runtime: runtime)
-
-        try await orchestrator.pollOnce()
-
-        #expect(runtime.ran.isEmpty)
-        #expect(store.added.isEmpty)
-        #expect(github.ideaComments.first?.contains("担当に入れる依頼をまだ処理できません") == true)
     }
 
     // MARK: - 削除

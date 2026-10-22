@@ -1,6 +1,7 @@
+import Foundation
 @testable import OrchestratorKit
 
-// FakeGitHub の、担当リポジトリの作成・削除の依頼（`repo-request`）に使う操作
+// FakeGitHub の、担当リポジトリの作成・追加・削除の依頼（`repo-request`）に使う操作
 
 extension FakeGitHub {
     func setRepositoryRequests(_ issues: [RepositoryRequestIssue]) {
@@ -32,5 +33,21 @@ extension FakeGitHub {
 
     func deleteHeartbeat(in repository: String) async throws {
         state.withLock { $0.deletedHeartbeats.append(repository) }
+    }
+
+    func setHeartbeatLastSeen(_ date: Date?, in repository: String, fails: Bool = false) {
+        state.withLock { state in
+            state.heartbeatLastSeen[repository] = date
+            state.heartbeatReadFails = fails
+        }
+    }
+
+    func heartbeatLastSeen(in repository: String) async throws -> Date? {
+        try state.withLock { state in
+            if state.heartbeatReadFails {
+                throw TestError()
+            }
+            return state.heartbeatLastSeen[repository]
+        }
     }
 }
