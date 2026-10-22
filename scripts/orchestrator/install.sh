@@ -88,6 +88,8 @@ install -m 755 "$REPO_ROOT/scripts/orchestrator/fix-ci.sh" "$PREFIX/askhub-fix-c
 # createRepositoryCommand / removeRepositoryCommand の既定（担当リポジトリの作成・削除の依頼）
 install -m 755 "$REPO_ROOT/scripts/orchestrator/create-repo.sh" "$PREFIX/askhub-create-repo"
 install -m 755 "$REPO_ROOT/scripts/orchestrator/remove-repo.sh" "$PREFIX/askhub-remove-repo"
+# 作成（と担当への追加）のスクリプトが source する、ラベル・Discussions の準備の共通の処理。呼ぶスクリプトと同じ場所に置く
+install -m 644 "$REPO_ROOT/scripts/orchestrator/repo-setup.sh" "$PREFIX/askhub-repo-setup"
 # ループの xcodebuild を空いている Mac に振り分ける xcb。置くだけでは使われない。
 # 使う Mac だけ ~/.config/askhub/xcodebuild からリンクし、~/.config/xcb/hosts を書く（docs/orchestrator.md の「xcb」）
 install -m 755 "$REPO_ROOT/scripts/orchestrator/xcb" "$PREFIX/askhub-xcb"

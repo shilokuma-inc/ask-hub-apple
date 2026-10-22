@@ -44,6 +44,16 @@ fi
 for command in gh git; do
   command -v "$command" >/dev/null 2>&1 || fail "$command が見つかりません"
 done
+# ラベル・Discussions の準備は add-repo.sh と共通（install.sh は同じ場所に askhub-repo-setup として置く）
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+for lib in "$SCRIPT_DIR/askhub-repo-setup" "$SCRIPT_DIR/repo-setup.sh"; do
+  if [[ -f "$lib" ]]; then
+    # shellcheck source=repo-setup.sh
+    source "$lib"
+    break
+  fi
+done
+declare -F askhub_create_labels >/dev/null || fail "askhub-repo-setup が見つかりません（scripts/orchestrator/install.sh を流し直してください）"
 
 # 1. リポジトリを作る。やり直しで呼ばれたときは、同じテンプレートから作ったものなら続きから進める
 if existing=$(gh api "repos/$REPOSITORY" --jq '[.template_repository.full_name // "", .visibility] | @tsv' 2>/dev/null); then
@@ -135,36 +145,18 @@ result "アプリ名を ${APP_NAME}、Bundle ID を $BUNDLE_ID にして $BRANCH
 
 # 4. Discussions を有効にする。テンプレートから作ったリポジトリでは無効のままで、
 #    依頼から質問付きの Discussion を作るときに「Ideas」カテゴリが無いと失敗する
-gh repo edit "$REPOSITORY" --enable-discussions >/dev/null \
+askhub_enable_discussions "$REPOSITORY" \
   || fail "$REPOSITORY の Discussions を有効にできませんでした"
 # 既定のカテゴリは有効にした直後に作られる。少し待っても無ければ、人に作ってもらう
-# shellcheck disable=SC2016 # GraphQL の変数で、シェルでは展開しない
-IDEAS_QUERY='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { discussionCategories(first: 50) { nodes { name } } } }'
-has_ideas=""
-for _ in $(seq 1 10); do
-  has_ideas=$(gh api graphql -f query="$IDEAS_QUERY" -f owner="${REPOSITORY%%/*}" -f name="${REPOSITORY#*/}" \
-    --jq '[.data.repository.discussionCategories.nodes[].name] | index("Ideas") != null' 2>/dev/null || true)
-  [[ "$has_ideas" == true ]] && break
-  sleep 2
-done
+has_ideas=$(askhub_has_ideas_category "$REPOSITORY")
 if [[ "$has_ideas" == true ]]; then
   result "Discussions を有効にしました"
 else
   result "Discussions を有効にしましたが、カテゴリ「Ideas」がありません。GitHub の Discussions で作ってください（依頼からの Discussion の作成に使います）"
 fi
 
-# AskHub のラベル（scripts/ralph-setup.sh と同じ）と、App Store Connect への登録の Issue
-while IFS='|' read -r name color description; do
-  gh label create "$name" --repo "$REPOSITORY" --color "$color" --description "$description" >/dev/null 2>&1 || true
-done <<'LABELS'
-needs-answer|D93F0B|人間の回答を待っている質問がある
-ready-for-loop|0E8A16|Discussion の回答が確定し、ループを始めてよい
-manual-loop|C5DEF5|この Discussion のループは手で回す（オーケストレーターは起動しない）
-idea-request|5319E7|アプリから出した新機能の依頼
-decision-log|1D76DB|epic ごとの仮決め一覧（判断ログ）
-needs-verify|FBCA04|実機・実データでの確認が必要
-epic-final|B60205|epic から develop への最終 PR
-LABELS
+# AskHub のラベルと、App Store Connect への登録の Issue
+askhub_create_labels "$REPOSITORY"
 
 ASC_TITLE="【CHORE】App Store Connect にアプリを登録する"
 asc_issue=$(gh issue list --repo "$REPOSITORY" --state all --label needs-verify --search "in:title App Store Connect" \
