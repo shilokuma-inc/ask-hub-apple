@@ -197,7 +197,7 @@ struct NewAppFormSections: View {
     }
 }
 
-/// 送った作成・削除の依頼の 1 行
+/// 送った作成・追加・削除の依頼の 1 行
 struct SentRepositoryRequestRow: View {
     let sent: SentRepositoryRequest
 

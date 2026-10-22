@@ -9,6 +9,8 @@ struct NewRequestView: View {
         case change
         /// テンプレートから新しいアプリのリポジトリを作る依頼（`repo-request`）
         case newApp
+        /// GitHub にある既存のリポジトリを担当 PC に入れる依頼（`repo-request` の `add`。Discussion #722）
+        case addRepository
         /// リリース準備のワークフロー（`release-prepare.yml`）の起動（Discussion #605）。Issue は作らない
         case release
 
@@ -16,8 +18,10 @@ struct NewRequestView: View {
 
         var title: String {
             switch self {
-            case .change: "機能追加・修正"
+            // セグメントが 4 つになり iPhone の幅では「機能追加・修正」が切れるので、短くする（Discussion #722）
+            case .change: "追加・修正"
             case .newApp: "新しいアプリ"
+            case .addRepository: "担当に入れる"
             case .release: "リリース準備"
             }
         }
@@ -27,6 +31,7 @@ struct NewRequestView: View {
             switch self {
             case .change: "新しい依頼"
             case .newApp: "新しいアプリ"
+            case .addRepository: "担当に入れる"
             case .release: "リリース準備"
             }
         }
@@ -63,6 +68,8 @@ struct NewRequestView: View {
                 changeSections
             case .newApp:
                 NewAppFormSections(model: model, isEditing: $isEditing)
+            case .addRepository:
+                AddRepositoryFormSections(model: model)
             case .release:
                 ReleaseRequestFormSections(requestModel: model, model: model.release, openSettings: openSettings, isEditing: $isEditing)
             }
@@ -217,6 +224,12 @@ struct NewRequestView: View {
 #Preview("新しいアプリ") {
     NavigationStack {
         NewRequestView(model: .sample(), openSettings: {}, kind: .newApp)
+    }
+}
+
+#Preview("担当に入れる") {
+    NavigationStack {
+        NewRequestView(model: .sample(), openSettings: {}, kind: .addRepository)
     }
 }
 
