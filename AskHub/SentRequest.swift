@@ -49,6 +49,9 @@ struct SentRepositoryRequest: Equatable, Identifiable {
 
         case .remove:
             "\(InboxSubject.shortRepository(request.repository)) を担当から外す依頼をしました"
+
+        case .add:
+            "\(InboxSubject.shortRepository(request.repository)) を担当に入れる依頼をしました"
         }
     }
 

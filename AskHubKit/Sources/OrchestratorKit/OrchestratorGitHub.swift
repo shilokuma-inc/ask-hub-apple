@@ -51,6 +51,9 @@ public protocol OrchestratorGitHub: Sendable {
     func deleteHeartbeat(in repository: String) async throws
     /// 状態用の Issue を閉じる（担当から外したとき。アプリのステータスタブに行を残さない）
     func closeLoopStatusIssue(in repository: String, number: Int) async throws
+    /// リポジトリのラベル `askhub-orchestrator` の説明にある最終確認の時刻（担当の印。担当に入れる前に、別の PC の担当かを確かめる）。
+    /// ラベルが無い・説明の形が違えば `nil`
+    func heartbeatLastSeen(in repository: String) async throws -> Date?
     /// 担当リポジトリのラベル `askhub-orchestrator` の説明を書き換える。ラベルが無ければ作る
     func updateHeartbeat(in repository: String, description: String) async throws
     /// リポジトリの、`decision-log` が付いた open な Issue（仮決め一覧）

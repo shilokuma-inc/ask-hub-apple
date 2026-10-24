@@ -16,8 +16,8 @@ import Foundation
 /// ```
 /// `trustedAuthors`・`pollIntervalSeconds`・`ideaCommand`・`iterationTimeoutMinutes` は省略できる
 /// （既定値は `TrustedAuthors.default`・60 秒・`IdeaCommandTemplate.defaultArguments`・90 分）。
-/// `createRepositoryCommand`・`removeRepositoryCommand`・`newRepositoryDirectory` も省略でき、既定は
-/// `~/.local/bin/askhub-create-repo`・`~/.local/bin/askhub-remove-repo`・最初の担当リポジトリと同じディレクトリ。
+/// `createRepositoryCommand`・`removeRepositoryCommand`・`addRepositoryCommand`・`newRepositoryDirectory` も省略でき、既定は
+/// `~/.local/bin/askhub-create-repo`・`~/.local/bin/askhub-remove-repo`・`~/.local/bin/askhub-add-repo`・最初の担当リポジトリと同じディレクトリ。
 /// `trustRepositoryWriters`（担当リポジトリに書き込み権限を持つアカウントも信用するか）も省略でき、既定は `true`。
 /// 検索する organization は担当リポジトリの owner から決める。以前の `org` が残っていても無視する。
 /// `buildHosts`（xcb のビルドの Mac の情報の書き出し）も省略でき、省略するとその機能を止める:
@@ -171,7 +171,7 @@ public struct OrchestratorConfigLoader: Sendable {
         )
     }
 
-    /// 担当リポジトリの作成・削除に使うコマンドと場所。省略されたものは既定にする
+    /// 担当リポジトリの作成・追加・削除に使うコマンドと場所。省略されたものは既定にする
     private func repositoryCommands(
         from file: ConfigFile,
         repositories: [RepositoryConfig]
@@ -187,6 +187,7 @@ public struct OrchestratorConfigLoader: Sendable {
         return RepositoryCommands(
             create: try commandArguments(file.createRepositoryCommand, key: "createRepositoryCommand") ?? standard.create,
             remove: try commandArguments(file.removeRepositoryCommand, key: "removeRepositoryCommand") ?? standard.remove,
+            add: try commandArguments(file.addRepositoryCommand, key: "addRepositoryCommand") ?? standard.add,
             newCheckoutDirectory: directory
         )
     }
@@ -287,6 +288,7 @@ private struct ConfigFile: Decodable {
     let ciFixCommand: [String]?
     let createRepositoryCommand: [String]?
     let removeRepositoryCommand: [String]?
+    let addRepositoryCommand: [String]?
     let newRepositoryDirectory: String?
     let trustRepositoryWriters: Bool?
     let buildHosts: BuildHosts?

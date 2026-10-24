@@ -915,7 +915,7 @@ epic の最終 PR（`epic-final`）がマージされたら、オーケストレ
 
 ## リポジトリの作成・削除
 
-アプリから、テンプレートで新しいアプリのリポジトリを作り担当 PC に載せる・担当から外してローカルから消す、を依頼できる。
+アプリから、テンプレートで新しいアプリのリポジトリを作り担当 PC に載せる・GitHub にある既存のリポジトリを担当 PC に入れる・担当から外してローカルから消す、を依頼できる。
 依頼は `repo-request` の Issue で、本文の**先頭**に機械が読める目印（JSON）を置く（`AskHubKit` の `RepositoryRequest`）。
 続けて人が読める表を置く。
 
@@ -923,17 +923,23 @@ epic の最終 PR（`epic-final`）がマージされたら、オーケストレ
 <!-- ask-hub:repo-request {"action":"create","appName":"MyQuiz","bundleIdentifier":"jp.shilokuma.MyQuiz","clone":true,"platform":"ios","private":false,"repository":"shilokuma-inc/my-quiz-ios","template":"shilokuma-inc/template-quiz-app-ios"} -->
 <!-- ask-hub:repo-request {"action":"create","appName":"MyApp","bundleIdentifier":"jp.shilokuma.MyApp","clone":true,"platform":"visionos","private":false,"repository":"shilokuma-vision/my-app-visionos","template":"shilokuma-vision/template-app-visionos"} -->
 <!-- ask-hub:repo-request {"action":"remove","deleteLocal":true,"force":false,"repository":"shilokuma-inc/notti-ios"} -->
+<!-- ask-hub:repo-request {"action":"add","repository":"shilokuma-inc/my-app-ios"} -->
 ```
 
 | action | 依頼 Issue を作る場所 | キー |
 | --- | --- | --- |
 | `create` | 作成を任せたい PC の担当リポジトリ（その PC のオーケストレーターが処理する） | `repository`（作るリポジトリ）・`platform`（`ios` か `visionos`。下記「プラットフォームとテンプレート」）・`template`（下記の表のテンプレートのどれか。大文字・小文字は区別しない）・`appName`（英字で始まる英数字。テンプレートの `scripts/rename.sh` に渡す）・`bundleIdentifier`（省略時は `jp.shilokuma.<appName>`）・`clone`（担当 PC に clone して担当リポジトリに加えるか。`false` なら GitHub に作るだけ。省略時は `true`）・`private`（private で作るか。省略時は `false` = public） |
+| `add` | 入れる先の PC の担当リポジトリ（その PC のオーケストレーターが処理する。`create` と同じ） | `repository`（担当に入れる、GitHub にある既存のリポジトリ）。ほかの action のキーが付いていても使わない |
 | `remove` | 担当から外したいリポジトリそのもの | `repository`（Issue のリポジトリと同じであること）・`deleteLocal`（checkout・ループの worktree・DerivedData を消すか）・`force`（未コミット・未 push・stash の確認と、ループの state ファイルの確認をしない） |
 
 - オーケストレーターは、担当リポジトリにある**信用する author**（作った人と、編集した人がいればその人も）の依頼だけを処理する。
   目印が読めない・値が不正な依頼には理由をコメントして、Issue は開いたままにする
 - 作成では GitHub に**既定で public** のリポジトリを作り（private では GitHub Actions の実行時間が課金の対象になるため）、名前を変えて `develop` に**直接 push** する。
   App Store Connect でのアプリの作成は Web でしかできないため、新しいリポジトリに `needs-verify` の Issue を立てる（アプリの「実機確認」に出る）
+- 追加では、入れる先の PC の決まった場所（`newRepositoryDirectory/<リポジトリ名>`）に clone し（同じ origin の checkout が既にあればそれを使う）、
+  AskHub のラベル・Discussions・ralph-kit の中継を用意して担当リポジトリに加える。GitHub のリポジトリの設定（公開範囲など）は変えない。
+  Issue のタイトルは `【担当の追加】owner/repo`。別の PC が担当している（担当の印が 30 分以内に書かれた）リポジトリは断る（先にその PC の担当から外す）
+- **古いオーケストレーターは `add` を知らず、値が不正な依頼として理由をコメントする。** 担当に入れる依頼を出す前に、入れる先の PC のオーケストレーターを更新する
 - 削除では GitHub のリポジトリは消さない。ループのプロセスが動いていれば、強制でも外さない。最後の担当リポジトリは外せない
 - アプリの「新しいアプリ」で作成を任せる PC を選ぶ Picker は、担当 PC のいるリポジトリだけを候補にし、owner ごとの Section に分ける（見出しは owner 名。organization が 1 つだけでも出す。[Discussion #572](https://github.com/shilokuma-inc/ask-hub-apple/discussions/572) の Q4）。並べ方は「依頼先のリポジトリ」と同じ（`RepositorySection.byOwner`）
 - 処理できたら結果をコメントしてクローズする。処理できなければ理由をコメントする（直したら、その Issue を閉じて依頼し直す）。

@@ -298,7 +298,7 @@ extension AskHubUITests {
         app.tabBars.buttons["依頼"].tap()
         let picker = app.segmentedControls["request-kind-picker"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        let change = picker.buttons["機能追加・修正"]
+        let change = picker.buttons["追加・修正"]
         let newApp = picker.buttons["新しいアプリ"]
 
         // 既定は「機能追加・修正」で、既存のリポジトリへの依頼の入力欄が出る

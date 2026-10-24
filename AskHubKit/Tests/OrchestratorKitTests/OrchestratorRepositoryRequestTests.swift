@@ -8,7 +8,12 @@ struct OrchestratorRepositoryRequestTests {
 
     static let hub = RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")
     static let notti = RepositoryConfig(owner: "shilokuma-inc", name: "notti-ios", checkoutPath: "/src/notti-ios")
-    static let commands = RepositoryCommands(create: ["/bin/create"], remove: ["/bin/remove"], newCheckoutDirectory: "/src")
+    static let commands = RepositoryCommands(
+        create: ["/bin/create"],
+        remove: ["/bin/remove"],
+        add: ["/bin/add"],
+        newCheckoutDirectory: "/src"
+    )
 
     static let createRequest = RepositoryRequest.create(NewRepository(
         repository: "shilokuma-inc/my-quiz-ios",
@@ -33,7 +38,8 @@ struct OrchestratorRepositoryRequestTests {
     func makeOrchestrator(
         github: FakeGitHub,
         runtime: FakeRuntime,
-        repositories: [RepositoryConfig] = [hub, notti]
+        repositories: [RepositoryConfig] = [hub, notti],
+        writers: FakeWritersSource? = nil
     ) throws -> (Orchestrator, FakeConfigStore) {
         let config = OrchestratorConfig(
             trustedAuthorLogins: ["mrs1669"],
@@ -51,7 +57,8 @@ struct OrchestratorRepositoryRequestTests {
             runtime: runtime,
             log: { logs.append($0) },
             now: { Date(timeIntervalSince1970: 1_800_000_000) },
-            configStore: store
+            configStore: store,
+            repositoryWriters: writers.map { RepositoryWriters(source: $0) }
         )
         return (orchestrator, store)
     }
