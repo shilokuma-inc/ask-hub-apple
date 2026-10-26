@@ -140,8 +140,8 @@ struct SampleIdeaRequester: IdeaRequesting {
     func create(_ request: RepositoryRequest, in repository: String) async throws -> CreatedIssue {
         #if DEBUG
         // 更新のたびに中身を変えるデモ（UI テスト）では、担当から外したリポジトリを次の取得から「担当 PC なし」にする
-        if SampleChanges.isEnabled, case .remove = request {
-            await SampleChanges.state.markRemoved(repository)
+        if SampleChanges.isEnabled, case let .remove(removal) = request {
+            await SampleChanges.state.markRemoved(removal.repository)
         }
         #endif
         return CreatedIssue(number: 43, htmlURL: URL(string: "https://github.com/\(repository)/issues/43")!)
