@@ -32,8 +32,9 @@ struct LoopStatusListView: View {
             // リポジトリは organization ごとの節に分ける（organization が 1 つでも見出しを出す）
             ForEach(LoopStatusOrganizationSection.sections(from: model.rows)) { section in
                 Section {
-                    ForEach(section.rows) { row in
-                        repositoryRows(row)
+                    // 1 要素 = 1 行にする（リポジトリ 1 つを 1 要素にすると、ループの数が変わったときに 1 要素の行の数が変わり、差分を当てるときに落ちることがある）
+                    ForEach(model.listEntries(of: section.rows)) { entry in
+                        entryRow(entry)
                     }
                 } header: {
                     OrganizationHeaderView(organization: section.organization, avatars: model.avatars)
@@ -69,29 +70,31 @@ struct LoopStatusListView: View {
         .task(id: ObjectIdentifier(model)) { await model.refreshIfStale() }
     }
 
-    /// 担当 PC がいる行だけに出す（いなければ外す相手がいない）
-    @ViewBuilder private func removeButton(for row: LoopStatusRow) -> some View {
+    /// 担当 PC がいる行だけに出す（いなければ外す相手がいない）。スワイプでは `role` を付けずに `.tint(.red)` で出す:
+    /// `.destructive` のスワイプのボタンは押すと行が消える前提で `List` が差分を当てるため、シートを出すだけで行が残ると行の数が合わずに落ちる（Discussion #743）
+    @ViewBuilder private func removeButton(for row: LoopStatusRow, role: ButtonRole? = .destructive) -> some View {
         if row.status(now: Date()) != .unassigned {
-            Button("担当から外す", systemImage: "minus.circle", role: .destructive) {
+            Button("担当から外す", systemImage: "minus.circle", role: role) {
                 removing = RemovalTarget(repository: row.repository)
             }
         }
     }
 
-    /// リポジトリの行。同じリポジトリでループが 2 つ以上回っていれば、見出しの下にループごとの行を並べる（1 つなら今までどおり 1 行）
-    @ViewBuilder private func repositoryRows(_ row: LoopStatusRow) -> some View {
-        let items = model.loopItems(of: row)
-        if items.isEmpty {
+    /// リポジトリの節の 1 行。同じリポジトリでループが 2 つ以上回っていれば、見出しとループごとの行が別の要素で並ぶ（1 つなら今までどおり 1 行）
+    @ViewBuilder private func entryRow(_ entry: LoopStatusListEntry) -> some View {
+        switch entry.kind {
+        case let .repository(row):
             rowView(row)
                 .contextMenu { removeButton(for: row) }
-                .swipeActions(edge: .trailing) { removeButton(for: row) }
-        } else {
-            LoopStatusHeadingView(repository: row.repository, heading: row.heading(loopCount: items.count, now: Date()))
+                .swipeActions(edge: .trailing) { removeButton(for: row, role: nil).tint(.red) }
+
+        case let .heading(row, loopCount):
+            LoopStatusHeadingView(repository: row.repository, heading: row.heading(loopCount: loopCount, now: Date()))
                 .contextMenu { removeButton(for: row) }
-                .swipeActions(edge: .trailing) { removeButton(for: row) }
-            ForEach(items) { item in
-                loopRowView(item)
-            }
+                .swipeActions(edge: .trailing) { removeButton(for: row, role: nil).tint(.red) }
+
+        case let .loop(item):
+            loopRowView(item)
         }
     }
 

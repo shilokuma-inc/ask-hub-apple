@@ -20,8 +20,8 @@ extension LoopStatusModel {
     static func sample() -> LoopStatusModel {
         LoopStatusModel(
             tokenStore: InMemoryTokenStore(token: "sample"),
-            makeSource: { _ in SampleLoopStatusSource() },
-            makeInboxSource: { _ in SampleInboxSource() },
+            makeSource: { _ in SampleLoopStatusSource.launchDefault() },
+            makeInboxSource: { _ in SampleInboxSource.launchDefault() },
             // サンプルは GitHub に権限を問い合わせない
             makeTrust: { _ in TrustedAuthors.default },
             makeStarter: { _ in SampleLoopStarter() },

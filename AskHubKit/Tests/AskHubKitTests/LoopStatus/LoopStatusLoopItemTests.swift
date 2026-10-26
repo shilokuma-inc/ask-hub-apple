@@ -54,6 +54,17 @@ struct LoopStatusLoopItemTests {
         )
     }
 
+    @Test func loopItemIDsAreUniqueEvenIfTheSameDiscussionIsWrittenTwice() {
+        // 同じ Discussion の状態を、自動ループと手動ループが別のコメントに書いた
+        let items = row([
+            loop(.running, discussion: 12, checkedMinutesAgo: 5),
+            loop(.waitingForAnswer, writer: .manual, discussion: 12),
+            loop(.running, discussion: 13)
+        ]).loopItems(manualLoops: [])
+        #expect(items.map(\.id) == ["o/r#12", "o/r#13"])
+        #expect(items[0].row.report?.state == .waitingForAnswer)
+    }
+
     @Test func listsAutomaticAndManualLoopsUnderRepository() {
         let automatic = loop(.running, discussion: 12)
         let manual = loop(.waitingForAnswer, writer: .manual, discussion: 30, runner: "partner")

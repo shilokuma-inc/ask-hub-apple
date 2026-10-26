@@ -83,6 +83,21 @@ struct LoopStatusRowTests {
         #expect(assigned.first?.status(now: now) == .notReported)
     }
 
+    @Test func keepsFirstOfRepositoriesThatDifferOnlyInCase() {
+        let heartbeat = OrchestratorHeartbeat.description(at: now)
+        let repositories = [
+            LoopStatusRepository(repository: "O/R", heartbeatDescription: heartbeat, issues: [issue(1, report: report(.running))]),
+            LoopStatusRepository(repository: "o/s", heartbeatDescription: heartbeat, issues: []),
+            // organization の設定の重複や大文字小文字だけ違う名前で、同じリポジトリが 2 回来る
+            LoopStatusRepository(repository: "o/r", heartbeatDescription: heartbeat, issues: [issue(2, report: report(.gaveUp))]),
+            LoopStatusRepository(repository: "o/s", heartbeatDescription: heartbeat, issues: [])
+        ]
+        let rows = LoopStatusRow.rows(from: repositories, trustedAuthors: trusted)
+        #expect(rows.map(\.repository) == ["O/R", "o/s"])
+        #expect(rows.map(\.id) == ["o/r", "o/s"])
+        #expect(rows[0].report == report(.running))
+    }
+
     @Test func treatsRowAsUnassignedOnlyWhenBothTimesAreStale() {
         let fresh = report(.running, checkedMinutesAgo: 10)
         let staleReport = report(.running, checkedMinutesAgo: 40)
@@ -108,6 +123,37 @@ struct LoopStatusRowTests {
         #expect(try await LoopStatusFetcher(source: source, trustedAuthors: trusted).rows(orgs: ["o"]).isEmpty)
         let trustingSomeone = LoopStatusFetcher(source: source, trustedAuthors: TrustedAuthors(["someone"]))
         #expect(try await trustingSomeone.rows(orgs: ["o"]).map(\.repository) == ["o/r"])
+    }
+
+    @Test func fetcherReadsEachRepositoryOnceEvenIfListedTwice() async throws {
+        actor Calls {
+            var repositories: [String] = []
+            func record(_ repository: String) {
+                repositories.append(repository)
+            }
+        }
+        struct Source: LoopStatusSource {
+            let repositories: [LoopStatusRepository]
+            let calls: Calls
+            func loopStatusRepositories(orgs: [String]) async throws -> [LoopStatusRepository] {
+                repositories
+            }
+
+            func loopStatusComments(repository: String, issue number: Int) async throws -> [LoopStatusComment] {
+                await calls.record(repository)
+                return []
+            }
+        }
+        let heartbeat = OrchestratorHeartbeat.description(at: now)
+        let calls = Calls()
+        // 同じ organization を大文字小文字だけ違えて 2 つ設定したなど
+        let source = Source(repositories: [
+            LoopStatusRepository(repository: "o/r", heartbeatDescription: heartbeat, issues: [issue(1, report: report(.running))]),
+            LoopStatusRepository(repository: "O/R", heartbeatDescription: heartbeat, issues: [issue(1, report: report(.running))])
+        ], calls: calls)
+        let rows = try await LoopStatusFetcher(source: source, trustedAuthors: trusted).rows(orgs: ["o", "O"])
+        #expect(rows.map(\.id) == ["o/r"])
+        #expect(await calls.repositories == ["o/r"])
     }
 
     @Test func fetcherReadsNewestTrustedBuildHostsIssue() async throws {

@@ -77,8 +77,9 @@ public struct LoopStatusRow: Sendable, Equatable, Identifiable {
         self.lastSeen = lastSeen
     }
 
+    /// GitHub はリポジトリ名の大文字小文字を区別しないので、小文字で見分ける（`LoopStatusOrganizationSection` の節と合わせる）
     public var id: String {
-        repository
+        repository.lowercased()
     }
 
     /// 担当 PC がいるか。担当の印か、状態の確認時刻のどちらかが新しければいる
@@ -105,9 +106,12 @@ public struct LoopStatusRow: Sendable, Equatable, Identifiable {
     ///
     /// 担当の印か、信用する author の状態用の Issue があるリポジトリを行にする（担当 PC が古いものも「担当 PC なし」として出す）。
     /// 状態用の Issue は誰でも同じラベルで作れるので、信用する author が作ったものだけを読む（`statusIssue(in:trustedAuthors:)`）。
-    /// コメント（ループごとの状態）は、その Issue のもののうち信用する author のものだけを読む（`LoopStatusBoard`）
+    /// コメント（ループごとの状態）は、その Issue のもののうち信用する author のものだけを読む（`LoopStatusBoard`）。
+    /// 同じリポジトリが 2 回来たら（organization の設定の重複・大文字小文字だけ違う名前）、先に来たものだけを行にする
+    /// （`List` の同じ `ForEach` に同じ id の行があると、差分を当てるときに落ちることがある）
     public static func rows(from repositories: [LoopStatusRepository], trustedAuthors: TrustedAuthors) -> [Self] {
-        repositories.compactMap { repository in
+        let unique = repositories.uniqued { $0.repository.lowercased() }
+        return unique.compactMap { repository in
             let issue = statusIssue(in: repository.issues, trustedAuthors: trustedAuthors)
             let lastSeen = OrchestratorHeartbeat.lastSeen(in: repository.heartbeatDescription)
             // 本文を読めなくても（人が編集したなど）、信用する author の Issue があれば行は残す
@@ -194,8 +198,9 @@ public struct LoopStatusFetcher: Sendable {
     public func status(orgs: [String]) async throws -> LoopStatusSnapshot {
         var rows: [LoopStatusRow] = []
         var buildHosts: [BuildHostsStatus] = []
-        // 状態用の Issue があるリポジトリだけ、信用する author を求める（organization の全リポジトリには問い合わせない）
-        for var repository in try await source.loopStatusRepositories(orgs: orgs) {
+        // 状態用の Issue があるリポジトリだけ、信用する author を求める（organization の全リポジトリには問い合わせない）。
+        // 同じリポジトリが 2 回来たら（organization の設定の重複など）、先に来たものだけを読む（行の id を重ねない・コメントを 2 回取らない）
+        for var repository in try await source.loopStatusRepositories(orgs: orgs).uniqued(by: { $0.repository.lowercased() }) {
             let hasIssues = !repository.issues.isEmpty || !repository.buildHostsIssues.isEmpty
             let trusted = hasIssues ? await trust.trustedAuthors(for: repository.repository) : TrustedAuthors([])
             // コメントは、読む Issue（信用する author のもの）だけ取る。組織全体の問い合わせに入れ子で足すとコストが大きいため

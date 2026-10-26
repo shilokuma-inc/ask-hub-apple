@@ -138,7 +138,13 @@ struct SampleIdeaRequester: IdeaRequesting {
     }
 
     func create(_ request: RepositoryRequest, in repository: String) async throws -> CreatedIssue {
-        CreatedIssue(number: 43, htmlURL: URL(string: "https://github.com/\(repository)/issues/43")!)
+        #if DEBUG
+        // 更新のたびに中身を変えるデモ（UI テスト）では、担当から外したリポジトリを次の取得から「担当 PC なし」にする
+        if SampleChanges.isEnabled, case let .remove(removal) = request {
+            await SampleChanges.state.markRemoved(removal.repository)
+        }
+        #endif
+        return CreatedIssue(number: 43, htmlURL: URL(string: "https://github.com/\(repository)/issues/43")!)
     }
 }
 
@@ -147,7 +153,7 @@ extension InboxModel {
     static func sample() -> InboxModel {
         InboxModel(
             tokenStore: InMemoryTokenStore(token: "sample"),
-            makeSource: { _ in SampleInboxSource() },
+            makeSource: { _ in SampleInboxSource.launchDefault() },
             makePoster: { _ in SampleAnswerPoster() },
             makeStarter: { _ in SampleLoopStarter() },
             makeCloser: { _ in SampleIssueCloser() },
