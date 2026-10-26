@@ -70,10 +70,11 @@ struct LoopStatusListView: View {
         .task(id: ObjectIdentifier(model)) { await model.refreshIfStale() }
     }
 
-    /// 担当 PC がいる行だけに出す（いなければ外す相手がいない）
-    @ViewBuilder private func removeButton(for row: LoopStatusRow) -> some View {
+    /// 担当 PC がいる行だけに出す（いなければ外す相手がいない）。スワイプでは `role` を付けずに `.tint(.red)` で出す:
+    /// `.destructive` のスワイプのボタンは押すと行が消える前提で `List` が差分を当てるため、シートを出すだけで行が残ると行の数が合わずに落ちる（Discussion #743）
+    @ViewBuilder private func removeButton(for row: LoopStatusRow, role: ButtonRole? = .destructive) -> some View {
         if row.status(now: Date()) != .unassigned {
-            Button("担当から外す", systemImage: "minus.circle", role: .destructive) {
+            Button("担当から外す", systemImage: "minus.circle", role: role) {
                 removing = RemovalTarget(repository: row.repository)
             }
         }
@@ -85,12 +86,12 @@ struct LoopStatusListView: View {
         case let .repository(row):
             rowView(row)
                 .contextMenu { removeButton(for: row) }
-                .swipeActions(edge: .trailing) { removeButton(for: row) }
+                .swipeActions(edge: .trailing) { removeButton(for: row, role: nil).tint(.red) }
 
         case let .heading(row, loopCount):
             LoopStatusHeadingView(repository: row.repository, heading: row.heading(loopCount: loopCount, now: Date()))
                 .contextMenu { removeButton(for: row) }
-                .swipeActions(edge: .trailing) { removeButton(for: row) }
+                .swipeActions(edge: .trailing) { removeButton(for: row, role: nil).tint(.red) }
 
         case let .loop(item):
             loopRowView(item)
