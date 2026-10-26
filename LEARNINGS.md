@@ -325,6 +325,6 @@
   (2) `ForEach` の 1 要素から出る行の数が更新の前後で変わること。一覧に出す取得結果は AskHubKit の `uniqued(by:)` で id ごとに先のものを残し、リポジトリ名・login の id は小文字にする（2026-10-23、Discussion #743）
 - ステータスタブの行の `swipeActions` の `Button(role: .destructive)`（「担当から外す」）は、押すと SwiftUI が行を消す前提で差分を当てるため、シートを出すだけで行が残ると
   `-[UICollectionView _Bug_Detected_In_Client_Of_UICollectionView_Invalid_Number_Of_Items_In_Section:]` で落ちる（デモモードでも毎回。iOS 26.5・27.0）。コンテキストメニューの同じボタンでは落ちない。
-  行を消さないスワイプのボタンには role を付けず `.tint(.red)` にすると落ちない（2026-10-23、Discussion #743。直すかは判断待ち）
+  行を消さないスワイプのボタンには role を付けず `.tint(.red)` にする（コンテキストメニューは `.destructive` のままでよい）。UI テストはスワイプの経路でも流す（2026-10-26、Discussion #743）
 - 一覧の差分で落ちないかを UI テストで確かめるときは、DEBUG だけの起動引数（`-AskHubSampleChanges`）でサンプルの取得元が更新のたびに違う中身（増減・並びの入れ替え・重複）を返すようにし、
   `collectionViews.firstMatch` の上のほうから下へ `press(forDuration:thenDragTo:)` で引っぱって更新を繰り返す。落ちると `app.state` が `.runningForeground` でなくなる
