@@ -83,6 +83,8 @@ public actor Orchestrator {
     var pendingInstructionResumes: [String: InstructionResume] = [:]
     /// 担当の印を最後に書いた時刻（キーは担当リポジトリの `fullName` を小文字にしたもの）
     var lastHeartbeats: [String: Date] = [:]
+    /// 担当リポジトリの今の名前（移管・改名）を最後に確かめた時刻（キーは担当リポジトリの `fullName` を小文字にしたもの）
+    var repositoryNameChecks: [String: Date] = [:]
     /// Claude の利用上限の解除の時刻。それまでこの Mac のループの起動・再開を止める（アカウントは Mac ごとに共通）
     var usageLimitedUntil: Date?
     let now: @Sendable () -> Date
