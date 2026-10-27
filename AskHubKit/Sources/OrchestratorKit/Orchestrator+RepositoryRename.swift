@@ -28,23 +28,34 @@ extension Orchestrator {
     }
 
     private func rename(_ repository: RepositoryConfig, to newName: String) {
+        let key = repository.fullName.lowercased()
         let moved = "\(repository.fullName) は \(newName) に移管・改名されています"
         guard config.repository(named: newName) == nil else {
-            log("\(moved)が、\(newName) が既に担当リポジトリにあるため、設定を書き換えません。設定を手で直してください")
+            reportRenameProblem("\(moved)が、\(newName) が既に担当リポジトリにあるため、設定を書き換えません。設定を手で直してください", for: key)
             return
         }
         guard let configStore else {
-            log("\(moved)が、設定ファイルの場所が分からないため、書き換えられません。設定を手で直してください")
+            reportRenameProblem("\(moved)が、設定ファイルの場所が分からないため、書き換えられません。設定を手で直してください", for: key)
             return
         }
         do {
             try configStore.renameRepository(repository.fullName, to: newName)
         } catch {
-            log("\(moved)が、設定を書き換えられませんでした（次の確認で再試行します）: \(error)")
+            reportRenameProblem("\(moved)が、設定を書き換えられませんでした（次の確認で再試行します）: \(error)", for: key)
             return
         }
+        repositoryRenameProblems[key] = nil
         // checkout の origin は旧名のままでも git はリダイレクトで動くので、書き換えない
         log("\(moved)。設定の担当リポジトリの名前を書き換えました")
         reloadConfig()
+    }
+
+    /// 追従できなかった理由をログに出す。前回と同じ理由なら出さない（直るまで確認のたびに同じことが起きる）
+    private func reportRenameProblem(_ message: String, for key: String) {
+        guard repositoryRenameProblems[key] != message else {
+            return
+        }
+        repositoryRenameProblems[key] = message
+        log(message)
     }
 }

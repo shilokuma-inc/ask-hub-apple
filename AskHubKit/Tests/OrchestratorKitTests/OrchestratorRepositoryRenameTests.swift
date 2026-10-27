@@ -73,9 +73,14 @@ struct OrchestratorRepositoryRenameTests {
 
         #expect(store.renamed.isEmpty)
         #expect(await orchestrator.config.repositories.count == 3)
-        #expect(logs.recorded.contains(
-            "shilokuma-inc/quiz-ios は tm-family/quiz-ios に移管・改名されていますが、tm-family/quiz-ios が既に担当リポジトリにあるため、設定を書き換えません。設定を手で直してください"
-        ))
+        let warning = "shilokuma-inc/quiz-ios は tm-family/quiz-ios に移管・改名されていますが、tm-family/quiz-ios が既に担当リポジトリにあるため、設定を書き換えません。設定を手で直してください"
+        #expect(logs.recorded.contains(warning))
+
+        // 直るまで同じ理由を確認のたびに出さない
+        clock.withLock { $0 = $0.addingTimeInterval(Orchestrator.repositoryNameCheckInterval) }
+        try await orchestrator.pollOnce()
+        #expect(github.checkedNames.filter { $0 == "shilokuma-inc/quiz-ios" }.count == 2)
+        #expect(logs.recorded.filter { $0 == warning }.count == 1)
     }
 
     @Test func retriesRenameAfterIntervalWhenConfigCannotBeWritten() async throws {
