@@ -8,6 +8,8 @@ public protocol OrchestratorConfigStore: Sendable {
     func addRepository(_ fullName: String, checkoutPath: String) throws
     /// 担当リポジトリを外す。無ければ何もしない
     func removeRepository(_ fullName: String) throws
+    /// 担当リポジトリの名前を書き換える（移管・改名に追従する）。`path` などほかのキーは残す。無ければ何もしない
+    func renameRepository(_ fullName: String, to newName: String) throws
 }
 
 /// 設定ファイル（`~/.config/askhub/orchestrator.json`）の読み直しと、`repositories` の書き換え。
@@ -42,6 +44,16 @@ public struct FileOrchestratorConfigStore: OrchestratorConfigStore {
             let count = entries.count
             entries.removeAll { Self.matches($0, fullName) }
             return entries.count != count
+        }
+    }
+
+    public func renameRepository(_ fullName: String, to newName: String) throws {
+        try edit { entries in
+            guard let index = entries.firstIndex(where: { Self.matches($0, fullName) }) else {
+                return false
+            }
+            entries[index]["repository"] = newName
+            return true
         }
     }
 
