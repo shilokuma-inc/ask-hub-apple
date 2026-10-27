@@ -56,6 +56,8 @@ public protocol OrchestratorGitHub: Sendable {
     func heartbeatLastSeen(in repository: String) async throws -> Date?
     /// 担当リポジトリのラベル `askhub-orchestrator` の説明を書き換える。ラベルが無ければ作る
     func updateHeartbeat(in repository: String, description: String) async throws
+    /// リポジトリの今の `owner/name`。移管・改名されていれば、旧名を渡しても新しい名前を返す
+    func currentName(of repository: String) async throws -> String
     /// リポジトリの、`decision-log` が付いた open な Issue（仮決め一覧）
     func decisionLogs(in repository: String) async throws -> [DecisionLogIssue]
     /// Issue のコメント（古い順）

@@ -66,6 +66,44 @@ struct FileOrchestratorConfigStoreTests {
         #expect(try store.load().repositories.count == 1)
     }
 
+    @Test func renamesRepositoryKeepingPathAndBacksUp() throws {
+        let fixture = try makeStore()
+        let (store, file, home) = (fixture.store, fixture.file, fixture.home)
+        defer { try? FileManager.default.removeItem(atPath: home) }
+
+        try store.renameRepository("Shilokuma-Inc/Notti-iOS", to: "tm-family/notti-ios")
+
+        let config = try store.load()
+        #expect(config.repositories.map(\.fullName) == ["shilokuma-inc/ask-hub-apple", "tm-family/notti-ios"])
+        // checkout の場所は変えない
+        #expect(config.repositories.last?.checkoutPath == home + "/Desktop/ios/notti-ios")
+        #expect(try String(contentsOf: file.appendingPathExtension("bak"), encoding: .utf8) == Self.original)
+
+        // 無いものは書き換えない
+        let before = try Data(contentsOf: file)
+        try store.renameRepository("shilokuma-inc/notti-ios", to: "shariverse/notti-ios")
+        #expect(try Data(contentsOf: file) == before)
+    }
+
+    @Test func renamesBuildHostsIssueRepositoryOnlyWhenItIsTheRenamedOne() throws {
+        let fixture = try makeStore()
+        let (store, file, home) = (fixture.store, fixture.file, fixture.home)
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        var object = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        object["buildHosts"] = ["xcb": "~/.config/askhub/xcodebuild", "issueRepository": "Shilokuma-Inc/Notti-iOS"]
+        try JSONSerialization.data(withJSONObject: object).write(to: file)
+
+        // 別のリポジトリの改名では変えない
+        try store.renameRepository("shilokuma-inc/ask-hub-apple", to: "tm-family/ask-hub-apple")
+        #expect(try store.load().buildHosts?.issueRepository == "Shilokuma-Inc/Notti-iOS")
+
+        try store.renameRepository("shilokuma-inc/notti-ios", to: "tm-family/notti-ios")
+        let buildHosts = try #require(try store.load().buildHosts)
+        #expect(buildHosts.issueRepository == "tm-family/notti-ios")
+        // ほかのキーは残す
+        #expect(buildHosts.xcbPath == home + "/.config/askhub/xcodebuild")
+    }
+
     @Test func refusesToWriteInvalidConfig() throws {
         let fixture = try makeStore()
         let (store, file, home) = (fixture.store, fixture.file, fixture.home)

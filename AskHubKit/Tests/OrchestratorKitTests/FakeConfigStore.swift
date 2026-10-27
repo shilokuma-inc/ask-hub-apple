@@ -8,7 +8,9 @@ final class FakeConfigStore: OrchestratorConfigStore {
         var config: OrchestratorConfig
         var added: [String] = []
         var removed: [String] = []
+        var renamed: [String] = []
         var loadFails = false
+        var renameFails = false
     }
 
     let state: OSAllocatedUnfairLock<State>
@@ -25,8 +27,16 @@ final class FakeConfigStore: OrchestratorConfigStore {
         state.withLock { $0.removed }
     }
 
+    var renamed: [String] {
+        state.withLock { $0.renamed }
+    }
+
     func setLoadFails(_ fails: Bool) {
         state.withLock { $0.loadFails = fails }
+    }
+
+    func setRenameFails(_ fails: Bool) {
+        state.withLock { $0.renameFails = fails }
     }
 
     func load() throws -> OrchestratorConfig {
@@ -53,6 +63,24 @@ final class FakeConfigStore: OrchestratorConfigStore {
             state.removed.append(fullName)
             state.config = state.config.replacingRepositories(
                 state.config.repositories.filter { $0.fullName.caseInsensitiveCompare(fullName) != .orderedSame }
+            )
+        }
+    }
+
+    func renameRepository(_ fullName: String, to newName: String) throws {
+        try state.withLock { state in
+            if state.renameFails {
+                throw OrchestratorConfigError.invalidJSON(reason: "書き込めない")
+            }
+            state.renamed.append("\(fullName) → \(newName)")
+            let parts = newName.split(separator: "/").map(String.init)
+            state.config = state.config.replacingRepositories(
+                state.config.repositories.map { repository in
+                    guard repository.fullName.caseInsensitiveCompare(fullName) == .orderedSame else {
+                        return repository
+                    }
+                    return RepositoryConfig(owner: parts[0], name: parts[1], checkoutPath: repository.checkoutPath)
+                }
             )
         }
     }

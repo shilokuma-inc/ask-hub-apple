@@ -102,6 +102,9 @@
 - GitHub の障害のとき（2026-10-22 の「Errors loading Issues, Pull Requests, and search results」）は、`GET /repos/{owner}/{repo}/issues?labels=…` が Issue があっても
   エラーにならず 200 の空の配列を返すことがあった（8 回中 3〜4 回。`gh issue list --label` の GraphQL も 8 回中 1 回）。番号での取得（`GET …/issues/{番号}`）は安定していた。
   「一覧が空なら作る」処理はこれで重複を作る（オーケストレーターが担当の全リポジトリで状態用の Issue を作り直した）ので、前に使った番号を覚えておき、作る前に番号で読んで確かめる（Issue #739）
+- 移管・改名されたリポジトリを旧名の REST（`repos/{旧owner}/{repo}/…`）で操作すると、GitHub のリダイレクトを URLSession が送り直すときに `Authorization` が付かず、
+  書き込みは `401 Requires authentication`、読み取りは未認証扱い（IP ごとに 60 回/時）で `rateLimited` になった。検索は新しい名前で返すので、名前で照合する処理は黙って外れる。
+  GraphQL の `repository(owner:, name:)` は旧名でも移管・改名の後のリポジトリ（`nameWithOwner` が新しい名前）を返すので、今の名前はこれで確かめる（2026-10-27、Issue #757）
 
 ## ビルド・テスト
 
