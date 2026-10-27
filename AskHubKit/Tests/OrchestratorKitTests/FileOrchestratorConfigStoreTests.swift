@@ -85,6 +85,25 @@ struct FileOrchestratorConfigStoreTests {
         #expect(try Data(contentsOf: file) == before)
     }
 
+    @Test func renamesBuildHostsIssueRepositoryOnlyWhenItIsTheRenamedOne() throws {
+        let fixture = try makeStore()
+        let (store, file, home) = (fixture.store, fixture.file, fixture.home)
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        var object = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        object["buildHosts"] = ["xcb": "~/.config/askhub/xcodebuild", "issueRepository": "Shilokuma-Inc/Notti-iOS"]
+        try JSONSerialization.data(withJSONObject: object).write(to: file)
+
+        // 別のリポジトリの改名では変えない
+        try store.renameRepository("shilokuma-inc/ask-hub-apple", to: "tm-family/ask-hub-apple")
+        #expect(try store.load().buildHosts?.issueRepository == "Shilokuma-Inc/Notti-iOS")
+
+        try store.renameRepository("shilokuma-inc/notti-ios", to: "tm-family/notti-ios")
+        let buildHosts = try #require(try store.load().buildHosts)
+        #expect(buildHosts.issueRepository == "tm-family/notti-ios")
+        // ほかのキーは残す
+        #expect(buildHosts.xcbPath == home + "/.config/askhub/xcodebuild")
+    }
+
     @Test func refusesToWriteInvalidConfig() throws {
         let fixture = try makeStore()
         let (store, file, home) = (fixture.store, fixture.file, fixture.home)

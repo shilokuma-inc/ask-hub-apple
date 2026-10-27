@@ -14,7 +14,8 @@ public protocol OrchestratorConfigStore: Sendable {
 
 /// 設定ファイル（`~/.config/askhub/orchestrator.json`）の読み直しと、`repositories` の書き換え。
 ///
-/// 書き換えるのは `repositories` だけで、ほかのキーは読んだ値のまま残す（キーの順と字下げは整え直す）。
+/// 書き換えるのは `repositories`（改名では、同じリポジトリを指す `buildHosts.issueRepository` も）だけで、
+/// ほかのキーは読んだ値のまま残す（キーの順と字下げは整え直す）。
 /// 書く前に元のファイルを `<設定ファイル>.bak` に写し、検証できる形になることを確かめてから置き換える
 public struct FileOrchestratorConfigStore: OrchestratorConfigStore {
     public let path: String
@@ -30,7 +31,7 @@ public struct FileOrchestratorConfigStore: OrchestratorConfigStore {
     }
 
     public func addRepository(_ fullName: String, checkoutPath: String) throws {
-        try edit { entries in
+        try edit { entries, _ in
             guard !entries.contains(where: { Self.matches($0, fullName) }) else {
                 return false
             }
@@ -40,7 +41,7 @@ public struct FileOrchestratorConfigStore: OrchestratorConfigStore {
     }
 
     public func removeRepository(_ fullName: String) throws {
-        try edit { entries in
+        try edit { entries, _ in
             let count = entries.count
             entries.removeAll { Self.matches($0, fullName) }
             return entries.count != count
@@ -48,24 +49,31 @@ public struct FileOrchestratorConfigStore: OrchestratorConfigStore {
     }
 
     public func renameRepository(_ fullName: String, to newName: String) throws {
-        try edit { entries in
+        try edit { entries, object in
             guard let index = entries.firstIndex(where: { Self.matches($0, fullName) }) else {
                 return false
             }
             entries[index]["repository"] = newName
+            // ビルドの Mac の状態の Issue を置くリポジトリも同じなら新しい名前にする（旧名のままだと担当リポジトリに見つからず、書かなくなる）
+            if var buildHosts = object["buildHosts"] as? [String: Any],
+               let issueRepository = buildHosts["issueRepository"] as? String,
+               issueRepository.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(fullName) == .orderedSame {
+                buildHosts["issueRepository"] = newName
+                object["buildHosts"] = buildHosts
+            }
             return true
         }
     }
 
-    /// `repositories` を書き換える。`change` が `false` を返せば書かない
-    private func edit(_ change: (inout [[String: Any]]) -> Bool) throws {
+    /// `repositories`（と設定のほかのキー）を書き換える。`change` が `false` を返せば書かない
+    private func edit(_ change: (inout [[String: Any]], inout [String: Any]) -> Bool) throws {
         let url = URL(fileURLWithPath: loader.expandingTilde(in: path))
         let data = try Data(contentsOf: url)
         guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               var entries = object["repositories"] as? [[String: Any]] else {
             throw OrchestratorConfigError.invalidJSON(reason: "repositories を書き換えられません")
         }
-        guard change(&entries) else {
+        guard change(&entries, &object) else {
             return
         }
         object["repositories"] = entries
