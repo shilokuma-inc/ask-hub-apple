@@ -11,7 +11,13 @@ public enum AttachmentLimits {
 
     /// その種類の 1 ファイルの上限
     public static func maxFileSize(for kind: AttachmentKind) -> Int {
-        kind == .zip ? maxZipFileSize : maxFileSize
+        switch kind {
+        case .zip:
+            maxZipFileSize
+
+        case .text, .image, .pdf:
+            maxFileSize
+        }
     }
 
     /// 一覧に足さなかったファイルと、その理由
@@ -65,11 +71,13 @@ public enum AttachmentLimits {
         for file in files {
             let kind = AttachmentKind(mimeType: file.type)
             let limit = maxFileSize(for: kind)
+            // SVG は種類は画像だが、中身は XML のテキスト
+            let needsUTF8 = kind == .text || AttachmentKind.isSVG(mimeType: file.type)
             if file.data.isEmpty {
                 rejections.append(.empty(name: file.name))
             } else if file.data.count > limit {
                 rejections.append(.tooLarge(name: file.name, limit: limit))
-            } else if kind == .text || AttachmentKind.isSVG(mimeType: file.type), String(bytes: file.data, encoding: .utf8) == nil {
+            } else if needsUTF8, String(bytes: file.data, encoding: .utf8) == nil {
                 rejections.append(.notUTF8Text(name: file.name))
             } else if kind == .zip, !isZipData(file.data) {
                 rejections.append(.notZip(name: file.name))
