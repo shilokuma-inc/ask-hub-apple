@@ -248,10 +248,17 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
     `askhub-extract-attachment-zip "<置き場所>/<path の UUID>/<path のファイル名>" "<置き場所>/<path の UUID>/<path のファイル名>.d"` で展開する。
     コマンドはスクリプトが自分の場所（`$0` の dirname）から絶対パスにしてプロンプトに埋める（`install.sh` で入れたときは同じ場所の `askhub-extract-attachment-zip`、リポジトリから流したときは同じディレクトリの `extract-attachment-zip.sh`。無ければ警告をログに出し、準備は止めない）
     - 展開は `askhub-orchestrator extract-zip <zip> <展開先>`（`OrchestratorKit` の `AttachmentZipExtractor`。規則は `docs/protocol.md` の「zip の展開」）を呼ぶ。**シェルで規則を作り直さない**（Swift と二重に実装すると食い違うため）。
-      サブコマンドは設定ファイルも GitHub のトークンも読まない
+      サブコマンドは設定ファイルも GitHub のトークンも読まない。展開先は先に消して作り直されるので、直接呼ばれても困らないよう、サブコマンドも最低限を確かめる
+      （絶対パス・`.` / `..` の要素と制御文字が無い・展開先そのものがシンボリックリンクでない・リンクを解いた名前が `.d` で終わる・リンクを解いた後にホームでもホームより上の階層でもない・
+      親の方向に `.git` が無い（git は起動しない。展開先そのものの中の `.git` は前の展開の残りなので見ない）。`OrchestratorKit` の `AttachmentZipDestination`）。
+      添付の置き場所の中かは、置き場所を知っている中継が確かめる
     - `extract-attachment-zip.sh` は中継で、`askhub-orchestrator` を同じ場所 → リポジトリの `AskHubKit/.build/release` → `debug` の順に探す（環境変数 `ASKHUB_ORCHESTRATOR` で指定できる）。
-      展開先は先に消して作り直されるので、置き場所（`ASKHUB_ATTACHMENTS_DIR` の親。既定 `~/Library/Caches/askhub/attachments`）の下の、名前が `.d` で終わる絶対パスだけを受け付け、
-      置き場所の外（`/`・ホーム・git のリポジトリの中を含む）・シンボリックリンクで外へ出るもの・`.` / `..` の要素・制御文字を含むものは断る
+      展開先は先に消して作り直されるので、`ASKHUB_ATTACHMENTS_DIR` そのもの（既定 `~/Library/Caches/askhub/attachments`。Discussion ごとの置き場所の親）の下で、
+      リンクを解いた名前が `.d` で終わる絶対パスだけを受け付ける。リンクを解くと `ASKHUB_ATTACHMENTS_DIR` の外へ出るもの・展開先そのものがシンボリックリンクのもの
+      （`ASKHUB_ATTACHMENTS_DIR` の中の上の階層を指すと、ほかの添付ごと消えるため）・`.` / `..` の要素・制御文字を含むもの・git の work tree の中のものは断る。
+      `ASKHUB_ATTACHMENTS_DIR` がホームと同じか上の階層（`/`・`/Users` など）のときも断る。理由に入れた値の改行・タブは空白にして、`failed` の 1 行を崩さない
+      - **ホームを git の work tree にしている環境**（dotfiles をホームで管理しているなど）では、キャッシュの下もすべて「git のリポジトリの中」として断るので、zip の添付を展開できない
+        （安全側に倒している。準備は止めず、理由が goal の注意点に残る）。その Mac では `ASKHUB_ATTACHMENTS_DIR` を work tree の外に向けるか、ホームの git をやめる
     - 出力はタブ区切りで 1 行に 1 項目（値のタブ・改行・制御文字は空白にする。`OrchestratorKit` の `AttachmentZipCommand`）。
       JSON ではなくタブ区切りにしたのは、`claude` がそのまま読め、goal に書き写しやすく、シェルからも `cut` などで読めるため
 
@@ -261,7 +268,7 @@ PC ごとに `~/.config/askhub/orchestrator.json` に置く。**commit しない
       | `readable` | MIME タイプ・バイト数・zip の中のパス・展開先の絶対パス（`claude` が Read で読む） |
       | `material` | バイト数・zip の中のパス・展開先の絶対パス（読めない素材。一覧で把握する） |
       | `skipped` | 理由・zip の中の名前（macOS のメタデータは出さない） |
-      | `failed`（この 1 行だけ） | 展開できなかった・展開先を断った理由。終了コードは 65（zip を展開できない）・64（引数の誤り）・69（`askhub-orchestrator` が無い）・77（展開先を断った） |
+      | `failed`（この 1 行だけ） | 展開できなかった・展開先を断った・引数が誤っている理由。終了コードは 65（zip を展開できない）・64（引数の誤り）・69（`askhub-orchestrator` が無い。中継だけ）・77（展開先を断った）。中継もサブコマンドを直接呼んだときも同じ形（引数の誤りでは、ほかに標準エラーに usage を出す） |
 
     - 展開できなければ、準備の `claude` は理由を goal の注意点に書く（準備は止めない）。中身と zip の中のパスはデータとして読ませる
     - goal の「## 添付」の zip の行の下には、展開先・読めるファイル・素材・展開しなかった項目を書かせ（多ければディレクトリごとの数にまとめる）、節の冒頭に読み方と並べて展開のコマンド（絶対パス）を書かせる。
