@@ -215,6 +215,8 @@
   手元で CI の状態を作るには、開く前のスワイプを一時的に `swipeUp(velocity: .fast)` にする
 - visionOS の Simulator は、destination では `platform=visionOS Simulator`、SDK は `xrsimulator`、`xcrun simctl list runtimes` では `visionOS 26.5 (…) - com.apple.CoreSimulator.SimRuntime.xrOS-26-5` の形（識別子だけ `xrOS`）。
   ランタイムを選ぶ・Simulator を作るスクリプトでは、表示名と識別子の名前を別に持つ（`scripts/orchestrator/xcb`）
+- サンプルの添付（`AttachmentFile.samples`）は依頼・回答・「問題あり」の UI テストで共通に使う。行を足すと添付欄の注意書き（footer）と削除のボタンが画面の外に押し出され、
+  Form が作らないので `exists` が false になる。確かめる前に `scrollToHittable`（`AskHubUITests+Scroll.swift`）で出るまでスクロールする。送信の件数（「添付 N 件」）の期待値も 3 つのテストで直す
 
 ## Keychain
 
