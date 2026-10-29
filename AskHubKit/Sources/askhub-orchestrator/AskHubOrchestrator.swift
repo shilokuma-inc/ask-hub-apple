@@ -64,6 +64,12 @@ enum AskHubOrchestrator {
         do {
             arguments = try OrchestratorArguments.parse(CommandLine.arguments.dropFirst())
         } catch {
+            // extract-zip の誤りは、展開の結果と同じ failed の 1 行で返す（中継と読み方を揃える。時刻付きのログの行は出さない）
+            if case .invalidArguments = error {
+                FileHandle.standardError.write(Data("\(OrchestratorArguments.usage)\n".utf8))
+                FileHandle.standardOutput.write(Data(AttachmentZipCommand.failedLine("\(error)").utf8))
+                exit(AttachmentZipCommand.usageStatus)
+            }
             fail("\(error)\n\n\(OrchestratorArguments.usage)", status: EX_USAGE)
         }
         if arguments.showsHelp {
