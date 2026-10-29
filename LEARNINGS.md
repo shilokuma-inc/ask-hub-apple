@@ -275,6 +275,9 @@
 - App Intents の `SiriTipView` は macOS で使えず（`@available(macOS, unavailable)`）、`ShortcutsLink` も iOS の SDK にしか無い。iOS と macOS で同じ View を使うなら、どちらも使わずに文章で案内する（使うなら `#if os(iOS)` が要る）
 - Compression の `COMPRESSION_ZLIB`（Foundation の `NSData.compressed(using: .zlib)` も）はヘッダの無い raw Deflate（RFC 1951）で、zip の項目の中身（圧縮方式 8）をそのまま解ける。
   CRC-32 は `import zlib` の `crc32` で計算できる（外部の Package は要らない）。zip 爆弾に備え、`compression_stream` で少しずつ解いて書いた量を数える（`AttachmentZipWriter`）
+- `Data(contentsOf:options: .mappedIfSafe)` で mmap して読んでいるファイルを、別の処理が同じパスで切り詰めて書き直すと、読む側が SIGBUS で落ちうる。
+  読まれうるファイルは `data.write(to:options: .atomic)`（別のファイルに書いてから rename）で書く（`Orchestrator.prepareZip`）。
+  actor の中で重い同期の I/O をするときは、`Task.detached { Result { () throws(E) -> T in … } }.value` で actor の外に出すと、型付きの throws のまま Sendable の警告なしで受け取れる
 
 ## シェルスクリプト
 

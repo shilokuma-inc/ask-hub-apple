@@ -92,29 +92,6 @@ extension OrchestratorTests {
         #expect(github.appendedAttachments == ["#12: memo.md,design.png"])
     }
 
-    @Test func doesNotPassZipToClaudeButCarriesItToDiscussion() async throws {
-        let zipData = Data([0x50, 0x4B, 0x03, 0x04]) + Data("readme.txt".utf8)
-        let zip = AttachmentMarker.fixture(name: "assets.zip", type: "application/zip", data: zipData)
-        let github = FakeGitHub([.success([])])
-        github.setIdeaIssues([.fixture(number: 7, body: Self.requestBody([zip]))])
-        github.setAttachmentContents([zip.sha: zipData])
-        let runtime = FakeRuntime()
-        runtime.setRunResults([Self.created])
-        try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
-
-        let prompt = try #require(runtime.inputs.first)
-        // テキストとしてプロンプトに入れず、一時ディレクトリにも置かない（展開は後続のタスク）
-        #expect(!prompt.contains("<request-attachment name=\"assets.zip\""))
-        #expect(!prompt.contains("readme.txt"))
-        #expect(prompt.contains("assets.zip（zip・"))
-        #expect(prompt.contains("zip の展開に担当 PC のオーケストレーターが対応していないため渡せませんでした"))
-        #expect(runtime.directoryContentsDuringRun.first?.isEmpty ?? true)
-        #expect(logs.recorded.contains { $0.contains("assets.zip は zip のため claude に渡せません") })
-        // 中身は確かめられたので、Discussion には引き継ぐ（ループの準備で使えるように）
-        #expect(github.appendedAttachments == ["#12: assets.zip"])
-        #expect(github.closedIdeas == [7])
-    }
-
     @Test func closesRequestEvenIfAppendingToDiscussionFails() async throws {
         let memo = AttachmentMarker.fixture(name: "memo.md", type: "text/markdown", data: Self.memo)
         let github = FakeGitHub([.success([])])

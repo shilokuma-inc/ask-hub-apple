@@ -127,6 +127,8 @@ public actor Orchestrator {
     let xcbStatus: any XcbStatusFetching
     /// 依頼の添付（画像・PDF など）を claude に読ませるために置く場所（リポジトリの外）。依頼ごとに `<owner>/<repo>/issue-<番号>` を作り、コマンドの後に消す
     let attachmentsDirectory: URL
+    /// 依頼の zip の添付を展開する（上限はテストで小さくする）
+    let zipExtractor: AttachmentZipExtractor
     /// 添付の片付けで、リポジトリごとに最後にマージ済みの最終 PR を探した時刻（`Orchestrator+AttachmentCleanup.swift`）
     var attachmentCleanupChecks: [String: Date] = [:]
     /// 添付を片付け終えた（または片付けるものが無かった）最終 PR（`owner/repo#番号` の小文字）。再起動までは探し直さない
@@ -146,6 +148,7 @@ public actor Orchestrator {
     ///   - repositoryWriters: 担当リポジトリに書き込み権限を持つアカウントの取得元（設定の `trustRepositoryWriters` が有効なときに使う）
     ///   - xcbStatus: `xcb status --json` の呼び出し（設定の `buildHosts` があるときだけ使う）
     ///   - attachmentsDirectory: 依頼の添付を置く場所。既定は `~/Library/Caches/askhub/attachments`
+    ///   - zipExtractor: 依頼の zip の添付の展開（既定の上限は `docs/protocol.md` の「zip の展開」）
     public init(
         config: OrchestratorConfig,
         github: any OrchestratorGitHub,
@@ -156,10 +159,12 @@ public actor Orchestrator {
         configStore: (any OrchestratorConfigStore)? = nil,
         repositoryWriters: RepositoryWriters? = nil,
         xcbStatus: any XcbStatusFetching = XcbStatusCommand(),
-        attachmentsDirectory: URL = Orchestrator.defaultAttachmentsDirectory
+        attachmentsDirectory: URL = Orchestrator.defaultAttachmentsDirectory,
+        zipExtractor: AttachmentZipExtractor = AttachmentZipExtractor()
     ) {
         self.config = config
         self.attachmentsDirectory = attachmentsDirectory
+        self.zipExtractor = zipExtractor
         self.xcbStatus = xcbStatus
         self.configStore = configStore
         self.trust = TrustDirectory(base: config.trustedAuthors)

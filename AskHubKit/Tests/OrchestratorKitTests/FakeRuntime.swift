@@ -20,7 +20,7 @@ struct FakeRuntimeState {
     var ranFor: [String] = [] // run を実行したリポジトリ（`ran` と同じ順）
     var inputs: [String] = []
     var runEnvironments: [[String: String]] = [] // run ごとに追加で渡した環境変数（`ran` と同じ順）
-    /// run の時点で、引数に渡されたディレクトリにあったファイル（ファイル名 → 中身）
+    /// run の時点で、引数に渡されたディレクトリの下にあったファイル（ディレクトリからの相対パス → 中身）
     var directoryContentsDuringRun: [[String: Data]] = []
 }
 

@@ -923,6 +923,7 @@ epic の最終 PR（`epic-final`）がマージされたら、オーケストレ
 ### zip の展開
 
 zip の添付は、受け取る側（macOS の担当 PC のオーケストレーター・ループの準備）だけが展開する（Discussion #761 の Q2）。アプリは展開しない。
+オーケストレーターは依頼から Discussion を作るときに展開し、読めるファイルを `claude` に `Read` で読ませる（`docs/orchestrator.md` の「新機能の依頼から質問付きの Discussion を作る」）。
 **展開の規則の正本はこの節**で、Swift の実装（`OrchestratorKit` の `AttachmentZipExtractor`）とシェルスクリプトの実装はどちらもこれに従う。
 （仮決め）と付けた項目は、Discussion #761 で決め直すことがある。
 
