@@ -196,7 +196,7 @@ extension AskHubUITests {
         // 確認ダイアログで、添付を上げてから依頼する旨を出す
         let confirm = app.buttons["依頼する"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-        let withAttachments = NSPredicate(format: "label CONTAINS %@", "添付 1 件を shilokuma-inc/ask-hub-apple に上げてから")
+        let withAttachments = NSPredicate(format: "label CONTAINS %@", "添付 3 件を shilokuma-inc/ask-hub-apple に上げてから")
         XCTAssertTrue(app.staticTexts.matching(withAttachments).firstMatch.exists)
         confirm.tap()
 

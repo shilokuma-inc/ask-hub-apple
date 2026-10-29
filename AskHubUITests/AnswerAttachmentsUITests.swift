@@ -21,6 +21,7 @@ extension AskHubUITests {
         }
         XCTAssertTrue(memo.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["design.png"].exists)
+        assertZipAndSVGRows(in: app)
         let notice = NSPredicate(format: "label CONTAINS %@", "public のリポジトリでは、添付したファイルは誰でも見られます")
         XCTAssertTrue(app.staticTexts.matching(notice).firstMatch.exists)
         let list = XCTAttachment(screenshot: app.screenshot())
