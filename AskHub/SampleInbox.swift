@@ -43,10 +43,21 @@ extension IdeaRequestModel {
 }
 
 extension AttachmentFile {
-    /// UI テスト・Preview 用のサンプルの添付（画像と Markdown）。中身はダミー
+    /// UI テスト・Preview 用のサンプルの添付（画像・Markdown・zip・SVG）。中身はダミー
     static let samples = [
         AttachmentFile(name: "design.png", type: "image/png", data: Data(repeating: 0x89, count: 120_000)),
-        AttachmentFile(name: "memo.md", type: "text/markdown", data: Data("# メモ\n朝だけにしたい\n".utf8))
+        AttachmentFile(name: "memo.md", type: "text/markdown", data: Data("# メモ\n朝だけにしたい\n".utf8)),
+        // 先頭だけ zip の目印にした 3 MB のダミー（添付欄に「zip・3.0 MB」と出る）
+        AttachmentFile(
+            name: "assets.zip",
+            type: "application/zip",
+            data: Data([0x50, 0x4B, 0x03, 0x04]) + Data(count: 3 * 1_024 * 1_024 - 4)
+        ),
+        AttachmentFile(
+            name: "icon.svg",
+            type: "image/svg+xml",
+            data: Data(#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>"#.utf8)
+        )
     ]
 }
 
