@@ -93,6 +93,16 @@ struct AttachmentSectionTests {
         #expect(plain.contains("design.png（画像・117 KB）"))
         #expect(plain.contains("spec.pdf（PDF・3.0 MB）"))
     }
+
+    @Test func showsZipAndSVGKinds() {
+        let attachments = [
+            marker(name: "assets.zip", size: 3 * 1_024 * 1_024, type: "application/zip"),
+            marker(name: "icon.svg", size: 2_048, type: "image/svg+xml")
+        ]
+        let plain = RenderedBody(body: AttachmentSection.appending(attachments, to: "依頼文です。", repository: "o/r")).plainText
+        #expect(plain.contains("assets.zip（zip・3.0 MB）"))
+        #expect(plain.contains("icon.svg（画像・2 KB）"))
+    }
 }
 
 struct AttachmentFileNameTests {
