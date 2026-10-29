@@ -251,8 +251,32 @@ struct AttachmentZipExtractorTests {
         #expect(contents(of: "\(root)/a.txt") == "first")
     }
 
-    // MARK: - 合計の上限
+    /// APFS（既定）は大文字小文字と Unicode の正規化を区別しないので、違いがそれだけの名前は後のものを飛ばす（`O_EXCL` の `EEXIST`）
+    @Test func skipsEntriesThatDifferOnlyInCaseOrNormalization() throws {
+        let composed = "\u{304C}.txt"
+        let decomposed = "\u{304B}\u{3099}.txt"
+        let result = try extract([
+            TestZipEntry("A.txt", "first"),
+            TestZipEntry("a.txt", "second"),
+            TestZipEntry(composed, "NFC"),
+            TestZipEntry(decomposed, "NFD"),
+            TestZipEntry("Docs", "file"),
+            TestZipEntry("docs/x.txt", "under a file")
+        ])
+        #expect(result.skippedEntries.map(\.reason) == [.conflict, .conflict, .conflict])
+        // `String` の `==` は正規化の違いを同じとみなすので、バイト列で比べる
+        let skipped = result.skippedEntries.map { Array($0.entryPath.utf8) }
+        #expect(skipped == [Array("a.txt".utf8), Array(decomposed.utf8), Array("docs/x.txt".utf8)])
+        #expect(result.readableFiles.map(\.entryPath) == ["A.txt", composed])
+        #expect(contents(of: "\(root)/A.txt") == "first")
+        #expect(contents(of: "\(root)/\(composed)") == "NFC")
+        #expect(result.materials.map(\.entryPath) == ["Docs"])
+    }
+}
 
+// MARK: - 合計の上限・zip でない・展開した後の確かめ
+
+extension AttachmentZipExtractorTests {
     @Test func rejectsWhenDeclaredSizeExceedsLimitBeforeWriting() throws {
         try expectError(
             .declaredTooLarge(bytes: 12, limit: 10),
