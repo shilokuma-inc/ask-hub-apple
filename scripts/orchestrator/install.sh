@@ -77,6 +77,9 @@ mkdir -p "$PREFIX" "$AGENTS_DIR" "$LOG_DIR"
 install -m 755 "$BIN_DIR/askhub-orchestrator" "$PREFIX/askhub-orchestrator"
 # loopCommand から呼ぶループの起動スクリプト。checkout の場所に依存しないよう、実行ファイルと同じ場所に置く
 install -m 755 "$REPO_ROOT/scripts/orchestrator/start-loop.sh" "$PREFIX/askhub-start-loop"
+# 起動スクリプトの準備が zip の添付を展開するときに呼ぶ（中身は同じ場所の askhub-orchestrator の extract-zip を呼ぶ中継）。
+# 起動スクリプトは自分と同じ場所のものを絶対パスで呼ぶので、askhub-start-loop と並べて置く
+install -m 755 "$REPO_ROOT/scripts/orchestrator/extract-attachment-zip.sh" "$PREFIX/askhub-extract-attachment-zip"
 # conflictCommand の既定（epic の最終 PR のコンフリクトを解消する）。loopCommand と同じ場所に置く
 install -m 755 "$REPO_ROOT/scripts/orchestrator/resolve-conflict.sh" "$PREFIX/askhub-resolve-conflict"
 # reviewCommand の既定（epic の最終 PR の第三者レビュー）。loopCommand と同じ場所に置く
@@ -114,6 +117,7 @@ cat <<MSG
 インストールしました
   実行ファイル: $PREFIX/askhub-orchestrator
   起動スクリプト: $PREFIX/askhub-start-loop（設定の loopCommand に指定する）
+  zip の添付の展開: $PREFIX/askhub-extract-attachment-zip（起動スクリプトの準備が呼ぶ）
   コンフリクトの解消: $PREFIX/askhub-resolve-conflict（conflictCommand の既定）
   最終 PR の第三者レビュー: $PREFIX/askhub-review-final（reviewCommand の既定）
   第三者レビューの要修正の修正: $PREFIX/askhub-fix-review（fixCommand の既定）
