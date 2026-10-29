@@ -33,7 +33,8 @@ public struct AttachmentZipExtractor: Sendable {
 
     /// `archive` を `destination` に展開する。`destination` は先に消して作り直す（前の試行の残りを読ませない）。
     /// `destination` はリポジトリの checkout・制御用 worktree・スロットの外（添付のキャッシュの下）にする。
-    /// zip 全体を展開できなければ、`destination` を消して投げる
+    /// zip 全体を展開できなければ、`destination` を消して投げる。
+    /// `archive` は mmap で読むので、展開の間に書き換えない（同じパスを切り詰めて書き直すと SIGBUS になりうる。書くときは `.atomic` で置き換える）
     public func extract(zipAt archive: URL, to destination: URL) throws(AttachmentZipError) -> AttachmentZipContents {
         let root = Self.trimmingTrailingSlashes(destination.standardizedFileURL.path(percentEncoded: false))
         let archivePath = archive.standardizedFileURL.path(percentEncoded: false)
