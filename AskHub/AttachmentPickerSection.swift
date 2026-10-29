@@ -12,10 +12,10 @@ struct AttachmentPickerSection: View {
     /// 選んだのに足さなかったファイルの説明（上限・読めないなど）
     @State private var notices: [String] = []
 
-    /// 選べる種類（`claude` が読めるテキスト・画像・PDF。Discussion #669 の Q2）
+    /// 選べる種類（`claude` が読めるテキスト・画像・PDF。Discussion #669 の Q2。SVG と zip は Discussion #761 の Q5）
     static let allowedContentTypes: [UTType] = [
         .plainText, .markdown, .json, .commaSeparatedText, .yaml,
-        .png, .jpeg, .gif, .webP, .pdf
+        .png, .jpeg, .gif, .webP, .svg, .pdf, .zip
     ]
 
     var body: some View {
@@ -43,8 +43,9 @@ struct AttachmentPickerSection: View {
         } footer: {
             Text("""
                 public のリポジトリでは、添付したファイルは誰でも見られます（後から消しても履歴に残ります）。\
-                テキスト・画像（PNG / JPEG / GIF / WebP）・PDF を、1 ファイル \(AttachmentSize.displayText(bytes: AttachmentLimits.maxFileSize))・\
-                \(AttachmentLimits.maxCount) ファイルまで添付できます
+                テキスト・画像（PNG / JPEG / GIF / WebP / SVG）・PDF は 1 ファイル \(AttachmentSize.displayText(bytes: AttachmentLimits.maxFileSize))、\
+                zip は \(AttachmentSize.displayText(bytes: AttachmentLimits.maxZipFileSize)) まで、\(AttachmentLimits.maxCount) ファイルまで添付できます。\
+                zip は受け取る側（担当 PC）で展開して使います
                 """)
         }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: Self.allowedContentTypes, allowsMultipleSelection: true) { result in
@@ -148,14 +149,16 @@ enum AttachmentFileReader {
                 url.stopAccessingSecurityScopedResource()
             }
         }
-        // 大きすぎるファイルは、中身を読む前に断る
-        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > AttachmentLimits.maxFileSize {
-            return .failure(Failure(message: AttachmentLimits.Rejection.tooLarge(name: name, limit: AttachmentLimits.maxFileSize).message))
+        // 大きすぎるファイルは、中身を読む前に断る（上限は種類ごと。zip は 50 MB）
+        let type = mimeType(for: url)
+        let limit = AttachmentLimits.maxFileSize(for: AttachmentKind(mimeType: type))
+        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > limit {
+            return .failure(Failure(message: AttachmentLimits.Rejection.tooLarge(name: name, limit: limit).message))
         }
         guard let data = try? Data(contentsOf: url) else {
             return .failure(Failure(message: "\(name) を読み込めませんでした"))
         }
-        return .success(AttachmentFile(name: name, type: mimeType(for: url), data: data))
+        return .success(AttachmentFile(name: name, type: type, data: data))
     }
 
     /// 拡張子から MIME タイプを決める。分からないテキストは `text/plain`
