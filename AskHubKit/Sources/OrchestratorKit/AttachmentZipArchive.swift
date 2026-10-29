@@ -24,9 +24,9 @@ struct AttachmentZipArchive {
             flags & 0x0001 != 0
         }
 
-        /// UNIX のファイルの種類（`& 0170000`）。作成元が UNIX でなければ `nil`
+        /// UNIX のファイルの種類（`& 0170000`）。作成元が UNIX（3）か OS X（19）でなければ `nil`
         var unixFileType: UInt32? {
-            hostSystem == 3 ? (externalAttributes >> 16) & 0o170000 : nil
+            hostSystem == 3 || hostSystem == 19 ? (externalAttributes >> 16) & 0o170000 : nil
         }
     }
 

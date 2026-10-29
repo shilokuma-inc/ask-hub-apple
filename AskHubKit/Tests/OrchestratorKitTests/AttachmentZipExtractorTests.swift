@@ -186,6 +186,18 @@ struct AttachmentZipExtractorTests {
         #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: "\(root)/link")) == nil)
     }
 
+    /// 作成元が OS X（19）の zip も、外部属性の上位 16 ビットを UNIX のモードとして読む
+    @Test func skipsSymbolicLinkFromOSXHost() throws {
+        var link = TestZipEntry("link", "../..", unixMode: 0o120755)
+        link.hostSystem = 19
+        var file = TestZipEntry("file.txt", "ok")
+        file.hostSystem = 19
+        let result = try extract([link, file])
+        #expect(result.skippedEntries == [.init(entryPath: "link", reason: .symbolicLink)])
+        #expect(result.readableFiles.map(\.entryPath) == ["file.txt"])
+        #expect(!FileManager.default.fileExists(atPath: "\(root)/link"))
+    }
+
     @Test func skipsSymbolicLinkMadeByZipCommand() throws {
         let source = directory.appending(path: "source", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
