@@ -3,8 +3,9 @@
 #   usage: extract-attachment-zip.sh <zip> <展開先>
 #
 # 規則（docs/protocol.md の「zip の展開」）をシェルで作り直さず、askhub-orchestrator の extract-zip（Swift の AttachmentZipExtractor）を呼ぶ中継。
-# 展開先は先に消して作り直すので、添付の置き場所（ASKHUB_ATTACHMENTS_DIR の下）の、名前が .d で終わるディレクトリだけを受け付ける。
-# 置き場所の外（/・ホーム・リポジトリの中を含む）・シンボリックリンクで外へ出るもの・.. を含むものは断る。
+# 展開先は先に消して作り直すので、添付の置き場所（ASKHUB_ATTACHMENTS_DIR）の下の、リンクを解いた名前が .d で終わるディレクトリだけを受け付ける。
+# 置き場所の外（/・ホーム・リポジトリの中を含む）・リンクを解くと外へ出るもの・展開先そのものがシンボリックリンクのもの・. か .. を含むもの・
+# 制御文字を含むものは断る。置き場所がホームと同じか上の階層・git のリポジトリの中でも断る（askhub-orchestrator の extract-zip も同じ確かめをする）。
 #
 # 出力（標準出力。タブ区切り。形は askhub-orchestrator の AttachmentZipCommand）:
 #   extracted<TAB><展開先><TAB><読めるファイルの数><TAB><素材の数><TAB><展開しなかった項目の数>
@@ -77,10 +78,10 @@ done
 case "/$DEST/" in
   */./* | */../*) failed 77 "展開先に . か .. の要素があります: ${DEST}" ;;
 esac
-case "$DEST" in
-  *.d) ;;
-  *) failed 77 "展開先の名前は .d で終わるものにしてください（<ファイル名>.d）: ${DEST}" ;;
-esac
+# 展開先そのものがリンクだと、リンクの先（置き場所の中の上の階層など）が消される
+if [[ -L "$DEST" ]]; then
+  failed 77 "展開先がシンボリックリンクです: ${DEST}"
+fi
 
 # 展開先は無いことが多いので、あるところまで上ってシンボリックリンクを解き、残りを足して比べる
 EXISTING="$DEST"
@@ -91,6 +92,11 @@ while [[ ! -e "$EXISTING" && ! -L "$EXISTING" ]]; do
 done
 REAL_EXISTING=$(cd "$EXISTING" 2>/dev/null && pwd -P) || failed 77 "展開先の親がディレクトリではありません: ${EXISTING}"
 REAL_DEST="${REAL_EXISTING%/}$REST"
+# 名前と置き場所の中かは、リンクを解いた後のパス（実際に消して作り直すもの）で確かめる
+case "$REAL_DEST" in
+  *?.d) ;;
+  *) failed 77 "展開先の名前は .d で終わるものにしてください（<ファイル名>.d）: ${REAL_DEST}" ;;
+esac
 if [[ "$REAL_DEST" != "$REAL_ROOT"/?* ]]; then
   failed 77 "展開先が添付の置き場所（${REAL_ROOT}）の外です: ${REAL_DEST}"
 fi
