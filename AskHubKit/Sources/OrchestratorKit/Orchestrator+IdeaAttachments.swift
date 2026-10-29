@@ -102,7 +102,7 @@ extension Orchestrator {
             )
         }
         // zip は展開先の外に置く（展開先は展開の前に消される）。番号を前に付けるので、ほかの添付のファイル・展開先と重ならない
-        let fileName = "\(index + 1)-\(AttachmentFileName.sanitized(marker.name))"
+        let fileName = "\(index + 1)-\(Self.zipFileName(marker.name))"
         let archive = directory.appending(path: fileName, directoryHint: .notDirectory)
         let destination = directory.appending(path: "\(fileName).d", directoryHint: .isDirectory)
         // 展開先は消してから作り直されるので、添付のキャッシュの下（`/` や想定外の場所でない）であることを確かめる
@@ -174,5 +174,15 @@ extension Orchestrator {
         default:
             "添付を取得できませんでした"
         }
+    }
+
+    /// 担当 PC に置く zip の名前（と展開先の `.d` の名前）。プロンプトの「場所」は `"`・`<`・制御文字・見えない文字を無害化して出すので、
+    /// それらを含む名前では場所が実在するパスと食い違い、中のファイルを Read で開けない。前もって `_` にしておく
+    static func zipFileName(_ name: String) -> String {
+        let scalars = AttachmentFileName.sanitized(name).unicodeScalars.map { scalar -> Unicode.Scalar in
+            let isInvisible = CharacterSet.controlCharacters.contains(scalar) || CharacterSet.newlines.contains(scalar)
+            return scalar == "\"" || scalar == "<" || isInvisible ? "_" : scalar
+        }
+        return String(String.UnicodeScalarView(scalars))
     }
 }

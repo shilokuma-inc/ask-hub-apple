@@ -32,6 +32,26 @@ extension OrchestratorTests {
         ])
     }
 
+    @Test func passesFilesOfZipWhoseNameHasQuotes() async throws {
+        // zip そのものの名前に `"` や `<` があっても、中の読めるファイルは実在する場所で Read させる
+        let zipData = try TestZip.build([TestZipEntry("readme.md", "# 中身\n")])
+        let zip = AttachmentMarker.fixture(name: "見積\"v2\"<a>.zip", type: "application/zip", data: zipData)
+        let github = FakeGitHub([.success([])])
+        github.setIdeaIssues([.fixture(number: 7, body: Self.zipRequestBody([zip]))])
+        github.setAttachmentContents([zip.sha: zipData])
+        let runtime = FakeRuntime()
+        runtime.setRunResults([Self.zipCreated])
+        try await makeOrchestrator(github: github, runtime: runtime).pollOnce()
+
+        let prompt = try #require(runtime.inputs.first)
+        let directory = attachmentsDirectory.appending(path: "shilokuma-inc/ask-hub-apple/issue-7", directoryHint: .isDirectory)
+        let base = String(directory.path(percentEncoded: false).dropLast())
+        #expect(prompt.contains("    - readme.md（テキスト・"))
+        #expect(prompt.contains("）: 場所: \(base)/1-見積_v2__a>.zip.d/readme.md"))
+        #expect(!prompt.contains("場所を示せないため"))
+        #expect(runtime.directoryContentsDuringRun.first?["1-見積_v2__a>.zip.d/readme.md"] == Data("# 中身\n".utf8))
+    }
+
     @Test func extractsZipAndPassesItsFilesToClaude() async throws {
         let zipData = try Self.assetsZip()
         let zip = AttachmentMarker.fixture(name: "assets.zip", type: "application/zip", data: zipData)
@@ -54,7 +74,7 @@ extension OrchestratorTests {
         #expect(prompt.contains("）: 場所: \(extracted)/docs/readme.md"))
         #expect(prompt.contains("    - images/logo.png（画像・6 B）: 場所: \(extracted)/images/logo.png"))
         // zip の中のパスはタグの外に出るので、`"` と `<` を全角にする。無害化した場所は実在しないので、読めるファイルとして案内しない
-        #expect(prompt.contains("    - docs/＂＜x>.md: 名前に「＂」や「＜」などの記号があり、場所を示せないため渡していません"))
+        #expect(prompt.contains("    - docs/＂＜x>.md: 名前に記号（「＂」「＜」）や見えない文字があり、場所を示せないため渡していません"))
         #expect(!prompt.contains("docs/＂＜x>.md（テキスト・"))
         #expect(!prompt.contains("docs/\"<x>.md"))
         // 担当 PC のパスを Discussion に書き写させない
@@ -158,6 +178,24 @@ struct IdeaPromptArchiveTests {
         let shortened = String(("../" + long).prefix(IdeaPrompt.maxListNameLength)) + "…"
         #expect(section.contains("    - \(shortened): "))
         #expect(!section.contains(long))
+    }
+
+    @Test func shortensNamesMadeOfCombiningCharacters() {
+        // 1 文字に結合文字を大量に付けた名前も、Unicode スカラーの数で詰める
+        let heavy = "a" + String(repeating: "\u{301}", count: 10_000) + ".txt"
+        let skipped = [AttachmentZipContents.SkippedEntry(entryPath: heavy, reason: .unsupportedCompression(method: 12))]
+        let section = Self.section(.init(directory: "/tmp/x.d", readableFiles: [], materials: [], skippedEntries: skipped))
+        #expect(section.unicodeScalars.count < 2_000)
+        #expect(section.contains("…: "))
+    }
+
+    @Test func zipFileNameHasNoCharactersThatPromptRewrites() {
+        // zip の名前に `"`・`<`・見えない文字があっても、置き場所（と展開先）は無害化で変わらない名前にする
+        #expect(Orchestrator.zipFileName("見積\"v2\".zip") == "見積_v2_.zip")
+        #expect(Orchestrator.zipFileName("<draft>.zip") == "_draft>.zip")
+        // 制御文字・見えない文字は `AttachmentFileName.sanitized` が先に除く
+        #expect(Orchestrator.zipFileName("a\u{200D}b.zip") == "ab.zip")
+        #expect(Orchestrator.zipFileName("assets.zip") == "assets.zip")
     }
 
     @Test func limitsListedLinesOfEachKind() {

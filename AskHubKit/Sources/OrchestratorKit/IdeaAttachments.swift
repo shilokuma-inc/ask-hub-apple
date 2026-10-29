@@ -101,7 +101,7 @@ extension IdeaPrompt {
             if attribute(file.path) == file.path {
                 openable.append(file)
             } else {
-                unopenable.append("\(listName(file.entryPath)): 名前に「＂」や「＜」などの記号があり、場所を示せないため渡していません")
+                unopenable.append("\(listName(file.entryPath)): 名前に記号（「＂」「＜」）や見えない文字があり、場所を示せないため渡していません")
             }
         }
         let readable = openable.map { file in
@@ -144,10 +144,23 @@ extension IdeaPrompt {
     /// 一覧に出す zip の中の名前の長さの上限（文字数）。展開しなかった項目の名前は中央ディレクトリの値のままで、64 KB 近くになりうる
     static let maxListNameLength = 200
 
-    /// 一覧に出す zip の中の名前。`attribute(_:)` で無害化し、長すぎる名前は詰めて末尾に「…」を付ける
+    /// 一覧に出す zip の中の名前。`attribute(_:)` で無害化し、長すぎる名前は詰めて末尾に「…」を付ける。
+    /// 1 文字に結合文字をいくつでも付けられるので、Unicode スカラーの数でも上限を超えないところ（文字の境目）で切る
     private static func listName(_ name: String) -> String {
         let safe = attribute(name)
-        return safe.count > maxListNameLength ? String(safe.prefix(maxListNameLength)) + "…" : safe
+        guard safe.count > maxListNameLength || safe.unicodeScalars.count > maxListNameLength * 4 else {
+            return safe
+        }
+        var result = ""
+        var scalarCount = 0
+        for character in safe.prefix(maxListNameLength) {
+            scalarCount += character.unicodeScalars.count
+            if scalarCount > maxListNameLength * 4 {
+                break
+            }
+            result.append(character)
+        }
+        return result + "…"
     }
 
     /// タグの属性や一覧の行に入れる値。`"` と `<` を全角にし、改行などの制御文字を空白にする
