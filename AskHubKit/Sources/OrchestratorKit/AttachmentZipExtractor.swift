@@ -34,7 +34,8 @@ public struct AttachmentZipExtractor: Sendable {
     public func extract(zipAt archive: URL, to destination: URL) throws(AttachmentZipError) -> AttachmentZipContents {
         let root = Self.trimmingTrailingSlashes(destination.standardizedFileURL.path(percentEncoded: false))
         let archivePath = archive.standardizedFileURL.path(percentEncoded: false)
-        if archivePath.hasPrefix(root + "/") || Self.realPath(archivePath)?.hasPrefix((Self.realPath(root) ?? root) + "/") == true {
+        let realRoot = Self.realPath(root) ?? root
+        if Self.isInside(archivePath, root) || Self.realPath(archivePath).map({ Self.isInside($0, realRoot) }) == true {
             throw .destinationContainsArchive
         }
         let fileManager = FileManager.default
@@ -163,7 +164,7 @@ public struct AttachmentZipExtractor: Sendable {
 
     /// 読ませる種類なら MIME タイプ。テキストと SVG は UTF-8 として読めなければ素材にする（バイナリの `.plist` など）
     private static func readableType(of path: String) -> String? {
-        guard let type = AttachmentZipContentType.type(forFileName: path) else {
+        guard let type = AttachmentZipContentType.type(forPath: path) else {
             return nil
         }
         guard AttachmentZipContentType.requiresUTF8(type) else {
@@ -197,7 +198,7 @@ public struct AttachmentZipExtractor: Sendable {
         while let relative = enumerator.nextObject() as? String {
             let type = enumerator.fileAttributes?[.type] as? FileAttributeType
             guard type == .typeRegular || type == .typeDirectory,
-                  realPath("\(root)/\(relative)")?.hasPrefix(realRoot + "/") == true else {
+                  let real = realPath("\(root)/\(relative)"), isInside(real, realRoot) else {
                 throw .unsafeExtraction(path: relative)
             }
             if type == .typeRegular {
@@ -222,11 +223,18 @@ public struct AttachmentZipExtractor: Sendable {
         return trimmingTrailingSlashes(String(cString: pointer))
     }
 
+    /// パスの比べ方と区切りは UTF-8 のバイトの単位で行う。`String` の `hasPrefix` は書記素クラスタの単位で、
+    /// 名前が結合文字で始まると `"/\u{301}"` が 1 つの文字にまとまり、展開先の下にあるものを外と見誤る
+    private static func isInside(_ path: String, _ root: String) -> Bool {
+        let prefix = Array(root.utf8) + [UInt8(ascii: "/")]
+        return path.utf8.starts(with: prefix)
+    }
+
     private static func trimmingTrailingSlashes(_ path: String) -> String {
-        var path = path
-        while path.count > 1, path.hasSuffix("/") {
-            path.removeLast()
+        var bytes = Array(path.utf8)
+        while bytes.count > 1, bytes.last == UInt8(ascii: "/") {
+            bytes.removeLast()
         }
-        return path
+        return String(bytes: bytes, encoding: .utf8) ?? path
     }
 }

@@ -17,15 +17,23 @@ enum AttachmentZipEntryRule {
     /// MS-DOS の属性のディレクトリのビット
     private static let dosDirectory: UInt32 = 0x10
 
+    /// 名前の区切りは UTF-8 のバイト（= Unicode スカラー）の単位で見る。`String` の `split` や `hasPrefix` は書記素クラスタの単位なので、
+    /// `/` の直後に結合文字（U+0301 など）があると `"/\u{301}"` が 1 つの文字にまとまり、`..` や先頭の `/` を見落とす
+    private static let slash = UInt8(ascii: "/")
+    private static let backslash = UInt8(ascii: "\\")
+    private static let dot = UInt8(ascii: ".")
+    private static let colon = UInt8(ascii: ":")
+
     static func plan(for entry: AttachmentZipArchive.Entry) -> Plan {
+        let bytes = entry.nameBytes
         // 汎用フラグの bit 11 は見ない（macOS の zip は UTF-8 の名前でも立てない）
-        guard let name = String(bytes: entry.nameBytes, encoding: .utf8) else {
+        guard let name = String(bytes: bytes, encoding: .utf8) else {
             return .skip(.unreadableName)
         }
-        if let reason = unsafeNameReason(name) {
+        if let reason = unsafeNameReason(name, bytes: bytes) {
             return .skip(reason)
         }
-        let components = name.split(separator: "/").map(String.init).filter { $0 != "." }
+        let components = pathComponents(of: bytes)
         let fileType = entry.unixFileType
         if fileType == unixSymbolicLink {
             return .skip(.symbolicLink)
@@ -34,7 +42,7 @@ enum AttachmentZipEntryRule {
             return .skip(.specialFile)
         }
         let isDosDirectory = entry.hostSystem == 0 && entry.externalAttributes & dosDirectory != 0
-        let isDirectory = name.hasSuffix("/") || fileType == unixDirectory || isDosDirectory
+        let isDirectory = bytes.last == slash || fileType == unixDirectory || isDosDirectory
         if !isDirectory, let reason = dataReason(of: entry) {
             return .skip(reason)
         }
@@ -44,22 +52,30 @@ enum AttachmentZipEntryRule {
         return isDirectory ? .directory(components) : .file(components)
     }
 
+    /// 名前のバイト列を `/`（0x2F）で区切った要素。空の要素と `.` は詰める。
+    /// UTF-8 の多バイト文字の中に 0x2F は現れないので、区切った要素も UTF-8 として読める
+    static func pathComponents(of bytes: [UInt8]) -> [String] {
+        bytes.split(separator: slash)
+            .filter { !$0.elementsEqual([dot]) }
+            .compactMap { String(bytes: $0, encoding: .utf8) }
+    }
+
     /// 危険な名前（制御文字・絶対パス・`\`・ドライブ名・`..`・空）の理由。安全なら `nil`
-    private static func unsafeNameReason(_ name: String) -> AttachmentZipSkipReason? {
+    private static func unsafeNameReason(_ name: String, bytes: [UInt8]) -> AttachmentZipSkipReason? {
         if name.unicodeScalars.contains(where: isControl) {
             return .controlCharacter
         }
-        if name.hasPrefix("/") {
+        if bytes.first == slash {
             return .absolutePath
         }
-        if name.contains("\\") || hasDriveLetter(name) {
+        if bytes.contains(backslash) || hasDriveLetter(bytes) {
             return .backslashOrDrive
         }
-        let elements = name.split(separator: "/")
-        if elements.contains("..") {
+        let elements = bytes.split(separator: slash)
+        if elements.contains(where: { $0.elementsEqual([dot, dot]) }) {
             return .parentDirectory
         }
-        return elements.allSatisfy { $0 == "." } ? .emptyName : nil
+        return elements.allSatisfy { $0.elementsEqual([dot]) } ? .emptyName : nil
     }
 
     /// ファイルの中身を解けない理由（暗号化・未対応の圧縮方式）
@@ -78,7 +94,10 @@ enum AttachmentZipEntryRule {
         guard let last = components.last else {
             return false
         }
-        return components.contains("__MACOSX") || last == ".DS_Store" || last.hasPrefix("._")
+        // 比べるのもバイト列で（`"._\u{301}"` も `._` で始まるものとして扱う）
+        return components.contains { $0.utf8.elementsEqual("__MACOSX".utf8) }
+            || last.utf8.elementsEqual(".DS_Store".utf8)
+            || last.utf8.starts(with: "._".utf8)
     }
 
     /// 一覧に出す名前。UTF-8 として読めないバイトと制御文字は U+FFFD にする
@@ -95,9 +114,13 @@ enum AttachmentZipEntryRule {
     }
 
     /// 先頭が英字 1 文字と `:`（`C:`）
-    private static func hasDriveLetter(_ name: String) -> Bool {
-        let scalars = Array(name.unicodeScalars.prefix(2))
-        return scalars.count == 2 && scalars[0].isASCII && scalars[0].properties.isAlphabetic && scalars[1] == ":"
+    private static func hasDriveLetter(_ bytes: [UInt8]) -> Bool {
+        guard bytes.count >= 2 else {
+            return false
+        }
+        let first = bytes[0]
+        let isLetter = (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(first) || (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(first)
+        return isLetter && bytes[1] == colon
     }
 }
 
@@ -136,8 +159,15 @@ enum AttachmentZipContentType {
     ]
 
     /// 読ませる種類なら MIME タイプ。それ以外（素材）は `nil`
-    static func type(forFileName name: String) -> String? {
-        let pathExtension = URL(fileURLWithPath: name).pathExtension.lowercased()
+    /// `path` の最後の要素の拡張子で決める。要素と拡張子は UTF-8 のバイトの `/`・`.` で区切る（結合文字で 1 つの文字にまとまっても区切る）。
+    /// 先頭の `.` だけのもの（`.png`）は拡張子とみなさない
+    static func type(forPath path: String) -> String? {
+        let bytes = Array(path.utf8)
+        let name = bytes.split(separator: UInt8(ascii: "/")).last ?? []
+        guard let dot = name.lastIndex(of: UInt8(ascii: ".")), dot != name.startIndex,
+              let pathExtension = String(bytes: name[(dot + 1)...], encoding: .utf8)?.lowercased() else {
+            return nil
+        }
         return textTypes[pathExtension] ?? otherTypes[pathExtension]
     }
 
