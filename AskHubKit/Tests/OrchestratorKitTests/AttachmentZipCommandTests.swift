@@ -17,14 +17,19 @@ struct AttachmentZipCommandTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
-    /// `realpath(3)` で解かない、渡したままの展開先（末尾の `/` なし）
-    private var root: String {
+    /// 渡す展開先（末尾の `/` なし）
+    private var given: String {
         String(destination.path(percentEncoded: false).dropLast())
+    }
+
+    /// 出力に出る展開先。リンクを解いた形（一時ディレクトリの `/var` は `/private/var` へのリンク）
+    private var root: String {
+        TestPath.real(directory.path(percentEncoded: false)) + "/in.zip.d"
     }
 
     private func run(_ entries: [TestZipEntry]) throws -> AttachmentZipCommand.Result {
         try TestZip.build(entries).write(to: archive)
-        return AttachmentZipCommand.run(zipPath: archive.path(percentEncoded: false), destinationPath: root)
+        return AttachmentZipCommand.run(zipPath: archive.path(percentEncoded: false), destinationPath: given, homes: [])
     }
 
     @Test func listsReadableFilesMaterialsAndSkippedEntriesAsTabSeparatedLines() throws {
@@ -59,27 +64,45 @@ struct AttachmentZipCommandTests {
 
     @Test func failsWithReasonWhenZipCannotBeExtracted() throws {
         try Data("not a zip".utf8).write(to: archive)
-        let result = AttachmentZipCommand.run(zipPath: archive.path(percentEncoded: false), destinationPath: root)
+        let result = AttachmentZipCommand.run(zipPath: archive.path(percentEncoded: false), destinationPath: given, homes: [])
         #expect(result.status == AttachmentZipCommand.failureStatus)
         #expect(result.output == "failed\t\(AttachmentZipError.notZip.message)\n")
         #expect(!FileManager.default.fileExists(atPath: root))
     }
 
     @Test func failsWhenZipIsMissing() {
-        let result = AttachmentZipCommand.run(zipPath: archive.path(percentEncoded: false), destinationPath: root)
+        let result = AttachmentZipCommand.run(zipPath: archive.path(percentEncoded: false), destinationPath: given, homes: [])
         #expect(result.status == AttachmentZipCommand.failureStatus)
         #expect(result.output.hasPrefix("failed\tzip を読めませんでした"))
         #expect(result.output.filter(\.isNewline).count == 1)
     }
 
     @Test func failsWhenDestinationContainsArchive() throws {
+        let inner = destination.appending(path: "in.zip", directoryHint: .notDirectory)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try TestZip.build([TestZipEntry("a.txt", "a")]).write(to: inner)
+        let result = AttachmentZipCommand.run(zipPath: inner.path(percentEncoded: false), destinationPath: given, homes: [])
+        #expect(result.status == AttachmentZipCommand.failureStatus)
+        #expect(result.output == "failed\t\(AttachmentZipError.destinationContainsArchive.message)\n")
+        #expect(FileManager.default.fileExists(atPath: inner.path(percentEncoded: false)))
+    }
+
+    @Test func refusesDestinationBeforeExtractingAndKeepsIt() throws {
+        // ホームそのもの（名前が .d でも）を渡しても、消さずに 77 で断る
+        let home = directory.appending(path: "home.d", directoryHint: .isDirectory)
+        let kept = home.appending(path: "keep.txt", directoryHint: .notDirectory)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try Data("keep".utf8).write(to: kept)
         try TestZip.build([TestZipEntry("a.txt", "a")]).write(to: archive)
         let result = AttachmentZipCommand.run(
             zipPath: archive.path(percentEncoded: false),
-            destinationPath: directory.path(percentEncoded: false)
+            destinationPath: home.path(percentEncoded: false),
+            homes: [home.path(percentEncoded: false)]
         )
-        #expect(result.output == "failed\t\(AttachmentZipError.destinationContainsArchive.message)\n")
-        #expect(FileManager.default.fileExists(atPath: archive.path(percentEncoded: false)))
+        #expect(result.status == AttachmentZipCommand.refusedStatus)
+        #expect(result.output.hasPrefix("failed\t展開先がホームかホームより上の階層です"))
+        #expect(result.output.filter(\.isNewline).count == 1)
+        #expect(FileManager.default.fileExists(atPath: kept.path(percentEncoded: false)))
     }
 
     @Test func sanitizesTabsNewlinesAndControlCharacters() {
