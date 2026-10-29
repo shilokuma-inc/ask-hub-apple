@@ -813,8 +813,8 @@ https://github.com/shilokuma-inc/ask-hub-apple/pull/500#discussion_r2412345678 �
 
 ## 添付ファイル
 
-アプリの「新しい依頼」（機能追加・修正）・質問への回答・実機確認の「問題あり」に、テキスト・画像・PDF を添付できる
-（[Discussion #669](https://github.com/shilokuma-inc/ask-hub-apple/discussions/669)）。
+アプリの「新しい依頼」（機能追加・修正）・質問への回答・実機確認の「問題あり」に、テキスト・画像（SVG を含む）・PDF・zip を添付できる
+（[Discussion #669](https://github.com/shilokuma-inc/ask-hub-apple/discussions/669)。SVG と zip は [Discussion #761](https://github.com/shilokuma-inc/ask-hub-apple/discussions/761)）。
 GitHub には Issue / コメントにファイルを添付する公式の API が無いため、依頼先のリポジトリの専用ブランチに置き、本文の目印で指す（Q1）。
 
 ### 置き場所
@@ -911,13 +911,17 @@ epic の最終 PR（`epic-final`）がマージされたら、オーケストレ
   `.fig` / `.sketch` / `.psd` などデザインツール固有のファイルは、書き出した画像や PDF にして添付する（Q3。zip の中に入れても `claude` は読めない）
 - 種類は目印の `type`（MIME）で見分ける（`AskHubKit` の `AttachmentKind`）。目印の形（キー）は変えていない
   - SVG（`image/svg+xml`）は画像として表示するが、中身は XML のテキストなので、UTF-8 で読めなければ断る
-  - zip（`application/zip`。`application/x-zip-compressed` も zip として読む）は、先頭が zip の目印（`PK\x03\x04`、空の zip は `PK\x05\x06`）でなければ断る（中身が壊れていないかは展開する側で確かめる）。UTF-8 の確かめはしない。
+  - zip（`application/zip`。`application/x-zip-compressed` も zip として読む）は、先頭の 4 バイトが zip の目印（`50 4B 03 04`。空の zip は `50 4B 05 06`）でなければ断る（中身が壊れていないかは展開する側で確かめる）。UTF-8 の確かめはしない。
     アプリは展開しない。受け取る側（macOS の担当 PC のオーケストレーター・ループの準備）が展開して使う（Discussion #761 の Q2。下の「zip の展開」）
 - 上限の既定は 1 ファイル 10 MB（zip だけ 50 MB。1 MB = 1,048,576 バイト）・1 回の送信で 10 ファイルまで（`AskHubKit` の `AttachmentLimits`）。上限を超えたときの文言は、そのファイルの種類の上限を出す
 - **zip を知らない古いアプリ・オーケストレーターは、zip の目印を「テキスト」として扱う**（`image/`・`application/pdf` 以外はテキストとして読んでいたため）。
-  古いアプリの添付欄では `テキスト` と表示され、古いオーケストレーターはテキストとして読めない添付として一時ディレクトリに置き、`claude` に Read で開かせる（`claude` は zip を読めない。目印は読み飛ばさずに Discussion に引き継ぐ）
-- アプリの添付欄（`AttachmentPickerSection`。依頼・回答・「問題あり」で共通）は、`fileImporter` で選べる種類をテキスト（プレーンテキスト・Markdown・JSON・CSV・YAML）・PNG・JPEG・GIF・WebP・PDF に絞る。
-  HEIC など、ほかの画像は選べない（書き出した PNG / JPEG を添付してもらう）。上限を超えるもの・UTF-8 で読めないテキスト・空のファイルは、選んだ時点で知らせて一覧に足さない
+  古いアプリの添付欄では `テキスト` と表示され、古いオーケストレーターは多くの場合、テキストとして読めない添付として一時ディレクトリに置き、`claude` に Read で開かせる（`claude` は zip を読めない。目印は読み飛ばさずに Discussion に引き継ぐ）。
+  例外として、100 KB 以下で中身がたまたま UTF-8 として読める zip（無圧縮で ASCII だけのものなど）はテキストとしてプロンプトに入り、独自の `ideaCommand` に `{attachmentsPath}` が無ければ置かずに飛ばす。
+  zip を添付するときは、担当 PC のオーケストレーターを入れ替えてから（`scripts/orchestrator/install.sh`）送る
+- アプリの添付欄（`AttachmentPickerSection`。依頼・回答・「問題あり」で共通）は、`fileImporter` で選べる種類をテキスト（プレーンテキスト・Markdown・JSON・CSV・YAML）・PNG・JPEG・GIF・WebP・SVG・PDF・zip に絞る。
+  HEIC など、ほかの画像は選べない（書き出した PNG / JPEG を添付してもらう）。上限を超えるもの・UTF-8 で読めないテキストと SVG・zip の形でないもの・空のファイルは、選んだ時点で知らせて一覧に足さない。
+  大きさは読む前に種類ごとの上限で確かめる（zip は 50 MB）。`.zip` に conform する `.jar` や、`.svg` に conform する `.svgz`（gzip）も選べるが、UTF-8 のテキストとして読めない旨で断られる
+- 添付欄の注意書きには、種類ごとの上限（10 MB・zip は 50 MB）と数の上限、zip は受け取る側（担当 PC）で展開して使う旨を出す
 - 選んだファイルは、読む間だけ security-scoped のアクセスを開いて `Data` にし、送るまでメモリにだけ持つ（ファイルの場所は保存しない）。添付欄には「public のリポジトリでは誰でも見られる（後から消しても履歴に残る）」旨を出す（確認ダイアログは出さない。Q4）
 
 ### zip の展開
