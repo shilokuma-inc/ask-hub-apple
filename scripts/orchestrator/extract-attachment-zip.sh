@@ -12,7 +12,7 @@
 #   readable<TAB><MIME タイプ><TAB><バイト数><TAB><zip の中のパス><TAB><展開先の絶対パス>
 #   material<TAB><バイト数><TAB><zip の中のパス><TAB><展開先の絶対パス>
 #   skipped<TAB><理由><TAB><zip の中の名前>
-#   展開できない・断ったときは failed<TAB><理由> の 1 行で、終了コードは 0 以外
+#   展開できない・断った・引数が誤っているときは failed<TAB><理由> の 1 行（理由の制御文字は空白にする）で、終了コードは 0 以外
 #   （65: zip を展開できない、64: 引数の誤り、69: askhub-orchestrator が無い、77: 展開先を断った）
 #
 # 環境変数（省略可）:
@@ -27,7 +27,8 @@ export LC_ALL=C
 failed() {
   local status="$1"
   shift
-  printf 'failed\t%s\n' "$*"
+  # 理由に入れた値（展開先など）の改行・タブで、failed の次の行を足させない
+  printf 'failed\t%s\n' "$(printf '%s' "$*" | tr '\000-\037\177' ' ')"
   exit "$status"
 }
 
