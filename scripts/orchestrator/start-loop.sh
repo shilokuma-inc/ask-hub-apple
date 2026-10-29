@@ -116,6 +116,7 @@ describe_loop_options() {
 # 信用する author は担当リポジトリへの書き込み権限で変わるので、epic の途中で招待した共同開発者も、次の再開から信用する
 refresh_trusted_authors() {
   local current
+  # shellcheck disable=SC2016  # バッククォートは playbook の文字そのもので、展開しない
   current=$(sed -n -E 's/.*\*\*信用する author: `([^`]*)`\*\*.*/\1/p' "$PLAYBOOK" | head -n 1)
   [[ -n "$current" && "$current" != "$TRUSTED" ]] || return 0
   OLD="$current" NEW="$TRUSTED" perl -pi -e 's/\Q`$ENV{OLD}`\E/`$ENV{NEW}`/g' "$PLAYBOOK"
