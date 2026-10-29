@@ -139,19 +139,35 @@ struct AttachmentZipExtractorTests {
             // Shift_JIS の「あ.txt」
             TestZipEntry(bytes: [0x82, 0xA0, 0x2E, 0x74, 0x78, 0x74], Data("x".utf8)),
             TestZipEntry("./", ""),
+            // `/` や `\` の直後の結合文字（U+0301）で 1 つの文字にまとまっても、バイトの `/`・`\` で区切る
+            TestZipEntry("../\u{301}escape3-\(id).txt", "x"),
+            TestZipEntry("./../\u{301}d-\(id)/f", "x"),
+            TestZipEntry("/\u{301}x-\(id)", "x"),
+            TestZipEntry("a\\\u{301}x", "x"),
+            // 結合文字で始まる要素は、展開先の下の安全な名前として展開する（展開先の外と見誤らない）
+            TestZipEntry("dir/\u{301}ok.txt", "combining"),
             TestZipEntry("ok.txt", "safe")
         ])
 
         #expect(result.skippedEntries.map(\.reason) == [
             .parentDirectory, .parentDirectory, .absolutePath, .backslashOrDrive, .backslashOrDrive, .backslashOrDrive,
-            .controlCharacter, .controlCharacter, .unreadableName, .emptyName
+            .controlCharacter, .controlCharacter, .unreadableName, .emptyName,
+            .parentDirectory, .parentDirectory, .absolutePath, .backslashOrDrive
         ])
         // 一覧の名前には制御文字と読めないバイトを出さない
         #expect(result.skippedEntries[6].entryPath == "bad\u{FFFD}name.txt")
         #expect(result.skippedEntries[8].entryPath == "\u{FFFD}\u{FFFD}.txt")
-        #expect(result.readableFiles.map(\.entryPath) == ["ok.txt"])
+        #expect(result.readableFiles.map(\.entryPath) == ["dir/\u{301}ok.txt", "ok.txt"])
+        #expect(contents(of: "\(root)/dir/\u{301}ok.txt") == "combining")
         #expect(filesOutsideDestination().isEmpty)
         let parent = directory.deletingLastPathComponent()
+        let parentPath = parent.path(percentEncoded: false)
+        #expect(!FileManager.default.fileExists(atPath: "\(parentPath)\u{301}escape3-\(id).txt"))
+        #expect(!FileManager.default.fileExists(atPath: "\(parentPath)\u{301}d-\(id)"))
+        #expect(!FileManager.default.fileExists(atPath: "/\u{301}x-\(id)"))
+        // 親のディレクトリに、この試行の名前のものが何も無い
+        let leaked = try FileManager.default.contentsOfDirectory(atPath: parentPath).filter { $0.contains(id) }
+        #expect(leaked.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: parent.appending(path: "escape-\(id).txt").path(percentEncoded: false)))
         #expect(!FileManager.default.fileExists(atPath: parent.appending(path: "escape2-\(id).txt").path(percentEncoded: false)))
         #expect(!FileManager.default.fileExists(atPath: absolute))
