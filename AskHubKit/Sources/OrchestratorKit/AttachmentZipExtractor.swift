@@ -74,7 +74,7 @@ public struct AttachmentZipExtractor: Sendable {
     private func extract(_ archive: URL, into root: String) throws(AttachmentZipError) -> AttachmentZipContents {
         let data: Data
         do {
-            data = try Data(contentsOf: archive)
+            data = try Data(contentsOf: archive, options: .mappedIfSafe)
         } catch {
             throw .unreadable(reason: error.localizedDescription)
         }
