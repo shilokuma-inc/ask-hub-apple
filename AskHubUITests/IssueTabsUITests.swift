@@ -182,11 +182,14 @@ extension AskHubUITests {
         scrollToHittable(memo, in: app)
         XCTAssertTrue(app.staticTexts["design.png"].exists)
         let notice = NSPredicate(format: "label CONTAINS %@", "public のリポジトリでは、添付したファイルは誰でも見られます")
+        // zip と SVG の行で注意書きが画面の下に押し出されるので、出るまでスクロールする
+        scrollToHittable(app.staticTexts.matching(notice).firstMatch, in: app)
         XCTAssertTrue(app.staticTexts.matching(notice).firstMatch.exists)
         let list = XCTAttachment(screenshot: app.screenshot())
         list.name = "verify-problem-attachments"
         list.lifetime = .keepAlways
         add(list)
+        scrollToHittable(app.buttons["memo.md を削除"], in: app)
         app.buttons["memo.md を削除"].tap()
         XCTAssertTrue(memo.waitForNonExistence(timeout: 5))
 
@@ -196,7 +199,7 @@ extension AskHubUITests {
         // 確認ダイアログで、添付を上げてから依頼する旨を出す
         let confirm = app.buttons["依頼する"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-        let withAttachments = NSPredicate(format: "label CONTAINS %@", "添付 1 件を shilokuma-inc/ask-hub-apple に上げてから")
+        let withAttachments = NSPredicate(format: "label CONTAINS %@", "添付 3 件を shilokuma-inc/ask-hub-apple に上げてから")
         XCTAssertTrue(app.staticTexts.matching(withAttachments).firstMatch.exists)
         confirm.tap()
 
