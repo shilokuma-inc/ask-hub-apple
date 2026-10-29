@@ -100,6 +100,9 @@ struct AttachmentPickerSection: View {
 
         case .pdf:
             "doc.richtext"
+
+        case .zip:
+            "doc.zipper"
         }
     }
 
