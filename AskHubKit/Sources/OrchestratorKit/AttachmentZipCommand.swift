@@ -10,26 +10,46 @@ import Foundation
 /// - `readable\t<MIME タイプ>\t<バイト数>\t<zip の中のパス>\t<展開先の絶対パス>`
 /// - `material\t<バイト数>\t<zip の中のパス>\t<展開先の絶対パス>`
 /// - `skipped\t<理由>\t<zip の中の名前>`（macOS のメタデータは出さない）
-/// - 展開できなければ `failed\t<理由>` の 1 行だけで、終了コードは `failureStatus`
+/// - 展開できない・展開先を断った・引数が誤っているときは `failed\t<理由>` の 1 行だけで、終了コードは
+///   `failureStatus`（65）・`refusedStatus`（77）・`usageStatus`（64）。中継（`extract-attachment-zip.sh`）と同じ
+///
+/// 展開先は消して作り直されるので、直接呼ばれても困らないよう `AttachmentZipDestination` で確かめてから展開する
 ///
 /// 値のタブ・改行・制御文字は空白にする（1 行 = 1 項目を崩さない）
 public enum AttachmentZipCommand {
     /// 展開できなかったときの終了コード（`EX_DATAERR`）
     public static let failureStatus: Int32 = 65
+    /// 展開先を断ったときの終了コード（`EX_NOPERM`）
+    public static let refusedStatus: Int32 = 77
+    /// 引数が誤っているときの終了コード（`EX_USAGE`）
+    public static let usageStatus: Int32 = 64
+
+    /// ホームとみなすディレクトリ（環境変数の `HOME` と、アカウントのホーム）
+    public static var defaultHomes: [String] {
+        [ProcessInfo.processInfo.environment["HOME"], NSHomeDirectory()].compactMap { $0 }.filter { !$0.isEmpty }
+    }
 
     public struct Result: Sendable, Equatable {
         public let output: String
         public let status: Int32
     }
 
-    /// `zipPath` を `destinationPath` に展開して、出力と終了コードを返す。相対パスは今のディレクトリから解く
+    /// `zipPath` を `destinationPath` に展開して、出力と終了コードを返す。zip の相対パスは今のディレクトリから解く。
+    /// 展開先は絶対パスで、確かめた後のリンクを解いた形に展開する
     public static func run(
         zipPath: String,
         destinationPath: String,
+        homes: [String] = defaultHomes,
         extractor: AttachmentZipExtractor = AttachmentZipExtractor()
     ) -> Result {
+        let resolved: String
+        do {
+            resolved = try AttachmentZipDestination.resolve(destinationPath, homes: homes)
+        } catch {
+            return Result(output: failedLine(error.reason), status: refusedStatus)
+        }
         let archive = URL(fileURLWithPath: zipPath, isDirectory: false)
-        let destination = URL(fileURLWithPath: destinationPath, isDirectory: true)
+        let destination = URL(fileURLWithPath: resolved, isDirectory: true)
         do {
             let contents = try extractor.extract(zipAt: archive, to: destination)
             return Result(output: output(for: contents), status: 0)
@@ -52,7 +72,12 @@ public enum AttachmentZipCommand {
 
     /// 展開できなかったときの出力（末尾に改行）
     public static func failureOutput(for error: AttachmentZipError) -> String {
-        line("failed", error.message) + "\n"
+        failedLine(error.message)
+    }
+
+    /// `failed\t<理由>` の 1 行（末尾に改行）
+    public static func failedLine(_ reason: String) -> String {
+        line("failed", reason) + "\n"
     }
 
     private static func line(_ values: String...) -> String {
