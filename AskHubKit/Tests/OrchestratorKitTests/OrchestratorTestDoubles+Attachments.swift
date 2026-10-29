@@ -50,12 +50,17 @@ extension FakeRuntime {
         state.withLock { $0.directoryContentsDuringRun }
     }
 
-    /// 引数のうちディレクトリであるものの中身（ファイル名 → 中身）
+    /// 引数のうちディレクトリであるものの下のファイル（ディレクトリからの相対パス → 中身）。展開した zip のように、サブディレクトリの下も辿る
     static func directoryContents(in arguments: [String]) -> [String: Data] {
         var contents: [String: Data] = [:]
         for argument in arguments where FileManager.default.fileExists(atPath: argument) {
-            for name in (try? FileManager.default.contentsOfDirectory(atPath: argument)) ?? [] {
-                contents[name] = FileManager.default.contents(atPath: (argument as NSString).appendingPathComponent(name))
+            guard let enumerator = FileManager.default.enumerator(atPath: argument) else {
+                continue
+            }
+            while let relative = enumerator.nextObject() as? String {
+                if enumerator.fileAttributes?[.type] as? FileAttributeType == .typeRegular {
+                    contents[relative] = FileManager.default.contents(atPath: (argument as NSString).appendingPathComponent(relative))
+                }
             }
         }
         return contents
