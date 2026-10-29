@@ -123,6 +123,8 @@ public enum AttachmentZipError: Error, Sendable, Equatable {
     case declaredTooLarge(bytes: Int, limit: Int)
     /// 展開するファイルの数が上限を超える
     case tooManyFiles(count: Int, limit: Int)
+    /// 作るディレクトリの数が上限を超える
+    case tooManyDirectories(count: Int, limit: Int)
     /// 実際に展開した大きさが上限を超えた
     case extractedTooLarge(limit: Int)
     /// 展開した後の確かめで、シンボリックリンク・特殊なファイル・展開先の外のものが見つかった（`path` は展開先からの相対パス）
@@ -149,6 +151,9 @@ public enum AttachmentZipError: Error, Sendable, Equatable {
 
         case let .tooManyFiles(count, limit):
             "ファイルの数（\(count)）が上限（\(limit)）を超えるため展開しませんでした"
+
+        case let .tooManyDirectories(count, limit):
+            "ディレクトリの数（\(count)）が上限（\(limit)）を超えるため展開しませんでした"
 
         case let .extractedTooLarge(limit):
             "展開した大きさが上限（\(AttachmentSize.displayText(bytes: limit))）を超えたため使いません"

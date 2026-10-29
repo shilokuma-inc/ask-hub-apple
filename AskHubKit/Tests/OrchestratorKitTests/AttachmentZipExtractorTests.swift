@@ -297,6 +297,22 @@ extension AttachmentZipExtractorTests {
         #expect(result.readableFiles.count == 2)
     }
 
+    @Test func rejectsTooManyDirectoriesBeforeWriting() throws {
+        let limits = AttachmentZipExtractor.Limits(maxDirectoryCount: 2)
+        // ディレクトリの項目と、ファイルの親（a・b・c・c/d）を数える
+        try expectError(
+            .tooManyDirectories(count: 4, limit: 2),
+            [.directory("a/"), TestZipEntry("b/x.txt"), TestZipEntry("c/d/y.txt")],
+            limits: limits
+        )
+        // 同じパスは 1 つと数え、展開しない項目のディレクトリは数えない
+        let result = try extract(
+            [.directory("a/"), TestZipEntry("a/x.txt"), .directory("a/b/"), TestZipEntry("a/b/y.txt"), TestZipEntry("__MACOSX/z/._y.txt")],
+            limits: limits
+        )
+        #expect(result.readableFiles.map(\.entryPath) == ["a/x.txt", "a/b/y.txt"])
+    }
+
     @Test func removesExtractionWhenActualSizeExceedsLimit() throws {
         // 宣言値は 10 バイトだが、実際は 1,000 バイトに展開される（上限は 100 バイト）
         var bomb = TestZipEntry("bomb.txt", String(repeating: "a", count: 1_000), method: 8)
@@ -372,6 +388,10 @@ extension AttachmentZipExtractorTests {
             try AttachmentZipExtractor.verify(root: root, limits: .init(maxTotalBytes: 9))
         }
         try AttachmentZipExtractor.verify(root: root, limits: .init(maxTotalBytes: 10, maxFileCount: 2))
+        try FileManager.default.createDirectory(at: destination.appending(path: "sub"), withIntermediateDirectories: true)
+        #expect(throws: AttachmentZipError.tooManyDirectories(count: 1, limit: 0)) {
+            try AttachmentZipExtractor.verify(root: root, limits: .init(maxDirectoryCount: 0))
+        }
 
         let link = "\(root)/link"
         try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: directory.path(percentEncoded: false))

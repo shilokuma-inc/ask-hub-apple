@@ -13,10 +13,13 @@ public struct AttachmentZipExtractor: Sendable {
         public var maxTotalBytes: Int
         /// 展開するファイルの数（既定 500。ディレクトリと展開しなかった項目は数えない）
         public var maxFileCount: Int
+        /// 作るディレクトリの数（既定 1,000。仮決め）。ディレクトリの項目と、ファイルの親のディレクトリを重ねずに数える
+        public var maxDirectoryCount: Int
 
-        public init(maxTotalBytes: Int = 100 * 1_024 * 1_024, maxFileCount: Int = 500) {
+        public init(maxTotalBytes: Int = 100 * 1_024 * 1_024, maxFileCount: Int = 500, maxDirectoryCount: Int = 1_000) {
             self.maxTotalBytes = maxTotalBytes
             self.maxFileCount = maxFileCount
+            self.maxDirectoryCount = maxDirectoryCount
         }
 
         public static let `default` = Self()
@@ -131,6 +134,31 @@ public struct AttachmentZipExtractor: Sendable {
         guard declared <= limits.maxTotalBytes else {
             throw .declaredTooLarge(bytes: declared, limit: limits.maxTotalBytes)
         }
+        let directories = Self.directoryCount(of: planned)
+        guard directories <= limits.maxDirectoryCount else {
+            throw .tooManyDirectories(count: directories, limit: limits.maxDirectoryCount)
+        }
+    }
+
+    /// 作るディレクトリの数（ディレクトリの項目と、ファイルの親）。同じパスは 1 つと数える。
+    /// 深いパスでも名前の長さの合計に比例する手間で済むよう、要素の木を作って数える（要素はバイト列で比べる）
+    private static func directoryCount(of planned: [PlannedEntry]) -> Int {
+        var children: [[[UInt8]: Int]] = [[:]]
+        for item in planned {
+            let directories = item.isDirectory ? item.components[...] : item.components.dropLast()
+            var node = 0
+            for component in directories {
+                let key = Array(component.utf8)
+                if let child = children[node][key] {
+                    node = child
+                } else {
+                    children.append([:])
+                    children[node][key] = children.count - 1
+                    node = children.count - 1
+                }
+            }
+        }
+        return children.count - 1
     }
 
     /// 展開すると決めた項目を書く。既にあるパスと重なった項目は飛ばす
@@ -194,6 +222,7 @@ public struct AttachmentZipExtractor: Sendable {
             throw .cannotWrite(reason: "展開先を読めませんでした")
         }
         var count = 0
+        var directories = 0
         var total = 0
         while let relative = enumerator.nextObject() as? String {
             let type = enumerator.fileAttributes?[.type] as? FileAttributeType
@@ -204,7 +233,12 @@ public struct AttachmentZipExtractor: Sendable {
             if type == .typeRegular {
                 count += 1
                 total += (enumerator.fileAttributes?[.size] as? NSNumber)?.intValue ?? 0
+            } else {
+                directories += 1
             }
+        }
+        guard directories <= limits.maxDirectoryCount else {
+            throw .tooManyDirectories(count: directories, limit: limits.maxDirectoryCount)
         }
         guard count <= limits.maxFileCount else {
             throw .tooManyFiles(count: count, limit: limits.maxFileCount)
