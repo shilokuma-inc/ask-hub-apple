@@ -375,6 +375,20 @@ extension AttachmentZipExtractorTests {
         #expect(FileManager.default.fileExists(atPath: archive.path(percentEncoded: false)))
     }
 
+    @Test func refusesDestinationThatIsArchiveItself() throws {
+        try TestZip.build([TestZipEntry("a.txt", "a")]).write(to: archive)
+        #expect(throws: AttachmentZipError.destinationContainsArchive) {
+            try AttachmentZipExtractor().extract(zipAt: archive, to: archive)
+        }
+        // シンボリックリンクを解決すると同じパスになる場合も断る
+        let alias = directory.appending(path: "alias.zip").path(percentEncoded: false)
+        try FileManager.default.createSymbolicLink(atPath: alias, withDestinationPath: archive.path(percentEncoded: false))
+        #expect(throws: AttachmentZipError.destinationContainsArchive) {
+            try AttachmentZipExtractor().extract(zipAt: URL(fileURLWithPath: alias), to: archive)
+        }
+        #expect(FileManager.default.fileExists(atPath: archive.path(percentEncoded: false)))
+    }
+
     // MARK: - 展開した後の確かめ
 
     @Test func verificationFindsSymbolicLinkAndExcessFiles() throws {

@@ -129,7 +129,7 @@ public enum AttachmentZipError: Error, Sendable, Equatable {
     case extractedTooLarge(limit: Int)
     /// 展開した後の確かめで、シンボリックリンク・特殊なファイル・展開先の外のものが見つかった（`path` は展開先からの相対パス）
     case unsafeExtraction(path: String)
-    /// 展開先が zip を含む（展開の前に消すと zip も消えてしまう）
+    /// 展開先が zip そのものか、zip を含む（展開の前に消すと zip も消えてしまう）
     case destinationContainsArchive
     /// 展開先に書けなかった
     case cannotWrite(reason: String)
@@ -162,7 +162,7 @@ public enum AttachmentZipError: Error, Sendable, Equatable {
             "展開したものにファイルとディレクトリ以外のもの（シンボリックリンクなど）があったため使いません（\(path)）"
 
         case .destinationContainsArchive:
-            "展開先が zip を含むため展開しませんでした"
+            "展開先が zip そのものか zip を含むため展開しませんでした"
 
         case let .cannotWrite(reason):
             "展開先に書けませんでした（\(reason)）"

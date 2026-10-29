@@ -37,8 +37,9 @@ public struct AttachmentZipExtractor: Sendable {
     public func extract(zipAt archive: URL, to destination: URL) throws(AttachmentZipError) -> AttachmentZipContents {
         let root = Self.trimmingTrailingSlashes(destination.standardizedFileURL.path(percentEncoded: false))
         let archivePath = archive.standardizedFileURL.path(percentEncoded: false)
+        // 展開先そのものか、その下に zip があると、展開の前に消すときに zip も消えてしまう
         let realRoot = Self.realPath(root) ?? root
-        if Self.isInside(archivePath, root) || Self.realPath(archivePath).map({ Self.isInside($0, realRoot) }) == true {
+        if Self.isSameOrInside(archivePath, root) || Self.realPath(archivePath).map({ Self.isSameOrInside($0, realRoot) }) == true {
             throw .destinationContainsArchive
         }
         let fileManager = FileManager.default
@@ -262,6 +263,10 @@ public struct AttachmentZipExtractor: Sendable {
     private static func isInside(_ path: String, _ root: String) -> Bool {
         let prefix = Array(root.utf8) + [UInt8(ascii: "/")]
         return path.utf8.starts(with: prefix)
+    }
+
+    private static func isSameOrInside(_ path: String, _ root: String) -> Bool {
+        path.utf8.elementsEqual(root.utf8) || isInside(path, root)
     }
 
     private static func trimmingTrailingSlashes(_ path: String) -> String {
