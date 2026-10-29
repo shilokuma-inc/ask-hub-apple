@@ -1004,7 +1004,9 @@ zip 全体は捨てず、その項目だけを飛ばし、一覧に「展開し�
   コマンドを使わない理由:
   - `zipinfo` はロケールが C（launchd から起動したときの既定）だと UTF-8 の名前を `??` と出し、名前を確かめられない
   - `unzip` は引数の名前をワイルドカードとして扱い（`a[1].txt` を渡すと一致しない）、名前の位置の `-x` などをオプションとして読む
-- **シェルスクリプトで同じ規則を実装するとき**:
+- **ループの準備（`start-loop.sh`）は、シェルで規則を作り直さず、Swift の実装をサブコマンドで呼ぶ**: `askhub-orchestrator extract-zip <zip> <展開先>`（中継は `scripts/orchestrator/extract-attachment-zip.sh`。
+  `install.sh` が `askhub-extract-attachment-zip` として入れる）。出力の形は `docs/orchestrator.md` の「ループの起動スクリプト」の「zip の添付」
+- **シェルスクリプトで同じ規則を実装するとき**（`askhub-orchestrator` を入れていない、ほかのリポジトリの手動ループ（ralph-kit）向け）:
   - 値は `LC_ALL=en_US.UTF-8 /usr/bin/zipinfo -v <zip>` の項目ごとの行から読む（`file system or operating system of origin:`（`Unix`）・
     `Unix file attributes (NNNNNN octal):`・`file security status:`（`encrypted`）・`compression method:`（`none (stored)` / `deflated`）・`uncompressed size:`）。
     名前は `LC_ALL=en_US.UTF-8 /usr/bin/zipinfo -1 <zip>`（1 行に 1 項目）。行の数が項目の数と合わない（名前に改行がある）・値を読めないときは、zip 全体を展開しない（Swift より厳しくてよい）
