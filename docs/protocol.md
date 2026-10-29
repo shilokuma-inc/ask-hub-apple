@@ -879,7 +879,7 @@ GitHub には Issue / コメントにファイルを添付する公式の API �
 
 - 目印は項目の下の行に 2 文字下げて置く（行頭の HTML コメントは箇条書きを途切れさせるため）。読むときは字下げの有無を問わない
 - リンクは `commit` の固定リンク（ブランチから消した後も履歴から開ける）。リンクの名前の Markdown の記号はエスケープし、改行などの制御文字は空白にする
-- 種類の表示は `テキスト` / `画像`（`image/` で始まる MIME）/ `PDF`（`application/pdf`）。大きさは 1 KB = 1,024 バイトで `B` / `KB`（整数）/ `MB`（小数 1 桁）
+- 種類の表示は `テキスト` / `画像`（`image/` で始まる MIME。SVG も含む）/ `PDF`（`application/pdf`）/ `zip`（`application/zip`・`application/x-zip-compressed`）。大きさは 1 KB = 1,024 バイトで `B` / `KB`（整数）/ `MB`（小数 1 桁）
 - 添付が無ければ添付欄を付けない（本文は今までと同じ）
 - アプリの本文の表示では HTML コメントを取り除くので、リンクの行だけが見える
 
@@ -906,9 +906,16 @@ epic の最終 PR（`epic-final`）がマージされたら、オーケストレ
 
 ### 種類と上限
 
-- 添付できるのは、`claude` が読めるテキスト（UTF-8 で読めるもの。`.md`・`.txt`・`.json`・`.csv`・`.yaml` など）・画像（PNG / JPEG / GIF / WebP）・PDF（Q2）。
-  `.fig` / `.sketch` / `.psd` などデザインツール固有のファイルは、書き出した画像や PDF にして添付する（Q3）
-- 上限の既定は 1 ファイル 10 MB・1 回の送信で 10 ファイルまで（`AskHubKit` の `AttachmentLimits`）
+- 添付できるのは、`claude` が読めるテキスト（UTF-8 で読めるもの。`.md`・`.txt`・`.json`・`.csv`・`.yaml` など）・画像（PNG / JPEG / GIF / WebP / SVG）・PDF（Q2）と、
+  アセットをまとめた zip（[Discussion #761](https://github.com/shilokuma-inc/ask-hub-apple/discussions/761) の Q1・Q5）。
+  `.fig` / `.sketch` / `.psd` などデザインツール固有のファイルは、書き出した画像や PDF にして添付する（Q3。zip の中に入れても `claude` は読めない）
+- 種類は目印の `type`（MIME）で見分ける（`AskHubKit` の `AttachmentKind`）。目印の形（キー）は変えていない
+  - SVG（`image/svg+xml`）は画像として表示するが、中身は XML のテキストなので、UTF-8 で読めなければ断る
+  - zip（`application/zip`。`application/x-zip-compressed` も zip として読む）は、先頭が zip の目印（`PK\x03\x04`、空の zip は `PK\x05\x06`）でなければ断る（中身が壊れていないかは展開する側で確かめる）。UTF-8 の確かめはしない。
+    アプリは展開しない。受け取る側（macOS の担当 PC のオーケストレーター・ループの準備）が展開して使う（Discussion #761 の Q2）
+- 上限の既定は 1 ファイル 10 MB（zip だけ 50 MB。1 MB = 1,048,576 バイト）・1 回の送信で 10 ファイルまで（`AskHubKit` の `AttachmentLimits`）。上限を超えたときの文言は、そのファイルの種類の上限を出す
+- **zip を知らない古いアプリ・オーケストレーターは、zip の目印を「テキスト」として扱う**（`image/`・`application/pdf` 以外はテキストとして読んでいたため）。
+  古いアプリの添付欄では `テキスト` と表示され、古いオーケストレーターはテキストとして読めない添付として一時ディレクトリに置き、`claude` に Read で開かせる（`claude` は zip を読めない。目印は読み飛ばさずに Discussion に引き継ぐ）
 - アプリの添付欄（`AttachmentPickerSection`。依頼・回答・「問題あり」で共通）は、`fileImporter` で選べる種類をテキスト（プレーンテキスト・Markdown・JSON・CSV・YAML）・PNG・JPEG・GIF・WebP・PDF に絞る。
   HEIC など、ほかの画像は選べない（書き出した PNG / JPEG を添付してもらう）。上限を超えるもの・UTF-8 で読めないテキスト・空のファイルは、選んだ時点で知らせて一覧に足さない
 - 選んだファイルは、読む間だけ security-scoped のアクセスを開いて `Data` にし、送るまでメモリにだけ持つ（ファイルの場所は保存しない）。添付欄には「public のリポジトリでは誰でも見られる（後から消しても履歴に残る）」旨を出す（確認ダイアログは出さない。Q4）
