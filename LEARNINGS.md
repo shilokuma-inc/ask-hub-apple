@@ -273,6 +273,8 @@
   `knownRegions` に `ja` が無くても `ja` の訳があればビルドしたアプリに `ja.lproj/AppShortcuts.strings` が入る（`en` の値も書くと `en.lproj` もできる）。登録の結果は `extract.actionsdata` の `autoShortcuts` で確かめられる。
   `ja.lproj` ができると、日本語の端末ではアプリの言語が `en` ではなく `ja` に解決される（`Bundle.preferredLocalizations(from: ["en", "ja"], forPreferences: ["ja-JP"])` が `["ja"]`）ので、システムが出す文言（標準のボタンなど）が日本語になる。実機での見え方は実機確認で確かめる
 - App Intents の `SiriTipView` は macOS で使えず（`@available(macOS, unavailable)`）、`ShortcutsLink` も iOS の SDK にしか無い。iOS と macOS で同じ View を使うなら、どちらも使わずに文章で案内する（使うなら `#if os(iOS)` が要る）
+- Compression の `COMPRESSION_ZLIB`（Foundation の `NSData.compressed(using: .zlib)` も）はヘッダの無い raw Deflate（RFC 1951）で、zip の項目の中身（圧縮方式 8）をそのまま解ける。
+  CRC-32 は `import zlib` の `crc32` で計算できる（外部の Package は要らない）。zip 爆弾に備え、`compression_stream` で少しずつ解いて書いた量を数える（`AttachmentZipWriter`）
 
 ## シェルスクリプト
 
@@ -312,6 +314,8 @@
   `git fetch origin refs/heads/<branch>` の後に `FETCH_HEAD^{tree}` と `HEAD^{tree}` を比べ、同じなら push を飛ばす（force しない）
 - 偽の `gh` とローカルの bare リポジトリでスクリプトを確かめるときは、clone した checkout の origin を `https://github.com/<owner>/<repo>.git` にしたうえで
   `url.<bare のパス>.insteadOf` で書き換え、`GIT_ALLOW_PROTOCOL=file` を付けて流す。書き換えが漏れても https に出られないので、本物の GitHub に push しない
+- macOS の `zipinfo` は、ロケールが C（launchd から起動したときの既定）だと UTF-8 の名前を `??` と出す（`LC_ALL=en_US.UTF-8` なら出る）。`unzip` は名前の引数をワイルドカードとして扱い
+  （`a[1].txt` を渡すと「filename not matched」）、名前の位置の `-d` などもオプションとして読む。`[` `]` `*` `?` と先頭の `-` の前に `\` を付けると一致する。macOS の `zip` は UTF-8 の名前でも汎用フラグの bit 11 を立てない
 
 ## SwiftUI
 
