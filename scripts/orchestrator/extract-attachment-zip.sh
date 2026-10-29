@@ -100,8 +100,11 @@ esac
 if [[ "$REAL_DEST" != "$REAL_ROOT"/?* ]]; then
   failed 77 "展開先が添付の置き場所（${REAL_ROOT}）の外です: ${REAL_DEST}"
 fi
-# 置き場所がリポジトリの中に向けられていたら、checkout のファイルを消しかねないので断る
-if [[ "$(unset GIT_DIR GIT_WORK_TREE; git -C "$REAL_EXISTING" rev-parse --is-inside-work-tree 2>/dev/null || true)" == "true" ]]; then
+# 置き場所がリポジトリの中に向けられていたら、checkout のファイルを消しかねないので断る。
+# 展開先が既にあるときは前の展開の残りで、zip の中の .git があるかもしれないので、親から確かめる
+GIT_CHECK_DIR="$REAL_EXISTING"
+[[ -z "$REST" ]] && GIT_CHECK_DIR=$(dirname "$REAL_EXISTING")
+if [[ "$(unset GIT_DIR GIT_WORK_TREE; git -C "$GIT_CHECK_DIR" rev-parse --is-inside-work-tree 2>/dev/null || true)" == "true" ]]; then
   failed 77 "展開先が git のリポジトリの中です: ${REAL_DEST}"
 fi
 
