@@ -150,7 +150,7 @@ enum AttachmentFileReader {
         }
         // 大きすぎるファイルは、中身を読む前に断る
         if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > AttachmentLimits.maxFileSize {
-            return .failure(Failure(message: AttachmentLimits.Rejection.tooLarge(name: name).message))
+            return .failure(Failure(message: AttachmentLimits.Rejection.tooLarge(name: name, limit: AttachmentLimits.maxFileSize).message))
         }
         guard let data = try? Data(contentsOf: url) else {
             return .failure(Failure(message: "\(name) を読み込めませんでした"))
