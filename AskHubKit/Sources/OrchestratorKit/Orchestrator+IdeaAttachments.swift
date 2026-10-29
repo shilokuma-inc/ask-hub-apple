@@ -35,7 +35,8 @@ extension Orchestrator {
     }
 
     /// 依頼の本文の目印が指す添付を、blob SHA で取って確かめる。
-    /// テキストはプロンプトに入れ、画像・PDF（と大きなテキスト）は `directory` に置く。`directory` が無ければ（独自の `ideaCommand` に
+    /// テキストはプロンプトに入れ、画像・PDF（と大きなテキスト）は `directory` に置く。zip は渡さない（確かめられていれば Discussion には引き継ぐ）。
+    /// `directory` が無ければ（独自の `ideaCommand` に
     /// `{attachmentsPath}` が無い）、画像・PDF は渡せない旨をプロンプトとログに書く。取れない・合わない添付は飛ばす（依頼全体は失敗にしない）。
     /// 依頼 Issue は信用する author のもの（作成者と編集者）だけが渡ってくる（`IdeaRequestTracker.next`）
     func prepareAttachments(for issue: IdeaRequestIssue, directory: URL?) async -> [IdeaAttachment] {
@@ -49,6 +50,16 @@ extension Orchestrator {
                 let reason = Self.fetchFailureReason(error)
                 log("\(name) の添付 \(marker.name) を使いません: \(reason)")
                 attachments.append(IdeaAttachment(marker: marker, content: .skipped(reason: reason)))
+                continue
+            }
+            // zip はテキストとしてプロンプトに入れず、そのままでは claude が Read で読めないので渡さない（Discussion #761。展開は後続）
+            if marker.kind == .zip {
+                log("\(name) の添付 \(marker.name) は zip のため claude に渡せません（展開に未対応）")
+                attachments.append(IdeaAttachment(
+                    marker: marker,
+                    content: .skipped(reason: "zip の展開に担当 PC のオーケストレーターが対応していないため渡せませんでした"),
+                    isVerified: true
+                ))
                 continue
             }
             if marker.kind == .text, data.count <= IdeaAttachment.maxInlineTextBytes, let text = String(bytes: data, encoding: .utf8) {
