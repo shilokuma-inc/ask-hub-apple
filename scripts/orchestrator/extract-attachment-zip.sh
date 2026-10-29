@@ -18,7 +18,8 @@
 # 環境変数（省略可）:
 #   ASKHUB_ORCHESTRATOR      呼ぶ askhub-orchestrator（既定: このスクリプトと同じ場所の askhub-orchestrator。
 #                            無ければリポジトリの AskHubKit/.build の release → debug のビルド）
-#   ASKHUB_ATTACHMENTS_DIR   添付の置き場所の親（既定: ~/Library/Caches/askhub/attachments。start-loop.sh と同じ）
+#   ASKHUB_ATTACHMENTS_DIR   添付の置き場所（既定: ~/Library/Caches/askhub/attachments。start-loop.sh と同じ値。
+#                            start-loop.sh はこの下の <owner>/<repo>/discussion-<番号> に置く）
 set -euo pipefail
 
 # 名前とパスの比較は UTF-8 のバイト単位で行う（docs/protocol.md の「zip の展開」）
@@ -60,9 +61,10 @@ fi
 ROOT="${ASKHUB_ATTACHMENTS_DIR:-$HOME/Library/Caches/askhub/attachments}"
 [[ -d "$ROOT" ]] || failed 77 "添付の置き場所がありません: ${ROOT}"
 REAL_ROOT=$(cd "$ROOT" && pwd -P) || failed 77 "添付の置き場所を開けません: ${ROOT}"
-REAL_HOME=$(cd "$HOME" && pwd -P)
-if [[ "$REAL_ROOT" == "/" || "$REAL_ROOT" == "$REAL_HOME" ]]; then
-  failed 77 "添付の置き場所が / かホームです: ${REAL_ROOT}"
+REAL_HOME=$(cd "$HOME" && pwd -P) || failed 77 "ホームを開けません: ${HOME}"
+# ホームと同じか上の階層（/・/Users など）を置き場所にしていたら、展開先の確かめが意味をなさないので断る
+if [[ "$REAL_ROOT" == "/" || "$REAL_ROOT" == "$REAL_HOME" || "$REAL_HOME" == "$REAL_ROOT"/* ]]; then
+  failed 77 "添付の置き場所がホームかホームより上の階層です: ${REAL_ROOT}"
 fi
 
 case "$DEST" in
