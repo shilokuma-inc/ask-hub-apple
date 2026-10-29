@@ -44,21 +44,24 @@ public enum AttachmentFileName {
     }
 }
 
-/// 添付の種類（`claude` が読めるもの。Discussion #669 の Q2）
+/// 添付の種類（`claude` が読めるもの。Discussion #669 の Q2・zip は Discussion #761 の Q1）
 public enum AttachmentKind: Sendable, Equatable {
     case text
     case image
     case pdf
+    /// 受け取る側（macOS の担当 PC）で展開して使う zip
+    case zip
 
-    /// MIME タイプから決める。`image/` で始まるものは画像、`application/pdf` は PDF、それ以外はテキスト
+    /// MIME タイプから決める。`image/` で始まるものは画像、`application/pdf` は PDF、`application/zip`（と `application/x-zip-compressed`）は zip、
+    /// それ以外はテキスト
     public init(mimeType: String) {
-        // `application/pdf; charset=…` のような引数は落として判定する
-        let essence = mimeType.split(separator: ";", maxSplits: 1).first ?? ""
-        let type = essence.trimmingCharacters(in: .whitespaces).lowercased()
+        let type = Self.essence(of: mimeType)
         if type.hasPrefix("image/") {
             self = .image
         } else if type == "application/pdf" {
             self = .pdf
+        } else if Self.zipTypes.contains(type) {
+            self = .zip
         } else {
             self = .text
         }
@@ -75,7 +78,24 @@ public enum AttachmentKind: Sendable, Equatable {
 
         case .pdf:
             "PDF"
+
+        case .zip:
+            "zip"
         }
+    }
+
+    /// SVG（`image/svg+xml`）か。種類は画像だが、中身は XML のテキストなので UTF-8 で読めることを確かめる
+    public static func isSVG(mimeType: String) -> Bool {
+        essence(of: mimeType) == "image/svg+xml"
+    }
+
+    /// zip として読む MIME タイプ。`application/x-zip-compressed` は Windows のブラウザなどが付ける
+    private static let zipTypes: Set<String> = ["application/zip", "application/x-zip-compressed"]
+
+    /// `application/pdf; charset=…` のような引数を落とし、小文字にした MIME タイプ
+    private static func essence(of mimeType: String) -> String {
+        let essence = mimeType.split(separator: ";", maxSplits: 1).first ?? ""
+        return essence.trimmingCharacters(in: .whitespaces).lowercased()
     }
 }
 
