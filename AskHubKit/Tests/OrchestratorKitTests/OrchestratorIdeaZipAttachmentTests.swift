@@ -53,9 +53,12 @@ extension OrchestratorTests {
         #expect(prompt.contains("    - docs/readme.md（テキスト・"))
         #expect(prompt.contains("）: 場所: \(extracted)/docs/readme.md"))
         #expect(prompt.contains("    - images/logo.png（画像・6 B）: 場所: \(extracted)/images/logo.png"))
-        // zip の中のパスはタグの外に出るので、`"` と `<` を全角にする
-        #expect(prompt.contains("    - docs/＂＜x>.md（テキスト・"))
+        // zip の中のパスはタグの外に出るので、`"` と `<` を全角にする。無害化した場所は実在しないので、読めるファイルとして案内しない
+        #expect(prompt.contains("    - docs/＂＜x>.md: 名前に「＂」や「＜」などの記号があり、場所を示せないため渡していません"))
+        #expect(!prompt.contains("docs/＂＜x>.md（テキスト・"))
         #expect(!prompt.contains("docs/\"<x>.md"))
+        // 担当 PC のパスを Discussion に書き写させない
+        #expect(prompt.contains("「場所」は担当 PC の中のパスです。Discussion には書かず"))
         // 素材は場所を出さず、読めない旨と一緒に並べる
         #expect(prompt.contains("  - 素材（claude は読めません。実装で取り込む素材として使えます）:\n    - fonts/a.ttf（5 B）\n"))
         // 展開しなかった項目は理由を出す。macOS のメタデータは件数だけ
@@ -144,6 +147,17 @@ struct IdeaPromptArchiveTests {
 
     private static func section(_ contents: AttachmentZipContents) -> String {
         IdeaPrompt.attachmentsSection([IdeaAttachment(marker: marker, content: .archive(contents))])
+    }
+
+    @Test func shortensLongNamesInList() {
+        let long = String(repeating: "あ", count: IdeaPrompt.maxListNameLength + 50)
+        let skipped = [AttachmentZipContents.SkippedEntry(entryPath: "../" + long, reason: .parentDirectory)]
+        let section = Self.section(.init(directory: "/tmp/x.d", readableFiles: [], materials: [], skippedEntries: skipped))
+
+        // 名前は上限で詰めて「…」を付ける（展開しなかった項目の名前は中央ディレクトリの値のままで、長くなりうる）
+        let shortened = String(("../" + long).prefix(IdeaPrompt.maxListNameLength)) + "…"
+        #expect(section.contains("    - \(shortened): "))
+        #expect(!section.contains(long))
     }
 
     @Test func limitsListedLinesOfEachKind() {
