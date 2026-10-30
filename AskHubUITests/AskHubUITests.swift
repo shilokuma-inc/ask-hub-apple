@@ -56,11 +56,15 @@ final class AskHubUITests: XCTestCase {
         app.launch()
 
         app.tabBars.buttons["依頼"].tap()
+        // 「依頼を送る」は添付欄の注意書きの下で画面の外にあり `Form` が作らないので、開いたことは上の Picker で確かめ、出るまでスクロールしてから見る
+        let repositoryPicker = app.buttons["repository-picker"]
+        XCTAssertTrue(repositoryPicker.waitForExistence(timeout: 5))
         let send = app.buttons["依頼を送る"]
-        XCTAssertTrue(send.waitForExistence(timeout: 5))
+        scrollToHittable(send, in: app)
         XCTAssertFalse(send.isEnabled)
 
-        app.buttons["repository-picker"].tap()
+        scrollToHittable(repositoryPicker, in: app)
+        repositoryPicker.tap()
         app.buttons["notti-ios"].tap()
         let summary = app.textFields["例: 通知の頻度を調整したい"]
         summary.tap()
@@ -70,6 +74,9 @@ final class AskHubUITests: XCTestCase {
         let body = app.textFields["やりたいこと・背景・決まっていることなど"]
         body.tap()
         body.typeText("朝だけにしたい")
+        // 「依頼を送る」はキーボードと添付欄の下に隠れるので、キーボードを閉じてから出るまでスクロールして押す
+        app.buttons["keyboard-done"].tap()
+        scrollToHittable(send, in: app)
         send.tap()
 
         XCTAssertTrue(app.staticTexts["notti-ios に「通知の頻度を調整したい」を依頼しました"].waitForExistence(timeout: 5))
@@ -305,8 +312,8 @@ extension AskHubUITests {
         // 既定は「機能追加・修正」で、既存のリポジトリへの依頼の入力欄が出る
         XCTAssertTrue(change.isSelected)
         XCTAssertFalse(newApp.isSelected)
-        XCTAssertTrue(app.buttons["依頼を送る"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["repository-picker"].exists)
+        // 「依頼を送る」は添付欄の注意書きの下で画面の外にあり `Form` が作らないので、上にあるリポジトリの Picker で確かめる
+        XCTAssertTrue(app.buttons["repository-picker"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.textFields["repository-name"].exists)
 
         // 「新しいアプリ」に切り替えると、画面遷移せずに新しいアプリの入力欄に変わる
@@ -316,14 +323,12 @@ extension AskHubUITests {
         // 「作成を依頼する」は画面の外にあり `Form` が作らないので、上にある入力欄で確かめる
         XCTAssertTrue(app.segmentedControls["template-picker"].exists)
         XCTAssertTrue(app.navigationBars["新しいアプリ"].exists)
-        XCTAssertFalse(app.buttons["依頼を送る"].exists)
         XCTAssertFalse(app.buttons["repository-picker"].exists)
 
         // 戻すと依頼の入力欄に戻る
         change.tap()
         XCTAssertTrue(change.isSelected)
-        XCTAssertTrue(app.buttons["依頼を送る"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["repository-picker"].exists)
+        XCTAssertTrue(app.buttons["repository-picker"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars["新しい依頼"].exists)
         XCTAssertFalse(app.textFields["repository-name"].exists)
     }

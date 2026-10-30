@@ -28,7 +28,8 @@ extension AskHubUITests {
         app.launch()
 
         app.tabBars.buttons["依頼"].tap()
-        XCTAssertTrue(app.buttons["依頼を送る"].waitForExistence(timeout: 5))
+        // 「依頼を送る」は添付欄の注意書きの下で画面の外にあり `Form` が作らないので、開いたことは上の Picker で確かめる
+        XCTAssertTrue(app.buttons["repository-picker"].waitForExistence(timeout: 5))
         let link = app.buttons["siri-help-request-link"]
         scrollUntilHittableInForm(link, in: app)
         link.tap()
