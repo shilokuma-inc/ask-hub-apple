@@ -167,5 +167,22 @@ struct AttachmentMarkerTests {
         #expect(marker(type: "image/png ; charset=binary").kind == .image)
         #expect(marker(type: "text/markdown").kind == .text)
         #expect(marker(type: "application/json").kind == .text)
+        #expect(marker(type: "application/zip").kind == .zip)
+        #expect(marker(type: "Application/X-Zip-Compressed").kind == .zip)
+        // SVG は画像として表示する
+        #expect(marker(type: "image/svg+xml").kind == .image)
+        // 知らないバイナリはテキスト扱いのまま（UTF-8 の確かめで断る）
+        #expect(marker(type: "application/octet-stream").kind == .text)
+    }
+
+    @Test func kindDisplayNames() {
+        #expect([AttachmentKind.text, .image, .pdf, .zip].map(\.displayName) == ["テキスト", "画像", "PDF", "zip"])
+    }
+
+    @Test func detectsSVG() {
+        #expect(AttachmentKind.isSVG(mimeType: "image/svg+xml"))
+        #expect(AttachmentKind.isSVG(mimeType: "IMAGE/SVG+XML; charset=utf-8"))
+        #expect(!AttachmentKind.isSVG(mimeType: "image/png"))
+        #expect(!AttachmentKind.isSVG(mimeType: "text/xml"))
     }
 }

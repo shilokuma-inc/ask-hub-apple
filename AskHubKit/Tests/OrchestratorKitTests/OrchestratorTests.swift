@@ -372,7 +372,8 @@ extension OrchestratorTests {
             RepositoryConfig(owner: "shilokuma-inc", name: "ask-hub-apple", checkoutPath: "/src/ask-hub-apple")
         ],
         now: @escaping @Sendable () -> Date = { Date(timeIntervalSince1970: 1_800_000_000) },
-        ideaCommand: IdeaCommandTemplate = .standard
+        ideaCommand: IdeaCommandTemplate = .standard,
+        zipExtractor: AttachmentZipExtractor = AttachmentZipExtractor()
     ) throws -> Orchestrator {
         let config = OrchestratorConfig(
             trustedAuthorLogins: ["mrs1669"],
@@ -390,7 +391,8 @@ extension OrchestratorTests {
             runtime: runtime,
             log: { logs.append($0) },
             now: now,
-            attachmentsDirectory: attachmentsDirectory
+            attachmentsDirectory: attachmentsDirectory,
+            zipExtractor: zipExtractor
         )
     }
 }

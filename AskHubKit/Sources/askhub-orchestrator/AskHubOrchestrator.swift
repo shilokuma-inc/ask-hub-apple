@@ -7,16 +7,7 @@ import OrchestratorKit
 @main
 enum AskHubOrchestrator {
     static func main() async {
-        let arguments: OrchestratorArguments
-        do {
-            arguments = try OrchestratorArguments.parse(CommandLine.arguments.dropFirst())
-        } catch {
-            fail("\(error)\n\n\(OrchestratorArguments.usage)", status: EX_USAGE)
-        }
-        if arguments.showsHelp {
-            print(OrchestratorArguments.usage)
-            return
-        }
+        let arguments = parseArguments()
 
         let loader = OrchestratorConfigLoader()
         let configPath = arguments.configPath ?? loader.defaultPath
@@ -65,6 +56,33 @@ enum AskHubOrchestrator {
             return
         }
         await orchestrator.run()
+    }
+
+    /// 引数を解析する。説明の表示と、設定を使わないサブコマンド（`extract-zip`）は、ここで済ませて終わる
+    private static func parseArguments() -> OrchestratorArguments {
+        let arguments: OrchestratorArguments
+        do {
+            arguments = try OrchestratorArguments.parse(CommandLine.arguments.dropFirst())
+        } catch {
+            // extract-zip の誤りは、展開の結果と同じ failed の 1 行で返す（中継と読み方を揃える。時刻付きのログの行は出さない）
+            if case .invalidArguments = error {
+                FileHandle.standardError.write(Data("\(OrchestratorArguments.usage)\n".utf8))
+                FileHandle.standardOutput.write(Data(AttachmentZipCommand.failedLine("\(error)").utf8))
+                exit(AttachmentZipCommand.usageStatus)
+            }
+            fail("\(error)\n\n\(OrchestratorArguments.usage)", status: EX_USAGE)
+        }
+        if arguments.showsHelp {
+            print(OrchestratorArguments.usage)
+            exit(0)
+        }
+        // ループの準備から呼ぶ zip の展開。設定ファイルもトークンも読まずに、結果を出して終わる
+        if let extractZip = arguments.extractZip {
+            let result = AttachmentZipCommand.run(zipPath: extractZip.zipPath, destinationPath: extractZip.destinationPath)
+            FileHandle.standardOutput.write(Data(result.output.utf8))
+            exit(result.status)
+        }
+        return arguments
     }
 
     /// `gh auth token` でトークンを得る（Discussion #1 の Q4）。トークンはメモリにだけ置き、表示しない
