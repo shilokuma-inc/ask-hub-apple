@@ -217,6 +217,8 @@
   ランタイムを選ぶ・Simulator を作るスクリプトでは、表示名と識別子の名前を別に持つ（`scripts/orchestrator/xcb`）
 - サンプルの添付（`AttachmentFile.samples`）は依頼・回答・「問題あり」の UI テストで共通に使う。行を足すと添付欄の注意書き（footer）と削除のボタンが画面の外に押し出され、
   Form が作らないので `exists` が false になる。確かめる前に `scrollToHittable`（`AskHubUITests+Scroll.swift`）で出るまでスクロールする。送信の件数（「添付 N 件」）の期待値も 3 つのテストで直す
+- 「新しい依頼」の「依頼を送る」は添付欄の注意書き（footer）のすぐ下にあり、iPhone 17 Pro では開いた直後に画面の外になる（#780）。注意書きの文言を変えたら、依頼タブの UI テストも流す。
+  依頼タブを開いたことは上の `repository-picker` で待ち、「依頼を送る」は `scrollToHittable` で出してから確かめる・押す。epic 宛ての子 PR では CI の UI テストが走らないので、最終 PR で初めて落ちる
 
 ## Keychain
 
