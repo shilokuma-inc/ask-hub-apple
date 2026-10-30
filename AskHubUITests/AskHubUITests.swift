@@ -63,7 +63,12 @@ final class AskHubUITests: XCTestCase {
         scrollToHittable(send, in: app)
         XCTAssertFalse(send.isEnabled)
 
-        scrollToHittable(repositoryPicker, in: app)
+        // 上へ戻してから押す。Picker はナビゲーションバーの裏にあっても isHittable が true になり、押してもメニューが開かないので、
+        // scrollToHittable ではなくバーより下に出るまで戻す
+        let navigationBar = app.navigationBars["新しい依頼"]
+        for _ in 0..<4 where !repositoryPicker.exists || repositoryPicker.frame.minY < navigationBar.frame.maxY {
+            app.collectionViews.firstMatch.swipeDown(velocity: .slow)
+        }
         repositoryPicker.tap()
         app.buttons["notti-ios"].tap()
         let summary = app.textFields["例: 通知の頻度を調整したい"]
