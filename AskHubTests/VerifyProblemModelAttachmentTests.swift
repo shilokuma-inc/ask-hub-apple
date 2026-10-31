@@ -133,6 +133,36 @@ struct VerifyProblemModelAttachmentTests {
             == "添付を上げられませんでした。トークンに、依頼先のリポジトリの Contents の書き込み権限（Read and write）があるか確かめてください")
     }
 
+    /// ドロップの受け口（Discussion #784）は、添付欄で添付を変えられる間だけ受け付ける
+    @Test func attachmentsCanBeEditedOnlyBeforeRequestIsCreated() async {
+        let log = Log()
+        let model = makeModel(log: log)
+        #expect(model.canEditAttachments)
+
+        await model.send()
+        // 送り終えたら添付欄を出さないので、ドロップも受け付けない
+        #expect(model.isCompleted)
+        #expect(!model.canEditAttachments)
+    }
+
+    @Test func attachmentsCannotBeEditedWhileRetryingComment() async {
+        let log = Log()
+        log.commentFailures.withLock { $0 = 1 }
+        let model = makeModel(log: log)
+        await model.send()
+
+        // 依頼を作った後は、コメントの再試行で上げ直さないため変えさせない
+        #expect(model.createdRequest != nil)
+        #expect(!model.isCompleted)
+        #expect(!model.canEditAttachments)
+    }
+
+    @Test func attachmentsCanStillBeEditedWhenUploadFails() async {
+        let model = makeModel(log: Log(), uploadFailure: AttachmentUploadError.missingContentsPermission)
+        await model.send()
+        #expect(model.canEditAttachments)
+    }
+
     @Test func confirmationMentionsAttachments() {
         let model = makeModel(log: Log())
         #expect(model.confirmation.hasPrefix("添付 1 件を shilokuma-inc/ask-hub-apple に上げてから、"))
