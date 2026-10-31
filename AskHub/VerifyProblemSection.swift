@@ -17,6 +17,7 @@ struct VerifyProblemSection: View {
                 TextField("何をしたら・どうなったか", text: $model.description, axis: .vertical)
                     .lineLimit(3...8)
                     .focused(isEditing)
+                    .attachmentDropExcluded()
                     // 依頼を作った後は、コメントを依頼の本文とそろえるため変えさせない
                     .disabled(model.isSending || model.createdRequest != nil)
             }

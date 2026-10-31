@@ -23,6 +23,12 @@ final class VerifyProblemModel {
     /// 依頼とコメントの両方を送り終えた
     private(set) var isCompleted = false
 
+    /// 添付を足したり消したりできるか。送信中と、依頼を作った後（コメントの再試行で上げ直さない）は変えさせない。
+    /// 送り終えたら添付欄を出さないので、ドロップも受け付けない（Discussion #784）
+    var canEditAttachments: Bool {
+        !isSending && createdRequest == nil && !isCompleted
+    }
+
     private let tokenStore: any TokenStore
     private let makeRequester: @Sendable (String) -> any IdeaRequesting
     private let makeCommenter: @Sendable (String) -> any VerifyProblemCommenting
