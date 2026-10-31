@@ -120,8 +120,25 @@ struct AttachmentAdderTests {
         #expect(outcome.notices.isEmpty)
     }
 
-    @Test func addingNothingClearsPreviousNotices() {
-        // 新しく足したら、前の注意書きは今回の結果で置き換える（呼び出し側がそのまま代入する）
+    @Test func noticesAreOrderedUnreadableThenRejectedThenOverflow() throws {
+        let directory = try Directory()
+        let empty = try directory.file("empty.txt", data: Data())
+        let missing = directory.url.appending(path: "missing.png")
+        let overflow = try directory.file("overflow.txt")
+
+        // 残りは 2 つ。empty.txt と missing.png は読む（読んだ結果で断る）、overflow.txt は読まずに断る
+        let outcome = AttachmentAdder.add([empty, missing, overflow], to: Self.existing(AttachmentLimits.maxCount - 2))
+
+        #expect(outcome.attachments.count == AttachmentLimits.maxCount - 2)
+        #expect(outcome.notices == [
+            "missing.png を読み込めませんでした",
+            "empty.txt は中身が空のため添付できません",
+            "添付は 10 ファイルまでです（overflow.txt は足していません）"
+        ])
+    }
+
+    @Test func addingNothingReturnsNoNotices() {
+        // 呼び出し側は結果をそのまま代入するので、前の注意書きは消える
         let outcome = AttachmentAdder.add([URL](), to: Self.existing(1))
         #expect(outcome.attachments.count == 1)
         #expect(outcome.notices.isEmpty)
