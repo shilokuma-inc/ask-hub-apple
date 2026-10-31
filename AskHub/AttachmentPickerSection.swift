@@ -3,14 +3,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// 依頼・回答・「問題あり」で共通の添付欄（Discussion #669）。ファイルを選び、一覧（名前・種類・大きさ）と削除、public の注意書きを出す。
-/// 選んだファイルはここで `Data` にして `attachments` に足す（送るまで GitHub に上げない。ファイルの URL は持たない）
+/// 選んだファイルは `AttachmentAdder` で `Data` にして `attachments` に足す（送るまで GitHub に上げない。ファイルの URL は持たない）
 struct AttachmentPickerSection: View {
     @Binding var attachments: [AttachmentFile]
+    /// 選んだのに足さなかったファイルの説明（上限・読めないなど）。添付欄の外（ドロップの受け口）からも書けるよう、各モデルに持たせる
+    @Binding var notices: [String]
     /// 送信中など、一覧を変えさせないとき
     var isDisabled = false
     @State private var isImporting = false
-    /// 選んだのに足さなかったファイルの説明（上限・読めないなど）
-    @State private var notices: [String] = []
 
     /// 選べる種類（`claude` が読めるテキスト・画像・PDF。Discussion #669 の Q2。SVG と zip は Discussion #761 の Q5）
     static let allowedContentTypes: [UTType] = [
@@ -49,7 +49,9 @@ struct AttachmentPickerSection: View {
                 """)
         }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: Self.allowedContentTypes, allowsMultipleSelection: true) { result in
-            add(result)
+            let outcome = AttachmentAdder.add(result, to: attachments)
+            attachments = outcome.attachments
+            notices = outcome.notices
         }
         // 送れて一覧が空になったら、前に足さなかったファイルの説明も消す
         .onChange(of: attachments.isEmpty) { _, isEmpty in
@@ -104,32 +106,6 @@ struct AttachmentPickerSection: View {
 
         case .zip:
             "doc.zipper"
-        }
-    }
-
-    private func add(_ result: Result<[URL], any Error>) {
-        switch result {
-        case let .success(urls):
-            var files: [AttachmentFile] = []
-            var unreadable: [String] = []
-            // 上限の数を超える分は、中身を読まずに断る（大きなファイルを多く選んだときに、読んでから捨てない）
-            let remaining = max(AttachmentLimits.maxCount - attachments.count, 0)
-            let overflow = urls.dropFirst(remaining).map { AttachmentLimits.Rejection.tooMany(name: $0.lastPathComponent).message }
-            for url in urls.prefix(remaining) {
-                switch AttachmentFileReader.read(url) {
-                case let .success(file):
-                    files.append(file)
-
-                case let .failure(failure):
-                    unreadable.append(failure.message)
-                }
-            }
-            let added = AttachmentLimits.adding(files, to: attachments)
-            attachments = added.attachments
-            notices = unreadable + added.rejections.map(\.message) + overflow
-
-        case .failure:
-            notices = ["ファイルを読み込めませんでした"]
         }
     }
 }
