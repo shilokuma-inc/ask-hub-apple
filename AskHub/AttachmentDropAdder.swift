@@ -42,6 +42,15 @@ enum AttachmentDropAdder {
         return outcome
     }
 
+    /// 受け口で、落とした項目を読み終えたときに足す。読む間に受け口が無効になった（送信が始まったなど）・項目が無いときは何も変えない（`nil`）。
+    /// 送信は始めたときの一覧を控えて上げ、終わったら一覧を空にするので、送信中に足すと送られずに消えてしまう
+    static func outcome(of items: [DroppedAttachmentItem], to attachments: [AttachmentFile], isEnabled: Bool) -> AttachmentAdder.Outcome? {
+        guard isEnabled, !items.isEmpty else {
+            return nil
+        }
+        return add(items, to: attachments)
+    }
+
     /// ボタン（`fileImporter`）で選べる種類か。拡張子から作った `UTType` が、選べる種類のどれかに conform するかで判定する
     static func isAllowedType(_ url: URL) -> Bool {
         guard let type = UTType(filenameExtension: url.pathExtension) else {
@@ -54,17 +63,31 @@ enum AttachmentDropAdder {
         "\(name) は添付できない種類のファイルです（テキスト・画像・PDF・zip を添付できます）"
     }
 
+    static func symbolicLinkNotice(name: String) -> String {
+        "\(name) はシンボリックリンクのため添付できません（元のファイルを落としてください）"
+    }
+
     private static func add(_ url: URL, to attachments: [AttachmentFile]) -> AttachmentAdder.Outcome {
-        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey])
+        // 種類やフォルダかどうかを調べる前に、security-scoped のアクセスを開く（フォルダなら中を読み終えるまで開いておく）
+        let isAccessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if isAccessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        let name = url.lastPathComponent
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isRegularFileKey])
         // シンボリックリンクはたどらない（リンクの先の、落とした覚えのないファイルを読ませない）
         if values?.isSymbolicLink == true {
-            return AttachmentAdder.Outcome(attachments: attachments, notices: [unsupportedTypeNotice(name: url.lastPathComponent)])
+            return AttachmentAdder.Outcome(attachments: attachments, notices: [symbolicLinkNotice(name: name)])
         }
         if values?.isDirectory == true, values?.isPackage != true {
             return addFolder(url, to: attachments)
         }
-        guard isAllowedType(url) else {
-            return AttachmentAdder.Outcome(attachments: attachments, notices: [unsupportedTypeNotice(name: url.lastPathComponent)])
+        // パッケージ（`.app` など）・FIFO などの普通のファイルでないものは読まない（読み込みが終わらないものがある）。
+        // 値を読めないとき（消えたファイルなど）は、読むときの「読み込めません」に任せる
+        guard isAllowedType(url), values?.isRegularFile != false else {
+            return AttachmentAdder.Outcome(attachments: attachments, notices: [unsupportedTypeNotice(name: name)])
         }
         return AttachmentAdder.add([url], to: attachments)
     }
@@ -113,15 +136,9 @@ enum AttachmentDropAdder {
         return contents
     }
 
+    /// 呼ぶ側（`add(_:to:)`）がフォルダのアクセスを開いている間に、中のファイルを読む
     private static func addFolder(_ folder: URL, to attachments: [AttachmentFile]) -> AttachmentAdder.Outcome {
         let name = folder.lastPathComponent
-        // 中のファイルは、フォルダのアクセスを開いている間に読む
-        let isAccessing = folder.startAccessingSecurityScopedResource()
-        defer {
-            if isAccessing {
-                folder.stopAccessingSecurityScopedResource()
-            }
-        }
         let contents = contents(of: folder)
         if contents.isTooLarge {
             return AttachmentAdder.Outcome(
@@ -153,6 +170,6 @@ enum AttachmentDropAdder {
         let names = excluded.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         let shown = names.prefix(excludedNamesShown).joined(separator: "・")
         let rest = names.count > excludedNamesShown ? " など" : ""
-        return "フォルダ \(folder) の中の \(excluded.count) ファイルは、添付できない種類のため除きました（\(shown)\(rest)）"
+        return "フォルダ \(folder) の中の \(excluded.count) 項目は、添付できない種類・シンボリックリンク・パッケージのため除きました（\(shown)\(rest)）"
     }
 }

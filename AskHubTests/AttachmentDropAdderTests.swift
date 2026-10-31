@@ -113,7 +113,29 @@ struct AttachmentDropAdderTests {
         let outcome = AttachmentDropAdder.add([.fileURL(link)], to: [])
 
         #expect(outcome.attachments.isEmpty)
-        #expect(outcome.notices == [AttachmentDropAdder.unsupportedTypeNotice(name: "link.txt")])
+        #expect(outcome.notices == ["link.txt はシンボリックリンクのため添付できません（元のファイルを落としてください）"])
+    }
+
+    @Test func rejectsDroppedPackage() throws {
+        let directory = try Directory()
+        try directory.file("Tool.app/Contents/readme.txt")
+
+        let outcome = AttachmentDropAdder.add([.fileURL(directory.url.appending(path: "Tool.app"))], to: [])
+
+        #expect(outcome.attachments.isEmpty)
+        #expect(outcome.notices == [AttachmentDropAdder.unsupportedTypeNotice(name: "Tool.app")])
+    }
+
+    @Test func rejectsFileThatIsNotRegular() throws {
+        let directory = try Directory()
+        // 読み込みが終わらない FIFO（拡張子は受け付ける種類）
+        let fifo = directory.url.appending(path: "pipe.txt")
+        #expect(mkfifo(fifo.path, 0o600) == 0)
+
+        let outcome = AttachmentDropAdder.add([.fileURL(fifo)], to: [])
+
+        #expect(outcome.attachments.isEmpty)
+        #expect(outcome.notices == [AttachmentDropAdder.unsupportedTypeNotice(name: "pipe.txt")])
     }
 
     // MARK: - ファイル以外・空
@@ -166,7 +188,7 @@ struct AttachmentDropAdderTests {
         let outcome = AttachmentDropAdder.add([.fileURL(folder)], to: [])
 
         #expect(outcome.attachments.map(\.name) == ["memo.txt"])
-        #expect(outcome.notices == ["フォルダ 資料 の中の 4 ファイルは、添付できない種類のため除きました（photo.heic・spec.docx・table.xlsx など）"])
+        #expect(outcome.notices == ["フォルダ 資料 の中の 4 項目は、添付できない種類・シンボリックリンク・パッケージのため除きました（photo.heic・spec.docx・table.xlsx など）"])
     }
 
     @Test func excludesSymbolicLinksAndPackagesInFolder() throws {
@@ -182,7 +204,7 @@ struct AttachmentDropAdderTests {
         let outcome = AttachmentDropAdder.add([.fileURL(folder)], to: [])
 
         #expect(outcome.attachments.map(\.name) == ["memo.txt"])
-        #expect(outcome.notices == ["フォルダ 資料 の中の 3 ファイルは、添付できない種類のため除きました（link.txt・linked-folder・Tool.app）"])
+        #expect(outcome.notices == ["フォルダ 資料 の中の 3 項目は、添付できない種類・シンボリックリンク・パッケージのため除きました（link.txt・linked-folder・Tool.app）"])
     }
 
     @Test func addsFolderUpToExactLimit() throws {
@@ -216,7 +238,7 @@ struct AttachmentDropAdderTests {
 
         #expect(outcome.attachments == current)
         #expect(outcome.notices == [
-            "フォルダ 資料 の中の 1 ファイルは、添付できない種類のため除きました（photo.heic）",
+            "フォルダ 資料 の中の 1 項目は、添付できない種類・シンボリックリンク・パッケージのため除きました（photo.heic）",
             "フォルダ 資料 の 8 ファイルを足すと 10 ファイルを超えるため、1 つも足していません（今の添付は 3 ファイル）"
         ])
     }
@@ -230,7 +252,7 @@ struct AttachmentDropAdderTests {
 
         #expect(outcome.attachments.isEmpty)
         #expect(outcome.notices == [
-            "フォルダ 写真 の中の 1 ファイルは、添付できない種類のため除きました（a.heic）",
+            "フォルダ 写真 の中の 1 項目は、添付できない種類・シンボリックリンク・パッケージのため除きました（a.heic）",
             "フォルダ 写真 の中に、添付できる種類のファイルがありません"
         ])
     }
@@ -251,9 +273,34 @@ struct AttachmentDropAdderTests {
         let directory = try Directory()
         let folder = try directory.folder("大きい", textFiles: 5)
 
-        let contents = AttachmentDropAdder.contents(of: folder, maxEntries: 4)
+        #expect(AttachmentDropAdder.contents(of: folder, maxEntries: 4).isTooLarge)
+        // ちょうど上限の数なら、たどりきる
+        #expect(!AttachmentDropAdder.contents(of: folder, maxEntries: 5).isTooLarge)
+        #expect(AttachmentDropAdder.contents(of: folder, maxEntries: 5).files.count == 5)
+    }
 
-        #expect(contents.isTooLarge)
+    @Test func rejectsWholeHugeFolderWithNotice() throws {
+        let directory = try Directory()
+        let folder = try directory.folder("大きい")
+        // 受け付けない種類で数だけを増やす（1 つも足さないことを、数の上限ではなく項目の多さで確かめる）
+        for index in 0 ... AttachmentDropAdder.maxFolderEntries {
+            try directory.file("大きい/\(index).dat", data: Data())
+        }
+
+        let outcome = AttachmentDropAdder.add([.fileURL(folder)], to: [])
+
+        #expect(outcome.attachments.isEmpty)
+        #expect(outcome.notices == ["フォルダ 大きい は中の項目が多すぎるため、1 つも足していません（1000 項目まで）"])
+    }
+
+    @Test func explainsEmptyFolder() throws {
+        let directory = try Directory()
+        let folder = try directory.folder("空")
+
+        let outcome = AttachmentDropAdder.add([.fileURL(folder)], to: [])
+
+        #expect(outcome.attachments.isEmpty)
+        #expect(outcome.notices == ["フォルダ 空 の中に、添付できる種類のファイルがありません"])
     }
 
     @Test func filesAndFoldersAreJudgedInDroppedOrder() throws {
