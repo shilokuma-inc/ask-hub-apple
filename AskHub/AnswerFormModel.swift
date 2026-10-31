@@ -37,6 +37,8 @@ final class AnswerFormModel {
     var note = ""
     /// 回答に添付するファイル（選んだ順）。投稿するまで GitHub に上げず、メモリにだけ持つ
     var attachments: [AttachmentFile] = []
+    /// 選んだのに足さなかったファイルの説明（上限・読めないなど）。添付欄とドロップの受け口が書く（`AttachmentAdder`）
+    var attachmentNotices: [String] = []
     /// 投稿したら、Discussion の回答を確定してループを始める（`ready-for-loop` を付ける）。
     /// 選べる質問（Discussion の最後の質問）では、設定画面の既定値（`LoopStartPreference`。初期値はオン）から始める
     /// （Issue #98・Discussion #244）。始める前には確認ダイアログを出す
@@ -167,6 +169,7 @@ final class AnswerFormModel {
             try await inbox.post(answer, attachments: attachments, to: question)
             isPosted = true
             attachments = []
+            attachmentNotices = []
         } catch {
             errorMessage = AttachmentUploadMessage.message(for: error) ?? InboxModel.message(for: error)
             return

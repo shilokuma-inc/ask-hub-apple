@@ -6,11 +6,11 @@ import UniformTypeIdentifiers
 /// 選んだファイルは `AttachmentAdder` で `Data` にして `attachments` に足す（送るまで GitHub に上げない。ファイルの URL は持たない）
 struct AttachmentPickerSection: View {
     @Binding var attachments: [AttachmentFile]
+    /// 選んだのに足さなかったファイルの説明（上限・読めないなど）。添付欄の外（ドロップの受け口）からも書けるよう、各モデルに持たせる
+    @Binding var notices: [String]
     /// 送信中など、一覧を変えさせないとき
     var isDisabled = false
     @State private var isImporting = false
-    /// 選んだのに足さなかったファイルの説明（上限・読めないなど）
-    @State private var notices: [String] = []
 
     /// 選べる種類（`claude` が読めるテキスト・画像・PDF。Discussion #669 の Q2。SVG と zip は Discussion #761 の Q5）
     static let allowedContentTypes: [UTType] = [

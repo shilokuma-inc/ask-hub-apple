@@ -26,7 +26,11 @@ struct VerifyProblemSection: View {
 
         if !model.isCompleted {
             // 添付は依頼の本文とコメントの両方の末尾に付く。依頼を作った後は変えさせない（コメントの再試行で上げ直さない）
-            AttachmentPickerSection(attachments: $model.attachments, isDisabled: model.isSending || model.createdRequest != nil)
+            AttachmentPickerSection(
+                attachments: $model.attachments,
+                notices: $model.attachmentNotices,
+                isDisabled: model.isSending || model.createdRequest != nil
+            )
             sendSection
         }
     }

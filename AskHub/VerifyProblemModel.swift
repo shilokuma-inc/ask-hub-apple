@@ -12,6 +12,8 @@ final class VerifyProblemModel {
     var description = ""
     /// 添付するファイル（選んだ順）。送るまで GitHub に上げず、メモリにだけ持つ。依頼を作った後は変えさせない
     var attachments: [AttachmentFile] = []
+    /// 選んだのに足さなかったファイルの説明（上限・読めないなど）。添付欄とドロップの受け口が書く（`AttachmentAdder`）
+    var attachmentNotices: [String] = []
     private(set) var isSending = false
     private(set) var errorMessage: String?
     /// 作った再修正の依頼。コメントだけ失敗したときは、これを使ってコメントだけを再試行する（依頼を重ねない）
