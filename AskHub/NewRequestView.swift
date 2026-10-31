@@ -80,7 +80,7 @@ struct NewRequestView: View {
         .attachmentDropTarget(
             attachments: $model.attachments,
             notices: $model.attachmentNotices,
-            isEnabled: kind == .change && !model.isSending
+            isEnabled: { kind == .change && !model.isSending }
         )
         .keyboardDoneButton($isEditing)
         .navigationTitle(kind.navigationTitle)

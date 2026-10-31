@@ -24,6 +24,20 @@ struct AttachmentDropTargetTests {
         #expect(AttachmentDropOverlay(state: .notFiles).title == "ファイルではないため添付できません")
     }
 
+    // MARK: - 読み終えたときに足すか
+
+    @Test func addsDroppedItemsOnlyWhileStillEnabled() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "askhub-drop-target-\(UUID().uuidString).txt")
+        try Data("内容".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let added = try #require(AttachmentDropAdder.outcome(of: [.fileURL(url)], to: [], isEnabled: true))
+        #expect(added.attachments.map(\.name) == [url.lastPathComponent])
+        // 読む間に送信が始まった（無効になった）ら、一覧も注意書きも変えない
+        #expect(AttachmentDropAdder.outcome(of: [.fileURL(url)], to: [], isEnabled: false) == nil)
+        #expect(AttachmentDropAdder.outcome(of: [], to: [], isEnabled: true) == nil)
+    }
+
     // MARK: - NSItemProvider から項目へ
 
     @Test func fileURLProviderBecomesFile() async throws {

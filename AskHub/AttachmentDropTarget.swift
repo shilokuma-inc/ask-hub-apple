@@ -109,11 +109,12 @@ extension AttachmentPickerSection {
 
 extension View {
     /// フォーム全体を添付のドロップの受け口にする（macOS だけ。Discussion #784 の Q1）。
-    /// iOS / iPadOS では何もしない（画面は「ファイルを添付」ボタンだけのまま）
+    /// iOS / iPadOS では何もしない（画面は「ファイルを添付」ボタンだけのまま）。
+    /// `isEnabled` は描くときと、落とした項目を読み終えたときに呼ぶ（読む間に送信が始まったら足さないため、値ではなくクロージャで受け取る）
     func attachmentDropTarget(
         attachments: Binding<[AttachmentFile]>,
         notices: Binding<[String]>,
-        isEnabled: Bool
+        isEnabled: @escaping () -> Bool
     ) -> some View {
         #if os(macOS)
         modifier(AttachmentDropTargetModifier(attachments: attachments, notices: notices, isEnabled: isEnabled))
@@ -147,19 +148,20 @@ private struct RejectingDropDelegate: DropDelegate {
 private struct AttachmentDropTargetModifier: ViewModifier {
     @Binding var attachments: [AttachmentFile]
     @Binding var notices: [String]
-    let isEnabled: Bool
+    let isEnabled: () -> Bool
     @State private var isTargeted = false
     @State private var hasFiles = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
-        let state = AttachmentDropOverlayState.state(isTargeted: isTargeted, isEnabled: isEnabled, hasFiles: hasFiles)
+        let enabled = isEnabled()
+        let state = AttachmentDropOverlayState.state(isTargeted: isTargeted, isEnabled: enabled, hasFiles: hasFiles)
         ScrollViewReader { proxy in
             content
                 .onDrop(
                     of: AttachmentDropProviders.acceptedTypes,
                     delegate: Delegate(
-                        isEnabled: isEnabled,
+                        isEnabled: enabled,
                         isTargeted: $isTargeted,
                         hasFiles: $hasFiles,
                         drop: { providers in drop(providers, proxy: proxy) }
@@ -173,17 +175,22 @@ private struct AttachmentDropTargetModifier: ViewModifier {
                     }
                 }
                 .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(duration: 0.25), value: state)
+                // ドラッグ中に送信が始まって無効になったら、離れたことが届かなくてもオーバーレイの状態を戻す
+                .onChange(of: enabled) { _, isEnabled in
+                    if !isEnabled {
+                        isTargeted = false
+                    }
+                }
         }
     }
 
     private func drop(_ providers: [NSItemProvider], proxy: ScrollViewProxy) {
         Task {
             let items = await AttachmentDropProviders.items(from: providers)
-            // 読み込む間に送信が始まったら足さない
-            guard isEnabled, !items.isEmpty else {
+            // 読み込む間に送信が始まったら足さない（今の値で確かめ直す）
+            guard let outcome = AttachmentDropAdder.outcome(of: items, to: attachments, isEnabled: isEnabled()) else {
                 return
             }
-            let outcome = AttachmentDropAdder.add(items, to: attachments)
             attachments = outcome.attachments
             notices = outcome.notices
             // 結果（足したもの・断った理由）が見えるように、添付欄までスクロールする
