@@ -51,6 +51,7 @@ struct NewRequestView: View {
     }
 
     var body: some View {
+        @Bindable var model = model
         Form {
             Section {
                 Picker("依頼の種類", selection: $kind) {
@@ -75,6 +76,12 @@ struct NewRequestView: View {
             }
         }
         .formStyle(.grouped)
+        // macOS では、フォームのどこに落としても添付になる（Discussion #784）。添付欄があるのは「追加・修正」だけ
+        .attachmentDropTarget(
+            attachments: $model.attachments,
+            notices: $model.attachmentNotices,
+            isEnabled: kind == .change && !model.isSending
+        )
         .keyboardDoneButton($isEditing)
         .navigationTitle(kind.navigationTitle)
         .toolbar {
@@ -120,6 +127,7 @@ struct NewRequestView: View {
             Section {
                 TextField("例: 通知の頻度を調整したい", text: $model.summary)
                     .focused($isEditing)
+                    .attachmentDropExcluded()
             } header: {
                 Text("要約")
             } footer: {
@@ -130,6 +138,7 @@ struct NewRequestView: View {
                 TextField("やりたいこと・背景・決まっていることなど", text: $model.body, axis: .vertical)
                     .lineLimit(5...12)
                     .focused($isEditing)
+                    .attachmentDropExcluded()
             }
 
             // 送信中は一覧を変えさせない（送った後に一覧を空にするので、送信中に足したものが消えないように）
