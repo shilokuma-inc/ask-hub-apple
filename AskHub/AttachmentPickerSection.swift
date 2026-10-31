@@ -48,6 +48,8 @@ struct AttachmentPickerSection: View {
                 zip は受け取る側（担当 PC）で展開して使います
                 """)
         }
+        // フォーム全体へのドロップの後に、結果が見えるようにここまでスクロールする（macOS。Discussion #784）
+        .id(Self.scrollID)
         .fileImporter(isPresented: $isImporting, allowedContentTypes: Self.allowedContentTypes, allowsMultipleSelection: true) { result in
             let outcome = AttachmentAdder.add(result, to: attachments)
             attachments = outcome.attachments
