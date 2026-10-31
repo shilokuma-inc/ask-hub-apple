@@ -219,6 +219,11 @@
   Form が作らないので `exists` が false になる。確かめる前に `scrollToHittable`（`AskHubUITests+Scroll.swift`）で出るまでスクロールする。送信の件数（「添付 N 件」）の期待値も 3 つのテストで直す
 - 「新しい依頼」の「依頼を送る」は添付欄の注意書き（footer）のすぐ下にあり、iPhone 17 Pro では開いた直後に画面の外になる（#780）。注意書きの文言を変えたら、依頼タブの UI テストも流す。
   依頼タブを開いたことは上の `repository-picker` で待ち、「依頼を送る」は `scrollToHittable` で出してから確かめる・押す。epic 宛ての子 PR では CI の UI テストが走らないので、最終 PR で初めて落ちる
+- `swift test --package-path AskHubKit` の全体の実行で、時間に頼るテスト（`LocalLoopRuntimeTests` の `child.pid` を 500ms 以内に書く前提のもの・`XcbStatusTests.returnsEvenIfChildKeepsOutputOpen` の 10 秒）が、
+  負荷の高い Mac や CI で揺らいで落ちることがある。`AskHubKit` を変えていない PR なら、ローカルは `--skip LocalLoopRuntimeTests` と `--filter LocalLoopRuntimeTests` に分けて流し、
+  CI は `gh run rerun <run-id> --failed` で失敗したジョブだけ流し直す（2026-11-01、Discussion #784）
+- Swift Testing のテストも `xcodebuild test -only-testing:AskHubTests/<構造体の名前>`（1 つだけなら `/<構造体の名前>/<メソッド名>()`）で絞って流せる。
+  `-quiet` を付けると Swift Testing の結果の行が出ないので、件数を確かめるときは付けずに `Test run with N tests` の行を見る（2026-11-01、Discussion #784）
 
 ## Keychain
 
@@ -348,3 +353,10 @@
   行を消さないスワイプのボタンには role を付けず `.tint(.red)` にする（コンテキストメニューは `.destructive` のままでよい）。UI テストはスワイプの経路でも流す（2026-10-26、Discussion #743）
 - 一覧の差分で落ちないかを UI テストで確かめるときは、DEBUG だけの起動引数（`-AskHubSampleChanges`）でサンプルの取得元が更新のたびに違う中身（増減・並びの入れ替え・重複）を返すようにし、
   `collectionViews.firstMatch` の上のほうから下へ `press(forDuration:thenDragTo:)` で引っぱって更新を繰り返す。落ちると `app.state` が `.runningForeground` でなくなる
+- macOS の `onDrop(of:delegate:)` の `DropDelegate.dropUpdated` で `.forbidden` を返すと `performDrop` が呼ばれない。落とした後に「添付できません」と知らせたいもの（ファイル以外）も `.copy` にして、`performDrop` の中で断る（2026-11-01、Discussion #784）
+- `NSItemProvider.loadDataRepresentation(forTypeIdentifier:)` の完了ハンドラはメインスレッドの外で呼ばれる。このターゲットは MainActor が既定なので、クロージャに `@Sendable` を付けて
+  MainActor に結び付けない（付けないと isolation の確認で落ちることがある）。`withCheckedContinuation` で包んで `async` にする（2026-11-01、Discussion #784）
+- ドロップの受け口の modifier に「受け付けるか」を `Bool` で渡すと、項目を非同期に読み終えたときには描いたときの古い値になっている（読む間に送信が始まっても足してしまう）。
+  `() -> Bool` のクロージャで受け取り、読み終えた時点で呼び直す（`attachmentDropTarget`。#791）（2026-11-01、Discussion #784）
+- `NSItemProvider(object: url as NSURL)` は、ファイルの URL なら `public.file-url` を持ち、`https` の URL は持たない（`public.url` だけ）。ドロップのファイルかどうかの判定を Unit テストで確かめるのに使える。
+  `FileManager.enumerator` の `.skipsPackageDescendants` はパッケージ（`.app`）の中に入らないが、パッケージのディレクトリそのものは返す（`isPackage` が true）ので、自分で除く（2026-11-01、Discussion #784）
