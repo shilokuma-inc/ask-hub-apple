@@ -90,6 +90,7 @@ struct IdeaRequestModelAttachmentTests {
         let requester = Requester(log: log)
         let model = makeModel(log: log, requester: requester)
         model.attachments = [Self.png, Self.memo]
+        model.attachmentNotices = ["big.pdf は 10.0 MB を超えるため添付できません"]
         await model.send()
 
         #expect(log.all == [
@@ -100,8 +101,9 @@ struct IdeaRequestModelAttachmentTests {
         #expect(request.attachments.map(\.name) == ["design.png", "memo.md"])
         #expect(request.issueBody.hasPrefix("デザインのとおりにしたい\n\n### 添付ファイル\n"))
         #expect(AttachmentMarker.parseAll(request.issueBody).map(\.name) == ["design.png", "memo.md"])
-        // 送れたら添付の一覧も空にする
+        // 送れたら添付の一覧も、足さなかったファイルの説明も空にする
         #expect(model.attachments.isEmpty)
+        #expect(model.attachmentNotices.isEmpty)
         #expect(model.body.isEmpty)
         #expect(model.errorMessage == nil)
         #expect(model.sent.count == 1)
@@ -122,10 +124,13 @@ struct IdeaRequestModelAttachmentTests {
         let requester = Requester(log: log)
         let model = makeModel(log: log, requester: requester, uploadFailure: AttachmentUploadError.missingContentsPermission)
         model.attachments = [Self.png]
+        model.attachmentNotices = ["big.pdf は 10.0 MB を超えるため添付できません"]
         await model.send()
 
         #expect(log.all == ["upload shilokuma-inc/ask-hub-apple design.png"])
         #expect(model.attachments == [Self.png])
+        // 送れなかったときは、足さなかったファイルの説明も残す
+        #expect(model.attachmentNotices == ["big.pdf は 10.0 MB を超えるため添付できません"])
         #expect(model.body == "デザインのとおりにしたい")
         #expect(model.sent.isEmpty)
         #expect(model.errorMessage
