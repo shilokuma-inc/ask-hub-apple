@@ -79,6 +79,11 @@ struct IssueDetailView: View {
             }
         }
         .formStyle(.grouped)
+        // macOS では、実機確認の Issue のフォームのどこに落としても「問題あり」の添付になる（Discussion #784）。
+        // 添付欄が出ている間（送り終える前で、送信中・依頼を作った後でない）だけ受け付ける
+        .attachmentDropTarget(attachments: $problemModel.attachments, notices: $problemModel.attachmentNotices) {
+            issue.kind == .needsVerify && problemModel.canEditAttachments
+        }
         // 履歴は画面を開いたときに読む。表示の位置（Form の行）と取得の始まりを分け、行が画面の外に出ても打ち切らない
         .task {
             if issue.kind == .decisionLog && historyModel.state == .idle {
