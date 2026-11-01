@@ -40,6 +40,9 @@ struct AttachmentDropTargetTests {
 
     // MARK: - NSItemProvider から項目へ
 
+    // ドロップの受け口は macOS だけなので、macOS だけで流す。
+    // iOS では `NSURL` の `public.file-url` のデータ表現が URL の文字列ではなく binary plist になり、`.other` になる
+    #if os(macOS)
     @Test func fileURLProviderBecomesFile() async throws {
         let url = FileManager.default.temporaryDirectory.appending(path: "askhub-drop-target-\(UUID().uuidString).txt")
         try Data("内容".utf8).write(to: url)
@@ -53,6 +56,7 @@ struct AttachmentDropTargetTests {
         }
         #expect(dropped.standardizedFileURL.path == url.standardizedFileURL.path)
     }
+    #endif
 
     @Test func webURLTextAndDataProvidersAreOther() async throws {
         let web = try #require(URL(string: "https://example.com/image.png"))
