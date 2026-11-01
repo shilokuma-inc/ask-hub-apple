@@ -224,6 +224,8 @@
   CI は `gh run rerun <run-id> --failed` で失敗したジョブだけ流し直す（2026-11-01、Discussion #784）
 - Swift Testing のテストも `xcodebuild test -only-testing:AskHubTests/<構造体の名前>`（1 つだけなら `/<構造体の名前>/<メソッド名>()`）で絞って流せる。
   `-quiet` を付けると Swift Testing の結果の行が出ないので、件数を確かめるときは付けずに `Test run with N tests` の行を見る（2026-11-01、Discussion #784）
+- 作業ブランチへの push の CI（`build.yml`）は Unit テストを macOS（`Test on macOS`）でしか流さず、iOS Simulator の Unit テストは develop 宛ての PR（epic の最終 PR）で UI テストと一緒に初めて走る。
+  macOS と iOS で挙動が違う API（`NSItemProvider` など）を使う Unit テストは、子 PR の CI が通っても最終 PR で落ちることがあるので、手元で iOS Simulator でも `-only-testing:AskHubTests/<構造体の名前>` で流す（2026-11-01、#798）
 
 ## Keychain
 
@@ -360,3 +362,5 @@
   `() -> Bool` のクロージャで受け取り、読み終えた時点で呼び直す（`attachmentDropTarget`。#791）（2026-11-01、Discussion #784）
 - `NSItemProvider(object: url as NSURL)` は、ファイルの URL なら `public.file-url` を持ち、`https` の URL は持たない（`public.url` だけ）。ドロップのファイルかどうかの判定を Unit テストで確かめるのに使える。
   `FileManager.enumerator` の `.skipsPackageDescendants` はパッケージ（`.app`）の中に入らないが、パッケージのディレクトリそのものは返す（`isPackage` が true）ので、自分で除く（2026-11-01、Discussion #784）
+- `NSItemProvider(object: url as NSURL)` の `loadDataRepresentation(forTypeIdentifier: "public.file-url")` は、macOS では URL の文字列のバイトを返すが、iOS では `["file://…", ""]` の binary plist を返す。
+  そのため `URL(dataRepresentation:relativeTo:)` は iOS ではファイルの URL にならない（`isFileURL` が false）。macOS の受け口からだけ呼ぶ `AttachmentDropProviders.item(from:)` のこのテストは `#if os(macOS)` で流す（2026-11-01、#798）
