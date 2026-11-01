@@ -63,6 +63,7 @@ struct AnswerFormModelAttachmentTests {
         form.choice = question.marker.options[0]
         form.note = "補足です"
         form.attachments = [Self.png]
+        form.attachmentNotices = ["big.pdf は 10.0 MB を超えるため添付できません"]
         await form.post(using: inbox)
 
         #expect(log.all.count == 2)
@@ -71,6 +72,7 @@ struct AnswerFormModelAttachmentTests {
         #expect(posted.hasPrefix("post 回答: \(question.marker.options[0])\n補足です\n\n### 添付ファイル\n"))
         #expect(form.isPosted)
         #expect(form.attachments.isEmpty)
+        #expect(form.attachmentNotices.isEmpty)
     }
 
     @Test func doesNotUploadWithoutAttachments() async {

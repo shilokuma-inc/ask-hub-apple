@@ -17,6 +17,7 @@ struct VerifyProblemSection: View {
                 TextField("何をしたら・どうなったか", text: $model.description, axis: .vertical)
                     .lineLimit(3...8)
                     .focused(isEditing)
+                    .attachmentDropExcluded()
                     // 依頼を作った後は、コメントを依頼の本文とそろえるため変えさせない
                     .disabled(model.isSending || model.createdRequest != nil)
             }
@@ -26,7 +27,11 @@ struct VerifyProblemSection: View {
 
         if !model.isCompleted {
             // 添付は依頼の本文とコメントの両方の末尾に付く。依頼を作った後は変えさせない（コメントの再試行で上げ直さない）
-            AttachmentPickerSection(attachments: $model.attachments, isDisabled: model.isSending || model.createdRequest != nil)
+            AttachmentPickerSection(
+                attachments: $model.attachments,
+                notices: $model.attachmentNotices,
+                isDisabled: model.isSending || model.createdRequest != nil
+            )
             sendSection
         }
     }

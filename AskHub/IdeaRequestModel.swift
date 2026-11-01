@@ -30,6 +30,8 @@ final class IdeaRequestModel {
     var body = ""
     /// 依頼に添付するファイル（選んだ順）。送るまで GitHub に上げず、メモリにだけ持つ（ファイルの URL は保存しない）
     var attachments: [AttachmentFile] = []
+    /// 選んだのに足さなかったファイルの説明（上限・読めないなど）。添付欄とドロップの受け口が書く（`AttachmentAdder`）
+    var attachmentNotices: [String] = []
     private(set) var isSending = false
     /// この画面で送った依頼（新しい順）。メモリにだけ持ち、保存しない。アプリを終了するかモデルを作り直すと消える
     private(set) var sent: [SentRequest]
@@ -166,6 +168,7 @@ final class IdeaRequestModel {
             summary = ""
             body = ""
             attachments = []
+            attachmentNotices = []
         } catch {
             errorMessage = Self.message(for: error)
         }

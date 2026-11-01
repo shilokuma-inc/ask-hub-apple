@@ -47,6 +47,7 @@ struct QuestionDetailView: View {
                 TextField(question.marker.isFreeForm ? "回答" : "補足（任意）", text: $form.note, axis: .vertical)
                     .lineLimit(3...8)
                     .focused($isEditingNote)
+                    .attachmentDropExcluded()
             } header: {
                 Text(question.marker.isFreeForm ? "回答" : "補足")
             } footer: {
@@ -55,7 +56,7 @@ struct QuestionDetailView: View {
 
             if !form.isPosted {
                 // 添付は回答の返信の末尾に添付欄として付く。投稿中は一覧を変えさせない
-                AttachmentPickerSection(attachments: $form.attachments, isDisabled: form.isPosting)
+                AttachmentPickerSection(attachments: $form.attachments, notices: $form.attachmentNotices, isDisabled: form.isPosting)
             }
 
             if question.subject.kind == .discussion && !form.isPosted {
@@ -130,6 +131,10 @@ struct QuestionDetailView: View {
             Text(loopStartConfirmation)
         }
         .formStyle(.grouped)
+        // macOS では、フォームのどこに落としても添付になる（Discussion #784）。添付欄があるのは投稿前だけ
+        .attachmentDropTarget(attachments: $form.attachments, notices: $form.attachmentNotices) {
+            !form.isPosted && !form.isPosting
+        }
         .keyboardDoneButton($isEditingNote)
         .navigationTitle(question.subject.shortReference)
     }
