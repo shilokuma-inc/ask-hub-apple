@@ -83,7 +83,8 @@ enum AttachmentDropProviders {
         return items
     }
 
-    /// ファイルの URL（`public.file-url`）を持つものだけをファイルとして扱う。Web の URL・画像のデータ・テキストは `.other`
+    /// ファイルの URL（`public.file-url`）を持つものだけをファイルとして扱う。Web の URL・画像のデータ・テキストは `.other`。
+    /// macOS の受け口から呼ぶ前提。iOS では `public.file-url` のデータ表現が URL の文字列ではなく binary plist になり、ファイルとして読めない
     static func item(from provider: NSItemProvider) async -> DroppedAttachmentItem {
         let type = UTType.fileURL.identifier
         guard provider.hasItemConformingToTypeIdentifier(type) else {
