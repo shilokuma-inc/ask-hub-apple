@@ -12,7 +12,7 @@ extension AskHubUITests {
         app.tabBars.buttons["依頼"].tap()
         let kind = app.segmentedControls["request-kind-picker"]
         XCTAssertTrue(kind.waitForExistence(timeout: 5))
-        let addRepository = kind.buttons["担当に入れる"]
+        let addRepository = kind.buttons["担当"]
         addRepository.tap()
         XCTAssertTrue(addRepository.isSelected)
         XCTAssertTrue(app.navigationBars["担当に入れる"].waitForExistence(timeout: 5))

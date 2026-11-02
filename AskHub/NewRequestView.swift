@@ -18,11 +18,12 @@ struct NewRequestView: View {
 
         var title: String {
             switch self {
-            // セグメントが 4 つになり iPhone の幅では「機能追加・修正」が切れるので、短くする（Discussion #722）
-            case .change: "追加・修正"
-            case .newApp: "新しいアプリ"
-            case .addRepository: "担当に入れる"
-            case .release: "リリース準備"
+            // 4 つのセグメントが iPhone 17 Pro の幅で「…」にならないよう、2〜4 文字にする（Discussion #722・#801）。
+            // 画面の名前は `navigationTitle` の長い文言で出す
+            case .change: "変更"
+            case .newApp: "新規"
+            case .addRepository: "担当"
+            case .release: "リリース"
             }
         }
 
