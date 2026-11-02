@@ -44,6 +44,11 @@ final class AskHubUITests: XCTestCase {
         let mergeQueue = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "マージ待ち（")).firstMatch
         XCTAssertFalse(mergeQueue.isHittable)
         scrollUntilHittable(mergeQueue, in: app)
+        // 見出しの件数はマージ可と CI 失敗の PR だけ。CI 待ち・レビュー待ちの PR も一覧には出し、行に段階を付ける（Discussion #808）
+        XCTAssertEqual(mergeQueue.label, "マージ待ち（4 件）")
+        let checksFailed = app.staticTexts["CI 失敗"].firstMatch
+        scrollUntilHittable(checksFailed, in: app)
+        XCTAssertTrue(app.staticTexts["【FEAT】epic/scoreboard を develop に取り込む"].exists)
         // 「上限で待機中」「ループの開始待ち」は「ステータス」タブに出し、要対応には出さない
         XCTAssertFalse(app.staticTexts["上限で待機中"].exists)
     }

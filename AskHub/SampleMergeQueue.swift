@@ -157,6 +157,23 @@ struct SampleMergeQueue: MergeQueueProviding {
             uploadStatus: .noRuns,
             thirdPartyReview: ThirdPartyReviewMarker(sha: "0000005", must: 1, may: 0),
             finalReview: FinalReviewMarker(state: .gaveUp, sha: "0000005", attempts: 3)
+        ),
+        // GitHub Actions の check run がすべて終わり、失敗した。「CI 失敗」として要対応に数える（Discussion #808）
+        EpicPullRequest(
+            id: "PR_160",
+            repository: "shilokuma-inc/pair-quiz-ios",
+            number: 160,
+            title: "【FEAT】epic/scoreboard を develop に取り込む",
+            body: "### 回答待ちの PR\n- なし",
+            url: URL(string: "https://github.com/shilokuma-inc/pair-quiz-ios/pull/160")!,
+            baseBranch: "develop",
+            headBranch: "epic/scoreboard",
+            headSHA: "0000006",
+            author: "mrs1669",
+            checks: .failure,
+            mergeability: .mergeable,
+            codeRabbit: .completed,
+            uploadStatus: .noRuns
         )
     ]
 

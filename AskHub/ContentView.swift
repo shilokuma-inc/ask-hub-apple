@@ -57,7 +57,7 @@ struct ContentView: View {
                     .demoModeBanner()
             }
             .tabItem { Label("要対応", systemImage: "exclamationmark.bubble") }
-            .badge(model.questions.count + mergeModel.pullRequests.count)
+            .badge(model.questions.count + mergeModel.actionableCount)
             .tag(AppTab.action)
 
             NavigationStack {

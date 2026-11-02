@@ -36,7 +36,7 @@ struct ActionListView: View {
                         }
                     }
                 } header: {
-                    header("マージ待ち", count: mergeQueue.pullRequests.count, systemImage: "arrow.triangle.merge", tint: .purple)
+                    header("マージ待ち", count: mergeQueue.actionableCount, systemImage: "arrow.triangle.merge", tint: .purple)
                 }
             }
         }

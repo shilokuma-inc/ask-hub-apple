@@ -81,6 +81,12 @@ final class MergeQueueModel {
         state == .loading
     }
 
+    /// 「要対応」のバッジとマージ待ちの見出しに数える最終 PR の件数。マージ可と CI 失敗だけ（Discussion #808 の Q3）。
+    /// CI 待ち・レビュー待ち・コンフリクトの PR も一覧には出すが、件数には数えない
+    var actionableCount: Int {
+        pullRequests.count(where: \.countsAsActionable)
+    }
+
     /// マージ待ちの PR を取り直す
     func refresh() async {
         guard !isLoading else {
