@@ -115,6 +115,16 @@ extension LoopStatusRow {
         }
         return LoopCompletionStatus(repository: repository, epic: report.epic, pullRequests: pullRequests)
     }
+
+    /// 完了のループのうち、最終 PR が CI 失敗かコンフリクトのもののキー（`loopKey`）。ステータスタブの異常の数に足す。
+    /// ループを並べるリポジトリはループごとに、それ以外はリポジトリの行で判定する（`abnormalLoopKeys` と同じ数え方）
+    public func finalPullRequestProblemLoopKeys(manualLoops: [ManualLoopEpic], now: Date, pullRequests: [EpicPullRequest]?) -> Set<String> {
+        let items = loopItems(manualLoops: manualLoops)
+        guard !items.isEmpty else {
+            return completionStatus(now: now, pullRequests: pullRequests)?.isProblem == true ? [loopKey] : []
+        }
+        return Set(items.filter { $0.row.completionStatus(now: now, pullRequests: pullRequests)?.isProblem == true }.map(\.id))
+    }
 }
 
 extension LoopStatusDisplay {
