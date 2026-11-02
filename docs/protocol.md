@@ -148,6 +148,15 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
 - `progress.deferred` は `completed` の内訳で、`completed` の意味は変えない（古いアプリは `deferred` を無視して今と同じ表示になる）。
   古いオーケストレーターは書かないので、アプリは `deferred` が無ければ保留を区別しない表示にする。新しいオーケストレーターは 0 件でも書く
 - アプリが知らない `state` は「不明」として扱う（新しいオーケストレーターが分類を足しても読めなくならないように）
+- `completed` は「全タスクが終わった」ことだけを表し、最終 PR がマージできるかは含まない。アプリのステータスタブは、`completed` のループを
+  マージ待ちの一覧（下記「マージ待ちと TestFlight への手動アップロード」）の最終 PR と組み合わせて出し分ける（[Discussion #808](https://github.com/shilokuma-inc/ask-hub-apple/discussions/808) の Q5: 案 A。
+  `AskHubKit` の `LoopCompletionStatus`）。`state` の値・オーケストレーター・GitHub 上の表の表記（「完了（最終 PR のマージ待ち）」）は変えない:
+  - 最終 PR は、同じリポジトリ（大文字小文字を区別しない）で head がループの `epic` のもの。見つからなければ「最終 PR の作成待ち」
+  - 見つかれば最終 PR の段階（`EpicPullRequest.finalStage`。マージ待ちの行と同じ判定）で、「最終 PR の CI 待ち」「最終 PR の CI 失敗」（赤）「最終 PR がコンフリクト」（橙）
+    「最終 PR のレビュー待ち」「最終 PR のマージ可否の確認中」と出す。**「完了（最終 PR のマージ待ち）」と出すのは、マージボタンが押せる（`canMerge`）ときだけ**
+  - マージ待ちの一覧をまだ一度も取れていない間は、今までどおり「完了（最終 PR のマージ待ち）」と出す（取り直しに失敗したときは前回の一覧を使う）
+  - 最終 PR が CI 失敗かコンフリクトの完了のループは、ステータスタブのバッジ（異常の数）にループごとに数える
+  - 古いアプリは今までどおり `completed` を「完了（最終 PR のマージ待ち）」と出す。手動ループの担当者向けの指示（`completed` なら最終 PR を作る）は変えない
 - アプリが知らない `writer` も「不明」として扱う
 - 「担当 PC なし」は書き出さない。`checkedAt` が 30 分より古いとき、アプリがそう判断する（`askhub-orchestrator` の印と同じ）
 - オーケストレーターは、本文（新しい形。リポジトリ全体の状態）と、この PC の自動ループのコメント（`writer` は `orchestrator`）を書く。
@@ -418,6 +427,17 @@ AskHub アプリ・オーケストレーター・ループ（Claude）が、GitH
   それ以外の 403 を「権限不足」として、設定画面への案内と一緒にその旨を出す
 - **サンプルデータ（デモモード）**: run の状態（実行中 / 成功 / 失敗・ビルドした SHA が PR の最新の head と違う）もサンプルに含め、GitHub にもトークンにも依存しない。起動はしない
 - ループは Upload を実行しない（`gh workflow run` や dispatch API を呼ばない）。実際に TestFlight に並んだかは、人間が TestFlight アプリで確かめる
+- **要対応の件数**（[Discussion #808](https://github.com/shilokuma-inc/ask-hub-apple/discussions/808) の Q3・Q4）: 「要対応」タブのバッジと「マージ待ち（N 件）」の見出しに数える最終 PR は、
+  **マージできる（`canMerge`）ものと CI が失敗したものだけ**。CI 待ち・CI 成功後のレビュー待ち・コンフリクト（CI は成功）・マージ可否の確認中は数えない。
+  数えない最終 PR も一覧には出し、行に段階（「CI 待ち」「レビュー待ち」など）を付ける。詳細を開いて TestFlight に上げる・CodeRabbit の指摘を直させる操作は今までどおりできる。
+  段階は `AskHubKit` の `EpicPullRequest.finalStage` で、上から順に当てはめる:
+  1. まだ終わっていない GitHub Actions の check run がある（`hasRunningChecks`）→ CI 待ち。`checks` は失敗が 1 つでもあれば `failure` になるので、
+     **CI の結果は check run がすべて終わってから**とみなす（1 つ失敗しても、残りが動いている間は CI 待ち）
+  2. `checks` が `pending`、または check run が 1 つも無い（`none`）→ CI 待ち
+  3. `checks` が `failure` → CI 失敗（数える）
+  4. コンフリクトしている → コンフリクト
+  5. 今の head がレビュー済みでない（`isReviewed`）→ レビュー待ち
+  6. マージできる（`canMerge`）→ マージ可（数える）。コンフリクトの有無を GitHub が計算中（`mergeability` が `unknown`）なら、マージ可否の確認中
 
 ## リリース準備と最新情報の確定（アプリが読むもの・起動するもの）
 

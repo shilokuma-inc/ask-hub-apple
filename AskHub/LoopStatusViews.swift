@@ -7,6 +7,9 @@ struct LoopStatusListView: View {
     let model: LoopStatusModel
     /// 担当から外す依頼（`repo-request`）を送るのに使う
     let requestModel: IdeaRequestModel
+    /// マージ待ちの一覧（`MergeQueueModel.finalPullRequestsForStatus`）。完了のループを最終 PR の段階に応じて出し分ける（Discussion #808）。
+    /// 取れていなければ `nil`（今までどおり「完了」と出す）
+    var finalPullRequests: [EpicPullRequest]?
     let openSettings: () -> Void
     /// 担当から外す依頼のシートを開いているリポジトリ
     @State private var removing: RemovalTarget?
@@ -99,7 +102,8 @@ struct LoopStatusListView: View {
     }
 
     @ViewBuilder private func loopRowView(_ item: LoopStatusLoopItem) -> some View {
-        let display = item.display(now: Date())
+        let now = Date()
+        let display = item.display(now: now).applying(item.row.completionStatus(now: now, pullRequests: finalPullRequests))
         let content = LoopStatusRowView(repository: item.row.repository, display: display, mode: item.mode, showsRepository: false)
         if let destination = display.destination {
             Link(destination: destination) {
@@ -114,7 +118,8 @@ struct LoopStatusListView: View {
     }
 
     @ViewBuilder private func rowView(_ row: LoopStatusRow) -> some View {
-        let display = row.display(now: Date())
+        let now = Date()
+        let display = row.display(now: now).applying(row.completionStatus(now: now, pullRequests: finalPullRequests))
         if let destination = display.destination {
             // ゴール元の Discussion（無ければ状態用の Issue）を GitHub で開く
             Link(destination: destination) {
@@ -434,7 +439,7 @@ extension LoopStatusDisplay.ProgressStage {
 #if DEBUG
 #Preview("ループ") {
     NavigationStack {
-        LoopStatusListView(model: .sample(), requestModel: .sample()) {}
+        LoopStatusListView(model: .sample(), requestModel: .sample(), finalPullRequests: SampleMergeQueue.pullRequests) {}
     }
 }
 #endif

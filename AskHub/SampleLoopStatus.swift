@@ -135,11 +135,12 @@ struct SampleLoopStatusSource: LoopStatusSource {
                 runner: "partner",
                 waitingPullRequests: [58]
             ),
-            // 自分の手動ループ。全タスクを終えたが、最終 PR に指示が付いている（SampleManualLoopFinalInstructions）
+            // 自分の手動ループ。全タスクを終えたが、最終 PR に指示が付いている（SampleManualLoopFinalInstructions）。
+            // 最終 PR（SampleMergeQueue の #160）は CI が失敗しているので、ステータスタブでは「最終 PR の CI 失敗」と出す（Discussion #808）
             LoopStatusReport(
                 state: .completed,
                 writer: .manual,
-                epic: "epic/hints",
+                epic: "epic/scoreboard",
                 discussion: 54,
                 progress: .init(completed: 5, total: 5, deferred: 0),
                 lastActivityAt: minutesAgo(90),
@@ -183,7 +184,9 @@ struct SampleLoopStatusSource: LoopStatusSource {
         ]
     }
 
-    /// 完了した epic（最終 PR のマージ待ち）が残ったまま、次の Discussion の自動ループを起動した例（自動ループも Discussion ごとのコメント）
+    /// 完了した epic（最終 PR のマージ待ち）が残ったまま、次の Discussion の自動ループを起動した例（自動ループも Discussion ごとのコメント）。
+    /// 最終 PR（SampleMergeQueue の #170）は CI が終わっていないので、ステータスタブでは「最終 PR の CI 待ち」と出す。
+    /// lingo-cards の完了のループには最終 PR が無いので「最終 PR の作成待ち」と出す（Discussion #808）
     private static func launchedAfterCompletedEpic(_ org: String, now: Date) -> LoopStatusRepository {
         let checkedAt = now.addingTimeInterval(-2 * 60)
         return Self.loops(org, "focus-timer-ios", issue: 6, checkedAt: checkedAt, [

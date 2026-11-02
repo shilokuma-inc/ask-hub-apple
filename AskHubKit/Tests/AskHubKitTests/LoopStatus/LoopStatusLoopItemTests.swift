@@ -164,4 +164,38 @@ struct LoopStatusLoopItemTests {
         let single = LoopStatusRow(repository: "o/R", report: LoopStatusReport(state: .gaveUp, checkedAt: now))
         #expect(single.abnormalLoopKeys(manualLoops: [], now: now) == ["o/r"])
     }
+
+    private func finalPullRequest(
+        _ epic: String,
+        checks: EpicPullRequest.ChecksState = .success,
+        mergeability: EpicPullRequest.Mergeability = .mergeable
+    ) -> EpicPullRequest {
+        var pull = EpicPullRequest.fixture(checks: checks, mergeability: mergeability)
+        pull.repository = "O/R"
+        pull.headBranch = epic
+        return pull
+    }
+
+    @Test func countsCompletedLoopsWhoseFinalPullRequestHasProblem() {
+        // 最終 PR が CI 失敗・コンフリクトの完了のループだけを、ループごとに数える（Discussion #808）
+        let loops = row([
+            loop(.completed, discussion: 12),
+            loop(.completed, discussion: 13),
+            loop(.completed, discussion: 14),
+            loop(.running, discussion: 15)
+        ])
+        let pulls = [
+            finalPullRequest("epic/d12", checks: .failure),
+            finalPullRequest("epic/d13", mergeability: .conflicting),
+            finalPullRequest("epic/d14", checks: .pending),
+            finalPullRequest("epic/d15", checks: .failure)
+        ]
+        #expect(loops.finalPullRequestProblemLoopKeys(manualLoops: [], now: now, pullRequests: pulls) == ["o/r#12", "o/r#13"])
+        // マージ待ちをまだ取れていなければ数えない
+        #expect(loops.finalPullRequestProblemLoopKeys(manualLoops: [], now: now, pullRequests: nil).isEmpty)
+        // ループが 1 つのリポジトリは行で判定する
+        let single = row([loop(.completed, discussion: 12)])
+        #expect(single.finalPullRequestProblemLoopKeys(manualLoops: [], now: now, pullRequests: pulls) == ["o/r#12"])
+        #expect(single.finalPullRequestProblemLoopKeys(manualLoops: [], now: now, pullRequests: [finalPullRequest("epic/d12")]).isEmpty)
+    }
 }

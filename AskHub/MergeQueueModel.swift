@@ -17,6 +17,8 @@ final class MergeQueueModel {
     }
 
     private(set) var pullRequests: [EpicPullRequest] = []
+    /// 一度でも一覧を取れたか。取り直しに失敗しても前回の一覧を残すので、取れていれば `true` のまま（トークンが無くなったら `false`）
+    private(set) var hasLoaded = false
     /// アプリからマージした PR。検索に反映されるまで、取り直しても一覧に出さない（もう一度マージしようとしないため）
     private var mergedIDs: Set<String> = []
     /// アプリから Upload を起動した PR（id → 起動した時刻）。run の一覧に新しい run が出るまで「起動した」状態を保ち、二重に押せないようにする
@@ -81,6 +83,18 @@ final class MergeQueueModel {
         state == .loading
     }
 
+    /// ステータスタブで、完了のループを最終 PR の段階に応じて出し分けるのに使う一覧（Discussion #808）。
+    /// 一度も取れていなければ `nil`（今までどおり「完了」と出す）。取り直しに失敗したときは、マージ待ちの一覧と同じく前回の結果を使い、2 つのタブで段階を食い違わせない
+    var finalPullRequestsForStatus: [EpicPullRequest]? {
+        hasLoaded ? pullRequests : nil
+    }
+
+    /// 「要対応」のバッジとマージ待ちの見出しに数える最終 PR の件数。マージ可と CI 失敗だけ（Discussion #808 の Q3）。
+    /// CI 待ち・レビュー待ち・コンフリクトの PR も一覧には出すが、件数には数えない
+    var actionableCount: Int {
+        pullRequests.count(where: \.countsAsActionable)
+    }
+
     /// マージ待ちの PR を取り直す
     func refresh() async {
         guard !isLoading else {
@@ -106,6 +120,7 @@ final class MergeQueueModel {
         do {
             guard let saved = try tokenStore.load() else {
                 pullRequests = []
+                hasLoaded = false
                 state = .needsToken
                 return
             }
@@ -123,6 +138,7 @@ final class MergeQueueModel {
             mergedIDs.formIntersection(fetched.map(\.id))
             pullRequests = fetched.filter { !mergedIDs.contains($0.id) }
             clearDispatchedIfRunStarted()
+            hasLoaded = true
             state = .loaded
         } catch {
             // バックグラウンドの取得が打ち切られた。失敗とは表示せず、次の自動更新で取り直せるようにする

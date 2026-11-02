@@ -116,12 +116,14 @@ final class LoopStatusModel {
         LoopStatusListEntry.entries(of: rows, manualLoops: manualLoops)
     }
 
-    /// 人が見るべき異常の数（タブのバッジ）。異常終了・長く動きが無い・担当 PC がいない進行中の epic・状態が途絶えた手動ループ。
+    /// 人が見るべき異常の数（タブのバッジ）。異常終了・長く動きが無い・担当 PC がいない進行中の epic・状態が途絶えた手動ループ・
+    /// 最終 PR が CI 失敗かコンフリクトの完了のループ（`finalPullRequests` はマージ待ちの一覧。取れていなければ `nil`）。
     /// 同じリポジトリで複数のループが回るので、ループ（Discussion）ごとに数える
-    func abnormalCount(now: Date) -> Int {
+    func abnormalCount(now: Date, finalPullRequests: [EpicPullRequest]? = nil) -> Int {
         var loops = Set<String>()
         for row in rows {
             loops.formUnion(row.abnormalLoopKeys(manualLoops: manualLoops, now: now))
+            loops.formUnion(row.finalPullRequestProblemLoopKeys(manualLoops: manualLoops, now: now, pullRequests: finalPullRequests))
         }
         for item in manualLoopItems(now: now) where item.isStale {
             // 行のキー（`loopKey`）と同じく、読んだ状態から求める（番号の無い古い形の本文の手動ループを 2 回数えない）

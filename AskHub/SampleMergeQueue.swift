@@ -157,6 +157,43 @@ struct SampleMergeQueue: MergeQueueProviding {
             uploadStatus: .noRuns,
             thirdPartyReview: ThirdPartyReviewMarker(sha: "0000005", must: 1, may: 0),
             finalReview: FinalReviewMarker(state: .gaveUp, sha: "0000005", attempts: 3)
+        ),
+        // GitHub Actions の check run がすべて終わり、失敗した。「CI 失敗」として要対応に数える（Discussion #808）。
+        // ステータスタブでは、完了した pair-quiz-ios の手動ループ（epic/scoreboard）が「最終 PR の CI 失敗」になる
+        EpicPullRequest(
+            id: "PR_160",
+            repository: "shilokuma-inc/pair-quiz-ios",
+            number: 160,
+            title: "【FEAT】epic/scoreboard を develop に取り込む",
+            body: "### 回答待ちの PR\n- なし",
+            url: URL(string: "https://github.com/shilokuma-inc/pair-quiz-ios/pull/160")!,
+            baseBranch: "develop",
+            headBranch: "epic/scoreboard",
+            headSHA: "0000006",
+            author: "mrs1669",
+            checks: .failure,
+            mergeability: .mergeable,
+            codeRabbit: .completed,
+            uploadStatus: .noRuns
+        ),
+        // check run が 1 つ失敗したが、残りがまだ動いている。結果が出るまでは「CI 待ち」で、要対応に数えない（Discussion #808）。
+        // ステータスタブでは、完了した focus-timer-ios の epic/themes のループが「最終 PR の CI 待ち」になる
+        EpicPullRequest(
+            id: "PR_170",
+            repository: "shilokuma-inc/focus-timer-ios",
+            number: 170,
+            title: "【FEAT】epic/themes を develop に取り込む",
+            body: "### 回答待ちの PR\n- なし",
+            url: URL(string: "https://github.com/shilokuma-inc/focus-timer-ios/pull/170")!,
+            baseBranch: "develop",
+            headBranch: "epic/themes",
+            headSHA: "0000007",
+            author: "mrs1669",
+            checks: .failure,
+            hasRunningChecks: true,
+            mergeability: .mergeable,
+            codeRabbit: .inProgress,
+            uploadStatus: .noRuns
         )
     ]
 
