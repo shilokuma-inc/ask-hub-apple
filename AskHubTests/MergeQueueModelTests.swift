@@ -110,7 +110,7 @@ struct MergeQueueModelTests {
         let model = makeModel(queue: RecordingQueue())
         await model.refresh()
         #expect(model.state == .loaded)
-        #expect(model.pullRequests.map(\.number) == [50, 80, 120, 130, 140, 150])
+        #expect(model.pullRequests.map(\.number) == [50, 80, 120, 130, 140, 150, 160])
     }
 
     @Test func refreshIfStaleSkipsRecentRefresh() async throws {
@@ -123,6 +123,20 @@ struct MergeQueueModelTests {
 
         await model.refreshIfStale(now: lastRefreshed.addingTimeInterval(AutoRefresh.minimumInterval))
         #expect(try #require(model.lastRefreshed) > lastRefreshed)
+    }
+
+    @Test func countsOnlyMergeableAndChecksFailedAsActionable() async throws {
+        // 一覧には CI 待ち・レビュー待ちの PR も出すが、件数はマージ可と CI 失敗だけ（Discussion #808）
+        let model = makeModel(queue: RecordingQueue())
+        #expect(model.actionableCount == 0)
+        await model.refresh()
+        #expect(model.pullRequests.map(\.finalStage) == [
+            .mergeable, .waitingForChecks, .mergeable, .waitingForReview, .mergeable, .waitingForReview, .checksFailed
+        ])
+        #expect(model.actionableCount == 4)
+        // マージした PR は一覧から外れ、件数からも外れる
+        try await model.merge(model.pullRequests[0])
+        #expect(model.actionableCount == 3)
     }
 
     @Test func needsToken() async {
@@ -138,7 +152,7 @@ struct MergeQueueModelTests {
         try await model.merge(model.pullRequests[0])
 
         #expect(queue.merged == [50])
-        #expect(model.pullRequests.map(\.number) == [80, 120, 130, 140, 150])
+        #expect(model.pullRequests.map(\.number) == [80, 120, 130, 140, 150, 160])
     }
 
     @Test func doesNotShowMergedPullRequestBeforeSearchCatchesUp() async throws {
@@ -148,7 +162,7 @@ struct MergeQueueModelTests {
         try await model.merge(model.pullRequests[0])
         await model.refresh()
 
-        #expect(model.pullRequests.map(\.number) == [80, 120, 130, 140, 150])
+        #expect(model.pullRequests.map(\.number) == [80, 120, 130, 140, 150, 160])
     }
 
     @Test func keepsPullRequestWhenHeadChanged() async {
@@ -160,7 +174,7 @@ struct MergeQueueModelTests {
         await #expect(throws: GitHubError.self) {
             try await model.merge(model.pullRequests[0])
         }
-        #expect(model.pullRequests.count == 6)
+        #expect(model.pullRequests.count == 7)
         #expect(MergeQueueModel.message(for: GitHubError.http(status: 409, message: nil)) == "確認した後に PR が更新されました。内容を確かめ直してからマージしてください")
     }
 
@@ -174,7 +188,7 @@ struct MergeQueueModelTests {
             try await model.merge(model.pullRequests[0])
         }
         // マージはできているので、一覧からは外す
-        #expect(model.pullRequests.map(\.number) == [80, 120, 130, 140, 150])
+        #expect(model.pullRequests.map(\.number) == [80, 120, 130, 140, 150, 160])
         let message = MergeQueueModel.message(for: MergeQueueError.branchNotDeleted("epic/mvp"))
         #expect(message == "マージしましたが、ブランチ epic/mvp を削除できませんでした。GitHub で削除してください")
     }
@@ -297,16 +311,16 @@ struct MergeQueueModelTests {
         #expect(!pullRequest.canMerge)
         #expect(pullRequest.blockingReason == "レビュー待ちです（CodeRabbit か第三者レビュー）")
         #expect(SampleMergeQueue.pullRequests.map(\.codeRabbit) == [
-            .completed, .rateLimited, .completed, .inProgress, .skipped, .rateLimited
+            .completed, .rateLimited, .completed, .inProgress, .skipped, .rateLimited, .completed
         ])
     }
 
     @Test func samplesCoverFinalReviewStates() {
         // 最終 PR の第三者レビューの各状態（Discussion #503）
         let pulls = SampleMergeQueue.pullRequests
-        #expect(pulls.map { $0.finalReview?.state } == [nil, .fixing, .doneCodeRabbit, .waiting, .done, .gaveUp])
+        #expect(pulls.map { $0.finalReview?.state } == [nil, .fixing, .doneCodeRabbit, .waiting, .done, .gaveUp, nil])
         #expect(pulls.map(MergeReviewText.source) == [
-            "CodeRabbit", "第三者（要修正 2・提案 1）", "CodeRabbit", "まだありません", "第三者（要修正 0・提案 3）", "第三者（要修正 1・提案 0）"
+            "CodeRabbit", "第三者（要修正 2・提案 1）", "CodeRabbit", "まだありません", "第三者（要修正 0・提案 3）", "第三者（要修正 1・提案 0）", "CodeRabbit"
         ])
         // CodeRabbit がスキップしても、第三者レビューで要修正が 0 件ならマージできる
         #expect(pulls[4].canMerge)
