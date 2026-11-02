@@ -5,6 +5,7 @@ import Testing
 extension EpicPullRequest {
     static func fixture(
         checks: ChecksState = .success,
+        hasRunningChecks: Bool = false,
         mergeability: Mergeability = .mergeable,
         author: String? = "mrs1669",
         codeRabbit: CodeRabbitState = .completed,
@@ -23,6 +24,7 @@ extension EpicPullRequest {
             headSHA: "abc123",
             author: author,
             checks: checks,
+            hasRunningChecks: hasRunningChecks,
             mergeability: mergeability,
             codeRabbit: codeRabbit,
             uploadStatus: uploadStatus,
