@@ -85,17 +85,44 @@ struct EpicPullRequestRow: View {
     }
 }
 
-/// マージできるか（CI とコンフリクト）の印
+/// 最終 PR の段階（CI 待ち・CI 失敗・コンフリクト・レビュー待ち・マージ可）の印。
+/// 段階の判定は AskHubKit の `finalStage` だけを使い、ステータスタブと食い違わないようにする（Discussion #808）
 struct MergeStatusLabel: View {
     let pullRequest: EpicPullRequest
 
     var body: some View {
-        if pullRequest.canMerge {
-            Label("マージできます", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        } else {
-            Label(pullRequest.blockingReason ?? "", systemImage: "exclamationmark.circle")
-                .foregroundStyle(.orange)
+        let stage = pullRequest.finalStage
+        Label(stage.label, systemImage: Self.systemImage(stage))
+            .foregroundStyle(Self.tint(stage))
+    }
+
+    static func systemImage(_ stage: EpicPullRequest.FinalStage) -> String {
+        switch stage {
+        case .mergeable:
+            "checkmark.circle.fill"
+
+        case .checksFailed, .conflicting:
+            "exclamationmark.triangle.fill"
+
+        case .waitingForChecks, .waitingForReview, .checkingMergeability:
+            "clock"
+        }
+    }
+
+    /// マージ可は緑、CI 失敗は赤、コンフリクトは橙、待ちは目立たせない
+    static func tint(_ stage: EpicPullRequest.FinalStage) -> Color {
+        switch stage {
+        case .mergeable:
+            .green
+
+        case .checksFailed:
+            .red
+
+        case .conflicting:
+            .orange
+
+        case .waitingForChecks, .waitingForReview, .checkingMergeability:
+            .secondary
         }
     }
 }
