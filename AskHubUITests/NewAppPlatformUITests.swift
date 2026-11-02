@@ -12,7 +12,7 @@ extension AskHubUITests {
         app.tabBars.buttons["依頼"].tap()
         let kind = app.segmentedControls["request-kind-picker"]
         XCTAssertTrue(kind.waitForExistence(timeout: 5))
-        kind.buttons["新しいアプリ"].tap()
+        kind.buttons["新規"].tap()
 
         let platform = app.segmentedControls["platform-picker"]
         XCTAssertTrue(platform.waitForExistence(timeout: 5))

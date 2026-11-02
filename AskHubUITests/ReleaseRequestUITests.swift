@@ -132,7 +132,7 @@ extension AskHubUITests {
         app.tabBars.buttons["依頼"].tap()
         let picker = app.segmentedControls["request-kind-picker"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        picker.buttons["リリース準備"].tap()
+        picker.buttons["リリース"].tap()
     }
 
     /// リリースするリポジトリを選ぶ。リポジトリの欄が画面の外にあれば、上に戻してから開く

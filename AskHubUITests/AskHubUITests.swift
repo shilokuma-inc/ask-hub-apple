@@ -311,17 +311,17 @@ extension AskHubUITests {
         app.tabBars.buttons["依頼"].tap()
         let picker = app.segmentedControls["request-kind-picker"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        let change = picker.buttons["追加・修正"]
-        let newApp = picker.buttons["新しいアプリ"]
+        let change = picker.buttons["変更"]
+        let newApp = picker.buttons["新規"]
 
-        // 既定は「機能追加・修正」で、既存のリポジトリへの依頼の入力欄が出る
+        // 既定は「変更」で、既存のリポジトリへの依頼の入力欄が出る
         XCTAssertTrue(change.isSelected)
         XCTAssertFalse(newApp.isSelected)
         // 「依頼を送る」は添付欄の注意書きの下で画面の外にあり `Form` が作らないので、上にあるリポジトリの Picker で確かめる
         XCTAssertTrue(app.buttons["repository-picker"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.textFields["repository-name"].exists)
 
-        // 「新しいアプリ」に切り替えると、画面遷移せずに新しいアプリの入力欄に変わる
+        // 「新規」に切り替えると、画面遷移せずに新しいアプリの入力欄に変わる
         newApp.tap()
         XCTAssertTrue(newApp.isSelected)
         XCTAssertTrue(app.textFields["repository-name"].waitForExistence(timeout: 5))
@@ -364,7 +364,7 @@ extension AskHubUITests {
         app.buttons["web-tools"].tap()
 
         // 作成を任せる PC の Picker は担当 PC のいるリポジトリだけを owner だけで分ける
-        app.segmentedControls["request-kind-picker"].buttons["新しいアプリ"].tap()
+        app.segmentedControls["request-kind-picker"].buttons["新規"].tap()
         let hubPicker = app.buttons["hub-picker"]
         scrollUntilHittable(hubPicker, in: app)
         hubPicker.tap()
