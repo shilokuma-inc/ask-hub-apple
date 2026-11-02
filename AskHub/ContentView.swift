@@ -74,12 +74,16 @@ struct ContentView: View {
             .tag(AppTab.decisions)
 
             NavigationStack {
-                LoopStatusListView(model: loopModel, requestModel: requestModel) { isShowingSettings = true }
+                LoopStatusListView(
+                    model: loopModel,
+                    requestModel: requestModel,
+                    finalPullRequests: mergeModel.finalPullRequestsForStatus
+                ) { isShowingSettings = true }
                     .demoModeBanner()
             }
             .tabItem { Label("ステータス", systemImage: "arrow.triangle.2.circlepath") }
-            // 異常（異常終了・長く動きが無い・担当 PC がいない進行中の epic・状態が途絶えた手動ループ）だけを数える
-            .badge(loopModel.abnormalCount(now: Date()))
+            // 異常（異常終了・長く動きが無い・担当 PC がいない進行中の epic・状態が途絶えた手動ループ・最終 PR が CI 失敗かコンフリクト）だけを数える
+            .badge(loopModel.abnormalCount(now: Date(), finalPullRequests: mergeModel.finalPullRequestsForStatus))
             .tag(AppTab.status)
 
             NavigationStack {
