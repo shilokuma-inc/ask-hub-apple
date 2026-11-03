@@ -379,6 +379,10 @@
 - `@ScaledMetric` と `UIFontMetrics.scaledFont(for:)` は、テキストサイズを標準（Large）より小さくしても縮まない（倍率は 1 のまま。大きくする方向だけに効く）。
   中身の寸法を縮めたいときは `dynamicTypeSize` の段階から本文の大きさの比を求める（`ContentScale`）。UIKit の見出しは `UIFont.preferredFont(forTextStyle:).pointSize` の大きさで作る（2026-11-03、リニューアルの UI）
 - iOS 26 の `.lineHeight(.multiple(factor:))` を 1 より小さくすると、Nunito とヒラギノの文字の上が切れる。`.tight` は切れないが、2 行にわたる日本語が窮屈になる（2026-11-03、リニューアルの UI）
+- iOS 26 の `.lineHeight(.multiple(factor:))` の倍率は、文字の大きさに対する倍率（行の高さ = 文字の大きさ × 倍率）。Nunito の標準の行の高さは約 1.36 倍（2026-11-03、リニューアルの UI）
+- iOS 26 の標準の一覧（insetGrouped）の角の半径は約 24pt で、変える API が無い（`containerShape` も効かない）。`listRowBackground` で描いた地も、その角で切り取られる。
+  角を変えるには `.listStyle(.grouped)` にして、行ごとに地を描く。セクションの中の行の位置は `Group(subviews:)` で数えられる（`CardSection`）（2026-11-03、リニューアルの UI）
+- `NavigationLink` のラベルの中（行の見た目の部品）に付けた `listRowInsets`・`listRowBackground` は効かない。一覧の行そのもの（`NavigationLink` や ForEach の中身）に付ける（2026-11-03、リニューアルの UI）
 - `ToolbarItemGroup(placement: .keyboard)` を最初から付けた画面で、開いてすぐ `onAppear` で入力欄にフォーカスを当てると、キーボードの上に「完了」が出ない（シートで確かめた。iOS 26.5）。
   `toolbar` の中身をフォーカスがあるときだけにして、フォーカスが付いてから足すと出る（`keyboardDoneButton(_:onlyWhileFocused:)`）。
   重ねたカードのように、付ける View が同じ画面に並ぶときも、フォーカスのある View の分だけ出るので重複しない（2026-11-03、リニューアルの UI）
