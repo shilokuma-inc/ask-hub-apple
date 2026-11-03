@@ -8,7 +8,7 @@ import Testing
 ///
 /// 試験用のリポジトリとトークンを環境変数で渡したときだけ流す。トークンは表示しない:
 /// `ASKHUB_LIVE_TEST_REPO=<owner/repo> ASKHUB_LIVE_TEST_TOKEN="$(gh auth token)" swift test --package-path AskHubKit --filter LiveGitHub`
-/// 流すたびに `live-test/<時刻>/` の下にファイルを作る（消さない。試験用のリポジトリごと消す）
+/// 流すたびに `live-test/<UUID>/` の下にファイルを作る（消さない。試験用のリポジトリごと消す）
 @Suite(.enabled(if: LiveTestEnvironment.isEnabled))
 struct LiveGitHubContentsStoreTests {
     /// 応答の状態コードを残す
@@ -32,7 +32,7 @@ struct LiveGitHubContentsStoreTests {
         let token = try #require(LiveTestEnvironment.token)
         let transport = RecordingTransport()
         let store = GitHubContentsStore(repository: repository, transport: transport, budget: nil) { token }
-        let directory = "live-test/\(Int(Date().timeIntervalSince1970))"
+        let directory = "live-test/\(UUID().uuidString)"
         let path = "\(directory)/a.json"
         // base64 が 60 文字ごとに改行される長さにする
         let first = Data(String(repeating: "{\"v\":1}\n", count: 30).utf8)

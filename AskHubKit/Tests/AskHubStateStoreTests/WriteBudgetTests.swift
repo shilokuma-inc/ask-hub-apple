@@ -36,6 +36,15 @@ struct WriteBudgetTests {
         try await budget.reserve(now: Self.start.addingTimeInterval(60))
     }
 
+    @Test func zeroLimitAllowsNothing() async throws {
+        await #expect(throws: StateStoreError.budgetExhausted(retryAfter: .seconds(60))) {
+            try await WriteBudget(limits: .init(perMinute: 0, perHour: 10)).reserve(now: Self.start)
+        }
+        await #expect(throws: StateStoreError.budgetExhausted(retryAfter: .seconds(3600))) {
+            try await WriteBudget(limits: .init(perMinute: 10, perHour: 0)).reserve(now: Self.start)
+        }
+    }
+
     @Test func presetsFitGitHubContentCreationLimit() {
         // 内容を作る要求の上限（1 分 80 件・1 時間 500 件）に、司令塔 1・ワーカー 3・クライアント 2 で収まる
         let limits = [WriteBudget.Limits.commander] + Array(repeating: .worker, count: 3) + Array(repeating: .client, count: 2)

@@ -59,6 +59,19 @@ struct GitHubContentsStoreTests {
         #expect(transport.requests.last?.value(forHTTPHeaderField: "If-None-Match") == "\"e1\"")
     }
 
+    @Test func refetchesChangedContentsAndSendsNewETag() async throws {
+        let transport = StubTransport([
+            Self.fileReply("{}", sha: "s1", etag: "\"e1\""),
+            Self.fileReply("{\"v\":2}", sha: "s2", etag: "\"e2\""),
+            .init(status: 304)
+        ])
+        let store = store(transport)
+        _ = try await store.read("version.json")
+        #expect(try await store.read("version.json") == StoredBlob(data: Data("{\"v\":2}".utf8), sha: "s2"))
+        #expect(try await store.read("version.json") == StoredBlob(data: Data("{\"v\":2}".utf8), sha: "s2"))
+        #expect(transport.requests.last?.value(forHTTPHeaderField: "If-None-Match") == "\"e2\"")
+    }
+
     @Test func missingFileIsNilAndForgetsETag() async throws {
         let transport = StubTransport([
             Self.fileReply("{}", sha: "s1", etag: "\"e1\""), .init(status: 404), .init(status: 404)
@@ -203,6 +216,36 @@ struct GitHubContentsStoreTests {
         }
         // トークンは URL に入れない
         #expect(transport.requests.allSatisfy { $0.url?.absoluteString.contains(Self.token) == false })
+    }
+
+    @Test func tokenFailuresAreNotCountedAndCancellationIsKept() async throws {
+        let budget = WriteBudget(limits: .init(perMinute: 1, perHour: 10))
+        let failing = GitHubContentsStore(repository: Self.repository, transport: StubTransport([]), budget: budget) {
+            throw URLError(.userAuthenticationRequired)
+        }
+        await #expect(throws: StateStoreError.tokenUnavailable) {
+            try await failing.write("a.json", data: Data(), replacing: nil, message: "m")
+        }
+        // トークンを読めなかった書き込みは、予算に数えない
+        let transport = StubTransport([.json(201, #"{"content":{"sha":"s1"}}"#)])
+        _ = try await store(transport, budget: budget).write("a.json", data: Data(), replacing: nil, message: "m")
+        let cancelled = GitHubContentsStore(repository: Self.repository, transport: StubTransport([]), budget: nil) {
+            throw CancellationError()
+        }
+        await #expect(throws: StateStoreError.cancelled) { try await cancelled.read("version.json") }
+    }
+
+    @Test func cacheKeepsWithinSizeLimit() async {
+        let cache = ETagCache()
+        let half = Contents.file(StoredBlob(data: Data(count: ETagCache.sizeLimit / 2 + 1), sha: "s"))
+        await cache.store("a.json", ETagCache.Entry(etag: "a", contents: half))
+        await cache.store("b.json", ETagCache.Entry(etag: "b", contents: half))
+        // 合わせて上限を超えるので、前のものを捨ててから持つ
+        #expect(await cache.entry(for: "a.json") == nil)
+        #expect(await cache.entry(for: "b.json")?.etag == "b")
+        let tooLarge = Contents.file(StoredBlob(data: Data(count: ETagCache.sizeLimit + 1), sha: "s"))
+        await cache.store("c.json", ETagCache.Entry(etag: "c", contents: tooLarge))
+        #expect(await cache.entry(for: "c.json") == nil)
     }
 
     @Test func transportFailuresAreClassified() async throws {

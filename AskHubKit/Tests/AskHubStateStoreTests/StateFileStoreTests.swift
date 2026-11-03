@@ -36,7 +36,12 @@ struct StateFileStoreTests {
         let memory = InMemoryStateStore()
         let store = files(memory)
         try await store.create(Self.repository(), at: Self.path, message: "作る")
-        let unchanged = try await store.update(RepositoryFile.self, at: Self.path, message: "何もしない") { _ in false }
+        // 途中で値を変えても、false を返せば書かず、読んだままの中身を返す
+        let unchanged = try await store.update(RepositoryFile.self, at: Self.path, message: "何もしない") { file in
+            file.maxConcurrentEpics = 5
+            return false
+        }
+        #expect(unchanged.file == Self.repository())
         #expect(await memory.writeCount == 1)
         let changed = try await store.update(RepositoryFile.self, at: Self.path, message: "2 本にする") { file in
             file.maxConcurrentEpics = 2
@@ -132,6 +137,25 @@ struct StateFileStoreTests {
             try await files(memory).create(Self.repository(epics: 0), at: Self.path, message: "m")
         }
         #expect(await memory.writeCount == 0)
+    }
+
+    @Test func createRetriesWhenTheBranchWasBusy() async throws {
+        let memory = InMemoryStateStore()
+        let sleeper = RecordingSleeper()
+        // ファイルは無いのに 409（同じブランチへの並んだ書き込みとぶつかった）。読み直して無ければやり直す
+        await memory.failNextWrites(with: [.conflict])
+        try await files(memory, sleeper: sleeper).create(Self.repository(), at: Self.path, message: "作る")
+        #expect(sleeper.waits.count == 1)
+        #expect(await memory.writeCount == 1)
+    }
+
+    @Test func replaceDoesNotOverwriteUnreadableFile() async throws {
+        let future = Data(#"{"v":2}"#.utf8)
+        let memory = InMemoryStateStore(files: [Self.path: future])
+        await #expect(throws: StateFileStore.Failure.unreadable(path: Self.path, .unsupportedVersion(2))) {
+            try await files(memory).replace(Self.repository(), at: Self.path, message: "置き換える")
+        }
+        #expect(await memory.data(at: Self.path) == future)
     }
 
     @Test func replaceCreatesThenOverwrites() async throws {
