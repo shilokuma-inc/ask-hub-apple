@@ -28,6 +28,7 @@ let package = Package(
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
         .testTarget(name: "AskHubKitTests", dependencies: ["AskHubKit"]),
         .testTarget(name: "AskHubProtocolTests", dependencies: ["AskHubProtocol"]),
+        .testTarget(name: "AskHubKeychainTests", dependencies: ["AskHubKeychain", "AskHubProtocol"]),
         .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]
 )
