@@ -4,6 +4,21 @@ import XCTest
 final class ClientUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
+        // 起動テスト（AskHubUITestsLaunchTests）は画面の向きを変えたまま残すことがあるので、縦向きに戻す
+        #if os(iOS)
+        MainActor.assumeIsolated {
+            XCUIDevice.shared.orientation = .portrait
+        }
+        #endif
+    }
+
+    /// 一覧を下へ送りながら、要素が出るまで探す（一覧の行は画面に入るまで作られない）
+    @MainActor
+    private func scrollUntilExists(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 4) -> Bool {
+        for _ in 0..<maxSwipes where !element.exists {
+            app.collectionViews.firstMatch.swipeUp()
+        }
+        return element.waitForExistence(timeout: 3)
     }
 
     /// デモの場面で起動する。機械の反応は既定ではすぐ起こす
@@ -22,8 +37,7 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["進行が止まっています · 6"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["まとめて判断する"].exists)
         // 「時間のあるときに」は下にあるので、一覧を送ってから確かめる
-        app.collectionViews.firstMatch.swipeUp()
-        XCTAssertTrue(app.staticTexts["時間のあるときに · 3"].waitForExistence(timeout: 5))
+        XCTAssertTrue(scrollUntilExists(app.staticTexts["時間のあるときに · 3"], in: app))
     }
 
     /// 読めなかったときは「ありません」と出さない
@@ -98,6 +112,6 @@ final class ClientUITests: XCTestCase {
         app.tabBars.buttons["Mac"].tap()
         XCTAssertTrue(app.staticTexts["Mac mini"].waitForExistence(timeout: 5))
         app.tabBars.buttons["リポジトリ"].tap()
-        XCTAssertTrue(app.staticTexts["積読リスト"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["習慣ログ"].waitForExistence(timeout: 5))
     }
 }
