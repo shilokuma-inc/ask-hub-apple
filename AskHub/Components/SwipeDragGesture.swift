@@ -3,13 +3,19 @@ import SwiftUI
 /// 札を動かすドラッグの値（iOS のパンと Mac の `DragGesture` で共通）
 struct SwipeDragValue {
     var translation: CGSize
+    /// 直近の速さ（pt/秒）
+    var velocity: CGSize
     /// 離した勢いのまま進んだときの移動量。`DragGesture.Value.predictedEndTranslation` と同じく、速さの 0.25 秒分を足す
     var predictedEndTranslation: CGSize
+    /// 触れた所（札の中の位置。動かす前の札の左上が原点）。Mac だけ。iOS は `SwipePress.down` で先に知らせる
+    var startLocation: CGPoint?
 
     static let projection: CGFloat = 0.25
 
     init(translation: CGSize, velocity: CGSize) {
         self.translation = translation
+        self.velocity = velocity
+        startLocation = nil
         predictedEndTranslation = CGSize(
             width: translation.width + velocity.width * Self.projection,
             height: translation.height + velocity.height * Self.projection
@@ -18,8 +24,17 @@ struct SwipeDragValue {
 
     init(_ value: DragGesture.Value) {
         translation = value.translation
+        velocity = value.velocity
         predictedEndTranslation = value.predictedEndTranslation
+        startLocation = value.startLocation
     }
+}
+
+/// 札に指が触れた・離れた（動かし始める前から知らせる。札を持ち上げるため）。
+/// `location` は札の中の位置（札の左上が原点）。iOS だけで届く（Mac はクリックしただけでは知らせない）
+enum SwipePress {
+    case down(location: CGPoint)
+    case up
 }
 
 extension View {
@@ -31,15 +46,17 @@ extension View {
     /// Mac（マウスとトラックパッド）は `DragGesture` のまま、トラックパッドのピンチなどで取り消されたときに備えて `@GestureState` で終わりに気づく
     func swipeDragGesture(
         isEnabled: Bool,
+        onPress: @escaping (SwipePress) -> Void = { _ in },
         onChanged: @escaping (SwipeDragValue) -> Void,
         onEnded: @escaping (SwipeDragValue?) -> Void
     ) -> some View {
-        modifier(SwipeDragGestureModifier(isEnabled: isEnabled, onChanged: onChanged, onEnded: onEnded))
+        modifier(SwipeDragGestureModifier(isEnabled: isEnabled, onPress: onPress, onChanged: onChanged, onEnded: onEnded))
     }
 }
 
 private struct SwipeDragGestureModifier: ViewModifier {
     let isEnabled: Bool
+    let onPress: (SwipePress) -> Void
     let onChanged: (SwipeDragValue) -> Void
     let onEnded: (SwipeDragValue?) -> Void
 
@@ -51,7 +68,7 @@ private struct SwipeDragGestureModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
         content
-            .gesture(SwipePanGesture(isEnabled: isEnabled, onChanged: onChanged, onEnded: onEnded))
+            .gesture(SwipePanGesture(isEnabled: isEnabled, onPress: onPress, onChanged: onChanged, onEnded: onEnded))
         #else
         content
             .gesture(
@@ -75,8 +92,22 @@ private struct SwipeDragGestureModifier: ViewModifier {
 /// UIKit の認識器を SwiftUI のジェスチャーとして付ける
 private struct SwipePanGesture: UIGestureRecognizerRepresentable {
     let isEnabled: Bool
+    let onPress: (SwipePress) -> Void
     let onChanged: (SwipeDragValue) -> Void
     let onEnded: (SwipeDragValue?) -> Void
+
+    /// 触れた所を札の中の位置に直すため、SwiftUI の座標の変換を持っておく
+    final class Coordinator {
+        let converter: CoordinateSpaceConverter
+
+        init(converter: CoordinateSpaceConverter) {
+            self.converter = converter
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
+        Coordinator(converter: converter)
+    }
 
     func makeUIGestureRecognizer(context: Context) -> SingleTouchPanRecognizer {
         SingleTouchPanRecognizer()
@@ -84,6 +115,17 @@ private struct SwipePanGesture: UIGestureRecognizerRepresentable {
 
     func updateUIGestureRecognizer(_ recognizer: SingleTouchPanRecognizer, context: Context) {
         recognizer.isEnabled = isEnabled
+        let converter = context.coordinator.converter
+        // 札の中の位置（.local）は、動かしている札の傾きと移動を含む。触れた瞬間に測るので、戻る途中の札もつかんだ所が分かる
+        recognizer.onPress = { [onPress] press in
+            switch press {
+            case .down(let location):
+                onPress(.down(location: converter.convert(globalPoint: location, to: .local)))
+
+            case .up:
+                onPress(.up)
+            }
+        }
     }
 
     func handleUIGestureRecognizerAction(_ recognizer: SingleTouchPanRecognizer, context: Context) {
@@ -113,7 +155,12 @@ final class SingleTouchPanRecognizer: UIPanGestureRecognizer {
     /// 速さを求める直近の時間。離す前にこれより長く指を止めていたら、速さは 0 になる
     static let velocityWindow: TimeInterval = 0.1
 
+    /// 最初の指が触れた・離れたとき（`down` の位置は画面の座標）
+    var onPress: (SwipePress) -> Void = { _ in }
+
     private var touch: UITouch?
+    /// 最初の指が触れていて、まだ離したことを知らせていない
+    private var isPressed = false
     private var start = CGPoint.zero
     private var samples: [(time: TimeInterval, location: CGPoint)] = []
 
@@ -151,6 +198,8 @@ final class SingleTouchPanRecognizer: UIPanGestureRecognizer {
                 start = touch.location(in: nil)
                 record(touch)
                 accepted.insert(touch)
+                isPressed = true
+                onPress(.down(location: start))
             } else {
                 ignore(touch, for: event)
             }
@@ -168,14 +217,31 @@ final class SingleTouchPanRecognizer: UIPanGestureRecognizer {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
         if let touch, touches.contains(touch) {
             record(touch)
+            release()
         }
         super.touchesEnded(touches, with: event)
     }
 
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        if let touch, touches.contains(touch) {
+            release()
+        }
+        super.touchesCancelled(touches, with: event)
+    }
+
     override func reset() {
         super.reset()
+        // 途中で止められたとき（`isEnabled` を切ったときなど）も、離したことを知らせる
+        release()
         touch = nil
         samples = []
+    }
+
+    private func release() {
+        if isPressed {
+            isPressed = false
+            onPress(.up)
+        }
     }
 
     private func record(_ touch: UITouch) {
