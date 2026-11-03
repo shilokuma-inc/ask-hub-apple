@@ -67,6 +67,28 @@
       "../AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     ]
   },
+  "macName": {
+    "valid": [
+      "mac-mini",
+      "macbook-a",
+      "m",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "0-1"
+    ],
+    "invalid": [
+      "",
+      "Mac-mini",
+      "-mac",
+      "mac-",
+      "mac_mini",
+      "mac mini",
+      "mac.mini",
+      "..",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "mac\n",
+      "ｍac"
+    ]
+  },
   "timestamp": {
     "valid": [
       "2026-11-03T10:00:00Z",

@@ -11,6 +11,7 @@ private struct IdentifierVectorFile: Decodable {
     let ulid: IdentifierVectors
     let repositoryFullName: IdentifierVectors
     let keyId: IdentifierVectors
+    let macName: IdentifierVectors
     let timestamp: IdentifierVectors
 }
 
@@ -33,6 +34,11 @@ struct IdentifiersTests {
     @Test func keyIDFollowsVectors() throws {
         let vectors = try Vectors.load("identifiers.json", as: File.self).keyId
         try check(vectors, KeyID.self)
+    }
+
+    @Test func macNameFollowsVectors() throws {
+        let vectors = try Vectors.load("identifiers.json", as: File.self).macName
+        try check(vectors, MacName.self)
     }
 
     @Test func timestampFollowsVectors() throws {
