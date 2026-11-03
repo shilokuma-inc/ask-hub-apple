@@ -5,6 +5,7 @@ struct RootView: View {
     @Environment(ClientStore.self) private var store
     @Environment(AppNavigator.self) private var navigator
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -12,6 +13,9 @@ struct RootView: View {
     var body: some View {
         @Bindable var navigator = navigator
         layout
+            // テキストサイズが変わったら、UIKit が描くバーの見出しも新しい大きさで作り直す（Typography）
+            .id(dynamicTypeSize)
+            .onChange(of: dynamicTypeSize) { AppFont.applyToSystemBars() }
             // 主な色はラベンダー（パステルの見た目。Theme）
             .tint(Theme.accent)
             // 開いている間（バックグラウンド以外）は決まった間隔で取り直す

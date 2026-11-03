@@ -19,12 +19,19 @@ enum AppFont {
         if let url = Bundle.main.url(forResource: "Nunito[wght]", withExtension: "ttf") {
             CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
         }
+        applyToSystemBars()
+    }
+
+    /// ナビゲーションバーの見出しは、いまのテキストサイズの大きさにする（小さくしたら見出しも縮む）。
+    /// タブの名前は操作の部品なので、テキストサイズによらず標準の大きさのままにする。テキストサイズが変わったら呼び直す
+    static func applyToSystemBars() {
         #if os(iOS)
         let navigationBar = UINavigationBar.appearance()
         navigationBar.largeTitleTextAttributes = uiFont(.largeTitle, weight: .bold).map { [.font: $0] }
         navigationBar.titleTextAttributes = uiFont(.headline, weight: .semibold).map { [.font: $0] }
         let tabItem = UITabBarItem.appearance()
-        let attributes = uiFont(.caption2, weight: .semibold).map { [NSAttributedString.Key.font: $0] }
+        let tabFont = UIFont(name: faceName(for: .semibold), size: Font.TextStyle.caption2.baseSize)
+        let attributes = tabFont.map { [NSAttributedString.Key.font: $0] }
         tabItem.setTitleTextAttributes(attributes, for: .normal)
         tabItem.setTitleTextAttributes(attributes, for: .selected)
         #endif
@@ -46,10 +53,9 @@ enum AppFont {
     }
 
     #if os(iOS)
+    /// いまのテキストサイズでの大きさ（`UIFontMetrics` は標準より小さい設定で縮めないので、システムの書体の大きさを使う）
     private static func uiFont(_ style: Font.TextStyle, weight: Font.Weight) -> UIFont? {
-        UIFont(name: faceName(for: weight), size: style.baseSize).map {
-            UIFontMetrics(forTextStyle: style.uiTextStyle).scaledFont(for: $0)
-        }
+        UIFont(name: faceName(for: weight), size: UIFont.preferredFont(forTextStyle: style.uiTextStyle).pointSize)
     }
     #endif
 }
