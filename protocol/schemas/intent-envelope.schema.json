@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/intent-envelope.schema.json",
+  "title": "人の意図の封筒",
+  "description": "docs/renewal/protocol.md の「封筒」。RFC 8785 でそろえた UTF-8 のバイト列に、ECDSA P-256・SHA-256 で署名する",
+  "type": "object",
+  "required": ["v", "kind", "issuedAt", "nonce", "keyId"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "answer", "startEpic", "reviseGoal", "decision", "approveMerge", "instructFinal", "humanTaskDone",
+        "handover", "retry", "giveUp", "addRepository", "removeRepository", "applyProtection", "registerKey", "revokeKey"
+      ]
+    },
+    "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+    "target": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "epic": { "type": "string" },
+        "id": { "type": "string" }
+      }
+    },
+    "targetVersion": { "type": "string" },
+    "bodySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "payload": { "type": "object", "additionalProperties": { "$ref": "json-value.schema.json" } },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "nonce": { "type": "string", "minLength": 16 },
+    "keyId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+  }
+}
