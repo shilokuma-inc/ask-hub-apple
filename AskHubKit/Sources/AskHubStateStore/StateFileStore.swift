@@ -33,7 +33,7 @@ public struct StateFileStore: Sendable {
         case unreadable(path: String, StateFileError)
         /// 作ろうとしたファイルが、すでにある
         case alreadyExists
-        /// 書き直そうとしたファイルが無い
+        /// 書き直そうとしたファイルが無い（GitHub は、リポジトリやブランチが見えないときも同じ 404 を返すので、見分けられない）
         case notFound
         /// ほかの書き手とぶつかり続け、決めた回数でやめた
         case tooManyConflicts
@@ -67,30 +67,36 @@ public struct StateFileStore: Sendable {
         }
     }
 
-    /// 新しく作る。すでにあれば `alreadyExists`（ほかの書き手が先に作った）
+    /// 新しく作る。すでにあれば `alreadyExists`（ほかの書き手が先に作った）。
+    /// ぶつかった（409・422）ときは読み直し、ファイルがあれば `alreadyExists`、無ければ（同じブランチへの並んだ書き込みとぶつかっただけなら）やり直す
     @discardableResult
     public func create<File: StateFile>(_ file: File, at path: String, message: String) async throws(Failure) -> Loaded<File> {
         let data = try Self.encode(file)
-        do {
-            return try await Loaded(file: file, sha: store.write(path, data: data, replacing: nil, message: message))
-        } catch .conflict {
-            throw .alreadyExists
-        } catch {
-            throw .store(error)
+        return try await retryingConflicts { () async throws(Failure) -> Loaded<File> in
+            do throws(StateStoreError) {
+                return try await Loaded(file: file, sha: store.write(path, data: data, replacing: nil, message: message))
+            } catch .conflict {
+                let current: StoredBlob?
+                do throws(StateStoreError) {
+                    current = try await store.read(path)
+                } catch {
+                    throw .store(error)
+                }
+                if current != nil { throw .alreadyExists }
+                throw .store(.conflict)
+            } catch {
+                throw .store(error)
+            }
         }
     }
 
-    /// 自分だけが書くファイル（生きている印など）を、今の中身にかかわらず置き換える。無ければ作る
+    /// 自分だけが書くファイル（生きている印など）を置き換える。無ければ作る。
+    /// 今の中身が読めない（知らない版など）ときは、ほかのファイルと同じく上書きしない
     @discardableResult
     public func replace<File: StateFile>(_ file: File, at path: String, message: String) async throws(Failure) -> Loaded<File> {
         let data = try Self.encode(file)
         return try await retryingConflicts { () async throws(Failure) -> Loaded<File> in
-            let current: StoredBlob?
-            do throws(StateStoreError) {
-                current = try await store.read(path)
-            } catch {
-                throw .store(error)
-            }
+            let current = try await read(File.self, at: path)
             do throws(StateStoreError) {
                 return try await Loaded(file: file, sha: store.write(path, data: data, replacing: current?.sha, message: message))
             } catch {
@@ -110,7 +116,10 @@ public struct StateFileStore: Sendable {
     ) async throws(Failure) -> Loaded<File> {
         try await retryingConflicts { () async throws(Failure) -> Loaded<File> in
             guard var loaded = try await read(File.self, at: path) else { throw .notFound }
-            guard change(&loaded.file) else { return loaded }
+            var changed = loaded.file
+            // 書かないときは、change が途中で変えた値ではなく、読んだままの中身を返す
+            guard change(&changed) else { return loaded }
+            loaded.file = changed
             let data = try Self.encode(loaded.file)
             do throws(StateStoreError) {
                 loaded.sha = try await store.write(path, data: data, replacing: loaded.sha, message: message)

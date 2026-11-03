@@ -34,7 +34,7 @@ public struct DirectoryEntry: Sendable, Equatable {
 
 /// 状態リポジトリの読み書き（`docs/renewal/protocol.md` の「共通の決まり」）。パスは状態リポジトリの中の相対パス（`StatePath`）
 public protocol StateStore: Sendable {
-    /// ファイルを読む。無ければ nil
+    /// ファイルを読む。無ければ nil（GitHub は、リポジトリやブランチが見えないときも同じ 404 を返すので、そのときも nil）
     func read(_ path: String) async throws(StateStoreError) -> StoredBlob?
 
     /// ディレクトリの中を並べる。無ければ nil。
