@@ -4,10 +4,11 @@ import Foundation
 public struct IntentEnvelope: Codable, Equatable, Sendable {
     public struct Target: Codable, Equatable, Sendable {
         public var type: String
-        public var epic: String?
+        public var epic: ULID?
+        /// 対象の種類ごとの id（質問の `q1`・ジョブの ULID など）。パスに使う前に、種類ごとの形を確かめる
         public var id: String?
 
-        public init(type: String, epic: String? = nil, id: String? = nil) {
+        public init(type: String, epic: ULID? = nil, id: String? = nil) {
             self.type = type
             self.epic = epic
             self.id = id
@@ -17,14 +18,15 @@ public struct IntentEnvelope: Codable, Equatable, Sendable {
     /// 封筒の形の版（JSON では `v`）
     public var version: Int
     public var kind: String
-    public var repo: String?
+    public var repo: RepositoryFullName?
     public var target: Target?
     public var targetVersion: String?
     public var bodySha256: String?
     public var payload: [String: JSONValue]?
-    public var issuedAt: String
-    public var nonce: String
-    public var keyId: String
+    public var issuedAt: Timestamp
+    /// 一度しか使えない番号。処理した記録（`consumed/<keyId>/<nonce>`）のパスに使う
+    public var nonce: ULID
+    public var keyId: KeyID
 
     enum CodingKeys: String, CodingKey {
         case version = "v"
@@ -34,14 +36,14 @@ public struct IntentEnvelope: Codable, Equatable, Sendable {
     public init(
         version: Int = 1,
         kind: String,
-        repo: String? = nil,
+        repo: RepositoryFullName? = nil,
         target: Target? = nil,
         targetVersion: String? = nil,
         bodySha256: String? = nil,
         payload: [String: JSONValue]? = nil,
-        issuedAt: String,
-        nonce: String,
-        keyId: String
+        issuedAt: Timestamp,
+        nonce: ULID,
+        keyId: KeyID
     ) {
         self.version = version
         self.kind = kind
@@ -90,13 +92,13 @@ public struct IntentVerifier: Sendable {
     }
 
     /// 鍵の id → 公開鍵（SubjectPublicKeyInfo の DER）。登録済みで取り消されていないものだけを渡す
-    public var publicKeys: [String: Data]
+    public var publicKeys: [KeyID: Data]
     /// 人の意図の有効期間（決定: 7 日）
     public var maximumAge: TimeInterval = 7 * 24 * 60 * 60
     /// 時計のずれとして許す、未来の署名の時刻の幅
     public var allowedClockSkew: TimeInterval = 5 * 60
 
-    public init(publicKeys: [String: Data]) {
+    public init(publicKeys: [KeyID: Data]) {
         self.publicKeys = publicKeys
     }
 
@@ -107,6 +109,7 @@ public struct IntentVerifier: Sendable {
               let signature = marker.value["sig"]?.stringValue else {
             throw .malformed
         }
+        // 形の合わない値（パスに使えない nonce など）を含む封筒は、署名を確かめる前に弾く
         guard let envelope = try? IntentEnvelope(envelopeValue) else { throw .malformed }
         guard envelope.version == 1 else { throw .unsupportedVersion }
         guard let publicKey = publicKeys[envelope.keyId] else { throw .unknownKey }
@@ -116,7 +119,7 @@ public struct IntentVerifier: Sendable {
             throw .badSignature
         }
         guard envelope.bodySha256 == ProtocolMarker.bodySHA256(marker.body) else { throw .bodyMismatch }
-        guard let issuedAt = try? Date(envelope.issuedAt, strategy: .iso8601) else { throw .malformed }
+        let issuedAt = envelope.issuedAt.date
         if issuedAt.timeIntervalSince(now) > allowedClockSkew { throw .issuedInFuture }
         if now.timeIntervalSince(issuedAt) > maximumAge { throw .expired }
         return envelope

@@ -13,8 +13,9 @@ public enum IntentSignature {
         case malformedPublicKey
     }
 
-    public static func keyID(publicKeyDER: Data) -> String {
-        Base64URL.encode(Data(SHA256.hash(data: publicKeyDER)))
+    public static func keyID(publicKeyDER: Data) -> KeyID {
+        // SHA-256 の 32 バイトの base64url は、必ず 43 文字の KeyID の形になる
+        KeyID(rawValue: Base64URL.encode(Data(SHA256.hash(data: publicKeyDER))))!
     }
 
     /// 封筒に署名する。Secure Enclave の鍵でも使えるよう、署名そのものは呼び出し側に任せる

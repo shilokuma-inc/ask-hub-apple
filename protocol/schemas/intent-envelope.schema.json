@@ -15,22 +15,22 @@
         "handover", "retry", "giveUp", "addRepository", "removeRepository", "applyProtection", "registerKey", "revokeKey"
       ]
     },
-    "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+    "repo": { "$ref": "common.schema.json#/$defs/repositoryFullName" },
     "target": {
       "type": "object",
       "required": ["type"],
       "additionalProperties": false,
       "properties": {
         "type": { "type": "string" },
-        "epic": { "type": "string" },
+        "epic": { "$ref": "common.schema.json#/$defs/ulid" },
         "id": { "type": "string" }
       }
     },
     "targetVersion": { "type": "string" },
-    "bodySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bodySha256": { "$ref": "common.schema.json#/$defs/sha256Hex" },
     "payload": { "type": "object", "additionalProperties": { "$ref": "json-value.schema.json" } },
-    "issuedAt": { "type": "string", "format": "date-time" },
-    "nonce": { "type": "string", "minLength": 16 },
-    "keyId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+    "issuedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "nonce": { "$ref": "common.schema.json#/$defs/ulid", "description": "一度しか使えない番号。処理した記録（consumed/<keyId>/<nonce>）のパスに使う" },
+    "keyId": { "$ref": "common.schema.json#/$defs/keyId" }
   }
 }

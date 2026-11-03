@@ -34,7 +34,7 @@ struct IntentTests {
         let file = try Vectors.load("intent-signature.json", as: File.self)
         for (name, key) in file.keys {
             let der = try #require(Base64URL.decode(key.publicKeyDer))
-            #expect(IntentSignature.keyID(publicKeyDER: der) == key.keyId, "\(name)")
+            #expect(IntentSignature.keyID(publicKeyDER: der).rawValue == key.keyId, "\(name)")
             // 秘密鍵から作った公開鍵も、例の公開鍵と同じになる
             let privateKey = try P256.Signing.PrivateKey(rawRepresentation: #require(Base64URL.decode(key.privateKeyRaw)))
             #expect(privateKey.publicKey.derRepresentation == der, "\(name)")
@@ -81,10 +81,10 @@ struct IntentTests {
         let file = try Vectors.load("intent-signature.json", as: File.self)
         #expect(!file.cases.isEmpty)
         for vector in file.cases {
-            var publicKeys: [String: Data] = [:]
+            var publicKeys: [KeyID: Data] = [:]
             for name in vector.trustedKeys {
                 let key = try #require(file.keys[name])
-                publicKeys[key.keyId] = try #require(Base64URL.decode(key.publicKeyDer))
+                publicKeys[try #require(KeyID(rawValue: key.keyId))] = try #require(Base64URL.decode(key.publicKeyDer))
             }
             let now = try Date(vector.now, strategy: .iso8601)
             #expect("\(vector.name): \(result(of: vector.text, publicKeys: publicKeys, now: now))" == "\(vector.name): \(vector.result)")
@@ -102,7 +102,7 @@ struct IntentTests {
         #expect(Base64URL.decode("ab+c") == nil)
     }
 
-    private func result(of text: String, publicKeys: [String: Data], now: Date) -> String {
+    private func result(of text: String, publicKeys: [KeyID: Data], now: Date) -> String {
         guard let marker = ProtocolMarker.parse(text) else { return "noMarker" }
         do {
             _ = try IntentVerifier(publicKeys: publicKeys).verify(marker, now: now)
