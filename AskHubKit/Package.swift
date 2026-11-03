@@ -15,6 +15,8 @@ let package = Package(
         .library(name: "AskHubProtocol", targets: ["AskHubProtocol"]),
         // 状態リポジトリの読み書き（GitHub の Contents API・ETag・版の確認・書き込みの予算）
         .library(name: "AskHubStateStore", targets: ["AskHubStateStore"]),
+        // ジョブと試行の段取り（失敗の区分ごとの扱い・生きている印の古さ・引き受け）。司令塔とワーカーで使う
+        .library(name: "AskHubJobs", targets: ["AskHubJobs"]),
         // macOS で launchd から常駐させる CLI。アプリからは使わない
         .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
     ],
@@ -23,6 +25,7 @@ let package = Package(
         // 外部の依存を持たない。リポジトリ直下の protocol/ の JSON Schema とテスト用の例が正本
         .target(name: "AskHubProtocol"),
         .target(name: "AskHubStateStore", dependencies: ["AskHubProtocol"]),
+        .target(name: "AskHubJobs", dependencies: ["AskHubProtocol", "AskHubStateStore"]),
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
