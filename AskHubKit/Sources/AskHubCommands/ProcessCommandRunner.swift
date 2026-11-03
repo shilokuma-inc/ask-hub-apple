@@ -11,7 +11,7 @@ public struct ProcessCommandRunner: CommandRunning {
     public var outputDrainTimeout: Duration
 
     public init(outputLimit: Int = 4_000_000, outputDrainTimeout: Duration = .seconds(5)) {
-        self.outputLimit = outputLimit
+        self.outputLimit = max(0, outputLimit)
         self.outputDrainTimeout = outputDrainTimeout
     }
 
