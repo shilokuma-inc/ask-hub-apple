@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 設定。いまはスワイプの持ち手とデモの場面だけ。トークン・端末の鍵・通知は、つなぎ込みのときに足す
+/// 設定。いまはスワイプの持ち手とデモの場面（デバッグのビルドでは書体も）だけ。トークン・端末の鍵・通知は、つなぎ込みのときに足す
 struct AppSettingsView: View {
     @AppStorage(SwipePreferences.handKey) private var hand: Handedness = .right
     @AppStorage(DemoScenario.preferenceKey) private var scenario: DemoScenario = .standard
@@ -33,6 +33,9 @@ struct AppSettingsView: View {
                 } footer: {
                     Text("試作のため、いまはデモのデータで動いています。GitHub には接続しません")
                 }
+                #if DEBUG
+                TypefacePickerSection()
+                #endif
                 Section("あとで作るもの") {
                     Label("GitHub のトークン", systemImage: "key")
                     Label("この端末の鍵と、ほかの端末の承認", systemImage: "lock.shield")
