@@ -44,6 +44,13 @@ struct Mac: Identifiable, Hashable {
     enum Contract: Hashable {
         case personal
         case company
+
+        var label: String {
+            switch self {
+            case .personal: "個人の Claude"
+            case .company: "会社の Claude"
+            }
+        }
     }
 
     enum Connection: Hashable {

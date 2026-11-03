@@ -49,6 +49,8 @@ struct TextRequest: Hashable {
         case freeTextAnswer(epicID: Epic.ID, questionID: Question.ID)
         case decisionFix(epicID: Epic.ID, decisionID: DecisionCard.ID)
         case verificationProblem(epicID: Epic.ID, itemID: VerificationItem.ID)
+        case blockerInstruction(epicID: Epic.ID)
+        case goalRevision(epicID: Epic.ID)
     }
 
     func intent(text: String) -> HumanIntent {
@@ -64,6 +66,12 @@ struct TextRequest: Hashable {
 
         case let .verificationProblem(epicID, itemID):
             .verify(epicID: epicID, itemID: itemID, reply: .problem(note: text))
+
+        case .blockerInstruction(let epicID):
+            .resolveBlocker(epicID: epicID, action: .fixWithInstruction, instruction: text)
+
+        case .goalRevision(let epicID):
+            .reviseGoal(epicID: epicID, request: text)
         }
     }
 }
