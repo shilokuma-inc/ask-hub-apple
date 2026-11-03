@@ -6,6 +6,7 @@ Swift（`AskHubKit` の `AskHubProtocol`）と、後から作る Kotlin のク�
 | 場所 | 中身 |
 | --- | --- |
 | `schemas/` | JSON Schema（draft 2020-12） |
+| `vectors/identifiers.json` | パスに使う値（ULID・リポジトリの owner/name・鍵の id）と時刻の、受け付ける値と受け付けない値の例（`schemas/common.schema.json`） |
 | `vectors/canonical-json.json` | RFC 8785 で JSON の値をそろえる例と、受け付けない値の例 |
 | `vectors/intent-signature.json` | 人の意図の封筒の署名と、確かめた結果の例 |
 | `vectors/marker.json` | コメントから目印を読む例と、目印を書く例 |
