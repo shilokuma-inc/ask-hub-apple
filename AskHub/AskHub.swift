@@ -48,6 +48,10 @@ struct AskHub: App {
                 // 設定でデモの場面を変えたら、その場面のデータで作り直す（撮影モードは標準の場面のまま）
                 .onChange(of: scenario) {
                     store = Self.makeStore(scenario: ScreenshotDemo.isEnabled ? .standard : scenario)
+                    // 撮影モードでは、起動引数で開いた撮る画面を残す
+                    guard !ScreenshotDemo.isEnabled else {
+                        return
+                    }
                     navigator.selection = nil
                     navigator.paths = [:]
                 }
