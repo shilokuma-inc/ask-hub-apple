@@ -60,12 +60,15 @@ public struct AttemptRecorder: Sendable {
         message: String,
         _ change: (inout AttemptFile) -> Void
     ) async throws(StateFileStore.Failure) -> AttemptFile {
-        try await files.update(AttemptFile.self, at: path(job, attempt.number), message: message) { file in
-            // 終わった試行は書き換えない
-            guard file.outcome == .running else { return false }
+        let mac = self.mac
+        let current = try await files.update(AttemptFile.self, at: path(job, attempt.number), message: message) { file in
+            // ほかの Mac の試行と、終わった試行は書き換えない
+            guard file.mac == mac, file.outcome == .running else { return false }
             change(&file)
             return true
         }.file
+        guard current.mac == mac else { throw .invalidFile("ほかの Mac（\(current.mac)）の試行は書き換えない") }
+        return current
     }
 
     private func path(_ job: JobFile, _ number: Int) -> String {
