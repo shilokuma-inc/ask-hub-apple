@@ -65,7 +65,7 @@ private struct RepositoryRow: View {
     }
 }
 
-/// リポジトリの詳細（進めている epic・回してよい Mac・リリース）
+/// リポジトリの詳細（進めている epic・リリース）
 struct RepositoryDetailView: View {
     let repositoryID: TargetRepository.ID
 
@@ -92,11 +92,6 @@ struct RepositoryDetailView: View {
                         Text("ありません").foregroundStyle(.secondary)
                     }
                 }
-                Section("回してよい Mac") {
-                    ForEach(store.snapshot?.allowedMacs(for: repositoryID) ?? []) { mac in
-                        LabeledContent(mac.name) { ConnectionBadge(mac: mac) }
-                    }
-                }
                 Section {
                     Label("リリースの画面は、リリースの段階で作ります", systemImage: "shippingbox")
                         .foregroundStyle(.secondary)
@@ -118,7 +113,6 @@ struct AddRepositorySheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var selectedID: TargetRepository.ID?
-    @State private var allowedMacIDs: Set<Mac.ID> = []
 
     var body: some View {
         let candidates = (store.snapshot?.candidateRepositories ?? []).filter {
@@ -136,15 +130,6 @@ struct AddRepositorySheet: View {
                     .pickerStyle(.inline)
                     .labelsHidden()
                 }
-                Section {
-                    ForEach(store.snapshot?.macs ?? []) { mac in
-                        Toggle(mac.name, isOn: binding(for: mac.id))
-                    }
-                } header: {
-                    Text("回してよい Mac")
-                } footer: {
-                    Text("業務の技術検証のリポジトリは、社用の Mac だけを選びます")
-                }
             }
             .searchable(text: $query, prompt: "名前で探す")
             .pastelBackground()
@@ -159,24 +144,12 @@ struct AddRepositorySheet: View {
                             return
                         }
                         Task {
-                            await store.send(.addRepository(repositoryID: selectedID, allowedMacIDs: Array(allowedMacIDs)))
+                            await store.send(.addRepository(repositoryID: selectedID))
                             dismiss()
                         }
                     }
-                    .disabled(selectedID == nil || allowedMacIDs.isEmpty)
+                    .disabled(selectedID == nil)
                 }
-            }
-        }
-    }
-
-    private func binding(for id: Mac.ID) -> Binding<Bool> {
-        Binding {
-            allowedMacIDs.contains(id)
-        } set: { isOn in
-            if isOn {
-                allowedMacIDs.insert(id)
-            } else {
-                allowedMacIDs.remove(id)
             }
         }
     }

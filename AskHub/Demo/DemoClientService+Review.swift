@@ -78,6 +78,7 @@ extension DemoClientService {
             epic.activities = []
             epic.log("\(name) に引き継ぎました", at: date)
         }
+        state.recordLastMac(macID, forEpic: epicID)
         resumeImplementation(epicID: epicID)
     }
 

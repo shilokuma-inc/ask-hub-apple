@@ -81,6 +81,14 @@ extension ClientSnapshot {
         }
         change(&macs[index])
     }
+
+    /// その epic のリポジトリを前回回した Mac を覚える（次に開始するときの既定）
+    mutating func recordLastMac(_ macID: Mac.ID, forEpic epicID: Epic.ID) {
+        guard let repositoryID = epic(epicID)?.repositoryID, let index = repositories.firstIndex(where: { $0.id == repositoryID }) else {
+            return
+        }
+        repositories[index].lastMacID = macID
+    }
 }
 
 extension Epic {

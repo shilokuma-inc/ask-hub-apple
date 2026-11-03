@@ -11,8 +11,8 @@ struct TargetRepository: Identifiable, Hashable {
     /// アプリの表示名。カードや一覧で、どのアプリの判断かを一目で分かるようにアイコンと並べて出す
     var appName: String
     var icon: RepositoryIcon
-    /// このリポジトリの実装を回してよい Mac
-    var allowedMacIDs: [Mac.ID]
+    /// 前回このリポジトリを回した Mac。開始のときに既定で選ぶ。まだ回していなければ nil
+    var lastMacID: Mac.ID?
 
     var fullName: String { "\(owner)/\(name)" }
 }
