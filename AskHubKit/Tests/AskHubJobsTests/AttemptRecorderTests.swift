@@ -68,6 +68,16 @@ struct AttemptRecorderTests {
         #expect(try await stored(memory, job, 1) == finished)
     }
 
+    @Test func doesNotRewriteAnotherMacsAttempt() async throws {
+        let memory = InMemoryStateStore()
+        let job = Sample.job(mac: Sample.macMini)
+        let others = try await recorder(memory, mac: Sample.macMini).start(job)
+        let mine = recorder(memory)
+        await #expect(throws: StateFileStore.Failure.self) { try await mine.beat(others, of: job) }
+        await #expect(throws: StateFileStore.Failure.self) { try await mine.finish(others, of: job, failure: nil) }
+        #expect(try await stored(memory, job, 1) == others)
+    }
+
     @Test func workerAndCommanderAgreeThroughStateFiles() async throws {
         let memory = InMemoryStateStore()
         let recorder = recorder(memory)

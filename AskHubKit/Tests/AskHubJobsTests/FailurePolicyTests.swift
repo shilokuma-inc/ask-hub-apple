@@ -3,6 +3,18 @@ import AskHubProtocol
 import Foundation
 import Testing
 
+struct LivenessTests {
+    /// 1 秒未満の期限も、切り捨てずに比べる
+    @Test func comparesSubsecondLimits() {
+        var timing = JobTiming()
+        timing.attemptStaleAfter = .milliseconds(500)
+        let attempt = Fixtures.attempt(1)
+        let mac = Fixtures.mac(seenMinute: 0)
+        #expect(AttemptLiveness.of(attempt, mac: mac, now: Fixtures.start.addingTimeInterval(0.3), timing: timing) == .alive)
+        #expect(AttemptLiveness.of(attempt, mac: mac, now: Fixtures.start.addingTimeInterval(0.7), timing: timing) == .stalled)
+    }
+}
+
 struct FailurePolicyTests {
     private let policy = FailurePolicy()
     private let now = Fixtures.start
@@ -52,6 +64,12 @@ struct FailurePolicyTests {
         #expect(decide(.githubOutage) == after(minutes: 1))
         #expect(decide(.githubOutage, [.githubOutage]) == after(minutes: 2))
         #expect(decide(.githubOutage, Array(repeating: .githubOutage, count: 9)) == after(minutes: 30))
+    }
+
+    @Test func emptyOutageWaitsFallBackToOneMinute() {
+        var policy = FailurePolicy()
+        policy.outageWaits = []
+        #expect(policy.decide(.githubOutage, retryAt: nil, earlier: [.githubOutage], now: now) == after(minutes: 1))
     }
 
     @Test func timeoutIsRetriedOnceInARow() {

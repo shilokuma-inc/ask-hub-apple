@@ -69,6 +69,21 @@ struct JobReconcilerTests {
         #expect(second.attempts == 2)
     }
 
+    /// 時間切れとみなして試し直しにした後に、元のワーカーが成功を書いたら、もう一度流さずに成功にする
+    @Test func lateSuccessAfterTimeoutFinishesJob() {
+        let retried = reconcile(Sample.job(state: .running, attempts: 1), [Sample.attempt(1)], macSeen: 19, at: 20)
+        #expect(retried.state == .assigned)
+        let succeeded = reconcile(retried, [Sample.attempt(1, heartbeatMinute: 21, succeeded: true)], macSeen: 21, at: 22)
+        #expect(succeeded.state == .succeeded)
+        #expect(succeeded.nextRunAt == nil)
+        // 次の試行が始まった後でも、前の試行の成功を採る
+        let both = [Sample.attempt(1, heartbeatMinute: 21, succeeded: true), Sample.attempt(2, startedMinute: 21)]
+        #expect(reconcile(retried, both, macSeen: 21, at: 22).state == .succeeded)
+        // 人に渡した後に成功したときも、成功で終える
+        let waiting = Sample.job(state: .waitingHuman, attempts: 1)
+        #expect(reconcile(waiting, [Sample.attempt(1, succeeded: true)]).state == .succeeded)
+    }
+
     @Test func offlineMacPausesAndResumes() {
         let paused = reconcile(Sample.job(state: .running, attempts: 1), [Sample.attempt(1)], macSeen: 0, at: 40)
         #expect(paused.state == .paused)
@@ -90,6 +105,12 @@ struct JobReconcilerTests {
     func settledJobsIgnoreAttempts(state: JobState) {
         let job = Sample.job(state: state)
         #expect(reconcile(job, [Sample.attempt(1, failure: .testFailed), Sample.attempt(2)]) == job)
+    }
+
+    @Test(arguments: [JobState.queued, .failed, .canceled])
+    func settledJobsIgnoreLateSuccess(state: JobState) {
+        let job = Sample.job(state: state)
+        #expect(reconcile(job, [Sample.attempt(1, succeeded: true)]) == job)
     }
 
     @Test func attemptsOfOtherJobsAreIgnored() {
