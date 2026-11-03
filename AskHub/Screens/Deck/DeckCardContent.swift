@@ -171,8 +171,11 @@ struct DeckCardHeader: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
+        // 帯の地は角の無い四角にする。形を決めないと外側の形に合わせた角丸になり、警告の帯の下に置いたときに角が崩れて見える
+        // （札の角はカードの切り抜きで付く）
         .background(
-            LinearGradient(colors: [tint.opacity(0.32), tint.opacity(0.10)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(colors: [tint.opacity(0.32), tint.opacity(0.10)], startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: .rect
         )
         .accessibilityElement(children: .combine)
     }
