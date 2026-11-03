@@ -1,0 +1,131 @@
+{
+  "description": "人の意図の署名と確かめ方のテスト用の例。keys の秘密鍵はテスト専用で、本番では使わない（docs/renewal/protocol.md）",
+  "keys": {
+    "key1": {
+      "privateKeyRaw": "HtJEVOLxRmLAswOWRPjTtXHCwKuI9XVRiMTd8z2eerI",
+      "publicKeyDer": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+      "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y"
+    },
+    "key2": {
+      "privateKeyRaw": "YqHk8bJYSK22-C0PY0r9dAvbSR_DLXW2nEusMxc4-Hs",
+      "publicKeyDer": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+      "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8"
+    }
+  },
+  "body": "回答: 日ごと\n夜間はもっと長くてもよい。",
+  "bodySha256": "27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742",
+  "envelope": {
+    "v": 1,
+    "kind": "answer",
+    "repo": "shilokuma-inc/askhub-sandbox",
+    "target": {
+      "type": "question",
+      "epic": "01JCTESTEPIC0000000000000",
+      "id": "q1"
+    },
+    "targetVersion": "1",
+    "bodySha256": "27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742",
+    "payload": {
+      "mode": "answer",
+      "choice": "日ごと",
+      "note": "夜間はもっと長くてもよい。"
+    },
+    "issuedAt": "2026-11-03T10:00:00Z",
+    "nonce": "01JCTESTNONCE000000000000",
+    "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y"
+  },
+  "canonical": "{\"bodySha256\":\"27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742\",\"issuedAt\":\"2026-11-03T10:00:00Z\",\"keyId\":\"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y\",\"kind\":\"answer\",\"nonce\":\"01JCTESTNONCE000000000000\",\"payload\":{\"choice\":\"日ごと\",\"mode\":\"answer\",\"note\":\"夜間はもっと長くてもよい。\"},\"repo\":\"shilokuma-inc/askhub-sandbox\",\"target\":{\"epic\":\"01JCTESTEPIC0000000000000\",\"id\":\"q1\",\"type\":\"question\"},\"targetVersion\":\"1\",\"v\":1}",
+  "signature": "3dwRh9wSH-bBEuoI1M52RrQbWXRz58-XZni-DSE-TjFwgFSrW7TTgQ-TgsDQRc9DLgv7gN8kpVwsFEdzWm6HaQ",
+  "cases": [
+    {
+      "name": "valid",
+      "text": "回答: 日ごと\n夜間はもっと長くてもよい。\n\n<!-- askhub v1 {\"envelope\":{\"bodySha256\":\"27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742\",\"issuedAt\":\"2026-11-03T10:00:00Z\",\"keyId\":\"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y\",\"kind\":\"answer\",\"nonce\":\"01JCTESTNONCE000000000000\",\"payload\":{\"choice\":\"日ごと\",\"mode\":\"answer\",\"note\":\"夜間はもっと長くてもよい。\"},\"repo\":\"shilokuma-inc/askhub-sandbox\",\"target\":{\"epic\":\"01JCTESTEPIC0000000000000\",\"id\":\"q1\",\"type\":\"question\"},\"targetVersion\":\"1\",\"v\":1},\"sig\":\"3dwRh9wSH-bBEuoI1M52RrQbWXRz58-XZni-DSE-TjFwgFSrW7TTgQ-TgsDQRc9DLgv7gN8kpVwsFEdzWm6HaQ\",\"type\":\"intent\"} -->",
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "valid"
+    },
+    {
+      "name": "valid-crlf-and-trailing-space",
+      "text": "回答: 日ごと\r\n夜間はもっと長くてもよい。\r\n\r\n<!-- askhub v1 {\"envelope\":{\"bodySha256\":\"27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742\",\"issuedAt\":\"2026-11-03T10:00:00Z\",\"keyId\":\"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y\",\"kind\":\"answer\",\"nonce\":\"01JCTESTNONCE000000000000\",\"payload\":{\"choice\":\"日ごと\",\"mode\":\"answer\",\"note\":\"夜間はもっと長くてもよい。\"},\"repo\":\"shilokuma-inc/askhub-sandbox\",\"target\":{\"epic\":\"01JCTESTEPIC0000000000000\",\"id\":\"q1\",\"type\":\"question\"},\"targetVersion\":\"1\",\"v\":1},\"sig\":\"3dwRh9wSH-bBEuoI1M52RrQbWXRz58-XZni-DSE-TjFwgFSrW7TTgQ-TgsDQRc9DLgv7gN8kpVwsFEdzWm6HaQ\",\"type\":\"intent\"} -->  \r\n",
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "valid"
+    },
+    {
+      "name": "body-changed",
+      "text": "回答: 日ごと\n夜間はもっと長くてもよい。（追記）\n\n<!-- askhub v1 {\"envelope\":{\"bodySha256\":\"27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742\",\"issuedAt\":\"2026-11-03T10:00:00Z\",\"keyId\":\"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y\",\"kind\":\"answer\",\"nonce\":\"01JCTESTNONCE000000000000\",\"payload\":{\"choice\":\"日ごと\",\"mode\":\"answer\",\"note\":\"夜間はもっと長くてもよい。\"},\"repo\":\"shilokuma-inc/askhub-sandbox\",\"target\":{\"epic\":\"01JCTESTEPIC0000000000000\",\"id\":\"q1\",\"type\":\"question\"},\"targetVersion\":\"1\",\"v\":1},\"sig\":\"3dwRh9wSH-bBEuoI1M52RrQbWXRz58-XZni-DSE-TjFwgFSrW7TTgQ-TgsDQRc9DLgv7gN8kpVwsFEdzWm6HaQ\",\"type\":\"intent\"} -->",
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "bodyMismatch"
+    },
+    {
+      "name": "unknown-key",
+      "text": "回答: 日ごと\n夜間はもっと長くてもよい。\n\n<!-- askhub v1 {\"envelope\":{\"bodySha256\":\"27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742\",\"issuedAt\":\"2026-11-03T10:00:00Z\",\"keyId\":\"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y\",\"kind\":\"answer\",\"nonce\":\"01JCTESTNONCE000000000000\",\"payload\":{\"choice\":\"日ごと\",\"mode\":\"answer\",\"note\":\"夜間はもっと長くてもよい。\"},\"repo\":\"shilokuma-inc/askhub-sandbox\",\"target\":{\"epic\":\"01JCTESTEPIC0000000000000\",\"id\":\"q1\",\"type\":\"question\"},\"targetVersion\":\"1\",\"v\":1},\"sig\":\"3dwRh9wSH-bBEuoI1M52RrQbWXRz58-XZni-DSE-TjFwgFSrW7TTgQ-TgsDQRc9DLgv7gN8kpVwsFEdzWm6HaQ\",\"type\":\"intent\"} -->",
+      "trustedKeys": [
+        "key2"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "unknownKey"
+    },
+    {
+      "name": "signature-tampered",
+      "text": "回答: 日ごと\n夜間はもっと長くてもよい。\n\n<!-- askhub v1 {\"envelope\":{\"bodySha256\":\"27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742\",\"issuedAt\":\"2026-11-03T10:00:00Z\",\"keyId\":\"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y\",\"kind\":\"answer\",\"nonce\":\"01JCTESTNONCE000000000000\",\"payload\":{\"choice\":\"日ごと\",\"mode\":\"answer\",\"note\":\"夜間はもっと長くてもよい。\"},\"repo\":\"shilokuma-inc/askhub-sandbox\",\"target\":{\"epic\":\"01JCTESTEPIC0000000000000\",\"id\":\"q1\",\"type\":\"question\"},\"targetVersion\":\"1\",\"v\":1},\"sig\":\"3dwRh9wSH-bBEuoI1M52RrQbWXRz58-XZni-DSE-AjFwgFSrW7TTgQ-TgsDQRc9DLgv7gN8kpVwsFEdzWm6HaQ\",\"type\":\"intent\"} -->",
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "badSignature"
+    },
+    {
+      "name": "envelope-tampered",
+      "text": "回答: 日ごと\n夜間はもっと長くてもよい。\n\n<!-- askhub v1 {\"envelope\":{\"bodySha256\":\"27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742\",\"issuedAt\":\"2026-11-03T10:00:00Z\",\"keyId\":\"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y\",\"kind\":\"answer\",\"nonce\":\"01JCTESTNONCE000000000000\",\"payload\":{\"choice\":\"日ごと\",\"mode\":\"answer\",\"note\":\"夜間はもっと長くてもよい。\"},\"repo\":\"shilokuma-inc/askhub-sandbox\",\"target\":{\"epic\":\"01JCTESTEPIC0000000000000\",\"id\":\"q1\",\"type\":\"question\"},\"targetVersion\":\"2\",\"v\":1},\"sig\":\"3dwRh9wSH-bBEuoI1M52RrQbWXRz58-XZni-DSE-TjFwgFSrW7TTgQ-TgsDQRc9DLgv7gN8kpVwsFEdzWm6HaQ\",\"type\":\"intent\"} -->",
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "badSignature"
+    },
+    {
+      "name": "expired",
+      "text": "回答: 日ごと\n夜間はもっと長くてもよい。\n\n<!-- askhub v1 {\"envelope\":{\"bodySha256\":\"27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742\",\"issuedAt\":\"2026-11-03T10:00:00Z\",\"keyId\":\"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y\",\"kind\":\"answer\",\"nonce\":\"01JCTESTNONCE000000000000\",\"payload\":{\"choice\":\"日ごと\",\"mode\":\"answer\",\"note\":\"夜間はもっと長くてもよい。\"},\"repo\":\"shilokuma-inc/askhub-sandbox\",\"target\":{\"epic\":\"01JCTESTEPIC0000000000000\",\"id\":\"q1\",\"type\":\"question\"},\"targetVersion\":\"1\",\"v\":1},\"sig\":\"3dwRh9wSH-bBEuoI1M52RrQbWXRz58-XZni-DSE-TjFwgFSrW7TTgQ-TgsDQRc9DLgv7gN8kpVwsFEdzWm6HaQ\",\"type\":\"intent\"} -->",
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-10T10:00:01Z",
+      "result": "expired"
+    },
+    {
+      "name": "issued-in-future",
+      "text": "回答: 日ごと\n夜間はもっと長くてもよい。\n\n<!-- askhub v1 {\"envelope\":{\"bodySha256\":\"27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742\",\"issuedAt\":\"2026-11-03T10:00:00Z\",\"keyId\":\"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y\",\"kind\":\"answer\",\"nonce\":\"01JCTESTNONCE000000000000\",\"payload\":{\"choice\":\"日ごと\",\"mode\":\"answer\",\"note\":\"夜間はもっと長くてもよい。\"},\"repo\":\"shilokuma-inc/askhub-sandbox\",\"target\":{\"epic\":\"01JCTESTEPIC0000000000000\",\"id\":\"q1\",\"type\":\"question\"},\"targetVersion\":\"1\",\"v\":1},\"sig\":\"3dwRh9wSH-bBEuoI1M52RrQbWXRz58-XZni-DSE-TjFwgFSrW7TTgQ-TgsDQRc9DLgv7gN8kpVwsFEdzWm6HaQ\",\"type\":\"intent\"} -->",
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T09:54:59Z",
+      "result": "issuedInFuture"
+    },
+    {
+      "name": "not-intent",
+      "text": "回答: 日ごと\n夜間はもっと長くてもよい。\n\n<!-- askhub v1 {\"epic\":\"01JCTESTEPIC0000000000000\",\"type\":\"status\"} -->",
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "notIntent"
+    },
+    {
+      "name": "missing-signature",
+      "text": "回答: 日ごと\n夜間はもっと長くてもよい。\n\n<!-- askhub v1 {\"envelope\":{\"bodySha256\":\"27a6cd0b8143a9d9be485759d5ab3ad80e13dbefbd6eca9a29914e55ccadd742\",\"issuedAt\":\"2026-11-03T10:00:00Z\",\"keyId\":\"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y\",\"kind\":\"answer\",\"nonce\":\"01JCTESTNONCE000000000000\",\"payload\":{\"choice\":\"日ごと\",\"mode\":\"answer\",\"note\":\"夜間はもっと長くてもよい。\"},\"repo\":\"shilokuma-inc/askhub-sandbox\",\"target\":{\"epic\":\"01JCTESTEPIC0000000000000\",\"id\":\"q1\",\"type\":\"question\"},\"targetVersion\":\"1\",\"v\":1},\"type\":\"intent\"} -->",
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "malformed"
+    }
+  ]
+}

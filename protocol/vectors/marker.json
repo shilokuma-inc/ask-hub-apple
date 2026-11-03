@@ -1,0 +1,80 @@
+{
+  "description": "コメントの本文から目印を読む。目印は最後の行に 1 つだけ。parsed が false なら目印として読まない",
+  "render": [
+    {
+      "name": "escape-gt",
+      "value": {
+        "type": "status",
+        "text": "a-->b"
+      },
+      "line": "<!-- askhub v1 {\"text\":\"a--\\u003eb\",\"type\":\"status\"} -->"
+    }
+  ],
+  "parse": [
+    {
+      "name": "last-line",
+      "text": "本文の 1 行目\n本文の 2 行目\n\n<!-- askhub v1 {\"epic\":\"01JCTESTEPIC0000000000000\",\"type\":\"status\"} -->",
+      "parsed": true,
+      "body": "本文の 1 行目\n本文の 2 行目",
+      "value": {
+        "type": "status",
+        "epic": "01JCTESTEPIC0000000000000"
+      }
+    },
+    {
+      "name": "marker-only",
+      "text": "<!-- askhub v1 {\"epic\":\"01JCTESTEPIC0000000000000\",\"type\":\"status\"} -->",
+      "parsed": true,
+      "body": "",
+      "value": {
+        "type": "status",
+        "epic": "01JCTESTEPIC0000000000000"
+      }
+    },
+    {
+      "name": "crlf-and-trailing-newlines",
+      "text": "本文\r\n\r\n<!-- askhub v1 {\"epic\":\"01JCTESTEPIC0000000000000\",\"type\":\"status\"} -->\r\n\r\n",
+      "parsed": true,
+      "body": "本文",
+      "value": {
+        "type": "status",
+        "epic": "01JCTESTEPIC0000000000000"
+      }
+    },
+    {
+      "name": "not-last-line",
+      "text": "<!-- askhub v1 {\"epic\":\"01JCTESTEPIC0000000000000\",\"type\":\"status\"} -->\n\nこのあとに本文",
+      "parsed": false
+    },
+    {
+      "name": "quoted",
+      "text": "引用します\n\n> <!-- askhub v1 {\"epic\":\"01JCTESTEPIC0000000000000\",\"type\":\"status\"} -->",
+      "parsed": false
+    },
+    {
+      "name": "earlier-marker-is-body",
+      "text": "<!-- askhub v1 {\"epic\":\"01JCTESTEPIC0000000000000\",\"type\":\"status\"} -->\n\n本文\n\n<!-- askhub v1 {\"epic\":\"2\",\"type\":\"status\"} -->",
+      "parsed": true,
+      "body": "<!-- askhub v1 {\"epic\":\"01JCTESTEPIC0000000000000\",\"type\":\"status\"} -->\n\n本文",
+      "value": {
+        "type": "status",
+        "epic": "2"
+      }
+    },
+    {
+      "name": "not-object",
+      "text": "<!-- askhub v1 [1,2] -->",
+      "parsed": false
+    },
+    {
+      "name": "fraction",
+      "text": "<!-- askhub v1 {\"a\":1.5} -->",
+      "parsed": false
+    },
+    {
+      "name": "other-version",
+      "text": "<!-- askhub v2 {\"type\":\"status\"} -->",
+      "parsed": false
+    }
+  ]
+}
