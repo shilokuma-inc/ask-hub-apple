@@ -102,6 +102,32 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["習慣ログ · 質問 Q2 / 4: 共有シートだけ"].waitForExistence(timeout: 5))
     }
 
+    #if os(iOS)
+    /// 自由記述のカードでは、キーボードの上の「完了」と、入力欄より上を叩くことでキーボードを閉じられる
+    @MainActor
+    func testFreeTextCardClosesKeyboard() {
+        let app = launch(["-demoScenario", "standard", "-demoOpen", "deck:questions:habit-export"], reactionDelay: 600)
+        let card = app.otherElements["deckCard.top"]
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        // Q2 に答えて、自由記述の Q3 を前に出す
+        card.buttons["共有シートだけ（左下へスワイプ）"].tap()
+        let title = card.staticTexts["ファイル名の決まり"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        let field = card.descendants(matching: .any)["deckCard.freeText"]
+        let keyboard = app.keyboards.firstMatch
+
+        field.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        app.buttons["keyboard-done"].tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+
+        field.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        title.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+    }
+    #endif
+
     /// 進行中・Mac・リポジトリのタブを開ける
     @MainActor
     func testTabsOpen() {
