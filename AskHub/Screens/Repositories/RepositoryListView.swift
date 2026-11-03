@@ -23,7 +23,7 @@ struct RepositoryListView: View {
         .overlay {
             LoadStateOverlay(
                 isEmpty: repositories.isEmpty,
-                empty: ContentUnavailableView("対象のリポジトリはありません", systemImage: "square.stack.3d.up")
+                empty: ContentUnavailableView("対象のリポジトリはありません", systemImage: "folder")
             )
         }
         .pastelBackground()

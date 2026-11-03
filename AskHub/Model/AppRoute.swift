@@ -23,7 +23,7 @@ enum AppSection: String, Hashable, CaseIterable, Identifiable {
         case .inbox: "tray.full"
         case .progress: "arrow.triangle.2.circlepath"
         case .macs: "laptopcomputer"
-        case .repositories: "square.stack.3d.up"
+        case .repositories: "folder"
         }
     }
 }
