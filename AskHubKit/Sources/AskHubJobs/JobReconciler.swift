@@ -15,9 +15,10 @@ public enum JobReconciler {
         policy: FailurePolicy = FailurePolicy(),
         timing: JobTiming = JobTiming()
     ) -> JobFile {
+        let ownAttempts = attempts.filter { $0.job == job.id }.sorted { $0.number < $1.number }
+        if let finished = finishedBySuccess(job, ownAttempts, now: now) { return finished }
         // 人の意図（やり直す・やめる）を待っているもの、終わったもの、まだ割り当てていないものは、試行では動かさない
         guard [.assigned, .running, .paused].contains(job.state) else { return job }
-        let ownAttempts = attempts.filter { $0.job == job.id }.sorted { $0.number < $1.number }
         guard let latest = ownAttempts.last else { return job }
         // 新しい試行か、前に見た試行（実行中・一時停止中）の続きだけを扱う
         let isNew = latest.number > job.attempts
@@ -29,13 +30,8 @@ public enum JobReconciler {
         let earlier = Array(ownAttempts.dropLast().compactMap(earlierFailure))
         switch latest.outcome {
         case .running:
-            switch AttemptLiveness.of(latest, mac: mac, now: now, timing: timing) {
-            case .alive:
-                next.state = .running
-            case .macOffline:
-                next.state = .paused
-            case .stalled:
-                apply(policy.decide(.timeout, retryAt: nil, earlier: earlier, now: now), to: &next)
+            apply(AttemptLiveness.of(latest, mac: mac, now: now, timing: timing), to: &next) {
+                policy.decide(.timeout, retryAt: nil, earlier: earlier, now: now)
             }
         case .succeeded:
             next.state = .succeeded
@@ -45,6 +41,30 @@ public enum JobReconciler {
         }
         if next != job { next.updatedAt = Timestamp(now) }
         return next
+    }
+
+    /// どの試行でも成功が書かれたら、ジョブは成功にする。時間切れとみなした後に元のワーカーが成功を書いたときも、
+    /// 同じ作業をもう一度流さない（人に渡した後に成功したときも、成功で終える）
+    private static func finishedBySuccess(_ job: JobFile, _ attempts: [AttemptFile], now: Date) -> JobFile? {
+        guard [.assigned, .running, .paused, .waitingHuman].contains(job.state),
+              let succeeded = attempts.last(where: { $0.outcome == .succeeded }) else {
+            return nil
+        }
+        var next = job
+        next.state = .succeeded
+        next.attempts = max(job.attempts, succeeded.number)
+        next.nextRunAt = nil
+        if next != job { next.updatedAt = Timestamp(now) }
+        return next
+    }
+
+    /// 実行中の試行の様子を当てる。止まっていれば、時間切れとして `stalled` の扱いを当てる
+    private static func apply(_ liveness: AttemptLiveness, to job: inout JobFile, stalled: () -> FailureDecision) {
+        switch liveness {
+        case .alive: job.state = .running
+        case .macOffline: job.state = .paused
+        case .stalled: apply(stalled(), to: &job)
+        }
     }
 
     private static func apply(_ decision: FailureDecision, to job: inout JobFile) {
