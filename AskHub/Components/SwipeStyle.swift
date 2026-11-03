@@ -90,6 +90,8 @@ struct SwipeChoiceRow: View {
     let drag: SwipeDragState
     var keyHint: String?
 
+    @ContentScale private var scale
+
     /// 向かっている行の枠の太さ。動かすほど太くし、決まる量を超えたらはっきり太くする（ユーザーの要望）
     private var borderWidth: CGFloat {
         guard drag.candidate == index else {
@@ -104,7 +106,7 @@ struct SwipeChoiceRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: direction.systemImage)
                 .appFont(.caption, weight: .bold)
-                .frame(width: 22, height: 22)
+                .frame(width: 22 * scale, height: 22 * scale)
                 .background(color, in: .circle)
                 .overlay(Circle().strokeBorder(.background.opacity(0.6), lineWidth: 1))
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
@@ -137,7 +139,8 @@ struct SwipeChoiceRow: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // 押して選ぶ当たりは、テキストサイズを小さくしても HIG の 44pt を下回らない
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .background(color, in: shape)
         .overlay(shape.strokeBorder(direction.edge, lineWidth: borderWidth))
         .contentShape(.rect(cornerRadius: 12))

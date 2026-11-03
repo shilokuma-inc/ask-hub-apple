@@ -116,6 +116,7 @@ struct CleanupView: View {
                     .controlSize(.large)
                     .disabled(selectedIDs.isEmpty)
                     .padding(.vertical, 10)
+                    .keepsControlSize()
             }
         }
         .confirmationDialog("\(selectedIDs.count) 件を消しますか？", isPresented: $isConfirming, titleVisibility: .visible) {

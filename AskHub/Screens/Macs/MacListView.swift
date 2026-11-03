@@ -33,12 +33,14 @@ struct MacListView: View {
 struct MacRow: View {
     let mac: Mac
 
+    @ContentScale private var scale
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: mac.role == .commandCenter ? "macmini" : "laptopcomputer")
                 .appFont(.title2)
                 .foregroundStyle(mac.isOnline ? Theme.accent : Color.secondary)
-                .frame(width: 40, height: 40)
+                .frame(width: 40 * scale, height: 40 * scale)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(mac.name).appFont(.headline)

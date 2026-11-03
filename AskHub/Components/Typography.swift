@@ -59,6 +59,31 @@ extension View {
     func appFont(_ style: Font.TextStyle, weight: Font.Weight? = nil) -> some View {
         font(AppFont.font(style, weight: weight))
     }
+
+    /// 操作の部品（ボタン・操作の帯・入力欄）は、テキストサイズを小さくしても標準より小さくしない。
+    /// 押しやすさ（HIG の 44pt の当たり）を保ったまま、中身だけを小さくして一画面に多く見せる（ユーザーの要望。2026-11-03）
+    func keepsControlSize() -> some View {
+        dynamicTypeSize(.large...)
+    }
+}
+
+/// 中身の寸法（アプリのアイコン・印）を、文字の大きさの設定に合わせて伸び縮みさせる倍率（本文の大きさの、標準との比）。
+/// 文字だけが縮んでアイコンが固定だと、テキストサイズを小さくしても行の高さが変わらないため（ユーザーの要望。2026-11-03）。
+/// `@ScaledMetric` は標準より小さい設定では 1 のままで縮まないので、テキストサイズの段階から求める。
+/// 大きくする側は 1.6 倍で止める（アクセシビリティの大きさで、アイコンが一覧を埋めないように）。`@ContentScale private var scale` で使う
+@propertyWrapper
+struct ContentScale: DynamicProperty {
+    @Environment(\.dynamicTypeSize) private var size
+
+    var wrappedValue: CGFloat {
+        min((Self.bodySizes[size] ?? 17) / 17, 1.6)
+    }
+
+    /// テキストサイズの段階ごとの本文（body）の大きさ（pt）。iOS の Dynamic Type の表と同じ
+    private static let bodySizes: [DynamicTypeSize: CGFloat] = [
+        .xSmall: 14, .small: 15, .medium: 16, .large: 17, .xLarge: 19, .xxLarge: 21, .xxxLarge: 23,
+        .accessibility1: 28, .accessibility2: 33, .accessibility3: 40, .accessibility4: 47, .accessibility5: 53
+    ]
 }
 
 private extension Font.TextStyle {

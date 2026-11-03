@@ -148,14 +148,18 @@ private struct InboxEmptyView: View {
 
 /// Mac の項目のアイコン
 struct MacIconView: View {
+    /// テキストサイズが標準のときの大きさ。設定に合わせて伸び縮みする（ContentScale）
     var size: CGFloat = 40
 
+    @ContentScale private var scale
+
     var body: some View {
+        let side = size * scale
         Image(systemName: "laptopcomputer")
-            .font(.system(size: size * 0.45, weight: .semibold))
+            .font(.system(size: side * 0.45, weight: .semibold))
             .foregroundStyle(.secondary)
-            .frame(width: size, height: size)
-            .background(.quaternary, in: .rect(cornerRadius: size * 0.225, style: .continuous))
+            .frame(width: side, height: side)
+            .background(.quaternary, in: .rect(cornerRadius: side * 0.225, style: .continuous))
             .accessibilityHidden(true)
     }
 }

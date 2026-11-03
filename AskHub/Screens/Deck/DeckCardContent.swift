@@ -84,6 +84,7 @@ struct DeckCardContent: View {
                 .buttonStyle(.glassProminent)
                 .disabled(freeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
+        .keepsControlSize()
     }
 
     @ViewBuilder private var contextNotes: some View {

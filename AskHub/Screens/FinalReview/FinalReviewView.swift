@@ -24,6 +24,7 @@ struct FinalReviewView: View {
             .hidesTabBar()
             .safeAreaBar(edge: .bottom) {
                 MergeBar(review: review) { isConfirmingMerge = true }
+                    .keepsControlSize()
             }
             .sheet(item: $shownDecision) { decision in
                 DecisionSheet(epicID: epic.id, decision: decision)

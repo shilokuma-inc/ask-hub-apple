@@ -3,12 +3,16 @@ import SwiftUI
 /// 対象のアプリのアイコン。どのアプリの判断かを一目で分かるように、一覧・カード・epic の見出しに出す
 struct AppIconView: View {
     let repository: TargetRepository?
+    /// テキストサイズが標準のときの大きさ。設定に合わせて伸び縮みする（ContentScale）
     var size: CGFloat = 40
 
+    @ContentScale private var scale
+    private var side: CGFloat { size * scale }
+
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: side * 0.225, style: .continuous)
         content
-            .frame(width: size, height: size)
+            .frame(width: side, height: side)
             .clipShape(shape)
             .overlay(shape.strokeBorder(.separator, lineWidth: 0.5))
             .accessibilityHidden(true)
@@ -28,7 +32,7 @@ struct AppIconView: View {
                 // 上を少し明るくしたパステルのグラデーション
                 LinearGradient(colors: [tint.color.mix(with: .white, by: 0.2), tint.color], startPoint: .top, endPoint: .bottom)
                 Image(systemName: name)
-                    .font(.system(size: size * 0.5, weight: .semibold))
+                    .font(.system(size: side * 0.5, weight: .semibold))
                     .foregroundStyle(.white)
             }
 
@@ -41,7 +45,7 @@ struct AppIconView: View {
         ZStack {
             Color.secondary.opacity(0.25)
             Text(String(repository?.appName.prefix(1) ?? "?"))
-                .font(.system(size: size * 0.46, weight: .semibold, design: .rounded))
+                .font(.system(size: side * 0.46, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
         }
     }
