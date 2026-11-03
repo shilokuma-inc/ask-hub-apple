@@ -20,6 +20,7 @@
     },
     "finalPullRequest": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
     "goalVersion": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }], "description": "開始したときのゴールの版" },
+    "origin": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/intentReference" }, { "type": "null" }], "description": "元になった依頼の人の意図" },
     "createdAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
     "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
   }

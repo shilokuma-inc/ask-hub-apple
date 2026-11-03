@@ -41,6 +41,29 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
       "maxLength": 64
+    },
+    "localId": {
+      "description": "質問・タスクなどの epic の中の id。英小文字で始まり、英小文字・数字・ハイフンで 1〜32 文字",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$",
+      "maxLength": 32
+    },
+    "intentReference": {
+      "description": "人の意図への参照（intents/<keyId>/<nonce>.json）",
+      "type": "object",
+      "required": [
+        "keyId",
+        "nonce"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "keyId": {
+          "$ref": "#/$defs/keyId"
+        },
+        "nonce": {
+          "$ref": "#/$defs/ulid"
+        }
+      }
     }
   }
 }
