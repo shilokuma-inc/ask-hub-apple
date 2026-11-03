@@ -8,11 +8,17 @@
 
 | 置き場所 | 置くもの | 読むもの |
 | --- | --- | --- |
-| 状態リポジトリ（private。1 つ） | 機械の状態（対象のリポジトリの設定・epic・ゴール・質問の状態・ジョブ・試行・Mac の印・端末の宛先・公開鍵の記録・公開のスレッドに置かない人の意図） | クライアント・司令塔・ワーカー |
-| 各リポジトリの Discussion | 依頼の要約、質問、回答・説明・おまかせ（人の意図）、説明、ゴールの写し | 人・クライアント・司令塔 |
-| 各リポジトリの PR | 子 PR、最終 PR、判断のカードの写し、最終 PR への指示・カードへの答え・マージの承認（人の意図） | 人・クライアント・司令塔・ワーカー |
+| 状態リポジトリ（private。1 つ） | 機械の状態（対象のリポジトリの設定・epic・ゴール・質問の状態・ジョブ・試行・Mac の印・端末の宛先・公開鍵の記録）、すべての人の意図、依頼の添付 | クライアント・司令塔・ワーカー |
+| 各リポジトリの Discussion | 依頼の要約、質問、説明、回答・おまかせの写し、ゴールの写し（司令塔が書く） | 人 |
+| 各リポジトリの PR | 子 PR、最終 PR、判断のカードの写し、最終 PR への指示・カードへの答え・マージの承認の写し（司令塔・ワーカーが書く） | 人・ワーカー（CI とレビュー） |
 
-人が GitHub の画面で読めるものは各リポジトリに残し、機械が判断に使う正本は状態リポジトリに置く。両方にあるもの（質問・ゴール・判断のカード）は、状態リポジトリが正本で、各リポジトリのものは人が読むための写しとする。
+人が GitHub の画面で読めるものは各リポジトリに残し、機械が判断に使う正本は状態リポジトリに置く。両方にあるもの（質問・ゴール・判断のカード・人の意図）は、状態リポジトリが正本で、各リポジトリのものは人が読むための写しとする。
+
+- クライアントは、人の意図をすべて状態リポジトリの `intents/` に書く。各リポジトリの Discussion・PR には書かない（段階 2 で決めた。ユーザーの確認待ち）
+  - 司令塔が見張るのは状態リポジトリだけになる（ETag つきの読み取りは上限に数えられない。各リポジトリの Discussion を回らずに済む）
+  - public のスレッドに、指示の入口が無くなる（誰でもコメントできる場所を、機械が読まない）
+  - クライアントの書き込みが 1 か所で済む
+- 各リポジトリの写しは、司令塔が書く。写しには機械の目印（`copy`）を付け、指示としては扱わない
 
 ## 状態リポジトリ
 
@@ -35,14 +41,16 @@ macs/<mac>.json                                    ワーカーの生きてい�
 commander.json                                     司令塔の生きている印（司令塔）
 devices/<device>.json                              通知の宛先（その端末のクライアント）
 keys/<seq>.json                                    公開鍵の追記の記録（クライアント。署名つき）
-intents/<device>/<intent>.json                     公開のスレッドに置かない人の意図（クライアント。署名つき）
+intents/<device>/<intent>.json                     人の意図（クライアント。署名つき）
+attachments/<device>/<intent>/<n>                  依頼の添付（クライアント。<n> は 1 からの番号）
 consumed/<device>/<intent>.json                    処理した人の意図の記録（司令塔）
 ```
 
 - `<epic>`・`<job>`・`<intent>` は ULID（時刻の順に並ぶ一意な id）
 - `<mac>` は Mac ごとに決める短い名前（英小文字・数字・ハイフン）、`<device>` は端末の公開鍵の id（下の「署名」）
 - 常時オンの Mac では司令塔とワーカーが両方動くので、1 つのファイルの書き手を 1 つにするため、生きている印を `macs/<mac>.json`（ワーカー）と `commander.json`（司令塔）に分ける
-- リポジトリ単位の作業でない人の意図（対象に加える・保護の設定・Mac の設定など）は、`repos/` の外の `intents/` に置く
+- 人の意図は、リポジトリ単位の作業かどうかにかかわらず、すべて `intents/` に置く
+- 依頼の添付（画像など）は `attachments/` に置く（段階 2 で決めた。ユーザーの確認待ち）。public のリポジトリに上げないので、URL を知っていても見られず、終わった epic と一緒に畳める。添付の名前・大きさ・ハッシュは依頼の封筒に入れ、署名で守る
 - 終わった epic（マージ済み・やめたもの）は、マージかやめてから 30 日後に `archive/` に移し、まとめて畳む
 
 ### 共通の決まり
@@ -88,11 +96,13 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "branch": null,
   "finalPullRequest": null,
   "goalVersion": null,
+  "origin": { "keyId": "…", "nonce": "01JC…" },
   "createdAt": "…",
   "updatedAt": "…"
 }
 ```
 
+- `origin` は、元になった依頼の人の意図
 - `mac` は、開始のときに人が選んだ Mac
 - `branch` は作業ブランチ。git のコマンドに渡しても選択肢に読まれないよう、`-` で始まる値・`..` を含む値・英数字と `._/-` 以外の文字を使わない
 
@@ -128,9 +138,20 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
       "recommended": "日ごと",
       "reason": "今の保存の仕組みのままで作れる",
       "dependsOn": [],
-      "state": "open",
-      "comment": 1234567,
-      "answer": null
+      "round": 1,
+      "state": "answered",
+      "comment": "DC_kwDO…",
+      "explanations": [
+        { "asked": { "keyId": "…", "nonce": "01JC…" }, "note": "集計の保存とは？", "text": "…", "at": "…" }
+      ],
+      "revision": null,
+      "answer": {
+        "mode": "answer",
+        "choice": "日ごと",
+        "note": "夜間はもっと長くてもよい。",
+        "intent": { "keyId": "…", "nonce": "01JC…" },
+        "at": "…"
+      }
     }
   ]
 }
@@ -138,7 +159,12 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - `state` は `locked`（依存先の回答待ち）・`revising`（依存先が決まり、見直し中）・`open`（回答を待つ）・`clarifying`（説明を作成中）・`answered`・`delegated`（おまかせ）
 - `version` は質問を書き直すたびに上げる。回答の人の意図は、回答した質問の `version` を持つ。古い版への回答は受け付けず、知らせる
-- `comment` は、Discussion の質問のコメントの id（人が読むための写し）
+- `round` は、何回目の質問づくりで出た質問か（最初が 1。着手前の確認で足した質問は 2 から）
+- `comment` は、Discussion の質問のコメントの id（人が読むための写し。GraphQL の node id）
+- `explanations` は「説明を求める」と、その説明の記録。クライアントは Discussion を読まずに、質問ごとの説明のやり取りを出せる
+- `revision` は、最後に書き直したときの記録（`{ "from": 1, "reason": "…", "by": "explain" }`。`by` は `explain`（説明のついでに直した）・`dependency`（依存先が決まって見直した））。書き直したことを画面で分かるようにするため
+- `answer` は受け付けた回答（`mode` は `answer`・`delegate`。`delegate` では `choice` が推奨の選択肢）。`intent` は元の人の意図
+- 開始の前に回答を変えたときは、新しい回答で置き換え、依存する質問の回答を取り消して `locked` に戻す
 
 ### goal.json
 
@@ -152,16 +178,27 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "outOfScope": [ "…" ],
   "doneWhen": [ "…" ],
   "tasks": [
-    { "id": "t1", "title": "…", "dependsOn": [], "humanTask": false, "state": "pending" }
+    { "id": "t1", "title": "…", "detail": "…", "dependsOn": ["h1"], "state": "pending" }
   ],
   "humanTasks": [
-    { "id": "h1", "title": "App Store Connect で課金のアイテムを作る", "why": "…", "steps": ["…"], "links": ["…"], "handover": "none", "state": "pending" }
-  ]
+    {
+      "id": "h1",
+      "title": "App Store Connect で課金のアイテムを作る",
+      "why": "…",
+      "steps": ["…"],
+      "links": ["…"],
+      "handover": { "kind": "none" },
+      "state": "pending"
+    }
+  ],
+  "comment": "DC_kwDO…"
 }
 ```
 
 - ゴールを直すたびに `version` を上げる。「開始」の人の意図は、確かめたゴールの `version` を持つ
-- タスクの `state` は `pending`・`locked`（人がする作業の待ち）・`running`・`done`
+- タスクの `state` は `pending`・`locked`（人がする作業の待ち）・`running`・`done`。`dependsOn` には、ほかのタスクと人がする作業の id を書ける
+- 人がする作業の `handover` は、終わったら渡すもの: `none`（「終わった」を押すだけ）・`file`（ファイルを渡す）・`secret`（GitHub の Secrets に入れる。`name` に Secrets の名前。値はどこにも残さない）。扱いは段階 3 で作る
+- `comment` は、Discussion のゴールの写しのコメントの id
 
 ### decisions.json（人が決めていない判断）
 
@@ -203,10 +240,23 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "state": "assigned",
   "attempts": 1,
   "nextRunAt": null,
+  "input": { "question": "q2" },
+  "origin": { "keyId": "…", "nonce": "01JC…" },
   "createdAt": "…",
   "updatedAt": "…"
 }
 ```
+
+- `input` は kind ごとの入力（下の表）。`origin` は、ジョブの元になった人の意図。ワーカーは引き受ける前に、その意図の署名を自分でも確かめる
+
+| kind | input |
+| --- | --- |
+| `makeQuestions` | `{}`（依頼は epic の `origin` の意図から読む） |
+| `explain` | `{ "question": "q2", "asked": { "keyId", "nonce" } }` |
+| `reviseQuestion` | `{ "question": "q4" }` |
+| `checkReadiness` | `{ "round": 1 }` |
+| `reviseGoal` | `{ "instruction": { "keyId", "nonce" } }` |
+| そのほか | 段階 3 で決める |
 
 - `kind` の最初の一覧: `makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`prepareWorkspace`・`implementTask`・`fixTask`・`integrateDevelop`・`verifyBeforeFinal`・`openFinalPullRequest`・`fixFinalPullRequest`・`rerunChecks`・`classifyDecisions`・`captureScreenshots`・`mergeFinalPullRequest`・`cleanUp`・`notify`
 - `state` は `queued`・`assigned`・`running`・`succeeded`・`failed`・`waitingHuman`・`paused`・`canceled`
@@ -321,8 +371,9 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 <!-- askhub v1 {"type":"…", …} -->
 ```
 
-- `type` は、機械が書くもの（`question`・`explanation`・`goal`・`decisions`・`status`・`finalPullRequest` など）と、人の意図（`intent`）
-- 人の意図の目印だけを、指示として扱う（下の「署名」）。機械の目印は、表示と照らし合わせのために使う
+- `type` は、機械が書くもの（`request`・`question`・`explanation`・`goal`・`decisions`・`status`・`finalPullRequest`・`copy` など）
+- 各リポジトリの目印は、表示と照らし合わせのためだけに使い、指示としては扱わない。人の意図は状態リポジトリの `intents/` にだけ置く
+- `copy` は、人の意図の写し（`{"type":"copy","kind":"answer","intent":"<nonce>"}`）。司令塔が、処理した人の意図の中身を人が読める形で書く
 - 引用の中の目印は読まない（目印は、コメントの本文の最後の行でなければならない）
 
 ## 人の意図と署名
@@ -348,6 +399,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 
 | kind | target | targetVersion | payload |
 | --- | --- | --- | --- |
+| `request` | リポジトリ | — | `title`、`body`、`attachments`（`[{ "n": 1, "name": "…", "size": …, "sha256": "…" }]`。中身は `attachments/<device>/<intent>/<n>`） |
 | `answer` | 質問 | 質問の `version` | `mode`（`answer`・`clarify`・`delegate`）、`choice`、`note` |
 | `startEpic` | epic | ゴールの `version` | `mac` |
 | `reviseGoal` | epic | ゴールの `version` | 指示の本文 |
@@ -368,26 +420,17 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 - 署名する文字列は、封筒を RFC 8785（JSON Canonicalization Scheme）でそろえた UTF-8 のバイト列
 - 署名は IEEE P1363 の形（r と s を 32 バイトずつつないだ 64 バイト）を base64url にしたもの（Android の Keystore が返す DER の形は、作る側で変換する）
 - `keyId` は、公開鍵（SubjectPublicKeyInfo の DER）の SHA-256 を base64url にしたもの
-- 人が読む本文は封筒の外に書き、そのハッシュを `bodySha256` に入れる
+- 人が読む中身は封筒の `payload` に入れ、署名で守る（`bodySha256` は、本文を封筒の外に書く目印の形のためのもので、状態リポジトリの意図では使わない）
 
-各リポジトリに書くときは、人が読む本文の後に目印として置く。
-
-```
-回答: 日ごと
-夜間はもっと長くてもよい。
-
-<!-- askhub v1 {"type":"intent","envelope":{…},"sig":"…"} -->
-```
-
-状態リポジトリの `intents/` に置くときは、`{"envelope": …, "sig": "…"}` をそのままファイルにする。人が読む本文を持たないので、封筒に `bodySha256` を入れない（入っていれば受け付けない）。
+人の意図は、状態リポジトリの `intents/<device>/<intent>.json` に `{"envelope": …, "sig": "…"}` をそのままファイルにして置く。人が読む本文は封筒の `payload` に入れるので、`bodySha256` を入れない（入っていれば受け付けない）。各リポジトリの目印として書く形（本文の後の `{"type":"intent",…}`）は、段階 1 で作った部品に残るが、使わない
 
 ### 確かめること
 
 司令塔とワーカーは、人の意図を次の順に確かめ、1 つでも合わなければ指示として扱わない（理由を状態リポジトリに残し、クライアントに知らせる）。
 
 1. 署名が、登録済みで取り消されていない鍵で正しい
-2. 書き手の GitHub のアカウントが、鍵に結びついたアカウントと同じ（共同開発者を足すまでは、1 つのアカウントだけ）
-3. `bodySha256` が、目印の前の本文と一致する
+2. 鍵に結びついたアカウントが、信用するアカウント（共同開発者を足すまでは 1 つ）。状態リポジトリは private で、書けるのは信用するアカウントだけ
+3. 依頼の添付は、`attachments/` のファイルの大きさとハッシュが、封筒の `payload.attachments` と一致する
 4. `target` と `targetVersion` が、今の状態と一致する（古い質問・古いゴール・承認の後に変わった PR への意図は受け付けない）
 5. `nonce` がまだ使われていない（`consumed/` に記録が無い）
 6. `issuedAt` が 7 日より古くない
@@ -436,7 +479,6 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 ## 決めていないこと
 
 - リリースの操作の `kind` と、App Store の素材の形（段階 5）
-- `questions.json`・`goal.json`・`decisions.json` の細部（使う段階 2・3 で、型と JSON Schema を足す）
+- `decisions.json` の細部（段階 3 で、型と JSON Schema を足す）
+- 段階 3 のジョブの `input`
 - `repo.json` に持つビルドの設定（プラットフォーム・テストの行き先・プロジェクトの作り方・スキーム）と、子 PR で待つ CI のチェックの名前（段階 2 の「対象に加える」で足す。[operations.md](operations.md) の「既存のリポジトリを移すとき」）
-- ジョブの元になった人の意図への参照と、`kind` ごとの入力（段階 2・3。ワーカーが、ジョブの元の人の意図の署名を確かめるのに使う）
-- 依頼（新しい epic を始める）の `kind`。上の封筒の表にも、[security.md](security.md) の人の意図の一覧にも無いので、段階 2 で足す
