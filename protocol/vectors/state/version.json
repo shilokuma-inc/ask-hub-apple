@@ -1,0 +1,51 @@
+{
+  "description": "version.json（状態リポジトリ全体の形の版）を読む例。schemaValid は protocol/schemas/state/version.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。知らない欄は、スキーマでは弾くが、読む側は読み飛ばす。スキーマで表せない決まり（欄どうしの関係・存在しない日付など）は、スキーマに合っても読む側が弾く",
+  "schema": "state/version.schema.json",
+  "cases": [
+    {
+      "name": "valid",
+      "value": {
+        "v": 1
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "value": {
+        "v": 1,
+        "futureField": 1
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "future-version",
+      "value": {
+        "v": 2
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    },
+    {
+      "name": "missing-version",
+      "value": {},
+      "schemaValid": false,
+      "read": "missingVersion"
+    },
+    {
+      "name": "not-json",
+      "text": "{\"v\": 1",
+      "schemaValid": false,
+      "read": "notJSON"
+    },
+    {
+      "name": "not-object",
+      "value": [
+        1
+      ],
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

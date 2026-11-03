@@ -1,0 +1,410 @@
+{
+  "description": "repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json（試行）を読む例。schemaValid は protocol/schemas/state/attempt.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。知らない欄は、スキーマでは弾くが、読む側は読み飛ばす。スキーマで表せない決まり（欄どうしの関係・存在しない日付など）は、スキーマに合っても読む側が弾く",
+  "schema": "state/attempt.schema.json",
+  "cases": [
+    {
+      "name": "running",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 1,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "outcome": "running",
+        "claude": {
+          "model": "claude-opus-5-5",
+          "session": "00000000-0000-4000-8000-000000000001",
+          "estimatedCostUsd": 0.42
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "succeeded",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 2,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "failure": null,
+        "outputs": {
+          "pullRequest": 840,
+          "commit": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "claude": null
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "failed",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 3,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "failed",
+        "failure": {
+          "class": "usageLimit",
+          "message": "Claude の利用上限に達した",
+          "logExcerpt": "…",
+          "retryAt": "2026-11-03T10:20:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 2,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "failure": null,
+        "outputs": {
+          "pullRequest": 840,
+          "commit": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "claude": null,
+        "futureField": 1
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "future-version",
+      "value": {
+        "v": 2,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 2,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "failure": null,
+        "outputs": {
+          "pullRequest": 840,
+          "commit": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "claude": null
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    },
+    {
+      "name": "missing-version",
+      "value": {
+        "job": "01JCJ0B0000000000000000001",
+        "n": 2,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "failure": null,
+        "outputs": {
+          "pullRequest": 840,
+          "commit": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "claude": null
+      },
+      "schemaValid": false,
+      "read": "missingVersion"
+    },
+    {
+      "name": "version-not-integer",
+      "value": {
+        "v": "1",
+        "job": "01JCJ0B0000000000000000001",
+        "n": 2,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "failure": null,
+        "outputs": {
+          "pullRequest": 840,
+          "commit": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "claude": null
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-failure-class",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 3,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "failed",
+        "failure": {
+          "class": "oops",
+          "message": "Claude の利用上限に達した",
+          "logExcerpt": "…",
+          "retryAt": "2026-11-03T10:20:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "failure-without-message",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 3,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "failed",
+        "failure": {
+          "class": "usageLimit",
+          "logExcerpt": "…",
+          "retryAt": "2026-11-03T10:20:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "number-zero",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 0,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "failure": null,
+        "outputs": {
+          "pullRequest": 840,
+          "commit": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "claude": null
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "commit-not-sha",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 2,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "failure": null,
+        "outputs": {
+          "commit": "main"
+        },
+        "claude": null
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "pull-request-zero",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 2,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "failure": null,
+        "outputs": {
+          "pullRequest": 0
+        },
+        "claude": null
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "negative-cost",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 1,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "outcome": "running",
+        "claude": {
+          "model": "claude-opus-5-5",
+          "estimatedCostUsd": -1
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-model",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 1,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "outcome": "running",
+        "claude": {
+          "model": ""
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "running-with-ended-at",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 1,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "outcome": "running",
+        "claude": {
+          "model": "claude-opus-5-5",
+          "session": "00000000-0000-4000-8000-000000000001",
+          "estimatedCostUsd": 0.42
+        },
+        "endedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "succeeded-without-ended-at",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 2,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "outcome": "succeeded",
+        "failure": null,
+        "outputs": {
+          "pullRequest": 840,
+          "commit": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "claude": null
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "failed-without-failure",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 3,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "failed",
+        "failure": null
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "succeeded-with-failure",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 2,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "failure": {
+          "class": "usageLimit",
+          "message": "Claude の利用上限に達した",
+          "logExcerpt": "…",
+          "retryAt": "2026-11-03T10:20:00Z"
+        },
+        "outputs": {
+          "pullRequest": 840,
+          "commit": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "claude": null
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "heartbeat-before-start",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 1,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T09:59:59Z",
+        "outcome": "running",
+        "claude": {
+          "model": "claude-opus-5-5",
+          "session": "00000000-0000-4000-8000-000000000001",
+          "estimatedCostUsd": 0.42
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "ended-before-start",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 2,
+        "mac": "macbook-a",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:05:00Z",
+        "endedAt": "2026-11-03T09:59:59Z",
+        "outcome": "succeeded",
+        "failure": null,
+        "outputs": {
+          "pullRequest": 840,
+          "commit": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "claude": null
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    }
+  ]
+}

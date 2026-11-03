@@ -10,7 +10,10 @@ enum Vectors {
         .appendingPathComponent("protocol/vectors")
 
     static func load<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T {
-        let data = try Data(contentsOf: directory.appendingPathComponent(name))
-        return try JSONDecoder().decode(T.self, from: data)
+        try JSONDecoder().decode(T.self, from: data(name))
+    }
+
+    static func data(_ name: String) throws -> Data {
+        try Data(contentsOf: directory.appendingPathComponent(name))
     }
 }
