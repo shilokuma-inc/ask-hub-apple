@@ -174,7 +174,9 @@ extension DemoData {
                 ],
                 recommendedOptionID: "b",
                 recommendationReason: "書き出した後に探しやすい",
-                askedAt: asked
+                askedAt: asked,
+                // 記録をアプリの外（ほかのアプリから読める場所）に出す。まとめて判断するで警告ふうに出す札の例
+                caution: .security
             ),
             Question(
                 id: "Q3",

@@ -19,6 +19,15 @@ struct DeckCard: Identifiable, Hashable {
         case verification(VerificationItem)
     }
 
+    /// 慎重に決めてほしい理由（質問と判断の確認だけ）
+    var caution: Caution? {
+        switch content {
+        case .question(let question): question.caution
+        case .decision(let decision): decision.caution
+        case .verification: nil
+        }
+    }
+
     struct Choice: Identifiable, Hashable {
         let id: String
         var label: String
