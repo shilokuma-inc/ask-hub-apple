@@ -7,7 +7,7 @@
   "required": ["mode"],
   "additionalProperties": false,
   "properties": {
-    "mode": { "enum": ["answer", "clarify", "delegate"], "description": "answer は回答、clarify は説明を求める、delegate はおまかせ" },
+    "mode": { "enum": ["answer", "clarify"], "description": "answer は回答、clarify は説明を求める。判断はすべて人がするので、推奨の選択肢で決めたことにする値は無い" },
     "choice": {
       "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1000 }, { "type": "null" }],
       "description": "選んだ選択肢の label。自由記述だけで答えるときは書かない"
@@ -17,6 +17,6 @@
   "anyOf": [
     { "properties": { "mode": { "const": "answer" }, "choice": { "type": "string" } }, "required": ["choice"] },
     { "properties": { "mode": { "const": "answer" }, "note": { "minLength": 1 } }, "required": ["note"] },
-    { "properties": { "mode": { "enum": ["clarify", "delegate"] }, "choice": { "type": "null" } } }
+    { "properties": { "mode": { "const": "clarify" }, "choice": { "type": "null" } } }
   ]
 }

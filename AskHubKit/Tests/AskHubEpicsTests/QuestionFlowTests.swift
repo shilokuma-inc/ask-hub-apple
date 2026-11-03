@@ -74,12 +74,13 @@ struct QuestionFlowTests {
         #expect(change.effects == [.revise(question: "q2", basis: expected)])
     }
 
-    @Test func delegateChoosesRecommendedAndFreeTextNeedsNoChoice() throws {
+    @Test func everyQuestionWaitsForPersonAndFreeTextNeedsNoChoice() throws {
         let file = try Flow.start([Fixtures.draft("q1"), Fixtures.draft("q2")]).questions
-        let delegated = try accept(Fixtures.answer("q1", .delegate, intent: 1), file).questions
-        #expect(delegated.question("q1")?.state == .delegated)
-        #expect(delegated.question("q1")?.answer?.choice == "日ごと")
-        let change = try accept(Fixtures.answer("q2", choice: nil, note: "隔週で入れ替える", intent: 2), delegated)
+        // 判断はすべて人がする。推奨の選択肢で決めたことにはしないので、答えていない質問があるうちは着手前の確認に進まない
+        let first = try accept(Fixtures.answer("q1", intent: 1), file)
+        #expect(first.questions.states() == ["q1": .answered, "q2": .open])
+        #expect(first.effects.isEmpty)
+        let change = try accept(Fixtures.answer("q2", choice: nil, note: "隔週で入れ替える", intent: 2), first.questions)
         #expect(change.questions.question("q2")?.answer?.choice == nil)
         #expect(change.questions.question("q2")?.state == .answered)
         #expect(change.effects == [.checkReadiness])
