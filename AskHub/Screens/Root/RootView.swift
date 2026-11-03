@@ -18,8 +18,8 @@ struct RootView: View {
             .onChange(of: dynamicTypeSize) { AppFont.applyToSystemBars() }
             // 主な色はラベンダー（パステルの見た目。Theme）
             .tint(Theme.accent)
-            // 開いている間（バックグラウンド以外）は決まった間隔で取り直す
-            .task(id: scenePhase == .background) {
+            // 開いている間（バックグラウンド以外）は決まった間隔で取り直す。デモの場面を変えて store を作り直したら、新しい store で回し直す
+            .task(id: AutoRefreshKey(isActive: scenePhase != .background, store: ObjectIdentifier(store))) {
                 guard scenePhase != .background else {
                     return
                 }
@@ -33,6 +33,12 @@ struct RootView: View {
                 AppSettingsView()
             }
             #endif
+    }
+
+    /// 取り直しを回し直すきっかけ（バックグラウンドから戻った・store が替わった）
+    private struct AutoRefreshKey: Hashable {
+        let isActive: Bool
+        let store: ObjectIdentifier
     }
 
     @ViewBuilder private var layout: some View {
