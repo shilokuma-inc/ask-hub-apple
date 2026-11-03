@@ -13,14 +13,21 @@ struct DeckCardContent: View {
     let onSubmitText: (String) -> Void
 
     @State private var freeText = ""
+    @FocusState private var isWriting: Bool
 
     var body: some View {
         // 上に何を決めるか、下（親指に近い側）に選択肢を置く
         VStack(alignment: .leading, spacing: 0) {
-            DeckCardHeader(repository: repository, epicTitle: epic?.title ?? "", remaining: remaining)
-            summary
-                .padding([.horizontal, .top], 16)
-            Spacer(minLength: 12)
+            VStack(alignment: .leading, spacing: 0) {
+                DeckCardHeader(repository: repository, epicTitle: epic?.title ?? "", remaining: remaining)
+                summary
+                    .padding([.horizontal, .top], 16)
+                Spacer(minLength: 12)
+            }
+            // 自由記述のカードは、入力欄より上を叩くとキーボードを閉じる。
+            // スワイプで選ばないカードなので、スワイプの操作とはぶつからない
+            .contentShape(.rect)
+            .gesture(TapGesture().onEnded { isWriting = false }, isEnabled: Self.closesKeyboardOnTap && card.choices.isEmpty)
             Group {
                 if card.choices.isEmpty {
                     freeTextField
@@ -80,11 +87,18 @@ struct DeckCardContent: View {
             TextField("回答を書く", text: $freeText, axis: .vertical)
                 .lineLimit(2...5)
                 .textFieldStyle(.roundedBorder)
-            Button("回答する") { onSubmitText(freeText) }
-                .buttonStyle(.glassProminent)
-                .disabled(freeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .focused($isWriting)
+                .accessibilityIdentifier("deckCard.freeText")
+            Button("回答する") {
+                isWriting = false
+                onSubmitText(freeText)
+            }
+            .buttonStyle(.glassProminent)
+            .disabled(freeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .keepsControlSize()
+        // デッキには自由記述のカードが重なることがあるので、入力中のカードの分だけ「完了」を出す
+        .keyboardDoneButton($isWriting, onlyWhileFocused: true)
     }
 
     @ViewBuilder private var contextNotes: some View {
@@ -111,8 +125,11 @@ struct DeckCardContent: View {
 
     #if os(macOS)
     private static let showsKeyHints = true
+    /// Mac にはソフトウェアキーボードが無いので、カードを叩いても入力欄のフォーカスは外さない
+    private static let closesKeyboardOnTap = false
     #else
     private static let showsKeyHints = false
+    private static let closesKeyboardOnTap = true
     #endif
 }
 

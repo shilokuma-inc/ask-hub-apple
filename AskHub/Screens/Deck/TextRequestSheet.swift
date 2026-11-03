@@ -33,6 +33,8 @@ struct TextRequestSheet: View {
                         .disabled(!request.allowsEmpty && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            // 開いてすぐフォーカスを当てるので、「完了」はフォーカスが付いてから足す
+            .keyboardDoneButton($isFocused, onlyWhileFocused: true)
             .onAppear { isFocused = true }
         }
         .presentationDetents([.medium, .large])

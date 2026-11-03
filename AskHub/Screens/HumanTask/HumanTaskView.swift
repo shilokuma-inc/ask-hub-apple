@@ -8,6 +8,7 @@ struct HumanTaskView: View {
     @Environment(ClientStore.self) private var store
     @State private var secret = ""
     @State private var isConfirmingSecret = false
+    @FocusState private var isEditingSecret: Bool
 
     var body: some View {
         if let epic = store.epic(epicID), let task = epic.humanTask(taskID) {
@@ -59,6 +60,7 @@ struct HumanTaskView: View {
         .pastelBackground()
         .compactList()
         .navigationTitle("人がする作業")
+        .keyboardDoneButton($isEditingSecret)
         .confirmationDialog("秘密の値を GitHub の Secrets に入れますか？", isPresented: $isConfirmingSecret, titleVisibility: .visible) {
             Button("入れる") {
                 secret = ""
@@ -92,6 +94,7 @@ struct HumanTaskView: View {
         case let .secret(name, repository):
             Section {
                 SecureField(name, text: $secret)
+                    .focused($isEditingSecret)
                 Button("Secrets に入れる…", systemImage: "lock") { isConfirmingSecret = true }
                     .disabled(secret.isEmpty)
             } header: {
