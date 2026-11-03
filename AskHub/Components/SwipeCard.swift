@@ -25,6 +25,8 @@ struct SwipeCard<Content: View>: View {
     let onLeave: (Int) -> Void
     @ViewBuilder let content: (_ commit: @escaping (Int) -> Void) -> Content
 
+    /// 指で札を動かしている間（ほかの指が選択肢に触れても答えないため）
+    @State private var isDragging = false
     @State private var offset: CGSize
     @State private var isLeaving = false
     @FocusState private var isFocused: Bool
@@ -72,7 +74,7 @@ struct SwipeCard<Content: View>: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-        content(commit)
+        content(choose)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(.background, in: shape)
             .clipShape(shape)
@@ -84,7 +86,7 @@ struct SwipeCard<Content: View>: View {
             .shadow(color: .black.opacity(isInteractive ? 0.16 : 0.08), radius: isInteractive ? 20 : 10, y: isInteractive ? 12 : 6)
             .offset(offset)
             .rotationEffect(.degrees(Double(offset.width) / 26), anchor: .bottom)
-            .gesture(dragGesture, isEnabled: isInteractive && !directions.isEmpty && !isLeaving)
+            .swipeDragGesture(isEnabled: isInteractive && !directions.isEmpty && !isLeaving, onChanged: dragChanged, onEnded: dragEnded)
             .sensoryFeedback(.selection, trigger: isInteractive ? drag.candidate : nil)
             .sensoryFeedback(.impact(weight: .medium), trigger: isInteractive && drag.isPastThreshold) { _, isPast in isPast }
             .focusable(isInteractive && !directions.isEmpty)
@@ -135,28 +137,42 @@ struct SwipeCard<Content: View>: View {
         return directions[candidate].edge
     }
 
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 6)
-            .onChanged { value in
-                offset = value.translation
-                let candidate = SwipeLayout.candidate(for: value.translation, directions: directions)
-                drag = SwipeDragState(
-                    candidate: candidate,
-                    progress: candidate == nil ? 0 : SwipeLayout.progress(for: value.translation)
-                )
+    private func dragChanged(_ value: SwipeDragValue) {
+        isDragging = true
+        offset = value.translation
+        let candidate = SwipeLayout.candidate(for: value.translation, directions: directions)
+        drag = SwipeDragState(
+            candidate: candidate,
+            progress: candidate == nil ? 0 : SwipeLayout.progress(for: value.translation)
+        )
+    }
+
+    /// 指を離したとき（`value`）と、取り消されたとき（nil）。取り消されたら決めずに戻す。
+    /// 決めた後や戻した後に重ねて呼ばれても何もしない（Mac では、離したときにも取り消しの nil が続けて届く）
+    private func dragEnded(_ value: SwipeDragValue?) {
+        isDragging = false
+        guard !isLeaving else {
+            return
+        }
+        if let value,
+           let candidate = SwipeLayout.candidate(for: value.translation, directions: directions)
+            ?? SwipeLayout.candidate(for: value.predictedEndTranslation, directions: directions),
+           SwipeLayout.commits(translation: value.translation, predictedEnd: value.predictedEndTranslation) {
+            commit(candidate)
+        } else {
+            withAnimation(.spring(duration: 0.3, bounce: 0.25)) {
+                offset = .zero
+                drag = SwipeDragState()
             }
-            .onEnded { value in
-                let candidate = drag.candidate
-                    ?? SwipeLayout.candidate(for: value.predictedEndTranslation, directions: directions)
-                if let candidate, SwipeLayout.commits(translation: value.translation, predictedEnd: value.predictedEndTranslation) {
-                    commit(candidate)
-                } else {
-                    withAnimation(.spring(duration: 0.3, bounce: 0.25)) {
-                        offset = .zero
-                        drag = SwipeDragState()
-                    }
-                }
-            }
+        }
+    }
+
+    /// 選択肢を押して決める。札を指で動かしている間は、ほかの指が選択肢に触れても決めない
+    private func choose(_ index: Int) {
+        guard !isDragging else {
+            return
+        }
+        commit(index)
     }
 
     private func commit(_ index: Int) {
