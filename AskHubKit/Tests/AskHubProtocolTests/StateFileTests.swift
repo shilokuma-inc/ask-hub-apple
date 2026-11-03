@@ -20,7 +20,9 @@ struct StateFileKind: Sendable, CustomTestStringConvertible {
         .of(MacFile.self, "mac"),
         .of(CommanderFile.self, "commander"),
         .of(DeviceFile.self, "device"),
-        .of(ConsumedIntentFile.self, "consumed")
+        .of(ConsumedIntentFile.self, "consumed"),
+        .of(QuestionsFile.self, "questions"),
+        .of(GoalFile.self, "goal")
     ]
 
     static func of<File: StateFile>(_ type: File.Type, _ name: String) -> Self {
@@ -75,7 +77,7 @@ struct StateFileTests {
     @Test func schemasUseOnlySupportedKeywords() throws {
         let directory = Vectors.directory.deletingLastPathComponent().appendingPathComponent("schemas")
         let files = try FileManager.default.subpathsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".schema.json") }
-        #expect(files.count >= 16)
+        #expect(files.count >= 18)
         for file in files {
             try validator.checkKeywords(in: file)
         }
@@ -157,6 +159,8 @@ struct StateFileTests {
         #expect(StatePath.commander == "commander.json")
         #expect(StatePath.repository(repo) == "\(base)/repo.json")
         #expect(StatePath.epic(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/epic.json")
+        #expect(StatePath.questions(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/questions.json")
+        #expect(StatePath.goal(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/goal.json")
         #expect(
             StatePath.job(repo, epic: epic, job: job) == "\(base)/epics/01JCEP1C000000000000000001/jobs/01JCJ0B0000000000000000001.json"
         )
@@ -172,6 +176,7 @@ struct StateFileTests {
         let file = "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y/01JCN0NCE00000000000000001.json"
         #expect(StatePath.intent(device: device, nonce: nonce) == "intents/\(file)")
         #expect(StatePath.consumed(device: device, nonce: nonce) == "consumed/\(file)")
+        #expect(StatePath.attachment(device: device, nonce: nonce, number: 2) == "attachments/\(file.dropLast(5))/2")
     }
 
     static func name(of error: StateFileError) -> String {

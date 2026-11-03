@@ -319,6 +319,52 @@
       },
       "schemaValid": false,
       "read": "malformed"
+    },
+    {
+      "name": "with-origin",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "discussion": 512,
+        "stage": "running",
+        "mac": "macbook-a",
+        "branch": "askhub/01JCEP1C000000000000000001",
+        "finalPullRequest": null,
+        "goalVersion": 2,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:20:00Z",
+        "origin": {
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "nonce": "01JCN0NCE00000000000000001"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "origin-path-traversal",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "discussion": 512,
+        "stage": "running",
+        "mac": "macbook-a",
+        "branch": "askhub/01JCEP1C000000000000000001",
+        "finalPullRequest": null,
+        "goalVersion": 2,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:20:00Z",
+        "origin": {
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "nonce": "../../keys/000000000000001"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
     }
   ]
 }

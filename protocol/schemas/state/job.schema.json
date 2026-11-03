@@ -31,6 +31,14 @@
     "state": { "enum": ["queued", "assigned", "running", "succeeded", "failed", "waitingHuman", "paused", "canceled"] },
     "attempts": { "type": "integer", "minimum": 0, "description": "これまでの試行の数" },
     "nextRunAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "次に試してよい時刻" },
+    "input": {
+      "anyOf": [{ "type": "object", "additionalProperties": { "$ref": "../json-value.schema.json" } }, { "type": "null" }],
+      "description": "kind ごとの入力（docs/renewal/protocol.md の表）"
+    },
+    "origin": {
+      "anyOf": [{ "$ref": "../common.schema.json#/$defs/intentReference" }, { "type": "null" }],
+      "description": "ジョブの元になった人の意図。ワーカーは引き受ける前に、その意図の署名を自分でも確かめる"
+    },
     "createdAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
     "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
   }

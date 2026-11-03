@@ -68,6 +68,10 @@ public struct JobFile: StateFile {
     public var attempts: Int
     /// 次に試してよい時刻（ランナー不足の待ち・利用上限の解除など）。すぐでよければ nil
     public var nextRunAt: Timestamp?
+    /// kind ごとの入力（`docs/renewal/protocol.md` の表）
+    public var input: [String: JSONValue]?
+    /// ジョブの元になった人の意図。ワーカーは引き受ける前に、その意図の署名を自分でも確かめる
+    public var origin: IntentReference?
     public var createdAt: Timestamp
     public var updatedAt: Timestamp
 
@@ -83,6 +87,8 @@ public struct JobFile: StateFile {
         state: JobState,
         attempts: Int = 0,
         nextRunAt: Timestamp? = nil,
+        input: [String: JSONValue]? = nil,
+        origin: IntentReference? = nil,
         createdAt: Timestamp,
         updatedAt: Timestamp
     ) {
@@ -97,6 +103,8 @@ public struct JobFile: StateFile {
         self.state = state
         self.attempts = attempts
         self.nextRunAt = nextRunAt
+        self.input = input
+        self.origin = origin
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

@@ -11,7 +11,7 @@
     "kind": {
       "type": "string",
       "enum": [
-        "answer", "startEpic", "reviseGoal", "decision", "approveMerge", "instructFinal", "humanTaskDone",
+        "request", "answer", "startEpic", "reviseGoal", "decision", "approveMerge", "instructFinal", "humanTaskDone",
         "handover", "retry", "giveUp", "addRepository", "removeRepository", "applyProtection", "registerKey", "revokeKey"
       ]
     },

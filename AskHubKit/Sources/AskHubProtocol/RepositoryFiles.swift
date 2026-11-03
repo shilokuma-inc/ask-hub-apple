@@ -105,6 +105,8 @@ public struct EpicFile: StateFile {
     public var finalPullRequest: Int?
     /// 開始したときのゴールの版
     public var goalVersion: Int?
+    /// 元になった依頼の人の意図
+    public var origin: IntentReference?
     public var createdAt: Timestamp
     public var updatedAt: Timestamp
 
@@ -118,6 +120,7 @@ public struct EpicFile: StateFile {
         branch: String? = nil,
         finalPullRequest: Int? = nil,
         goalVersion: Int? = nil,
+        origin: IntentReference? = nil,
         createdAt: Timestamp,
         updatedAt: Timestamp
     ) {
@@ -130,6 +133,7 @@ public struct EpicFile: StateFile {
         self.branch = branch
         self.finalPullRequest = finalPullRequest
         self.goalVersion = goalVersion
+        self.origin = origin
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
