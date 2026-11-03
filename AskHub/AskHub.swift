@@ -19,12 +19,7 @@ struct AskHub: App {
         _store = State(initialValue: Self.makeStore(scenario: ScreenshotDemo.isEnabled ? .standard : stored ?? .standard))
         let navigator = AppNavigator()
         // App Store のスクショの撮影モードでは、撮る画面を開く（Release でも動く）
-        if let scene = ScreenshotDemo.scene {
-            navigator.section = scene.section
-            if let route = scene.route {
-                navigator.open(route, in: scene.section)
-            }
-        }
+        ScreenshotDemo.openInitialScreen(ScreenshotDemo.scene, in: navigator)
         #if DEBUG
         // UI テストと撮影では、起動引数で決めた画面を開く
         if let destination = DemoLaunch.initialDestination() {

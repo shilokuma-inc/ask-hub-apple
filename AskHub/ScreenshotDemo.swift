@@ -84,3 +84,16 @@ extension ScreenshotDemo.Scene: CaseIterable {
         }
     }
 }
+
+extension ScreenshotDemo {
+    /// 撮る画面のタブを選び、画面があれば開く。起動のときに `AskHub.init` から呼ぶ（Release でも動く）
+    static func openInitialScreen(_ scene: Scene?, in navigator: AppNavigator) {
+        guard let scene else {
+            return
+        }
+        navigator.section = scene.section
+        if let route = scene.route {
+            navigator.open(route, in: scene.section)
+        }
+    }
+}
