@@ -69,4 +69,19 @@ struct ScreenshotDemoTests {
         let sections = Dictionary(uniqueKeysWithValues: ScreenshotDemo.Scene.allCases.map { ($0, $0.section) })
         #expect(sections == [.action: .inbox, .request: .inbox, .decisions: .inbox, .verification: .inbox, .status: .progress])
     }
+
+    /// 起動のときは、撮る画面のタブを選び、画面があればそのタブで開く。撮影モードでなければ何も変えない
+    @Test
+    func openInitialScreenSelectsTabAndRoute() {
+        for scene in ScreenshotDemo.Scene.allCases {
+            let navigator = AppNavigator()
+            ScreenshotDemo.openInitialScreen(scene, in: navigator)
+            #expect(navigator.section == scene.section)
+            #expect(navigator.paths[scene.section] == scene.route.map { [$0] })
+        }
+        let untouched = AppNavigator()
+        ScreenshotDemo.openInitialScreen(nil, in: untouched)
+        #expect(untouched.section == .inbox)
+        #expect(untouched.paths.isEmpty)
+    }
 }
