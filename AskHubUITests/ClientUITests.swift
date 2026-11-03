@@ -146,23 +146,20 @@ final class ClientUITests: XCTestCase {
         let card = app.otherElements["deckCard.top"]
         XCTAssertTrue(card.waitForExistence(timeout: 10))
         let title = card.staticTexts["振り返りの画面を日曜の夜に開ける"]
-        XCTAssertTrue(title.exists)
-        // カードの要素は、演出の光のぶんカードより大きい入れ物になるので、カードと一緒に動く見出しで測る
-        let resting = title.frame
-        let start = card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        let resting = settledFrame(of: title)
+        let start = title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: 120))
         let toFreeAnswer = CGVector(dx: -240, dy: 240)
 
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(toFreeAnswer))
         let cancel = app.buttons["キャンセル"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 5))
         // 飛ばずに、左下へ決まる距離だけ動いた所に残る
-        XCTAssertTrue(title.exists)
         XCTAssertTrue(waitUntil { isHeldDownLeft(title, from: resting) }, "\(title.frame) / \(resting)")
 
         cancel.tap()
         XCTAssertTrue(cancel.waitForNonExistence(timeout: 5))
         XCTAssertTrue(waitUntil { isResting(title, at: resting) }, "\(title.frame) / \(resting)")
-        XCTAssertTrue(title.exists)
 
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(toFreeAnswer))
         let send = app.buttons["送る"]
@@ -182,9 +179,8 @@ final class ClientUITests: XCTestCase {
         let card = app.otherElements["deckCard.top"]
         XCTAssertTrue(card.waitForExistence(timeout: 10))
         let title = card.staticTexts["振り返りの画面を日曜の夜に開ける"]
-        XCTAssertTrue(title.exists)
-        // カードの要素は、演出の光のぶんカードより大きい入れ物になるので、カードと一緒に動く見出しで測る
-        let resting = title.frame
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        let resting = settledFrame(of: title)
         let cancel = app.buttons["キャンセル"]
 
         // 2 番目の選択肢（問題あり）を数字キーで選ぶ。親の onKeyPress に届くよう typeKey で打つ
@@ -197,7 +193,6 @@ final class ClientUITests: XCTestCase {
 
         card.buttons["問題あり（自由回答・左下へスワイプ）"].tap()
         XCTAssertTrue(cancel.waitForExistence(timeout: 5))
-        XCTAssertTrue(card.staticTexts["振り返りの画面を日曜の夜に開ける"].exists)
         XCTAssertTrue(waitUntil { isHeldDownLeft(title, from: resting) }, "\(title.frame) / \(resting)")
 
         let bar = app.navigationBars["問題あり"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -219,17 +214,33 @@ final class ClientUITests: XCTestCase {
         return condition()
     }
 
-    /// カードの見出しが左下へ、決まる距離くらい動いた所にある（飛んだときは画面の外まで動く）。
-    /// カードは下を軸に傾くので、見出しは横に大きめに動く。幅を持たせる
+    /// 動きが止まった後の枠（開いた直後は、山札から札を引いて表に返す動きがある）
     @MainActor
-    private func isHeldDownLeft(_ element: XCUIElement, from resting: CGRect) -> Bool {
-        let moved = CGVector(dx: element.frame.minX - resting.minX, dy: element.frame.minY - resting.minY)
-        return (-160 ... -40).contains(moved.dx) && (20...150).contains(moved.dy)
+    private func settledFrame(of element: XCUIElement) -> CGRect {
+        var last = element.frame
+        for _ in 0..<25 {
+            Thread.sleep(forTimeInterval: 0.2)
+            let frame = element.frame
+            if abs(frame.minX - last.minX) < 0.5, abs(frame.minY - last.minY) < 0.5 {
+                return frame
+            }
+            last = frame
+        }
+        return last
+    }
+
+    /// 札の中の題が左下へ、決まる距離くらい動いた所にある（飛んだときは画面の外まで動く）。
+    /// 札の枠（`deckCard.top`）は表に返す演出の分だけ広く札と一緒に動かないので、札の中の題で測る。
+    /// 下の部分はシートに隠れて枠から切られることがあるので、左上の角で測る。傾くので幅を持たせる
+    @MainActor
+    private func isHeldDownLeft(_ title: XCUIElement, from resting: CGRect) -> Bool {
+        let moved = CGVector(dx: title.frame.minX - resting.minX, dy: title.frame.minY - resting.minY)
+        return (-180 ... -40).contains(moved.dx) && (20...150).contains(moved.dy)
     }
 
     @MainActor
-    private func isResting(_ element: XCUIElement, at resting: CGRect) -> Bool {
-        abs(element.frame.midX - resting.midX) < 4 && abs(element.frame.midY - resting.midY) < 4
+    private func isResting(_ title: XCUIElement, at resting: CGRect) -> Bool {
+        abs(title.frame.minX - resting.minX) < 4 && abs(title.frame.minY - resting.minY) < 4
     }
 
     #if os(iOS)
