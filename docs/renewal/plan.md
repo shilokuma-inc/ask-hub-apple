@@ -66,24 +66,26 @@
 - 捨てる epic を片付ける: epic ブランチ、開いたままの子 PR と最終 PR、制御用の worktree、Simulator、関係する Issue と Discussion
 - GitHub 上の残りものを片付ける: 今の仕組みのラベル、状態用の Issue、実機確認の Issue、仮決めの一覧の Issue、依頼の Issue
 - 各リポジトリの残りものを外す: ループの仕組みの中継のスクリプトと設定、ゴールの Discussion を閉じるワークフロー、CLAUDE.md のループの節、git で管理している `.claude/settings.json`
-- 各 Mac の残りものを片付ける: 制御用の worktree、今のオーケストレーターの設定と退避したデータ
+- 各 Mac の残りものを片付ける: 制御用の worktree、今のオーケストレーターの設定と退避したデータ、今の仕組みのループが作った Simulator と DerivedData
 - 新しい目印は別の名前で、版つきにする（今の目印を読まない）
 - 共通の知見の古い項目を直す
 - `.coderabbit.yaml` から `renewal` を外し、`renewal` ブランチを消す
 
 ## 段階 0 で確かめること
 
-| # | 確かめること | 結果で変わること |
+結果は Issue #825 に記録し、この文書の各所に反映した。
+
+| # | 確かめること | 結果 |
 | --- | --- | --- |
-| 1 | Claude Code の sandbox の中で `xcodebuild`・`simctl` が動くか | 動かなければ、ビルドとテストはワーカーが代わりに流す |
-| 2 | 専用の設定フォルダ（`CLAUDE_CONFIG_DIR`）で、人の `~/.claude` が効かないか。hooks の無効化と MCP の制限で、リポジトリの hooks・環境変数・`.mcp.json`・CLAUDE.md がどこまで読まれるか | Claude の起動のしかた |
-| 3 | `claude setup-token` で無人実行できるか、使えるモデル、認証の変数の優先順位 | 契約と認証の扱い |
-| 4 | launchd（ログイン中）から Keychain を読めるか。署名したバイナリを更新しても、Keychain と TCC の許可が残るか | 秘密の置き場所と配り方 |
-| 5 | sandbox の中で `git commit` ができるか（worktree の `.git` は作業場所の外）。partial clone の取り寄せが動くか | 作業場所の作り方 |
-| 6 | github.com を許可せず、取得済みの依存だけでビルドできるか | sandbox の通信の許可 |
-| 7 | 画面の無い launchd の下で、Simulator のスクショと macOS アプリの撮影ができるか | 判断のカードと App Store の素材の撮り方 |
-| 8 | GitHub: 想定の頻度の書き込みでの二次の上限、同時の書き込み、ETag の効き方、複数の organization のトークン | 状態リポジトリの書き方 |
-| 9 | GitHub: `GITHUB_TOKEN` をブランチ保護の例外に入れられるか、`GITHUB_TOKEN` で作った PR の必須チェック、管理者にも保護を効かせたときの人のマージ | ブランチ保護と後作業の作り |
-| 10 | App Store Connect の API: 配信、取り下げとやり直し、App のプライバシーの申告、課金・App Clip・capability | リリースの流れと人がする作業 |
-| 11 | 利用上限に当たったとき、`claude -p` の出力から解除の時刻を取れるか | 利用上限の待ち方 |
-| 12 | 今の仕組みで、最終 PR の CI の自動修正が失敗していた原因（常時オンの Mac のログ） | 最終 PR の対処の作り |
+| 1 | Claude Code の sandbox の中で `xcodebuild`・`simctl` が動くか | 動かない。ビルドとテストはワーカーが sandbox の外で流す |
+| 2 | 専用の設定フォルダ（`CLAUDE_CONFIG_DIR`）で人の `~/.claude` が効かないか。リポジトリの hooks・環境変数・`.mcp.json`・CLAUDE.md がどこまで読まれるか | 通常の起動ではすべて効く。`--restricted --strict-mcp-config` と専用の設定フォルダなら、どれも効かず人の指示も見えない |
+| 3 | `claude setup-token` で無人実行できるか、使えるモデル、認証の変数の優先順位 | 無人で動く。モデルを指定しないと Sonnet 5.5 になるので、毎回 `--model` で指定する |
+| 4 | launchd（ログイン中）から Keychain を読めるか。署名したバイナリを更新しても、Keychain と TCC の許可が残るか | LaunchAgent からは読め、ssh からは読めない。署名したバイナリの更新は、署名の証明書を決めてから確かめる |
+| 5 | sandbox の中で `git commit` ができるか（worktree の `.git` は作業場所の外）。partial clone の取り寄せが動くか | commit でき、共有の `.git` にも書ける。Claude には git を許可しない。partial clone はワーカーの作業場所を作るときに確かめる |
+| 6 | github.com を許可せず、取得済みの依存だけでビルドできるか | 許可していない宛先には出られない。ビルドはワーカーが sandbox の外で流すので、依存の扱いはワーカーのビルドの道具を作るときに確かめる |
+| 7 | 画面の無い launchd の下で、Simulator のスクショと macOS アプリの撮影ができるか | Simulator の作成・起動・スクショ・削除ができる。macOS のアプリの撮影は段階 5 で確かめる |
+| 8 | GitHub: 想定の頻度の書き込みでの二次の上限、同時の書き込み、ETag の効き方、複数の organization のトークン | 古い版の書き込みは 409 で弾かれる。ETag つきの読み取りは上限に数えられないとみられる。今の仕組みが動いている間は上限の 3 割ほどが使われている。複数の organization のトークンは、トークンの設計で決める |
+| 9 | GitHub: `GITHUB_TOKEN` をブランチ保護の例外に入れられるか、`GITHUB_TOKEN` で作った PR の必須チェック、管理者にも保護を効かせたときの人のマージ | 例外に入れられず、PR も作れない。ルールセットは管理者にも効く。アカウントのトークンの PR なら CI が起動してマージできる。後作業は司令塔の PR で行う |
+| 10 | App Store Connect の API: 配信、取り下げとやり直し、App のプライバシーの申告、課金・App Clip・capability | 段階 5 で確かめる（予定） |
+| 11 | 利用上限に当たったとき、`claude -p` の出力から解除の時刻を取れるか | 実際に当たったときに確かめる |
+| 12 | 今の仕組みで、最終 PR の CI の自動修正が失敗していた原因（常時オンの Mac のログ） | 60 分の時間切れが「結果を読み取れませんでした」に見えていた。失敗の区分に「時間切れ」を持たせる |
