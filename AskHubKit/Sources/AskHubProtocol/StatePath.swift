@@ -15,6 +15,14 @@ public enum StatePath {
         "\(epicDirectory(repo, epic))/epic.json"
     }
 
+    public static func questions(_ repo: RepositoryFullName, _ epic: ULID) -> String {
+        "\(epicDirectory(repo, epic))/questions.json"
+    }
+
+    public static func goal(_ repo: RepositoryFullName, _ epic: ULID) -> String {
+        "\(epicDirectory(repo, epic))/goal.json"
+    }
+
     public static func job(_ repo: RepositoryFullName, epic: ULID, job: ULID) -> String {
         "\(epicDirectory(repo, epic))/jobs/\(job).json"
     }
@@ -41,6 +49,12 @@ public enum StatePath {
     /// 公開のスレッドに置かない人の意図
     public static func intent(device: KeyID, nonce: ULID) -> String {
         "intents/\(device)/\(nonce).json"
+    }
+
+    /// 依頼の添付（`number` は 1 から）
+    public static func attachment(device: KeyID, nonce: ULID, number: Int) -> String {
+        precondition(number >= 1, "添付の番号は 1 から")
+        return "attachments/\(device)/\(nonce)/\(number)"
     }
 
     /// 処理した人の意図の記録
