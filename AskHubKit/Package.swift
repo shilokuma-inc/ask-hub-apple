@@ -21,6 +21,8 @@ let package = Package(
         .library(name: "AskHubJobs", targets: ["AskHubJobs"]),
         // epic の段取り（質問の回答・依存のロック・見直し）。司令塔で使う
         .library(name: "AskHubEpics", targets: ["AskHubEpics"]),
+        // 制限時間つきでコマンドを流す（子孫のプロセスまで止める）。司令塔とワーカーで使う
+        .library(name: "AskHubCommands", targets: ["AskHubCommands"]),
         // macOS で launchd から常駐させる CLI。アプリからは使わない
         .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
     ],
@@ -32,6 +34,7 @@ let package = Package(
         .target(name: "AskHubKeychain", dependencies: ["AskHubProtocol"]),
         .target(name: "AskHubJobs", dependencies: ["AskHubProtocol", "AskHubStateStore"]),
         .target(name: "AskHubEpics", dependencies: ["AskHubProtocol"]),
+        .target(name: "AskHubCommands"),
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
