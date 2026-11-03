@@ -183,6 +183,11 @@ struct StateFileStoreTests {
         #expect(try await memory.list("a")?.map(\.kind) == [.directory, .file])
         #expect(try await memory.list("x") == nil)
         await #expect(throws: StateStoreError.wrongKind) { try await memory.read("a/b") }
+        // 同じ名前を、ファイルとディレクトリの両方には使えない（ファイルの下に書く・子のあるパスをファイルにする）
+        await #expect(throws: StateStoreError.wrongKind) {
+            try await memory.write("a/c.json/d.json", data: Data(), replacing: nil, message: "m")
+        }
+        await #expect(throws: StateStoreError.wrongKind) { try await memory.write("a/b", data: Data(), replacing: nil, message: "m") }
         // Git の blob の sha と同じ（`printf 'hello\n' | git hash-object --stdin`）
         #expect(InMemoryStateStore.sha(of: Data("hello\n".utf8)) == "ce013625030ba8dba906f756967f9e9ca394464a")
     }

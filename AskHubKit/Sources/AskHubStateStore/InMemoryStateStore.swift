@@ -43,6 +43,12 @@ public actor InMemoryStateStore: StateStore {
 
     public func write(_ path: String, data: Data, replacing sha: String?, message: String) throws(StateStoreError) -> String {
         guard StatePathCheck.isSafe(path) else { throw .invalidPath }
+        // Git のツリーと同じく、同じ名前をファイルとディレクトリの両方には使えない
+        let parts = path.split(separator: "/")
+        let ancestors = parts.indices.dropLast().map { parts[...$0].joined(separator: "/") }
+        guard !ancestors.contains(where: { files[$0] != nil }), !files.keys.contains(where: { $0.hasPrefix(path + "/") }) else {
+            throw .wrongKind
+        }
         if !injectedWriteFailures.isEmpty { throw injectedWriteFailures.removeFirst() }
         if !interleavedWrites.isEmpty {
             let other = interleavedWrites.removeFirst()
