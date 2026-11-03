@@ -31,11 +31,14 @@ public actor WriteBudget {
     public func reserve(now: Date) throws(StateStoreError) {
         times.removeAll { now.timeIntervalSince($0) >= 3600 }
         let lastMinute = times.filter { now.timeIntervalSince($0) < 60 }
-        if lastMinute.count >= limits.perMinute, let oldest = lastMinute.min() {
-            throw .budgetExhausted(retryAfter: Self.wait(until: oldest.addingTimeInterval(60), now: now))
+        // 上限が 0 以下なら、数えた書き込みが無くても書かない（1 つの枠の長さだけ待たせる）
+        if lastMinute.count >= limits.perMinute {
+            let until = lastMinute.min().map { $0.addingTimeInterval(60) } ?? now.addingTimeInterval(60)
+            throw .budgetExhausted(retryAfter: Self.wait(until: until, now: now))
         }
-        if times.count >= limits.perHour, let oldest = times.min() {
-            throw .budgetExhausted(retryAfter: Self.wait(until: oldest.addingTimeInterval(3600), now: now))
+        if times.count >= limits.perHour {
+            let until = times.min().map { $0.addingTimeInterval(3600) } ?? now.addingTimeInterval(3600)
+            throw .budgetExhausted(retryAfter: Self.wait(until: until, now: now))
         }
         times.append(now)
     }
