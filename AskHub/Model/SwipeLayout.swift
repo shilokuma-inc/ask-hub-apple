@@ -126,8 +126,7 @@ enum SwipeLayout {
         guard distance >= minimumDistance else {
             return nil
         }
-        // 4 方向なら境目は縦横の軸。3 方向以下なら、使わない方向の近くでは選ばない
-        let threshold = directions.count >= 4 ? 0.0 : 0.5
+        let threshold = cosineThreshold(directionCount: directions.count)
         var best: (index: Int, cosine: CGFloat)?
         for (index, direction) in directions.enumerated() {
             let cosine = (translation.width * direction.unit.dx + translation.height * direction.unit.dy) / distance
@@ -136,6 +135,12 @@ enum SwipeLayout {
             }
         }
         return best?.index
+    }
+
+    /// 選択肢に向かっているとみなす、方向との角度の余弦の下限。
+    /// 4 方向なら境目は縦横の軸。3 方向以下なら、使わない方向の近くでは選ばない
+    static func cosineThreshold(directionCount: Int) -> CGFloat {
+        directionCount >= 4 ? 0 : 0.5
     }
 
     /// 決まるまでの進み具合（0〜1）。色の濃さに使う
