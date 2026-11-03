@@ -70,6 +70,20 @@ struct ScreenshotDemoTests {
         #expect(sections == [.action: .inbox, .request: .inbox, .decisions: .inbox, .verification: .inbox, .status: .progress])
     }
 
+    /// 撮る画面ごとに開く画面を決めておく（画面を開くはずの場面で nil になると、一覧だけが写る）
+    @Test
+    func everySceneOpensItsRoute() {
+        let routes = Dictionary(uniqueKeysWithValues: ScreenshotDemo.Scene.allCases.map { ($0, $0.route) })
+        let expected: [ScreenshotDemo.Scene: AppRoute?] = [
+            .action: nil,
+            .request: .deck(.all),
+            .decisions: .finalReview("tsundoku-search"),
+            .verification: .deck(.verifications("habit-review")),
+            .status: nil
+        ]
+        #expect(routes == expected)
+    }
+
     /// 起動のときは、撮る画面のタブを選び、画面があればそのタブで開く。撮影モードでなければ何も変えない
     @Test
     func openInitialScreenSelectsTabAndRoute() {
