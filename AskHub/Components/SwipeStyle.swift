@@ -103,7 +103,7 @@ struct SwipeChoiceRow: View {
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: direction.systemImage)
-                .font(.caption.weight(.bold))
+                .appFont(.caption, weight: .bold)
                 .frame(width: 22, height: 22)
                 .background(color, in: .circle)
                 .overlay(Circle().strokeBorder(.background.opacity(0.6), lineWidth: 1))
@@ -112,18 +112,18 @@ struct SwipeChoiceRow: View {
                 HStack(spacing: 6) {
                     // 推奨は太字にして、ひと目で分かるようにする（ユーザーの要望）
                     Text(choice.label)
-                        .font(.subheadline.weight(choice.isRecommended ? .bold : .regular))
+                        .appFont(.subheadline, weight: choice.isRecommended ? .bold : .regular)
                     if choice.isRecommended {
                         RecommendedBadge(tint: direction.tint)
                     }
                 }
                 Text(choice.detail)
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                 if let note = choice.note {
                     Text(note)
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
@@ -152,7 +152,7 @@ struct RecommendedBadge: View {
     var body: some View {
         Label("推奨", systemImage: "star.fill")
             .labelStyle(.titleAndIcon)
-            .font(.caption.weight(.heavy))
+            .appFont(.caption, weight: .heavy)
             .foregroundStyle(.white)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)

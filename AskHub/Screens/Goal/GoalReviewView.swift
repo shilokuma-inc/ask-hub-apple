@@ -21,7 +21,7 @@ struct GoalReviewView: View {
             Section {
                 AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: "ゴール（版 \(goal.version)）", iconSize: 40)
                 Text(goal.summary)
-                    .font(.headline)
+                    .appFont(.headline)
             }
             if let request = goal.revisionRequest {
                 Section {
@@ -195,16 +195,16 @@ struct MacChoiceRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(mac.name).font(.headline)
+                Text(mac.name).appFont(.headline)
                 Spacer()
                 ConnectionBadge(mac: mac)
             }
             Text("空き \(ByteFormat.string(mac.freeBytes)) · 負荷 \(Int(mac.load * 100))%")
-                .font(.caption)
+                .appFont(.caption)
                 .foregroundStyle(.secondary)
             if let reason = mac.refusalReason {
                 Label(reason, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(Theme.warning)
             }
         }

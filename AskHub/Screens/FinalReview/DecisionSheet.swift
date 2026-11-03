@@ -78,7 +78,7 @@ struct VerificationSection: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Label(item.text, systemImage: symbol(for: item.state))
                     Text(status(for: item.state))
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }

@@ -27,9 +27,9 @@ struct StageTrackerView: View {
             ForEach(Self.steps) { step in
                 VStack(spacing: 4) {
                     symbol(for: step.id, current: current)
-                        .font(.title3)
+                        .appFont(.title3)
                     Text(step.title)
-                        .font(.caption2)
+                        .appFont(.caption2)
                         .foregroundStyle(step.id == current ? .primary : .secondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -58,7 +58,7 @@ struct TagLabel: View {
 
     var body: some View {
         Text(text)
-            .font(.caption2.weight(.semibold))
+            .appFont(.caption2, weight: .semibold)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .foregroundStyle(tint)

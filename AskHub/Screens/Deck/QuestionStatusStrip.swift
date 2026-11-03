@@ -9,10 +9,11 @@ struct QuestionStatusStrip: View {
             ForEach(epic.questions) { question in
                 VStack(spacing: 3) {
                     Image(systemName: question.statusSymbol)
-                        .font(.footnote)
+                        .appFont(.footnote)
                         .foregroundStyle(question.statusColor)
                     Text(question.id)
-                        .font(.caption2.monospacedDigit())
+                        .appFont(.caption2)
+                        .monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
                 .frame(minWidth: 30)

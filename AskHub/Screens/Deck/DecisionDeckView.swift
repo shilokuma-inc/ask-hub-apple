@@ -169,7 +169,7 @@ struct DecisionDeckView: View {
             Button("詳しく", systemImage: "doc.text.magnifyingglass") { detailCard = card }
         }
         .buttonStyle(.glass)
-        .font(.subheadline)
+        .appFont(.subheadline)
         .padding(.horizontal)
     }
 

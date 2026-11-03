@@ -49,13 +49,13 @@ private struct RepositoryRow: View {
         HStack(spacing: 12) {
             AppIconView(repository: repository, size: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text(repository.appName).font(.headline)
+                Text(repository.appName).appFont(.headline)
                 Text(repository.fullName)
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.secondary)
                 if let active {
                     Text(active.title)
-                        .font(.footnote)
+                        .appFont(.footnote)
                         .foregroundStyle(.tint)
                         .lineLimit(1)
                 }
@@ -79,8 +79,8 @@ struct RepositoryDetailView: View {
                     HStack(spacing: 14) {
                         AppIconView(repository: repository, size: 60)
                         VStack(alignment: .leading) {
-                            Text(repository.appName).font(.title2.weight(.semibold))
-                            Text(repository.fullName).font(.subheadline).foregroundStyle(.secondary)
+                            Text(repository.appName).appFont(.title2, weight: .semibold)
+                            Text(repository.fullName).appFont(.subheadline).foregroundStyle(.secondary)
                         }
                     }
                 }

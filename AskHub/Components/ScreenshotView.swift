@@ -19,7 +19,7 @@ struct ScreenshotView: View {
 
             case nil:
                 ContentUnavailableView("画面の変化はありません", systemImage: "rectangle.dashed")
-                    .font(.caption)
+                    .appFont(.caption)
             }
         }
         .aspectRatio(9 / 16, contentMode: .fit)
@@ -41,7 +41,7 @@ struct BeforeAfterView: View {
     private func column(_ title: String, _ screenshot: Screenshot?) -> some View {
         VStack(spacing: 4) {
             Text(title)
-                .font(.caption2.weight(.semibold))
+                .appFont(.caption2, weight: .semibold)
                 .foregroundStyle(.secondary)
             ScreenshotView(screenshot: screenshot)
                 .accessibilityLabel("\(title) のスクショ")
