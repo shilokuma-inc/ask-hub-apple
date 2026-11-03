@@ -78,8 +78,9 @@ struct SwipeCard<Content: View>: View {
                 }
             }
             .accessibilityHidden(!isInteractive)
-            .onAppear { isFocused = isInteractive }
-            .onChange(of: isInteractive) { isFocused = isInteractive }
+            // キー操作のためにフォーカスを当てるのは、スワイプで選べるカードだけ（自由記述のカードで勝手にキーボードを出さない）
+            .onAppear { isFocused = isInteractive && !directions.isEmpty }
+            .onChange(of: isInteractive) { isFocused = isInteractive && !directions.isEmpty }
             .onChange(of: resetToken) {
                 isLeaving = false
                 withAnimation(.spring(duration: 0.4, bounce: 0.3)) {

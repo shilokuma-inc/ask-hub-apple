@@ -128,6 +128,8 @@ struct DecisionDeckView: View {
         .offset(y: 16 * position)
         .rotationEffect(.degrees(isTop ? 0 : tilt * Double(position)))
         .allowsHitTesting(isTop)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(isTop ? "deckCard.top" : "deckCard.back")
         .zIndex(Double(-depth))
         .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.86)), removal: .identity))
     }
