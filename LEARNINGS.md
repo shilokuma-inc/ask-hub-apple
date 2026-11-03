@@ -67,6 +67,8 @@
   `release/…` だけに絞れる（付けないと `release-x` も合う）。`refs/heads/`・`refs/tags/` を付けた名前で返る
 - Contents API（`GET /repos/{owner}/{repo}/contents/{path}?ref=…`）の `content` は base64 を 60 文字ごとに改行した文字列。Swift では
   `Data(base64Encoded:options: .ignoreUnknownCharacters)` で読む。ファイルもブランチも無ければ 404 で、ディレクトリなら配列が返る
+- Contents API の書き込み（`PUT /repos/{owner}/{repo}/contents/{path}`）は、すでにあるファイルを `sha` なしで書くと 422（本文に `"sha" wasn't supplied`）、古い `sha` を付けると 409 を返す。
+  返る `content.sha` は Git の blob の sha（`git hash-object` と同じ）。読み取りに `If-None-Match` で ETag を付けると、変わっていなければ 304 が返る（2026-11-03、`AskHubStateStore` の `LiveGitHubContentsStoreTests` で確かめた）
 - ジョブの `env:` では `runner` コンテキスト（`${{ runner.temp }}`）を使えない（actionlint が「context "runner" is not allowed here」で落とす。ステップの `env:` では使える）。
   ジョブ全体で使うパスは、最初のステップで `echo "NAME=$RUNNER_TEMP/…" >> "$GITHUB_ENV"` で渡す
 - GitHub の PR のマージコミットは、件名が `Merge pull request #N from <owner>/<branch>`、本文の 1 行目が PR のタイトル（既定のとき）。
@@ -108,6 +110,8 @@
 
 ## ビルド・テスト
 
+- このリポジトリの CI（Build）は、PR を開いたときの回だけ iOS Simulator の UI テストを流し、25〜40 分かかる（push の回は Unit テストだけで数分）。
+  `Build and test on iOS Simulator` の手順が 20 分以上進まなくても、止まっているとは限らない。上限の 45 分までは取り消さずに待つ（2026-11-03、#834）
 - Simulator は OS 更新で `iPhone 17 Pro (6.3inch/1206x2622)` のように改名されることがある。
   名前で解決できないときは `xcrun simctl list devices available` で UDID を調べて `id=` で指定する
 - 複数の worktree で同時に `xcodebuild` を流すときは、`-derivedDataPath` を worktree ごとに分ける。
@@ -289,6 +293,11 @@
 - `Data(contentsOf:options: .mappedIfSafe)` で mmap して読んでいるファイルを、別の処理が同じパスで切り詰めて書き直すと、読む側が SIGBUS で落ちうる。
   読まれうるファイルは `data.write(to:options: .atomic)`（別のファイルに書いてから rename）で書く（`Orchestrator.prepareZip`）。
   actor の中で重い同期の I/O をするときは、`Task.detached { Result { () throws(E) -> T in … } }.value` で actor の外に出すと、型付きの throws のまま Sendable の警告なしで受け取れる
+
+- `NSRegularExpression`（ICU）の `$` は、複数行の指定が無くても、末尾の改行の前で合う（`^[a-z/]+$` が `"a/b\n"` に合う）。Python でも同じことを確かめた。Java の `Pattern` も文書上は同じで、ECMAScript だけが合わない（Kotlin のクライアントの検証で効く）。
+  JSON Schema の `pattern` で値を区切るときは、長さの決まった値は `maxLength` を足し、そうでない値は `"not": { "pattern": "\\n" }` で改行を弾く（`protocol/schemas`。2026-11-03、#835）
+- 型つきの throws（`throws(E)`）の関数に閉包を渡すときは、閉包の型が推論されず `any Error` になる。`{ () async throws(E) -> T in … }` と書き、
+  閉包の中の `do` も `do throws(E) { … }` と書く（書かないと `catch` の `error` が `any Error` になり、`.case(error)` に渡せない）（2026-11-03、`StateFileStore`）
 
 ## シェルスクリプト
 
