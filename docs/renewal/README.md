@@ -29,6 +29,7 @@ AskHub（アプリ・オーケストレーター・ループの仕組み）を�
 | [architecture.md](architecture.md) | 構成（クライアント・GitHub・司令塔・ワーカー）、Mac と Claude の契約、ジョブと試行、失敗の扱い |
 | [flows.md](flows.md) | 依頼から最終 PR のマージまでの流れ（質問・着手前の確認・ゴール・実装・最終 PR・判断の確認・人がする作業） |
 | [security.md](security.md) | 人の意図の署名、秘密の置き場所、Claude の隔離、トークン、ブランチ保護 |
+| [protocol.md](protocol.md) | 状態リポジトリのファイルの置き方と中身、各リポジトリに書く目印、人の意図の封筒と署名 |
 | [release.md](release.md) | リリースの流れ、ワークフロー、App Store Connect の状態、App Store の素材 |
 | [operations.md](operations.md) | 通知、容量、Mac の一時停止と引き継ぎ、ワーカーの配り方、テンプレートの配布 |
 | [plan.md](plan.md) | 作る順番、切り替えの前提と試運転、切り替えの後始末、実装の前に確かめること |
