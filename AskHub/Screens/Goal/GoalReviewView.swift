@@ -188,7 +188,7 @@ struct StartSheet: View {
     }
 }
 
-/// Mac を選ぶ行（オンラインか・空き容量・負荷・契約）
+/// Mac を選ぶ行（オンラインか・空き容量・負荷）
 struct MacChoiceRow: View {
     let mac: Mac
 
@@ -199,7 +199,7 @@ struct MacChoiceRow: View {
                 Spacer()
                 ConnectionBadge(mac: mac)
             }
-            Text("空き \(ByteFormat.string(mac.freeBytes)) · 負荷 \(Int(mac.load * 100))% · \(mac.contract.label)")
+            Text("空き \(ByteFormat.string(mac.freeBytes)) · 負荷 \(Int(mac.load * 100))%")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let reason = mac.refusalReason {

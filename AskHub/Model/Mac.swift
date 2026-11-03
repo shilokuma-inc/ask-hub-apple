@@ -9,7 +9,6 @@ struct Mac: Identifiable, Hashable {
     var model: String
     var role: Role
     var residency: Residency
-    var contract: Contract
     var connection: Connection
     var freeBytes: Int64
     var totalBytes: Int64
@@ -38,19 +37,6 @@ struct Mac: Identifiable, Hashable {
         case whileOpen
         /// 常駐できない。ターミナルのコマンドで起動する
         case manual
-    }
-
-    /// Claude の契約。Mac ごとに 1 つだけ使う
-    enum Contract: Hashable {
-        case personal
-        case company
-
-        var label: String {
-            switch self {
-            case .personal: "個人の Claude"
-            case .company: "会社の Claude"
-            }
-        }
     }
 
     enum Connection: Hashable {

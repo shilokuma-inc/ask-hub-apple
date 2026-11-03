@@ -45,10 +45,7 @@ struct MacRow: View {
                     Spacer(minLength: 8)
                     ConnectionBadge(mac: mac)
                 }
-                HStack(spacing: 6) {
-                    TagLabel(text: mac.role == .commandCenter ? "司令塔" : "ワーカー")
-                    TagLabel(text: mac.contract.label, tint: mac.contract == .company ? Theme.accent : .secondary)
-                }
+                TagLabel(text: mac.role == .commandCenter ? "司令塔" : "ワーカー")
                 DiskGauge(mac: mac)
                 if let job = mac.jobs.first {
                     Label(job.title, systemImage: "hammer")

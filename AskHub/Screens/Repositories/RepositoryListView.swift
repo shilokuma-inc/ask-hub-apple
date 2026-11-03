@@ -94,7 +94,7 @@ struct RepositoryDetailView: View {
                 }
                 Section("回してよい Mac") {
                     ForEach(store.snapshot?.allowedMacs(for: repositoryID) ?? []) { mac in
-                        LabeledContent(mac.name, value: mac.contract.label)
+                        LabeledContent(mac.name) { ConnectionBadge(mac: mac) }
                     }
                 }
                 Section {
