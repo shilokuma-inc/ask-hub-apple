@@ -247,6 +247,27 @@ struct QuestionFlowTests {
         _ = checked(try Flow.revise("q2", basis: basis("q2", in: file), outcome: .keep, in: file))
     }
 
+    // MARK: - 慎重に決めてほしい理由
+
+    @Test func cautionIsCarriedFromDraftAndReplacedByRewrite() throws {
+        var draft = Fixtures.draft("q1")
+        draft.caution = Caution(kind: .security, reason: "書き出したファイルをほかのアプリから読めるかに関わる")
+        let file = checked(try Flow.start([draft])).questions
+        #expect(file.question("q1")?.caution == draft.caution)
+
+        // 書き直しの案は中身を丸ごと置き換えるので、理由を付けなければ外れる
+        let asking = try accept(Fixtures.answer("q1", .clarify, intent: 1), file).questions
+        let plain = checked(try Flow.explain("q1", asked: Fixtures.intent(1), text: "…", rewrite: Fixtures.rewrite(), in: asking)).questions
+        #expect(plain.question("q1")?.caution == nil)
+        var rewrite = Fixtures.rewrite()
+        rewrite.caution = Caution(kind: .irreversible, reason: "書き出した後は消せない")
+        let marked = checked(try Flow.explain("q1", asked: Fixtures.intent(1), text: "…", rewrite: rewrite, in: asking)).questions
+        #expect(marked.question("q1")?.caution?.kind == .irreversible)
+
+        draft.caution?.reason = ""
+        #expect(throws: Flow.ResultError.invalid(["q1: caution.reason は 1〜500 文字"])) { try Flow.start([draft]) }
+    }
+
     // MARK: - 追加の質問
 
     @Test func appendAddsQuestionsOfLaterRound() throws {

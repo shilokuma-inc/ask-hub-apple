@@ -118,6 +118,8 @@ public struct QuestionsFile: StateFile {
         public var recommended: String
         /// 推奨の理由
         public var reason: String
+        /// 慎重に決めてほしい理由。無ければ nil
+        public var caution: Caution?
         public var dependsOn: [String]
         /// 何回目の質問づくりで出た質問か（最初が 1）
         public var round: Int
@@ -136,6 +138,7 @@ public struct QuestionsFile: StateFile {
             options: [Option],
             recommended: String,
             reason: String,
+            caution: Caution? = nil,
             dependsOn: [String] = [],
             round: Int = 1,
             state: QuestionState,
@@ -151,6 +154,7 @@ public struct QuestionsFile: StateFile {
             self.options = options
             self.recommended = recommended
             self.reason = reason
+            self.caution = caution
             self.dependsOn = dependsOn
             self.round = round
             self.state = state
@@ -197,6 +201,7 @@ public struct QuestionsFile: StateFile {
             problems.append("\(name): 選択肢が無い・空・重複")
         }
         if !labels.contains(question.recommended) { problems.append("\(name): 推奨が選択肢に無い") }
+        problems += (question.caution?.problems ?? []).map { "\(name): \($0)" }
         if question.state == .locked && question.dependsOn.isEmpty { problems.append("\(name): 依存先の無い質問はロックできない") }
         if question.state == .dropped && question.revision?.by != .dependency {
             problems.append("\(name): 要らなくなった質問は、依存先の見直しの理由が要る")

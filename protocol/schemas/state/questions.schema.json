@@ -35,6 +35,7 @@
         },
         "recommended": { "type": "string", "minLength": 1 },
         "reason": { "type": "string", "minLength": 1, "description": "推奨の理由" },
+        "caution": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/caution" }, { "type": "null" }], "description": "慎重に決めてほしい理由。無ければ書かない" },
         "dependsOn": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/localId" }, "uniqueItems": true },
         "round": { "type": "integer", "minimum": 1, "description": "何回目の質問づくりで出た質問か" },
         "state": { "enum": ["locked", "revising", "open", "clarifying", "answered", "delegated", "dropped"] },

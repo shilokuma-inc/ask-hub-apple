@@ -137,6 +137,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
       ],
       "recommended": "日ごと",
       "reason": "今の保存の仕組みのままで作れる",
+      "caution": null,
       "dependsOn": [],
       "round": 1,
       "state": "answered",
@@ -160,6 +161,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `state` は `locked`（依存先の回答待ち）・`revising`（依存先が決まり、見直し中）・`open`（回答を待つ）・`clarifying`（説明を作成中）・`answered`・`delegated`（おまかせ）・`dropped`（見直しで要らなくなった。理由は `revision` に書き、`by` は `dependency`）
 - `answered`・`delegated`・`dropped` を「決まった」と数える。ロックを外すのは依存先がすべて決まってからで、それ以外の質問の依存先は、いつもすべて決まっている
 - `version` は質問を書き直すたびに上げる。回答の人の意図は、回答した質問の `version` を持つ。古い版への回答は受け付けず、知らせる
+- `caution` は、慎重に決めてほしい理由（`{ "kind": "security", "reason": "…" }`。`kind` は `security`（トークン・認証・権限・データを外に出す）・`privacy`（個人のデータ）・`irreversible`（データの削除・移行・公開など取り消せない）・`cost`（お金がかかる））。間違えると取り返しのつかない質問にだけ付け、無ければ書かない。クライアントは、その質問を警告として出す（祝う演出をやめ、警告の帯を出す）。最終 PR の判断のカードにも同じ形を使う（段階 3）
 - `round` は、何回目の質問づくりで出た質問か（最初が 1。着手前の確認で足した質問は 2 から）
 - `comment` は、Discussion の質問のコメントの id（人が読むための写し。GraphQL の node id）
 - `explanations` は「説明を求める」と、その説明の記録。クライアントは Discussion を読まずに、質問ごとの説明のやり取りを出せる

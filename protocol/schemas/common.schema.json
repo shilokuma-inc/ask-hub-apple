@@ -64,6 +64,31 @@
           "$ref": "#/$defs/ulid"
         }
       }
+    },
+    "caution": {
+      "description": "慎重に決めてほしい理由。クライアントはその判断を警告として出す（祝う演出をやめ、警告の帯を出す）。kind は security（トークン・認証・権限・データを外に出す）・privacy（個人のデータ）・irreversible（データの削除・移行・公開など取り消せない）・cost（お金がかかる）",
+      "type": "object",
+      "required": [
+        "kind",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "security",
+            "privacy",
+            "irreversible",
+            "cost"
+          ]
+        },
+        "reason": {
+          "description": "この判断で何に気をつけてほしいか",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
     }
   }
 }
