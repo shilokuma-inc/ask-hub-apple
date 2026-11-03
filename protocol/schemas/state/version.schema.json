@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/version.schema.json",
+  "title": "version.json（状態リポジトリ全体の形の版）",
+  "description": "人が状態リポジトリを作るときだけ書く",
+  "type": "object",
+  "required": ["v"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 }
+  }
+}

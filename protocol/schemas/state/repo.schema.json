@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/repo.schema.json",
+  "title": "repos/<owner>/<repo>/repo.json（対象のリポジトリの設定）",
+  "description": "司令塔だけが書く",
+  "type": "object",
+  "required": ["v", "repo", "platform", "maxConcurrentEpics", "protection", "addedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "repo": { "$ref": "../common.schema.json#/$defs/repositoryFullName" },
+    "platform": { "enum": ["apple"] },
+    "maxConcurrentEpics": { "type": "integer", "minimum": 1, "description": "同時に回す epic の上限（最初の版は 1）" },
+    "appKit": {
+      "description": "呼ぶ共通リポジトリの版。共通リポジトリのワークフローを入れる前は null",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["ref"],
+          "additionalProperties": false,
+          "properties": { "ref": { "type": "string", "minLength": 1, "description": "固定したコミットか、保護したタグ" } }
+        },
+        { "type": "null" }
+      ]
+    },
+    "protection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "appliedAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "人がクライアントで押して保護を設定した時刻" }
+      }
+    },
+    "addedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+  }
+}
