@@ -138,7 +138,7 @@ public struct GitHubContentsStore: StateStore {
         do {
             token = try await self.token()
         } catch {
-            throw .unauthorized
+            throw .tokenUnavailable
         }
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")

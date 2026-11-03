@@ -10,6 +10,8 @@ public enum StateStoreError: Error, Equatable, Sendable {
     case budgetExhausted(retryAfter: Duration)
     /// トークンが無効か期限切れ（401）
     case unauthorized
+    /// トークンを読めない（Keychain に無い・読めない）。GitHub には送っていない
+    case tokenUnavailable
     /// 権限が無い（上限ではない 403）
     case forbidden(message: String?)
     /// 書き込み先のリポジトリかブランチが無い、または見えない（GitHub は権限の無い private のリポジトリにも 404 を返す）

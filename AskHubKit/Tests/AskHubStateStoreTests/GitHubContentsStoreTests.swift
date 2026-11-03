@@ -193,7 +193,7 @@ struct GitHubContentsStoreTests {
         let failingTokenStore = GitHubContentsStore(repository: Self.repository, transport: StubTransport([]), budget: nil) {
             throw URLError(.userAuthenticationRequired)
         }
-        await #expect(throws: StateStoreError.unauthorized) { try await failingTokenStore.read("version.json") }
+        await #expect(throws: StateStoreError.tokenUnavailable) { try await failingTokenStore.read("version.json") }
         do {
             _ = try await store(transport).read("version.json")
             Issue.record("失敗するはず")
