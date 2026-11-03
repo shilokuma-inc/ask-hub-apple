@@ -1,4 +1,5 @@
 @testable import AskHub
+import Foundation
 import Testing
 
 /// UI テストと撮影の起動引数（開く画面とスワイプの途中の状態）
@@ -21,5 +22,35 @@ struct DemoLaunchTests {
         #expect(DemoLaunch.destination(from: "unknown:x") == nil)
         #expect(DemoLaunch.destination(from: "deck:questions") == nil)
         #expect(DemoLaunch.destination(from: "section:nothing") == nil)
+    }
+}
+
+/// App Store のスクショの撮影モード（Release でも動く）
+@MainActor
+struct ScreenshotDemoTests {
+    /// 撮影モードの起動引数から撮る画面を読む
+    @Test
+    func readsSceneFromArguments() {
+        #expect(ScreenshotDemo.scene(in: ["-screenshot-demo", "-screenshot-scene", "request"]) == .request)
+        #expect(ScreenshotDemo.scene(in: ["-screenshot-scene", "request"]) == nil)
+        #expect(ScreenshotDemo.scene(in: ["-screenshot-demo", "-screenshot-scene", "unknown"]) == nil)
+    }
+
+    /// 撮る画面は、どれもデモのデータにある epic を開く
+    @Test
+    func everySceneOpensDemoData() {
+        let snapshot = DemoScenario.standard.snapshot(now: Date(timeIntervalSince1970: 1_800_000_000))
+        for scene in ScreenshotDemo.Scene.allCases {
+            switch scene.route {
+            case .finalReview(let id), .deck(.verifications(let id)):
+                #expect(snapshot.epic(id) != nil)
+
+            case .deck(.all), nil:
+                break
+
+            default:
+                Issue.record("想定していない画面: \(scene)")
+            }
+        }
     }
 }
