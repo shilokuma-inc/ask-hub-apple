@@ -339,6 +339,8 @@
   `url.<bare のパス>.insteadOf` で書き換え、`GIT_ALLOW_PROTOCOL=file` を付けて流す。書き換えが漏れても https に出られないので、本物の GitHub に push しない
 - macOS の `zipinfo` は、ロケールが C（launchd から起動したときの既定）だと UTF-8 の名前を `??` と出す（`LC_ALL=en_US.UTF-8` なら出る）。`unzip` は名前の引数をワイルドカードとして扱い
   （`a[1].txt` を渡すと「filename not matched」）、名前の位置の `-d` などもオプションとして読む。`[` `]` `*` `?` と先頭の `-` の前に `\` を付けると一致する。macOS の `zip` は UTF-8 の名前でも汎用フラグの bit 11 を立てない
+- `claude -p --output-format json --json-schema '<schema>'` の結果では、決めた形の値が `structured_output` に入り（`result` は同じ内容の文字列）、実際に使われたモデルは `modelUsage` のキーで分かる。
+  `--resume <session_id>` で再開した呼び出しの `total_cost_usd` と `modelUsage` の数は、その会話全体の累計（再開するたびに足すと二重に数える）。最後の結果の値を使う（2026-11-04、claude 2.1.317 で確かめた）
 
 ## SwiftUI
 

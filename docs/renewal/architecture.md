@@ -159,7 +159,7 @@ push や PR の作成をした後、それを記録する前にワーカーが�
   - 標準入力は `/dev/null` にする（渡さないと 3 秒待つ）
   - 結果は JSON Schema で形を決めて受け取る（完了 / 質問が必要 / 仮決めの一覧（見える・内部の区分つき）/ 見つけた知見）。`--json-schema` を渡すと、`--output-format json` の結果の `structured_output` に入る。実際に使われたモデルは結果の `modelUsage` のキーで分かる
   - 渡す道具は `--tools` で決め、`--settings` の許可の一覧にも同じものだけを入れる。依頼は `-p` のすぐ後に置き、`-` で始まる依頼は渡さない（複数の値をとるフラグの値や、フラグとして読まれないように）
-  - 環境変数は作り直し、`HOME`・`PATH`・`TMPDIR`・`CLAUDE_CONFIG_DIR`・`CLAUDE_CODE_OAUTH_TOKEN`・`DISABLE_AUTOUPDATER` だけを渡す（版を固定するので自分で更新させない）
+  - 環境変数は作り直し、`HOME`・`PATH`・`TMPDIR`・`LANG`・`CLAUDE_CONFIG_DIR`・`CLAUDE_CODE_OAUTH_TOKEN`・`DISABLE_AUTOUPDATER` だけを渡す（版を固定するので自分で更新させない）
   - モデルはジョブの種類ごとに `--model` で指定し、実際に使われたモデルを試行に記録する。違えば止める。指定しないと、既定のモデルは認証の方式やアカウントで変わる（段階 0 では、setup-token の認証で Sonnet 5.5 になった）
   - Claude Code の版は固定し、1 台で試してから広げる
   - 実行時間の上限はワーカーが測り、超えたら SIGINT、待っても終わらなければ SIGTERM、それでも残れば SIGKILL を、子孫のプロセスにも送る

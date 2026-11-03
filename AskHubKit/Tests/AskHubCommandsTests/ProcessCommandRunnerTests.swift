@@ -90,6 +90,29 @@ struct ProcessCommandRunnerTests {
         #expect(ContinuousClock.now - started < .seconds(15))
     }
 
+    @Test func cancellationStopsCommandAndDescendants() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let command = shell("sleep 60 & echo $! > child.pid; wait", in: directory, timeout: .seconds(120))
+        let runner = runner
+        let task = Task { try await runner.run(command) }
+        let file = directory.appendingPathComponent("child.pid")
+        #expect(await waitUntil { FileManager.default.fileExists(atPath: file.path) })
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let child = try #require(pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)))
+        #expect(await waitUntil { kill(child, 0) != 0 })
+    }
+
+    @Test func negativeOutputLimitKeepsNothing() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let result = try await ProcessCommandRunner(outputLimit: -1).run(shell("echo out", in: directory))
+        #expect(result.standardOutput.isEmpty)
+        #expect(result.succeeded)
+    }
+
     @Test func descriptionHidesEnvironmentValues() throws {
         let command = shell("true", in: URL(fileURLWithPath: "/tmp"), environment: ["CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-secret"])
         #expect(!"\(command)".contains("sk-ant-oat01-secret"))

@@ -7,16 +7,19 @@ enum ClaudeCommandLine {
     enum Problem: Error, Equatable {
         /// `-` で始まる依頼は、フラグとして読まれるおそれがある
         case promptLooksLikeOption
-        case promptTooLarge(bytes: Int)
+        /// 引数の全体（依頼・決まりの文・結果の形・フォルダなど）が大きすぎる
+        case argumentsTooLarge(bytes: Int)
     }
 
     static func command(for request: ClaudeRequest, setup: ClaudeSetup) throws(Problem) -> Command {
         guard !request.prompt.hasPrefix("-") else { throw .promptLooksLikeOption }
-        let bytes = request.prompt.utf8.count + request.systemPrompt.utf8.count
-        guard bytes <= setup.maximumPromptBytes else { throw .promptTooLarge(bytes: bytes) }
+        let arguments = arguments(for: request)
+        // 起動の前に断る（起動の時に E2BIG で失敗すると、原因が依頼の大きさだと分からない）。区切りの NUL も数える
+        let bytes = arguments.reduce(setup.executable.path.utf8.count + 1) { $0 + $1.utf8.count + 1 }
+        guard bytes <= setup.maximumArgumentBytes else { throw .argumentsTooLarge(bytes: bytes) }
         return Command(
             executable: setup.executable,
-            arguments: arguments(for: request),
+            arguments: arguments,
             environment: environment(for: setup),
             workingDirectory: request.workingDirectory,
             timeout: request.timeout
