@@ -56,9 +56,10 @@ public struct GitHubContentsStore: StateStore {
 
     public func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
         guard StatePathCheck.isSafe(path) else { throw .invalidPath }
-        try await budget?.reserve(now: now())
         let body = WriteBody(message: message, content: data.base64EncodedString(), sha: sha, branch: branch)
         var request = try await makeRequest(path: path, query: [])
+        // 予算は GitHub に送る書き込みだけを数える（トークンを読めなかった書き込みは数えない）
+        try await budget?.reserve(now: now())
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         do {
@@ -137,6 +138,8 @@ public struct GitHubContentsStore: StateStore {
         let token: String
         do {
             token = try await self.token()
+        } catch is CancellationError {
+            throw .cancelled
         } catch {
             throw .tokenUnavailable
         }
@@ -197,18 +200,38 @@ actor ETagCache {
     struct Entry: Sendable {
         let etag: String
         let contents: Contents
+
+        /// 持っている中身の大きさの目安
+        var size: Int {
+            switch contents {
+            case .missing: 0
+            case let .file(blob): blob.data.count
+            case let .directory(entries): entries.reduce(0) { $0 + $1.name.utf8.count + $1.path.utf8.count + $1.sha.utf8.count }
+            }
+        }
     }
 
-    /// 持ちすぎないよう、この数を超えたら空にする（状態リポジトリのファイルの数より十分に大きい）
-    static let limit = 5_000
+    /// 持ちすぎないよう、どちらかを超えたら空にする（状態リポジトリのファイルの数と大きさより十分に大きい）
+    static let countLimit = 5_000
+    static let sizeLimit = 32 * 1_024 * 1_024
     private var entries: [String: Entry] = [:]
+    private var size = 0
 
     func entry(for path: String) -> Entry? { entries[path] }
 
     func store(_ path: String, _ entry: Entry) {
-        if entries.count >= Self.limit { entries.removeAll() }
+        remove(path)
+        if entries.count >= Self.countLimit || size + entry.size > Self.sizeLimit {
+            entries.removeAll()
+            size = 0
+        }
+        // 1 つで上限を超えるものは持たない
+        guard entry.size <= Self.sizeLimit else { return }
         entries[path] = entry
+        size += entry.size
     }
 
-    func remove(_ path: String) { entries[path] = nil }
+    func remove(_ path: String) {
+        if let removed = entries.removeValue(forKey: path) { size -= removed.size }
+    }
 }
