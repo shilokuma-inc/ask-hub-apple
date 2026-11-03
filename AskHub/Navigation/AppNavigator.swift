@@ -33,11 +33,14 @@ struct RouteList<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        if let selection {
-            List(selection: selection, content: content)
-        } else {
-            List(content: content)
+        Group {
+            if let selection {
+                List(selection: selection, content: content)
+            } else {
+                List(content: content)
+            }
         }
+        .compactList()
     }
 }
 

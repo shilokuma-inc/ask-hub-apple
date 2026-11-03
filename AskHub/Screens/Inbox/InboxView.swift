@@ -69,7 +69,7 @@ struct InboxRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(item.title)
-                        .appFont(.headline)
+                        .rowFont(.title)
                         .lineLimit(2)
                     Spacer(minLength: 8)
                     Text(RelativeTime.string(item.since, now: store.currentDate()))
@@ -77,15 +77,15 @@ struct InboxRow: View {
                         .foregroundStyle(.secondary)
                 }
                 Text(item.context)
-                    .appFont(.subheadline)
+                    .rowFont(.subtitle)
                     .lineLimit(1)
                 Text(item.detail)
-                    .appFont(.footnote)
+                    .rowFont(.detail)
                     .foregroundStyle(detailStyle)
                     .lineLimit(2)
             }
         }
-        .padding(.vertical, 4)
+        .compactRow()
         .accessibilityElement(children: .combine)
     }
 
@@ -117,16 +117,16 @@ private struct DeckShortcutRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("まとめて判断する")
-                    .appFont(.headline)
+                    .rowFont(.title)
                 Text("\(count) 件をスワイプで答える")
-                    .appFont(.footnote)
+                    .rowFont(.subtitle)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
             Image(systemName: "rectangle.stack.fill")
                 .foregroundStyle(.tint)
         }
-        .padding(.vertical, 4)
+        .compactRow()
     }
 }
 

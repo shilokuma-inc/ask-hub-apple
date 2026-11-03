@@ -21,7 +21,7 @@ struct GoalReviewView: View {
             Section {
                 AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: "ゴール（版 \(goal.version)）", iconSize: 40)
                 Text(goal.summary)
-                    .appFont(.headline)
+                    .rowFont(.title)
             }
             if let request = goal.revisionRequest {
                 Section {
@@ -55,6 +55,7 @@ struct GoalReviewView: View {
             }
         }
         .pastelBackground()
+        .compactList()
         .navigationTitle(epic.title)
         .hidesTabBar()
         .safeAreaBar(edge: .bottom) { startBar(epic, goal).keepsControlSize() }
@@ -167,6 +168,7 @@ struct StartSheet: View {
                 }
             }
             .pastelBackground()
+            .compactList()
             .navigationTitle("開始する")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -206,7 +208,7 @@ struct MacChoiceRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(mac.name).appFont(.headline)
+                Text(mac.name).rowFont(.title)
                 if isLastUsed {
                     TagLabel(text: "前回")
                 }

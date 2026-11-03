@@ -14,6 +14,10 @@ enum AppFont {
         600: "Nunito-SemiBold", 700: "Nunito-Bold", 800: "Nunito-ExtraBold", 900: "Nunito-Black"
     ]
 
+    /// 行間（文字の大きさの倍率）。Nunito の行間（約 1.36 倍）はシステムの書体より広く、一覧の行が高くなるので少し詰める
+    /// （ユーザーの要望。2026-11-03）。1 より小さくすると文字の上が切れるので、1.2 より下げない
+    static let lineHeight = AttributedString.LineHeight.multiple(factor: 1.25)
+
     /// 起動のときにフォントを登録し、UIKit が描くナビゲーションバーの見出しとタブの名前にも使う
     static func register() {
         if let url = Bundle.main.url(forResource: "Nunito[wght]", withExtension: "ttf") {
