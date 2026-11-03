@@ -9,7 +9,7 @@
 | 置き場所 | 置くもの | 読むもの |
 | --- | --- | --- |
 | 状態リポジトリ（private。1 つ） | 機械の状態（対象のリポジトリの設定・epic・ゴール・質問の状態・ジョブ・試行・Mac の印・端末の宛先・公開鍵の記録）、すべての人の意図、依頼の添付 | クライアント・司令塔・ワーカー |
-| 各リポジトリの Discussion | 依頼の要約、質問、説明、回答・おまかせの写し、ゴールの写し（司令塔が書く） | 人 |
+| 各リポジトリの Discussion | 依頼の要約、質問、説明、回答の写し、ゴールの写し（司令塔が書く） | 人 |
 | 各リポジトリの PR | 子 PR、最終 PR、判断のカードの写し、最終 PR への指示・カードへの答え・マージの承認の写し（司令塔・ワーカーが書く） | 人・ワーカー（CI とレビュー） |
 
 人が GitHub の画面で読めるものは各リポジトリに残し、機械が判断に使う正本は状態リポジトリに置く。両方にあるもの（質問・ゴール・判断のカード・人の意図）は、状態リポジトリが正本で、各リポジトリのものは人が読むための写しとする。
@@ -147,7 +147,6 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
       ],
       "revision": null,
       "answer": {
-        "mode": "answer",
         "choice": "日ごと",
         "note": "夜間はもっと長くてもよい。",
         "intent": { "keyId": "…", "nonce": "01JC…" },
@@ -158,15 +157,15 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 }
 ```
 
-- `state` は `locked`（依存先の回答待ち）・`revising`（依存先が決まり、見直し中）・`open`（回答を待つ）・`clarifying`（説明を作成中）・`answered`・`delegated`（おまかせ）・`dropped`（見直しで要らなくなった。理由は `revision` に書き、`by` は `dependency`）
-- `answered`・`delegated`・`dropped` を「決まった」と数える。ロックを外すのは依存先がすべて決まってからで、それ以外の質問の依存先は、いつもすべて決まっている
+- `state` は `locked`（依存先の回答待ち）・`revising`（依存先が決まり、見直し中）・`open`（回答を待つ）・`clarifying`（説明を作成中）・`answered`・`dropped`（見直しで要らなくなった。理由は `revision` に書き、`by` は `dependency`）
+- `answered`・`dropped` を「決まった」と数える。ロックを外すのは依存先がすべて決まってからで、それ以外の質問の依存先は、いつもすべて決まっている
 - `version` は質問を書き直すたびに上げる。回答の人の意図は、回答した質問の `version` を持つ。古い版への回答は受け付けず、知らせる
 - `caution` は、慎重に決めてほしい理由（`{ "kind": "security", "reason": "…" }`。`kind` は `security`（トークン・認証・権限・データを外に出す）・`privacy`（個人のデータ）・`irreversible`（データの削除・移行・公開など取り消せない）・`cost`（お金がかかる））。間違えると取り返しのつかない質問にだけ付け、無ければ書かない。クライアントは、その質問を警告として出す（祝う演出をやめ、警告の帯を出す）。最終 PR の判断のカードにも同じ形を使う（段階 3）
 - `round` は、何回目の質問づくりで出た質問か（最初が 1。着手前の確認で足した質問は 2 から）
 - `comment` は、Discussion の質問のコメントの id（人が読むための写し。GraphQL の node id）
 - `explanations` は「説明を求める」と、その説明の記録。クライアントは Discussion を読まずに、質問ごとの説明のやり取りを出せる
 - `revision` は、最後に書き直したときの記録（`{ "from": 1, "reason": "…", "by": "explain" }`。`by` は `explain`（説明のついでに直した）・`dependency`（依存先が決まって見直した））。書き直したことを画面で分かるようにするため
-- `answer` は受け付けた回答（`mode` は `answer`・`delegate`。`delegate` では `choice` が推奨の選択肢）。`intent` は元の人の意図
+- `answer` は受け付けた回答（`choice` は選んだ選択肢。自由記述だけなら書かない）。`intent` は元の人の意図。判断はすべて人がするので、推奨の選択肢で決めたことにする回答は無い。`recommended` は、人が選ぶときの手がかり
 - 開始の前に回答を変えたときは、新しい回答で置き換え、依存する質問（間接に依存するものも）の回答を取り消して `locked` に戻す。説明を作っている問いと、見直しは取り消す。同じ選択肢と自由記述で答え直したときは、依存する質問に触れない
 
 ### goal.json
@@ -177,7 +176,6 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "version": 2,
   "summary": "…",
   "decided": [ { "question": "q1", "text": "日ごとに入れ替える" } ],
-  "delegated": [ { "question": "q3", "text": "推奨の…にした" } ],
   "outOfScope": [ "…" ],
   "doneWhen": [ "…" ],
   "tasks": [
@@ -211,7 +209,6 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "items": [
     {
       "id": "d1",
-      "source": "provisional",
       "visible": true,
       "what": "見出しの文言を短くした",
       "why": "ゴールの t2（iPhone の幅に収める）",
@@ -223,7 +220,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 }
 ```
 
-- `source` は `delegated`（おまかせ）か `provisional`（ループの仮決め）
+- 項目は、ループの仮決め（実装の途中で Claude が決めたこと）。質問はすべて人が答えるので、質問から来る項目は無い
 - `visible` は、ユーザーから見える挙動・仕様・見た目に関わるか。決めるのは、読むだけのレビュー役の Claude と、決まった信号（View・文言・アセット・Info.plist・entitlements の差分、スクショの差）
 - `answer` は人の意図（OK・別案・直してほしい）への参照
 
@@ -403,7 +400,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | kind | target | targetVersion | payload |
 | --- | --- | --- | --- |
 | `request` | リポジトリ | — | `title`、`body`、`attachments`（`[{ "n": 1, "name": "…", "size": …, "sha256": "…" }]`。中身は `attachments/<device>/<intent>/<n>`） |
-| `answer` | 質問 | 質問の `version` | `mode`（`answer`・`clarify`・`delegate`）、`choice`、`note`（`protocol/schemas/payloads/answer.schema.json`） |
+| `answer` | 質問 | 質問の `version` | `mode`（`answer`・`clarify`）、`choice`、`note`（`protocol/schemas/payloads/answer.schema.json`） |
 | `startEpic` | epic | ゴールの `version` | `mac` |
 | `reviseGoal` | epic | ゴールの `version` | 指示の本文 |
 | `decision` | 判断のカード | 最終 PR の head のコミット | `answer`（`ok`・`alternative`・`fix`）、本文 |
