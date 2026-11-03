@@ -56,6 +56,29 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["あなたの番はありません"].waitForExistence(timeout: 10))
     }
 
+    /// 設定でデモの場面を変えると、その場面のデータを読み込み直す（作り直した store を読み込まないまま残さない）。
+    /// 起動引数の `-demoScenario` は設定より優先されるので付けない。最後に標準の場面に戻す
+    @MainActor
+    func testChangingScenarioReloadsData() {
+        let app = launch([])
+        chooseScenario("人の出番が無い", in: app)
+        XCTAssertTrue(app.staticTexts["あなたの番はありません"].waitForExistence(timeout: 10))
+        chooseScenario("ひととおり（標準）", in: app)
+        XCTAssertTrue(app.staticTexts["まとめて判断する"].waitForExistence(timeout: 10))
+    }
+
+    private func chooseScenario(_ label: String, in app: XCUIApplication) {
+        let settings = app.buttons["設定"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        // メニューの選択は、名前に今の値が続いたボタンになる（例「デモの場面, ひととおり（標準）」）
+        let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "デモの場面")).firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), app.debugDescription)
+        picker.tap()
+        app.buttons[label].firstMatch.tap()
+        app.buttons["閉じる"].firstMatch.tap()
+    }
+
     /// カードを右上へスワイプすると推奨で答え、猶予の間は取り消せる
     @MainActor
     func testSwipeAnswersAndCanUndo() {
