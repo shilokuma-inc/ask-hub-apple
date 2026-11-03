@@ -74,6 +74,16 @@ struct SwipeLayoutTests {
         #expect(SwipeLayout.progress(for: CGSize(width: SwipeLayout.commitDistance * 2, height: 0)) == 1)
     }
 
+    /// 数字キーは 1 から選択肢の数までだけ選べる。選択肢の無い自由記述のカードで数字を打っても落ちない
+    @Test
+    func choiceIndexForKeyStaysInRange() {
+        #expect(SwipeLayout.choiceIndex(forKey: "2", count: 3) == 1)
+        #expect(SwipeLayout.choiceIndex(forKey: "4", count: 3) == nil)
+        #expect(SwipeLayout.choiceIndex(forKey: "0", count: 3) == nil)
+        #expect(SwipeLayout.choiceIndex(forKey: "1", count: 0) == nil)
+        #expect(SwipeLayout.choiceIndex(forKey: "a", count: 3) == nil)
+    }
+
     /// 色の濃さは動かすほど濃くなりほかは薄くなる
     @Test
     func intensityGrowsTowardCandidate() {

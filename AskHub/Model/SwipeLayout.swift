@@ -112,6 +112,14 @@ enum SwipeLayout {
         min(1, Double(hypot(translation.width, translation.height) / commitDistance))
     }
 
+    /// 数字キー（1 から）で選ぶ選択肢の添字。選択肢の無い（自由記述の）カードや、数がはみ出したキーは nil
+    static func choiceIndex(forKey characters: String, count: Int) -> Int? {
+        guard let number = Int(characters), (0..<count).contains(number - 1) else {
+            return nil
+        }
+        return number - 1
+    }
+
     /// 離したときに決まるか。勢いよく弾いたとき（予測の位置が遠い）も決める
     static func commits(translation: CGSize, predictedEnd: CGSize) -> Bool {
         hypot(translation.width, translation.height) >= commitDistance
