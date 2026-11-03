@@ -19,7 +19,7 @@ struct BlockerSection: View {
                         .foregroundStyle(.secondary)
                 }
                 Text(blocker.title)
-                    .appFont(.headline)
+                    .rowFont(.title)
                 Text(blocker.summary)
                     .appFont(.subheadline)
                 if let log = blocker.logExcerpt {

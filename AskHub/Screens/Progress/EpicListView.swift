@@ -62,21 +62,21 @@ struct EpicRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(epic.title)
-                        .appFont(.headline)
+                        .rowFont(.title)
                         .lineLimit(2)
                     Spacer(minLength: 8)
                     StageDots(stage: epic.stage, isBlocked: epic.blocker != nil)
                 }
                 Text(store.repository(epic.repositoryID)?.appName ?? epic.repositoryID)
-                    .appFont(.subheadline)
+                    .rowFont(.subtitle)
                     .foregroundStyle(.secondary)
                 ForEach(Array(lines.prefix(2).enumerated()), id: \.offset) { _, line in
                     EpicStatusLabel(line: line)
-                        .appFont(.footnote)
+                        .rowFont(.detail)
                 }
             }
         }
-        .padding(.vertical, 4)
+        .compactRow()
         .accessibilityElement(children: .combine)
     }
 }

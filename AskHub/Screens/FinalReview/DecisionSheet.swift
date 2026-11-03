@@ -34,6 +34,7 @@ struct DecisionSheet: View {
                 }
             }
             .pastelBackground()
+            .compactList()
             .navigationTitle("判断の確認")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

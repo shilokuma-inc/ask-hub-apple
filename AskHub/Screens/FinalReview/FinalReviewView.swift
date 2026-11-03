@@ -20,6 +20,7 @@ struct FinalReviewView: View {
     private func content(_ epic: Epic, _ review: FinalReview) -> some View {
         sections(epic, review)
             .pastelBackground()
+            .compactList()
             .navigationTitle("マージを確かめる")
             .hidesTabBar()
             .safeAreaBar(edge: .bottom) {
@@ -81,7 +82,7 @@ struct FinalReviewView: View {
             if !review.pendingDecisions.isEmpty {
                 NavigationLink(value: AppRoute.deck(.decisions(epic.id))) {
                     Label("カードで確かめる（\(review.pendingDecisions.count)）", systemImage: "rectangle.stack")
-                        .appFont(.headline)
+                        .rowFont(.title)
                 }
             }
             ForEach(review.decisions) { decision in
@@ -115,7 +116,7 @@ private struct MergePolicyView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Label("手動でマージします", systemImage: "hand.raised.fill")
                     .foregroundStyle(Theme.warning)
-                    .appFont(.headline)
+                    .rowFont(.title)
                 Text(reasons.map(\.label).joined(separator: "・") + " があるため")
                     .appFont(.subheadline)
                     .foregroundStyle(.secondary)

@@ -46,6 +46,7 @@ struct MacDetailView: View {
                 }
             }
             .pastelBackground()
+            .compactList()
             .navigationTitle(mac.name)
         } else {
             ContentUnavailableView("この Mac は見つかりません", systemImage: "laptopcomputer.slash")
@@ -108,6 +109,7 @@ struct CleanupView: View {
             }
         }
         .pastelBackground()
+        .compactList()
         .navigationTitle("片付けの候補")
         .safeAreaBar(edge: .bottom) {
             if !candidates.isEmpty {

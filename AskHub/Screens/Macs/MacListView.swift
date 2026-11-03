@@ -43,7 +43,7 @@ struct MacRow: View {
                 .frame(width: 40 * scale, height: 40 * scale)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(mac.name).appFont(.headline)
+                    Text(mac.name).rowFont(.title)
                     Spacer(minLength: 8)
                     ConnectionBadge(mac: mac)
                 }
@@ -51,18 +51,18 @@ struct MacRow: View {
                 DiskGauge(mac: mac)
                 if let job = mac.jobs.first {
                     Label(job.title, systemImage: "hammer")
-                        .appFont(.footnote)
+                        .rowFont(.detail)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 if let reason = mac.refusalReason {
                     Label(reason, systemImage: "exclamationmark.triangle.fill")
-                        .appFont(.footnote)
+                        .rowFont(.detail)
                         .foregroundStyle(Theme.warning)
                 }
             }
         }
-        .padding(.vertical, 4)
+        .compactRow()
         .accessibilityElement(children: .combine)
     }
 }

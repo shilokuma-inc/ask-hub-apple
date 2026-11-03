@@ -23,6 +23,7 @@ struct QuestionSheet: View {
                 }
             }
             .pastelBackground()
+            .compactList()
             .navigationTitle(question.id)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

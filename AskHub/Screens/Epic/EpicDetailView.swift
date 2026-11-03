@@ -20,6 +20,7 @@ struct EpicDetailView: View {
     private func content(_ epic: Epic) -> some View {
         sections(epic)
             .pastelBackground()
+            .compactList()
             .navigationTitle(epic.title)
             .toolbar { EpicMenu(epic: epic, isConfirmingDiscard: $isConfirmingDiscard) }
             .confirmationDialog("「\(epic.title)」をやめますか？", isPresented: $isConfirmingDiscard, titleVisibility: .visible) {
@@ -68,7 +69,7 @@ struct EpicDetailView: View {
             }
             EpicStageSections(epic: epic) { shownQuestion = $0 }
             Section("依頼") {
-                Text(epic.request.summary).appFont(.headline)
+                Text(epic.request.summary).rowFont(.title)
                 Text(epic.request.body).foregroundStyle(.secondary)
                 if epic.request.attachmentCount > 0 {
                     Label("添付 \(epic.request.attachmentCount)", systemImage: "paperclip")
@@ -99,7 +100,7 @@ private struct EpicStageSections: View {
                 if !epic.answerableQuestions.isEmpty, epic.stage == .questions {
                     NavigationLink(value: AppRoute.deck(.questions(epic.id))) {
                         Label("質問に答える（\(epic.answerableQuestions.count)）", systemImage: "rectangle.stack")
-                            .appFont(.headline)
+                            .rowFont(.title)
                     }
                 }
                 ForEach(epic.questions) { question in

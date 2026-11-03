@@ -21,7 +21,7 @@ struct HumanTaskView: View {
         List {
             Section {
                 AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: epic.title, iconSize: 40)
-                Text(task.title).appFont(.headline)
+                Text(task.title).rowFont(.title)
                 Text(task.why).foregroundStyle(.secondary)
                 stateLabel(task.state, epic: epic, task: task)
             }
@@ -57,6 +57,7 @@ struct HumanTaskView: View {
             }
         }
         .pastelBackground()
+        .compactList()
         .navigationTitle("人がする作業")
         .confirmationDialog("秘密の値を GitHub の Secrets に入れますか？", isPresented: $isConfirmingSecret, titleVisibility: .visible) {
             Button("入れる") {

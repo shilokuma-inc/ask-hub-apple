@@ -31,6 +31,7 @@ struct DeckCardDetailSheet: View {
                 }
             }
             .pastelBackground()
+            .compactList()
             .navigationTitle(card.kindLabel)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -65,7 +66,7 @@ struct QuestionDetailSections: View {
                 ForEach(question.options) { option in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text(option.label).appFont(.headline)
+                            Text(option.label).rowFont(.title)
                             if option.id == question.recommendedOptionID {
                                 TagLabel(text: "推奨", tint: Theme.success)
                             }

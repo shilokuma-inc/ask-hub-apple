@@ -49,19 +49,19 @@ private struct RepositoryRow: View {
         HStack(spacing: 12) {
             AppIconView(repository: repository, size: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text(repository.appName).appFont(.headline)
+                Text(repository.appName).rowFont(.title)
                 Text(repository.fullName)
-                    .appFont(.caption)
+                    .rowFont(.detail)
                     .foregroundStyle(.secondary)
                 if let active {
                     Text(active.title)
-                        .appFont(.footnote)
+                        .rowFont(.subtitle)
                         .foregroundStyle(.tint)
                         .lineLimit(1)
                 }
             }
         }
-        .padding(.vertical, 2)
+        .compactRow()
     }
 }
 
@@ -100,6 +100,7 @@ struct RepositoryDetailView: View {
                 }
             }
             .pastelBackground()
+            .compactList()
             .navigationTitle(repository.appName)
         } else {
             ContentUnavailableView("このリポジトリは見つかりません", systemImage: "questionmark.folder")
