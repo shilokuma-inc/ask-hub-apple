@@ -51,11 +51,10 @@ extension DemoClientService {
         case let .request(repositoryID, summary, body):
             addRequest(repositoryID: repositoryID, summary: summary, body: body)
 
-        case let .addRepository(repositoryID, allowedMacIDs):
-            guard var repository = state.candidateRepositories.first(where: { $0.id == repositoryID }) else {
+        case .addRepository(let repositoryID):
+            guard let repository = state.candidateRepositories.first(where: { $0.id == repositoryID }) else {
                 return
             }
-            repository.allowedMacIDs = allowedMacIDs
             state.candidateRepositories.removeAll { $0.id == repositoryID }
             state.repositories.append(repository)
 
@@ -243,6 +242,7 @@ extension DemoClientService {
             mac.jobs.append(Mac.Job(id: "job-\(epicID)", title: "\(title): タスク 1 の実装", epicID: epicID, startedAt: date))
         }
         state.updateEpic(epicID) { $0.log("\(macName) で実装を始めました", at: date) }
+        state.recordLastMac(macID, forEpic: epicID)
     }
 
     private func addRequest(repositoryID: TargetRepository.ID, summary: String, body: String) {

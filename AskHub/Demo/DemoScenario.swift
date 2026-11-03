@@ -102,19 +102,20 @@ extension DemoData {
     }
 
     static let repositories: [TargetRepository] = [
-        repository("habit-ios", "習慣ログ", "checklist", .green, macs: [macMiniID, macBookProID, macBookAirID]),
-        repository("recipe-apple", "献立メモ", "fork.knife", .orange, macs: [macMiniID, macBookProID]),
-        repository("rain-ios", "雨雲チェック", "cloud.rain.fill", .blue, macs: [macMiniID, macBookProID]),
-        repository("pocket-budget-ios", "おこづかい帳", "yensign.circle.fill", .purple, macs: [macMiniID, macBookProID, macBookAirID]),
-        repository("tsundoku-ios", "積読リスト", "books.vertical.fill", .teal, macs: [macBookProID, macMiniID]),
-        // 技術検証のリポジトリ。実装は社用の Mac でだけ回す
-        repository("kaji-share-ios", "家事シェア", "house.fill", .pink, macs: [macBookAirID])
+        repository("habit-ios", "習慣ログ", "checklist", .green, lastMac: macMiniID),
+        repository("recipe-apple", "献立メモ", "fork.knife", .orange, lastMac: macBookProID),
+        repository("rain-ios", "雨雲チェック", "cloud.rain.fill", .blue, lastMac: macBookProID),
+        // ゴールを確かめて開始する epic がある。開始のときは前回の MacBook Pro を選んである
+        repository("pocket-budget-ios", "おこづかい帳", "yensign.circle.fill", .purple, lastMac: macBookProID),
+        repository("tsundoku-ios", "積読リスト", "books.vertical.fill", .teal, lastMac: macMiniID),
+        // 前回の Mac（MacBook Air）がオフラインなので、開始のときは何も選んでいない
+        repository("kaji-share-ios", "家事シェア", "house.fill", .pink, lastMac: macBookAirID)
     ]
 
     static let candidates: [TargetRepository] = [
-        TargetRepository(owner: owner, name: "memo-widget-ios", appName: "メモウィジェット", icon: .monogram, allowedMacIDs: []),
-        TargetRepository(owner: owner, name: "sleep-log-apple", appName: "睡眠ログ", icon: .monogram, allowedMacIDs: []),
-        TargetRepository(owner: owner, name: "plant-water-ios", appName: "水やり当番", icon: .monogram, allowedMacIDs: [])
+        TargetRepository(owner: owner, name: "memo-widget-ios", appName: "メモウィジェット", icon: .monogram),
+        TargetRepository(owner: owner, name: "sleep-log-apple", appName: "睡眠ログ", icon: .monogram),
+        TargetRepository(owner: owner, name: "plant-water-ios", appName: "水やり当番", icon: .monogram)
     ]
 
     private static func repository(
@@ -122,9 +123,9 @@ extension DemoData {
         _ appName: String,
         _ symbol: String,
         _ tint: IconTint,
-        macs: [Mac.ID]
+        lastMac: Mac.ID?
     ) -> TargetRepository {
-        TargetRepository(owner: owner, name: name, appName: appName, icon: .symbol(symbol, tint), allowedMacIDs: macs)
+        TargetRepository(owner: owner, name: name, appName: appName, icon: .symbol(symbol, tint), lastMacID: lastMac)
     }
 
     func macs() -> [Mac] {

@@ -299,14 +299,14 @@ private struct EpicMenu: ToolbarContent {
     }
 }
 
-/// ほかの Mac への引き継ぎ（そのリポジトリを回してよい Mac だけ）
+/// ほかの Mac への引き継ぎ（いま回している Mac のほかのすべての Mac。オフラインの Mac は選べない）
 struct HandOverMenu: View {
     let epic: Epic
 
     @Environment(ClientStore.self) private var store
 
     var body: some View {
-        let macs = store.snapshot?.allowedMacs(for: epic.repositoryID).filter { $0.id != epic.macID } ?? []
+        let macs = store.snapshot?.macs.filter { $0.id != epic.macID } ?? []
         Menu("ほかの Mac に引き継ぐ", systemImage: "arrow.right.arrow.left") {
             ForEach(macs) { mac in
                 Button("\(mac.name)\(mac.isOnline ? "" : "（オフライン）")") {

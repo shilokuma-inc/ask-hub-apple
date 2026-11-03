@@ -39,11 +39,16 @@ extension ClientSnapshot {
         epics.filter(\.isActive)
     }
 
-    /// そのリポジトリを回してよい Mac
-    func allowedMacs(for repositoryID: TargetRepository.ID) -> [Mac] {
-        guard let repository = repository(repositoryID) else {
-            return []
+    /// 開始のときに選べる Mac（オンラインの Mac すべて）
+    var startableMacs: [Mac] {
+        macs.filter(\.isOnline)
+    }
+
+    /// 開始のときに既定で選ぶ Mac。前回そのリポジトリを回した Mac が、オンラインで新しいループを受けるときだけ選ぶ
+    func defaultStartMacID(for repositoryID: TargetRepository.ID) -> Mac.ID? {
+        guard let mac = mac(repository(repositoryID)?.lastMacID), mac.isOnline, mac.refusalReason == nil else {
+            return nil
         }
-        return macs.filter { repository.allowedMacIDs.contains($0.id) }
+        return mac.id
     }
 }

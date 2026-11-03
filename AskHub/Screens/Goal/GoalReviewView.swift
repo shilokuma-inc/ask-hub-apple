@@ -131,7 +131,7 @@ private struct GoalSheets: ViewModifier {
     }
 }
 
-/// 開始のときに回す Mac を選ぶ。そのリポジトリを回してよい Mac だけを出す
+/// 開始のときに回す Mac を選ぶ。オンラインの Mac をすべて出し、前回そのリポジトリを回した Mac を選んでおく
 struct StartSheet: View {
     let epic: Epic
 
@@ -141,19 +141,29 @@ struct StartSheet: View {
     @State private var isConfirming = false
 
     var body: some View {
-        let macs = store.snapshot?.allowedMacs(for: epic.repositoryID) ?? []
+        let macs = store.snapshot?.startableMacs ?? []
+        let lastMacID = store.repository(epic.repositoryID)?.lastMacID
+        let defaultMacID = store.snapshot?.defaultStartMacID(for: epic.repositoryID)
         NavigationStack {
             List(selection: $selectedMacID) {
                 Section {
                     ForEach(macs) { mac in
-                        MacChoiceRow(mac: mac)
+                        MacChoiceRow(mac: mac, isLastUsed: mac.id == lastMacID)
                             .tag(mac.id)
                             .selectionDisabled(mac.refusalReason != nil)
+                    }
+                    if macs.isEmpty {
+                        Text("オンラインの Mac がありません").foregroundStyle(.secondary)
                     }
                 } header: {
                     Text("どの Mac で回しますか")
                 } footer: {
-                    Text("このリポジトリを回してよい Mac だけを出しています。オフラインの Mac を選ぶと、戻ったときに始まります")
+                    Text(defaultMacID == nil ? "オンラインの Mac を出しています" : "オンラインの Mac を出しています。前回このリポジトリを回した Mac を選んであります")
+                }
+            }
+            .onAppear {
+                if selectedMacID == nil {
+                    selectedMacID = defaultMacID
                 }
             }
             .pastelBackground()
@@ -188,14 +198,18 @@ struct StartSheet: View {
     }
 }
 
-/// Mac を選ぶ行（オンラインか・空き容量・負荷）
+/// Mac を選ぶ行（オンラインか・空き容量・負荷・前回このリポジトリを回したか）
 struct MacChoiceRow: View {
     let mac: Mac
+    var isLastUsed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(mac.name).appFont(.headline)
+                if isLastUsed {
+                    TagLabel(text: "前回")
+                }
                 Spacer()
                 ConnectionBadge(mac: mac)
             }

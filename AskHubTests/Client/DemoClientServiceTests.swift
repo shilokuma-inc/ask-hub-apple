@@ -91,6 +91,34 @@ struct DemoClientServiceTests {
         #expect(epic.tasks.first?.state == .inProgress)
     }
 
+    /// 開始のときは、前回そのリポジトリを回した Mac を既定で選ぶ。前回の Mac がオフラインなら選ばない
+    @Test
+    func defaultStartMacIsLastOnlineMac() {
+        let snapshot = makeService().state
+        #expect(snapshot.defaultStartMacID(for: DemoData.repositoryID("pocket-budget-ios")) == DemoData.macBookProID)
+        // 家事シェアを前回回した MacBook Air はオフライン
+        #expect(snapshot.defaultStartMacID(for: DemoData.repositoryID("kaji-share-ios")) == nil)
+        #expect(snapshot.startableMacs.map(\.id) == [DemoData.macMiniID, DemoData.macBookProID])
+    }
+
+    /// 開始した Mac が、そのリポジトリの次の開始の既定になる
+    @Test
+    func startRemembersMacForRepository() async throws {
+        let service = makeService()
+        try await service.perform(.start(epicID: "budget-limit", macID: DemoData.macMiniID))
+        #expect(service.state.defaultStartMacID(for: DemoData.repositoryID("pocket-budget-ios")) == DemoData.macMiniID)
+    }
+
+    /// 対象に加えると候補から外れ、対象のリポジトリに入る（回してよい Mac は選ばない）
+    @Test
+    func addRepositoryMovesCandidate() async throws {
+        let service = makeService()
+        let id = DemoData.repositoryID("sleep-log-apple")
+        try await service.perform(.addRepository(repositoryID: id))
+        #expect(service.state.repository(id) != nil)
+        #expect(!service.state.candidateRepositories.contains { $0.id == id })
+    }
+
     /// 判断を全部 OK にすると確かめた head が記録されマージできる
     @Test
     func acceptAllRecordsHeadAndMerges() async throws {

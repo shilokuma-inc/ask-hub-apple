@@ -25,7 +25,7 @@ enum HumanIntent: Hashable {
     case verify(epicID: Epic.ID, itemID: VerificationItem.ID, reply: VerificationReply)
     case cleanUp(macID: Mac.ID, candidateIDs: [CleanupCandidate.ID])
     case request(repositoryID: TargetRepository.ID, summary: String, body: String)
-    case addRepository(repositoryID: TargetRepository.ID, allowedMacIDs: [Mac.ID])
+    case addRepository(repositoryID: TargetRepository.ID)
 }
 
 enum DecisionReply: Hashable {
