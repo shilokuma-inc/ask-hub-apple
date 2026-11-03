@@ -87,6 +87,8 @@ struct DecisionCard: Identifiable, Hashable {
     var before: Screenshot?
     var after: Screenshot?
     var response: Response
+    /// 慎重に確かめてほしい理由（セキュリティなど）。あれば札を警告ふうに出す
+    var caution: Caution?
 
     enum Kind: Hashable {
         case delegated(questionID: Question.ID)

@@ -20,6 +20,8 @@ struct Question: Identifiable, Hashable {
     /// 説明や見直しで、Claude が質問文や選択肢を書き直したときの説明。画面で分かるように出す
     var revisionNote: String?
     var askedAt: Date
+    /// 慎重に決めてほしい理由（セキュリティなど）。あれば札を警告ふうに出す
+    var caution: Caution?
 
     struct Option: Identifiable, Hashable {
         let id: String
