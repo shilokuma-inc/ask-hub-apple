@@ -12,7 +12,7 @@
 | デフォルトブランチ | `develop` |
 | UI フレームワーク | SwiftUI（マルチプラットフォーム: 1 ターゲットで iOS と macOS ネイティブ） |
 | 言語 / Xcode | Swift 6（Strict Concurrency complete / MainActor 既定）/ Xcode 26.6 |
-| Deployment Target | iOS 17.0 / macOS 14.0 |
+| Deployment Target | iOS 26.0 / macOS 26.0 |
 | Bundle ID | `jp.shilokuma.AskHub` |
 
 ## 構成
