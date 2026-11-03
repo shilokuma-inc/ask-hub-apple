@@ -289,6 +289,9 @@
 - `Data(contentsOf:options: .mappedIfSafe)` で mmap して読んでいるファイルを、別の処理が同じパスで切り詰めて書き直すと、読む側が SIGBUS で落ちうる。
   読まれうるファイルは `data.write(to:options: .atomic)`（別のファイルに書いてから rename）で書く（`Orchestrator.prepareZip`）。
   actor の中で重い同期の I/O をするときは、`Task.detached { Result { () throws(E) -> T in … } }.value` で actor の外に出すと、型付きの throws のまま Sendable の警告なしで受け取れる
+- 開きと閉じがある文字列（HTML コメントの `<!--` と `-->` など）の閉じを本文の先頭から探すと、`<!-->`・`<!--->` のように閉じが開きと重なる本文で開きの中の位置が返り、
+  `index(startIndex, offsetBy: 開きの長さ)..<閉じ.lowerBound` の下の端が上の端より大きくなって「Range requires lowerBound <= upperBound」で落ちる。
+  public のリポジトリでは誰でもこうした本文を書けるので、閉じは開きの後ろ（`dropFirst(開きの長さ)` の Substring）から探す。目印の先頭のコメントは `MarkerComment.leadingCommentContent` で読む（2026-11-03、#844）
 
 ## シェルスクリプト
 
