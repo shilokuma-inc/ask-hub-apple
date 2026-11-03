@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/commander.schema.json",
+  "title": "commander.json（司令塔の生きている印）",
+  "description": "司令塔だけが書く。GitHub Actions の見張りが seenAt の古さを確かめる。常時オンの Mac では司令塔とワーカーが両方動くので、1 つのファイルの書き手を 1 つにするため、ワーカーの macs/<mac>.json と分ける",
+  "type": "object",
+  "required": ["v", "mac", "seenAt", "versions", "selfCheck"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "mac": { "$ref": "../common.schema.json#/$defs/macName", "description": "司令塔が動いている Mac" },
+    "seenAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "versions": {
+      "type": "object",
+      "required": ["commander"],
+      "additionalProperties": false,
+      "properties": {
+        "commander": { "type": "string", "minLength": 1 },
+        "claude": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
+      }
+    },
+    "selfCheck": { "$ref": "self-check.schema.json" }
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/attempt.schema.json",
+  "title": "repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json（試行）",
+  "description": "実行した Mac のワーカーだけが書く。欄どうしの決まり（running のときは endedAt が無い・終わったら endedAt がある・failure は failed のときだけ・時刻の前後）は読む側で確かめる",
+  "type": "object",
+  "required": ["v", "job", "n", "mac", "startedAt", "heartbeatAt", "outcome"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "job": { "$ref": "../common.schema.json#/$defs/ulid" },
+    "n": { "type": "integer", "minimum": 1, "description": "何回目の試行か" },
+    "mac": { "$ref": "../common.schema.json#/$defs/macName" },
+    "startedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "heartbeatAt": { "$ref": "../common.schema.json#/$defs/timestamp", "description": "長い試行の途中で一定の間隔で書く" },
+    "endedAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }] },
+    "outcome": { "enum": ["running", "succeeded", "failed"] },
+    "failure": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["class", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "class": {
+              "enum": [
+                "runnerUnavailable", "flaky", "buildFailed", "testFailed", "reviewRequired", "conflict", "usageLimit", "authExpired",
+                "githubOutage", "macOffline", "timeout", "unexpected"
+              ]
+            },
+            "message": { "type": "string" },
+            "logExcerpt": { "anyOf": [{ "type": "string" }, { "type": "null" }], "description": "トークンらしい文字列を伏せてから書く" },
+            "retryAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "再開してよい時刻（利用上限の解除の時刻など）" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "outputs": {
+      "description": "外部の id。やり直す前に、すでにできているかを確かめるのに使う",
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pullRequest": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
+            "commit": { "anyOf": [{ "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40 }, { "type": "null" }] }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "claude": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["model"],
+          "additionalProperties": false,
+          "properties": {
+            "model": { "type": "string", "minLength": 1, "description": "実際に使われたモデル" },
+            "session": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+            "estimatedCostUsd": { "anyOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] }
+          }
+        },
+        { "type": "null" }
+      ]
+    }
+  }
+}

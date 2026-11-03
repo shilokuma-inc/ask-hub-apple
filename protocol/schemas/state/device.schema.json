@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/device.schema.json",
+  "title": "devices/<device>.json（通知の宛先）",
+  "description": "その端末のクライアントだけが書く。Android を足すときに、push.service に FCM を足す。APNs の宛先は environment を必ず持つ（読む側で確かめる）",
+  "type": "object",
+  "required": ["v", "device", "platform", "push", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "device": { "$ref": "../common.schema.json#/$defs/keyId", "description": "端末の公開鍵の id" },
+    "platform": { "enum": ["ios", "macos"] },
+    "push": {
+      "type": "object",
+      "required": ["service", "token"],
+      "additionalProperties": false,
+      "properties": {
+        "service": { "enum": ["apns"] },
+        "token": { "type": "string", "pattern": "^[0-9a-f]{16,400}$", "not": { "pattern": "\\n" }, "description": "デバイストークン（16 進）。送るときに URL のパスに入るので、16 進だけを受け付ける" },
+        "environment": {
+          "anyOf": [{ "enum": ["production", "development"] }, { "type": "null" }],
+          "description": "APNs の送り先の環境。Xcode から入れた版は development、TestFlight と App Store の版は production"
+        }
+      }
+    },
+    "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+  }
+}

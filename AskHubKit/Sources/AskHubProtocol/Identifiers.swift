@@ -65,6 +65,25 @@ public struct KeyID: RawRepresentable, Codable, Hashable, Sendable, CustomString
     public var description: String { rawValue }
 }
 
+/// Mac ごとに決める短い名前（英小文字・数字・ハイフンで 1〜32 文字。ハイフンで始まらず、ハイフンで終わらない）
+public struct MacName: RawRepresentable, Codable, Hashable, Sendable, CustomStringConvertible {
+    public let rawValue: String
+
+    public init?(rawValue: String) {
+        let isAllowed = { (byte: UInt8) in
+            (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(byte) || (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte)
+                || byte == UInt8(ascii: "-")
+        }
+        guard (1...32).contains(rawValue.utf8.count), rawValue.first != "-", rawValue.last != "-",
+              rawValue.utf8.allSatisfy(isAllowed) else {
+            return nil
+        }
+        self.rawValue = rawValue
+    }
+
+    public var description: String { rawValue }
+}
+
 /// プロトコルで使う時刻。UTC の ISO 8601 で、秒まで（`2026-11-03T10:00:00Z`）
 public struct Timestamp: RawRepresentable, Codable, Hashable, Comparable, Sendable, CustomStringConvertible {
     /// 秒に切り捨てた時刻

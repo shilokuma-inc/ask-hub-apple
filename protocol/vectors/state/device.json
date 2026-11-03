@@ -1,0 +1,228 @@
+{
+  "description": "devices/<device>.json（通知の宛先）を読む例。schemaValid は protocol/schemas/state/device.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。知らない欄は、スキーマでは弾くが、読む側は読み飛ばす。スキーマで表せない決まり（欄どうしの関係・存在しない日付など）は、スキーマに合っても読む側が弾く",
+  "schema": "state/device.schema.json",
+  "cases": [
+    {
+      "name": "ios",
+      "value": {
+        "v": 1,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "macos-development",
+      "value": {
+        "v": 1,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "macos",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "environment": "development"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "value": {
+        "v": 1,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z",
+        "futureField": 1
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "future-version",
+      "value": {
+        "v": 2,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    },
+    {
+      "name": "missing-version",
+      "value": {
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "missingVersion"
+    },
+    {
+      "name": "version-not-integer",
+      "value": {
+        "v": "1",
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "device-not-key-id",
+      "value": {
+        "v": 1,
+        "device": "../keys/1",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "token-with-path",
+      "value": {
+        "v": 1,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1/../",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "token-uppercase",
+      "value": {
+        "v": 1,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "token-with-newline",
+      "value": {
+        "v": 1,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\n",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "token-too-short",
+      "value": {
+        "v": 1,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "a1",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-service",
+      "value": {
+        "v": 1,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "fcm",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-platform",
+      "value": {
+        "v": 1,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "android",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "environment": "production"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "apns-without-environment",
+      "value": {
+        "v": 1,
+        "device": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+        "platform": "ios",
+        "push": {
+          "service": "apns",
+          "token": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        },
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/mac.schema.json",
+  "title": "macs/<mac>.json（ワーカーの生きている印）",
+  "description": "その Mac のワーカーだけが書く。変化があったときと、一定の間隔（10 分程度）でだけ書く",
+  "type": "object",
+  "required": ["v", "mac", "kind", "seenAt", "versions", "diskFreeGB", "load", "capacity", "selfCheck"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "mac": { "$ref": "../common.schema.json#/$defs/macName" },
+    "kind": { "enum": ["alwaysOn", "resident", "manual"] },
+    "seenAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "versions": {
+      "type": "object",
+      "required": ["worker"],
+      "additionalProperties": false,
+      "properties": {
+        "worker": { "type": "string", "minLength": 1 },
+        "claude": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "xcode": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
+      }
+    },
+    "diskFreeGB": { "type": "integer", "minimum": 0 },
+    "load": { "type": "number", "minimum": 0 },
+    "capacity": {
+      "description": "Mac ごとの同時の上限",
+      "type": "object",
+      "required": ["claude", "build"],
+      "additionalProperties": false,
+      "properties": { "claude": { "type": "integer", "minimum": 0 }, "build": { "type": "integer", "minimum": 0 } }
+    },
+    "selfCheck": { "$ref": "self-check.schema.json" }
+  }
+}

@@ -2,6 +2,7 @@
 
 クライアント・司令塔・ワーカー・GitHub Actions がやり取りする形を決める。
 この文書は形の案で、実装では JSON Schema と、入力と出力のテスト用の例を正本にする（Swift と、後から作る Kotlin の両方のテストで同じ例を読む）。
+実装した形は、リポジトリ直下の `protocol/`（`schemas/` と `vectors/`）にある。この文書の JSON の例は説明のためのもので、細部は `protocol/` を正とする。
 
 ## 置き場所の全体
 
@@ -30,7 +31,8 @@ repos/<owner>/<repo>/epics/<epic>/goal.json        ゴール（司令塔）
 repos/<owner>/<repo>/epics/<epic>/decisions.json   人が決めていない判断（司令塔）
 repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json  ジョブ（司令塔）
 repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json  試行（実行した Mac のワーカー）
-macs/<mac>.json                                    Mac の生きている印（その Mac のワーカー・司令塔）
+macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
+commander.json                                     司令塔の生きている印（司令塔）
 devices/<device>.json                              通知の宛先（その端末のクライアント）
 keys/<seq>.json                                    公開鍵の追記の記録（クライアント。署名つき）
 intents/<device>/<intent>.json                     公開のスレッドに置かない人の意図（クライアント。署名つき）
@@ -38,15 +40,19 @@ consumed/<device>/<intent>                         処理した人の意図の�
 ```
 
 - `<epic>`・`<job>`・`<intent>` は ULID（時刻の順に並ぶ一意な id）
-- `<mac>` は Mac ごとに決める短い名前、`<device>` は端末の公開鍵の id（下の「署名」）
+- `<mac>` は Mac ごとに決める短い名前（英小文字・数字・ハイフン）、`<device>` は端末の公開鍵の id（下の「署名」）
+- 常時オンの Mac では司令塔とワーカーが両方動くので、1 つのファイルの書き手を 1 つにするため、生きている印を `macs/<mac>.json`（ワーカー）と `commander.json`（司令塔）に分ける
 - リポジトリ単位の作業でない人の意図（対象に加える・保護の設定・Mac の設定など）は、`repos/` の外の `intents/` に置く
 - 終わった epic（マージ済み・やめたもの）は、マージかやめてから 30 日後に `archive/` に移し、まとめて畳む
 
 ### 共通の決まり
 
-- どのファイルも、先頭に `"v"`（そのファイルの形の版）を持つ。知らない版のファイルは読まずに知らせる
+- どのファイルも、`"v"`（そのファイルの形の版）を持つ。知らない版のファイルは読まずに知らせる
+- `v` は、欄の意味を変える・欄を消す・必須の欄を足すときに上げる。任意の欄や列挙の値を足すときは上げない。読む側は、知らない欄を読み飛ばし、知らない列挙の値を含むファイルは読めないものとして知らせる
+- 型だけでは表せない決まり（数の範囲・欄どうしの関係・存在しない日付など）も、読む側で確かめる。合わないファイルは読めないものとして知らせ、書く側は合わないファイルを書かない
+- 値が無い欄は、書かないか `null` にする（どちらも同じに読む）
 - 時刻は UTC の ISO 8601 で、秒まで（`2026-11-03T10:00:00Z`）。小数の秒と時差の表記は使わない
-- パスに使う値（リポジトリの owner/name・ULID・鍵の id）は、読むときに形を確かめる。`..` や `/` を含む値で、ほかのファイルを指せないようにする（形は `protocol/schemas/common.schema.json`）
+- パスに使う値（リポジトリの owner/name・ULID・Mac の名前・鍵の id）は、読むときに形を確かめる。`..` や `/` を含む値で、ほかのファイルを指せないようにする（形は `protocol/schemas/common.schema.json`）
 - 書き込みは Contents API で、読んだときの版（sha）を付けて行う。409（版が合わない）が返ったら読み直してやり直す
 - 読み取りは `git fetch` か、ETag つきの要求で行う
 - 空の一覧や 404 を理由に、ファイルを作り直さない（GitHub の障害で一覧が空で返ることがある）
@@ -64,6 +70,9 @@ consumed/<device>/<intent>                         処理した人の意図の�
   "addedAt": "2026-11-03T10:00:00Z"
 }
 ```
+
+- `maxConcurrentEpics` は 1 以上
+- `appKit` は、共通リポジトリのワークフローを入れる前は `null`
 
 ### epic.json
 
@@ -83,6 +92,9 @@ consumed/<device>/<intent>                         処理した人の意図の�
   "updatedAt": "…"
 }
 ```
+
+- `mac` は、開始のときに人が選んだ Mac
+- `branch` は作業ブランチ。git のコマンドに渡しても選択肢に読まれないよう、`-` で始まる値・`..` を含む値・英数字と `._/-` 以外の文字を使わない
 
 `stage` の値と移り変わり:
 
@@ -219,35 +231,66 @@ consumed/<device>/<intent>                         処理した人の意図の�
 ```
 
 - `outcome` は `running`・`succeeded`・`failed`
-- `failure` は `{ "class": "…", "message": "…", "logExcerpt": "…" }`。ログの抜粋は、トークンらしい文字列を伏せてから書く
+- `failure` は `{ "class": "…", "message": "…", "logExcerpt": "…", "retryAt": "…" }`。ログの抜粋は、トークンらしい文字列を伏せてから書く。`retryAt` は再開してよい時刻（利用上限の解除の時刻など）
+- 欄どうしの決まり: `running` のときは `endedAt` を書かず、終わったら必ず書く。`failure` は `failed` のときだけ書く。`heartbeatAt` と `endedAt` は `startedAt` より前にならない
 - 失敗の区分（`class`）: `runnerUnavailable`・`flaky`・`buildFailed`・`testFailed`・`reviewRequired`・`conflict`・`usageLimit`・`authExpired`・`githubOutage`・`macOffline`・`timeout`・`unexpected`（扱いは [architecture.md](architecture.md) の表）
 - `heartbeatAt` は、長い試行の途中で一定の間隔で書く。古いまま止まった試行は、司令塔が `macOffline` か `timeout` として扱う
 
-### macs/<mac>.json（Mac の生きている印）
+### macs/<mac>.json（ワーカーの生きている印）
 
 ```json
 {
   "v": 1,
   "mac": "macbook-a",
   "kind": "resident",
-  "roles": ["worker"],
   "seenAt": "…",
   "versions": { "worker": "1.0.0", "claude": "2.1.316", "xcode": "27.1" },
   "diskFreeGB": 120,
   "load": 3.2,
   "capacity": { "claude": 2, "build": 1 },
-  "selfCheck": { "keychain": "ok", "githubToken": "ok", "claudeToken": "ok", "tokenExpiresAt": "…" }
+  "selfCheck": {
+    "checkedAt": "…",
+    "keychain": "ok",
+    "githubToken": "ok",
+    "claudeToken": "ok",
+    "claudeTokenExpiresAt": "…"
+  }
 }
 ```
 
 - `kind` は `alwaysOn`・`resident`・`manual`
+- `selfCheck` の各項目は `ok`・`missing`・`invalid`・`expired`。トークンの期限は、分かるときだけ書く（setup-token は登録した日から 1 年）
 - 変化があったときと、一定の間隔（10 分程度）でだけ書く
+
+### commander.json（司令塔の生きている印）
+
+```json
+{
+  "v": 1,
+  "mac": "mac-mini",
+  "seenAt": "…",
+  "versions": { "commander": "1.0.0", "claude": "2.1.316" },
+  "selfCheck": { "checkedAt": "…", "keychain": "ok", "githubToken": "ok", "claudeToken": "ok" }
+}
+```
+
+- GitHub Actions の見張りが、`seenAt` の古さを確かめる
 
 ### devices/<device>.json（通知の宛先）
 
 ```json
-{ "v": 1, "device": "<鍵の id>", "platform": "ios", "apnsToken": "…", "updatedAt": "…" }
+{
+  "v": 1,
+  "device": "<鍵の id>",
+  "platform": "ios",
+  "push": { "service": "apns", "token": "<16 進>", "environment": "production" },
+  "updatedAt": "…"
+}
 ```
+
+- `push.environment` は APNs の送り先の環境。Xcode から入れた版は `development`、TestFlight と App Store の版は `production`。APNs の宛先では必ず書く
+- `push.token` は送るときに URL のパスに入るので、16 進だけを受け付ける
+- Android を足すときに、`platform` と `push.service`（FCM）を足す
 
 ## 各リポジトリに書く目印
 
@@ -355,3 +398,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 ## 決めていないこと
 
 - リリースの操作の `kind` と、App Store の素材の形（段階 5）
+- `questions.json`・`goal.json`・`decisions.json` の細部（使う段階 2・3 で、型と JSON Schema を足す）
+- ジョブの元になった人の意図への参照と、`kind` ごとの入力（段階 2・3。ワーカーが、ジョブの元の人の意図の署名を確かめるのに使う）
+- 依頼（新しい epic を始める）の `kind`。上の封筒の表にも、[security.md](security.md) の人の意図の一覧にも無いので、段階 2 で足す
+- 公開鍵の記録・`intents/`・`consumed/` の型（Keychain と署名の部品と一緒に足す）
