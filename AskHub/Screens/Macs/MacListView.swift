@@ -9,7 +9,7 @@ struct MacListView: View {
     var body: some View {
         let macs = store.snapshot?.macs ?? []
         RouteList(selection: selection) {
-            Section {
+            CardSection {
                 ForEach(macs) { mac in
                     NavigationLink(value: AppRoute.mac(mac.id)) { MacRow(mac: mac) }
                 }

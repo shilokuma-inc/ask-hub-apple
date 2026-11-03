@@ -46,7 +46,7 @@ struct EpicDetailView: View {
     private func sections(_ epic: Epic) -> some View {
         let lines = store.snapshot.map { EpicStatus.lines(for: epic, in: $0, now: store.currentDate()) } ?? []
         return List {
-            Section {
+            CardSection {
                 VStack(alignment: .leading, spacing: 14) {
                     AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: subtitle(epic), iconSize: 40)
                     StageTrackerView(stage: epic.stage, isBlocked: epic.blocker != nil)
@@ -54,7 +54,7 @@ struct EpicDetailView: View {
                 .padding(.vertical, 4)
             }
             if !lines.isEmpty {
-                Section("いま") {
+                CardSection("いま") {
                     ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                         if let route = line.route, line.owner == .you {
                             NavigationLink(value: route) { EpicStatusLabel(line: line) }
@@ -68,7 +68,7 @@ struct EpicDetailView: View {
                 BlockerSection(epic: epic, blocker: blocker) { textRequest = $0 }
             }
             EpicStageSections(epic: epic) { shownQuestion = $0 }
-            Section("依頼") {
+            CardSection("依頼") {
                 Text(epic.request.summary).rowFont(.title)
                 Text(epic.request.body).foregroundStyle(.secondary)
                 if epic.request.attachmentCount > 0 {
@@ -96,7 +96,7 @@ private struct EpicStageSections: View {
 
     var body: some View {
         if !epic.questions.isEmpty {
-            Section("質問 · \(epic.questions.filter(\.isSettled).count) / \(epic.questions.count) が決まりました") {
+            CardSection("質問 · \(epic.questions.filter(\.isSettled).count) / \(epic.questions.count) が決まりました") {
                 if !epic.answerableQuestions.isEmpty, epic.stage == .questions {
                     NavigationLink(value: AppRoute.deck(.questions(epic.id))) {
                         Label("質問に答える（\(epic.answerableQuestions.count)）", systemImage: "rectangle.stack")
@@ -112,7 +112,7 @@ private struct EpicStageSections: View {
             }
         }
         if let goal = epic.goal, epic.stage >= .goal {
-            Section("ゴール") {
+            CardSection("ゴール") {
                 NavigationLink(value: AppRoute.goal(epic.id)) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(goal.summary).lineLimit(3)
@@ -124,7 +124,7 @@ private struct EpicStageSections: View {
             }
         }
         if !epic.humanTasks.isEmpty {
-            Section("人がする作業") {
+            CardSection("人がする作業") {
                 ForEach(epic.humanTasks) { task in
                     NavigationLink(value: AppRoute.humanTask(epicID: epic.id, taskID: task.id)) {
                         Label(task.title, systemImage: task.needsHuman ? "wrench.fill" : "checkmark.circle.fill")
@@ -134,14 +134,14 @@ private struct EpicStageSections: View {
             }
         }
         if !epic.tasks.isEmpty {
-            Section("タスク · \(epic.doneTaskCount) / \(epic.tasks.count) 完了") {
+            CardSection("タスク · \(epic.doneTaskCount) / \(epic.tasks.count) 完了") {
                 ForEach(epic.tasks) { task in
                     TaskRow(task: task)
                 }
             }
         }
         if let review = epic.finalReview {
-            Section("最終 PR") {
+            CardSection("最終 PR") {
                 NavigationLink(value: AppRoute.finalReview(epic.id)) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("#\(review.pullRequestNumber) · +\(review.additions) −\(review.deletions)")
@@ -242,7 +242,7 @@ private struct HistorySection: View {
 
     var body: some View {
         let entries = Array(history.reversed())
-        Section("履歴") {
+        CardSection("履歴") {
             ForEach(Array(entries.prefix(5).enumerated()), id: \.offset) { _, entry in
                 row(entry)
             }

@@ -14,26 +14,26 @@ struct InboxView: View {
         RouteList(selection: selection) {
             // Mac・iPad（選択で詳細を出す 3 列）では、接続の状態はサイドバーの下に出す
             if selection == nil {
-                Section {
+                CardSection {
                     ConnectionStatusView()
                 }
             }
             if deckCount > 0 {
-                Section {
+                CardSection {
                     NavigationLink(value: AppRoute.deck(.all)) {
                         DeckShortcutRow(count: deckCount)
                     }
                 }
             }
             if !blocking.isEmpty {
-                Section("進行が止まっています · \(blocking.count)") {
+                CardSection("進行が止まっています · \(blocking.count)") {
                     ForEach(blocking) { item in
                         NavigationLink(value: item.route) { InboxRow(item: item) }
                     }
                 }
             }
             if !whenFree.isEmpty {
-                Section("時間のあるときに · \(whenFree.count)") {
+                CardSection("時間のあるときに · \(whenFree.count)") {
                     ForEach(whenFree) { item in
                         NavigationLink(value: item.route) { InboxRow(item: item) }
                     }

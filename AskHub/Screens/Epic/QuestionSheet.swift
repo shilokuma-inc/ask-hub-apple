@@ -39,7 +39,7 @@ struct QuestionSheet: View {
     }
 
     private var answerSection: some View {
-        Section {
+        CardSection {
             ForEach(question.options) { option in
                 Button {
                     send(.answer(epicID: epic.id, questionID: question.id, optionID: option.id, note: note))

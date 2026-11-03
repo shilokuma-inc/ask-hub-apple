@@ -9,7 +9,7 @@ struct BlockerSection: View {
     @Environment(ClientStore.self) private var store
 
     var body: some View {
-        Section {
+        CardSection {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     TagLabel(text: blocker.category.label, tint: Theme.danger)
