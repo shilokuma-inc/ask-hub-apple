@@ -169,6 +169,25 @@
       "read": "malformed"
     },
     {
+      "name": "claude-outage",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000001",
+        "n": 3,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "failed",
+        "failure": {
+          "class": "claudeOutage",
+          "message": "Claude の API が混み合っている（529）"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "failure-without-message",
       "value": {
         "v": 1,
