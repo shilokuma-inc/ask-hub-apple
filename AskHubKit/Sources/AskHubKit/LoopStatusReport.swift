@@ -293,13 +293,7 @@ public struct LoopStatusReport: Sendable, Equatable, Codable {
     /// 状態用の Issue の本文から状態を読む。目印が先頭に無い・形式が崩れていれば `nil`。
     /// author が信用できるかはここでは判定しない（`TrustedAuthors` を使う）
     public static func parse(_ body: String) -> Self? {
-        let trimmed = body.drop { $0.isWhitespace || $0.isNewline }
-        guard trimmed.hasPrefix(commentOpen), let closeRange = trimmed.range(of: commentClose) else {
-            return nil
-        }
-        let inner = trimmed[trimmed.index(trimmed.startIndex, offsetBy: commentOpen.count)..<closeRange.lowerBound]
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard inner.hasPrefix(keyword) else {
+        guard let inner = MarkerComment.leadingCommentContent(body), inner.hasPrefix(keyword) else {
             return nil
         }
         let rest = inner.dropFirst(keyword.count)
