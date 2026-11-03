@@ -289,6 +289,8 @@
 - `Data(contentsOf:options: .mappedIfSafe)` で mmap して読んでいるファイルを、別の処理が同じパスで切り詰めて書き直すと、読む側が SIGBUS で落ちうる。
   読まれうるファイルは `data.write(to:options: .atomic)`（別のファイルに書いてから rename）で書く（`Orchestrator.prepareZip`）。
   actor の中で重い同期の I/O をするときは、`Task.detached { Result { () throws(E) -> T in … } }.value` で actor の外に出すと、型付きの throws のまま Sendable の警告なしで受け取れる
+- Swift Testing の `#expect(items.allSatisfy(\.isDone))` のように、キーパスを渡した `allSatisfy` などの rethrows の呼び出しをマクロの中に書くと、
+  展開の後に「call can throw, but it is not marked with 'try'」でビルドが止まる。結果を `let` で受けてから `#expect` に渡す（2026-11-03、リニューアルの UI）
 
 ## シェルスクリプト
 
@@ -364,3 +366,10 @@
   `FileManager.enumerator` の `.skipsPackageDescendants` はパッケージ（`.app`）の中に入らないが、パッケージのディレクトリそのものは返す（`isPackage` が true）ので、自分で除く（2026-11-01、Discussion #784）
 - `NSItemProvider(object: url as NSURL)` の `loadDataRepresentation(forTypeIdentifier: "public.file-url")` は、macOS では URL の文字列のバイトを返すが、iOS では `["file://…", ""]` の binary plist を返す。
   そのため `URL(dataRepresentation:relativeTo:)` は iOS ではファイルの URL にならない（`isFileURL` が false）。macOS の受け口からだけ呼ぶ `AttachmentDropProviders.item(from:)` のこのテストは `#if os(macOS)` で流す（2026-11-01、#798）
+- iOS 26 では、一覧の下に置くボタンの帯を `safeAreaInset(edge: .bottom)` にすると、ボタンと一覧の文字が重なって読みにくい。
+  `safeAreaBar(edge: .bottom)` にすると、下にスクロールの端のぼかしが付いて読める（iOS 26 / macOS 26）（2026-11-03、リニューアルの UI）
+- Mac の `List(selection:)` で選んだ行は濃い背景になり、`.red` や `.accentColor` の文字が読みにくい。
+  `@Environment(\.backgroundProminence)` が `.increased` のときは色を付けない（2026-11-03、リニューアルの UI）
+- リニューアルのクライアントは、DEBUG の起動引数で開く画面とデモの場面を決められる（`-demoScenario standard|quiet|failing|partial`・
+  `-demoOpen deck:all`・`-demoOpen epic:<id>`・`-demoDrag 0:0.8`・`-demoReactionDelay 0`）。UI テストと PR のスクショはこれで撮る
+  （`AskHub/Demo/DemoLaunch.swift`）（2026-11-03、リニューアルの UI）
