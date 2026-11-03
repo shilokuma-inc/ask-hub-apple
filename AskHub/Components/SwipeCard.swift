@@ -68,10 +68,11 @@ struct SwipeCard<Content: View>: View {
             .focused($isFocused)
             .focusEffectDisabled()
             .onKeyPress(characters: .decimalDigits) { press in
-                guard isInteractive, let number = Int(press.characters), (1...directions.count).contains(number) else {
+                // 自由記述の入力欄で打った数字もここに届く。選択肢が無いカードでは何もしない
+                guard isInteractive, let index = SwipeLayout.choiceIndex(forKey: press.characters, count: directions.count) else {
                     return .ignored
                 }
-                commit(number - 1)
+                commit(index)
                 return .handled
             }
             .accessibilityActions {
