@@ -66,7 +66,8 @@
 | App Store Connect の状態の読み取り | Linux のランナーの定期実行（30 分ごと）と、Upload・提出の直後 |
 
 - main では Upload も Archive も走らせない。main に入るのは release ブランチの先頭そのもので、後作業が CI を流してから取り込む
-- 審査に出したビルドの archive と dSYM は、release ブランチの Upload のときに保存し、後作業で GitHub Release に付ける。public のリポジトリでは誰でも取れるので、置き場所は実装の前に決め直す（要確認）
+- 審査に出したビルドの dSYM は、Upload のときに App Store Connect に送り、クラッシュの解析はそちらに任せる
+- archive は、誰でも取れる場所に置かない。GitHub Release にも Actions の成果物（artifact）にも付けない（public のリポジトリでは誰でも取れるため）。GitHub のランナーで作った archive はジョブの終わりに消えるので、残したいときは手元の Mac に置く
 - App Store Connect の API の鍵は、今までどおり GitHub の Secrets（Environment の Secrets）に置く。読み取りは Linux のランナーで行うので、macOS のランナーの不足に左右されない
 - public のリポジトリの定期実行は、60 日動きが無いと止まる。定期実行は public の制御用のリポジトリ 1 つにまとめ、その定期実行も止まっていないかを見張る
 
