@@ -263,7 +263,7 @@ struct QuestionFlowTests {
         var rewrite = Fixtures.rewrite()
         rewrite.caution = Caution(kind: .irreversible, reason: "書き出した後は消せない")
         let marked = checked(try Flow.explain("q1", asked: Fixtures.intent(1), text: "…", rewrite: rewrite, in: asking)).questions
-        #expect(marked.question("q1")?.caution?.kind == .irreversible)
+        #expect(marked.question("q1")?.caution == rewrite.caution)
 
         draft.caution?.reason = ""
         #expect(throws: Flow.ResultError.invalid(["q1: caution.reason は 1〜500 文字"])) { try Flow.start([draft]) }
