@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/intent-marker.schema.json",
+  "title": "人の意図の目印の中身",
+  "description": "コメントの最後の行の `<!-- askhub v1 {…} -->` の中の JSON。sig は IEEE P1363 の形（64 バイト）の署名の base64url（パディングなし）",
+  "type": "object",
+  "required": ["type", "envelope", "sig"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "intent" },
+    "envelope": { "$ref": "intent-envelope.schema.json" },
+    "sig": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" }
+  }
+}

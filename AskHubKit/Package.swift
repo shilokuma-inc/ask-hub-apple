@@ -11,15 +11,20 @@ let package = Package(
     ],
     products: [
         .library(name: "AskHubKit", targets: ["AskHubKit"]),
+        // リニューアルのプロトコル（人の意図の署名・目印・状態リポジトリの型）。docs/renewal/protocol.md
+        .library(name: "AskHubProtocol", targets: ["AskHubProtocol"]),
         // macOS で launchd から常駐させる CLI。アプリからは使わない
         .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
     ],
     targets: [
         .target(name: "AskHubKit"),
+        // 外部の依存を持たない。リポジトリ直下の protocol/ の JSON Schema とテスト用の例が正本
+        .target(name: "AskHubProtocol"),
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
         .testTarget(name: "AskHubKitTests", dependencies: ["AskHubKit"]),
+        .testTarget(name: "AskHubProtocolTests", dependencies: ["AskHubProtocol"]),
         .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]
 )

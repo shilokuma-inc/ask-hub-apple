@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/common.schema.json",
+  "title": "共通の値の形",
+  "description": "状態リポジトリのパスに使う値と、時刻の形。パスに使う値は、読むときに形を確かめる（.. や / を含む値で、ほかのファイルを指せないようにする）。固定の長さの値には maxLength も付ける（$ が末尾の改行の前でも合う正規表現の処理系があるため）",
+  "$defs": {
+    "ulid": {
+      "description": "時刻の順に並ぶ一意な id（ULID）。Crockford の base32 の大文字で 26 文字。先頭は 0〜7",
+      "type": "string",
+      "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "maxLength": 26
+    },
+    "repositoryFullName": {
+      "description": "GitHub のリポジトリの owner/name。GitHub が返す full_name のまま書く。改行を含む値は受け付けない（$ が末尾の改行の前でも合う正規表現の処理系があるため）",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/(?!\\.{1,2}$)[A-Za-z0-9._-]{1,100}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "keyId": {
+      "description": "公開鍵（SubjectPublicKeyInfo の DER）の SHA-256 の base64url（パディングなし）。端末の id にも使う",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$",
+      "maxLength": 43
+    },
+    "timestamp": {
+      "description": "UTC の ISO 8601 で、秒まで。小数の秒と時差の表記は使わない。存在しない日付（2 月 30 日など）は、読む側で弾く",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "maxLength": 20
+    },
+    "sha256Hex": {
+      "description": "SHA-256 の 16 進（小文字）",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "maxLength": 64
+    }
+  }
+}
