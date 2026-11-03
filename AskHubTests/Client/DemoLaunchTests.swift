@@ -50,12 +50,23 @@ struct ScreenshotDemoTests {
                 let hasReadyItems = snapshot.epic(id)?.finalReview?.verifications.contains(where: \.isReady) ?? false
                 #expect(hasReadyItems)
 
-            case .deck(.all), nil:
+            case .deck(.all):
+                // まとめて判断する画面は、カードが無いと空の表示が写る
+                #expect(!DeckBuilder.cards(from: snapshot, scope: .all).isEmpty)
+
+            case nil:
                 break
 
             default:
                 Issue.record("想定していない画面: \(scene)")
             }
         }
+    }
+
+    /// 撮る画面は、その画面のタブを開く（画面を開かない場面は、タブで撮るものが決まる）
+    @Test
+    func everySceneOpensItsTab() {
+        let sections = Dictionary(uniqueKeysWithValues: ScreenshotDemo.Scene.allCases.map { ($0, $0.section) })
+        #expect(sections == [.action: .inbox, .request: .inbox, .decisions: .inbox, .verification: .inbox, .status: .progress])
     }
 }
