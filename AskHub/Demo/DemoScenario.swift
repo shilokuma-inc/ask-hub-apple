@@ -13,7 +13,8 @@ enum DemoScenario: String, CaseIterable {
     /// 一部の取得元だけ読めない
     case partial
 
-    static let launchArgument = "-AskHubDemoScenario"
+    /// 機械の反応までの秒数を決める UserDefaults のキー（UI テストは起動引数 `-demoReactionDelay 0` で渡す）
+    static let reactionDelayKey = "demoReactionDelay"
 
     func snapshot(now: Date) -> ClientSnapshot {
         let data = DemoData(now: now)
