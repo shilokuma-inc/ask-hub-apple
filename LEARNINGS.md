@@ -379,3 +379,8 @@
 - `@ScaledMetric` と `UIFontMetrics.scaledFont(for:)` は、テキストサイズを標準（Large）より小さくしても縮まない（倍率は 1 のまま。大きくする方向だけに効く）。
   中身の寸法を縮めたいときは `dynamicTypeSize` の段階から本文の大きさの比を求める（`ContentScale`）。UIKit の見出しは `UIFont.preferredFont(forTextStyle:).pointSize` の大きさで作る（2026-11-03、リニューアルの UI）
 - iOS 26 の `.lineHeight(.multiple(factor:))` を 1 より小さくすると、Nunito とヒラギノの文字の上が切れる。`.tight` は切れないが、2 行にわたる日本語が窮屈になる（2026-11-03、リニューアルの UI）
+- `ToolbarItemGroup(placement: .keyboard)` を最初から付けた画面で、開いてすぐ `onAppear` で入力欄にフォーカスを当てると、キーボードの上に「完了」が出ない（シートで確かめた。iOS 26.5）。
+  `toolbar` の中身をフォーカスがあるときだけにして、フォーカスが付いてから足すと出る（`keyboardDoneButton(_:onlyWhileFocused:)`）。
+  重ねたカードのように、付ける View が同じ画面に並ぶときも、フォーカスのある View の分だけ出るので重複しない（2026-11-03、リニューアルの UI）
+- iOS でハードウェアキーボード（Simulator への文字の送り込みを含む）から打ったキーは、フォーカスのある `TextField` から親の View の `.onKeyPress` にも届く。
+  親で数字キーを選択肢の番号として扱うときは、選択肢が 0 個（入力欄だけのカード）でも落ちない形で範囲を確かめる（`(1...count).contains(n)` は `1...0` で落ちる。`indices.contains(n - 1)` にする）（2026-11-03、リニューアルの UI）
