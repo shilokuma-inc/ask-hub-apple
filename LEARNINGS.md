@@ -228,6 +228,10 @@
   macOS と iOS で挙動が違う API（`NSItemProvider` など）を使う Unit テストは、子 PR の CI が通っても最終 PR で落ちることがあるので、手元で iOS Simulator でも `-only-testing:AskHubTests/<構造体の名前>` で流す（2026-11-01、#798）
 - iOS の UI テストで、シートを出したまま後ろの View の `frame` を読むと、シートに隠れた部分が切られる（高さが縮み、`midY` がずれる）。
   シートの後ろのカードの位置を確かめるときは、隠れない側の角（`minX`・`minY`）で測る。回転させている View は枠が傾きの分だけ広がるので、幅を持たせて比べる（2026-11-04、リニューアルの UI）
+- UI テストで、1 本目の指で引いている途中に 2 本目を時間差で置く操作は、XCTest の内部の `XCPointerEventPath`（`initForTouchAtPoint:offset:`・`moveToPoint:atOffset:`・`liftUpAtOffset:`）を
+  `XCSynthesizedEventRecord`（`initWithName:interfaceOrientation:`・`addPointerEventPath:`・`synthesizeWithError:`）にまとめて合成できる（WebDriverAgent と同じ方法。Swift からは `method(for:)` の IMP を呼ぶ）。
+  ただし「2 本目を置いたまま 1 本目を先に離す」と、Simulator 側で 1 本目の `UITouch` が 2 本目の位置へ滑っていく（同じ `UITouch` に 2 回目の `began` が来る）ので、この場面は実機で確かめる。
+  リポジトリには置かない（内部の API なので Xcode の更新で動かなくなりうる）（2026-11-04、スワイプの手触り）
 
 ## Keychain
 
@@ -393,3 +397,15 @@
   UI テストで確かめるときは `typeKey(_:modifierFlags:)` で打つ（`typeText` はソフトウェアキーボードの経路で入るので親の `onKeyPress` に届かず、落ちる不具合も再現しない）（2026-11-03、リニューアルの UI）
 - `.sheet(item:)` を下へ払って閉じると、シートの中の「キャンセル」のボタンの処理を通らない。シートを出すために動かした View を戻すなどの後始末は、
   `.sheet(item:onDismiss:)` の `onDismiss` に置く（閉じ終わってから呼ばれるので、送ったときに後ろの View を動かす合図にも使える。`SwipeHold`）（2026-11-04、リニューアルの UI）
+- SwiftUI の `DragGesture` は、引いている途中に 2 本目の指が触れると取り消され、`onEnded` が来ない（動かしていた View が途中で止まったまま残る）。
+  2 本目を置いたまま 1 本目を離すと、2 本目の触れた位置を起点にした移動量で `onEnded` が来る。1 本目だけを追うには `UIGestureRecognizerRepresentable` で
+  `UIPanGestureRecognizer` の派生を付け、最初の `UITouch` だけを `super` に渡してほかは `ignore(_:for:)` する（`SingleTouchPanRecognizer`）。
+  Mac の `DragGesture` は `@GestureState` が戻るのを見て取り消しに気づく（2026-11-04、スワイプの手触り）
+- `UIPanGestureRecognizer` は `maximumNumberOfTouches = 1` でも、2 本目を置いたまま 1 本目を離すと 2 本目へ乗り換える。`translation(in:)` はパンが始まった所（約 10pt 動いた所）から測り、
+  `velocity(in:)` は指を止めてから離しても止める前の速さのまま残る。`UIGestureRecognizer` を直に派生すると、SwiftUI の Button の上から始めたとき Button の認識器
+  （`UIKitResponderGestureRecognizer`）に止められて動かない（`UIPanGestureRecognizer` の派生なら止められない）（2026-11-04、スワイプの手触り）
+- `UIGestureRecognizerRepresentable` の `converter` の `.local` は、ジェスチャーを付けた View の描画の変形（`offset`・`rotationEffect`）を含む座標になる。
+  動かしている View の移動量を `.local` で測ると動きと打ち消し合うので、移動量は画面の座標（`location(in: nil)`）で測る（2026-11-04、スワイプの手触り）
+- `DragGesture.Value.predictedEndTranslation` は「移動量 + 速さ × 0.25 秒」。`Spring.value(target:initialVelocity:time:)`・`velocity(...)` は `AnimatablePair` で 2 次元の初速（pt/秒のまま）を渡せる。
+  SwiftUI のアニメーションの初速は 1 つの数だけなので、斜めの速さを引き継ぐときは時刻ごとに計算して `TimelineView` で描く（2026-11-04、スワイプの手触り）
+- `rotation3DEffect` は、軸 (1, 0) を正の角度で回すと上の縁が、軸 (0, 1) では右の縁が奥へ下がる（2026-11-04、スワイプの手触り）
