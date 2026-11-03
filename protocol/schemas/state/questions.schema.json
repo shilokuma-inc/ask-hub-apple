@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/questions.schema.json",
   "title": "repos/<owner>/<repo>/epics/<epic>/questions.json（質問とその状態）",
-  "description": "司令塔だけが書く。id の重複・依存先の実在・自分自身への依存・依存の循環・推奨が選択肢にあること・状態と回答の組み合わせ（answered と delegated だけが回答を持つ、おまかせは推奨で決める、ロックは依存先を持つ）は読む側で確かめる",
+  "description": "司令塔だけが書く。id の重複・依存先の実在・自分自身への依存・依存の循環・推奨が選択肢にあること・状態と回答の組み合わせ（answered と delegated だけが回答を持つ、おまかせは推奨で決める、ロックは依存先を持つ、要らなくなった質問は依存先の見直しの理由を持つ、説明を待つ問いは説明を作っている質問の最後の 1 つだけ）は読む側で確かめる",
   "type": "object",
   "required": ["v", "questions"],
   "additionalProperties": false,
@@ -37,7 +37,7 @@
         "reason": { "type": "string", "minLength": 1, "description": "推奨の理由" },
         "dependsOn": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/localId" }, "uniqueItems": true },
         "round": { "type": "integer", "minimum": 1, "description": "何回目の質問づくりで出た質問か" },
-        "state": { "enum": ["locked", "revising", "open", "clarifying", "answered", "delegated"] },
+        "state": { "enum": ["locked", "revising", "open", "clarifying", "answered", "delegated", "dropped"] },
         "comment": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }], "description": "Discussion の質問の写しのコメントの id（GraphQL の node id）" },
         "explanations": {
           "type": "array",

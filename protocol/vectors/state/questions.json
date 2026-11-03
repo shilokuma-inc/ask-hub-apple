@@ -1870,6 +1870,462 @@
       },
       "schemaValid": false,
       "read": "malformed"
+    },
+    {
+      "name": "dropped",
+      "value": {
+        "v": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "version": 1,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [],
+            "round": 1,
+            "state": "answered",
+            "explanations": [],
+            "answer": {
+              "mode": "answer",
+              "choice": "日ごと",
+              "note": "夜間はもっと長くてもよい。",
+              "intent": {
+                "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+                "nonce": "01JCN0NCE00000000000000001"
+              },
+              "at": "2026-11-03T10:05:00Z"
+            }
+          },
+          {
+            "id": "q2",
+            "version": 2,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [
+              "q1"
+            ],
+            "round": 1,
+            "state": "dropped",
+            "explanations": [],
+            "revision": {
+              "from": 1,
+              "reason": "日ごとなら週の締めは要らない",
+              "by": "dependency"
+            }
+          },
+          {
+            "id": "q3",
+            "version": 1,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [
+              "q2"
+            ],
+            "round": 1,
+            "state": "revising",
+            "explanations": []
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "dropped-without-reason",
+      "value": {
+        "v": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "version": 1,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [],
+            "round": 1,
+            "state": "answered",
+            "explanations": [],
+            "answer": {
+              "mode": "answer",
+              "choice": "日ごと",
+              "note": "夜間はもっと長くてもよい。",
+              "intent": {
+                "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+                "nonce": "01JCN0NCE00000000000000001"
+              },
+              "at": "2026-11-03T10:05:00Z"
+            }
+          },
+          {
+            "id": "q2",
+            "version": 1,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [
+              "q1"
+            ],
+            "round": 1,
+            "state": "dropped",
+            "explanations": []
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "dropped-by-explain",
+      "value": {
+        "v": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "version": 2,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [],
+            "round": 1,
+            "state": "dropped",
+            "explanations": [],
+            "revision": {
+              "from": 1,
+              "reason": "…",
+              "by": "explain"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "dropped-with-answer",
+      "value": {
+        "v": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "version": 2,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [],
+            "round": 1,
+            "state": "dropped",
+            "explanations": [],
+            "revision": {
+              "from": 1,
+              "reason": "…",
+              "by": "dependency"
+            },
+            "answer": {
+              "mode": "answer",
+              "choice": "日ごと",
+              "note": "夜間はもっと長くてもよい。",
+              "intent": {
+                "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+                "nonce": "01JCN0NCE00000000000000001"
+              },
+              "at": "2026-11-03T10:05:00Z"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "unlocked-before-dependency",
+      "value": {
+        "v": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "version": 1,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [],
+            "round": 1,
+            "state": "open",
+            "explanations": []
+          },
+          {
+            "id": "q2",
+            "version": 1,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [
+              "q1"
+            ],
+            "round": 1,
+            "state": "open",
+            "explanations": []
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "revising-before-dependency",
+      "value": {
+        "v": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "version": 1,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [],
+            "round": 1,
+            "state": "clarifying",
+            "explanations": [
+              {
+                "asked": {
+                  "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+                  "nonce": "01JCN0NCE00000000000000001"
+                },
+                "note": "…",
+                "at": "2026-11-03T10:00:00Z"
+              }
+            ]
+          },
+          {
+            "id": "q2",
+            "version": 1,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [
+              "q1"
+            ],
+            "round": 1,
+            "state": "revising",
+            "explanations": []
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "pending-explanation-when-open",
+      "value": {
+        "v": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "version": 1,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [],
+            "round": 1,
+            "state": "open",
+            "explanations": [
+              {
+                "asked": {
+                  "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+                  "nonce": "01JCN0NCE00000000000000001"
+                },
+                "note": "…",
+                "at": "2026-11-03T10:00:00Z"
+              }
+            ]
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "pending-explanation-not-last",
+      "value": {
+        "v": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "version": 1,
+            "title": "ランキングの単位",
+            "why": "集計の仕組みと画面の両方に関わるため",
+            "options": [
+              {
+                "label": "日ごと",
+                "effect": "毎日 0 時に入れ替わる"
+              },
+              {
+                "label": "週ごと",
+                "effect": "月曜に入れ替わる"
+              }
+            ],
+            "recommended": "日ごと",
+            "reason": "今の保存の仕組みのままで作れる",
+            "dependsOn": [],
+            "round": 1,
+            "state": "clarifying",
+            "explanations": [
+              {
+                "asked": {
+                  "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+                  "nonce": "01JCN0NCE00000000000000001"
+                },
+                "note": "…",
+                "at": "2026-11-03T10:00:00Z"
+              },
+              {
+                "asked": {
+                  "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+                  "nonce": "01JCN0NCE00000000000000002"
+                },
+                "note": "…",
+                "at": "2026-11-03T10:05:00Z"
+              }
+            ]
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
     }
   ]
 }
