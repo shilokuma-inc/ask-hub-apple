@@ -373,3 +373,6 @@
 - リニューアルのクライアントは、DEBUG の起動引数で開く画面とデモの場面を決められる（`-demoScenario standard|quiet|failing|partial`・
   `-demoOpen deck:all`・`-demoOpen epic:<id>`・`-demoDrag 0:0.8`・`-demoReactionDelay 0`）。UI テストと PR のスクショはこれで撮る
   （`AskHub/Demo/DemoLaunch.swift`）（2026-11-03、リニューアルの UI）
+- 英数字だけのフォント（Nunito）を `Font.custom(_:size:relativeTo:)` で使うと、かなと漢字は CoreText がシステムの書体（ヒラギノ角ゴ）で補い、太さも合わせる。
+  可変フォントの名前付きインスタンスは PostScript 名（`Nunito-Bold` など）でそのまま選べる。`AskHub/` の下に置いたフォントは同期フォルダでバンドルの直下に入るので、
+  Info.plist に並べずに `CTFontManagerRegisterFontsForURL` で登録できる。ナビゲーションバーの見出しとタブの名前は UIKit が描くので、`UINavigationBar.appearance()` で別に変える（2026-11-03、リニューアルの UI）
