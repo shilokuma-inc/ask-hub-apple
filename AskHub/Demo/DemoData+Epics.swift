@@ -129,7 +129,7 @@ extension DemoData {
             finalReview: nil,
             history: [
                 Epic.HistoryEntry(date: ago(minutes: 60 * 5), text: "依頼しました"),
-                Epic.HistoryEntry(date: ago(minutes: 75), text: "質問にすべて回答しました（おまかせ 1）"),
+                Epic.HistoryEntry(date: ago(minutes: 75), text: "質問にすべて回答しました"),
                 Epic.HistoryEntry(date: ago(minutes: 60), text: "着手前の確認が終わり、ゴールを作りました")
             ],
             updatedAt: ago(minutes: 60)
@@ -157,7 +157,7 @@ extension DemoData {
                 options: [Self.option("a", "割合と残りの金額", "例: 8 割に達しました（残り 6,000 円）"), Self.option("b", "割合だけ", "短い")],
                 recommendedOptionID: "a",
                 recommendationReason: "次に使える金額がすぐ分かる",
-                state: .delegated(at: answered),
+                state: .answered(Question.Response(optionID: "a", note: "", answeredAt: answered)),
                 askedAt: asked
             ),
             Question(
@@ -179,9 +179,9 @@ extension DemoData {
             summary: "その月の支出が上限の 8 割と 10 割に達したら通知する。上限は設定画面で月ごとに 1 つ決める",
             decided: [
                 Goal.Point(text: "上限は月ごとに 1 つ決める", questionID: "Q1"),
+                Goal.Point(text: "通知の文言は、割合と残りの金額にする", questionID: "Q2"),
                 Goal.Point(text: "通知は 8 割と 10 割の 2 回", questionID: "Q3")
             ],
-            delegated: [Goal.Point(text: "通知の文言は、割合と残りの金額にする（推奨のまま）", questionID: "Q2")],
             notDoing: ["カテゴリごとの上限", "週ごとの上限", "通知の時刻の設定"],
             doneCriteria: [
                 "上限を決めると、8 割と 10 割で 1 回ずつ通知が届く",

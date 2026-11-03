@@ -6,7 +6,6 @@ import Foundation
 enum HumanIntent: Hashable {
     case answer(epicID: Epic.ID, questionID: Question.ID, optionID: Question.Option.ID?, note: String)
     case requestExplanation(epicID: Epic.ID, questionID: Question.ID, request: String)
-    case delegate(epicID: Epic.ID, questionID: Question.ID)
     case reviseGoal(epicID: Epic.ID, request: String)
     case start(epicID: Epic.ID, macID: Mac.ID)
     case respondToDecision(epicID: Epic.ID, decisionID: DecisionCard.ID, reply: DecisionReply)

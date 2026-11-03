@@ -183,9 +183,6 @@ struct QuestionStatusRow: View {
         case .answered(let response):
             return "回答: \(question.answeredOption?.label ?? response.note)"
 
-        case .delegated:
-            return "おまかせ（\(question.recommendedOption?.label ?? "推奨")）"
-
         case .locked:
             return "\(question.dependsOn.joined(separator: "・")) の回答後に答えられます"
 

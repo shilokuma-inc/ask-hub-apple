@@ -53,7 +53,7 @@ extension DemoData {
                 securityFindings: 0,
                 hasConflict: false
             ),
-            mergePolicy: .manual([.delegated(count: 1), .visibleDecisions(count: 4)]),
+            mergePolicy: .manual([.visibleDecisions(count: 5)]),
             decisions: tsundokuConfirmedDecisions() + tsundokuPendingDecisions(),
             internalDecisions: [
                 "検索は大文字と小文字、ひらがなとカタカナを区別しない",
@@ -85,7 +85,6 @@ extension DemoData {
         [
             DecisionCard(
                 id: "d1",
-                kind: .visible,
                 title: "検索欄を一覧の上に常に出した",
                 reason: "本が多い人は検索から探すことが多いため",
                 goalSource: "完了の条件 2「タイトルの一部で本を探せる」",
@@ -96,7 +95,6 @@ extension DemoData {
             ),
             DecisionCard(
                 id: "d2",
-                kind: .visible,
                 title: "読み終えた本を一覧の下にまとめた",
                 reason: "未読の本を先に見たいという依頼から",
                 goalSource: "決まったこと「読み終えた本は後ろに回す」",
@@ -112,10 +110,9 @@ extension DemoData {
         [
             DecisionCard(
                 id: "d3",
-                kind: .delegated(questionID: "Q4"),
                 title: "並べ替えの既定を「追加した順」にした",
-                reason: "おまかせ（Q4）の推奨のまま。今の一覧と同じで迷わない",
-                goalSource: "おまかせにしたこと",
+                reason: "今の一覧と同じ並びで、開いたときに迷わない",
+                goalSource: "タスク 4「並べ替えのメニュー」",
                 alternatives: ["タイトル順にする", "著者順にする"],
                 before: nil,
                 after: nil,
@@ -123,7 +120,6 @@ extension DemoData {
             ),
             DecisionCard(
                 id: "d4",
-                kind: .visible,
                 title: "並べ替えのメニューをツールバーの右に置いた",
                 reason: "iOS の標準の置き場所に合わせた",
                 goalSource: "タスク 4「並べ替えのメニュー」",
@@ -134,7 +130,6 @@ extension DemoData {
             ),
             DecisionCard(
                 id: "d5",
-                kind: .visible,
                 title: "検索で一致した文字を太字にした",
                 reason: "どこが一致したか分かるように",
                 goalSource: "タスク 3「一致した文字を強調する」",

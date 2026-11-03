@@ -181,11 +181,6 @@ struct DecisionDeckView: View {
                         allowsEmpty: true
                     )
                 }
-                if !question.options.isEmpty {
-                    Button("おまかせ", systemImage: "wand.and.sparkles") {
-                        send(.delegate(epicID: card.epicID, questionID: question.id), card: card, label: "おまかせ")
-                    }
-                }
 
             case .decision:
                 if case .decisions(let epicID) = scope, cards.count > 1 {

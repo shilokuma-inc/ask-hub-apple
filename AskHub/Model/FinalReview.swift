@@ -24,7 +24,6 @@ struct FinalReview: Hashable {
     }
 
     enum ManualReason: Hashable {
-        case delegated(count: Int)
         case visibleDecisions(count: Int)
         case security
         /// ワークフロー・ビルドのスクリプト・署名の設定などの差分
@@ -35,7 +34,6 @@ struct FinalReview: Hashable {
 
         var label: String {
             switch self {
-            case .delegated(let count): "おまかせ \(count) 件"
             case .visibleDecisions(let count): "見える仮決め \(count) 件"
             case .security: "セキュリティの指摘"
             case .sensitivePaths(let paths): "注意が要るファイルの差分（\(paths.joined(separator: "、"))）"
@@ -74,10 +72,10 @@ struct FinalChecks: Hashable {
     }
 }
 
-/// 人が決めていない判断（おまかせにした質問と、見える仮決め）のカード
+/// 人が決めていない判断のカード。実装の中でループが仮に決めた、見た目や挙動に関わること（見える仮決め）。
+/// 質問への回答はいつも人がするので、ここに載るのはループの仮決めだけ
 struct DecisionCard: Identifiable, Hashable {
     let id: String
-    var kind: Kind
     /// 何を決めたか
     var title: String
     var reason: String
@@ -89,11 +87,6 @@ struct DecisionCard: Identifiable, Hashable {
     var response: Response
     /// 慎重に確かめてほしい理由（セキュリティなど）。あれば札を警告ふうに出す
     var caution: Caution?
-
-    enum Kind: Hashable {
-        case delegated(questionID: Question.ID)
-        case visible
-    }
 
     enum Response: Hashable {
         case pending
