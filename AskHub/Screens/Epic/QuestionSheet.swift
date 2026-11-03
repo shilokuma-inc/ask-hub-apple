@@ -8,6 +8,7 @@ struct QuestionSheet: View {
     @Environment(ClientStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var note = ""
+    @FocusState private var isEditingNote: Bool
 
     /// 回答を変えられるのは開始の前まで
     private var canChangeAnswer: Bool {
@@ -33,6 +34,7 @@ struct QuestionSheet: View {
                     Button("閉じる") { dismiss() }
                 }
             }
+            .keyboardDoneButton($isEditingNote)
         }
     }
 
@@ -52,6 +54,7 @@ struct QuestionSheet: View {
                 }
             }
             TextField(question.isFreeText ? "回答" : "補足（任意）", text: $note, axis: .vertical)
+                .focused($isEditingNote)
             if question.isFreeText {
                 Button("この内容で回答する") {
                     send(.answer(epicID: epic.id, questionID: question.id, optionID: nil, note: note))
