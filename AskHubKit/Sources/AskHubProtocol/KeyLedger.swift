@@ -69,6 +69,14 @@ public enum KeyLedger {
         public var account: String
         public var label: String
         public var addedAt: Timestamp
+
+        public init(keyId: KeyID, publicKeyDER: Data, account: String, label: String, addedAt: Timestamp) {
+            self.keyId = keyId
+            self.publicKeyDER = publicKeyDER
+            self.account = account
+            self.label = label
+            self.addedAt = addedAt
+        }
     }
 
     public enum Problem: Error, Equatable, Sendable {
