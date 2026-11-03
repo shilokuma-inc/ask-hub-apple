@@ -1,0 +1,93 @@
+import SwiftUI
+
+/// 対象のアプリのアイコン。どのアプリの判断かを一目で分かるように、一覧・カード・epic の見出しに出す
+struct AppIconView: View {
+    let repository: TargetRepository?
+    var size: CGFloat = 40
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
+        content
+            .frame(width: size, height: size)
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(.separator, lineWidth: 0.5))
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var content: some View {
+        switch repository?.icon ?? .monogram {
+        case .image(let url):
+            AsyncImage(url: url) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                monogram
+            }
+
+        case let .symbol(name, tint):
+            ZStack {
+                tint.color
+                Image(systemName: name)
+                    .font(.system(size: size * 0.5, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+
+        case .monogram:
+            monogram
+        }
+    }
+
+    private var monogram: some View {
+        ZStack {
+            Color.secondary.opacity(0.25)
+            Text(String(repository?.appName.prefix(1) ?? "?"))
+                .font(.system(size: size * 0.46, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+extension IconTint {
+    var color: Color {
+        switch self {
+        case .green: .green
+        case .orange: .orange
+        case .blue: .blue
+        case .purple: .purple
+        case .pink: .pink
+        case .teal: .teal
+        case .indigo: .indigo
+        case .gray: .gray
+        }
+    }
+}
+
+/// アプリのアイコンと名前の見出し（カードや epic の画面の上に出す）
+struct AppHeaderView: View {
+    let repository: TargetRepository?
+    let subtitle: String
+    var iconSize: CGFloat = 32
+
+    var body: some View {
+        HStack(spacing: 10) {
+            AppIconView(repository: repository, size: iconSize)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(repository?.appName ?? "不明なリポジトリ")
+                    .font(.subheadline.weight(.semibold))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+#Preview("アプリのアイコン") {
+    HStack {
+        ForEach(DemoData.repositories + DemoData.candidates.prefix(1)) { repository in
+            AppIconView(repository: repository)
+        }
+    }
+    .padding()
+}
