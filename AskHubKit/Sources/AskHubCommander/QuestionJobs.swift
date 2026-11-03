@@ -232,7 +232,7 @@ public struct ReviseQuestionJob: ClaudeJob {
     }
 }
 
-private func optionCountProblem(id: String, count: Int) -> String? {
+func optionCountProblem(id: String, count: Int) -> String? {
     optionCountRange.contains(count) ? nil : "\(id): 選択肢は \(optionCountRange.lowerBound)〜\(optionCountRange.upperBound) 個"
 }
 
@@ -248,6 +248,22 @@ enum PromptText {
         lines += question.options.map { "- \($0.label): \($0.effect)" }
         lines += ["推奨: \(question.recommended)（\(question.reason)）"]
         if let caution = question.caution { lines.append("慎重に決めてほしい理由: \(caution.kind.rawValue)（\(caution.reason)）") }
+        return lines.joined(separator: "\n")
+    }
+
+    static func goal(_ goal: GoalFile) -> String {
+        var lines = ["要約: \(goal.summary)", "決まったこと:"]
+        lines += goal.decided.map { "- \($0.question): \($0.text)" }
+        lines += ["やらないこと:"] + goal.outOfScope.map { "- \($0)" }
+        lines += ["完了の条件:"] + goal.doneWhen.map { "- \($0)" }
+        lines += ["タスク:"] + goal.tasks.map { task in
+            let detail = task.detail.map { "（\($0)）" } ?? ""
+            let premise = task.dependsOn.isEmpty ? "" : " 前提: \(task.dependsOn.joined(separator: "・"))"
+            return "- \(task.id): \(task.title)\(detail)\(premise)"
+        }
+        lines += ["人がする作業:"] + goal.humanTasks.map { task in
+            "- \(task.id): \(task.title)（\(task.why)）手順: \(task.steps.joined(separator: " → "))"
+        }
         return lines.joined(separator: "\n")
     }
 
