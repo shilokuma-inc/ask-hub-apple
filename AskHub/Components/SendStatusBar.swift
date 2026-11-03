@@ -42,6 +42,7 @@ struct SendStatusBar: View {
             }
         }
         .padding(.horizontal, 16)
+        .keepsControlSize()
         .animation(.snappy, value: store.pending)
         .animation(.snappy, value: store.sendFailure)
     }

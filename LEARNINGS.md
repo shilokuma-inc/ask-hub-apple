@@ -376,3 +376,6 @@
 - 英数字だけのフォント（Nunito）を `Font.custom(_:size:relativeTo:)` で使うと、かなと漢字は CoreText がシステムの書体（ヒラギノ角ゴ）で補い、太さも合わせる。
   可変フォントの名前付きインスタンスは PostScript 名（`Nunito-Bold` など）でそのまま選べる。`AskHub/` の下に置いたフォントは同期フォルダでバンドルの直下に入るので、
   Info.plist に並べずに `CTFontManagerRegisterFontsForURL` で登録できる。ナビゲーションバーの見出しとタブの名前は UIKit が描くので、`UINavigationBar.appearance()` で別に変える（2026-11-03、リニューアルの UI）
+- `@ScaledMetric` と `UIFontMetrics.scaledFont(for:)` は、テキストサイズを標準（Large）より小さくしても縮まない（倍率は 1 のまま。大きくする方向だけに効く）。
+  中身の寸法を縮めたいときは `dynamicTypeSize` の段階から本文の大きさの比を求める（`ContentScale`）。UIKit の見出しは `UIFont.preferredFont(forTextStyle:).pointSize` の大きさで作る（2026-11-03、リニューアルの UI）
+- iOS 26 の `.lineHeight(.multiple(factor:))` を 1 より小さくすると、Nunito とヒラギノの文字の上が切れる。`.tight` は切れないが、2 行にわたる日本語が窮屈になる（2026-11-03、リニューアルの UI）

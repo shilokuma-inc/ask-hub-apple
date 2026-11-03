@@ -41,6 +41,7 @@ struct DecisionDeckView: View {
             .animation(.spring(response: 0.45, dampingFraction: 0.78), value: cards.prefix(3).map(\.id))
             if let current {
                 secondaryActions(current)
+                    .keepsControlSize()
             }
         }
         .padding(.bottom, 8)

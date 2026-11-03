@@ -57,7 +57,7 @@ struct GoalReviewView: View {
         .pastelBackground()
         .navigationTitle(epic.title)
         .hidesTabBar()
-        .safeAreaBar(edge: .bottom) { startBar(epic, goal) }
+        .safeAreaBar(edge: .bottom) { startBar(epic, goal).keepsControlSize() }
         .modifier(GoalSheets(epic: epic, textRequest: $textRequest, isChoosingMac: $isChoosingMac))
     }
 

@@ -69,13 +69,17 @@ struct TagLabel: View {
 /// 「あなたの番」の種類の印（アプリのアイコンの右下に重ねる）
 struct InboxKindBadge: View {
     let kind: InboxItem.Kind
+    /// テキストサイズが標準のときの大きさ。設定に合わせて伸び縮みする（ContentScale）
     var size: CGFloat = 18
 
+    @ContentScale private var scale
+
     var body: some View {
+        let side = size * scale
         Image(systemName: kind.systemImage)
-            .font(.system(size: size * 0.55, weight: .bold))
+            .font(.system(size: side * 0.55, weight: .bold))
             .foregroundStyle(.white)
-            .frame(width: size, height: size)
+            .frame(width: side, height: side)
             .background(kind.tint, in: .circle)
             .overlay(Circle().strokeBorder(.background, lineWidth: 1.5))
             .accessibilityHidden(true)

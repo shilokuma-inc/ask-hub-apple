@@ -24,6 +24,7 @@ struct LoadStateOverlay<Empty: View>: View {
                     Task { await store.refresh() }
                 }
                 .buttonStyle(.glassProminent)
+                .keepsControlSize()
             }
 
         case .loaded:

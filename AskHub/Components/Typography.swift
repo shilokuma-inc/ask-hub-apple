@@ -19,12 +19,19 @@ enum AppFont {
         if let url = Bundle.main.url(forResource: "Nunito[wght]", withExtension: "ttf") {
             CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
         }
+        applyToSystemBars()
+    }
+
+    /// ナビゲーションバーの見出しは、いまのテキストサイズの大きさにする（小さくしたら見出しも縮む）。
+    /// タブの名前は操作の部品なので、テキストサイズによらず標準の大きさのままにする。テキストサイズが変わったら呼び直す
+    static func applyToSystemBars() {
         #if os(iOS)
         let navigationBar = UINavigationBar.appearance()
         navigationBar.largeTitleTextAttributes = uiFont(.largeTitle, weight: .bold).map { [.font: $0] }
         navigationBar.titleTextAttributes = uiFont(.headline, weight: .semibold).map { [.font: $0] }
         let tabItem = UITabBarItem.appearance()
-        let attributes = uiFont(.caption2, weight: .semibold).map { [NSAttributedString.Key.font: $0] }
+        let tabFont = UIFont(name: faceName(for: .semibold), size: Font.TextStyle.caption2.baseSize)
+        let attributes = tabFont.map { [NSAttributedString.Key.font: $0] }
         tabItem.setTitleTextAttributes(attributes, for: .normal)
         tabItem.setTitleTextAttributes(attributes, for: .selected)
         #endif
@@ -46,10 +53,9 @@ enum AppFont {
     }
 
     #if os(iOS)
+    /// いまのテキストサイズでの大きさ（`UIFontMetrics` は標準より小さい設定で縮めないので、システムの書体の大きさを使う）
     private static func uiFont(_ style: Font.TextStyle, weight: Font.Weight) -> UIFont? {
-        UIFont(name: faceName(for: weight), size: style.baseSize).map {
-            UIFontMetrics(forTextStyle: style.uiTextStyle).scaledFont(for: $0)
-        }
+        UIFont(name: faceName(for: weight), size: UIFont.preferredFont(forTextStyle: style.uiTextStyle).pointSize)
     }
     #endif
 }
@@ -59,6 +65,31 @@ extension View {
     func appFont(_ style: Font.TextStyle, weight: Font.Weight? = nil) -> some View {
         font(AppFont.font(style, weight: weight))
     }
+
+    /// 操作の部品（ボタン・操作の帯・入力欄）は、テキストサイズを小さくしても標準より小さくしない。
+    /// 押しやすさ（HIG の 44pt の当たり）を保ったまま、中身だけを小さくして一画面に多く見せる（ユーザーの要望。2026-11-03）
+    func keepsControlSize() -> some View {
+        dynamicTypeSize(.large...)
+    }
+}
+
+/// 中身の寸法（アプリのアイコン・印）を、文字の大きさの設定に合わせて伸び縮みさせる倍率（本文の大きさの、標準との比）。
+/// 文字だけが縮んでアイコンが固定だと、テキストサイズを小さくしても行の高さが変わらないため（ユーザーの要望。2026-11-03）。
+/// `@ScaledMetric` は標準より小さい設定では 1 のままで縮まないので、テキストサイズの段階から求める。
+/// 大きくする側は 1.6 倍で止める（アクセシビリティの大きさで、アイコンが一覧を埋めないように）。`@ContentScale private var scale` で使う
+@propertyWrapper
+struct ContentScale: DynamicProperty {
+    @Environment(\.dynamicTypeSize) private var size
+
+    var wrappedValue: CGFloat {
+        min((Self.bodySizes[size] ?? 17) / 17, 1.6)
+    }
+
+    /// テキストサイズの段階ごとの本文（body）の大きさ（pt）。iOS の Dynamic Type の表と同じ
+    private static let bodySizes: [DynamicTypeSize: CGFloat] = [
+        .xSmall: 14, .small: 15, .medium: 16, .large: 17, .xLarge: 19, .xxLarge: 21, .xxxLarge: 23,
+        .accessibility1: 28, .accessibility2: 33, .accessibility3: 40, .accessibility4: 47, .accessibility5: 53
+    ]
 }
 
 private extension Font.TextStyle {
