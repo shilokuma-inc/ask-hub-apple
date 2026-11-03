@@ -32,6 +32,7 @@ let package = Package(
         .testTarget(name: "AskHubKitTests", dependencies: ["AskHubKit"]),
         .testTarget(name: "AskHubProtocolTests", dependencies: ["AskHubProtocol"]),
         .testTarget(name: "AskHubStateStoreTests", dependencies: ["AskHubStateStore", "AskHubProtocol"]),
+        .testTarget(name: "AskHubJobsTests", dependencies: ["AskHubJobs", "AskHubStateStore", "AskHubProtocol"]),
         .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]
 )
