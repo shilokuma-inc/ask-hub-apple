@@ -54,8 +54,8 @@ struct GoalJobsTests {
     }
 
     @Test func noMoreQuestionsAfterLastRound() throws {
-        // 追加の質問の往復は 3 回まで（4 回目の質問が最後）
-        let job = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered(round: 4))
+        // 質問は 3 回目の回まで（round が 4 になる前に、人に出す）
+        let job = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered(round: 3))
         #expect(!job.canAskMore)
         #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q3")])) == [
             "追加の質問はもう出せない。ready か tooLarge にする"

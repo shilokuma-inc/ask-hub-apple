@@ -42,8 +42,8 @@ public struct CheckReadinessJob: ClaudeJob {
 
     public static let kind = JobKind.checkReadiness
     public static let timeout = Duration.seconds(15 * 60)
-    /// 追加の質問を出せる最後の回（最初の質問づくりが 1。追加の質問の往復は 3 回まで）
-    public static let lastQuestionRound = 4
+    /// 質問を出せる最後の回（最初の質問づくりが 1。`round` が 4 になる前に、人に「大きすぎる・決めきれない」と出す）
+    public static let lastQuestionRound = 3
     public static let outputSchema = OutputSchema.object([
         "verdict": OutputSchema.oneOf(Verdict.allCases.map(\.rawValue), "ready（進めてよい）・moreQuestions（追加の質問が要る）・tooLarge（1 つの epic に収まらない）"),
         "reason": OutputSchema.string("そう判断した理由"),
