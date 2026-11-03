@@ -13,7 +13,9 @@ struct DecisionDeckView: View {
     @State private var skippedIDs: [DeckCard.ID] = []
     @State private var textRequest: TextRequest?
     @State private var detailCard: DeckCard?
-    /// 文を書くシートを閉じたときに、飛んでいったカードを戻すための番号
+    /// 自由回答の方向で止めたカード（シートで送ったら飛ばし、閉じたら戻す）
+    @State private var hold = SwipeHold()
+    /// 文を書くシートを閉じたときに、止めたカードを元の位置に戻すための番号
     @State private var generation = 0
     /// 次のカードをめくる向き。前のカードを飛ばした向きに合わせ、右へ飛ばしたら右へ返す
     @State private var flipDirection: Double = 1
@@ -56,10 +58,12 @@ struct DecisionDeckView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .hidesTabBar()
-        .sheet(item: $textRequest) { request in
+        .sheet(item: $textRequest, onDismiss: textRequestDismissed) { request in
             TextRequestSheet(request: request) { text in
                 textRequest = nil
-                send(request.intent(text: text), card: current, label: request.title)
+                if !hold.send(text) {
+                    send(request.intent(text: text), card: current, label: request.title)
+                }
             } onCancel: {
                 textRequest = nil
                 // 飛ばしたカードが戻るので、めくりかけた次のカードも裏に戻す
@@ -131,6 +135,8 @@ struct DecisionDeckView: View {
             choiceLabels: card.choices.map(\.label),
             drag: isTop ? $drag : .constant(SwipeDragState()),
             isInteractive: isTop,
+            heldChoices: SwipeHold.heldChoices(card.choices),
+            releaseToken: hold.releaseToken,
             resetToken: generation
         ) { index in
             choose(card, index: index)
@@ -138,6 +144,8 @@ struct DecisionDeckView: View {
             flipDirection = directions[index].unit.dx < 0 ? -1 : 1
             leavingID = card.id
             lastThrow = DeckThrow(id: card.id, direction: directions[index])
+        } onHold: { index in
+            holdForText(card, index: index)
         } content: { commit in
             VStack(spacing: 0) {
                 // 慎重に決めてほしい札は、表の一番上に警告の帯を出す（札と一緒に動く）
@@ -210,7 +218,28 @@ struct DecisionDeckView: View {
             send(intent, card: card, label: choice.label)
 
         case .askText(let request):
-            textRequest = request
+            // 止めたカードが、シートで送って飛び終わったとき
+            if let text = hold.finish() {
+                send(request.intent(text: text), card: card, label: request.title)
+            } else {
+                textRequest = request
+            }
+        }
+    }
+
+    /// 自由回答の方向で止めたカード。飛ばさずに、文を書くシートを出す
+    private func holdForText(_ card: DeckCard, index: Int) {
+        guard card.choices.indices.contains(index), case .askText(let request) = card.choices[index].action else {
+            return
+        }
+        hold.start()
+        textRequest = request
+    }
+
+    /// 文を書くシートが閉じたとき。送ったなら止めたカードを飛ばし、送らずに閉じたなら（下へ払って閉じたときも）元の位置に戻す
+    private func textRequestDismissed() {
+        if hold.sheetDismissed() {
+            generation += 1
         }
     }
 

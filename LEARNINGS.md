@@ -226,6 +226,8 @@
   `-quiet` を付けると Swift Testing の結果の行が出ないので、件数を確かめるときは付けずに `Test run with N tests` の行を見る（2026-11-01、Discussion #784）
 - 作業ブランチへの push の CI（`build.yml`）は Unit テストを macOS（`Test on macOS`）でしか流さず、iOS Simulator の Unit テストは develop 宛ての PR（epic の最終 PR）で UI テストと一緒に初めて走る。
   macOS と iOS で挙動が違う API（`NSItemProvider` など）を使う Unit テストは、子 PR の CI が通っても最終 PR で落ちることがあるので、手元で iOS Simulator でも `-only-testing:AskHubTests/<構造体の名前>` で流す（2026-11-01、#798）
+- iOS の UI テストで、シートを出したまま後ろの View の `frame` を読むと、シートに隠れた部分が切られる（高さが縮み、`midY` がずれる）。
+  シートの後ろのカードの位置を確かめるときは、隠れない側の角（`minX`・`minY`）で測る。回転させている View は枠が傾きの分だけ広がるので、幅を持たせて比べる（2026-11-04、リニューアルの UI）
 
 ## Keychain
 
@@ -389,3 +391,5 @@
 - iOS でハードウェアキーボード（Simulator への文字の送り込みを含む）から打ったキーは、フォーカスのある `TextField` から親の View の `.onKeyPress` にも届く。
   親で数字キーを選択肢の番号として扱うときは、選択肢が 0 個（入力欄だけのカード）でも落ちない形で範囲を確かめる（`(1...count).contains(n)` は `1...0` で落ちる。`indices.contains(n - 1)` にする）。
   UI テストで確かめるときは `typeKey(_:modifierFlags:)` で打つ（`typeText` はソフトウェアキーボードの経路で入るので親の `onKeyPress` に届かず、落ちる不具合も再現しない）（2026-11-03、リニューアルの UI）
+- `.sheet(item:)` を下へ払って閉じると、シートの中の「キャンセル」のボタンの処理を通らない。シートを出すために動かした View を戻すなどの後始末は、
+  `.sheet(item:onDismiss:)` の `onDismiss` に置く（閉じ終わってから呼ばれるので、送ったときに後ろの View を動かす合図にも使える。`SwipeHold`）（2026-11-04、リニューアルの UI）
