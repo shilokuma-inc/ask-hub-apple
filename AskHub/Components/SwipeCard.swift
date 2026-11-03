@@ -20,7 +20,8 @@ struct SwipeCard<Content: View>: View {
     /// 変わったら、飛ばしたカードを元の位置に戻す（文を書くシートを閉じたときなど）
     let resetToken: Int
     let onCommit: (Int) -> Void
-    /// 決まってカードが飛び始めたとき（`onCommit` より先に呼ぶ。後ろのカードをめくり始めるため）
+    /// 決まってカードが飛び始めたとき（`onCommit` より先に呼ぶ。後ろのカードをめくり始めるため）。
+    /// 自由回答で止めている間は呼ばず、シートで送って飛ばすときに呼ぶ
     let onLeave: (Int) -> Void
     @ViewBuilder let content: (_ commit: @escaping (Int) -> Void) -> Content
 
