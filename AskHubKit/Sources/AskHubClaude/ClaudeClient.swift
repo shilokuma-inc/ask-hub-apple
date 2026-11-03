@@ -109,7 +109,8 @@ public struct ClaudeClient: Sendable {
             return .failed(.init(failureClass: .unexpected, message: "claude を起動できない（\(error.localizedDescription)）"))
         }
         let message = ClaudeResultMessage(standardOutput: result.standardOutput)
-        if let message, message.succeeded, !result.timedOut {
+        // 結果の JSON と終了コードの両方が成功を示すときだけ、成功とする
+        if let message, message.succeeded, result.succeeded {
             return .finished(message)
         }
         let classifier = ClaudeFailureClassifier(timeZone: timeZone, now: now(), secrets: [setup.oauthToken])
