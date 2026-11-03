@@ -35,6 +35,7 @@ struct AskHub: App {
         WindowGroup {
             RootView()
                 .appFont(.body)
+                .lineHeight(AppFont.lineHeight)
                 .environment(store)
                 .environment(navigator)
                 // 設定でデモの場面を変えたら、その場面のデータで作り直す
@@ -50,6 +51,7 @@ struct AskHub: App {
         Settings {
             AppSettingsView()
                 .appFont(.body)
+                .lineHeight(AppFont.lineHeight)
                 .environment(store)
                 .environment(navigator)
                 .frame(width: 460, height: 420)
