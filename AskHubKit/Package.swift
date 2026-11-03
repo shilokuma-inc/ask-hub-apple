@@ -15,6 +15,8 @@ let package = Package(
         .library(name: "AskHubProtocol", targets: ["AskHubProtocol"]),
         // 状態リポジトリの読み書き（GitHub の Contents API・ETag・版の確認・書き込みの予算）
         .library(name: "AskHubStateStore", targets: ["AskHubStateStore"]),
+        // 秘密と鍵の置き場所（Keychain・Secure Enclave の署名の鍵・確かめた公開鍵の一覧）
+        .library(name: "AskHubKeychain", targets: ["AskHubKeychain"]),
         // macOS で launchd から常駐させる CLI。アプリからは使わない
         .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
     ],
@@ -23,12 +25,14 @@ let package = Package(
         // 外部の依存を持たない。リポジトリ直下の protocol/ の JSON Schema とテスト用の例が正本
         .target(name: "AskHubProtocol"),
         .target(name: "AskHubStateStore", dependencies: ["AskHubProtocol"]),
+        .target(name: "AskHubKeychain", dependencies: ["AskHubProtocol"]),
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
         .testTarget(name: "AskHubKitTests", dependencies: ["AskHubKit"]),
         .testTarget(name: "AskHubProtocolTests", dependencies: ["AskHubProtocol"]),
         .testTarget(name: "AskHubStateStoreTests", dependencies: ["AskHubStateStore", "AskHubProtocol"]),
+        .testTarget(name: "AskHubKeychainTests", dependencies: ["AskHubKeychain", "AskHubProtocol"]),
         .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]
 )
