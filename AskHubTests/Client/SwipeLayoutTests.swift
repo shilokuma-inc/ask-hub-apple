@@ -2,7 +2,7 @@
 import CoreGraphics
 import Testing
 
-/// スワイプの方向の割り当てと判定（推奨はいつも利き手側の上・右手の 3 択は ↘ を使わない）
+/// スワイプの方向の割り当てと判定（推奨はいつも利き手側の上・自由回答は推奨の対角・右手の 3 択は ↘ を使わない）
 @MainActor
 struct SwipeLayoutTests {
     /// 右手の割り当て
@@ -32,6 +32,58 @@ struct SwipeLayoutTests {
             #expect(SwipeLayout.directions(count: count, hand: .right).first == .upRight)
             #expect(SwipeLayout.directions(count: count, hand: .left).first == .upLeft)
         }
+    }
+
+    /// 自由回答の選択肢は、推奨の対角（右手は ↙・左手は ↘）に並べ替える。ほかの選択肢は書かれた順のまま
+    @Test(arguments: [
+        (["推奨", "自由"], ["推奨", "自由"]),
+        (["推奨", "自由", "A"], ["推奨", "A", "自由"]),
+        (["推奨", "自由", "A", "B"], ["推奨", "A", "自由", "B"]),
+        (["推奨", "A", "B", "自由"], ["推奨", "A", "自由", "B"])
+    ])
+    func freeTextGoesOppositeRecommended(items: [String], expected: [String]) throws {
+        let arranged = SwipeLayout.arranged(items, asksText: Self.asksText)
+        #expect(arranged == expected)
+        let index = try #require(arranged.firstIndex(of: "自由"))
+        #expect(SwipeLayout.directions(count: arranged.count, hand: .right)[index] == .downLeft)
+        #expect(SwipeLayout.directions(count: arranged.count, hand: .left)[index] == .downRight)
+    }
+
+    /// 自由回答が無ければ並びは変えない
+    @Test
+    func keepsOrderWithoutFreeText() {
+        for items in [["推奨"], ["推奨", "A"], ["推奨", "A", "B"], ["推奨", "A", "B", "C"]] {
+            #expect(SwipeLayout.arranged(items, asksText: Self.asksText) == items)
+        }
+    }
+
+    /// 自由回答が 2 つあれば、1 つ目を対角に置き、2 つ目は空いている方向に残す
+    @Test
+    func secondFreeTextTakesRemainingDirection() {
+        #expect(SwipeLayout.arranged(["推奨", "自由1", "自由2"], asksText: Self.asksText) == ["推奨", "自由2", "自由1"])
+        #expect(SwipeLayout.arranged(["推奨", "自由1", "A", "自由2"], asksText: Self.asksText) == ["推奨", "A", "自由1", "自由2"])
+    }
+
+    /// 推奨そのものが自由回答なら、推奨を優先して先頭（↗）に残す。ほかに自由回答があれば、その 1 つ目を対角に置く
+    @Test
+    func recommendedFreeTextStaysFirst() {
+        #expect(SwipeLayout.arranged(["自由推奨"], asksText: Self.asksText) == ["自由推奨"])
+        #expect(SwipeLayout.arranged(["自由推奨", "A", "B"], asksText: Self.asksText) == ["自由推奨", "A", "B"])
+        #expect(SwipeLayout.arranged(["自由推奨", "自由", "A"], asksText: Self.asksText) == ["自由推奨", "A", "自由"])
+    }
+
+    /// 対角は向きどうしで対になる
+    @Test
+    func oppositeIsDiagonal() {
+        for direction in SwipeDirection.allCases {
+            #expect(direction.opposite.unit.dx == -direction.unit.dx)
+            #expect(direction.opposite.unit.dy == -direction.unit.dy)
+            #expect(direction.opposite.opposite == direction)
+        }
+    }
+
+    private static func asksText(_ item: String) -> Bool {
+        item.hasPrefix("自由")
     }
 
     /// 短い動きはどの方向にも数えない

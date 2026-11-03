@@ -82,6 +82,46 @@ struct BuilderTests {
         #expect(cards[2].choices.map(\.id) == ["accept", "fix"])
     }
 
+    /// どのカードでも、自由回答の選択肢は推奨の対角（右手は ↙・左手は ↘）にあり、「自由回答」の札が付く
+    @Test
+    func freeTextChoicesSitOppositeRecommended() throws {
+        let cards = DeckBuilder.cards(from: snapshot, scope: .all)
+        let withFreeText = cards.filter { $0.choices.contains(where: \.asksText) }
+        // 判断の確認（直してほしい）と実機確認（問題あり）。質問の選択肢には自由回答が無い
+        let kinds = Set(withFreeText.map { card in
+            switch card.content {
+            case .question: "question"
+            case .decision: "decision"
+            case .verification: "verification"
+            }
+        })
+        #expect(kinds == ["decision", "verification"])
+        for card in withFreeText {
+            let index = try #require(card.choices.firstIndex { $0.asksText })
+            #expect(card.choices.first?.isRecommended == true)
+            #expect(SwipeLayout.directions(count: card.choices.count, hand: .right)[index] == .downLeft)
+            #expect(SwipeLayout.directions(count: card.choices.count, hand: .left)[index] == .downRight)
+        }
+    }
+
+    /// 読み上げでも札（推奨・自由回答）と方向が分かる
+    @Test
+    func choiceAccessibilityLabelIncludesBadges() throws {
+        let card = try #require(DeckBuilder.cards(from: snapshot, scope: .decisions("tsundoku-search")).first)
+        let labels = card.choices.enumerated().map { index, choice in
+            DeckCardContent.accessibilityLabel(
+                of: choice,
+                direction: SwipeLayout.directions(count: card.choices.count, hand: .right)[index]
+            )
+        }
+        #expect(labels == [
+            "OK（推奨・右上へスワイプ）",
+            "別案にする（左上へスワイプ）",
+            "直してほしい（自由回答・左下へスワイプ）",
+            "別案にする（右下へスワイプ）"
+        ])
+    }
+
     /// 実機確認のカードは確認したを先頭にする
     @Test
     func verificationCardPutsConfirmedFirst() {
