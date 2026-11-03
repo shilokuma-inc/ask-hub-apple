@@ -60,8 +60,8 @@ public struct ClaudeSetup: Sendable, CustomStringConvertible, CustomDebugStringC
     public var oauthToken: String
     /// 子に渡す `PATH`
     public var path: String
-    /// `-p` に渡す依頼の大きさの上限（コマンドの引数の長さの上限より十分に小さくする）
-    public var maximumPromptBytes: Int
+    /// 引数の全体の大きさの上限（macOS の引数と環境変数の上限 1 MiB より十分に小さくする）
+    public var maximumArgumentBytes: Int
 
     public init(
         executable: URL,
@@ -70,7 +70,7 @@ public struct ClaudeSetup: Sendable, CustomStringConvertible, CustomDebugStringC
         temporaryDirectory: URL,
         oauthToken: String,
         path: String = "/usr/bin:/bin:/usr/sbin:/sbin",
-        maximumPromptBytes: Int = 200_000
+        maximumArgumentBytes: Int = 256_000
     ) {
         self.executable = executable
         self.configDirectory = configDirectory
@@ -78,7 +78,7 @@ public struct ClaudeSetup: Sendable, CustomStringConvertible, CustomDebugStringC
         self.temporaryDirectory = temporaryDirectory
         self.oauthToken = oauthToken
         self.path = path
-        self.maximumPromptBytes = maximumPromptBytes
+        self.maximumArgumentBytes = maximumArgumentBytes
     }
 
     public var description: String {
