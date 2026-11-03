@@ -42,8 +42,13 @@ struct ScreenshotDemoTests {
         let snapshot = DemoScenario.standard.snapshot(now: Date(timeIntervalSince1970: 1_800_000_000))
         for scene in ScreenshotDemo.Scene.allCases {
             switch scene.route {
-            case .finalReview(let id), .deck(.verifications(let id)):
-                #expect(snapshot.epic(id) != nil)
+            case .finalReview(let id):
+                #expect(snapshot.epic(id)?.finalReview != nil)
+
+            case .deck(.verifications(let id)):
+                // 実機確認のカードは、TestFlight で確かめられる項目があるときだけ流れる
+                let hasReadyItems = snapshot.epic(id)?.finalReview?.verifications.contains(where: \.isReady) ?? false
+                #expect(hasReadyItems)
 
             case .deck(.all), nil:
                 break
