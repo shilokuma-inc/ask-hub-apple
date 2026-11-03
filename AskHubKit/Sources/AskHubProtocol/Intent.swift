@@ -105,10 +105,27 @@ public struct IntentVerifier: Sendable {
     /// 目印を読んだ結果から、人の意図を確かめて封筒を返す
     public func verify(_ marker: ProtocolMarker.Parsed, now: Date) throws(Rejection) -> IntentEnvelope {
         guard marker.value["type"]?.stringValue == "intent" else { throw .notIntent }
-        guard let envelopeValue = marker.value["envelope"], case .object = envelopeValue,
-              let signature = marker.value["sig"]?.stringValue else {
+        guard let envelopeValue = marker.value["envelope"], let signature = marker.value["sig"]?.stringValue else {
             throw .malformed
         }
+        return try verify(envelope: envelopeValue, signature: signature, body: marker.body, now: now)
+    }
+
+    /// 状態リポジトリの `intents/` に置いた人の意図（`{"envelope": …, "sig": "…"}`）を確かめる。
+    /// 人が読む本文を持たないので、封筒に `bodySha256` があれば受け付けない
+    public func verify(stored value: JSONValue, now: Date) throws(Rejection) -> IntentEnvelope {
+        guard let envelopeValue = value["envelope"], let signature = value["sig"]?.stringValue else { throw .malformed }
+        return try verify(envelope: envelopeValue, signature: signature, body: nil, now: now)
+    }
+
+    /// `body` は目印の前の本文。状態リポジトリに置いた意図では nil
+    private func verify(
+        envelope envelopeValue: JSONValue,
+        signature: String,
+        body: String?,
+        now: Date
+    ) throws(Rejection) -> IntentEnvelope {
+        guard case .object = envelopeValue else { throw .malformed }
         // 形の合わない値（パスに使えない nonce など）を含む封筒は、署名を確かめる前に弾く
         guard let envelope = try? IntentEnvelope(envelopeValue) else { throw .malformed }
         guard envelope.version == 1 else { throw .unsupportedVersion }
@@ -118,7 +135,7 @@ public struct IntentVerifier: Sendable {
               isValid else {
             throw .badSignature
         }
-        guard envelope.bodySha256 == ProtocolMarker.bodySHA256(marker.body) else { throw .bodyMismatch }
+        guard envelope.bodySha256 == body.map(ProtocolMarker.bodySHA256) else { throw .bodyMismatch }
         let issuedAt = envelope.issuedAt.date
         if issuedAt.timeIntervalSince(now) > allowedClockSkew { throw .issuedInFuture }
         if now.timeIntervalSince(issuedAt) > maximumAge { throw .expired }
