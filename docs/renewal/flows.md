@@ -70,13 +70,14 @@
 | 人の意図 | 司令塔がすること |
 | --- | --- |
 | 依頼（`request`） | epic を作り（`drafting`）、対象のリポジトリに Discussion を作って依頼の要約（題・本文・添付の名前）を書き、`makeQuestions` のジョブを作る |
-| 回答・おまかせ（`answer`） | 質問の `version` と状態（`open`）を確かめて受け付け、`questions.json` に書き、Discussion に写しを書く。依存する質問の依存先がすべて決まったら `reviseQuestion` のジョブを作る |
-| 説明を求める（`answer` の `clarify`） | 質問を `clarifying` にし、`explain` のジョブを作る |
+| 回答・おまかせ（`answer`） | 質問の `version` と状態（`open`・`answered`・`delegated`）を確かめて受け付け、`questions.json` に書き、Discussion に写しを書く。依存する質問の依存先がすべて決まったら `reviseQuestion` のジョブを作る。着手前の確認・開始の待ちの間に答え直したら、`asking` に戻して確認をやり直す |
+| 説明を求める（`answer` の `clarify`） | 回答を待っている（`open`）質問だけを `clarifying` にし、`explain` のジョブを作る |
 | ゴールの修正（`reviseGoal`） | ゴールの `version` を確かめ、`reviseGoal` のジョブを作る |
 | 開始（`startEpic`） | ゴールの `version` と、選ばれた Mac がオンラインかを確かめ、epic を `running` にして、段階 3 のジョブを作る |
 
 - 処理する前に、`consumed/` に記録を版なしで作る（同じ意図を 2 度処理しない）。受け付けなかった意図も、理由を書いて記録し、クライアントに出す
-- すべての質問が `answered` か `delegated` になり、`clarifying`・`revising`・`locked` が 1 つも無くなったら、`checkReadiness` のジョブを作る
+- すべての質問が `answered`・`delegated`・`dropped` のどれかになり、`open`・`clarifying`・`revising`・`locked` が 1 つも無くなったら、`checkReadiness` のジョブを作る
+- `explain`・`reviseQuestion` の結果は、頼んだ後に状態が変わっていたら書かずに捨てる（説明は問いの人の意図、見直しは質問と依存先の版と回答を、頼んだときと比べる）
 
 ### 質問づくり・説明・確かめを Claude に頼むとき
 
