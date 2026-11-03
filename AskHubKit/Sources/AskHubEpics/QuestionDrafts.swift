@@ -11,6 +11,8 @@ public struct QuestionDraft: Codable, Equatable, Sendable {
     public var recommended: String
     /// 推奨の理由
     public var reason: String
+    /// 慎重に決めてほしい理由。間違えると取り返しのつかない質問にだけ付ける
+    public var caution: Caution?
     /// 答えを前提にする質問の id
     public var dependsOn: [String]
 
@@ -21,6 +23,7 @@ public struct QuestionDraft: Codable, Equatable, Sendable {
         options: [QuestionsFile.Option],
         recommended: String,
         reason: String,
+        caution: Caution? = nil,
         dependsOn: [String] = []
     ) {
         self.id = id
@@ -29,26 +32,38 @@ public struct QuestionDraft: Codable, Equatable, Sendable {
         self.options = options
         self.recommended = recommended
         self.reason = reason
+        self.caution = caution
         self.dependsOn = dependsOn
     }
 }
 
-/// 説明・見直しの Claude が返す、質問の書き直しの案。id・依存先・何回目の質問づくりかは変えない
+/// 説明・見直しの Claude が返す、質問の書き直しの案。中身（慎重に決めてほしい理由も）を丸ごと置き換える。
+/// id・依存先・何回目の質問づくりかは変えない
 public struct QuestionRewrite: Codable, Equatable, Sendable {
     public var title: String
     public var why: String
     public var options: [QuestionsFile.Option]
     public var recommended: String
     public var reason: String
+    public var caution: Caution?
     /// 書き直した理由（画面で「書き直した」と示すときに出す）
     public var change: String
 
-    public init(title: String, why: String, options: [QuestionsFile.Option], recommended: String, reason: String, change: String) {
+    public init(
+        title: String,
+        why: String,
+        options: [QuestionsFile.Option],
+        recommended: String,
+        reason: String,
+        caution: Caution? = nil,
+        change: String
+    ) {
         self.title = title
         self.why = why
         self.options = options
         self.recommended = recommended
         self.reason = reason
+        self.caution = caution
         self.change = change
     }
 }

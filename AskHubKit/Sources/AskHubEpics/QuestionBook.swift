@@ -39,6 +39,7 @@ extension QuestionFlow {
                     options: draft.options,
                     recommended: draft.recommended,
                     reason: draft.reason,
+                    caution: draft.caution,
                     dependsOn: draft.dependsOn,
                     round: round,
                     state: draft.dependsOn.allSatisfy(settled.contains) ? .open : .locked

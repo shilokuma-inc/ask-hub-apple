@@ -256,6 +256,7 @@ extension QuestionFlow {
         question.options = rewrite.options
         question.recommended = rewrite.recommended
         question.reason = rewrite.reason
+        question.caution = rewrite.caution
         return question
     }
 }
