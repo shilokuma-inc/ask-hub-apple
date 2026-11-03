@@ -56,6 +56,8 @@ struct SwipeCard<Content: View>: View {
             // 札らしく見せるため、内側に白い縁、外側に細い線と影を付ける
             .overlay(shape.inset(by: 3).strokeBorder(.white.opacity(0.7), lineWidth: 1))
             .overlay(shape.strokeBorder(.separator, lineWidth: 0.5))
+            // 決まる量を超えたら、カードの縁もその方向の色の太い線にする
+            .overlay(shape.strokeBorder(thresholdEdge, lineWidth: 3))
             .shadow(color: .black.opacity(isInteractive ? 0.16 : 0.08), radius: isInteractive ? 20 : 10, y: isInteractive ? 12 : 6)
             .offset(offset)
             .rotationEffect(.degrees(Double(offset.width) / 26), anchor: .bottom)
@@ -87,6 +89,13 @@ struct SwipeCard<Content: View>: View {
                     offset = .zero
                 }
             }
+    }
+
+    private var thresholdEdge: Color {
+        guard isInteractive, drag.isPastThreshold, let candidate = drag.candidate, directions.indices.contains(candidate) else {
+            return .clear
+        }
+        return directions[candidate].edge
     }
 
     private var dragGesture: some Gesture {
