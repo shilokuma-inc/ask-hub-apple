@@ -56,7 +56,7 @@ struct MacDetailView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(job.title)
             Text("\(RelativeTime.string(job.startedAt, now: store.currentDate()))から")
-                .font(.caption)
+                .appFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -88,11 +88,11 @@ struct CleanupView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Label(candidate.name, systemImage: symbol(candidate.kind))
                             Text(ByteFormat.string(candidate.bytes))
-                                .font(.caption)
+                                .appFont(.caption)
                                 .foregroundStyle(.secondary)
                             if let caution = candidate.caution {
                                 Label(caution, systemImage: "exclamationmark.triangle.fill")
-                                    .font(.caption)
+                                    .appFont(.caption)
                                     .foregroundStyle(Theme.warning)
                             }
                         }

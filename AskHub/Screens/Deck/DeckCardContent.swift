@@ -36,13 +36,13 @@ struct DeckCardContent: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(card.kindLabel)
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.secondary)
                 Text(card.title)
-                    .font(.title3.weight(.semibold))
+                    .appFont(.title3, weight: .semibold)
                     .lineLimit(3)
                 Text(card.detail)
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
             }
@@ -127,16 +127,17 @@ struct DeckCardHeader: View {
                 .overlay(RoundedRectangle(cornerRadius: 38 * 0.225, style: .continuous).strokeBorder(.white.opacity(0.9), lineWidth: 1.5))
             VStack(alignment: .leading, spacing: 1) {
                 Text(repository?.appName ?? "不明なリポジトリ")
-                    .font(.subheadline.weight(.bold))
+                    .appFont(.subheadline, weight: .bold)
                 Text(epicTitle)
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
             if let remaining {
                 Text("残り \(remaining)")
-                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .appFont(.caption, weight: .semibold)
+                    .monospacedDigit()
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(.background.opacity(0.7), in: .capsule)
@@ -169,20 +170,20 @@ struct QuestionNotes: View {
         VStack(alignment: .leading, spacing: 6) {
             if !dependents.isEmpty {
                 Label("この回答で \(dependents.map(\.id).joined(separator: "・")) が決まります", systemImage: "arrow.turn.down.right")
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.tint)
             }
             if let note = question.revisionNote {
                 Label(note, systemImage: "pencil.and.list.clipboard")
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(Theme.warning)
             }
             if let explanation = question.latestExplanation, let body = explanation.body {
                 VStack(alignment: .leading, spacing: 4) {
                     Label("説明が届いています", systemImage: "text.bubble")
-                        .font(.caption.weight(.semibold))
+                        .appFont(.caption, weight: .semibold)
                     Text(body)
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(4)
                 }

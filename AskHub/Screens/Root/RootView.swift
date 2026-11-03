@@ -5,6 +5,7 @@ struct RootView: View {
     @Environment(ClientStore.self) private var store
     @Environment(AppNavigator.self) private var navigator
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.appTypeface) private var typeface
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -12,6 +13,8 @@ struct RootView: View {
     var body: some View {
         @Bindable var navigator = navigator
         layout
+            // 書体を変えたら作り直し、UIKit が描くバーの見出しにも新しい書体を使わせる（デバッグの切り替え。Typography）
+            .id(typeface)
             // 主な色はラベンダー（パステルの見た目。Theme）
             .tint(Theme.accent)
             // 開いている間（バックグラウンド以外）は決まった間隔で取り直す

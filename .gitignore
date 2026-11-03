@@ -110,3 +110,6 @@ private_keys/
 # Tools/ の Python を実行したときにできるもの（ワークフローは .venv に PyJWT を入れる）
 __pycache__/
 .venv/
+
+# デバッグで書体を見比べるためのフォント（AskHub/Components/Typography.swift）。public の履歴に大きなファイルを残さないため、git に入れない
+AskHub/DebugFonts/

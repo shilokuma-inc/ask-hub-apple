@@ -62,17 +62,17 @@ struct EpicRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(epic.title)
-                        .font(.headline)
+                        .appFont(.headline)
                         .lineLimit(2)
                     Spacer(minLength: 8)
                     StageDots(stage: epic.stage, isBlocked: epic.blocker != nil)
                 }
                 Text(store.repository(epic.repositoryID)?.appName ?? epic.repositoryID)
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                     .foregroundStyle(.secondary)
                 ForEach(Array(lines.prefix(2).enumerated()), id: \.offset) { _, line in
                     EpicStatusLabel(line: line)
-                        .font(.footnote)
+                        .appFont(.footnote)
                 }
             }
         }

@@ -74,9 +74,9 @@ struct AppHeaderView: View {
             AppIconView(repository: repository, size: iconSize)
             VStack(alignment: .leading, spacing: 1) {
                 Text(repository?.appName ?? "不明なリポジトリ")
-                    .font(.subheadline.weight(.semibold))
+                    .appFont(.subheadline, weight: .semibold)
                 Text(subtitle)
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

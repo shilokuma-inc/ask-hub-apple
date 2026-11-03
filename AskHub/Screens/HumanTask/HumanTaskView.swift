@@ -21,7 +21,7 @@ struct HumanTaskView: View {
         List {
             Section {
                 AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: epic.title, iconSize: 40)
-                Text(task.title).font(.headline)
+                Text(task.title).appFont(.headline)
                 Text(task.why).foregroundStyle(.secondary)
                 stateLabel(task.state, epic: epic, task: task)
             }
@@ -107,7 +107,7 @@ struct HumanTaskView: View {
             let blocked = epic.tasks.filter { task.blocksTaskIDs.contains($0.id) }.map { "タスク \($0.number)" }
             if !blocked.isEmpty {
                 Label("\(blocked.joined(separator: "・")) の前提です。ほかのタスクは進めています", systemImage: "lock")
-                    .font(.footnote)
+                    .appFont(.footnote)
                     .foregroundStyle(Theme.warning)
             }
 

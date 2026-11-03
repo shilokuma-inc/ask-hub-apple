@@ -36,29 +36,26 @@ struct MacRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: mac.role == .commandCenter ? "macmini" : "laptopcomputer")
-                .font(.title2)
+                .appFont(.title2)
                 .foregroundStyle(mac.isOnline ? Theme.accent : Color.secondary)
                 .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(mac.name).font(.headline)
+                    Text(mac.name).appFont(.headline)
                     Spacer(minLength: 8)
                     ConnectionBadge(mac: mac)
                 }
-                HStack(spacing: 6) {
-                    TagLabel(text: mac.role == .commandCenter ? "司令塔" : "ワーカー")
-                    TagLabel(text: mac.contract.label, tint: mac.contract == .company ? Theme.accent : .secondary)
-                }
+                TagLabel(text: mac.role == .commandCenter ? "司令塔" : "ワーカー")
                 DiskGauge(mac: mac)
                 if let job = mac.jobs.first {
                     Label(job.title, systemImage: "hammer")
-                        .font(.footnote)
+                        .appFont(.footnote)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 if let reason = mac.refusalReason {
                     Label(reason, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
+                        .appFont(.footnote)
                         .foregroundStyle(Theme.warning)
                 }
             }
@@ -78,13 +75,13 @@ struct ConnectionBadge: View {
         switch mac.connection {
         case .online(let lastSeen):
             Label("オンライン · \(RelativeTime.string(lastSeen, now: store.currentDate()))", systemImage: "circle.fill")
-                .font(.caption)
+                .appFont(.caption)
                 .foregroundStyle(Theme.success)
                 .labelStyle(DotLabelStyle())
 
         case .offline(let since):
             Label("オフライン · \(RelativeTime.duration(since: since, now: store.currentDate()))", systemImage: "circle.fill")
-                .font(.caption)
+                .appFont(.caption)
                 .foregroundStyle(.secondary)
                 .labelStyle(DotLabelStyle())
         }
@@ -112,6 +109,6 @@ struct DiskGauge: View {
         }
         .gaugeStyle(.accessoryLinearCapacity)
         .tint(mac.refusalReason == nil ? Theme.accent : Theme.warning)
-        .font(.caption)
+        .appFont(.caption)
     }
 }

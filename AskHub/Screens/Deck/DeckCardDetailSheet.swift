@@ -65,7 +65,7 @@ struct QuestionDetailSections: View {
                 ForEach(question.options) { option in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text(option.label).font(.headline)
+                            Text(option.label).appFont(.headline)
                             if option.id == question.recommendedOptionID {
                                 TagLabel(text: "推奨", tint: Theme.success)
                             }
@@ -81,7 +81,7 @@ struct QuestionDetailSections: View {
                 ForEach(Array(question.explanations.enumerated()), id: \.offset) { _, explanation in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(explanation.request.isEmpty ? "（説明を求めました）" : "求めた内容: \(explanation.request)")
-                            .font(.footnote)
+                            .appFont(.footnote)
                             .foregroundStyle(.secondary)
                         if let body = explanation.body {
                             Text(body)

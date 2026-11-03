@@ -15,13 +15,13 @@ struct BlockerSection: View {
                     TagLabel(text: blocker.category.label, tint: Theme.danger)
                     Spacer()
                     Text(RelativeTime.string(blocker.occurredAt, now: store.currentDate()))
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Text(blocker.title)
-                    .font(.headline)
+                    .appFont(.headline)
                 Text(blocker.summary)
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                 if let log = blocker.logExcerpt {
                     ScrollView(.horizontal) {
                         Text(log)
@@ -39,10 +39,10 @@ struct BlockerSection: View {
                         VStack(alignment: .leading, spacing: 2) {
                             let period = "\(RelativeTime.clock(attempt.startedAt))〜\(RelativeTime.clock(attempt.endedAt))"
                             Text("試行 \(attempt.number) · \(attempt.macName) · \(period)")
-                                .font(.caption)
+                                .appFont(.caption)
                                 .foregroundStyle(.secondary)
                             Text(attempt.outcome)
-                                .font(.subheadline)
+                                .appFont(.subheadline)
                         }
                     }
                 }

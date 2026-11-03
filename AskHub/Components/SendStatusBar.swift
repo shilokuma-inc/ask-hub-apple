@@ -11,16 +11,16 @@ struct SendStatusBar: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(Theme.danger)
                     Text("送れませんでした: \(failure.message)")
-                        .font(.footnote)
+                        .appFont(.footnote)
                         .lineLimit(2)
                     Spacer(minLength: 0)
                     Button("もう一度") {
                         Task { await store.retryFailedSend() }
                     }
-                    .font(.footnote.weight(.semibold))
+                    .appFont(.footnote, weight: .semibold)
                     Button("閉じる", systemImage: "xmark") { store.dismissSendFailure() }
                         .labelStyle(.iconOnly)
-                        .font(.footnote)
+                        .appFont(.footnote)
                 }
                 .modifier(BarStyle())
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -30,11 +30,11 @@ struct SendStatusBar: View {
                     Image(systemName: "paperplane")
                         .foregroundStyle(.secondary)
                     Text(pending.message)
-                        .font(.footnote)
+                        .appFont(.footnote)
                         .lineLimit(2)
                     Spacer(minLength: 0)
                     Button("取り消す") { store.undo() }
-                        .font(.footnote.weight(.semibold))
+                        .appFont(.footnote, weight: .semibold)
                 }
                 .modifier(BarStyle())
                 .transition(.move(edge: .bottom).combined(with: .opacity))

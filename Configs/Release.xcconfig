@@ -6,3 +6,6 @@
 //
 
 #include "Project.xcconfig"
+
+// デバッグで書体を見比べるためのフォント（AskHub/DebugFonts/、git 管理外）は、Release のアプリに入れない
+EXCLUDED_SOURCE_FILE_NAMES = $(inherited) */DebugFonts/*

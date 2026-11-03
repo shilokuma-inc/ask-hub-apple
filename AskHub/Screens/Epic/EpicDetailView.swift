@@ -68,7 +68,7 @@ struct EpicDetailView: View {
             }
             EpicStageSections(epic: epic) { shownQuestion = $0 }
             Section("依頼") {
-                Text(epic.request.summary).font(.headline)
+                Text(epic.request.summary).appFont(.headline)
                 Text(epic.request.body).foregroundStyle(.secondary)
                 if epic.request.attachmentCount > 0 {
                     Label("添付 \(epic.request.attachmentCount)", systemImage: "paperclip")
@@ -99,7 +99,7 @@ private struct EpicStageSections: View {
                 if !epic.answerableQuestions.isEmpty, epic.stage == .questions {
                     NavigationLink(value: AppRoute.deck(.questions(epic.id))) {
                         Label("質問に答える（\(epic.answerableQuestions.count)）", systemImage: "rectangle.stack")
-                            .font(.headline)
+                            .appFont(.headline)
                     }
                 }
                 ForEach(epic.questions) { question in
@@ -116,7 +116,7 @@ private struct EpicStageSections: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(goal.summary).lineLimit(3)
                         Text("版 \(goal.version) · タスク \(goal.tasks.count)")
-                            .font(.caption)
+                            .appFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -145,7 +145,7 @@ private struct EpicStageSections: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("#\(review.pullRequestNumber) · +\(review.additions) −\(review.deletions)")
                         Text("判断の確認 \(review.reviewedCount) / \(review.decisions.count) · 実機の確認 \(review.verifications.count)")
-                            .font(.caption)
+                            .appFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -168,7 +168,7 @@ struct QuestionStatusRow: View {
                 Text("\(question.id) \(question.title)")
                     .lineLimit(2)
                 Text(detail)
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -213,12 +213,12 @@ private struct TaskRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(task.number). \(task.title)")
                 if case .locked(let reason) = task.state {
-                    Text(reason).font(.caption).foregroundStyle(.secondary)
+                    Text(reason).appFont(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)
             if case .done(let number) = task.state {
-                Text("#\(number)").font(.caption).foregroundStyle(.secondary)
+                Text("#\(number)").appFont(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -261,10 +261,10 @@ private struct HistorySection: View {
                 .foregroundStyle(entry.isFailure ? Theme.danger : .primary)
             Spacer(minLength: 8)
             Text(RelativeTime.string(entry.date, now: now))
-                .font(.caption)
+                .appFont(.caption)
                 .foregroundStyle(.secondary)
         }
-        .font(.subheadline)
+        .appFont(.subheadline)
     }
 }
 

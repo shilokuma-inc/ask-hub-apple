@@ -35,11 +35,16 @@ struct AskHub: App {
         }
         #endif
         _navigator = State(initialValue: navigator)
+        #if DEBUG
+        // 見え方を比べるため、同梱したフォントを登録する（Typography）
+        AppTypeface.prepareForDebug()
+        #endif
     }
 
     var body: some Scene {
         WindowGroup {
             RootView()
+                .typefaceFromSettings()
                 .environment(store)
                 .environment(navigator)
                 // 設定でデモの場面を変えたら、その場面のデータで作り直す（撮影モードは標準の場面のまま）
@@ -54,6 +59,7 @@ struct AskHub: App {
         #if os(macOS)
         Settings {
             AppSettingsView()
+                .typefaceFromSettings()
                 .environment(store)
                 .environment(navigator)
                 .frame(width: 460, height: 420)

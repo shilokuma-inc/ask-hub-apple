@@ -14,10 +14,10 @@ struct ConnectionStatusView: View {
                 .foregroundStyle(status.tint)
             VStack(alignment: .leading, spacing: 2) {
                 Text(status.title)
-                    .font(.footnote.weight(.semibold))
+                    .appFont(.footnote, weight: .semibold)
                 if let detail = status.detail {
                     Text(detail)
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -26,7 +26,7 @@ struct ConnectionStatusView: View {
                 Button("もう一度読む") {
                     Task { await store.refresh() }
                 }
-                .font(.caption.weight(.semibold))
+                .appFont(.caption, weight: .semibold)
             }
         }
         .accessibilityElement(children: .combine)

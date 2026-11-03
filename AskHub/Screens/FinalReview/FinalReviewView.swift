@@ -63,7 +63,7 @@ struct FinalReviewView: View {
             if !review.internalDecisions.isEmpty {
                 Section {
                     DisclosureGroup("内部の細部の仮決め · \(review.internalDecisions.count)") {
-                        ForEach(review.internalDecisions, id: \.self) { Text($0).font(.subheadline) }
+                        ForEach(review.internalDecisions, id: \.self) { Text($0).appFont(.subheadline) }
                     }
                 } footer: {
                     Text("ユーザーから見える挙動・仕様・見た目に関わらないので、マージの条件には数えません")
@@ -80,7 +80,7 @@ struct FinalReviewView: View {
             if !review.pendingDecisions.isEmpty {
                 NavigationLink(value: AppRoute.deck(.decisions(epic.id))) {
                     Label("カードで確かめる（\(review.pendingDecisions.count)）", systemImage: "rectangle.stack")
-                        .font(.headline)
+                        .appFont(.headline)
                 }
             }
             ForEach(review.decisions) { decision in
@@ -114,9 +114,9 @@ private struct MergePolicyView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Label("手動でマージします", systemImage: "hand.raised.fill")
                     .foregroundStyle(Theme.warning)
-                    .font(.headline)
+                    .appFont(.headline)
                 Text(reasons.map(\.label).joined(separator: "・") + " があるため")
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
@@ -134,7 +134,7 @@ private struct ChecksView: View {
             Label(reviewText, systemImage: reviewProblems.isEmpty ? "checkmark.circle" : "xmark.circle")
                 .foregroundStyle(reviewProblems.isEmpty ? Color.secondary : Theme.danger)
         }
-        .font(.subheadline)
+        .appFont(.subheadline)
     }
 
     private var reviewProblems: [String] {
@@ -188,7 +188,7 @@ private struct DecisionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(decision.title)
                 Text(status)
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -240,7 +240,7 @@ private struct MergeBar: View {
                 .disabled(!review.canMerge)
                 if let reason = blockedReason {
                     Text(reason)
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
