@@ -29,6 +29,6 @@ public enum AttemptLiveness: Equatable, Sendable {
     }
 
     static func isOlder(_ timestamp: Timestamp, than limit: Duration, now: Date) -> Bool {
-        now.timeIntervalSince(timestamp.date) > Double(limit.components.seconds)
+        now.timeIntervalSince(timestamp.date) > Double(limit.components.seconds) + Double(limit.components.attoseconds) / 1e18
     }
 }

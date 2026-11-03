@@ -44,7 +44,9 @@ public struct FailurePolicy: Sendable, Equatable {
             return .retry(at: retryAt ?? Timestamp(now + usageLimitWait))
         case .githubOutage:
             let streak = Self.trailingStreak(of: .githubOutage, in: earlier)
-            return .retry(at: Timestamp(now + outageWaits[min(streak, outageWaits.count - 1)]))
+            // 待ちの一覧が空なら、1 分待つ
+            let wait = outageWaits.isEmpty ? .seconds(60) : outageWaits[min(streak, outageWaits.count - 1)]
+            return .retry(at: Timestamp(now + wait))
         case .macOffline:
             return .pause
         case .timeout:
