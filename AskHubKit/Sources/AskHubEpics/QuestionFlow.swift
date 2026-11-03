@@ -53,7 +53,7 @@ public enum QuestionFlow {
             case .revising: "質問 \(question) は、依存先の回答を受けて見直している"
             case .clarifying: "質問 \(question) は、説明を作っている"
             case .dropped: "質問 \(question) は、見直しで要らなくなった"
-            case .answered, .delegated: "回答した質問には説明を求められない（変えるときは答え直す）"
+            case .answered: "質問 \(question) は回答済みなので、説明を求められない（変えるときは答え直す）"
             case .open: "質問 \(question) は回答を待っている"
             }
         }
@@ -145,7 +145,7 @@ extension QuestionFlow {
             book.questions[index].state = .clarifying
             book.effects.append(.explain(question: question.id, asked: answer.intent))
         case .answer:
-            guard [.open, .answered, .delegated].contains(question.state) else {
+            guard [.open, .answered].contains(question.state) else {
                 throw .notAnswerable(question: question.id, state: question.state)
             }
             let accepted = try decision(answer, for: question, at: now)
@@ -170,11 +170,11 @@ extension QuestionFlow {
         if let choice = answer.choice, !question.options.contains(where: { $0.label == choice }) {
             throw .unknownChoice(question: question.id)
         }
-        return .init(mode: .answer, choice: answer.choice, note: answer.note, intent: answer.intent, at: now)
+        return .init(choice: answer.choice, note: answer.note, intent: answer.intent, at: now)
     }
 
     private static func isSameDecision(_ lhs: QuestionsFile.Answer, _ rhs: QuestionsFile.Answer) -> Bool {
-        lhs.mode == rhs.mode && lhs.choice == rhs.choice && lhs.note == rhs.note
+        lhs.choice == rhs.choice && lhs.note == rhs.note
     }
 }
 

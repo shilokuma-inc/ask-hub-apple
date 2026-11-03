@@ -20,16 +20,15 @@ public enum QuestionState: String, Codable, Sendable, CaseIterable {
     case open
     /// 説明を作っている
     case clarifying
+    /// 人が回答した。判断はすべて人がするので、推奨の選択肢で決めたことにする状態は持たない
     case answered
-    /// おまかせ（推奨の選択肢で決めてよい、という回答）
-    case delegated
     /// 依存先が決まって見直した結果、要らなくなった。回答しない（理由は `revision` に書く）
     case dropped
 
-    /// 決まった（回答・おまかせ・要らなくなった）。依存する質問の見直しと、着手前の確認に進める
+    /// 決まった（回答した・要らなくなった）。依存する質問の見直しと、着手前の確認に進める
     public var isSettled: Bool {
         switch self {
-        case .answered, .delegated, .dropped: true
+        case .answered, .dropped: true
         case .locked, .revising, .open, .clarifying: false
         }
     }
@@ -85,21 +84,14 @@ public struct QuestionsFile: StateFile {
         }
     }
 
-    public enum AnswerMode: String, Codable, Sendable, CaseIterable {
-        case answer
-        case delegate
-    }
-
-    /// 受け付けた回答。`choice` は選んだ選択肢（自由記述だけなら nil）。おまかせでは推奨の選択肢
+    /// 受け付けた回答。`choice` は選んだ選択肢（自由記述だけなら nil）
     public struct Answer: Codable, Equatable, Sendable {
-        public var mode: AnswerMode
         public var choice: String?
         public var note: String
         public var intent: IntentReference
         public var at: Timestamp
 
-        public init(mode: AnswerMode, choice: String?, note: String = "", intent: IntentReference, at: Timestamp) {
-            self.mode = mode
+        public init(choice: String?, note: String = "", intent: IntentReference, at: Timestamp) {
             self.choice = choice
             self.note = note
             self.intent = intent
@@ -221,16 +213,14 @@ public struct QuestionsFile: StateFile {
         return pending.isEmpty ? [] : ["\(question.id): 説明を作っていない質問に、説明を待つ問いがある"]
     }
 
-    /// 回答は answered（回答）と delegated（おまかせ）のときだけ持つ
+    /// 回答は answered のときだけ持つ
     private static func answerProblems(of question: Question, labels: [String]) -> [String] {
         let name = question.id
         switch (question.state, question.answer) {
         case let (.answered, answer?):
             let isChoice = answer.choice.map(labels.contains) ?? !answer.note.isEmpty
-            return answer.mode == .answer && isChoice ? [] : ["\(name): 回答は、選択肢か自由記述が要る"]
-        case let (.delegated, answer?):
-            return answer.mode == .delegate && answer.choice == question.recommended ? [] : ["\(name): おまかせは推奨の選択肢で決める"]
-        case (.answered, nil), (.delegated, nil):
+            return isChoice ? [] : ["\(name): 回答は、選択肢か自由記述が要る"]
+        case (.answered, nil):
             return ["\(name): 回答が無い"]
         case (_, .some):
             return ["\(name): \(question.state.rawValue) の質問は回答を持たない"]

@@ -84,7 +84,7 @@ extension QuestionFlow {
             case .dropped:
                 // 要らなくなったのは前の回答を受けた見直しの結果なので、理由を消して見直し直す
                 question.revision = nil
-            case .open, .answered, .delegated:
+            case .open, .answered:
                 break
             }
             question.answer = nil

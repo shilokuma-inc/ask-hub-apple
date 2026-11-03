@@ -29,7 +29,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": "日ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
@@ -59,11 +58,10 @@
             "reason": "今の保存の仕組みのままで作れる",
             "dependsOn": [],
             "round": 1,
-            "state": "delegated",
+            "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "delegate",
-              "choice": "日ごと",
+              "choice": "週ごと",
               "note": "",
               "intent": {
                 "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
@@ -187,7 +185,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": null,
               "note": "自由記述で答える",
               "intent": {
@@ -238,7 +235,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": "日ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
@@ -268,11 +264,10 @@
             "reason": "今の保存の仕組みのままで作れる",
             "dependsOn": [],
             "round": 1,
-            "state": "delegated",
+            "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "delegate",
-              "choice": "日ごと",
+              "choice": "週ごと",
               "note": "",
               "intent": {
                 "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
@@ -396,7 +391,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": null,
               "note": "自由記述で答える",
               "intent": {
@@ -439,7 +433,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": "日ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
@@ -469,11 +462,10 @@
             "reason": "今の保存の仕組みのままで作れる",
             "dependsOn": [],
             "round": 1,
-            "state": "delegated",
+            "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "delegate",
-              "choice": "日ごと",
+              "choice": "週ごと",
               "note": "",
               "intent": {
                 "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
@@ -597,7 +589,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": null,
               "note": "自由記述で答える",
               "intent": {
@@ -638,7 +629,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": "日ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
@@ -668,11 +658,10 @@
             "reason": "今の保存の仕組みのままで作れる",
             "dependsOn": [],
             "round": 1,
-            "state": "delegated",
+            "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "delegate",
-              "choice": "日ごと",
+              "choice": "週ごと",
               "note": "",
               "intent": {
                 "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
@@ -796,7 +785,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": null,
               "note": "自由記述で答える",
               "intent": {
@@ -838,7 +826,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": "日ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
@@ -868,11 +855,10 @@
             "reason": "今の保存の仕組みのままで作れる",
             "dependsOn": [],
             "round": 1,
-            "state": "delegated",
+            "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "delegate",
-              "choice": "日ごと",
+              "choice": "週ごと",
               "note": "",
               "intent": {
                 "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
@@ -996,7 +982,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": null,
               "note": "自由記述で答える",
               "intent": {
@@ -1282,7 +1267,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": "日ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
@@ -1598,7 +1582,6 @@
             "state": "open",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": "日ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
@@ -1614,7 +1597,7 @@
       "read": "malformed"
     },
     {
-      "name": "delegated-not-recommended",
+      "name": "delegated-state",
       "value": {
         "v": 1,
         "questions": [
@@ -1640,19 +1623,18 @@
             "state": "delegated",
             "explanations": [],
             "answer": {
-              "mode": "delegate",
-              "choice": "週ごと",
-              "note": "",
+              "choice": "日ごと",
+              "note": "夜間はもっと長くてもよい。",
               "intent": {
                 "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
-                "nonce": "01JCN0NCE00000000000000002"
+                "nonce": "01JCN0NCE00000000000000001"
               },
               "at": "2026-11-03T10:05:00Z"
             }
           }
         ]
       },
-      "schemaValid": true,
+      "schemaValid": false,
       "read": "malformed"
     },
     {
@@ -1682,7 +1664,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": "月ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
@@ -1724,7 +1705,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": null,
               "note": "",
               "intent": {
@@ -1898,7 +1878,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": "日ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
@@ -1993,7 +1972,6 @@
             "state": "answered",
             "explanations": [],
             "answer": {
-              "mode": "answer",
               "choice": "日ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
@@ -2101,7 +2079,6 @@
               "by": "dependency"
             },
             "answer": {
-              "mode": "answer",
               "choice": "日ごと",
               "note": "夜間はもっと長くてもよい。",
               "intent": {
