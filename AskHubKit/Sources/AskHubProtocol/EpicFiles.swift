@@ -257,7 +257,7 @@ public enum HandoverKind: String, Codable, Sendable, CaseIterable {
 public struct GoalFile: StateFile {
     public static let formatVersion = 1
 
-    /// 決まったこと・おまかせにしたこと（どの質問から来たか）
+    /// 決まったこと（どの質問から来たか）
     public struct Item: Codable, Equatable, Sendable {
         public var question: String
         public var text: String
@@ -328,7 +328,6 @@ public struct GoalFile: StateFile {
     public var version: Int
     public var summary: String
     public var decided: [Item]
-    public var delegated: [Item]
     public var outOfScope: [String]
     public var doneWhen: [String]
     public var tasks: [Task]
@@ -340,7 +339,6 @@ public struct GoalFile: StateFile {
         version: Int = 1,
         summary: String,
         decided: [Item] = [],
-        delegated: [Item] = [],
         outOfScope: [String] = [],
         doneWhen: [String],
         tasks: [Task],
@@ -350,7 +348,6 @@ public struct GoalFile: StateFile {
         self.version = version
         self.summary = summary
         self.decided = decided
-        self.delegated = delegated
         self.outOfScope = outOfScope
         self.doneWhen = doneWhen
         self.tasks = tasks
