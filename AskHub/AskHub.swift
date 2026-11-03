@@ -27,16 +27,14 @@ struct AskHub: App {
         }
         #endif
         _navigator = State(initialValue: navigator)
-        #if DEBUG
-        // 見え方を比べるため、同梱したフォントを登録する（Typography）
-        AppTypeface.prepareForDebug()
-        #endif
+        // 英数字は Nunito、かなと漢字はシステムの書体（Typography）
+        AppFont.register()
     }
 
     var body: some Scene {
         WindowGroup {
             RootView()
-                .typefaceFromSettings()
+                .appFont(.body)
                 .environment(store)
                 .environment(navigator)
                 // 設定でデモの場面を変えたら、その場面のデータで作り直す
@@ -51,7 +49,7 @@ struct AskHub: App {
         #if os(macOS)
         Settings {
             AppSettingsView()
-                .typefaceFromSettings()
+                .appFont(.body)
                 .environment(store)
                 .environment(navigator)
                 .frame(width: 460, height: 420)
