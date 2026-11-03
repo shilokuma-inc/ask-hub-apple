@@ -89,7 +89,7 @@ enum DrawMotion {
 /// 捨て札の 1 枚
 struct DiscardEntry: Identifiable, Equatable {
     let id: DeckCard.ID
-    /// 答えた方向（おまかせ・説明を求めるなど、スワイプや選択肢を通らずに送ったときは nil）
+    /// 答えた方向（説明を求めるなど、スワイプや選択肢を通らずに送ったときは nil）
     let direction: SwipeDirection?
     /// 何枚目に置いたか。傾きとずれを決める
     let order: Int

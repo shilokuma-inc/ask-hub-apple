@@ -70,14 +70,14 @@ struct DemoClientServiceTests {
         let service = makeService()
         try await service.perform(.answer(epicID: "habit-export", questionID: "Q2", optionID: "b", note: ""))
         try await service.perform(.answer(epicID: "habit-export", questionID: "Q3", optionID: nil, note: "習慣ログ_年-月.csv"))
-        try await service.perform(.delegate(epicID: "habit-export", questionID: "Q4"))
+        try await service.perform(.answer(epicID: "habit-export", questionID: "Q4", optionID: "c", note: ""))
         #expect(service.state.epic("habit-export")?.stage == .preflight)
 
         clock.now.addTimeInterval(20)
         _ = try await service.fetchSnapshot()
         let epic = try #require(service.state.epic("habit-export"))
         #expect(epic.stage == .goal)
-        #expect(epic.goal?.delegated.count == 1)
+        #expect(epic.goal?.decided.contains { $0.questionID == "Q4" } == true)
     }
 
     /// 開始するとその Mac で実装が始まる

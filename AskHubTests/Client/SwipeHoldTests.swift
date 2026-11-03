@@ -15,9 +15,9 @@ struct SwipeHoldTests {
     func holdsOnlyChoicesThatAskForText() {
         let request = TextRequest(title: "直してほしい", prompt: "どう直してほしいか", purpose: .goalRevision(epicID: "e"))
         let choices = [
-            choice("accept", action: .send(.delegate(epicID: "e", questionID: "Q1"))),
+            choice("accept", action: .send(.answer(epicID: "e", questionID: "Q1", optionID: nil, note: ""))),
             choice("fix", action: .askText(request)),
-            choice("other", action: .send(.delegate(epicID: "e", questionID: "Q2")))
+            choice("other", action: .send(.answer(epicID: "e", questionID: "Q2", optionID: nil, note: "")))
         ]
         #expect(SwipeHold.heldChoices(choices) == [1])
         #expect(SwipeHold.heldChoices([]).isEmpty)

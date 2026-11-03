@@ -115,11 +115,7 @@ struct DeckCardContent: View {
 
         case .decision(let decision):
             VStack(alignment: .leading, spacing: 6) {
-                if case .delegated(let questionID) = decision.kind {
-                    TagLabel(text: "おまかせ（\(questionID)）", tint: Theme.accent)
-                } else {
-                    TagLabel(text: "見える仮決め", tint: .secondary)
-                }
+                TagLabel(text: "見える仮決め", tint: .secondary)
                 if case .refreshed(let note) = decision.response {
                     TagLabel(text: note, tint: Theme.warning)
                 }

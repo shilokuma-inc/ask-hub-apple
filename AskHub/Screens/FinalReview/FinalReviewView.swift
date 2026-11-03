@@ -97,7 +97,7 @@ struct FinalReviewView: View {
         } header: {
             Text("人が決めていない判断 · \(review.reviewedCount) / \(review.decisions.count) を確認")
         } footer: {
-            Text("おまかせにした質問と、見た目や挙動に関わる仮決めです。全部を確かめるまでマージできません")
+            Text("ループが実装の中で仮に決めた、見た目や挙動に関わることです。全部を確かめるまでマージできません")
         }
     }
 }
@@ -203,7 +203,7 @@ private struct DecisionRow: View {
     }
 
     private var status: String {
-        let kind = if case .delegated(let id) = decision.kind { "おまかせ（\(id)）" } else { "見える仮決め" }
+        let kind = "見える仮決め"
         switch decision.response {
         case .pending: return "\(kind) · 未確認"
         case .accepted: return "\(kind) · OK"

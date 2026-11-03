@@ -7,8 +7,6 @@ struct Goal: Hashable {
     var summary: String
     /// 決まったこと（どの質問の回答から来たか）
     var decided: [Point]
-    /// おまかせにしたこと
-    var delegated: [Point]
     var notDoing: [String]
     /// 完了の条件
     var doneCriteria: [String]

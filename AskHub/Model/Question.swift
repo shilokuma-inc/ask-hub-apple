@@ -39,8 +39,6 @@ struct Question: Identifiable, Hashable {
         /// 依存先が決まり、Claude が見直している（終わるとロックが外れる）
         case reviewing
         case answered(Response)
-        /// 推奨の選択肢で決めてよい、という正式な回答。最終 PR の「人が決めていない判断」に載る
-        case delegated(at: Date)
     }
 
     struct Response: Hashable {
@@ -66,10 +64,10 @@ extension Question {
     /// いま答えられるか
     var isAnswerable: Bool { state == .open }
 
-    /// 回答済みかおまかせで、決まっているか
+    /// 回答済みで、決まっているか（判断はいつも人がする）
     var isSettled: Bool {
         switch state {
-        case .answered, .delegated:
+        case .answered:
             return true
 
         case .open, .awaitingExplanation, .locked, .reviewing:
@@ -88,7 +86,7 @@ extension Question {
         options.first { $0.id == recommendedOptionID }
     }
 
-    /// 回答した選択肢（自由記述・おまかせ・未回答なら nil）
+    /// 回答した選択肢（自由記述・未回答なら nil）
     var answeredOption: Option? {
         guard case .answered(let response) = state else {
             return nil

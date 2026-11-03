@@ -5,7 +5,7 @@ import Foundation
 extension DemoClientService {
     func apply(_ intent: HumanIntent) {
         switch intent {
-        case .answer, .requestExplanation, .delegate:
+        case .answer, .requestExplanation:
             applyQuestionIntent(intent)
 
         case .reviseGoal, .start, .request, .addRepository:
@@ -26,14 +26,6 @@ extension DemoClientService {
 
         case let .requestExplanation(epicID, questionID, request):
             requestExplanation(epicID: epicID, questionID: questionID, request: request)
-
-        case let .delegate(epicID, questionID):
-            let date = now()
-            state.updateEpic(epicID) { epic in
-                epic.updateQuestion(questionID) { $0.state = .delegated(at: date) }
-                epic.log("\(questionID) をおまかせにしました", at: date)
-            }
-            questionSettled(epicID: epicID, questionID: questionID)
 
         default:
             break
@@ -176,17 +168,10 @@ extension DemoClientService {
             let text = question.answeredOption?.label ?? response.note
             return Goal.Point(text: "\(question.title): \(text)", questionID: question.id)
         }
-        let delegated = epic.questions.compactMap { question -> Goal.Point? in
-            guard case .delegated = question.state else {
-                return nil
-            }
-            return Goal.Point(text: "\(question.title): \(question.recommendedOption?.label ?? "推奨のまま")", questionID: question.id)
-        }
         return Goal(
             version: 1,
             summary: epic.request.summary,
             decided: decided,
-            delegated: delegated,
             notDoing: ["依頼の範囲の外の画面の作り直し"],
             doneCriteria: ["依頼の内容がデモのデータで確かめられる", "Unit テストが通る"],
             tasks: [

@@ -30,7 +30,6 @@ struct GoalReviewView: View {
                 }
             }
             pointsSection("決まったこと", goal.decided)
-            pointsSection("おまかせにしたこと", goal.delegated, footer: "最終 PR の「人が決めていない判断」で見直せます")
             listSection("やらないこと", goal.notDoing)
             listSection("完了の条件", goal.doneCriteria)
             CardSection("タスク · \(goal.tasks.count)") {

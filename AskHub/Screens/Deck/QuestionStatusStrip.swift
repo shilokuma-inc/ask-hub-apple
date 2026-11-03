@@ -32,7 +32,6 @@ extension Question {
         case .locked: "lock.fill"
         case .reviewing: "arrow.triangle.2.circlepath"
         case .answered: "checkmark.circle.fill"
-        case .delegated: "wand.and.sparkles"
         }
     }
 
@@ -42,7 +41,6 @@ extension Question {
         case .awaitingExplanation: Theme.warning
         case .locked, .reviewing: .secondary
         case .answered: Theme.success
-        case .delegated: Theme.Tone.lavender
         }
     }
 
@@ -53,7 +51,6 @@ extension Question {
         case .locked: "ロック"
         case .reviewing: "見直し中"
         case .answered: "回答済み"
-        case .delegated: "おまかせ"
         }
     }
 }
