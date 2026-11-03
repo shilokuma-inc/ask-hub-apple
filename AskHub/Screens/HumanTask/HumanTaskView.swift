@@ -20,13 +20,13 @@ struct HumanTaskView: View {
 
     private func content(_ epic: Epic, _ task: HumanTask) -> some View {
         List {
-            Section {
+            CardSection {
                 AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: epic.title, iconSize: 40)
                 Text(task.title).rowFont(.title)
                 Text(task.why).foregroundStyle(.secondary)
                 stateLabel(task.state, epic: epic, task: task)
             }
-            Section("手順") {
+            CardSection("手順") {
                 ForEach(Array(task.steps.enumerated()), id: \.offset) { index, step in
                     VStack(alignment: .leading, spacing: 6) {
                         Text("\(index + 1). \(step.text)")
@@ -45,7 +45,7 @@ struct HumanTaskView: View {
                 }
             }
             if !task.links.isEmpty {
-                Section("開くページ") {
+                CardSection("開くページ") {
                     ForEach(task.links, id: \.url) { link in
                         Link(destination: link.url) {
                             Label(link.title, systemImage: "safari")
@@ -74,7 +74,7 @@ struct HumanTaskView: View {
     @ViewBuilder private func deliverableSection(_ epic: Epic, _ task: HumanTask) -> some View {
         switch task.deliverable {
         case .none:
-            Section {
+            CardSection {
                 Button("終わった", systemImage: "checkmark.circle") {
                     Task { await store.send(.completeHumanTask(epicID: epic.id, taskID: task.id)) }
                 }
@@ -83,7 +83,7 @@ struct HumanTaskView: View {
             }
 
         case .file(let description):
-            Section {
+            CardSection {
                 Button("ファイルを渡す…", systemImage: "doc.badge.plus") {
                     Task { await store.send(.completeHumanTask(epicID: epic.id, taskID: task.id)) }
                 }
@@ -92,7 +92,7 @@ struct HumanTaskView: View {
             }
 
         case let .secret(name, repository):
-            Section {
+            CardSection {
                 SecureField(name, text: $secret)
                     .focused($isEditingSecret)
                 Button("Secrets に入れる…", systemImage: "lock") { isConfirmingSecret = true }

@@ -10,7 +10,7 @@ struct RepositoryListView: View {
     var body: some View {
         let repositories = store.snapshot?.repositories ?? []
         RouteList(selection: selection) {
-            Section {
+            CardSection {
                 ForEach(repositories) { repository in
                     NavigationLink(value: AppRoute.repository(repository.id)) {
                         RepositoryRow(repository: repository)
@@ -75,7 +75,7 @@ struct RepositoryDetailView: View {
         if let repository = store.repository(repositoryID) {
             let epics = store.snapshot?.epics.filter { $0.repositoryID == repositoryID } ?? []
             List {
-                Section {
+                CardSection {
                     HStack(spacing: 14) {
                         AppIconView(repository: repository, size: 60)
                         VStack(alignment: .leading) {
@@ -84,7 +84,7 @@ struct RepositoryDetailView: View {
                         }
                     }
                 }
-                Section("epic") {
+                CardSection("epic") {
                     ForEach(epics) { epic in
                         NavigationLink(value: AppRoute.epic(epic.id)) { EpicRow(epic: epic) }
                     }
@@ -92,7 +92,7 @@ struct RepositoryDetailView: View {
                         Text("ありません").foregroundStyle(.secondary)
                     }
                 }
-                Section {
+                CardSection {
                     Label("リリースの画面は、リリースの段階で作ります", systemImage: "shippingbox")
                         .foregroundStyle(.secondary)
                 } header: {

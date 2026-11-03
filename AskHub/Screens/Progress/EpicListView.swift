@@ -14,21 +14,21 @@ struct EpicListView: View {
         let finished = epics.filter { !$0.isActive }
         RouteList(selection: selection) {
             if !waiting.isEmpty {
-                Section("あなた待ち · \(waiting.count)") {
+                CardSection("あなた待ち · \(waiting.count)") {
                     ForEach(waiting) { epic in
                         NavigationLink(value: AppRoute.epic(epic.id)) { EpicRow(epic: epic) }
                     }
                 }
             }
             if !working.isEmpty {
-                Section("機械が進めています · \(working.count)") {
+                CardSection("機械が進めています · \(working.count)") {
                     ForEach(working) { epic in
                         NavigationLink(value: AppRoute.epic(epic.id)) { EpicRow(epic: epic) }
                     }
                 }
             }
             if !finished.isEmpty {
-                Section("終わったもの") {
+                CardSection("終わったもの") {
                     ForEach(finished) { epic in
                         NavigationLink(value: AppRoute.epic(epic.id)) { EpicRow(epic: epic) }
                     }

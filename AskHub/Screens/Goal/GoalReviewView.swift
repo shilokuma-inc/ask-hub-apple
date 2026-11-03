@@ -18,13 +18,13 @@ struct GoalReviewView: View {
 
     private func content(_ epic: Epic, _ goal: Goal) -> some View {
         List {
-            Section {
+            CardSection {
                 AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: "ゴール（版 \(goal.version)）", iconSize: 40)
                 Text(goal.summary)
                     .rowFont(.title)
             }
             if let request = goal.revisionRequest {
-                Section {
+                CardSection {
                     Label("Claude がゴールを直しています: \(request)", systemImage: "pencil")
                         .foregroundStyle(.secondary)
                 }
@@ -33,7 +33,7 @@ struct GoalReviewView: View {
             pointsSection("おまかせにしたこと", goal.delegated, footer: "最終 PR の「人が決めていない判断」で見直せます")
             listSection("やらないこと", goal.notDoing)
             listSection("完了の条件", goal.doneCriteria)
-            Section("タスク · \(goal.tasks.count)") {
+            CardSection("タスク · \(goal.tasks.count)") {
                 ForEach(Array(goal.tasks.enumerated()), id: \.offset) { index, task in
                     HStack {
                         Text("\(index + 1). \(task.title)")
@@ -45,7 +45,7 @@ struct GoalReviewView: View {
                 }
             }
             if !epic.humanTasks.isEmpty {
-                Section("人がする作業") {
+                CardSection("人がする作業") {
                     ForEach(epic.humanTasks) { task in
                         NavigationLink(value: AppRoute.humanTask(epicID: epic.id, taskID: task.id)) {
                             Label(task.title, systemImage: "wrench.fill")
@@ -79,7 +79,7 @@ struct GoalReviewView: View {
     }
 
     private func pointsSection(_ title: String, _ points: [Goal.Point], footer: String? = nil) -> some View {
-        Section {
+        CardSection {
             ForEach(Array(points.enumerated()), id: \.offset) { _, point in
                 HStack(alignment: .firstTextBaseline) {
                     Text(point.text)
@@ -102,7 +102,7 @@ struct GoalReviewView: View {
     }
 
     private func listSection(_ title: String, _ items: [String]) -> some View {
-        Section(title) {
+        CardSection(title) {
             ForEach(items, id: \.self) { Text($0) }
         }
     }
@@ -147,7 +147,7 @@ struct StartSheet: View {
         let defaultMacID = store.snapshot?.defaultStartMacID(for: epic.repositoryID)
         NavigationStack {
             List(selection: $selectedMacID) {
-                Section {
+                CardSection {
                     ForEach(macs) { mac in
                         MacChoiceRow(mac: mac, isLastUsed: mac.id == lastMacID)
                             .tag(mac.id)

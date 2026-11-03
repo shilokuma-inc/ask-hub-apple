@@ -14,7 +14,7 @@ struct DecisionSheet: View {
             List {
                 DecisionDetailSections(decision: decision)
                 if decision.needsReview {
-                    Section("答える") {
+                    CardSection("答える") {
                         Button("OK", systemImage: "checkmark") {
                             send(.respondToDecision(epicID: epicID, decisionID: decision.id, reply: .accept))
                         }
@@ -69,7 +69,7 @@ struct VerificationSection: View {
     let items: [VerificationItem]
 
     var body: some View {
-        Section {
+        CardSection {
             if items.contains(where: \.isReady) {
                 NavigationLink(value: AppRoute.deck(.verifications(epic.id))) {
                     Label("カードで確かめる", systemImage: "rectangle.stack")

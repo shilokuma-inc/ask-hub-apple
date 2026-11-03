@@ -10,7 +10,7 @@ struct DeckCardDetailSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
+                CardSection {
                     AppHeaderView(repository: store.repository(card.repositoryID), subtitle: store.epic(card.epicID)?.title ?? "")
                     if let epic = store.epic(card.epicID) {
                         LabeledContent("依頼", value: epic.request.summary)
@@ -24,7 +24,7 @@ struct DeckCardDetailSheet: View {
                     DecisionDetailSections(decision: decision)
 
                 case .verification(let item):
-                    Section("確かめること") {
+                    CardSection("確かめること") {
                         Text(item.text)
                         LabeledContent("手順", value: item.steps)
                     }
@@ -51,7 +51,7 @@ struct QuestionDetailSections: View {
     let epic: Epic?
 
     var body: some View {
-        Section(question.title) {
+        CardSection(question.title) {
             LabeledContent("なぜ決めるか", value: question.why)
             if let reason = question.recommendationReason {
                 LabeledContent("推奨の理由", value: reason)
@@ -62,7 +62,7 @@ struct QuestionDetailSections: View {
             }
         }
         if !question.options.isEmpty {
-            Section("選択肢ごとの違い") {
+            CardSection("選択肢ごとの違い") {
                 ForEach(question.options) { option in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
@@ -78,7 +78,7 @@ struct QuestionDetailSections: View {
         }
         dependencySection
         if !question.explanations.isEmpty {
-            Section("説明") {
+            CardSection("説明") {
                 ForEach(Array(question.explanations.enumerated()), id: \.offset) { _, explanation in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(explanation.request.isEmpty ? "（説明を求めました）" : "求めた内容: \(explanation.request)")
@@ -99,7 +99,7 @@ struct QuestionDetailSections: View {
     @ViewBuilder private var dependencySection: some View {
         let dependents = epic?.questions.dependents(of: question) ?? []
         if !question.dependsOn.isEmpty || !dependents.isEmpty {
-            Section("ほかの質問とのつながり") {
+            CardSection("ほかの質問とのつながり") {
                 ForEach(question.dependsOn, id: \.self) { id in
                     let dependency = epic?.question(id)
                     LabeledContent("\(id) の回答が前提", value: dependency?.statusLabel ?? "不明")
@@ -117,7 +117,7 @@ struct DecisionDetailSections: View {
     let decision: DecisionCard
 
     var body: some View {
-        Section(decision.title) {
+        CardSection(decision.title) {
             LabeledContent("理由", value: decision.reason)
             if let source = decision.goalSource {
                 LabeledContent("ゴールのどこから", value: source)
@@ -127,7 +127,7 @@ struct DecisionDetailSections: View {
             }
         }
         if decision.before != nil || decision.after != nil {
-            Section("画面の変化") {
+            CardSection("画面の変化") {
                 BeforeAfterView(before: decision.before, after: decision.after)
                     .frame(maxHeight: 420)
                     .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))

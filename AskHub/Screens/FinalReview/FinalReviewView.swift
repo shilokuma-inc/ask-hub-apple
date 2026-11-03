@@ -46,14 +46,14 @@ struct FinalReviewView: View {
 
     private func sections(_ epic: Epic, _ review: FinalReview) -> some View {
         List {
-            Section {
+            CardSection {
                 AppHeaderView(
                     repository: store.repository(epic.repositoryID),
                     subtitle: "最終 PR #\(review.pullRequestNumber) · +\(review.additions) −\(review.deletions)",
                     iconSize: 40
                 )
             }
-            Section("マージの条件") {
+            CardSection("マージの条件") {
                 MergePolicyView(review: review)
                 ChecksView(checks: review.checks)
                 if review.headChangedAfterReview {
@@ -63,7 +63,7 @@ struct FinalReviewView: View {
             }
             decisionsSection(epic, review)
             if !review.internalDecisions.isEmpty {
-                Section {
+                CardSection {
                     DisclosureGroup("内部の細部の仮決め · \(review.internalDecisions.count)") {
                         ForEach(review.internalDecisions, id: \.self) { Text($0).appFont(.subheadline) }
                     }
@@ -78,7 +78,7 @@ struct FinalReviewView: View {
     }
 
     private func decisionsSection(_ epic: Epic, _ review: FinalReview) -> some View {
-        Section {
+        CardSection {
             if !review.pendingDecisions.isEmpty {
                 NavigationLink(value: AppRoute.deck(.decisions(epic.id))) {
                     Label("カードで確かめる（\(review.pendingDecisions.count)）", systemImage: "rectangle.stack")

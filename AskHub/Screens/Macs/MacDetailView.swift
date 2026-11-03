@@ -9,13 +9,13 @@ struct MacDetailView: View {
     var body: some View {
         if let mac = store.mac(macID) {
             List {
-                Section {
+                CardSection {
                     MacRow(mac: mac)
                     LabeledContent("機種", value: mac.model)
                     LabeledContent("動き方", value: residency(mac.residency))
                     LabeledContent("版", value: mac.version + (mac.versionMatches ? "" : "（司令塔と合いません）"))
                 }
-                Section("持っているジョブ") {
+                CardSection("持っているジョブ") {
                     if mac.jobs.isEmpty {
                         Text("ありません").foregroundStyle(.secondary)
                     }
@@ -27,7 +27,7 @@ struct MacDetailView: View {
                         }
                     }
                 }
-                Section("起動したときの自己診断") {
+                CardSection("起動したときの自己診断") {
                     ForEach(mac.selfChecks) { check in
                         LabeledContent {
                             Text(check.detail)
@@ -37,7 +37,7 @@ struct MacDetailView: View {
                         }
                     }
                 }
-                Section {
+                CardSection {
                     NavigationLink(value: AppRoute.cleanup(mac.id)) {
                         LabeledContent("片付けの候補", value: "\(mac.cleanupCandidates.count) 件")
                     }
@@ -83,7 +83,7 @@ struct CleanupView: View {
         let candidates = store.mac(macID)?.cleanupCandidates ?? []
         let selectedBytes = candidates.filter { selectedIDs.contains($0.id) }.reduce(Int64(0)) { $0 + $1.bytes }
         List {
-            Section {
+            CardSection {
                 ForEach(candidates) { candidate in
                     Toggle(isOn: binding(for: candidate.id)) {
                         VStack(alignment: .leading, spacing: 2) {
