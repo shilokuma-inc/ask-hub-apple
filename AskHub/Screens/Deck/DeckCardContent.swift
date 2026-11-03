@@ -76,10 +76,17 @@ struct DeckCardContent: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(choice.label)（\(directions[index].accessibilityName)へスワイプ）")
+                .accessibilityLabel(Self.accessibilityLabel(of: choice, direction: directions[index]))
                 .accessibilityHint(choice.detail)
             }
         }
+    }
+
+    /// 選択肢の読み上げ。札（推奨・自由回答）も方向と一緒に読む（例: 直してほしい（自由回答・左下へスワイプ））
+    static func accessibilityLabel(of choice: DeckCard.Choice, direction: SwipeDirection) -> String {
+        let badges = [choice.isRecommended ? "推奨" : nil, choice.asksText ? "自由回答" : nil].compactMap(\.self)
+        let parts = badges + ["\(direction.accessibilityName)へスワイプ"]
+        return "\(choice.label)（\(parts.joined(separator: "・"))）"
     }
 
     private var freeTextField: some View {

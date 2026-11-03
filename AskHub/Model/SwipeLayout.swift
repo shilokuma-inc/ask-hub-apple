@@ -27,6 +27,16 @@ enum SwipeDirection: Hashable, CaseIterable {
         }
     }
 
+    /// 対角の方向（↗ なら ↙）
+    var opposite: Self {
+        switch self {
+        case .upRight: .downLeft
+        case .upLeft: .downRight
+        case .downLeft: .upRight
+        case .downRight: .upLeft
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .upRight: "arrow.up.right"
@@ -67,7 +77,8 @@ enum SwipeLayout {
     static let minimumDistance: CGFloat = 16
 
     /// 選択肢の数ごとの方向。先頭（推奨）はいつも利き手側の上（右手なら ↗）。
-    /// 右手は 2 択 ↗↙・3 択 ↗↖↙（↘ を使わない）・4 択 ↗↖↙↘。左手は鏡写し
+    /// 右手は 2 択 ↗↙・3 択 ↗↖↙（↘ を使わない）・4 択 ↗↖↙↘。左手は鏡写し。
+    /// 自由回答を推奨の対角に置くのは、選択肢の並び（`arranged`）で決める
     static func directions(count: Int, hand: Handedness) -> [SwipeDirection] {
         let right: [SwipeDirection]
         switch count {
@@ -87,6 +98,26 @@ enum SwipeLayout {
             right = [.upRight, .upLeft, .downLeft, .downRight]
         }
         return hand == .right ? right : right.map(\.mirrored)
+    }
+
+    /// 自由回答の選択肢（送る前に文を書くもの）を、推奨（先頭）の対角の位置へ並べ替える（ユーザーの決定。2026-11-04）。
+    /// 右手なら ↗ の推奨と ↙ の自由回答が対になる。左手は鏡写しで、対角の位置の添字は変わらない。
+    ///
+    /// - 先頭は推奨の位置なので動かさない。先頭が自由回答でも推奨を優先して ↗ に残し、ほかに自由回答があれば、その 1 つ目を対角に置く
+    /// - 対角に置くのは 1 つ目の自由回答だけ。2 つ目からは空いている方向のまま
+    /// - 自由回答が無ければ、並びは変えない
+    static func arranged<Item>(_ items: [Item], asksText: (Item) -> Bool) -> [Item] {
+        let slots = directions(count: items.count, hand: .right)
+        guard let first = slots.first,
+              let pair = slots.firstIndex(of: first.opposite),
+              let freeText = items.indices.dropFirst().first(where: { asksText(items[$0]) }),
+              freeText != pair else {
+            return items
+        }
+        // 抜いて差し込み、ほかの選択肢は書かれた順のままにする
+        var result = items
+        result.insert(result.remove(at: freeText), at: pair)
+        return result
     }
 
     /// 動かした量から、どの選択肢に向かっているか（`directions` の添字）。どれにも向かっていなければ nil

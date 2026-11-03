@@ -115,8 +115,12 @@ struct SwipeChoiceRow: View {
                     // 推奨は太字にして、ひと目で分かるようにする（ユーザーの要望）
                     Text(choice.label)
                         .appFont(.subheadline, weight: choice.isRecommended ? .bold : .regular)
+                    // 推奨で自由回答の選択肢には、両方の札を並べる
                     if choice.isRecommended {
-                        RecommendedBadge(tint: direction.tint)
+                        ChoiceBadge.recommended(tint: direction.tint)
+                    }
+                    if choice.asksText {
+                        ChoiceBadge.freeText(tint: direction.tint)
                     }
                 }
                 Text(choice.detail)
@@ -148,18 +152,29 @@ struct SwipeChoiceRow: View {
     }
 }
 
-/// 推奨の札。地を方向の色の濃いめにし、白い太字にして、選択肢の文字と見分けやすくする（ユーザーの要望）
-struct RecommendedBadge: View {
+/// 選択肢の札（推奨・自由回答）。地を方向の色の濃いめにし、白い太字にして、選択肢の文字と見分けやすくする（ユーザーの要望）
+struct ChoiceBadge: View {
+    let title: String
+    let systemImage: String
     let tint: Color
 
+    static func recommended(tint: Color) -> Self {
+        Self(title: "推奨", systemImage: "star.fill", tint: tint)
+    }
+
+    /// 選ぶと文を書くシートが出る選択肢
+    static func freeText(tint: Color) -> Self {
+        Self(title: "自由回答", systemImage: "square.and.pencil", tint: tint)
+    }
+
     var body: some View {
-        Label("推奨", systemImage: "star.fill")
+        Label(title, systemImage: systemImage)
             .labelStyle(.titleAndIcon)
             .appFont(.caption, weight: .heavy)
             .foregroundStyle(.white)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(tint.mix(with: .black, by: 0.18), in: .capsule)
-            .accessibilityLabel("推奨")
+            .accessibilityLabel(title)
     }
 }
