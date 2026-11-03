@@ -123,8 +123,14 @@ struct ClaudeClientTests {
         #expect(throws: ClaudeCommandLine.Problem.promptLooksLikeOption) {
             try ClaudeCommandLine.command(for: request(prompt: "--dangerously-skip-permissions"), setup: Self.setup)
         }
-        #expect(throws: ClaudeCommandLine.Problem.promptTooLarge(bytes: 200_001 + "読むだけにしてください".utf8.count)) {
-            try ClaudeCommandLine.command(for: request(prompt: String(repeating: "a", count: 200_001)), setup: Self.setup)
+        // 依頼のほか、決まりの文・結果の形などの引数の全体で数える
+        do throws(ClaudeCommandLine.Problem) {
+            _ = try ClaudeCommandLine.command(for: request(prompt: String(repeating: "a", count: 256_000)), setup: Self.setup)
+            Issue.record("大きすぎる依頼を断らなかった")
+        } catch let .argumentsTooLarge(bytes) {
+            #expect(bytes > 256_000)
+        } catch {
+            Issue.record("\(error)")
         }
     }
 
@@ -141,7 +147,8 @@ struct ClaudeClientTests {
 
     @Test func resumesConversationToCorrectInvalidOutput() async throws {
         let (reply, runner) = await ask(
-            [Self.result(output: #"{"answer":""}"#), Self.result(output: #"{"answer":"ok"}"#, cost: 0.01)],
+            // 再開した結果の費用は、会話全体の累計
+            [Self.result(output: #"{"answer":""}"#), Self.result(output: #"{"answer":"ok"}"#, cost: 0.0254)],
             check: { $0.answer.isEmpty ? ["answer が空"] : [] }
         )
         guard case let .answered(answer, session) = reply else { Issue.record("\(reply)"); return }
@@ -178,6 +185,10 @@ struct ClaudeClientTests {
             (limit, .usageLimit),
             (Self.result(output: nil, isError: true, text: "API Error: 401 OAuth token has expired"), .authExpired),
             (Self.result(output: nil, isError: true, text: "API Error: 529 Overloaded", apiErrorStatus: 529), .claudeOutage),
+            // 解除の時刻の無い 429 は、一時的な混み合い
+            (Self.result(output: nil, isError: true, text: "API Error: 429 rate_limit_error", apiErrorStatus: 429), .claudeOutage),
+            // 結果の JSON が成功でも、終了コードが 0 でなければ成功にしない
+            (CommandResult(status: 1, standardOutput: Self.result().standardOutput, standardError: Data()), .unexpected),
             (CommandResult(status: 130, standardOutput: Data(), standardError: Data(), timedOut: true), .timeout),
             (CommandResult(status: 1, standardOutput: Data("not json".utf8), standardError: Data("panic \(Self.token)".utf8)), .unexpected)
         ]

@@ -8,7 +8,7 @@ public struct ClaudeSession: Equatable, Sendable {
     public var id: String?
     /// 指定して、実際に使われたモデル
     public var model: String
-    /// 見積もりの費用の合計（サブスクリプションでは実際には払わない。使用量の目安）
+    /// 見積もりの費用（直させた分も含む会話全体。サブスクリプションでは実際には払わない。使用量の目安）
     public var estimatedCostUsd: Double?
     /// 呼び出した回数（最初の 1 回と、直させた回数）
     public var calls: Int
@@ -59,10 +59,11 @@ public struct ClaudeClient: Sendable {
             case let .finished(value):
                 message = value
             }
+            // `--resume` した結果の費用（と modelUsage）は、会話全体の累計（claude 2.1.317 で確かめた）。足さずに、最後の値を使う
             session = ClaudeSession(
                 id: message.sessionID ?? session?.id,
                 model: request.model,
-                estimatedCostUsd: Self.sum(session?.estimatedCostUsd, message.totalCostUsd),
+                estimatedCostUsd: message.totalCostUsd ?? session?.estimatedCostUsd,
                 calls: (session?.calls ?? 0) + 1
             )
             guard message.models.contains(request.model) else {
@@ -108,7 +109,8 @@ public struct ClaudeClient: Sendable {
             return .failed(.init(failureClass: .unexpected, message: "claude を起動できない（\(error.localizedDescription)）"))
         }
         let message = ClaudeResultMessage(standardOutput: result.standardOutput)
-        if let message, message.succeeded, !result.timedOut {
+        // 結果の JSON と終了コードの両方が成功を示すときだけ、成功とする
+        if let message, message.succeeded, result.succeeded {
             return .finished(message)
         }
         let classifier = ClaudeFailureClassifier(timeZone: timeZone, now: now(), secrets: [setup.oauthToken])
@@ -135,12 +137,5 @@ public struct ClaudeClient: Sendable {
 
         \(problems.map { "- \($0)" }.joined(separator: "\n"))
         """
-    }
-
-    private static func sum(_ lhs: Double?, _ rhs: Double?) -> Double? {
-        switch (lhs, rhs) {
-        case (nil, nil): nil
-        default: (lhs ?? 0) + (rhs ?? 0)
-        }
     }
 }

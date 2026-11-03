@@ -81,30 +81,30 @@ struct ClaudeFailureClassifier {
         }
         let lowered = text.lowercased()
         let status = message?.apiErrorStatus
-        if status == 429 || Self.usageLimitPhrases.contains(where: lowered.contains) {
+        // サブスクリプションの利用上限は、文言か解除の時刻で見分ける。時刻の無い 429 は、一時的な混み合いとして下で扱う
+        let reset = UsageLimitReset(timeZone: timeZone, now: now).date(in: text)
+        if reset != nil || Self.usageLimitPhrases.contains(where: lowered.contains) {
             return AttemptFailure(
-                failureClass: .usageLimit,
-                message: "Claude の利用上限に達した",
-                logExcerpt: excerpt,
-                retryAt: UsageLimitReset(timeZone: timeZone, now: now).date(in: text).map(Timestamp.init)
+                failureClass: .usageLimit, message: "Claude の利用上限に達した", logExcerpt: excerpt, retryAt: reset.map(Timestamp.init)
             )
         }
         if status == 401 || status == 403 || Self.authPhrases.contains(where: lowered.contains) {
             return AttemptFailure(failureClass: .authExpired, message: "Claude の認証が切れている・正しくない", logExcerpt: excerpt)
         }
-        if (status.map { (500...599).contains($0) } ?? false) || Self.outagePhrases.contains(where: lowered.contains) {
+        if status == 429 || (status.map { (500...599).contains($0) } ?? false) || Self.outagePhrases.contains(where: lowered.contains) {
             return AttemptFailure(failureClass: .claudeOutage, message: "Claude の API につながらない・混み合っている", logExcerpt: excerpt)
         }
         let reason = message.map { "subtype: \($0.subtype)" } ?? "結果の JSON が無い（終了コード \(result.status)）"
         return AttemptFailure(failureClass: .unexpected, message: "Claude の呼び出しが失敗した（\(reason)）", logExcerpt: excerpt)
     }
 
-    static let usageLimitPhrases = ["usage limit", "hit your session limit", "hit your weekly limit", "hit your limit", "rate limit"]
+    static let usageLimitPhrases = ["usage limit", "hit your session limit", "hit your weekly limit", "hit your limit"]
     static let authPhrases = [
         "oauth token has expired", "invalid api key", "invalid bearer token", "authentication_error", "please run /login", "not logged in"
     ]
     static let outagePhrases = [
-        "overloaded", "api error: 5", "internal server error", "connection error", "econnreset", "enotfound", "fetch failed"
+        "overloaded", "api error: 5", "internal server error", "connection error", "econnreset", "enotfound", "fetch failed",
+        "rate limit", "rate_limit"
     ]
 
     /// 出力を文字列にする。末尾だけを残した出力は文字の途中で切れることがあるので、壊れた部分を置き換えて読む
