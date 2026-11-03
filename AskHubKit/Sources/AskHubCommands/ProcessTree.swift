@@ -13,22 +13,30 @@ enum ProcessTree {
         var startedAt: Date
     }
 
-    /// SIGINT → SIGTERM → SIGKILL の順に送る。どの段でも、残りが無くなれば待たずに終える
-    static func stop(_ pid: pid_t, interruptGrace: Duration, terminateGrace: Duration) async {
-        var targets = collect(from: pid)
+    /// SIGINT → SIGTERM → SIGKILL の順に送る。どの段でも、残りが無くなれば待たずに終える。
+    /// `root` は起動した直後に読んだコマンドの PID と起動時刻（猶予の間にコマンドが終わり、PID が再利用されても、別のプロセスに送らない）
+    static func stop(_ root: Target, interruptGrace: Duration, terminateGrace: Duration) async {
+        var targets: Set<Target> = [root]
         for (signal, grace) in [(SIGINT, interruptGrace), (SIGTERM, terminateGrace)] {
-            // 前の段の間に起動した子孫も加える
-            targets.formUnion(collect(from: pid))
+            // 送る前ごとに、生きている対象から子孫を辿り直す（前の段の間に起動した子孫も加える）
+            targets = expand(targets)
             send(signal, to: targets)
             targets = await remaining(targets, waitingAtMost: grace)
             if targets.isEmpty { return }
         }
-        send(SIGKILL, to: targets)
+        send(SIGKILL, to: expand(targets))
     }
 
-    /// `pid` と、その子孫（浅いものから）
-    static func collect(from pid: pid_t) -> Set<Target> {
-        Set(([pid] + descendants(of: pid)).compactMap { target in startDate(of: target).map { Target(pid: target, startedAt: $0) } })
+    /// 生きている対象と、その子孫。辿るのは起動時刻が同じ（PID が再利用されていない）対象からだけ。
+    /// 猶予の間に終わった親の子孫は launchd に付け替えられるので、辿れない
+    static func expand(_ targets: Set<Target>) -> Set<Target> {
+        var expanded = targets.filter { startDate(of: $0.pid) == $0.startedAt }
+        for target in expanded {
+            for pid in descendants(of: target.pid) {
+                if let startedAt = startDate(of: pid) { expanded.insert(Target(pid: pid, startedAt: startedAt)) }
+            }
+        }
+        return expanded
     }
 
     static func descendants(of pid: pid_t) -> [pid_t] {

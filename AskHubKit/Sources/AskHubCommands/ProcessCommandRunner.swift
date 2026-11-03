@@ -36,12 +36,19 @@ public struct ProcessCommandRunner: CommandRunning {
         try process.run()
 
         let pid = process.processIdentifier
+        // 起動した直後に起動時刻を読む。読めなければ、もう終わっている
+        let root = ProcessTree.startDate(of: pid).map { ProcessTree.Target(pid: pid, startedAt: $0) }
+        let stop = { @Sendable in
+            if let root {
+                await ProcessTree.stop(root, interruptGrace: command.interruptGrace, terminateGrace: command.terminateGrace)
+            }
+        }
         // 上限を過ぎたか。過ぎた後は、コマンドが先に終わっても、残った子孫を止めるまで続ける
         let expired = OSAllocatedUnfairLock(initialState: false)
         let timer = Task {
             try await Task.sleep(for: command.timeout)
             expired.withLock { $0 = true }
-            await ProcessTree.stop(pid, interruptGrace: command.interruptGrace, terminateGrace: command.terminateGrace)
+            await stop()
         }
         var termination = (status: Int32(-1), signaled: false)
         for await value in exited {
