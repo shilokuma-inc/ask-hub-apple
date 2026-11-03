@@ -12,6 +12,11 @@ extension SwipeDirection {
         }
     }
 
+    /// 決まるときの枠の色（方向の色を少し濃くしたもの）
+    var edge: Color {
+        tint.mix(with: .black, by: 0.12)
+    }
+
     /// 背景のグラデーションがにじみ出る角
     var anchor: UnitPoint {
         switch self {
@@ -85,8 +90,17 @@ struct SwipeChoiceRow: View {
     let drag: SwipeDragState
     var keyHint: String?
 
+    /// 向かっている行の枠の太さ。動かすほど太くし、決まる量を超えたらはっきり太くする（ユーザーの要望）
+    private var borderWidth: CGFloat {
+        guard drag.candidate == index else {
+            return 0
+        }
+        return drag.isPastThreshold ? 3 : 1 + 1.5 * drag.progress
+    }
+
     var body: some View {
         let color = direction.tint.opacity(SwipeIntensity.opacity(index: index, drag: drag))
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: direction.systemImage)
                 .font(.caption.weight(.bold))
@@ -100,8 +114,7 @@ struct SwipeChoiceRow: View {
                     Text(choice.label)
                         .font(.subheadline.weight(choice.isRecommended ? .bold : .regular))
                     if choice.isRecommended {
-                        Text("推奨")
-                            .font(.caption2.weight(.bold))
+                        RecommendedBadge(tint: direction.tint)
                     }
                 }
                 Text(choice.detail)
@@ -125,7 +138,25 @@ struct SwipeChoiceRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color, in: .rect(cornerRadius: 12, style: .continuous))
+        .background(color, in: shape)
+        .overlay(shape.strokeBorder(direction.edge, lineWidth: borderWidth))
         .contentShape(.rect(cornerRadius: 12))
+        .animation(.snappy(duration: 0.15), value: drag.isPastThreshold)
+    }
+}
+
+/// 推奨の札。地を方向の色の濃いめにし、白い太字にして、選択肢の文字と見分けやすくする（ユーザーの要望）
+struct RecommendedBadge: View {
+    let tint: Color
+
+    var body: some View {
+        Label("推奨", systemImage: "star.fill")
+            .labelStyle(.titleAndIcon)
+            .font(.caption.weight(.heavy))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(tint.mix(with: .black, by: 0.18), in: .capsule)
+            .accessibilityLabel("推奨")
     }
 }
