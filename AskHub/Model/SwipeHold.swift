@@ -17,12 +17,7 @@ struct SwipeHold: Equatable {
 
     /// 止める選択肢（`choices` の添字）。送る前に文を書いてもらう選択肢
     static func heldChoices(_ choices: [DeckCard.Choice]) -> Set<Int> {
-        Set(choices.indices.filter { index in
-            if case .askText = choices[index].action {
-                return true
-            }
-            return false
-        })
+        Set(choices.indices.filter { choices[$0].asksText })
     }
 
     /// 止める位置。その方向へ、ちょうど決まる距離だけ動かした所
