@@ -19,7 +19,8 @@ struct StateFileKind: Sendable, CustomTestStringConvertible {
         .of(AttemptFile.self, "attempt"),
         .of(MacFile.self, "mac"),
         .of(CommanderFile.self, "commander"),
-        .of(DeviceFile.self, "device")
+        .of(DeviceFile.self, "device"),
+        .of(ConsumedIntentFile.self, "consumed")
     ]
 
     static func of<File: StateFile>(_ type: File.Type, _ name: String) -> Self {
@@ -74,7 +75,7 @@ struct StateFileTests {
     @Test func schemasUseOnlySupportedKeywords() throws {
         let directory = Vectors.directory.deletingLastPathComponent().appendingPathComponent("schemas")
         let files = try FileManager.default.subpathsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".schema.json") }
-        #expect(files.count >= 13)
+        #expect(files.count >= 16)
         for file in files {
             try validator.checkKeywords(in: file)
         }
@@ -96,6 +97,23 @@ struct StateFileTests {
         #expect(try validator.errors(of: envelope, against: "intent-envelope.schema.json").isEmpty)
         let marker: [String: Any] = ["type": "intent", "envelope": envelope, "sig": try #require(file["signature"])]
         #expect(try validator.errors(of: marker, against: "intent-marker.schema.json").isEmpty)
+    }
+
+    @Test func keyRecordsAndStoredIntentsMatchSchemas() throws {
+        let ledger = try #require(try JSONSerialization.jsonObject(with: Vectors.data("key-ledger.json")) as? [String: Any])
+        let cases = try #require(ledger["cases"] as? [[String: Any]])
+        let chain = try #require(cases.first { $0["name"] as? String == "valid-chain" }?["records"] as? [Any])
+        #expect(chain.count == 3)
+        for record in chain {
+            #expect(try validator.errors(of: record, against: "state/key.schema.json").isEmpty)
+        }
+        let stored = try #require(try JSONSerialization.jsonObject(with: Vectors.data("stored-intent.json")) as? [String: Any])
+        for vector in try #require(stored["cases"] as? [[String: Any]]) {
+            let errors = try validator.errors(of: try #require(vector["value"]), against: "state/stored-intent.schema.json")
+            let result = vector["result"] as? String
+            // 署名と時刻は読む側だけが確かめるので、形が違う例（本文のハッシュ・署名の欠け）だけがスキーマで弾かれる
+            #expect(errors.isEmpty == !["bodyMismatch", "malformed"].contains(result), "\(vector["name"] ?? ""): \(errors)")
+        }
     }
 
     @Test func encodesWithVersionSortedKeysAndNewline() throws {
@@ -149,6 +167,11 @@ struct StateFileTests {
         #expect(try StatePath.mac(#require(MacName(rawValue: "mac-mini"))) == "macs/mac-mini.json")
         let device = try #require(KeyID(rawValue: "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y"))
         #expect(StatePath.device(device) == "devices/3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y.json")
+        let nonce = try #require(ULID(rawValue: "01JCN0NCE00000000000000001"))
+        #expect(StatePath.key(seq: 3) == "keys/3.json")
+        let file = "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y/01JCN0NCE00000000000000001.json"
+        #expect(StatePath.intent(device: device, nonce: nonce) == "intents/\(file)")
+        #expect(StatePath.consumed(device: device, nonce: nonce) == "consumed/\(file)")
     }
 
     static func name(of error: StateFileError) -> String {
