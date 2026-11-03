@@ -15,6 +15,7 @@ public struct ProcessCommandRunner: CommandRunning {
         self.outputDrainTimeout = outputDrainTimeout
     }
 
+    /// 呼んだタスクが取り消されたら、コマンドとその子孫を止めてから `CancellationError` を投げる
     public func run(_ command: Command) async throws -> CommandResult {
         let process = Process()
         process.executableURL = command.executable
@@ -51,8 +52,15 @@ public struct ProcessCommandRunner: CommandRunning {
             await stop()
         }
         var termination = (status: Int32(-1), signaled: false)
+        // 取り消されると、終了を待たずに抜ける
         for await value in exited {
             termination = value
+        }
+        if Task.isCancelled {
+            timer.cancel()
+            // 取り消されたタスクの中では待ち（猶予）がすぐ終わってしまうので、取り消されていないタスクで止める
+            await Task.detached(operation: stop).value
+            throw CancellationError()
         }
         let timedOut = expired.withLock { $0 }
         if !timedOut { timer.cancel() }
