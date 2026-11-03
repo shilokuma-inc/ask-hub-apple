@@ -67,6 +67,8 @@
   `release/…` だけに絞れる（付けないと `release-x` も合う）。`refs/heads/`・`refs/tags/` を付けた名前で返る
 - Contents API（`GET /repos/{owner}/{repo}/contents/{path}?ref=…`）の `content` は base64 を 60 文字ごとに改行した文字列。Swift では
   `Data(base64Encoded:options: .ignoreUnknownCharacters)` で読む。ファイルもブランチも無ければ 404 で、ディレクトリなら配列が返る
+- Contents API の書き込み（`PUT /repos/{owner}/{repo}/contents/{path}`）は、すでにあるファイルを `sha` なしで書くと 422（本文に `"sha" wasn't supplied`）、古い `sha` を付けると 409 を返す。
+  返る `content.sha` は Git の blob の sha（`git hash-object` と同じ）。読み取りに `If-None-Match` で ETag を付けると、変わっていなければ 304 が返る（2026-11-03、`AskHubStateStore` の `LiveGitHubContentsStoreTests` で確かめた）
 - ジョブの `env:` では `runner` コンテキスト（`${{ runner.temp }}`）を使えない（actionlint が「context "runner" is not allowed here」で落とす。ステップの `env:` では使える）。
   ジョブ全体で使うパスは、最初のステップで `echo "NAME=$RUNNER_TEMP/…" >> "$GITHUB_ENV"` で渡す
 - GitHub の PR のマージコミットは、件名が `Merge pull request #N from <owner>/<branch>`、本文の 1 行目が PR のタイトル（既定のとき）。
