@@ -7,6 +7,7 @@ struct NewRequestSheet: View {
     @State private var repositoryID: TargetRepository.ID?
     @State private var summary = ""
     @State private var requestBody = ""
+    @FocusState private var isEditing: Bool
 
     var body: some View {
         let repositories = store.snapshot?.repositories ?? []
@@ -25,8 +26,10 @@ struct NewRequestSheet: View {
                 }
                 Section("作りたいもの") {
                     TextField("要約（例: 週ごとのまとめ通知）", text: $summary)
+                        .focused($isEditing)
                     TextField("依頼の内容", text: $requestBody, axis: .vertical)
                         .lineLimit(4...12)
+                        .focused($isEditing)
                 }
                 Section {
                     Label("添付は、つなぎ込みのときに今の部品を使って足します", systemImage: "paperclip")
@@ -52,6 +55,7 @@ struct NewRequestSheet: View {
                     .disabled(repositoryID == nil || summary.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .keyboardDoneButton($isEditing)
         }
     }
 }
