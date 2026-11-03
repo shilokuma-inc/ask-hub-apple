@@ -22,6 +22,7 @@ struct MacListView: View {
         .overlay {
             LoadStateOverlay(isEmpty: macs.isEmpty, empty: ContentUnavailableView("Mac が登録されていません", systemImage: "laptopcomputer"))
         }
+        .pastelBackground()
         .navigationTitle("Mac")
         .toolbar { SectionToolbar() }
         .refreshable { await store.refresh() }
@@ -36,7 +37,7 @@ struct MacRow: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: mac.role == .commandCenter ? "macmini" : "laptopcomputer")
                 .font(.title2)
-                .foregroundStyle(mac.isOnline ? Color.accentColor : Color.secondary)
+                .foregroundStyle(mac.isOnline ? Theme.accent : Color.secondary)
                 .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -46,7 +47,7 @@ struct MacRow: View {
                 }
                 HStack(spacing: 6) {
                     TagLabel(text: mac.role == .commandCenter ? "司令塔" : "ワーカー")
-                    TagLabel(text: mac.contract.label, tint: mac.contract == .company ? .indigo : .secondary)
+                    TagLabel(text: mac.contract.label, tint: mac.contract == .company ? Theme.accent : .secondary)
                 }
                 DiskGauge(mac: mac)
                 if let job = mac.jobs.first {
@@ -58,7 +59,7 @@ struct MacRow: View {
                 if let reason = mac.refusalReason {
                     Label(reason, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Theme.warning)
                 }
             }
         }
@@ -78,7 +79,7 @@ struct ConnectionBadge: View {
         case .online(let lastSeen):
             Label("オンライン · \(RelativeTime.string(lastSeen, now: store.currentDate()))", systemImage: "circle.fill")
                 .font(.caption)
-                .foregroundStyle(.green)
+                .foregroundStyle(Theme.success)
                 .labelStyle(DotLabelStyle())
 
         case .offline(let since):
@@ -110,7 +111,7 @@ struct DiskGauge: View {
             Text("空き \(ByteFormat.string(mac.freeBytes)) / \(ByteFormat.string(mac.totalBytes))")
         }
         .gaugeStyle(.accessoryLinearCapacity)
-        .tint(mac.refusalReason == nil ? Color.accentColor : Color.orange)
+        .tint(mac.refusalReason == nil ? Theme.accent : Theme.warning)
         .font(.caption)
     }
 }

@@ -25,7 +25,8 @@ struct AppIconView: View {
 
         case let .symbol(name, tint):
             ZStack {
-                tint.color
+                // 上を少し明るくしたパステルのグラデーション
+                LinearGradient(colors: [tint.color.mix(with: .white, by: 0.2), tint.color], startPoint: .top, endPoint: .bottom)
                 Image(systemName: name)
                     .font(.system(size: size * 0.5, weight: .semibold))
                     .foregroundStyle(.white)
@@ -47,16 +48,17 @@ struct AppIconView: View {
 }
 
 extension IconTint {
+    /// パステルの濃いめの色（白い記号が読める濃さ）
     var color: Color {
         switch self {
-        case .green: .green
-        case .orange: .orange
-        case .blue: .blue
-        case .purple: .purple
-        case .pink: .pink
-        case .teal: .teal
-        case .indigo: .indigo
-        case .gray: .gray
+        case .green: Theme.Tone.mint
+        case .orange: Theme.Tone.peach
+        case .blue: Theme.Tone.sky
+        case .purple: Theme.Tone.lavender
+        case .pink: Theme.Tone.rose
+        case .teal: Theme.Tone.aqua
+        case .indigo: Theme.Tone.lavender
+        case .gray: Theme.Tone.slate
         }
     }
 }

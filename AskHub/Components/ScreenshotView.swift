@@ -118,7 +118,7 @@ struct DemoScreenView: View {
 
     private func highlight(_ isOn: Bool) -> some View {
         RoundedRectangle(cornerRadius: 3)
-            .strokeBorder(isOn ? Color.accentColor : .clear, lineWidth: 1)
+            .strokeBorder(isOn ? Theme.accent : .clear, lineWidth: 1)
             .padding(-2)
     }
 }

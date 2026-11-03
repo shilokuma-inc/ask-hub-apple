@@ -26,6 +26,7 @@ struct RepositoryListView: View {
                 empty: ContentUnavailableView("対象のリポジトリはありません", systemImage: "square.stack.3d.up")
             )
         }
+        .pastelBackground()
         .navigationTitle("リポジトリ")
         .toolbar {
             SectionToolbar()
@@ -103,6 +104,7 @@ struct RepositoryDetailView: View {
                     Text("リリース")
                 }
             }
+            .pastelBackground()
             .navigationTitle(repository.appName)
         } else {
             ContentUnavailableView("このリポジトリは見つかりません", systemImage: "questionmark.folder")
@@ -145,6 +147,7 @@ struct AddRepositorySheet: View {
                 }
             }
             .searchable(text: $query, prompt: "名前で探す")
+            .pastelBackground()
             .navigationTitle("対象に加える")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

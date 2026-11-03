@@ -94,12 +94,12 @@ struct DeckCardContent: View {
         case .decision(let decision):
             VStack(alignment: .leading, spacing: 6) {
                 if case .delegated(let questionID) = decision.kind {
-                    TagLabel(text: "おまかせ（\(questionID)）", tint: .purple)
+                    TagLabel(text: "おまかせ（\(questionID)）", tint: Theme.accent)
                 } else {
                     TagLabel(text: "見える仮決め", tint: .secondary)
                 }
                 if case .refreshed(let note) = decision.response {
-                    TagLabel(text: note, tint: .orange)
+                    TagLabel(text: note, tint: Theme.warning)
                 }
             }
 
@@ -155,7 +155,7 @@ struct DeckCardHeader: View {
         if case let .symbol(_, tint) = repository?.icon {
             return tint.color
         }
-        return .accentColor
+        return Theme.accent
     }
 }
 
@@ -175,7 +175,7 @@ struct QuestionNotes: View {
             if let note = question.revisionNote {
                 Label(note, systemImage: "pencil.and.list.clipboard")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
             }
             if let explanation = question.latestExplanation, let body = explanation.body {
                 VStack(alignment: .leading, spacing: 4) {

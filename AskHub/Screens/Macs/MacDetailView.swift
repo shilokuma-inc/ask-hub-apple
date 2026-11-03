@@ -33,7 +33,7 @@ struct MacDetailView: View {
                             Text(check.detail)
                         } label: {
                             Label(check.name, systemImage: check.isOK ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .foregroundStyle(check.isOK ? Color.primary : Color.orange)
+                                .foregroundStyle(check.isOK ? Color.primary : Theme.warning)
                         }
                     }
                 }
@@ -45,6 +45,7 @@ struct MacDetailView: View {
                     Text("ワーカーが作ったもの（作業場所・Simulator・DerivedData）は、マージの後に自動で片付けます。ここには手で作ったものだけを出します")
                 }
             }
+            .pastelBackground()
             .navigationTitle(mac.name)
         } else {
             ContentUnavailableView("この Mac は見つかりません", systemImage: "laptopcomputer.slash")
@@ -92,7 +93,7 @@ struct CleanupView: View {
                             if let caution = candidate.caution {
                                 Label(caution, systemImage: "exclamationmark.triangle.fill")
                                     .font(.caption)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(Theme.warning)
                             }
                         }
                     }
@@ -106,6 +107,7 @@ struct CleanupView: View {
                 ContentUnavailableView("片付けの候補はありません", systemImage: "sparkles")
             }
         }
+        .pastelBackground()
         .navigationTitle("片付けの候補")
         .safeAreaBar(edge: .bottom) {
             if !candidates.isEmpty {

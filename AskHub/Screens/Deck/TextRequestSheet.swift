@@ -22,6 +22,7 @@ struct TextRequestSheet: View {
                     }
                 }
             }
+            .pastelBackground()
             .navigationTitle(request.title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

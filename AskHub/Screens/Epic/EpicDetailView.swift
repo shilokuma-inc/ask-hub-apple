@@ -19,6 +19,7 @@ struct EpicDetailView: View {
 
     private func content(_ epic: Epic) -> some View {
         sections(epic)
+            .pastelBackground()
             .navigationTitle(epic.title)
             .toolbar { EpicMenu(epic: epic, isConfirmingDiscard: $isConfirmingDiscard) }
             .confirmationDialog("「\(epic.title)」をやめますか？", isPresented: $isConfirmingDiscard, titleVisibility: .visible) {
@@ -126,7 +127,7 @@ private struct EpicStageSections: View {
                 ForEach(epic.humanTasks) { task in
                     NavigationLink(value: AppRoute.humanTask(epicID: epic.id, taskID: task.id)) {
                         Label(task.title, systemImage: task.needsHuman ? "wrench.fill" : "checkmark.circle.fill")
-                            .foregroundStyle(task.needsHuman ? Color.orange : Color.green)
+                            .foregroundStyle(task.needsHuman ? Theme.warning : Theme.success)
                     }
                 }
             }
@@ -226,7 +227,7 @@ private struct TaskRow: View {
         switch task.state {
         case .pending: ("circle", .secondary)
         case .locked: ("lock.fill", .secondary)
-        case .inProgress: ("hammer.circle.fill", .accentColor)
+        case .inProgress: ("hammer.circle.fill", Theme.accent)
         case .failed: ("exclamationmark.circle.fill", .red)
         case .done: ("checkmark.circle.fill", .green)
         }
@@ -257,7 +258,7 @@ private struct HistorySection: View {
     private func row(_ entry: Epic.HistoryEntry) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(entry.text)
-                .foregroundStyle(entry.isFailure ? .red : .primary)
+                .foregroundStyle(entry.isFailure ? Theme.danger : .primary)
             Spacer(minLength: 8)
             Text(RelativeTime.string(entry.date, now: now))
                 .font(.caption)

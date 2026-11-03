@@ -43,7 +43,7 @@ struct ConnectionStatusView: View {
     static func status(store: ClientStore) -> Status {
         guard let snapshot = store.snapshot else {
             if case .failed = store.phase {
-                return Status(title: "読み込めませんでした", systemImage: "wifi.exclamationmark", tint: .red, offersRetry: true)
+                return Status(title: "読み込めませんでした", systemImage: "wifi.exclamationmark", tint: Theme.danger, offersRetry: true)
             }
             return Status(title: "読み込んでいます", systemImage: "arrow.triangle.2.circlepath", tint: .secondary)
         }
@@ -53,7 +53,7 @@ struct ConnectionStatusView: View {
                 title: "取り直せませんでした",
                 detail: "\(failure)。\(checked)",
                 systemImage: "wifi.exclamationmark",
-                tint: .red,
+                tint: Theme.danger,
                 offersRetry: true
             )
         }
@@ -62,7 +62,7 @@ struct ConnectionStatusView: View {
                 title: "一部を読めませんでした: \(failure.source)",
                 detail: "\(failure.message)。ほかは \(checked)",
                 systemImage: "exclamationmark.triangle.fill",
-                tint: .orange,
+                tint: Theme.warning,
                 offersRetry: true
             )
         }
@@ -72,7 +72,7 @@ struct ConnectionStatusView: View {
                 title: "司令塔（\(commandCenter.name)）から \(silent) 印がありません",
                 detail: "質問づくりや通知が止まっている可能性があります",
                 systemImage: "antenna.radiowaves.left.and.right.slash",
-                tint: .red
+                tint: Theme.danger
             )
         }
         let online = snapshot.macs.filter(\.isOnline).count
@@ -80,7 +80,7 @@ struct ConnectionStatusView: View {
             title: "Mac \(online) / \(snapshot.macs.count) 台がオンライン",
             detail: "\(RelativeTime.clock(snapshot.fetchedAt)) に確かめました",
             systemImage: "checkmark.circle.fill",
-            tint: .green
+            tint: Theme.success
         )
     }
 

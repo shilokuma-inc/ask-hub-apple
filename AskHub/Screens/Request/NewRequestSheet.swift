@@ -33,6 +33,7 @@ struct NewRequestSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .pastelBackground()
             .navigationTitle("新しい依頼")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

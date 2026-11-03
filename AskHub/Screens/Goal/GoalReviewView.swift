@@ -39,7 +39,7 @@ struct GoalReviewView: View {
                         Text("\(index + 1). \(task.title)")
                         if task.humanTaskID != nil {
                             Spacer()
-                            TagLabel(text: "人がする作業が前提", tint: .orange)
+                            TagLabel(text: "人がする作業が前提", tint: Theme.warning)
                         }
                     }
                 }
@@ -54,6 +54,7 @@ struct GoalReviewView: View {
                 }
             }
         }
+        .pastelBackground()
         .navigationTitle(epic.title)
         .hidesTabBar()
         .safeAreaBar(edge: .bottom) { startBar(epic, goal) }
@@ -155,6 +156,7 @@ struct StartSheet: View {
                     Text("このリポジトリを回してよい Mac だけを出しています。オフラインの Mac を選ぶと、戻ったときに始まります")
                 }
             }
+            .pastelBackground()
             .navigationTitle("開始する")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -203,7 +205,7 @@ struct MacChoiceRow: View {
             if let reason = mac.refusalReason {
                 Label(reason, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
             }
         }
     }

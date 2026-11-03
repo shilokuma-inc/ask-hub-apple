@@ -41,10 +41,10 @@ struct StageTrackerView: View {
 
     @ViewBuilder private func symbol(for index: Int, current: Int) -> some View {
         if index < current || stage == .done {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.success)
         } else if index == current {
             Image(systemName: isBlocked ? "exclamationmark.circle.fill" : "circle.circle.fill")
-                .foregroundStyle(isBlocked ? Color.red : Color.accentColor)
+                .foregroundStyle(isBlocked ? Theme.danger : Theme.accent)
         } else {
             Image(systemName: "circle").foregroundStyle(.tertiary)
         }
@@ -98,14 +98,14 @@ extension InboxItem.Kind {
 
     var tint: Color {
         switch self {
-        case .questions: .blue
-        case .goal: .indigo
-        case .humanTask: .orange
-        case .blocker: .red
-        case .macOffline: .gray
-        case .finalReview: .purple
-        case .verification: .teal
-        case .cleanup: .brown
+        case .questions: Theme.Tone.sky
+        case .goal: Theme.Tone.lavender
+        case .humanTask: Theme.Tone.peach
+        case .blocker: Theme.Tone.rose
+        case .macOffline: Theme.Tone.slate
+        case .finalReview: Theme.Tone.lavender
+        case .verification: Theme.Tone.aqua
+        case .cleanup: Theme.Tone.butter
         }
     }
 }

@@ -22,6 +22,7 @@ struct QuestionSheet: View {
                     answerSection
                 }
             }
+            .pastelBackground()
             .navigationTitle(question.id)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

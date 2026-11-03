@@ -41,6 +41,7 @@ struct AppSettingsView: View {
                 .foregroundStyle(.secondary)
             }
             .formStyle(.grouped)
+            .pastelBackground()
             .navigationTitle("設定")
             #if os(iOS)
             .toolbar {

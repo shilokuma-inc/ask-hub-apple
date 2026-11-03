@@ -37,11 +37,11 @@ extension Question {
 
     var statusColor: Color {
         switch state {
-        case .open: .accentColor
-        case .awaitingExplanation: .orange
+        case .open: Theme.accent
+        case .awaitingExplanation: Theme.warning
         case .locked, .reviewing: .secondary
-        case .answered: .green
-        case .delegated: .purple
+        case .answered: Theme.success
+        case .delegated: Theme.Tone.lavender
         }
     }
 

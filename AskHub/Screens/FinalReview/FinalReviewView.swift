@@ -18,6 +18,31 @@ struct FinalReviewView: View {
     }
 
     private func content(_ epic: Epic, _ review: FinalReview) -> some View {
+        sections(epic, review)
+            .pastelBackground()
+            .navigationTitle("マージを確かめる")
+            .hidesTabBar()
+            .safeAreaBar(edge: .bottom) {
+                MergeBar(review: review) { isConfirmingMerge = true }
+            }
+            .sheet(item: $shownDecision) { decision in
+                DecisionSheet(epicID: epic.id, decision: decision)
+            }
+            .confirmationDialog("PR #\(review.pullRequestNumber) をマージしますか？", isPresented: $isConfirmingMerge, titleVisibility: .visible) {
+                Button("merge commit でマージする") {
+                    Task { await store.send(.merge(epicID: epic.id, headCommit: review.headCommit)) }
+                }
+            } message: {
+                Text("確かめた head（\(review.headCommit)）だけをマージします。この後に push された変更があれば、マージしません")
+            }
+            .confirmationDialog("残りの判断をまとめて OK にしますか？", isPresented: $isConfirmingAcceptAll, titleVisibility: .visible) {
+                Button("\(review.pendingDecisions.count) 件をまとめて OK") {
+                    Task { await store.send(.acceptAllDecisions(epicID: epic.id)) }
+                }
+            }
+    }
+
+    private func sections(_ epic: Epic, _ review: FinalReview) -> some View {
         List {
             Section {
                 AppHeaderView(
@@ -31,7 +56,7 @@ struct FinalReviewView: View {
                 ChecksView(checks: review.checks)
                 if review.headChangedAfterReview {
                     Label("確かめた後に変更が push されました。変わった判断を確かめ直してください", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Theme.warning)
                 }
             }
             decisionsSection(epic, review)
@@ -46,26 +71,6 @@ struct FinalReviewView: View {
             }
             if !review.verifications.isEmpty {
                 VerificationSection(epic: epic, items: review.verifications)
-            }
-        }
-        .navigationTitle("マージを確かめる")
-        .hidesTabBar()
-        .safeAreaBar(edge: .bottom) {
-            MergeBar(review: review) { isConfirmingMerge = true }
-        }
-        .sheet(item: $shownDecision) { decision in
-            DecisionSheet(epicID: epic.id, decision: decision)
-        }
-        .confirmationDialog("PR #\(review.pullRequestNumber) をマージしますか？", isPresented: $isConfirmingMerge, titleVisibility: .visible) {
-            Button("merge commit でマージする") {
-                Task { await store.send(.merge(epicID: epic.id, headCommit: review.headCommit)) }
-            }
-        } message: {
-            Text("確かめた head（\(review.headCommit)）だけをマージします。この後に push された変更があれば、マージしません")
-        }
-        .confirmationDialog("残りの判断をまとめて OK にしますか？", isPresented: $isConfirmingAcceptAll, titleVisibility: .visible) {
-            Button("\(review.pendingDecisions.count) 件をまとめて OK") {
-                Task { await store.send(.acceptAllDecisions(epicID: epic.id)) }
             }
         }
     }
@@ -103,12 +108,12 @@ private struct MergePolicyView: View {
         switch review.mergePolicy {
         case .automatic:
             Label("CI とレビューを通ったら、自動でマージします", systemImage: "bolt.badge.checkmark")
-                .foregroundStyle(.green)
+                .foregroundStyle(Theme.success)
 
         case .manual(let reasons):
             VStack(alignment: .leading, spacing: 4) {
                 Label("手動でマージします", systemImage: "hand.raised.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
                     .font(.headline)
                 Text(reasons.map(\.label).joined(separator: "・") + " があるため")
                     .font(.subheadline)
@@ -125,9 +130,9 @@ private struct ChecksView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(ciText, systemImage: ciSymbol)
-                .foregroundStyle(checks.ci == .passed ? Color.green : Color.secondary)
+                .foregroundStyle(checks.ci == .passed ? Theme.success : Color.secondary)
             Label(reviewText, systemImage: reviewProblems.isEmpty ? "checkmark.circle" : "xmark.circle")
-                .foregroundStyle(reviewProblems.isEmpty ? Color.secondary : Color.red)
+                .foregroundStyle(reviewProblems.isEmpty ? Color.secondary : Theme.danger)
         }
         .font(.subheadline)
     }
@@ -207,7 +212,7 @@ private struct DecisionRow: View {
 
     private var symbol: (name: String, color: Color) {
         switch decision.response {
-        case .pending: ("circle", .accentColor)
+        case .pending: ("circle", Theme.accent)
         case .accepted: ("checkmark.circle.fill", .green)
         case .fixing: ("hammer.circle", .secondary)
         case .refreshed: ("arrow.uturn.backward.circle.fill", .orange)
@@ -224,7 +229,7 @@ private struct MergeBar: View {
         VStack(spacing: 6) {
             if case .merged(let date, let automatic) = review.state {
                 Label("\(automatic ? "自動で" : "")マージしました（\(RelativeTime.clock(date))）", systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Theme.success)
             } else {
                 Button(action: onMerge) {
                     Text(review.state == .merging ? "マージしています…" : "マージする")

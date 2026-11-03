@@ -56,6 +56,7 @@ struct HumanTaskView: View {
                 deliverableSection(epic, task)
             }
         }
+        .pastelBackground()
         .navigationTitle("人がする作業")
         .confirmationDialog("秘密の値を GitHub の Secrets に入れますか？", isPresented: $isConfirmingSecret, titleVisibility: .visible) {
             Button("入れる") {
@@ -107,7 +108,7 @@ struct HumanTaskView: View {
             if !blocked.isEmpty {
                 Label("\(blocked.joined(separator: "・")) の前提です。ほかのタスクは進めています", systemImage: "lock")
                     .font(.footnote)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
             }
 
         case .verifying:
@@ -116,11 +117,11 @@ struct HumanTaskView: View {
 
         case .done:
             Label("終わりました", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(Theme.success)
 
         case .verificationFailed(let reason):
             Label("確かめられませんでした: \(reason)", systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(Theme.danger)
         }
     }
 }

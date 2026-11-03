@@ -41,6 +41,7 @@ struct InboxView: View {
             }
         }
         .overlay { LoadStateOverlay(isEmpty: items.isEmpty, empty: InboxEmptyView()) }
+        .pastelBackground()
         .navigationTitle("あなたの番")
         .toolbar { SectionToolbar() }
         .refreshable { await store.refresh() }
@@ -90,7 +91,7 @@ struct InboxRow: View {
 
     /// 失敗は赤で出す。Mac の一覧で選んだ行（濃い背景）では、色を付けずに読みやすくする
     private var detailStyle: AnyShapeStyle {
-        item.kind == .blocker && backgroundProminence != .increased ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary)
+        item.kind == .blocker && backgroundProminence != .increased ? AnyShapeStyle(Theme.danger) : AnyShapeStyle(.secondary)
     }
 }
 

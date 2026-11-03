@@ -12,7 +12,7 @@ struct BlockerSection: View {
         Section {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    TagLabel(text: blocker.category.label, tint: .red)
+                    TagLabel(text: blocker.category.label, tint: Theme.danger)
                     Spacer()
                     Text(RelativeTime.string(blocker.occurredAt, now: store.currentDate()))
                         .font(.caption)

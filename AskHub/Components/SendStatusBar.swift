@@ -9,7 +9,7 @@ struct SendStatusBar: View {
             if let failure = store.sendFailure {
                 HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Theme.danger)
                     Text("送れませんでした: \(failure.message)")
                         .font(.footnote)
                         .lineLimit(2)

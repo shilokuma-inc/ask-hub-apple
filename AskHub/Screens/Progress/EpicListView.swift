@@ -42,6 +42,7 @@ struct EpicListView: View {
                 Text("＋ から依頼すると、ここに並びます")
             })
         }
+        .pastelBackground()
         .navigationTitle("進行中")
         .toolbar { SectionToolbar() }
         .refreshable { await store.refresh() }
@@ -95,9 +96,9 @@ struct EpicStatusLabel: View {
 
     private var color: Color {
         switch line.owner {
-        case .you: line.systemImage == "exclamationmark.triangle.fill" ? .red : .accentColor
+        case .you: line.systemImage == "exclamationmark.triangle.fill" ? Theme.danger : Theme.accent
         case .machine: .secondary
-        case .finished: .green
+        case .finished: Theme.success
         }
     }
 }
@@ -132,10 +133,10 @@ struct StageDots: View {
 
     private func color(index: Int, current: Int) -> Color {
         if index < current || stage == .done {
-            return .green
+            return Theme.success
         }
         if index == current {
-            return isBlocked ? .red : .accentColor
+            return isBlocked ? Theme.danger : Theme.accent
         }
         return .secondary.opacity(0.3)
     }

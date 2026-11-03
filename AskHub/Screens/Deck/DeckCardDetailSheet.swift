@@ -30,6 +30,7 @@ struct DeckCardDetailSheet: View {
                     }
                 }
             }
+            .pastelBackground()
             .navigationTitle(card.kindLabel)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -56,7 +57,7 @@ struct QuestionDetailSections: View {
             }
             if let note = question.revisionNote {
                 Label(note, systemImage: "pencil.and.list.clipboard")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
             }
         }
         if !question.options.isEmpty {
@@ -66,7 +67,7 @@ struct QuestionDetailSections: View {
                         HStack {
                             Text(option.label).font(.headline)
                             if option.id == question.recommendedOptionID {
-                                TagLabel(text: "推奨", tint: .green)
+                                TagLabel(text: "推奨", tint: Theme.success)
                             }
                         }
                         Text(option.effect).foregroundStyle(.secondary)

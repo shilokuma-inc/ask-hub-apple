@@ -12,6 +12,8 @@ struct RootView: View {
     var body: some View {
         @Bindable var navigator = navigator
         layout
+            // 主な色はラベンダー（パステルの見た目。Theme）
+            .tint(Theme.accent)
             // 開いている間（バックグラウンド以外）は決まった間隔で取り直す
             .task(id: scenePhase == .background) {
                 guard scenePhase != .background else {
