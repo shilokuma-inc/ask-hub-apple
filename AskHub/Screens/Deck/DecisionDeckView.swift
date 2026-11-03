@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// 判断のカードを 1 枚ずつ流す画面。スワイプで選ぶと、取り消しの猶予の後に送り、次のカードを出す
+/// 判断のカードを 1 枚ずつ流す画面。スワイプで選ぶと、取り消しの猶予の後に送り、次のカードを出す。
+///
+/// デッキは山札と捨て札として見せる（`DrawDeck`）。前の札を飛ばすと、山札から次の札が引かれ、中身の格（`CardGrade`）に合わせた演出で表に返る
 struct DecisionDeckView: View {
     let scope: DeckScope
 
@@ -15,6 +17,12 @@ struct DecisionDeckView: View {
     @State private var hold = SwipeHold()
     /// 文を書くシートを閉じたときに、止めたカードを元の位置に戻すための番号
     @State private var generation = 0
+    /// 次のカードをめくる向き。前のカードを飛ばした向きに合わせ、右へ飛ばしたら右へ返す
+    @State private var flipDirection: Double = 1
+    /// 飛び始めたカード。送るのを待たずに、すぐ山札から次のカードを引き始める
+    @State private var leavingID: DeckCard.ID?
+    /// 最後に飛ばしたカードと方向（捨て札の縁の色に使う）
+    @State private var lastThrow: DeckThrow?
 
     private var cards: [DeckCard] {
         let all = store.deckCards(scope)
@@ -28,16 +36,8 @@ struct DecisionDeckView: View {
             DeckProgressHeader(scope: scope)
             GeometryReader { proxy in
                 let size = Self.cardSize(in: proxy.size)
-                ZStack {
-                    if cards.isEmpty {
-                        DeckEmptyView(scope: scope)
-                    }
-                    // 後ろの 2 枚を少し傾けて重ね、カードのパックをめくる感じにする
-                    ForEach(Array(cards.prefix(3).enumerated().reversed()), id: \.element.id) { depth, card in
-                        stackedCard(card, depth: depth, size: size)
-                    }
-                }
-                .frame(width: proxy.size.width, height: proxy.size.height)
+                drawDeck(size: size)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                 .offset(y: -10)
             }
             .animation(.spring(response: 0.45, dampingFraction: 0.78), value: cards.prefix(3).map(\.id))
@@ -66,6 +66,8 @@ struct DecisionDeckView: View {
                 }
             } onCancel: {
                 textRequest = nil
+                // 飛ばしたカードが戻るので、めくりかけた次のカードも裏に戻す
+                leavingID = nil
                 generation += 1
             }
         }
@@ -98,13 +100,36 @@ struct DecisionDeckView: View {
         return CGSize(width: max(width, 0), height: max(height, 0))
     }
 
-    /// 重ねたカード。後ろのカードは、前のカードを動かすほど少し持ち上がり、前のカードが飛ぶと前に出てくる
-    private func stackedCard(_ card: DeckCard, depth: Int, size: CGSize) -> some View {
+    /// 山札と捨て札。山札の上の札は裏向きで、前を飛ばすと次の札が引かれて、格に合わせた演出で表に返る
+    private func drawDeck(size: CGSize) -> some View {
+        DrawDeck(
+            cards: cards,
+            size: size,
+            leavingID: leavingID,
+            lastThrow: lastThrow,
+            direction: flipDirection,
+            hand: hand,
+            grade: grade
+        ) { card in
+            store.repository(card.repositoryID)
+        } face: { card, depth in
+            swipeCard(card, depth: depth)
+        } back: { card in
+            DeckCardBack(repository: store.repository(card.repositoryID))
+        } empty: {
+            DeckEmptyView(scope: scope)
+        }
+    }
+
+    /// 札の格。飛び始めた札は、答えたものとして数える（最後の 1 枚が、前を答えた瞬間に先へ進める札に変わる）
+    private func grade(_ card: DeckCard) -> CardGrade {
+        CardGrade(card: card, epic: store.epic(card.epicID), remaining: cards.filter { $0.id != leavingID })
+    }
+
+    /// 表の面。前のカード（depth 0）だけをスワイプで選べるようにする
+    private func swipeCard(_ card: DeckCard, depth: Int) -> some View {
         let directions = SwipeLayout.directions(count: card.choices.count, hand: hand)
         let isTop = depth == 0
-        let lift = isTop ? 0 : CGFloat(drag.progress) * 0.6
-        let position = CGFloat(depth) - lift
-        let tilt = depth.isMultiple(of: 2) ? 2.2 : -2.6
         return SwipeCard(
             directions: directions,
             choiceLabels: card.choices.map(\.label),
@@ -115,32 +140,33 @@ struct DecisionDeckView: View {
             resetToken: generation
         ) { index in
             choose(card, index: index)
+        } onLeave: { index in
+            flipDirection = directions[index].unit.dx < 0 ? -1 : 1
+            leavingID = card.id
+            lastThrow = DeckThrow(id: card.id, direction: directions[index])
         } onHold: { index in
             holdForText(card, index: index)
         } content: { commit in
-            DeckCardContent(
-                card: card,
-                repository: store.repository(card.repositoryID),
-                epic: store.epic(card.epicID),
-                directions: directions,
-                drag: isTop ? drag : SwipeDragState(),
-                remaining: isTop ? cards.count : nil,
-                commit: commit
-            ) { text in
-                if case .question(let question) = card.content {
-                    send(.answer(epicID: card.epicID, questionID: question.id, optionID: nil, note: text), card: card, label: "回答")
+            VStack(spacing: 0) {
+                // 慎重に決めてほしい札は、表の一番上に警告の帯を出す（札と一緒に動く）
+                if let caution = card.caution {
+                    CautionStrip(caution: caution)
+                }
+                DeckCardContent(
+                    card: card,
+                    repository: store.repository(card.repositoryID),
+                    epic: store.epic(card.epicID),
+                    directions: directions,
+                    drag: isTop ? drag : SwipeDragState(),
+                    remaining: isTop ? cards.count : nil,
+                    commit: commit
+                ) { text in
+                    if case .question(let question) = card.content {
+                        send(.answer(epicID: card.epicID, questionID: question.id, optionID: nil, note: text), card: card, label: "回答")
+                    }
                 }
             }
         }
-        .frame(width: size.width, height: size.height)
-        .scaleEffect(1 - 0.05 * position)
-        .offset(y: 16 * position)
-        .rotationEffect(.degrees(isTop ? 0 : tilt * Double(position)))
-        .allowsHitTesting(isTop)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(isTop ? "deckCard.top" : "deckCard.back")
-        .zIndex(Double(-depth))
-        .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.86)), removal: .identity))
     }
 
     @ViewBuilder private func secondaryActions(_ card: DeckCard) -> some View {
@@ -220,10 +246,11 @@ struct DecisionDeckView: View {
     private func send(_ intent: HumanIntent, card: DeckCard?, label: String) {
         let appName = card.flatMap { store.repository($0.repositoryID)?.appName } ?? ""
         let kind = card?.kindLabel ?? ""
-        // 前のカードが消えると、後ろのカードがばねのように前へ出てくる
+        // 前のカードが消えると、山札から引いた次のカードが前に置かれる
         withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
             store.enqueue(intent, message: "\(appName) · \(kind): \(label)", itemID: card?.id)
             skippedIDs.removeAll { $0 == card?.id }
+            leavingID = nil
         }
     }
 }

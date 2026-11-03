@@ -20,6 +20,8 @@ struct SwipeCard<Content: View>: View {
     /// 変わったら、飛ばしたカードを元の位置に戻す（文を書くシートを閉じたときなど）
     let resetToken: Int
     let onCommit: (Int) -> Void
+    /// 決まってカードが飛び始めたとき（`onCommit` より先に呼ぶ。後ろのカードをめくり始めるため）
+    let onLeave: (Int) -> Void
     @ViewBuilder let content: (_ commit: @escaping (Int) -> Void) -> Content
 
     @State private var offset: CGSize
@@ -41,6 +43,7 @@ struct SwipeCard<Content: View>: View {
         releaseToken: Int = 0,
         resetToken: Int = 0,
         onCommit: @escaping (Int) -> Void,
+        onLeave: @escaping (Int) -> Void = { _ in },
         onHold: @escaping (Int) -> Void = { _ in },
         @ViewBuilder content: @escaping (_ commit: @escaping (Int) -> Void) -> Content
     ) {
@@ -53,6 +56,7 @@ struct SwipeCard<Content: View>: View {
         self.onHold = onHold
         self.resetToken = resetToken
         self.onCommit = onCommit
+        self.onLeave = onLeave
         self.content = content
         // 撮影のためにスワイプの途中の状態から始めるときは、その向きに少し動かしておく
         let state = drag.wrappedValue
@@ -169,6 +173,7 @@ struct SwipeCard<Content: View>: View {
         withAnimation(.easeOut(duration: 0.26)) {
             offset = CGSize(width: unit.dx * 760, height: unit.dy * 760)
         }
+        onLeave(index)
         Task {
             try? await Task.sleep(for: .milliseconds(200))
             onCommit(index)

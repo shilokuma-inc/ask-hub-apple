@@ -19,6 +19,15 @@ struct DeckCard: Identifiable, Hashable {
         case verification(VerificationItem)
     }
 
+    /// 慎重に決めてほしい理由（質問と判断の確認だけ）
+    var caution: Caution? {
+        switch content {
+        case .question(let question): question.caution
+        case .decision(let decision): decision.caution
+        case .verification: nil
+        }
+    }
+
     struct Choice: Identifiable, Hashable {
         let id: String
         var label: String
@@ -27,6 +36,14 @@ struct DeckCard: Identifiable, Hashable {
         var note: String?
         var isRecommended: Bool
         var action: Action
+
+        /// 自由回答（送る前に文を書く）の選択肢か。推奨の対角に置き、「自由回答」の札を付ける
+        var asksText: Bool {
+            if case .askText = action {
+                return true
+            }
+            return false
+        }
     }
 
     enum Action: Hashable {
@@ -119,7 +136,7 @@ enum DeckBuilder {
     static func questionChoices(_ question: Question, epicID: Epic.ID) -> [DeckCard.Choice] {
         let recommended = question.options.filter { $0.id == question.recommendedOptionID }
         let others = question.options.filter { $0.id != question.recommendedOptionID }
-        return (recommended + others).map { option in
+        let choices = (recommended + others).map { option in
             let isRecommended = option.id == question.recommendedOptionID
             return DeckCard.Choice(
                 id: option.id,
@@ -130,6 +147,7 @@ enum DeckBuilder {
                 action: .send(.answer(epicID: epicID, questionID: question.id, optionID: option.id, note: ""))
             )
         }
+        return SwipeLayout.arranged(choices, asksText: \.asksText)
     }
 
     static func decisionCards(_ epic: Epic) -> [DeckCard] {
@@ -152,7 +170,7 @@ enum DeckBuilder {
         }
     }
 
-    /// OK を先頭（推奨）にし、直してほしい・別案（最大 2 つ）を続ける
+    /// OK を先頭（推奨）にし、直してほしい・別案（最大 2 つ）を続ける。直してほしい（自由回答）は OK の対角に置く
     static func decisionChoices(_ decision: DecisionCard, epicID: Epic.ID) -> [DeckCard.Choice] {
         var choices = [
             DeckCard.Choice(
@@ -186,7 +204,7 @@ enum DeckBuilder {
                 action: .send(.respondToDecision(epicID: epicID, decisionID: decision.id, reply: .alternative(alternative)))
             ))
         }
-        return choices
+        return SwipeLayout.arranged(choices, asksText: \.asksText)
     }
 
     static func verificationCards(_ epic: Epic) -> [DeckCard] {

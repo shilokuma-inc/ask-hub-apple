@@ -21,11 +21,11 @@ final class ClientUITests: XCTestCase {
         return element.waitForExistence(timeout: 3)
     }
 
-    /// デモの場面で起動する。機械の反応は既定ではすぐ起こす
+    /// デモの場面で起動する。機械の反応は既定ではすぐ起こす。スマホを持つ手は既定で右手
     @MainActor
-    private func launch(_ arguments: [String], reactionDelay: Int = 0) -> XCUIApplication {
+    private func launch(_ arguments: [String], reactionDelay: Int = 0, hand: String = "right") -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-demoReactionDelay", "\(reactionDelay)", "-swipeHand", "right"] + arguments
+        app.launchArguments = ["-demoReactionDelay", "\(reactionDelay)", "-swipeHand", hand] + arguments
         app.launch()
         return app
     }
@@ -125,6 +125,19 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["習慣ログ · 質問 Q2 / 4: 共有シートだけ"].waitForExistence(timeout: 5))
     }
 
+    /// 自由回答の選択肢（直してほしい）は、推奨の対角に置き、「自由回答」の札を付ける。左手では鏡写しになる
+    @MainActor
+    func testFreeTextChoiceSitsOppositeRecommended() {
+        for (hand, recommended, freeText) in [("right", "右上", "左下"), ("left", "左上", "右下")] {
+            let app = launch(["-demoScenario", "standard", "-demoOpen", "deck:decisions:tsundoku-search"], hand: hand)
+            let card = app.otherElements["deckCard.top"]
+            XCTAssertTrue(card.waitForExistence(timeout: 10))
+            XCTAssertTrue(card.buttons["OK（推奨・\(recommended)へスワイプ）"].exists, hand)
+            XCTAssertTrue(card.buttons["直してほしい（自由回答・\(freeText)へスワイプ）"].exists, hand)
+            app.terminate()
+        }
+    }
+
     /// 自由回答（問題あり）の方向にスワイプすると、カードは飛ばずにその方向で止まり、文を書くシートが出る。
     /// 送らずに閉じると元の位置に戻り、書いて送るとカードが飛んで次のカードが出る
     @MainActor
@@ -178,7 +191,7 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(cancel.waitForNonExistence(timeout: 5))
         XCTAssertTrue(waitUntil { isResting(card, at: resting) }, "\(card.frame) / \(resting)")
 
-        card.buttons["問題あり（左下へスワイプ）"].tap()
+        card.buttons["問題あり（自由回答・左下へスワイプ）"].tap()
         XCTAssertTrue(cancel.waitForExistence(timeout: 5))
         XCTAssertTrue(card.staticTexts["振り返りの画面を日曜の夜に開ける"].exists)
         XCTAssertTrue(waitUntil { isHeldDownLeft(card, from: resting) }, "\(card.frame) / \(resting)")
