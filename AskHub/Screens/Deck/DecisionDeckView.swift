@@ -23,18 +23,22 @@ struct DecisionDeckView: View {
         let current = cards.first
         let directions = SwipeLayout.directions(count: current?.choices.count ?? 0, hand: hand)
         VStack(spacing: 12) {
-            DeckProgressHeader(scope: scope, remaining: cards.count)
-            ZStack {
-                if let current {
-                    card(current, directions: directions)
-                        .id("\(current.id)-\(generation)")
-                        .transition(.asymmetric(insertion: .scale(scale: 0.94).combined(with: .opacity), removal: .identity))
-                } else {
-                    DeckEmptyView(scope: scope)
+            DeckProgressHeader(scope: scope)
+            GeometryReader { proxy in
+                let size = Self.cardSize(in: proxy.size)
+                ZStack {
+                    if cards.isEmpty {
+                        DeckEmptyView(scope: scope)
+                    }
+                    // 後ろの 2 枚を少し傾けて重ね、カードのパックをめくる感じにする
+                    ForEach(Array(cards.prefix(3).enumerated().reversed()), id: \.element.id) { depth, card in
+                        stackedCard(card, depth: depth, size: size)
+                    }
                 }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .offset(y: -10)
             }
-            .frame(maxHeight: .infinity)
-            .animation(.snappy, value: current?.id)
+            .animation(.spring(response: 0.45, dampingFraction: 0.78), value: cards.prefix(3).map(\.id))
             if let current {
                 secondaryActions(current)
             }
@@ -82,8 +86,27 @@ struct DecisionDeckView: View {
         }
     }
 
-    private func card(_ card: DeckCard, directions: [SwipeDirection]) -> some View {
-        SwipeCard(directions: directions, choiceLabels: card.choices.map(\.label), drag: $drag) { index in
+    /// カードの大きさ。どのカードも同じ大きさの札にする
+    static func cardSize(in available: CGSize) -> CGSize {
+        let width = min(available.width - 44, 440)
+        let height = min(available.height - 64, width * 1.55)
+        return CGSize(width: max(width, 0), height: max(height, 0))
+    }
+
+    /// 重ねたカード。後ろのカードは、前のカードを動かすほど少し持ち上がり、前のカードが飛ぶと前に出てくる
+    private func stackedCard(_ card: DeckCard, depth: Int, size: CGSize) -> some View {
+        let directions = SwipeLayout.directions(count: card.choices.count, hand: hand)
+        let isTop = depth == 0
+        let lift = isTop ? 0 : CGFloat(drag.progress) * 0.6
+        let position = CGFloat(depth) - lift
+        let tilt = depth.isMultiple(of: 2) ? 2.2 : -2.6
+        return SwipeCard(
+            directions: directions,
+            choiceLabels: card.choices.map(\.label),
+            drag: isTop ? $drag : .constant(SwipeDragState()),
+            isInteractive: isTop,
+            resetToken: generation
+        ) { index in
             choose(card, index: index)
         } content: { commit in
             DeckCardContent(
@@ -91,7 +114,8 @@ struct DecisionDeckView: View {
                 repository: store.repository(card.repositoryID),
                 epic: store.epic(card.epicID),
                 directions: directions,
-                drag: drag,
+                drag: isTop ? drag : SwipeDragState(),
+                remaining: isTop ? cards.count : nil,
                 commit: commit
             ) { text in
                 if case .question(let question) = card.content {
@@ -99,8 +123,13 @@ struct DecisionDeckView: View {
                 }
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 26)
+        .frame(width: size.width, height: size.height)
+        .scaleEffect(1 - 0.05 * position)
+        .offset(y: 16 * position)
+        .rotationEffect(.degrees(isTop ? 0 : tilt * Double(position)))
+        .allowsHitTesting(isTop)
+        .zIndex(Double(-depth))
+        .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.86)), removal: .identity))
     }
 
     @ViewBuilder private func secondaryActions(_ card: DeckCard) -> some View {
@@ -129,7 +158,11 @@ struct DecisionDeckView: View {
                 }
 
             case .verification:
-                Button("あとで", systemImage: "clock") { skippedIDs.append(card.id) }
+                Button("あとで", systemImage: "clock") {
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                        skippedIDs.append(card.id)
+                    }
+                }
             }
             Button("詳しく", systemImage: "doc.text.magnifyingglass") { detailCard = card }
         }
@@ -155,8 +188,11 @@ struct DecisionDeckView: View {
     private func send(_ intent: HumanIntent, card: DeckCard?, label: String) {
         let appName = card.flatMap { store.repository($0.repositoryID)?.appName } ?? ""
         let kind = card?.kindLabel ?? ""
-        store.enqueue(intent, message: "\(appName) · \(kind): \(label)", itemID: card?.id)
-        skippedIDs.removeAll { $0 == card?.id }
+        // 前のカードが消えると、後ろのカードがばねのように前へ出てくる
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+            store.enqueue(intent, message: "\(appName) · \(kind): \(label)", itemID: card?.id)
+            skippedIDs.removeAll { $0 == card?.id }
+        }
     }
 }
 
@@ -165,23 +201,17 @@ enum SwipePreferences {
     static let handKey = "swipeHand"
 }
 
-/// デッキの上の残りの件数と、質問のときは質問ごとの状態
+/// 質問のときは、質問ごとの状態の帯を上に出す
 private struct DeckProgressHeader: View {
     let scope: DeckScope
-    let remaining: Int
     @Environment(ClientStore.self) private var store
 
     var body: some View {
-        VStack(spacing: 8) {
-            if case .questions(let epicID) = scope, let epic = store.epic(epicID) {
-                QuestionStatusStrip(epic: epic)
-            }
-            Text(remaining == 0 ? "" : "残り \(remaining) 件")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        if case .questions(let epicID) = scope, let epic = store.epic(epicID) {
+            QuestionStatusStrip(epic: epic)
+                .padding(.horizontal)
+                .padding(.top, 4)
         }
-        .padding(.horizontal)
-        .padding(.top, 4)
     }
 }
 

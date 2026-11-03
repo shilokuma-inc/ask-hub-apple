@@ -1,20 +1,39 @@
 import SwiftUI
 
-/// 判断のカードの中身。どのアプリの判断かを、アイコンと名前で一番上に出す
+/// 判断のカードの中身（札の表）。上にアプリの色の帯を置き、どのアプリの判断かを一目で分かるようにする
 struct DeckCardContent: View {
     let card: DeckCard
     let repository: TargetRepository?
     let epic: Epic?
     let directions: [SwipeDirection]
     let drag: SwipeDragState
+    /// 残りの枚数（一番上のカードにだけ出す）
+    var remaining: Int?
     let commit: (Int) -> Void
     let onSubmitText: (String) -> Void
 
     @State private var freeText = ""
 
     var body: some View {
+        // 上に何を決めるか、下（親指に近い側）に選択肢を置く
+        VStack(alignment: .leading, spacing: 0) {
+            DeckCardHeader(repository: repository, epicTitle: epic?.title ?? "", remaining: remaining)
+            summary
+                .padding([.horizontal, .top], 16)
+            Spacer(minLength: 12)
+            Group {
+                if card.choices.isEmpty {
+                    freeTextField
+                } else {
+                    choices
+                }
+            }
+            .padding([.horizontal, .bottom], 16)
+        }
+    }
+
+    private var summary: some View {
         VStack(alignment: .leading, spacing: 12) {
-            AppHeaderView(repository: repository, subtitle: epic?.title ?? "")
             VStack(alignment: .leading, spacing: 4) {
                 Text(card.kindLabel)
                     .font(.caption)
@@ -31,11 +50,6 @@ struct DeckCardContent: View {
             if case .decision(let decision) = card.content, decision.before != nil || decision.after != nil {
                 BeforeAfterView(before: decision.before, after: decision.after)
                     .frame(maxHeight: 150)
-            }
-            if card.choices.isEmpty {
-                freeTextField
-            } else {
-                choices
             }
         }
     }
@@ -99,6 +113,50 @@ struct DeckCardContent: View {
     #else
     private static let showsKeyHints = false
     #endif
+}
+
+/// 札の上の帯。アプリの色のグラデーションに、アイコン・アプリ名・epic・残りの枚数を載せる
+struct DeckCardHeader: View {
+    let repository: TargetRepository?
+    let epicTitle: String
+    let remaining: Int?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            AppIconView(repository: repository, size: 38)
+                .overlay(RoundedRectangle(cornerRadius: 38 * 0.225, style: .continuous).strokeBorder(.white.opacity(0.9), lineWidth: 1.5))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(repository?.appName ?? "不明なリポジトリ")
+                    .font(.subheadline.weight(.bold))
+                Text(epicTitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if let remaining {
+                Text("残り \(remaining)")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.background.opacity(0.7), in: .capsule)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(
+            LinearGradient(colors: [tint.opacity(0.32), tint.opacity(0.10)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var tint: Color {
+        if case let .symbol(_, tint) = repository?.icon {
+            return tint.color
+        }
+        return .accentColor
+    }
 }
 
 /// 質問のカードの補足（依存される質問・見直した点・届いた説明）
