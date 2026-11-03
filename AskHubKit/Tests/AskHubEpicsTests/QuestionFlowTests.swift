@@ -68,18 +68,19 @@ struct QuestionFlowTests {
         let file = try Flow.start([Fixtures.draft("q1"), Fixtures.draft("q2", dependsOn: ["q1"])]).questions
         let change = try accept(Fixtures.answer("q1", note: "夜間は長くてもよい", intent: 1), file)
         let answer = try #require(change.questions.question("q1")?.answer)
-        #expect(answer == .init(mode: .answer, choice: "日ごと", note: "夜間は長くてもよい", intent: Fixtures.intent(1), at: Fixtures.now))
+        #expect(answer == .init(choice: "日ごと", note: "夜間は長くてもよい", intent: Fixtures.intent(1), at: Fixtures.now))
         #expect(change.questions.states() == ["q1": .answered, "q2": .revising])
         let expected = RevisionBasis(version: 1, dependencies: [.init(id: "q1", version: 1, answer: Fixtures.intent(1))])
         #expect(change.effects == [.revise(question: "q2", basis: expected)])
     }
 
-    @Test func delegateChoosesRecommendedAndFreeTextNeedsNoChoice() throws {
+    @Test func everyQuestionWaitsForPersonAndFreeTextNeedsNoChoice() throws {
         let file = try Flow.start([Fixtures.draft("q1"), Fixtures.draft("q2")]).questions
-        let delegated = try accept(Fixtures.answer("q1", .delegate, intent: 1), file).questions
-        #expect(delegated.question("q1")?.state == .delegated)
-        #expect(delegated.question("q1")?.answer?.choice == "日ごと")
-        let change = try accept(Fixtures.answer("q2", choice: nil, note: "隔週で入れ替える", intent: 2), delegated)
+        // 判断はすべて人がする。推奨の選択肢で決めたことにはしないので、答えていない質問があるうちは着手前の確認に進まない
+        let first = try accept(Fixtures.answer("q1", intent: 1), file)
+        #expect(first.questions.states() == ["q1": .answered, "q2": .open])
+        #expect(first.effects.isEmpty)
+        let change = try accept(Fixtures.answer("q2", choice: nil, note: "隔週で入れ替える", intent: 2), first.questions)
         #expect(change.questions.question("q2")?.answer?.choice == nil)
         #expect(change.questions.question("q2")?.state == .answered)
         #expect(change.effects == [.checkReadiness])
@@ -262,7 +263,7 @@ struct QuestionFlowTests {
         var rewrite = Fixtures.rewrite()
         rewrite.caution = Caution(kind: .irreversible, reason: "書き出した後は消せない")
         let marked = checked(try Flow.explain("q1", asked: Fixtures.intent(1), text: "…", rewrite: rewrite, in: asking)).questions
-        #expect(marked.question("q1")?.caution?.kind == .irreversible)
+        #expect(marked.question("q1")?.caution == rewrite.caution)
 
         draft.caution?.reason = ""
         #expect(throws: Flow.ResultError.invalid(["q1: caution.reason は 1〜500 文字"])) { try Flow.start([draft]) }

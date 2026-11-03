@@ -4,14 +4,13 @@
   "title": "repos/<owner>/<repo>/epics/<epic>/goal.json（ゴール）",
   "description": "司令塔だけが書く。id の重複（タスクと人がする作業を合わせて）・依存先の実在・自分自身への依存・タスクの依存の循環・Secrets の名前の形（英大文字・数字・_。数字と GITHUB_ で始まらない）・secret のときだけ名前を持つことは読む側で確かめる",
   "type": "object",
-  "required": ["v", "version", "summary", "decided", "delegated", "outOfScope", "doneWhen", "tasks", "humanTasks"],
+  "required": ["v", "version", "summary", "decided", "outOfScope", "doneWhen", "tasks", "humanTasks"],
   "additionalProperties": false,
   "properties": {
     "v": { "const": 1 },
     "version": { "type": "integer", "minimum": 1, "description": "直すたびに上げる" },
     "summary": { "type": "string", "minLength": 1 },
-    "decided": { "type": "array", "items": { "$ref": "#/$defs/item" } },
-    "delegated": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "decided": { "type": "array", "items": { "$ref": "#/$defs/item" }, "description": "決まったこと（どの質問の回答から来たか）" },
     "outOfScope": { "type": "array", "items": { "type": "string" } },
     "doneWhen": { "type": "array", "minItems": 1, "items": { "type": "string" } },
     "tasks": {

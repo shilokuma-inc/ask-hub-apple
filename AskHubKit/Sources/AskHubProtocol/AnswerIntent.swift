@@ -4,13 +4,12 @@ import Foundation
 ///
 /// 署名を確かめた後に読む。知らない欄のある `payload` は、一部だけを指示として扱わないよう、読まない
 public struct AnswerIntent: Equatable, Sendable {
+    /// 回答の仕方。判断はすべて人がするので、推奨の選択肢で決めたことにする仕方は持たない
     public enum Mode: String, Sendable, CaseIterable {
         /// 選択肢か自由記述で答える
         case answer
         /// 説明を求める。`note` が人の問い
         case clarify
-        /// おまかせ（推奨の選択肢で決めてよい）
-        case delegate
     }
 
     /// 回答の形でない（理由つき）
@@ -30,7 +29,7 @@ public struct AnswerIntent: Equatable, Sendable {
     /// 回答した質問の版
     public var questionVersion: Int
     public var mode: Mode
-    /// 選んだ選択肢。自由記述だけ・説明を求める・おまかせでは nil
+    /// 選んだ選択肢。自由記述だけ・説明を求めるときは nil
     public var choice: String?
     public var note: String
     public var intent: IntentReference
@@ -71,8 +70,8 @@ public struct AnswerIntent: Equatable, Sendable {
         switch mode {
         case .answer where choice == nil && note.isEmpty:
             throw Malformed(detail: "回答に選択肢も自由記述も無い")
-        case .clarify where choice != nil, .delegate where choice != nil:
-            throw Malformed(detail: "\(mode.rawValue) に choice がある")
+        case .clarify where choice != nil:
+            throw Malformed(detail: "clarify に choice がある")
         default:
             break
         }

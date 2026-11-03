@@ -58,23 +58,6 @@
       "read": "valid"
     },
     {
-      "name": "delegate",
-      "payload": {
-        "mode": "delegate"
-      },
-      "schemaValid": true,
-      "read": "valid"
-    },
-    {
-      "name": "delegate-with-note",
-      "payload": {
-        "mode": "delegate",
-        "note": "任せます"
-      },
-      "schemaValid": true,
-      "read": "valid"
-    },
-    {
       "name": "missing-mode",
       "payload": {
         "choice": "日ごと"
@@ -86,6 +69,14 @@
       "name": "unknown-mode",
       "payload": {
         "mode": "skip"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "delegate",
+      "payload": {
+        "mode": "delegate"
       },
       "schemaValid": false,
       "read": "malformed"
@@ -148,15 +139,6 @@
       "name": "clarify-with-choice",
       "payload": {
         "mode": "clarify",
-        "choice": "日ごと"
-      },
-      "schemaValid": false,
-      "read": "malformed"
-    },
-    {
-      "name": "delegate-with-choice",
-      "payload": {
-        "mode": "delegate",
         "choice": "日ごと"
       },
       "schemaValid": false,

@@ -53,7 +53,7 @@ public enum QuestionFlow {
             case .revising: "質問 \(question) は、依存先の回答を受けて見直している"
             case .clarifying: "質問 \(question) は、説明を作っている"
             case .dropped: "質問 \(question) は、見直しで要らなくなった"
-            case .answered, .delegated: "回答した質問には説明を求められない（変えるときは答え直す）"
+            case .answered: "質問 \(question) は回答済みなので、説明を求められない（変えるときは答え直す）"
             case .open: "質問 \(question) は回答を待っている"
             }
         }
@@ -123,7 +123,7 @@ extension QuestionFlow {
 // MARK: - 人の回答
 
 extension QuestionFlow {
-    /// 回答・おまかせ・説明を求める、を受け付ける。署名・有効期間・使い済みかは、呼ぶ前に確かめておく
+    /// 回答と、説明を求める、を受け付ける。署名・有効期間・使い済みかは、呼ぶ前に確かめておく
     public static func accept(
         _ answer: AnswerIntent,
         epic: EpicFile,
@@ -144,13 +144,13 @@ extension QuestionFlow {
             book.questions[index].explanations.append(.init(asked: answer.intent, note: answer.note, at: now))
             book.questions[index].state = .clarifying
             book.effects.append(.explain(question: question.id, asked: answer.intent))
-        case .answer, .delegate:
-            guard [.open, .answered, .delegated].contains(question.state) else {
+        case .answer:
+            guard [.open, .answered].contains(question.state) else {
                 throw .notAnswerable(question: question.id, state: question.state)
             }
             let accepted = try decision(answer, for: question, at: now)
             book.questions[index].answer = accepted
-            book.questions[index].state = accepted.mode == .delegate ? .delegated : .answered
+            book.questions[index].state = .answered
             // 開始の前に回答を変えたら、依存する質問の回答を取り消し、ロックに戻して見直しからやり直す
             if let previous = question.answer, !isSameDecision(previous, accepted) {
                 book.relockDependents(of: question.id)
@@ -167,19 +167,14 @@ extension QuestionFlow {
         for question: QuestionsFile.Question,
         at now: Timestamp
     ) throws(Rejection) -> QuestionsFile.Answer {
-        switch answer.mode {
-        case .delegate:
-            return .init(mode: .delegate, choice: question.recommended, note: answer.note, intent: answer.intent, at: now)
-        case .answer, .clarify:
-            if let choice = answer.choice, !question.options.contains(where: { $0.label == choice }) {
-                throw .unknownChoice(question: question.id)
-            }
-            return .init(mode: .answer, choice: answer.choice, note: answer.note, intent: answer.intent, at: now)
+        if let choice = answer.choice, !question.options.contains(where: { $0.label == choice }) {
+            throw .unknownChoice(question: question.id)
         }
+        return .init(choice: answer.choice, note: answer.note, intent: answer.intent, at: now)
     }
 
     private static func isSameDecision(_ lhs: QuestionsFile.Answer, _ rhs: QuestionsFile.Answer) -> Bool {
-        lhs.mode == rhs.mode && lhs.choice == rhs.choice && lhs.note == rhs.note
+        lhs.choice == rhs.choice && lhs.note == rhs.note
     }
 }
 

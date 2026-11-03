@@ -12,12 +12,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -87,7 +85,6 @@
         "version": 1,
         "summary": "…",
         "decided": [],
-        "delegated": [],
         "outOfScope": [],
         "doneWhen": [
           "…"
@@ -115,12 +112,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -194,12 +189,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -271,12 +264,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -349,12 +340,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -424,7 +413,6 @@
         "version": 1,
         "summary": "…",
         "decided": [],
-        "delegated": [],
         "outOfScope": [],
         "doneWhen": [
           "…"
@@ -442,7 +430,6 @@
         "version": 1,
         "summary": "…",
         "decided": [],
-        "delegated": [],
         "outOfScope": [],
         "doneWhen": [],
         "tasks": [
@@ -465,7 +452,6 @@
         "version": 1,
         "summary": "…",
         "decided": [],
-        "delegated": [],
         "outOfScope": [],
         "doneWhen": [
           "…"
@@ -490,7 +476,6 @@
         "version": 1,
         "summary": "…",
         "decided": [],
-        "delegated": [],
         "outOfScope": [],
         "doneWhen": [
           "…"
@@ -517,7 +502,6 @@
         "version": 1,
         "summary": "…",
         "decided": [],
-        "delegated": [],
         "outOfScope": [],
         "doneWhen": [
           "…"
@@ -555,12 +539,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -619,12 +601,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -681,12 +661,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -744,12 +722,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -807,12 +783,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -870,12 +844,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
@@ -933,12 +905,10 @@
           {
             "question": "q1",
             "text": "日ごとに入れ替える"
-          }
-        ],
-        "delegated": [
+          },
           {
             "question": "q2",
-            "text": "推奨の…にした"
+            "text": "週ごとの締めは月曜にする"
           }
         ],
         "outOfScope": [
