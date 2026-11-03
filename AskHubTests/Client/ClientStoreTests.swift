@@ -63,8 +63,8 @@ struct ClientStoreTests {
         let store = ClientStore(service: service, undoDelay: .seconds(60))
         await store.refresh()
         let card = store.deckCards(.questions("recipe-weekly")).first
-        let intent = HumanIntent.delegate(epicID: "recipe-weekly", questionID: "Q3")
-        store.enqueue(intent, message: "おまかせ", itemID: card?.id)
+        let intent = HumanIntent.answer(epicID: "recipe-weekly", questionID: "Q3", optionID: "a", note: "")
+        store.enqueue(intent, message: "回答", itemID: card?.id)
         #expect(store.pending?.intent == intent)
         #expect(store.deckCards(.questions("recipe-weekly")).isEmpty)
         #expect(service.performed.isEmpty)
@@ -82,8 +82,8 @@ struct ClientStoreTests {
         service.snapshot = DemoScenario.standard.snapshot(now: now)
         let store = ClientStore(service: service, undoDelay: .milliseconds(10))
         await store.refresh()
-        let intent = HumanIntent.delegate(epicID: "recipe-weekly", questionID: "Q3")
-        store.enqueue(intent, message: "おまかせ")
+        let intent = HumanIntent.answer(epicID: "recipe-weekly", questionID: "Q3", optionID: "a", note: "")
+        store.enqueue(intent, message: "回答")
         for _ in 0..<100 where service.performed.isEmpty {
             try await Task.sleep(for: .milliseconds(10))
         }
@@ -98,8 +98,8 @@ struct ClientStoreTests {
         service.snapshot = DemoScenario.standard.snapshot(now: now)
         let store = ClientStore(service: service, undoDelay: .seconds(60))
         await store.refresh()
-        let first = HumanIntent.delegate(epicID: "recipe-weekly", questionID: "Q3")
-        let second = HumanIntent.delegate(epicID: "habit-export", questionID: "Q2")
+        let first = HumanIntent.answer(epicID: "recipe-weekly", questionID: "Q3", optionID: "a", note: "")
+        let second = HumanIntent.answer(epicID: "habit-export", questionID: "Q2", optionID: "a", note: "")
         store.enqueue(first, message: "1")
         store.enqueue(second, message: "2")
         for _ in 0..<100 where service.performed.isEmpty {
