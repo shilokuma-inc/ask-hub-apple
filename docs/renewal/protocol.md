@@ -57,15 +57,12 @@ consumed/<device>/<intent>                         処理した人の意図の�
   "v": 1,
   "repo": "shilokuma-inc/prime-pick-ios",
   "platform": "apple",
-  "allowedMacs": ["*"],
   "maxConcurrentEpics": 1,
   "appKit": { "ref": "<共通リポジトリのコミット>" },
   "protection": { "appliedAt": null },
   "addedAt": "2026-11-03T10:00:00Z"
 }
 ```
-
-- `allowedMacs` は、実装を回してよい Mac の名前の一覧。`"*"` はすべての Mac
 
 ### epic.json
 
