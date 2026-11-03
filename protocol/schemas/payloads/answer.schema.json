@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/answer.schema.json",
+  "title": "回答の人の意図（kind が answer）の payload",
+  "description": "封筒の target は {type: question, epic, id}、targetVersion は回答した質問の version を 10 進で書く。知らない欄のある payload は読まない（一部だけを指示として扱わない）。choice が質問の選択肢にあること・質問の版と状態は、司令塔が受け付けるときに確かめる",
+  "type": "object",
+  "required": ["mode"],
+  "additionalProperties": false,
+  "properties": {
+    "mode": { "enum": ["answer", "clarify", "delegate"], "description": "answer は回答、clarify は説明を求める、delegate はおまかせ" },
+    "choice": {
+      "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1000 }, { "type": "null" }],
+      "description": "選んだ選択肢の label。自由記述だけで答えるときは書かない"
+    },
+    "note": { "type": "string", "maxLength": 10000, "description": "自由記述。clarify では人の問い" }
+  },
+  "anyOf": [
+    { "properties": { "mode": { "const": "answer" }, "choice": { "type": "string" } }, "required": ["choice"] },
+    { "properties": { "mode": { "const": "answer" }, "note": { "minLength": 1 } }, "required": ["note"] },
+    { "properties": { "mode": { "enum": ["clarify", "delegate"] }, "choice": { "type": "null" } } }
+  ]
+}

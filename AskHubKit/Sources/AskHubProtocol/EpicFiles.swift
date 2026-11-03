@@ -23,6 +23,16 @@ public enum QuestionState: String, Codable, Sendable, CaseIterable {
     case answered
     /// おまかせ（推奨の選択肢で決めてよい、という回答）
     case delegated
+    /// 依存先が決まって見直した結果、要らなくなった。回答しない（理由は `revision` に書く）
+    case dropped
+
+    /// 決まった（回答・おまかせ・要らなくなった）。依存する質問の見直しと、着手前の確認に進める
+    public var isSettled: Bool {
+        switch self {
+        case .answered, .delegated, .dropped: true
+        case .locked, .revising, .open, .clarifying: false
+        }
+    }
 }
 
 /// `repos/<owner>/<repo>/epics/<epic>/questions.json`（質問とその状態）。司令塔だけが書く
@@ -157,11 +167,22 @@ public struct QuestionsFile: StateFile {
         self.questions = questions
     }
 
+    /// その質問に直接依存する質問の id（並びはファイルの順）
+    public func dependents(of id: String) -> [String] {
+        questions.filter { $0.dependsOn.contains(id) }.map(\.id)
+    }
+
     public var violations: [String] {
         let dependencies = Dictionary(questions.map { ($0.id, $0.dependsOn) }) { first, _ in first }
         var violations = LocalIDs.problems(questions.map(\.id), dependencies: dependencies)
+        let states = Dictionary(questions.map { ($0.id, $0.state) }) { first, _ in first }
         for question in questions {
             violations += Self.problems(of: question)
+            // ロックを外すのは、依存先がすべて決まってから（依存先の回答を変えたら、ロックに戻す）
+            let waiting = question.dependsOn.filter { states[$0]?.isSettled == false }
+            if question.state != .locked && !waiting.isEmpty {
+                violations.append("\(question.id): 依存先（\(waiting.joined(separator: "・"))）が決まる前にロックを外している")
+            }
         }
         return violations
     }
@@ -177,13 +198,22 @@ public struct QuestionsFile: StateFile {
         }
         if !labels.contains(question.recommended) { problems.append("\(name): 推奨が選択肢に無い") }
         if question.state == .locked && question.dependsOn.isEmpty { problems.append("\(name): 依存先の無い質問はロックできない") }
-        // 説明を作っている間は、最後の問いの説明がまだ無い
-        if question.state == .clarifying && question.explanations.last.map({ $0.text != nil }) ?? true {
-            problems.append("\(name): 説明を作っている問いが無い")
+        if question.state == .dropped && question.revision?.by != .dependency {
+            problems.append("\(name): 要らなくなった質問は、依存先の見直しの理由が要る")
         }
         if let revision = question.revision, revision.from >= question.version { problems.append("\(name): revision.from は今の版より前") }
+        problems += explanationProblems(of: question)
         problems += answerProblems(of: question, labels: labels)
         return problems
+    }
+
+    /// 説明を待つ問い（`text` が nil）は、説明を作っている質問の最後の 1 つだけ
+    private static func explanationProblems(of question: Question) -> [String] {
+        let pending = question.explanations.indices.filter { question.explanations[$0].text == nil }
+        if question.state == .clarifying {
+            return pending == [question.explanations.count - 1] ? [] : ["\(question.id): 説明を作っている問いが無い"]
+        }
+        return pending.isEmpty ? [] : ["\(question.id): 説明を作っていない質問に、説明を待つ問いがある"]
     }
 
     /// 回答は answered（回答）と delegated（おまかせ）のときだけ持つ

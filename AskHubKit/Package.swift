@@ -19,6 +19,8 @@ let package = Package(
         .library(name: "AskHubKeychain", targets: ["AskHubKeychain"]),
         // ジョブと試行の段取り（失敗の区分ごとの扱い・生きている印の古さ・引き受け）。司令塔とワーカーで使う
         .library(name: "AskHubJobs", targets: ["AskHubJobs"]),
+        // epic の段取り（質問の回答・依存のロック・見直し）。司令塔で使う
+        .library(name: "AskHubEpics", targets: ["AskHubEpics"]),
         // macOS で launchd から常駐させる CLI。アプリからは使わない
         .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
     ],
@@ -29,6 +31,7 @@ let package = Package(
         .target(name: "AskHubStateStore", dependencies: ["AskHubProtocol"]),
         .target(name: "AskHubKeychain", dependencies: ["AskHubProtocol"]),
         .target(name: "AskHubJobs", dependencies: ["AskHubProtocol", "AskHubStateStore"]),
+        .target(name: "AskHubEpics", dependencies: ["AskHubProtocol"]),
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
@@ -37,6 +40,7 @@ let package = Package(
         .testTarget(name: "AskHubStateStoreTests", dependencies: ["AskHubStateStore", "AskHubProtocol"]),
         .testTarget(name: "AskHubKeychainTests", dependencies: ["AskHubKeychain", "AskHubProtocol"]),
         .testTarget(name: "AskHubJobsTests", dependencies: ["AskHubJobs", "AskHubStateStore", "AskHubProtocol"]),
+        .testTarget(name: "AskHubEpicsTests", dependencies: ["AskHubEpics", "AskHubProtocol"]),
         .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]
 )
