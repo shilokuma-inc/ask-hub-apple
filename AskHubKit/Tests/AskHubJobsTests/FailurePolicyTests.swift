@@ -60,10 +60,13 @@ struct FailurePolicyTests {
         #expect(decide(.usageLimit) == after(minutes: 60))
     }
 
-    @Test func githubOutageWaitsLonger() {
-        #expect(decide(.githubOutage) == after(minutes: 1))
-        #expect(decide(.githubOutage, [.githubOutage]) == after(minutes: 2))
-        #expect(decide(.githubOutage, Array(repeating: .githubOutage, count: 9)) == after(minutes: 30))
+    @Test(arguments: [FailureClass.githubOutage, .claudeOutage])
+    func outageWaitsLonger(_ outage: FailureClass) {
+        #expect(decide(outage) == after(minutes: 1))
+        #expect(decide(outage, [outage]) == after(minutes: 2))
+        #expect(decide(outage, Array(repeating: outage, count: 9)) == after(minutes: 30))
+        // ほかの障害の続きは数えない
+        #expect(decide(outage, [outage == .githubOutage ? .claudeOutage : .githubOutage]) == after(minutes: 1))
     }
 
     @Test func emptyOutageWaitsFallBackToOneMinute() {

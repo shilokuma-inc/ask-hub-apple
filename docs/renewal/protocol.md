@@ -304,7 +304,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `outcome` は `running`・`succeeded`・`failed`
 - `failure` は `{ "class": "…", "message": "…", "logExcerpt": "…", "retryAt": "…" }`。ログの抜粋は、トークンらしい文字列を伏せてから書く。`retryAt` は再開してよい時刻（利用上限の解除の時刻など）
 - 欄どうしの決まり: `running` のときは `endedAt` を書かず、終わったら必ず書く。`failure` は `failed` のときだけ書く。`heartbeatAt` と `endedAt` は `startedAt` より前にならない
-- 失敗の区分（`class`）: `runnerUnavailable`・`flaky`・`buildFailed`・`testFailed`・`reviewRequired`・`conflict`・`usageLimit`・`authExpired`・`githubOutage`・`macOffline`・`timeout`・`unexpected`（扱いは [architecture.md](architecture.md) の表）
+- 失敗の区分（`class`）: `runnerUnavailable`・`flaky`・`buildFailed`・`testFailed`・`reviewRequired`・`conflict`・`usageLimit`・`authExpired`・`githubOutage`・`claudeOutage`・`macOffline`・`timeout`・`unexpected`（扱いは [architecture.md](architecture.md) の表）
 - `heartbeatAt` は、長い試行の途中で一定の間隔で書く。古いまま止まった試行は、司令塔が `macOffline` か `timeout` として扱う
 
 ### macs/<mac>.json（ワーカーの生きている印）

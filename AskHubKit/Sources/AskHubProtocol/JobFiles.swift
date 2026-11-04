@@ -136,6 +136,8 @@ public enum FailureClass: String, Codable, Sendable, CaseIterable {
     case usageLimit
     case authExpired
     case githubOutage
+    /// Claude の API の障害（混み合い・5xx・つながらない）
+    case claudeOutage
     case macOffline
     case timeout
     case unexpected
