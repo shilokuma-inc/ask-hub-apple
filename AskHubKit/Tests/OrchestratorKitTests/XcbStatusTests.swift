@@ -68,10 +68,11 @@ struct XcbStatusTests {
     private static let returnLimit: Duration = .seconds(30)
 
     @Test func returnsEvenIfChildKeepsOutputOpen() async throws {
-        // xcb を止めても、xcb が起動した子プロセス（ssh など）が標準出力のパイプを持ち続ける
+        // xcb を止めても、xcb が起動した子プロセス（ssh など）が標準出力のパイプを持ち続ける。
+        // 作ったばかりのスクリプトは最初の起動に 0.5 秒ほどかかることがあるので、子プロセスを起動する前に止めないよう時間切れを長めに取る
         var start = ContinuousClock.now
         await #expect(throws: XcbStatusError.timedOut) {
-            try await XcbStatusCommand(timeout: .milliseconds(200), outputDrainTimeout: .milliseconds(300))
+            try await XcbStatusCommand(timeout: .seconds(2), outputDrainTimeout: .milliseconds(300))
                 .status(xcbPath: try script("sleep 60 &\nwait"))
         }
         #expect(ContinuousClock.now - start < Self.returnLimit)
