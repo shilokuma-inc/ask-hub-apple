@@ -125,7 +125,7 @@ struct EpicIntentsTests {
             kind: "startEpic", target: .init(type: "epic", epic: Self.epic), targetVersion: "12", payload: ["mac": .string("mac-mini")]
         ))
         #expect(start.target.epic == Self.epic)
-        #expect(start.target.goalVersion == 12)
+        #expect(start.target.version == 12)
         #expect(start.target.target == .init(type: "epic", epic: Self.epic))
         #expect(start.target.targetVersion == "12")
         #expect(start.mac.rawValue == "mac-mini")

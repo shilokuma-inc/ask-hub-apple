@@ -87,7 +87,7 @@ public struct StartEpicHandler: IntentHandler {
         let epicPath = StatePath.epic(target.repo, target.epic)
         guard let epic = try await context.read(EpicFile.self, at: epicPath) else { return .reject("epic が無い") }
         // 前の周で開始まで書いた（やり直し）
-        if epic.stage == .running, epic.mac == start.mac, epic.goalVersion == target.goalVersion { return .accept }
+        if epic.stage == .running, epic.mac == start.mac, epic.goalVersion == target.version { return .accept }
         if let problem = try await problem(starting: epic, with: start, in: context) { return .reject(problem) }
 
         let spec = JobSpec(kind: .prepareWorkspace, mac: start.mac, needs: .init(claude: false, build: false))
@@ -99,7 +99,7 @@ public struct StartEpicHandler: IntentHandler {
                 guard $0.stage == .awaitingStart else { return false }
                 $0.stage = .running
                 $0.mac = start.mac
-                $0.goalVersion = target.goalVersion
+                $0.goalVersion = target.version
                 $0.updatedAt = now
                 return true
             }
@@ -118,7 +118,7 @@ public struct StartEpicHandler: IntentHandler {
         guard epic.stage == .awaitingStart else { return "開始できる段階でない（今は \(epic.stage.rawValue)）" }
         let goal = try await context.read(GoalFile.self, at: StatePath.goal(epic.repo, epic.id))
         guard let goal else { return "ゴールが無い" }
-        guard goal.version == start.target.goalVersion else { return "ゴールが直された（今の版は \(goal.version)）。新しいゴールを確かめて開始し直す" }
+        guard goal.version == start.target.version else { return "ゴールが直された（今の版は \(goal.version)）。新しいゴールを確かめて開始し直す" }
         switch try await context.hasOpenJob(epic.repo, epic: epic.id, where: { $0.kind == .reviseGoal }) {
         case true?: return "ゴールを直している途中。直し終えてから開始する"
         case nil: return Self.unreadableJobs
@@ -183,13 +183,13 @@ public struct ReviseGoalHandler: IntentHandler {
         guard let epic = try await context.read(EpicFile.self, at: epicPath) else { return .reject("epic が無い") }
         guard epic.stage == .awaitingStart else { return .reject("ゴールを直せる段階でない（今は \(epic.stage.rawValue)）") }
         guard let goal = try await context.read(GoalFile.self, at: StatePath.goal(epic.repo, epic.id)) else { return .reject("ゴールが無い") }
-        guard goal.version == target.goalVersion else { return .reject("ゴールが直された（今の版は \(goal.version)）。新しいゴールに指示し直す") }
+        guard goal.version == target.version else { return .reject("ゴールが直された（今の版は \(goal.version)）。新しいゴールに指示し直す") }
         switch try await context.hasOpenJob(epic.repo, epic: epic.id, where: { $0.kind == .reviseGoal && $0.origin != revise.intent }) {
         case true?: return .reject("ほかの指示でゴールを直している途中。直し終えてから指示し直す")
         case nil: return .reject(StartEpicHandler.unreadableJobs)
         case false?: break
         }
-        let input: [String: JSONValue] = ["instruction": .string(revise.instruction), "goalVersion": .integer(Int64(target.goalVersion))]
+        let input: [String: JSONValue] = ["instruction": .string(revise.instruction), "goalVersion": .integer(Int64(target.version))]
         try await context.create(context.claudeJob(.reviseGoal, for: epic, origin: revise.intent, seed: "", input: input))
         return .accept
     }

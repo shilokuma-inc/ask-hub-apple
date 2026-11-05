@@ -105,19 +105,19 @@ public struct RequestIntent: Equatable, Sendable {
     }
 }
 
-/// epic を対象にする人の意図の共通の部分（`target` が `{type: epic, epic}`、`targetVersion` がゴールの版）
+/// epic を対象にする人の意図の共通の部分（`target` が `{type: epic, epic}`）
 public struct EpicTarget: Equatable, Sendable {
     public static let targetType = "epic"
 
     public var repo: RepositoryFullName
     public var epic: ULID
-    /// 確かめたゴールの版
-    public var goalVersion: Int
+    /// 確かめた対象の版（`targetVersion`）。開始・ゴールの修正ではゴールの版、分け方の判断では着手前の確認の結果の版
+    public var version: Int
 
-    public init(repo: RepositoryFullName, epic: ULID, goalVersion: Int) {
+    public init(repo: RepositoryFullName, epic: ULID, version: Int) {
         self.repo = repo
         self.epic = epic
-        self.goalVersion = goalVersion
+        self.version = version
     }
 
     init(envelope: IntentEnvelope) throws(MalformedIntent) {
@@ -125,12 +125,12 @@ public struct EpicTarget: Equatable, Sendable {
         guard let target = envelope.target, target.type == Self.targetType, let epic = target.epic, target.id == nil else {
             throw .init(detail: "target が epic でない")
         }
-        guard let version = envelope.targetVersion.flatMap(AnswerIntent.version) else { throw .init(detail: "targetVersion がゴールの版でない") }
-        self.init(repo: repo, epic: epic, goalVersion: version)
+        guard let version = envelope.targetVersion.flatMap(AnswerIntent.version) else { throw .init(detail: "targetVersion が対象の版でない") }
+        self.init(repo: repo, epic: epic, version: version)
     }
 
     public var target: IntentEnvelope.Target { .init(type: Self.targetType, epic: epic) }
-    public var targetVersion: String { String(goalVersion) }
+    public var targetVersion: String { String(version) }
 }
 
 /// 開始の人の意図（`kind` が `startEpic`）
