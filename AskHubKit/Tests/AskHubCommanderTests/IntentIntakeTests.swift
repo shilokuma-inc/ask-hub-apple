@@ -199,7 +199,7 @@ struct IntentIntakeTests {
         await #expect(throws: (any Error).self) { try await AnswerHandler().handle(envelope, in: context) }
         #expect(try await intake.processPending() == [.accepted(kind: "answer")])
         let readiness = try await jobs(in: store).filter { $0.kind == .checkReadiness }
-        #expect(readiness.map(\.state) == [.queued])
+        #expect(readiness.map(\.state) == [.assigned])
         let epic = try StateFileCoder.decode(EpicFile.self, from: #require(await store.data(at: StatePath.epic(Self.repo, Self.epic))))
         #expect(epic.stage == .checking)
     }

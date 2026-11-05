@@ -37,7 +37,8 @@ extension CommanderContext {
         job(JobSpec(kind: kind, mac: mac, needs: .init(claude: true, build: false), input: input), for: epic, origin: origin, seed: seed)
     }
 
-    /// `spec.mac` に割り当てるジョブ。id は `claudeJob` と同じく、元になった人の意図と `seed` から決める
+    /// `spec.mac` に割り当てるジョブ。担当の Mac を決めて作るので、最初から `assigned` にする（ワーカーは自分宛ての `assigned` を引き受ける）。
+    /// id は `claudeJob` と同じく、元になった人の意図と `seed` から決める
     func job(_ spec: JobSpec, for epic: EpicFile, origin: IntentReference, seed: String) -> JobFile {
         JobFile(
             id: .derived(from: origin.nonce, seed: "\(origin.keyId)/\(spec.kind.rawValue)/\(seed)"),
@@ -46,7 +47,7 @@ extension CommanderContext {
             epic: epic.id,
             assignedMac: spec.mac,
             needs: spec.needs,
-            state: .queued,
+            state: .assigned,
             input: spec.input,
             origin: origin,
             createdAt: timestamp,
