@@ -187,3 +187,37 @@ public struct ReviseGoalIntent: Equatable, Sendable {
 
     public var payload: [String: JSONValue] { ["instruction": .string(instruction)] }
 }
+
+/// 分け方の判断の人の意図（`kind` が `decideSplit`）。`targetVersion` は着手前の確認の結果（`readiness.json`）の版
+public struct DecideSplitIntent: Equatable, Sendable {
+    public enum Choice: String, Sendable, CaseIterable {
+        /// 今の epic をやめる。分け方の案ごとの依頼は、人がクライアントで出し直す
+        case split
+        /// このまま 1 つの epic で進める（着手前の確認をやり直して、ゴールを作る）
+        case proceed
+    }
+
+    public static let kind = "decideSplit"
+
+    public var target: EpicTarget
+    public var choice: Choice
+    public var intent: IntentReference
+
+    public init(target: EpicTarget, choice: Choice, intent: IntentReference) {
+        self.target = target
+        self.choice = choice
+        self.intent = intent
+    }
+
+    public init(envelope: IntentEnvelope) throws(MalformedIntent) {
+        guard envelope.kind == Self.kind else { throw .init(detail: "kind が decideSplit でない") }
+        let target = try EpicTarget(envelope: envelope)
+        let reader = try PayloadReader(envelope.payload, allowed: ["choice"])
+        guard let choice = Choice(rawValue: try reader.text("choice", required: true, limit: 16)) else {
+            throw .init(detail: "choice が split・proceed のどちらでもない")
+        }
+        self.init(target: target, choice: choice, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
+    }
+
+    public var payload: [String: JSONValue] { ["choice": .string(choice.rawValue)] }
+}
