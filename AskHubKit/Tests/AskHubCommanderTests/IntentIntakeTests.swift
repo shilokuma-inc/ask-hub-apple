@@ -182,6 +182,38 @@ struct IntentIntakeTests {
         #expect(try await jobs(in: store).count == 1)
     }
 
+    @Test func redoingReopenKeepsReadinessJobOfSameAnswer() async throws {
+        let (intake, store) = try await setUp([draft("q1")], stage: .awaitingStart)
+        // q1 に答えた後（着手前の確認の後）に、答え直す
+        var file = try await questions(in: store)
+        file = try QuestionFlow.accept(
+            QuestionJobsTests.answer("q1", intent: 1), epic: QuestionJobsTests.epicFile(), questions: file, at: Timestamp(Self.now)
+        ).questions
+        await store.put(StatePath.questions(Self.repo, Self.epic), data: try StateFileCoder.encode(file))
+        let nonce = try await put("q1", choice: "案2", in: store)
+        let stored = try #require(await store.data(at: StatePath.intent(device: keyID, nonce: nonce)))
+        let envelope = try intake.verifier.verify(stored: JSONValue(parsing: stored), now: Self.now)
+        // 質問の一覧を書く前に止まったとみなし、処理を 2 回行う
+        var context = intake.context
+        context.files = StateFileStore(store: FailingQuestionsWrite(base: store))
+        await #expect(throws: (any Error).self) { try await AnswerHandler().handle(envelope, in: context) }
+        #expect(try await intake.processPending() == [.accepted(kind: "answer")])
+        let readiness = try await jobs(in: store).filter { $0.kind == .checkReadiness }
+        #expect(readiness.map(\.state) == [.queued])
+        let epic = try StateFileCoder.decode(EpicFile.self, from: #require(await store.data(at: StatePath.epic(Self.repo, Self.epic))))
+        #expect(epic.stage == .checking)
+    }
+
+    @Test func jobIDsDifferBetweenKeysWithSameNonce() {
+        let context = CommanderContext(store: InMemoryStateStore(), mac: Self.mac) { Self.now }
+        let epic = QuestionJobsTests.epicFile()
+        let nonce = ULID.generate(at: Self.now)
+        let first = context.claudeJob(.explain, for: epic, origin: .init(keyId: keyID, nonce: nonce), seed: "q1", input: [:])
+        let other = KeyID(rawValue: String(repeating: "z", count: 43))!
+        let second = context.claudeJob(.explain, for: epic, origin: .init(keyId: other, nonce: nonce), seed: "q1", input: [:])
+        #expect(first.id != second.id)
+    }
+
     // MARK: - ULID
 
     @Test func generatesAndDerivesULIDs() throws {
@@ -199,5 +231,19 @@ struct IntentIntakeTests {
 private extension QuestionsFile {
     func question(_ id: String) -> Question? {
         questions.first { $0.id == id }
+    }
+}
+
+/// 質問の一覧の書き込みだけを失敗させる（処理の途中で止まったときの代わり）
+private struct FailingQuestionsWrite: StateStore {
+    let base: InMemoryStateStore
+
+    func read(_ path: String) async throws(StateStoreError) -> StoredBlob? { try await base.read(path) }
+
+    func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? { try await base.list(directory) }
+
+    func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
+        guard !path.hasSuffix("/questions.json") else { throw .transport("止まった") }
+        return try await base.write(path, data: data, replacing: sha, message: message)
     }
 }
