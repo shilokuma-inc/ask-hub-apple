@@ -54,6 +54,10 @@
         }
       }
     },
+    "notApplied": {
+      "anyOf": [{ "type": "array", "items": { "type": "string", "minLength": 1 } }, { "type": "null" }],
+      "description": "最後のゴールの修正で、反映しなかった人の指示とその理由（決まったことを変える指示など）"
+    },
     "comment": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }], "description": "Discussion のゴールの写しのコメントの id" }
   },
   "$defs": {

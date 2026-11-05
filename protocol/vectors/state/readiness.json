@@ -1,0 +1,260 @@
+{
+  "description": "repos/<owner>/<repo>/epics/<epic>/readiness.json（最後の着手前の確認の結果）を読む例。schemaValid は protocol/schemas/state/readiness.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。知らない欄は、スキーマでは弾くが、読む側は読み飛ばす。スキーマで表せない決まり（欄どうしの関係・存在しない日付など）は、スキーマに合っても読む側が弾く",
+  "schema": "state/readiness.schema.json",
+  "cases": [
+    {
+      "name": "too-large",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "tooLarge",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [
+          {
+            "title": "集計",
+            "summary": "日ごとの集計を作る"
+          },
+          {
+            "title": "画面",
+            "summary": "ランキングの画面を作る"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "ready",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "ready",
+        "reason": "そろった",
+        "split": [],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "undecided",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "tooLarge",
+        "reason": "保存の方式が決めきれない",
+        "split": [],
+        "round": 3,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "tooLarge",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [
+          {
+            "title": "集計",
+            "summary": "日ごとの集計を作る"
+          },
+          {
+            "title": "画面",
+            "summary": "ランキングの画面を作る"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z",
+        "futureField": 1
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "future-version",
+      "value": {
+        "v": 2,
+        "version": 3,
+        "verdict": "tooLarge",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [
+          {
+            "title": "集計",
+            "summary": "日ごとの集計を作る"
+          },
+          {
+            "title": "画面",
+            "summary": "ランキングの画面を作る"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    },
+    {
+      "name": "missing-version",
+      "value": {
+        "version": 3,
+        "verdict": "tooLarge",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [
+          {
+            "title": "集計",
+            "summary": "日ごとの集計を作る"
+          },
+          {
+            "title": "画面",
+            "summary": "ランキングの画面を作る"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": false,
+      "read": "missingVersion"
+    },
+    {
+      "name": "version-not-integer",
+      "value": {
+        "v": "1",
+        "version": 3,
+        "verdict": "tooLarge",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [
+          {
+            "title": "集計",
+            "summary": "日ごとの集計を作る"
+          },
+          {
+            "title": "画面",
+            "summary": "ランキングの画面を作る"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "split-when-ready",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "ready",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [
+          {
+            "title": "集計",
+            "summary": "日ごとの集計を作る"
+          },
+          {
+            "title": "画面",
+            "summary": "ランキングの画面を作る"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-verdict",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "stuck",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [
+          {
+            "title": "集計",
+            "summary": "日ごとの集計を作る"
+          },
+          {
+            "title": "画面",
+            "summary": "ランキングの画面を作る"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-reason",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "tooLarge",
+        "reason": "",
+        "split": [
+          {
+            "title": "集計",
+            "summary": "日ごとの集計を作る"
+          },
+          {
+            "title": "画面",
+            "summary": "ランキングの画面を作る"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-part-title",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "tooLarge",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [
+          {
+            "title": "",
+            "summary": "…"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "version-zero",
+      "value": {
+        "v": 1,
+        "version": 0,
+        "verdict": "tooLarge",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [
+          {
+            "title": "集計",
+            "summary": "日ごとの集計を作る"
+          },
+          {
+            "title": "画面",
+            "summary": "ランキングの画面を作る"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

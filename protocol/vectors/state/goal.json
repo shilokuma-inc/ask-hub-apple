@@ -954,6 +954,60 @@
       },
       "schemaValid": false,
       "read": "malformed"
+    },
+    {
+      "name": "with-not-applied",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "…",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": [
+          "…"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "…",
+            "dependsOn": [],
+            "state": "pending"
+          }
+        ],
+        "humanTasks": [],
+        "notApplied": [
+          "q1 を変える指示は、回答を変えて直す"
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "not-applied-empty-line",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "…",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": [
+          "…"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "…",
+            "dependsOn": [],
+            "state": "pending"
+          }
+        ],
+        "humanTasks": [],
+        "notApplied": [
+          ""
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
     }
   ]
 }

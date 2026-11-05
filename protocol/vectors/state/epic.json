@@ -365,6 +365,65 @@
       },
       "schemaValid": false,
       "read": "malformed"
+    },
+    {
+      "name": "with-summary",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "discussion": 512,
+        "stage": "running",
+        "mac": "macbook-a",
+        "branch": "askhub/01JCEP1C000000000000000001",
+        "finalPullRequest": null,
+        "goalVersion": 2,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:20:00Z",
+        "summary": "日ごとのランキングを出す。毎日 0 時に入れ替える"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty-summary",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "discussion": 512,
+        "stage": "running",
+        "mac": "macbook-a",
+        "branch": "askhub/01JCEP1C000000000000000001",
+        "finalPullRequest": null,
+        "goalVersion": 2,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:20:00Z",
+        "summary": ""
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "awaiting-split",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "discussion": 512,
+        "stage": "awaitingSplit",
+        "mac": null,
+        "branch": null,
+        "finalPullRequest": null,
+        "goalVersion": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
     }
   ]
 }
