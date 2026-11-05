@@ -62,13 +62,17 @@ public struct AnswerHandler: IntentHandler {
                 let dependencies = basis.dependencies.map { "\($0.id):\($0.version):\($0.answer?.nonce.rawValue ?? "-")" }
                 let seed = "\(question)/\(basis.version)/\(dependencies.joined(separator: ","))"
                 try await context.create(context.claudeJob(.reviseQuestion, for: epic, origin: answer.intent, seed: seed, input: input))
+            // 取り消すのは、ほかの意図が作ったジョブだけ。この意図が前の周で作ったジョブ（やり直しのとき）は残す
             case let .cancel(question):
                 try await context.cancelJobs(repo, epic: epic.id) { job in
                     [.explain, .reviseQuestion].contains(job.kind) && job.input?["question"]?.stringValue == question
+                        && job.origin != answer.intent
                 }
             case .reopen:
                 // 着手前の確認とゴールの修正をやめ、回答に戻す
-                try await context.cancelJobs(repo, epic: epic.id) { [.checkReadiness, .reviseGoal].contains($0.kind) }
+                try await context.cancelJobs(repo, epic: epic.id) { job in
+                    [.checkReadiness, .reviseGoal].contains(job.kind) && job.origin != answer.intent
+                }
                 try await setStage(.asking, of: epic, in: context)
             case .checkReadiness:
                 try await context.create(context.claudeJob(.checkReadiness, for: epic, origin: answer.intent, seed: "", input: [:]))
