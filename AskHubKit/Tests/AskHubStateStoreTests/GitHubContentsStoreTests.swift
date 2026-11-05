@@ -99,6 +99,39 @@ struct GitHubContentsStoreTests {
         #expect(try await store.list("missing") == nil)
     }
 
+    @Test func listsFilesUnderDirectoryThroughGitTrees() async throws {
+        let root = """
+        [{"type":"dir","name":"intents","path":"intents","sha":"abc123"},\
+        {"type":"file","name":"version.json","path":"version.json","sha":"v"}]
+        """
+        let tree = """
+        {"sha":"abc123","truncated":false,"tree":[{"path":"k1","type":"tree","sha":"t1"},\
+        {"path":"k1/01.json","type":"blob","sha":"s1"},{"path":"k2/02.json","type":"blob","sha":"s2"}]}
+        """
+        let transport = StubTransport([.json(200, root), .json(200, tree)])
+        let files = try await store(transport, branch: "main").listFiles(under: "intents")
+        #expect(files == [
+            DirectoryEntry(name: "01.json", path: "intents/k1/01.json", kind: .file, sha: "s1"),
+            DirectoryEntry(name: "02.json", path: "intents/k2/02.json", kind: .file, sha: "s2")
+        ])
+        // 親（リポジトリの直下）の一覧から tree の sha を読み、Git Trees API で下まで読む
+        let urls = transport.requests.compactMap(\.url?.absoluteString)
+        let first = urls.first ?? ""
+        #expect(first.hasSuffix("/repos/shilokuma-inc/askhub-state/contents/?ref=main") || first.hasSuffix("/contents?ref=main"))
+        #expect(urls.last?.hasSuffix("/repos/shilokuma-inc/askhub-state/git/trees/abc123?recursive=1") == true)
+    }
+
+    @Test func listFilesRefusesTruncatedTreeAndReportsMissingDirectory() async throws {
+        let root = #"[{"type":"dir","name":"intents","path":"intents","sha":"abc123"}]"#
+        let truncated = #"{"sha":"abc123","truncated":true,"tree":[]}"#
+        let transport = StubTransport([.json(200, root), .json(200, truncated), .json(200, root)])
+        let store = store(transport)
+        // 一覧が途中で切れたら、足りない一覧で処理を進めない
+        await #expect(throws: (any Error).self) { try await store.listFiles(under: "intents") }
+        #expect(try await store.listFiles(under: "consumed") == nil)
+        await #expect(throws: StateStoreError.invalidPath) { try await store.listFiles(under: "../intents") }
+    }
+
     // MARK: - 書き込み
 
     @Test func writesBase64WithShaAndForgetsETag() async throws {

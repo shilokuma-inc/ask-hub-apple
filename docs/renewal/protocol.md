@@ -441,7 +441,8 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 { "v": 1, "kind": "approveMerge", "consumedAt": "…", "result": "rejected", "reason": "targetVersion が今の最終 PR の head と違う" }
 ```
 
-- 司令塔は、確かめた意図ごとに `consumed/<keyId>/<nonce>.json` を版なしで作る。すでにあれば断られるので、5 の確認と記録が 1 回の書き込みで済み、同じ意図を 2 度処理しない
+- 司令塔は、確かめた意図ごとに、処理した後で `consumed/<keyId>/<nonce>.json` を版なしで作る。すでにあれば断られるので、同じ意図を 2 度記録しない。処理した記録の無い意図だけを `nonce` の順に処理し、処理はやり直しても結果が変わらない形にする（[flows.md](flows.md) の「司令塔の動き」）
+- 置き場所（`intents/<device>/<nonce>.json`）と封筒の `keyId`・`nonce` が食い違う意図は、指示として扱わず、記録も作らない
 - 記録するのは、署名を確かめられた意図だけにする（1〜3 が合ったもの）。署名の合わない意図の番号で記録を作ると、本物の意図を使えなくできてしまうため
 - `result` は `accepted`（指示として扱った）か `rejected`（4・6 が合わなかった）。`reason` は `rejected` のときだけ書く
 
