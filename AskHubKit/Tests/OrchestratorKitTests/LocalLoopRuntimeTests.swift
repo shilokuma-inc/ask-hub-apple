@@ -277,16 +277,16 @@ struct LocalLoopRuntimeTests {
         #expect(result.output.hasSuffix("ASKHUB_DISCUSSION_URL: https://github.com/o/r/discussions/1\n"))
     }
 
-    /// 子プロセス（`sleep 30`）の終了を待たずに戻ったとみなす上限。
-    /// CI のランナーではテストのプロセス全体が 5 秒ほど止まることがあるので、ふだんの所要時間（1 秒未満）より大きく取る
-    private static let returnLimit: Duration = .seconds(10)
+    /// 子プロセス（`sleep 60`）の終了を待たずに戻ったとみなす上限。子プロセスの終了を待ってしまうと 60 秒かかる。
+    /// CI のランナーでは負荷でテストが 10 秒ほど遅れることがあるので、ふだんの所要時間（1 秒未満）より大きく取る
+    private static let returnLimit: Duration = .seconds(30)
 
     @Test func runStopsCommandAfterTimeout() async throws {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }
 
         let start = ContinuousClock.now
-        let result = try await LocalLoopRuntime().run(["/bin/sleep", "30"], input: "", for: repository, timeout: .milliseconds(300))
+        let result = try await LocalLoopRuntime().run(["/bin/sleep", "60"], input: "", for: repository, timeout: .milliseconds(300))
         #expect(result.status != 0)
         #expect(ContinuousClock.now - start < Self.returnLimit)
     }
@@ -299,7 +299,7 @@ struct LocalLoopRuntimeTests {
         // sh が止まっても子の sleep がパイプを持ち続けるので、読み切りの上限も短くする
         let runtime = LocalLoopRuntime(killGracePeriod: .milliseconds(300), outputDrainTimeout: .milliseconds(300))
         let result = try await runtime.run(
-            ["/bin/sh", "-c", "trap '' TERM; sleep 30"],
+            ["/bin/sh", "-c", "trap '' TERM; sleep 60"],
             input: "",
             for: repository,
             timeout: .milliseconds(300)
@@ -312,13 +312,14 @@ struct LocalLoopRuntimeTests {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }
 
-        // 子プロセス（sleep）がパイプを持ったまま残っても、決めた時間で読み切りをやめて戻る
+        // 子プロセス（sleep）がパイプを持ったまま残っても、決めた時間で読み切りをやめて戻る。
+        // 負荷で sh の終了が遅れても時間切れで止めないよう、時間切れは上限と同じにする
         let start = ContinuousClock.now
         let result = try await LocalLoopRuntime(outputDrainTimeout: .milliseconds(500)).run(
-            ["/bin/sh", "-c", "sleep 30 & echo done"],
+            ["/bin/sh", "-c", "sleep 60 & echo done"],
             input: "",
             for: repository,
-            timeout: .seconds(10)
+            timeout: Self.returnLimit
         )
         #expect(result.status == 0)
         #expect(result.output.contains("done"))
