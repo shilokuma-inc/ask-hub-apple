@@ -107,6 +107,8 @@
 - 移管・改名されたリポジトリを旧名の REST（`repos/{旧owner}/{repo}/…`）で操作すると、GitHub のリダイレクトを URLSession が送り直すときに `Authorization` が付かず、
   書き込みは `401 Requires authentication`、読み取りは未認証扱い（IP ごとに 60 回/時）で `rateLimited` になった。検索は新しい名前で返すので、名前で照合する処理は黙って外れる。
   GraphQL の `repository(owner:, name:)` は旧名でも移管・改名の後のリポジトリ（`nameWithOwner` が新しい名前）を返すので、今の名前はこれで確かめる（2026-10-27、Issue #757）
+- Contents API のディレクトリの一覧は 1,000 件までで、続きを読む方法が無い。人の意図のように増え続けるディレクトリは、親の一覧からディレクトリの tree の sha を読み、
+  Git Trees API（`git/trees/<sha>?recursive=1`。10 万件・7 MB まで。超えると `truncated` が true）で下まで 1 度に読む。tree は sha で中身が決まるので、ETag で使い回せる（2026-11-06）
 
 ## ビルド・テスト
 
