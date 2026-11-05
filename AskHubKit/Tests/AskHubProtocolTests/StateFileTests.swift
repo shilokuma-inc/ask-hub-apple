@@ -22,7 +22,8 @@ struct StateFileKind: Sendable, CustomTestStringConvertible {
         .of(DeviceFile.self, "device"),
         .of(ConsumedIntentFile.self, "consumed"),
         .of(QuestionsFile.self, "questions"),
-        .of(GoalFile.self, "goal")
+        .of(GoalFile.self, "goal"),
+        .of(ReadinessFile.self, "readiness")
     ]
 
     static func of<File: StateFile>(_ type: File.Type, _ name: String) -> Self {

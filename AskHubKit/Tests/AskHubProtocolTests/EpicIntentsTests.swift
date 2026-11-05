@@ -26,6 +26,9 @@ struct EpicIntentsTests {
         },
         Kind(vectors: "payloads/reviseGoal.json", kind: "reviseGoal", target: .init(type: "epic", epic: epic), targetVersion: "3") {
             try ReviseGoalIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/decideSplit.json", kind: "decideSplit", target: .init(type: "epic", epic: epic), targetVersion: "3") {
+            try DecideSplitIntent(envelope: $0).payload
         }
     ]
 
