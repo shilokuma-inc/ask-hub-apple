@@ -31,10 +31,11 @@ public enum CommanderError: Error, Equatable, Sendable {
 // MARK: - ジョブ
 
 extension CommanderContext {
-    /// 常時オンの Mac で Claude を呼ぶジョブ。id は元になった人の意図と `seed` から決めるので、やり直しても同じジョブを 2 つ作らない
+    /// 常時オンの Mac で Claude を呼ぶジョブ。id は元になった人の意図（鍵と番号。処理した記録と同じ組）と `seed` から決めるので、
+    /// やり直しても同じジョブを 2 つ作らない
     func claudeJob(_ kind: JobKind, for epic: EpicFile, origin: IntentReference, seed: String, input: [String: JSONValue]) -> JobFile {
         JobFile(
-            id: .derived(from: origin.nonce, seed: "\(kind.rawValue)/\(seed)"),
+            id: .derived(from: origin.nonce, seed: "\(origin.keyId)/\(kind.rawValue)/\(seed)"),
             kind: kind,
             repo: epic.repo,
             epic: epic.id,
