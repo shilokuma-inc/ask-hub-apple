@@ -33,8 +33,16 @@ public enum CommanderError: Error, Equatable, Sendable {
 extension CommanderContext {
     /// 常時オンの Mac で Claude を呼ぶジョブ。id は元になった人の意図（鍵と番号。処理した記録と同じ組）と `seed` から決めるので、
     /// やり直しても同じジョブを 2 つ作らない
-    func claudeJob(_ kind: JobKind, for epic: EpicFile, origin: IntentReference, seed: String, input: [String: JSONValue]) -> JobFile {
-        job(JobSpec(kind: kind, mac: mac, needs: .init(claude: true, build: false), input: input), for: epic, origin: origin, seed: seed)
+    func claudeJob(
+        _ kind: JobKind,
+        for epic: EpicFile,
+        origin: IntentReference,
+        seed: String,
+        input: [String: JSONValue],
+        after parents: [ULID] = []
+    ) -> JobFile {
+        let spec = JobSpec(kind: kind, mac: mac, needs: .init(claude: true, build: false), input: input, dependsOn: parents)
+        return job(spec, for: epic, origin: origin, seed: seed)
     }
 
     /// `spec.mac` に割り当てるジョブ。担当の Mac を決めて作るので、最初から `assigned` にする（ワーカーは自分宛ての `assigned` を引き受ける）。
@@ -47,6 +55,7 @@ extension CommanderContext {
             epic: epic.id,
             assignedMac: spec.mac,
             needs: spec.needs,
+            dependsOn: spec.dependsOn,
             state: .assigned,
             input: spec.input,
             origin: origin,
@@ -135,6 +144,8 @@ struct JobSpec {
     var mac: MacName
     var needs: JobFile.Needs
     var input: [String: JSONValue] = [:]
+    /// 先に成功している必要のあるジョブ。Claude のジョブの結果から作るジョブは、そのジョブが結果を書き終えてから動かす
+    var dependsOn: [ULID] = []
 }
 
 extension JobFile {
