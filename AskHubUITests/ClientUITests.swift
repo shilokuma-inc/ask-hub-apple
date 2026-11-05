@@ -139,6 +139,7 @@ final class ClientUITests: XCTestCase {
     }
 
     /// 自由回答（問題あり）の方向にスワイプすると、カードは飛ばずにその方向で止まり、文を書くシートが出る。
+    /// シートの上には何について書いているか（札の題）を出し、iOS では入力欄を押すまでキーボードを出さない。
     /// 送らずに閉じると元の位置に戻り、書いて送るとカードが飛んで次のカードが出る
     @MainActor
     func testFreeAnswerSwipeHoldsCardUntilSent() {
@@ -164,6 +165,19 @@ final class ClientUITests: XCTestCase {
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(toFreeAnswer))
         let send = app.buttons["送る"]
         XCTAssertTrue(send.waitForExistence(timeout: 5))
+        let subject = app.descendants(matching: .any)["textRequest.subject"]
+        XCTAssertTrue(subject.waitForExistence(timeout: 5))
+        XCTAssertTrue(subject.label.contains("振り返りの画面を日曜の夜に開ける"), subject.label)
+        let field = app.descendants(matching: .any)["textRequest.field"].firstMatch
+        #if os(iOS)
+        // 開いてすぐはキーボードを出さず、止めたカードを見せる。入力欄を押すと出る
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertFalse(keyboard.waitForExistence(timeout: 1.5))
+        field.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        #else
+        field.tap()
+        #endif
         app.typeText("crash")
         send.tap()
         XCTAssertTrue(app.buttons["取り消す"].waitForExistence(timeout: 5))
