@@ -75,6 +75,27 @@ struct StateFileTests {
         }
     }
 
+    /// 例のファイルの 1 つを読む
+    private func read<File: StateFile>(_ type: File.Type, _ vectors: String, case name: String) throws -> File {
+        let file = try #require(try JSONSerialization.jsonObject(with: Vectors.data(vectors)) as? [String: Any])
+        let cases = try #require(file["cases"] as? [[String: Any]])
+        let value = try #require(cases.first { $0["name"] as? String == name }?["value"], "\(name)")
+        return try StateFileCoder.decode(File.self, from: JSONSerialization.data(withJSONObject: value))
+    }
+
+    /// 書き直して読み直すだけでは、読み落とした欄に気づけないので、読んだ値を直接確かめる
+    @Test func readsKnownValuesOfSplitSummaryAndNotApplied() throws {
+        let tooLarge = try read(ReadinessFile.self, "state/readiness.json", case: "too-large")
+        #expect(tooLarge.verdict == .tooLarge)
+        #expect(tooLarge.split == [
+            ReadinessFile.Part(title: "集計", summary: "日ごとの集計を作る"),
+            ReadinessFile.Part(title: "画面", summary: "ランキングの画面を作る")
+        ])
+        #expect(try read(ReadinessFile.self, "state/readiness.json", case: "more-questions").verdict == .moreQuestions)
+        #expect(try read(EpicFile.self, "state/epic.json", case: "with-summary").summary == "日ごとのランキングを出す。毎日 0 時に入れ替える")
+        #expect(try read(GoalFile.self, "state/goal.json", case: "with-not-applied").notApplied == ["q1 を変える指示は、回答を変えて直す"])
+    }
+
     @Test func schemasUseOnlySupportedKeywords() throws {
         let directory = Vectors.directory.deletingLastPathComponent().appendingPathComponent("schemas")
         let files = try FileManager.default.subpathsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".schema.json") }

@@ -133,4 +133,16 @@ struct EpicIntentsTests {
         #expect(start.target.targetVersion == "12")
         #expect(start.mac.rawValue == "mac-mini")
     }
+
+    /// 選んだ方で epic を分けるかが決まるので、読んだ値を直接確かめる
+    @Test func readsDecideSplitChoice() throws {
+        let target = IntentEnvelope.Target(type: "epic", epic: Self.epic)
+        for (text, choice) in [("split", DecideSplitIntent.Choice.split), ("proceed", .proceed)] {
+            let decide = try DecideSplitIntent(envelope: envelope(
+                kind: "decideSplit", target: target, targetVersion: "3", payload: ["choice": .string(text)]
+            ))
+            #expect(decide.choice == choice)
+            #expect(decide.target.version == 3)
+        }
+    }
 }
