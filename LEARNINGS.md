@@ -229,6 +229,10 @@
 - CI（macos-26-arm64）の `swift test --package-path AskHubKit` では、負荷でテストが一律に遅れることがあり、その幅が 5 秒（#699）から 10.9 秒（2026-11-05）に広がった。
   `ContinuousClock.now - start < 上限` で「子プロセスを待たずに戻った」ことを確かめるテストは、上限を 30 秒、待たないはずの子プロセスの `sleep` を 60 秒にそろえている（`LocalLoopRuntimeTests.returnLimit`・`XcbStatusTests.returnLimit`）。
   同じ形のテストを足すときは、上限をふだんの所要時間でなく CI の遅れに合わせ、`sleep` は上限の倍にする。成功を期待するコマンドの `timeout` も上限より短くしない
+- テストの中で作ったばかりのスクリプト（`#!/bin/sh` の実行ファイル）は、最初の起動に 0.15〜0.5 秒かかる（2 回目からは速い）。
+  `XcbStatusTests` は時間切れを 200ms にしていたため、スクリプトが子プロセスを起動する前に止めてしまい、確かめたいこと（子プロセスがパイプを持ち続けても返る）を確かめられていなかった。
+  `/bin/sh` でも、`swift test` で全体を並べて流すと準備（子プロセスの起動・`trap` の設定）が 500ms に間に合わないことがある（`LocalLoopRuntimeTests` の `child.pid` を読むテストが落ちていた）。
+  時間切れで止める前にスクリプトに準備させたいテストは、時間切れを数秒にし（`LocalLoopRuntimeTests.setupTimeout` は 3 秒）、実装を一時的に壊して（読み切りの上限を伸ばすなど）テストが落ちることを確かめる（2026-11-06）
 
 ## Keychain
 
