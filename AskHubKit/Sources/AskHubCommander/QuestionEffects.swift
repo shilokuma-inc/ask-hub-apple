@@ -37,15 +37,21 @@ extension CommanderContext {
         }
     }
 
-    /// epic の段階を変える。`change` で、ほかの欄も一緒に変えられる
+    /// 開始の前の段階（質問づくり・回答・着手前の確認・分け方の判断・開始の待ち）
+    static let planningStages: Set<EpicStage> = [.drafting, .asking, .checking, .awaitingSplit, .awaitingStart]
+
+    /// epic の段階を変える。今の段階が `from` のどれかのときだけ変える（開始した・やめた epic を戻さない）。
+    /// `change` で、ほかの欄も一緒に変えられる
     func setStage(
         _ stage: EpicStage,
         of epic: EpicFile,
+        from stages: Set<EpicStage> = planningStages,
         change: @escaping (inout EpicFile) -> Void = { _ in }
     ) async throws(CommanderError) {
         let now = timestamp
         do {
             try await files.update(EpicFile.self, at: StatePath.epic(epic.repo, epic.id), message: "epic を \(stage.rawValue) にする") {
+                guard stages.contains($0.stage) else { return false }
                 let before = $0
                 $0.stage = stage
                 change(&$0)
