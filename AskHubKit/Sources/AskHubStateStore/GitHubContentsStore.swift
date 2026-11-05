@@ -1,4 +1,5 @@
 import AskHubProtocol
+import CryptoKit
 import Foundation
 
 /// GitHub の Contents API で状態リポジトリを読み書きする。
@@ -192,7 +193,10 @@ public struct GitHubContentsStore: StateStore {
         request.setValue("application/vnd.github.raw+json", forHTTPHeaderField: "Accept")
         let (body, response) = try await send(request)
         switch response.statusCode {
-        case 200: return StoredBlob(data: body, sha: sha)
+        case 200:
+            // 版を読んでから中身を読むまでの間に書き換わっていたら、新しい中身に古い版を付けてしまう
+            guard GitBlobSHA.of(body) == sha else { throw .unexpected(status: 200, message: "raw で読んだ中身が、読んだときの版と合わない（読み直す）") }
+            return StoredBlob(data: body, sha: sha)
         case 404: return nil
         default: throw StateStoreError.classify(response, body: body, now: now())
         }
@@ -240,6 +244,16 @@ public struct GitHubContentsStore: StateStore {
         } catch {
             throw .transport(String(describing: type(of: error)))
         }
+    }
+}
+
+/// Git の blob の sha（`blob <長さ>\0` を前に付けた SHA-1 の 16 進の小文字）
+enum GitBlobSHA {
+    static func of(_ data: Data) -> String {
+        var hasher = Insecure.SHA1()
+        hasher.update(data: Data("blob \(data.count)\0".utf8))
+        hasher.update(data: data)
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }
 
