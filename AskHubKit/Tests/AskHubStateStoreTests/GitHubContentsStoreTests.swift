@@ -101,13 +101,22 @@ struct GitHubContentsStoreTests {
 
     @Test func readsLargeFileAsRaw() async throws {
         // 1 MB を超えるファイルは、encoding が none で content が空で返る。raw の形で読み直す
-        let large = #"{"type":"file","name":"1","path":"attachments/k/n/1","sha":"big","encoding":"none","content":""}"#
         let raw = Data(repeating: 0xFF, count: 2_000_000)
+        let sha = GitBlobSHA.of(raw)
+        let large = #"{"type":"file","name":"1","path":"attachments/k/n/1","sha":"\#(sha)","encoding":"none","content":""}"#
         let transport = StubTransport([.json(200, large), .init(status: 200, headers: [:], body: raw)])
         let blob = try await store(transport, branch: "main").read("attachments/k/n/1")
-        #expect(blob == StoredBlob(data: raw, sha: "big"))
+        #expect(blob == StoredBlob(data: raw, sha: sha))
         #expect(transport.requests.last?.value(forHTTPHeaderField: "Accept") == "application/vnd.github.raw+json")
         #expect(transport.requests.last?.url?.query?.contains("ref=main") == true)
+    }
+
+    @Test func refusesRawContentsThatDoNotMatchVersion() async throws {
+        // 版を読んでから中身を読むまでの間に書き換わったら、古い版の付いた新しい中身を返さない
+        let old = GitBlobSHA.of(Data("old".utf8))
+        let large = #"{"type":"file","name":"1","path":"attachments/k/n/1","sha":"\#(old)","encoding":"none","content":""}"#
+        let transport = StubTransport([.json(200, large), .init(status: 200, headers: [:], body: Data("new".utf8))])
+        await #expect(throws: (any Error).self) { try await store(transport).read("attachments/k/n/1") }
     }
 
     @Test func listsFilesUnderDirectoryThroughGitTrees() async throws {

@@ -113,14 +113,24 @@ struct EpicHandlersTests {
         let good = try await put("request", payload: payload(size: data.count, hash: hash), nonce: nonce(0), in: store)
         await store.put(StatePath.attachment(device: keyID, nonce: good, number: 1), data: data)
         let zero = String(repeating: "0", count: 64)
-        let wrong = try await put("request", payload: payload(size: data.count, hash: zero), nonce: nonce(1), in: store)
-        await store.put(StatePath.attachment(device: keyID, nonce: wrong, number: 1), data: data)
-        try await put("request", payload: payload(size: data.count, hash: hash), nonce: nonce(2), in: store)
+        let wrongHash = try await put("request", payload: payload(size: data.count, hash: zero), nonce: nonce(1), in: store)
+        await store.put(StatePath.attachment(device: keyID, nonce: wrongHash, number: 1), data: data)
+        let wrongSize = try await put("request", payload: payload(size: data.count + 1, hash: hash), nonce: nonce(2), in: store)
+        await store.put(StatePath.attachment(device: keyID, nonce: wrongSize, number: 1), data: data)
+        let missing = try await put("request", payload: payload(size: data.count, hash: hash), nonce: nonce(3), in: store)
+        let mismatch = "添付 1（mock.png）の大きさかハッシュが、依頼と合わない"
         #expect(try await intake(store).processPending() == [
             .accepted(kind: "request"),
-            .rejected(kind: "request", reason: "添付 1（mock.png）の大きさかハッシュが、依頼と合わない"),
-            .rejected(kind: "request", reason: "添付 1（mock.png）が無い")
+            .ignored(reason: mismatch),
+            .ignored(reason: mismatch),
+            .ignored(reason: "添付 1（mock.png）が無い")
         ])
+        // 添付は確かめることなので、合わない依頼は記録を作らずに残し、置き直せば次の周で受け付ける
+        for nonce in [wrongHash, wrongSize, missing] {
+            #expect(await store.data(at: StatePath.consumed(device: keyID, nonce: nonce)) == nil)
+        }
+        await store.put(StatePath.attachment(device: keyID, nonce: missing, number: 1), data: data)
+        #expect(try await intake(store).processPending().contains(.accepted(kind: "request")))
     }
 
     @Test func redoingRequestDoesNotDuplicate() async throws {
@@ -210,6 +220,21 @@ struct EpicHandlersTests {
         (store, epic) = try await awaitingStart(stage: .asking)
         try await start(epic, in: store)
         #expect(try await intake(store).processPending().first == .rejected(kind: "startEpic", reason: "開始できる段階でない（今は asking）"))
+    }
+
+    @Test func startIsRejectedWhileUnreadableFilesHideState() async throws {
+        // 知らない版のジョブがあると、ゴールを直している途中かを確かめられない
+        var (store, epic) = try await awaitingStart()
+        await store.put(StatePath.job(Self.repo, epic: epic.id, job: .generate(at: Self.now)), data: Data(#"{"v":2}"#.utf8))
+        try await start(epic, in: store)
+        #expect(try await intake(store).processPending().first == .rejected(kind: "startEpic", reason: StartEpicHandler.unreadableJobs))
+
+        // 知らない版の epic があると、同時に回している数を確かめられない
+        (store, epic) = try await awaitingStart()
+        await store.put(StatePath.epic(Self.repo, .generate(at: Self.now)), data: Data(#"{"v":2}"#.utf8))
+        try await start(epic, in: store)
+        let reason = "読めない epic があり、同時に回している数を確かめられない（司令塔を新しくする）"
+        #expect(try await intake(store).processPending().first == .rejected(kind: "startEpic", reason: reason))
     }
 
     @Test func startWaitsForOtherRunningEpic() async throws {

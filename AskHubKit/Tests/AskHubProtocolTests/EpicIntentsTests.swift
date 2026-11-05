@@ -86,10 +86,15 @@ struct EpicIntentsTests {
     @Test func readsRequestAttachments() throws {
         let hash = String(repeating: "a", count: 64)
         let attachment = JSONValue.object(["n": .integer(1), "name": .string("mock.png"), "size": .integer(1024), "sha256": .string(hash)])
-        let payload: [String: JSONValue] = ["title": .string("ランキング"), "attachments": .array([attachment])]
+        let payload: [String: JSONValue] = ["title": .string("ランキング"), "body": .string("日ごとに入れ替えたい"), "attachments": .array([attachment])]
         let request = try RequestIntent(envelope: envelope(kind: "request", target: nil, targetVersion: nil, payload: payload))
+        #expect(request.body == "日ごとに入れ替えたい")
+        #expect(request.payload["body"] == .string("日ごとに入れ替えたい"))
+        // 依頼は版を持つものを対象にしないので、targetVersion があれば読まない
+        #expect(throws: MalformedIntent.self) {
+            try RequestIntent(envelope: envelope(kind: "request", target: nil, targetVersion: "1", payload: payload))
+        }
         #expect(request.attachments == [RequestAttachment(number: 1, name: "mock.png", size: 1024, sha256: hash)])
-        #expect(request.body.isEmpty)
         #expect(request.intent.nonce.rawValue == "01JCN0NCE00000000000000001")
     }
 
