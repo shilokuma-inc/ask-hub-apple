@@ -29,7 +29,7 @@ public struct MakeQuestionsJob: ClaudeJob {
 
     public var title: String
     public var body: String
-    /// 添付の名前（作業フォルダの `attachments/` に置く）
+    /// 添付を置いた場所（Claude が読んでよいフォルダの中のパス）
     public var attachments: [String]
 
     public init(title: String, body: String, attachments: [String] = []) {
@@ -47,7 +47,7 @@ public struct MakeQuestionsJob: ClaudeJob {
         <request>
         \(body)
         </request>
-        添付: \(attachments.isEmpty ? "なし" : attachments.joined(separator: "、") + "（作業フォルダの attachments/ にある。必要なら読む）")
+        添付: \(attachments.isEmpty ? "なし" : attachments.joined(separator: "、") + "（依頼に付いていたファイル。必要なら読む）")
 
         ## 質問の決まり
         - 人が決めないと実装できないこと、決め方で作るものが大きく変わることだけを質問にする。リポジトリを読めば分かること・慣習で決まることは質問にしない
