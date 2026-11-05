@@ -31,9 +31,14 @@ public protocol IntentHandler: Sendable {
 public enum IntentDecision: Equatable, Sendable {
     case accept
     case reject(String)
+    /// 確かめること（`protocol.md` の 1〜3）が合わない。処理した記録を作らずに残す（直れば次の周で処理する。7 日を過ぎたら期限切れ）
+    case ignore(String)
 }
 
-/// 人の意図を見張り、確かめ、種類ごとの処理に渡す（`docs/renewal/flows.md` の「司令塔の動き」、`protocol.md` の「確かめること」）
+/// 人の意図を見張り、確かめ、種類ごとの処理に渡す（`docs/renewal/flows.md` の「司令塔の動き」、`protocol.md` の「確かめること」）。
+///
+/// 状態リポジトリを書く司令塔は常時オンの Mac に 1 つだけで、意図は `nonce` の順に 1 つずつ処理する（同時に呼ばない）。
+/// 種類ごとの処理は、確かめてから書くまでの間にほかの意図が割り込まないことを前提にしている（同時に回す epic の上限など）
 public struct IntentIntake: Sendable {
     public var context: CommanderContext
     /// 信用するアカウントに結びついた、取り消されていない公開鍵（`TrustAnchor.trustedKeys()` から作る）
@@ -91,6 +96,7 @@ public struct IntentIntake: Sendable {
         guard envelope.keyId == intent.device, envelope.nonce == intent.nonce else { return .ignored(reason: "置き場所と封筒が合わない") }
         guard let handler = handlers[envelope.kind] else { return .ignored(reason: "まだ扱えない種類（\(envelope.kind)）") }
         let decision = try await handler.handle(envelope, in: context)
+        if case let .ignore(reason) = decision { return .ignored(reason: reason) }
         return try await record(intent, kind: envelope.kind, decision: decision)
     }
 
@@ -105,6 +111,8 @@ public struct IntentIntake: Sendable {
         case let .reject(reason):
             file = ConsumedIntentFile(kind: kind, consumedAt: context.timestamp, result: .rejected, reason: reason)
             outcome = .rejected(kind: kind, reason: reason)
+        case let .ignore(reason):
+            return .ignored(reason: reason)
         }
         do {
             try await context.files.create(file, at: StatePath.consumed(device: intent.device, nonce: intent.nonce), message: "人の意図を処理した")

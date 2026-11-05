@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// メモリーの中の状態リポジトリ。テストと、GitHub に書かずに試す実行で使う。
@@ -82,9 +81,6 @@ public actor InMemoryStateStore: StateStore {
 
     /// Git の blob の sha と同じ求め方（`blob <長さ>\0` を前に付けた SHA-1）
     static func sha(of data: Data) -> String {
-        var hasher = Insecure.SHA1()
-        hasher.update(data: Data("blob \(data.count)\0".utf8))
-        hasher.update(data: data)
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        GitBlobSHA.of(data)
     }
 }

@@ -34,19 +34,40 @@ extension CommanderContext {
     /// 常時オンの Mac で Claude を呼ぶジョブ。id は元になった人の意図（鍵と番号。処理した記録と同じ組）と `seed` から決めるので、
     /// やり直しても同じジョブを 2 つ作らない
     func claudeJob(_ kind: JobKind, for epic: EpicFile, origin: IntentReference, seed: String, input: [String: JSONValue]) -> JobFile {
+        job(JobSpec(kind: kind, mac: mac, needs: .init(claude: true, build: false), input: input), for: epic, origin: origin, seed: seed)
+    }
+
+    /// `spec.mac` に割り当てるジョブ。id は `claudeJob` と同じく、元になった人の意図と `seed` から決める
+    func job(_ spec: JobSpec, for epic: EpicFile, origin: IntentReference, seed: String) -> JobFile {
         JobFile(
-            id: .derived(from: origin.nonce, seed: "\(origin.keyId)/\(kind.rawValue)/\(seed)"),
-            kind: kind,
+            id: .derived(from: origin.nonce, seed: "\(origin.keyId)/\(spec.kind.rawValue)/\(seed)"),
+            kind: spec.kind,
             repo: epic.repo,
             epic: epic.id,
-            assignedMac: mac,
-            needs: .init(claude: true, build: false),
+            assignedMac: spec.mac,
+            needs: spec.needs,
             state: .queued,
-            input: input,
+            input: spec.input,
             origin: origin,
             createdAt: timestamp,
             updatedAt: timestamp
         )
+    }
+
+    /// ファイルを読む。読めない（知らない版など）ファイルはそのまま失敗として返す
+    func read<File: StateFile>(_ type: File.Type, at path: String) async throws(CommanderError) -> File? {
+        do {
+            return try await files.read(File.self, at: path)?.file
+        } catch {
+            throw .files(error)
+        }
+    }
+
+    /// 終わっていないジョブのうち、`matches` に合うものがあるか。読めないジョブがあれば、確かめられないので `nil`
+    func hasOpenJob(_ repo: RepositoryFullName, epic: ULID, where matches: (JobFile) -> Bool) async throws(CommanderError) -> Bool? {
+        let list = try await jobList(repo, epic: epic)
+        if list.jobs.contains(where: { JobFile.openStates.contains($0.state) && matches($0) }) { return true }
+        return list.unreadable.isEmpty ? false : nil
     }
 
     /// ジョブを作る。すでにあれば（やり直したとき）そのまま
@@ -60,31 +81,37 @@ extension CommanderContext {
         }
     }
 
-    /// epic のジョブ（読めないファイルは飛ばす）
-    func jobs(_ repo: RepositoryFullName, epic: ULID) async throws(CommanderError) -> [JobFile] {
+    /// epic のジョブと、読めない（知らない版など）ジョブのパス
+    struct JobList {
+        var jobs: [JobFile] = []
+        var unreadable: [String] = []
+    }
+
+    func jobList(_ repo: RepositoryFullName, epic: ULID) async throws(CommanderError) -> JobList {
         let entries: [DirectoryEntry]
         do {
             entries = try await store.list(StatePath.jobs(repo, epic: epic)) ?? []
         } catch {
             throw .store(error)
         }
-        var jobs: [JobFile] = []
+        var list = JobList()
         for entry in entries where entry.kind == .file && entry.name.hasSuffix(".json") {
             do {
-                if let loaded = try await files.read(JobFile.self, at: entry.path) { jobs.append(loaded.file) }
+                if let loaded = try await files.read(JobFile.self, at: entry.path) { list.jobs.append(loaded.file) }
             } catch .unreadable {
-                continue
+                list.unreadable.append(entry.path)
             } catch {
                 throw .files(error)
             }
         }
-        return jobs
+        return list
     }
 
     /// 終わっていないジョブのうち、`matches` に合うものを取り消す
     func cancelJobs(_ repo: RepositoryFullName, epic: ULID, where matches: (JobFile) -> Bool) async throws(CommanderError) {
-        let open: Set<JobState> = [.queued, .assigned, .running, .waitingHuman, .paused]
-        for job in try await jobs(repo, epic: epic) where open.contains(job.state) && matches(job) {
+        let open = JobFile.openStates
+        // 読めないジョブは、中身が分からないので取り消さない（新しい司令塔が扱う）
+        for job in try await jobList(repo, epic: epic).jobs where open.contains(job.state) && matches(job) {
             let now = timestamp
             do {
                 let path = StatePath.job(repo, epic: epic, job: job.id)
@@ -99,6 +126,19 @@ extension CommanderContext {
             }
         }
     }
+}
+
+/// 作るジョブの中身（種類・割り当てる Mac・使うもの・入力）
+struct JobSpec {
+    var kind: JobKind
+    var mac: MacName
+    var needs: JobFile.Needs
+    var input: [String: JSONValue] = [:]
+}
+
+extension JobFile {
+    /// 終わっていない（取り消せる）ジョブの状態
+    static let openStates: Set<JobState> = [.queued, .assigned, .running, .waitingHuman, .paused]
 }
 
 extension JSONValue {
