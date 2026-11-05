@@ -13,9 +13,7 @@ public struct AnswerIntent: Equatable, Sendable {
     }
 
     /// 回答の形でない（理由つき）
-    public struct Malformed: Error, Equatable, Sendable {
-        public var detail: String
-    }
+    public typealias Malformed = MalformedIntent
 
     public static let kind = "answer"
     public static let targetType = "question"
@@ -101,7 +99,7 @@ public struct AnswerIntent: Equatable, Sendable {
     }
 
     /// 1 以上の 10 進の整数（先頭の 0・符号を受け付けない）
-    private static func version(_ text: String) -> Int? {
+    static func version(_ text: String) -> Int? {
         guard let first = text.utf8.first, first != UInt8(ascii: "0"),
               text.utf8.allSatisfy({ (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) }) else {
             return nil

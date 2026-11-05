@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/reviseGoal.schema.json",
+  "title": "ゴールの修正の人の意図（kind が reviseGoal）の payload",
+  "description": "封筒の target は {type: epic, epic}、targetVersion は直してほしいゴールの version を 10 進で書く。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "instruction"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "instruction": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 10000
+    }
+  }
+}

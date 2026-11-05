@@ -399,10 +399,10 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 
 | kind | target | targetVersion | payload |
 | --- | --- | --- | --- |
-| `request` | リポジトリ | — | `title`、`body`、`attachments`（`[{ "n": 1, "name": "…", "size": …, "sha256": "…" }]`。中身は `attachments/<device>/<intent>/<n>`） |
+| `request` | リポジトリ | — | `title`、`body`、`attachments`（`[{ "n": 1, "name": "…", "size": …, "sha256": "…" }]`。中身は `attachments/<device>/<intent>/<n>`。`n` は 1 から順に、10 個・1 つ 50 MiB まで）（`payloads/request.schema.json`） |
 | `answer` | 質問 | 質問の `version` | `mode`（`answer`・`clarify`）、`choice`、`note`（`protocol/schemas/payloads/answer.schema.json`） |
-| `startEpic` | epic | ゴールの `version` | `mac` |
-| `reviseGoal` | epic | ゴールの `version` | 指示の本文 |
+| `startEpic` | epic | ゴールの `version` | `mac`（`payloads/startEpic.schema.json`） |
+| `reviseGoal` | epic | ゴールの `version` | `instruction`（指示の本文。`payloads/reviseGoal.schema.json`） |
 | `decision` | 判断のカード | 最終 PR の head のコミット | `answer`（`ok`・`alternative`・`fix`）、本文 |
 | `approveMerge` | 最終 PR | 最終 PR の head のコミット | — |
 | `instructFinal` | 最終 PR | 最終 PR の head のコミット | 指示の本文 |
