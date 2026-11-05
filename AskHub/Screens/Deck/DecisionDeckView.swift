@@ -23,6 +23,10 @@ struct DecisionDeckView: View {
     @State private var leavingID: DeckCard.ID?
     /// 最後に飛ばしたカードと方向（捨て札の縁の色に使う）
     @State private var lastThrow: DeckThrow?
+    /// 文を書くシートを開く前の、札を置く領域の大きさ
+    @State private var deckAreaBeforeSheet: CGSize?
+    /// 文を書くシートを開いてから閉じ終わるまで（閉じたあとキーボードが下がる間も含む）、札を開く前の大きさのまま置く
+    @State private var keepsDeckArea = false
 
     private var cards: [DeckCard] {
         let all = store.deckCards(scope)
@@ -35,10 +39,16 @@ struct DecisionDeckView: View {
         VStack(spacing: 12) {
             DeckProgressHeader(scope: scope)
             GeometryReader { proxy in
-                let size = Self.cardSize(in: proxy.size)
+                let area = Self.deckArea(proxy.size, beforeSheet: keepsDeckArea ? deckAreaBeforeSheet : nil)
+                let size = Self.cardSize(in: area)
                 drawDeck(size: size)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .frame(width: area.width, height: area.height)
                 .offset(y: -10)
+                .onChange(of: proxy.size, initial: true) { _, newSize in
+                    if !keepsDeckArea {
+                        deckAreaBeforeSheet = newSize
+                    }
+                }
             }
             .animation(.spring(response: 0.45, dampingFraction: 0.78), value: cards.prefix(3).map(\.id))
             if let current {
@@ -58,6 +68,11 @@ struct DecisionDeckView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .hidesTabBar()
+        .onChange(of: textRequest) { _, request in
+            if request != nil {
+                keepsDeckArea = true
+            }
+        }
         .sheet(item: $textRequest, onDismiss: textRequestDismissed) { request in
             // 何について書いているか（止めた札・説明を求める札）を、シートの上にも出す
             TextRequestSheet(
@@ -114,6 +129,15 @@ struct DecisionDeckView: View {
         let width = min(available.width - 44, 440)
         let height = min(available.height - 64, width * 1.55)
         return CGSize(width: max(width, 0), height: max(height, 0))
+    }
+
+    /// 札を置く領域。文を書くシートでキーボードが出ると、この画面の外側の層で領域が縮み（`ignoresSafeArea(.keyboard)` では戻らない）、
+    /// シートの後ろの札が縦に詰められる。幅が同じまま高さだけ縮んだときは、シートを開く前の大きさのまま置く（画面を回したときは今の大きさ）
+    static func deckArea(_ available: CGSize, beforeSheet: CGSize?) -> CGSize {
+        guard let beforeSheet, beforeSheet.width == available.width, beforeSheet.height > available.height else {
+            return available
+        }
+        return beforeSheet
     }
 
     /// 山札と捨て札。山札の上の札は裏向きで、前を飛ばすと次の札が引かれて、格に合わせた演出で表に返る
@@ -253,6 +277,7 @@ struct DecisionDeckView: View {
 
     /// 文を書くシートが閉じたとき。送ったなら止めたカードを飛ばし、送らずに閉じたなら（下へ払って閉じたときも）元の位置に戻す
     private func textRequestDismissed() {
+        keepsDeckArea = false
         if hold.sheetDismissed() {
             generation += 1
         }
