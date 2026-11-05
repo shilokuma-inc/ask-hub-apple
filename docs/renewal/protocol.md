@@ -399,7 +399,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 
 | kind | target | targetVersion | payload |
 | --- | --- | --- | --- |
-| `request` | リポジトリ | — | `title`、`body`、`attachments`（`[{ "n": 1, "name": "…", "size": …, "sha256": "…" }]`。中身は `attachments/<device>/<intent>/<n>`。`n` は 1 から順に、10 個・1 つ 50 MiB まで）（`payloads/request.schema.json`） |
+| `request` | リポジトリ | — | `title`、`body`、`attachments`（`[{ "n": 1, "name": "…", "size": …, "sha256": "…" }]`。中身は `attachments/<device>/<intent>/<n>` に、意図より先に置く。`n` は 1 から順に、10 個・1 つ 50 MiB まで）（`payloads/request.schema.json`） |
 | `answer` | 質問 | 質問の `version` | `mode`（`answer`・`clarify`）、`choice`、`note`（`protocol/schemas/payloads/answer.schema.json`） |
 | `startEpic` | epic | ゴールの `version` | `mac`（`payloads/startEpic.schema.json`） |
 | `reviseGoal` | epic | ゴールの `version` | `instruction`（指示の本文。`payloads/reviseGoal.schema.json`） |
