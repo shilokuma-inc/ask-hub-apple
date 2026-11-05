@@ -99,6 +99,17 @@ struct GitHubContentsStoreTests {
         #expect(try await store.list("missing") == nil)
     }
 
+    @Test func readsLargeFileAsRaw() async throws {
+        // 1 MB を超えるファイルは、encoding が none で content が空で返る。raw の形で読み直す
+        let large = #"{"type":"file","name":"1","path":"attachments/k/n/1","sha":"big","encoding":"none","content":""}"#
+        let raw = Data(repeating: 0xFF, count: 2_000_000)
+        let transport = StubTransport([.json(200, large), .init(status: 200, headers: [:], body: raw)])
+        let blob = try await store(transport, branch: "main").read("attachments/k/n/1")
+        #expect(blob == StoredBlob(data: raw, sha: "big"))
+        #expect(transport.requests.last?.value(forHTTPHeaderField: "Accept") == "application/vnd.github.raw+json")
+        #expect(transport.requests.last?.url?.query?.contains("ref=main") == true)
+    }
+
     @Test func listsFilesUnderDirectoryThroughGitTrees() async throws {
         let root = """
         [{"type":"dir","name":"intents","path":"intents","sha":"abc123"},\

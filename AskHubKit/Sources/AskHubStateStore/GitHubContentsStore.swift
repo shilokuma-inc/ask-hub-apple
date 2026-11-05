@@ -44,6 +44,7 @@ public struct GitHubContentsStore: StateStore {
         switch try await get(path) {
         case .missing: return nil
         case let .file(blob): return blob
+        case let .largeFile(sha): return try await readRaw(path, sha: sha)
         case .directory: throw .wrongKind
         }
     }
@@ -53,7 +54,7 @@ public struct GitHubContentsStore: StateStore {
         switch try await get(directory) {
         case .missing: return nil
         case let .directory(entries): return entries
-        case .file: throw .wrongKind
+        case .file, .largeFile: throw .wrongKind
         }
     }
 
@@ -66,7 +67,7 @@ public struct GitHubContentsStore: StateStore {
         switch try await get(parent) {
         case .missing: return nil
         case let .directory(entries): siblings = entries
-        case .file: throw .wrongKind
+        case .file, .largeFile: throw .wrongKind
         }
         guard let tree = siblings.first(where: { $0.name == parts.last }) else { return nil }
         guard tree.kind == .directory else { throw .wrongKind }
@@ -174,12 +175,27 @@ public struct GitHubContentsStore: StateStore {
             throw .unexpected(status: 200, message: "内容の応答を読めない")
         }
         guard file.type == "file" else { throw .wrongKind }
-        // content は base64 を 60 文字ごとに改行した文字列（LEARNINGS.md）。1 MB を超えるファイルは content が空で返る
+        // 1 MB を超えるファイルは、encoding が none で content が空で返る。中身は raw の形で読み直す
+        if file.encoding == "none" { return .largeFile(sha: file.sha) }
+        // content は base64 を 60 文字ごとに改行した文字列（LEARNINGS.md）
         guard file.encoding == "base64", let content = file.content,
               let data = Data(base64Encoded: content, options: .ignoreUnknownCharacters) else {
             throw .unexpected(status: 200, message: "ファイルの中身を読めない（\(file.encoding ?? "encoding なし")）")
         }
         return .file(StoredBlob(data: data, sha: file.sha))
+    }
+
+    /// 1 MB を超えるファイル（添付など）を raw の形で読む（Contents API は 1〜100 MB のファイルを raw でだけ返す）。
+    /// 中身は ETag で持たない（大きく、何度も読まないため）
+    private func readRaw(_ path: String, sha: String) async throws(StateStoreError) -> StoredBlob? {
+        var request = try await makeRequest(path: path, query: branch.map { [URLQueryItem(name: "ref", value: $0)] } ?? [])
+        request.setValue("application/vnd.github.raw+json", forHTTPHeaderField: "Accept")
+        let (body, response) = try await send(request)
+        switch response.statusCode {
+        case 200: return StoredBlob(data: body, sha: sha)
+        case 404: return nil
+        default: throw StateStoreError.classify(response, body: body, now: now())
+        }
     }
 
     // MARK: - 要求
@@ -230,6 +246,8 @@ public struct GitHubContentsStore: StateStore {
 enum Contents: Sendable, Equatable {
     case missing
     case file(StoredBlob)
+    /// 1 MB を超えるファイル。中身は raw の形で読み直す
+    case largeFile(sha: String)
     case directory([DirectoryEntry])
 }
 
@@ -277,7 +295,7 @@ actor ETagCache {
         /// 持っている中身の大きさの目安
         var size: Int {
             switch contents {
-            case .missing: 0
+            case .missing, .largeFile: 0
             case let .file(blob): blob.data.count
             case let .directory(entries): entries.reduce(0) { $0 + $1.name.utf8.count + $1.path.utf8.count + $1.sha.utf8.count }
             }
