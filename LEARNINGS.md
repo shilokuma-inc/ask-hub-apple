@@ -409,3 +409,8 @@
 - `DragGesture.Value.predictedEndTranslation` は「移動量 + 速さ × 0.25 秒」。`Spring.value(target:initialVelocity:time:)`・`velocity(...)` は `AnimatablePair` で 2 次元の初速（pt/秒のまま）を渡せる。
   SwiftUI のアニメーションの初速は 1 つの数だけなので、斜めの速さを引き継ぐときは時刻ごとに計算して `TimelineView` で描く（2026-11-04、スワイプの手触り）
 - `rotation3DEffect` は、軸 (1, 0) を正の角度で回すと上の縁が、軸 (0, 1) では右の縁が奥へ下がる（2026-11-04、スワイプの手触り）
+- シートの中の入力欄でキーボードを出すと、シートの後ろの画面（`NavigationStack` の行き先の View）も、キーボードの分だけ縦に縮む（iOS 26.5。まとめて判断するの札を置く領域が 646pt → 344pt）。
+  後ろの View やその中の `GeometryReader` に `ignoresSafeArea(.keyboard)` を付けても戻らない（外側の層で縮むため）。シートの上に後ろの View を見せるときは、
+  開く前の大きさを覚えておき、幅が同じまま高さだけ縮んだ間はその大きさで置く（`DecisionDeckView.deckArea`）（2026-11-06、自由回答のシート）
+- `.presentationDetents([.height(h), .large])` のシートで開いてすぐ入力欄にフォーカスを当てると、キーボードが出たときに `.large` へ移る（`[.medium, .large]` と同じ）。
+  低い高さのまま書かせるには `.large` を並べない。キーボードの上の「完了」（`ToolbarItemGroup(placement: .keyboard)`）は、低いシートではシートの中に重なって入力欄を狭める（2026-11-06、自由回答のシート）
