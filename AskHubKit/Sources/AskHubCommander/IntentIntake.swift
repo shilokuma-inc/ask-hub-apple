@@ -3,7 +3,7 @@ import AskHubStateStore
 import Foundation
 
 /// 状態リポジトリに置かれた、まだ処理していない人の意図
-public struct PendingIntent: Equatable, Sendable {
+public struct PendingIntent: Hashable, Sendable {
     public var device: KeyID
     public var nonce: ULID
 
@@ -46,18 +46,22 @@ public struct IntentIntake: Sendable {
         self.handlers = handlers
     }
 
-    /// まだ処理していない（処理した記録の無い）意図を、`nonce`（時刻の順）に並べる
+    /// まだ処理していない（処理した記録の無い）意図を、`nonce`（時刻の順）に並べる。
+    /// 意図と記録は増え続けるので、1 つのディレクトリの一覧の上限（1,000 件）を受けない読み方で、両方を 1 度ずつ並べて比べる
     public func pending() async throws(CommanderError) -> [PendingIntent] {
-        var found: [PendingIntent] = []
-        for device in try await list(StatePath.intents) where device.kind == .directory {
-            guard let key = KeyID(rawValue: device.name) else { continue }
-            for file in try await list(device.path) where file.kind == .file {
-                guard file.name.hasSuffix(".json"), let nonce = ULID(rawValue: String(file.name.dropLast(5))) else { continue }
-                let intent = PendingIntent(device: key, nonce: nonce)
-                if try await read(StatePath.consumed(device: key, nonce: nonce)) == nil { found.append(intent) }
-            }
-        }
+        let consumed = Set(try await files(under: StatePath.consumedDirectory).compactMap(Self.intent(at:)))
+        let found = try await files(under: StatePath.intents).compactMap(Self.intent(at:)).filter { !consumed.contains($0) }
         return found.sorted { $0.nonce < $1.nonce }
+    }
+
+    /// `<dir>/<device>/<nonce>.json` から端末と番号を読む。形の違うパスは無いものとして扱う
+    static func intent(at path: String) -> PendingIntent? {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count == 3, let device = KeyID(rawValue: String(parts[1])), parts[2].hasSuffix(".json"),
+              let nonce = ULID(rawValue: String(parts[2].dropLast(5))) else {
+            return nil
+        }
+        return PendingIntent(device: device, nonce: nonce)
     }
 
     /// まだ処理していない意図を、順に 1 つずつ処理する。状態リポジトリに書けなかったら、そこで止める（次の周で続きから）
@@ -116,9 +120,9 @@ public struct IntentIntake: Sendable {
         value["envelope"]?["kind"]?.stringValue ?? "unknown"
     }
 
-    private func list(_ directory: String) async throws(CommanderError) -> [DirectoryEntry] {
+    private func files(under directory: String) async throws(CommanderError) -> [String] {
         do {
-            return try await context.store.list(directory) ?? []
+            return try await context.store.listFiles(under: directory)?.map(\.path) ?? []
         } catch {
             throw .store(error)
         }
