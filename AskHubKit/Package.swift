@@ -40,7 +40,7 @@ let package = Package(
         .target(name: "AskHubEpics", dependencies: ["AskHubProtocol"]),
         .target(name: "AskHubCommands"),
         .target(name: "AskHubClaude", dependencies: ["AskHubCommands", "AskHubProtocol"]),
-        .target(name: "AskHubCommander", dependencies: ["AskHubClaude", "AskHubEpics", "AskHubProtocol"]),
+        .target(name: "AskHubCommander", dependencies: ["AskHubClaude", "AskHubEpics", "AskHubProtocol", "AskHubStateStore"]),
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
@@ -54,7 +54,7 @@ let package = Package(
         .testTarget(name: "AskHubClaudeTests", dependencies: ["AskHubClaude", "AskHubCommands", "AskHubProtocol"]),
         .testTarget(
             name: "AskHubCommanderTests",
-            dependencies: ["AskHubCommander", "AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubProtocol"]
+            dependencies: ["AskHubCommander", "AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubProtocol", "AskHubStateStore"]
         ),
         .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]

@@ -44,6 +44,25 @@ public protocol StateStore: Sendable {
 
     /// ファイルを書く。`replacing` は読んだときの版で、nil なら新しく作る（すでにあれば `conflict`）。書いた後の版を返す
     func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String
+
+    /// ディレクトリの下のファイルを、下の階層まですべて並べる（`path` は状態リポジトリの直下からのパス）。ディレクトリが無ければ nil。
+    /// 人の意図のように増え続けるディレクトリに使う
+    func listFiles(under directory: String) async throws(StateStoreError) -> [DirectoryEntry]?
+}
+
+extension StateStore {
+    /// `list` を下の階層まで辿る。1 つのディレクトリの一覧に上限の無い置き場所（メモリ上など）で使う
+    public func listFiles(under directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        guard let entries = try await list(directory) else { return nil }
+        var files: [DirectoryEntry] = []
+        for entry in entries {
+            switch entry.kind {
+            case .file: files.append(entry)
+            case .directory: files += try await listFiles(under: entry.path) ?? []
+            }
+        }
+        return files
+    }
 }
 
 enum StatePathCheck {

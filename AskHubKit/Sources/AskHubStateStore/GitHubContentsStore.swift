@@ -6,7 +6,8 @@ import Foundation
 /// - 読み取りは ETag を付ける。変わっていなければ 304 が返り、上限に数えられない
 /// - 書き込みは読んだときの版（sha）を付ける。版が合わない・同じブランチへの書き込みがぶつかったときは 409 が返る
 ///   （Contents API は同じブランチへの並んだ書き込みもぶつかる）ので、`StateFileStore` が読み直してやり直す
-/// - ディレクトリの一覧は 1,000 件まで（Contents API の上限）。状態リポジトリのディレクトリはそれより小さく保つ
+/// - ディレクトリの一覧は 1,000 件まで（Contents API の上限）。増え続けるディレクトリ（人の意図など）は、`listFiles(under:)` で
+///   Git Trees API から読む（10 万件・7 MB まで）
 public struct GitHubContentsStore: StateStore {
     public let repository: RepositoryFullName
     /// 読み書きするブランチ。nil ならリポジトリの既定のブランチ
@@ -39,6 +40,7 @@ public struct GitHubContentsStore: StateStore {
     }
 
     public func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
+        guard !path.isEmpty else { throw .invalidPath }
         switch try await get(path) {
         case .missing: return nil
         case let .file(blob): return blob
@@ -47,11 +49,28 @@ public struct GitHubContentsStore: StateStore {
     }
 
     public func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        guard !directory.isEmpty else { throw .invalidPath }
         switch try await get(directory) {
         case .missing: return nil
         case let .directory(entries): return entries
         case .file: throw .wrongKind
         }
+    }
+
+    /// ディレクトリの下のファイルをすべて並べる。親の一覧からディレクトリの tree の sha を読み、Git Trees API で下まで読む
+    public func listFiles(under directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        guard StatePathCheck.isSafe(directory) else { throw .invalidPath }
+        let parts = directory.split(separator: "/").map(String.init)
+        let parent = parts.dropLast().joined(separator: "/")
+        let siblings: [DirectoryEntry]
+        switch try await get(parent) {
+        case .missing: return nil
+        case let .directory(entries): siblings = entries
+        case .file: throw .wrongKind
+        }
+        guard let tree = siblings.first(where: { $0.name == parts.last }) else { return nil }
+        guard tree.kind == .directory else { throw .wrongKind }
+        return try await treeFiles(sha: tree.sha, under: directory)
     }
 
     public func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
@@ -81,10 +100,48 @@ public struct GitHubContentsStore: StateStore {
 
     // MARK: - 読み取り
 
+    /// `path` が空なら、リポジトリの直下の一覧（`listFiles(under:)` だけが使う）
     private func get(_ path: String) async throws(StateStoreError) -> Contents {
-        guard StatePathCheck.isSafe(path) else { throw .invalidPath }
-        var request = try await makeRequest(path: path, query: branch.map { [URLQueryItem(name: "ref", value: $0)] } ?? [])
-        let cached = await cache.entry(for: path)
+        guard path.isEmpty || StatePathCheck.isSafe(path) else { throw .invalidPath }
+        let request = try await makeRequest(path: path, query: branch.map { [URLQueryItem(name: "ref", value: $0)] } ?? [])
+        return try await fetch(request, cacheKey: path, decode: Self.decodeContents)
+    }
+
+    /// tree の下のファイル（blob）。tree は sha で決まり中身が変わらないので、ETag でそのまま使い回せる
+    private func treeFiles(sha: String, under directory: String) async throws(StateStoreError) -> [DirectoryEntry] {
+        let isHex = sha.utf8.allSatisfy { byte in
+            (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
+        }
+        guard !sha.isEmpty, isHex else { throw .unexpected(status: 200, message: "tree の sha の形が違う") }
+        let request = try await makeRequest(apiPath: "git/trees/\(sha)", query: [URLQueryItem(name: "recursive", value: "1")])
+        // `:` は状態リポジトリのパスに使わないので、ファイルの中身の鍵とぶつからない
+        let contents = try await fetch(request, cacheKey: "tree:\(sha)") { body throws(StateStoreError) in
+            try .directory(Self.decodeTree(body, under: directory))
+        }
+        guard case let .directory(entries) = contents else { throw .wrongKind }
+        return entries
+    }
+
+    static func decodeTree(_ body: Data, under directory: String) throws(StateStoreError) -> [DirectoryEntry] {
+        guard let tree = try? JSONDecoder().decode(TreeResponse.self, from: body) else {
+            throw .unexpected(status: 200, message: "tree の応答を読めない")
+        }
+        // 上限（10 万件・7 MB）を超えると、一覧が途中で切れる。足りない一覧で処理を進めない
+        guard !tree.truncated else { throw .unexpected(status: 200, message: "ディレクトリの中が多すぎて、一覧が途中で切れた") }
+        return tree.tree.filter { $0.type == "blob" }.map { entry in
+            let name = String(entry.path.split(separator: "/").last ?? "")
+            return DirectoryEntry(name: name, path: "\(directory)/\(entry.path)", kind: .file, sha: entry.sha)
+        }
+    }
+
+    /// ETag を付けて読む。変わっていなければ、前に読んだ中身を返す
+    private func fetch(
+        _ request: URLRequest,
+        cacheKey: String,
+        decode: (Data) throws(StateStoreError) -> Contents
+    ) async throws(StateStoreError) -> Contents {
+        var request = request
+        let cached = await cache.entry(for: cacheKey)
         if let cached { request.setValue(cached.etag, forHTTPHeaderField: "If-None-Match") }
         let (body, response) = try await send(request)
         switch response.statusCode {
@@ -92,12 +149,12 @@ public struct GitHubContentsStore: StateStore {
             guard let cached else { throw .unexpected(status: 304, message: "ETag を付けていないのに 304 が返った") }
             return cached.contents
         case 404:
-            await cache.remove(path)
+            await cache.remove(cacheKey)
             return .missing
         case 200:
-            let contents = try Self.decodeContents(body)
+            let contents = try decode(body)
             if let etag = response.value(forHTTPHeaderField: "ETag") {
-                await cache.store(path, ETagCache.Entry(etag: etag, contents: contents))
+                await cache.store(cacheKey, ETagCache.Entry(etag: etag, contents: contents))
             }
             return contents
         default:
@@ -127,10 +184,15 @@ public struct GitHubContentsStore: StateStore {
 
     // MARK: - 要求
 
+    /// Contents API の要求。パスの部品は英数字と ._- だけなので、そのまま URL に入れられる
     private func makeRequest(path: String, query: [URLQueryItem]) async throws(StateStoreError) -> URLRequest {
-        // パスの部品は英数字と ._- だけなので、そのまま URL に入れられる
+        try await makeRequest(apiPath: "contents/\(path)", query: query)
+    }
+
+    /// リポジトリの API の要求（`apiPath` は `repos/<owner>/<repo>/` からのパス）
+    private func makeRequest(apiPath: String, query: [URLQueryItem]) async throws(StateStoreError) -> URLRequest {
         var components = URLComponents(
-            url: apiBase.appendingPathComponent("repos/\(repository.owner)/\(repository.name)/contents/\(path)"),
+            url: apiBase.appendingPathComponent("repos/\(repository.owner)/\(repository.name)/\(apiPath)"),
             resolvingAgainstBaseURL: false
         )
         if !query.isEmpty { components?.queryItems = query }
@@ -178,6 +240,17 @@ private struct ContentsEntry: Decodable {
     let sha: String
     let encoding: String?
     let content: String?
+}
+
+private struct TreeResponse: Decodable {
+    struct Entry: Decodable {
+        let path: String
+        let type: String
+        let sha: String
+    }
+
+    let tree: [Entry]
+    let truncated: Bool
 }
 
 private struct WriteBody: Encodable {
