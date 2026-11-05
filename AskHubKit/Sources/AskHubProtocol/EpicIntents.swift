@@ -47,6 +47,8 @@ public struct RequestIntent: Equatable, Sendable {
     public init(envelope: IntentEnvelope) throws(MalformedIntent) {
         guard envelope.kind == Self.kind else { throw .init(detail: "kind が request でない") }
         guard let repo = envelope.repo else { throw .init(detail: "repo が無い") }
+        // 依頼は版を持つものを対象にしないので、targetVersion を書かない
+        guard envelope.targetVersion == nil else { throw .init(detail: "依頼に targetVersion がある") }
         let reader = try PayloadReader(envelope.payload, allowed: ["title", "body", "attachments"])
         self.init(
             repo: repo,
