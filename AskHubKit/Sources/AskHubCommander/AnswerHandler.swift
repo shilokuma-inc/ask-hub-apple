@@ -30,8 +30,8 @@ public struct AnswerHandler: IntentHandler {
         } catch {
             return .reject(error.reason)
         }
-        try await perform(change.effects, for: answer, epic: epic, in: context)
-        try await write(change.questions, replacing: questions, at: questionsPath, in: context)
+        try await context.perform(change.effects, for: epic, origin: answer.intent)
+        try await context.write(change.questions, replacing: questions, of: epic, message: "回答を受け付ける")
         return .accept
     }
 
@@ -42,78 +42,6 @@ public struct AnswerHandler: IntentHandler {
         case .answer: return question.answer?.intent == answer.intent
         case .clarify: return question.explanations.contains { $0.asked == answer.intent }
         }
-    }
-
-    /// 司令塔がすることを行う。どれも、やり直しても結果が変わらない
-    private func perform(
-        _ effects: [QuestionFlow.Effect],
-        for answer: AnswerIntent,
-        epic: EpicFile,
-        in context: CommanderContext
-    ) async throws(CommanderError) {
-        let repo = answer.repo
-        for effect in effects {
-            switch effect {
-            case let .explain(question, asked):
-                let input: [String: JSONValue] = ["question": .string(question), "asked": JSONValue.encoding(asked) ?? .null]
-                try await context.create(context.claudeJob(.explain, for: epic, origin: asked, seed: question, input: input))
-            case let .revise(question, basis):
-                let input: [String: JSONValue] = ["question": .string(question), "basis": JSONValue.encoding(basis) ?? .null]
-                let dependencies = basis.dependencies.map { "\($0.id):\($0.version):\($0.answer?.nonce.rawValue ?? "-")" }
-                let seed = "\(question)/\(basis.version)/\(dependencies.joined(separator: ","))"
-                try await context.create(context.claudeJob(.reviseQuestion, for: epic, origin: answer.intent, seed: seed, input: input))
-            // 取り消すのは、ほかの意図が作ったジョブだけ。この意図が前の周で作ったジョブ（やり直しのとき）は残す
-            case let .cancel(question):
-                try await context.cancelJobs(repo, epic: epic.id) { job in
-                    [.explain, .reviseQuestion].contains(job.kind) && job.input?["question"]?.stringValue == question
-                        && job.origin != answer.intent
-                }
-            case .reopen:
-                // 着手前の確認とゴールの修正をやめ、回答に戻す
-                try await context.cancelJobs(repo, epic: epic.id) { job in
-                    [.checkReadiness, .reviseGoal].contains(job.kind) && job.origin != answer.intent
-                }
-                try await setStage(.asking, of: epic, in: context)
-            case .checkReadiness:
-                try await context.create(context.claudeJob(.checkReadiness, for: epic, origin: answer.intent, seed: "", input: [:]))
-                try await setStage(.checking, of: epic, in: context)
-            }
-        }
-    }
-
-    private func setStage(_ stage: EpicStage, of epic: EpicFile, in context: CommanderContext) async throws(CommanderError) {
-        let now = context.timestamp
-        do {
-            try await context.files.update(EpicFile.self, at: StatePath.epic(epic.repo, epic.id), message: "epic を \(stage.rawValue) にする") {
-                guard $0.stage != stage else { return false }
-                $0.stage = stage
-                $0.updatedAt = now
-                return true
-            }
-        } catch {
-            throw .files(error)
-        }
-    }
-
-    /// 読んだときのままなら書く。ほかの書き込みで変わっていたら、次の周でやり直す
-    private func write(
-        _ questions: QuestionsFile,
-        replacing previous: QuestionsFile,
-        at path: String,
-        in context: CommanderContext
-    ) async throws(CommanderError) {
-        var changed = false
-        do {
-            try await context.files.update(QuestionsFile.self, at: path, message: "回答を受け付ける") { current in
-                guard current == previous else { return false }
-                current = questions
-                changed = true
-                return true
-            }
-        } catch {
-            throw .files(error)
-        }
-        guard changed else { throw .changedWhileProcessing(path) }
     }
 
     private func read<File: StateFile>(
