@@ -75,6 +75,8 @@ public enum EpicStage: String, Codable, Sendable, CaseIterable {
     case asking
     /// 着手前の確認をしている
     case checking
+    /// 着手前の確認で 1 つの epic に収まらないと分かり、分けて依頼し直すか、このまま 1 つで進めるかの、人の判断を待っている
+    case awaitingSplit
     /// ゴールの確認と開始を待っている
     case awaitingStart
     /// 実装している
@@ -95,6 +97,8 @@ public struct EpicFile: StateFile {
     public var id: ULID
     public var repo: RepositoryFullName
     public var title: String
+    /// 依頼の要約（質問づくりの Claude が書く。何を作るか・なぜ）。作る前は nil
+    public var summary: String?
     /// 依頼の要約を置く Discussion の番号。作る前は nil
     public var discussion: Int?
     public var stage: EpicStage
@@ -114,6 +118,7 @@ public struct EpicFile: StateFile {
         id: ULID,
         repo: RepositoryFullName,
         title: String,
+        summary: String? = nil,
         discussion: Int? = nil,
         stage: EpicStage,
         mac: MacName? = nil,
@@ -127,6 +132,7 @@ public struct EpicFile: StateFile {
         self.id = id
         self.repo = repo
         self.title = title
+        self.summary = summary
         self.discussion = discussion
         self.stage = stage
         self.mac = mac
@@ -141,6 +147,7 @@ public struct EpicFile: StateFile {
     public var violations: [String] {
         var violations: [String] = []
         if title.isEmpty { violations.append("title が空") }
+        if let summary, summary.isEmpty { violations.append("summary が空") }
         if let discussion, discussion < 1 { violations.append("discussion は 1 以上") }
         if let finalPullRequest, finalPullRequest < 1 { violations.append("finalPullRequest は 1 以上") }
         if let goalVersion, goalVersion < 1 { violations.append("goalVersion は 1 以上") }
