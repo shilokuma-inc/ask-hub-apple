@@ -59,7 +59,8 @@ struct DecisionDeckView: View {
         #endif
         .hidesTabBar()
         .sheet(item: $textRequest, onDismiss: textRequestDismissed) { request in
-            TextRequestSheet(request: request) { text in
+            // 何について書いているか（止めた札・説明を求める札）を、シートの上にも出す
+            TextRequestSheet(request: request, subject: current.map { textSubject($0) }) { text in
                 textRequest = nil
                 if !hold.send(text) {
                     send(request.intent(text: text), card: current, label: request.title)
@@ -229,6 +230,10 @@ struct DecisionDeckView: View {
         }
         hold.start()
         textRequest = request
+    }
+
+    private func textSubject(_ card: DeckCard) -> TextRequestSheet.Subject {
+        TextRequestSheet.Subject(card: card, appName: store.repository(card.repositoryID)?.appName)
     }
 
     /// 文を書くシートが閉じたとき。送ったなら止めたカードを飛ばし、送らずに閉じたなら（下へ払って閉じたときも）元の位置に戻す
