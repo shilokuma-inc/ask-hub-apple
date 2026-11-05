@@ -53,6 +53,33 @@ enum OutputSchema {
         "dependsOn": array(of: string("前提にする質問の id"), "答えを前提にする質問の id。無ければ空")
     ]) { first, _ in first }, required: ["id", "title", "why", "options", "recommended", "reason", "dependsOn"])
 
+    static let goalDraft = object([
+        "summary": string("作るものの要約"),
+        "decided": array(of: object([
+            "question": string("回答した質問の id"),
+            "text": string("何に決まったか")
+        ]), "決まったこと。回答した質問ごとに 1 つ"),
+        "outOfScope": array(of: string("やらないこと"), "やらないこと"),
+        "doneWhen": array(of: string("完了の条件"), "完了の条件（確かめられる形で）"),
+        "tasks": array(of: object([
+            "id": string("t1・t2 のような id"),
+            "title": string("タスクの題"),
+            "detail": nullable(string("詳しい中身")),
+            "dependsOn": array(of: string("前提のタスク・人がする作業の id"), "前提。無ければ空")
+        ], required: ["id", "title", "dependsOn"]), "実装のタスク"),
+        "humanTasks": array(of: object([
+            "id": string("h1・h2 のような id"),
+            "title": string("作業の題"),
+            "why": string("なぜ人がするか"),
+            "steps": array(of: string("手順"), "手順（入れる値まで具体的に）"),
+            "links": array(of: string("https のリンク"), "開くページ"),
+            "handover": object([
+                "kind": oneOf(HandoverKind.allCases.map(\.rawValue), "none（終わったを押すだけ）・file（ファイルを渡す）・secret（GitHub の Secrets に入れる）"),
+                "name": nullable(string("secret のときの Secrets の名前（英大文字・数字・_）"))
+            ], required: ["kind"])
+        ]), "人がする作業。無ければ空")
+    ])
+
     static let questionRewrite = object(questionContent.merging([
         "change": string("書き直した理由")
     ]) { first, _ in first }, required: ["title", "why", "options", "recommended", "reason", "change"])
