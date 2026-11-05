@@ -351,6 +351,10 @@ struct LocalLoopRuntimeTests {
 // MARK: - 制限時間を過ぎたコマンドの子孫
 
 extension LocalLoopRuntimeTests {
+    /// 時間切れまでに、スクリプトが子孫の起動や trap の設定を終えている前提の制限時間。
+    /// テストを並べて流すと sh の起動が 500ms では間に合わないことがあり、準備の前に止めてしまうので数秒取る
+    private static let setupTimeout: Duration = .seconds(3)
+
     /// コマンドが `child.pid` に書いた子孫の PID
     private func recordedChildPID(in repository: RepositoryConfig) throws -> pid_t {
         let file = URL(fileURLWithPath: repository.checkoutPath).appendingPathComponent("child.pid")
@@ -367,7 +371,7 @@ extension LocalLoopRuntimeTests {
             ["/bin/sh", "-c", "sleep 30 & echo $! > child.pid; wait"],
             input: "",
             for: repository,
-            timeout: .milliseconds(500)
+            timeout: Self.setupTimeout
         )
         #expect(result.status != 0)
         let child = try recordedChildPID(in: repository)
@@ -383,7 +387,7 @@ extension LocalLoopRuntimeTests {
             ["/bin/sh", "-c", "(trap '' TERM; sleep 30 & echo $! > child.pid; wait) & wait"],
             input: "",
             for: repository,
-            timeout: .milliseconds(500)
+            timeout: Self.setupTimeout
         )
         #expect(result.status != 0)
         let grandchild = try recordedChildPID(in: repository)
@@ -408,7 +412,7 @@ extension LocalLoopRuntimeTests {
             ["/bin/bash", script.path],
             input: "",
             for: repository,
-            timeout: .milliseconds(500)
+            timeout: Self.setupTimeout
         )
         #expect(result.status == 143)
         let cleaned = URL(fileURLWithPath: repository.checkoutPath).appendingPathComponent("cleaned.txt")
