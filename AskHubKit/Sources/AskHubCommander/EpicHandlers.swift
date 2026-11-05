@@ -20,7 +20,8 @@ public struct RequestHandler: IntentHandler {
         guard try await context.read(RepositoryFile.self, at: StatePath.repository(request.repo)) != nil else {
             return .reject("\(request.repo) は対象のリポジトリに加えていない")
         }
-        if let problem = try await attachmentProblem(of: request, in: context) { return .reject(problem) }
+        // 添付は確かめること（protocol.md の 3）なので、合わなければ記録を作らずに残す（置き直せば次の周で受け付ける）
+        if let problem = try await attachmentProblem(of: request, in: context) { return .ignore(problem) }
         let epic = EpicFile(
             id: Self.epicID(for: request.intent),
             repo: request.repo,
@@ -118,25 +119,31 @@ public struct StartEpicHandler: IntentHandler {
         let goal = try await context.read(GoalFile.self, at: StatePath.goal(epic.repo, epic.id))
         guard let goal else { return "ゴールが無い" }
         guard goal.version == start.target.goalVersion else { return "ゴールが直された（今の版は \(goal.version)）。新しいゴールを確かめて開始し直す" }
-        if try await context.hasOpenJob(epic.repo, epic: epic.id, where: { $0.kind == .reviseGoal }) {
-            return "ゴールを直している途中。直し終えてから開始する"
+        switch try await context.hasOpenJob(epic.repo, epic: epic.id, where: { $0.kind == .reviseGoal }) {
+        case true?: return "ゴールを直している途中。直し終えてから開始する"
+        case nil: return Self.unreadableJobs
+        case false?: break
         }
         guard let mac = try await context.read(MacFile.self, at: StatePath.mac(start.mac)) else { return "Mac \(start.mac) が登録されていない" }
         if context.now().timeIntervalSince(mac.seenAt.date) > TimeInterval(timing.macStaleAfter.components.seconds) {
             return "Mac \(start.mac) がオフライン（最後の生きている印は \(mac.seenAt)）"
         }
         let limit = try await context.read(RepositoryFile.self, at: StatePath.repository(epic.repo))?.maxConcurrentEpics ?? 1
-        let running = try await runningEpics(of: epic.repo, except: epic.id, in: context)
+        guard let running = try await runningEpics(of: epic.repo, except: epic.id, in: context) else {
+            return "読めない epic があり、同時に回している数を確かめられない（司令塔を新しくする）"
+        }
         if running >= limit { return "同時に回せる epic の上限（\(limit) 本）に達している。ほかの epic が終わってから開始する" }
         return nil
     }
 
-    /// 回している（実装・最終 PR・確認の待ち）epic の数
+    static let unreadableJobs = "読めないジョブがあり、ゴールを直している途中かを確かめられない（司令塔を新しくする）"
+
+    /// 回している（実装・最終 PR・確認の待ち）epic の数。読めない（知らない版など）epic があれば、数えられないので nil
     private func runningEpics(
         of repo: RepositoryFullName,
         except id: ULID,
         in context: CommanderContext
-    ) async throws(CommanderError) -> Int {
+    ) async throws(CommanderError) -> Int? {
         let entries: [DirectoryEntry]
         do {
             entries = try await context.store.list(StatePath.epics(repo)) ?? []
@@ -150,7 +157,7 @@ public struct StartEpicHandler: IntentHandler {
             do {
                 epic = try await context.files.read(EpicFile.self, at: StatePath.epic(repo, epicID))?.file
             } catch .unreadable {
-                continue
+                return nil
             } catch {
                 throw .files(error)
             }
@@ -177,8 +184,11 @@ public struct ReviseGoalHandler: IntentHandler {
         guard epic.stage == .awaitingStart else { return .reject("ゴールを直せる段階でない（今は \(epic.stage.rawValue)）") }
         guard let goal = try await context.read(GoalFile.self, at: StatePath.goal(epic.repo, epic.id)) else { return .reject("ゴールが無い") }
         guard goal.version == target.goalVersion else { return .reject("ゴールが直された（今の版は \(goal.version)）。新しいゴールに指示し直す") }
-        let others = try await context.hasOpenJob(epic.repo, epic: epic.id) { $0.kind == .reviseGoal && $0.origin != revise.intent }
-        if others { return .reject("ほかの指示でゴールを直している途中。直し終えてから指示し直す") }
+        switch try await context.hasOpenJob(epic.repo, epic: epic.id, where: { $0.kind == .reviseGoal && $0.origin != revise.intent }) {
+        case true?: return .reject("ほかの指示でゴールを直している途中。直し終えてから指示し直す")
+        case nil: return .reject(StartEpicHandler.unreadableJobs)
+        case false?: break
+        }
         let input: [String: JSONValue] = ["instruction": .string(revise.instruction), "goalVersion": .integer(Int64(target.goalVersion))]
         try await context.create(context.claudeJob(.reviseGoal, for: epic, origin: revise.intent, seed: "", input: input))
         return .accept

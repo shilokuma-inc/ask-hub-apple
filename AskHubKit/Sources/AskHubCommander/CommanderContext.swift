@@ -63,9 +63,11 @@ extension CommanderContext {
         }
     }
 
-    /// 終わっていないジョブのうち、`matches` に合うものがあるか
-    func hasOpenJob(_ repo: RepositoryFullName, epic: ULID, where matches: (JobFile) -> Bool) async throws(CommanderError) -> Bool {
-        try await jobs(repo, epic: epic).contains { JobFile.openStates.contains($0.state) && matches($0) }
+    /// 終わっていないジョブのうち、`matches` に合うものがあるか。読めないジョブがあれば、確かめられないので `nil`
+    func hasOpenJob(_ repo: RepositoryFullName, epic: ULID, where matches: (JobFile) -> Bool) async throws(CommanderError) -> Bool? {
+        let list = try await jobList(repo, epic: epic)
+        if list.jobs.contains(where: { JobFile.openStates.contains($0.state) && matches($0) }) { return true }
+        return list.unreadable.isEmpty ? false : nil
     }
 
     /// ジョブを作る。すでにあれば（やり直したとき）そのまま
@@ -79,31 +81,37 @@ extension CommanderContext {
         }
     }
 
-    /// epic のジョブ（読めないファイルは飛ばす）
-    func jobs(_ repo: RepositoryFullName, epic: ULID) async throws(CommanderError) -> [JobFile] {
+    /// epic のジョブと、読めない（知らない版など）ジョブのパス
+    struct JobList {
+        var jobs: [JobFile] = []
+        var unreadable: [String] = []
+    }
+
+    func jobList(_ repo: RepositoryFullName, epic: ULID) async throws(CommanderError) -> JobList {
         let entries: [DirectoryEntry]
         do {
             entries = try await store.list(StatePath.jobs(repo, epic: epic)) ?? []
         } catch {
             throw .store(error)
         }
-        var jobs: [JobFile] = []
+        var list = JobList()
         for entry in entries where entry.kind == .file && entry.name.hasSuffix(".json") {
             do {
-                if let loaded = try await files.read(JobFile.self, at: entry.path) { jobs.append(loaded.file) }
+                if let loaded = try await files.read(JobFile.self, at: entry.path) { list.jobs.append(loaded.file) }
             } catch .unreadable {
-                continue
+                list.unreadable.append(entry.path)
             } catch {
                 throw .files(error)
             }
         }
-        return jobs
+        return list
     }
 
     /// 終わっていないジョブのうち、`matches` に合うものを取り消す
     func cancelJobs(_ repo: RepositoryFullName, epic: ULID, where matches: (JobFile) -> Bool) async throws(CommanderError) {
         let open = JobFile.openStates
-        for job in try await jobs(repo, epic: epic) where open.contains(job.state) && matches(job) {
+        // 読めないジョブは、中身が分からないので取り消さない（新しい司令塔が扱う）
+        for job in try await jobList(repo, epic: epic).jobs where open.contains(job.state) && matches(job) {
             let now = timestamp
             do {
                 let path = StatePath.job(repo, epic: epic, job: job.id)
