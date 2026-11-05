@@ -226,6 +226,9 @@
   `-quiet` を付けると Swift Testing の結果の行が出ないので、件数を確かめるときは付けずに `Test run with N tests` の行を見る（2026-11-01、Discussion #784）
 - 作業ブランチへの push の CI（`build.yml`）は Unit テストを macOS（`Test on macOS`）でしか流さず、iOS Simulator の Unit テストは develop 宛ての PR（epic の最終 PR）で UI テストと一緒に初めて走る。
   macOS と iOS で挙動が違う API（`NSItemProvider` など）を使う Unit テストは、子 PR の CI が通っても最終 PR で落ちることがあるので、手元で iOS Simulator でも `-only-testing:AskHubTests/<構造体の名前>` で流す（2026-11-01、#798）
+- CI（macos-26-arm64）の `swift test --package-path AskHubKit` では、負荷でテストが一律に遅れることがあり、その幅が 5 秒（#699）から 10.9 秒（2026-11-05）に広がった。
+  `ContinuousClock.now - start < 上限` で「子プロセスを待たずに戻った」ことを確かめるテストは、上限を 30 秒、待たないはずの子プロセスの `sleep` を 60 秒にそろえている（`LocalLoopRuntimeTests.returnLimit`・`XcbStatusTests.returnLimit`）。
+  同じ形のテストを足すときは、上限をふだんの所要時間でなく CI の遅れに合わせ、`sleep` は上限の倍にする。成功を期待するコマンドの `timeout` も上限より短くしない
 
 ## Keychain
 
