@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/request.schema.json",
+  "title": "依頼の人の意図（kind が request）の payload",
+  "description": "封筒の repo は対象のリポジトリ、target と targetVersion は書かない。知らない欄のある payload は読まない。添付の n は 1 から順に並べ、名前はパスの区切り（/・\\）と制御文字を含まないことは、読む側で確かめる。添付の中身は attachments/<device>/<nonce>/<n> に置き、大きさとハッシュを司令塔が確かめる",
+  "type": "object",
+  "required": [
+    "title"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "body": {
+      "type": "string",
+      "maxLength": 20000
+    },
+    "attachments": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "required": [
+          "n",
+          "name",
+          "size",
+          "sha256"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "n": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 52428800
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}",
+            "maxLength": 64
+          }
+        }
+      }
+    }
+  }
+}
