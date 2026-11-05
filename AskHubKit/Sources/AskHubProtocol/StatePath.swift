@@ -23,6 +23,14 @@ public enum StatePath {
         "\(epicDirectory(repo, epic))/goal.json"
     }
 
+    /// epic のジョブを置くディレクトリ
+    public static func jobs(_ repo: RepositoryFullName, epic: ULID) -> String {
+        "\(epicDirectory(repo, epic))/jobs"
+    }
+
+    /// 人の意図を置くディレクトリ（端末ごとに `intents/<device>/` に分ける）
+    public static let intents = "intents"
+
     public static func job(_ repo: RepositoryFullName, epic: ULID, job: ULID) -> String {
         "\(epicDirectory(repo, epic))/jobs/\(job).json"
     }
