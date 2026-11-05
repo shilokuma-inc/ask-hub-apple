@@ -63,17 +63,24 @@ struct XcbStatusTests {
         }
     }
 
+    /// 子プロセス（`sleep 60`）の終了を待たずに戻ったとみなす上限。読み切りを諦めずに子プロセスを待つと 60 秒かかる。
+    /// CI のランナーでは負荷でテストが 10 秒ほど遅れることがあるので、ふだんの所要時間（1 秒未満）より大きく取る
+    private static let returnLimit: Duration = .seconds(30)
+
     @Test func returnsEvenIfChildKeepsOutputOpen() async throws {
         // xcb を止めても、xcb が起動した子プロセス（ssh など）が標準出力のパイプを持ち続ける
-        let start = ContinuousClock.now
+        var start = ContinuousClock.now
         await #expect(throws: XcbStatusError.timedOut) {
             try await XcbStatusCommand(timeout: .milliseconds(200), outputDrainTimeout: .milliseconds(300))
-                .status(xcbPath: try script("sleep 30 &\nwait"))
+                .status(xcbPath: try script("sleep 60 &\nwait"))
         }
-        // xcb が先に終わって子プロセスだけが残っても、出力を読み切りの上限まで待って返る
-        let detached = try script(#"echo '{"hosts":[]}'; sleep 30 &"#)
-        let status = try await XcbStatusCommand(timeout: .seconds(10), outputDrainTimeout: .milliseconds(300)).status(xcbPath: detached)
+        #expect(ContinuousClock.now - start < Self.returnLimit)
+        // xcb が先に終わって子プロセスだけが残っても、出力を読み切りの上限まで待って返る。
+        // 負荷で xcb の終了が遅れても時間切れにならないよう、時間切れは上限と同じにする
+        let detached = try script(#"echo '{"hosts":[]}'; sleep 60 &"#)
+        start = ContinuousClock.now
+        let status = try await XcbStatusCommand(timeout: Self.returnLimit, outputDrainTimeout: .milliseconds(300)).status(xcbPath: detached)
         #expect(status == XcbStatus(hosts: []))
-        #expect(ContinuousClock.now - start < .seconds(10))
+        #expect(ContinuousClock.now - start < Self.returnLimit)
     }
 }
