@@ -5,6 +5,8 @@ struct TextRequestSheet: View {
     let request: TextRequest
     /// 何について書いているか。入力欄の上に出す（まとめて判断するの札）
     var subject: Subject?
+    /// 開いてすぐ入力欄にフォーカスを当てるか。当てないときは、入力欄を押してから書く（iOS ではそのときにキーボードが出る）
+    var focusesOnAppear = true
     let onSend: (String) -> Void
     let onCancel: () -> Void
 
@@ -23,6 +25,7 @@ struct TextRequestSheet: View {
                     TextField(request.prompt, text: $text, axis: .vertical)
                         .lineLimit(4...10)
                         .focused($isFocused)
+                        .accessibilityIdentifier("textRequest.field")
                 } footer: {
                     if request.allowsEmpty {
                         Text("空のままでも送れます")
@@ -40,9 +43,13 @@ struct TextRequestSheet: View {
                         .disabled(!request.allowsEmpty && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            // 開いてすぐフォーカスを当てるので、「完了」はフォーカスが付いてから足す
+            // 開いてすぐフォーカスを当てることがあるので、「完了」はフォーカスが付いてから足す
             .keyboardDoneButton($isFocused, onlyWhileFocused: true)
-            .onAppear { isFocused = true }
+            .onAppear {
+                if focusesOnAppear {
+                    isFocused = true
+                }
+            }
         }
         .presentationDetents([.medium, .large])
     }

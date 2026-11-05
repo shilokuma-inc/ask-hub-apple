@@ -60,7 +60,11 @@ struct DecisionDeckView: View {
         .hidesTabBar()
         .sheet(item: $textRequest, onDismiss: textRequestDismissed) { request in
             // 何について書いているか（止めた札・説明を求める札）を、シートの上にも出す
-            TextRequestSheet(request: request, subject: current.map { textSubject($0) }) { text in
+            TextRequestSheet(
+                request: request,
+                subject: current.map { textSubject($0) },
+                focusesOnAppear: Self.focusesTextOnAppear
+            ) { text in
                 textRequest = nil
                 if !hold.send(text) {
                     send(request.intent(text: text), card: current, label: request.title)
@@ -92,6 +96,17 @@ struct DecisionDeckView: View {
         case .decisions: "判断を確かめる"
         case .verifications: "実機で確かめる"
         }
+    }
+
+    /// 文を書くシートを開いてすぐ、入力欄にフォーカスを当てるか。
+    /// iOS では当てずにキーボードを出さず、シートの上に止めた札を見せる。入力欄を押すとキーボードが出る（ユーザーの決定。2026-11-06）。
+    /// Mac はソフトウェアキーボードで札が隠れないので、開いてすぐ書けるようにする
+    private static var focusesTextOnAppear: Bool {
+        #if os(iOS)
+        false
+        #else
+        true
+        #endif
     }
 
     /// カードの大きさ。どのカードも同じ大きさの札にする
