@@ -144,15 +144,18 @@ public struct StartEpicHandler: IntentHandler {
         except id: ULID,
         in context: CommanderContext
     ) async throws(CommanderError) -> Int? {
-        let entries: [DirectoryEntry]
+        let files: [DirectoryEntry]
         do {
-            entries = try await context.store.list(StatePath.epics(repo)) ?? []
+            // epic のディレクトリは消さずに増えるので、1,000 件で切れる `list` ではなく、下まで 1 度に読む `listFiles` の epic.json で数える
+            files = try await context.store.listFiles(under: StatePath.epics(repo)) ?? []
         } catch {
             throw .store(error)
         }
         var count = 0
-        for entry in entries where entry.kind == .directory {
-            guard let epicID = ULID(rawValue: entry.name), epicID != id else { continue }
+        for entry in files where entry.name == "epic.json" {
+            let parts = entry.path.split(separator: "/")
+            guard parts.count >= 2, let epicID = ULID(rawValue: String(parts[parts.count - 2])),
+                  entry.path == StatePath.epic(repo, epicID), epicID != id else { continue }
             let epic: EpicFile?
             do {
                 epic = try await context.files.read(EpicFile.self, at: StatePath.epic(repo, epicID))?.file
