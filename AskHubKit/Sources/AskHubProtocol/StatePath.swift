@@ -23,6 +23,11 @@ public enum StatePath {
         "\(epicDirectory(repo, epic))/goal.json"
     }
 
+    /// リポジトリの epic を置くディレクトリ（`epics/<epic>/`）
+    public static func epics(_ repo: RepositoryFullName) -> String {
+        "\(repositoryDirectory(repo))/epics"
+    }
+
     /// epic のジョブを置くディレクトリ
     public static func jobs(_ repo: RepositoryFullName, epic: ULID) -> String {
         "\(epicDirectory(repo, epic))/jobs"
