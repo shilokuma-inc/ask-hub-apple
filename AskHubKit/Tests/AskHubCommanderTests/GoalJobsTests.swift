@@ -83,12 +83,22 @@ struct GoalJobsTests {
         // 人が決めるべき点は、回が残っていれば追加の質問で人に決めてもらう
         #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q3")])).isEmpty)
         #expect(job.problems(in: .init(verdict: .ready, reason: "1 つで進める", goal: goal())).isEmpty)
-        // 回を使い切ったら、決めきれない点は仮に決めてゴールに書かせる
-        let last = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered(round: 3), proceeding: true)
+        // このまま進めると決めた後は、3 回を使い切っていても 4 回目の質問を出せる
+        let extended = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered(round: 3), proceeding: true)
+        #expect(extended.nextRound == 4)
+        #expect(extended.canAskMore)
+        #expect(extended.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q3")])).isEmpty)
+        #expect(!extended.prompt.contains("仮に決めたこと"))
+        // 4 回目も使い切ったら、決めきれない点は仮に決めてゴールに書かせる
+        let fourth = try QuestionFlow.append([Fixture.draft("q3")], round: 4, to: try answered(round: 3)).questions
+        let last = CheckReadinessJob(title: "ランキング", body: "…", questions: fourth, proceeding: true)
+        #expect(!last.canAskMore)
         #expect(last.prompt.contains("仮に決めたこと"))
-        #expect(last.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q3")])) == [
+        #expect(last.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q4")])) == [
             "追加の質問はもう出せない。ready にする"
         ])
+        // 進めると決めていなければ、3 回まで
+        #expect(!CheckReadinessJob(title: "ランキング", body: "…", questions: try answered(round: 3)).canAskMore)
     }
 
     @Test func moreQuestionsAreLimitedLikeFirstOnes() throws {
