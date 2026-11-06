@@ -317,7 +317,7 @@ struct LocalLoopRuntimeTests {
         // 負荷で sh の終了が遅れても時間切れで止めないよう、時間切れは上限と同じにする
         let start = ContinuousClock.now
         let result = try await LocalLoopRuntime(outputDrainTimeout: .milliseconds(500)).run(
-            ["/bin/sh", "-c", "sleep 60 & echo done"],
+            ["/bin/sh", "-c", "sleep 60 & echo $! > child.pid; echo done"],
             input: "",
             for: repository,
             timeout: Self.returnLimit
@@ -325,6 +325,10 @@ struct LocalLoopRuntimeTests {
         #expect(result.status == 0)
         #expect(result.output.contains("done"))
         #expect(ContinuousClock.now - start < Self.returnLimit)
+        // 子プロセスはパイプを持ったまま残っている。確かめたら止める
+        let child = try recordedChildPID(in: repository)
+        defer { kill(child, SIGKILL) }
+        #expect(kill(child, 0) == 0)
     }
 
     @Test func resolvesRelativeExecutableFromPath() async throws {
