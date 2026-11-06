@@ -106,6 +106,7 @@ struct AskHubClientTests {
         let job = JobTarget(repo: Self.repo, epic: epic, job: ULID.generate(at: Self.now), attempt: 2)
         #expect(try RetryJobIntent(envelope: envelope(.retry(job))).target == job)
         #expect(try GiveUpJobIntent(envelope: envelope(.giveUp(job))).target == job)
+        #expect(try AbandonEpicIntent(envelope: envelope(.abandonEpic(repo: Self.repo, epic: epic))).epic == epic)
     }
 }
 

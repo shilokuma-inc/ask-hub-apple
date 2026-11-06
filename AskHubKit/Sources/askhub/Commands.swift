@@ -80,6 +80,9 @@ extension AskHubMain {
             return .request(repo: try arguments.repository(), title: try arguments.string("title"), body: arguments.values["body"] ?? "")
         case "answer", "clarify":
             return try answer(command, arguments)
+        case "abandon":
+            try arguments.only(["repo", "epic"])
+            return .abandonEpic(repo: try arguments.repository(), epic: try arguments.epic())
         case "retry", "give-up":
             try arguments.only(["repo", "epic", "job", "attempt"])
             guard let job = ULID(rawValue: try arguments.string("job")) else { throw CommandArguments.Failure(message: "--job の形が違う") }

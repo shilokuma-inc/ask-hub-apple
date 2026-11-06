@@ -68,6 +68,11 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: AddRepositoryIntent.kind, repo: repo, payload: ["platform": .string(platform.rawValue)])
     }
 
+    /// 開始する前の epic を取り下げる
+    public static func abandonEpic(repo: RepositoryFullName, epic: ULID) -> Self {
+        Self(kind: AbandonEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))
+    }
+
     /// 人に渡したジョブをやり直させる（`target.attempt` は、見たときのジョブの試行の番号）
     public static func retry(_ target: JobTarget) -> Self {
         Self(kind: RetryJobIntent.kind, repo: target.repo, target: target.target, targetVersion: target.targetVersion)
