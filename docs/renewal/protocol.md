@@ -433,7 +433,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `instructFinal` | 最終 PR | 最終 PR の head のコミット | 指示の本文 |
 | `humanTaskDone` | 人がする作業 | ゴールの `version` | 渡すものの参照 |
 | `handover` | epic | — | 移す先の Mac |
-| `retry`・`giveUp` | ジョブ | 試行の番号 | — |
+| `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `removeRepository`・`applyProtection` | リポジトリ | — | 設定 |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |

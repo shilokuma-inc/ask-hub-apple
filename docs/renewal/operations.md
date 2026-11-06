@@ -58,6 +58,7 @@
    - ほかの端末の鍵は `askhub key add --public-key <base64url> --account … --label …`、取り消しは `askhub key revoke <鍵の id>`
 3. `askhub add-repository --repo <owner/repo>` → `askhub request --repo … --title … --body …`
 4. `askhub status` で epic・答える質問（id と版と選択肢）・ゴール・送った意図の処理の結果を見て、`answer`・`clarify`・`decide-split`・`revise-goal`・`start` で進める
+5. 人の対応待ちのジョブ（認証切れ・想定外の失敗など）は、`askhub status` に失敗の理由と、`retry`（やり直す）・`give-up`（やめる）に渡す引数（ジョブの id と試行の番号）が出る。原因を直してから `retry` を送る
 
 ## 容量
 
