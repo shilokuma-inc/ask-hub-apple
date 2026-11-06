@@ -6,8 +6,8 @@ import Foundation
 
 /// 常時オンの Mac の司令塔とワーカーの常駐のループ（`docs/renewal/flows.md` の「司令塔の動き」）。
 ///
-/// 1 周ごとに、人の意図を処理し終えてから、試行を読んでジョブの状態を決め、自分宛ての Claude のジョブを引き受けて並んで動かす。
-/// 最後に、状態を Discussion の写しと照らし合わせる（写しに失敗しても、周は止めない）。
+/// 1 周ごとに、人の意図を処理し終えてから、試行を読んでジョブの状態を決め、自分宛ての Claude のジョブを引き受けて並んで動かし、
+/// 進行を止めているものを知らせる。最後に、状態を Discussion の写しと照らし合わせる（写しに失敗しても、周は止めない）。
 /// 生きている印（`commander.json`・`macs/<mac>.json`）は、決めた間隔で書く
 public actor CommanderLoop {
     public struct Settings: Sendable {
@@ -58,6 +58,8 @@ public actor CommanderLoop {
     nonisolated let client: ClaudeClient
     nonisolated let workspace: any RepositoryWorkspace
     nonisolated let status: @Sendable () async -> MachineStatus
+    /// 進行を止めているものを知らせるもの。APNs の設定が無ければ nil（知らせない）
+    nonisolated let notifier: Notifier?
     nonisolated let log: @Sendable (String) -> Void
     nonisolated let sleeper: any Sleeper
     /// Discussion の写し。nil なら写さない
@@ -73,6 +75,7 @@ public actor CommanderLoop {
         client: ClaudeClient,
         workspace: any RepositoryWorkspace,
         status: @escaping @Sendable () async -> MachineStatus,
+        notifier: Notifier? = nil,
         log: @escaping @Sendable (String) -> Void,
         sleeper: any Sleeper = TaskSleeper(),
         mirror: DiscussionMirror? = nil
@@ -83,6 +86,7 @@ public actor CommanderLoop {
         self.client = client
         self.workspace = workspace
         self.status = status
+        self.notifier = notifier
         self.log = log
         self.sleeper = sleeper
         self.mirror = mirror
@@ -122,6 +126,7 @@ public actor CommanderLoop {
         for job in picked {
             start(job, with: worker)
         }
+        await notify(swept, trusted: Set(verifier.publicKeys.keys))
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
         await mirror?.syncAll(verifier: verifier)
         return picked
@@ -182,6 +187,20 @@ public actor CommanderLoop {
 
     private func finished(_ id: ULID) {
         inFlight[id] = nil
+    }
+
+    // MARK: - 通知
+
+    /// 進行を止めているものを知らせる。知らせられなくても、ジョブの引き受けは止めない
+    private func notify(_ swept: JobSweep.Swept, trusted: Set<KeyID>) async {
+        guard let notifier else { return }
+        do {
+            for notice in try await notifier.notify(epics: swept.epics, jobs: swept.jobs, trusted: trusted) {
+                log("通知した: \(notice.title)（\(notice.body.replacingOccurrences(of: "\n", with: "・"))）")
+            }
+        } catch {
+            log("通知を終えられなかった（\(error)）。次の周でやり直す")
+        }
     }
 
     // MARK: - 生きている印

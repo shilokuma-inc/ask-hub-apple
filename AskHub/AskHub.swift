@@ -5,99 +5,96 @@
 //  Created by 村石 拓海 on 2024/05/12.
 //
 
-import AskHubKit
 import SwiftUI
 
 @main
 struct AskHub: App {
-    // フォアグラウンド復帰時と定期の自動更新で使うため、一覧のモデルは App が持つ
-    @State private var inbox = InboxModel.launchDefault()
-    @State private var requests = IdeaRequestModel.launchDefault()
-    @State private var mergeQueue = MergeQueueModel.launchDefault()
-    @State private var loopStatus = LoopStatusModel.launchDefault()
-    @State private var isDemoMode = DemoMode.isEnabled
-    @Environment(\.scenePhase)
-    private var scenePhase
+    @AppStorage(DemoScenario.preferenceKey) private var scenario: DemoScenario = .standard
+    @State private var store: ClientStore
+    @State private var navigator: AppNavigator
 
     init() {
+        let stored = UserDefaults.standard.string(forKey: DemoScenario.preferenceKey).flatMap(DemoScenario.init(rawValue:))
+        // 撮影モードは、設定のデモの場面によらず標準の場面で撮る
+        _store = State(initialValue: Self.makeStore(scenario: ScreenshotDemo.isEnabled ? .standard : stored ?? .standard))
+        let navigator = AppNavigator()
+        // App Store のスクショの撮影モードでは、撮る画面を開く（Release でも動く）
+        ScreenshotDemo.openInitialScreen(ScreenshotDemo.scene, in: navigator)
         #if DEBUG
-        // UI テスト（サンプルデータの起動引数）は、前回の起動で設定画面から切り替えた値に左右されないよう既定値から始める
-        if ProcessInfo.processInfo.arguments.contains(InboxModel.sampleLaunchArgument) {
-            LoopStartPreference.reset()
+        // UI テストと撮影では、起動引数で決めた画面を開く
+        if let destination = DemoLaunch.initialDestination() {
+            navigator.section = destination.section
+            if let route = destination.route {
+                navigator.open(route, in: destination.section)
+            }
         }
         #endif
+        _navigator = State(initialValue: navigator)
+        // 英数字は Nunito、かなと漢字はシステムの書体（Typography）
+        AppFont.register()
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(
-                model: inbox,
-                requestModel: requests,
-                mergeModel: mergeQueue,
-                loopModel: loopStatus,
-                // 撮影モード（ScreenshotDemo）のときは、撮る画面のタブを開く
-                initialTab: ScreenshotDemo.scene?.tab ?? .action
-            )
-                .environment(\.isDemoMode, isDemoMode)
-                .environment(\.setDemoMode) { setDemoMode($0) }
-                // アプリを開いているあいだ（バックグラウンド以外）は、全タブの一覧を定期的に取り直す（Issue #299）。
-                // バックグラウンドに移ると取り消されて止まり、戻ると数え直す（戻った直後の取り直しは onChange が行う）
-                .task(id: scenePhase == .background) {
-                    guard scenePhase != .background else {
+            RootView()
+                .appFont(.body)
+                .lineHeight(AppFont.lineHeight)
+                .environment(store)
+                .environment(navigator)
+                // 設定でデモの場面を変えたら、その場面のデータで作り直す（撮影モードは標準の場面のまま）
+                .onChange(of: scenario) {
+                    store = Self.makeStore(scenario: ScreenshotDemo.isEnabled ? .standard : scenario)
+                    // 撮影モードでは、起動引数で開いた撮る画面を残す
+                    guard !ScreenshotDemo.isEnabled else {
                         return
                     }
-                    await AutoRefresh.repeating(every: AutoRefresh.foregroundInterval) {
-                        await refreshPeriodically()
-                    }
+                    navigator.selection = nil
+                    navigator.paths = [:]
                 }
         }
-        .onChange(of: scenePhase) { _, phase in
-            // フォアグラウンドに戻ったら取り直す（Discussion #1 の Q7）。直前の取得から間もなければ取り直さない
-            switch phase {
-            case .active:
-                Task { await refreshIfStale() }
-
-            case .background:
-                #if os(iOS)
-                BackgroundRefresh.schedule()
-                #endif
-
-            default:
-                break
-            }
-        }
-        #if os(iOS)
-        .backgroundTask(.appRefresh(BackgroundRefresh.identifier)) { [inbox, mergeQueue] in
-            await BackgroundRefresh.schedule()
-            // 時間切れになると取得は打ち切られる。そのときは失敗を表示せず、前回の一覧を残す
-            async let inboxRefreshed: Void = inbox.refreshIfStale()
-            async let mergeQueueRefreshed: Void = mergeQueue.refreshIfStale()
-            _ = await (inboxRefreshed, mergeQueueRefreshed)
+        .defaultSize(width: 1240, height: 820)
+        .commands { AppCommands(navigator: navigator, store: store) }
+        #if os(macOS)
+        Settings {
+            AppSettingsView()
+                .appFont(.body)
+                .lineHeight(AppFont.lineHeight)
+                .environment(store)
+                .environment(navigator)
+                .frame(width: 460, height: 420)
         }
         #endif
     }
 
-    /// デモモードを切り替え、一覧のモデルをサンプルデータ（または GitHub）のものに差し替える
-    private func setDemoMode(_ enabled: Bool) {
-        DemoMode.isEnabled = enabled
-        isDemoMode = enabled
-        inbox = enabled ? .sample() : InboxModel()
-        requests = enabled ? .sample() : IdeaRequestModel()
-        mergeQueue = enabled ? .sample() : MergeQueueModel()
-        loopStatus = enabled ? .sample() : LoopStatusModel()
+    /// いまはデモのデータだけで動く（バックエンドができたら、ここで本物の窓口を作る）。
+    /// UI テストと撮影は、起動引数 `-demoScenario <場面>` `-demoReactionDelay <秒>` で場面と機械の反応の速さを決める
+    static func makeStore(scenario: DemoScenario) -> ClientStore {
+        // 撮影モードでは機械の反応を起こさず、撮っている間に画面が変わらないようにする
+        let delay = ScreenshotDemo.isEnabled ? 3_600 : UserDefaults.standard.object(forKey: DemoScenario.reactionDelayKey) as? Double ?? 4
+        return ClientStore(service: DemoClientService(scenario: scenario, reactionDelay: delay))
     }
+}
 
-    /// 定期の取り直し。全タブの一覧と依頼先のリポジトリを取り直す。直前の取得から間もない一覧（手で更新した直後など）は飛ばす
-    private func refreshPeriodically() async {
-        async let listsRefreshed: Void = refreshIfStale()
-        async let repositoriesReloaded: Void = requests.reloadRepositoriesIfStale()
-        _ = await (listsRefreshed, repositoriesReloaded)
-    }
+/// Mac のメニューとキーボードショートカット
+struct AppCommands: Commands {
+    let navigator: AppNavigator
+    let store: ClientStore
 
-    private func refreshIfStale() async {
-        async let inboxRefreshed: Void = inbox.refreshIfStale()
-        async let mergeQueueRefreshed: Void = mergeQueue.refreshIfStale()
-        async let loopStatusRefreshed: Void = loopStatus.refreshIfStale()
-        _ = await (inboxRefreshed, mergeQueueRefreshed, loopStatusRefreshed)
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("新しい依頼…") { navigator.isShowingNewRequest = true }
+                .keyboardShortcut("n")
+        }
+        CommandMenu("移動") {
+            ForEach(Array(AppSection.allCases.enumerated()), id: \.element) { index, section in
+                Button(section.title) { navigator.section = section }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
+            }
+            Divider()
+            Button("読み直す") {
+                Task { await store.refresh() }
+            }
+            .keyboardShortcut("r")
+        }
     }
 }

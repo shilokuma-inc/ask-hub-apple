@@ -15,6 +15,8 @@ public struct CommanderConfiguration: Codable, Equatable, Sendable {
     public var keyAccounts: [String]
     /// この Mac で同時に動かす数
     public var capacity: MacFile.Capacity
+    /// 進行を止めるものを APNs で知らせるための設定（`askhub-commander apns` で足す）。無ければ知らせない
+    public var apns: APNsConfiguration?
 
     public init(
         stateRepository: RepositoryFullName,
@@ -22,7 +24,8 @@ public struct CommanderConfiguration: Codable, Equatable, Sendable {
         mac: MacName,
         claude: String,
         keyAccounts: [String],
-        capacity: MacFile.Capacity = .init(claude: 2, build: 0)
+        capacity: MacFile.Capacity = .init(claude: 2, build: 0),
+        apns: APNsConfiguration? = nil
     ) {
         self.stateRepository = stateRepository
         self.stateBranch = stateBranch
@@ -30,6 +33,7 @@ public struct CommanderConfiguration: Codable, Equatable, Sendable {
         self.claude = claude
         self.keyAccounts = keyAccounts
         self.capacity = capacity
+        self.apns = apns
     }
 
     /// 設定の形の問題。空なら使える
@@ -39,6 +43,7 @@ public struct CommanderConfiguration: Codable, Equatable, Sendable {
         if keyAccounts.isEmpty || keyAccounts.contains(where: \.isEmpty) { problems.append("keyAccounts に GitHub のアカウントを 1 つ以上書く") }
         if capacity.claude < 1 { problems.append("capacity.claude は 1 以上") }
         if capacity.build < 0 { problems.append("capacity.build は 0 以上") }
+        problems += apns?.problems ?? []
         return problems
     }
 

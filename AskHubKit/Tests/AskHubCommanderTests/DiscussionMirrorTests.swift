@@ -5,21 +5,6 @@ import Foundation
 import os
 import Testing
 
-/// 進められる時計
-final class TestClock: Sendable {
-    private let state: OSAllocatedUnfairLock<Date>
-
-    init(_ date: Date) {
-        state = OSAllocatedUnfairLock(initialState: date)
-    }
-
-    var now: Date { state.withLock { $0 } }
-
-    func advance(by seconds: TimeInterval) {
-        state.withLock { $0 = $0.addingTimeInterval(seconds) }
-    }
-}
-
 /// ログの行を残す
 final class LogLines: Sendable {
     private let state = OSAllocatedUnfairLock<[String]>(initialState: [])
@@ -186,7 +171,7 @@ extension ClaudeJobRunnerTests {
         #expect(github.calls.count == calls)
         // 有効にされ、間を空けた後の周で作る
         github.change { $0.repository.discussionsEnabled = true }
-        clock.advance(by: 60 * 60)
+        clock.advance(minutes: 60)
         await mirror.syncAll(verifier: verifier)
         #expect(github.discussions.count == 1)
     }
@@ -232,7 +217,7 @@ extension ClaudeJobRunnerTests {
         #expect(github.writes == writes)
         // 一覧が戻れば、間を空けた後の周で写す（重ならない）
         github.change { $0.hidesComments = false }
-        clock.advance(by: 2 * 60)
+        clock.advance(minutes: 2)
         await mirror.syncAll(verifier: verifier)
         let texts = github.texts(of: number)
         #expect(texts.filter { $0.contains("### q2.") }.count == 1)
@@ -252,7 +237,7 @@ extension ClaudeJobRunnerTests {
         let first = try #require(try await read(QuestionsFile.self, at: path, in: store))
         #expect(first.questions.map { $0.comment != nil } == [true, false, false])
         // 後の周で、続きから写す
-        clock.advance(by: 2 * 60)
+        clock.advance(minutes: 2)
         await mirror.syncAll(verifier: verifier)
         let number = try await discussionNumber(of: epic, in: store)
         #expect(github.texts(of: number).filter { $0.contains("### q1.") }.count == 1)

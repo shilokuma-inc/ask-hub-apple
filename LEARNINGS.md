@@ -113,6 +113,9 @@
   中身は `application/vnd.github.raw+json` で読み直す。100 MB を超えるファイルは Contents API では読めない（GitHub の文書）。`object` に切り替えると、ディレクトリが配列ではなく `entries` を持つ object で返るので、一覧の処理が壊れる（2026-11-06）
 - git の設定は、`GIT_CONFIG_COUNT`・`GIT_CONFIG_KEY_<n>`・`GIT_CONFIG_VALUE_<n>` の環境変数でファイルに書かずに渡せる（`core.hooksPath=/dev/null`・`credential.helper` など）。`GIT_CONFIG_GLOBAL=/dev/null`・`GIT_CONFIG_NOSYSTEM=1` で人の設定を読まない。
   `clone --filter=blob:none --no-checkout` の後に `worktree add --detach <path> origin/HEAD` で取り出すと、要るファイルだけを取りにいく。資格情報の無い private リポジトリは、`GIT_TERMINAL_PROMPT=0` のとき `could not read Username for 'https://github.com': terminal prompts disabled` で失敗する（Apple Git 2.54 で確かめた。2026-11-06）
+- organization の Actions の使用量は、`gh api "organizations/<org>/settings/billing/usage?year=<年>&month=<月>"` でリポジトリごと・SKU（`Actions Linux` など）ごとに読める（`unitType` が `Minutes`）。
+  前の `orgs/<org>/settings/billing/actions` は `410`（moved）を返す。public のリポジトリの分も載る（`discountAmount` で無料になる）ので、private の枠（Free の organization は月 2,000 分）を見積もるときは private のリポジトリだけを足す。
+  private のリポジトリでは 1 回のジョブが 1 分に切り上げて数えられるので、数秒で終わる定期実行でも 1 時間ごとで月 720 分になる（2026-11-07、司令塔の見張りの間隔を決めたとき）
 
 ## ビルド・テスト
 
@@ -236,6 +239,12 @@
   `-quiet` を付けると Swift Testing の結果の行が出ないので、件数を確かめるときは付けずに `Test run with N tests` の行を見る（2026-11-01、Discussion #784）
 - 作業ブランチへの push の CI（`build.yml`）は Unit テストを macOS（`Test on macOS`）でしか流さず、iOS Simulator の Unit テストは develop 宛ての PR（epic の最終 PR）で UI テストと一緒に初めて走る。
   macOS と iOS で挙動が違う API（`NSItemProvider` など）を使う Unit テストは、子 PR の CI が通っても最終 PR で落ちることがあるので、手元で iOS Simulator でも `-only-testing:AskHubTests/<構造体の名前>` で流す（2026-11-01、#798）
+- iOS の UI テストで、シートを出したまま後ろの View の `frame` を読むと、シートに隠れた部分が切られる（高さが縮み、`midY` がずれる）。
+  シートの後ろのカードの位置を確かめるときは、隠れない側の角（`minX`・`minY`）で測る。回転させている View は枠が傾きの分だけ広がるので、幅を持たせて比べる（2026-11-04、リニューアルの UI）
+- UI テストで、1 本目の指で引いている途中に 2 本目を時間差で置く操作は、XCTest の内部の `XCPointerEventPath`（`initForTouchAtPoint:offset:`・`moveToPoint:atOffset:`・`liftUpAtOffset:`）を
+  `XCSynthesizedEventRecord`（`initWithName:interfaceOrientation:`・`addPointerEventPath:`・`synthesizeWithError:`）にまとめて合成できる（WebDriverAgent と同じ方法。Swift からは `method(for:)` の IMP を呼ぶ）。
+  ただし「2 本目を置いたまま 1 本目を先に離す」と、Simulator 側で 1 本目の `UITouch` が 2 本目の位置へ滑っていく（同じ `UITouch` に 2 回目の `began` が来る）ので、この場面は実機で確かめる。
+  リポジトリには置かない（内部の API なので Xcode の更新で動かなくなりうる）（2026-11-04、スワイプの手触り）
 
 ## Keychain
 
@@ -299,6 +308,8 @@
 - `Data(contentsOf:options: .mappedIfSafe)` で mmap して読んでいるファイルを、別の処理が同じパスで切り詰めて書き直すと、読む側が SIGBUS で落ちうる。
   読まれうるファイルは `data.write(to:options: .atomic)`（別のファイルに書いてから rename）で書く（`Orchestrator.prepareZip`）。
   actor の中で重い同期の I/O をするときは、`Task.detached { Result { () throws(E) -> T in … } }.value` で actor の外に出すと、型付きの throws のまま Sendable の警告なしで受け取れる
+- Swift Testing の `#expect(items.allSatisfy(\.isDone))` のように、キーパスを渡した `allSatisfy` などの rethrows の呼び出しをマクロの中に書くと、
+  展開の後に「call can throw, but it is not marked with 'try'」でビルドが止まる。結果を `let` で受けてから `#expect` に渡す（2026-11-03、リニューアルの UI）
 
 - `NSRegularExpression`（ICU）の `$` は、複数行の指定が無くても、末尾の改行の前で合う（`^[a-z/]+$` が `"a/b\n"` に合う）。Python でも同じことを確かめた。Java の `Pattern` も文書上は同じで、ECMAScript だけが合わない（Kotlin のクライアントの検証で効く）。
   JSON Schema の `pattern` で値を区切るときは、長さの決まった値は `maxLength` を足し、そうでない値は `"not": { "pattern": "\\n" }` で改行を弾く（`protocol/schemas`。2026-11-03、#835）
@@ -307,6 +318,8 @@
 - actor のメソッドから、閉包を受け取る nonisolated の async の関数（失敗の型を変えるだけの包みなど）を呼ぶと、閉包が actor の外へ送られるとみなされ、
   「sending value of non-Sendable type … risks causing data races」になる。包みを `static func f<T>(isolation: isolated (any Actor)? = #isolation, _ body: () async throws(E) -> T)` にすると、
   呼んだ側の isolation のまま動くので通る。インスタンスメソッドに isolated の引数を付けると `nonisolated` にできない（「instance method with 'isolated' parameter cannot be 'nonisolated'」）ので `static` にする（2026-11-07、`DiscussionMirror`）
+- Swift Testing の `#require` の引数の中に `#require` を入れる（`try #require(try JSONSerialization.jsonObject(with: #require(data)) as? [String: Any])`）と、
+  「recursive expansion of macro 'require(_:_:sourceLocation:)'」でテストのビルドが止まる。内側の `#require` を `let` で受けてから外側に渡す（2026-11-07、`APNsSenderTests`）
 
 ## シェルスクリプト
 
@@ -384,3 +397,45 @@
   `FileManager.enumerator` の `.skipsPackageDescendants` はパッケージ（`.app`）の中に入らないが、パッケージのディレクトリそのものは返す（`isPackage` が true）ので、自分で除く（2026-11-01、Discussion #784）
 - `NSItemProvider(object: url as NSURL)` の `loadDataRepresentation(forTypeIdentifier: "public.file-url")` は、macOS では URL の文字列のバイトを返すが、iOS では `["file://…", ""]` の binary plist を返す。
   そのため `URL(dataRepresentation:relativeTo:)` は iOS ではファイルの URL にならない（`isFileURL` が false）。macOS の受け口からだけ呼ぶ `AttachmentDropProviders.item(from:)` のこのテストは `#if os(macOS)` で流す（2026-11-01、#798）
+- iOS 26 では、一覧の下に置くボタンの帯を `safeAreaInset(edge: .bottom)` にすると、ボタンと一覧の文字が重なって読みにくい。
+  `safeAreaBar(edge: .bottom)` にすると、下にスクロールの端のぼかしが付いて読める（iOS 26 / macOS 26）（2026-11-03、リニューアルの UI）
+- Mac の `List(selection:)` で選んだ行は濃い背景になり、`.red` や `.accentColor` の文字が読みにくい。
+  `@Environment(\.backgroundProminence)` が `.increased` のときは色を付けない（2026-11-03、リニューアルの UI）
+- リニューアルのクライアントは、DEBUG の起動引数で開く画面とデモの場面を決められる（`-demoScenario standard|quiet|failing|partial`・
+  `-demoOpen deck:all`・`-demoOpen epic:<id>`・`-demoDrag 0:0.8`・`-demoReactionDelay 0`）。UI テストと PR のスクショはこれで撮る
+  （`AskHub/Demo/DemoLaunch.swift`）（2026-11-03、リニューアルの UI）
+- 英数字だけのフォント（Nunito）を `Font.custom(_:size:relativeTo:)` で使うと、かなと漢字は CoreText がシステムの書体（ヒラギノ角ゴ）で補い、太さも合わせる。
+  可変フォントの名前付きインスタンスは PostScript 名（`Nunito-Bold` など）でそのまま選べる。`AskHub/` の下に置いたフォントは同期フォルダでバンドルの直下に入るので、
+  Info.plist に並べずに `CTFontManagerRegisterFontsForURL` で登録できる。ナビゲーションバーの見出しとタブの名前は UIKit が描くので、`UINavigationBar.appearance()` で別に変える（2026-11-03、リニューアルの UI）
+- `@ScaledMetric` と `UIFontMetrics.scaledFont(for:)` は、テキストサイズを標準（Large）より小さくしても縮まない（倍率は 1 のまま。大きくする方向だけに効く）。
+  中身の寸法を縮めたいときは `dynamicTypeSize` の段階から本文の大きさの比を求める（`ContentScale`）。UIKit の見出しは `UIFont.preferredFont(forTextStyle:).pointSize` の大きさで作る（2026-11-03、リニューアルの UI）
+- iOS 26 の `.lineHeight(.multiple(factor:))` を 1 より小さくすると、Nunito とヒラギノの文字の上が切れる。`.tight` は切れないが、2 行にわたる日本語が窮屈になる（2026-11-03、リニューアルの UI）
+- iOS 26 の `.lineHeight(.multiple(factor:))` の倍率は、文字の大きさに対する倍率（行の高さ = 文字の大きさ × 倍率）。Nunito の標準の行の高さは約 1.36 倍（2026-11-03、リニューアルの UI）
+- iOS 26 の標準の一覧（insetGrouped）の角の半径は約 24pt で、変える API が無い（`containerShape` も効かない）。`listRowBackground` で描いた地も、その角で切り取られる。
+  角を変えるには `.listStyle(.grouped)` にして、行ごとに地を描く。セクションの中の行の位置は `Group(subviews:)` で数えられる（`CardSection`）（2026-11-03、リニューアルの UI）
+- `NavigationLink` のラベルの中（行の見た目の部品）に付けた `listRowInsets`・`listRowBackground` は効かない。一覧の行そのもの（`NavigationLink` や ForEach の中身）に付ける（2026-11-03、リニューアルの UI）
+- `ToolbarItemGroup(placement: .keyboard)` を最初から付けた画面で、開いてすぐ `onAppear` で入力欄にフォーカスを当てると、キーボードの上に「完了」が出ない（シートで確かめた。iOS 26.5）。
+  `toolbar` の中身をフォーカスがあるときだけにして、フォーカスが付いてから足すと出る（`keyboardDoneButton(_:onlyWhileFocused:)`）。
+  重ねたカードのように、付ける View が同じ画面に並ぶときも、フォーカスのある View の分だけ出るので重複しない（2026-11-03、リニューアルの UI）
+- iOS でハードウェアキーボード（Simulator への文字の送り込みを含む）から打ったキーは、フォーカスのある `TextField` から親の View の `.onKeyPress` にも届く。
+  親で数字キーを選択肢の番号として扱うときは、選択肢が 0 個（入力欄だけのカード）でも落ちない形で範囲を確かめる（`(1...count).contains(n)` は `1...0` で落ちる。`indices.contains(n - 1)` にする）。
+  UI テストで確かめるときは `typeKey(_:modifierFlags:)` で打つ（`typeText` はソフトウェアキーボードの経路で入るので親の `onKeyPress` に届かず、落ちる不具合も再現しない）（2026-11-03、リニューアルの UI）
+- `.sheet(item:)` を下へ払って閉じると、シートの中の「キャンセル」のボタンの処理を通らない。シートを出すために動かした View を戻すなどの後始末は、
+  `.sheet(item:onDismiss:)` の `onDismiss` に置く（閉じ終わってから呼ばれるので、送ったときに後ろの View を動かす合図にも使える。`SwipeHold`）（2026-11-04、リニューアルの UI）
+- SwiftUI の `DragGesture` は、引いている途中に 2 本目の指が触れると取り消され、`onEnded` が来ない（動かしていた View が途中で止まったまま残る）。
+  2 本目を置いたまま 1 本目を離すと、2 本目の触れた位置を起点にした移動量で `onEnded` が来る。1 本目だけを追うには `UIGestureRecognizerRepresentable` で
+  `UIPanGestureRecognizer` の派生を付け、最初の `UITouch` だけを `super` に渡してほかは `ignore(_:for:)` する（`SingleTouchPanRecognizer`）。
+  Mac の `DragGesture` は `@GestureState` が戻るのを見て取り消しに気づく（2026-11-04、スワイプの手触り）
+- `UIPanGestureRecognizer` は `maximumNumberOfTouches = 1` でも、2 本目を置いたまま 1 本目を離すと 2 本目へ乗り換える。`translation(in:)` はパンが始まった所（約 10pt 動いた所）から測り、
+  `velocity(in:)` は指を止めてから離しても止める前の速さのまま残る。`UIGestureRecognizer` を直に派生すると、SwiftUI の Button の上から始めたとき Button の認識器
+  （`UIKitResponderGestureRecognizer`）に止められて動かない（`UIPanGestureRecognizer` の派生なら止められない）（2026-11-04、スワイプの手触り）
+- `UIGestureRecognizerRepresentable` の `converter` の `.local` は、ジェスチャーを付けた View の描画の変形（`offset`・`rotationEffect`）を含む座標になる。
+  動かしている View の移動量を `.local` で測ると動きと打ち消し合うので、移動量は画面の座標（`location(in: nil)`）で測る（2026-11-04、スワイプの手触り）
+- `DragGesture.Value.predictedEndTranslation` は「移動量 + 速さ × 0.25 秒」。`Spring.value(target:initialVelocity:time:)`・`velocity(...)` は `AnimatablePair` で 2 次元の初速（pt/秒のまま）を渡せる。
+  SwiftUI のアニメーションの初速は 1 つの数だけなので、斜めの速さを引き継ぐときは時刻ごとに計算して `TimelineView` で描く（2026-11-04、スワイプの手触り）
+- `rotation3DEffect` は、軸 (1, 0) を正の角度で回すと上の縁が、軸 (0, 1) では右の縁が奥へ下がる（2026-11-04、スワイプの手触り）
+- シートの中の入力欄でキーボードを出すと、シートの後ろの画面（`NavigationStack` の行き先の View）も、キーボードの分だけ縦に縮む（iOS 26.5。まとめて判断するの札を置く領域が 646pt → 344pt）。
+  後ろの View やその中の `GeometryReader` に `ignoresSafeArea(.keyboard)` を付けても戻らない（外側の層で縮むため）。シートの上に後ろの View を見せるときは、
+  開く前の大きさを覚えておき、幅が同じまま高さだけ縮んだ間はその大きさで置く（`DecisionDeckView.deckArea`）（2026-11-06、自由回答のシート）
+- `.presentationDetents([.height(h), .large])` のシートで開いてすぐ入力欄にフォーカスを当てると、キーボードが出たときに `.large` へ移る（`[.medium, .large]` と同じ）。
+  低い高さのまま書かせるには `.large` を並べない。キーボードの上の「完了」（`ToolbarItemGroup(placement: .keyboard)`）は、低いシートではシートの中に重なって入力欄を狭める（2026-11-06、自由回答のシート）

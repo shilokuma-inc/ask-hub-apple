@@ -72,7 +72,7 @@ extension AskHubCommanderMain {
             setup: .init(root: paths.work, credentialHelper: GitCredential.helper(executable: executable)),
             runner: ProcessCommandRunner()
         )
-        // 人の意図の処理・Claude のジョブの結果・写しの id の書き戻しは、同じ排他を使うよう、同じ `context` を渡す
+        // 人の意図の処理・Claude のジョブの結果・通知の記録・写しの id の書き戻しは、同じ排他を使うよう、同じ `context` を渡す
         let context = CommanderContext(store: store, mac: configuration.mac)
         return CommanderLoop(
             context: context,
@@ -81,9 +81,21 @@ extension AskHubCommanderMain {
             client: ClaudeClient(setup: claude, runner: ProcessCommandRunner()),
             workspace: workspace,
             status: { probe.status() },
+            notifier: notifier(configuration.apns, context: context),
             log: log,
             mirror: DiscussionMirror(context: context, api: discussions, log: log)
         )
+    }
+
+    /// 進行を止めるものを知らせるもの。APNs の設定が無ければ nil（知らせない）
+    private static func notifier(_ apns: APNsConfiguration?, context: CommanderContext) -> Notifier? {
+        guard let apns else {
+            log("APNs の設定が無いので、通知を送らない（askhub-commander apns で登録する）")
+            return nil
+        }
+        let state = APNsKey.state(in: secrets)
+        if state != .ok { log("Keychain の APNs の鍵が \(state.rawValue)。通知は送れずに待つ（askhub-commander apns で登録し直す）") }
+        return Notifier(context: context, sender: APNsSender(configuration: apns, secrets: secrets), log: log)
     }
 
     /// `claude --version` の版（生きている印に書く）。分からなければ nil
