@@ -142,7 +142,8 @@ public actor CommanderLoop {
         "reviseGoal": ReviseGoalHandler(),
         "decideSplit": DecideSplitHandler(),
         "addRepository": AddRepositoryHandler(),
-        "retry": RetryJobHandler()
+        "retry": RetryJobHandler(),
+        "giveUp": GiveUpJobHandler()
     ]
 
     // MARK: - 引き受け
