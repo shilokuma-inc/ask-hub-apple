@@ -15,8 +15,11 @@ struct AskHub: App {
 
     init() {
         let stored = UserDefaults.standard.string(forKey: DemoScenario.preferenceKey).flatMap(DemoScenario.init(rawValue:))
-        _store = State(initialValue: Self.makeStore(scenario: stored ?? .standard))
+        // 撮影モードは、設定のデモの場面によらず標準の場面で撮る
+        _store = State(initialValue: Self.makeStore(scenario: ScreenshotDemo.isEnabled ? .standard : stored ?? .standard))
         let navigator = AppNavigator()
+        // App Store のスクショの撮影モードでは、撮る画面を開く（Release でも動く）
+        ScreenshotDemo.openInitialScreen(ScreenshotDemo.scene, in: navigator)
         #if DEBUG
         // UI テストと撮影では、起動引数で決めた画面を開く
         if let destination = DemoLaunch.initialDestination() {
@@ -38,9 +41,13 @@ struct AskHub: App {
                 .lineHeight(AppFont.lineHeight)
                 .environment(store)
                 .environment(navigator)
-                // 設定でデモの場面を変えたら、その場面のデータで作り直す
+                // 設定でデモの場面を変えたら、その場面のデータで作り直す（撮影モードは標準の場面のまま）
                 .onChange(of: scenario) {
-                    store = Self.makeStore(scenario: scenario)
+                    store = Self.makeStore(scenario: ScreenshotDemo.isEnabled ? .standard : scenario)
+                    // 撮影モードでは、起動引数で開いた撮る画面を残す
+                    guard !ScreenshotDemo.isEnabled else {
+                        return
+                    }
                     navigator.selection = nil
                     navigator.paths = [:]
                 }
@@ -62,7 +69,8 @@ struct AskHub: App {
     /// いまはデモのデータだけで動く（バックエンドができたら、ここで本物の窓口を作る）。
     /// UI テストと撮影は、起動引数 `-demoScenario <場面>` `-demoReactionDelay <秒>` で場面と機械の反応の速さを決める
     static func makeStore(scenario: DemoScenario) -> ClientStore {
-        let delay = UserDefaults.standard.object(forKey: DemoScenario.reactionDelayKey) as? Double ?? 4
+        // 撮影モードでは機械の反応を起こさず、撮っている間に画面が変わらないようにする
+        let delay = ScreenshotDemo.isEnabled ? 3_600 : UserDefaults.standard.object(forKey: DemoScenario.reactionDelayKey) as? Double ?? 4
         return ClientStore(service: DemoClientService(scenario: scenario, reactionDelay: delay))
     }
 }

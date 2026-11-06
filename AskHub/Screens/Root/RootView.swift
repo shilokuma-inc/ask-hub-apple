@@ -128,6 +128,7 @@ struct SidebarView: View {
                     .tag(section)
             }
         }
+        .pastelBackground()
         .navigationTitle("AskHub")
         .navigationSplitViewColumnWidth(min: 180, ideal: 210)
         .safeAreaInset(edge: .bottom) {

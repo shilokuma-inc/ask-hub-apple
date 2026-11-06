@@ -3,14 +3,14 @@
 //  AskHub
 //
 //  App Store 用スクリーンショットの撮影モード（template-app-ios の ScreenshotDemo と同じ形）。
-//  撮影のスクリプトが次の起動引数でアプリを起動し、目的の画面をデモモードのサンプルデータで開かせる。
+//  撮影のスクリプトが次の起動引数でアプリを起動し、目的の画面をデモのデータで開かせる。
 //
 //    -screenshot-demo -screenshot-scene <Scene の rawValue> -AppleLanguages (<言語>) -AppleLocale <ロケール>
 //
-//  画面を足すときは、Scene に case を足し、下の `tab` で開くタブを返し、
+//  画面を足すときは、Scene に case を足し、下の `section` と `route` で開く画面を返し、
 //  AppStore/screenshots.json の scenes に同じ rawValue を足す（突き合わせは Tools/app_store_config.py が行う。
 //  正規表現で `enum Scene: String {` から最初の `}` までの `case` を読むので、Scene の中に case 以外の宣言を書かない）。
-//  サンプルデータは既存のデモモードのもの（SampleInbox など）を使う。UserDefaults のデモモードの設定は書き換えない。
+//  リニューアルで画面を作り直したが、scene の名前は AppStore/screenshots.json に合わせて前のまま残している。
 //  撮影は Release でビルドするので、#if DEBUG にしない
 //
 
@@ -56,23 +56,44 @@ enum ScreenshotDemo {
 
 // `enum Scene: String {` の形を崩さないよう、準拠は extension で足す
 extension ScreenshotDemo.Scene: CaseIterable {
-    /// この画面を撮るときに開くタブ
-    var tab: AppTab {
+    /// この画面を撮るときに開くタブ（サイドバーの項目）
+    var section: AppSection {
         switch self {
-        case .action:
-            .action
-
-        case .request:
-            .request
-
-        case .decisions:
-            .decisions
+        case .action, .request, .decisions, .verification:
+            .inbox
 
         case .status:
-            .status
+            .progress
+        }
+    }
+
+    /// この画面を撮るときに開く画面（デモのデータの epic）。タブの一覧だけなら nil
+    var route: AppRoute? {
+        switch self {
+        case .action, .status:
+            nil
+
+        case .request:
+            .deck(.all)
+
+        case .decisions:
+            .finalReview("tsundoku-search")
 
         case .verification:
-            .verification
+            .deck(.verifications("habit-review"))
+        }
+    }
+}
+
+extension ScreenshotDemo {
+    /// 撮る画面のタブを選び、画面があれば開く。起動のときに `AskHub.init` から呼ぶ（Release でも動く）
+    static func openInitialScreen(_ scene: Scene?, in navigator: AppNavigator) {
+        guard let scene else {
+            return
+        }
+        navigator.section = scene.section
+        if let route = scene.route {
+            navigator.open(route, in: scene.section)
         }
     }
 }
