@@ -159,6 +159,7 @@ public struct CheckReadinessJob: ClaudeJob {
         guard canAskMore else { return ["追加の質問はもう出せない。" + (proceeding ? "ready にする" : "ready か tooLarge にする")] }
         guard let drafts, !drafts.isEmpty else { return ["verdict が moreQuestions なのに、questions が無い"] }
         var problems = drafts.compactMap { optionCountProblem(id: $0.id, count: $0.options.count) }
+        if drafts.count > MakeQuestionsJob.maximumQuestions { problems.append("追加の質問は \(MakeQuestionsJob.maximumQuestions) 個まで") }
         do throws(QuestionFlow.ResultError) {
             _ = try QuestionFlow.append(drafts, round: nextRound, to: questions)
         } catch let .invalid(found) {
@@ -226,13 +227,19 @@ public struct ReviseGoalJob: ClaudeJob {
 
         ## 決まり
         - 人が決めたことを変える指示は、ゴールでは変えない（決めたことは、人が回答を変えて直す）。反映しなかった指示は、理由とあわせて notApplied に書く
-        - decided には、回答した質問をすべて、質問の id ごとに 1 つずつ書く
+        - decided は、今のゴールのものをそのまま書き写す（変えない）
         - タスクの id は t1・t2・…、人がする作業の id は h1・h2・…。リンクは https だけ。Secrets の値は書かない
         """
     }
 
     public func problems(in output: Output) -> [String] {
-        goalProblems(output.goal, questions: questions)
+        var problems = goalProblems(output.goal, questions: questions)
+        // 決まったことは回答から来ているので、ゴールの修正では変えない（変える指示は notApplied に書く）
+        if output.goal.decided != goal.decided { problems.append("決まったこと（decided）は変えない。変える指示は notApplied に書く") }
+        if output.notApplied.contains(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            problems.append("notApplied に空の行がある")
+        }
+        return problems
     }
 }
 

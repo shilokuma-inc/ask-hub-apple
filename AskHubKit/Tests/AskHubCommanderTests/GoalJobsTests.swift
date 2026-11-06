@@ -91,6 +91,23 @@ struct GoalJobsTests {
         ])
     }
 
+    @Test func moreQuestionsAreLimitedLikeFirstOnes() throws {
+        let job = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered())
+        let drafts = (3...15).map { Fixture.draft("q\($0)") }
+        #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: drafts)).contains("追加の質問は 12 個まで"))
+    }
+
+    @Test func reviseGoalKeepsDecidedAsIs() throws {
+        let questions = try answered()
+        let current = try GoalFlow.goal(from: goal(), questions: questions, version: 1)
+        let job = ReviseGoalJob(goal: current, questions: questions, instruction: "q1 を週ごとにして")
+        var changed = goal()
+        changed.decided[0].text = "週ごと"
+        #expect(job.problems(in: .init(goal: changed)) == ["決まったこと（decided）は変えない。変える指示は notApplied に書く"])
+        #expect(job.problems(in: .init(goal: goal(), notApplied: [" "])) == ["notApplied に空の行がある"])
+        #expect(job.problems(in: .init(goal: goal(), notApplied: ["q1 を変える指示は、回答を変えて直す"])).isEmpty)
+    }
+
     @Test func tooLargeNeedsSplitWhileQuestionsRemain() throws {
         let job = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered())
         let parts = [CheckReadinessJob.Part(title: "集計", summary: "…"), .init(title: "画面", summary: "…")]
