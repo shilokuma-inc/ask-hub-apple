@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 
-/// 依頼・開始・ゴールの修正の人の意図の形
+/// 依頼・開始・ゴールの修正・やり直しの人の意図の形
 struct EpicIntentsTests {
     /// 種類ごとの、例のファイルと読み方
     struct Kind: Sendable, CustomTestStringConvertible {
@@ -17,6 +17,7 @@ struct EpicIntentsTests {
     }
 
     static let epic = ULID(rawValue: "01JCEP1C000000000000000001")!
+    static let job = ULID(rawValue: "01JCJ0B0000000000000000001")!
     static let kinds: [Kind] = [
         Kind(vectors: "payloads/request.json", kind: "request", target: nil, targetVersion: nil) {
             try RequestIntent(envelope: $0).payload
@@ -32,6 +33,9 @@ struct EpicIntentsTests {
         },
         Kind(vectors: "payloads/addRepository.json", kind: "addRepository", target: nil, targetVersion: nil) {
             try AddRepositoryIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/retry.json", kind: "retry", target: .init(type: "job", epic: epic, id: job.rawValue), targetVersion: "2") {
+            try RetryJobIntent(envelope: $0).payload
         }
     ]
 
@@ -149,6 +153,31 @@ struct EpicIntentsTests {
                 keyId: KeyID(rawValue: String(repeating: "k", count: 43))!
             )
             #expect(throws: MalformedIntent.self) { try AddRepositoryIntent(envelope: envelope) }
+        }
+    }
+
+    @Test func readsJobTarget() throws {
+        let retry = try RetryJobIntent(envelope: envelope(
+            kind: "retry", target: .init(type: "job", epic: Self.epic, id: Self.job.rawValue), targetVersion: "2", payload: [:]
+        ))
+        let repo = try #require(RepositoryFullName(rawValue: "shilokuma-inc/askhub-sandbox"))
+        #expect(retry.target == JobTarget(repo: repo, epic: Self.epic, job: Self.job, attempt: 2))
+        #expect(retry.target.target == .init(type: "job", epic: Self.epic, id: Self.job.rawValue))
+        #expect(retry.target.targetVersion == "2")
+        // ジョブでない対象・ジョブの id が ULID でない・試行の番号でない版は読まない
+        let cases: [(IntentEnvelope.Target?, String?)] = [
+            (nil, "2"),
+            (.init(type: "epic", epic: Self.epic), "2"),
+            (.init(type: "job", epic: Self.epic), "2"),
+            (.init(type: "job", id: Self.job.rawValue), "2"),
+            (.init(type: "job", epic: Self.epic, id: "../job"), "2"),
+            (.init(type: "job", epic: Self.epic, id: Self.job.rawValue), nil),
+            (.init(type: "job", epic: Self.epic, id: Self.job.rawValue), "0")
+        ]
+        for (target, version) in cases {
+            #expect(throws: MalformedIntent.self) {
+                try RetryJobIntent(envelope: envelope(kind: "retry", target: target, targetVersion: version, payload: [:]))
+            }
         }
     }
 
