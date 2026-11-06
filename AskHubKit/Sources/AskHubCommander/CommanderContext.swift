@@ -34,6 +34,8 @@ public enum CommanderError: Error, Equatable, Sendable {
     case files(StateFileStore.Failure)
     /// 読んだファイルが、処理の途中で別の書き込みで変わった。次の周でやり直す
     case changedWhileProcessing(String)
+    /// 人の意図の署名を確かめる公開鍵の一覧を、信用できる形で作れない（記録の巻き戻し・Keychain の問題など）。人の意図を処理しない
+    case untrustedKeys(String)
 }
 
 // MARK: - ジョブ
