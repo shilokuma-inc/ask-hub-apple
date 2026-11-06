@@ -88,16 +88,15 @@ extension CommanderContext {
     }
 
     func jobList(_ repo: RepositoryFullName, epic: ULID) async throws(CommanderError) -> JobList {
-        let directory = StatePath.jobs(repo, epic: epic)
         let entries: [DirectoryEntry]
         do {
-            // ジョブは消さずに増えるので、1,000 件で切れる `list` ではなく、下まで 1 度に読む `listFiles` を使う
-            entries = try await store.listFiles(under: directory) ?? []
+            // ジョブは消さずに増えるので、1,000 件で切れる `list` ではなく `listAll` で直下をすべて読む
+            entries = try await store.listAll(StatePath.jobs(repo, epic: epic)) ?? []
         } catch {
             throw .store(error)
         }
         var list = JobList()
-        for entry in entries where entry.path == "\(directory)/\(entry.name)" && entry.name.hasSuffix(".json") {
+        for entry in entries where entry.kind == .file && entry.name.hasSuffix(".json") {
             do {
                 if let loaded = try await files.read(JobFile.self, at: entry.path) { list.jobs.append(loaded.file) }
             } catch .unreadable {

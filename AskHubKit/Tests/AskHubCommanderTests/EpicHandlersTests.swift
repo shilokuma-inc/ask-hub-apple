@@ -5,7 +5,7 @@ import CryptoKit
 import Foundation
 import Testing
 
-/// ディレクトリの一覧（`list`）が途中で切れる置き場所（Contents API の 1,000 件の上限）。下まで読む一覧（`listFiles`）は切れない
+/// ディレクトリの一覧（`list`）が途中で切れる置き場所（Contents API の 1,000 件の上限）。Git Trees API で読む一覧（`listFiles`・`listAll`）は切れない
 struct TruncatedListStore: StateStore {
     let inner: InMemoryStateStore
 
@@ -23,6 +23,10 @@ struct TruncatedListStore: StateStore {
 
     func listFiles(under directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
         try await inner.listFiles(under: directory)
+    }
+
+    func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await inner.listAll(directory)
     }
 }
 
