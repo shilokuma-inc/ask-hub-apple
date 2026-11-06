@@ -166,6 +166,24 @@ struct QuestionFlowTests {
         }
     }
 
+    /// 説明のジョブを人がやめたら、問いを外して回答を待つ状態に戻す。前の説明は残す
+    @Test func abandoningExplanationReopensQuestion() throws {
+        let file = try Flow.start([Fixtures.draft("q1")]).questions
+        let first = try accept(Fixtures.answer("q1", .clarify, note: "保存とは？", intent: 1), file).questions
+        let explained = checked(try Flow.explain("q1", asked: Fixtures.intent(1), text: "保存は…", rewrite: nil, in: first)).questions
+        let asking = try accept(Fixtures.answer("q1", .clarify, note: "もっと詳しく", intent: 2), explained).questions
+        #expect(throws: Flow.ResultError.stale) { try Flow.abandonExplanation("q1", asked: Fixtures.intent(1), in: asking) }
+
+        let abandoned = checked(try Flow.abandonExplanation("q1", asked: Fixtures.intent(2), in: asking))
+        let question = try #require(abandoned.questions.question("q1"))
+        #expect(question.state == .open)
+        #expect(question.explanations.map(\.note) == ["保存とは？"])
+        #expect(abandoned.effects.isEmpty)
+        // やめた後は、もう一度やめても当てはまらない
+        #expect(throws: Flow.ResultError.stale) { try Flow.abandonExplanation("q1", asked: Fixtures.intent(2), in: abandoned.questions) }
+        _ = try accept(Fixtures.answer("q1", intent: 3), abandoned.questions)
+    }
+
     // MARK: - 依存とロック
 
     @Test func changingAnswerRelocksDependentsAndRevisesAgain() throws {

@@ -205,6 +205,19 @@ extension QuestionFlow {
         return book.change
     }
 
+    /// 説明をやめる（説明のジョブを人がやめた）。説明を待つ問いを外し、質問は回答を待つ状態に戻る
+    public static func abandonExplanation(_ id: String, asked: IntentReference, in file: QuestionsFile) throws(ResultError) -> Change {
+        var book = Book(file)
+        guard let index = book.index(of: id), book.questions[index].state == .clarifying,
+              book.questions[index].explanations.last?.asked == asked, book.questions[index].explanations.last?.text == nil else {
+            throw .stale
+        }
+        book.questions[index].explanations.removeLast()
+        book.questions[index].state = .open
+        try book.validate()
+        return book.change
+    }
+
     /// 見直しの結果を書く。要らなくなったら、その質問に依存する質問の見直しに進む
     public static func revise(
         _ id: String,
