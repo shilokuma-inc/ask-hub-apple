@@ -62,3 +62,21 @@ public struct CommanderSetup: Equatable, Sendable {
         return nil
     }
 }
+
+/// `askhub-commander apns` の引数。APNs の鍵（.p8）を Keychain に置き、鍵の id と Team ID を設定に足す
+public struct APNsSetup: Equatable, Sendable {
+    public var configuration: APNsConfiguration
+    /// Apple Developer から落とした .p8 のパス。中身は Keychain にだけ置き、設定には書かない
+    public var keyFile: String
+
+    public static func parse(_ arguments: [String]) throws(CommanderSetup.Failure) -> Self {
+        let values = try CommanderSetup.flags(arguments, known: ["key-id", "team-id", "key-file", "topic"])
+        let configuration = APNsConfiguration(
+            keyId: try CommanderSetup.required("key-id", in: values),
+            teamId: try CommanderSetup.required("team-id", in: values),
+            topic: values["topic"]?.last ?? APNsConfiguration.defaultTopic
+        )
+        if let problem = configuration.problems.first { throw .init(message: problem) }
+        return Self(configuration: configuration, keyFile: try CommanderSetup.required("key-file", in: values))
+    }
+}
