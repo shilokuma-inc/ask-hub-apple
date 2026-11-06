@@ -18,18 +18,36 @@ public struct JobSweep: Sendable {
     /// 試行を読んで状態を決めるジョブ（人に渡したジョブも、後から成功が書かれれば成功にする）
     static let watchedStates: Set<JobState> = [.assigned, .running, .paused, .waitingHuman]
 
+    /// 見直した結果
+    public struct Swept: Sendable {
+        /// 状態を変えたジョブ
+        public var changed: [JobFile]
+        /// 終わっていない epic のすべてのジョブ（見直した後の状態。ワーカーが引き受けるジョブを選ぶのに使う）
+        public var jobs: [JobFile]
+    }
+
     /// 対象のリポジトリの、終わっていない epic のジョブを見直す。状態を変えたジョブを返す
     public func sweep() async throws(CommanderError) -> [JobFile] {
-        var changed: [JobFile] = []
+        try await sweepAll().changed
+    }
+
+    /// 対象のリポジトリの、終わっていない epic のジョブを見直し、見直した後のジョブの一覧も返す
+    public func sweepAll() async throws(CommanderError) -> Swept {
+        var swept = Swept(changed: [], jobs: [])
         for repo in try await repositories() {
             for epic in try await openEpics(of: repo) {
                 // 読めないジョブは、中身が分からないので触らない（新しい司令塔が扱う）
-                for job in try await context.jobList(repo, epic: epic).jobs where Self.watchedStates.contains(job.state) {
-                    if let next = try await reconcile(job) { changed.append(next) }
+                for job in try await context.jobList(repo, epic: epic).jobs {
+                    guard Self.watchedStates.contains(job.state), let next = try await reconcile(job) else {
+                        swept.jobs.append(job)
+                        continue
+                    }
+                    swept.changed.append(next)
+                    swept.jobs.append(next)
                 }
             }
         }
-        return changed
+        return swept
     }
 
     /// 1 つのジョブの試行を読み、状態が変わるなら書く。読んだ後にほかで書き換わっていたら、書かずに次の周に回す
