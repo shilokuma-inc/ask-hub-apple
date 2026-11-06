@@ -21,8 +21,9 @@ struct RenderedBodyView: View {
     @ViewBuilder private func blockView(_ block: RenderedBody.Block) -> some View {
         switch block {
         case .heading(let level, let text):
+            let heading = Self.heading(level: level)
             Text(text)
-                .font(Self.headingFont(level: level))
+                .appFont(heading.style, weight: heading.weight)
                 .padding(.top, 4)
 
         case .paragraph(let text):
@@ -76,16 +77,16 @@ struct RenderedBodyView: View {
     }
 
     /// 見出しのフォント。Form の中で浮かないよう、h1 でも title2 までにとどめる
-    private static func headingFont(level: Int) -> Font {
+    private static func heading(level: Int) -> (style: Font.TextStyle, weight: Font.Weight?) {
         switch level {
         case 1:
-            .title2.bold()
+            (.title2, .bold)
 
         case 2:
-            .title3.bold()
+            (.title3, .bold)
 
         default:
-            .headline
+            (.headline, nil)
         }
     }
 }

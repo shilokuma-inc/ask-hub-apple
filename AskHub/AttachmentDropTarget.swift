@@ -36,9 +36,9 @@ struct AttachmentDropOverlay: View {
                     .font(.system(size: 44))
                     .foregroundStyle(tint)
                 Text(title)
-                    .font(.title3.bold())
+                    .appFont(.title3, weight: .bold)
                 Text(message)
-                    .font(.callout)
+                    .appFont(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }

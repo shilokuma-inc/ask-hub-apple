@@ -40,7 +40,7 @@ struct RenderedTableCardsView: View {
     private func field(header: AttributedString, value: AttributedString) -> some View {
         // ヘッダーと値を 1 つの Text にして、長い値も見出しの後ろから続けて折り返す
         let label = header.characters.isEmpty ? Text("") : Text(header + AttributedString(": ")).foregroundStyle(.secondary)
-        return (label + Text(value))
+        return Text("\(label)\(Text(value))")
             .fixedSize(horizontal: false, vertical: true)
     }
 }

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- ダークモードの背景。暗い地に四隅の色が光る -->
+  <defs>
+    <radialGradient id="tl" cx="0" cy="0" r="840" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8CBEFF" stop-opacity="0.6"/><stop offset="1" stop-color="#8CBEFF" stop-opacity="0"/></radialGradient>
+    <radialGradient id="tr" cx="1024" cy="0" r="840" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7FD6B4" stop-opacity="0.6"/><stop offset="1" stop-color="#7FD6B4" stop-opacity="0"/></radialGradient>
+    <radialGradient id="bl" cx="0" cy="1024" r="840" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFB08C" stop-opacity="0.6"/><stop offset="1" stop-color="#FFB08C" stop-opacity="0"/></radialGradient>
+    <radialGradient id="br" cx="1024" cy="1024" r="840" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#B9A2F8" stop-opacity="0.6"/><stop offset="1" stop-color="#B9A2F8" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="#221E3A"/>
+  <rect width="1024" height="1024" fill="url(#tl)"/>
+  <rect width="1024" height="1024" fill="url(#tr)"/>
+  <rect width="1024" height="1024" fill="url(#bl)"/>
+  <rect width="1024" height="1024" fill="url(#br)"/>
+</svg>

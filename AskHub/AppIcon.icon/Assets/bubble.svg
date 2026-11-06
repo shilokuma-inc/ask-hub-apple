@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- 吹き出し（白）。尻尾は左下 -->
-  <path fill="#FFFFFF" d="M352 200 H672 A176 176 0 0 1 848 376 V536 A176 176 0 0 1 672 712 H452 L248 856 L296 698 A176 176 0 0 1 176 536 V376 A176 176 0 0 1 352 200 Z"/>
+  <!-- ループの切れ目に入る、人の回答の吹き出し（推奨 ↗ の緑）。尻尾はループの出口を向く -->
+  <rect x="585.73" y="196.61" width="270.34" height="202.75" rx="101.38" fill="#5BC79E"/>
+  <path d="M651.26 377.86 L656.38 458.75 L716.8 395.26 Z" fill="#5BC79E" stroke="#5BC79E" stroke-width="10" stroke-linejoin="round"/>
 </svg>
