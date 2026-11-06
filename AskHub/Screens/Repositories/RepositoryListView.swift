@@ -108,28 +108,46 @@ struct RepositoryDetailView: View {
     }
 }
 
-/// 対象に加える。まだ対象になっていないリポジトリだけを出す
+/// 対象に加える。候補（まだ対象になっていないリポジトリ）があれば選び、無ければ owner/name を入れる
 struct AddRepositorySheet: View {
     @Environment(ClientStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var selectedID: TargetRepository.ID?
+    @State private var fullName = ""
 
     var body: some View {
-        let candidates = (store.snapshot?.candidateRepositories ?? []).filter {
+        let allCandidates = store.snapshot?.candidateRepositories ?? []
+        let candidates = allCandidates.filter {
             query.isEmpty || $0.fullName.localizedCaseInsensitiveContains(query) || $0.appName.localizedCaseInsensitiveContains(query)
         }
         NavigationStack {
             Form {
-                Section("リポジトリ") {
-                    Picker("リポジトリ", selection: $selectedID) {
-                        Text("選んでください").tag(TargetRepository.ID?.none)
-                        ForEach(candidates) { repository in
-                            Text("\(repository.appName)（\(repository.fullName)）").tag(Optional(repository.id))
-                        }
+                if allCandidates.isEmpty {
+                    // 状態リポジトリにつないだときは、トークンが状態リポジトリしか見えないので候補を並べられない
+                    Section {
+                        TextField("owner/name", text: $fullName)
+                            .autocorrectionDisabled()
+                            #if os(iOS)
+                            .textInputAutocapitalization(.never)
+                            #endif
+                            .onChange(of: fullName) { selectedID = Self.repositoryID(fullName) }
+                    } header: {
+                        Text("リポジトリ")
+                    } footer: {
+                        Text("例: shilokuma-inc/askhub-sandbox。司令塔が受け取ると、対象の一覧に出ます")
                     }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
+                } else {
+                    Section("リポジトリ") {
+                        Picker("リポジトリ", selection: $selectedID) {
+                            Text("選んでください").tag(TargetRepository.ID?.none)
+                            ForEach(candidates) { repository in
+                                Text("\(repository.appName)（\(repository.fullName)）").tag(Optional(repository.id))
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
                 }
             }
             .searchable(text: $query, prompt: "名前で探す")
@@ -153,5 +171,14 @@ struct AddRepositorySheet: View {
                 }
             }
         }
+    }
+
+    /// 入れた owner/name。形が違えば nil（送る前に止める）
+    private static func repositoryID(_ text: String) -> TargetRepository.ID? {
+        let parts = text.trimmingCharacters(in: .whitespaces).split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count == 2, parts.allSatisfy({ !$0.isEmpty }) else {
+            return nil
+        }
+        return parts.joined(separator: "/")
     }
 }

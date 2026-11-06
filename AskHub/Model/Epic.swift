@@ -20,6 +20,10 @@ struct Epic: Identifiable, Hashable {
     var finalReview: FinalReview?
     var history: [HistoryEntry]
     var updatedAt: Date
+    /// 着手前の確認で、1 つの epic に収まらないと分かったとき
+    var split: SplitProposal?
+    /// やめた（分けて依頼し直した など）。段階は、やめたときの段階のまま持つ
+    var isAbandoned = false
 
     /// 段階。画面の段階の帯は 依頼・質問・確認（着手前の確認とゴール）・実装・最終 PR・完了 の 6 つ
     enum Stage: Int, Hashable, CaseIterable, Comparable {
@@ -41,6 +45,20 @@ struct Epic: Identifiable, Hashable {
         var date: Date
         var text: String
         var isFailure = false
+    }
+}
+
+/// 着手前の確認で 1 つの epic に収まらないと分かったときの、理由と分け方の案
+struct SplitProposal: Hashable {
+    var reason: String
+    /// 分け方の案。決めきれない点があって分け方を出せないときは空
+    var parts: [Part]
+    /// 人が選んだ判断。まだなら nil
+    var choice: SplitChoice?
+
+    struct Part: Hashable {
+        var title: String
+        var summary: String
     }
 }
 
@@ -94,7 +112,8 @@ struct EpicTask: Identifiable, Hashable {
         case locked(reason: String)
         case inProgress
         case failed
-        case done(pullRequest: Int)
+        /// 子 PR の番号が分からないときは nil
+        case done(pullRequest: Int?)
     }
 }
 
@@ -185,5 +204,5 @@ extension Epic {
         .count
     }
 
-    var isActive: Bool { stage != .done }
+    var isActive: Bool { stage != .done && !isAbandoned }
 }

@@ -5,6 +5,8 @@ struct StageTrackerView: View {
     let stage: Epic.Stage
     /// いまの段階が人に渡された失敗で止まっているか
     var isBlocked = false
+    /// やめたか（やめた段階に ✕ を付ける）
+    var isAbandoned = false
 
     private struct Step: Identifiable {
         let id: Int
@@ -36,11 +38,13 @@ struct StageTrackerView: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("段階: \(Self.steps[current].title)\(isBlocked ? "（止まっています）" : "")")
+        .accessibilityLabel("段階: \(Self.steps[current].title)\(isAbandoned ? "（やめました）" : isBlocked ? "（止まっています）" : "")")
     }
 
     @ViewBuilder private func symbol(for index: Int, current: Int) -> some View {
-        if index < current || stage == .done {
+        if isAbandoned && index == current {
+            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+        } else if index < current || stage == .done {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.success)
         } else if index == current {
             Image(systemName: isBlocked ? "exclamationmark.circle.fill" : "circle.circle.fill")
@@ -91,6 +95,7 @@ extension InboxItem.Kind {
         switch self {
         case .questions: "questionmark"
         case .goal: "flag.fill"
+        case .split: "square.split.2x1.fill"
         case .humanTask: "wrench.fill"
         case .blocker: "exclamationmark"
         case .macOffline: "wifi.slash"
@@ -104,6 +109,7 @@ extension InboxItem.Kind {
         switch self {
         case .questions: Theme.Tone.sky
         case .goal: Theme.Tone.lavender
+        case .split: Theme.Tone.peach
         case .humanTask: Theme.Tone.peach
         case .blocker: Theme.Tone.rose
         case .macOffline: Theme.Tone.slate

@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// 設定。いまはスワイプの持ち手とデモの場面だけ。トークン・端末の鍵・通知は、つなぎ込みのときに足す
+/// 設定。スワイプの持ち手と、データ（状態リポジトリ・GitHub のトークン・この端末の鍵、またはデモの場面）
 struct AppSettingsView: View {
     @AppStorage(SwipePreferences.handKey) private var hand: Handedness = .right
-    @AppStorage(DemoScenario.preferenceKey) private var scenario: DemoScenario = .standard
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -22,20 +21,8 @@ struct AppSettingsView: View {
                         ? "推奨はいつも ↗。2 択は ↗↙、3 択は ↗↖↙、4 択は ↗↖↙↘ に割り当てます。自由回答の選択肢は、推奨の対角の ↙ に置きます"
                         : "推奨はいつも ↖。2 択は ↖↘、3 択は ↖↗↘、4 択は ↖↗↘↙ に割り当てます。自由回答の選択肢は、推奨の対角の ↘ に置きます")
                 }
-                Section {
-                    Picker("デモの場面", selection: $scenario) {
-                        ForEach(DemoScenario.allCases, id: \.self) { scenario in
-                            Text(scenario.label).tag(scenario)
-                        }
-                    }
-                } header: {
-                    Text("データ")
-                } footer: {
-                    Text("試作のため、いまはデモのデータで動いています。GitHub には接続しません")
-                }
+                ConnectionSettingsSections()
                 Section("あとで作るもの") {
-                    Label("GitHub のトークン", systemImage: "key")
-                    Label("この端末の鍵と、ほかの端末の承認", systemImage: "lock.shield")
                     Label("通知（急ぎはすぐ、ほかはまとめて）", systemImage: "bell")
                 }
                 .foregroundStyle(.secondary)
@@ -63,6 +50,7 @@ extension DemoScenario {
         case .quiet: "人の出番が無い"
         case .failing: "読めない"
         case .partial: "一部だけ読めない"
+        case .tooLarge: "大きすぎる依頼がある"
         }
     }
 }

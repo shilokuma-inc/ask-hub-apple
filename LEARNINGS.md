@@ -245,12 +245,19 @@
   `XCSynthesizedEventRecord`（`initWithName:interfaceOrientation:`・`addPointerEventPath:`・`synthesizeWithError:`）にまとめて合成できる（WebDriverAgent と同じ方法。Swift からは `method(for:)` の IMP を呼ぶ）。
   ただし「2 本目を置いたまま 1 本目を先に離す」と、Simulator 側で 1 本目の `UITouch` が 2 本目の位置へ滑っていく（同じ `UITouch` に 2 回目の `began` が来る）ので、この場面は実機で確かめる。
   リポジトリには置かない（内部の API なので Xcode の更新で動かなくなりうる）（2026-11-04、スワイプの手触り）
+- アプリにリンクする AskHubKit のライブラリ（AskHubClient など）は iOS でもビルドされるが、`swift test --package-path AskHubKit` は macOS でしか流さないので、
+  iOS で使えない API（`FileManager.default.homeDirectoryForCurrentUser` など）が入っても気づかず、アプリの iOS のビルドで初めて落ちる。
+  ホームのフォルダは `URL.homeDirectory` で求める（2026-11-07、状態リポジトリへのつなぎ込み）
+- UI テストで `-demoScenario` を付けずに起動すると、設定の既定（状態リポジトリ）で動く。デモのデータで動かしつつ場面を設定で変えるテストは、
+  `-dataSource demo` を付ける（2026-11-07、状態リポジトリへのつなぎ込み）
 
 ## Keychain
 
 - macOS で `kSecUseDataProtectionKeychain` を使うには、provisioning profile で許可された entitlement
   （`keychain-access-groups` / `application-identifier`）付きの署名が要る（TN3137）。無いと `errSecMissingEntitlement`（-34018）になる。
   付けない場合は従来の Keychain になり、`kSecAttrAccessible`（`AfterFirstUnlock` など）は効かない
+- Apple シリコンの Mac の Simulator でも `SecureEnclave.isAvailable` は true で、Secure Enclave の鍵を作れる
+  （`DeviceSigningKey` の保存場所が Simulator でも `secureEnclave` になる）（2026-11-07、状態リポジトリへのつなぎ込み）
 
 ## Swift
 

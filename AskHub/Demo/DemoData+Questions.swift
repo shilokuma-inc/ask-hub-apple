@@ -202,6 +202,44 @@ extension DemoData {
         ]
     }
 
+    /// 献立メモ: 着手前の確認で 1 つの epic に収まらないと分かり、分け方の判断を待っている
+    func splitEpic() -> Epic {
+        Epic(
+            id: "recipe-share",
+            title: "家族と献立を共有する",
+            repositoryID: Self.repositoryID("recipe-apple"),
+            request: EpicRequest(
+                summary: "家族と献立と買い物リストを共有したい",
+                body: "家族それぞれの iPhone で同じ献立を見て、買い物リストに書き足せるようにしたい。",
+                requestedAt: ago(minutes: 120),
+                source: .app,
+                attachmentCount: 0
+            ),
+            stage: .preflight,
+            questions: [],
+            goal: nil,
+            humanTasks: [],
+            tasks: [],
+            macID: nil,
+            activities: [],
+            blocker: nil,
+            finalReview: nil,
+            history: [
+                Epic.HistoryEntry(date: ago(minutes: 120), text: "依頼しました"),
+                Epic.HistoryEntry(date: ago(minutes: 10), text: "着手前の確認（2 回目）: 1 つの epic に収まりません")
+            ],
+            updatedAt: ago(minutes: 10),
+            split: SplitProposal(
+                reason: "家族の招待と同期の仕組みと、献立・買い物リストの画面の作り直しが、1 つの epic に収まりません",
+                parts: [
+                    SplitProposal.Part(title: "家族の招待と同期", summary: "家族を招待し、献立と買い物リストを iCloud で同期する"),
+                    SplitProposal.Part(title: "共有した献立の画面", summary: "誰が書き足したかが分かる献立と買い物リストの画面にする")
+                ],
+                choice: nil
+            )
+        )
+    }
+
     static func option(_ id: String, _ label: String, _ effect: String) -> Question.Option {
         Question.Option(id: id, label: label, effect: effect)
     }

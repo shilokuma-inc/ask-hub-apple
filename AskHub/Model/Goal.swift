@@ -13,6 +13,8 @@ struct Goal: Hashable {
     var tasks: [PlannedTask]
     /// 「直してほしい」を受けて Claude が直しているときの指示。直していなければ nil
     var revisionRequest: String?
+    /// 最後のゴールの修正で反映しなかった指示と、その理由（決まったことを変える指示など。回答を変えて直してもらう）
+    var notApplied: [String] = []
 
     struct Point: Hashable {
         var text: String

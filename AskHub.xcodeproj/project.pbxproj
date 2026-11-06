@@ -8,6 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		4FA0000000000000000000F3 /* AskHubKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4FA0000000000000000000F2 /* AskHubKit */; };
+		4FA000000000000000000102 /* AskHubProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 4FA000000000000000000101 /* AskHubProtocol */; };
+		4FA000000000000000000104 /* AskHubStateStore in Frameworks */ = {isa = PBXBuildFile; productRef = 4FA000000000000000000103 /* AskHubStateStore */; };
+		4FA000000000000000000106 /* AskHubKeychain in Frameworks */ = {isa = PBXBuildFile; productRef = 4FA000000000000000000105 /* AskHubKeychain */; };
+		4FA000000000000000000108 /* AskHubClient in Frameworks */ = {isa = PBXBuildFile; productRef = 4FA000000000000000000107 /* AskHubClient */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -73,6 +77,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				4FA0000000000000000000F3 /* AskHubKit in Frameworks */,
+				4FA000000000000000000102 /* AskHubProtocol in Frameworks */,
+				4FA000000000000000000104 /* AskHubStateStore in Frameworks */,
+				4FA000000000000000000106 /* AskHubKeychain in Frameworks */,
+				4FA000000000000000000108 /* AskHubClient in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,6 +154,10 @@
 			name = AskHub;
 			packageProductDependencies = (
 				4FA0000000000000000000F2 /* AskHubKit */,
+				4FA000000000000000000101 /* AskHubProtocol */,
+				4FA000000000000000000103 /* AskHubStateStore */,
+				4FA000000000000000000105 /* AskHubKeychain */,
+				4FA000000000000000000107 /* AskHubClient */,
 			);
 			productName = AskHub;
 			productReference = 4FC9E1E92BF1049B00F630AB /* AskHub.app */;
@@ -643,6 +655,22 @@
 		4FA0000000000000000000F2 /* AskHubKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AskHubKit;
+		};
+		4FA000000000000000000101 /* AskHubProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AskHubProtocol;
+		};
+		4FA000000000000000000103 /* AskHubStateStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AskHubStateStore;
+		};
+		4FA000000000000000000105 /* AskHubKeychain */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AskHubKeychain;
+		};
+		4FA000000000000000000107 /* AskHubClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AskHubClient;
 		};
 		4F27869E2BF3744F00E9F5EF /* SwiftLintBuildToolPlugin */ = {
 			isa = XCSwiftPackageProductDependency;

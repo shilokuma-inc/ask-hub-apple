@@ -12,7 +12,7 @@ public struct ClientConfiguration: Codable, Equatable, Sendable {
     }
 
     /// `~/Library/Application Support/AskHub/cli/config.json`
-    public static func url(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+    public static func url(home: URL = .homeDirectory) -> URL {
         home.appendingPathComponent("Library/Application Support/AskHub/cli/config.json")
     }
 

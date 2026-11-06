@@ -36,6 +36,11 @@ public struct RequestIntent: Equatable, Sendable {
     public var attachments: [RequestAttachment]
     public var intent: IntentReference
 
+    /// 依頼の人の意図から決める epic の id。司令塔が epic を作るときと、クライアントが受け取られる前の依頼を epic として出すときに使う
+    public static func epicID(for intent: IntentReference) -> ULID {
+        .derived(from: intent.nonce, seed: "\(intent.keyId)/epic")
+    }
+
     public init(repo: RepositoryFullName, title: String, body: String, attachments: [RequestAttachment] = [], intent: IntentReference) {
         self.repo = repo
         self.title = title

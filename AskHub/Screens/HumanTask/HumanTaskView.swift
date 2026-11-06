@@ -53,7 +53,8 @@ struct HumanTaskView: View {
                     }
                 }
             }
-            if task.needsHuman {
+            // 終わったことを知らせる操作は、送れるときだけ出す（状態リポジトリでは段階 3 で足す）
+            if task.needsHuman, store.supports(.completeHumanTask(epicID: epic.id, taskID: task.id)) {
                 deliverableSection(epic, task)
             }
         }

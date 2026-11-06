@@ -107,7 +107,9 @@ struct DiskGauge: View {
         Gauge(value: mac.usedFraction) {
             EmptyView()
         } currentValueLabel: {
-            Text("空き \(ByteFormat.string(mac.freeBytes)) / \(ByteFormat.string(mac.totalBytes))")
+            // 状態リポジトリの印には空きだけがあり、全体の大きさは無い
+            let free = "空き \(ByteFormat.string(mac.freeBytes))"
+            Text(mac.totalBytes > 0 ? "\(free) / \(ByteFormat.string(mac.totalBytes))" : free)
         }
         .gaugeStyle(.accessoryLinearCapacity)
         .tint(mac.refusalReason == nil ? Theme.accent : Theme.warning)

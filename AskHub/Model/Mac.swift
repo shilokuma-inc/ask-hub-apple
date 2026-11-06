@@ -23,6 +23,8 @@ struct Mac: Identifiable, Hashable {
     var selfChecks: [SelfCheck]
     /// ワーカーが作っていないもの（手で作った clone・Simulator）。人が選んで消す
     var cleanupCandidates: [CleanupCandidate]
+    /// 状態リポジトリの生きている印のロードアベレージ。あれば `load` の代わりにこの値を出す
+    var loadAverage: Double?
 
     enum Role: Hashable {
         /// 常時オンで、司令塔とワーカーが動く
@@ -79,6 +81,14 @@ struct CleanupCandidate: Identifiable, Hashable {
 }
 
 extension Mac {
+    /// 例: 負荷 32%・負荷 3.2（状態リポジトリの印はロードアベレージ）
+    var loadText: String {
+        guard let loadAverage else {
+            return "負荷 \(Int(load * 100))%"
+        }
+        return "負荷 \(loadAverage.formatted(.number.precision(.fractionLength(1))))"
+    }
+
     var isOnline: Bool {
         if case .online = connection {
             return true
