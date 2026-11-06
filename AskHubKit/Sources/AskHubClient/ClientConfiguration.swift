@@ -76,8 +76,9 @@ public struct CommandArguments: Sendable {
         return value
     }
 
-    /// 知らない引数があれば断る
-    public func only(_ names: Set<String>) throws(Failure) {
+    /// 知らない引数があれば断る。`positional` が false なら、名前の無い引数も断る（`--body` の値を引用符で囲み忘れたときに、一部だけを送らない）
+    public func only(_ names: Set<String>, positional allowsPositional: Bool = false) throws(Failure) {
         if let unknown = values.keys.sorted().first(where: { !names.contains($0) }) { throw Failure(message: "知らない引数 --\(unknown)") }
+        if !allowsPositional, let first = positional.first { throw Failure(message: "知らない引数 \(first)（値に空白があれば引用符で囲む）") }
     }
 }

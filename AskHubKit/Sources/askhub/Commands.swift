@@ -36,6 +36,7 @@ extension AskHubMain {
         let writer = KeyLedgerWriter(store: connection.store, key: key)
         switch action {
         case "show":
+            try parsed.only([])
             print("鍵: \(key.keyID.rawValue)（\(key.storage.rawValue)）\n公開鍵: \(Base64URL.encode(key.publicKeyDER))")
         case "register-first":
             try parsed.only(["account", "label"])
@@ -49,6 +50,8 @@ extension AskHubMain {
             let seq = try await writer.add(publicKeyDER: der, account: try parsed.string("account"), label: try parsed.string("label"))
             print("鍵 \(IntentSignature.keyID(publicKeyDER: der).rawValue) を登録しました（keys/\(seq).json）")
         case "revoke":
+            try parsed.only([], positional: true)
+            guard parsed.positional.count == 1 else { throw CommandArguments.Failure(message: "取り消す鍵の id を 1 つだけ書く") }
             guard let target = parsed.positional.first.flatMap(KeyID.init(rawValue:)) else {
                 throw CommandArguments.Failure(message: "取り消す鍵の id が要る")
             }
@@ -83,7 +86,9 @@ extension AskHubMain {
     }
 
     private static func answer(_ command: String, _ arguments: CommandArguments) throws -> IntentDraft {
-        try arguments.only(["repo", "epic", "question", "version", "choice", "note"])
+        // 説明を求めるときは選択肢を書かない（書いても回答にはならないので、黙って捨てずに断る）
+        let names: Set = ["repo", "epic", "question", "version", "note"]
+        try arguments.only(command == "clarify" ? names : names.union(["choice"]))
         let question = QuestionTarget(
             repo: try arguments.repository(),
             epic: try arguments.epic(),

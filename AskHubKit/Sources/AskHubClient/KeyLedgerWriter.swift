@@ -65,6 +65,7 @@ public struct KeyLedgerWriter: Sendable {
         } catch {
             throw .signing(error)
         }
+        try Self.check(records + [signed])
         do {
             // 版なしで作るので、ほかの端末が同じ番号を先に足していれば断られる（読み直して足し直す）
             let message = "[key] \(entry.action.rawValue) \(entry.keyID)"
@@ -73,6 +74,18 @@ public struct KeyLedgerWriter: Sendable {
             throw .store(error)
         }
         return seq
+    }
+
+    /// 足した後の記録を、司令塔と同じ決まりで確かめる（重ねて登録する・最後の鍵を取り消す・登録されていない鍵で署名する、などを書かない）。
+    /// 鍵を結びつけてよいアカウントは司令塔の設定にしか無いので、ここでは記録に出てくるアカウントを許して確かめる
+    static func check(_ records: [JSONValue]) throws(ClientError) {
+        guard let first = records.first?["keyId"]?.stringValue.flatMap(KeyID.init(rawValue:)) else {
+            throw .ledger("最初の記録の鍵の id を読めない")
+        }
+        let accounts = Set(records.compactMap { $0["account"]?.stringValue })
+        let result = KeyLedger.verify(records, firstKey: first, accounts: accounts)
+        if let problem = result.problem { throw .ledger("足すと公開鍵の記録が合わなくなる（\(problem)）") }
+        guard result.verifiedCount == records.count else { throw .ledger("足した記録を確かめられない") }
     }
 
     /// 今の記録（番号の順）。番号が 1 から連続していなければ断る

@@ -34,9 +34,26 @@ struct AskHubClientTests {
         #expect(result.problem == nil)
         #expect(Set(result.keys.keys) == [first.keyID, second.keyID])
 
+        // 登録済みの鍵を重ねて登録する記録は書かない
+        await #expect(throws: ClientError.self) {
+            try await writer.add(publicKeyDER: second.publicKeyDER, account: "mrs1669", label: "iPhone")
+        }
         #expect(try await writer.revoke(second.keyID) == 3)
         records.append(try JSONValue(parsing: #require(await store.data(at: StatePath.key(seq: 3)))))
         #expect(Set(KeyLedger.verify(records, firstKey: first.keyID, accounts: ["mrs1669"]).keys.keys) == [first.keyID])
+        // 最後の鍵は取り消さない
+        await #expect(throws: ClientError.self) { try await writer.revoke(first.keyID) }
+        #expect(await store.data(at: StatePath.key(seq: 4)) == nil)
+    }
+
+    @Test func noncesIncreaseWithinSameMillisecond() async {
+        let sequence = NonceSequence()
+        var previous: ULID?
+        for _ in 0..<50 {
+            let nonce = await sequence.next(at: Self.now)
+            if let previous { #expect(nonce > previous) }
+            previous = nonce
+        }
     }
 
     @Test func commanderAcceptsIntentsSentByClient() async throws {
@@ -98,6 +115,9 @@ struct CommandArgumentsTests {
         #expect(try arguments.integer("version") == 3)
         #expect(throws: CommandArguments.Failure(message: "--epic が要る")) { try arguments.epic() }
         #expect(throws: CommandArguments.Failure(message: "知らない引数 --version")) { try arguments.only(["repo"]) }
+        // 名前の無い引数（引用符で囲み忘れた本文の続きなど）は、許したときだけ受け付ける
+        #expect(throws: CommandArguments.Failure.self) { try arguments.only(["repo", "version"]) }
+        try arguments.only(["repo", "version"], positional: true)
         #expect(throws: CommandArguments.Failure(message: "--repo の値が無い")) { try CommandArguments(["--repo"]) }
         #expect(throws: CommandArguments.Failure(message: "--version は 1 以上の数")) {
             try CommandArguments(["--version", "0"]).integer("version")
