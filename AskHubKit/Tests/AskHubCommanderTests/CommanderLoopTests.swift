@@ -32,13 +32,62 @@ final class GatedRunner: CommandRunning {
     }
 }
 
+/// 試行のファイルの書き込みを、開けるまで止める（ワーカーが試行を作る前の様子を作る）
+final class AttemptGateStore: StateStore {
+    let inner: InMemoryStateStore
+    private let gate: AsyncStream<Void>
+    private let opener: AsyncStream<Void>.Continuation
+    private let reached = OSAllocatedUnfairLock(initialState: false)
+
+    init(_ inner: InMemoryStateStore) {
+        self.inner = inner
+        (gate, opener) = AsyncStream<Void>.makeStream()
+    }
+
+    /// 試行を書こうとして止まっているか
+    var isHolding: Bool { reached.withLock { $0 } }
+
+    func open() {
+        opener.finish()
+    }
+
+    func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
+        try await inner.read(path)
+    }
+
+    func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await inner.list(directory)
+    }
+
+    func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
+        if path.contains("/attempts/") {
+            reached.withLock { $0 = true }
+            for await _ in gate {}
+        }
+        return try await inner.write(path, data: data, replacing: sha, message: message)
+    }
+
+    func listFiles(under directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await inner.listFiles(under: directory)
+    }
+
+    func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await inner.listAll(directory)
+    }
+}
+
 /// 常駐のループの 1 周（人の意図 → ジョブの見直し → 引き受け）
 extension ClaudeJobRunnerTests {
-    func loop(_ store: InMemoryStateStore, claude: any CommandRunning, capacity: Int = 2) -> CommanderLoop {
+    func loop(
+        _ store: any StateStore,
+        claude: any CommandRunning,
+        capacity: Int = 2,
+        now: @escaping @Sendable () -> Date = { ClaudeJobRunnerTests.now }
+    ) -> CommanderLoop {
         let publicKeys = [keyID: key.publicKey.derRepresentation]
         let selfCheck = SelfCheck(checkedAt: Timestamp(Self.now), keychain: .ok, githubToken: .ok, claudeToken: .ok)
         return CommanderLoop(
-            context: context(store),
+            context: CommanderContext(store: store, mac: Self.commander, now: now),
             settings: .init(capacity: .init(claude: capacity, build: 0), commanderVersion: "0.1.0"),
             verifier: { IntentVerifier(publicKeys: publicKeys) },
             client: ClaudeClient(setup: QuestionJobsTests.setup, runner: claude),
@@ -120,6 +169,69 @@ extension ClaudeJobRunnerTests {
         try await put(older, at: StatePath.commander, in: store)
         _ = try await loop.cycle()
         #expect(try await read(CommanderFile.self, at: StatePath.commander, in: store)?.versions.commander == "0.0.9")
+    }
+
+    @Test func loopRewritesHeartbeatsAfterInterval() async throws {
+        let store = try await storeWithRequest(count: 0)
+        let clock = OSAllocatedUnfairLock(initialState: Self.now)
+        let loop = loop(store, claude: ScriptedRunner([]), now: { clock.withLock { $0 } })
+        _ = try await loop.cycle()
+        let later = Self.now.addingTimeInterval(10 * 60 + 1)
+        clock.withLock { $0 = later }
+        _ = try await loop.cycle()
+        #expect(try await read(CommanderFile.self, at: StatePath.commander, in: store)?.seenAt == Timestamp(later))
+        #expect(try await read(MacFile.self, at: StatePath.mac(Self.commander), in: store)?.seenAt == Timestamp(later))
+    }
+
+    @Test func loopDoesNotTakeAnotherJobBeforeAttemptIsWritten() async throws {
+        let inner = try await storeWithRequest(count: 2)
+        let store = AttemptGateStore(inner)
+        let summary = QuestionJobsTests.result(#"{"summary":"文言を直す。","questions":[]}"#)
+        let loop = loop(store, claude: ScriptedRunner([summary, summary]), capacity: 1)
+        #expect(try await loop.cycle().count == 1)
+        var waited = 0
+        while !store.isHolding, waited < 200 {
+            try await Task.sleep(for: .milliseconds(10))
+            waited += 1
+        }
+        #expect(store.isHolding)
+        // 試行がまだ無く、ジョブが assigned のままでも、動かしているぶん空きは無い
+        let epics = try await epics(in: inner)
+        var states: [JobState] = []
+        for epic in epics { states += try await jobs(epic.id, in: inner).map(\.state) }
+        #expect(states == [.assigned, .assigned])
+        #expect(try await loop.cycle().isEmpty)
+        store.open()
+        await loop.waitForJobs()
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    @Test func loopIgnoresKindsItDoesNotHandle() async throws {
+        let store = try await storeWithRequest()
+        let intake = IntentIntake(
+            context: context(store),
+            verifier: IntentVerifier(publicKeys: [keyID: key.publicKey.derRepresentation]),
+            handlers: ["request": RequestHandler()]
+        )
+        _ = try await intake.processPending()
+        let epic = try #require(try await epics(in: store).first)
+        // この Mac が引き受けない種類のジョブ（先に作られ、優先も高い）が、空きを取らない
+        let other = JobFile(
+            id: ULID.generate(at: Self.now.addingTimeInterval(-60)),
+            kind: .notify,
+            repo: Self.repo,
+            epic: epic.id,
+            assignedMac: Self.commander,
+            needs: .init(claude: true, build: false),
+            state: .assigned,
+            createdAt: Timestamp(Self.now.addingTimeInterval(-60)),
+            updatedAt: Timestamp(Self.now.addingTimeInterval(-60))
+        )
+        try await put(other, at: StatePath.job(Self.repo, epic: epic.id, job: other.id), in: store)
+        let loop = loop(store, claude: ScriptedRunner([QuestionJobsTests.result(#"{"summary":"文言を直す。","questions":[]}"#)]), capacity: 1)
+        #expect(try await loop.cycle().map(\.kind) == [.makeQuestions])
+        await loop.waitForJobs()
+        try? FileManager.default.removeItem(at: directory)
     }
 
     @Test func loopKeepsCapacityWhileJobsRun() async throws {

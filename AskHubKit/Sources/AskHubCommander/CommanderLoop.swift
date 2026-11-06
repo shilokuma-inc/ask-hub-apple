@@ -151,9 +151,11 @@ public actor CommanderLoop {
         var capacity = settings.capacity
         capacity.claude = max(0, capacity.claude - pending.filter(\.needs.claude).count)
         capacity.build = max(0, capacity.build - pending.filter(\.needs.build).count)
-        let candidates = jobs.filter { inFlight[$0.id] == nil || $0.state != .assigned }
+        // 引き受けない種類の assigned のジョブは、空きを取られないよう候補から外す（running・succeeded は空きと依存の判断に要るので残す）
+        let candidates = jobs.filter { job in
+            job.state != .assigned || (Self.handledKinds.contains(job.kind) && inFlight[job.id] == nil)
+        }
         return JobPicker.pick(from: candidates, for: context.mac, capacity: capacity, now: context.now())
-            .filter { Self.handledKinds.contains($0.kind) && inFlight[$0.id] == nil }
     }
 
     private func start(_ job: JobFile, with worker: ClaudeJobWorker) {
@@ -200,6 +202,8 @@ public actor CommanderLoop {
         try await put(commander, at: StatePath.commander, message: "司令塔の生きている印")
         try await put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now
+        // しばらく使っていないリポジトリの写しを片付ける
+        await workspace.tidy()
     }
 
     /// 無ければ作り、あれば置き換える

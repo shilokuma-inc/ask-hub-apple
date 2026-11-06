@@ -41,7 +41,9 @@ public struct ClaudeJobWorker: Sendable {
         } catch {
             result = .failure(error)
         }
+        // 書いている途中の生きている印が終わるのを待ってから、終わりを書く（同じ試行のファイルへの書き込みをぶつけない）
         beating.cancel()
+        await beating.value
         let (failure, session) = Self.record(of: result, now: runner.context.now())
         do {
             return try await recorder.finish(attempt, of: job, failure: failure, claude: session?.attemptRecord)
@@ -107,6 +109,9 @@ extension StateStoreError {
         case let .rateLimited(wait), let .budgetExhausted(wait):
             let retryAt = Timestamp(now.addingTimeInterval(TimeInterval(wait.components.seconds)))
             return AttemptFailure(failureClass: .githubOutage, message: "GitHub の上限・書き込みの予算に達した", retryAt: retryAt)
+        case .cancelled:
+            // 司令塔を止めた（再起動・ログアウト）。失敗に数えず、戻ったら続きから試す
+            return AttemptFailure(failureClass: .macOffline, message: "司令塔を止めたので、試行を中断した")
         case .unauthorized, .tokenUnavailable:
             return AttemptFailure(failureClass: .authExpired, message: "状態リポジトリのトークンが使えない")
         case .serverError, .transport, .conflict:

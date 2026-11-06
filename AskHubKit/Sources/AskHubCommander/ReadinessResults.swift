@@ -21,10 +21,15 @@ extension ClaudeJobRunner {
         guard let questions = try await questionsFile(of: epic) else { return Self.missingQuestions }
         // 前の試行で追加の質問まで書き、回答に戻す前に止まった。続きを書いて終える
         if !questions.questions.allSatisfy(\.state.isSettled), let origin = job.origin {
-            try await context.lock.withLock { () throws(CommanderError) in
+            return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+                // 排他を待つ間に人が答え進めた（答え直しでこのジョブが取り消された・すべて決まった）なら、何もしない
+                guard try await stillWanted(job, stages: [.checking]) != nil,
+                      let latest = try await questionsFile(of: epic), !latest.questions.allSatisfy(\.state.isSettled) else {
+                    return .discarded("排他を待つ間に epic か質問の一覧が変わった", nil)
+                }
                 try await context.perform([.reopen], for: epic, origin: origin, after: [job.id])
+                return .discarded("前の試行で足した追加の質問の続きを書いた（回答に戻した）", nil)
             }
-            return .discarded("前の試行で足した追加の質問の続きを書いた（回答に戻した）", nil)
         }
         guard let envelope = try await envelope(of: epic.origin), let request = try? RequestIntent(envelope: envelope) else {
             return .failed(AttemptFailure(failureClass: .unexpected, message: "元の依頼を読めない・署名が合わない"), nil)

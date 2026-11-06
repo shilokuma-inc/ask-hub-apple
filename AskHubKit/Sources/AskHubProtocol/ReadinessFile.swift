@@ -36,7 +36,8 @@ public struct ReadinessFile: StateFile {
     public var split: [Part]
     /// 何回目の質問づくりの後の確認か
     public var round: Int
-    /// 人が分け方の判断で「このまま 1 つで進める」を選んだ後の確認か。選んだ後は大きすぎるとは返さず、後の確認にも引き継ぐ。無ければ false
+    /// 人が分け方の判断で「このまま 1 つで進める」を選んだか（受け付けたときに、大きすぎるの結果に付ける）、選んだ後の確認の結果か。
+    /// true なら、この後の確認では大きすぎるとは返さず、引き継ぐ。無ければ false
     public var proceeding: Bool?
     public var checkedAt: Timestamp
 
@@ -64,7 +65,6 @@ public struct ReadinessFile: StateFile {
         if reason.isEmpty { violations.append("reason が空") }
         if verdict != .tooLarge && !split.isEmpty { violations.append("大きすぎるときだけ split を持つ") }
         if split.contains(where: { $0.title.isEmpty || $0.summary.isEmpty }) { violations.append("split の title・summary が空") }
-        if proceeding == true && verdict == .tooLarge { violations.append("このまま進めると決めた後は tooLarge にしない") }
         return violations
     }
 }
