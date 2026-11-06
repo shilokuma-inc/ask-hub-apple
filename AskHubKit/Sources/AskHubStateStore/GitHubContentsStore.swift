@@ -71,16 +71,23 @@ public struct GitHubContentsStore: StateStore {
         return try await tree(sha: sha, under: directory, recursive: false)
     }
 
+    /// Contents API のディレクトリの一覧の上限
+    static let contentsListLimit = 1_000
+
     /// 親の一覧から読む、ディレクトリの tree の sha。ディレクトリが無ければ nil
     private func treeSHA(of directory: String) async throws(StateStoreError) -> String? {
         guard StatePathCheck.isSafe(directory) else { throw .invalidPath }
         let parts = directory.split(separator: "/").map(String.init)
         let parent = parts.dropLast().joined(separator: "/")
-        let siblings: [DirectoryEntry]
+        var siblings: [DirectoryEntry]
         switch try await get(parent) {
         case .missing: return nil
         case let .directory(entries): siblings = entries
         case .file, .largeFile: throw .wrongKind
+        }
+        // 親の一覧が上限で切れていれば、見つからなくても無いとは言えない。親の直下を Git Trees API で読み直して探す
+        if !siblings.contains(where: { $0.name == parts.last }), siblings.count >= Self.contentsListLimit, !parent.isEmpty {
+            siblings = try await listAll(parent) ?? []
         }
         guard let tree = siblings.first(where: { $0.name == parts.last }) else { return nil }
         guard tree.kind == .directory else { throw .wrongKind }
@@ -130,8 +137,10 @@ public struct GitHubContentsStore: StateStore {
         guard !sha.isEmpty, isHex else { throw .unexpected(status: 200, message: "tree の sha の形が違う") }
         let query = recursive ? [URLQueryItem(name: "recursive", value: "1")] : []
         let request = try await makeRequest(apiPath: "git/trees/\(sha)", query: query)
-        // `:` は状態リポジトリのパスに使わないので、ファイルの中身の鍵とぶつからない
-        let contents = try await fetch(request, cacheKey: "\(recursive ? "tree" : "entries"):\(sha)") { body throws(StateStoreError) in
+        // `:` は状態リポジトリのパスに使わないので、ファイルの中身の鍵とぶつからない。同じ中身の tree が別のディレクトリにもあり得るので、
+        // 読んだディレクトリも鍵に入れる（一覧のパスはディレクトリから作るため）
+        let cacheKey = "\(recursive ? "tree" : "entries"):\(sha):\(directory)"
+        let contents = try await fetch(request, cacheKey: cacheKey) { body throws(StateStoreError) in
             try .directory(Self.decodeTree(body, under: directory, recursive: recursive))
         }
         guard case let .directory(entries) = contents else { throw .wrongKind }
