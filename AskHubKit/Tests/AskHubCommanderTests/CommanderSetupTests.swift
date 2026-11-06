@@ -53,6 +53,42 @@ struct CommanderSetupTests {
         #expect(!text.contains("token"))
     }
 
+    @Test func parsesAPNsArguments() throws {
+        let setup = try APNsSetup.parse(["--key-id", "ABC123DEFG", "--team-id", "XU74X3434S", "--key-file", "/tmp/AuthKey_ABC123DEFG.p8"])
+        #expect(setup.configuration == APNsConfiguration(keyId: "ABC123DEFG", teamId: "XU74X3434S", topic: "jp.shilokuma.AskHub"))
+        #expect(setup.keyFile == "/tmp/AuthKey_ABC123DEFG.p8")
+        let topic = try APNsSetup.parse([
+            "--key-id", "ABC123DEFG", "--team-id", "XU74X3434S", "--key-file", "k.p8", "--topic", "jp.example.App"
+        ])
+        #expect(topic.configuration.topic == "jp.example.App")
+        let failures: [([String], String)] = [
+            (["--key-id", "ABC123DEFG", "--team-id", "XU74X3434S"], "--key-file が要る"),
+            (["--key-id", "abc", "--team-id", "XU74X3434S", "--key-file", "k.p8"], "APNs の鍵の id は英大文字・数字の 10 文字"),
+            (["--key-id", "ABC123DEFG", "--team-id", "XU74X3434S", "--key-file", "k.p8", "--topic", "app"], "topic は Bundle ID の形"),
+            (["--key", "-----BEGIN PRIVATE KEY-----"], "知らない引数 --key")
+        ]
+        for (arguments, message) in failures {
+            #expect(throws: CommanderSetup.Failure(message: message)) { try APNsSetup.parse(arguments) }
+        }
+    }
+
+    @Test func readsConfigurationWithoutAPNs() throws {
+        // APNs を足す前に setup で書いた設定も読める（APNs の設定が無ければ知らせない）
+        let text = #"""
+            {"capacity":{"build":0,"claude":2},"claude":"/opt/claude","keyAccounts":["a"],"mac":"mac-mini","stateRepository":"o/r"}
+            """#
+        let configuration = try JSONDecoder().decode(CommanderConfiguration.self, from: Data(text.utf8))
+        #expect(configuration.apns == nil)
+        var withAPNs = configuration
+        withAPNs.apns = APNsConfiguration(keyId: "ABC123DEFG", teamId: "XU74X3434S")
+        let encoded = try JSONEncoder().encode(withAPNs)
+        #expect(try JSONDecoder().decode(CommanderConfiguration.self, from: encoded) == withAPNs)
+        // 設定に鍵の値は書かない
+        #expect(String(bytes: encoded, encoding: .utf8)?.contains("PRIVATE KEY") == false)
+        withAPNs.apns?.teamId = "team"
+        #expect(withAPNs.problems == ["Team ID は英大文字・数字の 10 文字"])
+    }
+
     @Test func credentialHelperAnswersOnlyGitHub() throws {
         let token = { "ghp_secret" }
         let github = "protocol=https\nhost=github.com\n"
