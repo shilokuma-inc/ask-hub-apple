@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/addRepository.schema.json",
+  "title": "対象に加える人の意図（kind が addRepository）の payload",
+  "description": "封筒の repo が加えるリポジトリ。target と targetVersion は持たない。同時に回す epic の上限は、最初の版では 1 に決めているので持たない。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "platform"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "platform": {
+      "enum": [
+        "apple"
+      ],
+      "description": "リポジトリのプラットフォーム（最初は apple だけ）"
+    }
+  }
+}

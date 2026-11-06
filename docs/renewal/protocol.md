@@ -434,7 +434,8 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `humanTaskDone` | 人がする作業 | ゴールの `version` | 渡すものの参照 |
 | `handover` | epic | — | 移す先の Mac |
 | `retry`・`giveUp` | ジョブ | 試行の番号 | — |
-| `addRepository`・`removeRepository`・`applyProtection` | リポジトリ | — | 設定 |
+| `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
+| `removeRepository`・`applyProtection` | リポジトリ | — | 設定 |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
 リリースの操作（審査に出す・配信する など）の `kind` は、段階 5 で足す。

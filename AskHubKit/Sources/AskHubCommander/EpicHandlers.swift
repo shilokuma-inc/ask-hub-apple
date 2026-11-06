@@ -263,3 +263,27 @@ public struct DecideSplitHandler: IntentHandler {
         }
     }
 }
+
+/// 対象に加える（`addRepository`）を受け付け、`repo.json` を作る。段階 2 では設定を書くだけで、GitHub 側の準備（保護・Discussions）は後で足す
+public struct AddRepositoryHandler: IntentHandler {
+    public init() {}
+
+    public func handle(_ envelope: IntentEnvelope, in context: CommanderContext) async throws(CommanderError) -> IntentDecision {
+        let add: AddRepositoryIntent
+        do {
+            add = try AddRepositoryIntent(envelope: envelope)
+        } catch {
+            return .reject("対象に加える意図の形が違う（\(error.detail)）")
+        }
+        // 同時に回す epic は、最初の版では 1 本（ユーザーの決定）
+        let file = RepositoryFile(repo: add.repo, platform: add.platform, maxConcurrentEpics: 1, addedAt: context.timestamp)
+        do {
+            try await context.files.create(file, at: StatePath.repository(add.repo), message: "\(add.repo) を対象に加える")
+        } catch .alreadyExists {
+            // 加え済み（やり直し、または同じリポジトリを加え直した）
+        } catch {
+            throw .files(error)
+        }
+        return .accept
+    }
+}
