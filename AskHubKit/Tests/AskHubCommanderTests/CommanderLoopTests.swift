@@ -35,25 +35,14 @@ final class GatedRunner: CommandRunning {
 /// 常駐のループの 1 周（人の意図 → ジョブの見直し → 引き受け）
 extension ClaudeJobRunnerTests {
     func loop(_ store: InMemoryStateStore, claude: any CommandRunning, capacity: Int = 2) -> CommanderLoop {
-        let context = context(store)
         let publicKeys = [keyID: key.publicKey.derRepresentation]
-        let workspace = FixedWorkspace(directory: directory)
         let selfCheck = SelfCheck(checkedAt: Timestamp(Self.now), keychain: .ok, githubToken: .ok, claudeToken: .ok)
         return CommanderLoop(
-            context: context,
+            context: context(store),
             settings: .init(capacity: .init(claude: capacity, build: 0), commanderVersion: "0.1.0"),
             verifier: { IntentVerifier(publicKeys: publicKeys) },
-            worker: { verifier in
-                ClaudeJobWorker(
-                    runner: ClaudeJobRunner(
-                        context: context,
-                        client: ClaudeClient(setup: QuestionJobsTests.setup, runner: claude),
-                        workspace: workspace,
-                        verifier: verifier
-                    ),
-                    recorder: AttemptRecorder(files: context.files, mac: Self.commander) { Self.now }
-                )
-            },
+            client: ClaudeClient(setup: QuestionJobsTests.setup, runner: claude),
+            workspace: FixedWorkspace(directory: directory),
             status: { CommanderLoop.MachineStatus(diskFreeGB: 100, load: 0.5, selfCheck: selfCheck) },
             log: { _ in }
         )
@@ -105,6 +94,14 @@ extension ClaudeJobRunnerTests {
         #expect(epic.stage == .awaitingStart)
         #expect(try await jobs(epic.id, in: store).allSatisfy { $0.state == .succeeded })
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    @Test func workerSharesLockWithIntake() async throws {
+        // Claude の結果を書く処理と人の意図の処理は、同じ排他を使う（読み直してから書くまでに答え直しが割り込まない）
+        let loop = loop(InMemoryStateStore(), claude: ScriptedRunner([]))
+        let worker = loop.worker(IntentVerifier(publicKeys: [:]))
+        #expect(worker.runner.context.lock === loop.context.lock)
+        #expect(worker.recorder.mac == Self.commander)
     }
 
     @Test func loopWritesHeartbeatsAtInterval() async throws {
