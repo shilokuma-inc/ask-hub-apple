@@ -68,6 +68,10 @@ let package = Package(
         .testTarget(name: "AskHubCommandsTests", dependencies: ["AskHubCommands"]),
         .testTarget(name: "AskHubClaudeTests", dependencies: ["AskHubClaude", "AskHubCommands", "AskHubProtocol"]),
         .testTarget(
+            name: "AskHubClientTests",
+            dependencies: ["AskHubClient", "AskHubCommander", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
+        ),
+        .testTarget(
             name: "AskHubCommanderTests",
             dependencies: ["AskHubCommander", "AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
         ),
