@@ -119,8 +119,7 @@ struct JobHandlersTests {
         // payload に知らない欄がある
         (store, waiting) = try await waitingJob()
         try await retry(waiting, attempt: 1, payload: ["force": .bool(true)], in: store)
-        let outcome = try await intake(store).processPending()
-        #expect(outcome.count == 1)
+        #expect(try await intake(store).processPending() == [.rejected(kind: "retry", reason: "やり直しの形が違う（payload に知らない欄がある）")])
         #expect(try await job(waiting, in: store).state == .waitingHuman)
     }
 
