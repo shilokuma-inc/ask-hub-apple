@@ -141,6 +141,24 @@ struct GitHubContentsStoreTests {
         #expect(urls.last?.hasSuffix("/repos/shilokuma-inc/askhub-state/git/trees/abc123?recursive=1") == true)
     }
 
+    @Test func listsAllEntriesDirectlyUnderDirectoryThroughGitTrees() async throws {
+        let parent = #"[{"type":"dir","name":"epics","path":"repos/o/r/epics","sha":"abc123"}]"#
+        let tree = """
+        {"sha":"abc123","truncated":false,"tree":[{"path":"01A","type":"tree","sha":"t1"},\
+        {"path":"README","type":"blob","sha":"s1"},{"path":"lib","type":"commit","sha":"c1"}]}
+        """
+        let transport = StubTransport([.json(200, parent), .json(200, tree)])
+        let entries = try await store(transport).listAll("repos/o/r/epics")
+        // 直下のディレクトリとファイルだけ（下の階層は辿らない）
+        #expect(entries == [
+            DirectoryEntry(name: "01A", path: "repos/o/r/epics/01A", kind: .directory, sha: "t1"),
+            DirectoryEntry(name: "README", path: "repos/o/r/epics/README", kind: .file, sha: "s1")
+        ])
+        let urls = transport.requests.compactMap(\.url?.absoluteString)
+        #expect(urls.first?.contains("/contents/repos/o/r") == true)
+        #expect(urls.last?.hasSuffix("/git/trees/abc123") == true)
+    }
+
     @Test func listFilesRefusesTruncatedTreeAndReportsMissingDirectory() async throws {
         let root = #"[{"type":"dir","name":"intents","path":"intents","sha":"abc123"}]"#
         let truncated = #"{"sha":"abc123","truncated":true,"tree":[]}"#
