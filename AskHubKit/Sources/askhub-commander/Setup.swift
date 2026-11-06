@@ -13,17 +13,50 @@ extension AskHubCommanderMain {
             fail("\(error.message)\n\(usage)", status: EX_USAGE)
         }
         let secrets = secrets
+        var configuration = setup.configuration
+        // 後から足した APNs の設定は、setup を流し直しても残す
+        configuration.apns = (try? CommanderConfiguration.load(from: paths.configuration))?.apns
         do {
             try storeToken(.githubToken, prompt: "GitHub のトークン（状態リポジトリと対象のリポジトリを読み書きできるもの）: ", in: secrets) { _ in nil }
             try storeToken(.claudeToken, prompt: "Claude の setup-token: ", in: secrets, problem: CommanderSetup.claudeTokenProblem)
             try TrustAnchor(store: secrets).pin(firstKey: setup.firstKey)
-            try setup.configuration.save(to: paths.configuration)
+            try configuration.save(to: paths.configuration)
         } catch {
             fail("セットアップを終えられない（\(error)）", status: EX_SOFTWARE)
         }
         print("""
             設定を \(paths.configuration.path) に書き、トークンを Keychain に置きました。
             次に launch-agent で常駐の定義を書き、出てくるコマンドで登録してください
+            """)
+    }
+
+    /// APNs の鍵（.p8）を Keychain に置き、鍵の id と Team ID を設定に足す。鍵の値は設定にも出力にも書かない
+    static func apns(_ arguments: [String]) {
+        let setup: APNsSetup
+        do {
+            setup = try APNsSetup.parse(arguments)
+        } catch {
+            fail("\(error.message)\n\(usage)", status: EX_USAGE)
+        }
+        guard var configuration = try? CommanderConfiguration.load(from: paths.configuration) else {
+            fail("設定（\(paths.configuration.path)）を読めない。先に setup を流す", status: EX_CONFIG)
+        }
+        let url = URL(fileURLWithPath: (setup.keyFile as NSString).expandingTildeInPath)
+        guard let data = try? Data(contentsOf: url), APNsKey.parse(data) != nil else {
+            fail("\(url.path) を APNs の鍵（.p8）として読めない", status: EX_DATAERR)
+        }
+        configuration.apns = setup.configuration
+        do {
+            try secrets.write(data, for: .apnsKey)
+            try configuration.save(to: paths.configuration)
+        } catch {
+            fail("APNs の鍵を登録できない（\(error)）", status: EX_SOFTWARE)
+        }
+        print("""
+            APNs の鍵（\(setup.configuration.keyId)、Team \(setup.configuration.teamId)、\(setup.configuration.topic)）を Keychain に置き、設定に足しました。
+            \(url.path) はこの Mac に残さず、安全な場所（パスワードマネージャーなど）に移してください（Apple Developer からは一度しか落とせません）。
+            常駐を読み込み直すと、通知を送り始めます:
+              launchctl kickstart -k gui/\(getuid())/\(LaunchAgent.label)
             """)
     }
 
@@ -97,12 +130,14 @@ extension AskHubCommanderMain {
         let configuration = try? CommanderConfiguration.load(from: paths.configuration)
         let selfCheck = MachineProbe(secrets: secrets, volume: paths.root).selfCheck()
         let firstKey = (try? TrustAnchor(store: secrets).firstKey()).flatMap { $0 }
+        let apns = configuration?.apns.map { "\($0.keyId)（Team \($0.teamId)、\($0.topic)）、鍵: \(APNsKey.state(in: secrets).rawValue)" }
         print("""
             版: \(CommanderVersion.current)
             設定: \(configuration.map { "\($0.stateRepository)（\($0.mac)、claude \($0.claude)）" } ?? "読めない（setup を流す）")
             Keychain: \(selfCheck.keychain.rawValue)
             GitHub のトークン: \(selfCheck.githubToken.rawValue)、Claude のトークン: \(selfCheck.claudeToken.rawValue)
             最初の鍵: \(firstKey?.rawValue ?? "固定していない")
+            APNs: \(apns ?? "設定していない（通知を送らない。apns で登録する）")
             """)
     }
 }

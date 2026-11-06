@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/notifications.schema.json",
+  "title": "notifications.json（進行を止めるものを知らせた記録）",
+  "description": "司令塔だけが書く。知らせた出来事を key で持ち、同じ出来事を二度送らない。key の重複は、読む側で確かめる",
+  "type": "object",
+  "required": ["v", "sent"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "sent": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:/-]{1,300}$",
+            "maxLength": 300,
+            "not": { "pattern": "\\n" },
+            "description": "知らせた出来事（question/<owner>/<repo>/<epic>/<質問>/<版>/<説明の数> など）"
+          },
+          "at": { "$ref": "../common.schema.json#/$defs/timestamp", "description": "知らせた時刻（送る前に書く）" }
+        }
+      }
+    }
+  }
+}

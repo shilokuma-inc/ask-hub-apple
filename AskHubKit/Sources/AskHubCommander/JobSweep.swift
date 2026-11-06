@@ -24,6 +24,8 @@ public struct JobSweep: Sendable {
         public var changed: [JobFile]
         /// 終わっていない epic のすべてのジョブ（見直した後の状態。ワーカーが引き受けるジョブを選ぶのに使う）
         public var jobs: [JobFile]
+        /// 終わっていない epic（進行を止めているものを知らせるのに使う）
+        public var epics: [EpicFile] = []
     }
 
     /// 対象のリポジトリの、終わっていない epic のジョブを見直す。状態を変えたジョブを返す
@@ -35,9 +37,10 @@ public struct JobSweep: Sendable {
     public func sweepAll() async throws(CommanderError) -> Swept {
         var swept = Swept(changed: [], jobs: [])
         for repo in try await repositories() {
-            for epic in try await openEpics(of: repo) {
+            for (id, epic) in try await openEpics(of: repo) {
+                swept.epics.append(epic)
                 // 読めないジョブは、中身が分からないので触らない（新しい司令塔が扱う）
-                for job in try await context.jobList(repo, epic: epic).jobs {
+                for job in try await context.jobList(repo, epic: id).jobs {
                     guard Self.watchedStates.contains(job.state), let next = try await reconcile(job) else {
                         swept.jobs.append(job)
                         continue
@@ -84,14 +87,14 @@ public struct JobSweep: Sendable {
         return repositories
     }
 
-    /// 終わっていない（マージ・やめた、でない）epic。読めない epic は飛ばす
-    private func openEpics(of repo: RepositoryFullName) async throws(CommanderError) -> [ULID] {
-        var epics: [ULID] = []
+    /// 終わっていない（マージ・やめた、でない）epic と、そのディレクトリの名前の id。読めない epic は飛ばす
+    private func openEpics(of repo: RepositoryFullName) async throws(CommanderError) -> [(ULID, EpicFile)] {
+        var epics: [(ULID, EpicFile)] = []
         for name in try await directories(in: StatePath.epics(repo)) {
             guard let id = ULID(rawValue: name),
                   let epic = try await readable(EpicFile.self, at: StatePath.epic(repo, id)),
                   ![.merged, .abandoned].contains(epic.stage) else { continue }
-            epics.append(id)
+            epics.append((id, epic))
         }
         return epics
     }

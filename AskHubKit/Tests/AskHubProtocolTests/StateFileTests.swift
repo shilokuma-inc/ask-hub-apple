@@ -20,6 +20,7 @@ struct StateFileKind: Sendable, CustomTestStringConvertible {
         .of(MacFile.self, "mac"),
         .of(CommanderFile.self, "commander"),
         .of(DeviceFile.self, "device"),
+        .of(NotificationsFile.self, "notifications"),
         .of(ConsumedIntentFile.self, "consumed"),
         .of(QuestionsFile.self, "questions"),
         .of(GoalFile.self, "goal"),
