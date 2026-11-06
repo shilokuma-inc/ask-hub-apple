@@ -24,7 +24,7 @@ enum AskHubMain {
         switch command {
         case "setup": try setup(CommandArguments(arguments))
         case "key": try await key(arguments)
-        case "add-repository", "request", "answer", "clarify", "start", "revise-goal", "decide-split":
+        case "add-repository", "request", "answer", "clarify", "start", "revise-goal", "decide-split", "retry", "give-up":
             try await send(command, CommandArguments(arguments))
         case "status": try await status(CommandArguments(arguments))
         default: fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
@@ -43,7 +43,9 @@ enum AskHubMain {
           start --repo <owner/repo> --epic <id> --version <ゴールの版> --mac <Mac の名前>
           revise-goal --repo <owner/repo> --epic <id> --version <ゴールの版> --instruction <指示>
           decide-split --repo <owner/repo> --epic <id> --version <確認の結果の版> --choice split|proceed
-          status [--repo <owner/repo>]   epic・質問・ゴールと、送った意図の処理の結果を出す
+          retry --repo <owner/repo> --epic <id> --job <id> --attempt <試行の番号>     人の対応待ちのジョブをやり直させる
+          give-up --repo <owner/repo> --epic <id> --job <id> --attempt <試行の番号>   人の対応待ちのジョブをやめる
+          status [--repo <owner/repo>]   epic・質問・ゴール・人の対応待ちのジョブと、送った意図の処理の結果を出す
         """
 
     static var secrets: KeychainSecretStore { KeychainSecretStore(service: ClientConfiguration.keychainService) }
