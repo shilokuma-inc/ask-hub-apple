@@ -67,21 +67,36 @@ struct XcbStatusTests {
     /// CI のランナーでは負荷でテストが 10 秒ほど遅れることがあるので、ふだんの所要時間（1 秒未満）より大きく取る
     private static let returnLimit: Duration = .seconds(30)
 
+    /// スクリプトが自分の隣の `child.pid` に書いた子プロセスの PID
+    private func recordedChildPID(of xcb: String) throws -> pid_t {
+        let file = URL(fileURLWithPath: xcb).deletingLastPathComponent().appending(path: "child.pid", directoryHint: .notDirectory)
+        let text = try String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        return try #require(pid_t(text))
+    }
+
     @Test func returnsEvenIfChildKeepsOutputOpen() async throws {
         // xcb を止めても、xcb が起動した子プロセス（ssh など）が標準出力のパイプを持ち続ける。
         // 作ったばかりのスクリプトは最初の起動に 0.5 秒ほどかかることがあるので、子プロセスを起動する前に止めないよう時間切れを長めに取る
+        let killed = try script(#"sleep 60 & echo $! > "$(dirname "$0")/child.pid"; wait"#)
         var start = ContinuousClock.now
         await #expect(throws: XcbStatusError.timedOut) {
-            try await XcbStatusCommand(timeout: .seconds(2), outputDrainTimeout: .milliseconds(300))
-                .status(xcbPath: try script("sleep 60 &\nwait"))
+            try await XcbStatusCommand(timeout: .seconds(2), outputDrainTimeout: .milliseconds(300)).status(xcbPath: killed)
         }
         #expect(ContinuousClock.now - start < Self.returnLimit)
+        // 子プロセスを起動してから止め、子プロセスがパイプを持ったまま残っていたことを確かめる。確かめたら止める
+        let killedChild = try recordedChildPID(of: killed)
+        defer { kill(killedChild, SIGKILL) }
+        #expect(kill(killedChild, 0) == 0)
+
         // xcb が先に終わって子プロセスだけが残っても、出力を読み切りの上限まで待って返る。
         // 負荷で xcb の終了が遅れても時間切れにならないよう、時間切れは上限と同じにする
-        let detached = try script(#"echo '{"hosts":[]}'; sleep 60 &"#)
+        let detached = try script(#"echo '{"hosts":[]}'; sleep 60 & echo $! > "$(dirname "$0")/child.pid""#)
         start = ContinuousClock.now
         let status = try await XcbStatusCommand(timeout: Self.returnLimit, outputDrainTimeout: .milliseconds(300)).status(xcbPath: detached)
         #expect(status == XcbStatus(hosts: []))
         #expect(ContinuousClock.now - start < Self.returnLimit)
+        let detachedChild = try recordedChildPID(of: detached)
+        defer { kill(detachedChild, SIGKILL) }
+        #expect(kill(detachedChild, 0) == 0)
     }
 }
