@@ -76,6 +76,7 @@
 
 | 人の意図 | 司令塔がすること |
 | --- | --- |
+| 対象に加える（`addRepository`） | `repo.json` を作る（同時に回す epic は 1 本）。すでにあればそのまま。段階 2 では設定を書くだけで、GitHub 側の準備（保護・Discussions）は後で足す |
 | 依頼（`request`） | 対象のリポジトリに加えてあるか、添付の大きさとハッシュが封筒と合うか（合わなければ記録を作らずに残し、置き直せば次の周で受け付ける）を確かめ、epic を作り（`drafting`。id は依頼の意図から決める）、対象のリポジトリに Discussion を作って依頼の要約（題・本文・添付の名前）を書き、`makeQuestions` のジョブを作る。同時に回す epic の上限は、依頼では数えない（開始のときに数える） |
 | 回答（`answer`） | 質問の `version` と状態（`open`・`answered`）を確かめて受け付け、`questions.json` に書き、Discussion に写しを書く。依存する質問の依存先がすべて決まったら `reviseQuestion` のジョブを作る。着手前の確認・開始の待ちの間に答え直したら、`asking` に戻して確認をやり直す |
 | 説明を求める（`answer` の `clarify`） | 回答を待っている（`open`）質問だけを `clarifying` にし、`explain` のジョブを作る |

@@ -49,6 +49,16 @@
 
 - git は、司令塔自身を credential helper（`askhub-commander git-credential`）にして、Keychain の GitHub のトークンを受け取る
 
+### 非常口（`askhub`）
+
+クライアントが壊れても人の意図を出せるように、Mac の端末から署名して送るコマンド。鍵は Secure Enclave（無ければソフトウェアの鍵）に作り、GitHub のトークンと一緒にその Mac の Keychain（サービス `jp.shilokuma.AskHub.cli`。司令塔とは分ける）だけに置く。段階 2 の試運転では、クライアントのつなぎ込みの前に、これで依頼から開始の待ちまでを通しで動かす。
+
+1. `askhub setup --state-repo <owner/repo>`: 設定を書き、GitHub のトークン（状態リポジトリを読み書きできるもの）を端末で伏せて入れ、署名の鍵を作る
+2. `askhub key register-first --account <GitHub のアカウント> --label <名前>`: 公開鍵の記録が空のときに、この鍵を最初の鍵（`keys/1.json`）として登録する。出てくる鍵の id を、司令塔の `setup --first-key` に渡す
+   - ほかの端末の鍵は `askhub key add --public-key <base64url> --account … --label …`、取り消しは `askhub key revoke <鍵の id>`
+3. `askhub add-repository --repo <owner/repo>` → `askhub request --repo … --title … --body …`
+4. `askhub status` で epic・答える質問（id と版と選択肢）・ゴール・送った意図の処理の結果を見て、`answer`・`clarify`・`decide-split`・`revise-goal`・`start` で進める
+
 ## 容量
 
 - ワーカーは、自分で作ったもの（worktree・Simulator・DerivedData）を、最終 PR のマージ後に自動で片付ける
