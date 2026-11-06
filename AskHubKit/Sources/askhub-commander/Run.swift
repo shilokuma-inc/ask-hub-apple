@@ -25,16 +25,21 @@ extension AskHubCommanderMain {
         for directory in [paths.work, paths.claudeConfig, paths.claudeHome, paths.claudeTemporary, paths.logs] {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
-        let store = GitHubContentsStore(
-            repository: configuration.stateRepository,
-            branch: configuration.stateBranch,
-            budget: WriteBudget(limits: .commander)
-        ) {
+        let token: @Sendable () async throws -> String = {
             guard let data = try secrets.read(.githubToken), let token = String(bytes: data, encoding: .utf8), !token.isEmpty else {
                 throw StateStoreError.tokenUnavailable
             }
             return token
         }
+        // 状態リポジトリと Discussion の写しは、同じアカウントの内容を作る要求の上限を分け合うので、司令塔の書き込みの予算を 1 つにする
+        let budget = WriteBudget(limits: .commander)
+        let store = GitHubContentsStore(
+            repository: configuration.stateRepository,
+            branch: configuration.stateBranch,
+            budget: budget,
+            token: token
+        )
+        let discussions = GitHubDiscussions(budget: budget, token: token)
         let claude = ClaudeSetup(
             executable: URL(fileURLWithPath: configuration.claude),
             configDirectory: paths.claudeConfig,
@@ -42,7 +47,13 @@ extension AskHubCommanderMain {
             temporaryDirectory: paths.claudeTemporary,
             oauthToken: claudeToken
         )
-        let loop = makeLoop(configuration: configuration, store: store, claude: claude, claudeVersion: await version(of: claude))
+        let loop = makeLoop(
+            configuration: configuration,
+            store: store,
+            discussions: discussions,
+            claude: claude,
+            claudeVersion: await version(of: claude)
+        )
         log("起動しました（pid \(ProcessInfo.processInfo.processIdentifier)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
         await loop.run()
     }
@@ -50,6 +61,7 @@ extension AskHubCommanderMain {
     private static func makeLoop(
         configuration: CommanderConfiguration,
         store: GitHubContentsStore,
+        discussions: GitHubDiscussions,
         claude: ClaudeSetup,
         claudeVersion: String?
     ) -> CommanderLoop {
@@ -60,14 +72,17 @@ extension AskHubCommanderMain {
             setup: .init(root: paths.work, credentialHelper: GitCredential.helper(executable: executable)),
             runner: ProcessCommandRunner()
         )
+        // 人の意図の処理・Claude のジョブの結果・写しの id の書き戻しは、同じ排他を使うよう、同じ `context` を渡す
+        let context = CommanderContext(store: store, mac: configuration.mac)
         return CommanderLoop(
-            context: CommanderContext(store: store, mac: configuration.mac),
+            context: context,
             settings: .init(capacity: configuration.capacity, commanderVersion: CommanderVersion.current, claudeVersion: claudeVersion),
             verifier: { () throws(CommanderError) in try await trusted.verifier() },
             client: ClaudeClient(setup: claude, runner: ProcessCommandRunner()),
             workspace: workspace,
             status: { probe.status() },
-            log: log
+            log: log,
+            mirror: DiscussionMirror(context: context, api: discussions, log: log)
         )
     }
 
