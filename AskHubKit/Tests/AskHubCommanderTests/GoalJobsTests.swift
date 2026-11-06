@@ -71,6 +71,18 @@ struct GoalJobsTests {
         #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q1")])).isEmpty)
     }
 
+    @Test func proceedingAllowsOnlyReady() throws {
+        let job = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered(), proceeding: true)
+        #expect(!job.canAskMore)
+        #expect(job.prompt.contains("このまま 1 つで進めると決めた"))
+        #expect(!job.prompt.contains("verdict を tooLarge にし"))
+        let rule = "人がこのまま 1 つで進めると決めたので、verdict は ready にしてゴールを作る"
+        let parts = [CheckReadinessJob.Part(title: "集計", summary: "…"), .init(title: "画面", summary: "…")]
+        #expect(job.problems(in: .init(verdict: .tooLarge, reason: "大きい", split: parts)) == [rule])
+        #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q3")])) == [rule])
+        #expect(job.problems(in: .init(verdict: .ready, reason: "1 つで進める", goal: goal())).isEmpty)
+    }
+
     @Test func tooLargeNeedsSplitWhileQuestionsRemain() throws {
         let job = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered())
         let parts = [CheckReadinessJob.Part(title: "集計", summary: "…"), .init(title: "画面", summary: "…")]
