@@ -66,8 +66,11 @@ public enum StatePath {
         "macs/\(mac).json"
     }
 
+    /// 通知の宛先を置くディレクトリ
+    public static let devices = "devices"
+
     public static func device(_ device: KeyID) -> String {
-        "devices/\(device).json"
+        "\(devices)/\(device).json"
     }
 
     /// 公開鍵の記録を置くディレクトリ
