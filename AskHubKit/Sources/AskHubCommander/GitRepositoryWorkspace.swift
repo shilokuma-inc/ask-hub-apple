@@ -17,17 +17,22 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
         public var credentialHelper: String
         /// git の 1 回のコマンドの時間の上限
         public var timeout: Duration
+        /// git に渡す HOME（本当のホームフォルダ）。credential helper が Keychain を探すのに使う。
+        /// 人の git の設定は `GIT_CONFIG_GLOBAL=/dev/null` で読まないので、HOME を差し替えなくてよい
+        public var home: URL
 
         public init(
             root: URL,
             git: URL = URL(fileURLWithPath: "/usr/bin/git"),
             credentialHelper: String,
-            timeout: Duration = .seconds(10 * 60)
+            timeout: Duration = .seconds(10 * 60),
+            home: URL = FileManager.default.homeDirectoryForCurrentUser
         ) {
             self.root = root
             self.git = git
             self.credentialHelper = credentialHelper
             self.timeout = timeout
+            self.home = home
         }
     }
 
@@ -187,7 +192,8 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
         ]
         var environment = [
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-            "HOME": setup.root.appendingPathComponent("home").path,
+            // 作業用のフォルダに差し替えると、credential helper（Keychain から読む）が Keychain を見つけられない
+            "HOME": setup.home.path,
             "LANG": "C",
             "GIT_TERMINAL_PROMPT": "0",
             "GIT_CONFIG_NOSYSTEM": "1",
