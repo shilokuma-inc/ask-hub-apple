@@ -82,7 +82,8 @@ extension ClaudeJobRunnerTests {
         _ store: any StateStore,
         claude: any CommandRunning,
         capacity: Int = 2,
-        now: @escaping @Sendable () -> Date = { ClaudeJobRunnerTests.now }
+        now: @escaping @Sendable () -> Date = { ClaudeJobRunnerTests.now },
+        mirror: DiscussionMirror? = nil
     ) -> CommanderLoop {
         let publicKeys = [keyID: key.publicKey.derRepresentation]
         let selfCheck = SelfCheck(checkedAt: Timestamp(Self.now), keychain: .ok, githubToken: .ok, claudeToken: .ok)
@@ -93,7 +94,8 @@ extension ClaudeJobRunnerTests {
             client: ClaudeClient(setup: QuestionJobsTests.setup, runner: claude),
             workspace: FixedWorkspace(directory: directory),
             status: { CommanderLoop.MachineStatus(diskFreeGB: 100, load: 0.5, selfCheck: selfCheck) },
-            log: { _ in }
+            log: { _ in },
+            mirror: mirror
         )
     }
 

@@ -7,6 +7,7 @@ import Foundation
 /// 常時オンの Mac の司令塔とワーカーの常駐のループ（`docs/renewal/flows.md` の「司令塔の動き」）。
 ///
 /// 1 周ごとに、人の意図を処理し終えてから、試行を読んでジョブの状態を決め、自分宛ての Claude のジョブを引き受けて並んで動かす。
+/// 最後に、状態を Discussion の写しと照らし合わせる（写しに失敗しても、周は止めない）。
 /// 生きている印（`commander.json`・`macs/<mac>.json`）は、決めた間隔で書く
 public actor CommanderLoop {
     public struct Settings: Sendable {
@@ -59,6 +60,8 @@ public actor CommanderLoop {
     nonisolated let status: @Sendable () async -> MachineStatus
     nonisolated let log: @Sendable (String) -> Void
     nonisolated let sleeper: any Sleeper
+    /// Discussion の写し。nil なら写さない
+    nonisolated let mirror: DiscussionMirror?
 
     private var inFlight: [ULID: Task<Void, Never>] = [:]
     private var lastBeat: Date?
@@ -71,7 +74,8 @@ public actor CommanderLoop {
         workspace: any RepositoryWorkspace,
         status: @escaping @Sendable () async -> MachineStatus,
         log: @escaping @Sendable (String) -> Void,
-        sleeper: any Sleeper = TaskSleeper()
+        sleeper: any Sleeper = TaskSleeper(),
+        mirror: DiscussionMirror? = nil
     ) {
         self.context = context
         self.settings = settings
@@ -81,6 +85,7 @@ public actor CommanderLoop {
         self.status = status
         self.log = log
         self.sleeper = sleeper
+        self.mirror = mirror
     }
 
     /// 止められるまで回す。1 周で失敗しても、次の周でやり直す
@@ -117,6 +122,8 @@ public actor CommanderLoop {
         for job in picked {
             start(job, with: worker)
         }
+        // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
+        await mirror?.syncAll(verifier: verifier)
         return picked
     }
 
