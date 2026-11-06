@@ -25,6 +25,8 @@ let package = Package(
         .library(name: "AskHubCommands", targets: ["AskHubCommands"]),
         // Claude を呼ぶ部品（決まった形の結果・直させる・失敗の区分）。司令塔とワーカーで使う
         .library(name: "AskHubClaude", targets: ["AskHubClaude"]),
+        // クライアントと非常口の段取り（人の意図の署名と送信・公開鍵の記録）
+        .library(name: "AskHubClient", targets: ["AskHubClient"]),
         // 司令塔の段取り（Claude に頼むジョブの依頼の文と結果の形）。常時オンの Mac で使う
         .library(name: "AskHubCommander", targets: ["AskHubCommander"]),
         // macOS で launchd から常駐させる CLI。アプリからは使わない
@@ -42,6 +44,7 @@ let package = Package(
         .target(name: "AskHubEpics", dependencies: ["AskHubProtocol"]),
         .target(name: "AskHubCommands"),
         .target(name: "AskHubClaude", dependencies: ["AskHubCommands", "AskHubProtocol"]),
+        .target(name: "AskHubClient", dependencies: ["AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]),
         .target(
             name: "AskHubCommander",
             dependencies: ["AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubJobs", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
