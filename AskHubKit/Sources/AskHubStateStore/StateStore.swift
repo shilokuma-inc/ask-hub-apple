@@ -48,6 +48,10 @@ public protocol StateStore: Sendable {
     /// ディレクトリの下のファイルを、下の階層まですべて並べる（`path` は状態リポジトリの直下からのパス）。ディレクトリが無ければ nil。
     /// 人の意図のように増え続けるディレクトリに使う
     func listFiles(under directory: String) async throws(StateStoreError) -> [DirectoryEntry]?
+
+    /// ディレクトリの直下を、件数で切らずにすべて並べる（下の階層は辿らない）。ディレクトリが無ければ nil。
+    /// epic やジョブのように増え続け、下の階層まで読むと大きすぎるディレクトリに使う
+    func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]?
 }
 
 extension StateStore {
@@ -62,6 +66,11 @@ extension StateStore {
             }
         }
         return files
+    }
+
+    /// `list` をそのまま使う。1 つのディレクトリの一覧に上限の無い置き場所（メモリ上など）で使う
+    public func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await list(directory)
     }
 }
 
