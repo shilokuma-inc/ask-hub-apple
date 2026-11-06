@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/readiness.schema.json",
   "title": "repos/<owner>/<repo>/epics/<epic>/readiness.json（最後の着手前の確認の結果）",
-  "description": "司令塔だけが書く。大きすぎる（tooLarge）ときだけ split を持つこと、split の title・summary が空でないこと、proceeding が true なら tooLarge でないことは読む側で確かめる。1 つの epic に収まらないときは、人が decideSplit（targetVersion はこの version）で、分けて依頼し直すか、このまま 1 つで進めるかを選ぶ",
+  "description": "司令塔だけが書く。大きすぎる（tooLarge）ときだけ split を持つこと、split の title・summary が空でないことは読む側で確かめる。1 つの epic に収まらないときは、人が decideSplit（targetVersion はこの version）で、分けて依頼し直すか、このまま 1 つで進めるかを選ぶ",
   "type": "object",
   "required": [
     "v",
@@ -63,7 +63,7 @@
     },
     "proceeding": {
       "type": "boolean",
-      "description": "人が分け方の判断で「このまま 1 つで進める」を選んだ後の確認か。選んだ後は大きすぎるとは返さず、後の確認にも引き継ぐ。無ければ false"
+      "description": "人が分け方の判断で「このまま 1 つで進める」を選んだか（受け付けたときに、大きすぎるの結果に付ける）、選んだ後の確認の結果か。true なら、この後の確認では大きすぎるとは返さず、引き継ぐ。無ければ false"
     },
     "checkedAt": {
       "$ref": "../common.schema.json#/$defs/timestamp"

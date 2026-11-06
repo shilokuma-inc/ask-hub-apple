@@ -59,5 +59,7 @@ extension ClaudeJobRunnerTests {
         #expect(CommanderError.files(.tooManyConflicts).attemptFailure(now: now).failureClass == .githubOutage)
         #expect(CommanderError.changedWhileProcessing("repos/o/r/x.json").attemptFailure(now: now).failureClass == .flaky)
         #expect(CommanderError.files(.notFound).attemptFailure(now: now).failureClass == .unexpected)
+        // 司令塔を止めて取り消されたのは、失敗に数えず続きから試す
+        #expect(CommanderError.store(.cancelled).attemptFailure(now: now).failureClass == .macOffline)
     }
 }

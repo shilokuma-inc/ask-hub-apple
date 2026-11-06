@@ -103,7 +103,13 @@ struct CommanderLockTests {
         let second = Task {
             try await lock.withLock { () throws(CommanderError) in await log.append("second") }
         }
-        for _ in 0..<100 { await Task.yield() }
+        // 2 つ目が待ちに入ったのを確かめてから比べる（入らなければ、先の処理を放して失敗にする）
+        var waited = 0
+        while await lock.waitingCount == 0, waited < 200 {
+            try await Task.sleep(for: .milliseconds(10))
+            waited += 1
+        }
+        #expect(await lock.waitingCount == 1)
         // 先に入った処理が終わるまで、次は入らない
         #expect(await log.events == ["first-start"])
         releaser.yield(())

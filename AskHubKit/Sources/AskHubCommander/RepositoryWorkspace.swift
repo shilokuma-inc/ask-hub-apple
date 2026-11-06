@@ -24,6 +24,13 @@ public protocol RepositoryWorkspace: Sendable {
 
     /// ジョブの写しと添付のフォルダを片付ける（ジョブを終えたときに呼ぶ。片付けられなくても止めない）
     func release(_ job: ULID) async
+
+    /// しばらく使っていない写しを片付ける（司令塔が定期的に呼ぶ）
+    func tidy() async
+}
+
+extension RepositoryWorkspace {
+    public func tidy() async {}
 }
 
 public enum WorkspaceError: Error, Equatable, Sendable {

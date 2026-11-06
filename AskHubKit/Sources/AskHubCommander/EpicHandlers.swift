@@ -227,10 +227,24 @@ public struct DecideSplitHandler: IntentHandler {
             try await context.cancelJobs(epic.repo, epic: epic.id) { _ in true }
             try await context.setStage(.abandoned, of: epic, from: [.awaitingSplit])
         case .proceed:
+            // 決めたことを確認の結果に残す（確認のジョブが答え直しで取り消されても、後の確認に引き継ぐ）
+            try await markProceeding(epic, version: target.version, in: context)
             try await context.create(check)
             try await context.setStage(.checking, of: epic, from: [.awaitingSplit])
         }
         return .accept
+    }
+
+    private func markProceeding(_ epic: EpicFile, version: Int, in context: CommanderContext) async throws(CommanderError) {
+        do {
+            try await context.files.update(ReadinessFile.self, at: StatePath.readiness(epic.repo, epic.id), message: "このまま 1 つで進める") {
+                guard $0.version == version, $0.proceeding != true else { return false }
+                $0.proceeding = true
+                return true
+            }
+        } catch {
+            throw .files(error)
+        }
     }
 
     private func alreadyApplied(

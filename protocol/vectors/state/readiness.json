@@ -69,7 +69,7 @@
       "read": "valid"
     },
     {
-      "name": "too-large-after-proceeding",
+      "name": "too-large-decided-to-proceed",
       "value": {
         "v": 1,
         "version": 3,
@@ -90,7 +90,7 @@
         "proceeding": true
       },
       "schemaValid": true,
-      "read": "malformed"
+      "read": "valid"
     },
     {
       "name": "proceeding-not-boolean",

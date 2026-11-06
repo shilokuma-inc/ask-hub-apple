@@ -22,7 +22,14 @@ final class FakeGit: CommandRunning {
             state.commands.append(command)
             return state.failures[command.arguments.first ?? ""]
         }
-        if let failure { return failure }
+        if let failure {
+            // 途中まで作ってから失敗した clone の残りを再現する
+            if command.arguments.first == "clone", let path = command.arguments.last {
+                let git = URL(fileURLWithPath: path).appendingPathComponent(".git")
+                try FileManager.default.createDirectory(at: git, withIntermediateDirectories: true)
+            }
+            return failure
+        }
         if command.arguments.prefix(2) == ["worktree", "add"], let path = command.arguments.dropLast().last {
             let worktree = URL(fileURLWithPath: path)
             try FileManager.default.createDirectory(at: worktree, withIntermediateDirectories: true)
@@ -45,7 +52,7 @@ struct GitRepositoryWorkspaceTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let git = FakeGit(claude: "# askhub\n\n## 全員向けの事実\nSwiftUI のアプリ\n\n## 人のセッション向けの手順\nPR を作る")
         let prepared = try await workspace(git).prepare(Self.repo, for: Self.job)
-        #expect(prepared.directory.path.hasSuffix("jobs/\(Self.job.rawValue)/askhub-sandbox"))
+        #expect(prepared.directory.path.hasSuffix("jobs/\(Self.job.rawValue)/repository/askhub-sandbox"))
         #expect(prepared.facts == "SwiftUI のアプリ")
         let steps = git.commands.map { $0.arguments.prefix(2).joined(separator: " ") }
         #expect(steps == ["clone --filter=blob:none", "worktree prune", "worktree add"])
@@ -104,6 +111,50 @@ struct GitRepositoryWorkspaceTests {
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("repos/shilokuma-inc/askhub-sandbox").path))
     }
 
+    @Test func jobsGetSeparateCopies() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = workspace(FakeGit())
+        let other = ULID(rawValue: "01JCJ0B0000000000000000002")!
+        let first = try await workspace.prepare(Self.repo, for: Self.job)
+        let second = try await workspace.prepare(Self.repo, for: other)
+        #expect(first.directory != second.directory)
+        // 片方を片付けても、もう片方の写しは残る
+        await workspace.release(Self.job)
+        #expect(!FileManager.default.fileExists(atPath: first.directory.path))
+        #expect(FileManager.default.fileExists(atPath: second.directory.path))
+        // リポジトリの名前が attachments でも、写しと添付の置き場所は重ならない
+        let named = RepositoryFullName(rawValue: "shilokuma-inc/attachments")!
+        let copy = try await workspace.prepare(named, for: other)
+        #expect(copy.directory != (try await workspace.attachmentsDirectory(for: other)))
+    }
+
+    @Test func removesClonesUnusedForAWeek() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = workspace(FakeGit())
+        let fileManager = FileManager.default
+        let now = Date()
+        for (name, age) in [("old", 8.0), ("recent", 1.0)] {
+            let git = root.appendingPathComponent("repos/shilokuma-inc/\(name)/.git")
+            try fileManager.createDirectory(at: git, withIntermediateDirectories: true)
+            let marker = git.appendingPathComponent("askhub-last-used")
+            fileManager.createFile(atPath: marker.path, contents: Data())
+            try fileManager.setAttributes([.modificationDate: now.addingTimeInterval(-age * 24 * 60 * 60)], ofItemAtPath: marker.path)
+        }
+        // 古くても、ジョブの写しが残っている clone は消さない
+        let busy = root.appendingPathComponent("repos/shilokuma-inc/busy/.git")
+        let record = busy.appendingPathComponent("worktrees/busy")
+        let worktree = root.appendingPathComponent("jobs/J/repository/busy")
+        try fileManager.createDirectory(at: record, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: worktree, withIntermediateDirectories: true)
+        fileManager.createFile(atPath: worktree.appendingPathComponent(".git").path, contents: Data())
+        try Data(worktree.appendingPathComponent(".git").path.utf8).write(to: record.appendingPathComponent("gitdir"))
+        try fileManager.setAttributes([.modificationDate: now.addingTimeInterval(-30 * 24 * 60 * 60)], ofItemAtPath: busy.path)
+        await workspace.removeUnusedClones(now: now)
+        #expect(!fileManager.fileExists(atPath: root.appendingPathComponent("repos/shilokuma-inc/old").path))
+        #expect(fileManager.fileExists(atPath: root.appendingPathComponent("repos/shilokuma-inc/recent").path))
+        #expect(fileManager.fileExists(atPath: root.appendingPathComponent("repos/shilokuma-inc/busy").path))
+    }
+
     @Test func releaseRemovesJobFolder() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let workspace = workspace(FakeGit())
@@ -131,6 +182,23 @@ struct RepositoryFactsTests {
         - PR を作る
         """
         #expect(RepositoryFacts.extract(from: text) == "- SwiftUI\n```\n## コードの中の見出しは区切りにしない\n```\n### 細かい事実")
+    }
+
+    @Test func followsFencesAndHeadingForms() {
+        let text = """
+        ##    全員向けの事実 ##
+        - SwiftUI
+        ````
+        ```
+        ## 4 つの囲みの中の 3 つは閉じではない
+        ````
+        ~~~
+        ## チルダの囲みの中
+        ~~~
+           ## 人のセッション向けの手順
+        - PR を作る
+        """
+        #expect(RepositoryFacts.extract(from: text) == "- SwiftUI\n````\n```\n## 4 つの囲みの中の 3 つは閉じではない\n````\n~~~\n## チルダの囲みの中\n~~~")
     }
 
     @Test func usesWholeFileWithoutSectionAndCapsLength() {

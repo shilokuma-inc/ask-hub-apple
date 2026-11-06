@@ -141,50 +141,6 @@ struct GitHubContentsStoreTests {
         #expect(urls.last?.hasSuffix("/repos/shilokuma-inc/askhub-state/git/trees/abc123?recursive=1") == true)
     }
 
-    @Test func listsAllEntriesDirectlyUnderDirectoryThroughGitTrees() async throws {
-        let parent = #"[{"type":"dir","name":"epics","path":"repos/o/r/epics","sha":"abc123"}]"#
-        let tree = """
-        {"sha":"abc123","truncated":false,"tree":[{"path":"01A","type":"tree","sha":"t1"},\
-        {"path":"README","type":"blob","sha":"s1"},{"path":"lib","type":"commit","sha":"c1"}]}
-        """
-        let transport = StubTransport([.json(200, parent), .json(200, tree)])
-        let entries = try await store(transport).listAll("repos/o/r/epics")
-        // 直下のディレクトリとファイルだけ（下の階層は辿らない）
-        #expect(entries == [
-            DirectoryEntry(name: "01A", path: "repos/o/r/epics/01A", kind: .directory, sha: "t1"),
-            DirectoryEntry(name: "README", path: "repos/o/r/epics/README", kind: .file, sha: "s1")
-        ])
-        let urls = transport.requests.compactMap(\.url?.absoluteString)
-        #expect(urls.first?.contains("/contents/repos/o/r") == true)
-        #expect(urls.last?.hasSuffix("/git/trees/abc123") == true)
-    }
-
-    @Test func listAllFindsDirectoryBeyondContentsListLimit() async throws {
-        // 親の一覧が 1,000 件で切れて目的のディレクトリが載っていなければ、親の直下を Git Trees API で読み直して探す
-        let crowded = (0..<1_000).map { #"{"type":"dir","name":"j\#($0)","path":"a/b/j\#($0)","sha":"x\#($0)"}"# }
-        let grandparent = #"[{"type":"dir","name":"b","path":"a/b","sha":"bbb111"}]"#
-        let parentTree = #"{"sha":"bbb111","truncated":false,"tree":[{"path":"target","type":"tree","sha":"ccc222"}]}"#
-        let targetTree = #"{"sha":"ccc222","truncated":false,"tree":[{"path":"1.json","type":"blob","sha":"s1"}]}"#
-        let transport = StubTransport([
-            .json(200, "[\(crowded.joined(separator: ","))]"), .json(200, grandparent), .json(200, parentTree), .json(200, targetTree)
-        ])
-        let entries = try await store(transport).listAll("a/b/target")
-        #expect(entries == [DirectoryEntry(name: "1.json", path: "a/b/target/1.json", kind: .file, sha: "s1")])
-    }
-
-    @Test func treeCacheIsKeptPerDirectory() async throws {
-        // 同じ中身の tree が別のディレクトリにあっても、前のディレクトリのパスの一覧を使い回さない
-        let root = #"[{"type":"dir","name":"x","path":"x","sha":"ddd333"},{"type":"dir","name":"y","path":"y","sha":"ddd333"}]"#
-        let tree = #"{"sha":"ddd333","truncated":false,"tree":[{"path":"1.json","type":"blob","sha":"s1"}]}"#
-        let transport = StubTransport([
-            .json(200, root), .json(200, tree, headers: ["ETag": "\"e1\""]), .json(200, root), .json(200, tree, headers: ["ETag": "\"e1\""])
-        ])
-        let store = store(transport)
-        #expect(try await store.listAll("x")?.map(\.path) == ["x/1.json"])
-        #expect(try await store.listAll("y")?.map(\.path) == ["y/1.json"])
-        #expect(transport.requests.last?.value(forHTTPHeaderField: "If-None-Match") == nil)
-    }
-
     @Test func listFilesRefusesTruncatedTreeAndReportsMissingDirectory() async throws {
         let root = #"[{"type":"dir","name":"intents","path":"intents","sha":"abc123"}]"#
         let truncated = #"{"sha":"abc123","truncated":true,"tree":[]}"#
@@ -350,5 +306,73 @@ struct GitHubContentsStoreTests {
         await #expect(throws: StateStoreError.transport("URLError \(URLError.badServerResponse.rawValue)")) {
             try await store(transport).read("version.json")
         }
+    }
+}
+
+// MARK: - ディレクトリの一覧（Git Trees API）
+
+extension GitHubContentsStoreTests {
+    @Test func listsAllEntriesDirectlyUnderDirectoryThroughGitTrees() async throws {
+        let parent = #"[{"type":"dir","name":"epics","path":"repos/o/r/epics","sha":"abc123"}]"#
+        let tree = """
+        {"sha":"abc123","truncated":false,"tree":[{"path":"01A","type":"tree","sha":"t1"},\
+        {"path":"README","type":"blob","sha":"s1"},{"path":"lib","type":"commit","sha":"c1"}]}
+        """
+        let transport = StubTransport([.json(200, parent), .json(200, tree)])
+        let entries = try await store(transport).listAll("repos/o/r/epics")
+        // 直下のディレクトリとファイルだけ（下の階層は辿らない）
+        #expect(entries == [
+            DirectoryEntry(name: "01A", path: "repos/o/r/epics/01A", kind: .directory, sha: "t1"),
+            DirectoryEntry(name: "README", path: "repos/o/r/epics/README", kind: .file, sha: "s1")
+        ])
+        let urls = transport.requests.compactMap(\.url?.absoluteString)
+        #expect(urls.first?.contains("/contents/repos/o/r") == true)
+        #expect(urls.last?.hasSuffix("/git/trees/abc123") == true)
+    }
+
+    @Test func listAllFindsDirectoryBeyondContentsListLimit() async throws {
+        // 親の一覧が 1,000 件で切れて目的のディレクトリが載っていなければ、親の直下を Git Trees API で読み直して探す
+        let crowded = (0..<1_000).map { #"{"type":"dir","name":"j\#($0)","path":"a/b/j\#($0)","sha":"x\#($0)"}"# }
+        let grandparent = #"[{"type":"dir","name":"b","path":"a/b","sha":"bbb111"}]"#
+        let parentTree = #"{"sha":"bbb111","truncated":false,"tree":[{"path":"target","type":"tree","sha":"ccc222"}]}"#
+        let targetTree = #"{"sha":"ccc222","truncated":false,"tree":[{"path":"1.json","type":"blob","sha":"s1"}]}"#
+        let transport = StubTransport([
+            .json(200, "[\(crowded.joined(separator: ","))]"), .json(200, grandparent), .json(200, parentTree), .json(200, targetTree)
+        ])
+        let entries = try await store(transport).listAll("a/b/target")
+        #expect(entries == [DirectoryEntry(name: "1.json", path: "a/b/target/1.json", kind: .file, sha: "s1")])
+    }
+
+    @Test func countsSkippedEntriesWhenCheckingListLimit() async throws {
+        // シンボリックリンクなど並べないものも数えて、1,000 件で切れたかを見る
+        let crowded = (0..<999).map { #"{"type":"dir","name":"j\#($0)","path":"a/b/j\#($0)","sha":"x\#($0)"}"# }
+            + [#"{"type":"symlink","name":"link","path":"a/b/link","sha":"y"}"#]
+        let grandparent = #"[{"type":"dir","name":"b","path":"a/b","sha":"bbb111"}]"#
+        let parentTree = #"{"sha":"bbb111","truncated":false,"tree":[{"path":"target","type":"tree","sha":"ccc222"}]}"#
+        let targetTree = #"{"sha":"ccc222","truncated":false,"tree":[]}"#
+        let transport = StubTransport([
+            .json(200, "[\(crowded.joined(separator: ","))]"), .json(200, grandparent), .json(200, parentTree), .json(200, targetTree)
+        ])
+        #expect(try await store(transport).listAll("a/b/target")?.isEmpty == true)
+    }
+
+    @Test func refusesTruncatedRootListing() async throws {
+        // 状態リポジトリの直下は決まった数件なので、1,000 件で切れていれば、無いとは言わずに止める
+        let crowded = (0..<1_000).map { #"{"type":"file","name":"f\#($0)","path":"f\#($0)","sha":"s\#($0)"}"# }
+        let transport = StubTransport([.json(200, "[\(crowded.joined(separator: ","))]")])
+        await #expect(throws: (any Error).self) { try await store(transport).listAll("intents") }
+    }
+
+    @Test func treeCacheIsKeptPerDirectory() async throws {
+        // 同じ中身の tree が別のディレクトリにあっても、前のディレクトリのパスの一覧を使い回さない
+        let root = #"[{"type":"dir","name":"x","path":"x","sha":"ddd333"},{"type":"dir","name":"y","path":"y","sha":"ddd333"}]"#
+        let tree = #"{"sha":"ddd333","truncated":false,"tree":[{"path":"1.json","type":"blob","sha":"s1"}]}"#
+        let transport = StubTransport([
+            .json(200, root), .json(200, tree, headers: ["ETag": "\"e1\""]), .json(200, root), .json(200, tree, headers: ["ETag": "\"e1\""])
+        ])
+        let store = store(transport)
+        #expect(try await store.listAll("x")?.map(\.path) == ["x/1.json"])
+        #expect(try await store.listAll("y")?.map(\.path) == ["y/1.json"])
+        #expect(transport.requests.last?.value(forHTTPHeaderField: "If-None-Match") == nil)
     }
 }

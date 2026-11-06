@@ -54,7 +54,7 @@ public struct GitHubContentsStore: StateStore {
         guard !directory.isEmpty else { throw .invalidPath }
         switch try await get(directory) {
         case .missing: return nil
-        case let .directory(entries): return entries
+        case let .directory(entries, _): return entries
         case .file, .largeFile: throw .wrongKind
         }
     }
@@ -80,13 +80,18 @@ public struct GitHubContentsStore: StateStore {
         let parts = directory.split(separator: "/").map(String.init)
         let parent = parts.dropLast().joined(separator: "/")
         var siblings: [DirectoryEntry]
+        let listed: Int
         switch try await get(parent) {
         case .missing: return nil
-        case let .directory(entries): siblings = entries
+        case let .directory(entries, count):
+            siblings = entries
+            listed = count
         case .file, .largeFile: throw .wrongKind
         }
-        // 親の一覧が上限で切れていれば、見つからなくても無いとは言えない。親の直下を Git Trees API で読み直して探す
-        if !siblings.contains(where: { $0.name == parts.last }), siblings.count >= Self.contentsListLimit, !parent.isEmpty {
+        // 親の一覧が上限で切れていれば（ファイルとディレクトリ以外も数える）、見つからなくても無いとは言えない。
+        // 親の直下を Git Trees API で読み直して探す。状態リポジトリの直下は決まった数件なので、切れていれば決まりと違う
+        if !siblings.contains(where: { $0.name == parts.last }), listed >= Self.contentsListLimit {
+            guard !parent.isEmpty else { throw .unexpected(status: 200, message: "状態リポジトリの直下の一覧が 1,000 件で切れた（決まりでは数件）") }
             siblings = try await listAll(parent) ?? []
         }
         guard let tree = siblings.first(where: { $0.name == parts.last }) else { return nil }
@@ -141,9 +146,10 @@ public struct GitHubContentsStore: StateStore {
         // 読んだディレクトリも鍵に入れる（一覧のパスはディレクトリから作るため）
         let cacheKey = "\(recursive ? "tree" : "entries"):\(sha):\(directory)"
         let contents = try await fetch(request, cacheKey: cacheKey) { body throws(StateStoreError) in
-            try .directory(Self.decodeTree(body, under: directory, recursive: recursive))
+            let entries = try Self.decodeTree(body, under: directory, recursive: recursive)
+            return .directory(entries, listed: entries.count)
         }
-        guard case let .directory(entries) = contents else { throw .wrongKind }
+        guard case let .directory(entries, _) = contents else { throw .wrongKind }
         return entries
     }
 
@@ -197,10 +203,11 @@ public struct GitHubContentsStore: StateStore {
     static func decodeContents(_ body: Data) throws(StateStoreError) -> Contents {
         if let entries = try? JSONDecoder().decode([ContentsEntry].self, from: body) {
             // ファイルとディレクトリだけを並べる（シンボリックリンクとサブモジュールは状態リポジトリに置かない）
-            return .directory(entries.compactMap { entry in
+            let listed = entries.compactMap { entry -> DirectoryEntry? in
                 guard let kind = DirectoryEntry.Kind(rawValue: entry.type) else { return nil }
                 return DirectoryEntry(name: entry.name, path: entry.path, kind: kind, sha: entry.sha)
-            })
+            }
+            return .directory(listed, listed: entries.count)
         }
         guard let file = try? JSONDecoder().decode(ContentsEntry.self, from: body) else {
             throw .unexpected(status: 200, message: "内容の応答を読めない")
@@ -292,7 +299,8 @@ enum Contents: Sendable, Equatable {
     case file(StoredBlob)
     /// 1 MB を超えるファイル。中身は raw の形で読み直す
     case largeFile(sha: String)
-    case directory([DirectoryEntry])
+    /// `listed` は応答に載っていた件数（並べないシンボリックリンクなども数える。Contents API の上限で切れたかを見る）
+    case directory([DirectoryEntry], listed: Int)
 }
 
 private struct ContentsEntry: Decodable {
@@ -341,7 +349,7 @@ actor ETagCache {
             switch contents {
             case .missing, .largeFile: 0
             case let .file(blob): blob.data.count
-            case let .directory(entries): entries.reduce(0) { $0 + $1.name.utf8.count + $1.path.utf8.count + $1.sha.utf8.count }
+            case let .directory(entries, _): entries.reduce(0) { $0 + $1.name.utf8.count + $1.path.utf8.count + $1.sha.utf8.count }
             }
         }
     }

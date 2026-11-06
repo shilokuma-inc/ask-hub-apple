@@ -118,6 +118,21 @@ extension ClaudeJobRunnerTests {
         #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .asking)
     }
 
+    @Test func recoveryDoesNothingWhenJobWasReplaced() async throws {
+        let given = try await checking()
+        let (store, epic, job) = (given.store, given.epic, given.job)
+        // 前の試行で追加の質問まで書いて止まった後に、人が答え直してこのジョブが取り消された
+        let draft = try Self.decodeDraft(Self.question("q1"))
+        let appended = try QuestionFlow.append([draft], round: 2, to: QuestionsFile(questions: [])).questions
+        try await put(appended, at: StatePath.questions(Self.repo, epic.id), in: store)
+        var canceled = job
+        canceled.state = .canceled
+        try await put(canceled, at: StatePath.job(Self.repo, epic: epic.id, job: job.id), in: store)
+        guard case .discarded = try await runner(store, claude: ScriptedRunner([])).run(job) else { Issue.record("捨てていない"); return }
+        // 回答に戻したり、ほかのジョブを取り消したりしない
+        #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .checking)
+    }
+
     @Test func discardsCheckWhenEpicChangedMeanwhile() async throws {
         let given = try await checking()
         let (store, epic, job) = (given.store, given.epic, given.job)
@@ -167,6 +182,8 @@ extension ClaudeJobRunnerTests {
             .accepted(kind: "decideSplit")
         ])
         #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .checking)
+        // 決めたことは確認の結果に残る（確認のジョブが取り消されても、後の確認に引き継ぐ）
+        #expect(try await read(ReadinessFile.self, at: StatePath.readiness(Self.repo, epic.id), in: store)?.proceeding == true)
         let job = try #require(try await jobs(epic.id, in: store).first { $0.input?["proceed"] == .bool(true) })
         #expect(job.kind == .checkReadiness)
         // 大きすぎると返したら、同じ会話でゴールを作らせ直す
