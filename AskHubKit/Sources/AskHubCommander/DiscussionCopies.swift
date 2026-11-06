@@ -90,7 +90,7 @@ struct DiscussionCopies: Equatable, Sendable {
     }
 }
 
-/// 写しの本文（Markdown。目印は `DiscussionCopies.Copy` が置く）。人と Claude の書いた文は、そのまま入れる（HTML のコメントの始まりだけを崩す）
+/// 写しの本文（Markdown。目印は `DiscussionCopies.Copy` が置く）。人と Claude の書いた文は、そのまま入れる（HTML のコメントの始まりとメンションだけを崩す）
 enum CopyText {
     /// コメントの本文の上限（GitHub は 65,536 文字）より少し小さく切る
     static let maximumLength = 60_000
@@ -232,9 +232,11 @@ enum CopyText {
         ["", "### \(title)", ""] + (items.isEmpty ? ["（なし）"] : items)
     }
 
-    /// 人と Claude の書いた文。HTML のコメントの始まりを崩し、続く本文と目印が隠れないようにする
+    /// 人と Claude の書いた文。HTML のコメントの始まりを崩し、続く本文と目印が隠れないようにする。
+    /// `@` の直後に見えない文字（U+2060）を入れ、メンションにしない（写しのたびに、関係の無い人へ通知が飛ばないように。
+    /// Claude の文は、リポジトリの中の文章に誘導されて人の名前を書くこともある）
     static func plain(_ text: String) -> String {
-        text.replacingOccurrences(of: "<!--", with: "&lt;!--")
+        text.replacingOccurrences(of: "<!--", with: "&lt;!--").replacingOccurrences(of: "@", with: "@\u{2060}")
     }
 
     /// 引用にする（空の行も引用の中に入れる）

@@ -114,6 +114,12 @@ struct DiscussionCopiesTests {
         #expect(copy.text.components(separatedBy: "<!--").count == 2)
     }
 
+    @Test func mentionsDoNotNotify() {
+        let text = CopyText.explanation(.init(asked: Self.intent, note: "@octocat に聞いた", text: "cc @someone", at: Self.time))
+        #expect(!text.contains("@octocat") && !text.contains("@someone"))
+        #expect(text.contains("@\u{2060}octocat") && text.contains("@\u{2060}someone"))
+    }
+
     @Test func longTextIsCutBeforeMarker() {
         let long = String(repeating: "あ", count: CopyText.maximumLength + 10)
         let copy = Self.copies(request: Self.request(body: long)).request
