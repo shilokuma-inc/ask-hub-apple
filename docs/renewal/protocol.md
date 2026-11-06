@@ -140,6 +140,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `verdict` は `ready`（ゴールを作った）・`moreQuestions`（追加の質問を出した）・`tooLarge`（1 つの epic に収まらない）。確かめるたびに `version` を上げる
 - `split` は分け方の案で、`tooLarge` のときだけ持つ。質問の往復を使い切って決めきれないときも `tooLarge` にし、`reason` に何が決めきれないかを書く（`split` は空のこともある）
 - `tooLarge` のとき、epic は `awaitingSplit` になり、人が分け方の判断（`decideSplit`）で「分けて依頼し直す」（`split`。epic は `abandoned` にし、クライアントが分け方の案ごとの依頼の下書きを出す）か「このまま 1 つで進める」（`proceed`。確かめ直してゴールを作る）を選ぶ
+- `proceeding` は、「このまま 1 つで進める」を選んだ後の確認の結果か（無ければ false）。true の結果の後の確認では `tooLarge` を返さず、`proceeding` を引き継ぐ。true なのに `tooLarge` のファイルは読めないものとして扱う
 
 ### questions.json（質問とその状態）
 

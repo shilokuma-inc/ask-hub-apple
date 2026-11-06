@@ -54,6 +54,60 @@
       "read": "valid"
     },
     {
+      "name": "proceeding",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "ready",
+        "reason": "1 つで進める",
+        "split": [],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z",
+        "proceeding": true
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "too-large-after-proceeding",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "tooLarge",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [
+          {
+            "title": "集計",
+            "summary": "日ごとの集計を作る"
+          },
+          {
+            "title": "画面",
+            "summary": "ランキングの画面を作る"
+          }
+        ],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z",
+        "proceeding": true
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "proceeding-not-boolean",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "ready",
+        "reason": "集計と画面と課金が 1 つの epic に収まらない",
+        "split": [],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z",
+        "proceeding": "yes"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "undecided",
       "value": {
         "v": 1,

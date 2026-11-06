@@ -2,6 +2,7 @@ import AskHubClaude
 import AskHubEpics
 import AskHubProtocol
 import AskHubStateStore
+import CryptoKit
 import Foundation
 
 /// Claude を呼ぶジョブを 1 つ実行した結果
@@ -45,6 +46,8 @@ public struct ClaudeJobRunner: Sendable {
         case .makeQuestions: return try await makeQuestions(job, epic: epic)
         case .explain: return try await explain(job, epic: epic)
         case .reviseQuestion: return try await reviseQuestion(job, epic: epic)
+        case .checkReadiness: return try await checkReadiness(job, epic: epic)
+        case .reviseGoal: return try await reviseGoal(job, epic: epic)
         default: return .failed(AttemptFailure(failureClass: .unexpected, message: "\(job.kind.rawValue) は Claude のジョブとして扱えない"), nil)
         }
     }
@@ -70,8 +73,8 @@ public struct ClaudeJobRunner: Sendable {
     }
 
     /// 受け付けた人の意図を読み直す（署名を確かめてから使う）
-    func originEnvelope(of job: JobFile) async throws(CommanderError) -> IntentEnvelope? {
-        guard let origin = job.origin else { return nil }
+    func envelope(of origin: IntentReference?) async throws(CommanderError) -> IntentEnvelope? {
+        guard let origin else { return nil }
         let blob: StoredBlob?
         do {
             blob = try await context.store.read(StatePath.intent(device: origin.keyId, nonce: origin.nonce))
@@ -84,6 +87,16 @@ public struct ClaudeJobRunner: Sendable {
             return nil
         }
         return envelope
+    }
+
+    /// 結果を書く直前に読み直した epic。epic の段階が `stages` から外れた・ジョブが取り消されたときは nil（結果を捨てる）。
+    /// `context.lock` の中で呼ぶ
+    func stillWanted(_ job: JobFile, stages: Set<EpicStage>) async throws(CommanderError) -> EpicFile? {
+        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(job.repo, job.epic)), stages.contains(epic.stage),
+              try await context.read(JobFile.self, at: StatePath.job(job.repo, epic: job.epic, job: job.id))?.state != .canceled else {
+            return nil
+        }
+        return epic
     }
 
     /// ジョブの入力の欄を、決まった型で読む
@@ -103,7 +116,7 @@ extension ClaudeJobRunner {
     /// 依頼から質問を作り、epic を回答の待ちにする（質問が無ければ着手前の確認へ）
     func makeQuestions(_ job: JobFile, epic: EpicFile) async throws(CommanderError) -> ClaudeJobOutcome {
         guard epic.stage == .drafting else { return .discarded("epic はもう質問づくりの段階でない", nil) }
-        guard let envelope = try await originEnvelope(of: job), let request = try? RequestIntent(envelope: envelope) else {
+        guard let envelope = try await envelope(of: job.origin), let request = try? RequestIntent(envelope: envelope) else {
             return .failed(AttemptFailure(failureClass: .unexpected, message: "元の依頼を読めない・署名が合わない"), nil)
         }
         let placed: PlacedAttachments?
@@ -112,7 +125,7 @@ extension ClaudeJobRunner {
         } catch {
             return .failed(error.attemptFailure, nil)
         }
-        let claudeJob = MakeQuestionsJob(title: request.title, body: request.body, attachments: placed?.files.map(\.path) ?? [])
+        let claudeJob = MakeQuestionsJob(title: request.title, body: request.body, attachments: placed?.paths ?? [])
         switch await ask(claudeJob, for: epic, attachments: placed?.directory) {
         case let .failed(failure, session):
             return .failed(failure, session)
@@ -123,18 +136,26 @@ extension ClaudeJobRunner {
             } catch {
                 return .failed(AttemptFailure(failureClass: .unexpected, message: "質問の一覧を作れない（\(error)）"), session)
             }
-            let written = try await createQuestions(change.questions, of: epic)
-            // 前の周で質問の一覧まで書いていたら、そのときの一覧から進め方を決める
-            let effects = written == change.questions ? change.effects : (written.questions.isEmpty ? [.checkReadiness] : [])
-            if effects.contains(.checkReadiness), let origin = job.origin {
-                let check = context.claudeJob(.checkReadiness, for: epic, origin: origin, seed: "", input: [:], after: [job.id])
-                try await context.create(check)
+            return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+                guard try await stillWanted(job, stages: [.drafting]) != nil else {
+                    return .discarded("頼んだ後に epic がやめられた・先に進んだ", session)
+                }
+                try await write(change, summary: output.summary, of: epic, by: job)
+                return .written(session)
             }
-            let summary = output.summary
-            try await context.setStage(effects.contains(.checkReadiness) ? .checking : .asking, of: epic, from: [.drafting]) {
-                $0.summary = summary
-            }
-            return .written(session)
+        }
+    }
+
+    /// 質問づくりの結果を書く。書く順は、質問の一覧 → ジョブ → epic
+    private func write(_ change: QuestionFlow.Change, summary: String, of epic: EpicFile, by job: JobFile) async throws(CommanderError) {
+        let written = try await createQuestions(change.questions, of: epic)
+        // 前の周で質問の一覧まで書いていたら、そのときの一覧から進め方を決める
+        let effects = written == change.questions ? change.effects : (written.questions.isEmpty ? [.checkReadiness] : [])
+        if effects.contains(.checkReadiness), let origin = job.origin {
+            try await context.create(context.claudeJob(.checkReadiness, for: epic, origin: origin, seed: "", input: [:], after: [job.id]))
+        }
+        try await context.setStage(effects.contains(.checkReadiness) ? .checking : .asking, of: epic, from: [.drafting]) {
+            $0.summary = summary
         }
     }
 
@@ -186,20 +207,25 @@ extension ClaudeJobRunner {
         session: ClaudeSession,
         _ change: (QuestionsFile) throws(QuestionFlow.ResultError) -> QuestionFlow.Change
     ) async throws(CommanderError) -> ClaudeJobOutcome {
-        guard let latest = try await context.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)) else {
-            return .discarded("質問の一覧が無い", session)
+        try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+            guard try await stillWanted(job, stages: CommanderContext.planningStages) != nil else {
+                return .discarded("頼んだ後に epic が開始した・やめられた", session)
+            }
+            guard let latest = try await context.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)) else {
+                return .discarded("質問の一覧が無い", session)
+            }
+            let result: QuestionFlow.Change
+            do throws(QuestionFlow.ResultError) {
+                result = try change(latest)
+            } catch .stale {
+                return .discarded("頼んだ後に質問の一覧が変わった", session)
+            } catch {
+                return .failed(AttemptFailure(failureClass: .unexpected, message: "Claude の結果を当てられない（\(error)）"), session)
+            }
+            if let origin = job.origin { try await context.perform(result.effects, for: epic, origin: origin, after: [job.id]) }
+            try await context.write(result.questions, replacing: latest, of: epic, message: "Claude の結果を書く")
+            return .written(session)
         }
-        let result: QuestionFlow.Change
-        do throws(QuestionFlow.ResultError) {
-            result = try change(latest)
-        } catch .stale {
-            return .discarded("頼んだ後に質問の一覧が変わった", session)
-        } catch {
-            return .failed(AttemptFailure(failureClass: .unexpected, message: "Claude の結果を当てられない（\(error)）"), session)
-        }
-        if let origin = job.origin { try await context.perform(result.effects, for: epic, origin: origin, after: [job.id]) }
-        try await context.write(result.questions, replacing: latest, of: epic, message: "Claude の結果を書く")
-        return .written(session)
     }
 
     /// 質問の一覧を作る。前の周で作っていれば、そのときの一覧を返す
@@ -214,14 +240,17 @@ extension ClaudeJobRunner {
         }
     }
 
-    private struct PlacedAttachments {
+    struct PlacedAttachments {
         var directory: URL
         var files: [URL]
+
+        var paths: [String] { files.map(\.path) }
     }
 
     /// 依頼の添付を、Claude が読んでよいフォルダに置く。添付が無ければ nil。
-    /// 名前が重なってもよいように、番号ごとのフォルダに置く（`<フォルダ>/<番号>/<名前>`）
-    private func placeAttachments(of request: RequestIntent, for job: JobFile) async throws(WorkspaceError) -> PlacedAttachments? {
+    /// 名前が重なってもよいように、番号ごとのフォルダに置く（`<フォルダ>/<番号>/<名前>`）。
+    /// 受け付けた後に置き換えられていないよう、置く前に大きさとハッシュを署名した依頼と照らし合わせる
+    func placeAttachments(of request: RequestIntent, for job: JobFile) async throws(WorkspaceError) -> PlacedAttachments? {
         guard !request.attachments.isEmpty else { return nil }
         let directory = try await workspace.attachmentsDirectory(for: job.id)
         var files: [URL] = []
@@ -234,6 +263,10 @@ extension ClaudeJobRunner {
                 throw WorkspaceError.unavailable("添付 \(attachment.number) を読めない（\(error)）")
             }
             guard let data = blob?.data else { throw WorkspaceError.failed("添付 \(attachment.number) が無い") }
+            let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            guard data.count == attachment.size, digest == attachment.sha256 else {
+                throw WorkspaceError.failed("添付 \(attachment.number) の大きさかハッシュが、依頼と合わない")
+            }
             // 名前は、受け付けたときにパスの区切りを含まないことを確かめている。前の周で置いていれば上書きする
             let folder = directory.appendingPathComponent(String(attachment.number), isDirectory: true)
             let file = folder.appendingPathComponent(attachment.name)
