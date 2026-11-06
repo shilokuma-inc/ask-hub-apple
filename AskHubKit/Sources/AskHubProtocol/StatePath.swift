@@ -7,6 +7,9 @@ public enum StatePath {
     public static let version = "version.json"
     public static let commander = "commander.json"
 
+    /// 対象のリポジトリを置くディレクトリ（`repos/<owner>/<repo>/`）
+    public static let repositories = "repos"
+
     public static func repository(_ repo: RepositoryFullName) -> String {
         "\(repositoryDirectory(repo))/repo.json"
     }
@@ -47,6 +50,11 @@ public enum StatePath {
         "\(epicDirectory(repo, epic))/jobs/\(job).json"
     }
 
+    /// ジョブの試行を置くディレクトリ
+    public static func attempts(_ repo: RepositoryFullName, epic: ULID, job: ULID) -> String {
+        "\(epicDirectory(repo, epic))/attempts/\(job)"
+    }
+
     public static func attempt(_ repo: RepositoryFullName, epic: ULID, job: ULID, number: Int) -> String {
         precondition(number >= 1, "試行の番号は 1 から")
         return "\(epicDirectory(repo, epic))/attempts/\(job)/\(number).json"
@@ -83,7 +91,7 @@ public enum StatePath {
     }
 
     private static func repositoryDirectory(_ repo: RepositoryFullName) -> String {
-        "repos/\(repo.owner)/\(repo.name)"
+        "\(repositories)/\(repo.owner)/\(repo.name)"
     }
 
     private static func epicDirectory(_ repo: RepositoryFullName, _ epic: ULID) -> String {

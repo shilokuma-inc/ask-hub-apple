@@ -190,6 +190,10 @@ struct StateFileTests {
             StatePath.attempt(repo, epic: epic, job: job, number: 2)
                 == "\(base)/epics/01JCEP1C000000000000000001/attempts/01JCJ0B0000000000000000001/2.json"
         )
+        #expect(
+            StatePath.attempts(repo, epic: epic, job: job) == "\(base)/epics/01JCEP1C000000000000000001/attempts/01JCJ0B0000000000000000001"
+        )
+        #expect(StatePath.repositories == "repos")
         #expect(try StatePath.mac(#require(MacName(rawValue: "mac-mini"))) == "macs/mac-mini.json")
         let device = try #require(KeyID(rawValue: "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y"))
         #expect(StatePath.device(device) == "devices/3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y.json")
