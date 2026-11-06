@@ -48,9 +48,9 @@ extension StateSnapshotBuilder {
         }
     }
 
-    /// 依頼から司令塔が作る epic の id（司令塔の `EpicHandlers.epicID(for:)` と同じ決め方）
+    /// 依頼から司令塔が作る epic の id（司令塔と同じ `RequestIntent.epicID(for:)` で決める）
     static func epicID(forRequest envelope: IntentEnvelope) -> ULID {
-        .derived(from: envelope.nonce, seed: "\(envelope.keyId)/epic")
+        RequestIntent.epicID(for: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
     }
 
     private func applyRequest(_ envelope: IntentEnvelope, to epics: inout [Epic]) {
