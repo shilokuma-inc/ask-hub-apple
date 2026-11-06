@@ -104,6 +104,7 @@ struct GoalJobsTests {
     @Test func moreQuestionsAreLimitedLikeFirstOnes() throws {
         let job = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered())
         let drafts = (3...15).map { Fixture.draft("q\($0)") }
+        #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: Array(drafts.prefix(12)))).isEmpty)
         #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: drafts)).contains("追加の質問は 12 個まで"))
     }
 
