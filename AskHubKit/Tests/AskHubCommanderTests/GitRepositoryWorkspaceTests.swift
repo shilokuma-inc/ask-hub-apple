@@ -174,6 +174,23 @@ struct RepositoryFactsTests {
         #expect(RepositoryFacts.extract(from: text) == "- SwiftUI\n```\n## コードの中の見出しは区切りにしない\n```\n### 細かい事実")
     }
 
+    @Test func followsFencesAndHeadingForms() {
+        let text = """
+        ##    全員向けの事実 ##
+        - SwiftUI
+        ````
+        ```
+        ## 4 つの囲みの中の 3 つは閉じではない
+        ````
+        ~~~
+        ## チルダの囲みの中
+        ~~~
+           ## 人のセッション向けの手順
+        - PR を作る
+        """
+        #expect(RepositoryFacts.extract(from: text) == "- SwiftUI\n````\n```\n## 4 つの囲みの中の 3 つは閉じではない\n````\n~~~\n## チルダの囲みの中\n~~~")
+    }
+
     @Test func usesWholeFileWithoutSectionAndCapsLength() {
         #expect(RepositoryFacts.extract(from: "# アプリ\n\nSwiftUI のアプリ\n") == "# アプリ\n\nSwiftUI のアプリ")
         let long = String(repeating: "あ", count: RepositoryFacts.maximumLength + 10)
