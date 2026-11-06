@@ -2,6 +2,7 @@ import AskHubClaude
 import AskHubEpics
 import AskHubProtocol
 import AskHubStateStore
+import CryptoKit
 import Foundation
 
 /// Claude を呼ぶジョブを 1 つ実行した結果
@@ -114,7 +115,7 @@ extension ClaudeJobRunner {
         } catch {
             return .failed(error.attemptFailure, nil)
         }
-        let claudeJob = MakeQuestionsJob(title: request.title, body: request.body, attachments: placed?.files.map(\.path) ?? [])
+        let claudeJob = MakeQuestionsJob(title: request.title, body: request.body, attachments: placed?.paths ?? [])
         switch await ask(claudeJob, for: epic, attachments: placed?.directory) {
         case let .failed(failure, session):
             return .failed(failure, session)
@@ -216,14 +217,17 @@ extension ClaudeJobRunner {
         }
     }
 
-    private struct PlacedAttachments {
+    struct PlacedAttachments {
         var directory: URL
         var files: [URL]
+
+        var paths: [String] { files.map(\.path) }
     }
 
     /// 依頼の添付を、Claude が読んでよいフォルダに置く。添付が無ければ nil。
-    /// 名前が重なってもよいように、番号ごとのフォルダに置く（`<フォルダ>/<番号>/<名前>`）
-    private func placeAttachments(of request: RequestIntent, for job: JobFile) async throws(WorkspaceError) -> PlacedAttachments? {
+    /// 名前が重なってもよいように、番号ごとのフォルダに置く（`<フォルダ>/<番号>/<名前>`）。
+    /// 受け付けた後に置き換えられていないよう、置く前に大きさとハッシュを署名した依頼と照らし合わせる
+    func placeAttachments(of request: RequestIntent, for job: JobFile) async throws(WorkspaceError) -> PlacedAttachments? {
         guard !request.attachments.isEmpty else { return nil }
         let directory = try await workspace.attachmentsDirectory(for: job.id)
         var files: [URL] = []
@@ -236,6 +240,10 @@ extension ClaudeJobRunner {
                 throw WorkspaceError.unavailable("添付 \(attachment.number) を読めない（\(error)）")
             }
             guard let data = blob?.data else { throw WorkspaceError.failed("添付 \(attachment.number) が無い") }
+            let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            guard data.count == attachment.size, digest == attachment.sha256 else {
+                throw WorkspaceError.failed("添付 \(attachment.number) の大きさかハッシュが、依頼と合わない")
+            }
             // 名前は、受け付けたときにパスの区切りを含まないことを確かめている。前の周で置いていれば上書きする
             let folder = directory.appendingPathComponent(String(attachment.number), isDirectory: true)
             let file = folder.appendingPathComponent(attachment.name)

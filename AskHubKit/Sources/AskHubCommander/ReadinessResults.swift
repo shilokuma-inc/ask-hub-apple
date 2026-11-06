@@ -27,11 +27,23 @@ extension ClaudeJobRunner {
         guard let envelope = try await envelope(of: epic.origin), let request = try? RequestIntent(envelope: envelope) else {
             return .failed(AttemptFailure(failureClass: .unexpected, message: "元の依頼を読めない・署名が合わない"), nil)
         }
+        let placed: PlacedAttachments?
+        do throws(WorkspaceError) {
+            placed = try await placeAttachments(of: request, for: job)
+        } catch {
+            return .failed(error.attemptFailure, nil)
+        }
         // 「このまま 1 つで進める」と決めた後は、追加の質問に答えた後の確認でも、大きすぎるとは返させない
         let previous = try await context.read(ReadinessFile.self, at: StatePath.readiness(epic.repo, epic.id))
         let proceeding = job.input?["proceed"] == .bool(true) || previous?.proceeding == true
-        let claudeJob = CheckReadinessJob(title: request.title, body: request.body, questions: questions, proceeding: proceeding)
-        switch await ask(claudeJob, for: epic) {
+        let claudeJob = CheckReadinessJob(
+            title: request.title,
+            body: request.body,
+            questions: questions,
+            attachments: placed?.paths ?? [],
+            proceeding: proceeding
+        )
+        switch await ask(claudeJob, for: epic, attachments: placed?.directory) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):
@@ -46,19 +58,24 @@ extension ClaudeJobRunner {
             } catch {
                 return .failed(AttemptFailure(failureClass: .unexpected, message: "着手前の確認の結果を当てられない（\(error)）"), session)
             }
-            let parts = output.verdict == .tooLarge ? output.split ?? [] : []
-            let readiness = ReadinessFile(
-                version: 1,
-                verdict: ReadinessVerdict(output.verdict),
-                reason: output.reason,
-                split: parts.map { ReadinessFile.Part(title: $0.title, summary: $0.summary) },
-                round: claudeJob.nextRound - 1,
-                proceeding: proceeding ? true : nil,
-                checkedAt: context.timestamp
-            )
+            let readiness = Self.readiness(of: output, for: claudeJob, at: context.timestamp)
             try await write(result, readiness: readiness, questions: questions, of: epic, by: job)
             return .written(session)
         }
+    }
+
+    /// 書く確認の結果。版は書くときに、前の結果の次にする
+    static func readiness(of output: CheckReadinessJob.Output, for job: CheckReadinessJob, at time: Timestamp) -> ReadinessFile {
+        let parts = output.verdict == .tooLarge ? output.split ?? [] : []
+        return ReadinessFile(
+            version: 1,
+            verdict: ReadinessVerdict(output.verdict),
+            reason: output.reason,
+            split: parts.map { ReadinessFile.Part(title: $0.title, summary: $0.summary) },
+            round: job.nextRound - 1,
+            proceeding: job.proceeding ? true : nil,
+            checkedAt: time
+        )
     }
 
     static func result(

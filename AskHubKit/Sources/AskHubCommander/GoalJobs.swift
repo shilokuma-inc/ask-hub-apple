@@ -58,15 +58,18 @@ public struct CheckReadinessJob: ClaudeJob {
     public var title: String
     public var body: String
     public var questions: QuestionsFile
+    /// 添付を置いた場所（Claude が読んでよいフォルダの中のパス）
+    public var attachments: [String]
     /// 追加の質問を出すときの回（今までの最も新しい回の次）
     public var nextRound: Int
     /// 人が分け方の判断で「このまま 1 つで進める」を選んだ後の確認。大きすぎるとは返させない（追加の質問は、回が残っていれば出せる）
     public var proceeding: Bool
 
-    public init(title: String, body: String, questions: QuestionsFile, proceeding: Bool = false) {
+    public init(title: String, body: String, questions: QuestionsFile, attachments: [String] = [], proceeding: Bool = false) {
         self.title = title
         self.body = body
         self.questions = questions
+        self.attachments = attachments
         self.proceeding = proceeding
         // 最初の質問づくりは、質問が 1 つも無くても 1 回目と数える
         nextRound = (questions.questions.map(\.round).max() ?? 1) + 1
@@ -85,6 +88,7 @@ public struct CheckReadinessJob: ClaudeJob {
         <request>
         \(body)
         </request>
+        添付: \(attachments.isEmpty ? "なし" : attachments.joined(separator: "、") + "（依頼に付いていたファイル。必要なら読む）")
 
         ## 人が決めたこと
         \(decisions.isEmpty ? "（質問は無かった）" : decisions.joined(separator: "\n\n"))
