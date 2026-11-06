@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/decideSplit.schema.json",
+  "title": "分け方の判断の人の意図（kind が decideSplit）の payload",
+  "description": "封筒の target は {type: epic, epic}、targetVersion は着手前の確認の結果（readiness.json）の version を 10 進で書く。split は今の epic をやめる（分け方の案ごとの依頼は、人がクライアントで出し直す）、proceed はこのまま 1 つの epic で進める。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "choice"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "choice": {
+      "enum": [
+        "split",
+        "proceed"
+      ]
+    }
+  }
+}

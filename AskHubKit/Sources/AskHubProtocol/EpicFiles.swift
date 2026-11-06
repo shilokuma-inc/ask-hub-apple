@@ -332,6 +332,8 @@ public struct GoalFile: StateFile {
     public var doneWhen: [String]
     public var tasks: [Task]
     public var humanTasks: [HumanTask]
+    /// 最後のゴールの修正で、反映しなかった人の指示とその理由（決まったことを変える指示など）。人に出す
+    public var notApplied: [String]?
     /// Discussion のゴールの写しのコメントの id
     public var comment: String?
 
@@ -343,6 +345,7 @@ public struct GoalFile: StateFile {
         doneWhen: [String],
         tasks: [Task],
         humanTasks: [HumanTask] = [],
+        notApplied: [String]? = nil,
         comment: String? = nil
     ) {
         self.version = version
@@ -352,6 +355,7 @@ public struct GoalFile: StateFile {
         self.doneWhen = doneWhen
         self.tasks = tasks
         self.humanTasks = humanTasks
+        self.notApplied = notApplied
         self.comment = comment
     }
 
@@ -360,6 +364,7 @@ public struct GoalFile: StateFile {
         var violations = LocalIDs.problems(tasks.map(\.id) + humanTasks.map(\.id), dependencies: dependencies)
         if version < 1 { violations.append("version は 1 以上") }
         if summary.isEmpty || doneWhen.isEmpty || tasks.isEmpty { violations.append("summary・doneWhen・tasks が空") }
+        if notApplied?.contains(where: \.isEmpty) == true { violations.append("notApplied に空の行がある") }
         for task in tasks where task.title.isEmpty {
             violations.append("\(task.id): title が空")
         }

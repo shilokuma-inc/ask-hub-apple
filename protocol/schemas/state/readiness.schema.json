@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/readiness.schema.json",
+  "title": "repos/<owner>/<repo>/epics/<epic>/readiness.json（最後の着手前の確認の結果）",
+  "description": "司令塔だけが書く。大きすぎる（tooLarge）ときだけ split を持つこと、split の title・summary が空でないことは読む側で確かめる。1 つの epic に収まらないときは、人が decideSplit（targetVersion はこの version）で、分けて依頼し直すか、このまま 1 つで進めるかを選ぶ",
+  "type": "object",
+  "required": [
+    "v",
+    "version",
+    "verdict",
+    "reason",
+    "split",
+    "round",
+    "checkedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "確かめるたびに上げる"
+    },
+    "verdict": {
+      "enum": [
+        "ready",
+        "moreQuestions",
+        "tooLarge"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "split": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "title",
+          "summary"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "description": "分け方の案。大きすぎるときだけ。決めきれないときは空のこともある"
+    },
+    "round": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "何回目の質問づくりの後の確認か"
+    },
+    "checkedAt": {
+      "$ref": "../common.schema.json#/$defs/timestamp"
+    }
+  }
+}

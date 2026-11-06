@@ -26,6 +26,9 @@ struct EpicIntentsTests {
         },
         Kind(vectors: "payloads/reviseGoal.json", kind: "reviseGoal", target: .init(type: "epic", epic: epic), targetVersion: "3") {
             try ReviseGoalIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/decideSplit.json", kind: "decideSplit", target: .init(type: "epic", epic: epic), targetVersion: "3") {
+            try DecideSplitIntent(envelope: $0).payload
         }
     ]
 
@@ -125,9 +128,21 @@ struct EpicIntentsTests {
             kind: "startEpic", target: .init(type: "epic", epic: Self.epic), targetVersion: "12", payload: ["mac": .string("mac-mini")]
         ))
         #expect(start.target.epic == Self.epic)
-        #expect(start.target.goalVersion == 12)
+        #expect(start.target.version == 12)
         #expect(start.target.target == .init(type: "epic", epic: Self.epic))
         #expect(start.target.targetVersion == "12")
         #expect(start.mac.rawValue == "mac-mini")
+    }
+
+    /// 選んだ方で epic を分けるかが決まるので、読んだ値を直接確かめる
+    @Test func readsDecideSplitChoice() throws {
+        let target = IntentEnvelope.Target(type: "epic", epic: Self.epic)
+        for (text, choice) in [("split", DecideSplitIntent.Choice.split), ("proceed", .proceed)] {
+            let decide = try DecideSplitIntent(envelope: envelope(
+                kind: "decideSplit", target: target, targetVersion: "3", payload: ["choice": .string(text)]
+            ))
+            #expect(decide.choice == choice)
+            #expect(decide.target.version == 3)
+        }
     }
 }

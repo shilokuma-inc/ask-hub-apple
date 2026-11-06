@@ -105,19 +105,19 @@ public struct RequestIntent: Equatable, Sendable {
     }
 }
 
-/// epic を対象にする人の意図の共通の部分（`target` が `{type: epic, epic}`、`targetVersion` がゴールの版）
+/// epic を対象にする人の意図の共通の部分（`target` が `{type: epic, epic}`）
 public struct EpicTarget: Equatable, Sendable {
     public static let targetType = "epic"
 
     public var repo: RepositoryFullName
     public var epic: ULID
-    /// 確かめたゴールの版
-    public var goalVersion: Int
+    /// 確かめた対象の版（`targetVersion`）。開始・ゴールの修正ではゴールの版、分け方の判断では着手前の確認の結果の版
+    public var version: Int
 
-    public init(repo: RepositoryFullName, epic: ULID, goalVersion: Int) {
+    public init(repo: RepositoryFullName, epic: ULID, version: Int) {
         self.repo = repo
         self.epic = epic
-        self.goalVersion = goalVersion
+        self.version = version
     }
 
     init(envelope: IntentEnvelope) throws(MalformedIntent) {
@@ -125,12 +125,12 @@ public struct EpicTarget: Equatable, Sendable {
         guard let target = envelope.target, target.type == Self.targetType, let epic = target.epic, target.id == nil else {
             throw .init(detail: "target が epic でない")
         }
-        guard let version = envelope.targetVersion.flatMap(AnswerIntent.version) else { throw .init(detail: "targetVersion がゴールの版でない") }
-        self.init(repo: repo, epic: epic, goalVersion: version)
+        guard let version = envelope.targetVersion.flatMap(AnswerIntent.version) else { throw .init(detail: "targetVersion が対象の版でない") }
+        self.init(repo: repo, epic: epic, version: version)
     }
 
     public var target: IntentEnvelope.Target { .init(type: Self.targetType, epic: epic) }
-    public var targetVersion: String { String(goalVersion) }
+    public var targetVersion: String { String(version) }
 }
 
 /// 開始の人の意図（`kind` が `startEpic`）
@@ -186,4 +186,38 @@ public struct ReviseGoalIntent: Equatable, Sendable {
     }
 
     public var payload: [String: JSONValue] { ["instruction": .string(instruction)] }
+}
+
+/// 分け方の判断の人の意図（`kind` が `decideSplit`）。`targetVersion` は着手前の確認の結果（`readiness.json`）の版
+public struct DecideSplitIntent: Equatable, Sendable {
+    public enum Choice: String, Sendable, CaseIterable {
+        /// 今の epic をやめる。分け方の案ごとの依頼は、人がクライアントで出し直す
+        case split
+        /// このまま 1 つの epic で進める（着手前の確認をやり直して、ゴールを作る）
+        case proceed
+    }
+
+    public static let kind = "decideSplit"
+
+    public var target: EpicTarget
+    public var choice: Choice
+    public var intent: IntentReference
+
+    public init(target: EpicTarget, choice: Choice, intent: IntentReference) {
+        self.target = target
+        self.choice = choice
+        self.intent = intent
+    }
+
+    public init(envelope: IntentEnvelope) throws(MalformedIntent) {
+        guard envelope.kind == Self.kind else { throw .init(detail: "kind が decideSplit でない") }
+        let target = try EpicTarget(envelope: envelope)
+        let reader = try PayloadReader(envelope.payload, allowed: ["choice"])
+        guard let choice = Choice(rawValue: try reader.text("choice", required: true, limit: 16)) else {
+            throw .init(detail: "choice が split・proceed のどちらでもない")
+        }
+        self.init(target: target, choice: choice, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
+    }
+
+    public var payload: [String: JSONValue] { ["choice": .string(choice.rawValue)] }
 }

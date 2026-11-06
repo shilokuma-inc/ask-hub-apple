@@ -90,7 +90,8 @@ extension CommanderContext {
     func jobList(_ repo: RepositoryFullName, epic: ULID) async throws(CommanderError) -> JobList {
         let entries: [DirectoryEntry]
         do {
-            entries = try await store.list(StatePath.jobs(repo, epic: epic)) ?? []
+            // ジョブは消さずに増えるので、1,000 件で切れる `list` ではなく `listAll` で直下をすべて読む
+            entries = try await store.listAll(StatePath.jobs(repo, epic: epic)) ?? []
         } catch {
             throw .store(error)
         }

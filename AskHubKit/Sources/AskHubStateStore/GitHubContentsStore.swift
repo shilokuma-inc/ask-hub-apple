@@ -7,8 +7,8 @@ import Foundation
 /// - 読み取りは ETag を付ける。変わっていなければ 304 が返り、上限に数えられない
 /// - 書き込みは読んだときの版（sha）を付ける。版が合わない・同じブランチへの書き込みがぶつかったときは 409 が返る
 ///   （Contents API は同じブランチへの並んだ書き込みもぶつかる）ので、`StateFileStore` が読み直してやり直す
-/// - ディレクトリの一覧は 1,000 件まで（Contents API の上限）。増え続けるディレクトリ（人の意図など）は、`listFiles(under:)` で
-///   Git Trees API から読む（10 万件・7 MB まで）
+/// - ディレクトリの一覧は 1,000 件まで（Contents API の上限）。増え続けるディレクトリ（人の意図・epic・ジョブなど）は、
+///   `listFiles(under:)`（下の階層まで）か `listAll(_:)`（直下だけ）で Git Trees API から読む（10 万件・7 MB まで）
 public struct GitHubContentsStore: StateStore {
     public let repository: RepositoryFullName
     /// 読み書きするブランチ。nil ならリポジトリの既定のブランチ
@@ -61,6 +61,18 @@ public struct GitHubContentsStore: StateStore {
 
     /// ディレクトリの下のファイルをすべて並べる。親の一覧からディレクトリの tree の sha を読み、Git Trees API で下まで読む
     public func listFiles(under directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        guard let sha = try await treeSHA(of: directory) else { return nil }
+        return try await tree(sha: sha, under: directory, recursive: true)
+    }
+
+    /// ディレクトリの直下をすべて並べる。親の一覧からディレクトリの tree の sha を読み、Git Trees API で直下だけ読む
+    public func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        guard let sha = try await treeSHA(of: directory) else { return nil }
+        return try await tree(sha: sha, under: directory, recursive: false)
+    }
+
+    /// 親の一覧から読む、ディレクトリの tree の sha。ディレクトリが無ければ nil
+    private func treeSHA(of directory: String) async throws(StateStoreError) -> String? {
         guard StatePathCheck.isSafe(directory) else { throw .invalidPath }
         let parts = directory.split(separator: "/").map(String.init)
         let parent = parts.dropLast().joined(separator: "/")
@@ -72,7 +84,7 @@ public struct GitHubContentsStore: StateStore {
         }
         guard let tree = siblings.first(where: { $0.name == parts.last }) else { return nil }
         guard tree.kind == .directory else { throw .wrongKind }
-        return try await treeFiles(sha: tree.sha, under: directory)
+        return tree.sha
     }
 
     public func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
@@ -109,30 +121,39 @@ public struct GitHubContentsStore: StateStore {
         return try await fetch(request, cacheKey: path, decode: Self.decodeContents)
     }
 
-    /// tree の下のファイル（blob）。tree は sha で決まり中身が変わらないので、ETag でそのまま使い回せる
-    private func treeFiles(sha: String, under directory: String) async throws(StateStoreError) -> [DirectoryEntry] {
+    /// tree の下。`recursive` なら下の階層までのファイル（blob）、そうでなければ直下のファイルとディレクトリ。
+    /// tree は sha で決まり中身が変わらないので、ETag でそのまま使い回せる
+    private func tree(sha: String, under directory: String, recursive: Bool) async throws(StateStoreError) -> [DirectoryEntry] {
         let isHex = sha.utf8.allSatisfy { byte in
             (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
         }
         guard !sha.isEmpty, isHex else { throw .unexpected(status: 200, message: "tree の sha の形が違う") }
-        let request = try await makeRequest(apiPath: "git/trees/\(sha)", query: [URLQueryItem(name: "recursive", value: "1")])
+        let query = recursive ? [URLQueryItem(name: "recursive", value: "1")] : []
+        let request = try await makeRequest(apiPath: "git/trees/\(sha)", query: query)
         // `:` は状態リポジトリのパスに使わないので、ファイルの中身の鍵とぶつからない
-        let contents = try await fetch(request, cacheKey: "tree:\(sha)") { body throws(StateStoreError) in
-            try .directory(Self.decodeTree(body, under: directory))
+        let contents = try await fetch(request, cacheKey: "\(recursive ? "tree" : "entries"):\(sha)") { body throws(StateStoreError) in
+            try .directory(Self.decodeTree(body, under: directory, recursive: recursive))
         }
         guard case let .directory(entries) = contents else { throw .wrongKind }
         return entries
     }
 
-    static func decodeTree(_ body: Data, under directory: String) throws(StateStoreError) -> [DirectoryEntry] {
+    static func decodeTree(
+        _ body: Data,
+        under directory: String,
+        recursive: Bool = true
+    ) throws(StateStoreError) -> [DirectoryEntry] {
         guard let tree = try? JSONDecoder().decode(TreeResponse.self, from: body) else {
             throw .unexpected(status: 200, message: "tree の応答を読めない")
         }
         // 上限（10 万件・7 MB）を超えると、一覧が途中で切れる。足りない一覧で処理を進めない
         guard !tree.truncated else { throw .unexpected(status: 200, message: "ディレクトリの中が多すぎて、一覧が途中で切れた") }
-        return tree.tree.filter { $0.type == "blob" }.map { entry in
+        // 下の階層まで読むときはファイルだけ、直下だけのときはファイルとディレクトリ（サブモジュールなどは並べない）
+        let kinds: [String: DirectoryEntry.Kind] = recursive ? ["blob": .file] : ["blob": .file, "tree": .directory]
+        return tree.tree.compactMap { entry in
+            guard let kind = kinds[entry.type] else { return nil }
             let name = String(entry.path.split(separator: "/").last ?? "")
-            return DirectoryEntry(name: name, path: "\(directory)/\(entry.path)", kind: .file, sha: entry.sha)
+            return DirectoryEntry(name: name, path: "\(directory)/\(entry.path)", kind: kind, sha: entry.sha)
         }
     }
 

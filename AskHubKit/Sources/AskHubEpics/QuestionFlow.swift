@@ -43,7 +43,7 @@ public enum QuestionFlow {
             case .drafting: "まだ質問を作っている"
             case .running, .finalizing, .reviewing: "開始した後は回答を変えられない（最終 PR への指示として出す）"
             case .merged, .abandoned: "epic は終わっている"
-            case .asking, .checking, .awaitingStart: "回答を受け付けている"
+            case .asking, .checking, .awaitingSplit, .awaitingStart: "回答を受け付けている"
             }
         }
 
@@ -95,8 +95,8 @@ public enum QuestionFlow {
         public var effects: [Effect]
     }
 
-    /// 回答を受け付ける段階。開始の前まで
-    static let answerableStages: Set<EpicStage> = [.asking, .checking, .awaitingStart]
+    /// 回答を受け付ける段階。開始の前まで（分け方の判断を待っている間も、答え直せば回答に戻る）
+    static let answerableStages: Set<EpicStage> = [.asking, .checking, .awaitingSplit, .awaitingStart]
 }
 
 // MARK: - 質問を足す

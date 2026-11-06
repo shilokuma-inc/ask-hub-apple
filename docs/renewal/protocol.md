@@ -90,6 +90,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "id": "01JC…",
   "repo": "shilokuma-inc/prime-pick-ios",
   "title": "ランキングの表示を変える",
+  "summary": "…",
   "discussion": 512,
   "stage": "asking",
   "mac": null,
@@ -103,6 +104,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 ```
 
 - `origin` は、元になった依頼の人の意図
+- `summary` は、依頼の要約（何を作るか・なぜ）。質問づくりの Claude が書く。作る前は `null`
 - `mac` は、開始のときに人が選んだ Mac
 - `branch` は作業ブランチ。git のコマンドに渡しても選択肢に読まれないよう、`-` で始まる値・`..` を含む値・英数字と `._/-` 以外の文字を使わない
 
@@ -112,13 +114,32 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | --- | --- | --- |
 | `drafting` | 依頼を受け、質問を作っている | `asking` |
 | `asking` | 人の回答を待っている（説明待ち・ロックを含む） | `checking` |
-| `checking` | 着手前の確認をしている | `asking`（追加の質問）・`awaitingStart` |
+| `checking` | 着手前の確認をしている | `asking`（追加の質問）・`awaitingSplit`（大きすぎる）・`awaitingStart` |
+| `awaitingSplit` | 1 つの epic に収まらないと分かり、分けて依頼し直すか、このまま 1 つで進めるかの、人の判断を待っている | `abandoned`（分けて依頼し直す）・`checking`（このまま進める） |
 | `awaitingStart` | ゴールの確認と開始を待っている | `running`・`checking`（ゴールの修正） |
 | `running` | 実装している | `finalizing` |
 | `finalizing` | 最終 PR の前の検証と、最終 PR の対処をしている | `reviewing`・`merged` |
 | `reviewing` | 人が決めていない判断の確認とマージを待っている | `finalizing`（直してほしい）・`merged` |
 | `merged` | マージされた | — |
 | `abandoned` | やめた | — |
+
+### readiness.json（最後の着手前の確認の結果）
+
+```json
+{
+  "v": 1,
+  "version": 3,
+  "verdict": "tooLarge",
+  "reason": "集計と画面と課金が 1 つの epic に収まらない",
+  "split": [ { "title": "集計", "summary": "日ごとの集計を作る" }, { "title": "画面", "summary": "ランキングの画面を作る" } ],
+  "round": 2,
+  "checkedAt": "…"
+}
+```
+
+- `verdict` は `ready`（ゴールを作った）・`moreQuestions`（追加の質問を出した）・`tooLarge`（1 つの epic に収まらない）。確かめるたびに `version` を上げる
+- `split` は分け方の案で、`tooLarge` のときだけ持つ。質問の往復を使い切って決めきれないときも `tooLarge` にし、`reason` に何が決めきれないかを書く（`split` は空のこともある）
+- `tooLarge` のとき、epic は `awaitingSplit` になり、人が分け方の判断（`decideSplit`）で「分けて依頼し直す」（`split`。epic は `abandoned` にし、クライアントが分け方の案ごとの依頼の下書きを出す）か「このまま 1 つで進める」（`proceed`。確かめ直してゴールを作る）を選ぶ
 
 ### questions.json（質問とその状態）
 
@@ -192,10 +213,12 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
       "state": "pending"
     }
   ],
+  "notApplied": [ "…" ],
   "comment": "DC_kwDO…"
 }
 ```
 
+- `notApplied` は、最後のゴールの修正で反映しなかった人の指示とその理由（決まったことを変える指示など。回答を変えて直してもらう）
 - ゴールを直すたびに `version` を上げる。「開始」の人の意図は、確かめたゴールの `version` を持つ
 - タスクの `state` は `pending`・`locked`（人がする作業の待ち）・`running`・`done`。`dependsOn` には、ほかのタスクと人がする作業の id を書ける
 - 人がする作業の `handover` は、終わったら渡すもの: `none`（「終わった」を押すだけ）・`file`（ファイルを渡す）・`secret`（GitHub の Secrets に入れる。`name` に Secrets の名前。値はどこにも残さない）。扱いは段階 3 で作る
@@ -403,6 +426,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `answer` | 質問 | 質問の `version` | `mode`（`answer`・`clarify`）、`choice`、`note`（`protocol/schemas/payloads/answer.schema.json`） |
 | `startEpic` | epic | ゴールの `version` | `mac`（`payloads/startEpic.schema.json`） |
 | `reviseGoal` | epic | ゴールの `version` | `instruction`（指示の本文。`payloads/reviseGoal.schema.json`） |
+| `decideSplit` | epic | 着手前の確認の結果（`readiness.json`）の `version` | `choice`（`split`・`proceed`。`payloads/decideSplit.schema.json`） |
 | `decision` | 判断のカード | 最終 PR の head のコミット | `answer`（`ok`・`alternative`・`fix`）、本文 |
 | `approveMerge` | 最終 PR | 最終 PR の head のコミット | — |
 | `instructFinal` | 最終 PR | 最終 PR の head のコミット | 指示の本文 |
