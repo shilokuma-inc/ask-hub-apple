@@ -65,7 +65,8 @@ public struct CheckReadinessJob: ClaudeJob {
         self.title = title
         self.body = body
         self.questions = questions
-        nextRound = (questions.questions.map(\.round).max() ?? 0) + 1
+        // 最初の質問づくりは、質問が 1 つも無くても 1 回目と数える
+        nextRound = (questions.questions.map(\.round).max() ?? 1) + 1
     }
 
     /// 追加の質問をもう出せるか

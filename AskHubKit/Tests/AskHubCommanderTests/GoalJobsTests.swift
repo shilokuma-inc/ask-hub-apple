@@ -64,6 +64,13 @@ struct GoalJobsTests {
         #expect(job.prompt.contains("追加の質問はもう出せない"))
     }
 
+    @Test func firstQuestionMakingCountsAsRoundOneWithoutQuestions() {
+        // 質問が 1 つも無かった依頼でも、追加の質問は 2 回目の回として出す
+        let job = CheckReadinessJob(title: "文言", body: "…", questions: QuestionsFile(questions: []))
+        #expect(job.nextRound == 2)
+        #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q1")])).isEmpty)
+    }
+
     @Test func tooLargeNeedsSplitWhileQuestionsRemain() throws {
         let job = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered())
         let parts = [CheckReadinessJob.Part(title: "集計", summary: "…"), .init(title: "画面", summary: "…")]
