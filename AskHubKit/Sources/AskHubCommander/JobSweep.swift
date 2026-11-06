@@ -34,10 +34,11 @@ public struct JobSweep: Sendable {
     /// 対象のリポジトリの、終わっていない epic のジョブを見直し、見直した後のジョブの一覧も返す
     public func sweepAll() async throws(CommanderError) -> Swept {
         var swept = Swept(changed: [], jobs: [])
-        for repo in try await repositories() {
-            for epic in try await openEpics(of: repo) {
+        for repo in try await context.repositories() {
+            // 終わっていない（マージ・やめた、でない）epic
+            for epic in try await context.epics(of: repo, where: { ![.merged, .abandoned].contains($0.stage) }) {
                 // 読めないジョブは、中身が分からないので触らない（新しい司令塔が扱う）
-                for job in try await context.jobList(repo, epic: epic).jobs {
+                for job in try await context.jobList(repo, epic: epic.id).jobs {
                     guard Self.watchedStates.contains(job.state), let next = try await reconcile(job) else {
                         swept.jobs.append(job)
                         continue
@@ -55,7 +56,7 @@ public struct JobSweep: Sendable {
         let attempts = try await attempts(of: job)
         let macName = attempts.max { $0.number < $1.number }?.mac ?? job.assignedMac
         var mac: MacFile?
-        if let macName { mac = try await readable(MacFile.self, at: StatePath.mac(macName)) }
+        if let macName { mac = try await context.readable(MacFile.self, at: StatePath.mac(macName)) }
         let next = JobReconciler.reconcile(job, attempts: attempts, mac: mac, now: context.now(), policy: policy, timing: timing)
         guard next != job else { return nil }
         var written = false
@@ -73,29 +74,6 @@ public struct JobSweep: Sendable {
         return written ? next : nil
     }
 
-    /// `repos/<owner>/<repo>/` の一覧
-    private func repositories() async throws(CommanderError) -> [RepositoryFullName] {
-        var repositories: [RepositoryFullName] = []
-        for owner in try await directories(in: StatePath.repositories) {
-            for name in try await directories(in: "\(StatePath.repositories)/\(owner)") {
-                if let repo = RepositoryFullName(rawValue: "\(owner)/\(name)") { repositories.append(repo) }
-            }
-        }
-        return repositories
-    }
-
-    /// 終わっていない（マージ・やめた、でない）epic。読めない epic は飛ばす
-    private func openEpics(of repo: RepositoryFullName) async throws(CommanderError) -> [ULID] {
-        var epics: [ULID] = []
-        for name in try await directories(in: StatePath.epics(repo)) {
-            guard let id = ULID(rawValue: name),
-                  let epic = try await readable(EpicFile.self, at: StatePath.epic(repo, id)),
-                  ![.merged, .abandoned].contains(epic.stage) else { continue }
-            epics.append(id)
-        }
-        return epics
-    }
-
     private func attempts(of job: JobFile) async throws(CommanderError) -> [AttemptFile] {
         let entries: [DirectoryEntry]
         do {
@@ -105,28 +83,8 @@ public struct JobSweep: Sendable {
         }
         var attempts: [AttemptFile] = []
         for entry in entries where entry.kind == .file && entry.name.hasSuffix(".json") {
-            if let attempt = try await readable(AttemptFile.self, at: entry.path) { attempts.append(attempt) }
+            if let attempt = try await context.readable(AttemptFile.self, at: entry.path) { attempts.append(attempt) }
         }
         return attempts
-    }
-
-    /// ディレクトリの直下のディレクトリの名前
-    private func directories(in directory: String) async throws(CommanderError) -> [String] {
-        do {
-            return try await context.store.listAll(directory)?.filter { $0.kind == .directory }.map(\.name) ?? []
-        } catch {
-            throw .store(error)
-        }
-    }
-
-    /// 読めない（知らない版など）ファイルは nil にして飛ばす
-    private func readable<File: StateFile>(_ type: File.Type, at path: String) async throws(CommanderError) -> File? {
-        do {
-            return try await context.files.read(File.self, at: path)?.file
-        } catch .unreadable {
-            return nil
-        } catch {
-            throw .files(error)
-        }
     }
 }
