@@ -200,6 +200,8 @@ public actor CommanderLoop {
         try await put(commander, at: StatePath.commander, message: "司令塔の生きている印")
         try await put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now
+        // しばらく使っていないリポジトリの写しを片付ける
+        await workspace.tidy()
     }
 
     /// 無ければ作り、あれば置き換える
