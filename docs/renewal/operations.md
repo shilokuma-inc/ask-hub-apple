@@ -34,6 +34,20 @@
 - 更新の手順（常時オンの Mac は遠隔で、ほかの Mac は手で）を、切り替えの前に決める
 - 作業ファイルは TCC の保護の対象の場所（デスクトップ・書類など）に置かない。ワーカー専用のフォルダ（`~/Library/Application Support/` の下など）を使う
 
+### 司令塔の入れ方（段階 2）
+
+常時オンの Mac で、ログインしているユーザーが端末から流す（ssh からは Keychain を読めない）。
+
+1. `askhub-commander` を置く（ホームフォルダの下。管理者の権限は使わない）
+2. `askhub-commander setup --state-repo <owner/repo> --mac <名前> --claude <claude の絶対パス> --first-key <最初の鍵の id> --key-account <GitHub のアカウント>`
+   - 設定（秘密を含まない）を `~/Library/Application Support/AskHub/commander/config.json` に書く
+   - GitHub のトークンと Claude の setup-token は、端末で伏せて入れ、Keychain（サービス `jp.shilokuma.AskHub.commander`）だけに置く。引数や標準入力では受け取らない。Claude の欄に API キー（`sk-ant-api03-`）が貼られたら断る
+   - 公開鍵の記録の最初の鍵を固定する（後から別の鍵には変えられない）
+3. `askhub-commander launch-agent` で LaunchAgent の定義を書き、出てくる `launchctl bootstrap` のコマンドで登録する（ログは `~/Library/Logs/AskHub/commander.log`）
+4. `askhub-commander check` で、設定と Keychain の様子（値は出さない）を確かめる
+
+- git は、司令塔自身を credential helper（`askhub-commander git-credential`）にして、Keychain の GitHub のトークンを受け取る
+
 ## 容量
 
 - ワーカーは、自分で作ったもの（worktree・Simulator・DerivedData）を、最終 PR のマージ後に自動で片付ける
