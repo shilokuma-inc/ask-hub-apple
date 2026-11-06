@@ -57,14 +57,27 @@ final class ClientUITests: XCTestCase {
     }
 
     /// 設定でデモの場面を変えると、その場面のデータを読み込み直す（作り直した store を読み込まないまま残さない）。
-    /// 起動引数の `-demoScenario` は設定より優先されるので付けない。最後に標準の場面に戻す
+    /// 起動引数の `-demoScenario` は設定より優先されるので付けず、見るデータだけをデモにする。最後に標準の場面に戻す
     @MainActor
     func testChangingScenarioReloadsData() {
-        let app = launch([])
+        let app = launch(["-dataSource", "demo"])
         chooseScenario("人の出番が無い", in: app)
         XCTAssertTrue(app.staticTexts["あなたの番はありません"].waitForExistence(timeout: 10))
         chooseScenario("ひととおり（標準）", in: app)
         XCTAssertTrue(app.staticTexts["まとめて判断する"].waitForExistence(timeout: 10))
+    }
+
+    /// 状態リポジトリを見るときにトークンが無ければ、GitHub には送らずに、設定で入れるよう出す
+    @MainActor
+    func testStateRepositoryWithoutTokenAsksForToken() {
+        let app = launch(["-dataSource", "stateRepository"])
+        XCTAssertTrue(app.staticTexts["読み込めませんでした"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["GitHub のトークンがありません。設定で入れてください"].exists)
+        let settings = app.buttons["設定"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        XCTAssertTrue(app.staticTexts["GitHub のトークン"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["この端末の鍵"].exists)
     }
 
     private func chooseScenario(_ label: String, in app: XCUIApplication) {
