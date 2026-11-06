@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/json-value.schema.json",
+  "title": "プロトコルで扱う JSON の値",
+  "description": "数は整数だけ（RFC 8785 でそろえるときに言語ごとの差が出ないよう、小数は使わない）。整数は ECMAScript で正確に表せる範囲に限る",
+  "anyOf": [
+    { "type": "null" },
+    { "type": "boolean" },
+    { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+    { "type": "string" },
+    { "type": "array", "items": { "$ref": "#" } },
+    { "type": "object", "additionalProperties": { "$ref": "#" } }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/key.schema.json",
+  "title": "keys/<seq>.json（公開鍵の記録）",
+  "description": "クライアントが書く、追記だけの記録。sig を除いた値を RFC 8785 でそろえた UTF-8 のバイト列に署名する（知らない項目も署名に含める）。previousSha256 は sig を含む前の記録全体をそろえたバイト列の SHA-256 で、seq 1 では持たない。add は publicKey・account・label を持ち、revoke は持たない（読む側で確かめる）",
+  "type": "object",
+  "required": ["v", "seq", "action", "keyId", "issuedAt", "signedBy", "sig"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "seq": { "type": "integer", "minimum": 1 },
+    "action": { "enum": ["add", "revoke"] },
+    "keyId": { "$ref": "../common.schema.json#/$defs/keyId" },
+    "publicKey": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "SubjectPublicKeyInfo の DER の base64url（パディングなし）" },
+    "account": { "type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$", "maxLength": 39, "description": "鍵を結びつける GitHub のアカウント" },
+    "label": { "type": "string", "minLength": 1, "maxLength": 64, "description": "端末の名前" },
+    "issuedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "previousSha256": { "$ref": "../common.schema.json#/$defs/sha256Hex" },
+    "signedBy": { "$ref": "../common.schema.json#/$defs/keyId" },
+    "sig": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$", "maxLength": 86 }
+  }
+}

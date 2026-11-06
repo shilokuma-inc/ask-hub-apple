@@ -1,0 +1,535 @@
+{
+  "description": "repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json（ジョブ）を読む例。schemaValid は protocol/schemas/state/job.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。知らない欄は、スキーマでは弾くが、読む側は読み飛ばす。スキーマで表せない決まり（欄どうしの関係・存在しない日付など）は、スキーマに合っても読む側が弾く",
+  "schema": "state/job.schema.json",
+  "cases": [
+    {
+      "name": "full",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "minimal",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000001",
+        "kind": "makeQuestions",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "needs": {
+          "claude": true,
+          "build": false
+        },
+        "dependsOn": [],
+        "state": "queued",
+        "attempts": 0,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "waiting-for-runner",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "rerunChecks",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": null,
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "queued",
+        "attempts": 1,
+        "nextRunAt": "2026-11-03T10:20:00Z",
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z",
+        "futureField": 1
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "future-version",
+      "value": {
+        "v": 2,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    },
+    {
+      "name": "missing-version",
+      "value": {
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "missingVersion"
+    },
+    {
+      "name": "version-not-integer",
+      "value": {
+        "v": "1",
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-kind",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "deploy",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-state",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "done",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "missing-needs",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "needs-not-boolean",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": 1,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "depends-on-not-ulid",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "t1"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "depends-on-duplicate",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001",
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "depends-on-itself",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000002"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "negative-attempts",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": -1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-task",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "assigned-mac-path",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "../macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "with-input-and-origin",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "explain",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": null,
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z",
+        "input": {
+          "question": "q2",
+          "asked": {
+            "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+            "nonce": "01JCN0NCE00000000000000001"
+          }
+        },
+        "origin": {
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "nonce": "01JCN0NCE00000000000000001"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "input-not-object",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z",
+        "input": [
+          "q2"
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "input-with-fraction",
+      "value": {
+        "v": 1,
+        "id": "01JCJ0B0000000000000000002",
+        "kind": "implementTask",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "epic": "01JCEP1C000000000000000001",
+        "task": "t1",
+        "assignedMac": "macbook-a",
+        "needs": {
+          "claude": true,
+          "build": true
+        },
+        "dependsOn": [
+          "01JCJ0B0000000000000000001"
+        ],
+        "state": "assigned",
+        "attempts": 1,
+        "nextRunAt": null,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:05:00Z",
+        "input": {
+          "round": 1.5
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

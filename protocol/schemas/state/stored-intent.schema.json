@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/stored-intent.schema.json",
+  "title": "intents/<device>/<nonce>.json（公開のスレッドに置かない人の意図）",
+  "description": "クライアントが書く。人が読む本文を持たないので、封筒に bodySha256 を入れない",
+  "type": "object",
+  "required": ["envelope", "sig"],
+  "additionalProperties": false,
+  "properties": {
+    "envelope": { "allOf": [{ "$ref": "../intent-envelope.schema.json" }, { "not": { "required": ["bodySha256"] } }] },
+    "sig": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$", "maxLength": 86 }
+  }
+}

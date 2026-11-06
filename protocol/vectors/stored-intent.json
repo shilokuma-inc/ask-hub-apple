@@ -1,0 +1,149 @@
+{
+  "description": "状態リポジトリの intents/ に置く人の意図（{\"envelope\": …, \"sig\": \"…\"}）を確かめる例。人が読む本文を持たないので、bodySha256 があれば受け付けない。trustedKeys の鍵は key-ledger.json と同じテスト専用の鍵",
+  "cases": [
+    {
+      "name": "valid",
+      "value": {
+        "envelope": {
+          "v": 1,
+          "kind": "addRepository",
+          "target": {
+            "type": "repository"
+          },
+          "payload": {
+            "repo": "shilokuma-inc/askhub-sandbox"
+          },
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "nonce": "01JCN0NCE00000000000000002",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y"
+        },
+        "sig": "FGPshgSHgW9z_Ulz9UbRtfTsAs6Xqv6-nFNufgXtz8tixt1ZlQXG2HGi4O4l62H_EWRPfU2fycn_dJ0mC8su7w"
+      },
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "valid"
+    },
+    {
+      "name": "with-body-hash",
+      "value": {
+        "envelope": {
+          "v": 1,
+          "kind": "addRepository",
+          "target": {
+            "type": "repository"
+          },
+          "payload": {
+            "repo": "shilokuma-inc/askhub-sandbox"
+          },
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "nonce": "01JCN0NCE00000000000000002",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "sig": "Yv8BNQy-gqoiPhPhqYJO5wtHjr9QQmrAq4BEzHmSJan4AEP6nE7i6A6ROxDSg5rTO49m4FIUUlciH9Ji7ORFcA"
+      },
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "bodyMismatch"
+    },
+    {
+      "name": "tampered",
+      "value": {
+        "envelope": {
+          "v": 1,
+          "kind": "addRepository",
+          "target": {
+            "type": "repository"
+          },
+          "payload": {
+            "repo": "shilokuma-inc/other"
+          },
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "nonce": "01JCN0NCE00000000000000002",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y"
+        },
+        "sig": "FGPshgSHgW9z_Ulz9UbRtfTsAs6Xqv6-nFNufgXtz8tixt1ZlQXG2HGi4O4l62H_EWRPfU2fycn_dJ0mC8su7w"
+      },
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "badSignature"
+    },
+    {
+      "name": "untrusted-key",
+      "value": {
+        "envelope": {
+          "v": 1,
+          "kind": "addRepository",
+          "target": {
+            "type": "repository"
+          },
+          "payload": {
+            "repo": "shilokuma-inc/askhub-sandbox"
+          },
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "nonce": "01JCN0NCE00000000000000002",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y"
+        },
+        "sig": "FGPshgSHgW9z_Ulz9UbRtfTsAs6Xqv6-nFNufgXtz8tixt1ZlQXG2HGi4O4l62H_EWRPfU2fycn_dJ0mC8su7w"
+      },
+      "trustedKeys": [
+        "key2"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "unknownKey"
+    },
+    {
+      "name": "expired",
+      "value": {
+        "envelope": {
+          "v": 1,
+          "kind": "addRepository",
+          "target": {
+            "type": "repository"
+          },
+          "payload": {
+            "repo": "shilokuma-inc/askhub-sandbox"
+          },
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "nonce": "01JCN0NCE00000000000000002",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y"
+        },
+        "sig": "FGPshgSHgW9z_Ulz9UbRtfTsAs6Xqv6-nFNufgXtz8tixt1ZlQXG2HGi4O4l62H_EWRPfU2fycn_dJ0mC8su7w"
+      },
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-10T10:00:01Z",
+      "result": "expired"
+    },
+    {
+      "name": "missing-signature",
+      "value": {
+        "envelope": {
+          "v": 1,
+          "kind": "addRepository",
+          "target": {
+            "type": "repository"
+          },
+          "payload": {
+            "repo": "shilokuma-inc/askhub-sandbox"
+          },
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "nonce": "01JCN0NCE00000000000000002",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y"
+        }
+      },
+      "trustedKeys": [
+        "key1"
+      ],
+      "now": "2026-11-03T10:01:00Z",
+      "result": "malformed"
+    }
+  ]
+}

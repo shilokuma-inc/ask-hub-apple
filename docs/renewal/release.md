@@ -7,16 +7,16 @@
 | 順 | 段階 | するのは | 中身 |
 | --- | --- | --- | --- |
 | 1 | リリースを始める | 人 | バージョンを選ぶ（既定は次のマイナー） |
-| 2 | 準備 | 自動 | release ブランチを作り、develop のバージョンを次に上げ、最新情報の下書きを作り、Upload する |
+| 2 | 準備 | 自動 | release ブランチを作り、develop のバージョンを次に上げ（司令塔の PR）、最新情報の下書きを作り、Upload する |
 | 3 | 下書きとビルドの確認 | 人 | 最新情報・スクショの差分・その版の未確認の実機確認を確かめる |
 | 4 | 審査に出す | 人がボタンを押す | ワークフローが App Store Connect の API で提出する |
 | 5 | 審査の状態の見張り | 自動 | 審査中・承認・リジェクトをクライアントに出す |
 | 6 | 配信 | 既定は自動 | 承認されたら配信する（リリースごとに変えられる） |
-| 7 | 後作業 | 自動 | タグ・main と develop への取り込み・GitHub Release |
+| 7 | 後作業 | 自動 | main と develop への取り込み（司令塔の PR）・タグ・GitHub Release |
 
 ### バージョン
 
-- release ブランチを作ったら、develop の `MARKETING_VERSION` をすぐ次のバージョン（既定は次のマイナー）に上げる
+- release ブランチを作ったら、develop の `MARKETING_VERSION` をすぐ次のバージョン（既定は次のマイナー）に上げる。上げるコミットは、司令塔が PR にして、CI が通ったら自動でマージする（develop は保護されているので直接 push しない）
   - 審査に出すバージョンのビルドは、release ブランチからしか上がらなくなる。develop のビルドと取り違えない
   - develop の Upload が、配信済みのバージョンで失敗することもなくなる
   - 大きく上げたいとき（2.0.0 など）は、次のリリースを始めるときに選び直す
@@ -65,7 +65,8 @@
 | スクショ | リリースのとき、画面に差があるときだけ反映する（下の「App Store の素材」） |
 | App Store Connect の状態の読み取り | Linux のランナーの定期実行（30 分ごと）と、Upload・提出の直後 |
 
-- main では Upload も Archive も走らせない。main に入るのは release ブランチの先頭そのもので、後作業が CI を流してから取り込む
+- main では Upload も Archive も走らせない。main に入るのは release ブランチの先頭そのもの
+- 後作業の取り込み（release → main、release → develop）は、GitHub Actions の `GITHUB_TOKEN` では行わない。`GITHUB_TOKEN` はブランチ保護の例外に入れられず、既定では PR も作れないため（段階 0 で確認）。配信を見つけたら司令塔が PR を作り、CI が通ったら自動でマージする
 - 審査に出したビルドの dSYM は、Upload のときに App Store Connect に送り、クラッシュの解析はそちらに任せる
 - archive は、誰でも取れる場所に置かない。GitHub Release にも Actions の成果物（artifact）にも付けない（public のリポジトリでは誰でも取れるため）。GitHub のランナーで作った archive はジョブの終わりに消えるので、残したいときは手元の Mac に置く
 - App Store Connect の API の鍵は、今までどおり GitHub の Secrets（Environment の Secrets）に置く。読み取りは Linux のランナーで行うので、macOS のランナーの不足に左右されない

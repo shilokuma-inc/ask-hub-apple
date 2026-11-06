@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/self-check.schema.json",
+  "title": "起動したときの自己診断の結果",
+  "description": "mac.json と commander.json の selfCheck",
+  "type": "object",
+  "required": ["checkedAt", "keychain", "githubToken", "claudeToken"],
+  "additionalProperties": false,
+  "properties": {
+    "checkedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "keychain": { "$ref": "#/$defs/state" },
+    "githubToken": { "$ref": "#/$defs/state" },
+    "claudeToken": { "$ref": "#/$defs/state" },
+    "githubTokenExpiresAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }] },
+    "claudeTokenExpiresAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "setup-token は登録した日から 1 年" }
+  },
+  "$defs": {
+    "state": { "enum": ["ok", "missing", "invalid", "expired"] }
+  }
+}

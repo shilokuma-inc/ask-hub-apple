@@ -1,0 +1,1013 @@
+{
+  "description": "repos/<owner>/<repo>/epics/<epic>/goal.json（ゴール）を読む例。schemaValid は protocol/schemas/state/goal.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。知らない欄は、スキーマでは弾くが、読む側は読み飛ばす。スキーマで表せない決まり（欄どうしの関係・存在しない日付など）は、スキーマに合っても読む側が弾く",
+  "schema": "state/goal.schema.json",
+  "cases": [
+    {
+      "name": "full",
+      "value": {
+        "v": 1,
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h1",
+            "title": "App Store Connect で課金のアイテムを作る",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [
+              "https://appstoreconnect.apple.com/"
+            ],
+            "handover": {
+              "kind": "none"
+            },
+            "state": "pending"
+          },
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "secret",
+              "name": "ADS_API_KEY"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "minimal",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "…",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": [
+          "…"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "…",
+            "dependsOn": [],
+            "state": "pending"
+          }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "value": {
+        "v": 1,
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h1",
+            "title": "App Store Connect で課金のアイテムを作る",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [
+              "https://appstoreconnect.apple.com/"
+            ],
+            "handover": {
+              "kind": "none"
+            },
+            "state": "pending"
+          },
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "secret",
+              "name": "ADS_API_KEY"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC",
+        "futureField": 1
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "future-version",
+      "value": {
+        "v": 2,
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h1",
+            "title": "App Store Connect で課金のアイテムを作る",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [
+              "https://appstoreconnect.apple.com/"
+            ],
+            "handover": {
+              "kind": "none"
+            },
+            "state": "pending"
+          },
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "secret",
+              "name": "ADS_API_KEY"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    },
+    {
+      "name": "missing-version",
+      "value": {
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h1",
+            "title": "App Store Connect で課金のアイテムを作る",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [
+              "https://appstoreconnect.apple.com/"
+            ],
+            "handover": {
+              "kind": "none"
+            },
+            "state": "pending"
+          },
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "secret",
+              "name": "ADS_API_KEY"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": false,
+      "read": "missingVersion"
+    },
+    {
+      "name": "version-not-integer",
+      "value": {
+        "v": "1",
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h1",
+            "title": "App Store Connect で課金のアイテムを作る",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [
+              "https://appstoreconnect.apple.com/"
+            ],
+            "handover": {
+              "kind": "none"
+            },
+            "state": "pending"
+          },
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "secret",
+              "name": "ADS_API_KEY"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "no-tasks",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "…",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": [
+          "…"
+        ],
+        "tasks": [],
+        "humanTasks": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "no-done-when",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "…",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": [],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "…",
+            "dependsOn": [],
+            "state": "pending"
+          }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-task-state",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "…",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": [
+          "…"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "…",
+            "dependsOn": [],
+            "state": "blocked"
+          }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "task-depends-on-missing",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "…",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": [
+          "…"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "…",
+            "dependsOn": [
+              "h9"
+            ],
+            "state": "pending"
+          }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "task-cycle",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "…",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": [
+          "…"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "…",
+            "dependsOn": [
+              "t2"
+            ],
+            "state": "pending"
+          },
+          {
+            "id": "t2",
+            "title": "…",
+            "dependsOn": [
+              "t1"
+            ],
+            "state": "pending"
+          }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "duplicate-id-across",
+      "value": {
+        "v": 1,
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "t1",
+            "title": "App Store Connect で課金のアイテムを作る",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [
+              "https://appstoreconnect.apple.com/"
+            ],
+            "handover": {
+              "kind": "none"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "secret-without-name",
+      "value": {
+        "v": 1,
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "secret"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "secret-name-lowercase",
+      "value": {
+        "v": 1,
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "secret",
+              "name": "ads_api_key"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "secret-name-github-prefix",
+      "value": {
+        "v": 1,
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "secret",
+              "name": "GITHUB_TOKEN"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "secret-name-starts-with-digit",
+      "value": {
+        "v": 1,
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "secret",
+              "name": "1KEY"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "name-without-secret",
+      "value": {
+        "v": 1,
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "file",
+              "name": "ADS_API_KEY"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-handover",
+      "value": {
+        "v": 1,
+        "version": 2,
+        "summary": "ランキングを日ごとに入れ替える",
+        "decided": [
+          {
+            "question": "q1",
+            "text": "日ごとに入れ替える"
+          },
+          {
+            "question": "q2",
+            "text": "週ごとの締めは月曜にする"
+          }
+        ],
+        "outOfScope": [
+          "週ごとの集計"
+        ],
+        "doneWhen": [
+          "毎日 0 時に入れ替わる"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "集計を作る",
+            "detail": "…",
+            "dependsOn": [],
+            "state": "done"
+          },
+          {
+            "id": "t2",
+            "title": "課金の画面",
+            "dependsOn": [
+              "t1",
+              "h1"
+            ],
+            "state": "locked"
+          }
+        ],
+        "humanTasks": [
+          {
+            "id": "h2",
+            "title": "広告の API キーを入れる",
+            "why": "…",
+            "steps": [
+              "…"
+            ],
+            "links": [],
+            "handover": {
+              "kind": "email"
+            },
+            "state": "pending"
+          }
+        ],
+        "comment": "DC_kwDOAbCdEf4AAAAC"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "with-not-applied",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "…",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": [
+          "…"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "…",
+            "dependsOn": [],
+            "state": "pending"
+          }
+        ],
+        "humanTasks": [],
+        "notApplied": [
+          "q1 を変える指示は、回答を変えて直す"
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "not-applied-empty-line",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "…",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": [
+          "…"
+        ],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "…",
+            "dependsOn": [],
+            "state": "pending"
+          }
+        ],
+        "humanTasks": [],
+        "notApplied": [
+          ""
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

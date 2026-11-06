@@ -67,6 +67,8 @@
   `release/…` だけに絞れる（付けないと `release-x` も合う）。`refs/heads/`・`refs/tags/` を付けた名前で返る
 - Contents API（`GET /repos/{owner}/{repo}/contents/{path}?ref=…`）の `content` は base64 を 60 文字ごとに改行した文字列。Swift では
   `Data(base64Encoded:options: .ignoreUnknownCharacters)` で読む。ファイルもブランチも無ければ 404 で、ディレクトリなら配列が返る
+- Contents API の書き込み（`PUT /repos/{owner}/{repo}/contents/{path}`）は、すでにあるファイルを `sha` なしで書くと 422（本文に `"sha" wasn't supplied`）、古い `sha` を付けると 409 を返す。
+  返る `content.sha` は Git の blob の sha（`git hash-object` と同じ）。読み取りに `If-None-Match` で ETag を付けると、変わっていなければ 304 が返る（2026-11-03、`AskHubStateStore` の `LiveGitHubContentsStoreTests` で確かめた）
 - ジョブの `env:` では `runner` コンテキスト（`${{ runner.temp }}`）を使えない（actionlint が「context "runner" is not allowed here」で落とす。ステップの `env:` では使える）。
   ジョブ全体で使うパスは、最初のステップで `echo "NAME=$RUNNER_TEMP/…" >> "$GITHUB_ENV"` で渡す
 - GitHub の PR のマージコミットは、件名が `Merge pull request #N from <owner>/<branch>`、本文の 1 行目が PR のタイトル（既定のとき）。
@@ -105,9 +107,17 @@
 - 移管・改名されたリポジトリを旧名の REST（`repos/{旧owner}/{repo}/…`）で操作すると、GitHub のリダイレクトを URLSession が送り直すときに `Authorization` が付かず、
   書き込みは `401 Requires authentication`、読み取りは未認証扱い（IP ごとに 60 回/時）で `rateLimited` になった。検索は新しい名前で返すので、名前で照合する処理は黙って外れる。
   GraphQL の `repository(owner:, name:)` は旧名でも移管・改名の後のリポジトリ（`nameWithOwner` が新しい名前）を返すので、今の名前はこれで確かめる（2026-10-27、Issue #757）
+- Contents API のディレクトリの一覧は 1,000 件までで、続きを読む方法が無い。人の意図のように増え続けるディレクトリは、親の一覧からディレクトリの tree の sha を読み、
+  Git Trees API（`git/trees/<sha>?recursive=1`。10 万件・7 MB まで。超えると `truncated` が true）で下まで 1 度に読む。tree は sha で中身が決まるので、ETag で使い回せる（2026-11-06）
+- Contents API で 1 MB を超え 100 MB 以下のファイルを既定のメディアタイプ（`application/vnd.github+json`）で読むと、エラーにならず `encoding: "none"`・`content: ""` で返る（`object` のメディアタイプと同じ。2026-11 に 1.4 MB のファイルで実測）。
+  中身は `application/vnd.github.raw+json` で読み直す。100 MB を超えるファイルは Contents API では読めない（GitHub の文書）。`object` に切り替えると、ディレクトリが配列ではなく `entries` を持つ object で返るので、一覧の処理が壊れる（2026-11-06）
+- git の設定は、`GIT_CONFIG_COUNT`・`GIT_CONFIG_KEY_<n>`・`GIT_CONFIG_VALUE_<n>` の環境変数でファイルに書かずに渡せる（`core.hooksPath=/dev/null`・`credential.helper` など）。`GIT_CONFIG_GLOBAL=/dev/null`・`GIT_CONFIG_NOSYSTEM=1` で人の設定を読まない。
+  `clone --filter=blob:none --no-checkout` の後に `worktree add --detach <path> origin/HEAD` で取り出すと、要るファイルだけを取りにいく。資格情報の無い private リポジトリは、`GIT_TERMINAL_PROMPT=0` のとき `could not read Username for 'https://github.com': terminal prompts disabled` で失敗する（Apple Git 2.54 で確かめた。2026-11-06）
 
 ## ビルド・テスト
 
+- このリポジトリの CI（Build）は、PR を開いたときの回だけ iOS Simulator の UI テストを流し、25〜40 分かかる（push の回は Unit テストだけで数分）。
+  `Build and test on iOS Simulator` の手順が 20 分以上進まなくても、止まっているとは限らない。上限の 45 分までは取り消さずに待つ（2026-11-03、#834）
 - Simulator は OS 更新で `iPhone 17 Pro (6.3inch/1206x2622)` のように改名されることがある。
   名前で解決できないときは `xcrun simctl list devices available` で UDID を調べて `id=` で指定する
 - 複数の worktree で同時に `xcodebuild` を流すときは、`-derivedDataPath` を worktree ごとに分ける。
@@ -298,6 +308,11 @@
 - Swift Testing の `#expect(items.allSatisfy(\.isDone))` のように、キーパスを渡した `allSatisfy` などの rethrows の呼び出しをマクロの中に書くと、
   展開の後に「call can throw, but it is not marked with 'try'」でビルドが止まる。結果を `let` で受けてから `#expect` に渡す（2026-11-03、リニューアルの UI）
 
+- `NSRegularExpression`（ICU）の `$` は、複数行の指定が無くても、末尾の改行の前で合う（`^[a-z/]+$` が `"a/b\n"` に合う）。Python でも同じことを確かめた。Java の `Pattern` も文書上は同じで、ECMAScript だけが合わない（Kotlin のクライアントの検証で効く）。
+  JSON Schema の `pattern` で値を区切るときは、長さの決まった値は `maxLength` を足し、そうでない値は `"not": { "pattern": "\\n" }` で改行を弾く（`protocol/schemas`。2026-11-03、#835）
+- 型つきの throws（`throws(E)`）の関数に閉包を渡すときは、閉包の型が推論されず `any Error` になる。`{ () async throws(E) -> T in … }` と書き、
+  閉包の中の `do` も `do throws(E) { … }` と書く（書かないと `catch` の `error` が `any Error` になり、`.case(error)` に渡せない）（2026-11-03、`StateFileStore`）
+
 ## シェルスクリプト
 
 - bash で `"$CONFIG（…）"` のように変数の直後に全角文字を書くと、バイト単位で変数名の一部と読まれ、`set -u` で unbound variable になる。
@@ -338,6 +353,8 @@
   `url.<bare のパス>.insteadOf` で書き換え、`GIT_ALLOW_PROTOCOL=file` を付けて流す。書き換えが漏れても https に出られないので、本物の GitHub に push しない
 - macOS の `zipinfo` は、ロケールが C（launchd から起動したときの既定）だと UTF-8 の名前を `??` と出す（`LC_ALL=en_US.UTF-8` なら出る）。`unzip` は名前の引数をワイルドカードとして扱い
   （`a[1].txt` を渡すと「filename not matched」）、名前の位置の `-d` などもオプションとして読む。`[` `]` `*` `?` と先頭の `-` の前に `\` を付けると一致する。macOS の `zip` は UTF-8 の名前でも汎用フラグの bit 11 を立てない
+- `claude -p --output-format json --json-schema '<schema>'` の結果では、決めた形の値が `structured_output` に入り（`result` は同じ内容の文字列）、実際に使われたモデルは `modelUsage` のキーで分かる。
+  `--resume <session_id>` で再開した呼び出しの `total_cost_usd` と `modelUsage` の数は、その会話全体の累計（再開するたびに足すと二重に数える）。最後の結果の値を使う（2026-11-04、claude 2.1.317 で確かめた）
 
 ## SwiftUI
 
