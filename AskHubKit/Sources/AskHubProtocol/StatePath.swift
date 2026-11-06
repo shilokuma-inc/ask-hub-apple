@@ -68,10 +68,13 @@ public enum StatePath {
         "devices/\(device).json"
     }
 
+    /// 公開鍵の記録を置くディレクトリ
+    public static let keys = "keys"
+
     /// 公開鍵の記録（`seq` は 1 から）
     public static func key(seq: Int) -> String {
         precondition(seq >= 1, "公開鍵の記録の番号は 1 から")
-        return "keys/\(seq).json"
+        return "\(keys)/\(seq).json"
     }
 
     /// 公開のスレッドに置かない人の意図
