@@ -167,6 +167,8 @@ extension ClaudeJobRunnerTests {
             .accepted(kind: "decideSplit")
         ])
         #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .checking)
+        // 決めたことは確認の結果に残る（確認のジョブが取り消されても、後の確認に引き継ぐ）
+        #expect(try await read(ReadinessFile.self, at: StatePath.readiness(Self.repo, epic.id), in: store)?.proceeding == true)
         let job = try #require(try await jobs(epic.id, in: store).first { $0.input?["proceed"] == .bool(true) })
         #expect(job.kind == .checkReadiness)
         // 大きすぎると返したら、同じ会話でゴールを作らせ直す
