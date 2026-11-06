@@ -36,6 +36,18 @@ public struct ClaudeJobRunner: Sendable {
     }
 
     public func run(_ job: JobFile) async throws(CommanderError) -> ClaudeJobOutcome {
+        let result: Result<ClaudeJobOutcome, CommanderError>
+        do {
+            result = .success(try await dispatch(job))
+        } catch {
+            result = .failure(error)
+        }
+        // 写しと添付は、結果を書いても捨てても片付ける
+        await workspace.release(job.id)
+        return try result.get()
+    }
+
+    private func dispatch(_ job: JobFile) async throws(CommanderError) -> ClaudeJobOutcome {
         guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(job.repo, job.epic)) else {
             return .discarded("epic が無い", nil)
         }
@@ -55,16 +67,16 @@ public struct ClaudeJobRunner: Sendable {
     // MARK: - 共通
 
     /// 作業場所を用意して Claude に頼む
-    func ask<Job: ClaudeJob>(_ claudeJob: Job, for epic: EpicFile, attachments: URL? = nil) async -> ClaudeReply<Job.Output> {
+    func ask<Job: ClaudeJob>(_ claudeJob: Job, for job: JobFile, attachments: URL? = nil) async -> ClaudeReply<Job.Output> {
         let prepared: PreparedWorkspace
         do {
-            prepared = try await workspace.prepare(epic.repo)
+            prepared = try await workspace.prepare(job.repo, for: job.id)
         } catch {
             return .failed(error.attemptFailure, nil)
         }
         return await claudeJob.ask(
             using: client,
-            repository: epic.repo,
+            repository: job.repo,
             facts: prepared.facts,
             workingDirectory: prepared.directory,
             additionalDirectories: attachments.map { [$0] } ?? [],
@@ -126,7 +138,7 @@ extension ClaudeJobRunner {
             return .failed(error.attemptFailure, nil)
         }
         let claudeJob = MakeQuestionsJob(title: request.title, body: request.body, attachments: placed?.paths ?? [])
-        switch await ask(claudeJob, for: epic, attachments: placed?.directory) {
+        switch await ask(claudeJob, for: job, attachments: placed?.directory) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):
@@ -168,7 +180,7 @@ extension ClaudeJobRunner {
         guard let questions = try await context.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)) else {
             return .discarded("質問の一覧が無い", nil)
         }
-        switch await ask(ExplainJob(questions: questions, question: question, asked: asked), for: epic) {
+        switch await ask(ExplainJob(questions: questions, question: question, asked: asked), for: job) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):
@@ -188,7 +200,7 @@ extension ClaudeJobRunner {
             return .discarded("質問の一覧が無い", nil)
         }
         let claudeJob = ReviseQuestionJob(questions: questions, question: question, basis: basis)
-        switch await ask(claudeJob, for: epic) {
+        switch await ask(claudeJob, for: job) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):
