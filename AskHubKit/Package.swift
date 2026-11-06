@@ -29,6 +29,8 @@ let package = Package(
         .library(name: "AskHubCommander", targets: ["AskHubCommander"]),
         // macOS で launchd から常駐させる CLI。アプリからは使わない
         .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
+        // リニューアルの司令塔（常時オンの Mac で LaunchAgent として常駐させる CLI）
+        .executable(name: "askhub-commander", targets: ["askhub-commander"]),
     ],
     targets: [
         .target(name: "AskHubKit"),
@@ -40,10 +42,17 @@ let package = Package(
         .target(name: "AskHubEpics", dependencies: ["AskHubProtocol"]),
         .target(name: "AskHubCommands"),
         .target(name: "AskHubClaude", dependencies: ["AskHubCommands", "AskHubProtocol"]),
-        .target(name: "AskHubCommander", dependencies: ["AskHubClaude", "AskHubEpics", "AskHubJobs", "AskHubProtocol", "AskHubStateStore"]),
+        .target(
+            name: "AskHubCommander",
+            dependencies: ["AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubJobs", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
+        ),
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
+        .executableTarget(
+            name: "askhub-commander",
+            dependencies: ["AskHubClaude", "AskHubCommander", "AskHubCommands", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
+        ),
         .testTarget(name: "AskHubKitTests", dependencies: ["AskHubKit"]),
         .testTarget(name: "AskHubProtocolTests", dependencies: ["AskHubProtocol"]),
         .testTarget(name: "AskHubStateStoreTests", dependencies: ["AskHubStateStore", "AskHubProtocol"]),
@@ -54,7 +63,7 @@ let package = Package(
         .testTarget(name: "AskHubClaudeTests", dependencies: ["AskHubClaude", "AskHubCommands", "AskHubProtocol"]),
         .testTarget(
             name: "AskHubCommanderTests",
-            dependencies: ["AskHubCommander", "AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubProtocol", "AskHubStateStore"]
+            dependencies: ["AskHubCommander", "AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
         ),
         .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]

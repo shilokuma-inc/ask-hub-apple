@@ -95,6 +95,8 @@ extension CommanderError {
             AttemptFailure(failureClass: .githubOutage, message: "状態リポジトリの書き込みがぶつかり続けた")
         case let .changedWhileProcessing(path):
             AttemptFailure(failureClass: .flaky, message: "処理の途中で \(path) が変わった")
+        case let .untrustedKeys(detail):
+            AttemptFailure(failureClass: .unexpected, message: "公開鍵の一覧を信用できない（\(detail)）")
         case let .files(failure):
             AttemptFailure(failureClass: .unexpected, message: "状態リポジトリのファイルを扱えない（\(failure)）")
         }
