@@ -18,10 +18,12 @@ extension ClaudeJobRunner {
     /// 1 つの epic に収まらなければ分け方の判断を待つ
     func checkReadiness(_ job: JobFile, epic: EpicFile) async throws(CommanderError) -> ClaudeJobOutcome {
         guard epic.stage == .checking else { return .discarded("epic はもう着手前の確認の段階でない", nil) }
-        let questions = try await questionsFile(of: epic)
+        guard let questions = try await questionsFile(of: epic) else { return Self.missingQuestions }
         // 前の試行で追加の質問まで書き、回答に戻す前に止まった。続きを書いて終える
         if !questions.questions.allSatisfy(\.state.isSettled), let origin = job.origin {
-            try await context.perform([.reopen], for: epic, origin: origin, after: [job.id])
+            try await context.lock.withLock { () throws(CommanderError) in
+                try await context.perform([.reopen], for: epic, origin: origin, after: [job.id])
+            }
             return .discarded("前の試行で足した追加の質問の続きを書いた（回答に戻した）", nil)
         }
         guard let envelope = try await envelope(of: epic.origin), let request = try? RequestIntent(envelope: envelope) else {
@@ -47,11 +49,6 @@ extension ClaudeJobRunner {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):
-            // 頼んだ後に人が答え直した（回答に戻った）・epic が先に進んだときは捨てる
-            let latest = try await context.read(EpicFile.self, at: StatePath.epic(epic.repo, epic.id))
-            guard latest?.stage == .checking, try await questionsFile(of: epic) == questions else {
-                return .discarded("頼んだ後に epic か質問の一覧が変わった", session)
-            }
             let result: ReadinessResult
             do throws(QuestionFlow.ResultError) {
                 result = try Self.result(of: output, for: claudeJob)
@@ -59,8 +56,14 @@ extension ClaudeJobRunner {
                 return .failed(AttemptFailure(failureClass: .unexpected, message: "着手前の確認の結果を当てられない（\(error)）"), session)
             }
             let readiness = Self.readiness(of: output, for: claudeJob, at: context.timestamp)
-            try await write(result, readiness: readiness, questions: questions, of: epic, by: job)
-            return .written(session)
+            // 読み直してから書き終えるまでに、人の答え直しが割り込まないようにする
+            return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+                guard try await stillWanted(job, stages: [.checking]) != nil, try await questionsFile(of: epic) == questions else {
+                    return .discarded("頼んだ後に epic か質問の一覧が変わった", session)
+                }
+                try await write(result, readiness: readiness, questions: questions, of: epic, by: job)
+                return .written(session)
+            }
         }
     }
 
@@ -140,7 +143,7 @@ extension ClaudeJobRunner {
         guard let goal = try await context.read(GoalFile.self, at: goalPath), goal.version == version else {
             return .discarded("頼んだ後にゴールが直された", nil)
         }
-        let questions = try await questionsFile(of: epic)
+        guard let questions = try await questionsFile(of: epic) else { return Self.missingQuestions }
         switch await ask(ReviseGoalJob(goal: goal, questions: questions, instruction: instruction), for: epic) {
         case let .failed(failure, session):
             return .failed(failure, session)
@@ -152,11 +155,14 @@ extension ClaudeJobRunner {
                 return .failed(AttemptFailure(failureClass: .unexpected, message: "直したゴールを作れない（\(error)）"), session)
             }
             revised.notApplied = output.notApplied.isEmpty ? nil : output.notApplied
-            guard try await context.read(EpicFile.self, at: StatePath.epic(epic.repo, epic.id))?.stage == .awaitingStart,
-                  try await questionsFile(of: epic) == questions else {
-                return .discarded("頼んだ後に epic が先に進んだ・回答に戻った", session)
+            let goalToWrite = revised
+            return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+                guard try await stillWanted(job, stages: [.awaitingStart]) != nil, try await questionsFile(of: epic) == questions else {
+                    return .discarded("頼んだ後に epic が先に進んだ・回答に戻った", session)
+                }
+                let written = try await write(goalToWrite, replacing: version, at: goalPath)
+                return written ? .written(session) : .discarded("頼んだ後にゴールが直された", session)
             }
-            return try await write(revised, replacing: version, at: goalPath) ? .written(session) : .discarded("頼んだ後にゴールが直された", session)
         }
     }
 
@@ -180,10 +186,13 @@ extension ClaudeJobRunner {
 // MARK: - 共通
 
 extension ClaudeJobRunner {
-    /// 質問の一覧。質問が 1 つも無かった依頼でも、質問づくりのときに空の一覧を作る
-    func questionsFile(of epic: EpicFile) async throws(CommanderError) -> QuestionsFile {
-        try await context.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)) ?? QuestionsFile(questions: [])
+    /// 質問の一覧。質問が 1 つも無かった依頼でも、質問づくりのときに空の一覧を作るので、無ければ状態が壊れている
+    func questionsFile(of epic: EpicFile) async throws(CommanderError) -> QuestionsFile? {
+        try await context.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id))
     }
+
+    /// 質問の一覧が無い（回答を欠いたゴールを作らないよう、止めて人に渡す）
+    static let missingQuestions = ClaudeJobOutcome.failed(AttemptFailure(failureClass: .unexpected, message: "質問の一覧が無い"), nil)
 
     /// ファイルが無ければ作り、あれば前の中身から作った新しい中身で置き換える
     func replace<File: StateFile>(at path: String, message: String, next: @escaping (File?) -> File) async throws(CommanderError) {

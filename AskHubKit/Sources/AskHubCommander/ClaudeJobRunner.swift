@@ -89,6 +89,16 @@ public struct ClaudeJobRunner: Sendable {
         return envelope
     }
 
+    /// 結果を書く直前に読み直した epic。epic の段階が `stages` から外れた・ジョブが取り消されたときは nil（結果を捨てる）。
+    /// `context.lock` の中で呼ぶ
+    func stillWanted(_ job: JobFile, stages: Set<EpicStage>) async throws(CommanderError) -> EpicFile? {
+        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(job.repo, job.epic)), stages.contains(epic.stage),
+              try await context.read(JobFile.self, at: StatePath.job(job.repo, epic: job.epic, job: job.id))?.state != .canceled else {
+            return nil
+        }
+        return epic
+    }
+
     /// ジョブの入力の欄を、決まった型で読む
     static func input<Value: Decodable>(_ name: String, of job: JobFile, as type: Value.Type) -> Value? {
         guard let value = job.input?[name] else { return nil }
@@ -126,18 +136,26 @@ extension ClaudeJobRunner {
             } catch {
                 return .failed(AttemptFailure(failureClass: .unexpected, message: "質問の一覧を作れない（\(error)）"), session)
             }
-            let written = try await createQuestions(change.questions, of: epic)
-            // 前の周で質問の一覧まで書いていたら、そのときの一覧から進め方を決める
-            let effects = written == change.questions ? change.effects : (written.questions.isEmpty ? [.checkReadiness] : [])
-            if effects.contains(.checkReadiness), let origin = job.origin {
-                let check = context.claudeJob(.checkReadiness, for: epic, origin: origin, seed: "", input: [:], after: [job.id])
-                try await context.create(check)
+            return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+                guard try await stillWanted(job, stages: [.drafting]) != nil else {
+                    return .discarded("頼んだ後に epic がやめられた・先に進んだ", session)
+                }
+                try await write(change, summary: output.summary, of: epic, by: job)
+                return .written(session)
             }
-            let summary = output.summary
-            try await context.setStage(effects.contains(.checkReadiness) ? .checking : .asking, of: epic, from: [.drafting]) {
-                $0.summary = summary
-            }
-            return .written(session)
+        }
+    }
+
+    /// 質問づくりの結果を書く。書く順は、質問の一覧 → ジョブ → epic
+    private func write(_ change: QuestionFlow.Change, summary: String, of epic: EpicFile, by job: JobFile) async throws(CommanderError) {
+        let written = try await createQuestions(change.questions, of: epic)
+        // 前の周で質問の一覧まで書いていたら、そのときの一覧から進め方を決める
+        let effects = written == change.questions ? change.effects : (written.questions.isEmpty ? [.checkReadiness] : [])
+        if effects.contains(.checkReadiness), let origin = job.origin {
+            try await context.create(context.claudeJob(.checkReadiness, for: epic, origin: origin, seed: "", input: [:], after: [job.id]))
+        }
+        try await context.setStage(effects.contains(.checkReadiness) ? .checking : .asking, of: epic, from: [.drafting]) {
+            $0.summary = summary
         }
     }
 
@@ -189,20 +207,25 @@ extension ClaudeJobRunner {
         session: ClaudeSession,
         _ change: (QuestionsFile) throws(QuestionFlow.ResultError) -> QuestionFlow.Change
     ) async throws(CommanderError) -> ClaudeJobOutcome {
-        guard let latest = try await context.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)) else {
-            return .discarded("質問の一覧が無い", session)
+        try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+            guard try await stillWanted(job, stages: CommanderContext.planningStages) != nil else {
+                return .discarded("頼んだ後に epic が開始した・やめられた", session)
+            }
+            guard let latest = try await context.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)) else {
+                return .discarded("質問の一覧が無い", session)
+            }
+            let result: QuestionFlow.Change
+            do throws(QuestionFlow.ResultError) {
+                result = try change(latest)
+            } catch .stale {
+                return .discarded("頼んだ後に質問の一覧が変わった", session)
+            } catch {
+                return .failed(AttemptFailure(failureClass: .unexpected, message: "Claude の結果を当てられない（\(error)）"), session)
+            }
+            if let origin = job.origin { try await context.perform(result.effects, for: epic, origin: origin, after: [job.id]) }
+            try await context.write(result.questions, replacing: latest, of: epic, message: "Claude の結果を書く")
+            return .written(session)
         }
-        let result: QuestionFlow.Change
-        do throws(QuestionFlow.ResultError) {
-            result = try change(latest)
-        } catch .stale {
-            return .discarded("頼んだ後に質問の一覧が変わった", session)
-        } catch {
-            return .failed(AttemptFailure(failureClass: .unexpected, message: "Claude の結果を当てられない（\(error)）"), session)
-        }
-        if let origin = job.origin { try await context.perform(result.effects, for: epic, origin: origin, after: [job.id]) }
-        try await context.write(result.questions, replacing: latest, of: epic, message: "Claude の結果を書く")
-        return .written(session)
     }
 
     /// 質問の一覧を作る。前の周で作っていれば、そのときの一覧を返す
