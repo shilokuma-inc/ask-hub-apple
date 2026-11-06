@@ -58,15 +58,18 @@ public struct CheckReadinessJob: ClaudeJob {
     public var title: String
     public var body: String
     public var questions: QuestionsFile
+    /// 添付を置いた場所（Claude が読んでよいフォルダの中のパス）
+    public var attachments: [String]
     /// 追加の質問を出すときの回（今までの最も新しい回の次）
     public var nextRound: Int
     /// 人が分け方の判断で「このまま 1 つで進める」を選んだ後の確認。大きすぎるとは返させない（追加の質問は、回が残っていれば出せる）
     public var proceeding: Bool
 
-    public init(title: String, body: String, questions: QuestionsFile, proceeding: Bool = false) {
+    public init(title: String, body: String, questions: QuestionsFile, attachments: [String] = [], proceeding: Bool = false) {
         self.title = title
         self.body = body
         self.questions = questions
+        self.attachments = attachments
         self.proceeding = proceeding
         // 最初の質問づくりは、質問が 1 つも無くても 1 回目と数える
         nextRound = (questions.questions.map(\.round).max() ?? 1) + 1
@@ -85,6 +88,7 @@ public struct CheckReadinessJob: ClaudeJob {
         <request>
         \(body)
         </request>
+        添付: \(attachments.isEmpty ? "なし" : attachments.joined(separator: "、") + "（依頼に付いていたファイル。必要なら読む）")
 
         ## 人が決めたこと
         \(decisions.isEmpty ? "（質問は無かった）" : decisions.joined(separator: "\n\n"))
@@ -159,6 +163,7 @@ public struct CheckReadinessJob: ClaudeJob {
         guard canAskMore else { return ["追加の質問はもう出せない。" + (proceeding ? "ready にする" : "ready か tooLarge にする")] }
         guard let drafts, !drafts.isEmpty else { return ["verdict が moreQuestions なのに、questions が無い"] }
         var problems = drafts.compactMap { optionCountProblem(id: $0.id, count: $0.options.count) }
+        if drafts.count > MakeQuestionsJob.maximumQuestions { problems.append("追加の質問は \(MakeQuestionsJob.maximumQuestions) 個まで") }
         do throws(QuestionFlow.ResultError) {
             _ = try QuestionFlow.append(drafts, round: nextRound, to: questions)
         } catch let .invalid(found) {
@@ -226,13 +231,19 @@ public struct ReviseGoalJob: ClaudeJob {
 
         ## 決まり
         - 人が決めたことを変える指示は、ゴールでは変えない（決めたことは、人が回答を変えて直す）。反映しなかった指示は、理由とあわせて notApplied に書く
-        - decided には、回答した質問をすべて、質問の id ごとに 1 つずつ書く
+        - decided は、今のゴールのものをそのまま書き写す（変えない）
         - タスクの id は t1・t2・…、人がする作業の id は h1・h2・…。リンクは https だけ。Secrets の値は書かない
         """
     }
 
     public func problems(in output: Output) -> [String] {
-        goalProblems(output.goal, questions: questions)
+        var problems = goalProblems(output.goal, questions: questions)
+        // 決まったことは回答から来ているので、ゴールの修正では変えない（変える指示は notApplied に書く）
+        if output.goal.decided != goal.decided { problems.append("決まったこと（decided）は変えない。変える指示は notApplied に書く") }
+        if output.notApplied.contains(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            problems.append("notApplied に空の行がある")
+        }
+        return problems
     }
 }
 

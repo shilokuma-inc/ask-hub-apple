@@ -9,11 +9,19 @@ public struct CommanderContext: Sendable {
     /// 司令塔が動く常時オンの Mac。質問づくり・説明・見直し・着手前の確認のジョブは、この Mac に割り当てる
     public var mac: MacName
     public var now: @Sendable () -> Date
+    /// 人の意図の処理と、Claude のジョブの結果を書く処理を 1 つずつにする（コピーしても同じものを使う）
+    public let lock: CommanderLock
 
-    public init(store: any StateStore, mac: MacName, now: @escaping @Sendable () -> Date = Date.init) {
+    public init(
+        store: any StateStore,
+        mac: MacName,
+        lock: CommanderLock = CommanderLock(),
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.store = store
         files = StateFileStore(store: store)
         self.mac = mac
+        self.lock = lock
         self.now = now
     }
 

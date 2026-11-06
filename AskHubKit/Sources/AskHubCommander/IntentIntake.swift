@@ -95,9 +95,12 @@ public struct IntentIntake: Sendable {
         // 置き場所と封筒が食い違う意図は、別の端末・番号のものとして扱わない
         guard envelope.keyId == intent.device, envelope.nonce == intent.nonce else { return .ignored(reason: "置き場所と封筒が合わない") }
         guard let handler = handlers[envelope.kind] else { return .ignored(reason: "まだ扱えない種類（\(envelope.kind)）") }
-        let decision = try await handler.handle(envelope, in: context)
-        if case let .ignore(reason) = decision { return .ignored(reason: reason) }
-        return try await record(intent, kind: envelope.kind, decision: decision)
+        // Claude のジョブの結果を書く処理と、1 つずつ行う
+        return try await context.lock.withLock { () throws(CommanderError) -> IntakeOutcome in
+            let decision = try await handler.handle(envelope, in: context)
+            if case let .ignore(reason) = decision { return .ignored(reason: reason) }
+            return try await record(intent, kind: envelope.kind, decision: decision)
+        }
     }
 
     /// 処理した記録を、版なしで作る。すでにあれば（ほかの周で書いた）そのまま

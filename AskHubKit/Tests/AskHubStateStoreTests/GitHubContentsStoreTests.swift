@@ -159,6 +159,32 @@ struct GitHubContentsStoreTests {
         #expect(urls.last?.hasSuffix("/git/trees/abc123") == true)
     }
 
+    @Test func listAllFindsDirectoryBeyondContentsListLimit() async throws {
+        // 親の一覧が 1,000 件で切れて目的のディレクトリが載っていなければ、親の直下を Git Trees API で読み直して探す
+        let crowded = (0..<1_000).map { #"{"type":"dir","name":"j\#($0)","path":"a/b/j\#($0)","sha":"x\#($0)"}"# }
+        let grandparent = #"[{"type":"dir","name":"b","path":"a/b","sha":"bbb111"}]"#
+        let parentTree = #"{"sha":"bbb111","truncated":false,"tree":[{"path":"target","type":"tree","sha":"ccc222"}]}"#
+        let targetTree = #"{"sha":"ccc222","truncated":false,"tree":[{"path":"1.json","type":"blob","sha":"s1"}]}"#
+        let transport = StubTransport([
+            .json(200, "[\(crowded.joined(separator: ","))]"), .json(200, grandparent), .json(200, parentTree), .json(200, targetTree)
+        ])
+        let entries = try await store(transport).listAll("a/b/target")
+        #expect(entries == [DirectoryEntry(name: "1.json", path: "a/b/target/1.json", kind: .file, sha: "s1")])
+    }
+
+    @Test func treeCacheIsKeptPerDirectory() async throws {
+        // 同じ中身の tree が別のディレクトリにあっても、前のディレクトリのパスの一覧を使い回さない
+        let root = #"[{"type":"dir","name":"x","path":"x","sha":"ddd333"},{"type":"dir","name":"y","path":"y","sha":"ddd333"}]"#
+        let tree = #"{"sha":"ddd333","truncated":false,"tree":[{"path":"1.json","type":"blob","sha":"s1"}]}"#
+        let transport = StubTransport([
+            .json(200, root), .json(200, tree, headers: ["ETag": "\"e1\""]), .json(200, root), .json(200, tree, headers: ["ETag": "\"e1\""])
+        ])
+        let store = store(transport)
+        #expect(try await store.listAll("x")?.map(\.path) == ["x/1.json"])
+        #expect(try await store.listAll("y")?.map(\.path) == ["y/1.json"])
+        #expect(transport.requests.last?.value(forHTTPHeaderField: "If-None-Match") == nil)
+    }
+
     @Test func listFilesRefusesTruncatedTreeAndReportsMissingDirectory() async throws {
         let root = #"[{"type":"dir","name":"intents","path":"intents","sha":"abc123"}]"#
         let truncated = #"{"sha":"abc123","truncated":true,"tree":[]}"#
