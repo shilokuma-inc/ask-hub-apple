@@ -63,10 +63,12 @@ extension ClaudeJobRunner {
             let readiness = Self.readiness(of: output, for: claudeJob, at: context.timestamp)
             // 読み直してから書き終えるまでに、人の答え直しが割り込まないようにする
             return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
-                guard try await stillWanted(job, stages: [.checking]) != nil, try await questionsFile(of: epic) == questions else {
+                // Discussion の写しの id は表示のためのもので、頼んだ後に書かれても状態が変わったとはみなさない
+                guard try await stillWanted(job, stages: [.checking]) != nil, let latest = try await questionsFile(of: epic),
+                      latest.withoutCopies == questions.withoutCopies else {
                     return .discarded("頼んだ後に epic か質問の一覧が変わった", session)
                 }
-                try await write(result, readiness: readiness, questions: questions, of: epic, by: job)
+                try await write(result, readiness: readiness, questions: latest, of: epic, by: job)
                 return .written(session)
             }
         }
@@ -126,7 +128,7 @@ extension ClaudeJobRunner {
             }
             try await context.setStage(.awaitingStart, of: epic, from: [.checking])
         case let .moreQuestions(change):
-            try await context.write(change.questions, replacing: questions, of: epic, message: "追加の質問を足す")
+            try await context.write(change.questions.keepingCopies(of: questions), replacing: questions, of: epic, message: "追加の質問を足す")
             if let origin = job.origin { try await context.perform(change.effects, for: epic, origin: origin, after: [job.id]) }
         case .tooLarge:
             try await context.setStage(.awaitingSplit, of: epic, from: [.checking])
@@ -162,7 +164,8 @@ extension ClaudeJobRunner {
             revised.notApplied = output.notApplied.isEmpty ? nil : output.notApplied
             let goalToWrite = revised
             return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
-                guard try await stillWanted(job, stages: [.awaitingStart]) != nil, try await questionsFile(of: epic) == questions else {
+                guard try await stillWanted(job, stages: [.awaitingStart]) != nil,
+                      try await questionsFile(of: epic)?.withoutCopies == questions.withoutCopies else {
                     return .discarded("頼んだ後に epic が先に進んだ・回答に戻った", session)
                 }
                 let written = try await write(goalToWrite, replacing: version, at: goalPath)
@@ -177,7 +180,10 @@ extension ClaudeJobRunner {
         do {
             try await context.files.update(GoalFile.self, at: path, message: "ゴールを直す") {
                 guard $0.version == version else { return false }
+                // Discussion の写しの id は、頼んだ後に書かれていても残す
+                let comment = $0.comment
                 $0 = goal
+                $0.comment = comment
                 written = true
                 return true
             }
@@ -226,5 +232,27 @@ extension ReadinessVerdict {
         case .moreQuestions: self = .moreQuestions
         case .tooLarge: self = .tooLarge
         }
+    }
+}
+
+extension QuestionsFile {
+    /// Discussion の写しの id を除いた中身。写しは表示のためのもので、Claude に頼んだ後に書かれても、頼んだときの状態から変わったとはみなさない
+    var withoutCopies: Self {
+        var file = self
+        for index in file.questions.indices {
+            file.questions[index].comment = nil
+        }
+        return file
+    }
+
+    /// `latest`（今の質問の一覧）にある写しの id を、同じ id の質問に移す
+    func keepingCopies(of latest: Self) -> Self {
+        let pairs = latest.questions.compactMap { question in question.comment.map { (question.id, $0) } }
+        let comments = Dictionary(pairs) { first, _ in first }
+        var file = self
+        for index in file.questions.indices where file.questions[index].comment == nil {
+            file.questions[index].comment = comments[file.questions[index].id]
+        }
+        return file
     }
 }
