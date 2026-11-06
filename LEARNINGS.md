@@ -113,6 +113,9 @@
   中身は `application/vnd.github.raw+json` で読み直す。100 MB を超えるファイルは Contents API では読めない（GitHub の文書）。`object` に切り替えると、ディレクトリが配列ではなく `entries` を持つ object で返るので、一覧の処理が壊れる（2026-11-06）
 - git の設定は、`GIT_CONFIG_COUNT`・`GIT_CONFIG_KEY_<n>`・`GIT_CONFIG_VALUE_<n>` の環境変数でファイルに書かずに渡せる（`core.hooksPath=/dev/null`・`credential.helper` など）。`GIT_CONFIG_GLOBAL=/dev/null`・`GIT_CONFIG_NOSYSTEM=1` で人の設定を読まない。
   `clone --filter=blob:none --no-checkout` の後に `worktree add --detach <path> origin/HEAD` で取り出すと、要るファイルだけを取りにいく。資格情報の無い private リポジトリは、`GIT_TERMINAL_PROMPT=0` のとき `could not read Username for 'https://github.com': terminal prompts disabled` で失敗する（Apple Git 2.54 で確かめた。2026-11-06）
+- organization の Actions の使用量は、`gh api "organizations/<org>/settings/billing/usage?year=<年>&month=<月>"` でリポジトリごと・SKU（`Actions Linux` など）ごとに読める（`unitType` が `Minutes`）。
+  前の `orgs/<org>/settings/billing/actions` は `410`（moved）を返す。public のリポジトリの分も載る（`discountAmount` で無料になる）ので、private の枠（Free の organization は月 2,000 分）を見積もるときは private のリポジトリだけを足す。
+  private のリポジトリでは 1 回のジョブが 1 分に切り上げて数えられるので、数秒で終わる定期実行でも 1 時間ごとで月 720 分になる（2026-11-07、司令塔の見張りの間隔を決めたとき）
 
 ## ビルド・テスト
 

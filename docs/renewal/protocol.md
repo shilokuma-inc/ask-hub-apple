@@ -369,7 +369,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 }
 ```
 
-- GitHub Actions の見張りが、`seenAt` の古さを確かめる
+- GitHub Actions の見張りが、`seenAt` の古さ（30 分。`macs/<mac>.json` のオフラインの判定と同じ）を確かめる。無い・読めないときも止まったとみなす（[operations.md](operations.md) の「司令塔の見張り」）
 
 ### devices/<device>.json（通知の宛先）
 
