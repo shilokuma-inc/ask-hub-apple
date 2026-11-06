@@ -277,16 +277,16 @@ struct LocalLoopRuntimeTests {
         #expect(result.output.hasSuffix("ASKHUB_DISCUSSION_URL: https://github.com/o/r/discussions/1\n"))
     }
 
-    /// 子プロセス（`sleep 30`）の終了を待たずに戻ったとみなす上限。
-    /// CI のランナーではテストのプロセス全体が 5 秒ほど止まることがあるので、ふだんの所要時間（1 秒未満）より大きく取る
-    private static let returnLimit: Duration = .seconds(10)
+    /// 子プロセス（`sleep 60`）の終了を待たずに戻ったとみなす上限。子プロセスの終了を待ってしまうと 60 秒かかる。
+    /// CI のランナーでは負荷でテストが 10 秒ほど遅れることがあるので、ふだんの所要時間（1 秒未満）より大きく取る
+    private static let returnLimit: Duration = .seconds(30)
 
     @Test func runStopsCommandAfterTimeout() async throws {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }
 
         let start = ContinuousClock.now
-        let result = try await LocalLoopRuntime().run(["/bin/sleep", "30"], input: "", for: repository, timeout: .milliseconds(300))
+        let result = try await LocalLoopRuntime().run(["/bin/sleep", "60"], input: "", for: repository, timeout: .milliseconds(300))
         #expect(result.status != 0)
         #expect(ContinuousClock.now - start < Self.returnLimit)
     }
@@ -297,12 +297,13 @@ struct LocalLoopRuntimeTests {
 
         let start = ContinuousClock.now
         // sh が止まっても子の sleep がパイプを持ち続けるので、読み切りの上限も短くする
+        // trap を設定する前に止めると SIGTERM だけで終わってしまうので、時間切れはスクリプトの準備が間に合う長さにする
         let runtime = LocalLoopRuntime(killGracePeriod: .milliseconds(300), outputDrainTimeout: .milliseconds(300))
         let result = try await runtime.run(
-            ["/bin/sh", "-c", "trap '' TERM; sleep 30"],
+            ["/bin/sh", "-c", "trap '' TERM; sleep 60"],
             input: "",
             for: repository,
-            timeout: .milliseconds(300)
+            timeout: Self.setupTimeout
         )
         #expect(result.status != 0)
         #expect(ContinuousClock.now - start < Self.returnLimit)
@@ -312,17 +313,22 @@ struct LocalLoopRuntimeTests {
         let (repository, root) = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }
 
-        // 子プロセス（sleep）がパイプを持ったまま残っても、決めた時間で読み切りをやめて戻る
+        // 子プロセス（sleep）がパイプを持ったまま残っても、決めた時間で読み切りをやめて戻る。
+        // 負荷で sh の終了が遅れても時間切れで止めないよう、時間切れは上限と同じにする
         let start = ContinuousClock.now
         let result = try await LocalLoopRuntime(outputDrainTimeout: .milliseconds(500)).run(
-            ["/bin/sh", "-c", "sleep 30 & echo done"],
+            ["/bin/sh", "-c", "sleep 60 & echo $! > child.pid; echo done"],
             input: "",
             for: repository,
-            timeout: .seconds(10)
+            timeout: Self.returnLimit
         )
         #expect(result.status == 0)
         #expect(result.output.contains("done"))
         #expect(ContinuousClock.now - start < Self.returnLimit)
+        // 子プロセスはパイプを持ったまま残っている。確かめたら止める
+        let child = try recordedChildPID(in: repository)
+        defer { kill(child, SIGKILL) }
+        #expect(kill(child, 0) == 0)
     }
 
     @Test func resolvesRelativeExecutableFromPath() async throws {
@@ -350,6 +356,10 @@ struct LocalLoopRuntimeTests {
 // MARK: - 制限時間を過ぎたコマンドの子孫
 
 extension LocalLoopRuntimeTests {
+    /// 時間切れまでに、スクリプトが子孫の起動や trap の設定を終えている前提の制限時間。
+    /// テストを並べて流すと sh の起動が 500ms では間に合わないことがあり、準備の前に止めてしまうので数秒取る
+    private static let setupTimeout: Duration = .seconds(3)
+
     /// コマンドが `child.pid` に書いた子孫の PID
     private func recordedChildPID(in repository: RepositoryConfig) throws -> pid_t {
         let file = URL(fileURLWithPath: repository.checkoutPath).appendingPathComponent("child.pid")
@@ -366,7 +376,7 @@ extension LocalLoopRuntimeTests {
             ["/bin/sh", "-c", "sleep 30 & echo $! > child.pid; wait"],
             input: "",
             for: repository,
-            timeout: .milliseconds(500)
+            timeout: Self.setupTimeout
         )
         #expect(result.status != 0)
         let child = try recordedChildPID(in: repository)
@@ -382,7 +392,7 @@ extension LocalLoopRuntimeTests {
             ["/bin/sh", "-c", "(trap '' TERM; sleep 30 & echo $! > child.pid; wait) & wait"],
             input: "",
             for: repository,
-            timeout: .milliseconds(500)
+            timeout: Self.setupTimeout
         )
         #expect(result.status != 0)
         let grandchild = try recordedChildPID(in: repository)
@@ -407,7 +417,7 @@ extension LocalLoopRuntimeTests {
             ["/bin/bash", script.path],
             input: "",
             for: repository,
-            timeout: .milliseconds(500)
+            timeout: Self.setupTimeout
         )
         #expect(result.status == 143)
         let cleaned = URL(fileURLWithPath: repository.checkoutPath).appendingPathComponent("cleaned.txt")
