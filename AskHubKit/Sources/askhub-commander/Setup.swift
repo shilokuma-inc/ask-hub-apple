@@ -57,9 +57,20 @@ extension AskHubCommanderMain {
     /// git の credential helper。github.com の https のときだけ、Keychain の GitHub のトークンを返す
     static func gitCredential(_ arguments: [String]) {
         let request = String(bytes: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let response = (try? GitCredential.response(to: request, operation: arguments.first ?? "") {
-            try secrets.read(.githubToken).flatMap { String(bytes: $0, encoding: .utf8) }
-        }) ?? ""
+        let response: String
+        do {
+            response = try GitCredential.response(to: request, operation: arguments.first ?? "") {
+                let token = try secrets.read(.githubToken).flatMap { String(bytes: $0, encoding: .utf8) }
+                // 理由は標準エラーに出す（git の失敗の文に入り、試行の記録で分かる。トークンの値は出さない）
+                if token == nil {
+                    FileHandle.standardError.write(Data("askhub-commander git-credential: Keychain に GitHub のトークンが無い\n".utf8))
+                }
+                return token
+            }
+        } catch {
+            FileHandle.standardError.write(Data("askhub-commander git-credential: Keychain を読めない（\(error)）\n".utf8))
+            response = ""
+        }
         FileHandle.standardOutput.write(Data(response.utf8))
     }
 
