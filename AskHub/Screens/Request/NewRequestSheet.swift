@@ -1,13 +1,27 @@
 import SwiftUI
 
+/// 依頼の下書き（分け方の案から依頼し直すとき）
+struct RequestDraft: Identifiable, Hashable {
+    var id: String { summary }
+    var repositoryID: TargetRepository.ID
+    var summary: String
+    var body: String
+}
+
 /// 新しい依頼。依頼先には対象のリポジトリだけを出す
 struct NewRequestSheet: View {
     @Environment(ClientStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var repositoryID: TargetRepository.ID?
-    @State private var summary = ""
-    @State private var requestBody = ""
+    @State private var summary: String
+    @State private var requestBody: String
     @FocusState private var isEditing: Bool
+
+    init(draft: RequestDraft? = nil) {
+        _repositoryID = State(initialValue: draft?.repositoryID)
+        _summary = State(initialValue: draft?.summary ?? "")
+        _requestBody = State(initialValue: draft?.body ?? "")
+    }
 
     var body: some View {
         let repositories = store.snapshot?.repositories ?? []

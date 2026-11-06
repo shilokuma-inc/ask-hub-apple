@@ -67,6 +67,9 @@ struct EpicDetailView: View {
             if let blocker = epic.blocker {
                 BlockerSection(epic: epic, blocker: blocker) { textRequest = $0 }
             }
+            if let split = epic.split {
+                SplitSection(epic: epic, split: split)
+            }
             EpicStageSections(epic: epic) { shownQuestion = $0 }
             CardSection("依頼") {
                 Text(epic.request.summary).rowFont(.title)
@@ -215,7 +218,7 @@ private struct TaskRow: View {
                 }
             }
             Spacer(minLength: 0)
-            if case .done(let number) = task.state {
+            if case .done(let number?) = task.state {
                 Text("#\(number)").appFont(.caption).foregroundStyle(.secondary)
             }
         }
@@ -274,23 +277,31 @@ private struct EpicMenu: ToolbarContent {
     @Environment(ClientStore.self) private var store
 
     var body: some ToolbarContent {
+        // 送れない操作（状態リポジトリでは段階 3 の操作）は出さない。1 つも無ければメニューごと出さない
+        let canPause = epic.stage == .implementing && store.supports(.pause(epicID: epic.id))
+        let canHandOver = epic.stage == .implementing && store.supports(.handOver(epicID: epic.id, macID: ""))
+        let canDiscard = epic.isActive && store.supports(.discard(epicID: epic.id))
         ToolbarItem(placement: .primaryAction) {
-            Menu("操作", systemImage: "ellipsis.circle") {
-                if epic.stage == .implementing {
-                    let isPaused = epic.activities.contains {
-                        if case .paused = $0.kind {
-                            return true
+            if canPause || canHandOver || canDiscard {
+                Menu("操作", systemImage: "ellipsis.circle") {
+                    if canPause {
+                        let isPaused = epic.activities.contains {
+                            if case .paused = $0.kind {
+                                return true
+                            }
+                            return false
                         }
-                        return false
+                        Button(isPaused ? "再開する" : "一時停止する", systemImage: isPaused ? "play" : "pause") {
+                            Task { await store.send(isPaused ? .resume(epicID: epic.id) : .pause(epicID: epic.id)) }
+                        }
                     }
-                    Button(isPaused ? "再開する" : "一時停止する", systemImage: isPaused ? "play" : "pause") {
-                        Task { await store.send(isPaused ? .resume(epicID: epic.id) : .pause(epicID: epic.id)) }
+                    if canHandOver {
+                        HandOverMenu(epic: epic)
                     }
-                    HandOverMenu(epic: epic)
-                }
-                if epic.isActive {
-                    Divider()
-                    Button("やめる…", systemImage: "xmark.octagon", role: .destructive) { isConfirmingDiscard = true }
+                    if canDiscard {
+                        Divider()
+                        Button("やめる…", systemImage: "xmark.octagon", role: .destructive) { isConfirmingDiscard = true }
+                    }
                 }
             }
         }

@@ -23,12 +23,7 @@ struct GoalReviewView: View {
                 Text(goal.summary)
                     .rowFont(.title)
             }
-            if let request = goal.revisionRequest {
-                CardSection {
-                    Label("Claude がゴールを直しています: \(request)", systemImage: "pencil")
-                        .foregroundStyle(.secondary)
-                }
-            }
+            revisionSections(goal)
             pointsSection("決まったこと", goal.decided)
             listSection("やらないこと", goal.notDoing)
             listSection("完了の条件", goal.doneCriteria)
@@ -59,6 +54,25 @@ struct GoalReviewView: View {
         .hidesTabBar()
         .safeAreaBar(edge: .bottom) { startBar(epic, goal).keepsControlSize() }
         .modifier(GoalSheets(epic: epic, textRequest: $textRequest, isChoosingMac: $isChoosingMac))
+    }
+
+    /// 直している途中の指示と、最後の修正で反映しなかった指示
+    @ViewBuilder private func revisionSections(_ goal: Goal) -> some View {
+        if let request = goal.revisionRequest {
+            CardSection {
+                Label("Claude がゴールを直しています: \(request)", systemImage: "pencil")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        if !goal.notApplied.isEmpty {
+            CardSection {
+                ForEach(goal.notApplied, id: \.self) { Text($0) }
+            } header: {
+                Text("反映しなかった指示")
+            } footer: {
+                Text("決まったこと（回答）を変える指示は、ゴールの修正では反映しません。回答を変えてから直してもらってください")
+            }
+        }
     }
 
     @ViewBuilder private func startBar(_ epic: Epic, _ goal: Goal) -> some View {
@@ -214,7 +228,7 @@ struct MacChoiceRow: View {
                 Spacer()
                 ConnectionBadge(mac: mac)
             }
-            Text("空き \(ByteFormat.string(mac.freeBytes)) · 負荷 \(Int(mac.load * 100))%")
+            Text("空き \(ByteFormat.string(mac.freeBytes)) · \(mac.loadText)")
                 .appFont(.caption)
                 .foregroundStyle(.secondary)
             if let reason = mac.refusalReason {
