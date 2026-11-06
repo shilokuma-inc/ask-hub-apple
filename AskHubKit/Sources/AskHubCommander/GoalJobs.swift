@@ -44,6 +44,8 @@ public struct CheckReadinessJob: ClaudeJob {
     public static let timeout = Duration.seconds(15 * 60)
     /// 質問を出せる最後の回（最初の質問づくりが 1。`round` が 4 になる前に、人に「大きすぎる・決めきれない」と出す）
     public static let lastQuestionRound = 3
+    /// 「このまま 1 つで進める」と決めた後は、決めきれない点を人に聞けるよう、1 回だけ延ばす（ユーザーの決定）
+    public static let lastQuestionRoundAfterProceeding = lastQuestionRound + 1
     public static let outputSchema = OutputSchema.object([
         "verdict": OutputSchema.oneOf(Verdict.allCases.map(\.rawValue), "ready（進めてよい）・moreQuestions（追加の質問が要る）・tooLarge（1 つの epic に収まらない）"),
         "reason": OutputSchema.string("そう判断した理由"),
@@ -76,7 +78,7 @@ public struct CheckReadinessJob: ClaudeJob {
     }
 
     /// 追加の質問をもう出せるか
-    public var canAskMore: Bool { nextRound <= Self.lastQuestionRound }
+    public var canAskMore: Bool { nextRound <= (proceeding ? Self.lastQuestionRoundAfterProceeding : Self.lastQuestionRound) }
 
     public var prompt: String {
         let decisions = questions.questions.map(PromptText.decision)
@@ -132,8 +134,8 @@ public struct CheckReadinessJob: ClaudeJob {
         - 1 つの epic に収まらないと前に伝えたが、人はそれを承知で、このまま 1 つで進めると決めた。tooLarge は返さない
         """
     private static let provisionalRule = """
-        - 追加の質問はもう出せない。人が決めるべき点が残っていても verdict を ready にしてゴールを作る。決めきれない点は推奨の案で仮に決め、
-          goal の summary の末尾に「仮に決めたこと:」として書く（人が開始の前にゴールを確かめて直せる）
+        - 追加の質問はもう出せない（このまま進めると決めた後に 1 回延ばした分も使い切った）。人が決めるべき点が残っていても verdict を ready にして
+          ゴールを作る。決めきれない点は推奨の案で仮に決め、goal の summary の末尾に「仮に決めたこと:」として書く（人が開始の前にゴールを確かめて直せる）
         """
 
     private static let askMoreRule = """
