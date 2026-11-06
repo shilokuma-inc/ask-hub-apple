@@ -5,6 +5,27 @@ import CryptoKit
 import Foundation
 import Testing
 
+/// ディレクトリの一覧（`list`）が途中で切れる置き場所（Contents API の 1,000 件の上限）。下まで読む一覧（`listFiles`）は切れない
+struct TruncatedListStore: StateStore {
+    let inner: InMemoryStateStore
+
+    func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
+        try await inner.read(path)
+    }
+
+    func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await inner.list(directory).map { _ in [] }
+    }
+
+    func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
+        try await inner.write(path, data: data, replacing: sha, message: message)
+    }
+
+    func listFiles(under directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await inner.listFiles(under: directory)
+    }
+}
+
 /// 依頼・開始・ゴールの修正の受け付け
 struct EpicHandlersTests {
     static let repo = RepositoryFullName(rawValue: "shilokuma-inc/askhub-sandbox")!
@@ -16,7 +37,7 @@ struct EpicHandlersTests {
     let key = P256.Signing.PrivateKey()
     var keyID: KeyID { IntentSignature.keyID(publicKeyDER: key.publicKey.derRepresentation) }
 
-    private func intake(_ store: InMemoryStateStore) -> IntentIntake {
+    private func intake(_ store: any StateStore) -> IntentIntake {
         IntentIntake(
             context: CommanderContext(store: store, mac: Self.commander) { Self.now },
             verifier: IntentVerifier(publicKeys: [keyID: key.publicKey.derRepresentation]),
@@ -244,6 +265,23 @@ struct EpicHandlersTests {
         try await start(epic, in: store)
         let reason = "同時に回せる epic の上限（1 本）に達している。ほかの epic が終わってから開始する"
         #expect(try await intake(store).processPending().first == .rejected(kind: "startEpic", reason: reason))
+    }
+
+    @Test func startCountsEpicsAndJobsBeyondTruncatedList() async throws {
+        let (store, epic) = try await awaitingStart()
+        let other = Self.epic(stage: .running)
+        try await put(other, at: StatePath.epic(Self.repo, other.id), in: store)
+        try await start(epic, in: store)
+        let reason = "同時に回せる epic の上限（1 本）に達している。ほかの epic が終わってから開始する"
+        #expect(try await intake(TruncatedListStore(inner: store)).processPending().first == .rejected(kind: "startEpic", reason: reason))
+
+        // ゴールを直しているジョブが、切れた一覧に載っていなくても見つける
+        let (revising, target) = try await awaitingStart()
+        try await revise(target, "完了の条件を足して", in: revising)
+        #expect(try await intake(revising).processPending() == [.accepted(kind: "reviseGoal")])
+        try await start(target, in: revising)
+        let outcomes = try await intake(TruncatedListStore(inner: revising)).processPending()
+        #expect(outcomes == [.rejected(kind: "startEpic", reason: "ゴールを直している途中。直し終えてから開始する")])
     }
 
     @Test func reviseGoalCreatesJobAndBlocksStartUntilDone() async throws {

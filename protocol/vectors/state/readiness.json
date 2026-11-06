@@ -40,6 +40,20 @@
       "read": "valid"
     },
     {
+      "name": "more-questions",
+      "value": {
+        "v": 1,
+        "version": 3,
+        "verdict": "moreQuestions",
+        "reason": "保存の期間を決める必要がある",
+        "split": [],
+        "round": 2,
+        "checkedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "undecided",
       "value": {
         "v": 1,
