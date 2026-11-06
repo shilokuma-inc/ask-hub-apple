@@ -304,6 +304,8 @@
   JSON Schema の `pattern` で値を区切るときは、長さの決まった値は `maxLength` を足し、そうでない値は `"not": { "pattern": "\\n" }` で改行を弾く（`protocol/schemas`。2026-11-03、#835）
 - 型つきの throws（`throws(E)`）の関数に閉包を渡すときは、閉包の型が推論されず `any Error` になる。`{ () async throws(E) -> T in … }` と書き、
   閉包の中の `do` も `do throws(E) { … }` と書く（書かないと `catch` の `error` が `any Error` になり、`.case(error)` に渡せない）（2026-11-03、`StateFileStore`）
+- Swift Testing の `#require` の引数の中に `#require` を入れる（`try #require(try JSONSerialization.jsonObject(with: #require(data)) as? [String: Any])`）と、
+  「recursive expansion of macro 'require(_:_:sourceLocation:)'」でテストのビルドが止まる。内側の `#require` を `let` で受けてから外側に渡す（2026-11-07、`APNsSenderTests`）
 
 ## シェルスクリプト
 
