@@ -79,6 +79,8 @@ struct GitRepositoryWorkspaceTests {
         }
         #expect(config["core.hooksPath"] == "/dev/null")
         #expect(config["core.symlinks"] == "false")
+        #expect(config["core.attributesFile"] == "/dev/null")
+        #expect(config["core.excludesFile"] == "/dev/null")
         #expect(config["credential.helper"] == "!'/opt/askhub/askhub-commander' git-credential")
         #expect(environment["GIT_CONFIG_GLOBAL"] == "/dev/null")
         #expect(environment["GIT_CONFIG_NOSYSTEM"] == "1")

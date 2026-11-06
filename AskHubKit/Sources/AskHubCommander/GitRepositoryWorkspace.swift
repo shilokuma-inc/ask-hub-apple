@@ -185,6 +185,9 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
             // シンボリックリンクは、指す先のパスを書いたファイルとして取り出す（Claude に写しの外を読ませない）
             ("core.symlinks", "false"),
             ("core.fsmonitor", "false"),
+            // HOME は本当のホームフォルダなので、人の attributes・ignore（`~/.config/git/`）も読まない
+            ("core.attributesFile", "/dev/null"),
+            ("core.excludesFile", "/dev/null"),
             ("credential.helper", setup.credentialHelper),
             ("protocol.file.allow", "never"),
             ("submodule.recurse", "false"),
