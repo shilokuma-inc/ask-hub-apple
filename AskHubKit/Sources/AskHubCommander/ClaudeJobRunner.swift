@@ -45,6 +45,8 @@ public struct ClaudeJobRunner: Sendable {
         case .makeQuestions: return try await makeQuestions(job, epic: epic)
         case .explain: return try await explain(job, epic: epic)
         case .reviseQuestion: return try await reviseQuestion(job, epic: epic)
+        case .checkReadiness: return try await checkReadiness(job, epic: epic)
+        case .reviseGoal: return try await reviseGoal(job, epic: epic)
         default: return .failed(AttemptFailure(failureClass: .unexpected, message: "\(job.kind.rawValue) は Claude のジョブとして扱えない"), nil)
         }
     }
@@ -70,8 +72,8 @@ public struct ClaudeJobRunner: Sendable {
     }
 
     /// 受け付けた人の意図を読み直す（署名を確かめてから使う）
-    func originEnvelope(of job: JobFile) async throws(CommanderError) -> IntentEnvelope? {
-        guard let origin = job.origin else { return nil }
+    func envelope(of origin: IntentReference?) async throws(CommanderError) -> IntentEnvelope? {
+        guard let origin else { return nil }
         let blob: StoredBlob?
         do {
             blob = try await context.store.read(StatePath.intent(device: origin.keyId, nonce: origin.nonce))
@@ -103,7 +105,7 @@ extension ClaudeJobRunner {
     /// 依頼から質問を作り、epic を回答の待ちにする（質問が無ければ着手前の確認へ）
     func makeQuestions(_ job: JobFile, epic: EpicFile) async throws(CommanderError) -> ClaudeJobOutcome {
         guard epic.stage == .drafting else { return .discarded("epic はもう質問づくりの段階でない", nil) }
-        guard let envelope = try await originEnvelope(of: job), let request = try? RequestIntent(envelope: envelope) else {
+        guard let envelope = try await envelope(of: job.origin), let request = try? RequestIntent(envelope: envelope) else {
             return .failed(AttemptFailure(failureClass: .unexpected, message: "元の依頼を読めない・署名が合わない"), nil)
         }
         let placed: PlacedAttachments?
