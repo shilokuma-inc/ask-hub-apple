@@ -140,7 +140,8 @@ public actor CommanderLoop {
         "answer": AnswerHandler(),
         "startEpic": StartEpicHandler(),
         "reviseGoal": ReviseGoalHandler(),
-        "decideSplit": DecideSplitHandler()
+        "decideSplit": DecideSplitHandler(),
+        "addRepository": AddRepositoryHandler()
     ]
 
     // MARK: - 引き受け

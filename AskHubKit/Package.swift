@@ -25,12 +25,16 @@ let package = Package(
         .library(name: "AskHubCommands", targets: ["AskHubCommands"]),
         // Claude を呼ぶ部品（決まった形の結果・直させる・失敗の区分）。司令塔とワーカーで使う
         .library(name: "AskHubClaude", targets: ["AskHubClaude"]),
+        // クライアントと非常口の段取り（人の意図の署名と送信・公開鍵の記録）
+        .library(name: "AskHubClient", targets: ["AskHubClient"]),
         // 司令塔の段取り（Claude に頼むジョブの依頼の文と結果の形）。常時オンの Mac で使う
         .library(name: "AskHubCommander", targets: ["AskHubCommander"]),
         // macOS で launchd から常駐させる CLI。アプリからは使わない
         .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
         // リニューアルの司令塔（常時オンの Mac で LaunchAgent として常駐させる CLI）
         .executable(name: "askhub-commander", targets: ["askhub-commander"]),
+        // 非常口（Mac の端末から人の意図に署名して送る CLI）
+        .executable(name: "askhub", targets: ["askhub"]),
     ],
     targets: [
         .target(name: "AskHubKit"),
@@ -42,6 +46,7 @@ let package = Package(
         .target(name: "AskHubEpics", dependencies: ["AskHubProtocol"]),
         .target(name: "AskHubCommands"),
         .target(name: "AskHubClaude", dependencies: ["AskHubCommands", "AskHubProtocol"]),
+        .target(name: "AskHubClient", dependencies: ["AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]),
         .target(
             name: "AskHubCommander",
             dependencies: ["AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubJobs", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
@@ -49,6 +54,7 @@ let package = Package(
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
+        .executableTarget(name: "askhub", dependencies: ["AskHubClient", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]),
         .executableTarget(
             name: "askhub-commander",
             dependencies: ["AskHubClaude", "AskHubCommander", "AskHubCommands", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
@@ -61,6 +67,10 @@ let package = Package(
         .testTarget(name: "AskHubEpicsTests", dependencies: ["AskHubEpics", "AskHubProtocol"]),
         .testTarget(name: "AskHubCommandsTests", dependencies: ["AskHubCommands"]),
         .testTarget(name: "AskHubClaudeTests", dependencies: ["AskHubClaude", "AskHubCommands", "AskHubProtocol"]),
+        .testTarget(
+            name: "AskHubClientTests",
+            dependencies: ["AskHubClient", "AskHubCommander", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
+        ),
         .testTarget(
             name: "AskHubCommanderTests",
             dependencies: ["AskHubCommander", "AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]

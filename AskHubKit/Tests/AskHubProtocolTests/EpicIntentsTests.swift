@@ -29,6 +29,9 @@ struct EpicIntentsTests {
         },
         Kind(vectors: "payloads/decideSplit.json", kind: "decideSplit", target: .init(type: "epic", epic: epic), targetVersion: "3") {
             try DecideSplitIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/addRepository.json", kind: "addRepository", target: nil, targetVersion: nil) {
+            try AddRepositoryIntent(envelope: $0).payload
         }
     ]
 
@@ -120,6 +123,32 @@ struct EpicIntentsTests {
         #expect(throws: MalformedIntent.self) {
             let wrongKind = envelope(kind: "startEpic", target: .init(type: "epic", epic: Self.epic), targetVersion: "3", payload: payload)
             return try ReviseGoalIntent(envelope: wrongKind)
+        }
+    }
+
+    @Test func refusesAddRepositoryWithWrongEnvelope() {
+        let payload: [String: JSONValue] = ["platform": .string("apple")]
+        let repo = RepositoryFullName(rawValue: "shilokuma-inc/askhub-sandbox")
+        struct Case {
+            var repo: RepositoryFullName?
+            var target: IntentEnvelope.Target?
+            var version: String?
+        }
+        // 対象のリポジトリが無い・target がある・targetVersion がある
+        let cases = [Case(repo: nil), Case(repo: repo, target: .init(type: "epic", epic: Self.epic)), Case(repo: repo, version: "1")]
+        for item in cases {
+            let (repo, target, version) = (item.repo, item.target, item.version)
+            let envelope = IntentEnvelope(
+                kind: "addRepository",
+                repo: repo,
+                target: target,
+                targetVersion: version,
+                payload: payload,
+                issuedAt: Timestamp(rawValue: "2026-11-03T10:00:00Z")!,
+                nonce: ULID(rawValue: "01JCN0NCE00000000000000001")!,
+                keyId: KeyID(rawValue: String(repeating: "k", count: 43))!
+            )
+            #expect(throws: MalformedIntent.self) { try AddRepositoryIntent(envelope: envelope) }
         }
     }
 
