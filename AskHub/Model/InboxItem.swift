@@ -25,6 +25,8 @@ struct InboxItem: Identifiable, Hashable {
     enum Kind: Hashable {
         case questions
         case goal
+        /// 1 つの epic に収まらないと分かり、分け方の判断を待っている
+        case split
         case humanTask
         case blocker
         case macOffline
@@ -72,6 +74,12 @@ enum InboxBuilder {
             var item = InboxItem(epic: epic, kind: .goal, context: context, route: .goal(epic.id))
             item.title = "ゴールを確かめて開始する"
             item.detail = "タスク \(goal.tasks.count) · 人がする作業 \(epic.humanTasks.count)"
+            items.append(item)
+        }
+        if let split = epic.split, split.choice == nil {
+            var item = InboxItem(epic: epic, kind: .split, context: context, route: .epic(epic.id))
+            item.title = "分け方を決める"
+            item.detail = split.reason
             items.append(item)
         }
         for task in epic.humanTasks where task.needsHuman {

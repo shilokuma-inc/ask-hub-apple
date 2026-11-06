@@ -91,6 +91,7 @@ extension InboxItem.Kind {
         switch self {
         case .questions: "questionmark"
         case .goal: "flag.fill"
+        case .split: "square.split.2x1.fill"
         case .humanTask: "wrench.fill"
         case .blocker: "exclamationmark"
         case .macOffline: "wifi.slash"
@@ -104,6 +105,7 @@ extension InboxItem.Kind {
         switch self {
         case .questions: Theme.Tone.sky
         case .goal: Theme.Tone.lavender
+        case .split: Theme.Tone.peach
         case .humanTask: Theme.Tone.peach
         case .blocker: Theme.Tone.rose
         case .macOffline: Theme.Tone.slate

@@ -54,6 +54,11 @@ final class ClientStore {
         now()
     }
 
+    /// その意図を送れるか（送れない操作のボタンは画面に出さない）
+    func supports(_ intent: HumanIntent) -> Bool {
+        service.supports(intent)
+    }
+
     // MARK: 読む
 
     func refresh() async {

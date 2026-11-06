@@ -8,6 +8,8 @@ enum HumanIntent: Hashable {
     case requestExplanation(epicID: Epic.ID, questionID: Question.ID, request: String)
     case reviseGoal(epicID: Epic.ID, request: String)
     case start(epicID: Epic.ID, macID: Mac.ID)
+    /// 1 つの epic に収まらないと分かったときの、分け方の判断
+    case decideSplit(epicID: Epic.ID, choice: SplitChoice)
     case respondToDecision(epicID: Epic.ID, decisionID: DecisionCard.ID, reply: DecisionReply)
     /// 並べて見て、残りの判断をまとめて OK にする
     case acceptAllDecisions(epicID: Epic.ID)
@@ -25,6 +27,13 @@ enum HumanIntent: Hashable {
     case cleanUp(macID: Mac.ID, candidateIDs: [CleanupCandidate.ID])
     case request(repositoryID: TargetRepository.ID, summary: String, body: String)
     case addRepository(repositoryID: TargetRepository.ID)
+}
+
+enum SplitChoice: Hashable {
+    /// 今の epic をやめ、分け方の案ごとに依頼し直す
+    case split
+    /// このまま 1 つの epic で進める（着手前の確認をやり直して、ゴールを作る）
+    case proceed
 }
 
 enum DecisionReply: Hashable {

@@ -10,6 +10,24 @@ struct ClientSnapshot: Hashable {
     var fetchedAt: Date
     /// 一部の取得元だけ読めなかったとき。空なら全部読めた
     var sourceFailures: [SourceFailure]
+    /// この端末が送った人の意図と、その処理の結果（新しい順）。状態リポジトリにつないだときだけ持つ
+    var sentIntents: [SentIntentStatus] = []
+}
+
+/// 送った人の意図の処理の結果
+struct SentIntentStatus: Identifiable, Hashable {
+    let id: String
+    /// 例: 回答（献立メモ · Q3）
+    var title: String
+    var sentAt: Date
+    var state: State
+
+    enum State: Hashable {
+        /// 司令塔がまだ処理していない
+        case waiting
+        case accepted(at: Date)
+        case rejected(at: Date, reason: String)
+    }
 }
 
 /// 読めなかった取得元。「取得に失敗した」と「0 件」を分けて出すために持つ

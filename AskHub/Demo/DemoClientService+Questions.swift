@@ -8,7 +8,7 @@ extension DemoClientService {
         case .answer, .requestExplanation:
             applyQuestionIntent(intent)
 
-        case .reviseGoal, .start, .request, .addRepository:
+        case .reviseGoal, .start, .decideSplit, .request, .addRepository:
             applySetupIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .verify:
@@ -39,6 +39,9 @@ extension DemoClientService {
 
         case let .start(epicID, macID):
             start(epicID: epicID, macID: macID)
+
+        case let .decideSplit(epicID, choice):
+            decideSplit(epicID: epicID, choice: choice)
 
         case let .request(repositoryID, summary, body):
             addRequest(repositoryID: repositoryID, summary: summary, body: body)
@@ -201,6 +204,24 @@ extension DemoClientService {
                 epic.goal = goal
                 epic.activities = []
                 epic.log("ゴールを直しました（版 \(goal.version)）", at: now())
+            }
+        }
+    }
+
+    private func decideSplit(epicID: Epic.ID, choice: SplitChoice) {
+        let date = now()
+        state.updateEpic(epicID) { epic in
+            switch choice {
+            case .split:
+                epic.split?.choice = .split
+                epic.stage = .done
+                epic.activities = []
+                epic.log("分けて依頼し直すことにしました", at: date)
+
+            case .proceed:
+                epic.split = nil
+                epic.activities = [EpicActivity(kind: .checkingAnswers, since: date)]
+                epic.log("このまま 1 つで進めることにしました", at: date)
             }
         }
     }
