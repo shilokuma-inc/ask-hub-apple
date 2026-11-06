@@ -1,0 +1,20 @@
+{
+  "description": "やめる人の意図の payload の例。read は、封筒の target と targetVersion が正しいときに、読む側がやめるとして読めるか",
+  "schema": "payloads/giveUp.schema.json",
+  "cases": [
+    {
+      "name": "empty",
+      "payload": {},
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "force": true
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

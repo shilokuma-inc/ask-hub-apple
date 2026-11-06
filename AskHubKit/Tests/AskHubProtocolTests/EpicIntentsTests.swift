@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 
-/// 依頼・開始・ゴールの修正・やり直しの人の意図の形
+/// 依頼・開始・ゴールの修正・やり直し・やめるの人の意図の形
 struct EpicIntentsTests {
     /// 種類ごとの、例のファイルと読み方
     struct Kind: Sendable, CustomTestStringConvertible {
@@ -18,6 +18,7 @@ struct EpicIntentsTests {
 
     static let epic = ULID(rawValue: "01JCEP1C000000000000000001")!
     static let job = ULID(rawValue: "01JCJ0B0000000000000000001")!
+    static let jobTarget = IntentEnvelope.Target(type: "job", epic: epic, id: job.rawValue)
     static let kinds: [Kind] = [
         Kind(vectors: "payloads/request.json", kind: "request", target: nil, targetVersion: nil) {
             try RequestIntent(envelope: $0).payload
@@ -34,8 +35,11 @@ struct EpicIntentsTests {
         Kind(vectors: "payloads/addRepository.json", kind: "addRepository", target: nil, targetVersion: nil) {
             try AddRepositoryIntent(envelope: $0).payload
         },
-        Kind(vectors: "payloads/retry.json", kind: "retry", target: .init(type: "job", epic: epic, id: job.rawValue), targetVersion: "2") {
+        Kind(vectors: "payloads/retry.json", kind: "retry", target: jobTarget, targetVersion: "2") {
             try RetryJobIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/giveUp.json", kind: "giveUp", target: jobTarget, targetVersion: "2") {
+            try GiveUpJobIntent(envelope: $0).payload
         }
     ]
 
@@ -178,6 +182,13 @@ struct EpicIntentsTests {
             #expect(throws: MalformedIntent.self) {
                 try RetryJobIntent(envelope: envelope(kind: "retry", target: target, targetVersion: version, payload: [:]))
             }
+            #expect(throws: MalformedIntent.self) {
+                try GiveUpJobIntent(envelope: envelope(kind: "giveUp", target: target, targetVersion: version, payload: [:]))
+            }
+        }
+        // やり直しとやめるは取り違えない
+        #expect(throws: MalformedIntent.self) {
+            try GiveUpJobIntent(envelope: envelope(kind: "retry", target: retry.target.target, targetVersion: "2", payload: [:]))
         }
     }
 

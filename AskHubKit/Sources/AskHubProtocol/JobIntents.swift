@@ -52,3 +52,25 @@ public struct RetryJobIntent: Equatable, Sendable {
 
     public var payload: [String: JSONValue] { [:] }
 }
+
+/// やめる人の意図（`kind` が `giveUp`）。人に渡したジョブをやめる。そのジョブが無いと先に進めない epic は、epic ごとやめる。payload は持たない
+public struct GiveUpJobIntent: Equatable, Sendable {
+    public static let kind = "giveUp"
+
+    public var target: JobTarget
+    public var intent: IntentReference
+
+    public init(target: JobTarget, intent: IntentReference) {
+        self.target = target
+        self.intent = intent
+    }
+
+    public init(envelope: IntentEnvelope) throws(MalformedIntent) {
+        guard envelope.kind == Self.kind else { throw .init(detail: "kind が giveUp でない") }
+        let target = try JobTarget(envelope: envelope)
+        _ = try PayloadReader(envelope.payload, allowed: [])
+        self.init(target: target, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
+    }
+
+    public var payload: [String: JSONValue] { [:] }
+}
