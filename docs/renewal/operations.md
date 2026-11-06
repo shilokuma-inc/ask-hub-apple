@@ -42,8 +42,9 @@
 2. `askhub-commander setup --state-repo <owner/repo> --mac <名前> --claude <claude の絶対パス> --first-key <最初の鍵の id> --key-account <GitHub のアカウント>`
    - 設定（秘密を含まない）を `~/Library/Application Support/AskHub/commander/config.json` に書く
    - GitHub のトークンと Claude の setup-token は、端末で伏せて入れ、Keychain（サービス `jp.shilokuma.AskHub.commander`）だけに置く。引数や標準入力では受け取らない。Claude の欄に API キー（`sk-ant-api03-`）が貼られたら断る
-   - GitHub のトークンは、状態リポジトリの読み書き（人の意図・質問・ジョブ・生きている印）と、対象のリポジトリの写し（clone・fetch。読むだけ）に使う。段階 2 の試運転は、状態リポジトリと試運転の対象のリポジトリだけに絞った fine-grained token 1 つ（Contents の読み書き・Metadata の読み取り。Discussion の写しを作るようになったら Discussions の読み書きを足す）にする。fine-grained token の権限は選んだリポジトリすべてに同じく掛かるが、司令塔は対象のリポジトリには書かない。持ち主（organization）ごとにトークンを分けるかは段階 3 で決める（ユーザーの決定）
+   - GitHub のトークンは、状態リポジトリの読み書き（人の意図・質問・ジョブ・生きている印）と、対象のリポジトリの写し（clone・fetch。読むだけ）と、対象のリポジトリの Discussion の写し（作る・直す。[flows.md](flows.md) の「Discussion の写し」）に使う。段階 2 の試運転は、状態リポジトリと試運転の対象のリポジトリだけに絞った fine-grained token 1 つ（Contents の読み書き・Metadata の読み取り・Discussions の読み書き）にする。fine-grained token の権限は選んだリポジトリすべてに同じく掛かるが、司令塔が対象のリポジトリに書くのは Discussion の写しだけ（コードや設定は書かない）。持ち主（organization）ごとにトークンを分けるかは段階 3 で決める（ユーザーの決定）
    - 公開鍵の記録の最初の鍵を固定する（後から別の鍵には変えられない）
+   - 対象のリポジトリは、Discussions を有効にし、カテゴリ「Ideas」（有効にすると GitHub が作る既定のカテゴリ）を残しておく。無いあいだは Discussion の写しを書かず、司令塔のログに理由を出す（依頼から開始までの流れは止まらない）
 3. `askhub-commander launch-agent` で LaunchAgent の定義を書き、出てくる `launchctl bootstrap` のコマンドで登録する（ログは `~/Library/Logs/AskHub/commander.log`）
 4. `askhub-commander check` で、設定と Keychain の様子（値は出さない）を確かめる
 
