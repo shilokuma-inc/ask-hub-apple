@@ -118,6 +118,21 @@ extension ClaudeJobRunnerTests {
         #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .asking)
     }
 
+    @Test func recoveryDoesNothingWhenJobWasReplaced() async throws {
+        let given = try await checking()
+        let (store, epic, job) = (given.store, given.epic, given.job)
+        // 前の試行で追加の質問まで書いて止まった後に、人が答え直してこのジョブが取り消された
+        let draft = try Self.decodeDraft(Self.question("q1"))
+        let appended = try QuestionFlow.append([draft], round: 2, to: QuestionsFile(questions: [])).questions
+        try await put(appended, at: StatePath.questions(Self.repo, epic.id), in: store)
+        var canceled = job
+        canceled.state = .canceled
+        try await put(canceled, at: StatePath.job(Self.repo, epic: epic.id, job: job.id), in: store)
+        guard case .discarded = try await runner(store, claude: ScriptedRunner([])).run(job) else { Issue.record("捨てていない"); return }
+        // 回答に戻したり、ほかのジョブを取り消したりしない
+        #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .checking)
+    }
+
     @Test func discardsCheckWhenEpicChangedMeanwhile() async throws {
         let given = try await checking()
         let (store, epic, job) = (given.store, given.epic, given.job)
