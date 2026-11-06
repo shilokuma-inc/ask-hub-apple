@@ -174,4 +174,18 @@ struct EpicIntentsTests {
             #expect(decide.target.version == 3)
         }
     }
+
+    /// 依頼から決める epic の id は、決まった鍵と番号からいつも同じになる（司令塔とクライアントが同じ id を求める）
+    @Test func epicIDIsDerivedFromRequestIntent() {
+        let intent = IntentReference(
+            keyId: KeyID(rawValue: String(repeating: "k", count: 43))!,
+            nonce: ULID(rawValue: "01JCN0NCE00000000000000001")!
+        )
+        let id = RequestIntent.epicID(for: intent)
+        #expect(id.rawValue == "01JCN0NCE0CRATSDC06XSN4DJD")
+        #expect(id == RequestIntent.epicID(for: intent))
+        // 番号の時刻を引き継ぎ、ほかの番号とは重ならない
+        #expect(id.rawValue.prefix(10) == intent.nonce.rawValue.prefix(10))
+        #expect(id != RequestIntent.epicID(for: IntentReference(keyId: intent.keyId, nonce: ULID(rawValue: "01JCN0NCE00000000000000002")!)))
+    }
 }

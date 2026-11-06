@@ -43,9 +43,9 @@ public struct RequestHandler: IntentHandler {
         return .accept
     }
 
-    /// 依頼の人の意図から決める epic の id
+    /// 依頼の人の意図から決める epic の id（決め方は `RequestIntent.epicID(for:)`。クライアントと同じ）
     public static func epicID(for intent: IntentReference) -> ULID {
-        .derived(from: intent.nonce, seed: "\(intent.keyId)/epic")
+        RequestIntent.epicID(for: intent)
     }
 
     /// 添付は、依頼の意図より先に置く。置いた中身の大きさとハッシュが、署名した封筒と合うかを確かめる
