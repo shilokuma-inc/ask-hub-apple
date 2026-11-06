@@ -109,8 +109,8 @@
   GraphQL の `repository(owner:, name:)` は旧名でも移管・改名の後のリポジトリ（`nameWithOwner` が新しい名前）を返すので、今の名前はこれで確かめる（2026-10-27、Issue #757）
 - Contents API のディレクトリの一覧は 1,000 件までで、続きを読む方法が無い。人の意図のように増え続けるディレクトリは、親の一覧からディレクトリの tree の sha を読み、
   Git Trees API（`git/trees/<sha>?recursive=1`。10 万件・7 MB まで。超えると `truncated` が true）で下まで 1 度に読む。tree は sha で中身が決まるので、ETag で使い回せる（2026-11-06）
-- Contents API で 1 MB を超えるファイルを既定のメディアタイプ（`application/vnd.github+json`）で読むと、エラーにならず `encoding: "none"`・`content: ""` で返る（`object` のメディアタイプと同じ。2026-11 に 1.4 MB のファイルで実測）。
-  中身は `application/vnd.github.raw+json` で読み直す。`object` に切り替えると、ディレクトリが配列ではなく `entries` を持つ object で返るので、一覧の処理が壊れる（2026-11-06）
+- Contents API で 1 MB を超え 100 MB 以下のファイルを既定のメディアタイプ（`application/vnd.github+json`）で読むと、エラーにならず `encoding: "none"`・`content: ""` で返る（`object` のメディアタイプと同じ。2026-11 に 1.4 MB のファイルで実測）。
+  中身は `application/vnd.github.raw+json` で読み直す。100 MB を超えるファイルは Contents API では読めない（GitHub の文書）。`object` に切り替えると、ディレクトリが配列ではなく `entries` を持つ object で返るので、一覧の処理が壊れる（2026-11-06）
 
 ## ビルド・テスト
 
