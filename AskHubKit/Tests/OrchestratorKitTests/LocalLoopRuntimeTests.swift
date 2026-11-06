@@ -297,12 +297,13 @@ struct LocalLoopRuntimeTests {
 
         let start = ContinuousClock.now
         // sh が止まっても子の sleep がパイプを持ち続けるので、読み切りの上限も短くする
+        // trap を設定する前に止めると SIGTERM だけで終わってしまうので、時間切れはスクリプトの準備が間に合う長さにする
         let runtime = LocalLoopRuntime(killGracePeriod: .milliseconds(300), outputDrainTimeout: .milliseconds(300))
         let result = try await runtime.run(
             ["/bin/sh", "-c", "trap '' TERM; sleep 60"],
             input: "",
             for: repository,
-            timeout: .milliseconds(300)
+            timeout: Self.setupTimeout
         )
         #expect(result.status != 0)
         #expect(ContinuousClock.now - start < Self.returnLimit)
