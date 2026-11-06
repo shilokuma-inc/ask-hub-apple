@@ -75,7 +75,8 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
         await removeUnusedClones(now: Date())
     }
 
-    /// 最後に使ってから `unusedCloneLifetime` を過ぎた clone を消す。使っている間（リポジトリの排他の中）は消さない
+    /// 最後に使ってから `unusedCloneLifetime` を過ぎた clone を消す。用意している間（リポジトリの排他の中）と、
+    /// ジョブの写し（worktree）が残っている間は消さない
     func removeUnusedClones(now: Date) async {
         let owners = (try? FileManager.default.contentsOfDirectory(atPath: setup.root.appendingPathComponent("repos").path)) ?? []
         for owner in owners {
@@ -85,7 +86,8 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
                 guard let repo = RepositoryFullName(rawValue: "\(owner)/\(name)") else { continue }
                 let clone = cloneDirectory(of: repo)
                 try? await locks.withLock(repo.rawValue) { () throws(WorkspaceError) in
-                    guard let used = lastUsed(clone), now.timeIntervalSince(used) > Self.unusedCloneLifetime else { return }
+                    guard let used = lastUsed(clone), now.timeIntervalSince(used) > Self.unusedCloneLifetime,
+                          !hasLiveWorktree(clone) else { return }
                     try remove(clone)
                 }
             }
@@ -99,6 +101,17 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
 
     private func markUsed(_ clone: URL) {
         FileManager.default.createFile(atPath: usedMarker(clone).path, contents: Data())
+    }
+
+    /// ジョブの写し（worktree）がまだ残っているか。git の worktree の記録（`.git/worktrees/<名前>/gitdir`）が指す先で見る
+    private func hasLiveWorktree(_ clone: URL) -> Bool {
+        let records = clone.appendingPathComponent(".git/worktrees")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: records.path)) ?? []
+        return names.contains { name in
+            let gitdir = records.appendingPathComponent("\(name)/gitdir")
+            guard let path = try? String(contentsOf: gitdir, encoding: .utf8) else { return false }
+            return FileManager.default.fileExists(atPath: path.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
     }
 
     /// 最後に使った時刻（印が無ければ `.git` の更新時刻）
