@@ -77,7 +77,13 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
         XCTAssertTrue(app.staticTexts["GitHub のトークン"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["この端末の鍵"].exists)
+        XCTAssertTrue(app.secureTextFields["トークン"].exists)
+        // 鍵の節は設定の下のほうにあるので、シートを送りながら探す（後ろの一覧ではなく、前に出ているシートを送る）
+        let key = app.staticTexts["この端末の鍵"]
+        for _ in 0..<4 where !key.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(key.exists)
     }
 
     private func chooseScenario(_ label: String, in app: XCUIApplication) {
