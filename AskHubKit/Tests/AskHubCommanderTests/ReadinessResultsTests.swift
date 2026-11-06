@@ -147,6 +147,48 @@ extension ClaudeJobRunnerTests {
         #expect(try await read(EpicFile.self, at: path, in: store)?.stage == .asking)
     }
 
+    /// q1 に答えて、着手前の確認のジョブまで進める
+    func checkingAfterAnswer() async throws -> Requested {
+        let given = try await requested()
+        let (store, epic) = (given.store, given.epic)
+        let drafts = [QuestionJobsTests.draft("q1")]
+        let created = try await answered([answer("q1", epic: epic, nonce: 1)], drafts: drafts, in: store, epic: epic)
+        return Requested(store: store, epic: epic, job: try #require(created.first { $0.kind == .checkReadiness }))
+    }
+
+    /// Claude を呼んでいる間に、Discussion の写しの id だけを書く
+    func copyingWhileRunning(_ given: Requested, result: CommandResult) async throws -> ClaudeJobOutcome {
+        let (store, path) = (given.store, StatePath.questions(Self.repo, given.epic.id))
+        var copied = try #require(try await read(QuestionsFile.self, at: path, in: store))
+        copied.questions[0].comment = "DC_q1"
+        let data = try StateFileCoder.encode(copied)
+        let claude = InterruptingRunner(interrupt: { await store.put(path, data: data) }, result: result)
+        return try await runner(store, claude: claude).run(given.job)
+    }
+
+    @Test func checkKeepsResultWhenOnlyCopiesWereWrittenMeanwhile() async throws {
+        let given = try await checkingAfterAnswer()
+        let (store, epic) = (given.store, given.epic)
+        let ready = Self.output(CheckReadinessJob.Output(verdict: .ready, reason: "そろった", goal: Self.goal(decided: ["q1"])))
+        let outcome = try await copyingWhileRunning(given, result: ready)
+        guard case .written = outcome else { Issue.record("写しの id だけの変化で捨てた（\(outcome)）"); return }
+        #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .awaitingStart)
+        let questions = try await read(QuestionsFile.self, at: StatePath.questions(Self.repo, epic.id), in: store)
+        #expect(questions?.questions.first?.comment == "DC_q1")
+    }
+
+    @Test func moreQuestionsKeepCopiesWrittenMeanwhile() async throws {
+        let given = try await checkingAfterAnswer()
+        let (store, epic) = (given.store, given.epic)
+        let more = CheckReadinessJob.Output(verdict: .moreQuestions, reason: "期間", questions: [QuestionJobsTests.draft("q2")])
+        let outcome = try await copyingWhileRunning(given, result: Self.output(more))
+        guard case .written = outcome else { Issue.record("写しの id だけの変化で捨てた（\(outcome)）"); return }
+        let questions = try #require(try await read(QuestionsFile.self, at: StatePath.questions(Self.repo, epic.id), in: store))
+        #expect(questions.questions.map(\.id) == ["q1", "q2"])
+        #expect(questions.questions.map(\.comment) == ["DC_q1", nil])
+        #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .asking)
+    }
+
     // MARK: - 分け方の判断
 
     /// 大きすぎると返して、分け方の判断の待ちにする
@@ -266,5 +308,21 @@ extension ClaudeJobRunnerTests {
         #expect(goal.notApplied == ["回答を変える指示は反映しない"])
         // 書いた後にやり直しても、ゴールの版が変わっているので捨てる
         guard case .discarded = try await runner(store, claude: ScriptedRunner([])).run(job) else { Issue.record("捨てていない"); return }
+    }
+
+    @Test func reviseGoalKeepsCopyWrittenMeanwhile() async throws {
+        let (store, epic) = try await awaitingStart()
+        _ = try await submit("reviseGoal", epic: epic, version: "1", payload: ["instruction": .string("完了の条件を足して")], in: store)
+        let job = try #require(try await jobs(epic.id, in: store).first { $0.kind == .reviseGoal })
+        let path = StatePath.goal(Self.repo, epic.id)
+        var copied = try #require(try await read(GoalFile.self, at: path, in: store))
+        copied.comment = "DC_goal"
+        let data = try StateFileCoder.encode(copied)
+        let output = Self.output(ReviseGoalJob.Output(goal: Self.goal(), notApplied: []))
+        let claude = InterruptingRunner(interrupt: { await store.put(path, data: data) }, result: output)
+        guard case .written = try await runner(store, claude: claude).run(job) else { Issue.record("書けていない"); return }
+        let goal = try #require(try await read(GoalFile.self, at: path, in: store))
+        #expect(goal.version == 2)
+        #expect(goal.comment == "DC_goal")
     }
 }

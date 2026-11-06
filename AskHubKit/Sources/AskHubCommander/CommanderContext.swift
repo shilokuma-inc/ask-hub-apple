@@ -149,6 +149,72 @@ extension CommanderContext {
     }
 }
 
+// MARK: - epic と人の意図を読む
+
+extension CommanderContext {
+    /// `repos/<owner>/<repo>/` の一覧
+    func repositories() async throws(CommanderError) -> [RepositoryFullName] {
+        var repositories: [RepositoryFullName] = []
+        for owner in try await directories(in: StatePath.repositories) {
+            for name in try await directories(in: "\(StatePath.repositories)/\(owner)") {
+                if let repo = RepositoryFullName(rawValue: "\(owner)/\(name)") { repositories.append(repo) }
+            }
+        }
+        return repositories
+    }
+
+    /// リポジトリの epic のうち、`matches` に合うもの。読めない（知らない版など）epic は飛ばす
+    func epics(of repo: RepositoryFullName, where matches: (EpicFile) -> Bool) async throws(CommanderError) -> [EpicFile] {
+        var epics: [EpicFile] = []
+        for name in try await directories(in: StatePath.epics(repo)) {
+            guard let id = ULID(rawValue: name), let epic = try await readable(EpicFile.self, at: StatePath.epic(repo, id)),
+                  matches(epic) else { continue }
+            epics.append(epic)
+        }
+        return epics
+    }
+
+    /// ディレクトリの直下のディレクトリの名前
+    func directories(in directory: String) async throws(CommanderError) -> [String] {
+        do {
+            return try await store.listAll(directory)?.filter { $0.kind == .directory }.map(\.name) ?? []
+        } catch {
+            throw .store(error)
+        }
+    }
+
+    /// 読めない（知らない版など）ファイルは nil にして飛ばす
+    func readable<File: StateFile>(_ type: File.Type, at path: String) async throws(CommanderError) -> File? {
+        do {
+            return try await files.read(File.self, at: path)?.file
+        } catch .unreadable {
+            return nil
+        } catch {
+            throw .files(error)
+        }
+    }
+
+    /// 受け付けた人の意図を読み直す（署名を確かめてから使う。有効期間は見ない。受け付けたときに確かめている）。
+    /// 無い・署名が合わない・置き場所と封筒が食い違うときは nil
+    func envelope(of origin: IntentReference?, verifier: IntentVerifier) async throws(CommanderError) -> IntentEnvelope? {
+        guard let origin else { return nil }
+        var verifier = verifier
+        verifier.maximumAge = .greatestFiniteMagnitude
+        let blob: StoredBlob?
+        do {
+            blob = try await store.read(StatePath.intent(device: origin.keyId, nonce: origin.nonce))
+        } catch {
+            throw .store(error)
+        }
+        guard let data = blob?.data, let value = try? JSONValue(parsing: data),
+              let envelope = try? verifier.verify(stored: value, now: now()),
+              envelope.keyId == origin.keyId, envelope.nonce == origin.nonce else {
+            return nil
+        }
+        return envelope
+    }
+}
+
 /// 作るジョブの中身（種類・割り当てる Mac・使うもの・入力）
 struct JobSpec {
     var kind: JobKind

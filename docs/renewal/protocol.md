@@ -427,6 +427,16 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 - 各リポジトリの目印は、表示と照らし合わせのためだけに使い、指示としては扱わない。人の意図は状態リポジトリの `intents/` にだけ置く
 - `copy` は、人の意図の写し（`{"type":"copy","kind":"answer","intent":"<nonce>"}`）。司令塔が、処理した人の意図の中身を人が読める形で書く
 - 引用の中の目印は読まない（目印は、コメントの本文の最後の行でなければならない）
+- 目印は、自分（トークンのアカウント）が書いたものだけを読む（GraphQL の `viewerDidAuthor`）。public のリポジトリでは、誰でも目印をまねたコメントを書けるため
+- Discussion の写し（段階 2。書き方は [flows.md](flows.md) の「Discussion の写し」）の目印は、どれも `epic`（epic の id）を持つ
+
+  | 写し | 目印 |
+  | --- | --- |
+  | 依頼（Discussion の本文） | `{"type":"request","epic":"…"}` |
+  | 質問（コメント） | `{"type":"question","epic":"…","question":"q1"}` |
+  | 説明（質問のコメントへの返信） | `{"type":"explanation","epic":"…","question":"q1","intent":"<説明を求めた人の意図の nonce>"}` |
+  | 回答（質問のコメントへの返信） | `{"type":"copy","kind":"answer","epic":"…","question":"q1","intent":"<回答の人の意図の nonce>"}` |
+  | ゴール（コメント） | `{"type":"goal","epic":"…"}` |
 
 ## 人の意図と署名
 

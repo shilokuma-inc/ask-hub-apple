@@ -86,19 +86,7 @@ public struct ClaudeJobRunner: Sendable {
 
     /// 受け付けた人の意図を読み直す（署名を確かめてから使う）
     func envelope(of origin: IntentReference?) async throws(CommanderError) -> IntentEnvelope? {
-        guard let origin else { return nil }
-        let blob: StoredBlob?
-        do {
-            blob = try await context.store.read(StatePath.intent(device: origin.keyId, nonce: origin.nonce))
-        } catch {
-            throw .store(error)
-        }
-        guard let data = blob?.data, let value = try? JSONValue(parsing: data),
-              let envelope = try? verifier.verify(stored: value, now: context.now()),
-              envelope.keyId == origin.keyId, envelope.nonce == origin.nonce else {
-            return nil
-        }
-        return envelope
+        try await context.envelope(of: origin, verifier: verifier)
     }
 
     /// 結果を書く直前に読み直した epic。epic の段階が `stages` から外れた・ジョブが取り消されたときは nil（結果を捨てる）。
