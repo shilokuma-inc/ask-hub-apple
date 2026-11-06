@@ -197,3 +197,56 @@ public struct ReviseGoalHandler: IntentHandler {
         return .accept
     }
 }
+
+/// 分け方の判断（`decideSplit`）を受け付ける。分けて依頼し直すなら epic をやめ、このまま 1 つで進めるなら、
+/// 大きすぎるとは返させない着手前の確認のジョブを作る（`docs/renewal/flows.md` の「着手前の確認とゴール」）
+public struct DecideSplitHandler: IntentHandler {
+    public init() {}
+
+    public func handle(_ envelope: IntentEnvelope, in context: CommanderContext) async throws(CommanderError) -> IntentDecision {
+        let decide: DecideSplitIntent
+        do {
+            decide = try DecideSplitIntent(envelope: envelope)
+        } catch {
+            return .reject("分け方の判断の形が違う（\(error.detail)）")
+        }
+        let target = decide.target
+        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(target.repo, target.epic)) else {
+            return .reject("epic が無い")
+        }
+        let readiness = try await context.read(ReadinessFile.self, at: StatePath.readiness(epic.repo, epic.id))
+        let check = context.claudeJob(.checkReadiness, for: epic, origin: decide.intent, seed: "", input: ["proceed": .bool(true)])
+        // 前の周で epic まで書いた（やり直し）
+        if try await alreadyApplied(decide, to: epic, readiness: readiness, check: check, in: context) { return .accept }
+        guard epic.stage == .awaitingSplit else { return .reject("分け方を選べる段階でない（今は \(epic.stage.rawValue)）") }
+        guard let readiness, readiness.verdict == .tooLarge, readiness.version == target.version else {
+            return .reject("着手前の確認の結果が変わった。新しい結果を確かめて選び直す")
+        }
+        switch decide.choice {
+        case .split:
+            // 分けた依頼は、クライアントが分け方の案から下書きを出し、人が確かめて送る。動いているジョブ（説明など）は止める
+            try await context.cancelJobs(epic.repo, epic: epic.id) { _ in true }
+            try await context.setStage(.abandoned, of: epic, from: [.awaitingSplit])
+        case .proceed:
+            try await context.create(check)
+            try await context.setStage(.checking, of: epic, from: [.awaitingSplit])
+        }
+        return .accept
+    }
+
+    private func alreadyApplied(
+        _ decide: DecideSplitIntent,
+        to epic: EpicFile,
+        readiness: ReadinessFile?,
+        check: JobFile,
+        in context: CommanderContext
+    ) async throws(CommanderError) -> Bool {
+        switch decide.choice {
+        case .split:
+            return epic.stage == .abandoned && readiness?.version == decide.target.version
+        case .proceed:
+            guard epic.stage != .awaitingSplit else { return false }
+            return try await context.read(JobFile.self, at: StatePath.job(epic.repo, epic: epic.id, job: check.id)) != nil
+        }
+    }
+}
