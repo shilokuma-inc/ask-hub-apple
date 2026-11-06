@@ -153,6 +153,7 @@ public actor CommanderLoop {
         "startEpic": StartEpicHandler(),
         "reviseGoal": ReviseGoalHandler(),
         "decideSplit": DecideSplitHandler(),
+        "abandonEpic": AbandonEpicHandler(),
         "addRepository": AddRepositoryHandler(),
         "retry": RetryJobHandler(),
         "giveUp": GiveUpJobHandler()
