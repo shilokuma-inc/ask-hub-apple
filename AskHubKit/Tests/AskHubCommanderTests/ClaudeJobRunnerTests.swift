@@ -13,7 +13,7 @@ struct FixedWorkspace: RepositoryWorkspace {
     var directory: URL
     var failure: WorkspaceError?
 
-    func prepare(_ repo: RepositoryFullName) async throws(WorkspaceError) -> PreparedWorkspace {
+    func prepare(_ repo: RepositoryFullName, for job: ULID) async throws(WorkspaceError) -> PreparedWorkspace {
         if let failure { throw failure }
         return PreparedWorkspace(directory: directory.appendingPathComponent("repo"), facts: "SwiftUI のアプリ")
     }
@@ -27,6 +27,8 @@ struct FixedWorkspace: RepositoryWorkspace {
         }
         return url
     }
+
+    func release(_ job: ULID) async {}
 }
 
 /// Claude を呼ぶジョブを実行し、結果を状態リポジトリに書く

@@ -16,10 +16,14 @@ public struct PreparedWorkspace: Sendable {
 
 /// 対象のリポジトリの写しを用意する（常時オンの Mac のワーカー専用のフォルダに partial clone で作り、使うたびに最新にする）
 public protocol RepositoryWorkspace: Sendable {
-    func prepare(_ repo: RepositoryFullName) async throws(WorkspaceError) -> PreparedWorkspace
+    /// ジョブ用の写し（既定のブランチの最新）を用意する。並んで動くほかのジョブの写しとは分ける
+    func prepare(_ repo: RepositoryFullName, for job: ULID) async throws(WorkspaceError) -> PreparedWorkspace
 
     /// 依頼の添付を置く、Claude が読んでよいフォルダ（ジョブごとに作る）
     func attachmentsDirectory(for job: ULID) async throws(WorkspaceError) -> URL
+
+    /// ジョブの写しと添付のフォルダを片付ける（ジョブを終えたときに呼ぶ。片付けられなくても止めない）
+    func release(_ job: ULID) async
 }
 
 public enum WorkspaceError: Error, Equatable, Sendable {

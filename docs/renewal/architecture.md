@@ -76,6 +76,8 @@ flowchart TB
 
 - リポジトリは AskHub で「対象に加える」だけにする。加えるときに行うのは、GitHub 側の準備と、設定を状態リポジトリに書くことだけで、どの Mac にも clone しない
 - clone は、ジョブが要るときにその Mac でだけ、ワーカー専用のフォルダに作る（必要になるまで中身を取らない partial clone）
+  - 読むだけのジョブ（質問づくり・確認など）は、リポジトリごとに 1 つの clone（取り出さない）を fetch し、ジョブごとに worktree で既定のブランチの最新を取り出す。並んで動くジョブの写しを分け、ジョブを終えたら消す
+  - git にはリポジトリの hooks・シンボリックリンク・人の git の設定を効かせない（設定は `GIT_CONFIG_COUNT` の環境変数で渡し、`GIT_CONFIG_GLOBAL=/dev/null`）。GitHub のトークンは引数にも環境変数にも置かず、credential helper（Keychain から読むコマンド）で渡す
 - epic の作業場所（worktree・Simulator・DerivedData）は、最終 PR のマージ後に消す。clone 本体は、最後に使ってから 7 日で消す。空き容量が少なければ早めに消す
 - 人が自分で置いている clone には触れない
 
