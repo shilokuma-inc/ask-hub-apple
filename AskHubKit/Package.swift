@@ -33,6 +33,8 @@ let package = Package(
         .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
         // リニューアルの司令塔（常時オンの Mac で LaunchAgent として常駐させる CLI）
         .executable(name: "askhub-commander", targets: ["askhub-commander"]),
+        // 非常口（Mac の端末から人の意図に署名して送る CLI）
+        .executable(name: "askhub", targets: ["askhub"]),
     ],
     targets: [
         .target(name: "AskHubKit"),
@@ -52,6 +54,7 @@ let package = Package(
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
+        .executableTarget(name: "askhub", dependencies: ["AskHubClient", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]),
         .executableTarget(
             name: "askhub-commander",
             dependencies: ["AskHubClaude", "AskHubCommander", "AskHubCommands", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
