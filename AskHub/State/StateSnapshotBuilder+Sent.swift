@@ -144,7 +144,7 @@ extension StateSnapshotBuilder {
         switch choice {
         case .split:
             epics[epicIndex].split = split
-            epics[epicIndex].stage = .done
+            epics[epicIndex].isAbandoned = true
 
         case .proceed:
             epics[epicIndex].split = nil

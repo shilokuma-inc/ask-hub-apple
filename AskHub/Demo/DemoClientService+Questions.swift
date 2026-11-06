@@ -214,7 +214,7 @@ extension DemoClientService {
             switch choice {
             case .split:
                 epic.split?.choice = .split
-                epic.stage = .done
+                epic.isAbandoned = true
                 epic.activities = []
                 epic.log("分けて依頼し直すことにしました", at: date)
 

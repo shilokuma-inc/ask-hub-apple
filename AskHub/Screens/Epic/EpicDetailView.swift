@@ -49,7 +49,7 @@ struct EpicDetailView: View {
             CardSection {
                 VStack(alignment: .leading, spacing: 14) {
                     AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: subtitle(epic), iconSize: 40)
-                    StageTrackerView(stage: epic.stage, isBlocked: epic.blocker != nil)
+                    StageTrackerView(stage: epic.stage, isBlocked: epic.blocker != nil, isAbandoned: epic.isAbandoned)
                 }
                 .padding(.vertical, 4)
             }

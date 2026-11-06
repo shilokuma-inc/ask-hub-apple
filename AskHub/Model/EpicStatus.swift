@@ -12,12 +12,17 @@ struct EpicStatusLine: Hashable {
         case you
         case machine
         case finished
+        /// やめた（終わったが、作ったものは入らない）
+        case abandoned
     }
 }
 
 /// epic の状態から「いま」の行を組み立てる
 enum EpicStatus {
     static func lines(for epic: Epic, in snapshot: ClientSnapshot, now: Date) -> [EpicStatusLine] {
+        if epic.isAbandoned {
+            return [EpicStatusLine(owner: .abandoned, text: "やめました", systemImage: "xmark.seal.fill", route: nil)]
+        }
         if epic.stage == .done {
             return [finishedLine(epic)]
         }

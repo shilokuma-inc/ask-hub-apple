@@ -22,6 +22,8 @@ struct Epic: Identifiable, Hashable {
     var updatedAt: Date
     /// 着手前の確認で、1 つの epic に収まらないと分かったとき
     var split: SplitProposal?
+    /// やめた（分けて依頼し直した など）。段階は、やめたときの段階のまま持つ
+    var isAbandoned = false
 
     /// 段階。画面の段階の帯は 依頼・質問・確認（着手前の確認とゴール）・実装・最終 PR・完了 の 6 つ
     enum Stage: Int, Hashable, CaseIterable, Comparable {
@@ -202,5 +204,5 @@ extension Epic {
         .count
     }
 
-    var isActive: Bool { stage != .done }
+    var isActive: Bool { stage != .done && !isAbandoned }
 }

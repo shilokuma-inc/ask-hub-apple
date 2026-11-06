@@ -32,7 +32,7 @@ extension StateSnapshotBuilder {
                 source: .app,
                 attachmentCount: 0
             ),
-            stage: Self.stage(file.stage),
+            stage: file.stage == .abandoned ? Self.abandonedStage(documents) : Self.stage(file.stage),
             questions: questions,
             goal: goal.map(Self.goal),
             humanTasks: goal.map(Self.humanTasks) ?? [],
@@ -43,8 +43,24 @@ extension StateSnapshotBuilder {
             finalReview: nil,
             history: history(of: file, questions: protocolQuestions, readiness: documents.readiness),
             updatedAt: file.updatedAt.date,
-            split: Self.split(file.stage, readiness: documents.readiness)
+            split: Self.split(file.stage, readiness: documents.readiness),
+            isAbandoned: file.stage == .abandoned
         )
+    }
+
+    /// やめた epic の段階。epic のファイルは「やめた」だけを持つので、どこまで進んでいたかをほかのファイルから決める
+    private static func abandonedStage(_ documents: StateDocuments.EpicDocuments) -> Epic.Stage {
+        let file = documents.epic
+        if file.finalPullRequest != nil {
+            return .finalReview
+        }
+        if file.branch != nil || file.mac != nil {
+            return .implementing
+        }
+        if documents.goal != nil || documents.readiness != nil {
+            return .preflight
+        }
+        return documents.questions?.questions.isEmpty == false ? .questions : .request
     }
 
     /// 依頼の本文は epic のファイルに無いので、この端末が送った依頼なら、送った意図から読む

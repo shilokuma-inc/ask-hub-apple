@@ -65,7 +65,7 @@ struct EpicRow: View {
                         .rowFont(.title)
                         .lineLimit(2)
                     Spacer(minLength: 8)
-                    StageDots(stage: epic.stage, isBlocked: epic.blocker != nil)
+                    StageDots(stage: epic.stage, isBlocked: epic.blocker != nil, isAbandoned: epic.isAbandoned)
                 }
                 Text(store.repository(epic.repositoryID)?.appName ?? epic.repositoryID)
                     .rowFont(.subtitle)
@@ -99,6 +99,7 @@ struct EpicStatusLabel: View {
         case .you: line.systemImage == "exclamationmark.triangle.fill" ? Theme.danger : Theme.accent
         case .machine: .secondary
         case .finished: Theme.success
+        case .abandoned: .secondary
         }
     }
 }
@@ -107,6 +108,8 @@ struct EpicStatusLabel: View {
 struct StageDots: View {
     let stage: Epic.Stage
     var isBlocked = false
+    /// やめた段階の点は、色を付けない
+    var isAbandoned = false
 
     var body: some View {
         let current = Self.index(of: stage)
@@ -132,6 +135,9 @@ struct StageDots: View {
     }
 
     private func color(index: Int, current: Int) -> Color {
+        if isAbandoned && index == current {
+            return .secondary
+        }
         if index < current || stage == .done {
             return Theme.success
         }

@@ -176,7 +176,9 @@ struct StateClientServiceTests {
         #expect(envelope.targetVersion == "3")
         #expect(envelope.string("choice") == "split")
         let after = try await service.fetchSnapshot()
-        #expect(after.epic(Self.epicID)?.stage == .done)
+        // やめた epic は、やめたときの段階（着手前の確認）のまま、やめたことを持つ
+        #expect(after.epic(Self.epicID)?.stage == .preflight)
+        #expect(after.epic(Self.epicID)?.isAbandoned == true)
         #expect(after.epic(Self.epicID)?.split?.choice == .split)
     }
 
