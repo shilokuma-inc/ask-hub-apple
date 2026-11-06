@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/consumed.schema.json",
+  "title": "consumed/<device>/<nonce>.json（処理した人の意図の記録）",
+  "description": "司令塔だけが、版なしで作る（すでにあれば断られるので、まだ使われていないかの確認と記録が 1 回の書き込みで済む）。署名を確かめられた意図だけを記録する。reason は rejected のときだけ書く（読む側で確かめる）",
+  "type": "object",
+  "required": ["v", "kind", "consumedAt", "result"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "kind": { "type": "string", "minLength": 1, "description": "人の意図の kind" },
+    "consumedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "result": { "enum": ["accepted", "rejected"] },
+    "reason": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }], "description": "指示として扱わなかった理由" }
+  }
+}

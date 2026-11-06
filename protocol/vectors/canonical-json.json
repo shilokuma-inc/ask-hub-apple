@@ -1,0 +1,57 @@
+{
+  "description": "RFC 8785 で JSON の値をそろえる。valid は input をそろえると canonical になり、invalid は読み取りで error になる。rfc8785-key-order は RFC 8785 の 3.2.3 の例（UTF-16 の順に並べる）",
+  "valid": [
+    {
+      "name": "rfc8785-key-order",
+      "input": "{\"\\u20ac\":\"Euro Sign\",\"\\r\":\"Carriage Return\",\"\\ufb33\":\"Hebrew Letter Dalet With Dagesh\",\"1\":\"One\",\"\\ud83d\\ude00\":\"Emoji: Grinning Face\",\"\\u0080\":\"Control\",\"\\u00f6\":\"Latin Small Letter O With Diaeresis\"}",
+      "canonical": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji: Grinning Face\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}"
+    },
+    {
+      "name": "nested-no-whitespace",
+      "input": "{ \"b\": [1, true, null, {\"z\": \"x\", \"a\": -0}], \"a\": \"y\" }",
+      "canonical": "{\"a\":\"y\",\"b\":[1,true,null,{\"a\":0,\"z\":\"x\"}]}"
+    },
+    {
+      "name": "escapes",
+      "input": "{\"s\": \"q\\\"b\\\\s/\\b\\f\\n\\r\\t\\u0007\\u001f\\u2028\\u65e5\\u672c\\u8a9e\\ud83d\\ude00\"}",
+      "canonical": "{\"s\":\"q\\\"b\\\\s/\\b\\f\\n\\r\\t\\u0007\\u001f 日本語😀\"}"
+    },
+    {
+      "name": "integer-limits",
+      "input": "{\"max\": 9007199254740991, \"min\": -9007199254740991, \"zero\": 0}",
+      "canonical": "{\"max\":9007199254740991,\"min\":-9007199254740991,\"zero\":0}"
+    },
+    {
+      "name": "empty",
+      "input": "{\"a\": [], \"b\": {}, \"c\": \"\"}",
+      "canonical": "{\"a\":[],\"b\":{},\"c\":\"\"}"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "fraction",
+      "input": "1.5",
+      "error": "nonInteger"
+    },
+    {
+      "name": "fraction-in-array",
+      "input": "[1, 1.25]",
+      "error": "nonInteger"
+    },
+    {
+      "name": "fraction-in-object",
+      "input": "{\"a\": {\"b\": 0.5}}",
+      "error": "nonInteger"
+    },
+    {
+      "name": "beyond-safe-integer",
+      "input": "9007199254740992",
+      "error": "integerOutOfRange"
+    },
+    {
+      "name": "not-json",
+      "input": "{\"a\": }",
+      "error": "notJSON"
+    }
+  ]
+}

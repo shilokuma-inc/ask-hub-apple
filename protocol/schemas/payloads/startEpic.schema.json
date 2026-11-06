@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/startEpic.schema.json",
+  "title": "開始の人の意図（kind が startEpic）の payload",
+  "description": "封筒の target は {type: epic, epic}、targetVersion は確かめたゴールの version を 10 進で書く。mac は回す Mac の名前。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "mac"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "mac": {
+      "$ref": "../common.schema.json#/$defs/macName"
+    }
+  }
+}

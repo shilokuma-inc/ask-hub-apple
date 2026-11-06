@@ -1,0 +1,114 @@
+{
+  "description": "状態リポジトリのパスに使う値と、時刻の形。valid は受け付け、invalid は受け付けない（protocol/schemas/common.schema.json）",
+  "ulid": {
+    "valid": [
+      "01JCEP1C000000000000000001",
+      "00000000000000000000000000",
+      "7ZZZZZZZZZZZZZZZZZZZZZZZZZ"
+    ],
+    "invalid": [
+      "",
+      "01JCEP1C00000000000000001",
+      "01JCEP1C0000000000000000001",
+      "01jcep1c000000000000000001",
+      "81JCEP1C000000000000000001",
+      "01JCEP1C00000000000000000I",
+      "01JCEP1C00000000000000000L",
+      "01JCEP1C00000000000000000O",
+      "01JCEP1C00000000000000000U",
+      "../../keys/000000000000001",
+      "01JCEP1C00000000000000000１"
+    ]
+  },
+  "repositoryFullName": {
+    "valid": [
+      "shilokuma-inc/ask-hub-apple",
+      "a/b",
+      "Owner-1/Repo.Name_x",
+      "a/.github",
+      "a/...",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/b",
+      "a/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "invalid": [
+      "",
+      "a",
+      "a/",
+      "/b",
+      "a/b/c",
+      "-a/b",
+      "a/.",
+      "a/..",
+      "../b",
+      "..",
+      "a b/c",
+      "a/b c",
+      "a_b/c",
+      "a.b/c",
+      "a/ｂ",
+      "a/b\n",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/b",
+      "a/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ]
+  },
+  "keyId": {
+    "valid": [
+      "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+      "___________________________________________",
+      "-------------------------------------------"
+    ],
+    "invalid": [
+      "",
+      "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1",
+      "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1YA",
+      "+++++++++++++++++++++++++++++++++++++++++++",
+      "///////////////////////////////////////////",
+      "=GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+      "../AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    ]
+  },
+  "macName": {
+    "valid": [
+      "mac-mini",
+      "macbook-a",
+      "m",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "0-1"
+    ],
+    "invalid": [
+      "",
+      "Mac-mini",
+      "-mac",
+      "mac-",
+      "mac_mini",
+      "mac mini",
+      "mac.mini",
+      "..",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "mac\n",
+      "ｍac"
+    ]
+  },
+  "timestamp": {
+    "valid": [
+      "2026-11-03T10:00:00Z",
+      "2024-02-29T23:59:59Z",
+      "1970-01-01T00:00:00Z"
+    ],
+    "invalid": [
+      "",
+      "2026-11-03T10:00:00.000Z",
+      "2026-11-03T10:00:00+09:00",
+      "2026-11-03T10:00:00z",
+      "2026-11-03 10:00:00Z",
+      "2026-11-03T10:00Z",
+      "2025-02-29T00:00:00Z",
+      "2026-13-01T00:00:00Z",
+      "2026-11-03T24:00:00Z",
+      "2026-11-03T10:00:60Z",
+      " 2026-11-03T10:00:00Z",
+      "2026-11-03T10:00:00Z\n",
+      "２026-11-03T10:00:00Z"
+    ]
+  }
+}

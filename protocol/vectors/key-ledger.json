@@ -1,0 +1,861 @@
+{
+  "description": "公開鍵の記録の列（keys/<seq>.json）を確かめる例。firstKey はセットアップで固定した最初の鍵、accounts は鍵を結びつけてよいアカウント。keys は確かめた後に登録済みで取り消されていない鍵、verifiedCount は確かめられた記録の数、problem は最初に合わなかった記録（docs/renewal/protocol.md）。keys の秘密鍵は、固定の文字列から作ったテスト専用のもので、本番では使わない",
+  "accounts": [
+    "askhub-test-account"
+  ],
+  "keys": {
+    "key1": {
+      "privateKeyRaw": "HtJEVOLxRmLAswOWRPjTtXHCwKuI9XVRiMTd8z2eerI",
+      "publicKeyDer": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+      "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y"
+    },
+    "key2": {
+      "privateKeyRaw": "YqHk8bJYSK22-C0PY0r9dAvbSR_DLXW2nEusMxc4-Hs",
+      "publicKeyDer": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+      "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8"
+    },
+    "key3": {
+      "privateKeyRaw": "v-v0RnAyC_8_8OG0H_EyHyKsS1HoYxFb0Z17Ad_3kXc",
+      "publicKeyDer": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEN_O4VHNr2HKRr-3a9b41hHebJmkYXWZOG67fAi-SVXJq9DYtJJnJRBnXzvh329UxBJ5uJCO0iFMQYXuLavYCgg",
+      "keyId": "hp1r-2GkcuPxJHzZnzqiAuj511ZxrAyujygbcLuOldw"
+    }
+  },
+  "cases": [
+    {
+      "name": "valid-chain",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "KaovMjZp69LvCACVmsmFfez8pUdeRpQXcUPSm4Ax62Piji2VGfUkJ4JftCTN5-0BRyQQuAWHkL2sIVHkDS3Bmg"
+        },
+        {
+          "v": 1,
+          "seq": 3,
+          "action": "revoke",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:02:00Z",
+          "signedBy": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "previousSha256": "fff3e6120015504e3cb3640cd50ede076efaada8d64e85f69000b5ada507c260",
+          "sig": "sP20mPGxzZBSQSjcop_zVbBSnXdBe9HPzZTilVkYCLcwKYX-G88d6cmmMPBPKpyWc0Q3Ta4UsIVITQENmgyD_A"
+        }
+      ],
+      "keys": [
+        "key2"
+      ],
+      "verifiedCount": 3,
+      "problem": null
+    },
+    {
+      "name": "first-record-only",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": null
+    },
+    {
+      "name": "unordered-files",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 3,
+          "action": "revoke",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:02:00Z",
+          "signedBy": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "previousSha256": "fff3e6120015504e3cb3640cd50ede076efaada8d64e85f69000b5ada507c260",
+          "sig": "sP20mPGxzZBSQSjcop_zVbBSnXdBe9HPzZTilVkYCLcwKYX-G88d6cmmMPBPKpyWc0Q3Ta4UsIVITQENmgyD_A"
+        },
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "KaovMjZp69LvCACVmsmFfez8pUdeRpQXcUPSm4Ax62Piji2VGfUkJ4JftCTN5-0BRyQQuAWHkL2sIVHkDS3Bmg"
+        }
+      ],
+      "keys": [
+        "key2"
+      ],
+      "verifiedCount": 3,
+      "problem": null
+    },
+    {
+      "name": "first-key-not-pinned",
+      "firstKey": "key2",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "KaovMjZp69LvCACVmsmFfez8pUdeRpQXcUPSm4Ax62Piji2VGfUkJ4JftCTN5-0BRyQQuAWHkL2sIVHkDS3Bmg"
+        }
+      ],
+      "keys": [],
+      "verifiedCount": 0,
+      "problem": {
+        "type": "firstKeyNotPinned"
+      }
+    },
+    {
+      "name": "first-signed-by-other",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "U54h-LRIIkvzSPn4iEI1f1fNJqzvd5RrpAdFwYAW40WSxcmTqsWyg87C1VAzlhD5f9iTmmF5qAWPt23hO4rYGw"
+        }
+      ],
+      "keys": [],
+      "verifiedCount": 0,
+      "problem": {
+        "type": "firstKeyNotPinned"
+      }
+    },
+    {
+      "name": "broken-link",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "fff3e6120015504e3cb3640cd50ede076efaada8d64e85f69000b5ada507c260",
+          "sig": "0FZJMeHGfBJUqL86-uJKMMfr1dDwKgqUI0vyTPTQfQZ-pIZXLxSy6IGorTr5iDF6GFYswvAf529tZlEpZ7miuQ"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "brokenLink",
+        "seq": 2
+      }
+    },
+    {
+      "name": "tampered-after-signing",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "書き換えた名前",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "KaovMjZp69LvCACVmsmFfez8pUdeRpQXcUPSm4Ax62Piji2VGfUkJ4JftCTN5-0BRyQQuAWHkL2sIVHkDS3Bmg"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "badSignature",
+        "seq": 2
+      }
+    },
+    {
+      "name": "unknown-signer",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "hp1r-2GkcuPxJHzZnzqiAuj511ZxrAyujygbcLuOldw",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEN_O4VHNr2HKRr-3a9b41hHebJmkYXWZOG67fAi-SVXJq9DYtJJnJRBnXzvh329UxBJ5uJCO0iFMQYXuLavYCgg",
+          "account": "askhub-test-account",
+          "label": "テスト端末 3",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "otZFEvDQLJp3ep4Z4VOkZVtjCgBzvOd5NcTj17ZOa4phDkOXR8_pA7F3CB-yK6XD7dOaoMjoPDNiUimP9PIpJQ"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "unknownSigner",
+        "seq": 2
+      }
+    },
+    {
+      "name": "revoked-signer",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "KaovMjZp69LvCACVmsmFfez8pUdeRpQXcUPSm4Ax62Piji2VGfUkJ4JftCTN5-0BRyQQuAWHkL2sIVHkDS3Bmg"
+        },
+        {
+          "v": 1,
+          "seq": 3,
+          "action": "revoke",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:02:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "previousSha256": "fff3e6120015504e3cb3640cd50ede076efaada8d64e85f69000b5ada507c260",
+          "sig": "opJO7JyL7s4Dsqz6xK-iRwz2QnNfvFi7b3c2A4mlueDJDwfu68m2e8veAOZ2EPEazNgXrzs14DzsgD4SlHc6Fw"
+        },
+        {
+          "v": 1,
+          "seq": 4,
+          "action": "add",
+          "keyId": "hp1r-2GkcuPxJHzZnzqiAuj511ZxrAyujygbcLuOldw",
+          "issuedAt": "2026-11-03T10:03:00Z",
+          "signedBy": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEN_O4VHNr2HKRr-3a9b41hHebJmkYXWZOG67fAi-SVXJq9DYtJJnJRBnXzvh329UxBJ5uJCO0iFMQYXuLavYCgg",
+          "account": "askhub-test-account",
+          "label": "テスト端末 3",
+          "previousSha256": "d6740a098d7745a91e33a940c2ff83b6d23175c172c8f16f99e7a5f709dd4eba",
+          "sig": "96OI46uszONGhBz8o_yVPLlNA3IthXNBNegG69MWZ6vB6evUs88qK0w0ifN0FcRuccLP-08p6lkhQyJCUEnjaw"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 3,
+      "problem": {
+        "type": "unknownSigner",
+        "seq": 4
+      }
+    },
+    {
+      "name": "sequence-gap",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 3,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "y2GwFGwHo26zc0jYVh3SvsGJLLy99h_qmxCXndp2UKmlt3f-2sLdJiO_cnBs3K-KTqZgHr4hBZcpfUSLhzzI_A"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "outOfSequence",
+        "expected": 2,
+        "found": 3
+      }
+    },
+    {
+      "name": "sequence-duplicate",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "hp1r-2GkcuPxJHzZnzqiAuj511ZxrAyujygbcLuOldw",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEN_O4VHNr2HKRr-3a9b41hHebJmkYXWZOG67fAi-SVXJq9DYtJJnJRBnXzvh329UxBJ5uJCO0iFMQYXuLavYCgg",
+          "account": "askhub-test-account",
+          "label": "テスト端末 3",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "SsRTmN2gZMy4ck3uFapJhvyf4obc9oxy515q1ODRZOre1cU1gLelubtVMhd0DEneEkH21huCO8i9lYYW1W0dbA"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "KaovMjZp69LvCACVmsmFfez8pUdeRpQXcUPSm4Ax62Piji2VGfUkJ4JftCTN5-0BRyQQuAWHkL2sIVHkDS3Bmg"
+        },
+        {
+          "v": 1,
+          "seq": 3,
+          "action": "revoke",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:02:00Z",
+          "signedBy": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "previousSha256": "fff3e6120015504e3cb3640cd50ede076efaada8d64e85f69000b5ada507c260",
+          "sig": "sP20mPGxzZBSQSjcop_zVbBSnXdBe9HPzZTilVkYCLcwKYX-G88d6cmmMPBPKpyWc0Q3Ta4UsIVITQENmgyD_A"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "duplicateSequence",
+        "seq": 2
+      }
+    },
+    {
+      "name": "key-id-mismatch",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "hp1r-2GkcuPxJHzZnzqiAuj511ZxrAyujygbcLuOldw",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "UYLwvARoOQde6VqwwqVfS7eu21xzk159ssc_Czq7qid678KB5Pw2GZx7ngJJl6DMJDAoYoGkITadopqpwfeTLQ"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "keyIdMismatch",
+        "seq": 2
+      }
+    },
+    {
+      "name": "already-registered",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "4A-LyiKBlv0XaLX_0ODoboBr8hbYzXuzE_cCtecCwbuNcW4y36-ve6-37x9EWw_zcR9prTklBnz1ziM0EJtukA"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "alreadyRegistered",
+        "seq": 2
+      }
+    },
+    {
+      "name": "revoke-not-registered",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "revoke",
+          "keyId": "hp1r-2GkcuPxJHzZnzqiAuj511ZxrAyujygbcLuOldw",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "OccnwT4SK1B4YwmnU0il64UnB05PD7wfQQXTW3G2UyDew5P6IRqAbts98XuPosZ054a5aRutk6S9Y6sTKBbe_w"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "notRegistered",
+        "seq": 2
+      }
+    },
+    {
+      "name": "revoke-last-key",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "revoke",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "WJMdxxkOvzDYwS3JLHjh2TVnaBH-AG2V_rHK3-qI2kTj-zahxVzKm8RBm1UJS8L7ZkIXaHC7xqL76goyPS6TcQ"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "lastKeyRevoked",
+        "seq": 2
+      }
+    },
+    {
+      "name": "untrusted-account",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "someone-else",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "fByAACNyavGfgtMoMDBossmGnhdeUmYUtH-QoRDLoBbPdIQiJ6Ab76RMvqS-xniZCKN-ArJ9wuHapuyKvCcgng"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "untrustedAccount",
+        "seq": 2
+      }
+    },
+    {
+      "name": "unknown-field-signed",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "note": "署名に含めた知らない項目",
+          "sig": "LXK22NzD5dvtzpF4T1MocBlUv-CQKQzl6TiGN7OFSr6A3Q91CNzKTMCoHRPHDQ77m5LHtDAQetEm0zCC9SRK6w"
+        }
+      ],
+      "keys": [
+        "key1",
+        "key2"
+      ],
+      "verifiedCount": 2,
+      "problem": null
+    },
+    {
+      "name": "unknown-field-added-after-signing",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "KaovMjZp69LvCACVmsmFfez8pUdeRpQXcUPSm4Ax62Piji2VGfUkJ4JftCTN5-0BRyQQuAWHkL2sIVHkDS3Bmg",
+          "note": "署名の後に足した項目"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "badSignature",
+        "seq": 2
+      }
+    },
+    {
+      "name": "revoke-with-public-key",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "revoke",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "sig": "j86YhNyeRsnAnMMFCAjOrD_0Q48nAN39TaselqCkMR-P2CEK1M23zVsDVkKs8VHrVYHwPd5bADP70LbXE_1bWQ"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "malformed",
+        "seq": 2
+      }
+    },
+    {
+      "name": "future-version",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 2,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587",
+          "sig": "HeTzakfpbT_06U9aYa9A_-upL9WKwPLuY1qT6fOvFeu4l9AvYKtIxUfl1Z6xc_D5ocXhH6TajSDFhq2MFPx0tQ"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "malformed",
+        "seq": 2
+      }
+    },
+    {
+      "name": "missing-signature",
+      "firstKey": "key1",
+      "records": [
+        {
+          "v": 1,
+          "seq": 1,
+          "action": "add",
+          "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "issuedAt": "2026-11-03T10:00:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJPLKv1p7UfCLBeKsFXoH1DKpAFrCkamoPiJwSwIVrY42TZazS08-Z6nQgy6DKcgbuHAaxV90VVeWBHwYJFyh1w",
+          "account": "askhub-test-account",
+          "label": "テスト端末 1",
+          "sig": "3zHgDtEK9wIgaPPREU6usea_GLbKTKi_q0S506WcWNshITjnF0UW5rH-QG-rHyUOHorPux8z6gc4YpCVfnPMoQ"
+        },
+        {
+          "v": 1,
+          "seq": 2,
+          "action": "add",
+          "keyId": "d_0num9BvWZeyKDUO3tA9gGis8Qr_LYSJsWHt1V3MZ8",
+          "issuedAt": "2026-11-03T10:01:00Z",
+          "signedBy": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+          "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9kqGHUEEyEaki0tnqZn5VEV-lQyYeX_zZHyel8bjISBPadzaDjSPxMUGtPS9vRzM_CRI_GQNIRIwrT2N9D3YDw",
+          "account": "askhub-test-account",
+          "label": "テスト端末 2",
+          "previousSha256": "7e16110e4c1a85794c60da70d8c1eb8f975553a9d87176607877ae58746f9587"
+        }
+      ],
+      "keys": [
+        "key1"
+      ],
+      "verifiedCount": 1,
+      "problem": {
+        "type": "malformed",
+        "seq": 2
+      }
+    }
+  ]
+}
