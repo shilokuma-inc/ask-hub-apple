@@ -53,11 +53,24 @@ extension AskHubMain {
     /// 人の対応を待っているジョブと、最後の試行の失敗を出す（やり直す・やめるに渡す番号つき）
     private static func printWaitingJobs(of epic: EpicFile, files: StateFileStore) async throws {
         for entry in try await files.store.listAll(StatePath.jobs(epic.repo, epic: epic.id)) ?? [] where entry.kind == .file {
-            guard let job = try? await files.read(JobFile.self, at: entry.path)?.file, job.state == .waitingHuman else { continue }
+            // 読めないジョブは、人の対応待ちかどうか分からないので、見落とさないよう出す
+            let job: JobFile
+            do {
+                guard let read = try await files.read(JobFile.self, at: entry.path)?.file else { continue }
+                job = read
+            } catch {
+                print("    読めないジョブ \(entry.name)（\(error)）")
+                continue
+            }
+            guard job.state == .waitingHuman else { continue }
             print("    人の対応待ちのジョブ \(job.kind.rawValue) \(job.id.rawValue)（試行 \(job.attempts)）")
             let path = StatePath.attempt(epic.repo, epic: epic.id, job: job.id, number: job.attempts)
-            if let failure = try? await files.read(AttemptFile.self, at: path)?.file.failure {
-                print("      失敗: \(failure.failureClass.rawValue) \(failure.message)")
+            do {
+                if let failure = try await files.read(AttemptFile.self, at: path)?.file.failure {
+                    print("      失敗: \(failure.failureClass.rawValue) \(failure.message)")
+                }
+            } catch {
+                print("      失敗の理由を読めない（\(error)）")
             }
             let target = "--repo \(epic.repo.rawValue) --epic \(epic.id.rawValue) --job \(job.id.rawValue) --attempt \(job.attempts)"
             print("      やり直す: askhub retry \(target)\n      やめる: askhub give-up \(target)")
