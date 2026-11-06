@@ -87,6 +87,7 @@ extension AskHubMain {
         for task in goal.tasks {
             let premise = task.dependsOn.isEmpty ? "" : "（前提: \(task.dependsOn.joined(separator: "・"))）"
             print("      タスク \(task.id): \(task.title)" + premise)
+            if let detail = task.detail, !detail.isEmpty { print("        \(detail)") }
         }
         for task in goal.humanTasks { print("      人がする作業 \(task.id): \(task.title)（\(task.why)）") }
         for note in goal.notApplied ?? [] { print("      反映しなかった指示: \(note)") }
