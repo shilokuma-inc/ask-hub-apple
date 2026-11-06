@@ -39,11 +39,11 @@ struct ClaudeJobRunnerTests {
     var keyID: KeyID { IntentSignature.keyID(publicKeyDER: key.publicKey.derRepresentation) }
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ClaudeJobRunnerTests-\(UUID().uuidString)")
 
-    private func context(_ store: InMemoryStateStore) -> CommanderContext {
+    func context(_ store: InMemoryStateStore) -> CommanderContext {
         CommanderContext(store: store, mac: Self.commander) { Self.now }
     }
 
-    private func runner(_ store: InMemoryStateStore, claude: ScriptedRunner, workspace failure: WorkspaceError? = nil) -> ClaudeJobRunner {
+    func runner(_ store: InMemoryStateStore, claude: any CommandRunning, workspace failure: WorkspaceError? = nil) -> ClaudeJobRunner {
         ClaudeJobRunner(
             context: context(store),
             client: ClaudeClient(setup: QuestionJobsTests.setup, runner: claude),
@@ -60,7 +60,7 @@ struct ClaudeJobRunnerTests {
     }
 
     /// 署名した依頼を置き、受け付けて、epic と質問づくりのジョブを作る
-    private func requested(attachments: [(name: String, data: Data)] = []) async throws -> Requested {
+    func requested(attachments: [(name: String, data: Data)] = []) async throws -> Requested {
         let store = InMemoryStateStore()
         let file = RepositoryFile(repo: Self.repo, platform: .apple, maxConcurrentEpics: 1, addedAt: Timestamp(Self.now))
         await store.put(StatePath.repository(Self.repo), data: try StateFileCoder.encode(file))
@@ -94,15 +94,15 @@ struct ClaudeJobRunnerTests {
         return Requested(store: store, epic: epic, job: job)
     }
 
-    private func read<File: StateFile>(_ type: File.Type, at path: String, in store: InMemoryStateStore) async throws -> File? {
+    func read<File: StateFile>(_ type: File.Type, at path: String, in store: InMemoryStateStore) async throws -> File? {
         try await store.data(at: path).map { try StateFileCoder.decode(File.self, from: $0) }
     }
 
-    private func put<File: StateFile>(_ file: File, at path: String, in store: InMemoryStateStore) async throws {
+    func put<File: StateFile>(_ file: File, at path: String, in store: InMemoryStateStore) async throws {
         await store.put(path, data: try StateFileCoder.encode(file))
     }
 
-    private func jobs(_ epic: ULID, in store: InMemoryStateStore) async throws -> [JobFile] {
+    func jobs(_ epic: ULID, in store: InMemoryStateStore) async throws -> [JobFile] {
         var jobs: [JobFile] = []
         for entry in try await store.list(StatePath.jobs(Self.repo, epic: epic)) ?? [] {
             jobs.append(try StateFileCoder.decode(JobFile.self, from: #require(await store.data(at: entry.path))))
@@ -110,9 +110,9 @@ struct ClaudeJobRunnerTests {
         return jobs
     }
 
-    private static let options = #"[{"label":"案1","effect":"…"},{"label":"案2","effect":"…"}]"#
+    static let options = #"[{"label":"案1","effect":"…"},{"label":"案2","effect":"…"}]"#
 
-    private static func question(_ id: String, dependsOn: [String] = []) -> String {
+    static func question(_ id: String, dependsOn: [String] = []) -> String {
         let depends = dependsOn.map { "\"\($0)\"" }.joined(separator: ",")
         let fields = #""title":"\#(id) の題","why":"…","recommended":"案1","reason":"…","caution":null"#
         return #"{"id":"\#(id)","options":\#(options),\#(fields),"dependsOn":[\#(depends)]}"#
@@ -224,7 +224,7 @@ struct ClaudeJobRunnerTests {
     // MARK: - 説明・見直し
 
     /// 質問の一覧と epic を置き、回答を受け付けた後のジョブを作る
-    private func answered(
+    func answered(
         _ answers: [AnswerIntent],
         drafts: [QuestionDraft],
         in store: InMemoryStateStore,
@@ -243,7 +243,7 @@ struct ClaudeJobRunnerTests {
         return try await jobs(epic.id, in: store).filter { $0.kind != .makeQuestions }
     }
 
-    private func answer(
+    func answer(
         _ question: String,
         mode: AnswerIntent.Mode = .answer,
         note: String = "",
@@ -321,7 +321,7 @@ struct ClaudeJobRunnerTests {
         #expect(claude.commands.isEmpty)
     }
 
-    private static func decodeDraft(_ json: String) throws -> QuestionDraft {
+    static func decodeDraft(_ json: String) throws -> QuestionDraft {
         try JSONDecoder().decode(QuestionDraft.self, from: Data(json.utf8))
     }
 }
