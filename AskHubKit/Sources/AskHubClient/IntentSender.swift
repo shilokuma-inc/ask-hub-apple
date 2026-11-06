@@ -98,6 +98,8 @@ public struct IntentSender: Sendable {
     public var store: any StateStore
     public var key: DeviceSigningKey
     public var now: @Sendable () -> Date
+    /// 続けて送った意図の番号を、送った順に大きくする（司令塔は番号の順に処理するので、対象に加えてから依頼する、などの順を守る）
+    private let nonces = NonceSequence()
 
     public init(store: any StateStore, key: DeviceSigningKey, now: @escaping @Sendable () -> Date = Date.init) {
         self.store = store
@@ -109,7 +111,7 @@ public struct IntentSender: Sendable {
     @discardableResult
     public func send(_ draft: IntentDraft) async throws(ClientError) -> IntentReference {
         let time = now()
-        let nonce = ULID.generate(at: time)
+        let nonce = await nonces.next(at: time)
         let envelope = IntentEnvelope(
             kind: draft.kind,
             repo: draft.repo,
@@ -144,5 +146,21 @@ public struct IntentSender: Sendable {
             throw .store(error)
         }
         return IntentReference(keyId: key.keyID, nonce: nonce)
+    }
+}
+
+/// 前に出した番号より必ず大きい番号を出す（同じミリ秒の中でも、乱数の部分で順が入れ替わらないように）
+actor NonceSequence {
+    private var last: ULID?
+
+    func next(at time: Date) -> ULID {
+        var candidate = ULID.generate(at: time)
+        var shift = 0.001
+        while let last, candidate <= last {
+            candidate = ULID.generate(at: time.addingTimeInterval(shift))
+            shift += 0.001
+        }
+        last = candidate
+        return candidate
     }
 }
