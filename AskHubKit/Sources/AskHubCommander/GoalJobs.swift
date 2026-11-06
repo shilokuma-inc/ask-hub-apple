@@ -60,7 +60,7 @@ public struct CheckReadinessJob: ClaudeJob {
     public var questions: QuestionsFile
     /// 追加の質問を出すときの回（今までの最も新しい回の次）
     public var nextRound: Int
-    /// 人が分け方の判断で「このまま 1 つで進める」を選んだ。このときは必ずゴールを作らせる（追加の質問も、大きすぎるも返させない）
+    /// 人が分け方の判断で「このまま 1 つで進める」を選んだ後の確認。大きすぎるとは返させない（追加の質問は、回が残っていれば出せる）
     public var proceeding: Bool
 
     public init(title: String, body: String, questions: QuestionsFile, proceeding: Bool = false) {
@@ -73,7 +73,7 @@ public struct CheckReadinessJob: ClaudeJob {
     }
 
     /// 追加の質問をもう出せるか
-    public var canAskMore: Bool { !proceeding && nextRound <= Self.lastQuestionRound }
+    public var canAskMore: Bool { nextRound <= Self.lastQuestionRound }
 
     public var prompt: String {
         let decisions = questions.questions.map(PromptText.decision)
@@ -106,17 +106,30 @@ public struct CheckReadinessJob: ClaudeJob {
           - tasks: 実装のタスク（id は t1・t2・…。1 つのタスクは 1 本の子 PR に収まる大きさ。前提のタスクと人がする作業の id を dependsOn に書く）
           - humanTasks: 人がする作業（id は h1・h2・…。手順は入れる値まで具体的に。リンクは https だけ）
             GitHub の Secrets に入れる値は handover を {"kind": "secret", "name": "英大文字の名前"} にし、値そのものは書かない
-        \(proceeding ? Self.proceedingRule : (canAskMore ? Self.askMoreRule : Self.noMoreQuestionsRule) + "\n" + Self.tooLargeRule)
+        \(rules)
         - reason に、そう判断した理由を書く
         """
+    }
+
+    /// 追加の質問と、大きすぎるときの返し方
+    private var rules: String {
+        switch (proceeding, canAskMore) {
+        case (false, true): Self.askMoreRule + "\n" + Self.tooLargeRule
+        case (false, false): Self.noMoreQuestionsRule + "\n" + Self.tooLargeRule
+        case (true, true): Self.proceedingRule + "\n" + Self.askMoreRule
+        case (true, false): Self.proceedingRule + "\n" + Self.provisionalRule
+        }
     }
 
     private static let tooLargeRule = """
         - 1 つの epic に収まらなければ verdict を tooLarge にし、split に分け方の案（2 つ以上）を書く
         """
     private static let proceedingRule = """
-        - 前の確認で 1 つの epic に収まらないと伝えたが、人はそれを承知で、このまま 1 つで進めると決めた。verdict は必ず ready にしてゴールを作る（moreQuestions・tooLarge は返さない）
-        - 決めきれない点が残っていれば、推奨の案で仮に決め、goal の summary の末尾に「仮に決めたこと:」として書く（人が開始の前にゴールを確かめて直せる）
+        - 1 つの epic に収まらないと前に伝えたが、人はそれを承知で、このまま 1 つで進めると決めた。tooLarge は返さない
+        """
+    private static let provisionalRule = """
+        - 追加の質問はもう出せない。人が決めるべき点が残っていても verdict を ready にしてゴールを作る。決めきれない点は推奨の案で仮に決め、
+          goal の summary の末尾に「仮に決めたこと:」として書く（人が開始の前にゴールを確かめて直せる）
         """
 
     private static let askMoreRule = """
@@ -130,7 +143,7 @@ public struct CheckReadinessJob: ClaudeJob {
 
     public func problems(in output: Output) -> [String] {
         let reason = output.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? ["reason が空"] : []
-        if proceeding && output.verdict != .ready { return reason + ["人がこのまま 1 つで進めると決めたので、verdict は ready にしてゴールを作る"] }
+        if proceeding && output.verdict == .tooLarge { return reason + ["人がこのまま 1 つで進めると決めたので、tooLarge は返せない"] }
         switch output.verdict {
         case .ready:
             guard let goal = output.goal else { return reason + ["verdict が ready なのに、goal が無い"] }
@@ -143,7 +156,7 @@ public struct CheckReadinessJob: ClaudeJob {
     }
 
     private func questionProblems(_ drafts: [QuestionDraft]?) -> [String] {
-        guard canAskMore else { return ["追加の質問はもう出せない。ready か tooLarge にする"] }
+        guard canAskMore else { return ["追加の質問はもう出せない。" + (proceeding ? "ready にする" : "ready か tooLarge にする")] }
         guard let drafts, !drafts.isEmpty else { return ["verdict が moreQuestions なのに、questions が無い"] }
         var problems = drafts.compactMap { optionCountProblem(id: $0.id, count: $0.options.count) }
         do throws(QuestionFlow.ResultError) {

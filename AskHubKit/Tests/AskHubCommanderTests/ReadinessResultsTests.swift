@@ -177,9 +177,36 @@ extension ClaudeJobRunnerTests {
         ])
         guard case .written = try await runner(store, claude: claude).run(job) else { Issue.record("書けていない"); return }
         #expect(claude.commands.first?.arguments[1].contains("このまま 1 つで進めると決めた") == true)
-        #expect(claude.commands.last?.arguments[1].contains("verdict は ready にしてゴールを作る") == true)
+        #expect(claude.commands.last?.arguments[1].contains("tooLarge は返せない") == true)
         #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .awaitingStart)
         #expect(try await read(ReadinessFile.self, at: StatePath.readiness(Self.repo, epic.id), in: store)?.version == 2)
+    }
+
+    @Test func proceedingCarriesOverToCheckAfterMoreQuestions() async throws {
+        let (store, epic) = try await awaitingSplit()
+        _ = try await submit("decideSplit", epic: epic, version: "1", payload: ["choice": .string("proceed")], in: store)
+        let proceed = try #require(try await jobs(epic.id, in: store).first { $0.input?["proceed"] == .bool(true) })
+        let more = CheckReadinessJob.Output(verdict: .moreQuestions, reason: "期間", questions: [try Self.decodeDraft(Self.question("q1"))])
+        guard case .written = try await runner(store, claude: ScriptedRunner([Self.output(more)])).run(proceed) else {
+            Issue.record("書けていない")
+            return
+        }
+        // 追加の質問に答えると、印の無い着手前の確認のジョブができる
+        let asking = try #require(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store))
+        let questionsPath = StatePath.questions(Self.repo, epic.id)
+        let questions = try #require(try await read(QuestionsFile.self, at: questionsPath, in: store))
+        let answer = answer("q1", epic: epic, nonce: 7)
+        let change = try QuestionFlow.accept(answer, epic: asking, questions: questions, at: Timestamp(Self.now))
+        try await context(store).perform(change.effects, for: asking, origin: answer.intent)
+        try await put(change.questions, at: questionsPath, in: store)
+        let check = try #require(try await jobs(epic.id, in: store).first { $0.kind == .checkReadiness && $0.origin == answer.intent })
+        #expect(check.input?["proceed"] == nil)
+        let ready = CheckReadinessJob.Output(verdict: .ready, reason: "そろった", goal: Self.goal(decided: ["q1"]))
+        let claude = ScriptedRunner([Self.output(ready)])
+        guard case .written = try await runner(store, claude: claude).run(check) else { Issue.record("書けていない"); return }
+        // 前の確認の結果から「このまま進める」を引き継ぐ
+        #expect(claude.commands.first?.arguments[1].contains("このまま 1 つで進めると決めた") == true)
+        #expect(try await read(ReadinessFile.self, at: StatePath.readiness(Self.repo, epic.id), in: store)?.proceeding == true)
     }
 
     @Test func splitDecisionIsRejectedForOldResultOrStage() async throws {

@@ -71,16 +71,24 @@ struct GoalJobsTests {
         #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q1")])).isEmpty)
     }
 
-    @Test func proceedingAllowsOnlyReady() throws {
+    @Test func proceedingDisallowsTooLarge() throws {
         let job = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered(), proceeding: true)
-        #expect(!job.canAskMore)
+        #expect(job.canAskMore)
         #expect(job.prompt.contains("このまま 1 つで進めると決めた"))
         #expect(!job.prompt.contains("verdict を tooLarge にし"))
-        let rule = "人がこのまま 1 つで進めると決めたので、verdict は ready にしてゴールを作る"
         let parts = [CheckReadinessJob.Part(title: "集計", summary: "…"), .init(title: "画面", summary: "…")]
-        #expect(job.problems(in: .init(verdict: .tooLarge, reason: "大きい", split: parts)) == [rule])
-        #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q3")])) == [rule])
+        #expect(job.problems(in: .init(verdict: .tooLarge, reason: "大きい", split: parts)) == [
+            "人がこのまま 1 つで進めると決めたので、tooLarge は返せない"
+        ])
+        // 人が決めるべき点は、回が残っていれば追加の質問で人に決めてもらう
+        #expect(job.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q3")])).isEmpty)
         #expect(job.problems(in: .init(verdict: .ready, reason: "1 つで進める", goal: goal())).isEmpty)
+        // 回を使い切ったら、決めきれない点は仮に決めてゴールに書かせる
+        let last = CheckReadinessJob(title: "ランキング", body: "…", questions: try answered(round: 3), proceeding: true)
+        #expect(last.prompt.contains("仮に決めたこと"))
+        #expect(last.problems(in: .init(verdict: .moreQuestions, reason: "…", questions: [Fixture.draft("q3")])) == [
+            "追加の質問はもう出せない。ready にする"
+        ])
     }
 
     @Test func tooLargeNeedsSplitWhileQuestionsRemain() throws {
