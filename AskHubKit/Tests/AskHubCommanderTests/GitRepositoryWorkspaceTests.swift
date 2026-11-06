@@ -140,9 +140,19 @@ struct GitRepositoryWorkspaceTests {
             fileManager.createFile(atPath: marker.path, contents: Data())
             try fileManager.setAttributes([.modificationDate: now.addingTimeInterval(-age * 24 * 60 * 60)], ofItemAtPath: marker.path)
         }
+        // 古くても、ジョブの写しが残っている clone は消さない
+        let busy = root.appendingPathComponent("repos/shilokuma-inc/busy/.git")
+        let record = busy.appendingPathComponent("worktrees/busy")
+        let worktree = root.appendingPathComponent("jobs/J/repository/busy")
+        try fileManager.createDirectory(at: record, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: worktree, withIntermediateDirectories: true)
+        fileManager.createFile(atPath: worktree.appendingPathComponent(".git").path, contents: Data())
+        try Data(worktree.appendingPathComponent(".git").path.utf8).write(to: record.appendingPathComponent("gitdir"))
+        try fileManager.setAttributes([.modificationDate: now.addingTimeInterval(-30 * 24 * 60 * 60)], ofItemAtPath: busy.path)
         await workspace.removeUnusedClones(now: now)
         #expect(!fileManager.fileExists(atPath: root.appendingPathComponent("repos/shilokuma-inc/old").path))
         #expect(fileManager.fileExists(atPath: root.appendingPathComponent("repos/shilokuma-inc/recent").path))
+        #expect(fileManager.fileExists(atPath: root.appendingPathComponent("repos/shilokuma-inc/busy").path))
     }
 
     @Test func releaseRemovesJobFolder() async throws {
