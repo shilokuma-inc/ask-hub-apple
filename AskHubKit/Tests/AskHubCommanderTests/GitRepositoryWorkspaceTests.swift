@@ -79,10 +79,14 @@ struct GitRepositoryWorkspaceTests {
         }
         #expect(config["core.hooksPath"] == "/dev/null")
         #expect(config["core.symlinks"] == "false")
+        #expect(config["core.attributesFile"] == "/dev/null")
+        #expect(config["core.excludesFile"] == "/dev/null")
         #expect(config["credential.helper"] == "!'/opt/askhub/askhub-commander' git-credential")
         #expect(environment["GIT_CONFIG_GLOBAL"] == "/dev/null")
         #expect(environment["GIT_CONFIG_NOSYSTEM"] == "1")
         #expect(environment["GIT_TERMINAL_PROMPT"] == "0")
+        // credential helper が Keychain を見つけられるよう、HOME は本当のホームフォルダのまま
+        #expect(environment["HOME"] == FileManager.default.homeDirectoryForCurrentUser.path)
         // トークンは環境変数に置かない（credential helper が Keychain から読む）
         #expect(!environment.keys.contains { $0.contains("TOKEN") })
     }
