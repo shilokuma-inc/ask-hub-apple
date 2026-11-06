@@ -6,6 +6,8 @@ import Foundation
 public enum StatePath {
     public static let version = "version.json"
     public static let commander = "commander.json"
+    /// 進行を止めるものを知らせた記録（司令塔）
+    public static let notifications = "notifications.json"
 
     /// 対象のリポジトリを置くディレクトリ（`repos/<owner>/<repo>/`）
     public static let repositories = "repos"
@@ -64,8 +66,11 @@ public enum StatePath {
         "macs/\(mac).json"
     }
 
+    /// 通知の宛先を置くディレクトリ
+    public static let devices = "devices"
+
     public static func device(_ device: KeyID) -> String {
-        "devices/\(device).json"
+        "\(devices)/\(device).json"
     }
 
     /// 公開鍵の記録を置くディレクトリ

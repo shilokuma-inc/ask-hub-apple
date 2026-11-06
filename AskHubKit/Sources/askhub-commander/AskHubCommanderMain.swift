@@ -5,6 +5,7 @@ import Foundation
 ///
 /// - `run`: 常駐のループを回す（LaunchAgent から起動する）
 /// - `setup`: 設定を書き、トークンを Keychain に置き、最初の鍵を固定する（人が端末で流す）
+/// - `apns`: APNs の鍵を Keychain に置き、鍵の id と Team ID を設定に足す（人が端末で流す）
 /// - `git-credential`: git の credential helper（Keychain の GitHub のトークンを git に渡す）
 /// - `launch-agent`: LaunchAgent の定義を書き、登録のコマンドを出す
 /// - `check`: 設定と Keychain の様子を出す（秘密の値は出さない）
@@ -16,6 +17,7 @@ enum AskHubCommanderMain {
         switch command {
         case "run": await run()
         case "setup": setup(arguments)
+        case "apns": apns(arguments)
         case "git-credential": gitCredential(arguments)
         case "launch-agent": launchAgent()
         case "check": check()
@@ -27,6 +29,7 @@ enum AskHubCommanderMain {
         使い方: askhub-commander <コマンド>
           setup --state-repo <owner/repo> --mac <名前> --claude <claude の絶対パス> --first-key <最初の鍵の id>
                 --key-account <GitHub のアカウント> [--state-branch <ブランチ>] [--claude-capacity <数>]
+          apns --key-id <APNs の鍵の id> --team-id <Team ID> --key-file <.p8 のパス> [--topic <Bundle ID>]
           launch-agent   LaunchAgent の定義を書き、登録のコマンドを出す
           run            常駐のループを回す
           check          設定と Keychain の様子を出す

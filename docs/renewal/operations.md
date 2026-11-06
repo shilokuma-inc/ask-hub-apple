@@ -6,6 +6,22 @@
   - iOS のローカル通知は、アプリが裏で動ける時間を OS が決めるので遅れる
   - GitHub の通知は、自分の書き込みを自分に知らせないので使えない（人も機械も同じアカウント）
 - APNs の鍵は Keychain に置く（[security.md](security.md)）。端末の宛先は、クライアントが状態リポジトリに書く
+- 進行を止めるものは、司令塔が 1 周（30 秒）ごとに状態リポジトリから拾い、まだ知らせていなければすぐ送る（`AskHubCommander` の `Notifier`）
+  - 要回答: 質問が回答を待っている（`questions.json` の `open`）。着手前の確認の分け方の判断（epic が `awaitingSplit`）と、ゴールの確認と開始（`awaitingStart`）も、人が返事をするまで進まないので含める
+  - 自動の対処の使い切り: ジョブが人の判断を待っている（`waitingHuman`。直させる回数を使い切ったときと、認証切れ・想定外ですぐ人に渡したとき）
+  - ワーカーがオフライン: ジョブ（`assigned`・`running`・`paused`）を持った Mac の生きている印が 1 時間より古いとき。ジョブを持っていない Mac は、どれだけ戻らなくても知らせない
+  - リジェクトは、審査の状態を状態リポジトリに持つ段階 5 で足す
+- 同じ出来事は二度送らない。知らせた出来事を `notifications.json` に記録し（[protocol.md](protocol.md)）、記録を書けたときだけ送る
+  - 見直して版が変わった質問・説明ができた質問・直したゴール・次の試行で人に渡したジョブ・一度戻ってからまた止まった Mac は、別の出来事として知らせ直す
+  - 1 つの epic（Mac）について同じ周に見つけた出来事は、1 通にまとめる（質問が 5 件出ても 1 通）
+  - どの端末にも届かず、送り直せる失敗（APNs の障害・上限・つながらない・鍵や設定の誤り）だったときは、記録から外し、1・2・5・10・30 分と待ちを延ばして送り直す。宛先が使えないだけ（アプリを消した・古い宛先）なら送り直さない
+  - 送る途中で司令塔が落ちたときは送り直さない（二重より取りこぼしを選ぶ。記録してから送り終えるまでの数秒の間だけ）
+  - 終わった出来事の記録は、7 日たってから消す（GitHub の障害で一覧が空に見えた周に、記録を消して知らせ直さないため）
+- 送る宛先は、`devices/` のうち、確かめた公開鍵の一覧にある（登録済みで取り消していない）端末だけ。なくした端末の鍵を取り消せば、その端末には送らない
+- 入れ方: Apple Developer の Keys で APNs の鍵を作って .p8 を落とし、常時オンの Mac の端末で `askhub-commander apns --key-id <鍵の id> --team-id <Team ID> --key-file <.p8 のパス>` を流してから、常駐を読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`）
+  - .p8 の中身は Keychain（`apns-key`）にだけ置き、設定には鍵の id・Team ID・Bundle ID（既定 `jp.shilokuma.AskHub`。iOS と macOS で同じ）だけを書く。.p8 は Apple Developer から一度しか落とせないので、Mac には残さず安全な場所に移す
+  - APNs の設定が無ければ通知を送らない（起動のログに出る）。`askhub-commander check` で鍵の様子（値は出さない）を確かめる
+- 通知の中身の `askhub`（`repo`・`epic`・`mac`）は、クライアントが通知から開く先
 - 頻度
 
   | 種類 | 例 | 知らせ方 |
@@ -14,8 +30,48 @@
   | 止めないもの | マージの確認・実機確認 | まとめて 1 日に数回 |
 
 - 「ワーカーがオフライン」は、そのワーカーがジョブを持っていて、一定の時間戻らないときだけ知らせる（MacBook を閉じるたびに知らせない）
-- 司令塔そのものが止まったときは、GitHub Actions の見張りが Issue を立て、GitHub の通知で知らせる（[architecture.md](architecture.md)）
+- 司令塔そのものが止まったときは、GitHub Actions の見張りが Issue を立て、GitHub の通知で知らせる（下の「司令塔の見張り」）
 - Android の通知は、Android のクライアントを作るときに決める（実用上 FCM がほぼ必須。端末の宛先の形は、FCM の宛先も入るようにしておく）
+
+## 司令塔の見張り
+
+司令塔が止まると APNs の通知も止まるので、状態リポジトリの GitHub Actions の定期実行（`Commander/Watch`）が、司令塔の生きている印（`commander.json` の `seenAt`）を確かめる（[architecture.md](architecture.md) の「見張り」）。
+
+- 止まったとみなすのは、`seenAt` が 30 分（`JobTiming.macStaleAfter` と同じ。司令塔は 10 分ごとに書く）より古い・`commander.json` が無い・読めない（AskHubKit の `StateFileCoder` と同じ読み方）・5 分より先の時刻（Mac の時計が進んでいると、止まっても古さで気づけない）とき
+- 止まったら、github-actions[bot] が状態リポジトリに Issue を立てる。bot の書き込みなので、状態リポジトリを Watch している人に GitHub の通知が届く
+  - まだ戻っていない見張りの Issue があれば、開いていても人が閉じていても重ねて立てない（戻るまでの間に、1 時間ごとに立て直さない）
+  - 戻ったら（30 分以内の `seenAt` を見たら）、まだ戻っていない見張りの Issue にコメントし、開いていれば閉じる
+  - 見張りの Issue は、author が github-actions[bot] で、本文の最後の行が目印（`<!-- askhub-commander-watch v1 down -->`。戻ったら `recovered` に書き換える）のものだけ。private でも目印だけで見分けない（LEARNINGS.md）
+- 間隔は 1 時間ごと（毎時 23 分）。private のリポジトリの Actions の分は、1 回のジョブごとに 1 分に切り上げて数えられ、Free の organization の枠は月 2,000 分。1 時間ごとで月 720 分（36%）、30 分ごとだと月 1,440 分（72%）になり、ほかの private のリポジトリ（2026-10 は月 200 分ほど）の枠を圧迫する。止まってから気づくまでは、30 分（古さ）+ 最大 1 時間（間隔）+ 定期実行の遅れ（GitHub の混み具合で数分〜数十分）
+- 使う権限は `GITHUB_TOKEN`（contents: read・issues: write）だけで、ほかの秘密は足さない
+- 見張りの run そのものが失敗したとき（GitHub を読めない・書けない。読み取りは 3 回まで試す）は run が失敗になり、GitHub が、ワークフローの cron を最後に書き換えた人（入れた人）にメールで知らせる
+- GitHub の障害で Issue の一覧が空で返ると、重ねて立てることがある（LEARNINGS.md の 2026-10-22 の障害）。戻ったときにまとめて閉じる
+
+### 正本と入れ方
+
+- 正本は ask-hub-apple の `Tools/askhub-state/commander-watch.yml`（ワークフローの雛形）と `Tools/commander_watch.py`（判定と Issue の操作。テストは `Tools/tests/test_commander_watch.py`。PR では Verify/App Store metadata が流す）
+- 状態リポジトリには、ワークフローのファイル 1 つ（`.github/workflows/commander-watch.yml`）だけを入れる。ワークフローは、判定を ask-hub-apple の固定したコミットから取り出して動かす（public なので秘密は要らない）
+  - 判定を状態リポジトリに置かないのは、`.github/workflows/` の外のファイルは司令塔のトークン（Contents の書き込み）でも書き換えられるため。`.github/workflows/` のファイルを変えるには Workflows の権限が要るので、司令塔のトークンには Workflows の権限を付けない
+- 入れ方（人が手元の Mac で）:
+  1. 状態リポジトリを Watch しているか確かめる（Watch → All Activity か、Custom の Issues）。通知は Watch している人にだけ届く
+  2. 司令塔を先に入れ、`commander.json` ができたのを確かめる（先に見張りを入れると、印が無いので Issue が立つ。司令塔が書けば閉じる）
+  3. ワークフローを書き出す。判定の版には、リモートのブランチに入ったコミットを使う（`render-workflow` が確かめ、SHA に直して書く）
+
+     ```bash
+     git -C <ask-hub-apple> fetch origin
+     python3 <ask-hub-apple>/Tools/commander_watch.py render-workflow --ref origin/renewal --output <askhub-state>/.github/workflows/commander-watch.yml
+     ```
+
+  4. 状態リポジトリの main に commit して push する。`.github/workflows/` を変えるので、gh のトークンに `workflow` の scope が要る。司令塔の書き込みと重なって断られたら、pull してやり直す
+  5. Issue を立てずに判定だけを流し、Job Summary を見る
+
+     ```bash
+     gh workflow run commander-watch.yml -R shilokuma-inc/askhub-state -f dry-run=true
+     ```
+
+- 手元で判定だけを確かめる（gh のログインで読むだけ。Issue は触らない）: `python3 Tools/commander_watch.py check --repo shilokuma-inc/askhub-state --dry-run`
+- 更新: 正本を直して `renewal`（切り替えの後は develop）に入れたら、入れ方の 3〜5 をやり直す（判定の版が新しいコミットに変わる）
+- 止め方: 司令塔を長く止めるとき（Mac の入れ替えなど）は `gh workflow disable commander-watch.yml -R shilokuma-inc/askhub-state` で止め、戻したら `enable` する
 
 ## Mac の一時停止・再開・引き継ぎ
 
@@ -42,10 +98,11 @@
 2. `askhub-commander setup --state-repo <owner/repo> --mac <名前> --claude <claude の絶対パス> --first-key <最初の鍵の id> --key-account <GitHub のアカウント>`
    - 設定（秘密を含まない）を `~/Library/Application Support/AskHub/commander/config.json` に書く
    - GitHub のトークンと Claude の setup-token は、端末で伏せて入れ、Keychain（サービス `jp.shilokuma.AskHub.commander`）だけに置く。引数や標準入力では受け取らない。Claude の欄に API キー（`sk-ant-api03-`）が貼られたら断る
-   - GitHub のトークンは、状態リポジトリの読み書き（人の意図・質問・ジョブ・生きている印）と、対象のリポジトリの写し（clone・fetch。読むだけ）に使う。段階 2 の試運転は、状態リポジトリと試運転の対象のリポジトリだけに絞った fine-grained token 1 つ（Contents の読み書き・Metadata の読み取り。Discussion の写しを作るようになったら Discussions の読み書きを足す）にする。fine-grained token の権限は選んだリポジトリすべてに同じく掛かるが、司令塔は対象のリポジトリには書かない。持ち主（organization）ごとにトークンを分けるかは段階 3 で決める（ユーザーの決定）
+   - GitHub のトークンは、状態リポジトリの読み書き（人の意図・質問・ジョブ・生きている印）と、対象のリポジトリの写し（clone・fetch。読むだけ）に使う。段階 2 の試運転は、状態リポジトリと試運転の対象のリポジトリだけに絞った fine-grained token 1 つ（Contents の読み書き・Metadata の読み取り。Discussion の写しを作るようになったら Discussions の読み書きを足す）にする。Workflows の権限は付けない（状態リポジトリの見張りのワークフローを書き換えられないように。「司令塔の見張り」）。fine-grained token の権限は選んだリポジトリすべてに同じく掛かるが、司令塔は対象のリポジトリには書かない。持ち主（organization）ごとにトークンを分けるかは段階 3 で決める（ユーザーの決定）
    - 公開鍵の記録の最初の鍵を固定する（後から別の鍵には変えられない）
 3. `askhub-commander launch-agent` で LaunchAgent の定義を書き、出てくる `launchctl bootstrap` のコマンドで登録する（ログは `~/Library/Logs/AskHub/commander.log`）
 4. `askhub-commander check` で、設定と Keychain の様子（値は出さない）を確かめる
+5. 状態リポジトリに見張りを入れる（上の「司令塔の見張り」の「正本と入れ方」）
 
 - git は、司令塔自身を credential helper（`askhub-commander git-credential`）にして、Keychain の GitHub のトークンを受け取る
 

@@ -39,6 +39,7 @@ repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json  ジョブ（司令塔）
 repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json  試行（実行した Mac のワーカー）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
 commander.json                                     司令塔の生きている印（司令塔）
+notifications.json                                 進行を止めるものを知らせた記録（司令塔）
 devices/<device>.json                              通知の宛先（その端末のクライアント）
 keys/<seq>.json                                    公開鍵の追記の記録（クライアント。署名つき）
 intents/<device>/<intent>.json                     人の意図（クライアント。署名つき）
@@ -369,7 +370,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 }
 ```
 
-- GitHub Actions の見張りが、`seenAt` の古さを確かめる
+- GitHub Actions の見張りが、`seenAt` の古さ（30 分。`macs/<mac>.json` のオフラインの判定と同じ）を確かめる。無い・読めないときも止まったとみなす（[operations.md](operations.md) の「司令塔の見張り」）
 
 ### devices/<device>.json（通知の宛先）
 
@@ -386,6 +387,33 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `push.environment` は APNs の送り先の環境。Xcode から入れた版は `development`、TestFlight と App Store の版は `production`。APNs の宛先では必ず書く
 - `push.token` は送るときに URL のパスに入るので、16 進だけを受け付ける
 - Android を足すときに、`platform` と `push.service`（FCM）を足す
+- 司令塔は、ファイルの名前と `device` が合い、確かめた公開鍵の一覧にある（登録済みで取り消していない）端末にだけ送る
+
+### notifications.json（進行を止めるものを知らせた記録）
+
+```json
+{
+  "v": 1,
+  "sent": [
+    { "key": "question/shilokuma-inc/prime-pick-ios/01JC…/q2/1/0", "at": "2026-11-03T10:00:00Z" },
+    { "key": "mac/macbook-a/2026-11-03T09:00:00Z", "at": "2026-11-03T10:00:00Z" }
+  ]
+}
+```
+
+- 司令塔は、知らせる前に出来事の `key` を足す。記録にある出来事は送らない（[operations.md](operations.md) の「通知」）
+- `key` は出来事ごとに決まる。同じ質問でも、版や説明の数が変われば別の出来事になる
+
+  | 出来事 | key |
+  | --- | --- |
+  | 質問が回答を待っている | `question/<owner>/<repo>/<epic>/<質問の id>/<版>/<説明の数>` |
+  | 分け方の判断を待っている | `split/<owner>/<repo>/<epic>/<readiness.json の version>` |
+  | ゴールの確認と開始を待っている | `start/<owner>/<repo>/<epic>/<goal.json の version>` |
+  | ジョブが人の判断を待っている | `job/<owner>/<repo>/<epic>/<job>/<attempts>` |
+  | ジョブを持った Mac が戻らない | `mac/<mac>/<その Mac の seenAt>` |
+
+- どの端末にも送れなかった出来事は、記録から外して送り直す。終わった出来事の記録は、7 日たってから消す
+- 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`）。APNs の `thread-id` は epic の id か `mac/<mac>`、`apns-collapse-id` はまとめた出来事の key から決める
 
 ## 各リポジトリに書く目印
 
