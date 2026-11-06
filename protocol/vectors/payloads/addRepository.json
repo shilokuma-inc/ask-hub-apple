@@ -1,0 +1,37 @@
+{
+  "description": "対象に加える人の意図の payload の例。read は、封筒の repo があり target と targetVersion が無いときに、読む側が対象に加える意図として読めるか",
+  "schema": "payloads/addRepository.schema.json",
+  "cases": [
+    {
+      "name": "apple",
+      "payload": {
+        "platform": "apple"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "missing-platform",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-platform",
+      "payload": {
+        "platform": "android"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "platform": "apple",
+        "maxConcurrentEpics": 2
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}
