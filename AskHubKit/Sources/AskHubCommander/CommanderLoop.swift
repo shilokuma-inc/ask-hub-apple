@@ -1,3 +1,4 @@
+import AskHubClaude
 import AskHubJobs
 import AskHubProtocol
 import AskHubStateStore
@@ -53,8 +54,8 @@ public actor CommanderLoop {
     nonisolated let settings: Settings
     /// 人の意図の署名を確かめるもの（周ごとに、確かめた公開鍵の一覧から作り直す）
     nonisolated let verifier: @Sendable () async throws(CommanderError) -> IntentVerifier
-    /// 確かめるもので、ジョブを動かすワーカーを作る
-    nonisolated let worker: @Sendable (IntentVerifier) -> ClaudeJobWorker
+    nonisolated let client: ClaudeClient
+    nonisolated let workspace: any RepositoryWorkspace
     nonisolated let status: @Sendable () async -> MachineStatus
     nonisolated let log: @Sendable (String) -> Void
     nonisolated let sleeper: any Sleeper
@@ -66,7 +67,8 @@ public actor CommanderLoop {
         context: CommanderContext,
         settings: Settings,
         verifier: @escaping @Sendable () async throws(CommanderError) -> IntentVerifier,
-        worker: @escaping @Sendable (IntentVerifier) -> ClaudeJobWorker,
+        client: ClaudeClient,
+        workspace: any RepositoryWorkspace,
         status: @escaping @Sendable () async -> MachineStatus,
         log: @escaping @Sendable (String) -> Void,
         sleeper: any Sleeper = TaskSleeper()
@@ -74,7 +76,8 @@ public actor CommanderLoop {
         self.context = context
         self.settings = settings
         self.verifier = verifier
-        self.worker = worker
+        self.client = client
+        self.workspace = workspace
         self.status = status
         self.log = log
         self.sleeper = sleeper
@@ -115,6 +118,14 @@ public actor CommanderLoop {
             start(job, with: worker)
         }
         return picked
+    }
+
+    /// ジョブを動かすワーカー。人の意図の処理と同じ `context`（同じ排他）で結果を書くよう、ループの中で作る
+    nonisolated func worker(_ verifier: IntentVerifier) -> ClaudeJobWorker {
+        ClaudeJobWorker(
+            runner: ClaudeJobRunner(context: context, client: client, workspace: workspace, verifier: verifier),
+            recorder: AttemptRecorder(files: context.files, mac: context.mac, now: context.now)
+        )
     }
 
     /// 動かしているジョブが終わるまで待つ
