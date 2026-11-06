@@ -50,6 +50,7 @@ extension DemoScenario {
         case .quiet: "人の出番が無い"
         case .failing: "読めない"
         case .partial: "一部だけ読めない"
+        case .tooLarge: "大きすぎる依頼がある"
         }
     }
 }

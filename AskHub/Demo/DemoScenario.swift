@@ -12,6 +12,8 @@ enum DemoScenario: String, CaseIterable {
     case failing
     /// 一部の取得元だけ読めない
     case partial
+    /// 標準の場面に、1 つの epic に収まらない依頼（分け方の判断の待ち）を足す
+    case tooLarge
 
     /// 機械の反応までの秒数を決める UserDefaults のキー（UI テストは起動引数 `-demoReactionDelay 0` で渡す）
     static let reactionDelayKey = "demoReactionDelay"
@@ -28,6 +30,11 @@ enum DemoScenario: String, CaseIterable {
         case .partial:
             var snapshot = data.standard()
             snapshot.sourceFailures = [SourceFailure(source: "状態リポジトリ", message: "応答がありませんでした（503）")]
+            return snapshot
+
+        case .tooLarge:
+            var snapshot = data.standard()
+            snapshot.epics.insert(data.splitEpic(), at: 0)
             return snapshot
         }
     }
