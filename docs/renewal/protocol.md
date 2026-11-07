@@ -82,6 +82,13 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - `maxConcurrentEpics` は 1 以上
 - `appKit` は、共通リポジトリのワークフローを入れる前は `null`
+- 段階 3 で `build` を足す。中身は次のとおり
+  - `baseBranch`: 作業ブランチの元で、最終 PR の向き先。既定は develop
+  - ビルドとテストの設定: プロジェクトかワークスペース、スキーム、行き先、`testLight`・`testFull` の対象。形は `AskHubBuild` の `BuildSettings`
+  - `childChecks`: 子 PR で待つチェックの名前
+  - `finalChecks`: 最終 PR で待つチェックの名前
+  - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（`coderabbitai[bot]` など）
+- `build` が無いリポジトリでは、開始を断る
 
 ### epic.json
 
@@ -249,6 +256,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - 項目は、ループの仮決め（実装の途中で Claude が決めたこと）。質問はすべて人が答えるので、質問から来る項目は無い
 - `visible` は、ユーザーから見える挙動・仕様・見た目に関わるか。決めるのは、読むだけのレビュー役の Claude と、決まった信号（View・文言・アセット・Info.plist・entitlements の差分、スクショの差）
+- 段階 3 で、各項目に `task`（どのタスクの仮決めか）と `pullRequest`（子 PR）を足し、型と JSON Schema・例を作る。スクショは状態リポジトリの `attachments/` に置き、参照はそのパスにする
 - `answer` は人の意図（OK・別案・直してほしい）への参照
 
 ### jobs/<job>.json（ジョブ）
@@ -283,9 +291,17 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `reviseQuestion` | `{ "question": "q4" }` |
 | `checkReadiness` | `{ "round": 1 }` |
 | `reviseGoal` | `{ "instruction": { "keyId", "nonce" } }` |
-| そのほか | 段階 3 で決める |
+| `prepareWorkspace` | `{}`（作業ブランチは `epic.json` の `branch`。無ければ作って書く） |
+| `implementTask` | `{}`（タスクはジョブの `task`） |
+| `reviewTask` | `{ "pullRequest": 41, "head": "<コミット>" }` |
+| `fixTask` | `{ "pullRequest": 41, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`。直しの回は試行から数える） |
+| `rerunChecks` | `{ "pullRequest": 41, "head": "<コミット>", "runs": [123] }` |
+| `integrateDevelop` | `{ "base": "<取り込む base のコミット>" }` |
+| `verifyBeforeFinal`・`classifyDecisions`・`captureScreenshots`・`openFinalPullRequest`・`cleanUp` | `{}` |
+| `fixFinalPullRequest`・`mergeFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>" }` |
+| `notify` | 段階 4 で決める |
 
-- `kind` の最初の一覧: `makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`prepareWorkspace`・`implementTask`・`fixTask`・`integrateDevelop`・`verifyBeforeFinal`・`openFinalPullRequest`・`fixFinalPullRequest`・`rerunChecks`・`classifyDecisions`・`captureScreenshots`・`mergeFinalPullRequest`・`cleanUp`・`notify`
+- `kind` の最初の一覧: `makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`prepareWorkspace`・`implementTask`・`reviewTask`・`fixTask`・`integrateDevelop`・`verifyBeforeFinal`・`openFinalPullRequest`・`fixFinalPullRequest`・`rerunChecks`・`classifyDecisions`・`captureScreenshots`・`mergeFinalPullRequest`・`cleanUp`・`notify`
 - `state` は `queued`・`assigned`・`running`・`succeeded`・`failed`・`waitingHuman`・`paused`・`canceled`
 - ジョブのファイルは司令塔だけが書く。ワーカーは、自分の試行のファイルに「始めた」を書くことで、ジョブを引き受けたことを示す。司令塔は試行を読んでジョブの `state` を更新する
 
@@ -547,6 +563,5 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 ## 決めていないこと
 
 - リリースの操作の `kind` と、App Store の素材の形（段階 5）
-- `decisions.json` の細部（段階 3 で、型と JSON Schema を足す）
-- 段階 3 のジョブの `input`
-- `repo.json` に持つビルドの設定（プラットフォーム・テストの行き先・プロジェクトの作り方・スキーム）と、子 PR で待つ CI のチェックの名前（段階 2 の「対象に加える」で足す。[operations.md](operations.md) の「既存のリポジトリを移すとき」）
+- `decisions.json` の型と JSON Schema（段階 3 の実装で足す）
+- `repo.json` の `build` の型と JSON Schema、クライアントでの入れ方（段階 3 の実装で足す。[operations.md](operations.md) の「既存のリポジトリを移すとき」）
