@@ -46,8 +46,20 @@ struct EpicIntentsTests {
         },
         Kind(vectors: "payloads/abandonEpic.json", kind: "abandonEpic", target: .init(type: "epic", epic: epic), targetVersion: nil) {
             try AbandonEpicIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/decision.json", kind: "decision", target: decisionTarget, targetVersion: head) {
+            try DecisionIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/approveMerge.json", kind: "approveMerge", target: finalTarget, targetVersion: head) {
+            try ApproveMergeIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/instructFinal.json", kind: "instructFinal", target: finalTarget, targetVersion: head) {
+            try InstructFinalIntent(envelope: $0).payload
         }
     ]
+    static let head = String(repeating: "a", count: 40)
+    static let finalTarget = IntentEnvelope.Target(type: "finalPullRequest", epic: epic)
+    static let decisionTarget = IntentEnvelope.Target(type: "decision", epic: epic, id: "d1")
 
     private let validator = SchemaValidator(directory: Vectors.directory.deletingLastPathComponent().appendingPathComponent("schemas"))
 
@@ -245,6 +257,38 @@ struct EpicIntentsTests {
             #expect(throws: MalformedIntent.self) {
                 try AbandonEpicIntent(envelope: envelope(kind: "abandonEpic", target: target, targetVersion: version, payload: [:]))
             }
+        }
+    }
+
+    /// 最終 PR と判断のカードの意図は、見た head のコミットに結びつく（ブランチの名前や短い SHA は読まない）
+    @Test func finalPullRequestIntentsAreBoundToHead() throws {
+        let approve = try ApproveMergeIntent(
+            envelope: envelope(kind: "approveMerge", target: Self.finalTarget, targetVersion: Self.head, payload: [:])
+        )
+        #expect(approve.target.head == Self.head)
+        #expect(approve.target.target == Self.finalTarget)
+        let decisionTarget = IntentEnvelope.Target(type: "decision", epic: Self.epic, id: "d2")
+        let decision = try DecisionIntent(envelope: envelope(
+            kind: "decision", target: decisionTarget, targetVersion: Self.head, payload: ["answer": .string("fix"), "note": .string("直して")]
+        ))
+        #expect(decision.target.decision == "d2")
+        #expect(decision.answer == .fix)
+        let wrong: [(IntentEnvelope.Target?, String?)] = [
+            (Self.finalTarget, "main"),
+            (Self.finalTarget, String(Self.head.prefix(7))),
+            (Self.finalTarget, nil),
+            (.init(type: "epic", epic: Self.epic), Self.head),
+            (.init(type: "finalPullRequest", epic: Self.epic, id: "x"), Self.head)
+        ]
+        for (target, version) in wrong {
+            #expect(throws: MalformedIntent.self) {
+                try ApproveMergeIntent(envelope: envelope(kind: "approveMerge", target: target, targetVersion: version, payload: [:]))
+            }
+        }
+        #expect(throws: MalformedIntent.self) {
+            let badID = IntentEnvelope.Target(type: "decision", epic: Self.epic, id: "../d1")
+            let payload: [String: JSONValue] = ["answer": .string("ok")]
+            return try DecisionIntent(envelope: envelope(kind: "decision", target: badID, targetVersion: Self.head, payload: payload))
         }
     }
 

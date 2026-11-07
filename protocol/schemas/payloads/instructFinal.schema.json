@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/instructFinal.schema.json",
+  "title": "最終 PR への指示の人の意図（kind が instructFinal）の payload",
+  "description": "封筒の target は {type: finalPullRequest, epic}、targetVersion は人が見たときの最終 PR の head のコミット。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "instruction"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "instruction": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 10000
+    }
+  }
+}
