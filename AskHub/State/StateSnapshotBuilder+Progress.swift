@@ -20,7 +20,8 @@ extension StateSnapshotBuilder {
 
     func progress(of documents: StateDocuments.EpicDocuments) -> Progress {
         let goalTasks = documents.goal?.tasks ?? []
-        let jobs = documents.jobs.filter { Self.stepKinds.contains($0.kind) && $0.state != .canceled }
+        let kinds = Self.stepKinds.union(Self.finalStepKinds)
+        let jobs = documents.jobs.filter { kinds.contains($0.kind) && $0.state != .canceled }
         var progress = Progress(
             workspace: workspace(of: documents.epic, jobs: jobs),
             tasks: goalTasks.enumerated().map { offset, task in
@@ -32,7 +33,7 @@ extension StateSnapshotBuilder {
                 progress.activities.append(activity)
             }
         }
-        // タスクがすべて終わった後の段取り（最終 PR）は、まだ司令塔が作らない
+        // タスクがすべて終わってから、司令塔が最終 PR の段取りのジョブを作るまでの間
         if documents.epic.stage == .running, !goalTasks.isEmpty, goalTasks.allSatisfy({ $0.state == .done }), progress.activities.isEmpty {
             let finishedAt = jobs.map(\.updatedAt.date).max() ?? documents.epic.updatedAt.date
             progress.activities.append(EpicActivity(kind: .tasksFinished, since: finishedAt))
@@ -125,6 +126,9 @@ extension StateSnapshotBuilder {
     func step(of job: JobFile, jobs: [JobFile]) -> WorkStep? {
         if job.kind == .prepareWorkspace {
             return .prepareWorkspace
+        }
+        if Self.finalStepKinds.contains(job.kind) {
+            return finalStep(of: job, jobs: jobs.filter { $0.state != .canceled }).map(WorkStep.final)
         }
         guard Self.stepKinds.contains(job.kind), let task = job.task,
               let phase = phase(of: job, jobs: jobs.filter { $0.task == task && $0.state != .canceled }) else {
