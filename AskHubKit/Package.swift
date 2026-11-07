@@ -59,7 +59,10 @@ let package = Package(
         .target(name: "AskHubClient", dependencies: ["AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]),
         .target(
             name: "AskHubCommander",
-            dependencies: ["AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubJobs", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
+            dependencies: [
+                "AskHubBuild", "AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubJobs", "AskHubKeychain", "AskHubProtocol",
+                "AskHubPullRequests", "AskHubStateStore"
+            ]
         ),
         .target(name: "AskHubWorker", dependencies: ["AskHubCommander", "AskHubJobs", "AskHubProtocol", "AskHubStateStore"]),
         .target(name: "AskHubPullRequests", dependencies: ["AskHubProtocol", "AskHubStateStore"]),
@@ -87,7 +90,10 @@ let package = Package(
         ),
         .testTarget(
             name: "AskHubCommanderTests",
-            dependencies: ["AskHubCommander", "AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
+            dependencies: [
+                "AskHubCommander", "AskHubBuild", "AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubKeychain", "AskHubProtocol",
+                "AskHubPullRequests", "AskHubStateStore"
+            ]
         ),
         .testTarget(
             name: "AskHubWorkerTests",

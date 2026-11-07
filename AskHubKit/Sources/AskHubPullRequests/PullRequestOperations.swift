@@ -8,6 +8,8 @@ public protocol PullRequestOperations: Sendable {
     func checks(at sha: String, policy: CheckPolicy) async throws(PullRequestError) -> CheckSummary
     /// GitHub Actions の run の、落ちた job だけを流し直す
     func rerunFailedJobs(runID: Int) async throws(PullRequestError)
+    /// GitHub Actions の job のログ（長いログは末尾だけ）
+    func jobLog(jobID: Int) async throws(PullRequestError) -> String
     /// 信用する書き手の、未解決の行コメントのスレッドとレビューの本文を読む
     func reviewFeedback(number: Int, trusted: TrustedAuthors) async throws(PullRequestError) -> ReviewFeedback
     /// merge commit でマージする。`headSHA` と今の head が違えば断る
