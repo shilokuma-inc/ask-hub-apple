@@ -9,7 +9,7 @@ import Foundation
 public struct PrepareWorkspaceRunner: JobRunning {
     public var context: CommanderContext
     public var workspace: any EpicWorkspace
-    /// 作業ブランチを作る元のブランチ。`repo.json` の `build.baseBranch` を足したら、そこから読む
+    /// 作業ブランチを作る元のブランチの既定。`repo.json` の `build.baseBranch` があれば、そちらを使う
     public var base: String
 
     public init(context: CommanderContext, workspace: any EpicWorkspace, base: String = "develop") {
@@ -31,6 +31,8 @@ public struct PrepareWorkspaceRunner: JobRunning {
         guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(job.repo, job.epic)), epic.stage == .running else {
             return JobResult()
         }
+        let repository = try await context.read(RepositoryFile.self, at: StatePath.repository(job.repo))
+        let base = repository?.build?.baseBranch ?? base
         do {
             let branch = epic.branch ?? Self.branch(of: epic.id)
             let prepared = try await workspace.prepareEpic(job.repo, epic: epic.id, branch: branch, base: base)
