@@ -33,14 +33,18 @@ struct TaskHistory {
         }
     }
 
-    /// ゴールで終わったタスク（今のタスクを除く）と、その実装の報告の要約
+    /// ゴールで終わったタスク（今のタスクを除く）と、その実装と直しの報告の要約（終わった順。直しで振る舞いが変わったことも渡す）
     func previousTasks(in goal: GoalFile, before current: String) async throws(TaskJobExit) -> [ImplementTaskJob.PreviousTask] {
         let finished = goal.tasks.filter { $0.state == .done && $0.id != current }
         guard !finished.isEmpty else { return [] }
-        let implemented = try await succeeded([.implementTask], task: nil)
+        let reported = try await succeeded([.implementTask, .fixTask], task: nil)
         return finished.map { task in
-            let summary = implemented.last { $0.job.task == task.id && $0.attempt.outputs?.report != nil }?.attempt.outputs?.report?.summary
-            return ImplementTaskJob.PreviousTask(id: task.id, title: task.title, summary: summary ?? "（要約なし）")
+            let summaries = reported.filter { $0.job.task == task.id }.compactMap { entry -> String? in
+                guard let summary = entry.attempt.outputs?.report?.summary else { return nil }
+                return entry.job.kind == .fixTask ? "直し: \(summary)" : summary
+            }
+            let summary = summaries.isEmpty ? "（要約なし）" : summaries.joined(separator: "\n")
+            return ImplementTaskJob.PreviousTask(id: task.id, title: task.title, summary: summary)
         }
     }
 

@@ -19,8 +19,11 @@ struct ImplementTaskRunnerTests {
         // 前のタスク t1 の実装の報告
         let previous = AttemptFile.Outputs(report: TaskOutputReport(summary: "RankingClient を足した。"))
         try await fixture.record(fixture.job(.implementTask, "01", task: "t1"), outputs: previous)
+        let fixed = AttemptFile.Outputs(report: TaskOutputReport(summary: "取得に失敗したら空の一覧を返すようにした。"))
+        try await fixture.record(fixture.job(.fixTask, "03", task: "t1"), outputs: fixed, endedAt: 60)
         let decision = TaskReport.Decision(what: "行の高さを 44pt にした", why: "タップしやすい", alternatives: ["56pt"])
-        let runner = Self.editing(fixture.git, [FakeTaskRunner.done("RankingView を足した。", decisions: [decision])])
+        let summary = "RankingView を足した。ghp_abcdefghijklmnopqrstuvwxyz0123456789"
+        let runner = Self.editing(fixture.git, [FakeTaskRunner.done(summary, decisions: [decision])])
         let job = fixture.job(.implementTask, "02")
         try await fixture.files.create(job, at: StatePath.job(Fixture.repo, epic: Fixture.epic, job: job.id), message: "job")
 
@@ -54,7 +57,8 @@ struct ImplementTaskRunnerTests {
         let call = try #require(runner.calls.first)
         #expect(call.kind == .implementTask)
         #expect(call.resume == nil)
-        #expect(call.prompt.contains("RankingClient を足した。"))
+        // 前のタスクの要約には、直しで変えたことも続けて渡す
+        #expect(call.prompt.contains("要約: RankingClient を足した。\n直し: 取得に失敗したら空の一覧を返すようにした。"))
         #expect(call.facts == "Swift 6 で書く。")
         #expect(call.directory == FakeTaskGit.directory)
         #expect(runner.targets.map(\.slot) == [0])
