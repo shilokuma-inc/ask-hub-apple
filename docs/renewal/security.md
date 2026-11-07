@@ -90,7 +90,7 @@ Claude とビルド・テストは、ワーカーと同じ macOS のユーザー
   | クライアント | 人の操作（マージ・Secrets の登録・保護の設定など） |
   | GitHub Actions | 状態リポジトリの決まった場所への書き込みだけ（`GITHUB_TOKEN` では別のリポジトリに書けないので、方法は段階 5 で決める） |
 
-- 対象のリポジトリは複数の organization にまたがる。fine-grained token は 1 つの持ち主のリポジトリしか扱えないので、持ち主（organization・個人）ごとに 1 つ作り、Keychain に持ち主の名前で置く。ワーカーと司令塔は、リポジトリの持ち主でトークンを選ぶ。権限は、Contents・Pull requests・Issues・Discussions の読み書きと、Actions の読み取り。Workflows は付けない（ユーザーの決定。classic token は権限を絞れないので使わない）
+- 対象のリポジトリは複数の organization にまたがる。fine-grained token は 1 つの持ち主のリポジトリしか扱えないので、持ち主（organization・個人）ごとに 1 つ作り、Keychain に持ち主の名前で置く。ワーカーと司令塔は、リポジトリの持ち主でトークンを選ぶ。権限は、Contents・Pull requests・Issues・Discussions・Actions（揺らいだ CI の流し直し）の読み書きと、Checks・Commit statuses の読み取り。Workflows は付けない（ユーザーの決定。classic token は権限を絞れないので使わない）
 - トークンの期限を状態リポジトリに記録し、30 日前にクライアントで知らせる
 
 ## public のリポジトリと Secrets
