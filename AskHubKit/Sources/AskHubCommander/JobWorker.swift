@@ -75,10 +75,32 @@ public struct JobWorker: Sendable {
         beating.cancel()
         await beating.value
         do {
-            return try await recorder.finish(attempt, of: job, failure: result.failure, outputs: result.outputs, claude: result.claude)
+            return try await finish(attempt, of: job, with: result)
         } catch {
             // 終わりを書けなければ、試行は実行中のまま残り、司令塔が時間切れとして扱う
             throw .files(error)
+        }
+    }
+
+    /// 終わりを書く。書き込みの予算・GitHub の上限に当たったら、待って書き直す（終えた試行の結果を捨てない）
+    private func finish(
+        _ attempt: AttemptFile,
+        of job: JobFile,
+        with result: JobResult
+    ) async throws(StateFileStore.Failure) -> AttemptFile {
+        var waited = Duration.zero
+        while true {
+            do {
+                return try await recorder.finish(attempt, of: job, failure: result.failure, outputs: result.outputs, claude: result.claude)
+            } catch let .store(error) {
+                guard let wait = error.retryAfter, waited + wait <= timing.writeWaitLimit else { throw .store(error) }
+                do {
+                    try await sleeper.sleep(for: wait)
+                } catch {
+                    throw .store(.cancelled)
+                }
+                waited += wait
+            }
         }
     }
 

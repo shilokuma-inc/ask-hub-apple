@@ -35,6 +35,9 @@ struct EpicIntentsTests {
         Kind(vectors: "payloads/addRepository.json", kind: "addRepository", target: nil, targetVersion: nil) {
             try AddRepositoryIntent(envelope: $0).payload
         },
+        Kind(vectors: "payloads/configureRepository.json", kind: "configureRepository", target: nil, targetVersion: nil) {
+            try ConfigureRepositoryIntent(envelope: $0).payload
+        },
         Kind(vectors: "payloads/retry.json", kind: "retry", target: jobTarget, targetVersion: "2") {
             try RetryJobIntent(envelope: $0).payload
         },
@@ -161,6 +164,23 @@ struct EpicIntentsTests {
             )
             #expect(throws: MalformedIntent.self) { try AddRepositoryIntent(envelope: envelope) }
         }
+    }
+
+    @Test func readsConfigureRepositoryAndRefusesTargets() throws {
+        let build = try RepositoryFile.Build(
+            xcode: BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [.macOS]),
+            childChecks: ["build / build"],
+            finalChecks: ["build / build"]
+        )
+        let payload = ConfigureRepositoryIntent.payload(for: build)
+        let kind = ConfigureRepositoryIntent.kind
+        let read = try ConfigureRepositoryIntent(envelope: envelope(kind: kind, target: nil, targetVersion: nil, payload: payload))
+        #expect(read.build == build)
+        #expect(read.build.baseBranch == "develop")
+        let targeted = envelope(kind: kind, target: .init(type: "epic", epic: Self.epic), targetVersion: nil, payload: payload)
+        #expect(throws: MalformedIntent.self) { try ConfigureRepositoryIntent(envelope: targeted) }
+        let versioned = envelope(kind: kind, target: nil, targetVersion: "1", payload: payload)
+        #expect(throws: MalformedIntent.self) { try ConfigureRepositoryIntent(envelope: versioned) }
     }
 
     @Test func readsJobTarget() throws {
