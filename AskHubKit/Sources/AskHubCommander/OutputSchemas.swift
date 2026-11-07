@@ -16,6 +16,10 @@ enum OutputSchema {
         .object(["type": .string("string"), "description": .string(description)])
     }
 
+    static func integer(_ description: String) -> JSONValue {
+        .object(["type": .string("integer"), "description": .string(description)])
+    }
+
     static func array(of items: JSONValue, _ description: String) -> JSONValue {
         .object(["type": .string("array"), "items": items, "description": .string(description)])
     }

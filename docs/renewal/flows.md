@@ -173,7 +173,10 @@
 ### 作業ブランチと子 PR
 
 - 開始すると、司令塔が epic の Mac に作業場所の用意（`prepareWorkspace`）を作る。ワーカーは clone を用意し、`repo.json` の `build.baseBranch`（既定は develop）の最新から作業ブランチ `askhub/<epic の id>` を作って push する。epic の作業場所（worktree）と Simulator の枠も用意する。作業ブランチの名前は `epic.json` の `branch` に書く
-- タスクごとに、作業ブランチから子ブランチ `askhub/<epic の id>/<タスクの id>` を作る。子 PR は作業ブランチに、最終 PR は作業ブランチから base に向ける
+- タスクごとに、作業ブランチから子ブランチ `askhub/<epic の id>-<タスクの id>` を作る。子 PR は作業ブランチに、最終 PR は作業ブランチから base に向ける。
+  `askhub/<epic の id>/<タスクの id>` にすると、作業ブランチ `askhub/<epic の id>` と git の参照の名前がぶつかって作れない（`refs/heads/askhub/<epic の id>` がファイルとしてあるため）
+- 子ブランチは、epic の作業場所（同じ worktree）で取り出し直す。DerivedData を epic の間で使い回せるよう、作業場所のパスを変えない。前の試行が残した手元の変更は捨てる
+- リポジトリの事実（CLAUDE.md の全員向けの事実）は、人がレビューしてマージした base の CLAUDE.md から読む。子ブランチの CLAUDE.md は Claude が書き換えられるので使わない
 - タスクは、`dependsOn`（ほかのタスクと人がする作業）がすべて終わったものを、ゴールの並びの順に 1 つずつ進める。同じ epic の中でタスクを並べて動かさない
 
 ### タスクの流れ
@@ -181,9 +184,9 @@
 | ジョブ | 動く Mac | すること |
 | --- | --- | --- |
 | `implementTask` | epic の Mac | Claude に実装させる（下の「Claude にビルドとテストを頼ませる」）。終わったら、ワーカーが commit・push して子 PR を作る。同じ head の開いた PR があれば作らない（作った後、記録する前に落ちても二重に作らない） |
-| `reviewTask` | epic の Mac | 子 PR で待つチェック（`repo.json` の `build.childChecks`）を待つ。通ったら、レビュー役の Claude が差分を読む。必須の指摘が無ければ、見た head を固定してマージし、タスクを `done` にして次のタスクへ進む |
+| `reviewTask` | epic の Mac | 子 PR で待つチェック（`repo.json` の `build.childChecks`）を待つ。ランナー不足は間隔を広げて待ち続け、揺らぎ（初めての失敗）は落ちたジョブを 1 回だけ流し直す（ジョブの中で行う）。それでも落ちたら `fixCI`。通ったら、レビュー役の Claude が差分を読み、必須の指摘があれば `fixReview`。無ければ、見た head を固定してマージし、子ブランチを消して `merged`。司令塔がタスクを `done` にして次のタスクへ進む |
 | `fixTask` | epic の Mac | CI の失敗（ログの抜粋）かレビューの必須の指摘を付けて、実装の会話を再開して直させ、push する。直しは失敗の扱いどおり 3 回まで。使い切ったら人へ渡す |
-| `rerunChecks` | 常時オンの Mac | ランナー不足は間隔を広げて、揺らぎは 1 回だけ、落ちたジョブを流し直す（コードに触れない） |
+| `rerunChecks` | 常時オンの Mac | ランナー不足は間隔を広げて、揺らぎは 1 回だけ、落ちたジョブを流し直す（コードに触れない）。子 PR では `reviewTask` の中で行うので、最終 PR で使う |
 | `integrateDevelop` | epic の Mac | タスクの区切りで base が進んでいたら、作業ブランチに取り込む。コンフリクトは Claude に解消させる（3 回まで） |
 
 - Claude が報告した仮決め・見つけた知見・「質問が必要」は、試行の `outputs` に書く。司令塔がそれを `decisions.json`・知見を足す PR・質問に写す

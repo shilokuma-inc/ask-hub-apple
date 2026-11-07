@@ -271,7 +271,8 @@ public struct AttemptFile: StateFile {
         if let pullRequest = outputs?.pullRequest, pullRequest < 1 { violations.append("outputs.pullRequest は 1 以上") }
         if let commit = outputs?.commit, !Self.isCommitSHA(commit) { violations.append("outputs.commit の形が違う") }
         if let branch = outputs?.branch, !EpicFile.isBranchName(branch) { violations.append("outputs.branch の形が違う") }
-        if let findings = outputs?.findings, findings.isEmpty || findings.count > Outputs.maximumFindingsLength {
+        // JSON Schema の maxLength と同じく、Unicode のコードポイントで数える（結合文字を含む文で、書記素の数だけを見ると上限を超える）
+        if let findings = outputs?.findings, findings.isEmpty || findings.unicodeScalars.count > Outputs.maximumFindingsLength {
             violations.append("outputs.findings は空でなく、\(Outputs.maximumFindingsLength) 文字まで")
         }
         if outputs?.verdict.map({ $0 != .merged }) == true, outputs?.findings == nil {

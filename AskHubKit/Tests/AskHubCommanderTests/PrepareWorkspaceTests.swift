@@ -232,6 +232,24 @@ struct PrepareWorkspaceTests {
         #expect(git.commands.count == before)
     }
 
+    @Test func jobCreatesWorkBranchFromBaseBranchOfRepository() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        // repo.json の build.baseBranch から作業ブランチを作る（既定の develop ではなく）
+        let store = try await store(with: epicFile(.running))
+        let build = RepositoryFile.Build(
+            baseBranch: "main",
+            xcode: try BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [.macOS]),
+            childChecks: ["build / build"],
+            finalChecks: ["build / build"]
+        )
+        let repository = RepositoryFile(repo: Self.repo, platform: .apple, build: build, addedAt: Timestamp(Self.now))
+        try await StateFileStore(store: store).create(repository, at: StatePath.repository(Self.repo), message: "repo")
+        let git = RemoteGit(remote: ["main": Self.develop])
+        let result = try await runner(store, git: git).execute(jobFile())
+        #expect(result.failure == nil)
+        #expect(git.commands.contains { $0.prefix(2) == ["worktree", "add"] && $0.last == "origin/main" })
+    }
+
     @Test func dispatcherRefusesKindsItDoesNotHandle() async throws {
         let dispatcher = JobDispatcher([.prepareWorkspace: StubJob { _ in JobResult() }])
         #expect(dispatcher.kinds == [.prepareWorkspace])

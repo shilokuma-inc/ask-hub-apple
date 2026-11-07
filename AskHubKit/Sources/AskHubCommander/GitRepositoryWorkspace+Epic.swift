@@ -49,7 +49,7 @@ extension GitRepositoryWorkspace: EpicWorkspace {
     }
 
     /// 参照の指すコミット。無ければ nil
-    private func commit(of reference: String, in clone: URL) async throws(WorkspaceError) -> String? {
+    func commit(of reference: String, in clone: URL) async throws(WorkspaceError) -> String? {
         try await gitIfFound(["rev-parse", "--verify", "--quiet", "\(reference)^{commit}"], in: clone)
     }
 

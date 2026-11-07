@@ -1,3 +1,4 @@
+import AskHubCommands
 import AskHubProtocol
 import Foundation
 
@@ -104,7 +105,9 @@ public struct ImplementTaskJob: TaskJob {
     }
 }
 
-/// 子 PR の CI の失敗か、レビューの必須の指摘を付けて、実装の会話を再開して直させる（`fixTask`）
+/// 子 PR の CI の失敗か、レビューの必須の指摘を付けて、実装の会話を再開して直させる（`fixTask`）。
+///
+/// 直すことは、子 PR のレビュー（`reviewTask`）が試行の `outputs.findings` に書いた文をそのまま渡す（`Reason.findings` で作る）
 public struct FixTaskJob: TaskJob {
     /// 落ちたチェック
     public struct FailedCheck: Equatable, Sendable {
@@ -134,6 +137,39 @@ public struct FixTaskJob: TaskJob {
     public enum Reason: Equatable, Sendable {
         case ci([FailedCheck])
         case review([Finding])
+
+        /// ジョブの入力の `reason`
+        public var kind: FixTaskInput.Reason {
+            switch self {
+            case .ci: .ci
+            case .review: .review
+            }
+        }
+
+        /// 試行の `outputs.findings` に書く文（`AttemptFile.Outputs.maximumFindingsLength` 文字まで）。
+        /// 1 つのチェックのログ・1 つの指摘は、全体に収まるよう、数で割った長さまでにする。
+        /// チェックの名前・パス・ログ・指摘の本文は、切り詰める前に伏せる（切れ目をまたいだトークンの残りが、伏せる形に合わなくならないように）
+        public var findings: String {
+            let limit = AttemptFile.Outputs.maximumFindingsLength
+            let hide = { (text: String) in Redaction.redact(text, secrets: []) }
+            let parts: [String] = switch self {
+            case let .ci(checks):
+                checks.map { check in
+                    let name = hide(check.name)
+                    let length = min(FixTaskJob.maximumLogLength, limit / checks.count - name.count - 40)
+                    return "チェック: \(name)\n\(UntrustedText.tail(hide(check.logExcerpt), limit: max(length, 0)))"
+                }
+            case let .review(findings):
+                findings.enumerated().map { index, finding in
+                    let place = hide(finding.path.map { path in finding.line.map { "\(path):\($0)" } ?? path } ?? "（場所の指定なし）")
+                    let length = min(FixTaskJob.maximumFindingLength, limit / findings.count - place.count - 40)
+                    return "\(index + 1). \(place)\n\(UntrustedText.head(hide(finding.text), limit: max(length, 0)))"
+                }
+            }
+            guard !parts.isEmpty else { return kind == .ci ? "（ログを取れなかった）" : "（指摘の本文を取れなかった）" }
+            // 長さは JSON Schema の数え方（Unicode のコードポイント）で上限に収める
+            return String(String.UnicodeScalarView(parts.joined(separator: "\n\n").unicodeScalars.prefix(limit)))
+        }
     }
 
     public static let kind = JobKind.fixTask
@@ -144,38 +180,43 @@ public struct FixTaskJob: TaskJob {
     /// 実装の会話の id
     public var session: String
     public var pullRequest: Int
-    public var reason: Reason
+    /// 直す理由（CI の失敗・レビューの必須の指摘）
+    public var reason: FixTaskInput.Reason
+    /// 直すこと（`Reason.findings` の文）
+    public var findings: String
 
     public init(session: String, pullRequest: Int, reason: Reason) {
+        self.init(session: session, pullRequest: pullRequest, reason: reason.kind, findings: reason.findings)
+    }
+
+    /// `findings` は、子 PR のレビューの試行に書かれた `outputs.findings`
+    public init(session: String, pullRequest: Int, reason: FixTaskInput.Reason, findings: String) {
         self.session = session
         self.pullRequest = pullRequest
         self.reason = reason
+        self.findings = findings
     }
 
     public var resume: String? { session }
 
     /// CI が落ちたままなので、子 PR で待つチェック（UI テストを含まない）にあたる軽いテスト以上が通るまで done にさせない
     public var failingAtStart: TaskReport.BuildKind? {
-        if case .ci = reason { return .testLight }
-        return nil
+        reason == .ci ? .testLight : nil
     }
 
     public var prompt: String {
         switch reason {
-        case let .ci(checks): ciPrompt(checks)
-        case let .review(findings): reviewPrompt(findings)
+        case .ci: ciPrompt
+        case .review: reviewPrompt
         }
     }
 
-    private func ciPrompt(_ checks: [FailedCheck]) -> String {
-        let logs = checks.map { check in
-            UntrustedText.block("ci-log", "チェック: \(check.name)\n\(UntrustedText.tail(check.logExcerpt, limit: Self.maximumLogLength))")
-        }
-        return """
+    private var ciPrompt: String {
+        """
         このタスクの子 PR #\(pullRequest) の CI が落ちました。落ちたチェックのログの抜粋を読み、原因を直してください。
 
         ## 落ちたチェック
-        \(logs.isEmpty ? "（ログを取れなかった）" : logs.joined(separator: "\n"))
+        \(UntrustedText.block("ci-log", findings))
 
         ## 進め方
         - 落ちた原因に関わる所だけを直す
@@ -185,16 +226,12 @@ public struct FixTaskJob: TaskJob {
         """
     }
 
-    private func reviewPrompt(_ findings: [Finding]) -> String {
-        let items = findings.enumerated().map { index, finding in
-            let place = finding.path.map { path in finding.line.map { "\(path):\($0)" } ?? path } ?? "（場所の指定なし）"
-            return "\(index + 1). \(place)\n\(UntrustedText.head(finding.text, limit: Self.maximumFindingLength))"
-        }
-        return """
+    private var reviewPrompt: String {
+        """
         このタスクの子 PR #\(pullRequest) のレビューで、直す必要のある指摘がありました。指摘ごとに直してください。
 
         ## 指摘
-        \(UntrustedText.block("review", items.isEmpty ? "（指摘の本文を取れなかった）" : items.joined(separator: "\n\n")))
+        \(UntrustedText.block("review", findings))
 
         ## 進め方
         - 指摘に関わる所だけを直す
@@ -218,7 +255,7 @@ enum UntrustedText {
 
     /// 区切りに使うタグ（決まりの文で名前を挙げたもの）の開きと閉じの `<`。`Regex` は Sendable ではないので、共有の定数にせず、呼ぶたびに作る
     private static var tagStart: Regex<Substring> {
-        #/(?i)<(?=\s*/?\s*(?:repository-facts|goal|task|previous-tasks|build-result|ci-log|review))/#
+        #/(?i)<(?=\s*/?\s*(?:repository-facts|goal|task|previous-tasks|build-result|ci-log|review|diff))/#
     }
 
     /// 長いログは末尾を残す（失敗の理由は後ろに出る）

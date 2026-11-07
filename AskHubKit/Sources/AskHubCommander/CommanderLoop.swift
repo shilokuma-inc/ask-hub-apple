@@ -66,6 +66,9 @@ public actor CommanderLoop {
     nonisolated let mirror: DiscussionMirror?
     /// epic の作業場所。この Mac が開始のときに選ばれたら、作業場所の用意（`prepareWorkspace`）も引き受ける。nil なら引き受けない
     nonisolated let epicWorkspace: (any EpicWorkspace)?
+    /// タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）を動かすもの（`MachineRuntime.taskRunners`）。
+    /// この Mac が開始のときに選ばれた epic の、自分宛てのものだけを引き受ける
+    nonisolated let taskRunners: [JobKind: any JobRunning]
 
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
@@ -84,7 +87,8 @@ public actor CommanderLoop {
         log: @escaping @Sendable (String) -> Void,
         sleeper: any Sleeper = TaskSleeper(),
         mirror: DiscussionMirror? = nil,
-        epicWorkspace: (any EpicWorkspace)? = nil
+        epicWorkspace: (any EpicWorkspace)? = nil,
+        taskRunners: [JobKind: any JobRunning] = [:]
     ) {
         self.context = context
         self.settings = settings
@@ -97,7 +101,8 @@ public actor CommanderLoop {
         self.sleeper = sleeper
         self.mirror = mirror
         self.epicWorkspace = epicWorkspace
-        let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace])
+        self.taskRunners = taskRunners
+        let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
     }
 
@@ -152,6 +157,9 @@ public actor CommanderLoop {
         let claude = ClaudeJobRunner(context: context, client: client, workspace: workspace, verifier: verifier)
         var runners: [JobKind: any JobRunning] = Dictionary(uniqueKeysWithValues: Self.claudeKinds.map { ($0, claude) })
         if let epicWorkspace { runners[.prepareWorkspace] = PrepareWorkspaceRunner(context: context, workspace: epicWorkspace) }
+        // タスクのジョブは push や子 PR の作成・マージをするので、ワーカー（`WorkerLoop`）と同じく、元になった人の意図の署名を確かめてから動かす
+        let checked = taskRunners.mapValues { OriginCheckedRunner(context: context, verifier: verifier, runner: $0) as any JobRunning }
+        runners.merge(checked) { current, _ in current }
         return JobWorker(
             runner: JobDispatcher(runners),
             recorder: AttemptRecorder(files: context.files, mac: context.mac, now: context.now),

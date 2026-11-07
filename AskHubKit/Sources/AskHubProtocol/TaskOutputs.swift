@@ -76,6 +76,6 @@ public struct TaskOutputReport: Codable, Equatable, Sendable {
 }
 
 extension AttemptFile.Outputs {
-    /// `findings` の長さの上限（文字数）。超えた分はワーカーが省いてから書く
+    /// `findings` の長さの上限（Unicode のコードポイントの数。JSON Schema の maxLength と同じ数え方）。超えた分はワーカーが省いてから書く
     public static let maximumFindingsLength = 20_000
 }
