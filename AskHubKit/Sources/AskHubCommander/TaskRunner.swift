@@ -93,7 +93,7 @@ public struct TaskRunner: Sendable {
     private struct BuildState {
         var failing: Bool
         /// 落ちたままなら、その種類と結果の要約
-        var lastFailure: (kind: BuildKind, summary: String)?
+        var lastFailure: (kind: TaskReport.BuildKind, summary: String)?
     }
 
     public func run(_ job: some TaskJob, in workspace: TaskWorkspace) async -> TaskReply {
@@ -123,7 +123,12 @@ public struct TaskRunner: Sendable {
     }
 
     /// 頼まれたビルドかテストを流す。続けられないとき（往復の使い切り・時間切れ・流せなかった）は `couldNotRun` で返す
-    private func build(_ kind: BuildKind, state: inout BuildState, run: inout TaskRun, since start: Date) async -> BuildReport {
+    private func build(
+        _ kind: TaskReport.BuildKind,
+        state: inout BuildState,
+        run: inout TaskRun,
+        since start: Date
+    ) async -> TaskBuildResult {
         guard run.roundTrips < limits.roundTrips else { return .couldNotRun(exhausted(state)) }
         guard run.session?.id != nil else {
             return .couldNotRun(AttemptFailure(failureClass: .unexpected, message: "Claude の会話の id が無く、ビルドの結果を渡せない"))
@@ -179,7 +184,7 @@ public struct TaskRunner: Sendable {
     /// ビルドとテストの結果の要約に載せる長さの上限（文字数）。超えた分は前を省く（失敗の理由は後ろに出る）
     static let maximumBuildSummaryLength = 8_000
 
-    static func buildResultPrompt(kind: BuildKind, report: BuildReport, used: Int, limit: Int) -> String {
+    static func buildResultPrompt(kind: TaskReport.BuildKind, report: TaskBuildResult, used: Int, limit: Int) -> String {
         let (passed, summary): (Bool, String) = switch report {
         case let .passed(text): (true, text)
         case let .failed(text): (false, text)

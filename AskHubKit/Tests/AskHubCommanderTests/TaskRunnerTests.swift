@@ -8,18 +8,18 @@ import Testing
 
 /// 決まったビルドとテストの結果を順に返し、頼まれた種類を記録する
 final class FakeBuilds: BuildService {
-    private let state: OSAllocatedUnfairLock<(reports: [BuildReport], kinds: [BuildKind])>
+    private let state: OSAllocatedUnfairLock<(reports: [TaskBuildResult], kinds: [TaskReport.BuildKind])>
     /// 流すたびに呼ぶ（時計を進めるなど）
     private let onRun: @Sendable () -> Void
 
-    init(_ reports: [BuildReport], onRun: @escaping @Sendable () -> Void = {}) {
+    init(_ reports: [TaskBuildResult], onRun: @escaping @Sendable () -> Void = {}) {
         state = OSAllocatedUnfairLock(initialState: (reports, []))
         self.onRun = onRun
     }
 
-    var kinds: [BuildKind] { state.withLock { $0.kinds } }
+    var kinds: [TaskReport.BuildKind] { state.withLock { $0.kinds } }
 
-    func run(_ kind: BuildKind) async -> BuildReport {
+    func run(_ kind: TaskReport.BuildKind) async -> TaskBuildResult {
         onRun()
         return state.withLock { state in
             state.kinds.append(kind)
@@ -156,7 +156,7 @@ struct TaskRunnerTests {
     @Test func stopsWhenRoundTripsRunOut() async throws {
         let limits = TaskRunLimits(roundTrips: 2)
         let claude = ScriptedRunner(Array(repeating: Self.result("needsBuild", buildKind: "testLight"), count: 3))
-        let failed = BuildReport.failed(summary: "Test Case 'RankingTests.sorts' failed")
+        let failed = TaskBuildResult.failed(summary: "Test Case 'RankingTests.sorts' failed")
         let builds = FakeBuilds([failed, failed])
         let reply = await Self.runner(claude, builds: builds, limits: limits).run(TaskJobsTests.job(), in: Self.workspace)
         guard case let .failed(failure, run) = reply else { Issue.record("\(reply)"); return }

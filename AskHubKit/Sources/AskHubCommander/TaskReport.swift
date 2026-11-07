@@ -14,6 +14,16 @@ public struct TaskReport: Codable, Equatable, Sendable {
         case blocked
     }
 
+    /// 流してほしいビルドとテスト。値は `AskHubBuild` の `BuildKind` と同じ（つなぐときに `rawValue` で写す）
+    public enum BuildKind: String, Codable, Sendable, CaseIterable {
+        /// ビルドだけ
+        case build
+        /// 軽いテスト（UI テストを含まない）
+        case testLight
+        /// 全部のテスト（UI テストを含む）
+        case testFull
+    }
+
     /// 仮決め（人に聞かずに Claude が決めたこと）。見える・内部の区分は、読むだけのレビュー役の Claude が決める
     public struct Decision: Codable, Equatable, Sendable {
         public var what: String
