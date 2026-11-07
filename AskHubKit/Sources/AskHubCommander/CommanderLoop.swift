@@ -191,38 +191,12 @@ public actor CommanderLoop {
             versions: .init(commander: settings.commanderVersion, claude: settings.claudeVersion),
             selfCheck: machine.selfCheck
         )
-        let mac = MacFile(
-            mac: context.mac,
-            kind: .alwaysOn,
-            seenAt: time,
-            versions: .init(worker: settings.commanderVersion, claude: settings.claudeVersion),
-            diskFreeGB: machine.diskFreeGB,
-            load: machine.load,
-            capacity: settings.capacity,
-            selfCheck: machine.selfCheck
-        )
-        try await put(commander, at: StatePath.commander, message: "司令塔の生きている印")
-        try await put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
+        let versions = MacFile.Versions(worker: settings.commanderVersion, claude: settings.claudeVersion)
+        let mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
+        try await context.put(commander, at: StatePath.commander, message: "司令塔の生きている印")
+        try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now
         // しばらく使っていないリポジトリの写しを片付ける
         await workspace.tidy()
-    }
-
-    /// 無ければ作り、あれば置き換える
-    private func put<File: StateFile>(_ file: File, at path: String, message: String) async throws(CommanderError) {
-        do {
-            if try await context.files.read(File.self, at: path) == nil {
-                try await context.files.create(file, at: path, message: message)
-            } else {
-                try await context.files.update(File.self, at: path, message: message) {
-                    $0 = file
-                    return true
-                }
-            }
-        } catch .alreadyExists {
-            throw .changedWhileProcessing(path)
-        } catch {
-            throw .files(error)
-        }
     }
 }
