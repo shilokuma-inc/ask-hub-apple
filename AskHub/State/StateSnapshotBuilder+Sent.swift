@@ -95,7 +95,7 @@ extension StateSnapshotBuilder {
 
     private func applyAnswer(_ envelope: IntentEnvelope, to epics: inout [Epic], index: StateIndex) {
         guard let epicID = envelope.target?.epic?.rawValue, let protocolID = envelope.target?.id,
-              let epicIndex = epics.firstIndex(where: { $0.id == epicID }),
+              let epicIndex = epics.firstIndex(where: { $0.id == epicID }), epics[epicIndex].isActive,
               let questionIndex = epics[epicIndex].questions.firstIndex(where: { $0.id == Self.displayID(protocolID) }),
               let entry = index.questions[epicID]?[Self.displayID(protocolID)], envelope.targetVersion == String(entry.version) else {
             return

@@ -213,6 +213,10 @@ struct StateClientServiceTests {
         #expect(abandoned.isAbandoned)
         #expect(abandoned.stage == .questions)
         #expect(!service.supports(.discard(epicID: Self.epicID)))
+        // やめた epic の質問には答えない
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.answer(epicID: Self.epicID, questionID: "Q1", optionID: "日ごと", note: ""))
+        }
 
         let consumed = #"{"v":1,"kind":"abandonEpic","consumedAt":"2027-01-15T08:00:00Z","result":"rejected","reason":"epic はもう始まっている"}"#
         await fixture.store.put(StatePath.consumed(device: fixture.key.keyID, nonce: envelope.nonce), data: Data(consumed.utf8))

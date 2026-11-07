@@ -11,7 +11,8 @@ struct StateIndex {
         /// 「対処が要ります」に出した、人の対応を待っているジョブ（やり直す・やめるの対象）と、そこに出した操作
         var blockedJob: JobTarget?
         var blockerActions: Set<Blocker.Action> = []
-        /// 取り下げられるか（開始する前で、やめていない。処理を待つ意図を当てた後の段階で決める）
+        /// やめていないか・取り下げられるか（開始する前で、やめていない）。どちらも処理を待つ意図を当てた後の状態で決める
+        var isActive = true
         var canAbandon = false
     }
 
@@ -49,9 +50,10 @@ struct StateSnapshotBuilder {
             apply(envelope, to: &epics, repositories: &repositories, index: &index)
         }
         applyBlockers(to: &epics, overlaid: overlaid, index: &index)
-        // 開始した後の取り下げ（作業のブランチの片付けなど）は段階 3 で送る
-        for epic in epics where epic.isActive && epic.stage < .implementing {
-            index.epics[epic.id]?.canAbandon = true
+        for epic in epics {
+            index.epics[epic.id]?.isActive = epic.isActive
+            // 開始した後の取り下げ（作業のブランチの片付けなど）は段階 3 で送る
+            index.epics[epic.id]?.canAbandon = epic.isActive && epic.stage < .implementing
         }
         applyRejections(to: &epics)
         let snapshot = ClientSnapshot(

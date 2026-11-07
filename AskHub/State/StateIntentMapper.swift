@@ -145,6 +145,9 @@ struct StateIntentMapper {
 
     private func question(_ questionID: Question.ID, in epicID: Epic.ID) throws(ClientServiceError) -> QuestionTarget {
         let epic = try epic(epicID)
+        guard epic.isActive else {
+            throw ClientServiceError(message: "やめた epic の質問には答えられません")
+        }
         guard let question = index.questions[epicID]?[questionID] else {
             throw ClientServiceError(message: "\(questionID) は、状態リポジトリにありません")
         }
