@@ -57,6 +57,14 @@ public struct ReviewTaskRunner: JobRunning {
         let merge = try await environment.github("子 PR をマージする", keeping: JobResult(claude: claude)) { () throws(PullRequestError) in
             try await pulls.merge(number: input.pullRequest, headSHA: input.head, commitTitle: nil, commitMessage: nil)
         }
+        // 読み直してからマージするまでの間に向き先が変えられていたら、作業ブランチ以外に入っている。取り消せないので、merged とせずに人へ渡す
+        let landed = try await environment.github("マージした子 PR を読む", keeping: JobResult(claude: claude)) { () throws(PullRequestError) in
+            try await pulls.pullRequest(number: input.pullRequest)
+        }
+        guard landed.baseRef == target.branches.epic else {
+            let message = "子 PR #\(input.pullRequest) が、作業ブランチ（\(target.branches.epic)）ではなく \(landed.baseRef) にマージされた。人が確かめる"
+            throw .fail(.unexpected, message, keeping: JobResult(claude: claude))
+        }
         return try await merged(input, sha: merge.sha, target: target, pulls: pulls, claude: claude)
     }
 

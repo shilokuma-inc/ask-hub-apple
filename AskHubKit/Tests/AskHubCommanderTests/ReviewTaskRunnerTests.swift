@@ -195,6 +195,23 @@ struct ReviewTaskRunnerTests {
         #expect(fixture.pulls.current.merges.isEmpty)
     }
 
+    @Test func reportsMergeThatLandedOutsideWorkBranch() async throws {
+        // マージの直前に読み直した後、マージまでの間に向き先が変えられた（マージの API は向き先を固定できない）
+        let fixture = try await fixture(reviews: [Self.noFindings], checks: [.init(verdict: .passed)])
+        let reads = OSAllocatedCounter()
+        fixture.pulls.update { state in
+            state.onRead = { pull in
+                if reads.increment() > 2 { pull.baseRef = "develop" }
+            }
+        }
+        let result = try await review(fixture)
+        #expect(fixture.pulls.current.merges.count == 1)
+        #expect(result.failure?.failureClass == .unexpected)
+        #expect(result.failure?.message.contains("develop にマージされた") == true)
+        #expect(result.outputs?.verdict == nil)
+        #expect(fixture.pulls.current.deletions.isEmpty)
+    }
+
     @Test func doesNotTreatPullMergedWithAnotherHeadAsDone() async throws {
         let fixture = try await fixture(checks: [.init(verdict: .passed)], head: sha("2"))
         fixture.pulls.update { state in
