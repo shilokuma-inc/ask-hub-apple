@@ -287,3 +287,32 @@ public struct AddRepositoryHandler: IntentHandler {
         return .accept
     }
 }
+
+/// 取り下げ（`abandonEpic`）を受け付ける。開始する前の epic を `abandoned` にし、終わっていないジョブを取り消す。
+/// 動いている Claude のジョブは、結果を書く前に epic を読み直して捨てる。開始した後の取り下げ（作業のブランチの片付けなど）は段階 3 で決める
+public struct AbandonEpicHandler: IntentHandler {
+    public init() {}
+
+    public func handle(_ envelope: IntentEnvelope, in context: CommanderContext) async throws(CommanderError) -> IntentDecision {
+        let abandon: AbandonEpicIntent
+        do {
+            abandon = try AbandonEpicIntent(envelope: envelope)
+        } catch {
+            return .reject("取り下げの形が違う（\(error.detail)）")
+        }
+        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(abandon.repo, abandon.epic)) else {
+            return .reject("epic が無い")
+        }
+        switch epic.stage {
+        case .abandoned:
+            // 前の周でやめた（ジョブの片付けの途中で止まった）か、ほかの理由でやめていた
+            break
+        case let stage where CommanderContext.planningStages.contains(stage):
+            try await context.setStage(.abandoned, of: epic, from: CommanderContext.planningStages)
+        default:
+            return .reject("開始した後は取り下げられない（今は \(epic.stage.rawValue)）")
+        }
+        try await context.cancelJobs(epic.repo, epic: epic.id) { _ in true }
+        return .accept
+    }
+}

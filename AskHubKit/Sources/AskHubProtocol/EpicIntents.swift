@@ -226,3 +226,33 @@ public struct DecideSplitIntent: Equatable, Sendable {
 
     public var payload: [String: JSONValue] { ["choice": .string(choice.rawValue)] }
 }
+
+/// 取り下げの人の意図（`kind` が `abandonEpic`）。開始する前の epic をやめる。`target` は `{type: epic, epic}`。
+/// どの段階でも取り下げの意味は変わらないので、`targetVersion` は書かない。payload は持たない
+public struct AbandonEpicIntent: Equatable, Sendable {
+    public static let kind = "abandonEpic"
+
+    public var repo: RepositoryFullName
+    public var epic: ULID
+    public var intent: IntentReference
+
+    public init(repo: RepositoryFullName, epic: ULID, intent: IntentReference) {
+        self.repo = repo
+        self.epic = epic
+        self.intent = intent
+    }
+
+    public init(envelope: IntentEnvelope) throws(MalformedIntent) {
+        guard envelope.kind == Self.kind else { throw .init(detail: "kind が abandonEpic でない") }
+        guard let repo = envelope.repo else { throw .init(detail: "repo が無い") }
+        guard let target = envelope.target, target.type == EpicTarget.targetType, let epic = target.epic, target.id == nil else {
+            throw .init(detail: "target が epic でない")
+        }
+        guard envelope.targetVersion == nil else { throw .init(detail: "取り下げに targetVersion がある") }
+        _ = try PayloadReader(envelope.payload, allowed: [])
+        self.init(repo: repo, epic: epic, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
+    }
+
+    public var target: IntentEnvelope.Target { .init(type: EpicTarget.targetType, epic: epic) }
+    public var payload: [String: JSONValue] { [:] }
+}

@@ -124,6 +124,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `merged` | マージされた | — |
 | `abandoned` | やめた | — |
 
+開始する前の段階（`drafting`〜`awaitingStart`）からは、人の取り下げ（`abandonEpic`）か、先に進めなくなるジョブを人がやめたとき（`giveUp`）にも `abandoned` になる
+
 ### readiness.json（最後の着手前の確認の結果）
 
 ```json
@@ -471,6 +473,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `instructFinal` | 最終 PR | 最終 PR の head のコミット | 指示の本文 |
 | `humanTaskDone` | 人がする作業 | ゴールの `version` | 渡すものの参照 |
 | `handover` | epic | — | 移す先の Mac |
+| `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始する前の epic だけ |
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `removeRepository`・`applyProtection` | リポジトリ | — | 設定 |

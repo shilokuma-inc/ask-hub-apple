@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/abandonEpic.schema.json",
+  "title": "取り下げの人の意図（kind が abandonEpic）の payload",
+  "description": "封筒の target は {type: epic, epic}。targetVersion は書かない。payload は空。知らない欄のある payload は読まない",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

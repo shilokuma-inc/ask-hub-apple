@@ -45,7 +45,12 @@ struct EpicHandlersTests {
         IntentIntake(
             context: CommanderContext(store: store, mac: Self.commander) { Self.now },
             verifier: IntentVerifier(publicKeys: [keyID: key.publicKey.derRepresentation]),
-            handlers: ["request": RequestHandler(), "startEpic": StartEpicHandler(), "reviseGoal": ReviseGoalHandler()]
+            handlers: [
+                "request": RequestHandler(),
+                "startEpic": StartEpicHandler(),
+                "reviseGoal": ReviseGoalHandler(),
+                "abandonEpic": AbandonEpicHandler()
+            ]
         )
     }
 
@@ -302,5 +307,37 @@ struct EpicHandlersTests {
         let outcomes = try await intake(store).processPending()
         #expect(outcomes.contains(.rejected(kind: "startEpic", reason: "ゴールを直している途中。直し終えてから開始する")))
         #expect(outcomes.contains(.rejected(kind: "reviseGoal", reason: "ほかの指示でゴールを直している途中。直し終えてから指示し直す")))
+    }
+
+    // MARK: - 取り下げ
+
+    private func abandon(_ epic: ULID, in store: InMemoryStateStore) async throws {
+        try await put("abandonEpic", target: .init(type: "epic", epic: epic), payload: [:], in: store)
+    }
+
+    /// 質問づくりの途中でも取り下げられ、動いているジョブを取り消す。やめた epic を重ねて取り下げても受け付ける
+    @Test func abandonStopsEpicBeforeStart() async throws {
+        let store = try await registeredRepository()
+        let nonce = try await put("request", payload: ["title": .string("ランキング")], in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "request")])
+        let epicID = RequestHandler.epicID(for: .init(keyId: keyID, nonce: nonce))
+        try await abandon(epicID, in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "abandonEpic")])
+        #expect(try await file(EpicFile.self, at: StatePath.epic(Self.repo, epicID), in: store)?.stage == .abandoned)
+        #expect(try await jobs(epicID, in: store).map(\.state) == [.canceled])
+
+        try await abandon(epicID, in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "abandonEpic")])
+    }
+
+    /// 開始した後の取り下げは、段階 3 で決めるまで受け付けない
+    @Test func abandonIsRejectedAfterStart() async throws {
+        let (store, epic) = try await awaitingStart()
+        try await start(epic, in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "startEpic")])
+        try await abandon(epic.id, in: store)
+        #expect(try await intake(store).processPending() == [.rejected(kind: "abandonEpic", reason: "開始した後は取り下げられない（今は running）")])
+        #expect(try await file(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .running)
+        #expect(try await jobs(epic.id, in: store).map(\.state) == [.assigned])
     }
 }

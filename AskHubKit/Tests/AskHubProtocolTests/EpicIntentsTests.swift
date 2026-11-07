@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 
-/// 依頼・開始・ゴールの修正・やり直し・やめるの人の意図の形
+/// 依頼・開始・ゴールの修正・取り下げ・やり直し・やめるの人の意図の形
 struct EpicIntentsTests {
     /// 種類ごとの、例のファイルと読み方
     struct Kind: Sendable, CustomTestStringConvertible {
@@ -40,6 +40,9 @@ struct EpicIntentsTests {
         },
         Kind(vectors: "payloads/giveUp.json", kind: "giveUp", target: jobTarget, targetVersion: "2") {
             try GiveUpJobIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/abandonEpic.json", kind: "abandonEpic", target: .init(type: "epic", epic: epic), targetVersion: nil) {
+            try AbandonEpicIntent(envelope: $0).payload
         }
     ]
 
@@ -189,6 +192,25 @@ struct EpicIntentsTests {
         // やり直しとやめるは取り違えない
         #expect(throws: MalformedIntent.self) {
             try GiveUpJobIntent(envelope: envelope(kind: "retry", target: retry.target.target, targetVersion: "2", payload: [:]))
+        }
+    }
+
+    /// 取り下げは epic だけを対象にし、版を書かない
+    @Test func readsAbandonEpic() throws {
+        let target = IntentEnvelope.Target(type: "epic", epic: Self.epic)
+        let abandon = try AbandonEpicIntent(envelope: envelope(kind: "abandonEpic", target: target, targetVersion: nil, payload: [:]))
+        #expect(abandon.epic == Self.epic)
+        #expect(abandon.target == target)
+        let cases: [(IntentEnvelope.Target?, String?)] = [
+            (nil, nil),
+            (.init(type: "epic", epic: Self.epic), "1"),
+            (.init(type: "epic", epic: Self.epic, id: "q1"), nil),
+            (Self.jobTarget, nil)
+        ]
+        for (target, version) in cases {
+            #expect(throws: MalformedIntent.self) {
+                try AbandonEpicIntent(envelope: envelope(kind: "abandonEpic", target: target, targetVersion: version, payload: [:]))
+            }
         }
     }
 

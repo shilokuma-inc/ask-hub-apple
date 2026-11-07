@@ -12,7 +12,7 @@
       "type": "string",
       "enum": [
         "request", "answer", "startEpic", "reviseGoal", "decideSplit", "decision", "approveMerge", "instructFinal", "humanTaskDone",
-        "handover", "retry", "giveUp", "addRepository", "removeRepository", "applyProtection", "registerKey", "revokeKey"
+        "handover", "retry", "giveUp", "abandonEpic", "addRepository", "removeRepository", "applyProtection", "registerKey", "revokeKey"
       ]
     },
     "repo": { "$ref": "common.schema.json#/$defs/repositoryFullName" },
