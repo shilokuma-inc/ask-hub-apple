@@ -264,6 +264,14 @@
 - 開発者モードが無効（`DevToolsSecurity -status` が disabled）の Mac では、ターミナルから流しても macOS の `xcodebuild test` がテストのホストを起動できずに止まることがある
   （`Testing started completed` の後に何も出ない）。iOS Simulator の `-only-testing:AskHubTests` は通るので、手元の Unit テストはそちらで流す。
   Xcode 27.1 の `xcodebuild test` は、テストが終わって `Executed N tests` を出した後に戻らないことがあるので、結果はログの `Executed` と `Test Case … failed` の行で判断する（2026-11-07、#879）
+- 結果のバンドルは `xcrun xcresulttool get build-results` と `get test-results summary`（`--compact` で 1 行の JSON）で読める。
+  `build-results` の `errors` の `sourceURL`（`file://…#…&StartingLineNumber=12&…`）の行は 0 から数えるので、エディタの行は +1 する。
+  テストの操作でビルドが失敗すると、`errors` に場所の無い「Testing cancelled because the build failed.」も入る。
+  `test-results summary` の `devicesAndConfigurations` は、JSON Schema（0.4.0）ではオブジェクトだが実際は配列で返る（Xcode 27.1）ので、使う欄だけを読む（2026-11-07、#886）
+- `xcrun simctl shutdown` は、止まっている Simulator には終了コード 149（`Unable to shutdown device in current state: Shutdown`）で失敗する。
+  `erase`・`delete` の前に止めるときは、この失敗を成功とみなす（2026-11-07、#886）
+- 人や Claude のセッションが、画面の確認用に `askhub-` で始まる名前の Simulator（`askhub-anim-a` など）を作っていることがある。
+  ワーカー（`AskHubBuild` の `SimulatorPool`）が作って消すのは `askhub-worker-<枠>-…` の形の名前だけなので、手で作る Simulator にはこの形の名前を付けない（2026-11-07、#886）
 
 ## Keychain
 
