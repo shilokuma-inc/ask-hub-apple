@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/decision.schema.json",
+  "title": "判断のカードへの答えの人の意図（kind が decision）の payload",
+  "description": "封筒の target は {type: decision, epic, id: <判断の id>}、targetVersion は人が見たときの最終 PR の head のコミット。alternative・fix のときは note が要る（読む側で確かめる）。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "answer"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "answer": {
+      "enum": [
+        "ok",
+        "alternative",
+        "fix"
+      ]
+    },
+    "note": {
+      "type": "string",
+      "maxLength": 10000,
+      "description": "別案・直してほしいときの本文"
+    }
+  }
+}

@@ -29,6 +29,8 @@ public struct FixTaskInput: JobInput {
         case ci
         /// レビュー役の必須の指摘
         case review
+        /// 人の判断のカードの「直してほしい」「別案にする」と、最終 PR への指示（`instructFinal`）。元の人の意図はジョブの `origin`
+        case human
     }
 
     public var pullRequest: Int

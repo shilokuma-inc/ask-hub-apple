@@ -12,7 +12,7 @@
     "kind": {
       "enum": [
         "makeQuestions", "explain", "reviseQuestion", "checkReadiness", "reviseGoal", "prepareWorkspace", "implementTask", "reviewTask", "fixTask",
-        "integrateDevelop", "verifyBeforeFinal", "openFinalPullRequest", "fixFinalPullRequest", "rerunChecks", "classifyDecisions",
+        "integrateDevelop", "verifyBeforeFinal", "openFinalPullRequest", "reviewFinalPullRequest", "fixFinalPullRequest", "rerunChecks", "classifyDecisions",
         "captureScreenshots", "mergeFinalPullRequest", "cleanUp", "notify"
       ]
     },

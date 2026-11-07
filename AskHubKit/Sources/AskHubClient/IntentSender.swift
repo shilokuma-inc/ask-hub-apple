@@ -78,6 +78,35 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: AbandonEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))
     }
 
+    /// 判断のカードへの答え（「別案にする」「直してほしい」は本文が要る）
+    public static func decision(_ target: DecisionTarget, answer: DecisionsFile.Choice, note: String = "") -> Self {
+        var payload: [String: JSONValue] = ["answer": .string(answer.rawValue)]
+        if !note.isEmpty { payload["note"] = .string(note) }
+        return Self(
+            kind: DecisionIntent.kind,
+            repo: target.repo,
+            target: target.target,
+            targetVersion: target.targetVersion,
+            payload: payload
+        )
+    }
+
+    /// 最終 PR のマージの承認（見た head に結びつく）
+    public static func approveMerge(_ target: FinalPullRequestTarget) -> Self {
+        Self(kind: ApproveMergeIntent.kind, repo: target.repo, target: target.target, targetVersion: target.targetVersion)
+    }
+
+    /// 最終 PR への指示
+    public static func instructFinal(_ target: FinalPullRequestTarget, instruction: String) -> Self {
+        Self(
+            kind: InstructFinalIntent.kind,
+            repo: target.repo,
+            target: target.target,
+            targetVersion: target.targetVersion,
+            payload: ["instruction": .string(instruction)]
+        )
+    }
+
     /// 人に渡したジョブをやり直させる（`target.attempt` は、見たときのジョブの試行の番号）
     public static func retry(_ target: JobTarget) -> Self {
         Self(kind: RetryJobIntent.kind, repo: target.repo, target: target.target, targetVersion: target.targetVersion)

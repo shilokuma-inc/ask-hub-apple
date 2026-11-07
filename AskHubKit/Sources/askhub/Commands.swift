@@ -83,6 +83,8 @@ extension AskHubMain {
             return .request(repo: try arguments.repository(), title: try arguments.string("title"), body: arguments.values["body"] ?? "")
         case "answer", "clarify":
             return try answer(command, arguments)
+        case "decide", "approve-merge", "instruct-final":
+            return try finalDraft(command, arguments)
         case "abandon":
             try arguments.only(["repo", "epic"])
             return .abandonEpic(repo: try arguments.repository(), epic: try arguments.epic())
@@ -125,6 +127,31 @@ extension AskHubMain {
         )
         if command == "clarify" { return .clarify(question, note: try arguments.string("note")) }
         return .answer(question, choice: arguments.values["choice"], note: arguments.values["note"] ?? "")
+    }
+
+    /// 最終 PR と判断のカードへの意図。どれも、見たときの最終 PR の head（40 桁の SHA）に結びつく
+    private static func finalDraft(_ command: String, _ arguments: CommandArguments) throws -> IntentDraft {
+        switch command {
+        case "decide": try arguments.only(["repo", "epic", "head", "decision", "answer", "note"])
+        case "approve-merge": try arguments.only(["repo", "epic", "head"])
+        default: try arguments.only(["repo", "epic", "head", "instruction"])
+        }
+        let head = try arguments.string("head")
+        guard AttemptFile.isCommitSHA(head) else { throw CommandArguments.Failure(message: "--head は最終 PR の head のコミット（40 桁の SHA）") }
+        let (repo, epic) = (try arguments.repository(), try arguments.epic())
+        switch command {
+        case "decide":
+            guard let answer = DecisionsFile.Choice(rawValue: try arguments.string("answer")) else {
+                throw CommandArguments.Failure(message: "--answer は ok・alternative・fix")
+            }
+            let target = DecisionTarget(repo: repo, epic: epic, decision: try arguments.string("decision"), head: head)
+            return .decision(target, answer: answer, note: arguments.values["note"] ?? "")
+        case "approve-merge":
+            return .approveMerge(FinalPullRequestTarget(repo: repo, epic: epic, head: head))
+        default:
+            let target = FinalPullRequestTarget(repo: repo, epic: epic, head: head)
+            return .instructFinal(target, instruction: try arguments.string("instruction"))
+        }
     }
 
     private static func epicDraft(_ command: String, _ arguments: CommandArguments) throws -> IntentDraft {

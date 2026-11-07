@@ -15,6 +15,8 @@ public enum JobKind: String, Codable, Sendable, CaseIterable {
     case integrateDevelop
     case verifyBeforeFinal
     case openFinalPullRequest
+    /// 最終 PR のチェックと信用するレビューの書き手を待ち、読むだけのレビュー役の Claude が epic 全体の差分を読む
+    case reviewFinalPullRequest
     case fixFinalPullRequest
     case rerunChecks
     case classifyDecisions
@@ -183,6 +185,10 @@ public struct AttemptFile: StateFile {
         public var findings: String?
         /// 実装と直しで Claude が報告したこと（`implementTask`・`fixTask`）
         public var report: TaskOutputReport?
+        /// 最終 PR のレビューが見つけた、手動のマージの条件に当たるもの（`reviewFinalPullRequest`）
+        public var mergeRisks: [MergeRisk]?
+        /// 判断の仕分け（`classifyDecisions`）で見えるとした仮決めの id。ここに無いものは内部の細部。`decisions.json` には司令塔が写す
+        public var visibleDecisions: [String]?
 
         public init(
             pullRequest: Int? = nil,
@@ -190,7 +196,9 @@ public struct AttemptFile: StateFile {
             branch: String? = nil,
             verdict: ReviewVerdict? = nil,
             findings: String? = nil,
-            report: TaskOutputReport? = nil
+            report: TaskOutputReport? = nil,
+            mergeRisks: [MergeRisk]? = nil,
+            visibleDecisions: [String]? = nil
         ) {
             self.pullRequest = pullRequest
             self.commit = commit
@@ -198,6 +206,8 @@ public struct AttemptFile: StateFile {
             self.verdict = verdict
             self.findings = findings
             self.report = report
+            self.mergeRisks = mergeRisks
+            self.visibleDecisions = visibleDecisions
         }
     }
 
@@ -275,10 +285,14 @@ public struct AttemptFile: StateFile {
         if let findings = outputs?.findings, findings.isEmpty || findings.unicodeScalars.count > Outputs.maximumFindingsLength {
             violations.append("outputs.findings は空でなく、\(Outputs.maximumFindingsLength) 文字まで")
         }
-        if outputs?.verdict.map({ $0 != .merged }) == true, outputs?.findings == nil {
+        if outputs?.verdict.map({ [.fixCI, .fixReview].contains($0) }) == true, outputs?.findings == nil {
             violations.append("直す判定には findings が要る")
         }
         violations += outputs?.report?.problems ?? []
+        if outputs?.mergeRisks?.contains(where: { $0.reason.isEmpty }) == true { violations.append("outputs.mergeRisks の reason が空") }
+        if let visible = outputs?.visibleDecisions, !visible.allSatisfy(LocalIDs.isValid) || Set(visible).count != visible.count {
+            violations.append("outputs.visibleDecisions の id の形が違うか、重なっている")
+        }
         if let model = claude?.model, model.isEmpty { violations.append("claude.model が空") }
         if let cost = claude?.estimatedCostUsd, !(cost >= 0) { violations.append("claude.estimatedCostUsd は 0 以上") }
         return violations

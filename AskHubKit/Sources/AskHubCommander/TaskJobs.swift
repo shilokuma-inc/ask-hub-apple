@@ -137,12 +137,15 @@ public struct FixTaskJob: TaskJob {
     public enum Reason: Equatable, Sendable {
         case ci([FailedCheck])
         case review([Finding])
+        /// 人の判断のカードの「直してほしい」「別案にする」の本文と、最終 PR への指示（`instructFinal`）
+        case human(String)
 
         /// ジョブの入力の `reason`
         public var kind: FixTaskInput.Reason {
             switch self {
             case .ci: .ci
             case .review: .review
+            case .human: .human
             }
         }
 
@@ -165,8 +168,16 @@ public struct FixTaskJob: TaskJob {
                     let length = min(FixTaskJob.maximumFindingLength, limit / findings.count - place.count - 40)
                     return "\(index + 1). \(place)\n\(UntrustedText.head(hide(finding.text), limit: max(length, 0)))"
                 }
+            case let .human(text):
+                text.isEmpty ? [] : [hide(text)]
             }
-            guard !parts.isEmpty else { return kind == .ci ? "（ログを取れなかった）" : "（指摘の本文を取れなかった）" }
+            guard !parts.isEmpty else {
+                switch kind {
+                case .ci: return "（ログを取れなかった）"
+                case .review: return "（指摘の本文を取れなかった）"
+                case .human: return "（人の文を取れなかった）"
+                }
+            }
             // 長さは JSON Schema の数え方（Unicode のコードポイント）で上限に収める
             return String(String.UnicodeScalarView(parts.joined(separator: "\n\n").unicodeScalars.prefix(limit)))
         }
@@ -208,7 +219,24 @@ public struct FixTaskJob: TaskJob {
         switch reason {
         case .ci: ciPrompt
         case .review: reviewPrompt
+        case .human: humanPrompt
         }
+    }
+
+    /// 人の判断のカードの「直してほしい」「別案にする」と、最終 PR への指示。人の文は区切って渡す（指示として読ませるのは、署名を確かめた人の意図だけ）
+    private var humanPrompt: String {
+        """
+        PR #\(pullRequest) について、人から直してほしいことが届きました。人の文を読み、そのとおりに直してください。
+
+        ## 人の文
+        \(UntrustedText.block("instruction", findings))
+
+        ## 進め方
+        - 人の文が求めることに関わる所だけを直す
+        - ゴールの決まったこと・やらないことと食い違うときや、どう直すか決められないときは、直さずに needsQuestion にして、選択肢を出して聞く
+        - 直したら needsBuild で確かめ、通ってから done にする
+        - done の summary には、人の文のどこを、どう直したかを書く
+        """
     }
 
     private var ciPrompt: String {
@@ -255,7 +283,7 @@ enum UntrustedText {
 
     /// 区切りに使うタグ（決まりの文で名前を挙げたもの）の開きと閉じの `<`。`Regex` は Sendable ではないので、共有の定数にせず、呼ぶたびに作る
     private static var tagStart: Regex<Substring> {
-        #/(?i)<(?=\s*/?\s*(?:repository-facts|goal|task|previous-tasks|build-result|ci-log|review|diff))/#
+        #/(?i)<(?=\s*/?\s*(?:repository-facts|goal|task|previous-tasks|build-result|ci-log|review|diff|instruction))/#
     }
 
     /// 長いログは末尾を残す（失敗の理由は後ろに出る）

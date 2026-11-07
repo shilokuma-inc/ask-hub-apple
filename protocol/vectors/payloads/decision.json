@@ -1,0 +1,57 @@
+{
+  "description": "判断のカードへの答えの payload の例。read は、封筒の target と targetVersion が正しいときに、読む側が答えとして読めるか",
+  "schema": "payloads/decision.schema.json",
+  "cases": [
+    {
+      "name": "ok",
+      "payload": {
+        "answer": "ok"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "fix-with-note",
+      "payload": {
+        "answer": "fix",
+        "note": "見出しは 1 行に戻してほしい"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "alternative-with-note",
+      "payload": {
+        "answer": "alternative",
+        "note": "2 行にする"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "fix-without-note",
+      "payload": {
+        "answer": "fix"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-answer",
+      "payload": {
+        "answer": "maybe"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "answer": "ok",
+        "force": true
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "description": "最終 PR への指示の payload の例",
+  "schema": "payloads/instructFinal.schema.json",
+  "cases": [
+    {
+      "name": "instruction",
+      "payload": {
+        "instruction": "一覧の余白を広げてほしい"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty-instruction",
+      "payload": {
+        "instruction": ""
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "missing-instruction",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

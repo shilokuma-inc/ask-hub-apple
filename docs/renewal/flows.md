@@ -299,6 +299,7 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
   - 次のものに差分がある: `.github/`、ワークフローから呼ばれる道具、ビルドのスクリプト、`Package.swift` のプラグイン、依存の追加、`.claude/`・`.mcp.json`、entitlements・Info.plist の権限、署名やリリースの設定（`Configs/*.xcconfig`）、トークンや Keychain を扱うコード
   - 自動の修正がテストを弱めた
   - データの削除・移行を含む
+- 判定は司令塔とクライアントで同じもの（`AskHubProtocol` の `FinalMergeRule`）を使う。仕分ける前の仮決めは、見えるものとして数える
 - 自動でマージしたときも、何をマージしたかをクライアントに出す
 - マージの方式は merge commit
 - 人がマージするときの承認は、その時点の head のコミットに結びつける。承認の後に push された変更は、承認し直すまでマージしない
