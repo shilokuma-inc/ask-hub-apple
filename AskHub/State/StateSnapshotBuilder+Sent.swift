@@ -46,6 +46,9 @@ extension StateSnapshotBuilder {
         case RetryJobIntent.kind, GiveUpJobIntent.kind:
             applyJobIntent(envelope, to: &epics)
 
+        case AbandonEpicIntent.kind:
+            applyAbandon(envelope, to: &epics, index: index)
+
         default:
             break
         }
@@ -189,6 +192,18 @@ extension StateSnapshotBuilder {
         epics[epicIndex].history.insert(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text), at: 0)
     }
 
+    /// 取り下げ。状態リポジトリにある、開始する前の epic だけを出す（開始した後は司令塔が断る）
+    private func applyAbandon(_ envelope: IntentEnvelope, to epics: inout [Epic], index: StateIndex) {
+        guard let epicID = envelope.target?.epic?.rawValue, index.epics[epicID] != nil,
+              let epicIndex = epics.firstIndex(where: { $0.id == epicID }),
+              epics[epicIndex].isActive, epics[epicIndex].stage < .implementing else {
+            return
+        }
+        epics[epicIndex].isAbandoned = true
+        let text = "取り下げました。司令塔が受け取るのを待っています"
+        epics[epicIndex].history.insert(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text), at: 0)
+    }
+
     /// 処理を待つやめるの意図を送ったジョブか（同じ秒に送った意図の順に頼らずに決める）
     private func isGivenUp(_ job: JobFile) -> Bool {
         intentsToOverlay().contains { $0.kind == GiveUpJobIntent.kind && waitingJob(targetedBy: $0)?.id == job.id }
@@ -280,6 +295,9 @@ extension StateSnapshotBuilder {
 
         case GiveUpJobIntent.kind:
             return "取りやめ" + job
+
+        case AbandonEpicIntent.kind:
+            return "取り下げ"
 
         default:
             return envelope.kind
