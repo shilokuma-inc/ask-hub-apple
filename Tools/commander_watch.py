@@ -377,8 +377,11 @@ class GitHub:
                     raise Failure(f"Issue の一覧を読めませんでした: {error}") from error
         return issues
 
-    def create_issue(self, title: str, body: str) -> dict:
-        return self._write("POST", f"repos/{self.repo}/issues", {"title": title, "body": body}, "見張りの Issue を立てられませんでした")
+    def create_issue(self, title: str, body: str, assignees: tuple = ()) -> dict:
+        fields = {"title": title, "body": body}
+        if assignees:
+            fields["assignees"] = list(assignees)
+        return self._write("POST", f"repos/{self.repo}/issues", fields, "見張りの Issue を立てられませんでした")
 
     def comment(self, number: int, body: str) -> None:
         self._write("POST", f"repos/{self.repo}/issues/{number}/comments", {"body": body}, f"#{number} にコメントできませんでした")
@@ -390,17 +393,49 @@ class GitHub:
 # MARK: check
 
 
-def check(repo: str, github: GitHub, now: datetime, dry_run: bool = False) -> dict:
+#: GitHub のアカウント名（英数字と途中の 1 つずつの `-`、39 文字まで）
+LOGIN = re.compile(r"[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}")
+#: GitHub が 1 つの Issue に割り当てられる人数の上限
+MAX_ASSIGNEES = 10
+
+
+def parse_assignees(text: str) -> tuple:
+    """見張りの Issue を割り当てるアカウント（カンマか空白で区切る）。GitHub Mobile は、Watch だけではプッシュで知らせず、
+    割り当て・メンションなどの自分に向いた出来事だけをプッシュで知らせるので、割り当てて iPhone に届ける"""
+    names = []
+    for name in re.split(r"[,\s]+", text.strip()):
+        if not name:
+            continue
+        if not LOGIN.fullmatch(name):
+            raise UsageError(f"割り当てるアカウントの形が違います（{name}）")
+        if name.lower() not in (existing.lower() for existing in names):
+            names.append(name)
+    if len(names) > MAX_ASSIGNEES:
+        raise UsageError(f"割り当てられるのは {MAX_ASSIGNEES} 人までです（{len(names)} 人）")
+    return tuple(names)
+
+
+def unassigned(requested: tuple, created: dict) -> list:
+    """割り当てを頼んだのに、GitHub が黙って外したアカウント（書き込み権限が無い・リポジトリを見られない など）"""
+    assigned = {(entry or {}).get("login", "").lower() for entry in created.get("assignees") or []}
+    return [name for name in requested if name.lower() not in assigned]
+
+
+def check(repo: str, github: GitHub, now: datetime, dry_run: bool = False, assignees: tuple = ()) -> dict:
     status = assess(github.commander(), now)
     issues = watch_issues(github.issues())
     steps = plan(status, issues)
     done = []
+    warnings = []
     for step in steps:
         issue = step.get("issue") or {}
         entry = {"action": step["action"], "number": issue.get("number"), "url": issue.get("html_url")}
         if step["action"] == "open" and not dry_run:
-            created = github.create_issue(issue_title(status), issue_body(status, now))
+            created = github.create_issue(issue_title(status), issue_body(status, now), assignees)
             entry.update(number=created.get("number"), url=created.get("html_url"))
+            missing = unassigned(assignees, created)
+            if missing:
+                warnings.append(f"見張りの Issue を {', '.join(missing)} に割り当てられませんでした（プッシュの通知が届きません）")
         elif step["action"] == "recover":
             closing = issue["state"] == "open"
             entry["closed"] = closing
@@ -412,7 +447,8 @@ def check(repo: str, github: GitHub, now: datetime, dry_run: bool = False) -> di
                 github.update_issue(issue["number"], fields)
         done.append(entry)
     result = {"ok": True, "repo": repo, "dryRun": dry_run, "checkedAt": format_time(now), "state": status["state"],
-              "staleAfterMinutes": stale_minutes(), "actions": done, "messages": [describe(status, done, dry_run)]}
+              "staleAfterMinutes": stale_minutes(), "actions": done, "assignees": list(assignees),
+              "messages": [describe(status, done, dry_run), *warnings]}
     if "commander" in status:
         commander = status["commander"]
         result.update(mac=commander["mac"], seenAt=commander["seenAtText"], ageMinutes=minutes(status["age"]))
@@ -465,6 +501,7 @@ def summary_markdown(result: dict) -> str:
         actions.append(f"[{text}]({entry['url']})" if entry.get("url") else text)
     heading = "すること（--dry-run なので書いていない）" if result["dryRun"] else "したこと"
     lines += [f"| {heading} | {cell('、'.join(actions) or 'なし')} |",
+              f"| 割り当て | {cell('、'.join(result.get('assignees') or []) or 'なし（Watch している人の通知の一覧にだけ届く）')} |",
               f"| 確かめた時刻 | {result['checkedAt']}（{result['staleAfterMinutes']} 分より古ければ止まったとみなす） |"]
     return "\n".join(lines) + "\n"
 
@@ -472,8 +509,9 @@ def summary_markdown(result: dict) -> str:
 def command_check(args: argparse.Namespace, runner: Runner | None = None, now: datetime | None = None) -> dict:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}", args.repo):
         raise UsageError(f"--repo は owner/name の形で指定してください（{args.repo}）")
+    assignees = parse_assignees(args.assignees or "")
     github = GitHub(args.repo, runner or run_command)
-    result = check(args.repo, github, now or datetime.now(timezone.utc), dry_run=args.dry_run)
+    result = check(args.repo, github, now or datetime.now(timezone.utc), dry_run=args.dry_run, assignees=assignees)
     if args.summary:
         with open(args.summary, "a", encoding="utf-8") as handle:
             handle.write(summary_markdown(result))
@@ -539,6 +577,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--repo", required=True, help="状態リポジトリの owner/name")
     run.add_argument("--summary", help="Job Summary の Markdown を足すファイル")
     run.add_argument("--dry-run", action="store_true", help="Issue を立てたり閉じたりせず、することだけを出す")
+    run.add_argument("--assignees", default="",
+                     help="立てた Issue を割り当てる GitHub のアカウント（カンマか空白で区切る）。GitHub Mobile の割り当てのプッシュで知らせる")
 
     render = commands.add_parser("render-workflow", help="状態リポジトリに入れるワークフローを書く")
     render.add_argument("--ref", required=True, help="判定の版にする ask-hub-apple のコミット（origin/renewal など。SHA に直して書く）")

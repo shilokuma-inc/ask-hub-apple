@@ -3,6 +3,7 @@ run-name: Commander/Watch
 
 # 司令塔の見張り（状態リポジトリで動かす）。司令塔そのものが止まると通知も止まるので、司令塔の生きている印（commander.json の seenAt）が
 # 30 分より古い・無い・読めないときに、github-actions[bot] が Issue を立てる（bot の書き込みなので、Watch している人に GitHub の通知が届く）。
+# GitHub Mobile は Watch だけではプッシュで知らせないので、リポジトリの変数 COMMANDER_WATCH_ASSIGNEES のアカウントに Issue を割り当てて届ける。
 # 戻ったら（新しい seenAt を見たら）その Issue にコメントして閉じる。
 #
 # 正本は shilokuma-inc/ask-hub-apple の Tools/askhub-state/commander-watch.yml で、判定は同じリポジトリの Tools/commander_watch.py。
@@ -55,9 +56,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ inputs.dry-run }}
+          # 見張りの Issue を割り当てるアカウント（リポジトリの変数。カンマ区切り。空なら割り当てない）
+          ASSIGNEES: ${{ vars.COMMANDER_WATCH_ASSIGNEES }}
         run: |
           set -euo pipefail
-          args=(check --repo "$GITHUB_REPOSITORY" --summary "$GITHUB_STEP_SUMMARY")
+          args=(check --repo "$GITHUB_REPOSITORY" --summary "$GITHUB_STEP_SUMMARY" --assignees "${ASSIGNEES:-}")
           if [ "${DRY_RUN:-false}" = "true" ]; then
             args+=(--dry-run)
           fi
