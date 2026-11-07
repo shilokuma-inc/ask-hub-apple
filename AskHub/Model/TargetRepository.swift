@@ -15,6 +15,11 @@ struct TargetRepository: Identifiable, Hashable {
     var lastMacID: Mac.ID?
 
     var fullName: String { "\(owner)/\(name)" }
+
+    /// GitHub の PR の画面
+    func pullRequestURL(_ number: Int) -> URL? {
+        URL(string: "https://github.com/\(fullName)/pull/\(number)")
+    }
 }
 
 /// アプリのアイコン。対象に加えるときとアイコンが変わったときに、司令塔かワーカーが画像を取り出して状態リポジトリに置く想定

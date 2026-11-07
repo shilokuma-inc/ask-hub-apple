@@ -88,7 +88,33 @@ struct GoalReviewView: View {
             }
             .controlSize(.large)
             .padding(.vertical, 10)
+        } else if epic.isActive, let line = progressLine(epic) {
+            // 開始した後は、司令塔が受け取ったか・どこまで進んだかを出し、epic の画面で続きを見られるようにする
+            NavigationLink(value: AppRoute.epic(epic.id)) {
+                HStack(spacing: 10) {
+                    EpicStatusLabel(line: line)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.secondary)
+                }
+                .appFont(.subheadline)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: 520)
+                .glassEffect(.regular, in: .rect(cornerRadius: 22))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
+    }
+
+    /// 開始した後の「いま」の最初の 1 行
+    private func progressLine(_ epic: Epic) -> EpicStatusLine? {
+        guard let snapshot = store.snapshot else {
+            return nil
+        }
+        return EpicStatus.lines(for: epic, in: snapshot, now: store.currentDate()).first
     }
 
     private func pointsSection(_ title: String, _ points: [Goal.Point], footer: String? = nil) -> some View {

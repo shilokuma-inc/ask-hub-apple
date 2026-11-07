@@ -23,7 +23,7 @@ extension DemoData {
             tasks: [
                 EpicTask(id: "rain-t1", number: 1, title: "下書きのモデル", state: .done(pullRequest: 41)),
                 EpicTask(id: "rain-t2", number: 2, title: "一覧に下書きを出す", state: .done(pullRequest: 42)),
-                EpicTask(id: "rain-t3", number: 3, title: "下書きの保存", state: .failed),
+                EpicTask(id: "rain-t3", number: 3, title: "下書きの保存", state: .failed(pullRequest: nil)),
                 EpicTask(id: "rain-t4", number: 4, title: "通信の切れ目を検知する", state: .locked(reason: "App Group の登録（人がする作業）待ち")),
                 EpicTask(id: "rain-t5", number: 5, title: "通信が戻ったら送る", state: .pending),
                 EpicTask(id: "rain-t6", number: 6, title: "下書きを消す操作", state: .pending),
@@ -40,7 +40,8 @@ extension DemoData {
                 Epic.HistoryEntry(date: ago(minutes: 70), text: "タスク 2 をマージしました（#42）"),
                 Epic.HistoryEntry(date: ago(minutes: 25), text: "タスク 3 の試行 3 が失敗しました（ビルド・テスト）", isFailure: true)
             ],
-            updatedAt: ago(minutes: 25)
+            updatedAt: ago(minutes: 25),
+            workspace: .ready(branch: "askhub/rain-draft")
         )
     }
 
@@ -204,7 +205,11 @@ extension DemoData {
         let titles = ["当番のモデル", "当番の一覧", "当番を回す処理", "通知の許可", "当番の通知", "通知から開く画面", "設定に通知の項目", "デモのデータ"]
         let tasks = titles.enumerated().map { index, title in
             let number = index + 1
-            let state: EpicTask.State = number <= 4 ? .done(pullRequest: 10 + number) : (number == 5 ? .inProgress : .pending)
+            let state: EpicTask.State = switch number {
+            case ...4: .done(pullRequest: 10 + number)
+            case 5: .inProgress(.implementing)
+            default: .pending
+            }
             return EpicTask(id: "kaji-t\(number)", number: number, title: title, state: state)
         }
         return Epic(
@@ -233,7 +238,52 @@ extension DemoData {
                 Epic.HistoryEntry(date: ago(minutes: 200), text: "タスク 4 をマージしました（#14）"),
                 Epic.HistoryEntry(date: ago(minutes: 185), text: "MacBook Air（社用）がオフラインになり、一時停止しました")
             ],
-            updatedAt: ago(minutes: 185)
+            updatedAt: ago(minutes: 185),
+            workspace: .ready(branch: "askhub/kaji-notify")
+        )
+    }
+
+    /// 献立メモ: Mac mini で回していて、タスク 2 の子 PR のチェックを待ってレビューしている
+    func shoppingEpic() -> Epic {
+        let titles = ["並べ替えのモデル", "一覧に並べ替えのボタン", "並べ替えを保存する", "デモのデータに並べ替えを足す"]
+        let tasks = titles.enumerated().map { index, title in
+            let state: EpicTask.State = switch index {
+            case 0: .done(pullRequest: 61)
+            case 1: .inProgress(.reviewing(pullRequest: 62))
+            default: .pending
+            }
+            return EpicTask(id: "shopping-t\(index + 1)", number: index + 1, title: title, state: state)
+        }
+        let worker = EpicActivity.Worker(macID: Self.macMiniID, heartbeatAt: ago(minutes: 2))
+        let reviewing = WorkStep.task("shopping-t2", .reviewing(pullRequest: 62))
+        return Epic(
+            id: "recipe-shopping",
+            title: "買い物リストの並べ替え",
+            repositoryID: Self.repositoryID("recipe-apple"),
+            request: EpicRequest(
+                summary: "買い物リストを売り場の順に並べたい",
+                body: "スーパーを回る順に、野菜・肉・調味料のようにまとめて並べ替えたい。",
+                requestedAt: ago(minutes: 60 * 9),
+                source: .app,
+                attachmentCount: 0
+            ),
+            stage: .implementing,
+            questions: [],
+            goal: nil,
+            humanTasks: [],
+            tasks: tasks,
+            macID: Self.macMiniID,
+            activities: [EpicActivity(kind: .step(reviewing, .running(attempt: 1)), since: ago(minutes: 6), worker: worker)],
+            blocker: nil,
+            finalReview: nil,
+            history: [
+                Epic.HistoryEntry(date: ago(minutes: 60 * 9), text: "依頼しました"),
+                Epic.HistoryEntry(date: ago(minutes: 60 * 2), text: "Mac mini で開始しました"),
+                Epic.HistoryEntry(date: ago(minutes: 118), text: "作業ブランチ askhub/recipe-shopping を作りました"),
+                Epic.HistoryEntry(date: ago(minutes: 40), text: "タスク 1 をマージしました（#61）")
+            ],
+            updatedAt: ago(minutes: 6),
+            workspace: .ready(branch: "askhub/recipe-shopping")
         )
     }
 }

@@ -130,8 +130,11 @@ extension StateSnapshotBuilder {
         }
         let sentAt = envelope.issuedAt.date
         if envelope.kind == StartEpicIntent.kind {
+            let macID = envelope.string("mac")
             epics[epicIndex].stage = .implementing
-            epics[epicIndex].macID = envelope.string("mac")
+            epics[epicIndex].macID = macID
+            epics[epicIndex].workspace = .pending
+            epics[epicIndex].activities.append(EpicActivity(kind: .startRequested(macID: macID), since: sentAt))
             epics[epicIndex].history.append(Epic.HistoryEntry(date: sentAt, text: "開始しました。司令塔が受け取るのを待っています"))
             return
         }
@@ -170,10 +173,11 @@ extension StateSnapshotBuilder {
         guard let job = waitingJob(targetedBy: envelope), let epicIndex = epics.firstIndex(where: { $0.id == job.epic.rawValue }) else {
             return
         }
-        let subject = Self.subject(of: job)
+        let subject = subject(of: job)
         guard envelope.kind == GiveUpJobIntent.kind else {
             let text = "\(subject)のやり直しを頼みました。司令塔が受け取るのを待っています"
             epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
+            showRetryRequested(job, sentAt: envelope.issuedAt.date, in: &epics[epicIndex])
             return
         }
         if job.kind.giveUpEffect == .abandonsEpic {
@@ -188,6 +192,25 @@ extension StateSnapshotBuilder {
         }
         let text = "\(subject)をやめました。司令塔が受け取るのを待っています"
         epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
+    }
+
+    /// 段取りのジョブにやり直しを送ったら、受け取りまでの間も、止まったとは出さずに受け取り待ちを「いま」に出す
+    private func showRetryRequested(_ job: JobFile, sentAt: Date, in epic: inout Epic) {
+        let jobs = documents.epics.first { $0.epic.id == job.epic }?.jobs ?? []
+        guard let step = step(of: job, jobs: jobs) else {
+            return
+        }
+        switch step {
+        case .prepareWorkspace:
+            epic.workspace = .preparing
+
+        case let .task(taskID, phase):
+            if let index = epic.tasks.firstIndex(where: { $0.id == taskID }) {
+                epic.tasks[index].state = .inProgress(phase)
+            }
+        }
+        let worker = job.assignedMac.map { EpicActivity.Worker(macID: $0.rawValue, heartbeatAt: nil) }
+        epic.activities.append(EpicActivity(kind: .step(step, .retryRequested), since: sentAt, worker: worker))
     }
 
     /// 取り下げ。状態リポジトリにある、開始する前の epic だけを出す（開始した後は司令塔が断る）
@@ -266,7 +289,7 @@ extension StateSnapshotBuilder {
     func label(_ envelope: IntentEnvelope) -> String {
         let question = envelope.target?.id.map { "（\(Self.displayID($0))）" } ?? ""
         // ジョブの名前は、読んだジョブから決める（終わった epic のジョブは読まないので、名前を付けないことがある）
-        let job = job(targetedBy: envelope).map { "（\(Self.subject(of: $0))）" } ?? ""
+        let job = job(targetedBy: envelope).map { "（\(subject(of: $0))）" } ?? ""
         switch envelope.kind {
         case RequestIntent.kind:
             return "依頼「\(envelope.string("title") ?? "")」"

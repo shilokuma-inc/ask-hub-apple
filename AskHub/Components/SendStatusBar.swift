@@ -17,6 +17,7 @@ struct SendStatusBar: View {
                         Text(notice.detail)
                             .appFont(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(2)
                     }
                     Spacer(minLength: 0)
                     Button("閉じる", systemImage: "xmark") { store.dismissNotice() }
@@ -26,6 +27,33 @@ struct SendStatusBar: View {
                 .modifier(BarStyle())
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .id(notice.id)
+            }
+            if let rejection = store.rejections.first {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Theme.danger)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(rejection.message)
+                            .appFont(.footnote, weight: .semibold)
+                            .lineLimit(2)
+                        Text(rejection.detail)
+                            .appFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(4)
+                        if store.rejections.count > 1 {
+                            Text("ほかに \(store.rejections.count - 1) 件（閉じると次を出します）")
+                                .appFont(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Button("閉じる", systemImage: "xmark") { store.dismissRejection() }
+                        .labelStyle(.iconOnly)
+                        .appFont(.footnote)
+                }
+                .modifier(BarStyle())
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .id(rejection.id)
             }
             if let failure = store.sendFailure {
                 HStack(spacing: 10) {
@@ -67,6 +95,7 @@ struct SendStatusBar: View {
         .animation(.snappy, value: store.pending)
         .animation(.snappy, value: store.sendFailure)
         .animation(.snappy, value: store.notice)
+        .animation(.snappy, value: store.rejections)
     }
 
     private struct BarStyle: ViewModifier {

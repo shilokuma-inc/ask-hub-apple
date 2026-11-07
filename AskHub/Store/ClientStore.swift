@@ -37,17 +37,25 @@ final class ClientStore {
         case failed(String)
     }
 
-    /// 送れたことを知らせる帯（しばらくしたら消す）
+    /// 送れたこと・司令塔が受け付けたこと（しばらくしたら消す）と、司令塔が断ったこと（閉じるまで残す）を知らせる帯
     struct SendNotice: Identifiable, Equatable {
         let id = UUID()
         /// 例: 依頼「週ごとのまとめ」を送りました
         let message: String
-        /// 送った後の見通し（状態リポジトリの「送った意図」・epic の履歴と同じ言い方にする）
+        /// 送った後の見通し（状態リポジトリの「送った意図」・epic の履歴と同じ言い方にする）。断られたときは理由
         var detail = "司令塔が受け取るのを待っています"
+    }
+
+    /// 司令塔が受け取るのを待っている、帯で知らせて送った意図
+    private struct AwaitingReceipt {
+        let intent: HumanIntent
+        let sentAt: Date
     }
 
     /// 同じ内容の依頼を重ねて送る前に、確かめる間
     static let duplicateRequestWindow: TimeInterval = 60
+    /// 送った意図が読んだ中に見つからない（読めなかった・新しい 20 件から外れた）とき、受け付けを待ち続ける間
+    static let receiptTrackingWindow: TimeInterval = 10 * 60
 
     private(set) var snapshot: ClientSnapshot?
     private(set) var phase: Phase = .idle
@@ -56,10 +64,14 @@ final class ClientStore {
     private(set) var pending: PendingIntent?
     private(set) var sendFailure: SendFailure?
     private(set) var notice: SendNotice?
+    /// 司令塔が断った意図の知らせ（古い順）。ほかの帯に上書きされないよう分けて持ち、閉じるまで 1 つずつ出す
+    private(set) var rejections: [SendNotice] = []
     /// 送ったが、まだ取り直しに反映されていない項目
     private(set) var hiddenItemIDs: Set<String> = []
     /// 送っている途中の意図。同じ意図は、送り終わるまで重ねて送らない
     private var sendingIntents: Set<HumanIntent> = []
+    /// 帯で知らせて送った意図のうち、司令塔が受け取るのを待っているもの（送った意図の id ごと）
+    private var awaitingReceipts: [String: AwaitingReceipt] = [:]
 
     let service: any ClientService
     let undoDelay: Duration
@@ -102,6 +114,7 @@ final class ClientStore {
             refreshFailure = nil
             // 送った項目は取り直しに反映されたので、猶予の間のものだけを隠し続ける
             hiddenItemIDs = Set([pending?.itemID].compactMap(\.self))
+            announceReceipts(in: fetched)
         } catch {
             let message = error.localizedDescription
             if snapshot == nil {
@@ -198,7 +211,7 @@ final class ClientStore {
         if !intent.isRequest, service.lastSend(of: intent)?.isWaiting == true {
             clearFailure(of: intent)
             if announces {
-                announce("\(intent.label)は送ってあります")
+                announce(SendNotice(message: "\(intent.label)は送ってあります"))
             }
             return .alreadySent
         }
@@ -207,10 +220,14 @@ final class ClientStore {
         do {
             let receipt = try await service.perform(intent)
             clearFailure(of: intent)
-            await refresh()
+            // 読み直しで司令塔が受け付けたと分かれば、送れたことの帯をその知らせに替える
             if announces {
-                announce("\(intent.label)を送りました")
+                announce(SendNotice(message: "\(intent.label)を送りました"))
+                if let intentID = receipt.intentID {
+                    awaitingReceipts[intentID] = AwaitingReceipt(intent: intent, sentAt: now())
+                }
             }
+            await refresh()
             return .sent(receipt)
         } catch {
             let message = error.localizedDescription
@@ -228,8 +245,53 @@ final class ClientStore {
         }
     }
 
-    private func announce(_ message: String) {
-        let item = SendNotice(message: message)
+    /// 司令塔が受け取った意図を帯で知らせる。受け付けたものは送れたことの帯に替え、断られたものは理由を閉じるまで出す
+    private func announceReceipts(in snapshot: ClientSnapshot) {
+        var accepted: SendNotice?
+        for (intentID, awaiting) in awaitingReceipts.sorted(by: { ($0.value.sentAt, $0.key) < ($1.value.sentAt, $1.key) }) {
+            switch snapshot.sentIntents.first(where: { $0.id == intentID })?.state {
+            case .waiting:
+                continue
+
+            case .accepted:
+                accepted = Self.acceptedNotice(for: awaiting.intent, in: snapshot)
+
+            case .rejected(_, let reason):
+                rejections.append(SendNotice(message: "\(awaiting.intent.label)を受け付けませんでした", detail: reason))
+
+            case nil:
+                // 読んだ中に無いのは、その意図だけ読めなかったときもあるので、しばらくは待ち続ける
+                // （送った意図を出さない窓口や、新しい 20 件から外れた意図は、待つ間を過ぎたら忘れる）
+                guard now().timeIntervalSince(awaiting.sentAt) >= Self.receiptTrackingWindow else {
+                    continue
+                }
+            }
+            awaitingReceipts[intentID] = nil
+        }
+        if let accepted {
+            announce(accepted)
+        }
+    }
+
+    /// 断られた知らせを閉じる（次のものがあれば、それを出す）
+    func dismissRejection() {
+        guard !rejections.isEmpty else {
+            return
+        }
+        rejections.removeFirst()
+    }
+
+    private static func acceptedNotice(for intent: HumanIntent, in snapshot: ClientSnapshot) -> SendNotice {
+        switch intent {
+        case let .start(_, macID):
+            SendNotice(message: "\(snapshot.mac(macID)?.name ?? macID) で開始しました", detail: "作業場所の用意から進めます")
+
+        default:
+            SendNotice(message: "\(intent.label)を受け付けました", detail: "司令塔が受け取りました")
+        }
+    }
+
+    private func announce(_ item: SendNotice) {
         notice = item
         noticeTask?.cancel()
         noticeTask = Task { [noticeDuration] in

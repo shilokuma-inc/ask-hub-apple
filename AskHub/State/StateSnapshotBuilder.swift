@@ -108,7 +108,7 @@ struct StateSnapshotBuilder {
             load: 0,
             version: file.versions.worker,
             versionMatches: true,
-            jobs: [],
+            jobs: runningJobs(on: file.mac),
             refusalReason: checks.allSatisfy(\.isOK) ? nil : "自己診断で問題が見つかっています",
             selfChecks: checks,
             cleanupCandidates: [],

@@ -7,6 +7,8 @@ struct EpicStatusLine: Hashable {
     var systemImage: String
     /// 押したときに開く画面
     var route: AppRoute?
+    /// 添える小さな文（例: 最後の動き 3 分前 · 試行 2）
+    var detail: String?
 
     enum Owner: Hashable {
         case you
@@ -72,9 +74,29 @@ enum EpicStatus {
     }
 
     static func machineLine(_ activity: EpicActivity, epic: Epic, snapshot: ClientSnapshot, now: Date) -> EpicStatusLine {
-        let macName = snapshot.mac(epic.macID)?.name ?? "Mac"
-        let (text, symbol) = describe(activity.kind, epic: epic, macName: macName, snapshot: snapshot, now: now)
-        return EpicStatusLine(owner: .machine, text: text, systemImage: symbol, route: nil)
+        let macName = snapshot.mac(activity.worker?.macID ?? epic.macID)?.name ?? activity.worker?.macID ?? "Mac"
+        switch activity.kind {
+        case let .step(step, progress):
+            let (text, symbol) = describe(step, progress, epic: epic, macName: macName)
+            return EpicStatusLine(owner: .machine, text: text, systemImage: symbol, route: nil, detail: detail(of: activity, now: now))
+
+        default:
+            let (text, symbol) = describe(activity.kind, epic: epic, macName: macName, snapshot: snapshot, now: now)
+            return EpicStatusLine(owner: .machine, text: text, systemImage: symbol, route: nil)
+        }
+    }
+
+    /// Mac が進めている段取りの、最後に動いた時刻と試行の番号
+    private static func detail(of activity: EpicActivity, now: Date) -> String? {
+        guard case .step(_, .running(let attempt)) = activity.kind else {
+            return nil
+        }
+        let parts = [
+            activity.worker?.heartbeatAt.map { "最後の動き \(RelativeTime.string($0, now: now))" },
+            attempt > 1 ? "試行 \(attempt)" : nil
+        ]
+        let detail = parts.compactMap(\.self).joined(separator: " · ")
+        return detail.isEmpty ? nil : detail
     }
 
     private static func describe(
@@ -100,6 +122,13 @@ enum EpicStatus {
         case .revisingGoal:
             return ("Claude がゴールを直しています", "pencil")
 
+        case .startRequested(let macID):
+            let name = snapshot.mac(macID)?.name ?? macID ?? macName
+            return ("\(name) での開始を送りました。司令塔が受け取るのを待っています", "paperplane")
+
+        case .tasksFinished:
+            return ("タスクがすべて終わりました。最終 PR の段取りを待っています", "checkmark.circle")
+
         default:
             return describeImplementation(kind, epic: epic, macName: macName, snapshot: snapshot, now: now)
         }
@@ -113,11 +142,6 @@ enum EpicStatus {
         now: Date
     ) -> (String, String) {
         switch kind {
-        case let .implementing(taskID, attempt):
-            let task = epic.tasks.first { $0.id == taskID }
-            let title = task.map { "タスク \($0.number)「\($0.title)」" } ?? "タスク"
-            return ("\(macName) で\(title)を実装しています\(attempt > 1 ? "（試行 \(attempt)）" : "")", "hammer")
-
         case .waitingForCI:
             return ("CI を待っています", "clock")
 
@@ -139,6 +163,95 @@ enum EpicStatus {
 
         default:
             return ("", "circle")
+        }
+    }
+
+    // MARK: 開始した後の段取り
+
+    /// 段取りの 1 行。最後に動いた時刻は `detail(of:now:)` で添える
+    private static func describe(_ step: WorkStep, _ progress: StepProgress, epic: Epic, macName: String) -> (String, String) {
+        switch progress {
+        case .running:
+            let (doing, symbol) = doing(step, epic: epic)
+            return ("\(macName) で\(doing)", symbol)
+
+        case .waitingForMac:
+            return ("\(macName) が\(name(of: step, epic: epic))を引き受けるのを待っています", "hourglass")
+
+        case .retrying(let date):
+            return ("\(name(of: step, epic: epic))を \(RelativeTime.clock(date)) に試し直します", "clock.arrow.circlepath")
+
+        case .retryRequested:
+            return ("\(name(of: step, epic: epic))のやり直しを送りました。司令塔が受け取るのを待っています", "paperplane")
+        }
+    }
+
+    /// 進めている段取り（例: タスク 2/5「並べ替えのボタン」を実装しています）。子 PR の段階は、題を省いて PR の番号を出す
+    private static func doing(_ step: WorkStep, epic: Epic) -> (String, String) {
+        switch step {
+        case .prepareWorkspace:
+            return ("作業場所を用意しています", "folder.badge.gearshape")
+
+        case let .task(taskID, phase):
+            switch phase {
+            case .implementing:
+                return ("\(taskLabel(taskID, epic: epic))を実装しています", "hammer")
+
+            case .reviewing(let pullRequest):
+                let pullRequest = pullRequestLabel(taskID, pullRequest, epic: epic)
+                return ("\(pullRequest) のチェックを待って、レビューしています", "eye")
+
+            case let .fixing(pullRequest, round, reason):
+                let pullRequest = pullRequestLabel(taskID, pullRequest, epic: epic)
+                return ("\(pullRequest) の\(spaced(fixLabel(reason)))を直しています（\(round) 回目）", "wrench.and.screwdriver")
+            }
+        }
+    }
+
+    /// 段取りの名前（例: タスク 2/5「並べ替えのボタン」の実装）
+    private static func name(of step: WorkStep, epic: Epic) -> String {
+        switch step {
+        case .prepareWorkspace:
+            return "作業場所の用意"
+
+        case let .task(taskID, phase):
+            switch phase {
+            case .implementing:
+                return "\(taskLabel(taskID, epic: epic))の実装"
+
+            case .reviewing(let pullRequest):
+                return "\(pullRequestLabel(taskID, pullRequest, epic: epic)) のレビュー"
+
+            case let .fixing(pullRequest, _, reason):
+                return "\(pullRequestLabel(taskID, pullRequest, epic: epic)) の\(spaced(fixLabel(reason)))の直し"
+            }
+        }
+    }
+
+    /// タスクの呼び名。何番目か・全体の数と、題を出す（例: タスク 2/5「並べ替えのボタン」）
+    private static func taskLabel(_ taskID: EpicTask.ID, epic: Epic) -> String {
+        guard let task = epic.tasks.first(where: { $0.id == taskID }) else {
+            return "タスク"
+        }
+        return "タスク \(task.number)/\(epic.tasks.count)「\(task.title)」"
+    }
+
+    /// タスクの子 PR の呼び名。行が長くならないよう、タスクの題は省く（例: タスク 2/5 の子 PR #62）
+    private static func pullRequestLabel(_ taskID: EpicTask.ID, _ number: Int?, epic: Epic) -> String {
+        let task = epic.tasks.first { $0.id == taskID }.map { "タスク \($0.number)/\(epic.tasks.count) の" } ?? ""
+        return task + (number.map { "子 PR #\($0)" } ?? "子 PR")
+    }
+
+    /// 日本語の後に英数字で始まる語を続けるときは、間を空ける（例: の CI の失敗）
+    private static func spaced(_ word: String) -> String {
+        word.first?.isASCII == true ? " \(word)" : word
+    }
+
+    static func fixLabel(_ reason: EpicTask.FixReason?) -> String {
+        switch reason {
+        case .checks: "CI の失敗"
+        case .review: "レビューの指摘"
+        case nil: "指摘"
         }
     }
 }

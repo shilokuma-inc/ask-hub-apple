@@ -57,9 +57,9 @@ struct EpicDetailView: View {
                 CardSection("いま") {
                     ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                         if let route = line.route, line.owner == .you {
-                            NavigationLink(value: route) { EpicStatusLabel(line: line) }
+                            NavigationLink(value: route) { EpicStatusLabel(line: line, lineLimit: nil) }
                         } else {
-                            EpicStatusLabel(line: line)
+                            EpicStatusLabel(line: line, lineLimit: nil)
                         }
                     }
                 }
@@ -104,6 +104,8 @@ private struct EpicStageSections: View {
     let epic: Epic
     let onShowQuestion: (Question) -> Void
 
+    @Environment(ClientStore.self) private var store
+
     var body: some View {
         if !epic.questions.isEmpty {
             CardSection("質問 · \(epic.questions.filter(\.isSettled).count) / \(epic.questions.count) が決まりました") {
@@ -144,10 +146,13 @@ private struct EpicStageSections: View {
                 }
             }
         }
-        if !epic.tasks.isEmpty {
+        if !epic.tasks.isEmpty || epic.workspace != nil {
             CardSection("タスク · \(epic.doneTaskCount) / \(epic.tasks.count) 完了") {
+                if let workspace = epic.workspace {
+                    WorkspaceRow(workspace: workspace)
+                }
                 ForEach(epic.tasks) { task in
-                    TaskRow(task: task)
+                    TaskRow(task: task, repository: store.repository(epic.repositoryID))
                 }
             }
         }
@@ -221,9 +226,91 @@ struct QuestionStatusRow: View {
     }
 }
 
-/// タスクの 1 行
+/// 段取りの最初の行（作業場所の用意）
+private struct WorkspaceRow: View {
+    let workspace: Epic.Workspace
+
+    var body: some View {
+        StepRow(symbol: symbol, title: "作業場所の用意", detail: detail)
+    }
+
+    private var symbol: StepSymbol {
+        switch workspace {
+        case .pending: StepSymbol(name: "circle", color: .secondary)
+        case .preparing: StepSymbol(name: "folder.circle.fill", color: Theme.accent)
+        case .failed: StepSymbol(name: "exclamationmark.circle.fill", color: Theme.danger)
+        case .ready: StepSymbol(name: "checkmark.circle.fill", color: Theme.success)
+        }
+    }
+
+    private var detail: String {
+        switch workspace {
+        case .pending: "司令塔が開始を受け取るのを待っています"
+        case .preparing: "作業ブランチを作っています"
+        case .failed: "止まっています（対処が要ります）"
+        case .ready(let branch?): "作業ブランチ \(branch)"
+        case .ready(nil): "用意できました"
+        }
+    }
+}
+
+/// タスクの 1 行。進めているタスクは段階を出し、子 PR は GitHub で開ける
 private struct TaskRow: View {
     let task: EpicTask
+    let repository: TargetRepository?
+
+    var body: some View {
+        StepRow(symbol: symbol, title: "\(task.number). \(task.title)", detail: detail) {
+            if let number = task.pullRequest {
+                if let url = repository?.pullRequestURL(number) {
+                    Link("#\(number)", destination: url)
+                        .appFont(.caption, weight: .semibold)
+                        .accessibilityLabel("子 PR #\(number) を開く")
+                } else {
+                    Text("#\(number)").appFont(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var symbol: StepSymbol {
+        switch task.state {
+        case .pending: StepSymbol(name: "circle", color: .secondary)
+        case .locked: StepSymbol(name: "lock.fill", color: .secondary)
+        case .inProgress(.reviewing?): StepSymbol(name: "eye.circle.fill", color: Theme.accent)
+        case .inProgress(.fixing?): StepSymbol(name: "arrow.triangle.2.circlepath.circle.fill", color: Theme.warning)
+        case .inProgress: StepSymbol(name: "hammer.circle.fill", color: Theme.accent)
+        case .failed: StepSymbol(name: "exclamationmark.circle.fill", color: Theme.danger)
+        case .done: StepSymbol(name: "checkmark.circle.fill", color: Theme.success)
+        }
+    }
+
+    private var detail: String? {
+        switch task.state {
+        case .pending: nil
+        case .locked(let reason): reason
+        case .inProgress(nil): "進めています"
+        case .inProgress(.implementing?): "実装しています"
+        case .inProgress(.reviewing?): "子 PR のチェックを待って、レビューしています"
+        case let .inProgress(.fixing(_, round, reason)?): "\(EpicStatus.fixLabel(reason))を直しています（\(round) 回目）"
+        case .failed: "止まっています（対処が要ります）"
+        case .done: "マージしました"
+        }
+    }
+}
+
+/// 段取りの行の印
+private struct StepSymbol {
+    var name: String
+    var color: Color
+}
+
+/// 段取りの 1 行（印・題・いまの段階・右端の付け足し）
+private struct StepRow<Accessory: View>: View {
+    let symbol: StepSymbol
+    let title: String
+    let detail: String?
+    @ViewBuilder var accessory: Accessory
 
     var body: some View {
         HStack(spacing: 10) {
@@ -231,26 +318,20 @@ private struct TaskRow: View {
                 .foregroundStyle(symbol.color)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(task.number). \(task.title)")
-                if case .locked(let reason) = task.state {
-                    Text(reason).appFont(.caption).foregroundStyle(.secondary)
+                Text(title)
+                if let detail {
+                    Text(detail).appFont(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)
-            if case .done(let number?) = task.state {
-                Text("#\(number)").appFont(.caption).foregroundStyle(.secondary)
-            }
+            accessory
         }
     }
+}
 
-    private var symbol: (name: String, color: Color) {
-        switch task.state {
-        case .pending: ("circle", .secondary)
-        case .locked: ("lock.fill", .secondary)
-        case .inProgress: ("hammer.circle.fill", Theme.accent)
-        case .failed: ("exclamationmark.circle.fill", .red)
-        case .done: ("checkmark.circle.fill", .green)
-        }
+extension StepRow where Accessory == EmptyView {
+    init(symbol: StepSymbol, title: String, detail: String?) {
+        self.init(symbol: symbol, title: title, detail: detail) { EmptyView() }
     }
 }
 
@@ -304,14 +385,8 @@ private struct EpicMenu: ToolbarContent {
             if canPause || canHandOver || canDiscard {
                 Menu("操作", systemImage: "ellipsis.circle") {
                     if canPause {
-                        let isPaused = epic.activities.contains {
-                            if case .paused = $0.kind {
-                                return true
-                            }
-                            return false
-                        }
-                        Button(isPaused ? "再開する" : "一時停止する", systemImage: isPaused ? "play" : "pause") {
-                            Task { await store.send(isPaused ? .resume(epicID: epic.id) : .pause(epicID: epic.id)) }
+                        Button(epic.isPaused ? "再開する" : "一時停止する", systemImage: epic.isPaused ? "play" : "pause") {
+                            Task { await store.send(epic.isPaused ? .resume(epicID: epic.id) : .pause(epicID: epic.id)) }
                         }
                     }
                     if canHandOver {

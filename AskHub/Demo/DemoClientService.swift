@@ -14,8 +14,15 @@ final class DemoClientService: ClientService {
     let now: () -> Date
     private var scheduled: [Reaction] = []
     private var nextPullRequestNumber = 60
-    /// 送った意図と時刻（デモはすぐ当てるので、司令塔の受け取りを待つものは無い）
-    private var sends: [(intent: HumanIntent, sentAt: Date)] = []
+    /// 送った意図と時刻
+    private var sends: [Send] = []
+
+    /// 送った意図。司令塔の受け取りを待つのは開始だけ（ほかはすぐ当てる）なので、開始は送った意図の id も持つ
+    private struct Send {
+        var intent: HumanIntent
+        var sentAt: Date
+        var intentID: String?
+    }
 
     private struct Reaction {
         var dueAt: Date
@@ -52,12 +59,17 @@ final class DemoClientService: ClientService {
         if sendDelay > .zero {
             try await Task.sleep(for: sendDelay)
         }
-        sends.append((intent, now()))
-        return apply(intent)
+        let sentAt = now()
+        let receipt = apply(intent)
+        sends.append(Send(intent: intent, sentAt: sentAt, intentID: receipt.intentID))
+        return receipt
     }
 
     func lastSend(of intent: HumanIntent) -> SentRecord? {
-        sends.last { $0.intent == intent }.map { SentRecord(sentAt: $0.sentAt, isWaiting: false) }
+        sends.last { $0.intent == intent }.map { send in
+            let status = send.intentID.flatMap { id in state.sentIntents.first { $0.id == id } }
+            return SentRecord(sentAt: send.sentAt, isWaiting: status?.state == .waiting)
+        }
     }
 
     /// 期限の来た機械の反応を当てる
@@ -72,6 +84,17 @@ final class DemoClientService: ClientService {
 
     func schedule(after factor: Double = 1, _ apply: @escaping (inout ClientSnapshot) -> Void) {
         scheduled.append(Reaction(dueAt: now().addingTimeInterval(reactionDelay * factor), apply: apply))
+    }
+
+    /// epic を進める反応。一時停止している間は当てずに、再開するまで先送りする
+    func scheduleProgress(of epicID: Epic.ID, after factor: Double = 1, _ apply: @escaping (inout ClientSnapshot) -> Void) {
+        schedule(after: factor) { [weak self] snapshot in
+            guard snapshot.epic(epicID)?.isPaused != true else {
+                self?.scheduleProgress(of: epicID, after: 1, apply)
+                return
+            }
+            apply(&snapshot)
+        }
     }
 
     func nextPullRequest() -> Int {
@@ -124,6 +147,14 @@ extension Epic {
 
     mutating func removeActivities(where predicate: (EpicActivity.Kind) -> Bool) {
         activities.removeAll { predicate($0.kind) }
+    }
+
+    /// タスクの実装を、epic を回す Mac で始める
+    mutating func startTask(at index: Int, attempt: Int, date: Date) {
+        tasks[index].state = .inProgress(.implementing)
+        let worker = macID.map { EpicActivity.Worker(macID: $0, heartbeatAt: date) }
+        let step = WorkStep.task(tasks[index].id, .implementing)
+        activities = [EpicActivity(kind: .step(step, .running(attempt: attempt)), since: date, worker: worker)]
     }
 
     mutating func log(_ text: String, at date: Date, isFailure: Bool = false) {

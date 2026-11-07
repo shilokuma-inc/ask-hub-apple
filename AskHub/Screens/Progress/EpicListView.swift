@@ -84,14 +84,28 @@ struct EpicRow: View {
 /// 「いま」の 1 行。人が待たれているものは色を付ける
 struct EpicStatusLabel: View {
     let line: EpicStatusLine
+    /// 一覧の行では 2 行までにする。epic の画面では絞らない（nil）
+    var lineLimit: Int? = 2
 
     /// Mac の一覧で選んだ行（濃い背景）では、色を付けずに読みやすくする
     @Environment(\.backgroundProminence) private var backgroundProminence
 
     var body: some View {
-        Label(line.text, systemImage: line.systemImage)
-            .foregroundStyle(backgroundProminence == .increased ? Color.primary : color)
-            .lineLimit(2)
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(line.text)
+                    .lineLimit(lineLimit)
+                if let detail = line.detail {
+                    Text(detail)
+                        .appFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        } icon: {
+            Image(systemName: line.systemImage)
+        }
+        .foregroundStyle(backgroundProminence == .increased ? Color.primary : color)
     }
 
     private var color: Color {
