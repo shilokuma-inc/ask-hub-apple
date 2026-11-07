@@ -200,7 +200,7 @@
 | --- | --- |
 | `prepareWorkspace` | 試行の `outputs.branch` を `epic.json` の `branch` に書き、最初のタスク（`dependsOn` がすべて済んだ `pending` のもの。ゴールの並びの順）の `implementTask` を作って、`goal.json` のそのタスクを `running` にする |
 | `implementTask` | `outputs.report.decisions` を `decisions.json` に足し（`task`・`pullRequest` 付き。`visible` は `null`）、`reviewTask`（`outputs.pullRequest` と、push した head の `outputs.commit`）を作る |
-| `reviewTask`（`verdict` が `merged`） | タスクを `done` にし、次のタスクの `implementTask` を作る。すべて済んだら、ログに出して epic は `running` のまま（最終 PR の段取りは後で足す） |
+| `reviewTask`（`verdict` が `merged`） | タスクを `done` にし、次のタスクの `implementTask` を作る。すべて済んだら、epic を `finalizing` にして最終 PR の段取りに進む（下の「司令塔が最終 PR を進める」） |
 | `reviewTask`（`fixCI`・`fixReview`） | `fixTask`（子 PR と、レビューが見た head。`reason` は `ci`・`review`）を作る。同じタスクの直しが 3 回（`FailurePolicy.maxFixRounds`）を超えたら、作るが動かさずに人の対応待ち（`waitingHuman`）にする（失敗の扱いの「4 回目で人へ」と同じ。人が「やり直す」を送れば、もう 1 回直す） |
 | `fixTask` | 実装と同じく仮決めを足し、新しい head（`outputs.commit`）で `reviewTask` を作る |
 
@@ -251,6 +251,38 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 - 流れ: すべてのタスクが `done` → `verifyBeforeFinal` → `classifyDecisions` → `captureScreenshots`（撮影の設定があるときだけ）→ `openFinalPullRequest` → `reviewFinalPullRequest` → 判定が `fixCI`・`fixReview` なら `fixFinalPullRequest` で直して `reviewFinalPullRequest` に戻る（3 回まで）→ `ready` で、マージの規則に当てて自動なら `mergeFinalPullRequest`、手動なら人の判断のカードの答えと承認を待つ → `cleanUp`
 - 人が判断のカードで「直してほしい」「別案にする」を選ぶか、最終 PR に指示（`instructFinal`）を出したら、`fixFinalPullRequest` に人の文を付けて直させ、`reviewFinalPullRequest` からやり直す（見える仮決めは、スクショを撮り直して再び出す）
 - 承認は、その時点の head に結びつく。直しで head が変わったら、承認は無効になり、承認し直してもらう
+
+### 司令塔が最終 PR を進める
+
+タスクと同じく、ジョブの中身はワーカーが行い、次にどのジョブを作るかは司令塔が決める（`AskHubCommander` の `TaskFlow+Final.swift`）。最終 PR の段取り（`finalizing`・`reviewing`）の epic ごとに、人の意図の処理と同じ排他の中で、段取りの最後のジョブの結果を読む。
+
+| 成功したジョブ | 司令塔がすること |
+| --- | --- |
+| （タスクがすべて `done`） | epic を `finalizing` にしてから、`verifyBeforeFinal` を作る |
+| `verifyBeforeFinal` | `decisions.json` に仕分けていない（`visible` が `null` の）仮決めがあれば `classifyDecisions` を、無ければ `openFinalPullRequest` を作る |
+| `classifyDecisions` | 試行の `outputs.visibleDecisions` を `decisions.json` に写す（仕分けていない項目だけ。載っている id は `true`、ほかは `false`）。前のジョブが直しなら、直した head の `reviewFinalPullRequest` を、そうでなければ `openFinalPullRequest` を作る |
+| `openFinalPullRequest` | `outputs.pullRequest` を `epic.json` の `finalPullRequest` に書き、`outputs.commit` の head で `reviewFinalPullRequest` を作る |
+| `reviewFinalPullRequest`（`ready`） | マージの規則（`FinalMergeRule.manualReasons`）に当て、人の確認が要らなければ見た head で `mergeFinalPullRequest` を作る。要れば epic を `reviewing` にして人を待つ。`mergeRisks` が欠けていたら、自動でマージせずに人を待つ |
+| `reviewFinalPullRequest`（`fixCI`・`fixReview`） | 見た head で `fixFinalPullRequest`（`reason` は `ci`・`review`）を作る。自動の直しが 3 回を超えたら、作るが動かさずに `waitingHuman` にする |
+| `fixFinalPullRequest` | 人が頼んだ直し（`reason` が `human`）なら、その意図の判断のカードの答えを外して答え待ちに戻す（直った後を見て答え直してもらう）。仮決めを `decisions.json` に足し（タスクに結びつかないので、ゴールの最後のタスクのものとして足す）、仕分けていない仮決めがあれば `classifyDecisions` を、無ければ直した head の `reviewFinalPullRequest` を作る |
+| `mergeFinalPullRequest` | `cleanUp` を作ってから、epic を `merged` にする |
+
+- 段取りのジョブは、前のジョブを `dependsOn` に持つ 1 本の列にする（`verifyBeforeFinal` だけは前を持たない）。列の最後のジョブが、次の一手を決める。人の意図で作る直し・マージも、そのときの最後のレビューにつなぐ
+- 動かす Mac: `verifyBeforeFinal`・`cleanUp` は epic の Mac、`fixFinalPullRequest` は epic の Mac の生きている印が新しければ epic の Mac、古ければ常時オンの Mac、ほかは常時オンの Mac。使うもの（`needs`）は、`verifyBeforeFinal` がビルド、`classifyDecisions`・`reviewFinalPullRequest` が Claude、`fixFinalPullRequest` が両方、`openFinalPullRequest`・`mergeFinalPullRequest`・`cleanUp` がどちらも使わない
+- 自動で作るジョブの元の人の意図（`origin`）は開始の意図。人の意図で作る直し・マージは、その意図
+- `captureScreenshots` は、撮影の設定（`build.screenshots`）があるリポジトリだけで作る。今はどのリポジトリにも無いので作らず、見える仮決めの `screenshots` は `null` のまま
+- マージした epic は、ジョブを見張る一覧から外れるが、片付けを引き受けられるよう、マージしてから 7 日は見張り続ける（司令塔の `JobSweep` とワーカーの一覧）。片付けを持った Mac のオフラインは知らせない
+
+人の意図は、`targetVersion` が今の最終 PR の head（最後の `reviewFinalPullRequest` の `input.head`）と同じときだけ受け付ける。
+
+| 意図 | 受け付けるとき | すること |
+| --- | --- | --- |
+| `decision` | epic が `finalizing`・`reviewing`、カードが見える仮決め（`visible` が `true`）で、まだ答えていない。「別案にする」「直してほしい」は、最後のレビューの後に直し・マージが動いていないときだけ | `decisions.json` の `answer` に書く。「別案にする」「直してほしい」は、`fixFinalPullRequest`（`reason` は `human`、`origin` はこの意図）を最後のレビューの後に作り、epic を `finalizing` に戻す |
+| `approveMerge` | epic が `reviewing`、最後のレビューが `ready` で、その後に直し・マージが無く、`FinalMergeRule.canApprove` が真 | 承認した head で `mergeFinalPullRequest`（`origin` はこの意図）を作る |
+| `instructFinal` | epic が `finalizing`・`reviewing`、最後のレビューの後に直し・マージが動いていない | `fixFinalPullRequest`（`reason` は `human`、`origin` はこの意図）を作り、epic を `finalizing` に戻す |
+
+- 同じカードへの答え直しは受け付けない。変えたいときは、最終 PR への指示（`instructFinal`）を出す
+- レビューが動いている間の指示・直してほしいも受け付け、直しはそのレビューが終わってから動く（レビューが直す判定を出しても、人の直しを先にする）
 
 ### スクショ
 
