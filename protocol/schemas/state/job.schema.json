@@ -11,7 +11,7 @@
     "id": { "$ref": "../common.schema.json#/$defs/ulid" },
     "kind": {
       "enum": [
-        "makeQuestions", "explain", "reviseQuestion", "checkReadiness", "reviseGoal", "prepareWorkspace", "implementTask", "fixTask",
+        "makeQuestions", "explain", "reviseQuestion", "checkReadiness", "reviseGoal", "prepareWorkspace", "implementTask", "reviewTask", "fixTask",
         "integrateDevelop", "verifyBeforeFinal", "openFinalPullRequest", "fixFinalPullRequest", "rerunChecks", "classifyDecisions",
         "captureScreenshots", "mergeFinalPullRequest", "cleanUp", "notify"
       ]
