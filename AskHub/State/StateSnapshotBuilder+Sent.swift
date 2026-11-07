@@ -176,7 +176,7 @@ extension StateSnapshotBuilder {
             epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
             return
         }
-        if Self.epicEndingKinds.contains(job.kind) {
+        if job.kind.giveUpEffect == .abandonsEpic {
             epics[epicIndex].isAbandoned = true
         } else if job.kind == .explain {
             reopenQuestion(of: job, in: &epics[epicIndex])

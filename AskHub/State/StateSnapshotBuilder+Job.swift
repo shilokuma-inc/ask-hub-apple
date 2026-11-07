@@ -4,11 +4,6 @@ import Foundation
 // MARK: - 人に渡されたジョブ
 
 extension StateSnapshotBuilder {
-    /// やめると epic が先に進めなくなるジョブ。やめると epic ごとやめる（司令塔の `GiveUpJobHandler.blockingKinds` と同じ）
-    static let epicEndingKinds: Set<JobKind> = [.makeQuestions, .reviseQuestion, .checkReadiness]
-    /// やめるとジョブだけをやめるジョブ（司令塔の `GiveUpJobHandler.jobOnlyKinds` と同じ）。ほかの種類をやめる扱いは段階 3 で決める
-    static let jobOnlyKinds: Set<JobKind> = [.explain, .reviseGoal]
-
     /// 人の対応を待っているジョブを、epic の「対処が要ります」に出す。処理を待つやり直し・やめるの意図を送ったジョブは飛ばす。
     ///
     /// 画面は epic ごとに 1 つだけ出すので、古く止まったものから出し、ほかにもあれば件数を添える（片付けると次のものが出る）
@@ -106,14 +101,19 @@ extension StateSnapshotBuilder {
         )
     }
 
-    /// 選べる操作。司令塔が受け付けるものだけを出す（やり直しはどの種類でも、やめるは種類ごとに扱いが決まっているものだけ）
+    /// 選べる操作。司令塔が受け付けるものだけを出す（やり直しはどの種類でも、やめるは `JobKind.giveUpEffect` で扱いが決まっているものだけ）
     private static func actions(for kind: JobKind, category: FailureCategory) -> [Blocker.Action] {
         // 認証切れは、人が Mac で直してから再開する
         var actions: [Blocker.Action] = [category == .authExpired ? .resumeAfterFix : .retry]
-        if epicEndingKinds.contains(kind) {
+        switch kind.giveUpEffect {
+        case .abandonsEpic:
             actions.append(.discard)
-        } else if jobOnlyKinds.contains(kind) {
+
+        case .jobOnly:
             actions.append(.cancelJob)
+
+        case nil:
+            break
         }
         return actions
     }
