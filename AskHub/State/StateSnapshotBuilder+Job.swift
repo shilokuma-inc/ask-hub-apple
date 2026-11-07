@@ -25,8 +25,35 @@ extension StateSnapshotBuilder {
             guard let job = waiting.first else {
                 continue
             }
+            // 止まっている作業は、機械がしていることとして出さない（「対処が要ります」と食い違う）
+            let stopped = Set(waiting.compactMap(Self.activity(of:)))
+            epics[epicIndex].activities.removeAll { stopped.contains($0.kind) }
             epics[epicIndex].blocker = blocker(job, attempts: documents.attempts[job.id] ?? [], others: waiting.count - 1)
             index.epics[id]?.blockedJob = JobTarget(repo: job.repo, epic: job.epic, job: job.id, attempt: job.attempts)
+        }
+    }
+
+    /// ジョブが動いている間に「いま」に出る、機械がしていること
+    private static func activity(of job: JobFile) -> EpicActivity.Kind? {
+        let question = questionID(of: job)
+        switch job.kind {
+        case .makeQuestions:
+            return .writingQuestions
+
+        case .explain:
+            return question.map(EpicActivity.Kind.explaining)
+
+        case .reviseQuestion:
+            return question.map(EpicActivity.Kind.reviewing)
+
+        case .checkReadiness:
+            return .checkingAnswers
+
+        case .reviseGoal:
+            return .revisingGoal
+
+        default:
+            return nil
         }
     }
 
@@ -104,19 +131,27 @@ extension StateSnapshotBuilder {
 
     /// 止まっている作業の名前（例: Q3 の説明）
     static func subject(of job: JobFile) -> String {
-        guard case .string(let id)? = job.input?["question"] else {
+        guard let question = questionID(of: job) else {
             return job.kind.name
         }
         switch job.kind {
         case .explain:
-            return "\(displayID(id)) の説明"
+            return "\(question) の説明"
 
         case .reviseQuestion:
-            return "\(displayID(id)) の見直し"
+            return "\(question) の見直し"
 
         default:
             return job.kind.name
         }
+    }
+
+    /// 質問を対象にするジョブ（説明・見直し）の、画面の質問の id
+    static func questionID(of job: JobFile) -> Question.ID? {
+        guard case .string(let id)? = job.input?["question"] else {
+            return nil
+        }
+        return displayID(id)
     }
 }
 

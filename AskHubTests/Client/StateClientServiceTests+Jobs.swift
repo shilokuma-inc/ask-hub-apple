@@ -85,7 +85,10 @@ extension StateClientServiceTests {
     func waitingJobIsShownAsBlockerAndRetried() async throws {
         let fixture = try makeService(files: Self.explainingEpic())
         let service = fixture.service
-        let blocker = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.blocker)
+        let blocked = try #require(try await service.fetchSnapshot().epic(Self.epicID))
+        let blocker = try #require(blocked.blocker)
+        // 止まっている説明は、機械が書いているとは出さない
+        #expect(!blocked.activities.contains { $0.kind == .explaining("Q1") })
         #expect(blocker.category == .authExpired)
         #expect(blocker.title == "Q1 の説明が止まっています")
         #expect(blocker.summary == "Claude のトークンの期限が切れた")
@@ -107,6 +110,7 @@ extension StateClientServiceTests {
         // 処理を待つ間は出さない
         let waiting = try #require(try await service.fetchSnapshot().epic(Self.epicID))
         #expect(waiting.blocker == nil)
+        #expect(waiting.activities.contains { $0.kind == .explaining("Q1") })
         #expect(waiting.history.contains { $0.text.hasPrefix("Q1 の説明のやり直しを頼みました") })
 
         // やり直した試行もまた人に渡された（試行が進んだ）なら、もう一度出す

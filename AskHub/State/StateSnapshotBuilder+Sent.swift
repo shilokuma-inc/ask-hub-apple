@@ -211,15 +211,13 @@ extension StateSnapshotBuilder {
 
     /// 説明をやめたら、説明を待つ問いを外して質問を回答待ちに戻す（司令塔の `QuestionFlow.abandonExplanation` と同じ）
     private func reopenQuestion(of job: JobFile, in epic: inout Epic) {
-        guard case .string(let protocolID)? = job.input?["question"],
-              let questionIndex = epic.questions.firstIndex(where: { $0.id == Self.displayID(protocolID) }),
+        guard let questionID = Self.questionID(of: job), let questionIndex = epic.questions.firstIndex(where: { $0.id == questionID }),
               case .awaitingExplanation = epic.questions[questionIndex].state else {
             return
         }
-        let id = epic.questions[questionIndex].id
         epic.questions[questionIndex].state = .open
         epic.questions[questionIndex].explanations.removeAll { $0.body == nil }
-        epic.activities.removeAll { $0.kind == .explaining(id) }
+        epic.activities.removeAll { $0.kind == .explaining(questionID) }
     }
 
     // MARK: 処理の結果
