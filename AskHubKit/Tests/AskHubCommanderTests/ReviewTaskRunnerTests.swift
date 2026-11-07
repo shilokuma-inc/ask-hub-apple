@@ -54,7 +54,8 @@ struct ReviewTaskRunnerTests {
         )
         let fixed = TaskReview.text(for: subject, changes: "").utf8.count
         // ゴールとタスクだけで超える・省いたことを示す文も入らず差分を少しも渡せないなら、削らずに nil（レビューさせない）
-        for budget in [fixed - 1, fixed, fixed + 10, fixed + 60] {
+        let note = TaskReview.truncationNote.utf8.count
+        for budget in [fixed - 1, fixed, fixed + 10, fixed + note - 1, fixed + note] {
             #expect(TaskReview.prompt(for: subject, budget: budget) == nil, "\(budget - fixed)")
         }
         // 差分の一部を渡せるなら、上限を超えない

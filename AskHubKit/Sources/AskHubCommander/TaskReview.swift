@@ -104,10 +104,13 @@ enum TaskReview {
         return fitted.isEmpty ? nil : prompt
     }
 
-    /// `bytes`（UTF-8）に収まるよう、文字の切れ目で後ろを省く。省いたことを示す文も入らないほど狭ければ空にする
+    /// 差分を省いたことを示す文
+    static let truncationNote = "\n…（長いので、ここで切った。ほかは作業フォルダのファイルを読んで確かめる）"
+
+    /// `bytes`（UTF-8）に収まるよう、文字の切れ目で後ろを省く。省いたことを示す文のほかに 1 文字も入らないほど狭ければ空にする
     static func fit(_ text: String, bytes: Int) -> String {
         guard text.utf8.count > bytes else { return text }
-        let note = "\n…（長いので、ここで切った。ほかは作業フォルダのファイルを読んで確かめる）"
+        let note = truncationNote
         guard bytes >= note.utf8.count else { return "" }
         var kept = ""
         var used = note.utf8.count
@@ -116,7 +119,8 @@ enum TaskReview {
             guard used <= bytes else { break }
             kept.append(character)
         }
-        return kept + note
+        // 省いたことを示す文だけでは、変更を少しも渡せていない
+        return kept.isEmpty ? "" : kept + note
     }
 
     static func text(for subject: Subject, changes: String) -> String {
