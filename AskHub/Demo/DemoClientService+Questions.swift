@@ -231,7 +231,9 @@ extension DemoClientService {
     private func start(epicID: Epic.ID, macID: Mac.ID) -> String {
         let date = now()
         let intentID = "start-\(epicID)-\(Int(date.timeIntervalSince1970))"
-        state.sentIntents.insert(SentIntentStatus(id: intentID, title: "開始", sentAt: date, state: .waiting), at: 0)
+        // 状態リポジトリの「送った意図」と同じく、epic の題を添える
+        let title = ["開始", state.epic(epicID)?.title].compactMap(\.self).joined(separator: " · ")
+        state.sentIntents.insert(SentIntentStatus(id: intentID, title: title, sentAt: date, state: .waiting), at: 0)
         state.updateEpic(epicID) { epic in
             if epic.tasks.isEmpty, let goal = epic.goal {
                 epic.tasks = goal.tasks.enumerated().map { index, task in
