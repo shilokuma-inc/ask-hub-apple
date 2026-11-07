@@ -216,7 +216,7 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 
 | ジョブ | 動く Mac | すること |
 | --- | --- | --- |
-| `verifyBeforeFinal` | epic の Mac | すべてのタスクが `done` になったら、最終 PR で流すのと同じ検証（`build.finalTests`。UI テストを含む）を通す |
+| `verifyBeforeFinal` | epic の Mac | すべてのタスクが `done` になったら、最終 PR で流すのと同じ検証（`build.testFull`。UI テストを含む）を通す |
 | `classifyDecisions` | 常時オンの Mac | レビュー役の Claude が epic 全体の仮決めを見直し、見える・内部を決めて `decisions.json` に書く |
 | `captureScreenshots` | epic の Mac | 見える仮決めの Before（base）と After（作業ブランチ）を、デモモードのデータで撮る |
 | `openFinalPullRequest` | 常時オンの Mac | 作業ブランチから base への最終 PR を出す。本文には、判断のカード・実機で確かめてほしいこと・人がした作業を載せる |

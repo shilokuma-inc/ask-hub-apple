@@ -144,7 +144,7 @@ push や PR の作成をした後、それを記録する前にワーカーが�
 | 確認 | ジョブの元になった人の意図の署名を確かめる |
 | 作業場所の用意 | ワーカー専用のフォルダに clone・worktree・DerivedData を用意し、決まった名前の Simulator を用意する |
 | Claude を呼ぶ | タスクの指示を渡して `claude -p` を起動し、決まった形の報告を受け取る |
-| ビルドとテスト | Claude に頼まれたら、決まったコマンドで `xcodebuild`・`simctl` を sandbox の外で流して結果を返す。Claude Code の sandbox の中では、Simulator のサービスにつながらず、パッケージの解決も拒まれて、Xcode のビルドとテストが動かない（段階 0 で確認）。部品は `AskHubKit` の `AskHubBuild`（ビルドの設定・枠の Simulator・epic ごとの DerivedData と結果のバンドル・結果の要約・失敗の区分） |
+| ビルドとテスト | Claude に頼まれたら、決まったコマンドで `xcodebuild`・`simctl` を sandbox の外で流して結果を返す。Claude Code の sandbox の中では、Simulator のサービスにつながらず、パッケージの解決も拒まれて、Xcode のビルドとテストが動かない（段階 0 で確認）。部品は `AskHubKit` の `AskHubBuild`（種類（`build`・`testLight`・`testFull`）だけを選んで流す入口 `EpicBuilder`・ビルドの設定 `BuildSettings`・枠の Simulator・epic ごとの DerivedData と結果のバンドル・結果の要約・失敗の区分） |
 | GitHub の操作 | commit・push・子 PR・CI の待ち・マージ。GitHub のトークンはワーカーだけが持つ。Claude には git のコマンドを許可しない（sandbox の中でも commit でき、worktree では共有の `.git` にも書けるため） |
 | 記録と片付け | 試行の結果を状態リポジトリに書く。epic が終わったら作業場所を消す |
 
