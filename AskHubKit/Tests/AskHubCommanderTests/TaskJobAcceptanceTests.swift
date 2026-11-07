@@ -49,7 +49,8 @@ struct TaskJobAcceptanceTests {
         let loop = makeLoop(taskRunners: runners)
         #expect(loop.slots.kinds.isSuperset(of: [.implementTask, .reviewTask, .fixTask]))
         let dispatched = (loop.worker(IntentVerifier(publicKeys: [:])).runner as? JobDispatcher)?.runners
-        #expect(dispatched?[.implementTask] is StubRunner)
+        // push や子 PR の作成をするので、元になった人の意図の署名を確かめてから動かす
+        #expect((dispatched?[.implementTask] as? OriginCheckedRunner)?.runner is StubRunner)
         #expect(dispatched?[.makeQuestions] is ClaudeJobRunner)
 
         // 開始のときに選ばれた Mac（ほかの Mac）宛てのものは引き受けない

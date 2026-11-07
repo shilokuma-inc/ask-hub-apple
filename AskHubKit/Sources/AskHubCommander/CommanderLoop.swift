@@ -145,7 +145,9 @@ public actor CommanderLoop {
         let claude = ClaudeJobRunner(context: context, client: client, workspace: workspace, verifier: verifier)
         var runners: [JobKind: any JobRunning] = Dictionary(uniqueKeysWithValues: Self.claudeKinds.map { ($0, claude) })
         if let epicWorkspace { runners[.prepareWorkspace] = PrepareWorkspaceRunner(context: context, workspace: epicWorkspace) }
-        runners.merge(taskRunners) { current, _ in current }
+        // タスクのジョブは push や子 PR の作成・マージをするので、ワーカー（`WorkerLoop`）と同じく、元になった人の意図の署名を確かめてから動かす
+        let checked = taskRunners.mapValues { OriginCheckedRunner(context: context, verifier: verifier, runner: $0) as any JobRunning }
+        runners.merge(checked) { current, _ in current }
         return JobWorker(
             runner: JobDispatcher(runners),
             recorder: AttemptRecorder(files: context.files, mac: context.mac, now: context.now),
