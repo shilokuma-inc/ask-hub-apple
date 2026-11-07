@@ -3,19 +3,38 @@ import os
 import Security
 
 /// Keychain に置くもの（`docs/renewal/security.md` の「秘密の置き場所」）。秘密はここ以外（ファイル・環境変数・ログ・URL）に置かない
-public enum SecretItem: String, CaseIterable, Sendable {
-    /// GitHub のトークン（ワーカー・司令塔・クライアント）
-    case githubToken = "github-token"
+///
+/// 項目の名前（`rawValue`）は Keychain の account に使う。決まった項目のほかに、持ち主ごとの GitHub のトークン（`GitHubTokens`）がある
+public struct SecretItem: RawRepresentable, Hashable, Sendable, CustomStringConvertible {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    public var description: String { rawValue }
+
+    /// GitHub のトークン（クライアント・非常口）。ワーカーと司令塔は、持ち主ごとのトークン（`githubToken(owner:)`）を使う
+    public static let githubToken = Self(rawValue: "github-token")
     /// Claude の setup-token（ワーカー・司令塔）
-    case claudeToken = "claude-token"
+    public static let claudeToken = Self(rawValue: "claude-token")
     /// APNs の鍵（司令塔）
-    case apnsKey = "apns-key"
+    public static let apnsKey = Self(rawValue: "apns-key")
     /// 人の意図に署名する鍵（クライアント・非常口）。Secure Enclave の鍵なら、その端末でしか使えない形
-    case signingKey = "signing-key"
+    public static let signingKey = Self(rawValue: "signing-key")
     /// セットアップで固定した最初の鍵の id（ワーカー・司令塔）
-    case firstKeyID = "first-key-id"
+    public static let firstKeyID = Self(rawValue: "first-key-id")
     /// 確かめた公開鍵の一覧（ワーカー・司令塔）
-    case trustedKeys = "trusted-keys"
+    public static let trustedKeys = Self(rawValue: "trusted-keys")
+
+    /// 決まった項目（持ち主ごとのトークンは含まない）
+    public static let allCases: [Self] = [.githubToken, .claudeToken, .apnsKey, .signingKey, .firstKeyID, .trustedKeys]
+
+    /// 持ち主（organization・個人）ごとの GitHub の fine-grained token（ワーカー・司令塔）。
+    /// `owner` は `GitHubTokens.normalizedOwner(_:)` でそろえた名前（GitHub の持ち主の名前は大文字と小文字を区別しない）
+    static func githubToken(normalizedOwner owner: String) -> Self {
+        Self(rawValue: "github-token/\(owner)")
+    }
 }
 
 /// Keychain の操作の失敗。秘密の値は含めない
@@ -23,6 +42,8 @@ public enum SecretStoreError: Error, Equatable, Sendable {
     case keychain(status: OSStatus)
     /// 保存されている値の形が違う
     case malformed(SecretItem)
+    /// GitHub の持ち主の名前の形でない（持ち主ごとのトークンの名前に使えない）
+    case invalidOwner(String)
 }
 
 /// 秘密の置き場所。テストではメモリーの実装に差し替える
