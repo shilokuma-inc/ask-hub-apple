@@ -174,6 +174,36 @@ struct StateFileTests {
         #expect(throws: StateFileError.malformed("maxConcurrentEpics は 1 以上")) { try StateFileCoder.encode(file) }
     }
 
+    @Test func readsBuildWithDefaults() throws {
+        let data = Data("""
+            {"v": 1, "repo": "shilokuma-inc/askhub-sandbox", "platform": "apple", "maxConcurrentEpics": 1, "protection": {},
+             "addedAt": "2026-11-03T10:00:00Z",
+             "build": {"xcode": {"project": "App.xcodeproj", "scheme": "App", "destinations": [{"platform": "macOS"}]},
+                       "childChecks": ["build / build"], "finalChecks": ["build / build"]}}
+            """.utf8)
+        let build = try #require(try StateFileCoder.decode(RepositoryFile.self, from: data).build)
+        #expect(build.baseBranch == "develop")
+        #expect(build.trustedReviewers.isEmpty)
+        #expect(build.xcode.destinations == [.macOS])
+        #expect(build.xcode.testLight == TestSelection())
+    }
+
+    @Test func refusesToWriteBuildWithoutChecks() throws {
+        let build = try RepositoryFile.Build(
+            xcode: BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [.macOS]),
+            childChecks: [],
+            finalChecks: ["build / build"]
+        )
+        let file = try RepositoryFile(
+            repo: #require(RepositoryFullName(rawValue: "shilokuma-inc/askhub-sandbox")),
+            platform: .apple,
+            build: build,
+            addedAt: Timestamp(Date(timeIntervalSince1970: 0))
+        )
+        #expect(file.violations.count == 1)
+        #expect(throws: StateFileError.self) { try StateFileCoder.encode(file) }
+    }
+
     @Test func pathsAreBuiltFromCheckedParts() throws {
         let repo = try #require(RepositoryFullName(rawValue: "shilokuma-inc/askhub-sandbox"))
         let epic = try #require(ULID(rawValue: "01JCEP1C000000000000000001"))

@@ -77,18 +77,31 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "maxConcurrentEpics": 1,
   "appKit": { "ref": "<共通リポジトリのコミット>" },
   "protection": { "appliedAt": null },
+  "build": {
+    "baseBranch": "develop",
+    "xcode": {
+      "project": "PrimePick.xcodeproj",
+      "scheme": "PrimePick",
+      "destinations": [{ "platform": "iOS", "deviceType": "iPhone 17 Pro", "osVersion": "26.5" }],
+      "testLight": { "onlyTesting": ["PrimePickTests"] },
+      "testFull": { "testPlan": "Full" }
+    },
+    "childChecks": ["build / build"],
+    "finalChecks": ["build / build", "ui-test / ui-test"],
+    "trustedReviewers": ["coderabbitai[bot]"]
+  },
   "addedAt": "2026-11-03T10:00:00Z"
 }
 ```
 
 - `maxConcurrentEpics` は 1 以上
 - `appKit` は、共通リポジトリのワークフローを入れる前は `null`
-- 段階 3 で `build` を足す。中身は次のとおり
-  - `baseBranch`: 作業ブランチの元で、最終 PR の向き先。既定は develop
-  - ビルドとテストの設定: プロジェクトかワークスペース、スキーム、行き先、`testLight`・`testFull` の対象。形は `AskHubBuild` の `BuildSettings`
-  - `childChecks`: 子 PR で待つチェックの名前
-  - `finalChecks`: 最終 PR で待つチェックの名前
-  - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（`coderabbitai[bot]` など）
+- `build` は、ビルドの設定（段階 3）。人が設定を入れる意図（`configureRepository`）で書く（入れ方は [operations.md](operations.md) の「ビルドの設定の入れ方」）。形は `protocol/schemas/repository-build.schema.json`（Swift は `RepositoryFile.Build`）
+  - `baseBranch`: 作業ブランチの元で、最終 PR の向き先。無ければ develop
+  - `xcode`: ビルドとテストの設定（Swift は `AskHubProtocol` の `BuildSettings`）。`project`（`.xcodeproj` か `.xcworkspace` の、リポジトリの直下からの相対パス）・`scheme`・`destinations`（`{ "platform": "iOS" | "visionOS", "deviceType", "osVersion" }` か `{ "platform": "macOS" }`。並べた順に流す）・`testLight`・`testFull`（`testPlan`・`onlyTesting`・`skipTesting`。無ければ全部）。`xcodebuild` の引数とパスに使うので、`-` で始まる値・制御文字・リポジトリの外を指すパスを受け付けない
+  - `childChecks`: 子 PR で待つチェックの名前（REST の check run の `name`。再利用ワークフローのジョブは `build / build` の形）。1 つ以上（無いと CI を待たずにマージしてしまう）
+  - `finalChecks`: 最終 PR で待つチェックの名前。1 つ以上
+  - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。`coderabbitai[bot]` など）。無ければ空
 - `build` が無いリポジトリでは、開始を断る
 
 ### epic.json

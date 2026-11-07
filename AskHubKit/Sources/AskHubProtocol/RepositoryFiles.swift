@@ -41,6 +41,8 @@ public struct RepositoryFile: StateFile {
     /// 共通リポジトリのワークフローを入れる前は nil
     public var appKit: AppKit?
     public var protection: Protection
+    /// ビルドの設定。人が入れる前は nil（開始を断る）
+    public var build: Build?
     public var addedAt: Timestamp
 
     public init(
@@ -49,6 +51,7 @@ public struct RepositoryFile: StateFile {
         maxConcurrentEpics: Int = 1,
         appKit: AppKit? = nil,
         protection: Protection = Protection(),
+        build: Build? = nil,
         addedAt: Timestamp
     ) {
         self.repo = repo
@@ -56,6 +59,7 @@ public struct RepositoryFile: StateFile {
         self.maxConcurrentEpics = maxConcurrentEpics
         self.appKit = appKit
         self.protection = protection
+        self.build = build
         self.addedAt = addedAt
     }
 
@@ -63,6 +67,7 @@ public struct RepositoryFile: StateFile {
         var violations: [String] = []
         if maxConcurrentEpics < 1 { violations.append("maxConcurrentEpics は 1 以上") }
         if let appKit, appKit.ref.isEmpty { violations.append("appKit.ref が空") }
+        violations += build?.problems ?? []
         return violations
     }
 }
