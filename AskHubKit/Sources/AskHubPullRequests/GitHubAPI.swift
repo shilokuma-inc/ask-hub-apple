@@ -50,6 +50,25 @@ struct GitHubAPI: Sendable {
         return try Self.decode(type, from: data, what: path)
     }
 
+    /// GET して本文を返す。ログのように、短い間だけ使える署名つきの URL へリダイレクトする API に使う。
+    ///
+    /// 行き先にはトークンを付けずに取りに行く（署名で認められるため）。API と同じホストへのリダイレクト（リポジトリの移管・改名）と、
+    /// https 以外の行き先は追わない
+    func download(_ path: String) async throws(PullRequestError) -> Data {
+        let request = try await makeRequest("GET", url(path), body: nil)
+        let (data, response) = try await transmit(request)
+        if (200..<300).contains(response.statusCode) { return data }
+        guard (300..<400).contains(response.statusCode),
+              let location = response.value(forHTTPHeaderField: "Location"),
+              let target = URL(string: location, relativeTo: request.url)?.absoluteURL,
+              target.scheme == "https", target.host != apiBase.host else {
+            throw PullRequestError.classify(response, body: data, now: now())
+        }
+        let (body, final) = try await transmit(URLRequest(url: target))
+        guard (200..<300).contains(final.statusCode) else { throw PullRequestError.classify(final, body: body, now: now()) }
+        return body
+    }
+
     /// 一覧を `Link` ヘッダーの `rel="next"` が無くなるまで読み、ページを順に返す
     func pages<Page: Decodable>(_ path: String, query: [URLQueryItem], as type: Page.Type) async throws(PullRequestError) -> [Page] {
         var next: URL? = try url(path, query: query)
