@@ -1,3 +1,4 @@
+import AskHubCommands
 import AskHubProtocol
 import Foundation
 
@@ -163,7 +164,9 @@ public struct FixTaskJob: TaskJob {
                 }
             }
             guard !parts.isEmpty else { return kind == .ci ? "（ログを取れなかった）" : "（指摘の本文を取れなかった）" }
-            return String(parts.joined(separator: "\n\n").prefix(limit))
+            // チェックの名前・パス・指摘の本文も含めて伏せる。長さは JSON Schema の数え方（Unicode のコードポイント）で上限に収める
+            let redacted = Redaction.redact(parts.joined(separator: "\n\n"), secrets: [])
+            return String(String.UnicodeScalarView(redacted.unicodeScalars.prefix(limit)))
         }
     }
 

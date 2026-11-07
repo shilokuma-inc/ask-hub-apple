@@ -34,7 +34,8 @@ struct ImplementTaskRunnerTests {
         #expect(attempt.outputs?.pullRequest == 41)
         #expect(attempt.outputs?.commit == sha("1"))
         #expect(attempt.outputs?.branch == Fixture.branches.task)
-        #expect(attempt.outputs?.report?.summary == "RankingView を足した。")
+        // 報告は、トークンらしい文字列を伏せてから書く
+        #expect(attempt.outputs?.report?.summary == "RankingView を足した。<伏せた>")
         #expect(attempt.outputs?.report?.decisions.first?.alternatives == ["56pt"])
         #expect(attempt.claude == AttemptFile.Claude(model: "claude-opus-5-5", session: "s-impl", estimatedCostUsd: 0.4))
 
@@ -44,6 +45,8 @@ struct ImplementTaskRunnerTests {
         #expect(draft.head == Fixture.branches.task)
         #expect(draft.title == "ランキングの画面を作る")
         #expect(draft.body.contains("RankingView を足した。"))
+        #expect(!draft.body.contains("ghp_"))
+        #expect(fixture.git.current.commits.allSatisfy { !$0.contains("ghp_") })
         #expect(draft.body.contains("行の高さを 44pt にした: タップしやすい（ほかの案: 56pt）"))
         #expect(fixture.git.current.commits.first?.hasPrefix("ランキングの画面を作る\n\nRankingView を足した。") == true)
 

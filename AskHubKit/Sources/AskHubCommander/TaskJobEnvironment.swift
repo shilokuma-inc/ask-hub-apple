@@ -1,5 +1,6 @@
 import AskHubBuild
 import AskHubClaude
+import AskHubCommands
 import AskHubProtocol
 import AskHubPullRequests
 import AskHubStateStore
@@ -200,7 +201,9 @@ extension TaskReply {
     /// `done` なら報告と記録を返す。人に聞きたいことがある・進められない・失敗したときは、理由を付けた試行の失敗として終える（人へ渡る）
     func done() throws(TaskJobExit) -> (report: TaskReport, run: TaskRun) {
         switch self {
-        case let .reported(report, run):
+        case let .reported(reported, run):
+            // 報告は子 PR・コミット・状態リポジトリに書くので、トークンらしい文字列を伏せてから使う（Claude にトークンは渡していないが、念のため）
+            let report = reported.redacted
             let partial = JobResult(outputs: AttemptFile.Outputs(report: report.outputReport), claude: run.session?.attemptRecord)
             switch report.outcome {
             case .done:
@@ -221,6 +224,26 @@ extension TaskReply {
 }
 
 extension TaskReport {
+    /// 人が読む欄のトークンらしい文字列を伏せたもの
+    var redacted: Self {
+        let hide = { (text: String) in Redaction.redact(text, secrets: []) }
+        var report = self
+        report.summary = hide(summary)
+        report.decisions = decisions.map { Decision(what: hide($0.what), why: hide($0.why), alternatives: $0.alternatives.map(hide)) }
+        report.learnings = learnings.map(hide)
+        report.question = question.map { question in
+            let options = question.options.map { QuestionsFile.Option(label: hide($0.label), effect: hide($0.effect)) }
+            return Question(
+                title: hide(question.title),
+                why: hide(question.why),
+                options: options,
+                recommended: hide(question.recommended),
+                reason: hide(question.reason)
+            )
+        }
+        return report
+    }
+
     /// 試行の `outputs.report` に書く形
     var outputReport: TaskOutputReport {
         TaskOutputReport(
