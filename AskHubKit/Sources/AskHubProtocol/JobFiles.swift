@@ -9,6 +9,8 @@ public enum JobKind: String, Codable, Sendable, CaseIterable {
     case reviseGoal
     case prepareWorkspace
     case implementTask
+    /// 子 PR のチェックを待ち、読むだけのレビュー役の Claude が差分を読み、見た head を固定してマージする
+    case reviewTask
     case fixTask
     case integrateDevelop
     case verifyBeforeFinal

@@ -175,6 +175,7 @@ private extension JobKind {
         case .reviseGoal: "ゴールの修正"
         case .prepareWorkspace: "作業場所の準備"
         case .implementTask: "タスクの実装"
+        case .reviewTask: "子 PR のレビュー"
         case .fixTask: "タスクの修正"
         case .integrateDevelop: "develop の取り込み"
         case .verifyBeforeFinal: "最終 PR の前の確かめ"
