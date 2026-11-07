@@ -33,6 +33,34 @@ extension RepositoryWorkspace {
     public func tidy() async {}
 }
 
+/// epic の作業場所（作業ブランチを取り出した worktree）
+public struct PreparedEpicWorkspace: Equatable, Sendable {
+    /// 作業ブランチを取り出したフォルダ。ジョブを超えて残し、最終 PR のマージ後に消す
+    public var directory: URL
+    /// 作業ブランチ（`askhub/<epic の id>`）
+    public var branch: String
+    /// 作業ブランチの先頭のコミット
+    public var head: String
+
+    public init(directory: URL, branch: String, head: String) {
+        self.directory = directory
+        self.branch = branch
+        self.head = head
+    }
+}
+
+/// epic の作業場所を用意する（`docs/renewal/flows.md` の「作業ブランチと子 PR」）
+public protocol EpicWorkspace: Sendable {
+    /// 作業ブランチを取り出した、epic の作業場所を用意する。作業ブランチがリモートに無ければ `origin/<base>` から作って push する。
+    /// リモートにあれば作り直さずに使う（やり直しで二重に作らない・force push しない）
+    func prepareEpic(
+        _ repo: RepositoryFullName,
+        epic: ULID,
+        branch: String,
+        base: String
+    ) async throws(WorkspaceError) -> PreparedEpicWorkspace
+}
+
 public enum WorkspaceError: Error, Equatable, Sendable {
     /// GitHub に届かない・混み合っている（待ってやり直す）
     case unavailable(String)

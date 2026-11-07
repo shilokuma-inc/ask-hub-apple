@@ -31,7 +31,8 @@ extension AskHubCommanderMain {
             status: { runtime.probe.status() },
             notifier: notifier(configuration.apns, secrets: runtime.secrets, context: context),
             log: log,
-            mirror: DiscussionMirror(context: context, discussions: discussions, log: log)
+            mirror: DiscussionMirror(context: context, discussions: discussions, log: log),
+            epicWorkspace: runtime.workspace
         )
         log("起動しました（pid \(ProcessInfo.processInfo.processIdentifier)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
         await loop.run()

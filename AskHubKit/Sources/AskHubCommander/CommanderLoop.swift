@@ -48,8 +48,8 @@ public actor CommanderLoop {
         }
     }
 
-    /// 段階 2 で、この Mac が引き受けるジョブの種類
-    static let handledKinds: Set<JobKind> = [.makeQuestions, .explain, .reviseQuestion, .checkReadiness, .reviseGoal]
+    /// この Mac が Claude に頼むジョブの種類（段階 2）
+    static let claudeKinds: Set<JobKind> = [.makeQuestions, .explain, .reviseQuestion, .checkReadiness, .reviseGoal]
 
     nonisolated let context: CommanderContext
     nonisolated let settings: Settings
@@ -64,6 +64,8 @@ public actor CommanderLoop {
     nonisolated let sleeper: any Sleeper
     /// Discussion の写し。nil なら写さない
     nonisolated let mirror: DiscussionMirror?
+    /// epic の作業場所。この Mac が開始のときに選ばれたら、作業場所の用意（`prepareWorkspace`）も引き受ける。nil なら引き受けない
+    nonisolated let epicWorkspace: (any EpicWorkspace)?
 
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
@@ -79,7 +81,8 @@ public actor CommanderLoop {
         notifier: Notifier? = nil,
         log: @escaping @Sendable (String) -> Void,
         sleeper: any Sleeper = TaskSleeper(),
-        mirror: DiscussionMirror? = nil
+        mirror: DiscussionMirror? = nil,
+        epicWorkspace: (any EpicWorkspace)? = nil
     ) {
         self.context = context
         self.settings = settings
@@ -91,7 +94,9 @@ public actor CommanderLoop {
         self.log = log
         self.sleeper = sleeper
         self.mirror = mirror
-        slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: Self.handledKinds, log: log)
+        self.epicWorkspace = epicWorkspace
+        let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace])
+        slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
     }
 
     /// 止められるまで回す。1 周で失敗しても、次の周でやり直す
@@ -132,8 +137,11 @@ public actor CommanderLoop {
 
     /// ジョブを動かすワーカー。人の意図の処理と同じ `context`（同じ排他）で結果を書くよう、ループの中で作る
     nonisolated func worker(_ verifier: IntentVerifier) -> JobWorker {
-        JobWorker(
-            runner: ClaudeJobRunner(context: context, client: client, workspace: workspace, verifier: verifier),
+        let claude = ClaudeJobRunner(context: context, client: client, workspace: workspace, verifier: verifier)
+        var runners: [JobKind: any JobRunning] = Dictionary(uniqueKeysWithValues: Self.claudeKinds.map { ($0, claude) })
+        if let epicWorkspace { runners[.prepareWorkspace] = PrepareWorkspaceRunner(context: context, workspace: epicWorkspace) }
+        return JobWorker(
+            runner: JobDispatcher(runners),
             recorder: AttemptRecorder(files: context.files, mac: context.mac, now: context.now),
             now: context.now
         )

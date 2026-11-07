@@ -156,7 +156,7 @@ public struct EpicFile: StateFile {
     }
 
     /// git のコマンドに渡しても選択肢（`-` で始まる値）や別の書き方に読まれない、控えめな形だけを受け付ける
-    static func isBranchName(_ text: String) -> Bool {
+    public static func isBranchName(_ text: String) -> Bool {
         let isAllowed = { (byte: UInt8) in
             (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(byte)
                 || (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(byte)
