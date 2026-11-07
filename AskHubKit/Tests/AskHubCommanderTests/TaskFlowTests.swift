@@ -148,12 +148,11 @@ struct TaskFlowTests {
         let last = try #require(try await advance().created.first)
         try await succeed(last, outputs: .init(commit: Self.sha("d"), verdict: .merged))
         step = try await advance()
-        // すべて済んだら、最終 PR の段取りはまだ無いので、epic はそのままにしてログに出す
-        #expect(step.created.isEmpty)
-        #expect(step.notes.count == 1)
+        // すべて済んだら、epic を最終 PR の段取り（finalizing）にして、最終 PR の前の検証を作る（続きは FinalFlowTests）
+        #expect(step.created.map(\.kind) == [.verifyBeforeFinal])
         #expect(step.notes.first?.contains("すべて済んだ") == true)
         #expect(try await states() == [.done, .done])
-        #expect(try await epic().stage == .running)
+        #expect(try await epic().stage == .finalizing)
         #expect(try await advance() == TaskFlow.Advanced())
     }
 
@@ -169,7 +168,7 @@ struct TaskFlowTests {
         #expect(step.notes.first?.contains("作業ブランチが無い") == true)
 
         var stopped = try await epic()
-        stopped.stage = .finalizing
+        stopped.stage = .merged
         try await put(stopped, at: StatePath.epic(Self.repo, Self.epicID))
         #expect(await flow.advance(epics: [stopped], jobs: try await jobs()) == TaskFlow.Advanced())
     }

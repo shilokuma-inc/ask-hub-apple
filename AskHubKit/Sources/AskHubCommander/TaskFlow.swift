@@ -3,7 +3,8 @@ import AskHubProtocol
 import AskHubStateStore
 import Foundation
 
-/// 司令塔が、実装している（`running`）epic のジョブの結果を読み、タスクを進めるジョブを作る（`docs/renewal/flows.md` の「タスクの流れ」）。
+/// 司令塔が、実装している（`running`）epic と最終 PR の段取りの（`finalizing`・`reviewing`）epic のジョブの結果を読み、
+/// タスクと最終 PR を進めるジョブを作る（`docs/renewal/flows.md` の「タスクの流れ」「最終 PR までの段取り」）。
 ///
 /// ジョブの状態を決めた後（`JobSweep`）に、epic ごとに、人の意図の処理と同じ排他の中で行う。
 ///
@@ -11,7 +12,7 @@ import Foundation
 /// | --- | --- |
 /// | 作業場所の用意 | 作業ブランチを `epic.json` に書き、最初のタスクの実装を作る |
 /// | 実装・直し | 仮決めを `decisions.json` に足し、子 PR のレビューを作る |
-/// | レビュー（マージした） | タスクを `done` にし、次のタスクの実装を作る |
+/// | レビュー（マージした） | タスクを `done` にし、次のタスクの実装を作る。すべて済んだら、最終 PR の段取りに進む（`TaskFlow+Final.swift`） |
 /// | レビュー（直す判定） | 直しを作る。同じタスクの直しが上限を超えたら、動かさずに人の対応待ちで作る |
 ///
 /// 作るジョブは epic の Mac に割り当て、元のジョブを `dependsOn` に持たせる（どの結果から作ったかの目印。子の無い成功したジョブだけを読む）。
@@ -37,10 +38,13 @@ public struct TaskFlow: Sendable {
     /// タスクに結びつくジョブの種類
     static let taskKinds: Set<JobKind> = [.implementTask, .reviewTask, .fixTask]
 
+    /// 進める epic の段階（実装・最終 PR の段取り・人の確認の待ち）
+    static let stages: Set<EpicStage> = [.running, .finalizing, .reviewing]
+
     /// `epics` は終わっていない epic、`jobs` はそのジョブ（見直した後のもの）。1 つの epic で失敗しても、ほかの epic は進める
     public func advance(epics: [EpicFile], jobs: [JobFile]) async -> Advanced {
         var advanced = Advanced()
-        for epic in epics.sorted(by: { $0.id < $1.id }) where epic.stage == .running {
+        for epic in epics.sorted(by: { $0.id < $1.id }) where Self.stages.contains(epic.stage) {
             let own = jobs.filter { $0.repo == epic.repo && $0.epic == epic.id }
             do {
                 let step = try await context.lock.withLock { () throws(CommanderError) -> Advanced in
@@ -58,7 +62,7 @@ public struct TaskFlow: Sendable {
     /// 1 つの epic を進める。`context.lock` の中で呼ぶ
     func advance(_ seen: EpicFile, jobs: [JobFile]) async throws(CommanderError) -> Advanced {
         // 排他を待つ間に変わっていないかを読み直す。作業場所の用意が済むまでは、タスクに進まない
-        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(seen.repo, seen.id)), epic.stage == .running,
+        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(seen.repo, seen.id)), Self.stages.contains(epic.stage),
               let prepare = jobs.first(where: { $0.kind == .prepareWorkspace && $0.state == .succeeded }) else {
             return Advanced()
         }
@@ -74,21 +78,20 @@ public struct TaskFlow: Sendable {
         guard let goal = try await context.read(GoalFile.self, at: StatePath.goal(epic.repo, epic.id)) else {
             return Advanced(notes: ["epic \(epic.id) のゴールが無い"])
         }
+        guard epic.stage == .running else { return try await advanceFinal(goal, plan: plan, jobs: jobs) }
         return try await advance(goal, plan: plan, jobs: jobs)
     }
 
-    /// 動いているタスクの次の一手を決め、子 PR をマージしたら次のタスクを始める
+    /// 動いているタスクの次の一手を決め、子 PR をマージしたら次のタスクを始める。すべて済んだら最終 PR の段取りに進む
     func advance(_ goal: GoalFile, plan: Plan, jobs: [JobFile]) async throws(CommanderError) -> Advanced {
         var goal = goal
         if let task = goal.tasks.first(where: { $0.state == .running }) {
             let step = try await step(task, plan: plan, jobs: jobs)
             guard step == .merged else { return advanced(by: step, task: task, epic: plan.epic) }
             goal = try await setState(.done, of: task.id, from: [.running], in: plan.epic)
-            if goal.tasks.allSatisfy({ $0.state == .done }) {
-                // 最終 PR の段取りは次の作業で足す。それまでは epic を running のまま残す
-                return Advanced(notes: ["epic \(plan.epic.id) のタスクがすべて済んだ（最終 PR の段取りはまだ無いので、epic は running のまま）"])
-            }
         }
+        // 最後のタスクを done にした後に止まっても、次の周でここから進む
+        if goal.tasks.allSatisfy({ $0.state == .done }) { return try await startFinal(goal, plan: plan, jobs: jobs) }
         guard let job = try await startNext(goal, plan: plan) else { return Advanced() }
         return Advanced(created: [job])
     }
