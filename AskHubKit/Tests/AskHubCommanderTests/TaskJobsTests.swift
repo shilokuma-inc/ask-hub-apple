@@ -120,6 +120,15 @@ struct TaskJobsTests {
         }
         #expect(FixTaskJob.Reason.review([]).findings == "（指摘の本文を取れなかった）")
 
+        // トークンが切り詰める位置をまたいでも、残りを書かない（切り詰める前に伏せる）
+        let token = "ghp_" + String(repeating: "a", count: 36)
+        let straddling = String(repeating: "x", count: FixTaskJob.maximumFindingLength - 10) + token
+        let review = FixTaskJob.Reason.review([FixTaskJob.Finding(text: straddling)]).findings
+        #expect(!review.contains("ghp_") && !review.contains("aaaaaaaaaa"))
+        let log = token + String(repeating: "y", count: FixTaskJob.maximumLogLength - 10)
+        let ci = FixTaskJob.Reason.ci([FixTaskJob.FailedCheck(name: "build", logExcerpt: log)]).findings
+        #expect(!ci.contains("aaaaaaaaaa"))
+
         // 試行に書かれた文から作り直しても、同じ依頼になる
         let reason = FixTaskJob.Reason.review([FixTaskJob.Finding(path: "App/RankingView.swift", line: 12, text: "nil のときに落ちる")])
         let original = FixTaskJob(session: "s-impl", pullRequest: 41, reason: reason)

@@ -147,26 +147,28 @@ public struct FixTaskJob: TaskJob {
         }
 
         /// 試行の `outputs.findings` に書く文（`AttemptFile.Outputs.maximumFindingsLength` 文字まで）。
-        /// 1 つのチェックのログ・1 つの指摘は、全体に収まるよう、数で割った長さまでにする
+        /// 1 つのチェックのログ・1 つの指摘は、全体に収まるよう、数で割った長さまでにする。
+        /// チェックの名前・パス・ログ・指摘の本文は、切り詰める前に伏せる（切れ目をまたいだトークンの残りが、伏せる形に合わなくならないように）
         public var findings: String {
             let limit = AttemptFile.Outputs.maximumFindingsLength
+            let hide = { (text: String) in Redaction.redact(text, secrets: []) }
             let parts: [String] = switch self {
             case let .ci(checks):
                 checks.map { check in
-                    let length = min(FixTaskJob.maximumLogLength, limit / checks.count - check.name.count - 40)
-                    return "チェック: \(check.name)\n\(UntrustedText.tail(check.logExcerpt, limit: max(length, 0)))"
+                    let name = hide(check.name)
+                    let length = min(FixTaskJob.maximumLogLength, limit / checks.count - name.count - 40)
+                    return "チェック: \(name)\n\(UntrustedText.tail(hide(check.logExcerpt), limit: max(length, 0)))"
                 }
             case let .review(findings):
                 findings.enumerated().map { index, finding in
-                    let place = finding.path.map { path in finding.line.map { "\(path):\($0)" } ?? path } ?? "（場所の指定なし）"
+                    let place = hide(finding.path.map { path in finding.line.map { "\(path):\($0)" } ?? path } ?? "（場所の指定なし）")
                     let length = min(FixTaskJob.maximumFindingLength, limit / findings.count - place.count - 40)
-                    return "\(index + 1). \(place)\n\(UntrustedText.head(finding.text, limit: max(length, 0)))"
+                    return "\(index + 1). \(place)\n\(UntrustedText.head(hide(finding.text), limit: max(length, 0)))"
                 }
             }
             guard !parts.isEmpty else { return kind == .ci ? "（ログを取れなかった）" : "（指摘の本文を取れなかった）" }
-            // チェックの名前・パス・指摘の本文も含めて伏せる。長さは JSON Schema の数え方（Unicode のコードポイント）で上限に収める
-            let redacted = Redaction.redact(parts.joined(separator: "\n\n"), secrets: [])
-            return String(String.UnicodeScalarView(redacted.unicodeScalars.prefix(limit)))
+            // 長さは JSON Schema の数え方（Unicode のコードポイント）で上限に収める
+            return String(String.UnicodeScalarView(parts.joined(separator: "\n\n").unicodeScalars.prefix(limit)))
         }
     }
 
