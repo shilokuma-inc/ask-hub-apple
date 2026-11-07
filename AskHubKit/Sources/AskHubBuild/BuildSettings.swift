@@ -11,23 +11,23 @@ public struct BuildSettings: Codable, Equatable, Sendable {
     public var scheme: String
     /// ビルドとテストの行き先。並べた順に流す
     public var destinations: [BuildDestination]
-    /// 子 PR で流すテスト（macOS のランナーを節約する軽いもの）
-    public var pullRequestTests: TestSelection
-    /// 最終 PR を出す前に流すテスト（UI テストを含む全部）
-    public var finalTests: TestSelection
+    /// 軽いテスト（`testLight`。子 PR の前に流す。macOS のランナーを節約するもの）
+    public var testLight: TestSelection
+    /// 全部のテスト（`testFull`。最終 PR を出す前に流す。UI テストを含む）
+    public var testFull: TestSelection
 
     public init(
         project: String,
         scheme: String,
         destinations: [BuildDestination],
-        pullRequestTests: TestSelection = TestSelection(),
-        finalTests: TestSelection = TestSelection()
+        testLight: TestSelection = TestSelection(),
+        testFull: TestSelection = TestSelection()
     ) throws(BuildSettingsError) {
         self.project = project
         self.scheme = scheme
         self.destinations = destinations
-        self.pullRequestTests = pullRequestTests
-        self.finalTests = finalTests
+        self.testLight = testLight
+        self.testFull = testFull
         try validate()
     }
 
@@ -36,8 +36,8 @@ public struct BuildSettings: Codable, Equatable, Sendable {
         project = try container.decode(String.self, forKey: .project)
         scheme = try container.decode(String.self, forKey: .scheme)
         destinations = try container.decode([BuildDestination].self, forKey: .destinations)
-        pullRequestTests = try container.decodeIfPresent(TestSelection.self, forKey: .pullRequestTests) ?? TestSelection()
-        finalTests = try container.decodeIfPresent(TestSelection.self, forKey: .finalTests) ?? TestSelection()
+        testLight = try container.decodeIfPresent(TestSelection.self, forKey: .testLight) ?? TestSelection()
+        testFull = try container.decodeIfPresent(TestSelection.self, forKey: .testFull) ?? TestSelection()
         do {
             try validate()
         } catch {
@@ -50,10 +50,12 @@ public struct BuildSettings: Codable, Equatable, Sendable {
         project.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
     }
 
-    public func tests(for scope: TestScope) -> TestSelection {
-        switch scope {
-        case .pullRequest: pullRequestTests
-        case .finalPullRequest: finalTests
+    /// 種類ごとに流すテスト。ビルドだけなら nil
+    public func tests(for kind: BuildKind) -> TestSelection? {
+        switch kind {
+        case .build: nil
+        case .testLight: testLight
+        case .testFull: testFull
         }
     }
 
@@ -71,8 +73,8 @@ public struct BuildSettings: Codable, Equatable, Sendable {
         for destination in destinations {
             try destination.validate()
         }
-        try pullRequestTests.validate(field: "pullRequestTests")
-        try finalTests.validate(field: "finalTests")
+        try testLight.validate(field: "testLight")
+        try testFull.validate(field: "testFull")
     }
 
     /// 相対パス。空・絶対パス・`-` 始まり・`..` や空の要素・制御文字を許さない
@@ -132,10 +134,17 @@ public struct TestSelection: Codable, Equatable, Sendable {
     }
 }
 
-/// 子 PR 用の軽いテストか、最終 PR 用の全部か
-public enum TestScope: String, Codable, Sendable, CaseIterable {
-    case pullRequest
-    case finalPullRequest
+/// ビルドとテストの種類（`docs/renewal/flows.md` の「Claude にビルドとテストを頼ませる」の `buildKind`）。
+/// 頼む側はこれだけを選び、コマンドの中身は `BuildSettings` から決まる
+public enum BuildKind: String, Codable, Sendable, CaseIterable {
+    /// ビルドだけ
+    case build
+    /// 軽いテスト（`BuildSettings.testLight`）
+    case testLight
+    /// 全部のテスト（`BuildSettings.testFull`）
+    case testFull
+
+    public var isTest: Bool { self != .build }
 }
 
 /// 設定の形の誤り

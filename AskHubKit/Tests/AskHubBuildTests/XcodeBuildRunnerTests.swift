@@ -20,8 +20,8 @@ struct XcodeBuildRunnerTests {
             project: "App.xcodeproj",
             scheme: "App",
             destinations: [.simulator(SimulatorDestination(platform: .iOS, deviceType: "iPhone 17 Pro")), .macOS],
-            pullRequestTests: TestSelection(onlyTesting: ["AppTests"]),
-            finalTests: TestSelection(testPlan: "Full", skipTesting: ["AppUITests/LaunchTests"])
+            testLight: TestSelection(onlyTesting: ["AppTests"]),
+            testFull: TestSelection(testPlan: "Full", skipTesting: ["AppUITests/LaunchTests"])
         )
     }
 
@@ -52,8 +52,8 @@ struct XcodeBuildRunnerTests {
         return (XcodeBuildRunner(tools: tools, directories: BuildDirectories(root: root), runner: fake), fake)
     }
 
-    private func request(_ action: BuildAction, on destination: PreparedDestination = .simulator(simulator)) throws -> BuildRequest {
-        BuildRequest(settings: try Self.settings(), action: action, destination: destination, sourceDirectory: Self.source, epic: Self.epic)
+    private func request(_ kind: BuildKind, on destination: PreparedDestination = .simulator(simulator)) throws -> BuildRequest {
+        BuildRequest(settings: try Self.settings(), kind: kind, destination: destination, sourceDirectory: Self.source, epic: Self.epic)
     }
 
     /// `option` の次の引数
@@ -65,9 +65,9 @@ struct XcodeBuildRunnerTests {
 
     @Test func buildsTestArgumentsForTheSimulator() throws {
         let directories = BuildDirectories(root: URL(fileURLWithPath: "/w/builds"))
-        let request = try request(.test(.pullRequest))
+        let request = try request(.testLight)
         let bundle = directories.resultBundle(for: Self.epic, named: XcodeBuildRunner.bundleName(for: request))
-        #expect(bundle.lastPathComponent == "test-pullRequest-askhub-worker-1-iPhone-17-Pro-iOS-26.5.xcresult")
+        #expect(bundle.lastPathComponent == "testLight-askhub-worker-1-iPhone-17-Pro-iOS-26.5.xcresult")
         #expect(bundle.deletingLastPathComponent().path == "/w/builds/01JC0000000000000000000000/results")
         let arguments = XcodeBuildRunner.arguments(for: request, derivedData: directories.derivedData(for: Self.epic), resultBundle: bundle)
         #expect(arguments == [
@@ -82,7 +82,7 @@ struct XcodeBuildRunnerTests {
     }
 
     @Test func buildsArgumentsForTheFinalTestsAndMacOS() throws {
-        var request = try request(.test(.finalPullRequest), on: .macOS)
+        var request = try request(.testFull, on: .macOS)
         let derivedData = URL(fileURLWithPath: "/d")
         let bundle = URL(fileURLWithPath: "/r")
         let arguments = XcodeBuildRunner.arguments(for: request, derivedData: derivedData, resultBundle: bundle)
@@ -94,9 +94,9 @@ struct XcodeBuildRunnerTests {
         #expect(arguments.suffix(4) == [
             "CODE_SIGN_IDENTITY=-", "CODE_SIGN_STYLE=Manual", "DEVELOPMENT_TEAM=", "PROVISIONING_PROFILE_SPECIFIER="
         ])
-        #expect(XcodeBuildRunner.bundleName(for: request) == "test-finalPullRequest-macOS")
+        #expect(XcodeBuildRunner.bundleName(for: request) == "testFull-macOS")
 
-        request.action = .build
+        request.kind = .build
         request.settings.project = "App.xcworkspace"
         let build = XcodeBuildRunner.arguments(for: request, derivedData: derivedData, resultBundle: bundle)
         #expect(build.prefix(4) == ["xcodebuild", "build", "-workspace", "App.xcworkspace"])
@@ -109,7 +109,7 @@ struct XcodeBuildRunnerTests {
     @Test func runsInTheCheckoutWithAFreshEnvironmentAndReplacesTheOldBundle() async throws {
         let (runner, fake) = makeRunner(build: Fixtures.noErrors, tests: Fixtures.passedSummary) { _ in .output("** TEST SUCCEEDED **\n") }
         defer { try? FileManager.default.removeItem(at: runner.directories.root) }
-        let request = try request(.test(.pullRequest))
+        let request = try request(.testLight)
         let old = runner.directories.resultBundle(for: Self.epic, named: XcodeBuildRunner.bundleName(for: request))
         try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: old.appendingPathComponent("old").path, contents: Data())
@@ -140,7 +140,7 @@ struct XcodeBuildRunnerTests {
             .failure(65, "Testing failed:\n\tadds() failed\n** TEST FAILED **\n")
         }
         defer { try? FileManager.default.removeItem(at: runner.directories.root) }
-        let outcome = try await runner.run(try request(.test(.pullRequest)), timeout: .seconds(600))
+        let outcome = try await runner.run(try request(.testLight), timeout: .seconds(600))
         #expect(outcome.failure == .test)
         #expect(outcome.summary == "テストが落ちた（2 件 / 全 2 件）")
         #expect(outcome.report.failedTests.map(\.name) == ["ProbeTests/AdditionTests/adds()", "ProbeTests/LegacyTests/testAdds()"])
@@ -157,7 +157,7 @@ struct XcodeBuildRunnerTests {
             .failure(65, "\(Self.source.path)/Probe/ProbeApp.swift:10:48: error: cannot find 'missing' in scope\n** TEST FAILED **\n")
         }
         defer { try? FileManager.default.removeItem(at: runner.directories.root) }
-        let outcome = try await runner.run(try request(.test(.pullRequest)), timeout: .seconds(600))
+        let outcome = try await runner.run(try request(.testLight), timeout: .seconds(600))
         #expect(outcome.failure == .build)
         #expect(outcome.summary == "ビルドが通らない（エラー 1 件）")
         // 「ビルドが失敗したのでテストを取り消した」は除き、場所は写しからの相対パスと 1 から数えた行にする
@@ -180,7 +180,7 @@ struct XcodeBuildRunnerTests {
     func classifiesFailuresWithoutAResultBundle(result: CommandResult, kind: BuildFailureKind) async throws {
         let (runner, _) = makeRunner(bundle: false) { _ in result }
         defer { try? FileManager.default.removeItem(at: runner.directories.root) }
-        let outcome = try await runner.run(try request(.test(.pullRequest)), timeout: .seconds(600))
+        let outcome = try await runner.run(try request(.testLight), timeout: .seconds(600))
         #expect(outcome.failure == kind)
         #expect(outcome.resultBundle == nil)
         // 理由はエラーの行から読めるようにする（時間切れは出力が無いことがある）

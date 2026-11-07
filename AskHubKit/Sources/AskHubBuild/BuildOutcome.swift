@@ -57,7 +57,7 @@ public struct BuildOutcome: Equatable, Sendable {
 
 /// `xcodebuild` の結果を区分に分ける
 enum BuildClassifier {
-    static func classify(_ result: CommandResult, action: BuildAction, report: BuildReport) -> BuildFailureKind? {
+    static func classify(_ result: CommandResult, kind: BuildKind, report: BuildReport) -> BuildFailureKind? {
         if result.timedOut { return .timeout }
         if result.succeeded { return nil }
         let output = result.outputText
@@ -65,12 +65,12 @@ enum BuildClassifier {
         let lowered = texts.joined(separator: "\n").lowercased()
         if environmentPhrases.contains(where: lowered.contains) { return .environment }
         if !report.errors.isEmpty { return .build }
-        if case .test = action, !report.failedTests.isEmpty || (report.tests?.failed ?? 0) > 0 { return .test }
+        if kind.isTest, !report.failedTests.isEmpty || (report.tests?.failed ?? 0) > 0 { return .test }
         // 結果のバンドルから読めなかったときは、出力で見分ける
         if output.contains(#/\.(swift|m|mm|c|cc|cpp|h|metal):[0-9]+:[0-9]+: error: /#) || output.contains("linker command failed") {
             return .build
         }
-        if case .test = action, output.contains("** TEST FAILED **") { return .test }
+        if kind.isTest, output.contains("** TEST FAILED **") { return .test }
         if output.contains("** BUILD FAILED **") { return .build }
         return .unknown
     }
@@ -94,11 +94,11 @@ enum BuildClassifier {
     ]
 
     /// 結果の短い説明
-    static func summary(_ failure: BuildFailureKind?, action: BuildAction, report: BuildReport, result: CommandResult) -> String {
+    static func summary(_ failure: BuildFailureKind?, kind: BuildKind, report: BuildReport, result: CommandResult) -> String {
         let total = report.tests.map { "全 \($0.total) 件" }
         switch failure {
         case nil:
-            if case .test = action { return "テストが通った" + (total.map { "（\($0)）" } ?? "") }
+            if kind.isTest { return "テストが通った" + (total.map { "（\($0)）" } ?? "") }
             return "ビルドが通った"
         case .build:
             return "ビルドが通らない" + (report.errors.isEmpty ? "" : "（エラー \(report.errors.count) 件）")

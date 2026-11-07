@@ -9,7 +9,7 @@ import Testing
 ///
 /// - `ASKHUB_LIVE_BUILD_PROJECT`: ビルドする写しのフォルダ。無ければ Simulator の操作だけを確かめる
 /// - `ASKHUB_LIVE_BUILD_SETTINGS`: `BuildSettings` の JSON（最初の Simulator の行き先で流す）
-/// - `ASKHUB_LIVE_BUILD_ACTION`: `build` か `test`（既定。子 PR 用のテスト）
+/// - `ASKHUB_LIVE_BUILD_KIND`: `build`・`testLight`（既定）・`testFull`
 /// - `ASKHUB_LIVE_BUILD_EXPECT`: 期待する結果（`success`（既定）・`build`・`test`・`timeout`・`environment`・`unknown`）
 /// - `ASKHUB_LIVE_BUILD_DUMP`: 結果のバンドルの JSON（`build-results`・`test-results summary`）を書き出すフォルダ（テストの見本を作り直すとき）
 @Suite(.enabled(if: LiveBuild.isEnabled), .serialized)
@@ -64,10 +64,10 @@ struct LiveBuildTests {
     }
 
     private func build(_ settings: BuildSettings, in project: URL, on simulator: Simulator, runner: XcodeBuildRunner) async throws {
-        let action: BuildAction = LiveBuild.environment["ASKHUB_LIVE_BUILD_ACTION"] == "build" ? .build : .test(.pullRequest)
+        let kind = LiveBuild.environment["ASKHUB_LIVE_BUILD_KIND"].flatMap(BuildKind.init(rawValue:)) ?? .testLight
         let epic = try #require(ULID(rawValue: "01JC0000000000000000000000"))
         let request = BuildRequest(
-            settings: settings, action: action, destination: .simulator(simulator), sourceDirectory: project, epic: epic
+            settings: settings, kind: kind, destination: .simulator(simulator), sourceDirectory: project, epic: epic
         )
         let outcome = try await runner.run(request, timeout: .seconds(30 * 60))
         print("[live] \(outcome.summary)\n\(outcome.report.text())")

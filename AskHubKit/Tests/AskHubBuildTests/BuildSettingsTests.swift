@@ -12,8 +12,8 @@ struct BuildSettingsTests {
         {"platform": "visionOS", "deviceType": "Apple Vision Pro"},
         {"platform": "macOS"}
       ],
-      "pullRequestTests": {"onlyTesting": ["AskHubTests"]},
-      "finalTests": {"testPlan": "Full", "skipTesting": ["AskHubUITests/AskHubUITestsLaunchTests"]}
+      "testLight": {"onlyTesting": ["AskHubTests"]},
+      "testFull": {"testPlan": "Full", "skipTesting": ["AskHubUITests/AskHubUITestsLaunchTests"]}
     }
     """
 
@@ -30,8 +30,8 @@ struct BuildSettingsTests {
             .simulator(SimulatorDestination(platform: .visionOS, deviceType: "Apple Vision Pro")),
             .macOS
         ])
-        #expect(settings.tests(for: .pullRequest) == TestSelection(onlyTesting: ["AskHubTests"]))
-        #expect(settings.tests(for: .finalPullRequest) == TestSelection(
+        #expect(settings.tests(for: .testLight) == TestSelection(onlyTesting: ["AskHubTests"]))
+        #expect(settings.tests(for: .testFull) == TestSelection(
             testPlan: "Full", skipTesting: ["AskHubUITests/AskHubUITestsLaunchTests"]
         ))
         let again = try JSONDecoder().decode(BuildSettings.self, from: JSONEncoder().encode(settings))
@@ -41,8 +41,9 @@ struct BuildSettingsTests {
     @Test func defaultsTheTestsToEverything() throws {
         let settings = try decode(#"{"project": "App.xcworkspace", "scheme": "App", "destinations": [{"platform": "macOS"}]}"#)
         #expect(settings.projectOption == "-workspace")
-        #expect(settings.pullRequestTests == TestSelection())
-        #expect(settings.finalTests == TestSelection())
+        #expect(settings.testLight == TestSelection())
+        #expect(settings.testFull == TestSelection())
+        #expect(settings.tests(for: .build) == nil)
     }
 
     /// 作れなかったときの、誤りの欄
@@ -83,11 +84,11 @@ struct BuildSettingsTests {
             == "destinations.osVersion")
         let onlyTesting = TestSelection(onlyTesting: ["-x"])
         #expect(refusedField {
-            try BuildSettings(project: "A.xcodeproj", scheme: "A", destinations: [iPhone], pullRequestTests: onlyTesting)
-        } == "pullRequestTests.onlyTesting")
+            try BuildSettings(project: "A.xcodeproj", scheme: "A", destinations: [iPhone], testLight: onlyTesting)
+        } == "testLight.onlyTesting")
         #expect(refusedField {
-            try BuildSettings(project: "A.xcodeproj", scheme: "A", destinations: [iPhone], finalTests: TestSelection(testPlan: "-x"))
-        } == "finalTests.testPlan")
+            try BuildSettings(project: "A.xcodeproj", scheme: "A", destinations: [iPhone], testFull: TestSelection(testPlan: "-x"))
+        } == "testFull.testPlan")
     }
 
     @Test func refusesBrokenSettingsWhenDecoding() {
@@ -95,7 +96,7 @@ struct BuildSettingsTests {
             #"{"project": "../A.xcodeproj", "scheme": "A", "destinations": [{"platform": "macOS"}]}"#,
             #"{"project": "A.xcodeproj", "scheme": "A", "destinations": [{"platform": "watchOS", "deviceType": "Apple Watch"}]}"#,
             #"{"project": "A.xcodeproj", "scheme": "A", "destinations": [{"platform": "iOS"}]}"#,
-            #"{"project": "A.xcodeproj", "scheme": "A", "destinations": [{"platform": "macOS"}], "finalTests": {"skipTesting": ["-x"]}}"#
+            #"{"project": "A.xcodeproj", "scheme": "A", "destinations": [{"platform": "macOS"}], "testFull": {"skipTesting": ["-x"]}}"#
         ]
         for json in broken {
             #expect(throws: DecodingError.self, "\(json)") { try decode(json) }

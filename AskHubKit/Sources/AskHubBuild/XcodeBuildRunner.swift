@@ -2,12 +2,6 @@ import AskHubCommands
 import AskHubProtocol
 import Foundation
 
-/// ビルドだけか、テストまでか
-public enum BuildAction: Equatable, Hashable, Sendable {
-    case build
-    case test(TestScope)
-}
-
 /// 用意した行き先（Simulator は `SimulatorPool.prepare` で起動したもの）
 public enum PreparedDestination: Equatable, Hashable, Sendable {
     case simulator(Simulator)
@@ -17,16 +11,16 @@ public enum PreparedDestination: Equatable, Hashable, Sendable {
 /// 1 回のビルドかテストの依頼
 public struct BuildRequest: Equatable, Sendable {
     public var settings: BuildSettings
-    public var action: BuildAction
+    public var kind: BuildKind
     public var destination: PreparedDestination
     /// ビルドする写し（epic の worktree）
     public var sourceDirectory: URL
     /// DerivedData と結果のバンドルを分ける単位
     public var epic: ULID
 
-    public init(settings: BuildSettings, action: BuildAction, destination: PreparedDestination, sourceDirectory: URL, epic: ULID) {
+    public init(settings: BuildSettings, kind: BuildKind, destination: PreparedDestination, sourceDirectory: URL, epic: ULID) {
         self.settings = settings
-        self.action = action
+        self.kind = kind
         self.destination = destination
         self.sourceDirectory = sourceDirectory
         self.epic = epic
@@ -70,42 +64,33 @@ public struct XcodeBuildRunner: Sendable {
         } catch {
             return BuildOutcome(failure: .environment, summary: "xcodebuild を起動できない（\(error.localizedDescription)）")
         }
-        let isTest = if case .test = request.action { true } else { false }
-        let contents = await ResultBundleReader(tools: tools, runner: runner, timeout: readTimeout).read(bundle, tests: isTest)
+        let contents = await ResultBundleReader(tools: tools, runner: runner, timeout: readTimeout).read(bundle, tests: request.kind.isTest)
         if Task.isCancelled { throw CancellationError() }
         let cleaner = ReportCleaner(sourceDirectory: request.sourceDirectory, home: tools.home)
         var report = cleaner.report(from: contents)
-        let failure = BuildClassifier.classify(result, action: request.action, report: report)
+        let failure = BuildClassifier.classify(result, kind: request.kind, report: report)
         // エラーや落ちたテストで理由が分からない失敗には、出力の抜粋を付ける
         if let failure, ![.build, .test].contains(failure) || report.errors.isEmpty && report.failedTests.isEmpty {
             report.log = cleaner.logExcerpt(of: result.outputText)
         }
-        let summary = cleaner.clean(BuildClassifier.summary(failure, action: request.action, report: report, result: result))
+        let summary = cleaner.clean(BuildClassifier.summary(failure, kind: request.kind, report: report, result: result))
         let exists = FileManager.default.fileExists(atPath: bundle.path)
         return BuildOutcome(failure: failure, summary: summary, report: report, resultBundle: exists ? bundle : nil)
     }
 
-    /// 結果のバンドルの名前（`test-pullRequest-askhub-worker-1-iPhone-17-Pro-iOS-26.5` など）
+    /// 結果のバンドルの名前（`testLight-askhub-worker-1-iPhone-17-Pro-iOS-26.5` など）
     static func bundleName(for request: BuildRequest) -> String {
-        let action = switch request.action {
-        case .build: "build"
-        case .test(let scope): "test-\(scope.rawValue)"
-        }
         let destination = switch request.destination {
         case .simulator(let simulator): SimulatorPool.slug(simulator.name)
         case .macOS: "macOS"
         }
-        return "\(action)-\(destination)"
+        return "\(request.kind.rawValue)-\(destination)"
     }
 
     /// `xcrun` に渡す引数（`xcodebuild …`）
     static func arguments(for request: BuildRequest, derivedData: URL, resultBundle: URL) -> [String] {
         let settings = request.settings
-        var arguments = ["xcodebuild"]
-        switch request.action {
-        case .build: arguments.append("build")
-        case .test: arguments.append("test")
-        }
+        var arguments = ["xcodebuild", request.kind.isTest ? "test" : "build"]
         let destination = switch request.destination {
         case .simulator(let simulator): "id=\(simulator.udid)"
         case .macOS: "platform=macOS"
@@ -119,8 +104,7 @@ public struct XcodeBuildRunner: Sendable {
             // 新しい DerivedData では、パッケージのプラグインとマクロの信頼を確かめる画面で止まるため
             "-skipPackagePluginValidation", "-skipMacroValidation"
         ]
-        if case .test(let scope) = request.action {
-            let tests = settings.tests(for: scope)
+        if let tests = settings.tests(for: request.kind) {
             // 並列のテストは Simulator の複製を作って場所を取り、遅くもなるので使わない
             arguments += ["-parallel-testing-enabled", "NO"]
             if let plan = tests.testPlan {

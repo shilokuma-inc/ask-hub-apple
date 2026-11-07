@@ -2,45 +2,27 @@ import AskHubCommands
 import AskHubProtocol
 import Foundation
 
-/// 呼ぶ側（Claude から頼まれたワーカー）が選ぶ、ビルドとテストの種類。コマンドの中身は `BuildSettings` から決まる
-public enum BuildKind: String, Codable, Sendable, CaseIterable {
-    /// ビルドだけ
-    case build
-    /// 子 PR 用の軽いテスト（`BuildSettings.pullRequestTests`）
-    case pullRequestTests
-    /// 最終 PR 用の全部のテスト（`BuildSettings.finalTests`）
-    case finalTests
-
-    public var action: BuildAction {
-        switch self {
-        case .build: .build
-        case .pullRequestTests: .test(.pullRequest)
-        case .finalTests: .test(.finalPullRequest)
-        }
-    }
-}
-
 /// 種類ごとの実行時間の上限
 public struct BuildTimeouts: Equatable, Sendable {
     public var build: Duration
-    public var pullRequestTests: Duration
-    public var finalTests: Duration
+    public var testLight: Duration
+    public var testFull: Duration
 
     public init(
         build: Duration = .seconds(30 * 60),
-        pullRequestTests: Duration = .seconds(45 * 60),
-        finalTests: Duration = .seconds(90 * 60)
+        testLight: Duration = .seconds(45 * 60),
+        testFull: Duration = .seconds(90 * 60)
     ) {
         self.build = build
-        self.pullRequestTests = pullRequestTests
-        self.finalTests = finalTests
+        self.testLight = testLight
+        self.testFull = testFull
     }
 
     public func timeout(for kind: BuildKind) -> Duration {
         switch kind {
         case .build: build
-        case .pullRequestTests: pullRequestTests
-        case .finalTests: finalTests
+        case .testLight: testLight
+        case .testFull: testFull
         }
     }
 }
@@ -103,7 +85,7 @@ public struct EpicBuilder: Sendable {
             }
         }
         let request = BuildRequest(
-            settings: settings, action: kind.action, destination: prepared, sourceDirectory: sourceDirectory, epic: epic
+            settings: settings, kind: kind, destination: prepared, sourceDirectory: sourceDirectory, epic: epic
         )
         return try await machine.runner.run(request, timeout: machine.timeouts.timeout(for: kind))
     }

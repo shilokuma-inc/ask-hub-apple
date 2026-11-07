@@ -12,8 +12,8 @@ struct EpicBuilderTests {
             project: "App.xcodeproj",
             scheme: "App",
             destinations: [iPhone, .macOS],
-            pullRequestTests: TestSelection(onlyTesting: ["AppTests"]),
-            finalTests: TestSelection(testPlan: "Full")
+            testLight: TestSelection(onlyTesting: ["AppTests"]),
+            testFull: TestSelection(testPlan: "Full")
         )
     }
 
@@ -34,7 +34,7 @@ struct EpicBuilderTests {
             tools: BuildTools(temporaryDirectory: root.appendingPathComponent("tmp")),
             directories: BuildDirectories(root: root),
             runner: fake,
-            timeouts: BuildTimeouts(build: .seconds(60), pullRequestTests: .seconds(120), finalTests: .seconds(180))
+            timeouts: BuildTimeouts(build: .seconds(60), testLight: .seconds(120), testFull: .seconds(180))
         )
         let epic = try #require(ULID(rawValue: "01JC0000000000000000000000"))
         let builder = EpicBuilder(machine: machine, settings: try Self.settings(), epic: epic, sourceDirectory: root, slot: 3)
@@ -48,7 +48,7 @@ struct EpicBuilderTests {
     @Test func choosesTheCommandFromTheKindAlone() async throws {
         let (builder, fake) = try makeBuilder { _ in .output("** TEST SUCCEEDED **") }
         defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
-        let run = try await builder.run(.pullRequestTests)
+        let run = try await builder.run(.testLight)
         #expect(run.succeeded)
         #expect(run.summary == "iPhone 17 Pro（iOS 26.5）: テストが通った\nmacOS: テストが通った")
         #expect(run.attemptFailure == nil)
@@ -60,7 +60,7 @@ struct EpicBuilderTests {
         #expect(commands.first?.arguments[destination].hasPrefix("id=") == true)
         #expect(fake.arguments.contains { $0.prefix(3) == ["simctl", "create", "askhub-worker-3-iPhone-17-Pro-iOS-26.5"] })
 
-        _ = try await builder.run(.finalTests)
+        _ = try await builder.run(.testFull)
         _ = try await builder.run(.build)
         let later = xcodebuilds(fake).dropFirst(2)
         #expect(later.map { $0.arguments[1] } == ["test", "test", "build", "build"])
@@ -86,7 +86,7 @@ struct EpicBuilderTests {
         let simctl = FakeSimctl(bootResult: .failure(1, "Unable to boot device in current state: Booted"))
         let (builder, fake) = try makeBuilder(simctl: simctl) { _ in .output("") }
         defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
-        let run = try await builder.run(.pullRequestTests)
+        let run = try await builder.run(.testLight)
         #expect(run.failure == .environment)
         #expect(run.attemptFailure?.failureClass == .unexpected)
         #expect(run.results.first?.outcome.report.log?.contains("Unable to boot") == true)
@@ -97,6 +97,6 @@ struct EpicBuilderTests {
         #expect(BuildDestination.macOS.label == "macOS")
         #expect(BuildDestination.simulator(SimulatorDestination(platform: .visionOS, deviceType: "Apple Vision Pro")).label
             == "Apple Vision Pro（visionOS）")
-        #expect(BuildKind.allCases.map(\.rawValue) == ["build", "pullRequestTests", "finalTests"])
+        #expect(BuildKind.allCases.map(\.rawValue) == ["build", "testLight", "testFull"])
     }
 }
