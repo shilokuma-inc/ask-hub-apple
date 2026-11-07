@@ -279,6 +279,11 @@
   `erase`・`delete` の前に止めるときは、この失敗を成功とみなす（2026-11-07、#886）
 - 人や Claude のセッションが、画面の確認用に `askhub-` で始まる名前の Simulator（`askhub-anim-a` など）を作っていることがある。
   ワーカー（`AskHubBuild` の `SimulatorPool`）が作って消すのは `askhub-worker-<枠>-…` の形の名前だけなので、手で作る Simulator にはこの形の名前を付けない（2026-11-07、#886）
+- UI テストの起動引数（`-demoReactionDelay 0` など）で渡した値は、UserDefaults に文字列で入るので `object(forKey:) as? Double` は nil になる
+  （`-demoReactionDelay 0` が効かず、既定の 4 秒のまま動いていた）。数値は `double(forKey:)` で読む（`-demoSendDelay`）。
+  値が無いことと 0 を分けたいときは、`object(forKey:) != nil` で確かめてから `double(forKey:)` を使う（2026-11-07、#896）
+- `xcodebuild test -resultBundlePath` が `Executed N tests` の後に戻らず、`.xcresult` に `Info.plist` ができない（`xcresulttool export attachments` が読めない）ときも、
+  UI テストで撮ったスクショ（`XCTAttachment`）は `<bundle>.xcresult/Data/data.0~…` に PNG で入っている。`file` で PNG を探し、撮った順は更新時刻の順で並べる（2026-11-07、#896）
 
 ## Keychain
 
