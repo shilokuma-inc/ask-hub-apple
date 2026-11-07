@@ -161,6 +161,9 @@ final class FakePullRequests: PullRequestOperations {
         var logFailures: [PullRequestError] = []
         /// 子 PR を読むたびに呼ぶ（待つ間に PR が変わったことにする）
         var onRead: (@Sendable (inout PullRequest) -> Void)?
+        /// commit status。読むたびに先頭から返す（最後の 1 つは残す）
+        var statuses: [[CommitStatus]] = [[]]
+        var statusReads = 0
     }
 
     private let state: OSAllocatedUnfairLock<State>
@@ -213,6 +216,13 @@ final class FakePullRequests: PullRequestOperations {
 
     func reviewFeedback(number: Int, trusted: TrustedAuthors) async throws(PullRequestError) -> ReviewFeedback {
         ReviewFeedback(threads: [], reviews: [])
+    }
+
+    func commitStatuses(at sha: String) async throws(PullRequestError) -> [CommitStatus] {
+        state.withLock { state in
+            state.statusReads += 1
+            return state.statuses.count > 1 ? state.statuses.removeFirst() : state.statuses[0]
+        }
     }
 
     func merge(

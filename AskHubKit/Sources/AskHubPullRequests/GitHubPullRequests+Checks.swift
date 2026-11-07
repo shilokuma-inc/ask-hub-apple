@@ -22,6 +22,30 @@ extension GitHubPullRequests {
         let statuses = try await api.pages("commits/\(sha)/status", query: [perPage], as: CombinedStatusPage.self)
         return runs.flatMap(\.checkRuns).map { $0.observed() } + statuses.flatMap(\.statuses).map { $0.observed() }
     }
+
+    /// head の SHA の commit status（context ごとの最新）を、ページングを最後まで追って読む。
+    /// CodeRabbit は、レビューの完了・上限での見送り・見送りを、どれも `success` の説明の文言だけで分けるので、説明も返す
+    public func commitStatuses(at sha: String) async throws(PullRequestError) -> [CommitStatus] {
+        try GitNames.checkSHA(sha)
+        let query = [URLQueryItem(name: "per_page", value: "100")]
+        let pages = try await api.pages("commits/\(sha)/status", query: query, as: CombinedStatusPage.self)
+        return pages.flatMap(\.statuses).map { CommitStatus(context: $0.context, state: $0.state, description: $0.description) }
+    }
+}
+
+/// commit status（CodeRabbit など）の今の様子
+public struct CommitStatus: Sendable, Equatable {
+    public var context: String
+    /// `error`・`failure`・`pending`・`success`
+    public var state: String
+    /// 説明（CodeRabbit は "Review completed"・"Review rate limited" など）。無ければ nil
+    public var description: String?
+
+    public init(context: String, state: String, description: String? = nil) {
+        self.context = context
+        self.state = state
+        self.description = description
+    }
 }
 
 // MARK: - 応答の形（キーは `convertFromSnakeCase` で読む）
@@ -95,6 +119,7 @@ struct CommitStatusPayload: Decodable {
     let context: String
     /// `error`・`failure`・`pending`・`success`
     let state: String
+    let description: String?
     let targetUrl: String?
 
     func observed() -> ObservedCheck {
