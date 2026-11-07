@@ -110,6 +110,16 @@ struct ClaudeClientTests {
         #expect(!command.arguments.contains("bypassPermissions"))
     }
 
+    @Test func enablesSandboxOnlyWhenAsked() throws {
+        var editing = request()
+        editing.tools = ["Read", "Edit"]
+        editing.sandboxed = true
+        let arguments = try ClaudeCommandLine.command(for: editing, setup: Self.setup).arguments
+        #expect(arguments.firstIndex(of: "--settings").map { arguments[$0 + 1] }
+            == #"{"permissions":{"allow":["Read","Edit"]},"sandbox":{"allowUnsandboxedCommands":false,"enabled":true}}"#)
+        #expect(arguments.firstIndex(of: "--tools").map { arguments[$0 + 1] } == "Read,Edit")
+    }
+
     @Test func passesOnlyClaudeAuthenticationInEnvironment() throws {
         let environment = try ClaudeCommandLine.command(for: request(), setup: Self.setup).environment
         let expected: Set = ["HOME", "PATH", "TMPDIR", "LANG", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN", "DISABLE_AUTOUPDATER"]
