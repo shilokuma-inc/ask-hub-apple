@@ -231,7 +231,8 @@ struct StateClientServiceTests {
         #expect(after.epic(Self.epicID)?.split?.choice == .split)
     }
 
-    /// 段階 3 の操作は送れない（ボタンを出さない）。人に渡されたジョブへの操作は、そのジョブが無ければ送れない
+    /// まだ送れない段階 3 の操作（引き継ぎ・一時停止など）と、最終 PR を出す前の epic へのマージは送れない（ボタンを出さない）。
+    /// 人に渡されたジョブへの操作は、そのジョブが無ければ送れない
     @Test
     func stageThreeIntentsAreNotSupported() async throws {
         let service = try makeService().service
