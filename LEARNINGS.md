@@ -390,6 +390,9 @@
 - 会社の Claude（Team・Enterprise。社用 MacBook）では、組織の管理の設定で MCP サーバーが止められていることがある。`claude -p --strict-mcp-config --mcp-config …` でも、stderr に「MCP server blocked by enterprise policy」と出て、道具が読み込まれない。手元に管理の設定のファイルは無く（サーバーから配られる）、`--restricted` でも外せない。ワーカーに Claude からビルドやテストを頼ませる仕組みは、MCP の道具ではなく、決まった形の報告で終わって `--resume` で結果を渡す往復にする（2026-11-07、段階 3 の設計）
 - `claude -p --restricted --tools "Read,Edit,Write,Glob,Grep" --permission-mode dontAsk --settings '{"permissions":{"allow":["Read","Edit","Write","Glob","Grep"]}}'` で、Claude は作業ディレクトリのファイルを書き換えられる（作業ディレクトリの外は `--restricted` で書けない）。`--json-schema` の報告で終わらせ、`--resume <session_id>` に同じフラグを付けて続きを頼むと、同じ会話（同じ `session_id`）で続く（2026-11-07、claude 2.1.319）
 - macOS には `timeout` コマンドが無い（GNU coreutils の）。シェルで時間の上限を付けるときは、Bash の道具の timeout か、プロセスを裏で起こして待つ形にする（2026-11-07）
+- `ClaudeCommandLine` は環境変数を作り直し、`USER` を渡さない。setup-token（`CLAUDE_CODE_OAUTH_TOKEN`）の代わりに手元のログイン（Keychain の `Claude Code-credentials`。アカウント名はログインのユーザー名）で試すと、claude がログインを見つけられず「Not logged in · Please run /login」で `authExpired` になる。
+  手元の claude で `TaskRunner` などを試すときは、`ClaudeSetup.executable` に、`CLAUDE_CODE_OAUTH_TOKEN`・`CLAUDE_CONFIG_DIR` を消して `USER` を足してから本物の claude を `exec` するラッパーを置く（2026-11-07、claude 2.1.319）
+- `--settings` に `"sandbox":{"enabled":true,"allowUnsandboxedCommands":false}` を足しても、`--restricted --tools "Read,Edit,Write,Glob,Grep" --permission-mode dontAsk` での書き換えと `--resume` はそのまま動き、stderr に警告も出なかった（Bash を渡さないので、sandbox が効く道具は無い。2026-11-07、claude 2.1.319・Haiku 5.5）
 
 ## SwiftUI
 
