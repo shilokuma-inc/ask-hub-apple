@@ -127,7 +127,10 @@ enum FailureCategory: Hashable, CaseIterable {
     case usageLimit
     case authExpired
     case githubOutage
+    /// Claude の API の障害（混み合い・5xx・つながらない）
+    case claudeOutage
     case macOffline
+    case timeout
     case unexpected
 
     var label: String {
@@ -140,7 +143,9 @@ enum FailureCategory: Hashable, CaseIterable {
         case .usageLimit: "利用上限"
         case .authExpired: "認証切れ"
         case .githubOutage: "GitHub の障害"
+        case .claudeOutage: "Claude の障害"
         case .macOffline: "Mac がオフライン"
+        case .timeout: "時間切れ"
         case .unexpected: "想定外"
         }
     }
@@ -156,6 +161,8 @@ struct Blocker: Hashable {
     var attempts: [Attempt]
     var occurredAt: Date
     var actions: [Action]
+    /// 止まっている作業の名前（例: Q3 の説明）。その作業だけをやめるボタンに出す。分からなければ nil
+    var subject: String?
 
     struct Attempt: Identifiable, Hashable {
         var id: Int { number }
@@ -176,6 +183,8 @@ struct Blocker: Hashable {
         /// 再認証など、人が自分で直してから再開する
         case resumeAfterFix
         case pause
+        /// 止まっている作業だけをやめ、epic は続ける（例: 説明をやめて質問に戻す）
+        case cancelJob
         /// epic をやめる
         case discard
     }

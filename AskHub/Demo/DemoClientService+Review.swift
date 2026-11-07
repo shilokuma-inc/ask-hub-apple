@@ -170,6 +170,12 @@ extension DemoClientService {
         case .handOver:
             break
 
+        case .cancelJob:
+            state.updateEpic(epicID) { epic in
+                epic.log("\(epic.blocker?.subject ?? "止まっていた作業")をやめました", at: date)
+                epic.blocker = nil
+            }
+
         case .fixWithInstruction, .retry, .resumeAfterFix:
             state.updateEpic(epicID) { epic in
                 let attempt = (epic.blocker?.attempts.count ?? 0) + 1

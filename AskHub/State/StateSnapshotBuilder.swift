@@ -8,6 +8,8 @@ struct StateIndex {
         var id: ULID
         var goalVersion: Int?
         var readinessVersion: Int?
+        /// 「対処が要ります」に出した、人の対応を待っているジョブ（やり直す・やめるの対象）
+        var blockedJob: JobTarget?
     }
 
     struct QuestionEntry {
@@ -38,10 +40,12 @@ struct StateSnapshotBuilder {
         var index = StateIndex()
         var epics = documents.epics.map { epic($0, index: &index) }
         var repositories = documents.repositories.map { repository($0, epics: epics, index: &index) }
+        let overlaid = intentsToOverlay()
         // 古い順に当てる（同じ質問に答え直したときは、新しい回答が残る）
-        for envelope in intentsToOverlay().reversed() {
+        for envelope in overlaid.reversed() {
             apply(envelope, to: &epics, repositories: &repositories, index: &index)
         }
+        applyBlockers(to: &epics, overlaid: overlaid, index: &index)
         applyRejections(to: &epics)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
