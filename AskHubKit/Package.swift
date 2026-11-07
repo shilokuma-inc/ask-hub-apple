@@ -29,6 +29,8 @@ let package = Package(
         .library(name: "AskHubClient", targets: ["AskHubClient"]),
         // 司令塔の段取り（Claude に頼むジョブの依頼の文と結果の形）。常時オンの Mac で使う
         .library(name: "AskHubCommander", targets: ["AskHubCommander"]),
+        // ワーカーが子 PR と最終 PR を扱う GitHub の操作（作る・CI とレビューを読む・流し直す・マージ）
+        .library(name: "AskHubPullRequests", targets: ["AskHubPullRequests"]),
         // macOS で launchd から常駐させる CLI。アプリからは使わない
         .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
         // リニューアルの司令塔（常時オンの Mac で LaunchAgent として常駐させる CLI）
@@ -51,6 +53,7 @@ let package = Package(
             name: "AskHubCommander",
             dependencies: ["AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubJobs", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
         ),
+        .target(name: "AskHubPullRequests", dependencies: ["AskHubProtocol", "AskHubStateStore"]),
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
@@ -75,6 +78,7 @@ let package = Package(
             name: "AskHubCommanderTests",
             dependencies: ["AskHubCommander", "AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
         ),
+        .testTarget(name: "AskHubPullRequestsTests", dependencies: ["AskHubPullRequests", "AskHubProtocol", "AskHubStateStore"]),
         .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]
 )
