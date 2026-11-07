@@ -90,7 +90,8 @@ extension JobKind {
         case .makeQuestions, .reviseQuestion, .checkReadiness: .abandonsEpic
         case .explain, .reviseGoal: .jobOnly
         case .prepareWorkspace, .implementTask, .reviewTask, .fixTask, .integrateDevelop, .verifyBeforeFinal, .openFinalPullRequest,
-             .fixFinalPullRequest, .rerunChecks, .classifyDecisions, .captureScreenshots, .mergeFinalPullRequest, .cleanUp, .notify:
+             .reviewFinalPullRequest, .fixFinalPullRequest, .rerunChecks, .classifyDecisions, .captureScreenshots, .mergeFinalPullRequest,
+             .cleanUp, .notify:
             nil
         }
     }

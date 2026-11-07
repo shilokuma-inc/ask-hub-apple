@@ -109,6 +109,7 @@ extension JobKind {
         case .fixTask: "タスクの直し"
         case .integrateDevelop: "develop の取り込み"
         case .verifyBeforeFinal: "最終 PR の前の検証"
+        case .reviewFinalPullRequest: "最終 PR のレビュー"
         case .openFinalPullRequest: "最終 PR の作成"
         case .fixFinalPullRequest: "最終 PR の直し"
         case .rerunChecks: "CI の流し直し"

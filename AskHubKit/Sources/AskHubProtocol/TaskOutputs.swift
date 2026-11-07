@@ -2,8 +2,10 @@ import Foundation
 
 /// 子 PR のレビュー（`reviewTask`）の判定。司令塔は、これを読んで次のジョブを決める
 public enum ReviewVerdict: String, Codable, Sendable, CaseIterable {
-    /// チェックが通り、レビュー役の必須の指摘も無く、見た head でマージした
+    /// チェックが通り、レビュー役の必須の指摘も無く、見た head でマージした（子 PR）
     case merged
+    /// 最終 PR のチェックとレビューが通った。マージはマージの規則と人の承認で決める（最終 PR）
+    case ready
     /// CI が落ちた（揺らぎの流し直しの後も）。`findings` に落ちたチェックとログの抜粋
     case fixCI
     /// レビュー役が必須の指摘をした。`findings` に指摘
@@ -72,6 +74,28 @@ public struct TaskOutputReport: Codable, Equatable, Sendable {
             if !labels.contains(question.recommended) { problems.append("report.question の推奨が選択肢に無い") }
         }
         return problems
+    }
+}
+
+/// 最終 PR のレビュー（`reviewFinalPullRequest`）が見つけた、手動のマージの条件に当たるもの（`docs/renewal/flows.md` の「マージの規則」）
+public struct MergeRisk: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable, CaseIterable {
+        /// レビュー役（または CodeRabbit）がセキュリティのリスクを指摘した
+        case security
+        /// 自動の修正がテストを消した・skip にした・Lint を緩めた
+        case weakenedTests
+        /// データの削除・移行を含む
+        case dataMigration
+        /// 注意の要るパス（`.github/`・ビルドのスクリプト・依存の追加・entitlements・署名の設定・トークンや Keychain のコードなど）に差分がある
+        case sensitivePaths
+    }
+
+    public var kind: Kind
+    public var reason: String
+
+    public init(kind: Kind, reason: String) {
+        self.kind = kind
+        self.reason = reason
     }
 }
 

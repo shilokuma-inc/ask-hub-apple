@@ -50,8 +50,26 @@
               "description": "作ったブランチ（作業場所の用意の作業ブランチなど）。epic.json の branch と同じ形"
             },
             "verdict": {
-              "anyOf": [{ "enum": ["merged", "fixCI", "fixReview"] }, { "type": "null" }],
-              "description": "子 PR のレビューの判定（reviewTask）。fixCI・fixReview のときは findings を持つ（読む側で確かめる）"
+              "anyOf": [{ "enum": ["merged", "ready", "fixCI", "fixReview"] }, { "type": "null" }],
+              "description": "子 PR のレビュー（reviewTask）と最終 PR のレビュー（reviewFinalPullRequest）の判定。fixCI・fixReview のときは findings を持つ（読む側で確かめる）"
+            },
+            "mergeRisks": {
+              "description": "最終 PR のレビューが見つけた、手動のマージの条件に当たるもの（reviewFinalPullRequest）",
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["kind", "reason"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": { "enum": ["security", "weakenedTests", "dataMigration", "sensitivePaths"] },
+                      "reason": { "type": "string", "minLength": 1 }
+                    }
+                  }
+                },
+                { "type": "null" }
+              ]
             },
             "findings": {
               "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 20000 }, { "type": "null" }],

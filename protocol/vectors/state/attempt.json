@@ -154,6 +154,80 @@
       "read": "valid"
     },
     {
+      "name": "final-review-ready-with-risks",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000004",
+        "n": 1,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "outputs": {
+          "pullRequest": 512,
+          "commit": "0123456789abcdef0123456789abcdef01234567",
+          "verdict": "ready",
+          "mergeRisks": [
+            {
+              "kind": "sensitivePaths",
+              "reason": ".github/workflows/build.yml を変えた"
+            }
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "merge-risk-empty-reason",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000004",
+        "n": 1,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "outputs": {
+          "verdict": "ready",
+          "mergeRisks": [
+            {
+              "kind": "security",
+              "reason": ""
+            }
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-merge-risk",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000004",
+        "n": 1,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:20:00Z",
+        "outcome": "succeeded",
+        "outputs": {
+          "verdict": "ready",
+          "mergeRisks": [
+            {
+              "kind": "license",
+              "reason": "…"
+            }
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "review-fix-ci",
       "value": {
         "v": 1,
