@@ -130,7 +130,10 @@ public struct ReviewTaskRunner: JobRunning {
             branches: target.branches,
             checkout: checkout
         )
-        let request = TaskReview.request(for: subject, repository: job.repo)
+        guard let request = TaskReview.request(for: subject, repository: job.repo) else {
+            let limit = TaskReview.maximumTextBytes
+            throw .fail(.unexpected, "ゴールとこのタスクの文が長すぎて、レビュー役の Claude に渡せない（決まりの文と合わせて UTF-8 で \(limit) バイトまで）")
+        }
         switch await environment.reviewer.ask(request, as: TaskReviewResult.self, now: environment.context.now, check: { $0.problems }) {
         case let .answered(result, session):
             return (result, session)

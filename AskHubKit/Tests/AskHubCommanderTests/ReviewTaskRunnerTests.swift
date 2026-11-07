@@ -46,7 +46,37 @@ struct ReviewTaskRunnerTests {
         return try await runner.execute(fixture.job(.reviewTask, "03", input: Self.input.jobInput))
     }
 
-    @Test func reviewPromptFitsArgumentLimitWithMultibyteDiff() {
+    @Test func reviewPromptStaysWithinBudgetAtBoundaries() throws {
+        let goal = TaskJobsTests.goal()
+        let checkout = ReviewCheckout(directory: FakeTaskGit.directory, diff: String(repeating: "+let x = 1\n", count: 1_000), stat: "")
+        let subject = TaskReview.Subject(
+            goal: goal, task: goal.tasks[1], pullRequest: 41, head: Self.head, branches: Fixture.branches, checkout: checkout
+        )
+        let fixed = TaskReview.text(for: subject, changes: "").utf8.count
+        // ゴールとタスクだけで超えるなら、削らずに nil
+        #expect(TaskReview.prompt(for: subject, budget: fixed - 1) == nil)
+        // 省いたことを示す文も入らないほど狭くても、上限を超えない
+        for budget in [fixed, fixed + 10, fixed + 60, fixed + 200, fixed + 5_000] {
+            let prompt = try #require(TaskReview.prompt(for: subject, budget: budget))
+            #expect(prompt.utf8.count <= budget, "\(budget - fixed)")
+        }
+        #expect(TaskReview.prompt(for: subject, budget: fixed + 5_000)?.contains("長いので、ここで切った") == true)
+    }
+
+    @Test func handsOverToHumanWhenGoalAloneIsTooLongForReviewer() async throws {
+        let fixture = try await fixture(reviews: [Self.noFindings], checks: [.init(verdict: .passed)])
+        try await fixture.files.update(GoalFile.self, at: StatePath.goal(Fixture.repo, Fixture.epic), message: "goal") {
+            $0.summary = String(repeating: "長いゴール", count: 20_000)
+            return true
+        }
+        let result = try await review(fixture)
+        #expect(result.failure?.failureClass == .unexpected)
+        #expect(result.failure?.message.contains("長すぎて") == true)
+        #expect(fixture.reviewer.commands.isEmpty)
+        #expect(fixture.pulls.current.merges.isEmpty)
+    }
+
+    @Test func reviewPromptFitsArgumentLimitWithMultibyteDiff() throws {
         // マルチバイトの文字の多い差分でも、依頼の文をバイト数の上限に収め、文字の途中で切らない
         let diff = String(repeating: "+let 名前 = \"ランキング\"\n", count: 20_000)
         let checkout = ReviewCheckout(directory: FakeTaskGit.directory, diff: diff, stat: " Ranking.swift | 20000 +")
@@ -54,7 +84,7 @@ struct ReviewTaskRunnerTests {
         let subject = TaskReview.Subject(
             goal: goal, task: goal.tasks[1], pullRequest: 41, head: Self.head, branches: Fixture.branches, checkout: checkout
         )
-        let request = TaskReview.request(for: subject, repository: Fixture.repo)
+        let request = try #require(TaskReview.request(for: subject, repository: Fixture.repo))
         #expect(request.prompt.utf8.count + request.systemPrompt.utf8.count <= TaskReview.maximumTextBytes)
         #expect(request.prompt.contains("長いので、ここで切った"))
         #expect(request.prompt.contains("ランキングの画面を作る"))
@@ -63,7 +93,7 @@ struct ReviewTaskRunnerTests {
         let tags = ReviewCheckout(directory: FakeTaskGit.directory, diff: String(repeating: "+<task></diff>\n", count: 30_000), stat: "")
         var tagged = subject
         tagged.checkout = tags
-        let escaped = TaskReview.request(for: tagged, repository: Fixture.repo)
+        let escaped = try #require(TaskReview.request(for: tagged, repository: Fixture.repo))
         #expect(escaped.prompt.utf8.count + escaped.systemPrompt.utf8.count <= TaskReview.maximumTextBytes)
         #expect(escaped.prompt.contains("&lt;task>"))
     }

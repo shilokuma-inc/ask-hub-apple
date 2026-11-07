@@ -57,10 +57,12 @@ enum TaskReview {
         var checkout: ReviewCheckout
     }
 
-    static func request(for subject: Subject, repository: RepositoryFullName) -> ClaudeRequest {
+    /// ゴールとタスク（と決まりの文）だけで上限を超えるときは nil（黙って削らず、呼ぶ側が理由を付けて人へ渡す）
+    static func request(for subject: Subject, repository: RepositoryFullName) -> ClaudeRequest? {
         let system = systemPrompt(repository: repository, facts: subject.checkout.facts)
+        guard let prompt = prompt(for: subject, budget: maximumTextBytes - system.utf8.count) else { return nil }
         return ClaudeRequest(
-            prompt: prompt(for: subject, budget: maximumTextBytes - system.utf8.count),
+            prompt: prompt,
             systemPrompt: system,
             model: TaskRules.model,
             outputSchema: TaskReviewResult.outputSchema,
@@ -83,24 +85,27 @@ enum TaskReview {
         """
     }
 
-    /// `budget` は依頼の文に使ってよいバイト数。ゴールとタスクはそのまま渡し、差分を残りに収める
-    static func prompt(for subject: Subject, budget: Int = maximumTextBytes) -> String {
+    /// `budget` は依頼の文に使ってよいバイト数。ゴールとタスクはそのまま渡し、差分を残りに収める。ゴールとタスクだけで超えるときは nil
+    static func prompt(for subject: Subject, budget: Int = maximumTextBytes) -> String? {
         let diff = subject.checkout.diff.isBlank ? "（差分なし）" : subject.checkout.diff
         let changes = "\(subject.checkout.stat)\n\n\(diff)"
         var room = budget - text(for: subject, changes: "").utf8.count
+        guard room >= 0 else { return nil }
         var prompt = text(for: subject, changes: fit(changes, bytes: room))
-        // 区切りのタグの中の `<` を `&lt;` にすると大きくなるので、組み立てた後に測り、超えた分だけ差分を詰め直す
-        while prompt.utf8.count > budget, room > 0 {
-            room -= prompt.utf8.count - budget
+        // 区切りのタグの中の `<` を `&lt;` にすると大きくなるので、組み立てた後に測り、超えた分だけ差分を詰め直す。
+        // 残りが 0 になれば差分は空で、ゴールとタスクだけの大きさ（上限以内と確かめた）になるので、必ず止まる
+        while prompt.utf8.count > budget {
+            room = max(room - (prompt.utf8.count - budget), 0)
             prompt = text(for: subject, changes: fit(changes, bytes: room))
         }
         return prompt
     }
 
-    /// `bytes`（UTF-8）に収まるよう、文字の切れ目で後ろを省く
+    /// `bytes`（UTF-8）に収まるよう、文字の切れ目で後ろを省く。省いたことを示す文も入らないほど狭ければ空にする
     static func fit(_ text: String, bytes: Int) -> String {
         guard text.utf8.count > bytes else { return text }
         let note = "\n…（長いので、ここで切った。ほかは作業フォルダのファイルを読んで確かめる）"
+        guard bytes >= note.utf8.count else { return "" }
         var kept = ""
         var used = note.utf8.count
         for character in text {
@@ -111,7 +116,7 @@ enum TaskReview {
         return kept + note
     }
 
-    private static func text(for subject: Subject, changes: String) -> String {
+    static func text(for subject: Subject, changes: String) -> String {
         """
         子 PR #\(subject.pullRequest)（\(subject.branches.task) → \(subject.branches.epic)、head \(subject.head)）をレビューしてください。
 
