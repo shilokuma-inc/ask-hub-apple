@@ -113,6 +113,12 @@ struct NotifierTests {
     /// 端末の宛先を置いた状態リポジトリ
     func storeWithDevice() async throws -> InMemoryStateStore {
         let store = InMemoryStateStore()
+        try await putDevice(in: store)
+        return store
+    }
+
+    /// 端末の宛先を置く
+    func putDevice(in store: InMemoryStateStore) async throws {
         let file = DeviceFile(
             device: deviceID,
             platform: .ios,
@@ -120,7 +126,6 @@ struct NotifierTests {
             updatedAt: Timestamp(Self.now)
         )
         try await put(file, at: StatePath.device(deviceID), in: store)
-        return store
     }
 
     func ledger(_ store: InMemoryStateStore) async throws -> [String] {
