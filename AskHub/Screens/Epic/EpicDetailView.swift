@@ -28,7 +28,7 @@ struct EpicDetailView: View {
                     Task { await store.send(.discard(epicID: epic.id)) }
                 }
             } message: {
-                Text("作業ブランチと子 PR は片付けます。元に戻せません")
+                Text(discardMessage(epic))
             }
             .sheet(item: $shownQuestion) { question in
                 QuestionSheet(epic: epic, question: question)
@@ -81,6 +81,13 @@ struct EpicDetailView: View {
             }
             HistorySection(history: epic.history, now: store.currentDate())
         }
+    }
+
+    private func discardMessage(_ epic: Epic) -> String {
+        guard epic.stage >= .implementing else {
+            return "開始する前なので、作業ブランチや子 PR はまだありません。元に戻せません"
+        }
+        return "作業ブランチと子 PR は片付けます。元に戻せません"
     }
 
     private func subtitle(_ epic: Epic) -> String {

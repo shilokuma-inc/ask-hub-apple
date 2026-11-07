@@ -10,6 +10,8 @@ struct StateIndex {
         var readinessVersion: Int?
         /// 「対処が要ります」に出した、人の対応を待っているジョブ（やり直す・やめるの対象）
         var blockedJob: JobTarget?
+        /// 取り下げられるか（開始する前で、やめていない。処理を待つ意図を当てた後の段階で決める）
+        var canAbandon = false
     }
 
     struct QuestionEntry {
@@ -46,6 +48,10 @@ struct StateSnapshotBuilder {
             apply(envelope, to: &epics, repositories: &repositories, index: &index)
         }
         applyBlockers(to: &epics, overlaid: overlaid, index: &index)
+        // 開始した後の取り下げ（作業のブランチの片付けなど）は段階 3 で送る
+        for epic in epics where epic.isActive && epic.stage < .implementing {
+            index.epics[epic.id]?.canAbandon = true
+        }
         applyRejections(to: &epics)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },

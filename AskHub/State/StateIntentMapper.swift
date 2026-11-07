@@ -13,7 +13,7 @@ struct StateIntentMapper {
     static let blockerActions: Set<Blocker.Action> = [.retry, .resumeAfterFix, .cancelJob, .discard]
 
     /// 状態リポジトリに送れる意図か。段階 3 の操作（判断のカード・マージ・引き継ぎ・確認・片付けなど）は、まだ送れない。
-    /// 人に渡されたジョブへの操作は、最後に読んだ状態にそのジョブがあるときだけ送れる
+    /// 人に渡されたジョブへの操作は、最後に読んだ状態にそのジョブがあるときだけ、取り下げは開始する前の epic だけ送れる
     func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
@@ -22,7 +22,10 @@ struct StateIntentMapper {
         case let .resolveBlocker(epicID, action, _):
             Self.blockerActions.contains(action) && index.epics[epicID]?.blockedJob != nil
 
-        case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume, .discard,
+        case .discard(let epicID):
+            index.epics[epicID]?.canAbandon == true
+
+        case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume,
              .completeHumanTask, .submitSecret, .verify, .cleanUp:
             false
         }
@@ -33,7 +36,7 @@ struct StateIntentMapper {
         case .answer, .requestExplanation:
             return try questionDraft(intent)
 
-        case .reviseGoal, .start, .decideSplit:
+        case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
         case .request, .addRepository:
@@ -42,7 +45,7 @@ struct StateIntentMapper {
         case let .resolveBlocker(epicID, action, _):
             return try blockerDraft(epicID: epicID, action: action)
 
-        case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume, .discard,
+        case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume,
              .completeHumanTask, .submitSecret, .verify, .cleanUp:
             throw Self.unsupported
         }
@@ -80,6 +83,13 @@ struct StateIntentMapper {
                 throw ClientServiceError(message: "着手前の確認の結果がまだありません")
             }
             return .decideSplit(EpicTarget(repo: epic.repo, epic: epic.id, version: version), choice: choice == .split ? .split : .proceed)
+
+        case .discard(let epicID):
+            let epic = try epic(epicID)
+            guard epic.canAbandon else {
+                throw ClientServiceError(message: "開始した epic の取り下げは、まだ送れません")
+            }
+            return .abandonEpic(repo: epic.repo, epic: epic.id)
 
         default:
             throw Self.unsupported
