@@ -116,6 +116,9 @@ public struct StartEpicHandler: IntentHandler {
         in context: CommanderContext
     ) async throws(CommanderError) -> String? {
         guard epic.stage == .awaitingStart else { return "開始できる段階でない（今は \(epic.stage.rawValue)）" }
+        let repository = try await context.read(RepositoryFile.self, at: StatePath.repository(epic.repo))
+        // ワーカーはビルドの設定でビルド・テストし、子 PR と最終 PR のチェックを待つので、無ければ始めない
+        guard repository?.build != nil else { return "\(epic.repo) のビルドの設定（repo.json の build）が無い。設定を入れてから開始する" }
         let goal = try await context.read(GoalFile.self, at: StatePath.goal(epic.repo, epic.id))
         guard let goal else { return "ゴールが無い" }
         guard goal.version == start.target.version else { return "ゴールが直された（今の版は \(goal.version)）。新しいゴールを確かめて開始し直す" }
@@ -124,15 +127,21 @@ public struct StartEpicHandler: IntentHandler {
         case nil: return Self.unreadableJobs
         case false?: break
         }
-        guard let mac = try await context.read(MacFile.self, at: StatePath.mac(start.mac)) else { return "Mac \(start.mac) が登録されていない" }
-        if context.now().timeIntervalSince(mac.seenAt.date) > TimeInterval(timing.macStaleAfter.components.seconds) {
-            return "Mac \(start.mac) がオフライン（最後の生きている印は \(mac.seenAt)）"
-        }
-        let limit = try await context.read(RepositoryFile.self, at: StatePath.repository(epic.repo))?.maxConcurrentEpics ?? 1
+        if let problem = try await macProblem(start.mac, in: context) { return problem }
+        let limit = repository?.maxConcurrentEpics ?? 1
         guard let running = try await runningEpics(of: epic.repo, except: epic.id, in: context) else {
             return "読めない epic があり、同時に回している数を確かめられない（司令塔を新しくする）"
         }
         if running >= limit { return "同時に回せる epic の上限（\(limit) 本）に達している。ほかの epic が終わってから開始する" }
+        return nil
+    }
+
+    /// 選ばれた Mac で始められない理由（登録されていない・オフライン）。始められれば nil
+    private func macProblem(_ name: MacName, in context: CommanderContext) async throws(CommanderError) -> String? {
+        guard let mac = try await context.read(MacFile.self, at: StatePath.mac(name)) else { return "Mac \(name) が登録されていない" }
+        if context.now().timeIntervalSince(mac.seenAt.date) > TimeInterval(timing.macStaleAfter.components.seconds) {
+            return "Mac \(name) がオフライン（最後の生きている印は \(mac.seenAt)）"
+        }
         return nil
     }
 
