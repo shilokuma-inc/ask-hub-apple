@@ -9,13 +9,20 @@ import Foundation
 struct StateIntentMapper {
     let index: StateIndex
 
-    /// 状態リポジトリに送れる意図か。段階 3 の操作（判断のカード・マージ・要対応・引き継ぎ・確認・片付け）は、まだ送れない
-    static func supports(_ intent: HumanIntent) -> Bool {
+    /// 人に渡されたジョブへの操作のうち、送れるもの（やり直す・やめる）。指示を添えて直させる・引き継ぎ・一時停止は段階 3 で送る
+    static let blockerActions: Set<Blocker.Action> = [.retry, .resumeAfterFix, .cancelJob, .discard]
+
+    /// 状態リポジトリに送れる意図か。段階 3 の操作（判断のカード・マージ・引き継ぎ・確認・片付けなど）は、まだ送れない。
+    /// 人に渡されたジョブへの操作は、最後に読んだ状態にそのジョブがあるときだけ送れる
+    func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
             true
 
-        case .respondToDecision, .acceptAllDecisions, .merge, .resolveBlocker, .handOver, .pause, .resume, .discard,
+        case let .resolveBlocker(epicID, action, _):
+            Self.blockerActions.contains(action) && index.epics[epicID]?.blockedJob != nil
+
+        case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume, .discard,
              .completeHumanTask, .submitSecret, .verify, .cleanUp:
             false
         }
@@ -32,7 +39,10 @@ struct StateIntentMapper {
         case .request, .addRepository:
             return try repositoryDraft(intent)
 
-        case .respondToDecision, .acceptAllDecisions, .merge, .resolveBlocker, .handOver, .pause, .resume, .discard,
+        case let .resolveBlocker(epicID, action, _):
+            return try blockerDraft(epicID: epicID, action: action)
+
+        case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume, .discard,
              .completeHumanTask, .submitSecret, .verify, .cleanUp:
             throw Self.unsupported
         }
@@ -93,6 +103,23 @@ struct StateIntentMapper {
             return .addRepository(repo)
 
         default:
+            throw Self.unsupported
+        }
+    }
+
+    /// 人に渡されたジョブへの操作。人が見たときの試行の番号を付ける（その後に試行が進んでいれば、司令塔が断る）
+    private func blockerDraft(epicID: Epic.ID, action: Blocker.Action) throws(ClientServiceError) -> IntentDraft {
+        guard let job = try epic(epicID).blockedJob else {
+            throw ClientServiceError(message: "対処を待っている作業がありません。取り直してから送ってください")
+        }
+        switch action {
+        case .retry, .resumeAfterFix:
+            return .retry(job)
+
+        case .cancelJob, .discard:
+            return .giveUp(job)
+
+        case .fixWithInstruction, .handOver, .pause:
             throw Self.unsupported
         }
     }

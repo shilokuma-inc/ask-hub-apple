@@ -45,7 +45,7 @@ final class StateClientService: ClientService {
     }
 
     func supports(_ intent: HumanIntent) -> Bool {
-        StateIntentMapper.supports(intent)
+        StateIntentMapper(index: index).supports(intent)
     }
 }
 
