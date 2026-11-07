@@ -82,6 +82,8 @@ struct GitRepositoryWorkspaceTests {
         #expect(config["core.attributesFile"] == "/dev/null")
         #expect(config["core.excludesFile"] == "/dev/null")
         #expect(config["credential.helper"] == "!'/opt/askhub/askhub-commander' git-credential")
+        // credential helper がリポジトリの持ち主でトークンを選べるよう、path を渡す
+        #expect(config["credential.useHttpPath"] == "true")
         #expect(environment["GIT_CONFIG_GLOBAL"] == "/dev/null")
         #expect(environment["GIT_CONFIG_NOSYSTEM"] == "1")
         #expect(environment["GIT_TERMINAL_PROMPT"] == "0")

@@ -51,14 +51,56 @@ public struct MachineCommandLine: Sendable {
         var configuration = setup.configuration
         adjust(&configuration)
         do {
-            try storeSecret(.githubToken, prompt: "GitHub のトークン（状態リポジトリと対象のリポジトリを読み書きできるもの）: ") { _ in nil }
+            for owner in configuration.tokenOwners {
+                try storeGitHubToken(for: owner)
+            }
             try storeSecret(.claudeToken, prompt: "Claude の setup-token: ", problem: MachineSetup.claudeTokenProblem)
             try TrustAnchor(store: secrets).pin(firstKey: setup.firstKey)
+            // 前の 1 つの GitHub のトークンは、持ち主ごとのトークンに置き換えたので使わない。Keychain に残さない
+            if try secrets.read(.githubToken) != nil {
+                try secrets.delete(.githubToken)
+                print("前の 1 つの GitHub のトークンを Keychain から消しました（持ち主ごとのトークンを使う）。")
+            }
             try configuration.save(to: paths.configuration)
         } catch {
             fail("セットアップを終えられない（\(error)）", status: EX_SOFTWARE)
         }
         print("設定を \(paths.configuration.path) に書き、トークンを Keychain に置きました。")
+    }
+
+    /// `token <持ち主>`: 持ち主の GitHub のトークンを入れ直す・足す。足した持ち主は設定にも書く（自己診断で確かめる）
+    public func token(_ arguments: [String]) {
+        guard arguments.count == 1, let owner = GitHubTokens.normalizedOwner(arguments[0]) else {
+            fail("使い方: \(role.program) token <GitHub の持ち主（organization・個人）>", status: EX_USAGE)
+        }
+        var configuration = loadConfiguration()
+        do {
+            try storeGitHubToken(for: owner)
+            if !configuration.tokenOwners.contains(owner) {
+                configuration.githubOwners.append(owner)
+                try configuration.save(to: paths.configuration)
+            }
+        } catch {
+            fail("トークンを置けない（\(error)）", status: EX_SOFTWARE)
+        }
+        print("""
+            \(owner) の GitHub のトークンを Keychain に置きました。トークンを置いた持ち主: \(configuration.tokenOwners.joined(separator: "、"))
+            常駐していれば、次の要求から使います（読み込み直しは要りません）
+            """)
+    }
+
+    /// 持ち主の fine-grained token を、端末で伏せて入れてもらって置く。すでにあれば、空のまま Enter で今のままにする
+    func storeGitHubToken(for owner: String) throws {
+        let tokens = GitHubTokens(secrets: secrets)
+        let existing = try tokens.contains(owner)
+        let prompt = "\(owner) の GitHub の fine-grained token（github_pat_ で始まる）: "
+        let value = readSecret(existing ? prompt + "（今のままなら空で Enter）" : prompt)
+        if value.isEmpty {
+            guard existing else { fail("値が空", status: EX_USAGE) }
+            return
+        }
+        if let problem = GitHubTokens.problem(of: value) { fail(problem, status: EX_USAGE) }
+        try tokens.store(value, for: owner)
     }
 
     /// 端末で伏せて入れてもらい、Keychain に置く。すでにあれば、空のまま Enter で今のままにする
@@ -105,21 +147,15 @@ public struct MachineCommandLine: Sendable {
 
     // MARK: - git-credential・launch-agent・check
 
-    /// git の credential helper。github.com の https のときだけ、Keychain の GitHub のトークンを返す
+    /// git の credential helper。github.com の https のときだけ、問い合わせの path の持ち主のトークンを Keychain から返す
     public func gitCredential(_ arguments: [String]) {
         let request = String(bytes: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let response: String
         do {
-            response = try GitCredential.response(to: request, operation: arguments.first ?? "") {
-                let token = try secrets.read(.githubToken).flatMap { String(bytes: $0, encoding: .utf8) }
-                // 理由は標準エラーに出す（git の失敗の文に入り、試行の記録で分かる。トークンの値は出さない）
-                if token == nil {
-                    FileHandle.standardError.write(Data("\(role.program) git-credential: Keychain に GitHub のトークンが無い\n".utf8))
-                }
-                return token
-            }
+            response = try GitCredential.response(to: request, operation: arguments.first ?? "", tokens: GitHubTokens(secrets: secrets))
         } catch {
-            FileHandle.standardError.write(Data("\(role.program) git-credential: Keychain を読めない（\(error)）\n".utf8))
+            // 理由は標準エラーに出す（git の失敗の文に入り、試行の記録で分かる。トークンの値は出さない）。何も返さず、git を失敗させる
+            FileHandle.standardError.write(Data("\(role.program) git-credential: \(error)\n".utf8))
             response = ""
         }
         FileHandle.standardOutput.write(Data(response.utf8))
@@ -146,7 +182,10 @@ public struct MachineCommandLine: Sendable {
     /// 設定と Keychain の様子（秘密の値は出さない）。役割ごとの行は呼ぶ側で足す
     public func checkLines(version: String) -> [String] {
         let configuration = try? MachineConfiguration.load(from: paths.configuration, role: role)
-        let selfCheck = MachineProbe(secrets: secrets, volume: paths.root).selfCheck()
+        let owners = configuration?.tokenOwners ?? []
+        let selfCheck = MachineProbe(secrets: secrets, volume: paths.root, owners: owners).selfCheck()
+        let tokens = GitHubTokens(secrets: secrets)
+        let ownerStates = owners.map { owner in "\(owner) \(((try? tokens.state(of: [owner])) ?? .invalid).rawValue)" }
         let firstKey = (try? TrustAnchor(store: secrets).firstKey()).flatMap { $0 }
         let summary = configuration.map { configuration in
             let capacity = "Claude \(configuration.capacity.claude)・ビルド \(configuration.capacity.build)"
@@ -157,7 +196,8 @@ public struct MachineCommandLine: Sendable {
             "版: \(version)",
             "設定: \(summary ?? "読めない（setup を流す）")",
             "Keychain: \(selfCheck.keychain.rawValue)",
-            "GitHub のトークン: \(selfCheck.githubToken.rawValue)、Claude のトークン: \(selfCheck.claudeToken.rawValue)",
+            "GitHub のトークン: \(selfCheck.githubToken.rawValue)（\(ownerStates.joined(separator: "、"))）",
+            "Claude のトークン: \(selfCheck.claudeToken.rawValue)",
             "最初の鍵: \(firstKey?.rawValue ?? "固定していない")"
         ]
     }

@@ -1,3 +1,4 @@
+import AskHubKeychain
 import AskHubProtocol
 import Foundation
 
@@ -42,6 +43,9 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
     public var keyAccounts: [String]
     /// この Mac で同時に動かす数
     public var capacity: MacFile.Capacity
+    /// GitHub のトークンを置く、状態リポジトリのほかの持ち主（対象のリポジトリの organization・個人）。
+    /// fine-grained token は 1 つの持ち主のリポジトリしか扱えないので、持ち主ごとに Keychain に置く（`tokenOwners`）
+    public var githubOwners: [String]
     /// 進行を止めるものを APNs で知らせるための設定（司令塔だけ。`askhub-commander apns` で足す）。無ければ知らせない
     public var apns: APNsConfiguration?
 
@@ -53,6 +57,7 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         claude: String,
         keyAccounts: [String],
         capacity: MacFile.Capacity = .init(claude: 2, build: 0),
+        githubOwners: [String] = [],
         apns: APNsConfiguration? = nil
     ) {
         self.stateRepository = stateRepository
@@ -62,7 +67,18 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         self.claude = claude
         self.keyAccounts = keyAccounts
         self.capacity = capacity
+        self.githubOwners = githubOwners
         self.apns = apns
+    }
+
+    /// GitHub のトークンを置く持ち主（状態リポジトリの持ち主が先頭。小文字にそろえ、重ねない）
+    public var tokenOwners: [String] {
+        var owners: [String] = []
+        for owner in [stateRepository.owner] + githubOwners {
+            guard let normalized = GitHubTokens.normalizedOwner(owner), !owners.contains(normalized) else { continue }
+            owners.append(normalized)
+        }
+        return owners
     }
 
     /// 設定の形の問題。空なら使える
@@ -72,6 +88,9 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         if keyAccounts.isEmpty || keyAccounts.contains(where: \.isEmpty) { problems.append("keyAccounts に GitHub のアカウントを 1 つ以上書く") }
         if capacity.claude < 1 { problems.append("capacity.claude は 1 以上") }
         if capacity.build < 0 { problems.append("capacity.build は 0 以上") }
+        if let owner = githubOwners.first(where: { GitHubTokens.normalizedOwner($0) == nil }) {
+            problems.append("githubOwners の \(owner) は GitHub の持ち主の名前の形でない")
+        }
         problems += apns?.problems ?? []
         return problems
     }

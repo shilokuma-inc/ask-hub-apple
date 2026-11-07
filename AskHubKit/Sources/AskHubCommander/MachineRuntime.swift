@@ -34,7 +34,7 @@ public struct MachineRuntime: Sendable {
             repository: configuration.stateRepository,
             branch: configuration.stateBranch,
             budget: budget,
-            token: githubToken(in: secrets)
+            token: githubToken(for: configuration.stateRepository.owner, in: secrets)
         )
         let claude = ClaudeSetup(
             executable: URL(fileURLWithPath: configuration.claude),
@@ -51,7 +51,7 @@ public struct MachineRuntime: Sendable {
             trusted: TrustedKeys(
                 anchor: TrustAnchor(store: secrets), store: store, accounts: Set(configuration.keyAccounts), log: MachineCommandLine.log
             ),
-            probe: MachineProbe(secrets: secrets, volume: paths.root),
+            probe: MachineProbe(secrets: secrets, volume: paths.root, owners: configuration.tokenOwners),
             workspace: GitRepositoryWorkspace(
                 setup: .init(root: paths.work, credentialHelper: GitCredential.helper(executable: commandLine.executable)),
                 runner: ProcessCommandRunner()
@@ -61,12 +61,10 @@ public struct MachineRuntime: Sendable {
         )
     }
 
-    /// GitHub のトークンを要求のたびに Keychain から読む
-    public static func githubToken(in secrets: KeychainSecretStore) -> @Sendable () async throws -> String {
+    /// 持ち主の GitHub のトークンを、要求のたびに Keychain から読む（`token` で入れ直したら、次の要求から使う）
+    public static func githubToken(for owner: String, in secrets: KeychainSecretStore) -> @Sendable () async throws -> String {
         {
-            guard let data = try secrets.read(.githubToken), let token = String(bytes: data, encoding: .utf8), !token.isEmpty else {
-                throw StateStoreError.tokenUnavailable
-            }
+            guard let token = try GitHubTokens(secrets: secrets).token(for: owner) else { throw StateStoreError.tokenUnavailable }
             return token
         }
     }

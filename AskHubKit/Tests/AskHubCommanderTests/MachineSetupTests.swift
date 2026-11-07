@@ -116,7 +116,7 @@ struct MachineSetupTests {
     @Test func keepsAPNsAcrossSetup() throws {
         // APNs を足す前に setup で書いた設定も読める（APNs の設定が無ければ知らせない）
         let text = #"""
-            {"capacity":{"build":0,"claude":2},"claude":"/opt/claude","keyAccounts":["a"],"kind":"alwaysOn",
+            {"capacity":{"build":0,"claude":2},"claude":"/opt/claude","githubOwners":[],"keyAccounts":["a"],"kind":"alwaysOn",
              "mac":"mac-mini","stateRepository":"o/r"}
             """#
         let configuration = try JSONDecoder().decode(MachineConfiguration.self, from: Data(text.utf8))
@@ -138,14 +138,28 @@ struct MachineSetupTests {
         #expect(withAPNs.problems == ["Team ID は英大文字・数字の 10 文字"])
     }
 
-    @Test func credentialHelperAnswersOnlyGitHub() throws {
-        let token = { "ghp_secret" }
-        let github = "protocol=https\nhost=github.com\n"
-        #expect(GitCredential.response(to: github, operation: "get", token: token) == "username=x-access-token\npassword=ghp_secret\n")
-        #expect(GitCredential.response(to: "protocol=https\nhost=example.com\n", operation: "get", token: token).isEmpty)
-        #expect(GitCredential.response(to: "protocol=http\nhost=github.com\n", operation: "get", token: token).isEmpty)
-        #expect(GitCredential.response(to: github, operation: "store", token: token).isEmpty)
-        #expect(GitCredential.response(to: github, operation: "get") { nil }.isEmpty)
+    @Test func credentialHelperAnswersWithTokenOfRepositoryOwner() throws {
+        let secrets = InMemorySecretStore()
+        let tokens = GitHubTokens(secrets: secrets)
+        try tokens.store("github_pat_shilokuma", for: "shilokuma-inc")
+        try tokens.store("github_pat_personal", for: "mrs1669")
+        func answer(_ request: String, _ operation: String = "get") throws(GitCredential.Problem) -> String {
+            try GitCredential.response(to: request, operation: operation, tokens: tokens)
+        }
+        let github = "protocol=https\nhost=github.com\npath=Shilokuma-Inc/askhub-sandbox.git\n"
+        #expect(try answer(github) == "username=x-access-token\npassword=github_pat_shilokuma\n")
+        #expect(try answer("protocol=https\nhost=github.com\npath=mrs1669/dotfiles.git\n").contains("github_pat_personal"))
+        // ほかのホスト・http・get でない操作には何も返さない（ほかの credential helper に任せる）
+        #expect(try answer("protocol=https\nhost=example.com\npath=shilokuma-inc/a.git\n").isEmpty)
+        #expect(try answer("protocol=http\nhost=github.com\npath=shilokuma-inc/a.git\n").isEmpty)
+        #expect(try answer(github, "store").isEmpty)
+        // 持ち主のトークンが無い・path が無いときは、ほかの持ち主のトークンを返さず、理由を返す（トークンの値は含めない）
+        #expect(throws: GitCredential.Problem.missingToken(owner: "yumemi")) {
+            try answer("protocol=https\nhost=github.com\npath=yumemi/app.git\n")
+        }
+        #expect(throws: GitCredential.Problem.missingPath) { try answer("protocol=https\nhost=github.com\n") }
+        #expect(throws: GitCredential.Problem.invalidOwner("../a.git")) { try answer("protocol=https\nhost=github.com\npath=../a.git\n") }
+        #expect(!GitCredential.Problem.missingToken(owner: "yumemi").description.contains("github_pat_"))
         let helper = GitCredential.helper(executable: URL(fileURLWithPath: "/Users/a/Library/Application Support/AskHub/askhub-commander"))
         #expect(helper == "!'/Users/a/Library/Application Support/AskHub/askhub-commander' git-credential")
     }
@@ -161,14 +175,31 @@ struct MachineSetupTests {
         #expect(plist["StandardOutPath"] as? String == "/tmp/c.log")
     }
 
-    @Test func selfCheckReportsTokensWithoutValues() {
-        let empty = MachineProbe(secrets: InMemorySecretStore(), volume: FileManager.default.temporaryDirectory).selfCheck()
+    @Test func selfCheckReportsTokensWithoutValues() throws {
+        let volume = FileManager.default.temporaryDirectory
+        let owners = ["shilokuma-inc", "mrs1669"]
+        let empty = MachineProbe(secrets: InMemorySecretStore(), volume: volume, owners: owners).selfCheck()
         #expect(empty.githubToken == .missing)
         #expect(empty.claudeToken == .missing)
-        let secrets = InMemorySecretStore([.githubToken: Data("ghp_x".utf8), .claudeToken: Data("sk-ant-api03-x".utf8)])
-        let check = MachineProbe(secrets: secrets, volume: FileManager.default.temporaryDirectory).selfCheck()
+        // 前の 1 つのトークンは見ない（持ち主ごとのトークンだけを見る）
+        let secrets = InMemorySecretStore([.githubToken: Data("github_pat_old".utf8), .claudeToken: Data("sk-ant-api03-x".utf8)])
+        let tokens = GitHubTokens(secrets: secrets)
+        try tokens.store("github_pat_a", for: "shilokuma-inc")
+        #expect(MachineProbe(secrets: secrets, volume: volume, owners: owners).selfCheck().githubToken == .missing)
+        try tokens.store("github_pat_b", for: "mrs1669")
+        let check = MachineProbe(secrets: secrets, volume: volume, owners: owners).selfCheck()
         #expect(check.githubToken == .ok)
         #expect(check.claudeToken == .invalid)
+    }
+
+    @Test func tokenOwnersStartWithStateRepositoryOwner() throws {
+        var configuration = try MachineSetup.parse([
+            "--state-repo", "shilokuma-inc/askhub-state", "--mac", "mac-mini", "--claude", "/opt/claude", "--first-key", Self.keyID,
+            "--key-account", "a", "--github-owner", "mrs1669", "--github-owner", "Shilokuma-Inc"
+        ], role: .commander).configuration
+        #expect(configuration.tokenOwners == ["shilokuma-inc", "mrs1669"])
+        configuration.githubOwners.append("a/b")
+        #expect(configuration.problems == ["githubOwners の a/b は GitHub の持ち主の名前の形でない"])
     }
 
     // MARK: - 公開鍵の一覧

@@ -189,6 +189,8 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
             ("core.attributesFile", "/dev/null"),
             ("core.excludesFile", "/dev/null"),
             ("credential.helper", setup.credentialHelper),
+            // トークンは持ち主ごとにあるので、credential helper に path（`owner/repo.git`）を渡して持ち主で選ばせる
+            ("credential.useHttpPath", "true"),
             ("protocol.file.allow", "never"),
             ("submodule.recurse", "false"),
             ("advice.detachedHead", "false")

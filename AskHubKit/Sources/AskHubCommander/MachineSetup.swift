@@ -13,7 +13,7 @@ public struct MachineSetup: Equatable, Sendable {
 
     /// 役割ごとの引数を読む。ワーカーは Mac の種類（`--kind resident|manual`）とビルドの同時の上限も受け取る
     public static func parse(_ arguments: [String], role: MachineRole) throws(Failure) -> Self {
-        var known: Set = ["state-repo", "state-branch", "mac", "claude", "first-key", "key-account", "claude-capacity"]
+        var known: Set = ["state-repo", "state-branch", "mac", "claude", "first-key", "key-account", "claude-capacity", "github-owner"]
         if role == .worker { known.formUnion(["kind", "build-capacity"]) }
         let values = try flags(arguments, known: known)
         func one(_ name: String) throws(Failure) -> String {
@@ -43,7 +43,8 @@ public struct MachineSetup: Equatable, Sendable {
             kind: kind,
             claude: try one("claude"),
             keyAccounts: values["key-account"] ?? [],
-            capacity: capacity
+            capacity: capacity,
+            githubOwners: values["github-owner"] ?? []
         )
         if let problem = configuration.problems.first { throw Failure(message: problem) }
         return Self(configuration: configuration, firstKey: firstKey)

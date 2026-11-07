@@ -11,8 +11,13 @@ extension AskHubCommanderMain {
     static func run() async {
         let runtime = await MachineRuntime.load(commandLine, budget: .commander)
         let configuration = runtime.configuration
-        // 状態リポジトリと Discussion の写しは、同じアカウントの内容を作る要求の上限を分け合うので、司令塔の書き込みの予算を 1 つにする
-        let discussions = GitHubDiscussions(budget: runtime.budget, token: MachineRuntime.githubToken(in: runtime.secrets))
+        // 状態リポジトリと Discussion の写しは、同じアカウントの内容を作る要求の上限を分け合うので、司令塔の書き込みの予算を 1 つにする。
+        // Discussion は、対象のリポジトリの持ち主のトークンで読み書きする（トークンは持ち主ごとにある）
+        let transport = GitHubURLSessionTransport()
+        let (budget, secrets) = (runtime.budget, runtime.secrets)
+        let discussions: @Sendable (RepositoryFullName) -> any DiscussionAPI = { repo in
+            GitHubDiscussions(transport: transport, budget: budget, token: MachineRuntime.githubToken(for: repo.owner, in: secrets))
+        }
         // 人の意図の処理・Claude のジョブの結果・通知の記録・写しの id の書き戻しは、同じ排他を使うよう、同じ `context` を渡す
         let context = CommanderContext(store: runtime.store, mac: configuration.mac)
         let loop = CommanderLoop(
@@ -26,7 +31,7 @@ extension AskHubCommanderMain {
             status: { runtime.probe.status() },
             notifier: notifier(configuration.apns, secrets: runtime.secrets, context: context),
             log: log,
-            mirror: DiscussionMirror(context: context, api: discussions, log: log)
+            mirror: DiscussionMirror(context: context, discussions: discussions, log: log)
         )
         log("起動しました（pid \(ProcessInfo.processInfo.processIdentifier)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
         await loop.run()
