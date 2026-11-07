@@ -24,7 +24,8 @@ struct StateFileKind: Sendable, CustomTestStringConvertible {
         .of(ConsumedIntentFile.self, "consumed"),
         .of(QuestionsFile.self, "questions"),
         .of(GoalFile.self, "goal"),
-        .of(ReadinessFile.self, "readiness")
+        .of(ReadinessFile.self, "readiness"),
+        .of(DecisionsFile.self, "decisions")
     ]
 
     static func of<File: StateFile>(_ type: File.Type, _ name: String) -> Self {
@@ -184,6 +185,12 @@ struct StateFileTests {
         #expect(StatePath.epic(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/epic.json")
         #expect(StatePath.questions(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/questions.json")
         #expect(StatePath.goal(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/goal.json")
+        #expect(StatePath.decisions(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/decisions.json")
+        let shot = StatePath.screenshot(repo, epic, decision: "d1", after: true)
+        #expect(shot == "\(base)/epics/01JCEP1C000000000000000001/screenshots/d1-after.png")
+        // 判断の一覧が持てるスクショのパスは、ここで作るものと同じ形
+        #expect(DecisionsFile.isScreenshotPath(shot))
+        #expect(!DecisionsFile.isScreenshotPath("keys/1.png"))
         #expect(
             StatePath.job(repo, epic: epic, job: job) == "\(base)/epics/01JCEP1C000000000000000001/jobs/01JCJ0B0000000000000000001.json"
         )
