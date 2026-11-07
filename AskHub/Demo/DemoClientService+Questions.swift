@@ -235,12 +235,11 @@ extension DemoClientService {
                     EpicTask(id: "\(epic.id)-t\(index + 1)", number: index + 1, title: task.title, state: .pending)
                 }
             }
-            if let first = epic.tasks.firstIndex(where: { $0.state == .pending }) {
-                epic.tasks[first].state = .inProgress
-                epic.activities = [EpicActivity(kind: .implementing(taskID: epic.tasks[first].id, attempt: 1), since: date)]
-            }
             epic.stage = .implementing
             epic.macID = macID
+            if let first = epic.tasks.firstIndex(where: { $0.state == .pending }) {
+                epic.startTask(at: first, attempt: 1, date: date)
+            }
             epic.log("開始しました", at: date)
         }
         let macName = state.mac(macID)?.name ?? macID

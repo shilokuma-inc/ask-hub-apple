@@ -83,7 +83,7 @@ extension StateSnapshotBuilder {
     private func blocker(_ job: JobFile, target: JobTarget, attempts: [AttemptFile], others: Int) -> Blocker {
         let failure = attempts.last { $0.number == job.attempts }?.failure
         let category = failure?.failureClass.category ?? .unexpected
-        let subject = Self.subject(of: job)
+        let subject = subject(of: job)
         var summary = failure?.message ?? "失敗の理由は書かれていません"
         if others > 0 {
             summary += "\nほかに \(others) 件の作業も対処を待っています（これを片付けると出ます）"
@@ -138,9 +138,17 @@ extension StateSnapshotBuilder {
         )
     }
 
-    /// 止まっている作業の名前（例: Q3 の説明）
-    static func subject(of job: JobFile) -> String {
-        guard let question = questionID(of: job) else {
+    /// 止まっている作業の名前（例: Q3 の説明・タスク 2「並べ替えのボタン」の実装）
+    func subject(of job: JobFile) -> String {
+        if let taskID = job.task, let name = taskName(taskID, epic: job.epic) {
+            switch job.kind {
+            case .implementTask: return "\(name)の実装"
+            case .reviewTask: return "\(name)の子 PR のレビュー"
+            case .fixTask: return "\(name)の直し"
+            default: break
+            }
+        }
+        guard let question = Self.questionID(of: job) else {
             return job.kind.name
         }
         switch job.kind {
@@ -153,6 +161,15 @@ extension StateSnapshotBuilder {
         default:
             return job.kind.name
         }
+    }
+
+    /// ゴールのタスクの呼び名（例: タスク 2「並べ替えのボタン」）。ゴールに無ければ nil
+    private func taskName(_ taskID: String, epic: ULID) -> String? {
+        let tasks = documents.epics.first { $0.epic.id == epic }?.goal?.tasks ?? []
+        guard let offset = tasks.firstIndex(where: { $0.id == taskID }) else {
+            return nil
+        }
+        return "タスク \(offset + 1)「\(tasks[offset].title)」"
     }
 
     /// 質問を対象にするジョブ（説明・見直し）の、画面の質問の id

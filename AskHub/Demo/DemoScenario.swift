@@ -78,7 +78,8 @@ struct DemoData {
     func quiet() -> ClientSnapshot {
         var kaji = kajiEpic()
         kaji.macID = Self.macBookProID
-        kaji.activities = [EpicActivity(kind: .implementing(taskID: "kaji-t5", attempt: 1), since: ago(minutes: 12))]
+        kaji.startTask(at: 4, attempt: 1, date: ago(minutes: 12))
+        kaji.activities[0].worker?.heartbeatAt = ago(minutes: 3)
         var tsundoku = tsundokuEpic()
         tsundoku.finalReview?.mergePolicy = .automatic
         tsundoku.finalReview?.decisions = []

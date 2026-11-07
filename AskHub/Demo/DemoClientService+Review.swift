@@ -181,8 +181,7 @@ extension DemoClientService {
                 let attempt = (epic.blocker?.attempts.count ?? 0) + 1
                 epic.blocker = nil
                 if let failed = epic.tasks.firstIndex(where: { $0.state == .failed }) {
-                    epic.tasks[failed].state = .inProgress
-                    epic.activities = [EpicActivity(kind: .implementing(taskID: epic.tasks[failed].id, attempt: attempt), since: date)]
+                    epic.startTask(at: failed, attempt: attempt, date: date)
                 }
                 epic.log(instruction.isEmpty ? "もう一度直させました" : "指示を添えて直させました: \(instruction)", at: date)
             }
@@ -195,15 +194,14 @@ extension DemoClientService {
         let number = nextPullRequest()
         schedule(after: 1.5) { [now] snapshot in
             snapshot.updateEpic(epicID) { epic in
-                guard let index = epic.tasks.firstIndex(where: { $0.state == .inProgress || $0.state == .failed }) else {
+                guard let index = epic.tasks.firstIndex(where: { $0.isInProgress || $0.state == .failed }) else {
                     return
                 }
                 epic.tasks[index].state = .done(pullRequest: number)
                 epic.activities = []
                 epic.log("タスク \(epic.tasks[index].number) をマージしました（#\(number)）", at: now())
                 if let next = epic.tasks.firstIndex(where: { $0.state == .pending }) {
-                    epic.tasks[next].state = .inProgress
-                    epic.activities = [EpicActivity(kind: .implementing(taskID: epic.tasks[next].id, attempt: 1), since: now())]
+                    epic.startTask(at: next, attempt: 1, date: now())
                 }
             }
         }

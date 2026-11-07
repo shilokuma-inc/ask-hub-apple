@@ -21,6 +21,7 @@ extension StateSnapshotBuilder {
         // 見直しで要らなくなった質問は出さない（決まった扱い。依存する質問はすでに外れている）
         let questions = protocolQuestions.filter { $0.state != .dropped }.map { question($0, epic: file, readiness: documents.readiness) }
         let goal = documents.goal
+        let progress = progress(of: documents)
         return Epic(
             id: id,
             title: file.title,
@@ -36,15 +37,17 @@ extension StateSnapshotBuilder {
             questions: questions,
             goal: goal.map(Self.goal),
             humanTasks: goal.map(Self.humanTasks) ?? [],
-            tasks: goal.map(Self.tasks) ?? [],
+            tasks: progress.tasks,
             macID: file.mac?.rawValue,
-            activities: activities(of: file, questions: questions),
+            activities: activities(of: file, questions: questions) + progress.activities,
             blocker: nil,
             finalReview: nil,
-            history: history(of: file, questions: protocolQuestions, readiness: documents.readiness),
+            history: (history(of: file, questions: protocolQuestions, readiness: documents.readiness) + progress.history)
+                .sorted { $0.date < $1.date },
             updatedAt: file.updatedAt.date,
             split: Self.split(file.stage, readiness: documents.readiness),
-            isAbandoned: file.stage == .abandoned
+            isAbandoned: file.stage == .abandoned,
+            workspace: progress.workspace
         )
     }
 
@@ -136,6 +139,7 @@ extension StateSnapshotBuilder {
         return activities
     }
 
+    /// 開始する前の履歴。画面（`HistorySection`）は古い順の履歴を新しい順に並べ替えて出すので、段取りの履歴と合わせて古い順にする
     private func history(of file: EpicFile, questions: [QuestionsFile.Question], readiness: ReadinessFile?) -> [Epic.HistoryEntry] {
         var entries = [Epic.HistoryEntry(date: file.createdAt.date, text: "依頼しました")]
         for question in questions {
@@ -150,8 +154,7 @@ extension StateSnapshotBuilder {
         if let readiness {
             entries.append(Epic.HistoryEntry(date: readiness.checkedAt.date, text: "着手前の確認（\(readiness.round) 回目）: \(readiness.reason)"))
         }
-        // 画面（`HistorySection`）は古い順の履歴を新しい順に並べ替えて出すので、古い順にする
-        return entries.sorted { $0.date < $1.date }
+        return entries
     }
 
     // MARK: 質問
@@ -230,18 +233,6 @@ extension StateSnapshotBuilder {
             revisionRequest: nil,
             notApplied: file.notApplied ?? []
         )
-    }
-
-    private static func tasks(_ file: GoalFile) -> [EpicTask] {
-        file.tasks.enumerated().map { offset, task in
-            let state: EpicTask.State = switch task.state {
-            case .pending: .pending
-            case .locked: .locked(reason: "人がする作業を待っています")
-            case .running: .inProgress
-            case .done: .done(pullRequest: nil)
-            }
-            return EpicTask(id: task.id, number: offset + 1, title: task.title, state: state)
-        }
     }
 
     private static func humanTasks(_ file: GoalFile) -> [HumanTask] {

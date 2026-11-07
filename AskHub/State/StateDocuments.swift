@@ -11,7 +11,7 @@ struct StateDocuments {
         var readiness: ReadinessFile?
         /// ジョブ。終わった（マージした・やめた）epic のものは読まない
         var jobs: [JobFile] = []
-        /// 人の対応を待っているジョブの試行（古い順）
+        /// 試行（古い順）。人の対応を待っているジョブはすべて、動いているジョブは最後の 1 つだけ
         var attempts: [ULID: [AttemptFile]] = [:]
     }
 
@@ -100,8 +100,18 @@ struct StateReader {
             return epicDocuments
         }
         epicDocuments.jobs = await readJobs(of: epic, into: &documents)
-        for job in epicDocuments.jobs where job.state == .waitingHuman {
-            epicDocuments.attempts[job.id] = await readAttempts(of: job, into: &documents)
+        for job in epicDocuments.jobs {
+            switch job.state {
+            case .waitingHuman:
+                epicDocuments.attempts[job.id] = await readAttempts(of: job, into: &documents)
+
+            case .running where job.attempts > 0:
+                // 動いている Mac と最後に動いた時刻を出す。書き換わるのは生きている印の間隔（5 分）ごとなので、ほとんどは ETag で済む
+                epicDocuments.attempts[job.id] = await readAttempts(of: job, from: job.attempts, into: &documents)
+
+            default:
+                break
+            }
         }
         return epicDocuments
     }
@@ -132,13 +142,13 @@ struct StateReader {
 
     static let misplaced = "置き場所と中身の合わないファイルです"
 
-    /// 人の対応を待っているジョブの試行。何を試したかを出すため、最後の試行だけでなくすべて読む（人に渡るジョブは少ない）
-    private func readAttempts(of job: JobFile, into documents: inout StateDocuments) async -> [AttemptFile] {
-        guard job.attempts > 0 else {
+    /// ジョブの試行。人の対応を待っているジョブは、何を試したかを出すため、最後の試行だけでなくすべて読む（人に渡るジョブは少ない）
+    private func readAttempts(of job: JobFile, from first: Int = 1, into documents: inout StateDocuments) async -> [AttemptFile] {
+        guard job.attempts >= max(first, 1) else {
             return []
         }
         var attempts: [AttemptFile] = []
-        for number in 1...job.attempts {
+        for number in max(first, 1)...job.attempts {
             let path = StatePath.attempt(job.repo, epic: job.epic, job: job.id, number: number)
             guard let attempt = await read(AttemptFile.self, at: path, into: &documents) else {
                 continue

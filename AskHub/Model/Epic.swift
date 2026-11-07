@@ -24,6 +24,8 @@ struct Epic: Identifiable, Hashable {
     var split: SplitProposal?
     /// やめた（分けて依頼し直した など）。段階は、やめたときの段階のまま持つ
     var isAbandoned = false
+    /// 作業場所の用意（開始した後の段取りの最初）。開始する前は nil
+    var workspace: Workspace?
 
     /// 段階。画面の段階の帯は 依頼・質問・確認（着手前の確認とゴール）・実装・最終 PR・完了 の 6 つ
     enum Stage: Int, Hashable, CaseIterable, Comparable {
@@ -45,6 +47,17 @@ struct Epic: Identifiable, Hashable {
         var date: Date
         var text: String
         var isFailure = false
+    }
+
+    /// 作業場所の用意（作業ブランチを作る）
+    enum Workspace: Hashable {
+        /// 司令塔が開始を受け取る前
+        case pending
+        case preparing
+        /// 人の対応を待って止まっている（「対処が要ります」）
+        case failed
+        /// 用意できた。作業ブランチが分からなければ nil
+        case ready(branch: String?)
     }
 }
 
@@ -80,6 +93,14 @@ struct EpicRequest: Hashable {
 struct EpicActivity: Hashable {
     var kind: Kind
     var since: Date
+    /// 受け持つ Mac と、最後に動いた時刻。分からなければ nil
+    var worker: Worker?
+
+    struct Worker: Hashable {
+        var macID: Mac.ID
+        /// 試行の生きている印。Mac が引き受ける前は nil
+        var heartbeatAt: Date?
+    }
 
     enum Kind: Hashable {
         case writingQuestions
@@ -87,7 +108,13 @@ struct EpicActivity: Hashable {
         case reviewing(Question.ID)
         case checkingAnswers
         case revisingGoal
-        case implementing(taskID: EpicTask.ID, attempt: Int)
+        /// 開始を送り、司令塔が受け取るのを待っている（選んだ Mac）
+        case startRequested(macID: Mac.ID?)
+        /// 開始した後の段取りの 1 つ（作業場所の用意・タスクの実装・レビュー・直し）
+        case step(WorkStep, StepProgress)
+        /// タスクがすべて終わり、最終 PR の段取りを待っている
+        case tasksFinished
+        /// 最終 PR の CI を待っている
         case waitingForCI(taskID: EpicTask.ID?)
         /// ランナー不足。人の対応は要らないので「あなたの番」には出さない
         case waitingForRunner(retry: Int, nextAt: Date)
@@ -97,6 +124,22 @@ struct EpicActivity: Hashable {
         case fixingFinalPullRequest(FailureCategory, attempt: Int)
         case merging
     }
+}
+
+/// 開始した後の段取りの 1 つ
+enum WorkStep: Hashable {
+    case prepareWorkspace
+    case task(EpicTask.ID, EpicTask.Phase)
+}
+
+/// 段取りの進み具合
+enum StepProgress: Hashable {
+    /// Mac が引き受けるのを待っている
+    case waitingForMac
+    /// 失敗の後、試し直す時刻を待っている
+    case retrying(at: Date)
+    /// Mac が進めている（試行の番号）
+    case running(attempt: Int)
 }
 
 /// ゴールのタスク（実装の単位）
@@ -110,10 +153,46 @@ struct EpicTask: Identifiable, Hashable {
         case pending
         /// 人がする作業などが前提で、まだ始められない
         case locked(reason: String)
-        case inProgress
+        /// 進めている。段階が分からなければ（司令塔が次のジョブを作る前など）nil
+        case inProgress(Phase?)
+        /// 人の対応を待って止まっている（「対処が要ります」）
         case failed
         /// 子 PR の番号が分からないときは nil
         case done(pullRequest: Int?)
+    }
+
+    /// 進めているタスクの段階
+    enum Phase: Hashable {
+        case implementing
+        /// 子 PR のチェックを待って、レビュー役が読んでいる（ワーカーは 2 つを書き分けないので、1 つにまとめる）
+        case reviewing(pullRequest: Int?)
+        /// 子 PR を直している（何回目か・直す理由）
+        case fixing(pullRequest: Int?, round: Int, reason: FixReason?)
+    }
+
+    enum FixReason: Hashable {
+        /// 子 PR のチェック（CI）が通らない
+        case checks
+        /// レビュー役の必須の指摘
+        case review
+    }
+
+    /// 子 PR。作る前と、分からないときは nil
+    var pullRequest: Int? {
+        switch state {
+        case .done(let number), .inProgress(.reviewing(let number)?), .inProgress(.fixing(let number, _, _)?):
+            number
+
+        case .pending, .locked, .inProgress, .failed:
+            nil
+        }
+    }
+
+    var isInProgress: Bool {
+        if case .inProgress = state {
+            return true
+        }
+        return false
     }
 }
 

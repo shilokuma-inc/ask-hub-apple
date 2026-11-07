@@ -126,6 +126,14 @@ extension Epic {
         activities.removeAll { predicate($0.kind) }
     }
 
+    /// タスクの実装を、epic を回す Mac で始める
+    mutating func startTask(at index: Int, attempt: Int, date: Date) {
+        tasks[index].state = .inProgress(.implementing)
+        let worker = macID.map { EpicActivity.Worker(macID: $0, heartbeatAt: date) }
+        let step = WorkStep.task(tasks[index].id, .implementing)
+        activities = [EpicActivity(kind: .step(step, .running(attempt: attempt)), since: date, worker: worker)]
+    }
+
     mutating func log(_ text: String, at date: Date, isFailure: Bool = false) {
         history.append(HistoryEntry(date: date, text: text, isFailure: isFailure))
         updatedAt = date

@@ -130,8 +130,11 @@ extension StateSnapshotBuilder {
         }
         let sentAt = envelope.issuedAt.date
         if envelope.kind == StartEpicIntent.kind {
+            let macID = envelope.string("mac")
             epics[epicIndex].stage = .implementing
-            epics[epicIndex].macID = envelope.string("mac")
+            epics[epicIndex].macID = macID
+            epics[epicIndex].workspace = .pending
+            epics[epicIndex].activities.append(EpicActivity(kind: .startRequested(macID: macID), since: sentAt))
             epics[epicIndex].history.append(Epic.HistoryEntry(date: sentAt, text: "開始しました。司令塔が受け取るのを待っています"))
             return
         }
@@ -170,7 +173,7 @@ extension StateSnapshotBuilder {
         guard let job = waitingJob(targetedBy: envelope), let epicIndex = epics.firstIndex(where: { $0.id == job.epic.rawValue }) else {
             return
         }
-        let subject = Self.subject(of: job)
+        let subject = subject(of: job)
         guard envelope.kind == GiveUpJobIntent.kind else {
             let text = "\(subject)のやり直しを頼みました。司令塔が受け取るのを待っています"
             epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
@@ -266,7 +269,7 @@ extension StateSnapshotBuilder {
     func label(_ envelope: IntentEnvelope) -> String {
         let question = envelope.target?.id.map { "（\(Self.displayID($0))）" } ?? ""
         // ジョブの名前は、読んだジョブから決める（終わった epic のジョブは読まないので、名前を付けないことがある）
-        let job = job(targetedBy: envelope).map { "（\(Self.subject(of: $0))）" } ?? ""
+        let job = job(targetedBy: envelope).map { "（\(subject(of: $0))）" } ?? ""
         switch envelope.kind {
         case RequestIntent.kind:
             return "依頼「\(envelope.string("title") ?? "")」"

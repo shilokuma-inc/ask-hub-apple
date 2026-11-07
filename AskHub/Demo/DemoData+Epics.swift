@@ -204,7 +204,11 @@ extension DemoData {
         let titles = ["当番のモデル", "当番の一覧", "当番を回す処理", "通知の許可", "当番の通知", "通知から開く画面", "設定に通知の項目", "デモのデータ"]
         let tasks = titles.enumerated().map { index, title in
             let number = index + 1
-            let state: EpicTask.State = number <= 4 ? .done(pullRequest: 10 + number) : (number == 5 ? .inProgress : .pending)
+            let state: EpicTask.State = switch number {
+            case ...4: .done(pullRequest: 10 + number)
+            case 5: .inProgress(.implementing)
+            default: .pending
+            }
             return EpicTask(id: "kaji-t\(number)", number: number, title: title, state: state)
         }
         return Epic(

@@ -88,7 +88,7 @@ struct DemoClientServiceTests {
         let epic = try #require(service.state.epic("budget-limit"))
         #expect(epic.stage == .implementing)
         #expect(epic.macID == DemoData.macBookProID)
-        #expect(epic.tasks.first?.state == .inProgress)
+        #expect(epic.tasks.first?.state == .inProgress(.implementing))
     }
 
     /// 開始のときは、前回そのリポジトリを回した Mac を既定で選ぶ。前回の Mac がオフラインなら選ばない
