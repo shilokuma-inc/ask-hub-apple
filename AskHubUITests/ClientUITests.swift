@@ -319,13 +319,16 @@ final class ClientUITests: XCTestCase {
     /// 同じ依頼を続けて送ろうとすると、送る前に確かめる
     @MainActor
     func testRequestShowsProgressAndConfirmsDuplicate() {
-        let app = launch(["-demoScenario", "standard", "-demoSendDelay", "2"])
+        // CI の Simulator は 1 回の確かめに 1 秒以上かかるので、送っている間を長めにとる
+        let app = launch(["-demoScenario", "standard", "-demoSendDelay", "8"])
         fillRequest(in: app)
         app.buttons["送る"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["送っています…"].waitForExistence(timeout: 2))
+        // シートの一番上の行か、送るボタンの代わりの進み具合のどちらか
+        let sending = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "送っています")).firstMatch
+        XCTAssertTrue(sending.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["送る"].exists)
 
-        XCTAssertTrue(app.staticTexts["依頼「メモ並べ替え」を送りました"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["依頼「メモ並べ替え」を送りました"].waitForExistence(timeout: 20))
         XCTAssertTrue(app.staticTexts["メモ並べ替え"].firstMatch.exists)
 
         app.tabBars.buttons["あなたの番"].tap()
