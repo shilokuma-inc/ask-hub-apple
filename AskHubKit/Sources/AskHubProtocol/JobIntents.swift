@@ -89,7 +89,7 @@ extension JobKind {
         switch self {
         case .makeQuestions, .reviseQuestion, .checkReadiness: .abandonsEpic
         case .explain, .reviseGoal: .jobOnly
-        case .prepareWorkspace, .implementTask, .fixTask, .integrateDevelop, .verifyBeforeFinal, .openFinalPullRequest,
+        case .prepareWorkspace, .implementTask, .reviewTask, .fixTask, .integrateDevelop, .verifyBeforeFinal, .openFinalPullRequest,
              .fixFinalPullRequest, .rerunChecks, .classifyDecisions, .captureScreenshots, .mergeFinalPullRequest, .cleanUp, .notify:
             nil
         }
