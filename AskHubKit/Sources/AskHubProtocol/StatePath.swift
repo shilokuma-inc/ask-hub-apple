@@ -32,6 +32,16 @@ public enum StatePath {
         "\(epicDirectory(repo, epic))/readiness.json"
     }
 
+    /// 人が決めていない判断（ループの仮決め）の一覧
+    public static func decisions(_ repo: RepositoryFullName, _ epic: ULID) -> String {
+        "\(epicDirectory(repo, epic))/decisions.json"
+    }
+
+    /// 見える仮決めのスクショ（`<id>-before.png`・`<id>-after.png`）
+    public static func screenshot(_ repo: RepositoryFullName, _ epic: ULID, decision: String, after: Bool) -> String {
+        "\(epicDirectory(repo, epic))/screenshots/\(decision)-\(after ? "after" : "before").png"
+    }
+
     /// リポジトリの epic を置くディレクトリ（`epics/<epic>/`）
     public static func epics(_ repo: RepositoryFullName) -> String {
         "\(repositoryDirectory(repo))/epics"
