@@ -44,8 +44,11 @@ public struct MachineProbe: Sendable {
         return .ok
     }
 
-    private func diskFreeGB() -> Int {
-        let values = try? volume.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+    /// 毎回測り直す。URL は読んだ値を覚えているので、同じ URL のまま読むと起動したときの値を返し続ける
+    func diskFreeGB() -> Int {
+        var url = volume
+        url.removeAllCachedResourceValues()
+        let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
         return Int((values?.volumeAvailableCapacityForImportantUsage ?? 0) / 1_000_000_000)
     }
 
