@@ -65,6 +65,8 @@ struct TextRequest: Hashable {
         case explanation(epicID: Epic.ID, questionID: Question.ID)
         case freeTextAnswer(epicID: Epic.ID, questionID: Question.ID)
         case decisionFix(epicID: Epic.ID, decisionID: DecisionCard.ID)
+        /// 最終 PR への指示（見た head のコミットに結びつける）
+        case finalInstruction(epicID: Epic.ID, headCommit: String)
         case verificationProblem(epicID: Epic.ID, itemID: VerificationItem.ID)
         case blockerInstruction(epicID: Epic.ID)
         case goalRevision(epicID: Epic.ID)
@@ -80,6 +82,9 @@ struct TextRequest: Hashable {
 
         case let .decisionFix(epicID, decisionID):
             .respondToDecision(epicID: epicID, decisionID: decisionID, reply: .fix(text))
+
+        case let .finalInstruction(epicID, headCommit):
+            .instructFinal(epicID: epicID, headCommit: headCommit, instruction: text)
 
         case let .verificationProblem(epicID, itemID):
             .verify(epicID: epicID, itemID: itemID, reply: .problem(note: text))

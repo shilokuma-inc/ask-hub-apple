@@ -4,6 +4,8 @@ import SwiftUI
 struct DecisionSheet: View {
     let epicID: Epic.ID
     let decision: DecisionCard
+    /// 答えられる段階か（最終 PR を機械が確かめている・直している間は、見るだけ）
+    var canAnswer = true
 
     @Environment(ClientStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -25,7 +27,7 @@ struct DecisionSheet: View {
                     }
                 }
                 DecisionDetailSections(decision: decision)
-                if decision.needsReview {
+                if canAnswer, decision.needsReview {
                     CardSection("答える") {
                         Button("OK", systemImage: "checkmark") {
                             send(.respondToDecision(epicID: epicID, decisionID: decision.id, reply: .accept))

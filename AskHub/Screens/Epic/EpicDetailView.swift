@@ -160,7 +160,7 @@ private struct EpicStageSections: View {
             CardSection("最終 PR") {
                 NavigationLink(value: AppRoute.finalReview(epic.id)) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("#\(review.pullRequestNumber) · +\(review.additions) −\(review.deletions)")
+                        Text((["#\(review.pullRequestNumber)"] + [review.lineChanges].compactMap(\.self)).joined(separator: " · "))
                         Text("判断の確認 \(review.reviewedCount) / \(review.decisions.count) · 実機の確認 \(review.verifications.count)")
                             .appFont(.caption)
                             .foregroundStyle(.secondary)

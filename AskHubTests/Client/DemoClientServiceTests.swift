@@ -170,7 +170,7 @@ struct DemoClientServiceTests {
         #expect(allConfirmed)
         #expect(review.reviewedHeadCommit == review.headCommit)
 
-        try await service.perform(.merge(epicID: "tsundoku-search", headCommit: review.headCommit))
+        try await service.perform(.merge(epicID: "tsundoku-search", headCommit: try #require(review.headCommit)))
         clock.now.addTimeInterval(20)
         _ = try await service.fetchSnapshot()
         #expect(service.state.epic("tsundoku-search")?.stage == .done)
@@ -182,6 +182,23 @@ struct DemoClientServiceTests {
         let service = makeService()
         try await service.perform(.merge(epicID: "tsundoku-search", headCommit: "0000000"))
         #expect(service.state.epic("tsundoku-search")?.finalReview?.state == .reviewable)
+    }
+
+    /// 最終 PR に指示すると、直している間は確かめられず、直したら head が替わって確かめられる
+    @Test
+    func finalInstructionFixesAndChangesHead() async throws {
+        let service = makeService()
+        let head = try #require(service.state.epic("tsundoku-search")?.finalReview?.headCommit)
+        try await service.perform(.instructFinal(epicID: "tsundoku-search", headCommit: head, instruction: "検索欄を下に"))
+        let fixing = try #require(service.state.epic("tsundoku-search")?.finalReview)
+        #expect(fixing.state == .checking)
+        #expect(fixing.checks.ci == .fixingByRequest)
+
+        clock.now.addTimeInterval(30)
+        _ = try await service.fetchSnapshot()
+        let fixed = try #require(service.state.epic("tsundoku-search")?.finalReview)
+        #expect(fixed.state == .reviewable)
+        #expect(fixed.headCommit != head)
     }
 
     /// 直してほしいと頼むと直してからもう一度出す

@@ -22,7 +22,7 @@ struct StateIntentMapper {
         case .discard(let epicID):
             index.epics[epicID]?.canAbandon == true
 
-        case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume,
+        case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .handOver, .pause, .resume,
              .completeHumanTask, .submitSecret, .verify, .cleanUp:
             false
         }
@@ -42,7 +42,7 @@ struct StateIntentMapper {
         case let .resolveBlocker(epicID, action, _, target):
             return try blockerDraft(epicID: epicID, action: action, target: target)
 
-        case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume,
+        case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .handOver, .pause, .resume,
              .completeHumanTask, .submitSecret, .verify, .cleanUp:
             throw Self.unsupported
         }

@@ -143,6 +143,11 @@ struct DecisionDetailSections: View {
                     .frame(maxHeight: 420)
                     .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
             }
+        } else if let note = decision.screenshotNote {
+            CardSection("画面の変化") {
+                Label(note, systemImage: "camera.metering.unknown")
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

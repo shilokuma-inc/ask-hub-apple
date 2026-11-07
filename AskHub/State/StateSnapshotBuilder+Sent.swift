@@ -208,6 +208,9 @@ extension StateSnapshotBuilder {
             if let index = epic.tasks.firstIndex(where: { $0.id == taskID }) {
                 epic.tasks[index].state = .inProgress(phase)
             }
+
+        case .final:
+            break
         }
         let worker = job.assignedMac.map { EpicActivity.Worker(macID: $0.rawValue, heartbeatAt: nil) }
         epic.activities.append(EpicActivity(kind: .step(step, .retryRequested), since: sentAt, worker: worker))

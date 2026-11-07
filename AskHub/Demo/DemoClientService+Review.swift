@@ -14,6 +14,9 @@ extension DemoClientService {
         case let .merge(epicID, headCommit):
             merge(epicID: epicID, headCommit: headCommit)
 
+        case let .instructFinal(epicID, headCommit, instruction):
+            instructFinal(epicID: epicID, headCommit: headCommit, instruction: instruction)
+
         case let .verify(epicID, itemID, reply):
             verify(epicID: epicID, itemID: itemID, reply: reply)
 
@@ -154,6 +157,31 @@ extension DemoClientService {
                 epic.stage = .done
                 epic.activities = []
                 epic.log("マージしました（#\(epic.finalReview?.pullRequestNumber ?? 0)）", at: now())
+            }
+        }
+    }
+
+    /// 最終 PR への指示。直している間は確かめられず、直したら head が替わる
+    private func instructFinal(epicID: Epic.ID, headCommit: String, instruction: String) {
+        let date = now()
+        state.updateEpic(epicID) { epic in
+            guard epic.finalReview?.state == .reviewable, epic.finalReview?.headCommit == headCommit else {
+                return
+            }
+            epic.finalReview?.state = .checking
+            epic.finalReview?.checks.ci = .fixingByRequest
+            epic.finalReview?.reviewedHeadCommit = nil
+            epic.log("最終 PR に指示しました: \(instruction)", at: date)
+        }
+        schedule(after: 2) { [now] snapshot in
+            snapshot.updateEpic(epicID) { epic in
+                guard epic.finalReview?.state == .checking else {
+                    return
+                }
+                epic.finalReview?.state = .reviewable
+                epic.finalReview?.checks.ci = .passed
+                epic.finalReview?.headCommit = String(UUID().uuidString.prefix(7)).lowercased()
+                epic.log("最終 PR を指示のとおりに直しました", at: now())
             }
         }
     }
