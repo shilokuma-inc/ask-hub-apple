@@ -26,8 +26,12 @@ public struct FixTaskRunner: JobRunning {
         guard let findings = try await history.findings(for: input, task: target.task.id) else {
             throw .fail(.unexpected, "直すこと（子 PR #\(input.pullRequest) の head \(input.head) を見たレビューの結果）が見つからない")
         }
-        guard let session = try await history.session(of: target.task.id) else {
+        guard let conversation = try await history.conversation(of: target.task.id) else {
             throw .fail(.unexpected, "タスク \(target.task.id) の実装の会話（implementTask の試行の claude.session）が見つからない")
+        }
+        // 会話はそれを動かした Mac にだけ残るので、ほかの Mac では再開できない（epic を Mac の間で引き継ぐときに、新しい会話で直す形を足す）
+        guard conversation.mac == environment.context.mac else {
+            throw .fail(.unexpected, "実装の会話は \(conversation.mac) にあり、この Mac（\(environment.context.mac)）では再開できない")
         }
         let pull = try await environment.github("子 PR を読む") { () throws(PullRequestError) in
             try await environment.pullRequests(job.repo).pullRequest(number: input.pullRequest)
@@ -49,7 +53,7 @@ public struct FixTaskRunner: JobRunning {
             result.outputs?.commit = checkout.head
             return result
         }
-        let fixJob = FixTaskJob(session: session, pullRequest: input.pullRequest, reason: input.reason, findings: findings)
+        let fixJob = FixTaskJob(session: conversation.session, pullRequest: input.pullRequest, reason: input.reason, findings: findings)
         let (report, run) = try await environment.run(fixJob, in: checkout, target: target).done()
         result.outputs?.report = report.outputReport
         result.claude = run.session?.attemptRecord

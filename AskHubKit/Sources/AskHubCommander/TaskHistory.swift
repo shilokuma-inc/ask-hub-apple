@@ -53,9 +53,17 @@ struct TaskHistory {
         }?.attempt.outputs?.findings
     }
 
-    /// 実装の会話の id。同じタスクの実装と直しの成功の試行のうち、最後に終わったもの（`--resume` で会話の id が変わっても続けられる）
-    func session(of task: String) async throws(TaskJobExit) -> String? {
-        try await succeeded([.implementTask, .fixTask], task: task).last { $0.attempt.claude?.session != nil }?.attempt.claude?.session
+    /// 実装の会話。同じタスクの実装と直しの成功の試行のうち、最後に終わったもの（`--resume` で会話の id が変わっても続けられる）
+    func conversation(of task: String) async throws(TaskJobExit) -> Conversation? {
+        let last = try await succeeded([.implementTask, .fixTask], task: task).last { $0.attempt.claude?.session != nil }
+        guard let last, let session = last.attempt.claude?.session else { return nil }
+        return Conversation(session: session, mac: last.attempt.mac)
+    }
+
+    /// Claude の会話と、それを動かした Mac（会話はその Mac の Claude の設定フォルダにだけ残る）
+    struct Conversation: Equatable {
+        var session: String
+        var mac: MacName
     }
 
     private func attempts(of job: JobFile) async throws(CommanderError) -> [AttemptFile] {
