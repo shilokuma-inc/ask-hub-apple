@@ -79,17 +79,12 @@ enum WaitingJob {
     }
 }
 
-/// やめる人の意図（`giveUp`）を受け付ける（`docs/renewal/flows.md` の「人に渡したジョブ」）。
+/// やめる人の意図（`giveUp`）を受け付ける（`docs/renewal/flows.md` の「人に渡したジョブ」）。種類ごとの扱いは `JobKind.giveUpEffect` で決める
 ///
 /// - 質問づくり・質問の見直し・着手前の確認: epic が先に進めないので、epic ごとやめる（`abandoned`）。epic の段階の 1 回の書き込みで決まる
 /// - 説明: ジョブをやめ、説明を待つ問いを外して、質問を回答待ちに戻す
 /// - ゴールの修正: ジョブだけやめる（前のゴールのまま開始を待つ）
 public struct GiveUpJobHandler: IntentHandler {
-    /// やめると epic が先に進めなくなるジョブ
-    static let blockingKinds: Set<JobKind> = [.makeQuestions, .reviseQuestion, .checkReadiness]
-    /// ジョブだけをやめるジョブ
-    static let jobOnlyKinds: Set<JobKind> = [.explain, .reviseGoal]
-
     public init() {}
 
     public func handle(_ envelope: IntentEnvelope, in context: CommanderContext) async throws(CommanderError) -> IntentDecision {
@@ -102,8 +97,8 @@ public struct GiveUpJobHandler: IntentHandler {
         let target = giveUp.target
         let path = StatePath.job(target.repo, epic: target.epic, job: target.job)
         guard let job = try await context.read(JobFile.self, at: path) else { return .reject("ジョブが無い") }
-        if Self.blockingKinds.contains(job.kind) { return try await abandonEpic(target, in: context) }
-        guard Self.jobOnlyKinds.contains(job.kind) else { return .reject("\(job.kind.rawValue) のジョブをやめる扱いは、まだ決めていない") }
+        guard let effect = job.kind.giveUpEffect else { return .reject("\(job.kind.rawValue) のジョブをやめる扱いは、まだ決めていない") }
+        if effect == .abandonsEpic { return try await abandonEpic(target, in: context) }
         switch try await WaitingJob.read(target, done: [.canceled], in: context) {
         case let .rejected(reason):
             return .reject(reason)
