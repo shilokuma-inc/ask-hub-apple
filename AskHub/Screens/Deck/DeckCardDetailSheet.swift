@@ -86,6 +86,9 @@ struct QuestionDetailSections: View {
                             .foregroundStyle(.secondary)
                         if let body = explanation.body {
                             Text(body)
+                        } else if epic?.isActive == false {
+                            Text("説明を待つ間にやめました")
+                                .foregroundStyle(.secondary)
                         } else if isExplaining {
                             Label("Claude がリポジトリを読んで書いています", systemImage: "hourglass")
                                 .foregroundStyle(.secondary)

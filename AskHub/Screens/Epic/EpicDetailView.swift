@@ -198,9 +198,15 @@ struct QuestionStatusRow: View {
             return "\(question.dependsOn.joined(separator: "・")) の回答後に答えられます"
 
         case .reviewing:
+            guard epic.isActive else {
+                return "見直しの間にやめました"
+            }
             return isWorking(on: .reviewing(question.id)) ? "依存先が決まったので、Claude が見直しています" : "見直しが止まっています（対処が要ります）"
 
         case .awaitingExplanation:
+            guard epic.isActive else {
+                return "説明を待つ間にやめました"
+            }
             return isWorking(on: .explaining(question.id)) ? "Claude が説明を書いています" : "説明が止まっています（対処が要ります）"
 
         case .open:
