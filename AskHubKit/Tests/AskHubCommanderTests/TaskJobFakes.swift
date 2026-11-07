@@ -164,6 +164,9 @@ final class FakePullRequests: PullRequestOperations {
         /// commit status。読むたびに先頭から返す（最後の 1 つは残す）
         var statuses: [[CommitStatus]] = [[]]
         var statusReads = 0
+        /// レビューの指摘（GitHub の部品と同じく、信用する書き手のものだけを返す）
+        var feedback = ReviewFeedback(threads: [], reviews: [])
+        var trusted: [TrustedAuthors] = []
     }
 
     private let state: OSAllocatedUnfairLock<State>
@@ -215,7 +218,12 @@ final class FakePullRequests: PullRequestOperations {
     }
 
     func reviewFeedback(number: Int, trusted: TrustedAuthors) async throws(PullRequestError) -> ReviewFeedback {
-        ReviewFeedback(threads: [], reviews: [])
+        state.withLock { state in
+            state.trusted.append(trusted)
+            let isTrusted = { (login: String) in trusted.logins.contains(login.lowercased()) }
+            let threads = state.feedback.threads.filter { $0.comments.first.map { isTrusted($0.author) } ?? false }
+            return ReviewFeedback(threads: threads, reviews: state.feedback.reviews.filter { isTrusted($0.author) })
+        }
     }
 
     func commitStatuses(at sha: String) async throws(PullRequestError) -> [CommitStatus] {
