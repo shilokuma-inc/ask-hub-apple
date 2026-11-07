@@ -39,6 +39,7 @@
 
 - 止まったとみなすのは、`seenAt` が 30 分（`JobTiming.macStaleAfter` と同じ。司令塔は 10 分ごとに書く）より古い・`commander.json` が無い・読めない（AskHubKit の `StateFileCoder` と同じ読み方）・5 分より先の時刻（Mac の時計が進んでいると、止まっても古さで気づけない）とき
 - 止まったら、github-actions[bot] が状態リポジトリに Issue を立てる。bot の書き込みなので、状態リポジトリを Watch している人に GitHub の通知が届く
+  - GitHub Mobile は、Watch しているリポジトリの出来事をアプリの通知の一覧に出すだけで、プッシュでは知らせない（プッシュの対象は、メンション・割り当て・レビューの依頼・デプロイの承認の依頼）。iPhone に届けるため、状態リポジトリの変数 `COMMANDER_WATCH_ASSIGNEES`（カンマ区切りの GitHub のアカウント）の人に Issue を割り当てる。空なら割り当てない。割り当てられない人（リポジトリを見られない など）は GitHub が黙って外すので、Job Summary に出す
   - まだ戻っていない見張りの Issue があれば、開いていても人が閉じていても重ねて立てない（戻るまでの間に、1 時間ごとに立て直さない）
   - 戻ったら（30 分以内の `seenAt` を見たら）、まだ戻っていない見張りの Issue にコメントし、開いていれば閉じる
   - 見張りの Issue は、author が github-actions[bot] で、本文の最後の行が目印（`<!-- askhub-commander-watch v1 down -->`。戻ったら `recovered` に書き換える）のものだけ。private でも目印だけで見分けない（LEARNINGS.md）
@@ -54,6 +55,7 @@
   - 判定を状態リポジトリに置かないのは、`.github/workflows/` の外のファイルは司令塔のトークン（Contents の書き込み）でも書き換えられるため。`.github/workflows/` のファイルを変えるには Workflows の権限が要るので、司令塔のトークンには Workflows の権限を付けない
 - 入れ方（人が手元の Mac で）:
   1. 状態リポジトリを Watch しているか確かめる（Watch → All Activity か、Custom の Issues）。通知は Watch している人にだけ届く
+     - iPhone にプッシュで届けるなら、割り当てる人を変数に入れ（`gh variable set COMMANDER_WATCH_ASSIGNEES -R shilokuma-inc/askhub-state -b <アカウント>`）、GitHub Mobile の設定 → 通知で割り当て（Assigned）のプッシュをオンにする
   2. 司令塔を先に入れ、`commander.json` ができたのを確かめる（先に見張りを入れると、印が無いので Issue が立つ。司令塔が書けば閉じる）
   3. ワークフローを書き出す。判定の版には、リモートのブランチに入ったコミットを使う（`render-workflow` が確かめ、SHA に直して書く）
 
