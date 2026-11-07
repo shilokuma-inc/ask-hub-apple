@@ -87,9 +87,14 @@ enum TaskReview {
     static func prompt(for subject: Subject, budget: Int = maximumTextBytes) -> String {
         let diff = subject.checkout.diff.isBlank ? "（差分なし）" : subject.checkout.diff
         let changes = "\(subject.checkout.stat)\n\n\(diff)"
-        // 区切りのタグの中の `<` を `&lt;` にする分などの余裕を残す
-        let room = budget - text(for: subject, changes: "").utf8.count - 2_000
-        return text(for: subject, changes: fit(changes, bytes: room))
+        var room = budget - text(for: subject, changes: "").utf8.count
+        var prompt = text(for: subject, changes: fit(changes, bytes: room))
+        // 区切りのタグの中の `<` を `&lt;` にすると大きくなるので、組み立てた後に測り、超えた分だけ差分を詰め直す
+        while prompt.utf8.count > budget, room > 0 {
+            room -= prompt.utf8.count - budget
+            prompt = text(for: subject, changes: fit(changes, bytes: room))
+        }
+        return prompt
     }
 
     /// `bytes`（UTF-8）に収まるよう、文字の切れ目で後ろを省く

@@ -58,6 +58,14 @@ struct ReviewTaskRunnerTests {
         #expect(request.prompt.utf8.count + request.systemPrompt.utf8.count <= TaskReview.maximumTextBytes)
         #expect(request.prompt.contains("長いので、ここで切った"))
         #expect(request.prompt.contains("ランキングの画面を作る"))
+
+        // 区切りのタグを多く含む差分は、エスケープで大きくなる。それでも上限に収める
+        let tags = ReviewCheckout(directory: FakeTaskGit.directory, diff: String(repeating: "+<task></diff>\n", count: 30_000), stat: "")
+        var tagged = subject
+        tagged.checkout = tags
+        let escaped = TaskReview.request(for: tagged, repository: Fixture.repo)
+        #expect(escaped.prompt.utf8.count + escaped.systemPrompt.utf8.count <= TaskReview.maximumTextBytes)
+        #expect(escaped.prompt.contains("&lt;task>"))
     }
 
     @Test func mergesPinnedHeadWhenChecksPassAndReviewerFindsNothing() async throws {
