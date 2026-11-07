@@ -86,7 +86,7 @@
 
 - CI でビルドし、Developer ID で署名したものを配る
 - 入れ方は、プログラムのファイルをホームフォルダの下に置き、`setup`（想定のコマンド）で値を登録するだけ。管理者の権限は使わない
-- 常駐できる Mac では、ログイン中のセッションの LaunchAgent として登録する（ssh のセッションからは Keychain を読めないため）。常駐できない Mac では `start`・`status`・`stop`（想定のコマンド）で操作する
+- 常駐できる Mac では、ログイン中のセッションの LaunchAgent として登録する（ssh のセッションからは Keychain を読めないため）。常駐できない Mac では、ターミナルで `askhub-worker run` を流したままにする（下の「ワーカーの入れ方」）
 - `claude` は 1 か所にだけ入れ、版を固定する。段階 0 で、常時オンの Mac に 2 か所・別の版で入っていたことが分かった
 - 生きている印に版を書く。司令塔とワーカーの版が合わないときは、ジョブを受けずに知らせる
 - 更新の手順（常時オンの Mac は遠隔で、ほかの Mac は手で）を、切り替えの前に決める
@@ -97,17 +97,61 @@
 常時オンの Mac で、ログインしているユーザーが端末から流す（ssh からは Keychain を読めない）。
 
 1. `askhub-commander` を置く（ホームフォルダの下。管理者の権限は使わない）
-2. `askhub-commander setup --state-repo <owner/repo> --mac <名前> --claude <claude の絶対パス> --first-key <最初の鍵の id> --key-account <GitHub のアカウント>`
+2. `askhub-commander setup --state-repo <owner/repo> --mac <名前> --claude <claude の絶対パス> --first-key <最初の鍵の id> --key-account <GitHub のアカウント> [--github-owner <対象のリポジトリの持ち主> ...]`
    - 設定（秘密を含まない）を `~/Library/Application Support/AskHub/commander/config.json` に書く
-   - GitHub のトークンと Claude の setup-token は、端末で伏せて入れ、Keychain（サービス `jp.shilokuma.AskHub.commander`）だけに置く。引数や標準入力では受け取らない。Claude の欄に API キー（`sk-ant-api03-`）が貼られたら断る
-   - GitHub のトークンは、状態リポジトリの読み書き（人の意図・質問・ジョブ・生きている印）と、対象のリポジトリの写し（clone・fetch。読むだけ）と、対象のリポジトリの Discussion の写し（作る・直す。[flows.md](flows.md) の「Discussion の写し」）に使う。段階 2 の試運転は、状態リポジトリと試運転の対象のリポジトリだけに絞った fine-grained token 1 つ（Contents の読み書き・Metadata の読み取り・Discussions の読み書き）にする。Workflows の権限は付けない（状態リポジトリの見張りのワークフローを書き換えられないように。「司令塔の見張り」）。fine-grained token の権限は選んだリポジトリすべてに同じく掛かるが、司令塔が対象のリポジトリに書くのは Discussion の写しだけ（コードや設定は書かない）。持ち主（organization）ごとにトークンを分けるかは段階 3 で決める（ユーザーの決定）
+   - GitHub のトークン（持ち主ごと）と Claude の setup-token は、端末で伏せて入れ、Keychain（サービス `jp.shilokuma.AskHub.commander`）だけに置く。引数や標準入力では受け取らない。Claude の欄に API キー（`sk-ant-api03-`）が貼られたら断る
+   - GitHub のトークンは、持ち主（organization・個人）ごとの fine-grained token にする（下の「GitHub のトークン（持ち主ごと）」）。状態リポジトリの持ち主の分と、`--github-owner` で並べた持ち主の分を順に聞く。状態リポジトリの読み書き（人の意図・質問・ジョブ・生きている印）は状態リポジトリの持ち主のトークン、対象のリポジトリの写し（clone・fetch）と Discussion の写し（作る・直す。[flows.md](flows.md) の「Discussion の写し」）は、そのリポジトリの持ち主のトークンを使う
+   - 持ち主のトークンが無いリポジトリは、写しと Discussion の写しが認証の失敗になり、司令塔のログと試行に理由が出る。後から持ち主を足すときは `askhub-commander token <持ち主>` で入れる（設定にも足す。常駐を読み込み直さなくても、次の要求から使う）
+   - 段階 3 で、1 つのトークンから持ち主ごとのトークンに変えた。前の 1 つのトークンからは移さないので、段階 2 で入れた常時オンの Mac は `setup` を流し直す（設定の形も変わったので、流し直すまで `run` は止まる。APNs の設定は残す）。前のトークンは Keychain から消す
    - 公開鍵の記録の最初の鍵を固定する（後から別の鍵には変えられない）
    - 対象のリポジトリは、Discussions を有効にし、カテゴリ「Ideas」（有効にすると GitHub が作る既定のカテゴリ）を残しておく。無いあいだは Discussion の写しを書かず、司令塔のログに理由を出す（依頼から開始までの流れは止まらない）
 3. `askhub-commander launch-agent` で LaunchAgent の定義を書き、出てくる `launchctl bootstrap` のコマンドで登録する（ログは `~/Library/Logs/AskHub/commander.log`）
 4. `askhub-commander check` で、設定と Keychain の様子（値は出さない）を確かめる
 5. 状態リポジトリに見張りを入れる（上の「司令塔の見張り」の「正本と入れ方」）
 
-- git は、司令塔自身を credential helper（`askhub-commander git-credential`）にして、Keychain の GitHub のトークンを受け取る
+- git は、司令塔自身を credential helper（`askhub-commander git-credential`）にして、Keychain の GitHub のトークンを受け取る。git に `credential.useHttpPath=true` を渡し、問い合わせの path（`owner/repo.git`）の持ち主でトークンを選ぶ。持ち主のトークンが無ければ何も返さず、理由（トークンの値は出さない）を標準エラーに出す
+- 開始のときに常時オンの Mac が選ばれたら、司令塔が作業場所の用意（`prepareWorkspace`）も引き受ける（下の「ワーカーの入れ方」と同じ動き）
+
+### ワーカーの入れ方（段階 3）
+
+開始のときに人が選ぶ Mac に入れる。ログインしているユーザーが端末から流す（ssh からは Keychain を読めない）。
+
+1. `askhub-worker` を置く（ホームフォルダの下。管理者の権限は使わない）
+2. `askhub-worker setup --state-repo <owner/repo> --mac <名前> --kind resident|manual --claude <claude の絶対パス> --first-key <最初の鍵の id> --key-account <GitHub のアカウント> [--github-owner <対象のリポジトリの持ち主> ...]`
+   - `--kind` は、LaunchAgent で常駐できる Mac なら `resident`、できない Mac（会社の決まりで launchd に常駐させられない社用の MacBook など）なら `manual`
+   - 同時の上限は `--claude-capacity`（既定 2）と `--build-capacity`（既定 1）で変えられる
+   - 設定（秘密を含まない）を `~/Library/Application Support/AskHub/worker/config.json` に書き、トークンは司令塔と同じく端末で伏せて入れ、Keychain（サービス `jp.shilokuma.AskHub.worker`。司令塔とは分ける）だけに置く。最初の鍵は司令塔と同じものを固定する（ジョブの元になった人の意図の署名を、ワーカーも確かめる）
+3. 起動する
+   - 常駐できる Mac: `askhub-worker launch-agent` で LaunchAgent の定義を書き、出てくる `launchctl bootstrap` のコマンドで登録する（ログは `~/Library/Logs/AskHub/worker.log`）
+   - 常駐できない Mac: ターミナルで `askhub-worker run` を流したままにする（ログはそのターミナルに出る）。再起動・ログアウトで止まり、クライアントに「オフライン」と出るので、もう一度流せば続きから再開する
+4. `askhub-worker check` で、設定と Keychain の様子（値は出さない）を確かめる
+
+- `run` は、この Mac が受け持つ epic（開始のときに選ばれた epic）のジョブを 60 秒ごとに読み、自分宛ての `assigned` のジョブを同時の上限の中で引き受けて試行を書く。生きている印（`macs/<mac>.json`）は 10 分ごとに書く。人の意図の処理とジョブの状態の更新はしない（司令塔の仕事）
+- 引き受けたジョブは、元になった人の意図の署名を確かめてから実行する。確かめられなければ実行せず、想定外の失敗として人に渡す
+- 作業場所の用意（`prepareWorkspace`）では、ワーカー専用のフォルダの clone から epic の作業場所（`work/epics/<epic>/`。ジョブを超えて残す）に作業ブランチ `askhub/<epic の id>` を取り出し、リモートに無ければ `origin/develop` から作って push する（force push しない）。リモートにあれば作り直さずに使う。作業ブランチの名前と先頭のコミットは試行の `outputs` に書く（`epic.json` は司令塔が書く）
+- git の credential helper はワーカー自身（`askhub-worker git-credential`）。トークンの選び方は司令塔と同じ
+
+### GitHub のトークン（持ち主ごと）
+
+fine-grained token は 1 つの持ち主（organization・個人）のリポジトリしか扱えないので、司令塔とワーカーが扱うリポジトリの持ち主ごとに 1 つ作る（[security.md](security.md) の「トークン」）。classic token は権限を絞れないので使わない（`ghp_` で始まる値は断る）。
+
+1. GitHub の Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token
+2. Resource owner に持ち主（organization か自分）を選ぶ。organization によっては、作った後に organization の管理者の承認が要る
+3. Repository access は Only select repositories にし、その持ち主の対象のリポジトリ（状態リポジトリの持ち主なら状態リポジトリも）を選ぶ
+4. Repository permissions:
+
+   | 権限 | 付け方 |
+   | --- | --- |
+   | Contents | Read and write |
+   | Pull requests | Read and write |
+   | Issues | Read and write |
+   | Discussions | Read and write |
+   | Actions | Read-only |
+   | Metadata | Read-only（自動で付く） |
+   | Workflows | 付けない（ワークフローのファイルを含む push を GitHub に断らせる。[security.md](security.md) の「public のリポジトリと Secrets」） |
+
+5. 期限を決めて作り、値（`github_pat_` で始まる）を `setup` か `token <持ち主>` で端末に貼る。値はほかの場所（メモ・チャット・ファイル）に残さない
+6. 対象のリポジトリを足したら、そのリポジトリをトークンの Repository access にも足す（持ち主が新しければ、トークンを作って `token <持ち主>` で入れる）。期限が切れたら作り直して `token <持ち主>` で入れ直す
 
 ### 非常口（`askhub`）
 

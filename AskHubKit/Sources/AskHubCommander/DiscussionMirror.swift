@@ -28,7 +28,8 @@ public actor DiscussionMirror {
     }
 
     nonisolated let context: CommanderContext
-    nonisolated let api: any DiscussionAPI
+    /// 対象のリポジトリの Discussion を読み書きするもの。トークンは持ち主ごとにあるので、リポジトリの持ち主で選ぶ
+    nonisolated let discussions: @Sendable (RepositoryFullName) -> any DiscussionAPI
     nonisolated let settings: Settings
     nonisolated let policy: FailurePolicy
     nonisolated let log: @Sendable (String) -> Void
@@ -51,16 +52,27 @@ public actor DiscussionMirror {
 
     public init(
         context: CommanderContext,
-        api: any DiscussionAPI,
+        discussions: @escaping @Sendable (RepositoryFullName) -> any DiscussionAPI,
         settings: Settings = Settings(),
         policy: FailurePolicy = FailurePolicy(),
         log: @escaping @Sendable (String) -> Void
     ) {
         self.context = context
-        self.api = api
+        self.discussions = discussions
         self.settings = settings
         self.policy = policy
         self.log = log
+    }
+
+    /// どのリポジトリにも同じものを使う（テスト用）
+    public init(
+        context: CommanderContext,
+        api: any DiscussionAPI,
+        settings: Settings = Settings(),
+        policy: FailurePolicy = FailurePolicy(),
+        log: @escaping @Sendable (String) -> Void
+    ) {
+        self.init(context: context, discussions: { _ in api }, settings: settings, policy: policy, log: log)
     }
 
     /// 写しを照らし合わせる。失敗しても投げない（ログに書き、後の周でやり直す）
@@ -151,6 +163,7 @@ public actor DiscussionMirror {
         if let known = repositories[repo] {
             repository = known
         } else {
+            let api = discussions(repo)
             repository = try await Self.github { () throws(DiscussionError) in try await api.repository(repo) }
         }
         guard repository.discussionsEnabled else {

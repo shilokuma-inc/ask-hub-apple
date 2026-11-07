@@ -7,88 +7,39 @@ import AskHubStateStore
 import Foundation
 
 extension AskHubCommanderMain {
-    static var secrets: KeychainSecretStore { KeychainSecretStore(service: CommanderPaths.keychainService) }
-
     /// 常駐のループを組み立てて回す
     static func run() async {
-        let configuration: CommanderConfiguration
-        do {
-            configuration = try CommanderConfiguration.load(from: paths.configuration)
-        } catch {
-            fail("設定（\(paths.configuration.path)）を読めない。setup を流す（\(error.localizedDescription)）", status: EX_CONFIG)
+        let runtime = await MachineRuntime.load(commandLine, budget: .commander)
+        let configuration = runtime.configuration
+        // 状態リポジトリと Discussion の写しは、同じアカウントの内容を作る要求の上限を分け合うので、司令塔の書き込みの予算を 1 つにする。
+        // Discussion は、対象のリポジトリの持ち主のトークンで読み書きする（トークンは持ち主ごとにある）
+        let transport = GitHubURLSessionTransport()
+        let (budget, secrets) = (runtime.budget, runtime.secrets)
+        let discussions: @Sendable (RepositoryFullName) -> any DiscussionAPI = { repo in
+            GitHubDiscussions(transport: transport, budget: budget, token: MachineRuntime.githubToken(for: repo.owner, in: secrets))
         }
-        let secrets = secrets
-        guard let claudeToken = try? secrets.read(.claudeToken).flatMap({ String(bytes: $0, encoding: .utf8) }),
-              claudeToken.hasPrefix(MachineProbe.claudeTokenPrefix) else {
-            fail("Keychain に Claude の setup-token が無い・形が違う。setup を流す", status: EX_CONFIG)
-        }
-        for directory in [paths.work, paths.claudeConfig, paths.claudeHome, paths.claudeTemporary, paths.logs] {
-            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        }
-        let token: @Sendable () async throws -> String = {
-            guard let data = try secrets.read(.githubToken), let token = String(bytes: data, encoding: .utf8), !token.isEmpty else {
-                throw StateStoreError.tokenUnavailable
-            }
-            return token
-        }
-        // 状態リポジトリと Discussion の写しは、同じアカウントの内容を作る要求の上限を分け合うので、司令塔の書き込みの予算を 1 つにする
-        let budget = WriteBudget(limits: .commander)
-        let store = GitHubContentsStore(
-            repository: configuration.stateRepository,
-            branch: configuration.stateBranch,
-            budget: budget,
-            token: token
-        )
-        let discussions = GitHubDiscussions(budget: budget, token: token)
-        let claude = ClaudeSetup(
-            executable: URL(fileURLWithPath: configuration.claude),
-            configDirectory: paths.claudeConfig,
-            homeDirectory: paths.claudeHome,
-            temporaryDirectory: paths.claudeTemporary,
-            oauthToken: claudeToken
-        )
-        let loop = makeLoop(
-            configuration: configuration,
-            store: store,
-            discussions: discussions,
-            claude: claude,
-            claudeVersion: await version(of: claude)
+        // 人の意図の処理・Claude のジョブの結果・通知の記録・写しの id の書き戻しは、同じ排他を使うよう、同じ `context` を渡す
+        let context = CommanderContext(store: runtime.store, mac: configuration.mac)
+        let loop = CommanderLoop(
+            context: context,
+            settings: .init(
+                capacity: configuration.capacity, commanderVersion: CommanderVersion.current, claudeVersion: runtime.claudeVersion
+            ),
+            verifier: { () throws(CommanderError) in try await runtime.trusted.verifier() },
+            client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
+            workspace: runtime.workspace,
+            status: { runtime.probe.status() },
+            notifier: notifier(configuration.apns, secrets: runtime.secrets, context: context),
+            log: log,
+            mirror: DiscussionMirror(context: context, discussions: discussions, log: log),
+            epicWorkspace: runtime.workspace
         )
         log("起動しました（pid \(ProcessInfo.processInfo.processIdentifier)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
         await loop.run()
     }
 
-    private static func makeLoop(
-        configuration: CommanderConfiguration,
-        store: GitHubContentsStore,
-        discussions: GitHubDiscussions,
-        claude: ClaudeSetup,
-        claudeVersion: String?
-    ) -> CommanderLoop {
-        let secrets = secrets
-        let trusted = TrustedKeys(anchor: TrustAnchor(store: secrets), store: store, accounts: Set(configuration.keyAccounts), log: log)
-        let probe = MachineProbe(secrets: secrets, volume: paths.root)
-        let workspace = GitRepositoryWorkspace(
-            setup: .init(root: paths.work, credentialHelper: GitCredential.helper(executable: executable)),
-            runner: ProcessCommandRunner()
-        )
-        // 人の意図の処理・Claude のジョブの結果・通知の記録・写しの id の書き戻しは、同じ排他を使うよう、同じ `context` を渡す
-        let context = CommanderContext(store: store, mac: configuration.mac)
-        return CommanderLoop(
-            context: context,
-            settings: .init(capacity: configuration.capacity, commanderVersion: CommanderVersion.current, claudeVersion: claudeVersion),
-            verifier: { () throws(CommanderError) in try await trusted.verifier() },
-            client: ClaudeClient(setup: claude, runner: ProcessCommandRunner()),
-            workspace: workspace,
-            status: { probe.status() },
-            notifier: notifier(configuration.apns, context: context),
-            log: log,
-            mirror: DiscussionMirror(context: context, api: discussions, log: log)
-        )
-    }
-
     /// 進行を止めるものを知らせるもの。APNs の設定が無ければ nil（知らせない）
-    private static func notifier(_ apns: APNsConfiguration?, context: CommanderContext) -> Notifier? {
+    private static func notifier(_ apns: APNsConfiguration?, secrets: KeychainSecretStore, context: CommanderContext) -> Notifier? {
         guard let apns else {
             log("APNs の設定が無いので、通知を送らない（askhub-commander apns で登録する）")
             return nil
@@ -96,18 +47,5 @@ extension AskHubCommanderMain {
         let state = APNsKey.state(in: secrets)
         if state != .ok { log("Keychain の APNs の鍵が \(state.rawValue)。通知は送れずに待つ（askhub-commander apns で登録し直す）") }
         return Notifier(context: context, sender: APNsSender(configuration: apns, secrets: secrets), log: log)
-    }
-
-    /// `claude --version` の版（生きている印に書く）。分からなければ nil
-    private static func version(of claude: ClaudeSetup) async -> String? {
-        let command = Command(
-            executable: claude.executable,
-            arguments: ["--version"],
-            environment: ["HOME": claude.homeDirectory.path, "PATH": claude.path, "CLAUDE_CONFIG_DIR": claude.configDirectory.path],
-            workingDirectory: claude.temporaryDirectory,
-            timeout: .seconds(30)
-        )
-        guard let result = try? await ProcessCommandRunner().run(command), result.succeeded else { return nil }
-        return String(bytes: result.standardOutput, encoding: .utf8)?.split(whereSeparator: \.isWhitespace).first.map(String.init)
     }
 }

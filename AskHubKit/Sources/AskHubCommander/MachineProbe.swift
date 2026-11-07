@@ -7,11 +7,14 @@ public struct MachineProbe: Sendable {
     public var secrets: any SecretStore
     /// 空き容量を測るフォルダ（作業ファイルを置くボリューム）
     public var volume: URL
+    /// GitHub のトークンを置く持ち主（`MachineConfiguration.tokenOwners`）。どれか 1 つでも無ければ `missing`
+    public var owners: [String]
     public var now: @Sendable () -> Date
 
-    public init(secrets: any SecretStore, volume: URL, now: @escaping @Sendable () -> Date = Date.init) {
+    public init(secrets: any SecretStore, volume: URL, owners: [String], now: @escaping @Sendable () -> Date = Date.init) {
         self.secrets = secrets
         self.volume = volume
+        self.owners = owners
         self.now = now
     }
 
@@ -24,7 +27,7 @@ public struct MachineProbe: Sendable {
         let github: SelfCheck.State
         let claude: SelfCheck.State
         do {
-            github = Self.state(of: try secrets.read(.githubToken)) { !$0.isEmpty }
+            github = owners.isEmpty ? .missing : try GitHubTokens(secrets: secrets).state(of: owners)
             claude = Self.state(of: try secrets.read(.claudeToken)) { $0.hasPrefix(Self.claudeTokenPrefix) }
         } catch {
             return SelfCheck(checkedAt: Timestamp(now()), keychain: .invalid, githubToken: .missing, claudeToken: .missing)

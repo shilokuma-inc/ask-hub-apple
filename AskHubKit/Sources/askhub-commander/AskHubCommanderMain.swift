@@ -5,8 +5,9 @@ import Foundation
 ///
 /// - `run`: 常駐のループを回す（LaunchAgent から起動する）
 /// - `setup`: 設定を書き、トークンを Keychain に置き、最初の鍵を固定する（人が端末で流す）
+/// - `token`: 持ち主の GitHub のトークンを Keychain に入れ直す・足す（人が端末で流す）
 /// - `apns`: APNs の鍵を Keychain に置き、鍵の id と Team ID を設定に足す（人が端末で流す）
-/// - `git-credential`: git の credential helper（Keychain の GitHub のトークンを git に渡す）
+/// - `git-credential`: git の credential helper（リポジトリの持ち主の GitHub のトークンを Keychain から git に渡す）
 /// - `launch-agent`: LaunchAgent の定義を書き、登録のコマンドを出す
 /// - `check`: 設定と Keychain の様子を出す（秘密の値は出さない）
 @main
@@ -17,41 +18,37 @@ enum AskHubCommanderMain {
         switch command {
         case "run": await run()
         case "setup": setup(arguments)
+        case "token": commandLine.token(arguments)
         case "apns": apns(arguments)
-        case "git-credential": gitCredential(arguments)
-        case "launch-agent": launchAgent()
+        case "git-credential": commandLine.gitCredential(arguments)
+        case "launch-agent": commandLine.launchAgent()
         case "check": check()
-        default: fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
+        default: commandLine.fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
         }
     }
 
     static let usage = """
         使い方: askhub-commander <コマンド>
           setup --state-repo <owner/repo> --mac <名前> --claude <claude の絶対パス> --first-key <最初の鍵の id>
-                --key-account <GitHub のアカウント> [--state-branch <ブランチ>] [--claude-capacity <数>]
+                --key-account <GitHub のアカウント> [--github-owner <対象のリポジトリの持ち主> ...]
+                [--state-branch <ブランチ>] [--claude-capacity <数>]
+          token <持ち主>  持ち主（organization・個人）の GitHub の fine-grained token を入れ直す・足す
           apns --key-id <APNs の鍵の id> --team-id <Team ID> --key-file <.p8 のパス> [--topic <Bundle ID>]
           launch-agent   LaunchAgent の定義を書き、登録のコマンドを出す
           run            常駐のループを回す
           check          設定と Keychain の様子を出す
         """
 
-    static let paths = CommanderPaths()
+    static let commandLine = MachineCommandLine(role: .commander, executable: MachineCommandLine.currentExecutable)
 
-    /// この実行ファイルの場所（シンボリックリンクを辿った先）
-    static var executable: URL {
-        (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
-    }
+    static var paths: MachinePaths { commandLine.paths }
 
-    /// launchd の下では標準出力がファイルになり print はバッファに残るため、書いてすぐ出す
     @Sendable
     static func log(_ message: String) {
-        let time = Date().formatted(.iso8601)
-        FileHandle.standardOutput.write(Data("[\(time)] \(message)\n".utf8))
+        MachineCommandLine.log(message)
     }
 
     static func fail(_ message: String, status: Int32) -> Never {
-        FileHandle.standardError.write(Data("askhub-commander: \(message)\n".utf8))
-        if status != EX_OK { log("終了します（終了コード \(status)）: \(message)") }
-        exit(status)
+        commandLine.fail(message, status: status)
     }
 }
