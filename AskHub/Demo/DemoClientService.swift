@@ -9,6 +9,8 @@ final class DemoClientService: ClientService {
     let scenario: DemoScenario
     let reactionDelay: TimeInterval
     let refreshInterval: Duration
+    /// 送るのにかかる時間（送っている間の画面を見るため。既定は待たない）
+    let sendDelay: Duration
     let now: () -> Date
     private var scheduled: [Reaction] = []
     private var nextPullRequestNumber = 60
@@ -24,11 +26,13 @@ final class DemoClientService: ClientService {
         scenario: DemoScenario = .standard,
         reactionDelay: TimeInterval = 4,
         refreshInterval: Duration = .seconds(2),
+        sendDelay: Duration = .zero,
         now: @escaping () -> Date = Date.init
     ) {
         self.scenario = scenario
         self.reactionDelay = reactionDelay
         self.refreshInterval = refreshInterval
+        self.sendDelay = sendDelay
         self.now = now
         state = scenario.snapshot(now: now())
     }
@@ -45,6 +49,9 @@ final class DemoClientService: ClientService {
 
     @discardableResult
     func perform(_ intent: HumanIntent) async throws -> SendReceipt {
+        if sendDelay > .zero {
+            try await Task.sleep(for: sendDelay)
+        }
         sends.append((intent, now()))
         return apply(intent)
     }

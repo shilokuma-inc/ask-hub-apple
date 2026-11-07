@@ -17,6 +17,8 @@ enum DemoScenario: String, CaseIterable {
 
     /// 機械の反応までの秒数を決める UserDefaults のキー（UI テストは起動引数 `-demoReactionDelay 0` で渡す）
     static let reactionDelayKey = "demoReactionDelay"
+    /// 送るのにかかる秒数を決める UserDefaults のキー（送っている間の画面を撮るときに、起動引数 `-demoSendDelay 3` で渡す）
+    static let sendDelayKey = "demoSendDelay"
 
     func snapshot(now: Date) -> ClientSnapshot {
         let data = DemoData(now: now)
