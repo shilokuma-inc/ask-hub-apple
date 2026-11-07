@@ -4,7 +4,14 @@ import SwiftUI
 /// 画面の移動の状態。iPhone はタブごとの積み重ね、Mac・iPad は一覧の選択と詳細の積み重ねで持つ
 @Observable
 final class AppNavigator {
-    var section: AppSection = .inbox
+    var section: AppSection = .inbox {
+        didSet {
+            // 一覧を切り替えたら、前の一覧で選んでいた項目を閉じる（`open` は切り替えた後に選ぶので、開いた項目は残る）
+            if section != oldValue {
+                selection = nil
+            }
+        }
+    }
     /// iPhone: タブごとに開いている画面
     var paths: [AppSection: [AppRoute]] = [:]
     /// Mac・iPad: 一覧で選んでいる項目
