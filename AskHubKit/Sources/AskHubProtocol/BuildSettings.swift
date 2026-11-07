@@ -1,7 +1,8 @@
 import Foundation
 
-/// リポジトリのビルドとテストの設定（`docs/renewal/operations.md` の「既存のリポジトリを移すとき」の「ビルドの設定」）。
-/// 状態リポジトリの `repo.json` に写して使う。ワーカーはこれだけから決まった形の `xcodebuild` を組み立て、Claude に引数を書かせない。
+/// リポジトリのビルドとテストの設定（`docs/renewal/operations.md` の「ビルドの設定の入れ方」）。
+/// 状態リポジトリの `repo.json` の `build.xcode` に置く（`RepositoryFile.Build`）。ワーカーはこれだけから決まった形の
+/// `xcodebuild` を組み立て（`AskHubBuild`）、Claude に引数を書かせない。
 ///
 /// 読むとき（`init(from:)`）と作るときに形を確かめる。パスはリポジトリの直下からの相対パスに限り、`..` を含むものや、
 /// 引数として読まれる `-` 始まりの値は受け付けない
@@ -42,20 +43,6 @@ public struct BuildSettings: Codable, Equatable, Sendable {
             try validate()
         } catch {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: error.description))
-        }
-    }
-
-    /// `-project` か `-workspace` か
-    public var projectOption: String {
-        project.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
-    }
-
-    /// 種類ごとに流すテスト。ビルドだけなら nil
-    public func tests(for kind: BuildKind) -> TestSelection? {
-        switch kind {
-        case .build: nil
-        case .testLight: testLight
-        case .testFull: testFull
         }
     }
 
@@ -132,19 +119,6 @@ public struct TestSelection: Codable, Equatable, Sendable {
             try BuildSettings.checkArgument(test, field: "\(field).skipTesting")
         }
     }
-}
-
-/// ビルドとテストの種類（`docs/renewal/flows.md` の「Claude にビルドとテストを頼ませる」の `buildKind`）。
-/// 頼む側はこれだけを選び、コマンドの中身は `BuildSettings` から決まる
-public enum BuildKind: String, Codable, Sendable, CaseIterable {
-    /// ビルドだけ
-    case build
-    /// 軽いテスト（`BuildSettings.testLight`）
-    case testLight
-    /// 全部のテスト（`BuildSettings.testFull`）
-    case testFull
-
-    public var isTest: Bool { self != .build }
 }
 
 /// 設定の形の誤り

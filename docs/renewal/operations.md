@@ -160,7 +160,7 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
 1. `askhub setup --state-repo <owner/repo>`: 設定を書き、GitHub のトークン（状態リポジトリを読み書きできるもの）を端末で伏せて入れ、署名の鍵を作る
 2. `askhub key register-first --account <GitHub のアカウント> --label <名前>`: 公開鍵の記録が空のときに、この鍵を最初の鍵（`keys/1.json`）として登録する。出てくる鍵の id を、司令塔の `setup --first-key` に渡す
    - ほかの端末の鍵は `askhub key add --public-key <base64url> --account … --label …`、取り消しは `askhub key revoke <鍵の id>`
-3. `askhub add-repository --repo <owner/repo>` → `askhub request --repo … --title … --body …`
+3. `askhub add-repository --repo <owner/repo>` → `askhub configure-repository --repo … --file <build.json>`（下の「ビルドの設定の入れ方」。開始の前に要る）→ `askhub request --repo … --title … --body …`
 4. `askhub status` で epic・答える質問（id と版と選択肢）・ゴール・送った意図の処理の結果を見て、`answer`・`clarify`・`decide-split`・`revise-goal`・`start` で進める
 5. 要らなくなった依頼は、開始する前なら `askhub abandon --repo … --epic …` で取り下げる
 6. 人の対応待ちのジョブ（認証切れ・想定外の失敗など）は、`askhub status` に失敗の理由と、`retry`（やり直す）・`give-up`（やめる）に渡す引数（ジョブの id と試行の番号）が出る。原因を直してから `retry` を送る
@@ -188,12 +188,43 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
 - 対象に加えるときは、GitHub 側の準備（Discussions・共通リポジトリのワークフローを呼ぶファイルを入れる PR）と、設定を状態リポジトリに書く。ブランチ保護は人が押したときだけ設定する
 - リポジトリの新規作成は、「テンプレートからの複製」と「対象に加える」と同じ手順の組み合わせにして、できあがるものをそろえる
 
+### ビルドの設定の入れ方
+
+ワーカーは、リポジトリのビルドの設定（`repo.json` の `build`。形は [protocol.md](protocol.md) の「repo.json」）でビルド・テストを流し、子 PR と最終 PR のチェックを待つ。設定が無いリポジトリでは、司令塔が開始を断る。対象に加えた後に、人が入れる（直すときも同じ）。
+
+1. 設定の JSON を書く（`repo.json` の `build` と同じ形）
+
+   ```json
+   {
+     "baseBranch": "develop",
+     "xcode": {
+       "project": "PrimePick.xcodeproj",
+       "scheme": "PrimePick",
+       "destinations": [{ "platform": "iOS", "deviceType": "iPhone 17 Pro", "osVersion": "26.5" }],
+       "testLight": { "onlyTesting": ["PrimePickTests"] },
+       "testFull": { "testPlan": "Full" }
+     },
+     "childChecks": ["build / build"],
+     "finalChecks": ["build / build", "ui-test / ui-test"],
+     "trustedReviewers": ["coderabbitai[bot]"]
+   }
+   ```
+
+   - `baseBranch` は作業ブランチの元で、最終 PR の向き先（無ければ develop）
+   - `xcode` の値は `xcodebuild` の引数になる。`project` はリポジトリの直下からの相対パス。`destinations` は並べた順に流す（macOS は `{ "platform": "macOS" }`。`osVersion` を省くと、使う Xcode の SDK と同じか古いランタイムのうち最新）。`testLight`（子 PR の前）・`testFull`（最終 PR の前。UI テストを含む）は、省くと全部のテスト
+   - `childChecks`・`finalChecks` は、待つチェックの名前（1 つ以上）。PR の画面のチェックの表示と同じで、再利用ワークフローのジョブは `build / build` の形になる。develop の最近のコミットのチェックの名前は `gh api repos/<owner>/<repo>/commits/develop/check-runs --jq '.check_runs[].name'` で見られる
+   - `trustedReviewers` は、指摘を Claude に渡してよいレビューの書き手（無ければ空。CodeRabbit は最終 PR でだけ待つ）
+2. 非常口から送る: `askhub configure-repository --repo <owner/repo> --file build.json`。送る前に、司令塔と同じ決まり（`-` で始まる値・リポジトリの外を指すパス・知らない欄・チェックが空）で確かめ、合わなければ送らない
+3. `askhub status` で、送った意図が受け付けられたか（断られたら理由）を見る。送るたびに `build` をまるごと置き換える
+
+- クライアントでの入れ方は、まだ無い（[protocol.md](protocol.md) の「決めていないこと」）
+
 ### 既存のリポジトリを移すとき
 
 今の仕組みで管理しているリポジトリは、作りがそろっていない（段階 0 の後の調査）。「対象に加える」で次も扱う。
 
-- **ビルドの設定**: プラットフォーム、テストの行き先（Simulator の種類）、プロジェクトの作り方（XcodeGen なら生成してから）、スキームをリポジトリごとに持つ。ワーカーはこれでビルドとテストを流す
-- **CI のチェックの名前**: 子 PR で待つ必須のチェックの名前はリポジトリごとに違うので、決め打ちにしない（ルールセットか、develop の最後の回から読む）
+- **ビルドの設定**: プラットフォーム、テストの行き先（Simulator の種類）、プロジェクトの作り方（XcodeGen なら生成してから）、スキームをリポジトリごとに持つ。ワーカーはこれでビルドとテストを流す（上の「ビルドの設定の入れ方」。XcodeGen などで生成してからビルドするリポジトリは、まだ扱えない）
+- **CI のチェックの名前**: 子 PR で待つ必須のチェックの名前はリポジトリごとに違うので、決め打ちにしない（ルールセットか、develop の最後の回から読んで、ビルドの設定の `childChecks`・`finalChecks` に入れる）
 - **共通リポジトリの前の期間**: 共通リポジトリ（段階 5）ができるまでは、各リポジトリの今のワークフローを入れ替えずに使う
 - **今の仕組みの残りもの**: ラベル・状態用の Issue・ループの中継のスクリプト・CLAUDE.md のループの節を外す PR を、移すときの手順に入れる
 - **移管・改名**: 状態リポジトリのパスは owner/name なので、リポジトリの移管・改名に追って、状態のファイルを移す

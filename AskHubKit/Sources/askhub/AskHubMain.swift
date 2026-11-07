@@ -24,7 +24,8 @@ enum AskHubMain {
         switch command {
         case "setup": try setup(CommandArguments(arguments))
         case "key": try await key(arguments)
-        case "add-repository", "request", "answer", "clarify", "start", "revise-goal", "decide-split", "abandon", "retry", "give-up":
+        case "add-repository", "configure-repository", "request", "answer", "clarify", "start", "revise-goal", "decide-split", "abandon",
+             "retry", "give-up":
             try await send(command, CommandArguments(arguments))
         case "status": try await status(CommandArguments(arguments))
         default: fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
@@ -37,6 +38,7 @@ enum AskHubMain {
           key show | key register-first --account <GitHub のアカウント> --label <名前>
           key add --public-key <base64url> --account <アカウント> --label <名前> | key revoke <鍵の id>
           add-repository --repo <owner/repo>
+          configure-repository --repo <owner/repo> --file <build.json>   ビルドの設定（repo.json の build と同じ形）を入れる
           request --repo <owner/repo> --title <題> [--body <本文>]
           answer --repo <owner/repo> --epic <id> --question <q1> --version <版> [--choice <選択肢>] [--note <補足>]
           clarify --repo <owner/repo> --epic <id> --question <q1> --version <版> --note <問い>

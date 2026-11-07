@@ -1,5 +1,6 @@
 @testable import AskHubBuild
 import AskHubCommands
+import AskHubProtocol
 import Foundation
 import Testing
 

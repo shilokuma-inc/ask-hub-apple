@@ -281,6 +281,706 @@
       },
       "schemaValid": true,
       "read": "malformed"
+    },
+    {
+      "name": "build-full",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "baseBranch": "main",
+          "xcode": {
+            "project": "App/App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "iOS",
+                "deviceType": "iPhone 17 Pro",
+                "osVersion": "26.5"
+              },
+              {
+                "platform": "visionOS",
+                "deviceType": "Apple Vision Pro"
+              },
+              {
+                "platform": "macOS"
+              }
+            ],
+            "testLight": {
+              "onlyTesting": [
+                "AppTests"
+              ],
+              "skipTesting": [
+                "AppTests/SlowTests"
+              ]
+            },
+            "testFull": {
+              "testPlan": "Full"
+            }
+          },
+          "childChecks": [
+            "build / build"
+          ],
+          "finalChecks": [
+            "build / build",
+            "ui-test / ui-test"
+          ],
+          "trustedReviewers": [
+            "coderabbitai[bot]",
+            "mrs1669"
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "build-minimal",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "build-null",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": null
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "build-unknown-field",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "futureField": 1
+        }
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "build-no-child-checks",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-missing-final-checks",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-duplicate-checks",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build",
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-check-with-newline",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build\nui-test"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-check-with-format-character",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build​"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "build-base-branch-option",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "baseBranch": "-develop"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-base-branch-dot-dot",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "baseBranch": "release/../main"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-reviewer-not-account",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "trustedReviewers": [
+            "coderabbit ai"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-missing-xcode",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-project-outside",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "../Other/App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-project-absolute",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "/Users/me/App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-project-not-xcode",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "Package.swift",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-scheme-option",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "-quiet",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-no-destinations",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": []
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-duplicate-destinations",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              },
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-unknown-platform",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "tvOS",
+                "deviceType": "Apple TV"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-simulator-without-device",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "iOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-bad-os-version",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "iOS",
+                "deviceType": "iPhone 17 Pro",
+                "osVersion": "26.x"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-test-option",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ],
+            "testLight": {
+              "onlyTesting": [
+                "-AppTests"
+              ]
+            }
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
     }
   ]
 }

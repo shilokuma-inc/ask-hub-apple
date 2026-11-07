@@ -12,6 +12,8 @@ public actor CommanderLock {
 
     /// 入るのを待っている数（テストで、待ちに入ったことを確かめる）
     var waitingCount: Int { waiters.count }
+    /// 中に入っているものがあるか（テストで、待つ間は排他の外にいることを確かめる）
+    var isHeld: Bool { locked }
 
     nonisolated public func withLock<T: Sendable>(_ body: () async throws(CommanderError) -> T) async throws(CommanderError) -> T {
         await acquire()

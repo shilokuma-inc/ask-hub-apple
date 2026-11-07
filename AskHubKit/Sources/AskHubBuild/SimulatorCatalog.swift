@@ -1,3 +1,4 @@
+import AskHubProtocol
 import Foundation
 
 /// `xcrun simctl list -j` の結果のうち、使う欄

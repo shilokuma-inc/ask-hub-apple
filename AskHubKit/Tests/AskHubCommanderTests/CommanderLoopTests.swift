@@ -169,6 +169,48 @@ extension ClaudeJobRunnerTests {
         #expect(runners?[.prepareWorkspace] is PrepareWorkspaceRunner)
     }
 
+    @Test func loopStartsFirstTaskAfterWorkspaceIsPrepared() async throws {
+        // 作業場所の用意の成功を読んだ同じ周で、作業ブランチを書き、最初のタスクの実装を epic の Mac に作る
+        let store = try await storeWithRequest(count: 0)
+        let time = Timestamp(Self.now)
+        let laptop = EpicHandlersTests.laptop
+        let epic = EpicFile(
+            id: .generate(at: Self.now),
+            repo: Self.repo,
+            title: "ランキング",
+            stage: .running,
+            mac: laptop,
+            createdAt: time,
+            updatedAt: time
+        )
+        try await put(epic, at: StatePath.epic(Self.repo, epic.id), in: store)
+        let goal = GoalFile(version: 1, summary: "…", doneWhen: ["…"], tasks: [.init(id: "t1", title: "集計を作る")])
+        try await put(goal, at: StatePath.goal(Self.repo, epic.id), in: store)
+        let context = CommanderContext(store: store, mac: Self.commander) { Self.now }
+        let spec = JobSpec(kind: .prepareWorkspace, mac: laptop, needs: .init(claude: false, build: false))
+        let prepare = context.job(spec, for: epic, origin: IntentReference(keyId: keyID, nonce: .generate(at: Self.now)), seed: "")
+        try await put(prepare, at: StatePath.job(Self.repo, epic: epic.id, job: prepare.id), in: store)
+        let outputs = AttemptFile.Outputs(commit: String(repeating: "0", count: 40), branch: "askhub/\(epic.id)")
+        let attempt = AttemptFile(
+            job: prepare.id,
+            number: 1,
+            mac: laptop,
+            startedAt: time,
+            heartbeatAt: time,
+            endedAt: time,
+            outcome: .succeeded,
+            outputs: outputs
+        )
+        try await put(attempt, at: StatePath.attempt(Self.repo, epic: epic.id, job: prepare.id, number: 1), in: store)
+
+        // ほかの Mac のジョブなので、司令塔は引き受けない
+        #expect(try await loop(store, claude: ScriptedRunner([])).cycle().isEmpty)
+        #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.branch == "askhub/\(epic.id)")
+        let implement = try #require(try await jobs(epic.id, in: store).first { $0.kind == .implementTask })
+        #expect(implement.task == "t1")
+        #expect(implement.assignedMac == laptop)
+    }
+
     @Test func loopWritesHeartbeatsAtInterval() async throws {
         let store = try await storeWithRequest(count: 0)
         let loop = loop(store, claude: ScriptedRunner([]))

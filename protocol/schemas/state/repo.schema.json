@@ -30,6 +30,10 @@
         "appliedAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "人がクライアントで押して保護を設定した時刻" }
       }
     },
+    "build": {
+      "anyOf": [{ "$ref": "../repository-build.schema.json" }, { "type": "null" }],
+      "description": "ビルドの設定（人が configureRepository で入れる）。無いリポジトリでは開始を断る"
+    },
     "addedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
   }
 }
