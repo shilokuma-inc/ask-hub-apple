@@ -177,6 +177,21 @@ struct FinalFlowTests {
         #expect(again.dependsOn == [classify.id])
     }
 
+    @Test func reviewsAgainWhenHeadMovedDuringReview() async throws {
+        try await given.finished()
+        let review = try await given.openedFinalPullRequest()
+        // 見ている間に head が進んだ: ワーカーは判定を書かずに今の head を返す。その head でレビューし直す
+        try await given.succeed(review, outputs: .init(pullRequest: Fixture.pullRequest, commit: Fixture.sha("b")))
+        let again = try await given.next(.reviewFinalPullRequest)
+        #expect(again.input(as: PullRequestInput.self) == PullRequestInput(pullRequest: Fixture.pullRequest, head: Fixture.sha("b")))
+        #expect(again.dependsOn == [review.id])
+        // 判定も新しい head も無ければ、進めずに知らせる
+        try await given.succeed(again, outputs: .init(pullRequest: Fixture.pullRequest, commit: Fixture.sha("b")))
+        let step = try await given.advance()
+        #expect(step.created.isEmpty)
+        #expect(step.notes.first?.contains("判定が無い") == true)
+    }
+
     // MARK: - 結果が欠けている
 
     @Test func waitsWithNoteWhenOutputsAreMissing() async throws {
