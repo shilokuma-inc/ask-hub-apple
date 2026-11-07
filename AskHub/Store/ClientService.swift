@@ -26,6 +26,8 @@ extension ClientService {
 struct SendReceipt: Equatable {
     /// 依頼から作られる epic。司令塔が受け取る前から、この id で出す（依頼でなければ nil）
     var requestedEpicID: Epic.ID?
+    /// 送った意図の id（`ClientSnapshot.sentIntents` の id）。司令塔が受け付けたかを読み直しで確かめるのに使う。分からなければ nil
+    var intentID: String?
 }
 
 /// 前に送った同じ意図

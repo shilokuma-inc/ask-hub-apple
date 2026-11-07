@@ -13,6 +13,8 @@ struct ClientStoreTests {
         var performError: ClientServiceError?
         var performed: [HumanIntent] = []
         var sentRecords: [HumanIntent: SentRecord] = [:]
+        /// 送った意図の控えに入れる id（司令塔が受け付けたかを確かめる）
+        var receiptIntentID: String?
         /// true の間は、`finishSending()` を呼ぶまで送り終わらない
         var holdsSending = false
         private var waiting: [CheckedContinuation<Void, Never>] = []
@@ -35,7 +37,7 @@ struct ClientStoreTests {
             if let performError {
                 throw performError
             }
-            return SendReceipt(requestedEpicID: intent.isRequest ? "request-1" : nil)
+            return SendReceipt(requestedEpicID: intent.isRequest ? "request-1" : nil, intentID: receiptIntentID)
         }
 
         func lastSend(of intent: HumanIntent) -> SentRecord? {
@@ -243,5 +245,50 @@ struct ClientStoreTests {
         await store.retryFailedSend()
         #expect(store.sendFailure == nil)
         #expect(store.notice?.message == "取り下げを送りました")
+    }
+
+    /// 開始を送り、司令塔の受け付けを待っている窓口とストア
+    private func startWaitingForCommander(noticeDuration: Duration = .seconds(5)) async -> (FakeService, ClientStore) {
+        let service = FakeService()
+        var snapshot = DemoScenario.standard.snapshot(now: now)
+        snapshot.sentIntents = [SentIntentStatus(id: "nonce-1", title: "開始", sentAt: now, state: .waiting)]
+        service.snapshot = snapshot
+        service.receiptIntentID = "nonce-1"
+        let store = ClientStore(service: service, noticeDuration: noticeDuration, now: { [now] in now })
+        #expect(await store.send(.start(epicID: "budget-limit", macID: DemoData.macMiniID)) == .sent(SendReceipt(intentID: "nonce-1")))
+        #expect(store.notice?.message == "開始を送りました")
+        return (service, store)
+    }
+
+    /// 開始を送った後、司令塔が受け付けたら、どの Mac で開始したかを帯で知らせる（知らせるのは 1 度だけ）
+    @Test
+    func announcesStartAcceptedByCommander() async {
+        let (service, store) = await startWaitingForCommander()
+        await store.refresh()
+        #expect(store.notice?.message == "開始を送りました")
+
+        service.snapshot?.sentIntents[0].state = .accepted(at: now)
+        await store.refresh()
+        #expect(store.notice?.message == "Mac mini で開始しました")
+        #expect(store.notice?.detail == "作業場所の用意から進めます")
+        #expect(store.notice?.isRejection == false)
+
+        store.dismissNotice()
+        await store.refresh()
+        #expect(store.notice == nil)
+    }
+
+    /// 司令塔が受け付けなかったら、理由を出し、閉じるまで消さない
+    @Test
+    func showsRejectionUntilDismissed() async throws {
+        let (service, store) = await startWaitingForCommander(noticeDuration: .milliseconds(20))
+        service.snapshot?.sentIntents[0].state = .rejected(at: now, reason: "Mac mac-mini がオフライン")
+        await store.refresh()
+        #expect(store.notice?.message == "開始を受け付けませんでした")
+        #expect(store.notice?.detail == "Mac mac-mini がオフライン")
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(store.notice?.isRejection == true)
+        store.dismissNotice()
+        #expect(store.notice == nil)
     }
 }

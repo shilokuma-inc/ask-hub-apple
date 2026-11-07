@@ -66,7 +66,7 @@ final class StateClientService: ClientService {
         // 次に読むまでの間も、送ったことを覚えておく（読んだ中に出たら、読んだものに任せる）
         unreadSends.append(SentDraft(nonce: reference.nonce, draft: draft, sentAt: now(), isWaiting: true))
         let epicID = draft.kind == RequestIntent.kind ? RequestIntent.epicID(for: reference).rawValue : nil
-        return SendReceipt(requestedEpicID: epicID)
+        return SendReceipt(requestedEpicID: epicID, intentID: reference.nonce.rawValue)
     }
 
     func supports(_ intent: HumanIntent) -> Bool {

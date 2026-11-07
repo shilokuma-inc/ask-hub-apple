@@ -37,13 +37,15 @@ final class ClientStore {
         case failed(String)
     }
 
-    /// 送れたことを知らせる帯（しばらくしたら消す）
+    /// 送れたこと・司令塔が受け付けたかを知らせる帯（受け付けたことはしばらくしたら消し、断られたことは閉じるまで残す）
     struct SendNotice: Identifiable, Equatable {
         let id = UUID()
         /// 例: 依頼「週ごとのまとめ」を送りました
         let message: String
-        /// 送った後の見通し（状態リポジトリの「送った意図」・epic の履歴と同じ言い方にする）
+        /// 送った後の見通し（状態リポジトリの「送った意図」・epic の履歴と同じ言い方にする）。断られたときは理由
         var detail = "司令塔が受け取るのを待っています"
+        /// 司令塔が受け付けなかった
+        var isRejection = false
     }
 
     /// 同じ内容の依頼を重ねて送る前に、確かめる間
@@ -60,6 +62,8 @@ final class ClientStore {
     private(set) var hiddenItemIDs: Set<String> = []
     /// 送っている途中の意図。同じ意図は、送り終わるまで重ねて送らない
     private var sendingIntents: Set<HumanIntent> = []
+    /// 帯で知らせて送った意図のうち、司令塔が受け取るのを待っているもの（送った意図の id ごと）
+    private var awaitingReceipts: [String: HumanIntent] = [:]
 
     let service: any ClientService
     let undoDelay: Duration
@@ -102,6 +106,7 @@ final class ClientStore {
             refreshFailure = nil
             // 送った項目は取り直しに反映されたので、猶予の間のものだけを隠し続ける
             hiddenItemIDs = Set([pending?.itemID].compactMap(\.self))
+            announceReceipts(in: fetched)
         } catch {
             let message = error.localizedDescription
             if snapshot == nil {
@@ -198,7 +203,7 @@ final class ClientStore {
         if !intent.isRequest, service.lastSend(of: intent)?.isWaiting == true {
             clearFailure(of: intent)
             if announces {
-                announce("\(intent.label)は送ってあります")
+                announce(SendNotice(message: "\(intent.label)は送ってあります"))
             }
             return .alreadySent
         }
@@ -207,10 +212,14 @@ final class ClientStore {
         do {
             let receipt = try await service.perform(intent)
             clearFailure(of: intent)
-            await refresh()
+            // 読み直しで司令塔が受け付けたと分かれば、送れたことの帯をその知らせに替える
             if announces {
-                announce("\(intent.label)を送りました")
+                announce(SendNotice(message: "\(intent.label)を送りました"))
+                if let intentID = receipt.intentID {
+                    awaitingReceipts[intentID] = intent
+                }
             }
+            await refresh()
             return .sent(receipt)
         } catch {
             let message = error.localizedDescription
@@ -228,10 +237,51 @@ final class ClientStore {
         }
     }
 
-    private func announce(_ message: String) {
-        let item = SendNotice(message: message)
+    /// 司令塔が受け取った意図（受け付けた・断った）を帯で知らせる。同じ読み直しで重なったら、断られたものを出す
+    private func announceReceipts(in snapshot: ClientSnapshot) {
+        var received: SendNotice?
+        for (intentID, intent) in awaitingReceipts.sorted(by: { $0.key < $1.key }) {
+            let status = snapshot.sentIntents.first { $0.id == intentID }
+            switch status?.state {
+            case .waiting:
+                continue
+
+            case .accepted:
+                if received?.isRejection != true {
+                    received = Self.acceptedNotice(for: intent, in: snapshot)
+                }
+
+            case .rejected(_, let reason):
+                received = SendNotice(message: "\(intent.label)を受け付けませんでした", detail: reason, isRejection: true)
+
+            case nil:
+                // 読んだ中に無い（送った意図を出さない窓口・古くなって外れた）なら、もう待たない
+                break
+            }
+            awaitingReceipts[intentID] = nil
+        }
+        if let received {
+            announce(received)
+        }
+    }
+
+    private static func acceptedNotice(for intent: HumanIntent, in snapshot: ClientSnapshot) -> SendNotice {
+        switch intent {
+        case let .start(_, macID):
+            SendNotice(message: "\(snapshot.mac(macID)?.name ?? macID) で開始しました", detail: "作業場所の用意から進めます")
+
+        default:
+            SendNotice(message: "\(intent.label)を受け付けました", detail: "司令塔が受け取りました")
+        }
+    }
+
+    private func announce(_ item: SendNotice) {
         notice = item
         noticeTask?.cancel()
+        // 断られたことは、読み終えて閉じるまで残す
+        guard !item.isRejection else {
+            return
+        }
         noticeTask = Task { [noticeDuration] in
             try? await Task.sleep(for: noticeDuration)
             guard !Task.isCancelled, self.notice?.id == item.id else {

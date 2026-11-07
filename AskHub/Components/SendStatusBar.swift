@@ -8,8 +8,8 @@ struct SendStatusBar: View {
         VStack(spacing: 8) {
             if let notice = store.notice {
                 HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(Theme.success)
+                    Image(systemName: notice.isRejection ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                        .foregroundStyle(notice.isRejection ? Theme.danger : Theme.success)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(notice.message)
                             .appFont(.footnote, weight: .semibold)
@@ -17,6 +17,7 @@ struct SendStatusBar: View {
                         Text(notice.detail)
                             .appFont(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(notice.isRejection ? 4 : 2)
                     }
                     Spacer(minLength: 0)
                     Button("閉じる", systemImage: "xmark") { store.dismissNotice() }
