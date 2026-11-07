@@ -153,7 +153,9 @@ public actor CommanderLoop {
         "startEpic": StartEpicHandler(),
         "reviseGoal": ReviseGoalHandler(),
         "decideSplit": DecideSplitHandler(),
-        "addRepository": AddRepositoryHandler()
+        "addRepository": AddRepositoryHandler(),
+        "retry": RetryJobHandler(),
+        "giveUp": GiveUpJobHandler()
     ]
 
     // MARK: - 引き受け

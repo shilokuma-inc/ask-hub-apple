@@ -103,6 +103,9 @@ struct AskHubClientTests {
         #expect(try ReviseGoalIntent(envelope: envelope(.reviseGoal(target, instruction: "完了の条件を足して"))).instruction == "完了の条件を足して")
         #expect(try DecideSplitIntent(envelope: envelope(.decideSplit(target, choice: .proceed))).choice == .proceed)
         #expect(try AddRepositoryIntent(envelope: envelope(.addRepository(Self.repo))).platform == .apple)
+        let job = JobTarget(repo: Self.repo, epic: epic, job: ULID.generate(at: Self.now), attempt: 2)
+        #expect(try RetryJobIntent(envelope: envelope(.retry(job))).target == job)
+        #expect(try GiveUpJobIntent(envelope: envelope(.giveUp(job))).target == job)
     }
 }
 

@@ -80,6 +80,12 @@ extension AskHubMain {
             return .request(repo: try arguments.repository(), title: try arguments.string("title"), body: arguments.values["body"] ?? "")
         case "answer", "clarify":
             return try answer(command, arguments)
+        case "retry", "give-up":
+            try arguments.only(["repo", "epic", "job", "attempt"])
+            guard let job = ULID(rawValue: try arguments.string("job")) else { throw CommandArguments.Failure(message: "--job の形が違う") }
+            let (repo, epic, attempt) = (try arguments.repository(), try arguments.epic(), try arguments.integer("attempt"))
+            let target = JobTarget(repo: repo, epic: epic, job: job, attempt: attempt)
+            return command == "retry" ? .retry(target) : .giveUp(target)
         default:
             return try epicDraft(command, arguments)
         }

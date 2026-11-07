@@ -47,6 +47,34 @@ extension AskHubMain {
             print(line + (split.isEmpty ? "" : " 分け方: \(split)"))
         }
         if let goal = try await files.read(GoalFile.self, at: StatePath.goal(repo, id))?.file { printGoal(goal) }
+        try await printWaitingJobs(of: epic, files: files)
+    }
+
+    /// 人の対応を待っているジョブと、最後の試行の失敗を出す（やり直す・やめるに渡す番号つき）
+    private static func printWaitingJobs(of epic: EpicFile, files: StateFileStore) async throws {
+        for entry in try await files.store.listAll(StatePath.jobs(epic.repo, epic: epic.id)) ?? [] where entry.kind == .file {
+            // 読めないジョブは、人の対応待ちかどうか分からないので、見落とさないよう出す
+            let job: JobFile
+            do {
+                guard let read = try await files.read(JobFile.self, at: entry.path)?.file else { continue }
+                job = read
+            } catch {
+                print("    読めないジョブ \(entry.name)（\(error)）")
+                continue
+            }
+            guard job.state == .waitingHuman else { continue }
+            print("    人の対応待ちのジョブ \(job.kind.rawValue) \(job.id.rawValue)（試行 \(job.attempts)）")
+            let path = StatePath.attempt(epic.repo, epic: epic.id, job: job.id, number: job.attempts)
+            do {
+                if let failure = try await files.read(AttemptFile.self, at: path)?.file.failure {
+                    print("      失敗: \(failure.failureClass.rawValue) \(failure.message)")
+                }
+            } catch {
+                print("      失敗の理由を読めない（\(error)）")
+            }
+            let target = "--repo \(epic.repo.rawValue) --epic \(epic.id.rawValue) --job \(job.id.rawValue) --attempt \(job.attempts)"
+            print("      やり直す: askhub retry \(target)\n      やめる: askhub give-up \(target)")
+        }
     }
 
     /// 答えるのに要るもの（なぜ・選択肢ごとの変化・推奨と理由・慎重に決めてほしい理由・今の回答）を出す
@@ -72,6 +100,7 @@ extension AskHubMain {
         for task in goal.tasks {
             let premise = task.dependsOn.isEmpty ? "" : "（前提: \(task.dependsOn.joined(separator: "・"))）"
             print("      タスク \(task.id): \(task.title)" + premise)
+            if let detail = task.detail, !detail.isEmpty { print("        \(detail)") }
         }
         for task in goal.humanTasks { print("      人がする作業 \(task.id): \(task.title)（\(task.why)）") }
         for note in goal.notApplied ?? [] { print("      反映しなかった指示: \(note)") }
