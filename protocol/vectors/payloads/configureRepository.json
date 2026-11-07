@@ -1,0 +1,287 @@
+{
+  "description": "ビルドの設定を入れる人の意図の payload の例。read は、封筒の repo があり target と targetVersion が無いときに、読む側がビルドの設定を入れる意図として読めるか。build の中の知らない欄も、一部だけを設定として扱わないよう読まない（スキーマと同じ）",
+  "schema": "payloads/configureRepository.schema.json",
+  "cases": [
+    {
+      "name": "full",
+      "payload": {
+        "build": {
+          "baseBranch": "main",
+          "xcode": {
+            "project": "App/App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "iOS",
+                "deviceType": "iPhone 17 Pro",
+                "osVersion": "26.5"
+              },
+              {
+                "platform": "macOS"
+              }
+            ],
+            "testLight": {
+              "onlyTesting": [
+                "AppTests"
+              ]
+            },
+            "testFull": {
+              "testPlan": "Full"
+            }
+          },
+          "childChecks": [
+            "build / build"
+          ],
+          "finalChecks": [
+            "build / build",
+            "ui-test / ui-test"
+          ],
+          "trustedReviewers": [
+            "coderabbitai[bot]"
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "minimal",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "missing-build",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-null",
+      "payload": {
+        "build": null
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        },
+        "platform": "apple"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field-in-build",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "trustedReviewer": [
+            "coderabbitai[bot]"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field-in-tests",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ],
+            "testLight": {
+              "only": [
+                "AppTests"
+              ]
+            }
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "device-type-on-macos",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS",
+                "deviceType": "Mac"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "no-child-checks",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "project-outside",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "../App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "scheme-option",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "-quiet",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "base-branch-option",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "baseBranch": "-main"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

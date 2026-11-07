@@ -160,6 +160,7 @@ public actor CommanderLoop {
         "decideSplit": DecideSplitHandler(),
         "abandonEpic": AbandonEpicHandler(),
         "addRepository": AddRepositoryHandler(),
+        "configureRepository": ConfigureRepositoryHandler(),
         "retry": RetryJobHandler(),
         "giveUp": GiveUpJobHandler()
     ]
