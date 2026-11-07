@@ -22,10 +22,17 @@ public struct TaskRepositorySettings: Equatable, Sendable {
 }
 
 extension TaskRepositorySettings {
-    /// リポジトリのビルドの設定を読む閉包（`TaskJobEnvironment.settings`）。
-    /// `repo.json` の `build`（`RepositoryFile.build`）が入るまでは、どのリポジトリでも nil を返す（タスクのジョブは理由を付けて人へ渡る）
+    /// `repo.json` の `build` から作る
+    public init(_ build: RepositoryFile.Build) {
+        self.init(baseBranch: build.baseBranch, build: build.xcode, childChecks: Set(build.childChecks))
+    }
+
+    /// リポジトリのビルドの設定を、状態リポジトリの `repo.json` の `build` から読む閉包（`TaskJobEnvironment.settings`）。
+    /// `repo.json` か `build` が無ければ nil（タスクのジョブは理由を付けて人へ渡る）
     public static func reader(context: CommanderContext) -> @Sendable (RepositoryFullName) async throws(CommanderError) -> Self? {
-        { _ throws(CommanderError) in nil }
+        { repo throws(CommanderError) in
+            try await context.read(RepositoryFile.self, at: StatePath.repository(repo))?.build.map(Self.init)
+        }
     }
 }
 

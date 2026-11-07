@@ -44,6 +44,28 @@ struct TaskJobAcceptanceTests {
         )
     }
 
+    @Test func readsBuildSettingsFromRepositoryFile() async throws {
+        let store = InMemoryStateStore()
+        let context = CommanderContext(store: store, mac: Self.commander) { Self.now }
+        let read = TaskRepositorySettings.reader(context: context)
+        // repo.json が無い・build が無いリポジトリは nil
+        #expect(try await read(TaskJobFixture.repo) == nil)
+        var repository = RepositoryFile(repo: TaskJobFixture.repo, platform: .apple, addedAt: Timestamp(Self.now))
+        let path = StatePath.repository(TaskJobFixture.repo)
+        try await StateFileStore(store: store).create(repository, at: path, message: "repo")
+        #expect(try await read(TaskJobFixture.repo) == nil)
+
+        let xcode = try BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [.macOS])
+        let checks = ["build / build", "lint"]
+        repository.build = RepositoryFile.Build(baseBranch: "main", xcode: xcode, childChecks: checks, finalChecks: ["all"])
+        try await StateFileStore(store: store).update(RepositoryFile.self, at: path, message: "build") {
+            $0 = repository
+            return true
+        }
+        let settings = try #require(try await read(TaskJobFixture.repo))
+        #expect(settings == TaskRepositorySettings(baseBranch: "main", build: xcode, childChecks: ["build / build", "lint"]))
+    }
+
     @Test func epicLockLetsOneJobUseWorkspaceAtATime() async {
         let locks = EpicLocks()
         let epic = TaskJobFixture.epic
