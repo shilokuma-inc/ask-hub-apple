@@ -42,8 +42,9 @@ struct TaskReviewResult: Decodable, Equatable, Sendable {
 
 /// 子 PR のレビュー役の Claude への依頼。読むだけ（Read・Glob・Grep）で、子 PR の head を取り出した作業場所で呼ぶ
 enum TaskReview {
-    /// 渡す差分の長さの上限（文字数）。超えた分は省き、作業場所のファイルを読ませる（引数の全体の上限 `ClaudeSetup.maximumArgumentBytes` に収める）
-    static let maximumDiffLength = 60_000
+    /// 依頼の文と決まりの文に使ってよい大きさ（UTF-8 のバイト数）。引数の全体の上限（`ClaudeSetup.maximumArgumentBytes` の既定 256,000）から、
+    /// 出力の形・道具などのほかの引数の分を残す。差分はこの残りに収め、超えた分は省いて作業場所のファイルを読ませる
+    static let maximumTextBytes = 200_000
     /// 1 回の呼び出しの時間の上限
     static let timeout: Duration = .seconds(30 * 60)
 
@@ -57,9 +58,10 @@ enum TaskReview {
     }
 
     static func request(for subject: Subject, repository: RepositoryFullName) -> ClaudeRequest {
-        ClaudeRequest(
-            prompt: prompt(for: subject),
-            systemPrompt: systemPrompt(repository: repository, facts: subject.checkout.facts),
+        let system = systemPrompt(repository: repository, facts: subject.checkout.facts)
+        return ClaudeRequest(
+            prompt: prompt(for: subject, budget: maximumTextBytes - system.utf8.count),
+            systemPrompt: system,
             model: TaskRules.model,
             outputSchema: TaskReviewResult.outputSchema,
             tools: ClaudeRequest.readOnlyTools,
@@ -81,9 +83,31 @@ enum TaskReview {
         """
     }
 
-    static func prompt(for subject: Subject) -> String {
-        let diff = subject.checkout.diff.isBlank ? "（差分なし）" : UntrustedText.head(subject.checkout.diff, limit: maximumDiffLength)
-        return """
+    /// `budget` は依頼の文に使ってよいバイト数。ゴールとタスクはそのまま渡し、差分を残りに収める
+    static func prompt(for subject: Subject, budget: Int = maximumTextBytes) -> String {
+        let diff = subject.checkout.diff.isBlank ? "（差分なし）" : subject.checkout.diff
+        let changes = "\(subject.checkout.stat)\n\n\(diff)"
+        // 区切りのタグの中の `<` を `&lt;` にする分などの余裕を残す
+        let room = budget - text(for: subject, changes: "").utf8.count - 2_000
+        return text(for: subject, changes: fit(changes, bytes: room))
+    }
+
+    /// `bytes`（UTF-8）に収まるよう、文字の切れ目で後ろを省く
+    static func fit(_ text: String, bytes: Int) -> String {
+        guard text.utf8.count > bytes else { return text }
+        let note = "\n…（長いので、ここで切った。ほかは作業フォルダのファイルを読んで確かめる）"
+        var kept = ""
+        var used = note.utf8.count
+        for character in text {
+            used += character.utf8.count
+            guard used <= bytes else { break }
+            kept.append(character)
+        }
+        return kept + note
+    }
+
+    private static func text(for subject: Subject, changes: String) -> String {
+        """
         子 PR #\(subject.pullRequest)（\(subject.branches.task) → \(subject.branches.epic)、head \(subject.head)）をレビューしてください。
 
         ## ゴール（epic 全体で作るもの。このタスクのほかは、後のタスクで作ります）
@@ -93,7 +117,7 @@ enum TaskReview {
         \(UntrustedText.block("task", ImplementTaskJob.text(of: subject.task)))
 
         ## 差分（作業ブランチとの分岐点から head まで）
-        \(UntrustedText.block("diff", "\(subject.checkout.stat)\n\n\(diff)"))
+        \(UntrustedText.block("diff", changes))
 
         ## 必須の指摘にするもの
         - このタスクの範囲を満たしていない、またはゴールの決まったこと・やらないことと食い違う

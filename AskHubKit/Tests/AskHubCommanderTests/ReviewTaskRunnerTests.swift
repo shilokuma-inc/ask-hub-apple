@@ -32,6 +32,20 @@ struct ReviewTaskRunnerTests {
         return try await runner.execute(fixture.job(.reviewTask, "03", input: Self.input.jobInput))
     }
 
+    @Test func reviewPromptFitsArgumentLimitWithMultibyteDiff() {
+        // マルチバイトの文字の多い差分でも、依頼の文をバイト数の上限に収め、文字の途中で切らない
+        let diff = String(repeating: "+let 名前 = \"ランキング\"\n", count: 20_000)
+        let checkout = ReviewCheckout(directory: FakeTaskGit.directory, diff: diff, stat: " Ranking.swift | 20000 +")
+        let goal = TaskJobsTests.goal()
+        let subject = TaskReview.Subject(
+            goal: goal, task: goal.tasks[1], pullRequest: 41, head: Self.head, branches: Fixture.branches, checkout: checkout
+        )
+        let request = TaskReview.request(for: subject, repository: Fixture.repo)
+        #expect(request.prompt.utf8.count + request.systemPrompt.utf8.count <= TaskReview.maximumTextBytes)
+        #expect(request.prompt.contains("長いので、ここで切った"))
+        #expect(request.prompt.contains("ランキングの画面を作る"))
+    }
+
     @Test func mergesPinnedHeadWhenChecksPassAndReviewerFindsNothing() async throws {
         let pending = CheckSummary(verdict: .pending, unfinished: ["build / build"])
         let fixture = try await fixture(reviews: [Self.noFindings], checks: [pending, CheckSummary(verdict: .passed)])
