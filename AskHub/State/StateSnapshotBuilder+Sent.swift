@@ -142,10 +142,8 @@ extension StateSnapshotBuilder {
             return
         }
         epics[epicIndex].goal?.revisionRequest = envelope.string("instruction") ?? ""
-        // 人に渡されて止まっている間は、直しているとは出さない（「対処が要ります」に出る）
-        if job?.state != .waitingHuman {
-            epics[epicIndex].activities.append(EpicActivity(kind: .revisingGoal, since: sentAt))
-        }
+        // 人に渡されて止まっている間は、`applyBlockers` が外す（やり直しを送ったら、また直している途中として出る）
+        epics[epicIndex].activities.append(EpicActivity(kind: .revisingGoal, since: sentAt))
     }
 
     private func applyDecideSplit(_ envelope: IntentEnvelope, to epics: inout [Epic], index: StateIndex) {

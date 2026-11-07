@@ -173,23 +173,28 @@ extension StateClientServiceTests {
         #expect(rejected.history.contains { $0.isFailure && $0.text == "取りやめ（着手前の確認）を受け付けませんでした: ジョブは人の対応を待っていない" })
     }
 
-    /// 受け付けたゴールの修正のジョブが人に渡されたら、直しているとは出さず、やめたら前のゴールのまま開始できる
-    @Test
-    func givingUpGoalRevisionLetsEpicStart() async throws {
+    /// 開始を待つ epic にゴールの修正を送って受け付けられ、その修正のジョブが人に渡された状態。`origin` は修正の意図
+    private func revisingEpicWithWaitingJob() async throws -> (fixture: Fixture, origin: String) {
         let goal = """
         {"v":1,"version":1,"summary":"ランキングを日ごとに入れ替える","decided":[],"outOfScope":[],"doneWhen":["毎日入れ替わる"],
          "tasks":[{"id":"t1","title":"集計を作る","dependsOn":[],"state":"pending"}],"humanTasks":[]}
         """
         let goalPath = "repos/\(Self.repo)/epics/\(Self.epicID)/goal.json"
         let fixture = try makeService(files: Self.askingEpic(stage: "awaitingStart", extra: [goalPath: goal]))
-        let service = fixture.service
-        _ = try await service.fetchSnapshot()
-        try await service.perform(.reviseGoal(epicID: Self.epicID, request: "通知も足す"))
+        _ = try await fixture.service.fetchSnapshot()
+        try await fixture.service.perform(.reviseGoal(epicID: Self.epicID, request: "通知も足す"))
         let revise = try await sentEnvelope(in: fixture.store, key: fixture.key)
         await consumed(revise, result: "accepted", in: fixture)
         let origin = #"{"keyId":"\#(revise.keyId.rawValue)","nonce":"\#(revise.nonce.rawValue)"}"#
         await put(Self.job(kind: "reviseGoal", attempts: 1, origin: origin), at: Self.jobPath(), in: fixture.store)
+        return (fixture, origin)
+    }
 
+    /// 受け付けたゴールの修正のジョブが人に渡されたら、直しているとは出さず、やめたら前のゴールのまま開始できる
+    @Test
+    func givingUpGoalRevisionLetsEpicStart() async throws {
+        let (fixture, origin) = try await revisingEpicWithWaitingJob()
+        let service = fixture.service
         let blocked = try #require(try await service.fetchSnapshot().epic(Self.epicID))
         #expect(blocked.goal?.isRevising == true)
         #expect(!blocked.activities.contains { $0.kind == .revisingGoal })
@@ -205,6 +210,19 @@ extension StateClientServiceTests {
         let canceled = try #require(try await service.fetchSnapshot().epic(Self.epicID))
         #expect(canceled.goal?.isRevising == false)
         #expect(canceled.blocker == nil)
+    }
+
+    /// 人に渡されたゴールの修正にやり直しを送ったら、処理を待つ間は直している途中として「いま」に出す
+    @Test
+    func retryingGoalRevisionShowsRevising() async throws {
+        let service = try await revisingEpicWithWaitingJob().fixture.service
+        let target = try await service.fetchSnapshot().epic(Self.epicID)?.blocker?.target
+        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .retry, instruction: "", target: target))
+
+        let retrying = try #require(try await service.fetchSnapshot().epic(Self.epicID))
+        #expect(retrying.blocker == nil)
+        #expect(retrying.goal?.isRevising == true)
+        #expect(retrying.activities.contains { $0.kind == .revisingGoal })
     }
 
     /// 送れなかった操作を送り直すまでに「対処が要ります」のジョブが替わっていたら、別のジョブには送らない
