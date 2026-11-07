@@ -21,6 +21,15 @@ struct MachineSetupTests {
         #expect(setup.configuration.capacity == .init(claude: 3, build: 0))
         #expect(setup.configuration.kind == .alwaysOn)
         #expect(setup.firstKey.rawValue == Self.keyID)
+        // 常時オンの Mac も、epic の Mac に選ばれたときのために、ビルドの同時の上限を受け取る（既定は 0）
+        let builder = try MachineSetup.parse(
+            [
+                "--state-repo", "shilokuma-inc/askhub-state", "--mac", "mac-mini", "--claude", "/opt/claude/claude",
+                "--first-key", Self.keyID, "--key-account", "mrs1669", "--build-capacity", "1"
+            ],
+            role: .commander
+        )
+        #expect(builder.configuration.capacity == .init(claude: 2, build: 1))
         let failures: [([String], String)] = [
             (["--mac", "mac-mini"], "--state-repo が要る"),
             (

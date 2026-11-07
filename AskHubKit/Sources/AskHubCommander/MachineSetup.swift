@@ -11,10 +11,13 @@ public struct MachineSetup: Equatable, Sendable {
     /// 公開鍵の記録の最初の鍵（セットアップで固定する）
     public var firstKey: KeyID
 
-    /// 役割ごとの引数を読む。ワーカーは Mac の種類（`--kind resident|manual`）とビルドの同時の上限も受け取る
+    /// 役割ごとの引数を読む。ワーカーは Mac の種類（`--kind resident|manual`）も受け取る。
+    /// ビルドの同時の上限は両方で受け取る（常時オンの Mac が epic の Mac に選ばれたら、司令塔が実装のジョブも引き受けるため。司令塔の既定は 0）
     public static func parse(_ arguments: [String], role: MachineRole) throws(Failure) -> Self {
-        var known: Set = ["state-repo", "state-branch", "mac", "claude", "first-key", "key-account", "claude-capacity", "github-owner"]
-        if role == .worker { known.formUnion(["kind", "build-capacity"]) }
+        var known: Set = [
+            "state-repo", "state-branch", "mac", "claude", "first-key", "key-account", "claude-capacity", "build-capacity", "github-owner"
+        ]
+        if role == .worker { known.insert("kind") }
         let values = try flags(arguments, known: known)
         func one(_ name: String) throws(Failure) -> String {
             try required(name, in: values)
