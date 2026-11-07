@@ -43,15 +43,22 @@ public struct ClaudeClient: Sendable {
         self.timeZone = timeZone
     }
 
+    /// `deadline` を渡すと、直させる呼び出しも含めて、その時刻までに打ち切る（1 回の上限は `request.timeout` のまま）
     public func ask<Output: Decodable & Sendable>(
         _ request: ClaudeRequest,
         as type: Output.Type = Output.self,
         now: @Sendable () -> Date = Date.init,
+        deadline: Date? = nil,
         check: @Sendable (Output) -> [String] = { _ in [] }
     ) async -> ClaudeReply<Output> {
         var request = request
+        let callTimeout = request.timeout
         var session: ClaudeSession?
         for correction in 0...maximumCorrections {
+            if let deadline {
+                guard let left = Self.remaining(until: deadline, now: now()) else { return .failed(Self.pastDeadline(deadline), session) }
+                request.timeout = min(callTimeout, left)
+            }
             let message: ClaudeResultMessage
             switch await call(request, now: now) {
             case let .failed(failure):
@@ -87,6 +94,16 @@ public struct ClaudeClient: Sendable {
             request.prompt = Self.correctionPrompt(problems)
         }
         return .failed(.init(failureClass: .unexpected, message: "Claude の結果を受け取れなかった"), session)
+    }
+
+    /// `deadline` までの残り。過ぎていれば nil
+    public static func remaining(until deadline: Date, now: Date) -> Duration? {
+        let left = Duration.milliseconds(Int64((deadline.timeIntervalSince(now) * 1_000).rounded(.down)))
+        return left > .zero ? left : nil
+    }
+
+    static func pastDeadline(_ deadline: Date) -> AttemptFailure {
+        AttemptFailure(failureClass: .timeout, message: "時間の上限（\(Timestamp(deadline).rawValue)）を過ぎた")
     }
 
     private enum CallOutcome {

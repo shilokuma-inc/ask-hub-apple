@@ -53,9 +53,13 @@ enum ClaudeCommandLine {
         return arguments
     }
 
-    /// 渡す道具だけを許可する
+    /// 渡す道具だけを許可する。sandbox を有効にするときは、sandbox の外でコマンドを流し直すこと（`dangerouslyDisableSandbox`）も許さない
     static func settings(for request: ClaudeRequest) -> JSONValue {
-        .object(["permissions": .object(["allow": .array(request.tools.map(JSONValue.string))])])
+        var settings: [String: JSONValue] = ["permissions": .object(["allow": .array(request.tools.map(JSONValue.string))])]
+        if request.sandboxed {
+            settings["sandbox"] = .object(["enabled": .bool(true), "allowUnsandboxedCommands": .bool(false)])
+        }
+        return .object(settings)
     }
 
     /// 環境変数は作り直し、Claude の認証のほかに資格情報を渡さない。

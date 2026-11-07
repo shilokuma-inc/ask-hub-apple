@@ -20,6 +20,8 @@ public struct ClaudeRequest: Equatable, Sendable {
     public var timeout: Duration
     /// 続ける会話（`--resume`）。結果を直させるときに使う
     public var resume: String?
+    /// Claude Code の sandbox を有効にする（`--settings` の `sandbox`）。ワーカーが作業場所を書き換えさせる呼び出しで使う
+    public var sandboxed: Bool
 
     public init(
         prompt: String,
@@ -30,7 +32,8 @@ public struct ClaudeRequest: Equatable, Sendable {
         workingDirectory: URL,
         additionalDirectories: [URL] = [],
         timeout: Duration,
-        resume: String? = nil
+        resume: String? = nil,
+        sandboxed: Bool = false
     ) {
         self.prompt = prompt
         self.systemPrompt = systemPrompt
@@ -41,6 +44,7 @@ public struct ClaudeRequest: Equatable, Sendable {
         self.additionalDirectories = additionalDirectories
         self.timeout = timeout
         self.resume = resume
+        self.sandboxed = sandboxed
     }
 
     /// 読むだけの道具（ファイルを読む・探す）。書く・コマンドを流す道具は渡さない
