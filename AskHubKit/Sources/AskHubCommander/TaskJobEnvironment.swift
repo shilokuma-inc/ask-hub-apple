@@ -20,6 +20,14 @@ public struct TaskRepositorySettings: Equatable, Sendable {
     }
 }
 
+extension TaskRepositorySettings {
+    /// リポジトリのビルドの設定を読む閉包（`TaskJobEnvironment.settings`）。
+    /// `repo.json` の `build`（`RepositoryFile.build`）が入るまでは、どのリポジトリでも nil を返す（タスクのジョブは理由を付けて人へ渡る）
+    public static func reader(context: CommanderContext) -> @Sendable (RepositoryFullName) async throws(CommanderError) -> Self? {
+        { _ throws(CommanderError) in nil }
+    }
+}
+
 /// Claude にタスクを進めさせるもの。本物は `TaskRunner`
 public protocol TaskRunning: Sendable {
     func run<Job: TaskJob>(_ job: Job, in workspace: TaskWorkspace) async -> TaskReply

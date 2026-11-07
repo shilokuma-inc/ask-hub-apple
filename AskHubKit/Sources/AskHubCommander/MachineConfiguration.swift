@@ -135,8 +135,12 @@ public struct MachinePaths: Sendable {
     public var claudeConfig: URL { root.appendingPathComponent("claude/config", isDirectory: true) }
     public var claudeHome: URL { root.appendingPathComponent("claude/home", isDirectory: true) }
     public var claudeTemporary: URL { root.appendingPathComponent("claude/tmp", isDirectory: true) }
+    /// epic ごとの DerivedData と結果のバンドル（`AskHubBuild` の `BuildDirectories`）
+    public var builds: URL { root.appendingPathComponent("builds", isDirectory: true) }
+    /// ビルドとテストの TMPDIR
+    public var buildTemporary: URL { root.appendingPathComponent("builds-tmp", isDirectory: true) }
     public var log: URL { logs.appendingPathComponent("\(role.rawValue).log") }
 
     /// `run` の前に作っておくフォルダ
-    public var directories: [URL] { [work, claudeConfig, claudeHome, claudeTemporary, logs] }
+    public var directories: [URL] { [work, claudeConfig, claudeHome, claudeTemporary, builds, buildTemporary, logs] }
 }

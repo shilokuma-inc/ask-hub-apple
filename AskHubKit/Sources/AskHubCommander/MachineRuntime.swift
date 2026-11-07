@@ -9,6 +9,7 @@ import Foundation
 /// 司令塔とワーカーの `run` が共通に組み立てるもの（状態リポジトリ・公開鍵の一覧・作業場所・Claude・この Mac の様子）
 public struct MachineRuntime: Sendable {
     public var configuration: MachineConfiguration
+    public var paths: MachinePaths
     public var secrets: KeychainSecretStore
     /// 状態リポジトリへの書き込みの予算。同じアカウントの内容を作る要求の上限を分け合うので、書き手ごとに 1 つ
     public var budget: WriteBudget
@@ -45,6 +46,7 @@ public struct MachineRuntime: Sendable {
         )
         return Self(
             configuration: configuration,
+            paths: paths,
             secrets: secrets,
             budget: budget,
             store: store,
@@ -67,6 +69,11 @@ public struct MachineRuntime: Sendable {
             guard let token = try GitHubTokens(secrets: secrets).token(for: owner) else { throw StateStoreError.tokenUnavailable }
             return token
         }
+    }
+
+    /// リポジトリの持ち主を受け取り、その持ち主の GitHub のトークンを Keychain から読む（`AskHubPullRequests` に渡す形）
+    public static func githubTokens(in secrets: KeychainSecretStore) -> @Sendable (_ owner: String) async throws -> String {
+        { owner in try await githubToken(for: owner, in: secrets)() }
     }
 
     /// `claude --version` の版。分からなければ nil
