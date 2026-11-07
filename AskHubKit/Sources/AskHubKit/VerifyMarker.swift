@@ -41,14 +41,7 @@ public struct VerifyMarker: Sendable, Equatable, Codable {
     /// 形式が崩れている場合は `nil` を返す。
     /// author が信用できるかはここでは判定しない（`TrustedAuthors` を使う）。
     public static func parse(_ body: String) -> Self? {
-        let trimmed = body.drop { $0.isWhitespace || $0.isNewline }
-        guard trimmed.hasPrefix(commentOpen),
-              let closeRange = trimmed.range(of: commentClose) else {
-            return nil
-        }
-        let inner = trimmed[trimmed.index(trimmed.startIndex, offsetBy: commentOpen.count)..<closeRange.lowerBound]
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard inner.hasPrefix(keyword) else {
+        guard let inner = MarkerComment.leadingCommentContent(body), inner.hasPrefix(keyword) else {
             return nil
         }
         let rest = inner.dropFirst(keyword.count)

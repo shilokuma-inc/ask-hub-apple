@@ -250,6 +250,14 @@
   ホームのフォルダは `URL.homeDirectory` で求める（2026-11-07、状態リポジトリへのつなぎ込み）
 - UI テストで `-demoScenario` を付けずに起動すると、設定の既定（状態リポジトリ）で動く。デモのデータで動かしつつ場面を設定で変えるテストは、
   `-dataSource demo` を付ける（2026-11-07、状態リポジトリへのつなぎ込み）
+- CI（macos-26-arm64）の `swift test --package-path AskHubKit` では、負荷でテストが一律に遅れることがあり、その幅が 5 秒（#699）から 10.9 秒（2026-11-05）に広がった。
+  `ContinuousClock.now - start < 上限` で「子プロセスを待たずに戻った」ことを確かめるテストは、上限を 30 秒、待たないはずの子プロセスの `sleep` を 60 秒にそろえている（`LocalLoopRuntimeTests.returnLimit`・`XcbStatusTests.returnLimit`）。
+  同じ形のテストを足すときは、上限をふだんの所要時間でなく CI の遅れに合わせ、`sleep` は上限の倍にする。成功を期待するコマンドの `timeout` も上限より短くしない
+- テストの中で作ったばかりのスクリプト（`#!/bin/sh` の実行ファイル）は、最初の起動に 0.15〜0.5 秒かかる（2 回目からは速い）。
+  `XcbStatusTests` は時間切れを 200ms にしていたため、スクリプトが子プロセスを起動する前に止めてしまい、確かめたいこと（子プロセスがパイプを持ち続けても返る）を確かめられていなかった。
+  `/bin/sh` でも、`swift test` で全体を並べて流すと準備（子プロセスの起動・`trap` の設定）が 500ms に間に合わないことがある（`LocalLoopRuntimeTests` の `child.pid` を読むテストが落ちていた）。
+  時間切れで止める前にスクリプトに準備させたいテストは、時間切れを数秒にし（`LocalLoopRuntimeTests.setupTimeout` は 3 秒）、実装を一時的に壊して（読み切りの上限を伸ばすなど）テストが落ちることを確かめる。
+  子プロセスを残すテストは、スクリプトに子プロセスの PID を `child.pid` に書かせ、残っていることを確かめてから `defer` で止める（2026-11-06）
 
 ## Keychain
 
@@ -327,6 +335,9 @@
   呼んだ側の isolation のまま動くので通る。インスタンスメソッドに isolated の引数を付けると `nonisolated` にできない（「instance method with 'isolated' parameter cannot be 'nonisolated'」）ので `static` にする（2026-11-07、`DiscussionMirror`）
 - Swift Testing の `#require` の引数の中に `#require` を入れる（`try #require(try JSONSerialization.jsonObject(with: #require(data)) as? [String: Any])`）と、
   「recursive expansion of macro 'require(_:_:sourceLocation:)'」でテストのビルドが止まる。内側の `#require` を `let` で受けてから外側に渡す（2026-11-07、`APNsSenderTests`）
+- 開きと閉じがある文字列（HTML コメントの `<!--` と `-->` など）の閉じを本文の先頭から探すと、`<!-->`・`<!--->` のように閉じが開きと重なる本文で開きの中の位置が返り、
+  `index(startIndex, offsetBy: 開きの長さ)..<閉じ.lowerBound` の下の端が上の端より大きくなって「Range requires lowerBound <= upperBound」で落ちる。
+  public のリポジトリでは誰でもこうした本文を書けるので、閉じは開きの後ろ（`dropFirst(開きの長さ)` の Substring）から探す。目印の先頭のコメントは `MarkerComment.leadingCommentContent` で読む（2026-11-03、#844）
 
 ## シェルスクリプト
 

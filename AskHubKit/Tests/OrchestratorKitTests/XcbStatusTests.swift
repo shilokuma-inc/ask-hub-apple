@@ -63,17 +63,46 @@ struct XcbStatusTests {
         }
     }
 
-    @Test func returnsEvenIfChildKeepsOutputOpen() async throws {
-        // xcb を止めても、xcb が起動した子プロセス（ssh など）が標準出力のパイプを持ち続ける
-        let start = ContinuousClock.now
-        await #expect(throws: XcbStatusError.timedOut) {
-            try await XcbStatusCommand(timeout: .milliseconds(200), outputDrainTimeout: .milliseconds(300))
-                .status(xcbPath: try script("sleep 30 &\nwait"))
+    /// 子プロセス（`sleep 60`）の終了を待たずに戻ったとみなす上限。読み切りを諦めずに子プロセスを待つと 60 秒かかる。
+    /// CI のランナーでは負荷でテストが 10 秒ほど遅れることがあるので、ふだんの所要時間（1 秒未満）より大きく取る
+    private static let returnLimit: Duration = .seconds(30)
+
+    /// スクリプトが自分の隣の `child.pid` に書いた子プロセスの PID。まだ書いていなければ `nil`
+    private func recordedChildPID(of xcb: String) -> pid_t? {
+        let file = URL(fileURLWithPath: xcb).deletingLastPathComponent().appending(path: "child.pid", directoryHint: .notDirectory)
+        return (try? String(contentsOf: file, encoding: .utf8)).flatMap { pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    }
+
+    /// スクリプトが起動した子プロセスが残っていれば止める。テストが途中で失敗しても残さないよう、xcb を起動する前に `defer` で呼ぶ
+    private func killRecordedChild(of xcb: String) {
+        if let child = recordedChildPID(of: xcb) {
+            kill(child, SIGKILL)
         }
-        // xcb が先に終わって子プロセスだけが残っても、出力を読み切りの上限まで待って返る
-        let detached = try script(#"echo '{"hosts":[]}'; sleep 30 &"#)
-        let status = try await XcbStatusCommand(timeout: .seconds(10), outputDrainTimeout: .milliseconds(300)).status(xcbPath: detached)
+    }
+
+    @Test func returnsEvenIfChildKeepsOutputOpen() async throws {
+        // xcb を止めても、xcb が起動した子プロセス（ssh など）が標準出力のパイプを持ち続ける。
+        // 作ったばかりのスクリプトは最初の起動に 0.5 秒ほどかかることがあるので、子プロセスを起動する前に止めないよう時間切れを長めに取る
+        let killed = try script(#"sleep 60 & echo $! > "$(dirname "$0")/child.pid"; wait"#)
+        defer { killRecordedChild(of: killed) }
+        var start = ContinuousClock.now
+        await #expect(throws: XcbStatusError.timedOut) {
+            try await XcbStatusCommand(timeout: .seconds(2), outputDrainTimeout: .milliseconds(300)).status(xcbPath: killed)
+        }
+        #expect(ContinuousClock.now - start < Self.returnLimit)
+        // 子プロセスを起動してから止め、子プロセスがパイプを持ったまま残っていたことを確かめる
+        let killedChild = try #require(recordedChildPID(of: killed))
+        #expect(kill(killedChild, 0) == 0)
+
+        // xcb が先に終わって子プロセスだけが残っても、出力を読み切りの上限まで待って返る。
+        // 負荷で xcb の終了が遅れても時間切れにならないよう、時間切れは上限と同じにする
+        let detached = try script(#"echo '{"hosts":[]}'; sleep 60 & echo $! > "$(dirname "$0")/child.pid""#)
+        defer { killRecordedChild(of: detached) }
+        start = ContinuousClock.now
+        let status = try await XcbStatusCommand(timeout: Self.returnLimit, outputDrainTimeout: .milliseconds(300)).status(xcbPath: detached)
         #expect(status == XcbStatus(hosts: []))
-        #expect(ContinuousClock.now - start < .seconds(10))
+        #expect(ContinuousClock.now - start < Self.returnLimit)
+        let detachedChild = try #require(recordedChildPID(of: detached))
+        #expect(kill(detachedChild, 0) == 0)
     }
 }
