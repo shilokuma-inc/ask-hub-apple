@@ -124,6 +124,11 @@
 - GraphQL の一次の上限は、エラーの状態コードではなく `200` に `errors` を付けて返り、`x-ratelimit-remaining` が `0` になる（二次の上限は 200 か 403）。
   `data` だけを見て `null` を「無い」と扱うと、上限を見落とす。`errors` と `x-ratelimit-reset` を先に見る（GitHub の文書。2026-11-07、`AskHubPullRequests`）
 
+- git のブランチ名は、ほかのブランチ名を「フォルダ」として含められない。`askhub/E` があると `askhub/E/t1` は
+  「cannot lock ref 'refs/heads/askhub/E/t1': 'refs/heads/askhub/E' exists」で作れない（GitHub でも同じ）。作業ブランチの下に子ブランチを作るときは、`askhub/E-t1` のように `/` で区切らない（2026-11-07、`TaskBranches`）
+- GitHub Actions の job のログ（`GET …/actions/jobs/{id}/logs`）は、短い間だけ使える署名つきの URL への 302 で返る。リダイレクトを追わない `URLSession` では、
+  `Location` を読んで `Authorization` を付けずに取りに行く（署名で認められる。トークンを別のホストに渡さない）。各行の先頭に `2026-11-07T09:00:00.1234567Z ` の形の時刻が付く（2026-11-07、`jobLog`）
+
 ## ビルド・テスト
 
 - このリポジトリの CI（Build）は、PR を開いたときの回だけ iOS Simulator の UI テストを流し、25〜40 分かかる（push の回は Unit テストだけで数分）。
@@ -280,6 +285,12 @@
 - 人や Claude のセッションが、画面の確認用に `askhub-` で始まる名前の Simulator（`askhub-anim-a` など）を作っていることがある。
   ワーカー（`AskHubBuild` の `SimulatorPool`）が作って消すのは `askhub-worker-<枠>-…` の形の名前だけなので、手で作る Simulator にはこの形の名前を付けない（2026-11-07、#886）
 
+- ワーカーの git（`GitRepositoryWorkspace`）は手元のパスの remote を断る（`GIT_CONFIG_*` の `protocol.file.allow=never`）。本物の git で確かめるテストは、
+  git を `exec /usr/bin/git -c protocol.file.allow=always "$@"` の包みに差し替え（コマンドラインの `-c` は環境変数の設定より強い）、clone を先に作っておく（`update` は fetch だけになる）。
+  origin は手元のベアのリポジトリにする（`TaskGitTests`。2026-11-07）
+- `/bin/sh` のスクリプトが `&` で後ろに回した子プロセスは SIGINT を無視する（ジョブ制御の無いシェルの決まり）。`ProcessCommandRunner` で止めると、
+  子は SIGINT では止まらず、`interruptGrace`（10 秒）の後の SIGTERM で止まる。子孫が止まることを確かめるテストは、それだけ時間がかかる（2026-11-07、`EpicBuildServiceTests`）
+
 ## Keychain
 
 - macOS で `kSecUseDataProtectionKeychain` を使うには、provisioning profile で許可された entitlement
@@ -359,6 +370,9 @@
 - 開きと閉じがある文字列（HTML コメントの `<!--` と `-->` など）の閉じを本文の先頭から探すと、`<!-->`・`<!--->` のように閉じが開きと重なる本文で開きの中の位置が返り、
   `index(startIndex, offsetBy: 開きの長さ)..<閉じ.lowerBound` の下の端が上の端より大きくなって「Range requires lowerBound <= upperBound」で落ちる。
   public のリポジトリでは誰でもこうした本文を書けるので、閉じは開きの後ろ（`dropFirst(開きの長さ)` の Substring）から探す。目印の先頭のコメントは `MarkerComment.leadingCommentContent` で読む（2026-11-03、#844）
+
+- `OSAllocatedUnfairLock.withLock` は typed throws を通さない（`withLock { state throws(E) in … }` は「thrown expression type 'any Error' cannot be converted to error type 'E'」）。
+  閉包で `Result<T, E>` を返し、外で `try result.get()` する（2026-11-07、タスクのジョブのテストの偽物）
 
 ## シェルスクリプト
 
