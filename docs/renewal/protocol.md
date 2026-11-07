@@ -458,6 +458,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   | 質問が回答を待っている | `question/<owner>/<repo>/<epic>/<質問の id>/<版>/<説明の数>` |
   | 分け方の判断を待っている | `split/<owner>/<repo>/<epic>/<readiness.json の version>` |
   | ゴールの確認と開始を待っている | `start/<owner>/<repo>/<epic>/<goal.json の version>` |
+  | 最終 PR の確認とマージの承認を待っている | `review/<owner>/<repo>/<epic>/<最後のレビューが見た head>/<最後のレビューのジョブ>` |
   | ジョブが人の判断を待っている | `job/<owner>/<repo>/<epic>/<job>/<attempts>` |
   | ジョブを持った Mac が戻らない | `mac/<mac>/<その Mac の seenAt>` |
 
