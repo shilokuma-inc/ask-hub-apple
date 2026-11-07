@@ -116,6 +116,13 @@
 - organization の Actions の使用量は、`gh api "organizations/<org>/settings/billing/usage?year=<年>&month=<月>"` でリポジトリごと・SKU（`Actions Linux` など）ごとに読める（`unitType` が `Minutes`）。
   前の `orgs/<org>/settings/billing/actions` は `410`（moved）を返す。public のリポジトリの分も載る（`discountAmount` で無料になる）ので、private の枠（Free の organization は月 2,000 分）を見積もるときは private のリポジトリだけを足す。
   private のリポジトリでは 1 回のジョブが 1 分に切り上げて数えられるので、数秒で終わる定期実行でも 1 時間ごとで月 720 分になる（2026-11-07、司令塔の見張りの間隔を決めたとき）
+- fine-grained token で PR を扱うときの権限（GitHub の「Permissions required for fine-grained personal access tokens」の表）: マージ（`PUT …/pulls/{n}/merge`）とブランチの削除（`DELETE …/git/refs/…`）は
+  Pull requests ではなく **Contents の write**、落ちた job の流し直し（`POST …/actions/runs/{id}/rerun-failed-jobs`）は **Actions の write**、combined status（`GET …/commits/{ref}/status`）は Commit statuses の read。
+  check runs の一覧（`GET …/commits/{ref}/check-runs`）は表に載っていない。足りないかは応答の `X-Accepted-GitHub-Permissions` ヘッダーで分かる（2026-11-07、`AskHubPullRequests`）
+- REST の check run の `name` は、再利用ワークフロー（`workflow_call`）のジョブだと `build / build` のように「呼び出し側のジョブ / 呼ばれた側のジョブ」になる（この repo の CI で確かめた）。
+  待つチェックの名前の一覧には、PR の画面のチェックの名前をそのまま書く（2026-11-07、`AskHubPullRequests`）
+- GraphQL の一次の上限は、エラーの状態コードではなく `200` に `errors` を付けて返り、`x-ratelimit-remaining` が `0` になる（二次の上限は 200 か 403）。
+  `data` だけを見て `null` を「無い」と扱うと、上限を見落とす。`errors` と `x-ratelimit-reset` を先に見る（GitHub の文書。2026-11-07、`AskHubPullRequests`）
 
 ## ビルド・テスト
 

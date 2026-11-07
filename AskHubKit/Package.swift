@@ -32,6 +32,8 @@ let package = Package(
         .library(name: "AskHubCommander", targets: ["AskHubCommander"]),
         // ワーカーの常駐のループ（自分宛てのジョブを引き受けて試行を書き、生きている印を書く）。開始のときに人が選んだ Mac で使う
         .library(name: "AskHubWorker", targets: ["AskHubWorker"]),
+        // ワーカーが子 PR と最終 PR を扱う GitHub の操作（作る・CI とレビューを読む・流し直す・マージ）
+        .library(name: "AskHubPullRequests", targets: ["AskHubPullRequests"]),
         // macOS で launchd から常駐させる CLI。アプリからは使わない
         .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
         // リニューアルの司令塔（常時オンの Mac で LaunchAgent として常駐させる CLI）
@@ -57,6 +59,7 @@ let package = Package(
             dependencies: ["AskHubClaude", "AskHubCommands", "AskHubEpics", "AskHubJobs", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
         ),
         .target(name: "AskHubWorker", dependencies: ["AskHubCommander", "AskHubJobs", "AskHubProtocol", "AskHubStateStore"]),
+        .target(name: "AskHubPullRequests", dependencies: ["AskHubProtocol", "AskHubStateStore"]),
         // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
         .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
         .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
@@ -86,6 +89,7 @@ let package = Package(
             name: "AskHubWorkerTests",
             dependencies: ["AskHubWorker", "AskHubCommander", "AskHubCommands", "AskHubJobs", "AskHubProtocol", "AskHubStateStore"]
         ),
+        .testTarget(name: "AskHubPullRequestsTests", dependencies: ["AskHubPullRequests", "AskHubProtocol", "AskHubStateStore"]),
         .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]
 )

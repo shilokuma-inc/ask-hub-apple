@@ -44,7 +44,7 @@ public enum JobPicker {
         case .fixFinalPullRequest, .rerunChecks, .mergeFinalPullRequest, .openFinalPullRequest, .verifyBeforeFinal,
              .classifyDecisions, .captureScreenshots:
             2
-        case .prepareWorkspace, .implementTask, .fixTask, .integrateDevelop:
+        case .prepareWorkspace, .implementTask, .reviewTask, .fixTask, .integrateDevelop:
             3
         case .cleanUp:
             4

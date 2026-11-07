@@ -9,6 +9,8 @@ public enum JobKind: String, Codable, Sendable, CaseIterable {
     case reviseGoal
     case prepareWorkspace
     case implementTask
+    /// 子 PR のチェックを待ち、読むだけのレビュー役の Claude が差分を読み、見た head を固定してマージする
+    case reviewTask
     case fixTask
     case integrateDevelop
     case verifyBeforeFinal
@@ -258,7 +260,7 @@ public struct AttemptFile: StateFile {
         return violations
     }
 
-    static func isCommitSHA(_ text: String) -> Bool {
+    public static func isCommitSHA(_ text: String) -> Bool {
         text.utf8.count == 40 && text.utf8.allSatisfy { byte in
             (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
         }

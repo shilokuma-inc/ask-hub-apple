@@ -105,6 +105,7 @@ extension JobKind {
         case .reviseGoal: "ゴールの修正"
         case .prepareWorkspace: "作業場所の用意"
         case .implementTask: "タスクの実装"
+        case .reviewTask: "子 PR のレビュー"
         case .fixTask: "タスクの直し"
         case .integrateDevelop: "develop の取り込み"
         case .verifyBeforeFinal: "最終 PR の前の検証"

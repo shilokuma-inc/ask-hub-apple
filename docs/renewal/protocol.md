@@ -35,6 +35,7 @@ repos/<owner>/<repo>/epics/<epic>/epic.json        epic の状態（司令塔）
 repos/<owner>/<repo>/epics/<epic>/questions.json   質問と、その状態（司令塔）
 repos/<owner>/<repo>/epics/<epic>/goal.json        ゴール（司令塔）
 repos/<owner>/<repo>/epics/<epic>/decisions.json   人が決めていない判断（司令塔）
+repos/<owner>/<repo>/epics/<epic>/screenshots/<id>-before.png  見える仮決めのスクショ（撮ったワーカー）
 repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json  ジョブ（司令塔）
 repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json  試行（実行した Mac のワーカー）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
@@ -243,11 +244,13 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "items": [
     {
       "id": "d1",
+      "task": "t2",
+      "pullRequest": 41,
       "visible": true,
       "what": "見出しの文言を短くした",
       "why": "ゴールの t2（iPhone の幅に収める）",
       "alternatives": ["2 行にする"],
-      "screenshots": { "before": "<添付の参照>", "after": "<添付の参照>" },
+      "screenshots": { "before": "repos/…/epics/<epic>/screenshots/d1-before.png", "after": "repos/…/epics/<epic>/screenshots/d1-after.png" },
       "answer": null
     }
   ]
@@ -256,7 +259,9 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - 項目は、ループの仮決め（実装の途中で Claude が決めたこと）。質問はすべて人が答えるので、質問から来る項目は無い
 - `visible` は、ユーザーから見える挙動・仕様・見た目に関わるか。決めるのは、読むだけのレビュー役の Claude と、決まった信号（View・文言・アセット・Info.plist・entitlements の差分、スクショの差）
-- 段階 3 で、各項目に `task`（どのタスクの仮決めか）と `pullRequest`（子 PR）を足し、型と JSON Schema・例を作る。スクショは状態リポジトリの `attachments/` に置き、参照はそのパスにする
+- 各項目は `task`（どのタスクの仮決めか）と `pullRequest`（子 PR）を持つ。`visible` は仕分ける前は `null`
+- スクショは epic の `screenshots/<id>-before.png`・`<id>-after.png` に置き、`screenshots` にそのパスを書く。スクショと `answer` は、見えると仕分けた仮決めだけが持つ
+- `answer` は `{ "choice": "ok" | "alternative" | "fix", "note": "…", "intent": { "keyId", "nonce" }, "at": "…" }`（型は `DecisionsFile`、`protocol/schemas/state/decisions.schema.json`）
 - `answer` は人の意図（OK・別案・直してほしい）への参照
 
 ### jobs/<job>.json（ジョブ）
@@ -564,5 +569,4 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 ## 決めていないこと
 
 - リリースの操作の `kind` と、App Store の素材の形（段階 5）
-- `decisions.json` の型と JSON Schema（段階 3 の実装で足す）
 - `repo.json` の `build` の型と JSON Schema、クライアントでの入れ方（段階 3 の実装で足す。[operations.md](operations.md) の「既存のリポジトリを移すとき」）
