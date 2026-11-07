@@ -31,8 +31,12 @@ public struct ReviewTaskRunner: JobRunning {
         let pull = try await environment.github("子 PR を読む") { () throws(PullRequestError) in
             try await pulls.pullRequest(number: input.pullRequest)
         }
-        // 前の試行がマージした後、記録する前に落ちた
-        if pull.merged { return try await merged(input, sha: pull.mergeCommitSHA, target: target, pulls: pulls, claude: nil) }
+        // 前の試行がマージした後、記録する前に落ちた（見る head を子ブランチから作業ブランチへマージしたものだけを、終わったとみなす）
+        if pull.merged {
+            try Self.checkDirection(pull, branches: target.branches)
+            try Self.checkHead(pull, against: input)
+            return try await merged(input, sha: pull.mergeCommitSHA, target: target, pulls: pulls, claude: nil)
+        }
         try Self.check(pull, against: input, branches: target.branches)
         let outputs = AttemptFile.Outputs(pullRequest: input.pullRequest, commit: input.head, branch: target.branches.task)
         if case let .failed(failures) = try await waitForChecks(pulls, head: input.head, required: target.settings.childChecks) {
@@ -45,6 +49,11 @@ public struct ReviewTaskRunner: JobRunning {
             let findings = FixTaskJob.Reason.review(result.findings).findings
             return JobResult(outputs: outputs.with(verdict: .fixReview, findings: findings), claude: claude)
         }
+        // マージの API は向き先を固定できないので、待つ間・レビューの間に向き先や head が変わっていないかを、マージの直前に確かめ直す
+        let current = try await environment.github("子 PR を読む", keeping: JobResult(claude: claude)) { () throws(PullRequestError) in
+            try await pulls.pullRequest(number: input.pullRequest)
+        }
+        try Self.check(current, against: input, branches: target.branches, keeping: JobResult(claude: claude))
         let merge = try await environment.github("子 PR をマージする", keeping: JobResult(claude: claude)) { () throws(PullRequestError) in
             try await pulls.merge(number: input.pullRequest, headSHA: input.head, commitTitle: nil, commitMessage: nil)
         }
@@ -52,13 +61,34 @@ public struct ReviewTaskRunner: JobRunning {
     }
 
     /// 子 PR が、見る head のまま開いていて、子ブランチから作業ブランチに向いているか
-    static func check(_ pull: PullRequest, against input: PullRequestInput, branches: TaskBranches) throws(TaskJobExit) {
-        guard pull.state == .open else { throw .fail(.unexpected, "子 PR #\(pull.number) が、マージされずに閉じられた") }
-        guard pull.headRef == branches.task, pull.baseRef == branches.epic else {
-            throw .fail(.unexpected, "子 PR #\(pull.number) の向き（\(pull.headRef) → \(pull.baseRef)）が、タスクの子ブランチから作業ブランチへの向きでない")
+    static func check(
+        _ pull: PullRequest,
+        against input: PullRequestInput,
+        branches: TaskBranches,
+        keeping partial: JobResult = JobResult()
+    ) throws(TaskJobExit) {
+        guard pull.state == .open, !pull.merged else {
+            throw .fail(.unexpected, "子 PR #\(pull.number) が開いていない", keeping: partial)
         }
+        try checkDirection(pull, branches: branches, keeping: partial)
+        try checkHead(pull, against: input, keeping: partial)
+    }
+
+    /// 子 PR が、タスクの子ブランチから作業ブランチに向いているか（入力の PR の番号の取り違えで、ほかの PR を扱わない）
+    static func checkDirection(_ pull: PullRequest, branches: TaskBranches, keeping partial: JobResult = JobResult()) throws(TaskJobExit) {
+        guard pull.headRef == branches.task, pull.baseRef == branches.epic else {
+            let message = "子 PR #\(pull.number) の向き（\(pull.headRef) → \(pull.baseRef)）が、タスクの子ブランチから作業ブランチへの向きでない"
+            throw .fail(.unexpected, message, keeping: partial)
+        }
+    }
+
+    static func checkHead(
+        _ pull: PullRequest,
+        against input: PullRequestInput,
+        keeping partial: JobResult = JobResult()
+    ) throws(TaskJobExit) {
         guard pull.headSHA == input.head else {
-            throw .fail(.unexpected, "子 PR #\(pull.number) の head が、見る head（\(input.head)）から動いた（\(pull.headSHA)）")
+            throw .fail(.unexpected, "子 PR #\(pull.number) の head が、見る head（\(input.head)）から動いた（\(pull.headSHA)）", keeping: partial)
         }
     }
 

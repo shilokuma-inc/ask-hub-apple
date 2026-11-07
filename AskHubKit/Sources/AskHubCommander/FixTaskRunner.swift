@@ -33,6 +33,7 @@ public struct FixTaskRunner: JobRunning {
             try await environment.pullRequests(job.repo).pullRequest(number: input.pullRequest)
         }
         guard pull.state == .open, !pull.merged else { throw .fail(.unexpected, "子 PR #\(input.pullRequest) が開いていない") }
+        try ReviewTaskRunner.checkDirection(pull, branches: target.branches)
         let checkout = try await environment.workspace { () throws(WorkspaceError) in
             try await environment.git.checkOutTask(job.repo, epic: job.epic, branches: target.branches)
         }
