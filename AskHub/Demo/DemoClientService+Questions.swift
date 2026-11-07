@@ -11,7 +11,10 @@ extension DemoClientService {
         case .answer, .requestExplanation:
             applyQuestionIntent(intent)
 
-        case .reviseGoal, .start, .decideSplit, .addRepository:
+        case let .start(epicID, macID):
+            return SendReceipt(intentID: start(epicID: epicID, macID: macID))
+
+        case .reviseGoal, .decideSplit, .addRepository:
             applySetupIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .verify:
@@ -40,9 +43,6 @@ extension DemoClientService {
         switch intent {
         case let .reviseGoal(epicID, request):
             reviseGoal(epicID: epicID, request: request)
-
-        case let .start(epicID, macID):
-            start(epicID: epicID, macID: macID)
 
         case let .decideSplit(epicID, choice):
             decideSplit(epicID: epicID, choice: choice)
@@ -227,8 +227,11 @@ extension DemoClientService {
         }
     }
 
-    private func start(epicID: Epic.ID, macID: Mac.ID) {
+    /// 開始する。司令塔が受け取って作業場所を用意し、作業ブランチができたらタスク 1 の実装を始める。送った意図の id を返す
+    private func start(epicID: Epic.ID, macID: Mac.ID) -> String {
         let date = now()
+        let intentID = "start-\(epicID)-\(Int(date.timeIntervalSince1970))"
+        state.sentIntents.insert(SentIntentStatus(id: intentID, title: "開始", sentAt: date, state: .waiting), at: 0)
         state.updateEpic(epicID) { epic in
             if epic.tasks.isEmpty, let goal = epic.goal {
                 epic.tasks = goal.tasks.enumerated().map { index, task in
@@ -237,18 +240,40 @@ extension DemoClientService {
             }
             epic.stage = .implementing
             epic.macID = macID
-            if let first = epic.tasks.firstIndex(where: { $0.state == .pending }) {
-                epic.startTask(at: first, attempt: 1, date: date)
-            }
-            epic.log("開始しました", at: date)
+            epic.workspace = .pending
+            epic.activities = [EpicActivity(kind: .startRequested(macID: macID), since: date)]
+            epic.log("開始しました。司令塔が受け取るのを待っています", at: date)
         }
-        let macName = state.mac(macID)?.name ?? macID
-        let title = state.epic(epicID)?.title ?? ""
-        state.updateMac(macID) { mac in
-            mac.jobs.append(Mac.Job(id: "job-\(epicID)", title: "\(title): タスク 1 の実装", epicID: epicID, startedAt: date))
-        }
-        state.updateEpic(epicID) { $0.log("\(macName) で実装を始めました", at: date) }
         state.recordLastMac(macID, forEpic: epicID)
+        schedule { [now] snapshot in
+            let accepted = now()
+            if let index = snapshot.sentIntents.firstIndex(where: { $0.id == intentID }) {
+                snapshot.sentIntents[index].state = .accepted(at: accepted)
+            }
+            let macName = snapshot.mac(macID)?.name ?? macID
+            snapshot.updateEpic(epicID) { epic in
+                epic.workspace = .preparing
+                let worker = EpicActivity.Worker(macID: macID, heartbeatAt: accepted)
+                epic.activities = [EpicActivity(kind: .step(.prepareWorkspace, .running(attempt: 1)), since: accepted, worker: worker)]
+                epic.log("\(macName) で開始しました", at: accepted)
+            }
+        }
+        schedule(after: 2) { [now] snapshot in
+            let prepared = now()
+            let title = snapshot.epic(epicID)?.title ?? ""
+            snapshot.updateEpic(epicID) { epic in
+                let branch = "askhub/\(epicID)"
+                epic.workspace = .ready(branch: branch)
+                epic.log("作業ブランチ \(branch) を作りました", at: prepared)
+                if let first = epic.tasks.firstIndex(where: { $0.state == .pending }) {
+                    epic.startTask(at: first, attempt: 1, date: prepared)
+                }
+            }
+            snapshot.updateMac(macID) { mac in
+                mac.jobs.append(Mac.Job(id: "job-\(epicID)", title: "\(title): タスク 1 の実装", epicID: epicID, startedAt: prepared))
+            }
+        }
+        return intentID
     }
 
     /// 依頼を epic にして、その id を返す

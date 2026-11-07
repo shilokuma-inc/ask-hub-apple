@@ -80,15 +80,32 @@ struct DemoClientServiceTests {
         #expect(epic.goal?.decided.contains { $0.questionID == "Q4" } == true)
     }
 
-    /// 開始するとその Mac で実装が始まる
+    /// 開始すると、司令塔が受け取るのを待ち、受け取ったらその Mac で作業場所を用意し、作業ブランチができたらタスク 1 の実装を始める
     @Test
     func startBeginsImplementationOnMac() async throws {
         let service = makeService()
-        try await service.perform(.start(epicID: "budget-limit", macID: DemoData.macBookProID))
-        let epic = try #require(service.state.epic("budget-limit"))
-        #expect(epic.stage == .implementing)
-        #expect(epic.macID == DemoData.macBookProID)
-        #expect(epic.tasks.first?.state == .inProgress(.implementing))
+        let receipt = try await service.perform(.start(epicID: "budget-limit", macID: DemoData.macBookProID))
+        let sent = try #require(try await service.fetchSnapshot().sentIntents.first { $0.id == receipt.intentID })
+        #expect(sent.state == .waiting)
+        let waiting = try #require(service.state.epic("budget-limit"))
+        #expect(waiting.stage == .implementing)
+        #expect(waiting.macID == DemoData.macBookProID)
+        #expect(waiting.workspace == .pending)
+        #expect(waiting.activities.map(\.kind) == [.startRequested(macID: DemoData.macBookProID)])
+
+        clock.now += 10
+        let accepted = try await service.fetchSnapshot()
+        #expect(accepted.sentIntents.first { $0.id == receipt.intentID }?.state == .accepted(at: clock.now))
+        let preparing = try #require(accepted.epic("budget-limit"))
+        #expect(preparing.workspace == .preparing)
+        #expect(preparing.activities.map(\.kind) == [.step(.prepareWorkspace, .running(attempt: 1))])
+        #expect(preparing.history.last?.text == "MacBook Pro 14 で開始しました")
+
+        clock.now += 10
+        let implementing = try #require(try await service.fetchSnapshot().epic("budget-limit"))
+        #expect(implementing.workspace == .ready(branch: "askhub/budget-limit"))
+        #expect(implementing.tasks.first?.state == .inProgress(.implementing))
+        #expect(implementing.activities.first?.worker?.macID == DemoData.macBookProID)
     }
 
     /// 開始のときは、前回そのリポジトリを回した Mac を既定で選ぶ。前回の Mac がオフラインなら選ばない

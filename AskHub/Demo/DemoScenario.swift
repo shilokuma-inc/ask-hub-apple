@@ -14,6 +14,8 @@ enum DemoScenario: String, CaseIterable {
     case partial
     /// 標準の場面に、1 つの epic に収まらない依頼（分け方の判断の待ち）を足す
     case tooLarge
+    /// 開始した後の段取り（作業場所の用意・実装中・チェックとレビュー・直し）を並べる
+    case started
 
     /// 機械の反応までの秒数を決める UserDefaults のキー（UI テストは起動引数 `-demoReactionDelay 0` で渡す）
     static let reactionDelayKey = "demoReactionDelay"
@@ -38,6 +40,9 @@ enum DemoScenario: String, CaseIterable {
             var snapshot = data.standard()
             snapshot.epics.insert(data.splitEpic(), at: 0)
             return snapshot
+
+        case .started:
+            return data.started()
         }
     }
 }
@@ -63,6 +68,7 @@ struct DemoData {
             epics: [
                 recipeEpic(),
                 habitEpic(),
+                shoppingEpic(),
                 rainEpic(),
                 budgetEpic(),
                 tsundokuEpic(),
@@ -97,6 +103,43 @@ struct DemoData {
             fetchedAt: now,
             sourceFailures: []
         )
+    }
+}
+
+// MARK: - 開始した後の段取り
+
+extension DemoData {
+    /// 標準の場面の、開始を待っていた epic を開始し、止まっていた epic を直しの途中にする
+    func started() -> ClientSnapshot {
+        var snapshot = standard()
+        snapshot.updateEpic("budget-limit") { epic in
+            epic.stage = .implementing
+            epic.macID = Self.macBookProID
+            epic.tasks = (epic.goal?.tasks ?? []).enumerated().map { index, task in
+                EpicTask(id: "budget-t\(index + 1)", number: index + 1, title: task.title, state: .pending)
+            }
+            epic.workspace = .preparing
+            let worker = EpicActivity.Worker(macID: Self.macBookProID, heartbeatAt: ago(minutes: 1))
+            epic.activities = [EpicActivity(kind: .step(.prepareWorkspace, .running(attempt: 1)), since: ago(minutes: 2), worker: worker)]
+            epic.log("MacBook Pro 14 で開始しました", at: ago(minutes: 3))
+        }
+        snapshot.updateEpic("kaji-notify") { epic in
+            epic.macID = Self.macBookProID
+            let fixing = EpicTask.Phase.fixing(pullRequest: 15, round: 1, reason: .checks)
+            epic.tasks[4].state = .inProgress(fixing)
+            let worker = EpicActivity.Worker(macID: Self.macBookProID, heartbeatAt: ago(minutes: 4))
+            let step = WorkStep.task("kaji-t5", fixing)
+            epic.activities = [EpicActivity(kind: .step(step, .running(attempt: 1)), since: ago(minutes: 9), worker: worker)]
+            epic.log("MacBook Pro 14 に引き継ぎました", at: ago(minutes: 30))
+            epic.log("タスク 5 の子 PR #15 の CI が通らないので直します", at: ago(minutes: 10))
+        }
+        snapshot.updateMac(Self.macBookProID) { mac in
+            mac.jobs = [
+                Mac.Job(id: "job-budget", title: "月の上限の通知: 作業場所の用意", epicID: "budget-limit", startedAt: ago(minutes: 2)),
+                Mac.Job(id: "job-kaji", title: "家事の分担の通知: タスク 5 の直し", epicID: "kaji-notify", startedAt: ago(minutes: 9))
+            ]
+        }
+        return snapshot
     }
 }
 
@@ -155,7 +198,10 @@ extension DemoData {
             load: 0.42,
             version: "1.0.0",
             versionMatches: true,
-            jobs: [Mac.Job(id: "job-explain", title: "献立メモ: Q4 の説明を書いています", epicID: "recipe-weekly", startedAt: ago(minutes: 6))],
+            jobs: [
+                Mac.Job(id: "job-explain", title: "献立メモ: Q4 の説明を書いています", epicID: "recipe-weekly", startedAt: ago(minutes: 6)),
+                Mac.Job(id: "job-shopping", title: "買い物リストの並べ替え: タスク 2 の子 PR のレビュー", epicID: "recipe-shopping", startedAt: ago(minutes: 6))
+            ],
             refusalReason: nil,
             selfChecks: selfChecks(free: "41 GB"),
             cleanupCandidates: [
