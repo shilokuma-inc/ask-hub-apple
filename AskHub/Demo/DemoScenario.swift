@@ -98,7 +98,7 @@ struct DemoData {
         return ClientSnapshot(
             repositories: Self.repositories,
             candidateRepositories: Self.candidates,
-            epics: [kaji, tsundoku],
+            epics: [kaji, shoppingEpic(), tsundoku],
             macs: macs,
             fetchedAt: now,
             sourceFailures: []
@@ -132,6 +132,10 @@ extension DemoData {
             epic.activities = [EpicActivity(kind: .step(step, .running(attempt: 1)), since: ago(minutes: 9), worker: worker)]
             epic.log("MacBook Pro 14 に引き継ぎました", at: ago(minutes: 30))
             epic.log("タスク 5 の子 PR #15 の CI が通らないので直します", at: ago(minutes: 10))
+        }
+        // 家事の分担の通知は MacBook Air から引き継いだので、MacBook Air にはジョブを残さない
+        snapshot.updateMac(Self.macBookAirID) { mac in
+            mac.jobs.removeAll { $0.epicID == "kaji-notify" }
         }
         snapshot.updateMac(Self.macBookProID) { mac in
             mac.jobs = [
