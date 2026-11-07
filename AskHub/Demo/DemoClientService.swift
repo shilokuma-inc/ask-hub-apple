@@ -12,6 +12,8 @@ final class DemoClientService: ClientService {
     let now: () -> Date
     private var scheduled: [Reaction] = []
     private var nextPullRequestNumber = 60
+    /// 送った意図と時刻（デモはすぐ当てるので、司令塔の受け取りを待つものは無い）
+    private var sends: [(intent: HumanIntent, sentAt: Date)] = []
 
     private struct Reaction {
         var dueAt: Date
@@ -41,8 +43,14 @@ final class DemoClientService: ClientService {
         return snapshot
     }
 
-    func perform(_ intent: HumanIntent) async throws {
-        apply(intent)
+    @discardableResult
+    func perform(_ intent: HumanIntent) async throws -> SendReceipt {
+        sends.append((intent, now()))
+        return apply(intent)
+    }
+
+    func lastSend(of intent: HumanIntent) -> SentRecord? {
+        sends.last { $0.intent == intent }.map { SentRecord(sentAt: $0.sentAt, isWaiting: false) }
     }
 
     /// 期限の来た機械の反応を当てる

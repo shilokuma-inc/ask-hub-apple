@@ -29,24 +29,54 @@ final class ClientStore {
         let message: String
     }
 
+    /// 送った結果。シートは、置けたら閉じ、失敗したら理由を出して残る
+    enum SendResult: Equatable {
+        case sent(SendReceipt)
+        /// 同じ意図を送っている途中か、送ってあって司令塔がまだ受け取っていない。送り直さない
+        case alreadySent
+        case failed(String)
+    }
+
+    /// 送れたことを知らせる帯（しばらくしたら消す）
+    struct SendNotice: Identifiable, Equatable {
+        let id = UUID()
+        /// 例: 依頼「週ごとのまとめ」を送りました
+        let message: String
+        /// 送った後の見通し（状態リポジトリの「送った意図」・epic の履歴と同じ言い方にする）
+        var detail = "司令塔が受け取るのを待っています"
+    }
+
+    /// 同じ内容の依頼を重ねて送る前に、確かめる間
+    static let duplicateRequestWindow: TimeInterval = 60
+
     private(set) var snapshot: ClientSnapshot?
     private(set) var phase: Phase = .idle
     /// 前回の取り直しの失敗。スナップショットは前のものを残し、失敗したことを帯で出す
     private(set) var refreshFailure: String?
     private(set) var pending: PendingIntent?
     private(set) var sendFailure: SendFailure?
-    private(set) var isSending = false
+    private(set) var notice: SendNotice?
     /// 送ったが、まだ取り直しに反映されていない項目
     private(set) var hiddenItemIDs: Set<String> = []
+    /// 送っている途中の意図。同じ意図は、送り終わるまで重ねて送らない
+    private var sendingIntents: Set<HumanIntent> = []
 
     let service: any ClientService
     let undoDelay: Duration
+    let noticeDuration: Duration
     private let now: () -> Date
     private var pendingTask: Task<Void, Never>?
+    private var noticeTask: Task<Void, Never>?
 
-    init(service: any ClientService, undoDelay: Duration = .seconds(4), now: @escaping () -> Date = Date.init) {
+    init(
+        service: any ClientService,
+        undoDelay: Duration = .seconds(4),
+        noticeDuration: Duration = .seconds(5),
+        now: @escaping () -> Date = Date.init
+    ) {
         self.service = service
         self.undoDelay = undoDelay
+        self.noticeDuration = noticeDuration
         self.now = now
     }
 
@@ -122,17 +152,27 @@ final class ClientStore {
         pending = nil
     }
 
-    /// 猶予を待たずに送る（確認のダイアログを経た操作。開始・マージ など）
+    /// 猶予を待たずに送り、送れたら帯で知らせる（確認のダイアログやシートを経た操作。開始・依頼 など）。
+    /// 失敗をシートの中で出すときは `reportsFailure` を false にして、帯には出さない
     @discardableResult
-    func send(_ intent: HumanIntent) async -> Bool {
-        await deliver(intent)
+    func send(_ intent: HumanIntent, reportsFailure: Bool = true) async -> SendResult {
+        await deliver(intent, announces: true, reportsFailure: reportsFailure)
+    }
+
+    /// 同じ内容の依頼を少し前に送っていれば、その時刻。送る前に、重ねて送るかを人に確かめる
+    func recentlySentRequest(_ intent: HumanIntent) -> Date? {
+        guard intent.isRequest, let record = service.lastSend(of: intent),
+              now().timeIntervalSince(record.sentAt) < Self.duplicateRequestWindow else {
+            return nil
+        }
+        return record.sentAt
     }
 
     func retryFailedSend() async {
         guard let failure = sendFailure else {
             return
         }
-        await deliver(failure.intent)
+        await deliver(failure.intent, announces: true)
     }
 
     func dismissSendFailure() {
@@ -148,19 +188,62 @@ final class ClientStore {
         await deliver(item.intent)
     }
 
+    /// 送る。同じ意図を送っている途中か、送ってあって司令塔がまだ受け取っていなければ、送り直さない
+    /// （依頼は、人が確かめたうえで同じ内容をもう一度送れる）
     @discardableResult
-    private func deliver(_ intent: HumanIntent) async -> Bool {
-        isSending = true
-        defer { isSending = false }
-        do {
-            try await service.perform(intent)
-            sendFailure = nil
-            await refresh()
-            return true
-        } catch {
-            sendFailure = SendFailure(intent: intent, message: error.localizedDescription)
-            return false
+    private func deliver(_ intent: HumanIntent, announces: Bool = false, reportsFailure: Bool = true) async -> SendResult {
+        guard !sendingIntents.contains(intent) else {
+            return .alreadySent
         }
+        if !intent.isRequest, service.lastSend(of: intent)?.isWaiting == true {
+            clearFailure(of: intent)
+            if announces {
+                announce("\(intent.label)は送ってあります")
+            }
+            return .alreadySent
+        }
+        sendingIntents.insert(intent)
+        defer { sendingIntents.remove(intent) }
+        do {
+            let receipt = try await service.perform(intent)
+            clearFailure(of: intent)
+            await refresh()
+            if announces {
+                announce("\(intent.label)を送りました")
+            }
+            return .sent(receipt)
+        } catch {
+            let message = error.localizedDescription
+            if reportsFailure {
+                sendFailure = SendFailure(intent: intent, message: message)
+            }
+            return .failed(message)
+        }
+    }
+
+    /// 送れた意図の失敗の帯だけを消す（ほかの意図の失敗は、もう一度送れるように残す）
+    private func clearFailure(of intent: HumanIntent) {
+        if sendFailure?.intent == intent {
+            sendFailure = nil
+        }
+    }
+
+    private func announce(_ message: String) {
+        let item = SendNotice(message: message)
+        notice = item
+        noticeTask?.cancel()
+        noticeTask = Task { [noticeDuration] in
+            try? await Task.sleep(for: noticeDuration)
+            guard !Task.isCancelled, self.notice?.id == item.id else {
+                return
+            }
+            self.notice = nil
+        }
+    }
+
+    func dismissNotice() {
+        noticeTask?.cancel()
+        notice = nil
     }
 }
 
