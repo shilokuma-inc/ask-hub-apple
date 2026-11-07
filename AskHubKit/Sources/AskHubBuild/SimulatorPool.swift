@@ -1,4 +1,5 @@
 import AskHubCommands
+import AskHubProtocol
 import Foundation
 
 /// ワーカーの中の枠ごとに、決まった名前の Simulator を作って使い回す（`docs/renewal/operations.md` の「容量」）。

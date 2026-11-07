@@ -70,20 +70,4 @@ public struct SimulatorDestination: Codable, Hashable, Sendable {
 public enum SimulatorPlatform: String, Codable, Hashable, Sendable, CaseIterable {
     case iOS
     case visionOS
-
-    /// SDK の名前（`xcrun --sdk <名前> --show-sdk-version`）
-    var sdk: String {
-        switch self {
-        case .iOS: "iphonesimulator"
-        case .visionOS: "xrsimulator"
-        }
-    }
-
-    /// `simctl list -j` のランタイムの `platform`（visionOS だけ `xrOS`）
-    var runtimePlatform: String {
-        switch self {
-        case .iOS: "iOS"
-        case .visionOS: "xrOS"
-        }
-    }
 }
