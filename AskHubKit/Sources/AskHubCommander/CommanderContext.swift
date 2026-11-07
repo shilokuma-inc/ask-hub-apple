@@ -1,3 +1,4 @@
+import AskHubJobs
 import AskHubProtocol
 import AskHubStateStore
 import Foundation
@@ -11,6 +12,8 @@ public struct CommanderContext: Sendable {
     public var now: @Sendable () -> Date
     /// 人の意図の処理と、Claude のジョブの結果を書く処理を 1 つずつにする（コピーしても同じものを使う）
     public let lock: CommanderLock
+    /// 書き込みの予算・GitHub の上限に当たった Claude のジョブの結果を、待って書き直す長さの合計の上限
+    public var writeWaitLimit = JobTiming().writeWaitLimit
 
     public init(
         store: any StateStore,
@@ -36,6 +39,40 @@ public enum CommanderError: Error, Equatable, Sendable {
     case changedWhileProcessing(String)
     /// 人の意図の署名を確かめる公開鍵の一覧を、信用できる形で作れない（記録の巻き戻し・Keychain の問題など）。人の意図を処理しない
     case untrustedKeys(String)
+}
+
+// MARK: - 結果を書く
+
+extension CommanderContext {
+    /// Claude のジョブの結果を、読み直してから書き終えるまで排他の中で行う。書き込みの予算・GitHub の上限に当たったら、
+    /// 排他の外で待ってから読み直して書き直す（呼んだ Claude の結果を捨てない。待つ間も人の意図の処理は進める）。
+    /// `body` は、途中まで書いて止まっても、やり直せば同じ結果になる形にする
+    func writingResult<T: Sendable>(_ body: () async throws(CommanderError) -> T) async throws(CommanderError) -> T {
+        var waited = Duration.zero
+        while true {
+            do {
+                return try await lock.withLock(body)
+            } catch {
+                guard let wait = error.retryAfter, waited + wait <= writeWaitLimit else { throw error }
+                do {
+                    try await files.sleeper.sleep(for: wait)
+                } catch {
+                    throw .store(.cancelled)
+                }
+                waited += wait
+            }
+        }
+    }
+}
+
+extension CommanderError {
+    /// 待てば書ける失敗（書き込みの予算を使い切った・GitHub の上限）の、次に試せるまでの時間
+    var retryAfter: Duration? {
+        switch self {
+        case let .store(error), let .files(.store(error)): error.retryAfter
+        default: nil
+        }
+    }
 }
 
 // MARK: - ジョブ

@@ -31,6 +31,14 @@ public enum StateStoreError: Error, Equatable, Sendable {
     /// 待っている間に取り消された
     case cancelled
 
+    /// 待てば書ける失敗（書き込みの予算を使い切った・GitHub の上限）の、次に試せるまでの時間。待っても変わらない失敗は nil
+    public var retryAfter: Duration? {
+        switch self {
+        case let .rateLimited(wait), let .budgetExhausted(wait): max(wait, .seconds(1))
+        default: nil
+        }
+    }
+
     /// 2xx・304・404 以外の応答を、失敗の種類に分ける（GitHub の GraphQL の応答にも使う）。
     ///
     /// 二次の上限は、ヘッダーの無い 403 で返ることがある。権限のエラーと取り違えないよう、本文の文言でも見分ける

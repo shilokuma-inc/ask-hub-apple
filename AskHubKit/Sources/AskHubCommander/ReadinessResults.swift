@@ -21,7 +21,7 @@ extension ClaudeJobRunner {
         guard let questions = try await questionsFile(of: epic) else { return Self.missingQuestions }
         // 前の試行で追加の質問まで書き、回答に戻す前に止まった。続きを書いて終える
         if !questions.questions.allSatisfy(\.state.isSettled), let origin = job.origin {
-            return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+            return try await context.writingResult { () throws(CommanderError) -> ClaudeJobOutcome in
                 // 排他を待つ間に人が答え進めた（答え直しでこのジョブが取り消された・すべて決まった）なら、何もしない
                 guard try await stillWanted(job, stages: [.checking]) != nil,
                       let latest = try await questionsFile(of: epic), !latest.questions.allSatisfy(\.state.isSettled) else {
@@ -61,16 +61,33 @@ extension ClaudeJobRunner {
                 return .failed(AttemptFailure(failureClass: .unexpected, message: "着手前の確認の結果を当てられない（\(error)）"), session)
             }
             let readiness = Self.readiness(of: output, for: claudeJob, at: context.timestamp)
-            // 読み直してから書き終えるまでに、人の答え直しが割り込まないようにする
-            return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
-                // Discussion の写しの id は表示のためのもので、頼んだ後に書かれても状態が変わったとはみなさない
-                guard try await stillWanted(job, stages: [.checking]) != nil, let latest = try await questionsFile(of: epic),
-                      latest.withoutCopies == questions.withoutCopies else {
-                    return .discarded("頼んだ後に epic か質問の一覧が変わった", session)
-                }
-                try await write(result, readiness: readiness, questions: latest, of: epic, by: job)
+            return try await write((result, readiness), asked: questions, for: job, epic: epic, session: session)
+        }
+    }
+
+    /// 確かめた結果を、読み直してから書く。読み直してから書き終えるまでに、人の答え直しが割り込まないようにする
+    private func write(
+        _ checked: (result: ReadinessResult, readiness: ReadinessFile),
+        asked questions: QuestionsFile,
+        for job: JobFile,
+        epic: EpicFile,
+        session: ClaudeSession
+    ) async throws(CommanderError) -> ClaudeJobOutcome {
+        try await context.writingResult { () throws(CommanderError) -> ClaudeJobOutcome in
+            guard try await stillWanted(job, stages: [.checking]) != nil, let latest = try await questionsFile(of: epic) else {
+                return .discarded("頼んだ後に epic が変わった", session)
+            }
+            // 書き込みの予算に当たって書き直すとき、前に追加の質問まで書けていれば、続き（回答に戻す）だけを書く
+            if case let .moreQuestions(change) = checked.result, latest.withoutCopies == change.questions.withoutCopies {
+                if let origin = job.origin { try await context.perform(change.effects, for: epic, origin: origin, after: [job.id]) }
                 return .written(session)
             }
+            // Discussion の写しの id は表示のためのもので、頼んだ後に書かれても状態が変わったとはみなさない
+            guard latest.withoutCopies == questions.withoutCopies else {
+                return .discarded("頼んだ後に質問の一覧が変わった", session)
+            }
+            try await write(checked.result, readiness: checked.readiness, questions: latest, of: epic, by: job)
+            return .written(session)
         }
     }
 
@@ -163,7 +180,7 @@ extension ClaudeJobRunner {
             }
             revised.notApplied = output.notApplied.isEmpty ? nil : output.notApplied
             let goalToWrite = revised
-            return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+            return try await context.writingResult { () throws(CommanderError) -> ClaudeJobOutcome in
                 guard try await stillWanted(job, stages: [.awaitingStart]) != nil,
                       try await questionsFile(of: epic)?.withoutCopies == questions.withoutCopies else {
                     return .discarded("頼んだ後に epic が先に進んだ・回答に戻った", session)
