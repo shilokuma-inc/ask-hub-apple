@@ -106,6 +106,9 @@ public actor BuildSlots {
         return await withCheckedContinuation { waiters.append($0) }
     }
 
+    /// 枠が空くのを待っているジョブの数（テストで使う）
+    var waiting: Int { waiters.count }
+
     public func release(_ slot: Int) {
         if waiters.isEmpty {
             used.remove(slot)

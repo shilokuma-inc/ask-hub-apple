@@ -71,6 +71,10 @@ struct EpicBuildServiceTests {
         let second = await slots.acquire()
         #expect(first == 0 && second == 1)
         let waiting = Task { await slots.acquire() }
+        // 待つ側が並んでから返し、返した枠が待つ側に引き継がれることを確かめる
+        while await slots.waiting == 0 {
+            await Task.yield()
+        }
         await slots.release(1)
         #expect(await waiting.value == 1)
         await slots.release(0)

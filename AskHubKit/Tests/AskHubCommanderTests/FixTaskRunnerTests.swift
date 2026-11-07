@@ -6,7 +6,8 @@ import Testing
 
 struct FixTaskRunnerTests {
     typealias Fixture = TaskJobFixture
-    static let head = sha("1")
+    /// 直す head（直した後の head は偽の git が作る sha("1")）
+    static let head = sha("5")
     static let reviewFindings = "1. App/RankingView.swift:12\nnil のときに落ちる"
     static let ciFindings = "チェック: build / build（failure）\nerror: cannot find 'Ranking' in scope"
 
@@ -42,6 +43,7 @@ struct FixTaskRunnerTests {
         let result = try await fix(fixture, runner)
         #expect(result.failure == nil)
         #expect(result.outputs?.commit == sha("1"))
+        #expect(fixture.git.current.remote[Fixture.branches.task] == sha("1"))
         #expect(result.outputs?.pullRequest == 41)
         #expect(result.outputs?.branch == Fixture.branches.task)
         #expect(result.outputs?.report?.summary == "nil のときに空の一覧を出すようにした。")
@@ -111,10 +113,50 @@ struct FixTaskRunnerTests {
         let missing = try await fix(empty, runner)
         #expect(missing.failure?.message.contains("直すこと") == true)
 
+        // 直すことはあるが、実装の会話が無い
+        let noSession = Fixture()
+        try await noSession.prepare()
+        let reviewed = PullRequestInput(pullRequest: 41, head: Self.head)
+        let review = AttemptFile.Outputs(pullRequest: 41, commit: Self.head, verdict: .fixReview, findings: Self.reviewFindings)
+        try await noSession.record(noSession.job(.reviewTask, "02", input: reviewed.jobInput), outputs: review)
+        let missingSession = try await fix(noSession, runner)
+        #expect(missingSession.failure?.message.contains("実装の会話") == true)
+
         let closed = try await fixture()
         closed.pulls.update { $0.pulls[41]?.state = .closed }
         let notOpen = try await fix(closed, runner)
         #expect(notOpen.failure?.message.contains("開いていない") == true)
+
+        // 子 PR の向き先が作業ブランチでない
+        let moved = try await fixture()
+        moved.pulls.update { $0.pulls[41]?.baseRef = "develop" }
+        let wrongBase = try await fix(moved, runner)
+        #expect(wrongBase.failure?.message.contains("向き") == true)
+        #expect(runner.calls.isEmpty)
+    }
+
+    @Test func refusesConversationLeftOnAnotherMac() async throws {
+        // 実装の会話は、それを動かした Mac の Claude の設定フォルダにだけ残る
+        let fixture = try await fixture()
+        let claude = AttemptFile.Claude(model: "claude-opus-5-5", session: "s-other", estimatedCostUsd: 0.4)
+        let job = fixture.job(.fixTask, "07")
+        try await fixture.files.create(job, at: StatePath.job(Fixture.repo, epic: Fixture.epic, job: job.id), message: "job")
+        let time = Timestamp(Fixture.start.addingTimeInterval(200))
+        let attempt = AttemptFile(
+            job: job.id,
+            number: 1,
+            mac: MacName(rawValue: "mac-mini")!,
+            startedAt: time,
+            heartbeatAt: time,
+            endedAt: time,
+            outcome: .succeeded,
+            claude: claude
+        )
+        let path = StatePath.attempt(Fixture.repo, epic: Fixture.epic, job: job.id, number: 1)
+        try await fixture.files.create(attempt, at: path, message: "attempt")
+        let runner = FakeTaskRunner([FakeTaskRunner.done()])
+        let result = try await fix(fixture, runner)
+        #expect(result.failure?.message.contains("mac-mini") == true)
         #expect(runner.calls.isEmpty)
     }
 }

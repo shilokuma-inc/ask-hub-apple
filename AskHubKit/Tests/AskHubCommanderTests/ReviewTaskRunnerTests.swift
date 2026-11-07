@@ -3,7 +3,21 @@ import AskHubCommands
 import AskHubProtocol
 import AskHubPullRequests
 import Foundation
+import os
 import Testing
+
+/// 呼ばれた回数を数える
+final class OSAllocatedCounter: Sendable {
+    private let count = OSAllocatedUnfairLock(initialState: 0)
+
+    /// 1 つ増やして、増やした後の数を返す
+    func increment() -> Int {
+        count.withLock { value in
+            value += 1
+            return value
+        }
+    }
+}
 
 struct ReviewTaskRunnerTests {
     typealias Fixture = TaskJobFixture
@@ -155,6 +169,57 @@ struct ReviewTaskRunnerTests {
         #expect(result.failure?.message.contains("動いた") == true)
         #expect(fixture.pulls.current.merges.isEmpty)
         #expect(fixture.reviewer.commands.isEmpty)
+    }
+
+    @Test func refusesToMergeWhenBaseChangedWhileWaiting() async throws {
+        // チェックを待つ間に、子 PR の向き先が作業ブランチから develop に変えられた
+        let fixture = try await fixture(reviews: [Self.noFindings], checks: [.init(verdict: .passed)])
+        let reads = OSAllocatedCounter()
+        fixture.pulls.update { state in
+            state.onRead = { pull in
+                if reads.increment() > 1 { pull.baseRef = "develop" }
+            }
+        }
+        let result = try await review(fixture)
+        #expect(result.failure?.failureClass == .unexpected)
+        #expect(result.failure?.message.contains("向き") == true)
+        #expect(result.claude?.session == "s-1")
+        #expect(fixture.pulls.current.merges.isEmpty)
+    }
+
+    @Test func doesNotTreatPullMergedWithAnotherHeadAsDone() async throws {
+        let fixture = try await fixture(checks: [.init(verdict: .passed)], head: sha("2"))
+        fixture.pulls.update { state in
+            state.pulls[41]?.state = .closed
+            state.pulls[41]?.merged = true
+        }
+        let result = try await review(fixture)
+        #expect(result.failure?.failureClass == .unexpected)
+        #expect(result.outputs?.verdict == nil)
+        #expect(fixture.pulls.current.deletions.isEmpty)
+    }
+
+    @Test func retriesRateLimitedLogOnce() async throws {
+        let fixture = try await fixture(checks: [Self.failed(job: 70), Self.failed(job: 71)])
+        fixture.pulls.update { state in
+            state.logs[71] = "error: cannot find 'Ranking' in scope"
+            state.logFailures = [.rateLimited(retryAfter: .seconds(30))]
+        }
+        let result = try await review(fixture)
+        #expect(result.outputs?.findings?.contains("error: cannot find 'Ranking' in scope") == true)
+        #expect(fixture.sleeper.waits.last == .seconds(30))
+    }
+
+    @Test func redactsCheckNamesAndKeepsFindingsWithinSchemaLength() async throws {
+        let name = "build ghp_abcdefghijklmnopqrstuvwxyz0123456789"
+        let status = CheckSummary(verdict: .failed, failures: [FailedCheck(name: name, source: .commitStatus, conclusion: "error")])
+        let fixture = try await fixture(checks: [status])
+        let findings = try #require(try await review(fixture).outputs?.findings)
+        #expect(!findings.contains("ghp_"))
+        // 結合文字は 1 文字（書記素）でも、JSON Schema では 2 つと数える
+        let combining = String(repeating: "e\u{301}", count: 15_000)
+        let long = FixTaskJob.Reason.review([FixTaskJob.Finding(text: combining)]).findings
+        #expect(long.unicodeScalars.count <= AttemptFile.Outputs.maximumFindingsLength)
     }
 
     @Test func finishesMergeOfPreviousAttempt() async throws {
