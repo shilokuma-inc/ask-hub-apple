@@ -106,7 +106,14 @@ struct ImplementTaskRunnerTests {
         let replies: [TaskReply] = [
             .reported(TaskReport(outcome: .needsQuestion, summary: "並びを決めてほしい", question: question), TaskRun(session: session)),
             .reported(TaskReport(outcome: .blocked, summary: "素材の画像が無い"), TaskRun(session: session)),
-            .failed(AttemptFailure(failureClass: .testFailed, message: "往復の上限を使い切った", logExcerpt: "Test failed"), TaskRun(session: session))
+            .failed(
+                AttemptFailure(
+                    failureClass: .testFailed,
+                    message: "往復の上限を使い切った",
+                    logExcerpt: "Test failed ghp_abcdefghijklmnopqrstuvwxyz0123456789"
+                ),
+                TaskRun(session: session)
+            )
         ]
         let runner = Self.editing(fixture.git, replies)
         let implement = ImplementTaskRunner(environment: try fixture.environment(runner))
@@ -122,10 +129,10 @@ struct ImplementTaskRunnerTests {
         #expect(blocked.failure?.failureClass == .unexpected)
         #expect(blocked.failure?.message.contains("素材の画像が無い") == true)
 
-        // 往復の使い切りは、Claude に直させずに人へ渡す
+        // 往復の使い切りは、Claude に直させずに人へ渡す。説明とログの抜粋は伏せてから書く
         let exhausted = try await implement.execute(job)
         #expect(exhausted.failure?.failureClass == .unexpected)
-        #expect(exhausted.failure?.logExcerpt == "Test failed")
+        #expect(exhausted.failure?.logExcerpt == "Test failed <伏せた>")
         #expect(exhausted.claude?.session == "s-impl")
 
         #expect(fixture.git.current.commits.isEmpty)

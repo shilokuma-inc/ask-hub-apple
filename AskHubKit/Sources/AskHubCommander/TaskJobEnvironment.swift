@@ -268,6 +268,9 @@ extension TaskReply {
             var failure = failure
             // ビルドとテストの往復を使い切った（`TaskRunner` はビルドとテストの失敗として返す）。今は Claude に直させずに人へ渡す
             if [.buildFailed, .testFailed].contains(failure.failureClass) { failure.failureClass = .unexpected }
+            // 試行に書く前に、説明とログの抜粋のトークンらしい文字列を伏せる
+            failure.message = Redaction.redact(failure.message, secrets: [])
+            failure.logExcerpt = failure.logExcerpt.flatMap { Redaction.excerpt(of: $0, secrets: []) }
             throw .finish(JobResult(failure: failure, claude: run.session?.attemptRecord))
         }
     }
