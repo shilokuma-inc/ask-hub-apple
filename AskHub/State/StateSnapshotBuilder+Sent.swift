@@ -49,7 +49,11 @@ extension StateSnapshotBuilder {
         case AbandonEpicIntent.kind:
             applyAbandon(envelope, to: &epics, index: index)
 
+        case ApproveMergeIntent.kind, InstructFinalIntent.kind:
+            applyFinalIntent(envelope, to: &epics)
+
         default:
+            // 判断のカードへの答えは、マージの規則と承認できるかの判定にも効くので、最終 PR を組み立てるときに当てる（`finalReview(of:index:)`）
             break
         }
     }
@@ -216,6 +220,30 @@ extension StateSnapshotBuilder {
         epic.activities.append(EpicActivity(kind: .step(step, .retryRequested), since: sentAt, worker: worker))
     }
 
+    /// マージの承認と最終 PR への指示。見た head が今の head と同じで、人が確かめる段階のときだけ出す（承認は、答え終えて押せるときだけ）
+    private func applyFinalIntent(_ envelope: IntentEnvelope, to epics: inout [Epic]) {
+        guard let epicID = envelope.target?.epic?.rawValue, let epicIndex = epics.firstIndex(where: { $0.id == epicID }),
+              epics[epicIndex].isActive, let review = epics[epicIndex].finalReview, review.state == .reviewable,
+              let head = review.headCommit, envelope.targetVersion == head else {
+            return
+        }
+        let sentAt = envelope.issuedAt.date
+        if envelope.kind == ApproveMergeIntent.kind {
+            guard review.canMerge else {
+                return
+            }
+            epics[epicIndex].finalReview?.state = .merging
+            epics[epicIndex].activities.append(EpicActivity(kind: .mergeRequested, since: sentAt))
+            epics[epicIndex].history.append(Epic.HistoryEntry(date: sentAt, text: "マージを承認しました。司令塔が受け取るのを待っています"))
+        } else {
+            // 受け取った司令塔は、最終 PR を直させてレビューからやり直す。それまで判断の確認とマージはできない
+            epics[epicIndex].finalReview?.state = .checking
+            epics[epicIndex].activities.append(EpicActivity(kind: .finalInstructionRequested, since: sentAt))
+            let text = "最終 PR に指示しました。司令塔が受け取るのを待っています"
+            epics[epicIndex].history.append(Epic.HistoryEntry(date: sentAt, text: text))
+        }
+    }
+
     /// 取り下げ。状態リポジトリにある、開始する前の epic だけを出す（開始した後は司令塔が断る）
     private func applyAbandon(_ envelope: IntentEnvelope, to epics: inout [Epic], index: StateIndex) {
         guard let epicID = envelope.target?.epic?.rawValue, index.epics[epicID] != nil,
@@ -322,7 +350,27 @@ extension StateSnapshotBuilder {
             return "取り下げ"
 
         default:
-            return envelope.kind
+            return finalLabel(envelope) ?? envelope.kind
+        }
+    }
+
+    /// 最終 PR への意図の呼び名（例: 判断「見出しを短くした」への回答）。最終 PR への意図でなければ nil
+    private func finalLabel(_ envelope: IntentEnvelope) -> String? {
+        switch envelope.kind {
+        case DecisionIntent.kind:
+            let item = envelope.target.flatMap { target in
+                documents.epics.first { $0.epic.id == target.epic }?.decisions?.items.first { $0.id == target.id }
+            }
+            return item.map { "判断「\($0.what)」への回答" } ?? "判断への回答"
+
+        case ApproveMergeIntent.kind:
+            return "マージの承認"
+
+        case InstructFinalIntent.kind:
+            return "最終 PR への指示"
+
+        default:
+            return nil
         }
     }
 }

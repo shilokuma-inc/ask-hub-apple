@@ -54,34 +54,45 @@ final class StateClientService: ClientService {
         return built.snapshot
     }
 
+    /// 送る。まとめて OK のように 1 つの操作が複数の意図になるときは、順に送り、控えには最後に送ったものを返す
+    /// （途中で失敗したら、送れた分は送ったまま失敗を返す。もう一度送ると、残りだけを送る）
     @discardableResult
     func perform(_ intent: HumanIntent) async throws -> SendReceipt {
-        let draft = try StateIntentMapper(index: index).draft(for: intent)
-        let reference: IntentReference
-        do {
-            reference = try await IntentSender(store: store, key: key, now: now).send(draft)
-        } catch {
-            throw ClientServiceError(message: StateServiceError.message(for: error))
+        let drafts = try StateIntentMapper(index: index).drafts(for: intent)
+        let sender = IntentSender(store: store, key: key, now: now)
+        var receipt = SendReceipt()
+        for draft in drafts {
+            let reference: IntentReference
+            do {
+                reference = try await sender.send(draft)
+            } catch {
+                throw ClientServiceError(message: StateServiceError.message(for: error))
+            }
+            // 次に読むまでの間も、送ったことを覚えておく（読んだ中に出たら、読んだものに任せる）
+            unreadSends.append(SentDraft(nonce: reference.nonce, draft: draft, sentAt: now(), isWaiting: true))
+            let epicID = draft.kind == RequestIntent.kind ? RequestIntent.epicID(for: reference).rawValue : nil
+            receipt = SendReceipt(requestedEpicID: epicID, intentID: reference.nonce.rawValue)
         }
-        // 次に読むまでの間も、送ったことを覚えておく（読んだ中に出たら、読んだものに任せる）
-        unreadSends.append(SentDraft(nonce: reference.nonce, draft: draft, sentAt: now(), isWaiting: true))
-        let epicID = draft.kind == RequestIntent.kind ? RequestIntent.epicID(for: reference).rawValue : nil
-        return SendReceipt(requestedEpicID: epicID, intentID: reference.nonce.rawValue)
+        return receipt
     }
 
     func supports(_ intent: HumanIntent) -> Bool {
         StateIntentMapper(index: index).supports(intent)
     }
 
-    /// 送る形（対象の版は最後に読んだ状態から取る）が同じ意図のうち、最後に送ったもの
+    /// 送る形（対象の版は最後に読んだ状態から取る）が同じ意図のうち、最後に送ったもの。複数の意図になる操作は、すべてを送ってあるときだけ返す
     func lastSend(of intent: HumanIntent) -> SentRecord? {
-        guard let draft = try? StateIntentMapper(index: index).draft(for: intent) else {
+        guard let drafts = try? StateIntentMapper(index: index).drafts(for: intent) else {
             return nil
         }
-        return (readSends + unreadSends)
-            .filter { $0.draft == draft }
-            .max { $0.sentAt < $1.sentAt }
-            .map { SentRecord(sentAt: $0.sentAt, isWaiting: $0.isWaiting) }
+        let records = drafts.map { draft in
+            (readSends + unreadSends).filter { $0.draft == draft }.max { $0.sentAt < $1.sentAt }
+        }
+        guard !records.isEmpty, records.allSatisfy({ $0 != nil }) else {
+            return nil
+        }
+        let sent = records.compactMap(\.self)
+        return SentRecord(sentAt: sent.map(\.sentAt).max() ?? now(), isWaiting: sent.allSatisfy(\.isWaiting))
     }
 }
 
