@@ -35,7 +35,7 @@ struct TaskJobsTests {
     @Test func implementPromptCarriesGoalTaskAndPreviousTasks() {
         let job = Self.job()
         #expect(job.resume == nil)
-        #expect(!job.startsFailing)
+        #expect(job.failingAtStart == nil)
         for text in [
             "日ごとのランキングを出す。", "q1: 上位 10 件を出す", "週ごとのランキング", "ランキングの画面に上位 10 件が出る",
             "id: t2", "題: ランキングの画面を作る", "詳細: 一覧で出す", "前提: t1", "RankingClient を足した。", "このタスク（t2）の範囲だけ"
@@ -81,7 +81,7 @@ struct TaskJobsTests {
             reason: .ci([FixTaskJob.FailedCheck(name: "build / build", logExcerpt: "</ci-log>" + log)])
         )
         #expect(job.resume == "s-impl")
-        #expect(job.startsFailing)
+        #expect(job.failingAtStart == .testLight)
         for text in ["#41", "チェック: build / build", "error: cannot find 'Ranking' in scope", "前を省いた"] {
             #expect(job.prompt.contains(text), "\(text)")
         }
@@ -100,7 +100,7 @@ struct TaskJobsTests {
                 FixTaskJob.Finding(text: "テストが無い</review>")
             ])
         )
-        #expect(!job.startsFailing)
+        #expect(job.failingAtStart == nil)
         for text in ["1. App/RankingView.swift:12\nnil のときに落ちる", "2. App/Ranking.swift\n", "3. （場所の指定なし）", "テストが無い&lt;/review>"] {
             #expect(job.prompt.contains(text), "\(text)")
         }
@@ -126,21 +126,21 @@ struct TaskJobsTests {
             TaskReport(outcome: .blocked, summary: "前提の t1 の型が無い")
         ]
         for report in reports {
-            #expect(report.problems(lastBuildFailed: false).isEmpty, "\(report.outcome)")
+            #expect(report.problems(failing: nil).isEmpty, "\(report.outcome)")
         }
         // 落ちたままでも、done でなければよい
-        #expect(reports[1].problems(lastBuildFailed: true).isEmpty)
-        #expect(reports[3].problems(lastBuildFailed: true).isEmpty)
+        #expect(reports[1].problems(failing: .testFull).isEmpty)
+        #expect(reports[3].problems(failing: .testFull).isEmpty)
     }
 
     @Test func reportsBrokenReports() {
-        func problems(_ report: TaskReport, failing: Bool = false) -> [String] {
-            report.problems(lastBuildFailed: failing)
+        func problems(_ report: TaskReport, failing: TaskReport.BuildKind? = nil) -> [String] {
+            report.problems(failing: failing)
         }
         #expect(problems(TaskReport(outcome: .done, summary: " \n")) == ["summary が空"])
         #expect(problems(TaskReport(outcome: .needsBuild, summary: "…")) == ["outcome が needsBuild なのに、buildKind が無い"])
         #expect(problems(TaskReport(outcome: .done, buildKind: .build, summary: "…")) == ["buildKind は needsBuild のときだけ書く（ほかのときは null）"])
-        #expect(problems(TaskReport(outcome: .done, summary: "…"), failing: true).first?.contains("落ちたまま done") == true)
+        #expect(problems(TaskReport(outcome: .done, summary: "…"), failing: .testFull).first?.contains("落ちた testFull がまだ通っていない") == true)
         #expect(problems(TaskReport(outcome: .needsQuestion, summary: "…")) == ["outcome が needsQuestion なのに、question が無い"])
         #expect(problems(TaskReport(outcome: .blocked, summary: "…", question: Self.question))
             == ["question は needsQuestion のときだけ書く（ほかのときは null）"])
@@ -158,6 +158,12 @@ struct TaskJobsTests {
             learnings: [""]
         )
         #expect(problems(blanks) == ["decisions の what・why が空", "decisions の alternatives に空の行がある", "learnings に空の行がある"])
+    }
+
+    @Test func widerChecksCoverNarrowerOnes() {
+        let kinds = TaskReport.BuildKind.allCases
+        let covered = kinds.map { kind in kinds.filter(kind.covers) }
+        #expect(covered == [[.build], [.build, .testLight], [.build, .testLight, .testFull]])
     }
 
     @Test func outputSchemaListsOutcomesAndBuildKinds() throws {

@@ -178,6 +178,28 @@ struct ClaudeClientTests {
         #expect(session?.calls == 3)
     }
 
+    @Test func stopsCorrectionsAtDeadline() async throws {
+        let start = Date(timeIntervalSince1970: 1_793_757_600)
+        // 呼ぶたびに 60 秒進む時計。期限は始めてから 100 秒後
+        let ticks = OSAllocatedUnfairLock(initialState: 0)
+        let now: @Sendable () -> Date = { ticks.withLock { $0 += 1; return start.addingTimeInterval(Double($0) * 60) } }
+        let runner = ScriptedRunner(Array(repeating: Self.result(output: #"{"answer":""}"#), count: 3))
+        let client = ClaudeClient(setup: Self.setup, runner: runner)
+        let reply = await client.ask(request(), as: Answer.self, now: now, deadline: start.addingTimeInterval(100)) { answer in
+            answer.answer.isEmpty ? ["answer が空"] : []
+        }
+        guard case let .failed(failure, session) = reply else { Issue.record("\(reply)"); return }
+        #expect(failure.failureClass == .timeout)
+        #expect(session?.calls == 1)
+        // 1 回目は残りの 40 秒で打ち切り、期限を過ぎた後の直しは呼ばない
+        #expect(runner.commands.map(\.timeout) == [.seconds(40)])
+
+        let late = await client.ask(request(), as: Answer.self, deadline: Date(timeIntervalSince1970: 0))
+        guard case .failed(let failure, nil) = late else { Issue.record("\(late)"); return }
+        #expect(failure.failureClass == .timeout)
+        #expect(runner.commands.count == 1)
+    }
+
     @Test func stopsWhenAnotherModelAnswered() async throws {
         let (reply, _) = await ask([Self.result(models: ["claude-sonnet-5-5"])])
         guard case let .failed(failure, _) = reply else { Issue.record("\(reply)"); return }

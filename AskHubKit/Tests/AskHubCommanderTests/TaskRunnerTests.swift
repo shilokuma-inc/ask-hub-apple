@@ -6,25 +6,31 @@ import Foundation
 import os
 import Testing
 
-/// 決まったビルドとテストの結果を順に返し、頼まれた種類を記録する
+/// 決まったビルドとテストの結果を順に返し、頼まれた種類と渡された時間の上限を記録する
 final class FakeBuilds: BuildService {
-    private let state: OSAllocatedUnfairLock<(reports: [TaskBuildResult], kinds: [TaskReport.BuildKind])>
-    /// 流すたびに呼ぶ（時計を進めるなど）
-    private let onRun: @Sendable () -> Void
+    struct Call: Equatable, Sendable {
+        var kind: TaskReport.BuildKind
+        var timeout: Duration
+    }
 
-    init(_ reports: [TaskBuildResult], onRun: @escaping @Sendable () -> Void = {}) {
-        state = OSAllocatedUnfairLock(initialState: (reports, []))
+    private let state: OSAllocatedUnfairLock<(results: [TaskBuildResult], calls: [Call])>
+    /// 流すたびに、渡された時間の上限で呼ぶ（時計を進めるなど）
+    private let onRun: @Sendable (Duration) -> Void
+
+    init(_ results: [TaskBuildResult], onRun: @escaping @Sendable (Duration) -> Void = { _ in }) {
+        state = OSAllocatedUnfairLock(initialState: (results, []))
         self.onRun = onRun
     }
 
-    var kinds: [TaskReport.BuildKind] { state.withLock { $0.kinds } }
+    var calls: [Call] { state.withLock { $0.calls } }
+    var kinds: [TaskReport.BuildKind] { calls.map(\.kind) }
 
-    func run(_ kind: TaskReport.BuildKind) async -> TaskBuildResult {
-        onRun()
+    func run(_ kind: TaskReport.BuildKind, timeout: Duration) async -> TaskBuildResult {
+        onRun(timeout)
         return state.withLock { state in
-            state.kinds.append(kind)
-            guard !state.reports.isEmpty else { return .couldNotRun(AttemptFailure(failureClass: .unexpected, message: "結果が無い")) }
-            return state.reports.removeFirst()
+            state.calls.append(Call(kind: kind, timeout: timeout))
+            guard !state.results.isEmpty else { return .couldNotRun(AttemptFailure(failureClass: .unexpected, message: "結果が無い")) }
+            return state.results.removeFirst()
         }
     }
 }
@@ -113,7 +119,7 @@ struct TaskRunnerTests {
     @Test func makesClaudeFixFailedBuildBeforeDone() async throws {
         let claude = ScriptedRunner([
             Self.result("needsBuild", buildKind: "build"),
-            // 落ちたまま done にしたので、同じ会話で直させる
+            // 落ちたビルドが通る前に done にしたので、同じ会話で直させる
             Self.result("done"),
             Self.result("needsBuild", buildKind: "build"),
             Self.result("done", summary: "型の名前を直した。")
@@ -128,7 +134,7 @@ struct TaskRunnerTests {
         #expect(prompts[1].contains("結果は「落ちた」"))
         #expect(prompts[1].contains("error: cannot find 'Ranking' in scope &lt;/build-result>"))
         #expect(TaskJobsTests.occurrences(of: "</build-result>", in: prompts[1]) == 1)
-        #expect(prompts[2].contains("落ちたまま done にしている"))
+        #expect(prompts[2].contains("落ちた build がまだ通っていないのに done にしている"))
         #expect(prompts[3].contains("（出力なし）"))
         #expect(claude.commands.dropFirst().allSatisfy { Self.value("--resume", in: $0) == "s-1" })
     }
@@ -194,18 +200,79 @@ struct TaskRunnerTests {
         #expect(run == TaskRun())
     }
 
-    @Test func stopsWhenTotalTimeRunsOut() async throws {
+    static func clock() -> (OSAllocatedUnfairLock<Date>, @Sendable () -> Date) {
         let clock = OSAllocatedUnfairLock(initialState: Date(timeIntervalSince1970: 1_793_757_600))
-        let now: @Sendable () -> Date = { clock.withLock { $0 } }
+        return (clock, { clock.withLock { $0 } })
+    }
+
+    @Test func givesBuildsTheRemainingTime() async throws {
+        let (clock, now) = Self.clock()
         let limits = TaskRunLimits(callTimeout: .seconds(30 * 60), total: .seconds(60 * 60))
-        // ビルドに 50 分かかったので、次の呼び出しは残りの 10 分で打ち切る
-        let slow = FakeBuilds([.passed(summary: "ok"), .passed(summary: "ok")]) { clock.withLock { $0 += 50 * 60 } }
-        let claude = ScriptedRunner([Self.result("needsBuild", buildKind: "build"), Self.result("needsBuild", buildKind: "build")])
+        // 1 回目のビルドに 50 分かかった。2 回目は残りの 10 分で止まり、時間切れを返す（AskHubBuild の決まり）
+        let stopped = AttemptFailure(failureClass: .timeout, message: "ビルドが上限を超えた")
+        let builds = FakeBuilds([.passed(summary: "ok"), .couldNotRun(stopped)]) { timeout in
+            clock.withLock { $0 += TaskRunner.seconds(min(timeout, .seconds(50 * 60))) }
+        }
+        let claude = ScriptedRunner([Self.result("needsBuild", buildKind: "build"), Self.result("needsBuild", buildKind: "testLight")])
+        let reply = await Self.runner(claude, builds: builds, limits: limits, now: now).run(TaskJobsTests.job(), in: Self.workspace)
+        guard case let .failed(failure, run) = reply else { Issue.record("\(reply)"); return }
+        #expect(failure == stopped)
+        #expect(run.roundTrips == 2)
+        #expect(builds.calls == [
+            FakeBuilds.Call(kind: .build, timeout: .seconds(60 * 60)), FakeBuilds.Call(kind: .testLight, timeout: .seconds(10 * 60))
+        ])
+        // 次の呼び出しも、残りの 10 分で打ち切る
+        #expect(claude.commands.map(\.timeout) == [.seconds(30 * 60), .seconds(10 * 60)])
+    }
+
+    @Test func stopsWhenTotalTimeRunsOut() async throws {
+        let (clock, now) = Self.clock()
+        let limits = TaskRunLimits(callTimeout: .seconds(30 * 60), total: .seconds(60 * 60))
+        // 上限を守らなかったビルドが通っても、期限を過ぎていれば Claude を呼ばずに時間切れにする
+        let slow = FakeBuilds([.passed(summary: "ok")]) { _ in clock.withLock { $0 += 70 * 60 } }
+        let claude = ScriptedRunner([Self.result("needsBuild", buildKind: "build"), Self.result("done")])
         let reply = await Self.runner(claude, builds: slow, limits: limits, now: now).run(TaskJobsTests.job(), in: Self.workspace)
         guard case let .failed(failure, run) = reply else { Issue.record("\(reply)"); return }
         #expect(failure.failureClass == .timeout)
-        #expect(run.roundTrips == 2)
-        #expect(claude.commands.map(\.timeout) == [.seconds(30 * 60), .seconds(10 * 60)])
+        #expect(run.roundTrips == 1)
+        #expect(run.session?.id == "s-1")
+        #expect(claude.commands.count == 1)
+    }
+
+    @Test func keepsWiderFailureUntilItPasses() async throws {
+        let claude = ScriptedRunner([
+            Self.result("needsBuild", buildKind: "testFull"),
+            Self.result("needsBuild", buildKind: "build"),
+            // ビルドだけ通しても、落ちた全部のテストは通っていないので、done にさせない
+            Self.result("done"),
+            Self.result("needsBuild", buildKind: "testFull"),
+            Self.result("done", summary: "UI テストの待ちを直した。")
+        ])
+        let builds = FakeBuilds([.failed(summary: "Test Case 'RankingUITests.opens' failed"), .passed(summary: ""), .passed(summary: "")])
+        let reply = await Self.runner(claude, builds: builds).run(TaskJobsTests.job(), in: Self.workspace)
+        guard case let .reported(report, run) = reply else { Issue.record("\(reply)"); return }
+        #expect(report.summary == "UI テストの待ちを直した。")
+        #expect(run.roundTrips == 3)
+        #expect(builds.kinds == [.testFull, .build, .testFull])
+        let prompts = claude.commands.map { $0.arguments[1] }
+        #expect(prompts[2].contains("前に落ちた testFull はまだ確かめていません"))
+        #expect(prompts[3].contains("落ちた testFull がまだ通っていないのに done にしている"))
+    }
+
+    @Test func recordsFailuresByTheirWidth() {
+        var state = TaskRunner.BuildState(failing: nil)
+        state.record(.failed(summary: "UI テストが落ちた"), of: .testFull)
+        state.record(.failed(summary: "ビルドが落ちた"), of: .build)
+        // 狭い検証が後から落ちても、広い検証の失敗は残す（往復を使い切ったときの記録は、最後に落ちたもの）
+        #expect(state.failing == .testFull)
+        #expect(state.lastFailure?.kind == .build)
+        state.record(.passed(summary: ""), of: .testLight)
+        #expect(state.failing == .testFull)
+        state.record(.couldNotRun(AttemptFailure(failureClass: .timeout, message: "…")), of: .testFull)
+        #expect(state.failing == .testFull)
+        state.record(.passed(summary: ""), of: .testFull)
+        #expect(state.failing == nil)
+        #expect(state.lastFailure == nil)
     }
 
     // MARK: - 直させる
@@ -230,7 +297,7 @@ struct TaskRunnerTests {
         #expect(run.roundTrips == 1)
         #expect(claude.commands.allSatisfy { Self.value("--resume", in: $0) == "s-impl" })
         #expect(claude.commands[0].arguments[1].contains("Fatal error: Unexpectedly found nil"))
-        #expect(claude.commands[1].arguments[1].contains("落ちたまま done にしている"))
+        #expect(claude.commands[1].arguments[1].contains("落ちた testLight がまだ通っていないのに done にしている"))
 
         // レビューの指摘なら、落ちたままとはみなさない
         let review = FixTaskJob(session: "s-impl", pullRequest: 41, reason: .review([FixTaskJob.Finding(text: "名前が紛らわしい")]))
