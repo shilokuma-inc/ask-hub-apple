@@ -9,18 +9,18 @@ import Testing
 /// 状態リポジトリの窓口: ファイルを画面用のモデルに変えること、人の意図を署名して置くこと、処理を待つ意図を先に出すこと
 @MainActor
 struct StateClientServiceTests {
-    private static let repo = "example/sample-ios"
-    private static let epicID = "01JCEP1C000000000000000001"
-    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    static let repo = "example/sample-ios"
+    static let epicID = "01JCEP1C000000000000000001"
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     /// 窓口と、その窓口が読み書きする状態リポジトリ・署名の鍵
-    private struct Fixture {
+    struct Fixture {
         let service: StateClientService
         let store: InMemoryStateStore
         let key: DeviceSigningKey
     }
 
-    private func makeService(files: [String: String] = Self.askingEpic()) throws -> Fixture {
+    func makeService(files: [String: String] = Self.askingEpic()) throws -> Fixture {
         let store = InMemoryStateStore(files: files.mapValues { Data($0.utf8) })
         let key = try DeviceSigningKey.loadOrCreate(in: InMemorySecretStore(), useSecureEnclave: false)
         let now = now
@@ -28,7 +28,7 @@ struct StateClientServiceTests {
     }
 
     /// 質問を待っている epic（Q1 は答えられる、Q2 は Q1 の回答待ちでロック）
-    private static func askingEpic(stage: String = "asking", extra: [String: String] = [:]) -> [String: String] {
+    static func askingEpic(stage: String = "asking", extra: [String: String] = [:]) -> [String: String] {
         let base = "repos/\(repo)/epics/\(epicID)"
         return [
             "repos/\(repo)/repo.json": """
@@ -209,7 +209,7 @@ struct StateClientServiceTests {
         #expect(await KeyRegistration.read(from: store, device: phone.keyID) == .registered(label: "iPhone"))
     }
 
-    private func sentEnvelope(in store: InMemoryStateStore, key: DeviceSigningKey) async throws -> IntentEnvelope {
+    func sentEnvelope(in store: InMemoryStateStore, key: DeviceSigningKey) async throws -> IntentEnvelope {
         struct Stored: Decodable {
             var envelope: IntentEnvelope
         }
