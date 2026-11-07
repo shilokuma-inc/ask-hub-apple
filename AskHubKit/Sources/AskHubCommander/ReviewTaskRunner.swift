@@ -99,6 +99,18 @@ public struct ReviewTaskRunner: JobRunning {
         input: PullRequestInput
     ) async throws(TaskJobExit) -> (result: TaskReviewResult, session: ClaudeSession) {
         let environment = environment
+        // 取り出してからレビュー役が読み終えるまで、epic の作業場所をほかのジョブに使わせない（チェックを待つ間は使わない）
+        return try await environment.exclusively(job.epic) { () throws(TaskJobExit) in
+            try await askReviewer(in: job, target: target, input: input)
+        }
+    }
+
+    private func askReviewer(
+        in job: JobFile,
+        target: TaskTarget,
+        input: PullRequestInput
+    ) async throws(TaskJobExit) -> (result: TaskReviewResult, session: ClaudeSession) {
+        let environment = environment
         let checkout = try await environment.workspace { () throws(WorkspaceError) in
             try await environment.git.checkOutReview(job.repo, epic: job.epic, branches: target.branches, head: input.head)
         }

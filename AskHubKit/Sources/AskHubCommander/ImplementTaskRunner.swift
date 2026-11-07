@@ -21,7 +21,7 @@ public struct ImplementTaskRunner: JobRunning {
 
     public func execute(_ job: JobFile) async throws(CommanderError) -> JobResult {
         try await environment.perform(job, as: .implementTask) { target throws(TaskJobExit) in
-            try await implement(job, target)
+            try await environment.exclusively(job.epic) { () throws(TaskJobExit) in try await implement(job, target) }
         }
     }
 

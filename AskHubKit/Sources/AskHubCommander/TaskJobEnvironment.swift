@@ -66,6 +66,8 @@ public struct TaskJobEnvironment: Sendable {
     /// 子 PR のレビュー役の Claude を呼ぶもの
     public var reviewer: ClaudeClient
     public var sleeper: any Sleeper
+    /// epic の作業場所を、1 つのジョブだけが使うようにする
+    public var locks: EpicLocks
 
     public init(
         context: CommanderContext,
@@ -75,7 +77,8 @@ public struct TaskJobEnvironment: Sendable {
         runner: @escaping @Sendable (BuildTarget) -> any TaskRunning,
         slots: BuildSlots,
         reviewer: ClaudeClient,
-        sleeper: any Sleeper = TaskSleeper()
+        sleeper: any Sleeper = TaskSleeper(),
+        locks: EpicLocks = EpicLocks()
     ) {
         self.context = context
         self.git = git
@@ -85,6 +88,40 @@ public struct TaskJobEnvironment: Sendable {
         self.slots = slots
         self.reviewer = reviewer
         self.sleeper = sleeper
+        self.locks = locks
+    }
+}
+
+/// epic の作業場所（同じ worktree）を、取り出してから commit・レビューを終えるまで 1 つのジョブだけが使うようにする。
+///
+/// タスクは 1 つずつ進めるが、時間切れとみなされた試行のやり直しが元の試行と重なると、後の取り出しが先の変更を捨ててしまう。
+/// 作業場所は役割（司令塔・ワーカー）ごとのフォルダにあり、同じ役割は Mac に 1 つだけ動かすので、プロセスの中で排他すれば足りる
+public actor EpicLocks {
+    private var held: Set<ULID> = []
+    private var waiters: [ULID: [CheckedContinuation<Void, Never>]] = [:]
+
+    public init() {}
+
+    func acquire(_ epic: ULID) async {
+        guard held.contains(epic) else {
+            held.insert(epic)
+            return
+        }
+        await withCheckedContinuation { waiters[epic, default: []].append($0) }
+    }
+
+    func release(_ epic: ULID) {
+        if var queue = waiters[epic], !queue.isEmpty {
+            queue.removeFirst().resume()
+            waiters[epic] = queue.isEmpty ? nil : queue
+        } else {
+            held.remove(epic)
+        }
+    }
+
+    /// 待っているジョブの数（テストで使う）
+    func waiting(for epic: ULID) -> Int {
+        waiters[epic]?.count ?? 0
     }
 }
 
@@ -151,6 +188,19 @@ extension TaskJobEnvironment {
         guard let settings else { throw .fail(.unexpected, "\(job.repo) の repo.json に build（ビルドの設定）が無い") }
         let branches = TaskBranches(base: settings.baseBranch, epic: epic, task: id)
         return TaskTarget(epic: epic, goal: goal, task: task, settings: settings, branches: branches)
+    }
+
+    /// epic の作業場所を借りて `body` を流す
+    func exclusively<Value>(_ epic: ULID, _ body: () async throws(TaskJobExit) -> Value) async throws(TaskJobExit) -> Value {
+        await locks.acquire(epic)
+        do {
+            let value = try await body()
+            await locks.release(epic)
+            return value
+        } catch {
+            await locks.release(epic)
+            throw error
+        }
     }
 
     func read<File: StateFile>(_ type: File.Type, at path: String) async throws(TaskJobExit) -> File? {

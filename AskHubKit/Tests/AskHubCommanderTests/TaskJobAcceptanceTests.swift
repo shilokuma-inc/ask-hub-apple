@@ -44,6 +44,27 @@ struct TaskJobAcceptanceTests {
         )
     }
 
+    @Test func epicLockLetsOneJobUseWorkspaceAtATime() async {
+        let locks = EpicLocks()
+        let epic = TaskJobFixture.epic
+        await locks.acquire(epic)
+        // ほかの epic は待たない
+        let other = ULID(rawValue: "01JCJ0A0000000000000000009")!
+        await locks.acquire(other)
+        let second = Task {
+            await locks.acquire(epic)
+            return true
+        }
+        while await locks.waiting(for: epic) == 0 {
+            await Task.yield()
+        }
+        await locks.release(epic)
+        #expect(await second.value)
+        #expect(await locks.waiting(for: epic) == 0)
+        await locks.release(epic)
+        await locks.release(other)
+    }
+
     @Test func commanderTakesTaskJobsAssignedToItsOwnMacOnly() async throws {
         let runners: [JobKind: any JobRunning] = [.implementTask: StubRunner(), .reviewTask: StubRunner(), .fixTask: StubRunner()]
         let loop = makeLoop(taskRunners: runners)
