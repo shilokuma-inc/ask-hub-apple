@@ -177,11 +177,27 @@ public struct AttemptFile: StateFile {
         public var commit: String?
         /// 作ったブランチ（作業場所の用意の作業ブランチなど）。`epic.json` には司令塔がこれを読んで書く
         public var branch: String?
+        /// 子 PR のレビューの判定（`reviewTask`）
+        public var verdict: ReviewVerdict?
+        /// 直すこと（CI の失敗のログの抜粋・レビュー役の必須の指摘）。トークンらしい文字列は伏せてから書く
+        public var findings: String?
+        /// 実装と直しで Claude が報告したこと（`implementTask`・`fixTask`）
+        public var report: TaskOutputReport?
 
-        public init(pullRequest: Int? = nil, commit: String? = nil, branch: String? = nil) {
+        public init(
+            pullRequest: Int? = nil,
+            commit: String? = nil,
+            branch: String? = nil,
+            verdict: ReviewVerdict? = nil,
+            findings: String? = nil,
+            report: TaskOutputReport? = nil
+        ) {
             self.pullRequest = pullRequest
             self.commit = commit
             self.branch = branch
+            self.verdict = verdict
+            self.findings = findings
+            self.report = report
         }
     }
 
@@ -255,6 +271,13 @@ public struct AttemptFile: StateFile {
         if let pullRequest = outputs?.pullRequest, pullRequest < 1 { violations.append("outputs.pullRequest は 1 以上") }
         if let commit = outputs?.commit, !Self.isCommitSHA(commit) { violations.append("outputs.commit の形が違う") }
         if let branch = outputs?.branch, !EpicFile.isBranchName(branch) { violations.append("outputs.branch の形が違う") }
+        if let findings = outputs?.findings, findings.isEmpty || findings.count > Outputs.maximumFindingsLength {
+            violations.append("outputs.findings は空でなく、\(Outputs.maximumFindingsLength) 文字まで")
+        }
+        if outputs?.verdict.map({ $0 != .merged }) == true, outputs?.findings == nil {
+            violations.append("直す判定には findings が要る")
+        }
+        violations += outputs?.report?.problems ?? []
         if let model = claude?.model, model.isEmpty { violations.append("claude.model が空") }
         if let cost = claude?.estimatedCostUsd, !(cost >= 0) { violations.append("claude.estimatedCostUsd は 0 以上") }
         return violations

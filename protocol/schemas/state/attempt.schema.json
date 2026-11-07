@@ -48,6 +48,69 @@
             "branch": {
               "anyOf": [{ "type": "string", "pattern": "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._/-]{1,200}$", "not": { "pattern": "\\n" } }, { "type": "null" }],
               "description": "作ったブランチ（作業場所の用意の作業ブランチなど）。epic.json の branch と同じ形"
+            },
+            "verdict": {
+              "anyOf": [{ "enum": ["merged", "fixCI", "fixReview"] }, { "type": "null" }],
+              "description": "子 PR のレビューの判定（reviewTask）。fixCI・fixReview のときは findings を持つ（読む側で確かめる）"
+            },
+            "findings": {
+              "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 20000 }, { "type": "null" }],
+              "description": "直すこと（CI の失敗のログの抜粋・レビュー役の必須の指摘）。トークンらしい文字列は伏せてから書く"
+            },
+            "report": {
+              "description": "実装と直しで Claude が報告したこと（implementTask・fixTask）。推奨が選択肢にあることは読む側で確かめる",
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["summary", "decisions", "learnings"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "summary": { "type": "string", "minLength": 1 },
+                    "decisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["what", "why", "alternatives"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "what": { "type": "string", "minLength": 1 },
+                          "why": { "type": "string", "minLength": 1 },
+                          "alternatives": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                        }
+                      }
+                    },
+                    "learnings": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                    "question": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": ["title", "why", "options", "recommended", "reason"],
+                          "additionalProperties": false,
+                          "properties": {
+                            "title": { "type": "string", "minLength": 1 },
+                            "why": { "type": "string", "minLength": 1 },
+                            "options": {
+                              "type": "array",
+                              "minItems": 2,
+                              "maxItems": 4,
+                              "items": {
+                                "type": "object",
+                                "required": ["label", "effect"],
+                                "additionalProperties": false,
+                                "properties": { "label": { "type": "string", "minLength": 1 }, "effect": { "type": "string" } }
+                              }
+                            },
+                            "recommended": { "type": "string", "minLength": 1 },
+                            "reason": { "type": "string", "minLength": 1 }
+                          }
+                        },
+                        { "type": "null" }
+                      ]
+                    }
+                  }
+                },
+                { "type": "null" }
+              ]
             }
           }
         },
