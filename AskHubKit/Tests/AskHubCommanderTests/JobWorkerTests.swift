@@ -7,12 +7,13 @@ import AskHubStateStore
 import Foundation
 import Testing
 
-/// Claude のジョブを試行として実行し、結果を試行に書く
+/// ジョブを試行として実行し、結果を試行に書く
 extension ClaudeJobRunnerTests {
-    func worker(_ store: InMemoryStateStore, claude: any CommandRunning, workspace failure: WorkspaceError? = nil) -> ClaudeJobWorker {
-        ClaudeJobWorker(
+    func worker(_ store: InMemoryStateStore, claude: any CommandRunning, workspace failure: WorkspaceError? = nil) -> JobWorker {
+        JobWorker(
             runner: runner(store, claude: claude, workspace: failure),
-            recorder: AttemptRecorder(files: StateFileStore(store: store), mac: Self.commander) { Self.now }
+            recorder: AttemptRecorder(files: StateFileStore(store: store), mac: Self.commander) { Self.now },
+            now: { Self.now }
         )
     }
 
@@ -49,6 +50,23 @@ extension ClaudeJobRunnerTests {
         #expect(attempt.failure == nil)
     }
 
+    @Test func workerWritesOutputsAndThrownFailures() async throws {
+        let given = try await requested()
+        let recorder = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { Self.now }
+        let outputs = AttemptFile.Outputs(pullRequest: 41, commit: String(repeating: "a", count: 40))
+        let worker = JobWorker(runner: StubJob { _ in JobResult(outputs: outputs) }, recorder: recorder)
+        let attempt = try #require(try await worker.perform(given.job))
+        #expect(attempt.outcome == .succeeded)
+        #expect(attempt.outputs == outputs)
+        // やり直せば済む失敗（状態リポジトリに書けないなど）は、試行の失敗として書く
+        var next = given.job
+        next.attempts = 1
+        let failing = JobWorker(runner: StubJob { _ throws(CommanderError) in throw .store(.serverError(status: 502)) }, recorder: recorder)
+        let failed = try #require(try await failing.perform(next))
+        #expect(failed.number == 2)
+        #expect(failed.failure?.failureClass == .githubOutage)
+    }
+
     @Test func storeFailuresBecomeAttemptFailures() {
         let now = Self.now
         let limited = CommanderError.store(.rateLimited(retryAfter: .seconds(60))).attemptFailure(now: now)
@@ -61,5 +79,18 @@ extension ClaudeJobRunnerTests {
         #expect(CommanderError.files(.notFound).attemptFailure(now: now).failureClass == .unexpected)
         // 司令塔を止めて取り消されたのは、失敗に数えず続きから試す
         #expect(CommanderError.store(.cancelled).attemptFailure(now: now).failureClass == .macOffline)
+    }
+}
+
+/// 決まった結果を返すジョブ
+struct StubJob: JobRunning {
+    let result: @Sendable (JobFile) throws(CommanderError) -> JobResult
+
+    init(_ result: @escaping @Sendable (JobFile) throws(CommanderError) -> JobResult) {
+        self.result = result
+    }
+
+    func execute(_ job: JobFile) async throws(CommanderError) -> JobResult {
+        try result(job)
     }
 }

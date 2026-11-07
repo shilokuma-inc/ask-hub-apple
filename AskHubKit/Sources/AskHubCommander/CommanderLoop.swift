@@ -48,8 +48,8 @@ public actor CommanderLoop {
         }
     }
 
-    /// 段階 2 で、この Mac が引き受けるジョブの種類
-    static let handledKinds: Set<JobKind> = [.makeQuestions, .explain, .reviseQuestion, .checkReadiness, .reviseGoal]
+    /// この Mac が Claude に頼むジョブの種類（段階 2）
+    static let claudeKinds: Set<JobKind> = [.makeQuestions, .explain, .reviseQuestion, .checkReadiness, .reviseGoal]
 
     nonisolated let context: CommanderContext
     nonisolated let settings: Settings
@@ -64,8 +64,11 @@ public actor CommanderLoop {
     nonisolated let sleeper: any Sleeper
     /// Discussion の写し。nil なら写さない
     nonisolated let mirror: DiscussionMirror?
+    /// epic の作業場所。この Mac が開始のときに選ばれたら、作業場所の用意（`prepareWorkspace`）も引き受ける。nil なら引き受けない
+    nonisolated let epicWorkspace: (any EpicWorkspace)?
 
-    private var inFlight: [ULID: Task<Void, Never>] = [:]
+    /// 自分宛てのジョブを、同時の上限の中で並んで動かす
+    nonisolated let slots: JobSlots
     private var lastBeat: Date?
 
     public init(
@@ -78,7 +81,8 @@ public actor CommanderLoop {
         notifier: Notifier? = nil,
         log: @escaping @Sendable (String) -> Void,
         sleeper: any Sleeper = TaskSleeper(),
-        mirror: DiscussionMirror? = nil
+        mirror: DiscussionMirror? = nil,
+        epicWorkspace: (any EpicWorkspace)? = nil
     ) {
         self.context = context
         self.settings = settings
@@ -90,6 +94,9 @@ public actor CommanderLoop {
         self.log = log
         self.sleeper = sleeper
         self.mirror = mirror
+        self.epicWorkspace = epicWorkspace
+        let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace])
+        slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
     }
 
     /// 止められるまで回す。1 周で失敗しても、次の周でやり直す
@@ -121,11 +128,7 @@ public actor CommanderLoop {
         for job in swept.changed {
             log("ジョブ \(job.kind.rawValue) \(job.id) を \(job.state.rawValue) にした")
         }
-        let picked = pick(from: swept.jobs)
-        let worker = worker(verifier)
-        for job in picked {
-            start(job, with: worker)
-        }
+        let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier))
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
         await mirror?.syncAll(verifier: verifier)
@@ -133,18 +136,20 @@ public actor CommanderLoop {
     }
 
     /// ジョブを動かすワーカー。人の意図の処理と同じ `context`（同じ排他）で結果を書くよう、ループの中で作る
-    nonisolated func worker(_ verifier: IntentVerifier) -> ClaudeJobWorker {
-        ClaudeJobWorker(
-            runner: ClaudeJobRunner(context: context, client: client, workspace: workspace, verifier: verifier),
-            recorder: AttemptRecorder(files: context.files, mac: context.mac, now: context.now)
+    nonisolated func worker(_ verifier: IntentVerifier) -> JobWorker {
+        let claude = ClaudeJobRunner(context: context, client: client, workspace: workspace, verifier: verifier)
+        var runners: [JobKind: any JobRunning] = Dictionary(uniqueKeysWithValues: Self.claudeKinds.map { ($0, claude) })
+        if let epicWorkspace { runners[.prepareWorkspace] = PrepareWorkspaceRunner(context: context, workspace: epicWorkspace) }
+        return JobWorker(
+            runner: JobDispatcher(runners),
+            recorder: AttemptRecorder(files: context.files, mac: context.mac, now: context.now),
+            now: context.now
         )
     }
 
     /// 動かしているジョブが終わるまで待つ
     public func waitForJobs() async {
-        while let task = inFlight.values.first {
-            await task.value
-        }
+        await slots.waitForJobs()
     }
 
     static let handlers: [String: any IntentHandler] = [
@@ -158,39 +163,6 @@ public actor CommanderLoop {
         "retry": RetryJobHandler(),
         "giveUp": GiveUpJobHandler()
     ]
-
-    // MARK: - 引き受け
-
-    /// 引き受けるジョブ。動かしているのに司令塔がまだ試行を読んでいない（`assigned` のままの）ジョブは選ばず、そのぶん空きを減らす
-    private func pick(from jobs: [JobFile]) -> [JobFile] {
-        let pending = jobs.filter { inFlight[$0.id] != nil && $0.state != .running }
-        var capacity = settings.capacity
-        capacity.claude = max(0, capacity.claude - pending.filter(\.needs.claude).count)
-        capacity.build = max(0, capacity.build - pending.filter(\.needs.build).count)
-        // 引き受けない種類の assigned のジョブは、空きを取られないよう候補から外す（running・succeeded は空きと依存の判断に要るので残す）
-        let candidates = jobs.filter { job in
-            job.state != .assigned || (Self.handledKinds.contains(job.kind) && inFlight[job.id] == nil)
-        }
-        return JobPicker.pick(from: candidates, for: context.mac, capacity: capacity, now: context.now())
-    }
-
-    private func start(_ job: JobFile, with worker: ClaudeJobWorker) {
-        let log = log
-        inFlight[job.id] = Task { [weak self] in
-            do {
-                if let attempt = try await worker.perform(job) {
-                    log("ジョブ \(job.kind.rawValue) \(job.id) の試行 #\(attempt.number): \(attempt.outcome.rawValue)")
-                }
-            } catch {
-                log("ジョブ \(job.kind.rawValue) \(job.id) を終えられなかった（\(error)）")
-            }
-            await self?.finished(job.id)
-        }
-    }
-
-    private func finished(_ id: ULID) {
-        inFlight[id] = nil
-    }
 
     // MARK: - 通知
 
@@ -219,38 +191,12 @@ public actor CommanderLoop {
             versions: .init(commander: settings.commanderVersion, claude: settings.claudeVersion),
             selfCheck: machine.selfCheck
         )
-        let mac = MacFile(
-            mac: context.mac,
-            kind: .alwaysOn,
-            seenAt: time,
-            versions: .init(worker: settings.commanderVersion, claude: settings.claudeVersion),
-            diskFreeGB: machine.diskFreeGB,
-            load: machine.load,
-            capacity: settings.capacity,
-            selfCheck: machine.selfCheck
-        )
-        try await put(commander, at: StatePath.commander, message: "司令塔の生きている印")
-        try await put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
+        let versions = MacFile.Versions(worker: settings.commanderVersion, claude: settings.claudeVersion)
+        let mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
+        try await context.put(commander, at: StatePath.commander, message: "司令塔の生きている印")
+        try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now
         // しばらく使っていないリポジトリの写しを片付ける
         await workspace.tidy()
-    }
-
-    /// 無ければ作り、あれば置き換える
-    private func put<File: StateFile>(_ file: File, at path: String, message: String) async throws(CommanderError) {
-        do {
-            if try await context.files.read(File.self, at: path) == nil {
-                try await context.files.create(file, at: path, message: message)
-            } else {
-                try await context.files.update(File.self, at: path, message: message) {
-                    $0 = file
-                    return true
-                }
-            }
-        } catch .alreadyExists {
-            throw .changedWhileProcessing(path)
-        } catch {
-            throw .files(error)
-        }
     }
 }

@@ -6,6 +6,7 @@ import Foundation
 ///
 /// - リポジトリごとに、中身を必要になるまで取らない clone（`--filter=blob:none --no-checkout`）を 1 つ持ち、使うたびに fetch する
 /// - ジョブごとに、既定のブランチの最新を worktree で取り出す（並んで動くジョブの写しを分ける）。ジョブを終えたら消す
+/// - epic の作業場所（作業ブランチの worktree）は、ジョブを超えて残す（`GitRepositoryWorkspace+Epic.swift`）
 /// - リポジトリの中の設定を効かせない（hooks・シンボリックリンク・人の git の設定）。トークンは引数にも環境変数にも置かず、
 ///   credential helper（Keychain から読むコマンド）で git に渡す
 public struct GitRepositoryWorkspace: RepositoryWorkspace {
@@ -39,7 +40,7 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
     public var setup: Setup
     public var runner: any CommandRunning
     /// 同じリポジトリの clone を、並んで fetch・worktree の追加をしないように 1 つずつにする
-    private let locks = RepositoryLocks()
+    let locks = RepositoryLocks()
 
     public init(setup: Setup, runner: any CommandRunning) {
         self.setup = setup
@@ -104,7 +105,7 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
         clone.appendingPathComponent(".git/askhub-last-used")
     }
 
-    private func markUsed(_ clone: URL) {
+    func markUsed(_ clone: URL) {
         FileManager.default.createFile(atPath: usedMarker(clone).path, contents: Data())
     }
 
@@ -140,7 +141,7 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
     // MARK: - git
 
     /// clone が無ければ作り、あれば最新にする（既定のブランチが変わっていれば追う）
-    private func update(_ clone: URL, of repo: RepositoryFullName) async throws(WorkspaceError) {
+    func update(_ clone: URL, of repo: RepositoryFullName) async throws(WorkspaceError) {
         if FileManager.default.fileExists(atPath: clone.appendingPathComponent(".git").path) {
             try await git(["fetch", "--prune", "origin"], in: clone)
             try await git(["remote", "set-head", "origin", "--auto"], in: clone)
@@ -159,7 +160,27 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
         }
     }
 
-    private func git(_ arguments: [String], in directory: URL) async throws(WorkspaceError) {
+    /// git を流し、標準出力（前後の空白を除く）を返す。失敗したら区分して投げる
+    @discardableResult
+    func git(_ arguments: [String], in directory: URL) async throws(WorkspaceError) -> String {
+        guard let output = try await gitIfFound(arguments, in: directory) else {
+            throw .failed("git \(arguments.first ?? ""): 終了コード 1")
+        }
+        return output
+    }
+
+    /// git を流し、標準出力（前後の空白を除く）を返す。終了コード 1（`rev-parse --verify --quiet` の「無い」など）なら nil。
+    /// それ以外の失敗は区分して投げる
+    func gitIfFound(_ arguments: [String], in directory: URL) async throws(WorkspaceError) -> String? {
+        let result = try await run(arguments, in: directory)
+        guard result.succeeded else {
+            if result.status == 1, !result.timedOut, !result.terminatedBySignal, result.standardError.isEmpty { return nil }
+            throw Self.classify(result, command: arguments.first ?? "")
+        }
+        return String(bytes: result.standardOutput, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func run(_ arguments: [String], in directory: URL) async throws(WorkspaceError) -> CommandResult {
         let command = Command(
             executable: setup.git,
             arguments: arguments,
@@ -167,14 +188,11 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
             workingDirectory: directory,
             timeout: setup.timeout
         )
-        let result: CommandResult
         do {
-            result = try await runner.run(command)
+            return try await runner.run(command)
         } catch {
             throw .failed("git \(arguments.first ?? "") を起動できない（\(error.localizedDescription)）")
         }
-        guard !result.succeeded else { return }
-        throw Self.classify(result, command: arguments.first ?? "")
     }
 
     /// git に渡す環境変数。人の設定（`~/.gitconfig`・システムの設定）を読まず、決めた設定だけを渡す
@@ -189,6 +207,8 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
             ("core.attributesFile", "/dev/null"),
             ("core.excludesFile", "/dev/null"),
             ("credential.helper", setup.credentialHelper),
+            // トークンは持ち主ごとにあるので、credential helper に path（`owner/repo.git`）を渡して持ち主で選ばせる
+            ("credential.useHttpPath", "true"),
             ("protocol.file.allow", "never"),
             ("submodule.recurse", "false"),
             ("advice.detachedHead", "false")
@@ -229,7 +249,7 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
 
     // MARK: - フォルダ
 
-    private func createDirectory(_ directory: URL) throws(WorkspaceError) {
+    func createDirectory(_ directory: URL) throws(WorkspaceError) {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         } catch {
@@ -238,7 +258,7 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
     }
 
     /// ワーカーが自分で作ったフォルダを消す。無ければ何もしない
-    private func remove(_ directory: URL) throws(WorkspaceError) {
+    func remove(_ directory: URL) throws(WorkspaceError) {
         guard FileManager.default.fileExists(atPath: directory.path) else { return }
         do {
             try FileManager.default.removeItem(at: directory)

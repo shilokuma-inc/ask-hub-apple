@@ -45,6 +45,7 @@ extension DiscussionMirror {
     /// epic の Discussion。番号が無ければ、作った後に番号を戻す前に止まっていないかを目印で探し、無ければ作る。番号は状態に戻す
     func thread(of epic: EpicFile, copies: DiscussionCopies) async throws(MirrorError) -> DiscussionThread {
         if let number = epic.discussion { return try await existingThread(epic.repo, number: number) }
+        let api = discussions(epic.repo)
         let since = epic.createdAt.date.addingTimeInterval(-TimeInterval(settings.clockSkew.components.seconds))
         let marker = copies.request.marker
         let found = try await Self.github { () throws(DiscussionError) in try await api.discussions(epic.repo, createdSince: since) }
@@ -71,6 +72,7 @@ extension DiscussionMirror {
     }
 
     private func existingThread(_ repo: RepositoryFullName, number: Int) async throws(MirrorError) -> DiscussionThread {
+        let api = discussions(repo)
         let thread = try await Self.github { () throws(DiscussionError) in try await api.discussion(repo, number: number) }
         guard let thread else {
             // 空の結果を理由に作り直さない（人が消した Discussion を勝手に戻さない。GitHub の障害で空が返ることもある）
@@ -92,6 +94,7 @@ extension DiscussionMirror {
         epic: EpicFile,
         state: MirrorState
     ) async throws(MirrorError) {
+        let api = discussions(epic.repo)
         let (title, body) = (copies.title, copies.request.text)
         if thread.title != title || !Self.same(thread.body, body) {
             try await Self.github { () throws(DiscussionError) in try await api.updateDiscussion(thread.id, title: title, body: body) }
@@ -99,18 +102,20 @@ extension DiscussionMirror {
         let existing = ExistingCopies(thread)
         let pairs = state.questions?.questions.compactMap { question in question.comment.map { (question.id, $0) } } ?? []
         let storedQuestions = Dictionary(pairs) { first, _ in first }
-        let deleted = try await deletedCopies(Array(storedQuestions.values) + [state.goal?.comment].compactMap(\.self), in: existing)
+        let ids = Array(storedQuestions.values) + [state.goal?.comment].compactMap(\.self)
+        let board = Board(
+            api: api, thread: thread, existing: existing, deleted: try await deletedCopies(ids, in: existing, api: api)
+        )
         var created = CreatedCopies()
         do throws(MirrorError) {
             for question in copies.questions {
-                let stored = storedQuestions[question.id]
-                let placed = try await place(question.copy, stored: stored, in: thread, existing: existing, deleted: deleted)
+                let placed = try await place(question.copy, stored: storedQuestions[question.id], on: board)
                 guard let placed else { continue }
                 if placed.isNew { created.questions[question.id] = placed.id }
-                try await placeReplies(question.replies, under: placed, in: thread)
+                try await placeReplies(question.replies, under: placed, on: board)
             }
             if let goal = copies.goal {
-                let placed = try await place(goal, stored: state.goal?.comment, in: thread, existing: existing, deleted: deleted)
+                let placed = try await place(goal, stored: state.goal?.comment, on: board)
                 if let placed, placed.isNew { created.goal = placed.id }
             }
         } catch {
@@ -122,7 +127,11 @@ extension DiscussionMirror {
     }
 
     /// 状態に戻した id のうち、消された写し（作り直さない）。一覧に無いのに消されてもいなければ、一覧が欠けているので、重ならないよう何も作らずにやり直す
-    private func deletedCopies(_ ids: [String], in existing: ExistingCopies) async throws(MirrorError) -> Set<String> {
+    private func deletedCopies(
+        _ ids: [String],
+        in existing: ExistingCopies,
+        api: any DiscussionAPI
+    ) async throws(MirrorError) -> Set<String> {
         let absent = Set(ids.filter { existing.byID[$0] == nil })
         guard !absent.isEmpty else { return [] }
         let missing = try await Self.github { () throws(DiscussionError) in try await api.missing(absent.sorted()) }
@@ -134,28 +143,32 @@ extension DiscussionMirror {
         return absent
     }
 
+    /// 1 つの Discussion の写しを照らし合わせるときに使うもの
+    private struct Board {
+        /// その Discussion のリポジトリの持ち主のトークンで読み書きするもの
+        var api: any DiscussionAPI
+        var thread: DiscussionThread
+        var existing: ExistingCopies
+        /// 消された写し（作り直さない）
+        var deleted: Set<String>
+    }
+
     /// Discussion への直接のコメント（質問・ゴール）を照らし合わせる。消された写しなら nil
-    private func place(
-        _ copy: DiscussionCopies.Copy,
-        stored: String?,
-        in thread: DiscussionThread,
-        existing: ExistingCopies,
-        deleted: Set<String>
-    ) async throws(MirrorError) -> PlacedCopy? {
+    private func place(_ copy: DiscussionCopies.Copy, stored: String?, on board: Board) async throws(MirrorError) -> PlacedCopy? {
         if let stored {
-            guard !deleted.contains(stored) else { return nil }
-            guard let comment = existing.byID[stored] else {
+            guard !board.deleted.contains(stored) else { return nil }
+            guard let comment = board.existing.byID[stored] else {
                 throw .inconsistent(AttemptFailure(failureClass: .githubOutage, message: "写し \(stored) がコメントの一覧に無い"))
             }
-            try await updateIfChanged(comment.post, to: copy.text)
+            try await updateIfChanged(comment.post, to: copy.text, api: board.api)
             return PlacedCopy(id: stored, replies: comment.replies, isNew: false)
         }
         // 作った後、id を状態に戻す前に止まっていれば、目印で見つける
-        if let comment = existing.byMarker[copy.marker] {
-            try await updateIfChanged(comment.post, to: copy.text)
+        if let comment = board.existing.byMarker[copy.marker] {
+            try await updateIfChanged(comment.post, to: copy.text, api: board.api)
             return PlacedCopy(id: comment.post.id, replies: comment.replies, isNew: true)
         }
-        let (discussion, text) = (thread.id, copy.text)
+        let (api, discussion, text) = (board.api, board.thread.id, copy.text)
         let id = try await Self.github { () throws(DiscussionError) in
             try await api.addComment(to: discussion, replyingTo: nil, body: text)
         }
@@ -163,17 +176,13 @@ extension DiscussionMirror {
     }
 
     /// 質問のコメントへの返信（説明・回答）を照らし合わせる。返信は id を状態に持たないので、目印で探す
-    private func placeReplies(
-        _ replies: [DiscussionCopies.Copy],
-        under parent: PlacedCopy,
-        in thread: DiscussionThread
-    ) async throws(MirrorError) {
+    private func placeReplies(_ replies: [DiscussionCopies.Copy], under parent: PlacedCopy, on board: Board) async throws(MirrorError) {
         for reply in replies {
             let marker = reply.marker
             if let post = parent.replies.first(where: { $0.viewerDidAuthor && ProtocolMarker.parse($0.body)?.value == marker }) {
-                try await updateIfChanged(post, to: reply.text)
+                try await updateIfChanged(post, to: reply.text, api: board.api)
             } else {
-                let (discussion, text) = (thread.id, reply.text)
+                let (api, discussion, text) = (board.api, board.thread.id, reply.text)
                 _ = try await Self.github { () throws(DiscussionError) in
                     try await api.addComment(to: discussion, replyingTo: parent.id, body: text)
                 }
@@ -181,7 +190,7 @@ extension DiscussionMirror {
         }
     }
 
-    private func updateIfChanged(_ post: DiscussionPost, to text: String) async throws(MirrorError) {
+    private func updateIfChanged(_ post: DiscussionPost, to text: String, api: any DiscussionAPI) async throws(MirrorError) {
         guard !Self.same(post.body, text) else { return }
         try await Self.github { () throws(DiscussionError) in try await api.updateComment(post.id, body: text) }
     }

@@ -117,6 +117,26 @@ extension ClaudeJobRunnerTests {
         #expect(github.calls.count == calls)
     }
 
+    @Test func writesWithAPIOfRepositoryOwner() async throws {
+        let (store, epic) = try await asking()
+        let owner = FakeDiscussions { Self.now }
+        let other = FakeDiscussions { Self.now }
+        let asked = LogLines()
+        // トークンは持ち主ごとにあるので、写しは対象のリポジトリの持ち主の API だけで読み書きする
+        let mirror = DiscussionMirror(
+            context: CommanderContext(store: store, mac: Self.commander) { Self.now },
+            discussions: { repo in
+                asked.append(repo.owner)
+                return repo.owner == Self.repo.owner ? owner : other
+            },
+            log: { _ in }
+        )
+        await mirror.syncAll(verifier: verifier)
+        #expect(try await discussionNumber(of: epic, in: store) == owner.discussions.first?.number)
+        #expect(other.calls.isEmpty)
+        #expect(Set(asked.lines) == [Self.repo.owner])
+    }
+
     @Test func findsCopiesWrittenBeforeStopping() async throws {
         let (store, epic) = try await asking { [self.answer("q1", epic: $0, nonce: 1)] }
         let github = FakeDiscussions { Self.now }

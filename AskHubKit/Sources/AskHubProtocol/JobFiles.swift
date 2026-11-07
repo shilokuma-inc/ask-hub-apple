@@ -9,6 +9,8 @@ public enum JobKind: String, Codable, Sendable, CaseIterable {
     case reviseGoal
     case prepareWorkspace
     case implementTask
+    /// 子 PR のチェックを待ち、読むだけのレビュー役の Claude が差分を読み、見た head を固定してマージする
+    case reviewTask
     case fixTask
     case integrateDevelop
     case verifyBeforeFinal
@@ -173,10 +175,13 @@ public struct AttemptFile: StateFile {
     public struct Outputs: Codable, Equatable, Sendable {
         public var pullRequest: Int?
         public var commit: String?
+        /// 作ったブランチ（作業場所の用意の作業ブランチなど）。`epic.json` には司令塔がこれを読んで書く
+        public var branch: String?
 
-        public init(pullRequest: Int? = nil, commit: String? = nil) {
+        public init(pullRequest: Int? = nil, commit: String? = nil, branch: String? = nil) {
             self.pullRequest = pullRequest
             self.commit = commit
+            self.branch = branch
         }
     }
 
@@ -249,12 +254,13 @@ public struct AttemptFile: StateFile {
         if (outcome == .failed) != (failure != nil) { violations.append("failure は failed のときだけ書く") }
         if let pullRequest = outputs?.pullRequest, pullRequest < 1 { violations.append("outputs.pullRequest は 1 以上") }
         if let commit = outputs?.commit, !Self.isCommitSHA(commit) { violations.append("outputs.commit の形が違う") }
+        if let branch = outputs?.branch, !EpicFile.isBranchName(branch) { violations.append("outputs.branch の形が違う") }
         if let model = claude?.model, model.isEmpty { violations.append("claude.model が空") }
         if let cost = claude?.estimatedCostUsd, !(cost >= 0) { violations.append("claude.estimatedCostUsd は 0 以上") }
         return violations
     }
 
-    static func isCommitSHA(_ text: String) -> Bool {
+    public static func isCommitSHA(_ text: String) -> Bool {
         text.utf8.count == 40 && text.utf8.allSatisfy { byte in
             (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
         }

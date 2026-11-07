@@ -83,7 +83,8 @@ extension ClaudeJobRunnerTests {
         claude: any CommandRunning,
         capacity: Int = 2,
         now: @escaping @Sendable () -> Date = { ClaudeJobRunnerTests.now },
-        mirror: DiscussionMirror? = nil
+        mirror: DiscussionMirror? = nil,
+        epicWorkspace: (any EpicWorkspace)? = nil
     ) -> CommanderLoop {
         let publicKeys = [keyID: key.publicKey.derRepresentation]
         let selfCheck = SelfCheck(checkedAt: Timestamp(Self.now), keychain: .ok, githubToken: .ok, claudeToken: .ok)
@@ -95,7 +96,8 @@ extension ClaudeJobRunnerTests {
             workspace: FixedWorkspace(directory: directory),
             status: { CommanderLoop.MachineStatus(diskFreeGB: 100, load: 0.5, selfCheck: selfCheck) },
             log: { _ in },
-            mirror: mirror
+            mirror: mirror,
+            epicWorkspace: epicWorkspace
         )
     }
 
@@ -151,8 +153,20 @@ extension ClaudeJobRunnerTests {
         // Claude の結果を書く処理と人の意図の処理は、同じ排他を使う（読み直してから書くまでに答え直しが割り込まない）
         let loop = loop(InMemoryStateStore(), claude: ScriptedRunner([]))
         let worker = loop.worker(IntentVerifier(publicKeys: [:]))
-        #expect(worker.runner.context.lock === loop.context.lock)
+        let claude = (worker.runner as? JobDispatcher)?.runners[.makeQuestions] as? ClaudeJobRunner
+        #expect(claude?.context.lock === loop.context.lock)
         #expect(worker.recorder.mac == Self.commander)
+    }
+
+    @Test func loopPreparesWorkspaceOnlyWithEpicWorkspace() async throws {
+        // 常時オンの Mac が開始のときに選ばれたら、司令塔が作業場所の用意も引き受ける（作業場所を渡したときだけ）
+        let plain = loop(InMemoryStateStore(), claude: ScriptedRunner([]))
+        #expect(!plain.slots.kinds.contains(.prepareWorkspace))
+        let git = GitRepositoryWorkspace(setup: .init(root: directory, credentialHelper: "!x git-credential"), runner: FakeGit())
+        let preparing = loop(InMemoryStateStore(), claude: ScriptedRunner([]), epicWorkspace: git)
+        #expect(preparing.slots.kinds == CommanderLoop.claudeKinds.union([.prepareWorkspace]))
+        let runners = (preparing.worker(IntentVerifier(publicKeys: [:])).runner as? JobDispatcher)?.runners
+        #expect(runners?[.prepareWorkspace] is PrepareWorkspaceRunner)
     }
 
     @Test func loopWritesHeartbeatsAtInterval() async throws {
