@@ -69,8 +69,11 @@ class FakeGh:
     """gh api の偽物。読み取りは commander・issues の値（または失敗の列）を返し、書き込みは記録する"""
 
     def __init__(self, commander: str | None = None, issues: list | None = None,
-                 commander_failures: list | None = None, issue_failures: list | None = None, write_failure: bool = False):
+                 commander_failures: list | None = None, issue_failures: list | None = None, write_failure: bool = False,
+                 assignable: tuple | None = None):
         self.commander = commander
+        #: 割り当てられるアカウント（None なら頼んだとおりに割り当てる。GitHub は割り当てられない人を黙って外す）
+        self.assignable = assignable
         self.issues = issues or []
         self.commander_failures = list(commander_failures or [])
         self.issue_failures = list(issue_failures or [])
@@ -88,7 +91,10 @@ class FakeGh:
             self.writes.append((method, path, json.loads(stdin)))
             if self.write_failure:
                 return completed(1, stderr="gh: Resource not accessible by integration (HTTP 403)")
-            return completed(stdout=json.dumps({"number": 9, "html_url": f"https://github.com/{REPO}/issues/9"}))
+            fields = json.loads(stdin)
+            assigned = [name for name in fields.get("assignees", []) if self.assignable is None or name in self.assignable]
+            return completed(stdout=json.dumps({"number": 9, "html_url": f"https://github.com/{REPO}/issues/9",
+                                                "assignees": [{"login": name} for name in assigned]}))
         if argv[-1] == f"repos/{REPO}/contents/commander.json":
             assert "Accept: application/vnd.github.raw+json" in argv
             if self.commander_failures:
@@ -104,8 +110,8 @@ class FakeGh:
         raise AssertionError(f"想定していない呼び出し: {argv}")
 
 
-def run_check(fake: FakeGh, now: datetime = NOW, dry_run: bool = False) -> dict:
-    return check(REPO, GitHub(REPO, fake, sleep=lambda _: None), now, dry_run=dry_run)
+def run_check(fake: FakeGh, now: datetime = NOW, dry_run: bool = False, assignees: tuple = ()) -> dict:
+    return check(REPO, GitHub(REPO, fake, sleep=lambda _: None), now, dry_run=dry_run, assignees=assignees)
 
 
 class ReadCommanderTests(unittest.TestCase):
@@ -230,6 +236,42 @@ class CheckTests(unittest.TestCase):
         self.assertTrue(fields["body"].rstrip().endswith("<!-- askhub-commander-watch v1 down -->"))
         # 立てた Issue は、次の run で見張りの Issue として読める
         self.assertEqual(watch_issues([{**issue(9), "body": fields["body"]}])[0]["phase"], "down")
+
+    def test_without_assignees_does_not_assign(self) -> None:
+        fake = FakeGh(commander=None)
+        run_check(fake)
+        [(_, _, fields)] = fake.writes
+        self.assertNotIn("assignees", fields)
+
+    def test_assigns_issue_for_mobile_push(self) -> None:
+        fake = FakeGh(commander=None)
+        result = run_check(fake, assignees=("octocat",))
+        [(_, _, fields)] = fake.writes
+        self.assertEqual(fields["assignees"], ["octocat"])
+        self.assertEqual(result["assignees"], ["octocat"])
+        self.assertEqual(len(result["messages"]), 1)
+
+    def test_warns_when_github_drops_assignee(self) -> None:
+        # 割り当てられない人は GitHub が黙って外すので、Job Summary に出して気づけるようにする
+        fake = FakeGh(commander=None, assignable=("octocat",))
+        result = run_check(fake, assignees=("octocat", "someone"))
+        self.assertTrue(result["ok"])
+        self.assertIn("someone", result["messages"][-1])
+        self.assertNotIn("octocat", result["messages"][-1])
+
+    def test_dry_run_and_recovery_do_not_assign(self) -> None:
+        fake = FakeGh(commander=None)
+        run_check(fake, dry_run=True, assignees=("octocat",))
+        self.assertEqual(fake.writes, [])
+
+    def test_parse_assignees(self) -> None:
+        self.assertEqual(commander_watch.parse_assignees(""), ())
+        self.assertEqual(commander_watch.parse_assignees(" octocat, hubot  Octocat "), ("octocat", "hubot"))
+        for text in ["-octocat", "octo--cat", "x" * 40, "octo;rm", "@octocat"]:
+            with self.assertRaises(commander_watch.UsageError, msg=text):
+                commander_watch.parse_assignees(text)
+        with self.assertRaises(commander_watch.UsageError):
+            commander_watch.parse_assignees(",".join(f"user{i}" for i in range(11)))
 
     def test_stale_issue_shows_last_seen(self) -> None:
         fake = FakeGh(commander=commander_json(NOW - timedelta(minutes=47)))
@@ -392,6 +434,9 @@ class WorkflowTemplateTests(unittest.TestCase):
         job_permissions = re.findall(r"^      (\w[\w-]*): (\w+)", text.split("    permissions:\n", 1)[1], re.MULTILINE)
         self.assertEqual(job_permissions[:2], [("contents", "read"), ("issues", "write")])
         self.assertIn("persist-credentials: false", text)
+        # 割り当てるアカウントは公開のコードに書かず、状態リポジトリの変数から環境変数で渡す（run の中に式を埋め込まない）
+        self.assertIn("ASSIGNEES: ${{ vars.COMMANDER_WATCH_ASSIGNEES }}", text)
+        self.assertIn('--assignees "${ASSIGNEES:-}"', text)
 
     def test_render(self) -> None:
         sha = "0123456789abcdef0123456789abcdef01234567"
