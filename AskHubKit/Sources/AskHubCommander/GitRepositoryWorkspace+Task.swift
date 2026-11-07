@@ -42,13 +42,22 @@ extension GitRepositoryWorkspace: TaskGit {
     }
 
     public func commitAndPush(_ task: CheckedOutTask, message: String) async throws(WorkspaceError) -> String? {
-        let worktree = task.directory
-        let branch = task.branches.task
-        guard await isWorktree(worktree, of: cloneDirectory(of: task.repo)) else {
+        try await commitAndPush(task.repo, worktree: task.directory, branch: task.branches.task, what: "子ブランチ", message: message)
+    }
+
+    /// epic の作業場所の手元の変更をすべてコミットし、`branch` を push して新しい先頭を返す。変更が無ければ nil。`what` はブランチの呼び名
+    func commitAndPush(
+        _ repo: RepositoryFullName,
+        worktree: URL,
+        branch: String,
+        what: String,
+        message: String
+    ) async throws(WorkspaceError) -> String? {
+        guard await isWorktree(worktree, of: cloneDirectory(of: repo)) else {
             throw .failed("epic の作業場所の .git が、ワーカーの clone を指していない（書き換えられた）")
         }
         guard try await gitIfFound(["symbolic-ref", "--quiet", "HEAD"], in: worktree) == "refs/heads/\(branch)" else {
-            throw .failed("epic の作業場所が、子ブランチ \(branch) を取り出したままになっていない")
+            throw .failed("epic の作業場所が、\(what) \(branch) を取り出したままになっていない")
         }
         try await git(["add", "--all"], in: worktree)
         guard try await !git(["status", "--porcelain"], in: worktree).isEmpty else { return nil }
@@ -56,7 +65,7 @@ extension GitRepositoryWorkspace: TaskGit {
         try await git(identity + ["commit", "--quiet", "--no-verify", "--no-gpg-sign", "-m", message], in: worktree)
         let head = try await git(["rev-parse", "HEAD"], in: worktree)
         // push はリモートの追跡の参照（共有の clone）も書き換えるので、fetch と並ばないようにする
-        try await locks.withLock(task.repo.rawValue) { () throws(WorkspaceError) in
+        try await locks.withLock(repo.rawValue) { () throws(WorkspaceError) in
             try await git(["push", "origin", "refs/heads/\(branch):refs/heads/\(branch)"], in: worktree)
         }
         return head
@@ -95,7 +104,7 @@ extension GitRepositoryWorkspace: TaskGit {
     }
 
     /// base の CLAUDE.md から読んだリポジトリの事実。base に CLAUDE.md が無ければ空
-    private func facts(from base: String, in clone: URL) async throws(WorkspaceError) -> String {
+    func facts(from base: String, in clone: URL) async throws(WorkspaceError) -> String {
         let revision = "refs/remotes/origin/\(base)"
         guard try await commit(of: revision, in: clone) != nil,
               try await !git(["ls-tree", "--name-only", revision, "--", "CLAUDE.md"], in: clone).isEmpty else { return "" }
@@ -103,7 +112,7 @@ extension GitRepositoryWorkspace: TaskGit {
     }
 
     /// epic の作業場所に、`start` を `branch` として（nil ならブランチに乗せずに）取り出す。作業場所が無い・壊れていれば作り直す
-    private func place(_ branch: String?, at start: String, in worktree: URL, clone: URL) async throws(WorkspaceError) {
+    func place(_ branch: String?, at start: String, in worktree: URL, clone: URL) async throws(WorkspaceError) {
         if await isWorktree(worktree, of: clone) {
             let target = branch.map { ["--no-track", "-B", $0] } ?? ["--detach"]
             try await git(["checkout", "--force", "--quiet"] + target + [start], in: worktree)
@@ -118,7 +127,7 @@ extension GitRepositoryWorkspace: TaskGit {
     }
 
     /// 作業場所の git が、この clone の worktree として使えるか（`.git` のファイルが別の場所を指すように書き換えられていないか）
-    private func isWorktree(_ worktree: URL, of clone: URL) async -> Bool {
+    func isWorktree(_ worktree: URL, of clone: URL) async -> Bool {
         guard FileManager.default.fileExists(atPath: worktree.appendingPathComponent(".git").path),
               let common = try? await gitIfFound(["rev-parse", "--path-format=absolute", "--git-common-dir"], in: worktree) else {
             return false
