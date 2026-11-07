@@ -148,10 +148,11 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
    | Issues | Read and write |
    | Discussions | Read and write |
    | Actions | Read and write（揺らいだ CI の落ちたジョブを流し直すため。ワークフローのファイルは書けない） |
-   | Checks | Read-only（子 PR・最終 PR のチェックの結果を読む） |
-   | Commit statuses | Read-only（チェックのほかに、commit status で結果を出す CI を読む） |
+   | Commit statuses | Read-only（commit status で結果を出す CI を読む） |
    | Metadata | Read-only（自動で付く） |
    | Workflows | 付けない（ワークフローのファイルを含む push を GitHub に断らせる。[security.md](security.md) の「public のリポジトリと Secrets」） |
+
+   - Checks の権限は、fine-grained token では選べない（チェックの書き込みは GitHub App だけ）。チェックの結果（check runs）を読む API は、public のリポジトリなら特別な権限なしで読める。private のリポジトリで fine-grained token から読めるかは公式の文書に無いので、private のリポジトリで使う前に確かめる
 
 5. 期限を決めて作り、値（`github_pat_` で始まる）を `setup` か `token <持ち主>` で端末に貼る。値はほかの場所（メモ・チャット・ファイル）に残さない
 6. 対象のリポジトリを足したら、そのリポジトリをトークンの Repository access にも足す（持ち主が新しければ、トークンを作って `token <持ち主>` で入れる）。期限が切れたら作り直して `token <持ち主>` で入れ直す
