@@ -74,3 +74,24 @@ public struct GiveUpJobIntent: Equatable, Sendable {
 
     public var payload: [String: JSONValue] { [:] }
 }
+
+/// 人に渡したジョブをやめたときの扱い（`docs/renewal/flows.md` の「人に渡したジョブ」）。司令塔とクライアントで同じ扱いにする
+public enum GiveUpEffect: Equatable, Sendable {
+    /// やめると epic が先に進めなくなるので、epic ごとやめる（`abandoned`）
+    case abandonsEpic
+    /// ジョブだけをやめる
+    case jobOnly
+}
+
+extension JobKind {
+    /// やめたときの扱い。nil はやめられない（扱いは段階 3 で決める）
+    public var giveUpEffect: GiveUpEffect? {
+        switch self {
+        case .makeQuestions, .reviseQuestion, .checkReadiness: .abandonsEpic
+        case .explain, .reviseGoal: .jobOnly
+        case .prepareWorkspace, .implementTask, .fixTask, .integrateDevelop, .verifyBeforeFinal, .openFinalPullRequest,
+             .fixFinalPullRequest, .rerunChecks, .classifyDecisions, .captureScreenshots, .mergeFinalPullRequest, .cleanUp, .notify:
+            nil
+        }
+    }
+}
