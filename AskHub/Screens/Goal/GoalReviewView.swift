@@ -153,6 +153,7 @@ struct StartSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedMacID: Mac.ID?
     @State private var isConfirming = false
+    @State private var sending = SheetSendState()
 
     var body: some View {
         let macs = store.snapshot?.startableMacs ?? []
@@ -160,6 +161,11 @@ struct StartSheet: View {
         let defaultMacID = store.snapshot?.defaultStartMacID(for: epic.repositoryID)
         NavigationStack {
             List(selection: $selectedMacID) {
+                if sending.showsStatus {
+                    CardSection {
+                        SheetSendStatus(state: sending) { start() }
+                    }
+                }
                 CardSection {
                     ForEach(macs) { mac in
                         MacChoiceRow(mac: mac, isLastUsed: mac.id == lastMacID)
@@ -175,6 +181,7 @@ struct StartSheet: View {
                     Text(defaultMacID == nil ? "オンラインの Mac を出しています" : "オンラインの Mac を出しています。前回このリポジトリを回した Mac を選んであります")
                 }
             }
+            .disabled(sending.isSending)
             .onAppear {
                 if selectedMacID == nil {
                     selectedMacID = defaultMacID
@@ -190,25 +197,32 @@ struct StartSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル") { dismiss() }
+                        .disabled(sending.isSending)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("開始") { isConfirming = true }
+                    SheetSendButton("開始", isSending: sending.isSending) { isConfirming = true }
                         .disabled(selectedMacID == nil)
                 }
             }
             .confirmationDialog("「\(epic.title)」を開始しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
-                Button("\(store.mac(selectedMacID)?.name ?? "") で開始する") {
-                    guard let macID = selectedMacID else {
-                        return
-                    }
-                    Task {
-                        await store.send(.start(epicID: epic.id, macID: macID))
-                        dismiss()
-                    }
-                }
+                Button("\(store.mac(selectedMacID)?.name ?? "") で開始する") { start() }
             } message: {
                 Text("開始した後は回答を変えられません。変えたいことは最終 PR への指示として出します")
             }
+        }
+        .sheetSending(sending)
+    }
+
+    /// 送る。置けたら（同じものを送ってあったときも）閉じ、失敗したら理由を出して残る
+    private func start() {
+        guard let macID = selectedMacID, !sending.isSending else {
+            return
+        }
+        Task {
+            if case .failed = await sending.send(.start(epicID: epic.id, macID: macID), in: store) {
+                return
+            }
+            dismiss()
         }
     }
 }
