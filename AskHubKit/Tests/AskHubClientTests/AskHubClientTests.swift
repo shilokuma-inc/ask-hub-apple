@@ -113,6 +113,15 @@ struct AskHubClientTests {
         #expect(try RetryJobIntent(envelope: envelope(.retry(job))).target == job)
         #expect(try GiveUpJobIntent(envelope: envelope(.giveUp(job))).target == job)
         #expect(try AbandonEpicIntent(envelope: envelope(.abandonEpic(repo: Self.repo, epic: epic))).epic == epic)
+        let head = String(repeating: "b", count: 40)
+        let final = FinalPullRequestTarget(repo: Self.repo, epic: epic, head: head)
+        #expect(try ApproveMergeIntent(envelope: envelope(.approveMerge(final))).target == final)
+        #expect(try InstructFinalIntent(envelope: envelope(.instructFinal(final, instruction: "余白を広げて"))).instruction == "余白を広げて")
+        let card = DecisionTarget(repo: Self.repo, epic: epic, decision: "d1", head: head)
+        let answered = try DecisionIntent(envelope: envelope(.decision(card, answer: .alternative, note: "2 行にする")))
+        #expect(answered.answer == .alternative)
+        #expect(answered.note == "2 行にする")
+        #expect(try DecisionIntent(envelope: envelope(.decision(card, answer: .ok))).note.isEmpty)
     }
 }
 
