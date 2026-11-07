@@ -132,7 +132,8 @@ public struct ReviewTaskRunner: JobRunning {
         )
         guard let request = TaskReview.request(for: subject, repository: job.repo) else {
             let limit = TaskReview.maximumTextBytes
-            throw .fail(.unexpected, "ゴールとこのタスクの文が長すぎて、レビュー役の Claude に渡せない（決まりの文と合わせて UTF-8 で \(limit) バイトまで）")
+            let message = "ゴールとこのタスクの文が長すぎて、差分をレビュー役の Claude に渡せない（決まりの文と合わせて UTF-8 で \(limit) バイトまで）"
+            throw .fail(.unexpected, message)
         }
         switch await environment.reviewer.ask(request, as: TaskReviewResult.self, now: environment.context.now, check: { $0.problems }) {
         case let .answered(result, session):

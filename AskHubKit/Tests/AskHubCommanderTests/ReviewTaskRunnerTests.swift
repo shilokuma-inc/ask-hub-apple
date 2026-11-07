@@ -53,14 +53,16 @@ struct ReviewTaskRunnerTests {
             goal: goal, task: goal.tasks[1], pullRequest: 41, head: Self.head, branches: Fixture.branches, checkout: checkout
         )
         let fixed = TaskReview.text(for: subject, changes: "").utf8.count
-        // ゴールとタスクだけで超えるなら、削らずに nil
-        #expect(TaskReview.prompt(for: subject, budget: fixed - 1) == nil)
-        // 省いたことを示す文も入らないほど狭くても、上限を超えない
-        for budget in [fixed, fixed + 10, fixed + 60, fixed + 200, fixed + 5_000] {
+        // ゴールとタスクだけで超える・省いたことを示す文も入らず差分を少しも渡せないなら、削らずに nil（レビューさせない）
+        for budget in [fixed - 1, fixed, fixed + 10, fixed + 60] {
+            #expect(TaskReview.prompt(for: subject, budget: budget) == nil, "\(budget - fixed)")
+        }
+        // 差分の一部を渡せるなら、上限を超えない
+        for budget in [fixed + 200, fixed + 5_000] {
             let prompt = try #require(TaskReview.prompt(for: subject, budget: budget))
             #expect(prompt.utf8.count <= budget, "\(budget - fixed)")
+            #expect(prompt.contains("長いので、ここで切った"))
         }
-        #expect(TaskReview.prompt(for: subject, budget: fixed + 5_000)?.contains("長いので、ここで切った") == true)
     }
 
     @Test func handsOverToHumanWhenGoalAloneIsTooLongForReviewer() async throws {

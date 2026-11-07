@@ -85,20 +85,23 @@ enum TaskReview {
         """
     }
 
-    /// `budget` は依頼の文に使ってよいバイト数。ゴールとタスクはそのまま渡し、差分を残りに収める。ゴールとタスクだけで超えるときは nil
+    /// `budget` は依頼の文に使ってよいバイト数。ゴールとタスクはそのまま渡し、差分を残りに収める。
+    /// ゴールとタスクだけで超える・差分を少しも渡せないときは nil（レビュー役は git を使えず、変更を確かめられないまま指摘なしと返しかねない）
     static func prompt(for subject: Subject, budget: Int = maximumTextBytes) -> String? {
         let diff = subject.checkout.diff.isBlank ? "（差分なし）" : subject.checkout.diff
         let changes = "\(subject.checkout.stat)\n\n\(diff)"
         var room = budget - text(for: subject, changes: "").utf8.count
         guard room >= 0 else { return nil }
-        var prompt = text(for: subject, changes: fit(changes, bytes: room))
+        var fitted = fit(changes, bytes: room)
+        var prompt = text(for: subject, changes: fitted)
         // 区切りのタグの中の `<` を `&lt;` にすると大きくなるので、組み立てた後に測り、超えた分だけ差分を詰め直す。
         // 残りが 0 になれば差分は空で、ゴールとタスクだけの大きさ（上限以内と確かめた）になるので、必ず止まる
         while prompt.utf8.count > budget {
             room = max(room - (prompt.utf8.count - budget), 0)
-            prompt = text(for: subject, changes: fit(changes, bytes: room))
+            fitted = fit(changes, bytes: room)
+            prompt = text(for: subject, changes: fitted)
         }
-        return prompt
+        return fitted.isEmpty ? nil : prompt
     }
 
     /// `bytes`（UTF-8）に収まるよう、文字の切れ目で後ろを省く。省いたことを示す文も入らないほど狭ければ空にする
