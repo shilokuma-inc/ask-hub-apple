@@ -251,7 +251,8 @@ extension StateClientServiceTests {
     /// 人の対応を待つジョブが複数あれば、古く止まったものから出し、残りの件数を添える
     @Test
     func oldestWaitingJobIsShownFirst() async throws {
-        let newer = "01JCJ0B0000000000000000009"
+        // 新しく止まったジョブの id を小さくして、id の順でなく止まった時刻の順で選ぶことを確かめる
+        let newer = "01JCJ0B0000000000000000000"
         var files = Self.explainingEpic()
         files[Self.jobPath(newer)] = Self.job(
             kind: "reviseQuestion", id: newer, attempts: 0, input: #"{"question":"q2"}"#, updatedAt: "2026-11-01T02:00:00Z"
