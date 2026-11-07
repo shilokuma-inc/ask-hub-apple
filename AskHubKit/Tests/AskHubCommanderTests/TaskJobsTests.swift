@@ -107,6 +107,28 @@ struct TaskJobsTests {
         #expect(Self.occurrences(of: "</review>", in: job.prompt) == 1)
     }
 
+    @Test func findingsFitAttemptAndResumeAsRecorded() {
+        // チェックが多くても、試行に書ける長さに収め、どのチェックの末尾も残す
+        let checks = (1...6).map { number in
+            FixTaskJob.FailedCheck(name: "test \(number)", logExcerpt: String(repeating: "x", count: 9_000) + "\nerror \(number)")
+        }
+        let findings = FixTaskJob.Reason.ci(checks).findings
+        #expect(findings.count <= AttemptFile.Outputs.maximumFindingsLength)
+        for number in 1...6 {
+            #expect(findings.contains("チェック: test \(number)\n"))
+            #expect(findings.contains("error \(number)"))
+        }
+        #expect(FixTaskJob.Reason.review([]).findings == "（指摘の本文を取れなかった）")
+
+        // 試行に書かれた文から作り直しても、同じ依頼になる
+        let reason = FixTaskJob.Reason.review([FixTaskJob.Finding(path: "App/RankingView.swift", line: 12, text: "nil のときに落ちる")])
+        let original = FixTaskJob(session: "s-impl", pullRequest: 41, reason: reason)
+        let recorded = FixTaskJob(session: "s-impl", pullRequest: 41, reason: .review, findings: reason.findings)
+        #expect(recorded.prompt == original.prompt)
+        #expect(recorded.failingAtStart == nil)
+        #expect(FixTaskJob(session: "s", pullRequest: 1, reason: .ci, findings: "…").failingAtStart == .testLight)
+    }
+
     // MARK: - 報告の確かめ
 
     static let question = TaskReport.Question(
