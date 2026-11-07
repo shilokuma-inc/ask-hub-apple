@@ -214,11 +214,13 @@ extension StateClientServiceTests {
         #expect(line.text == "mac-mini でタスク 2/3 の子 PR #42 の CI の失敗を直しています（1 回目）")
         #expect(line.detail?.hasSuffix(" · 試行 2") == true)
 
-        let documents = try await StateReader(store: fixture.store, device: fixture.key.keyID).read()
+        let recording = RecordingStateStore(base: fixture.store)
+        let documents = try await StateReader(store: recording, device: fixture.key.keyID).read()
         let attempts = documents.epics.first?.attempts ?? [:]
         #expect(attempts[ULID(rawValue: Self.fixSecondID)!]?.map(\.number) == [2])
-        // 終わったジョブの試行は読まない
-        #expect(attempts[ULID(rawValue: Self.reviewSecondID)!] == nil)
+        // 読みに行く試行も、動いているジョブの最後の 1 つだけ（前の試行と、終わったジョブの試行は要求しない）
+        let attemptReads = await recording.reads.filter { $0.contains("/attempts/") }
+        #expect(attemptReads == ["\(Self.base)/attempts/\(Self.fixSecondID)/2.json"])
     }
 
     /// 子 PR のレビューが人に渡されたら、止まったタスクにも子 PR の番号を残す
@@ -310,5 +312,28 @@ extension StateClientServiceTests {
         let epic = try #require(try await makeService(files: files).service.fetchSnapshot().epic(Self.epicID))
         #expect(epic.tasks.map(\.state) == [.done(pullRequest: 41), .done(pullRequest: 42), .done(pullRequest: nil)])
         #expect(epic.activities.map(\.kind) == [.tasksFinished])
+    }
+}
+
+/// 読んだパスを覚える状態リポジトリ（読む回数を確かめる）
+private actor RecordingStateStore: StateStore {
+    let base: InMemoryStateStore
+    private(set) var reads: [String] = []
+
+    init(base: InMemoryStateStore) {
+        self.base = base
+    }
+
+    func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
+        reads.append(path)
+        return try await base.read(path)
+    }
+
+    func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await base.list(directory)
+    }
+
+    func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
+        try await base.write(path, data: data, replacing: sha, message: message)
     }
 }
