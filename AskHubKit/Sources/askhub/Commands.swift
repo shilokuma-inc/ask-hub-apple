@@ -75,6 +75,9 @@ extension AskHubMain {
         case "add-repository":
             try arguments.only(["repo"])
             return .addRepository(try arguments.repository())
+        case "configure-repository":
+            try arguments.only(["repo", "file"])
+            return .configureRepository(try arguments.repository(), build: try build(at: try arguments.string("file")))
         case "request":
             try arguments.only(["repo", "title", "body"])
             return .request(repo: try arguments.repository(), title: try arguments.string("title"), body: arguments.values["body"] ?? "")
@@ -91,6 +94,22 @@ extension AskHubMain {
             return command == "retry" ? .retry(target) : .giveUp(target)
         default:
             return try epicDraft(command, arguments)
+        }
+    }
+
+    /// ビルドの設定の JSON（`repo.json` の `build` と同じ形）を読み、送る前に司令塔と同じ決まりで確かめる
+    private static func build(at path: String) throws -> RepositoryFile.Build {
+        let data: Data
+        do {
+            data = try Data(contentsOf: URL(fileURLWithPath: (path as NSString).expandingTildeInPath))
+        } catch {
+            throw CommandArguments.Failure(message: "--file を読めない（\(error.localizedDescription)）")
+        }
+        guard let value = try? JSONValue(parsing: data) else { throw CommandArguments.Failure(message: "--file の中身が JSON でない") }
+        do {
+            return try ConfigureRepositoryIntent.build(from: value)
+        } catch {
+            throw CommandArguments.Failure(message: "ビルドの設定の形が違う（\(error.detail)）")
         }
     }
 

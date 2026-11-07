@@ -9,6 +9,9 @@ public struct JobTiming: Sendable, Equatable {
     public var attemptStaleAfter: Duration = .seconds(15 * 60)
     /// Mac の `seenAt` がこれより古ければ、オフラインとみなす（ワーカーは 10 分程度ごとに書く）
     public var macStaleAfter: Duration = .seconds(30 * 60)
+    /// 書き込みの予算・GitHub の上限に当たった結果（試行の終わり・Claude のジョブの結果）を、待って書き直す長さの合計の上限。
+    /// 予算は 1 時間の枠なので、1 回の待ちは長くても 1 時間ほど
+    public var writeWaitLimit: Duration = .seconds(2 * 60 * 60)
 
     public init() {}
 }

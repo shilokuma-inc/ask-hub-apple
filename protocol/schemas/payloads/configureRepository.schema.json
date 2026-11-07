@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/configureRepository.schema.json",
+  "title": "ビルドの設定を入れる人の意図（kind が configureRepository）の payload",
+  "description": "封筒の repo が対象のリポジトリ（対象に加えた後に送る）。target と targetVersion は持たない。送るたびに repo.json の build をまるごと置き換える。知らない欄のある payload は、build の中も含めて読まない",
+  "type": "object",
+  "required": ["build"],
+  "additionalProperties": false,
+  "properties": {
+    "build": { "$ref": "../repository-build.schema.json" }
+  }
+}

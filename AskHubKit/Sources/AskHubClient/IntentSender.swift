@@ -68,6 +68,11 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: AddRepositoryIntent.kind, repo: repo, payload: ["platform": .string(platform.rawValue)])
     }
 
+    /// ビルドの設定を入れる（対象に加えた後に送る。`repo.json` の `build` をまるごと置き換える）
+    public static func configureRepository(_ repo: RepositoryFullName, build: RepositoryFile.Build) -> Self {
+        Self(kind: ConfigureRepositoryIntent.kind, repo: repo, payload: ConfigureRepositoryIntent.payload(for: build))
+    }
+
     /// 開始する前の epic を取り下げる
     public static func abandonEpic(repo: RepositoryFullName, epic: ULID) -> Self {
         Self(kind: AbandonEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))

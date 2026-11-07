@@ -90,7 +90,7 @@ public struct ClaudeJobRunner: Sendable {
     }
 
     /// 結果を書く直前に読み直した epic。epic の段階が `stages` から外れた・ジョブが取り消されたときは nil（結果を捨てる）。
-    /// `context.lock` の中で呼ぶ
+    /// `context.writingResult` の中（排他の中）で呼ぶ
     func stillWanted(_ job: JobFile, stages: Set<EpicStage>) async throws(CommanderError) -> EpicFile? {
         guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(job.repo, job.epic)), stages.contains(epic.stage),
               try await context.read(JobFile.self, at: StatePath.job(job.repo, epic: job.epic, job: job.id))?.state != .canceled else {
@@ -136,7 +136,7 @@ extension ClaudeJobRunner {
             } catch {
                 return .failed(AttemptFailure(failureClass: .unexpected, message: "質問の一覧を作れない（\(error)）"), session)
             }
-            return try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+            return try await context.writingResult { () throws(CommanderError) -> ClaudeJobOutcome in
                 guard try await stillWanted(job, stages: [.drafting]) != nil else {
                     return .discarded("頼んだ後に epic がやめられた・先に進んだ", session)
                 }
@@ -207,7 +207,7 @@ extension ClaudeJobRunner {
         session: ClaudeSession,
         _ change: (QuestionsFile) throws(QuestionFlow.ResultError) -> QuestionFlow.Change
     ) async throws(CommanderError) -> ClaudeJobOutcome {
-        try await context.lock.withLock { () throws(CommanderError) -> ClaudeJobOutcome in
+        try await context.writingResult { () throws(CommanderError) -> ClaudeJobOutcome in
             guard try await stillWanted(job, stages: CommanderContext.planningStages) != nil else {
                 return .discarded("頼んだ後に epic が開始した・やめられた", session)
             }

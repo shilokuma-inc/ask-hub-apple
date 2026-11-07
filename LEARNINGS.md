@@ -370,6 +370,7 @@
 - 開きと閉じがある文字列（HTML コメントの `<!--` と `-->` など）の閉じを本文の先頭から探すと、`<!-->`・`<!--->` のように閉じが開きと重なる本文で開きの中の位置が返り、
   `index(startIndex, offsetBy: 開きの長さ)..<閉じ.lowerBound` の下の端が上の端より大きくなって「Range requires lowerBound <= upperBound」で落ちる。
   public のリポジトリでは誰でもこうした本文を書けるので、閉じは開きの後ろ（`dropFirst(開きの長さ)` の Substring）から探す。目印の先頭のコメントは `MarkerComment.leadingCommentContent` で読む（2026-11-03、#844）
+- `URL.resourceValues(forKeys:)` は、読んだ値を URL ごとに覚えていて、同じ URL のまま読み直すと前の値を返す（`volumeAvailableCapacityForImportantUsage` も）。常駐するプロセスで空き容量を何度も測るときは、読む前に `removeAllCachedResourceValues()` を呼ぶ（2 GB 書いた後も同じ URL では値が変わらず、キャッシュを消すと 2 GB 減った。Mac mini の司令塔が起動したときの空き容量を書き続けていた。2026-11-08）
 
 - `OSAllocatedUnfairLock.withLock` は typed throws を通さない（`withLock { state throws(E) in … }` は「thrown expression type 'any Error' cannot be converted to error type 'E'」）。
   閉包で `Result<T, E>` を返し、外で `try result.get()` する（2026-11-07、タスクのジョブのテストの偽物）

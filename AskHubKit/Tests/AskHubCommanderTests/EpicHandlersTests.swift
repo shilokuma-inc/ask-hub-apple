@@ -96,9 +96,10 @@ struct EpicHandlersTests {
         return jobs
     }
 
-    private func registeredRepository(maxConcurrentEpics: Int = 1) async throws -> InMemoryStateStore {
+    private func registeredRepository(maxConcurrentEpics: Int = 1, configured: Bool = true) async throws -> InMemoryStateStore {
         let store = InMemoryStateStore()
-        let repo = RepositoryFile(repo: Self.repo, platform: .apple, maxConcurrentEpics: maxConcurrentEpics, addedAt: Self.timestamp)
+        var repo = RepositoryFile(repo: Self.repo, platform: .apple, maxConcurrentEpics: maxConcurrentEpics, addedAt: Self.timestamp)
+        if configured { repo.build = try RepositoryHandlersTests.build() }
         try await put(repo, at: StatePath.repository(Self.repo), in: store)
         return store
     }
@@ -179,9 +180,10 @@ struct EpicHandlersTests {
     /// ゴールの確認を待っている epic（ゴールは 2 版）と、生きている Mac
     private func awaitingStart(
         macSeen: TimeInterval = -5 * 60,
-        stage: EpicStage = .awaitingStart
+        stage: EpicStage = .awaitingStart,
+        configured: Bool = true
     ) async throws -> (InMemoryStateStore, EpicFile) {
-        let store = try await registeredRepository()
+        let store = try await registeredRepository(configured: configured)
         let epic = Self.epic(stage: stage)
         try await put(epic, at: StatePath.epic(Self.repo, epic.id), in: store)
         let goal = GoalFile(version: 2, summary: "ランキングを作る", doneWhen: ["…"], tasks: [.init(id: "t1", title: "集計を作る")])
@@ -250,6 +252,12 @@ struct EpicHandlersTests {
         (store, epic) = try await awaitingStart(stage: .asking)
         try await start(epic, in: store)
         #expect(try await intake(store).processPending().first == .rejected(kind: "startEpic", reason: "開始できる段階でない（今は asking）"))
+
+        // ビルドの設定が無いリポジトリでは始めない（ワーカーがビルドもチェックの待ちもできない）
+        (store, epic) = try await awaitingStart(configured: false)
+        try await start(epic, in: store)
+        let unconfigured = "shilokuma-inc/askhub-sandbox のビルドの設定（repo.json の build）が無い。設定を入れてから開始する"
+        #expect(try await intake(store).processPending().first == .rejected(kind: "startEpic", reason: unconfigured))
     }
 
     @Test func startIsRejectedWhileUnreadableFilesHideState() async throws {
