@@ -154,6 +154,55 @@ struct StateClientServiceTests {
         #expect(epic.request.body == "毎朝の通知をやめたい")
     }
 
+    /// 依頼の控えは、司令塔が受け取る前から出す epic の id を持つ（送った後は、その epic へ移る）
+    @Test
+    func requestReceiptPointsToShownEpic() async throws {
+        let service = try makeService().service
+        _ = try await service.fetchSnapshot()
+        let receipt = try await service.perform(.request(repositoryID: Self.repo, summary: "メモ並べ替え", body: "長押しで並べ替える"))
+        let epicID = try #require(receipt.requestedEpicID)
+        let snapshot = try await service.fetchSnapshot()
+        #expect(snapshot.epic(epicID)?.title == "メモ並べ替え")
+        #expect(snapshot.epic(epicID)?.history.last?.text == "依頼を送りました。司令塔が受け取るのを待っています")
+        // 依頼でない意図の控えは、移る先を持たない
+        #expect(try await service.perform(.discard(epicID: Self.epicID)).requestedEpicID == nil)
+    }
+
+    /// 送った意図は、読み直す前も後も、司令塔が受け取るまで受け取り待ちとして覚える。中身か対象の版が違えば別の意図
+    @Test
+    func remembersSentIntentUntilCommanderReceivesIt() async throws {
+        let fixture = try makeService()
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        let answer = HumanIntent.answer(epicID: Self.epicID, questionID: "Q1", optionID: "日ごと", note: "")
+        #expect(service.lastSend(of: answer) == nil)
+
+        try await service.perform(answer)
+        #expect(service.lastSend(of: answer) == SentRecord(sentAt: now, isWaiting: true))
+        #expect(service.lastSend(of: .answer(epicID: Self.epicID, questionID: "Q1", optionID: "週ごと", note: "")) == nil)
+
+        // 読み直した後は、状態リポジトリの「送った意図」から決める
+        _ = try await service.fetchSnapshot()
+        #expect(service.lastSend(of: answer)?.isWaiting == true)
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        let consumed = #"{"v":1,"kind":"answer","consumedAt":"2027-01-15T08:00:00Z","result":"accepted"}"#
+        await fixture.store.put(StatePath.consumed(device: fixture.key.keyID, nonce: envelope.nonce), data: Data(consumed.utf8))
+        _ = try await service.fetchSnapshot()
+        #expect(service.lastSend(of: answer)?.isWaiting == false)
+    }
+
+    /// 同じ内容の依頼は、送った時刻を返す（司令塔が受け取った後も。重ねて送るかを確かめるのに使う）
+    @Test
+    func remembersSentRequestWithItsTime() async throws {
+        let service = try makeService().service
+        _ = try await service.fetchSnapshot()
+        let request = HumanIntent.request(repositoryID: Self.repo, summary: "メモ並べ替え", body: "長押しで並べ替える")
+        try await service.perform(request)
+        _ = try await service.fetchSnapshot()
+        #expect(service.lastSend(of: request)?.sentAt == now)
+        #expect(service.lastSend(of: .request(repositoryID: Self.repo, summary: "メモ並べ替え", body: "ドラッグで並べ替える")) == nil)
+    }
+
     /// 大きすぎると分かった epic は、分け方の案を出し、分け方の判断は着手前の確認の結果の版を付けて送る
     @Test
     func splitDecisionUsesReadinessVersion() async throws {

@@ -84,11 +84,15 @@ final class UnavailableClientService: ClientService {
         throw ClientServiceError(message: message)
     }
 
-    func perform(_ intent: HumanIntent) async throws {
+    func perform(_ intent: HumanIntent) async throws -> SendReceipt {
         throw ClientServiceError(message: message)
     }
 
     func supports(_ intent: HumanIntent) -> Bool {
         false
+    }
+
+    func lastSend(of intent: HumanIntent) -> SentRecord? {
+        nil
     }
 }

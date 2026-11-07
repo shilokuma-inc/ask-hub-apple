@@ -3,12 +3,15 @@ import Foundation
 // MARK: - 人の意図を当てる（依頼から開始まで）
 
 extension DemoClientService {
-    func apply(_ intent: HumanIntent) {
+    func apply(_ intent: HumanIntent) -> SendReceipt {
         switch intent {
+        case let .request(repositoryID, summary, body):
+            return SendReceipt(requestedEpicID: addRequest(repositoryID: repositoryID, summary: summary, body: body))
+
         case .answer, .requestExplanation:
             applyQuestionIntent(intent)
 
-        case .reviseGoal, .start, .decideSplit, .request, .addRepository:
+        case .reviseGoal, .start, .decideSplit, .addRepository:
             applySetupIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .verify:
@@ -17,6 +20,7 @@ extension DemoClientService {
         case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .submitSecret, .cleanUp:
             applyOperationIntent(intent)
         }
+        return SendReceipt()
     }
 
     private func applyQuestionIntent(_ intent: HumanIntent) {
@@ -42,9 +46,6 @@ extension DemoClientService {
 
         case let .decideSplit(epicID, choice):
             decideSplit(epicID: epicID, choice: choice)
-
-        case let .request(repositoryID, summary, body):
-            addRequest(repositoryID: repositoryID, summary: summary, body: body)
 
         case .addRepository(let repositoryID):
             guard let repository = state.candidateRepositories.first(where: { $0.id == repositoryID }) else {
@@ -251,7 +252,8 @@ extension DemoClientService {
         state.recordLastMac(macID, forEpic: epicID)
     }
 
-    private func addRequest(repositoryID: TargetRepository.ID, summary: String, body: String) {
+    /// 依頼を epic にして、その id を返す
+    private func addRequest(repositoryID: TargetRepository.ID, summary: String, body: String) -> Epic.ID {
         let date = now()
         let id = "request-\(Int(date.timeIntervalSince1970))"
         let epic = Epic(
@@ -294,5 +296,6 @@ extension DemoClientService {
                 epic.log("質問を 1 つ作りました", at: asked)
             }
         }
+        return id
     }
 }

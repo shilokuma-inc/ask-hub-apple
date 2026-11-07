@@ -115,6 +115,7 @@ struct AddRepositorySheet: View {
     @State private var query = ""
     @State private var selectedID: TargetRepository.ID?
     @State private var fullName = ""
+    @State private var sending = SheetSendState()
 
     var body: some View {
         let allCandidates = store.snapshot?.candidateRepositories ?? []
@@ -123,6 +124,11 @@ struct AddRepositorySheet: View {
         }
         NavigationStack {
             Form {
+                if sending.showsStatus {
+                    Section {
+                        SheetSendStatus(state: sending) { submit() }
+                    }
+                }
                 if allCandidates.isEmpty {
                     // 状態リポジトリにつないだときは、トークンが状態リポジトリしか見えないので候補を並べられない
                     Section {
@@ -150,26 +156,34 @@ struct AddRepositorySheet: View {
                     }
                 }
             }
+            .disabled(sending.isSending)
             .searchable(text: $query, prompt: "名前で探す")
             .pastelBackground()
             .navigationTitle("対象に加える")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル") { dismiss() }
+                        .disabled(sending.isSending)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("加える") {
-                        guard let selectedID else {
-                            return
-                        }
-                        Task {
-                            await store.send(.addRepository(repositoryID: selectedID))
-                            dismiss()
-                        }
-                    }
-                    .disabled(selectedID == nil)
+                    SheetSendButton("加える", isSending: sending.isSending) { submit() }
+                        .disabled(selectedID == nil)
                 }
             }
+        }
+        .sheetSending(sending)
+    }
+
+    /// 送る。置けたら（同じものを送ってあったときも）閉じ、失敗したら理由を出して残る
+    private func submit() {
+        guard let selectedID, !sending.isSending else {
+            return
+        }
+        Task {
+            if case .failed = await sending.send(.addRepository(repositoryID: selectedID), in: store) {
+                return
+            }
+            dismiss()
         }
     }
 

@@ -8,6 +8,9 @@ struct QuestionSheet: View {
     @Environment(ClientStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var note = ""
+    @State private var sending = SheetSendState()
+    /// 最後に送ろうとした回答（失敗したとき、もう一度送る）
+    @State private var lastIntent: HumanIntent?
     @FocusState private var isEditingNote: Bool
 
     /// 回答を変えられるのは開始の前まで。やめた epic の質問には答えない
@@ -19,9 +22,19 @@ struct QuestionSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if sending.showsStatus {
+                    CardSection {
+                        SheetSendStatus(state: sending) {
+                            if let lastIntent {
+                                send(lastIntent)
+                            }
+                        }
+                    }
+                }
                 QuestionDetailSections(question: question, epic: store.epic(epic.id))
                 if canChangeAnswer {
                     answerSection
+                        .disabled(sending.isSending)
                 }
             }
             .pastelBackground()
@@ -33,10 +46,12 @@ struct QuestionSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("閉じる") { dismiss() }
+                        .disabled(sending.isSending)
                 }
             }
             .keyboardDoneButton($isEditingNote)
         }
+        .sheetSending(sending)
     }
 
     private var answerSection: some View {
@@ -74,9 +89,17 @@ struct QuestionSheet: View {
         }
     }
 
+    /// 送る。置けたら（同じ回答を送ってあったときも）閉じ、失敗したら理由を出して残る
     private func send(_ intent: HumanIntent) {
+        guard !sending.isSending else {
+            return
+        }
+        lastIntent = intent
+        isEditingNote = false
         Task {
-            await store.send(intent)
+            if case .failed = await sending.send(intent, in: store) {
+                return
+            }
             dismiss()
         }
     }

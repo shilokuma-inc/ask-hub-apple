@@ -169,6 +169,18 @@ struct DemoClientServiceTests {
         #expect(epic.tasks.first { $0.id == "rain-t4" }?.state == .pending)
     }
 
+    /// 依頼の控えは作った epic の id を持つ。送った意図はすぐ当てるので、受け取り待ちにはならない
+    @Test
+    func requestReceiptPointsToCreatedEpic() async throws {
+        let service = makeService()
+        let request = HumanIntent.request(repositoryID: DemoData.repositoryID("recipe-apple"), summary: "メモ並べ替え", body: "")
+        let receipt = try await service.perform(request)
+        let epicID = try #require(receipt.requestedEpicID)
+        #expect(service.state.epic(epicID)?.title == "メモ並べ替え")
+        #expect(service.lastSend(of: request) == SentRecord(sentAt: clock.now, isWaiting: false))
+        #expect(service.lastSend(of: .addRepository(repositoryID: "example/other")) == nil)
+    }
+
     /// 読めない場面では取得が失敗する
     @Test
     func failingScenarioThrows() async {
