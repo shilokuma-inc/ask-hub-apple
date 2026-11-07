@@ -117,12 +117,20 @@ struct StateReader {
         }
         var jobs: [JobFile] = []
         for entry in entries where entry.kind == .file && entry.name.hasSuffix(".json") {
-            if let job = await read(JobFile.self, at: entry.path, into: &documents) {
-                jobs.append(job)
+            guard let job = await read(JobFile.self, at: entry.path, into: &documents) else {
+                continue
             }
+            // ほかの epic のジョブを出すと、やめるがその epic に当たるので、置き場所と中身が合うものだけ出す
+            guard job.repo == epic.repo, job.epic == epic.id, entry.path == StatePath.job(job.repo, epic: job.epic, job: job.id) else {
+                documents.failures.append(SourceFailure(source: entry.path, message: Self.misplaced))
+                continue
+            }
+            jobs.append(job)
         }
         return jobs
     }
+
+    static let misplaced = "置き場所と中身の合わないファイルです"
 
     /// 人の対応を待っているジョブの試行。何を試したかを出すため、最後の試行だけでなくすべて読む（人に渡るジョブは少ない）
     private func readAttempts(of job: JobFile, into documents: inout StateDocuments) async -> [AttemptFile] {
@@ -132,9 +140,14 @@ struct StateReader {
         var attempts: [AttemptFile] = []
         for number in 1...job.attempts {
             let path = StatePath.attempt(job.repo, epic: job.epic, job: job.id, number: number)
-            if let attempt = await read(AttemptFile.self, at: path, into: &documents) {
-                attempts.append(attempt)
+            guard let attempt = await read(AttemptFile.self, at: path, into: &documents) else {
+                continue
             }
+            guard attempt.job == job.id, attempt.number == number else {
+                documents.failures.append(SourceFailure(source: path, message: Self.misplaced))
+                continue
+            }
+            attempts.append(attempt)
         }
         return attempts
     }

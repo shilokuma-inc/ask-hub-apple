@@ -241,6 +241,17 @@ extension StateClientServiceTests {
         #expect(blocker.summary.contains("ほかに 1 件の作業も対処を待っています"))
     }
 
+    /// 置き場所と中身の合わないジョブ（ほかの epic のジョブの写し）は出さず、読めないものとして出す
+    @Test
+    func misplacedJobIsNotShown() async throws {
+        let otherEpic = "01JCEP1C000000000000000009"
+        var files = Self.explainingEpic()
+        files[Self.jobPath()] = Self.job(kind: "explain", input: Self.explainInput).replacingOccurrences(of: Self.epicID, with: otherEpic)
+        let snapshot = try await makeService(files: files).service.fetchSnapshot()
+        #expect(snapshot.epic(Self.epicID)?.blocker == nil)
+        #expect(snapshot.sourceFailures.contains { $0.source == Self.jobPath() && $0.message == StateReader.misplaced })
+    }
+
     /// 終わった（マージした・やめた）epic のジョブは読まない
     @Test
     func jobsOfFinishedEpicsAreNotRead() async throws {
