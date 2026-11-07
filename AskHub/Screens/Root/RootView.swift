@@ -105,9 +105,6 @@ struct SplitRootView: View {
             SendStatusBar()
                 .padding(.bottom, 16)
         }
-        .onChange(of: navigator.section) {
-            navigator.selection = nil
-        }
         .onChange(of: navigator.selection) {
             navigator.detailPath = []
         }

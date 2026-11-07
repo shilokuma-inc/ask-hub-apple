@@ -1,11 +1,32 @@
 import SwiftUI
 
-/// 送る前の取り消しの猶予と、送れなかったことを出す帯。どの画面でも下に出す
+/// 送る前の取り消しの猶予と、送れたこと・送れなかったことを出す帯。どの画面でも下に出す
 struct SendStatusBar: View {
     @Environment(ClientStore.self) private var store
 
     var body: some View {
         VStack(spacing: 8) {
+            if let notice = store.notice {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Theme.success)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(notice.message)
+                            .appFont(.footnote, weight: .semibold)
+                            .lineLimit(2)
+                        Text(notice.detail)
+                            .appFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Button("閉じる", systemImage: "xmark") { store.dismissNotice() }
+                        .labelStyle(.iconOnly)
+                        .appFont(.footnote)
+                }
+                .modifier(BarStyle())
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .id(notice.id)
+            }
             if let failure = store.sendFailure {
                 HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -45,6 +66,7 @@ struct SendStatusBar: View {
         .keepsControlSize()
         .animation(.snappy, value: store.pending)
         .animation(.snappy, value: store.sendFailure)
+        .animation(.snappy, value: store.notice)
     }
 
     private struct BarStyle: ViewModifier {

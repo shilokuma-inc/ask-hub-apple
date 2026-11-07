@@ -8,10 +8,22 @@ struct DecisionSheet: View {
     @Environment(ClientStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var textRequest: TextRequest?
+    @State private var sending = SheetSendState()
+    /// 最後に送ろうとした答え（失敗したとき、もう一度送る）
+    @State private var lastIntent: HumanIntent?
 
     var body: some View {
         NavigationStack {
             List {
+                if sending.showsStatus {
+                    CardSection {
+                        SheetSendStatus(state: sending) {
+                            if let lastIntent {
+                                send(lastIntent)
+                            }
+                        }
+                    }
+                }
                 DecisionDetailSections(decision: decision)
                 if decision.needsReview {
                     CardSection("答える") {
@@ -31,6 +43,7 @@ struct DecisionSheet: View {
                             )
                         }
                     }
+                    .disabled(sending.isSending)
                 }
             }
             .pastelBackground()
@@ -42,6 +55,7 @@ struct DecisionSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("閉じる") { dismiss() }
+                        .disabled(sending.isSending)
                 }
             }
             .sheet(item: $textRequest) { request in
@@ -53,11 +67,19 @@ struct DecisionSheet: View {
                 }
             }
         }
+        .sheetSending(sending)
     }
 
+    /// 送る。置けたら（同じ答えを送ってあったときも）閉じ、失敗したら理由を出して残る
     private func send(_ intent: HumanIntent) {
+        guard !sending.isSending else {
+            return
+        }
+        lastIntent = intent
         Task {
-            await store.send(intent)
+            if case .failed = await sending.send(intent, in: store) {
+                return
+            }
             dismiss()
         }
     }

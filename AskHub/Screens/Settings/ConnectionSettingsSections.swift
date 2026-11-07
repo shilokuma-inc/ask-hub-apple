@@ -139,7 +139,7 @@ struct ConnectionSettingsSections: View {
     private func stateLabel(_ state: SentIntentStatus.State) -> String {
         switch state {
         case .waiting:
-            "司令塔の処理を待っています"
+            "司令塔が受け取るのを待っています"
 
         case .accepted(let date):
             "受け付けました · \(date.formatted(date: .abbreviated, time: .shortened))"

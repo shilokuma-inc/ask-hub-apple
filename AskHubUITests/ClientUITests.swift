@@ -314,4 +314,44 @@ final class ClientUITests: XCTestCase {
         app.tabBars.buttons["リポジトリ"].tap()
         XCTAssertTrue(app.staticTexts["習慣ログ"].waitForExistence(timeout: 5))
     }
+
+    /// 依頼は、送っている間は送るボタンを押せず、送れたら送った依頼（司令塔が受け取る前の epic）へ移って帯で知らせる。
+    /// 同じ依頼を続けて送ろうとすると、送る前に確かめる
+    @MainActor
+    func testRequestShowsProgressAndConfirmsDuplicate() {
+        // CI の Simulator は 1 回の確かめに 1 秒以上かかるので、送っている間を長めにとる
+        let app = launch(["-demoScenario", "standard", "-demoSendDelay", "8"])
+        fillRequest(in: app)
+        app.buttons["送る"].firstMatch.tap()
+        // シートの一番上の行か、送るボタンの代わりの進み具合のどちらか
+        let sending = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "送っています")).firstMatch
+        XCTAssertTrue(sending.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["送る"].exists)
+
+        XCTAssertTrue(app.staticTexts["依頼「メモ並べ替え」を送りました"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["メモ並べ替え"].firstMatch.exists)
+
+        app.tabBars.buttons["あなたの番"].tap()
+        fillRequest(in: app)
+        app.buttons["送る"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["さきほど同じ依頼を送りました"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["もう一度送る"].exists)
+    }
+
+    /// 新しい依頼を開いて、献立メモへの「メモ並べ替え」を書く
+    @MainActor
+    private func fillRequest(in app: XCUIApplication) {
+        let plus = app.buttons["新しい依頼"].firstMatch
+        XCTAssertTrue(plus.waitForExistence(timeout: 10))
+        plus.tap()
+        // メニューの選択は、名前に今の値が続いたボタンになる（例「アプリ, 選んでください」）
+        let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "アプリ")).firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.tap()
+        app.buttons["献立メモ"].firstMatch.tap()
+        let summary = app.textFields.matching(NSPredicate(format: "placeholderValue BEGINSWITH %@", "要約")).firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        summary.tap()
+        summary.typeText("メモ並べ替え")
+    }
 }
