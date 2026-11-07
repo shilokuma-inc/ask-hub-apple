@@ -123,11 +123,16 @@ extension TaskFlow {
         return try await proceed(to: .review(PullRequestInput(pullRequest: pullRequest, head: head)), after: open, in: final)
     }
 
-    /// 最終 PR のレビューが成功した: 通ったならマージの規則に当て、直す判定なら直しを作る
+    /// 最終 PR のレビューが成功した: 通ったならマージの規則に当て、直す判定なら直しを作る。
+    /// 見ている間に head が進んだ（人が push したなど）ときは、ワーカーが判定を書かずに今の head を返すので、その head でレビューし直す
     func reviewed(_ review: JobFile, in final: FinalPlan) async throws(CommanderError) -> Advanced {
-        guard let outputs = try await succeededOutputs(of: review), let verdict = outputs.verdict,
-              let seen = review.input(as: PullRequestInput.self) else {
+        guard let outputs = try await succeededOutputs(of: review), let seen = review.input(as: PullRequestInput.self) else {
             return stuck(review, "判定が無い", in: final)
+        }
+        guard let verdict = outputs.verdict else {
+            let moved = outputs.commit.map { PullRequestInput(pullRequest: seen.pullRequest, head: $0) }
+            guard let moved, moved.isValid, moved.head != seen.head else { return stuck(review, "判定が無い", in: final) }
+            return try await proceed(to: .review(moved), after: review, in: final)
         }
         switch verdict {
         case .ready: return try await ready(review, seen: seen, mergeRisks: outputs.mergeRisks, in: final)
