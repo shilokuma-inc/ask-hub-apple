@@ -350,7 +350,11 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 ```
 
 - `outcome` は `running`・`succeeded`・`failed`
-- `outputs` は外部の id（`pullRequest`・`commit`・`branch`）。やり直す前に、すでにできているかを確かめるのに使う。`branch` は作ったブランチで、作業場所の用意（`prepareWorkspace`）なら作業ブランチ（`epic.json` の `branch` と同じ形。`epic.json` には司令塔がこれを読んで書く）
+- `outputs` は外部の id（`pullRequest`・`commit`・`branch`）と、司令塔が次のジョブを決めるのに読む結果。外部の id は、やり直す前に、すでにできているかを確かめるのに使う
+  - `verdict`: 子 PR のレビュー（`reviewTask`）の判定。`merged`・`fixCI`（CI が落ちた）・`fixReview`（レビュー役の必須の指摘）。直す判定のときは `findings` を持つ
+  - `findings`: 直すこと（落ちたチェックとログの抜粋・必須の指摘）。20,000 文字まで。トークンらしい文字列は伏せてから書く
+  - `report`: 実装と直し（`implementTask`・`fixTask`）で Claude が報告したこと（`summary`・`decisions`・`learnings`・`question`）。司令塔が `decisions.json`・知見を足す PR・質問に写す
+- `branch` は作ったブランチで、作業場所の用意（`prepareWorkspace`）なら作業ブランチ（`epic.json` の `branch` と同じ形。`epic.json` には司令塔がこれを読んで書く）
 - `failure` は `{ "class": "…", "message": "…", "logExcerpt": "…", "retryAt": "…" }`。ログの抜粋は、トークンらしい文字列を伏せてから書く。`retryAt` は再開してよい時刻（利用上限の解除の時刻など）
 - 欄どうしの決まり: `running` のときは `endedAt` を書かず、終わったら必ず書く。`failure` は `failed` のときだけ書く。`heartbeatAt` と `endedAt` は `startedAt` より前にならない
 - 失敗の区分（`class`）: `runnerUnavailable`・`flaky`・`buildFailed`・`testFailed`・`reviewRequired`・`conflict`・`usageLimit`・`authExpired`・`githubOutage`・`claudeOutage`・`macOffline`・`timeout`・`unexpected`（扱いは [architecture.md](architecture.md) の表）
