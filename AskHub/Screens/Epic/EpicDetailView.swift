@@ -197,15 +197,20 @@ struct QuestionStatusRow: View {
             return "\(question.dependsOn.joined(separator: "・")) の回答後に答えられます"
 
         case .reviewing:
-            return "依存先が決まったので、Claude が見直しています"
+            return isWorking(on: .reviewing(question.id)) ? "依存先が決まったので、Claude が見直しています" : "見直しが止まっています（対処が要ります）"
 
         case .awaitingExplanation:
-            return "Claude が説明を書いています"
+            return isWorking(on: .explaining(question.id)) ? "Claude が説明を書いています" : "説明が止まっています（対処が要ります）"
 
         case .open:
             let dependents = epic.questions.dependents(of: question).map(\.id)
             return dependents.isEmpty ? "未回答" : "未回答 · この回答で \(dependents.joined(separator: "・")) が決まります"
         }
+    }
+
+    /// 機械がその作業をしているか。人に渡されて止まっている作業は「いま」に出ない
+    private func isWorking(on kind: EpicActivity.Kind) -> Bool {
+        epic.activities.contains { $0.kind == kind }
     }
 }
 

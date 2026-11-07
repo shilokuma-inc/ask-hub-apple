@@ -86,14 +86,22 @@ struct QuestionDetailSections: View {
                             .foregroundStyle(.secondary)
                         if let body = explanation.body {
                             Text(body)
-                        } else {
+                        } else if isExplaining {
                             Label("Claude がリポジトリを読んで書いています", systemImage: "hourglass")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            // 人に渡されて止まっている説明は、機械の「いま」に出ない
+                            Label("説明が止まっています。epic の「対処が要ります」から選んでください", systemImage: "exclamationmark.triangle")
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
             }
         }
+    }
+
+    private var isExplaining: Bool {
+        epic?.activities.contains { $0.kind == .explaining(question.id) } ?? true
     }
 
     @ViewBuilder private var dependencySection: some View {
