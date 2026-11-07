@@ -44,7 +44,11 @@
           "additionalProperties": false,
           "properties": {
             "pullRequest": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
-            "commit": { "anyOf": [{ "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40 }, { "type": "null" }] }
+            "commit": { "anyOf": [{ "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40 }, { "type": "null" }] },
+            "branch": {
+              "anyOf": [{ "type": "string", "pattern": "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._/-]{1,200}$", "not": { "pattern": "\\n" } }, { "type": "null" }],
+              "description": "作ったブランチ（作業場所の用意の作業ブランチなど）。epic.json の branch と同じ形"
+            }
           }
         },
         { "type": "null" }
