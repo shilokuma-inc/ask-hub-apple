@@ -304,4 +304,14 @@ extension Epic {
     }
 
     var isActive: Bool { stage != .done && !isAbandoned }
+
+    /// 一時停止している（Mac がオフライン・人が止めた）
+    var isPaused: Bool {
+        activities.contains {
+            if case .paused = $0.kind {
+                return true
+            }
+            return false
+        }
+    }
 }

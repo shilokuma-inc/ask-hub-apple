@@ -385,14 +385,8 @@ private struct EpicMenu: ToolbarContent {
             if canPause || canHandOver || canDiscard {
                 Menu("操作", systemImage: "ellipsis.circle") {
                     if canPause {
-                        let isPaused = epic.activities.contains {
-                            if case .paused = $0.kind {
-                                return true
-                            }
-                            return false
-                        }
-                        Button(isPaused ? "再開する" : "一時停止する", systemImage: isPaused ? "play" : "pause") {
-                            Task { await store.send(isPaused ? .resume(epicID: epic.id) : .pause(epicID: epic.id)) }
+                        Button(epic.isPaused ? "再開する" : "一時停止する", systemImage: epic.isPaused ? "play" : "pause") {
+                            Task { await store.send(epic.isPaused ? .resume(epicID: epic.id) : .pause(epicID: epic.id)) }
                         }
                     }
                     if canHandOver {

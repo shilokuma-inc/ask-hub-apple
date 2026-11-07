@@ -84,7 +84,10 @@ struct DemoClientServiceTests {
     @Test
     func startBeginsImplementationOnMac() async throws {
         let service = makeService()
-        let receipt = try await service.perform(.start(epicID: "budget-limit", macID: DemoData.macBookProID))
+        let intent = HumanIntent.start(epicID: "budget-limit", macID: DemoData.macBookProID)
+        let receipt = try await service.perform(intent)
+        // 受け取られるまでは、同じ開始を送り直さない
+        #expect(service.lastSend(of: intent)?.isWaiting == true)
         let sent = try #require(try await service.fetchSnapshot().sentIntents.first { $0.id == receipt.intentID })
         #expect(sent.state == .waiting)
         let waiting = try #require(service.state.epic("budget-limit"))
@@ -100,12 +103,33 @@ struct DemoClientServiceTests {
         #expect(preparing.workspace == .preparing)
         #expect(preparing.activities.map(\.kind) == [.step(.prepareWorkspace, .running(attempt: 1))])
         #expect(preparing.history.last?.text == "MacBook Pro 14 で開始しました")
+        #expect(service.lastSend(of: intent)?.isWaiting == false)
+        #expect(accepted.mac(DemoData.macBookProID)?.jobs.map(\.title) == ["月の上限の通知: 作業場所の用意"])
 
         clock.now += 10
         let implementing = try #require(try await service.fetchSnapshot().epic("budget-limit"))
         #expect(implementing.workspace == .ready(branch: "askhub/budget-limit"))
         #expect(implementing.tasks.first?.state == .inProgress(.implementing))
         #expect(implementing.activities.first?.worker?.macID == DemoData.macBookProID)
+        #expect(service.state.mac(DemoData.macBookProID)?.jobs.map(\.title) == ["月の上限の通知: タスク 1 の実装"])
+    }
+
+    /// 開始した後に一時停止すると、再開するまで段取りを進めない
+    @Test
+    func pausedStartWaitsUntilResumed() async throws {
+        let service = makeService()
+        try await service.perform(.start(epicID: "budget-limit", macID: DemoData.macBookProID))
+        try await service.perform(.pause(epicID: "budget-limit"))
+        clock.now += 30
+        let paused = try #require(try await service.fetchSnapshot().epic("budget-limit"))
+        #expect(paused.isPaused)
+        #expect(paused.workspace == .pending)
+
+        try await service.perform(.resume(epicID: "budget-limit"))
+        clock.now += 10
+        #expect(try await service.fetchSnapshot().epic("budget-limit")?.workspace == .preparing)
+        clock.now += 10
+        #expect(try await service.fetchSnapshot().epic("budget-limit")?.workspace == .ready(branch: "askhub/budget-limit"))
     }
 
     /// 開始のときは、前回そのリポジトリを回した Mac を既定で選ぶ。前回の Mac がオフラインなら選ばない
