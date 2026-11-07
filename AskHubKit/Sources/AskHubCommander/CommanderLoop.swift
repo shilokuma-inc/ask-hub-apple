@@ -65,7 +65,8 @@ public actor CommanderLoop {
     /// Discussion の写し。nil なら写さない
     nonisolated let mirror: DiscussionMirror?
 
-    private var inFlight: [ULID: Task<Void, Never>] = [:]
+    /// 自分宛てのジョブを、同時の上限の中で並んで動かす
+    nonisolated let slots: JobSlots
     private var lastBeat: Date?
 
     public init(
@@ -90,6 +91,7 @@ public actor CommanderLoop {
         self.log = log
         self.sleeper = sleeper
         self.mirror = mirror
+        slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: Self.handledKinds, log: log)
     }
 
     /// 止められるまで回す。1 周で失敗しても、次の周でやり直す
@@ -121,11 +123,7 @@ public actor CommanderLoop {
         for job in swept.changed {
             log("ジョブ \(job.kind.rawValue) \(job.id) を \(job.state.rawValue) にした")
         }
-        let picked = pick(from: swept.jobs)
-        let worker = worker(verifier)
-        for job in picked {
-            start(job, with: worker)
-        }
+        let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier))
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
         await mirror?.syncAll(verifier: verifier)
@@ -143,9 +141,7 @@ public actor CommanderLoop {
 
     /// 動かしているジョブが終わるまで待つ
     public func waitForJobs() async {
-        while let task = inFlight.values.first {
-            await task.value
-        }
+        await slots.waitForJobs()
     }
 
     static let handlers: [String: any IntentHandler] = [
@@ -159,39 +155,6 @@ public actor CommanderLoop {
         "retry": RetryJobHandler(),
         "giveUp": GiveUpJobHandler()
     ]
-
-    // MARK: - 引き受け
-
-    /// 引き受けるジョブ。動かしているのに司令塔がまだ試行を読んでいない（`assigned` のままの）ジョブは選ばず、そのぶん空きを減らす
-    private func pick(from jobs: [JobFile]) -> [JobFile] {
-        let pending = jobs.filter { inFlight[$0.id] != nil && $0.state != .running }
-        var capacity = settings.capacity
-        capacity.claude = max(0, capacity.claude - pending.filter(\.needs.claude).count)
-        capacity.build = max(0, capacity.build - pending.filter(\.needs.build).count)
-        // 引き受けない種類の assigned のジョブは、空きを取られないよう候補から外す（running・succeeded は空きと依存の判断に要るので残す）
-        let candidates = jobs.filter { job in
-            job.state != .assigned || (Self.handledKinds.contains(job.kind) && inFlight[job.id] == nil)
-        }
-        return JobPicker.pick(from: candidates, for: context.mac, capacity: capacity, now: context.now())
-    }
-
-    private func start(_ job: JobFile, with worker: JobWorker) {
-        let log = log
-        inFlight[job.id] = Task { [weak self] in
-            do {
-                if let attempt = try await worker.perform(job) {
-                    log("ジョブ \(job.kind.rawValue) \(job.id) の試行 #\(attempt.number): \(attempt.outcome.rawValue)")
-                }
-            } catch {
-                log("ジョブ \(job.kind.rawValue) \(job.id) を終えられなかった（\(error)）")
-            }
-            await self?.finished(job.id)
-        }
-    }
-
-    private func finished(_ id: ULID) {
-        inFlight[id] = nil
-    }
 
     // MARK: - 通知
 
