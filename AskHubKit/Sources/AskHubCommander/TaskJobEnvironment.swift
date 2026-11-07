@@ -13,18 +13,36 @@ public struct TaskRepositorySettings: Equatable, Sendable {
     public var build: BuildSettings
     /// 子 PR で待つチェックの名前。nil ならすべて
     public var childChecks: Set<String>?
+    /// 最終 PR で待つチェックの名前。nil ならすべて
+    public var finalChecks: Set<String>?
+    /// 指摘を Claude に渡してよいレビューの書き手（`coderabbitai[bot]` など）
+    public var trustedReviewers: [String]
 
-    public init(baseBranch: String = "develop", build: BuildSettings, childChecks: Set<String>? = nil) {
+    public init(
+        baseBranch: String = "develop",
+        build: BuildSettings,
+        childChecks: Set<String>? = nil,
+        finalChecks: Set<String>? = nil,
+        trustedReviewers: [String] = []
+    ) {
         self.baseBranch = baseBranch
         self.build = build
         self.childChecks = childChecks
+        self.finalChecks = finalChecks
+        self.trustedReviewers = trustedReviewers
     }
 }
 
 extension TaskRepositorySettings {
     /// `repo.json` の `build` から作る
     public init(_ build: RepositoryFile.Build) {
-        self.init(baseBranch: build.baseBranch, build: build.xcode, childChecks: Set(build.childChecks))
+        self.init(
+            baseBranch: build.baseBranch,
+            build: build.xcode,
+            childChecks: Set(build.childChecks),
+            finalChecks: Set(build.finalChecks),
+            trustedReviewers: build.trustedReviewers
+        )
     }
 
     /// リポジトリのビルドの設定を、状態リポジトリの `repo.json` の `build` から読む閉包（`TaskJobEnvironment.settings`）。

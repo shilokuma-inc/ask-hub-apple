@@ -57,13 +57,21 @@ struct TaskJobAcceptanceTests {
 
         let xcode = try BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [.macOS])
         let checks = ["build / build", "lint"]
-        repository.build = RepositoryFile.Build(baseBranch: "main", xcode: xcode, childChecks: checks, finalChecks: ["all"])
+        repository.build = RepositoryFile.Build(
+            baseBranch: "main", xcode: xcode, childChecks: checks, finalChecks: ["all"], trustedReviewers: ["coderabbitai[bot]"]
+        )
         try await StateFileStore(store: store).update(RepositoryFile.self, at: path, message: "build") {
             $0 = repository
             return true
         }
         let settings = try #require(try await read(TaskJobFixture.repo))
-        #expect(settings == TaskRepositorySettings(baseBranch: "main", build: xcode, childChecks: ["build / build", "lint"]))
+        #expect(settings == TaskRepositorySettings(
+            baseBranch: "main",
+            build: xcode,
+            childChecks: ["build / build", "lint"],
+            finalChecks: ["all"],
+            trustedReviewers: ["coderabbitai[bot]"]
+        ))
     }
 
     @Test func epicLockLetsOneJobUseWorkspaceAtATime() async {
