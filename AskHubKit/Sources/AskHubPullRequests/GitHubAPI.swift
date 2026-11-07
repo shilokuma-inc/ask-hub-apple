@@ -4,14 +4,15 @@ import Foundation
 
 /// 1 つのリポジトリの GitHub の API を呼ぶ土台（要求の組み立て・送信・ページング・GraphQL）。
 ///
-/// - トークンは要求のたびに閉包から読み、`Authorization` にだけ入れる。URL・エラーの文には出さない
+/// - トークンは要求のたびに、リポジトリの持ち主を渡して閉包から読み、`Authorization` にだけ入れる。URL・エラーの文には出さない
 /// - 次のページの URL は `Link` ヘッダーから読む。API と違うホストの URL には送らない（トークンを渡さないため）
 struct GitHubAPI: Sendable {
     let repository: RepositoryFullName
     let apiBase: URL
     let transport: any HTTPTransport
     let now: @Sendable () -> Date
-    let token: @Sendable () async throws -> String
+    /// リポジトリの持ち主を受け取り、その持ち主のトークンを返す
+    let token: @Sendable (_ owner: String) async throws -> String
 
     /// 1 つの一覧で追うページの上限（100 件ずつで 1 万件）。超えたら形が違うとみなす
     static let maxPages = 100
@@ -108,7 +109,7 @@ struct GitHubAPI: Sendable {
     private func makeRequest(_ method: String, _ url: URL, body: (any Encodable & Sendable)?) async throws(PullRequestError) -> URLRequest {
         let token: String
         do {
-            token = try await self.token()
+            token = try await self.token(repository.owner)
         } catch is CancellationError {
             throw .cancelled
         } catch {

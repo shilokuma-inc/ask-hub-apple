@@ -14,13 +14,14 @@ public struct GitHubPullRequests: Sendable {
     public let repository: RepositoryFullName
     let api: GitHubAPI
 
-    /// `token` は要求のたびに Keychain などから読む。値はログ・URL・エラーに出さない
+    /// `token` はリポジトリの持ち主（organization・個人）を受け取り、その持ち主の fine-grained token を返す。
+    /// 要求のたびに Keychain などから読む。値はログ・URL・エラーに出さない
     public init(
         repository: RepositoryFullName,
         apiBase: URL = URL(string: "https://api.github.com")!,
         transport: any HTTPTransport = GitHubURLSessionTransport(),
         now: @escaping @Sendable () -> Date = { Date() },
-        token: @escaping @Sendable () async throws -> String
+        token: @escaping @Sendable (_ owner: String) async throws -> String
     ) {
         self.repository = repository
         api = GitHubAPI(repository: repository, apiBase: apiBase, transport: transport, now: now, token: token)

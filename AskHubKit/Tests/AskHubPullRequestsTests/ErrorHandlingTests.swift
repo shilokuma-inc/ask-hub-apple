@@ -85,9 +85,19 @@ struct ErrorHandlingTests {
     @Test func tokenFailureSendsNothing() async throws {
         struct KeychainMissing: Error {}
         let transport = StubTransport([])
-        let client = GitHubPullRequests(repository: Fixture.repository, transport: transport) { throw KeychainMissing() }
+        let client = GitHubPullRequests(repository: Fixture.repository, transport: transport) { _ in throw KeychainMissing() }
         await #expect(throws: PullRequestError.tokenUnavailable) { try await client.pullRequest(number: 7) }
         #expect(transport.requests.isEmpty)
+    }
+
+    @Test func asksTokenOfRepositoryOwner() async throws {
+        // fine-grained token は持ち主ごとに 1 つなので、リポジトリの持ち主のトークンを使う
+        let transport = StubTransport([.json(200, Fixture.json(Fixture.pull(7)))])
+        let client = GitHubPullRequests(repository: Fixture.repository, transport: transport) { owner in
+            owner == "shilokuma-inc" ? "token-of-\(owner)" : "wrong"
+        }
+        _ = try await client.pullRequest(number: 7)
+        #expect(transport.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer token-of-shilokuma-inc")
     }
 
     @Test func transportFailureHidesDetails() async throws {

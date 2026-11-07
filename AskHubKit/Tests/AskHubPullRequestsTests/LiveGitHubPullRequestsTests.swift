@@ -15,7 +15,7 @@ struct LiveGitHubPullRequestsTests {
         let repository = try #require(LivePullRequestEnvironment.repository)
         let number = try #require(LivePullRequestEnvironment.number)
         let token = try #require(LivePullRequestEnvironment.token)
-        let client = GitHubPullRequests(repository: repository) { token }
+        let client = GitHubPullRequests(repository: repository) { _ in token }
 
         let pullRequest = try await client.pullRequest(number: number)
         #expect(pullRequest.number == number)

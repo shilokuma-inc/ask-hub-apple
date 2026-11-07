@@ -11,7 +11,7 @@ enum Fixture {
     static let otherSHA = String(repeating: "b", count: 40)
 
     static func client(_ transport: StubTransport) -> GitHubPullRequests {
-        GitHubPullRequests(repository: repository, transport: transport, now: { now }, token: { token })
+        GitHubPullRequests(repository: repository, transport: transport, now: { now }, token: { _ in token })
     }
 
     static func json(_ object: Any) -> String {
