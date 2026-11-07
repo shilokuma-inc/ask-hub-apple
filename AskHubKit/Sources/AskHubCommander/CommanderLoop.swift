@@ -182,7 +182,10 @@ public actor CommanderLoop {
         "addRepository": AddRepositoryHandler(),
         "configureRepository": ConfigureRepositoryHandler(),
         "retry": RetryJobHandler(),
-        "giveUp": GiveUpJobHandler()
+        "giveUp": GiveUpJobHandler(),
+        "decision": DecisionHandler(),
+        "approveMerge": ApproveMergeHandler(),
+        "instructFinal": InstructFinalHandler()
     ]
 
     // MARK: - 通知
