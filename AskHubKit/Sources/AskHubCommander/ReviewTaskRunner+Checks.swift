@@ -16,6 +16,8 @@ public struct ReviewTiming: Equatable, Sendable {
     public var idleLimit: Duration
     /// 落ちたジョブを流し直した後、新しい実行が出てくるのを待つ上限
     public var rerunGrace: Duration
+    /// ログを読むときに GitHub の上限に当たったら、待ち時間がこれより短ければ待って読み直す
+    public var logRetryLimit: Duration
 
     public init(
         poll: Duration = .seconds(60),
@@ -23,7 +25,8 @@ public struct ReviewTiming: Equatable, Sendable {
         shortageMax: Duration = .seconds(60 * 60),
         queuedLimit: Duration = .seconds(30 * 60),
         idleLimit: Duration = .seconds(30 * 60),
-        rerunGrace: Duration = .seconds(10 * 60)
+        rerunGrace: Duration = .seconds(10 * 60),
+        logRetryLimit: Duration = .seconds(5 * 60)
     ) {
         self.poll = poll
         self.shortageFirst = shortageFirst
@@ -31,6 +34,7 @@ public struct ReviewTiming: Equatable, Sendable {
         self.queuedLimit = queuedLimit
         self.idleLimit = idleLimit
         self.rerunGrace = rerunGrace
+        self.logRetryLimit = logRetryLimit
     }
 }
 
@@ -155,13 +159,25 @@ extension ReviewTaskRunner {
         for failure in failures {
             var log: String?
             if let job = failure.jobID {
-                log = try? await pulls.jobLog(jobID: job)
+                log = await readLog(job, pulls: pulls)
             }
             let text = log.map(Self.withoutTimestamps) ?? "（ログを読めなかった。詳細: \(failure.detailsURL?.absoluteString ?? "なし")）"
             let name = "\(failure.name)（\(failure.conclusion)）"
             checks.append(FixTaskJob.FailedCheck(name: name, logExcerpt: Redaction.redact(text, secrets: [])))
         }
         return FixTaskJob.Reason.ci(checks).findings
+    }
+
+    /// ログを読む。GitHub の上限に当たったら、待ち時間が `logRetryLimit` までなら 1 回だけ待って読み直す。読めなければ nil
+    private func readLog(_ job: Int, pulls: any PullRequestOperations) async -> String? {
+        do {
+            return try await pulls.jobLog(jobID: job)
+        } catch let .rateLimited(wait) where wait <= timing.logRetryLimit {
+            guard (try? await environment.sleeper.sleep(for: wait)) != nil else { return nil }
+            return try? await pulls.jobLog(jobID: job)
+        } catch {
+            return nil
+        }
     }
 
     /// GitHub Actions のログの各行の先頭の時刻（`2026-11-07T09:00:00.1234567Z `）を除く

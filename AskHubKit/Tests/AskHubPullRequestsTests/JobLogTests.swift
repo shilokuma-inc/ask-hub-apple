@@ -18,6 +18,8 @@ struct JobLogTests {
         // 署名つきの URL には、トークンを渡さない
         #expect(requests.last?.url?.absoluteString == Self.signed)
         #expect(requests.last?.value(forHTTPHeaderField: "Authorization") == nil)
+        // 末尾だけを頼む
+        #expect(requests.last?.value(forHTTPHeaderField: "Range") == "bytes=-\(GitHubPullRequests.maximumLogBytes)")
     }
 
     @Test func keepsTailOfLongLog() async throws {

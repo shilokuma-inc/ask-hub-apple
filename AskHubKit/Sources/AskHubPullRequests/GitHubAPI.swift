@@ -53,8 +53,8 @@ struct GitHubAPI: Sendable {
     /// GET して本文を返す。ログのように、短い間だけ使える署名つきの URL へリダイレクトする API に使う。
     ///
     /// 行き先にはトークンを付けずに取りに行く（署名で認められるため）。API と同じホストへのリダイレクト（リポジトリの移管・改名）と、
-    /// https 以外の行き先は追わない
-    func download(_ path: String) async throws(PullRequestError) -> Data {
+    /// https 以外の行き先は追わない。`tailBytes` を渡すと、行き先には末尾のその大きさだけを頼む（`Range`。応じない行き先は全体を返す）
+    func download(_ path: String, tailBytes: Int? = nil) async throws(PullRequestError) -> Data {
         let request = try await makeRequest("GET", url(path), body: nil)
         let (data, response) = try await transmit(request)
         if (200..<300).contains(response.statusCode) { return data }
@@ -64,7 +64,9 @@ struct GitHubAPI: Sendable {
               target.scheme == "https", target.host != apiBase.host else {
             throw PullRequestError.classify(response, body: data, now: now())
         }
-        let (body, final) = try await transmit(URLRequest(url: target))
+        var signed = URLRequest(url: target)
+        if let tailBytes { signed.setValue("bytes=-\(tailBytes)", forHTTPHeaderField: "Range") }
+        let (body, final) = try await transmit(signed)
         guard (200..<300).contains(final.statusCode) else { throw PullRequestError.classify(final, body: body, now: now()) }
         return body
     }

@@ -9,7 +9,8 @@ extension GitHubPullRequests {
     /// API は短い間だけ使える署名つきの URL へリダイレクトするので、その先はトークンを付けずに取る
     public func jobLog(jobID: Int) async throws(PullRequestError) -> String {
         try GitNames.checkNumber(jobID)
-        let data = try await api.download("actions/jobs/\(jobID)/logs")
+        // 大きいログを丸ごと取らないよう、末尾だけを頼む
+        let data = try await api.download("actions/jobs/\(jobID)/logs", tailBytes: Self.maximumLogBytes)
         var tail = data.suffix(Self.maximumLogBytes)
         // 切った所が文字の途中なら、続きのバイト（10xxxxxx）を捨てる
         while let first = tail.first, first & 0xC0 == 0x80 {
