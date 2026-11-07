@@ -71,6 +71,17 @@
                 { "type": "null" }
               ]
             },
+            "visibleDecisions": {
+              "description": "判断の仕分け（classifyDecisions）で見えるとした仮決めの id。ここに無いものは内部の細部。decisions.json には司令塔が写す",
+              "anyOf": [
+                {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": { "$ref": "../common.schema.json#/$defs/localId" }
+                },
+                { "type": "null" }
+              ]
+            },
             "findings": {
               "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 20000 }, { "type": "null" }],
               "description": "直すこと（CI の失敗のログの抜粋・レビュー役の必須の指摘）。トークンらしい文字列は伏せてから書く"
