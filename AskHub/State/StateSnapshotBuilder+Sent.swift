@@ -132,7 +132,7 @@ extension StateSnapshotBuilder {
         if envelope.kind == StartEpicIntent.kind {
             epics[epicIndex].stage = .implementing
             epics[epicIndex].macID = envelope.string("mac")
-            epics[epicIndex].history.insert(Epic.HistoryEntry(date: sentAt, text: "開始しました。司令塔が受け取るのを待っています"), at: 0)
+            epics[epicIndex].history.append(Epic.HistoryEntry(date: sentAt, text: "開始しました。司令塔が受け取るのを待っています"))
             return
         }
         // 受け付けた修正のジョブを人がやめた（取り消された・やめるを送った）なら、前のゴールのまま開始を待つ
@@ -173,7 +173,7 @@ extension StateSnapshotBuilder {
         let subject = Self.subject(of: job)
         guard envelope.kind == GiveUpJobIntent.kind else {
             let text = "\(subject)のやり直しを頼みました。司令塔が受け取るのを待っています"
-            epics[epicIndex].history.insert(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text), at: 0)
+            epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
             return
         }
         if Self.epicEndingKinds.contains(job.kind) {
@@ -187,7 +187,7 @@ extension StateSnapshotBuilder {
             return
         }
         let text = "\(subject)をやめました。司令塔が受け取るのを待っています"
-        epics[epicIndex].history.insert(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text), at: 0)
+        epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
     }
 
     /// 取り下げ。状態リポジトリにある、開始する前の epic だけを出す（開始した後は司令塔が断る）
@@ -199,7 +199,7 @@ extension StateSnapshotBuilder {
         }
         epics[epicIndex].isAbandoned = true
         let text = "取り下げました。司令塔が受け取るのを待っています"
-        epics[epicIndex].history.insert(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text), at: 0)
+        epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
     }
 
     /// 処理を待つやめるの意図を送ったジョブか（同じ秒に送った意図の順に頼らずに決める）
@@ -230,7 +230,7 @@ extension StateSnapshotBuilder {
             }
             let text = "\(label(sent.envelope))を受け付けませんでした: \(consumed.reason ?? "理由は書かれていません")"
             epics[epicIndex].history.append(Epic.HistoryEntry(date: consumed.consumedAt.date, text: text, isFailure: true))
-            epics[epicIndex].history.sort { $0.date > $1.date }
+            epics[epicIndex].history.sort { $0.date < $1.date }
         }
     }
 

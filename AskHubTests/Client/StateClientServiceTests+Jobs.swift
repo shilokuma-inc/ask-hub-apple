@@ -114,7 +114,8 @@ extension StateClientServiceTests {
         let waiting = try #require(try await service.fetchSnapshot().epic(Self.epicID))
         #expect(waiting.blocker == nil)
         #expect(waiting.activities.contains { $0.kind == .explaining("Q1") })
-        #expect(waiting.history.contains { $0.text.hasPrefix("Q1 の説明のやり直しを頼みました") })
+        // 履歴は古い順（画面は新しい順に並べ替えて、新しい 5 件を出す）
+        #expect(waiting.history.last?.text.hasPrefix("Q1 の説明のやり直しを頼みました") == true)
 
         // やり直した試行もまた人に渡された（試行が進んだ）なら、もう一度出す
         await put(Self.job(kind: "explain", attempts: 3, input: Self.explainInput), at: Self.jobPath(), in: fixture.store)
@@ -170,7 +171,9 @@ extension StateClientServiceTests {
         let rejected = try #require(try await service.fetchSnapshot().epic(Self.epicID))
         #expect(!rejected.isAbandoned)
         #expect(rejected.blocker != nil)
-        #expect(rejected.history.contains { $0.isFailure && $0.text == "取りやめ（着手前の確認）を受け付けませんでした: ジョブは人の対応を待っていない" })
+        #expect(rejected.history.last?.text == "取りやめ（着手前の確認）を受け付けませんでした: ジョブは人の対応を待っていない")
+        #expect(rejected.history.last?.isFailure == true)
+        #expect(rejected.history.map(\.date) == rejected.history.map(\.date).sorted())
     }
 
     /// 開始を待つ epic にゴールの修正を送って受け付けられ、その修正のジョブが人に渡された状態。`origin` は修正の意図

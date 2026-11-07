@@ -150,7 +150,8 @@ extension StateSnapshotBuilder {
         if let readiness {
             entries.append(Epic.HistoryEntry(date: readiness.checkedAt.date, text: "着手前の確認（\(readiness.round) 回目）: \(readiness.reason)"))
         }
-        return entries.sorted { $0.date > $1.date }
+        // 画面（`HistorySection`）は古い順の履歴を新しい順に並べ替えて出すので、古い順にする
+        return entries.sorted { $0.date < $1.date }
     }
 
     // MARK: 質問
