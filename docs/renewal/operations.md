@@ -120,6 +120,7 @@
 2. `askhub-worker setup --state-repo <owner/repo> --mac <名前> --kind resident|manual --claude <claude の絶対パス> --first-key <最初の鍵の id> --key-account <GitHub のアカウント> [--github-owner <対象のリポジトリの持ち主> ...]`
    - `--kind` は、LaunchAgent で常駐できる Mac なら `resident`、できない Mac（会社の決まりで launchd に常駐させられない社用の MacBook など）なら `manual`
    - 同時の上限は `--claude-capacity`（既定 2）と `--build-capacity`（既定 1）で変えられる
+   - 常時オンの Mac を epic の Mac にも使うときは、司令塔の `setup` でも `--build-capacity 1` を付ける（司令塔の既定は 0 で、ビルドの要る実装のジョブを引き受けない）
    - 設定（秘密を含まない）を `~/Library/Application Support/AskHub/worker/config.json` に書き、トークンは司令塔と同じく端末で伏せて入れ、Keychain（サービス `jp.shilokuma.AskHub.worker`。司令塔とは分ける）だけに置く。最初の鍵は司令塔と同じものを固定する（ジョブの元になった人の意図の署名を、ワーカーも確かめる）
 3. 起動する
    - 常駐できる Mac: `askhub-worker launch-agent` で LaunchAgent の定義を書き、出てくる `launchctl bootstrap` のコマンドで登録する（ログは `~/Library/Logs/AskHub/worker.log`）
@@ -146,9 +147,12 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
    | Pull requests | Read and write |
    | Issues | Read and write |
    | Discussions | Read and write |
-   | Actions | Read-only |
+   | Actions | Read and write（揺らいだ CI の落ちたジョブを流し直すため。ワークフローのファイルは書けない） |
+   | Commit statuses | Read-only（commit status で結果を出す CI を読む） |
    | Metadata | Read-only（自動で付く） |
    | Workflows | 付けない（ワークフローのファイルを含む push を GitHub に断らせる。[security.md](security.md) の「public のリポジトリと Secrets」） |
+
+   - Checks の権限は、fine-grained token では選べない（チェックの書き込みは GitHub App だけ）。チェックの結果（check runs）を読む API は、public のリポジトリなら特別な権限なしで読める。private のリポジトリで fine-grained token から読めるかは公式の文書に無いので、private のリポジトリで使う前に確かめる
 
 5. 期限を決めて作り、値（`github_pat_` で始まる）を `setup` か `token <持ち主>` で端末に貼る。値はほかの場所（メモ・チャット・ファイル）に残さない
 6. 対象のリポジトリを足したら、そのリポジトリをトークンの Repository access にも足す（持ち主が新しければ、トークンを作って `token <持ち主>` で入れる）。期限が切れたら作り直して `token <持ち主>` で入れ直す
