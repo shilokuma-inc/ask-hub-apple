@@ -24,7 +24,7 @@ extension DemoClientService {
 
     func applyOperationIntent(_ intent: HumanIntent) {
         switch intent {
-        case let .resolveBlocker(epicID, action, instruction):
+        case let .resolveBlocker(epicID, action, instruction, _):
             resolveBlocker(epicID: epicID, action: action, instruction: instruction)
 
         case let .handOver(epicID, macID):
@@ -169,6 +169,12 @@ extension DemoClientService {
 
         case .handOver:
             break
+
+        case .cancelJob:
+            state.updateEpic(epicID) { epic in
+                epic.log("\(epic.blocker?.subject ?? "止まっていた作業")をやめました", at: date)
+                epic.blocker = nil
+            }
 
         case .fixWithInstruction, .retry, .resumeAfterFix:
             state.updateEpic(epicID) { epic in

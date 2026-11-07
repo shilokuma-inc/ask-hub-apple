@@ -8,6 +8,12 @@ struct StateIndex {
         var id: ULID
         var goalVersion: Int?
         var readinessVersion: Int?
+        /// 「対処が要ります」に出した、人の対応を待っているジョブ（やり直す・やめるの対象）と、そこに出した操作
+        var blockedJob: JobTarget?
+        var blockerActions: Set<Blocker.Action> = []
+        /// やめていないか・取り下げられるか（開始する前で、やめていない）。どちらも処理を待つ意図を当てた後の状態で決める
+        var isActive = true
+        var canAbandon = false
     }
 
     struct QuestionEntry {
@@ -38,9 +44,16 @@ struct StateSnapshotBuilder {
         var index = StateIndex()
         var epics = documents.epics.map { epic($0, index: &index) }
         var repositories = documents.repositories.map { repository($0, epics: epics, index: &index) }
+        let overlaid = intentsToOverlay()
         // 古い順に当てる（同じ質問に答え直したときは、新しい回答が残る）
-        for envelope in intentsToOverlay().reversed() {
+        for envelope in overlaid.reversed() {
             apply(envelope, to: &epics, repositories: &repositories, index: &index)
+        }
+        applyBlockers(to: &epics, overlaid: overlaid, index: &index)
+        for epic in epics {
+            index.epics[epic.id]?.isActive = epic.isActive
+            // 開始した後の取り下げ（作業のブランチの片付けなど）は段階 3 で送る
+            index.epics[epic.id]?.canAbandon = epic.isActive && epic.stage < .implementing
         }
         applyRejections(to: &epics)
         let snapshot = ClientSnapshot(

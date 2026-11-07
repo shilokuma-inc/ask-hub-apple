@@ -9,13 +9,20 @@ import Foundation
 struct StateIntentMapper {
     let index: StateIndex
 
-    /// 状態リポジトリに送れる意図か。段階 3 の操作（判断のカード・マージ・要対応・引き継ぎ・確認・片付け）は、まだ送れない
-    static func supports(_ intent: HumanIntent) -> Bool {
+    /// 状態リポジトリに送れる意図か。段階 3 の操作（判断のカード・マージ・引き継ぎ・確認・片付けなど）は、まだ送れない。
+    /// 人に渡されたジョブへの操作は、最後に読んだ状態の「対処が要ります」に出した操作だけ（やり直す・やめる）、取り下げは開始する前の epic だけ送れる
+    func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
             true
 
-        case .respondToDecision, .acceptAllDecisions, .merge, .resolveBlocker, .handOver, .pause, .resume, .discard,
+        case let .resolveBlocker(epicID, action, _, _):
+            index.epics[epicID]?.blockerActions.contains(action) == true
+
+        case .discard(let epicID):
+            index.epics[epicID]?.canAbandon == true
+
+        case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume,
              .completeHumanTask, .submitSecret, .verify, .cleanUp:
             false
         }
@@ -26,13 +33,16 @@ struct StateIntentMapper {
         case .answer, .requestExplanation:
             return try questionDraft(intent)
 
-        case .reviseGoal, .start, .decideSplit:
+        case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
         case .request, .addRepository:
             return try repositoryDraft(intent)
 
-        case .respondToDecision, .acceptAllDecisions, .merge, .resolveBlocker, .handOver, .pause, .resume, .discard,
+        case let .resolveBlocker(epicID, action, _, target):
+            return try blockerDraft(epicID: epicID, action: action, target: target)
+
+        case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume,
              .completeHumanTask, .submitSecret, .verify, .cleanUp:
             throw Self.unsupported
         }
@@ -71,6 +81,13 @@ struct StateIntentMapper {
             }
             return .decideSplit(EpicTarget(repo: epic.repo, epic: epic.id, version: version), choice: choice == .split ? .split : .proceed)
 
+        case .discard(let epicID):
+            let epic = try epic(epicID)
+            guard epic.canAbandon else {
+                throw ClientServiceError(message: "開始した epic の取り下げは、まだ送れません")
+            }
+            return .abandonEpic(repo: epic.repo, epic: epic.id)
+
         default:
             throw Self.unsupported
         }
@@ -97,6 +114,28 @@ struct StateIntentMapper {
         }
     }
 
+    /// 人に渡されたジョブへの操作。人が見たときの試行の番号を付ける（その後に試行が進んでいれば、司令塔が断る）。
+    /// 送り直すまでに「対処が要ります」に出すジョブが替わっていたら、別のジョブに当てないよう送らない
+    private func blockerDraft(epicID: Epic.ID, action: Blocker.Action, target: String?) throws(ClientServiceError) -> IntentDraft {
+        let entry = try epic(epicID)
+        guard let job = entry.blockedJob else {
+            throw ClientServiceError(message: "対処を待っている作業がありません。取り直してから送ってください")
+        }
+        guard target == StateSnapshotBuilder.blockerTarget(job), entry.blockerActions.contains(action) else {
+            throw ClientServiceError(message: "対処を待っている作業が替わりました。画面を確かめてから選び直してください")
+        }
+        switch action {
+        case .retry, .resumeAfterFix:
+            return .retry(job)
+
+        case .cancelJob, .discard:
+            return .giveUp(job)
+
+        case .fixWithInstruction, .handOver, .pause:
+            throw Self.unsupported
+        }
+    }
+
     private func epic(_ id: Epic.ID) throws(ClientServiceError) -> StateIndex.EpicEntry {
         guard let epic = index.epics[id] else {
             throw ClientServiceError(message: "この epic は、状態リポジトリにまだありません。取り直してから送ってください")
@@ -106,6 +145,9 @@ struct StateIntentMapper {
 
     private func question(_ questionID: Question.ID, in epicID: Epic.ID) throws(ClientServiceError) -> QuestionTarget {
         let epic = try epic(epicID)
+        guard epic.isActive else {
+            throw ClientServiceError(message: "やめた epic の質問には答えられません")
+        }
         guard let question = index.questions[epicID]?[questionID] else {
             throw ClientServiceError(message: "\(questionID) は、状態リポジトリにありません")
         }

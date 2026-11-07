@@ -9,6 +9,10 @@ struct StateDocuments {
         var questions: QuestionsFile?
         var goal: GoalFile?
         var readiness: ReadinessFile?
+        /// ジョブ。終わった（マージした・やめた）epic のものは読まない
+        var jobs: [JobFile] = []
+        /// 人の対応を待っているジョブの試行（古い順）
+        var attempts: [ULID: [AttemptFile]] = [:]
     }
 
     /// この端末が送った人の意図と、司令塔が処理した記録
@@ -36,6 +40,8 @@ struct StateReader {
 
     /// ワーカーの生きている印を置くディレクトリ（`macs/<mac>.json`）
     static let macsDirectory = "macs"
+    /// ジョブを読まない epic の段階。終わった epic のジョブは人の対応を待たないので、増え続ける分を読まずに済ませる
+    static let finishedStages: Set<EpicStage> = [.merged, .abandoned]
 
     private var files: StateFileStore { StateFileStore(store: store) }
 
@@ -84,12 +90,66 @@ struct StateReader {
         guard let epic = await read(EpicFile.self, at: StatePath.epic(repo, id), into: &documents) else {
             return nil
         }
-        return StateDocuments.EpicDocuments(
+        var epicDocuments = StateDocuments.EpicDocuments(
             epic: epic,
             questions: await read(QuestionsFile.self, at: StatePath.questions(repo, id), into: &documents),
             goal: await read(GoalFile.self, at: StatePath.goal(repo, id), into: &documents),
             readiness: await read(ReadinessFile.self, at: StatePath.readiness(repo, id), into: &documents)
         )
+        guard !Self.finishedStages.contains(epic.stage) else {
+            return epicDocuments
+        }
+        epicDocuments.jobs = await readJobs(of: epic, into: &documents)
+        for job in epicDocuments.jobs where job.state == .waitingHuman {
+            epicDocuments.attempts[job.id] = await readAttempts(of: job, into: &documents)
+        }
+        return epicDocuments
+    }
+
+    private func readJobs(of epic: EpicFile, into documents: inout StateDocuments) async -> [JobFile] {
+        let directory = StatePath.jobs(epic.repo, epic: epic.id)
+        let entries: [DirectoryEntry]
+        do {
+            entries = try await store.listAll(directory) ?? []
+        } catch {
+            documents.failures.append(SourceFailure(source: directory, message: StateServiceError.message(for: error)))
+            return []
+        }
+        var jobs: [JobFile] = []
+        for entry in entries where entry.kind == .file && entry.name.hasSuffix(".json") {
+            guard let job = await read(JobFile.self, at: entry.path, into: &documents) else {
+                continue
+            }
+            // ほかの epic のジョブを出すと、やめるがその epic に当たるので、置き場所と中身が合うものだけ出す
+            guard job.repo == epic.repo, job.epic == epic.id, entry.path == StatePath.job(job.repo, epic: job.epic, job: job.id) else {
+                documents.failures.append(SourceFailure(source: entry.path, message: Self.misplaced))
+                continue
+            }
+            jobs.append(job)
+        }
+        return jobs
+    }
+
+    static let misplaced = "置き場所と中身の合わないファイルです"
+
+    /// 人の対応を待っているジョブの試行。何を試したかを出すため、最後の試行だけでなくすべて読む（人に渡るジョブは少ない）
+    private func readAttempts(of job: JobFile, into documents: inout StateDocuments) async -> [AttemptFile] {
+        guard job.attempts > 0 else {
+            return []
+        }
+        var attempts: [AttemptFile] = []
+        for number in 1...job.attempts {
+            let path = StatePath.attempt(job.repo, epic: job.epic, job: job.id, number: number)
+            guard let attempt = await read(AttemptFile.self, at: path, into: &documents) else {
+                continue
+            }
+            guard attempt.job == job.id, attempt.number == number else {
+                documents.failures.append(SourceFailure(source: path, message: Self.misplaced))
+                continue
+            }
+            attempts.append(attempt)
+        }
+        return attempts
     }
 
     /// この端末の意図のうち新しいものと、その処理の記録

@@ -10,9 +10,10 @@ struct QuestionSheet: View {
     @State private var note = ""
     @FocusState private var isEditingNote: Bool
 
-    /// 回答を変えられるのは開始の前まで
+    /// 回答を変えられるのは開始の前まで。やめた epic の質問には答えない
     private var canChangeAnswer: Bool {
-        epic.stage <= .goal && (question.isSettled || question.isAnswerable)
+        let current = store.epic(epic.id) ?? epic
+        return current.isActive && current.stage <= .goal && (question.isSettled || question.isAnswerable)
     }
 
     var body: some View {

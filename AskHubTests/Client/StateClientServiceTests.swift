@@ -9,18 +9,18 @@ import Testing
 /// 状態リポジトリの窓口: ファイルを画面用のモデルに変えること、人の意図を署名して置くこと、処理を待つ意図を先に出すこと
 @MainActor
 struct StateClientServiceTests {
-    private static let repo = "example/sample-ios"
-    private static let epicID = "01JCEP1C000000000000000001"
-    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    static let repo = "example/sample-ios"
+    static let epicID = "01JCEP1C000000000000000001"
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     /// 窓口と、その窓口が読み書きする状態リポジトリ・署名の鍵
-    private struct Fixture {
+    struct Fixture {
         let service: StateClientService
         let store: InMemoryStateStore
         let key: DeviceSigningKey
     }
 
-    private func makeService(files: [String: String] = Self.askingEpic()) throws -> Fixture {
+    func makeService(files: [String: String] = Self.askingEpic()) throws -> Fixture {
         let store = InMemoryStateStore(files: files.mapValues { Data($0.utf8) })
         let key = try DeviceSigningKey.loadOrCreate(in: InMemorySecretStore(), useSecureEnclave: false)
         let now = now
@@ -28,7 +28,7 @@ struct StateClientServiceTests {
     }
 
     /// 質問を待っている epic（Q1 は答えられる、Q2 は Q1 の回答待ちでロック）
-    private static func askingEpic(stage: String = "asking", extra: [String: String] = [:]) -> [String: String] {
+    static func askingEpic(stage: String = "asking", extra: [String: String] = [:]) -> [String: String] {
         let base = "repos/\(repo)/epics/\(epicID)"
         return [
             "repos/\(repo)/repo.json": """
@@ -182,15 +182,57 @@ struct StateClientServiceTests {
         #expect(after.epic(Self.epicID)?.split?.choice == .split)
     }
 
-    /// 段階 3 の操作は送れない（ボタンを出さない）
+    /// 段階 3 の操作は送れない（ボタンを出さない）。人に渡されたジョブへの操作は、そのジョブが無ければ送れない
     @Test
     func stageThreeIntentsAreNotSupported() async throws {
         let service = try makeService().service
+        _ = try await service.fetchSnapshot()
         #expect(service.supports(.answer(epicID: Self.epicID, questionID: "Q1", optionID: nil, note: "")))
-        #expect(!service.supports(.discard(epicID: Self.epicID)))
         #expect(!service.supports(.merge(epicID: Self.epicID, headCommit: "abc")))
+        #expect(!service.supports(.handOver(epicID: Self.epicID, macID: "mac-mini")))
+        #expect(!service.supports(.resolveBlocker(epicID: Self.epicID, action: .retry, instruction: "")))
         await #expect(throws: ClientServiceError.self) {
             try await service.perform(.pause(epicID: Self.epicID))
+        }
+    }
+
+    /// 開始する前の epic は取り下げられる（版は付けない）。処理を待つ間はやめたと出し、受け付けなかったら理由を出して戻す
+    @Test
+    func epicBeforeStartIsAbandoned() async throws {
+        let fixture = try makeService()
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        #expect(service.supports(.discard(epicID: Self.epicID)))
+        try await service.perform(.discard(epicID: Self.epicID))
+
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(envelope.kind == AbandonEpicIntent.kind)
+        #expect(envelope.target == IntentEnvelope.Target(type: EpicTarget.targetType, epic: ULID(rawValue: Self.epicID)))
+        #expect(envelope.targetVersion == nil)
+        let abandoned = try #require(try await service.fetchSnapshot().epic(Self.epicID))
+        #expect(abandoned.isAbandoned)
+        #expect(abandoned.stage == .questions)
+        #expect(!service.supports(.discard(epicID: Self.epicID)))
+        // やめた epic の質問には答えない
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.answer(epicID: Self.epicID, questionID: "Q1", optionID: "日ごと", note: ""))
+        }
+
+        let consumed = #"{"v":1,"kind":"abandonEpic","consumedAt":"2027-01-15T08:00:00Z","result":"rejected","reason":"epic はもう始まっている"}"#
+        await fixture.store.put(StatePath.consumed(device: fixture.key.keyID, nonce: envelope.nonce), data: Data(consumed.utf8))
+        let rejected = try #require(try await service.fetchSnapshot().epic(Self.epicID))
+        #expect(!rejected.isAbandoned)
+        #expect(rejected.history.contains { $0.isFailure && $0.text == "取り下げを受け付けませんでした: epic はもう始まっている" })
+    }
+
+    /// 開始した epic の取り下げは段階 3 で送るので、まだ送れない
+    @Test
+    func startedEpicCannotBeAbandoned() async throws {
+        let service = try makeService(files: Self.askingEpic(stage: "running")).service
+        _ = try await service.fetchSnapshot()
+        #expect(!service.supports(.discard(epicID: Self.epicID)))
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.discard(epicID: Self.epicID))
         }
     }
 
@@ -209,7 +251,7 @@ struct StateClientServiceTests {
         #expect(await KeyRegistration.read(from: store, device: phone.keyID) == .registered(label: "iPhone"))
     }
 
-    private func sentEnvelope(in store: InMemoryStateStore, key: DeviceSigningKey) async throws -> IntentEnvelope {
+    func sentEnvelope(in store: InMemoryStateStore, key: DeviceSigningKey) async throws -> IntentEnvelope {
         struct Stored: Decodable {
             var envelope: IntentEnvelope
         }

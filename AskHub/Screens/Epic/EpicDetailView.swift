@@ -28,7 +28,7 @@ struct EpicDetailView: View {
                     Task { await store.send(.discard(epicID: epic.id)) }
                 }
             } message: {
-                Text("作業ブランチと子 PR は片付けます。元に戻せません")
+                Text(discardMessage(epic))
             }
             .sheet(item: $shownQuestion) { question in
                 QuestionSheet(epic: epic, question: question)
@@ -83,6 +83,13 @@ struct EpicDetailView: View {
         }
     }
 
+    private func discardMessage(_ epic: Epic) -> String {
+        guard epic.stage >= .implementing else {
+            return "開始する前なので、作業ブランチや子 PR はまだありません。元に戻せません"
+        }
+        return "作業ブランチと子 PR は片付けます。元に戻せません"
+    }
+
     private func subtitle(_ epic: Epic) -> String {
         var parts = ["\(RelativeTime.string(epic.request.requestedAt, now: store.currentDate()))に依頼"]
         if let mac = store.mac(epic.macID) {
@@ -100,7 +107,8 @@ private struct EpicStageSections: View {
     var body: some View {
         if !epic.questions.isEmpty {
             CardSection("質問 · \(epic.questions.filter(\.isSettled).count) / \(epic.questions.count) が決まりました") {
-                if !epic.answerableQuestions.isEmpty, epic.stage == .questions {
+                // やめた epic の質問には答えない（あなたの番・まとめて答える札と同じ）
+                if !epic.answerableQuestions.isEmpty, epic.stage == .questions, epic.isActive {
                     NavigationLink(value: AppRoute.deck(.questions(epic.id))) {
                         Label("質問に答える（\(epic.answerableQuestions.count)）", systemImage: "rectangle.stack")
                             .rowFont(.title)
@@ -190,15 +198,26 @@ struct QuestionStatusRow: View {
             return "\(question.dependsOn.joined(separator: "・")) の回答後に答えられます"
 
         case .reviewing:
-            return "依存先が決まったので、Claude が見直しています"
+            guard epic.isActive else {
+                return "見直しの間にやめました"
+            }
+            return isWorking(on: .reviewing(question.id)) ? "依存先が決まったので、Claude が見直しています" : "見直しが止まっています（対処が要ります）"
 
         case .awaitingExplanation:
-            return "Claude が説明を書いています"
+            guard epic.isActive else {
+                return "説明を待つ間にやめました"
+            }
+            return isWorking(on: .explaining(question.id)) ? "Claude が説明を書いています" : "説明が止まっています（対処が要ります）"
 
         case .open:
             let dependents = epic.questions.dependents(of: question).map(\.id)
             return dependents.isEmpty ? "未回答" : "未回答 · この回答で \(dependents.joined(separator: "・")) が決まります"
         }
+    }
+
+    /// 機械がその作業をしているか。人に渡されて止まっている作業は「いま」に出ない
+    private func isWorking(on kind: EpicActivity.Kind) -> Bool {
+        epic.activities.contains { $0.kind == kind }
     }
 }
 

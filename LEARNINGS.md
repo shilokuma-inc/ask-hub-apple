@@ -258,6 +258,12 @@
   `/bin/sh` でも、`swift test` で全体を並べて流すと準備（子プロセスの起動・`trap` の設定）が 500ms に間に合わないことがある（`LocalLoopRuntimeTests` の `child.pid` を読むテストが落ちていた）。
   時間切れで止める前にスクリプトに準備させたいテストは、時間切れを数秒にし（`LocalLoopRuntimeTests.setupTimeout` は 3 秒）、実装を一時的に壊して（読み切りの上限を伸ばすなど）テストが落ちることを確かめる。
   子プロセスを残すテストは、スクリプトに子プロセスの PID を `child.pid` に書かせ、残っていることを確かめてから `defer` で止める（2026-11-06）
+- 状態リポジトリにつないだときの画面（`StateClientService` が出すもの）は、デモの場面では撮れない。PR のスクショは、`StateConnection.makeService()` を
+  一時的に `InMemoryStateStore`（見本のファイル）とソフトウェアの鍵の `StateClientService` に差し替えて撮る（コミットしない）。Before は base を `git worktree add --detach` で
+  別の場所に取り出して同じ差し替えを当てると、同じデータで比べられる。`-demoOpen epic:<id>` は状態リポジトリのときも効く（2026-11-07、#879）
+- 開発者モードが無効（`DevToolsSecurity -status` が disabled）の Mac では、ターミナルから流しても macOS の `xcodebuild test` がテストのホストを起動できずに止まることがある
+  （`Testing started completed` の後に何も出ない）。iOS Simulator の `-only-testing:AskHubTests` は通るので、手元の Unit テストはそちらで流す。
+  Xcode 27.1 の `xcodebuild test` は、テストが終わって `Executed N tests` を出した後に戻らないことがあるので、結果はログの `Executed` と `Test Case … failed` の行で判断する（2026-11-07、#879）
 
 ## Keychain
 

@@ -15,7 +15,8 @@ enum HumanIntent: Hashable {
     case acceptAllDecisions(epicID: Epic.ID)
     /// マージの承認は、その時点の head のコミットに結びつける
     case merge(epicID: Epic.ID, headCommit: String)
-    case resolveBlocker(epicID: Epic.ID, action: Blocker.Action, instruction: String)
+    /// `target` は画面に出した `Blocker.target`。送るまでに対象が替わっていれば送らない
+    case resolveBlocker(epicID: Epic.ID, action: Blocker.Action, instruction: String, target: String? = nil)
     case handOver(epicID: Epic.ID, macID: Mac.ID)
     case pause(epicID: Epic.ID)
     case resume(epicID: Epic.ID)

@@ -43,6 +43,12 @@ extension StateSnapshotBuilder {
         case DecideSplitIntent.kind:
             applyDecideSplit(envelope, to: &epics, index: index)
 
+        case RetryJobIntent.kind, GiveUpJobIntent.kind:
+            applyJobIntent(envelope, to: &epics)
+
+        case AbandonEpicIntent.kind:
+            applyAbandon(envelope, to: &epics, index: index)
+
         default:
             break
         }
@@ -89,7 +95,7 @@ extension StateSnapshotBuilder {
 
     private func applyAnswer(_ envelope: IntentEnvelope, to epics: inout [Epic], index: StateIndex) {
         guard let epicID = envelope.target?.epic?.rawValue, let protocolID = envelope.target?.id,
-              let epicIndex = epics.firstIndex(where: { $0.id == epicID }),
+              let epicIndex = epics.firstIndex(where: { $0.id == epicID }), epics[epicIndex].isActive,
               let questionIndex = epics[epicIndex].questions.firstIndex(where: { $0.id == Self.displayID(protocolID) }),
               let entry = index.questions[epicID]?[Self.displayID(protocolID)], envelope.targetVersion == String(entry.version) else {
             return
@@ -126,11 +132,18 @@ extension StateSnapshotBuilder {
         if envelope.kind == StartEpicIntent.kind {
             epics[epicIndex].stage = .implementing
             epics[epicIndex].macID = envelope.string("mac")
-            epics[epicIndex].history.insert(Epic.HistoryEntry(date: sentAt, text: "開始しました。司令塔が受け取るのを待っています"), at: 0)
-        } else {
-            epics[epicIndex].goal?.revisionRequest = envelope.string("instruction") ?? ""
-            epics[epicIndex].activities.append(EpicActivity(kind: .revisingGoal, since: sentAt))
+            epics[epicIndex].history.append(Epic.HistoryEntry(date: sentAt, text: "開始しました。司令塔が受け取るのを待っています"))
+            return
         }
+        // 受け付けた修正のジョブを人がやめた（取り消された・やめるを送った）なら、前のゴールのまま開始を待つ
+        let origin = IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
+        let job = documents.epics.first { $0.epic.id.rawValue == epicID }?.jobs.first { $0.origin == origin }
+        if let job, [.canceled, .failed].contains(job.state) || isGivenUp(job) {
+            return
+        }
+        epics[epicIndex].goal?.revisionRequest = envelope.string("instruction") ?? ""
+        // 人に渡されて止まっている間は、`applyBlockers` が外す（やり直しを送ったら、また直している途中として出る）
+        epics[epicIndex].activities.append(EpicActivity(kind: .revisingGoal, since: sentAt))
     }
 
     private func applyDecideSplit(_ envelope: IntentEnvelope, to epics: inout [Epic], index: StateIndex) {
@@ -152,6 +165,59 @@ extension StateSnapshotBuilder {
         }
     }
 
+    /// やり直す・やめる。対象のジョブが人の見たときのまま、人の対応を待っているときだけ出す（「対処が要ります」は `applyBlockers` が外す）
+    private func applyJobIntent(_ envelope: IntentEnvelope, to epics: inout [Epic]) {
+        guard let job = waitingJob(targetedBy: envelope), let epicIndex = epics.firstIndex(where: { $0.id == job.epic.rawValue }) else {
+            return
+        }
+        let subject = Self.subject(of: job)
+        guard envelope.kind == GiveUpJobIntent.kind else {
+            let text = "\(subject)のやり直しを頼みました。司令塔が受け取るのを待っています"
+            epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
+            return
+        }
+        if Self.epicEndingKinds.contains(job.kind) {
+            epics[epicIndex].isAbandoned = true
+        } else if job.kind == .explain {
+            reopenQuestion(of: job, in: &epics[epicIndex])
+        } else if job.kind == .reviseGoal {
+            epics[epicIndex].goal?.revisionRequest = nil
+            epics[epicIndex].activities.removeAll { $0.kind == .revisingGoal }
+        } else {
+            return
+        }
+        let text = "\(subject)をやめました。司令塔が受け取るのを待っています"
+        epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
+    }
+
+    /// 取り下げ。状態リポジトリにある、開始する前の epic だけを出す（開始した後は司令塔が断る）
+    private func applyAbandon(_ envelope: IntentEnvelope, to epics: inout [Epic], index: StateIndex) {
+        guard let epicID = envelope.target?.epic?.rawValue, index.epics[epicID] != nil,
+              let epicIndex = epics.firstIndex(where: { $0.id == epicID }),
+              epics[epicIndex].isActive, epics[epicIndex].stage < .implementing else {
+            return
+        }
+        epics[epicIndex].isAbandoned = true
+        let text = "取り下げました。司令塔が受け取るのを待っています"
+        epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
+    }
+
+    /// 処理を待つやめるの意図を送ったジョブか（同じ秒に送った意図の順に頼らずに決める）
+    private func isGivenUp(_ job: JobFile) -> Bool {
+        intentsToOverlay().contains { $0.kind == GiveUpJobIntent.kind && waitingJob(targetedBy: $0)?.id == job.id }
+    }
+
+    /// 説明をやめたら、説明を待つ問いを外して質問を回答待ちに戻す（司令塔の `QuestionFlow.abandonExplanation` と同じ）
+    private func reopenQuestion(of job: JobFile, in epic: inout Epic) {
+        guard let questionID = Self.questionID(of: job), let questionIndex = epic.questions.firstIndex(where: { $0.id == questionID }),
+              case .awaitingExplanation = epic.questions[questionIndex].state else {
+            return
+        }
+        epic.questions[questionIndex].state = .open
+        epic.questions[questionIndex].explanations.removeAll { $0.body == nil }
+        epic.activities.removeAll { $0.kind == .explaining(questionID) }
+    }
+
     // MARK: 処理の結果
 
     /// 受け付けなかった意図を、対象の epic の履歴に失敗として出す
@@ -162,9 +228,9 @@ extension StateSnapshotBuilder {
                   let epicIndex = epics.firstIndex(where: { $0.id == epicID }) else {
                 continue
             }
-            let text = "\(Self.label(sent.envelope))を受け付けませんでした: \(consumed.reason ?? "理由は書かれていません")"
+            let text = "\(label(sent.envelope))を受け付けませんでした: \(consumed.reason ?? "理由は書かれていません")"
             epics[epicIndex].history.append(Epic.HistoryEntry(date: consumed.consumedAt.date, text: text, isFailure: true))
-            epics[epicIndex].history.sort { $0.date > $1.date }
+            epics[epicIndex].history.sort { $0.date < $1.date }
         }
     }
 
@@ -191,14 +257,16 @@ extension StateSnapshotBuilder {
         }
         return SentIntentStatus(
             id: envelope.nonce.rawValue,
-            title: [Self.label(envelope), epicTitle].compactMap(\.self).joined(separator: " · "),
+            title: [label(envelope), epicTitle].compactMap(\.self).joined(separator: " · "),
             sentAt: envelope.issuedAt.date,
             state: state
         )
     }
 
-    static func label(_ envelope: IntentEnvelope) -> String {
-        let question = envelope.target?.id.map { "（\(displayID($0))）" } ?? ""
+    func label(_ envelope: IntentEnvelope) -> String {
+        let question = envelope.target?.id.map { "（\(Self.displayID($0))）" } ?? ""
+        // ジョブの名前は、読んだジョブから決める（終わった epic のジョブは読まないので、名前を付けないことがある）
+        let job = job(targetedBy: envelope).map { "（\(Self.subject(of: $0))）" } ?? ""
         switch envelope.kind {
         case RequestIntent.kind:
             return "依頼「\(envelope.string("title") ?? "")」"
@@ -217,6 +285,15 @@ extension StateSnapshotBuilder {
 
         case AddRepositoryIntent.kind:
             return "対象に加える（\(envelope.repo?.rawValue ?? "")）"
+
+        case RetryJobIntent.kind:
+            return "やり直し" + job
+
+        case GiveUpJobIntent.kind:
+            return "取りやめ" + job
+
+        case AbandonEpicIntent.kind:
+            return "取り下げ"
 
         default:
             return envelope.kind
