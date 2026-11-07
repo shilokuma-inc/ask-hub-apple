@@ -318,11 +318,12 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `rerunChecks` | `{ "pullRequest": 41, "head": "<コミット>", "runs": [123] }` |
 | `integrateDevelop` | `{ "base": "<取り込む base のコミット>" }` |
 | `verifyBeforeFinal`・`classifyDecisions`・`captureScreenshots`・`openFinalPullRequest`・`cleanUp` | `{}` |
-| `fixFinalPullRequest`・`mergeFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>" }` |
+| `reviewFinalPullRequest`・`mergeFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>" }` |
+| `fixFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`・`human`。`human` は判断のカードの「直してほしい」「別案にする」と `instructFinal` で、元の人の意図はジョブの `origin`） |
 | `notify` | 段階 4 で決める |
 
 - タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）は、司令塔が元のジョブの結果から作り、`task` にタスクの id、`dependsOn` に元のジョブ（`implementTask` は作業場所の用意）を書く。同じタスクの直しが 3 回を超えたら、`fixTask` を `waitingHuman` で作る（[flows.md](flows.md) の「司令塔がタスクを進める」）
-- `kind` の最初の一覧: `makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`prepareWorkspace`・`implementTask`・`reviewTask`・`fixTask`・`integrateDevelop`・`verifyBeforeFinal`・`openFinalPullRequest`・`fixFinalPullRequest`・`rerunChecks`・`classifyDecisions`・`captureScreenshots`・`mergeFinalPullRequest`・`cleanUp`・`notify`
+- `kind` の最初の一覧: `makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`prepareWorkspace`・`implementTask`・`reviewTask`・`fixTask`・`integrateDevelop`・`verifyBeforeFinal`・`openFinalPullRequest`・`reviewFinalPullRequest`・`fixFinalPullRequest`・`rerunChecks`・`classifyDecisions`・`captureScreenshots`・`mergeFinalPullRequest`・`cleanUp`・`notify`
 - `state` は `queued`・`assigned`・`running`・`succeeded`・`failed`・`waitingHuman`・`paused`・`canceled`
 - ジョブのファイルは司令塔だけが書く。ワーカーは、自分の試行のファイルに「始めた」を書くことで、ジョブを引き受けたことを示す。司令塔は試行を読んでジョブの `state` を更新する
 
@@ -367,7 +368,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - `outcome` は `running`・`succeeded`・`failed`
 - `outputs` は外部の id（`pullRequest`・`commit`・`branch`）と、司令塔が次のジョブを決めるのに読む結果。外部の id は、やり直す前に、すでにできているかを確かめるのに使う
-  - `verdict`: 子 PR のレビュー（`reviewTask`）の判定。`merged`・`fixCI`（CI が落ちた）・`fixReview`（レビュー役の必須の指摘）。直す判定のときは `findings` を持つ
+  - `verdict`: 子 PR のレビュー（`reviewTask`）と最終 PR のレビュー（`reviewFinalPullRequest`）の判定。`merged`（子 PR をマージした）・`ready`（最終 PR が通った。マージは規則と人の承認で決める）・`fixCI`（CI が落ちた）・`fixReview`（必須の指摘）。直す判定のときは `findings` を持つ
+  - `mergeRisks`: 最終 PR のレビューが見つけた、手動のマージの条件に当たるもの（`security`・`weakenedTests`・`dataMigration`・`sensitivePaths` と理由）。司令塔がマージの規則に当てる
   - `findings`: 直すこと（落ちたチェックとログの抜粋・必須の指摘）。20,000 文字まで。トークンらしい文字列は伏せてから書く
   - `report`: 実装と直し（`implementTask`・`fixTask`）で Claude が報告したこと（`summary`・`decisions`・`learnings`・`question`）。司令塔が `decisions.json`・知見を足す PR・質問に写す
 - `branch` は作ったブランチで、作業場所の用意（`prepareWorkspace`）なら作業ブランチ（`epic.json` の `branch` と同じ形。`epic.json` には司令塔がこれを読んで書く）
@@ -510,9 +512,9 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `startEpic` | epic | ゴールの `version` | `mac`（`payloads/startEpic.schema.json`） |
 | `reviseGoal` | epic | ゴールの `version` | `instruction`（指示の本文。`payloads/reviseGoal.schema.json`） |
 | `decideSplit` | epic | 着手前の確認の結果（`readiness.json`）の `version` | `choice`（`split`・`proceed`。`payloads/decideSplit.schema.json`） |
-| `decision` | 判断のカード | 最終 PR の head のコミット | `answer`（`ok`・`alternative`・`fix`）、本文 |
-| `approveMerge` | 最終 PR | 最終 PR の head のコミット | — |
-| `instructFinal` | 最終 PR | 最終 PR の head のコミット | 指示の本文 |
+| `decision` | 判断のカード（`{ "type": "decision", "epic", "id": "d1" }`） | 最終 PR の head のコミット | `answer`（`ok`・`alternative`・`fix`）、`note`（別案・直してほしいときの本文） |
+| `approveMerge` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | —（見える仮決めにすべて答えた後でだけ受け付ける） |
+| `instructFinal` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | `instruction`（指示の本文） |
 | `humanTaskDone` | 人がする作業 | ゴールの `version` | 渡すものの参照 |
 | `handover` | epic | — | 移す先の Mac |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始する前の epic だけ |
