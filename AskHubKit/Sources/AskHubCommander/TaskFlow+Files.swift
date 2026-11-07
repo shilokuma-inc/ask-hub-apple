@@ -2,27 +2,34 @@ import AskHubProtocol
 import AskHubStateStore
 import Foundation
 
-/// タスクの流れが読み書きする状態のファイル（試行の結果・作業ブランチ・タスクの状態・仮決め）
-extension TaskFlow {
+extension CommanderContext {
     /// 成功した試行の `outputs`。当てた試行（ジョブの `attempts`）が成功していればそれを、違えば一覧から最後に成功した試行を読む
     func succeededOutputs(of job: JobFile) async throws(CommanderError) -> AttemptFile.Outputs? {
         let numbered = StatePath.attempt(job.repo, epic: job.epic, job: job.id, number: max(job.attempts, 1))
-        if let attempt = try await context.readable(AttemptFile.self, at: numbered), attempt.job == job.id, attempt.outcome == .succeeded {
+        if let attempt = try await readable(AttemptFile.self, at: numbered), attempt.job == job.id, attempt.outcome == .succeeded {
             return attempt.outputs
         }
         let entries: [DirectoryEntry]
         do {
-            entries = try await context.store.listAll(StatePath.attempts(job.repo, epic: job.epic, job: job.id)) ?? []
+            entries = try await store.listAll(StatePath.attempts(job.repo, epic: job.epic, job: job.id)) ?? []
         } catch {
             throw .store(error)
         }
         var latest: AttemptFile?
         for entry in entries where entry.kind == .file && entry.name.hasSuffix(".json") {
-            guard let attempt = try await context.readable(AttemptFile.self, at: entry.path), attempt.job == job.id,
+            guard let attempt = try await readable(AttemptFile.self, at: entry.path), attempt.job == job.id,
                   attempt.outcome == .succeeded, latest.map({ attempt.number > $0.number }) ?? true else { continue }
             latest = attempt
         }
         return latest?.outputs
+    }
+}
+
+/// タスクの流れが読み書きする状態のファイル（作業ブランチ・タスクの状態・仮決め）
+extension TaskFlow {
+    /// 成功した試行の `outputs`（読み方は `CommanderContext.succeededOutputs(of:)`）
+    func succeededOutputs(of job: JobFile) async throws(CommanderError) -> AttemptFile.Outputs? {
+        try await context.succeededOutputs(of: job)
     }
 
     /// 作業場所の用意が作った作業ブランチを `epic.json` に書く（`epic.json` は司令塔だけが書く）
