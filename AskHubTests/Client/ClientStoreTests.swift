@@ -247,14 +247,27 @@ struct ClientStoreTests {
         #expect(store.notice?.message == "取り下げを送りました")
     }
 
+    /// テストで進める時計
+    private final class Clock {
+        var now: Date
+
+        init(_ now: Date) {
+            self.now = now
+        }
+    }
+
     /// 開始を送り、司令塔の受け付けを待っている窓口とストア
-    private func startWaitingForCommander(noticeDuration: Duration = .seconds(5)) async -> (FakeService, ClientStore) {
+    private func startWaitingForCommander(
+        noticeDuration: Duration = .seconds(5),
+        clock: Clock? = nil
+    ) async -> (FakeService, ClientStore) {
         let service = FakeService()
         var snapshot = DemoScenario.standard.snapshot(now: now)
         snapshot.sentIntents = [SentIntentStatus(id: "nonce-1", title: "開始", sentAt: now, state: .waiting)]
         service.snapshot = snapshot
         service.receiptIntentID = "nonce-1"
-        let store = ClientStore(service: service, noticeDuration: noticeDuration, now: { [now] in now })
+        let clock = clock ?? Clock(now)
+        let store = ClientStore(service: service, noticeDuration: noticeDuration, now: { clock.now })
         #expect(await store.send(.start(epicID: "budget-limit", macID: DemoData.macMiniID)) == .sent(SendReceipt(intentID: "nonce-1")))
         #expect(store.notice?.message == "開始を送りました")
         return (service, store)
@@ -271,24 +284,63 @@ struct ClientStoreTests {
         await store.refresh()
         #expect(store.notice?.message == "Mac mini で開始しました")
         #expect(store.notice?.detail == "作業場所の用意から進めます")
-        #expect(store.notice?.isRejection == false)
+        #expect(store.rejections.isEmpty)
 
         store.dismissNotice()
         await store.refresh()
         #expect(store.notice == nil)
     }
 
-    /// 司令塔が受け付けなかったら、理由を出し、閉じるまで消さない
+    /// 司令塔が受け付けなかったら、理由を出し、ほかの帯が出ても閉じるまで消さない。重なったら 1 つずつ出す
     @Test
-    func showsRejectionUntilDismissed() async throws {
+    func showsRejectionsUntilDismissed() async throws {
         let (service, store) = await startWaitingForCommander(noticeDuration: .milliseconds(20))
-        service.snapshot?.sentIntents[0].state = .rejected(at: now, reason: "Mac mac-mini がオフライン")
+        service.receiptIntentID = "nonce-2"
+        service.snapshot?.sentIntents.insert(SentIntentStatus(id: "nonce-2", title: "取り下げ", sentAt: now, state: .waiting), at: 0)
+        await store.send(.discard(epicID: "rain-draft"))
+        service.snapshot?.sentIntents[0].state = .rejected(at: now, reason: "epic はもう始まっている")
+        service.snapshot?.sentIntents[1].state = .rejected(at: now, reason: "Mac mac-mini がオフライン")
         await store.refresh()
-        #expect(store.notice?.message == "開始を受け付けませんでした")
-        #expect(store.notice?.detail == "Mac mac-mini がオフライン")
-        try await Task.sleep(for: .milliseconds(100))
-        #expect(store.notice?.isRejection == true)
-        store.dismissNotice()
+        #expect(store.rejections.map(\.message) == ["開始を受け付けませんでした", "取り下げを受け付けませんでした"])
+        #expect(store.rejections.first?.detail == "Mac mac-mini がオフライン")
+
+        // 送れたことの帯は消えても、断られた知らせは残る
+        service.receiptIntentID = nil
+        await store.send(.addRepository(repositoryID: "example/memo-ios"))
+        for _ in 0..<100 where store.notice != nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         #expect(store.notice == nil)
+        #expect(store.rejections.count == 2)
+        store.dismissRejection()
+        #expect(store.rejections.map(\.detail) == ["epic はもう始まっている"])
+        store.dismissRejection()
+        #expect(store.rejections.isEmpty)
+    }
+
+    /// 送った意図が読んだ中に一時的に見つからなくても、しばらくは受け付けを待ち続ける
+    @Test
+    func keepsWaitingWhileSentIntentIsMissing() async {
+        let clock = Clock(now)
+        let (service, store) = await startWaitingForCommander(clock: clock)
+        let sent = service.snapshot?.sentIntents ?? []
+        service.snapshot?.sentIntents = []
+        await store.refresh()
+        service.snapshot?.sentIntents = sent
+        service.snapshot?.sentIntents[0].state = .accepted(at: now)
+        await store.refresh()
+        #expect(store.notice?.message == "Mac mini で開始しました")
+
+        // 待つ間を過ぎて見つからない意図は忘れる
+        service.receiptIntentID = "nonce-2"
+        await store.send(.discard(epicID: "rain-draft"))
+        clock.now += ClientStore.receiptTrackingWindow
+        await store.refresh()
+        service.snapshot?.sentIntents.insert(
+            SentIntentStatus(id: "nonce-2", title: "取り下げ", sentAt: now, state: .rejected(at: now, reason: "遅れて見つかった")),
+            at: 0
+        )
+        await store.refresh()
+        #expect(store.rejections.isEmpty)
     }
 }
