@@ -8,8 +8,8 @@ public protocol TaskJob: Sendable {
     var prompt: String { get }
     /// 続ける会話（`--resume`）。nil なら新しい会話を始める
     var resume: String? { get }
-    /// 始める時点で、ビルドかテストが落ちたままか。落ちたままなら、通ったことを確かめるまで done にさせない
-    var startsFailing: Bool { get }
+    /// 始める時点で落ちたままの検証。この種類か、それより広い検証が通ったことを確かめるまで done にさせない。落ちていなければ nil
+    var failingAtStart: TaskReport.BuildKind? { get }
 }
 
 /// 実装と直しで Claude に付ける決まり（`--append-system-prompt`）。ワーカー向けの規則は、各リポジトリの CLAUDE.md ではなくここに持つ
@@ -70,7 +70,7 @@ public struct ImplementTaskJob: TaskJob {
     }
 
     public var resume: String? { nil }
-    public var startsFailing: Bool { false }
+    public var failingAtStart: TaskReport.BuildKind? { nil }
 
     public var prompt: String {
         let finished = previous.map { "- \($0.id): \($0.title)\n  要約: \($0.summary)" }
@@ -154,10 +154,10 @@ public struct FixTaskJob: TaskJob {
 
     public var resume: String? { session }
 
-    /// CI が落ちたままなので、直して通ったことを確かめるまで done にさせない
-    public var startsFailing: Bool {
-        if case .ci = reason { return true }
-        return false
+    /// CI が落ちたままなので、子 PR で待つチェック（UI テストを含まない）にあたる軽いテスト以上が通るまで done にさせない
+    public var failingAtStart: TaskReport.BuildKind? {
+        if case .ci = reason { return .testLight }
+        return nil
     }
 
     public var prompt: String {

@@ -89,24 +89,39 @@ public struct TaskRunner: Sendable {
         self.now = now
     }
 
-    /// 最後に流したビルドとテストの様子
-    private struct BuildState {
-        var failing: Bool
-        /// 落ちたままなら、その種類と結果の要約
+    /// 流したビルドとテストの様子
+    struct BuildState {
+        /// 落ちたまま、まだ通っていない検証。同じか、それより広い検証が通るまで done にさせない
+        var failing: TaskReport.BuildKind?
+        /// 最後に落ちた検証の種類と結果の要約（往復を使い切ったときの記録に使う）
         var lastFailure: (kind: TaskReport.BuildKind, summary: String)?
+
+        /// 狭い検証が通っても、広い検証の失敗は消さない（全部のテストが落ちた後にビルドだけ通っても、done にさせない）
+        mutating func record(_ result: TaskBuildResult, of kind: TaskReport.BuildKind) {
+            switch result {
+            case .couldNotRun:
+                break
+            case .passed:
+                guard let failing, kind.covers(failing) else { return }
+                self.failing = nil
+                lastFailure = nil
+            case let .failed(summary):
+                failing = failing.map { $0.covers(kind) ? $0 : kind } ?? kind
+                lastFailure = (kind, summary)
+            }
+        }
     }
 
     public func run(_ job: some TaskJob, in workspace: TaskWorkspace) async -> TaskReply {
-        let start = now()
+        // 直させる呼び出しとビルドも含めて、この時刻までに打ち切る
+        let deadline = now().addingTimeInterval(Self.seconds(limits.total))
         var request = request(for: job, in: workspace)
-        var state = BuildState(failing: job.startsFailing)
+        var state = BuildState(failing: job.failingAtStart)
         var run = TaskRun()
         while true {
-            guard let left = remaining(since: start) else { return .failed(timedOut, run) }
-            request.timeout = min(limits.callTimeout, left)
             let failing = state.failing
             let report: TaskReport
-            switch await client.ask(request, as: TaskReport.self, now: now, check: { $0.problems(lastBuildFailed: failing) }) {
+            switch await client.ask(request, as: TaskReport.self, now: now, deadline: deadline, check: { $0.problems(failing: failing) }) {
             case let .failed(failure, session):
                 run.record(session)
                 return .failed(failure, run)
@@ -115,36 +130,35 @@ public struct TaskRunner: Sendable {
                 report = answer
             }
             guard report.outcome == .needsBuild, let kind = report.buildKind else { return .reported(report, run) }
-            let build = await build(kind, state: &state, run: &run, since: start)
+            let build = await build(kind, state: &state, run: &run, deadline: deadline)
             if case let .couldNotRun(failure) = build { return .failed(failure, run) }
             request.resume = run.session?.id
-            request.prompt = Self.buildResultPrompt(kind: kind, report: build, used: run.roundTrips, limit: limits.roundTrips)
+            request.prompt = Self.buildResultPrompt(
+                kind: kind,
+                result: build,
+                stillFailing: state.failing,
+                used: run.roundTrips,
+                limit: limits.roundTrips
+            )
         }
     }
 
-    /// 頼まれたビルドかテストを流す。続けられないとき（往復の使い切り・時間切れ・流せなかった）は `couldNotRun` で返す
+    /// 頼まれたビルドかテストを、期限までの残りの時間で流す。続けられないとき（往復の使い切り・時間切れ・流せなかった）は `couldNotRun` で返す
     private func build(
         _ kind: TaskReport.BuildKind,
         state: inout BuildState,
         run: inout TaskRun,
-        since start: Date
+        deadline: Date
     ) async -> TaskBuildResult {
         guard run.roundTrips < limits.roundTrips else { return .couldNotRun(exhausted(state)) }
         guard run.session?.id != nil else {
             return .couldNotRun(AttemptFailure(failureClass: .unexpected, message: "Claude の会話の id が無く、ビルドの結果を渡せない"))
         }
-        guard remaining(since: start) != nil else { return .couldNotRun(timedOut) }
-        let report = await builds.run(kind)
+        guard let left = ClaudeClient.remaining(until: deadline, now: now()) else { return .couldNotRun(timedOut) }
+        let result = await builds.run(kind, timeout: left)
         run.roundTrips += 1
-        switch report {
-        case .couldNotRun:
-            break
-        case .passed:
-            state = BuildState(failing: false)
-        case let .failed(summary):
-            state = BuildState(failing: true, lastFailure: (kind, summary))
-        }
-        return report
+        state.record(result, of: kind)
+        return result
     }
 
     private func request(for job: some TaskJob, in workspace: TaskWorkspace) -> ClaudeRequest {
@@ -162,11 +176,8 @@ public struct TaskRunner: Sendable {
         )
     }
 
-    /// 全体の上限までの残り。使い切っていれば nil
-    private func remaining(since start: Date) -> Duration? {
-        let elapsed = Duration.milliseconds(Int64((now().timeIntervalSince(start) * 1_000).rounded()))
-        let left = limits.total - elapsed
-        return left > .zero ? left : nil
+    static func seconds(_ duration: Duration) -> TimeInterval {
+        Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
 
     private var timedOut: AttemptFailure {
@@ -184,8 +195,15 @@ public struct TaskRunner: Sendable {
     /// ビルドとテストの結果の要約に載せる長さの上限（文字数）。超えた分は前を省く（失敗の理由は後ろに出る）
     static let maximumBuildSummaryLength = 8_000
 
-    static func buildResultPrompt(kind: TaskReport.BuildKind, report: TaskBuildResult, used: Int, limit: Int) -> String {
-        let (passed, summary): (Bool, String) = switch report {
+    /// `stillFailing` は、結果を記録した後も落ちたままの検証
+    static func buildResultPrompt(
+        kind: TaskReport.BuildKind,
+        result: TaskBuildResult,
+        stillFailing: TaskReport.BuildKind?,
+        used: Int,
+        limit: Int
+    ) -> String {
+        let (passed, summary): (Bool, String) = switch result {
         case let .passed(text): (true, text)
         case let .failed(text): (false, text)
         // 流せなかったときは Claude に渡さない（`run` が試行の失敗にする）
@@ -193,7 +211,12 @@ public struct TaskRunner: Sendable {
         }
         let next = switch (used < limit, passed) {
         case (true, true):
-            "続けてください。タスクが終わっていれば done で、まだなら作業を続けて needsBuild で確かめてください。残りの往復は \(limit - used) 回です。"
+            if let stillFailing {
+                "前に落ちた \(stillFailing.rawValue) はまだ確かめていません。done にする前に、needsBuild で \(stillFailing.rawValue) 以上を流してください。"
+                    + "残りの往復は \(limit - used) 回です。"
+            } else {
+                "続けてください。タスクが終わっていれば done で、まだなら作業を続けて needsBuild で確かめてください。残りの往復は \(limit - used) 回です。"
+            }
         case (true, false):
             "落ちた原因を直し、needsBuild でもう一度確かめてください。残りの往復は \(limit - used) 回です。"
         case (false, _):

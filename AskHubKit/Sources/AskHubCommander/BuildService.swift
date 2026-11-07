@@ -16,5 +16,6 @@ public enum TaskBuildResult: Equatable, Sendable {
 /// 中身は `AskHubBuild` が持つ。ここでは、Claude との往復から呼べる形だけを決める。
 /// 何を流すかは、リポジトリの `repo.json` の `build`（`AskHubBuild` の `BuildSettings`）で決まる
 public protocol BuildService: Sendable {
-    func run(_ kind: TaskReport.BuildKind) async -> TaskBuildResult
+    /// `timeout`（タスクの実行の残りの時間）までに終わらなければ、流しているコマンドを止めて `couldNotRun`（`timeout`）を返す
+    func run(_ kind: TaskReport.BuildKind, timeout: Duration) async -> TaskBuildResult
 }

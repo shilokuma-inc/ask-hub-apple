@@ -22,6 +22,17 @@ public struct TaskReport: Codable, Equatable, Sendable {
         case testLight
         /// 全部のテスト（UI テストを含む）
         case testFull
+
+        /// `other` の確かめを含むか（全部のテストは軽いテストを、テストはビルドを含む）
+        public func covers(_ other: BuildKind) -> Bool { rank >= other.rank }
+
+        private var rank: Int {
+            switch self {
+            case .build: 0
+            case .testLight: 1
+            case .testFull: 2
+            }
+        }
     }
 
     /// 仮決め（人に聞かずに Claude が決めたこと）。見える・内部の区分は、読むだけのレビュー役の Claude が決める
@@ -83,7 +94,7 @@ public struct TaskReport: Codable, Equatable, Sendable {
         self.question = question
     }
 
-    /// 返してもらう形（`--json-schema`）。欄どうしの決まりは `problems(lastBuildFailed:)` で確かめる
+    /// 返してもらう形（`--json-schema`）。欄どうしの決まりは `problems(failing:)` で確かめる
     public static let outputSchema = OutputSchema.object([
         "outcome": OutputSchema.oneOf(
             Outcome.allCases.map(\.rawValue),
@@ -112,14 +123,16 @@ public struct TaskReport: Codable, Equatable, Sendable {
         ]))
     ], required: ["outcome", "summary", "decisions", "learnings"])
 
-    /// 決まりに合わない点。空なら使える。`lastBuildFailed` は、この会話で最後に流したビルドかテストが落ちたままか
-    public func problems(lastBuildFailed: Bool) -> [String] {
+    /// 決まりに合わない点。空なら使える。`failing` は、この会話で落ちたまま、まだ通っていない検証（通っていれば nil）
+    public func problems(failing: BuildKind?) -> [String] {
         var problems: [String] = []
         if summary.isBlank { problems.append("summary が空") }
         if outcome == .needsBuild, buildKind == nil { problems.append("outcome が needsBuild なのに、buildKind が無い") }
         if outcome != .needsBuild, buildKind != nil { problems.append("buildKind は needsBuild のときだけ書く（ほかのときは null）") }
-        if outcome == .done, lastBuildFailed {
-            problems.append("最後に流したビルドかテストが落ちたまま done にしている。直して needsBuild でもう一度確かめるか、進められなければ blocked にする")
+        if outcome == .done, let failing {
+            problems.append(
+                "落ちた \(failing.rawValue) がまだ通っていないのに done にしている。直して needsBuild で \(failing.rawValue) 以上を流して確かめるか、進められなければ blocked にする"
+            )
         }
         return problems + questionProblems + listProblems
     }
