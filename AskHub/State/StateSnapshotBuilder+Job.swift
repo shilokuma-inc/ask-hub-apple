@@ -28,8 +28,11 @@ extension StateSnapshotBuilder {
             // 止まっている作業は、機械がしていることとして出さない（「対処が要ります」と食い違う）
             let stopped = Set(waiting.compactMap(Self.activity(of:)))
             epics[epicIndex].activities.removeAll { stopped.contains($0.kind) }
-            epics[epicIndex].blocker = blocker(job, attempts: documents.attempts[job.id] ?? [], others: waiting.count - 1)
-            index.epics[id]?.blockedJob = JobTarget(repo: job.repo, epic: job.epic, job: job.id, attempt: job.attempts)
+            let target = JobTarget(repo: job.repo, epic: job.epic, job: job.id, attempt: job.attempts)
+            let blocker = blocker(job, target: target, attempts: documents.attempts[job.id] ?? [], others: waiting.count - 1)
+            epics[epicIndex].blocker = blocker
+            index.epics[id]?.blockedJob = target
+            index.epics[id]?.blockerActions = Set(blocker.actions)
         }
     }
 
@@ -57,6 +60,11 @@ extension StateSnapshotBuilder {
         }
     }
 
+    /// 画面の `Blocker.target`。ジョブと、人が見たときの試行の番号
+    static func blockerTarget(_ target: JobTarget) -> String {
+        "\(target.job.rawValue)/\(target.attempt)"
+    }
+
     static func isJobIntent(_ envelope: IntentEnvelope) -> Bool {
         [RetryJobIntent.kind, GiveUpJobIntent.kind].contains(envelope.kind)
     }
@@ -77,7 +85,7 @@ extension StateSnapshotBuilder {
         return documents.epics.first { $0.epic.id == epic }?.jobs.first { $0.id.rawValue == jobID }
     }
 
-    private func blocker(_ job: JobFile, attempts: [AttemptFile], others: Int) -> Blocker {
+    private func blocker(_ job: JobFile, target: JobTarget, attempts: [AttemptFile], others: Int) -> Blocker {
         let failure = attempts.last { $0.number == job.attempts }?.failure
         let category = failure?.failureClass.category ?? .unexpected
         let subject = Self.subject(of: job)
@@ -93,7 +101,8 @@ extension StateSnapshotBuilder {
             attempts: attempts.map(Self.attempt),
             occurredAt: job.updatedAt.date,
             actions: Self.actions(for: job.kind, category: category),
-            subject: subject
+            subject: subject,
+            target: Self.blockerTarget(target)
         )
     }
 

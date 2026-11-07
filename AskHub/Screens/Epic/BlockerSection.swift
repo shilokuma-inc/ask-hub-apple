@@ -63,6 +63,11 @@ struct BlockerSection: View {
         return "\(subject)をやめると先に進めないので、epic ごとやめます。元に戻せません"
     }
 
+    /// 対象を付けた意図（送り直すまでに対象が替わっていたら、窓口が送らない）
+    private func intent(_ action: Blocker.Action) -> HumanIntent {
+        .resolveBlocker(epicID: epic.id, action: action, instruction: "", target: blocker.target)
+    }
+
     /// 送れない操作（状態リポジトリでは段階 3 の操作）は出さない
     private var sendableActions: [Blocker.Action] {
         blocker.actions.filter { action in
@@ -74,7 +79,7 @@ struct BlockerSection: View {
                 store.supports(.pause(epicID: epic.id))
 
             case .fixWithInstruction, .retry, .resumeAfterFix, .cancelJob, .discard:
-                store.supports(.resolveBlocker(epicID: epic.id, action: action, instruction: ""))
+                store.supports(intent(action))
             }
         }
     }
@@ -89,12 +94,12 @@ struct BlockerSection: View {
 
             case .retry:
                 Button("そのままもう一度試す", systemImage: "arrow.clockwise") {
-                    Task { await store.send(.resolveBlocker(epicID: epic.id, action: .retry, instruction: "")) }
+                    Task { await store.send(intent(.retry)) }
                 }
 
             case .resumeAfterFix:
                 Button("直したので再開する", systemImage: "play") {
-                    Task { await store.send(.resolveBlocker(epicID: epic.id, action: .resumeAfterFix, instruction: "")) }
+                    Task { await store.send(intent(.resumeAfterFix)) }
                 }
 
             case .handOver:
@@ -107,7 +112,7 @@ struct BlockerSection: View {
 
             case .cancelJob:
                 Button("\(blocker.subject ?? "この作業")をやめる", systemImage: "xmark.circle") {
-                    Task { await store.send(.resolveBlocker(epicID: epic.id, action: .cancelJob, instruction: "")) }
+                    Task { await store.send(intent(.cancelJob)) }
                 }
 
             case .discard:
@@ -115,7 +120,7 @@ struct BlockerSection: View {
                 Button("やめる…", systemImage: "xmark.octagon", role: .destructive) { isConfirmingDiscard = true }
                     .confirmationDialog("「\(epic.title)」をやめますか？", isPresented: $isConfirmingDiscard, titleVisibility: .visible) {
                         Button("やめる", role: .destructive) {
-                            Task { await store.send(.resolveBlocker(epicID: epic.id, action: .discard, instruction: "")) }
+                            Task { await store.send(intent(.discard)) }
                         }
                     } message: {
                         Text(discardMessage)

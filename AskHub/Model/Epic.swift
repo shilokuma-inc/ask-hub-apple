@@ -163,6 +163,8 @@ struct Blocker: Hashable {
     var actions: [Action]
     /// 止まっている作業の名前（例: Q3 の説明）。その作業だけをやめるボタンに出す。分からなければ nil
     var subject: String?
+    /// 操作の対象（状態リポジトリではジョブと試行の番号）。送るまでに対象が替わっていないかを確かめるのに使う。デモでは nil
+    var target: String?
 
     struct Attempt: Identifiable, Hashable {
         var id: Int { number }

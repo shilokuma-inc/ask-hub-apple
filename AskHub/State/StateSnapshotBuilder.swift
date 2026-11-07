@@ -8,8 +8,9 @@ struct StateIndex {
         var id: ULID
         var goalVersion: Int?
         var readinessVersion: Int?
-        /// 「対処が要ります」に出した、人の対応を待っているジョブ（やり直す・やめるの対象）
+        /// 「対処が要ります」に出した、人の対応を待っているジョブ（やり直す・やめるの対象）と、そこに出した操作
         var blockedJob: JobTarget?
+        var blockerActions: Set<Blocker.Action> = []
         /// 取り下げられるか（開始する前で、やめていない。処理を待つ意図を当てた後の段階で決める）
         var canAbandon = false
     }

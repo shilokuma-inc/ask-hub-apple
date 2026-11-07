@@ -9,18 +9,15 @@ import Foundation
 struct StateIntentMapper {
     let index: StateIndex
 
-    /// 人に渡されたジョブへの操作のうち、送れるもの（やり直す・やめる）。指示を添えて直させる・引き継ぎ・一時停止は段階 3 で送る
-    static let blockerActions: Set<Blocker.Action> = [.retry, .resumeAfterFix, .cancelJob, .discard]
-
     /// 状態リポジトリに送れる意図か。段階 3 の操作（判断のカード・マージ・引き継ぎ・確認・片付けなど）は、まだ送れない。
-    /// 人に渡されたジョブへの操作は、最後に読んだ状態にそのジョブがあるときだけ、取り下げは開始する前の epic だけ送れる
+    /// 人に渡されたジョブへの操作は、最後に読んだ状態の「対処が要ります」に出した操作だけ（やり直す・やめる）、取り下げは開始する前の epic だけ送れる
     func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
             true
 
-        case let .resolveBlocker(epicID, action, _):
-            Self.blockerActions.contains(action) && index.epics[epicID]?.blockedJob != nil
+        case let .resolveBlocker(epicID, action, _, _):
+            index.epics[epicID]?.blockerActions.contains(action) == true
 
         case .discard(let epicID):
             index.epics[epicID]?.canAbandon == true
@@ -42,8 +39,8 @@ struct StateIntentMapper {
         case .request, .addRepository:
             return try repositoryDraft(intent)
 
-        case let .resolveBlocker(epicID, action, _):
-            return try blockerDraft(epicID: epicID, action: action)
+        case let .resolveBlocker(epicID, action, _, target):
+            return try blockerDraft(epicID: epicID, action: action, target: target)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .handOver, .pause, .resume,
              .completeHumanTask, .submitSecret, .verify, .cleanUp:
@@ -117,10 +114,15 @@ struct StateIntentMapper {
         }
     }
 
-    /// 人に渡されたジョブへの操作。人が見たときの試行の番号を付ける（その後に試行が進んでいれば、司令塔が断る）
-    private func blockerDraft(epicID: Epic.ID, action: Blocker.Action) throws(ClientServiceError) -> IntentDraft {
-        guard let job = try epic(epicID).blockedJob else {
+    /// 人に渡されたジョブへの操作。人が見たときの試行の番号を付ける（その後に試行が進んでいれば、司令塔が断る）。
+    /// 送り直すまでに「対処が要ります」に出すジョブが替わっていたら、別のジョブに当てないよう送らない
+    private func blockerDraft(epicID: Epic.ID, action: Blocker.Action, target: String?) throws(ClientServiceError) -> IntentDraft {
+        let entry = try epic(epicID)
+        guard let job = entry.blockedJob else {
             throw ClientServiceError(message: "対処を待っている作業がありません。取り直してから送ってください")
+        }
+        guard target == StateSnapshotBuilder.blockerTarget(job), entry.blockerActions.contains(action) else {
+            throw ClientServiceError(message: "対処を待っている作業が替わりました。画面を確かめてから選び直してください")
         }
         switch action {
         case .retry, .resumeAfterFix:

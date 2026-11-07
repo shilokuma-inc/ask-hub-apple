@@ -97,10 +97,13 @@ extension StateClientServiceTests {
         #expect(blocker.attempts.first?.outcome == "Claude の障害: Claude が混み合っている")
         // 認証切れは人が直してから再開する。説明は、その作業だけをやめられる
         #expect(blocker.actions == [.resumeAfterFix, .cancelJob])
+        #expect(blocker.target == "\(Self.jobID)/2")
         #expect(service.supports(.resolveBlocker(epicID: Self.epicID, action: .resumeAfterFix, instruction: "")))
         #expect(!service.supports(.resolveBlocker(epicID: Self.epicID, action: .fixWithInstruction, instruction: "")))
+        // 出していない操作（説明は epic ごとにはやめない）は送れない
+        #expect(!service.supports(.resolveBlocker(epicID: Self.epicID, action: .discard, instruction: "")))
 
-        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .resumeAfterFix, instruction: ""))
+        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .resumeAfterFix, instruction: "", target: blocker.target))
         let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
         #expect(envelope.kind == RetryJobIntent.kind)
         #expect(envelope.repo?.rawValue == Self.repo)
@@ -130,7 +133,7 @@ extension StateClientServiceTests {
             return
         }
 
-        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .cancelJob, instruction: ""))
+        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .cancelJob, instruction: "", target: before.blocker?.target))
         let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
         #expect(envelope.kind == GiveUpJobIntent.kind)
         #expect(envelope.targetVersion == "2")
@@ -156,7 +159,7 @@ extension StateClientServiceTests {
         #expect(blocker.category == .unexpected)
         #expect(blocker.actions == [.retry, .discard])
 
-        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .discard, instruction: ""))
+        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .discard, instruction: "", target: blocker.target))
         let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
         #expect(envelope.kind == GiveUpJobIntent.kind)
         let abandoned = try #require(try await service.fetchSnapshot().epic(Self.epicID))
@@ -193,7 +196,8 @@ extension StateClientServiceTests {
         #expect(blocked.blocker?.title == "ゴールの修正が止まっています")
         #expect(blocked.blocker?.actions == [.retry, .cancelJob])
 
-        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .cancelJob, instruction: ""))
+        let target = blocked.blocker?.target
+        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .cancelJob, instruction: "", target: target))
         #expect(try await service.fetchSnapshot().epic(Self.epicID)?.goal?.isRevising == false)
 
         // 司令塔がやめるを受け付けてジョブを取り消した後も、修正の途中とは出さない
@@ -201,6 +205,26 @@ extension StateClientServiceTests {
         let canceled = try #require(try await service.fetchSnapshot().epic(Self.epicID))
         #expect(canceled.goal?.isRevising == false)
         #expect(canceled.blocker == nil)
+    }
+
+    /// 送れなかった操作を送り直すまでに「対処が要ります」のジョブが替わっていたら、別のジョブには送らない
+    @Test
+    func staleBlockerActionIsNotSent() async throws {
+        let fixture = try makeService(files: Self.explainingEpic())
+        let service = fixture.service
+        let stale = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.blocker?.target)
+        // 説明のジョブが片付き、着手前の確認のジョブが人に渡された
+        await put(Self.job(kind: "explain", state: "canceled", input: Self.explainInput), at: Self.jobPath(), in: fixture.store)
+        let other = "01JCJ0B0000000000000000005"
+        let readiness = Self.job(kind: "checkReadiness", id: other, attempts: 1, input: #"{"round":1}"#)
+        await put(readiness, at: Self.jobPath(other), in: fixture.store)
+        #expect(try await service.fetchSnapshot().epic(Self.epicID)?.blocker?.target == "\(other)/1")
+
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .cancelJob, instruction: "", target: stale))
+        }
+        let sent = try await fixture.store.listAll("\(StatePath.intents)/\(fixture.key.keyID.rawValue)") ?? []
+        #expect(sent.isEmpty)
     }
 
     /// 人の対応を待つジョブが複数あれば、古く止まったものから出し、残りの件数を添える

@@ -24,7 +24,7 @@ extension DemoClientService {
 
     func applyOperationIntent(_ intent: HumanIntent) {
         switch intent {
-        case let .resolveBlocker(epicID, action, instruction):
+        case let .resolveBlocker(epicID, action, instruction, _):
             resolveBlocker(epicID: epicID, action: action, instruction: instruction)
 
         case let .handOver(epicID, macID):
