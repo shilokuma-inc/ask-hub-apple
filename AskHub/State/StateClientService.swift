@@ -15,6 +15,8 @@ final class StateClientService: ClientService {
     private let store: any StateStore
     private let key: DeviceSigningKey
     private let now: @Sendable () -> Date
+    /// 送るたびに使い回す（意図の番号を送った順に大きくする。司令塔は番号の順に処理するので、判断に答えてから承認する、などの順を守る）
+    private let sender: IntentSender
     private var index = StateIndex()
     /// 最後に読んだ、この端末が送った意図
     private var readSends: [SentDraft] = []
@@ -33,6 +35,7 @@ final class StateClientService: ClientService {
         self.store = store
         self.key = key
         self.now = now
+        sender = IntentSender(store: store, key: key, now: now)
     }
 
     func fetchSnapshot() async throws -> ClientSnapshot {
@@ -59,7 +62,6 @@ final class StateClientService: ClientService {
     @discardableResult
     func perform(_ intent: HumanIntent) async throws -> SendReceipt {
         let drafts = try StateIntentMapper(index: index).drafts(for: intent)
-        let sender = IntentSender(store: store, key: key, now: now)
         var receipt = SendReceipt()
         for draft in drafts {
             let reference: IntentReference
