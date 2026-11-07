@@ -136,6 +136,8 @@ enum WorkStep: Hashable {
 enum StepProgress: Hashable {
     /// Mac が引き受けるのを待っている
     case waitingForMac
+    /// 人の対応を待っていたところに、やり直しを送った。司令塔が受け取るのを待っている
+    case retryRequested
     /// 失敗の後、試し直す時刻を待っている
     case retrying(at: Date)
     /// Mac が進めている（試行の番号）
@@ -155,8 +157,8 @@ struct EpicTask: Identifiable, Hashable {
         case locked(reason: String)
         /// 進めている。段階が分からなければ（司令塔が次のジョブを作る前など）nil
         case inProgress(Phase?)
-        /// 人の対応を待って止まっている（「対処が要ります」）
-        case failed
+        /// 人の対応を待って止まっている（「対処が要ります」）。子 PR を作った後なら、その番号（直すときに PR を見られるように）
+        case failed(pullRequest: Int?)
         /// 子 PR の番号が分からないときは nil
         case done(pullRequest: Int?)
     }
@@ -180,16 +182,23 @@ struct EpicTask: Identifiable, Hashable {
     /// 子 PR。作る前と、分からないときは nil
     var pullRequest: Int? {
         switch state {
-        case .done(let number), .inProgress(.reviewing(let number)?), .inProgress(.fixing(let number, _, _)?):
+        case .done(let number), .failed(let number), .inProgress(.reviewing(let number)?), .inProgress(.fixing(let number, _, _)?):
             number
 
-        case .pending, .locked, .inProgress, .failed:
+        case .pending, .locked, .inProgress:
             nil
         }
     }
 
     var isInProgress: Bool {
         if case .inProgress = state {
+            return true
+        }
+        return false
+    }
+
+    var isFailed: Bool {
+        if case .failed = state {
             return true
         }
         return false

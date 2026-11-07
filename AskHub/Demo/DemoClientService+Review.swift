@@ -180,7 +180,7 @@ extension DemoClientService {
             state.updateEpic(epicID) { epic in
                 let attempt = (epic.blocker?.attempts.count ?? 0) + 1
                 epic.blocker = nil
-                if let failed = epic.tasks.firstIndex(where: { $0.state == .failed }) {
+                if let failed = epic.tasks.firstIndex(where: \.isFailed) {
                     epic.startTask(at: failed, attempt: attempt, date: date)
                 }
                 epic.log(instruction.isEmpty ? "もう一度直させました" : "指示を添えて直させました: \(instruction)", at: date)
@@ -194,7 +194,7 @@ extension DemoClientService {
         let number = nextPullRequest()
         schedule(after: 1.5) { [now] snapshot in
             snapshot.updateEpic(epicID) { epic in
-                guard let index = epic.tasks.firstIndex(where: { $0.isInProgress || $0.state == .failed }) else {
+                guard let index = epic.tasks.firstIndex(where: { $0.isInProgress || $0.isFailed }) else {
                     return
                 }
                 epic.tasks[index].state = .done(pullRequest: number)

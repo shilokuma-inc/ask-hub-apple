@@ -81,7 +81,8 @@ extension StateSnapshotBuilder {
                 return .inProgress(nil)
             }
             if [.waitingHuman, .failed].contains(job.state) {
-                return .failed
+                // 実装のジョブは子 PR を作る前に止まる。レビューと直しは、見ていた子 PR を残す
+                return .failed(pullRequest: job.pullRequest)
             }
             return .inProgress(phase(of: job, jobs: taskJobs, finished: job.state == .succeeded))
         }
@@ -120,15 +121,21 @@ extension StateSnapshotBuilder {
 
     // MARK: 機械がしていること
 
-    private func activity(of job: JobFile, jobs: [JobFile], attempt: AttemptFile?) -> EpicActivity? {
-        let step: WorkStep
+    /// ジョブが表す段取り。段取りに出さない種類のジョブなら nil
+    func step(of job: JobFile, jobs: [JobFile]) -> WorkStep? {
         if job.kind == .prepareWorkspace {
-            step = .prepareWorkspace
-        } else {
-            guard let task = job.task, let phase = phase(of: job, jobs: jobs.filter { $0.task == task }) else {
-                return nil
-            }
-            step = .task(task, phase)
+            return .prepareWorkspace
+        }
+        guard Self.stepKinds.contains(job.kind), let task = job.task,
+              let phase = phase(of: job, jobs: jobs.filter { $0.task == task && $0.state != .canceled }) else {
+            return nil
+        }
+        return .task(task, phase)
+    }
+
+    private func activity(of job: JobFile, jobs: [JobFile], attempt: AttemptFile?) -> EpicActivity? {
+        guard let step = step(of: job, jobs: jobs) else {
+            return nil
         }
         // 実行中の試行は、司令塔が当てた番号（`attempts`）のもの
         let running = attempt.flatMap { $0.number == job.attempts && $0.outcome == .running ? $0 : nil }

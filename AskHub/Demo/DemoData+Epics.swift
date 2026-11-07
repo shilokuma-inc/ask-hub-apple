@@ -23,7 +23,7 @@ extension DemoData {
             tasks: [
                 EpicTask(id: "rain-t1", number: 1, title: "下書きのモデル", state: .done(pullRequest: 41)),
                 EpicTask(id: "rain-t2", number: 2, title: "一覧に下書きを出す", state: .done(pullRequest: 42)),
-                EpicTask(id: "rain-t3", number: 3, title: "下書きの保存", state: .failed),
+                EpicTask(id: "rain-t3", number: 3, title: "下書きの保存", state: .failed(pullRequest: nil)),
                 EpicTask(id: "rain-t4", number: 4, title: "通信の切れ目を検知する", state: .locked(reason: "App Group の登録（人がする作業）待ち")),
                 EpicTask(id: "rain-t5", number: 5, title: "通信が戻ったら送る", state: .pending),
                 EpicTask(id: "rain-t6", number: 6, title: "下書きを消す操作", state: .pending),

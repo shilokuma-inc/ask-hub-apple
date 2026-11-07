@@ -221,6 +221,24 @@ extension StateClientServiceTests {
         #expect(attempts[ULID(rawValue: Self.reviewSecondID)!] == nil)
     }
 
+    /// 子 PR のレビューが人に渡されたら、止まったタスクにも子 PR の番号を残す
+    @Test
+    func blockedReviewKeepsPullRequest() async throws {
+        let files = Self.runningEpic(extra: Self.job(
+            Self.reviewSecondID,
+            kind: "reviewTask",
+            task: "t2",
+            state: "waitingHuman",
+            dependsOn: [Self.implementSecondID],
+            input: Self.pullRequest(42),
+            at: "07:20"
+        ))
+        let epic = try #require(try await makeService(files: files).service.fetchSnapshot().epic(Self.epicID))
+        #expect(epic.tasks[1].state == .failed(pullRequest: 42))
+        #expect(epic.tasks[1].pullRequest == 42)
+        #expect(epic.blocker?.title == "タスク 2「一覧に出す」の子 PR のレビューが止まっています")
+    }
+
     /// 人に渡されたタスクのジョブは、タスクを止まっていると出し、「対処が要ります」にタスクの名前で出す
     @Test
     func waitingTaskJobIsShownAsBlocker() async throws {
@@ -237,11 +255,23 @@ extension StateClientServiceTests {
         files.merge(waiting) { _, new in new }
         files.merge(Self.attempt(Self.implementSecondID, number: 1, outcome: "failed")) { _, new in new }
         let epic = try #require(try await makeService(files: files).service.fetchSnapshot().epic(Self.epicID))
-        #expect(epic.tasks[1].state == .failed)
+        #expect(epic.tasks[1].state == .failed(pullRequest: nil))
         #expect(epic.activities.isEmpty)
         #expect(epic.blocker?.title == "タスク 2「一覧に出す」の実装が止まっています")
         #expect(epic.blocker?.summary == "ビルドが通らない")
         #expect(epic.blocker?.actions == [.retry])
+
+        // やり直しを送ったら、司令塔が受け取るまでは止まったとは出さず、受け取り待ちを「いま」に出す
+        let fixture = try makeService(files: files)
+        let blocked = try #require(try await fixture.service.fetchSnapshot().epic(Self.epicID)?.blocker)
+        try await fixture.service.perform(.resolveBlocker(epicID: Self.epicID, action: .retry, instruction: "", target: blocked.target))
+        let snapshot = try await fixture.service.fetchSnapshot()
+        let retrying = try #require(snapshot.epic(Self.epicID))
+        #expect(retrying.blocker == nil)
+        #expect(retrying.tasks[1].state == .inProgress(.implementing))
+        #expect(retrying.activities.map(\.kind) == [.step(.task("t2", .implementing), .retryRequested)])
+        let line = EpicStatus.lines(for: retrying, in: snapshot, now: now).first?.text
+        #expect(line == "タスク 2/3「一覧に出す」の実装のやり直しを送りました。司令塔が受け取るのを待っています")
     }
 
     /// Mac が引き受ける前のジョブは引き受けを待っていると出し、試し直しの時刻を待つジョブはその時刻を出す

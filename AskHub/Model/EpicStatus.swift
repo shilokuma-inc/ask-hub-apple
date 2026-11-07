@@ -180,6 +180,9 @@ enum EpicStatus {
 
         case .retrying(let date):
             return ("\(name(of: step, epic: epic))を \(RelativeTime.clock(date)) に試し直します", "clock.arrow.circlepath")
+
+        case .retryRequested:
+            return ("\(name(of: step, epic: epic))のやり直しを送りました。司令塔が受け取るのを待っています", "paperplane")
         }
     }
 
