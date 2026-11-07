@@ -151,7 +151,7 @@ extension ClaudeJobRunnerTests {
         // Claude の結果を書く処理と人の意図の処理は、同じ排他を使う（読み直してから書くまでに答え直しが割り込まない）
         let loop = loop(InMemoryStateStore(), claude: ScriptedRunner([]))
         let worker = loop.worker(IntentVerifier(publicKeys: [:]))
-        #expect(worker.runner.context.lock === loop.context.lock)
+        #expect((worker.runner as? ClaudeJobRunner)?.context.lock === loop.context.lock)
         #expect(worker.recorder.mac == Self.commander)
     }
 

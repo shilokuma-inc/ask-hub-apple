@@ -4,22 +4,52 @@ import AskHubProtocol
 import AskHubStateStore
 import Foundation
 
-/// 常時オンの Mac のワーカーとして、自分宛ての Claude のジョブを 1 つ引き受けて実行し、試行に結果を書く
-/// （`docs/renewal/architecture.md` の「ジョブと試行」）。
+/// ジョブを 1 回実行した結果（試行に書くもの）
+public struct JobResult: Equatable, Sendable {
+    /// 失敗のときだけ。成功・結果を捨てたとき（ジョブとしては成功）は nil
+    public var failure: AttemptFailure?
+    /// 外部の id（PR の番号・ブランチの名前・コミットなど）。やり直す前に、すでにできているかを確かめるのに使う
+    public var outputs: AttemptFile.Outputs?
+    /// Claude を呼んだときの記録
+    public var claude: AttemptFile.Claude?
+
+    public init(failure: AttemptFailure? = nil, outputs: AttemptFile.Outputs? = nil, claude: AttemptFile.Claude? = nil) {
+        self.failure = failure
+        self.outputs = outputs
+        self.claude = claude
+    }
+}
+
+/// ジョブを 1 回実行するもの（Claude のジョブ・作業場所の用意など、種類ごとに作る）
+public protocol JobRunning: Sendable {
+    /// 実行して、試行に書く結果を返す。状態リポジトリに書けないなど、やり直せば済む失敗は投げる（試行の失敗として書く）
+    func execute(_ job: JobFile) async throws(CommanderError) -> JobResult
+}
+
+/// ワーカーとして、自分宛てのジョブを 1 つ引き受けて実行し、試行に結果を書く（`docs/renewal/architecture.md` の「ジョブと試行」）。
+/// 司令塔（常時オンの Mac）とワーカー（`askhub-worker`）で使う。
 ///
-/// 試行を「実行中」で作ってから Claude を呼び、終わるまで生きている印を書き続ける。ジョブの状態は書かない
+/// 試行を「実行中」で作ってから実行し、終わるまで生きている印を書き続ける。ジョブの状態は書かない
 /// （司令塔が試行を読んで決める）
-public struct ClaudeJobWorker: Sendable {
-    public var runner: ClaudeJobRunner
+public struct JobWorker: Sendable {
+    public var runner: any JobRunning
     public var recorder: AttemptRecorder
     public var timing: JobTiming
     public var sleeper: any Sleeper
+    public var now: @Sendable () -> Date
 
-    public init(runner: ClaudeJobRunner, recorder: AttemptRecorder, timing: JobTiming = JobTiming(), sleeper: any Sleeper = TaskSleeper()) {
+    public init(
+        runner: any JobRunning,
+        recorder: AttemptRecorder,
+        timing: JobTiming = JobTiming(),
+        sleeper: any Sleeper = TaskSleeper(),
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.runner = runner
         self.recorder = recorder
         self.timing = timing
         self.sleeper = sleeper
+        self.now = now
     }
 
     /// ジョブを引き受けて実行し、終えた試行を返す。ほかで引き受けていて引き受けられなければ nil
@@ -35,31 +65,20 @@ public struct ClaudeJobWorker: Sendable {
         let beating = Task { [recorder, timing, sleeper] in
             await Self.beat(attempt, of: job, recorder: recorder, interval: timing.heartbeatInterval, sleeper: sleeper)
         }
-        let result: Result<ClaudeJobOutcome, CommanderError>
+        let result: JobResult
         do {
-            result = .success(try await runner.run(job))
+            result = try await runner.execute(job)
         } catch {
-            result = .failure(error)
+            result = JobResult(failure: error.attemptFailure(now: now()))
         }
         // 書いている途中の生きている印が終わるのを待ってから、終わりを書く（同じ試行のファイルへの書き込みをぶつけない）
         beating.cancel()
         await beating.value
-        let (failure, session) = Self.record(of: result, now: runner.context.now())
         do {
-            return try await recorder.finish(attempt, of: job, failure: failure, claude: session?.attemptRecord)
+            return try await recorder.finish(attempt, of: job, failure: result.failure, outputs: result.outputs, claude: result.claude)
         } catch {
             // 終わりを書けなければ、試行は実行中のまま残り、司令塔が時間切れとして扱う
             throw .files(error)
-        }
-    }
-
-    /// 試行に書く失敗と Claude の記録。結果を捨てたときも、ジョブとしては成功
-    static func record(of result: Result<ClaudeJobOutcome, CommanderError>, now: Date) -> (AttemptFailure?, ClaudeSession?) {
-        switch result {
-        case let .success(.written(session)): (nil, session)
-        case let .success(.discarded(_, session)): (nil, session)
-        case let .success(.failed(failure, session)): (failure, session)
-        case let .failure(error): (error.attemptFailure(now: now), nil)
         }
     }
 
@@ -81,6 +100,17 @@ public struct ClaudeJobWorker: Sendable {
             guard !Task.isCancelled else { return }
             // 書けなくても続ける（次の間隔でまた書く。続けて書けなければ、司令塔が止まったとみなす）
             if let next = try? await recorder.beat(current, of: job) { current = next }
+        }
+    }
+}
+
+extension ClaudeJobRunner: JobRunning {
+    /// 試行に書く結果。結果を捨てたときも、ジョブとしては成功
+    public func execute(_ job: JobFile) async throws(CommanderError) -> JobResult {
+        switch try await run(job) {
+        case let .written(session): JobResult(claude: session.attemptRecord)
+        case let .discarded(_, session): JobResult(claude: session?.attemptRecord)
+        case let .failed(failure, session): JobResult(failure: failure, claude: session?.attemptRecord)
         }
     }
 }

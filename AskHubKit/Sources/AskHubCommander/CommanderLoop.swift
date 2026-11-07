@@ -133,10 +133,11 @@ public actor CommanderLoop {
     }
 
     /// ジョブを動かすワーカー。人の意図の処理と同じ `context`（同じ排他）で結果を書くよう、ループの中で作る
-    nonisolated func worker(_ verifier: IntentVerifier) -> ClaudeJobWorker {
-        ClaudeJobWorker(
+    nonisolated func worker(_ verifier: IntentVerifier) -> JobWorker {
+        JobWorker(
             runner: ClaudeJobRunner(context: context, client: client, workspace: workspace, verifier: verifier),
-            recorder: AttemptRecorder(files: context.files, mac: context.mac, now: context.now)
+            recorder: AttemptRecorder(files: context.files, mac: context.mac, now: context.now),
+            now: context.now
         )
     }
 
@@ -174,7 +175,7 @@ public actor CommanderLoop {
         return JobPicker.pick(from: candidates, for: context.mac, capacity: capacity, now: context.now())
     }
 
-    private func start(_ job: JobFile, with worker: ClaudeJobWorker) {
+    private func start(_ job: JobFile, with worker: JobWorker) {
         let log = log
         inFlight[job.id] = Task { [weak self] in
             do {
