@@ -107,7 +107,8 @@ private struct EpicStageSections: View {
     var body: some View {
         if !epic.questions.isEmpty {
             CardSection("質問 · \(epic.questions.filter(\.isSettled).count) / \(epic.questions.count) が決まりました") {
-                if !epic.answerableQuestions.isEmpty, epic.stage == .questions {
+                // やめた epic の質問には答えない（あなたの番・まとめて答える札と同じ）
+                if !epic.answerableQuestions.isEmpty, epic.stage == .questions, epic.isActive {
                     NavigationLink(value: AppRoute.deck(.questions(epic.id))) {
                         Label("質問に答える（\(epic.answerableQuestions.count)）", systemImage: "rectangle.stack")
                             .rowFont(.title)
