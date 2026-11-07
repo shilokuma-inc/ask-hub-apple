@@ -56,15 +56,21 @@ struct SimulatorCatalog: Decodable, Equatable {
         } else {
             matching = candidates
         }
-        guard let runtime = matching.max(by: { Self.compare($0.version, $1.version) == .orderedAscending }) else {
+        guard let newest = matching.max(by: { Self.compare($0.version, $1.version) == .orderedAscending }) else {
             let wanted = destination.osVersion ?? "SDK \(sdkVersion ?? "?") 以下"
             throw SimulatorError("\(destination.platform.rawValue) \(wanted) のランタイムが入っていない")
         }
-        let wanted = destination.deviceType
-        guard let deviceType = (runtime.supportedDeviceTypes ?? []).first(where: { $0.name == wanted || $0.identifier == wanted }) else {
-            throw SimulatorError("\(destination.platform.rawValue) \(runtime.version) のランタイムに機種「\(wanted)」が無い")
+        // 機種に対応するランタイムのうち最新を選ぶ。特定の機種だけのランタイム（iOS 27.1（24A94425）は iPhone Duo だけ）が
+        // いちばん新しいと、ほかの機種を作れないため
+        let supported = matching.compactMap { runtime in deviceType(destination.deviceType, in: runtime).map { (runtime, $0) } }
+        guard let chosen = supported.max(by: { Self.compare($0.0.version, $1.0.version) == .orderedAscending }) else {
+            throw SimulatorError("\(destination.platform.rawValue) \(newest.version) のランタイムに機種「\(destination.deviceType)」が無い")
         }
-        return (runtime, deviceType)
+        return chosen
+    }
+
+    private func deviceType(_ wanted: String, in runtime: Runtime) -> DeviceType? {
+        (runtime.supportedDeviceTypes ?? []).first { $0.name == wanted || $0.identifier == wanted }
     }
 
     /// 版（`26.5`・`26.5.1`）を数として比べる。足りない桁は 0 とみなす

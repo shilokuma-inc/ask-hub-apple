@@ -75,6 +75,16 @@ struct SimulatorPoolTests {
         #expect(runner.arguments.contains(["--sdk", "xrsimulator", "--show-sdk-version"]))
     }
 
+    /// SDK と同じ版のランタイムが特定の機種だけのもの（iOS 27.1 は iPhone Duo だけ、など）でも、機種に対応する最新を選ぶ
+    @Test func skipsNewerRuntimesThatDoNotSupportTheDeviceType() async throws {
+        let (pool, _) = pool(FakeSimctl(sdkVersion: "27.1"))
+        let iPhone17 = try await pool.prepare(slot: 0, for: Self.iPhone)
+        #expect(iPhone17.runtime == FakeSimctl.iOS270)
+        #expect(iPhone17.name == "askhub-worker-0-iPhone-17-Pro-iOS-27.0")
+        let iPhone18 = try await pool.prepare(slot: 1, for: SimulatorDestination(platform: .iOS, deviceType: "iPhone 18 Pro"))
+        #expect(iPhone18.runtime == FakeSimctl.iOS271)
+    }
+
     @Test func reportsMissingRuntimesAndDeviceTypes() async {
         let (pool, _) = pool(FakeSimctl())
         await #expect(throws: SimulatorError("iOS 25.0 のランタイムが入っていない")) {
