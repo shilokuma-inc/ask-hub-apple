@@ -244,8 +244,18 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 | `captureScreenshots` | epic の Mac | 見える仮決めの Before（base）と After（作業ブランチ）を、デモモードのデータで撮る |
 | `openFinalPullRequest` | 常時オンの Mac | 作業ブランチから base への最終 PR を出す。本文には、判断のカード・実機で確かめてほしいこと・人がした作業を載せる |
 | `fixFinalPullRequest` | epic の Mac（オンラインのとき）・常時オンの Mac | 最終 PR の CI の失敗・必須の指摘（CodeRabbit を含む）・コンフリクトを直す。作業場所と DerivedData が温まっている epic の Mac で行い、オフラインのときだけ常時オンの Mac で行う（ユーザーの決定） |
+| `reviewFinalPullRequest` | 常時オンの Mac | 最終 PR の待つチェック（`build.finalChecks`）と、信用するレビューの書き手（`build.trustedReviewers`。CodeRabbit など）のレビューを待つ。CodeRabbit が上限で見送ったら待たない（ユーザーの決定）。そのうえで、読むだけのレビュー役の Claude が epic 全体の差分を読み、必須の指摘と、マージの規則の材料（セキュリティのリスク・テストを弱めたか・データの削除や移行）を返す。判定は `ready`（通った）・`fixCI`・`fixReview` |
 | `mergeFinalPullRequest` | 常時オンの Mac | マージの規則で自動なら、司令塔がマージする。手動なら、人の承認（`approveMerge`。head に結びつく）を受けてマージする |
 | `cleanUp` | epic の Mac | マージの後、作業場所・Simulator の枠・DerivedData を片付ける |
+
+- 流れ: すべてのタスクが `done` → `verifyBeforeFinal` → `classifyDecisions` → `captureScreenshots`（撮影の設定があるときだけ）→ `openFinalPullRequest` → `reviewFinalPullRequest` → 判定が `fixCI`・`fixReview` なら `fixFinalPullRequest` で直して `reviewFinalPullRequest` に戻る（3 回まで）→ `ready` で、マージの規則に当てて自動なら `mergeFinalPullRequest`、手動なら人の判断のカードの答えと承認を待つ → `cleanUp`
+- 人が判断のカードで「直してほしい」「別案にする」を選ぶか、最終 PR に指示（`instructFinal`）を出したら、`fixFinalPullRequest` に人の文を付けて直させ、`reviewFinalPullRequest` からやり直す（見える仮決めは、スクショを撮り直して再び出す）
+- 承認は、その時点の head に結びつく。直しで head が変わったら、承認は無効になり、承認し直してもらう
+
+### スクショ
+
+- 撮るのは、ビルドの設定に撮影の方法（`build.screenshots`。デモのデータで画面を開いて撮る UI テストなど）があるリポジトリだけ（ユーザーの決定）。無いリポジトリでは撮らず、判断のカードに「スクショ無し（このリポジトリには撮影の設定が無い）」と出す
+- 撮影の方法の形と、各リポジトリへの入れ方は、テンプレートの配布（段階 5）で決める。最初の版は「無い」ときの扱いだけを作る
 
 ### 出す前に
 
