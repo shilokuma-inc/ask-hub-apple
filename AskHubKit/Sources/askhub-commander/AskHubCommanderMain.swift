@@ -18,10 +18,10 @@ enum AskHubCommanderMain {
         case "run": await run()
         case "setup": setup(arguments)
         case "apns": apns(arguments)
-        case "git-credential": gitCredential(arguments)
-        case "launch-agent": launchAgent()
+        case "git-credential": commandLine.gitCredential(arguments)
+        case "launch-agent": commandLine.launchAgent()
         case "check": check()
-        default: fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
+        default: commandLine.fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
         }
     }
 
@@ -35,23 +35,16 @@ enum AskHubCommanderMain {
           check          設定と Keychain の様子を出す
         """
 
-    static let paths = CommanderPaths()
+    static let commandLine = MachineCommandLine(role: .commander, executable: MachineCommandLine.currentExecutable)
 
-    /// この実行ファイルの場所（シンボリックリンクを辿った先）
-    static var executable: URL {
-        (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
-    }
+    static var paths: MachinePaths { commandLine.paths }
 
-    /// launchd の下では標準出力がファイルになり print はバッファに残るため、書いてすぐ出す
     @Sendable
     static func log(_ message: String) {
-        let time = Date().formatted(.iso8601)
-        FileHandle.standardOutput.write(Data("[\(time)] \(message)\n".utf8))
+        MachineCommandLine.log(message)
     }
 
     static func fail(_ message: String, status: Int32) -> Never {
-        FileHandle.standardError.write(Data("askhub-commander: \(message)\n".utf8))
-        if status != EX_OK { log("終了します（終了コード \(status)）: \(message)") }
-        exit(status)
+        commandLine.fail(message, status: status)
     }
 }

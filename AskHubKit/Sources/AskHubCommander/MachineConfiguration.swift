@@ -1,27 +1,55 @@
 import AskHubProtocol
 import Foundation
 
-/// 司令塔の設定（`setup` で書き、`run` で読む）。秘密（トークン）は含めない（Keychain に置く）
-public struct CommanderConfiguration: Codable, Equatable, Sendable {
+/// 司令塔とワーカーの役割。どちらも同じ部品（設定・Keychain・作業場所・ジョブの実行）で動き、置き場所と名前だけを分ける
+public enum MachineRole: String, CaseIterable, Sendable {
+    /// 常時オンの Mac の司令塔（ワーカーの仕事も行う）
+    case commander
+    /// 開始のときに人が選んだ Mac のワーカー
+    case worker
+
+    /// 実行ファイルの名前
+    public var program: String { "askhub-\(rawValue)" }
+
+    /// Keychain の項目のサービス名。役割ごとに分ける
+    public var keychainService: String { "jp.shilokuma.AskHub.\(rawValue)" }
+
+    /// LaunchAgent のラベル
+    public var launchAgentLabel: String { "jp.shilokuma.askhub.\(rawValue)" }
+
+    /// この役割で動かせる Mac の種類。司令塔は常時オンの Mac、ワーカーは常駐できる Mac とできない Mac
+    public var kinds: [MacKind] {
+        switch self {
+        case .commander: [.alwaysOn]
+        case .worker: [.resident, .manual]
+        }
+    }
+}
+
+/// 司令塔とワーカーの設定（`setup` で書き、`run` で読む）。秘密（トークン）は含めない（Keychain に置く）
+public struct MachineConfiguration: Codable, Equatable, Sendable {
     /// 状態リポジトリ
     public var stateRepository: RepositoryFullName
     /// 状態リポジトリのブランチ。nil なら既定のブランチ
     public var stateBranch: String?
     /// この Mac の名前（`macs/<mac>.json`・ジョブの担当）
     public var mac: MacName
+    /// この Mac の種類（生きている印に書く）。司令塔は常時オン、ワーカーは常駐できるか・できないか
+    public var kind: MacKind
     /// 版を固定した `claude` の実行ファイル（絶対パス）
     public var claude: String
     /// 公開鍵を結びつけてよい GitHub のアカウント（公開鍵の記録を確かめるときに使う）
     public var keyAccounts: [String]
     /// この Mac で同時に動かす数
     public var capacity: MacFile.Capacity
-    /// 進行を止めるものを APNs で知らせるための設定（`askhub-commander apns` で足す）。無ければ知らせない
+    /// 進行を止めるものを APNs で知らせるための設定（司令塔だけ。`askhub-commander apns` で足す）。無ければ知らせない
     public var apns: APNsConfiguration?
 
     public init(
         stateRepository: RepositoryFullName,
         stateBranch: String? = nil,
         mac: MacName,
+        kind: MacKind = .alwaysOn,
         claude: String,
         keyAccounts: [String],
         capacity: MacFile.Capacity = .init(claude: 2, build: 0),
@@ -30,6 +58,7 @@ public struct CommanderConfiguration: Codable, Equatable, Sendable {
         self.stateRepository = stateRepository
         self.stateBranch = stateBranch
         self.mac = mac
+        self.kind = kind
         self.claude = claude
         self.keyAccounts = keyAccounts
         self.capacity = capacity
@@ -47,10 +76,13 @@ public struct CommanderConfiguration: Codable, Equatable, Sendable {
         return problems
     }
 
-    public static func load(from url: URL) throws -> Self {
+    /// 設定を読む。`role` で動かせない種類の Mac の設定（ワーカーの設定を司令塔で読むなど）は断る
+    public static func load(from url: URL, role: MachineRole) throws -> Self {
         let configuration = try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
-        guard configuration.problems.isEmpty else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey: configuration.problems.joined(separator: "、")])
+        var problems = configuration.problems
+        if !role.kinds.contains(configuration.kind) { problems.append("\(role.program) では \(configuration.kind.rawValue) の Mac を動かせない") }
+        guard problems.isEmpty else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey: problems.joined(separator: "、")])
         }
         return configuration
     }
@@ -63,27 +95,29 @@ public struct CommanderConfiguration: Codable, Equatable, Sendable {
     }
 }
 
-/// 司令塔が使う置き場所。作業ファイルは TCC の保護の外（`~/Library/Application Support/` の下）に置く
-public struct CommanderPaths: Sendable {
-    /// `~/Library/Application Support/AskHub/commander`
+/// 司令塔とワーカーが使う置き場所。作業ファイルは TCC の保護の外（`~/Library/Application Support/` の下）に置く
+public struct MachinePaths: Sendable {
+    public var role: MachineRole
+    /// `~/Library/Application Support/AskHub/<役割>`
     public var root: URL
     /// `~/Library/Logs/AskHub`
     public var logs: URL
 
-    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
-        root = home.appendingPathComponent("Library/Application Support/AskHub/commander", isDirectory: true)
+    public init(role: MachineRole, home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+        self.role = role
+        root = home.appendingPathComponent("Library/Application Support/AskHub/\(role.rawValue)", isDirectory: true)
         logs = home.appendingPathComponent("Library/Logs/AskHub", isDirectory: true)
     }
 
     public var configuration: URL { root.appendingPathComponent("config.json") }
-    /// 対象のリポジトリの写し
+    /// 対象のリポジトリの写しと、epic の作業場所
     public var work: URL { root.appendingPathComponent("work", isDirectory: true) }
     /// Claude 専用の設定フォルダ（`CLAUDE_CONFIG_DIR`）。人の `~/.claude` を効かせない
     public var claudeConfig: URL { root.appendingPathComponent("claude/config", isDirectory: true) }
     public var claudeHome: URL { root.appendingPathComponent("claude/home", isDirectory: true) }
     public var claudeTemporary: URL { root.appendingPathComponent("claude/tmp", isDirectory: true) }
-    public var log: URL { logs.appendingPathComponent("commander.log") }
+    public var log: URL { logs.appendingPathComponent("\(role.rawValue).log") }
 
-    /// Keychain の項目のサービス名
-    public static let keychainService = "jp.shilokuma.AskHub.commander"
+    /// `run` の前に作っておくフォルダ
+    public var directories: [URL] { [work, claudeConfig, claudeHome, claudeTemporary, logs] }
 }
