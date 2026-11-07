@@ -387,6 +387,9 @@
   （`a[1].txt` を渡すと「filename not matched」）、名前の位置の `-d` などもオプションとして読む。`[` `]` `*` `?` と先頭の `-` の前に `\` を付けると一致する。macOS の `zip` は UTF-8 の名前でも汎用フラグの bit 11 を立てない
 - `claude -p --output-format json --json-schema '<schema>'` の結果では、決めた形の値が `structured_output` に入り（`result` は同じ内容の文字列）、実際に使われたモデルは `modelUsage` のキーで分かる。
   `--resume <session_id>` で再開した呼び出しの `total_cost_usd` と `modelUsage` の数は、その会話全体の累計（再開するたびに足すと二重に数える）。最後の結果の値を使う（2026-11-04、claude 2.1.317 で確かめた）
+- 会社の Claude（Team・Enterprise。社用 MacBook）では、組織の管理の設定で MCP サーバーが止められていることがある。`claude -p --strict-mcp-config --mcp-config …` でも、stderr に「MCP server blocked by enterprise policy」と出て、道具が読み込まれない。手元に管理の設定のファイルは無く（サーバーから配られる）、`--restricted` でも外せない。ワーカーに Claude からビルドやテストを頼ませる仕組みは、MCP の道具ではなく、決まった形の報告で終わって `--resume` で結果を渡す往復にする（2026-11-07、段階 3 の設計）
+- `claude -p --restricted --tools "Read,Edit,Write,Glob,Grep" --permission-mode dontAsk --settings '{"permissions":{"allow":["Read","Edit","Write","Glob","Grep"]}}'` で、Claude は作業ディレクトリのファイルを書き換えられる（作業ディレクトリの外は `--restricted` で書けない）。`--json-schema` の報告で終わらせ、`--resume <session_id>` に同じフラグを付けて続きを頼むと、同じ会話（同じ `session_id`）で続く（2026-11-07、claude 2.1.319）
+- macOS には `timeout` コマンドが無い（GNU coreutils の）。シェルで時間の上限を付けるときは、Bash の道具の timeout か、プロセスを裏で起こして待つ形にする（2026-11-07）
 
 ## SwiftUI
 

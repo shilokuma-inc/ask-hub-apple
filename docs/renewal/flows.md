@@ -166,7 +166,39 @@
 - タスクの区切りごとに作業ブランチを push しておき、ほかの Mac へ引き継ぐときは最後に push したところから続ける
 - ほかの epic が develop に入ったら、タスクの区切りで develop を取り込む
 - Claude が報告した仮決めは、「見える（挙動・仕様・見た目に関わる）」か「内部の細部」かの区分つきで記録する。区分は、実装した Claude ではなく、読むだけのレビュー役の Claude が決める。View・文言・アセット・Info.plist・entitlements の差分や、デモモードのスクショの差があれば「見える」とみなす
-- 子 PR のレビューのやり方（読むだけのレビュー役の Claude を何回呼ぶかなど）は、実装の段階で決める
+- 子 PR のレビューは、読むだけのレビュー役の Claude を 1 回呼ぶ。必須の指摘と、仮決めの区分（見える・内部）を返す。CodeRabbit は上限によく当たるので、子 PR では待たず、最終 PR でだけ使う（ユーザーの決定）
+
+### 作業ブランチと子 PR
+
+- 開始すると、司令塔が epic の Mac に作業場所の用意（`prepareWorkspace`）を作る。ワーカーは clone を用意し、`repo.json` の `build.baseBranch`（既定は develop）の最新から作業ブランチ `askhub/<epic の id>` を作って push する。epic の作業場所（worktree）と Simulator の枠も用意する。作業ブランチの名前は `epic.json` の `branch` に書く
+- タスクごとに、作業ブランチから子ブランチ `askhub/<epic の id>/<タスクの id>` を作る。子 PR は作業ブランチに、最終 PR は作業ブランチから base に向ける
+- タスクは、`dependsOn`（ほかのタスクと人がする作業）がすべて終わったものを、ゴールの並びの順に 1 つずつ進める。同じ epic の中でタスクを並べて動かさない
+
+### タスクの流れ
+
+| ジョブ | 動く Mac | すること |
+| --- | --- | --- |
+| `implementTask` | epic の Mac | Claude に実装させる（下の「Claude にビルドとテストを頼ませる」）。終わったら、ワーカーが commit・push して子 PR を作る。同じ head の開いた PR があれば作らない（作った後、記録する前に落ちても二重に作らない） |
+| `reviewTask` | epic の Mac | 子 PR で待つチェック（`repo.json` の `build.childChecks`）を待つ。通ったら、レビュー役の Claude が差分を読む。必須の指摘が無ければ、見た head を固定してマージし、タスクを `done` にして次のタスクへ進む |
+| `fixTask` | epic の Mac | CI の失敗（ログの抜粋）かレビューの必須の指摘を付けて、実装の会話を再開して直させ、push する。直しは失敗の扱いどおり 3 回まで。使い切ったら人へ渡す |
+| `rerunChecks` | 常時オンの Mac | ランナー不足は間隔を広げて、揺らぎは 1 回だけ、落ちたジョブを流し直す（コードに触れない） |
+| `integrateDevelop` | epic の Mac | タスクの区切りで base が進んでいたら、作業ブランチに取り込む。コンフリクトは Claude に解消させる（3 回まで） |
+
+- Claude が報告した仮決め・見つけた知見・「質問が必要」は、試行の `outputs` に書く。司令塔がそれを `decisions.json`・知見を足す PR・質問に写す
+- 子 PR では、macOS のランナーを節約するため、UI テストを含まないチェックだけを待てるようにする（`build.childChecks`）。最終 PR の前に、ワーカーが全部の検証を通す
+
+### Claude にビルドとテストを頼ませる
+
+- Claude Code の sandbox の中ではビルドとテストが動かない。そこで Claude は、「ビルドしてほしい（`build`）」「軽いテスト（`testLight`）」「全部のテスト（`testFull`）」を決まった形の報告で返して、いったん終わる。ワーカーが sandbox の外で決まったコマンドを流し、結果の要約を付けて同じ会話を再開する（`--resume`）。往復は、1 つのタスクで上限（20 回）まで
+- MCP の道具で頼ませる形は採らない。会社の Claude（Team・Enterprise）では、組織の管理の設定で MCP サーバーが止められていることがある。2026-11-07 に社用 MacBook で確かめ、`--restricted` でも外せなかった。これでは、会社の MacBook のワーカーで使えないため
+- Claude に渡す道具は、Read・Edit・Write・Glob・Grep だけにする。Bash は渡さない。道具は `--restricted --tools` で決め、`--settings` の許可の一覧にも同じものを入れる。`--restricted` で、ファイルの読み書きは作業場所（epic の worktree）に限られる
+- 報告の形（JSON Schema）は次のとおり
+  - `outcome`: `done`・`needsBuild`・`needsQuestion`・`blocked`
+  - `buildKind`
+  - `summary`
+  - `decisions`: 仮決め（`what`・`why`・`alternatives`）。区分はレビュー役が決める
+  - `learnings`: 見つけた知見
+  - `question`: `needsQuestion` のとき
 
 ### 人がする作業
 
@@ -179,6 +211,18 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 - API キーなどの秘密の値は、クライアントに貼るとそのまま GitHub の Secrets に暗号化して入れる。クライアントにもリポジトリにも残さない
 
 ## 最終 PR
+
+### 最終 PR までの段取り
+
+| ジョブ | 動く Mac | すること |
+| --- | --- | --- |
+| `verifyBeforeFinal` | epic の Mac | すべてのタスクが `done` になったら、最終 PR で流すのと同じ検証（`build.finalTests`。UI テストを含む）を通す |
+| `classifyDecisions` | 常時オンの Mac | レビュー役の Claude が epic 全体の仮決めを見直し、見える・内部を決めて `decisions.json` に書く |
+| `captureScreenshots` | epic の Mac | 見える仮決めの Before（base）と After（作業ブランチ）を、デモモードのデータで撮る |
+| `openFinalPullRequest` | 常時オンの Mac | 作業ブランチから base への最終 PR を出す。本文には、判断のカード・実機で確かめてほしいこと・人がした作業を載せる |
+| `fixFinalPullRequest` | epic の Mac（オンラインのとき）・常時オンの Mac | 最終 PR の CI の失敗・必須の指摘（CodeRabbit を含む）・コンフリクトを直す。作業場所と DerivedData が温まっている epic の Mac で行い、オフラインのときだけ常時オンの Mac で行う（ユーザーの決定） |
+| `mergeFinalPullRequest` | 常時オンの Mac | マージの規則で自動なら、司令塔がマージする。手動なら、人の承認（`approveMerge`。head に結びつく）を受けてマージする |
+| `cleanUp` | epic の Mac | マージの後、作業場所・Simulator の枠・DerivedData を片付ける |
 
 ### 出す前に
 
