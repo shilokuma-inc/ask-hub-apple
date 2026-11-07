@@ -246,6 +246,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `notApplied` は、最後のゴールの修正で反映しなかった人の指示とその理由（決まったことを変える指示など。回答を変えて直してもらう）
 - ゴールを直すたびに `version` を上げる。「開始」の人の意図は、確かめたゴールの `version` を持つ
 - タスクの `state` は `pending`・`locked`（人がする作業の待ち）・`running`・`done`。`dependsOn` には、ほかのタスクと人がする作業の id を書ける
+  - 司令塔が、`pending` → `running`（実装のジョブを作ったとき）→ `done`（子 PR をマージしたとき）にする（[flows.md](flows.md) の「司令塔がタスクを進める」）。人が読むゴールの中身は変えないので、`version` は上げない
 - 人がする作業の `handover` は、終わったら渡すもの: `none`（「終わった」を押すだけ）・`file`（ファイルを渡す）・`secret`（GitHub の Secrets に入れる。`name` に Secrets の名前。値はどこにも残さない）。扱いは段階 3 で作る
 - `comment` は、Discussion のゴールの写しのコメントの id
 
@@ -273,6 +274,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - 項目は、ループの仮決め（実装の途中で Claude が決めたこと）。質問はすべて人が答えるので、質問から来る項目は無い
 - `visible` は、ユーザーから見える挙動・仕様・見た目に関わるか。決めるのは、読むだけのレビュー役の Claude と、決まった信号（View・文言・アセット・Info.plist・entitlements の差分、スクショの差）
 - 各項目は `task`（どのタスクの仮決めか）と `pullRequest`（子 PR）を持つ。`visible` は仕分ける前は `null`
+- 司令塔は、実装と直しの試行の `outputs.report.decisions` を足す（id は `d1` から続ける）。同じタスク・子 PR の同じ仮決めは 2 度足さない
 - スクショは epic の `screenshots/<id>-before.png`・`<id>-after.png` に置き、`screenshots` にそのパスを書く。スクショと `answer` は、見えると仕分けた仮決めだけが持つ
 - `answer` は `{ "choice": "ok" | "alternative" | "fix", "note": "…", "intent": { "keyId", "nonce" }, "at": "…" }`（型は `DecisionsFile`、`protocol/schemas/state/decisions.schema.json`）
 - `answer` は人の意図（OK・別案・直してほしい）への参照
@@ -311,14 +313,15 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `reviseGoal` | `{ "instruction": { "keyId", "nonce" } }` |
 | `prepareWorkspace` | `{}`（作業ブランチは `epic.json` の `branch`。無ければ作って書く） |
 | `implementTask` | `{}`（タスクはジョブの `task`） |
-| `reviewTask` | `{ "pullRequest": 41, "head": "<コミット>" }` |
-| `fixTask` | `{ "pullRequest": 41, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`。直しの回は試行から数える） |
+| `reviewTask` | `{ "pullRequest": 41, "head": "<コミット>" }`（実装・直しの試行の `outputs.pullRequest` と、push した head の `outputs.commit`） |
+| `fixTask` | `{ "pullRequest": 41, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`。`head` は判定を出したレビューの input の head。直しの回は試行から数える） |
 | `rerunChecks` | `{ "pullRequest": 41, "head": "<コミット>", "runs": [123] }` |
 | `integrateDevelop` | `{ "base": "<取り込む base のコミット>" }` |
 | `verifyBeforeFinal`・`classifyDecisions`・`captureScreenshots`・`openFinalPullRequest`・`cleanUp` | `{}` |
 | `fixFinalPullRequest`・`mergeFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>" }` |
 | `notify` | 段階 4 で決める |
 
+- タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）は、司令塔が元のジョブの結果から作り、`task` にタスクの id、`dependsOn` に元のジョブ（`implementTask` は作業場所の用意）を書く。同じタスクの直しが 3 回を超えたら、`fixTask` を `waitingHuman` で作る（[flows.md](flows.md) の「司令塔がタスクを進める」）
 - `kind` の最初の一覧: `makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`prepareWorkspace`・`implementTask`・`reviewTask`・`fixTask`・`integrateDevelop`・`verifyBeforeFinal`・`openFinalPullRequest`・`fixFinalPullRequest`・`rerunChecks`・`classifyDecisions`・`captureScreenshots`・`mergeFinalPullRequest`・`cleanUp`・`notify`
 - `state` は `queued`・`assigned`・`running`・`succeeded`・`failed`・`waitingHuman`・`paused`・`canceled`
 - ジョブのファイルは司令塔だけが書く。ワーカーは、自分の試行のファイルに「始めた」を書くことで、ジョブを引き受けたことを示す。司令塔は試行を読んでジョブの `state` を更新する
@@ -329,7 +332,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | --- | --- |
 | 司令塔 | ジョブを `assigned` にし、担当の Mac（`assignedMac`）を決める |
 | ワーカー | 自分宛ての `assigned` のジョブのうち、`nextRunAt` を過ぎ、`dependsOn` がすべて成功したものを、Mac ごとの同時の上限（Claude・ビルド）の範囲で引き受ける。引き受けるときは `attempts + 1` 番の試行を「実行中」で作る（版なしで作るので、同じ番号の試行は 2 つできない） |
-| ワーカー | 実行中は 5 分ごとに試行の `heartbeatAt` を書き、終わったら結果を書く。終わった試行は書き換えない |
+| ワーカー | 実行中は 5 分ごとに試行の `heartbeatAt` を書き、終わったら結果を書く。書き込みの予算・GitHub の上限に当たったら、待って書き直す（合わせて 2 時間まで。終えた試行の結果を捨てない）。終わった試行は書き換えない |
 | 司令塔 | 試行を読んでジョブを更新する。当てた試行の番号を `attempts` に持ち、同じ試行の結果を 2 度当てない |
 
 - 引き受ける順は、人が待っているジョブ（説明・質問やゴールの見直し・通知）→ 質問づくり・着手前の確認 → 最終 PR の対処 → 実装 → 片付け
@@ -515,6 +518,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始する前の epic だけ |
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
+| `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository`・`applyProtection` | リポジトリ | — | 設定 |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
@@ -586,4 +590,4 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 ## 決めていないこと
 
 - リリースの操作の `kind` と、App Store の素材の形（段階 5）
-- `repo.json` の `build` の型と JSON Schema、クライアントでの入れ方（段階 3 の実装で足す。[operations.md](operations.md) の「既存のリポジトリを移すとき」）
+- クライアントでの `repo.json` の `build` の入れ方（今は非常口の `askhub configure-repository` だけ。[operations.md](operations.md) の「ビルドの設定の入れ方」）
