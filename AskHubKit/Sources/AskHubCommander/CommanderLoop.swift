@@ -6,8 +6,8 @@ import Foundation
 
 /// 常時オンの Mac の司令塔とワーカーの常駐のループ（`docs/renewal/flows.md` の「司令塔の動き」）。
 ///
-/// 1 周ごとに、人の意図を処理し終えてから、試行を読んでジョブの状態を決め、自分宛ての Claude のジョブを引き受けて並んで動かし、
-/// 進行を止めているものを知らせる。最後に、状態を Discussion の写しと照らし合わせる（写しに失敗しても、周は止めない）。
+/// 1 周ごとに、人の意図を処理し終えてから、試行を読んでジョブの状態を決め、実装している epic のタスクを進めるジョブを作り（`TaskFlow`）、
+/// 自分宛ての Claude のジョブを引き受けて並んで動かし、進行を止めているものを知らせる。最後に、状態を Discussion の写しと照らし合わせる（写しに失敗しても、周は止めない）。
 /// 生きている印（`commander.json`・`macs/<mac>.json`）は、決めた間隔で書く
 public actor CommanderLoop {
     public struct Settings: Sendable {
@@ -70,6 +70,8 @@ public actor CommanderLoop {
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
     private var lastBeat: Date?
+    /// ログに出したタスクの流れの知らせ（同じものを周ごとに出さない）
+    private var reportedNotes: Set<String> = []
 
     public init(
         context: CommanderContext,
@@ -124,10 +126,20 @@ public actor CommanderLoop {
         for outcome in try await intake.processPending() {
             log("人の意図: \(outcome)")
         }
-        let swept = try await JobSweep(context: context).sweepAll()
+        var swept = try await JobSweep(context: context).sweepAll()
         for job in swept.changed {
             log("ジョブ \(job.kind.rawValue) \(job.id) を \(job.state.rawValue) にした")
         }
+        // 実装している epic のジョブの結果から、タスクを進めるジョブを作る（作ったジョブは、この周で引き受けられる）
+        let advanced = await TaskFlow(context: context).advance(epics: swept.epics, jobs: swept.jobs)
+        for job in advanced.created {
+            log("ジョブ \(job.kind.rawValue) \(job.id)（タスク \(job.task ?? "")）を作った")
+        }
+        // 進められない理由は、変わるまで周ごとに同じものが出るので、初めて出たときだけログに出す
+        for note in advanced.notes where reportedNotes.insert(note).inserted {
+            log(note)
+        }
+        swept.jobs += advanced.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
         let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier))
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
