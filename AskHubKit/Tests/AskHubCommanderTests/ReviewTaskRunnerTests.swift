@@ -90,6 +90,21 @@ struct ReviewTaskRunnerTests {
         #expect(fixture.pulls.current.merges.isEmpty)
     }
 
+    @Test func doesNotWaitForStarvedChecksOnceSomethingFailed() async throws {
+        // 落ちたチェックがあり、残りはランナー不足で始まらない。始まるのを待たずに流し直し、それでも落ちたら直させる
+        var first = Self.failed(job: 70)
+        first.unfinished = ["test / test"]
+        first.starved = ["test / test"]
+        var second = Self.failed(job: 71)
+        second.unfinished = ["test / test"]
+        second.starved = ["test / test"]
+        let fixture = try await fixture(checks: [first, second])
+        let result = try await review(fixture)
+        #expect(result.outputs?.verdict == .fixCI)
+        #expect(fixture.pulls.current.reruns == [7])
+        #expect(fixture.sleeper.waits == [.seconds(60)])
+    }
+
     @Test func failureThatCannotBeRerunGoesStraightToFixCI() async throws {
         let status = CheckSummary(verdict: .failed, failures: [FailedCheck(name: "lint", source: .commitStatus, conclusion: "error")])
         let fixture = try await fixture(checks: [status])

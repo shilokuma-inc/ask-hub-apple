@@ -121,8 +121,9 @@ extension ReviewTaskRunner {
 
     /// 落ちたチェックがあるとき。終わっていないものを待ち、初めての失敗なら 1 回だけ流し直す
     private static func failed(_ summary: CheckSummary, state: inout CheckWaitState, timing: ReviewTiming, now: Date) -> CheckStep {
-        // 直させる前に、まだ動いているものが終わるのを待つ（落ちたものがほかにも出るかもしれない）
-        guard summary.unfinished.isEmpty else { return .wait(timing.poll) }
+        // 直させる前に、まだ動いているものが終わるのを待つ（落ちたものがほかにも出るかもしれない）。
+        // ランナー不足で queued のまま上限を超えたものは、いつ始まるか分からないので待たない
+        guard summary.unfinished.allSatisfy(summary.starved.contains) else { return .wait(timing.poll) }
         let fresh = summary.failures.filter { failure in failure.jobID.map { !state.rerunJobs.contains($0) } ?? true }
         if let rerunAt = state.rerunAt {
             // 流し直した job の新しい実行が、まだ出てきていない
