@@ -196,13 +196,13 @@ extension StateClientServiceTests {
     }
 
     /// 仕分ける前の仮決めはカードに出してマージの規則に数えるが、司令塔が受け付けないので答えは送らない。
-    /// 最終 PR の直しで足した仮決めは最終 PR の番号を出し、通ったレビューがマージの規則の材料を返さなければ手動のマージにする
+    /// 最終 PR の直しで足した仮決め（タスクを持たない）は「最終 PR #N の直し」と出し、通ったレビューがマージの規則の材料を返さなければ手動のマージにする
     @Test
     func unclassifiedDecisionIsShownButNotAnswered() async throws {
         let decisions = """
         {"v":1,"items":[
           {"id":"d1","task":"t2","pullRequest":41,"visible":true,"what":"見出しを短くした","why":"iPhone の幅に収める","alternatives":[]},
-          {"id":"d5","task":"t2","pullRequest":512,"visible":null,"what":"余白を詰めた","why":"指示に合わせた","alternatives":[]}
+          {"id":"d5","pullRequest":512,"visible":null,"what":"余白を詰めた","why":"指示に合わせた","alternatives":[]}
         ]}
         """
         let readyWithoutRisks = Self.finalAttempt(Self.reviewID, outputs: #"{"verdict":"ready"}"#)
@@ -211,7 +211,7 @@ extension StateClientServiceTests {
         let service = fixture.service
         let review = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.finalReview)
         #expect(review.decisions.map(\.id) == ["d1", "d5"])
-        #expect(review.decisions.last?.goalSource == "タスク 2「一覧に出す」 · 最終 PR #512")
+        #expect(review.decisions.last?.goalSource == "最終 PR #512 の直し")
         #expect(review.mergePolicy == .manual([.visibleDecisions(count: 2), .risksUnknown]))
         await #expect(throws: ClientServiceError.self) {
             try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d5", headCommit: Self.finalHead, reply: .accept))

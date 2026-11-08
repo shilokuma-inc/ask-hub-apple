@@ -89,9 +89,13 @@ extension StateSnapshotBuilder {
     }
 
     private func card(_ item: DecisionsFile.Item, epic: EpicFile) -> DecisionCard {
-        // 最終 PR の直しで足した仮決めは、最終 PR を持つ（タスクはゴールの最後のタスク）
+        // 最終 PR の直しで足した仮決めは、タスクを持たず、最終 PR を持つ
         let pullRequest = item.pullRequest.map { $0 == epic.finalPullRequest ? "最終 PR #\($0)" : "子 PR #\($0)" }
-        let source = [taskName(item.task, epic: epic.id), pullRequest].compactMap(\.self)
+        let source = if let task = item.task {
+            [taskName(task, epic: epic.id), pullRequest].compactMap(\.self)
+        } else {
+            [pullRequest.map { "\($0) の直し" } ?? "最終 PR の直し"]
+        }
         return DecisionCard(
             id: item.id,
             title: item.what,
