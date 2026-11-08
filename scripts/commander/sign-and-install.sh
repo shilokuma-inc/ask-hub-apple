@@ -36,7 +36,7 @@ fi
 
 identity=$(security find-identity -v -p codesigning | awk -v team="($TEAM)" '/Developer ID Application/ && index($0, team) { print $2; exit }')
 if [ -z "$identity" ]; then
-    echo "status=failed（Developer ID Application（$TEAM）の証明書がログインキーチェーンに無い）"
+    echo "status=failed（Developer ID Application（${TEAM}）の証明書がログインキーチェーンに無い）"
     exit 1
 fi
 

@@ -316,6 +316,8 @@
   付けない場合は従来の Keychain になり、`kSecAttrAccessible`（`AfterFirstUnlock` など）は効かない
 - Apple シリコンの Mac の Simulator でも `SecureEnclave.isAvailable` は true で、Secure Enclave の鍵を作れる
   （`DeviceSigningKey` の保存場所が Simulator でも `secureEnclave` になる）（2026-11-07、状態リポジトリへのつなぎ込み）
+- 署名の無い（ad-hoc の）司令塔を入れ替えると、Keychain の項目の「常に許可」が別のプログラムとみなされて効かず、入れ替えのたびに確認が出る。Developer ID と同じ識別子で署名し続ければ、一度の「常に許可」が入れ替えた後も続く（2026-11-08、`scripts/commander/deploy.sh`）
+- ssh のセッションからは、ログインキーチェーンの署名の鍵を使えない。`codesign` が `errSecInternalComponent` で止まり、`launchctl asuser` も「Could not switch to audit session」で使えない。遠隔で署名するときは、ログイン中のセッションの LaunchAgent に依頼のファイルを拾わせて署名させる（2026-11-08、`jp.shilokuma.askhub.deploy`）
 
 ## Swift
 
@@ -442,6 +444,7 @@
 - macOS には `timeout` コマンドが無い（GNU coreutils の）。シェルで時間の上限を付けるときは、Bash の道具の timeout か、プロセスを裏で起こして待つ形にする（2026-11-07）
 - `ClaudeCommandLine` は環境変数を作り直し、`USER` を渡さない。setup-token（`CLAUDE_CODE_OAUTH_TOKEN`）の代わりに手元のログイン（Keychain の `Claude Code-credentials`。アカウント名はログインのユーザー名）で試すと、claude がログインを見つけられず「Not logged in · Please run /login」で `authExpired` になる。
   手元の claude で `TaskRunner` などを試すときは、`ClaudeSetup.executable` に、`CLAUDE_CODE_OAUTH_TOKEN`・`CLAUDE_CONFIG_DIR` を消して `USER` を足してから本物の claude を `exec` するラッパーを置く（2026-11-07、claude 2.1.319）
+- macOS の `/bin/bash`（3.2）は、変数の直後に全角の文字が続くと、その文字まで変数名と読む（`"$PLIST）"` が `set -u` で `PLIST?: unbound variable`）。全角の文字が続く変数は `${PLIST}` のように波かっこで区切る。shellcheck では見つからない（2026-11-08、`scripts/commander/install-deployer.sh`）
 - `--settings` に `"sandbox":{"enabled":true,"allowUnsandboxedCommands":false}` を足しても、`--restricted --tools "Read,Edit,Write,Glob,Grep" --permission-mode dontAsk` での書き換えと `--resume` はそのまま動き、stderr に警告も出なかった（Bash を渡さないので、sandbox が効く道具は無い。2026-11-07、claude 2.1.319・Haiku 5.5）
 
 ## SwiftUI
