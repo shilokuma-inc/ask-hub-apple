@@ -5,9 +5,14 @@ import Foundation
 extension CommanderContext {
     /// 成功した試行の `outputs`。当てた試行（ジョブの `attempts`）が成功していればそれを、違えば一覧から最後に成功した試行を読む
     func succeededOutputs(of job: JobFile) async throws(CommanderError) -> AttemptFile.Outputs? {
+        try await succeededAttempt(of: job)?.outputs
+    }
+
+    /// 成功した試行。当てた試行（ジョブの `attempts`）が成功していればそれを、違えば一覧から最後に成功した試行を読む
+    func succeededAttempt(of job: JobFile) async throws(CommanderError) -> AttemptFile? {
         let numbered = StatePath.attempt(job.repo, epic: job.epic, job: job.id, number: max(job.attempts, 1))
         if let attempt = try await readable(AttemptFile.self, at: numbered), attempt.job == job.id, attempt.outcome == .succeeded {
-            return attempt.outputs
+            return attempt
         }
         let entries: [DirectoryEntry]
         do {
@@ -21,7 +26,7 @@ extension CommanderContext {
                   attempt.outcome == .succeeded, latest.map({ attempt.number > $0.number }) ?? true else { continue }
             latest = attempt
         }
-        return latest?.outputs
+        return latest
     }
 }
 

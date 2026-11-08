@@ -189,7 +189,9 @@ extension TaskFlow {
     /// 直しで仕分けていない仮決めが増えたら、先に仕分ける（仕分ける前の仮決めには答えられず、マージの承認もできないため）
     func fixed(_ fix: JobFile, in final: FinalPlan) async throws(CommanderError) -> Advanced {
         guard let input = try await reviewInput(after: fix) else { return stuck(fix, "最終 PR か直した head が無い", in: final) }
-        if fix.input(as: FixTaskInput.self)?.reason == .human, let origin = fix.origin {
+        // 実装の途中の質問の答えで再開した直しの元は、答えの意図。頼んだ判断のカードは、質問する前の直しの元の意図で探す
+        let original = Self.original(of: fix, in: final.chain.ordered ?? [])
+        if fix.input(as: FixTaskInput.self)?.reason == .human, let origin = original.origin {
             try await context.updateDecisions(of: final.epic, message: "直した判断のカードを答え待ちに戻す") { file in
                 let next = file.reopening(answeredBy: origin)
                 guard next != file else { return false }

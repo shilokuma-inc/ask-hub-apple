@@ -4,6 +4,7 @@ import AskHubStateStore
 import Foundation
 
 /// 回答・説明を求める（`answer`）を受け付ける（`docs/renewal/flows.md` の「司令塔の動き」の表）。
+/// 開始した後も、実装の途中の質問には受け付け、答えたら質問したジョブを再開するジョブを作る（「実装の途中の質問」）。
 ///
 /// 書く順は、ジョブ → epic → 質問の一覧。質問の一覧を書いた時点で受け付けたことになる。
 /// 途中で止まって次の周でやり直しても、ジョブは同じ id で作るので 2 つにならず、質問の一覧がすでにこの意図を受けていれば何もしない
@@ -29,6 +30,12 @@ public struct AnswerHandler: IntentHandler {
             change = try QuestionFlow.accept(answer, epic: epic, questions: questions, at: context.timestamp)
         } catch {
             return .reject(error.reason)
+        }
+        // 実装の途中の質問の答えは、質問したジョブを再開する。ジョブが読めなければ、再開できないので受け付けない
+        for case let .resume(question, job) in change.effects {
+            guard try await read(JobFile.self, at: StatePath.job(epic.repo, epic: epic.id, job: job), in: context) != nil else {
+                return .reject("質問 \(question) をしたジョブ（\(job)）が無い")
+            }
         }
         try await context.perform(change.effects, for: epic, origin: answer.intent)
         try await context.write(change.questions, replacing: questions, of: epic, message: "回答を受け付ける")
