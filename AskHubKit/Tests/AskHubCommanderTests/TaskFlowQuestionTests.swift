@@ -116,7 +116,13 @@ struct TaskFlowQuestionTests {
     }
 
     /// 人の回答（`answer`）を受け付ける
-    private func answer(_ question: String, mode: String = "answer", choice: String? = "名前順", nonce: Int) async throws -> IntentDecision {
+    private func answer(
+        _ question: String,
+        mode: String = "answer",
+        choice: String? = "名前順",
+        nonce: Int,
+        in given: CommanderContext? = nil
+    ) async throws -> IntentDecision {
         var payload: [String: JSONValue] = ["mode": .string(mode), "note": .string(mode == "answer" ? "同点は ID 順" : "名前順だと何が困る？")]
         if let choice, mode == "answer" { payload["choice"] = .string(choice) }
         let envelope = IntentEnvelope(
@@ -129,7 +135,7 @@ struct TaskFlowQuestionTests {
             nonce: Self.nonce(nonce),
             keyId: Self.keyID
         )
-        return try await AnswerHandler().handle(envelope, in: context)
+        return try await AnswerHandler().handle(envelope, in: given ?? context)
     }
 
     /// 子 PR を出した実装・直しの結果
@@ -187,6 +193,22 @@ struct TaskFlowQuestionTests {
         #expect(review.kind == .reviewTask)
         #expect(review.dependsOn == [resumed.id])
         #expect(review.input(as: PullRequestInput.self) == PullRequestInput(pullRequest: 41, head: Self.sha("a")))
+    }
+
+    @Test func writesAnswerBeforeCreatingResumption() async throws {
+        try await started()
+        let implement = try #require(try await advance().created.first)
+        try await succeed(implement, outputs: .init(branch: "askhub/E-t1", report: Self.asked))
+        _ = try await advance()
+        // 答えを書いた後、再開のジョブを作る前に止まった。ワーカーが答えの無いまま再開のジョブを引き受けることはない
+        var stopped = context
+        stopped.files = StateFileStore(store: FailingJobWrite(base: store))
+        await #expect(throws: (any Error).self) { try await answer("q2", nonce: 7, in: stopped) }
+        #expect(try await questions().questions.last?.state == .answered)
+        #expect(try await jobs().allSatisfy { $0.dependsOn != [implement.id] })
+        // 同じ意図を処理し直すと、再開のジョブを作る
+        #expect(try await answer("q2", nonce: 7) == .accept)
+        #expect(try await jobs().filter { $0.dependsOn == [implement.id] }.count == 1)
     }
 
     @Test func resumesOnMacOfAskingAttemptAndRecreatesMissingJob() async throws {
@@ -322,5 +344,19 @@ struct TaskFlowQuestionTests {
         // 判断のカードを答え待ちに戻すときは、質問する前の直しの元（判断のカードへの答え）で探す
         #expect(TaskFlow.original(of: humanResumed, in: [review, human, humanResumed]).origin == decision)
         #expect(TaskFlow.original(of: human, in: [review, human, humanResumed]).origin == decision)
+    }
+}
+
+/// ジョブの書き込みだけを失敗させる（答えを書いた後、ジョブを作る前に止まったことにする）
+private struct FailingJobWrite: StateStore {
+    let base: InMemoryStateStore
+
+    func read(_ path: String) async throws(StateStoreError) -> StoredBlob? { try await base.read(path) }
+
+    func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? { try await base.list(directory) }
+
+    func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
+        guard !path.contains("/jobs/") else { throw .transport("止まった") }
+        return try await base.write(path, data: data, replacing: sha, message: message)
     }
 }
