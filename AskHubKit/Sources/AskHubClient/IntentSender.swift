@@ -78,6 +78,21 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: AbandonEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))
     }
 
+    /// 開始した epic を一時停止する（動いているジョブは最後まで終わらせ、次のジョブを作らない）
+    public static func pauseEpic(repo: RepositoryFullName, epic: ULID) -> Self {
+        Self(kind: PauseEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))
+    }
+
+    /// 一時停止した epic を再開する
+    public static func resumeEpic(repo: RepositoryFullName, epic: ULID) -> Self {
+        Self(kind: ResumeEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))
+    }
+
+    /// 開始した epic を、ほかの Mac（`mac`。オフラインでもよい）に引き継ぐ
+    public static func handover(repo: RepositoryFullName, epic: ULID, to mac: MacName) -> Self {
+        Self(kind: HandoverIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic), payload: ["mac": .string(mac.rawValue)])
+    }
+
     /// 判断のカードへの答え（「別案にする」「直してほしい」は本文が要る）
     public static func decision(_ target: DecisionTarget, answer: DecisionsFile.Choice, note: String = "") -> Self {
         var payload: [String: JSONValue] = ["answer": .string(answer.rawValue)]

@@ -89,6 +89,14 @@ extension AskHubMain {
         case "abandon":
             try arguments.only(["repo", "epic"])
             return .abandonEpic(repo: try arguments.repository(), epic: try arguments.epic())
+        case "pause", "resume":
+            try arguments.only(["repo", "epic"])
+            let (repo, epic) = (try arguments.repository(), try arguments.epic())
+            return command == "pause" ? .pauseEpic(repo: repo, epic: epic) : .resumeEpic(repo: repo, epic: epic)
+        case "handover":
+            try arguments.only(["repo", "epic", "mac"])
+            guard let mac = MacName(rawValue: try arguments.string("mac")) else { throw CommandArguments.Failure(message: "--mac の形が違う") }
+            return .handover(repo: try arguments.repository(), epic: try arguments.epic(), to: mac)
         case "retry", "give-up":
             try arguments.only(["repo", "epic", "job", "attempt"])
             guard let job = ULID(rawValue: try arguments.string("job")) else { throw CommandArguments.Failure(message: "--job の形が違う") }

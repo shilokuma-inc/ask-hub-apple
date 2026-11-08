@@ -34,7 +34,8 @@ extension AskHubMain {
 
     private static func printEpic(_ id: ULID, of repo: RepositoryFullName, files: StateFileStore) async throws {
         guard let epic = try await files.read(EpicFile.self, at: StatePath.epic(repo, id))?.file else { return }
-        print("  epic \(id.rawValue)「\(epic.title)」 段階: \(epic.stage.rawValue)")
+        print("  epic \(id.rawValue)「\(epic.title)」 段階: \(epic.stage.rawValue)\(epic.mac.map { " Mac: \($0)" } ?? "")")
+        if let pause = epic.pause { print("    一時停止中（\(pause.since) から。再開: askhub resume --repo \(repo.rawValue) --epic \(id.rawValue)）") }
         if let summary = epic.summary { print("    要約: \(summary)") }
         // 答え直しもできるよう、要らなくなった質問のほかはすべて出す
         let questions = try await files.read(QuestionsFile.self, at: StatePath.questions(repo, id))?.file.questions ?? []
