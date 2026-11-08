@@ -176,6 +176,29 @@ extension StateClientServiceTests {
         #expect(rejected.history.map(\.date) == rejected.history.map(\.date).sorted())
     }
 
+    /// 開始した後の epic に残っていた着手前の確認は、司令塔と同じく、epic ごとではなくその作業だけをやめる
+    @Test(arguments: ["running", "finalizing", "reviewing"])
+    func givingUpPlanningJobOfStartedEpicKeepsEpic(stage: String) async throws {
+        let failure = #"{"class":"unexpected","message":"結果の形が違う"}"#
+        let job = Self.waitingJob(kind: "checkReadiness", input: #"{"round":1}"#, lastFailure: failure)
+        let fixture = try makeService(files: Self.askingEpic(stage: stage, extra: job))
+        let service = fixture.service
+        let blocker = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.blocker)
+        #expect(blocker.title == "着手前の確認が止まっています")
+        #expect(blocker.actions == [.retry, .cancelJob])
+        #expect(!service.supports(.resolveBlocker(epicID: Self.epicID, action: .discard, instruction: "")))
+
+        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .cancelJob, instruction: "", target: blocker.target))
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(envelope.kind == GiveUpJobIntent.kind)
+        #expect(envelope.targetVersion == "2")
+        // 処理を待つ間も、epic をやめたようには出さない
+        let epic = try #require(try await service.fetchSnapshot().epic(Self.epicID))
+        #expect(!epic.isAbandoned)
+        #expect(epic.blocker == nil)
+        #expect(epic.history.last?.text == "着手前の確認をやめました。司令塔が受け取るのを待っています")
+    }
+
     /// 開始を待つ epic にゴールの修正を送って受け付けられ、その修正のジョブが人に渡された状態。`origin` は修正の意図
     private func revisingEpicWithWaitingJob() async throws -> (fixture: Fixture, origin: String) {
         let goal = """
