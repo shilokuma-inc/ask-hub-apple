@@ -159,6 +159,8 @@ final class FakePullRequests: PullRequestOperations {
         var deleteError: PullRequestError?
         /// リモートのブランチ（名前 → 先頭）。ここに無いブランチの削除は、先頭を確かめずに消せたことにする
         var branches: [String: String] = [:]
+        /// ブランチごとの削除の失敗（`deleteError` より先に見る）
+        var deleteErrors: [String: PullRequestError] = [:]
         /// ログを読むときに、先に投げる失敗（1 回ずつ使う）
         var logFailures: [PullRequestError] = []
         /// 子 PR を読むたびに呼ぶ（待つ間に PR が変わったことにする）
@@ -257,7 +259,7 @@ final class FakePullRequests: PullRequestOperations {
     func deleteBranch(_ branch: String, expectedSHA: String) async throws(PullRequestError) -> BranchDeletion {
         let result = state.withLock { state -> Result<BranchDeletion, PullRequestError> in
             state.deletions.append((branch, expectedSHA))
-            if let error = state.deleteError { return .failure(error) }
+            if let error = state.deleteErrors[branch] ?? state.deleteError { return .failure(error) }
             if let head = state.branches[branch], head != expectedSHA { return .failure(.headChanged) }
             state.branches[branch] = nil
             return .success(.deleted)

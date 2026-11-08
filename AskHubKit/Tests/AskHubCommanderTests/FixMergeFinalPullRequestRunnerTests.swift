@@ -190,6 +190,63 @@ struct FixMergeFinalPullRequestRunnerTests {
         #expect(fixture.pulls.current.merges.count == 1)
     }
 
+    /// 子 PR のマージの後に push されて残った子ブランチ
+    static func child(_ task: String) -> String {
+        TaskBranches.child(of: Fixture.branches.epic, task: task)
+    }
+
+    @Test func removesChildBranchesLeftAfterChildMergesOnlyOfThisEpic() async throws {
+        let fixture = try await fixture()
+        let ready = AttemptFile.Outputs(pullRequest: 512, commit: Self.head, verdict: .ready, mergeRisks: [])
+        try await reviewed(fixture, "01", outputs: ready)
+        // ゴールに無いタスク（t9）でも、ジョブのタスクなら子ブランチを見る
+        try await fixture.tasks.record(fixture.tasks.job(.implementTask, "09", task: "t9"))
+        let other = "askhub/01JCJ0A0000000000000000002-t1"
+        fixture.pulls.update { state in
+            state.branches = [
+                Self.child("t1"): sha("7"),
+                Self.child("t2"): sha("8"),
+                Self.child("t9"): sha("9"),
+                // ゴールにもジョブにも無いタスクと、ほかの epic の子ブランチ
+                Self.child("t3"): sha("a"),
+                other: sha("c")
+            ]
+            // t2 の子ブランチからは、人が開いた PR がある（消すと閉じる）
+            state.pulls[43] = PullRequest(number: 43, state: .open, merged: false, head: (Self.child("t2"), sha("8")), baseRef: "develop")
+        }
+        let result = try await merge(fixture)
+        #expect(result.failure == nil)
+        let deletions = fixture.pulls.current.deletions
+        #expect(deletions.map(\.branch) == [Fixture.branches.epic, Self.child("t1"), Self.child("t9")])
+        // 読んだ先頭を固定して消す
+        #expect(deletions.map(\.expected) == [Self.head, sha("7"), sha("9")])
+        #expect(Set(fixture.pulls.current.branches.keys) == [Self.child("t2"), Self.child("t3"), other])
+
+        // マージした後、記録する前に落ちたやり直しでも、消し直さない（もう無い）
+        #expect(try await merge(fixture).failure == nil)
+        #expect(fixture.pulls.current.deletions.count == 4)
+    }
+
+    @Test func keepsChildBranchPushedMeanwhileAndReportsOtherFailures() async throws {
+        let fixture = try await fixture()
+        let ready = AttemptFile.Outputs(pullRequest: 512, commit: Self.head, verdict: .ready, mergeRisks: [])
+        try await reviewed(fixture, "01", outputs: ready)
+        fixture.pulls.update { state in
+            state.branches = [Self.child("t1"): sha("7"), Self.child("t2"): sha("8")]
+            // 読んだ後に push された
+            state.deleteErrors[Self.child("t1")] = .headChanged
+        }
+        #expect(try await merge(fixture).failure == nil)
+        #expect(fixture.pulls.current.branches.keys.sorted() == [Self.child("t1")])
+
+        // ほかの失敗は、マージの後でも試行の失敗にする（やり直しはマージし直さずに消し直す）
+        fixture.pulls.update { $0.deleteErrors[Self.child("t1")] = .serverError(status: 502) }
+        let failed = try await merge(fixture)
+        #expect(failed.failure?.failureClass == .githubOutage)
+        #expect(failed.failure?.message.contains("残った子ブランチを消す") == true)
+        #expect(fixture.pulls.current.merges.count == 1)
+    }
+
     @Test func refusesWhenHeadMovedFromPinnedHead() async throws {
         let fixture = try await fixture()
         try await reviewed(fixture, "01", outputs: AttemptFile.Outputs(verdict: .ready, mergeRisks: []))
