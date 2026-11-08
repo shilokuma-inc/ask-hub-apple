@@ -31,7 +31,11 @@ extension StateSnapshotBuilder {
         let reasons = FinalMergeRule.manualReasons(decisions: decisions, mergeRisks: outputs?.mergeRisks ?? [])
         // 通ったレビューが材料（mergeRisks）を返さなかったときは、司令塔は自動でマージせずに人を待つ
         let risksMissing = outputs?.verdict == .ready && outputs?.mergeRisks == nil
+        // 判断の一覧を読めなかったときは、空の一覧と区別する（答えていないカードがあるかもしれないので、承認を止める）
+        let decisionsUnreadable = documents.failures.contains { $0.source == StatePath.decisions(file.repo, file.id) }
         let manualReasons = Self.manualReasons(reasons) + (risksMissing ? [.risksUnknown] : [])
+            + (decisionsUnreadable ? [.decisionsUnreadable] : [])
+        let canApprove = !decisionsUnreadable && FinalMergeRule.canApprove(decisions: decisions)
         let cards = items.filter { $0.visible != false }.map { card($0, epic: file) }
         let state = finalState(of: file, jobs: jobs, automatic: manualReasons.isEmpty)
         // 司令塔が答えを受け付けるのは、見えると仕分けた仮決めだけ（仕分ける前のものはカードに出すが、答えは送らない）
@@ -41,6 +45,7 @@ extension StateSnapshotBuilder {
             head: head,
             decisionIDs: Set(answerable.map(\.id)),
             unansweredDecisionIDs: answerable.filter { $0.answer == nil }.map(\.id),
+            canApprove: canApprove,
             isReviewable: state == .reviewable
         )
         return FinalReview(
@@ -55,7 +60,7 @@ extension StateSnapshotBuilder {
             internalDecisions: items.filter { $0.visible == false }.map(\.what),
             verifications: [],
             state: state,
-            acceptsApproval: FinalMergeRule.canApprove(decisions: decisions)
+            acceptsApproval: canApprove
         )
     }
 

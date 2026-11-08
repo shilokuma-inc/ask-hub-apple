@@ -36,6 +36,8 @@ struct FinalReview: Hashable {
         case dataMigration
         /// 通ったレビューが、マージの規則の材料（セキュリティ・テストを弱めたか など）を返さなかった
         case risksUnknown
+        /// 判断の一覧を読めていない（答えていない判断があるかもしれない）
+        case decisionsUnreadable
 
         var label: String {
             switch self {
@@ -45,6 +47,7 @@ struct FinalReview: Hashable {
             case .weakenedTests: "自動の修正がテストを弱めた"
             case .dataMigration: "データの削除・移行"
             case .risksUnknown: "レビューがマージの規則の材料を返さなかった"
+            case .decisionsUnreadable: "判断の一覧を読めていない"
             }
         }
     }

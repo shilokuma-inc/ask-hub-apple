@@ -176,8 +176,8 @@ struct StateIntentMapper {
         case let .merge(epicID, headCommit):
             let target = try finalTarget(epicID, headCommit: headCommit)
             // 司令塔は、見える仮決めのすべてに答えた後の承認だけを受け付ける（`FinalMergeRule.canApprove`）
-            guard index.epics[epicID]?.final?.unansweredDecisionIDs.isEmpty == true else {
-                throw ClientServiceError(message: "見える仮決めのすべてに答えてから承認してください")
+            guard index.epics[epicID]?.final?.canApprove == true else {
+                throw ClientServiceError(message: "見える仮決めのすべてに答えてから承認してください（判断の一覧を読めていないときは、取り直してください）")
             }
             return .approveMerge(target)
 

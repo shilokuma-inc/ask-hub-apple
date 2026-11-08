@@ -338,6 +338,9 @@ private struct MergeBar: View {
         if pending > 0 {
             return "あと \(pending) 件の判断を確かめるとマージできます"
         }
+        if !review.acceptsApproval {
+            return "判断の一覧を読めていません。取り直してからマージしてください"
+        }
         if review.headCommit == nil {
             return "最終 PR の head が分かりません。取り直してください"
         }

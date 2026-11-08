@@ -27,6 +27,8 @@ struct StateIndex {
         var decisionIDs: Set<String>
         /// 答えの無いカードの id（まとめて OK の対象）。処理を待つ答えを当てた後のもの
         var unansweredDecisionIDs: [String]
+        /// 司令塔がマージの承認を受け付けるか（`FinalMergeRule.canApprove`。判断の一覧を読めなかったときは false）。処理を待つ答えを当てた後のもの
+        var canApprove: Bool
         /// 人が確かめる段階か。処理を待つ承認・指示を当てた後の状態で決める
         var isReviewable: Bool
     }
