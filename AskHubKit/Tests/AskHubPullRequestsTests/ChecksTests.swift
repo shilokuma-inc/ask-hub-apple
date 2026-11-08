@@ -78,6 +78,21 @@ struct ChecksTests {
         #expect(requests[3].url?.absoluteString == nextStatus)
     }
 
+    @Test func readsCommitStatusesWithDescriptionFollowingPages() async throws {
+        let next = "https://api.github.com/repositories/1/commits/\(Fixture.sha)/status?page=2"
+        let limited = ["context": "CodeRabbit", "state": "success", "description": "Review rate limited", "target_url": "https://coderabbit.ai"]
+        let first = Fixture.json(["state": "success", "statuses": [limited]])
+        let second = Fixture.json(["state": "success", "statuses": [["context": "deploy", "state": "pending", "description": NSNull()]]])
+        let transport = StubTransport([.json(200, first, headers: Fixture.link(next: next)), .json(200, second)])
+        let statuses = try await Fixture.client(transport).commitStatuses(at: Fixture.sha)
+        #expect(statuses == [
+            CommitStatus(context: "CodeRabbit", state: "success", description: "Review rate limited"),
+            CommitStatus(context: "deploy", state: "pending")
+        ])
+        #expect(Fixture.path(transport.requests[0]) == "/repos/shilokuma-inc/ask-hub-apple/commits/\(Fixture.sha)/status")
+        #expect(transport.requests[1].url?.absoluteString == next)
+    }
+
     @Test func passesWhenEveryCheckSucceeded() async throws {
         let summary = try await summary(
             runs: [Self.run("build"), Self.run("lint", conclusion: "neutral"), Self.run("ui", conclusion: "skipped")],

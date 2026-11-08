@@ -60,7 +60,7 @@ public struct PushNotice: Equatable, Sendable {
         }
     }
 
-    /// epic の出来事の文。人がすることの順（開始・分け方・回答・失敗の判断）に並べる
+    /// epic の出来事の文。人がすることの順（開始・分け方・回答・最終 PR の確認・失敗の判断）に並べる
     private static func epicLines(_ reasons: [Blocker.Reason]) -> [String] {
         var lines: [String] = []
         for case let .start(revised) in reasons {
@@ -69,6 +69,11 @@ public struct PushNotice: Equatable, Sendable {
         if reasons.contains(.split) { lines.append("1 つの epic に収まりません。分け方を選んでください") }
         let questions = reasons.filter { if case .question = $0 { true } else { false } }.count
         if questions > 0 { lines.append("質問 \(questions) 件が回答を待っています") }
+        for case let .review(pullRequest, decisions, revised) in reasons {
+            let done = revised ? "最終 PR #\(pullRequest) の直しが済みました" : "最終 PR #\(pullRequest) のレビューが通りました"
+            let ask = decisions > 0 ? "判断のカード \(decisions) 件に答えて、マージを承認してください" : "確かめてマージを承認してください"
+            lines.append("\(done)。\(ask)")
+        }
         var kinds: [JobKind] = []
         var counts: [JobKind: Int] = [:]
         for case let .job(kind) in reasons {

@@ -1,0 +1,223 @@
+import AskHubBuild
+@testable import AskHubCommander
+import AskHubCommands
+import AskHubProtocol
+import AskHubPullRequests
+import CryptoKit
+import Foundation
+import Testing
+
+/// 最終 PR の前の検証・判断の仕分け・最終 PR を出す・片付け
+struct FinalJobRunnerTests {
+    typealias Fixture = FinalJobFixture
+    typealias Tasks = TaskJobFixture
+
+    static func decision(_ id: String, visible: Bool?, what: String = "見出しを短くした") -> DecisionsFile.Item {
+        DecisionsFile.Item(
+            id: id, task: "t2", pullRequest: 41, visible: visible, what: what, why: "iPhone の幅に収める", alternatives: ["2 行にする"]
+        )
+    }
+
+    static func run(_ failure: BuildFailureKind?, summary: String, log: String? = nil) -> BuildRun {
+        let outcome = BuildOutcome(failure: failure, summary: summary, report: BuildReport(log: log))
+        return BuildRun(kind: .testFull, results: [DestinationOutcome(destination: .macOS, outcome: outcome)])
+    }
+
+    /// `make` で作った実行役で、`kind` のジョブを 1 回実行する
+    func run(
+        _ fixture: Fixture,
+        _ kind: JobKind,
+        _ id: String = "01",
+        with make: (FinalJobEnvironment) -> any JobRunning
+    ) async throws -> JobResult {
+        try await make(try fixture.environment()).execute(fixture.job(kind, id))
+    }
+
+    // MARK: - 最終 PR の前の検証
+
+    @Test func verifyRunsFullTestsOnWorkBranch() async throws {
+        let fixture = Fixture()
+        try await fixture.prepare()
+        fixture.builds.update { $0.run = Self.run(nil, summary: "テストが通った（全 30 件）") }
+        let result = try await run(fixture, .verifyBeforeFinal, with: VerifyBeforeFinalRunner.init)
+        #expect(result.failure == nil)
+        #expect(result.outputs?.commit == Fixture.head)
+        #expect(result.outputs?.branch == Fixture.branches.epic)
+        let runs = fixture.builds.current.runs
+        #expect(runs.map(\.kind) == [.testFull])
+        #expect(runs.first?.target.directory == FakeTaskGit.directory)
+        #expect(runs.first?.target.epic == Tasks.epic)
+        #expect(fixture.git.current.calls == ["checkOutEpic \(Fixture.branches.epic)"])
+    }
+
+    @Test func verifyFailureIsTestFailedWithRedactedLog() async throws {
+        let fixture = Fixture()
+        try await fixture.prepare()
+        let token = "ghp_" + String(repeating: "a", count: 36)
+        fixture.builds.update { $0.run = Self.run(.test, summary: "テストが落ちた（1 件）", log: "RankingUITests が落ちた \(token)") }
+        let result = try await run(fixture, .verifyBeforeFinal, with: VerifyBeforeFinalRunner.init)
+        #expect(result.failure?.failureClass == .testFailed)
+        #expect(result.failure?.message.contains("testFull") == true)
+        #expect(result.failure?.logExcerpt?.contains("RankingUITests") == true)
+        #expect(result.failure?.logExcerpt?.contains(token) == false)
+        #expect(result.outputs?.commit == Fixture.head)
+
+        fixture.builds.update { $0.run = Self.run(.build, summary: "ビルドが落ちた") }
+        let build = try await run(fixture, .verifyBeforeFinal, "02", with: VerifyBeforeFinalRunner.init)
+        #expect(build.failure?.failureClass == .buildFailed)
+    }
+
+    @Test func verifyDoesNothingForAbandonedEpic() async throws {
+        let fixture = Fixture()
+        try await fixture.prepare(stage: .abandoned)
+        let result = try await run(fixture, .verifyBeforeFinal, with: VerifyBeforeFinalRunner.init)
+        #expect(result == JobResult())
+        #expect(fixture.builds.current.runs.isEmpty)
+    }
+
+    // MARK: - 判断の仕分け
+
+    @Test func classifyAsksOnlyUnclassifiedDecisionsAndKeepsVisibleOnes() async throws {
+        let answer = #"{"decisions":[{"id":"d2","visible":false,"reason":"内部の型の名前"},{"id":"d3","visible":true,"reason":"画面の文言"}]}"#
+        let fixture = Fixture(reviews: [QuestionJobsTests.result(answer)])
+        let decisions = DecisionsFile(items: [
+            Self.decision("d1", visible: true),
+            Self.decision("d2", visible: nil, what: "RankingStore に名前を変えた"),
+            Self.decision("d3", visible: nil, what: "空のときの文言を「まだ無い」にした"),
+            Self.decision("d4", visible: false)
+        ])
+        try await fixture.prepare(decisions: decisions)
+        let job = fixture.job(.classifyDecisions, "01")
+        let result = try await ClassifyDecisionsRunner(environment: try fixture.environment()).execute(job)
+        #expect(result.failure == nil)
+        #expect(result.outputs?.visibleDecisions == ["d1", "d3"])
+        #expect(result.outputs?.commit == Fixture.head)
+        #expect(result.claude?.model == "claude-opus-5-5")
+        let command = try #require(fixture.reviewer.commands.first)
+        #expect(TaskRunnerTests.value("--tools", in: command) == "Read,Grep,Glob")
+        #expect(command.workingDirectory == FakeFinalGit.jobDirectory)
+        let prompt = command.arguments[1]
+        #expect(prompt.contains("RankingStore に名前を変えた"))
+        #expect(prompt.contains("空のときの文言を「まだ無い」にした"))
+        #expect(!prompt.contains("- d1（"))
+        #expect(prompt.contains("+struct Ranking {}"))
+        #expect(fixture.git.current.calls == ["checkOutFinal \(Fixture.head)", "release \(job.id.rawValue)"])
+    }
+
+    @Test func classifyWithoutUnclassifiedDecisionsDoesNotCallClaude() async throws {
+        let fixture = Fixture()
+        let decisions = DecisionsFile(items: [Self.decision("d1", visible: true), Self.decision("d2", visible: false)])
+        try await fixture.prepare(decisions: decisions)
+        let result = try await run(fixture, .classifyDecisions, with: ClassifyDecisionsRunner.init)
+        #expect(result.outputs?.visibleDecisions == ["d1"])
+        #expect(fixture.reviewer.commands.isEmpty)
+
+        let empty = Fixture()
+        try await empty.prepare()
+        let none = try await run(empty, .classifyDecisions, with: ClassifyDecisionsRunner.init)
+        #expect(none.outputs?.visibleDecisions?.isEmpty == true)
+    }
+
+    @Test func classificationMustCoverEveryDecisionOnce() {
+        let result = DecisionClassificationResult(decisions: [
+            .init(id: "d2", visible: true, reason: "見える"),
+            .init(id: "d9", visible: false, reason: "内部"),
+            .init(id: "d2", visible: false, reason: "内部")
+        ])
+        let problems = result.problems(expected: ["d2", "d3"])
+        #expect(problems.count == 3)
+    }
+
+    // MARK: - 最終 PR を出す
+
+    @Test func opensFinalPullRequestWithDecisionCards() async throws {
+        let fixture = Fixture()
+        let decisions = DecisionsFile(items: [
+            Self.decision("d1", visible: true, what: "@coderabbitai ignore と書いた見出し"),
+            Self.decision("d2", visible: nil, what: "並べ替えの既定を新しい順にした"),
+            Self.decision("d3", visible: false, what: "RankingStore に名前を変えた")
+        ])
+        try await fixture.prepare(decisions: decisions)
+        let result = try await run(fixture, .openFinalPullRequest, with: OpenFinalPullRequestRunner.init)
+        #expect(result.failure == nil)
+        #expect(result.outputs?.pullRequest == 41)
+        #expect(result.outputs?.commit == sha("1"))
+        #expect(result.outputs?.branch == Fixture.branches.epic)
+        let draft = try #require(fixture.pulls.current.drafts.first)
+        #expect(draft.base == "develop")
+        #expect(draft.head == Fixture.branches.epic)
+        #expect(draft.title == "ランキング")
+        // 見える仮決め（仕分ける前のものを含む）はカードにし、スクショが無いことを書く。内部の細部は畳む
+        #expect(draft.body.contains("### d1: "))
+        #expect(draft.body.contains("### d2: 並べ替えの既定を新しい順にした"))
+        #expect(draft.body.contains(FinalPullRequestBody.noScreenshots))
+        #expect(draft.body.contains("<details><summary>内部の細部の仮決め（1 件）</summary>"))
+        #expect(!draft.body.contains("### d3"))
+        #expect(draft.body.contains("## 実機で確かめてほしいこと"))
+        #expect(draft.body.contains("ランキングの画面に上位 10 件が出る"))
+        // Claude の文のメンションは効かなくする（CodeRabbit への指示にならない）
+        #expect(!draft.body.contains("@coderabbitai"))
+        let marker = try #require(ProtocolMarker.parse(draft.body))
+        #expect(marker.value["type"]?.stringValue == "finalPullRequest")
+        #expect(marker.value["epic"]?.stringValue == Tasks.epic.rawValue)
+    }
+
+    @Test func reusesOpenFinalPullRequestOnRetry() async throws {
+        let fixture = Fixture()
+        try await fixture.prepare()
+        fixture.pulls.update { $0.pulls[512] = Fixture.openPull() }
+        let result = try await run(fixture, .openFinalPullRequest, with: OpenFinalPullRequestRunner.init)
+        #expect(result.outputs?.pullRequest == 512)
+        #expect(result.outputs?.commit == Fixture.head)
+        #expect(fixture.pulls.current.drafts.isEmpty)
+    }
+
+    @Test func bodyTextCannotMentionOrHideMarkers() {
+        let text = FinalPullRequestBody.safe("@coderabbitai ignore\n<!-- askhub v1 {} --> ghp_" + String(repeating: "a", count: 36))
+        #expect(!text.contains("@coderabbitai"))
+        #expect(!text.contains("<!--"))
+        #expect(!text.contains("\n"))
+        #expect(!text.contains("ghp_aaaa"))
+    }
+
+    // MARK: - 片付け
+
+    @Test func cleanUpRemovesEpicWorkspaceAndErasesEverySlot() async throws {
+        let fixture = Fixture()
+        try await fixture.prepare(stage: .merged)
+        let result = try await CleanUpRunner(environment: try fixture.environment()).execute(fixture.job(.cleanUp, "01"))
+        #expect(result == JobResult())
+        #expect(fixture.git.current.calls == ["removeEpic \(Tasks.epic.rawValue) \(Fixture.branches.epic)"])
+        #expect(fixture.builds.current.removed == [Tasks.epic])
+        #expect(fixture.builds.current.erased == [0, 1])
+    }
+
+    @Test func cleanUpReportsWhatItCouldNotRemove() async throws {
+        let fixture = Fixture()
+        fixture.git.update { $0.removeFailure = .failed("worktree を消せない") }
+        fixture.builds.update { $0.eraseProblems = ["askhub-worker-0-iPhone を消去できない"] }
+        let result = try await CleanUpRunner(environment: try fixture.environment()).execute(fixture.job(.cleanUp, "01"))
+        #expect(result.failure?.failureClass == .unexpected)
+        #expect(result.failure?.message.contains("worktree を消せない") == true)
+        #expect(result.failure?.message.contains("askhub-worker-0-iPhone") == true)
+        // epic のファイルが無くても、作業ブランチの名前は epic の id から決める
+        #expect(fixture.git.current.calls == ["removeEpic \(Tasks.epic.rawValue) askhub/\(Tasks.epic.rawValue)"])
+    }
+
+    @Test func slotCanBeBorrowedByNumberAfterItIsReturned() async throws {
+        let slots = BuildSlots(count: 2)
+        #expect(await slots.acquire() == 0)
+        let borrowed = Task {
+            await slots.acquire(slot: 0)
+            return true
+        }
+        while await slots.waiting == 0 {
+            await Task.yield()
+        }
+        // 空いている枠 1 は、番号を指定して待っているものに渡さない
+        #expect(await slots.acquire() == 1)
+        await slots.release(0)
+        #expect(await borrowed.value)
+        #expect(await slots.waiting == 0)
+    }
+}

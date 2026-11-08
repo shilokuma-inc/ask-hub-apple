@@ -371,7 +371,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `outcome` は `running`・`succeeded`・`failed`
 - `outputs` は外部の id（`pullRequest`・`commit`・`branch`）と、司令塔が次のジョブを決めるのに読む結果。外部の id は、やり直す前に、すでにできているかを確かめるのに使う
   - `verdict`: 子 PR のレビュー（`reviewTask`）と最終 PR のレビュー（`reviewFinalPullRequest`）の判定。`merged`（子 PR をマージした）・`ready`（最終 PR が通った。マージは規則と人の承認で決める）・`fixCI`（CI が落ちた）・`fixReview`（必須の指摘）。直す判定のときは `findings` を持つ
-  - `mergeRisks`: 最終 PR のレビューが見つけた、手動のマージの条件に当たるもの（`security`・`weakenedTests`・`dataMigration`・`sensitivePaths` と理由）。司令塔がマージの規則に当てる
+  - `mergeRisks`: 最終 PR のレビューが見つけた、手動のマージの条件に当たるもの（`security`・`weakenedTests`・`dataMigration`・`sensitivePaths` と理由）。司令塔がマージの規則に当てる。`ready` のときは必ず書く（無ければ空）。`sensitivePaths` は、レビュー役の Claude のほかに、差分のパスの決まった規則（`.github/`・`.claude/`・`.mcp.json`・ビルドのスクリプト・依存・entitlements・Info.plist・`.xcconfig` など）でも足す
+  - 最終 PR のレビューの間に head が進んだときは、`verdict` を書かずに成功で終え、`commit` に今の head を書く（古い head の判定は書かない）
   - `visibleDecisions`: 判断の仕分け（`classifyDecisions`）で見えるとした仮決めの id。ここに無いものは内部の細部。司令塔が `decisions.json` の `visible` に写す
   - `findings`: 直すこと（落ちたチェックとログの抜粋・必須の指摘）。20,000 文字まで。トークンらしい文字列は伏せてから書く
   - `report`: 実装と直し（`implementTask`・`fixTask`）で Claude が報告したこと（`summary`・`decisions`・`learnings`・`question`）。司令塔が `decisions.json`・知見を足す PR・質問に写す
@@ -458,6 +459,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   | 質問が回答を待っている | `question/<owner>/<repo>/<epic>/<質問の id>/<版>/<説明の数>` |
   | 分け方の判断を待っている | `split/<owner>/<repo>/<epic>/<readiness.json の version>` |
   | ゴールの確認と開始を待っている | `start/<owner>/<repo>/<epic>/<goal.json の version>` |
+  | 最終 PR の確認とマージの承認を待っている | `review/<owner>/<repo>/<epic>/<最後のレビューが見た head>/<最後のレビューのジョブ>` |
   | ジョブが人の判断を待っている | `job/<owner>/<repo>/<epic>/<job>/<attempts>` |
   | ジョブを持った Mac が戻らない | `mac/<mac>/<その Mac の seenAt>` |
 
