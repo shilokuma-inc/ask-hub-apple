@@ -41,10 +41,11 @@ public struct TaskFlow: Sendable {
     /// 進める epic の段階（実装・最終 PR の段取り・人の確認の待ち）
     static let stages: Set<EpicStage> = [.running, .finalizing, .reviewing]
 
-    /// `epics` は終わっていない epic、`jobs` はそのジョブ（見直した後のもの）。1 つの epic で失敗しても、ほかの epic は進める
+    /// `epics` は終わっていない epic、`jobs` はそのジョブ（見直した後のもの）。1 つの epic で失敗しても、ほかの epic は進める。
+    /// 人が一時停止した epic（`EpicFile.pause`）は、再開するまで進めない（次のジョブを作らない）
     public func advance(epics: [EpicFile], jobs: [JobFile]) async -> Advanced {
         var advanced = Advanced()
-        for epic in epics.sorted(by: { $0.id < $1.id }) where Self.stages.contains(epic.stage) {
+        for epic in epics.sorted(by: { $0.id < $1.id }) where Self.stages.contains(epic.stage) && epic.pause == nil {
             let own = jobs.filter { $0.repo == epic.repo && $0.epic == epic.id }
             do {
                 let step = try await context.lock.withLock { () throws(CommanderError) -> Advanced in
@@ -63,7 +64,7 @@ public struct TaskFlow: Sendable {
     func advance(_ seen: EpicFile, jobs: [JobFile]) async throws(CommanderError) -> Advanced {
         // 排他を待つ間に変わっていないかを読み直す。作業場所の用意が済むまでは、タスクに進まない
         guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(seen.repo, seen.id)), Self.stages.contains(epic.stage),
-              let prepare = jobs.first(where: { $0.kind == .prepareWorkspace && $0.state == .succeeded }) else {
+              epic.pause == nil, let prepare = jobs.first(where: { $0.kind == .prepareWorkspace && $0.state == .succeeded }) else {
             return Advanced()
         }
         guard let plan = Plan(context: context, epic: epic, prepare: prepare) else {

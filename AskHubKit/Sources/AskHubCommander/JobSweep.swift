@@ -3,7 +3,10 @@ import AskHubProtocol
 import AskHubStateStore
 import Foundation
 
-/// 司令塔が、終わっていないジョブの試行を読み、ジョブの状態を決めて書く（`JobReconciler`。ジョブのファイルは司令塔だけが書く）
+/// 司令塔が、終わっていないジョブの試行を読み、ジョブの状態を決めて書く（`JobReconciler`。ジョブのファイルは司令塔だけが書く）。
+///
+/// 人の一時停止と引き継ぎ（`EpicHold`）も、ここで epic ごとに当てる。一時停止の間は引き受けられるジョブを止めたままにし、再開したら戻し、
+/// 引き継いだら動いていないジョブを epic の今の Mac に付け替える（人の意図の処理は epic を書き換えるだけで、ジョブは同じ周のここで動かす）
 public struct JobSweep: Sendable {
     public var context: CommanderContext
     public var policy: FailurePolicy
@@ -43,7 +46,7 @@ public struct JobSweep: Sendable {
                 swept.epics.append(epic)
                 // 読めないジョブは、中身が分からないので触らない（新しい司令塔が扱う）
                 for job in try await context.jobList(repo, epic: epic.id).jobs {
-                    guard Self.watchedStates.contains(job.state), let next = try await reconcile(job) else {
+                    guard Self.watchedStates.contains(job.state), let next = try await reconcile(job, in: epic) else {
                         swept.jobs.append(job)
                         continue
                     }
@@ -55,13 +58,23 @@ public struct JobSweep: Sendable {
         return swept
     }
 
-    /// 1 つのジョブの試行を読み、状態が変わるなら書く。読んだ後にほかで書き換わっていたら、書かずに次の周に回す
-    func reconcile(_ job: JobFile) async throws(CommanderError) -> JobFile? {
+    /// 1 つのジョブの試行を読み、状態が変わるなら書く。読んだ後にほかで書き換わっていたら、書かずに次の周に回す。
+    /// `epic` を渡すと、人の一時停止と引き継ぎ（`EpicHold`）も当てる
+    func reconcile(_ job: JobFile, in epic: EpicFile? = nil) async throws(CommanderError) -> JobFile? {
         let attempts = try await attempts(of: job)
         let macName = attempts.max { $0.number < $1.number }?.mac ?? job.assignedMac
         var mac: MacFile?
         if let macName { mac = try await context.readable(MacFile.self, at: StatePath.mac(macName)) }
-        let next = JobReconciler.reconcile(job, attempts: attempts, mac: mac, now: context.now(), policy: policy, timing: timing)
+        let now = context.now()
+        var next = JobReconciler.reconcile(job, attempts: attempts, mac: mac, now: now, policy: policy, timing: timing)
+        if let epic {
+            if let epicMac = epic.mac {
+                next = EpicHold.realign(next, was: job, to: epicMac, commander: context.mac, attempts: attempts, now: now)
+            }
+            next = epic.pause == nil
+                ? EpicHold.release(next, was: job, attempts: attempts, now: now)
+                : EpicHold.hold(next, was: job, attempts: attempts, now: now)
+        }
         guard next != job else { return nil }
         var written = false
         do {
