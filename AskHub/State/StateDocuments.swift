@@ -43,6 +43,8 @@ struct StateReader {
     let device: KeyID
     /// 処理の結果を出す、送った意図の件数（新しい順）
     var sentIntentLimit = 20
+    /// 書いたら変わらないファイル（送った意図・処理の記録）の読んだ中身。一覧の sha が同じなら取り直さない。nil なら毎回読む
+    var immutables: ImmutableFileCache?
 
     /// ワーカーの生きている印を置くディレクトリ（`macs/<mac>.json`）
     static let macsDirectory = "macs"
@@ -281,18 +283,23 @@ struct StateReader {
             read.value.map { part.value.append($0) }
             part.failures += read.failures
         }
+        // 一覧から外れた（新しい 20 件に入らなくなった）ものは、持ち続けない
+        immutables?.keep(Set(recent.map(\.path) + part.value.map { StatePath.consumed(device: device, nonce: $0.envelope.nonce) }))
         return part
     }
 
-    /// 送った意図と、司令塔が処理していればその記録
+    /// 送った意図と、司令塔が処理していればその記録。どちらも書いたら変わらないので、一覧の sha が同じなら前に読んだものを使う
     private func readSent(_ entry: DirectoryEntry, consumed: DirectoryEntry?) async -> Part<StateDocuments.SentIntent?> {
         let envelopeRead = await readEnvelope(entry)
         guard let envelope = envelopeRead.value else {
             return Part(value: nil, failures: envelopeRead.failures)
         }
         var part = Part<StateDocuments.SentIntent?>(value: StateDocuments.SentIntent(envelope: envelope))
-        if consumed != nil {
-            let record = await read(ConsumedIntentFile.self, at: StatePath.consumed(device: device, nonce: envelope.nonce))
+        if let consumed {
+            let path = StatePath.consumed(device: device, nonce: envelope.nonce)
+            // 一覧の名前と中身の nonce が合わないときは、sha を使い回さずに読む
+            let sha = consumed.path == path ? consumed.sha : nil
+            let record = await readConsumed(at: path, sha: sha)
             part.value?.consumed = record.value
             part.failures += record.failures
         }
@@ -303,13 +310,33 @@ struct StateReader {
         struct Stored: Decodable {
             var envelope: IntentEnvelope
         }
+        if let cached = immutables?.envelope(at: entry.path, sha: entry.sha) {
+            return Part(value: cached)
+        }
         do {
             guard let blob = try await store.read(entry.path) else {
                 return Part(value: nil)
             }
-            return Part(value: try JSONDecoder().decode(Stored.self, from: blob.data).envelope)
+            let envelope = try JSONDecoder().decode(Stored.self, from: blob.data).envelope
+            immutables?.store(envelope, at: entry.path, sha: blob.sha)
+            return Part(value: envelope)
         } catch {
             return Part(value: nil, failures: [SourceFailure(source: entry.path, message: "送った意図を読めません")])
+        }
+    }
+
+    private func readConsumed(at path: String, sha: String?) async -> Part<ConsumedIntentFile?> {
+        if let sha, let cached = immutables?.consumed(at: path, sha: sha) {
+            return Part(value: cached)
+        }
+        do {
+            guard let loaded = try await files.read(ConsumedIntentFile.self, at: path) else {
+                return Part(value: nil)
+            }
+            immutables?.store(loaded.file, at: path, sha: loaded.sha)
+            return Part(value: loaded.file)
+        } catch {
+            return Part(value: nil, failures: [SourceFailure(source: path, message: Self.message(for: error))])
         }
     }
 
@@ -365,5 +392,34 @@ struct StateReader {
         default:
             "読めませんでした"
         }
+    }
+}
+
+/// 書いたら変わらないファイル（送った意図・司令塔の処理の記録）の、読んだ中身。
+/// 30 秒ごとの取り直しのたびに読み直さないよう、一覧の sha が同じなら取り直さずに使う（変わらないファイルでも、sha が変われば読み直す）
+final class ImmutableFileCache {
+    private var envelopes: [String: (sha: String, envelope: IntentEnvelope)] = [:]
+    private var records: [String: (sha: String, record: ConsumedIntentFile)] = [:]
+
+    func envelope(at path: String, sha: String) -> IntentEnvelope? {
+        envelopes[path].flatMap { $0.sha == sha ? $0.envelope : nil }
+    }
+
+    func consumed(at path: String, sha: String) -> ConsumedIntentFile? {
+        records[path].flatMap { $0.sha == sha ? $0.record : nil }
+    }
+
+    func store(_ envelope: IntentEnvelope, at path: String, sha: String) {
+        envelopes[path] = (sha, envelope)
+    }
+
+    func store(_ record: ConsumedIntentFile, at path: String, sha: String) {
+        records[path] = (sha, record)
+    }
+
+    /// `paths` のほかを捨てる
+    func keep(_ paths: Set<String>) {
+        envelopes = envelopes.filter { paths.contains($0.key) }
+        records = records.filter { paths.contains($0.key) }
     }
 }

@@ -16,6 +16,8 @@ final class StateClientService: ClientService {
     static let concurrentRequests = 8
 
     private let store: any StateStore
+    /// 送った意図と処理の記録（書いたら変わらない）の読んだ中身。取り直しのたびに読み直さない
+    private let immutables = ImmutableFileCache()
     private let key: DeviceSigningKey
     private let now: @Sendable () -> Date
     /// 送るたびに使い回す（意図の番号を送った順に大きくする。司令塔は番号の順に処理するので、判断に答えてから承認する、などの順を守る）
@@ -44,7 +46,7 @@ final class StateClientService: ClientService {
     func fetchSnapshot() async throws -> ClientSnapshot {
         let documents: StateDocuments
         do {
-            documents = try await StateReader(store: store, device: key.keyID).read()
+            documents = try await StateReader(store: store, device: key.keyID, immutables: immutables).read()
         } catch {
             throw ClientServiceError(message: StateServiceError.message(for: error))
         }
