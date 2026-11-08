@@ -7,13 +7,13 @@ import Testing
 
 /// 最終 PR: 判断のカード・マージの規則・チェックの組み立てと、判断への答え・マージの承認・最終 PR への指示の送り方
 extension StateClientServiceTests {
-    private static let finalBase = "repos/\(repo)/epics/\(epicID)"
-    private static let finalHead = "1111111111111111111111111111111111111111"
-    private static let finalNewHead = "2222222222222222222222222222222222222222"
+    static let finalBase = "repos/\(repo)/epics/\(epicID)"
+    static let finalHead = "1111111111111111111111111111111111111111"
+    static let finalNewHead = "2222222222222222222222222222222222222222"
     private static let openID = "01JCJ0F0000000000000000201"
-    private static let reviewID = "01JCJ0F0000000000000000202"
+    static let reviewID = "01JCJ0F0000000000000000202"
     private static let fixID = "01JCJ0F0000000000000000203"
-    private static let secondReviewID = "01JCJ0F0000000000000000204"
+    static let secondReviewID = "01JCJ0F0000000000000000204"
     private static let mergeID = "01JCJ0F0000000000000000205"
     private static let sensitiveReason = ".github/workflows の差分"
 
@@ -46,7 +46,7 @@ extension StateClientServiceTests {
     ]}
     """
 
-    private static func finalJob(
+    static func finalJob(
         _ id: String,
         kind: String,
         state: String = "succeeded",
@@ -66,7 +66,7 @@ extension StateClientServiceTests {
         ]
     }
 
-    private static func finalAttempt(_ job: String, outcome: String = "succeeded", outputs: String) -> [String: String] {
+    static func finalAttempt(_ job: String, outcome: String = "succeeded", outputs: String) -> [String: String] {
         let ended = outcome == "running" ? "null" : #""2027-01-15T07:35:00Z""#
         return [
             "\(finalBase)/attempts/\(job)/1.json": """
@@ -76,13 +76,13 @@ extension StateClientServiceTests {
         ]
     }
 
-    private static func pullRequestInput(head: String = finalHead, reason: String? = nil) -> String {
+    static func pullRequestInput(head: String = finalHead, reason: String? = nil) -> String {
         let reason = reason.map { #","reason":"\#($0)""# } ?? ""
         return #"{"pullRequest":512,"head":"\#(head)"\#(reason)}"#
     }
 
     /// 最終 PR のレビューが通り、人の確認とマージを待っている epic（`.github/` に差分があるので手動のマージ）
-    private static func reviewingEpic(stage: String = "reviewing", extra: [[String: String]] = []) -> [String: String] {
+    static func reviewingEpic(stage: String = "reviewing", extra: [[String: String]] = []) -> [String: String] {
         var files = askingEpic(extra: [
             "\(finalBase)/epic.json": finalEpic(stage: stage),
             "\(finalBase)/goal.json": doneGoal,
@@ -99,13 +99,13 @@ extension StateClientServiceTests {
         return files
     }
 
-    private func put(_ files: [String: String], in store: InMemoryStateStore) async {
+    func put(_ files: [String: String], in store: InMemoryStateStore) async {
         for (path, text) in files {
             await store.put(path, data: Data(text.utf8))
         }
     }
 
-    private func sentEnvelopes(in fixture: Fixture) async throws -> [IntentEnvelope] {
+    func sentEnvelopes(in fixture: Fixture) async throws -> [IntentEnvelope] {
         struct Stored: Decodable {
             var envelope: IntentEnvelope
         }
@@ -298,80 +298,6 @@ extension StateClientServiceTests {
         #expect(!InboxBuilder.items(from: snapshot, now: now).contains { $0.kind == .finalReview })
         #expect(DeckBuilder.cards(from: snapshot, scope: .decisions(Self.epicID)).isEmpty)
         #expect(snapshot.sentIntents.first?.title == "最終 PR への指示 · ランキング")
-    }
-
-    /// 指示と判断の本文の上限は、司令塔と同じく Unicode のコードポイントで数える（結合文字を含む文は、見た目の文字数より多い）
-    @Test
-    func textLimitsCountUnicodeScalars() async throws {
-        let fixture = try makeService(files: Self.reviewingEpic())
-        let service = fixture.service
-        _ = try await service.fetchSnapshot()
-        // 濁点を結合文字で書いた「が」は、見た目は 1 文字でコードポイントは 2 つ
-        let combined = "か\u{3099}"
-        let tooLong = String(repeating: combined, count: 5_001)
-        #expect(tooLong.count == 5_001 && tooLong.unicodeScalars.count == 10_002)
-        await #expect(throws: ClientServiceError.self) {
-            try await service.perform(.instructFinal(epicID: Self.epicID, headCommit: Self.finalHead, instruction: tooLong))
-        }
-        await #expect(throws: ClientServiceError.self) {
-            let reply = DecisionReply.fix(tooLong)
-            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalHead, reply: reply))
-        }
-        let nothing = try await sentEnvelopes(in: fixture)
-        #expect(nothing.isEmpty)
-
-        // ちょうど上限（10,000 コードポイント）なら送る
-        let atLimit = String(repeating: combined, count: 5_000)
-        try await service.perform(.instructFinal(epicID: Self.epicID, headCommit: Self.finalHead, instruction: atLimit))
-        let sent = try await sentEnvelope(in: fixture.store, key: fixture.key)
-        #expect(sent.string("instruction")?.unicodeScalars.count == 10_000)
-    }
-
-    /// カードを見た後に head が進んだら（直しが push された）、見ていない head に答えを結びつけないよう、送らずに断る
-    @Test
-    func answerForAdvancedHeadIsNotSent() async throws {
-        let fixture = try makeService(files: Self.reviewingEpic())
-        let service = fixture.service
-        _ = try await service.fetchSnapshot()
-        let input = Self.pullRequestInput(head: Self.finalNewHead)
-        let review = Self.finalJob(
-            Self.secondReviewID,
-            kind: "reviewFinalPullRequest",
-            dependsOn: [Self.reviewID],
-            input: input,
-            at: "07:50"
-        )
-        await put(review, in: fixture.store)
-        await put(Self.finalAttempt(Self.secondReviewID, outputs: #"{"verdict":"ready","mergeRisks":[]}"#), in: fixture.store)
-        _ = try await service.fetchSnapshot()
-
-        let stale = HumanIntent.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalHead, reply: .accept)
-        await #expect(throws: ClientServiceError(message: "最終 PR が更新されました。見直してから答えてください")) {
-            try await service.perform(stale)
-        }
-        await #expect(throws: ClientServiceError.self) {
-            try await service.perform(.acceptAllDecisions(epicID: Self.epicID, headCommit: Self.finalHead, decisionIDs: ["d1", "d4"]))
-        }
-        let nothing = try await sentEnvelopes(in: fixture)
-        #expect(nothing.isEmpty)
-
-        // 見直した（今の head で答えた）ものは送る
-        try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalNewHead, reply: .accept))
-        let sent = try await sentEnvelope(in: fixture.store, key: fixture.key)
-        #expect(sent.targetVersion == Self.finalNewHead)
-    }
-
-    /// まとめて OK は、画面に出していなかった答え待ちのカード（見た後に足された）があれば、どれも送らない
-    @Test
-    func acceptAllDoesNotIncludeUnseenCards() async throws {
-        let fixture = try makeService(files: Self.reviewingEpic())
-        let service = fixture.service
-        _ = try await service.fetchSnapshot()
-        await #expect(throws: ClientServiceError(message: "最終 PR が更新されました。見直してから答えてください")) {
-            try await service.perform(.acceptAllDecisions(epicID: Self.epicID, headCommit: Self.finalHead, decisionIDs: ["d1"]))
-        }
-        let nothing = try await sentEnvelopes(in: fixture)
-        #expect(nothing.isEmpty)
     }
 
     /// 送った後に head が変わったら（直しが push された）、送った答えは司令塔が断るので、答えた結果として出さない
