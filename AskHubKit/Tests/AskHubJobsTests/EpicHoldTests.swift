@@ -54,25 +54,29 @@ struct EpicHoldTests {
         #expect(EpicHold.release(offline, was: offline, attempts: [Sample.attempt(1)], now: Sample.time(3)) == offline)
     }
 
+    /// 司令塔は mac-mini、epic の Mac を macbook-a から macbook-b に引き継いだ
+    private func realign(_ job: JobFile, attempts: [AttemptFile] = []) -> JobFile {
+        EpicHold.realign(job, to: Self.other, commander: Sample.macMini, attempts: attempts, now: Sample.time(4))
+    }
+
     @Test func realignMovesIdleJobsOfEpicMac() {
         let attempts = [Sample.attempt(1)]
         // 前の Mac がオフラインで止まったジョブは、前の Mac を待たずに移す先で動かす
         let stuck = Sample.job(state: .paused, attempts: 1, nextRunAt: Sample.stamp(5))
-        let moved = EpicHold.realign(stuck, was: stuck, to: Self.other, commander: Sample.macMini, attempts: attempts, now: Sample.time(4))
+        let moved = realign(stuck, attempts: attempts)
         #expect(moved.assignedMac == Self.other)
         #expect(moved.state == .assigned)
         #expect(moved.nextRunAt == nil)
         #expect(moved.updatedAt == Sample.stamp(4))
         // 動いているジョブ・司令塔の Mac で動く種類・司令塔の Mac の最終 PR の直しは触らない
         let running = Sample.job(state: .running, attempts: 1)
-        #expect(EpicHold.realign(running, was: running, to: Self.other, commander: Sample.macMini, attempts: attempts, now: Sample.time(4)) == running)
+        #expect(realign(running, attempts: attempts) == running)
         let review = Sample.job(kind: .reviewFinalPullRequest, mac: Sample.macMini)
-        #expect(EpicHold.realign(review, was: review, to: Self.other, commander: Sample.macMini, attempts: [], now: Sample.time(4)) == review)
+        #expect(realign(review) == review)
         let fixOnCommander = Sample.job(kind: .fixFinalPullRequest, mac: Sample.macMini)
-        let kept = EpicHold.realign(fixOnCommander, was: fixOnCommander, to: Self.other, commander: Sample.macMini, attempts: [], now: Sample.time(4))
-        #expect(kept == fixOnCommander)
+        #expect(realign(fixOnCommander) == fixOnCommander)
         let fixOnLaptop = Sample.job(kind: .fixFinalPullRequest, state: .waitingHuman)
-        let followed = EpicHold.realign(fixOnLaptop, was: fixOnLaptop, to: Self.other, commander: Sample.macMini, attempts: [], now: Sample.time(4))
+        let followed = realign(fixOnLaptop)
         #expect(followed.assignedMac == Self.other)
         #expect(followed.state == .waitingHuman)
     }

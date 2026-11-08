@@ -69,7 +69,7 @@ public struct JobSweep: Sendable {
         var next = JobReconciler.reconcile(job, attempts: attempts, mac: mac, now: now, policy: policy, timing: timing)
         if let epic {
             if let epicMac = epic.mac {
-                next = EpicHold.realign(next, was: job, to: epicMac, commander: context.mac, attempts: attempts, now: now)
+                next = EpicHold.realign(next, to: epicMac, commander: context.mac, attempts: attempts, now: now)
             }
             next = epic.pause == nil
                 ? EpicHold.release(next, was: job, attempts: attempts, now: now)

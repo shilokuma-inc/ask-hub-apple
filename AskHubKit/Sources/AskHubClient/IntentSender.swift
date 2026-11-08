@@ -90,7 +90,12 @@ public struct IntentDraft: Equatable, Sendable {
 
     /// 開始した epic を、ほかの Mac（`mac`。オフラインでもよい）に引き継ぐ
     public static func handover(repo: RepositoryFullName, epic: ULID, to mac: MacName) -> Self {
-        Self(kind: HandoverIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic), payload: ["mac": .string(mac.rawValue)])
+        Self(
+            kind: HandoverIntent.kind,
+            repo: repo,
+            target: .init(type: EpicTarget.targetType, epic: epic),
+            payload: ["mac": .string(mac.rawValue)]
+        )
     }
 
     /// 判断のカードへの答え（「別案にする」「直してほしい」は本文が要る）

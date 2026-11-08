@@ -74,20 +74,26 @@ struct EpicPauseTests {
     /// 対象のリポジトリ・Mac の生きている印・開始した epic（`stage`）・ゴール（t1 → t2）。`prepared` なら作業場所の用意が成功している
     @discardableResult
     func started(stage: EpicStage = .running, prepared: Bool = true, laptopSeen: Date = Self.now) async throws -> JobFile {
-        try await put(RepositoryFile(repo: Self.repo, platform: .apple, maxConcurrentEpics: 1, addedAt: Timestamp(Self.now)), at: StatePath.repository(Self.repo))
+        let repository = RepositoryFile(repo: Self.repo, platform: .apple, maxConcurrentEpics: 1, addedAt: Timestamp(Self.now))
+        try await put(repository, at: StatePath.repository(Self.repo))
         try await mac(Self.laptop, seen: laptopSeen)
         try await mac(Self.other, seen: Self.now)
         let time = Timestamp(Self.now)
         let mac: MacName? = stage == .awaitingStart ? nil : Self.laptop
-        let epic = EpicFile(id: Self.epicID, repo: Self.repo, title: "ランキング", stage: stage, mac: mac, goalVersion: 1, createdAt: time, updatedAt: time)
+        let epic = EpicFile(
+            id: Self.epicID, repo: Self.repo, title: "ランキング", stage: stage, mac: mac, goalVersion: 1, createdAt: time, updatedAt: time
+        )
         try await put(epic, at: StatePath.epic(Self.repo, Self.epicID))
         let tasks: [GoalFile.Task] = [.init(id: "t1", title: "集計を作る"), .init(id: "t2", title: "画面を作る", dependsOn: ["t1"])]
-        try await put(GoalFile(version: 1, summary: "ランキングを作る", doneWhen: ["…"], tasks: tasks), at: StatePath.goal(Self.repo, Self.epicID))
-        var prepare = context().job(JobSpec(kind: .prepareWorkspace, mac: Self.laptop, needs: .init(claude: false, build: false)), for: epic, origin: Self.origin, seed: "")
+        let goal = GoalFile(version: 1, summary: "ランキングを作る", doneWhen: ["…"], tasks: tasks)
+        try await put(goal, at: StatePath.goal(Self.repo, Self.epicID))
+        let spec = JobSpec(kind: .prepareWorkspace, mac: Self.laptop, needs: .init(claude: false, build: false))
+        var prepare = context().job(spec, for: epic, origin: Self.origin, seed: "")
         if prepared {
             prepare.state = .succeeded
             prepare.attempts = 1
-            try await attempt(of: prepare, number: 1, outcome: .succeeded, outputs: .init(commit: TaskFlowTests.sha("0"), branch: "askhub/\(Self.epicID)"))
+            let outputs = AttemptFile.Outputs(commit: TaskFlowTests.sha("0"), branch: "askhub/\(Self.epicID)")
+            try await attempt(of: prepare, number: 1, outcome: .succeeded, outputs: outputs)
         }
         try await put(prepare, at: StatePath.job(Self.repo, epic: Self.epicID, job: prepare.id))
         return prepare
@@ -118,7 +124,8 @@ struct EpicPauseTests {
         attempts: Int = 0
     ) async throws -> JobFile {
         let epic = try await epic()
-        var job = context().job(JobSpec(kind: kind, mac: mac, needs: .init(claude: true, build: true)), for: epic, origin: Self.origin, seed: seed)
+        let spec = JobSpec(kind: kind, mac: mac, needs: .init(claude: true, build: true))
+        var job = context().job(spec, for: epic, origin: Self.origin, seed: seed)
         job.task = TaskFlow.taskKinds.contains(kind) ? "t1" : nil
         job.state = state
         job.attempts = attempts
@@ -189,7 +196,8 @@ struct EpicPauseTests {
         // もう一度見ても書き直さない
         #expect(try await JobSweep(context: context()).sweep().isEmpty)
 
-        try await attempt(of: running, number: 1, outcome: .succeeded, outputs: .init(pullRequest: 41, commit: TaskFlowTests.sha("1"), verdict: .merged))
+        let merged = AttemptFile.Outputs(pullRequest: 41, commit: TaskFlowTests.sha("1"), verdict: .merged)
+        try await attempt(of: running, number: 1, outcome: .succeeded, outputs: merged)
         let advanced = try await advance()
         #expect(try await job(running).state == .succeeded)
         #expect(advanced.created.isEmpty)

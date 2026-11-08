@@ -48,8 +48,7 @@ public enum EpicHold {
     /// 引き継いだ epic のジョブを、epic の今の Mac（`epicMac`）に付け替える。動いている・終わったジョブは触らない。
     /// 前の Mac がオフラインで止まったままのジョブは、前の Mac を待たずに `assigned` に戻す（一時停止の間は `hold` が止めたままにする）。
     /// 最終 PR の直しは、epic の Mac がオフラインなら司令塔の Mac（`commander`）で動くので、司令塔の Mac のものは触らない
-    public static func realign(_ next: JobFile, was job: JobFile, to epicMac: MacName, commander: MacName, attempts: [AttemptFile], now: Date)
-        -> JobFile {
+    public static func realign(_ next: JobFile, to epicMac: MacName, commander: MacName, attempts: [AttemptFile], now: Date) -> JobFile {
         guard movableStates.contains(next.state), let current = next.assignedMac, current != epicMac else { return next }
         guard epicMacKinds.contains(next.kind) || (next.kind == .fixFinalPullRequest && current != commander) else { return next }
         var moved = next
@@ -58,7 +57,7 @@ public enum EpicHold {
             moved.state = .assigned
             moved.nextRunAt = nil
         }
-        return settled(moved, was: job, now: now)
+        return settled(moved, was: next, now: now)
     }
 
     /// 前と変わっていなければ前のもの（更新の時刻も動かさない）、変わっていれば更新の時刻を `now` にしたもの

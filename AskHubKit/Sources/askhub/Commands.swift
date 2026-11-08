@@ -86,17 +86,8 @@ extension AskHubMain {
             return try answer(command, arguments)
         case "decide", "approve-merge", "instruct-final":
             return try finalDraft(command, arguments)
-        case "abandon":
-            try arguments.only(["repo", "epic"])
-            return .abandonEpic(repo: try arguments.repository(), epic: try arguments.epic())
-        case "pause", "resume":
-            try arguments.only(["repo", "epic"])
-            let (repo, epic) = (try arguments.repository(), try arguments.epic())
-            return command == "pause" ? .pauseEpic(repo: repo, epic: epic) : .resumeEpic(repo: repo, epic: epic)
-        case "handover":
-            try arguments.only(["repo", "epic", "mac"])
-            guard let mac = MacName(rawValue: try arguments.string("mac")) else { throw CommandArguments.Failure(message: "--mac の形が違う") }
-            return .handover(repo: try arguments.repository(), epic: try arguments.epic(), to: mac)
+        case "abandon", "pause", "resume", "handover":
+            return try epicControlDraft(command, arguments)
         case "retry", "give-up":
             try arguments.only(["repo", "epic", "job", "attempt"])
             guard let job = ULID(rawValue: try arguments.string("job")) else { throw CommandArguments.Failure(message: "--job の形が違う") }
@@ -185,6 +176,23 @@ extension AskHubMain {
         default:
             let target = FinalPullRequestTarget(repo: repo, epic: epic, head: head)
             return .instructFinal(target, instruction: try arguments.string("instruction"))
+        }
+    }
+
+    /// 版を持たずに epic を対象にする意図（取り下げ・一時停止・再開・引き継ぎ）
+    private static func epicControlDraft(_ command: String, _ arguments: CommandArguments) throws -> IntentDraft {
+        try arguments.only(command == "handover" ? ["repo", "epic", "mac"] : ["repo", "epic"])
+        let (repo, epic) = (try arguments.repository(), try arguments.epic())
+        switch command {
+        case "abandon":
+            return .abandonEpic(repo: repo, epic: epic)
+        case "pause":
+            return .pauseEpic(repo: repo, epic: epic)
+        case "resume":
+            return .resumeEpic(repo: repo, epic: epic)
+        default:
+            guard let mac = MacName(rawValue: try arguments.string("mac")) else { throw CommandArguments.Failure(message: "--mac の形が違う") }
+            return .handover(repo: repo, epic: epic, to: mac)
         }
     }
 

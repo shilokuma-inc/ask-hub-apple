@@ -16,7 +16,9 @@ public struct PauseEpicHandler: IntentHandler {
         } catch {
             return .reject("一時停止の形が違う（\(error.detail)）")
         }
-        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(pause.repo, pause.epic)) else { return .reject("epic が無い") }
+        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(pause.repo, pause.epic)) else {
+            return .reject("epic が無い")
+        }
         // 前の周で印を付けた（やり直し）か、一時停止の中でもう一度止めた
         if epic.pause != nil { return .accept }
         guard TaskFlow.stages.contains(epic.stage) else { return .reject("開始した後だけ一時停止できる（今は \(epic.stage.rawValue)）") }
@@ -42,7 +44,9 @@ public struct ResumeEpicHandler: IntentHandler {
         } catch {
             return .reject("再開の形が違う（\(error.detail)）")
         }
-        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(resume.repo, resume.epic)) else { return .reject("epic が無い") }
+        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(resume.repo, resume.epic)) else {
+            return .reject("epic が無い")
+        }
         // 前の周で印を外した（やり直し）か、止めていない
         guard epic.pause != nil else { return .accept }
         try await context.updateEpic(epic, message: "epic を再開する") { file in
