@@ -205,9 +205,13 @@ extension TaskFlow {
     }
 
     /// 最終 PR をマージした: 片付けを作ってから、epic を `merged` にする（作る前に止まっても、次の周で片付けを作る）
+    /// マージの記録も書く。人の承認でマージしたかは、マージのジョブの元になった意図で分かる（自動のマージは開始の意図、人の承認は `approveMerge`）
     func merged(_ merge: JobFile, in final: FinalPlan) async throws(CommanderError) -> Advanced {
         var advanced = try await create(.cleanUp, input: nil, after: merge, seed: "", in: final)
-        try await context.setStage(.merged, of: final.epic, from: [.finalizing, .reviewing])
+        let approval = merge.origin == final.plan.origin ? nil : merge.origin
+        let now = context.timestamp
+        let record = try await succeededOutputs(of: merge)?.commit.map { EpicFile.Merge(commit: $0, approval: approval, at: now) }
+        try await context.setStage(.merged, of: final.epic, from: [.finalizing, .reviewing]) { $0.merge = record }
         advanced.notes.append("epic \(final.epic.id) の最終 PR をマージした")
         return advanced
     }

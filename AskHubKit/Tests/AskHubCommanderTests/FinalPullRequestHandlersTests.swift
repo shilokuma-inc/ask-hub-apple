@@ -116,10 +116,12 @@ struct FinalPullRequestHandlersTests {
         #expect(merge.assignedMac == Fixture.commander)
         #expect(merge.input(as: PullRequestInput.self) == PullRequestInput(pullRequest: Fixture.pullRequest, head: Fixture.sha("a")))
 
-        // マージした: 片付けを作り、merged にする
+        // マージした: 片付けを作り、merged にして、人の承認でマージしたことを記録する
         try await given.succeed(merge, outputs: .init(commit: Fixture.sha("e")))
         _ = try await given.next(.cleanUp)
-        #expect(try await given.epic().stage == .merged)
+        let merged = try await given.epic()
+        #expect(merged.stage == .merged)
+        #expect(merged.merge == EpicFile.Merge(commit: Fixture.sha("e"), approval: intent, at: try #require(merged.merge?.at)))
     }
 
     @Test func approveMergeIsRejectedUntilEverythingIsSettled() async throws {

@@ -68,7 +68,11 @@ struct FinalFlowTests {
         #expect(cleanUp.assignedMac == Fixture.laptop)
         #expect(cleanUp.dependsOn == [merge.id])
         #expect(step.notes.contains { $0.contains("マージした") })
-        #expect(try await given.epic().stage == .merged)
+        let merged = try await given.epic()
+        #expect(merged.stage == .merged)
+        // 自動でマージした（元の意図は開始の意図）ので、承認は記録しない
+        #expect(merged.merge?.commit == Fixture.sha("e"))
+        #expect(merged.merge?.approval == nil)
         #expect(try await given.advance() == TaskFlow.Advanced())
     }
 
