@@ -164,7 +164,9 @@ struct DemoClientServiceTests {
     @Test
     func acceptAllRecordsHeadAndMerges() async throws {
         let service = makeService()
-        try await service.perform(.acceptAllDecisions(epicID: "tsundoku-search"))
+        let before = try #require(service.state.epic("tsundoku-search")?.finalReview)
+        let shown = before.pendingDecisions.map(\.id)
+        try await service.perform(.acceptAllDecisions(epicID: "tsundoku-search", headCommit: before.headCommit, decisionIDs: shown))
         let review = try #require(service.state.epic("tsundoku-search")?.finalReview)
         let allConfirmed = review.decisions.allSatisfy(\.isConfirmed)
         #expect(allConfirmed)
@@ -221,7 +223,8 @@ struct DemoClientServiceTests {
     @Test
     func fixRequestComesBackForReview() async throws {
         let service = makeService()
-        try await service.perform(.respondToDecision(epicID: "tsundoku-search", decisionID: "d4", reply: .fix("左に置いて")))
+        let head = service.state.epic("tsundoku-search")?.finalReview?.headCommit
+        try await service.perform(.respondToDecision(epicID: "tsundoku-search", decisionID: "d4", headCommit: head, reply: .fix("左に置いて")))
         let fixing = service.state.epic("tsundoku-search")?.finalReview?.decisions.first { $0.id == "d4" }
         #expect(fixing?.response == .fixing(request: "左に置いて"))
 

@@ -165,8 +165,9 @@ extension StateClientServiceTests {
         let fixture = try makeService(files: Self.reviewingEpic())
         let service = fixture.service
         _ = try await service.fetchSnapshot()
-        #expect(service.supports(.respondToDecision(epicID: Self.epicID, decisionID: "d1", reply: .accept)))
-        try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", reply: .fix("見出しを元の長さに戻して")))
+        #expect(service.supports(.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalHead, reply: .accept)))
+        let fix = DecisionReply.fix("見出しを元の長さに戻して")
+        try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalHead, reply: fix))
 
         let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
         #expect(envelope.kind == DecisionIntent.kind)
@@ -181,14 +182,15 @@ extension StateClientServiceTests {
         #expect(snapshot.sentIntents.first?.title == "判断「見出しを短くした」への回答 · ランキング")
         // 別案・直してほしいは本文が要る
         await #expect(throws: ClientServiceError.self) {
-            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d4", reply: .alternative(" ")))
+            let blank = DecisionReply.alternative(" ")
+            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d4", headCommit: Self.finalHead, reply: blank))
         }
         // カードに無い判断（内部の細部）には答えない
         await #expect(throws: ClientServiceError.self) {
-            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d3", reply: .accept))
+            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d3", headCommit: Self.finalHead, reply: .accept))
         }
         // 同じカードへの答え直しは司令塔が断るので、最初の答えのまま出す
-        try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", reply: .accept))
+        try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalHead, reply: .accept))
         let again = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.finalReview)
         #expect(again.decisions.first { $0.id == "d1" }?.response == .fixing(request: "見出しを元の長さに戻して"))
     }
@@ -212,10 +214,10 @@ extension StateClientServiceTests {
         #expect(review.decisions.last?.goalSource == "タスク 2「一覧に出す」 · 最終 PR #512")
         #expect(review.mergePolicy == .manual([.visibleDecisions(count: 2), .risksUnknown]))
         await #expect(throws: ClientServiceError.self) {
-            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d5", reply: .accept))
+            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d5", headCommit: Self.finalHead, reply: .accept))
         }
 
-        try await service.perform(.acceptAllDecisions(epicID: Self.epicID))
+        try await service.perform(.acceptAllDecisions(epicID: Self.epicID, headCommit: Self.finalHead, decisionIDs: ["d1", "d5"]))
         let sent = try await sentEnvelopes(in: fixture)
         #expect(sent.map { $0.target?.id } == ["d1"])
         let answered = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.finalReview)
@@ -234,14 +236,15 @@ extension StateClientServiceTests {
         await #expect(throws: ClientServiceError.self) {
             try await service.perform(.merge(epicID: Self.epicID, headCommit: Self.finalHead))
         }
-        try await service.perform(.acceptAllDecisions(epicID: Self.epicID))
+        let acceptAll = HumanIntent.acceptAllDecisions(epicID: Self.epicID, headCommit: Self.finalHead, decisionIDs: ["d1", "d4"])
+        try await service.perform(acceptAll)
         // 読み直す前にもう一度押しても、送ってあって受け取り待ちの答えは送り直さない
-        try await service.perform(.acceptAllDecisions(epicID: Self.epicID))
+        try await service.perform(acceptAll)
         let answers = try await sentEnvelopes(in: fixture)
         #expect(answers.map(\.kind) == [DecisionIntent.kind, DecisionIntent.kind])
         #expect(answers.map { $0.target?.id } == ["d1", "d4"])
         #expect(answers.allSatisfy { $0.string("answer") == "ok" && $0.targetVersion == Self.finalHead })
-        #expect(service.lastSend(of: .acceptAllDecisions(epicID: Self.epicID))?.isWaiting == true)
+        #expect(service.lastSend(of: acceptAll)?.isWaiting == true)
 
         let answered = try await service.fetchSnapshot()
         let review = try #require(answered.epic(Self.epicID)?.finalReview)
@@ -297,13 +300,60 @@ extension StateClientServiceTests {
         #expect(snapshot.sentIntents.first?.title == "最終 PR への指示 · ランキング")
     }
 
+    /// カードを見た後に head が進んだら（直しが push された）、見ていない head に答えを結びつけないよう、送らずに断る
+    @Test
+    func answerForAdvancedHeadIsNotSent() async throws {
+        let fixture = try makeService(files: Self.reviewingEpic())
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        let input = Self.pullRequestInput(head: Self.finalNewHead)
+        let review = Self.finalJob(
+            Self.secondReviewID,
+            kind: "reviewFinalPullRequest",
+            dependsOn: [Self.reviewID],
+            input: input,
+            at: "07:50"
+        )
+        await put(review, in: fixture.store)
+        await put(Self.finalAttempt(Self.secondReviewID, outputs: #"{"verdict":"ready","mergeRisks":[]}"#), in: fixture.store)
+        _ = try await service.fetchSnapshot()
+
+        let stale = HumanIntent.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalHead, reply: .accept)
+        await #expect(throws: ClientServiceError(message: "最終 PR が更新されました。見直してから答えてください")) {
+            try await service.perform(stale)
+        }
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.acceptAllDecisions(epicID: Self.epicID, headCommit: Self.finalHead, decisionIDs: ["d1", "d4"]))
+        }
+        let nothing = try await sentEnvelopes(in: fixture)
+        #expect(nothing.isEmpty)
+
+        // 見直した（今の head で答えた）ものは送る
+        try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalNewHead, reply: .accept))
+        let sent = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(sent.targetVersion == Self.finalNewHead)
+    }
+
+    /// まとめて OK は、画面に出していなかった答え待ちのカード（見た後に足された）があれば、どれも送らない
+    @Test
+    func acceptAllDoesNotIncludeUnseenCards() async throws {
+        let fixture = try makeService(files: Self.reviewingEpic())
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        await #expect(throws: ClientServiceError(message: "最終 PR が更新されました。見直してから答えてください")) {
+            try await service.perform(.acceptAllDecisions(epicID: Self.epicID, headCommit: Self.finalHead, decisionIDs: ["d1"]))
+        }
+        let nothing = try await sentEnvelopes(in: fixture)
+        #expect(nothing.isEmpty)
+    }
+
     /// 送った後に head が変わったら（直しが push された）、送った答えは司令塔が断るので、答えた結果として出さない
     @Test
     func answerForOldHeadIsNotShown() async throws {
         let fixture = try makeService(files: Self.reviewingEpic())
         let service = fixture.service
         _ = try await service.fetchSnapshot()
-        try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", reply: .accept))
+        try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalHead, reply: .accept))
         #expect(try await service.fetchSnapshot().epic(Self.epicID)?.finalReview?.decisions.first?.response == .accepted)
 
         await put(Self.finalJob(
@@ -348,7 +398,7 @@ extension StateClientServiceTests {
         #expect(!InboxBuilder.items(from: snapshot, now: now).contains { $0.kind == .finalReview })
         #expect(DeckBuilder.cards(from: snapshot, scope: .decisions(Self.epicID)).isEmpty)
         await #expect(throws: ClientServiceError.self) {
-            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", reply: .accept))
+            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalHead, reply: .accept))
         }
 
         // 直し終えて、次のレビューが動いている
