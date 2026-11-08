@@ -75,6 +75,11 @@ extension DemoClientService {
                 $0.state = .answered(Question.Response(optionID: optionID, note: note, answeredAt: date))
             }
             epic.log("\(questionID) に回答しました", at: date)
+            // 実装の途中の質問なら、答えを渡して実装を再開する
+            for index in epic.tasks.indices where epic.tasks[index].state == .inProgress(.waitingForAnswer(question: questionID)) {
+                epic.tasks[index].state = .inProgress(.implementing)
+                epic.log("\(questionID) の答えで、タスク \(epic.tasks[index].number) の実装を再開しました", at: date)
+            }
         }
         questionSettled(epicID: epicID, questionID: questionID)
     }

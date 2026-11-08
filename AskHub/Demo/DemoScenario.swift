@@ -14,7 +14,7 @@ enum DemoScenario: String, CaseIterable {
     case partial
     /// 標準の場面に、1 つの epic に収まらない依頼（分け方の判断の待ち）を足す
     case tooLarge
-    /// 開始した後の段取り（作業場所の用意・実装中・チェックとレビュー・直し）を並べる
+    /// 開始した後の段取り（作業場所の用意・実装中・実装の途中の質問・直し）を並べる
     case started
 
     /// 機械の反応までの秒数を決める UserDefaults のキー（UI テストは起動引数 `-demoReactionDelay 0` で渡す）
@@ -133,6 +133,16 @@ extension DemoData {
             epic.log("MacBook Pro 14 に引き継ぎました", at: ago(minutes: 30))
             epic.log("タスク 5 の子 PR #15 の CI が通らないので直します", at: ago(minutes: 10))
         }
+        // 買い物リストの並べ替えは、タスク 2 の実装の途中で Claude が人に聞いた（答えるまで止めて待つ）
+        snapshot.updateEpic("recipe-shopping") { epic in
+            epic.tasks[1].state = .inProgress(.waitingForAnswer(question: "Q1"))
+            epic.activities = []
+            epic.questions = [shoppingQuestion()]
+            epic.log("タスク 2 の実装の途中で、Claude が Q1 を聞きました。答えるまで止めて待ちます", at: ago(minutes: 5))
+        }
+        snapshot.updateMac(Self.macMiniID) { mac in
+            mac.jobs.removeAll { $0.epicID == "recipe-shopping" }
+        }
         // 家事の分担の通知は MacBook Air から引き継いだので、MacBook Air にはジョブを残さない
         snapshot.updateMac(Self.macBookAirID) { mac in
             mac.jobs.removeAll { $0.epicID == "kaji-notify" }
@@ -144,6 +154,24 @@ extension DemoData {
             ]
         }
         return snapshot
+    }
+
+    /// 実装の途中の質問（買い物リストの並べ替えのタスク 2）
+    private func shoppingQuestion() -> Question {
+        Question(
+            id: "Q1",
+            title: "売り場の並びを変えられるようにするか",
+            why: "店ごとに売り場の順が違う。決めた並びで固定するか、人が並べ替えられるようにするかで、保存するものが変わる",
+            options: [
+                Question.Option(id: "決めた並びで固定", label: "決めた並びで固定", effect: "野菜・肉・魚・調味料の順にする。設定の画面は作らない"),
+                Question.Option(id: "人が並べ替えられる", label: "人が並べ替えられる", effect: "設定に並べ替えの画面を足し、順を端末に保存する"),
+                Question.Option(id: "店ごとに並びを持つ", label: "店ごとに並びを持つ", effect: "店を登録する画面も要る。このタスクの範囲を超える")
+            ],
+            recommendedOptionID: "決めた並びで固定",
+            recommendationReason: "ゴールの「やらないこと」に設定の追加があるため。並べ替えは後で足せる",
+            askedAt: ago(minutes: 5),
+            during: .task(number: 2, title: "一覧に並べ替えのボタン")
+        )
     }
 }
 
