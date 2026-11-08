@@ -50,6 +50,11 @@ struct FinalChain {
         ordered?.filter { $0.kind == .fixFinalPullRequest && $0.input(as: FixTaskInput.self)?.reason != .human }.count ?? 0
     }
 
+    /// 人が頼んだ直し（判断のカードへの「別案にする」「直してほしい」・最終 PR への指示）があるか
+    var hasHumanFix: Bool {
+        ordered?.contains { $0.kind == .fixFinalPullRequest && $0.input(as: FixTaskInput.self)?.reason == .human } ?? false
+    }
+
     /// `job` の 1 つ前のジョブ
     func parent(of job: JobFile) -> JobFile? {
         guard let ordered, let index = ordered.firstIndex(where: { $0.id == job.id }), index > 0 else { return nil }
