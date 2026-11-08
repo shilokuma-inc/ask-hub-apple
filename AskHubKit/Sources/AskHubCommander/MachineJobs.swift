@@ -5,12 +5,13 @@ import Foundation
 // 司令塔とワーカーで共通の、ジョブの読み方と生きている印の書き方
 
 extension CommanderContext {
-    /// `mac` が実装を受け持つ epic（開始のときに選ばれた、終わっていない epic）のすべてのジョブ。
+    /// `mac` が実装を受け持つ epic（開始のときに選ばれた、ジョブを見張る epic）のすべてのジョブ。
     /// 引き受けるジョブを選ぶのに使う（依存の成功と、同時の上限の判断に、ほかの状態のジョブも要る）。読めない epic・ジョブは飛ばす
     public func jobsOfEpics(on mac: MacName) async throws(CommanderError) -> [JobFile] {
         var jobs: [JobFile] = []
+        let now = now()
         for repo in try await repositories() {
-            for epic in try await epics(of: repo, where: { $0.mac == mac && ![.merged, .abandoned].contains($0.stage) }) {
+            for epic in try await epics(of: repo, where: { $0.mac == mac && $0.watchesJobs(now: now) }) {
                 jobs += try await jobList(repo, epic: epic.id).jobs
             }
         }
@@ -32,6 +33,20 @@ extension CommanderContext {
             throw .changedWhileProcessing(path)
         } catch {
             throw .files(error)
+        }
+    }
+}
+
+extension EpicFile {
+    /// マージした後も、片付け（`cleanUp`）のジョブを見張り続ける長さ。epic の Mac がこれより長く戻らなければ、片付けは残したままにする
+    static let cleanUpWindow: TimeInterval = 7 * 24 * 60 * 60
+
+    /// ジョブを見張る（司令塔が試行を読み、ワーカーが引き受ける）epic か。終わっていない epic と、マージしてから間もない epic（片付けが残る）
+    func watchesJobs(now: Date) -> Bool {
+        switch stage {
+        case .abandoned: false
+        case .merged: now.timeIntervalSince(updatedAt.date) < Self.cleanUpWindow
+        default: true
         }
     }
 }

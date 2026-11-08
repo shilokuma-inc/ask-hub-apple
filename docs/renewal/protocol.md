@@ -278,6 +278,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - スクショは epic の `screenshots/<id>-before.png`・`<id>-after.png` に置き、`screenshots` にそのパスを書く。スクショと `answer` は、見えると仕分けた仮決めだけが持つ
 - `answer` は `{ "choice": "ok" | "alternative" | "fix", "note": "…", "intent": { "keyId", "nonce" }, "at": "…" }`（型は `DecisionsFile`、`protocol/schemas/state/decisions.schema.json`）
 - `answer` は人の意図（OK・別案・直してほしい）への参照
+- 最終 PR の直し（`fixFinalPullRequest`）で Claude が報告した仮決めも足す。タスクに結びつかないので、`task` はゴールの最後のタスク、`pullRequest` は最終 PR にする
+- 「別案にする」「直してほしい」の直しが済んだら、司令塔がその答えを外して答え待ちに戻す（直った後を見て答え直してもらう）。同じカードへの答え直しは受け付けない（[flows.md](flows.md) の「司令塔が最終 PR を進める」）
 
 ### jobs/<job>.json（ジョブ）
 

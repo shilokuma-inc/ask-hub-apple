@@ -6,7 +6,7 @@ import Foundation
 
 /// 常時オンの Mac の司令塔とワーカーの常駐のループ（`docs/renewal/flows.md` の「司令塔の動き」）。
 ///
-/// 1 周ごとに、人の意図を処理し終えてから、試行を読んでジョブの状態を決め、実装している epic のタスクを進めるジョブを作り（`TaskFlow`）、
+/// 1 周ごとに、人の意図を処理し終えてから、試行を読んでジョブの状態を決め、実装している epic のタスクと最終 PR を進めるジョブを作り（`TaskFlow`）、
 /// 自分宛ての Claude のジョブを引き受けて並んで動かし、進行を止めているものを知らせる。最後に、状態を Discussion の写しと照らし合わせる（写しに失敗しても、周は止めない）。
 /// 生きている印（`commander.json`・`macs/<mac>.json`）は、決めた間隔で書く
 public actor CommanderLoop {
@@ -135,10 +135,10 @@ public actor CommanderLoop {
         for job in swept.changed {
             log("ジョブ \(job.kind.rawValue) \(job.id) を \(job.state.rawValue) にした")
         }
-        // 実装している epic のジョブの結果から、タスクを進めるジョブを作る（作ったジョブは、この周で引き受けられる）
+        // 実装している・最終 PR の段取りの epic のジョブの結果から、タスクと最終 PR を進めるジョブを作る（作ったジョブは、この周で引き受けられる）
         let advanced = await TaskFlow(context: context).advance(epics: swept.epics, jobs: swept.jobs)
         for job in advanced.created {
-            log("ジョブ \(job.kind.rawValue) \(job.id)（タスク \(job.task ?? "")）を作った")
+            log("ジョブ \(job.kind.rawValue) \(job.id)\(job.task.map { "（タスク \($0)）" } ?? "")を作った")
         }
         // 進められない理由は、変わるまで周ごとに同じものが出るので、初めて出たときだけログに出す
         for note in advanced.notes where reportedNotes.insert(note).inserted {
@@ -182,7 +182,10 @@ public actor CommanderLoop {
         "addRepository": AddRepositoryHandler(),
         "configureRepository": ConfigureRepositoryHandler(),
         "retry": RetryJobHandler(),
-        "giveUp": GiveUpJobHandler()
+        "giveUp": GiveUpJobHandler(),
+        "decision": DecisionHandler(),
+        "approveMerge": ApproveMergeHandler(),
+        "instructFinal": InstructFinalHandler()
     ]
 
     // MARK: - 通知
