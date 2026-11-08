@@ -63,15 +63,10 @@ struct MacDetailView: View {
         }
     }
 
+    /// 司令塔と版が違えば、司令塔の版を添える（そろえるのは、その Mac の設定の claude の場所に同じ版を入れる）
     private func claudeVersionRow(_ mac: Mac) -> some View {
-        LabeledContent("Claude Code") {
-            if let commander = mac.commanderClaudeVersion {
-                Label("\(mac.claudeVersion ?? "")（司令塔は \(commander)）", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(Theme.warning)
-            } else {
-                Text(mac.claudeVersion ?? "分かりません")
-            }
-        }
+        let commander = mac.commanderClaudeVersion.map { "（司令塔は \($0)）" } ?? ""
+        return LabeledContent("Claude Code", value: (mac.claudeVersion ?? "分かりません") + commander)
     }
 
     /// トークンの期限。入れ直すときは、Mac の端末で流すコマンドを出す
