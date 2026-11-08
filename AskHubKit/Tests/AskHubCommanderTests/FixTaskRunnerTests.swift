@@ -106,21 +106,12 @@ struct FixTaskRunnerTests {
         #expect(result.outputs?.report?.summary == "指摘は誤り。nil にはならない。")
     }
 
-    @Test func failsWithoutFindingsConversationOrOpenPullRequest() async throws {
+    @Test func failsWithoutFindingsOrOpenPullRequest() async throws {
         let empty = Fixture()
         try await empty.prepare()
         let runner = FakeTaskRunner([FakeTaskRunner.done()])
         let missing = try await fix(empty, runner)
         #expect(missing.failure?.message.contains("直すこと") == true)
-
-        // 直すことはあるが、実装の会話が無い
-        let noSession = Fixture()
-        try await noSession.prepare()
-        let reviewed = PullRequestInput(pullRequest: 41, head: Self.head)
-        let review = AttemptFile.Outputs(pullRequest: 41, commit: Self.head, verdict: .fixReview, findings: Self.reviewFindings)
-        try await noSession.record(noSession.job(.reviewTask, "02", input: reviewed.jobInput), outputs: review)
-        let missingSession = try await fix(noSession, runner)
-        #expect(missingSession.failure?.message.contains("実装の会話") == true)
 
         let closed = try await fixture()
         closed.pulls.update { $0.pulls[41]?.state = .closed }
@@ -135,8 +126,8 @@ struct FixTaskRunnerTests {
         #expect(runner.calls.isEmpty)
     }
 
-    @Test func refusesConversationLeftOnAnotherMac() async throws {
-        // 実装の会話は、それを動かした Mac の Claude の設定フォルダにだけ残る
+    /// 実装の会話は、それを動かした Mac の Claude の設定フォルダにだけ残る。ほかの Mac に引き継いだ後は、新しい会話でゴールとタスクを渡して直させる
+    @Test func continuesInNewConversationWhenConversationIsOnAnotherMac() async throws {
         let fixture = try await fixture()
         let claude = AttemptFile.Claude(model: "claude-opus-5-5", session: "s-other", estimatedCostUsd: 0.4)
         let job = fixture.job(.fixTask, "07")
@@ -154,9 +145,44 @@ struct FixTaskRunnerTests {
         )
         let path = StatePath.attempt(Fixture.repo, epic: Fixture.epic, job: job.id, number: 1)
         try await fixture.files.create(attempt, at: path, message: "attempt")
+        let runner = FakeTaskRunner([FakeTaskRunner.done("新しい会話で直した。", session: "s-new")]) { fixture.git.update { $0.dirty = true } }
+        let result = try await fix(fixture, runner)
+        #expect(result.failure == nil)
+        #expect(result.outputs?.commit == sha("1"))
+        #expect(result.claude?.session == "s-new")
+        let call = try #require(runner.calls.first)
+        #expect(call.resume == nil)
+        // ゴールと直すタスクを先に渡し、直すことはそのまま渡す
+        #expect(call.prompt.hasPrefix("あなたは、次のゴールのタスク t2 を実装して子 PR を出しました。"))
+        #expect(call.prompt.contains("日ごとのランキングを出す。"))
+        #expect(call.prompt.contains("ランキングの画面を作る"))
+        #expect(call.prompt.contains(Self.reviewFindings))
+    }
+
+    /// 実装の会話が見つからない（実装の試行が会話を残さなかった）ときも、新しい会話で直させる
+    @Test func continuesInNewConversationWithoutImplementationConversation() async throws {
+        let fixture = Fixture()
+        try await fixture.prepare()
+        let reviewed = PullRequestInput(pullRequest: 41, head: Self.head)
+        let review = AttemptFile.Outputs(pullRequest: 41, commit: Self.head, verdict: .fixReview, findings: Self.reviewFindings)
+        try await fixture.record(fixture.job(.reviewTask, "02", input: reviewed.jobInput), outputs: review)
+        fixture.git.update { $0.remote[Fixture.branches.task] = Self.head }
+        fixture.pulls.update { $0.pulls[41] = Fixture.openPull(head: Self.head) }
         let runner = FakeTaskRunner([FakeTaskRunner.done()])
         let result = try await fix(fixture, runner)
-        #expect(result.failure?.message.contains("mac-mini") == true)
-        #expect(runner.calls.isEmpty)
+        #expect(result.failure == nil)
+        let call = try #require(runner.calls.first)
+        #expect(call.resume == nil)
+        #expect(call.prompt.contains("子 PR #41 のレビューで"))
+    }
+
+    /// 同じ Mac の会話なら、新しい会話にせず再開する（ゴールとタスクを渡し直さない）
+    @Test func resumedConversationDoesNotRepeatGoal() async throws {
+        let fixture = try await fixture()
+        let runner = FakeTaskRunner([FakeTaskRunner.done()])
+        _ = try await fix(fixture, runner)
+        let call = try #require(runner.calls.first)
+        #expect(call.resume == "s-impl")
+        #expect(!call.prompt.contains("あなたは、次のゴールのタスク"))
     }
 }

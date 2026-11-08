@@ -113,6 +113,19 @@ public struct ImplementTaskJob: TaskJob {
             """
     }
 
+    /// 新しい会話で直させるときに、直しの依頼の前に渡すゴールとタスク（直しの依頼は、実装の会話を続ける前提で書いている）
+    static func background(goal: GoalFile, task: GoalFile.Task) -> String {
+        """
+        あなたは、次のゴールのタスク \(task.id) を実装して子 PR を出しました。その子 PR を直してください。
+
+        ## ゴール（epic 全体で作るもの）
+        \(UntrustedText.block("goal", PromptText.goal(goal)))
+
+        ## 実装したタスク
+        \(UntrustedText.block("task", text(of: task)))
+        """
+    }
+
     static func text(of task: GoalFile.Task) -> String {
         [
             "id: \(task.id)",
@@ -210,24 +223,27 @@ public struct FixTaskJob: TaskJob {
     public static let maximumLogLength = 8_000
     public static let maximumFindingLength = 4_000
 
-    /// 実装の会話の id
-    public var session: String
+    /// 実装の会話の id。nil なら新しい会話で直させる（実装の会話がほかの Mac にある・見つからないとき）
+    public var session: String?
     public var pullRequest: Int
     /// 直す理由（CI の失敗・レビューの必須の指摘）
     public var reason: FixTaskInput.Reason
     /// 直すこと（`Reason.findings` の文）
     public var findings: String
+    /// 新しい会話で直させるときに、直しの依頼の前に渡すゴールとタスク（`ImplementTaskJob.background`）
+    public var background: String?
 
-    public init(session: String, pullRequest: Int, reason: Reason) {
+    public init(session: String?, pullRequest: Int, reason: Reason) {
         self.init(session: session, pullRequest: pullRequest, reason: reason.kind, findings: reason.findings)
     }
 
     /// `findings` は、子 PR のレビューの試行に書かれた `outputs.findings`
-    public init(session: String, pullRequest: Int, reason: FixTaskInput.Reason, findings: String) {
+    public init(session: String?, pullRequest: Int, reason: FixTaskInput.Reason, findings: String, background: String? = nil) {
         self.session = session
         self.pullRequest = pullRequest
         self.reason = reason
         self.findings = findings
+        self.background = background
     }
 
     public var resume: String? { session }
@@ -238,12 +254,13 @@ public struct FixTaskJob: TaskJob {
     }
 
     public var prompt: String {
-        switch reason {
+        let request = switch reason {
         case .ci: ciPrompt
         case .review: reviewPrompt
         case .human: humanPrompt
         case .conflict: conflictPrompt
         }
+        return background.map { "\($0)\n\n\(request)" } ?? request
     }
 
     /// base とのコンフリクト。ワーカーが base を取り込み始めた後に、印の残ったファイルを解消させる

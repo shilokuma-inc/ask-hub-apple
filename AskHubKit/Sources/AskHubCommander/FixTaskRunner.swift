@@ -5,7 +5,8 @@ import Foundation
 /// タスクの直し（`fixTask`）を 1 回実行する（`docs/renewal/flows.md` の「タスクの流れ」）。epic の Mac で動く。
 ///
 /// 子 PR のレビュー（`reviewTask`）が書いた直すこと（`outputs.findings`）を付けて、実装の会話を再開して直させ、子ブランチに push する。
-/// 直しの回数（3 回まで）は、司令塔が試行から数える
+/// 会話はそれを動かした Mac にだけ残るので、epic をほかの Mac に引き継いだ後（実装の会話が前の Mac にある・見つからない）は、
+/// 新しい会話でゴールとタスクを渡して直させる。直しの回数（3 回まで）は、司令塔が試行から数える
 public struct FixTaskRunner: JobRunning {
     public var environment: TaskJobEnvironment
 
@@ -26,13 +27,9 @@ public struct FixTaskRunner: JobRunning {
         guard let findings = try await history.findings(for: input, task: target.task.id) else {
             throw .fail(.unexpected, "直すこと（子 PR #\(input.pullRequest) の head \(input.head) を見たレビューの結果）が見つからない")
         }
-        guard let conversation = try await history.conversation(of: target.task.id) else {
-            throw .fail(.unexpected, "タスク \(target.task.id) の実装の会話（implementTask の試行の claude.session）が見つからない")
-        }
-        // 会話はそれを動かした Mac にだけ残るので、ほかの Mac では再開できない（epic を Mac の間で引き継ぐときに、新しい会話で直す形を足す）
-        guard conversation.mac == environment.context.mac else {
-            throw .fail(.unexpected, "実装の会話は \(conversation.mac) にあり、この Mac（\(environment.context.mac)）では再開できない")
-        }
+        // 会話はそれを動かした Mac にだけ残るので、ほかの Mac の会話は再開できない（引き継いだ後は、新しい会話で続ける）
+        let conversation = try await history.conversation(of: target.task.id)
+        let session = conversation.flatMap { $0.mac == environment.context.mac ? $0.session : nil }
         let pull = try await environment.github("子 PR を読む") { () throws(PullRequestError) in
             try await environment.pullRequests(job.repo).pullRequest(number: input.pullRequest)
         }
@@ -53,7 +50,11 @@ public struct FixTaskRunner: JobRunning {
             result.outputs?.commit = checkout.head
             return result
         }
-        let fixJob = FixTaskJob(session: conversation.session, pullRequest: input.pullRequest, reason: input.reason, findings: findings)
+        // 新しい会話で直させるときは、実装の会話に無いゴールとタスクを渡す
+        let background = session == nil ? ImplementTaskJob.background(goal: target.goal, task: target.task) : nil
+        let fixJob = FixTaskJob(
+            session: session, pullRequest: input.pullRequest, reason: input.reason, findings: findings, background: background
+        )
         let (report, run) = try await environment.run(fixJob, in: checkout, target: target).done()
         result.outputs?.report = report.outputReport
         result.claude = run.session?.attemptRecord
