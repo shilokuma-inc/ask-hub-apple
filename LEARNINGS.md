@@ -389,6 +389,8 @@
 
 - `OSAllocatedUnfairLock.withLock` は typed throws を通さない（`withLock { state throws(E) in … }` は「thrown expression type 'any Error' cannot be converted to error type 'E'」）。
   閉包で `Result<T, E>` を返し、外で `try result.get()` する（2026-11-07、タスクのジョブのテストの偽物）
+- ローカル変数をメソッドと同じ名前にすると、その変数の初期化の式の中のメソッドの呼び出しも変数を指し、「cannot call value of non-function type '[Any]'」でビルドが落ちる
+  （`let humanTasks = goal.map { humanTasks($0, epic: file) }`。Xcode 26.6）。アプリのコードは `swift test --package-path AskHubKit` では見つからず、アプリのビルドで初めて落ちるので、変数は別の名前にする（2026-11-08、人がする作業）
 
 ## シェルスクリプト
 
