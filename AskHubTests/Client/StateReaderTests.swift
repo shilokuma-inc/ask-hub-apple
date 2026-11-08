@@ -20,13 +20,16 @@ struct StateReaderTests {
     actor ShuffledStore: StateStore {
         let base: InMemoryStateStore
         let delays: Bool
+        /// 一覧を読むと失敗するディレクトリ
+        let failing: [String: StateStoreError]
         private(set) var reads: [String] = []
         private(set) var inFlight = 0
         private(set) var maxInFlight = 0
 
-        init(_ base: InMemoryStateStore, delays: Bool = true) {
+        init(_ base: InMemoryStateStore, delays: Bool = true, failing: [String: StateStoreError] = [:]) {
             self.base = base
             self.delays = delays
+            self.failing = failing
         }
 
         func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
@@ -37,6 +40,7 @@ struct StateReaderTests {
 
         func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
             await wait(directory)
+            if let failure = failing[directory] { throw failure }
             return try await base.list(directory)
         }
 
@@ -175,6 +179,26 @@ struct StateReaderTests {
     }
 
     @Test
+    func listingFailureIsChosenInSerialOrder() async throws {
+        let key = try Self.key()
+        let base = InMemoryStateStore(files: Self.files(device: key.keyID).mapValues { Data($0.utf8) })
+        let intents = "intents/\(key.keyID.rawValue)"
+        // 送った意図の一覧が先に失敗しても（待ちの短い順に返る）、直列のときと同じく Mac の失敗を投げる
+        let macsAndIntents = ShuffledStore(base, failing: ["macs": .serverError(status: 502), intents: .forbidden(message: nil)])
+        await #expect(throws: StateStoreError.serverError(status: 502)) {
+            try await StateReader(store: macsAndIntents, device: key.keyID).read()
+        }
+        // リポジトリの一覧の失敗は、Mac の失敗より先に選ぶ
+        let everything = ShuffledStore(
+            base,
+            failing: ["repos": .unauthorized, "macs": .serverError(status: 502), intents: .forbidden(message: nil)]
+        )
+        await #expect(throws: StateStoreError.unauthorized) {
+            try await StateReader(store: everything, device: key.keyID).read()
+        }
+    }
+
+    @Test
     func serviceKeepsConcurrentRequestsWithinLimit() async throws {
         let key = try Self.key()
         var files = Self.files(device: key.keyID)
@@ -220,5 +244,19 @@ struct StateReaderTests {
         #expect(await store.readCount(of: sent.path) == 1)
         let newer = try #require(try await base.listAll("intents/\(key.keyID.rawValue)")?.first { $0.path != sent.path })
         #expect(await store.readCount(of: newer.path) == 1)
+
+        // 同じパスでも中身が変われば（sha が変われば）読み直す
+        let rejected = #"{"v":1,"kind":"answer","consumedAt":"2027-01-15T08:05:00Z","result":"rejected","reason":"質問の版が古い"}"#
+        await base.put(consumed, data: Data(rejected.utf8))
+        let rewritten = try #require(try await base.read(sent.path))
+        await base.put(sent.path, data: rewritten.data + Data("\n".utf8))
+        let fourth = try await service.fetchSnapshot()
+        #expect(await store.readCount(of: consumed) == 2)
+        #expect(await store.readCount(of: sent.path) == 2)
+        guard case .rejected(_, let reason)? = fourth.sentIntents.first(where: { $0.id == nonce.rawValue })?.state else {
+            Issue.record("書き換えた処理の記録を読み直していない")
+            return
+        }
+        #expect(reason == "質問の版が古い")
     }
 }
