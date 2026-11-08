@@ -79,9 +79,10 @@ enum WaitingJob {
     }
 }
 
-/// やめる人の意図（`giveUp`）を受け付ける（`docs/renewal/flows.md` の「人に渡したジョブ」）。種類ごとの扱いは `JobKind.giveUpEffect` で決める
+/// やめる人の意図（`giveUp`）を受け付ける（`docs/renewal/flows.md` の「人に渡したジョブ」）。種類と epic の段階ごとの扱いは `JobKind.giveUpEffect(at:)` で決める
 ///
-/// - 質問づくり・質問の見直し・着手前の確認: epic が先に進めないので、epic ごとやめる（`abandoned`）。epic の段階の 1 回の書き込みで決まる
+/// - 質問づくり・質問の見直し・着手前の確認: epic が先に進めないので、epic ごとやめる（`abandoned`）。epic の段階の 1 回の書き込みで決まる。
+///   開始した後の epic に残っていたものは、epic が先に進めるので、ジョブだけやめる（実装のジョブを止めない）
 /// - 説明: ジョブをやめ、説明を待つ問いを外して、質問を回答待ちに戻す
 /// - ゴールの修正: ジョブだけやめる（前のゴールのまま開始を待つ）
 public struct GiveUpJobHandler: IntentHandler {
@@ -97,7 +98,12 @@ public struct GiveUpJobHandler: IntentHandler {
         let target = giveUp.target
         let path = StatePath.job(target.repo, epic: target.epic, job: target.job)
         guard let job = try await context.read(JobFile.self, at: path) else { return .reject("ジョブが無い") }
-        guard let effect = job.kind.giveUpEffect else { return .reject("\(job.kind.rawValue) のジョブをやめる扱いは、まだ決めていない") }
+        guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(target.repo, target.epic)) else {
+            return .reject("epic が無い")
+        }
+        guard let effect = job.kind.giveUpEffect(at: epic.stage) else {
+            return .reject("\(job.kind.rawValue) のジョブをやめる扱いは、まだ決めていない")
+        }
         if effect == .abandonsEpic { return try await abandonEpic(target, in: context) }
         switch try await WaitingJob.read(target, done: [.canceled], in: context) {
         case let .rejected(reason):
