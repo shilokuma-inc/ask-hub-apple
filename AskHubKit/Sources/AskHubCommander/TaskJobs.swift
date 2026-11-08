@@ -283,7 +283,7 @@ enum UntrustedText {
 
     /// 区切りに使うタグ（決まりの文で名前を挙げたもの）の開きと閉じの `<`。`Regex` は Sendable ではないので、共有の定数にせず、呼ぶたびに作る
     private static var tagStart: Regex<Substring> {
-        #/(?i)<(?=\s*/?\s*(?:repository-facts|goal|task|previous-tasks|build-result|ci-log|review|diff|instruction))/#
+        #/(?i)<(?=\s*/?\s*(?:repository-facts|goal|task|previous-tasks|build-result|ci-log|review|diff|instruction|decisions))/#
     }
 
     /// 長いログは末尾を残す（失敗の理由は後ろに出る）

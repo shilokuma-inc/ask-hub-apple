@@ -89,9 +89,15 @@ public struct EpicBuildService: BuildService {
 ///
 /// 同時に動かすビルドの数は `JobSlots` が Mac の上限（`capacity.build`）で抑えるので、枠の数は上限と同じにする
 public actor BuildSlots {
+    /// 枠を待っているジョブ。`slot` が nil なら、どの枠でもよい
+    private struct Waiter {
+        var slot: Int?
+        var continuation: CheckedContinuation<Int, Never>
+    }
+
     nonisolated public let count: Int
     private var used: Set<Int> = []
-    private var waiters: [CheckedContinuation<Int, Never>] = []
+    private var waiters: [Waiter] = []
 
     public init(count: Int) {
         self.count = max(count, 1)
@@ -103,17 +109,27 @@ public actor BuildSlots {
             used.insert(free)
             return free
         }
-        return await withCheckedContinuation { waiters.append($0) }
+        return await withCheckedContinuation { waiters.append(Waiter(slot: nil, continuation: $0)) }
+    }
+
+    /// 番号 `slot` の枠を借りる（枠の Simulator を片付けるときなど）。使われていれば、返されるまで待つ
+    public func acquire(slot: Int) async {
+        guard used.contains(slot) else {
+            used.insert(slot)
+            return
+        }
+        _ = await withCheckedContinuation { waiters.append(Waiter(slot: slot, continuation: $0)) }
     }
 
     /// 枠が空くのを待っているジョブの数（テストで使う）
     var waiting: Int { waiters.count }
 
+    /// 枠を返す。その枠を待っているジョブ（どの枠でもよいものを含む）があれば、待った順に渡す
     public func release(_ slot: Int) {
-        if waiters.isEmpty {
-            used.remove(slot)
+        if let index = waiters.firstIndex(where: { $0.slot == nil || $0.slot == slot }) {
+            waiters.remove(at: index).continuation.resume(returning: slot)
         } else {
-            waiters.removeFirst().resume(returning: slot)
+            used.remove(slot)
         }
     }
 

@@ -38,6 +38,15 @@ public struct ReviewTiming: Equatable, Sendable {
     }
 }
 
+/// チェックを待つ PR の呼び名と、待つチェックの設定の名前（失敗の説明に使う）
+struct CheckSubject: Equatable {
+    var name: String
+    var setting: String
+
+    static let child = Self(name: "子 PR", setting: "build.childChecks")
+    static let final = Self(name: "最終 PR", setting: "build.finalChecks")
+}
+
 /// 子 PR のチェックを待った結果
 enum CheckWait: Equatable {
     case passed
@@ -67,27 +76,32 @@ enum CheckStep: Equatable {
 }
 
 extension ReviewTaskRunner {
-    /// 子 PR の head のチェックを、通るか落ちるまで待つ。待つ間は、ワーカー（`JobWorker`）が試行の生きている印を書き続ける
-    func waitForChecks(_ pulls: any PullRequestOperations, head: String, required: Set<String>?) async throws(TaskJobExit) -> CheckWait {
+    /// PR の head のチェックを、通るか落ちるまで待つ。待つ間は、ワーカー（`JobWorker`）が試行の生きている印を書き続ける
+    func waitForChecks(
+        _ pulls: any PullRequestOperations,
+        head: String,
+        required: Set<String>?,
+        subject: CheckSubject = .child
+    ) async throws(TaskJobExit) -> CheckWait {
         let environment = environment
         let policy = CheckPolicy(required: required, queuedLimit: timing.queuedLimit)
         var state = CheckWaitState()
         while true {
-            let summary = try await environment.github("子 PR のチェックを読む") { () throws(PullRequestError) in
+            let summary = try await environment.github("\(subject.name)のチェックを読む") { () throws(PullRequestError) in
                 try await pulls.checks(at: head, policy: policy)
             }
-            switch Self.next(after: summary, state: &state, timing: timing, now: environment.context.now()) {
+            switch Self.next(after: summary, state: &state, timing: timing, now: environment.context.now(), subject: subject) {
             case let .done(wait):
                 return wait
             case let .wait(duration):
-                try await sleep(for: duration)
+                try await sleep(for: duration, subject: subject)
             case let .rerun(runs):
                 for run in runs {
                     try await environment.github("落ちたジョブを流し直す") { () throws(PullRequestError) in
                         try await pulls.rerunFailedJobs(runID: run)
                     }
                 }
-                try await sleep(for: timing.poll)
+                try await sleep(for: timing.poll, subject: subject)
             case let .fail(failure):
                 throw .finish(JobResult(failure: failure))
             }
@@ -95,7 +109,13 @@ extension ReviewTaskRunner {
     }
 
     /// 読んだチェックの様子から、次にすることを決める
-    static func next(after summary: CheckSummary, state: inout CheckWaitState, timing: ReviewTiming, now: Date) -> CheckStep {
+    static func next(
+        after summary: CheckSummary,
+        state: inout CheckWaitState,
+        timing: ReviewTiming,
+        now: Date,
+        subject: CheckSubject = .child
+    ) -> CheckStep {
         if summary.verdict != .pending || !summary.unfinished.isEmpty { state.idleSince = nil }
         if summary.verdict != .runnerShortage { state.shortages = 0 }
         switch summary.verdict {
@@ -109,7 +129,7 @@ extension ReviewTaskRunner {
                 let names = summary.missing.isEmpty ? "チェック" : "チェック（\(summary.missing.joined(separator: "・"))）"
                 return .fail(AttemptFailure(
                     failureClass: .unexpected,
-                    message: "子 PR の\(names)が \(timing.idleLimit) 待っても始まらない（repo.json の build.childChecks の名前とワークフローを確かめる）"
+                    message: "\(subject.name)の\(names)が \(timing.idleLimit) 待っても始まらない（repo.json の \(subject.setting) の名前とワークフローを確かめる）"
                 ))
             }
             return .wait(timing.poll)
@@ -145,11 +165,11 @@ extension ReviewTaskRunner {
         return .rerun(runs)
     }
 
-    private func sleep(for duration: Duration) async throws(TaskJobExit) {
+    private func sleep(for duration: Duration, subject: CheckSubject) async throws(TaskJobExit) {
         do {
             try await environment.sleeper.sleep(for: duration)
         } catch {
-            throw .fail(.macOffline, "ワーカーを止めたので、子 PR のチェックを待つのをやめた")
+            throw .fail(.macOffline, "ワーカーを止めたので、\(subject.name)のチェックを待つのをやめた")
         }
     }
 

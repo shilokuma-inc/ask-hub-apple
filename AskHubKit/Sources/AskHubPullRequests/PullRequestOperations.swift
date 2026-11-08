@@ -6,6 +6,8 @@ public protocol PullRequestOperations: Sendable {
     func pullRequest(number: Int) async throws(PullRequestError) -> PullRequest
     /// head の SHA の CI を読み、まとめた状態を返す
     func checks(at sha: String, policy: CheckPolicy) async throws(PullRequestError) -> CheckSummary
+    /// head の SHA の commit status（context ごとの最新）と、その説明
+    func commitStatuses(at sha: String) async throws(PullRequestError) -> [CommitStatus]
     /// GitHub Actions の run の、落ちた job だけを流し直す
     func rerunFailedJobs(runID: Int) async throws(PullRequestError)
     /// GitHub Actions の job のログ（長いログは末尾だけ）

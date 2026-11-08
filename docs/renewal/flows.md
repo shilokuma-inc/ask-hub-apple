@@ -251,6 +251,11 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 - 流れ: すべてのタスクが `done` → `verifyBeforeFinal` → `classifyDecisions` → `captureScreenshots`（撮影の設定があるときだけ）→ `openFinalPullRequest` → `reviewFinalPullRequest` → 判定が `fixCI`・`fixReview` なら `fixFinalPullRequest` で直して `reviewFinalPullRequest` に戻る（3 回まで）→ `ready` で、マージの規則に当てて自動なら `mergeFinalPullRequest`、手動なら人の判断のカードの答えと承認を待つ → `cleanUp`
 - 人が判断のカードで「直してほしい」「別案にする」を選ぶか、最終 PR に指示（`instructFinal`）を出したら、`fixFinalPullRequest` に人の文を付けて直させ、`reviewFinalPullRequest` からやり直す（見える仮決めは、スクショを撮り直して再び出す）
 - 承認は、その時点の head に結びつく。直しで head が変わったら、承認は無効になり、承認し直してもらう
+- `reviewFinalPullRequest` は、待つ間・レビューの間に head が進んだら、古い head の判定を書かない（`verdict` を書かずに、今の head だけを `outputs.commit` に書いて成功で終える）。`ready` のときは `mergeRisks` を必ず書く（無ければ空）。最終 PR が base とコンフリクトしていれば、`conflict` の失敗で終える
+- `reviewFinalPullRequest` が待つ信用するレビューの書き手は、待つ目印（commit status `CodeRabbit`）のある CodeRabbit だけ。始まらない（15 分）・終わらない（60 分）ときも、待ちきったら今ある指摘で進める。指摘は、信用する書き手のものだけに絞り直してから、データとして囲んで渡す
+- `fixFinalPullRequest` は、実装の会話を再開せず、新しい会話で直させる（最終 PR はタスクをまたぎ、常時オンの Mac で直すこともあるため）。CI の失敗を直すときは、全部のテスト（`testFull`）が通るまで done にさせない。コミットにジョブの id を書き、push の後に落ちたやり直しでは直し直さない
+- `mergeFinalPullRequest` は、司令塔の取り違えで人の確認を飛ばさないよう、ワーカーでもマージの規則に当てる。人の確認が要る最終 PR は、同じ head への人の承認（`approveMerge`）を元にしたジョブでだけマージする。マージしたら作業ブランチを消す（マージの後に push されていれば残す）
+- `cleanUp` は、その Mac の epic の作業場所・手元の epic のブランチ・DerivedData を消す。Simulator の枠は epic をまたいで使い回すので、消さずに中身を消去する（ビルドに使っている枠は、空くのを待って 1 つずつ借りる）。ほかの epic のものと、リモートのブランチには触れない
 
 ### 司令塔が最終 PR を進める
 

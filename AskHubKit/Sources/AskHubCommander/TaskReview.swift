@@ -14,21 +14,28 @@ struct TaskReviewResult: Decodable, Equatable, Sendable {
     var required: [Finding]
     var summary: String
 
+    /// 必須の指摘の形（最終 PR のレビューでも使う）
+    static let requiredSchema = OutputSchema.array(
+        of: OutputSchema.object([
+            "path": OutputSchema.nullable(OutputSchema.string("指摘するファイルの、リポジトリの直下からのパス。特定のファイルでなければ null")),
+            "line": OutputSchema.nullable(OutputSchema.integer("指摘する行の番号（1 から）。決められなければ null")),
+            "text": OutputSchema.string("何が問題で、どう直すべきか")
+        ]),
+        "マージする前に必ず直すべき指摘（必須の指摘）。無ければ空"
+    )
+
     static let outputSchema = OutputSchema.object([
-        "required": OutputSchema.array(
-            of: OutputSchema.object([
-                "path": OutputSchema.nullable(OutputSchema.string("指摘するファイルの、リポジトリの直下からのパス。特定のファイルでなければ null")),
-                "line": OutputSchema.nullable(OutputSchema.integer("指摘する行の番号（1 から）。決められなければ null")),
-                "text": OutputSchema.string("何が問題で、どう直すべきか")
-            ]),
-            "マージする前に必ず直すべき指摘（必須の指摘）。無ければ空"
-        ),
+        "required": requiredSchema,
         "summary": OutputSchema.string("レビューの結果の短いまとめ")
     ])
 
     var problems: [String] {
+        (summary.isBlank ? ["summary が空"] : []) + Self.problems(of: required)
+    }
+
+    /// 必須の指摘の、形だけでは表せない決まりに合わないところ
+    static func problems(of required: [Finding]) -> [String] {
         var problems: [String] = []
-        if summary.isBlank { problems.append("summary が空") }
         if required.contains(where: { $0.text.isBlank }) { problems.append("required の text が空") }
         if required.contains(where: { $0.path?.isBlank == true }) { problems.append("required の path が空（特定のファイルでなければ null にする）") }
         if required.contains(where: { ($0.line ?? 1) < 1 }) { problems.append("required の line は 1 から数える") }
@@ -107,10 +114,9 @@ enum TaskReview {
     /// 差分を省いたことを示す文
     static let truncationNote = "\n…（長いので、ここで切った。ほかは作業フォルダのファイルを読んで確かめる）"
 
-    /// `bytes`（UTF-8）に収まるよう、文字の切れ目で後ろを省く。省いたことを示す文のほかに 1 文字も入らないほど狭ければ空にする
-    static func fit(_ text: String, bytes: Int) -> String {
+    /// `bytes`（UTF-8）に収まるよう、文字の切れ目で後ろを省く。省いたことを示す文（`note`）のほかに 1 文字も入らないほど狭ければ空にする
+    static func fit(_ text: String, bytes: Int, note: String = truncationNote) -> String {
         guard text.utf8.count > bytes else { return text }
-        let note = truncationNote
         guard bytes >= note.utf8.count else { return "" }
         var kept = ""
         var used = note.utf8.count
