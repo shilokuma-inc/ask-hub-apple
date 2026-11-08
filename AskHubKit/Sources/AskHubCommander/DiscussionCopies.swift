@@ -117,6 +117,10 @@ enum CopyText {
     static func question(_ question: QuestionsFile.Question, dependents: [String]) -> String {
         let version = question.version > 1 ? "（版 \(question.version)）" : ""
         var lines = ["### \(question.id). \(plain(question.title))\(version)", "", "**状態**: \(state(of: question))"]
+        if question.isDuringImplementation {
+            let place = question.task.map { "タスク \($0) の実装" } ?? "最終 PR の直し"
+            lines += ["", "**実装の途中の質問**: \(place)の途中で出た質問です。答えるまで、この epic は止めて待ちます"]
+        }
         if let caution = question.caution {
             lines += ["", "> [!WARNING]", "> 慎重に決めてほしい質問です（\(kind(of: caution))）: \(plain(caution.reason))"]
         }

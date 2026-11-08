@@ -22,6 +22,8 @@ struct Question: Identifiable, Hashable {
     var askedAt: Date
     /// 慎重に決めてほしい理由（セキュリティなど）。あれば札を警告ふうに出す
     var caution: Caution?
+    /// 実装の途中で Claude が聞いた質問なら、どこで出たか（開始する前の質問は nil）。答えるまで、その epic は止まっている
+    var during: ImplementationPoint?
 
     struct Option: Identifiable, Hashable {
         let id: String
@@ -46,6 +48,22 @@ struct Question: Identifiable, Hashable {
         /// 補足（自由記述の質問では回答そのもの）
         var note: String
         var answeredAt: Date
+    }
+
+    /// 実装の途中の質問が出た所
+    enum ImplementationPoint: Hashable {
+        /// タスクの実装・直しの途中（番号はゴールの並びの順）
+        case task(number: Int, title: String)
+        /// 最終 PR の直しの途中
+        case finalPullRequest
+
+        /// 例: タスク 2「並べ替えのボタン」の実装
+        var label: String {
+            switch self {
+            case let .task(number, title): "タスク \(number)「\(title)」の実装"
+            case .finalPullRequest: "最終 PR の直し"
+            }
+        }
     }
 
     struct Explanation: Hashable {

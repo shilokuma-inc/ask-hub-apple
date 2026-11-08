@@ -129,6 +129,8 @@ public struct MachinePaths: Sendable {
     }
 
     public var configuration: URL { root.appendingPathComponent("config.json") }
+    /// Claude の setup-token を入れた日（値は Keychain にだけ置き、ここには日付だけを書く。`ClaudeTokenRecord`）
+    public var claudeTokenRecord: URL { root.appendingPathComponent("claude-token.json") }
     /// 対象のリポジトリの写しと、epic の作業場所
     public var work: URL { root.appendingPathComponent("work", isDirectory: true) }
     /// Claude 専用の設定フォルダ（`CLAUDE_CONFIG_DIR`）。人の `~/.claude` を効かせない

@@ -40,7 +40,9 @@ struct TaskHistory {
         let reported = try await succeeded([.implementTask, .fixTask], task: nil)
         return finished.map { task in
             let summaries = reported.filter { $0.job.task == task.id }.compactMap { entry -> String? in
-                guard let summary = entry.attempt.outputs?.report?.summary else { return nil }
+                // 実装の途中の質問で止めた試行の要約（何を聞いたか）は、実装したことではないので渡さない
+                guard let report = entry.attempt.outputs?.report, report.question == nil else { return nil }
+                let summary = report.summary
                 return entry.job.kind == .fixTask ? "直し: \(summary)" : summary
             }
             let summary = summaries.isEmpty ? "（要約なし）" : summaries.joined(separator: "\n")
@@ -76,7 +78,7 @@ struct TaskHistory {
         var mac: MacName
     }
 
-    private func attempts(of job: JobFile) async throws(CommanderError) -> [AttemptFile] {
+    func attempts(of job: JobFile) async throws(CommanderError) -> [AttemptFile] {
         let entries: [DirectoryEntry]
         do {
             entries = try await context.store.listAll(StatePath.attempts(job.repo, epic: job.epic, job: job.id)) ?? []

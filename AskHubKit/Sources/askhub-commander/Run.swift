@@ -29,7 +29,7 @@ extension AskHubCommanderMain {
             verifier: { () throws(CommanderError) in try await runtime.trusted.verifier() },
             client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
             workspace: runtime.workspace,
-            status: { runtime.probe.status() },
+            status: { await runtime.probe.status() },
             notifier: notifier(configuration.apns, secrets: runtime.secrets, context: context),
             log: log,
             mirror: DiscussionMirror(context: context, discussions: discussions, log: log),

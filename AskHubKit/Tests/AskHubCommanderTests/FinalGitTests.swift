@@ -68,6 +68,32 @@ struct FinalGitTests {
         #expect(try await workspace.mergeBase(into: again) == nil)
     }
 
+    @Test func reusesWorkspaceWithMergeInProgress() async throws {
+        defer { try? FileManager.default.removeItem(at: base.root) }
+        let workspace = try await base.makeWorkspace()
+        #expect(try await workspace.reuseEpic(Self.repo, epic: Self.epic, branches: Self.branches) == nil)
+        let epic = try await workspace.checkOutEpic(Self.repo, epic: Self.epic, branches: Self.branches)
+        try "# 作業ブランチの App\n".write(to: epic.directory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        let mine = try #require(try await workspace.commitAndPush(epic, message: "作業ブランチで変える"))
+        try base.shell("""
+            cd '\(base.root.path)/seed' && echo '# base の App' > README.md && git add . && \
+            git -c user.name=t -c user.email=t@example.invalid commit --quiet -m base && git push --quiet '\(base.origin.path)' develop
+            """)
+        let fresh = try await workspace.checkOutEpic(Self.repo, epic: Self.epic, branches: Self.branches)
+        #expect(try await workspace.mergeBase(into: fresh) == ["README.md"])
+
+        // コンフリクトの解消の途中で質問して止めた。取り込みの途中のまま使い、解消していないファイルを読み直せる
+        let reused = try #require(try await workspace.reuseEpic(Self.repo, epic: Self.epic, branches: Self.branches))
+        #expect(reused.head == mine)
+        #expect(try await workspace.conflictedPaths(in: reused) == ["README.md"])
+        try "# 作業ブランチと base の App\n".write(to: reused.directory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        #expect(await workspace.unresolvedConflicts(["README.md"], in: reused).isEmpty)
+        let merged = try #require(try await workspace.commitAndPush(reused, message: "base を取り込む"))
+        let parents = try base.shell("git -C '\(base.origin.path)' rev-list --parents -n 1 \(merged)")
+        #expect(parents.split(separator: " ").count == 3)
+        #expect(try await workspace.conflictedPaths(in: reused).isEmpty)
+    }
+
     @Test func mergesBaseWithoutConflicts() async throws {
         defer { try? FileManager.default.removeItem(at: base.root) }
         let workspace = try await base.makeWorkspace()

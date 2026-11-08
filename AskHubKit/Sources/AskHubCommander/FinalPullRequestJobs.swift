@@ -45,9 +45,11 @@ struct FinalChain {
     /// 最後のレビューが見た最終 PR と head（人の意図の `targetVersion` と比べる今の head）
     var reviewed: PullRequestInput? { latestReview?.input(as: PullRequestInput.self) }
 
-    /// 自動の直し（CI の失敗・必須の指摘）の回数。人が頼んだ直しは数えない
+    /// 自動の直し（CI の失敗・必須の指摘）の回数。人が頼んだ直しと、実装の途中の質問の答えで再開した直し（同じ直しの続き）は数えない
     var automaticFixes: Int {
-        ordered?.filter { $0.kind == .fixFinalPullRequest && $0.input(as: FixTaskInput.self)?.reason != .human }.count ?? 0
+        ordered?.filter { job in
+            job.kind == .fixFinalPullRequest && job.input(as: FixTaskInput.self)?.reason != .human && !job.resumesQuestion
+        }.count ?? 0
     }
 
     /// 人が頼んだ直し（判断のカードへの「別案にする」「直してほしい」・最終 PR への指示）があるか

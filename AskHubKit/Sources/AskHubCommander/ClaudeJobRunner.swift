@@ -51,7 +51,8 @@ public struct ClaudeJobRunner: Sendable {
         guard let epic = try await context.read(EpicFile.self, at: StatePath.epic(job.repo, job.epic)) else {
             return .discarded("epic が無い", nil)
         }
-        guard CommanderContext.planningStages.contains(epic.stage) else {
+        // 説明は、開始した後も実装の途中の質問に答える（段階は `explain` で質問ごとに確かめる）
+        guard CommanderContext.planningStages.contains(epic.stage) || job.kind == .explain else {
             return .discarded("epic はもう開始した・やめた（今は \(epic.stage.rawValue)）", nil)
         }
         switch job.kind {
@@ -168,14 +169,24 @@ extension ClaudeJobRunner {
         guard let questions = try await context.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)) else {
             return .discarded("質問の一覧が無い", nil)
         }
+        // 実装の途中の質問の説明は、開始した epic でも捨てない（説明を待つ clarifying のまま残らないように）
+        let stages = Self.explainingStages(of: questions.questions.first { $0.id == question })
+        guard stages.contains(epic.stage) else {
+            return .discarded("epic はもう開始した・やめた（今は \(epic.stage.rawValue)）", nil)
+        }
         switch await ask(ExplainJob(questions: questions, question: question, asked: asked), for: job) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):
-            return try await apply(to: epic, by: job, session: session) { latest throws(QuestionFlow.ResultError) in
+            return try await apply(to: epic, by: job, session: session, stages: stages) { latest throws(QuestionFlow.ResultError) in
                 try QuestionFlow.explain(question, asked: asked, text: output.text, rewrite: output.rewrite, in: latest)
             }
         }
+    }
+
+    /// 説明の結果を書いてよい epic の段階。開始する前の質問は開始の前まで、実装の途中の質問は実装と最終 PR の段取りの間
+    static func explainingStages(of question: QuestionsFile.Question?) -> Set<EpicStage> {
+        question?.isDuringImplementation == true ? QuestionFlow.implementationStages : CommanderContext.planningStages
     }
 
     /// 依存先が決まった質問を見直す
@@ -205,10 +216,11 @@ extension ClaudeJobRunner {
         to epic: EpicFile,
         by job: JobFile,
         session: ClaudeSession,
+        stages: Set<EpicStage> = CommanderContext.planningStages,
         _ change: (QuestionsFile) throws(QuestionFlow.ResultError) -> QuestionFlow.Change
     ) async throws(CommanderError) -> ClaudeJobOutcome {
         try await context.writingResult { () throws(CommanderError) -> ClaudeJobOutcome in
-            guard try await stillWanted(job, stages: CommanderContext.planningStages) != nil else {
+            guard try await stillWanted(job, stages: stages) != nil else {
                 return .discarded("頼んだ後に epic が開始した・やめられた", session)
             }
             guard let latest = try await context.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)) else {

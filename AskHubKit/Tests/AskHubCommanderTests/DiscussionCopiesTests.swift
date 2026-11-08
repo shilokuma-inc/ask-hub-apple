@@ -103,6 +103,16 @@ struct DiscussionCopiesTests {
         let locked = CopyText.question(Self.question("q2", state: .locked, dependsOn: ["q1"]), dependents: [])
         #expect(locked.contains("ロック中（q1 の回答の後に回答できます）"))
         #expect(locked.contains("**前提**: q1 の回答を前提にしています"))
+        #expect(!text.contains("実装の途中の質問"))
+    }
+
+    @Test func questionDuringImplementationShowsWhereItCameFrom() {
+        var question = Self.question("q4")
+        question.job = ULID(rawValue: "01JCJ0B0000000000000000002")!
+        question.task = "t2"
+        #expect(CopyText.question(question, dependents: []).contains("**実装の途中の質問**: タスク t2 の実装の途中で出た質問です"))
+        question.task = nil
+        #expect(CopyText.question(question, dependents: []).contains("**実装の途中の質問**: 最終 PR の直しの途中で出た質問です"))
     }
 
     @Test func textCannotHideOrForgeMarker() {

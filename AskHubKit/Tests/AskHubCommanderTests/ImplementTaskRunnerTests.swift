@@ -98,13 +98,11 @@ struct ImplementTaskRunnerTests {
         #expect(fixture.pulls.current.drafts.isEmpty)
     }
 
-    @Test func questionBlockedAndExhaustedRoundTripsGoToHuman() async throws {
+    @Test func blockedAndExhaustedRoundTripsGoToHuman() async throws {
         let fixture = Fixture()
         try await fixture.prepare()
         let session = ClaudeSession(id: "s-impl", model: "claude-opus-5-5", estimatedCostUsd: 0.2, calls: 1)
-        let question = TaskJobsTests.question
         let replies: [TaskReply] = [
-            .reported(TaskReport(outcome: .needsQuestion, summary: "並びを決めてほしい", question: question), TaskRun(session: session)),
             .reported(TaskReport(outcome: .blocked, summary: "素材の画像が無い"), TaskRun(session: session)),
             .failed(
                 AttemptFailure(
@@ -119,12 +117,7 @@ struct ImplementTaskRunnerTests {
         let implement = ImplementTaskRunner(environment: try fixture.environment(runner))
         let job = fixture.job(.implementTask, "02")
 
-        let asked = try await implement.execute(job)
-        #expect(asked.failure?.failureClass == .unexpected)
-        #expect(asked.failure?.message.contains("ランキングの並び") == true)
-        // 後で質問に写せるよう、報告（質問を含む）を残す
-        #expect(asked.outputs?.report?.question?.recommended == "名前順")
-
+        // 人に聞きたいこと（needsQuestion）は、質問で成功として終える（`TaskQuestionRunnerTests`）
         let blocked = try await implement.execute(job)
         #expect(blocked.failure?.failureClass == .unexpected)
         #expect(blocked.failure?.message.contains("素材の画像が無い") == true)

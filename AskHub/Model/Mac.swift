@@ -21,6 +21,12 @@ struct Mac: Identifiable, Hashable {
     /// 新しいループを受けないときの理由（空き容量が少ない・版が合わない など）。受けるときは nil
     var refusalReason: String?
     var selfChecks: [SelfCheck]
+    /// 期限のあるトークン（GitHub のトークンは持ち主ごと、Claude の setup-token）
+    var tokens: [MacToken]
+    /// 使っている Claude Code の版。分からなければ nil
+    var claudeVersion: String?
+    /// Claude Code の版が司令塔と違うときの、司令塔の版。そろっている・分からなければ nil
+    var commanderClaudeVersion: String?
     /// ワーカーが作っていないもの（手で作った clone・Simulator）。人が選んで消す
     var cleanupCandidates: [CleanupCandidate]
     /// 状態リポジトリの生きている印のロードアベレージ。あれば `load` の代わりにこの値を出す
@@ -55,12 +61,42 @@ struct Mac: Identifiable, Hashable {
         var startedAt: Date
     }
 
-    /// 起動したときの自己診断（トークン・Keychain・空き容量など）
+    /// 起動したときの自己診断（Keychain・空き容量など）
     struct SelfCheck: Identifiable, Hashable {
         var id: String { name }
         var name: String
         var isOK: Bool
         var detail: String
+    }
+}
+
+/// 期限のあるトークン。値そのものは持たない
+struct MacToken: Identifiable, Hashable {
+    enum Kind: Hashable {
+        /// 持ち主（organization・個人）ごとの GitHub の fine-grained token。内訳を書かない Mac は nil
+        case github(owner: String?)
+        /// Claude の setup-token（入れた日から 1 年）
+        case claude
+    }
+
+    /// 生きている印の自己診断での様子
+    enum State: Hashable {
+        case ok
+        case missing
+        case invalid
+        case expired
+    }
+
+    var kind: Kind
+    var state: State
+    /// 期限。分からない（期限の無いトークン・前の版の Mac）ときは nil
+    var expiresAt: Date?
+
+    var id: String {
+        switch kind {
+        case .github(let owner): "github/\(owner ?? "")"
+        case .claude: "claude"
+        }
     }
 }
 
@@ -96,10 +132,81 @@ extension Mac {
         return false
     }
 
+    /// Mac の端末で流すコマンド（常時オンの Mac は司令塔、ほかはワーカー）
+    var program: String {
+        residency == .always ? "askhub-commander" : "askhub-worker"
+    }
+
+    /// トークンを入れ直すコマンド（`docs/renewal/operations.md` の「トークンの期限」）
+    func renewalCommand(for token: MacToken) -> String {
+        switch token.kind {
+        case .github(let owner): "\(program) token \(owner ?? "<持ち主>")"
+        case .claude: "\(program) claude-token"
+        }
+    }
+
     var usedFraction: Double {
         guard totalBytes > 0 else {
             return 0
         }
         return 1 - Double(freeBytes) / Double(totalBytes)
+    }
+}
+
+extension MacToken {
+    /// 期限までこれより短くなったら、入れ直しを知らせる
+    static let renewalNotice: TimeInterval = 14 * 24 * 60 * 60
+
+    enum Status: Hashable {
+        /// 使える。期限が分からなければ nil
+        case ok(daysLeft: Int?)
+        /// 期限まで 14 日を切った
+        case expiringSoon(daysLeft: Int)
+        /// 期限が切れた・無い・使えない。その Mac の仕事は止まっている
+        case stopped(State)
+    }
+
+    /// 期限が切れた・無い・使えない（その Mac の仕事が止まっている）
+    func isStopped(now: Date) -> Bool {
+        if case .stopped = status(now: now) {
+            return true
+        }
+        return false
+    }
+
+    func status(now: Date) -> Status {
+        if state != .ok {
+            return .stopped(state)
+        }
+        guard let expiresAt else {
+            return .ok(daysLeft: nil)
+        }
+        let left = expiresAt.timeIntervalSince(now)
+        guard left > 0 else {
+            return .stopped(.expired)
+        }
+        // 1 日に満たない端数は 1 日に数える（残り 0 日とは出さない）
+        let days = Int((left / (24 * 60 * 60)).rounded(.up))
+        return left < Self.renewalNotice ? .expiringSoon(daysLeft: days) : .ok(daysLeft: days)
+    }
+
+    /// 例: GitHub のトークン（shilokuma-inc）・Claude の setup-token
+    var name: String {
+        switch kind {
+        case .github(let owner?): "GitHub のトークン（\(owner)）"
+        case .github(nil): "GitHub のトークン"
+        case .claude: "Claude の setup-token"
+        }
+    }
+
+    /// 例: 残り 82 日・期限が切れています
+    func detail(now: Date) -> String {
+        switch status(now: now) {
+        case .ok(let days?), .expiringSoon(let days): "残り \(days) 日"
+        case .ok(nil): "期限は分かりません"
+        case .stopped(.expired): "期限が切れています"
+        case .stopped(.missing): "見つかりません"
+        case .stopped: "使えません"
+        }
     }
 }

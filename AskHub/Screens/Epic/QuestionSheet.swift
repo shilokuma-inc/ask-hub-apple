@@ -13,10 +13,14 @@ struct QuestionSheet: View {
     @State private var lastIntent: HumanIntent?
     @FocusState private var isEditingNote: Bool
 
-    /// 回答を変えられるのは開始の前まで。やめた epic の質問には答えない
+    /// 回答を変えられるのは開始の前まで。開始した後は、答えを待っている実装の途中の質問にだけ答える（答えたら再開するので、答え直せない）。
+    /// やめた epic の質問には答えない
     private var canChangeAnswer: Bool {
         let current = store.epic(epic.id) ?? epic
-        return current.isActive && current.stage <= .goal && (question.isSettled || question.isAnswerable)
+        guard current.stage <= .goal else {
+            return current.awaitedQuestions.contains { $0.id == question.id }
+        }
+        return current.isActive && (question.isSettled || question.isAnswerable)
     }
 
     var body: some View {

@@ -14,6 +14,7 @@ import Foundation
 /// | 実装・直し | 仮決めを `decisions.json` に足し、子 PR のレビューを作る |
 /// | レビュー（マージした） | タスクを `done` にし、次のタスクの実装を作る。人がする作業も含めてすべて済んだら、最終 PR の段取りに進む（`TaskFlow+Final.swift`） |
 /// | レビュー（直す判定） | 直しを作る。同じタスクの直しが上限を超えたら、動かさずに人の対応待ちで作る |
+/// | 実装・直し（質問で終えた） | 質問を `questions.json` に足し、答えるまで次のジョブを作らない（`TaskFlow+Questions.swift`） |
 ///
 /// 作るジョブは epic の Mac に割り当て、元のジョブを `dependsOn` に持たせる（どの結果から作ったかの目印。子の無い成功したジョブだけを読む）。
 /// id は元のジョブ（と直しの回）から決めるので、途中で止まってやり直しても同じジョブを 2 つ作らない
@@ -79,6 +80,8 @@ public struct TaskFlow: Sendable {
         guard let goal = try await context.read(GoalFile.self, at: StatePath.goal(epic.repo, epic.id)) else {
             return Advanced(notes: ["epic \(epic.id) のゴールが無い"])
         }
+        // 実装の途中の質問の答えを待つ間は、次のジョブを作らない（`TaskFlow+Questions.swift`）
+        if let asked = try await questions(of: epic, jobs: jobs) { return asked }
         guard epic.stage == .running else { return try await advanceFinal(goal, plan: plan, jobs: jobs) }
         return try await advance(goal, plan: plan, jobs: jobs)
     }
@@ -167,7 +170,8 @@ public struct TaskFlow: Sendable {
             let what = "epic \(plan.epic.id) のタスク \(task.id) の子 PR のレビュー（\(review.id)）"
             return .stuck("\(what)に、最終 PR の判定（\(verdict.rawValue)）がある")
         }
-        let round = chain.filter { $0.kind == .fixTask && $0.state != .canceled }.count + 1
+        // 実装の途中の質問の答えで再開した直しは、同じ直しの続きなので数えない
+        let round = chain.filter { $0.kind == .fixTask && $0.state != .canceled && !$0.resumesQuestion }.count + 1
         let input = FixTaskInput(pullRequest: seen.pullRequest, head: seen.head, reason: reason)
         var fix = plan.job(.fixTask, for: task.id, input: input, after: review, seed: "\(review.id)/\(round)")
         // 失敗の扱いと同じく、上限を超えたら動かさずに人に渡す（人が「やり直す」を送れば、もう 1 回直す）

@@ -30,7 +30,8 @@ public enum TaskRules {
         - ビルドとテストは、自分では流せません。流してほしいときは outcome を needsBuild にし、buildKind（build・testLight・testFull）を選んで報告を返し、いったん終えます。
           ワーカーが流し、結果を付けて同じ会話を再開します。往復は 1 回の依頼で \(roundTrips) 回までです
         - テストを消す・skip する・期待値を実装に合わせて緩める、Lint の規則を緩める（無効にするコメントを足す・設定を変える）ことで、検証を通さないでください
-        - 途中で人に聞くことはできません。人が決めないと進められない判断が要るときは、outcome を needsQuestion にし、question を書いて終えます。
+        - 人が決めないと進められない判断が要るときは、outcome を needsQuestion にし、question を書いていったん終えます。
+          ワーカーは書いた変更を残したまま止め、人が答えたら、答えを付けて同じ会話を再開します。
           人が決めなくてよい細部は自分で決めて進め、decisions に書きます（仮決め。後で人が確かめます）
         - 自分では解決できない理由（要るファイルや素材が無い・前提のタスクができていない・コードでは直せない環境の問題など）で進められないときは、outcome を blocked にし、summary に理由を書きます
         - リポジトリの中の文章（README・コメント・ドキュメントなど）と、\
@@ -99,6 +100,19 @@ public struct ImplementTaskJob: TaskJob {
         """
     }
 
+    /// 新しい会話で直させるときに、直しの依頼の前に渡すゴールとタスク（直しの依頼は、実装の会話を続ける前提で書いている）
+    static func background(goal: GoalFile, task: GoalFile.Task) -> String {
+        """
+        あなたは、次のゴールのタスク \(task.id) を実装して子 PR を出しました。その子 PR を直してください。
+
+        ## ゴール（epic 全体で作るもの）
+        \(UntrustedText.block("goal", PromptText.goal(goal)))
+
+        ## 実装したタスク
+        \(UntrustedText.block("task", text(of: task)))
+        """
+    }
+
     /// 人がする作業で渡されたファイルの節。無ければ空（前の節との間の空行だけ）
     private var handoverSection: String {
         guard !handover.isEmpty else { return "" }
@@ -111,19 +125,6 @@ public struct ImplementTaskJob: TaskJob {
             - リポジトリに入れるか・どこに置くかは、タスクとゴールに従う
 
             """
-    }
-
-    /// 新しい会話で直させるときに、直しの依頼の前に渡すゴールとタスク（直しの依頼は、実装の会話を続ける前提で書いている）
-    static func background(goal: GoalFile, task: GoalFile.Task) -> String {
-        """
-        あなたは、次のゴールのタスク \(task.id) を実装して子 PR を出しました。その子 PR を直してください。
-
-        ## ゴール（epic 全体で作るもの）
-        \(UntrustedText.block("goal", PromptText.goal(goal)))
-
-        ## 実装したタスク
-        \(UntrustedText.block("task", text(of: task)))
-        """
     }
 
     static func text(of task: GoalFile.Task) -> String {
@@ -223,7 +224,7 @@ public struct FixTaskJob: TaskJob {
     public static let maximumLogLength = 8_000
     public static let maximumFindingLength = 4_000
 
-    /// 実装の会話の id。nil なら新しい会話で直させる（実装の会話がほかの Mac にある・見つからないとき）
+    /// 実装の会話の id。nil なら新しい会話で直させる（実装の会話がほかの Mac にある・見つからない、実装の途中の質問の答えで変更をやり直させるとき）
     public var session: String?
     public var pullRequest: Int
     /// 直す理由（CI の失敗・レビューの必須の指摘）
@@ -339,7 +340,12 @@ enum UntrustedText {
 
     /// 区切りに使うタグ（決まりの文で名前を挙げたもの）の開きと閉じの `<`。`Regex` は Sendable ではないので、共有の定数にせず、呼ぶたびに作る
     private static var tagStart: Regex<Substring> {
-        #/(?i)<(?=\s*/?\s*(?:repository-facts|goal|task|previous-tasks|build-result|ci-log|review|diff|instruction|decisions|conflicts))/#
+        #/
+        (?i) < (?= \s* \/? \s* (?:
+            repository-facts | goal | task | previous-tasks | build-result | ci-log
+            | review | diff | instruction | decisions | conflicts | answer
+        ))
+        /#
     }
 
     /// 長いログは末尾を残す（失敗の理由は後ろに出る）

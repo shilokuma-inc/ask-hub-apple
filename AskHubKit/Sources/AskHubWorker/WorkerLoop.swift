@@ -16,6 +16,7 @@ public actor WorkerLoop {
         /// この Mac で同時に動かす数
         public var capacity: MacFile.Capacity
         public var workerVersion: String
+        /// 起動したときの `claude` の版。印を書くときに測れなかったら、これを書く
         public var claudeVersion: String?
         /// 1 周の間隔（ジョブは ETag つきで読むので、変わっていなければ上限に数えられない）
         public var pollInterval: Duration
@@ -117,8 +118,8 @@ public actor WorkerLoop {
     private func beatIfDue() async throws(CommanderError) {
         let now = context.now()
         if let lastBeat, now.timeIntervalSince(lastBeat) < TimeInterval(settings.heartbeatInterval.components.seconds) { return }
-        let versions = MacFile.Versions(worker: settings.workerVersion, claude: settings.claudeVersion)
         let (machine, time) = (await status(), Timestamp(now))
+        let versions = MacFile.Versions(worker: settings.workerVersion, claude: machine.claudeVersion ?? settings.claudeVersion)
         let mac = machine.macFile(mac: context.mac, kind: settings.kind, at: time, versions: versions, capacity: settings.capacity)
         try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now

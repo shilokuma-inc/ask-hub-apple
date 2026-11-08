@@ -129,12 +129,11 @@ struct StateSnapshotBuilder {
 
     private func mac(_ file: MacFile) -> Mac {
         let checks = Self.selfChecks(file.selfCheck)
+        let tokens = Self.tokens(file.selfCheck)
         return Mac(
             id: file.mac.rawValue,
             name: file.mac.rawValue,
-            model: [file.versions.xcode.map { "Xcode \($0)" }, file.versions.claude.map { "Claude \($0)" }]
-                .compactMap(\.self)
-                .joined(separator: " · "),
+            model: file.versions.xcode.map { "Xcode \($0)" } ?? "",
             role: documents.commander?.mac == file.mac ? .commandCenter : .worker,
             residency: Self.residency(file.kind),
             connection: connection(seenAt: file.seenAt.date),
@@ -144,8 +143,11 @@ struct StateSnapshotBuilder {
             version: file.versions.worker,
             versionMatches: true,
             jobs: runningJobs(on: file.mac),
-            refusalReason: checks.allSatisfy(\.isOK) ? nil : "自己診断で問題が見つかっています",
+            refusalReason: refusalReason(tokens: tokens, checks: checks),
             selfChecks: checks,
+            tokens: tokens,
+            claudeVersion: file.versions.claude,
+            commanderClaudeVersion: commanderClaudeVersion(differingFrom: file.versions.claude),
             cleanupCandidates: [],
             loadAverage: file.load
         )
@@ -153,10 +155,11 @@ struct StateSnapshotBuilder {
 
     /// 司令塔だけが動いていて、ワーカーの印が無い Mac。ループは受けない
     private func commanderOnly(_ file: CommanderFile) -> Mac {
-        Mac(
+        let tokens = Self.tokens(file.selfCheck)
+        return Mac(
             id: file.mac.rawValue,
             name: file.mac.rawValue,
-            model: file.versions.claude.map { "Claude \($0)" } ?? "",
+            model: "",
             role: .commandCenter,
             residency: .always,
             connection: connection(seenAt: file.seenAt.date),
@@ -166,10 +169,28 @@ struct StateSnapshotBuilder {
             version: file.versions.commander,
             versionMatches: true,
             jobs: [],
-            refusalReason: "ワーカーが動いていません",
+            refusalReason: refusalReason(tokens: tokens, checks: []) ?? "ワーカーが動いていません",
             selfChecks: Self.selfChecks(file.selfCheck),
+            tokens: tokens,
+            claudeVersion: file.versions.claude,
             cleanupCandidates: []
         )
+    }
+
+    /// Claude Code の版が司令塔と違うときの、司令塔の版（どちらかが分からなければ比べない）
+    private func commanderClaudeVersion(differingFrom version: String?) -> String? {
+        guard let version, let commander = documents.commander?.versions.claude, commander != version else {
+            return nil
+        }
+        return commander
+    }
+
+    /// 新しいループを受けない理由。止まっているトークンを先に出す
+    private func refusalReason(tokens: [MacToken], checks: [Mac.SelfCheck]) -> String? {
+        if let token = tokens.first(where: { $0.isStopped(now: now) }) {
+            return token.status(now: now) == .stopped(.expired) ? "\(token.name)の期限が切れて止まっています" : "\(token.name)が使えず止まっています"
+        }
+        return checks.allSatisfy(\.isOK) ? nil : "自己診断で問題が見つかっています"
     }
 
     private func connection(seenAt: Date) -> Mac.Connection {
@@ -184,9 +205,25 @@ struct StateSnapshotBuilder {
         }
     }
 
+    /// トークンは期限と合わせて `tokens` に出すので、ここには Keychain だけを出す
     private static func selfChecks(_ check: SelfCheck) -> [Mac.SelfCheck] {
-        [("Keychain", check.keychain), ("GitHub のトークン", check.githubToken), ("Claude のトークン", check.claudeToken)].map { name, state in
-            Mac.SelfCheck(name: name, isOK: state == .ok, detail: label(state))
+        [Mac.SelfCheck(name: "Keychain", isOK: check.keychain == .ok, detail: label(check.keychain))]
+    }
+
+    /// 期限のあるトークン。持ち主ごとの内訳を書かない Mac（前の版）は、まとめた様子を 1 つにして出す
+    private static func tokens(_ check: SelfCheck) -> [MacToken] {
+        let github = check.githubTokens?.map { token in
+            MacToken(kind: .github(owner: token.owner), state: state(token.state), expiresAt: token.expiresAt?.date)
+        } ?? [MacToken(kind: .github(owner: nil), state: state(check.githubToken), expiresAt: check.githubTokenExpiresAt?.date)]
+        return github + [MacToken(kind: .claude, state: state(check.claudeToken), expiresAt: check.claudeTokenExpiresAt?.date)]
+    }
+
+    private static func state(_ state: SelfCheck.State) -> MacToken.State {
+        switch state {
+        case .ok: .ok
+        case .missing: .missing
+        case .invalid: .invalid
+        case .expired: .expired
         }
     }
 

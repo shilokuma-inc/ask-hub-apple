@@ -106,6 +106,38 @@ struct TaskGitTests {
         #expect(!FileManager.default.fileExists(atPath: retry.directory.appendingPathComponent("Scratch.swift").path))
     }
 
+    @Test func reusesWorkspaceWithLocalChangesUntilBranchMoves() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = try await makeWorkspace()
+        // 作業場所がまだ無い
+        #expect(try await workspace.reuseTask(Self.repo, epic: Self.epic, branches: Self.branches) == nil)
+
+        // 実装の途中で質問して止めた（手元の変更が残っている）
+        let asked = try await workspace.checkOutTask(Self.repo, epic: Self.epic, branches: Self.branches)
+        try "struct Ranking {}\n".write(to: asked.directory.appendingPathComponent("Ranking.swift"), atomically: true, encoding: .utf8)
+        let reused = try #require(try await workspace.reuseTask(Self.repo, epic: Self.epic, branches: Self.branches))
+        #expect(reused == asked)
+        #expect(FileManager.default.fileExists(atPath: reused.directory.appendingPathComponent("Ranking.swift").path))
+        // 再開した後は、いつもどおり commit・push できる
+        let pushed = try #require(try await workspace.commitAndPush(reused, message: "ランキングを足す"))
+        #expect(try remoteHead(Self.branches.task) == pushed)
+        #expect(try await workspace.reuseTask(Self.repo, epic: Self.epic, branches: Self.branches)?.head == pushed)
+
+        // 質問の後に、ほかで子ブランチが動いた。手元の変更は古い先頭の上にあるので使わない
+        let other = root.appendingPathComponent("other")
+        try shell("""
+            git clone --quiet '\(origin.path)' '\(other.path)' && cd '\(other.path)' && git checkout --quiet \(Self.branches.task) && \
+            echo x > Other.swift && git add . && git -c user.name=t -c user.email=t@example.invalid commit --quiet -m other && \
+            git push --quiet origin HEAD
+            """)
+        #expect(try await workspace.reuseTask(Self.repo, epic: Self.epic, branches: Self.branches) == nil)
+
+        // ほかのブランチを取り出している（レビューが head を取り出した）ときも使わない
+        let review = try await workspace.checkOutReview(Self.repo, epic: Self.epic, branches: Self.branches, head: pushed)
+        #expect(review.directory == asked.directory)
+        #expect(try await workspace.reuseTask(Self.repo, epic: Self.epic, branches: Self.branches) == nil)
+    }
+
     @Test func refusesPushWhenRemoteMovedOrGitDirectoryWasRewritten() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let workspace = try await makeWorkspace()

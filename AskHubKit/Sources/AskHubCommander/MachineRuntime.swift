@@ -55,7 +55,14 @@ public struct MachineRuntime: Sendable {
             trusted: TrustedKeys(
                 anchor: TrustAnchor(store: secrets), store: store, accounts: Set(configuration.keyAccounts), log: MachineCommandLine.log
             ),
-            probe: MachineProbe(secrets: secrets, volume: paths.root, owners: configuration.tokenOwners),
+            probe: MachineProbe(
+                secrets: secrets,
+                volume: paths.root,
+                owners: configuration.tokenOwners,
+                githubExpiry: GitHubTokenExpiry(),
+                claudeTokenRecord: paths.claudeTokenRecord,
+                claudeVersion: { await version(of: claude) }
+            ),
             workspace: GitRepositoryWorkspace(
                 setup: .init(root: paths.work, credentialHelper: GitCredential.helper(executable: commandLine.executable)),
                 runner: ProcessCommandRunner()
@@ -78,12 +85,17 @@ public struct MachineRuntime: Sendable {
         { owner in try await githubToken(for: owner, in: secrets)() }
     }
 
-    /// `claude --version` の版。分からなければ nil
+    /// `claude --version` の版。分からなければ nil。生きている印を書くたびに測るので、ここでも自分で更新させない
     private static func version(of claude: ClaudeSetup) async -> String? {
         let command = Command(
             executable: claude.executable,
             arguments: ["--version"],
-            environment: ["HOME": claude.homeDirectory.path, "PATH": claude.path, "CLAUDE_CONFIG_DIR": claude.configDirectory.path],
+            environment: [
+                "HOME": claude.homeDirectory.path,
+                "PATH": claude.path,
+                "CLAUDE_CONFIG_DIR": claude.configDirectory.path,
+                "DISABLE_AUTOUPDATER": "1"
+            ],
             workingDirectory: claude.temporaryDirectory,
             timeout: .seconds(30)
         )

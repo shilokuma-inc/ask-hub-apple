@@ -26,6 +26,10 @@ final class FakeTaskGit: TaskGit {
         var pushFailure: WorkspaceError?
         /// `isAncestor` が true を返す組（"祖先..子孫"）
         var ancestors: Set<String> = []
+        /// epic の作業場所に取り出しているブランチと、その先頭（nil なら作業場所が無い）
+        var workspace: (branch: String, head: String)?
+        /// `messages(after:upTo:in:)` が返すもの（"祖先..子孫" → メッセージ）。無ければ祖先でない
+        var history: [String: [String]] = [:]
     }
 
     static let directory = URL(fileURLWithPath: "/work/epics/01JCJ0A0000000000000000001/repository/askhub-sandbox")
@@ -50,10 +54,27 @@ final class FakeTaskGit: TaskGit {
             guard let base = state.remote[branches.epic] else { return .failure(.failed("作業ブランチ \(branches.epic) がリモートに無い")) }
             let remote = state.remote[branches.task]
             let head = remote ?? base
+            state.workspace = (branches.task, head)
             let task = CheckedOutTask(repo: repo, directory: Self.directory, branches: branches, head: head, remoteHead: remote, base: base)
             return .success(task.with(facts: "Swift 6 で書く。"))
         }
         return try result.get()
+    }
+
+    /// 作業場所が子ブランチを取り出したままで、先頭がリモート（無ければ作業ブランチ）と同じなら、手元の変更を残して返す
+    func reuseTask(_ repo: RepositoryFullName, epic: ULID, branches: TaskBranches) async throws(WorkspaceError) -> CheckedOutTask? {
+        state.withLock { state in
+            state.calls.append("reuseTask \(branches.task)")
+            guard let workspace = state.workspace, workspace.branch == branches.task, let base = state.remote[branches.epic] else {
+                return nil
+            }
+            let remote = state.remote[branches.task]
+            guard workspace.head == remote ?? base else { return nil }
+            let task = CheckedOutTask(
+                repo: repo, directory: Self.directory, branches: branches, head: workspace.head, remoteHead: remote, base: base
+            )
+            return task.with(facts: "Swift 6 で書く。")
+        }
     }
 
     func commitAndPush(_ task: CheckedOutTask, message: String) async throws(WorkspaceError) -> String? {
@@ -65,9 +86,14 @@ final class FakeTaskGit: TaskGit {
             state.commits.append(message)
             let head = sha(Character(String(state.commits.count)))
             state.remote[task.branches.task] = head
+            state.workspace?.head = head
             return .success(head)
         }
         return try result.get()
+    }
+
+    func messages(after ancestor: String, upTo descendant: String, in task: CheckedOutTask) async throws(WorkspaceError) -> [String]? {
+        state.withLock { $0.history["\(ancestor)..\(descendant)"] }
     }
 
     func isAncestor(_ ancestor: String, of descendant: String, in task: CheckedOutTask) async throws(WorkspaceError) -> Bool {
@@ -113,6 +139,7 @@ final class FakeTaskRunner: TaskRunning {
         var resume: String?
         var directory: URL
         var facts: String
+        var failingAtStart: TaskReport.BuildKind?
         var additionalDirectories: [URL] = []
     }
 
@@ -147,6 +174,7 @@ final class FakeTaskRunner: TaskRunning {
                 resume: job.resume,
                 directory: workspace.directory,
                 facts: workspace.facts,
+                failingAtStart: job.failingAtStart,
                 additionalDirectories: workspace.additionalDirectories
             )
             state.calls.append(call)
@@ -408,14 +436,15 @@ struct TaskJobFixture {
         _ job: JobFile,
         outputs: AttemptFile.Outputs? = nil,
         claude: AttemptFile.Claude? = nil,
-        endedAt offset: TimeInterval = 0
+        endedAt offset: TimeInterval = 0,
+        mac: MacName = TaskJobFixture.mac
     ) async throws {
         try await files.create(job, at: StatePath.job(Self.repo, epic: Self.epic, job: job.id), message: "job")
         let time = Timestamp(Self.start.addingTimeInterval(offset))
         let attempt = AttemptFile(
             job: job.id,
             number: 1,
-            mac: Self.mac,
+            mac: mac,
             startedAt: time,
             heartbeatAt: time,
             endedAt: time,

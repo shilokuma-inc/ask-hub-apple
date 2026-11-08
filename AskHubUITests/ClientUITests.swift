@@ -37,7 +37,7 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["進行が止まっています · 6"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["まとめて判断する"].exists)
         // 「時間のあるときに」は下にあるので、一覧を送ってから確かめる
-        XCTAssertTrue(scrollUntilExists(app.staticTexts["時間のあるときに · 3"], in: app))
+        XCTAssertTrue(scrollUntilExists(app.staticTexts["時間のあるときに · 5"], in: app))
     }
 
     /// 読めなかったときは「ありません」と出さない

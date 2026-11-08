@@ -33,6 +33,7 @@ struct MacListView: View {
 struct MacRow: View {
     let mac: Mac
 
+    @Environment(ClientStore.self) private var store
     @ContentScale private var scale
 
     var body: some View {
@@ -60,10 +61,30 @@ struct MacRow: View {
                         .rowFont(.detail)
                         .foregroundStyle(Theme.warning)
                 }
+                ForEach(notices, id: \.self) { notice in
+                    Label(notice, systemImage: "clock.badge.exclamationmark")
+                        .rowFont(.detail)
+                        .foregroundStyle(Theme.warning)
+                }
             }
         }
         .compactRow()
         .accessibilityElement(children: .combine)
+    }
+
+    /// 止めてはいないが、気をつけること（トークンの期限が近い・Claude Code の版が司令塔と違う）
+    private var notices: [String] {
+        let now = store.currentDate()
+        var notices = mac.tokens.compactMap { token -> String? in
+            guard case .expiringSoon(let days) = token.status(now: now) else {
+                return nil
+            }
+            return "\(token.name)の期限まで \(days) 日"
+        }
+        if mac.commanderClaudeVersion != nil {
+            notices.append("Claude Code の版が司令塔と違います")
+        }
+        return notices
     }
 }
 

@@ -15,9 +15,17 @@
         "selfCheck": {
           "checkedAt": "2026-11-03T10:00:00Z",
           "keychain": "ok",
-          "githubToken": "ok",
+          "githubToken": "expired",
           "claudeToken": "ok",
-          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z",
+          "githubTokenExpiresAt": "2026-11-01T00:00:00Z",
+          "githubTokens": [
+            {
+              "owner": "shilokuma-inc",
+              "state": "expired",
+              "expiresAt": "2026-11-01T00:00:00Z"
+            }
+          ]
         }
       },
       "schemaValid": true,

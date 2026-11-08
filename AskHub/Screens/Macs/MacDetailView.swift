@@ -14,6 +14,7 @@ struct MacDetailView: View {
                     LabeledContent("機種", value: mac.model)
                     LabeledContent("動き方", value: residency(mac.residency))
                     LabeledContent("版", value: mac.version + (mac.versionMatches ? "" : "（司令塔と合いません）"))
+                    claudeVersionRow(mac)
                 }
                 CardSection("持っているジョブ") {
                     if mac.jobs.isEmpty {
@@ -27,7 +28,16 @@ struct MacDetailView: View {
                         }
                     }
                 }
-                CardSection("起動したときの自己診断") {
+                CardSection {
+                    ForEach(mac.tokens) { token in
+                        tokenRow(token, mac: mac)
+                    }
+                } header: {
+                    Text("トークン")
+                } footer: {
+                    Text("期限まで 14 日を切ったら、この Mac の端末でコマンドを流して入れ直します。GitHub のトークンは作り直してから、Claude のトークンは claude setup-token で作ってから貼ります")
+                }
+                CardSection("自己診断") {
                     ForEach(mac.selfChecks) { check in
                         LabeledContent {
                             Text(check.detail)
@@ -51,6 +61,40 @@ struct MacDetailView: View {
         } else {
             ContentUnavailableView("この Mac は見つかりません", systemImage: "laptopcomputer.slash")
         }
+    }
+
+    /// 司令塔と版が違えば、司令塔の版を添える（そろえるのは、その Mac の設定の claude の場所に同じ版を入れる）
+    private func claudeVersionRow(_ mac: Mac) -> some View {
+        let commander = mac.commanderClaudeVersion.map { "（司令塔は \($0)）" } ?? ""
+        return LabeledContent("Claude Code", value: (mac.claudeVersion ?? "分かりません") + commander)
+    }
+
+    /// トークンの期限。入れ直すときは、Mac の端末で流すコマンドを出す
+    private func tokenRow(_ token: MacToken, mac: Mac) -> some View {
+        let status = token.status(now: store.currentDate())
+        let needsRenewal = !isFine(status)
+        return VStack(alignment: .leading, spacing: 4) {
+            LabeledContent {
+                Text(token.detail(now: store.currentDate()))
+            } label: {
+                Label(token.name, systemImage: needsRenewal ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(needsRenewal ? Theme.warning : Color.primary)
+            }
+            if needsRenewal {
+                Text(mac.renewalCommand(for: token))
+                    .appFont(.caption)
+                    .monospaced()
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private func isFine(_ status: MacToken.Status) -> Bool {
+        if case .ok = status {
+            return true
+        }
+        return false
     }
 
     private func jobRow(_ job: Mac.Job) -> some View {

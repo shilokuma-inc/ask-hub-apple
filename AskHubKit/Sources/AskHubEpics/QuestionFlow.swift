@@ -17,6 +17,8 @@ public enum QuestionFlow {
         case staleVersion(question: String, current: Int)
         case notAnswerable(question: String, state: QuestionState)
         case unknownChoice(question: String)
+        /// 実装の途中の質問は、答えで作業を再開したので、答え直せない・説明を求められない
+        case resumed(question: String)
 
         /// 処理した記録（`consumed`）の `reason` に書き、クライアントに出す文
         public var reason: String {
@@ -35,6 +37,8 @@ public enum QuestionFlow {
                 Self.reason(for: question, in: state)
             case let .unknownChoice(question):
                 "質問 \(question) に、選んだ選択肢が無い"
+            case let .resumed(question):
+                "質問 \(question) は実装の途中の質問で、答えで作業を再開した（答え直し・説明はできない。変えるときは最終 PR への指示として出す）"
             }
         }
 
@@ -79,6 +83,8 @@ public enum QuestionFlow {
         case reopen
         /// epic を `checking` にし、`checkReadiness` のジョブを作る
         case checkReadiness
+        /// 実装の途中の質問の答えで、質問したジョブ（`job`）と同じ種類のジョブを作って再開する
+        case resume(question: String, job: ULID)
     }
 
     /// 見直しの結果
@@ -97,6 +103,8 @@ public enum QuestionFlow {
 
     /// 回答を受け付ける段階。開始の前まで（分け方の判断を待っている間も、答え直せば回答に戻る）
     static let answerableStages: Set<EpicStage> = [.asking, .checking, .awaitingSplit, .awaitingStart]
+    /// 実装の途中の質問の答えを受け付ける段階（実装・最終 PR の段取り・人の確認の待ち）
+    public static let implementationStages: Set<EpicStage> = [.running, .finalizing, .reviewing]
 }
 
 // MARK: - 質問を足す
@@ -118,6 +126,36 @@ extension QuestionFlow {
         book.effects.append(.reopen)
         return book.change
     }
+
+    /// 実装・直しの途中で Claude が聞いた質問を足す（`docs/renewal/flows.md` の「実装の途中の質問」）。
+    /// `job` は質問したジョブ、`task` はどのタスクの途中か（最終 PR の直しは nil）。
+    /// id は続きの `q<番号>`、`round` は最後の質問の `round` に 1 を足したもの（質問が無ければ 2）。依存先は持たず、すぐ回答を待つ。
+    /// 同じジョブの質問がすでにあれば（前の周で足した）、そのまま返す
+    public static func ask(
+        _ asked: TaskOutputReport.Question,
+        job: ULID,
+        task: String?,
+        in file: QuestionsFile
+    ) throws(ResultError) -> QuestionsFile {
+        guard !file.questions.contains(where: { $0.job == job }) else { return file }
+        let number = (file.questions.compactMap { Int($0.id.dropFirst()) }.max() ?? 0) + 1
+        let round = (file.questions.map(\.round).max() ?? 1) + 1
+        var book = Book(file)
+        book.questions.append(.init(
+            id: "q\(number)",
+            title: asked.title,
+            why: asked.why,
+            options: asked.options,
+            recommended: asked.recommended,
+            reason: asked.reason,
+            round: round,
+            state: .open,
+            job: job,
+            task: task
+        ))
+        try book.validate()
+        return book.change.questions
+    }
 }
 
 // MARK: - 人の回答
@@ -131,6 +169,17 @@ extension QuestionFlow {
         at now: Timestamp
     ) throws(Rejection) -> Change {
         guard answer.repo == epic.repo, answer.epic == epic.id else { throw .otherEpic }
+        if implementationStages.contains(epic.stage) { return try acceptDuringImplementation(answer, epic: epic, questions: file, at: now) }
+        return try acceptBeforeStart(answer, epic: epic, questions: file, at: now)
+    }
+
+    /// 開始する前の回答と、説明を求める。答え直したら、依存する質問を見直しからやり直す
+    private static func acceptBeforeStart(
+        _ answer: AnswerIntent,
+        epic: EpicFile,
+        questions file: QuestionsFile,
+        at now: Timestamp
+    ) throws(Rejection) -> Change {
         guard answerableStages.contains(epic.stage) else { throw .notAcceptingAnswers(epic.stage) }
         var book = Book(file)
         guard let index = book.index(of: answer.question) else { throw .unknownQuestion(answer.question) }
@@ -159,6 +208,38 @@ extension QuestionFlow {
         }
         if epic.stage != .asking { book.effects.insert(.reopen, at: 0) }
         book.checkReadiness()
+        return book.change
+    }
+
+    /// 開始した後の、実装の途中の質問への回答と、説明を求める。答えたら質問したジョブを再開する（答え直せない）。
+    /// 依存先は持たないので、ほかの質問のロックと着手前の確認には触れない
+    private static func acceptDuringImplementation(
+        _ answer: AnswerIntent,
+        epic: EpicFile,
+        questions file: QuestionsFile,
+        at now: Timestamp
+    ) throws(Rejection) -> Change {
+        var book = Book(file)
+        // 開始する前の質問には、今までどおり答えられない
+        guard let index = book.index(of: answer.question), let job = book.questions[index].job else {
+            throw .notAcceptingAnswers(epic.stage)
+        }
+        let question = book.questions[index]
+        guard question.version == answer.questionVersion else {
+            throw .staleVersion(question: question.id, current: question.version)
+        }
+        if question.state == .answered { throw .resumed(question: question.id) }
+        guard question.state == .open else { throw .notAnswerable(question: question.id, state: question.state) }
+        switch answer.mode {
+        case .clarify:
+            book.questions[index].explanations.append(.init(asked: answer.intent, note: answer.note, at: now))
+            book.questions[index].state = .clarifying
+            book.effects.append(.explain(question: question.id, asked: answer.intent))
+        case .answer:
+            book.questions[index].answer = try decision(answer, for: question, at: now)
+            book.questions[index].state = .answered
+            book.effects.append(.resume(question: question.id, job: job))
+        }
         return book.change
     }
 
