@@ -95,6 +95,10 @@ struct StateFileTests {
         ])
         #expect(try read(ReadinessFile.self, "state/readiness.json", case: "more-questions").verdict == .moreQuestions)
         #expect(try read(EpicFile.self, "state/epic.json", case: "with-summary").summary == "日ごとのランキングを出す。毎日 0 時に入れ替える")
+        let pause = try read(EpicFile.self, "state/epic.json", case: "paused").pause
+        #expect(pause?.since.rawValue == "2026-11-03T11:00:00Z")
+        #expect(pause?.origin.nonce.rawValue == "01JCPA0SE00000000000000001")
+        #expect(try read(EpicFile.self, "state/epic.json", case: "not-paused").pause == nil)
         #expect(try read(GoalFile.self, "state/goal.json", case: "with-not-applied").notApplied == ["q1 を変える指示は、回答を変えて直す"])
     }
 

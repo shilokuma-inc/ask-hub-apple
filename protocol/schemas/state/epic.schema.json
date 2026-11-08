@@ -38,6 +38,21 @@
         { "type": "null" }
       ]
     },
+    "pause": {
+      "description": "人が一時停止した印（pauseEpic）。再開（resumeEpic）で外す。付いている間、司令塔は次のジョブを作らず、まだ動いていないジョブを paused にしたままにする",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["since", "origin"],
+          "additionalProperties": false,
+          "properties": {
+            "since": { "$ref": "../common.schema.json#/$defs/timestamp" },
+            "origin": { "$ref": "../common.schema.json#/$defs/intentReference" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
     "createdAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
     "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
   }
