@@ -118,6 +118,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "mac": null,
   "branch": null,
   "finalPullRequest": null,
+  "merge": null,
   "goalVersion": null,
   "origin": { "keyId": "…", "nonce": "01JC…" },
   "createdAt": "…",
@@ -128,6 +129,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `origin` は、元になった依頼の人の意図
 - `summary` は、依頼の要約（何を作るか・なぜ）。質問づくりの Claude が書く。作る前は `null`
 - `mac` は、開始のときに人が選んだ Mac
+- `merge` は、最終 PR のマージの記録 `{ "commit": "<マージのコミット>", "approval": { "keyId", "nonce" } | null, "at": "…" }`。司令塔が `merged` にするときに書く。`approval` は人の承認（`approveMerge`）の意図で、マージの規則で自動でマージしたなら `null`。クライアントは、どの端末から承認したかによらず、これで「自動でマージした」「承認してマージした」を出し分ける
 - `branch` は作業ブランチ。git のコマンドに渡しても選択肢に読まれないよう、`-` で始まる値・`..` を含む値・英数字と `._/-` 以外の文字を使わない
 
 `stage` の値と移り変わり:
