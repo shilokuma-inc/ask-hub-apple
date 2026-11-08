@@ -197,9 +197,9 @@ extension TaskFlow {
                 return true
             }
         }
-        // 最終 PR の直しはタスクに結びつかないので、仮決めはゴールの最後のタスクのものとして足す（decisions.json の項目はタスクを持つ）
-        if let decisions = try await succeededOutputs(of: fix)?.report?.decisions, let task = final.goal.tasks.last {
-            try await addDecisions(decisions, task: task.id, pullRequest: input.pullRequest, epic: final.epic)
+        // 最終 PR の直しはタスクに結びつかないので、仮決めはタスクを持たない最終 PR のものとして足す
+        if let decisions = try await succeededOutputs(of: fix)?.report?.decisions {
+            try await addDecisions(decisions, task: nil, pullRequest: input.pullRequest, epic: final.epic)
         }
         return try await classify(then: .review(input), after: fix, in: final)
     }

@@ -272,7 +272,7 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 | `reviewFinalPullRequest`（`ready`） | マージの規則（`FinalMergeRule.manualReasons`）に当て、人の確認が要らなければ見た head で `mergeFinalPullRequest` を作る。要れば epic を `reviewing` にして人を待つ。`mergeRisks` が欠けていたら、自動でマージせずに人を待つ |
 | `reviewFinalPullRequest`（`fixCI`・`fixReview`） | 見た head で `fixFinalPullRequest`（`reason` は `ci`・`review`）を作る。自動の直しが 3 回を超えたら、作るが動かさずに `waitingHuman` にする |
 | `reviewFinalPullRequest`（判定なし） | 見ている間に head が進んだ（ワーカーは判定を書かずに今の head を `outputs.commit` に返す）。その head で `reviewFinalPullRequest` を作り直す |
-| `fixFinalPullRequest` | 人が頼んだ直し（`reason` が `human`）なら、その意図の判断のカードの答えを外して答え待ちに戻す（直った後を見て答え直してもらう）。仮決めを `decisions.json` に足し（タスクに結びつかないので、ゴールの最後のタスクのものとして足す）、仕分けていない仮決めがあれば `classifyDecisions` を、無ければ直した head の `reviewFinalPullRequest` を作る |
+| `fixFinalPullRequest` | 人が頼んだ直し（`reason` が `human`）なら、その意図の判断のカードの答えを外して答え待ちに戻す（直った後を見て答え直してもらう）。仮決めを `decisions.json` に足し（タスクに結びつかないので、`task` を持たない最終 PR のものとして足す）、仕分けていない仮決めがあれば `classifyDecisions` を、無ければ直した head の `reviewFinalPullRequest` を作る |
 | `mergeFinalPullRequest` | `cleanUp` を作ってから、epic を `merged` にする |
 
 - 段取りのジョブは、前のジョブを `dependsOn` に持つ 1 本の列にする（`verifyBeforeFinal` だけは前を持たない）。列の最後のジョブが、次の一手を決める。人の意図で作る直し・マージも、そのときの最後のレビューにつなぐ

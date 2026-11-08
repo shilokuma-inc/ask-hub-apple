@@ -162,12 +162,12 @@ struct FinalFlowTests {
         let fix = try await given.next(.fixFinalPullRequest)
         let report = TaskOutputReport(summary: "直した", decisions: [.init(what: "見出しを 1 行にした", why: "指摘に合わせる")])
         try await given.succeed(fix, outputs: .init(pullRequest: Fixture.pullRequest, commit: Fixture.sha("b"), report: report))
-        // 直しの仮決めは、ゴールの最後のタスクと最終 PR のものとして足し、レビューの前に仕分ける
+        // 直しの仮決めは、タスクを持たない最終 PR のものとして足し、レビューの前に仕分ける
         let classify = try await given.next(.classifyDecisions)
         #expect(classify.dependsOn == [fix.id])
         let added = try #require(try await given.decisions().items.last)
         #expect(added.id == "d2")
-        #expect(added.task == "t2")
+        #expect(added.task == nil)
         #expect(added.pullRequest == Fixture.pullRequest)
         #expect(added.visible == nil)
         // 仕分けた: 仕分け済みの d1 は変えず、d2 だけを写して、直した head でレビューする
