@@ -190,7 +190,8 @@ struct StateIntentMapper {
 
         case let .instructFinal(epicID, headCommit, instruction):
             let text = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty, text.count <= InstructFinalIntent.maximumInstructionLength else {
+            // 司令塔（`PayloadReader`）と同じく、Unicode のコードポイントで数える（結合文字を含む文は、見た目の文字数より多くなる）
+            guard !text.isEmpty, text.unicodeScalars.count <= InstructFinalIntent.maximumInstructionLength else {
                 throw ClientServiceError(message: "指示は 1〜\(InstructFinalIntent.maximumInstructionLength) 文字で書いてください")
             }
             return .instructFinal(try finalTarget(epicID, headCommit: headCommit), instruction: text)
@@ -242,7 +243,8 @@ struct StateIntentMapper {
     /// 別案・直してほしいの本文。何をどうしてほしいかが無いと直せないので、空は送らない
     private static func decisionNote(_ note: String) throws(ClientServiceError) -> String {
         let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, text.count <= DecisionIntent.maximumNoteLength else {
+        // 司令塔（`PayloadReader`）と同じく、Unicode のコードポイントで数える
+        guard !text.isEmpty, text.unicodeScalars.count <= DecisionIntent.maximumNoteLength else {
             throw ClientServiceError(message: "どうしてほしいかを 1〜\(DecisionIntent.maximumNoteLength) 文字で書いてください")
         }
         return text
