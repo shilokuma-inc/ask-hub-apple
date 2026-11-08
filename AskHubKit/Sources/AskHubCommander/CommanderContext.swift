@@ -96,7 +96,7 @@ extension CommanderContext {
     /// id は `claudeJob` と同じく、元になった人の意図と `seed` から決める
     func job(_ spec: JobSpec, for epic: EpicFile, origin: IntentReference, seed: String) -> JobFile {
         JobFile(
-            id: .derived(from: origin.nonce, seed: "\(origin.keyId)/\(spec.kind.rawValue)/\(seed)"),
+            id: Self.jobID(spec.kind, origin: origin, seed: seed),
             kind: spec.kind,
             repo: epic.repo,
             epic: epic.id,
@@ -109,6 +109,11 @@ extension CommanderContext {
             createdAt: timestamp,
             updatedAt: timestamp
         )
+    }
+
+    /// 元になった人の意図と `seed` から決めるジョブの id（同じ意図と `seed` からは、いつも同じ id になる）
+    static func jobID(_ kind: JobKind, origin: IntentReference, seed: String) -> ULID {
+        .derived(from: origin.nonce, seed: "\(origin.keyId)/\(kind.rawValue)/\(seed)")
     }
 
     /// ファイルを読む。読めない（知らない版など）ファイルはそのまま失敗として返す

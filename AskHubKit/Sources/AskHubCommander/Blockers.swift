@@ -45,7 +45,7 @@ struct BlockerScan {
     /// ジョブを持っているとみなす状態（人に渡したジョブは、人の判断を待つ通知で知らせる）
     static let heldStates: Set<JobState> = [.assigned, .running, .paused]
 
-    /// `epics` は終わっていない epic、`jobs` はその epic のジョブ（`JobSweep` で見直した後のもの）
+    /// `epics` はジョブを見張る epic、`jobs` はその epic のジョブ（`JobSweep` で見直した後のもの）
     func scan(epics: [EpicFile], jobs: [JobFile]) async throws(CommanderError) -> [Blocker] {
         var blockers: [Blocker] = []
         for epic in epics.sorted(by: { $0.id < $1.id }) {
@@ -84,7 +84,8 @@ struct BlockerScan {
     /// ジョブを持ったまま、決めた時間より長く生きている印を書いていない Mac。
     /// 印の時刻を出来事に含めるので、同じ Mac でも、一度戻ってからまた止まれば知らせ直す
     private func offlineMacs(holding jobs: [JobFile]) async throws(CommanderError) -> [Blocker] {
-        let held = Dictionary(grouping: jobs.filter { Self.heldStates.contains($0.state) }) { $0.assignedMac }
+        // マージの後の片付けは進行を止めないので、Mac が戻るのを待つだけにする（知らせない）
+        let held = Dictionary(grouping: jobs.filter { Self.heldStates.contains($0.state) && $0.kind != .cleanUp }) { $0.assignedMac }
         let limit = Double(macOfflineAfter.components.seconds)
         var blockers: [Blocker] = []
         for (name, jobs) in held.sorted(by: { ($0.key?.rawValue ?? "") < ($1.key?.rawValue ?? "") }) {

@@ -22,23 +22,24 @@ public struct JobSweep: Sendable {
     public struct Swept: Sendable {
         /// 状態を変えたジョブ
         public var changed: [JobFile]
-        /// 終わっていない epic のすべてのジョブ（見直した後の状態。ワーカーが引き受けるジョブを選ぶのに使う）
+        /// ジョブを見張る epic のすべてのジョブ（見直した後の状態。ワーカーが引き受けるジョブを選ぶのに使う）
         public var jobs: [JobFile]
-        /// 終わっていない epic（進行を止めているものを知らせるのに使う）
+        /// ジョブを見張る epic（終わっていない epic と、片付けが残るマージしてから間もない epic。進行を止めているものを知らせるのに使う）
         public var epics: [EpicFile] = []
     }
 
-    /// 対象のリポジトリの、終わっていない epic のジョブを見直す。状態を変えたジョブを返す
+    /// 対象のリポジトリの、ジョブを見張る epic のジョブを見直す。状態を変えたジョブを返す
     public func sweep() async throws(CommanderError) -> [JobFile] {
         try await sweepAll().changed
     }
 
-    /// 対象のリポジトリの、終わっていない epic のジョブを見直し、見直した後のジョブの一覧も返す
+    /// 対象のリポジトリの、ジョブを見張る epic のジョブを見直し、見直した後のジョブの一覧も返す
     public func sweepAll() async throws(CommanderError) -> Swept {
         var swept = Swept(changed: [], jobs: [])
+        let now = context.now()
         for repo in try await context.repositories() {
-            // 終わっていない（マージ・やめた、でない）epic
-            for epic in try await context.epics(of: repo, where: { ![.merged, .abandoned].contains($0.stage) }) {
+            // 終わっていない epic と、マージの後の片付けが残る epic（`EpicFile.watchesJobs(now:)`）
+            for epic in try await context.epics(of: repo, where: { $0.watchesJobs(now: now) }) {
                 swept.epics.append(epic)
                 // 読めないジョブは、中身が分からないので触らない（新しい司令塔が扱う）
                 for job in try await context.jobList(repo, epic: epic.id).jobs {

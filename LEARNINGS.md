@@ -298,6 +298,8 @@
 - macOS 27 の上の Xcode 26.6 では、Simulator でテストを流すと「DTServiceHubClient failed to bless service hub」「The test runner hung before establishing connection.」で止まる（ビルドは通る）。開発者ツールの許可（`DevToolsSecurity`・`_developer`）は関係なかった。Xcode を 27 系に上げると直った（2026-11-08、Mac mini）
 - iOS 27.1 の Simulator のランタイム（24A94425）は、iPhone Duo だけに対応する。iPhone 17 Pro などは iOS 27.0（24A434）のランタイムで動く。`xcodebuild -downloadPlatform iOS` は 27.1 と 27.0 を続けて取る。版を決めずに「SDK と同じか古い最新」を選ぶと 27.1 になり、機種を作れない（`simctl create` が「Incompatible device」）。機種に対応するランタイムのうち最新を選ぶ（`supportedDeviceTypes`）
 - Xcode を上げた後、前の版の `CoreSimulatorService` が動いたままだと、新しいランタイムが「unavailable, liblaunch_sim.dylib could not be opened」になる。起動中の端末が無いときに `killall -9 com.apple.CoreSimulator.CoreSimulatorService` で動き直させる
+- 司令塔のテストで人の意図を続けて置くとき、`nonce` を同じ時刻の `ULID.generate(at:)` で作ると、時刻の部分が同じでランダムな部分の順に処理され、置いた順にならない。
+  `now.addingTimeInterval(0.001 * n)` でずらしても、浮動小数の誤差でミリ秒が切り捨てられて同じ時刻になることがある（`1_793_757_600.001` が `…600000` ミリ秒になる）。秒単位でずらす（`FinalFlowFixture.place`。2026-11-08、#911）
 
 ## Keychain
 
