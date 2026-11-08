@@ -2,6 +2,7 @@ import AskHubClient
 import AskHubKeychain
 import AskHubProtocol
 import AskHubStateStore
+import CryptoKit
 import Foundation
 
 extension AskHubMain {
@@ -64,9 +65,9 @@ extension AskHubMain {
 
     /// 人の意図を作って送る
     static func send(_ command: String, _ arguments: CommandArguments) async throws {
-        let draft = try draft(command, arguments)
+        let (draft, attachments) = command == "human-task-done" ? try humanTaskDone(arguments) : (try draft(command, arguments), [])
         let connection = try connection()
-        let sent = try await IntentSender(store: connection.store, key: connection.key).send(draft)
+        let sent = try await IntentSender(store: connection.store, key: connection.key).send(draft, attachments: attachments)
         print("\(draft.kind) を送りました（intents/\(sent.keyId.rawValue)/\(sent.nonce.rawValue).json）。司令塔が次の周で処理します")
     }
 
@@ -127,6 +128,31 @@ extension AskHubMain {
         )
         if command == "clarify" { return .clarify(question, note: try arguments.string("note")) }
         return .answer(question, choice: arguments.values["choice"], note: arguments.values["note"] ?? "")
+    }
+
+    /// 人がする作業を終えた。`--file` があれば、そのファイルを渡す（依頼の添付と同じ上限）
+    private static func humanTaskDone(_ arguments: CommandArguments) throws -> (IntentDraft, [Data]) {
+        try arguments.only(["repo", "epic", "task", "version", "file"])
+        let target = HumanTaskTarget(
+            repo: try arguments.repository(),
+            epic: try arguments.epic(),
+            task: try arguments.string("task"),
+            goalVersion: try arguments.integer("version")
+        )
+        guard let path = arguments.values["file"] else { return (.humanTaskDone(target), []) }
+        let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw CommandArguments.Failure(message: "--file を読めない（\(error.localizedDescription)）")
+        }
+        guard (1...RequestIntent.maximumAttachmentBytes).contains(data.count) else {
+            throw CommandArguments.Failure(message: "--file は 1 バイト以上、\(RequestIntent.maximumAttachmentBytes / 1024 / 1024) MB まで")
+        }
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let file = RequestAttachment(number: 1, name: url.lastPathComponent, size: data.count, sha256: digest)
+        return (.humanTaskDone(target, file: file), [data])
     }
 
     /// 最終 PR と判断のカードへの意図。どれも、見たときの最終 PR の head（40 桁の SHA）に結びつく
