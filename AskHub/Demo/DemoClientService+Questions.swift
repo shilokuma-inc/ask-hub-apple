@@ -17,7 +17,7 @@ extension DemoClientService {
         case .reviseGoal, .decideSplit, .addRepository:
             applySetupIntent(intent)
 
-        case .respondToDecision, .acceptAllDecisions, .merge, .verify:
+        case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
             applyReviewIntent(intent)
 
         case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .submitSecret, .cleanUp:

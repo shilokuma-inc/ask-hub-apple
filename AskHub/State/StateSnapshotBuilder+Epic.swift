@@ -22,6 +22,7 @@ extension StateSnapshotBuilder {
         let questions = protocolQuestions.filter { $0.state != .dropped }.map { question($0, epic: file, readiness: documents.readiness) }
         let goal = documents.goal
         let progress = progress(of: documents)
+        let finalReview = finalReview(of: documents, index: &index)
         return Epic(
             id: id,
             title: file.title,
@@ -41,8 +42,9 @@ extension StateSnapshotBuilder {
             macID: file.mac?.rawValue,
             activities: activities(of: file, questions: questions) + progress.activities,
             blocker: nil,
-            finalReview: nil,
-            history: (history(of: file, questions: protocolQuestions, readiness: documents.readiness) + progress.history)
+            finalReview: finalReview,
+            history: (history(of: file, questions: protocolQuestions, readiness: documents.readiness) + progress.history
+                + finalHistory(of: documents, review: finalReview))
                 .sorted { $0.date < $1.date },
             updatedAt: file.updatedAt.date,
             split: Self.split(file.stage, readiness: documents.readiness),

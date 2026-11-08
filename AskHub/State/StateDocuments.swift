@@ -9,9 +9,11 @@ struct StateDocuments {
         var questions: QuestionsFile?
         var goal: GoalFile?
         var readiness: ReadinessFile?
+        /// 人が決めていない判断。最終 PR を出した epic のものだけ読む
+        var decisions: DecisionsFile?
         /// ジョブ。終わった（マージした・やめた）epic のものは読まない
         var jobs: [JobFile] = []
-        /// 試行（古い順）。人の対応を待っているジョブはすべて、動いているジョブは最後の 1 つだけ
+        /// 試行（古い順）。人の対応を待っているジョブはすべて、動いているジョブと、最後に終わった最終 PR のレビューは最後の 1 つだけ
         var attempts: [ULID: [AttemptFile]] = [:]
     }
 
@@ -96,6 +98,10 @@ struct StateReader {
             goal: await read(GoalFile.self, at: StatePath.goal(repo, id), into: &documents),
             readiness: await read(ReadinessFile.self, at: StatePath.readiness(repo, id), into: &documents)
         )
+        // 判断のカードは最終 PR の確認で出す。仮決めは実装の間も増えるが、最終 PR を出すまでは画面に出さないので読まない
+        if epic.finalPullRequest != nil, epic.stage != .abandoned {
+            epicDocuments.decisions = await read(DecisionsFile.self, at: StatePath.decisions(repo, id), into: &documents)
+        }
         guard !Self.finishedStages.contains(epic.stage) else {
             return epicDocuments
         }
@@ -113,7 +119,17 @@ struct StateReader {
                 break
             }
         }
+        // 最終 PR のチェックとマージの規則の材料（判定・直すこと・mergeRisks）は、最後に終わったレビューの試行にある
+        if let review = Self.lastFinishedReview(in: epicDocuments.jobs), epicDocuments.attempts[review.id] == nil {
+            epicDocuments.attempts[review.id] = await readAttempts(of: review, from: review.attempts, into: &documents)
+        }
         return epicDocuments
+    }
+
+    /// 最後に終わった最終 PR のレビュー（試行に判定を書いたもの）
+    static func lastFinishedReview(in jobs: [JobFile]) -> JobFile? {
+        jobs.filter { $0.kind == .reviewFinalPullRequest && $0.state == .succeeded && $0.attempts > 0 }
+            .max { ($0.createdAt, $0.id.rawValue) < ($1.createdAt, $1.id.rawValue) }
     }
 
     private func readJobs(of epic: EpicFile, into documents: inout StateDocuments) async -> [JobFile] {

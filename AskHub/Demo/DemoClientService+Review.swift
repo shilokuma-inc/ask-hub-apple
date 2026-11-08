@@ -5,14 +5,24 @@ import Foundation
 extension DemoClientService {
     func applyReviewIntent(_ intent: HumanIntent) {
         switch intent {
-        case let .respondToDecision(epicID, decisionID, reply):
+        case let .respondToDecision(epicID, decisionID, headCommit, reply):
+            // 見た head が今と違う答えは受け付けない（状態リポジトリでは司令塔が断る）
+            guard state.epic(epicID)?.finalReview?.headCommit == headCommit else {
+                return
+            }
             respond(epicID: epicID, decisionID: decisionID, reply: reply)
 
-        case .acceptAllDecisions(let epicID):
-            acceptAllDecisions(epicID: epicID)
+        case let .acceptAllDecisions(epicID, headCommit, decisionIDs):
+            guard state.epic(epicID)?.finalReview?.headCommit == headCommit else {
+                return
+            }
+            acceptAllDecisions(epicID: epicID, decisionIDs: decisionIDs)
 
         case let .merge(epicID, headCommit):
             merge(epicID: epicID, headCommit: headCommit)
+
+        case let .instructFinal(epicID, headCommit, instruction):
+            instructFinal(epicID: epicID, headCommit: headCommit, instruction: instruction)
 
         case let .verify(epicID, itemID, reply):
             verify(epicID: epicID, itemID: itemID, reply: reply)
@@ -54,16 +64,21 @@ extension DemoClientService {
         }
     }
 
-    private func acceptAllDecisions(epicID: Epic.ID) {
+    /// 見ていたカードだけを OK にする
+    private func acceptAllDecisions(epicID: Epic.ID, decisionIDs: [DecisionCard.ID]) {
         let date = now()
         state.updateEpic(epicID) { epic in
             guard var review = epic.finalReview else {
                 return
             }
             for index in review.decisions.indices where review.decisions[index].needsReview {
-                review.decisions[index].response = .accepted
+                if decisionIDs.contains(review.decisions[index].id) {
+                    review.decisions[index].response = .accepted
+                }
             }
-            review.reviewedHeadCommit = review.headCommit
+            if review.decisions.allSatisfy(\.isConfirmed) {
+                review.reviewedHeadCommit = review.headCommit
+            }
             epic.finalReview = review
             epic.log("残りの判断をまとめて OK にしました", at: date)
         }
@@ -154,6 +169,32 @@ extension DemoClientService {
                 epic.stage = .done
                 epic.activities = []
                 epic.log("マージしました（#\(epic.finalReview?.pullRequestNumber ?? 0)）", at: now())
+            }
+        }
+    }
+
+    /// 最終 PR への指示。直している間は確かめられず、直したら head が替わる
+    private func instructFinal(epicID: Epic.ID, headCommit: String, instruction: String) {
+        let date = now()
+        // 見た head が今と違う指示は受け付けない（受け付けた指示だけ、直し終える処理を予約する）
+        guard let review = state.epic(epicID)?.finalReview, review.state == .reviewable, review.headCommit == headCommit else {
+            return
+        }
+        state.updateEpic(epicID) { epic in
+            epic.finalReview?.state = .checking
+            epic.finalReview?.checks.ci = .fixingByRequest
+            epic.finalReview?.reviewedHeadCommit = nil
+            epic.log("最終 PR に指示しました: \(instruction)", at: date)
+        }
+        schedule(after: 2) { [now] snapshot in
+            snapshot.updateEpic(epicID) { epic in
+                guard epic.finalReview?.state == .checking else {
+                    return
+                }
+                epic.finalReview?.state = .reviewable
+                epic.finalReview?.checks.ci = .passed
+                epic.finalReview?.headCommit = String(UUID().uuidString.prefix(7)).lowercased()
+                epic.log("最終 PR を指示のとおりに直しました", at: now())
             }
         }
     }

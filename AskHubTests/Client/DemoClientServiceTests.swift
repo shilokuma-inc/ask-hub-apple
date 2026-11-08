@@ -164,13 +164,15 @@ struct DemoClientServiceTests {
     @Test
     func acceptAllRecordsHeadAndMerges() async throws {
         let service = makeService()
-        try await service.perform(.acceptAllDecisions(epicID: "tsundoku-search"))
+        let before = try #require(service.state.epic("tsundoku-search")?.finalReview)
+        let shown = before.pendingDecisions.map(\.id)
+        try await service.perform(.acceptAllDecisions(epicID: "tsundoku-search", headCommit: before.headCommit, decisionIDs: shown))
         let review = try #require(service.state.epic("tsundoku-search")?.finalReview)
         let allConfirmed = review.decisions.allSatisfy(\.isConfirmed)
         #expect(allConfirmed)
         #expect(review.reviewedHeadCommit == review.headCommit)
 
-        try await service.perform(.merge(epicID: "tsundoku-search", headCommit: review.headCommit))
+        try await service.perform(.merge(epicID: "tsundoku-search", headCommit: try #require(review.headCommit)))
         clock.now.addTimeInterval(20)
         _ = try await service.fetchSnapshot()
         #expect(service.state.epic("tsundoku-search")?.stage == .done)
@@ -184,11 +186,45 @@ struct DemoClientServiceTests {
         #expect(service.state.epic("tsundoku-search")?.finalReview?.state == .reviewable)
     }
 
+    /// 最終 PR に指示すると、直している間は確かめられず、直したら head が替わって確かめられる
+    @Test
+    func finalInstructionFixesAndChangesHead() async throws {
+        let service = makeService()
+        let head = try #require(service.state.epic("tsundoku-search")?.finalReview?.headCommit)
+        try await service.perform(.instructFinal(epicID: "tsundoku-search", headCommit: head, instruction: "検索欄を下に"))
+        let fixing = try #require(service.state.epic("tsundoku-search")?.finalReview)
+        #expect(fixing.state == .checking)
+        #expect(fixing.checks.ci == .fixingByRequest)
+
+        clock.now.addTimeInterval(30)
+        _ = try await service.fetchSnapshot()
+        let fixed = try #require(service.state.epic("tsundoku-search")?.finalReview)
+        #expect(fixed.state == .reviewable)
+        #expect(fixed.headCommit != head)
+    }
+
+    /// 見た head が今と違う指示は受け付けず、受け付けた指示の直しを早く終えることもない
+    @Test
+    func staleFinalInstructionIsIgnored() async throws {
+        let service = makeService()
+        let head = try #require(service.state.epic("tsundoku-search")?.finalReview?.headCommit)
+        try await service.perform(.instructFinal(epicID: "tsundoku-search", headCommit: "0000000", instruction: "古い head"))
+        #expect(service.state.epic("tsundoku-search")?.finalReview?.state == .reviewable)
+
+        clock.now.addTimeInterval(15)
+        try await service.perform(.instructFinal(epicID: "tsundoku-search", headCommit: head, instruction: "検索欄を下に"))
+        // 直し終えるまで 20 秒かかる。古い指示の分を予約していれば、ここ（古い指示から 21 秒）で終わってしまう
+        clock.now.addTimeInterval(6)
+        _ = try await service.fetchSnapshot()
+        #expect(service.state.epic("tsundoku-search")?.finalReview?.state == .checking)
+    }
+
     /// 直してほしいと頼むと直してからもう一度出す
     @Test
     func fixRequestComesBackForReview() async throws {
         let service = makeService()
-        try await service.perform(.respondToDecision(epicID: "tsundoku-search", decisionID: "d4", reply: .fix("左に置いて")))
+        let head = service.state.epic("tsundoku-search")?.finalReview?.headCommit
+        try await service.perform(.respondToDecision(epicID: "tsundoku-search", decisionID: "d4", headCommit: head, reply: .fix("左に置いて")))
         let fixing = service.state.epic("tsundoku-search")?.finalReview?.decisions.first { $0.id == "d4" }
         #expect(fixing?.response == .fixing(request: "左に置いて"))
 

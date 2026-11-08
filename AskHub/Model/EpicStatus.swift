@@ -129,6 +129,12 @@ enum EpicStatus {
         case .tasksFinished:
             return ("タスクがすべて終わりました。最終 PR の段取りを待っています", "checkmark.circle")
 
+        case .mergeRequested:
+            return ("マージの承認を送りました。司令塔が受け取るのを待っています", "paperplane")
+
+        case .finalInstructionRequested:
+            return ("最終 PR への指示を送りました。司令塔が受け取るのを待っています", "paperplane")
+
         default:
             return describeImplementation(kind, epic: epic, macName: macName, snapshot: snapshot, now: now)
         }
@@ -205,6 +211,41 @@ enum EpicStatus {
                 let pullRequest = pullRequestLabel(taskID, pullRequest, epic: epic)
                 return ("\(pullRequest) の\(spaced(fixLabel(reason)))を直しています（\(round) 回目）", "wrench.and.screwdriver")
             }
+
+        case .final(let step):
+            return doing(step)
+        }
+    }
+
+    /// 最終 PR の段取り（例: 最終 PR #512 のチェックを待って、レビューしています）
+    private static func doing(_ step: FinalStep) -> (String, String) {
+        switch step {
+        case .verifying:
+            return ("最終 PR の前の検証（UI テストを含む）を流しています", "checkmark.shield")
+
+        case .classifying:
+            return ("仮決めを、見えるものと内部の細部に仕分けています", "tray.2")
+
+        case .capturing:
+            return ("見える仮決めのスクショを撮っています", "camera")
+
+        case .opening:
+            return ("最終 PR を出しています", "arrow.up.doc")
+
+        case .reviewing(let pullRequest):
+            return ("\(finalLabel(pullRequest)) のチェックを待って、レビューしています", "eye")
+
+        case let .fixing(pullRequest, .checks(round)):
+            return ("\(finalLabel(pullRequest)) の CI の失敗を直しています（\(round) 回目）", "wrench.and.screwdriver")
+
+        case let .fixing(pullRequest, .review(round)):
+            return ("\(finalLabel(pullRequest)) のレビューの指摘を直しています（\(round) 回目）", "wrench.and.screwdriver")
+
+        case .fixing(let pullRequest, .request):
+            return ("\(finalLabel(pullRequest)) を頼まれたとおりに直しています", "wrench.and.screwdriver")
+
+        case .merging(let pullRequest):
+            return ("\(finalLabel(pullRequest)) をマージしています", "arrow.triangle.merge")
         }
     }
 
@@ -225,7 +266,30 @@ enum EpicStatus {
             case let .fixing(pullRequest, _, reason):
                 return "\(pullRequestLabel(taskID, pullRequest, epic: epic)) の\(spaced(fixLabel(reason)))の直し"
             }
+
+        case .final(let step):
+            return name(of: step)
         }
+    }
+
+    /// 最終 PR の段取りの名前（例: 最終 PR #512 のレビュー）
+    private static func name(of step: FinalStep) -> String {
+        switch step {
+        case .verifying: "最終 PR の前の検証"
+        case .classifying: "仮決めの仕分け"
+        case .capturing: "スクショの撮影"
+        case .opening: "最終 PR づくり"
+        case .reviewing(let pullRequest): "\(finalLabel(pullRequest)) のレビュー"
+        case .fixing(let pullRequest, .checks): "\(finalLabel(pullRequest)) の CI の失敗の直し"
+        case .fixing(let pullRequest, .review): "\(finalLabel(pullRequest)) のレビューの指摘の直し"
+        case .fixing(let pullRequest, .request): "\(finalLabel(pullRequest)) の頼まれた直し"
+        case .merging(let pullRequest): "\(finalLabel(pullRequest)) のマージ"
+        }
+    }
+
+    /// 最終 PR の呼び名（例: 最終 PR #512）
+    private static func finalLabel(_ number: Int?) -> String {
+        "最終 PR" + (number.map { " #\($0)" } ?? "")
     }
 
     /// タスクの呼び名。何番目か・全体の数と、題を出す（例: タスク 2/5「並べ替えのボタン」）

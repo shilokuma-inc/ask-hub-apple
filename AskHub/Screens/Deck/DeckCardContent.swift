@@ -54,9 +54,15 @@ struct DeckCardContent: View {
                     .lineLimit(3)
             }
             contextNotes
-            if case .decision(let decision) = card.content, decision.before != nil || decision.after != nil {
-                BeforeAfterView(before: decision.before, after: decision.after)
-                    .frame(maxHeight: 150)
+            if case .decision(let decision) = card.content {
+                if decision.before != nil || decision.after != nil {
+                    BeforeAfterView(before: decision.before, after: decision.after)
+                        .frame(maxHeight: 150)
+                } else if let note = decision.screenshotNote {
+                    Label(note, systemImage: "camera.metering.unknown")
+                        .appFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

@@ -225,7 +225,16 @@ struct DecisionDeckView: View {
             case .decision:
                 if case .decisions(let epicID) = scope, cards.count > 1 {
                     Button("まとめて OK", systemImage: "checkmark.circle") {
-                        send(.acceptAllDecisions(epicID: epicID), card: card, label: "残り \(cards.count) 件をまとめて OK")
+                        // 見ている山札のカードと head だけを OK にする（見ていないカードは含めない）
+                        let shown = cards.compactMap { card -> DecisionCard.ID? in
+                            guard case .decision(let decision) = card.content else {
+                                return nil
+                            }
+                            return decision.id
+                        }
+                        let head = store.epic(epicID)?.finalReview?.headCommit
+                        let intent = HumanIntent.acceptAllDecisions(epicID: epicID, headCommit: head, decisionIDs: shown)
+                        send(intent, card: card, label: "残り \(cards.count) 件をまとめて OK")
                     }
                 }
 
