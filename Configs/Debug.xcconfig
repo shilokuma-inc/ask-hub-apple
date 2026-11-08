@@ -6,3 +6,6 @@
 //
 
 #include "Project.xcconfig"
+
+// APNs の送り先の環境（entitlement の aps-environment と、アプリが devices/ に書く push.environment）
+APS_ENVIRONMENT = development
