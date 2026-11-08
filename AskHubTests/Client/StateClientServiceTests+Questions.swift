@@ -14,7 +14,8 @@ extension StateClientServiceTests {
     private static func askedEpic(
         stage: String = "running",
         task: String? = "t2",
-        askingKind: String = "implementTask"
+        askingKind: String = "implementTask",
+        input: String = "{}"
     ) -> [String: String] {
         let task = task.map { #""\#($0)""# } ?? "null"
         let options = #"[{"label":"名前順","effect":"探しやすい"},{"label":"登録順","effect":"新しいものが下に来る"}]"#
@@ -43,7 +44,8 @@ extension StateClientServiceTests {
             """,
             "\(questionBase)/jobs/\(askingJobID).json": """
             {"v":1,"id":"\(askingJobID)","kind":"\(askingKind)","repo":"\(repo)","epic":"\(epicID)","task":\(task),"assignedMac":"mac-mini",
-             "needs":{"claude":true,"build":true},"dependsOn":[],"state":"succeeded","attempts":1,"nextRunAt":null,"input":{},"origin":null,
+             "needs":{"claude":true,"build":true},"dependsOn":[],"state":"succeeded","attempts":1,"nextRunAt":null,
+             "input":\(input),"origin":null,
              "createdAt":"2027-01-15T07:00:00Z","updatedAt":"2027-01-15T07:40:00Z"}
             """
         ])
@@ -78,7 +80,7 @@ extension StateClientServiceTests {
         #expect(line.owner == .you)
         #expect(line.text == "タスク 2「一覧に出す」の実装の途中の質問の回答を待っています")
         // タスクは、質問の答えを待っている段階にする（レビューに進んだとは出さない）
-        #expect(epic.tasks.map(\.state) == [.done(pullRequest: nil), .inProgress(.waitingForAnswer(question: "Q2"))])
+        #expect(epic.tasks.map(\.state) == [.done(pullRequest: nil), .inProgress(.waitingForAnswer(question: "Q2", pullRequest: nil))])
 
         // 答えと説明の送り方は、開始する前と同じ（質問の版に結びつける）
         try await fixture.service.perform(.answer(epicID: Self.epicID, questionID: "Q2", optionID: "名前順", note: "同点は ID 順"))
@@ -91,6 +93,16 @@ extension StateClientServiceTests {
         // 処理を待つ間は回答した結果として出し、カードを出し続けない
         let sent = try await fixture.service.fetchSnapshot()
         #expect(DeckBuilder.cards(from: sent, scope: .all).isEmpty)
+    }
+
+    /// 子 PR の直しの途中の質問を待つ間も、タスクの行に直している子 PR を出す
+    @Test
+    func questionDuringFixKeepsPullRequest() async throws {
+        let input = #"{"pullRequest":42,"head":"0123456789abcdef0123456789abcdef01234567","reason":"ci"}"#
+        let snapshot = try await makeService(files: Self.askedEpic(askingKind: "fixTask", input: input)).service.fetchSnapshot()
+        let task = try #require(snapshot.epic(Self.epicID)?.tasks.last)
+        #expect(task.state == .inProgress(.waitingForAnswer(question: "Q2", pullRequest: 42)))
+        #expect(task.pullRequest == 42)
     }
 
     @Test

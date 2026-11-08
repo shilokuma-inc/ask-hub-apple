@@ -88,7 +88,7 @@ extension StateSnapshotBuilder {
             }
             // 実装・直しが質問で終えた。答えるまで、司令塔は次のジョブを作らない
             if let asked = questions?.questions.first(where: { $0.job == job.id && [.open, .clarifying].contains($0.state) }) {
-                return .inProgress(.waitingForAnswer(question: Self.displayID(asked.id)))
+                return .inProgress(.waitingForAnswer(question: Self.displayID(asked.id), pullRequest: job.pullRequest))
             }
             return .inProgress(phase(of: job, jobs: taskJobs, finished: job.state == .succeeded))
         }

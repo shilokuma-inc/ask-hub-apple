@@ -213,7 +213,7 @@ enum EpicStatus {
                 let pullRequest = pullRequestLabel(taskID, pullRequest, epic: epic)
                 return ("\(pullRequest) の\(spaced(fixLabel(reason)))を直しています（\(round) 回目）", "wrench.and.screwdriver")
 
-            case .waitingForAnswer(let question):
+            case .waitingForAnswer(let question, _):
                 return ("\(taskLabel(taskID, epic: epic))の途中の質問 \(question) の回答を待っています", "questionmark.bubble")
             }
 
@@ -274,7 +274,7 @@ enum EpicStatus {
             case let .fixing(pullRequest, _, reason):
                 return "\(pullRequestLabel(taskID, pullRequest, epic: epic)) の\(spaced(fixLabel(reason)))の直し"
 
-            case .waitingForAnswer(let question):
+            case .waitingForAnswer(let question, _):
                 return "\(taskLabel(taskID, epic: epic))の途中の質問 \(question)"
             }
 

@@ -135,7 +135,7 @@ extension DemoData {
         }
         // 買い物リストの並べ替えは、タスク 2 の実装の途中で Claude が人に聞いた（答えるまで止めて待つ）
         snapshot.updateEpic("recipe-shopping") { epic in
-            epic.tasks[1].state = .inProgress(.waitingForAnswer(question: "Q1"))
+            epic.tasks[1].state = .inProgress(.waitingForAnswer(question: "Q1", pullRequest: nil))
             epic.activities = []
             epic.questions = [shoppingQuestion()]
             epic.log("タスク 2 の実装の途中で、Claude が Q1 を聞きました。答えるまで止めて待ちます", at: ago(minutes: 5))
