@@ -81,13 +81,17 @@ enum AskHubWorkerMain {
         // 作業場所の用意と、タスクのジョブ（実装・子 PR のレビュー・直し）を引き受ける
         var runners = runtime.taskRunners(context: context, settings: TaskRepositorySettings.reader(context: context))
         runners[.prepareWorkspace] = PrepareWorkspaceRunner(context: context, workspace: runtime.workspace)
+        let cleanUp = runtime.finishedEpicCleanUp(context: context, log: log)
         let loop = WorkerLoop(
             context: context,
             settings: settings,
             verifier: { () throws(CommanderError) in try await runtime.trusted.verifier() },
             runners: runners,
             status: { runtime.probe.status() },
-            tidy: { await runtime.workspace.tidy() },
+            tidy: {
+                await runtime.workspace.tidy()
+                await cleanUp.run()
+            },
             log: log
         )
         let kind = configuration.kind.rawValue

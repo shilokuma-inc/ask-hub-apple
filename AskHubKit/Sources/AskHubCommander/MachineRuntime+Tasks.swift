@@ -39,7 +39,8 @@ extension MachineRuntime {
                 return TaskRunner(client: client, builds: EpicBuildService(builder: builder))
             },
             slots: BuildSlots(count: configuration.capacity.build),
-            reviewer: client
+            reviewer: client,
+            locks: epicLocks
         )
         let trusted = trusted
         let final = FinalJobEnvironment(
@@ -60,6 +61,14 @@ extension MachineRuntime {
             .mergeFinalPullRequest: MergeFinalPullRequestRunner(environment: final),
             .cleanUp: CleanUpRunner(environment: final)
         ]
+    }
+
+    /// 終わった epic の、この Mac に残ったもの（作業場所・手元のブランチ・DerivedData）を片付けるもの。生きている印を書いた後の見回りで流す。
+    /// ジョブと同じ epic の作業場所の排他（`epicLocks`）を使う
+    public func finishedEpicCleanUp(context: CommanderContext, log: @escaping @Sendable (String) -> Void) -> FinishedEpicCleanUp {
+        FinishedEpicCleanUp(
+            context: context, workspace: workspace, builds: BuildDirectories(root: paths.builds), locks: epicLocks, log: log
+        )
     }
 }
 #endif

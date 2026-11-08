@@ -154,7 +154,7 @@ public struct ReviewTaskRunner: JobRunning {
         do {
             _ = try await pulls.deleteBranch(target.branches.task, expectedSHA: input.head)
         } catch .headChanged {
-            // マージは済んでいるので、残った子ブランチは epic の片付けで消す
+            // マージは済んでいる。マージの後に push されたものは失わないよう、子ブランチは消さずに残す（要らなければ人が GitHub で消す）
         } catch {
             throw .finish(JobResult(failure: error.attemptFailure(doing: "マージした子ブランチを消す", now: environment.context.now()), claude: claude))
         }

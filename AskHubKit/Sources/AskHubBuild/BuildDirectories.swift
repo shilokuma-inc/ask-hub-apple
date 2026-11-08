@@ -31,12 +31,16 @@ public struct BuildDirectories: Sendable {
         try Self.remove(epicDirectory(epic))
     }
 
+    /// 置き場所がある epic。epic の形（ULID）でない名前のものは除く
+    public func epics() -> [ULID] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+        return names.sorted().compactMap(ULID.init(rawValue:))
+    }
+
     /// `active` に無い epic の置き場所を消し、消した epic を返す。epic の形（ULID）でない名前のものには触れない
     public func removeEpics(except active: Set<ULID>) throws(BuildDirectoryError) -> [ULID] {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
         var removed: [ULID] = []
-        for name in names.sorted() {
-            guard let epic = ULID(rawValue: name), !active.contains(epic) else { continue }
+        for epic in epics() where !active.contains(epic) {
             try remove(epic)
             removed.append(epic)
         }
