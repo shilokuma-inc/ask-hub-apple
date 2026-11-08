@@ -84,8 +84,12 @@ public struct FixFinalPullRequestRunner: JobRunning {
     /// 直すこと（`FixTaskJob.Reason.findings` の文）
     private func findings(for input: FixTaskInput, job: JobFile) async throws(TaskJobExit) -> String {
         switch input.reason {
-        case .ci, .review:
-            let verdict: ReviewVerdict = input.reason == .ci ? .fixCI : .fixReview
+        case .ci, .review, .conflict:
+            let verdict: ReviewVerdict = switch input.reason {
+            case .ci: .fixCI
+            case .conflict: .fixConflict
+            default: .fixReview
+            }
             let reviewed = PullRequestInput(pullRequest: input.pullRequest, head: input.head)
             let history = TaskHistory(context: environment.context, repo: job.repo, epic: job.epic)
             let found = try await history.succeeded([.reviewFinalPullRequest], task: nil).last { entry in
@@ -142,6 +146,7 @@ public struct FixFinalPullRequestRunner: JobRunning {
         case .ci: "CI の失敗"
         case .review: "レビューの指摘"
         case .human: "人の指示"
+        case .conflict: "base とのコンフリクト"
         }
         let summary = UntrustedText.head(report.summary, limit: 4_000)
         return "最終 PR を直す（\(what)）\n\n\(summary)\n\nAskHub の epic \(job.epic.rawValue)\n\(trailer(of: job.id))"

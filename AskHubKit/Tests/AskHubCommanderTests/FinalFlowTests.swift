@@ -116,7 +116,8 @@ struct FinalFlowTests {
         try await given.finished()
         var review = try await given.openedFinalPullRequest()
         for round in 1...3 {
-            let verdict: ReviewVerdict = round == 2 ? .fixReview : .fixCI
+            // コンフリクトの直しも、自動の直しとして 3 回の上限に数える
+            let verdict: ReviewVerdict = [1: .fixCI, 2: .fixReview, 3: .fixConflict][round] ?? .fixCI
             let seen = try #require(review.input(as: PullRequestInput.self))
             try await given.succeed(review, outputs: .init(commit: seen.head, verdict: verdict, findings: "build / build が落ちた"))
             let fix = try await given.next(.fixFinalPullRequest)
@@ -125,7 +126,7 @@ struct FinalFlowTests {
             #expect(fix.needs == .init(claude: true, build: true))
             #expect(fix.state == .assigned)
             #expect(fix.dependsOn == [review.id])
-            let reason: FixTaskInput.Reason = verdict == .fixCI ? .ci : .review
+            let reason: FixTaskInput.Reason = [.fixCI: .ci, .fixReview: .review, .fixConflict: .conflict][verdict] ?? .ci
             #expect(fix.input(as: FixTaskInput.self) == FixTaskInput(pullRequest: Fixture.pullRequest, head: seen.head, reason: reason))
             // 直した head で、レビューを作り直す
             let head = Fixture.sha(Character(String(round)))

@@ -162,7 +162,9 @@ public struct TaskFlow: Sendable {
         case .fixCI: reason = .ci
         case .fixReview: reason = .review
         // 最終 PR のレビューの判定。子 PR のレビューには出ないので、壊れた結果として人に渡す
-        case .ready: return .stuck("epic \(plan.epic.id) のタスク \(task.id) の子 PR のレビュー（\(review.id)）に、最終 PR の判定（ready）がある")
+        case .ready, .fixConflict:
+            let what = "epic \(plan.epic.id) のタスク \(task.id) の子 PR のレビュー（\(review.id)）"
+            return .stuck("\(what)に、最終 PR の判定（\(verdict.rawValue)）がある")
         }
         let round = chain.filter { $0.kind == .fixTask && $0.state != .canceled }.count + 1
         let input = FixTaskInput(pullRequest: seen.pullRequest, head: seen.head, reason: reason)

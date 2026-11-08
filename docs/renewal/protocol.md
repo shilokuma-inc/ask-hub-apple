@@ -321,7 +321,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `integrateDevelop` | `{ "base": "<取り込む base のコミット>" }` |
 | `verifyBeforeFinal`・`classifyDecisions`・`captureScreenshots`・`openFinalPullRequest`・`cleanUp` | `{}` |
 | `reviewFinalPullRequest`・`mergeFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>" }` |
-| `fixFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`・`human`。`human` は判断のカードの「直してほしい」「別案にする」と `instructFinal` で、元の人の意図はジョブの `origin`） |
+| `fixFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`・`human`・`conflict`。`human` は判断のカードの「直してほしい」「別案にする」と `instructFinal` で、元の人の意図はジョブの `origin`。`conflict` は、ワーカーが base を作業ブランチに取り込み、コンフリクトしたファイルを Claude に解消させる） |
 | `notify` | 段階 4 で決める |
 
 - タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）は、司令塔が元のジョブの結果から作り、`task` にタスクの id、`dependsOn` に元のジョブ（`implementTask` は作業場所の用意）を書く。同じタスクの直しが 3 回を超えたら、`fixTask` を `waitingHuman` で作る（[flows.md](flows.md) の「司令塔がタスクを進める」）
@@ -370,7 +370,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - `outcome` は `running`・`succeeded`・`failed`
 - `outputs` は外部の id（`pullRequest`・`commit`・`branch`）と、司令塔が次のジョブを決めるのに読む結果。外部の id は、やり直す前に、すでにできているかを確かめるのに使う
-  - `verdict`: 子 PR のレビュー（`reviewTask`）と最終 PR のレビュー（`reviewFinalPullRequest`）の判定。`merged`（子 PR をマージした）・`ready`（最終 PR が通った。マージは規則と人の承認で決める）・`fixCI`（CI が落ちた）・`fixReview`（必須の指摘）。直す判定のときは `findings` を持つ
+  - `verdict`: 子 PR のレビュー（`reviewTask`）と最終 PR のレビュー（`reviewFinalPullRequest`）の判定。`merged`（子 PR をマージした）・`ready`（最終 PR が通った。マージは規則と人の承認で決める）・`fixCI`（CI が落ちた）・`fixReview`（必須の指摘）・`fixConflict`（最終 PR が base とコンフリクトしている。最終 PR だけ）。直す判定のときは `findings` を持つ
   - `mergeRisks`: 最終 PR のレビューが見つけた、手動のマージの条件に当たるもの（`security`・`weakenedTests`・`dataMigration`・`sensitivePaths` と理由）。司令塔がマージの規則に当てる。`ready` のときは必ず書く（無ければ空）。`sensitivePaths` は、レビュー役の Claude のほかに、差分のパスの決まった規則（`.github/`・`.claude/`・`.mcp.json`・ビルドのスクリプト・依存・entitlements・Info.plist・`.xcconfig` など）でも足す
   - 最終 PR のレビューの間に head が進んだときは、`verdict` を書かずに成功で終え、`commit` に今の head を書く（古い head の判定は書かない）
   - `visibleDecisions`: 判断の仕分け（`classifyDecisions`）で見えるとした仮決めの id。ここに無いものは内部の細部。司令塔が `decisions.json` の `visible` に写す
