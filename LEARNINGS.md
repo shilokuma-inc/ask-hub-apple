@@ -128,6 +128,9 @@
   「cannot lock ref 'refs/heads/askhub/E/t1': 'refs/heads/askhub/E' exists」で作れない（GitHub でも同じ）。作業ブランチの下に子ブランチを作るときは、`askhub/E-t1` のように `/` で区切らない（2026-11-07、`TaskBranches`）
 - GitHub Actions の job のログ（`GET …/actions/jobs/{id}/logs`）は、短い間だけ使える署名つきの URL への 302 で返る。リダイレクトを追わない `URLSession` では、
   `Location` を読んで `Authorization` を付けずに取りに行く（署名で認められる。トークンを別のホストに渡さない）。各行の先頭に `2026-11-07T09:00:00.1234567Z ` の形の時刻が付く（2026-11-07、`jobLog`）
+- fine-grained token の期限は、そのトークンで呼んだ API の応答の見出し `github-authentication-token-expiration` に `2027-10-23 12:25:03 UTC` の形で出る（`+0900` のような時差の形で返ることもあると報告がある）。
+  期限の無いトークンには見出しが無い。期限切れのトークンは 401 で見出しも無いので、切れた後に期限を知るには前に読んだ値を覚えておく。
+  期限だけを読むなら `GET /rate_limit` が REST の上限に数えられない（2026-11-08、`GitHubTokenExpiry`）
 
 ## ビルド・テスト
 

@@ -90,6 +90,10 @@
 - 入れ方は、プログラムのファイルをホームフォルダの下に置き、`setup`（想定のコマンド）で値を登録するだけ。管理者の権限は使わない
 - 常駐できる Mac では、ログイン中のセッションの LaunchAgent として登録する（ssh のセッションからは Keychain を読めないため）。常駐できない Mac では、ターミナルで `askhub-worker run` を流したままにする（下の「ワーカーの入れ方」）
 - `claude` は 1 か所にだけ入れ、版を固定する。段階 0 で、常時オンの Mac に 2 か所・別の版で入っていたことが分かった
+  - 司令塔とワーカーは、設定の `claude`（`setup --claude` で渡した絶対パス）だけを使い、`DISABLE_AUTOUPDATER=1` を渡して自分で更新させない
+  - 生きている印を書くたび（10 分ごと）に `claude --version` を測り直して `versions.claude` に書く。人が入れ替えたら、読み込み直さなくても次の印で分かる
+  - クライアントは、Claude Code の版が司令塔と違う Mac を、Mac の画面と「あなたの番」（時間のあるときに）に出す。オフラインの Mac は、戻ってから出す
+  - 版をそろえるには、司令塔と同じ版の `claude` を、その Mac の設定の `claude` の場所に入れる（次の Claude の呼び出しから使う）
 - 生きている印に版を書く。司令塔とワーカーの版が合わないときは、ジョブを受けずに知らせる
 - 更新の手順（常時オンの Mac は遠隔で、ほかの Mac は手で）を、切り替えの前に決める
 - 作業ファイルは TCC の保護の対象の場所（デスクトップ・書類など）に置かない。ワーカー専用のフォルダ（`~/Library/Application Support/` の下など）を使う
@@ -108,7 +112,7 @@
    - 公開鍵の記録の最初の鍵を固定する（後から別の鍵には変えられない）
    - 対象のリポジトリは、Discussions を有効にし、カテゴリ「Ideas」（有効にすると GitHub が作る既定のカテゴリ）を残しておく。無いあいだは Discussion の写しを書かず、司令塔のログに理由を出す（依頼から開始までの流れは止まらない）
 3. `askhub-commander launch-agent` で LaunchAgent の定義を書き、出てくる `launchctl bootstrap` のコマンドで登録する（ログは `~/Library/Logs/AskHub/commander.log`）
-4. `askhub-commander check` で、設定と Keychain の様子（値は出さない）を確かめる
+4. `askhub-commander check` で、設定と Keychain の様子・トークンの期限（値は出さない）を確かめる
 5. 状態リポジトリに見張りを入れる（上の「司令塔の見張り」の「正本と入れ方」）
 
 - git は、司令塔自身を credential helper（`askhub-commander git-credential`）にして、Keychain の GitHub のトークンを受け取る。git に `credential.useHttpPath=true` を渡し、問い合わせの path（`owner/repo.git`）の持ち主でトークンを選ぶ。持ち主のトークンが無ければ何も返さず、理由（トークンの値は出さない）を標準エラーに出す
@@ -143,7 +147,7 @@
 3. 起動する
    - 常駐できる Mac: `askhub-worker launch-agent` で LaunchAgent の定義を書き、出てくる `launchctl bootstrap` のコマンドで登録する（ログは `~/Library/Logs/AskHub/worker.log`）
    - 常駐できない Mac: ターミナルで `askhub-worker run` を流したままにする（ログはそのターミナルに出る）。再起動・ログアウトで止まり、クライアントに「オフライン」と出るので、もう一度流せば続きから再開する
-4. `askhub-worker check` で、設定と Keychain の様子（値は出さない）を確かめる
+4. `askhub-worker check` で、設定と Keychain の様子・トークンの期限（値は出さない）を確かめる
 
 - `run` は、この Mac が受け持つ epic（開始のときに選ばれた epic）のジョブを 60 秒ごとに読み、自分宛ての `assigned` のジョブを同時の上限の中で引き受けて試行を書く。生きている印（`macs/<mac>.json`）は 10 分ごとに書く。人の意図の処理とジョブの状態の更新はしない（司令塔の仕事）
 - 引き受けたジョブは、元になった人の意図の署名を確かめてから実行する。確かめられなければ実行せず、想定外の失敗として人に渡す
@@ -173,7 +177,27 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
    - Checks の権限は、fine-grained token では選べない（チェックの書き込みは GitHub App だけ）。チェックの結果（check runs）を読む API は、public のリポジトリなら特別な権限なしで読める。private のリポジトリで fine-grained token から読めるかは公式の文書に無いので、private のリポジトリで使う前に確かめる
 
 5. 期限を決めて作り、値（`github_pat_` で始まる）を `setup` か `token <持ち主>` で端末に貼る。値はほかの場所（メモ・チャット・ファイル）に残さない
-6. 対象のリポジトリを足したら、そのリポジトリをトークンの Repository access にも足す（持ち主が新しければ、トークンを作って `token <持ち主>` で入れる）。期限が切れたら作り直して `token <持ち主>` で入れ直す
+6. 対象のリポジトリを足したら、そのリポジトリをトークンの Repository access にも足す（持ち主が新しければ、トークンを作って `token <持ち主>` で入れる）。期限が近づいたら作り直して `token <持ち主>` で入れ直す（下の「トークンの期限」）
+
+### トークンの期限
+
+GitHub のトークン（持ち主ごと）と Claude の setup-token には期限がある。切れると、その Mac の仕事（状態リポジトリのトークンなら生きている印も）が止まるので、司令塔とワーカーが期限を生きている印の自己診断に書き（値は書かない。[protocol.md](protocol.md) の「macs/<mac>.json」）、クライアントで知らせる。
+
+- GitHub のトークン: 生きている印を書くたび（10 分ごと）に、持ち主ごとのトークンで GitHub の `/rate_limit`（REST の上限に数えられない）を呼び、応答の見出し `github-authentication-token-expiration`（`2027-10-23 12:25:03 UTC` の形）から期限を読む
+  - 見出しが無いのは、期限の無いトークン。401 が返ったら使えない（前に読んだ期限を過ぎていれば期限切れ）。つながらないときは前に読んだ期限のまま
+- Claude の setup-token: 作った日から 1 年使える。`setup`・`claude-token` で新しい値を入れた日を `~/Library/Application Support/AskHub/<役割>/claude-token.json` に記録し（日付だけ）、その 1 年後を期限とする
+  - 記録を始める前に入れた setup-token は、期限が分からない（クライアントに「期限は分かりません」と出る）。`claude setup-token` で作り直して `claude-token` で入れると記録される
+- クライアントは、Mac の画面にトークンごとの残り日数を出す
+  - 期限まで 14 日を切ったら、「あなたの番」（時間のあるときに）に入れ直すコマンドを出す
+  - 期限が切れた・使えないトークンは、進行を止めるものとして「止まっています」と出す（状態リポジトリのトークンが切れた Mac は印を書けずにオフラインになるが、オフラインが 7 日を超えるまでは出す）
+- 入れ直し（その Mac の端末で流す。常時オンの Mac は `askhub-commander`、ほかの Mac は `askhub-worker`）
+
+  | トークン | 作り直し | 入れ直すコマンド |
+  | --- | --- | --- |
+  | GitHub（持ち主ごと） | 上の「GitHub のトークン（持ち主ごと）」の 1〜5（Regenerate でもよい） | `token <持ち主>`。常駐を読み込み直さなくても、次の要求から使う |
+  | Claude の setup-token | 人の Mac で `claude setup-token` | `claude-token`。常駐のループは起動したときの値を使うので、読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`、ワーカーは `…askhub.worker`。ターミナルで流しているワーカーは流し直す） |
+
+- `check` で、持ち主ごとの GitHub のトークンと Claude の setup-token の期限を確かめられる
 
 ### 非常口（`askhub`）
 

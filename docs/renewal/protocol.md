@@ -403,13 +403,22 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
     "keychain": "ok",
     "githubToken": "ok",
     "claudeToken": "ok",
-    "claudeTokenExpiresAt": "…"
+    "githubTokenExpiresAt": "…",
+    "claudeTokenExpiresAt": "…",
+    "githubTokens": [
+      { "owner": "shilokuma-inc", "state": "ok", "expiresAt": "…" },
+      { "owner": "mrs1669", "state": "ok" }
+    ]
   }
 }
 ```
 
 - `kind` は `alwaysOn`・`resident`・`manual`
-- `selfCheck` の各項目は `ok`・`missing`・`invalid`・`expired`。トークンの期限は、分かるときだけ書く（setup-token は登録した日から 1 年）
+- `versions.claude` は、印を書くたびに測る `claude --version`。クライアントは、司令塔（`commander.json`）と違う Mac を知らせる
+- `selfCheck` は印を書くたびに確かめる。各項目は `ok`・`missing`・`invalid`・`expired`。トークンの値そのものは書かない
+  - `githubTokens` は、持ち主（organization・個人。小文字にそろえる）ごとの GitHub のトークンの様子と期限。持ち主は重ねない
+  - `githubToken` は持ち主ごとの様子をまとめたもの（1 つでも無ければ `missing`、次に `invalid`・`expired` の順）。`githubTokenExpiresAt` は持ち主ごとの期限のうち一番早いもの
+  - トークンの期限は、分かるときだけ書く。GitHub のトークンは GitHub の API の応答の見出し `github-authentication-token-expiration` で分かったもの（期限の無いトークンには書かない）、setup-token は入れた日から 1 年（入れた日が分からなければ書かない）。読み方と知らせ方は [operations.md](operations.md) の「トークンの期限」
 - 変化があったときと、一定の間隔（10 分程度）でだけ書く
 
 ### commander.json（司令塔の生きている印）
@@ -423,6 +432,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "selfCheck": { "checkedAt": "…", "keychain": "ok", "githubToken": "ok", "claudeToken": "ok" }
 }
 ```
+
+- `versions` と `selfCheck` の書き方は `macs/<mac>.json` と同じ（同じ周に、同じ様子を書く）
 
 - GitHub Actions の見張りが、`seenAt` の古さ（30 分。`macs/<mac>.json` のオフラインの判定と同じ）を確かめる。無い・読めないときも止まったとみなす（[operations.md](operations.md) の「司令塔の見張り」）
 

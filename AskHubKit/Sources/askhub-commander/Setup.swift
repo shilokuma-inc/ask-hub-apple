@@ -42,11 +42,11 @@ extension AskHubCommanderMain {
     }
 
     /// 設定と Keychain の様子を出す（秘密の値は出さない）
-    static func check() {
+    static func check() async {
         let configuration = try? MachineConfiguration.load(from: paths.configuration, role: .commander)
         let key = APNsKey.state(in: commandLine.secrets).rawValue
         let apns = configuration?.apns.map { "\($0.keyId)（Team \($0.teamId)、\($0.topic)）、鍵: \(key)" }
-        let lines = commandLine.checkLines(version: CommanderVersion.current) + ["APNs: \(apns ?? "設定していない（通知を送らない。apns で登録する）")"]
+        let lines = await commandLine.checkLines(version: CommanderVersion.current) + ["APNs: \(apns ?? "設定していない（通知を送らない。apns で登録する）")"]
         print(lines.joined(separator: "\n"))
     }
 }

@@ -85,6 +85,7 @@ extension ClaudeJobRunnerTests {
         now: @escaping @Sendable () -> Date = { ClaudeJobRunnerTests.now },
         mirror: DiscussionMirror? = nil,
         epicWorkspace: (any EpicWorkspace)? = nil,
+        claudeVersion: String? = nil,
         tidy: @escaping @Sendable () async -> Void = {}
     ) -> CommanderLoop {
         let publicKeys = [keyID: key.publicKey.derRepresentation]
@@ -95,7 +96,7 @@ extension ClaudeJobRunnerTests {
             verifier: { IntentVerifier(publicKeys: publicKeys) },
             client: ClaudeClient(setup: QuestionJobsTests.setup, runner: claude),
             workspace: FixedWorkspace(directory: directory),
-            status: { CommanderLoop.MachineStatus(diskFreeGB: 100, load: 0.5, selfCheck: selfCheck) },
+            status: { CommanderLoop.MachineStatus(diskFreeGB: 100, load: 0.5, selfCheck: selfCheck, claudeVersion: claudeVersion) },
             log: { _ in },
             mirror: mirror,
             epicWorkspace: epicWorkspace,
@@ -215,12 +216,15 @@ extension ClaudeJobRunnerTests {
 
     @Test func loopWritesHeartbeatsAtInterval() async throws {
         let store = try await storeWithRequest(count: 0)
-        let loop = loop(store, claude: ScriptedRunner([]))
+        let loop = loop(store, claude: ScriptedRunner([]), claudeVersion: "2.1.320")
         _ = try await loop.cycle()
         let commander = try #require(try await read(CommanderFile.self, at: StatePath.commander, in: store))
         #expect(commander.mac == Self.commander)
         #expect(commander.versions.commander == "0.1.0")
+        // claude の版は、印を書くときに測ったものを書く（人が入れ替えたら次の印で分かる）
+        #expect(commander.versions.claude == "2.1.320")
         let mac = try #require(try await read(MacFile.self, at: StatePath.mac(Self.commander), in: store))
+        #expect(mac.versions.claude == "2.1.320")
         #expect(mac.kind == .alwaysOn)
         #expect(mac.capacity == .init(claude: 2, build: 0))
         // 間隔の前には書き直さない

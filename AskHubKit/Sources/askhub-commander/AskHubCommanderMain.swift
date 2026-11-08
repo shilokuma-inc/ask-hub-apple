@@ -6,10 +6,11 @@ import Foundation
 /// - `run`: 常駐のループを回す（LaunchAgent から起動する）
 /// - `setup`: 設定を書き、トークンを Keychain に置き、最初の鍵を固定する（人が端末で流す）
 /// - `token`: 持ち主の GitHub のトークンを Keychain に入れ直す・足す（人が端末で流す）
+/// - `claude-token`: Claude の setup-token を Keychain に入れ直し、入れた日を記録する（人が端末で流す）
 /// - `apns`: APNs の鍵を Keychain に置き、鍵の id と Team ID を設定に足す（人が端末で流す）
 /// - `git-credential`: git の credential helper（リポジトリの持ち主の GitHub のトークンを Keychain から git に渡す）
 /// - `launch-agent`: LaunchAgent の定義を書き、登録のコマンドを出す
-/// - `check`: 設定と Keychain の様子を出す（秘密の値は出さない）
+/// - `check`: 設定と Keychain の様子・トークンの期限を出す（秘密の値は出さない）
 @main
 enum AskHubCommanderMain {
     static func main() async {
@@ -19,10 +20,11 @@ enum AskHubCommanderMain {
         case "run": await run()
         case "setup": setup(arguments)
         case "token": commandLine.token(arguments)
+        case "claude-token": commandLine.replaceClaudeToken(arguments)
         case "apns": apns(arguments)
         case "git-credential": commandLine.gitCredential(arguments)
         case "launch-agent": commandLine.launchAgent()
-        case "check": check()
+        case "check": await check()
         default: commandLine.fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
         }
     }
@@ -33,10 +35,11 @@ enum AskHubCommanderMain {
                 --key-account <GitHub のアカウント> [--github-owner <対象のリポジトリの持ち主> ...]
                 [--state-branch <ブランチ>] [--claude-capacity <数>]
           token <持ち主>  持ち主（organization・個人）の GitHub の fine-grained token を入れ直す・足す
+          claude-token   Claude の setup-token を入れ直す（入れた日から 1 年を期限として記録する）
           apns --key-id <APNs の鍵の id> --team-id <Team ID> --key-file <.p8 のパス> [--topic <Bundle ID>]
           launch-agent   LaunchAgent の定義を書き、登録のコマンドを出す
           run            常駐のループを回す
-          check          設定と Keychain の様子を出す
+          check          設定と Keychain の様子・トークンの期限を出す
         """
 
     static let commandLine = MachineCommandLine(role: .commander, executable: MachineCommandLine.currentExecutable)

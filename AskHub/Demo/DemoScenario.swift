@@ -94,6 +94,9 @@ struct DemoData {
         var macs = macs().filter { $0.id != Self.macBookAirID }
         for index in macs.indices {
             macs[index].cleanupCandidates = []
+            macs[index].tokens = tokens(githubDays: 82, claudeDays: 301)
+            macs[index].claudeVersion = Self.claudeVersion
+            macs[index].commanderClaudeVersion = nil
         }
         return ClientSnapshot(
             repositories: Self.repositories,
@@ -236,6 +239,8 @@ extension DemoData {
             ],
             refusalReason: nil,
             selfChecks: selfChecks(free: "41 GB"),
+            tokens: tokens(githubDays: 82, claudeDays: 301),
+            claudeVersion: Self.claudeVersion,
             cleanupCandidates: [
                 CleanupCandidate(id: "c1", kind: .simulator, name: "iPhone 16 Pro（手で作成）", bytes: 6_400 * Self.megabyte, caution: nil),
                 CleanupCandidate(id: "c2", kind: .clone, name: "~/Desktop/ios/old-habit-ios", bytes: 2_100 * Self.megabyte, caution: nil),
@@ -266,6 +271,10 @@ extension DemoData {
             jobs: [],
             refusalReason: nil,
             selfChecks: selfChecks(free: "412 GB"),
+            // GitHub のトークンの期限が近く、Claude Code を入れ替えていない
+            tokens: tokens(githubDays: 10, claudeDays: 290),
+            claudeVersion: "2.1.316",
+            commanderClaudeVersion: Self.claudeVersion,
             cleanupCandidates: []
         )
     }
@@ -286,16 +295,28 @@ extension DemoData {
             jobs: [Mac.Job(id: "job-kaji", title: "家事シェア: タスク 5 の実装", epicID: "kaji-notify", startedAt: ago(minutes: 200))],
             refusalReason: "空き容量が 30 GB を下回っています",
             selfChecks: selfChecks(free: "23 GB", lowDisk: true),
+            tokens: tokens(githubDays: 82, claudeDays: 301),
+            claudeVersion: Self.claudeVersion,
             cleanupCandidates: []
         )
     }
 
     private func selfChecks(free: String, lowDisk: Bool = false) -> [Mac.SelfCheck] {
         [
-            Mac.SelfCheck(name: "GitHub のトークン", isOK: true, detail: "あと 82 日"),
-            Mac.SelfCheck(name: "Claude の setup-token", isOK: true, detail: "あと 301 日"),
             Mac.SelfCheck(name: "Keychain", isOK: true, detail: "読めます"),
             Mac.SelfCheck(name: "空き容量", isOK: !lowDisk, detail: free)
+        ]
+    }
+
+    /// 司令塔の Claude Code の版
+    static let claudeVersion = "2.1.320"
+
+    /// 期限まで指定した日数のトークン（GitHub は持ち主ごと）
+    func tokens(githubDays: Double, claudeDays: Double) -> [MacToken] {
+        let day: TimeInterval = 24 * 60 * 60
+        return [
+            MacToken(kind: .github(owner: Self.owner), state: .ok, expiresAt: now.addingTimeInterval(githubDays * day - 60)),
+            MacToken(kind: .claude, state: .ok, expiresAt: now.addingTimeInterval(claudeDays * day - 60))
         ]
     }
 
