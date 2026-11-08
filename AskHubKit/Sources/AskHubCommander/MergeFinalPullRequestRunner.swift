@@ -7,7 +7,7 @@ import Foundation
 /// - input の head を固定して merge commit でマージする。今の head が違えば、マージせずに失敗にする（承認や判定の後に push された変更をマージしない）
 /// - マージの規則で人の確認が要る最終 PR（見える仮決めがある・レビューがマージの規則の材料を返した）は、同じ head への人の承認（`approveMerge`）を
 ///   元にしたジョブでだけマージする。司令塔の取り違えで、人の確認を飛ばさないよう、ワーカーでも確かめる
-/// - マージしたら作業ブランチを消す（マージの後に push されていれば残す）。子 PR のマージの後に push されて残った子ブランチも消す
+/// - マージしたら作業ブランチを消す（マージの後に push されていれば残す）
 public struct MergeFinalPullRequestRunner: JobRunning {
     public var environment: FinalJobEnvironment
 
@@ -36,7 +36,7 @@ public struct MergeFinalPullRequestRunner: JobRunning {
             guard pull.headSHA == input.head else {
                 throw .fail(.unexpected, "最終 PR #\(input.pullRequest) は、マージする head（\(input.head)）ではなく \(pull.headSHA) でマージされている")
             }
-            return try await merged(job, input, sha: pull.mergeCommitSHA, target: target, pulls: pulls)
+            return try await merged(input, sha: pull.mergeCommitSHA, target: target, pulls: pulls)
         }
         guard pull.state == .open else { throw .fail(.unexpected, "最終 PR #\(input.pullRequest) が開いていない") }
         guard pull.headSHA == input.head else {
@@ -53,7 +53,7 @@ public struct MergeFinalPullRequestRunner: JobRunning {
         guard landed.baseRef == target.branches.base else {
             throw .fail(.unexpected, "最終 PR #\(input.pullRequest) が、base（\(target.branches.base)）ではなく \(landed.baseRef) にマージされた。人が確かめる")
         }
-        return try await merged(job, input, sha: merge.sha ?? landed.mergeCommitSHA, target: target, pulls: pulls)
+        return try await merged(input, sha: merge.sha ?? landed.mergeCommitSHA, target: target, pulls: pulls)
     }
 
     /// マージの規則で人の確認が要るなら、ジョブの元が同じ head への人の承認かを確かめる
@@ -91,9 +91,8 @@ public struct MergeFinalPullRequestRunner: JobRunning {
         return texts.joined(separator: "・")
     }
 
-    /// マージした作業ブランチと、残った子ブランチを消して終える。消す前に作業ブランチへ push されていたら、消さずに残す
+    /// マージした作業ブランチを消して終える。消す前に作業ブランチへ push されていたら、消さずに残す
     private func merged(
-        _ job: JobFile,
         _ input: PullRequestInput,
         sha: String?,
         target: FinalTarget,
@@ -106,44 +105,9 @@ public struct MergeFinalPullRequestRunner: JobRunning {
         } catch {
             throw .finish(JobResult(failure: error.attemptFailure(doing: "マージした作業ブランチを消す", now: environment.context.now())))
         }
-        try await removeChildBranches(job, target: target, pulls: pulls)
         guard let sha, AttemptFile.isCommitSHA(sha) else {
             throw .fail(.unexpected, "最終 PR #\(input.pullRequest) のマージコミットが分からない")
         }
         return JobResult(outputs: AttemptFile.Outputs(pullRequest: input.pullRequest, commit: sha, branch: target.branches.epic))
-    }
-
-    /// 子 PR のマージの後に push されて残った子ブランチ（`<作業ブランチ>-<タスク>`。`ReviewTaskRunner` は消さずに残す）を消す。
-    ///
-    /// この epic のタスク（ゴールのタスクと、ジョブのタスク）の子ブランチだけを見るので、ほかの epic のものには触れない。
-    /// 開いた PR のあるブランチ（消すと PR が閉じる）と、読んでから消すまでの間に push されたブランチは残す
-    private func removeChildBranches(_ job: JobFile, target: FinalTarget, pulls: any PullRequestOperations) async throws(TaskJobExit) {
-        let environment = environment
-        let jobs: [JobFile]
-        do {
-            jobs = try await environment.context.jobList(job.repo, epic: job.epic).jobs
-        } catch {
-            throw .state(error)
-        }
-        let tasks = Set(target.goal.tasks.map(\.id) + jobs.compactMap(\.task))
-        for task in tasks.sorted() {
-            let branch = TaskBranches.child(of: target.branches.epic, task: task)
-            guard EpicFile.isBranchName(branch) else { continue }
-            let head = try await environment.tasks.github("残った子ブランチを読む") { () throws(PullRequestError) in
-                try await pulls.branchHead(branch)
-            }
-            guard let head else { continue }
-            let opened = try await environment.tasks.github("残った子ブランチの PR を読む") { () throws(PullRequestError) in
-                try await pulls.openPullRequests(head: branch)
-            }
-            guard opened.isEmpty else { continue }
-            do {
-                _ = try await pulls.deleteBranch(branch, expectedSHA: head)
-            } catch .headChanged {
-                // 読んだ後に push された。push されたものは失わないよう残す
-            } catch {
-                throw .finish(JobResult(failure: error.attemptFailure(doing: "残った子ブランチを消す", now: environment.context.now())))
-            }
-        }
     }
 }
