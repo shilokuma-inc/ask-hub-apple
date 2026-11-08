@@ -18,6 +18,7 @@ public actor CommanderLoop {
         /// この Mac で同時に動かす数
         public var capacity: MacFile.Capacity
         public var commanderVersion: String
+        /// 起動したときの `claude` の版。印を書くときに測れなかったら、これを書く
         public var claudeVersion: String?
 
         public init(
@@ -40,11 +41,14 @@ public actor CommanderLoop {
         public var diskFreeGB: Int
         public var load: Double
         public var selfCheck: SelfCheck
+        /// いま使っている `claude` の版。測れなければ nil
+        public var claudeVersion: String?
 
-        public init(diskFreeGB: Int, load: Double, selfCheck: SelfCheck) {
+        public init(diskFreeGB: Int, load: Double, selfCheck: SelfCheck, claudeVersion: String? = nil) {
             self.diskFreeGB = diskFreeGB
             self.load = load
             self.selfCheck = selfCheck
+            self.claudeVersion = claudeVersion
         }
     }
 
@@ -214,13 +218,14 @@ public actor CommanderLoop {
         if let lastBeat, now.timeIntervalSince(lastBeat) < TimeInterval(settings.heartbeatInterval.components.seconds) { return }
         let machine = await status()
         let time = Timestamp(now)
+        let claude = machine.claudeVersion ?? settings.claudeVersion
         let commander = CommanderFile(
             mac: context.mac,
             seenAt: time,
-            versions: .init(commander: settings.commanderVersion, claude: settings.claudeVersion),
+            versions: .init(commander: settings.commanderVersion, claude: claude),
             selfCheck: machine.selfCheck
         )
-        let versions = MacFile.Versions(worker: settings.commanderVersion, claude: settings.claudeVersion)
+        let versions = MacFile.Versions(worker: settings.commanderVersion, claude: claude)
         let mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
         try await context.put(commander, at: StatePath.commander, message: "司令塔の生きている印")
         try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")

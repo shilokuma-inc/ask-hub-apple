@@ -54,7 +54,7 @@ public struct MachineCommandLine: Sendable {
             for owner in configuration.tokenOwners {
                 try storeGitHubToken(for: owner)
             }
-            try storeSecret(.claudeToken, prompt: "Claude の setup-token: ", problem: MachineSetup.claudeTokenProblem)
+            try storeClaudeToken()
             try TrustAnchor(store: secrets).pin(firstKey: setup.firstKey)
             // 前の 1 つの GitHub のトークンは、持ち主ごとのトークンに置き換えたので使わない。Keychain に残さない
             if try secrets.read(.githubToken) != nil {
@@ -89,6 +89,30 @@ public struct MachineCommandLine: Sendable {
             """)
     }
 
+    /// `claude-token`: Claude の setup-token を入れ直す（期限の 1 年が近づいたら、`claude setup-token` で作り直して貼る）。
+    /// 常駐のループは起動したときに読んだ値を使うので、読み込み直してもらう
+    public func claudeToken(_ arguments: [String]) {
+        guard arguments.isEmpty else { fail("使い方: \(role.program) claude-token", status: EX_USAGE) }
+        _ = loadConfiguration()
+        do {
+            try storeClaudeToken()
+        } catch {
+            fail("トークンを置けない（\(error)）", status: EX_SOFTWARE)
+        }
+        let manual = role == .worker ? "（ターミナルで run を流しているなら、止めて流し直す）" : ""
+        print("""
+            Claude の setup-token を Keychain に置きました。
+            動いているループは起動したときの値を使うので、読み込み直してください\(manual):
+              launchctl kickstart -k gui/\(getuid())/\(role.launchAgentLabel)
+            """)
+    }
+
+    /// Claude の setup-token を、端末で伏せて入れてもらって置く。新しい値を入れたら、入れた日を記録する（期限の目安。値は記録しない）
+    func storeClaudeToken() throws {
+        guard try storeSecret(.claudeToken, prompt: "Claude の setup-token: ", problem: MachineSetup.claudeTokenProblem) else { return }
+        try ClaudeTokenRecord(storedAt: Timestamp(Date())).save(to: paths.claudeTokenRecord)
+    }
+
     /// 持ち主の fine-grained token を、端末で伏せて入れてもらって置く。すでにあれば、空のまま Enter で今のままにする
     func storeGitHubToken(for owner: String) throws {
         let tokens = GitHubTokens(secrets: secrets)
@@ -103,16 +127,18 @@ public struct MachineCommandLine: Sendable {
         try tokens.store(value, for: owner)
     }
 
-    /// 端末で伏せて入れてもらい、Keychain に置く。すでにあれば、空のまま Enter で今のままにする
-    func storeSecret(_ item: SecretItem, prompt: String, problem: (String) -> String?) throws {
+    /// 端末で伏せて入れてもらい、Keychain に置く。すでにあれば、空のまま Enter で今のままにする。新しい値を置いたら true
+    @discardableResult
+    func storeSecret(_ item: SecretItem, prompt: String, problem: (String) -> String?) throws -> Bool {
         let existing = try secrets.read(item) != nil
         let value = readSecret(existing ? prompt + "（今のままなら空で Enter）" : prompt)
         if value.isEmpty {
             guard existing else { fail("値が空", status: EX_USAGE) }
-            return
+            return false
         }
         if let problem = problem(value) { fail(problem, status: EX_USAGE) }
         try secrets.write(Data(value.utf8), for: item)
+        return true
     }
 
     /// 端末から、表示せずに 1 行読む（端末でなければ止める）
@@ -179,13 +205,21 @@ public struct MachineCommandLine: Sendable {
             """)
     }
 
-    /// 設定と Keychain の様子（秘密の値は出さない）。役割ごとの行は呼ぶ側で足す
-    public func checkLines(version: String) -> [String] {
+    /// 設定と Keychain の様子（秘密の値は出さない）。トークンの期限は GitHub に問い合わせる。役割ごとの行は呼ぶ側で足す
+    public func checkLines(version: String) async -> [String] {
         let configuration = try? MachineConfiguration.load(from: paths.configuration, role: role)
-        let owners = configuration?.tokenOwners ?? []
-        let selfCheck = MachineProbe(secrets: secrets, volume: paths.root, owners: owners).selfCheck()
-        let tokens = GitHubTokens(secrets: secrets)
-        let ownerStates = owners.map { owner in "\(owner) \(((try? tokens.state(of: [owner])) ?? .invalid).rawValue)" }
+        let probe = MachineProbe(
+            secrets: secrets,
+            volume: paths.root,
+            owners: configuration?.tokenOwners ?? [],
+            githubExpiry: GitHubTokenExpiry(),
+            claudeTokenRecord: paths.claudeTokenRecord
+        )
+        let selfCheck = await probe.selfCheck()
+        let ownerStates = (selfCheck.githubTokens ?? []).map { token in
+            "\(token.owner) \(token.state.rawValue)、\(token.expiresAt.map { "期限 \($0)" } ?? "期限なし・分からない")"
+        }
+        let claudeExpiry = selfCheck.claudeTokenExpiresAt.map { "期限 \($0)（入れた日から 1 年）" } ?? "期限が分からない（claude-token で入れ直すと記録する）"
         let firstKey = (try? TrustAnchor(store: secrets).firstKey()).flatMap { $0 }
         let summary = configuration.map { configuration in
             let capacity = "Claude \(configuration.capacity.claude)・ビルド \(configuration.capacity.build)"
@@ -196,8 +230,8 @@ public struct MachineCommandLine: Sendable {
             "版: \(version)",
             "設定: \(summary ?? "読めない（setup を流す）")",
             "Keychain: \(selfCheck.keychain.rawValue)",
-            "GitHub のトークン: \(selfCheck.githubToken.rawValue)（\(ownerStates.joined(separator: "、"))）",
-            "Claude のトークン: \(selfCheck.claudeToken.rawValue)",
+            "GitHub のトークン: \(selfCheck.githubToken.rawValue)（\(ownerStates.joined(separator: "・"))）",
+            "Claude のトークン: \(selfCheck.claudeToken.rawValue)（\(claudeExpiry)）",
             "最初の鍵: \(firstKey?.rawValue ?? "固定していない")"
         ]
     }

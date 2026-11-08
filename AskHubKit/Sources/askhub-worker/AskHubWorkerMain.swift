@@ -7,10 +7,11 @@ import Foundation
 ///
 /// - `setup`: 設定を書き、トークンを Keychain に置き、最初の鍵を固定する（人が端末で流す）
 /// - `token`: 持ち主の GitHub のトークンを Keychain に入れ直す・足す（人が端末で流す）
+/// - `claude-token`: Claude の setup-token を Keychain に入れ直し、入れた日を記録する（人が端末で流す）
 /// - `run`: 常駐のループを回す。常駐できる Mac は LaunchAgent から、できない Mac（社用の MacBook など）はターミナルで流し続ける
 /// - `launch-agent`: 常駐できる Mac で、LaunchAgent の定義を書き、登録のコマンドを出す
 /// - `git-credential`: git の credential helper（リポジトリの持ち主の GitHub のトークンを Keychain から git に渡す）
-/// - `check`: 設定と Keychain の様子を出す（秘密の値は出さない）
+/// - `check`: 設定と Keychain の様子・トークンの期限を出す（秘密の値は出さない）
 ///
 /// ssh のセッションからは Keychain を読めないので、ログインしている Mac の端末か LaunchAgent から起動する
 @main
@@ -22,9 +23,10 @@ enum AskHubWorkerMain {
         case "run": await run()
         case "setup": setup(arguments)
         case "token": commandLine.token(arguments)
+        case "claude-token": commandLine.claudeToken(arguments)
         case "git-credential": commandLine.gitCredential(arguments)
         case "launch-agent": launchAgent()
-        case "check": print(commandLine.checkLines(version: CommanderVersion.current).joined(separator: "\n"))
+        case "check": print(await commandLine.checkLines(version: CommanderVersion.current).joined(separator: "\n"))
         default: commandLine.fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
         }
     }
@@ -36,9 +38,10 @@ enum AskHubWorkerMain {
                 [--state-branch <ブランチ>] [--claude-capacity <数>] [--build-capacity <数>]
                 （--kind は、LaunchAgent で常駐できる Mac なら resident、できない Mac なら manual）
           token <持ち主>  持ち主（organization・個人）の GitHub の fine-grained token を入れ直す・足す
+          claude-token   Claude の setup-token を入れ直す（入れた日から 1 年を期限として記録する）
           run            ジョブを引き受けて動かし続ける（常駐できない Mac では、ターミナルで流したままにする）
           launch-agent   常駐できる Mac で、LaunchAgent の定義を書き、登録のコマンドを出す
-          check          設定と Keychain の様子を出す
+          check          設定と Keychain の様子・トークンの期限を出す
         """
 
     static let commandLine = MachineCommandLine(role: .worker, executable: MachineCommandLine.currentExecutable)
@@ -87,7 +90,7 @@ enum AskHubWorkerMain {
             settings: settings,
             verifier: { () throws(CommanderError) in try await runtime.trusted.verifier() },
             runners: runners,
-            status: { runtime.probe.status() },
+            status: { await runtime.probe.status() },
             tidy: {
                 await runtime.workspace.tidy()
                 await cleanUp.run()
