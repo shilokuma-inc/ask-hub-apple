@@ -30,6 +30,10 @@ struct InboxItem: Identifiable, Hashable {
         case humanTask
         case blocker
         case macOffline
+        /// トークンの期限が近い・切れた（入れ直す）
+        case token
+        /// Claude Code の版が Mac の間でそろっていない
+        case claudeVersion
         case finalReview
         case verification
         case cleanup
@@ -40,6 +44,9 @@ struct InboxItem: Identifiable, Hashable {
 enum InboxBuilder {
     /// ジョブを持った Mac がこれより長くオフラインなら知らせる（閉じるたびには知らせない）
     static let offlineNoticeDelay: TimeInterval = 30 * 60
+    /// トークンの期限は、これより長くオフラインの Mac では知らせない（使わなくなった Mac で知らせ続けない）。
+    /// 状態リポジトリのトークンが切れた Mac は印を書けずにオフラインになるので、オフラインになってもしばらくは知らせる
+    static let tokenNoticeWindow: TimeInterval = 7 * 24 * 60 * 60
 
     static func items(from snapshot: ClientSnapshot, now: Date) -> [InboxItem] {
         var items: [InboxItem] = []
@@ -52,6 +59,8 @@ enum InboxBuilder {
             items += verificationItems(epic, context: context)
         }
         items += snapshot.macs.compactMap { offlineItem($0, now: now) }
+        items += snapshot.macs.flatMap { tokenItems($0, now: now) }
+        items += snapshot.macs.compactMap(claudeVersionItem)
         items += snapshot.macs.compactMap(cleanupItem)
         return items.sorted { lhs, rhs in
             if lhs.urgency != rhs.urgency {
@@ -182,6 +191,65 @@ enum InboxBuilder {
             context: mac.name,
             detail: "「\(job.title)」を持ったまま止まっています",
             since: since,
+            route: .mac(mac.id)
+        )
+    }
+
+    /// 期限まで 14 日を切ったトークン（入れ直す）と、期限が切れた・使えないトークン（止まっている）
+    private static func tokenItems(_ mac: Mac, now: Date) -> [InboxItem] {
+        let lastSeen: Date
+        switch mac.connection {
+        case .online(let date), .offline(let date):
+            lastSeen = date
+        }
+        guard now.timeIntervalSince(lastSeen) < tokenNoticeWindow else {
+            return []
+        }
+        return mac.tokens.compactMap { token in
+            let title: String
+            let detail: String
+            var since = lastSeen
+            switch token.status(now: now) {
+            case .ok:
+                return nil
+            case .expiringSoon(let days):
+                title = "トークンを入れ直す"
+                detail = "\(token.name)があと \(days) 日で切れます"
+                since = token.expiresAt.map { $0.addingTimeInterval(-MacToken.renewalNotice) } ?? lastSeen
+            case .stopped(let state):
+                title = state == .expired ? "トークンの期限が切れて止まっています" : "トークンが使えず止まっています"
+                detail = token.name
+                since = token.expiresAt.map { min($0, lastSeen) } ?? lastSeen
+            }
+            return InboxItem(
+                id: "mac/\(mac.id)/token/\(token.id)",
+                urgency: token.isStopped(now: now) ? .blocking : .whenFree,
+                kind: .token,
+                repositoryID: nil,
+                title: title,
+                context: mac.name,
+                detail: "\(detail) · \(mac.renewalCommand(for: token))",
+                since: since,
+                route: .mac(mac.id)
+            )
+        }
+    }
+
+    /// Claude Code の版が司令塔と違う Mac（オンラインのものだけ。オフラインの Mac は戻ってから入れ替える）
+    private static func claudeVersionItem(_ mac: Mac) -> InboxItem? {
+        guard case .online(let lastSeen) = mac.connection, let version = mac.claudeVersion,
+              let commander = mac.commanderClaudeVersion else {
+            return nil
+        }
+        return InboxItem(
+            id: "mac/\(mac.id)/claude-version",
+            urgency: .whenFree,
+            kind: .claudeVersion,
+            repositoryID: nil,
+            title: "Claude Code の版をそろえる",
+            context: mac.name,
+            detail: "この Mac は \(version)、司令塔は \(commander)",
+            since: lastSeen,
             route: .mac(mac.id)
         )
     }

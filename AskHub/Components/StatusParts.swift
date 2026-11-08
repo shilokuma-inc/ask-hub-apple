@@ -99,6 +99,8 @@ extension InboxItem.Kind {
         case .humanTask: "wrench.fill"
         case .blocker: "exclamationmark"
         case .macOffline: "wifi.slash"
+        case .token: "key.fill"
+        case .claudeVersion: "arrow.trianglehead.2.clockwise"
         case .finalReview: "arrow.triangle.merge"
         case .verification: "iphone"
         case .cleanup: "trash.fill"
@@ -113,6 +115,8 @@ extension InboxItem.Kind {
         case .humanTask: Theme.Tone.peach
         case .blocker: Theme.Tone.rose
         case .macOffline: Theme.Tone.slate
+        case .token: Theme.Tone.butter
+        case .claudeVersion: Theme.Tone.slate
         case .finalReview: Theme.Tone.lavender
         case .verification: Theme.Tone.aqua
         case .cleanup: Theme.Tone.butter
