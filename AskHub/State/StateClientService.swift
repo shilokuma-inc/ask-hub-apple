@@ -61,7 +61,11 @@ final class StateClientService: ClientService {
     /// （途中で失敗したら、送れた分は送ったまま失敗を返す。もう一度送ると、残りだけを送る）
     @discardableResult
     func perform(_ intent: HumanIntent) async throws -> SendReceipt {
-        let drafts = try StateIntentMapper(index: index).drafts(for: intent)
+        var drafts = try StateIntentMapper(index: index).drafts(for: intent)
+        if drafts.count > 1 {
+            // 送ってあって司令塔がまだ受け取っていないものは送り直さない（同じカードへの答え直しは断られる）
+            drafts.removeAll { draft in (readSends + unreadSends).contains { $0.draft == draft && $0.isWaiting } }
+        }
         var receipt = SendReceipt()
         for draft in drafts {
             let reference: IntentReference
@@ -82,7 +86,8 @@ final class StateClientService: ClientService {
         StateIntentMapper(index: index).supports(intent)
     }
 
-    /// 送る形（対象の版は最後に読んだ状態から取る）が同じ意図のうち、最後に送ったもの。複数の意図になる操作は、すべてを送ってあるときだけ返す
+    /// 送る形（対象の版は最後に読んだ状態から取る）が同じ意図のうち、最後に送ったもの。複数の意図になる操作は、すべてを送ってあるときだけ返し、
+    /// 1 つでも司令塔がまだ受け取っていなければ受け取り待ちとする
     func lastSend(of intent: HumanIntent) -> SentRecord? {
         guard let drafts = try? StateIntentMapper(index: index).drafts(for: intent) else {
             return nil
@@ -94,7 +99,7 @@ final class StateClientService: ClientService {
             return nil
         }
         let sent = records.compactMap(\.self)
-        return SentRecord(sentAt: sent.map(\.sentAt).max() ?? now(), isWaiting: sent.allSatisfy(\.isWaiting))
+        return SentRecord(sentAt: sent.map(\.sentAt).max() ?? now(), isWaiting: sent.contains(where: \.isWaiting))
     }
 }
 
