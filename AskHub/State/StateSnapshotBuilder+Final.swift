@@ -151,8 +151,12 @@ extension StateSnapshotBuilder {
         return mapped
     }
 
-    /// マージしたか・マージしているか・人が確かめる段階か。マージを人が承認したかは、この端末が送って受け付けられた承認と、マージの規則で決める
+    /// マージしたか・マージしているか・人が確かめる段階か。マージを人が承認したかは、司令塔が書いたマージの記録で決める。
+    /// 記録の無い（記録を書く前の司令塔がマージした）epic だけは、この端末が送って受け付けられた承認と、マージの規則で決める
     private func finalState(of epic: EpicFile, jobs: [JobFile], automatic: Bool) -> FinalReview.State {
+        if epic.stage == .merged, let merge = epic.merge {
+            return .merged(at: merge.at.date, automatic: merge.approval == nil)
+        }
         if epic.stage == .merged {
             let approved = documents.sentIntents.contains { sent in
                 sent.envelope.kind == ApproveMergeIntent.kind && sent.envelope.target?.epic == epic.id && sent.consumed?.result == .accepted

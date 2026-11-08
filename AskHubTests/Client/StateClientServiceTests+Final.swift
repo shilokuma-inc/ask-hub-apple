@@ -433,6 +433,27 @@ extension StateClientServiceTests {
         #expect(EpicStatus.lines(for: automaticEpic, in: automaticSnapshot, now: now).first?.text == "自動でマージしました")
     }
 
+    /// 司令塔のマージの記録があれば、この端末が承認を送ったかやマージの規則によらず、記録のとおりに出す（ほかの端末から承認したときも）
+    @Test
+    func mergeRecordDecidesHowItWasMerged() async throws {
+        let commit = String(repeating: "c", count: 40)
+        let epicPath = "\(Self.finalBase)/epic.json"
+        func merged(approval: String, decisions: String? = nil) async throws -> FinalReview.State? {
+            let record = #""merge":{"commit":"\#(commit)","approval":\#(approval),"at":"2027-01-15T07:42:00Z"},"#
+            let epic = Self.finalEpic(stage: "merged").replacingOccurrences(of: #""goalVersion""#, with: record + #""goalVersion""#)
+            var extra = [[epicPath: epic]]
+            if let decisions { extra.append(["\(Self.finalBase)/decisions.json": decisions]) }
+            let service = try makeService(files: Self.reviewingEpic(stage: "merged", extra: extra)).service
+            return try await service.fetchSnapshot().epic(Self.epicID)?.finalReview?.state
+        }
+        // ほかの端末が承認した（この端末は承認を送っていない。見える仮決めも無い）
+        let internalOnly = #"{"v":1,"items":[{"id":"d3","task":"t1","visible":false,"what":"集計は UTC","why":"合わせる","alternatives":[]}]}"#
+        let approval = #"{"keyId":"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y","nonce":"01JCJ0C0000000000000000001"}"#
+        #expect(try await merged(approval: approval, decisions: internalOnly) == .merged(at: Self.finalDate("07:42"), automatic: false))
+        // 承認の無い記録は、自動でマージした
+        #expect(try await merged(approval: "null") == .merged(at: Self.finalDate("07:42"), automatic: true))
+    }
+
     /// 判断の一覧を読めないときは、空の一覧と区別して手動のマージにし、承認を送らない
     @Test
     func unreadableDecisionsBlockApproval() async throws {
