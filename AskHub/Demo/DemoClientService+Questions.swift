@@ -75,13 +75,30 @@ extension DemoClientService {
                 $0.state = .answered(Question.Response(optionID: optionID, note: note, answeredAt: date))
             }
             epic.log("\(questionID) に回答しました", at: date)
-            // 実装の途中の質問なら、答えを渡して実装を再開する
-            for index in epic.tasks.indices where epic.tasks[index].state == .inProgress(.waitingForAnswer(question: questionID)) {
-                epic.tasks[index].state = .inProgress(.implementing)
-                epic.log("\(questionID) の答えで、タスク \(epic.tasks[index].number) の実装を再開しました", at: date)
-            }
         }
+        resumeTask(epicID: epicID, questionID: questionID, date: date)
         questionSettled(epicID: epicID, questionID: questionID)
+    }
+
+    /// 実装の途中の質問の答えなら、答えを渡して、epic を回す Mac でタスクの実装を再開する（「いま」と Mac のジョブにも出す）
+    private func resumeTask(epicID: Epic.ID, questionID: Question.ID, date: Date) {
+        guard let epic = state.epic(epicID), let index = epic.tasks.firstIndex(where: { task in
+            if case .inProgress(.waitingForAnswer(questionID, _)?) = task.state { true } else { false }
+        }) else {
+            return
+        }
+        let task = epic.tasks[index]
+        state.updateEpic(epicID) { epic in
+            epic.startTask(at: index, attempt: 1, date: date)
+            epic.log("\(questionID) の答えで、タスク \(task.number) の実装を再開しました", at: date)
+        }
+        guard let macID = epic.macID else {
+            return
+        }
+        state.updateMac(macID) { mac in
+            mac.jobs.removeAll { $0.epicID == epicID }
+            mac.jobs.append(Mac.Job(id: "job-\(epicID)", title: "\(epic.title): タスク \(task.number) の実装", epicID: epicID, startedAt: date))
+        }
     }
 
     private func requestExplanation(epicID: Epic.ID, questionID: Question.ID, request: String) {
