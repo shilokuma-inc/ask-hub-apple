@@ -14,6 +14,11 @@ struct AskHub: App {
     @AppStorage(StateConnection.repositoryPreferenceKey) private var stateRepository = StateConnection.defaultRepository
     @State private var store: ClientStore
     @State private var navigator: AppNavigator
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #else
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
 
     init() {
         let stored = UserDefaults.standard.string(forKey: DemoScenario.preferenceKey).flatMap(DemoScenario.init(rawValue:))
@@ -44,10 +49,21 @@ struct AskHub: App {
                 .lineHeight(AppFont.lineHeight)
                 .environment(store)
                 .environment(navigator)
+                .environment(appDelegate.push)
                 // 設定でデータかデモの場面を変えたら、そのデータで作り直す（撮影モードは標準の場面のまま）
                 .onChange(of: scenario) { reloadStore() }
                 .onChange(of: dataSource) { reloadStore() }
                 .onChange(of: stateRepository) { reloadStore() }
+                // 状態リポジトリにつないだら、通知の許可を確かめて宛先を書く（デモのデータでは何もしない）
+                .task(id: ObjectIdentifier(store)) { await appDelegate.push.activate() }
+                // 通知を押したら、該当の epic・Mac の画面を開く
+                .task(id: appDelegate.push.pendingTarget) {
+                    guard let target = appDelegate.push.pendingTarget else {
+                        return
+                    }
+                    navigator.open(target)
+                    appDelegate.push.pendingTarget = nil
+                }
         }
         .defaultSize(width: 1240, height: 820)
         .commands { AppCommands(navigator: navigator, store: store) }
@@ -58,6 +74,7 @@ struct AskHub: App {
                 .lineHeight(AppFont.lineHeight)
                 .environment(store)
                 .environment(navigator)
+                .environment(appDelegate.push)
                 .frame(width: 520, height: 620)
         }
         #endif

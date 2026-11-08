@@ -21,3 +21,9 @@ CURRENT_PROJECT_VERSION = 1
 // 最低サポート OS
 IPHONEOS_DEPLOYMENT_TARGET = 26.0
 MACOSX_DEPLOYMENT_TARGET = 26.0
+
+// macOS の entitlements。push（com.apple.developer.aps-environment）は provisioning profile が要り、profile の無いアドホック署名では
+// ビルドが「requires a provisioning profile」で止まる。CI・ワーカー・スクショ・archive のアドホック署名は CODE_SIGN_STYLE=Manual にするので、
+// 自動の署名（Xcode が profile を用意する）のときだけ push を付ける
+ASKHUB_MACOS_ENTITLEMENTS_Automatic = AskHub/AskHub-macOS.entitlements
+ASKHUB_MACOS_ENTITLEMENTS_Manual =

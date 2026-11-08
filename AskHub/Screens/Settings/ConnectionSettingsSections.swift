@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// 設定の、データの選択・GitHub のトークン・この端末の鍵・送った意図の節
+/// 設定の、データの選択・GitHub のトークン・この端末の鍵・通知・送った意図の節
 struct ConnectionSettingsSections: View {
     @AppStorage(DataSource.preferenceKey) private var dataSource: DataSource = .stateRepository
     @AppStorage(DemoScenario.preferenceKey) private var scenario: DemoScenario = .standard
     @AppStorage(StateConnection.repositoryPreferenceKey) private var repository = StateConnection.defaultRepository
     @Environment(ClientStore.self) private var store
+    @Environment(PushRegistration.self) private var push
     @State private var model = ConnectionSettingsModel()
     /// 入れている途中の名前では読みに行かないよう、確定してから設定に書く
     @State private var repositoryInput = ""
@@ -15,6 +16,7 @@ struct ConnectionSettingsSections: View {
         if DataSource.current() == .stateRepository {
             tokenSection
             keySection
+            NotificationSettingsSection()
             sentSection
         }
     }
@@ -104,6 +106,12 @@ struct ConnectionSettingsSections: View {
             Text("上のコマンドを、非常口の鍵を入れた Mac のターミナルで流して、この端末の鍵を登録します。登録されるまで、送った意図は司令塔に断られます")
         }
         .task { await model.load() }
+        // 鍵の登録を確かめられたら、通知の許可を求める（まだ求めていなければ）
+        .onChange(of: model.registration) {
+            if case .registered = model.registration {
+                Task { await push.activate() }
+            }
+        }
     }
 
     private var registrationLabel: String {

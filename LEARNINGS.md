@@ -310,6 +310,11 @@
   `now.addingTimeInterval(0.001 * n)` でずらしても、浮動小数の誤差でミリ秒が切り捨てられて同じ時刻になることがある（`1_793_757_600.001` が `…600000` ミリ秒になる）。秒単位でずらす（`FinalFlowFixture.place`。2026-11-08、#911）
 - Simulator に外から入れたタップ（Claude Code の Simulator の操作・`simctl` 系）では、ツールバーの `Menu` を開いて中の `Button` は押せるが、`Menu` の中の `Menu`（サブメニュー）は押しても開かない（長押し・なぞりでも開かなかった）。
   PR のスクショでサブメニューの中身を撮るときは、同じ `Menu` を直接開ける画面（「対処が要ります」の `HandOverMenu` など）から撮る（2026-11-08、#935）
+- macOS のアプリに push の entitlement（`com.apple.developer.aps-environment`）を付けると、`CODE_SIGN_IDENTITY=-` のアドホック署名でも
+  「"AskHub" requires a provisioning profile」でビルドが止まる（profile が要る entitlement）。自動の署名でも、その App ID の Mac 用の profile が
+  手元に無ければ「No profiles for 'jp.shilokuma.AskHub' were found」で止まる。アドホック署名の流れ（CI・ワーカー・xcb・スクショ・archive）は
+  どれも `CODE_SIGN_STYLE=Manual` を渡すので、`CODE_SIGN_ENTITLEMENTS[sdk=macosx*] = $(ASKHUB_MACOS_ENTITLEMENTS_$(CODE_SIGN_STYLE))` で自動の署名のときだけ付けている。
+  iOS の Simulator 向けのビルドは profile が要らないので、entitlement をいつも付けてよい（2026-11-09、通知のアプリ側）
 
 ## Keychain
 

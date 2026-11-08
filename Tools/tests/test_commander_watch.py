@@ -412,10 +412,14 @@ class SwiftConsistencyTests(unittest.TestCase):
         self.assertLess(commander_watch.HEARTBEAT_INTERVAL, commander_watch.STALE_AFTER)
 
     def test_launch_agent_label_and_paths(self) -> None:
-        self.assertIn(f'label = "{commander_watch.LAUNCH_AGENT_LABEL}"', self.swift("AskHubCommander/LaunchAgent.swift"))
-        configuration = self.swift("AskHubCommander/CommanderConfiguration.swift")
+        # LaunchAgent のラベルとログの名前は、司令塔とワーカーの役割（MachineRole）の名前から作る。司令塔の役割の名前は commander
+        configuration = self.swift("AskHubCommander/MachineConfiguration.swift")
+        self.assertIn("case commander", configuration)
+        label = re.search(r'var launchAgentLabel: String \{ "([^"\\]+)\\\(rawValue\)" \}', configuration)
+        self.assertIsNotNone(label, "MachineRole.launchAgentLabel が見つからない（書き方が変わったらこのテストを直す）")
+        self.assertEqual(f"{label.group(1)}commander", commander_watch.LAUNCH_AGENT_LABEL)
         self.assertIn('"Library/Logs/AskHub"', configuration)
-        self.assertIn('"commander.log"', configuration)
+        self.assertIn('appendingPathComponent("\\(role.rawValue).log")', configuration)
         self.assertIn(f'commander = "{commander_watch.COMMANDER_PATH}"', self.swift("AskHubProtocol/StatePath.swift"))
 
 
