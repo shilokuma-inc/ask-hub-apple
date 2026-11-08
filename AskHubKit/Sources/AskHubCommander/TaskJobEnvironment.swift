@@ -93,6 +93,8 @@ public struct TaskJobEnvironment: Sendable {
     public var sleeper: any Sleeper
     /// epic の作業場所を、1 つのジョブだけが使うようにする
     public var locks: EpicLocks
+    /// 人の意図を読み直すときに、署名を確かめる（人がする作業で渡されたファイルを Claude に渡す前に、渡した人の意図を確かめる）
+    public var verifier: @Sendable () async throws(CommanderError) -> IntentVerifier
 
     public init(
         context: CommanderContext,
@@ -102,6 +104,7 @@ public struct TaskJobEnvironment: Sendable {
         runner: @escaping @Sendable (BuildTarget) -> any TaskRunning,
         slots: BuildSlots,
         reviewer: ClaudeClient,
+        verifier: @escaping @Sendable () async throws(CommanderError) -> IntentVerifier,
         sleeper: any Sleeper = TaskSleeper(),
         locks: EpicLocks = EpicLocks()
     ) {
@@ -112,6 +115,7 @@ public struct TaskJobEnvironment: Sendable {
         self.runner = runner
         self.slots = slots
         self.reviewer = reviewer
+        self.verifier = verifier
         self.sleeper = sleeper
         self.locks = locks
     }
@@ -269,9 +273,17 @@ extension TaskJobEnvironment {
         }
     }
 
-    /// Claude にタスクを進めさせる。ビルドとテストは、この Mac の枠を 1 つ借りて流す
-    func run<Job: TaskJob>(_ job: Job, in checkout: CheckedOutTask, target: TaskTarget) async -> TaskReply {
-        let workspace = TaskWorkspace(repository: checkout.repo, facts: checkout.facts, directory: checkout.directory)
+    /// Claude にタスクを進めさせる。ビルドとテストは、この Mac の枠を 1 つ借りて流す。
+    /// `additionalDirectories` は、作業場所のほかに Claude が読めるフォルダ（人がする作業で渡されたファイル）
+    func run<Job: TaskJob>(
+        _ job: Job,
+        in checkout: CheckedOutTask,
+        target: TaskTarget,
+        additionalDirectories: [URL] = []
+    ) async -> TaskReply {
+        let workspace = TaskWorkspace(
+            repository: checkout.repo, facts: checkout.facts, directory: checkout.directory, additionalDirectories: additionalDirectories
+        )
         return await slots.withSlot { slot in
             let build = BuildTarget(epic: target.epic.id, directory: checkout.directory, settings: target.settings.build, slot: slot)
             return await runner(build).run(job, in: workspace)

@@ -14,7 +14,7 @@ extension MachineRuntime {
     ///
     /// GitHub の操作は、リポジトリの持ち主ごとのトークン（Keychain）で行う。ビルドとテストは、この Mac のビルドの枠（`capacity.build`）で、
     /// ワーカー専用のフォルダの DerivedData と Simulator の枠を使って流す。`settings` はリポジトリのビルドの設定（`repo.json` の `build`）を返す。
-    /// 人の意図（最終 PR への指示・判断のカードの答え・マージの承認）は、公開鍵の一覧（`trusted`）で署名を確かめてから読む
+    /// 人の意図（最終 PR への指示・判断のカードの答え・マージの承認・人がする作業で渡されたファイル）は、公開鍵の一覧（`trusted`）で署名を確かめてから読む
     public func taskRunners(
         context: CommanderContext,
         settings: @escaping @Sendable (RepositoryFullName) async throws(CommanderError) -> TaskRepositorySettings?
@@ -27,6 +27,7 @@ extension MachineRuntime {
             directories: BuildDirectories(root: paths.builds),
             runner: ProcessCommandRunner()
         )
+        let trusted = trusted
         let environment = TaskJobEnvironment(
             context: context,
             git: workspace,
@@ -40,9 +41,9 @@ extension MachineRuntime {
             },
             slots: BuildSlots(count: configuration.capacity.build),
             reviewer: client,
+            verifier: { () throws(CommanderError) in try await trusted.verifier() },
             locks: epicLocks
         )
-        let trusted = trusted
         let final = FinalJobEnvironment(
             tasks: environment,
             git: workspace,
