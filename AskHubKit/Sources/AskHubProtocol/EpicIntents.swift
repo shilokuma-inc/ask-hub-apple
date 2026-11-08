@@ -19,6 +19,11 @@ public struct RequestAttachment: Codable, Equatable, Sendable {
         self.size = size
         self.sha256 = sha256
     }
+
+    /// 意図の payload の `attachments` の 1 つ
+    public var jsonValue: JSONValue {
+        .object(["n": .integer(Int64(number)), "name": .string(name), "size": .integer(Int64(size)), "sha256": .string(sha256)])
+    }
 }
 
 /// 依頼の人の意図（`kind` が `request`）
@@ -68,20 +73,13 @@ public struct RequestIntent: Equatable, Sendable {
         var payload: [String: JSONValue] = ["title": .string(title)]
         if !body.isEmpty { payload["body"] = .string(body) }
         if !attachments.isEmpty {
-            payload["attachments"] = .array(attachments.map { attachment in
-                .object([
-                    "n": .integer(Int64(attachment.number)),
-                    "name": .string(attachment.name),
-                    "size": .integer(Int64(attachment.size)),
-                    "sha256": .string(attachment.sha256)
-                ])
-            })
+            payload["attachments"] = .array(attachments.map(\.jsonValue))
         }
         return payload
     }
 
-    /// 番号は 1 から順に。名前はパスの区切りを含まない。ハッシュは 16 進の小文字
-    private static func readAttachments(_ value: JSONValue?) throws(MalformedIntent) -> [RequestAttachment] {
+    /// 番号は 1 から順に。名前はパスの区切りを含まない。ハッシュは 16 進の小文字（人がする作業のファイルも同じ形）
+    static func readAttachments(_ value: JSONValue?) throws(MalformedIntent) -> [RequestAttachment] {
         guard let value else { return [] }
         guard case let .array(items) = value, items.count <= maximumAttachments else { throw .init(detail: "attachments が配列でない・多すぎる") }
         var attachments: [RequestAttachment] = []

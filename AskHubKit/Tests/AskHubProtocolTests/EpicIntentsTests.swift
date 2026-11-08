@@ -53,6 +53,9 @@ struct EpicIntentsTests {
         Kind(vectors: "payloads/approveMerge.json", kind: "approveMerge", target: finalTarget, targetVersion: head) {
             try ApproveMergeIntent(envelope: $0).payload
         },
+        Kind(vectors: "payloads/humanTaskDone.json", kind: "humanTaskDone", target: humanTaskTarget, targetVersion: "3") {
+            try HumanTaskDoneIntent(envelope: $0).payload
+        },
         Kind(vectors: "payloads/instructFinal.json", kind: "instructFinal", target: finalTarget, targetVersion: head) {
             try InstructFinalIntent(envelope: $0).payload
         }
@@ -60,6 +63,7 @@ struct EpicIntentsTests {
     static let head = String(repeating: "a", count: 40)
     static let finalTarget = IntentEnvelope.Target(type: "finalPullRequest", epic: epic)
     static let decisionTarget = IntentEnvelope.Target(type: "decision", epic: epic, id: "d1")
+    static let humanTaskTarget = IntentEnvelope.Target(type: "humanTask", epic: epic, id: "h1")
 
     private let validator = SchemaValidator(directory: Vectors.directory.deletingLastPathComponent().appendingPathComponent("schemas"))
 

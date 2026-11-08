@@ -96,6 +96,17 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: ApproveMergeIntent.kind, repo: target.repo, target: target.target, targetVersion: target.targetVersion)
     }
 
+    /// 人がする作業を終えた（`file` の作業は、渡すファイルの参照を付け、中身は `IntentSender.send(_:attachments:)` で送る）
+    public static func humanTaskDone(_ target: HumanTaskTarget, file: RequestAttachment? = nil) -> Self {
+        Self(
+            kind: HumanTaskDoneIntent.kind,
+            repo: target.repo,
+            target: target.target,
+            targetVersion: target.targetVersion,
+            payload: file.map { ["attachments": .array([$0.jsonValue])] } ?? [:]
+        )
+    }
+
     /// 最終 PR への指示
     public static func instructFinal(_ target: FinalPullRequestTarget, instruction: String) -> Self {
         Self(
@@ -156,11 +167,26 @@ public struct IntentSender: Sendable {
         self.now = now
     }
 
-    /// 送った意図（鍵と番号）を返す。同じ番号の意図がすでにあれば、上書きせずに失敗する
+    /// 送った意図（鍵と番号）を返す。同じ番号の意図がすでにあれば、上書きせずに失敗する。
+    ///
+    /// `attachments` は、意図の payload の `attachments` に書いた添付の中身（番号の順）。意図より先に `attachments/<device>/<nonce>/<n>` に置く
+    /// （司令塔は意図を読んでから中身を読むので、中身の無い意図が読まれないようにする）
     @discardableResult
-    public func send(_ draft: IntentDraft) async throws(ClientError) -> IntentReference {
+    public func send(_ draft: IntentDraft, attachments: [Data] = []) async throws(ClientError) -> IntentReference {
         let time = now()
         let nonce = await nonces.next(at: time)
+        for (offset, data) in attachments.enumerated() {
+            do {
+                _ = try await store.write(
+                    StatePath.attachment(device: key.keyID, nonce: nonce, number: offset + 1),
+                    data: data,
+                    replacing: nil,
+                    message: "[attachment] \(draft.kind) \(offset + 1)"
+                )
+            } catch {
+                throw .store(error)
+            }
+        }
         let envelope = IntentEnvelope(
             kind: draft.kind,
             repo: draft.repo,

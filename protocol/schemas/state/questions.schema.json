@@ -69,6 +69,14 @@
             { "type": "null" }
           ]
         },
+        "job": {
+          "anyOf": [{ "$ref": "../common.schema.json#/$defs/ulid" }, { "type": "null" }],
+          "description": "実装の途中の質問なら、質問したジョブの id。開始前の質問は持たない"
+        },
+        "task": {
+          "anyOf": [{ "$ref": "../common.schema.json#/$defs/localId" }, { "type": "null" }],
+          "description": "実装の途中の質問なら、どのタスクの実装の途中か（最終 PR の直しの質問は null）。job の無い質問は持たない（読む側で確かめる）"
+        },
         "answer": {
           "anyOf": [
             {

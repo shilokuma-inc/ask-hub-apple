@@ -79,6 +79,65 @@
       "read": "valid"
     },
     {
+      "name": "human-task-done-with-file",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "広告を出す",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["広告が出る"],
+        "tasks": [
+          { "id": "t1", "title": "広告の SDK を入れる", "dependsOn": ["h1"], "state": "pending" }
+        ],
+        "humanTasks": [
+          {
+            "id": "h1",
+            "title": "Firebase のプロジェクトを作る",
+            "why": "広告の SDK が設定ファイルを読む",
+            "steps": ["Firebase のコンソールでプロジェクトを作る", "GoogleService-Info.plist を落とす"],
+            "links": ["https://console.firebase.google.com/"],
+            "handover": { "kind": "file" },
+            "state": "done",
+            "done": {
+              "intent": { "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y", "nonce": "01JCJ0C0000000000000000001" },
+              "at": "2026-11-03T11:00:00Z",
+              "file": { "n": 1, "name": "GoogleService-Info.plist", "size": 1234, "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "human-task-done-without-record",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "広告を出す",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["広告が出る"],
+        "tasks": [
+          { "id": "t1", "title": "広告の SDK を入れる", "dependsOn": ["h1"], "state": "pending" }
+        ],
+        "humanTasks": [
+          {
+            "id": "h1",
+            "title": "Firebase のプロジェクトを作る",
+            "why": "広告の SDK が設定ファイルを読む",
+            "steps": ["Firebase のコンソールでプロジェクトを作る"],
+            "links": [],
+            "handover": { "kind": "none" },
+            "state": "done"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
       "name": "minimal",
       "value": {
         "v": 1,

@@ -121,6 +121,10 @@ public struct QuestionsFile: StateFile {
         public var explanations: [Explanation]
         public var revision: Revision?
         public var answer: Answer?
+        /// 実装の途中の質問なら、質問したジョブ（開始前の質問は nil）
+        public var job: ULID?
+        /// 実装の途中の質問なら、どのタスクの実装の途中か（開始前の質問と、最終 PR の直しの質問は nil）
+        public var task: String?
 
         public init(
             id: String,
@@ -137,7 +141,9 @@ public struct QuestionsFile: StateFile {
             comment: String? = nil,
             explanations: [Explanation] = [],
             revision: Revision? = nil,
-            answer: Answer? = nil
+            answer: Answer? = nil,
+            job: ULID? = nil,
+            task: String? = nil
         ) {
             self.id = id
             self.version = version
@@ -154,7 +160,12 @@ public struct QuestionsFile: StateFile {
             self.explanations = explanations
             self.revision = revision
             self.answer = answer
+            self.job = job
+            self.task = task
         }
+
+        /// 実装の途中の質問か（質問したジョブを持つ）
+        public var isDuringImplementation: Bool { job != nil }
     }
 
     public var questions: [Question]
@@ -195,6 +206,8 @@ public struct QuestionsFile: StateFile {
         if !labels.contains(question.recommended) { problems.append("\(name): 推奨が選択肢に無い") }
         problems += (question.caution?.problems ?? []).map { "\(name): \($0)" }
         if question.state == .locked && question.dependsOn.isEmpty { problems.append("\(name): 依存先の無い質問はロックできない") }
+        if let task = question.task, !LocalIDs.isValid(task) { problems.append("\(name): task の形が違う") }
+        if question.task != nil, question.job == nil { problems.append("\(name): task は実装の途中の質問（job がある）だけが持つ") }
         if question.state == .dropped && question.revision?.by != .dependency {
             problems.append("\(name): 要らなくなった質問は、依存先の見直しの理由が要る")
         }
@@ -296,6 +309,20 @@ public struct GoalFile: StateFile {
         }
     }
 
+    /// 人がする作業を終えた記録（司令塔が `humanTaskDone` の意図を受け付けたときに書く）
+    public struct Completion: Codable, Equatable, Sendable {
+        public var intent: IntentReference
+        public var at: Timestamp
+        /// 渡されたファイル（`file` の作業。中身は `attachments/<device>/<nonce>/<n>`）。「終わった」だけなら nil
+        public var file: RequestAttachment?
+
+        public init(intent: IntentReference, at: Timestamp, file: RequestAttachment? = nil) {
+            self.intent = intent
+            self.at = at
+            self.file = file
+        }
+    }
+
     public struct HumanTask: Codable, Equatable, Sendable, Identifiable {
         public var id: String
         public var title: String
@@ -304,6 +331,8 @@ public struct GoalFile: StateFile {
         public var links: [String]
         public var handover: Handover
         public var state: HumanTaskState
+        /// 終えた記録。終える前は nil
+        public var done: Completion?
 
         public init(
             id: String,
@@ -312,7 +341,8 @@ public struct GoalFile: StateFile {
             steps: [String],
             links: [String] = [],
             handover: Handover = Handover(kind: .none),
-            state: HumanTaskState = .pending
+            state: HumanTaskState = .pending,
+            done: Completion? = nil
         ) {
             self.id = id
             self.title = title
@@ -321,6 +351,7 @@ public struct GoalFile: StateFile {
             self.links = links
             self.handover = handover
             self.state = state
+            self.done = done
         }
     }
 
@@ -385,6 +416,8 @@ public struct GoalFile: StateFile {
         case .none, .file:
             if humanTask.handover.name != nil { problems.append("\(humanTask.id): secret でない渡し方に名前がある") }
         }
+        if (humanTask.state == .done) != (humanTask.done != nil) { problems.append("\(humanTask.id): 終えた記録は done の作業だけが持つ") }
+        if humanTask.done?.file != nil, humanTask.handover.kind != .file { problems.append("\(humanTask.id): file でない作業にファイルがある") }
         return problems
     }
 

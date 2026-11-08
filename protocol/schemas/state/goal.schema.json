@@ -50,7 +50,39 @@
               "name": { "anyOf": [{ "type": "string", "pattern": "^(?!GITHUB_)[A-Z_][A-Z0-9_]*$", "not": { "pattern": "\\n" } }, { "type": "null" }] }
             }
           },
-          "state": { "enum": ["pending", "done"] }
+          "state": { "enum": ["pending", "done"] },
+          "done": {
+            "description": "終えた記録（司令塔が humanTaskDone の意図を受け付けたときに書く）。state が done の作業だけが持つ（読む側で確かめる）",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["intent", "at"],
+                "additionalProperties": false,
+                "properties": {
+                  "intent": { "$ref": "../common.schema.json#/$defs/intentReference" },
+                  "at": { "$ref": "../common.schema.json#/$defs/timestamp" },
+                  "file": {
+                    "description": "渡されたファイル（依頼の添付と同じ形。中身は attachments/<device>/<nonce>/<n>）",
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["n", "name", "size", "sha256"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "n": { "type": "integer", "minimum": 1, "maximum": 10 },
+                          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+                          "size": { "type": "integer", "minimum": 1, "maximum": 52428800 },
+                          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                        }
+                      },
+                      { "type": "null" }
+                    ]
+                  }
+                }
+              },
+              { "type": "null" }
+            ]
+          }
         }
       }
     },

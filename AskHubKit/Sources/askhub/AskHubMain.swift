@@ -25,7 +25,7 @@ enum AskHubMain {
         case "setup": try setup(CommandArguments(arguments))
         case "key": try await key(arguments)
         case "add-repository", "configure-repository", "request", "answer", "clarify", "start", "revise-goal", "decide-split", "abandon",
-             "retry", "give-up", "decide", "approve-merge", "instruct-final":
+             "retry", "give-up", "decide", "approve-merge", "instruct-final", "human-task-done":
             try await send(command, CommandArguments(arguments))
         case "status": try await status(CommandArguments(arguments))
         default: fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
@@ -49,6 +49,7 @@ enum AskHubMain {
           decide --repo <owner/repo> --epic <id> --decision <d1> --head <最終 PR の head> --answer ok|alternative|fix [--note <本文>]
           approve-merge --repo <owner/repo> --epic <id> --head <最終 PR の head>   最終 PR のマージを承認する
           instruct-final --repo <owner/repo> --epic <id> --head <最終 PR の head> --instruction <指示>
+          human-task-done --repo <owner/repo> --epic <id> --task <h1> --version <ゴールの版> [--file <渡すファイル>]
           retry --repo <owner/repo> --epic <id> --job <id> --attempt <試行の番号>     人の対応待ちのジョブをやり直させる
           give-up --repo <owner/repo> --epic <id> --job <id> --attempt <試行の番号>   人の対応待ちのジョブをやめる
           status [--repo <owner/repo>]   epic・質問・ゴール・人の対応待ちのジョブと、送った意図の処理の結果を出す

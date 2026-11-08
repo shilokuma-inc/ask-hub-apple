@@ -200,6 +200,58 @@
       "read": "valid"
     },
     {
+      "name": "during-implementation",
+      "value": {
+        "v": 1,
+        "questions": [
+          {
+            "id": "q5",
+            "version": 1,
+            "title": "色が無いメモの並び",
+            "why": "絞り込みの「色なし」と並べ替えの両方に関わる",
+            "options": [
+              { "label": "色なしを最後に置く", "effect": "色の付いたメモが先に並ぶ" },
+              { "label": "追加した順のまま", "effect": "色で並びを変えない" }
+            ],
+            "recommended": "追加した順のまま",
+            "reason": "今の並べ替えの決まりを変えずに済む",
+            "dependsOn": [],
+            "round": 2,
+            "state": "open",
+            "explanations": [],
+            "job": "01JCJ0B0000000000000000002",
+            "task": "t3"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "task-without-job",
+      "value": {
+        "v": 1,
+        "questions": [
+          {
+            "id": "q5",
+            "version": 1,
+            "title": "色が無いメモの並び",
+            "why": "絞り込みの「色なし」と並べ替えの両方に関わる",
+            "options": [{ "label": "追加した順のまま", "effect": "色で並びを変えない" }],
+            "recommended": "追加した順のまま",
+            "reason": "今の並べ替えの決まりを変えずに済む",
+            "dependsOn": [],
+            "round": 2,
+            "state": "open",
+            "explanations": [],
+            "task": "t3"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
       "name": "empty",
       "value": {
         "v": 1,
