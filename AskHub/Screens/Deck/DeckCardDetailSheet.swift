@@ -52,6 +52,9 @@ struct QuestionDetailSections: View {
 
     var body: some View {
         CardSection(question.title) {
+            if let point = question.during {
+                LabeledContent("出た所", value: "\(point.label)の途中（答えるまで止めて待ちます）")
+            }
             LabeledContent("なぜ決めるか", value: question.why)
             if let reason = question.recommendationReason {
                 LabeledContent("推奨の理由", value: reason)

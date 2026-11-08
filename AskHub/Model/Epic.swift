@@ -326,6 +326,14 @@ extension Epic {
         questions.filter(\.isAnswerable)
     }
 
+    /// いま人の答えを待っている質問。開始する前は回答の段階の質問、開始した後は実装の途中の質問（答えるまで epic は止まっている）
+    var awaitedQuestions: [Question] {
+        if stage == .questions {
+            return answerableQuestions
+        }
+        return isActive ? answerableQuestions.filter { $0.during != nil } : []
+    }
+
     var doneTaskCount: Int {
         tasks.filter {
             if case .done = $0.state {

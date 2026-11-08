@@ -99,9 +99,17 @@ enum InboxBuilder {
     }
 
     private static func questionItem(_ epic: Epic, context: String) -> InboxItem? {
-        let answerable = epic.answerableQuestions
-        guard epic.stage == .questions, !answerable.isEmpty else {
+        let answerable = epic.awaitedQuestions
+        guard !answerable.isEmpty else {
             return nil
+        }
+        // 実装の途中の質問は、答えるまで epic が止まっていることと、どこで出たかを出す
+        if let point = answerable.first?.during {
+            var item = InboxItem(epic: epic, kind: .questions, context: context, route: .deck(.questions(epic.id)))
+            item.title = "実装の途中の質問に答える"
+            item.detail = "\(point.label)の途中です。答えるまで止めて待っています"
+            item.since = answerable.map(\.askedAt).max() ?? epic.updatedAt
+            return item
         }
         var parts = ["残り \(answerable.count) 問"]
         let explaining = epic.questions.filter(\.isAwaitingExplanation).count
