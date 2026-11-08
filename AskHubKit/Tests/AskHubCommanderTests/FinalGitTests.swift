@@ -39,6 +39,55 @@ struct FinalGitTests {
         #expect(!FileManager.default.fileExists(atPath: again.directory.appendingPathComponent("Leftover.swift").path))
     }
 
+    @Test func mergesBaseIntoWorkBranchAndFindsConflicts() async throws {
+        defer { try? FileManager.default.removeItem(at: base.root) }
+        let workspace = try await base.makeWorkspace()
+        // 作業ブランチと base が、同じファイルを別々に変える
+        let epic = try await workspace.checkOutEpic(Self.repo, epic: Self.epic, branches: Self.branches)
+        try "# 作業ブランチの App\n".write(to: epic.directory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        let mine = try #require(try await workspace.commitAndPush(epic, message: "作業ブランチで変える"))
+        try base.shell("""
+            cd '\(base.root.path)/seed' && echo '# base の App' > README.md && echo later > Later.md && git add . && \
+            git -c user.name=t -c user.email=t@example.invalid commit --quiet -m base && git push --quiet '\(base.origin.path)' develop
+            """)
+        let fresh = try await workspace.checkOutEpic(Self.repo, epic: Self.epic, branches: Self.branches)
+        #expect(fresh.head == mine)
+        let conflicts = try #require(try await workspace.mergeBase(into: fresh))
+        #expect(conflicts == ["README.md"])
+        #expect(await workspace.unresolvedConflicts(conflicts, in: fresh) == ["README.md"])
+        try "# 作業ブランチと base の App\n".write(to: fresh.directory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        #expect(await workspace.unresolvedConflicts(conflicts, in: fresh).isEmpty)
+        let merged = try #require(try await workspace.commitAndPush(fresh, message: "base を取り込む"))
+        #expect(try base.remoteHead(Self.branches.epic) == merged)
+        // マージのコミット（親が 2 つ）で、コンフリクトしなかった base の変更も入る
+        let parents = try base.shell("git -C '\(base.origin.path)' rev-list --parents -n 1 \(merged)")
+        #expect(parents.split(separator: " ").count == 3)
+        #expect(FileManager.default.fileExists(atPath: fresh.directory.appendingPathComponent("Later.md").path))
+        // base がもう入っているので、次は何もしない
+        let again = try await workspace.checkOutEpic(Self.repo, epic: Self.epic, branches: Self.branches)
+        #expect(try await workspace.mergeBase(into: again) == nil)
+    }
+
+    @Test func mergesBaseWithoutConflicts() async throws {
+        defer { try? FileManager.default.removeItem(at: base.root) }
+        let workspace = try await base.makeWorkspace()
+        try base.shell("""
+            cd '\(base.root.path)/seed' && echo later > Later.md && git add . && \
+            git -c user.name=t -c user.email=t@example.invalid commit --quiet -m later && git push --quiet '\(base.origin.path)' develop
+            """)
+        let epic = try await workspace.checkOutEpic(Self.repo, epic: Self.epic, branches: Self.branches)
+        #expect(try await workspace.mergeBase(into: epic)?.isEmpty == true)
+        let merged = try #require(try await workspace.commitAndPush(epic, message: "base を取り込む"))
+        #expect(try base.remoteHead(Self.branches.epic) == merged)
+    }
+
+    @Test func findsOnlyConflictMarkerLines() {
+        #expect(GitRepositoryWorkspace.hasConflictMarkers("a\n<<<<<<< HEAD\nb\n=======\nc\n>>>>>>> refs/remotes/origin/develop\n"))
+        #expect(GitRepositoryWorkspace.hasConflictMarkers("<<<<<<<\n"))
+        // Markdown の見出しの下線や、行の途中の記号は印でない
+        #expect(!GitRepositoryWorkspace.hasConflictMarkers("見出し\n=======\n本文 <<<<<<< ではない\n"))
+    }
+
     @Test func checksOutWholeEpicDiffIntoJobFolder() async throws {
         defer { try? FileManager.default.removeItem(at: base.root) }
         let workspace = try await base.makeWorkspace()
