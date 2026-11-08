@@ -81,6 +81,17 @@ public struct HumanTaskDoneHandler: IntentHandler {
     }
 }
 
+extension TaskFlow {
+    /// タスクがすべて済んだ: 人がする作業もすべて済んでいれば、最終 PR の段取りに進む。どのタスクも依存していない作業が残っていれば、終わるのを待つ
+    func startFinalAfterHumanTasks(_ goal: GoalFile, plan: Plan, jobs: [JobFile]) async throws(CommanderError) -> Advanced {
+        let waiting = goal.humanTasks.filter { $0.state != .done }.map(\.id)
+        guard waiting.isEmpty else {
+            return Advanced(notes: ["epic \(plan.epic.id) のタスクはすべて済んだ。人がする作業（\(waiting.joined(separator: "・"))）が終わるのを待つ"])
+        }
+        return try await startFinal(goal, plan: plan, jobs: jobs)
+    }
+}
+
 extension GoalFile {
     /// 人がする作業を終えたことにし、ロックを外せるタスクを `pending` に戻す。ゴールの版が `version` で、作業が `pending` のときだけ変える。
     /// 人が読むゴールの中身は変えないので、ゴールの版は上げない

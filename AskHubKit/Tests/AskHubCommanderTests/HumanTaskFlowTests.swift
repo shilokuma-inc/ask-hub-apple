@@ -234,4 +234,62 @@ struct HumanTaskFlowTests {
         outcome = try await intake.processPending()
         #expect(outcome == [.rejected(kind: "humanTaskDone", reason: "人がする作業を終えられる段階でない（今は checking）")])
     }
+
+    // MARK: - 最終 PR の段取りを待つ
+
+    /// タスクがすべて済んでも、人がする作業が残っていれば最終 PR の段取りに進まない。終えたら進む
+    @Test func waitsForHumanTasksBeforeFinal() async throws {
+        var goal = Self.goal()
+        goal.tasks = goal.tasks.map { task in
+            var task = task
+            task.state = .done
+            return task
+        }
+        goal.humanTasks[0].state = .done
+        goal.humanTasks[0].done = .init(intent: Self.origin, at: Timestamp(Self.now))
+        goal.humanTasks[1].state = .done
+        goal.humanTasks[1].done = .init(intent: Self.origin, at: Timestamp(Self.now), file: Self.attachment())
+        var epic = epic()
+        epic.branch = "askhub/\(Self.epicID)"
+        try await put(epic, at: StatePath.epic(Self.repo, Self.epicID))
+        try await put(goal, at: StatePath.goal(Self.repo, Self.epicID))
+        let spec = JobSpec(kind: .prepareWorkspace, mac: Self.laptop, needs: .init(claude: false, build: false))
+        var prepare = context.job(spec, for: epic, origin: Self.origin, seed: "")
+        prepare.state = .succeeded
+        try await put(prepare, at: StatePath.job(Self.repo, epic: Self.epicID, job: prepare.id))
+
+        var step = await TaskFlow(context: context).advance(epics: [epic], jobs: [prepare])
+        #expect(step.created.isEmpty)
+        #expect(step.notes == ["epic \(Self.epicID) のタスクはすべて済んだ。人がする作業（h3）が終わるのを待つ"])
+        #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, Self.epicID))?.stage == .running)
+
+        try await send("h3")
+        #expect(try await intake.processPending() == [.accepted(kind: "humanTaskDone")])
+        step = await TaskFlow(context: context).advance(epics: [epic], jobs: [prepare])
+        #expect(step.created.map(\.kind) == [.verifyBeforeFinal])
+        #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, Self.epicID))?.stage == .finalizing)
+    }
+
+    /// ロックされたタスクは飛ばして、ロックの無いタスクから進める。ロックが外れたら、ゴールの並びの順に進める
+    @Test func skipsLockedTasksUntilUnlocked() async throws {
+        var goal = Self.goal()
+        goal.tasks[0].state = .done
+        try await prepare(goal: goal)
+        var epic = epic()
+        epic.branch = "askhub/\(Self.epicID)"
+        try await put(epic, at: StatePath.epic(Self.repo, Self.epicID))
+        let spec = JobSpec(kind: .prepareWorkspace, mac: Self.laptop, needs: .init(claude: false, build: false))
+        var prepare = context.job(spec, for: epic, origin: Self.origin, seed: "")
+        prepare.state = .succeeded
+        try await put(prepare, at: StatePath.job(Self.repo, epic: Self.epicID, job: prepare.id))
+
+        // t2・t3 はロックされているので、作るものが無い（人がする作業を待つ）
+        var step = await TaskFlow(context: context).advance(epics: [epic], jobs: [prepare])
+        #expect(step.created.isEmpty)
+        try await send("h1")
+        #expect(try await intake.processPending() == [.accepted(kind: "humanTaskDone")])
+        step = await TaskFlow(context: context).advance(epics: [epic], jobs: [prepare])
+        #expect(step.created.map(\.task) == ["t2"])
+        #expect(try await savedGoal().tasks.map(\.state) == [.done, .running, .locked])
+    }
 }
