@@ -11,7 +11,11 @@ import Foundation
 /// - `conflict`: レビューの `fixConflict` の `findings` に、ワーカーが base を取り込み始めてコンフリクトしたファイルを足したもの。
 ///   コンフリクトしなければ Claude を使わずにマージのコミットを push し、base がもう入っていれば何もせずに今の head でレビューし直させる
 ///
-/// 直しの回数（3 回まで）は、司令塔が試行から数える
+/// 直しの回数（3 回まで）は、司令塔が試行から数える。
+///
+/// 人に聞きたいこと（`needsQuestion`）があれば、手元の変更（と base の取り込みの途中）を残したまま、push せずに質問で成功として終える。
+/// 答えで再開するジョブ（入力の `question`）は、質問した作業場所が残っていればそのまま使って質問した会話を再開し（できなければ新しい会話で続け）、
+/// 作業場所が無ければ取り出し直して、新しい会話で直させ直す
 public struct FixFinalPullRequestRunner: JobRunning {
     public var environment: FinalJobEnvironment
 
@@ -29,19 +33,70 @@ public struct FixFinalPullRequestRunner: JobRunning {
             guard let input = job.input(as: FixTaskInput.self) else {
                 throw .fail(.unexpected, "fixFinalPullRequest の入力（PR・head・理由）の形が違う")
             }
-            let findings = try await findings(for: input, job: job)
+            // 最終 PR の直しの質問は、タスクに結びつかない
+            let resumption = try await environment.tasks.resumption(of: job, question: input.question, task: nil)
+            // 答えで再開するときも、直すことは質問する前のジョブ（dependsOn のレビュー・origin の人の意図）から読む
+            let history = TaskHistory(context: environment.context, repo: job.repo, epic: job.epic)
+            var original = job
+            if resumption != nil { original = try await history.original(of: job) }
+            let findings = try await findings(for: input, job: original)
             let pull = try await environment.tasks.github("最終 PR を読む") { () throws(PullRequestError) in
                 try await environment.tasks.pullRequests(job.repo).pullRequest(number: input.pullRequest)
             }
             guard pull.state == .open, !pull.merged else { throw .fail(.unexpected, "最終 PR #\(input.pullRequest) が開いていない") }
             try FinalJobEnvironment.checkDirection(pull, branches: target.branches)
             return try await environment.exclusively(job.epic) { () throws(TaskJobExit) in
-                try await fix(job, target: target, input: input, findings: findings)
+                // 答えで再開するときは、質問したときの作業場所が残っていれば、取り出し直さずに（手元の変更と base の取り込みの途中を残して）使う
+                let kept = try await environment.keptEpic(resumption, job: job, branches: target.branches)
+                if let kept, kept.head == input.head {
+                    let workspace = Workspace(checkout: kept, resumption: resumption, kept: true)
+                    return try await resume(job, target: target, input: input, findings: findings, in: workspace)
+                }
+                return try await fix(job, target: target, input: input, findings: findings, resumption: resumption)
             }
         }
     }
 
-    private func fix(_ job: JobFile, target: FinalTarget, input: FixTaskInput, findings: String) async throws(TaskJobExit) -> JobResult {
+    /// 直す作業場所と、答えで再開するときの答え
+    private struct Workspace {
+        var checkout: CheckedOutEpic
+        /// base の取り込みでコンフリクトしたまま、解消を Claude に任せるファイル
+        var conflicts: [String] = []
+        var resumption: QuestionResumption?
+        /// 質問したときの作業場所を、取り出し直さずに使うか
+        var kept = false
+    }
+
+    /// 質問したときの作業場所（手元の変更と base の取り込みの途中）のまま、答えを渡して続けさせる
+    private func resume(
+        _ job: JobFile,
+        target: FinalTarget,
+        input: FixTaskInput,
+        findings: String,
+        in workspace: Workspace
+    ) async throws(TaskJobExit) -> JobResult {
+        let environment = environment
+        var workspace = workspace
+        var findings = findings
+        if input.reason == .conflict {
+            workspace.conflicts = try await environment.tasks.workspace { () throws(WorkspaceError) in
+                try await environment.git.conflictedPaths(in: workspace.checkout)
+            }
+            findings = Self.conflictText(findings, files: workspace.conflicts)
+        }
+        let fixJob = FixFinalPullRequestJob(
+            goal: target.goal, pullRequest: input.pullRequest, branches: target.branches, reason: input.reason, findings: findings
+        )
+        return try await finish(fixJob, job: job, target: target, input: input, in: workspace)
+    }
+
+    private func fix(
+        _ job: JobFile,
+        target: FinalTarget,
+        input: FixTaskInput,
+        findings: String,
+        resumption: QuestionResumption?
+    ) async throws(TaskJobExit) -> JobResult {
         let environment = environment
         let checkout = try await environment.tasks.workspace { () throws(WorkspaceError) in
             try await environment.git.checkOutEpic(job.repo, epic: job.epic, branches: target.branches)
@@ -68,10 +123,32 @@ public struct FixFinalPullRequestRunner: JobRunning {
         let fixJob = FixFinalPullRequestJob(
             goal: target.goal, pullRequest: input.pullRequest, branches: target.branches, reason: input.reason, findings: findings
         )
-        let (report, run) = try await environment.run(fixJob, in: checkout, target: target).done()
+        let workspace = Workspace(checkout: checkout, conflicts: conflicts, resumption: resumption)
+        return try await finish(fixJob, job: job, target: target, input: input, in: workspace)
+    }
+
+    /// Claude に直させ、コンフリクトの印が残っていなければ push する。人に聞きたいことがあれば、手元の変更を残したまま、push せずに質問で終える。
+    /// 答えで再開するときは、質問した会話を再開するか、新しい会話で決まったことを渡す（`QuestionResumption.answer`）
+    private func finish(
+        _ fixJob: FixFinalPullRequestJob,
+        job: JobFile,
+        target: FinalTarget,
+        input: FixTaskInput,
+        in workspace: Workspace
+    ) async throws(TaskJobExit) -> JobResult {
+        let environment = environment
+        let checkout = workspace.checkout
+        var result = JobResult(outputs: AttemptFile.Outputs(pullRequest: input.pullRequest, branch: target.branches.epic))
+        let reply: TaskReply
+        if let resumption = workspace.resumption {
+            reply = await resumption.answer(fixJob, kept: workspace.kept) { await environment.run($0, in: checkout, target: target) }
+        } else {
+            reply = await environment.run(fixJob, in: checkout, target: target)
+        }
+        let (report, run) = try reply.done(keeping: result)
         result.outputs?.report = report.outputReport
         result.claude = run.session?.attemptRecord
-        let left = await environment.git.unresolvedConflicts(conflicts, in: checkout)
+        let left = await environment.git.unresolvedConflicts(workspace.conflicts, in: checkout)
         guard left.isEmpty else {
             throw .fail(.conflict, "コンフリクトの印が残っている（\(left.joined(separator: "・"))）", keeping: result)
         }

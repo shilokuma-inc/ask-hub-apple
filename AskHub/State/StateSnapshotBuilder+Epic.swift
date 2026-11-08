@@ -21,7 +21,7 @@ extension StateSnapshotBuilder {
             uniquingKeysWith: { first, _ in first }
         )
         // 見直しで要らなくなった質問は出さない（決まった扱い。依存する質問はすでに外れている）
-        let questions = protocolQuestions.filter { $0.state != .dropped }.map { question($0, epic: file, readiness: documents.readiness) }
+        let questions = protocolQuestions.filter { $0.state != .dropped }.map { question($0, documents: documents) }
         let goal = documents.goal
         let progress = progress(of: documents)
         let finalReview = finalReview(of: documents, index: &index)
@@ -163,7 +163,7 @@ extension StateSnapshotBuilder {
 
     // MARK: 質問
 
-    private func question(_ question: QuestionsFile.Question, epic: EpicFile, readiness: ReadinessFile?) -> Question {
+    private func question(_ question: QuestionsFile.Question, documents: StateDocuments.EpicDocuments) -> Question {
         // プロトコルの質問には、いつも選択肢があり、推奨はそのどれか（自由記述は、人が選択肢の外の答えとして書く）
         Question(
             id: Self.displayID(question.id),
@@ -186,10 +186,34 @@ extension StateSnapshotBuilder {
                 )
             },
             revisionNote: question.revision?.reason,
-            // 質問に時刻は無いので、最初の質問づくりなら依頼の時刻、追加の質問なら着手前の確認の時刻にする
-            askedAt: question.round == 1 ? epic.createdAt.date : readiness?.checkedAt.date ?? epic.updatedAt.date,
-            caution: question.caution.map { Self.caution($0.kind) }
+            askedAt: askedAt(question, documents: documents),
+            caution: question.caution.map { Self.caution($0.kind) },
+            during: implementationPoint(of: question, goal: documents.goal)
         )
+    }
+
+    /// 質問に時刻は無いので、最初の質問づくりなら依頼の時刻、追加の質問なら着手前の確認の時刻にする。
+    /// 実装の途中の質問は、質問したジョブが終わった時刻（司令塔が成功にした時刻）にする
+    private func askedAt(_ question: QuestionsFile.Question, documents: StateDocuments.EpicDocuments) -> Date {
+        let epic = documents.epic
+        if let job = question.job {
+            return documents.jobs.first { $0.id == job }?.updatedAt.date ?? epic.updatedAt.date
+        }
+        return question.round == 1 ? epic.createdAt.date : documents.readiness?.checkedAt.date ?? epic.updatedAt.date
+    }
+
+    /// 実装の途中の質問が出た所（開始する前の質問は nil）。タスクの番号は、ゴールの並びの順
+    private func implementationPoint(of question: QuestionsFile.Question, goal: GoalFile?) -> Question.ImplementationPoint? {
+        guard question.isDuringImplementation else {
+            return nil
+        }
+        guard let task = question.task else {
+            return .finalPullRequest
+        }
+        guard let index = goal?.tasks.firstIndex(where: { $0.id == task }), let goal else {
+            return .task(number: 0, title: task)
+        }
+        return .task(number: index + 1, title: goal.tasks[index].title)
     }
 
     private func state(of question: QuestionsFile.Question) -> Question.State {

@@ -120,17 +120,15 @@ enum DeckBuilder {
         }
     }
 
+    /// 開始する前の質問と、実装の途中の質問（同じカードで出し、実装の途中の質問であることを札の種類に添える）
     static func questionCards(_ epic: Epic) -> [DeckCard] {
-        guard epic.stage == .questions else {
-            return []
-        }
-        return epic.answerableQuestions.map { question in
+        epic.awaitedQuestions.map { question in
             DeckCard(
                 id: "\(epic.id)/question/\(question.id)",
                 epicID: epic.id,
                 repositoryID: epic.repositoryID,
                 content: .question(question),
-                kindLabel: "質問 \(question.id) / \(epic.questions.count)",
+                kindLabel: question.during == nil ? "質問 \(question.id) / \(epic.questions.count)" : "実装の途中の質問 \(question.id)",
                 title: question.title,
                 detail: question.why,
                 choices: questionChoices(question, epicID: epic.id)

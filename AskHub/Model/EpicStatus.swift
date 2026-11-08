@@ -41,9 +41,11 @@ enum EpicStatus {
         if let blocker = epic.blocker {
             lines.append(you("対処が要ります: \(blocker.title)", "exclamationmark.triangle.fill", route: .epic(epic.id)))
         }
-        let answerable = epic.answerableQuestions.count
-        if epic.stage == .questions, answerable > 0 {
-            lines.append(you("あなたの回答を待っています（\(answerable) 問）", "questionmark.bubble.fill", route: .deck(.questions(epic.id))))
+        let awaited = epic.awaitedQuestions
+        if let point = awaited.first?.during {
+            lines.append(you("\(point.label)の途中の質問の回答を待っています", "questionmark.bubble.fill", route: .deck(.questions(epic.id))))
+        } else if !awaited.isEmpty {
+            lines.append(you("あなたの回答を待っています（\(awaited.count) 問）", "questionmark.bubble.fill", route: .deck(.questions(epic.id))))
         }
         if epic.stage == .goal, let goal = epic.goal, !goal.isRevising {
             lines.append(you("ゴールの確認と開始を待っています", "flag.fill", route: .goal(epic.id)))
@@ -210,6 +212,9 @@ enum EpicStatus {
             case let .fixing(pullRequest, round, reason):
                 let pullRequest = pullRequestLabel(taskID, pullRequest, epic: epic)
                 return ("\(pullRequest) の\(spaced(fixLabel(reason)))を直しています（\(round) 回目）", "wrench.and.screwdriver")
+
+            case .waitingForAnswer(let question, _):
+                return ("\(taskLabel(taskID, epic: epic))の途中の質問 \(question) の回答を待っています", "questionmark.bubble")
             }
 
         case .final(let step):
@@ -268,6 +273,9 @@ enum EpicStatus {
 
             case let .fixing(pullRequest, _, reason):
                 return "\(pullRequestLabel(taskID, pullRequest, epic: epic)) の\(spaced(fixLabel(reason)))の直し"
+
+            case .waitingForAnswer(let question, _):
+                return "\(taskLabel(taskID, epic: epic))の途中の質問 \(question)"
             }
 
         case .final(let step):

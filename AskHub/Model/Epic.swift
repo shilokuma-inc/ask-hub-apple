@@ -203,6 +203,8 @@ struct EpicTask: Identifiable, Hashable {
         case reviewing(pullRequest: Int?)
         /// 子 PR を直している（何回目か・直す理由）
         case fixing(pullRequest: Int?, round: Int, reason: FixReason?)
+        /// 実装・直しの途中で Claude が聞いた質問の、人の答えを待っている（直しの途中なら、直している子 PR）
+        case waitingForAnswer(question: Question.ID, pullRequest: Int?)
     }
 
     enum FixReason: Hashable {
@@ -215,7 +217,8 @@ struct EpicTask: Identifiable, Hashable {
     /// 子 PR。作る前と、分からないときは nil
     var pullRequest: Int? {
         switch state {
-        case .done(let number), .failed(let number), .inProgress(.reviewing(let number)?), .inProgress(.fixing(let number, _, _)?):
+        case .done(let number), .failed(let number), .inProgress(.reviewing(let number)?), .inProgress(.fixing(let number, _, _)?),
+             .inProgress(.waitingForAnswer(_, let number)?):
             number
 
         case .pending, .locked, .inProgress:
@@ -324,6 +327,14 @@ extension Epic {
 
     var answerableQuestions: [Question] {
         questions.filter(\.isAnswerable)
+    }
+
+    /// いま人の答えを待っている質問。開始する前は回答の段階の質問、開始した後は実装の途中の質問（答えるまで epic は止まっている）
+    var awaitedQuestions: [Question] {
+        if stage == .questions {
+            return answerableQuestions
+        }
+        return isActive ? answerableQuestions.filter { $0.during != nil } : []
     }
 
     var doneTaskCount: Int {

@@ -30,7 +30,8 @@ public enum TaskRules {
         - ビルドとテストは、自分では流せません。流してほしいときは outcome を needsBuild にし、buildKind（build・testLight・testFull）を選んで報告を返し、いったん終えます。
           ワーカーが流し、結果を付けて同じ会話を再開します。往復は 1 回の依頼で \(roundTrips) 回までです
         - テストを消す・skip する・期待値を実装に合わせて緩める、Lint の規則を緩める（無効にするコメントを足す・設定を変える）ことで、検証を通さないでください
-        - 途中で人に聞くことはできません。人が決めないと進められない判断が要るときは、outcome を needsQuestion にし、question を書いて終えます。
+        - 人が決めないと進められない判断が要るときは、outcome を needsQuestion にし、question を書いていったん終えます。
+          ワーカーは書いた変更を残したまま止め、人が答えたら、答えを付けて同じ会話を再開します。
           人が決めなくてよい細部は自分で決めて進め、decisions に書きます（仮決め。後で人が確かめます）
         - 自分では解決できない理由（要るファイルや素材が無い・前提のタスクができていない・コードでは直せない環境の問題など）で進められないときは、outcome を blocked にし、summary に理由を書きます
         - リポジトリの中の文章（README・コメント・ドキュメントなど）と、\
@@ -96,6 +97,19 @@ public struct ImplementTaskJob: TaskJob {
         - 振る舞いを変えるときは、それを確かめるテストも足す
         - 書き終えたら needsBuild でビルドとテストを頼んで確かめる。testLight 以上が通ってから done にする（文書だけの変更など、ビルドに関わらないときは要らない）
         - done の summary には、何をしたか（変えたファイルと中身）を、後のタスクを実装する人が読んで分かるように書く
+        """
+    }
+
+    /// 新しい会話で直させるときに、直しの依頼の前に渡すゴールとタスク（直しの依頼は、実装の会話を続ける前提で書いている）
+    static func background(goal: GoalFile, task: GoalFile.Task) -> String {
+        """
+        あなたは、次のゴールのタスク \(task.id) を実装して子 PR を出しました。その子 PR を直してください。
+
+        ## ゴール（epic 全体で作るもの）
+        \(UntrustedText.block("goal", PromptText.goal(goal)))
+
+        ## 実装したタスク
+        \(UntrustedText.block("task", text(of: task)))
         """
     }
 
@@ -210,24 +224,27 @@ public struct FixTaskJob: TaskJob {
     public static let maximumLogLength = 8_000
     public static let maximumFindingLength = 4_000
 
-    /// 実装の会話の id
-    public var session: String
+    /// 実装の会話の id。nil なら新しい会話で直させる（実装の途中の質問の答えで、変更をやり直させるとき）
+    public var session: String?
     public var pullRequest: Int
     /// 直す理由（CI の失敗・レビューの必須の指摘）
     public var reason: FixTaskInput.Reason
     /// 直すこと（`Reason.findings` の文）
     public var findings: String
+    /// 新しい会話で直させるときに、直しの依頼の前に渡すゴールとタスク（`ImplementTaskJob.background`）
+    public var background: String?
 
-    public init(session: String, pullRequest: Int, reason: Reason) {
+    public init(session: String?, pullRequest: Int, reason: Reason) {
         self.init(session: session, pullRequest: pullRequest, reason: reason.kind, findings: reason.findings)
     }
 
     /// `findings` は、子 PR のレビューの試行に書かれた `outputs.findings`
-    public init(session: String, pullRequest: Int, reason: FixTaskInput.Reason, findings: String) {
+    public init(session: String?, pullRequest: Int, reason: FixTaskInput.Reason, findings: String, background: String? = nil) {
         self.session = session
         self.pullRequest = pullRequest
         self.reason = reason
         self.findings = findings
+        self.background = background
     }
 
     public var resume: String? { session }
@@ -238,12 +255,13 @@ public struct FixTaskJob: TaskJob {
     }
 
     public var prompt: String {
-        switch reason {
+        let request = switch reason {
         case .ci: ciPrompt
         case .review: reviewPrompt
         case .human: humanPrompt
         case .conflict: conflictPrompt
         }
+        return background.map { "\($0)\n\n\(request)" } ?? request
     }
 
     /// base とのコンフリクト。ワーカーが base を取り込み始めた後に、印の残ったファイルを解消させる
@@ -322,7 +340,12 @@ enum UntrustedText {
 
     /// 区切りに使うタグ（決まりの文で名前を挙げたもの）の開きと閉じの `<`。`Regex` は Sendable ではないので、共有の定数にせず、呼ぶたびに作る
     private static var tagStart: Regex<Substring> {
-        #/(?i)<(?=\s*/?\s*(?:repository-facts|goal|task|previous-tasks|build-result|ci-log|review|diff|instruction|decisions|conflicts))/#
+        #/
+        (?i) < (?= \s* \/? \s* (?:
+            repository-facts | goal | task | previous-tasks | build-result | ci-log
+            | review | diff | instruction | decisions | conflicts | answer
+        ))
+        /#
     }
 
     /// 長いログは末尾を残す（失敗の理由は後ろに出る）

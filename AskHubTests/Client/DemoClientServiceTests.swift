@@ -50,6 +50,23 @@ struct DemoClientServiceTests {
         #expect(question(service, "recipe-weekly", "Q5")?.state == .reviewing)
     }
 
+    /// 実装の途中の質問に答えると、タスクの実装を、epic を回す Mac で再開する（「いま」と Mac のジョブにも出す）
+    @Test
+    func answeringQuestionDuringImplementationResumesTask() async throws {
+        let service = makeService(.started)
+        let before = try #require(service.state.epic("recipe-shopping"))
+        #expect(before.tasks[1].state == .inProgress(.waitingForAnswer(question: "Q1", pullRequest: nil)))
+        #expect(before.awaitedQuestions.map(\.id) == ["Q1"])
+
+        try await service.perform(.answer(epicID: "recipe-shopping", questionID: "Q1", optionID: "決めた並びで固定", note: ""))
+        let epic = try #require(service.state.epic("recipe-shopping"))
+        #expect(epic.tasks[1].state == .inProgress(.implementing))
+        #expect(epic.awaitedQuestions.isEmpty)
+        #expect(epic.activities.map(\.kind) == [.step(.task("shopping-t2", .implementing), .running(attempt: 1))])
+        let jobs = service.state.mac(DemoData.macMiniID)?.jobs.filter { $0.epicID == "recipe-shopping" }
+        #expect(jobs?.map(\.title) == ["買い物リストの並べ替え: タスク 2 の実装"])
+    }
+
     /// 説明を求めると説明待ちになりしばらくして届く
     @Test
     func explanationArrivesLater() async throws {

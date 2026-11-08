@@ -198,6 +198,11 @@ struct QuestionNotes: View {
     var body: some View {
         let dependents = epic?.questions.dependents(of: question) ?? []
         VStack(alignment: .leading, spacing: 6) {
+            if let point = question.during {
+                Label("\(point.label)の途中で出た質問です。答えるまで、この epic は止めて待ちます", systemImage: "hammer")
+                    .appFont(.caption)
+                    .foregroundStyle(.tint)
+            }
             if !dependents.isEmpty {
                 Label("この回答で \(dependents.map(\.id).joined(separator: "・")) が決まります", systemImage: "arrow.turn.down.right")
                     .appFont(.caption)

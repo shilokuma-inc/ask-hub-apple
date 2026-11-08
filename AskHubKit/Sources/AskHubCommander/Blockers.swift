@@ -68,22 +68,33 @@ struct BlockerScan {
         let base = "\(epic.repo)/\(epic.id)"
         switch epic.stage {
         case .asking:
-            guard let file = try await readable(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)) else { return [] }
-            // 説明を求めて答えを待つ間は、版が変わらなくても説明の数で別の出来事にする（説明ができたら知らせ直す）
-            return file.questions.filter { $0.state == .open }.map { question in
-                let key = "question/\(base)/\(question.id)/\(question.version)/\(question.explanations.count)"
-                return Blocker(key: key, scope: scope, reason: .question(question.id))
-            }
+            return try await openQuestions(of: epic) { _ in true }
         case .awaitingSplit:
             guard let readiness = try await readable(ReadinessFile.self, at: StatePath.readiness(epic.repo, epic.id)) else { return [] }
             return [Blocker(key: "split/\(base)/\(readiness.version)", scope: scope, reason: .split)]
         case .awaitingStart:
             guard let goal = try await readable(GoalFile.self, at: StatePath.goal(epic.repo, epic.id)) else { return [] }
             return [Blocker(key: "start/\(base)/\(goal.version)", scope: scope, reason: .start(revised: goal.version > 1))]
+        // 実装の途中の質問の答えを待つ間、その epic は止まっている
+        case .running, .finalizing:
+            return try await openQuestions(of: epic, where: \.isDuringImplementation)
         case .reviewing:
-            return try await awaitingMerge(epic, jobs: jobs)
-        case .drafting, .checking, .running, .finalizing, .merged, .abandoned:
+            return try await openQuestions(of: epic, where: \.isDuringImplementation) + (try await awaitingMerge(epic, jobs: jobs))
+        case .drafting, .checking, .merged, .abandoned:
             return []
+        }
+    }
+
+    /// 回答を待っている質問（`matches` に合うもの）
+    private func openQuestions(
+        of epic: EpicFile,
+        where matches: (QuestionsFile.Question) -> Bool
+    ) async throws(CommanderError) -> [Blocker] {
+        guard let file = try await readable(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)) else { return [] }
+        // 説明を求めて答えを待つ間は、版が変わらなくても説明の数で別の出来事にする（説明ができたら知らせ直す）
+        return file.questions.filter { $0.state == .open && matches($0) }.map { question in
+            let key = "question/\(epic.repo)/\(epic.id)/\(question.id)/\(question.version)/\(question.explanations.count)"
+            return Blocker(key: key, scope: .epic(epic.repo, epic.id), reason: .question(question.id))
         }
     }
 

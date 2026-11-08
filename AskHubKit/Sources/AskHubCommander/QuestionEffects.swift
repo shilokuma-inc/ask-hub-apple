@@ -41,6 +41,10 @@ extension CommanderContext {
             case .checkReadiness:
                 try await create(claudeJob(.checkReadiness, for: epic, origin: origin, seed: "", input: [:], after: parents))
                 try await setStage(.checking, of: epic)
+            case let .resume(question, job):
+                // 質問したジョブが無ければ、回答の受け付け（`AnswerHandler`）が断っている
+                guard let asking = try await read(JobFile.self, at: StatePath.job(epic.repo, epic: epic.id, job: job)) else { continue }
+                try await create(try await resumption(of: asking, question: question, answer: origin, epic: epic))
             }
         }
     }

@@ -25,7 +25,8 @@ extension StateSnapshotBuilder {
         var progress = Progress(
             workspace: workspace(of: documents.epic, jobs: jobs),
             tasks: goalTasks.enumerated().map { offset, task in
-                EpicTask(id: task.id, number: offset + 1, title: task.title, state: state(of: task, jobs: jobs))
+                let state = state(of: task, jobs: jobs, questions: documents.questions)
+                return EpicTask(id: task.id, number: offset + 1, title: task.title, state: state)
             }
         )
         for job in jobs where Self.activeJobStates.contains(job.state) {
@@ -64,7 +65,7 @@ extension StateSnapshotBuilder {
     }
 
     /// タスクの状態。進めているタスクは、そのタスクの最後のジョブから段階を決める
-    private func state(of task: GoalFile.Task, jobs: [JobFile]) -> EpicTask.State {
+    private func state(of task: GoalFile.Task, jobs: [JobFile], questions: QuestionsFile?) -> EpicTask.State {
         let taskJobs = jobs.filter { $0.task == task.id }
         switch task.state {
         case .pending:
@@ -85,6 +86,10 @@ extension StateSnapshotBuilder {
                 // 実装のジョブは子 PR を作る前に止まる。レビューと直しは、見ていた子 PR を残す
                 return .failed(pullRequest: job.pullRequest)
             }
+            // 実装・直しが質問で終えた。答えるまで、司令塔は次のジョブを作らない
+            if let asked = questions?.questions.first(where: { $0.job == job.id && [.open, .clarifying].contains($0.state) }) {
+                return .inProgress(.waitingForAnswer(question: Self.displayID(asked.id), pullRequest: job.pullRequest))
+            }
             return .inProgress(phase(of: job, jobs: taskJobs, finished: job.state == .succeeded))
         }
     }
@@ -104,13 +109,21 @@ extension StateSnapshotBuilder {
             }
             let input = job.input(as: FixTaskInput.self)
             let reason: EpicTask.FixReason? = input.map { $0.reason == .ci ? .checks : .review }
-            // 何回目かは、同じタスクの直しのうち、これまでに作ったものの数（司令塔が 4 回目から人に渡すのと同じ数え方）
-            let round = jobs.filter { $0.kind == .fixTask && ($0.createdAt, $0.id.rawValue) <= (job.createdAt, job.id.rawValue) }.count
+            // 何回目かは、同じタスクの直しのうち、これまでに作ったものの数（司令塔が 4 回目から人に渡すのと同じ数え方）。
+            // 実装の途中の質問の答えで再開した直しは、同じ直しの続きなので数えない
+            let round = jobs.filter {
+                $0.kind == .fixTask && !Self.resumesQuestion($0) && ($0.createdAt, $0.id.rawValue) <= (job.createdAt, job.id.rawValue)
+            }.count
             return .fixing(pullRequest: job.pullRequest, round: round, reason: reason)
 
         default:
             return nil
         }
+    }
+
+    /// 実装の途中の質問の答えで再開したジョブか（入力に `question` がある）
+    static func resumesQuestion(_ job: JobFile) -> Bool {
+        job.input?["question"] != nil
     }
 
     /// 最後のジョブ。司令塔は次のジョブを前のジョブに `dependsOn` でつなぐので、ほかのジョブがつながっていないもの（同じなら新しいもの）
