@@ -30,7 +30,7 @@ extension StateSnapshotBuilder {
             }
         )
         for job in jobs where Self.activeJobStates.contains(job.state) {
-            if let activity = activity(of: job, jobs: jobs, attempt: documents.attempts[job.id]?.last) {
+            if let activity = activity(of: job, jobs: jobs, attempts: documents.attempts[job.id] ?? []) {
                 progress.activities.append(activity)
             }
         }
@@ -150,12 +150,12 @@ extension StateSnapshotBuilder {
         return .task(task, phase)
     }
 
-    private func activity(of job: JobFile, jobs: [JobFile], attempt: AttemptFile?) -> EpicActivity? {
+    private func activity(of job: JobFile, jobs: [JobFile], attempts: [AttemptFile]) -> EpicActivity? {
         guard let step = step(of: job, jobs: jobs) else {
             return nil
         }
         // 実行中の試行は、司令塔が当てた番号（`attempts`）のもの
-        let running = attempt.flatMap { $0.number == job.attempts && $0.outcome == .running ? $0 : nil }
+        let running = attempts.last.flatMap { $0.number == job.attempts && $0.outcome == .running ? $0 : nil }
         let macID = running?.mac.rawValue ?? job.assignedMac?.rawValue
         let worker = macID.map { EpicActivity.Worker(macID: $0, heartbeatAt: running?.heartbeatAt.date) }
         switch job.state {
@@ -164,7 +164,8 @@ extension StateSnapshotBuilder {
             return EpicActivity(kind: .step(step, .running(attempt: max(job.attempts, 1))), since: since, worker: worker)
 
         case .paused:
-            guard let macID else {
+            // 人の一時停止で止めたジョブは、epic の「一時停止しています」の行にまとめて出す（Mac がオフラインで止まったものだけを出す）
+            guard let macID, job.isWaitingForOfflineMac(attempts) else {
                 return nil
             }
             return EpicActivity(kind: .paused(macID: macID, since: job.updatedAt.date), since: job.updatedAt.date, worker: worker)

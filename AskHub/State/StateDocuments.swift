@@ -183,6 +183,10 @@ struct StateReader {
                 // 動いている Mac と最後に動いた時刻を出す。書き換わるのは生きている印の間隔（5 分）ごとなので、ほとんどは ETag で済む
                 wanted.append((job, job.attempts))
 
+            case .paused where job.attempts > 0:
+                // Mac がオフラインで止まったのか、人の一時停止で止めたのかを、当てた試行で分ける（`JobFile.isWaitingForOfflineMac`）
+                wanted.append((job, job.attempts))
+
             default:
                 break
             }

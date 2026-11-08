@@ -59,7 +59,7 @@ struct EpicIntentsTests {
         Kind(vectors: "payloads/instructFinal.json", kind: "instructFinal", target: finalTarget, targetVersion: head) {
             try InstructFinalIntent(envelope: $0).payload
         }
-    ]
+    ] + pauseKinds
     static let head = String(repeating: "a", count: 40)
     static let finalTarget = IntentEnvelope.Target(type: "finalPullRequest", epic: epic)
     static let decisionTarget = IntentEnvelope.Target(type: "decision", epic: epic, id: "d1")
@@ -331,5 +331,56 @@ struct EpicIntentsTests {
         // 番号の時刻を引き継ぎ、ほかの番号とは重ならない
         #expect(id.rawValue.prefix(10) == intent.nonce.rawValue.prefix(10))
         #expect(id != RequestIntent.epicID(for: IntentReference(keyId: intent.keyId, nonce: ULID(rawValue: "01JCN0NCE00000000000000002")!)))
+    }
+}
+
+extension EpicIntentsTests {
+    static let epicTarget = IntentEnvelope.Target(type: "epic", epic: epic)
+    /// 一時停止・再開・引き継ぎ（epic だけを対象にし、版を書かない）
+    static let pauseKinds: [Kind] = [
+        Kind(vectors: "payloads/pauseEpic.json", kind: "pauseEpic", target: epicTarget, targetVersion: nil) {
+            try PauseEpicIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/resumeEpic.json", kind: "resumeEpic", target: epicTarget, targetVersion: nil) {
+            try ResumeEpicIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/handover.json", kind: "handover", target: epicTarget, targetVersion: nil) {
+            try HandoverIntent(envelope: $0).payload
+        }
+    ]
+
+    /// 一時停止・再開・引き継ぎは epic だけを対象にし、版を書かない
+    @Test func readsPauseResumeAndHandover() throws {
+        let target = IntentEnvelope.Target(type: "epic", epic: Self.epic)
+        let pause = try PauseEpicIntent(envelope: envelope(kind: "pauseEpic", target: target, targetVersion: nil, payload: [:]))
+        #expect(pause.epic == Self.epic)
+        #expect(pause.target == target)
+        let resume = try ResumeEpicIntent(envelope: envelope(kind: "resumeEpic", target: target, targetVersion: nil, payload: [:]))
+        #expect(resume.repo.rawValue == "shilokuma-inc/askhub-sandbox")
+        let mac: [String: JSONValue] = ["mac": .string("macbook-a")]
+        let handover = try HandoverIntent(envelope: envelope(kind: "handover", target: target, targetVersion: nil, payload: mac))
+        #expect(handover.mac.rawValue == "macbook-a")
+        #expect(handover.intent.nonce.rawValue == "01JCN0NCE00000000000000001")
+        let cases: [(IntentEnvelope.Target?, String?)] = [
+            (nil, nil),
+            (target, "1"),
+            (.init(type: "epic", epic: Self.epic, id: "q1"), nil),
+            (Self.jobTarget, nil)
+        ]
+        for (target, version) in cases {
+            #expect(throws: MalformedIntent.self) {
+                try PauseEpicIntent(envelope: envelope(kind: "pauseEpic", target: target, targetVersion: version, payload: [:]))
+            }
+            #expect(throws: MalformedIntent.self) {
+                try ResumeEpicIntent(envelope: envelope(kind: "resumeEpic", target: target, targetVersion: version, payload: [:]))
+            }
+            #expect(throws: MalformedIntent.self) {
+                try HandoverIntent(envelope: envelope(kind: "handover", target: target, targetVersion: version, payload: mac))
+            }
+        }
+        // 種類が違えば読まない（一時停止を再開として読まない）
+        #expect(throws: MalformedIntent.self) {
+            try ResumeEpicIntent(envelope: envelope(kind: "pauseEpic", target: target, targetVersion: nil, payload: [:]))
+        }
     }
 }

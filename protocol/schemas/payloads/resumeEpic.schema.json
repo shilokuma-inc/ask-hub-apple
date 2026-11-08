@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/resumeEpic.schema.json",
+  "title": "再開の人の意図（kind が resumeEpic）の payload",
+  "description": "封筒の target は {type: epic, epic}。targetVersion は書かない。payload は空。知らない欄のある payload は読まない",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

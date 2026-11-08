@@ -1,0 +1,61 @@
+{
+  "description": "ほかの Mac への引き継ぎの人の意図の payload の例。read は、封筒の target が正しいときに、読む側が引き継ぎとして読めるか",
+  "schema": "payloads/handover.schema.json",
+  "cases": [
+    {
+      "name": "mac",
+      "payload": {
+        "mac": "macbook-a"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "missing-mac",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-mac",
+      "payload": {
+        "mac": ""
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "mac-uppercase",
+      "payload": {
+        "mac": "MacBook-A"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "mac-with-path",
+      "payload": {
+        "mac": "../mac"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "mac-not-string",
+      "payload": {
+        "mac": 1
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "mac": "macbook-a",
+        "force": true
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

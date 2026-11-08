@@ -141,6 +141,29 @@ struct AskHubClientTests {
         let file = RequestAttachment(number: 1, name: "key.p8", size: 10, sha256: String(repeating: "b", count: 64))
         #expect(try HumanTaskDoneIntent(envelope: envelope(.humanTaskDone(humanTask, file: file))).file == file)
     }
+
+    /// 一時停止・再開・引き継ぎは、版を付けずに epic を対象にする
+    @Test func pauseDraftsAreReadAsTheirKinds() throws {
+        let key = try key()
+        func envelope(_ draft: IntentDraft) -> IntentEnvelope {
+            #expect(draft.targetVersion == nil)
+            return IntentEnvelope(
+                kind: draft.kind,
+                repo: draft.repo,
+                target: draft.target,
+                targetVersion: draft.targetVersion,
+                payload: draft.payload,
+                issuedAt: Timestamp(Self.now),
+                nonce: ULID.generate(at: Self.now),
+                keyId: key.keyID
+            )
+        }
+        let epic = ULID.generate(at: Self.now)
+        #expect(try PauseEpicIntent(envelope: envelope(.pauseEpic(repo: Self.repo, epic: epic))).epic == epic)
+        #expect(try ResumeEpicIntent(envelope: envelope(.resumeEpic(repo: Self.repo, epic: epic))).epic == epic)
+        let handover = try HandoverIntent(envelope: envelope(.handover(repo: Self.repo, epic: epic, to: MacName(rawValue: "macbook-a")!)))
+        #expect(handover.mac.rawValue == "macbook-a")
+    }
 }
 
 /// 非常口のコマンドの引数

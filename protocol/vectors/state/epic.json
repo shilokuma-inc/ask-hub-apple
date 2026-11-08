@@ -477,6 +477,126 @@
       },
       "schemaValid": true,
       "read": "valid"
+    },
+    {
+      "name": "paused",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "discussion": 512,
+        "stage": "running",
+        "mac": "macbook-a",
+        "branch": "askhub/01JCEP1C000000000000000001",
+        "finalPullRequest": null,
+        "goalVersion": 2,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T11:00:00Z",
+        "pause": {
+          "since": "2026-11-03T11:00:00Z",
+          "origin": {
+            "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+            "nonce": "01JCPA0SE00000000000000001"
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "not-paused",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "discussion": 512,
+        "stage": "running",
+        "mac": "macbook-a",
+        "branch": "askhub/01JCEP1C000000000000000001",
+        "finalPullRequest": null,
+        "goalVersion": 2,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T11:00:00Z",
+        "pause": null
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "pause-without-origin",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "discussion": 512,
+        "stage": "running",
+        "mac": "macbook-a",
+        "branch": "askhub/01JCEP1C000000000000000001",
+        "finalPullRequest": null,
+        "goalVersion": 2,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T11:00:00Z",
+        "pause": {
+          "since": "2026-11-03T11:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "pause-with-fractional-seconds",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "discussion": 512,
+        "stage": "running",
+        "mac": "macbook-a",
+        "branch": "askhub/01JCEP1C000000000000000001",
+        "finalPullRequest": null,
+        "goalVersion": 2,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T11:00:00Z",
+        "pause": {
+          "since": "2026-11-03T11:00:00.5Z",
+          "origin": {
+            "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+            "nonce": "01JCPA0SE00000000000000001"
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "pause-origin-path-traversal",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "discussion": 512,
+        "stage": "running",
+        "mac": "macbook-a",
+        "branch": "askhub/01JCEP1C000000000000000001",
+        "finalPullRequest": null,
+        "goalVersion": 2,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T11:00:00Z",
+        "pause": {
+          "since": "2026-11-03T11:00:00Z",
+          "origin": {
+            "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y",
+            "nonce": "../../keys/000000000000001"
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
     }
   ]
 }

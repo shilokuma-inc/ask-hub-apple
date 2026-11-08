@@ -114,6 +114,20 @@ public struct EpicFile: StateFile {
         }
     }
 
+    /// 人が一時停止した印（`pauseEpic`）。再開（`resumeEpic`）で外す。
+    /// 付いている間、司令塔は epic の次のジョブを作らず、まだ動いていないジョブを `paused` にしたままにする（動いているジョブは最後まで終わらせる）
+    public struct Pause: Codable, Equatable, Sendable {
+        /// 一時停止を受け付けた時刻
+        public var since: Timestamp
+        /// 一時停止の人の意図
+        public var origin: IntentReference
+
+        public init(since: Timestamp, origin: IntentReference) {
+            self.since = since
+            self.origin = origin
+        }
+    }
+
     public var id: ULID
     public var repo: RepositoryFullName
     public var title: String
@@ -129,6 +143,8 @@ public struct EpicFile: StateFile {
     public var finalPullRequest: Int?
     /// 最終 PR のマージの記録。マージする前は nil
     public var merge: Merge?
+    /// 人が一時停止した印。止めていなければ nil（Mac がオフラインでジョブが止まっているときは付かない）
+    public var pause: Pause?
     /// 開始したときのゴールの版
     public var goalVersion: Int?
     /// 元になった依頼の人の意図
@@ -147,6 +163,7 @@ public struct EpicFile: StateFile {
         branch: String? = nil,
         finalPullRequest: Int? = nil,
         merge: Merge? = nil,
+        pause: Pause? = nil,
         goalVersion: Int? = nil,
         origin: IntentReference? = nil,
         createdAt: Timestamp,
@@ -162,6 +179,7 @@ public struct EpicFile: StateFile {
         self.branch = branch
         self.finalPullRequest = finalPullRequest
         self.merge = merge
+        self.pause = pause
         self.goalVersion = goalVersion
         self.origin = origin
         self.createdAt = createdAt

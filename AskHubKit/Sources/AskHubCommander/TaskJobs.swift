@@ -224,7 +224,7 @@ public struct FixTaskJob: TaskJob {
     public static let maximumLogLength = 8_000
     public static let maximumFindingLength = 4_000
 
-    /// 実装の会話の id。nil なら新しい会話で直させる（実装の途中の質問の答えで、変更をやり直させるとき）
+    /// 実装の会話の id。nil なら新しい会話で直させる（実装の会話がほかの Mac にある・見つからない、実装の途中の質問の答えで変更をやり直させるとき）
     public var session: String?
     public var pullRequest: Int
     /// 直す理由（CI の失敗・レビューの必須の指摘）

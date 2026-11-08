@@ -5,7 +5,8 @@ import Foundation
 /// タスクの直し（`fixTask`）を 1 回実行する（`docs/renewal/flows.md` の「タスクの流れ」）。epic の Mac で動く。
 ///
 /// 子 PR のレビュー（`reviewTask`）が書いた直すこと（`outputs.findings`）を付けて、実装の会話を再開して直させ、子ブランチに push する。
-/// 直しの回数（3 回まで）は、司令塔が試行から数える。
+/// 直しの回数（3 回まで）は、司令塔が試行から数える。会話はそれを動かした Mac にだけ残るので、epic をほかの Mac に引き継いだ後
+/// （実装の会話が前の Mac にある・見つからない）は、新しい会話でゴールとタスクを渡して直させる。
 ///
 /// 人に聞きたいこと（`needsQuestion`）があれば、手元の変更を残したまま質問で成功として終える。答えで再開するジョブ（入力の `question`）は、
 /// 質問した作業場所が残っていればそのまま使って質問した会話を再開し、会話を再開できなければ新しい会話で（ゴールとタスクも渡して）続けさせる。
@@ -32,8 +33,8 @@ public struct FixTaskRunner: JobRunning {
         }
         // 実装の途中の質問の答えで再開するときは、質問した会話（無ければ新しい会話）を使うので、実装の会話は要らない
         let resumption = try await environment.resumption(of: job, question: input.question, task: target.task.id)
-        var conversation: TaskHistory.Conversation?
-        if resumption == nil { conversation = try await implementationConversation(of: target.task.id, history: history) }
+        var session: String?
+        if resumption == nil { session = try await implementationSession(of: target.task.id, history: history) }
         try await checkPullRequest(input.pullRequest, of: job, target: target)
         // 答えで再開するときは、質問したときの作業場所が残っていれば、取り出し直さずに（手元の変更を残して）使う
         let kept = try await environment.keptTask(resumption, job: job, branches: target.branches)
@@ -59,7 +60,11 @@ public struct FixTaskRunner: JobRunning {
             )
             reply = await resumption.answer(fix, kept: kept != nil) { await environment.run($0, in: checkout, target: target) }
         } else {
-            let fix = FixTaskJob(session: conversation?.session, pullRequest: input.pullRequest, reason: input.reason, findings: findings)
+            // 実装の会話がこの Mac に無ければ（引き継いだ後）、新しい会話でゴールとタスクを渡して直させる
+            let background = session == nil ? ImplementTaskJob.background(goal: target.goal, task: target.task) : nil
+            let fix = FixTaskJob(
+                session: session, pullRequest: input.pullRequest, reason: input.reason, findings: findings, background: background
+            )
             reply = await environment.run(fix, in: checkout, target: target)
         }
         // 人に聞きたいことがあれば、手元の変更を残したまま、commit・push をせずに質問で終える
@@ -107,15 +112,10 @@ public struct FixTaskRunner: JobRunning {
         try ReviewTaskRunner.checkDirection(pull, branches: target.branches)
     }
 
-    /// 実装の会話（会話はそれを動かした Mac にだけ残るので、ほかの Mac では再開できない。epic を Mac の間で引き継ぐときに、新しい会話で直す形を足す）
-    private func implementationConversation(of task: String, history: TaskHistory) async throws(TaskJobExit) -> TaskHistory.Conversation {
-        guard let conversation = try await history.conversation(of: task) else {
-            throw .fail(.unexpected, "タスク \(task) の実装の会話（implementTask の試行の claude.session）が見つからない")
-        }
-        guard conversation.mac == environment.context.mac else {
-            throw .fail(.unexpected, "実装の会話は \(conversation.mac) にあり、この Mac（\(environment.context.mac)）では再開できない")
-        }
-        return conversation
+    /// 実装の会話の id。会話はそれを動かした Mac にだけ残るので、ほかの Mac の会話（引き継いだ後）・見つからないときは nil（新しい会話で直させる）
+    private func implementationSession(of task: String, history: TaskHistory) async throws(TaskJobExit) -> String? {
+        guard let conversation = try await history.conversation(of: task), conversation.mac == environment.context.mac else { return nil }
+        return conversation.session
     }
 
     /// 最後の行に、どのジョブの直しかの印を書く（答えで再開した直しで、前の試行が push した後に落ちたかを見分ける）

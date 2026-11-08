@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 「進行中」。epic を、人が待たれているもの・機械が進めているもの・終わったものに分けて並べる
+/// 「進行中」。epic を、人が待たれているもの・一時停止しているもの・機械が進めているもの・終わったものに分けて並べる
 struct EpicListView: View {
     let selection: Binding<AppRoute?>?
 
@@ -10,12 +10,20 @@ struct EpicListView: View {
         let epics = (store.snapshot?.epics ?? []).sorted { $0.updatedAt > $1.updatedAt }
         let active = epics.filter(\.isActive)
         let waiting = active.filter(EpicStatus.waitsForYou)
-        let working = active.filter { !EpicStatus.waitsForYou($0) }
+        let paused = active.filter(EpicStatus.isPausedByYou)
+        let working = active.filter { !EpicStatus.waitsForYou($0) && !EpicStatus.isPausedByYou($0) }
         let finished = epics.filter { !$0.isActive }
         RouteList(selection: selection) {
             if !waiting.isEmpty {
                 CardSection("あなた待ち · \(waiting.count)") {
                     ForEach(waiting) { epic in
+                        NavigationLink(value: AppRoute.epic(epic.id)) { EpicRow(epic: epic) }
+                    }
+                }
+            }
+            if !paused.isEmpty {
+                CardSection("一時停止中 · \(paused.count)") {
+                    ForEach(paused) { epic in
                         NavigationLink(value: AppRoute.epic(epic.id)) { EpicRow(epic: epic) }
                     }
                 }

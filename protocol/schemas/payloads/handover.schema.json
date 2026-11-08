@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/handover.schema.json",
+  "title": "ほかの Mac への引き継ぎの人の意図（kind が handover）の payload",
+  "description": "封筒の target は {type: epic, epic}。targetVersion は書かない。mac は移す先の Mac の名前（オフラインでもよい）。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "mac"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "mac": {
+      "$ref": "../common.schema.json#/$defs/macName"
+    }
+  }
+}

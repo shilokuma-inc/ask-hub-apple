@@ -9,10 +9,11 @@ import Foundation
 struct StateIntentMapper {
     let index: StateIndex
 
-    /// 状態リポジトリに送れる意図か。段階 3 の操作のうち、引き継ぎ・確認・片付けなどは、まだ送れない。
+    /// 状態リポジトリに送れる意図か。段階 3 の操作のうち、確認・片付けなどは、まだ送れない。
     /// 人に渡されたジョブへの操作は、最後に読んだ状態の「対処が要ります」に出した操作だけ（やり直す・やめる）、取り下げは開始する前の epic だけ、
     /// 最終 PR への操作（判断のカードへの答え・マージの承認・指示）は最終 PR を出した epic だけ、
-    /// 人がする作業を終えたことは、ゴールの確認の待ちと実装の間の、終えていない作業だけ送れる
+    /// 人がする作業を終えたことは、ゴールの確認の待ちと実装の間の、終えていない作業だけ送れる。
+    /// 一時停止・再開・引き継ぎは開始した後の epic だけで、引き継ぎは、一時停止していなければ epic の Mac でジョブが動いていないときだけ送れる
     func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
@@ -31,7 +32,16 @@ struct StateIntentMapper {
         case let .completeHumanTask(epicID, taskID, _):
             index.epics[epicID]?.humanTasks[taskID] != nil
 
-        case .handOver, .pause, .resume, .verify, .cleanUp:
+        case .pause(let epicID):
+            index.epics[epicID]?.canPause == true
+
+        case .resume(let epicID):
+            index.epics[epicID]?.canResume == true
+
+        case let .handOver(epicID, _):
+            index.epics[epicID]?.canHandOver == true
+
+        case .verify, .cleanUp:
             false
         }
     }
@@ -82,7 +92,10 @@ struct StateIntentMapper {
         case let .completeHumanTask(epicID, taskID, file):
             return try humanTaskDraft(epicID: epicID, taskID: taskID, file: file)
 
-        case .acceptAllDecisions, .handOver, .pause, .resume, .verify, .cleanUp:
+        case .pause, .resume, .handOver:
+            return try pauseDraft(intent)
+
+        case .acceptAllDecisions, .verify, .cleanUp:
             throw Self.unsupported
         }
     }
@@ -149,6 +162,41 @@ struct StateIntentMapper {
                 throw ClientServiceError(message: "owner/name の形で入れてください")
             }
             return .addRepository(repo)
+
+        default:
+            throw Self.unsupported
+        }
+    }
+
+    /// 一時停止・再開・引き継ぎ。どれも epic の今の状態に対してだけ意味を持つので、版を付けない
+    private func pauseDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
+        switch intent {
+        case .pause(let epicID):
+            let epic = try epic(epicID)
+            guard epic.canPause else {
+                throw ClientServiceError(message: "いまは一時停止できません（開始した後で、止めていない epic だけです）")
+            }
+            return .pauseEpic(repo: epic.repo, epic: epic.id)
+
+        case .resume(let epicID):
+            let epic = try epic(epicID)
+            guard epic.canResume else {
+                throw ClientServiceError(message: "この epic は一時停止していません")
+            }
+            return .resumeEpic(repo: epic.repo, epic: epic.id)
+
+        case let .handOver(epicID, macID):
+            let epic = try epic(epicID)
+            guard epic.canHandOver else {
+                throw ClientServiceError(message: "Mac で動いている作業があります。一時停止してから引き継いでください")
+            }
+            guard let mac = MacName(rawValue: macID) else {
+                throw ClientServiceError(message: "Mac の名前の形が違います")
+            }
+            guard mac != epic.mac else {
+                throw ClientServiceError(message: "いま回している Mac です。ほかの Mac を選んでください")
+            }
+            return .handover(repo: epic.repo, epic: epic.id, to: mac)
 
         default:
             throw Self.unsupported
