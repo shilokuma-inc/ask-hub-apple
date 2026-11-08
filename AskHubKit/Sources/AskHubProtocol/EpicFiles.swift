@@ -121,6 +121,10 @@ public struct QuestionsFile: StateFile {
         public var explanations: [Explanation]
         public var revision: Revision?
         public var answer: Answer?
+        /// 実装の途中の質問なら、質問したジョブ（開始前の質問は nil）
+        public var job: ULID?
+        /// 実装の途中の質問なら、どのタスクの実装の途中か（開始前の質問と、最終 PR の直しの質問は nil）
+        public var task: String?
 
         public init(
             id: String,
@@ -137,7 +141,9 @@ public struct QuestionsFile: StateFile {
             comment: String? = nil,
             explanations: [Explanation] = [],
             revision: Revision? = nil,
-            answer: Answer? = nil
+            answer: Answer? = nil,
+            job: ULID? = nil,
+            task: String? = nil
         ) {
             self.id = id
             self.version = version
@@ -154,7 +160,12 @@ public struct QuestionsFile: StateFile {
             self.explanations = explanations
             self.revision = revision
             self.answer = answer
+            self.job = job
+            self.task = task
         }
+
+        /// 実装の途中の質問か（質問したジョブを持つ）
+        public var isDuringImplementation: Bool { job != nil }
     }
 
     public var questions: [Question]
@@ -195,6 +206,8 @@ public struct QuestionsFile: StateFile {
         if !labels.contains(question.recommended) { problems.append("\(name): 推奨が選択肢に無い") }
         problems += (question.caution?.problems ?? []).map { "\(name): \($0)" }
         if question.state == .locked && question.dependsOn.isEmpty { problems.append("\(name): 依存先の無い質問はロックできない") }
+        if let task = question.task, !LocalIDs.isValid(task) { problems.append("\(name): task の形が違う") }
+        if question.task != nil, question.job == nil { problems.append("\(name): task は実装の途中の質問（job がある）だけが持つ") }
         if question.state == .dropped && question.revision?.by != .dependency {
             problems.append("\(name): 要らなくなった質問は、依存先の見直しの理由が要る")
         }
