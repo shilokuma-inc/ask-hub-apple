@@ -9,16 +9,7 @@ extension StateSnapshotBuilder {
         let id = file.id.rawValue
         let protocolQuestions = documents.questions?.questions ?? []
         let shownHumanTasks = documents.goal.map { humanTasks($0, epic: file) } ?? []
-        index.epics[id] = StateIndex.EpicEntry(
-            repo: file.repo,
-            id: file.id,
-            goalVersion: documents.goal?.version,
-            readinessVersion: documents.readiness?.version,
-            humanTasks: Self.completableHumanTasks(file.stage, goal: documents.goal, shown: shownHumanTasks),
-            isStarted: [.running, .finalizing, .reviewing].contains(file.stage),
-            isBusyOnMac: documents.jobs.contains { $0.state == .running && $0.assignedMac == file.mac },
-            mac: file.mac
-        )
+        index.epics[id] = Self.indexEntry(of: documents, humanTasks: shownHumanTasks)
         index.questions[id] = Dictionary(
             protocolQuestions.map { (Self.displayID($0.id), StateIndex.QuestionEntry(id: $0.id, version: $0.version)) },
             uniquingKeysWith: { first, _ in first }
@@ -56,6 +47,21 @@ extension StateSnapshotBuilder {
             isAbandoned: file.stage == .abandoned,
             workspace: progress.workspace,
             pausedAt: file.pause?.since.date
+        )
+    }
+
+    /// 送るときに要る、epic の対象と送れる操作の材料（`shown` は画面に出す人がする作業）
+    private static func indexEntry(of documents: StateDocuments.EpicDocuments, humanTasks shown: [HumanTask]) -> StateIndex.EpicEntry {
+        let file = documents.epic
+        return StateIndex.EpicEntry(
+            repo: file.repo,
+            id: file.id,
+            goalVersion: documents.goal?.version,
+            readinessVersion: documents.readiness?.version,
+            humanTasks: completableHumanTasks(file.stage, goal: documents.goal, shown: shown),
+            isStarted: [.running, .finalizing, .reviewing].contains(file.stage),
+            isBusyOnMac: documents.jobs.contains { $0.state == .running && $0.assignedMac == file.mac },
+            mac: file.mac
         )
     }
 
