@@ -97,10 +97,14 @@ extension DemoClientService {
         resumeImplementation(epicID: epicID)
     }
 
+    /// 人の一時停止。動いている段取りの行は残し、再開するまで先へ進めない（`scheduleProgress`）
     private func pause(epicID: Epic.ID) {
         let date = now()
         state.updateEpic(epicID) { epic in
-            epic.activities = [EpicActivity(kind: .paused(macID: epic.macID ?? "", since: date), since: date)]
+            guard !epic.isPaused else {
+                return
+            }
+            epic.pausedAt = date
             epic.log("一時停止しました", at: date)
         }
     }
@@ -108,12 +112,10 @@ extension DemoClientService {
     private func resume(epicID: Epic.ID) {
         let date = now()
         state.updateEpic(epicID) { epic in
-            epic.removeActivities {
-                if case .paused = $0 {
-                    return true
-                }
-                return false
+            guard epic.isPaused else {
+                return
             }
+            epic.pausedAt = nil
             epic.log("再開しました", at: date)
         }
     }
@@ -233,7 +235,8 @@ extension DemoClientService {
     /// いま進めているタスクを、少し後にマージした扱いにする
     private func resumeImplementation(epicID: Epic.ID) {
         let number = nextPullRequest()
-        schedule(after: 1.5) { [now] snapshot in
+        // 一時停止した epic を引き継いだときは、再開するまで進めない
+        scheduleProgress(of: epicID, after: 1.5) { [now] snapshot in
             snapshot.updateEpic(epicID) { epic in
                 guard let index = epic.tasks.firstIndex(where: { $0.isInProgress || $0.isFailed }) else {
                     return

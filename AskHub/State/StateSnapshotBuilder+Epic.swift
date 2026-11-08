@@ -14,7 +14,10 @@ extension StateSnapshotBuilder {
             id: file.id,
             goalVersion: documents.goal?.version,
             readinessVersion: documents.readiness?.version,
-            humanTasks: Self.completableHumanTasks(file.stage, goal: documents.goal, shown: shownHumanTasks)
+            humanTasks: Self.completableHumanTasks(file.stage, goal: documents.goal, shown: shownHumanTasks),
+            isStarted: [.running, .finalizing, .reviewing].contains(file.stage),
+            isBusyOnMac: documents.jobs.contains { $0.state == .running && $0.assignedMac == file.mac },
+            mac: file.mac
         )
         index.questions[id] = Dictionary(
             protocolQuestions.map { (Self.displayID($0.id), StateIndex.QuestionEntry(id: $0.id, version: $0.version)) },
@@ -51,7 +54,8 @@ extension StateSnapshotBuilder {
             updatedAt: file.updatedAt.date,
             split: Self.split(file.stage, readiness: documents.readiness),
             isAbandoned: file.stage == .abandoned,
-            workspace: progress.workspace
+            workspace: progress.workspace,
+            pausedAt: file.pause?.since.date
         )
     }
 
@@ -157,6 +161,9 @@ extension StateSnapshotBuilder {
         }
         if let readiness {
             entries.append(Epic.HistoryEntry(date: readiness.checkedAt.date, text: "着手前の確認（\(readiness.round) 回目）: \(readiness.reason)"))
+        }
+        if let pause = file.pause {
+            entries.append(Epic.HistoryEntry(date: pause.since.date, text: "一時停止しました"))
         }
         return entries
     }

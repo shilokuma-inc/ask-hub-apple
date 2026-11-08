@@ -46,8 +46,8 @@ extension StateSnapshotBuilder {
         case RetryJobIntent.kind, GiveUpJobIntent.kind:
             applyJobIntent(envelope, to: &epics)
 
-        case AbandonEpicIntent.kind:
-            applyAbandon(envelope, to: &epics, index: index)
+        case AbandonEpicIntent.kind, PauseEpicIntent.kind, ResumeEpicIntent.kind, HandoverIntent.kind:
+            applyEpicControl(envelope, to: &epics, index: index)
 
         case ApproveMergeIntent.kind, InstructFinalIntent.kind:
             applyFinalIntent(envelope, to: &epics)
@@ -259,6 +259,63 @@ extension StateSnapshotBuilder {
         epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
     }
 
+    /// 版を持たずに epic を対象にする意図（取り下げ・一時停止・再開・引き継ぎ）
+    private func applyEpicControl(_ envelope: IntentEnvelope, to epics: inout [Epic], index: StateIndex) {
+        if envelope.kind == AbandonEpicIntent.kind {
+            applyAbandon(envelope, to: &epics, index: index)
+        } else {
+            applyPauseIntent(envelope, to: &epics, index: index)
+        }
+    }
+
+    /// 一時停止・再開・引き継ぎ。状態リポジトリにある、開始した後の epic だけに出す（司令塔が受け付けない状態なら出さない）
+    private func applyPauseIntent(_ envelope: IntentEnvelope, to epics: inout [Epic], index: StateIndex) {
+        guard let epicID = envelope.target?.epic?.rawValue, let entry = index.epics[epicID], entry.isStarted,
+              let epicIndex = epics.firstIndex(where: { $0.id == epicID }), epics[epicIndex].isActive else {
+            return
+        }
+        let sentAt = envelope.issuedAt.date
+        var epic = epics[epicIndex]
+        let text: String
+        switch envelope.kind {
+        case PauseEpicIntent.kind:
+            guard !epic.isPaused else {
+                return
+            }
+            epic.pausedAt = sentAt
+            text = "一時停止しました。司令塔が受け取るのを待っています"
+
+        case ResumeEpicIntent.kind:
+            guard epic.isPaused else {
+                return
+            }
+            epic.pausedAt = nil
+            text = "再開しました。司令塔が受け取るのを待っています"
+
+        default:
+            // 一時停止していなければ、epic の Mac でジョブが動いている間は司令塔が断る
+            guard let mac = envelope.string("mac"), mac != epic.macID, epic.isPaused || !entry.isBusyOnMac else {
+                return
+            }
+            epic.macID = mac
+            text = "\(mac) に引き継ぎました。司令塔が受け取るのを待っています"
+        }
+        epic.history.append(Epic.HistoryEntry(date: sentAt, text: text))
+        epics[epicIndex] = epic
+    }
+
+    /// 一時停止・再開・引き継ぎを送れるか。処理を待つ意図を当てた後の epic で決める
+    func applyPauseControls(of epic: Epic, to index: inout StateIndex) {
+        guard let entry = index.epics[epic.id] else {
+            return
+        }
+        let started = epic.isActive && entry.isStarted
+        index.epics[epic.id]?.canPause = started && !epic.isPaused
+        index.epics[epic.id]?.canResume = started && epic.isPaused
+        index.epics[epic.id]?.canHandOver = started && (epic.isPaused || !entry.isBusyOnMac)
+        index.epics[epic.id]?.mac = epic.macID.flatMap(MacName.init(rawValue:))
+    }
+
     /// 処理を待つやめるの意図を送ったジョブか（同じ秒に送った意図の順に頼らずに決める）
     private func isGivenUp(_ job: JobFile) -> Bool {
         intentsToOverlay().contains { $0.kind == GiveUpJobIntent.kind && waitingJob(targetedBy: $0)?.id == job.id }
@@ -353,7 +410,24 @@ extension StateSnapshotBuilder {
             return "取り下げ"
 
         default:
-            return finalLabel(envelope) ?? envelope.kind
+            return finalLabel(envelope) ?? pauseLabel(envelope) ?? envelope.kind
+        }
+    }
+
+    /// 一時停止・再開・引き継ぎの呼び名。どれでもなければ nil
+    private func pauseLabel(_ envelope: IntentEnvelope) -> String? {
+        switch envelope.kind {
+        case PauseEpicIntent.kind:
+            "一時停止"
+
+        case ResumeEpicIntent.kind:
+            "再開"
+
+        case HandoverIntent.kind:
+            "引き継ぎ" + (envelope.string("mac").map { "（\($0)）" } ?? "")
+
+        default:
+            nil
         }
     }
 

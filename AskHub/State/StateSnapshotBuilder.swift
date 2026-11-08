@@ -18,6 +18,16 @@ struct StateIndex {
         var final: FinalEntry?
         /// 終えたことを送れる人がする作業（ゴールの確認の待ちと実装の間の、終えていないもの）と、その渡すものの種類
         var humanTasks: [HumanTask.ID: HandoverKind] = [:]
+        /// 開始した後（実装・最終 PR の段取り・人の確認の待ち）か。一時停止・再開・引き継ぎは、このときだけ送れる
+        var isStarted = false
+        /// epic の Mac でジョブが動いているか（一時停止していない epic は、終わるまで引き継げない）
+        var isBusyOnMac = false
+        /// epic の Mac（同じ Mac への引き継ぎは送らない）。処理を待つ引き継ぎを当てた後のもの
+        var mac: MacName?
+        /// 一時停止・再開・引き継ぎができるか。処理を待つ意図を当てた後の状態で決める
+        var canPause = false
+        var canResume = false
+        var canHandOver = false
     }
 
     /// 最終 PR への意図（判断のカードへの答え・マージの承認・指示）の対象
@@ -78,6 +88,7 @@ struct StateSnapshotBuilder {
             index.epics[epic.id]?.final?.isReviewable = epic.isActive && epic.finalReview?.state == .reviewable
             // 開始した後の取り下げ（作業のブランチの片付けなど）は段階 3 で送る
             index.epics[epic.id]?.canAbandon = epic.isActive && epic.stage < .implementing
+            applyPauseControls(of: epic, to: &index)
         }
         applyRejections(to: &epics)
         let snapshot = ClientSnapshot(

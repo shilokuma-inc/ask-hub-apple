@@ -28,7 +28,22 @@ enum EpicStatus {
         if epic.stage == .done {
             return [finishedLine(epic)]
         }
-        return humanLines(epic) + epic.activities.map { machineLine($0, epic: epic, snapshot: snapshot, now: now) }
+        let machineLines = epic.activities.map { machineLine($0, epic: epic, snapshot: snapshot, now: now) }
+        return humanLines(epic) + pausedLines(epic, now: now) + machineLines
+    }
+
+    /// 人が一時停止しているか（進行中の一覧の区分に使う）。人が待たれているものは、そちらに出す
+    static func isPausedByYou(_ epic: Epic) -> Bool {
+        epic.isActive && epic.isPaused && !waitsForYou(epic)
+    }
+
+    /// 人が一時停止しているときの 1 行。動いている作業は最後まで終わるので、その段取りの行は下に続けて出す
+    private static func pausedLines(_ epic: Epic, now: Date) -> [EpicStatusLine] {
+        guard let pausedAt = epic.pausedAt else {
+            return []
+        }
+        let text = "一時停止しています（\(RelativeTime.duration(since: pausedAt, now: now))）。再開するまで次の作業を始めません"
+        return [EpicStatusLine(owner: .machine, text: text, systemImage: "pause.circle.fill", route: nil)]
     }
 
     /// 人が待たれているか（進行中の一覧の区分に使う）

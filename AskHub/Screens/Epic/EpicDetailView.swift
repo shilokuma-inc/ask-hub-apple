@@ -369,7 +369,7 @@ private struct HistorySection: View {
     }
 }
 
-/// epic の操作（一時停止・引き継ぎ・やめる）
+/// epic の操作（一時停止・再開・引き継ぎ・やめる）
 private struct EpicMenu: ToolbarContent {
     let epic: Epic
     @Binding var isConfirmingDiscard: Bool
@@ -377,20 +377,32 @@ private struct EpicMenu: ToolbarContent {
     @Environment(ClientStore.self) private var store
 
     var body: some ToolbarContent {
-        // 送れない操作（状態リポジトリでは段階 3 の操作）は出さない。1 つも無ければメニューごと出さない
-        let canPause = epic.stage == .implementing && store.supports(.pause(epicID: epic.id))
-        let canHandOver = epic.stage == .implementing && store.supports(.handOver(epicID: epic.id, macID: ""))
+        // 一時停止・再開・引き継ぎは、開始した後（実装・最終 PR）だけ。送れない操作は出さない。1 つも無ければメニューごと出さない
+        let isStarted = epic.isActive && epic.stage >= .implementing
+        let canPause = isStarted && !epic.isPaused && store.supports(.pause(epicID: epic.id))
+        let canResume = isStarted && epic.isPaused && store.supports(.resume(epicID: epic.id))
+        let canHandOver = isStarted && store.supports(.handOver(epicID: epic.id, macID: ""))
+        // 一時停止していない epic は、Mac で動いている作業が終わるまで引き継げない（司令塔が断る）。そのときは一時停止を促す
+        let handOverNeedsPause = isStarted && !canHandOver && canPause
         let canDiscard = epic.isActive && store.supports(.discard(epicID: epic.id))
         ToolbarItem(placement: .primaryAction) {
-            if canPause || canHandOver || canDiscard {
+            if canPause || canResume || canHandOver || canDiscard {
                 Menu("操作", systemImage: "ellipsis.circle") {
                     if canPause {
-                        Button(epic.isPaused ? "再開する" : "一時停止する", systemImage: epic.isPaused ? "play" : "pause") {
-                            Task { await store.send(epic.isPaused ? .resume(epicID: epic.id) : .pause(epicID: epic.id)) }
+                        Button("一時停止する", systemImage: "pause") {
+                            Task { await store.send(.pause(epicID: epic.id)) }
+                        }
+                    }
+                    if canResume {
+                        Button("再開する", systemImage: "play") {
+                            Task { await store.send(.resume(epicID: epic.id)) }
                         }
                     }
                     if canHandOver {
                         HandOverMenu(epic: epic)
+                    } else if handOverNeedsPause {
+                        Button("ほかの Mac に引き継ぐ（動いている作業があるので、先に一時停止します）", systemImage: "arrow.right.arrow.left") {}
+                            .disabled(true)
                     }
                     if canDiscard {
                         Divider()
@@ -402,7 +414,8 @@ private struct EpicMenu: ToolbarContent {
     }
 }
 
-/// ほかの Mac への引き継ぎ（いま回している Mac のほかのすべての Mac。オフラインの Mac は選べない）
+/// ほかの Mac への引き継ぎ（いま回している Mac のほかのすべての Mac）。
+/// オフラインの Mac も選べる（戻ると、最後に push したところから続きを動かす）。ジョブを受けない Mac（自己診断の問題など）は選べない
 struct HandOverMenu: View {
     let epic: Epic
 
@@ -412,14 +425,21 @@ struct HandOverMenu: View {
         let macs = store.snapshot?.macs.filter { $0.id != epic.macID } ?? []
         Menu("ほかの Mac に引き継ぐ", systemImage: "arrow.right.arrow.left") {
             ForEach(macs) { mac in
-                Button("\(mac.name)\(mac.isOnline ? "" : "（オフライン）")") {
+                Button(Self.label(of: mac)) {
                     Task { await store.send(.handOver(epicID: epic.id, macID: mac.id)) }
                 }
-                .disabled(!mac.isOnline)
+                .disabled(mac.refusalReason != nil)
             }
             if macs.isEmpty {
                 Text("引き継げる Mac がありません")
             }
         }
+    }
+
+    static func label(of mac: Mac) -> String {
+        if let reason = mac.refusalReason {
+            return "\(mac.name)（\(reason)）"
+        }
+        return mac.isOnline ? mac.name : "\(mac.name)（オフライン。戻ると続きから動きます）"
     }
 }

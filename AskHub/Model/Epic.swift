@@ -26,6 +26,9 @@ struct Epic: Identifiable, Hashable {
     var isAbandoned = false
     /// 作業場所の用意（開始した後の段取りの最初）。開始する前は nil
     var workspace: Workspace?
+    /// 人が一時停止した時刻（再開するまで次の作業を始めない）。止めていなければ nil。
+    /// Mac がオフラインで止まっているときは、`activities` の `.paused` で出す
+    var pausedAt: Date?
 
     /// 段階。画面の段階の帯は 依頼・質問・確認（着手前の確認とゴール）・実装・最終 PR・完了 の 6 つ
     enum Stage: Int, Hashable, CaseIterable, Comparable {
@@ -338,13 +341,6 @@ extension Epic {
 
     var isActive: Bool { stage != .done && !isAbandoned }
 
-    /// 一時停止している（Mac がオフライン・人が止めた）
-    var isPaused: Bool {
-        activities.contains {
-            if case .paused = $0.kind {
-                return true
-            }
-            return false
-        }
-    }
+    /// 人が一時停止している（Mac がオフラインで止まっているだけのときは false）
+    var isPaused: Bool { pausedAt != nil }
 }
