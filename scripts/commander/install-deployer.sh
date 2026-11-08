@@ -9,7 +9,11 @@ SCRIPT="$DEPLOY/sign-and-install.sh"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 mkdir -p "$DEPLOY/incoming" "$HOME/Library/LaunchAgents"
-cp "$(dirname "$0")/sign-and-install.sh" "$SCRIPT"
+# deploy.sh は、このスクリプトと sign-and-install.sh を入れる先（$DEPLOY）に直接送るので、そのときはコピーしない
+SOURCE="$(cd "$(dirname "$0")" && pwd)/sign-and-install.sh"
+if [ "$SOURCE" != "$SCRIPT" ]; then
+    cp "$SOURCE" "$SCRIPT"
+fi
 chmod 700 "$SCRIPT"
 cat >"$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -32,4 +36,5 @@ cat >"$PLIST" <<PLIST
 PLIST
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
-echo "$LABEL を入れました（$PLIST）"
+# macOS の /bin/bash（3.2）は、変数の直後の全角の文字を変数名の続きと読むので、波かっこで区切る
+echo "${LABEL} を入れました（${PLIST}）"
