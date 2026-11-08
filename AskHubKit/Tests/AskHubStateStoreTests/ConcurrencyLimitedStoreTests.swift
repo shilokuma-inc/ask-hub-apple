@@ -25,19 +25,22 @@ struct ConcurrencyLimitedStoreTests {
         func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String { "" }
     }
 
-    /// 開けるまで読み終えない
+    /// 開けるまで読み終えない（開けた後は待たずに読み終える）
     actor GateStore: StateStore {
         private var gates: [CheckedContinuation<Void, Never>] = []
-        private(set) var started = 0
+        private var isOpen = false
+        private(set) var paths: [String] = []
+        var started: Int { paths.count }
 
         func open() {
+            isOpen = true
             gates.forEach { $0.resume() }
             gates.removeAll()
         }
 
         func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
-            started += 1
-            await withCheckedContinuation { gates.append($0) }
+            paths.append(path)
+            if !isOpen { await withCheckedContinuation { gates.append($0) } }
             return StoredBlob(data: Data(), sha: path)
         }
 
@@ -64,12 +67,26 @@ struct ConcurrencyLimitedStoreTests {
         #expect(await probe.maxInFlight == 4)
     }
 
+    /// `body` を `seconds` 秒まで待つ。終わらなければ nil（空きが返らないと待ち続けるので、テストを止めないように）
+    static func within<Value: Sendable>(seconds: Double, _ body: @escaping @Sendable () async throws -> Value) async -> Value? {
+        await withTaskGroup(of: Value?.self) { group in
+            group.addTask { try? await body() }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(seconds))
+                return nil
+            }
+            defer { group.cancelAll() }
+            guard let first = await group.next() else { return nil }
+            return first
+        }
+    }
+
     @Test func passesResultsAndErrorsThrough() async throws {
-        let store = ConcurrencyLimitedStore(ProbeStore(), limit: 2)
+        let store = ConcurrencyLimitedStore(ProbeStore(), limit: 1)
         #expect(try await store.read("a.json")?.data == Data("a.json".utf8))
         await #expect(throws: StateStoreError.notFound) { try await store.read("missing.json") }
-        // 失敗した後も空きは返っている
-        #expect(try await store.read("b.json")?.sha == "b.json")
+        // 失敗した後も空きは返っている（上限 1 なので、返っていなければ次は読めない）
+        #expect(await Self.within(seconds: 5) { try await store.read("b.json")?.sha } == "b.json")
     }
 
     @Test func cancelledWaiterGivesUpWithoutTakingSlot() async throws {
@@ -90,5 +107,24 @@ struct ConcurrencyLimitedStoreTests {
         while await gate.started < 2 { await Task.yield() }
         await gate.open()
         #expect(try await next.value?.sha == "next.json")
+    }
+
+    @Test func cancelledWaiterNeverRunsEvenIfSlotArrivesFirst() async throws {
+        // 取り消しと空きの受け渡しが、どちらが先でも、取り消した要求は下の置き場所に出ない
+        for round in 0..<30 {
+            let gate = GateStore()
+            let store = ConcurrencyLimitedStore(gate, limit: 1)
+            let first = Task { try await store.read("first-\(round).json") }
+            while await gate.started == 0 { await Task.yield() }
+            let waiting = Task { try await store.read("waiting-\(round).json") }
+            try await Task.sleep(for: .milliseconds(5))
+            waiting.cancel()
+            await gate.open()
+            _ = try? await waiting.value
+            _ = try await first.value
+            #expect(await !gate.paths.contains("waiting-\(round).json"))
+            // 返した空きで、次は読める
+            #expect(await Self.within(seconds: 5) { try await store.read("after-\(round).json")?.sha } == "after-\(round).json")
+        }
     }
 }
