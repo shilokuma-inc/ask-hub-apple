@@ -85,12 +85,17 @@ public struct MachineRuntime: Sendable {
         { owner in try await githubToken(for: owner, in: secrets)() }
     }
 
-    /// `claude --version` の版。分からなければ nil
-    static func version(of claude: ClaudeSetup) async -> String? {
+    /// `claude --version` の版。分からなければ nil。生きている印を書くたびに測るので、ここでも自分で更新させない
+    private static func version(of claude: ClaudeSetup) async -> String? {
         let command = Command(
             executable: claude.executable,
             arguments: ["--version"],
-            environment: ["HOME": claude.homeDirectory.path, "PATH": claude.path, "CLAUDE_CONFIG_DIR": claude.configDirectory.path],
+            environment: [
+                "HOME": claude.homeDirectory.path,
+                "PATH": claude.path,
+                "CLAUDE_CONFIG_DIR": claude.configDirectory.path,
+                "DISABLE_AUTOUPDATER": "1"
+            ],
             workingDirectory: claude.temporaryDirectory,
             timeout: .seconds(30)
         )
