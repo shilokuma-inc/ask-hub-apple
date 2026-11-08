@@ -436,9 +436,10 @@ struct HandOverMenu: View {
         }
     }
 
+    /// Mac の名前に、選べない理由かオフラインであることを添える
     static func label(of mac: Mac) -> String {
         if let reason = mac.refusalReason {
-            return "\(mac.name)（\(reason)）"
+            return "\(mac.name)（\(mac.isOnline ? "" : "オフライン・")\(reason)）"
         }
         return mac.isOnline ? mac.name : "\(mac.name)（オフライン。戻ると続きから動きます）"
     }

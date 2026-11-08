@@ -132,6 +132,19 @@ struct DemoClientServiceTests {
         #expect(try await service.fetchSnapshot().epic("budget-limit")?.workspace == .ready(branch: "askhub/budget-limit"))
     }
 
+    /// 引き継ぐ Mac は、オフラインでも選べる（戻ると続きから動くと添える）。ジョブを受けない Mac は、選べない理由を添える
+    @Test
+    func handOverLabelsTellOfflineAndRefusal() throws {
+        var mac = try #require(makeService().state.mac(DemoData.macMiniID))
+        mac.connection = .online(lastSeen: clock.now)
+        mac.refusalReason = nil
+        #expect(HandOverMenu.label(of: mac) == mac.name)
+        mac.connection = .offline(since: clock.now)
+        #expect(HandOverMenu.label(of: mac) == "\(mac.name)（オフライン。戻ると続きから動きます）")
+        mac.refusalReason = "自己診断で問題が見つかっています"
+        #expect(HandOverMenu.label(of: mac) == "\(mac.name)（オフライン・自己診断で問題が見つかっています）")
+    }
+
     /// 開始のときは、前回そのリポジトリを回した Mac を既定で選ぶ。前回の Mac がオフラインなら選ばない
     @Test
     func defaultStartMacIsLastOnlineMac() {
