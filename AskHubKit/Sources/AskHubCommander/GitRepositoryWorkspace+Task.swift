@@ -103,6 +103,18 @@ extension GitRepositoryWorkspace: TaskGit {
         return ReviewCheckout(directory: worktree, diff: diff, stat: stat, facts: facts)
     }
 
+    /// 人がする作業で渡されたファイルを置くフォルダ（`epics/<epic>/handover/<タスク>`）。作業場所と一緒に、最終 PR のマージ後に消える
+    public func handoverDirectory(epic: ULID, task: String) async throws(WorkspaceError) -> URL {
+        // タスクの id（`t1` など）はパスに使うので、英小文字と数字だけを受け付ける
+        guard !task.isEmpty, task.unicodeScalars.allSatisfy({ ("a"..."z").contains($0) || ("0"..."9").contains($0) }) else {
+            throw .failed("タスクの id（\(task)）の形が違う")
+        }
+        let directory = setup.root.appendingPathComponent("epics/\(epic.rawValue)/handover/\(task)", isDirectory: true)
+        try remove(directory)
+        try createDirectory(directory)
+        return directory
+    }
+
     /// base の CLAUDE.md から読んだリポジトリの事実。base に CLAUDE.md が無ければ空
     func facts(from base: String, in clone: URL) async throws(WorkspaceError) -> String {
         let revision = "refs/remotes/origin/\(base)"

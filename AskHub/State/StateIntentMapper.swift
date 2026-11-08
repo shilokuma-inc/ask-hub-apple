@@ -11,7 +11,8 @@ struct StateIntentMapper {
 
     /// 状態リポジトリに送れる意図か。段階 3 の操作のうち、引き継ぎ・確認・片付けなどは、まだ送れない。
     /// 人に渡されたジョブへの操作は、最後に読んだ状態の「対処が要ります」に出した操作だけ（やり直す・やめる）、取り下げは開始する前の epic だけ、
-    /// 最終 PR への操作（判断のカードへの答え・マージの承認・指示）は最終 PR を出した epic だけ送れる
+    /// 最終 PR への操作（判断のカードへの答え・マージの承認・指示）は最終 PR を出した epic だけ、
+    /// 人がする作業を終えたことは、ゴールの確認の待ちと実装の間の、終えていない作業だけ送れる
     func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
@@ -27,9 +28,20 @@ struct StateIntentMapper {
              let .instructFinal(epicID, _, _):
             index.epics[epicID]?.final != nil
 
-        case .handOver, .pause, .resume, .completeHumanTask, .submitSecret, .verify, .cleanUp:
+        case let .completeHumanTask(epicID, taskID, _):
+            index.epics[epicID]?.humanTasks[taskID] != nil
+
+        case .handOver, .pause, .resume, .verify, .cleanUp:
             false
         }
+    }
+
+    /// 意図より先に状態リポジトリに置く中身（渡すファイル）。`drafts(for:)` の payload の `attachments` の順
+    static func attachments(for intent: HumanIntent) -> [Data] {
+        guard case let .completeHumanTask(_, _, file?) = intent else {
+            return []
+        }
+        return [file.data]
     }
 
     /// 送る形。まとめて OK は、答えの無いカードそれぞれへの OK にする（司令塔は判断のカードへの答えを 1 枚ずつ受け取る）。
@@ -67,7 +79,10 @@ struct StateIntentMapper {
         case .respondToDecision, .merge, .instructFinal:
             return try finalDraft(intent)
 
-        case .acceptAllDecisions, .handOver, .pause, .resume, .completeHumanTask, .submitSecret, .verify, .cleanUp:
+        case let .completeHumanTask(epicID, taskID, file):
+            return try humanTaskDraft(epicID: epicID, taskID: taskID, file: file)
+
+        case .acceptAllDecisions, .handOver, .pause, .resume, .verify, .cleanUp:
             throw Self.unsupported
         }
     }
@@ -198,6 +213,29 @@ struct StateIntentMapper {
 
         default:
             throw Self.unsupported
+        }
+    }
+
+    /// 人がする作業を終えた。確かめたゴールの版に結びつける（その後にゴールが直されていれば、司令塔が断る）。
+    /// ファイルを渡す作業はファイルが 1 つ要り、ほかの作業（Secrets に入れる作業を含む）はファイルを付けない
+    private func humanTaskDraft(epicID: Epic.ID, taskID: HumanTask.ID, file: HandoverFile?) throws(ClientServiceError) -> IntentDraft {
+        let epic = try epic(epicID)
+        guard let handover = epic.humanTasks[taskID], let version = epic.goalVersion else {
+            throw ClientServiceError(message: "この作業は、いまは終えたことにできません。取り直してから送ってください")
+        }
+        let target = HumanTaskTarget(repo: epic.repo, epic: epic.id, task: taskID, goalVersion: version)
+        switch (handover, file) {
+        case (.file, let file?):
+            return .humanTaskDone(target, file: file.attachment)
+
+        case (.file, nil):
+            throw ClientServiceError(message: "渡すファイルを選んでください")
+
+        case (.none, nil), (.secret, nil):
+            return .humanTaskDone(target)
+
+        case (.none, _?), (.secret, _?):
+            throw ClientServiceError(message: "この作業では、ファイルを渡しません")
         }
     }
 

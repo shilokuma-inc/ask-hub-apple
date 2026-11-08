@@ -16,6 +16,8 @@ struct StateIndex {
         var canAbandon = false
         /// 最終 PR（出した後だけ）
         var final: FinalEntry?
+        /// 終えたことを送れる人がする作業（ゴールの確認の待ちと実装の間の、終えていないもの）と、その渡すものの種類
+        var humanTasks: [HumanTask.ID: HandoverKind] = [:]
     }
 
     /// 最終 PR への意図（判断のカードへの答え・マージの承認・指示）の対象
@@ -69,6 +71,10 @@ struct StateSnapshotBuilder {
         applyBlockers(to: &epics, overlaid: overlaid, index: &index)
         for epic in epics {
             index.epics[epic.id]?.isActive = epic.isActive
+            if !epic.isActive {
+                // 取り下げを送った epic の作業は、もう終えられない
+                index.epics[epic.id]?.humanTasks = [:]
+            }
             index.epics[epic.id]?.final?.isReviewable = epic.isActive && epic.finalReview?.state == .reviewable
             // 開始した後の取り下げ（作業のブランチの片付けなど）は段階 3 で送る
             index.epics[epic.id]?.canAbandon = epic.isActive && epic.stage < .implementing

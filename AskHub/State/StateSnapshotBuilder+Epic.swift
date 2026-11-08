@@ -8,11 +8,13 @@ extension StateSnapshotBuilder {
         let file = documents.epic
         let id = file.id.rawValue
         let protocolQuestions = documents.questions?.questions ?? []
+        let shownHumanTasks = documents.goal.map { humanTasks($0, epic: file) } ?? []
         index.epics[id] = StateIndex.EpicEntry(
             repo: file.repo,
             id: file.id,
             goalVersion: documents.goal?.version,
-            readinessVersion: documents.readiness?.version
+            readinessVersion: documents.readiness?.version,
+            humanTasks: Self.completableHumanTasks(file.stage, goal: documents.goal, shown: shownHumanTasks)
         )
         index.questions[id] = Dictionary(
             protocolQuestions.map { (Self.displayID($0.id), StateIndex.QuestionEntry(id: $0.id, version: $0.version)) },
@@ -37,7 +39,7 @@ extension StateSnapshotBuilder {
             stage: file.stage == .abandoned ? Self.abandonedStage(documents) : Self.stage(file.stage),
             questions: questions,
             goal: goal.map(Self.goal),
-            humanTasks: goal.map(Self.humanTasks) ?? [],
+            humanTasks: shownHumanTasks,
             tasks: progress.tasks,
             macID: file.mac?.rawValue,
             activities: activities(of: file, questions: questions) + progress.activities,
@@ -237,7 +239,21 @@ extension StateSnapshotBuilder {
         )
     }
 
-    private static func humanTasks(_ file: GoalFile) -> [HumanTask] {
+    // MARK: 人がする作業
+
+    /// 終えたことを送れる人がする作業（司令塔が `humanTaskDone` を受け付ける段階の、終えていなくて、送った「終えた」の処理を待っていないもの）
+    private static func completableHumanTasks(_ stage: EpicStage, goal: GoalFile?, shown: [HumanTask]) -> [HumanTask.ID: HandoverKind] {
+        guard [.awaitingStart, .running].contains(stage), let goal else {
+            return [:]
+        }
+        let waiting = Set(shown.filter { !$0.needsHuman }.map(\.id))
+        return Dictionary(
+            goal.humanTasks.filter { $0.state == .pending && !waiting.contains($0.id) }.map { ($0.id, $0.handover.kind) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private func humanTasks(_ file: GoalFile, epic: EpicFile) -> [HumanTask] {
         file.humanTasks.map { task in
             HumanTask(
                 id: task.id,
@@ -245,18 +261,45 @@ extension StateSnapshotBuilder {
                 why: task.why,
                 steps: task.steps.map { HumanTask.Step(text: $0) },
                 links: task.links.compactMap { link in URL(string: link).map { HumanTask.Link(title: $0.host() ?? link, url: $0) } },
-                deliverable: deliverable(task.handover),
+                deliverable: Self.deliverable(task.handover, repo: epic.repo),
                 blocksTaskIDs: file.tasks.filter { $0.dependsOn.contains(task.id) }.map(\.id),
-                state: task.state == .done ? .done : .todo
+                state: humanTaskState(task, goal: file, epic: epic)
             )
         }
     }
 
-    private static func deliverable(_ handover: GoalFile.Handover) -> HumanTask.Deliverable {
+    /// 終えていない作業は、この端末が最後に送った「終えた」で出し分ける: 処理を待っていれば司令塔が確かめている間（もう一度は送らせない）、
+    /// 断られていれば断った理由（直して送り直してもらう）
+    private func humanTaskState(_ task: GoalFile.HumanTask, goal: GoalFile, epic: EpicFile) -> HumanTask.State {
+        guard task.state == .pending else {
+            return .done
+        }
+        // 送った意図は新しい順
+        let latest = documents.sentIntents.first { sent in
+            sent.envelope.kind == HumanTaskDoneIntent.kind && sent.envelope.target?.epic == epic.id && sent.envelope.target?.id == task.id
+        }
+        guard let latest else {
+            return .todo
+        }
+        switch latest.consumed?.result {
+        case nil:
+            // 古いゴールの版で送ったもの・期限を過ぎたものは、司令塔が断る
+            let isLive = now.timeIntervalSince(latest.envelope.issuedAt.date) < Self.intentLifetime
+            return isLive && latest.envelope.targetVersion == String(goal.version) ? .verifying : .todo
+
+        case .rejected?:
+            return .verificationFailed(reason: latest.consumed?.reason ?? "理由は書かれていません")
+
+        case .accepted?:
+            return .todo
+        }
+    }
+
+    private static func deliverable(_ handover: GoalFile.Handover, repo: RepositoryFullName) -> HumanTask.Deliverable {
         switch handover.kind {
         case .none: .none
         case .file: .file(description: "ファイルを渡す")
-        case .secret: .secret(name: handover.name ?? "", repository: "")
+        case .secret: .secret(name: handover.name ?? "", repository: repo.rawValue)
         }
     }
 }

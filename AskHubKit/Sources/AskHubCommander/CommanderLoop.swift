@@ -189,7 +189,8 @@ public actor CommanderLoop {
         "giveUp": GiveUpJobHandler(),
         "decision": DecisionHandler(),
         "approveMerge": ApproveMergeHandler(),
-        "instructFinal": InstructFinalHandler()
+        "instructFinal": InstructFinalHandler(),
+        "humanTaskDone": HumanTaskDoneHandler()
     ]
 
     // MARK: - 通知

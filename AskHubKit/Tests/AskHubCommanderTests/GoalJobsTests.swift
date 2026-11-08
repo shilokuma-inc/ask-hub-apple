@@ -140,6 +140,36 @@ struct GoalJobsTests {
         #expect(!job.problems(in: .init(goal: goal(decided: []))).isEmpty)
     }
 
+    // MARK: - 人がする作業で渡すもの
+
+    /// file の作業の名前か手順に秘密らしい言葉があれば、secret にするか書き直させる（ゴールを作るときも直すときも）
+    @Test func fileHandoverMustNotLookSecret() throws {
+        let questions = try answered()
+        var draft = goal()
+        let file = GoalFile.Handover(kind: .file)
+        draft.humanTasks = [
+            .init(id: "h1", title: "Firebase の設定ファイルを落とす", why: "SDK が読む", steps: ["GoogleService-Info.plist を落とす"], handover: file),
+            .init(id: "h2", title: "APNs の鍵を作る", why: "通知を送る", steps: ["AuthKey_ABC123.P8 を落とす", "Key ID を控える"], handover: file),
+            .init(id: "h3", title: "配信の API Key を作る", why: "CI が配信する", steps: ["鍵を作る"], handover: .init(kind: .secret, name: "ASC_KEY")),
+            .init(id: "h4", title: "公開鍵の証明書を落とす", why: "署名を確かめる", steps: ["パス ワード は 要らない"], handover: file)
+        ]
+        let problems = [
+            "h2: file で渡す作業の名前か手順に、秘密らしい言葉（.p8）がある。秘密を含むものなら handover を secret にし、含まないなら秘密と読める言葉を使わずに書き直す",
+            "h4: file で渡す作業の名前か手順に、秘密らしい言葉（パスワード）がある。秘密を含むものなら handover を secret にし、含まないなら秘密と読める言葉を使わずに書き直す"
+        ]
+        let check = CheckReadinessJob(title: "広告", body: "…", questions: questions)
+        #expect(check.problems(in: .init(verdict: .ready, reason: "そろった", goal: draft)) == problems)
+        #expect(check.prompt.contains(HandoverRules.fileRule))
+        let current = try GoalFlow.goal(from: goal(), questions: questions, version: 1)
+        let revise = ReviseGoalJob(goal: current, questions: questions, instruction: "…")
+        #expect(revise.problems(in: .init(goal: draft)) == problems)
+        #expect(revise.prompt.contains(HandoverRules.fileRule))
+        // secret にすれば通る（h3 のように、secret の作業の言葉は確かめない）
+        draft.humanTasks[1].handover = .init(kind: .secret, name: "APNS_KEY")
+        draft.humanTasks[3].steps = ["公開の部分だけを落とす"]
+        #expect(check.problems(in: .init(verdict: .ready, reason: "そろった", goal: draft)).isEmpty)
+    }
+
     @Test func goalSchemaRequiresWholeGoal() {
         #expect(ReviseGoalJob.outputSchema["required"] == .array([.string("goal"), .string("notApplied")]))
         #expect(CheckReadinessJob.outputSchema["required"] == .array([.string("verdict"), .string("reason")]))
