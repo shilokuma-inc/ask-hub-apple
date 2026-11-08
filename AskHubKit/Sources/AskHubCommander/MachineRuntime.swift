@@ -20,6 +20,8 @@ public struct MachineRuntime: Sendable {
     public var claude: ClaudeSetup
     /// `claude --version` の版（生きている印に書く）。分からなければ nil
     public var claudeVersion: String?
+    /// epic の作業場所の排他。ジョブ（`taskRunners`）と、終わった epic の残りものの片付け（`finishedEpicCleanUp`）で同じものを使う
+    public var epicLocks = EpicLocks()
 
     /// 設定と Keychain から組み立てる。設定や Claude の setup-token が無ければ止める
     public static func load(_ commandLine: MachineCommandLine, budget limits: WriteBudget.Limits) async -> Self {

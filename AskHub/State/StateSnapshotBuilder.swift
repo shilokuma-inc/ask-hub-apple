@@ -14,6 +14,23 @@ struct StateIndex {
         /// やめていないか・取り下げられるか（開始する前で、やめていない）。どちらも処理を待つ意図を当てた後の状態で決める
         var isActive = true
         var canAbandon = false
+        /// 最終 PR（出した後だけ）
+        var final: FinalEntry?
+    }
+
+    /// 最終 PR への意図（判断のカードへの答え・マージの承認・指示）の対象
+    struct FinalEntry {
+        var pullRequest: Int
+        /// いまの head（意図の対象の版）。分からなければ nil
+        var head: String?
+        /// 答えられる判断のカード（見えると仕分けた仮決め）の id。仕分ける前の仮決めはカードに出すが、司令塔が答えを受け付けない
+        var decisionIDs: Set<String>
+        /// 答えの無いカードの id（まとめて OK の対象）。処理を待つ答えを当てた後のもの
+        var unansweredDecisionIDs: [String]
+        /// 司令塔がマージの承認を受け付けるか（`FinalMergeRule.canApprove`。判断の一覧を読めなかったときは false）。処理を待つ答えを当てた後のもの
+        var canApprove: Bool
+        /// 人が確かめる段階か。処理を待つ承認・指示を当てた後の状態で決める
+        var isReviewable: Bool
     }
 
     struct QuestionEntry {
@@ -52,6 +69,7 @@ struct StateSnapshotBuilder {
         applyBlockers(to: &epics, overlaid: overlaid, index: &index)
         for epic in epics {
             index.epics[epic.id]?.isActive = epic.isActive
+            index.epics[epic.id]?.final?.isReviewable = epic.isActive && epic.finalReview?.state == .reviewable
             // 開始した後の取り下げ（作業のブランチの片付けなど）は段階 3 で送る
             index.epics[epic.id]?.canAbandon = epic.isActive && epic.stage < .implementing
         }

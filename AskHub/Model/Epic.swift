@@ -123,6 +123,10 @@ struct EpicActivity: Hashable {
         case paused(macID: Mac.ID, since: Date)
         case fixingFinalPullRequest(FailureCategory, attempt: Int)
         case merging
+        /// マージの承認を送り、司令塔が受け取るのを待っている
+        case mergeRequested
+        /// 最終 PR への指示を送り、司令塔が受け取るのを待っている
+        case finalInstructionRequested
     }
 }
 
@@ -130,6 +134,33 @@ struct EpicActivity: Hashable {
 enum WorkStep: Hashable {
     case prepareWorkspace
     case task(EpicTask.ID, EpicTask.Phase)
+    /// タスクがすべて終わった後の、最終 PR の段取り
+    case final(FinalStep)
+}
+
+/// 最終 PR の段取り（`docs/renewal/flows.md` の「最終 PR までの段取り」）。最終 PR の番号は、出す前と分からないときは nil
+enum FinalStep: Hashable {
+    /// 最終 PR で流すのと同じ検証（UI テストを含む）
+    case verifying
+    /// 仮決めを、見えるものと内部の細部に仕分ける
+    case classifying
+    /// 見える仮決めの Before / After を撮る
+    case capturing
+    case opening
+    /// 最終 PR のチェックとレビューを待って、レビュー役が読んでいる
+    case reviewing(pullRequest: Int?)
+    /// 最終 PR を直している（直す理由。CI とレビューの直しは何回目か）
+    case fixing(pullRequest: Int?, reason: FixReason)
+    case merging(pullRequest: Int?)
+
+    enum FixReason: Hashable {
+        /// CI が通らない（何回目か）
+        case checks(round: Int)
+        /// レビュー役の必須の指摘（何回目か）
+        case review(round: Int)
+        /// 人が頼んだ（判断のカードの「直してほしい」「別案にする」・最終 PR への指示）
+        case request
+    }
 }
 
 /// 段取りの進み具合

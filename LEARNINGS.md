@@ -298,6 +298,11 @@
 - macOS 27 の上の Xcode 26.6 では、Simulator でテストを流すと「DTServiceHubClient failed to bless service hub」「The test runner hung before establishing connection.」で止まる（ビルドは通る）。開発者ツールの許可（`DevToolsSecurity`・`_developer`）は関係なかった。Xcode を 27 系に上げると直った（2026-11-08、Mac mini）
 - iOS 27.1 の Simulator のランタイム（24A94425）は、iPhone Duo だけに対応する。iPhone 17 Pro などは iOS 27.0（24A434）のランタイムで動く。`xcodebuild -downloadPlatform iOS` は 27.1 と 27.0 を続けて取る。版を決めずに「SDK と同じか古い最新」を選ぶと 27.1 になり、機種を作れない（`simctl create` が「Incompatible device」）。機種に対応するランタイムのうち最新を選ぶ（`supportedDeviceTypes`）
 - Xcode を上げた後、前の版の `CoreSimulatorService` が動いたままだと、新しいランタイムが「unavailable, liblaunch_sim.dylib could not be opened」になる。起動中の端末が無いときに `killall -9 com.apple.CoreSimulator.CoreSimulatorService` で動き直させる
+- 状態ファイルの見本（テストの JSON）に形の違う値（`keyId` が 43 文字でない・ULID の形が違うなど）が 1 つでもあると、`StateReader` はそのファイルごと読まずに
+  `sourceFailures` に入れるだけで、組み立ては続く（判断の一覧が丸ごと空になり、テストには「カードが 0 枚」という食い違いだけが出る）。
+  見本のファイルを使うテストでは、`snapshot.sourceFailures.isEmpty` も確かめる（2026-11-08、最終 PR の確認のつなぎ込み）
+- 意図の番号（ULID）が送った順に大きくなるのは、同じ `IntentSender`（中の `NonceSequence`）で送ったときだけ。送るたびに作り直すと、同じミリ秒に送った意図の大小は乱数で決まる
+  （テストの固定の時計で、判断への答えより承認の番号が小さくなることがあった）。司令塔は番号の順に処理するので、順が要る意図は 1 つの `IntentSender` で送る（2026-11-08、最終 PR の確認のつなぎ込み）
 - 司令塔のテストで人の意図を続けて置くとき、`nonce` を同じ時刻の `ULID.generate(at:)` で作ると、時刻の部分が同じでランダムな部分の順に処理され、置いた順にならない。
   `now.addingTimeInterval(0.001 * n)` でずらしても、浮動小数の誤差でミリ秒が切り捨てられて同じ時刻になることがある（`1_793_757_600.001` が `…600000` ミリ秒になる）。秒単位でずらす（`FinalFlowFixture.place`。2026-11-08、#911）
 

@@ -164,7 +164,7 @@ extension StateSnapshotBuilder {
     }
 
     /// ゴールのタスクの呼び名（例: タスク 2「並べ替えのボタン」）。ゴールに無ければ nil
-    private func taskName(_ taskID: String, epic: ULID) -> String? {
+    func taskName(_ taskID: String, epic: ULID) -> String? {
         let tasks = documents.epics.first { $0.epic.id == epic }?.goal?.tasks ?? []
         guard let offset = tasks.firstIndex(where: { $0.id == taskID }) else {
             return nil

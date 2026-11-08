@@ -64,7 +64,10 @@ struct TextRequest: Hashable {
     enum Purpose: Hashable {
         case explanation(epicID: Epic.ID, questionID: Question.ID)
         case freeTextAnswer(epicID: Epic.ID, questionID: Question.ID)
-        case decisionFix(epicID: Epic.ID, decisionID: DecisionCard.ID)
+        /// 判断のカードの「直してほしい」（カードを見たときの head に結びつける）
+        case decisionFix(epicID: Epic.ID, decisionID: DecisionCard.ID, headCommit: String?)
+        /// 最終 PR への指示（見た head のコミットに結びつける）
+        case finalInstruction(epicID: Epic.ID, headCommit: String)
         case verificationProblem(epicID: Epic.ID, itemID: VerificationItem.ID)
         case blockerInstruction(epicID: Epic.ID)
         case goalRevision(epicID: Epic.ID)
@@ -78,8 +81,11 @@ struct TextRequest: Hashable {
         case let .freeTextAnswer(epicID, questionID):
             .answer(epicID: epicID, questionID: questionID, optionID: nil, note: text)
 
-        case let .decisionFix(epicID, decisionID):
-            .respondToDecision(epicID: epicID, decisionID: decisionID, reply: .fix(text))
+        case let .decisionFix(epicID, decisionID, headCommit):
+            .respondToDecision(epicID: epicID, decisionID: decisionID, headCommit: headCommit, reply: .fix(text))
+
+        case let .finalInstruction(epicID, headCommit):
+            .instructFinal(epicID: epicID, headCommit: headCommit, instruction: text)
 
         case let .verificationProblem(epicID, itemID):
             .verify(epicID: epicID, itemID: itemID, reply: .problem(note: text))
@@ -165,13 +171,14 @@ enum DeckBuilder {
                 kindLabel: "判断の確認 \(number) / \(total)",
                 title: decision.title,
                 detail: "理由: \(decision.reason)",
-                choices: decisionChoices(decision, epicID: epic.id)
+                choices: decisionChoices(decision, epicID: epic.id, headCommit: review.headCommit)
             )
         }
     }
 
-    /// OK を先頭（推奨）にし、直してほしい・別案（最大 2 つ）を続ける。直してほしい（自由回答）は OK の対角に置く
-    static func decisionChoices(_ decision: DecisionCard, epicID: Epic.ID) -> [DeckCard.Choice] {
+    /// OK を先頭（推奨）にし、直してほしい・別案（最大 2 つ）を続ける。直してほしい（自由回答）は OK の対角に置く。
+    /// 答えは、カードを組み立てたときの最終 PR の head に結びつける
+    static func decisionChoices(_ decision: DecisionCard, epicID: Epic.ID, headCommit: String?) -> [DeckCard.Choice] {
         var choices = [
             DeckCard.Choice(
                 id: "accept",
@@ -179,7 +186,7 @@ enum DeckBuilder {
                 detail: "このままにする",
                 note: nil,
                 isRecommended: true,
-                action: .send(.respondToDecision(epicID: epicID, decisionID: decision.id, reply: .accept))
+                action: .send(.respondToDecision(epicID: epicID, decisionID: decision.id, headCommit: headCommit, reply: .accept))
             ),
             DeckCard.Choice(
                 id: "fix",
@@ -190,7 +197,7 @@ enum DeckBuilder {
                 action: .askText(TextRequest(
                     title: "直してほしい",
                     prompt: "どう直してほしいか",
-                    purpose: .decisionFix(epicID: epicID, decisionID: decision.id)
+                    purpose: .decisionFix(epicID: epicID, decisionID: decision.id, headCommit: headCommit)
                 ))
             )
         ]
@@ -201,7 +208,12 @@ enum DeckBuilder {
                 detail: alternative,
                 note: nil,
                 isRecommended: false,
-                action: .send(.respondToDecision(epicID: epicID, decisionID: decision.id, reply: .alternative(alternative)))
+                action: .send(.respondToDecision(
+                    epicID: epicID,
+                    decisionID: decision.id,
+                    headCommit: headCommit,
+                    reply: .alternative(alternative)
+                ))
             ))
         }
         return SwipeLayout.arranged(choices, asksText: \.asksText)

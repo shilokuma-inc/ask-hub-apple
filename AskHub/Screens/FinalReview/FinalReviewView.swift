@@ -5,9 +5,26 @@ struct FinalReviewView: View {
     let epicID: Epic.ID
 
     @Environment(ClientStore.self) private var store
-    @State private var shownDecision: DecisionCard?
+    @State private var shownDecision: ShownDecision?
     @State private var isConfirmingMerge = false
+    /// 確認を開いたときの head（承認をこれに結びつける）
+    @State private var mergeHead: String?
     @State private var isConfirmingAcceptAll = false
+    /// まとめて OK の確認を開いたときに見ていた head とカード
+    @State private var acceptAllTarget: AcceptAllTarget?
+    @State private var textRequest: TextRequest?
+
+    /// 開いた判断のカードと、開いたときの head（開いている間に取り直しても、答えは見たときの head に結びつける）
+    private struct ShownDecision: Identifiable {
+        var decision: DecisionCard
+        var headCommit: String?
+        var id: DecisionCard.ID { decision.id }
+    }
+
+    private struct AcceptAllTarget {
+        var headCommit: String?
+        var decisionIDs: [DecisionCard.ID]
+    }
 
     var body: some View {
         if let epic = store.epic(epicID), let review = epic.finalReview {
@@ -24,22 +41,47 @@ struct FinalReviewView: View {
             .navigationTitle("マージを確かめる")
             .hidesTabBar()
             .safeAreaBar(edge: .bottom) {
-                MergeBar(review: review) { isConfirmingMerge = true }
-                    .keepsControlSize()
+                MergeBar(review: review, onInstruct: instruction(epic, review).map { request in { textRequest = request } }) {
+                    mergeHead = review.headCommit
+                    isConfirmingMerge = true
+                }
+                .keepsControlSize()
             }
-            .sheet(item: $shownDecision) { decision in
-                DecisionSheet(epicID: epic.id, decision: decision)
+            .sheet(item: $shownDecision) { shown in
+                DecisionSheet(
+                    epicID: epic.id,
+                    decision: shown.decision,
+                    headCommit: shown.headCommit,
+                    canAnswer: review.state == .reviewable
+                )
+            }
+            .sheet(item: $textRequest) { request in
+                TextRequestSheet(request: request, subject: instructionSubject(epic, review)) { text in
+                    textRequest = nil
+                    Task { await store.send(request.intent(text: text)) }
+                } onCancel: {
+                    textRequest = nil
+                }
             }
             .confirmationDialog("PR #\(review.pullRequestNumber) をマージしますか？", isPresented: $isConfirmingMerge, titleVisibility: .visible) {
-                Button("merge commit でマージする") {
-                    Task { await store.send(.merge(epicID: epic.id, headCommit: review.headCommit)) }
+                if let head = mergeHead {
+                    Button("merge commit でマージする") {
+                        Task { await store.send(.merge(epicID: epic.id, headCommit: head)) }
+                    }
                 }
             } message: {
-                Text("確かめた head（\(review.headCommit)）だけをマージします。この後に push された変更があれば、マージしません")
+                Text("確かめた head（\(Self.shortCommit(mergeHead))）だけをマージします。この後に push された変更があれば、マージしません")
             }
             .confirmationDialog("残りの判断をまとめて OK にしますか？", isPresented: $isConfirmingAcceptAll, titleVisibility: .visible) {
-                Button("\(review.pendingDecisions.count) 件をまとめて OK") {
-                    Task { await store.send(.acceptAllDecisions(epicID: epic.id)) }
+                if let target = acceptAllTarget {
+                    Button("\(target.decisionIDs.count) 件をまとめて OK") {
+                        let intent = HumanIntent.acceptAllDecisions(
+                            epicID: epic.id,
+                            headCommit: target.headCommit,
+                            decisionIDs: target.decisionIDs
+                        )
+                        Task { await store.send(intent) }
+                    }
                 }
             }
     }
@@ -49,7 +91,7 @@ struct FinalReviewView: View {
             CardSection {
                 AppHeaderView(
                     repository: store.repository(epic.repositoryID),
-                    subtitle: "最終 PR #\(review.pullRequestNumber) · +\(review.additions) −\(review.deletions)",
+                    subtitle: (["最終 PR #\(review.pullRequestNumber)"] + [review.lineChanges].compactMap(\.self)).joined(separator: " · "),
                     iconSize: 40
                 )
             }
@@ -78,27 +120,64 @@ struct FinalReviewView: View {
     }
 
     private func decisionsSection(_ epic: Epic, _ review: FinalReview) -> some View {
-        CardSection {
-            if !review.pendingDecisions.isEmpty {
+        let canAnswer = review.state == .reviewable
+        return CardSection {
+            if canAnswer, !review.pendingDecisions.isEmpty {
                 NavigationLink(value: AppRoute.deck(.decisions(epic.id))) {
                     Label("カードで確かめる（\(review.pendingDecisions.count)）", systemImage: "rectangle.stack")
                         .rowFont(.title)
                 }
             }
             ForEach(review.decisions) { decision in
-                Button { shownDecision = decision } label: {
+                Button { shownDecision = ShownDecision(decision: decision, headCommit: review.headCommit) } label: {
                     DecisionRow(decision: decision)
                 }
                 .buttonStyle(.plain)
             }
-            if review.pendingDecisions.count >= 2 {
-                Button("残りをまとめて OK…", systemImage: "checkmark.circle") { isConfirmingAcceptAll = true }
+            if review.decisions.isEmpty {
+                Text("見える仮決めはありません").foregroundStyle(.secondary)
+            }
+            if canAnswer, review.pendingDecisions.count >= 2 {
+                Button("残りをまとめて OK…", systemImage: "checkmark.circle") {
+                    acceptAllTarget = AcceptAllTarget(headCommit: review.headCommit, decisionIDs: review.pendingDecisions.map(\.id))
+                    isConfirmingAcceptAll = true
+                }
             }
         } header: {
             Text("人が決めていない判断 · \(review.reviewedCount) / \(review.decisions.count) を確認")
         } footer: {
-            Text("ループが実装の中で仮に決めた、見た目や挙動に関わることです。全部を確かめるまでマージできません")
+            if review.state == .checking {
+                Text("最終 PR を確かめ終えたら、判断を確かめられます。全部を確かめるまでマージできません")
+            } else {
+                Text("ループが実装の中で仮に決めた、見た目や挙動に関わることです。全部を確かめるまでマージできません")
+            }
         }
+    }
+
+    /// 最終 PR への指示（直してほしいこと）。Claude に直させ、最終 PR のレビューからやり直す（見える仮決めは、スクショを撮り直して再び出す）。
+    /// 人が確かめる段階で、見ている head が分かるときだけ出す
+    private func instruction(_ epic: Epic, _ review: FinalReview) -> TextRequest? {
+        guard review.state == .reviewable, let head = review.headCommit,
+              store.supports(.instructFinal(epicID: epic.id, headCommit: head, instruction: "")) else {
+            return nil
+        }
+        return TextRequest(
+            title: "最終 PR を直してほしい",
+            prompt: "どう直してほしいか",
+            purpose: .finalInstruction(epicID: epic.id, headCommit: head)
+        )
+    }
+
+    /// 文を書くシートの上に出す、何についての指示か
+    private func instructionSubject(_ epic: Epic, _ review: FinalReview) -> TextRequestSheet.Subject {
+        let appName = store.repository(epic.repositoryID)?.appName
+        let context = [appName, "最終 PR #\(review.pullRequestNumber)"].compactMap(\.self).joined(separator: " · ")
+        return TextRequestSheet.Subject(context: context, title: epic.title)
+    }
+
+    /// コミットの短い形（例: 9f3c2e1）
+    private static func shortCommit(_ commit: String?) -> String {
+        commit.map { String($0.prefix(7)) } ?? "不明"
     }
 }
 
@@ -133,8 +212,17 @@ private struct ChecksView: View {
         VStack(alignment: .leading, spacing: 6) {
             Label(ciText, systemImage: ciSymbol)
                 .foregroundStyle(checks.ci == .passed ? Theme.success : Color.secondary)
-            Label(reviewText, systemImage: reviewProblems.isEmpty ? "checkmark.circle" : "xmark.circle")
-                .foregroundStyle(reviewProblems.isEmpty ? Color.secondary : Theme.danger)
+            if let findings = checks.findings {
+                DisclosureGroup("最後のレビューで直すことになった点") {
+                    Text(findings)
+                        .appFont(.caption)
+                        .textSelection(.enabled)
+                }
+            } else if checks.ci != .reviewing {
+                // レビューの結果を待っている間は、指摘があるかどうか分からないので出さない
+                Label(reviewText, systemImage: reviewProblems.isEmpty ? "checkmark.circle" : "xmark.circle")
+                    .foregroundStyle(reviewProblems.isEmpty ? Color.secondary : Theme.danger)
+            }
         }
         .appFont(.subheadline)
     }
@@ -161,8 +249,10 @@ private struct ChecksView: View {
         switch checks.ci {
         case .passed: "CI は通りました"
         case .running: "CI を流しています"
+        case .reviewing: "CI とレビューの結果を待って、確かめています"
         case let .waitingForRunner(retry, nextAt): "ランナーの空きを待っています（再試行 \(retry) 回目・次は \(RelativeTime.clock(nextAt))）"
         case let .fixing(category, attempt): "\(category.label)を自動で直しています（\(attempt) / 3）"
+        case .fixingByRequest: "頼まれた直しをしています"
         case .failed: "CI が通りませんでした"
         }
     }
@@ -170,9 +260,9 @@ private struct ChecksView: View {
     private var ciSymbol: String {
         switch checks.ci {
         case .passed: "checkmark.circle.fill"
-        case .running: "clock"
+        case .running, .reviewing: "clock"
         case .waitingForRunner: "hourglass"
-        case .fixing: "wrench.and.screwdriver"
+        case .fixing, .fixingByRequest: "wrench.and.screwdriver"
         case .failed: "xmark.circle.fill"
         }
     }
@@ -222,9 +312,11 @@ private struct DecisionRow: View {
     }
 }
 
-/// 下のマージのボタン。押せないときは、何が残っているかを書く
+/// 下のマージのボタンと、最終 PR を直してほしいときの指示のボタン。マージを押せないときは、何が残っているかを書く
 private struct MergeBar: View {
     let review: FinalReview
+    /// 最終 PR への指示を書く。送れないときは nil（ボタンを出さない）
+    let onInstruct: (() -> Void)?
     let onMerge: () -> Void
 
     var body: some View {
@@ -233,13 +325,19 @@ private struct MergeBar: View {
                 Label("\(automatic ? "自動で" : "")マージしました（\(RelativeTime.clock(date))）", systemImage: "checkmark.seal.fill")
                     .foregroundStyle(Theme.success)
             } else {
-                Button(action: onMerge) {
-                    Text(review.state == .merging ? "マージしています…" : "マージする")
-                        .frame(maxWidth: .infinity)
+                HStack(spacing: 12) {
+                    if let onInstruct {
+                        Button("直してほしい…", systemImage: "pencil", action: onInstruct)
+                            .buttonStyle(.glass)
+                    }
+                    Button(action: onMerge) {
+                        Text(review.state == .merging ? "マージしています…" : "マージする")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(!review.canMerge)
                 }
-                .buttonStyle(.glassProminent)
                 .controlSize(.large)
-                .disabled(!review.canMerge)
                 if let reason = blockedReason {
                     Text(reason)
                         .appFont(.caption)
@@ -252,8 +350,18 @@ private struct MergeBar: View {
     }
 
     private var blockedReason: String? {
-        guard !review.canMerge, review.state == .reviewable else {
+        guard !review.canMerge else {
             return nil
+        }
+        switch review.state {
+        case .checking:
+            return "最終 PR を確かめています。終わったら、判断を確かめてマージできます"
+
+        case .merging, .merged:
+            return nil
+
+        case .reviewable:
+            break
         }
         if review.headChangedAfterReview {
             return "確かめた後に変更が入りました"
@@ -261,6 +369,12 @@ private struct MergeBar: View {
         let pending = review.decisions.filter { !$0.isConfirmed }.count
         if pending > 0 {
             return "あと \(pending) 件の判断を確かめるとマージできます"
+        }
+        if !review.acceptsApproval {
+            return "判断の一覧を読めていません。取り直してからマージしてください"
+        }
+        if review.headCommit == nil {
+            return "最終 PR の head が分かりません。取り直してください"
         }
         return "CI とレビューを通ったらマージできます"
     }

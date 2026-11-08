@@ -84,7 +84,8 @@ extension ClaudeJobRunnerTests {
         capacity: Int = 2,
         now: @escaping @Sendable () -> Date = { ClaudeJobRunnerTests.now },
         mirror: DiscussionMirror? = nil,
-        epicWorkspace: (any EpicWorkspace)? = nil
+        epicWorkspace: (any EpicWorkspace)? = nil,
+        tidy: @escaping @Sendable () async -> Void = {}
     ) -> CommanderLoop {
         let publicKeys = [keyID: key.publicKey.derRepresentation]
         let selfCheck = SelfCheck(checkedAt: Timestamp(Self.now), keychain: .ok, githubToken: .ok, claudeToken: .ok)
@@ -97,7 +98,8 @@ extension ClaudeJobRunnerTests {
             status: { CommanderLoop.MachineStatus(diskFreeGB: 100, load: 0.5, selfCheck: selfCheck) },
             log: { _ in },
             mirror: mirror,
-            epicWorkspace: epicWorkspace
+            epicWorkspace: epicWorkspace,
+            tidy: tidy
         )
     }
 
@@ -232,13 +234,18 @@ extension ClaudeJobRunnerTests {
     @Test func loopRewritesHeartbeatsAfterInterval() async throws {
         let store = try await storeWithRequest(count: 0)
         let clock = OSAllocatedUnfairLock(initialState: Self.now)
-        let loop = loop(store, claude: ScriptedRunner([]), now: { clock.withLock { $0 } })
+        let tidied = OSAllocatedUnfairLock(initialState: 0)
+        let loop = loop(store, claude: ScriptedRunner([]), now: { clock.withLock { $0 } }, tidy: { tidied.withLock { $0 += 1 } })
         _ = try await loop.cycle()
+        _ = try await loop.cycle()
+        // 終わった epic の残りものは、生きている印を書いたときだけ片付ける
+        #expect(tidied.withLock { $0 } == 1)
         let later = Self.now.addingTimeInterval(10 * 60 + 1)
         clock.withLock { $0 = later }
         _ = try await loop.cycle()
         #expect(try await read(CommanderFile.self, at: StatePath.commander, in: store)?.seenAt == Timestamp(later))
         #expect(try await read(MacFile.self, at: StatePath.mac(Self.commander), in: store)?.seenAt == Timestamp(later))
+        #expect(tidied.withLock { $0 } == 2)
     }
 
     @Test func loopDoesNotTakeAnotherJobBeforeAttemptIsWritten() async throws {

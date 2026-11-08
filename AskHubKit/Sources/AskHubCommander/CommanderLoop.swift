@@ -69,6 +69,8 @@ public actor CommanderLoop {
     /// タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）を動かすもの（`MachineRuntime.taskRunners`）。
     /// この Mac が開始のときに選ばれた epic の、自分宛てのものだけを引き受ける
     nonisolated let taskRunners: [JobKind: any JobRunning]
+    /// 生きている印を書いた後に、リポジトリの写しのほかに片付けるもの（終わった epic の残りもの。`FinishedEpicCleanUp`）
+    nonisolated let tidy: @Sendable () async -> Void
 
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
@@ -88,7 +90,8 @@ public actor CommanderLoop {
         sleeper: any Sleeper = TaskSleeper(),
         mirror: DiscussionMirror? = nil,
         epicWorkspace: (any EpicWorkspace)? = nil,
-        taskRunners: [JobKind: any JobRunning] = [:]
+        taskRunners: [JobKind: any JobRunning] = [:],
+        tidy: @escaping @Sendable () async -> Void = {}
     ) {
         self.context = context
         self.settings = settings
@@ -102,6 +105,7 @@ public actor CommanderLoop {
         self.mirror = mirror
         self.epicWorkspace = epicWorkspace
         self.taskRunners = taskRunners
+        self.tidy = tidy
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
     }
@@ -220,7 +224,8 @@ public actor CommanderLoop {
         try await context.put(commander, at: StatePath.commander, message: "司令塔の生きている印")
         try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now
-        // しばらく使っていないリポジトリの写しを片付ける
+        // しばらく使っていないリポジトリの写しと、終わった epic の残りものを片付ける
         await workspace.tidy()
+        await tidy()
     }
 }
