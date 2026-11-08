@@ -309,6 +309,20 @@ public struct GoalFile: StateFile {
         }
     }
 
+    /// 人がする作業を終えた記録（司令塔が `humanTaskDone` の意図を受け付けたときに書く）
+    public struct Completion: Codable, Equatable, Sendable {
+        public var intent: IntentReference
+        public var at: Timestamp
+        /// 渡されたファイル（`file` の作業。中身は `attachments/<device>/<nonce>/<n>`）。「終わった」だけなら nil
+        public var file: RequestAttachment?
+
+        public init(intent: IntentReference, at: Timestamp, file: RequestAttachment? = nil) {
+            self.intent = intent
+            self.at = at
+            self.file = file
+        }
+    }
+
     public struct HumanTask: Codable, Equatable, Sendable, Identifiable {
         public var id: String
         public var title: String
@@ -317,6 +331,8 @@ public struct GoalFile: StateFile {
         public var links: [String]
         public var handover: Handover
         public var state: HumanTaskState
+        /// 終えた記録。終える前は nil
+        public var done: Completion?
 
         public init(
             id: String,
@@ -325,7 +341,8 @@ public struct GoalFile: StateFile {
             steps: [String],
             links: [String] = [],
             handover: Handover = Handover(kind: .none),
-            state: HumanTaskState = .pending
+            state: HumanTaskState = .pending,
+            done: Completion? = nil
         ) {
             self.id = id
             self.title = title
@@ -334,6 +351,7 @@ public struct GoalFile: StateFile {
             self.links = links
             self.handover = handover
             self.state = state
+            self.done = done
         }
     }
 
@@ -398,6 +416,8 @@ public struct GoalFile: StateFile {
         case .none, .file:
             if humanTask.handover.name != nil { problems.append("\(humanTask.id): secret でない渡し方に名前がある") }
         }
+        if (humanTask.state == .done) != (humanTask.done != nil) { problems.append("\(humanTask.id): 終えた記録は done の作業だけが持つ") }
+        if humanTask.done?.file != nil, humanTask.handover.kind != .file { problems.append("\(humanTask.id): file でない作業にファイルがある") }
         return problems
     }
 

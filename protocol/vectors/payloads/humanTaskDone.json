@@ -1,0 +1,71 @@
+{
+  "description": "人がする作業を終えた人の意図の payload の例",
+  "schema": "payloads/humanTaskDone.schema.json",
+  "cases": [
+    {
+      "name": "done-without-file",
+      "payload": {},
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "with-file",
+      "payload": {
+        "attachments": [
+          {
+            "n": 1,
+            "name": "GoogleService-Info.plist",
+            "size": 1234,
+            "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "two-files",
+      "payload": {
+        "attachments": [
+          {
+            "n": 1,
+            "name": "a.plist",
+            "size": 1,
+            "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+            "n": 2,
+            "name": "b.plist",
+            "size": 1,
+            "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "path-in-name",
+      "payload": {
+        "attachments": [
+          {
+            "n": 1,
+            "name": "../a.plist",
+            "size": 1,
+            "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "note": "終わった"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}
