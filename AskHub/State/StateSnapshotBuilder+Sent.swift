@@ -236,8 +236,10 @@ extension StateSnapshotBuilder {
             epics[epicIndex].activities.append(EpicActivity(kind: .mergeRequested, since: sentAt))
             epics[epicIndex].history.append(Epic.HistoryEntry(date: sentAt, text: "マージを承認しました。司令塔が受け取るのを待っています"))
         } else {
-            // 受け取った司令塔は、最終 PR を直させてレビューからやり直す。それまで判断の確認とマージはできない
+            // 受け取った司令塔は、最終 PR を直させてレビューからやり直す。それまで判断の確認とマージはできず、前のレビューの結果は今の結果として出さない
             epics[epicIndex].finalReview?.state = .checking
+            epics[epicIndex].finalReview?.checks.ci = .fixingByRequest
+            epics[epicIndex].finalReview?.checks.findings = nil
             epics[epicIndex].activities.append(EpicActivity(kind: .finalInstructionRequested, since: sentAt))
             let text = "最終 PR に指示しました。司令塔が受け取るのを待っています"
             epics[epicIndex].history.append(Epic.HistoryEntry(date: sentAt, text: text))
