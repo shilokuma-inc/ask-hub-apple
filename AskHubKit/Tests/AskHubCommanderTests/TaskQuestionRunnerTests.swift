@@ -31,7 +31,8 @@ struct TaskQuestionRunnerTests {
         task: String?,
         outputs: AttemptFile.Outputs,
         state: QuestionState = .answered,
-        mac: MacName = Fixture.mac
+        mac: MacName = Fixture.mac,
+        claude: AttemptFile.Claude? = askedClaude
     ) async throws {
         var outputs = outputs
         outputs.report = TaskOutputReport(summary: "並びを決めてほしい", question: .init(
@@ -41,7 +42,7 @@ struct TaskQuestionRunnerTests {
             recommended: TaskJobsTests.question.recommended,
             reason: TaskJobsTests.question.reason
         ))
-        try await fixture.record(job, outputs: outputs, claude: askedClaude, mac: mac)
+        try await fixture.record(job, outputs: outputs, claude: claude, mac: mac)
         let other = ULID(rawValue: "01JCJ0B000000000000000000Z")!
         let questions = QuestionsFile(questions: [
             question("q1", title: "上位を何件出すか", round: 1, state: .answered),
@@ -192,6 +193,29 @@ struct TaskQuestionRunnerTests {
         #expect(call.prompt.contains("次のタスクを 1 つ実装してください"))
         #expect(call.prompt.contains("途中の変更から続けてください"))
         #expect(call.prompt.contains("補足: 同点は ID 順"))
+    }
+
+    @Test func continuesKeptChangesInNewConversationWithoutRecordedConversation() async throws {
+        let fixture = Fixture()
+        try await fixture.prepare()
+        let asking = fixture.job(.implementTask, "02")
+        // 質問した試行に会話の記録が無い（会話が残っていない）
+        let claude = AttemptFile.Claude(model: "claude-opus-5-5", session: nil, estimatedCostUsd: 0.2)
+        try await Self.asked(fixture, job: asking, task: "t2", outputs: .init(branch: Fixture.branches.task), claude: claude)
+        fixture.git.update {
+            $0.workspace = (Fixture.branches.task, Fixture.base)
+            $0.dirty = true
+        }
+        let runner = FakeTaskRunner([FakeTaskRunner.done("並びを名前順にした。", session: "s-new")])
+        let job = Self.resumption(fixture, .implementTask, "04", input: ImplementTaskInput(question: "q3").jobInput, after: asking)
+        let result = try await ImplementTaskRunner(environment: try fixture.environment(runner)).execute(job)
+
+        // 再開を試さずに、作業場所はそのまま、新しい会話で途中の変更から続けさせる
+        #expect(result.failure == nil)
+        #expect(!fixture.git.current.calls.contains("checkOutTask \(Fixture.branches.task)"))
+        #expect(runner.calls.map(\.resume) == [nil])
+        #expect(runner.calls.first?.prompt.contains("途中の変更から続けてください") == true)
+        #expect(runner.calls.first?.prompt.contains("「名前順」を選んだ") == true)
     }
 
     @Test func keepsResumingWhenFailureIsNotAboutConversation() async throws {
