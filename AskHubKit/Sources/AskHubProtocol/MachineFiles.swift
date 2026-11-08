@@ -9,7 +9,7 @@ public enum MacKind: String, Codable, Sendable, CaseIterable {
     case manual
 }
 
-/// 起動したときの自己診断の結果
+/// 生きている印を書くときの自己診断の結果
 public struct SelfCheck: Codable, Equatable, Sendable {
     public enum State: String, Codable, Sendable, CaseIterable {
         case ok
@@ -18,13 +18,31 @@ public struct SelfCheck: Codable, Equatable, Sendable {
         case expired
     }
 
+    /// 持ち主（organization・個人）ごとの GitHub のトークンの様子。どの持ち主のトークンを入れ直すかを出すために書く。値そのものは書かない
+    public struct GitHubToken: Codable, Equatable, Sendable {
+        /// トークンを置いた持ち主（小文字にそろえた名前）
+        public var owner: String
+        public var state: State
+        /// GitHub の API の応答の見出し（`github-authentication-token-expiration`）で分かった期限。期限の無いトークン・まだ分からないときは nil
+        public var expiresAt: Timestamp?
+
+        public init(owner: String, state: State, expiresAt: Timestamp? = nil) {
+            self.owner = owner
+            self.state = state
+            self.expiresAt = expiresAt
+        }
+    }
+
     public var checkedAt: Timestamp
     public var keychain: State
+    /// 持ち主ごとのトークンをまとめた様子（1 つでも無ければ `missing`、次に `invalid`・`expired` の順）
     public var githubToken: State
     public var claudeToken: State
-    /// 分かるときだけ書く（setup-token は登録した日から 1 年）
+    /// 分かるときだけ書く。GitHub のトークンは持ち主ごとの期限のうち一番早いもの、setup-token は登録した日から 1 年
     public var githubTokenExpiresAt: Timestamp?
     public var claudeTokenExpiresAt: Timestamp?
+    /// 持ち主ごとの内訳。書かない Mac（前の版）もある
+    public var githubTokens: [GitHubToken]?
 
     public init(
         checkedAt: Timestamp,
@@ -32,7 +50,8 @@ public struct SelfCheck: Codable, Equatable, Sendable {
         githubToken: State,
         claudeToken: State,
         githubTokenExpiresAt: Timestamp? = nil,
-        claudeTokenExpiresAt: Timestamp? = nil
+        claudeTokenExpiresAt: Timestamp? = nil,
+        githubTokens: [GitHubToken]? = nil
     ) {
         self.checkedAt = checkedAt
         self.keychain = keychain
@@ -40,6 +59,24 @@ public struct SelfCheck: Codable, Equatable, Sendable {
         self.claudeToken = claudeToken
         self.githubTokenExpiresAt = githubTokenExpiresAt
         self.claudeTokenExpiresAt = claudeTokenExpiresAt
+        self.githubTokens = githubTokens
+    }
+
+    public var violations: [String] {
+        guard let githubTokens else { return [] }
+        var violations: [String] = []
+        if githubTokens.contains(where: { !Self.isOwnerName($0.owner) }) { violations.append("githubTokens.owner の形が違う") }
+        if Set(githubTokens.map(\.owner)).count != githubTokens.count { violations.append("githubTokens の持ち主が重なる") }
+        return violations
+    }
+
+    /// GitHub の持ち主の名前（英数字とハイフンで 1〜39 文字。ハイフンで始まらない）
+    private static func isOwnerName(_ owner: String) -> Bool {
+        let scalars = owner.unicodeScalars
+        let isAllowed = { (scalar: Unicode.Scalar) in
+            scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || scalar == "-")
+        }
+        return (1...39).contains(scalars.count) && !owner.hasPrefix("-") && scalars.allSatisfy(isAllowed)
     }
 }
 
@@ -105,7 +142,7 @@ public struct MacFile: StateFile {
         if diskFreeGB < 0 { violations.append("diskFreeGB は 0 以上") }
         if !(load >= 0) { violations.append("load は 0 以上") }
         if capacity.claude < 0 || capacity.build < 0 { violations.append("capacity は 0 以上") }
-        return violations
+        return violations + selfCheck.violations
     }
 }
 
@@ -139,7 +176,7 @@ public struct CommanderFile: StateFile {
     }
 
     public var violations: [String] {
-        versions.commander.isEmpty ? ["versions.commander が空"] : []
+        (versions.commander.isEmpty ? ["versions.commander が空"] : []) + selfCheck.violations
     }
 }
 
