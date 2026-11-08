@@ -24,7 +24,9 @@ extension StateSnapshotBuilder {
             let stopped = Set(waiting.compactMap(Self.activity(of:)))
             epics[epicIndex].activities.removeAll { stopped.contains($0.kind) }
             let target = JobTarget(repo: job.repo, epic: job.epic, job: job.id, attempt: job.attempts)
-            let blocker = blocker(job, target: target, attempts: documents.attempts[job.id] ?? [], others: waiting.count - 1)
+            let blocker = blocker(
+                job, target: target, stage: documents.epic.stage, attempts: documents.attempts[job.id] ?? [], others: waiting.count - 1
+            )
             epics[epicIndex].blocker = blocker
             index.epics[id]?.blockedJob = target
             index.epics[id]?.blockerActions = Set(blocker.actions)
@@ -80,7 +82,7 @@ extension StateSnapshotBuilder {
         return documents.epics.first { $0.epic.id == epic }?.jobs.first { $0.id.rawValue == jobID }
     }
 
-    private func blocker(_ job: JobFile, target: JobTarget, attempts: [AttemptFile], others: Int) -> Blocker {
+    private func blocker(_ job: JobFile, target: JobTarget, stage: EpicStage, attempts: [AttemptFile], others: Int) -> Blocker {
         let failure = attempts.last { $0.number == job.attempts }?.failure
         let category = failure?.failureClass.category ?? .unexpected
         let subject = subject(of: job)
@@ -95,17 +97,18 @@ extension StateSnapshotBuilder {
             logExcerpt: failure?.logExcerpt,
             attempts: attempts.map(Self.attempt),
             occurredAt: job.updatedAt.date,
-            actions: Self.actions(for: job.kind, category: category),
+            actions: Self.actions(for: job.kind, at: stage, category: category),
             subject: subject,
             target: Self.blockerTarget(target)
         )
     }
 
-    /// 選べる操作。司令塔が受け付けるものだけを出す（やり直しはどの種類でも、やめるは `JobKind.giveUpEffect` で扱いが決まっているものだけ）
-    private static func actions(for kind: JobKind, category: FailureCategory) -> [Blocker.Action] {
+    /// 選べる操作。司令塔が受け付けるものだけを出す（やり直しはどの種類でも、やめるは `JobKind.giveUpEffect(at:)` で扱いが決まっているものだけ）。
+    /// 開始した後の epic に残っていた開始の前のジョブ（着手前の確認など）は、司令塔と同じく、epic ごとではなくその作業だけをやめる
+    private static func actions(for kind: JobKind, at stage: EpicStage, category: FailureCategory) -> [Blocker.Action] {
         // 認証切れは、人が Mac で直してから再開する
         var actions: [Blocker.Action] = [category == .authExpired ? .resumeAfterFix : .retry]
-        switch kind.giveUpEffect {
+        switch kind.giveUpEffect(at: stage) {
         case .abandonsEpic:
             actions.append(.discard)
 

@@ -185,14 +185,22 @@ extension StateSnapshotBuilder {
             showRetryRequested(job, sentAt: envelope.issuedAt.date, in: &epics[epicIndex])
             return
         }
-        if job.kind.giveUpEffect == .abandonsEpic {
+        // 司令塔（`GiveUpJobHandler`）と同じく、epic の段階を踏まえて扱いを決める
+        let stage = documents.epics.first { $0.epic.id == job.epic }?.epic.stage
+        switch stage.flatMap(job.kind.giveUpEffect(at:)) {
+        case .abandonsEpic:
             epics[epicIndex].isAbandoned = true
-        } else if job.kind == .explain {
-            reopenQuestion(of: job, in: &epics[epicIndex])
-        } else if job.kind == .reviseGoal {
-            epics[epicIndex].goal?.revisionRequest = nil
-            epics[epicIndex].activities.removeAll { $0.kind == .revisingGoal }
-        } else {
+
+        case .jobOnly:
+            // 開始した後の epic に残っていた開始の前のジョブ（着手前の確認など）は、そのジョブだけを取り消す（epic はそのまま進む）
+            if job.kind == .explain {
+                reopenQuestion(of: job, in: &epics[epicIndex])
+            } else if job.kind == .reviseGoal {
+                epics[epicIndex].goal?.revisionRequest = nil
+                epics[epicIndex].activities.removeAll { $0.kind == .revisingGoal }
+            }
+
+        case nil:
             return
         }
         let text = "\(subject)をやめました。司令塔が受け取るのを待っています"
