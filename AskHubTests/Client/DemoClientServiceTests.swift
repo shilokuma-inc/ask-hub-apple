@@ -201,6 +201,22 @@ struct DemoClientServiceTests {
         #expect(fixed.headCommit != head)
     }
 
+    /// 見た head が今と違う指示は受け付けず、受け付けた指示の直しを早く終えることもない
+    @Test
+    func staleFinalInstructionIsIgnored() async throws {
+        let service = makeService()
+        let head = try #require(service.state.epic("tsundoku-search")?.finalReview?.headCommit)
+        try await service.perform(.instructFinal(epicID: "tsundoku-search", headCommit: "0000000", instruction: "古い head"))
+        #expect(service.state.epic("tsundoku-search")?.finalReview?.state == .reviewable)
+
+        clock.now.addTimeInterval(15)
+        try await service.perform(.instructFinal(epicID: "tsundoku-search", headCommit: head, instruction: "検索欄を下に"))
+        // 直し終えるまで 20 秒かかる。古い指示の分を予約していれば、ここ（古い指示から 21 秒）で終わってしまう
+        clock.now.addTimeInterval(6)
+        _ = try await service.fetchSnapshot()
+        #expect(service.state.epic("tsundoku-search")?.finalReview?.state == .checking)
+    }
+
     /// 直してほしいと頼むと直してからもう一度出す
     @Test
     func fixRequestComesBackForReview() async throws {

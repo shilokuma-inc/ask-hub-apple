@@ -235,6 +235,8 @@ extension StateClientServiceTests {
             try await service.perform(.merge(epicID: Self.epicID, headCommit: Self.finalHead))
         }
         try await service.perform(.acceptAllDecisions(epicID: Self.epicID))
+        // 読み直す前にもう一度押しても、送ってあって受け取り待ちの答えは送り直さない
+        try await service.perform(.acceptAllDecisions(epicID: Self.epicID))
         let answers = try await sentEnvelopes(in: fixture)
         #expect(answers.map(\.kind) == [DecisionIntent.kind, DecisionIntent.kind])
         #expect(answers.map { $0.target?.id } == ["d1", "d4"])
@@ -287,6 +289,8 @@ extension StateClientServiceTests {
         let snapshot = try await service.fetchSnapshot()
         let epic = try #require(snapshot.epic(Self.epicID))
         #expect(epic.finalReview?.state == .checking)
+        // 前のレビューの結果（CI は通りました）を、今の結果として出さない
+        #expect(epic.finalReview?.checks.ci == .fixingByRequest)
         #expect(EpicStatus.lines(for: epic, in: snapshot, now: now).first?.text == "最終 PR への指示を送りました。司令塔が受け取るのを待っています")
         #expect(!InboxBuilder.items(from: snapshot, now: now).contains { $0.kind == .finalReview })
         #expect(DeckBuilder.cards(from: snapshot, scope: .decisions(Self.epicID)).isEmpty)
@@ -393,6 +397,23 @@ extension StateClientServiceTests {
         let automaticEpic = try #require(automaticSnapshot.epic(Self.epicID))
         #expect(automaticEpic.finalReview?.state == .merged(at: Self.finalDate("07:40"), automatic: true))
         #expect(EpicStatus.lines(for: automaticEpic, in: automaticSnapshot, now: now).first?.text == "自動でマージしました")
+    }
+
+    /// 判断の一覧を読めないときは、空の一覧と区別して手動のマージにし、承認を送らない
+    @Test
+    func unreadableDecisionsBlockApproval() async throws {
+        let broken = ["\(Self.finalBase)/decisions.json": #"{"v":1,"items":[{"id":"d1"}]}"#]
+        let service = try makeService(files: Self.reviewingEpic(extra: [broken])).service
+        let snapshot = try await service.fetchSnapshot()
+        #expect(snapshot.sourceFailures.contains { $0.source == "\(Self.finalBase)/decisions.json" })
+        let review = try #require(snapshot.epic(Self.epicID)?.finalReview)
+        #expect(review.decisions.isEmpty)
+        #expect(review.mergePolicy == .manual([.sensitivePaths([Self.sensitiveReason]), .decisionsUnreadable]))
+        #expect(!review.acceptsApproval)
+        #expect(!review.canMerge)
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.merge(epicID: Self.epicID, headCommit: Self.finalHead))
+        }
     }
 
     private static func finalDate(_ time: String) -> Date {
