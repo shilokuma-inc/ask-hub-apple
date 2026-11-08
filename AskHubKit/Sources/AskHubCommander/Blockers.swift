@@ -11,6 +11,9 @@ public struct Blocker: Equatable, Sendable {
         case split
         /// ゴールの確認と開始を待っている。`revised` は、人の指示で直したゴールか
         case start(revised: Bool)
+        /// 最終 PR のレビューが通り、人が決めていない判断の確認とマージの承認を待っている。
+        /// `decisions` は答えていない判断のカードの数、`revised` は人が頼んだ直しの後のレビューか
+        case review(pullRequest: Int, decisions: Int, revised: Bool)
         /// 自動の対処を使い切ったか、自動では直せない失敗で、人の判断を待っている
         case job(JobKind)
         /// ジョブを持った Mac が、決めた時間より長く戻らない
@@ -23,8 +26,8 @@ public struct Blocker: Equatable, Sendable {
         case mac(MacName)
     }
 
-    /// 同じ出来事を見分ける文字列（`notifications.json` の `key`）。見直した質問・直したゴール・次の試行・Mac が戻った後のオフラインは、
-    /// 別の出来事として知らせ直す
+    /// 同じ出来事を見分ける文字列（`notifications.json` の `key`）。見直した質問・直したゴール・人が頼んだ直しの後の最終 PR・次の試行・
+    /// Mac が戻った後のオフラインは、別の出来事として知らせ直す
     public var key: String
     public var scope: Scope
     public var reason: Reason
@@ -47,9 +50,10 @@ struct BlockerScan {
 
     /// `epics` はジョブを見張る epic、`jobs` はその epic のジョブ（`JobSweep` で見直した後のもの）
     func scan(epics: [EpicFile], jobs: [JobFile]) async throws(CommanderError) -> [Blocker] {
+        let jobsOfEpics = Dictionary(grouping: jobs) { Blocker.Scope.epic($0.repo, $0.epic) }
         var blockers: [Blocker] = []
         for epic in epics.sorted(by: { $0.id < $1.id }) {
-            blockers += try await waiting(on: epic)
+            blockers += try await waiting(on: epic, jobs: jobsOfEpics[.epic(epic.repo, epic.id)] ?? [])
         }
         for job in jobs.sorted(by: { $0.id < $1.id }) where job.state == .waitingHuman {
             let key = "job/\(job.repo)/\(job.epic)/\(job.id)/\(job.attempts)"
@@ -58,8 +62,8 @@ struct BlockerScan {
         return blockers + (try await offlineMacs(holding: jobs))
     }
 
-    /// epic が人の返事を待っているもの（質問・分け方の判断・ゴールの確認と開始）
-    private func waiting(on epic: EpicFile) async throws(CommanderError) -> [Blocker] {
+    /// epic が人の返事を待っているもの（質問・分け方の判断・ゴールの確認と開始・最終 PR の確認とマージの承認）。`jobs` はその epic のジョブ
+    private func waiting(on epic: EpicFile, jobs: [JobFile]) async throws(CommanderError) -> [Blocker] {
         let scope = Blocker.Scope.epic(epic.repo, epic.id)
         let base = "\(epic.repo)/\(epic.id)"
         switch epic.stage {
@@ -76,9 +80,32 @@ struct BlockerScan {
         case .awaitingStart:
             guard let goal = try await readable(GoalFile.self, at: StatePath.goal(epic.repo, epic.id)) else { return [] }
             return [Blocker(key: "start/\(base)/\(goal.version)", scope: scope, reason: .start(revised: goal.version > 1))]
-        case .drafting, .checking, .running, .finalizing, .reviewing, .merged, .abandoned:
+        case .reviewing:
+            return try await awaitingMerge(epic, jobs: jobs)
+        case .drafting, .checking, .running, .finalizing, .merged, .abandoned:
             return []
         }
+    }
+
+    /// 最終 PR のレビューが通り、人の確認とマージの承認を待っている（`reviewing`）。承認してマージが動き出したら、もう待っていない。
+    /// 出来事は最後のレビューごとに分ける（人が頼んだ直しの後にまた待てば、直した head のレビューとして知らせ直す。直しで head が変わらなくても知らせる）
+    private func awaitingMerge(_ epic: EpicFile, jobs: [JobFile]) async throws(CommanderError) -> [Blocker] {
+        let chain = FinalChain(jobs: jobs)
+        guard chain.endsWithReview, let review = chain.latestReview, review.state == .succeeded,
+              let seen = chain.reviewed, seen.isValid else { return [] }
+        let decisions: DecisionsFile?
+        do {
+            decisions = try await context.files.read(DecisionsFile.self, at: StatePath.decisions(epic.repo, epic.id))?.file
+        } catch .unreadable {
+            return []
+        } catch {
+            throw .files(error)
+        }
+        // マージの承認の前に答える判断のカード（`FinalMergeRule.canApprove` と同じ数え方。仕分ける前の仮決めも数える）
+        let unanswered = decisions?.items.filter { $0.visible != false && $0.answer == nil }.count ?? 0
+        let key = "review/\(epic.repo)/\(epic.id)/\(seen.head)/\(review.id)"
+        let reason = Blocker.Reason.review(pullRequest: seen.pullRequest, decisions: unanswered, revised: chain.hasHumanFix)
+        return [Blocker(key: key, scope: .epic(epic.repo, epic.id), reason: reason)]
     }
 
     /// ジョブを持ったまま、決めた時間より長く生きている印を書いていない Mac。
