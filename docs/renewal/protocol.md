@@ -456,6 +456,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 ```
 
 - `push.environment` は APNs の送り先の環境。Xcode から入れた版は `development`、TestFlight と App Store の版は `production`。APNs の宛先では必ず書く
+  - クライアントは、ビルド設定 `APS_ENVIRONMENT`（Debug は `development`、Release は `production`。entitlement の `aps-environment` と同じ値）を書く
+- クライアントは、トークン・環境・端末の種類のどれかが変わったときだけ書き直す（起動のたびに書かない）
 - `push.token` は送るときに URL のパスに入るので、16 進だけを受け付ける
 - Android を足すときに、`platform` と `push.service`（FCM）を足す
 - 司令塔は、ファイルの名前と `device` が合い、確かめた公開鍵の一覧にある（登録済みで取り消していない）端末にだけ送る

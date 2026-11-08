@@ -20,10 +20,19 @@
   - 送る途中で司令塔が落ちたときは送り直さない（二重より取りこぼしを選ぶ。記録してから送り終えるまでの数秒の間だけ）
   - 終わった出来事の記録は、7 日たってから消す（GitHub の障害で一覧が空に見えた周に、記録を消して知らせ直さないため）
 - 送る宛先は、`devices/` のうち、確かめた公開鍵の一覧にある（登録済みで取り消していない）端末だけ。なくした端末の鍵を取り消せば、その端末には送らない
-- 入れ方: Apple Developer の Keys で APNs の鍵を作って .p8 を落とし、常時オンの Mac の端末で `askhub-commander apns --key-id <鍵の id> --team-id <Team ID> --key-file <.p8 のパス>` を流してから、常駐を読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`）
+- クライアント（iOS・macOS）は、状態リポジトリにつながってこの端末の鍵が登録された後に、一度だけ通知の許可を求める（`AskHub/Push/PushRegistration.swift`）
+  - 鍵の登録は、起動のときと、設定を開いたとき（「登録を確かめ直す」を含む）に確かめる。登録の前に許可を求めないのは、登録されていない端末には司令塔が送らないため
+  - 許可されていれば、起動のたびに APNs に登録し、届いたデバイストークンを `devices/<この端末の鍵の id>.json` に書く。トークン・APNs の環境・端末の種類が同じなら書かない（変わったら書き直す）
+  - APNs の環境は、entitlement の `aps-environment` と同じビルド設定 `APS_ENVIRONMENT`（`Configs/Debug.xcconfig` は `development`、`Release.xcconfig` は `production`）を Info.plist の `AskHubAPNsEnvironment` に入れて読む
+  - 断られたら、設定の「通知」に、通知が届かないことと、設定アプリ（Mac はシステム設定）の通知の画面を開くボタンを出す
+  - デモのデータ（UI テスト・撮影を含む）と、アプリの中で動く単体テストでは、許可を求めず宛先も書かない
+  - macOS の push の entitlement は provisioning profile が要り、profile の無いアドホック署名ではビルドが止まる。アドホック署名（CI・ワーカー・スクショ・archive。`CODE_SIGN_STYLE=Manual`）では付けず、自動の署名のときだけ付ける（`Configs/Project.xcconfig` の `ASKHUB_MACOS_ENTITLEMENTS_*`）。アドホック署名の Mac のアプリは通知を受け取れない
+- 入れ方: Apple Developer の Identifiers で App ID（`jp.shilokuma.AskHub`）の Push Notifications を有効にする（push の entitlement を付けたので、無効のままだと実機と Mac の自動の署名の profile に入らない）。
+  Keys で APNs の鍵を作って .p8 を落とし、常時オンの Mac の端末で `askhub-commander apns --key-id <鍵の id> --team-id <Team ID> --key-file <.p8 のパス>` を流してから、常駐を読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`）
   - .p8 の中身は Keychain（`apns-key`）にだけ置き、設定には鍵の id・Team ID・Bundle ID（既定 `jp.shilokuma.AskHub`。iOS と macOS で同じ）だけを書く。.p8 は Apple Developer から一度しか落とせないので、Mac には残さず安全な場所に移す
   - APNs の設定が無ければ通知を送らない（起動のログに出る）。`askhub-commander check` で鍵の様子（値は出さない）を確かめる
-- 通知の中身の `askhub`（`repo`・`epic`・`mac`）は、クライアントが通知から開く先
+- 通知の中身の `askhub`（`repo`・`epic`・`mac`）は、クライアントが通知から開く先。epic は「進行中」のその epic の画面、Mac は「Mac」のその Mac の画面を開く（`AskHub/Model/PushTarget.swift`）。形の違う値では開かない
+  - アプリを開いている間に届いた通知も、バナーで出す
 - 頻度
 
   | 種類 | 例 | 知らせ方 |
