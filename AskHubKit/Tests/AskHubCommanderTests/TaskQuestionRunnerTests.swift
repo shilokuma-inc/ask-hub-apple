@@ -276,9 +276,11 @@ struct TaskQuestionRunnerTests {
         #expect(beforeStart.failure?.message.contains("実装の途中の質問でない") == true)
         #expect(runner.calls.isEmpty)
     }
+}
 
-    // MARK: - 子 PR の直し
+// MARK: - 子 PR の直し
 
+extension TaskQuestionRunnerTests {
     /// 子 PR #41 と、直す判定を書いたレビュー、質問した直しを置く
     func fixFixture(answered: Bool = true) async throws -> (Fixture, asking: JobFile) {
         let fixture = try await FixTaskRunnerTests().fixture()
@@ -330,6 +332,34 @@ struct TaskQuestionRunnerTests {
         #expect(call.failingAtStart == .testLight)
     }
 
+    @Test func fixResumeRefusesBranchMovedByOtherChanges() async throws {
+        let (fixture, asking) = try await fixFixture()
+        // 答えを待つ間に、ほかで子ブランチが進んだ
+        let moved = sha("9")
+        fixture.git.update {
+            $0.remote[Fixture.branches.task] = moved
+            $0.ancestors = ["\(FixTaskRunnerTests.head)..\(moved)"]
+            $0.history = ["\(FixTaskRunnerTests.head)..\(moved)": ["ほかの人の変更"]]
+        }
+        fixture.pulls.update { $0.pulls[41] = Fixture.openPull(head: moved) }
+        let runner = FakeTaskRunner([FakeTaskRunner.done()])
+        let input = FixTaskInput(pullRequest: 41, head: FixTaskRunnerTests.head, reason: .ci, question: "q3")
+        let job = Self.resumption(fixture, .fixTask, "08", input: input.jobInput, after: asking)
+        let refused = try await FixTaskRunner(environment: try fixture.environment(runner)).execute(job)
+        // 人の答えを渡さないまま、進んだ head を直した結果にしない
+        #expect(refused.failure?.failureClass == .unexpected)
+        #expect(refused.failure?.message.contains("ほかの変更で進んだ") == true)
+        #expect(runner.calls.isEmpty)
+
+        // この直しの前の試行が push した後に落ちたのなら、その先頭を結果にする（直させ直さない）
+        let trailer = FixFinalPullRequestRunner.trailer(of: job.id)
+        fixture.git.update { $0.history = ["\(FixTaskRunnerTests.head)..\(moved)": ["一覧を直す\n\n\(trailer)"]] }
+        let retried = try await FixTaskRunner(environment: try fixture.environment(runner)).execute(job)
+        #expect(retried.failure == nil)
+        #expect(retried.outputs?.commit == moved)
+        #expect(runner.calls.isEmpty)
+    }
+
     @Test func fixRedoesInNewConversationWithGoalAndFindings() async throws {
         let (fixture, asking) = try await fixFixture()
         let runner = ImplementTaskRunnerTests.editing(fixture.git, [FakeTaskRunner.done("名前順で比べるようにした。", session: "s-new")])
@@ -347,6 +377,8 @@ struct TaskQuestionRunnerTests {
         #expect(call.prompt.contains("初めから変更をやり直してください"))
         #expect(call.prompt.contains("補足: 同点は ID 順"))
         #expect(call.failingAtStart == .testLight)
+        // どのジョブの直しかをコミットに書く（前の試行が push した後に落ちたかを見分ける）
+        #expect(fixture.git.current.commits.first?.hasSuffix(FixFinalPullRequestRunner.trailer(of: job.id)) == true)
     }
 }
 

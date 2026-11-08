@@ -96,6 +96,9 @@ public protocol TaskGit: Sendable {
     /// 手元の変更をすべてコミットし、子ブランチを push して、新しい先頭を返す。変更が無ければ、コミットも push もせずに nil を返す
     func commitAndPush(_ task: CheckedOutTask, message: String) async throws(WorkspaceError) -> String?
 
+    /// `ancestor` の後から `descendant` までのコミットのメッセージ（新しい順）。`ancestor` が `descendant` の祖先でなければ nil
+    func messages(after ancestor: String, upTo descendant: String, in task: CheckedOutTask) async throws(WorkspaceError) -> [String]?
+
     /// `ancestor` が `descendant` の祖先（か同じコミット）か
     func isAncestor(_ ancestor: String, of descendant: String, in task: CheckedOutTask) async throws(WorkspaceError) -> Bool
 

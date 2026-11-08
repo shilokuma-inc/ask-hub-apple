@@ -102,6 +102,14 @@ extension GitRepositoryWorkspace: TaskGit {
         return head
     }
 
+    public func messages(
+        after ancestor: String,
+        upTo descendant: String,
+        in task: CheckedOutTask
+    ) async throws(WorkspaceError) -> [String]? {
+        try await messages(after: ancestor, upTo: descendant, in: task.directory)
+    }
+
     public func isAncestor(_ ancestor: String, of descendant: String, in task: CheckedOutTask) async throws(WorkspaceError) -> Bool {
         guard AttemptFile.isCommitSHA(ancestor), AttemptFile.isCommitSHA(descendant) else { return false }
         // 祖先でなければ終了コード 1（`gitIfFound` は nil を返す）

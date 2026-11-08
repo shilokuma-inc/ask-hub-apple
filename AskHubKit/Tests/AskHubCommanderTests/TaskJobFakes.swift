@@ -28,6 +28,8 @@ final class FakeTaskGit: TaskGit {
         var ancestors: Set<String> = []
         /// epic の作業場所に取り出しているブランチと、その先頭（nil なら作業場所が無い）
         var workspace: (branch: String, head: String)?
+        /// `messages(after:upTo:in:)` が返すもの（"祖先..子孫" → メッセージ）。無ければ祖先でない
+        var history: [String: [String]] = [:]
     }
 
     static let directory = URL(fileURLWithPath: "/work/epics/01JCJ0A0000000000000000001/repository/askhub-sandbox")
@@ -88,6 +90,10 @@ final class FakeTaskGit: TaskGit {
             return .success(head)
         }
         return try result.get()
+    }
+
+    func messages(after ancestor: String, upTo descendant: String, in task: CheckedOutTask) async throws(WorkspaceError) -> [String]? {
+        state.withLock { $0.history["\(ancestor)..\(descendant)"] }
     }
 
     func isAncestor(_ ancestor: String, of descendant: String, in task: CheckedOutTask) async throws(WorkspaceError) -> Bool {

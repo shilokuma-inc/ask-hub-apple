@@ -47,14 +47,7 @@ public struct FixTaskRunner: JobRunning {
         }
         var result = JobResult(outputs: AttemptFile.Outputs(pullRequest: input.pullRequest, branch: target.branches.task))
         guard checkout.head == input.head else {
-            // 前の試行が直して push した後、記録する前に落ちた。子ブランチが直す head から進んでいれば、その先頭を結果にする（直させ直さない）
-            let advanced = try await environment.workspace { () throws(WorkspaceError) in
-                try await environment.git.isAncestor(input.head, of: checkout.head, in: checkout)
-            }
-            guard advanced else {
-                throw .fail(.unexpected, "子ブランチの先頭（\(checkout.head)）が、直す head（\(input.head)）から続いていない")
-            }
-            result.outputs?.commit = checkout.head
+            result.outputs?.commit = try await pushedBefore(job, input: input, checkout: checkout)
             return result
         }
         let reply: TaskReply
@@ -73,13 +66,35 @@ public struct FixTaskRunner: JobRunning {
         let (report, run) = try reply.done(keeping: result)
         result.outputs?.report = report.outputReport
         result.claude = run.session?.attemptRecord
-        let message = Self.commitMessage(task: target.task, reason: input.reason, report: report)
+        let message = Self.commitMessage(task: target.task, reason: input.reason, report: report, job: job.id)
         let pushed = try await environment.workspace(keeping: result) { () throws(WorkspaceError) in
             try await environment.git.commitAndPush(checkout, message: message)
         }
         // 何も変えなかった（指摘が誤っていると判断した）ときは、同じ head のまま、もう一度レビューを受ける
         result.outputs?.commit = pushed ?? checkout.head
         return result
+    }
+
+    /// 子ブランチが直す head から進んでいる。前の試行が直して push した後、記録する前に落ちたのなら、その先頭を結果にする（直させ直さない）。
+    /// 答えで再開した直しは、この直しが push したコミット（`trailer`）で進んだときだけ結果にする。質問の後にほかの変更で進んでいたら、
+    /// 人の答えを渡さないまま成功にしない（ふつうの直しは、進んだ head をレビューし直すので、そのまま結果にする）
+    private func pushedBefore(_ job: JobFile, input: FixTaskInput, checkout: CheckedOutTask) async throws(TaskJobExit) -> String {
+        let environment = environment
+        let advanced = try await environment.workspace { () throws(WorkspaceError) in
+            try await environment.git.isAncestor(input.head, of: checkout.head, in: checkout)
+        }
+        guard advanced else {
+            throw .fail(.unexpected, "子ブランチの先頭（\(checkout.head)）が、直す head（\(input.head)）から続いていない")
+        }
+        guard input.question != nil else { return checkout.head }
+        let messages = try await environment.workspace { () throws(WorkspaceError) in
+            try await environment.git.messages(after: input.head, upTo: checkout.head, in: checkout)
+        }
+        guard messages?.contains(where: { $0.contains(FixFinalPullRequestRunner.trailer(of: job.id)) }) == true else {
+            let message = "子ブランチが、質問の後にほかの変更で進んだ（\(checkout.head)）。人の答え（\(input.question ?? "")）を渡せないので、人に確かめてもらう"
+            throw .fail(.unexpected, message)
+        }
+        return checkout.head
     }
 
     /// 子 PR が開いていて、子ブランチから作業ブランチに向いているか
@@ -103,8 +118,10 @@ public struct FixTaskRunner: JobRunning {
         return conversation
     }
 
-    static func commitMessage(task: GoalFile.Task, reason: FixTaskInput.Reason, report: TaskReport) -> String {
+    /// 最後の行に、どのジョブの直しかの印を書く（答えで再開した直しで、前の試行が push した後に落ちたかを見分ける）
+    static func commitMessage(task: GoalFile.Task, reason: FixTaskInput.Reason, report: TaskReport, job: ULID) -> String {
         let what = reason == .ci ? "CI の失敗" : "レビューの指摘"
-        return "\(task.title)（\(what)を直す）\n\n\(UntrustedText.head(report.summary, limit: 4_000))\n\nAskHub のタスク \(task.id)"
+        let summary = UntrustedText.head(report.summary, limit: 4_000)
+        return "\(task.title)（\(what)を直す）\n\n\(summary)\n\nAskHub のタスク \(task.id)\n\(FixFinalPullRequestRunner.trailer(of: job))"
     }
 }

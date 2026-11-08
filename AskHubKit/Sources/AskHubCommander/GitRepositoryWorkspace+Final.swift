@@ -100,12 +100,17 @@ extension GitRepositoryWorkspace: FinalGit {
         upTo descendant: String,
         in epic: CheckedOutEpic
     ) async throws(WorkspaceError) -> [String]? {
+        try await messages(after: ancestor, upTo: descendant, in: epic.directory)
+    }
+
+    /// `ancestor` の後から `descendant` までのコミットのメッセージ（新しい順）。`ancestor` が `descendant` の祖先でなければ nil
+    func messages(after ancestor: String, upTo descendant: String, in directory: URL) async throws(WorkspaceError) -> [String]? {
         guard AttemptFile.isCommitSHA(ancestor), AttemptFile.isCommitSHA(descendant),
-              try await gitIfFound(["merge-base", "--is-ancestor", ancestor, descendant], in: epic.directory) != nil else {
+              try await gitIfFound(["merge-base", "--is-ancestor", ancestor, descendant], in: directory) != nil else {
             return nil
         }
         // メッセージの区切りに、メッセージに現れない NUL を使う
-        let log = try await git(["log", "--format=%B%x00", "\(ancestor)..\(descendant)"], in: epic.directory)
+        let log = try await git(["log", "--format=%B%x00", "\(ancestor)..\(descendant)"], in: directory)
         return log.split(separator: "\0").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     }
 
