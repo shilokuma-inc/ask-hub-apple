@@ -279,6 +279,7 @@ private struct TaskRow: View {
         case .locked: StepSymbol(name: "lock.fill", color: .secondary)
         case .inProgress(.reviewing?): StepSymbol(name: "eye.circle.fill", color: Theme.accent)
         case .inProgress(.fixing?): StepSymbol(name: "arrow.triangle.2.circlepath.circle.fill", color: Theme.warning)
+        case .inProgress(.waitingForAnswer?): StepSymbol(name: "questionmark.circle.fill", color: Theme.warning)
         case .inProgress: StepSymbol(name: "hammer.circle.fill", color: Theme.accent)
         case .failed: StepSymbol(name: "exclamationmark.circle.fill", color: Theme.danger)
         case .done: StepSymbol(name: "checkmark.circle.fill", color: Theme.success)
@@ -293,6 +294,7 @@ private struct TaskRow: View {
         case .inProgress(.implementing?): "実装しています"
         case .inProgress(.reviewing?): "子 PR のチェックを待って、レビューしています"
         case let .inProgress(.fixing(_, round, reason)?): "\(EpicStatus.fixLabel(reason))を直しています（\(round) 回目）"
+        case .inProgress(.waitingForAnswer(let question)?): "途中の質問 \(question) の回答を待っています"
         case .failed: "止まっています（対処が要ります）"
         case .done: "マージしました"
         }

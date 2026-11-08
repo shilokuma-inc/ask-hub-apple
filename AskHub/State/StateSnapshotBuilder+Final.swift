@@ -190,8 +190,8 @@ extension StateSnapshotBuilder {
         guard !merged, let current = Self.latest(flow) else {
             return checks
         }
-        // 直した回は、CI・レビュー・コンフリクトの直しだけを数える（人が頼んだ直しは 3 回の上限に数えない）
-        let automaticFixes = flow.filter { $0.kind == .fixFinalPullRequest && Self.finalFixReason(of: $0)?.isAutomatic == true }
+        // 直した回は、CI・レビュー・コンフリクトの直しだけを数える（人が頼んだ直しと、実装の途中の質問の答えで再開した直しは 3 回の上限に数えない）
+        let automaticFixes = flow.filter(Self.isAutomaticFix)
         switch (current.kind, current.state) {
         case (_, .failed), (_, .waitingHuman):
             checks.ci = .failed
@@ -252,6 +252,11 @@ extension StateSnapshotBuilder {
         job.input(as: FixTaskInput.self)?.reason
     }
 
+    /// CI・レビュー・コンフリクトの直し（人が頼んだ直しと、実装の途中の質問の答えで再開した直しを除く）
+    private static func isAutomaticFix(_ job: JobFile) -> Bool {
+        job.kind == .fixFinalPullRequest && finalFixReason(of: job)?.isAutomatic == true && !resumesQuestion(job)
+    }
+
     // MARK: 段取り
 
     /// ジョブが表す最終 PR の段取り。最終 PR の段取りのジョブでなければ nil
@@ -280,10 +285,7 @@ extension StateSnapshotBuilder {
                 return .fixing(pullRequest: job.pullRequest, reason: .request)
             }
             // 何回目かは、CI とレビューの直しのうち、これまでに作ったものの数（司令塔が 4 回目から人に渡すのと同じ数え方）
-            let round = jobs.filter {
-                $0.kind == .fixFinalPullRequest && Self.finalFixReason(of: $0)?.isAutomatic == true
-                    && ($0.createdAt, $0.id.rawValue) <= (job.createdAt, job.id.rawValue)
-            }.count
+            let round = jobs.filter { Self.isAutomaticFix($0) && ($0.createdAt, $0.id.rawValue) <= (job.createdAt, job.id.rawValue) }.count
             return .fixing(pullRequest: job.pullRequest, reason: Self.automaticFix(reason, round: round))
 
         case .mergeFinalPullRequest:

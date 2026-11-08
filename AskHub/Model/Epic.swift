@@ -203,6 +203,8 @@ struct EpicTask: Identifiable, Hashable {
         case reviewing(pullRequest: Int?)
         /// 子 PR を直している（何回目か・直す理由）
         case fixing(pullRequest: Int?, round: Int, reason: FixReason?)
+        /// 実装・直しの途中で Claude が聞いた質問の、人の答えを待っている
+        case waitingForAnswer(question: Question.ID)
     }
 
     enum FixReason: Hashable {
