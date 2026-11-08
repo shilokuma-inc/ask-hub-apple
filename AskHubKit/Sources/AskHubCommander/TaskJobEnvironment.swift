@@ -135,6 +135,13 @@ public actor EpicLocks {
         await withCheckedContinuation { waiters[epic, default: []].append($0) }
     }
 
+    /// 空いていれば借りて true を返す。使われていれば、待たずに false を返す（見回りで、ジョブが使っている epic を次に回す）
+    func acquireIfFree(_ epic: ULID) -> Bool {
+        guard !held.contains(epic) else { return false }
+        held.insert(epic)
+        return true
+    }
+
     func release(_ epic: ULID) {
         if var queue = waiters[epic], !queue.isEmpty {
             queue.removeFirst().resume()

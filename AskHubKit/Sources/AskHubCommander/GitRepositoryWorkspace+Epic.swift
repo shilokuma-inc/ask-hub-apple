@@ -48,6 +48,12 @@ extension GitRepositoryWorkspace: EpicWorkspace {
         setup.root.appendingPathComponent("epics/\(epic.rawValue)/repository/\(repo.name)", isDirectory: true)
     }
 
+    /// この Mac に作業場所（`epics/<epic>`）がある epic。epic の形（ULID）でない名前のものは除く
+    public func epicsWithWorkspace() -> [ULID] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: setup.root.appendingPathComponent("epics").path)) ?? []
+        return names.sorted().compactMap(ULID.init(rawValue:))
+    }
+
     /// 参照の指すコミット。無ければ nil
     func commit(of reference: String, in clone: URL) async throws(WorkspaceError) -> String? {
         try await gitIfFound(["rev-parse", "--verify", "--quiet", "\(reference)^{commit}"], in: clone)
