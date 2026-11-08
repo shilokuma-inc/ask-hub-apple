@@ -315,6 +315,12 @@
   手元に無ければ「No profiles for 'jp.shilokuma.AskHub' were found」で止まる。アドホック署名の流れ（CI・ワーカー・xcb・スクショ・archive）は
   どれも `CODE_SIGN_STYLE=Manual` を渡すので、`CODE_SIGN_ENTITLEMENTS[sdk=macosx*] = $(ASKHUB_MACOS_ENTITLEMENTS_$(CODE_SIGN_STYLE))` で自動の署名のときだけ付けている。
   iOS の Simulator 向けのビルドは profile が要らないので、entitlement をいつも付けてよい（2026-11-09、通知のアプリ側）
+- Export（`xcodebuild -exportArchive`）は、archive の実行ファイルの署名にある entitlement だけを引き継いで署名し直す。profile にあっても足さず、値だけを profile に合わせる
+  （archive の `aps-environment = production` が、development の書き出しでは `development` になった）。`CODE_SIGNING_ALLOWED=NO` の iOS の archive からは `aps-environment` の無い IPA になる。
+  push の entitlement があると、iOS のアドホック署名の archive は `CODE_SIGN_STYLE=Manual` では「requires a provisioning profile」、Xcode Cloud と同じ
+  `CODE_SIGN_IDENTITY=- AD_HOC_CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic` では「has entitlements that require signing with a development certificate」で止まる。
+  archive の後に `codesign --force --sign - --entitlements` で .app に埋め込めば、Export が引き継ぐ（`Tools/embed_archive_entitlements.py`）。
+  API キーで archive を自動の署名にすると、キーチェーンが空の CI では実行のたびに「Apple Development: Created via API」の証明書が作られて残るので使わない（2026-11-09、`_archive.yml`）
 
 ## Keychain
 
