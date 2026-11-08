@@ -5,10 +5,26 @@ struct FinalReviewView: View {
     let epicID: Epic.ID
 
     @Environment(ClientStore.self) private var store
-    @State private var shownDecision: DecisionCard?
+    @State private var shownDecision: ShownDecision?
     @State private var isConfirmingMerge = false
+    /// 確認を開いたときの head（承認をこれに結びつける）
+    @State private var mergeHead: String?
     @State private var isConfirmingAcceptAll = false
+    /// まとめて OK の確認を開いたときに見ていた head とカード
+    @State private var acceptAllTarget: AcceptAllTarget?
     @State private var textRequest: TextRequest?
+
+    /// 開いた判断のカードと、開いたときの head（開いている間に取り直しても、答えは見たときの head に結びつける）
+    private struct ShownDecision: Identifiable {
+        var decision: DecisionCard
+        var headCommit: String?
+        var id: DecisionCard.ID { decision.id }
+    }
+
+    private struct AcceptAllTarget {
+        var headCommit: String?
+        var decisionIDs: [DecisionCard.ID]
+    }
 
     var body: some View {
         if let epic = store.epic(epicID), let review = epic.finalReview {
@@ -26,12 +42,18 @@ struct FinalReviewView: View {
             .hidesTabBar()
             .safeAreaBar(edge: .bottom) {
                 MergeBar(review: review, onInstruct: instruction(epic, review).map { request in { textRequest = request } }) {
+                    mergeHead = review.headCommit
                     isConfirmingMerge = true
                 }
                 .keepsControlSize()
             }
-            .sheet(item: $shownDecision) { decision in
-                DecisionSheet(epicID: epic.id, decision: decision, canAnswer: review.state == .reviewable)
+            .sheet(item: $shownDecision) { shown in
+                DecisionSheet(
+                    epicID: epic.id,
+                    decision: shown.decision,
+                    headCommit: shown.headCommit,
+                    canAnswer: review.state == .reviewable
+                )
             }
             .sheet(item: $textRequest) { request in
                 TextRequestSheet(request: request, subject: instructionSubject(epic, review)) { text in
@@ -42,17 +64,24 @@ struct FinalReviewView: View {
                 }
             }
             .confirmationDialog("PR #\(review.pullRequestNumber) をマージしますか？", isPresented: $isConfirmingMerge, titleVisibility: .visible) {
-                if let head = review.headCommit {
+                if let head = mergeHead {
                     Button("merge commit でマージする") {
                         Task { await store.send(.merge(epicID: epic.id, headCommit: head)) }
                     }
                 }
             } message: {
-                Text("確かめた head（\(Self.shortCommit(review.headCommit))）だけをマージします。この後に push された変更があれば、マージしません")
+                Text("確かめた head（\(Self.shortCommit(mergeHead))）だけをマージします。この後に push された変更があれば、マージしません")
             }
             .confirmationDialog("残りの判断をまとめて OK にしますか？", isPresented: $isConfirmingAcceptAll, titleVisibility: .visible) {
-                Button("\(review.pendingDecisions.count) 件をまとめて OK") {
-                    Task { await store.send(.acceptAllDecisions(epicID: epic.id)) }
+                if let target = acceptAllTarget {
+                    Button("\(target.decisionIDs.count) 件をまとめて OK") {
+                        let intent = HumanIntent.acceptAllDecisions(
+                            epicID: epic.id,
+                            headCommit: target.headCommit,
+                            decisionIDs: target.decisionIDs
+                        )
+                        Task { await store.send(intent) }
+                    }
                 }
             }
     }
@@ -100,7 +129,7 @@ struct FinalReviewView: View {
                 }
             }
             ForEach(review.decisions) { decision in
-                Button { shownDecision = decision } label: {
+                Button { shownDecision = ShownDecision(decision: decision, headCommit: review.headCommit) } label: {
                     DecisionRow(decision: decision)
                 }
                 .buttonStyle(.plain)
@@ -109,7 +138,10 @@ struct FinalReviewView: View {
                 Text("見える仮決めはありません").foregroundStyle(.secondary)
             }
             if canAnswer, review.pendingDecisions.count >= 2 {
-                Button("残りをまとめて OK…", systemImage: "checkmark.circle") { isConfirmingAcceptAll = true }
+                Button("残りをまとめて OK…", systemImage: "checkmark.circle") {
+                    acceptAllTarget = AcceptAllTarget(headCommit: review.headCommit, decisionIDs: review.pendingDecisions.map(\.id))
+                    isConfirmingAcceptAll = true
+                }
             }
         } header: {
             Text("人が決めていない判断 · \(review.reviewedCount) / \(review.decisions.count) を確認")

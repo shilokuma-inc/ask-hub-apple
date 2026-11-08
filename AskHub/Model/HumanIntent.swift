@@ -10,9 +10,10 @@ enum HumanIntent: Hashable {
     case start(epicID: Epic.ID, macID: Mac.ID)
     /// 1 つの epic に収まらないと分かったときの、分け方の判断
     case decideSplit(epicID: Epic.ID, choice: SplitChoice)
-    case respondToDecision(epicID: Epic.ID, decisionID: DecisionCard.ID, reply: DecisionReply)
-    /// 並べて見て、残りの判断をまとめて OK にする
-    case acceptAllDecisions(epicID: Epic.ID)
+    /// 判断のカードへの答えは、カードを見たときの最終 PR の head に結びつける（見た後に head が進んでいれば送らない）
+    case respondToDecision(epicID: Epic.ID, decisionID: DecisionCard.ID, headCommit: String?, reply: DecisionReply)
+    /// 並べて見て、残りの判断をまとめて OK にする。見たときの head と、画面に出していたカードに結びつける（見ていないカードは OK にしない）
+    case acceptAllDecisions(epicID: Epic.ID, headCommit: String?, decisionIDs: [DecisionCard.ID])
     /// マージの承認は、その時点の head のコミットに結びつける
     case merge(epicID: Epic.ID, headCommit: String)
     /// 最終 PR への指示（Claude に直させ、最終 PR のレビューからやり直す）。見た head のコミットに結びつける

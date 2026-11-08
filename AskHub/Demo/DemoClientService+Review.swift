@@ -5,11 +5,18 @@ import Foundation
 extension DemoClientService {
     func applyReviewIntent(_ intent: HumanIntent) {
         switch intent {
-        case let .respondToDecision(epicID, decisionID, reply):
+        case let .respondToDecision(epicID, decisionID, headCommit, reply):
+            // 見た head が今と違う答えは受け付けない（状態リポジトリでは司令塔が断る）
+            guard state.epic(epicID)?.finalReview?.headCommit == headCommit else {
+                return
+            }
             respond(epicID: epicID, decisionID: decisionID, reply: reply)
 
-        case .acceptAllDecisions(let epicID):
-            acceptAllDecisions(epicID: epicID)
+        case let .acceptAllDecisions(epicID, headCommit, decisionIDs):
+            guard state.epic(epicID)?.finalReview?.headCommit == headCommit else {
+                return
+            }
+            acceptAllDecisions(epicID: epicID, decisionIDs: decisionIDs)
 
         case let .merge(epicID, headCommit):
             merge(epicID: epicID, headCommit: headCommit)
@@ -57,16 +64,21 @@ extension DemoClientService {
         }
     }
 
-    private func acceptAllDecisions(epicID: Epic.ID) {
+    /// 見ていたカードだけを OK にする
+    private func acceptAllDecisions(epicID: Epic.ID, decisionIDs: [DecisionCard.ID]) {
         let date = now()
         state.updateEpic(epicID) { epic in
             guard var review = epic.finalReview else {
                 return
             }
             for index in review.decisions.indices where review.decisions[index].needsReview {
-                review.decisions[index].response = .accepted
+                if decisionIDs.contains(review.decisions[index].id) {
+                    review.decisions[index].response = .accepted
+                }
             }
-            review.reviewedHeadCommit = review.headCommit
+            if review.decisions.allSatisfy(\.isConfirmed) {
+                review.reviewedHeadCommit = review.headCommit
+            }
             epic.finalReview = review
             epic.log("残りの判断をまとめて OK にしました", at: date)
         }

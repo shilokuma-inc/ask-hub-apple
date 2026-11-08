@@ -23,7 +23,8 @@ struct StateIntentMapper {
         case .discard(let epicID):
             index.epics[epicID]?.canAbandon == true
 
-        case let .respondToDecision(epicID, _, _), let .acceptAllDecisions(epicID), let .merge(epicID, _), let .instructFinal(epicID, _, _):
+        case let .respondToDecision(epicID, _, _, _), let .acceptAllDecisions(epicID, _, _), let .merge(epicID, _),
+             let .instructFinal(epicID, _, _):
             index.epics[epicID]?.final != nil
 
         case .handOver, .pause, .resume, .completeHumanTask, .submitSecret, .verify, .cleanUp:
@@ -31,17 +32,21 @@ struct StateIntentMapper {
         }
     }
 
-    /// 送る形。まとめて OK は、答えの無いカードそれぞれへの OK にする（司令塔は判断のカードへの答えを 1 枚ずつ受け取る）
+    /// 送る形。まとめて OK は、答えの無いカードそれぞれへの OK にする（司令塔は判断のカードへの答えを 1 枚ずつ受け取る）。
+    /// 人が見ていなかった答え待ちのカードがあれば（見た後に足された）、どれも送らない
     func drafts(for intent: HumanIntent) throws(ClientServiceError) -> [IntentDraft] {
-        guard case .acceptAllDecisions(let epicID) = intent else {
+        guard case let .acceptAllDecisions(epicID, headCommit, shownIDs) = intent else {
             return [try draft(for: intent)]
         }
         let (epic, final) = try reviewableFinal(epicID)
+        guard final.unansweredDecisionIDs.allSatisfy(shownIDs.contains) else {
+            throw Self.updated
+        }
         guard !final.unansweredDecisionIDs.isEmpty else {
             throw ClientServiceError(message: "まとめて OK にする判断がありません")
         }
         return try final.unansweredDecisionIDs.map { id throws(ClientServiceError) in
-            .decision(try decisionTarget(id, epic: epic, final: final), answer: .ok)
+            .decision(try decisionTarget(id, seenHead: headCommit, epic: epic, final: final), answer: .ok)
         }
     }
 
@@ -68,6 +73,8 @@ struct StateIntentMapper {
     }
 
     private static let unsupported = ClientServiceError(message: "この操作は、まだ状態リポジトリに送れません")
+    /// 人が見た後に最終 PR が変わった（head が進んだ・答え待ちのカードが増えた）。見ていない状態に答えを結びつけないよう、送らない
+    private static let updated = ClientServiceError(message: "最終 PR が更新されました。見直してから答えてください")
 
     private func questionDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
         switch intent {
@@ -159,9 +166,9 @@ struct StateIntentMapper {
     /// （見た後に push された変更には効かない。head が変わっていれば司令塔が断る）
     private func finalDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
         switch intent {
-        case let .respondToDecision(epicID, decisionID, reply):
+        case let .respondToDecision(epicID, decisionID, headCommit, reply):
             let (epic, final) = try reviewableFinal(epicID)
-            let target = try decisionTarget(decisionID, epic: epic, final: final)
+            let target = try decisionTarget(decisionID, seenHead: headCommit, epic: epic, final: final)
             switch reply {
             case .accept:
                 return .decision(target, answer: .ok)
@@ -205,8 +212,10 @@ struct StateIntentMapper {
         return (epic, final)
     }
 
+    /// 判断のカードへの答えの対象。人がカードを見たときの head に結びつける（見た後に head が進んでいれば送らない）
     private func decisionTarget(
         _ decisionID: DecisionCard.ID,
+        seenHead: String?,
         epic: StateIndex.EpicEntry,
         final: StateIndex.FinalEntry
     ) throws(ClientServiceError) -> DecisionTarget {
@@ -215,6 +224,9 @@ struct StateIntentMapper {
         }
         guard let head = final.head else {
             throw ClientServiceError(message: "最終 PR の head が分かりません。取り直してから送ってください")
+        }
+        guard seenHead == head else {
+            throw Self.updated
         }
         return DecisionTarget(repo: epic.repo, epic: epic.id, decision: decisionID, head: head)
     }

@@ -4,6 +4,8 @@ import SwiftUI
 struct DecisionSheet: View {
     let epicID: Epic.ID
     let decision: DecisionCard
+    /// シートを開いたときの最終 PR の head（答えをこれに結びつける。開いた後に head が進んでいれば、送る前に断られる）
+    let headCommit: String?
     /// 答えられる段階か（最終 PR を機械が確かめている・直している間は、見るだけ）
     var canAnswer = true
 
@@ -30,18 +32,23 @@ struct DecisionSheet: View {
                 if canAnswer, decision.needsReview {
                     CardSection("答える") {
                         Button("OK", systemImage: "checkmark") {
-                            send(.respondToDecision(epicID: epicID, decisionID: decision.id, reply: .accept))
+                            send(.respondToDecision(epicID: epicID, decisionID: decision.id, headCommit: headCommit, reply: .accept))
                         }
                         ForEach(decision.alternatives, id: \.self) { alternative in
                             Button("別案にする: \(alternative)", systemImage: "arrow.triangle.branch") {
-                                send(.respondToDecision(epicID: epicID, decisionID: decision.id, reply: .alternative(alternative)))
+                                send(.respondToDecision(
+                                    epicID: epicID,
+                                    decisionID: decision.id,
+                                    headCommit: headCommit,
+                                    reply: .alternative(alternative)
+                                ))
                             }
                         }
                         Button("直してほしい…", systemImage: "pencil") {
                             textRequest = TextRequest(
                                 title: "直してほしい",
                                 prompt: "どう直してほしいか",
-                                purpose: .decisionFix(epicID: epicID, decisionID: decision.id)
+                                purpose: .decisionFix(epicID: epicID, decisionID: decision.id, headCommit: headCommit)
                             )
                         }
                     }
