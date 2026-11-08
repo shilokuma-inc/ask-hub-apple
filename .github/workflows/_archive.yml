@@ -142,6 +142,8 @@ jobs:
               CODE_SIGN_STYLE=Manual \
               PROVISIONING_PROFILE_SPECIFIER=
           else
+            # iOS は署名せずにアーカイブする。アドホック署名は、push の entitlement（aps-environment）が profile を要するため
+            # 「requires a provisioning profile」で止まる。entitlement は次の手順で埋め込む
             xcodebuild archive \
               -project "$PROJECT_NAME.xcodeproj" \
               -scheme "$SCHEME" \
@@ -150,6 +152,19 @@ jobs:
               -archivePath "$RUNNER_TEMP/build.xcarchive" \
               CODE_SIGNING_ALLOWED=NO
           fi
+
+      - name: Embed entitlements in iOS archive
+        # 署名の無い archive を Export で署名し直すと、Export は archive の署名の entitlement だけを引き継ぐので、
+        # push（aps-environment）の無い IPA になり、TestFlight の版で通知の登録が失敗する。
+        # archive の .app をプロジェクトの entitlements でアドホック署名し、Export に引き継がせる（値は Export が profile に合わせて production にする）。
+        # API キーで archive を自動の署名にすると、実行のたびに Apple Development の証明書が作られて残るので使わない
+        if: inputs.platform == 'iOS'
+        run: |
+          python3 Tools/embed_archive_entitlements.py embed "$RUNNER_TEMP/build.xcarchive" \
+            --project "$PROJECT_NAME.xcodeproj" \
+            --scheme "$SCHEME" \
+            --sdk iphoneos \
+            --configuration Release
 
       - name: Create ExportOptions.plist and API private key
         # Secrets はシェル展開ではなく env 経由で渡す
@@ -184,6 +199,13 @@ jobs:
           name: ${{ env.PROJECT_NAME }}.${{ env.PACKAGE_EXTENSION }}
           path: ${{ runner.temp }}/export/*.${{ env.PACKAGE_EXTENSION }}
           if-no-files-found: error
+
+      - name: Check entitlements in IPA
+        # 配布用の profile に無い entitlement（App ID の Push Notifications が無効など）を Export が落とすと、
+        # 通知が届かなくなって初めて気づくので、archive に埋め込んだ entitlement が IPA に残ったかを、App Store Connect に上げる前に確かめる
+        # （止まっても、直前に GitHub に上げた IPA を落として調べられる）
+        if: inputs.platform == 'iOS'
+        run: python3 Tools/embed_archive_entitlements.py check "$RUNNER_TEMP/build.xcarchive" "$RUNNER_TEMP"/export/*.ipa
 
       - name: Check app exists in App Store Connect
         # App Store Connect にアプリが無いと、アップロードが "Error Downloading App Information" で失敗し原因が分かりにくい。
