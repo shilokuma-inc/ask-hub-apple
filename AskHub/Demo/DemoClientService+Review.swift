@@ -164,10 +164,11 @@ extension DemoClientService {
     /// 最終 PR への指示。直している間は確かめられず、直したら head が替わる
     private func instructFinal(epicID: Epic.ID, headCommit: String, instruction: String) {
         let date = now()
+        // 見た head が今と違う指示は受け付けない（受け付けた指示だけ、直し終える処理を予約する）
+        guard let review = state.epic(epicID)?.finalReview, review.state == .reviewable, review.headCommit == headCommit else {
+            return
+        }
         state.updateEpic(epicID) { epic in
-            guard epic.finalReview?.state == .reviewable, epic.finalReview?.headCommit == headCommit else {
-                return
-            }
             epic.finalReview?.state = .checking
             epic.finalReview?.checks.ci = .fixingByRequest
             epic.finalReview?.reviewedHeadCommit = nil
