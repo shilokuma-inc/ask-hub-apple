@@ -280,21 +280,29 @@ extension TaskJobEnvironment {
 }
 
 extension TaskReply {
-    /// `done` なら報告と記録を返す。人に聞きたいことがある・進められない・失敗したときは、理由を付けた試行の失敗として終える（人へ渡る）
-    func done() throws(TaskJobExit) -> (report: TaskReport, run: TaskRun) {
+    /// `done` なら報告と記録を返す。進められない・失敗したときは、理由を付けた試行の失敗として終える（人へ渡る）。
+    ///
+    /// 人に聞きたいこと（`needsQuestion`）があれば、手元の変更を残したまま（commit・push せずに）、`partial` の outputs に
+    /// 報告（質問）を足して成功で終える（`docs/renewal/flows.md` の「実装の途中の質問」）。司令塔が質問に写し、答えで同じ会話を再開する
+    func done(keeping partial: JobResult = JobResult()) throws(TaskJobExit) -> (report: TaskReport, run: TaskRun) {
         switch self {
         case let .reported(reported, run):
             // 報告は子 PR・コミット・状態リポジトリに書くので、トークンらしい文字列を伏せてから使う（Claude にトークンは渡していないが、念のため）
             let report = reported.redacted
-            let partial = JobResult(outputs: AttemptFile.Outputs(report: report.outputReport), claude: run.session?.attemptRecord)
+            var outputs = partial.outputs ?? AttemptFile.Outputs()
+            outputs.report = report.outputReport
+            let kept = JobResult(outputs: outputs, claude: run.session?.attemptRecord)
             switch report.outcome {
             case .done:
                 return (report, run)
             case .needsQuestion:
-                let title = report.question?.title ?? report.summary
-                throw .fail(.unexpected, "Claude が、人に決めてほしいことがあると報告した（\(UntrustedText.head(title, limit: 300))）", keeping: partial)
+                guard report.question != nil else {
+                    throw .fail(.unexpected, "Claude が、人に決めてほしいことがあると報告したが、質問が無い", keeping: kept)
+                }
+                throw .finish(kept)
             case .blocked, .needsBuild:
-                throw .fail(.unexpected, "Claude が、進められないと報告した（\(UntrustedText.head(report.summary, limit: 300))）", keeping: partial)
+                let stopped = JobResult(outputs: AttemptFile.Outputs(report: report.outputReport), claude: run.session?.attemptRecord)
+                throw .fail(.unexpected, "Claude が、進められないと報告した（\(UntrustedText.head(report.summary, limit: 300))）", keeping: stopped)
             }
         case let .failed(failure, run):
             var failure = failure

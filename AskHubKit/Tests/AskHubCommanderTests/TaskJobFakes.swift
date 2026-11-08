@@ -118,6 +118,7 @@ final class FakeTaskRunner: TaskRunning {
         var resume: String?
         var directory: URL
         var facts: String
+        var failingAtStart: TaskReport.BuildKind?
     }
 
     struct State {
@@ -145,7 +146,14 @@ final class FakeTaskRunner: TaskRunning {
     func run<Job: TaskJob>(_ job: Job, in workspace: TaskWorkspace) async -> TaskReply {
         onRun()
         return state.withLock { state in
-            let call = Call(kind: Job.kind, prompt: job.prompt, resume: job.resume, directory: workspace.directory, facts: workspace.facts)
+            let call = Call(
+                kind: Job.kind,
+                prompt: job.prompt,
+                resume: job.resume,
+                directory: workspace.directory,
+                facts: workspace.facts,
+                failingAtStart: job.failingAtStart
+            )
             state.calls.append(call)
             guard !state.replies.isEmpty else { return .failed(AttemptFailure(failureClass: .unexpected, message: "報告が無い"), TaskRun()) }
             return state.replies.removeFirst()
@@ -399,14 +407,15 @@ struct TaskJobFixture {
         _ job: JobFile,
         outputs: AttemptFile.Outputs? = nil,
         claude: AttemptFile.Claude? = nil,
-        endedAt offset: TimeInterval = 0
+        endedAt offset: TimeInterval = 0,
+        mac: MacName = TaskJobFixture.mac
     ) async throws {
         try await files.create(job, at: StatePath.job(Self.repo, epic: Self.epic, job: job.id), message: "job")
         let time = Timestamp(Self.start.addingTimeInterval(offset))
         let attempt = AttemptFile(
             job: job.id,
             number: 1,
-            mac: Self.mac,
+            mac: mac,
             startedAt: time,
             heartbeatAt: time,
             endedAt: time,

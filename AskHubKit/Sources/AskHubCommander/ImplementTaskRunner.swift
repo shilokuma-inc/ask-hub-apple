@@ -8,7 +8,9 @@ import Foundation
 /// 2. Claude に実装させる（ビルドとテストの往復は `TaskRunner`）
 /// 3. `done` なら、ワーカーが commit・push し、作業ブランチ宛ての子 PR を作る（同じ head の開いた PR があれば作らない）
 ///
-/// 人に聞きたいこと（`needsQuestion`）・進められない（`blocked`）・往復の使い切りは、今は理由を付けた失敗にして人へ渡す
+/// 人に聞きたいこと（`needsQuestion`）があれば、手元の変更を残したまま質問で成功として終える（司令塔が質問に写す）。
+/// 答えで再開するジョブ（入力の `question`）は、作業場所を取り出し直さずに、質問した会話を再開して答えを渡す（`TaskQuestions.swift`）。
+/// 進められない（`blocked`）・往復の使い切りは、今は理由を付けた失敗にして人へ渡す
 public struct ImplementTaskRunner: JobRunning {
     public var environment: TaskJobEnvironment
 
@@ -27,17 +29,35 @@ public struct ImplementTaskRunner: JobRunning {
 
     private func implement(_ job: JobFile, _ target: TaskTarget) async throws(TaskJobExit) -> JobResult {
         let environment = environment
-        let checkout = try await environment.workspace { () throws(WorkspaceError) in
-            try await environment.git.checkOutTask(job.repo, epic: job.epic, branches: target.branches)
+        // 入力は `{}`。実装の途中の質問の答えで再開するときだけ、質問の id を持つ
+        guard let input = job.input == nil ? ImplementTaskInput() : job.input(as: ImplementTaskInput.self) else {
+            throw .fail(.unexpected, "implementTask の入力の形が違う")
+        }
+        let resumption = try await environment.resumption(of: job, question: input.question, task: target.task.id)
+        // 答えで再開するときは、質問したときの作業場所が残っていれば、取り出し直さずに（手元の変更を残して）使う
+        let kept = try await environment.keptTask(resumption, job: job, branches: target.branches)
+        var checkout: CheckedOutTask
+        if let kept {
+            checkout = kept
+        } else {
+            checkout = try await environment.workspace { () throws(WorkspaceError) in
+                try await environment.git.checkOutTask(job.repo, epic: job.epic, branches: target.branches)
+            }
         }
         let history = TaskHistory(context: environment.context, repo: job.repo, epic: job.epic)
         let previous = try await history.previousTasks(in: target.goal, before: target.task.id)
         let implement = ImplementTaskJob(goal: target.goal, task: target.task, previous: previous)
-        let (report, run) = try await environment.run(implement, in: checkout, target: target).done()
-        var result = JobResult(
-            outputs: AttemptFile.Outputs(branch: target.branches.task, report: report.outputReport),
-            claude: run.session?.attemptRecord
-        )
+        let reply: TaskReply
+        if let resumption {
+            reply = await resumption.answer(implement, kept: kept != nil) { await environment.run($0, in: checkout, target: target) }
+        } else {
+            reply = await environment.run(implement, in: checkout, target: target)
+        }
+        var result = JobResult(outputs: AttemptFile.Outputs(branch: target.branches.task))
+        // 人に聞きたいことがあれば、手元の変更を残したまま、commit・push・子 PR をせずに質問で終える
+        let (report, run) = try reply.done(keeping: result)
+        result.outputs?.report = report.outputReport
+        result.claude = run.session?.attemptRecord
         let pushed = try await environment.workspace(keeping: result) { () throws(WorkspaceError) in
             try await environment.git.commitAndPush(checkout, message: Self.commitMessage(task: target.task, report: report))
         }
