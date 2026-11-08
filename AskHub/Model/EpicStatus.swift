@@ -241,6 +241,9 @@ enum EpicStatus {
         case let .fixing(pullRequest, .review(round)):
             return ("\(finalLabel(pullRequest)) のレビューの指摘を直しています（\(round) 回目）", "wrench.and.screwdriver")
 
+        case let .fixing(pullRequest, .conflict(round)):
+            return ("\(finalLabel(pullRequest)) の base とのコンフリクトを直しています（\(round) 回目）", "wrench.and.screwdriver")
+
         case .fixing(let pullRequest, .request):
             return ("\(finalLabel(pullRequest)) を頼まれたとおりに直しています", "wrench.and.screwdriver")
 
@@ -282,6 +285,7 @@ enum EpicStatus {
         case .reviewing(let pullRequest): "\(finalLabel(pullRequest)) のレビュー"
         case .fixing(let pullRequest, .checks): "\(finalLabel(pullRequest)) の CI の失敗の直し"
         case .fixing(let pullRequest, .review): "\(finalLabel(pullRequest)) のレビューの指摘の直し"
+        case .fixing(let pullRequest, .conflict): "\(finalLabel(pullRequest)) のコンフリクトの直し"
         case .fixing(let pullRequest, .request): "\(finalLabel(pullRequest)) の頼まれた直し"
         case .merging(let pullRequest): "\(finalLabel(pullRequest)) のマージ"
         }

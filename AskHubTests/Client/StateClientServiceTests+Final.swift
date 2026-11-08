@@ -323,6 +323,37 @@ extension StateClientServiceTests {
 
     // MARK: 機械が進めている間
 
+    /// base とのコンフリクトは、コンフリクトとして出し、自動の直しの回に数える
+    @Test
+    func finalizingEpicShowsConflictFix() async throws {
+        let findings = #"{"verdict":"fixConflict","findings":"最終 PR #512 が base（develop）とコンフリクトしている"}"#
+        let conflicted = Self.finalAttempt(Self.reviewID, outputs: findings)
+        let fixture = try makeService(files: Self.reviewingEpic(stage: "finalizing", extra: [conflicted]))
+        let found = try #require(try await fixture.service.fetchSnapshot().epic(Self.epicID)?.finalReview)
+        #expect(found.checks.ci == .fixing(.conflict, attempt: 1))
+        #expect(found.checks.hasConflict)
+
+        // 司令塔が直しを作り、動き出した
+        let fixing = Self.finalJob(
+            Self.fixID,
+            kind: "fixFinalPullRequest",
+            state: "running",
+            dependsOn: [Self.reviewID],
+            input: Self.pullRequestInput(reason: "conflict"),
+            at: "07:40"
+        )
+        await put(fixing, in: fixture.store)
+        await put(Self.finalAttempt(Self.fixID, outcome: "running", outputs: "null"), in: fixture.store)
+        let snapshot = try await fixture.service.fetchSnapshot()
+        let epic = try #require(snapshot.epic(Self.epicID))
+        #expect(epic.finalReview?.checks.ci == .fixing(.conflict, attempt: 1))
+        #expect(epic.finalReview?.checks.hasConflict == true)
+        let step = FinalStep.fixing(pullRequest: 512, reason: .conflict(round: 1))
+        #expect(epic.activities.map(\.kind) == [.step(.final(step), .running(attempt: 1))])
+        let line = EpicStatus.lines(for: epic, in: snapshot, now: now).first
+        #expect(line?.text == "mac-mini で最終 PR #512 の base とのコンフリクトを直しています（1 回目）")
+    }
+
     /// 最終 PR の直しの間は、機械の番として段取りとチェックを出す（判断の確認とマージはまだできない）。直すことは最後のレビューの findings から出す
     @Test
     func finalizingEpicShowsFixAndChecks() async throws {

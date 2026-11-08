@@ -182,7 +182,7 @@ extension StateSnapshotBuilder {
         guard !merged, let current = Self.latest(flow) else {
             return checks
         }
-        // 直した回は、CI とレビューの直しだけを数える（人が頼んだ直しは 3 回の上限に数えない）
+        // 直した回は、CI・レビュー・コンフリクトの直しだけを数える（人が頼んだ直しは 3 回の上限に数えない）
         let automaticFixes = flow.filter { $0.kind == .fixFinalPullRequest && Self.finalFixReason(of: $0)?.isAutomatic == true }
         switch (current.kind, current.state) {
         case (_, .failed), (_, .waitingHuman):
@@ -193,12 +193,14 @@ extension StateSnapshotBuilder {
             // 直す判定なら、司令塔が直しのジョブを作るまでの間も、次の直しとして出す
             checks.ci = Self.ci(after: outputs?.verdict, nextRound: automaticFixes.count + 1) ?? checks.ci
             checks.findings = outputs?.verdict == .ready ? nil : outputs?.findings
+            checks.hasConflict = outputs?.verdict == .fixConflict
 
         case (.fixFinalPullRequest, let state) where state != .succeeded:
             let reason = Self.finalFixReason(of: current)
             let round = automaticFixes.filter { ($0.createdAt, $0.id.rawValue) <= (current.createdAt, current.id.rawValue) }.count
             checks.ci = Self.fixingCI(reason, round: round)
             checks.findings = reason?.isAutomatic == true ? outputs?.findings : nil
+            checks.hasConflict = reason == .conflict
 
         default:
             // レビューを待っている・直し終えて次のレビューを待っている
@@ -213,6 +215,7 @@ extension StateSnapshotBuilder {
         case .ready: .passed
         case .fixCI: .fixing(.build, attempt: nextRound)
         case .fixReview: .fixing(.review, attempt: nextRound)
+        case .fixConflict: .fixing(.conflict, attempt: nextRound)
         case .merged, nil: nil
         }
     }
@@ -222,7 +225,18 @@ extension StateSnapshotBuilder {
         switch reason {
         case .ci: .fixing(.build, attempt: round)
         case .review: .fixing(.review, attempt: round)
+        case .conflict: .fixing(.conflict, attempt: round)
         case .human, nil: .fixingByRequest
+        }
+    }
+
+    /// 自動の直しの段取りの理由（何回目か）
+    private static func automaticFix(_ reason: FixTaskInput.Reason, round: Int) -> FinalStep.FixReason {
+        switch reason {
+        case .ci: .checks(round: round)
+        case .conflict: .conflict(round: round)
+        // 人が頼んだ直しは自動の直しでないので来ない
+        case .review, .human: .review(round: round)
         }
     }
 
@@ -262,7 +276,7 @@ extension StateSnapshotBuilder {
                 $0.kind == .fixFinalPullRequest && Self.finalFixReason(of: $0)?.isAutomatic == true
                     && ($0.createdAt, $0.id.rawValue) <= (job.createdAt, job.id.rawValue)
             }.count
-            return .fixing(pullRequest: job.pullRequest, reason: reason == .ci ? .checks(round: round) : .review(round: round))
+            return .fixing(pullRequest: job.pullRequest, reason: Self.automaticFix(reason, round: round))
 
         case .mergeFinalPullRequest:
             return .merging(pullRequest: job.pullRequest)
@@ -290,7 +304,7 @@ extension StateSnapshotBuilder {
 }
 
 private extension FixTaskInput.Reason {
-    /// CI とレビューの直し（人が頼んだ直しでない）
+    /// CI・レビュー・コンフリクトの直し（人が頼んだ直しでない）
     var isAutomatic: Bool {
         self != .human
     }
