@@ -112,6 +112,7 @@ public struct CheckReadinessJob: ClaudeJob {
           - tasks: 実装のタスク（id は t1・t2・…。1 つのタスクは 1 本の子 PR に収まる大きさ。前提のタスクと人がする作業の id を dependsOn に書く）
           - humanTasks: 人がする作業（id は h1・h2・…。手順は入れる値まで具体的に。リンクは https だけ）
             GitHub の Secrets に入れる値は handover を {"kind": "secret", "name": "英大文字の名前"} にし、値そのものは書かない
+            \(HandoverRules.fileRule)
         \(rules)
         - reason に、そう判断した理由を書く
         """
@@ -235,6 +236,7 @@ public struct ReviseGoalJob: ClaudeJob {
         - 人が決めたことを変える指示は、ゴールでは変えない（決めたことは、人が回答を変えて直す）。反映しなかった指示は、理由とあわせて notApplied に書く
         - decided は、今のゴールのものをそのまま書き写す（変えない）
         - タスクの id は t1・t2・…、人がする作業の id は h1・h2・…。リンクは https だけ。Secrets の値は書かない
+        - \(HandoverRules.fileRule)
         """
     }
 
@@ -249,13 +251,16 @@ public struct ReviseGoalJob: ClaudeJob {
     }
 }
 
+/// ゴールの案が決まりに合わない点。ゴールの形に合っていても、file の作業に秘密らしい言葉があれば直させる
 private func goalProblems(_ draft: GoalDraft, questions: QuestionsFile) -> [String] {
+    let found: [String]
     do throws(QuestionFlow.ResultError) {
         _ = try GoalFlow.goal(from: draft, questions: questions, version: 1)
-        return []
-    } catch let .invalid(found) {
-        return found
+        found = []
+    } catch let .invalid(problems) {
+        found = problems
     } catch {
-        return ["ゴールを作れない（\(error)）"]
+        found = ["ゴールを作れない（\(error)）"]
     }
+    return found + HandoverRules.problems(in: draft.humanTasks)
 }

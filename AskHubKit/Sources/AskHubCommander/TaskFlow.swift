@@ -12,7 +12,7 @@ import Foundation
 /// | --- | --- |
 /// | 作業場所の用意 | 作業ブランチを `epic.json` に書き、最初のタスクの実装を作る |
 /// | 実装・直し | 仮決めを `decisions.json` に足し、子 PR のレビューを作る |
-/// | レビュー（マージした） | タスクを `done` にし、次のタスクの実装を作る。すべて済んだら、最終 PR の段取りに進む（`TaskFlow+Final.swift`） |
+/// | レビュー（マージした） | タスクを `done` にし、次のタスクの実装を作る。人がする作業も含めてすべて済んだら、最終 PR の段取りに進む（`TaskFlow+Final.swift`） |
 /// | レビュー（直す判定） | 直しを作る。同じタスクの直しが上限を超えたら、動かさずに人の対応待ちで作る |
 /// | 実装・直し（質問で終えた） | 質問を `questions.json` に足し、答えるまで次のジョブを作らない（`TaskFlow+Questions.swift`） |
 ///
@@ -93,8 +93,8 @@ public struct TaskFlow: Sendable {
             guard step == .merged else { return advanced(by: step, task: task, epic: plan.epic) }
             goal = try await setState(.done, of: task.id, from: [.running], in: plan.epic)
         }
-        // 最後のタスクを done にした後に止まっても、次の周でここから進む
-        if goal.tasks.allSatisfy({ $0.state == .done }) { return try await startFinal(goal, plan: plan, jobs: jobs) }
+        // 最後のタスクを done にした後に止まっても、次の周でここから進む（人がする作業が残っていれば、終わるのを待つ）
+        if goal.tasks.allSatisfy({ $0.state == .done }) { return try await startFinalAfterHumanTasks(goal, plan: plan, jobs: jobs) }
         guard let job = try await startNext(goal, plan: plan) else { return Advanced() }
         return Advanced(created: [job])
     }

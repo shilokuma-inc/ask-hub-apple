@@ -71,11 +71,13 @@ final class StateClientService: ClientService {
             // 送ってあって司令塔がまだ受け取っていないものは送り直さない（同じカードへの答え直しは断られる）
             drafts.removeAll { draft in (readSends + unreadSends).contains { $0.draft == draft && $0.isWaiting } }
         }
+        // 渡すファイルの中身は、意図より先に置く（司令塔は意図を読んでから中身を読む）
+        let attachments = StateIntentMapper.attachments(for: intent)
         var receipt = SendReceipt()
         for draft in drafts {
             let reference: IntentReference
             do {
-                reference = try await sender.send(draft)
+                reference = try await sender.send(draft, attachments: attachments)
             } catch {
                 throw ClientServiceError(message: StateServiceError.message(for: error))
             }

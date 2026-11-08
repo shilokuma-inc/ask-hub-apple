@@ -24,9 +24,9 @@ enum HumanIntent: Hashable {
     case pause(epicID: Epic.ID)
     case resume(epicID: Epic.ID)
     case discard(epicID: Epic.ID)
-    case completeHumanTask(epicID: Epic.ID, taskID: HumanTask.ID)
-    /// 秘密の値は意図に含めない（クライアントが GitHub の Secrets に直接入れ、入れたことだけを知らせる）
-    case submitSecret(epicID: Epic.ID, taskID: HumanTask.ID)
+    /// 人がする作業を終えた。ファイルを渡す作業は、渡すファイルを付ける（中身は意図より先に状態リポジトリに置く）。
+    /// GitHub の Secrets に入れる作業は、人が GitHub の設定画面で入れてから終えたことにする（値は受け取らない）
+    case completeHumanTask(epicID: Epic.ID, taskID: HumanTask.ID, file: HandoverFile? = nil)
     case verify(epicID: Epic.ID, itemID: VerificationItem.ID, reply: VerificationReply)
     case cleanUp(macID: Mac.ID, candidateIDs: [CleanupCandidate.ID])
     case request(repositoryID: TargetRepository.ID, summary: String, body: String)
@@ -112,9 +112,6 @@ extension HumanIntent {
 
         case .completeHumanTask:
             "作業の完了"
-
-        case .submitSecret:
-            "値を入れたこと"
 
         case .verify:
             "確かめた結果"

@@ -106,4 +106,8 @@ public protocol TaskGit: Sendable {
         branches: TaskBranches,
         head: String
     ) async throws(WorkspaceError) -> ReviewCheckout
+
+    /// 人がする作業で渡されたファイルを置くフォルダ（epic の作業場所の外。Claude には `additionalDirectories` で読ませる）。
+    /// 前に置いたものは消し、空にして返す。実装の途中の質問の答えで再開したジョブ（別のジョブ）でも同じ場所に置き直せるよう、ジョブではなくタスクで決める
+    func handoverDirectory(epic: ULID, task: String) async throws(WorkspaceError) -> URL
 }

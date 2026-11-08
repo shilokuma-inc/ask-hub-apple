@@ -5,7 +5,7 @@ import Foundation
 /// タスクの実装（`implementTask`）を 1 回実行する（`docs/renewal/flows.md` の「タスクの流れ」）。epic の Mac で動く。
 ///
 /// 1. epic の作業場所に子ブランチを取り出す（リモートにあれば使う。前の試行が push した後に落ちても作り直さない）
-/// 2. Claude に実装させる（ビルドとテストの往復は `TaskRunner`）
+/// 2. Claude に実装させる（ビルドとテストの往復は `TaskRunner`）。人がする作業で渡されたファイルがあれば、確かめてから置いて読ませる
 /// 3. `done` なら、ワーカーが commit・push し、作業ブランチ宛ての子 PR を作る（同じ head の開いた PR があれば作らない）
 ///
 /// 人に聞きたいこと（`needsQuestion`）があれば、手元の変更を残したまま質問で成功として終える（司令塔が質問に写す）。
@@ -46,12 +46,17 @@ public struct ImplementTaskRunner: JobRunning {
         }
         let history = TaskHistory(context: environment.context, repo: job.repo, epic: job.epic)
         let previous = try await history.previousTasks(in: target.goal, before: target.task.id)
-        let implement = ImplementTaskJob(goal: target.goal, task: target.task, previous: previous)
+        // 人がする作業で渡されたファイルは、署名した意図と照らし合わせてから置き、Claude に読ませる（置き場所はタスクごとに同じなので、再開した会話からも読める）
+        let handover = try await environment.placeHandover(for: target)
+        let implement = ImplementTaskJob(goal: target.goal, task: target.task, previous: previous, handover: handover?.files ?? [])
+        let directories = handover.map { [$0.directory] } ?? []
         let reply: TaskReply
         if let resumption {
-            reply = await resumption.answer(implement, kept: kept != nil) { await environment.run($0, in: checkout, target: target) }
+            reply = await resumption.answer(implement, kept: kept != nil) { job in
+                await environment.run(job, in: checkout, target: target, additionalDirectories: directories)
+            }
         } else {
-            reply = await environment.run(implement, in: checkout, target: target)
+            reply = await environment.run(implement, in: checkout, target: target, additionalDirectories: directories)
         }
         var result = JobResult(outputs: AttemptFile.Outputs(branch: target.branches.task))
         // 人に聞きたいことがあれば、手元の変更を残したまま、commit・push・子 PR をせずに質問で終える

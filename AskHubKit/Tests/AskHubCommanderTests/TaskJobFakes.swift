@@ -5,6 +5,7 @@ import AskHubCommands
 import AskHubProtocol
 import AskHubPullRequests
 import AskHubStateStore
+import CryptoKit
 import Foundation
 import os
 
@@ -31,6 +32,8 @@ final class FakeTaskGit: TaskGit {
 
     static let directory = URL(fileURLWithPath: "/work/epics/01JCJ0A0000000000000000001/repository/askhub-sandbox")
     private let state: OSAllocatedUnfairLock<State>
+    /// 人がする作業で渡されたファイルを置くフォルダの親（本当に書くので、一時フォルダの下に作る）
+    let handoverRoot = FileManager.default.temporaryDirectory.appendingPathComponent("handover-\(UUID().uuidString)", isDirectory: true)
 
     init(remote: [String: String]) {
         state = OSAllocatedUnfairLock(initialState: State(remote: remote))
@@ -100,6 +103,18 @@ final class FakeTaskGit: TaskGit {
         state.withLock { $0.calls.append("checkOutReview \(head)") }
         return ReviewCheckout(directory: Self.directory, diff: "+struct Ranking {}", stat: " Ranking.swift | 1 +", facts: "Swift 6 で書く。")
     }
+
+    func handoverDirectory(epic: ULID, task: String) async throws(WorkspaceError) -> URL {
+        state.withLock { $0.calls.append("handoverDirectory \(task)") }
+        let directory = handoverRoot.appendingPathComponent("\(epic.rawValue)/\(task)", isDirectory: true)
+        try? FileManager.default.removeItem(at: directory)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        } catch {
+            throw .failed("\(error)")
+        }
+        return directory
+    }
 }
 
 extension CheckedOutTask {
@@ -119,6 +134,7 @@ final class FakeTaskRunner: TaskRunning {
         var directory: URL
         var facts: String
         var failingAtStart: TaskReport.BuildKind?
+        var additionalDirectories: [URL] = []
     }
 
     struct State {
@@ -152,7 +168,8 @@ final class FakeTaskRunner: TaskRunning {
                 resume: job.resume,
                 directory: workspace.directory,
                 facts: workspace.facts,
-                failingAtStart: job.failingAtStart
+                failingAtStart: job.failingAtStart,
+                additionalDirectories: workspace.additionalDirectories
             )
             state.calls.append(call)
             guard !state.replies.isEmpty else { return .failed(AttemptFailure(failureClass: .unexpected, message: "報告が無い"), TaskRun()) }
@@ -331,6 +348,8 @@ struct TaskJobFixture {
     static let base = sha("b")
 
     let store = InMemoryStateStore()
+    /// 人の意図に署名する鍵（ワーカーが信用する鍵）
+    let key = P256.Signing.PrivateKey()
     let git = FakeTaskGit(remote: ["askhub/01JCJ0A0000000000000000001": TaskJobFixture.base])
     let pulls = FakePullRequests()
     let sleeper = ClockSleeper(now: TaskJobFixture.start)
@@ -363,6 +382,10 @@ struct TaskJobFixture {
             },
             slots: BuildSlots(count: 2),
             reviewer: ClaudeClient(setup: QuestionJobsTests.setup, runner: reviewer),
+            verifier: { [key] in
+                let der = key.publicKey.derRepresentation
+                return IntentVerifier(publicKeys: [IntentSignature.keyID(publicKeyDER: der): der])
+            },
             sleeper: sleeper
         )
     }

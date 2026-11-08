@@ -176,7 +176,7 @@ extension GitRepositoryWorkspace: FinalGit {
     public func removeEpic(_ repo: RepositoryFullName, epic: ULID, branch: String) async throws(WorkspaceError) {
         guard EpicFile.isBranchName(branch) else { throw .failed("作業ブランチの名前（\(branch)）の形が違う") }
         let clone = cloneDirectory(of: repo)
-        // `epics/<epic>` の下には、この epic の作業場所だけを置く
+        // `epics/<epic>` の下には、この epic の作業場所と、人がする作業で渡されたファイルだけを置く
         let folder = setup.root.appendingPathComponent("epics/\(epic.rawValue)", isDirectory: true)
         try await locks.withLock(repo.rawValue) { () throws(WorkspaceError) in
             try remove(folder)
