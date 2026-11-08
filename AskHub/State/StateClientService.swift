@@ -12,6 +12,9 @@ final class StateClientService: ClientService {
     /// 司令塔が意図を見る間隔に合わせる。変わっていないファイルは ETag で読むので、GitHub の上限に数えられない
     let refreshInterval: Duration = .seconds(30)
 
+    /// 状態リポジトリへの同時の要求の上限。並べて読むので、GitHub の 2 次のレート制限（同時の要求が多いと 403・429）に当たらないよう抑える
+    static let concurrentRequests = 8
+
     private let store: any StateStore
     private let key: DeviceSigningKey
     private let now: @Sendable () -> Date
@@ -32,10 +35,10 @@ final class StateClientService: ClientService {
     }
 
     init(store: any StateStore, key: DeviceSigningKey, now: @escaping @Sendable () -> Date = Date.init) {
-        self.store = store
+        self.store = ConcurrencyLimitedStore(store, limit: Self.concurrentRequests)
         self.key = key
         self.now = now
-        sender = IntentSender(store: store, key: key, now: now)
+        sender = IntentSender(store: self.store, key: key, now: now)
     }
 
     func fetchSnapshot() async throws -> ClientSnapshot {
