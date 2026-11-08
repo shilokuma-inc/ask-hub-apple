@@ -50,7 +50,13 @@ struct TaskHistory {
 
     /// 直すこと。同じタスクの子 PR のレビューのうち、同じ PR と head を見て、直す理由に合う判定を書いた成功の試行のもの
     func findings(for input: FixTaskInput, task: String) async throws(TaskJobExit) -> String? {
-        let verdict: ReviewVerdict = input.reason == .ci ? .fixCI : .fixReview
+        let verdict: ReviewVerdict
+        switch input.reason {
+        case .ci: verdict = .fixCI
+        case .review: verdict = .fixReview
+        // 子 PR のレビューは、人の文やコンフリクトの直しを出さない
+        case .human, .conflict: return nil
+        }
         let reviewed = PullRequestInput(pullRequest: input.pullRequest, head: input.head)
         return try await succeeded([.reviewTask], task: task).last { entry in
             entry.job.input(as: PullRequestInput.self) == reviewed && entry.attempt.outputs?.verdict == verdict

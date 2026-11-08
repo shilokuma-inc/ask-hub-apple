@@ -149,7 +149,7 @@ enum FinalStep: Hashable {
     case opening
     /// 最終 PR のチェックとレビューを待って、レビュー役が読んでいる
     case reviewing(pullRequest: Int?)
-    /// 最終 PR を直している（直す理由。CI とレビューの直しは何回目か）
+    /// 最終 PR を直している（直す理由。CI・レビュー・コンフリクトの直しは何回目か）
     case fixing(pullRequest: Int?, reason: FixReason)
     case merging(pullRequest: Int?)
 
@@ -158,6 +158,8 @@ enum FinalStep: Hashable {
         case checks(round: Int)
         /// レビュー役の必須の指摘（何回目か）
         case review(round: Int)
+        /// base とのコンフリクト（何回目か）
+        case conflict(round: Int)
         /// 人が頼んだ（判断のカードの「直してほしい」「別案にする」・最終 PR への指示）
         case request
     }

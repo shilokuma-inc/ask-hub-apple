@@ -180,7 +180,8 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
         return String(bytes: result.standardOutput, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    private func run(_ arguments: [String], in directory: URL) async throws(WorkspaceError) -> CommandResult {
+    /// git を流し、結果をそのまま返す（終了コードで意味が分かれるもの。コンフリクトの `merge` など）
+    func run(_ arguments: [String], in directory: URL) async throws(WorkspaceError) -> CommandResult {
         let command = Command(
             executable: setup.git,
             arguments: arguments,

@@ -36,6 +36,42 @@ extension GitRepositoryWorkspace: FinalGit {
         try await commitAndPush(epic.repo, worktree: epic.directory, branch: epic.branches.epic, what: "作業ブランチ", message: message)
     }
 
+    public func mergeBase(into epic: CheckedOutEpic) async throws(WorkspaceError) -> [String]? {
+        guard await isWorktree(epic.directory, of: cloneDirectory(of: epic.repo)) else {
+            throw .failed("epic の作業場所の .git が、ワーカーの clone を指していない（書き換えられた）")
+        }
+        let base = "refs/remotes/origin/\(epic.branches.base)"
+        // base がもう作業ブランチに入っている（GitHub のコンフリクトの判定が古かった）
+        if try await gitIfFound(["merge-base", "--is-ancestor", base, "HEAD"], in: epic.directory) != nil { return nil }
+        let identity = ["-c", "user.name=\(Self.committerName)", "-c", "user.email=\(Self.committerEmail)"]
+        // コンフリクトすると終了コード 1。どちらでも、取り込みの途中（MERGE_HEAD がある）になっていることを確かめる
+        let result = try await run(identity + ["merge", "--no-ff", "--no-commit", "--quiet", base], in: epic.directory)
+        guard result.succeeded || (result.status == 1 && !result.timedOut && !result.terminatedBySignal) else {
+            throw Self.classify(result, command: "merge")
+        }
+        guard try await gitIfFound(["rev-parse", "--quiet", "--verify", "MERGE_HEAD"], in: epic.directory) != nil else {
+            throw .failed("base（\(epic.branches.base)）を作業ブランチに取り込めなかった")
+        }
+        let names = try await git(["diff", "--name-only", "-z", "--diff-filter=U"], in: epic.directory)
+        return names.split(separator: "\0").map(String.init).filter { !$0.isEmpty }
+    }
+
+    public func unresolvedConflicts(_ paths: [String], in epic: CheckedOutEpic) async -> [String] {
+        paths.filter { path in
+            // 読めない（消した・文字でない）ファイルには印が無い
+            guard let data = FileManager.default.contents(atPath: epic.directory.appendingPathComponent(path).path),
+                  let text = String(data: data, encoding: .utf8) else { return false }
+            return Self.hasConflictMarkers(text)
+        }
+    }
+
+    /// コンフリクトの印の行（`<<<<<<< HEAD`・`>>>>>>> <取り込んだもの>`）があるか。`=======` は Markdown の見出しにも使うので見ない
+    static func hasConflictMarkers(_ text: String) -> Bool {
+        text.split(separator: "\n", omittingEmptySubsequences: false).contains { line in
+            ["<<<<<<<", ">>>>>>>"].contains { marker in line == marker || line.hasPrefix(marker + " ") }
+        }
+    }
+
     public func messages(
         after ancestor: String,
         upTo descendant: String,

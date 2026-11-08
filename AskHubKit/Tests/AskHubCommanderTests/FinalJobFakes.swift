@@ -28,6 +28,10 @@ final class FakeFinalGit: FinalGit {
             paths: ["App/Ranking.swift"]
         )
         var removeFailure: WorkspaceError?
+        /// `mergeBase(into:)` が返すもの（コンフリクトしたファイル。nil なら base がもう入っている）
+        var merge: [String]?
+        /// `unresolvedConflicts(_:in:)` が、印が残っているとするファイル
+        var unresolved: [String] = []
     }
 
     static let jobDirectory = URL(fileURLWithPath: "/work/jobs/01JCJ0B000000000000000000F/repository/askhub-sandbox")
@@ -64,6 +68,19 @@ final class FakeFinalGit: FinalGit {
             state.remote[epic.branches.epic] = head
             return head
         }
+    }
+
+    func mergeBase(into epic: CheckedOutEpic) async throws(WorkspaceError) -> [String]? {
+        state.withLock { state in
+            state.calls.append("mergeBase \(epic.branches.base)")
+            // 取り込みの途中は、コミットしていない変更がある
+            if state.merge != nil { state.dirty = true }
+            return state.merge
+        }
+    }
+
+    func unresolvedConflicts(_ paths: [String], in epic: CheckedOutEpic) async -> [String] {
+        state.withLock { state in paths.filter(state.unresolved.contains) }
     }
 
     func messages(after ancestor: String, upTo descendant: String, in epic: CheckedOutEpic) async throws(WorkspaceError) -> [String]? {

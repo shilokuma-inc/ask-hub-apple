@@ -206,12 +206,26 @@ struct ReviewFinalPullRequestRunnerTests {
         #expect(fixture.reviewer.commands.first?.arguments[1].contains("<review-comments>") == false)
     }
 
-    @Test func conflictingPullRequestFailsAsConflict() async throws {
-        let fixture = try await fixture(reviews: [])
+    @Test func conflictingPullRequestBecomesFixConflictBeforeWaiting() async throws {
+        // コンフリクトしていると、GitHub は PR のチェックを流さない。待たずに直させる
+        let fixture = try await fixture(reviews: [], checks: [])
         fixture.pulls.update { $0.pulls[512]?.mergeable = false }
         let result = try await review(fixture)
-        #expect(result.failure?.failureClass == .conflict)
+        #expect(result.failure == nil)
+        #expect(result.outputs?.verdict == .fixConflict)
+        #expect(result.outputs?.commit == Self.head)
+        #expect(result.outputs?.findings?.contains("base（develop）とコンフリクトしている") == true)
+        #expect(result.outputs?.mergeRisks == nil)
         #expect(fixture.reviewer.commands.isEmpty)
+        #expect(fixture.pulls.current.statusReads == 0)
+    }
+
+    @Test func undecidedMergeabilityIsNotConflict() async throws {
+        // GitHub が計算中（nil）のときは、コンフリクトとみなさずにレビューを続ける
+        let fixture = try await fixture()
+        fixture.pulls.update { $0.pulls[512]?.mergeable = nil }
+        let result = try await review(fixture)
+        #expect(result.outputs?.verdict == .ready)
     }
 
     @Test func refusesPullRequestInOtherDirection() async throws {

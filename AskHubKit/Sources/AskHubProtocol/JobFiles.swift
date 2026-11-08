@@ -285,7 +285,7 @@ public struct AttemptFile: StateFile {
         if let findings = outputs?.findings, findings.isEmpty || findings.unicodeScalars.count > Outputs.maximumFindingsLength {
             violations.append("outputs.findings は空でなく、\(Outputs.maximumFindingsLength) 文字まで")
         }
-        if outputs?.verdict.map({ [.fixCI, .fixReview].contains($0) }) == true, outputs?.findings == nil {
+        if outputs?.verdict.map({ [.fixCI, .fixReview, .fixConflict].contains($0) }) == true, outputs?.findings == nil {
             violations.append("直す判定には findings が要る")
         }
         violations += outputs?.report?.problems ?? []

@@ -52,6 +52,8 @@ public struct FixFinalPullRequestJob: TaskJob {
         case .ci: "CI が落ちました。落ちたチェックのログの抜粋を読み、原因を直してください。"
         case .review: "レビューで、マージする前に直す必要のある指摘がありました。指摘ごとに直してください。"
         case .human: "人から直してほしいことが届きました。人の文を読み、そのとおりに直してください。"
+        case .conflict:
+            "最終 PR が base とコンフリクトしていたので、ワーカーが base（\(branches.base)）を作業ブランチに取り込み始めました。コンフリクトを解消してください。"
         }
     }
 
@@ -60,6 +62,7 @@ public struct FixFinalPullRequestJob: TaskJob {
         case .ci: "## 落ちたチェック\n\(UntrustedText.block("ci-log", findings))"
         case .review: "## 指摘\n\(UntrustedText.block("review", findings))"
         case .human: "## 人の文\n\(UntrustedText.block("instruction", findings))"
+        case .conflict: "## コンフリクト\n\(UntrustedText.block("conflicts", findings))"
         }
     }
 
@@ -81,6 +84,13 @@ public struct FixFinalPullRequestJob: TaskJob {
             """
             - 人の文が求めることに関わる所だけを直す
             - done の summary には、人の文のどこを、どう直したかを書く
+            """
+        case .conflict:
+            """
+            - コンフリクトしたファイルの印（`<<<<<<<`・`=======`・`>>>>>>>`）の両側を読み、作業ブランチの変更と base の変更の両方を生かす形で解消する。片方を捨てるだけにしない
+            - 印はすべて消す。コンフリクトしていないファイルは、解消したコードをビルドするのに要るときだけ変える
+            - 両方を生かせない（ゴールの決まったことと base の変更が食い違う）ときは、解消せずに needsQuestion にして、選択肢を出して聞く
+            - done の summary には、ファイルごとにどう解消したかを書く
             """
         }
     }

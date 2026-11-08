@@ -82,6 +82,13 @@ public protocol FinalGit: Sendable {
     /// 手元の変更をすべてコミットし、作業ブランチを push して、新しい先頭を返す。変更が無ければ、コミットも push もせずに nil を返す
     func commitAndPush(_ epic: CheckedOutEpic, message: String) async throws(WorkspaceError) -> String?
 
+    /// base（リモートの先頭）を、取り出した作業ブランチに取り込み始める。コミットはしない（解消した後に `commitAndPush` がマージのコミットにする）。
+    /// コンフリクトしたファイルのパスを返す（無ければ空）。base がもう作業ブランチに入っていれば、何もせずに nil を返す
+    func mergeBase(into epic: CheckedOutEpic) async throws(WorkspaceError) -> [String]?
+
+    /// `paths` のうち、コンフリクトの印（`<<<<<<<`・`>>>>>>>` で始まる行）が残っているもの
+    func unresolvedConflicts(_ paths: [String], in epic: CheckedOutEpic) async -> [String]
+
     /// `ancestor` の後から `descendant` までのコミットのメッセージ（新しい順）。`ancestor` が `descendant` の祖先でなければ nil
     func messages(after ancestor: String, upTo descendant: String, in epic: CheckedOutEpic) async throws(WorkspaceError) -> [String]?
 

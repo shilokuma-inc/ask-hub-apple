@@ -10,6 +10,8 @@ public enum ReviewVerdict: String, Codable, Sendable, CaseIterable {
     case fixCI
     /// レビュー役が必須の指摘をした。`findings` に指摘
     case fixReview
+    /// 最終 PR が base とコンフリクトしている。`findings` にコンフリクトの説明（最終 PR）
+    case fixConflict
 }
 
 /// 実装と直し（`implementTask`・`fixTask`）で Claude が報告したこと。司令塔が `decisions.json`・知見を足す PR・質問に写す

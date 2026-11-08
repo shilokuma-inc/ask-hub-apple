@@ -31,6 +31,8 @@ public struct FixTaskInput: JobInput {
         case review
         /// 人の判断のカードの「直してほしい」「別案にする」と、最終 PR への指示（`instructFinal`）。元の人の意図はジョブの `origin`
         case human
+        /// 最終 PR が base とコンフリクトしている。base を作業ブランチに取り込み、コンフリクトを解消する（最終 PR）
+        case conflict
     }
 
     public var pullRequest: Int

@@ -138,6 +138,7 @@ extension TaskFlow {
         case .ready: return try await ready(review, seen: seen, mergeRisks: outputs.mergeRisks, in: final)
         case .fixCI: return try await fix(after: review, seen: seen, reason: .ci, in: final)
         case .fixReview: return try await fix(after: review, seen: seen, reason: .review, in: final)
+        case .fixConflict: return try await fix(after: review, seen: seen, reason: .conflict, in: final)
         // 子 PR のレビューの判定。最終 PR のレビューには出ないので、壊れた結果として知らせる
         case .merged: return stuck(review, "子 PR の判定（merged）がある", in: final)
         }
