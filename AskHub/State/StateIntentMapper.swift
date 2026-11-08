@@ -211,7 +211,7 @@ struct StateIntentMapper {
         final: StateIndex.FinalEntry
     ) throws(ClientServiceError) -> DecisionTarget {
         guard final.decisionIDs.contains(decisionID) else {
-            throw ClientServiceError(message: "この判断は、最終 PR の判断のカードにありません")
+            throw ClientServiceError(message: "この判断には、いまは答えられません（見える仮決めに仕分けられるのを待っています）")
         }
         guard let head = final.head else {
             throw ClientServiceError(message: "最終 PR の head が分かりません。取り直してから送ってください")

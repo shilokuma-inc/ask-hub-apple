@@ -34,6 +34,8 @@ struct FinalReview: Hashable {
         /// 自動の修正がテストを弱めた
         case weakenedTests
         case dataMigration
+        /// 通ったレビューが、マージの規則の材料（セキュリティ・テストを弱めたか など）を返さなかった
+        case risksUnknown
 
         var label: String {
             switch self {
@@ -42,6 +44,7 @@ struct FinalReview: Hashable {
             case .sensitivePaths(let paths): "注意が要るファイルの差分（\(paths.joined(separator: "、"))）"
             case .weakenedTests: "自動の修正がテストを弱めた"
             case .dataMigration: "データの削除・移行"
+            case .risksUnknown: "レビューがマージの規則の材料を返さなかった"
             }
         }
     }

@@ -23,7 +23,7 @@ struct StateIndex {
         var pullRequest: Int
         /// いまの head（意図の対象の版）。分からなければ nil
         var head: String?
-        /// 判断のカード（見える仮決めと、仕分ける前の仮決め）の id
+        /// 答えられる判断のカード（見えると仕分けた仮決め）の id。仕分ける前の仮決めはカードに出すが、司令塔が答えを受け付けない
         var decisionIDs: Set<String>
         /// 答えの無いカードの id（まとめて OK の対象）。処理を待つ答えを当てた後のもの
         var unansweredDecisionIDs: [String]

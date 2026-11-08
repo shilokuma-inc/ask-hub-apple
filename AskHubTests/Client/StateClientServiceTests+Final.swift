@@ -34,7 +34,7 @@ extension StateClientServiceTests {
     /// 答えの意図の鍵（KeyID は 43 文字。形が違うと判断の一覧ごと読めない）
     private static let answerKey = String(repeating: "k", count: 43)
 
-    /// 見える仮決め（d1: 答え待ち・d2: OK 済み）、内部の細部（d3）、仕分ける前（d4）
+    /// 見える仮決め（d1・d4: 答え待ち、d2: OK 済み）と内部の細部（d3）
     private static let decisions = """
     {"v":1,"items":[
       {"id":"d1","task":"t2","pullRequest":41,"visible":true,"what":"見出しを短くした","why":"iPhone の幅に収める","alternatives":["2 行にする"]},
@@ -42,7 +42,7 @@ extension StateClientServiceTests {
        "answer":{"choice":"ok","note":"","intent":{"keyId":"\(answerKey)","nonce":"01JCJ0F0000000000000000299"},
                  "at":"2027-01-15T07:30:00Z"}},
       {"id":"d3","task":"t1","pullRequest":40,"visible":false,"what":"集計は UTC の日付で区切る","why":"サーバーと合わせる","alternatives":[]},
-      {"id":"d4","task":"t1","visible":null,"what":"空のときに案内を出す","why":"初回に迷わない","alternatives":[]}
+      {"id":"d4","task":"t1","visible":true,"what":"空のときに案内を出す","why":"初回に迷わない","alternatives":[]}
     ]}
     """
 
@@ -120,7 +120,7 @@ extension StateClientServiceTests {
 
     // MARK: 組み立て
 
-    /// 人の確認を待つ最終 PR: 見える仮決め（仕分ける前を含む）をカードに、内部の細部を畳む一覧にし、マージの規則は司令塔と同じ判定で出す
+    /// 人の確認を待つ最終 PR: 見える仮決めをカードに、内部の細部を畳む一覧にし、マージの規則は司令塔と同じ判定で出す
     @Test
     func reviewingEpicBuildsFinalReview() async throws {
         let service = try makeService(files: Self.reviewingEpic()).service
@@ -187,6 +187,41 @@ extension StateClientServiceTests {
         await #expect(throws: ClientServiceError.self) {
             try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d3", reply: .accept))
         }
+        // 同じカードへの答え直しは司令塔が断るので、最初の答えのまま出す
+        try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", reply: .accept))
+        let again = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.finalReview)
+        #expect(again.decisions.first { $0.id == "d1" }?.response == .fixing(request: "見出しを元の長さに戻して"))
+    }
+
+    /// 仕分ける前の仮決めはカードに出してマージの規則に数えるが、司令塔が受け付けないので答えは送らない。
+    /// 最終 PR の直しで足した仮決めは最終 PR の番号を出し、通ったレビューがマージの規則の材料を返さなければ手動のマージにする
+    @Test
+    func unclassifiedDecisionIsShownButNotAnswered() async throws {
+        let decisions = """
+        {"v":1,"items":[
+          {"id":"d1","task":"t2","pullRequest":41,"visible":true,"what":"見出しを短くした","why":"iPhone の幅に収める","alternatives":[]},
+          {"id":"d5","task":"t2","pullRequest":512,"visible":null,"what":"余白を詰めた","why":"指示に合わせた","alternatives":[]}
+        ]}
+        """
+        let readyWithoutRisks = Self.finalAttempt(Self.reviewID, outputs: #"{"verdict":"ready"}"#)
+        let decisionsFile = ["\(Self.finalBase)/decisions.json": decisions]
+        let fixture = try makeService(files: Self.reviewingEpic(extra: [decisionsFile, readyWithoutRisks]))
+        let service = fixture.service
+        let review = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.finalReview)
+        #expect(review.decisions.map(\.id) == ["d1", "d5"])
+        #expect(review.decisions.last?.goalSource == "タスク 2「一覧に出す」 · 最終 PR #512")
+        #expect(review.mergePolicy == .manual([.visibleDecisions(count: 2), .risksUnknown]))
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d5", reply: .accept))
+        }
+
+        try await service.perform(.acceptAllDecisions(epicID: Self.epicID))
+        let sent = try await sentEnvelopes(in: fixture)
+        #expect(sent.map { $0.target?.id } == ["d1"])
+        let answered = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.finalReview)
+        // 仕分ける前の仮決めがある間は、承認を受け付けない（`FinalMergeRule.canApprove`）
+        #expect(!answered.acceptsApproval)
+        #expect(!answered.canMerge)
     }
 
     /// まとめて OK は、答えの無いカードそれぞれに OK を送る。答え終えたら承認でき、承認は見た head に結びつけて送る

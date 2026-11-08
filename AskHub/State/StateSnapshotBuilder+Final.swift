@@ -29,13 +29,18 @@ extension StateSnapshotBuilder {
         let items = decisions?.items ?? []
         let outputs = lastReviewOutputs(of: epicDocuments)
         let reasons = FinalMergeRule.manualReasons(decisions: decisions, mergeRisks: outputs?.mergeRisks ?? [])
-        let cards = items.filter { $0.visible != false }.map { card($0, epic: file.id) }
-        let state = finalState(of: file, jobs: jobs, automatic: reasons.isEmpty)
+        // 通ったレビューが材料（mergeRisks）を返さなかったときは、司令塔は自動でマージせずに人を待つ
+        let risksMissing = outputs?.verdict == .ready && outputs?.mergeRisks == nil
+        let manualReasons = Self.manualReasons(reasons) + (risksMissing ? [.risksUnknown] : [])
+        let cards = items.filter { $0.visible != false }.map { card($0, epic: file) }
+        let state = finalState(of: file, jobs: jobs, automatic: manualReasons.isEmpty)
+        // 司令塔が答えを受け付けるのは、見えると仕分けた仮決めだけ（仕分ける前のものはカードに出すが、答えは送らない）
+        let answerable = items.filter { $0.visible == true }
         index.epics[file.id.rawValue]?.final = StateIndex.FinalEntry(
             pullRequest: number,
             head: head,
-            decisionIDs: Set(cards.map(\.id)),
-            unansweredDecisionIDs: items.filter { $0.visible != false && $0.answer == nil }.map(\.id),
+            decisionIDs: Set(answerable.map(\.id)),
+            unansweredDecisionIDs: answerable.filter { $0.answer == nil }.map(\.id),
             isReviewable: state == .reviewable
         )
         return FinalReview(
@@ -45,7 +50,7 @@ extension StateSnapshotBuilder {
             headCommit: head,
             reviewedHeadCommit: nil,
             checks: checks(jobs: jobs, outputs: outputs, merged: file.stage == .merged),
-            mergePolicy: reasons.isEmpty ? .automatic : .manual(Self.manualReasons(reasons)),
+            mergePolicy: manualReasons.isEmpty ? .automatic : .manual(manualReasons),
             decisions: cards,
             internalDecisions: items.filter { $0.visible == false }.map(\.what),
             verifications: [],
@@ -56,18 +61,16 @@ extension StateSnapshotBuilder {
 
     // MARK: 判断のカード
 
-    /// 処理を待つ判断への答えを当てた判断の一覧。見た head が今の head と同じ答えだけを当てる（違えば司令塔が断る）
+    /// 処理を待つ判断への答えを当てた判断の一覧。司令塔が受け付ける答えだけを当てる（見た head が今の head と同じで、見えると仕分けた、
+    /// まだ答えの無いカード。同じカードへの答え直しは司令塔が断るので、古い順に当てて最初の答えを残す）
     private func answered(_ decisions: DecisionsFile?, of epic: EpicFile, head: String?) -> DecisionsFile? {
         guard var decisions, let head else {
             return decisions
         }
-        let answeredBefore = Set(decisions.items.filter { $0.answer != nil }.map(\.id))
-        // 古い順に当てる（同じカードに答え直したときは、新しい答えが残る）
         for envelope in intentsToOverlay().reversed() where envelope.kind == DecisionIntent.kind {
             guard let intent = try? DecisionIntent(envelope: envelope), intent.target.repo == epic.repo, intent.target.epic == epic.id,
-                  intent.target.head == head, !answeredBefore.contains(intent.target.decision),
-                  let offset = decisions.items.firstIndex(where: { $0.id == intent.target.decision }),
-                  decisions.items[offset].visible != false else {
+                  intent.target.head == head, let offset = decisions.items.firstIndex(where: { $0.id == intent.target.decision }),
+                  decisions.items[offset].visible == true, decisions.items[offset].answer == nil else {
                 continue
             }
             decisions.items[offset].answer = DecisionsFile.Answer(
@@ -80,8 +83,10 @@ extension StateSnapshotBuilder {
         return decisions
     }
 
-    private func card(_ item: DecisionsFile.Item, epic: ULID) -> DecisionCard {
-        let source = [taskName(item.task, epic: epic), item.pullRequest.map { "子 PR #\($0)" }].compactMap(\.self)
+    private func card(_ item: DecisionsFile.Item, epic: EpicFile) -> DecisionCard {
+        // 最終 PR の直しで足した仮決めは、最終 PR を持つ（タスクはゴールの最後のタスク）
+        let pullRequest = item.pullRequest.map { $0 == epic.finalPullRequest ? "最終 PR #\($0)" : "子 PR #\($0)" }
+        let source = [taskName(item.task, epic: epic.id), pullRequest].compactMap(\.self)
         return DecisionCard(
             id: item.id,
             title: item.what,
