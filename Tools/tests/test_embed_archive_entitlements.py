@@ -78,6 +78,7 @@ class AppBuildSettingsTests(unittest.TestCase):
 
 class MainTests(unittest.TestCase):
     def setUp(self):
+        """偽の xcodebuild・codesign を PATH の先頭に置き、署名の無い archive と entitlements のファイルを用意する。"""
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
         bin_dir = self.tmp / "bin"
@@ -144,9 +145,11 @@ class CheckTests(unittest.TestCase):
             plistlib.dumps({"ApplicationProperties": {"ApplicationPath": "Applications/AskHub.app"}}))
 
         def fake_ditto(command, check):
+            """IPA を展開した代わりに、展開先に空の Payload/AskHub.app を作る。"""
             (Path(command[-1]) / "Payload/AskHub.app").mkdir(parents=True)
 
         def fake_signed_entitlements(app: Path):
+            """archive の中の .app には archived を、IPA の .app には exported を返す。"""
             return archived if app.is_relative_to(archive) else exported
 
         with mock.patch.object(embed_archive_entitlements.subprocess, "run", side_effect=fake_ditto), \

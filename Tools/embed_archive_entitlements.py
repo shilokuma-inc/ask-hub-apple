@@ -74,6 +74,10 @@ def signed_entitlements(app: Path) -> dict | None:
 
 
 def embed(args: argparse.Namespace) -> int:
+    """署名の無い archive の .app を、`CODE_SIGN_ENTITLEMENTS` を展開した entitlements でアドホック署名する。
+
+    `CODE_SIGN_ENTITLEMENTS` が空なら何もしない。署名の後に、埋め込んだ entitlements と署名の中身が同じかを確かめる。
+    """
     app = archived_app(args.archive)
     # 署名済み（macOS のアドホック署名の archive など）を上書きすると、Xcode が埋め込んだ entitlement（sandbox など）が消える
     if signed_entitlements(app) is not None:
@@ -127,6 +131,7 @@ def check(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str]) -> int:
+    """`embed` か `check` を流す（使い方はモジュールの説明）。"""
     parser = argparse.ArgumentParser(description="archive の .app に entitlements を埋め込み、Export した IPA に残ったかを確かめる")
     commands = parser.add_subparsers(dest="command", required=True)
     embed_parser = commands.add_parser("embed", help="署名の無い archive の .app に entitlements をアドホック署名で埋め込む")
