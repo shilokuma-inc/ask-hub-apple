@@ -20,7 +20,7 @@ enum AskHubCommanderMain {
         case "run": await run()
         case "setup": setup(arguments)
         case "token": commandLine.token(arguments)
-        case "claude-token": commandLine.claudeToken(arguments)
+        case "claude-token": commandLine.replaceClaudeToken(arguments)
         case "apns": apns(arguments)
         case "git-credential": commandLine.gitCredential(arguments)
         case "launch-agent": commandLine.launchAgent()

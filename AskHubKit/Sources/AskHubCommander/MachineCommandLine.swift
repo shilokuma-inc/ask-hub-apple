@@ -91,7 +91,7 @@ public struct MachineCommandLine: Sendable {
 
     /// `claude-token`: Claude の setup-token を入れ直す（期限の 1 年が近づいたら、`claude setup-token` で作り直して貼る）。
     /// 常駐のループは起動したときに読んだ値を使うので、読み込み直してもらう
-    public func claudeToken(_ arguments: [String]) {
+    public func replaceClaudeToken(_ arguments: [String]) {
         guard arguments.isEmpty else { fail("使い方: \(role.program) claude-token", status: EX_USAGE) }
         _ = loadConfiguration()
         do {

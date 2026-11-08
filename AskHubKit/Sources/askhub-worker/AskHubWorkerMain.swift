@@ -23,7 +23,7 @@ enum AskHubWorkerMain {
         case "run": await run()
         case "setup": setup(arguments)
         case "token": commandLine.token(arguments)
-        case "claude-token": commandLine.claudeToken(arguments)
+        case "claude-token": commandLine.replaceClaudeToken(arguments)
         case "git-credential": commandLine.gitCredential(arguments)
         case "launch-agent": launchAgent()
         case "check": print(await commandLine.checkLines(version: CommanderVersion.current).joined(separator: "\n"))
