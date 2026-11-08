@@ -20,7 +20,7 @@ extension DemoClientService {
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
             applyReviewIntent(intent)
 
-        case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .submitSecret, .cleanUp:
+        case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .cleanUp:
             applyOperationIntent(intent)
         }
         return SendReceipt()

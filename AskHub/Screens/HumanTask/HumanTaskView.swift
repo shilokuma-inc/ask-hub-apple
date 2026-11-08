@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 人がする作業（AskHub だけではできない作業）。手順・開くページ・渡すものを出し、終わったら知らせる
 struct HumanTaskView: View {
@@ -6,9 +7,11 @@ struct HumanTaskView: View {
     let taskID: HumanTask.ID
 
     @Environment(ClientStore.self) private var store
-    @State private var secret = ""
-    @State private var isConfirmingSecret = false
-    @FocusState private var isEditingSecret: Bool
+    @State private var isImporting = false
+    /// 選んだ渡すファイル（送るまで覚える）
+    @State private var pickedFile: HandoverFile?
+    /// 選んだファイルを渡せない理由
+    @State private var pickNotice: String?
 
     var body: some View {
         if let epic = store.epic(epicID), let task = epic.humanTask(taskID) {
@@ -61,14 +64,8 @@ struct HumanTaskView: View {
         .pastelBackground()
         .compactList()
         .navigationTitle("人がする作業")
-        .keyboardDoneButton($isEditingSecret)
-        .confirmationDialog("秘密の値を GitHub の Secrets に入れますか？", isPresented: $isConfirmingSecret, titleVisibility: .visible) {
-            Button("入れる") {
-                secret = ""
-                Task { await store.send(.submitSecret(epicID: epic.id, taskID: task.id)) }
-            }
-        } message: {
-            Text("暗号化して入れます。AskHub にもリポジトリにも残しません")
+        .fileImporter(isPresented: $isImporting, allowedContentTypes: [.item]) { result in
+            pick(result)
         }
     }
 
@@ -76,33 +73,106 @@ struct HumanTaskView: View {
         switch task.deliverable {
         case .none:
             CardSection {
-                Button("終わった", systemImage: "checkmark.circle") {
-                    Task { await store.send(.completeHumanTask(epicID: epic.id, taskID: task.id)) }
-                }
+                completeButton(epic, task)
             } footer: {
-                Text("押すと、ワーカーが確かめられる範囲で確かめてから、前提にしているタスクのロックを外します")
+                Text("押すと、司令塔が受け取って、この作業を前提にしているタスクのロックを外します")
             }
 
-        case .file(let description):
-            CardSection {
-                Button("ファイルを渡す…", systemImage: "doc.badge.plus") {
-                    Task { await store.send(.completeHumanTask(epicID: epic.id, taskID: task.id)) }
-                }
-            } footer: {
-                Text(description)
-            }
+        case .file:
+            fileSection(epic, task)
 
         case let .secret(name, repository):
-            CardSection {
-                SecureField(name, text: $secret)
-                    .focused($isEditingSecret)
-                Button("Secrets に入れる…", systemImage: "lock") { isConfirmingSecret = true }
-                    .disabled(secret.isEmpty)
-            } header: {
-                Text("渡すもの")
-            } footer: {
-                Text("\(repository) の Actions の Secrets「\(name)」に入れます")
+            secretSection(epic, task, name: name, repository: repository)
+        }
+    }
+
+    private func completeButton(_ epic: Epic, _ task: HumanTask) -> some View {
+        Button("終わった", systemImage: "checkmark.circle") {
+            Task { await store.send(.completeHumanTask(epicID: epic.id, taskID: task.id)) }
+        }
+        .accessibilityIdentifier("human-task-done")
+    }
+
+    /// ファイルを選び、大きさとハッシュを計ってから渡す。選んだファイルを確かめてから送れるよう、選ぶと送るを分ける
+    private func fileSection(_ epic: Epic, _ task: HumanTask) -> some View {
+        CardSection {
+            if let file = pickedFile {
+                LabeledContent {
+                    Text(Int64(file.size).formatted(.byteCount(style: .file)))
+                } label: {
+                    Label(file.name, systemImage: "doc")
+                }
+                Button("このファイルを渡す", systemImage: "paperplane") {
+                    pickedFile = nil
+                    Task { await store.send(.completeHumanTask(epicID: epic.id, taskID: task.id, file: file)) }
+                }
+                .accessibilityIdentifier("human-task-hand-over")
             }
+            Button(pickedFile == nil ? "ファイルを選ぶ…" : "選び直す…", systemImage: "doc.badge.plus") {
+                isImporting = true
+            }
+            .accessibilityIdentifier("human-task-pick-file")
+        } header: {
+            Text("渡すもの")
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                if let pickNotice {
+                    Text(pickNotice)
+                        .foregroundStyle(Theme.danger)
+                }
+                Text("秘密鍵・パスワード・トークン・API キーを含むファイルは渡さないでください。渡したファイルは状態リポジトリに残り、実装する Claude も読みます")
+            }
+        }
+    }
+
+    /// GitHub の Secrets に入れる作業。値は AskHub では受け取らず、人が GitHub の設定画面で入れてから「終わった」を押す
+    private func secretSection(_ epic: Epic, _ task: HumanTask, name: String, repository: String) -> some View {
+        CardSection {
+            LabeledContent("Secrets の名前") {
+                HStack {
+                    Text(name)
+                        .font(.callout.monospaced())
+                        .textSelection(.enabled)
+                    CopyButton(value: name)
+                }
+            }
+            if let url = Self.secretsSettingsURL(repository) {
+                Link(destination: url) {
+                    Label("GitHub の Secrets の設定を開く", systemImage: "safari")
+                }
+            }
+            completeButton(epic, task)
+        } header: {
+            Text("渡すもの")
+        } footer: {
+            let place = "GitHub の \(repository.isEmpty ? "リポジトリ" : repository) の Settings → Secrets and variables → Actions"
+            Text("\(place) で、「\(name)」に値を入れてから押してください。AskHub は値を受け取りません")
+        }
+    }
+
+    /// リポジトリ（owner/name）の Actions の Secrets の設定画面。分からなければ nil
+    static func secretsSettingsURL(_ repository: String) -> URL? {
+        let parts = repository.split(separator: "/")
+        guard parts.count == 2 else {
+            return nil
+        }
+        return URL(string: "https://github.com/\(parts[0])/\(parts[1])/settings/secrets/actions")
+    }
+
+    private func pick(_ result: Result<URL, any Error>) {
+        switch result {
+        case .success(let url):
+            switch HandoverFile.read(url) {
+            case .success(let file):
+                pickedFile = file
+                pickNotice = nil
+
+            case .failure(let failure):
+                pickNotice = failure.message
+            }
+
+        case .failure:
+            pickNotice = "ファイルを読み込めませんでした"
         }
     }
 

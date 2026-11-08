@@ -53,7 +53,8 @@ extension StateSnapshotBuilder {
             applyFinalIntent(envelope, to: &epics)
 
         default:
-            // 判断のカードへの答えは、マージの規則と承認できるかの判定にも効くので、最終 PR を組み立てるときに当てる（`finalReview(of:index:)`）
+            // 判断のカードへの答えは、マージの規則と承認できるかの判定にも効くので、最終 PR を組み立てるときに当てる（`finalReview(of:index:)`）。
+            // 人がする作業を終えた意図は、作業を組み立てるときに当てる（`humanTaskState(_:goal:epic:)`）
             break
         }
     }
