@@ -22,6 +22,11 @@ public actor ConcurrencyLimit {
         } onCancel: {
             Task { await self.cancel(id) }
         }
+        // 取り消しの知らせが届く前に、空きを渡されることがある。取り消されていれば、渡された空きを返して止める
+        if Task.isCancelled {
+            release()
+            throw CancellationError()
+        }
     }
 
     private func wait(_ id: UUID) async throws {
