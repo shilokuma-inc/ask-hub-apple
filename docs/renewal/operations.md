@@ -114,6 +114,22 @@
 - git は、司令塔自身を credential helper（`askhub-commander git-credential`）にして、Keychain の GitHub のトークンを受け取る。git に `credential.useHttpPath=true` を渡し、問い合わせの path（`owner/repo.git`）の持ち主でトークンを選ぶ。持ち主のトークンが無ければ何も返さず、理由（トークンの値は出さない）を標準エラーに出す
 - 開始のときに常時オンの Mac が選ばれたら、司令塔が作業場所の用意（`prepareWorkspace`）も引き受ける（下の「ワーカーの入れ方」と同じ動き）
 
+### 司令塔の更新
+
+常時オンの Mac の司令塔は、手元の Mac から遠隔で更新する。署名の鍵（Developer ID Application）は常時オンの Mac のログインキーチェーンにだけ置く（社用の Mac などほかの Mac には置かない）。
+
+- 同じ Developer ID と識別子（`jp.shilokuma.askhub.commander`）で署名し続けるので、司令塔の Keychain の項目に一度「常に許可」を付ければ、入れ替えても確認が出ない（署名しないビルドは入れ替えのたびに別のプログラムとみなされ、確認が出ていた）
+- ssh のセッションからはログインキーチェーンの署名の鍵を使えない（`codesign` が `errSecInternalComponent` で止まる）。そこで、常時オンの Mac のログイン中のセッションに LaunchAgent（`jp.shilokuma.askhub.deploy`）を置き、署名と差し替えはその中で行う
+- 入れ方（常時オンの Mac で 1 回だけ）:
+  1. Apple Developer の Certificates で「Developer ID Application」の証明書を作り、常時オンの Mac のログインキーチェーンに入れる（CSR も常時オンの Mac のキーチェーンアクセスで作る）。`security find-identity -v -p codesigning` に出れば済み
+  2. 手元の Mac で `scripts/commander/deploy.sh` を流すと、常駐が無ければスクリプトを常時オンの Mac に送り、流すコマンドを出す。それを常時オンの Mac のログイン中の端末で流す（`install-deployer.sh`。LaunchAgent の定義を書いて読み込む）
+- 更新: 手元の Mac で `scripts/commander/deploy.sh [ssh の接続先（既定 macmini）]`
+  1. 手元でビルドし、署名していないプログラムと、その SHA-256 を書いた依頼（`~/Library/Application Support/AskHub/deploy/request`）を ssh で送る
+  2. 常駐が依頼を拾い、SHA-256 を照らし合わせてから Developer ID で署名し、署名とチームを確かめて差し替え（前のものは `askhub-commander.prev` に残す）、司令塔を読み込み直す
+  3. 結果は `deploy/last.log`（最後の行が `status=ok` か `status=failed`）。手元のスクリプトがそれを待って出す
+- 最初の 1 回だけ、常時オンの Mac の画面に 2 種類の確認が出る。どちらも「常に許可」にする: `codesign` が署名の鍵を使う確認と、署名した司令塔が Keychain の項目（GitHub のトークン・Claude の setup-token・APNs の鍵）を読む確認
+- 戻すときは、常時オンの Mac で `askhub-commander.prev` を `askhub-commander` に戻して読み込み直す
+
 ### ワーカーの入れ方（段階 3）
 
 開始のときに人が選ぶ Mac に入れる。ログインしているユーザーが端末から流す（ssh からは Keychain を読めない）。
