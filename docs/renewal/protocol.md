@@ -119,6 +119,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "branch": null,
   "finalPullRequest": null,
   "merge": null,
+  "pause": null,
   "goalVersion": null,
   "origin": { "keyId": "…", "nonce": "01JC…" },
   "createdAt": "…",
@@ -128,7 +129,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - `origin` は、元になった依頼の人の意図
 - `summary` は、依頼の要約（何を作るか・なぜ）。質問づくりの Claude が書く。作る前は `null`
-- `mac` は、開始のときに人が選んだ Mac
+- `mac` は、開始のときに人が選んだ Mac。ほかの Mac への引き継ぎ（`handover`）で、移す先の Mac に書き換える
+- `pause` は、人が一時停止した印 `{ "since": "<受け付けた時刻>", "origin": { "keyId", "nonce" } }`（`pauseEpic` の意図）。再開（`resumeEpic`）で外す。付いている間、司令塔は epic の次のジョブを作らず、まだ動いていないジョブ（`queued`・`assigned`）を `paused` にしたままにする（動いているジョブは最後まで終わらせる）。Mac がオフラインでジョブが止まっただけのときは付けない
 - `merge` は、最終 PR のマージの記録 `{ "commit": "<マージのコミット>", "approval": { "keyId", "nonce" } | null, "at": "…" }`。司令塔が `merged` にするときに書く。`approval` は人の承認（`approveMerge`）の意図で、マージの規則で自動でマージしたなら `null`。クライアントは、どの端末から承認したかによらず、これで「自動でマージした」「承認してマージした」を出し分ける
 - `branch` は作業ブランチ。git のコマンドに渡しても選択肢に読まれないよう、`-` で始まる値・`..` を含む値・英数字と `._/-` 以外の文字を使わない
 
@@ -332,6 +334,10 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `kind` の最初の一覧: `makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`prepareWorkspace`・`implementTask`・`reviewTask`・`fixTask`・`integrateDevelop`・`verifyBeforeFinal`・`openFinalPullRequest`・`reviewFinalPullRequest`・`fixFinalPullRequest`・`rerunChecks`・`classifyDecisions`・`captureScreenshots`・`mergeFinalPullRequest`・`cleanUp`・`notify`
 - `state` は `queued`・`assigned`・`running`・`succeeded`・`failed`・`waitingHuman`・`paused`・`canceled`
 - ジョブのファイルは司令塔だけが書く。ワーカーは、自分の試行のファイルに「始めた」を書くことで、ジョブを引き受けたことを示す。司令塔は試行を読んでジョブの `state` を更新する
+- `paused` には 2 つの止め方がある。ジョブに印は足さず、当てた試行（番号が `attempts` のもの）で分ける（Swift は `JobFile.isWaitingForOfflineMac`。クライアントも同じ決まりで出し分ける）
+  - Mac がオフラインで止まったジョブ: 当てた試行が、担当の Mac（`assignedMac`）で実行中のまま止まったか、`macOffline` で失敗したもの。同じ Mac が戻ったら続きから動かす
+  - 人の一時停止（`epic.json` の `pause`）で止めたジョブ: それ以外。一時停止の間は、前の試行の失敗で決め直さない（人の「やり直す」で戻したジョブを、人の対応待ちに戻さない）。再開で `assigned` に戻す（待ちの時刻は止めたときのまま）
+- 引き継いだ epic では、epic の Mac で動くジョブ（作業場所の用意・タスクのジョブ・`integrateDevelop`・検証・撮影・片付け、epic の Mac に割り当てた最終 PR の直し）のうち、動いていないもの（`queued`・`assigned`・`paused`・`waitingHuman`）を、司令塔が epic の今の Mac に付け替える。前の Mac がオフラインで止まったまま（実行中の試行が残った）のジョブは、前の Mac を待たずに `assigned` に戻し、移す先が次の番号の試行で、作業ブランチ（最後に push したところ）から続ける。一時停止中に前の Mac で動き続けたジョブも、終わった後にやり直すときは移す先に付け替える
 
 #### ジョブの引き受けと試行の段取り
 
@@ -525,7 +531,8 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `approveMerge` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | —（見える仮決めにすべて答えた後でだけ受け付ける） |
 | `instructFinal` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | `instruction`（指示の本文） |
 | `humanTaskDone` | 人がする作業（`{ "type": "humanTask", "epic", "id": "h1" }`） | ゴールの `version` | `none` は空、`file` は `attachments`（1 件。依頼の添付と同じ形・置き場所・上限） |
-| `handover` | epic | — | 移す先の Mac |
+| `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
+| `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始する前の epic だけ |
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
