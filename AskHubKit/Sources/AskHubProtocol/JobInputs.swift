@@ -22,7 +22,19 @@ public struct PullRequestInput: JobInput {
     public var isValid: Bool { pullRequest >= 1 && AttemptFile.isCommitSHA(head) }
 }
 
-/// タスクの直し（`fixTask`）
+/// タスクの実装（`implementTask`）。タスクはジョブの `task`。
+/// 実装の途中の質問の答えで再開するときだけ、質問の id を持つ（答えはその質問の `answer`）
+public struct ImplementTaskInput: JobInput {
+    public var question: String?
+
+    public init(question: String? = nil) {
+        self.question = question
+    }
+
+    public var isValid: Bool { question.map(LocalIDs.isValid) ?? true }
+}
+
+/// タスクの直し（`fixTask`）と最終 PR の直し（`fixFinalPullRequest`）
 public struct FixTaskInput: JobInput {
     public enum Reason: String, Codable, Sendable, CaseIterable {
         /// CI の失敗
@@ -38,14 +50,17 @@ public struct FixTaskInput: JobInput {
     public var pullRequest: Int
     public var head: String
     public var reason: Reason
+    /// 実装の途中の質問の答えで再開するときだけ、質問の id（答えはその質問の `answer`）
+    public var question: String?
 
-    public init(pullRequest: Int, head: String, reason: Reason) {
+    public init(pullRequest: Int, head: String, reason: Reason, question: String? = nil) {
         self.pullRequest = pullRequest
         self.head = head
         self.reason = reason
+        self.question = question
     }
 
-    public var isValid: Bool { PullRequestInput(pullRequest: pullRequest, head: head).isValid }
+    public var isValid: Bool { PullRequestInput(pullRequest: pullRequest, head: head).isValid && (question.map(LocalIDs.isValid) ?? true) }
 }
 
 /// 落ちたジョブの流し直し（`rerunChecks`）。コードに触れない
