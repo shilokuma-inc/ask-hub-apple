@@ -206,6 +206,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 ```
 
 - `state` は `locked`（依存先の回答待ち）・`revising`（依存先が決まり、見直し中）・`open`（回答を待つ）・`clarifying`（説明を作成中）・`answered`・`dropped`（見直しで要らなくなった。理由は `revision` に書き、`by` は `dependency`）
+- 実装の途中の質問（[flows.md](flows.md) の「実装の途中の質問」）は、`job`（質問したジョブの id）と `task`（どのタスクか。最終 PR の直しの質問は `null`）を持つ。開始前の質問は、どちらも持たない。`round` は、その epic の最後の質問の `round` に 1 を足したもの（開始前の質問が 1 つも無ければ 2。最初の質問づくりを 1 回目と数えるため）、`dependsOn` は空
 - `answered`・`dropped` を「決まった」と数える。ロックを外すのは依存先がすべて決まってからで、それ以外の質問の依存先は、いつもすべて決まっている
 - `version` は質問を書き直すたびに上げる。回答の人の意図は、回答した質問の `version` を持つ。古い版への回答は受け付けず、知らせる
 - `caution` は、慎重に決めてほしい理由（`{ "kind": "security", "reason": "…" }`。`kind` は `security`（トークン・認証・権限・データを外に出す）・`privacy`（個人のデータ）・`irreversible`（データの削除・移行・公開など取り消せない）・`cost`（お金がかかる））。間違えると取り返しのつかない質問にだけ付け、無ければ書かない。クライアントは、その質問を警告として出す（祝う演出をやめ、警告の帯を出す）。最終 PR の判断のカードにも同じ形を使う（段階 3）
@@ -249,7 +250,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - ゴールを直すたびに `version` を上げる。「開始」の人の意図は、確かめたゴールの `version` を持つ
 - タスクの `state` は `pending`・`locked`（人がする作業の待ち）・`running`・`done`。`dependsOn` には、ほかのタスクと人がする作業の id を書ける
   - 司令塔が、`pending` → `running`（実装のジョブを作ったとき）→ `done`（子 PR をマージしたとき）にする（[flows.md](flows.md) の「司令塔がタスクを進める」）。人が読むゴールの中身は変えないので、`version` は上げない
-- 人がする作業の `handover` は、終わったら渡すもの: `none`（「終わった」を押すだけ）・`file`（ファイルを渡す）・`secret`（GitHub の Secrets に入れる。`name` に Secrets の名前。値はどこにも残さない）。扱いは段階 3 で作る
+- 人がする作業の `handover` は、終わったら渡すもの: `none`（「終わった」を押すだけ）・`file`（ファイルを渡す）・`secret`（GitHub の Secrets に入れる。`name` に Secrets の名前。値はどこにも残さない）。段階 3 では `none` と `file` を作り、`secret` は後で作る
+- 人がする作業を終えたら、司令塔が `state` を `done` にし、`done` に `{ "intent": { "keyId", "nonce" }, "at": "…", "file": <依頼の添付と同じ形の参照> | null }` を書く。人が読むゴールの中身は変えないので、`version` は上げない
 - `comment` は、Discussion のゴールの写しのコメントの id
 
 ### decisions.json（人が決めていない判断）
@@ -316,9 +318,9 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `checkReadiness` | `{ "round": 1 }` |
 | `reviseGoal` | `{ "instruction": { "keyId", "nonce" } }` |
 | `prepareWorkspace` | `{}`（作業ブランチは `epic.json` の `branch`。無ければ作って書く） |
-| `implementTask` | `{}`（タスクはジョブの `task`） |
+| `implementTask` | `{}`（タスクはジョブの `task`）。実装の途中の質問の答えで再開するときは `{ "question": "q5" }` |
 | `reviewTask` | `{ "pullRequest": 41, "head": "<コミット>" }`（実装・直しの試行の `outputs.pullRequest` と、push した head の `outputs.commit`） |
-| `fixTask` | `{ "pullRequest": 41, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`。`head` は判定を出したレビューの input の head。直しの回は試行から数える） |
+| `fixTask` | `{ "pullRequest": 41, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`。`head` は判定を出したレビューの input の head。直しの回は試行から数える）。実装の途中の質問の答えで再開するときは、元の input に `"question": "q5"` を足す（`fixFinalPullRequest` も同じ） |
 | `rerunChecks` | `{ "pullRequest": 41, "head": "<コミット>", "runs": [123] }` |
 | `integrateDevelop` | `{ "base": "<取り込む base のコミット>" }` |
 | `verifyBeforeFinal`・`classifyDecisions`・`captureScreenshots`・`openFinalPullRequest`・`cleanUp` | `{}` |
@@ -522,7 +524,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `decision` | 判断のカード（`{ "type": "decision", "epic", "id": "d1" }`） | 最終 PR の head のコミット | `answer`（`ok`・`alternative`・`fix`）、`note`（別案・直してほしいときの本文） |
 | `approveMerge` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | —（見える仮決めにすべて答えた後でだけ受け付ける） |
 | `instructFinal` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | `instruction`（指示の本文） |
-| `humanTaskDone` | 人がする作業 | ゴールの `version` | 渡すものの参照 |
+| `humanTaskDone` | 人がする作業（`{ "type": "humanTask", "epic", "id": "h1" }`） | ゴールの `version` | `none` は空、`file` は `attachments`（1 件。依頼の添付と同じ形・置き場所・上限） |
 | `handover` | epic | — | 移す先の Mac |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始する前の epic だけ |
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
