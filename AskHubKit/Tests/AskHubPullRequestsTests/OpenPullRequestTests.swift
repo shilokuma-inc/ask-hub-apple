@@ -80,6 +80,35 @@ struct OpenPullRequestTests {
         }
     }
 
+    @Test func listsOpenPullRequestsFromHeadToAnyBase() async throws {
+        let next = "https://api.github.com/repositories/1/pulls?state=open&page=2"
+        let transport = StubTransport([
+            .json(200, Fixture.json([Fixture.pull(2, head: "feat/other"), Fixture.pull(3)]), headers: Fixture.link(next: next)),
+            .json(200, Fixture.json([
+                Fixture.pull(4, base: "develop"),
+                Fixture.pull(6, headRepo: "shilokuma-inc/ask-hub-apple-fork")
+            ]))
+        ])
+        let pulls = try await Fixture.client(transport).openPullRequests(head: "feat/task-1")
+        // 向き先は問わず、ほかのブランチとフォークの PR は除く
+        #expect(pulls.map(\.number) == [3, 4])
+        #expect(pulls.map(\.baseRef) == ["epic/feature", "develop"])
+        let list = transport.requests.first
+        #expect(Fixture.path(list) == "/repos/shilokuma-inc/ask-hub-apple/pulls")
+        #expect(Fixture.query(list) == ["state": "open", "head": "shilokuma-inc:feat/task-1", "per_page": "100"])
+        #expect(transport.requests.map { $0.url?.absoluteString }.last == next)
+    }
+
+    @Test func readsBranchHead() async throws {
+        let ref = #"{"ref":"refs/heads/feat/task-1","object":{"sha":"\#(Fixture.sha)","type":"commit"}}"#
+        let transport = StubTransport([.json(200, ref), .json(404, #"{"message":"Not Found"}"#)])
+        let client = Fixture.client(transport)
+        #expect(try await client.branchHead("feat/task-1") == Fixture.sha)
+        #expect(Fixture.path(transport.requests.first) == "/repos/shilokuma-inc/ask-hub-apple/git/ref/heads/feat/task-1")
+        // 無ければ nil
+        #expect(try await client.branchHead("feat/task-1") == nil)
+    }
+
     @Test(arguments: ["../main", "-x", "a//b", "a b", "a?b", "", "x.lock", "/a", "a/"])
     func refusesBranchNamesOfWrongShapeWithoutSending(_ head: String) async throws {
         let transport = StubTransport([])
