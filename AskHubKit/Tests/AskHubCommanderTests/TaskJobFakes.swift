@@ -157,6 +157,8 @@ final class FakePullRequests: PullRequestOperations {
         var deletions: [(branch: String, expected: String)] = []
         var mergeSHA = String(repeating: "e", count: 40)
         var deleteError: PullRequestError?
+        /// リモートのブランチ（名前 → 先頭）。ここに無いブランチの削除は、先頭を確かめずに消せたことにする
+        var branches: [String: String] = [:]
         /// ログを読むときに、先に投げる失敗（1 回ずつ使う）
         var logFailures: [PullRequestError] = []
         /// 子 PR を読むたびに呼ぶ（待つ間に PR が変わったことにする）
@@ -256,9 +258,21 @@ final class FakePullRequests: PullRequestOperations {
         let result = state.withLock { state -> Result<BranchDeletion, PullRequestError> in
             state.deletions.append((branch, expectedSHA))
             if let error = state.deleteError { return .failure(error) }
+            if let head = state.branches[branch], head != expectedSHA { return .failure(.headChanged) }
+            state.branches[branch] = nil
             return .success(.deleted)
         }
         return try result.get()
+    }
+
+    func branchHead(_ branch: String) async throws(PullRequestError) -> String? {
+        state.withLock { $0.branches[branch] }
+    }
+
+    func openPullRequests(head: String) async throws(PullRequestError) -> [PullRequest] {
+        state.withLock { state in
+            state.pulls.values.filter { $0.state == .open && $0.headRef == head }.sorted { $0.number < $1.number }
+        }
     }
 
     func jobLog(jobID: Int) async throws(PullRequestError) -> String {

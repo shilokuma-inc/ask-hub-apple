@@ -69,6 +69,24 @@ public struct GitHubPullRequests: Sendable {
         return try match?.model()
     }
 
+    /// 同じリポジトリの head からの開いた PR（向き先は問わない）。消す前のブランチに、まだ使っている PR が無いかを確かめるのに使う
+    public func openPullRequests(head: String) async throws(PullRequestError) -> [PullRequest] {
+        try GitNames.checkBranch(head)
+        let query = [
+            URLQueryItem(name: "state", value: "open"),
+            URLQueryItem(name: "head", value: "\(repository.owner):\(head)"),
+            URLQueryItem(name: "per_page", value: "100")
+        ]
+        let pages = try await api.pages("pulls", query: query, as: [PullRequestPayload].self)
+        // `head` の絞り込みは持ち主とブランチ名だけなので、同じ持ち主のほかのリポジトリ（フォーク）の PR を除く
+        var pulls: [PullRequest] = []
+        for payload in pages.joined()
+        where payload.head.ref == head && payload.head.repo?.fullName.lowercased() == repository.rawValue.lowercased() {
+            pulls.append(try payload.model())
+        }
+        return pulls
+    }
+
     /// PR の様子を読む
     public func pullRequest(number: Int) async throws(PullRequestError) -> PullRequest {
         try GitNames.checkNumber(number)

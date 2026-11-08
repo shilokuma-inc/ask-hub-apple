@@ -23,6 +23,10 @@ public protocol PullRequestOperations: Sendable {
     ) async throws(PullRequestError) -> MergedPullRequest
     /// ブランチを消す。今の先頭が `expectedSHA` と違えば消さない
     func deleteBranch(_ branch: String, expectedSHA: String) async throws(PullRequestError) -> BranchDeletion
+    /// ブランチの先頭の SHA。無ければ nil
+    func branchHead(_ branch: String) async throws(PullRequestError) -> String?
+    /// 同じリポジトリの head からの開いた PR（向き先は問わない）
+    func openPullRequests(head: String) async throws(PullRequestError) -> [PullRequest]
 }
 
 extension GitHubPullRequests: PullRequestOperations {}
