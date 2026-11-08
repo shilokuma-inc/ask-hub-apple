@@ -77,6 +77,18 @@ struct AskHubClientTests {
         #expect(await store.data(at: StatePath.epic(Self.repo, epic)) != nil)
     }
 
+    @Test func sendsAttachmentsBeforeIntent() async throws {
+        let store = InMemoryStateStore()
+        let key = try key()
+        let sender = IntentSender(store: store, key: key) { Self.now }
+        let file = RequestAttachment(number: 1, name: "GoogleService-Info.plist", size: 5, sha256: String(repeating: "a", count: 64))
+        let target = HumanTaskTarget(repo: Self.repo, epic: ULID.generate(at: Self.now), task: "h1", goalVersion: 3)
+        let sent = try await sender.send(.humanTaskDone(target, file: file), attachments: [Data("plist".utf8)])
+        let blob = await store.data(at: StatePath.attachment(device: sent.keyId, nonce: sent.nonce, number: 1))
+        #expect(blob == Data("plist".utf8))
+        #expect(await store.data(at: StatePath.intent(device: sent.keyId, nonce: sent.nonce)) != nil)
+    }
+
     @Test func draftsAreReadAsTheirKinds() throws {
         let key = try key()
         func envelope(_ draft: IntentDraft) -> IntentEnvelope {
@@ -122,6 +134,12 @@ struct AskHubClientTests {
         #expect(answered.answer == .alternative)
         #expect(answered.note == "2 行にする")
         #expect(try DecisionIntent(envelope: envelope(.decision(card, answer: .ok))).note.isEmpty)
+        let humanTask = HumanTaskTarget(repo: Self.repo, epic: epic, task: "h1", goalVersion: 3)
+        let done = try HumanTaskDoneIntent(envelope: envelope(.humanTaskDone(humanTask)))
+        #expect(done.target == humanTask)
+        #expect(done.file == nil)
+        let file = RequestAttachment(number: 1, name: "key.p8", size: 10, sha256: String(repeating: "b", count: 64))
+        #expect(try HumanTaskDoneIntent(envelope: envelope(.humanTaskDone(humanTask, file: file))).file == file)
     }
 }
 
