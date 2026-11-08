@@ -300,6 +300,33 @@ extension StateClientServiceTests {
         #expect(snapshot.sentIntents.first?.title == "最終 PR への指示 · ランキング")
     }
 
+    /// 指示と判断の本文の上限は、司令塔と同じく Unicode のコードポイントで数える（結合文字を含む文は、見た目の文字数より多い）
+    @Test
+    func textLimitsCountUnicodeScalars() async throws {
+        let fixture = try makeService(files: Self.reviewingEpic())
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        // 濁点を結合文字で書いた「が」は、見た目は 1 文字でコードポイントは 2 つ
+        let combined = "か\u{3099}"
+        let tooLong = String(repeating: combined, count: 5_001)
+        #expect(tooLong.count == 5_001 && tooLong.unicodeScalars.count == 10_002)
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.instructFinal(epicID: Self.epicID, headCommit: Self.finalHead, instruction: tooLong))
+        }
+        await #expect(throws: ClientServiceError.self) {
+            let reply = DecisionReply.fix(tooLong)
+            try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d1", headCommit: Self.finalHead, reply: reply))
+        }
+        let nothing = try await sentEnvelopes(in: fixture)
+        #expect(nothing.isEmpty)
+
+        // ちょうど上限（10,000 コードポイント）なら送る
+        let atLimit = String(repeating: combined, count: 5_000)
+        try await service.perform(.instructFinal(epicID: Self.epicID, headCommit: Self.finalHead, instruction: atLimit))
+        let sent = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(sent.string("instruction")?.unicodeScalars.count == 10_000)
+    }
+
     /// カードを見た後に head が進んだら（直しが push された）、見ていない head に答えを結びつけないよう、送らずに断る
     @Test
     func answerForAdvancedHeadIsNotSent() async throws {
