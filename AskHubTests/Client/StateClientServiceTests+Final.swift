@@ -196,13 +196,13 @@ extension StateClientServiceTests {
     }
 
     /// 仕分ける前の仮決めはカードに出してマージの規則に数えるが、司令塔が受け付けないので答えは送らない。
-    /// 最終 PR の直しで足した仮決めは最終 PR の番号を出し、通ったレビューがマージの規則の材料を返さなければ手動のマージにする
+    /// 最終 PR の直しで足した仮決め（タスクを持たない）は「最終 PR #N の直し」と出し、通ったレビューがマージの規則の材料を返さなければ手動のマージにする
     @Test
     func unclassifiedDecisionIsShownButNotAnswered() async throws {
         let decisions = """
         {"v":1,"items":[
           {"id":"d1","task":"t2","pullRequest":41,"visible":true,"what":"見出しを短くした","why":"iPhone の幅に収める","alternatives":[]},
-          {"id":"d5","task":"t2","pullRequest":512,"visible":null,"what":"余白を詰めた","why":"指示に合わせた","alternatives":[]}
+          {"id":"d5","pullRequest":512,"visible":null,"what":"余白を詰めた","why":"指示に合わせた","alternatives":[]}
         ]}
         """
         let readyWithoutRisks = Self.finalAttempt(Self.reviewID, outputs: #"{"verdict":"ready"}"#)
@@ -211,7 +211,7 @@ extension StateClientServiceTests {
         let service = fixture.service
         let review = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.finalReview)
         #expect(review.decisions.map(\.id) == ["d1", "d5"])
-        #expect(review.decisions.last?.goalSource == "タスク 2「一覧に出す」 · 最終 PR #512")
+        #expect(review.decisions.last?.goalSource == "最終 PR #512 の直し")
         #expect(review.mergePolicy == .manual([.visibleDecisions(count: 2), .risksUnknown]))
         await #expect(throws: ClientServiceError.self) {
             try await service.perform(.respondToDecision(epicID: Self.epicID, decisionID: "d5", headCommit: Self.finalHead, reply: .accept))
@@ -431,6 +431,27 @@ extension StateClientServiceTests {
         let automaticEpic = try #require(automaticSnapshot.epic(Self.epicID))
         #expect(automaticEpic.finalReview?.state == .merged(at: Self.finalDate("07:40"), automatic: true))
         #expect(EpicStatus.lines(for: automaticEpic, in: automaticSnapshot, now: now).first?.text == "自動でマージしました")
+    }
+
+    /// 司令塔のマージの記録があれば、この端末が承認を送ったかやマージの規則によらず、記録のとおりに出す（ほかの端末から承認したときも）
+    @Test
+    func mergeRecordDecidesHowItWasMerged() async throws {
+        let commit = String(repeating: "c", count: 40)
+        let epicPath = "\(Self.finalBase)/epic.json"
+        func merged(approval: String, decisions: String? = nil) async throws -> FinalReview.State? {
+            let record = #""merge":{"commit":"\#(commit)","approval":\#(approval),"at":"2027-01-15T07:42:00Z"},"#
+            let epic = Self.finalEpic(stage: "merged").replacingOccurrences(of: #""goalVersion""#, with: record + #""goalVersion""#)
+            var extra = [[epicPath: epic]]
+            if let decisions { extra.append(["\(Self.finalBase)/decisions.json": decisions]) }
+            let service = try makeService(files: Self.reviewingEpic(stage: "merged", extra: extra)).service
+            return try await service.fetchSnapshot().epic(Self.epicID)?.finalReview?.state
+        }
+        // ほかの端末が承認した（この端末は承認を送っていない。見える仮決めも無い）
+        let internalOnly = #"{"v":1,"items":[{"id":"d3","task":"t1","visible":false,"what":"集計は UTC","why":"合わせる","alternatives":[]}]}"#
+        let approval = #"{"keyId":"3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y","nonce":"01JCJ0C0000000000000000001"}"#
+        #expect(try await merged(approval: approval, decisions: internalOnly) == .merged(at: Self.finalDate("07:42"), automatic: false))
+        // 承認の無い記録は、自動でマージした
+        #expect(try await merged(approval: "null") == .merged(at: Self.finalDate("07:42"), automatic: true))
     }
 
     /// 判断の一覧を読めないときは、空の一覧と区別して手動のマージにし、承認を送らない

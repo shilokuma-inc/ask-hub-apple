@@ -19,7 +19,6 @@
         "type": "object",
         "required": [
           "id",
-          "task",
           "what",
           "why",
           "alternatives"
@@ -30,8 +29,8 @@
             "$ref": "../common.schema.json#/$defs/localId"
           },
           "task": {
-            "$ref": "../common.schema.json#/$defs/localId",
-            "description": "どのタスクの仮決めか（ゴールのタスクの id）"
+            "anyOf": [{ "$ref": "../common.schema.json#/$defs/localId" }, { "type": "null" }],
+            "description": "どのタスクの仮決めか（ゴールのタスクの id）。最終 PR の直しの仮決めはタスクに結びつかないので null か省く"
           },
           "pullRequest": {
             "type": [

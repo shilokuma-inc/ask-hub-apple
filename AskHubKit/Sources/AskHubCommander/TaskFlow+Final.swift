@@ -197,17 +197,21 @@ extension TaskFlow {
                 return true
             }
         }
-        // 最終 PR の直しはタスクに結びつかないので、仮決めはゴールの最後のタスクのものとして足す（decisions.json の項目はタスクを持つ）
-        if let decisions = try await succeededOutputs(of: fix)?.report?.decisions, let task = final.goal.tasks.last {
-            try await addDecisions(decisions, task: task.id, pullRequest: input.pullRequest, epic: final.epic)
+        // 最終 PR の直しはタスクに結びつかないので、仮決めはタスクを持たない最終 PR のものとして足す
+        if let decisions = try await succeededOutputs(of: fix)?.report?.decisions {
+            try await addDecisions(decisions, task: nil, pullRequest: input.pullRequest, epic: final.epic)
         }
         return try await classify(then: .review(input), after: fix, in: final)
     }
 
     /// 最終 PR をマージした: 片付けを作ってから、epic を `merged` にする（作る前に止まっても、次の周で片付けを作る）
+    /// マージの記録も書く。人の承認でマージしたかは、マージのジョブの元になった意図で分かる（自動のマージは開始の意図、人の承認は `approveMerge`）
     func merged(_ merge: JobFile, in final: FinalPlan) async throws(CommanderError) -> Advanced {
         var advanced = try await create(.cleanUp, input: nil, after: merge, seed: "", in: final)
-        try await context.setStage(.merged, of: final.epic, from: [.finalizing, .reviewing])
+        let approval = merge.origin == final.plan.origin ? nil : merge.origin
+        let now = context.timestamp
+        let record = try await succeededOutputs(of: merge)?.commit.map { EpicFile.Merge(commit: $0, approval: approval, at: now) }
+        try await context.setStage(.merged, of: final.epic, from: [.finalizing, .reviewing]) { $0.merge = record }
         advanced.notes.append("epic \(final.epic.id) の最終 PR をマージした")
         return advanced
     }

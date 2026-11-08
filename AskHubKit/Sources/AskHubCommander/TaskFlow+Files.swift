@@ -73,13 +73,13 @@ extension TaskFlow {
     /// 実装・直しで Claude が報告した仮決めを `decisions.json` に足す（見える・内部の区分は、後でレビュー役が決める）
     func addDecisions(
         _ decisions: [TaskOutputReport.Decision],
-        task: String,
+        task: String?,
         pullRequest: Int,
         epic: EpicFile
     ) async throws(CommanderError) {
         guard !decisions.isEmpty else { return }
         let path = StatePath.decisions(epic.repo, epic.id)
-        let message = "タスク \(task) の仮決めを足す"
+        let message = task.map { "タスク \($0) の仮決めを足す" } ?? "最終 PR の直しの仮決めを足す"
         do {
             if try await context.files.read(DecisionsFile.self, at: path) == nil {
                 do {
@@ -103,8 +103,9 @@ extension TaskFlow {
 }
 
 extension DecisionsFile {
-    /// 仮決めを足す。同じタスク・同じ子 PR の同じ仮決め（やり直しで 2 度足すもの）は足さない。id は `d<番号>` で続ける
-    func adding(_ decisions: [TaskOutputReport.Decision], task: String, pullRequest: Int) -> Self {
+    /// 仮決めを足す。同じタスク・同じ PR の同じ仮決め（やり直しで 2 度足すもの）は足さない。id は `d<番号>` で続ける。
+    /// 最終 PR の直しの仮決めは `task` を nil にする
+    func adding(_ decisions: [TaskOutputReport.Decision], task: String?, pullRequest: Int) -> Self {
         var file = self
         var number = items.compactMap { Int($0.id.dropFirst()) }.max() ?? 0
         for decision in decisions {

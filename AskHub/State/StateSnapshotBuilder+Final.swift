@@ -89,9 +89,13 @@ extension StateSnapshotBuilder {
     }
 
     private func card(_ item: DecisionsFile.Item, epic: EpicFile) -> DecisionCard {
-        // 最終 PR の直しで足した仮決めは、最終 PR を持つ（タスクはゴールの最後のタスク）
+        // 最終 PR の直しで足した仮決めは、タスクを持たず、最終 PR を持つ
         let pullRequest = item.pullRequest.map { $0 == epic.finalPullRequest ? "最終 PR #\($0)" : "子 PR #\($0)" }
-        let source = [taskName(item.task, epic: epic.id), pullRequest].compactMap(\.self)
+        let source = if let task = item.task {
+            [taskName(task, epic: epic.id), pullRequest].compactMap(\.self)
+        } else {
+            [pullRequest.map { "\($0) の直し" } ?? "最終 PR の直し"]
+        }
         return DecisionCard(
             id: item.id,
             title: item.what,
@@ -147,8 +151,12 @@ extension StateSnapshotBuilder {
         return mapped
     }
 
-    /// マージしたか・マージしているか・人が確かめる段階か。マージを人が承認したかは、この端末が送って受け付けられた承認と、マージの規則で決める
+    /// マージしたか・マージしているか・人が確かめる段階か。マージを人が承認したかは、司令塔が書いたマージの記録で決める。
+    /// 記録の無い（記録を書く前の司令塔がマージした）epic だけは、この端末が送って受け付けられた承認と、マージの規則で決める
     private func finalState(of epic: EpicFile, jobs: [JobFile], automatic: Bool) -> FinalReview.State {
+        if epic.stage == .merged, let merge = epic.merge {
+            return .merged(at: merge.at.date, automatic: merge.approval == nil)
+        }
         if epic.stage == .merged {
             let approved = documents.sentIntents.contains { sent in
                 sent.envelope.kind == ApproveMergeIntent.kind && sent.envelope.target?.epic == epic.id && sent.consumed?.result == .accepted

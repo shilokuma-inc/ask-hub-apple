@@ -43,9 +43,9 @@ public struct DecisionsFile: StateFile {
     public struct Item: Codable, Equatable, Sendable {
         /// epic の中の id（`d1` など）
         public var id: String
-        /// どのタスクの仮決めか（ゴールのタスクの id）
-        public var task: String
-        /// 仮決めを含む子 PR。まだ PR が無ければ nil
+        /// どのタスクの仮決めか（ゴールのタスクの id）。最終 PR の直しの仮決めはタスクに結びつかないので nil
+        public var task: String?
+        /// 仮決めを含む PR（タスクの仮決めは子 PR、最終 PR の直しの仮決めは最終 PR）。まだ PR が無ければ nil
         public var pullRequest: Int?
         /// 見えるか。仕分ける前は nil
         public var visible: Bool?
@@ -60,7 +60,7 @@ public struct DecisionsFile: StateFile {
 
         public init(
             id: String,
-            task: String,
+            task: String?,
             pullRequest: Int? = nil,
             visible: Bool? = nil,
             what: String,
@@ -98,7 +98,7 @@ public struct DecisionsFile: StateFile {
     private func problems(of item: Item) -> [String] {
         let name = item.id
         var problems: [String] = []
-        if !LocalIDs.isValid(item.task) { problems.append("\(name): task の形が違う") }
+        if let task = item.task, !LocalIDs.isValid(task) { problems.append("\(name): task の形が違う") }
         if let pullRequest = item.pullRequest, pullRequest < 1 { problems.append("\(name): pullRequest は 1 以上") }
         if item.what.isEmpty || item.why.isEmpty { problems.append("\(name): what・why が空") }
         if item.alternatives.contains(where: \.isEmpty) { problems.append("\(name): 空のほかの案がある") }

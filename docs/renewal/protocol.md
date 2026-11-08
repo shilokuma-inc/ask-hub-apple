@@ -118,6 +118,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "mac": null,
   "branch": null,
   "finalPullRequest": null,
+  "merge": null,
   "goalVersion": null,
   "origin": { "keyId": "…", "nonce": "01JC…" },
   "createdAt": "…",
@@ -128,6 +129,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `origin` は、元になった依頼の人の意図
 - `summary` は、依頼の要約（何を作るか・なぜ）。質問づくりの Claude が書く。作る前は `null`
 - `mac` は、開始のときに人が選んだ Mac
+- `merge` は、最終 PR のマージの記録 `{ "commit": "<マージのコミット>", "approval": { "keyId", "nonce" } | null, "at": "…" }`。司令塔が `merged` にするときに書く。`approval` は人の承認（`approveMerge`）の意図で、マージの規則で自動でマージしたなら `null`。クライアントは、どの端末から承認したかによらず、これで「自動でマージした」「承認してマージした」を出し分ける
 - `branch` は作業ブランチ。git のコマンドに渡しても選択肢に読まれないよう、`-` で始まる値・`..` を含む値・英数字と `._/-` 以外の文字を使わない
 
 `stage` の値と移り変わり:
@@ -273,12 +275,12 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - 項目は、ループの仮決め（実装の途中で Claude が決めたこと）。質問はすべて人が答えるので、質問から来る項目は無い
 - `visible` は、ユーザーから見える挙動・仕様・見た目に関わるか。決めるのは、読むだけのレビュー役の Claude と、決まった信号（View・文言・アセット・Info.plist・entitlements の差分、スクショの差）
-- 各項目は `task`（どのタスクの仮決めか）と `pullRequest`（子 PR）を持つ。`visible` は仕分ける前は `null`
+- 各項目は `task`（どのタスクの仮決めか）と `pullRequest`（子 PR）を持つ。`visible` は仕分ける前は `null`。最終 PR の直しの仮決めは `task` を持たない（`null` か省く）
 - 司令塔は、実装と直しの試行の `outputs.report.decisions` を足す（id は `d1` から続ける）。同じタスク・子 PR の同じ仮決めは 2 度足さない
 - スクショは epic の `screenshots/<id>-before.png`・`<id>-after.png` に置き、`screenshots` にそのパスを書く。スクショと `answer` は、見えると仕分けた仮決めだけが持つ
 - `answer` は `{ "choice": "ok" | "alternative" | "fix", "note": "…", "intent": { "keyId", "nonce" }, "at": "…" }`（型は `DecisionsFile`、`protocol/schemas/state/decisions.schema.json`）
 - `answer` は人の意図（OK・別案・直してほしい）への参照
-- 最終 PR の直し（`fixFinalPullRequest`）で Claude が報告した仮決めも足す。タスクに結びつかないので、`task` はゴールの最後のタスク、`pullRequest` は最終 PR にする
+- 最終 PR の直し（`fixFinalPullRequest`）で Claude が報告した仮決めも足す。タスクに結びつかないので、`task` は持たず（`null`）、`pullRequest` は最終 PR にする。クライアントは「最終 PR #N の直し」と出す
 - 「別案にする」「直してほしい」の直しが済んだら、司令塔がその答えを外して答え待ちに戻す（直った後を見て答え直してもらう）。同じカードへの答え直しは受け付けない（[flows.md](flows.md) の「司令塔が最終 PR を進める」）
 
 ### jobs/<job>.json（ジョブ）

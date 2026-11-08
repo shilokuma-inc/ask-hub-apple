@@ -67,6 +67,33 @@
       "read": "valid"
     },
     {
+      "name": "final-fix-without-task",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d3",
+            "pullRequest": 512,
+            "visible": true,
+            "what": "見出しを 1 行にした",
+            "why": "最終 PR のレビューの指摘に合わせる",
+            "alternatives": []
+          },
+          {
+            "id": "d4",
+            "task": null,
+            "pullRequest": 512,
+            "visible": false,
+            "what": "見出しの余白を 8 にした",
+            "why": "最終 PR の直しで、見出しの高さをそろえる",
+            "alternatives": []
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "empty",
       "value": {
         "v": 1,

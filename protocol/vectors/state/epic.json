@@ -22,6 +22,59 @@
       "read": "valid"
     },
     {
+      "name": "merged-with-approval",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "stage": "merged",
+        "mac": "macbook-a",
+        "finalPullRequest": 512,
+        "merge": {
+          "commit": "0123456789abcdef0123456789abcdef01234567",
+          "approval": { "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y", "nonce": "01JCJ0C0000000000000000001" },
+          "at": "2026-11-03T12:00:00Z"
+        },
+        "goalVersion": 2,
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T12:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "merged-automatically",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "stage": "merged",
+        "finalPullRequest": 512,
+        "merge": { "commit": "0123456789abcdef0123456789abcdef01234567", "approval": null, "at": "2026-11-03T12:00:00Z" },
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T12:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "merge-with-short-commit",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000001",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "ランキングの表示を変える",
+        "stage": "merged",
+        "merge": { "commit": "0123456", "at": "2026-11-03T12:00:00Z" },
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T12:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "minimal",
       "value": {
         "v": 1,

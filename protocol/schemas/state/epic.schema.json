@@ -22,6 +22,22 @@
     "finalPullRequest": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
     "goalVersion": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }], "description": "開始したときのゴールの版" },
     "origin": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/intentReference" }, { "type": "null" }], "description": "元になった依頼の人の意図" },
+    "merge": {
+      "description": "最終 PR のマージの記録（司令塔が merged にするときに書く）。approval は人の承認（approveMerge）の意図で、自動でマージしたなら null",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["commit", "at"],
+          "additionalProperties": false,
+          "properties": {
+            "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "approval": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/intentReference" }, { "type": "null" }] },
+            "at": { "$ref": "../common.schema.json#/$defs/timestamp" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
     "createdAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
     "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
   }

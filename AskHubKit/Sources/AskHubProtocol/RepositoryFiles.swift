@@ -99,6 +99,21 @@ public enum EpicStage: String, Codable, Sendable, CaseIterable {
 public struct EpicFile: StateFile {
     public static let formatVersion = 1
 
+    /// 最終 PR のマージの記録。どの端末から見ても、自動でマージしたか人が承認したかが分かるように、司令塔が `merged` にするときに書く
+    public struct Merge: Codable, Equatable, Sendable {
+        /// マージのコミット
+        public var commit: String
+        /// 人の承認（`approveMerge`）でマージしたなら、その意図。マージの規則で自動でマージしたなら nil
+        public var approval: IntentReference?
+        public var at: Timestamp
+
+        public init(commit: String, approval: IntentReference? = nil, at: Timestamp) {
+            self.commit = commit
+            self.approval = approval
+            self.at = at
+        }
+    }
+
     public var id: ULID
     public var repo: RepositoryFullName
     public var title: String
@@ -112,6 +127,8 @@ public struct EpicFile: StateFile {
     /// 作業ブランチ。作る前は nil
     public var branch: String?
     public var finalPullRequest: Int?
+    /// 最終 PR のマージの記録。マージする前は nil
+    public var merge: Merge?
     /// 開始したときのゴールの版
     public var goalVersion: Int?
     /// 元になった依頼の人の意図
@@ -129,6 +146,7 @@ public struct EpicFile: StateFile {
         mac: MacName? = nil,
         branch: String? = nil,
         finalPullRequest: Int? = nil,
+        merge: Merge? = nil,
         goalVersion: Int? = nil,
         origin: IntentReference? = nil,
         createdAt: Timestamp,
@@ -143,6 +161,7 @@ public struct EpicFile: StateFile {
         self.mac = mac
         self.branch = branch
         self.finalPullRequest = finalPullRequest
+        self.merge = merge
         self.goalVersion = goalVersion
         self.origin = origin
         self.createdAt = createdAt
@@ -155,6 +174,7 @@ public struct EpicFile: StateFile {
         if let summary, summary.isEmpty { violations.append("summary が空") }
         if let discussion, discussion < 1 { violations.append("discussion は 1 以上") }
         if let finalPullRequest, finalPullRequest < 1 { violations.append("finalPullRequest は 1 以上") }
+        if let merge, !AttemptFile.isCommitSHA(merge.commit) { violations.append("merge.commit の形が違う") }
         if let goalVersion, goalVersion < 1 { violations.append("goalVersion は 1 以上") }
         if let branch, !Self.isBranchName(branch) { violations.append("branch の形が違う") }
         return violations
