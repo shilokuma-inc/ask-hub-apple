@@ -32,6 +32,10 @@ final class FakeFinalGit: FinalGit {
         var merge: [String]?
         /// `unresolvedConflicts(_:in:)` が、印が残っているとするファイル
         var unresolved: [String] = []
+        /// epic の作業場所に取り出している作業ブランチの先頭（nil なら作業場所が無い）
+        var workspaceHead: String?
+        /// `conflictedPaths(in:)` が返すもの（取り込みの途中で、解消していないファイル）
+        var conflicted: [String] = []
     }
 
     static let jobDirectory = URL(fileURLWithPath: "/work/jobs/01JCJ0B000000000000000000F/repository/askhub-sandbox")
@@ -52,10 +56,24 @@ final class FakeFinalGit: FinalGit {
             state.calls.append("checkOutEpic \(branches.epic)")
             state.dirty = false
             guard let head = state.remote[branches.epic] else { return .failure(.failed("作業ブランチ \(branches.epic) がリモートに無い")) }
+            state.workspaceHead = head
             let epic = CheckedOutEpic(repo: repo, directory: FakeTaskGit.directory, branches: branches, head: head, facts: "Swift 6 で書く。")
             return .success(epic)
         }
         return try result.get()
+    }
+
+    /// 作業場所が作業ブランチを取り出したままで、先頭がリモートと同じなら、手元の変更を残して返す
+    func reuseEpic(_ repo: RepositoryFullName, epic: ULID, branches: FinalBranches) async throws(WorkspaceError) -> CheckedOutEpic? {
+        state.withLock { state in
+            state.calls.append("reuseEpic \(branches.epic)")
+            guard let head = state.workspaceHead, head == state.remote[branches.epic] else { return nil }
+            return CheckedOutEpic(repo: repo, directory: FakeTaskGit.directory, branches: branches, head: head, facts: "Swift 6 で書く。")
+        }
+    }
+
+    func conflictedPaths(in epic: CheckedOutEpic) async throws(WorkspaceError) -> [String] {
+        state.withLock { $0.conflicted }
     }
 
     func commitAndPush(_ epic: CheckedOutEpic, message: String) async throws(WorkspaceError) -> String? {
@@ -66,6 +84,7 @@ final class FakeFinalGit: FinalGit {
             state.commits.append(message)
             let head = sha(Character(String(state.commits.count + 4)))
             state.remote[epic.branches.epic] = head
+            state.workspaceHead = head
             return head
         }
     }

@@ -79,6 +79,13 @@ public protocol FinalGit: Sendable {
     /// 作業ブランチを、リモートの先頭から epic の作業場所に取り出す。前の試行が残した手元の変更は捨てる
     func checkOutEpic(_ repo: RepositoryFullName, epic: ULID, branches: FinalBranches) async throws(WorkspaceError) -> CheckedOutEpic
 
+    /// 実装の途中の質問の答えで再開するときに、epic の作業場所の作業ブランチを、取り出し直さずに（手元の変更と base の取り込みの途中を残して）使う。
+    /// 作業場所が無い・壊れている・作業ブランチを取り出していない・先頭がリモートの作業ブランチと違うときは nil（取り出し直して、直しをやり直させる）
+    func reuseEpic(_ repo: RepositoryFullName, epic: ULID, branches: FinalBranches) async throws(WorkspaceError) -> CheckedOutEpic?
+
+    /// base の取り込みの途中で、コンフリクトしたままのファイル（index で解消していないもの）。取り込みの途中でなければ空
+    func conflictedPaths(in epic: CheckedOutEpic) async throws(WorkspaceError) -> [String]
+
     /// 手元の変更をすべてコミットし、作業ブランチを push して、新しい先頭を返す。変更が無ければ、コミットも push もせずに nil を返す
     func commitAndPush(_ epic: CheckedOutEpic, message: String) async throws(WorkspaceError) -> String?
 

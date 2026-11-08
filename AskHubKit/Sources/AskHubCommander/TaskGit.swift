@@ -88,6 +88,11 @@ public protocol TaskGit: Sendable {
     /// 前の試行が残した手元の変更は捨てる
     func checkOutTask(_ repo: RepositoryFullName, epic: ULID, branches: TaskBranches) async throws(WorkspaceError) -> CheckedOutTask
 
+    /// 実装の途中の質問の答えで再開するときに、epic の作業場所の子ブランチを、取り出し直さずに（手元の変更を残して）使う。
+    /// 作業場所が無い・壊れている・子ブランチを取り出していない・先頭が `checkOutTask` で取り出すコミットと違う（質問の後にリモートが動いた・
+    /// push していないコミットがある）ときは nil（取り出し直して、変更をやり直させる）
+    func reuseTask(_ repo: RepositoryFullName, epic: ULID, branches: TaskBranches) async throws(WorkspaceError) -> CheckedOutTask?
+
     /// 手元の変更をすべてコミットし、子ブランチを push して、新しい先頭を返す。変更が無ければ、コミットも push もせずに nil を返す
     func commitAndPush(_ task: CheckedOutTask, message: String) async throws(WorkspaceError) -> String?
 

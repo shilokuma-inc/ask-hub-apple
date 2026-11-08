@@ -41,6 +41,37 @@ extension GitRepositoryWorkspace: TaskGit {
         return checkedOut
     }
 
+    public func reuseTask(_ repo: RepositoryFullName, epic: ULID, branches: TaskBranches) async throws(WorkspaceError) -> CheckedOutTask? {
+        guard [branches.base, branches.epic, branches.task].allSatisfy(EpicFile.isBranchName) else {
+            throw .failed("ブランチの名前（\(branches.base)・\(branches.epic)・\(branches.task)）の形が違う")
+        }
+        let clone = cloneDirectory(of: repo)
+        let worktree = epicDirectory(repo, epic: epic)
+        var reused: CheckedOutTask?
+        try await locks.withLock(repo.rawValue) { () throws(WorkspaceError) in
+            guard try await isCheckedOut(branches.task, in: worktree, clone: clone) else { return }
+            try await update(clone, of: repo)
+            markUsed(clone)
+            guard let base = try await commit(of: "refs/remotes/origin/\(branches.epic)", in: clone) else {
+                throw .failed("作業ブランチ \(branches.epic) がリモートに無い")
+            }
+            let remote = try await commit(of: "refs/remotes/origin/\(branches.task)", in: clone)
+            let head = try await git(["rev-parse", "HEAD"], in: worktree)
+            guard head == remote ?? base else { return }
+            let facts = try await facts(from: branches.base, in: clone)
+            reused = CheckedOutTask(
+                repo: repo, directory: worktree, branches: branches, head: head, remoteHead: remote, base: base, facts: facts
+            )
+        }
+        return reused
+    }
+
+    /// epic の作業場所が、この clone の worktree として `branch` を取り出したままか
+    func isCheckedOut(_ branch: String, in worktree: URL, clone: URL) async throws(WorkspaceError) -> Bool {
+        guard await isWorktree(worktree, of: clone) else { return false }
+        return try await gitIfFound(["symbolic-ref", "--quiet", "HEAD"], in: worktree) == "refs/heads/\(branch)"
+    }
+
     public func commitAndPush(_ task: CheckedOutTask, message: String) async throws(WorkspaceError) -> String? {
         try await commitAndPush(task.repo, worktree: task.directory, branch: task.branches.task, what: "子ブランチ", message: message)
     }

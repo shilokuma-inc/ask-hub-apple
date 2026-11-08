@@ -32,6 +32,30 @@ extension GitRepositoryWorkspace: FinalGit {
         return checkedOut
     }
 
+    public func reuseEpic(_ repo: RepositoryFullName, epic: ULID, branches: FinalBranches) async throws(WorkspaceError) -> CheckedOutEpic? {
+        guard EpicFile.isBranchName(branches.base), EpicFile.isBranchName(branches.epic) else {
+            throw .failed("ブランチの名前（\(branches.base)・\(branches.epic)）の形が違う")
+        }
+        let clone = cloneDirectory(of: repo)
+        let worktree = epicDirectory(repo, epic: epic)
+        var reused: CheckedOutEpic?
+        try await locks.withLock(repo.rawValue) { () throws(WorkspaceError) in
+            guard try await isCheckedOut(branches.epic, in: worktree, clone: clone) else { return }
+            try await update(clone, of: repo)
+            markUsed(clone)
+            let head = try await git(["rev-parse", "HEAD"], in: worktree)
+            guard try await commit(of: "refs/remotes/origin/\(branches.epic)", in: clone) == head else { return }
+            let facts = try await facts(from: branches.base, in: clone)
+            reused = CheckedOutEpic(repo: repo, directory: worktree, branches: branches, head: head, facts: facts)
+        }
+        return reused
+    }
+
+    public func conflictedPaths(in epic: CheckedOutEpic) async throws(WorkspaceError) -> [String] {
+        let names = try await git(["diff", "--name-only", "-z", "--diff-filter=U"], in: epic.directory)
+        return names.split(separator: "\0").map(String.init).filter { !$0.isEmpty }
+    }
+
     public func commitAndPush(_ epic: CheckedOutEpic, message: String) async throws(WorkspaceError) -> String? {
         try await commitAndPush(epic.repo, worktree: epic.directory, branch: epic.branches.epic, what: "作業ブランチ", message: message)
     }
@@ -52,8 +76,7 @@ extension GitRepositoryWorkspace: FinalGit {
         guard try await gitIfFound(["rev-parse", "--quiet", "--verify", "MERGE_HEAD"], in: epic.directory) != nil else {
             throw .failed("base（\(epic.branches.base)）を作業ブランチに取り込めなかった")
         }
-        let names = try await git(["diff", "--name-only", "-z", "--diff-filter=U"], in: epic.directory)
-        return names.split(separator: "\0").map(String.init).filter { !$0.isEmpty }
+        return try await conflictedPaths(in: epic)
     }
 
     public func unresolvedConflicts(_ paths: [String], in epic: CheckedOutEpic) async -> [String] {
