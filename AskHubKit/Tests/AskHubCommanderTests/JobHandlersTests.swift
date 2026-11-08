@@ -144,6 +144,21 @@ struct JobHandlersTests {
         #expect(try await job(other, in: store).state == .canceled)
     }
 
+    /// 開始した後の epic に残っていた開始の前のジョブをやめても、そのジョブだけやめ、epic とタスクのジョブはそのまま動かす
+    @Test(arguments: [EpicStage.running, .finalizing, .reviewing], [JobKind.makeQuestions, .reviseQuestion, .checkReadiness])
+    func givingUpPlanningJobOfStartedEpicCancelsOnlyThatJob(stage: EpicStage, kind: JobKind) async throws {
+        let (store, waiting) = try await waitingJob(kind, stage: stage)
+        let epic = try await epic(of: waiting, in: store)
+        let (_, implementing) = try await waitingJob(.implementTask, state: .running, epic: epic, in: store)
+        let (_, reviewing) = try await waitingJob(.reviewTask, state: .assigned, epic: epic, in: store)
+        try await retry(waiting, attempt: 1, kind: "giveUp", in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "giveUp")])
+        #expect(try await job(waiting, in: store).state == .canceled)
+        #expect(try await self.epic(of: waiting, in: store) == epic)
+        #expect(try await job(implementing, in: store) == implementing)
+        #expect(try await job(reviewing, in: store) == reviewing)
+    }
+
     /// 人がやめる前に、ほかの理由で取り消されたジョブ（答え直して着手前の確認が取り消された など）では、epic をやめない
     @Test func givingUpCanceledJobDoesNotAbandonEpic() async throws {
         let (store, canceled) = try await waitingJob(.checkReadiness, stage: .asking, state: .canceled)

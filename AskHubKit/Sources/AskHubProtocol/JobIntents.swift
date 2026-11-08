@@ -95,4 +95,11 @@ extension JobKind {
             nil
         }
     }
+
+    /// epic の段階が `stage` のときにやめた扱い。開始した後の epic は開始の前のジョブが無くても先に進めるので、
+    /// epic ごとやめる種類でもジョブだけをやめる（epic は開始の前の段階に戻せず、実装のジョブを止めることになる）
+    public func giveUpEffect(at stage: EpicStage) -> GiveUpEffect? {
+        guard giveUpEffect == .abandonsEpic, [.running, .finalizing, .reviewing].contains(stage) else { return giveUpEffect }
+        return .jobOnly
+    }
 }

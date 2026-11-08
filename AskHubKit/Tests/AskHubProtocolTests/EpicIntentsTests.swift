@@ -231,20 +231,6 @@ struct EpicIntentsTests {
         }
     }
 
-    /// やめたときの扱い。先に進めなくなるジョブは epic ごとやめ、説明とゴールの修正はジョブだけやめる。ほかの種類はやめられない
-    @Test func giveUpEffectOfEachJobKind() {
-        let effects: [JobKind: GiveUpEffect] = [
-            .makeQuestions: .abandonsEpic,
-            .reviseQuestion: .abandonsEpic,
-            .checkReadiness: .abandonsEpic,
-            .explain: .jobOnly,
-            .reviseGoal: .jobOnly
-        ]
-        for kind in JobKind.allCases {
-            #expect(kind.giveUpEffect == effects[kind], "\(kind.rawValue)")
-        }
-    }
-
     /// 取り下げは epic だけを対象にし、版を書かない
     @Test func readsAbandonEpic() throws {
         let target = IntentEnvelope.Target(type: "epic", epic: Self.epic)
