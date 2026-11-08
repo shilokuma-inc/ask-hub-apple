@@ -8,6 +8,8 @@ import Foundation
 /// 直すことは、理由ごとに次から読み、作業ブランチに取り出した epic の作業場所で Claude に直させて push する。
 /// - `ci`・`review`: ジョブの `dependsOn` にある最終 PR のレビューの、同じ PR と head を見て、理由に合う判定を書いた成功の試行の `outputs.findings`
 /// - `human`: ジョブの元になった人の意図（署名を確かめたもの）。判断のカードの「別案にする」「直してほしい」の本文か、最終 PR への指示
+/// - `conflict`: レビューの `fixConflict` の `findings` に、ワーカーが base を取り込み始めてコンフリクトしたファイルを足したもの。
+///   コンフリクトしなければ Claude を使わずにマージのコミットを push し、base がもう入っていれば何もせずに今の head でレビューし直させる
 ///
 /// 直しの回数（3 回まで）は、司令塔が試行から数える
 public struct FixFinalPullRequestRunner: JobRunning {
@@ -49,13 +51,44 @@ public struct FixFinalPullRequestRunner: JobRunning {
             result.outputs?.commit = try await pushedBefore(job, input: input, checkout: checkout)
             return result
         }
+        var findings = findings
+        var conflicts: [String] = []
+        if input.reason == .conflict {
+            let merged = try await environment.tasks.workspace { () throws(WorkspaceError) in
+                try await environment.git.mergeBase(into: checkout)
+            }
+            guard let merged else {
+                result.outputs?.commit = checkout.head
+                return result
+            }
+            guard !merged.isEmpty else { return try await push(checkout, job: job, reason: input.reason, summary: "", result: result) }
+            conflicts = merged
+            findings = Self.conflictText(findings, files: merged)
+        }
         let fixJob = FixFinalPullRequestJob(
             goal: target.goal, pullRequest: input.pullRequest, branches: target.branches, reason: input.reason, findings: findings
         )
         let (report, run) = try await environment.run(fixJob, in: checkout, target: target).done()
         result.outputs?.report = report.outputReport
         result.claude = run.session?.attemptRecord
-        let message = Self.commitMessage(job: job, reason: input.reason, report: report)
+        let left = await environment.git.unresolvedConflicts(conflicts, in: checkout)
+        guard left.isEmpty else {
+            throw .fail(.conflict, "コンフリクトの印が残っている（\(left.joined(separator: "・"))）", keeping: result)
+        }
+        return try await push(checkout, job: job, reason: input.reason, summary: report.summary, result: result)
+    }
+
+    /// 手元の変更をコミットして push し、新しい head を結果にする
+    private func push(
+        _ checkout: CheckedOutEpic,
+        job: JobFile,
+        reason: FixTaskInput.Reason,
+        summary: String,
+        result: JobResult
+    ) async throws(TaskJobExit) -> JobResult {
+        let environment = environment
+        var result = result
+        let message = Self.commitMessage(job: job, reason: reason, summary: summary)
         let pushed = try await environment.tasks.workspace(keeping: result) { () throws(WorkspaceError) in
             try await environment.git.commitAndPush(checkout, message: message)
         }
@@ -141,14 +174,20 @@ public struct FixFinalPullRequestRunner: JobRunning {
         }
     }
 
-    static func commitMessage(job: JobFile, reason: FixTaskInput.Reason, report: TaskReport) -> String {
+    /// コンフリクトの直しで Claude に渡す文。レビューの説明に、コンフリクトしたファイルを足す
+    static func conflictText(_ findings: String, files: [String]) -> String {
+        let list = files.map { "- \($0)" }.joined(separator: "\n")
+        return FixTaskJob.Reason.conflict("\(findings)\n\nコンフリクトしたファイル:\n\(list)").findings
+    }
+
+    static func commitMessage(job: JobFile, reason: FixTaskInput.Reason, summary: String) -> String {
         let what = switch reason {
         case .ci: "CI の失敗"
         case .review: "レビューの指摘"
         case .human: "人の指示"
         case .conflict: "base とのコンフリクト"
         }
-        let summary = UntrustedText.head(report.summary, limit: 4_000)
-        return "最終 PR を直す（\(what)）\n\n\(summary)\n\nAskHub の epic \(job.epic.rawValue)\n\(trailer(of: job.id))"
+        let body = summary.isEmpty ? "" : "\(UntrustedText.head(summary, limit: 4_000))\n\n"
+        return "最終 PR を直す（\(what)）\n\n\(body)AskHub の epic \(job.epic.rawValue)\n\(trailer(of: job.id))"
     }
 }

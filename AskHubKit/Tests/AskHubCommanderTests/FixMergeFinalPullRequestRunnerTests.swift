@@ -69,6 +69,69 @@ struct FixMergeFinalPullRequestRunnerTests {
             .failingAtStart == .testFull)
     }
 
+    @Test func fixesConflictByMergingBaseAndResolvingWithClaude() async throws {
+        let fixture = try await fixture()
+        let findings = "最終 PR #512 が base（develop）とコンフリクトしている"
+        let outputs = AttemptFile.Outputs(pullRequest: 512, commit: Self.head, verdict: .fixConflict, findings: findings)
+        let review = try await reviewed(fixture, "01", outputs: outputs)
+        fixture.git.update { $0.merge = ["App/RankingView.swift"] }
+        let runner = FakeTaskRunner([FakeTaskRunner.done("両方の並べ替えを残した。")])
+        let job = fixJob(fixture, reason: .conflict, dependsOn: [review.id])
+        let result = try await fixRunner(fixture, runner).execute(job)
+        #expect(result.failure == nil)
+        #expect(result.outputs?.commit == sha("5"))
+        #expect(fixture.git.current.calls.contains("mergeBase develop"))
+        let call = try #require(runner.calls.first)
+        #expect(call.prompt.contains("<conflicts>"))
+        #expect(call.prompt.contains("- App/RankingView.swift"))
+        #expect(call.prompt.contains("両方を生かす形で解消する"))
+        let message = try #require(fixture.git.current.commits.first)
+        #expect(message.contains("base とのコンフリクト"))
+        #expect(message.contains(FixFinalPullRequestRunner.trailer(of: job.id)))
+    }
+
+    @Test func conflictFixWithoutConflictingFilesPushesMergeWithoutClaude() async throws {
+        let fixture = try await fixture()
+        let outputs = AttemptFile.Outputs(pullRequest: 512, commit: Self.head, verdict: .fixConflict, findings: "コンフリクトしている")
+        let review = try await reviewed(fixture, "01", outputs: outputs)
+        // GitHub はコンフリクトとしたが、手元では素直に取り込めた
+        fixture.git.update { $0.merge = [] }
+        let runner = FakeTaskRunner([])
+        let result = try await fixRunner(fixture, runner).execute(fixJob(fixture, reason: .conflict, dependsOn: [review.id]))
+        #expect(result.failure == nil)
+        #expect(result.outputs?.commit == sha("5"))
+        #expect(runner.calls.isEmpty)
+        #expect(result.claude == nil)
+    }
+
+    @Test func conflictFixWithBaseAlreadyMergedReReviewsSameHead() async throws {
+        let fixture = try await fixture()
+        let outputs = AttemptFile.Outputs(pullRequest: 512, commit: Self.head, verdict: .fixConflict, findings: "コンフリクトしている")
+        let review = try await reviewed(fixture, "01", outputs: outputs)
+        let runner = FakeTaskRunner([])
+        let result = try await fixRunner(fixture, runner).execute(fixJob(fixture, reason: .conflict, dependsOn: [review.id]))
+        #expect(result.failure == nil)
+        #expect(result.outputs?.commit == Self.head)
+        #expect(fixture.git.current.commits.isEmpty)
+        #expect(runner.calls.isEmpty)
+    }
+
+    @Test func leftConflictMarkersFailWithoutPushing() async throws {
+        let fixture = try await fixture()
+        let outputs = AttemptFile.Outputs(pullRequest: 512, commit: Self.head, verdict: .fixConflict, findings: "コンフリクトしている")
+        let review = try await reviewed(fixture, "01", outputs: outputs)
+        fixture.git.update { state in
+            state.merge = ["App/RankingView.swift", "App/Ranking.swift"]
+            state.unresolved = ["App/Ranking.swift"]
+        }
+        let runner = FakeTaskRunner([FakeTaskRunner.done("解消した。")])
+        let result = try await fixRunner(fixture, runner).execute(fixJob(fixture, reason: .conflict, dependsOn: [review.id]))
+        #expect(result.failure?.failureClass == .conflict)
+        #expect(result.failure?.message.contains("App/Ranking.swift") == true)
+        #expect(result.claude?.session == "s-impl")
+        #expect(fixture.git.current.commits.isEmpty)
+    }
+
     @Test func ignoresReviewsOutsideDependsOn() async throws {
         let fixture = try await fixture()
         let outputs = AttemptFile.Outputs(pullRequest: 512, commit: Self.head, verdict: .fixReview, findings: "1. 直す")
