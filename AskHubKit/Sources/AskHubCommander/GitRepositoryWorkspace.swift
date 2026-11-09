@@ -39,12 +39,21 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
 
     public var setup: Setup
     public var runner: any CommandRunning
+    /// ワーカーが作るコミットの書き手（`CommitAuthors.swift`）
+    public var authors: any CommitAuthors
     /// 同じリポジトリの clone を、並んで fetch・worktree の追加をしないように 1 つずつにする
     let locks = RepositoryLocks()
 
-    public init(setup: Setup, runner: any CommandRunning) {
+    public init(setup: Setup, runner: any CommandRunning, authors: any CommitAuthors = FixedCommitAuthor()) {
         self.setup = setup
         self.runner = runner
+        self.authors = authors
+    }
+
+    /// コミットの書き手を git に渡す引数（author と committer の両方になる）
+    func identity(for repo: RepositoryFullName) async -> [String] {
+        let author = await authors.author(for: repo.owner)
+        return ["-c", "user.name=\(author.name)", "-c", "user.email=\(author.email)"]
     }
 
     public func prepare(_ repo: RepositoryFullName, for job: ULID) async throws(WorkspaceError) -> PreparedWorkspace {

@@ -65,7 +65,8 @@ public struct MachineRuntime: Sendable {
             ),
             workspace: GitRepositoryWorkspace(
                 setup: .init(root: paths.work, credentialHelper: GitCredential.helper(executable: commandLine.executable)),
-                runner: ProcessCommandRunner()
+                runner: ProcessCommandRunner(),
+                authors: GitHubCommitAuthors(token: githubTokens(in: secrets), log: MachineCommandLine.log)
             ),
             claude: claude,
             claudeVersion: await version(of: claude)

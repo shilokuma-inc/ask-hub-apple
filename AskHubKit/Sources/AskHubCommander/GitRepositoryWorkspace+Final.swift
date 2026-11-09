@@ -67,7 +67,7 @@ extension GitRepositoryWorkspace: FinalGit {
         let base = "refs/remotes/origin/\(epic.branches.base)"
         // base がもう作業ブランチに入っている（GitHub のコンフリクトの判定が古かった）
         if try await gitIfFound(["merge-base", "--is-ancestor", base, "HEAD"], in: epic.directory) != nil { return nil }
-        let identity = ["-c", "user.name=\(Self.committerName)", "-c", "user.email=\(Self.committerEmail)"]
+        let identity = await identity(for: epic.repo)
         // コンフリクトすると終了コード 1。どちらでも、取り込みの途中（MERGE_HEAD がある）になっていることを確かめる
         let result = try await run(identity + ["merge", "--no-ff", "--no-commit", "--quiet", base], in: epic.directory)
         guard result.succeeded || (result.status == 1 && !result.timedOut && !result.terminatedBySignal) else {

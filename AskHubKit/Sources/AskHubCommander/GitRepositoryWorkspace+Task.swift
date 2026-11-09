@@ -8,10 +8,6 @@ import Foundation
 /// - コミットする前に、作業場所の `.git` がこの clone の worktree を指したままかを確かめる（Claude は作業場所のファイルを書き換えられるため）
 /// - push は fast-forward だけ（force push しない）。リモートが動いていれば断られ、次の試行で取り出し直す
 extension GitRepositoryWorkspace: TaskGit {
-    /// ワーカーが作るコミットの書き手。`.invalid` は誰のものにもならないドメイン（RFC 2606）なので、GitHub の誰かのアカウントに結び付かない
-    static let committerName = "AskHub"
-    static let committerEmail = "worker@askhub.invalid"
-
     public func checkOutTask(
         _ repo: RepositoryFullName,
         epic: ULID,
@@ -92,7 +88,7 @@ extension GitRepositoryWorkspace: TaskGit {
         }
         try await git(["add", "--all"], in: worktree)
         guard try await !git(["status", "--porcelain"], in: worktree).isEmpty else { return nil }
-        let identity = ["-c", "user.name=\(Self.committerName)", "-c", "user.email=\(Self.committerEmail)"]
+        let identity = await identity(for: repo)
         try await git(identity + ["commit", "--quiet", "--no-verify", "--no-gpg-sign", "-m", message], in: worktree)
         let head = try await git(["rev-parse", "HEAD"], in: worktree)
         // push はリモートの追跡の参照（共有の clone）も書き換えるので、fetch と並ばないようにする
