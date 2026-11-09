@@ -64,13 +64,38 @@ public struct JobSweep: Sendable {
     }
 
     /// 1 つのジョブの試行を読み、状態が変わるなら書く。読んだ後にほかで書き換わっていたら、書かずに次の周に回す。
-    /// `epic` を渡すと、人の一時停止と引き継ぎ（`EpicHold`）も当てる。試行と Mac の印は `reader`（無ければ `context`）から読む
+    /// `epic` を渡すと、人の一時停止と引き継ぎ（`EpicHold`）も当てる。
+    ///
+    /// `reader`（周の初めの写し）を渡すと、試行と Mac の印をまず写しから読む。状態を変えると決めたら、書く前に元の置き場所で読み直して決め直す
+    /// （写しを作った後に書かれた生きている印や結果を見落として、動いている試行を止まったとみなさないように）
     func reconcile(
         _ job: JobFile,
         in epic: EpicFile? = nil,
         reading reader: CommanderContext? = nil
     ) async throws(CommanderError) -> JobFile? {
-        let reader = reader ?? context
+        var next = try await decide(job, in: epic, reading: reader ?? context)
+        guard next != job else { return nil }
+        if reader != nil {
+            next = try await decide(job, in: epic, reading: context)
+            guard next != job else { return nil }
+        }
+        var written = false
+        do {
+            let path = StatePath.job(job.repo, epic: job.epic, job: job.id)
+            try await context.files.update(JobFile.self, at: path, message: "ジョブ \(job.kind.rawValue) を \(next.state.rawValue) にする") {
+                guard $0 == job else { return false }
+                $0 = next
+                written = true
+                return true
+            }
+        } catch {
+            throw .files(error)
+        }
+        return written ? next : nil
+    }
+
+    /// 試行と Mac の印を `reader` から読み、ジョブの次の状態を決める（変わらなければ `job` のまま）
+    private func decide(_ job: JobFile, in epic: EpicFile?, reading reader: CommanderContext) async throws(CommanderError) -> JobFile {
         let attempts = try await Self.attempts(of: job, in: reader)
         let macName = attempts.max { $0.number < $1.number }?.mac ?? job.assignedMac
         var mac: MacFile?
@@ -85,20 +110,7 @@ public struct JobSweep: Sendable {
                 ? EpicHold.release(next, was: job, attempts: attempts, now: now)
                 : EpicHold.hold(next, was: job, attempts: attempts, now: now)
         }
-        guard next != job else { return nil }
-        var written = false
-        do {
-            let path = StatePath.job(job.repo, epic: job.epic, job: job.id)
-            try await context.files.update(JobFile.self, at: path, message: "ジョブ \(job.kind.rawValue) を \(next.state.rawValue) にする") {
-                guard $0 == job else { return false }
-                $0 = next
-                written = true
-                return true
-            }
-        } catch {
-            throw .files(error)
-        }
-        return written ? next : nil
+        return next
     }
 
     private static func attempts(of job: JobFile, in reader: CommanderContext) async throws(CommanderError) -> [AttemptFile] {

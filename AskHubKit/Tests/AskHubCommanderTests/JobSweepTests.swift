@@ -75,11 +75,30 @@ extension ClaudeJobRunnerTests {
         _ = try await recorder.start(given.job)
         let probe = SnapshotProbeStore(given.store)
         let sweep = JobSweep(context: CommanderContext(store: probe, mac: Self.commander) { Self.now })
-        // epic・ジョブ・試行・Mac の印は写しから読み、元の置き場所は書く前に読み直すときだけ読む
+        // epic・ジョブ・試行・Mac の印は写しから読み、元の置き場所は状態を変えると決めたとき（決め直しと書く前の読み直し）だけ読む
         #expect(try await sweep.sweep().map(\.state) == [.running])
-        #expect(await probe.liveReads == 1)
+        let reads = await probe.liveReads
+        #expect(reads > 0)
         #expect(try await sweep.sweep().isEmpty)
-        #expect(await probe.liveReads == 1)
+        #expect(await probe.liveReads == reads)
+    }
+
+    @Test func sweepRereadsAttemptsBeforeChangingJob() async throws {
+        let given = try await requested()
+        let starting = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { Self.now }
+        let attempt = try await starting.start(given.job)
+        #expect(try await sweep(given.store).sweep().map(\.state) == [.running])
+        let running = try #require(try await job(given.job.id, epic: given.epic.id, in: given.store))
+        // 20 分後: 写しの試行の印（始めたとき）は古いが、写しを作った直後にワーカーが印を書いた
+        let later = Self.now.addingTimeInterval(20 * 60)
+        let beating = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { later }
+        let probe = SnapshotProbeStore(given.store) { _ in _ = try? await beating.beat(attempt, of: running) }
+        let swept = try await JobSweep(context: CommanderContext(store: probe, mac: Self.commander) { later }).sweepAll()
+        // 書く前に元の置き場所で読み直して決め直すので、動いている試行を止まったとみなさない
+        #expect(swept.changed.isEmpty)
+        #expect(try await job(given.job.id, epic: given.epic.id, in: given.store)?.state == .running)
+        // 印がそのまま古くなれば、今までどおり状態を変える
+        #expect(try await sweep(given.store, at: later.addingTimeInterval(20 * 60)).sweep().count == 1)
     }
 
     @Test func sweepDoesNotOverwriteJobChangedAfterSnapshot() async throws {
