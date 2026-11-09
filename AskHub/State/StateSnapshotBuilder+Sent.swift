@@ -386,48 +386,6 @@ extension StateSnapshotBuilder {
         )
     }
 
-    /// 送った意図が働きかける画面の要素（画面の意図から決める `HumanIntent.targets` と同じ対象にする）。画面の要素に結びつかなければ nil
-    static func target(of envelope: IntentEnvelope) -> IntentTarget? {
-        if envelope.kind == RequestIntent.kind {
-            return .request(epicID: epicID(forRequest: envelope).rawValue)
-        }
-        if envelope.kind == AddRepositoryIntent.kind {
-            return envelope.repo.map { .repository(repository($0).id) }
-        }
-        guard let epicID = envelope.target?.epic?.rawValue else {
-            return nil
-        }
-        let id = envelope.target?.id
-        switch envelope.kind {
-        case AnswerIntent.kind:
-            return id.map { .question(epicID: epicID, questionID: displayID($0)) }
-
-        case StartEpicIntent.kind, ReviseGoalIntent.kind:
-            return .goal(epicID: epicID)
-
-        case DecideSplitIntent.kind:
-            return .split(epicID: epicID)
-
-        case DecisionIntent.kind:
-            return id.map { .decision(epicID: epicID, decisionID: $0) }
-
-        case ApproveMergeIntent.kind, InstructFinalIntent.kind:
-            return .finalPullRequest(epicID: epicID)
-
-        case RetryJobIntent.kind, GiveUpJobIntent.kind:
-            return .blocker(epicID: epicID)
-
-        case AbandonEpicIntent.kind, PauseEpicIntent.kind, ResumeEpicIntent.kind, HandoverIntent.kind:
-            return .epicControl(epicID: epicID)
-
-        case HumanTaskDoneIntent.kind:
-            return id.map { .humanTask(epicID: epicID, taskID: $0) }
-
-        default:
-            return nil
-        }
-    }
-
     func label(_ envelope: IntentEnvelope) -> String {
         let question = envelope.target?.id.map { "（\(Self.displayID($0))）" } ?? ""
         // ジョブの名前は、読んだジョブから決める（終わった epic のジョブは読まないので、名前を付けないことがある）
