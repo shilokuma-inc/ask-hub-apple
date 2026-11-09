@@ -13,6 +13,8 @@ public actor CommanderLoop {
     public struct Settings: Sendable {
         /// 1 周の間隔（`intents/` は ETag つきで読むので、変わっていなければ上限に数えられない）
         public var pollInterval: Duration
+        /// 休む間に、新しい人の意図が届いたかを見る間隔。届いていたら休みを切り上げて次の周を始める
+        public var intentCheckInterval: Duration
         /// 生きている印を書く間隔
         public var heartbeatInterval: Duration
         /// この Mac で同時に動かす数
@@ -26,12 +28,14 @@ public actor CommanderLoop {
             commanderVersion: String,
             claudeVersion: String? = nil,
             pollInterval: Duration = .seconds(30),
+            intentCheckInterval: Duration = .seconds(5),
             heartbeatInterval: Duration = .seconds(10 * 60)
         ) {
             self.capacity = capacity
             self.commanderVersion = commanderVersion
             self.claudeVersion = claudeVersion
             self.pollInterval = pollInterval
+            self.intentCheckInterval = intentCheckInterval
             self.heartbeatInterval = heartbeatInterval
         }
     }
@@ -81,6 +85,8 @@ public actor CommanderLoop {
     private var lastBeat: Date?
     /// ログに出したタスクの流れの知らせ（同じものを周ごとに出さない）
     private var reportedNotes: Set<String> = []
+    /// 前の周の初めに見た、まだ処理していなかった意図（休みを切り上げるかを決めるのに使う）
+    private var seenIntents: Set<PendingIntent> = []
 
     public init(
         context: CommanderContext,
@@ -123,23 +129,49 @@ public actor CommanderLoop {
                 log("1 周を終えられなかった（\(error)）。次の周でやり直す")
             }
             do {
-                try await sleeper.sleep(for: settings.pollInterval)
+                try await rest()
             } catch {
                 break
             }
         }
     }
 
+    /// 次の周まで `pollInterval` 休む。休む間も `intentCheckInterval` ごとに意図の一覧を見て（ETag つきなので、変わっていなければ上限に数えられない）、
+    /// 前の周で見ていない意図が届いていたら、休みを切り上げる（人の操作を早く受け付けるため。1 周の途中に届いた意図も、周が終わってすぐ受け付ける）。
+    /// 前の周で見た意図（扱えずに残したもの・書けずに残したもの）では切り上げない（同じ意図で休まずに回り続けないように）
+    func rest() async throws {
+        var rested: Duration = .zero
+        while rested < settings.pollInterval {
+            if await hasNewIntents() { return }
+            let step = min(settings.intentCheckInterval, settings.pollInterval - rested)
+            try await sleeper.sleep(for: step)
+            rested += step
+        }
+    }
+
+    /// 前の周で見ていない意図があるか。読めないときは、無いものとして休み続ける
+    func hasNewIntents() async -> Bool {
+        guard let pending = try? await IntentIntake.pending(in: context) else { return false }
+        return pending.contains { !seenIntents.contains($0) }
+    }
+
     /// 1 周。引き受けて動かし始めたジョブを返す
     @discardableResult
     public func cycle() async throws(CommanderError) -> [JobFile] {
+        var timer = CycleTimer()
         try await beatIfDue()
         let verifier = try await verifier()
+        timer.lap("生きている印と鍵")
         let intake = IntentIntake(context: context, verifier: verifier, handlers: Self.handlers)
-        for outcome in try await intake.processPending() {
-            log("人の意図: \(outcome)")
+        // 順に 1 つずつ処理し、状態リポジトリに書けなかったらそこで止める（`IntentIntake.processPending` と同じ。次の周で続きから）
+        let pending = try await intake.pending()
+        seenIntents = Set(pending)
+        for intent in pending {
+            log("人の意図: \(try await intake.process(intent))")
         }
+        timer.lap("人の意図")
         var swept = try await JobSweep(context: context).sweepAll()
+        timer.lap("ジョブの見回り")
         for job in swept.changed {
             log("ジョブ \(job.kind.rawValue) \(job.id) を \(job.state.rawValue) にした")
         }
@@ -153,10 +185,14 @@ public actor CommanderLoop {
             log(note)
         }
         swept.jobs += advanced.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
+        timer.lap("タスクの流れ")
         let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier))
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
+        timer.lap("引き受けと通知")
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
         await mirror?.syncAll(verifier: verifier)
+        timer.lap("Discussion の写し")
+        if let report = timer.report { log(report) }
         return picked
     }
 
