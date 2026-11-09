@@ -421,8 +421,9 @@
   完了ハンドラの版にして、呼ばれたその場（主スレッド）で呼び、画面の更新だけを `Task { @MainActor in … }` に渡す（2026-11-09、通知を押すと落ちた）
 - 起動引数（`-key value`）の値は、UserDefaults に文字列で入る。`defaults.object(forKey:) as? Double` は nil になる（数として読むなら `defaults.string(forKey:).flatMap(Double.init)` か `double(forKey:)`）。
   デモの `-demoReactionDelay` はこの読み方のため効いておらず、いつも既定の 4 秒になっている（2026-11-09、反映中の UI で `-demoReceiptDelay` を足して気づいた）
-- `-demoReactionDelay` も文字列から読むように直し、UI テストでは機械の反応と司令塔の受け取り（既定は反応の半分）がすぐ起きるようになった。送った直後の読み直しで受け付けが見つかるので、
-  送れたことの帯（「…を送りました」）はすぐ「…を受け付けました」に替わり、UI テストでは待てない。送れたことの帯は `ClientStoreTests` で確かめ、UI テストは受け付けの帯を待つ（2026-11-09、#954）
+- `-demoReactionDelay` も文字列から読むように直し（デモの秒数はすべて `DemoScenario.seconds(forKey:in:)` で読む）、UI テストでは機械の反応と司令塔の受け取り（既定は反応の半分）がすぐ起きるようになった。
+  送った直後の読み直しで受け付けが見つかるので、送れたことの帯（「…を送りました」）はすぐ「…を受け付けました」に替わる。受け取る前の画面を UI テストで見るときは、
+  `-demoReceiptDelay` で受け取りだけを遅らせる（受け取りが遅いと知らせる 3 分より短くする。`testRequestShowsProgressAndConfirmsDuplicate`）（2026-11-09、#954）
 
 ## シェルスクリプト
 
