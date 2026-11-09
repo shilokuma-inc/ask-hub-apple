@@ -36,6 +36,8 @@ final class ClientUITests: XCTestCase {
         let app = launch(["-demoScenario", "standard"])
         XCTAssertTrue(app.staticTexts["進行が止まっています · 6"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["まとめて判断する"].exists)
+        // 出番があるときは、空の画面の「新しい依頼を出す」を出さない
+        XCTAssertFalse(app.buttons["新しい依頼を出す"].exists)
         // 「時間のあるときに」は下にあるので、一覧を送ってから確かめる
         XCTAssertTrue(scrollUntilExists(app.staticTexts["時間のあるときに · 5"], in: app))
     }
@@ -47,6 +49,7 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["読み込めませんでした"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["あなたの番はありません"].exists)
         XCTAssertTrue(app.buttons["もう一度読む"].exists)
+        XCTAssertFalse(app.buttons["新しい依頼を出す"].exists)
     }
 
     /// 人の出番が無いときは、機械が何件を進めているかを出す
@@ -54,6 +57,19 @@ final class ClientUITests: XCTestCase {
     func testQuietScenarioShowsEmptyState() {
         let app = launch(["-demoScenario", "quiet"])
         XCTAssertTrue(app.staticTexts["あなたの番はありません"].waitForExistence(timeout: 10))
+    }
+
+    /// 人の出番が無いときの画面から、ツールバーと同じ新しい依頼のシートを開ける
+    @MainActor
+    func testEmptyInboxOpensNewRequest() {
+        let app = launch(["-demoScenario", "quiet"])
+        let button = app.buttons["新しい依頼を出す"].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 10))
+        button.tap()
+        // メニューの選択は、名前に今の値が続いたボタンになる（例「アプリ, 選んでください」）
+        let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "アプリ")).firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["キャンセル"].firstMatch.exists)
     }
 
     /// 設定でデモの場面を変えると、その場面のデータを読み込み直す（作り直した store を読み込まないまま残さない）。
