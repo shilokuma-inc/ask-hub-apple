@@ -108,6 +108,10 @@ public protocol FinalGit: Sendable {
     ) async throws(WorkspaceError) -> FinalReviewCheckout
 
     /// ジョブのフォルダを片付ける（片付けられなくても止めない）
+    /// base と `head` の分岐点のコミット（撮影の Before の版）
+    func mergeBase(_ repo: RepositoryFullName, branches: FinalBranches, head: String) async throws(WorkspaceError) -> String
+    /// `commit` を、ジョブのフォルダの `name` の下に取り出す（ビルドして撮るだけ。終わったら `release(_:)` で消す）
+    func checkOutCommit(_ repo: RepositoryFullName, job: ULID, commit: String, name: String) async throws(WorkspaceError) -> URL
     func release(_ job: ULID) async
 
     /// この Mac の epic の作業場所と、手元の epic のブランチ（作業ブランチと子ブランチ）を消す。ほかの epic のものには触れない

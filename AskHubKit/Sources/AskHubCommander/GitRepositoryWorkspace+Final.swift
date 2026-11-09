@@ -146,6 +146,41 @@ extension GitRepositoryWorkspace: FinalGit {
         return try await finalDiff(in: worktree, base: branches.base, head: resolved, facts: facts)
     }
 
+    public func mergeBase(_ repo: RepositoryFullName, branches: FinalBranches, head: String) async throws(WorkspaceError) -> String {
+        guard EpicFile.isBranchName(branches.base), AttemptFile.isCommitSHA(head) else {
+            throw .failed("base（\(branches.base)）か head（\(head)）の形が違う")
+        }
+        let clone = cloneDirectory(of: repo)
+        var base = ""
+        try await locks.withLock(repo.rawValue) { () throws(WorkspaceError) in
+            try await update(clone, of: repo)
+            markUsed(clone)
+            guard try await commit(of: head, in: clone) != nil else { throw .failed("head \(head) がリモートに無い") }
+            base = try await git(["merge-base", "refs/remotes/origin/\(branches.base)", head], in: clone)
+        }
+        guard AttemptFile.isCommitSHA(base) else { throw .failed("base \(branches.base) と \(head) の分岐点を読めない") }
+        return base
+    }
+
+    public func checkOutCommit(_ repo: RepositoryFullName, job: ULID, commit: String, name: String) async throws(WorkspaceError) -> URL {
+        guard AttemptFile.isCommitSHA(commit), name.wholeMatch(of: #/[a-z]+/#) != nil else {
+            throw .failed("コミット（\(commit)）か置き場所の名前（\(name)）の形が違う")
+        }
+        let clone = cloneDirectory(of: repo)
+        let worktree = jobDirectory(job).appendingPathComponent("\(name)/\(repo.name)", isDirectory: true)
+        try await locks.withLock(repo.rawValue) { () throws(WorkspaceError) in
+            try await update(clone, of: repo)
+            markUsed(clone)
+            guard try await self.commit(of: commit, in: clone) != nil else { throw .failed("コミット \(commit) がリモートに無い") }
+            // 前の試行の写しが残っていれば作り直す
+            try remove(worktree)
+            try await git(["worktree", "prune"], in: clone)
+            try createDirectory(worktree.deletingLastPathComponent())
+            try await git(["worktree", "add", "--detach", "--force", worktree.path, commit], in: clone)
+        }
+        return worktree
+    }
+
     /// base との分岐点から `head` までの差分（base に後から入った変更を含めない）。差分の外部のコマンド・変換は使わない
     private func finalDiff(
         in worktree: URL,
