@@ -38,6 +38,21 @@ struct CommitAuthorsTests {
         #expect(transport.requests.count == 1)
     }
 
+    @Test func readsAgainWhenTokenIsReplaced() async {
+        let current = OSAllocatedUnfairLock(initialState: "github_pat_" + String(repeating: "a", count: 40))
+        let other = StubTransport.Reply.json(200, #"{"id":99,"login":"someone","name":null}"#)
+        let transport = StubTransport([Self.user, other])
+        let authors = GitHubCommitAuthors(token: { _ in current.withLock { $0 } }, transport: transport)
+        #expect(await authors.author(for: "shilokuma-inc").email == "1234+mrs1669@users.noreply.github.com")
+        // 同じトークンなら聞き直さない
+        #expect(await authors.author(for: "shilokuma-inc").email == "1234+mrs1669@users.noreply.github.com")
+        #expect(transport.requests.count == 1)
+        // 入れ替えたら、新しいトークンの持ち主を読み直す
+        current.withLock { $0 = "github_pat_" + String(repeating: "b", count: 40) }
+        #expect(await authors.author(for: "shilokuma-inc") == GitAuthor(name: "someone", email: "99+someone@users.noreply.github.com"))
+        #expect(transport.requests.count == 2)
+    }
+
     @Test func fallsBackWithoutRememberingWhenAccountIsUnknown() async {
         // 1 回目は 401、2 回目はつながらない（どちらも覚えないので、毎回聞き直す）
         let transport = StubTransport([.json(401, "{}")])

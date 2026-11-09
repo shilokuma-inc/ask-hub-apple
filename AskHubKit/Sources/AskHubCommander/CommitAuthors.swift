@@ -1,4 +1,5 @@
 import AskHubStateStore
+import CryptoKit
 import Foundation
 
 /// ワーカーが作るコミットの書き手（git の `user.name`・`user.email`。author と committer の両方）
@@ -46,15 +47,16 @@ public struct FixedCommitAuthor: CommitAuthors {
 
 /// リポジトリの持ち主に使う GitHub のトークンの持ち主（GitHub のアカウント）を、コミットの書き手にする（ユーザーの決定。PR を開く・マージするアカウントとそろえる）。
 ///
-/// `GET /user`（fine-grained token でも権限なしで読める）で読み、持ち主ごとに覚える。
-/// 読めないとき（トークンが無い・つながらない・GitHub の障害）は覚えずに `GitAuthor.fallback` を返し、次のコミットで読み直す。
+/// `GET /user`（fine-grained token でも権限なしで読める）で読み、持ち主ごとに、読んだトークンの指紋（SHA-256）と合わせて覚える。
+/// トークンを入れ替えたら（指紋が変わったら）読み直す。読めないとき（トークンが無い・つながらない・GitHub の障害）は覚えずに `GitAuthor.fallback` を返し、次のコミットで読み直す。
 /// トークンの値は `Authorization` にだけ入れ、ログ・URL・エラーに出さない
 public actor GitHubCommitAuthors: CommitAuthors {
     private let token: @Sendable (_ owner: String) async throws -> String
     private let transport: any HTTPTransport
     private let apiBase: URL
     private let log: @Sendable (String) -> Void
-    private var known: [String: GitAuthor] = [:]
+    /// 持ち主ごとの、読んだトークンの指紋と書き手（トークンの値は覚えない）
+    private var known: [String: (fingerprint: SHA256Digest, author: GitAuthor)] = [:]
 
     public init(
         token: @escaping @Sendable (_ owner: String) async throws -> String,
@@ -69,13 +71,17 @@ public actor GitHubCommitAuthors: CommitAuthors {
     }
 
     public func author(for owner: String) async -> GitAuthor {
-        if let author = known[owner] { return author }
-        guard let author = await account(for: owner) else {
-            log("\(owner) のトークンの持ち主を読めなかったので、コミットの書き手を \(GitAuthor.fallback.name) にした")
-            return .fallback
-        }
-        known[owner] = author
+        guard let token = try? await token(owner) else { return unknown(owner) }
+        let fingerprint = SHA256.hash(data: Data(token.utf8))
+        if let known = known[owner], known.fingerprint == fingerprint { return known.author }
+        guard let author = await account(token: token) else { return unknown(owner) }
+        known[owner] = (fingerprint, author)
         return author
+    }
+
+    private func unknown(_ owner: String) -> GitAuthor {
+        log("\(owner) のトークンの持ち主を読めなかったので、コミットの書き手を \(GitAuthor.fallback.name) にした")
+        return .fallback
     }
 
     private struct User: Decodable {
@@ -84,8 +90,7 @@ public actor GitHubCommitAuthors: CommitAuthors {
         let name: String?
     }
 
-    private func account(for owner: String) async -> GitAuthor? {
-        guard let token = try? await token(owner) else { return nil }
+    private func account(token: String) async -> GitAuthor? {
         var request = URLRequest(url: apiBase.appendingPathComponent("user"))
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
