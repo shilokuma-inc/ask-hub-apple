@@ -131,6 +131,8 @@
 - fine-grained token の期限は、そのトークンで呼んだ API の応答の見出し `github-authentication-token-expiration` に `2027-10-23 12:25:03 UTC` の形で出る（`+0900` のような時差の形で返ることもあると報告がある）。
   期限の無いトークンには見出しが無い。期限切れのトークンは 401 で見出しも無いので、切れた後に期限を知るには前に読んだ値を覚えておく。
   期限だけを読むなら `GET /rate_limit` が REST の上限に数えられない（2026-11-08、`GitHubTokenExpiry`）
+- CodeRabbit は、PR の head のコミットに付ける印を、commit status `CodeRabbit` から check run `CodeRabbit`（アプリの slug は `coderabbitai`）に切り替えた（2026-10-25 までは commit status、2026-11-01 以降は check run）。
+  完了は `completed`・`success`（見出し "Finished"）、上限は `completed`・`neutral`（"Review rate limited"）、見送りは `completed`・`skipped`（"Review skipped…"）。commit status だけを読むと、終わっていても「始まっていない」に見える
 
 ## ビルド・テスト
 
