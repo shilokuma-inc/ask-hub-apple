@@ -98,13 +98,15 @@ struct MergeTests {
         #expect(transport.requests.count == 1)
     }
 
-    @Test func treatsBranchDeletedMeanwhileAsAlreadyGone() async throws {
-        let transport = StubTransport([
-            .json(200, Self.ref(Fixture.sha)),
-            .json(422, #"{"message":"Reference does not exist"}"#),
-            .json(404, #"{"message":"Not Found"}"#)
-        ])
+    /// 読んだ後に消えた（マージで GitHub が自動で消したなど）。GitHub は削除を 422 か 404 で断る
+    @Test(arguments: [
+        StubTransport.Reply.json(422, #"{"message":"Reference does not exist"}"#),
+        StubTransport.Reply.json(404, #"{"message":"Not Found"}"#)
+    ])
+    func treatsBranchDeletedMeanwhileAsAlreadyGone(_ refusal: StubTransport.Reply) async throws {
+        let transport = StubTransport([.json(200, Self.ref(Fixture.sha)), refusal, .json(404, #"{"message":"Not Found"}"#)])
         #expect(try await Fixture.client(transport).deleteBranch("feat/task-1", expectedSHA: Fixture.sha) == .alreadyGone)
+        #expect(transport.requests.count == 3)
     }
 
     @Test func reportsOtherRejectionOfDeletion() async throws {
@@ -114,6 +116,18 @@ struct MergeTests {
             .json(200, Self.ref(Fixture.sha))
         ])
         await #expect(throws: PullRequestError.rejected(message: "Cannot delete this protected branch")) {
+            try await Fixture.client(transport).deleteBranch("feat/task-1", expectedSHA: Fixture.sha)
+        }
+    }
+
+    @Test func reportsNotFoundWhenBranchStillExists() async throws {
+        // 権限が無いときも GitHub は 404 を返す。ブランチが残っていれば消えたことにしない
+        let transport = StubTransport([
+            .json(200, Self.ref(Fixture.sha)),
+            .json(404, #"{"message":"Not Found"}"#),
+            .json(200, Self.ref(Fixture.sha))
+        ])
+        await #expect(throws: PullRequestError.notFound) {
             try await Fixture.client(transport).deleteBranch("feat/task-1", expectedSHA: Fixture.sha)
         }
     }

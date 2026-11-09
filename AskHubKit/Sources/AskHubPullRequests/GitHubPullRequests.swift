@@ -115,10 +115,15 @@ public struct GitHubPullRequests: Sendable {
         do throws(PullRequestError) {
             _ = try await api.send("DELETE", api.url("git/refs/heads/\(branch)"))
             return .deleted
-        } catch let .rejected(message) {
-            // 読んだ後に消えた（GitHub は無い ref の削除を 422 で断る）
-            if try await branchHead(branch) == nil { return .alreadyGone }
-            throw .rejected(message: message)
+        } catch {
+            // 読んだ後に消えた（マージで GitHub が自動で消した〔delete_branch_on_merge〕など）。GitHub は無い ref の削除を 422 か 404 で断る
+            switch error {
+            case .rejected, .notFound:
+                if try await branchHead(branch) == nil { return .alreadyGone }
+            default:
+                break
+            }
+            throw error
         }
     }
 
