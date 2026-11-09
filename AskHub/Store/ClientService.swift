@@ -16,10 +16,16 @@ protocol ClientService: AnyObject {
     func supports(_ intent: HumanIntent) -> Bool
     /// 同じ意図（同じ対象と版・同じ中身）を最後に送った記録。分からなければ nil
     func lastSend(of intent: HumanIntent) -> SentRecord?
+    /// 判断のカードのスクショ（状態リポジトリの中のパス）の中身。読めなければ投げる
+    func screenshot(at path: String) async throws -> Data
 }
 
 extension ClientService {
     func supports(_ intent: HumanIntent) -> Bool { true }
+
+    func screenshot(at path: String) async throws -> Data {
+        throw ClientServiceError(message: "このデータの元にはスクショが無い")
+    }
 }
 
 /// 書いた意図の控え（失敗の `ClientServiceError` が持つので、nonisolated にする）

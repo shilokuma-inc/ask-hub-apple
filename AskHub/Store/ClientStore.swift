@@ -99,6 +99,11 @@ final class ClientStore {
         service.supports(intent)
     }
 
+    /// 判断のカードのスクショの中身。読めなければ nil
+    func screenshot(at path: String) async -> Data? {
+        try? await service.screenshot(at: path)
+    }
+
     // MARK: 読む
 
     /// 読み直す。司令塔が受け付けた意図を見つけたら、状態が反映されるよう、続けてもう一度読む

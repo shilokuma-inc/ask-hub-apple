@@ -104,7 +104,7 @@ struct DecisionCard: Identifiable, Hashable {
     var response: Response
     /// 慎重に確かめてほしい理由（セキュリティなど）。あれば札を警告ふうに出す
     var caution: Caution?
-    /// スクショを出せないわけ（例: このリポジトリには撮影の設定が無い）
+    /// スクショに添えるわけ（例: このリポジトリには撮影の設定が無い・Before なし）。スクショがあっても出す
     var screenshotNote: String?
 
     enum Response: Hashable {
@@ -131,7 +131,8 @@ struct DecisionCard: Identifiable, Hashable {
 
 /// 判断のカードのスクショ（撮影にはデモモードのデータを使う）
 enum Screenshot: Hashable {
-    case image(URL)
+    /// ワーカーが撮って状態リポジトリに置いた画像（epic の `screenshots/` の下のパス）。`ClientStore.screenshot(at:)` で読む
+    case stored(String)
     /// デモのデータ用。アプリの中で描く
     case demo(DemoScreen)
 }
