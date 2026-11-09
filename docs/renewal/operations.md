@@ -129,7 +129,10 @@
   - 設定と Claude のフォルダは `~/Library/Application Support/AskHub/<役割>/`
   - 対象のリポジトリの写し・epic の作業場所・DerivedData・ビルドの一時フォルダは、パスに空白の無い `~/Library/Developer/AskHub/<役割>/`（`work`・`builds`・`builds-tmp`）。パスの空白を扱えないビルドのプラグインやスクリプトがあるため（2026-11-09、prime-pick-ios の LicenseList のプラグインが `SourcePackages not found` で止まった）
   - 移す前の版で作った `~/Library/Application Support/AskHub/<役割>/` の `work`・`builds`・`builds-tmp` は、移した後は使わず、epic の片付けでも消えない。動いている epic は、次のジョブで作業ブランチ（リモート）から新しい場所に取り出し直す
-  - 前の場所は、動いている epic が無いとき（実装の途中の質問を待っている epic も無いとき）に手で消す。消す前に、`work/epics/<epic>/` の作業場所に、push していない変更や stash が残っていないかを `git -C <作業場所> status`・`git -C <作業場所> log @{u}..`・`git -C <作業場所> stash list` で確かめ、残っていれば作業ブランチに push してから消す。消すのは Finder でゴミ箱に入れる（取り消せるように）
+  - 前の場所は、動いている epic が無いとき（実装の途中の質問を待っている epic も無いとき）に手で消す。消すのは `work`・`builds`・`builds-tmp` の 3 つだけで、同じフォルダの `config.json` と `claude/` は今も使うので残す
+    - 消す前に、epic の作業場所（`work/epics/<epic>/repository/<リポジトリ名>`。`work/epics/<epic>/` は git の作業場所ではない）に、push していない変更や stash が残っていないかを `git -C <作業場所> status`・`git -C <作業場所> log HEAD --not --remotes`・`git -C <作業場所> stash list` で確かめる。epic の作業ブランチには upstream が無いので、`git log @{u}..` は使えない
+    - 残っていれば作業ブランチに push してから消す。ただし、場所を移す前に止まった試行の、コミットしていない変更が残っていることがある。新しい場所でやり直したタスクのコミットと見比べて、中身が入っていれば push は要らない（2026-11-09、prime-pick-ios）
+    - 消すのはゴミ箱に入れる（取り消せるように）。ssh 越しでは Finder を使えないので、`~/.Trash/<名前>/` に `mv` する（Finder の「戻す」は使えないので、戻すときも `mv`）。ゴミ箱に入れただけでは空き容量は増えず、ゴミ箱を空にしたとき（Finder の「30 日後にゴミ箱から削除」が有効なら 30 日後）に空く
 
 ### 司令塔の入れ方（段階 2）
 
