@@ -131,6 +131,8 @@
 - fine-grained token の期限は、そのトークンで呼んだ API の応答の見出し `github-authentication-token-expiration` に `2027-10-23 12:25:03 UTC` の形で出る（`+0900` のような時差の形で返ることもあると報告がある）。
   期限の無いトークンには見出しが無い。期限切れのトークンは 401 で見出しも無いので、切れた後に期限を知るには前に読んだ値を覚えておく。
   期限だけを読むなら `GET /rate_limit` が REST の上限に数えられない（2026-11-08、`GitHubTokenExpiry`）
+- 司令塔は状態を書き換えてから受け付けた記録（`consumed/`）を書くが、クライアントが状態リポジトリを並べて読む 1 回の読み込みでは、記録は新しく状態は古い組み合わせを読むことがある
+  （状態のファイルを先に読み終え、その後に記録を読んだとき）。受け付けを見つけた読み込みだけで「反映された」とせず、その後に始めた読み込みが終わるまで反映中にする（`ReflectionTracker`。2026-11-09、反映中の UI）
 
 ## ビルド・テスト
 
@@ -415,6 +417,8 @@
   関数を抜けた後に、完了ハンドラが協調スレッドから呼ばれる。UIKit は完了ハンドラの中で主スレッドかを確かめるので、通知を押したときに
   `-[UIApplication _performBlockAfterCATransactionCommitSynchronizes:]` の NSAssertionHandler で落ちる（`nonisolated` の async の版で起きた）。
   完了ハンドラの版にして、呼ばれたその場（主スレッド）で呼び、画面の更新だけを `Task { @MainActor in … }` に渡す（2026-11-09、通知を押すと落ちた）
+- 起動引数（`-key value`）の値は、UserDefaults に文字列で入る。`defaults.object(forKey:) as? Double` は nil になる（数として読むなら `defaults.string(forKey:).flatMap(Double.init)` か `double(forKey:)`）。
+  デモの `-demoReactionDelay` はこの読み方のため効いておらず、いつも既定の 4 秒になっている（2026-11-09、反映中の UI で `-demoReceiptDelay` を足して気づいた）
 
 ## シェルスクリプト
 
@@ -541,3 +545,5 @@
   開く前の大きさを覚えておき、幅が同じまま高さだけ縮んだ間はその大きさで置く（`DecisionDeckView.deckArea`）（2026-11-06、自由回答のシート）
 - `.presentationDetents([.height(h), .large])` のシートで開いてすぐ入力欄にフォーカスを当てると、キーボードが出たときに `.large` へ移る（`[.medium, .large]` と同じ）。
   低い高さのまま書かせるには `.large` を並べない。キーボードの上の「完了」（`ToolbarItemGroup(placement: .keyboard)`）は、低いシートではシートの中に重なって入力欄を狭める（2026-11-06、自由回答のシート）
+- `List` の `Section` の中に、本体が `if` で何も出さないことのある View（`ReflectionStatusView` など）をそのまま置いても、何も出さないときは空の行にならない（iOS 26 で確かめた）。
+  呼び出し側で `if` を重ねるのは、`CardSection` で包むときのように、包む側だけが残ってしまうときだけでよい（2026-11-09、反映中の UI）
