@@ -189,7 +189,7 @@ struct ReflectionTests {
     func refusesOtherOperationOnSameTargetUntilReflected() async {
         let (service, store) = await makeStore()
         await store.send(merge)
-        #expect(await store.send(instruct) == .failed("マージの承認を反映しています。反映されてから操作してください"))
+        #expect(await store.send(instruct) == .failed("マージの承認の同期を待っています。司令塔が受け付けてから操作してください"))
         #expect(store.sendFailure?.intent == instruct)
         #expect(service.performed == [merge])
 
@@ -401,11 +401,15 @@ extension ReflectionTests {
         #expect(!waiting.isStalled(now: now, threshold: ClientStore.defaultStallThreshold))
         let fresh = ReflectionMessage.make(waiting, now: now, stallThreshold: ClientStore.defaultStallThreshold, commanderSeenAt: now)
         #expect(fresh.tone == .progress)
-        #expect(fresh.title == "反映中")
+        #expect(fresh.title == "同期待ち")
+        #expect(fresh.badge == "同期待ち")
+        #expect(!waiting.needsAttention(now: now, threshold: ClientStore.defaultStallThreshold))
         #expect(fresh.detail.hasPrefix("マージの承認を司令塔が受け取るのを待っています"))
 
         let stalled = Reflection(label: "マージの承認", phase: .waiting(since: now.addingTimeInterval(-4 * 60)))
         #expect(stalled.isStalled(now: now, threshold: ClientStore.defaultStallThreshold))
+        // 受け取りが遅いときは、同期待ちの印だけでなく、操作した場所に知らせる
+        #expect(stalled.needsAttention(now: now, threshold: ClientStore.defaultStallThreshold))
         let unknown = ReflectionMessage.make(stalled, now: now, stallThreshold: ClientStore.defaultStallThreshold, commanderSeenAt: nil)
         #expect(unknown.tone == .stalled)
         #expect(unknown.badge == "受け取り待ち")
@@ -433,7 +437,7 @@ extension ReflectionTests {
             stallThreshold: 180,
             commanderSeenAt: nil
         )
-        #expect(sending == ReflectionMessage(title: "送っています", detail: "開始を送っています", tone: .progress, badge: "送信中"))
+        #expect(sending == ReflectionMessage(title: "同期待ち", detail: "開始を送っています", tone: .progress, badge: "同期待ち"))
 
         let accepted = ReflectionMessage.make(
             Reflection(label: "開始", phase: .accepted),
@@ -441,7 +445,8 @@ extension ReflectionTests {
             stallThreshold: 180,
             commanderSeenAt: nil
         )
-        #expect(accepted.detail == "開始を受け付けました。画面に反映しています")
+        #expect(accepted.detail == "開始を受け付けました。最新の状態を読んでいます")
+        #expect(accepted.badge == "同期待ち")
 
         let rejection = ReflectionTracker.Rejection(targets: [.goal(epicID: "e1")], label: "開始", reason: "Mac がオフライン")
         let rejected = ReflectionMessage.make(
@@ -451,6 +456,7 @@ extension ReflectionTests {
             commanderSeenAt: nil
         )
         #expect(rejected.tone == .rejected)
+        #expect(Reflection(label: "開始", phase: .rejected(rejection)).needsAttention(now: start, threshold: 180))
         #expect(rejected.title == "開始を受け付けませんでした")
         #expect(rejected.detail == "Mac がオフライン")
         #expect(rejected.rejectionID == rejection.id)

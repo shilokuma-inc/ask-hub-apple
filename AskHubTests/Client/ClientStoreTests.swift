@@ -173,17 +173,23 @@ struct ClientStoreTests {
         #expect(service.performed == [intent])
     }
 
-    /// 送れたら帯で知らせ、しばらくしたら消す
+    /// 送れただけでは帯を出さず（画面は送った結果の形になる）、司令塔が受け付けたら帯で知らせ、しばらくしたら消す
     @Test
-    func announcesSentIntentAndHidesNoticeLater() async throws {
+    func announcesAcceptedIntentAndHidesNoticeLater() async throws {
         let service = FakeService()
-        service.snapshot = DemoScenario.standard.snapshot(now: now)
+        var snapshot = DemoScenario.standard.snapshot(now: now)
+        snapshot.sentIntents = [SentIntentStatus(id: "nonce-1", title: "依頼", sentAt: now, state: .waiting)]
+        service.snapshot = snapshot
+        service.receiptIntentID = "nonce-1"
         let store = ClientStore(service: service, noticeDuration: .milliseconds(20), now: { [now] in now })
         let intent = HumanIntent.request(repositoryID: "example/memo-ios", summary: "メモ並べ替え", body: "")
 
-        #expect(await store.send(intent) == .sent(SendReceipt(requestedEpicID: "request-1")))
-        #expect(store.notice?.message == "依頼「メモ並べ替え」を送りました")
-        #expect(store.notice?.detail == "司令塔が受け取るのを待っています")
+        #expect(await store.send(intent) == .sent(SendReceipt(requestedEpicID: "request-1", intentID: "nonce-1")))
+        #expect(store.notice == nil)
+        service.snapshot?.sentIntents[0].state = .accepted(at: now)
+        await store.refresh()
+        #expect(store.notice?.message == "依頼「メモ並べ替え」を受け付けました")
+        #expect(store.notice?.detail == "司令塔が受け取りました")
         for _ in 0..<100 where store.notice != nil {
             try await Task.sleep(for: .milliseconds(10))
         }
@@ -244,7 +250,7 @@ struct ClientStoreTests {
         #expect(store.sendFailure?.intent == failed)
         await store.retryFailedSend()
         #expect(store.sendFailure == nil)
-        #expect(store.notice?.message == "取り下げを送りました")
+        #expect(service.performed.last == failed)
     }
 
     /// テストで進める時計
@@ -269,7 +275,8 @@ struct ClientStoreTests {
         let clock = clock ?? Clock(now)
         let store = ClientStore(service: service, noticeDuration: noticeDuration, now: { clock.now })
         #expect(await store.send(.start(epicID: "budget-limit", macID: DemoData.macMiniID)) == .sent(SendReceipt(intentID: "nonce-1")))
-        #expect(store.notice?.message == "開始を送りました")
+        // 送れただけでは帯を出さない（画面は開始した形になり、同期待ちの印だけを出す）
+        #expect(store.notice == nil)
         return (service, store)
     }
 
@@ -278,7 +285,7 @@ struct ClientStoreTests {
     func announcesStartAcceptedByCommander() async {
         let (service, store) = await startWaitingForCommander()
         await store.refresh()
-        #expect(store.notice?.message == "開始を送りました")
+        #expect(store.notice == nil)
 
         service.snapshot?.sentIntents[0].state = .accepted(at: now)
         await store.refresh()

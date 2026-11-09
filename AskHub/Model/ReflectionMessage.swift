@@ -3,7 +3,7 @@ import Foundation
 /// 送った意図が反映されるまでの様子の文言。操作した場所に出す部品（`ReflectionStatusView`）とテストで使う
 struct ReflectionMessage: Equatable {
     enum Tone: Equatable {
-        /// 送っている・反映を待っている
+        /// 同期を待っている（送っている・司令塔の受け取りを待っている・受け付けて読み直している）
         case progress
         /// 司令塔がしばらく受け取っていない
         case stalled
@@ -11,12 +11,12 @@ struct ReflectionMessage: Equatable {
         case rejected
     }
 
-    /// 例: 反映中
+    /// 例: 同期待ち
     var title: String
     /// 例: マージの承認を司令塔が受け取るのを待っています
     var detail: String
     var tone: Tone
-    /// 小さな印に出す短い言い方（例: 反映中）
+    /// 小さな印に出す短い言い方（例: 同期待ち）
     var badge: String
     /// 閉じられる知らせ（断られた）なら、その id
     var rejectionID: ReflectionTracker.Rejection.ID?
@@ -29,7 +29,7 @@ struct ReflectionMessage: Equatable {
         let label = reflection.label
         switch reflection.phase {
         case .sending:
-            return ReflectionMessage(title: "送っています", detail: "\(label)を送っています", tone: .progress, badge: "送信中")
+            return ReflectionMessage(title: "同期待ち", detail: "\(label)を送っています", tone: .progress, badge: "同期待ち")
 
         case .waiting(let since) where reflection.isStalled(now: now, threshold: stallThreshold):
             let waited = RelativeTime.duration(since: since, now: now)
@@ -42,14 +42,14 @@ struct ReflectionMessage: Equatable {
 
         case .waiting:
             return ReflectionMessage(
-                title: "反映中",
+                title: "同期待ち",
                 detail: "\(label)を司令塔が受け取るのを待っています（ふつうは 1 分ほど）",
                 tone: .progress,
-                badge: "反映中"
+                badge: "同期待ち"
             )
 
         case .accepted:
-            return ReflectionMessage(title: "反映中", detail: "\(label)を受け付けました。画面に反映しています", tone: .progress, badge: "反映中")
+            return ReflectionMessage(title: "同期待ち", detail: "\(label)を受け付けました。最新の状態を読んでいます", tone: .progress, badge: "同期待ち")
 
         case .rejected(let rejection):
             return ReflectionMessage(
