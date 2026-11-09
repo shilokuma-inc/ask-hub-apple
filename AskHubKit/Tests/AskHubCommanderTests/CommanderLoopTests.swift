@@ -86,6 +86,7 @@ extension ClaudeJobRunnerTests {
         mirror: DiscussionMirror? = nil,
         epicWorkspace: (any EpicWorkspace)? = nil,
         claudeVersion: String? = nil,
+        sleeper: any Sleeper = TaskSleeper(),
         tidy: @escaping @Sendable () async -> Void = {}
     ) -> CommanderLoop {
         let publicKeys = [keyID: key.publicKey.derRepresentation]
@@ -98,6 +99,7 @@ extension ClaudeJobRunnerTests {
             workspace: FixedWorkspace(directory: directory),
             status: { CommanderLoop.MachineStatus(diskFreeGB: 100, load: 0.5, selfCheck: selfCheck, claudeVersion: claudeVersion) },
             log: { _ in },
+            sleeper: sleeper,
             mirror: mirror,
             epicWorkspace: epicWorkspace,
             tidy: tidy
@@ -150,6 +152,35 @@ extension ClaudeJobRunnerTests {
         #expect(epic.stage == .awaitingStart)
         #expect(try await jobs(epic.id, in: store).allSatisfy { $0.state == .succeeded })
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    @Test func restEndsEarlyWhenNewIntentArrives() async throws {
+        let store = InMemoryStateStore()
+        let sleeper = WaitRecorder()
+        let loop = loop(store, claude: ScriptedRunner([]), sleeper: sleeper)
+        _ = try await loop.cycle()
+        // 意図が無ければ、5 秒ごとに見ながら 30 秒休む
+        try await loop.rest()
+        #expect(sleeper.waits == Array(repeating: .seconds(5), count: 6))
+        // 休む前に届いていれば、休まずに次の周へ
+        let request = try await storeWithRequest()
+        for path in try await request.listFiles(under: StatePath.intents)?.map(\.path) ?? [] {
+            let blob = try #require(try await request.read(path))
+            await store.put(path, data: blob.data)
+        }
+        try await loop.rest()
+        #expect(sleeper.waits.count == 6)
+    }
+
+    @Test func restDoesNotEndEarlyForIntentsSeenInLastCycle() async throws {
+        // 扱えずに残した意図（読めない意図など）では切り上げない（休まずに回り続けないように）
+        let store = InMemoryStateStore()
+        await store.put(StatePath.intent(device: keyID, nonce: ULID.generate(at: Self.now)), data: Data("not json".utf8))
+        let sleeper = WaitRecorder()
+        let loop = loop(store, claude: ScriptedRunner([]), sleeper: sleeper)
+        _ = try await loop.cycle()
+        try await loop.rest()
+        #expect(sleeper.waits == Array(repeating: .seconds(5), count: 6))
     }
 
     @Test func workerSharesLockWithIntake() async throws {
