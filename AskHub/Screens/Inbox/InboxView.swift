@@ -134,9 +134,11 @@ private struct DeckShortcutRow: View {
     }
 }
 
-/// 人の出番が無いとき。機械が何件を進めているかと、いつ確かめたかを出す
+/// 人の出番が無いとき。機械が何件を進めているかと、いつ確かめたかを出し、新しい依頼を出せるようにする。
+/// 対象のリポジトリが無くてもボタンは出す（シートの側で、リポジトリが無いことを出す）
 private struct InboxEmptyView: View {
     @Environment(ClientStore.self) private var store
+    @Environment(AppNavigator.self) private var navigator
 
     var body: some View {
         let working = store.snapshot?.activeEpics.filter { !$0.activities.isEmpty }.count ?? 0
@@ -146,6 +148,10 @@ private struct InboxEmptyView: View {
             if let fetchedAt = store.snapshot?.fetchedAt {
                 Text("Claude が \(working) 件を進めています。\(RelativeTime.clock(fetchedAt)) に確かめました")
             }
+        } actions: {
+            Button("新しい依頼を出す") { navigator.isShowingNewRequest = true }
+                .buttonStyle(.glassProminent)
+                .keepsControlSize()
         }
     }
 }
