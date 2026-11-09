@@ -143,7 +143,8 @@ enum DecisionClassification {
     }
 
     static func text(of item: DecisionsFile.Item) -> String {
-        let source = ["タスク \(item.task)", item.pullRequest.map { "子 PR #\($0)" }].compactMap(\.self).joined(separator: "、")
+        let task = item.task.map { "タスク \($0)" } ?? "最終 PR の直し"
+        let source = [task, item.pullRequest.map { "PR #\($0)" }].compactMap(\.self).joined(separator: "、")
         let alternatives = item.alternatives.isEmpty ? "なし" : item.alternatives.joined(separator: "・")
         return "- \(item.id)（\(source)）: \(item.what)\n  なぜ: \(item.why)\n  ほかの案: \(alternatives)"
     }
