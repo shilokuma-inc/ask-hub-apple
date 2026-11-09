@@ -20,6 +20,10 @@ final class ConnectionSettingsModel {
 
     /// 入力中のトークン
     var tokenInput = ""
+    /// 鍵の記録に付ける、この端末の名前の入力。空なら既定の名前（`defaultDeviceLabel`）を使う
+    var deviceName: String {
+        didSet { defaults.set(deviceName, forKey: Self.deviceNamePreferenceKey) }
+    }
     private(set) var hasToken = false
     private(set) var key: DeviceKey?
     private(set) var registration: KeyRegistration?
@@ -27,9 +31,12 @@ final class ConnectionSettingsModel {
     private(set) var errorMessage: String?
 
     private let tokens: any SecretStore
+    private let defaults: UserDefaults
 
-    init(tokens: any SecretStore = StateConnection.tokenStore) {
+    init(tokens: any SecretStore = StateConnection.tokenStore, defaults: UserDefaults = .standard) {
         self.tokens = tokens
+        self.defaults = defaults
+        deviceName = defaults.string(forKey: Self.deviceNamePreferenceKey) ?? Self.defaultDeviceLabel
     }
 
     func load() async {
@@ -101,7 +108,7 @@ final class ConnectionSettingsModel {
         if case .notRegistered(let first?) = registration {
             account = first
         }
-        return Self.registerCommand(publicKey: key.publicKey, account: account, label: Self.defaultDeviceLabel)
+        return Self.registerCommand(publicKey: key.publicKey, account: account, label: Self.deviceLabel(from: deviceName))
     }
 
     /// 端末の名前を、ターミナルにそのまま貼れるよう単一引用符で囲んで `--label` に渡す
@@ -109,8 +116,14 @@ final class ConnectionSettingsModel {
         "askhub key add --public-key \(publicKey) --account \(account) --label \(shellQuoted(label))"
     }
 
+    static let deviceNamePreferenceKey = "deviceKeyLabel"
     /// 公開鍵の記録が受け付けるラベルの長さ（`KeyLedger` の 1〜64 文字）
     nonisolated static let maxDeviceLabelLength = 64
+
+    /// 鍵の記録に付ける名前。空なら既定の名前
+    static func deviceLabel(from name: String) -> String {
+        normalizedLabel(name) ?? defaultDeviceLabel
+    }
 
     /// 名前を入れていないときの端末の名前。Mac は複数台を見分けられるよう、コンピュータ名（システム設定の「共有」）を使う
     static let defaultDeviceLabel: String = {

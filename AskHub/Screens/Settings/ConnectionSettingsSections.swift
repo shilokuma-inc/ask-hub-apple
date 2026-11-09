@@ -88,6 +88,11 @@ struct ConnectionSettingsSections: View {
                 LabeledContent("鍵の id") {
                     Text(key.keyID).appFont(.caption).monospaced().lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 }
+                LabeledContent("この端末の名前") {
+                    TextField(ConnectionSettingsModel.defaultDeviceLabel, text: $model.deviceName)
+                        .multilineTextAlignment(.trailing)
+                        .autocorrectionDisabled()
+                }
                 if let command = model.registerCommand {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(command).appFont(.caption).monospaced().textSelection(.enabled)
@@ -103,7 +108,7 @@ struct ConnectionSettingsSections: View {
         } header: {
             Text("この端末の鍵")
         } footer: {
-            Text("上のコマンドを、非常口の鍵を入れた Mac のターミナルで流して、この端末の鍵を登録します。登録されるまで、送った意図は司令塔に断られます")
+            Text("上のコマンドを、非常口の鍵を入れた Mac のターミナルで流して、この端末の鍵を登録します。登録されるまで、送った意図は司令塔に断られます。名前はほかの端末と見分けるために鍵の記録に残り、登録した後に変えても記録の名前は変わりません")
         }
         .task { await model.load() }
         // 鍵の登録を確かめられたら、通知の許可を求める（まだ求めていなければ）
