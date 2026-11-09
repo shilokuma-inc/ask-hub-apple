@@ -97,8 +97,9 @@ struct OptimisticSendTests {
             guard case let .answer(epicID, questionID, optionID, note) = intent else {
                 return
             }
+            let response = Question.Response(optionID: optionID, note: note, answeredAt: .now)
             snapshot.updateEpic(epicID) { epic in
-                epic.updateQuestion(questionID) { $0.state = .answered(Question.Response(optionID: optionID, note: note, answeredAt: .now)) }
+                epic.updateQuestion(questionID) { $0.state = .answered(response) }
             }
         }
     }

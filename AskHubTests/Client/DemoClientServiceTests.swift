@@ -353,6 +353,19 @@ struct DemoClientServiceTests {
         #expect(state == .rejected(at: clock.now, reason: DemoClientService.rejectionReason))
     }
 
+    /// 読めない場面では取得が失敗する
+    @Test
+    func failingScenarioThrows() async {
+        let service = makeService(.failing)
+        await #expect(throws: ClientServiceError.self) {
+            _ = try await service.fetchSnapshot()
+        }
+    }
+}
+
+// MARK: - 送り終えていない意図を当てる
+
+extension DemoClientServiceTests {
     /// 送り終えていない意図を当てた形は、状態と機械の反応を変えずに作る（読む前は作らない）
     @Test
     func overlayDoesNotChangeState() async throws {
@@ -371,14 +384,5 @@ struct DemoClientServiceTests {
         // 機械の反応も増やさない（説明が届くなどが、送っていない回答から起きない）
         clock.now += 60
         #expect(try await service.fetchSnapshot().epic("recipe-weekly")?.question("Q3")?.state == .open)
-    }
-
-    /// 読めない場面では取得が失敗する
-    @Test
-    func failingScenarioThrows() async {
-        let service = makeService(.failing)
-        await #expect(throws: ClientServiceError.self) {
-            _ = try await service.fetchSnapshot()
-        }
     }
 }
