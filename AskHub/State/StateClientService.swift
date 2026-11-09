@@ -62,7 +62,7 @@ final class StateClientService: ClientService {
         return built.snapshot
     }
 
-    /// 送る。まとめて OK のように 1 つの操作が複数の意図になるときは、順に送り、控えには最後に送ったものを返す
+    /// 送る。まとめて OK のように 1 つの操作が複数の意図になるときは、順に送り、控えには送ったものすべてを返す
     /// （途中で失敗したら、送れた分は送ったまま失敗を返す。もう一度送ると、残りだけを送る）
     @discardableResult
     func perform(_ intent: HumanIntent) async throws -> SendReceipt {
@@ -83,8 +83,10 @@ final class StateClientService: ClientService {
             }
             // 次に読むまでの間も、送ったことを覚えておく（読んだ中に出たら、読んだものに任せる）
             unreadSends.append(SentDraft(nonce: reference.nonce, draft: draft, sentAt: now(), isWaiting: true))
-            let epicID = draft.kind == RequestIntent.kind ? RequestIntent.epicID(for: reference).rawValue : nil
-            receipt = SendReceipt(requestedEpicID: epicID, intentID: reference.nonce.rawValue)
+            if draft.kind == RequestIntent.kind {
+                receipt.requestedEpicID = RequestIntent.epicID(for: reference).rawValue
+            }
+            receipt.intentIDs.append(reference.nonce.rawValue)
         }
         return receipt
     }

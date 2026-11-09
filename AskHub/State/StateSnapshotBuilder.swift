@@ -98,7 +98,8 @@ struct StateSnapshotBuilder {
             macs: macs(),
             fetchedAt: now,
             sourceFailures: documents.failures,
-            sentIntents: documents.sentIntents.map(sentStatus)
+            sentIntents: documents.sentIntents.map(sentStatus),
+            commanderSeenAt: documents.commander?.seenAt.date
         )
         return (snapshot, index)
     }
