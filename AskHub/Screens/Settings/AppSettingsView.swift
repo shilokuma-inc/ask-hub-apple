@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 設定。スワイプの持ち手と、データ（状態リポジトリ・GitHub のトークン・この端末の鍵・通知、またはデモの場面）
+/// 設定。スワイプの持ち手と、データ（状態リポジトリ・GitHub のトークン・この端末の鍵・通知、またはデモの場面）と、このアプリのバージョン
 struct AppSettingsView: View {
     @AppStorage(SwipePreferences.handKey) private var hand: Handedness = .right
     @Environment(\.dismiss) private var dismiss
@@ -22,6 +22,7 @@ struct AppSettingsView: View {
                         : "推奨はいつも ↖。2 択は ↖↘、3 択は ↖↗↘、4 択は ↖↗↘↙ に割り当てます。自由回答の選択肢は、推奨の対角の ↘ に置きます")
                 }
                 ConnectionSettingsSections()
+                aboutSection
             }
             .formStyle(.grouped)
             .pastelBackground()
@@ -33,6 +34,16 @@ struct AppSettingsView: View {
                 }
             }
             #endif
+        }
+    }
+
+    private var aboutSection: some View {
+        let info = AppVersionInfo()
+        return Section("このアプリについて") {
+            LabeledContent("バージョン", value: info.version)
+                .accessibilityIdentifier("settings.version")
+            LabeledContent("ビルド", value: info.build)
+                .accessibilityIdentifier("settings.build")
         }
     }
 }
