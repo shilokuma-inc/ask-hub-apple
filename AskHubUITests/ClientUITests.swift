@@ -315,13 +315,12 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["習慣ログ"].waitForExistence(timeout: 5))
     }
 
-    /// 依頼は、送っている間は送るボタンを押せず、送れたら送った依頼（司令塔が受け取る前の epic）へ移って帯で知らせる。
+    /// 依頼は、送っている間は送るボタンを押せず、送れたら送った依頼（司令塔が受け取る前の epic）へ移り、同期待ちの小さな印を出す。
     /// 同じ依頼を続けて送ろうとすると、送る前に確かめる
     @MainActor
     func testRequestShowsProgressAndConfirmsDuplicate() {
         // CI の Simulator は 1 回の確かめに 1 秒以上かかるので、送っている間を長めにとる。
-        // 司令塔の受け取りをすぐ起こすと、送れたことの帯が送った直後の読み直しで受け付けた知らせに替わるので、
-        // テストの間は受け取りを遅らせる（受け取りが遅いと知らせる 3 分より短くする）
+        // テストの間は司令塔の受け取りを遅らせ、同期待ちのままにする（受け取りが遅いと知らせる 3 分より短くする）
         let app = launch(["-demoScenario", "standard", "-demoSendDelay", "8", "-demoReceiptDelay", "120"])
         fillRequest(in: app)
         app.buttons["送る"].firstMatch.tap()
@@ -330,8 +329,8 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(sending.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["送る"].exists)
 
-        XCTAssertTrue(app.staticTexts["依頼「メモ並べ替え」を送りました"].waitForExistence(timeout: 20))
-        XCTAssertTrue(app.staticTexts["メモ並べ替え"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["メモ並べ替え"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(syncBadge(in: app).waitForExistence(timeout: 5))
 
         app.tabBars.buttons["あなたの番"].tap()
         fillRequest(in: app)
@@ -355,5 +354,45 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(summary.waitForExistence(timeout: 5))
         summary.tap()
         summary.typeText("メモ並べ替え")
+    }
+}
+
+// MARK: - 押したらすぐ済んだ形にする
+
+extension ClientUITests {
+    /// 最終 PR の残りをまとめて OK にすると、送り終える前からすぐ OK の形になり（ボタンは消える）、同期待ちの小さな印だけを出す。
+    /// 反映中の行は出さない。司令塔が受け付けたら印は消える
+    @MainActor
+    func testAcceptAllShowsDoneAtOnceAndSyncsLater() {
+        let app = launch([
+            "-demoScenario", "standard", "-demoOpen", "final:tsundoku-search", "-demoSendDelay", "5", "-demoReceiptDelay", "3"
+        ])
+        let acceptAll = app.buttons["残りをまとめて OK…"]
+        XCTAssertTrue(scrollUntilExists(acceptAll, in: app))
+        // ボタンが下のマージの帯に隠れないよう、一覧の終わりまで送る
+        for _ in 0..<2 {
+            app.collectionViews.firstMatch.swipeUp()
+        }
+        acceptAll.tap()
+        let confirm = app.buttons.matching(NSPredicate(format: "label ENDSWITH %@", "件をまとめて OK")).firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
+
+        // 送っている間（5 秒）から、残りの判断が OK の形になる
+        let badge = syncBadge(in: app)
+        XCTAssertTrue(badge.waitForExistence(timeout: 3))
+        XCTAssertFalse(acceptAll.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["reflection-status"].exists)
+        XCTAssertFalse(app.staticTexts["反映中"].exists)
+        // 送り終えて司令塔が受け付けたら（受け付けの記録を軽く確かめて読み直す）、印は消える
+        let synced = NSPredicate(format: "exists == false")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: synced, evaluatedWith: badge)], timeout: 30), .completed)
+    }
+
+    /// 同期待ちの小さな印
+    @MainActor
+    private func syncBadge(in app: XCUIApplication) -> XCUIElement {
+        let predicate = NSPredicate(format: "identifier == %@ AND label == %@", "reflection-badge", "同期待ち")
+        return app.descendants(matching: .any).matching(predicate).firstMatch
     }
 }
