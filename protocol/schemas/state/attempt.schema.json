@@ -96,6 +96,20 @@
                 { "type": "null" }
               ]
             },
+            "changedScenes": {
+              "description": "判断の仕分けで選んだ、epic 全体で見た目が変わった画面（撮れる画面の一覧の id）。decisions.json の screens に司令塔が写す",
+              "anyOf": [
+                { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,39}$" } },
+                { "type": "null" }
+              ]
+            },
+            "screenChanges": {
+              "description": "撮影で撮った、画面の変化の Before / After（decisions.json の screens と同じ形）",
+              "anyOf": [
+                { "type": "array", "items": { "$ref": "decisions.schema.json#/$defs/screenChange" } },
+                { "type": "null" }
+              ]
+            },
             "findings": {
               "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 20000 }, { "type": "null" }],
               "description": "直すこと（CI の失敗のログの抜粋・レビュー役の必須の指摘）。トークンらしい文字列は伏せてから書く"

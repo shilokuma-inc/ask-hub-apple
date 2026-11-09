@@ -193,6 +193,10 @@ public struct AttemptFile: StateFile {
         public var decisionScenes: [String: String]?
         /// 撮影（`captureScreenshots`）で撮った、仮決めごとの Before / After。`decisions.json` には司令塔が写す
         public var screenshots: [String: DecisionsFile.Screenshots]?
+        /// 判断の仕分けで選んだ、epic 全体で見た目が変わった画面（撮れる画面の一覧の id）。`decisions.json` の `screens` に司令塔が写す
+        public var changedScenes: [String]?
+        /// 撮影で撮った、画面の変化の Before / After（`decisions.json` の `screens` と同じ形）
+        public var screenChanges: [DecisionsFile.ScreenChange]?
 
         public init(
             pullRequest: Int? = nil,
@@ -204,7 +208,9 @@ public struct AttemptFile: StateFile {
             mergeRisks: [MergeRisk]? = nil,
             visibleDecisions: [String]? = nil,
             decisionScenes: [String: String]? = nil,
-            screenshots: [String: DecisionsFile.Screenshots]? = nil
+            screenshots: [String: DecisionsFile.Screenshots]? = nil,
+            changedScenes: [String]? = nil,
+            screenChanges: [DecisionsFile.ScreenChange]? = nil
         ) {
             self.pullRequest = pullRequest
             self.commit = commit
@@ -216,6 +222,8 @@ public struct AttemptFile: StateFile {
             self.visibleDecisions = visibleDecisions
             self.decisionScenes = decisionScenes
             self.screenshots = screenshots
+            self.changedScenes = changedScenes
+            self.screenChanges = screenChanges
         }
     }
 
@@ -310,6 +318,12 @@ public struct AttemptFile: StateFile {
             violations += screenshots.sorted { $0.key < $1.key }.flatMap { id, shots in
                 shots.problems.map { "outputs.screenshots.\(id): \($0)" }
             }
+        }
+        if let scenes = outputs?.changedScenes, !scenes.allSatisfy(ScreenshotScenesFile.isSceneID) || Set(scenes).count != scenes.count {
+            violations.append("outputs.changedScenes の画面の id の形が違うか、重なっている")
+        }
+        if let screens = outputs?.screenChanges {
+            violations += DecisionsFile(screens: screens).violations.map { "outputs.screenChanges: \($0)" }
         }
         if let model = claude?.model, model.isEmpty { violations.append("claude.model が空") }
         if let cost = claude?.estimatedCostUsd, !(cost >= 0) { violations.append("claude.estimatedCostUsd は 0 以上") }

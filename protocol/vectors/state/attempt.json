@@ -322,6 +322,78 @@
       "read": "malformed"
     },
     {
+      "name": "classify-with-changed-scenes",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000005",
+        "n": 1,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "succeeded",
+        "outputs": {
+          "visibleDecisions": [],
+          "changedScenes": [
+            "inbox-quiet"
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "captured-screen-changes",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000005",
+        "n": 1,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "succeeded",
+        "outputs": {
+          "pullRequest": 512,
+          "commit": "0123456789abcdef0123456789abcdef01234567",
+          "screenChanges": [
+            {
+              "scene": "inbox-quiet",
+              "title": "あなたの番が空のとき",
+              "screenshots": {
+                "after": "repos/shilokuma-inc/askhub-sandbox/epics/01JCEP1C000000000000000001/screenshots/0123456789abcdef0123456789abcdef01234567-inbox-quiet.png",
+                "head": "0123456789abcdef0123456789abcdef01234567"
+              }
+            }
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "changed-scenes-duplicated",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000005",
+        "n": 1,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "succeeded",
+        "outputs": {
+          "visibleDecisions": [],
+          "changedScenes": [
+            "inbox",
+            "inbox"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "final-review-fix-conflict",
       "value": {
         "v": 1,
