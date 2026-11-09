@@ -22,7 +22,12 @@ public enum TaskRules {
 
     /// `facts` は対象のリポジトリの事実（CLAUDE.md の全員向けの事実）。`--restricted` では CLAUDE.md が読まれないので、ここで渡す。
     /// `screenshotScenes` は撮れる画面の一覧のパス（撮影の設定が無いリポジトリでは nil）
-    public static func systemPrompt(repository: RepositoryFullName, facts: String, roundTrips: Int, screenshotScenes: String? = nil) -> String {
+    public static func systemPrompt(
+        repository: RepositoryFullName,
+        facts: String,
+        roundTrips: Int,
+        screenshotScenes: String? = nil
+    ) -> String {
         """
         あなたは AskHub のワーカーから呼ばれ、ソフトウェアの開発のタスクを 1 つずつ実装します。
         - 作業フォルダは、対象のリポジトリ（\(repository.rawValue)）の作業ブランチの写し（git の worktree）です。ファイルを読み、書き換えて実装します

@@ -307,7 +307,9 @@ public struct AttemptFile: StateFile {
         }
         if let screenshots = outputs?.screenshots {
             if !screenshots.keys.allSatisfy(LocalIDs.isValid) { violations.append("outputs.screenshots の仮決めの id の形が違う") }
-            violations += screenshots.sorted { $0.key < $1.key }.flatMap { id, shots in shots.problems.map { "outputs.screenshots.\(id): \($0)" } }
+            violations += screenshots.sorted { $0.key < $1.key }.flatMap { id, shots in
+                shots.problems.map { "outputs.screenshots.\(id): \($0)" }
+            }
         }
         if let model = claude?.model, model.isEmpty { violations.append("claude.model が空") }
         if let cost = claude?.estimatedCostUsd, !(cost >= 0) { violations.append("claude.estimatedCostUsd は 0 以上") }

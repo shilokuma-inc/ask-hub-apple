@@ -40,7 +40,9 @@ public struct ClassifyDecisionsRunner: JobRunning {
                 let message = "ゴールと仮決めの文が長すぎて、仕分けをレビュー役の Claude に頼めない（決まりの文と合わせて UTF-8 で \(TaskReview.maximumTextBytes) バイトまで）"
                 throw .fail(.unexpected, message)
             }
-            let answer = try await environment.ask(request, as: DecisionClassificationResult.self) { $0.problems(expected: expected, scenes: scenes) }
+            let answer = try await environment.ask(request, as: DecisionClassificationResult.self) { result in
+                result.problems(expected: expected, scenes: scenes)
+            }
             return (answer, checkout.head)
         }
         let visible = Set(items.filter { $0.visible == true }.map(\.id) + answer.result.decisions.filter(\.visible).map(\.id))

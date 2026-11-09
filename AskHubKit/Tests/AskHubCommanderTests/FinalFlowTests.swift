@@ -206,7 +206,8 @@ struct FinalFlowTests {
         // 撮った: decisions.json に写し、撮った head でレビューする
         let after = StatePath.screenshot(Fixture.repo, Fixture.epicID, commit: Fixture.sha("a"), scene: "inbox")
         let shots = DecisionsFile.Screenshots(after: after, head: Fixture.sha("a"), note: "Before なし（この画面は epic で足した）")
-        try await given.succeed(capture, outputs: .init(pullRequest: Fixture.pullRequest, commit: Fixture.sha("a"), screenshots: ["d1": shots]))
+        let captured = AttemptFile.Outputs(pullRequest: Fixture.pullRequest, commit: Fixture.sha("a"), screenshots: ["d1": shots])
+        try await given.succeed(capture, outputs: captured)
         let review = try await given.next(.reviewFinalPullRequest)
         #expect(review.input(as: PullRequestInput.self) == head)
         #expect(review.dependsOn == [capture.id])
@@ -215,7 +216,8 @@ struct FinalFlowTests {
         // 直した後も、撮り直してからレビューする
         try await given.succeed(review, outputs: .init(commit: Fixture.sha("a"), verdict: .fixCI, findings: "落ちた"))
         let fix = try await given.next(.fixFinalPullRequest)
-        try await given.succeed(fix, outputs: .init(pullRequest: Fixture.pullRequest, commit: Fixture.sha("b"), report: .init(summary: "直した")))
+        let fixed = AttemptFile.Outputs(pullRequest: Fixture.pullRequest, commit: Fixture.sha("b"), report: .init(summary: "直した"))
+        try await given.succeed(fix, outputs: fixed)
         let again = try await given.next(.captureScreenshots)
         #expect(again.input(as: PullRequestInput.self) == PullRequestInput(pullRequest: Fixture.pullRequest, head: Fixture.sha("b")))
         #expect(again.dependsOn == [fix.id])

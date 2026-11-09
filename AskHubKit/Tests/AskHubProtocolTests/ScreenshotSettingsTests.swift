@@ -36,7 +36,7 @@ struct ScreenshotSettingsTests {
         #expect(!ScreenshotScenesFile(scenes: [.init(id: "inbox", title: "一覧", arguments: ["-a\n-b"])]).problems.isEmpty)
         #expect(!ScreenshotScenesFile(scenes: [.init(id: "inbox", title: "", arguments: [])]).problems.isEmpty)
         var future = ScreenshotScenesFile(scenes: [scene])
-        future.v = 2
+        future.version = 2
         #expect(!future.problems.isEmpty)
     }
 

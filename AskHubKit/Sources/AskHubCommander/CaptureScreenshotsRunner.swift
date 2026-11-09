@@ -91,7 +91,12 @@ public struct CaptureScreenshotsRunner: JobRunning {
     }
 
     /// 仮決めごとの Before / After と、撮れなかったわけ
-    static func screenshots(of items: [DecisionsFile.Item], before: Shots, after: Shots, head: String) -> [String: DecisionsFile.Screenshots] {
+    static func screenshots(
+        of items: [DecisionsFile.Item],
+        before: Shots,
+        after: Shots,
+        head: String
+    ) -> [String: DecisionsFile.Screenshots] {
         var screenshots: [String: DecisionsFile.Screenshots] = [:]
         for item in items {
             guard let scene = item.scene else { continue }
@@ -124,12 +129,7 @@ extension CaptureScreenshotsRunner {
             checkout: () async throws(TaskJobExit) -> URL
         ) async throws(TaskJobExit) -> Shots {
             let label = base ? "Before" : "After"
-            var shots = Shots()
-            var missing: [String] = []
-            for scene in scenes.sorted() {
-                let path = StatePath.screenshot(job.repo, job.epic, commit: commit, scene: scene)
-                if try await read(path) != nil { shots.paths[scene] = path } else { missing.append(scene) }
-            }
+            var (shots, missing) = try await stored(scenes, commit: commit)
             guard !missing.isEmpty else { return shots }
             let directory = try await checkout()
             let list: ScreenshotScenesFile
@@ -160,7 +160,30 @@ extension CaptureScreenshotsRunner {
                 try? await builds.capture(request, slot: slot, destination: destination)
             }
             guard let outcome else { throw .fail(.macOffline, "ワーカーを止めたので、撮影を中断した") }
-            for scene in known.map(\.id) {
+            try await place(outcome, of: known.map(\.id), commit: commit, label: label, into: &shots)
+            return shots
+        }
+
+        /// 状態リポジトリに置いてある画面（`shots.paths`）と、まだ撮っていない画面
+        private func stored(_ scenes: Set<String>, commit: String) async throws(TaskJobExit) -> (Shots, [String]) {
+            var shots = Shots()
+            var missing: [String] = []
+            for scene in scenes.sorted() {
+                let path = StatePath.screenshot(job.repo, job.epic, commit: commit, scene: scene)
+                if try await read(path) != nil { shots.paths[scene] = path } else { missing.append(scene) }
+            }
+            return (shots, missing)
+        }
+
+        /// 撮れた画像を状態リポジトリに置き、撮れなかった画面にはわけを書く
+        private func place(
+            _ outcome: CaptureOutcome,
+            of scenes: [String],
+            commit: String,
+            label: String,
+            into shots: inout Shots
+        ) async throws(TaskJobExit) {
+            for scene in scenes {
                 if let failure = outcome.failure(of: scene) {
                     shots.failures[scene] = "\(label) を撮れなかった（\(failure)）"
                     continue
@@ -170,7 +193,6 @@ extension CaptureScreenshotsRunner {
                 try await write(path, data: data, message: "判断のカードのスクショ（\(scene) の \(label)）を置く")
                 shots.paths[scene] = path
             }
-            return shots
         }
 
         private func read(_ path: String) async throws(TaskJobExit) -> StoredBlob? {

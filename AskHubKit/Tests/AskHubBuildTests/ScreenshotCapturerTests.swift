@@ -10,22 +10,35 @@ import UniformTypeIdentifiers
 
 /// 判断のカードのスクショを撮る（ビルド → 入れ直し → 画面ごとに起動して、落ち着いてから撮る）
 struct ScreenshotCapturerTests {
-    static let simulator = Simulator(udid: "00000000-0000-0000-0000-000000000001", name: "askhub-worker-1-iPhone-17-Pro-iOS-27.0", runtime: "iOS-27-0", state: "Booted")
+    static let simulator = Simulator(
+        udid: "00000000-0000-0000-0000-000000000001",
+        name: "askhub-worker-1-iPhone-17-Pro-iOS-27.0",
+        runtime: "iOS-27-0",
+        state: "Booted"
+    )
 
+    static let products = "/dd/Build/Products/Debug-iphonesimulator"
     static let buildSettings = #"""
         [
-          {"target": "AppTests", "buildSettings": {"WRAPPER_EXTENSION": "xctest", "PRODUCT_TYPE": "com.apple.product-type.bundle.unit-test",
-            "TARGET_BUILD_DIR": "/dd/Build/Products/Debug-iphonesimulator", "FULL_PRODUCT_NAME": "AppTests.xctest", "PRODUCT_BUNDLE_IDENTIFIER": "jp.example.AppTests"}},
-          {"target": "App", "buildSettings": {"WRAPPER_EXTENSION": "app", "PRODUCT_TYPE": "com.apple.product-type.application",
-            "TARGET_BUILD_DIR": "/dd/Build/Products/Debug-iphonesimulator", "FULL_PRODUCT_NAME": "App.app", "PRODUCT_BUNDLE_IDENTIFIER": "jp.example.App"}}
+          {"target": "AppTests", "buildSettings": {"WRAPPER_EXTENSION": "xctest",
+            "PRODUCT_TYPE": "com.apple.product-type.bundle.unit-test", "TARGET_BUILD_DIR": "\#(products)",
+            "FULL_PRODUCT_NAME": "AppTests.xctest", "PRODUCT_BUNDLE_IDENTIFIER": "jp.example.AppTests"}},
+          {"target": "App", "buildSettings": {"WRAPPER_EXTENSION": "app",
+            "PRODUCT_TYPE": "com.apple.product-type.application", "TARGET_BUILD_DIR": "\#(products)",
+            "FULL_PRODUCT_NAME": "App.app", "PRODUCT_BUNDLE_IDENTIFIER": "jp.example.App"}}
         ]
         """#
 
     /// `width`×`height` の 1 色の PNG
     static func png(width: Int, height: Int, gray: CGFloat) throws -> Data {
         let context = try #require(CGContext(
-            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ))
         context.setFillColor(CGColor(gray: gray, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
@@ -104,12 +117,13 @@ struct ScreenshotCapturerTests {
 
         let udid = Self.simulator.udid
         let arguments = commands.arguments
-        #expect(arguments[0].starts(with: ["xcodebuild", "build", "-project", "App.xcodeproj", "-scheme", "App", "-destination", "id=\(udid)"]))
+        let build = ["xcodebuild", "build", "-project", "App.xcodeproj", "-scheme", "App", "-destination", "id=\(udid)"]
+        #expect(arguments[0].starts(with: build))
         #expect(arguments[0].contains("CODE_SIGNING_ALLOWED=NO"))
         #expect(arguments.contains(["simctl", "ui", udid, "appearance", "light"]))
         // 前の版のデータを残さないよう、消してから入れる
         let uninstall = try #require(arguments.firstIndex(of: ["simctl", "uninstall", udid, "jp.example.App"]))
-        let install = try #require(arguments.firstIndex(of: ["simctl", "install", udid, "/dd/Build/Products/Debug-iphonesimulator/App.app"]))
+        let install = try #require(arguments.firstIndex(of: ["simctl", "install", udid, "\(Self.products)/App.app"]))
         #expect(uninstall < install)
         // 画面ごとに、一覧の起動引数で起動し直す（シェルを通さずに渡す）
         #expect(arguments.contains(["simctl", "launch", udid, "jp.example.App", "-demoScenario", "quiet"]))
@@ -143,7 +157,7 @@ struct ScreenshotCapturerTests {
 
     @Test func readsApplicationFromBuildSettings() {
         let app = ScreenshotCapturer.application(in: Data(Self.buildSettings.utf8))
-        #expect(app == .init(path: URL(fileURLWithPath: "/dd/Build/Products/Debug-iphonesimulator/App.app"), bundleID: "jp.example.App"))
+        #expect(app == .init(path: URL(fileURLWithPath: "\(Self.products)/App.app"), bundleID: "jp.example.App"))
         #expect(ScreenshotCapturer.application(in: Data("[]".utf8)) == nil)
     }
 }

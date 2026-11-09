@@ -205,7 +205,11 @@ final class FakeFinalBuilds: FinalBuilding {
         }
     }
 
-    func capture(_ request: CaptureRequest, slot: Int, destination: SimulatorDestination) async throws(CancellationError) -> CaptureOutcome {
+    func capture(
+        _ request: CaptureRequest,
+        slot: Int,
+        destination: SimulatorDestination
+    ) async throws(CancellationError) -> CaptureOutcome {
         let (failures, problem) = state.withLock { state in
             state.captures.append(request)
             return (state.captureFailures, state.captureProblems[request.sourceDirectory])

@@ -11,7 +11,8 @@ extension GitHubPullRequests {
     /// 上げた画像は消せないので、デモのデータの画面だけを上げる
     public func uploadAttachment(_ payload: Data, name: String, contentType: String) async throws(PullRequestError) -> String {
         guard !payload.isEmpty, payload.count <= Self.maximumAttachmentBytes else { throw .invalidArgument("添付の大きさが 0 か、上限を超える") }
-        guard name.wholeMatch(of: #/[A-Za-z0-9][A-Za-z0-9._-]{0,99}/#) != nil, contentType.wholeMatch(of: #/image/[a-z+.-]{1,30}/#) != nil else {
+        let validName = name.wholeMatch(of: #/[A-Za-z0-9][A-Za-z0-9._-]{0,99}/#) != nil
+        guard validName, contentType.wholeMatch(of: #/image/[a-z+.-]{1,30}/#) != nil else {
             throw .invalidArgument("添付の名前か種類の形が違う")
         }
         // `repos/<owner>/<repo>` そのもの（`api.url("")` だと末尾に `/` が付く）

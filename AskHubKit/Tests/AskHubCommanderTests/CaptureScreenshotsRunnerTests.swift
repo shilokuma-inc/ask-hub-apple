@@ -47,7 +47,7 @@ struct CaptureScreenshotsRunnerTests {
         }
 
         func stored(_ path: String) async -> String? {
-            await fixture.tasks.store.data(at: path).map { String(decoding: $0, as: UTF8.self) }
+            await fixture.tasks.store.data(at: path).flatMap { String(bytes: $0, encoding: .utf8) }
         }
     }
 
@@ -62,7 +62,12 @@ struct CaptureScreenshotsRunnerTests {
         try await given.prepare(
             headScenes: ["ranking", "ranking-empty"],
             baseScenes: ["ranking"],
-            decisions: [Self.decision("d1", scene: "ranking"), Self.decision("d2", scene: "ranking"), Self.decision("d3", scene: "ranking-empty"), Self.decision("d4", scene: nil)]
+            decisions: [
+                Self.decision("d1", scene: "ranking"),
+                Self.decision("d2", scene: "ranking"),
+                Self.decision("d3", scene: "ranking-empty"),
+                Self.decision("d4", scene: nil)
+            ]
         )
         let result = try await given.run()
         #expect(result.failure == nil)

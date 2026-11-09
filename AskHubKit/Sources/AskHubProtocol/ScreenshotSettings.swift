@@ -63,11 +63,17 @@ public struct ScreenshotScenesFile: Codable, Equatable, Sendable {
         }
     }
 
-    public var v: Int
+    /// 形の版（JSON では `v`）
+    public var version: Int
     public var scenes: [Scene]
 
+    enum CodingKeys: String, CodingKey {
+        case version = "v"
+        case scenes
+    }
+
     public init(scenes: [Scene]) {
-        v = Self.formatVersion
+        version = Self.formatVersion
         self.scenes = scenes
     }
 
@@ -78,7 +84,7 @@ public struct ScreenshotScenesFile: Codable, Equatable, Sendable {
     /// 決まりに合わないところ。1 つでもあれば一覧を使わない
     public var problems: [String] {
         var problems: [String] = []
-        if v != Self.formatVersion { problems.append("v は \(Self.formatVersion)") }
+        if version != Self.formatVersion { problems.append("v は \(Self.formatVersion)") }
         if scenes.isEmpty || scenes.count > Self.maximumScenes { problems.append("scenes は 1〜\(Self.maximumScenes) 件") }
         let ids = scenes.map(\.id)
         if let bad = ids.first(where: { !Self.isSceneID($0) }) { problems.append("scene の id「\(bad)」は英小文字・数字・ハイフンで 40 文字まで") }

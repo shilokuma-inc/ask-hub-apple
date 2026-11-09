@@ -56,7 +56,8 @@ public struct MachineFinalBuilds: FinalBuilding {
 
     public func screenshotDerivedData(of epic: ULID, base: Bool) -> URL {
         let directories = machine.runner.directories
-        return base ? directories.epicDirectory(epic).appendingPathComponent("DerivedData-base", isDirectory: true) : directories.derivedData(for: epic)
+        guard base else { return directories.derivedData(for: epic) }
+        return directories.epicDirectory(epic).appendingPathComponent("DerivedData-base", isDirectory: true)
     }
 
     public func eraseSimulators(slot: Int) async -> [String] {
@@ -243,7 +244,10 @@ extension FinalJobEnvironment {
     /// Claude に直させる。ビルドとテストは、この Mac の枠を 1 つ借りて流す
     func run<Job: TaskJob>(_ job: Job, in checkout: CheckedOutEpic, target: FinalTarget) async -> TaskReply {
         let workspace = TaskWorkspace(
-            repository: checkout.repo, facts: checkout.facts, directory: checkout.directory, screenshotScenes: target.settings.screenshots?.scenes
+            repository: checkout.repo,
+            facts: checkout.facts,
+            directory: checkout.directory,
+            screenshotScenes: target.settings.screenshots?.scenes
         )
         let tasks = tasks
         return await tasks.slots.withSlot { slot in

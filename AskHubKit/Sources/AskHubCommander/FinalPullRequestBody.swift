@@ -77,7 +77,8 @@ enum FinalPullRequestBody {
         let note = shots.note.map { "（\(safe($0))）" } ?? ""
         guard shots.beforeURL != nil || shots.afterURL != nil else { return onlyInClient + note }
         let cell = { (url: String?, label: String) in
-            url.flatMap { DecisionsFile.Screenshots.isAttachmentURL($0) ? #"<img src="\#($0)" alt="\#(item.id) \#(label)" width="300">"# : nil } ?? "なし"
+            guard let url, DecisionsFile.Screenshots.isAttachmentURL(url) else { return "なし" }
+            return #"<img src="\#(url)" alt="\#(item.id) \#(label)" width="300">"#
         }
         let scene = item.scene.map { "`\($0)` の画面" } ?? "画面"
         return """

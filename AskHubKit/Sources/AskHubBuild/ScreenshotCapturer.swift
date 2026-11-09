@@ -151,7 +151,9 @@ public struct ScreenshotCapturer: Sendable {
 
     private func build(_ request: CaptureRequest, for simulator: Simulator) async throws(CancellationError) -> Result<BuiltApp, Problem> {
         let common = Self.arguments(request, simulator: simulator)
-        let result = try await xcrun(["xcodebuild", "build"] + common + Self.buildOptions, in: request.sourceDirectory, timeout: timing.build)
+        let result = try await xcrun(
+            ["xcodebuild", "build"] + common + Self.buildOptions, in: request.sourceDirectory, timeout: timing.build
+        )
         guard result.succeeded else {
             let reason = result.timedOut ? "時間内に終わらない" : "終了コード \(result.status)"
             return .failure(Problem(message: "アプリのビルドが通らない（\(reason)）"))
@@ -197,7 +199,11 @@ public struct ScreenshotCapturer: Sendable {
     }
 
     /// 上端と外観を固定し、前に入れたもの（前の版のデータ）を消してから入れ直す。入れた直後に 1 回起動して待つ
-    private func install(_ app: BuiltApp, on simulator: Simulator, warmingUpWith scene: ScreenshotScenesFile.Scene) async throws(CancellationError) -> String? {
+    private func install(
+        _ app: BuiltApp,
+        on simulator: Simulator,
+        warmingUpWith scene: ScreenshotScenesFile.Scene
+    ) async throws(CancellationError) -> String? {
         let statusBar = [
             "status_bar", simulator.udid, "override", "--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active", "--wifiBars", "3",
             "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "charged", "--batteryLevel", "100", "--operatorName", ""

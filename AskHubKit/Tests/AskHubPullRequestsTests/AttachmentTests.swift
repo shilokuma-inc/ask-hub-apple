@@ -7,7 +7,10 @@ struct AttachmentTests {
     private static let asset = "https://github.com/user-attachments/assets/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"
 
     @Test func uploadsToUserAttachmentsWithRepositoryID() async throws {
-        let transport = StubTransport([.json(200, #"{"id":123456,"full_name":"shilokuma-inc/ask-hub-apple"}"#), .json(201, #"{"url":"\#(Self.asset)"}"#)])
+        let transport = StubTransport([
+            .json(200, #"{"id":123456,"full_name":"shilokuma-inc/ask-hub-apple"}"#),
+            .json(201, #"{"url":"\#(Self.asset)"}"#)
+        ])
         let url = try await Fixture.client(transport).uploadAttachment(Data([1, 2, 3]), name: "d1-after.png", contentType: "image/png")
         #expect(url == Self.asset)
         let (repository, upload) = (transport.requests[0], transport.requests[1])
@@ -16,7 +19,10 @@ struct AttachmentTests {
         #expect(upload.url?.host == "uploads.github.com")
         #expect(upload.url?.path == "/user-attachments/assets")
         let query = URLComponents(url: try #require(upload.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
-        #expect(query == [.init(name: "name", value: "d1-after.png"), .init(name: "content_type", value: "image/png"), .init(name: "repository_id", value: "123456")])
+        #expect(query == [
+            .init(name: "name", value: "d1-after.png"), .init(name: "content_type", value: "image/png"),
+            .init(name: "repository_id", value: "123456")
+        ])
         #expect(upload.value(forHTTPHeaderField: "Content-Type") == "application/octet-stream")
         #expect(upload.httpBody == Data([1, 2, 3]))
         #expect(upload.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true)
