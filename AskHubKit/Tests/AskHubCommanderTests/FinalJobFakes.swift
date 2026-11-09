@@ -38,6 +38,12 @@ final class FakeFinalGit: FinalGit {
         var conflicted: [String] = []
         /// レビューの写しを置いたことにするフォルダ（中のファイルを読むテストは、本物のフォルダにする）
         var jobDirectory = FakeFinalGit.jobDirectory
+        /// base との分岐点
+        var mergeBaseCommit = String(repeating: "b", count: 40)
+        /// `checkOutCommit` で取り出したことにするフォルダ
+        var commitDirectory = FakeFinalGit.jobDirectory
+        /// epic の作業場所として返すフォルダ（中のファイルを読むテストは、本物のフォルダにする）
+        var epicDirectory = FakeTaskGit.directory
     }
 
     static let jobDirectory = URL(fileURLWithPath: "/work/jobs/01JCJ0B000000000000000000F/repository/askhub-sandbox")
@@ -59,7 +65,7 @@ final class FakeFinalGit: FinalGit {
             state.dirty = false
             guard let head = state.remote[branches.epic] else { return .failure(.failed("作業ブランチ \(branches.epic) がリモートに無い")) }
             state.workspaceHead = head
-            let epic = CheckedOutEpic(repo: repo, directory: FakeTaskGit.directory, branches: branches, head: head, facts: "Swift 6 で書く。")
+            let epic = CheckedOutEpic(repo: repo, directory: state.epicDirectory, branches: branches, head: head, facts: "Swift 6 で書く。")
             return .success(epic)
         }
         return try result.get()
@@ -125,6 +131,20 @@ final class FakeFinalGit: FinalGit {
         }
     }
 
+    func mergeBase(_ repo: RepositoryFullName, branches: FinalBranches, head: String) async throws(WorkspaceError) -> String {
+        state.withLock { state in
+            state.calls.append("mergeBase \(head)")
+            return state.mergeBaseCommit
+        }
+    }
+
+    func checkOutCommit(_ repo: RepositoryFullName, job: ULID, commit: String, name: String) async throws(WorkspaceError) -> URL {
+        state.withLock { state in
+            state.calls.append("checkOutCommit \(commit) \(name)")
+            return state.commitDirectory
+        }
+    }
+
     func release(_ job: ULID) async {
         state.withLock { $0.calls.append("release \(job.rawValue)") }
     }
@@ -146,6 +166,11 @@ final class FakeFinalBuilds: FinalBuilding {
         var removed: [ULID] = []
         var erased: [Int] = []
         var eraseProblems: [String] = []
+        /// 撮った依頼（撮ったことにする画面は、依頼の output に 1 バイトの画像として置く）
+        var captures: [CaptureRequest] = []
+        /// 撮れなかったことにする画面（画面の id → わけ）と、全体の失敗（写しのフォルダ → わけ）
+        var captureFailures: [String: String] = [:]
+        var captureProblems: [URL: String] = [:]
     }
 
     private let state: OSAllocatedUnfairLock<State>
@@ -178,6 +203,30 @@ final class FakeFinalBuilds: FinalBuilding {
             state.erased.append(slot)
             return state.eraseProblems
         }
+    }
+
+    func capture(_ request: CaptureRequest, slot: Int, destination: SimulatorDestination) async throws(CancellationError) -> CaptureOutcome {
+        let (failures, problem) = state.withLock { state in
+            state.captures.append(request)
+            return (state.captureFailures, state.captureProblems[request.sourceDirectory])
+        }
+        if let problem { return CaptureOutcome(problem: problem) }
+        var outcome = CaptureOutcome()
+        try? FileManager.default.createDirectory(at: request.output, withIntermediateDirectories: true)
+        for scene in request.scenes {
+            if let failure = failures[scene.id] {
+                outcome.failures[scene.id] = failure
+                continue
+            }
+            let file = request.output.appendingPathComponent("\(scene.id).png")
+            try? Data("\(request.sourceDirectory.lastPathComponent)/\(scene.id)".utf8).write(to: file)
+            outcome.images[scene.id] = file
+        }
+        return outcome
+    }
+
+    func screenshotDerivedData(of epic: ULID, base: Bool) -> URL {
+        URL(fileURLWithPath: "/builds/\(epic.rawValue)/\(base ? "DerivedData-base" : "DerivedData")")
     }
 }
 
