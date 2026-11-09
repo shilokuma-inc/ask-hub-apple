@@ -131,7 +131,8 @@ def packaged_app(package: Path, directory: Path) -> Path:
         # 展開先は無い場所を指定する（あると pkgutil が止まる）。Payload の中身もファイルに展開される
         expanded = directory / "expanded"
         subprocess.run(["pkgutil", "--expand-full", str(package), str(expanded)], check=True)
-        apps = [app for app in expanded.rglob("*.app") if not any(parent.suffix == ".app" for parent in app.parents)]
+        apps = [app for app in expanded.rglob("*.app")
+                if not any(parent.suffix == ".app" for parent in app.relative_to(expanded).parents)]
     else:
         subprocess.run(["ditto", "-x", "-k", str(package), str(directory)], check=True)
         apps = list((directory / "Payload").glob("*.app"))
