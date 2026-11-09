@@ -79,8 +79,8 @@ final class DemoClientService: ClientService {
         }
         let sentAt = now()
         var receipt = rejectsIntents ? SendReceipt() : apply(intent)
-        if receipt.intentIDs.isEmpty {
-            receipt.intentIDs = recordReceipt(of: intent, requestedEpicID: receipt.requestedEpicID, at: sentAt)
+        if receipt.sent.isEmpty {
+            receipt.sent = recordReceipt(of: intent, requestedEpicID: receipt.requestedEpicID, at: sentAt)
         }
         sends.append(Send(intent: intent, sentAt: sentAt, intentIDs: receipt.intentIDs))
         return receipt
@@ -94,8 +94,8 @@ final class DemoClientService: ClientService {
     }
 
     /// 送った意図を、司令塔の受け取り待ちとして記録し（対象ごとに 1 つ。状態リポジトリでまとめて OK がカードごとの意図になるのと同じ）、
-    /// `receiptDelay` 秒の後に受け付ける（`rejectsIntents` なら断る）。記録の id を返す
-    private func recordReceipt(of intent: HumanIntent, requestedEpicID: Epic.ID?, at date: Date) -> [String] {
+    /// `receiptDelay` 秒の後に受け付ける（`rejectsIntents` なら断る）。記録した意図を返す
+    private func recordReceipt(of intent: HumanIntent, requestedEpicID: Epic.ID?, at date: Date) -> [SendReceipt.Sent] {
         var targets: [IntentTarget?] = intent.targets
         if let requestedEpicID {
             targets = [.request(epicID: requestedEpicID)]
@@ -105,21 +105,26 @@ final class DemoClientService: ClientService {
         // 状態リポジトリの「送った意図」と同じく、epic の題を添える
         let epicTitle = (requestedEpicID ?? intent.targets.first?.epicID).flatMap { state.epic($0)?.title }
         let title = [intent.label, epicTitle].compactMap(\.self).joined(separator: " · ")
-        let ids = targets.map { target in
+        let sent = targets.map { target in
             let id = "intent-\(UUID().uuidString)"
             state.sentIntents.insert(SentIntentStatus(id: id, title: title, sentAt: date, state: .waiting, target: target), at: 0)
-            return id
+            return SendReceipt.Sent(id: id, target: target)
         }
         let rejects = rejectsIntents
-        scheduled.append(Reaction(dueAt: date.addingTimeInterval(receiptDelay)) { [now] snapshot in
-            for id in ids {
-                guard let index = snapshot.sentIntents.firstIndex(where: { $0.id == id }) else {
+        scheduleReceipt { [now] snapshot in
+            for item in sent {
+                guard let index = snapshot.sentIntents.firstIndex(where: { $0.id == item.id }) else {
                     continue
                 }
                 snapshot.sentIntents[index].state = rejects ? .rejected(at: now(), reason: Self.rejectionReason) : .accepted(at: now())
             }
-        })
-        return ids
+        }
+        return sent
+    }
+
+    /// 司令塔が送った意図を受け取ったときの書き換えを、`receiptDelay` 秒の後に起こす（一時停止していても受け取る）
+    func scheduleReceipt(_ apply: @escaping (inout ClientSnapshot) -> Void) {
+        scheduled.append(Reaction(dueAt: now().addingTimeInterval(receiptDelay), apply: apply))
     }
 
     /// 期限の来た機械の反応を当てる
