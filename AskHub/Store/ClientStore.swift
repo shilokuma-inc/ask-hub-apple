@@ -360,8 +360,15 @@ extension ClientStore {
 extension ClientStore {
     /// 対象の、送った意図が反映されるまでの様子。複数の対象なら、反映を待っているものを先に返す。何も無ければ nil
     func reflection(for targets: [IntentTarget]) -> Reflection? {
-        let found = targets.compactMap { reflections.reflection(for: $0, pending: pending?.intent) }
-        return found.first(where: \.isPending) ?? found.first
+        guard !targets.isEmpty else {
+            return nil
+        }
+        return reflections.reflection(matching: { targets.contains($0) }, pending: pending?.intent)
+    }
+
+    /// epic への操作（質問・判断・ゴール・epic の操作など、どれでも）の様子。一覧の行の印に使う
+    func reflection(forEpic epicID: Epic.ID) -> Reflection? {
+        reflections.reflection(matching: { $0.epicID == epicID }, pending: pending?.intent)
     }
 
     /// 意図の対象に、反映を待っている操作があるか（あれば、その操作のボタンを押せなくする）

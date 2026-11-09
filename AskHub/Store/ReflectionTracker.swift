@@ -48,6 +48,8 @@ struct ReflectionTracker {
         /// 例: マージの承認
         var label: String
         var reason: String
+        /// この起動で送った操作（まとめて OK のように複数の意図になった操作の知らせを 1 つにまとめる）。前の起動で送ったものは nil
+        var intent: HumanIntent?
 
         var message: String { "\(label)を受け付けませんでした" }
         var detail: String { reason }
@@ -125,10 +127,22 @@ struct ReflectionTracker {
         let statuses = Dictionary(snapshot.sentIntents.map { ($0.id, $0) }) { first, _ in first }
         var receipts = Receipts()
         let ownIDs = Set(awaiting.keys)
-        // この起動で送った意図（送った順）
+        receiveOwn(statuses, generation: generation, now: now, trackingWindow: trackingWindow, into: &receipts)
+        receivePrevious(statuses, excluding: ownIDs, generation: generation, into: &receipts)
+        waitingInSnapshot = statuses.filter { $0.value.state == .waiting }
+        return receipts
+    }
+
+    /// この起動で送った意図（送った順）のうち、司令塔が受け取ったもの
+    private mutating func receiveOwn(
+        _ statuses: [String: SentIntentStatus],
+        generation: Int,
+        now: Date,
+        trackingWindow: TimeInterval,
+        into receipts: inout Receipts
+    ) {
         for (intentID, item) in awaiting.sorted(by: { ($0.value.sentAt, $0.key) < ($1.value.sentAt, $1.key) }) {
-            let status = statuses[intentID]
-            switch status?.state {
+            switch statuses[intentID]?.state {
             case .waiting:
                 continue
 
@@ -140,7 +154,7 @@ struct ReflectionTracker {
                 }
 
             case .rejected(_, let reason):
-                rejections.append(Rejection(targets: item.targets, label: item.intent.label, reason: reason))
+                addRejection(Rejection(targets: item.targets, label: item.intent.label, reason: reason, intent: item.intent))
 
             case nil:
                 // 読んだ中に無いのは、その意図だけ読めなかったときもあるので、しばらくは待ち続ける
@@ -151,7 +165,15 @@ struct ReflectionTracker {
             }
             awaiting[intentID] = nil
         }
-        // 前の起動で送り、前に読んだときに受け取り待ちだった意図
+    }
+
+    /// 前の起動で送り、前に読んだときに受け取り待ちだった意図のうち、司令塔が受け取ったもの
+    private mutating func receivePrevious(
+        _ statuses: [String: SentIntentStatus],
+        excluding ownIDs: Set<String>,
+        generation: Int,
+        into receipts: inout Receipts
+    ) {
         for (intentID, previous) in waitingInSnapshot.sorted(by: { ($0.value.sentAt, $0.key) < ($1.value.sentAt, $1.key) })
         where !ownIDs.contains(intentID) {
             let targets = [previous.target].compactMap(\.self)
@@ -167,37 +189,45 @@ struct ReflectionTracker {
                 break
             }
         }
-        waitingInSnapshot = statuses.filter { $0.value.state == .waiting }
-        return receipts
     }
 
     // MARK: 対象ごとの様子
 
-    /// 対象の様子。送っている・受け取り待ち・読み直し待ちを、断られた知らせより先に返す。何も無ければ nil
-    func reflection(for target: IntentTarget, pending: HumanIntent?) -> Reflection? {
-        if let item = sending.values.first(where: { $0.intent.targets.contains(target) }) {
+    /// 条件に合う対象の様子。送っている・受け取り待ち・読み直し待ちを、断られた知らせより先に返す。何も無ければ nil
+    func reflection(matching isTarget: (IntentTarget) -> Bool, pending: HumanIntent?) -> Reflection? {
+        if let item = sending.values.first(where: { $0.intent.targets.contains(where: isTarget) }) {
             return Reflection(label: item.intent.label, phase: .sending)
         }
-        if let pending, pending.targets.contains(target) {
+        if let pending, pending.targets.contains(where: isTarget) {
             return Reflection(label: pending.label, phase: .sending)
         }
-        var waiting: [(label: String, since: Date)] = awaiting.values.filter { $0.targets.contains(target) }.map { ($0.intent.label, $0.sentAt) }
-        waiting += waitingInSnapshot.values.filter { status in status.target == target && !awaiting.keys.contains(status.id) }
-            .map { ($0.title, $0.sentAt) }
+        var waiting = awaiting.values.filter { $0.targets.contains(where: isTarget) }.map { (label: $0.intent.label, since: $0.sentAt) }
+        waiting += waitingInSnapshot.values.filter { status in status.target.map(isTarget) == true && awaiting[status.id] == nil }
+            .map { (label: $0.title, since: $0.sentAt) }
         // 一番前に送ったものの時刻で、司令塔が受け取らないまま時間がたったかを決める
         if let oldest = waiting.min(by: { $0.since < $1.since }) {
             return Reflection(label: oldest.label, phase: .waiting(since: oldest.since))
         }
-        if let item = accepted.last(where: { $0.targets.contains(target) }) {
+        if let item = accepted.last(where: { $0.targets.contains(where: isTarget) }) {
             return Reflection(label: item.label, phase: .accepted)
         }
-        if let rejection = rejections.last(where: { $0.targets.contains(target) }) {
+        if let rejection = rejections.last(where: { $0.targets.contains(where: isTarget) }) {
             return Reflection(label: rejection.label, phase: .rejected(rejection))
         }
         return nil
     }
 
     // MARK: 断られた知らせ
+
+    /// 断られた知らせを足す。1 つの操作から出た意図が同じ理由で断られたら（まとめて OK のカードごとの答え）、知らせを 1 つにまとめる
+    private mutating func addRejection(_ rejection: Rejection) {
+        guard rejection.intent != nil,
+              let index = rejections.firstIndex(where: { $0.intent == rejection.intent && $0.reason == rejection.reason }) else {
+            rejections.append(rejection)
+            return
+        }
+        rejections[index].targets += rejection.targets.filter { !rejections[index].targets.contains($0) }
+    }
 
     /// 断られた知らせを閉じる
     mutating func dismissRejection(_ id: Rejection.ID) {

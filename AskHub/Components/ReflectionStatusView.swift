@@ -6,15 +6,18 @@ import SwiftUI
 /// 全画面のローディングにはせず、ほかの対象や画面は普段どおり使えるようにする。iOS と macOS で同じ View を使う
 struct ReflectionStatusView: View {
     let targets: [IntentTarget]
+    /// 一覧の外（山札の上など）に置くときに、ガラスの地に載せる
+    var framed = false
 
     @Environment(ClientStore.self) private var store
 
-    init(_ targets: [IntentTarget]) {
+    init(_ targets: [IntentTarget], framed: Bool = false) {
         self.targets = targets
+        self.framed = framed
     }
 
-    init(_ target: IntentTarget) {
-        self.init([target])
+    init(_ target: IntentTarget, framed: Bool = false) {
+        self.init([target], framed: framed)
     }
 
     var body: some View {
@@ -35,7 +38,19 @@ struct ReflectionStatusView: View {
         )
     }
 
-    private func content(_ message: ReflectionMessage) -> some View {
+    @ViewBuilder private func content(_ message: ReflectionMessage) -> some View {
+        if framed {
+            line(message)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(maxWidth: 520)
+                .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        } else {
+            line(message)
+        }
+    }
+
+    private func line(_ message: ReflectionMessage) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             ReflectionSymbol(tone: message.tone)
             VStack(alignment: .leading, spacing: 2) {
@@ -62,16 +77,34 @@ struct ReflectionStatusView: View {
 
 /// 送った意図が反映されるまでの様子の小さな印（一覧の行の題の横に出す）。何も無ければ何も出さない
 struct ReflectionBadge: View {
-    let targets: [IntentTarget]
+    private enum Subject {
+        case targets([IntentTarget])
+        /// epic への操作のどれか
+        case epic(Epic.ID)
+    }
+
+    private let subject: Subject
 
     @Environment(ClientStore.self) private var store
 
     init(_ targets: [IntentTarget]) {
-        self.targets = targets
+        subject = .targets(targets)
+    }
+
+    /// epic への操作（質問・判断・ゴール・epic の操作など）のどれかの様子
+    init(epicID: Epic.ID) {
+        subject = .epic(epicID)
+    }
+
+    private var reflection: Reflection? {
+        switch subject {
+        case .targets(let targets): store.reflection(for: targets)
+        case .epic(let epicID): store.reflection(forEpic: epicID)
+        }
     }
 
     var body: some View {
-        if let reflection = store.reflection(for: targets) {
+        if let reflection {
             TimelineView(.periodic(from: .now, by: 15)) { _ in
                 let message = ReflectionMessage.make(
                     reflection,
