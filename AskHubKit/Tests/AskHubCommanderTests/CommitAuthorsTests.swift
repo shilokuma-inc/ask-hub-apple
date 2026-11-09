@@ -64,6 +64,11 @@ struct CommitAuthorsTests {
         #expect(GitAuthor.account(id: 1, login: "mrs1669", name: "  ").name == "mrs1669")
         #expect(GitAuthor.account(id: 1, login: "mrs1669", name: "<>").name == "mrs1669")
         #expect(GitAuthor.account(id: 1, login: "mrs1669", name: "Takumi\n<Muraishi>").name == "TakumiMuraishi")
+        // git が名前として受け付けない形（区切りの記号と空白だけ）なら login
+        #expect(GitAuthor.account(id: 1, login: "mrs1669", name: "...").name == "mrs1669")
+        #expect(GitAuthor.account(id: 1, login: "mrs1669", name: " ;, '\\").name == "mrs1669")
+        #expect(GitAuthor.account(id: 1, login: "mrs1669", name: "T. Muraishi").name == "T. Muraishi")
+        #expect(GitAuthor.account(id: 1, login: "mrs1669", name: "村石 拓海").name == "村石 拓海")
     }
 
     @Test func fixedAuthorDefaultsToAskHub() async {

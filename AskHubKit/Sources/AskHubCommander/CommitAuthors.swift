@@ -15,10 +15,14 @@ public struct GitAuthor: Sendable, Equatable {
     public static let fallback = GitAuthor(name: "AskHub", email: "worker@askhub.invalid")
 
     /// GitHub のアカウントの書き手。本当のメールアドレスを出さずにアカウントに結び付くよう、noreply アドレス（`<id>+<login>@users.noreply.github.com`）にする。
-    /// 名前はプロフィールの名前（無ければ login）。git が書き手の区切りに使う文字（`<`・`>`・改行）は除く
+    /// 名前はプロフィールの名前。git が書き手の区切りに使う文字（`<`・`>`）と制御文字は除き、
+    /// git が名前として受け付けない形（空白と `.`・`,`・`:`・`;`・`"`・`'`・`\` だけ）なら login にする（コミットが断られないように）
     public static func account(id: Int, login: String, name: String?) -> GitAuthor {
-        let cleaned = (name ?? "").filter { !"<>\n\r\0".contains($0) }.trimmingCharacters(in: .whitespaces)
-        return GitAuthor(name: cleaned.isEmpty ? login : cleaned, email: "\(id)+\(login)@users.noreply.github.com")
+        let isControl = { (character: Character) in character.unicodeScalars.contains { $0.properties.generalCategory == .control } }
+        let profile: String = name ?? ""
+        let cleaned = profile.filter { !"<>".contains($0) && !isControl($0) }.trimmingCharacters(in: .whitespaces)
+        let usable = cleaned.contains { !$0.isWhitespace && !".,:;\"'\\".contains($0) }
+        return GitAuthor(name: usable ? cleaned : login, email: "\(id)+\(login)@users.noreply.github.com")
     }
 }
 
