@@ -312,13 +312,15 @@ extension StateSnapshotBuilder {
             return .done
         }
         // 送った意図は新しい順
-        let latest = documents.sentIntents.first { sent in
+        let latest = sentIncludingUnread.first { sent in
             sent.envelope.kind == HumanTaskDoneIntent.kind && sent.envelope.target?.epic == epic.id && sent.envelope.target?.id == task.id
         }
         guard let latest else {
             return .todo
         }
-        switch latest.consumed?.result {
+        // 受け付けたのを読んだばかりなら、状態への反映を読めるまで、処理を待つものと同じく確かめている間として出す
+        let result = justAccepted.contains(latest.envelope.nonce) ? nil : latest.consumed?.result
+        switch result {
         case nil:
             // 古いゴールの版で送ったもの・期限を過ぎたものは、司令塔が断る
             let isLive = now.timeIntervalSince(latest.envelope.issuedAt.date) < Self.intentLifetime

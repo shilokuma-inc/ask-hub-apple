@@ -18,10 +18,23 @@ protocol ClientService: AnyObject {
     func lastSend(of intent: HumanIntent) -> SentRecord?
     /// 判断のカードのスクショ（状態リポジトリの中のパス）の中身。読めなければ投げる
     func screenshot(at path: String) async throws -> Data
+    /// 最後に読んだ状態に、送り終えていない意図（取り消しの猶予の間を含む。古い順）を送った結果として当てたもの。
+    /// 押した直後から済んだ形で出すのに使う（送り終えて読み直していない意図も当てる）。当てられない（まだ読めていない）ときは nil
+    func snapshot(overlaying intents: [HumanIntent]) -> ClientSnapshot?
+    /// 受け付けの記録だけを軽く確かめる間隔。司令塔の受け取りを待つ意図がある間だけ確かめる。確かめられない窓口は nil
+    var receiptCheckInterval: Duration? { get }
+    /// 送った意図（`SendReceipt.Sent.id`）を司令塔が処理したか（受け付けた・断った）を、処理の記録だけを読んで確かめる。状態は読まない
+    func hasReceipt(for intentID: String) async throws -> Bool
 }
 
 extension ClientService {
     func supports(_ intent: HumanIntent) -> Bool { true }
+
+    func snapshot(overlaying intents: [HumanIntent]) -> ClientSnapshot? { nil }
+
+    var receiptCheckInterval: Duration? { nil }
+
+    func hasReceipt(for intentID: String) async throws -> Bool { false }
 
     func screenshot(at path: String) async throws -> Data {
         throw ClientServiceError(message: "このデータの元にはスクショが無い")
@@ -79,6 +92,8 @@ struct ClientServiceError: LocalizedError, Equatable {
     var message: String
     /// 複数の意図になる操作の途中で失敗したときの、失敗する前に書けた意図（書けた分は司令塔が受け取る）
     var sentBeforeFailure: SendReceipt?
+    /// GitHub の上限に当たったときの、次に試せるまでの目安（上限でなければ nil）
+    var retryAfter: Duration?
 
     var errorDescription: String? { message }
 }

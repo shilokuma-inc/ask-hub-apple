@@ -4,21 +4,27 @@ import Foundation
 // MARK: - 送った人の意図
 
 extension StateSnapshotBuilder {
-    /// 先に画面に出す意図。司令塔がまだ処理していないものと、受け付けたが結果がまだ出ていないゴールの修正
+    /// 先に画面に出す意図（新しい順）。まだ読んでいないもの、司令塔がまだ処理していないもの、受け付けたのを読んだばかりのもの、
+    /// 受け付けたが結果がまだ出ていないゴールの修正
     func intentsToOverlay() -> [IntentEnvelope] {
-        documents.sentIntents.filter { sent in
+        unread + documents.sentIntents.filter { sent in
             switch sent.consumed?.result {
             case nil:
                 return now.timeIntervalSince(sent.envelope.issuedAt.date) < Self.intentLifetime
 
             case .accepted:
-                return sent.envelope.kind == ReviseGoalIntent.kind
+                return sent.envelope.kind == ReviseGoalIntent.kind || justAccepted.contains(sent.envelope.nonce)
 
             case .rejected:
                 return false
             }
         }
         .map(\.envelope)
+    }
+
+    /// この端末が送った意図（新しい順）。まだ読んでいないものは、処理を待つものとして先に並べる
+    var sentIncludingUnread: [StateDocuments.SentIntent] {
+        unread.map { StateDocuments.SentIntent(envelope: $0) } + documents.sentIntents
     }
 
     /// 送った意図を、送った結果として画面に出す。送った後に対象が変わっていれば（司令塔が断る）、出さない

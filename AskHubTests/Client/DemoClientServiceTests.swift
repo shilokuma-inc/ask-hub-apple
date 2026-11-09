@@ -325,24 +325,52 @@ struct DemoClientServiceTests {
         #expect(accepted.commanderSeenAt == clock.now)
     }
 
-    /// 断る場面では、意図を状態に当てずに、受け取り待ちの後で断る。受け取りを長く遅らせる場面では、司令塔の印が古い
+    /// 断る場面では、意図を状態に当てず、受け取り待ちの間だけ送った結果として先に出し、断ったら元に戻す。
+    /// 受け取りを長く遅らせる場面では、司令塔の印が古い
     @Test
-    func rejectingCommanderLeavesStateAsIs() async throws {
+    func rejectingCommanderRevertsAfterWaiting() async throws {
         let service = DemoClientService(scenario: .standard, reactionDelay: 10, receiptDelay: 3_600, rejectsIntents: true) { [clock] in
             clock.now
         }
         let answer = HumanIntent.answer(epicID: "recipe-weekly", questionID: "Q3", optionID: "a", note: "")
         let receipt = try await service.perform(answer)
+        let intentID = try #require(receipt.intentID)
         let waiting = try await service.fetchSnapshot()
-        #expect(waiting.epic("recipe-weekly")?.question("Q3")?.state == .open)
-        #expect(waiting.sentIntents.first { $0.id == receipt.intentID }?.state == .waiting)
+        guard case .answered? = waiting.epic("recipe-weekly")?.question("Q3")?.state else {
+            Issue.record("受け取り待ちの間、答えた形で出ていない")
+            return
+        }
+        #expect(waiting.sentIntents.first { $0.id == intentID }?.state == .waiting)
+        #expect(try await !service.hasReceipt(for: intentID))
         let seenAt = try #require(waiting.commanderSeenAt)
         #expect(clock.now.timeIntervalSince(seenAt) >= ReflectionMessage.commanderSilence)
 
         clock.now += 3_600
+        #expect(try await service.hasReceipt(for: intentID))
         let rejected = try await service.fetchSnapshot()
-        let state = rejected.sentIntents.first { $0.id == receipt.intentID }?.state
+        #expect(rejected.epic("recipe-weekly")?.question("Q3")?.state == .open)
+        let state = rejected.sentIntents.first { $0.id == intentID }?.state
         #expect(state == .rejected(at: clock.now, reason: DemoClientService.rejectionReason))
+    }
+
+    /// 送り終えていない意図を当てた形は、状態と機械の反応を変えずに作る（読む前は作らない）
+    @Test
+    func overlayDoesNotChangeState() async throws {
+        let service = DemoClientService(scenario: .standard, reactionDelay: 10, receiptDelay: 10) { [clock] in clock.now }
+        let answer = HumanIntent.answer(epicID: "recipe-weekly", questionID: "Q3", optionID: "a", note: "")
+        #expect(service.snapshot(overlaying: [answer]) == nil)
+        _ = try await service.fetchSnapshot()
+
+        let overlaid = try #require(service.snapshot(overlaying: [answer]))
+        guard case .answered? = overlaid.epic("recipe-weekly")?.question("Q3")?.state else {
+            Issue.record("送り終えていない回答が、答えた形で出ていない")
+            return
+        }
+        #expect(service.state.epic("recipe-weekly")?.question("Q3")?.state == .open)
+        #expect(service.snapshot(overlaying: [])?.epic("recipe-weekly")?.question("Q3")?.state == .open)
+        // 機械の反応も増やさない（説明が届くなどが、送っていない回答から起きない）
+        clock.now += 60
+        #expect(try await service.fetchSnapshot().epic("recipe-weekly")?.question("Q3")?.state == .open)
     }
 
     /// 読めない場面では取得が失敗する

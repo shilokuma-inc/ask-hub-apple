@@ -239,13 +239,16 @@ extension StateClientServiceTests {
         }
         let acceptAll = HumanIntent.acceptAllDecisions(epicID: Self.epicID, headCommit: Self.finalHead, decisionIDs: ["d1", "d4"])
         try await service.perform(acceptAll)
-        // 読み直す前にもう一度押しても、送ってあって受け取り待ちの答えは送り直さない
-        try await service.perform(acceptAll)
+        // 読み直す前にもう一度押しても、送ってあって受け取り待ちの答えは送り直さない（送った答えを当てた後は、OK にするカードが無い）
+        await #expect(throws: ClientServiceError(message: "まとめて OK にする判断がありません")) {
+            try await service.perform(acceptAll)
+        }
         let answers = try await sentEnvelopes(in: fixture)
         #expect(answers.map(\.kind) == [DecisionIntent.kind, DecisionIntent.kind])
         #expect(answers.map { $0.target?.id } == ["d1", "d4"])
         #expect(answers.allSatisfy { $0.string("answer") == "ok" && $0.targetVersion == Self.finalHead })
-        #expect(service.lastSend(of: acceptAll)?.isWaiting == true)
+        // 読み直す前でも、送った答えを踏まえてマージの承認を送る形にできる（まとめて OK の後にすぐ承認できる）
+        #expect(service.supports(.merge(epicID: Self.epicID, headCommit: Self.finalHead)))
 
         let answered = try await service.fetchSnapshot()
         // まとめて OK はカードごとの意図になり、それぞれがカードを対象に持つ（画面の意図の対象と同じ）

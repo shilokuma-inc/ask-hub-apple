@@ -63,6 +63,13 @@ struct StateIndex {
 struct StateSnapshotBuilder {
     let documents: StateDocuments
     let now: Date
+    /// 読んだ中にまだ無い、この端末の意図（新しい順）。送っている途中・取り消しの猶予の間・送り終えて読み直す前のもの。
+    /// 処理を待つ意図と同じく送った結果として先に出すが、送った意図の一覧（`ClientSnapshot.sentIntents`）には入れない
+    var unread: [IntentEnvelope] = []
+    /// 司令塔が受け付けたのを読んだばかりで、状態への反映をまだ読めていないかもしれない意図。処理を待つ意図と同じく当てる
+    /// （受け付けの記録は状態を書き換えた後に書くが、並べて読む 1 回の読み込みでは、記録が新しく状態が古いことがある。
+    /// 当てる処理は対象が変わっていれば何もしないので、反映された状態に当てても変わらない）
+    var justAccepted: Set<ULID> = []
 
     /// 生きている印がこれより古い Mac は、オフラインとして出す（`docs/renewal/flows.md` の開始の確かめ）
     static let onlineWindow: TimeInterval = 30 * 60

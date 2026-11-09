@@ -4,7 +4,8 @@ import Foundation
 ///
 /// 人の意図を受けると状態を書き換え（状態リポジトリで、司令塔が受け取る前に送った結果を先に出すのと同じ）、
 /// 機械の反応（説明が届く・ロックが外れる・ゴールができる など）を `reactionDelay` 秒の後に起こす。
-/// 送った意図は司令塔の受け取り待ちとして記録し、`receiptDelay` 秒の後に受け付ける。テストでは 0 にして、次の取得ですぐ反映させる
+/// 送った意図は司令塔の受け取り待ちとして記録し、`receiptDelay` 秒の後に受け付ける。テストでは 0 にして、次の取得ですぐ反映させる。
+/// 断ると決めた場面（`rejectsIntents`）では、送った意図を状態に当てず、受け取り待ちの間だけ送った結果として先に出す（断られたら元に戻る）
 final class DemoClientService: ClientService {
     var state: ClientSnapshot
     let scenario: DemoScenario
@@ -17,10 +18,18 @@ final class DemoClientService: ClientService {
     /// 司令塔が送った意図を断る（断られたときの画面を見るため）。断る意図は状態に当てない
     let rejectsIntents: Bool
     let now: () -> Date
+    /// 受け付けの記録を確かめる間隔（取り直しの 2 秒より短くし、受け取ったらすぐ読み直す）
+    let receiptCheckInterval: Duration? = .seconds(1)
     private var scheduled: [Reaction] = []
     private var nextPullRequestNumber = 60
     /// 送った意図と時刻
     private var sends: [Send] = []
+    /// 断ると決めた場面で送った意図（状態には当てず、司令塔の受け取りを待つ間だけ先に出す）
+    private var heldForRejection: [Send] = []
+    /// 司令塔が送った意図を受け取る時刻（送った意図の id ごと）
+    private var receiptDue: [String: Date] = [:]
+    /// 最後に読んだ時刻。まだ読んでいなければ nil（送り終えていない意図を当てた形も出さない）
+    private var lastFetchedAt: Date?
     /// 受け取りを長く遅らせると決めたとき（司令塔が止まっている場面）の、司令塔の生きている印（起動した時点で古い）。ほかの場面では nil
     private let stoppedCommanderSeenAt: Date?
 
@@ -65,11 +74,47 @@ final class DemoClientService: ClientService {
             throw ClientServiceError(message: "GitHub に接続できませんでした（デモ: 読めないときの画面）")
         }
         applyDueReactions()
-        var snapshot = state
-        snapshot.fetchedAt = now()
+        lastFetchedAt = now()
+        return presented()
+    }
+
+    func snapshot(overlaying intents: [HumanIntent]) -> ClientSnapshot? {
+        lastFetchedAt == nil ? nil : presented(overlaying: intents)
+    }
+
+    func hasReceipt(for intentID: String) async throws -> Bool {
+        receiptDue[intentID].map { now() >= $0 } ?? false
+    }
+
+    /// 画面に出す状態。断ると決めた場面の受け取り待ちの意図と、送り終えていない意図（`intents`）を、送った結果として当てる
+    private func presented(overlaying intents: [HumanIntent] = []) -> ClientSnapshot {
+        let held = heldForRejection.filter { send in
+            send.intentIDs.contains { id in state.sentIntents.first { $0.id == id }?.state == .waiting }
+        }
+        var snapshot = scratch(applying: held.map(\.intent) + intents)
+        snapshot.fetchedAt = lastFetchedAt ?? now()
         // 止まっている場面でなければ、司令塔はいま動いていることにする
         snapshot.commanderSeenAt = stoppedCommanderSeenAt ?? now()
         return snapshot
+    }
+
+    /// 意図を当てた状態を、本当の状態と機械の反応を変えずに作る（依頼は、送り終えて epic の id が決まるまで当てない）
+    private func scratch(applying intents: [HumanIntent]) -> ClientSnapshot {
+        let applied = intents.filter { !$0.isRequest }
+        guard !applied.isEmpty else {
+            return state
+        }
+        let saved = (state: state, scheduled: scheduled, pullRequest: nextPullRequestNumber, receipts: receiptDue)
+        defer {
+            state = saved.state
+            scheduled = saved.scheduled
+            nextPullRequestNumber = saved.pullRequest
+            receiptDue = saved.receipts
+        }
+        for intent in applied {
+            _ = apply(intent)
+        }
+        return state
     }
 
     @discardableResult
@@ -82,7 +127,11 @@ final class DemoClientService: ClientService {
         if receipt.sent.isEmpty {
             receipt.sent = recordReceipt(of: intent, requestedEpicID: receipt.requestedEpicID, at: sentAt)
         }
-        sends.append(Send(intent: intent, sentAt: sentAt, intentIDs: receipt.intentIDs))
+        let send = Send(intent: intent, sentAt: sentAt, intentIDs: receipt.intentIDs)
+        sends.append(send)
+        if rejectsIntents {
+            heldForRejection.append(send)
+        }
         return receipt
     }
 
@@ -111,7 +160,7 @@ final class DemoClientService: ClientService {
             return SendReceipt.Sent(id: id, target: target)
         }
         let rejects = rejectsIntents
-        scheduleReceipt { [now] snapshot in
+        scheduleReceipt(of: sent.map(\.id)) { [now] snapshot in
             for item in sent {
                 guard let index = snapshot.sentIntents.firstIndex(where: { $0.id == item.id }) else {
                     continue
@@ -122,9 +171,13 @@ final class DemoClientService: ClientService {
         return sent
     }
 
-    /// 司令塔が送った意図を受け取ったときの書き換えを、`receiptDelay` 秒の後に起こす（一時停止していても受け取る）
-    func scheduleReceipt(_ apply: @escaping (inout ClientSnapshot) -> Void) {
-        scheduled.append(Reaction(dueAt: now().addingTimeInterval(receiptDelay), apply: apply))
+    /// 司令塔が送った意図（`intentIDs`）を受け取ったときの書き換えを、`receiptDelay` 秒の後に起こす（一時停止していても受け取る）
+    func scheduleReceipt(of intentIDs: [String], _ apply: @escaping (inout ClientSnapshot) -> Void) {
+        let dueAt = now().addingTimeInterval(receiptDelay)
+        scheduled.append(Reaction(dueAt: dueAt, apply: apply))
+        for id in intentIDs {
+            receiptDue[id] = dueAt
+        }
     }
 
     /// 期限の来た機械の反応を当てる
