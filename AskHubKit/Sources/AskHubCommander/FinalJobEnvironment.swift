@@ -60,7 +60,7 @@ public struct FinalReviewTiming: Equatable, Sendable {
     public var checks: ReviewTiming
     /// 信用するレビューの書き手（CodeRabbit）のレビューを読み直す間隔
     public var reviewerPoll: Duration
-    /// レビューが始まる（commit status が出てくる）のを待つ上限。超えたら、待たずに今ある指摘で進める
+    /// レビューが始まる（CodeRabbit の check run・commit status が出てくる）のを待つ上限。超えたら、待たずに今ある指摘で進める
     public var reviewerStartLimit: Duration
     /// レビューが終わるのを待つ上限。超えたら、待たずに今ある指摘で進める
     public var reviewerLimit: Duration
