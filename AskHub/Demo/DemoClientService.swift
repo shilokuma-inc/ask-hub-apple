@@ -2,8 +2,9 @@ import Foundation
 
 /// デモのデータで動く窓口。GitHub には接続しない。
 ///
-/// 人の意図を受けると状態を書き換え、機械の反応（説明が届く・ロックが外れる・ゴールができる など）を
-/// `reactionDelay` 秒の後に起こす。テストでは 0 にして、次の取得ですぐ反映させる
+/// 人の意図を受けると状態を書き換え（状態リポジトリで、司令塔が受け取る前に送った結果を先に出すのと同じ）、
+/// 機械の反応（説明が届く・ロックが外れる・ゴールができる など）を `reactionDelay` 秒の後に起こす。
+/// 送った意図は司令塔の受け取り待ちとして記録し、`receiptDelay` 秒の後に受け付ける。テストでは 0 にして、次の取得ですぐ反映させる
 final class DemoClientService: ClientService {
     var state: ClientSnapshot
     let scenario: DemoScenario
@@ -11,18 +12,27 @@ final class DemoClientService: ClientService {
     let refreshInterval: Duration
     /// 送るのにかかる時間（送っている間の画面を見るため。既定は待たない）
     let sendDelay: Duration
+    /// 司令塔が送った意図を受け取るまでの秒数（受け取り待ちの画面を見るため。既定は機械の反応の半分）
+    let receiptDelay: TimeInterval
+    /// 司令塔が送った意図を断る（断られたときの画面を見るため）。断る意図は状態に当てない
+    let rejectsIntents: Bool
     let now: () -> Date
     private var scheduled: [Reaction] = []
     private var nextPullRequestNumber = 60
     /// 送った意図と時刻
     private var sends: [Send] = []
+    /// 受け取りを長く遅らせると決めたとき（司令塔が止まっている場面）の、司令塔の生きている印（起動した時点で古い）。ほかの場面では nil
+    private let stoppedCommanderSeenAt: Date?
 
-    /// 送った意図。司令塔の受け取りを待つのは開始だけ（ほかはすぐ当てる）なので、開始は送った意図の id も持つ
+    /// 送った意図と、司令塔の受け取りを待つ記録の id
     private struct Send {
         var intent: HumanIntent
         var sentAt: Date
-        var intentID: String?
+        var intentIDs: [String]
     }
+
+    /// 断るときの理由（デモ）
+    static let rejectionReason = "デモ: 司令塔が断ったときの画面です"
 
     private struct Reaction {
         var dueAt: Date
@@ -34,14 +44,20 @@ final class DemoClientService: ClientService {
         reactionDelay: TimeInterval = 4,
         refreshInterval: Duration = .seconds(2),
         sendDelay: Duration = .zero,
+        receiptDelay: TimeInterval? = nil,
+        rejectsIntents: Bool = false,
         now: @escaping () -> Date = Date.init
     ) {
         self.scenario = scenario
         self.reactionDelay = reactionDelay
         self.refreshInterval = refreshInterval
         self.sendDelay = sendDelay
+        self.receiptDelay = receiptDelay ?? reactionDelay / 2
+        self.rejectsIntents = rejectsIntents
         self.now = now
         state = scenario.snapshot(now: now())
+        let stopped = (receiptDelay ?? 0) >= ReflectionMessage.commanderSilence
+        stoppedCommanderSeenAt = stopped ? now().addingTimeInterval(-2 * ReflectionMessage.commanderSilence) : nil
     }
 
     func fetchSnapshot() async throws -> ClientSnapshot {
@@ -51,6 +67,8 @@ final class DemoClientService: ClientService {
         applyDueReactions()
         var snapshot = state
         snapshot.fetchedAt = now()
+        // 止まっている場面でなければ、司令塔はいま動いていることにする
+        snapshot.commanderSeenAt = stoppedCommanderSeenAt ?? now()
         return snapshot
     }
 
@@ -60,16 +78,48 @@ final class DemoClientService: ClientService {
             try await Task.sleep(for: sendDelay)
         }
         let sentAt = now()
-        let receipt = apply(intent)
-        sends.append(Send(intent: intent, sentAt: sentAt, intentID: receipt.intentID))
+        var receipt = rejectsIntents ? SendReceipt() : apply(intent)
+        if receipt.intentIDs.isEmpty {
+            receipt.intentIDs = recordReceipt(of: intent, requestedEpicID: receipt.requestedEpicID, at: sentAt)
+        }
+        sends.append(Send(intent: intent, sentAt: sentAt, intentIDs: receipt.intentIDs))
         return receipt
     }
 
     func lastSend(of intent: HumanIntent) -> SentRecord? {
         sends.last { $0.intent == intent }.map { send in
-            let status = send.intentID.flatMap { id in state.sentIntents.first { $0.id == id } }
-            return SentRecord(sentAt: send.sentAt, isWaiting: status?.state == .waiting)
+            let isWaiting = send.intentIDs.contains { id in state.sentIntents.first { $0.id == id }?.state == .waiting }
+            return SentRecord(sentAt: send.sentAt, isWaiting: isWaiting)
         }
+    }
+
+    /// 送った意図を、司令塔の受け取り待ちとして記録し（対象ごとに 1 つ。状態リポジトリでまとめて OK がカードごとの意図になるのと同じ）、
+    /// `receiptDelay` 秒の後に受け付ける（`rejectsIntents` なら断る）。記録の id を返す
+    private func recordReceipt(of intent: HumanIntent, requestedEpicID: Epic.ID?, at date: Date) -> [String] {
+        var targets: [IntentTarget?] = intent.targets
+        if let requestedEpicID {
+            targets = [.request(epicID: requestedEpicID)]
+        } else if targets.isEmpty {
+            targets = [nil]
+        }
+        // 状態リポジトリの「送った意図」と同じく、epic の題を添える
+        let epicTitle = (requestedEpicID ?? intent.targets.first?.epicID).flatMap { state.epic($0)?.title }
+        let title = [intent.label, epicTitle].compactMap(\.self).joined(separator: " · ")
+        let ids = targets.map { target in
+            let id = "intent-\(UUID().uuidString)"
+            state.sentIntents.insert(SentIntentStatus(id: id, title: title, sentAt: date, state: .waiting, target: target), at: 0)
+            return id
+        }
+        let rejects = rejectsIntents
+        scheduled.append(Reaction(dueAt: date.addingTimeInterval(receiptDelay)) { [now] snapshot in
+            for id in ids {
+                guard let index = snapshot.sentIntents.firstIndex(where: { $0.id == id }) else {
+                    continue
+                }
+                snapshot.sentIntents[index].state = rejects ? .rejected(at: now(), reason: Self.rejectionReason) : .accepted(at: now())
+            }
+        })
+        return ids
     }
 
     /// 期限の来た機械の反応を当てる
