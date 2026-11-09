@@ -23,7 +23,7 @@ sys.path.insert(0, str(TOOLS))
 
 import embed_archive_entitlements  # noqa: E402
 
-#: codesign の偽物。署名の entitlements を $CODESIGN_STATE に残す。無ければ「署名されていない」で失敗する
+#: codesign の偽物。署名の entitlements を $CODESIGN_STATE に、署名の引数を $CODESIGN_ARGS に残す。無ければ「署名されていない」で失敗する
 FAKE_CODESIGN = r"""#!/bin/bash
 if [ "$1" = "-d" ]; then
   if [ ! -e "$CODESIGN_STATE" ]; then
@@ -33,6 +33,7 @@ if [ "$1" = "-d" ]; then
   cat "$CODESIGN_STATE"
   exit 0
 fi
+printf '%s\n' "$@" > "$CODESIGN_ARGS"
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--entitlements" ]; then cp "$2" "$CODESIGN_STATE"; fi
   shift
@@ -96,11 +97,13 @@ class MainTests(unittest.TestCase):
         (self.source / "AskHub/AskHub-iOS.entitlements").write_bytes(plistlib.dumps(ENTITLEMENTS))
 
         self.state = self.tmp / "signed.plist"
+        self.args = self.tmp / "codesign-args.txt"
         self.settings = self.tmp / "settings.json"
         self.write_settings(CODE_SIGN_ENTITLEMENTS="AskHub/AskHub-iOS.entitlements", APS_ENVIRONMENT="production")
         patcher = mock.patch.dict(os.environ, {
             "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
             "CODESIGN_STATE": str(self.state),
+            "CODESIGN_ARGS": str(self.args),
             "BUILD_SETTINGS": str(self.settings),
         })
         patcher.start()
@@ -116,16 +119,29 @@ class MainTests(unittest.TestCase):
                 "--sdk", "iphoneos", "--configuration", "Release",
             ])
 
+    def signed_arguments(self) -> list[str]:
+        return self.args.read_text().splitlines()
+
     def test_signs_with_expanded_entitlements(self):
         self.assertEqual(self.run_main(), 0)
         self.assertEqual(plistlib.loads(self.state.read_bytes()), {"aps-environment": "production"})
+        self.assertFalse(any(argument.startswith("--preserve-metadata") for argument in self.signed_arguments()))
 
-    def test_refuses_signed_app(self):
-        # macOS のアドホック署名の archive などを上書きすると、Xcode が埋め込んだ entitlement が消える
+    def test_adds_to_signed_entitlements(self):
+        # macOS のアドホック署名の archive。上書きすると Xcode が埋め込んだ entitlement（sandbox など）が消えるので、足して署名し直す
         self.state.write_bytes(plistlib.dumps({"com.apple.security.app-sandbox": True}))
-        with self.assertRaises(SystemExit):
+        self.assertEqual(self.run_main(), 0)
+        self.assertEqual(plistlib.loads(self.state.read_bytes()),
+                         {"com.apple.security.app-sandbox": True, "aps-environment": "production"})
+        # 署名し直すと Hardened Runtime のフラグが消えるので、archive の署名から残す
+        self.assertIn("--preserve-metadata=identifier,flags", self.signed_arguments())
+
+    def test_conflicting_signed_entitlement_stops(self):
+        self.state.write_bytes(plistlib.dumps({"aps-environment": "development"}))
+        with self.assertRaises(SystemExit) as raised:
             self.run_main()
-        self.assertEqual(plistlib.loads(self.state.read_bytes()), {"com.apple.security.app-sandbox": True})
+        self.assertIn("aps-environment", str(raised.exception))
+        self.assertEqual(plistlib.loads(self.state.read_bytes()), {"aps-environment": "development"})
 
     def test_no_entitlements_leaves_app_unsigned(self):
         self.write_settings(CODE_SIGN_ENTITLEMENTS="")
@@ -134,9 +150,10 @@ class MainTests(unittest.TestCase):
 
 
 class CheckTests(unittest.TestCase):
-    """Export した IPA に、archive の署名の entitlement が残ったか。ditto と codesign は差し替える。"""
+    """Export した IPA・pkg に、archive の署名の entitlement が残ったか。ditto・pkgutil と codesign は差し替える。"""
 
-    def run_check(self, archived: dict | None, exported: dict | None) -> int:
+    def run_check(self, archived: dict | None, exported: dict | None, package: str = "AskHub.ipa",
+                  apps: tuple[str, ...] = ("AskHub.app",)) -> int:
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
         archive = tmp / "build.xcarchive"
@@ -144,18 +161,20 @@ class CheckTests(unittest.TestCase):
         (archive / "Info.plist").write_bytes(
             plistlib.dumps({"ApplicationProperties": {"ApplicationPath": "Applications/AskHub.app"}}))
 
-        def fake_ditto(command, check):
-            """IPA を展開した代わりに、展開先に空の Payload/AskHub.app を作る。"""
-            (Path(command[-1]) / "Payload/AskHub.app").mkdir(parents=True)
+        def fake_expand(command, check):
+            """IPA・pkg を展開した代わりに、展開先に空の .app を作る（IPA は Payload/、pkg は component の Payload/ の下）。"""
+            root = Path(command[-1]) / ("AskHub.pkg/Payload" if command[0] == "pkgutil" else "Payload")
+            for app in apps:
+                (root / app).mkdir(parents=True)
 
         def fake_signed_entitlements(app: Path):
             """archive の中の .app には archived を、IPA の .app には exported を返す。"""
             return archived if app.is_relative_to(archive) else exported
 
-        with mock.patch.object(embed_archive_entitlements.subprocess, "run", side_effect=fake_ditto), \
+        with mock.patch.object(embed_archive_entitlements.subprocess, "run", side_effect=fake_expand), \
                 mock.patch.object(embed_archive_entitlements, "signed_entitlements", side_effect=fake_signed_entitlements), \
                 contextlib.redirect_stdout(io.StringIO()):
-            return embed_archive_entitlements.main(["check", str(archive), str(tmp / "AskHub.ipa")])
+            return embed_archive_entitlements.main(["check", str(archive), str(tmp / package)])
 
     def test_passes_when_exported_keeps_archived_keys(self):
         # 値は Export が profile に合わせて書き換える（development → production）ので、キーだけを比べる
@@ -166,6 +185,20 @@ class CheckTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as raised:
             self.run_check({"aps-environment": "production"}, {"application-identifier": "TEAM.jp.shilokuma.AskHub"})
         self.assertIn("aps-environment", str(raised.exception))
+
+    def test_checks_app_in_pkg(self):
+        # macOS の pkg。入れ子の .app（ヘルパーなど）は数えない
+        archived = {"com.apple.developer.aps-environment": "production", "com.apple.security.app-sandbox": True}
+        apps = ("AskHub.app", "AskHub.app/Contents/Library/Helper.app")
+        self.assertEqual(self.run_check(archived, archived, package="AskHub.pkg", apps=apps), 0)
+        with self.assertRaises(SystemExit) as raised:
+            self.run_check(archived, {"com.apple.security.app-sandbox": True}, package="AskHub.pkg")
+        self.assertIn("com.apple.developer.aps-environment", str(raised.exception))
+
+    def test_pkg_without_app_stops(self):
+        with self.assertRaises(SystemExit) as raised:
+            self.run_check({}, {}, package="AskHub.pkg", apps=())
+        self.assertIn("AskHub.pkg", str(raised.exception))
 
 
 if __name__ == "__main__":

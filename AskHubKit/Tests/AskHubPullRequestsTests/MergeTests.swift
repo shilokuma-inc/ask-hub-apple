@@ -107,6 +107,29 @@ struct MergeTests {
         #expect(try await Fixture.client(transport).deleteBranch("feat/task-1", expectedSHA: Fixture.sha) == .alreadyGone)
     }
 
+    @Test func treatsBranchDeletedByGitHubAfterMergeAsAlreadyGone() async throws {
+        // `delete_branch_on_merge` のリポジトリで、読んだ後に GitHub が消した（DELETE が 404）
+        let transport = StubTransport([
+            .json(200, Self.ref(Fixture.sha)),
+            .json(404, #"{"message":"Not Found"}"#),
+            .json(404, #"{"message":"Not Found"}"#)
+        ])
+        #expect(try await Fixture.client(transport).deleteBranch("feat/task-1", expectedSHA: Fixture.sha) == .alreadyGone)
+        #expect(transport.requests.map(\.httpMethod) == ["GET", "DELETE", "GET"])
+    }
+
+    @Test func reportsNotFoundOfDeletionWhenBranchRemains() async throws {
+        // DELETE が 404 でもブランチが残っているなら、消せていない（トークンが見えない など）
+        let transport = StubTransport([
+            .json(200, Self.ref(Fixture.sha)),
+            .json(404, #"{"message":"Not Found"}"#),
+            .json(200, Self.ref(Fixture.sha))
+        ])
+        await #expect(throws: PullRequestError.notFound) {
+            try await Fixture.client(transport).deleteBranch("feat/task-1", expectedSHA: Fixture.sha)
+        }
+    }
+
     @Test func reportsOtherRejectionOfDeletion() async throws {
         let transport = StubTransport([
             .json(200, Self.ref(Fixture.sha)),

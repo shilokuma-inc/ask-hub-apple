@@ -84,6 +84,9 @@ API Key には App Manager 以上の権限が要る。Verify/App Store metadata 
 - macOS のプラットフォームが無いときは、追加の手順を Job Summary に出して macOS のアーカイブを飛ばす（失敗にはしない）。確認は ubuntu のランナーで行い、macOS のランナーは使わない
 - `EXPORT_OPTIONS` は iOS と同じものを使う（`method=app-store-connect`）。macOS では pkg が出る。ビルド番号は iOS と同じく Xcode が App Store Connect の最新から増やす（`manageAppVersionAndBuildNumber`。iOS と macOS で別々に数える）
 - macOS はアドホック署名でアーカイブし、Export で配布用に署名し直す（署名なしでアーカイブすると App Sandbox のエンタイトルメントが埋め込まれない）
+- アドホック署名のアーカイブには push のエンタイトルメント（`com.apple.developer.aps-environment`）を付けられないので、アーカイブの後に
+  `Tools/embed_archive_entitlements.py embed` で sandbox などに足して署名し直し、Export に引き継がせる（iOS と同じ仕組み）。
+  Export の後に pkg の中の .app に残ったかを確かめ（`check`）、落ちていれば App Store Connect に上げずに止める
 - Mac App Store にはカテゴリ（`LSApplicationCategoryType`）が要るので、`AskHub/Info.plist` に `public.app-category.developer-tools`（開発ツール。[docs/app-review.md](app-review.md) のカテゴリと同じ）を書いている
 - Archive（`main` への push）も、iOS と macOS の両方を Export まで確かめる（アップロードはしない）
 - 実行中の macOS のランナーは、iOS と macOS で 1 回の Upload につき 2 台。org 全体で同時に 5 台までなので、続けて push すると待たされることがある
@@ -94,6 +97,15 @@ API Key には App Manager 以上の権限が要る。Verify/App Store metadata 
    追加すると macOS のバージョン（提出準備中）ができ、次の Upload から macOS のビルドも上がる（それまでは Job Summary に「macOS のアップロードを飛ばしました」と出る）
 2. 追加した後、Actions → **Upload** → Run workflow で `develop`（または release ブランチ）を選んで実行し、`upload-macos / archive` が成功して TestFlight（macOS）にビルドが並ぶのを確かめる
 3. macOS の審査への提出・輸出コンプライアンスの回答は、iOS と同じく人が App Store Connect で行う
+
+### Mac に TestFlight の版を入れる
+
+TestFlight の版は配布用の署名なので、Mac を Apple Developer にデバイス登録しなくても入れられる（Xcode から自動の署名で入れると、その Mac がデバイス登録される）。
+
+1. App Store Connect の TestFlight で、macOS のビルドが内部テストのグループに入っているかを確かめる（自動の配信を切っているグループには、ビルドを足す）
+2. Mac に [TestFlight](https://apps.apple.com/app/testflight/id899247664) を Mac App Store から入れ、内部テスターの Apple ID でサインインする
+3. TestFlight の AskHub から「インストール」する。新しいビルドが上がると、TestFlight が更新する（自動の更新を切っていなければ）
+4. TestFlight の版は production の APNs に登録する。ビルドは 90 日で期限が切れるので、それまでに Upload を流す
 
 ### vars
 

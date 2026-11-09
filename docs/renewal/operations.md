@@ -27,9 +27,10 @@
   - 断られたら、設定の「通知」に、通知が届かないことと、設定アプリ（Mac はシステム設定）の通知の画面を開くボタンを出す
   - デモのデータ（UI テスト・撮影を含む）と、アプリの中で動く単体テストでは、許可を求めず宛先も書かない
   - macOS の push の entitlement は provisioning profile が要り、profile の無いアドホック署名ではビルドが止まる。アドホック署名（CI・ワーカー・スクショ・archive。`CODE_SIGN_STYLE=Manual`）では付けず、自動の署名のときだけ付ける（`Configs/Project.xcconfig` の `ASKHUB_MACOS_ENTITLEMENTS_*`）。アドホック署名の Mac のアプリは通知を受け取れない
-  - iOS の配布（TestFlight・App Store）の archive は署名せずに作るので、`Tools/embed_archive_entitlements.py embed` で entitlement をアドホック署名で埋め込んでから Export する（`_archive.yml`）。
-    Export は archive の署名の entitlement だけを引き継ぐので、埋め込まないと TestFlight の版に `aps-environment` が入らず、APNs への登録が失敗する。
-    Export の後に IPA に残ったかを確かめ（`check`）、落ちていれば App Store Connect に上げずに止める
+  - 配布（TestFlight・App Store）の archive は、iOS は署名せずに、macOS はアドホック署名で作るので、`Tools/embed_archive_entitlements.py embed` で push の entitlement をアドホック署名で埋め込んでから Export する（`_archive.yml`。macOS は sandbox などに足して署名し直す）。
+    Export は archive の署名の entitlement だけを引き継ぐので、埋め込まないと TestFlight の版に push の entitlement が入らず、APNs への登録が失敗する。
+    Export の後に IPA・pkg に残ったかを確かめ（`check`）、落ちていれば App Store Connect に上げずに止める
+  - Mac には、TestFlight の版をデバイス登録なしで入れられる（[docs/release.md](../release.md) の「Mac に TestFlight の版を入れる」）
 - 入れ方: Apple Developer の Identifiers で App ID（`jp.shilokuma.AskHub`）の Push Notifications を有効にする（push の entitlement を付けたので、無効のままだと実機と Mac の自動の署名の profile に入らない。TestFlight の版も配布用の profile に入らず、Upload が Export か IPA の確認で止まる）。
   Keys で APNs の鍵を作って .p8 を落とし、常時オンの Mac の端末で `askhub-commander apns --key-id <鍵の id> --team-id <Team ID> --key-file <.p8 のパス>` を流してから、常駐を読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`）
   - .p8 の中身は Keychain（`apns-key`）にだけ置き、設定には鍵の id・Team ID・Bundle ID（既定 `jp.shilokuma.AskHub`。iOS と macOS で同じ）だけを書く。.p8 は Apple Developer から一度しか落とせないので、Mac には残さず安全な場所に移す
@@ -129,7 +130,10 @@
   - 設定と Claude のフォルダは `~/Library/Application Support/AskHub/<役割>/`
   - 対象のリポジトリの写し・epic の作業場所・DerivedData・ビルドの一時フォルダは、パスに空白の無い `~/Library/Developer/AskHub/<役割>/`（`work`・`builds`・`builds-tmp`）。パスの空白を扱えないビルドのプラグインやスクリプトがあるため（2026-11-09、prime-pick-ios の LicenseList のプラグインが `SourcePackages not found` で止まった）
   - 移す前の版で作った `~/Library/Application Support/AskHub/<役割>/` の `work`・`builds`・`builds-tmp` は、移した後は使わず、epic の片付けでも消えない。動いている epic は、次のジョブで作業ブランチ（リモート）から新しい場所に取り出し直す
-  - 前の場所は、動いている epic が無いとき（実装の途中の質問を待っている epic も無いとき）に手で消す。消す前に、`work/epics/<epic>/` の作業場所に、push していない変更や stash が残っていないかを `git -C <作業場所> status`・`git -C <作業場所> log @{u}..`・`git -C <作業場所> stash list` で確かめ、残っていれば作業ブランチに push してから消す。消すのは Finder でゴミ箱に入れる（取り消せるように）
+  - 前の場所は、動いている epic が無いとき（実装の途中の質問を待っている epic も無いとき）に手で消す。消すのは `work`・`builds`・`builds-tmp` の 3 つだけで、同じフォルダの `config.json` と `claude/` は今も使うので残す
+    - 消す前に、epic の作業場所（`work/epics/<epic>/repository/<リポジトリ名>`。`work/epics/<epic>/` は git の作業場所ではない）に、push していない変更や stash が残っていないかを `git -C <作業場所> status`・`git -C <作業場所> log HEAD --not --remotes`・`git -C <作業場所> stash list` で確かめる。epic の作業ブランチには upstream が無いので、`git log @{u}..` は使えない
+    - 残っていれば作業ブランチに push してから消す。ただし、場所を移す前に止まった試行の、コミットしていない変更が残っていることがある。新しい場所でやり直したタスクのコミットと見比べて、中身が入っていれば push は要らない（2026-11-09、prime-pick-ios）
+    - 消すのはゴミ箱に入れる（取り消せるように）。ssh 越しでは Finder を使えないので、`~/.Trash/<名前>/` に `mv` する（Finder の「戻す」は使えないので、戻すときも `mv`）。ゴミ箱に入れただけでは空き容量は増えず、ゴミ箱を空にしたとき（Finder の「30 日後にゴミ箱から削除」が有効なら 30 日後）に空く
 
 ### 司令塔の入れ方（段階 2）
 
