@@ -1,7 +1,7 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// アプリ（iOS / macOS）とオーケストレーター（macOS の CLI）で共有するコード。
+// アプリ（iOS / macOS）と司令塔・ワーカー・非常口（macOS の CLI）で共有するコード。
 // プロトコル（ラベル・目印・回答形式）のモデルとパーサー、GitHub API クライアントを置く。
 let package = Package(
     name: "AskHubKit",
@@ -36,8 +36,6 @@ let package = Package(
         .library(name: "AskHubWorker", targets: ["AskHubWorker"]),
         // ワーカーが子 PR と最終 PR を扱う GitHub の操作（作る・CI とレビューを読む・流し直す・マージ）
         .library(name: "AskHubPullRequests", targets: ["AskHubPullRequests"]),
-        // macOS で launchd から常駐させる CLI。アプリからは使わない
-        .executable(name: "askhub-orchestrator", targets: ["askhub-orchestrator"]),
         // リニューアルの司令塔（常時オンの Mac で LaunchAgent として常駐させる CLI）
         .executable(name: "askhub-commander", targets: ["askhub-commander"]),
         // リニューアルのワーカー（常駐できる Mac は LaunchAgent、できない Mac はターミナルで流し続ける CLI）
@@ -66,9 +64,6 @@ let package = Package(
         ),
         .target(name: "AskHubWorker", dependencies: ["AskHubCommander", "AskHubJobs", "AskHubProtocol", "AskHubStateStore"]),
         .target(name: "AskHubPullRequests", dependencies: ["AskHubProtocol", "AskHubStateStore"]),
-        // オーケストレーターのロジック（設定・状態判定）。テストできるよう executable から分ける
-        .target(name: "OrchestratorKit", dependencies: ["AskHubKit"]),
-        .executableTarget(name: "askhub-orchestrator", dependencies: ["AskHubKit", "OrchestratorKit"]),
         .executableTarget(name: "askhub", dependencies: ["AskHubClient", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]),
         .executableTarget(
             name: "askhub-commander",
@@ -100,6 +95,5 @@ let package = Package(
             dependencies: ["AskHubWorker", "AskHubCommander", "AskHubCommands", "AskHubJobs", "AskHubProtocol", "AskHubStateStore"]
         ),
         .testTarget(name: "AskHubPullRequestsTests", dependencies: ["AskHubPullRequests", "AskHubProtocol", "AskHubStateStore"]),
-        .testTarget(name: "OrchestratorKitTests", dependencies: ["OrchestratorKit"]),
     ]
 )
