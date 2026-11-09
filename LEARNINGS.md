@@ -409,6 +409,10 @@
   閉包で `Result<T, E>` を返し、外で `try result.get()` する（2026-11-07、タスクのジョブのテストの偽物）
 - ローカル変数をメソッドと同じ名前にすると、その変数の初期化の式の中のメソッドの呼び出しも変数を指し、「cannot call value of non-function type '[Any]'」でビルドが落ちる
   （`let humanTasks = goal.map { humanTasks($0, epic: file) }`。Xcode 26.6）。アプリのコードは `swift test --package-path AskHubKit` では見つからず、アプリのビルドで初めて落ちるので、変数は別の名前にする（2026-11-08、人がする作業）
+- `UNUserNotificationCenterDelegate` の `didReceive`（`willPresent` も）を async の版で書くと、Swift が橋渡しで作る Task の中で
+  関数を抜けた後に、完了ハンドラが協調スレッドから呼ばれる。UIKit は完了ハンドラの中で主スレッドかを確かめるので、通知を押したときに
+  `-[UIApplication _performBlockAfterCATransactionCommitSynchronizes:]` の NSAssertionHandler で落ちる（`nonisolated` の async の版で起きた）。
+  完了ハンドラの版にして、呼ばれたその場（主スレッド）で呼び、画面の更新だけを `Task { @MainActor in … }` に渡す（2026-11-09、通知を押すと落ちた）
 
 ## シェルスクリプト
 
