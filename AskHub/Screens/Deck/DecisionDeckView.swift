@@ -72,6 +72,12 @@ struct DecisionDeckView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .toolbar {
+            // 答えて山札から外したカードの様子（反映中・受け取りの遅れ・断られた）を、次のカードを見ている間も出す
+            ToolbarItem(placement: .primaryAction) {
+                ReflectionBadge(scope.reflectionTargets(in: store))
+            }
+        }
         .hidesTabBar()
         .onChange(of: textRequest) { _, request in
             if request != nil {
@@ -309,6 +315,33 @@ struct DecisionDeckView: View {
     }
 }
 
+private extension DeckScope {
+    /// 山札に出す対象（答えを送って反映を待っているものを含む）
+    func reflectionTargets(in store: ClientStore) -> [IntentTarget] {
+        switch self {
+        case .questions(let epicID):
+            store.epic(epicID).map(Self.questionTargets) ?? []
+
+        case .decisions(let epicID):
+            store.epic(epicID).map(Self.decisionTargets) ?? []
+
+        case .verifications(let epicID):
+            store.epic(epicID)?.finalReview?.verifications.map { .verification(epicID: epicID, itemID: $0.id) } ?? []
+
+        case .all:
+            store.snapshot?.activeEpics.flatMap { Self.questionTargets($0) + Self.decisionTargets($0) } ?? []
+        }
+    }
+
+    static func questionTargets(_ epic: Epic) -> [IntentTarget] {
+        epic.questions.map { .question(epicID: epic.id, questionID: $0.id) }
+    }
+
+    static func decisionTargets(_ epic: Epic) -> [IntentTarget] {
+        epic.finalReview?.decisions.map { .decision(epicID: epic.id, decisionID: $0.id) } ?? []
+    }
+}
+
 /// スワイプの設定（持ち手）
 enum SwipePreferences {
     static let handKey = "swipeHand"
@@ -339,33 +372,8 @@ private struct DeckEmptyView: View {
         } description: {
             Text(detail)
         } actions: {
-            ReflectionStatusView(reflectionTargets, framed: true)
+            ReflectionStatusView(scope.reflectionTargets(in: store), framed: true)
         }
-    }
-
-    /// 山札に出す対象（答えを送って反映を待っているものを含む）
-    private var reflectionTargets: [IntentTarget] {
-        switch scope {
-        case .questions(let epicID):
-            store.epic(epicID).map(Self.questionTargets) ?? []
-
-        case .decisions(let epicID):
-            store.epic(epicID).map(Self.decisionTargets) ?? []
-
-        case .verifications(let epicID):
-            store.epic(epicID)?.finalReview?.verifications.map { .verification(epicID: epicID, itemID: $0.id) } ?? []
-
-        case .all:
-            store.snapshot?.activeEpics.flatMap { Self.questionTargets($0) + Self.decisionTargets($0) } ?? []
-        }
-    }
-
-    private static func questionTargets(_ epic: Epic) -> [IntentTarget] {
-        epic.questions.map { .question(epicID: epic.id, questionID: $0.id) }
-    }
-
-    private static func decisionTargets(_ epic: Epic) -> [IntentTarget] {
-        epic.finalReview?.decisions.map { .decision(epicID: epic.id, decisionID: $0.id) } ?? []
     }
 
     private var detail: String {

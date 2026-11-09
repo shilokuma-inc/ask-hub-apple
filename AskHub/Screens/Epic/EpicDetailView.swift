@@ -64,7 +64,7 @@ struct EpicDetailView: View {
                     }
                 }
             }
-            // 依頼・epic の操作（一時停止・再開・引き継ぎ・やめる）は、反映されるまでの様子をここに出す
+            // 依頼・epic の操作（一時停止・再開・引き継ぎ・やめる）と、送った後に消えた欄（対処・分け方）への操作は、反映されるまでの様子をここに出す
             if store.reflection(for: Self.epicTargets(epic)) != nil {
                 CardSection {
                     ReflectionStatusView(Self.epicTargets(epic))
@@ -89,9 +89,17 @@ struct EpicDetailView: View {
         }
     }
 
-    /// epic そのものへの操作の対象（依頼・一時停止・再開・引き継ぎ・やめる）
+    /// epic の上に様子を出す操作の対象。依頼・一時停止・再開・引き継ぎ・やめると、
+    /// 送った結果を先に当てると欄ごと消える対処（やり直す・やめる）と分け方（このまま進める）は、欄が無い間だけここに出す
     static func epicTargets(_ epic: Epic) -> [IntentTarget] {
-        [.request(epicID: epic.id), .epicControl(epicID: epic.id)]
+        var targets: [IntentTarget] = [.request(epicID: epic.id), .epicControl(epicID: epic.id)]
+        if epic.blocker == nil {
+            targets.append(.blocker(epicID: epic.id))
+        }
+        if epic.split == nil {
+            targets.append(.split(epicID: epic.id))
+        }
+        return targets
     }
 
     private func discardMessage(_ epic: Epic) -> String {

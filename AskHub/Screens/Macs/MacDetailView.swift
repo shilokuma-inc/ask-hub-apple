@@ -156,19 +156,9 @@ struct CleanupView: View {
         .compactList()
         .navigationTitle("片付けの候補")
         .safeAreaBar(edge: .bottom) {
-            if !candidates.isEmpty {
-                // 片付けを送ったら、反映されるまで押せなくし、その様子を出す
-                VStack(spacing: 6) {
-                    Button("選んだものを消す（\(ByteFormat.string(selectedBytes))）", role: .destructive) { isConfirming = true }
-                        .buttonStyle(.glassProminent)
-                        .controlSize(.large)
-                        .disabled(selectedIDs.isEmpty || store.isReflecting([.cleanup(macID: macID)]))
-                    ReflectionStatusView(.cleanup(macID: macID))
-                        .frame(maxWidth: 520)
-                        .padding(.horizontal)
-                }
-                .padding(.vertical, 10)
-                .keepsControlSize()
+            // 片付けを送ったら、反映されるまで押せなくし、その様子を出す（送った結果を先に当てて候補が無くなっても、様子は残す）
+            if !candidates.isEmpty || store.reflection(for: [.cleanup(macID: macID)]) != nil {
+                cleanupBar(candidates: candidates, selectedBytes: selectedBytes)
             }
         }
         .confirmationDialog("\(selectedIDs.count) 件を消しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
@@ -180,6 +170,22 @@ struct CleanupView: View {
         } message: {
             Text("合計 \(ByteFormat.string(selectedBytes)) を消します。元に戻せません")
         }
+    }
+
+    private func cleanupBar(candidates: [CleanupCandidate], selectedBytes: Int64) -> some View {
+        VStack(spacing: 6) {
+            if !candidates.isEmpty {
+                Button("選んだものを消す（\(ByteFormat.string(selectedBytes))）", role: .destructive) { isConfirming = true }
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.large)
+                    .disabled(selectedIDs.isEmpty || store.isReflecting([.cleanup(macID: macID)]))
+            }
+            ReflectionStatusView(.cleanup(macID: macID))
+                .frame(maxWidth: 520)
+                .padding(.horizontal)
+        }
+        .padding(.vertical, 10)
+        .keepsControlSize()
     }
 
     private func binding(for id: CleanupCandidate.ID) -> Binding<Bool> {

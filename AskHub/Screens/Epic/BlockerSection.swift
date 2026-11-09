@@ -50,8 +50,8 @@ struct BlockerSection: View {
             }
             actions
                 .disabled(store.isReflecting(reflectionTargets))
-            // 選んだ対処が反映されるまでの様子と、断られた理由
-            ReflectionStatusView(reflectionTargets)
+            // 選んだ対処が反映されるまでの様子と、断られた理由（一時停止・引き継ぎの様子は epic の上に出す）
+            ReflectionStatusView(.blocker(epicID: epic.id))
         } header: {
             Text("対処が要ります")
         } footer: {
