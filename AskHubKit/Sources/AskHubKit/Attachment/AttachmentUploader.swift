@@ -1,20 +1,5 @@
 import Foundation
 
-/// アップロードする添付 1 つ（選んだファイルの中身）。送るまで GitHub には上げない
-public struct AttachmentFile: Sendable, Equatable, Hashable {
-    /// 元のファイル名
-    public var name: String
-    /// MIME タイプ（例: `image/png`）
-    public var type: String
-    public var data: Data
-
-    public init(name: String, type: String, data: Data) {
-        self.name = name
-        self.type = type
-        self.data = data
-    }
-}
-
 /// 添付を依頼先のリポジトリに上げ、本文に置く目印を返す。テストでは差し替える
 public protocol AttachmentUploading: Sendable {
     /// `files` を順に `repository`（`owner/repo`）の `askhub/attachments` ブランチへ上げる。

@@ -147,19 +147,3 @@ struct AttachmentFileNameTests {
         #expect(result == String(repeating: "a", count: AttachmentFileName.maxLength))
     }
 }
-
-struct AttachmentSizeTests {
-    @Test(arguments: [
-        (0, "0 B"),
-        (1_023, "1023 B"),
-        (1_024, "1 KB"),
-        (1_048_063, "1023 KB"),
-        (1_048_575, "1.0 MB"),
-        (120_000, "117 KB"),
-        (1_048_576, "1.0 MB"),
-        (10 * 1_048_576, "10.0 MB")
-    ])
-    func displayText(bytes: Int, expected: String) {
-        #expect(AttachmentSize.displayText(bytes: bytes) == expected)
-    }
-}
