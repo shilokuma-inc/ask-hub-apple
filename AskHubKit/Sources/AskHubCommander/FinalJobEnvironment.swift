@@ -13,6 +13,11 @@ public protocol FinalBuilding: Sendable {
     func removeProducts(of epic: ULID) throws(BuildDirectoryError)
     /// 枠 `slot` の Simulator（ワーカーが作ったもの）を消去する（入れたアプリとデータ）。消去できなかったものの説明を返す
     func eraseSimulators(slot: Int) async -> [String]
+    /// 枠 `slot` の `destination` の Simulator を用意して、判断のカードのスクショを撮る。失敗も結果として返し、投げるのは取り消されたときだけ
+    func capture(_ request: CaptureRequest, slot: Int, destination: SimulatorDestination) async throws(CancellationError) -> CaptureOutcome
+    /// 撮影でビルドする DerivedData。作業ブランチの先頭は、検証・タスクと同じ epic の DerivedData（温まっている）を使い、
+    /// base との分岐点は別にする（写しのパスが違うと使い回せず、作業ブランチの分を壊す）
+    func screenshotDerivedData(of epic: ULID, base: Bool) -> URL
 }
 
 /// `AskHubBuild` の `EpicBuilder`・`BuildDirectories`・`SimulatorPool` で流し、片付ける
@@ -32,6 +37,27 @@ public struct MachineFinalBuilds: FinalBuilding {
 
     public func removeProducts(of epic: ULID) throws(BuildDirectoryError) {
         try machine.runner.directories.remove(epic)
+    }
+
+    public func capture(
+        _ request: CaptureRequest,
+        slot: Int,
+        destination: SimulatorDestination
+    ) async throws(CancellationError) -> CaptureOutcome {
+        let simulator: Simulator
+        do {
+            simulator = try await machine.pool.prepare(slot: slot, for: destination)
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            return CaptureOutcome(problem: "Simulator を用意できない（\(error.message)）")
+        }
+        return try await ScreenshotCapturer(tools: machine.pool.tools, runner: machine.pool.runner).capture(request, on: simulator)
+    }
+
+    public func screenshotDerivedData(of epic: ULID, base: Bool) -> URL {
+        let directories = machine.runner.directories
+        guard base else { return directories.derivedData(for: epic) }
+        return directories.epicDirectory(epic).appendingPathComponent("DerivedData-base", isDirectory: true)
     }
 
     public func eraseSimulators(slot: Int) async -> [String] {
@@ -217,7 +243,12 @@ extension FinalJobEnvironment {
 
     /// Claude に直させる。ビルドとテストは、この Mac の枠を 1 つ借りて流す
     func run<Job: TaskJob>(_ job: Job, in checkout: CheckedOutEpic, target: FinalTarget) async -> TaskReply {
-        let workspace = TaskWorkspace(repository: checkout.repo, facts: checkout.facts, directory: checkout.directory)
+        let workspace = TaskWorkspace(
+            repository: checkout.repo,
+            facts: checkout.facts,
+            directory: checkout.directory,
+            screenshotScenes: target.settings.screenshots?.scenes
+        )
         let tasks = tasks
         return await tasks.slots.withSlot { slot in
             let build = BuildTarget(epic: target.epic.id, directory: checkout.directory, settings: target.settings.build, slot: slot)

@@ -35,7 +35,7 @@ repos/<owner>/<repo>/epics/<epic>/epic.json        epic の状態（司令塔）
 repos/<owner>/<repo>/epics/<epic>/questions.json   質問と、その状態（司令塔）
 repos/<owner>/<repo>/epics/<epic>/goal.json        ゴール（司令塔）
 repos/<owner>/<repo>/epics/<epic>/decisions.json   人が決めていない判断（司令塔）
-repos/<owner>/<repo>/epics/<epic>/screenshots/<id>-before.png  見える仮決めのスクショ（撮ったワーカー）
+repos/<owner>/<repo>/epics/<epic>/screenshots/<commit>-<scene>.png  見える仮決めのスクショ（撮ったワーカー）
 repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json  ジョブ（司令塔）
 repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json  試行（実行した Mac のワーカー）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
@@ -88,7 +88,11 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
     },
     "childChecks": ["build / build"],
     "finalChecks": ["build / build", "ui-test / ui-test"],
-    "trustedReviewers": ["coderabbitai[bot]"]
+    "trustedReviewers": ["coderabbitai[bot]"],
+    "screenshots": {
+      "scenes": "PrimePick/Screenshot/screenshot-scenes.json",
+      "destination": { "platform": "iOS", "deviceType": "iPhone 17 Pro", "osVersion": "27.0" }
+    }
   },
   "addedAt": "2026-11-03T10:00:00Z"
 }
@@ -102,7 +106,26 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   - `childChecks`: 子 PR で待つチェックの名前（REST の check run の `name`。再利用ワークフローのジョブは `build / build` の形）。1 つ以上（無いと CI を待たずにマージしてしまう）
   - `finalChecks`: 最終 PR で待つチェックの名前。1 つ以上
   - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。`coderabbitai[bot]` など）。無ければ空
+  - `screenshots`: 判断のカードのスクショの撮り方（Swift は `ScreenshotSettings`）。`scenes`（撮れる画面の一覧のファイルの、リポジトリの直下からの相対パス。`.json`）と `destination`（撮る Simulator。`destinations` と同じ形で、macOS はまだ撮らない）。無ければ撮らない（[flows.md](flows.md) の「スクショ」）
 - `build` が無いリポジトリでは、開始を断る
+
+### 撮れる画面の一覧（対象のリポジトリに置くファイル）
+
+`build.screenshots.scenes` が指すファイル。状態リポジトリではなく、対象のリポジトリに置く（epic の中で Claude が画面を足せるように）。形は `protocol/schemas/screenshot-scenes.schema.json`（Swift は `ScreenshotScenesFile`）。
+
+```json
+{
+  "v": 1,
+  "scenes": [
+    { "id": "final-review", "title": "最終 PR の確認（見える仮決めのカード）", "arguments": ["-demoScenario", "standard", "-demoOpen", "epic:tsundoku-search"] }
+  ]
+}
+```
+
+- `id` は英小文字・数字・ハイフンで 40 文字まで（状態リポジトリのファイル名にも使う）。重ねない
+- `title` は何の画面・状態か（人と、画面を選ぶ Claude が読む）
+- `arguments` は、その画面をデモのデータで開く起動引数（`simctl launch` でアプリに渡す。シェルは通さない）。30 個まで
+- 撮った画像は public の最終 PR に載り、消せない。実データ・個人情報・トークンが写らないデモのデータの画面だけを書く
 
 ### epic.json
 
@@ -270,7 +293,15 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
       "what": "見出しの文言を短くした",
       "why": "ゴールの t2（iPhone の幅に収める）",
       "alternatives": ["2 行にする"],
-      "screenshots": { "before": "repos/…/epics/<epic>/screenshots/d1-before.png", "after": "repos/…/epics/<epic>/screenshots/d1-after.png" },
+      "scene": "final-review",
+      "screenshots": {
+        "before": "repos/…/epics/<epic>/screenshots/<base との分岐点>-final-review.png",
+        "after": "repos/…/epics/<epic>/screenshots/<作業ブランチの先頭>-final-review.png",
+        "beforeURL": "https://github.com/user-attachments/assets/…",
+        "afterURL": "https://github.com/user-attachments/assets/…",
+        "head": "<作業ブランチの先頭>",
+        "note": null
+      },
       "answer": null
     }
   ]
@@ -281,7 +312,11 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `visible` は、ユーザーから見える挙動・仕様・見た目に関わるか。決めるのは、読むだけのレビュー役の Claude と、決まった信号（View・文言・アセット・Info.plist・entitlements の差分、スクショの差）
 - 各項目は `task`（どのタスクの仮決めか）と `pullRequest`（子 PR）を持つ。`visible` は仕分ける前は `null`。最終 PR の直しの仮決めは `task` を持たない（`null` か省く）
 - 司令塔は、実装と直しの試行の `outputs.report.decisions` を足す（id は `d1` から続ける）。同じタスク・子 PR の同じ仮決めは 2 度足さない
-- スクショは epic の `screenshots/<id>-before.png`・`<id>-after.png` に置き、`screenshots` にそのパスを書く。スクショと `answer` は、見えると仕分けた仮決めだけが持つ
+- `scene` は撮る画面（リポジトリの撮れる画面の一覧の `id`）。判断の仕分けの Claude が、見える仮決めごとに一覧から選ぶ。合う画面が無ければ `null`
+- スクショは、撮影のジョブ（`captureScreenshots`）が epic の `screenshots/<コミット>-<画面>.png` に置き、司令塔が `screenshots` にそのパスを写す。Before は base との分岐点、After は作業ブランチの先頭のコミット。同じコミット・画面は撮り直さず、いくつかの仮決めが同じ画像を指すことがある
+  - `beforeURL`・`afterURL` は GitHub に上げた同じ画像の URL（`https://github.com/user-attachments/assets/…` だけ。最終 PR の本文に載せる）。上げられなければ `null`
+  - `head` は After を撮った作業ブランチの先頭、`note` は撮れなかったわけ・Before が無いわけ（人が読む。500 文字まで）
+- `scene`・スクショ・`answer` は、見えると仕分けた仮決めだけが持つ
 - `answer` は `{ "choice": "ok" | "alternative" | "fix", "note": "…", "intent": { "keyId", "nonce" }, "at": "…" }`（型は `DecisionsFile`、`protocol/schemas/state/decisions.schema.json`）
 - `answer` は人の意図（OK・別案・直してほしい）への参照
 - 最終 PR の直し（`fixFinalPullRequest`）で Claude が報告した仮決めも足す。タスクに結びつかないので、`task` は持たず（`null`）、`pullRequest` は最終 PR にする。クライアントは「最終 PR #N の直し」と出す
@@ -325,8 +360,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `fixTask` | `{ "pullRequest": 41, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`。`head` は判定を出したレビューの input の head。直しの回は試行から数える）。実装の途中の質問の答えで再開するときは、元の input に `"question": "q5"` を足す（`fixFinalPullRequest` も同じ） |
 | `rerunChecks` | `{ "pullRequest": 41, "head": "<コミット>", "runs": [123] }` |
 | `integrateDevelop` | `{ "base": "<取り込む base のコミット>" }` |
-| `verifyBeforeFinal`・`classifyDecisions`・`captureScreenshots`・`openFinalPullRequest`・`cleanUp` | `{}` |
-| `reviewFinalPullRequest`・`mergeFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>" }` |
+| `verifyBeforeFinal`・`classifyDecisions`・`openFinalPullRequest`・`cleanUp` | `{}` |
+| `captureScreenshots`・`reviewFinalPullRequest`・`mergeFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>" }`（撮影は、続けてレビューする最終 PR と head） |
 | `fixFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`・`human`・`conflict`。`human` は判断のカードの「直してほしい」「別案にする」と `instructFinal` で、元の人の意図はジョブの `origin`。`conflict` は、ワーカーが base を作業ブランチに取り込み、コンフリクトしたファイルを Claude に解消させる） |
 | `notify` | 段階 4 で決める |
 
@@ -384,6 +419,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   - `mergeRisks`: 最終 PR のレビューが見つけた、手動のマージの条件に当たるもの（`security`・`weakenedTests`・`dataMigration`・`sensitivePaths` と理由）。司令塔がマージの規則に当てる。`ready` のときは必ず書く（無ければ空）。`sensitivePaths` は、レビュー役の Claude のほかに、差分のパスの決まった規則（`.github/`・`.claude/`・`.mcp.json`・ビルドのスクリプト・依存・entitlements・Info.plist・`.xcconfig` など）でも足す
   - 最終 PR のレビューの間に head が進んだときは、`verdict` を書かずに成功で終え、`commit` に今の head を書く（古い head の判定は書かない）
   - `visibleDecisions`: 判断の仕分け（`classifyDecisions`）で見えるとした仮決めの id。ここに無いものは内部の細部。司令塔が `decisions.json` の `visible` に写す
+  - `decisionScenes`: 判断の仕分けで、見えるとした仮決めごとに選んだ撮る画面（仮決めの id → 撮れる画面の一覧の id）。合う画面が無い仮決めは載せない。司令塔が `decisions.json` の `scene` に写す
+  - `screenshots`: 撮影（`captureScreenshots`）で撮った、仮決めごとの Before / After（`decisions.json` の `screenshots` と同じ形）。司令塔が `decisions.json` に写す
   - `findings`: 直すこと（落ちたチェックとログの抜粋・必須の指摘）。20,000 文字まで。トークンらしい文字列は伏せてから書く
   - `report`: 実装と直し（`implementTask`・`fixTask`）で Claude が報告したこと（`summary`・`decisions`・`learnings`・`question`）。司令塔が `decisions.json`・知見を足す PR・質問に写す
 - `branch` は作ったブランチで、作業場所の用意（`prepareWorkspace`）なら作業ブランチ（`epic.json` の `branch` と同じ形。`epic.json` には司令塔がこれを読んで書く）

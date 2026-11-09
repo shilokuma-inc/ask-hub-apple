@@ -292,7 +292,11 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
      },
      "childChecks": ["build / build"],
      "finalChecks": ["build / build", "ui-test / ui-test"],
-     "trustedReviewers": ["coderabbitai[bot]"]
+     "trustedReviewers": ["coderabbitai[bot]"],
+     "screenshots": {
+       "scenes": "PrimePickApp/Screenshot/screenshot-scenes.json",
+       "destination": { "platform": "iOS", "deviceType": "iPhone 17 Pro", "osVersion": "27.0" }
+     }
    }
    ```
 
@@ -300,10 +304,35 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
    - `xcode` の値は `xcodebuild` の引数になる。`project` はリポジトリの直下からの相対パス。`destinations` は並べた順に流す（macOS は `{ "platform": "macOS" }`。`osVersion` を省くと、使う Xcode の SDK と同じか古いランタイムのうち最新）。`testLight`（子 PR の前）・`testFull`（最終 PR の前。UI テストを含む）は、省くと全部のテスト
    - `childChecks`・`finalChecks` は、待つチェックの名前（1 つ以上）。PR の画面のチェックの表示と同じで、再利用ワークフローのジョブは `build / build` の形になる。develop の最近のコミットのチェックの名前は `gh api repos/<owner>/<repo>/commits/develop/check-runs --jq '.check_runs[].name'` で見られる
    - `trustedReviewers` は、指摘を Claude に渡してよいレビューの書き手（無ければ空。CodeRabbit は最終 PR でだけ待つ）
+   - `screenshots` は、判断のカードのスクショの撮り方（無ければ撮らない。下の「判断のカードのスクショの入れ方」）
 2. 非常口から送る: `askhub configure-repository --repo <owner/repo> --file build.json`。送る前に、司令塔と同じ決まり（`-` で始まる値・リポジトリの外を指すパス・知らない欄・チェックが空）で確かめ、合わなければ送らない
 3. `askhub status` で、送った意図が受け付けられたか（断られたら理由）を見る。送るたびに `build` をまるごと置き換える
 
 - クライアントでの入れ方は、まだ無い（[protocol.md](protocol.md) の「決めていないこと」）
+
+### 判断のカードのスクショの入れ方
+
+最終 PR の見える仮決めのカードに Before / After のスクショを付けるには、リポジトリに撮れる画面の一覧を置き、ビルドの設定に `screenshots` を足す（仕組みは [flows.md](flows.md) の「スクショ」）。
+
+1. アプリに、起動引数でデモのデータの画面を開く仕組みを用意する。template-app-ios 由来のリポジトリは、App Store のスクショの撮影モード（`ScreenshotDemo`。`-screenshot-demo -screenshot-scene <scene>`）がそのまま使える。
+   無いリポジトリは、デモのデータ（実データ・個人情報・トークンを含まない）と、起動引数で開く画面を先に作る（AskHub に依頼してループで作ってよい）
+2. 撮れる画面の一覧の JSON をリポジトリに置く（形は [protocol.md](protocol.md) の「撮れる画面の一覧」）。最初は App Store のスクショと同じ画面だけでよい。足りない画面・状態は、epic の中で実装する Claude が足す
+
+   ```json
+   {
+     "v": 1,
+     "scenes": [
+       { "id": "main", "title": "タイトル画面", "arguments": ["-screenshot-demo", "-screenshot-scene", "main"] },
+       { "id": "quiz", "title": "練習モードの出題中", "arguments": ["-screenshot-demo", "-screenshot-scene", "quiz"] }
+     ]
+   }
+   ```
+
+3. 手元で開けるかを確かめる: Simulator にアプリを入れ、`xcrun simctl launch <UDID> <Bundle ID> <arguments…>` で各画面が開くか見る（撮るのはワーカーが Debug でビルドしたアプリ）
+4. ビルドの設定の JSON に `screenshots`（一覧のパスと撮る Simulator）を足して、`askhub configure-repository` で送り直す（`build` はまるごと置き換わるので、今の設定に足して送る）
+
+- 撮った画像は最終 PR の本文（public）に載り、消せない。一覧には、デモのデータの画面だけを書く
+- 一覧の画面の `id` は変えない（変えると Before と比べられなくなる）
 
 ### 既存のリポジトリを移すとき
 

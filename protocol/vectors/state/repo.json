@@ -332,7 +332,15 @@
           "trustedReviewers": [
             "coderabbitai[bot]",
             "mrs1669"
-          ]
+          ],
+          "screenshots": {
+            "scenes": "App/Demo/screenshot-scenes.json",
+            "destination": {
+              "platform": "iOS",
+              "deviceType": "iPhone 17 Pro",
+              "osVersion": "27.0"
+            }
+          }
         }
       },
       "schemaValid": true,
@@ -977,6 +985,116 @@
           "finalChecks": [
             "build"
           ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-screenshots-on-macos",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "screenshots": {
+            "scenes": "scenes.json",
+            "destination": {
+              "platform": "macOS"
+            }
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-screenshots-outside",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "screenshots": {
+            "scenes": "../scenes.json",
+            "destination": {
+              "platform": "iOS",
+              "deviceType": "iPhone 17 Pro"
+            }
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "build-screenshots-not-json",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "build": {
+          "xcode": {
+            "project": "App.xcworkspace",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "screenshots": {
+            "scenes": "scenes.yml",
+            "destination": {
+              "platform": "iOS",
+              "deviceType": "iPhone 17 Pro"
+            }
+          }
         }
       },
       "schemaValid": false,

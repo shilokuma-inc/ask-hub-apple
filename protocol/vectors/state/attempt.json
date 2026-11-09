@@ -216,6 +216,112 @@
       "read": "malformed"
     },
     {
+      "name": "classify-decisions-with-scenes",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000005",
+        "n": 1,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "succeeded",
+        "outputs": {
+          "visibleDecisions": [
+            "d1",
+            "d3"
+          ],
+          "decisionScenes": {
+            "d1": "search-empty"
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "captured-screenshots",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000005",
+        "n": 1,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "succeeded",
+        "outputs": {
+          "pullRequest": 512,
+          "commit": "0123456789abcdef0123456789abcdef01234567",
+          "screenshots": {
+            "d1": {
+              "before": null,
+              "after": "repos/shilokuma-inc/askhub-sandbox/epics/01JCEP1C000000000000000001/screenshots/0123456789abcdef0123456789abcdef01234567-search-empty.png",
+              "beforeURL": null,
+              "afterURL": "https://github.com/user-attachments/assets/1f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "note": "Before なし（この画面は epic で足した）"
+            }
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "decision-scene-not-id",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000005",
+        "n": 1,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "succeeded",
+        "outputs": {
+          "visibleDecisions": [
+            "d1",
+            "d3"
+          ],
+          "decisionScenes": {
+            "d1": "Search Empty"
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "captured-screenshot-escapes",
+      "value": {
+        "v": 1,
+        "job": "01JCJ0B0000000000000000005",
+        "n": 1,
+        "mac": "mac-mini",
+        "startedAt": "2026-11-03T10:00:00Z",
+        "heartbeatAt": "2026-11-03T10:00:00Z",
+        "endedAt": "2026-11-03T10:05:00Z",
+        "outcome": "succeeded",
+        "outputs": {
+          "pullRequest": 512,
+          "commit": "0123456789abcdef0123456789abcdef01234567",
+          "screenshots": {
+            "d1": {
+              "before": null,
+              "after": "repos/a/b/epics/x/screenshots/../../../keys/1.png",
+              "beforeURL": null,
+              "afterURL": "https://github.com/user-attachments/assets/1f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "note": "Before なし（この画面は epic で足した）"
+            }
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
       "name": "final-review-fix-conflict",
       "value": {
         "v": 1,

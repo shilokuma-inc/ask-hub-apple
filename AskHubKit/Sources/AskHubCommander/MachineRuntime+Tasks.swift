@@ -56,6 +56,7 @@ extension MachineRuntime {
             .fixTask: FixTaskRunner(environment: environment),
             .verifyBeforeFinal: VerifyBeforeFinalRunner(environment: final),
             .classifyDecisions: ClassifyDecisionsRunner(environment: final),
+            .captureScreenshots: CaptureScreenshotsRunner(environment: final),
             .openFinalPullRequest: OpenFinalPullRequestRunner(environment: final),
             .reviewFinalPullRequest: ReviewFinalPullRequestRunner(environment: final),
             .fixFinalPullRequest: FixFinalPullRequestRunner(environment: final),

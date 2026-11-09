@@ -45,13 +45,27 @@ extension DecisionsFile {
     /// 仕分けていない（`visible` が nil の）仮決めがあるか
     var hasUnclassified: Bool { items.contains { $0.visible == nil } }
 
-    /// 判断の仕分けの結果を写す。仕分けていない仮決めだけを、`visible` に載っていれば見える、無ければ内部の細部にする。
-    /// 仕分け済みの仮決め（人の答えを持つことがある）は変えない
-    func classifying(visible: [String]) -> Self {
+    /// 判断の仕分けの結果を写す。仕分けていない仮決めだけを、`visible` に載っていれば見える、無ければ内部の細部にし、
+    /// 見えるものには選んだ撮る画面（`scenes`）を書く。仕分け済みの仮決め（人の答えを持つことがある）は変えない
+    func classifying(visible: [String], scenes: [String: String] = [:]) -> Self {
         var file = self
         let visible = Set(visible)
         for index in file.items.indices where file.items[index].visible == nil {
-            file.items[index].visible = visible.contains(file.items[index].id)
+            let id = file.items[index].id
+            file.items[index].visible = visible.contains(id)
+            file.items[index].scene = visible.contains(id) ? scenes[id].flatMap { ScreenshotScenesFile.isSceneID($0) ? $0 : nil } : nil
+        }
+        return file
+    }
+
+    /// 撮る画面を選んだ見える仮決めがあるか（撮影のジョブを作るか）
+    var hasScenes: Bool { items.contains { $0.visible == true && $0.scene != nil } }
+
+    /// 撮影の結果を写す。見える仮決めのうち、結果に載っているものだけを置き換える
+    func capturing(_ screenshots: [String: Screenshots]) -> Self {
+        var file = self
+        for index in file.items.indices where file.items[index].visible == true {
+            if let shots = screenshots[file.items[index].id] { file.items[index].screenshots = shots }
         }
         return file
     }

@@ -28,7 +28,13 @@ public struct OpenFinalPullRequestRunner: JobRunning {
             base: target.branches.base,
             head: target.branches.epic,
             title: title,
-            body: FinalPullRequestBody.text(epic: target.epic, goal: target.goal, decisions: decisions, branches: target.branches)
+            body: FinalPullRequestBody.text(
+                epic: target.epic,
+                goal: target.goal,
+                decisions: decisions,
+                branches: target.branches,
+                capturesScreenshots: target.settings.screenshots != nil
+            )
         )
         let opened = try await environment.tasks.github("最終 PR を作る") { () throws(PullRequestError) in
             try await environment.tasks.pullRequests(job.repo).openPullRequest(draft)

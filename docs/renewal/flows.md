@@ -260,14 +260,14 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 | --- | --- | --- |
 | `verifyBeforeFinal` | epic の Mac | すべてのタスクが `done` になったら、最終 PR で流すのと同じ検証（`build.testFull`。UI テストを含む）を通す |
 | `classifyDecisions` | 常時オンの Mac | レビュー役の Claude が epic 全体の仮決めを見直し、見える・内部を決めて `decisions.json` に書く |
-| `captureScreenshots` | epic の Mac | 見える仮決めの Before（base）と After（作業ブランチ）を、デモモードのデータで撮る |
+| `captureScreenshots` | epic の Mac | 見える仮決めの Before（base との分岐点）と After（作業ブランチの先頭）を、撮れる画面の一覧の起動引数でデモのデータの画面を開いて撮る。状態リポジトリと GitHub に上げ、最終 PR の本文のカードを書き直す（下の「スクショ」） |
 | `openFinalPullRequest` | 常時オンの Mac | 作業ブランチから base への最終 PR を出す。本文には、判断のカード・実機で確かめてほしいこと・人がした作業を載せる |
 | `fixFinalPullRequest` | epic の Mac（オンラインのとき）・常時オンの Mac | 最終 PR の CI の失敗・必須の指摘（CodeRabbit を含む）・コンフリクトを直す。作業場所と DerivedData が温まっている epic の Mac で行い、オフラインのときだけ常時オンの Mac で行う（ユーザーの決定） |
 | `reviewFinalPullRequest` | 常時オンの Mac | 最終 PR の待つチェック（`build.finalChecks`）と、信用するレビューの書き手（`build.trustedReviewers`。CodeRabbit など）のレビューを待つ。CodeRabbit が上限で見送ったら待たない（ユーザーの決定）。そのうえで、読むだけのレビュー役の Claude が epic 全体の差分を読み、必須の指摘と、マージの規則の材料（セキュリティのリスク・テストを弱めたか・データの削除や移行）を返す。判定は `ready`（通った）・`fixCI`・`fixReview` |
 | `mergeFinalPullRequest` | 常時オンの Mac | マージの規則で自動なら、司令塔がマージする。手動なら、人の承認（`approveMerge`。head に結びつく）を受けてマージする |
 | `cleanUp` | epic の Mac | マージの後、作業場所・Simulator の枠・DerivedData を片付ける |
 
-- 流れ: すべてのタスクが `done` → `verifyBeforeFinal` → `classifyDecisions` → `captureScreenshots`（撮影の設定があるときだけ）→ `openFinalPullRequest` → `reviewFinalPullRequest` → 判定が `fixCI`・`fixReview` なら `fixFinalPullRequest` で直して `reviewFinalPullRequest` に戻る（3 回まで）→ `ready` で、マージの規則に当てて自動なら `mergeFinalPullRequest`、手動なら人の判断のカードの答えと承認を待つ → `cleanUp`
+- 流れ: すべてのタスクが `done` → `verifyBeforeFinal` → `classifyDecisions` → `openFinalPullRequest` →（`captureScreenshots`）→ `reviewFinalPullRequest` → 判定が `fixCI`・`fixReview` なら `fixFinalPullRequest` で直して、（`captureScreenshots` →）`reviewFinalPullRequest` に戻る（3 回まで）→ `ready` で、マージの規則に当てて自動なら `mergeFinalPullRequest`、手動なら人の判断のカードの答えと承認を待つ → `cleanUp`
 - 人が判断のカードで「直してほしい」「別案にする」を選ぶか、最終 PR に指示（`instructFinal`）を出したら、`fixFinalPullRequest` に人の文を付けて直させ、`reviewFinalPullRequest` からやり直す（見える仮決めは、スクショを撮り直して再び出す）
 - 承認は、その時点の head に結びつく。直しで head が変わったら、承認は無効になり、承認し直してもらう
 - `reviewFinalPullRequest` は、待つ間・レビューの間に head が進んだら、古い head の判定を書かない（`verdict` を書かずに、今の head だけを `outputs.commit` に書いて成功で終える）。`ready` のときは `mergeRisks` を必ず書く（無ければ空）。最終 PR が base とコンフリクトしていれば（GitHub が判定を出していれば、チェックを待つ前・待った後・レビューの前に確かめる）、判定 `fixConflict` で終え、司令塔が `fixFinalPullRequest`（理由 `conflict`）を作る。コンフリクトしていると GitHub は PR のチェックを流さないので、チェックが始まらずに待ちきったときもコンフリクトを確かめ直す
@@ -286,8 +286,9 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 | --- | --- |
 | （タスクがすべて `done`） | epic を `finalizing` にしてから、`verifyBeforeFinal` を作る |
 | `verifyBeforeFinal` | `decisions.json` に仕分けていない（`visible` が `null` の）仮決めがあれば `classifyDecisions` を、無ければ `openFinalPullRequest` を作る |
-| `classifyDecisions` | 試行の `outputs.visibleDecisions` を `decisions.json` に写す（仕分けていない項目だけ。載っている id は `true`、ほかは `false`）。前のジョブが直しなら、直した head の `reviewFinalPullRequest` を、そうでなければ `openFinalPullRequest` を作る |
+| `classifyDecisions` | 試行の `outputs.visibleDecisions` を `decisions.json` に写す（仕分けていない項目だけ。載っている id は `true`、ほかは `false`）。見えるものには `outputs.decisionScenes` の撮る画面を `scene` に写す。前のジョブが直しなら、直した head の `reviewFinalPullRequest` を、そうでなければ `openFinalPullRequest` を作る |
 | `openFinalPullRequest` | `outputs.pullRequest` を `epic.json` の `finalPullRequest` に書き、`outputs.commit` の head で `reviewFinalPullRequest` を作る |
+| `captureScreenshots` | 試行の `outputs.screenshots` を `decisions.json` の `screenshots` に写し、撮影の input と同じ最終 PR と head で `reviewFinalPullRequest` を作る |
 | `reviewFinalPullRequest`（`ready`） | マージの規則（`FinalMergeRule.manualReasons`）に当て、人の確認が要らなければ見た head で `mergeFinalPullRequest` を作る。要れば epic を `reviewing` にして人を待つ。`mergeRisks` が欠けていたら、自動でマージせずに人を待つ |
 | `reviewFinalPullRequest`（`fixCI`・`fixReview`） | 見た head で `fixFinalPullRequest`（`reason` は `ci`・`review`）を作る。自動の直しが 3 回を超えたら、作るが動かさずに `waitingHuman` にする |
 | `reviewFinalPullRequest`（判定なし） | 見ている間に head が進んだ（ワーカーは判定を書かずに今の head を `outputs.commit` に返す）。その head で `reviewFinalPullRequest` を作り直す |
@@ -295,9 +296,9 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 | `mergeFinalPullRequest` | `cleanUp` を作ってから、epic を `merged` にする |
 
 - 段取りのジョブは、前のジョブを `dependsOn` に持つ 1 本の列にする（`verifyBeforeFinal` だけは前を持たない）。列の最後のジョブが、次の一手を決める。人の意図で作る直し・マージも、そのときの最後のレビューにつなぐ
-- 動かす Mac: `verifyBeforeFinal`・`cleanUp` は epic の Mac、`fixFinalPullRequest` は epic の Mac の生きている印が新しければ epic の Mac、古ければ常時オンの Mac、ほかは常時オンの Mac。使うもの（`needs`）は、`verifyBeforeFinal` がビルド、`classifyDecisions`・`reviewFinalPullRequest` が Claude、`fixFinalPullRequest` が両方、`openFinalPullRequest`・`mergeFinalPullRequest`・`cleanUp` がどちらも使わない
+- 動かす Mac: `verifyBeforeFinal`・`captureScreenshots`・`cleanUp` は epic の Mac、`fixFinalPullRequest` は epic の Mac の生きている印が新しければ epic の Mac、古ければ常時オンの Mac、ほかは常時オンの Mac。使うもの（`needs`）は、`verifyBeforeFinal`・`captureScreenshots` がビルド、`classifyDecisions`・`reviewFinalPullRequest` が Claude、`fixFinalPullRequest` が両方、`openFinalPullRequest`・`mergeFinalPullRequest`・`cleanUp` がどちらも使わない
 - 自動で作るジョブの元の人の意図（`origin`）は開始の意図。人の意図で作る直し・マージは、その意図
-- `captureScreenshots` は、撮影の設定（`build.screenshots`）があるリポジトリだけで作る。今はどのリポジトリにも無いので作らず、見える仮決めの `screenshots` は `null` のまま
+- `reviewFinalPullRequest` を作るときは、撮影の設定（`build.screenshots`）があり、撮る画面を選んだ（`scene` のある）見える仮決めがあれば、先に同じ input の `captureScreenshots` を作る（最終 PR を出した後と直した後。最終 PR の CI と並んで撮る）。撮影が成功したら、撮れなかったものがあっても、同じ head でレビューする
 - マージした epic は、ジョブを見張る一覧から外れるが、片付けを引き受けられるよう、マージしてから 7 日は見張り続ける（司令塔の `JobSweep` とワーカーの一覧）。片付けを持った Mac のオフラインは知らせない
 
 人の意図は、`targetVersion` が今の最終 PR の head（最後の `reviewFinalPullRequest` の `input.head`）と同じときだけ受け付ける。
@@ -313,8 +314,19 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 
 ### スクショ
 
-- 撮るのは、ビルドの設定に撮影の方法（`build.screenshots`。デモのデータで画面を開いて撮る UI テストなど）があるリポジトリだけ（ユーザーの決定）。無いリポジトリでは撮らず、判断のカードに「スクショ無し（このリポジトリには撮影の設定が無い）」と出す
-- 撮影の方法の形と、各リポジトリへの入れ方は、テンプレートの配布（段階 5）で決める。最初の版は「無い」ときの扱いだけを作る
+- 撮るのは、ビルドの設定に撮影の方法（`build.screenshots`）があるリポジトリだけ（ユーザーの決定）。無いリポジトリでは撮らず、判断のカードに「スクショ無し（このリポジトリには撮影の設定が無い）」と出す
+- 撮影の方法は、起動引数で画面を開く形（ユーザーの決定。UI テストで撮る形は選ばなかった: テストを書く手間と、Xcode 27 の UI テストの遅さ・揺らぎのため）。
+  リポジトリに「撮れる画面の一覧」（画面の名前・説明・その画面をデモのデータで開く起動引数。形は [protocol.md](protocol.md) の「撮れる画面の一覧」）を置き、`build.screenshots` にその場所と撮る Simulator を書く。
+  template-app-ios 由来のリポジトリは、App Store のスクショの撮影モード（`ScreenshotDemo`。`-screenshot-demo -screenshot-scene <scene>`）をそのまま使える
+- 画面の選び方（ユーザーの決定）: 実装する Claude が、見た目を変えたら、その画面・状態をデモのデータで開ける画面を一覧に足す（実装の決まり `TaskRules.screenshotRule`）。
+  判断の仕分けの Claude が、見える仮決めごとに、作業ブランチの先頭の一覧から変化が写る画面を 1 つ選ぶ（合う画面が無ければ選ばない。カードに「この仮決めが出る画面は、撮れる画面の一覧に無い」と出す）
+- 撮り方（`captureScreenshots`。epic の Mac）: 作業ブランチの先頭（epic の作業場所。DerivedData が温まっている）と、base との分岐点（ジョブのフォルダに取り出す。DerivedData は別）を、それぞれ枠の Simulator 向けにビルドして入れ直し、
+  画面ごとにアプリを起動し直して、続けて撮った 2 枚が同じになってから撮る（30 秒たっても動いていれば、最後に撮ったもの）。上端は 9:41・電池は満タン・外観はライトに固定し、差が画面の変化だけになるようにする。画像は長い辺を 1400 px に縮める
+- Before は、base の一覧に同じ画面があるときだけ撮る（無ければ「Before なし（この画面は epic で足した）」）。同じコミット・画面の画像が状態リポジトリにあれば撮り直さない（直しの後は After だけを撮る）
+- 置き場所（ユーザーの決定）: 状態リポジトリの epic の `screenshots/`（AskHub のクライアントで見る）と、GitHub の添付（gh の `--attach` と同じ `user-attachments` の API。最終 PR の本文のカードに Before / After の表で載せる）。
+  public のリポジトリに上げた画像は誰でも見られ、消せないので、一覧にはデモのデータの画面だけを書く
+- 撮れなかったとき（ビルドが通らない・一覧に無い・GitHub に上げられない）は、最終 PR を止めず、わけを `note` に書いてカードに出す
+- macOS の画面は、まだ撮らない（撮る Simulator は iOS・visionOS だけ。macOS のアプリの撮影は、常時オンの Mac での画面収録の許可を確かめてから）
 
 ### 出す前に
 
