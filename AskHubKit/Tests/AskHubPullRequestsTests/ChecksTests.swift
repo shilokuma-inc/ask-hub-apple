@@ -78,6 +78,30 @@ struct ChecksTests {
         #expect(requests[3].url?.absoluteString == nextStatus)
     }
 
+    @Test func readsCheckRunsWithTitleFollowingPages() async throws {
+        let next = "https://api.github.com/repositories/1/commits/\(Fixture.sha)/check-runs?page=2"
+        let limited: [String: Any] = [
+            "id": 1, "name": "CodeRabbit", "status": "completed", "conclusion": "neutral",
+            "app": ["slug": "coderabbitai"], "output": ["title": "Review rate limited"]
+        ]
+        let building: [String: Any] = [
+            "id": 2, "name": "build", "status": "in_progress", "conclusion": NSNull(), "app": NSNull(), "output": ["title": NSNull()]
+        ]
+        let first = Fixture.json(["total_count": 2, "check_runs": [limited]])
+        let second = Fixture.json(["total_count": 2, "check_runs": [building]])
+        let transport = StubTransport([.json(200, first, headers: Fixture.link(next: next)), .json(200, second)])
+        let runs = try await Fixture.client(transport).checkRuns(at: Fixture.sha)
+        #expect(runs == [
+            CheckRunStatus(
+                name: "CodeRabbit", app: "coderabbitai", status: "completed", conclusion: "neutral", title: "Review rate limited"
+            ),
+            CheckRunStatus(name: "build", app: nil, status: "in_progress")
+        ])
+        #expect(Fixture.path(transport.requests[0]) == "/repos/shilokuma-inc/ask-hub-apple/commits/\(Fixture.sha)/check-runs")
+        #expect(Fixture.query(transport.requests[0]) == ["filter": "latest", "per_page": "100"])
+        #expect(transport.requests[1].url?.absoluteString == next)
+    }
+
     @Test func readsCommitStatusesWithDescriptionFollowingPages() async throws {
         let next = "https://api.github.com/repositories/1/commits/\(Fixture.sha)/status?page=2"
         let limited = ["context": "CodeRabbit", "state": "success", "description": "Review rate limited", "target_url": "https://coderabbit.ai"]
@@ -200,7 +224,8 @@ struct ChecksTests {
             startedAt: nil,
             detailsUrl: "https://github.com/o/r/actions/runs/42",
             htmlUrl: nil,
-            app: CheckRunPayload.App(slug: "github-actions")
+            app: CheckRunPayload.App(slug: "github-actions"),
+            output: nil
         )
         #expect(payload.actionsIDs().map { [$0.run, $0.job] } == [42, 99])
     }

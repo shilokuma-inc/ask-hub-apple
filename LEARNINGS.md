@@ -133,6 +133,8 @@
   期限だけを読むなら `GET /rate_limit` が REST の上限に数えられない（2026-11-08、`GitHubTokenExpiry`）
 - 司令塔は状態を書き換えてから受け付けた記録（`consumed/`）を書くが、クライアントが状態リポジトリを並べて読む 1 回の読み込みでは、記録は新しく状態は古い組み合わせを読むことがある
   （状態のファイルを先に読み終え、その後に記録を読んだとき）。受け付けを見つけた読み込みだけで「反映された」とせず、その後に始めた読み込みが終わるまで反映中にする（`ReflectionTracker`。2026-11-09、反映中の UI）
+- CodeRabbit は、PR の head のコミットに付ける印を、commit status `CodeRabbit` から check run `CodeRabbit`（アプリの slug は `coderabbitai`）に切り替えた（2026-10-25 までは commit status、2026-11-01 以降は check run）。
+  完了は `completed`・`success`（見出し "Finished"）、上限は `completed`・`neutral`（"Review rate limited"）、見送りは `completed`・`skipped`（"Review skipped…"）。commit status だけを読むと、終わっていても「始まっていない」に見える
 
 ## ビルド・テスト
 

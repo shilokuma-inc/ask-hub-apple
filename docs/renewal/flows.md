@@ -272,7 +272,7 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 - 承認は、その時点の head に結びつく。直しで head が変わったら、承認は無効になり、承認し直してもらう
 - `reviewFinalPullRequest` は、待つ間・レビューの間に head が進んだら、古い head の判定を書かない（`verdict` を書かずに、今の head だけを `outputs.commit` に書いて成功で終える）。`ready` のときは `mergeRisks` を必ず書く（無ければ空）。最終 PR が base とコンフリクトしていれば（GitHub が判定を出していれば、チェックを待つ前・待った後・レビューの前に確かめる）、判定 `fixConflict` で終え、司令塔が `fixFinalPullRequest`（理由 `conflict`）を作る。コンフリクトしていると GitHub は PR のチェックを流さないので、チェックが始まらずに待ちきったときもコンフリクトを確かめ直す
 - `fixFinalPullRequest` の理由 `conflict` では、ワーカーが base を作業ブランチに取り込み（コミットはしない）、コンフリクトしたファイルだけを Claude に解消させ、印（`<<<<<<<`・`>>>>>>>`）が残っていないことを確かめてから、マージのコミットとして push する。素直に取り込めたら Claude を使わずに push し、base がもう入っていれば何もせずに今の head でレビューし直す。自動の直しとして 3 回の上限に数える
-- `reviewFinalPullRequest` が待つ信用するレビューの書き手は、待つ目印（commit status `CodeRabbit`）のある CodeRabbit だけ。始まらない（15 分）・終わらない（60 分）ときも、待ちきったら今ある指摘で進める。指摘は、信用する書き手のものだけに絞り直してから、データとして囲んで渡す
+- `reviewFinalPullRequest` が待つ信用するレビューの書き手は、待つ目印（check run `CodeRabbit`。check run が無いときは、以前の CodeRabbit の commit status `CodeRabbit`）のある CodeRabbit だけ。始まらない（15 分）・終わらない（60 分）ときも、待ちきったら今ある指摘で進める。指摘は、信用する書き手のものだけに絞り直してから、データとして囲んで渡す
 - `fixFinalPullRequest` は、実装の会話を再開せず、新しい会話で直させる（最終 PR はタスクをまたぎ、常時オンの Mac で直すこともあるため）。CI の失敗を直すときは、全部のテスト（`testFull`）が通るまで done にさせない。コミットにジョブの id を書き、push の後に落ちたやり直しでは直し直さない
 - `mergeFinalPullRequest` は、司令塔の取り違えで人の確認を飛ばさないよう、ワーカーでもマージの規則に当てる。人の確認が要る最終 PR は、同じ head への人の承認（`approveMerge`）を元にしたジョブでだけマージする。マージしたら作業ブランチを消す（マージの後に push されていれば残す）。子 PR のマージの後に push されて残った子ブランチは消さない（取り消せない削除をしない。まれにしか残らないので、要らなければ人が GitHub で消す。ユーザーの決定）
 - `cleanUp` は、その Mac の epic の作業場所・手元の epic のブランチ・DerivedData を消す。Simulator の枠は epic をまたいで使い回すので、消さずに中身を消去する（ビルドに使っている枠は、空くのを待って 1 つずつ借りる）。ほかの epic のものと、リモートのブランチには触れない

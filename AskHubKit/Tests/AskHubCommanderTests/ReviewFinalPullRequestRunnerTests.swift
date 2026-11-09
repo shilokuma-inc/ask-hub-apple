@@ -153,6 +153,43 @@ struct ReviewFinalPullRequestRunnerTests {
         #expect(fixture.tasks.sleeper.waits == [.seconds(60), .seconds(60)])
     }
 
+    @Test func waitsForCodeRabbitCheckRunUntilReviewCompletes() async throws {
+        let running = [CheckRunStatus(name: "CodeRabbit", app: "coderabbitai", status: "in_progress")]
+        let finished = [
+            CheckRunStatus(name: "CodeRabbit", app: "coderabbitai", status: "completed", conclusion: "success", title: "Finished")
+        ]
+        let fixture = try await fixture(statuses: [[]])
+        fixture.pulls.update { $0.runs = [running, finished] }
+        let result = try await review(fixture)
+        #expect(result.outputs?.verdict == .ready)
+        #expect(fixture.pulls.current.runReads == 2)
+        // check run があれば、以前の CodeRabbit の commit status は読まない
+        #expect(fixture.pulls.current.statusReads == 0)
+        #expect(fixture.tasks.sleeper.waits == [.seconds(60)])
+    }
+
+    @Test func readsCodeRabbitReviewFromCheckRun() {
+        func review(
+            _ status: String, _ conclusion: String? = nil, _ title: String? = nil, app: String? = "coderabbitai"
+        ) -> CodeRabbitReview {
+            let run = CheckRunStatus(name: "CodeRabbit", app: app, status: status, conclusion: conclusion, title: title)
+            return CodeRabbitReview(runs: [run], statuses: Self.completed)
+        }
+        #expect(review("queued") == .inProgress)
+        #expect(review("in_progress") == .inProgress)
+        #expect(review("completed", "success", "Finished") == .completed)
+        #expect(review("completed", "neutral", "Review rate limited") == .rateLimited)
+        #expect(review("completed", "neutral", "Review limit reached") == .rateLimited)
+        #expect(review("completed", "skipped", "Review skipped: reviews are disabled for this base branch") == .skipped)
+        #expect(review("completed", "skipped") == .skipped)
+        #expect(review("completed", "failure", "Failed") == .failed)
+        #expect(review("completed", "neutral", "Paused") == .unknown)
+        // CodeRabbit のアプリでない同名の check run は見ず、commit status で決める
+        #expect(review("in_progress", app: "github-actions") == .completed)
+        #expect(review("in_progress", app: nil) == .completed)
+        #expect(CodeRabbitReview(runs: [], statuses: []) == .notStarted)
+    }
+
     @Test func stopsWaitingForCodeRabbitAfterLimit() {
         let timing = FinalReviewTiming()
         #expect(ReviewFinalPullRequestRunner.reviewerWait(.notStarted, waited: 14 * 60, timing: timing) == .seconds(60))
