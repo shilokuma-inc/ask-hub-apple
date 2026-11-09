@@ -29,6 +29,21 @@ public struct CommanderContext: Sendable {
     }
 
     public var timestamp: Timestamp { Timestamp(now()) }
+
+    /// 読むだけの写し（`StateStore.snapshot()`）から読む context。1 周で多くのファイルを読む処理（ジョブの見回り・Discussion の写し）が使う。
+    /// 写しには書けないので、書き直すときは元の context で読み直してから書く
+    func snapshot() async throws(CommanderError) -> CommanderContext {
+        let snapshot: any StateStore
+        do {
+            snapshot = try await store.snapshot()
+        } catch {
+            throw .store(error)
+        }
+        var reader = self
+        reader.store = snapshot
+        reader.files = StateFileStore(store: snapshot, sleeper: files.sleeper)
+        return reader
+    }
 }
 
 /// 司令塔の処理の失敗。状態リポジトリに書けなかったなど、あとでやり直せば済むもの
