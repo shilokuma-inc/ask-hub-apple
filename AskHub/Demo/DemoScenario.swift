@@ -29,6 +29,15 @@ enum DemoScenario: String, CaseIterable {
     /// 司令塔の受け取りを待ったまま、受け取りが遅いと知らせるまでの秒数を決める UserDefaults のキー（起動引数 `-demoStallAfter 5` で渡す）
     static let stallThresholdKey = "demoStallAfter"
 
+    /// 起動引数で渡した秒数を読む。起動引数の値は文字列で入る（`object(forKey:) as? Double` では読めない）ので、文字列から読む。
+    /// 数でない・有限でない（`nan`・`inf`）値は、渡していないものとする
+    static func seconds(forKey key: String, in defaults: UserDefaults) -> TimeInterval? {
+        guard let seconds = defaults.string(forKey: key).flatMap(Double.init), seconds.isFinite else {
+            return nil
+        }
+        return seconds
+    }
+
     func snapshot(now: Date) -> ClientSnapshot {
         let data = DemoData(now: now)
         switch self {

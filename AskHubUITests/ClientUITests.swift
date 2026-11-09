@@ -315,12 +315,14 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["習慣ログ"].waitForExistence(timeout: 5))
     }
 
-    /// 依頼は、送っている間は送るボタンを押せず、送れたら送った依頼の epic へ移って帯で知らせる。
+    /// 依頼は、送っている間は送るボタンを押せず、送れたら送った依頼（司令塔が受け取る前の epic）へ移って帯で知らせる。
     /// 同じ依頼を続けて送ろうとすると、送る前に確かめる
     @MainActor
     func testRequestShowsProgressAndConfirmsDuplicate() {
-        // CI の Simulator は 1 回の確かめに 1 秒以上かかるので、送っている間を長めにとる
-        let app = launch(["-demoScenario", "standard", "-demoSendDelay", "8"])
+        // CI の Simulator は 1 回の確かめに 1 秒以上かかるので、送っている間を長めにとる。
+        // 司令塔の受け取りをすぐ起こすと、送れたことの帯が送った直後の読み直しで受け付けた知らせに替わるので、
+        // テストの間は受け取りを遅らせる（受け取りが遅いと知らせる 3 分より短くする）
+        let app = launch(["-demoScenario", "standard", "-demoSendDelay", "8", "-demoReceiptDelay", "120"])
         fillRequest(in: app)
         app.buttons["送る"].firstMatch.tap()
         // シートの一番上の行か、送るボタンの代わりの進み具合のどちらか
@@ -328,9 +330,7 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(sending.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["送る"].exists)
 
-        // 司令塔の受け取りもすぐ起こすので、送れたことの帯は、送った直後の読み直しで受け付けた知らせに替わる
-        // （送れたことの帯は ClientStoreTests で確かめる）
-        XCTAssertTrue(app.staticTexts["依頼「メモ並べ替え」を受け付けました"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["依頼「メモ並べ替え」を送りました"].waitForExistence(timeout: 20))
         XCTAssertTrue(app.staticTexts["メモ並べ替え"].firstMatch.exists)
 
         app.tabBars.buttons["あなたの番"].tap()
