@@ -1,9 +1,9 @@
 # AskHub
 
-ループ開発（ralph-loop）で人間の判断が必要なものだけを集めて回答する macOS / iOS アプリです。
-Discussion の質問や PR の ask を 1 つの一覧にまとめ、アプリで回答すると GitHub に返信され、止まっていたループが再開します。
+Claude Code による開発で、人間の判断が必要なものだけを集めて回答する macOS / iOS アプリです。
+アプリでの依頼・回答は署名した意図として状態リポジトリに書かれ、常時オンの Mac の司令塔と各 Mac のワーカーが、実装から最終 PR までを進めます。
 
-構想と決定事項は [Discussion #1](https://github.com/shilokuma-inc/ask-hub-apple/discussions/1) を参照してください。
+設計と運用は [docs/renewal/](docs/renewal/README.md) を参照してください。
 
 ## Environment
 
@@ -115,7 +115,7 @@ SKU は Bundle ID と同じ値にします。SKU はユーザーには見えな�
   コンフリクトしたとき・`.github/workflows/` が変わる取り込みで push を断られたときは、PR（作れなければ Issue）を残して止まるので、人がマージコミットでマージします。詳しくは [docs/release.md](docs/release.md) の「リリース後作業」を参照してください
 - `release/**` は Release/Prepare（`.github/workflows/release-prepare.yml`。AskHub の「リリース準備」）が `develop` から作ります。このときの push は `GITHUB_TOKEN` で行うため Build・Upload は push では動かず、Release/Prepare が Upload・スクリーンショット・メタデータを `workflow_dispatch` で起動します。詳しくは [docs/release.md](docs/release.md) の「リリース準備」を参照してください
 - Release/Sync（`.github/workflows/release-sync.yml`）は 30 分ごとに、タグの無い release ブランチのビルドを App Store Connect のバージョンに紐付け、配信を検知したら Release/Finish を起動します。release ブランチが無ければ何もしません。public リポジトリの定期実行は 60 日リポジトリに動きが無いと止まるので、止まったら Actions で有効にし直します。詳しくは [docs/release.md](docs/release.md) の「定期実行（Release/Sync）」を参照してください
-- Upload は Actions タブから手動でも実行できます（Run workflow）。epic → `develop` の最終 PR をマージする前に TestFlight で実機確認したいときは、Actions → Upload → Run workflow で epic ブランチ（最終 PR の head）を選んで実行します。AskHub アプリのマージ待ちの「TestFlight に上げる」も同じ手動実行（`workflow_dispatch`）を呼びます。ビルド番号は App Store Connect の最新から自動で増えるため、同じバージョンのままビルド番号だけが増えて TestFlight に並びます。App Store Connect には 24 時間あたりのアップロード上限があるため、作業ブランチの push では自動では上げません
+- Upload は Actions タブから手動でも実行できます（Run workflow）。最終 PR をマージする前に TestFlight で実機確認したいときは、Actions → Upload → Run workflow で作業ブランチ（最終 PR の head）を選んで実行します。ビルド番号は App Store Connect の最新から自動で増えるため、同じバージョンのままビルド番号だけが増えて TestFlight に並びます。App Store Connect には 24 時間あたりのアップロード上限があるため、作業ブランチの push では自動では上げません
 - リポジトリ変数（Settings → Secrets and variables → Actions → Variables）に `ENABLE_DELIVERY=false` を設定すると Upload をスキップします（Archive は App Store Connect にアプリが無くても通るため止めません）。何もしなければ従来どおり実行されます
 - `ENABLE_MACOS_DELIVERY=false` を設定すると、Upload と Archive の macOS のジョブと、メタデータ・スクリーンショットの macOS のバージョンへの反映をスキップします。何もしなければ macOS のプラットフォームの有無を見て自動で決めます
 - ドキュメントだけの変更（`**/*.md`、`docs/**`）では Build を実行しません。Upload（`develop` / `release/**` への push・手動実行）と Archive（`main` への push）は、ドキュメントだけの変更でも実行します
@@ -167,7 +167,8 @@ body=$(gh pr view <番号> --json body -q .body) &&
 ├── AppStore/                # App Store のメタデータ（掲載文・言語・アプリの設定）。docs/release.md
 ├── Tools/                   # App Store Connect への反映のスクリプト（Python）
 ├── docs/                    # ExportOptions.plist のサンプル・審査の準備・リリース
-├── scripts/                 # ralph-loop の setup / start / stop
+├── AskHubKit/               # アプリと司令塔・ワーカー・非常口（askhub）で共有する Swift Package
+├── scripts/commander/       # 常時オンの Mac の司令塔を遠隔で更新するスクリプト
 ├── .swiftlint.yml           # SwiftLint 設定
 └── .github/
     ├── ISSUE_TEMPLATE/      # Issue テンプレート

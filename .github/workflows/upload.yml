@@ -1,8 +1,7 @@
 name: Upload
 
 # develop / release/** への push で Archive → Export → App Store Connect へアップロードする（iOS と macOS）。
-# epic ブランチ（最終 PR の head）を TestFlight で確認したいときは、手動実行（workflow_dispatch）でそのブランチを選ぶ
-# （AskHub アプリの「TestFlight に上げる」も同じ workflow_dispatch を呼ぶ）。
+# 作業ブランチ（最終 PR の head）を TestFlight で確認したいときは、手動実行（workflow_dispatch）でそのブランチを選ぶ。
 # push ごとに上げると App Store Connect の 24 時間あたりのアップロード上限に当たるため、作業ブランチでは自動では上げない。
 # 入力（inputs）は置かない。ブランチの選択だけで足りる
 on:
