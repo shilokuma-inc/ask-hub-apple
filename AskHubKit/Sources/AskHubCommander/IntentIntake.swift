@@ -54,8 +54,13 @@ public struct IntentIntake: Sendable {
     /// まだ処理していない（処理した記録の無い）意図を、`nonce`（時刻の順）に並べる。
     /// 意図と記録は増え続けるので、1 つのディレクトリの一覧の上限（1,000 件）を受けない読み方で、両方を 1 度ずつ並べて比べる
     public func pending() async throws(CommanderError) -> [PendingIntent] {
-        let consumed = Set(try await files(under: StatePath.consumedDirectory).compactMap(Self.intent(at:)))
-        let found = try await files(under: StatePath.intents).compactMap(Self.intent(at:)).filter { !consumed.contains($0) }
+        try await Self.pending(in: context)
+    }
+
+    /// 署名を確かめる鍵を使わずに、まだ処理していない意図を並べる（休む間に、新しい意図が届いたかを見るのに使う）
+    public static func pending(in context: CommanderContext) async throws(CommanderError) -> [PendingIntent] {
+        let consumed = Set(try await files(under: StatePath.consumedDirectory, in: context).compactMap(Self.intent(at:)))
+        let found = try await files(under: StatePath.intents, in: context).compactMap(Self.intent(at:)).filter { !consumed.contains($0) }
         return found.sorted { $0.nonce < $1.nonce }
     }
 
@@ -131,7 +136,7 @@ public struct IntentIntake: Sendable {
         value["envelope"]?["kind"]?.stringValue ?? "unknown"
     }
 
-    private func files(under directory: String) async throws(CommanderError) -> [String] {
+    private static func files(under directory: String, in context: CommanderContext) async throws(CommanderError) -> [String] {
         do {
             return try await context.store.listFiles(under: directory)?.map(\.path) ?? []
         } catch {
