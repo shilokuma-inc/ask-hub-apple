@@ -42,7 +42,9 @@ fi
 
 codesign --force --sign "$identity" --identifier "$IDENTIFIER" --timestamp "$INCOMING"
 codesign --verify --strict "$INCOMING"
-if ! codesign -dv "$INCOMING" 2>&1 | grep -q "TeamIdentifier=$TEAM"; then
+# grep -q は見つけた時点で読むのをやめ、codesign が書き込みの途中で止まって失敗するので、pipefail で全体が失敗になる。先に受けてから調べる
+signature=$(codesign -dv "$INCOMING" 2>&1)
+if [[ "$signature" != *"TeamIdentifier=${TEAM}"* ]]; then
     echo "status=failed（署名のチームが $TEAM でない）"
     exit 1
 fi
