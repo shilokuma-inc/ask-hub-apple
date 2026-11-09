@@ -40,9 +40,10 @@ public struct CaptureScreenshotsRunner: JobRunning {
             throw .fail(.unexpected, "撮影の input に最終 PR と head が無い")
         }
         var outputs = AttemptFile.Outputs(pullRequest: input.pullRequest, commit: input.head)
-        let items = try await environment.tasks.read(DecisionsFile.self, at: StatePath.decisions(job.repo, job.epic))?.items ?? []
-        let targets = items.filter { $0.visible == true && $0.scene != nil }
-        guard let settings = target.settings.screenshots, let destination = settings.simulator, !targets.isEmpty else {
+        let file = try await environment.tasks.read(DecisionsFile.self, at: StatePath.decisions(job.repo, job.epic)) ?? DecisionsFile()
+        let targets = file.items.filter { $0.visible == true && $0.scene != nil }
+        let screens = file.screens ?? []
+        guard let settings = target.settings.screenshots, let destination = settings.simulator, !targets.isEmpty || !screens.isEmpty else {
             return JobResult(outputs: outputs)
         }
         let environment = environment
@@ -58,7 +59,7 @@ public struct CaptureScreenshotsRunner: JobRunning {
         let base = try await environment.tasks.workspace { () throws(WorkspaceError) in
             try await environment.git.mergeBase(job.repo, branches: target.branches, head: checkout.head)
         }
-        let scenes = Set(targets.compactMap(\.scene))
+        let scenes = Set(targets.compactMap(\.scene) + screens.map(\.scene))
         let camera = Camera(job: job, environment: environment, settings: settings, build: target.settings.build, destination: destination)
         // After: 作業ブランチの先頭（epic の作業場所。DerivedData が温まっている）
         let after = try await camera.shoot(scenes, commit: checkout.head, base: false) { () throws(TaskJobExit) in checkout.directory }
@@ -69,25 +70,57 @@ public struct CaptureScreenshotsRunner: JobRunning {
             }
         }
         var screenshots = Self.screenshots(of: targets, before: before, after: after, head: checkout.head)
-        try await Uploader(pulls: pulls, store: environment.context.store, previous: items).upload(&screenshots)
-        // 最終 PR の本文のカードを、撮ったもので書き直す（書けなくても、スクショは AskHub で見られるので止めない）
-        let decisions = DecisionsFile(items: items).capturing(screenshots)
+        var changes = screens.map { screen in
+            DecisionsFile.ScreenChange(
+                scene: screen.scene,
+                title: after.titles[screen.scene] ?? screen.title,
+                screenshots: Self.shots(of: screen.scene, before: before, after: after, head: checkout.head)
+            )
+        }
+        var uploader = Uploader(pulls: pulls, store: environment.context.store, previous: file)
+        try await uploader.upload(&screenshots, &changes)
+        let captured = file.capturing(screenshots, screens: changes)
+        if !(await Self.rewriteBody(of: input.pullRequest, with: captured, target: target, pulls: pulls)) {
+            let note = "最終 PR の本文を書き直せなかった"
+            for id in screenshots.keys { screenshots[id]?.append(note: note) }
+            for index in changes.indices { changes[index].screenshots?.append(note: note) }
+        }
+        outputs.screenshots = screenshots.isEmpty ? nil : screenshots
+        outputs.screenChanges = changes.isEmpty ? nil : changes
+        return JobResult(outputs: outputs)
+    }
+
+    /// 最終 PR の本文のカードと画面の変化を、撮ったもので書き直す。書けたかを返す（書けなくても、スクショは AskHub で見られるので止めない）
+    static func rewriteBody(
+        of pullRequest: Int,
+        with decisions: DecisionsFile,
+        target: FinalTarget,
+        pulls: any PullRequestOperations
+    ) async -> Bool {
         let body = FinalPullRequestBody.text(
             epic: target.epic, goal: target.goal, decisions: decisions, branches: target.branches, capturesScreenshots: true
         )
         do {
-            try await pulls.updateBody(number: input.pullRequest, body: body)
+            try await pulls.updateBody(number: pullRequest, body: body)
+            return true
         } catch {
-            for id in screenshots.keys { screenshots[id]?.append(note: "最終 PR の本文を書き直せなかった") }
+            return false
         }
-        outputs.screenshots = screenshots
-        return JobResult(outputs: outputs)
     }
 
-    /// 1 つの版で撮ったもの（画面の id → 状態リポジトリのパス、撮れなかった画面 → わけ）
+    /// 1 つの版で撮ったもの（画面の id → 状態リポジトリのパス、撮れなかった画面 → わけ、撮った一覧の画面の説明）
     struct Shots: Equatable {
         var paths: [String: String] = [:]
         var failures: [String: String] = [:]
+        var titles: [String: String] = [:]
+    }
+
+    /// 1 つの画面の Before / After と、撮れなかったわけ
+    static func shots(of scene: String, before: Shots, after: Shots, head: String) -> DecisionsFile.Screenshots {
+        var shots = DecisionsFile.Screenshots(before: before.paths[scene], after: after.paths[scene], head: head)
+        if let failure = after.failures[scene] { shots.append(note: failure) }
+        if let failure = before.failures[scene] { shots.append(note: failure) }
+        return shots
     }
 
     /// 仮決めごとの Before / After と、撮れなかったわけ
@@ -100,10 +133,7 @@ public struct CaptureScreenshotsRunner: JobRunning {
         var screenshots: [String: DecisionsFile.Screenshots] = [:]
         for item in items {
             guard let scene = item.scene else { continue }
-            var shots = DecisionsFile.Screenshots(before: before.paths[scene], after: after.paths[scene], head: head)
-            if let failure = after.failures[scene] { shots.append(note: failure) }
-            if let failure = before.failures[scene] { shots.append(note: failure) }
-            screenshots[item.id] = shots
+            screenshots[item.id] = shots(of: scene, before: before, after: after, head: head)
         }
         return screenshots
     }
@@ -140,6 +170,7 @@ extension CaptureScreenshotsRunner {
                 for scene in missing { shots.failures[scene] = "\(label) なし（\(reason)）" }
                 return shots
             }
+            for scene in list.scenes where scenes.contains(scene.id) { shots.titles[scene.id] = scene.title }
             for scene in missing where list.scene(scene) == nil {
                 shots.failures[scene] = base ? "Before なし（この画面は epic で足した）" : "After なし（撮れる画面の一覧に無い）"
             }
@@ -224,32 +255,50 @@ extension CaptureScreenshotsRunner {
     struct Uploader {
         var pulls: any PullRequestOperations
         var store: any StateStore
-        /// 前の `decisions.json` の項目（上げた URL を使い回す）
-        var previous: [DecisionsFile.Item]
+        /// 上げた画像（状態リポジトリのパス → URL）。前の `decisions.json` に書いた URL から始める
+        var urls: [String: String] = [:]
+        /// 上げられなかったわけ。あれば残りは上げない
+        var problem: String?
 
-        func upload(_ screenshots: inout [String: DecisionsFile.Screenshots]) async throws(TaskJobExit) {
-            var urls: [String: String] = [:]
-            for shots in previous.compactMap(\.screenshots) {
+        init(pulls: any PullRequestOperations, store: any StateStore, previous: DecisionsFile) {
+            self.pulls = pulls
+            self.store = store
+            for shots in previous.items.compactMap(\.screenshots) + (previous.screens ?? []).compactMap(\.screenshots) {
                 if let path = shots.before, let url = shots.beforeURL { urls[path] = url }
                 if let path = shots.after, let url = shots.afterURL { urls[path] = url }
             }
-            var problem: String?
+        }
+
+        /// 仮決めごとと画面の変化の画像を上げる（仮決めの id の順、画面の変化の順）
+        mutating func upload(
+            _ screenshots: inout [String: DecisionsFile.Screenshots],
+            _ changes: inout [DecisionsFile.ScreenChange]
+        ) async throws(TaskJobExit) {
             for id in screenshots.keys.sorted() {
                 guard var shots = screenshots[id] else { continue }
-                for side in [\DecisionsFile.Screenshots.before, \.after] {
-                    guard let path = shots[keyPath: side], urls[path] == nil, problem == nil else { continue }
-                    do {
-                        urls[path] = try await upload(path)
-                    } catch {
-                        problem = "GitHub に上げられなかった（\(error.summary)）。AskHub のクライアントで見られる"
-                    }
-                }
-                shots.beforeURL = shots.before.flatMap { urls[$0] }
-                shots.afterURL = shots.after.flatMap { urls[$0] }
-                if let problem, [shots.before, shots.after].contains(where: { $0 != nil && urls[$0!] == nil }) {
-                    shots.append(note: problem)
-                }
+                await upload(&shots)
                 screenshots[id] = shots
+            }
+            for index in changes.indices {
+                guard var shots = changes[index].screenshots else { continue }
+                await upload(&shots)
+                changes[index].screenshots = shots
+            }
+        }
+
+        private mutating func upload(_ shots: inout DecisionsFile.Screenshots) async {
+            for side in [\DecisionsFile.Screenshots.before, \.after] {
+                guard let path = shots[keyPath: side], urls[path] == nil, problem == nil else { continue }
+                do {
+                    urls[path] = try await upload(path)
+                } catch {
+                    problem = "GitHub に上げられなかった（\(error.summary)）。AskHub のクライアントで見られる"
+                }
+            }
+            shots.beforeURL = shots.before.flatMap { urls[$0] }
+            shots.afterURL = shots.after.flatMap { urls[$0] }
+            if let problem, [shots.before, shots.after].contains(where: { path in path.map { urls[$0] == nil } ?? false }) {
+                shots.append(note: problem)
             }
         }
 
