@@ -12,7 +12,9 @@ extension StateClientServiceTests {
         let before = "\(shots)/\(String(repeating: "b", count: 40))-ranking.png"
         let after = "\(shots)/\(Self.finalHead)-ranking.png"
         let decisions = """
-        {"v":1,"items":[
+        {"v":1,"screens":[{"scene":"ranking","title":"ランキングの一覧","screenshots":{"after":"\(after)","note":"Before なし（この画面は epic で足した）"}},
+                          {"scene":"ranking-empty"}],
+         "items":[
           {"id":"d1","task":"t2","pullRequest":41,"visible":true,"what":"見出しを短くした","why":"iPhone の幅に収める","alternatives":[],
            "scene":"ranking","screenshots":{"before":"\(before)","after":"\(after)","head":"\(Self.finalHead)","note":null}},
           {"id":"d2","task":"t2","pullRequest":41,"visible":true,"what":"空のときの案内","why":"初回に迷わない","alternatives":[],
@@ -42,6 +44,12 @@ extension StateClientServiceTests {
             "スクショを撮っています",
             "スクショ無し（この仮決めが出る画面は、撮れる画面の一覧に無い）"
         ])
+        // 画面の変化（仮決めに結びつかない画面）も、撮ったものと撮る前を出し分ける
+        let changes = try #require(snapshot.epic(Self.epicID)?.finalReview?.screenChanges)
+        #expect(changes.map(\.id) == ["ranking", "ranking-empty"])
+        #expect(changes.map(\.title) == ["ランキングの一覧", "ranking-empty"])
+        #expect(changes.map(\.after) == [.stored(after), nil])
+        #expect(changes.map(\.note) == ["Before なし（この画面は epic で足した）", "スクショを撮っています"])
         // 画像は状態リポジトリから読む（epic の screenshots/ の下の PNG だけ）
         #expect(try await fixture.service.screenshot(at: after) == Data("After の画像".utf8))
         await #expect(throws: ClientServiceError.self) { try await fixture.service.screenshot(at: before) }

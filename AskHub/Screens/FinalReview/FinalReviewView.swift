@@ -106,6 +106,9 @@ struct FinalReviewView: View {
                 }
             }
             decisionsSection(epic, review)
+            if !review.screenChanges.isEmpty {
+                ScreenChangesSection(changes: review.screenChanges)
+            }
             if !review.internalDecisions.isEmpty {
                 CardSection {
                     DisclosureGroup("内部の細部の仮決め · \(review.internalDecisions.count)") {
@@ -397,5 +400,35 @@ private struct MergeBar: View {
             return "最終 PR の head が分かりません。取り直してください"
         }
         return "CI とレビューを通ったらマージできます"
+    }
+}
+
+/// 画面の変化（仮決めに結びつかない、epic 全体で見た目が変わった画面）の Before / After。押すと大きく開く
+struct ScreenChangesSection: View {
+    let changes: [ScreenChangeCard]
+
+    var body: some View {
+        CardSection {
+            ForEach(changes) { change in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(change.title)
+                        .appFont(.subheadline, weight: .semibold)
+                    if change.before != nil || change.after != nil {
+                        BeforeAfterView(before: change.before, after: change.after, zoomable: true)
+                            .frame(maxHeight: 420)
+                    }
+                    if let note = change.note {
+                        Label(note, systemImage: "info.circle")
+                            .appFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        } header: {
+            Text("画面の変化")
+        } footer: {
+            Text("依頼どおりに画面が変わったかを、base との分岐点（Before）と作業ブランチ（After）で比べられます")
+        }
     }
 }

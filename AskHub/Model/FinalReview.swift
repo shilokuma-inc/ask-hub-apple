@@ -16,6 +16,8 @@ struct FinalReview: Hashable {
     /// 内部の細部の仮決め（畳んで並べるだけ）
     var internalDecisions: [String]
     var verifications: [VerificationItem]
+    /// 画面の変化（仮決めに結びつかない、epic 全体で見た目が変わった画面）
+    var screenChanges: [ScreenChangeCard] = []
     var state: State
     /// マージの承認を司令塔が受け付けるか（`FinalMergeRule.canApprove`。見える仮決めのすべてに答えがある）
     var acceptsApproval = true
@@ -127,6 +129,18 @@ struct DecisionCard: Identifiable, Hashable {
             return false
         }
     }
+}
+
+/// 画面の変化の 1 画面（Before / After）
+struct ScreenChangeCard: Identifiable, Hashable {
+    /// 撮れる画面の一覧の id
+    let id: String
+    /// 何の画面か
+    var title: String
+    var before: Screenshot?
+    var after: Screenshot?
+    /// 撮れなかったわけ・Before が無いわけ・撮る前
+    var note: String?
 }
 
 /// 判断のカードのスクショ（撮影にはデモモードのデータを使う）
