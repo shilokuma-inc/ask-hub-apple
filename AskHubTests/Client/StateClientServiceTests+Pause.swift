@@ -80,6 +80,7 @@ extension StateClientServiceTests {
         #expect(waiting.isPaused)
         #expect(waiting.history.last?.text == "一時停止しました。司令塔が受け取るのを待っています")
         #expect(waitingSnapshot.sentIntents.first?.title == "一時停止 · ランキング")
+        #expect(waitingSnapshot.sentIntents.first?.target == HumanIntent.pause(epicID: Self.epicID).targets.first)
         #expect(!service.supports(.pause(epicID: Self.epicID)))
         #expect(service.supports(.resume(epicID: Self.epicID)))
         #expect(service.supports(.handOver(epicID: Self.epicID, macID: "")))
@@ -155,6 +156,7 @@ extension StateClientServiceTests {
         #expect(epic.macID == "macbook-b")
         #expect(epic.history.last?.text == "macbook-b に引き継ぎました。司令塔が受け取るのを待っています")
         #expect(snapshot.sentIntents.first?.title == "引き継ぎ（macbook-b） · ランキング")
+        #expect(snapshot.sentIntents.first?.target == .epicControl(epicID: Self.epicID))
     }
 
     /// 開始する前の epic は、一時停止も引き継ぎもできない
