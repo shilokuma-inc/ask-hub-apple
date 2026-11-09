@@ -98,13 +98,14 @@ struct AskHub: App {
             return ClientStore(service: StateConnection.makeService())
         }
         let defaults = UserDefaults.standard
+        // 起動引数の値は文字列で入る（`object(forKey:) as? Double` では読めない）ので、文字列から読む
+        let reactionDelay = defaults.string(forKey: DemoScenario.reactionDelayKey).flatMap(Double.init)
         // 撮影モードでは機械の反応を起こさず、撮っている間に画面が変わらないようにする
-        let delay = ScreenshotDemo.isEnabled ? 3_600 : defaults.object(forKey: DemoScenario.reactionDelayKey) as? Double ?? 4
+        let delay = ScreenshotDemo.isEnabled ? 3_600 : reactionDelay ?? 4
         let service = DemoClientService(
             scenario: scenario,
             reactionDelay: delay,
             sendDelay: .seconds(defaults.double(forKey: DemoScenario.sendDelayKey)),
-            // 起動引数の値は文字列で入る（`object(forKey:) as? Double` では読めない）ので、文字列から読む
             receiptDelay: defaults.string(forKey: DemoScenario.receiptDelayKey).flatMap(Double.init),
             rejectsIntents: defaults.bool(forKey: DemoScenario.rejectsIntentsKey)
         )
