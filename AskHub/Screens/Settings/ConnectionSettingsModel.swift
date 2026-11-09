@@ -101,16 +101,36 @@ final class ConnectionSettingsModel {
         if case .notRegistered(let first?) = registration {
             account = first
         }
-        return "askhub key add --public-key \(key.publicKey) --account \(account) --label \(Self.deviceLabel)"
+        return Self.registerCommand(publicKey: key.publicKey, account: account, label: Self.defaultDeviceLabel)
     }
 
-    /// 公開鍵の記録に付ける端末の名前
-    static var deviceLabel: String {
+    /// 端末の名前を、ターミナルにそのまま貼れるよう単一引用符で囲んで `--label` に渡す
+    static func registerCommand(publicKey: String, account: String, label: String) -> String {
+        "askhub key add --public-key \(publicKey) --account \(account) --label \(shellQuoted(label))"
+    }
+
+    /// 公開鍵の記録が受け付けるラベルの長さ（`KeyLedger` の 1〜64 文字）
+    nonisolated static let maxDeviceLabelLength = 64
+
+    /// 名前を入れていないときの端末の名前。Mac は複数台を見分けられるよう、コンピュータ名（システム設定の「共有」）を使う
+    static let defaultDeviceLabel: String = {
         #if os(iOS)
         UIDevice.current.model
         #else
-        "Mac"
+        Host.current().localizedName.flatMap(normalizedLabel) ?? "Mac"
         #endif
+    }()
+
+    /// 空白・改行を 1 つの空白にまとめ、長すぎれば切り詰める。何も残らなければ nil
+    nonisolated private static func normalizedLabel(_ name: String) -> String? {
+        let collapsed = name.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+        let label = String(collapsed.prefix(maxDeviceLabelLength)).trimmingCharacters(in: .whitespaces)
+        return label.isEmpty ? nil : label
+    }
+
+    /// シェルの単一引用符で囲む。中の `'` は `'\''`（引用を閉じて、エスケープした `'` を置き、開き直す）にする
+    static func shellQuoted(_ value: String) -> String {
+        "'" + value.replacing("'", with: "'\\''") + "'"
     }
 
     private var trimmedToken: String {
