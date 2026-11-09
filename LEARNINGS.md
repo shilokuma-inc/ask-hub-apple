@@ -452,6 +452,8 @@
 - `-demoReactionDelay` も文字列から読むように直し（デモの秒数はすべて `DemoScenario.seconds(forKey:in:)` で読む）、UI テストでは機械の反応と司令塔の受け取り（既定は反応の半分）がすぐ起きるようになった。
   送った直後の読み直しで受け付けが見つかるので、送れたことの帯（「…を送りました」）はすぐ「…を受け付けました」に替わる。受け取る前の画面を UI テストで見るときは、
   `-demoReceiptDelay` で受け取りだけを遅らせる（受け取りが遅いと知らせる 3 分より短くする。`testRequestShowsProgressAndConfirmsDuplicate`）（2026-11-09、#954）
+- MainActor が既定のターゲットで `UIColor { traits in … }`・`NSColor(name:dynamicProvider:)` の処理を書くと、処理が MainActor に縛られる。
+  SwiftUI は色を裏のスレッド（`com.apple.SwiftUI.AsyncRenderer`）で決めることがあり、そのとき実行時の確かめ（`_swift_task_checkIsolatedSwift`）で `EXC_BREAKPOINT` で落ちる。処理を `@Sendable` にして縛らない
 
 ## シェルスクリプト
 
