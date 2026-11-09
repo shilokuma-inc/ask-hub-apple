@@ -131,6 +131,20 @@ struct DemoClientServiceTests {
         #expect(service.state.mac(DemoData.macBookProID)?.jobs.map(\.title) == ["月の上限の通知: タスク 1 の実装"])
     }
 
+    /// 開始は、司令塔が `receiptDelay` 秒の後に受け取る（作業場所の用意は機械の反応の後）。送った記録はゴールを対象に持つ
+    @Test
+    func startIsReceivedAfterReceiptDelay() async throws {
+        let service = DemoClientService(scenario: .standard, reactionDelay: 10, receiptDelay: 2) { [clock] in clock.now }
+        let receipt = try await service.perform(.start(epicID: "budget-limit", macID: DemoData.macBookProID))
+        let waiting = try await service.fetchSnapshot()
+        #expect(waiting.sentIntents.first { $0.id == receipt.intentID }?.target == .goal(epicID: "budget-limit"))
+
+        clock.now += 2
+        let received = try await service.fetchSnapshot()
+        #expect(received.sentIntents.first { $0.id == receipt.intentID }?.state == .accepted(at: clock.now))
+        #expect(received.epic("budget-limit")?.workspace == .pending)
+    }
+
     /// 開始した後に一時停止すると、再開するまで段取りを進めない
     @Test
     func pausedStartWaitsUntilResumed() async throws {

@@ -16,6 +16,8 @@ struct ReflectionTests {
         var holdsSending = false
         /// true の間は、`finishFetching()` を呼ぶまで読み終わらない（読み始めた時点の中身を返す）
         var holdsFetching = false
+        /// true なら、複数の意図になる操作を、最初の意図だけ書いて失敗させる（書けた分の控えを添える）
+        var failsAfterFirstIntent = false
         private var sendingWaiters: [CheckedContinuation<Void, Never>] = []
         private var fetchingWaiters: [CheckedContinuation<Void, Never>] = []
         private var nextID = 0
@@ -40,14 +42,18 @@ struct ReflectionTests {
             if holdsSending {
                 await withCheckedContinuation { sendingWaiters.append($0) }
             }
-            let ids = intent.targets.map { target in
+            let targets = failsAfterFirstIntent ? Array(intent.targets.prefix(1)) : intent.targets
+            let sent = targets.map { target in
                 nextID += 1
                 let id = "intent-\(nextID)"
                 let status = SentIntentStatus(id: id, title: intent.label, sentAt: now, state: .waiting, target: target)
                 snapshot.sentIntents.insert(status, at: 0)
-                return id
+                return SendReceipt.Sent(id: id, target: target)
             }
-            return SendReceipt(intentIDs: ids)
+            if failsAfterFirstIntent {
+                throw ClientServiceError(message: "通信できませんでした", sentBeforeFailure: SendReceipt(sent: sent))
+            }
+            return SendReceipt(sent: sent)
         }
 
         func lastSend(of intent: HumanIntent) -> SentRecord? {
@@ -138,28 +144,6 @@ struct ReflectionTests {
         #expect(service.fetchCount == fetches + 2)
         #expect(store.reflection(for: [target]) == nil)
         #expect(!store.isReflecting(instruct))
-    }
-
-    /// 受け付けた記録を見つけた読み込みでは、状態がまだ書き換わる前のことがあるので、その後に始めた読み込みが終わるまで反映中にする
-    @Test
-    func acceptedStaysUntilLaterRead() {
-        var tracker = ReflectionTracker()
-        let intent = HumanIntent.pause(epicID: Self.epicID)
-        let target = IntentTarget.epicControl(epicID: Self.epicID)
-        let sendingID = tracker.beginSending(intent)
-        tracker.finishSending(sendingID, receipt: SendReceipt(intentIDs: ["n1"]), announces: true, at: start)
-        var snapshot = DemoScenario.standard.snapshot(now: start)
-        snapshot.sentIntents = [SentIntentStatus(id: "n1", title: "一時停止", sentAt: start, state: .waiting, target: target)]
-        #expect(tracker.receive(snapshot, generation: 1, now: start, trackingWindow: 600) == ReflectionTracker.Receipts())
-        #expect(tracker.reflection(matching: { $0 == target }, pending: nil)?.phase == .waiting(since: start))
-
-        snapshot.sentIntents[0].state = .accepted(at: start)
-        let receipts = tracker.receive(snapshot, generation: 2, now: start, trackingWindow: 600)
-        #expect(receipts == ReflectionTracker.Receipts(acceptedAnnounced: [intent], needsReread: true))
-        #expect(tracker.reflection(matching: { $0 == target }, pending: nil)?.phase == .accepted)
-
-        #expect(tracker.receive(snapshot, generation: 3, now: start, trackingWindow: 600) == ReflectionTracker.Receipts())
-        #expect(tracker.reflection(matching: { $0 == target }, pending: nil) == nil)
     }
 
     /// 前の起動で送って受け取り待ちの意図も、読んだ送った意図の一覧から反映中として出す。断られたら知らせる
@@ -297,6 +281,114 @@ struct ReflectionTests {
         await store.send(.answer(epicID: "recipe-weekly", questionID: "Q3", optionID: "c", note: ""))
         #expect(store.rejections.isEmpty)
         #expect(store.reflection(for: [target])?.isPending == true)
+    }
+}
+
+// MARK: - 追跡と文言
+
+extension ReflectionTests {
+    /// 受け付けた記録を見つけた読み込みでは、状態がまだ書き換わる前のことがあるので、その後に始めた読み込みが終わるまで反映中にする
+    @Test
+    func acceptedStaysUntilLaterRead() {
+        var tracker = ReflectionTracker()
+        let intent = HumanIntent.pause(epicID: Self.epicID)
+        let target = IntentTarget.epicControl(epicID: Self.epicID)
+        let sendingID = tracker.beginSending(intent)
+        tracker.finishSending(sendingID, receipt: SendReceipt(intentIDs: ["n1"]), announces: true, at: start)
+        var snapshot = DemoScenario.standard.snapshot(now: start)
+        snapshot.sentIntents = [SentIntentStatus(id: "n1", title: "一時停止", sentAt: start, state: .waiting, target: target)]
+        #expect(tracker.receive(snapshot, generation: 1, latestStarted: 1, now: start, trackingWindow: 600) == ReflectionTracker.Receipts())
+        #expect(tracker.reflection(matching: { $0 == target }, pending: nil)?.phase == .waiting(since: start))
+
+        // 読み込み 2 で受け付けを見つけたとき、読み込み 3 はもう始めてあった（状態を書き換える前に読んだかもしれない）
+        snapshot.sentIntents[0].state = .accepted(at: start)
+        let receipts = tracker.receive(snapshot, generation: 2, latestStarted: 3, now: start, trackingWindow: 600)
+        #expect(receipts == ReflectionTracker.Receipts(acceptedAnnounced: [intent], needsReread: true))
+        #expect(tracker.reflection(matching: { $0 == target }, pending: nil)?.phase == .accepted)
+        _ = tracker.receive(snapshot, generation: 3, latestStarted: 4, now: start, trackingWindow: 600)
+        #expect(tracker.reflection(matching: { $0 == target }, pending: nil)?.phase == .accepted)
+
+        // 受け付けを見つけた後に始めた読み込み 4 が終わったら、反映されたとして消す
+        #expect(tracker.receive(snapshot, generation: 4, latestStarted: 4, now: start, trackingWindow: 600) == ReflectionTracker.Receipts())
+        #expect(tracker.reflection(matching: { $0 == target }, pending: nil) == nil)
+    }
+
+    /// まとめて OK の意図の一部だけが断られたら、断られた意図で答えたカードにだけ理由を出す（受け付けたカードには出さない）
+    @Test
+    func tracksEachIntentOfOperationSeparately() {
+        var tracker = ReflectionTracker()
+        let first = IntentTarget.decision(epicID: Self.epicID, decisionID: "d3")
+        let second = IntentTarget.decision(epicID: Self.epicID, decisionID: "d4")
+        let acceptAll = HumanIntent.acceptAllDecisions(epicID: Self.epicID, headCommit: Self.head, decisionIDs: ["d3", "d4"])
+        let sendingID = tracker.beginSending(acceptAll)
+        let receipt = SendReceipt(sent: [SendReceipt.Sent(id: "n1", target: first), SendReceipt.Sent(id: "n2", target: second)])
+        tracker.finishSending(sendingID, receipt: receipt, announces: true, at: start)
+        var snapshot = DemoScenario.standard.snapshot(now: start)
+        snapshot.sentIntents = [
+            SentIntentStatus(id: "n2", title: "判断への回答", sentAt: start, state: .rejected(at: start, reason: "答え済み"), target: second),
+            SentIntentStatus(id: "n1", title: "判断への回答", sentAt: start, state: .accepted(at: start), target: first)
+        ]
+        _ = tracker.receive(snapshot, generation: 1, latestStarted: 1, now: start, trackingWindow: 600)
+        #expect(tracker.reflection(matching: { $0 == first }, pending: nil)?.phase == .accepted)
+        guard case .rejected(let rejection)? = tracker.reflection(matching: { $0 == second }, pending: nil)?.phase else {
+            Issue.record("断られた意図で答えたカードに理由が出ていない")
+            return
+        }
+        #expect(rejection.targets == [second])
+    }
+
+    /// 前の起動で送った受け取り待ちの意図が、読み込みで一時的に見つからなくても、しばらくは反映中のままにし、後で断られたら知らせる
+    @Test
+    func keepsPreviousWaitingWhileMissing() async {
+        let clock = Clock(start)
+        var snapshot = DemoScenario.standard.snapshot(now: start)
+        let target = IntentTarget.epicControl(epicID: "rain-draft")
+        snapshot.sentIntents = [SentIntentStatus(id: "old-1", title: "取り下げ", sentAt: start, state: .waiting, target: target)]
+        let service = FakeService(snapshot: snapshot, now: start)
+        let store = ClientStore(service: service, now: { clock.now })
+        await store.refresh()
+        let waiting = service.snapshot.sentIntents
+        service.snapshot.sentIntents = []
+        await store.refresh()
+        #expect(store.isReflecting([target]))
+
+        service.snapshot.sentIntents = waiting
+        service.snapshot.sentIntents[0].state = .rejected(at: start, reason: "開始した epic は取り下げられない")
+        await store.refresh()
+        #expect(store.rejections.map(\.reason) == ["開始した epic は取り下げられない"])
+
+        // 待つ間を過ぎても見つからなければ忘れる
+        service.snapshot.sentIntents = [SentIntentStatus(id: "old-2", title: "一時停止", sentAt: start, state: .waiting, target: target)]
+        await store.refresh()
+        service.snapshot.sentIntents = []
+        await store.refresh()
+        clock.now += ClientStore.receiptTrackingWindow
+        await store.refresh()
+        #expect(!store.isReflecting([target]))
+    }
+
+    /// まとめて OK の途中で失敗したら、書けた分は反映中として追い、同じ操作をもう一度送れる（窓口が残りだけを送る）
+    @Test
+    func partialFailureKeepsSentIntentsAndAllowsRetry() async {
+        let (service, store) = await makeStore()
+        let acceptAll = HumanIntent.acceptAllDecisions(epicID: Self.epicID, headCommit: Self.head, decisionIDs: ["d3", "d4"])
+        service.failsAfterFirstIntent = true
+        #expect(await store.send(acceptAll) == .failed("通信できませんでした"))
+        #expect(store.isReflecting([.decision(epicID: Self.epicID, decisionID: "d3")]))
+        #expect(!store.isReflecting([.decision(epicID: Self.epicID, decisionID: "d4")]))
+
+        service.failsAfterFirstIntent = false
+        guard case .sent = await store.send(acceptAll) else {
+            Issue.record("途中で失敗したまとめて OK を、もう一度送れていない")
+            return
+        }
+        #expect(service.performed == [acceptAll, acceptAll])
+        // ほかの操作は、これまでどおり反映されるまで止める
+        let answer = HumanIntent.respondToDecision(epicID: Self.epicID, decisionID: "d3", headCommit: Self.head, reply: .accept)
+        guard case .failed = await store.send(answer) else {
+            Issue.record("反映を待つカードへのほかの答えを止めていない")
+            return
+        }
     }
 
     // MARK: 司令塔が受け取らないときの知らせ
