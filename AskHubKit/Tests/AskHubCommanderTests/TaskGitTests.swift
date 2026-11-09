@@ -10,6 +10,7 @@ import Testing
 /// clone は先に作っておく（`update` は fetch だけをする）
 struct TaskGitTests {
     static let repo = EpicHandlersTests.repo
+    static let author = GitAuthor(name: "Takumi Muraishi", email: "1+mrs1669@users.noreply.github.com")
     static let epic = ULID(rawValue: "01JCJ0A0000000000000000001")!
     static let branches = TaskBranches(
         base: "develop",
@@ -38,7 +39,11 @@ struct TaskGitTests {
         let wrapper = root.appendingPathComponent("git")
         try "#!/bin/sh\nexec /usr/bin/git -c protocol.file.allow=always \"$@\"\n".write(to: wrapper, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper.path)
-        return GitRepositoryWorkspace(setup: .init(root: work, git: wrapper, credentialHelper: "!true"), runner: ProcessCommandRunner())
+        return GitRepositoryWorkspace(
+            setup: .init(root: work, git: wrapper, credentialHelper: "!true"),
+            runner: ProcessCommandRunner(),
+            authors: FixedCommitAuthor(Self.author)
+        )
     }
 
     @discardableResult
@@ -79,8 +84,10 @@ struct TaskGitTests {
         #expect(try remoteHead(Self.branches.task) == pushed)
         // 子ブランチで書き換えた CLAUDE.md は、リポジトリの事実にしない（base から読む）
         #expect(try await workspace.checkOutTask(Self.repo, epic: Self.epic, branches: Self.branches).facts == "- Swift 6 で書く")
-        let commit = try shell("git --git-dir='\(origin.path)' log -1 --format='%an <%ae>%n%s' \(pushed)")
-        #expect(commit == "AskHub <worker@askhub.invalid>\nランキングを足す")
+        // 書き手は、トークンの持ち主のアカウント（author と committer の両方）
+        let commit = try shell("git --git-dir='\(origin.path)' log -1 --format='%an <%ae>%n%cn <%ce>%n%s' \(pushed)")
+        let author = "Takumi Muraishi <1+mrs1669@users.noreply.github.com>"
+        #expect(commit == "\(author)\n\(author)\nランキングを足す")
         // 作業ブランチは動かさない
         #expect(try remoteHead(Self.branches.epic) == task.base)
         // 変更が無ければ、コミットも push もしない

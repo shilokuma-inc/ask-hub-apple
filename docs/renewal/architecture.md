@@ -78,6 +78,7 @@ flowchart TB
 - clone は、ジョブが要るときにその Mac でだけ、ワーカー専用のフォルダに作る（必要になるまで中身を取らない partial clone）
   - 読むだけのジョブ（質問づくり・確認など）は、リポジトリごとに 1 つの clone（取り出さない）を fetch し、ジョブごとに worktree で既定のブランチの最新を取り出す。並んで動くジョブの写しを分け、ジョブを終えたら消す
   - git にはリポジトリの hooks・シンボリックリンク・人の git の設定を効かせない（設定は `GIT_CONFIG_COUNT` の環境変数で渡し、`GIT_CONFIG_GLOBAL=/dev/null`）。GitHub のトークンは引数にも環境変数にも置かず、credential helper（Keychain から読むコマンド）で渡す
+  - ワーカーが作るコミット（タスクの実装・直し・最終 PR の base の取り込み）の書き手は、そのリポジトリの持ち主に使う GitHub のトークンの持ち主（GitHub のアカウント）にする（ユーザーの決定。PR を開く・マージするアカウントとそろえる）。メールアドレスは本当のアドレスを出さないよう noreply アドレス（`<id>+<login>@users.noreply.github.com`）にし、名前はプロフィールの名前（無ければ login）。アカウントは `GET /user` で読んで持ち主ごとに覚え、読めないときは `AskHub <worker@askhub.invalid>` で書いて次のコミットで読み直す
 - epic の作業場所（worktree・Simulator・DerivedData）は、最終 PR のマージ後に消す。clone 本体は、最後に使ってから 7 日で消す。空き容量が少なければ早めに消す
 - 人が自分で置いている clone には触れない
 
