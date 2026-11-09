@@ -1,5 +1,5 @@
 {
-  "description": "repos/<owner>/<repo>/epics/<epic>/decisions.json（人が決めていない判断）を読む例。schemaValid は protocol/schemas/state/decisions.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。スキーマで表せない決まり（id の重複・見える仮決めだけが持つ欄・スクショのパス）は、スキーマに合っても読む側が弾く",
+  "description": "repos/<owner>/<repo>/epics/<epic>/decisions.json（人が決めていない判断）を読む例。schemaValid は protocol/schemas/state/decisions.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。スキーマで表せない決まり（id の重複・見える仮決めだけが持つ欄・スクショのパスの `..`）は、スキーマに合っても読む側が弾く",
   "schema": "state/decisions.schema.json",
   "cases": [
     {
@@ -17,9 +17,14 @@
             "alternatives": [
               "2 行にする"
             ],
+            "scene": "search-empty",
             "screenshots": {
-              "before": "repos/shilokuma-inc/askhub-sandbox/epics/01JCEP1C000000000000000001/screenshots/d1-before.png",
-              "after": "repos/shilokuma-inc/askhub-sandbox/epics/01JCEP1C000000000000000001/screenshots/d1-after.png"
+              "before": "repos/shilokuma-inc/askhub-sandbox/epics/01JCEP1C000000000000000001/screenshots/fedcba9876543210fedcba9876543210fedcba98-search-empty.png",
+              "after": "repos/shilokuma-inc/askhub-sandbox/epics/01JCEP1C000000000000000001/screenshots/0123456789abcdef0123456789abcdef01234567-search-empty.png",
+              "beforeURL": "https://github.com/user-attachments/assets/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+              "afterURL": "https://github.com/user-attachments/assets/1f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "note": null
             },
             "answer": {
               "choice": "ok",
@@ -186,6 +191,91 @@
         ]
       },
       "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "visible-without-scene",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d2",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": true,
+            "what": "検索中は並べ替えを止める",
+            "why": "ゴールの t2",
+            "alternatives": [],
+            "scene": null,
+            "screenshots": {
+              "note": "この仮決めが出る画面は、撮れる画面の一覧に無い"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "screenshot-url-elsewhere",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": true,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2",
+            "alternatives": [],
+            "screenshots": {
+              "afterURL": "https://example.com/user-attachments/assets/abc"
+            }
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "scene-on-internal",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": false,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2",
+            "alternatives": [],
+            "scene": "inbox"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "scene-not-id",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": true,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2",
+            "alternatives": [],
+            "scene": "../keys"
+          }
+        ]
+      },
+      "schemaValid": false,
       "read": "malformed"
     },
     {

@@ -189,6 +189,10 @@ public struct AttemptFile: StateFile {
         public var mergeRisks: [MergeRisk]?
         /// 判断の仕分け（`classifyDecisions`）で見えるとした仮決めの id。ここに無いものは内部の細部。`decisions.json` には司令塔が写す
         public var visibleDecisions: [String]?
+        /// 判断の仕分けで、見えるとした仮決めごとに選んだ撮る画面（仮決めの id → 撮れる画面の一覧の id）。合う画面が無い仮決めは載せない
+        public var decisionScenes: [String: String]?
+        /// 撮影（`captureScreenshots`）で撮った、仮決めごとの Before / After。`decisions.json` には司令塔が写す
+        public var screenshots: [String: DecisionsFile.Screenshots]?
 
         public init(
             pullRequest: Int? = nil,
@@ -198,7 +202,9 @@ public struct AttemptFile: StateFile {
             findings: String? = nil,
             report: TaskOutputReport? = nil,
             mergeRisks: [MergeRisk]? = nil,
-            visibleDecisions: [String]? = nil
+            visibleDecisions: [String]? = nil,
+            decisionScenes: [String: String]? = nil,
+            screenshots: [String: DecisionsFile.Screenshots]? = nil
         ) {
             self.pullRequest = pullRequest
             self.commit = commit
@@ -208,6 +214,8 @@ public struct AttemptFile: StateFile {
             self.report = report
             self.mergeRisks = mergeRisks
             self.visibleDecisions = visibleDecisions
+            self.decisionScenes = decisionScenes
+            self.screenshots = screenshots
         }
     }
 
@@ -292,6 +300,14 @@ public struct AttemptFile: StateFile {
         if outputs?.mergeRisks?.contains(where: { $0.reason.isEmpty }) == true { violations.append("outputs.mergeRisks の reason が空") }
         if let visible = outputs?.visibleDecisions, !visible.allSatisfy(LocalIDs.isValid) || Set(visible).count != visible.count {
             violations.append("outputs.visibleDecisions の id の形が違うか、重なっている")
+        }
+        if let scenes = outputs?.decisionScenes,
+           !scenes.keys.allSatisfy(LocalIDs.isValid) || !scenes.values.allSatisfy(ScreenshotScenesFile.isSceneID) {
+            violations.append("outputs.decisionScenes の仮決めの id か画面の id の形が違う")
+        }
+        if let screenshots = outputs?.screenshots {
+            if !screenshots.keys.allSatisfy(LocalIDs.isValid) { violations.append("outputs.screenshots の仮決めの id の形が違う") }
+            violations += screenshots.sorted { $0.key < $1.key }.flatMap { id, shots in shots.problems.map { "outputs.screenshots.\(id): \($0)" } }
         }
         if let model = claude?.model, model.isEmpty { violations.append("claude.model が空") }
         if let cost = claude?.estimatedCostUsd, !(cost >= 0) { violations.append("claude.estimatedCostUsd は 0 以上") }

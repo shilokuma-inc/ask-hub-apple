@@ -63,31 +63,13 @@
               "minLength": 1
             }
           },
+          "scene": {
+            "anyOf": [{ "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,39}$" }, { "type": "null" }],
+            "description": "撮る画面（リポジトリの撮れる画面の一覧の id）。判断の仕分けの Claude が見える仮決めごとに選ぶ。合う画面が無ければ null"
+          },
           "screenshots": {
-            "anyOf": [
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "before": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "after": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  }
-                },
-                "description": "状態リポジトリの中のパス（epic の screenshots/ の下の PNG）"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "anyOf": [{ "$ref": "#/$defs/screenshots" }, { "type": "null" }],
+            "description": "見える仮決めの Before / After（撮影のジョブが撮ったもの）。撮る前は null"
           },
           "answer": {
             "anyOf": [
@@ -125,6 +107,37 @@
             ],
             "description": "人の答え（判断のカード）。見える仮決めだけが持つ"
           }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "screenshots": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "before": {
+          "anyOf": [{ "type": "string", "pattern": "^repos/.*/screenshots/.*\\.png$" }, { "type": "null" }],
+          "description": "Before（base との分岐点）の画像。状態リポジトリの中のパス（epic の screenshots/ の下。.. を含まないことは読む側で確かめる）"
+        },
+        "after": {
+          "anyOf": [{ "type": "string", "pattern": "^repos/.*/screenshots/.*\\.png$" }, { "type": "null" }],
+          "description": "After（作業ブランチの先頭）の画像"
+        },
+        "beforeURL": {
+          "anyOf": [{ "type": "string", "pattern": "^https://github\\.com/user-attachments/assets/[A-Za-z0-9-]{1,100}$" }, { "type": "null" }],
+          "description": "GitHub に上げた Before の画像（最終 PR の本文に載せる）。上げられなかったら null"
+        },
+        "afterURL": {
+          "anyOf": [{ "type": "string", "pattern": "^https://github\\.com/user-attachments/assets/[A-Za-z0-9-]{1,100}$" }, { "type": "null" }]
+        },
+        "head": {
+          "anyOf": [{ "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40 }, { "type": "null" }],
+          "description": "After を撮ったコミット（作業ブランチの先頭）"
+        },
+        "note": {
+          "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 500 }, { "type": "null" }],
+          "description": "撮れなかったわけ・Before が無いわけ（人が読む）"
         }
       }
     }

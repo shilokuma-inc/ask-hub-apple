@@ -220,8 +220,9 @@ struct StateFileTests {
         #expect(StatePath.questions(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/questions.json")
         #expect(StatePath.goal(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/goal.json")
         #expect(StatePath.decisions(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/decisions.json")
-        let shot = StatePath.screenshot(repo, epic, decision: "d1", after: true)
-        #expect(shot == "\(base)/epics/01JCEP1C000000000000000001/screenshots/d1-after.png")
+        let commit = String(repeating: "a", count: 40)
+        let shot = StatePath.screenshot(repo, epic, commit: commit, scene: "search-empty")
+        #expect(shot == "\(base)/epics/01JCEP1C000000000000000001/screenshots/\(commit)-search-empty.png")
         // 判断の一覧が持てるスクショのパスは、ここで作るものと同じ形
         #expect(DecisionsFile.isScreenshotPath(shot))
         #expect(!DecisionsFile.isScreenshotPath("keys/1.png"))

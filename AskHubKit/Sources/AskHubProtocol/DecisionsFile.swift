@@ -14,14 +14,61 @@ public struct DecisionsFile: StateFile {
         case fix
     }
 
-    /// 画面の変化（状態リポジトリの中のパス。epic の `screenshots/` に置く）
+    /// 画面の変化（撮影のジョブ `captureScreenshots` が撮ったもの。`docs/renewal/flows.md` の「スクショ」）
     public struct Screenshots: Codable, Equatable, Sendable {
-        public var before: String?
-        public var after: String?
+        /// GitHub に上げた画像の URL の先頭（最終 PR の本文に載せる。ほかの URL は載せない）
+        public static let attachmentURLPrefix = "https://github.com/user-attachments/assets/"
+        /// 撮れなかったわけの長さの上限（Unicode のコードポイントの数）
+        public static let maximumNoteLength = 500
 
-        public init(before: String? = nil, after: String? = nil) {
+        /// Before（base との分岐点）の画像。状態リポジトリの中のパス（epic の `screenshots/` の下）。撮れなかったら nil
+        public var before: String?
+        /// After（作業ブランチの先頭）の画像。撮れなかったら nil
+        public var after: String?
+        /// GitHub に上げた Before の画像の URL。上げられなかったら nil
+        public var beforeURL: String?
+        public var afterURL: String?
+        /// After を撮ったコミット（作業ブランチの先頭）
+        public var head: String?
+        /// 撮れなかったわけ・Before が無いわけ（人が読む）
+        public var note: String?
+
+        public init(
+            before: String? = nil,
+            after: String? = nil,
+            beforeURL: String? = nil,
+            afterURL: String? = nil,
+            head: String? = nil,
+            note: String? = nil
+        ) {
             self.before = before
             self.after = after
+            self.beforeURL = beforeURL
+            self.afterURL = afterURL
+            self.head = head
+            self.note = note
+        }
+
+        /// 形の決まりに合わないところ
+        public var problems: [String] {
+            var problems: [String] = []
+            if [before, after].contains(where: { $0.map { !DecisionsFile.isScreenshotPath($0) } ?? false }) {
+                problems.append("スクショのパスの形が違う")
+            }
+            if [beforeURL, afterURL].contains(where: { $0.map { !Self.isAttachmentURL($0) } ?? false }) {
+                problems.append("スクショの URL が GitHub の添付（\(Self.attachmentURLPrefix)…）でない")
+            }
+            if let head, !AttemptFile.isCommitSHA(head) { problems.append("スクショの head の形が違う") }
+            if let note, note.isEmpty || note.unicodeScalars.count > Self.maximumNoteLength {
+                problems.append("スクショの note は空でなく、\(Self.maximumNoteLength) 文字まで")
+            }
+            return problems
+        }
+
+        /// GitHub に上げた画像の URL（`https://github.com/user-attachments/assets/<id>`。id は英数字とハイフン）
+        public static func isAttachmentURL(_ text: String) -> Bool {
+            guard text.hasPrefix(attachmentURLPrefix) else { return false }
+            return text.dropFirst(attachmentURLPrefix.count).wholeMatch(of: #/[A-Za-z0-9-]{1,100}/#) != nil
         }
     }
 
@@ -53,6 +100,8 @@ public struct DecisionsFile: StateFile {
         /// なぜ（ゴールのどの項目から来たか）
         public var why: String
         public var alternatives: [String]
+        /// 撮る画面（リポジトリの撮れる画面の一覧の id）。判断の仕分けの Claude が見える仮決めごとに選ぶ。合う画面が無ければ nil
+        public var scene: String?
         /// 見える仮決めの Before / After。撮る前は nil
         public var screenshots: Screenshots?
         /// 人の答え。見える仮決めだけが持つ
@@ -66,6 +115,7 @@ public struct DecisionsFile: StateFile {
             what: String,
             why: String,
             alternatives: [String] = [],
+            scene: String? = nil,
             screenshots: Screenshots? = nil,
             answer: Answer? = nil
         ) {
@@ -76,6 +126,7 @@ public struct DecisionsFile: StateFile {
             self.what = what
             self.why = why
             self.alternatives = alternatives
+            self.scene = scene
             self.screenshots = screenshots
             self.answer = answer
         }
@@ -102,20 +153,17 @@ public struct DecisionsFile: StateFile {
         if let pullRequest = item.pullRequest, pullRequest < 1 { problems.append("\(name): pullRequest は 1 以上") }
         if item.what.isEmpty || item.why.isEmpty { problems.append("\(name): what・why が空") }
         if item.alternatives.contains(where: \.isEmpty) { problems.append("\(name): 空のほかの案がある") }
-        // スクショと人の答えは、見えると仕分けた仮決めだけが持つ（内部の細部は畳んで並べるだけ）
-        if item.visible != true, item.screenshots != nil || item.answer != nil {
-            problems.append("\(name): 見える仮決めでないのに、スクショか答えがある")
+        // 撮る画面・スクショ・人の答えは、見えると仕分けた仮決めだけが持つ（内部の細部は畳んで並べるだけ）
+        if item.visible != true, item.scene != nil || item.screenshots != nil || item.answer != nil {
+            problems.append("\(name): 見える仮決めでないのに、撮る画面・スクショ・答えのどれかがある")
         }
-        if let screenshots = item.screenshots {
-            for path in [screenshots.before, screenshots.after].compactMap({ $0 }) where !Self.isScreenshotPath(path) {
-                problems.append("\(name): スクショのパスの形が違う")
-            }
-        }
+        if let scene = item.scene, !ScreenshotScenesFile.isSceneID(scene) { problems.append("\(name): scene の形が違う") }
+        problems += (item.screenshots?.problems ?? []).map { "\(name): \($0)" }
         return problems
     }
 
     /// 状態リポジトリの中の epic の `screenshots/` の下の PNG（`..` や絶対パスを含まない）
-    static func isScreenshotPath(_ path: String) -> Bool {
+    public static func isScreenshotPath(_ path: String) -> Bool {
         let parts = path.split(separator: "/", omittingEmptySubsequences: false)
         return path.hasPrefix("repos/") && path.hasSuffix(".png") && parts.contains("screenshots")
             && !parts.contains { $0.isEmpty || $0 == "." || $0 == ".." }

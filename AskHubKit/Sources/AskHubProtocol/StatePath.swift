@@ -37,9 +37,10 @@ public enum StatePath {
         "\(epicDirectory(repo, epic))/decisions.json"
     }
 
-    /// 見える仮決めのスクショ（`<id>-before.png`・`<id>-after.png`）
-    public static func screenshot(_ repo: RepositoryFullName, _ epic: ULID, decision: String, after: Bool) -> String {
-        "\(epicDirectory(repo, epic))/screenshots/\(decision)-\(after ? "after" : "before").png"
+    /// 撮影のジョブが撮った画像（`<コミット>-<画面>.png`）。Before は base との分岐点、After は作業ブランチの先頭のコミットで、
+    /// 同じコミット・画面は撮り直さずに使い回す（いくつかの仮決めが同じ画像を指すことがある）
+    public static func screenshot(_ repo: RepositoryFullName, _ epic: ULID, commit: String, scene: String) -> String {
+        "\(epicDirectory(repo, epic))/screenshots/\(commit)-\(scene).png"
     }
 
     /// リポジトリの epic を置くディレクトリ（`epics/<epic>/`）
