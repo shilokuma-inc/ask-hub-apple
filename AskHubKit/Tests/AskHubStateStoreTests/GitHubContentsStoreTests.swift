@@ -375,4 +375,18 @@ extension GitHubContentsStoreTests {
         #expect(try await store.listAll("y")?.map(\.path) == ["y/1.json"])
         #expect(transport.requests.last?.value(forHTTPHeaderField: "If-None-Match") == nil)
     }
+
+    @Test func reusesTreeWithSameShaWithoutSending() async throws {
+        // tree は sha で中身が決まるので、親の一覧で同じ sha を読んだら、tree は取りに行かない
+        let parent = #"[{"type":"dir","name":"epics","path":"repos/o/r/epics","sha":"abc123"}]"#
+        let tree = #"{"sha":"abc123","truncated":false,"tree":[{"path":"01A","type":"tree","sha":"t1"}]}"#
+        let transport = StubTransport([
+            .json(200, parent, headers: ["ETag": "\"p1\""]), .json(200, tree, headers: ["ETag": "\"e1\""]), .init(status: 304)
+        ])
+        let store = store(transport)
+        let first = try await store.listAll("repos/o/r/epics")
+        #expect(try await store.listAll("repos/o/r/epics") == first)
+        #expect(transport.requests.count == 3)
+        #expect(transport.requests.last?.url?.absoluteString.contains("/contents/repos/o/r") == true)
+    }
 }

@@ -134,23 +134,28 @@ public struct GitHubContentsStore: StateStore {
     }
 
     /// tree の下。`recursive` なら下の階層までのファイル（blob）、そうでなければ直下のファイルとディレクトリ。
-    /// tree は sha で決まり中身が変わらないので、ETag でそのまま使い回せる
+    /// tree は sha で決まり中身が変わらないので、前に読んだものがあれば取りに行かない
     private func tree(sha: String, under directory: String, recursive: Bool) async throws(StateStoreError) -> [DirectoryEntry] {
-        let isHex = sha.utf8.allSatisfy { byte in
-            (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
-        }
-        guard !sha.isEmpty, isHex else { throw .unexpected(status: 200, message: "tree の sha の形が違う") }
-        let query = recursive ? [URLQueryItem(name: "recursive", value: "1")] : []
-        let request = try await makeRequest(apiPath: "git/trees/\(sha)", query: query)
+        guard Self.isObjectSHA(sha) else { throw .unexpected(status: 200, message: "tree の sha の形が違う") }
         // `:` は状態リポジトリのパスに使わないので、ファイルの中身の鍵とぶつからない。同じ中身の tree が別のディレクトリにもあり得るので、
         // 読んだディレクトリも鍵に入れる（一覧のパスはディレクトリから作るため）
         let cacheKey = "\(recursive ? "tree" : "entries"):\(sha):\(directory)"
+        if case let .directory(entries, _)? = await cache.entry(for: cacheKey)?.contents { return entries }
+        let query = recursive ? [URLQueryItem(name: "recursive", value: "1")] : []
+        let request = try await makeRequest(apiPath: "git/trees/\(sha)", query: query)
         let contents = try await fetch(request, cacheKey: cacheKey) { body throws(StateStoreError) in
             let entries = try Self.decodeTree(body, under: directory, recursive: recursive)
             return .directory(entries, listed: entries.count)
         }
         guard case let .directory(entries, _) = contents else { throw .wrongKind }
         return entries
+    }
+
+    /// Git のオブジェクトの sha の形（16 進の小文字）か。URL のパスに入れる前に確かめる
+    static func isObjectSHA(_ sha: String) -> Bool {
+        !sha.isEmpty && sha.utf8.allSatisfy { byte in
+            (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
+        }
     }
 
     static func decodeTree(
