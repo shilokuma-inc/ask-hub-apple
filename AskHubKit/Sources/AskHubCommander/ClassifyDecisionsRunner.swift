@@ -1,3 +1,4 @@
+import AskHubClaude
 import AskHubProtocol
 import Foundation
 
@@ -26,32 +27,48 @@ public struct ClassifyDecisionsRunner: JobRunning {
         let decisions = try await environment.tasks.read(DecisionsFile.self, at: StatePath.decisions(job.repo, job.epic))
         let items = decisions?.items ?? []
         let pending = items.filter { $0.visible == nil }
-        guard !pending.isEmpty else {
-            return JobResult(outputs: AttemptFile.Outputs(visibleDecisions: items.filter { $0.visible == true }.map(\.id)))
+        // 撮影の設定があって、epic 全体の画面の変化をまだ選んでいなければ、仮決めが無くても選ばせる
+        let choosesScreens = target.settings.screenshots != nil && decisions?.screens == nil
+        let visibleIDs = items.filter { $0.visible == true }.map(\.id)
+        guard !pending.isEmpty || choosesScreens else {
+            return JobResult(outputs: AttemptFile.Outputs(visibleDecisions: visibleIDs))
         }
         let expected = pending.map(\.id)
-        let (answer, head) = try await environment.withFinalCheckout(job, target: target, head: nil) { checkout throws(TaskJobExit) in
-            // 撮影の設定があれば、作業ブランチの先頭の撮れる画面の一覧から、見える仮決めごとに撮る画面を選ばせる
+        typealias Answer = (result: DecisionClassificationResult, session: ClaudeSession)
+        let checkedOut: (Answer?, String) = try await environment.withFinalCheckout(
+            job, target: target, head: nil
+        ) { checkout throws(TaskJobExit) in
+            // 撮影の設定があれば、作業ブランチの先頭の撮れる画面の一覧から、見える仮決めごとに撮る画面と、画面の変化を選ばせる
             let scenes = target.settings.screenshots.flatMap { ScreenshotScenes.load(from: checkout.directory, path: $0.scenes).file }
+            // 仕分ける仮決めが無く、選べる画面も無い（一覧が読めない）なら、Claude を呼ばずに「画面の変化は無い」とする
+            guard !pending.isEmpty || scenes != nil else { return (nil, checkout.head) }
             let subject = DecisionClassification.Subject(
-                goal: target.goal, items: pending, branches: target.branches, checkout: checkout, scenes: scenes
+                goal: target.goal,
+                items: pending,
+                branches: target.branches,
+                checkout: checkout,
+                scenes: scenes,
+                choosesScreens: choosesScreens
             )
             guard let request = DecisionClassification.request(for: subject, repository: job.repo) else {
                 let message = "ゴールと仮決めの文が長すぎて、仕分けをレビュー役の Claude に頼めない（決まりの文と合わせて UTF-8 で \(TaskReview.maximumTextBytes) バイトまで）"
                 throw .fail(.unexpected, message)
             }
-            let answer = try await environment.ask(request, as: DecisionClassificationResult.self) { result in
+            let answer: Answer = try await environment.ask(request, as: DecisionClassificationResult.self) { result in
                 result.problems(expected: expected, scenes: scenes)
             }
             return (answer, checkout.head)
         }
-        let visible = Set(items.filter { $0.visible == true }.map(\.id) + answer.result.decisions.filter(\.visible).map(\.id))
-        let scenes = answer.result.scenes
+        let (answer, head) = checkedOut
+        let result = answer?.result
+        let visible = Set(visibleIDs + (result?.decisions ?? []).filter(\.visible).map(\.id))
+        let scenes = result?.scenes ?? [:]
         let outputs = AttemptFile.Outputs(
             commit: head,
             visibleDecisions: items.map(\.id).filter(visible.contains),
-            decisionScenes: scenes.isEmpty ? nil : scenes
+            decisionScenes: scenes.isEmpty ? nil : scenes,
+            changedScenes: choosesScreens ? result?.changedScenes ?? [] : nil
         )
-        return JobResult(outputs: outputs, claude: answer.session.attemptRecord)
+        return JobResult(outputs: outputs, claude: answer?.session.attemptRecord)
     }
 }

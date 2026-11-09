@@ -132,10 +132,41 @@ public struct DecisionsFile: StateFile {
         }
     }
 
-    public var items: [Item]
+    /// epic 全体で見た目が変わった画面（仮決めに結びつかない画面の変化）。最終 PR と AskHub に「画面の変化」として Before / After を出す
+    public struct ScreenChange: Codable, Equatable, Sendable {
+        /// 何の画面か（撮れる画面の一覧の `title`）の長さの上限
+        public static let maximumTitleLength = ScreenshotScenesFile.maximumTextLength
 
-    public init(items: [Item] = []) {
+        /// 撮れる画面の一覧の id
+        public var scene: String
+        /// 何の画面か（撮ったときの一覧の `title`）。撮る前は nil
+        public var title: String?
+        /// 撮る前は nil
+        public var screenshots: Screenshots?
+
+        public init(scene: String, title: String? = nil, screenshots: Screenshots? = nil) {
+            self.scene = scene
+            self.title = title
+            self.screenshots = screenshots
+        }
+
+        var problems: [String] {
+            var problems: [String] = []
+            if !ScreenshotScenesFile.isSceneID(scene) { problems.append("scene の形が違う") }
+            if let title, title.isEmpty || title.unicodeScalars.count > Self.maximumTitleLength {
+                problems.append("title は空でなく、\(Self.maximumTitleLength) 文字まで")
+            }
+            return problems + (screenshots?.problems ?? [])
+        }
+    }
+
+    public var items: [Item]
+    /// 画面の変化。判断の仕分けで選ぶ前（撮影の設定が無いリポジトリを含む）は nil、選んで無ければ空
+    public var screens: [ScreenChange]?
+
+    public init(items: [Item] = [], screens: [ScreenChange]? = nil) {
         self.items = items
+        self.screens = screens
     }
 
     public var violations: [String] {
@@ -143,6 +174,9 @@ public struct DecisionsFile: StateFile {
         for item in items {
             violations += problems(of: item)
         }
+        let screens = screens ?? []
+        if Set(screens.map(\.scene)).count != screens.count { violations.append("screens の scene が重なっている") }
+        violations += screens.flatMap { screen in screen.problems.map { "screens.\(screen.scene): \($0)" } }
         return violations
     }
 

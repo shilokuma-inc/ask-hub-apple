@@ -62,6 +62,7 @@ extension StateSnapshotBuilder {
             decisions: cards,
             internalDecisions: items.filter { $0.visible == false }.map(\.what),
             verifications: [],
+            screenChanges: (decisions?.screens ?? []).map(Self.screenChange),
             state: state,
             acceptsApproval: canApprove
         )
@@ -109,6 +110,17 @@ extension StateSnapshotBuilder {
             after: item.screenshots?.after.map(Screenshot.stored),
             response: Self.response(item.answer),
             screenshotNote: Self.screenshotNote(of: item, capturesScreenshots: capturesScreenshots)
+        )
+    }
+
+    /// 画面の変化の 1 画面。撮る前は「撮っています」と出す
+    static func screenChange(_ screen: DecisionsFile.ScreenChange) -> ScreenChangeCard {
+        ScreenChangeCard(
+            id: screen.scene,
+            title: screen.title ?? screen.scene,
+            before: screen.screenshots?.before.map(Screenshot.stored),
+            after: screen.screenshots?.after.map(Screenshot.stored),
+            note: screen.screenshots == nil ? screenshotPending : screen.screenshots?.note
         )
     }
 

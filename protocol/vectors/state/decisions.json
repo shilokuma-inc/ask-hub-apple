@@ -217,6 +217,73 @@
       "read": "valid"
     },
     {
+      "name": "screen-changes",
+      "value": {
+        "v": 1,
+        "items": [],
+        "screens": [
+          {
+            "scene": "inbox-quiet",
+            "title": "あなたの番が空のとき",
+            "screenshots": {
+              "before": "repos/shilokuma-inc/askhub-sandbox/epics/01JCEP1C000000000000000001/screenshots/fedcba9876543210fedcba9876543210fedcba98-inbox-quiet.png",
+              "after": "repos/shilokuma-inc/askhub-sandbox/epics/01JCEP1C000000000000000001/screenshots/0123456789abcdef0123456789abcdef01234567-inbox-quiet.png",
+              "head": "0123456789abcdef0123456789abcdef01234567"
+            }
+          },
+          {
+            "scene": "inbox"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "screen-changes-empty",
+      "value": {
+        "v": 1,
+        "items": [],
+        "screens": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "screen-changes-duplicated",
+      "value": {
+        "v": 1,
+        "items": [],
+        "screens": [
+          {
+            "scene": "inbox"
+          },
+          {
+            "scene": "inbox"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "screen-change-escapes",
+      "value": {
+        "v": 1,
+        "items": [],
+        "screens": [
+          {
+            "scene": "inbox",
+            "screenshots": {
+              "after": "repos/a/b/epics/x/screenshots/../../../keys/1.png"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
       "name": "screenshot-url-elsewhere",
       "value": {
         "v": 1,

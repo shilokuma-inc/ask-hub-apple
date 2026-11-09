@@ -36,6 +36,10 @@ enum FinalPullRequestBody {
             "## タスク\n\n" + list(goal.tasks.map { "\($0.id): \(safe($0.title))" }),
             "## 人が決めていない判断（見える仮決め）\n\n" + cards(visible, capturesScreenshots: capturesScreenshots)
         ]
+        // 画面の変化（仮決めに結びつかない、epic 全体で見た目が変わった画面）。選んだ画面があるときだけ出す
+        if capturesScreenshots, let screens = decisions?.screens, !screens.isEmpty {
+            sections.append("## 画面の変化\n\n" + screens.map(screenChange).joined(separator: "\n\n"))
+        }
         if !details.isEmpty {
             let lines = details.map { "- \($0.id): \(safe($0.what))（\(safe($0.why))）" }.joined(separator: "\n")
             sections.append("<details><summary>内部の細部の仮決め（\(details.count) 件）</summary>\n\n\(lines)\n\n</details>")
@@ -74,19 +78,31 @@ enum FinalPullRequestBody {
     static func screenshots(of item: DecisionsFile.Item, capturesScreenshots: Bool) -> String {
         guard capturesScreenshots else { return noScreenshots }
         guard let shots = item.screenshots else { return item.scene == nil ? noScene : capturing }
+        let scene = item.scene.map { "`\($0)` の画面" } ?? "画面"
+        return images(shots, label: item.id, heading: scene, indent: "  ")
+    }
+
+    /// 「画面の変化」の 1 画面（見出しと Before / After の表）
+    static func screenChange(_ screen: DecisionsFile.ScreenChange) -> String {
+        let title = screen.title.map { "\(safe($0))（`\(screen.scene)`）" } ?? "`\(screen.scene)`"
+        guard let shots = screen.screenshots else { return "### \(title)\n\n\(capturing)" }
+        return "### \(title)\n\n" + images(shots, label: screen.scene, heading: "", indent: "")
+    }
+
+    /// Before / After の表。上げた画像が無ければ、AskHub で見られることと、撮れなかったわけを書く
+    private static func images(_ shots: DecisionsFile.Screenshots, label: String, heading: String, indent: String) -> String {
         let note = shots.note.map { "（\(safe($0))）" } ?? ""
         guard shots.beforeURL != nil || shots.afterURL != nil else { return onlyInClient + note }
-        let cell = { (url: String?, label: String) in
+        let cell = { (url: String?, side: String) in
             guard let url, DecisionsFile.Screenshots.isAttachmentURL(url) else { return "なし" }
-            return #"<img src="\#(url)" alt="\#(item.id) \#(label)" width="300">"#
+            return #"<img src="\#(url)" alt="\#(label) \#(side)" width="300">"#
         }
-        let scene = item.scene.map { "`\($0)` の画面" } ?? "画面"
         return """
-            \(scene)\(note)
+            \(heading)\(note)
 
-              | Before | After |
-              | --- | --- |
-              | \(cell(shots.beforeURL, "Before")) | \(cell(shots.afterURL, "After")) |
+            \(indent)| Before | After |
+            \(indent)| --- | --- |
+            \(indent)| \(cell(shots.beforeURL, "Before")) | \(cell(shots.afterURL, "After")) |
             """
     }
 

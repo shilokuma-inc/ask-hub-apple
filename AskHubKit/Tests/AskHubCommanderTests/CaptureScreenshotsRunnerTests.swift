@@ -17,7 +17,12 @@ struct CaptureScreenshotsRunnerTests {
         var head: URL { root.appendingPathComponent("head") }
         var base: URL { root.appendingPathComponent("base") }
 
-        func prepare(headScenes: [String], baseScenes: [String]?, decisions: [DecisionsFile.Item]) async throws {
+        func prepare(
+            headScenes: [String],
+            baseScenes: [String]?,
+            decisions: [DecisionsFile.Item],
+            screens: [DecisionsFile.ScreenChange]? = nil
+        ) async throws {
             for (directory, scenes) in [(head, headScenes), (base, baseScenes)] {
                 try FileManager.default.createDirectory(at: directory.appendingPathComponent("App"), withIntermediateDirectories: true)
                 guard let scenes else { continue }
@@ -30,7 +35,7 @@ struct CaptureScreenshotsRunnerTests {
                 state.mergeBaseCommit = CaptureScreenshotsRunnerTests.base
             }
             fixture.pulls.update { $0.pulls[512] = Fixture.openPull() }
-            try await fixture.prepare(decisions: DecisionsFile(items: decisions))
+            try await fixture.prepare(decisions: DecisionsFile(items: decisions, screens: screens))
         }
 
         func run() async throws -> JobResult {
@@ -130,6 +135,29 @@ struct CaptureScreenshotsRunnerTests {
         let d1 = try #require(result.outputs?.screenshots?["d1"])
         #expect(d1.before == nil && d1.after == nil)
         #expect(d1.note == "After を撮れなかった（アプリのビルドが通らない（終了コード 65））・Before なし（撮れる画面の一覧（App/scenes.json）が無い）")
+    }
+
+    @Test func shootsScreenChangesAndAddsThemToPullRequestBody() async throws {
+        let given = Given()
+        defer { try? FileManager.default.removeItem(at: given.root) }
+        try await given.prepare(
+            headScenes: ["ranking", "ranking-empty"],
+            baseScenes: ["ranking"],
+            decisions: [],
+            screens: [.init(scene: "ranking"), .init(scene: "ranking-empty")]
+        )
+        let result = try await given.run()
+        let changes = try #require(result.outputs?.screenChanges)
+        #expect(changes.map(\.scene) == ["ranking", "ranking-empty"])
+        #expect(changes.map(\.title) == ["ranking の画面", "ranking-empty の画面"])
+        #expect(changes[0].screenshots?.before == given.path(Self.base, "ranking"))
+        #expect(changes[0].screenshots?.afterURL != nil)
+        #expect(changes[1].screenshots?.note == "Before なし（この画面は epic で足した）")
+        #expect(result.outputs?.screenshots == nil)
+        let body = try #require(given.fixture.pulls.current.bodies.last?.body)
+        #expect(body.contains("## 画面の変化\n\n### ranking の画面（`ranking`）"))
+        #expect(body.contains(#"alt="ranking After" width="300">"#))
+        #expect(body.contains("見える仮決めはありません。"))
     }
 
     @Test func doesNothingWithoutChosenScenes() async throws {

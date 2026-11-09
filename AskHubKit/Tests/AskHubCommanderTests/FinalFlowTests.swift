@@ -223,6 +223,41 @@ struct FinalFlowTests {
         #expect(again.dependsOn == [fix.id])
     }
 
+    @Test func capturesScreenChangesOfEpicWithoutDecisions() async throws {
+        // 仮決めが無くても、撮影の設定があれば、画面の変化を選ぶために仕分ける
+        try await given.putScreenshotSetting()
+        try await given.finished()
+        try await given.succeed(try await given.next(.verifyBeforeFinal))
+        let classify = try await given.next(.classifyDecisions)
+        try await given.succeed(classify, outputs: .init(visibleDecisions: [], changedScenes: ["inbox-quiet"]))
+        let open = try await given.next(.openFinalPullRequest)
+        #expect(try await given.decisions().screens == [DecisionsFile.ScreenChange(scene: "inbox-quiet")])
+        // 画面の変化を撮ってから、レビューする
+        try await given.succeed(open, outputs: .init(pullRequest: Fixture.pullRequest, commit: Fixture.sha("a")))
+        let capture = try await given.next(.captureScreenshots)
+        let after = StatePath.screenshot(Fixture.repo, Fixture.epicID, commit: Fixture.sha("a"), scene: "inbox-quiet")
+        let shots = DecisionsFile.Screenshots(after: after, head: Fixture.sha("a"))
+        let change = DecisionsFile.ScreenChange(scene: "inbox-quiet", title: "あなたの番が空のとき", screenshots: shots)
+        let captured = AttemptFile.Outputs(pullRequest: Fixture.pullRequest, commit: Fixture.sha("a"), screenChanges: [change])
+        try await given.succeed(capture, outputs: captured)
+        let review = try await given.next(.reviewFinalPullRequest)
+        #expect(review.dependsOn == [capture.id])
+        #expect(try await given.decisions().screens == [change])
+        // 仕分けた後に選んだ画面の変化は、直しの後に選び直さない（同じ画面を撮り直す）
+        try await given.succeed(review, outputs: .init(commit: Fixture.sha("a"), verdict: .fixCI, findings: "落ちた"))
+        let fix = try await given.next(.fixFinalPullRequest)
+        let fixed = AttemptFile.Outputs(pullRequest: Fixture.pullRequest, commit: Fixture.sha("b"), report: .init(summary: "直した"))
+        try await given.succeed(fix, outputs: fixed)
+        #expect(try await given.next(.captureScreenshots).dependsOn == [fix.id])
+    }
+
+    @Test func noScreenChangesWithoutScreenshotSetting() async throws {
+        // 撮影の設定が無ければ、仮決めの無い epic は今までどおり仕分けずに最終 PR を出す
+        try await given.finished()
+        try await given.succeed(try await given.next(.verifyBeforeFinal))
+        #expect(try await given.next(.openFinalPullRequest).kind == .openFinalPullRequest)
+    }
+
     @Test func reviewsWithoutCapturingWhenNothingToShoot() async throws {
         // 撮影の設定はあるが、見える仮決めに画面を選んでいない
         try await given.putScreenshotSetting()
