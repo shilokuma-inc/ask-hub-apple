@@ -25,6 +25,31 @@ struct DemoLaunchTests {
     }
 }
 
+/// デモの速さを決める起動引数の秒数（`-demoReactionDelay 0` など）
+@MainActor
+struct DemoSecondsTests {
+    /// 起動引数と同じく文字列で入った秒数を読む。0 は渡していないとき（既定の秒数）と分ける
+    @Test
+    func readsSecondsFromStrings() throws {
+        let defaults = try #require(UserDefaults(suiteName: "DemoSecondsTests.\(UUID().uuidString)"))
+        defaults.set("0", forKey: DemoScenario.reactionDelayKey)
+        defaults.set("2.5", forKey: DemoScenario.receiptDelayKey)
+
+        #expect(DemoScenario.seconds(forKey: DemoScenario.reactionDelayKey, in: defaults) == 0)
+        #expect(DemoScenario.seconds(forKey: DemoScenario.receiptDelayKey, in: defaults) == 2.5)
+        #expect(DemoScenario.seconds(forKey: DemoScenario.stallThresholdKey, in: defaults) == nil)
+    }
+
+    /// 数でない・有限でない値は、渡していないものとする
+    @Test(arguments: ["abc", "", "nan", "inf", "-inf"])
+    func ignoresValuesThatAreNotFiniteNumbers(_ value: String) throws {
+        let defaults = try #require(UserDefaults(suiteName: "DemoSecondsTests.\(UUID().uuidString)"))
+        defaults.set(value, forKey: DemoScenario.reactionDelayKey)
+
+        #expect(DemoScenario.seconds(forKey: DemoScenario.reactionDelayKey, in: defaults) == nil)
+    }
+}
+
 /// App Store のスクショの撮影モード（Release でも動く）
 @MainActor
 struct ScreenshotDemoTests {
