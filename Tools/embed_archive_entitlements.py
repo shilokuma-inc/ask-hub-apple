@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
-"""署名せずに作った archive の .app に、プロジェクトの entitlements をアドホック署名で埋め込む（`_archive.yml` の iOS）。
+"""archive の .app に、プロジェクトの entitlements をアドホック署名で埋め込む（`_archive.yml` の iOS と macOS）。
 
-Export した IPA に、その entitlements が残ったかも確かめる（`check`）。
+Export した IPA・pkg に、その entitlements が残ったかも確かめる（`check`）。
 
-iOS は `CODE_SIGNING_ALLOWED=NO` でアーカイブする（アドホック署名のビルドは、push の entitlement（`aps-environment`）が
-provisioning profile を要するため「requires a provisioning profile」で止まる）。ところが Export は、archive の実行ファイルの
-署名にある entitlement だけを引き継いで配布用に署名し直し、profile からは足さない。署名の無い archive のままでは、
-TestFlight の版に `aps-environment` が入らず、通知の登録（`registerForRemoteNotifications`）が失敗する。
+Export は、archive の実行ファイルの署名にある entitlement だけを引き継いで配布用に署名し直し、profile からは足さない。
+ところが push の entitlement（iOS は `aps-environment`、macOS は `com.apple.developer.aps-environment`）は provisioning profile を要し、
+アドホック署名のビルドは「requires a provisioning profile」で止まるので、archive のビルドでは付けられない。
+そのままでは TestFlight の版に push の entitlement が入らず、通知の登録（`registerForRemoteNotifications`）が失敗する。
 
-そこで archive の後に、ビルドの設定（`xcodebuild -showBuildSettings`）で `$(VAR)` を展開した `CODE_SIGN_ENTITLEMENTS` で
-.app をアドホック署名する。値は Export が配布用の profile に合わせて書き換える（App Store なら production）。
+- iOS は `CODE_SIGNING_ALLOWED=NO` でアーカイブする。署名の無い .app を、ビルドの設定（`xcodebuild -showBuildSettings`）で
+  `$(VAR)` を展開した `CODE_SIGN_ENTITLEMENTS` でアドホック署名する
+- macOS はアドホック署名（`CODE_SIGN_STYLE=Manual`）でアーカイブする（署名しないと、`ENABLE_APP_SANDBOX` などから作られる
+  entitlement が埋め込まれない）。`CODE_SIGN_ENTITLEMENTS` は自動の署名のときだけ push のファイルになる（`Configs/Project.xcconfig`）ので、
+  ここではプロジェクトの既定（Automatic）の設定で読み、archive の署名の entitlement に足して署名し直す
+
+値は Export が配布用の profile に合わせて書き換える（App Store なら production）。
 .app の中に署名の要るもの（App Extension・Framework）を足したら、それぞれを先に署名する必要がある（codesign が止まって分かる）。
 
     python3 Tools/embed_archive_entitlements.py embed build.xcarchive \\
         --project AskHub.xcodeproj --scheme AskHub --sdk iphoneos --configuration Release
-    python3 Tools/embed_archive_entitlements.py check build.xcarchive export/AskHub.ipa   # Export の後
+    python3 Tools/embed_archive_entitlements.py check build.xcarchive export/AskHub.ipa   # Export の後（macOS は export/AskHub.pkg）
 """
 
 from __future__ import annotations
@@ -73,15 +78,23 @@ def signed_entitlements(app: Path) -> dict | None:
     return plistlib.loads(result.stdout) if result.stdout.strip() else {}
 
 
-def embed(args: argparse.Namespace) -> int:
-    """署名の無い archive の .app を、`CODE_SIGN_ENTITLEMENTS` を展開した entitlements でアドホック署名する。
+def merge(signed: dict, added: dict, app_name: str) -> dict:
+    """archive の署名の entitlements に、プロジェクトの entitlements を足す。同じキーで値が違えば止める。"""
+    conflicts = sorted(key for key in signed.keys() & added.keys() if signed[key] != added[key])
+    if conflicts:
+        raise SystemExit(f"{app_name} の署名の {', '.join(conflicts)} が、プロジェクトの entitlements と違います")
+    return {**signed, **added}
 
+
+def embed(args: argparse.Namespace) -> int:
+    """archive の .app を、`CODE_SIGN_ENTITLEMENTS` を展開した entitlements でアドホック署名する。
+
+    署名済み（macOS のアドホック署名の archive）なら、その署名の entitlements（sandbox など）に足して署名し直す。
+    上書きすると Xcode が埋め込んだ entitlement が消えるため。
     `CODE_SIGN_ENTITLEMENTS` が空なら何もしない。署名の後に、埋め込んだ entitlements と署名の中身が同じかを確かめる。
     """
     app = archived_app(args.archive)
-    # 署名済み（macOS のアドホック署名の archive など）を上書きすると、Xcode が埋め込んだ entitlement（sandbox など）が消える
-    if signed_entitlements(app) is not None:
-        raise SystemExit(f"{app.name} はすでに署名されています。署名の無い archive（CODE_SIGNING_ALLOWED=NO）にだけ使います")
+    signed = signed_entitlements(app)
 
     output = subprocess.run(
         ["xcodebuild", "-showBuildSettings", "-json", "-project", args.project, "-scheme", args.scheme,
@@ -94,11 +107,15 @@ def embed(args: argparse.Namespace) -> int:
         print(f"{app.name} の CODE_SIGN_ENTITLEMENTS が空なので、埋め込まずに終わります")
         return 0
     entitlements = expand(plistlib.loads((Path(settings["SRCROOT"]) / path).read_bytes()), settings)
+    # 署名し直すときは、archive の署名の識別子とフラグ（macOS の Hardened Runtime）を残す
+    preserve = [] if signed is None else ["--preserve-metadata=identifier,flags"]
+    if signed is not None:
+        entitlements = merge(signed, entitlements, app.name)
 
     with tempfile.NamedTemporaryFile(suffix=".entitlements") as file:
         file.write(plistlib.dumps(entitlements))
         file.flush()
-        subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", "--generate-entitlement-der",
+        subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", "--generate-entitlement-der", *preserve,
                         "--entitlements", file.name, str(app)], check=True)
 
     if signed_entitlements(app) != entitlements:
@@ -108,42 +125,53 @@ def embed(args: argparse.Namespace) -> int:
     return 0
 
 
+def packaged_app(package: Path, directory: Path) -> Path:
+    """Export した IPA・pkg を directory に展開し、中の .app（入れ子の .app は除く）を返す。"""
+    if package.suffix == ".pkg":
+        # 展開先は無い場所を指定する（あると pkgutil が止まる）。Payload の中身もファイルに展開される
+        expanded = directory / "expanded"
+        subprocess.run(["pkgutil", "--expand-full", str(package), str(expanded)], check=True)
+        apps = [app for app in expanded.rglob("*.app") if not any(parent.suffix == ".app" for parent in app.parents)]
+    else:
+        subprocess.run(["ditto", "-x", "-k", str(package), str(directory)], check=True)
+        apps = list((directory / "Payload").glob("*.app"))
+    if len(apps) != 1:
+        raise SystemExit(f"{package.name} の中に .app が 1 つに決まりません（{len(apps)} 件）")
+    return apps[0]
+
+
 def check(args: argparse.Namespace) -> int:
-    """Export した IPA の署名に、archive の署名の entitlement がすべて残っているかを確かめる。
+    """Export した IPA・pkg の署名に、archive の署名の entitlement がすべて残っているかを確かめる。
 
     配布用の profile に無い entitlement（App ID の Push Notifications が無効など）を Export が落とすと、
     通知が届かなくなって初めて気づくことになるので、ここで止める。
     """
     archived = signed_entitlements(archived_app(args.archive)) or {}
     with tempfile.TemporaryDirectory() as directory:
-        subprocess.run(["ditto", "-x", "-k", str(args.ipa), directory], check=True)
-        apps = list((Path(directory) / "Payload").glob("*.app"))
-        if len(apps) != 1:
-            raise SystemExit(f"{args.ipa.name} の Payload に .app が 1 つに決まりません（{len(apps)} 件）")
-        exported = signed_entitlements(apps[0]) or {}
+        exported = signed_entitlements(packaged_app(args.package, Path(directory))) or {}
     for key, value in sorted(exported.items()):
-        print(f"{args.ipa.name}: {key} = {value}")
+        print(f"{args.package.name}: {key} = {value}")
     missing = sorted(set(archived) - set(exported))
     if missing:
-        raise SystemExit(f"{args.ipa.name} に {', '.join(missing)} がありません。"
+        raise SystemExit(f"{args.package.name} に {', '.join(missing)} がありません。"
                          "配布用の profile に入っているか（App ID の capability が有効か）を確かめてください")
     return 0
 
 
 def main(argv: list[str]) -> int:
     """`embed` か `check` を流す（使い方はモジュールの説明）。"""
-    parser = argparse.ArgumentParser(description="archive の .app に entitlements を埋め込み、Export した IPA に残ったかを確かめる")
+    parser = argparse.ArgumentParser(description="archive の .app に entitlements を埋め込み、Export した IPA・pkg に残ったかを確かめる")
     commands = parser.add_subparsers(dest="command", required=True)
-    embed_parser = commands.add_parser("embed", help="署名の無い archive の .app に entitlements をアドホック署名で埋め込む")
+    embed_parser = commands.add_parser("embed", help="archive の .app に entitlements をアドホック署名で埋め込む")
     embed_parser.add_argument("archive", type=Path, help="xcodebuild archive で作った .xcarchive")
     embed_parser.add_argument("--project", required=True)
     embed_parser.add_argument("--scheme", required=True)
     embed_parser.add_argument("--sdk", required=True)
     embed_parser.add_argument("--configuration", required=True)
     embed_parser.set_defaults(handler=embed)
-    check_parser = commands.add_parser("check", help="Export した IPA に archive の entitlements が残ったかを確かめる")
+    check_parser = commands.add_parser("check", help="Export した IPA・pkg に archive の entitlements が残ったかを確かめる")
     check_parser.add_argument("archive", type=Path)
-    check_parser.add_argument("ipa", type=Path)
+    check_parser.add_argument("package", type=Path, help="Export した IPA（iOS）か pkg（macOS）")
     check_parser.set_defaults(handler=check)
     args = parser.parse_args(argv)
     return args.handler(args)
