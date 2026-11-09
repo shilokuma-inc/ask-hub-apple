@@ -13,9 +13,12 @@ struct DecisionClassificationResult: Decodable, Equatable, Sendable {
     }
 
     var decisions: [Item]
+    /// epic 全体で見た目が変わった画面（撮れる画面の一覧の id）。画面の変化を選ばせないときは無い
+    var changedScenes: [String]?
 
-    /// 返してもらう形。撮れる画面の一覧を渡すときは、仮決めごとに一覧の id か空を選ばせる
-    static func outputSchema(scenes: ScreenshotScenesFile?) -> JSONValue {
+    /// 返してもらう形。撮れる画面の一覧を渡すときは、仮決めごとに一覧の id か空を選ばせる。
+    /// `choosesScreens` なら、epic 全体で見た目が変わった画面も一覧から選ばせる
+    static func outputSchema(scenes: ScreenshotScenesFile?, choosesScreens: Bool = false) -> JSONValue {
         var item: [String: JSONValue] = [
             "id": OutputSchema.string("仮決めの id（d1 など）"),
             "visible": .object([
@@ -30,9 +33,16 @@ struct DecisionClassificationResult: Decodable, Equatable, Sendable {
                 "見える仮決めの変化が写る画面の id（撮れる画面の一覧から 1 つ）。合う画面が無い・内部の細部なら空"
             )
         }
-        return OutputSchema.object([
+        var properties: [String: JSONValue] = [
             "decisions": OutputSchema.array(of: OutputSchema.object(item), "渡した仮決めのすべてを、1 つずつ仕分けたもの")
-        ])
+        ]
+        if let scenes, choosesScreens {
+            properties["changedScenes"] = OutputSchema.array(
+                of: OutputSchema.oneOf(scenes.scenes.map(\.id), "撮れる画面の一覧の id"),
+                "epic 全体の差分で見た目が変わった画面（撮れる画面の一覧から。重ねない）。無ければ空"
+            )
+        }
+        return OutputSchema.object(properties)
     }
 
     /// 見えるとした仮決めのうち、撮る画面を選んだもの（仮決めの id → 画面の id）
@@ -53,8 +63,10 @@ struct DecisionClassificationResult: Decodable, Equatable, Sendable {
         if !missing.isEmpty { problems.append("仕分けていない仮決めがある（\(missing.joined(separator: "・"))）") }
         if Set(ids).count != ids.count { problems.append("同じ id を 2 度仕分けている") }
         if decisions.contains(where: { $0.reason.isBlank }) { problems.append("reason が空") }
-        let unknownScenes = decisions.compactMap(\.scene).filter { !$0.isEmpty && scenes?.scene($0) == nil }
+        let chosen = decisions.compactMap(\.scene).filter { !$0.isEmpty } + (changedScenes ?? [])
+        let unknownScenes = chosen.filter { scenes?.scene($0) == nil }
         if !unknownScenes.isEmpty { problems.append("撮れる画面の一覧に無い画面がある（\(unknownScenes.joined(separator: "・"))）") }
+        if let changedScenes, Set(changedScenes).count != changedScenes.count { problems.append("changedScenes に同じ画面を 2 度書いている") }
         return problems
     }
 }
@@ -69,6 +81,8 @@ enum DecisionClassification {
         var checkout: FinalReviewCheckout
         /// 撮れる画面の一覧（作業ブランチの先頭のもの）。撮影の設定が無い・読めないリポジトリでは nil
         var scenes: ScreenshotScenesFile?
+        /// epic 全体で見た目が変わった画面も選ばせるか（まだ選んでいないとき）
+        var choosesScreens = false
     }
 
     /// ゴールと仮決め（と決まりの文）だけで上限を超えるときは nil（黙って削らず、呼ぶ側が理由を付けて人へ渡す）
@@ -81,7 +95,7 @@ enum DecisionClassification {
             prompt: prompt,
             systemPrompt: system,
             model: TaskRules.model,
-            outputSchema: DecisionClassificationResult.outputSchema(scenes: subject.scenes),
+            outputSchema: DecisionClassificationResult.outputSchema(scenes: subject.scenes, choosesScreens: subject.choosesScreens),
             tools: ClaudeRequest.readOnlyTools,
             workingDirectory: subject.checkout.directory,
             timeout: TaskReview.timeout
@@ -103,13 +117,13 @@ enum DecisionClassification {
 
     static func text(for subject: Subject, changes: String) -> String {
         """
-        次の仮決めを、1 つずつ「見える（visible: true）」か「内部の細部（visible: false）」に仕分けてください。
+        次の仮決めを、1 つずつ「見える（visible: true）」か「内部の細部（visible: false）」に仕分けてください（仕分ける仮決めが無ければ decisions は空）。
 
         ## ゴール（epic 全体で作るもの）
         \(UntrustedText.block("goal", PromptText.goal(subject.goal)))
 
         ## 仮決め
-        \(UntrustedText.block("decisions", subject.items.map(Self.text(of:)).joined(separator: "\n")))
+        \(UntrustedText.block("decisions", decisionsText(subject.items)))
 
         ## epic 全体の差分（base との分岐点から作業ブランチの先頭まで）
         \(UntrustedText.block("diff", changes))
@@ -122,7 +136,26 @@ enum DecisionClassification {
 
         差分が長くて省かれているときは、作業フォルダのファイルを読んで確かめてください。
         \(sceneText(subject.scenes))
+        \(subject.choosesScreens ? screensText(subject.scenes) : "")
         """
+    }
+
+    /// 仕分ける仮決めの一覧。無ければそのことを書く
+    static func decisionsText(_ items: [DecisionsFile.Item]) -> String {
+        items.isEmpty ? "（仕分ける仮決めは無い）" : items.map(text(of:)).joined(separator: "\n")
+    }
+
+    /// epic 全体の画面の変化の選び方。一覧が無ければ空
+    static func screensText(_ scenes: ScreenshotScenesFile?) -> String {
+        guard scenes != nil else { return "" }
+        return """
+
+            ## 画面の変化の選び方
+            仮決めとは別に、epic 全体の差分で見た目（画面・文言・レイアウト・状態）が変わった画面を、上の一覧からすべて選び、changedScenes に id を書いてください。
+            人は最終 PR で、その画面の Before（base）と After（作業ブランチ）のスクショを並べて、依頼どおりに変わったかを確かめます。
+            - 差分を読んで、実際に見た目が変わる画面だけを選ぶ（変わらない画面・内部の変更だけの画面は選ばない）
+            - 見た目が変わる画面が無ければ空にする
+            """
     }
 
     /// 撮れる画面の一覧と選び方。一覧が無ければ空

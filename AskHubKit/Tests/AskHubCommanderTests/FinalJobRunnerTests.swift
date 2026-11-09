@@ -150,6 +150,39 @@ struct FinalJobRunnerTests {
         #expect(TaskRunnerTests.value("--json-schema", in: command)?.contains(#""enum":["","ranking","ranking-empty"]"#) == true)
     }
 
+    @Test func classifyChoosesChangedScreensEvenWithoutDecisions() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ChangedScreens-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("App"), withIntermediateDirectories: true)
+        let scenes = ScreenshotScenesFile(scenes: [
+            .init(id: "inbox", title: "一覧", arguments: []), .init(id: "inbox-quiet", title: "空のとき", arguments: [])
+        ])
+        try JSONEncoder().encode(scenes).write(to: directory.appendingPathComponent("App/screenshot-scenes.json"))
+        let fixture = Fixture(reviews: [QuestionJobsTests.result(#"{"decisions":[],"changedScenes":["inbox-quiet"]}"#)])
+        fixture.git.update { $0.jobDirectory = directory }
+        try await fixture.prepare()
+        var settings = try Fixture.settings()
+        let phone = BuildDestination.simulator(SimulatorDestination(platform: .iOS, deviceType: "iPhone 17 Pro"))
+        settings.screenshots = ScreenshotSettings(scenes: "App/screenshot-scenes.json", destination: phone)
+        let environment = try fixture.environment(settings: settings)
+        let result = try await ClassifyDecisionsRunner(environment: environment).execute(fixture.job(.classifyDecisions, "01"))
+        #expect(result.failure == nil)
+        #expect(result.outputs?.visibleDecisions?.isEmpty == true)
+        #expect(result.outputs?.changedScenes == ["inbox-quiet"])
+        let command = try #require(fixture.reviewer.commands.first)
+        #expect(command.arguments[1].contains("## 画面の変化の選び方"))
+        #expect(command.arguments[1].contains("（仕分ける仮決めは無い）"))
+        #expect(TaskRunnerTests.value("--json-schema", in: command)?.contains("changedScenes") == true)
+
+        // 画面の変化を選んだ後は、仕分ける仮決めが無ければ Claude を呼ばない
+        let chosen = Fixture()
+        try await chosen.prepare(decisions: DecisionsFile(screens: [.init(scene: "inbox-quiet")]))
+        let runner = ClassifyDecisionsRunner(environment: try chosen.environment(settings: settings))
+        let again = try await runner.execute(chosen.job(.classifyDecisions, "02"))
+        #expect(again.outputs?.changedScenes == nil)
+        #expect(chosen.reviewer.commands.isEmpty)
+    }
+
     @Test func scenesOutsideRepositoryAreNotRead() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("SceneLink-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
