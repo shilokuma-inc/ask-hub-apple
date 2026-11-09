@@ -10,12 +10,21 @@ public struct TaskWorkspace: Sendable {
     /// epic の作業場所（worktree）。`--restricted` で、Claude が読み書きできるのはここと `additionalDirectories` だけ
     public var directory: URL
     public var additionalDirectories: [URL]
+    /// 撮れる画面の一覧のパス（`build.screenshots.scenes`）。撮影の設定が無いリポジトリでは nil
+    public var screenshotScenes: String?
 
-    public init(repository: RepositoryFullName, facts: String, directory: URL, additionalDirectories: [URL] = []) {
+    public init(
+        repository: RepositoryFullName,
+        facts: String,
+        directory: URL,
+        additionalDirectories: [URL] = [],
+        screenshotScenes: String? = nil
+    ) {
         self.repository = repository
         self.facts = facts
         self.directory = directory
         self.additionalDirectories = additionalDirectories
+        self.screenshotScenes = screenshotScenes
     }
 }
 
@@ -164,7 +173,12 @@ public struct TaskRunner: Sendable {
     private func request(for job: some TaskJob, in workspace: TaskWorkspace) -> ClaudeRequest {
         ClaudeRequest(
             prompt: job.prompt,
-            systemPrompt: TaskRules.systemPrompt(repository: workspace.repository, facts: workspace.facts, roundTrips: limits.roundTrips),
+            systemPrompt: TaskRules.systemPrompt(
+                repository: workspace.repository,
+                facts: workspace.facts,
+                roundTrips: limits.roundTrips,
+                screenshotScenes: workspace.screenshotScenes
+            ),
             model: model,
             outputSchema: TaskReport.outputSchema,
             tools: TaskRules.tools,

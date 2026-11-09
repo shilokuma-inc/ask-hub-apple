@@ -287,7 +287,11 @@ extension TaskJobEnvironment {
         additionalDirectories: [URL] = []
     ) async -> TaskReply {
         let workspace = TaskWorkspace(
-            repository: checkout.repo, facts: checkout.facts, directory: checkout.directory, additionalDirectories: additionalDirectories
+            repository: checkout.repo,
+            facts: checkout.facts,
+            directory: checkout.directory,
+            additionalDirectories: additionalDirectories,
+            screenshotScenes: target.settings.screenshots?.scenes
         )
         return await slots.withSlot { slot in
             let build = BuildTarget(epic: target.epic.id, directory: checkout.directory, settings: target.settings.build, slot: slot)
