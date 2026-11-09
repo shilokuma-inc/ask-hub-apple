@@ -1,3 +1,5 @@
+import Foundation
+
 /// ワーカーが使う PR の操作。本物は `GitHubPullRequests`。ワーカーのテストでは偽物に差し替える
 public protocol PullRequestOperations: Sendable {
     /// PR を作る。同じ head・base の開いた PR がすでにあれば、作らずにそれを返す
@@ -25,6 +27,10 @@ public protocol PullRequestOperations: Sendable {
     ) async throws(PullRequestError) -> MergedPullRequest
     /// ブランチを消す。今の先頭が `expectedSHA` と違えば消さない
     func deleteBranch(_ branch: String, expectedSHA: String) async throws(PullRequestError) -> BranchDeletion
+    /// 画像を GitHub に上げ、PR の本文から参照できる URL を返す（public のリポジトリでは誰でも見られ、消せない）
+    func uploadAttachment(_ data: Data, name: String, contentType: String) async throws(PullRequestError) -> String
+    /// PR の本文を書き換える
+    func updateBody(number: Int, body: String) async throws(PullRequestError)
 }
 
 extension GitHubPullRequests: PullRequestOperations {}

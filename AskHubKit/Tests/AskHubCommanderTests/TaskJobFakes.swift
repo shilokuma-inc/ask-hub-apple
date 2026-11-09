@@ -221,6 +221,12 @@ final class FakePullRequests: PullRequestOperations {
         /// レビューの指摘（GitHub の部品と同じく、信用する書き手のものだけを返す）
         var feedback = ReviewFeedback(threads: [], reviews: [])
         var trusted: [TrustedAuthors] = []
+        /// 上げた画像の名前（上げた順）
+        var uploads: [String] = []
+        /// 画像を上げるときに投げる失敗
+        var uploadError: PullRequestError?
+        /// 書き換えた本文（PR の番号と本文）
+        var bodies: [(number: Int, body: String)] = []
     }
 
     private let state: OSAllocatedUnfairLock<State>
@@ -320,6 +326,19 @@ final class FakePullRequests: PullRequestOperations {
             return .success(.deleted)
         }
         return try result.get()
+    }
+
+    func uploadAttachment(_ payload: Data, name: String, contentType: String) async throws(PullRequestError) -> String {
+        let result = state.withLock { state -> Result<String, PullRequestError> in
+            if let error = state.uploadError { return .failure(error) }
+            state.uploads.append(name)
+            return .success("https://github.com/user-attachments/assets/asset-\(state.uploads.count)")
+        }
+        return try result.get()
+    }
+
+    func updateBody(number: Int, body: String) async throws(PullRequestError) {
+        state.withLock { $0.bodies.append((number, body)) }
     }
 
     func jobLog(jobID: Int) async throws(PullRequestError) -> String {

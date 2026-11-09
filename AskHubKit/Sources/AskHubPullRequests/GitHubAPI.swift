@@ -44,6 +44,18 @@ struct GitHubAPI: Sendable {
         return (data, response)
     }
 
+    /// 中身をそのまま送る（画像の添付）。`url` は呼ぶ側が決まったホスト（`GitHubPullRequests.uploadsBase`）から作る
+    func upload(_ url: URL, data: Data) async throws(PullRequestError) -> Data {
+        var request = try await makeRequest("POST", url, body: nil)
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+        let (body, response) = try await transmit(request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw PullRequestError.classify(response, body: body, now: now())
+        }
+        return body
+    }
+
     /// GET して、決まった型で読む
     func get<Value: Decodable>(_ path: String, query: [URLQueryItem] = [], as type: Value.Type) async throws(PullRequestError) -> Value {
         let (data, _) = try await send("GET", url(path, query: query))
