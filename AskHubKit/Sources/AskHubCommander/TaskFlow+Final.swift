@@ -80,10 +80,11 @@ extension TaskFlow {
         }
     }
 
-    /// 仕分けていない仮決めがあれば判断の仕分けを作り、無ければ `next` を作る
+    /// 仕分けていない仮決めがあるか、撮影の設定があって画面の変化をまだ選んでいなければ判断の仕分けを作り、無ければ `next` を作る
     func classify(then next: AfterClassification, after parent: JobFile, in final: FinalPlan) async throws(CommanderError) -> Advanced {
         let decisions = try await context.read(DecisionsFile.self, at: StatePath.decisions(final.epic.repo, final.epic.id))
-        guard decisions?.hasUnclassified == true else { return try await proceed(to: next, after: parent, in: final) }
+        let choosesScreens = try await capturesScreenshots(final) && decisions?.screens == nil
+        guard decisions?.hasUnclassified == true || choosesScreens else { return try await proceed(to: next, after: parent, in: final) }
         return try await create(.classifyDecisions, input: nil, after: parent, seed: parent.id.rawValue, in: final)
     }
 
@@ -100,12 +101,16 @@ extension TaskFlow {
         }
     }
 
-    /// 撮影のジョブを作るか。リポジトリに撮影の設定があり、撮る画面を選んだ見える仮決めがあるとき
+    /// 撮影のジョブを作るか。リポジトリに撮影の設定があり、撮る画面を選んだ見える仮決めか、画面の変化があるとき
     func shouldCapture(in final: FinalPlan) async throws(CommanderError) -> Bool {
-        let repository = try await context.read(RepositoryFile.self, at: StatePath.repository(final.epic.repo))
-        guard repository?.build?.screenshots != nil else { return false }
+        guard try await capturesScreenshots(final) else { return false }
         let decisions = try await context.read(DecisionsFile.self, at: StatePath.decisions(final.epic.repo, final.epic.id))
         return decisions?.hasScenes == true
+    }
+
+    /// リポジトリに撮影の設定（`build.screenshots`）があるか
+    func capturesScreenshots(_ final: FinalPlan) async throws(CommanderError) -> Bool {
+        try await context.read(RepositoryFile.self, at: StatePath.repository(final.epic.repo))?.build?.screenshots != nil
     }
 
     /// 撮影が成功した: 撮ったスクショを `decisions.json` に写し、撮った head でレビューを作る（撮れなかったものも、わけを写して先へ進む）
@@ -113,10 +118,12 @@ extension TaskFlow {
         guard let input = capture.input(as: PullRequestInput.self), input.isValid else {
             return stuck(capture, "最終 PR か head が無い", in: final)
         }
-        let screenshots = try await succeededOutputs(of: capture)?.screenshots ?? [:]
-        if !screenshots.isEmpty {
-            try await context.updateDecisions(of: final.epic, message: "判断のカードのスクショを書く") { file in
-                let next = file.capturing(screenshots)
+        let outputs = try await succeededOutputs(of: capture)
+        let screenshots = outputs?.screenshots ?? [:]
+        let screens = outputs?.screenChanges ?? []
+        if !screenshots.isEmpty || !screens.isEmpty {
+            try await context.updateDecisions(of: final.epic, message: "判断のカードと画面の変化のスクショを書く") { file in
+                let next = file.capturing(screenshots, screens: screens)
                 guard next != file else { return false }
                 file = next
                 return true
@@ -132,8 +139,10 @@ extension TaskFlow {
             return stuck(classify, "見えるとした仮決め（visibleDecisions）が無い", in: final)
         }
         let scenes = outputs?.decisionScenes ?? [:]
-        try await context.updateDecisions(of: final.epic, message: "仮決めを仕分ける") { file in
-            let next = file.classifying(visible: visible, scenes: scenes)
+        // 画面の変化は、撮影の設定のあるリポジトリでだけ選ぶ（選んで無ければ空を書き、選び直さない）
+        let changedScenes = try await capturesScreenshots(final) ? outputs?.changedScenes ?? [] : nil
+        try await context.updateDecisions(of: final.epic, message: "仮決めを仕分ける", creating: changedScenes != nil) { file in
+            let next = file.classifying(visible: visible, scenes: scenes, changedScenes: changedScenes)
             guard next != file else { return false }
             file = next
             return true
