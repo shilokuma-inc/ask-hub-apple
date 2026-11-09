@@ -6,21 +6,29 @@ import Foundation
 extension StateSnapshotBuilder {
     /// 送った意図が働きかける画面の要素（画面の意図から決める `HumanIntent.targets` と同じ対象にする）。画面の要素に結びつかなければ nil
     static func target(of envelope: IntentEnvelope) -> IntentTarget? {
-        switch envelope.kind {
-        case RequestIntent.kind:
+        guard envelope.kind != RequestIntent.kind else {
             return .request(epicID: epicID(forRequest: envelope).rawValue)
+        }
+        return target(kind: envelope.kind, repo: envelope.repo, target: envelope.target)
+    }
+
+    /// 意図の種類と対象から決める画面の要素。依頼は、作られる epic の id が意図の番号で決まるので、ここでは決めない（nil）
+    static func target(kind: String, repo: RepositoryFullName?, target: IntentEnvelope.Target?) -> IntentTarget? {
+        switch kind {
+        case RequestIntent.kind:
+            return nil
 
         case AddRepositoryIntent.kind:
-            return envelope.repo.map { .repository(repository($0).id) }
+            return repo.map { .repository(repository($0).id) }
 
         default:
-            guard let epicID = envelope.target?.epic?.rawValue else {
+            guard let epicID = target?.epic?.rawValue else {
                 return nil
             }
-            if let id = envelope.target?.id, let target = itemTarget(kind: envelope.kind, epicID: epicID, id: id) {
-                return target
+            if let id = target?.id, let item = itemTarget(kind: kind, epicID: epicID, id: id) {
+                return item
             }
-            return epicTarget(kind: envelope.kind, epicID: epicID)
+            return epicTarget(kind: kind, epicID: epicID)
         }
     }
 

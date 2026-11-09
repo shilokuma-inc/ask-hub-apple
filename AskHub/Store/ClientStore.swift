@@ -62,7 +62,8 @@ final class ClientStore {
     private(set) var reflections = ReflectionTracker()
     /// 送っている途中の意図。同じ意図は、送り終わるまで重ねて送らない
     private var sendingIntents: Set<HumanIntent> = []
-    /// 読み込みを始めた数と、画面に当てた最後の読み込みの番号（後に始めた読み込みの結果を、先に始めた読み込みで上書きしない）
+    /// 読み込みを始めた数と、画面に当てた最後の読み込みの番号（後に始めた読み込みの結果を、先に始めた読み込みで上書きしない。
+    /// 窓口も同じ決まりで送る形の引き当てを更新するので、読めなかった読み込みは番号を進めない）
     private var startedRefreshes = 0
     private var appliedRefresh = 0
 
@@ -117,16 +118,22 @@ final class ClientStore {
             snapshot = fetched
             phase = .loaded
             refreshFailure = nil
-            let receipts = reflections.receive(fetched, generation: generation, now: now(), trackingWindow: Self.receiptTrackingWindow)
+            let receipts = reflections.receive(
+                fetched,
+                generation: generation,
+                latestStarted: startedRefreshes,
+                now: now(),
+                trackingWindow: Self.receiptTrackingWindow
+            )
             announceAccepted(receipts.acceptedAnnounced, in: fetched)
             if receipts.needsReread {
                 await refresh()
             }
         } catch {
+            // 後に始めた読み込みがもう読めていれば、古い失敗は出さない
             guard generation > appliedRefresh else {
                 return
             }
-            appliedRefresh = generation
             let message = error.localizedDescription
             if snapshot == nil {
                 phase = .failed(message)
@@ -236,7 +243,9 @@ final class ClientStore {
             }
             return .skipped(.alreadySent)
         }
-        if let busy = reflection(for: intent.targets), busy.isPending {
+        // 同じ操作の送り直し（途中で失敗したまとめて OK の残り）は、自分の送った分を理由に止めない
+        let busy = reflections.reflection(matching: { intent.targets.contains($0) }, pending: pending?.intent, excluding: intent)
+        if let busy, busy.isPending {
             let message = "\(busy.label)を反映しています。反映されてから操作してください"
             if reportsFailure {
                 sendFailure = SendFailure(intent: intent, message: message)
@@ -266,10 +275,15 @@ final class ClientStore {
             await refresh()
             return .sent(receipt)
         } catch {
-            reflections.finishSending(sendingID, receipt: nil, announces: announces, at: now())
+            // まとめて OK の途中で失敗したときは、書けた分を反映中として追い続ける（もう一度送ると、残りだけを送る）
+            let partial = (error as? ClientServiceError)?.sentBeforeFailure
+            reflections.finishSending(sendingID, receipt: partial, announces: announces, at: now())
             let message = error.localizedDescription
             if reportsFailure {
                 sendFailure = SendFailure(intent: intent, message: message)
+            }
+            if partial != nil {
+                await refresh()
             }
             return .failed(message)
         }

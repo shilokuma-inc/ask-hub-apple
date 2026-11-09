@@ -39,6 +39,7 @@ struct Reflection: Equatable {
 /// 送っている（GitHub に書いている）→ 司令塔の受け取り待ち（`consumed` が無い）→ 受け付けられて読み直し待ち → 反映（消す）の順に進む。
 /// 受け付けた記録（`consumed`）は司令塔が状態を書き換えた後に書くが、並べて読む 1 回の読み込みでは書き換える前の状態を読むことがあるので、
 /// 受け付けを見つけた後に始めた読み込みが終わるまで反映中とする。断られたら、理由を閉じるまで残す。
+/// まとめて OK のように 1 つの操作が複数の意図になるときは、意図ごとに、その意図で答えた対象だけを追う。
 /// 前の起動で送って受け取り待ちの意図も、読んだ送った意図の一覧（`ClientSnapshot.sentIntents`）から反映中として出す
 struct ReflectionTracker {
     /// 司令塔が断った知らせ
@@ -81,15 +82,22 @@ struct ReflectionTracker {
     private struct Accepted {
         var targets: [IntentTarget]
         var label: String
-        /// 受け付けを見つけた読み込みの番号。これより後に始めた読み込みが終わったら消す
-        var observedIn: Int
+        /// 受け付けを見つけたときに始めてあった読み込みの最後の番号。これより後に始めた読み込みが終わったら消す
+        var observedAfter: Int
+    }
+
+    /// 前に読んだときに受け取り待ちだった送った意図
+    private struct PreviousWaiting {
+        var status: SentIntentStatus
+        /// 読んだ中に見つからなくなった時刻（その意図だけ読めなかったときも、しばらくは待ち続ける）。見つかっている間は nil
+        var missingSince: Date?
     }
 
     private var sending: [UUID: Sending] = [:]
     /// 送った意図の id ごと
     private var awaiting: [String: Awaiting] = [:]
     /// 前に読んだときに受け取り待ちだった送った意図（前の起動で送ったものを含む）
-    private var waitingInSnapshot: [String: SentIntentStatus] = [:]
+    private var waitingInSnapshot: [String: PreviousWaiting] = [:]
     private var accepted: [Accepted] = []
     /// 断られた知らせ（古い順）
     private(set) var rejections: [Rejection] = []
@@ -106,37 +114,58 @@ struct ReflectionTracker {
         return id
     }
 
-    /// 送り終えた。書けなかったら（`receipt` が nil）、反映中を外す
+    /// 送り終えた。書けなかったら（`receipt` が nil）、反映中を外す。途中まで書けたときは、書けた意図だけを追う
     mutating func finishSending(_ id: UUID, receipt: SendReceipt?, announces: Bool, at date: Date) {
         guard let item = sending.removeValue(forKey: id), let receipt else {
             return
         }
-        let targets = item.intent.targets + [receipt.requestedEpicID.map { IntentTarget.request(epicID: $0) }].compactMap(\.self)
-        for intentID in receipt.intentIDs {
-            awaiting[intentID] = Awaiting(intent: item.intent, targets: targets, sentAt: date, announces: announces)
+        // 意図ごとの対象が分からなければ、操作の対象すべてとみなす
+        let operationTargets = item.intent.targets + [receipt.requestedEpicID.map { IntentTarget.request(epicID: $0) }].compactMap(\.self)
+        for sent in receipt.sent {
+            let targets = sent.target.map { [$0] } ?? operationTargets
+            awaiting[sent.id] = Awaiting(intent: item.intent, targets: targets, sentAt: date, announces: announces)
         }
     }
 
     // MARK: 読む
 
     /// 読んだ送った意図の一覧から、司令塔が受け取ったものを見つける。
-    /// `generation` は読み込みを始めた順の番号、`trackingWindow` は送った意図が一覧に見つからないときに待ち続ける間
-    mutating func receive(_ snapshot: ClientSnapshot, generation: Int, now: Date, trackingWindow: TimeInterval) -> Receipts {
+    /// `generation` は終わった読み込みを始めた順の番号、`latestStarted` はいま始めてある読み込みの最後の番号、
+    /// `trackingWindow` は送った意図が一覧に見つからないときに待ち続ける間
+    mutating func receive(
+        _ snapshot: ClientSnapshot,
+        generation: Int,
+        latestStarted: Int,
+        now: Date,
+        trackingWindow: TimeInterval
+    ) -> Receipts {
         // 受け付けを見つけた後に始めた読み込みなので、状態は反映されている
-        accepted.removeAll { $0.observedIn < generation }
+        accepted.removeAll { generation > $0.observedAfter }
         let statuses = Dictionary(snapshot.sentIntents.map { ($0.id, $0) }) { first, _ in first }
         var receipts = Receipts()
         let ownIDs = Set(awaiting.keys)
-        receiveOwn(statuses, generation: generation, now: now, trackingWindow: trackingWindow, into: &receipts)
-        receivePrevious(statuses, excluding: ownIDs, generation: generation, into: &receipts)
-        waitingInSnapshot = statuses.filter { $0.value.state == .waiting }
+        receiveOwn(statuses, observedAfter: latestStarted, now: now, trackingWindow: trackingWindow, into: &receipts)
+        receivePrevious(statuses, excluding: ownIDs, observedAfter: latestStarted, into: &receipts)
+        rememberWaiting(statuses, now: now, trackingWindow: trackingWindow)
         return receipts
+    }
+
+    /// 受け取り待ちの送った意図を覚える。前に受け取り待ちだった意図が読んだ中に無いときは、その意図だけ読めなかったこともあるので、しばらくは覚えておく
+    private mutating func rememberWaiting(_ statuses: [String: SentIntentStatus], now: Date, trackingWindow: TimeInterval) {
+        var waiting = statuses.filter { $0.value.state == .waiting }.mapValues { PreviousWaiting(status: $0, missingSince: nil) }
+        for (intentID, previous) in waitingInSnapshot where statuses[intentID] == nil && awaiting[intentID] == nil {
+            let missingSince = previous.missingSince ?? now
+            if now.timeIntervalSince(missingSince) < trackingWindow {
+                waiting[intentID] = PreviousWaiting(status: previous.status, missingSince: missingSince)
+            }
+        }
+        waitingInSnapshot = waiting
     }
 
     /// この起動で送った意図（送った順）のうち、司令塔が受け取ったもの
     private mutating func receiveOwn(
         _ statuses: [String: SentIntentStatus],
-        generation: Int,
+        observedAfter: Int,
         now: Date,
         trackingWindow: TimeInterval,
         into receipts: inout Receipts
@@ -147,7 +176,7 @@ struct ReflectionTracker {
                 continue
 
             case .accepted:
-                accepted.append(Accepted(targets: item.targets, label: item.intent.label, observedIn: generation))
+                accepted.append(Accepted(targets: item.targets, label: item.intent.label, observedAfter: observedAfter))
                 receipts.needsReread = true
                 if item.announces {
                     receipts.acceptedAnnounced.append(item.intent)
@@ -171,19 +200,19 @@ struct ReflectionTracker {
     private mutating func receivePrevious(
         _ statuses: [String: SentIntentStatus],
         excluding ownIDs: Set<String>,
-        generation: Int,
+        observedAfter: Int,
         into receipts: inout Receipts
     ) {
-        for (intentID, previous) in waitingInSnapshot.sorted(by: { ($0.value.sentAt, $0.key) < ($1.value.sentAt, $1.key) })
-        where !ownIDs.contains(intentID) {
-            let targets = [previous.target].compactMap(\.self)
-            switch statuses[intentID]?.state {
+        let previous = waitingInSnapshot.values.map(\.status).filter { !ownIDs.contains($0.id) }
+        for status in previous.sorted(by: { ($0.sentAt, $0.id) < ($1.sentAt, $1.id) }) {
+            let targets = [status.target].compactMap(\.self)
+            switch statuses[status.id]?.state {
             case .accepted:
-                accepted.append(Accepted(targets: targets, label: previous.title, observedIn: generation))
+                accepted.append(Accepted(targets: targets, label: status.title, observedAfter: observedAfter))
                 receipts.needsReread = true
 
             case .rejected(_, let reason):
-                rejections.append(Rejection(targets: targets, label: previous.title, reason: reason))
+                rejections.append(Rejection(targets: targets, label: status.title, reason: reason))
 
             case .waiting, nil:
                 break
@@ -193,17 +222,21 @@ struct ReflectionTracker {
 
     // MARK: 対象ごとの様子
 
-    /// 条件に合う対象の様子。送っている・受け取り待ち・読み直し待ちを、断られた知らせより先に返す。何も無ければ nil
-    func reflection(matching isTarget: (IntentTarget) -> Bool, pending: HumanIntent?) -> Reflection? {
-        if let item = sending.values.first(where: { $0.intent.targets.contains(where: isTarget) }) {
+    /// 条件に合う対象の様子。送っている・受け取り待ち・読み直し待ちを、断られた知らせより先に返す。何も無ければ nil。
+    /// `excluding` の操作が送った分（送り直すときの自分の分）は数えない
+    func reflection(matching isTarget: (IntentTarget) -> Bool, pending: HumanIntent?, excluding: HumanIntent? = nil) -> Reflection? {
+        if let item = sending.values.first(where: { $0.intent != excluding && $0.intent.targets.contains(where: isTarget) }) {
             return Reflection(label: item.intent.label, phase: .sending)
         }
-        if let pending, pending.targets.contains(where: isTarget) {
+        if let pending, pending != excluding, pending.targets.contains(where: isTarget) {
             return Reflection(label: pending.label, phase: .sending)
         }
-        var waiting = awaiting.values.filter { $0.targets.contains(where: isTarget) }.map { (label: $0.intent.label, since: $0.sentAt) }
-        waiting += waitingInSnapshot.values.filter { status in status.target.map(isTarget) == true && awaiting[status.id] == nil }
-            .map { (label: $0.title, since: $0.sentAt) }
+        var waiting = awaiting.values.filter { $0.intent != excluding && $0.targets.contains(where: isTarget) }
+            .map { (label: $0.intent.label, since: $0.sentAt) }
+        let previous = waitingInSnapshot.values.map(\.status).filter { status in
+            status.target.map(isTarget) == true && awaiting[status.id] == nil
+        }
+        waiting += previous.map { (label: $0.title, since: $0.sentAt) }
         // 一番前に送ったものの時刻で、司令塔が受け取らないまま時間がたったかを決める
         if let oldest = waiting.min(by: { $0.since < $1.since }) {
             return Reflection(label: oldest.label, phase: .waiting(since: oldest.since))

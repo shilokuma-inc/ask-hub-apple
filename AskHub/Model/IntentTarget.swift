@@ -3,8 +3,9 @@ import Foundation
 /// 人の意図が働きかける画面の要素（カード・行・ボタン）。
 ///
 /// 送った意図が画面に反映されるまで、同じ対象への操作を止めて、その場に「反映中」を出すのに使う（`ReflectionTracker`）。
-/// 画面の意図からはここの `HumanIntent.targets` が、状態リポジトリの送った意図からは `StateSnapshotBuilder.target(of:)` が、同じ対象を決める
-enum IntentTarget: Hashable {
+/// 画面の意図からはここの `HumanIntent.targets` が、状態リポジトリの送った意図からは `StateSnapshotBuilder.target(of:)` が、同じ対象を決める。
+/// 送った控え（`SendReceipt`）が持つので、nonisolated にする
+nonisolated enum IntentTarget: Hashable {
     /// 質問（回答・説明の依頼）
     case question(epicID: Epic.ID, questionID: Question.ID)
     /// ゴール（開始・ゴールの修正）

@@ -22,21 +22,37 @@ extension ClientService {
     func supports(_ intent: HumanIntent) -> Bool { true }
 }
 
-/// 書いた意図の控え
-struct SendReceipt: Equatable {
+/// 書いた意図の控え（失敗の `ClientServiceError` が持つので、nonisolated にする）
+nonisolated struct SendReceipt: Equatable {
+    /// 書いた 1 つの意図
+    nonisolated struct Sent: Equatable {
+        /// `ClientSnapshot.sentIntents` の id。司令塔が受け付けたかを読み直しで確かめるのに使う
+        var id: String
+        /// その意図が働きかける対象（まとめて OK なら、その意図で答えたカード）。分からなければ nil（操作の対象すべてとみなす）
+        var target: IntentTarget?
+    }
+
     /// 依頼から作られる epic。司令塔が受け取る前から、この id で出す（依頼でなければ nil）
     var requestedEpicID: Epic.ID?
-    /// 送った意図の id（`ClientSnapshot.sentIntents` の id。送った順）。司令塔が受け付けたかを読み直しで確かめるのに使う。
-    /// まとめて OK のように 1 つの操作が複数の意図になるときは、そのすべて。分からなければ空
-    var intentIDs: [String] = []
+    /// 書いた意図（送った順）。まとめて OK のように 1 つの操作が複数の意図になるときは、そのすべて。分からなければ空
+    var sent: [Sent] = []
 
-    init(requestedEpicID: Epic.ID? = nil, intentIDs: [String] = []) {
+    init(requestedEpicID: Epic.ID? = nil, sent: [Sent] = []) {
         self.requestedEpicID = requestedEpicID
-        self.intentIDs = intentIDs
+        self.sent = sent
+    }
+
+    init(requestedEpicID: Epic.ID? = nil, intentIDs: [String]) {
+        self.init(requestedEpicID: requestedEpicID, sent: intentIDs.map { Sent(id: $0, target: nil) })
     }
 
     init(requestedEpicID: Epic.ID? = nil, intentID: String?) {
         self.init(requestedEpicID: requestedEpicID, intentIDs: [intentID].compactMap(\.self))
+    }
+
+    /// 書いた意図の id（送った順）
+    var intentIDs: [String] {
+        sent.map(\.id)
     }
 
     /// 最後に送った意図の id
@@ -55,6 +71,8 @@ struct SentRecord: Equatable {
 /// 読み書きの失敗。画面には `message` だけを出す（トークンなどの値は入れない）
 struct ClientServiceError: LocalizedError, Equatable {
     var message: String
+    /// 複数の意図になる操作の途中で失敗したときの、失敗する前に書けた意図（書けた分は司令塔が受け取る）
+    var sentBeforeFailure: SendReceipt?
 
     var errorDescription: String? { message }
 }
