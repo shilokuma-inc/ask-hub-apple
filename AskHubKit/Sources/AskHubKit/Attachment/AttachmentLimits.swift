@@ -1,6 +1,6 @@
 import Foundation
 
-/// 添付の上限と、選んだファイルを一覧に足してよいかの確認（`docs/protocol.md` の「添付ファイル」の「種類と上限」）
+/// 添付の上限と、選んだファイルを一覧に足してよいかの確認
 public enum AttachmentLimits {
     /// zip 以外の 1 ファイルの上限（10 MB。1 MB = 1,048,576 バイト）
     public static let maxFileSize = 10 * 1_024 * 1_024

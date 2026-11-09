@@ -418,7 +418,7 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 - Secrets は Metadata/App Store と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`）。新しい Secret・vars は要らない
 - vars は任意の `ENABLE_DELIVERY`・`ENABLE_MACOS_DELIVERY`（上の「流れ」）
 - アプリのトークン（Fine-grained PAT）は、リリース準備には Actions の Read and write（起動と run の表示）と Contents の Read（release ブランチ・下書きの読み取り）があればよい
-  （依頼・回答・「問題あり」にファイルを添付するときは Contents の Read and write が要る。`docs/protocol.md` の「添付ファイル」）
+  （依頼の添付は依頼先ではなく状態リポジトリに置くので、依頼先の Contents の書き込みは要らない。[renewal/protocol.md](renewal/protocol.md) の「ファイルの置き方」）
 
 ## 最新情報の確定
 
@@ -673,7 +673,7 @@ PR のタイトルは `【CHORE】release/<v> を <main|develop> に取り込む
 ## AskHub アプリが読むもの・起動するもの
 
 AskHub アプリは App Store Connect を見られないので、リリースの進み具合は GitHub の情報（release ブランチ・タグ・各ワークフローの run・下書きのファイル）だけで出す。
-API と表示の決まりは [docs/protocol.md](protocol.md) の「リリース準備と最新情報の確定」。
+API と表示の決まりは、今の仕組みの `docs/protocol.md`（タグ `legacy-final`）の「リリース準備と最新情報の確定」にあった。新しい仕組みの取り決めは [renewal/protocol.md](renewal/protocol.md)、リリースの流れは [renewal/release.md](renewal/release.md)。
 
 | 読むもの | 場所 |
 | --- | --- |
@@ -744,4 +744,4 @@ GitHub の情報だけで出すので、App Store Connect の処理・審査の�
 
 Fine-grained PAT に **Actions の Read and write**（起動と run の表示。TestFlight への手動アップロードと同じ）と **Contents の Read**（上の表の読み取り）を付ける。
 アプリからは push・タグ・Release の作成をしない（ワークフローが `GITHUB_TOKEN` で行う）ので、リリース準備には Contents の Write は要らない。
-ただし、依頼・回答・「問題あり」にファイルを添付するには、アプリが依頼先の `askhub/attachments` ブランチにファイルを上げるので、Contents の Read and write が要る（`docs/protocol.md` の「添付ファイル」）。
+依頼の添付も、依頼先ではなく状態リポジトリに置くので、依頼先の Contents の Write は要らない（[renewal/protocol.md](renewal/protocol.md) の「ファイルの置き方」）。
