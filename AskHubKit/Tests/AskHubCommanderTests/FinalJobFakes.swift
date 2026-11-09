@@ -36,6 +36,8 @@ final class FakeFinalGit: FinalGit {
         var workspaceHead: String?
         /// `conflictedPaths(in:)` が返すもの（取り込みの途中で、解消していないファイル）
         var conflicted: [String] = []
+        /// レビューの写しを置いたことにするフォルダ（中のファイルを読むテストは、本物のフォルダにする）
+        var jobDirectory = FakeFinalGit.jobDirectory
     }
 
     static let jobDirectory = URL(fileURLWithPath: "/work/jobs/01JCJ0B000000000000000000F/repository/askhub-sandbox")
@@ -116,7 +118,7 @@ final class FakeFinalGit: FinalGit {
             let resolved = head ?? state.remote[branches.epic] ?? ""
             state.calls.append("checkOutFinal \(resolved)")
             var review = state.review
-            review.directory = Self.jobDirectory
+            review.directory = state.jobDirectory
             review.head = resolved
             review.facts = "Swift 6 で書く。"
             return review
