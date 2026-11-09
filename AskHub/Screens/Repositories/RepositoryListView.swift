@@ -178,15 +178,12 @@ struct AddRepositorySheet: View {
         .sheetSending(sending)
     }
 
-    /// 送る。置けたら（同じものを送ってあったときも）閉じ、失敗したら理由を出して残る
+    /// 送る。送り始めたら（同じものを送ってあったときも）すぐ閉じ、一覧は加えた形になる。送れなければ理由を出して残る
     private func submit() {
-        guard let selectedID, !sending.isSending else {
+        guard let selectedID else {
             return
         }
-        Task {
-            if case .failed = await sending.send(.addRepository(repositoryID: selectedID), in: store) {
-                return
-            }
+        if sending.submit(.addRepository(repositoryID: selectedID), in: store) {
             dismiss()
         }
     }

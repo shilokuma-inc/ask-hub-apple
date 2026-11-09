@@ -140,7 +140,8 @@ struct FinalReviewView: View {
                 Text("見える仮決めはありません").foregroundStyle(.secondary)
             }
             if canAnswer, review.pendingDecisions.count >= 2 {
-                // 残りのどれかへの答えが反映されるまでは押せなくし、反映中か断られた理由をボタンの下に出す
+                // 残りのどれかへの答えの同期を待つ間は押せなくし、断られた理由などをボタンの下に出す
+                // （まとめて OK を送ると、残りがすべて OK の形になってボタンごと消える）
                 let pending = review.pendingDecisions.map { IntentTarget.decision(epicID: epic.id, decisionID: $0.id) }
                 Button("残りをまとめて OK…", systemImage: "checkmark.circle") {
                     acceptAllTarget = AcceptAllTarget(headCommit: review.headCommit, decisionIDs: review.pendingDecisions.map(\.id))
@@ -323,7 +324,7 @@ private struct DecisionRow: View {
 }
 
 /// 下のマージのボタンと、最終 PR を直してほしいときの指示のボタン。マージを押せないときは、何が残っているかを書く。
-/// マージの承認か指示を送ったら、反映されるまで両方を押せなくし、反映中か断られた理由を出す
+/// マージの承認か指示を送ったら、すぐ送った後の形（マージしています…）にし、司令塔が受け付けるまで両方を押せなくする
 private struct MergeBar: View {
     let epicID: Epic.ID
     let review: FinalReview
@@ -356,7 +357,8 @@ private struct MergeBar: View {
                 }
                 .controlSize(.large)
                 if store.reflection(for: [target]) != nil {
-                    ReflectionStatusView(target)
+                    // 承認か指示を送ったら、司令塔が受け付けるまでは小さな印だけ。しばらく受け取っていない・断られたら理由を出す
+                    ReflectionStatusView(target, showsSyncBadge: true)
                         .frame(maxWidth: 520)
                 } else if let reason = blockedReason {
                     Text(reason)

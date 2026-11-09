@@ -1,30 +1,38 @@
 import SwiftUI
 
-/// 送った意図が反映されるまでの様子を、操作した場所（カード・行・ボタンの下）に出す 1 行。
+/// 送った意図について知らせることを、操作した場所（カード・行・ボタンの下）に出す 1 行。
 ///
-/// 反映中・司令塔がしばらく受け取っていない・断られた（理由と閉じるボタン）を出す。何も無ければ何も出さない。
+/// 画面は押した時点で送った結果の形になるので、出すのは司令塔がしばらく受け取っていない・断った（理由と閉じるボタン）ときだけ。
+/// 同期を待っているだけなら何も出さない（`showsSyncBadge` なら小さな「同期待ち」の印だけを出す）。
 /// 全画面のローディングにはせず、ほかの対象や画面は普段どおり使えるようにする。iOS と macOS で同じ View を使う
 struct ReflectionStatusView: View {
     let targets: [IntentTarget]
     /// 一覧の外（山札の上など）に置くときに、ガラスの地に載せる
     var framed = false
+    /// 同期を待っている間、小さな印（`ReflectionBadge`）を出す
+    var showsSyncBadge = false
 
     @Environment(ClientStore.self) private var store
 
-    init(_ targets: [IntentTarget], framed: Bool = false) {
+    init(_ targets: [IntentTarget], framed: Bool = false, showsSyncBadge: Bool = false) {
         self.targets = targets
         self.framed = framed
+        self.showsSyncBadge = showsSyncBadge
     }
 
-    init(_ target: IntentTarget, framed: Bool = false) {
-        self.init([target], framed: framed)
+    init(_ target: IntentTarget, framed: Bool = false, showsSyncBadge: Bool = false) {
+        self.init([target], framed: framed, showsSyncBadge: showsSyncBadge)
     }
 
     var body: some View {
         if let reflection = store.reflection(for: targets) {
-            // 司令塔が受け取らないまま時間がたったことを、読み直しを待たずに出す
-            TimelineView(.periodic(from: .now, by: 15)) { _ in
-                content(message(reflection))
+            if store.needsAttention(targets) {
+                // 司令塔が受け取らないまま時間がたったことを、読み直しを待たずに出す
+                TimelineView(.periodic(from: .now, by: 15)) { _ in
+                    content(message(reflection))
+                }
+            } else if showsSyncBadge {
+                ReflectionBadge(targets, syncOnly: true)
             }
         }
     }
@@ -75,7 +83,8 @@ struct ReflectionStatusView: View {
     }
 }
 
-/// 送った意図が反映されるまでの様子の小さな印（一覧の行の題の横に出す）。何も無ければ何も出さない
+/// 送った意図が反映されるまでの様子の小さな印（一覧の行の題の横・カードの隅に出す）。
+/// 同期を待つ間は「同期待ち」、司令塔がしばらく受け取っていなければ「受け取り待ち」、断られたら「受け付けられず」。何も無ければ何も出さない
 struct ReflectionBadge: View {
     private enum Subject {
         case targets([IntentTarget])
@@ -84,23 +93,32 @@ struct ReflectionBadge: View {
     }
 
     private let subject: Subject
+    /// 同期を待っている間だけ出す（受け取りの遅れ・断られた理由は、同じ場所の `ReflectionStatusView` が出す）
+    private let syncOnly: Bool
 
     @Environment(ClientStore.self) private var store
 
-    init(_ targets: [IntentTarget]) {
+    init(_ targets: [IntentTarget], syncOnly: Bool = false) {
         subject = .targets(targets)
+        self.syncOnly = syncOnly
     }
 
     /// epic への操作（質問・判断・ゴール・epic の操作など）のどれかの様子
     init(epicID: Epic.ID) {
         subject = .epic(epicID)
+        syncOnly = false
     }
 
     private var reflection: Reflection? {
-        switch subject {
+        let reflection = switch subject {
         case .targets(let targets): store.reflection(for: targets)
         case .epic(let epicID): store.reflection(forEpic: epicID)
         }
+        guard let reflection, syncOnly else {
+            return reflection
+        }
+        let needsAttention = reflection.needsAttention(now: store.currentDate(), threshold: store.stallThreshold)
+        return reflection.isPending && !needsAttention ? reflection : nil
     }
 
     var body: some View {
@@ -112,12 +130,12 @@ struct ReflectionBadge: View {
                     stallThreshold: store.stallThreshold,
                     commanderSeenAt: store.snapshot?.commanderSeenAt
                 )
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     ReflectionSymbol(tone: message.tone)
-                        .controlSize(.mini)
+                        .imageScale(.small)
                     Text(message.badge)
-                        .appFont(.caption2, weight: .semibold)
                 }
+                .appFont(.caption2, weight: .semibold)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .foregroundStyle(message.tone.tint)
@@ -129,15 +147,14 @@ struct ReflectionBadge: View {
     }
 }
 
-/// 様子の印。反映を待っている間は回る印、受け取りが遅いときは注意、断られたときは赤
+/// 様子の印。同期を待っている間は同期の矢印（動かさない。待たせる表示にしない）、受け取りが遅いときは注意、断られたときは赤
 private struct ReflectionSymbol: View {
     let tone: ReflectionMessage.Tone
 
     var body: some View {
         switch tone {
         case .progress:
-            ProgressView()
-                .controlSize(.small)
+            Image(systemName: "arrow.triangle.2.circlepath")
 
         case .stalled:
             Image(systemName: "exclamationmark.triangle.fill")

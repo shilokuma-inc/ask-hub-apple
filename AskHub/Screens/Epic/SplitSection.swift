@@ -37,8 +37,8 @@ struct SplitSection: View {
                 }
                 .disabled(store.isReflecting([target]))
             }
-            // 選んだ分け方が反映されるまでの様子と、断られた理由
-            ReflectionStatusView(target)
+            // 選んだ分け方の同期を待つ間の小さな印と、断られた理由
+            ReflectionStatusView(target, showsSyncBadge: true)
         } header: {
             Text(split.choice == .split ? "分けて依頼し直す" : "1 つの epic に収まりません")
         } footer: {

@@ -38,8 +38,8 @@ struct QuestionSheet: View {
                             }
                         }
                     }
-                } else if store.reflection(for: [target]) != nil {
-                    // 前に送った回答が反映を待っているか、断られた。反映されるまでは答え直せない
+                } else if store.needsAttention([target]) {
+                    // 前に送った回答を司令塔がしばらく受け取っていないか、断った
                     CardSection {
                         ReflectionStatusView(target)
                     }
@@ -47,7 +47,7 @@ struct QuestionSheet: View {
                 QuestionDetailSections(question: question, epic: store.epic(epic.id))
                 if canChangeAnswer {
                     answerSection
-                        .disabled(sending.isSending || store.isReflecting([target]))
+                        .disabled(store.isReflecting([target]))
                 }
             }
             .pastelBackground()
@@ -91,10 +91,15 @@ struct QuestionSheet: View {
                 .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         } header: {
-            Text(question.isSettled ? "回答を直す" : "回答する")
+            HStack(spacing: 6) {
+                Text(question.isSettled ? "回答を直す" : "回答する")
+                ReflectionBadge([target], syncOnly: true)
+            }
         } footer: {
             let dependents = epic.questions.dependents(of: question)
-            if question.isSettled, !dependents.isEmpty {
+            if store.isReflecting([target]) {
+                Text("送った回答の同期を待っています。司令塔が受け付けたら直せます")
+            } else if question.isSettled, !dependents.isEmpty {
                 Text("直すと、\(dependents.map(\.id).joined(separator: "・")) の回答を取り消して見直しからやり直します")
             } else {
                 Text("開始の前なら、回答はあとから直せます")
@@ -102,17 +107,11 @@ struct QuestionSheet: View {
         }
     }
 
-    /// 送る。置けたら（同じ回答を送ってあったときも）閉じ、失敗したら理由を出して残る
+    /// 送る。送り始めたら（同じ回答を送ってあったときも）すぐ閉じ、画面は答えた形になる。送れなければ理由を出して残る
     private func send(_ intent: HumanIntent) {
-        guard !sending.isSending else {
-            return
-        }
         lastIntent = intent
         isEditingNote = false
-        Task {
-            if case .failed = await sending.send(intent, in: store) {
-                return
-            }
+        if sending.submit(intent, in: store) {
             dismiss()
         }
     }
