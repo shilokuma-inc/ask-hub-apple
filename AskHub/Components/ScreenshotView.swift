@@ -9,7 +9,9 @@ struct ScreenshotView: View {
         Group {
             switch screenshot {
             case .stored(let path):
+                // パスが変わったら、前の画像を残さずに読み直す
                 StoredScreenshotImage(path: path)
+                    .id(path)
 
             case .demo(let screen):
                 DemoScreenView(screen: screen)
@@ -23,12 +25,14 @@ struct ScreenshotView: View {
     }
 }
 
-/// ワーカーが撮って状態リポジトリに置いたスクショ。読むまでは待ちの表示、読めなければそのわけを出す
+/// ワーカーが撮って状態リポジトリに置いたスクショ。読むまでは待ちの表示、読めなければそのわけと読み直すボタンを出す
 struct StoredScreenshotImage: View {
     let path: String
     @Environment(ClientStore.self) private var store
     @State private var image: CGImage?
-    @State private var failed = false
+    @State private var failure: String?
+    /// 読み直すたびに増やす（`task` を流し直す）
+    @State private var attempt = 0
 
     var body: some View {
         Group {
@@ -36,17 +40,28 @@ struct StoredScreenshotImage: View {
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .scaledToFit()
-            } else if failed {
-                ContentUnavailableView("スクショを読めない", systemImage: "exclamationmark.triangle")
-                    .appFont(.caption)
+            } else if let failure {
+                ContentUnavailableView {
+                    Label("スクショを読めない", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(failure)
+                } actions: {
+                    Button("もう一度読む") { attempt += 1 }
+                }
+                .appFont(.caption)
             } else {
                 ProgressView()
             }
         }
-        .task(id: path) {
-            failed = false
-            image = await store.screenshot(at: path).flatMap(Self.image(from:))
-            failed = image == nil
+        .task(id: attempt) {
+            failure = nil
+            switch await store.screenshot(at: path) {
+            case let .success(data):
+                image = Self.image(from: data)
+                failure = image == nil ? "画像の形が違う" : nil
+            case let .failure(error):
+                failure = error.message
+            }
         }
     }
 

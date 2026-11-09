@@ -112,11 +112,12 @@ extension StateSnapshotBuilder {
         )
     }
 
-    /// スクショに添えるわけ（撮れなかった・Before が無い）。撮ったものがあって、わけも無ければ nil
+    /// スクショに添えるわけ（撮れなかった・Before が無い）。撮ったものがあって、わけも無ければ nil。
+    /// 撮ったものがあれば、撮影の設定を後で外した（・repo.json を読めない）ときも、撮ったときのわけだけを出す
     static func screenshotNote(of item: DecisionsFile.Item, capturesScreenshots: Bool) -> String? {
+        if let shots = item.screenshots { return shots.note }
         guard capturesScreenshots else { return noScreenshotSetting }
-        guard let shots = item.screenshots else { return item.scene == nil ? noScene : screenshotPending }
-        return shots.note
+        return item.scene == nil ? noScene : screenshotPending
     }
 
     private static func response(_ answer: DecisionsFile.Answer?) -> DecisionCard.Response {

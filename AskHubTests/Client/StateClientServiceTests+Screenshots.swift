@@ -47,4 +47,15 @@ extension StateClientServiceTests {
         await #expect(throws: ClientServiceError.self) { try await fixture.service.screenshot(at: before) }
         await #expect(throws: ClientServiceError.self) { try await fixture.service.screenshot(at: "keys/1.json") }
     }
+
+    /// 撮影の設定を後で外した（・repo.json を読めない）ときも、撮ったスクショがあれば「設定が無い」とは出さない
+    @Test
+    func storedScreenshotsKeepTheirNoteWithoutSetting() {
+        let shots = DecisionsFile.Screenshots(after: "\(Self.finalBase)/screenshots/\(Self.finalHead)-ranking.png", note: "Before なし")
+        let item = DecisionsFile.Item(id: "d1", task: "t1", visible: true, what: "見出し", why: "幅", scene: "ranking", screenshots: shots)
+        #expect(StateSnapshotBuilder.screenshotNote(of: item, capturesScreenshots: false) == "Before なし")
+        var plain = item
+        plain.screenshots = nil
+        #expect(StateSnapshotBuilder.screenshotNote(of: plain, capturesScreenshots: false) == StateSnapshotBuilder.noScreenshotSetting)
+    }
 }
