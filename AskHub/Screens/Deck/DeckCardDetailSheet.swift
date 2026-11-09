@@ -142,9 +142,13 @@ struct DecisionDetailSections: View {
         }
         if decision.before != nil || decision.after != nil {
             CardSection("画面の変化") {
-                BeforeAfterView(before: decision.before, after: decision.after)
+                BeforeAfterView(before: decision.before, after: decision.after, zoomable: true)
                     .frame(maxHeight: 420)
                     .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+                if let note = decision.screenshotNote {
+                    Label(note, systemImage: "info.circle")
+                        .foregroundStyle(.secondary)
+                }
             }
         } else if let note = decision.screenshotNote {
             CardSection("画面の変化") {

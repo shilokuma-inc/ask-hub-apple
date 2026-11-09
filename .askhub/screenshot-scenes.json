@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "scenes": [
+    { "id": "inbox", "title": "あなたの番の一覧（質問・判断・実機の確認・対処が並ぶ）", "arguments": ["-demoScenario", "standard", "-demoOpen", "section:inbox"] },
+    { "id": "inbox-quiet", "title": "あなたの番が空のとき", "arguments": ["-demoScenario", "quiet", "-demoOpen", "section:inbox"] },
+    { "id": "inbox-failing", "title": "あなたの番に失敗と対処が並ぶとき", "arguments": ["-demoScenario", "failing", "-demoOpen", "section:inbox"] },
+    { "id": "progress", "title": "進行中の epic の一覧", "arguments": ["-demoScenario", "standard", "-demoOpen", "section:progress"] },
+    { "id": "epic-detail", "title": "進行中の epic の詳細（タスクとジョブの進み具合）", "arguments": ["-demoScenario", "standard", "-demoOpen", "epic:rain-draft"] },
+    { "id": "macs", "title": "Mac の一覧（ワーカーの生きている印と容量）", "arguments": ["-demoScenario", "standard", "-demoOpen", "section:macs"] },
+    { "id": "repositories", "title": "対象のリポジトリの一覧", "arguments": ["-demoScenario", "standard", "-demoOpen", "section:repositories"] },
+    { "id": "deck-all", "title": "答えるカードの山（質問・判断・実機の確認をまとめて）", "arguments": ["-demoScenario", "standard", "-demoOpen", "deck:all"] },
+    { "id": "deck-questions", "title": "質問のカード（献立メモの epic）", "arguments": ["-demoScenario", "standard", "-demoOpen", "deck:questions:recipe-weekly"] },
+    { "id": "goal", "title": "ゴールの確認（月の上限の通知の epic）", "arguments": ["-demoScenario", "standard", "-demoOpen", "goal:budget-limit"] },
+    { "id": "final-review", "title": "最終 PR の確認画面（見える仮決め・マージの規則・承認）", "arguments": ["-demoScenario", "standard", "-demoOpen", "final:tsundoku-search"] },
+    { "id": "deck-decisions", "title": "見える仮決めのカード（Before / After のスクショ付き）", "arguments": ["-demoScenario", "standard", "-demoOpen", "deck:decisions:tsundoku-search"] },
+    { "id": "deck-verifications", "title": "実機で確かめてほしいことのカード", "arguments": ["-demoScenario", "standard", "-demoOpen", "deck:verifications:habit-review"] }
+  ]
+}

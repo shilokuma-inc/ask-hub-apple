@@ -2,7 +2,7 @@ import Foundation
 
 /// デモのデータで描く、簡単な画面の絵（判断のカードの Before / After に使う）。
 ///
-/// 本番では、ワーカーがデモモードのデータで撮ったスクショ（`Screenshot.image`）を使う
+/// 本番では、ワーカーがデモモードのデータで撮ったスクショ（`Screenshot.stored`）を使う
 struct DemoScreen: Hashable {
     var title: String
     /// ナビゲーションバーの右のボタン

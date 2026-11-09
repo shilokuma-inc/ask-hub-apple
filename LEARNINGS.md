@@ -141,6 +141,10 @@
   GitHub が先に消して DELETE（`…/git/refs/heads/<branch>`）が 404 になることがある（422 の "Reference does not exist" ではなく）。直前の GET では残って見える。
   マージの後の片付けは、DELETE の 404 も 422 と同じく読み直し、無ければ消えたものとして扱う（2026-11-09、prime-pick-ios の最終 PR のマージで司令塔が止まった。`deleteBranch`）
 
+- PR の本文の画像の添付（gh の `--attach`）は、`POST https://uploads.github.com/user-attachments/assets?name=<名前>&content_type=image/png&repository_id=<リポジトリの数の id>` に中身をそのまま送ると、
+  `{"url": "https://github.com/user-attachments/assets/<id>"}` が返る（cli/cli の `internal/attachments`）。書き込みの権限が無いトークンには 403 ではなく 404 を返す。
+  public のリポジトリでは誰でも見られ、消せない（2026-11-09、`GitHubPullRequests.uploadAttachment`）
+
 ## ビルド・テスト
 
 - このリポジトリの CI（Build）は、PR を開いたときの回だけ iOS Simulator の UI テストを流し、25〜40 分かかる（push の回は Unit テストだけで数分）。
@@ -335,6 +339,14 @@
 - 署名済みの .app を `codesign --force --sign - --entitlements …` で署名し直すと、元の署名のフラグが消える（macOS のアドホック署名の archive の `flags=0x10002(adhoc,runtime)` が `0x2(adhoc)` になり、Hardened Runtime が外れる）。
   `--preserve-metadata=identifier,flags` を付ければ残る。macOS の archive に push の entitlement を足すときは、`codesign -d --entitlements - --xml` で読んだ元の entitlement（sandbox など）に足して渡す（上書きすると消える）。
   Export した macOS の pkg の中の .app は、`pkgutil --expand-full <pkg> <まだ無いフォルダ>` で取り出して `codesign -d` で読める（2026-11-09、Mac 版の TestFlight）
+
+- ワーカーが Simulator 向けにビルドしたアプリの場所と Bundle ID は、`xcodebuild -showBuildSettings -json`（ビルドと同じ `-destination id=<UDID>`・`-derivedDataPath`）の、
+  `WRAPPER_EXTENSION` が `app` で `PRODUCT_TYPE` が `com.apple.product-type.application` の項目の `TARGET_BUILD_DIR`・`FULL_PRODUCT_NAME`・`PRODUCT_BUNDLE_IDENTIFIER` で読める
+  （テストのターゲットも並ぶので、種類で選ぶ。2026-11-09、`ScreenshotCapturer`）
+- アプリのターゲットは SwiftLint のビルドのプラグインを通すので、PR のスクショのために `AskHub/` に一時的に置いたファイルでも、Lint の違反（行の長さなど）でビルドが止まる。
+  一時的なファイルの先頭に `// swiftlint:disable line_length` などを書く（コミットしない。2026-11-09、判断のカードのスクショ）
+- デモのデータの文には、今の時刻から作るもの（「22:40 に確かめました」「次は 22:55」など）がある。判断のカードの Before と After を別の時刻に撮ると、その文も変わって写る（2026-11-09、`.askhub/screenshot-scenes.json`）
+- Swift Testing はテストを並べて流すので、一時的なフォルダの名前をジョブの id など見本で同じになる値だけで決めると、ほかのテストが消してしまう。名前に `UUID()` を足す（2026-11-09、`CaptureScreenshotsRunnerTests`）
 
 ## Keychain
 

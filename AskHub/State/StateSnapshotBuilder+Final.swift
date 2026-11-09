@@ -9,10 +9,12 @@ extension StateSnapshotBuilder {
         .verifyBeforeFinal, .classifyDecisions, .captureScreenshots, .openFinalPullRequest,
         .reviewFinalPullRequest, .fixFinalPullRequest, .mergeFinalPullRequest
     ]
-    /// スクショの無い判断のカードに出すわけ。撮影の設定（`build.screenshots`）を各リポジトリに入れるのは段階 5 で、いまはどのリポジトリにも無い
+    /// スクショの無い判断のカードに出すわけ（撮影の設定 `build.screenshots` が無いリポジトリ）
     static let noScreenshotSetting = "スクショ無し（このリポジトリには撮影の設定が無い）"
-    /// 撮ったスクショ（状態リポジトリの private なファイル）を、アプリはまだ開けない
-    static let screenshotNotShown = "スクショは状態リポジトリにあります（アプリではまだ開けません）"
+    /// 撮る画面を選べなかった（撮れる画面の一覧に合う画面が無い）仮決め
+    static let noScene = "スクショ無し（この仮決めが出る画面は、撮れる画面の一覧に無い）"
+    /// 撮る画面を選んだが、まだ撮っていない仮決め
+    static let screenshotPending = "スクショを撮っています"
 
     /// 最終 PR の確認。最終 PR を出す前（`finalPullRequest` が無い）と、やめた epic は nil。
     ///
@@ -36,7 +38,8 @@ extension StateSnapshotBuilder {
         let manualReasons = Self.manualReasons(reasons) + (risksMissing ? [.risksUnknown] : [])
             + (decisionsUnreadable ? [.decisionsUnreadable] : [])
         let canApprove = !decisionsUnreadable && FinalMergeRule.canApprove(decisions: decisions)
-        let cards = items.filter { $0.visible != false }.map { card($0, epic: file) }
+        let capturesScreenshots = documents.repositories.first { $0.repo == file.repo }?.build?.screenshots != nil
+        let cards = items.filter { $0.visible != false }.map { card($0, epic: file, capturesScreenshots: capturesScreenshots) }
         let state = finalState(of: file, jobs: jobs, automatic: manualReasons.isEmpty)
         // 司令塔が答えを受け付けるのは、見えると仕分けた仮決めだけ（仕分ける前のものはカードに出すが、答えは送らない）
         let answerable = items.filter { $0.visible == true }
@@ -88,7 +91,7 @@ extension StateSnapshotBuilder {
         return decisions
     }
 
-    private func card(_ item: DecisionsFile.Item, epic: EpicFile) -> DecisionCard {
+    private func card(_ item: DecisionsFile.Item, epic: EpicFile, capturesScreenshots: Bool) -> DecisionCard {
         // 最終 PR の直しで足した仮決めは、タスクを持たず、最終 PR を持つ
         let pullRequest = item.pullRequest.map { $0 == epic.finalPullRequest ? "最終 PR #\($0)" : "子 PR #\($0)" }
         let source = if let task = item.task {
@@ -102,11 +105,19 @@ extension StateSnapshotBuilder {
             reason: item.why,
             goalSource: source.isEmpty ? nil : source.joined(separator: " · "),
             alternatives: item.alternatives,
-            before: nil,
-            after: nil,
+            before: item.screenshots?.before.map(Screenshot.stored),
+            after: item.screenshots?.after.map(Screenshot.stored),
             response: Self.response(item.answer),
-            screenshotNote: item.screenshots == nil ? Self.noScreenshotSetting : Self.screenshotNotShown
+            screenshotNote: Self.screenshotNote(of: item, capturesScreenshots: capturesScreenshots)
         )
+    }
+
+    /// スクショに添えるわけ（撮れなかった・Before が無い）。撮ったものがあって、わけも無ければ nil。
+    /// 撮ったものがあれば、撮影の設定を後で外した（・repo.json を読めない）ときも、撮ったときのわけだけを出す
+    static func screenshotNote(of item: DecisionsFile.Item, capturesScreenshots: Bool) -> String? {
+        if let shots = item.screenshots { return shots.note }
+        guard capturesScreenshots else { return noScreenshotSetting }
+        return item.scene == nil ? noScene : screenshotPending
     }
 
     private static func response(_ answer: DecisionsFile.Answer?) -> DecisionCard.Response {

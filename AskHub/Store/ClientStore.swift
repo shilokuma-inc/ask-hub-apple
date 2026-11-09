@@ -99,6 +99,17 @@ final class ClientStore {
         service.supports(intent)
     }
 
+    /// 判断のカードのスクショの中身。読めなければ、そのわけ（画面に出す）
+    func screenshot(at path: String) async -> Result<Data, ClientServiceError> {
+        do {
+            return .success(try await service.screenshot(at: path))
+        } catch let error as ClientServiceError {
+            return .failure(error)
+        } catch {
+            return .failure(ClientServiceError(message: error.localizedDescription))
+        }
+    }
+
     // MARK: 読む
 
     /// 読み直す。司令塔が受け付けた意図を見つけたら、状態が反映されるよう、続けてもう一度読む

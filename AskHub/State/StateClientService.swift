@@ -27,6 +27,8 @@ final class StateClientService: ClientService {
     private var readSends: [SentDraft] = []
     /// 送った後の読み込みに、まだ出ていない意図
     private var unreadSends: [SentDraft] = []
+    /// 読んだスクショ（パス → 中身）。パスはコミットと画面で決まり、同じパスの中身は変わらないので、読み直さない
+    private var screenshots: [String: Data] = [:]
     /// 読み始めた数と、送る形の引き当て（`index`）に当てた最後の読み込みの番号。
     /// 後に始めた読み込みが先に終わったら、先に始めた古い読み込みでは引き当てを戻さない（ストアも古い中身を画面に当てない。`ClientStore.refresh`）
     private var startedReads = 0
@@ -108,6 +110,21 @@ final class StateClientService: ClientService {
 
     func supports(_ intent: HumanIntent) -> Bool {
         StateIntentMapper(index: index).supports(intent)
+    }
+
+    /// 判断のカードのスクショを状態リポジトリから読む。epic の `screenshots/` の下の PNG だけを読む
+    func screenshot(at path: String) async throws -> Data {
+        if let data = screenshots[path] { return data }
+        guard DecisionsFile.isScreenshotPath(path) else { throw ClientServiceError(message: "スクショのパスの形が違う") }
+        let blob: StoredBlob?
+        do {
+            blob = try await store.read(path)
+        } catch {
+            throw ClientServiceError(message: StateServiceError.message(for: error))
+        }
+        guard let data = blob?.data else { throw ClientServiceError(message: "スクショが状態リポジトリに無い") }
+        screenshots[path] = data
+        return data
     }
 
     /// 送る形（対象の版は最後に読んだ状態から取る）が同じ意図のうち、最後に送ったもの。複数の意図になる操作は、すべてを送ってあるときだけ返し、
