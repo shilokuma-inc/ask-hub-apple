@@ -18,19 +18,23 @@ extension RepositoryFile {
         public var finalChecks: [String]
         /// 指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。`coderabbitai[bot]` など）
         public var trustedReviewers: [String]
+        /// 判断のカードのスクショの撮り方。無ければ撮らない
+        public var screenshots: ScreenshotSettings?
 
         public init(
             baseBranch: String = Self.defaultBaseBranch,
             xcode: BuildSettings,
             childChecks: [String],
             finalChecks: [String],
-            trustedReviewers: [String] = []
+            trustedReviewers: [String] = [],
+            screenshots: ScreenshotSettings? = nil
         ) {
             self.baseBranch = baseBranch
             self.xcode = xcode
             self.childChecks = childChecks
             self.finalChecks = finalChecks
             self.trustedReviewers = trustedReviewers
+            self.screenshots = screenshots
         }
 
         public init(from decoder: any Decoder) throws {
@@ -40,6 +44,7 @@ extension RepositoryFile {
             childChecks = try container.decode([String].self, forKey: .childChecks)
             finalChecks = try container.decode([String].self, forKey: .finalChecks)
             trustedReviewers = try container.decodeIfPresent([String].self, forKey: .trustedReviewers) ?? []
+            screenshots = try container.decodeIfPresent(ScreenshotSettings.self, forKey: .screenshots)
         }
 
         /// 型だけでは表せない決まりに合わないところ（`xcode` の形は読むときに `BuildSettings` が確かめる）
@@ -55,6 +60,7 @@ extension RepositoryFile {
             if !trustedReviewers.allSatisfy(Self.isAccount) || Set(trustedReviewers).count != trustedReviewers.count {
                 problems.append("build.trustedReviewers は GitHub のアカウント（重ならない）")
             }
+            problems += screenshots?.problems ?? []
             return problems
         }
 

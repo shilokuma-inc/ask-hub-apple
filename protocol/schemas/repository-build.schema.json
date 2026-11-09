@@ -21,6 +21,25 @@
       "uniqueItems": true,
       "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\\[bot\\])?$", "maxLength": 44 },
       "description": "指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。coderabbitai[bot] など）。無ければ空"
+    },
+    "screenshots": {
+      "type": "object",
+      "required": ["scenes", "destination"],
+      "additionalProperties": false,
+      "properties": {
+        "scenes": {
+          "allOf": [{ "$ref": "#/$defs/argument" }],
+          "type": "string",
+          "pattern": "^(?![/~])(?!(.*/)?\\.\\.(/|$))(?!.*//)(?!.*/$).*\\.json$",
+          "description": "撮れる画面の一覧のファイル（screenshot-scenes.schema.json の形）の、リポジトリの直下からの相対パス"
+        },
+        "destination": {
+          "allOf": [{ "$ref": "#/$defs/destination" }],
+          "not": { "type": "object", "properties": { "platform": { "const": "macOS" } }, "required": ["platform"] },
+          "description": "撮る Simulator（iOS・visionOS）。macOS はまだ撮らない"
+        }
+      },
+      "description": "判断のカードのスクショの撮り方（docs/renewal/flows.md の「スクショ」）。無ければ撮らない"
     }
   },
   "$defs": {
