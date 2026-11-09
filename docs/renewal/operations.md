@@ -125,7 +125,9 @@
   - 版をそろえるには、司令塔と同じ版の `claude` を、その Mac の設定の `claude` の場所に入れる（次の Claude の呼び出しから使う）
 - 生きている印に版を書く。司令塔とワーカーの版が合わないときは、ジョブを受けずに知らせる
 - 更新の手順（常時オンの Mac は遠隔で、ほかの Mac は手で）を、切り替えの前に決める
-- 作業ファイルは TCC の保護の対象の場所（デスクトップ・書類など）に置かない。ワーカー専用のフォルダ（`~/Library/Application Support/` の下など）を使う
+- 作業ファイルは TCC の保護の対象の場所（デスクトップ・書類など）に置かない。ワーカー専用のフォルダを使う
+  - 設定と Claude のフォルダは `~/Library/Application Support/AskHub/<役割>/`
+  - 対象のリポジトリの写し・epic の作業場所・DerivedData・ビルドの一時フォルダは、パスに空白の無い `~/Library/Developer/AskHub/<役割>/`（`work`・`builds`・`builds-tmp`）。パスの空白を扱えないビルドのプラグインやスクリプトがあるため（2026-11-09、prime-pick-ios の LicenseList のプラグインが `SourcePackages not found` で止まった）
 
 ### 司令塔の入れ方（段階 2）
 

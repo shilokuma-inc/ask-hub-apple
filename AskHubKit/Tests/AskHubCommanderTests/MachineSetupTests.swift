@@ -76,7 +76,12 @@ struct MachineSetupTests {
         let worker = MachinePaths(role: .worker, home: home)
         #expect(worker.configuration.path == "/Users/a/Library/Application Support/AskHub/worker/config.json")
         #expect(worker.log.path == "/Users/a/Library/Logs/AskHub/worker.log")
-        #expect(MachinePaths(role: .commander, home: home).work.path == "/Users/a/Library/Application Support/AskHub/commander/work")
+        // リポジトリの写しと DerivedData は、パスに空白の無い場所に置く（空白を扱えないビルドのプラグインがある）
+        let commander = MachinePaths(role: .commander, home: home)
+        #expect(commander.work.path == "/Users/a/Library/Developer/AskHub/commander/work")
+        #expect(commander.builds.path == "/Users/a/Library/Developer/AskHub/commander/builds")
+        #expect(commander.buildTemporary.path == "/Users/a/Library/Developer/AskHub/commander/builds-tmp")
+        #expect(![commander.work, commander.builds, commander.buildTemporary].contains { $0.path.contains(" ") })
         #expect(MachineRole.worker.keychainService == "jp.shilokuma.AskHub.worker")
         #expect(MachineRole.commander.keychainService == "jp.shilokuma.AskHub.commander")
         #expect(LaunchAgent.path(role: .worker, home: home).path == "/Users/a/Library/LaunchAgents/jp.shilokuma.askhub.worker.plist")
