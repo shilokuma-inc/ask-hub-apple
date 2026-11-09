@@ -2,7 +2,6 @@
 import PackageDescription
 
 // アプリ（iOS / macOS）と司令塔・ワーカー・非常口（macOS の CLI）で共有するコード。
-// プロトコル（ラベル・目印・回答形式）のモデルとパーサー、GitHub API クライアントを置く。
 let package = Package(
     name: "AskHubKit",
     platforms: [
@@ -10,6 +9,7 @@ let package = Package(
         .macOS(.v14),
     ],
     products: [
+        // アプリの添付の上限と種類・本文の描画・GitHub のトークンの保存。今の仕組みのライブラリのうち、アプリが使う部分だけを残した
         .library(name: "AskHubKit", targets: ["AskHubKit"]),
         // リニューアルのプロトコル（人の意図の署名・目印・状態リポジトリの型）。docs/renewal/protocol.md
         .library(name: "AskHubProtocol", targets: ["AskHubProtocol"]),
