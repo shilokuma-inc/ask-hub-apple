@@ -79,7 +79,7 @@ extension StateStore {
         try await list(directory)
     }
 
-    /// 自分をそのまま返す（読むたびに今の中身を読む）。読むのに時間のかからない置き場所（メモリ上など）で使う
+    /// 自分をそのまま返す（読むたびに今の中身を読む）。写しを作るまでもない置き場所（テスト用のものなど）で使う
     public func snapshot() async throws(StateStoreError) -> any StateStore {
         self
     }
