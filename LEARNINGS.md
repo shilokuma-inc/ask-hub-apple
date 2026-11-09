@@ -330,6 +330,9 @@
   API キーで archive を自動の署名にすると、キーチェーンが空の CI では実行のたびに「Apple Development: Created via API」の証明書が作られて残るので使わない（2026-11-09、`_archive.yml`）
 
 - LicenseList（cybozu）のビルドのプラグイン `PrepareLicenseList` は、`URL.path()`（空白を `%20` にした形）で `SourcePackages` の有無を調べるので、DerivedData のパスに空白があると見つけられず `SourcePackages not found` で止まる。CI のように標準の DerivedData（空白なし）なら通る。ワーカーの DerivedData とリポジトリの写しは、空白の無い `~/Library/Developer/AskHub/<役割>/` に置く（2026-11-09、prime-pick-ios の試運転）
+- 署名済みの .app を `codesign --force --sign - --entitlements …` で署名し直すと、元の署名のフラグが消える（macOS のアドホック署名の archive の `flags=0x10002(adhoc,runtime)` が `0x2(adhoc)` になり、Hardened Runtime が外れる）。
+  `--preserve-metadata=identifier,flags` を付ければ残る。macOS の archive に push の entitlement を足すときは、`codesign -d --entitlements - --xml` で読んだ元の entitlement（sandbox など）に足して渡す（上書きすると消える）。
+  Export した macOS の pkg の中の .app は、`pkgutil --expand-full <pkg> <まだ無いフォルダ>` で取り出して `codesign -d` で読める（2026-11-09、Mac 版の TestFlight）
 
 ## Keychain
 

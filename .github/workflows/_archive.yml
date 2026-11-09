@@ -131,7 +131,8 @@ jobs:
           if [ "$PLATFORM" = macOS ]; then
             # macOS はアドホック署名でアーカイブする。CODE_SIGNING_ALLOWED=NO だと App Sandbox などのエンタイトルメント
             # （ENABLE_APP_SANDBOX から作られる）が実行ファイルに埋め込まれず、Export で配布用に署名し直しても sandbox の無いアプリになる
-            # （Mac App Store は sandbox を必須にしている）。配布用の署名は iOS と同じく Export で行う
+            # （Mac App Store は sandbox を必須にしている）。配布用の署名は iOS と同じく Export で行う。
+            # Manual のアドホック署名では push の entitlement を付けられない（Configs/Project.xcconfig）ので、次の手順で足す
             xcodebuild archive \
               -project "$PROJECT_NAME.xcodeproj" \
               -scheme "$SCHEME" \
@@ -153,17 +154,19 @@ jobs:
               CODE_SIGNING_ALLOWED=NO
           fi
 
-      - name: Embed entitlements in iOS archive
-        # 署名の無い archive を Export で署名し直すと、Export は archive の署名の entitlement だけを引き継ぐので、
-        # push（aps-environment）の無い IPA になり、TestFlight の版で通知の登録が失敗する。
+      - name: Embed entitlements in archive
+        # Export は archive の署名の entitlement だけを引き継ぐので、そのままでは push（iOS は aps-environment、
+        # macOS は com.apple.developer.aps-environment）の無い IPA・pkg になり、TestFlight の版で通知の登録が失敗する。
         # archive の .app をプロジェクトの entitlements でアドホック署名し、Export に引き継がせる（値は Export が profile に合わせて production にする）。
+        # macOS はアドホック署名の entitlement（sandbox など）に足して署名し直す。
         # API キーで archive を自動の署名にすると、実行のたびに Apple Development の証明書が作られて残るので使わない
-        if: inputs.platform == 'iOS'
+        env:
+          SDK: ${{ inputs.platform == 'macOS' && 'macosx' || 'iphoneos' }}
         run: |
           python3 Tools/embed_archive_entitlements.py embed "$RUNNER_TEMP/build.xcarchive" \
             --project "$PROJECT_NAME.xcodeproj" \
             --scheme "$SCHEME" \
-            --sdk iphoneos \
+            --sdk "$SDK" \
             --configuration Release
 
       - name: Create ExportOptions.plist and API private key
@@ -200,12 +203,11 @@ jobs:
           path: ${{ runner.temp }}/export/*.${{ env.PACKAGE_EXTENSION }}
           if-no-files-found: error
 
-      - name: Check entitlements in IPA
+      - name: Check entitlements in ${{ inputs.platform == 'macOS' && 'pkg' || 'IPA' }}
         # 配布用の profile に無い entitlement（App ID の Push Notifications が無効など）を Export が落とすと、
-        # 通知が届かなくなって初めて気づくので、archive に埋め込んだ entitlement が IPA に残ったかを、App Store Connect に上げる前に確かめる
-        # （止まっても、直前に GitHub に上げた IPA を落として調べられる）
-        if: inputs.platform == 'iOS'
-        run: python3 Tools/embed_archive_entitlements.py check "$RUNNER_TEMP/build.xcarchive" "$RUNNER_TEMP"/export/*.ipa
+        # 通知が届かなくなって初めて気づくので、archive に埋め込んだ entitlement が IPA・pkg に残ったかを、App Store Connect に上げる前に確かめる
+        # （止まっても、直前に GitHub に上げた IPA・pkg を落として調べられる）
+        run: python3 Tools/embed_archive_entitlements.py check "$RUNNER_TEMP/build.xcarchive" "$RUNNER_TEMP"/export/*."$PACKAGE_EXTENSION"
 
       - name: Check app exists in App Store Connect
         # App Store Connect にアプリが無いと、アップロードが "Error Downloading App Information" で失敗し原因が分かりにくい。
