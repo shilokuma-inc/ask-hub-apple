@@ -49,11 +49,19 @@ struct BlockerSection: View {
                 }
             }
             actions
+                .disabled(store.isReflecting(reflectionTargets))
+            // 選んだ対処が反映されるまでの様子と、断られた理由
+            ReflectionStatusView(reflectionTargets)
         } header: {
             Text("対処が要ります")
         } footer: {
             Text("自動の対処を使い切ったので、選んでもらうまで止めています")
         }
+    }
+
+    /// ここで選べる操作の対象（やり直す・やめる、一時停止・引き継ぎ）
+    private var reflectionTargets: [IntentTarget] {
+        [.blocker(epicID: epic.id), .epicControl(epicID: epic.id)]
     }
 
     private var discardMessage: String {

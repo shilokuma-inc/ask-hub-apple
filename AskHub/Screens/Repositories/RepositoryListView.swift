@@ -49,7 +49,11 @@ private struct RepositoryRow: View {
         HStack(spacing: 12) {
             AppIconView(repository: repository, size: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text(repository.appName).rowFont(.title)
+                HStack(spacing: 6) {
+                    Text(repository.appName).rowFont(.title)
+                    // 対象に加えたのが反映されるまでの印（断られたら赤）
+                    ReflectionBadge([.repository(repository.id)])
+                }
                 Text(repository.fullName)
                     .rowFont(.detail)
                     .foregroundStyle(.secondary)

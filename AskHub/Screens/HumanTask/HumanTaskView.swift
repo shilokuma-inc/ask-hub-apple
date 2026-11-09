@@ -28,6 +28,8 @@ struct HumanTaskView: View {
                 Text(task.title).rowFont(.title)
                 Text(task.why).foregroundStyle(.secondary)
                 stateLabel(task.state, epic: epic, task: task)
+                // 終えたこと（渡すファイル）を送ったら、反映されるまでの様子と、断られた理由
+                ReflectionStatusView(target(epic, task))
             }
             CardSection("手順") {
                 ForEach(Array(task.steps.enumerated()), id: \.offset) { index, step in
@@ -59,6 +61,7 @@ struct HumanTaskView: View {
             // 終わったことを知らせる操作は、送れるときだけ出す（状態リポジトリでは段階 3 で足す）
             if task.needsHuman, store.supports(.completeHumanTask(epicID: epic.id, taskID: task.id)) {
                 deliverableSection(epic, task)
+                    .disabled(store.isReflecting([target(epic, task)]))
             }
         }
         .pastelBackground()
@@ -67,6 +70,10 @@ struct HumanTaskView: View {
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.item]) { result in
             pick(result)
         }
+    }
+
+    private func target(_ epic: Epic, _ task: HumanTask) -> IntentTarget {
+        .humanTask(epicID: epic.id, taskID: task.id)
     }
 
     @ViewBuilder private func deliverableSection(_ epic: Epic, _ task: HumanTask) -> some View {

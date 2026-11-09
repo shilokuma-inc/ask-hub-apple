@@ -38,6 +38,11 @@ struct DecisionDeckView: View {
         let directions = SwipeLayout.directions(count: current?.choices.count ?? 0, hand: hand)
         VStack(spacing: 12) {
             DeckProgressHeader(scope: scope)
+            if let current {
+                // 前に送った答えを断られて山札に戻ったカードは、その理由を上に出す（反映を待つカードは山札から外している）
+                ReflectionStatusView(current.target, framed: true)
+                    .padding(.horizontal)
+            }
             GeometryReader { proxy in
                 let area = Self.deckArea(proxy.size, beforeSheet: keepsDeckArea ? deckAreaBeforeSheet : nil)
                 let size = Self.cardSize(in: area)
@@ -323,7 +328,7 @@ private struct DeckProgressHeader: View {
     }
 }
 
-/// 答えられるカードが無いとき。説明待ち・ロックが残っていれば、その理由を出す
+/// 答えられるカードが無いとき。説明待ち・ロックが残っていれば、その理由を出す。送った答えが反映を待っていれば、それも出す
 private struct DeckEmptyView: View {
     let scope: DeckScope
     @Environment(ClientStore.self) private var store
@@ -333,7 +338,34 @@ private struct DeckEmptyView: View {
             Label("判断できるものはありません", systemImage: "checkmark.circle")
         } description: {
             Text(detail)
+        } actions: {
+            ReflectionStatusView(reflectionTargets, framed: true)
         }
+    }
+
+    /// 山札に出す対象（答えを送って反映を待っているものを含む）
+    private var reflectionTargets: [IntentTarget] {
+        switch scope {
+        case .questions(let epicID):
+            store.epic(epicID).map(Self.questionTargets) ?? []
+
+        case .decisions(let epicID):
+            store.epic(epicID).map(Self.decisionTargets) ?? []
+
+        case .verifications(let epicID):
+            store.epic(epicID)?.finalReview?.verifications.map { .verification(epicID: epicID, itemID: $0.id) } ?? []
+
+        case .all:
+            store.snapshot?.activeEpics.flatMap { Self.questionTargets($0) + Self.decisionTargets($0) } ?? []
+        }
+    }
+
+    private static func questionTargets(_ epic: Epic) -> [IntentTarget] {
+        epic.questions.map { .question(epicID: epic.id, questionID: $0.id) }
+    }
+
+    private static func decisionTargets(_ epic: Epic) -> [IntentTarget] {
+        epic.finalReview?.decisions.map { .decision(epicID: epic.id, decisionID: $0.id) } ?? []
     }
 
     private var detail: String {

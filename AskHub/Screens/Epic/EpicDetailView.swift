@@ -64,6 +64,12 @@ struct EpicDetailView: View {
                     }
                 }
             }
+            // 依頼・epic の操作（一時停止・再開・引き継ぎ・やめる）は、反映されるまでの様子をここに出す
+            if store.reflection(for: Self.epicTargets(epic)) != nil {
+                CardSection {
+                    ReflectionStatusView(Self.epicTargets(epic))
+                }
+            }
             if let blocker = epic.blocker {
                 BlockerSection(epic: epic, blocker: blocker) { textRequest = $0 }
             }
@@ -81,6 +87,11 @@ struct EpicDetailView: View {
             }
             HistorySection(history: epic.history, now: store.currentDate())
         }
+    }
+
+    /// epic そのものへの操作の対象（依頼・一時停止・再開・引き継ぎ・やめる）
+    static func epicTargets(_ epic: Epic) -> [IntentTarget] {
+        [.request(epicID: epic.id), .epicControl(epicID: epic.id)]
     }
 
     private func discardMessage(_ epic: Epic) -> String {
@@ -129,9 +140,12 @@ private struct EpicStageSections: View {
                 NavigationLink(value: AppRoute.goal(epic.id)) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(goal.summary).lineLimit(3)
-                        Text("版 \(goal.version) · タスク \(goal.tasks.count)")
-                            .appFont(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            Text("版 \(goal.version) · タスク \(goal.tasks.count)")
+                                .appFont(.caption)
+                                .foregroundStyle(.secondary)
+                            ReflectionBadge([.goal(epicID: epic.id)])
+                        }
                     }
                 }
             }
@@ -140,8 +154,11 @@ private struct EpicStageSections: View {
             CardSection("人がする作業") {
                 ForEach(epic.humanTasks) { task in
                     NavigationLink(value: AppRoute.humanTask(epicID: epic.id, taskID: task.id)) {
-                        Label(task.title, systemImage: task.needsHuman ? "wrench.fill" : "checkmark.circle.fill")
-                            .foregroundStyle(task.needsHuman ? Theme.warning : Theme.success)
+                        HStack(spacing: 6) {
+                            Label(task.title, systemImage: task.needsHuman ? "wrench.fill" : "checkmark.circle.fill")
+                                .foregroundStyle(task.needsHuman ? Theme.warning : Theme.success)
+                            ReflectionBadge([.humanTask(epicID: epic.id, taskID: task.id)])
+                        }
                     }
                 }
             }
@@ -161,9 +178,12 @@ private struct EpicStageSections: View {
                 NavigationLink(value: AppRoute.finalReview(epic.id)) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text((["#\(review.pullRequestNumber)"] + [review.lineChanges].compactMap(\.self)).joined(separator: " · "))
-                        Text("判断の確認 \(review.reviewedCount) / \(review.decisions.count) · 実機の確認 \(review.verifications.count)")
-                            .appFont(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            Text("判断の確認 \(review.reviewedCount) / \(review.decisions.count) · 実機の確認 \(review.verifications.count)")
+                                .appFont(.caption)
+                                .foregroundStyle(.secondary)
+                            ReflectionBadge(finalTargets(review))
+                        }
                     }
                 }
             }
@@ -171,7 +191,14 @@ private struct EpicStageSections: View {
     }
 }
 
-/// 質問の 1 行（状態・依存先・依存される質問）
+private extension EpicStageSections {
+    /// 最終 PR への操作の対象（マージの承認・指示と、判断のカードへの答え）
+    func finalTargets(_ review: FinalReview) -> [IntentTarget] {
+        [.finalPullRequest(epicID: epic.id)] + review.decisions.map { .decision(epicID: epic.id, decisionID: $0.id) }
+    }
+}
+
+/// 質問の 1 行（状態・依存先・依存される質問）。回答を送ったら、反映されるまで印を出す（断られた理由は、開いたシートと帯に出す）
 struct QuestionStatusRow: View {
     let question: Question
     let epic: Epic
@@ -188,6 +215,7 @@ struct QuestionStatusRow: View {
                     .appFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                ReflectionBadge([.question(epicID: epic.id, questionID: question.id)])
             }
             Spacer(minLength: 0)
         }
@@ -387,6 +415,8 @@ private struct EpicMenu: ToolbarContent {
         // 一時停止していない epic は、Mac で動いている作業が終わるまで引き継げない（司令塔が断る）。そのときは一時停止を促す
         let handOverNeedsPause = isStarted && !canHandOver && canPause
         let canDiscard = epic.isActive && store.supports(.discard(epicID: epic.id))
+        // 前の操作が反映されるまでは、ほかの操作も押せなくする（反映中は epic の画面の上に出す）
+        let isReflecting = store.isReflecting([.epicControl(epicID: epic.id)])
         ToolbarItem(placement: .primaryAction) {
             if canPause || canResume || canHandOver || canDiscard {
                 Menu("操作", systemImage: "ellipsis.circle") {
@@ -411,6 +441,7 @@ private struct EpicMenu: ToolbarContent {
                         Button("やめる…", systemImage: "xmark.octagon", role: .destructive) { isConfirmingDiscard = true }
                     }
                 }
+                .disabled(isReflecting)
             }
         }
     }

@@ -157,12 +157,18 @@ struct CleanupView: View {
         .navigationTitle("片付けの候補")
         .safeAreaBar(edge: .bottom) {
             if !candidates.isEmpty {
-                Button("選んだものを消す（\(ByteFormat.string(selectedBytes))）", role: .destructive) { isConfirming = true }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.large)
-                    .disabled(selectedIDs.isEmpty)
-                    .padding(.vertical, 10)
-                    .keepsControlSize()
+                // 片付けを送ったら、反映されるまで押せなくし、その様子を出す
+                VStack(spacing: 6) {
+                    Button("選んだものを消す（\(ByteFormat.string(selectedBytes))）", role: .destructive) { isConfirming = true }
+                        .buttonStyle(.glassProminent)
+                        .controlSize(.large)
+                        .disabled(selectedIDs.isEmpty || store.isReflecting([.cleanup(macID: macID)]))
+                    ReflectionStatusView(.cleanup(macID: macID))
+                        .frame(maxWidth: 520)
+                        .padding(.horizontal)
+                }
+                .padding(.vertical, 10)
+                .keepsControlSize()
             }
         }
         .confirmationDialog("\(selectedIDs.count) 件を消しますか？", isPresented: $isConfirming, titleVisibility: .visible) {

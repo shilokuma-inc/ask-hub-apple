@@ -16,6 +16,10 @@ struct DecisionSheet: View {
     /// 最後に送ろうとした答え（失敗したとき、もう一度送る）
     @State private var lastIntent: HumanIntent?
 
+    private var target: IntentTarget {
+        .decision(epicID: epicID, decisionID: decision.id)
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -26,6 +30,11 @@ struct DecisionSheet: View {
                                 send(lastIntent)
                             }
                         }
+                    }
+                } else if store.reflection(for: [target]) != nil {
+                    // 前に送った答えが反映を待っているか、断られた
+                    CardSection {
+                        ReflectionStatusView(target)
                     }
                 }
                 DecisionDetailSections(decision: decision)
@@ -52,7 +61,7 @@ struct DecisionSheet: View {
                             )
                         }
                     }
-                    .disabled(sending.isSending)
+                    .disabled(sending.isSending || store.isReflecting([target]))
                 }
             }
             .pastelBackground()
