@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 
 /// 判断のカードの Before / After のスクショ
@@ -7,12 +8,8 @@ struct ScreenshotView: View {
     var body: some View {
         Group {
             switch screenshot {
-            case .image(let url):
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFit()
-                } placeholder: {
-                    ProgressView()
-                }
+            case .stored(let path):
+                StoredScreenshotImage(path: path)
 
             case .demo(let screen):
                 DemoScreenView(screen: screen)
@@ -26,20 +23,58 @@ struct ScreenshotView: View {
     }
 }
 
-/// Before / After を横に並べる
+/// ワーカーが撮って状態リポジトリに置いたスクショ。読むまでは待ちの表示、読めなければそのわけを出す
+struct StoredScreenshotImage: View {
+    let path: String
+    @Environment(ClientStore.self) private var store
+    @State private var image: CGImage?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .scaledToFit()
+            } else if failed {
+                ContentUnavailableView("スクショを読めない", systemImage: "exclamationmark.triangle")
+                    .appFont(.caption)
+            } else {
+                ProgressView()
+            }
+        }
+        .task(id: path) {
+            failed = false
+            image = await store.screenshot(at: path).flatMap(Self.image(from:))
+            failed = image == nil
+        }
+    }
+
+    static func image(from data: Data) -> CGImage? {
+        CGImageSourceCreateWithData(data as CFData, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+    }
+}
+
+/// Before / After を横に並べる。`zoomable` なら、押すと大きく開く
 struct BeforeAfterView: View {
     let before: Screenshot?
     let after: Screenshot?
+    var zoomable = false
+    @State private var zoomed: ZoomedScreenshot?
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             column("Before", before)
             column("After", after)
         }
+        .sheet(item: $zoomed) { zoomed in
+            ScreenshotZoomSheet(title: zoomed.title, screenshot: zoomed.screenshot)
+        }
     }
 
+    @ViewBuilder
     private func column(_ title: String, _ screenshot: Screenshot?) -> some View {
-        VStack(spacing: 4) {
+        let content = VStack(spacing: 4) {
             Text(title)
                 .appFont(.caption2, weight: .semibold)
                 .foregroundStyle(.secondary)
@@ -47,6 +82,49 @@ struct BeforeAfterView: View {
                 .accessibilityLabel("\(title) のスクショ")
         }
         .frame(maxWidth: .infinity)
+        if zoomable, let screenshot {
+            Button {
+                zoomed = ZoomedScreenshot(title: title, screenshot: screenshot)
+            } label: {
+                content
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("大きく開く")
+        } else {
+            content
+        }
+    }
+}
+
+/// 大きく開くスクショ
+struct ZoomedScreenshot: Identifiable {
+    let title: String
+    let screenshot: Screenshot
+    var id: String { title }
+}
+
+/// スクショを大きく開くシート
+struct ScreenshotZoomSheet: View {
+    let title: String
+    let screenshot: Screenshot
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                ScreenshotView(screenshot: screenshot)
+                    .frame(maxWidth: 520)
+                    .padding()
+                    .frame(maxWidth: .infinity)
+            }
+            .navigationTitle(title)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("閉じる") { dismiss() }
+                }
+            }
+        }
+        .frame(minWidth: 360, minHeight: 600)
     }
 }
 

@@ -58,6 +58,12 @@ struct DeckCardContent: View {
                 if decision.before != nil || decision.after != nil {
                     BeforeAfterView(before: decision.before, after: decision.after)
                         .frame(maxHeight: 150)
+                    if let note = decision.screenshotNote {
+                        Label(note, systemImage: "info.circle")
+                            .appFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
                 } else if let note = decision.screenshotNote {
                     Label(note, systemImage: "camera.metering.unknown")
                         .appFont(.caption)
