@@ -67,6 +67,8 @@
   `release/…` だけに絞れる（付けないと `release-x` も合う）。`refs/heads/`・`refs/tags/` を付けた名前で返る
 - Contents API（`GET /repos/{owner}/{repo}/contents/{path}?ref=…`）の `content` は base64 を 60 文字ごとに改行した文字列。Swift では
   `Data(base64Encoded:options: .ignoreUnknownCharacters)` で読む。ファイルもブランチも無ければ 404 で、ディレクトリなら配列が返る
+- Contents API の書き込み（`PUT /repos/{owner}/{repo}/contents/{path}`）は、すでにあるファイルを `sha` なしで書くと 422（本文に `"sha" wasn't supplied`）、古い `sha` を付けると 409 を返す。
+  返る `content.sha` は Git の blob の sha（`git hash-object` と同じ）。読み取りに `If-None-Match` で ETag を付けると、変わっていなければ 304 が返る（2026-11-03、`AskHubStateStore` の `LiveGitHubContentsStoreTests` で確かめた）
 - ジョブの `env:` では `runner` コンテキスト（`${{ runner.temp }}`）を使えない（actionlint が「context "runner" is not allowed here」で落とす。ステップの `env:` では使える）。
   ジョブ全体で使うパスは、最初のステップで `echo "NAME=$RUNNER_TEMP/…" >> "$GITHUB_ENV"` で渡す
 - GitHub の PR のマージコミットは、件名が `Merge pull request #N from <owner>/<branch>`、本文の 1 行目が PR のタイトル（既定のとき）。
@@ -105,9 +107,44 @@
 - 移管・改名されたリポジトリを旧名の REST（`repos/{旧owner}/{repo}/…`）で操作すると、GitHub のリダイレクトを URLSession が送り直すときに `Authorization` が付かず、
   書き込みは `401 Requires authentication`、読み取りは未認証扱い（IP ごとに 60 回/時）で `rateLimited` になった。検索は新しい名前で返すので、名前で照合する処理は黙って外れる。
   GraphQL の `repository(owner:, name:)` は旧名でも移管・改名の後のリポジトリ（`nameWithOwner` が新しい名前）を返すので、今の名前はこれで確かめる（2026-10-27、Issue #757）
+- Contents API のディレクトリの一覧は 1,000 件までで、続きを読む方法が無い。人の意図のように増え続けるディレクトリは、親の一覧からディレクトリの tree の sha を読み、
+  Git Trees API（`git/trees/<sha>?recursive=1`。10 万件・7 MB まで。超えると `truncated` が true）で下まで 1 度に読む。tree は sha で中身が決まるので、ETag で使い回せる（2026-11-06）
+- Contents API で 1 MB を超え 100 MB 以下のファイルを既定のメディアタイプ（`application/vnd.github+json`）で読むと、エラーにならず `encoding: "none"`・`content: ""` で返る（`object` のメディアタイプと同じ。2026-11 に 1.4 MB のファイルで実測）。
+  中身は `application/vnd.github.raw+json` で読み直す。100 MB を超えるファイルは Contents API では読めない（GitHub の文書）。`object` に切り替えると、ディレクトリが配列ではなく `entries` を持つ object で返るので、一覧の処理が壊れる（2026-11-06）
+- git の設定は、`GIT_CONFIG_COUNT`・`GIT_CONFIG_KEY_<n>`・`GIT_CONFIG_VALUE_<n>` の環境変数でファイルに書かずに渡せる（`core.hooksPath=/dev/null`・`credential.helper` など）。`GIT_CONFIG_GLOBAL=/dev/null`・`GIT_CONFIG_NOSYSTEM=1` で人の設定を読まない。
+  `clone --filter=blob:none --no-checkout` の後に `worktree add --detach <path> origin/HEAD` で取り出すと、要るファイルだけを取りにいく。資格情報の無い private リポジトリは、`GIT_TERMINAL_PROMPT=0` のとき `could not read Username for 'https://github.com': terminal prompts disabled` で失敗する（Apple Git 2.54 で確かめた。2026-11-06）
+- organization の Actions の使用量は、`gh api "organizations/<org>/settings/billing/usage?year=<年>&month=<月>"` でリポジトリごと・SKU（`Actions Linux` など）ごとに読める（`unitType` が `Minutes`）。
+  前の `orgs/<org>/settings/billing/actions` は `410`（moved）を返す。public のリポジトリの分も載る（`discountAmount` で無料になる）ので、private の枠（Free の organization は月 2,000 分）を見積もるときは private のリポジトリだけを足す。
+  private のリポジトリでは 1 回のジョブが 1 分に切り上げて数えられるので、数秒で終わる定期実行でも 1 時間ごとで月 720 分になる（2026-11-07、司令塔の見張りの間隔を決めたとき）
+- fine-grained token で PR を扱うときの権限（GitHub の「Permissions required for fine-grained personal access tokens」の表）: マージ（`PUT …/pulls/{n}/merge`）とブランチの削除（`DELETE …/git/refs/…`）は
+  Pull requests ではなく **Contents の write**、落ちた job の流し直し（`POST …/actions/runs/{id}/rerun-failed-jobs`）は **Actions の write**、combined status（`GET …/commits/{ref}/status`）は Commit statuses の read。
+  check runs の一覧（`GET …/commits/{ref}/check-runs`）は表に載っていない。足りないかは応答の `X-Accepted-GitHub-Permissions` ヘッダーで分かる（2026-11-07、`AskHubPullRequests`）
+- REST の check run の `name` は、再利用ワークフロー（`workflow_call`）のジョブだと `build / build` のように「呼び出し側のジョブ / 呼ばれた側のジョブ」になる（この repo の CI で確かめた）。
+  待つチェックの名前の一覧には、PR の画面のチェックの名前をそのまま書く（2026-11-07、`AskHubPullRequests`）
+- GraphQL の一次の上限は、エラーの状態コードではなく `200` に `errors` を付けて返り、`x-ratelimit-remaining` が `0` になる（二次の上限は 200 か 403）。
+  `data` だけを見て `null` を「無い」と扱うと、上限を見落とす。`errors` と `x-ratelimit-reset` を先に見る（GitHub の文書。2026-11-07、`AskHubPullRequests`）
+
+- git のブランチ名は、ほかのブランチ名を「フォルダ」として含められない。`askhub/E` があると `askhub/E/t1` は
+  「cannot lock ref 'refs/heads/askhub/E/t1': 'refs/heads/askhub/E' exists」で作れない（GitHub でも同じ）。作業ブランチの下に子ブランチを作るときは、`askhub/E-t1` のように `/` で区切らない（2026-11-07、`TaskBranches`）
+- GitHub Actions の job のログ（`GET …/actions/jobs/{id}/logs`）は、短い間だけ使える署名つきの URL への 302 で返る。リダイレクトを追わない `URLSession` では、
+  `Location` を読んで `Authorization` を付けずに取りに行く（署名で認められる。トークンを別のホストに渡さない）。各行の先頭に `2026-11-07T09:00:00.1234567Z ` の形の時刻が付く（2026-11-07、`jobLog`）
+- fine-grained token の期限は、そのトークンで呼んだ API の応答の見出し `github-authentication-token-expiration` に `2027-10-23 12:25:03 UTC` の形で出る（`+0900` のような時差の形で返ることもあると報告がある）。
+  期限の無いトークンには見出しが無い。期限切れのトークンは 401 で見出しも無いので、切れた後に期限を知るには前に読んだ値を覚えておく。
+  期限だけを読むなら `GET /rate_limit` が REST の上限に数えられない（2026-11-08、`GitHubTokenExpiry`）
+- 司令塔は状態を書き換えてから受け付けた記録（`consumed/`）を書くが、クライアントが状態リポジトリを並べて読む 1 回の読み込みでは、記録は新しく状態は古い組み合わせを読むことがある
+  （状態のファイルを先に読み終え、その後に記録を読んだとき）。受け付けを見つけた読み込みだけで「反映された」とせず、その後に始めた読み込みが終わるまで反映中にする（`ReflectionTracker`。2026-11-09、反映中の UI）
+- CodeRabbit は、PR の head のコミットに付ける印を、commit status `CodeRabbit` から check run `CodeRabbit`（アプリの slug は `coderabbitai`）に切り替えた（2026-10-25 までは commit status、2026-11-01 以降は check run）。
+  完了は `completed`・`success`（見出し "Finished"）、上限は `completed`・`neutral`（"Review rate limited"）、見送りは `completed`・`skipped`（"Review skipped…"）。commit status だけを読むと、終わっていても「始まっていない」に見える
+- GitHub は、コミットを書き手（author）のメールアドレスでアカウントに結び付ける。どのアカウントにも登録されていないアドレス（`worker@askhub.invalid` など）のコミットは、名前だけが出てアカウントに結び付かない。
+  本当のアドレスを出さずに結び付けるには、noreply アドレス `<id>+<login>@users.noreply.github.com`（`GET /user` の `id`・`login`）を使う。草（contributions）に数えられるのは、既定のブランチに入ったコミットだけ
+- GitHub のブランチの自動の削除（リポジトリの設定の `delete_branch_on_merge`）が有効なリポジトリでは、PR をマージした直後に head ブランチを API で消すと、
+  GitHub が先に消して DELETE（`…/git/refs/heads/<branch>`）が 404 になることがある（422 の "Reference does not exist" ではなく）。直前の GET では残って見える。
+  マージの後の片付けは、DELETE の 404 も 422 と同じく読み直し、無ければ消えたものとして扱う（2026-11-09、prime-pick-ios の最終 PR のマージで司令塔が止まった。`deleteBranch`）
 
 ## ビルド・テスト
 
+- このリポジトリの CI（Build）は、PR を開いたときの回だけ iOS Simulator の UI テストを流し、25〜40 分かかる（push の回は Unit テストだけで数分）。
+  `Build and test on iOS Simulator` の手順が 20 分以上進まなくても、止まっているとは限らない。上限の 45 分までは取り消さずに待つ（2026-11-03、#834）
 - Simulator は OS 更新で `iPhone 17 Pro (6.3inch/1206x2622)` のように改名されることがある。
   名前で解決できないときは `xcrun simctl list devices available` で UDID を調べて `id=` で指定する
 - 複数の worktree で同時に `xcodebuild` を流すときは、`-derivedDataPath` を worktree ごとに分ける。
@@ -226,6 +263,17 @@
   `-quiet` を付けると Swift Testing の結果の行が出ないので、件数を確かめるときは付けずに `Test run with N tests` の行を見る（2026-11-01、Discussion #784）
 - 作業ブランチへの push の CI（`build.yml`）は Unit テストを macOS（`Test on macOS`）でしか流さず、iOS Simulator の Unit テストは develop 宛ての PR（epic の最終 PR）で UI テストと一緒に初めて走る。
   macOS と iOS で挙動が違う API（`NSItemProvider` など）を使う Unit テストは、子 PR の CI が通っても最終 PR で落ちることがあるので、手元で iOS Simulator でも `-only-testing:AskHubTests/<構造体の名前>` で流す（2026-11-01、#798）
+- iOS の UI テストで、シートを出したまま後ろの View の `frame` を読むと、シートに隠れた部分が切られる（高さが縮み、`midY` がずれる）。
+  シートの後ろのカードの位置を確かめるときは、隠れない側の角（`minX`・`minY`）で測る。回転させている View は枠が傾きの分だけ広がるので、幅を持たせて比べる（2026-11-04、リニューアルの UI）
+- UI テストで、1 本目の指で引いている途中に 2 本目を時間差で置く操作は、XCTest の内部の `XCPointerEventPath`（`initForTouchAtPoint:offset:`・`moveToPoint:atOffset:`・`liftUpAtOffset:`）を
+  `XCSynthesizedEventRecord`（`initWithName:interfaceOrientation:`・`addPointerEventPath:`・`synthesizeWithError:`）にまとめて合成できる（WebDriverAgent と同じ方法。Swift からは `method(for:)` の IMP を呼ぶ）。
+  ただし「2 本目を置いたまま 1 本目を先に離す」と、Simulator 側で 1 本目の `UITouch` が 2 本目の位置へ滑っていく（同じ `UITouch` に 2 回目の `began` が来る）ので、この場面は実機で確かめる。
+  リポジトリには置かない（内部の API なので Xcode の更新で動かなくなりうる）（2026-11-04、スワイプの手触り）
+- アプリにリンクする AskHubKit のライブラリ（AskHubClient など）は iOS でもビルドされるが、`swift test --package-path AskHubKit` は macOS でしか流さないので、
+  iOS で使えない API（`FileManager.default.homeDirectoryForCurrentUser` など）が入っても気づかず、アプリの iOS のビルドで初めて落ちる。
+  ホームのフォルダは `URL.homeDirectory` で求める（2026-11-07、状態リポジトリへのつなぎ込み）
+- UI テストで `-demoScenario` を付けずに起動すると、設定の既定（状態リポジトリ）で動く。デモのデータで動かしつつ場面を設定で変えるテストは、
+  `-dataSource demo` を付ける（2026-11-07、状態リポジトリへのつなぎ込み）
 - CI（macos-26-arm64）の `swift test --package-path AskHubKit` では、負荷でテストが一律に遅れることがあり、その幅が 5 秒（#699）から 10.9 秒（2026-11-05）に広がった。
   `ContinuousClock.now - start < 上限` で「子プロセスを待たずに戻った」ことを確かめるテストは、上限を 30 秒、待たないはずの子プロセスの `sleep` を 60 秒にそろえている（`LocalLoopRuntimeTests.returnLimit`・`XcbStatusTests.returnLimit`）。
   同じ形のテストを足すときは、上限をふだんの所要時間でなく CI の遅れに合わせ、`sleep` は上限の倍にする。成功を期待するコマンドの `timeout` も上限より短くしない
@@ -234,12 +282,69 @@
   `/bin/sh` でも、`swift test` で全体を並べて流すと準備（子プロセスの起動・`trap` の設定）が 500ms に間に合わないことがある（`LocalLoopRuntimeTests` の `child.pid` を読むテストが落ちていた）。
   時間切れで止める前にスクリプトに準備させたいテストは、時間切れを数秒にし（`LocalLoopRuntimeTests.setupTimeout` は 3 秒）、実装を一時的に壊して（読み切りの上限を伸ばすなど）テストが落ちることを確かめる。
   子プロセスを残すテストは、スクリプトに子プロセスの PID を `child.pid` に書かせ、残っていることを確かめてから `defer` で止める（2026-11-06）
+- 状態リポジトリにつないだときの画面（`StateClientService` が出すもの）は、デモの場面では撮れない。PR のスクショは、`StateConnection.makeService()` を
+  一時的に `InMemoryStateStore`（見本のファイル）とソフトウェアの鍵の `StateClientService` に差し替えて撮る（コミットしない）。Before は base を `git worktree add --detach` で
+  別の場所に取り出して同じ差し替えを当てると、同じデータで比べられる。`-demoOpen epic:<id>` は状態リポジトリのときも効く（2026-11-07、#879）
+- 開発者モードが無効（`DevToolsSecurity -status` が disabled）の Mac では、ターミナルから流しても macOS の `xcodebuild test` がテストのホストを起動できずに止まることがある
+  （`Testing started completed` の後に何も出ない）。iOS Simulator の `-only-testing:AskHubTests` は通るので、手元の Unit テストはそちらで流す。
+  Xcode 27.1 の `xcodebuild test` は、テストが終わって `Executed N tests` を出した後に戻らないことがあるので、結果はログの `Executed` と `Test Case … failed` の行で判断する（2026-11-07、#879）
+- 結果のバンドルは `xcrun xcresulttool get build-results` と `get test-results summary`（`--compact` で 1 行の JSON）で読める。
+  `build-results` の `errors` の `sourceURL`（`file://…#…&StartingLineNumber=12&…`）の行は 0 から数えるので、エディタの行は +1 する。
+  テストの操作でビルドが失敗すると、`errors` に場所の無い「Testing cancelled because the build failed.」も入る。
+  `test-results summary` の `devicesAndConfigurations` は、JSON Schema（0.4.0）ではオブジェクトだが実際は配列で返る（Xcode 27.1）ので、使う欄だけを読む（2026-11-07、#886）
+- `xcrun simctl shutdown` は、止まっている Simulator には終了コード 149（`Unable to shutdown device in current state: Shutdown`）で失敗する。
+  `erase`・`delete` の前に止めるときは、この失敗を成功とみなす（2026-11-07、#886）
+- 人や Claude のセッションが、画面の確認用に `askhub-` で始まる名前の Simulator（`askhub-anim-a` など）を作っていることがある。
+  ワーカー（`AskHubBuild` の `SimulatorPool`）が作って消すのは `askhub-worker-<枠>-…` の形の名前だけなので、手で作る Simulator にはこの形の名前を付けない（2026-11-07、#886）
+- UI テストの起動引数（`-demoReactionDelay 0` など）で渡した値は、UserDefaults に文字列で入るので `object(forKey:) as? Double` は nil になる
+  （`-demoReactionDelay 0` が効かず、既定の 4 秒のまま動いていた）。数値は `double(forKey:)` で読む（`-demoSendDelay`）。
+  値が無いことと 0 を分けたいときは、`object(forKey:) != nil` で確かめてから `double(forKey:)` を使う（2026-11-07、#896）
+- `xcodebuild test -resultBundlePath` が `Executed N tests` の後に戻らず、`.xcresult` に `Info.plist` ができない（`xcresulttool export attachments` が読めない）ときも、
+  UI テストで撮ったスクショ（`XCTAttachment`）は `<bundle>.xcresult/Data/data.0~…` に PNG で入っている。`file` で PNG を探し、撮った順は更新時刻の順で並べる（2026-11-07、#896）
+
+- ワーカーの git（`GitRepositoryWorkspace`）は手元のパスの remote を断る（`GIT_CONFIG_*` の `protocol.file.allow=never`）。本物の git で確かめるテストは、
+  git を `exec /usr/bin/git -c protocol.file.allow=always "$@"` の包みに差し替え（コマンドラインの `-c` は環境変数の設定より強い）、clone を先に作っておく（`update` は fetch だけになる）。
+  origin は手元のベアのリポジトリにする（`TaskGitTests`。2026-11-07）
+- `/bin/sh` のスクリプトが `&` で後ろに回した子プロセスは SIGINT を無視する（ジョブ制御の無いシェルの決まり）。`ProcessCommandRunner` で止めると、
+  子は SIGINT では止まらず、`interruptGrace`（10 秒）の後の SIGTERM で止まる。子孫が止まることを確かめるテストは、それだけ時間がかかる（2026-11-07、`EpicBuildServiceTests`）
+- macOS 27 の上の Xcode 26.6 では、Simulator でテストを流すと「DTServiceHubClient failed to bless service hub」「The test runner hung before establishing connection.」で止まる（ビルドは通る）。開発者ツールの許可（`DevToolsSecurity`・`_developer`）は関係なかった。Xcode を 27 系に上げると直った（2026-11-08、Mac mini）
+- iOS 27.1 の Simulator のランタイム（24A94425）は、iPhone Duo だけに対応する。iPhone 17 Pro などは iOS 27.0（24A434）のランタイムで動く。`xcodebuild -downloadPlatform iOS` は 27.1 と 27.0 を続けて取る。版を決めずに「SDK と同じか古い最新」を選ぶと 27.1 になり、機種を作れない（`simctl create` が「Incompatible device」）。機種に対応するランタイムのうち最新を選ぶ（`supportedDeviceTypes`）
+- Xcode を上げた後、前の版の `CoreSimulatorService` が動いたままだと、新しいランタイムが「unavailable, liblaunch_sim.dylib could not be opened」になる。起動中の端末が無いときに `killall -9 com.apple.CoreSimulator.CoreSimulatorService` で動き直させる
+- 状態ファイルの見本（テストの JSON）に形の違う値（`keyId` が 43 文字でない・ULID の形が違うなど）が 1 つでもあると、`StateReader` はそのファイルごと読まずに
+  `sourceFailures` に入れるだけで、組み立ては続く（判断の一覧が丸ごと空になり、テストには「カードが 0 枚」という食い違いだけが出る）。
+  見本のファイルを使うテストでは、`snapshot.sourceFailures.isEmpty` も確かめる（2026-11-08、最終 PR の確認のつなぎ込み）
+- 意図の番号（ULID）が送った順に大きくなるのは、同じ `IntentSender`（中の `NonceSequence`）で送ったときだけ。送るたびに作り直すと、同じミリ秒に送った意図の大小は乱数で決まる
+  （テストの固定の時計で、判断への答えより承認の番号が小さくなることがあった）。司令塔は番号の順に処理するので、順が要る意図は 1 つの `IntentSender` で送る（2026-11-08、最終 PR の確認のつなぎ込み）
+- 司令塔のテストで人の意図を続けて置くとき、`nonce` を同じ時刻の `ULID.generate(at:)` で作ると、時刻の部分が同じでランダムな部分の順に処理され、置いた順にならない。
+  `now.addingTimeInterval(0.001 * n)` でずらしても、浮動小数の誤差でミリ秒が切り捨てられて同じ時刻になることがある（`1_793_757_600.001` が `…600000` ミリ秒になる）。秒単位でずらす（`FinalFlowFixture.place`。2026-11-08、#911）
+- Simulator に外から入れたタップ（Claude Code の Simulator の操作・`simctl` 系）では、ツールバーの `Menu` を開いて中の `Button` は押せるが、`Menu` の中の `Menu`（サブメニュー）は押しても開かない（長押し・なぞりでも開かなかった）。
+  PR のスクショでサブメニューの中身を撮るときは、同じ `Menu` を直接開ける画面（「対処が要ります」の `HandOverMenu` など）から撮る（2026-11-08、#935）
+- macOS のアプリに push の entitlement（`com.apple.developer.aps-environment`）を付けると、`CODE_SIGN_IDENTITY=-` のアドホック署名でも
+  「"AskHub" requires a provisioning profile」でビルドが止まる（profile が要る entitlement）。自動の署名でも、その App ID の Mac 用の profile が
+  手元に無ければ「No profiles for 'jp.shilokuma.AskHub' were found」で止まる。アドホック署名の流れ（CI・ワーカー・xcb・スクショ・archive）は
+  どれも `CODE_SIGN_STYLE=Manual` を渡すので、`CODE_SIGN_ENTITLEMENTS[sdk=macosx*] = $(ASKHUB_MACOS_ENTITLEMENTS_$(CODE_SIGN_STYLE))` で自動の署名のときだけ付けている。
+  iOS の Simulator 向けのビルドは profile が要らないので、entitlement をいつも付けてよい（2026-11-09、通知のアプリ側）
+- Export（`xcodebuild -exportArchive`）は、archive の実行ファイルの署名にある entitlement だけを引き継いで署名し直す。profile にあっても足さず、値だけを profile に合わせる
+  （archive の `aps-environment = production` が、development の書き出しでは `development` になった）。`CODE_SIGNING_ALLOWED=NO` の iOS の archive からは `aps-environment` の無い IPA になる。
+  push の entitlement があると、iOS のアドホック署名の archive は `CODE_SIGN_STYLE=Manual` では「requires a provisioning profile」、Xcode Cloud と同じ
+  `CODE_SIGN_IDENTITY=- AD_HOC_CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic` では「has entitlements that require signing with a development certificate」で止まる。
+  archive の後に `codesign --force --sign - --entitlements` で .app に埋め込めば、Export が引き継ぐ（`Tools/embed_archive_entitlements.py`）。
+  API キーで archive を自動の署名にすると、キーチェーンが空の CI では実行のたびに「Apple Development: Created via API」の証明書が作られて残るので使わない（2026-11-09、`_archive.yml`）
+
+- LicenseList（cybozu）のビルドのプラグイン `PrepareLicenseList` は、`URL.path()`（空白を `%20` にした形）で `SourcePackages` の有無を調べるので、DerivedData のパスに空白があると見つけられず `SourcePackages not found` で止まる。CI のように標準の DerivedData（空白なし）なら通る。ワーカーの DerivedData とリポジトリの写しは、空白の無い `~/Library/Developer/AskHub/<役割>/` に置く（2026-11-09、prime-pick-ios の試運転）
+- 署名済みの .app を `codesign --force --sign - --entitlements …` で署名し直すと、元の署名のフラグが消える（macOS のアドホック署名の archive の `flags=0x10002(adhoc,runtime)` が `0x2(adhoc)` になり、Hardened Runtime が外れる）。
+  `--preserve-metadata=identifier,flags` を付ければ残る。macOS の archive に push の entitlement を足すときは、`codesign -d --entitlements - --xml` で読んだ元の entitlement（sandbox など）に足して渡す（上書きすると消える）。
+  Export した macOS の pkg の中の .app は、`pkgutil --expand-full <pkg> <まだ無いフォルダ>` で取り出して `codesign -d` で読める（2026-11-09、Mac 版の TestFlight）
 
 ## Keychain
 
 - macOS で `kSecUseDataProtectionKeychain` を使うには、provisioning profile で許可された entitlement
   （`keychain-access-groups` / `application-identifier`）付きの署名が要る（TN3137）。無いと `errSecMissingEntitlement`（-34018）になる。
   付けない場合は従来の Keychain になり、`kSecAttrAccessible`（`AfterFirstUnlock` など）は効かない
+- Apple シリコンの Mac の Simulator でも `SecureEnclave.isAvailable` は true で、Secure Enclave の鍵を作れる
+  （`DeviceSigningKey` の保存場所が Simulator でも `secureEnclave` になる）（2026-11-07、状態リポジトリへのつなぎ込み）
+- 署名の無い（ad-hoc の）司令塔を入れ替えると、Keychain の項目の「常に許可」が別のプログラムとみなされて効かず、入れ替えのたびに確認が出る。Developer ID と同じ識別子で署名し続ければ、一度の「常に許可」が入れ替えた後も続く（2026-11-08、`scripts/commander/deploy.sh`）
+- ssh のセッションからは、ログインキーチェーンの署名の鍵を使えない。`codesign` が `errSecInternalComponent` で止まり、`launchctl asuser` も「Could not switch to audit session」で使えない。遠隔で署名するときは、ログイン中のセッションの LaunchAgent に依頼のファイルを拾わせて署名させる（2026-11-08、`jp.shilokuma.askhub.deploy`）
 
 ## Swift
 
@@ -297,9 +402,36 @@
 - `Data(contentsOf:options: .mappedIfSafe)` で mmap して読んでいるファイルを、別の処理が同じパスで切り詰めて書き直すと、読む側が SIGBUS で落ちうる。
   読まれうるファイルは `data.write(to:options: .atomic)`（別のファイルに書いてから rename）で書く（`Orchestrator.prepareZip`）。
   actor の中で重い同期の I/O をするときは、`Task.detached { Result { () throws(E) -> T in … } }.value` で actor の外に出すと、型付きの throws のまま Sendable の警告なしで受け取れる
+- Swift Testing の `#expect(items.allSatisfy(\.isDone))` のように、キーパスを渡した `allSatisfy` などの rethrows の呼び出しをマクロの中に書くと、
+  展開の後に「call can throw, but it is not marked with 'try'」でビルドが止まる。結果を `let` で受けてから `#expect` に渡す（2026-11-03、リニューアルの UI）
+
+- `NSRegularExpression`（ICU）の `$` は、複数行の指定が無くても、末尾の改行の前で合う（`^[a-z/]+$` が `"a/b\n"` に合う）。Python でも同じことを確かめた。Java の `Pattern` も文書上は同じで、ECMAScript だけが合わない（Kotlin のクライアントの検証で効く）。
+  JSON Schema の `pattern` で値を区切るときは、長さの決まった値は `maxLength` を足し、そうでない値は `"not": { "pattern": "\\n" }` で改行を弾く（`protocol/schemas`。2026-11-03、#835）
+- 型つきの throws（`throws(E)`）の関数に閉包を渡すときは、閉包の型が推論されず `any Error` になる。`{ () async throws(E) -> T in … }` と書き、
+  閉包の中の `do` も `do throws(E) { … }` と書く（書かないと `catch` の `error` が `any Error` になり、`.case(error)` に渡せない）（2026-11-03、`StateFileStore`）
+- actor のメソッドから、閉包を受け取る nonisolated の async の関数（失敗の型を変えるだけの包みなど）を呼ぶと、閉包が actor の外へ送られるとみなされ、
+  「sending value of non-Sendable type … risks causing data races」になる。包みを `static func f<T>(isolation: isolated (any Actor)? = #isolation, _ body: () async throws(E) -> T)` にすると、
+  呼んだ側の isolation のまま動くので通る。インスタンスメソッドに isolated の引数を付けると `nonisolated` にできない（「instance method with 'isolated' parameter cannot be 'nonisolated'」）ので `static` にする（2026-11-07、`DiscussionMirror`）
+- Swift Testing の `#require` の引数の中に `#require` を入れる（`try #require(try JSONSerialization.jsonObject(with: #require(data)) as? [String: Any])`）と、
+  「recursive expansion of macro 'require(_:_:sourceLocation:)'」でテストのビルドが止まる。内側の `#require` を `let` で受けてから外側に渡す（2026-11-07、`APNsSenderTests`）
 - 開きと閉じがある文字列（HTML コメントの `<!--` と `-->` など）の閉じを本文の先頭から探すと、`<!-->`・`<!--->` のように閉じが開きと重なる本文で開きの中の位置が返り、
   `index(startIndex, offsetBy: 開きの長さ)..<閉じ.lowerBound` の下の端が上の端より大きくなって「Range requires lowerBound <= upperBound」で落ちる。
   public のリポジトリでは誰でもこうした本文を書けるので、閉じは開きの後ろ（`dropFirst(開きの長さ)` の Substring）から探す。目印の先頭のコメントは `MarkerComment.leadingCommentContent` で読む（2026-11-03、#844）
+- `URL.resourceValues(forKeys:)` は、読んだ値を URL ごとに覚えていて、同じ URL のまま読み直すと前の値を返す（`volumeAvailableCapacityForImportantUsage` も）。常駐するプロセスで空き容量を何度も測るときは、読む前に `removeAllCachedResourceValues()` を呼ぶ（2 GB 書いた後も同じ URL では値が変わらず、キャッシュを消すと 2 GB 減った。Mac mini の司令塔が起動したときの空き容量を書き続けていた。2026-11-08）
+
+- `OSAllocatedUnfairLock.withLock` は typed throws を通さない（`withLock { state throws(E) in … }` は「thrown expression type 'any Error' cannot be converted to error type 'E'」）。
+  閉包で `Result<T, E>` を返し、外で `try result.get()` する（2026-11-07、タスクのジョブのテストの偽物）
+- ローカル変数をメソッドと同じ名前にすると、その変数の初期化の式の中のメソッドの呼び出しも変数を指し、「cannot call value of non-function type '[Any]'」でビルドが落ちる
+  （`let humanTasks = goal.map { humanTasks($0, epic: file) }`。Xcode 26.6）。アプリのコードは `swift test --package-path AskHubKit` では見つからず、アプリのビルドで初めて落ちるので、変数は別の名前にする（2026-11-08、人がする作業）
+- `UNUserNotificationCenterDelegate` の `didReceive`（`willPresent` も）を async の版で書くと、Swift が橋渡しで作る Task の中で
+  関数を抜けた後に、完了ハンドラが協調スレッドから呼ばれる。UIKit は完了ハンドラの中で主スレッドかを確かめるので、通知を押したときに
+  `-[UIApplication _performBlockAfterCATransactionCommitSynchronizes:]` の NSAssertionHandler で落ちる（`nonisolated` の async の版で起きた）。
+  完了ハンドラの版にして、呼ばれたその場（主スレッド）で呼び、画面の更新だけを `Task { @MainActor in … }` に渡す（2026-11-09、通知を押すと落ちた）
+- 起動引数（`-key value`）の値は、UserDefaults に文字列で入る。`defaults.object(forKey:) as? Double` は nil になる（数として読むなら `defaults.string(forKey:).flatMap(Double.init)` か `double(forKey:)`）。
+  デモの `-demoReactionDelay` はこの読み方のため効いておらず、いつも既定の 4 秒になっている（2026-11-09、反映中の UI で `-demoReceiptDelay` を足して気づいた）
+- `-demoReactionDelay` も文字列から読むように直し（デモの秒数はすべて `DemoScenario.seconds(forKey:in:)` で読む）、UI テストでは機械の反応と司令塔の受け取り（既定は反応の半分）がすぐ起きるようになった。
+  送った直後の読み直しで受け付けが見つかるので、送れたことの帯（「…を送りました」）はすぐ「…を受け付けました」に替わる。受け取る前の画面を UI テストで見るときは、
+  `-demoReceiptDelay` で受け取りだけを遅らせる（受け取りが遅いと知らせる 3 分より短くする。`testRequestShowsProgressAndConfirmsDuplicate`）（2026-11-09、#954）
 
 ## シェルスクリプト
 
@@ -341,6 +473,15 @@
   `url.<bare のパス>.insteadOf` で書き換え、`GIT_ALLOW_PROTOCOL=file` を付けて流す。書き換えが漏れても https に出られないので、本物の GitHub に push しない
 - macOS の `zipinfo` は、ロケールが C（launchd から起動したときの既定）だと UTF-8 の名前を `??` と出す（`LC_ALL=en_US.UTF-8` なら出る）。`unzip` は名前の引数をワイルドカードとして扱い
   （`a[1].txt` を渡すと「filename not matched」）、名前の位置の `-d` などもオプションとして読む。`[` `]` `*` `?` と先頭の `-` の前に `\` を付けると一致する。macOS の `zip` は UTF-8 の名前でも汎用フラグの bit 11 を立てない
+- `claude -p --output-format json --json-schema '<schema>'` の結果では、決めた形の値が `structured_output` に入り（`result` は同じ内容の文字列）、実際に使われたモデルは `modelUsage` のキーで分かる。
+  `--resume <session_id>` で再開した呼び出しの `total_cost_usd` と `modelUsage` の数は、その会話全体の累計（再開するたびに足すと二重に数える）。最後の結果の値を使う（2026-11-04、claude 2.1.317 で確かめた）
+- 会社の Claude（Team・Enterprise。社用 MacBook）では、組織の管理の設定で MCP サーバーが止められていることがある。`claude -p --strict-mcp-config --mcp-config …` でも、stderr に「MCP server blocked by enterprise policy」と出て、道具が読み込まれない。手元に管理の設定のファイルは無く（サーバーから配られる）、`--restricted` でも外せない。ワーカーに Claude からビルドやテストを頼ませる仕組みは、MCP の道具ではなく、決まった形の報告で終わって `--resume` で結果を渡す往復にする（2026-11-07、段階 3 の設計）
+- `claude -p --restricted --tools "Read,Edit,Write,Glob,Grep" --permission-mode dontAsk --settings '{"permissions":{"allow":["Read","Edit","Write","Glob","Grep"]}}'` で、Claude は作業ディレクトリのファイルを書き換えられる（作業ディレクトリの外は `--restricted` で書けない）。`--json-schema` の報告で終わらせ、`--resume <session_id>` に同じフラグを付けて続きを頼むと、同じ会話（同じ `session_id`）で続く（2026-11-07、claude 2.1.319）
+- macOS には `timeout` コマンドが無い（GNU coreutils の）。シェルで時間の上限を付けるときは、Bash の道具の timeout か、プロセスを裏で起こして待つ形にする（2026-11-07）
+- `ClaudeCommandLine` は環境変数を作り直し、`USER` を渡さない。setup-token（`CLAUDE_CODE_OAUTH_TOKEN`）の代わりに手元のログイン（Keychain の `Claude Code-credentials`。アカウント名はログインのユーザー名）で試すと、claude がログインを見つけられず「Not logged in · Please run /login」で `authExpired` になる。
+  手元の claude で `TaskRunner` などを試すときは、`ClaudeSetup.executable` に、`CLAUDE_CODE_OAUTH_TOKEN`・`CLAUDE_CONFIG_DIR` を消して `USER` を足してから本物の claude を `exec` するラッパーを置く（2026-11-07、claude 2.1.319）
+- macOS の `/bin/bash`（3.2）は、変数の直後に全角の文字が続くと、その文字まで変数名と読む（`"$PLIST）"` が `set -u` で `PLIST?: unbound variable`）。全角の文字が続く変数は `${PLIST}` のように波かっこで区切る。shellcheck では見つからない（2026-11-08、`scripts/commander/install-deployer.sh`）
+- `--settings` に `"sandbox":{"enabled":true,"allowUnsandboxedCommands":false}` を足しても、`--restricted --tools "Read,Edit,Write,Glob,Grep" --permission-mode dontAsk` での書き換えと `--resume` はそのまま動き、stderr に警告も出なかった（Bash を渡さないので、sandbox が効く道具は無い。2026-11-07、claude 2.1.319・Haiku 5.5）
 
 ## SwiftUI
 
@@ -375,3 +516,47 @@
   `FileManager.enumerator` の `.skipsPackageDescendants` はパッケージ（`.app`）の中に入らないが、パッケージのディレクトリそのものは返す（`isPackage` が true）ので、自分で除く（2026-11-01、Discussion #784）
 - `NSItemProvider(object: url as NSURL)` の `loadDataRepresentation(forTypeIdentifier: "public.file-url")` は、macOS では URL の文字列のバイトを返すが、iOS では `["file://…", ""]` の binary plist を返す。
   そのため `URL(dataRepresentation:relativeTo:)` は iOS ではファイルの URL にならない（`isFileURL` が false）。macOS の受け口からだけ呼ぶ `AttachmentDropProviders.item(from:)` のこのテストは `#if os(macOS)` で流す（2026-11-01、#798）
+- iOS 26 では、一覧の下に置くボタンの帯を `safeAreaInset(edge: .bottom)` にすると、ボタンと一覧の文字が重なって読みにくい。
+  `safeAreaBar(edge: .bottom)` にすると、下にスクロールの端のぼかしが付いて読める（iOS 26 / macOS 26）（2026-11-03、リニューアルの UI）
+- Mac の `List(selection:)` で選んだ行は濃い背景になり、`.red` や `.accentColor` の文字が読みにくい。
+  `@Environment(\.backgroundProminence)` が `.increased` のときは色を付けない（2026-11-03、リニューアルの UI）
+- リニューアルのクライアントは、DEBUG の起動引数で開く画面とデモの場面を決められる（`-demoScenario standard|quiet|failing|partial`・
+  `-demoOpen deck:all`・`-demoOpen epic:<id>`・`-demoDrag 0:0.8`・`-demoReactionDelay 0`）。UI テストと PR のスクショはこれで撮る
+  （`AskHub/Demo/DemoLaunch.swift`）（2026-11-03、リニューアルの UI）
+- 英数字だけのフォント（Nunito）を `Font.custom(_:size:relativeTo:)` で使うと、かなと漢字は CoreText がシステムの書体（ヒラギノ角ゴ）で補い、太さも合わせる。
+  可変フォントの名前付きインスタンスは PostScript 名（`Nunito-Bold` など）でそのまま選べる。`AskHub/` の下に置いたフォントは同期フォルダでバンドルの直下に入るので、
+  Info.plist に並べずに `CTFontManagerRegisterFontsForURL` で登録できる。ナビゲーションバーの見出しとタブの名前は UIKit が描くので、`UINavigationBar.appearance()` で別に変える（2026-11-03、リニューアルの UI）
+- `@ScaledMetric` と `UIFontMetrics.scaledFont(for:)` は、テキストサイズを標準（Large）より小さくしても縮まない（倍率は 1 のまま。大きくする方向だけに効く）。
+  中身の寸法を縮めたいときは `dynamicTypeSize` の段階から本文の大きさの比を求める（`ContentScale`）。UIKit の見出しは `UIFont.preferredFont(forTextStyle:).pointSize` の大きさで作る（2026-11-03、リニューアルの UI）
+- iOS 26 の `.lineHeight(.multiple(factor:))` を 1 より小さくすると、Nunito とヒラギノの文字の上が切れる。`.tight` は切れないが、2 行にわたる日本語が窮屈になる（2026-11-03、リニューアルの UI）
+- iOS 26 の `.lineHeight(.multiple(factor:))` の倍率は、文字の大きさに対する倍率（行の高さ = 文字の大きさ × 倍率）。Nunito の標準の行の高さは約 1.36 倍（2026-11-03、リニューアルの UI）
+- iOS 26 の標準の一覧（insetGrouped）の角の半径は約 24pt で、変える API が無い（`containerShape` も効かない）。`listRowBackground` で描いた地も、その角で切り取られる。
+  角を変えるには `.listStyle(.grouped)` にして、行ごとに地を描く。セクションの中の行の位置は `Group(subviews:)` で数えられる（`CardSection`）（2026-11-03、リニューアルの UI）
+- `NavigationLink` のラベルの中（行の見た目の部品）に付けた `listRowInsets`・`listRowBackground` は効かない。一覧の行そのもの（`NavigationLink` や ForEach の中身）に付ける（2026-11-03、リニューアルの UI）
+- `ToolbarItemGroup(placement: .keyboard)` を最初から付けた画面で、開いてすぐ `onAppear` で入力欄にフォーカスを当てると、キーボードの上に「完了」が出ない（シートで確かめた。iOS 26.5）。
+  `toolbar` の中身をフォーカスがあるときだけにして、フォーカスが付いてから足すと出る（`keyboardDoneButton(_:onlyWhileFocused:)`）。
+  重ねたカードのように、付ける View が同じ画面に並ぶときも、フォーカスのある View の分だけ出るので重複しない（2026-11-03、リニューアルの UI）
+- iOS でハードウェアキーボード（Simulator への文字の送り込みを含む）から打ったキーは、フォーカスのある `TextField` から親の View の `.onKeyPress` にも届く。
+  親で数字キーを選択肢の番号として扱うときは、選択肢が 0 個（入力欄だけのカード）でも落ちない形で範囲を確かめる（`(1...count).contains(n)` は `1...0` で落ちる。`indices.contains(n - 1)` にする）。
+  UI テストで確かめるときは `typeKey(_:modifierFlags:)` で打つ（`typeText` はソフトウェアキーボードの経路で入るので親の `onKeyPress` に届かず、落ちる不具合も再現しない）（2026-11-03、リニューアルの UI）
+- `.sheet(item:)` を下へ払って閉じると、シートの中の「キャンセル」のボタンの処理を通らない。シートを出すために動かした View を戻すなどの後始末は、
+  `.sheet(item:onDismiss:)` の `onDismiss` に置く（閉じ終わってから呼ばれるので、送ったときに後ろの View を動かす合図にも使える。`SwipeHold`）（2026-11-04、リニューアルの UI）
+- SwiftUI の `DragGesture` は、引いている途中に 2 本目の指が触れると取り消され、`onEnded` が来ない（動かしていた View が途中で止まったまま残る）。
+  2 本目を置いたまま 1 本目を離すと、2 本目の触れた位置を起点にした移動量で `onEnded` が来る。1 本目だけを追うには `UIGestureRecognizerRepresentable` で
+  `UIPanGestureRecognizer` の派生を付け、最初の `UITouch` だけを `super` に渡してほかは `ignore(_:for:)` する（`SingleTouchPanRecognizer`）。
+  Mac の `DragGesture` は `@GestureState` が戻るのを見て取り消しに気づく（2026-11-04、スワイプの手触り）
+- `UIPanGestureRecognizer` は `maximumNumberOfTouches = 1` でも、2 本目を置いたまま 1 本目を離すと 2 本目へ乗り換える。`translation(in:)` はパンが始まった所（約 10pt 動いた所）から測り、
+  `velocity(in:)` は指を止めてから離しても止める前の速さのまま残る。`UIGestureRecognizer` を直に派生すると、SwiftUI の Button の上から始めたとき Button の認識器
+  （`UIKitResponderGestureRecognizer`）に止められて動かない（`UIPanGestureRecognizer` の派生なら止められない）（2026-11-04、スワイプの手触り）
+- `UIGestureRecognizerRepresentable` の `converter` の `.local` は、ジェスチャーを付けた View の描画の変形（`offset`・`rotationEffect`）を含む座標になる。
+  動かしている View の移動量を `.local` で測ると動きと打ち消し合うので、移動量は画面の座標（`location(in: nil)`）で測る（2026-11-04、スワイプの手触り）
+- `DragGesture.Value.predictedEndTranslation` は「移動量 + 速さ × 0.25 秒」。`Spring.value(target:initialVelocity:time:)`・`velocity(...)` は `AnimatablePair` で 2 次元の初速（pt/秒のまま）を渡せる。
+  SwiftUI のアニメーションの初速は 1 つの数だけなので、斜めの速さを引き継ぐときは時刻ごとに計算して `TimelineView` で描く（2026-11-04、スワイプの手触り）
+- `rotation3DEffect` は、軸 (1, 0) を正の角度で回すと上の縁が、軸 (0, 1) では右の縁が奥へ下がる（2026-11-04、スワイプの手触り）
+- シートの中の入力欄でキーボードを出すと、シートの後ろの画面（`NavigationStack` の行き先の View）も、キーボードの分だけ縦に縮む（iOS 26.5。まとめて判断するの札を置く領域が 646pt → 344pt）。
+  後ろの View やその中の `GeometryReader` に `ignoresSafeArea(.keyboard)` を付けても戻らない（外側の層で縮むため）。シートの上に後ろの View を見せるときは、
+  開く前の大きさを覚えておき、幅が同じまま高さだけ縮んだ間はその大きさで置く（`DecisionDeckView.deckArea`）（2026-11-06、自由回答のシート）
+- `.presentationDetents([.height(h), .large])` のシートで開いてすぐ入力欄にフォーカスを当てると、キーボードが出たときに `.large` へ移る（`[.medium, .large]` と同じ）。
+  低い高さのまま書かせるには `.large` を並べない。キーボードの上の「完了」（`ToolbarItemGroup(placement: .keyboard)`）は、低いシートではシートの中に重なって入力欄を狭める（2026-11-06、自由回答のシート）
+- `List` の `Section` の中に、本体が `if` で何も出さないことのある View（`ReflectionStatusView` など）をそのまま置いても、何も出さないときは空の行にならない（iOS 26 で確かめた）。
+  呼び出し側で `if` を重ねるのは、`CardSection` で包むときのように、包む側だけが残ってしまうときだけでよい（2026-11-09、反映中の UI）

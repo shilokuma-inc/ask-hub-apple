@@ -1,0 +1,569 @@
+{
+  "description": "macs/<mac>.json（ワーカーの生きている印）を読む例。schemaValid は protocol/schemas/state/mac.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。知らない欄は、スキーマでは弾くが、読む側は読み飛ばす。スキーマで表せない決まり（欄どうしの関係・存在しない日付など）は、スキーマに合っても読む側が弾く",
+  "schema": "state/mac.schema.json",
+  "cases": [
+    {
+      "name": "full",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z",
+          "githubTokenExpiresAt": "2026-11-20T00:00:00Z",
+          "githubTokens": [
+            {
+              "owner": "shilokuma-inc",
+              "state": "ok",
+              "expiresAt": "2026-11-20T00:00:00Z"
+            },
+            {
+              "owner": "mrs1669",
+              "state": "ok"
+            }
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "minimal",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "kind": "alwaysOn",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0"
+        },
+        "diskFreeGB": 0,
+        "load": 0,
+        "capacity": {
+          "claude": 0,
+          "build": 0
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "expired",
+          "claudeToken": "missing"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        },
+        "futureField": 1
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "future-version",
+      "value": {
+        "v": 2,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    },
+    {
+      "name": "missing-version",
+      "value": {
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "missingVersion"
+    },
+    {
+      "name": "version-not-integer",
+      "value": {
+        "v": "1",
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-kind",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "server",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "mac-name-with-slash",
+      "value": {
+        "v": 1,
+        "mac": "macs/macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "negative-disk",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": -1,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "fractional-disk",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 1.5,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "negative-load",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": -0.1,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "negative-capacity",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": -1,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-worker-version",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": ""
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-check-state",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "locked",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "check-without-time",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "token-owner-with-slash",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z",
+          "githubTokenExpiresAt": "2026-11-20T00:00:00Z",
+          "githubTokens": [
+            {
+              "owner": "shilokuma-inc/askhub-state",
+              "state": "ok",
+              "expiresAt": "2026-11-20T00:00:00Z"
+            },
+            {
+              "owner": "mrs1669",
+              "state": "ok"
+            }
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "token-owners-repeated",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z",
+          "githubTokenExpiresAt": "2026-11-20T00:00:00Z",
+          "githubTokens": [
+            {
+              "owner": "shilokuma-inc",
+              "state": "ok",
+              "expiresAt": "2026-11-20T00:00:00Z"
+            },
+            {
+              "owner": "shilokuma-inc",
+              "state": "ok"
+            }
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "token-without-state",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z",
+          "githubTokenExpiresAt": "2026-11-20T00:00:00Z",
+          "githubTokens": [
+            {
+              "owner": "shilokuma-inc",
+              "state": "ok",
+              "expiresAt": "2026-11-20T00:00:00Z"
+            },
+            {
+              "owner": "mrs1669"
+            }
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/decisions.schema.json",
+  "title": "repos/<owner>/<repo>/epics/<epic>/decisions.json（人が決めていない判断）",
+  "description": "司令塔だけが書く。ループの仮決め（実装した Claude が報告したもの）をタスクごとに足す。id の重複・task の形・スクショと答えは見える仮決めだけが持つこと・スクショのパスは読む側で確かめる",
+  "type": "object",
+  "required": [
+    "v",
+    "items"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "what",
+          "why",
+          "alternatives"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "../common.schema.json#/$defs/localId"
+          },
+          "task": {
+            "anyOf": [{ "$ref": "../common.schema.json#/$defs/localId" }, { "type": "null" }],
+            "description": "どのタスクの仮決めか（ゴールのタスクの id）。最終 PR の直しの仮決めはタスクに結びつかないので null か省く"
+          },
+          "pullRequest": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "仮決めを含む子 PR"
+          },
+          "visible": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "見える（挙動・仕様・見た目に関わる）か。仕分ける前は null"
+          },
+          "what": {
+            "type": "string",
+            "minLength": 1
+          },
+          "why": {
+            "type": "string",
+            "minLength": 1,
+            "description": "なぜ（ゴールのどの項目から来たか）"
+          },
+          "alternatives": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "screenshots": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "before": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "after": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "description": "状態リポジトリの中のパス（epic の screenshots/ の下の PNG）"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "choice",
+                  "note",
+                  "intent",
+                  "at"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "choice": {
+                    "enum": [
+                      "ok",
+                      "alternative",
+                      "fix"
+                    ]
+                  },
+                  "note": {
+                    "type": "string"
+                  },
+                  "intent": {
+                    "$ref": "../common.schema.json#/$defs/intentReference"
+                  },
+                  "at": {
+                    "$ref": "../common.schema.json#/$defs/timestamp"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "人の答え（判断のカード）。見える仮決めだけが持つ"
+          }
+        }
+      }
+    }
+  }
+}

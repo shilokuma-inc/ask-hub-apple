@@ -12,7 +12,7 @@
 | デフォルトブランチ | `develop` |
 | UI フレームワーク | SwiftUI（マルチプラットフォーム: 1 ターゲットで iOS と macOS ネイティブ） |
 | 言語 / Xcode | Swift 6（Strict Concurrency complete / MainActor 既定）/ Xcode 26.6 |
-| Deployment Target | iOS 17.0 / macOS 14.0 |
+| Deployment Target | iOS 26.0 / macOS 26.0 |
 | Bundle ID | `jp.shilokuma.AskHub` |
 
 ## 構成
@@ -31,11 +31,14 @@
 ```bash
 swiftlint lint --strict
 xcodebuild -project AskHub.xcodeproj -scheme AskHub -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
-xcodebuild -project AskHub.xcodeproj -scheme AskHub -destination 'platform=macOS' build
-xcodebuild test -project AskHub.xcodeproj -scheme AskHub -destination 'platform=macOS' -only-testing:AskHubTests
+xcodebuild -project AskHub.xcodeproj -scheme AskHub -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO
+xcodebuild test -project AskHub.xcodeproj -scheme AskHub -destination 'platform=macOS' -only-testing:AskHubTests \
+  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= ENABLE_APP_SANDBOX=NO
 swift test --package-path AskHubKit
 ```
 
+- macOS は CI と同じく署名なし・アドホック署名で流す。自動の署名では、push の entitlement のため AskHub の Mac 用の provisioning profile が要り、
+  まだ無い Mac では「No profiles for 'jp.shilokuma.AskHub' were found」で止まる（Xcode で一度実行すると Xcode が作る）
 - Simulator 名は OS 更新で改名されることがある。解決できない場合は `xcrun simctl list devices available` で UDID を調べて `id=` で指定する
 - CI（`.github/workflows/_build.yml`）は iOS でビルド・テストし、`AskHubKit` を `swift test` で検証し、macOS は署名なしでビルドする
 

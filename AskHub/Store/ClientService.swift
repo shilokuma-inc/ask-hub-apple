@@ -1,0 +1,78 @@
+import Foundation
+
+/// クライアントの読み書きの窓口。
+///
+/// デモのデータ（`DemoClientService`）と、状態リポジトリ（`StateClientService`。AskHubKit のプロトコルの型を画面用のモデルに
+/// 変換し、人の意図を署名して書く）の 2 つがある
+protocol ClientService: AnyObject {
+    /// 取り直しの間隔
+    var refreshInterval: Duration { get }
+    /// 状態の全体を読む。一部の取得元だけ読めないときは、`ClientSnapshot.sourceFailures` に入れて返す
+    func fetchSnapshot() async throws -> ClientSnapshot
+    /// 人の意図を書く。控えは、依頼の後に送った依頼へ移るときだけ使う
+    @discardableResult
+    func perform(_ intent: HumanIntent) async throws -> SendReceipt
+    /// その意図を送れるか。送れない操作のボタンは画面に出さない（状態リポジトリでは、段階 3 の操作をまだ送れない）
+    func supports(_ intent: HumanIntent) -> Bool
+    /// 同じ意図（同じ対象と版・同じ中身）を最後に送った記録。分からなければ nil
+    func lastSend(of intent: HumanIntent) -> SentRecord?
+}
+
+extension ClientService {
+    func supports(_ intent: HumanIntent) -> Bool { true }
+}
+
+/// 書いた意図の控え（失敗の `ClientServiceError` が持つので、nonisolated にする）
+nonisolated struct SendReceipt: Equatable {
+    /// 書いた 1 つの意図
+    nonisolated struct Sent: Equatable {
+        /// `ClientSnapshot.sentIntents` の id。司令塔が受け付けたかを読み直しで確かめるのに使う
+        var id: String
+        /// その意図が働きかける対象（まとめて OK なら、その意図で答えたカード）。分からなければ nil（操作の対象すべてとみなす）
+        var target: IntentTarget?
+    }
+
+    /// 依頼から作られる epic。司令塔が受け取る前から、この id で出す（依頼でなければ nil）
+    var requestedEpicID: Epic.ID?
+    /// 書いた意図（送った順）。まとめて OK のように 1 つの操作が複数の意図になるときは、そのすべて。分からなければ空
+    var sent: [Sent] = []
+
+    init(requestedEpicID: Epic.ID? = nil, sent: [Sent] = []) {
+        self.requestedEpicID = requestedEpicID
+        self.sent = sent
+    }
+
+    init(requestedEpicID: Epic.ID? = nil, intentIDs: [String]) {
+        self.init(requestedEpicID: requestedEpicID, sent: intentIDs.map { Sent(id: $0, target: nil) })
+    }
+
+    init(requestedEpicID: Epic.ID? = nil, intentID: String?) {
+        self.init(requestedEpicID: requestedEpicID, intentIDs: [intentID].compactMap(\.self))
+    }
+
+    /// 書いた意図の id（送った順）
+    var intentIDs: [String] {
+        sent.map(\.id)
+    }
+
+    /// 最後に送った意図の id
+    var intentID: String? {
+        intentIDs.last
+    }
+}
+
+/// 前に送った同じ意図
+struct SentRecord: Equatable {
+    var sentAt: Date
+    /// 司令塔がまだ受け取っていない
+    var isWaiting: Bool
+}
+
+/// 読み書きの失敗。画面には `message` だけを出す（トークンなどの値は入れない）
+struct ClientServiceError: LocalizedError, Equatable {
+    var message: String
+    /// 複数の意図になる操作の途中で失敗したときの、失敗する前に書けた意図（書けた分は司令塔が受け取る）
+    var sentBeforeFailure: SendReceipt?
+
+    var errorDescription: String? { message }
+}

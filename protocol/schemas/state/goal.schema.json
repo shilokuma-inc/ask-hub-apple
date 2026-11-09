@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/goal.schema.json",
+  "title": "repos/<owner>/<repo>/epics/<epic>/goal.json（ゴール）",
+  "description": "司令塔だけが書く。id の重複（タスクと人がする作業を合わせて）・依存先の実在・自分自身への依存・タスクの依存の循環・Secrets の名前の形（英大文字・数字・_。数字と GITHUB_ で始まらない）・secret のときだけ名前を持つことは読む側で確かめる",
+  "type": "object",
+  "required": ["v", "version", "summary", "decided", "outOfScope", "doneWhen", "tasks", "humanTasks"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "version": { "type": "integer", "minimum": 1, "description": "直すたびに上げる" },
+    "summary": { "type": "string", "minLength": 1 },
+    "decided": { "type": "array", "items": { "$ref": "#/$defs/item" }, "description": "決まったこと（どの質問の回答から来たか）" },
+    "outOfScope": { "type": "array", "items": { "type": "string" } },
+    "doneWhen": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "dependsOn", "state"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "../common.schema.json#/$defs/localId" },
+          "title": { "type": "string", "minLength": 1 },
+          "detail": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+          "dependsOn": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/localId" }, "uniqueItems": true },
+          "state": { "enum": ["pending", "locked", "running", "done"] }
+        }
+      }
+    },
+    "humanTasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "why", "steps", "links", "handover", "state"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "../common.schema.json#/$defs/localId" },
+          "title": { "type": "string", "minLength": 1 },
+          "why": { "type": "string", "minLength": 1 },
+          "steps": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "links": { "type": "array", "items": { "type": "string" } },
+          "handover": {
+            "type": "object",
+            "required": ["kind"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "enum": ["none", "file", "secret"] },
+              "name": { "anyOf": [{ "type": "string", "pattern": "^(?!GITHUB_)[A-Z_][A-Z0-9_]*$", "not": { "pattern": "\\n" } }, { "type": "null" }] }
+            }
+          },
+          "state": { "enum": ["pending", "done"] },
+          "done": {
+            "description": "終えた記録（司令塔が humanTaskDone の意図を受け付けたときに書く）。state が done の作業だけが持つ（読む側で確かめる）",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["intent", "at"],
+                "additionalProperties": false,
+                "properties": {
+                  "intent": { "$ref": "../common.schema.json#/$defs/intentReference" },
+                  "at": { "$ref": "../common.schema.json#/$defs/timestamp" },
+                  "file": {
+                    "description": "渡されたファイル（依頼の添付と同じ形。中身は attachments/<device>/<nonce>/<n>）",
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["n", "name", "size", "sha256"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "n": { "type": "integer", "minimum": 1, "maximum": 10 },
+                          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+                          "size": { "type": "integer", "minimum": 1, "maximum": 52428800 },
+                          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                        }
+                      },
+                      { "type": "null" }
+                    ]
+                  }
+                }
+              },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    },
+    "notApplied": {
+      "anyOf": [{ "type": "array", "items": { "type": "string", "minLength": 1 } }, { "type": "null" }],
+      "description": "最後のゴールの修正で、反映しなかった人の指示とその理由（決まったことを変える指示など）"
+    },
+    "comment": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }], "description": "Discussion のゴールの写しのコメントの id" }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": ["question", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "question": { "$ref": "../common.schema.json#/$defs/localId" },
+        "text": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/job.schema.json",
+  "title": "repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json（ジョブ）",
+  "description": "司令塔だけが書く。ワーカーは、自分の試行のファイルに「始めた」を書くことで、ジョブを引き受けたことを示す。dependsOn に自分自身と重複を含めない（読む側で確かめる）",
+  "type": "object",
+  "required": ["v", "id", "kind", "repo", "epic", "needs", "dependsOn", "state", "attempts", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "id": { "$ref": "../common.schema.json#/$defs/ulid" },
+    "kind": {
+      "enum": [
+        "makeQuestions", "explain", "reviseQuestion", "checkReadiness", "reviseGoal", "prepareWorkspace", "implementTask", "reviewTask", "fixTask",
+        "integrateDevelop", "verifyBeforeFinal", "openFinalPullRequest", "reviewFinalPullRequest", "fixFinalPullRequest", "rerunChecks", "classifyDecisions",
+        "captureScreenshots", "mergeFinalPullRequest", "cleanUp", "notify"
+      ]
+    },
+    "repo": { "$ref": "../common.schema.json#/$defs/repositoryFullName" },
+    "epic": { "$ref": "../common.schema.json#/$defs/ulid" },
+    "task": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }], "description": "対象のタスク（ゴールのタスクの id）" },
+    "assignedMac": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/macName" }, { "type": "null" }] },
+    "needs": {
+      "description": "ジョブが使うもの。Mac ごとの同時の上限（Claude・ビルド）に数える",
+      "type": "object",
+      "required": ["claude", "build"],
+      "additionalProperties": false,
+      "properties": { "claude": { "type": "boolean" }, "build": { "type": "boolean" } }
+    },
+    "dependsOn": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/ulid" }, "uniqueItems": true },
+    "state": { "enum": ["queued", "assigned", "running", "succeeded", "failed", "waitingHuman", "paused", "canceled"] },
+    "attempts": { "type": "integer", "minimum": 0, "description": "これまでの試行の数" },
+    "nextRunAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "次に試してよい時刻" },
+    "input": {
+      "anyOf": [{ "type": "object", "additionalProperties": { "$ref": "../json-value.schema.json" } }, { "type": "null" }],
+      "description": "kind ごとの入力（docs/renewal/protocol.md の表）"
+    },
+    "origin": {
+      "anyOf": [{ "$ref": "../common.schema.json#/$defs/intentReference" }, { "type": "null" }],
+      "description": "ジョブの元になった人の意図。ワーカーは引き受ける前に、その意図の署名を自分でも確かめる"
+    },
+    "createdAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+  }
+}

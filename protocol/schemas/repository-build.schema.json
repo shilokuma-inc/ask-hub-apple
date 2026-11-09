@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/repository-build.schema.json",
+  "title": "リポジトリのビルドの設定（repo.json の build と、configureRepository の payload の build）",
+  "description": "ワーカーがビルドとテスト・子 PR・最終 PR で読む。xcode の値は xcodebuild の引数とファイルのパスに使うので、- で始まる値・制御文字・リポジトリの外を指すパスを受け付けない。知らない欄は書かない",
+  "type": "object",
+  "required": ["xcode", "childChecks", "finalChecks"],
+  "additionalProperties": false,
+  "properties": {
+    "baseBranch": {
+      "type": "string",
+      "pattern": "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._/-]{1,200}$",
+      "not": { "pattern": "\\n" },
+      "description": "作業ブランチの元で、最終 PR の向き先。無ければ develop"
+    },
+    "xcode": { "$ref": "#/$defs/xcode" },
+    "childChecks": { "$ref": "#/$defs/checks", "description": "子 PR で待つチェックの名前（REST の check run の name。再利用ワークフローのジョブは build / build の形）" },
+    "finalChecks": { "$ref": "#/$defs/checks", "description": "最終 PR で待つチェックの名前" },
+    "trustedReviewers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\\[bot\\])?$", "maxLength": 44 },
+      "description": "指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。coderabbitai[bot] など）。無ければ空"
+    }
+  },
+  "$defs": {
+    "argument": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^-]",
+      "not": { "pattern": "[\\u0000-\\u001f\\u007f]" },
+      "description": "xcodebuild の引数に渡す値。空・- で始まる値・制御文字を受け付けない"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 200, "not": { "pattern": "[\\u0000-\\u001f\\u007f]" } },
+      "description": "待つチェックは 1 つ以上（無いと CI を待たずにマージしてしまう）"
+    },
+    "xcode": {
+      "type": "object",
+      "required": ["project", "scheme", "destinations"],
+      "additionalProperties": false,
+      "properties": {
+        "project": {
+          "allOf": [{ "$ref": "#/$defs/argument" }],
+          "type": "string",
+          "pattern": "^(?![/~])(?!(.*/)?\\.\\.(/|$))(?!.*//)(?!.*/$).*\\.(xcodeproj|xcworkspace)$",
+          "description": ".xcodeproj か .xcworkspace の、リポジトリの直下からの相対パス"
+        },
+        "scheme": { "$ref": "#/$defs/argument" },
+        "destinations": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/destination" },
+          "description": "ビルドとテストの行き先。並べた順に流し、最初に失敗した行き先で止める"
+        },
+        "testLight": { "$ref": "#/$defs/tests", "description": "軽いテスト（子 PR の前に流す）。無ければ全部" },
+        "testFull": { "$ref": "#/$defs/tests", "description": "全部のテスト（最終 PR を出す前に流す。UI テストを含む）。無ければ全部" }
+      }
+    },
+    "destination": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["platform"],
+          "additionalProperties": false,
+          "properties": { "platform": { "const": "macOS" } },
+          "description": "ワーカーの Mac そのもので流す"
+        },
+        {
+          "type": "object",
+          "required": ["platform", "deviceType"],
+          "additionalProperties": false,
+          "properties": {
+            "platform": { "enum": ["iOS", "visionOS"] },
+            "deviceType": { "$ref": "#/$defs/argument", "description": "機種の名前（iPhone 17 Pro）か識別子" },
+            "osVersion": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+){0,2}$",
+              "not": { "pattern": "\\n" },
+              "description": "OS の版。無ければ、使う Xcode の SDK と同じか古いランタイムのうち最新"
+            }
+          },
+          "description": "ワーカーの枠の Simulator で流す"
+        }
+      ]
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "testPlan": { "$ref": "#/$defs/argument", "description": "スキームに含まれるテストプランの名前。無ければスキームの既定" },
+        "onlyTesting": { "type": "array", "items": { "$ref": "#/$defs/argument" }, "description": "流すテスト。空なら全部" },
+        "skipTesting": { "type": "array", "items": { "$ref": "#/$defs/argument" }, "description": "流さないテスト" }
+      }
+    }
+  }
+}

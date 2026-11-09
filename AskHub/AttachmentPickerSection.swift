@@ -71,7 +71,7 @@ struct AttachmentPickerSection: View {
                     Text(file.name)
                         .lineLimit(2)
                     Text("\(kind.displayName)・\(AttachmentSize.displayText(bytes: file.data.count))")
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             } icon: {

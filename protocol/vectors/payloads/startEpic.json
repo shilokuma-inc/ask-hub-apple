@@ -1,0 +1,45 @@
+{
+  "description": "開始の人の意図の payload の例。read は、封筒の target と targetVersion が正しいときに、読む側が開始として読めるか",
+  "schema": "payloads/startEpic.schema.json",
+  "cases": [
+    {
+      "name": "mac",
+      "payload": {
+        "mac": "mac-mini"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "missing-mac",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "mac-uppercase",
+      "payload": {
+        "mac": "Mac-Mini"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "mac-with-path",
+      "payload": {
+        "mac": "../mac"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "mac": "mac-mini",
+        "handover": true
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

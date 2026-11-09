@@ -8,7 +8,7 @@
 //  このテストだけを流す。環境変数が無いとき（build.yml の Unit テストなど）は何もせずに飛ばす。
 //
 //  GitHub のホストランナーには画面収録の許可が無く、macOS の UI テストや screencapture では撮れないことがあるので、
-//  撮影モードと同じ画面（ContentView をサンプルデータで、Scene のタブを開いた状態）を NSHostingView に載せた
+//  撮影モードと同じ画面（RootView をデモのデータで、Scene の画面を開いた状態）を NSHostingView に載せた
 //  ウィンドウに置き、cacheDisplay でウィンドウのタイトルバーごと PNG にする（画面収録の許可は要らない）。
 //
 
@@ -57,7 +57,7 @@ struct MacScreenshotCaptureTests {
     /// 描く倍率。Retina と同じく 2 倍で描き、2880x1800 なら 1440x900 ポイントのウィンドウにする
     private static let scale = 2
 
-    /// SwiftUI の初回の描画とサンプルデータの読み込み（ContentView の task）が終わるまで待つ時間
+    /// SwiftUI の初回の描画とデモのデータの読み込み（RootView の task）が終わるまで待つ時間
     private static let settleDuration = Duration.seconds(3)
 
     @Test("撮影の指定どおりに、言語 × 画面ぶんの PNG を書く")
@@ -81,38 +81,27 @@ struct MacScreenshotCaptureTests {
     /// 撮影モードと同じ画面をウィンドウに出し、タイトルバーごと PNG にする
     private func capture(scene: ScreenshotDemo.Scene, locale: Locale, plan: MacScreenshotPlan) async throws -> Data {
         let size = CGSize(width: plan.width / Self.scale, height: plan.height / Self.scale)
-        // モデルは撮るたびに作り直し、前の画面の状態（選んだ行・スクロール位置）を持ち越さない
-        let content = ContentView(
-            model: .sample(),
-            requestModel: .sample(),
-            mergeModel: .sample(),
-            loopModel: .sample(),
-            initialTab: scene.tab
-        )
-        .environment(\.locale, locale)
-
-        let window = NSWindow(
-            contentRect: CGRect(origin: .zero, size: size),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.isReleasedWhenClosed = false
-        // 手元の Mac ではマウスの位置にある行が選ばれて詳細が開いた写真になったので、マウスの操作を受けない
-        window.ignoresMouseEvents = true
-        window.appearance = NSAppearance(named: .aqua)
-        let hostingView = NSHostingView(rootView: content)
-        hostingView.appearance = NSAppearance(named: .aqua)
-        window.contentView = hostingView
-        // タイトルバー（タブとツールバー）を含めたウィンドウの枠全体を寸法に合わせる（撮るのは枠全体）
-        window.setFrame(CGRect(origin: CGPoint(x: 80, y: 80), size: size), display: true)
-        window.orderFrontRegardless()
+        // ストアと画面の移動の状態は撮るたびに作り直し、前の画面の状態（選んだ行・スクロール位置）を持ち越さない。
+        // 撮っている間に画面が変わらないよう、機械の反応は起こさない
+        let store = ClientStore(service: DemoClientService(scenario: .standard, reactionDelay: 3_600))
+        // テストのウィンドウにはシーンが無く、自動の取り直しが始まらないので、撮る前に読み込む
+        await store.refresh()
+        let navigator = AppNavigator()
+        navigator.section = scene.section
+        if let route = scene.route {
+            navigator.open(route, in: scene.section)
+        }
+        let content = RootView()
+            .environment(store)
+            .environment(navigator)
+            .environment(\.locale, locale)
+        let (window, hostingView) = makeWindow(size: size, content: content)
         defer { window.close() }
 
         try await Task.sleep(for: Self.settleDuration)
-        // 一度描いた後にサンプルデータが入ると、List の行の高さが計算し直されず、行が重なって写る（要対応のタブで発生）。
-        // ウィンドウの大きさを一度変えて戻すと計算し直されるので、そうしてからもう一度待つ
-        let frame = window.frame
+        // ツールバーは描いた後から足され、そのぶんウィンドウが高くなるので、撮る寸法に戻す。
+        // あわせて大きさを一度変えて戻し、デモのデータが入った後の List の行の高さを計算し直させてから、もう一度待つ
+        let frame = CGRect(origin: window.frame.origin, size: size)
         window.setFrame(frame.insetBy(dx: 0, dy: -1), display: true)
         window.setFrame(frame, display: true)
         try await Task.sleep(for: Self.settleDuration)
@@ -140,6 +129,29 @@ struct MacScreenshotCaptureTests {
         representation.size = bounds.size
         frameView.cacheDisplay(in: bounds, to: representation)
         return try #require(representation.representation(using: .png, properties: [:]))
+    }
+
+    /// 撮る画面を載せたウィンドウを作って前に出す
+    private func makeWindow(size: CGSize, content: some View) -> (NSWindow, NSView) {
+        let window = NSWindow(
+            contentRect: CGRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        // 手元の Mac ではマウスの位置にある行が選ばれて詳細が開いた写真になったので、マウスの操作を受けない
+        window.ignoresMouseEvents = true
+        window.appearance = NSAppearance(named: .aqua)
+        let hostingView = NSHostingView(rootView: content)
+        // 中身（3 列とツールバー）に合わせてウィンドウを広げさせず、撮る寸法のままにする
+        hostingView.sizingOptions = []
+        hostingView.appearance = NSAppearance(named: .aqua)
+        window.contentView = hostingView
+        // タイトルバー（タブとツールバー）を含めたウィンドウの枠全体を寸法に合わせる（撮るのは枠全体）
+        window.setFrame(CGRect(origin: CGPoint(x: 80, y: 80), size: size), display: true)
+        window.orderFrontRegardless()
+        return (window, hostingView)
     }
 }
 #endif

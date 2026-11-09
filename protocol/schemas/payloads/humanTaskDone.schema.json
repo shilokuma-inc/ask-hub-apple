@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/humanTaskDone.schema.json",
+  "title": "人がする作業を終えた人の意図（kind が humanTaskDone）の payload",
+  "description": "封筒の target は {type: humanTask, epic, id: <作業の id>}、targetVersion は人が見たときのゴールの版。「終わった」なら空、ファイルを渡すなら attachments に 1 つ（依頼の添付と同じ形。中身は attachments/<device>/<nonce>/1）。知らない欄のある payload は読まない",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "attachments": {
+      "type": "array",
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "n",
+          "name",
+          "size",
+          "sha256"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "n": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 52428800
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}",
+            "maxLength": 64
+          }
+        }
+      }
+    }
+  }
+}

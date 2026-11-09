@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/questions.schema.json",
+  "title": "repos/<owner>/<repo>/epics/<epic>/questions.json（質問とその状態）",
+  "description": "司令塔だけが書く。id の重複・依存先の実在・自分自身への依存・依存の循環・推奨が選択肢にあること・状態と回答の組み合わせ（answered だけが回答を持つ、ロックは依存先を持つ、要らなくなった質問は依存先の見直しの理由を持つ、説明を待つ問いは説明を作っている質問の最後の 1 つだけ）は読む側で確かめる",
+  "type": "object",
+  "required": ["v", "questions"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "questions": { "type": "array", "items": { "$ref": "#/$defs/question" } }
+  },
+  "$defs": {
+    "question": {
+      "type": "object",
+      "required": ["id", "version", "title", "why", "options", "recommended", "reason", "dependsOn", "round", "state", "explanations"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "../common.schema.json#/$defs/localId" },
+        "version": { "type": "integer", "minimum": 1, "description": "書き直すたびに上げる" },
+        "title": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1, "description": "なぜ決める必要があるか" },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["label", "effect"],
+            "additionalProperties": false,
+            "properties": {
+              "label": { "type": "string", "minLength": 1 },
+              "effect": { "type": "string", "description": "その選択肢で何が変わるか" }
+            }
+          }
+        },
+        "recommended": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1, "description": "推奨の理由" },
+        "caution": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/caution" }, { "type": "null" }], "description": "慎重に決めてほしい理由。無ければ書かない" },
+        "dependsOn": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/localId" }, "uniqueItems": true },
+        "round": { "type": "integer", "minimum": 1, "description": "何回目の質問づくりで出た質問か" },
+        "state": { "enum": ["locked", "revising", "open", "clarifying", "answered", "dropped"], "description": "判断はすべて人がするので、推奨の選択肢で決めたことにする状態は無い" },
+        "comment": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }], "description": "Discussion の質問の写しのコメントの id（GraphQL の node id）" },
+        "explanations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["asked", "note", "at"],
+            "additionalProperties": false,
+            "properties": {
+              "asked": { "$ref": "../common.schema.json#/$defs/intentReference" },
+              "note": { "type": "string" },
+              "text": { "anyOf": [{ "type": "string" }, { "type": "null" }], "description": "説明。作っている間は null" },
+              "at": { "$ref": "../common.schema.json#/$defs/timestamp" }
+            }
+          }
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["from", "reason", "by"],
+              "additionalProperties": false,
+              "properties": {
+                "from": { "type": "integer", "minimum": 1 },
+                "reason": { "type": "string" },
+                "by": { "enum": ["explain", "dependency"] }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "job": {
+          "anyOf": [{ "$ref": "../common.schema.json#/$defs/ulid" }, { "type": "null" }],
+          "description": "実装の途中の質問なら、質問したジョブの id。開始前の質問は持たない"
+        },
+        "task": {
+          "anyOf": [{ "$ref": "../common.schema.json#/$defs/localId" }, { "type": "null" }],
+          "description": "実装の途中の質問なら、どのタスクの実装の途中か（最終 PR の直しの質問は null）。job の無い質問は持たない（読む側で確かめる）"
+        },
+        "answer": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["note", "intent", "at"],
+              "additionalProperties": false,
+              "properties": {
+                "choice": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+                "note": { "type": "string" },
+                "intent": { "$ref": "../common.schema.json#/$defs/intentReference" },
+                "at": { "$ref": "../common.schema.json#/$defs/timestamp" }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    }
+  }
+}

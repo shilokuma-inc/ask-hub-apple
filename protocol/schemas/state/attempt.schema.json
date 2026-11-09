@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/attempt.schema.json",
+  "title": "repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json（試行）",
+  "description": "実行した Mac のワーカーだけが書く。欄どうしの決まり（running のときは endedAt が無い・終わったら endedAt がある・failure は failed のときだけ・時刻の前後）は読む側で確かめる",
+  "type": "object",
+  "required": ["v", "job", "n", "mac", "startedAt", "heartbeatAt", "outcome"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "job": { "$ref": "../common.schema.json#/$defs/ulid" },
+    "n": { "type": "integer", "minimum": 1, "description": "何回目の試行か" },
+    "mac": { "$ref": "../common.schema.json#/$defs/macName" },
+    "startedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "heartbeatAt": { "$ref": "../common.schema.json#/$defs/timestamp", "description": "長い試行の途中で一定の間隔で書く" },
+    "endedAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }] },
+    "outcome": { "enum": ["running", "succeeded", "failed"] },
+    "failure": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["class", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "class": {
+              "enum": [
+                "runnerUnavailable", "flaky", "buildFailed", "testFailed", "reviewRequired", "conflict", "usageLimit", "authExpired",
+                "githubOutage", "claudeOutage", "macOffline", "timeout", "unexpected"
+              ]
+            },
+            "message": { "type": "string" },
+            "logExcerpt": { "anyOf": [{ "type": "string" }, { "type": "null" }], "description": "トークンらしい文字列を伏せてから書く" },
+            "retryAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "再開してよい時刻（利用上限の解除の時刻など）" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "outputs": {
+      "description": "外部の id。やり直す前に、すでにできているかを確かめるのに使う",
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pullRequest": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
+            "commit": { "anyOf": [{ "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40 }, { "type": "null" }] },
+            "branch": {
+              "anyOf": [{ "type": "string", "pattern": "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._/-]{1,200}$", "not": { "pattern": "\\n" } }, { "type": "null" }],
+              "description": "作ったブランチ（作業場所の用意の作業ブランチなど）。epic.json の branch と同じ形"
+            },
+            "verdict": {
+              "anyOf": [{ "enum": ["merged", "ready", "fixCI", "fixReview", "fixConflict"] }, { "type": "null" }],
+              "description": "子 PR のレビュー（reviewTask）と最終 PR のレビュー（reviewFinalPullRequest）の判定。fixCI・fixReview・fixConflict のときは findings を持つ（読む側で確かめる）"
+            },
+            "mergeRisks": {
+              "description": "最終 PR のレビューが見つけた、手動のマージの条件に当たるもの（reviewFinalPullRequest）",
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["kind", "reason"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": { "enum": ["security", "weakenedTests", "dataMigration", "sensitivePaths"] },
+                      "reason": { "type": "string", "minLength": 1 }
+                    }
+                  }
+                },
+                { "type": "null" }
+              ]
+            },
+            "visibleDecisions": {
+              "description": "判断の仕分け（classifyDecisions）で見えるとした仮決めの id。ここに無いものは内部の細部。decisions.json には司令塔が写す",
+              "anyOf": [
+                {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": { "$ref": "../common.schema.json#/$defs/localId" }
+                },
+                { "type": "null" }
+              ]
+            },
+            "findings": {
+              "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 20000 }, { "type": "null" }],
+              "description": "直すこと（CI の失敗のログの抜粋・レビュー役の必須の指摘）。トークンらしい文字列は伏せてから書く"
+            },
+            "report": {
+              "description": "実装と直しで Claude が報告したこと（implementTask・fixTask）。推奨が選択肢にあることは読む側で確かめる",
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["summary", "decisions", "learnings"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "summary": { "type": "string", "minLength": 1 },
+                    "decisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["what", "why", "alternatives"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "what": { "type": "string", "minLength": 1 },
+                          "why": { "type": "string", "minLength": 1 },
+                          "alternatives": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                        }
+                      }
+                    },
+                    "learnings": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                    "question": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": ["title", "why", "options", "recommended", "reason"],
+                          "additionalProperties": false,
+                          "properties": {
+                            "title": { "type": "string", "minLength": 1 },
+                            "why": { "type": "string", "minLength": 1 },
+                            "options": {
+                              "type": "array",
+                              "minItems": 2,
+                              "maxItems": 4,
+                              "items": {
+                                "type": "object",
+                                "required": ["label", "effect"],
+                                "additionalProperties": false,
+                                "properties": { "label": { "type": "string", "minLength": 1 }, "effect": { "type": "string" } }
+                              }
+                            },
+                            "recommended": { "type": "string", "minLength": 1 },
+                            "reason": { "type": "string", "minLength": 1 }
+                          }
+                        },
+                        { "type": "null" }
+                      ]
+                    }
+                  }
+                },
+                { "type": "null" }
+              ]
+            }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "claude": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["model"],
+          "additionalProperties": false,
+          "properties": {
+            "model": { "type": "string", "minLength": 1, "description": "実際に使われたモデル" },
+            "session": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+            "estimatedCostUsd": { "anyOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] }
+          }
+        },
+        { "type": "null" }
+      ]
+    }
+  }
+}

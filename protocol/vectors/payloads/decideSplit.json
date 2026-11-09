@@ -1,0 +1,45 @@
+{
+  "description": "分け方の判断の人の意図の payload の例。read は、封筒の target と targetVersion が正しいときに、読む側が分け方の判断として読めるか",
+  "schema": "payloads/decideSplit.schema.json",
+  "cases": [
+    {
+      "name": "split",
+      "payload": {
+        "choice": "split"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "proceed",
+      "payload": {
+        "choice": "proceed"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "missing-choice",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-choice",
+      "payload": {
+        "choice": "later"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "choice": "split",
+        "parts": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

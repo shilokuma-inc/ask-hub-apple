@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/self-check.schema.json",
+  "title": "生きている印を書くときの自己診断の結果",
+  "description": "mac.json と commander.json の selfCheck。トークンの値そのものは書かない",
+  "type": "object",
+  "required": ["checkedAt", "keychain", "githubToken", "claudeToken"],
+  "additionalProperties": false,
+  "properties": {
+    "checkedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "keychain": { "$ref": "#/$defs/state" },
+    "githubToken": { "$ref": "#/$defs/state", "description": "持ち主ごとのトークンをまとめた様子（1 つでも無ければ missing、次に invalid・expired の順）" },
+    "claudeToken": { "$ref": "#/$defs/state" },
+    "githubTokenExpiresAt": {
+      "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }],
+      "description": "持ち主ごとの期限のうち一番早いもの"
+    },
+    "claudeTokenExpiresAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "setup-token は登録した日から 1 年" },
+    "githubTokens": {
+      "description": "持ち主ごとの GitHub のトークンの様子。持ち主は重ねない（読む側が弾く）",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["owner", "state"],
+            "additionalProperties": false,
+            "properties": {
+              "owner": { "$ref": "#/$defs/owner" },
+              "state": { "$ref": "#/$defs/state" },
+              "expiresAt": {
+                "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }],
+                "description": "GitHub の API の応答の見出し github-authentication-token-expiration で分かった期限。期限の無いトークン・まだ分からないときは書かない"
+              }
+            }
+          }
+        },
+        { "type": "null" }
+      ]
+    }
+  },
+  "$defs": {
+    "state": { "enum": ["ok", "missing", "invalid", "expired"] },
+    "owner": {
+      "description": "GitHub の持ち主（organization・個人）の名前。英数字とハイフンで 1〜39 文字。ハイフンで始まらない",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+      "maxLength": 39
+    }
+  }
+}

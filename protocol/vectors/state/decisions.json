@@ -1,0 +1,252 @@
+{
+  "description": "repos/<owner>/<repo>/epics/<epic>/decisions.json（人が決めていない判断）を読む例。schemaValid は protocol/schemas/state/decisions.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。スキーマで表せない決まり（id の重複・見える仮決めだけが持つ欄・スクショのパス）は、スキーマに合っても読む側が弾く",
+  "schema": "state/decisions.schema.json",
+  "cases": [
+    {
+      "name": "visible-answered",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": true,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2（iPhone の幅に収める）",
+            "alternatives": [
+              "2 行にする"
+            ],
+            "screenshots": {
+              "before": "repos/shilokuma-inc/askhub-sandbox/epics/01JCEP1C000000000000000001/screenshots/d1-before.png",
+              "after": "repos/shilokuma-inc/askhub-sandbox/epics/01JCEP1C000000000000000001/screenshots/d1-after.png"
+            },
+            "answer": {
+              "choice": "ok",
+              "note": "",
+              "intent": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000001"
+              },
+              "at": "2026-11-07T10:00:00Z"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unclassified-and-internal",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": null,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2（iPhone の幅に収める）",
+            "alternatives": [
+              "2 行にする"
+            ]
+          },
+          {
+            "id": "d2",
+            "task": "t2",
+            "pullRequest": null,
+            "visible": false,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2（iPhone の幅に収める）",
+            "alternatives": []
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "final-fix-without-task",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d3",
+            "pullRequest": 512,
+            "visible": true,
+            "what": "見出しを 1 行にした",
+            "why": "最終 PR のレビューの指摘に合わせる",
+            "alternatives": []
+          },
+          {
+            "id": "d4",
+            "task": null,
+            "pullRequest": 512,
+            "visible": false,
+            "what": "見出しの余白を 8 にした",
+            "why": "最終 PR の直しで、見出しの高さをそろえる",
+            "alternatives": []
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty",
+      "value": {
+        "v": 1,
+        "items": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "duplicate-id",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": true,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2（iPhone の幅に収める）",
+            "alternatives": [
+              "2 行にする"
+            ]
+          },
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": true,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2（iPhone の幅に収める）",
+            "alternatives": [
+              "2 行にする"
+            ]
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "answer-on-internal",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": false,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2（iPhone の幅に収める）",
+            "alternatives": [
+              "2 行にする"
+            ],
+            "answer": {
+              "choice": "fix",
+              "note": "直して",
+              "intent": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000001"
+              },
+              "at": "2026-11-07T10:00:00Z"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "screenshot-escapes",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": true,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2（iPhone の幅に収める）",
+            "alternatives": [
+              "2 行にする"
+            ],
+            "screenshots": {
+              "before": "repos/a/b/epics/x/screenshots/../../../keys/1.png"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-what",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": true,
+            "what": "",
+            "why": "ゴールの t2（iPhone の幅に収める）",
+            "alternatives": [
+              "2 行にする"
+            ]
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "bad-choice",
+      "value": {
+        "v": 1,
+        "items": [
+          {
+            "id": "d1",
+            "task": "t1",
+            "pullRequest": 41,
+            "visible": true,
+            "what": "見出しの文言を短くした",
+            "why": "ゴールの t2（iPhone の幅に収める）",
+            "alternatives": [
+              "2 行にする"
+            ],
+            "answer": {
+              "choice": "maybe",
+              "note": "",
+              "intent": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000001"
+              },
+              "at": "2026-11-07T10:00:00Z"
+            }
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unsupported-version",
+      "value": {
+        "v": 2,
+        "items": []
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    }
+  ]
+}

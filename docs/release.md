@@ -84,6 +84,9 @@ API Key には App Manager 以上の権限が要る。Verify/App Store metadata 
 - macOS のプラットフォームが無いときは、追加の手順を Job Summary に出して macOS のアーカイブを飛ばす（失敗にはしない）。確認は ubuntu のランナーで行い、macOS のランナーは使わない
 - `EXPORT_OPTIONS` は iOS と同じものを使う（`method=app-store-connect`）。macOS では pkg が出る。ビルド番号は iOS と同じく Xcode が App Store Connect の最新から増やす（`manageAppVersionAndBuildNumber`。iOS と macOS で別々に数える）
 - macOS はアドホック署名でアーカイブし、Export で配布用に署名し直す（署名なしでアーカイブすると App Sandbox のエンタイトルメントが埋め込まれない）
+- アドホック署名のアーカイブには push のエンタイトルメント（`com.apple.developer.aps-environment`）を付けられないので、アーカイブの後に
+  `Tools/embed_archive_entitlements.py embed` で sandbox などに足して署名し直し、Export に引き継がせる（iOS と同じ仕組み）。
+  Export の後に pkg の中の .app に残ったかを確かめ（`check`）、落ちていれば App Store Connect に上げずに止める
 - Mac App Store にはカテゴリ（`LSApplicationCategoryType`）が要るので、`AskHub/Info.plist` に `public.app-category.developer-tools`（開発ツール。[docs/app-review.md](app-review.md) のカテゴリと同じ）を書いている
 - Archive（`main` への push）も、iOS と macOS の両方を Export まで確かめる（アップロードはしない）
 - 実行中の macOS のランナーは、iOS と macOS で 1 回の Upload につき 2 台。org 全体で同時に 5 台までなので、続けて push すると待たされることがある
@@ -94,6 +97,15 @@ API Key には App Manager 以上の権限が要る。Verify/App Store metadata 
    追加すると macOS のバージョン（提出準備中）ができ、次の Upload から macOS のビルドも上がる（それまでは Job Summary に「macOS のアップロードを飛ばしました」と出る）
 2. 追加した後、Actions → **Upload** → Run workflow で `develop`（または release ブランチ）を選んで実行し、`upload-macos / archive` が成功して TestFlight（macOS）にビルドが並ぶのを確かめる
 3. macOS の審査への提出・輸出コンプライアンスの回答は、iOS と同じく人が App Store Connect で行う
+
+### Mac に TestFlight の版を入れる
+
+TestFlight の版は配布用の署名なので、Mac を Apple Developer にデバイス登録しなくても入れられる（Xcode から自動の署名で入れると、その Mac がデバイス登録される）。
+
+1. App Store Connect の TestFlight で、macOS のビルドが内部テストのグループに入っているかを確かめる（自動の配信を切っているグループには、ビルドを足す）
+2. Mac に [TestFlight](https://apps.apple.com/app/testflight/id899247664) を Mac App Store から入れ、内部テスターの Apple ID でサインインする
+3. TestFlight の AskHub から「インストール」する。新しいビルドが上がると、TestFlight が更新する（自動の更新を切っていなければ）
+4. TestFlight の版は production の APNs に登録する。ビルドは 90 日で期限が切れるので、それまでに Upload を流す
 
 ### vars
 
@@ -112,7 +124,7 @@ App Store のスクリーンショットを、アプリの撮影モードで撮�
 
 | ファイル | 役割 |
 | --- | --- |
-| `AskHub/ScreenshotDemo.swift` | 撮影モード。起動引数で、デモモードのサンプルデータのまま指定の画面（タブ）を開く |
+| `AskHub/ScreenshotDemo.swift` | 撮影モード。起動引数で、デモのデータのまま指定の画面を開く |
 | `AppStore/screenshots.json` | 撮る画面（`scenes`。この順が App Store の並び順）と表示サイズ（`displayTypes`） |
 | `AppStore/app.json` | 撮影でビルドするプロジェクト・Scheme・構成（Release）と、撮影モードのファイル（`screenshotDemoSource`） |
 | `Tools/capture_screenshots.sh` | 1 つの表示サイズについて、Simulator を作ってビルドし、言語 × 画面ぶん撮る。撮り終えたら Simulator を消す。Mac の表示サイズは `capture_mac_screenshots.sh` に切り替える |
@@ -152,15 +164,15 @@ App Store のスクリーンショットを、アプリの撮影モードで撮�
 -screenshot-demo -screenshot-scene <scene> -AppleLanguages (<言語>) -AppleLocale <ロケール>
 ```
 
-- `-screenshot-demo` だけでサンプルデータ（デモモードと同じ `SampleInbox` など）になり、GitHub にもトークンにもつながない。
-  UserDefaults のデモモードの設定（`AskHubDemoMode`）は読み書きせず、デモモードの帯も出さない
+- `-screenshot-demo` だけでデモのデータ（`DemoScenario.standard`）になり、GitHub にもトークンにもつながない。
+  設定のデモの場面（`demoScenario`）は読まず、撮っている間に画面が変わらないよう機械の反応も起こさない
 - `-screenshot-scene` には `ScreenshotDemo.Scene` の rawValue（今は `action` / `request` / `decisions` / `status` / `verification`）を渡す。
-  知らない値・値なしは「要対応」タブになる
+  知らない値・値なしは「あなたの番」になる。名前は、リニューアルで画面を作り直した後も `screenshots.json` に合わせて前のまま残している
 - 撮影は Release でビルドするので、撮影モードは `#if DEBUG` にしていない
 
 ### 画面（scene）の足し方
 
-1. `AskHub/ScreenshotDemo.swift` の `enum Scene: String` に `case` を足し、`tab` で開くタブを返す。
+1. `AskHub/ScreenshotDemo.swift` の `enum Scene: String` に `case` を足し、`section` と `route` で開く画面を返す。
    `Tools/app_store_config.py` が `enum Scene: String {` から最初の `}` までの `case` を正規表現で読むので、`Scene` の中に `case` 以外の宣言を書かない（準拠やプロパティは extension に書く）
 2. `AppStore/screenshots.json` の `scenes` に `{ "file": "06_xxx", "scene": "<rawValue>" }` を足す（`file` の番号の順が App Store の並び順。1 表示サイズにつき 10 枚まで）
 3. 手元で検査する: `python3 Tools/app_store_config.py scenes`（`Scene` に無い名前なら止まる）
@@ -181,15 +193,15 @@ SIMULATOR_NAME=AskHub-Screenshot-mine SKIP_PACKAGE_PLUGIN_VALIDATION=1 Tools/cap
 macOS には Simulator が無く、GitHub のホストランナー（`macos-latest`）には画面収録・アクセシビリティの許可が無いので、
 アプリを起動して画面を撮る方法（macOS の UI テストの `screenshot()`・`screencapture`）は使えないことがある。
 そこで、macOS のユニットテスト（`AskHubTests/MacScreenshotCaptureTests`）の中で、撮影モードと同じ画面
-（`ContentView` をサンプルデータで、`ScreenshotDemo.Scene` のタブを開いた状態）をウィンドウに出し、
+（`RootView` をデモのデータで、`ScreenshotDemo.Scene` の画面を開いた状態）をウィンドウに出し、
 `cacheDisplay(in:to:)` でタイトルバー（タブとツールバー）ごと PNG にする。これなら画面収録の許可は要らない。
 
 - 寸法は `screenshots.json` の `sizes` の先頭（2880x1800）。1440x900 ポイントのウィンドウを 2 倍で描く。外観はライト
 - 撮る画面・言語・寸法・出力先は `capture_mac_screenshots.sh` が JSON に書き、`TEST_RUNNER_ASKHUB_SCREENSHOT_PLAN` でテストに渡す（`xcodebuild` は `TEST_RUNNER_` を外した名前でテストに渡す）。
   この環境変数が無いとテストは飛ばされるので、Build（`build.yml`）の Unit テストでは撮らない
-- テストは `@testable import` でアプリの View を使うので Debug でビルドする（iOS の撮影は Release）。サンプルデータは同じ
+- テストは `@testable import` でアプリの View を使うので Debug でビルドする（iOS の撮影は Release）。デモのデータは同じ
 - 言語はロケール（`languages.json` の `appleLocale`）だけを渡す。アプリの文言は日本語だけなので、言語を足すときは文言の切り替えも見直す
-- アプリそのものを起動するわけではないので、`-screenshot-demo` / `-screenshot-scene` の起動引数は使わない（`ScreenshotDemo.Scene` と `tab` は同じものを使う）。
+- アプリそのものを起動するわけではないので、`-screenshot-demo` / `-screenshot-scene` の起動引数は使わない（`ScreenshotDemo.Scene` の `section` と `route` は同じものを使う）。
   画面の中身は同じだが、メニューバー・Dock は写らない
 - 撮った後は iOS と同じく `remove_alpha.swift` でアルファを落とし、`verify_screenshots.py` で寸法と枚数を確かめる
 - ランナーは iOS と同じ `capture` の列に並ぶ（`max-parallel: 1`）。Mac の撮影のために macOS ランナーの同時実行は増えない

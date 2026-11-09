@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/epic.schema.json",
+  "title": "repos/<owner>/<repo>/epics/<epic>/epic.json（epic の状態）",
+  "description": "司令塔だけが書く。stage の移り変わりは docs/renewal/protocol.md の表",
+  "type": "object",
+  "required": ["v", "id", "repo", "title", "stage", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "id": { "$ref": "../common.schema.json#/$defs/ulid" },
+    "repo": { "$ref": "../common.schema.json#/$defs/repositoryFullName" },
+    "title": { "type": "string", "minLength": 1 },
+    "summary": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }], "description": "依頼の要約（質問づくりの Claude が書く）" },
+    "discussion": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }], "description": "依頼の要約を置く Discussion の番号" },
+    "stage": { "enum": ["drafting", "asking", "checking", "awaitingSplit", "awaitingStart", "running", "finalizing", "reviewing", "merged", "abandoned"] },
+    "mac": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/macName" }, { "type": "null" }], "description": "開始のときに人が選んだ Mac" },
+    "branch": {
+      "anyOf": [{ "type": "string", "pattern": "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._/-]{1,200}$", "not": { "pattern": "\\n" } }, { "type": "null" }],
+      "description": "作業ブランチ。git のコマンドに渡しても選択肢に読まれないよう、- で始まる値と .. を含む値は使わない"
+    },
+    "finalPullRequest": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
+    "goalVersion": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }], "description": "開始したときのゴールの版" },
+    "origin": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/intentReference" }, { "type": "null" }], "description": "元になった依頼の人の意図" },
+    "merge": {
+      "description": "最終 PR のマージの記録（司令塔が merged にするときに書く）。approval は人の承認（approveMerge）の意図で、自動でマージしたなら null",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["commit", "at"],
+          "additionalProperties": false,
+          "properties": {
+            "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "approval": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/intentReference" }, { "type": "null" }] },
+            "at": { "$ref": "../common.schema.json#/$defs/timestamp" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "pause": {
+      "description": "人が一時停止した印（pauseEpic）。再開（resumeEpic）で外す。付いている間、司令塔は次のジョブを作らず、まだ動いていないジョブを paused にしたままにする",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["since", "origin"],
+          "additionalProperties": false,
+          "properties": {
+            "since": { "$ref": "../common.schema.json#/$defs/timestamp" },
+            "origin": { "$ref": "../common.schema.json#/$defs/intentReference" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "createdAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+  }
+}
