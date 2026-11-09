@@ -322,6 +322,8 @@
   archive の後に `codesign --force --sign - --entitlements` で .app に埋め込めば、Export が引き継ぐ（`Tools/embed_archive_entitlements.py`）。
   API キーで archive を自動の署名にすると、キーチェーンが空の CI では実行のたびに「Apple Development: Created via API」の証明書が作られて残るので使わない（2026-11-09、`_archive.yml`）
 
+- LicenseList（cybozu）のビルドのプラグイン `PrepareLicenseList` は、`URL.path()`（空白を `%20` にした形）で `SourcePackages` の有無を調べるので、DerivedData のパスに空白があると見つけられず `SourcePackages not found` で止まる。CI のように標準の DerivedData（空白なし）なら通る。ワーカーの DerivedData とリポジトリの写しは、空白の無い `~/Library/Developer/AskHub/<役割>/` に置く（2026-11-09、prime-pick-ios の試運転）
+
 ## Keychain
 
 - macOS で `kSecUseDataProtectionKeychain` を使うには、provisioning profile で許可された entitlement

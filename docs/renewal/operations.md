@@ -125,7 +125,11 @@
   - 版をそろえるには、司令塔と同じ版の `claude` を、その Mac の設定の `claude` の場所に入れる（次の Claude の呼び出しから使う）
 - 生きている印に版を書く。司令塔とワーカーの版が合わないときは、ジョブを受けずに知らせる
 - 更新の手順（常時オンの Mac は遠隔で、ほかの Mac は手で）を、切り替えの前に決める
-- 作業ファイルは TCC の保護の対象の場所（デスクトップ・書類など）に置かない。ワーカー専用のフォルダ（`~/Library/Application Support/` の下など）を使う
+- 作業ファイルは TCC の保護の対象の場所（デスクトップ・書類など）に置かない。ワーカー専用のフォルダを使う
+  - 設定と Claude のフォルダは `~/Library/Application Support/AskHub/<役割>/`
+  - 対象のリポジトリの写し・epic の作業場所・DerivedData・ビルドの一時フォルダは、パスに空白の無い `~/Library/Developer/AskHub/<役割>/`（`work`・`builds`・`builds-tmp`）。パスの空白を扱えないビルドのプラグインやスクリプトがあるため（2026-11-09、prime-pick-ios の LicenseList のプラグインが `SourcePackages not found` で止まった）
+  - 移す前の版で作った `~/Library/Application Support/AskHub/<役割>/` の `work`・`builds`・`builds-tmp` は、移した後は使わず、epic の片付けでも消えない。動いている epic は、次のジョブで作業ブランチ（リモート）から新しい場所に取り出し直す
+  - 前の場所は、動いている epic が無いとき（実装の途中の質問を待っている epic も無いとき）に手で消す。消す前に、`work/epics/<epic>/` の作業場所に、push していない変更や stash が残っていないかを `git -C <作業場所> status`・`git -C <作業場所> log @{u}..`・`git -C <作業場所> stash list` で確かめ、残っていれば作業ブランチに push してから消す。消すのは Finder でゴミ箱に入れる（取り消せるように）
 
 ### 司令塔の入れ方（段階 2）
 

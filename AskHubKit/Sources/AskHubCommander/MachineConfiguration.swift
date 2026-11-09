@@ -114,17 +114,24 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
     }
 }
 
-/// 司令塔とワーカーが使う置き場所。作業ファイルは TCC の保護の外（`~/Library/Application Support/` の下）に置く
+/// 司令塔とワーカーが使う置き場所。作業ファイルは TCC の保護の外に置く。
+///
+/// 対象のリポジトリの写しと DerivedData は、パスに空白の無い `~/Library/Developer/AskHub/<役割>` に置く。
+/// パスの空白を扱えないビルドのプラグインやスクリプトがあるため（LicenseList のプラグインが、空白を `%20` にしたパスで
+/// `SourcePackages` を探して見つけられず、ビルドが止まった）。設定と Claude のフォルダは `~/Library/Application Support/AskHub/<役割>` に置く
 public struct MachinePaths: Sendable {
     public var role: MachineRole
-    /// `~/Library/Application Support/AskHub/<役割>`
+    /// `~/Library/Application Support/AskHub/<役割>`（設定・Claude）
     public var root: URL
+    /// `~/Library/Developer/AskHub/<役割>`（リポジトリの写し・epic の作業場所・DerivedData。パスに空白を入れない）
+    public var workRoot: URL
     /// `~/Library/Logs/AskHub`
     public var logs: URL
 
     public init(role: MachineRole, home: URL = FileManager.default.homeDirectoryForCurrentUser) {
         self.role = role
         root = home.appendingPathComponent("Library/Application Support/AskHub/\(role.rawValue)", isDirectory: true)
+        workRoot = home.appendingPathComponent("Library/Developer/AskHub/\(role.rawValue)", isDirectory: true)
         logs = home.appendingPathComponent("Library/Logs/AskHub", isDirectory: true)
     }
 
@@ -132,15 +139,15 @@ public struct MachinePaths: Sendable {
     /// Claude の setup-token を入れた日（値は Keychain にだけ置き、ここには日付だけを書く。`ClaudeTokenRecord`）
     public var claudeTokenRecord: URL { root.appendingPathComponent("claude-token.json") }
     /// 対象のリポジトリの写しと、epic の作業場所
-    public var work: URL { root.appendingPathComponent("work", isDirectory: true) }
+    public var work: URL { workRoot.appendingPathComponent("work", isDirectory: true) }
     /// Claude 専用の設定フォルダ（`CLAUDE_CONFIG_DIR`）。人の `~/.claude` を効かせない
     public var claudeConfig: URL { root.appendingPathComponent("claude/config", isDirectory: true) }
     public var claudeHome: URL { root.appendingPathComponent("claude/home", isDirectory: true) }
     public var claudeTemporary: URL { root.appendingPathComponent("claude/tmp", isDirectory: true) }
     /// epic ごとの DerivedData と結果のバンドル（`AskHubBuild` の `BuildDirectories`）
-    public var builds: URL { root.appendingPathComponent("builds", isDirectory: true) }
+    public var builds: URL { workRoot.appendingPathComponent("builds", isDirectory: true) }
     /// ビルドとテストの TMPDIR
-    public var buildTemporary: URL { root.appendingPathComponent("builds-tmp", isDirectory: true) }
+    public var buildTemporary: URL { workRoot.appendingPathComponent("builds-tmp", isDirectory: true) }
     public var log: URL { logs.appendingPathComponent("\(role.rawValue).log") }
 
     /// `run` の前に作っておくフォルダ
