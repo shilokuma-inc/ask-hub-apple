@@ -21,6 +21,13 @@ enum DemoScenario: String, CaseIterable {
     static let reactionDelayKey = "demoReactionDelay"
     /// 送るのにかかる秒数を決める UserDefaults のキー（送っている間の画面を撮るときに、起動引数 `-demoSendDelay 3` で渡す）
     static let sendDelayKey = "demoSendDelay"
+    /// 司令塔が送った意図を受け取るまでの秒数を決める UserDefaults のキー（反映中の画面を撮るときに、起動引数 `-demoReceiptDelay 3600` で渡す。
+    /// 司令塔の生きている印が古い（止まっている）場面になる）
+    static let receiptDelayKey = "demoReceiptDelay"
+    /// 司令塔が送った意図を断るかを決める UserDefaults のキー（断られたときの画面を撮るときに、起動引数 `-demoRejectIntents YES` で渡す）
+    static let rejectsIntentsKey = "demoRejectIntents"
+    /// 司令塔の受け取りを待ったまま、受け取りが遅いと知らせるまでの秒数を決める UserDefaults のキー（起動引数 `-demoStallAfter 5` で渡す）
+    static let stallThresholdKey = "demoStallAfter"
 
     func snapshot(now: Date) -> ClientSnapshot {
         let data = DemoData(now: now)

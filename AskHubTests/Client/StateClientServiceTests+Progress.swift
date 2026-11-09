@@ -129,6 +129,7 @@ extension StateClientServiceTests {
 
         let waitingSnapshot = try await service.fetchSnapshot()
         #expect(waitingSnapshot.sentIntents.first { $0.id == receipt.intentID }?.state == .waiting)
+        #expect(waitingSnapshot.sentIntents.first { $0.id == receipt.intentID }?.target == .goal(epicID: Self.epicID))
         let waiting = try #require(waitingSnapshot.epic(Self.epicID))
         #expect(waiting.stage == .implementing)
         #expect(waiting.workspace == .pending)

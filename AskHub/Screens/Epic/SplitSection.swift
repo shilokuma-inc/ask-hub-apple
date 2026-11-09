@@ -9,6 +9,10 @@ struct SplitSection: View {
     @State private var isConfirmingSplit = false
     @State private var draft: RequestDraft?
 
+    private var target: IntentTarget {
+        .split(epicID: epic.id)
+    }
+
     var body: some View {
         CardSection {
             Text(split.reason)
@@ -25,11 +29,16 @@ struct SplitSection: View {
                 }
             }
             if split.choice == nil {
-                Button("分けて依頼し直す", systemImage: "square.split.2x1") { isConfirmingSplit = true }
-                Button("このまま 1 つで進める", systemImage: "arrow.right.circle") {
-                    Task { await store.send(.decideSplit(epicID: epic.id, choice: .proceed)) }
+                Group {
+                    Button("分けて依頼し直す", systemImage: "square.split.2x1") { isConfirmingSplit = true }
+                    Button("このまま 1 つで進める", systemImage: "arrow.right.circle") {
+                        Task { await store.send(.decideSplit(epicID: epic.id, choice: .proceed)) }
+                    }
                 }
+                .disabled(store.isReflecting([target]))
             }
+            // 選んだ分け方が反映されるまでの様子と、断られた理由
+            ReflectionStatusView(target)
         } header: {
             Text(split.choice == .split ? "分けて依頼し直す" : "1 つの epic に収まりません")
         } footer: {

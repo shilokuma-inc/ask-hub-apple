@@ -76,9 +76,13 @@ struct InboxRow: View {
                         .appFont(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text(item.context)
-                    .rowFont(.subtitle)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(item.context)
+                        .rowFont(.subtitle)
+                        .lineLimit(1)
+                    // 送った操作が反映を待っているか、断られた（その出番がまだ残っている理由が分かるように）
+                    ReflectionBadge(item.targets)
+                }
                 Text(item.detail)
                     .rowFont(.detail)
                     .foregroundStyle(detailStyle)

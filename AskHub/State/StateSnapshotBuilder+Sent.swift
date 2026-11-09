@@ -381,7 +381,8 @@ extension StateSnapshotBuilder {
             id: envelope.nonce.rawValue,
             title: [label(envelope), epicTitle].compactMap(\.self).joined(separator: " · "),
             sentAt: envelope.issuedAt.date,
-            state: state
+            state: state,
+            target: Self.target(of: envelope)
         )
     }
 

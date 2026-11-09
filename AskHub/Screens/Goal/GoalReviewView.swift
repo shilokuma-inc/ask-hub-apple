@@ -75,38 +75,57 @@ struct GoalReviewView: View {
         }
     }
 
+    /// 下の帯。開始か直してほしいを送ったら、反映されるまで両方を押せなくし、反映中か断られた理由を出す
     @ViewBuilder private func startBar(_ epic: Epic, _ goal: Goal) -> some View {
+        let target = IntentTarget.goal(epicID: epic.id)
+        let isReflecting = store.isReflecting([target])
         if epic.stage == .goal {
-            HStack(spacing: 12) {
-                Button("直してほしい", systemImage: "pencil") {
-                    textRequest = TextRequest(title: "ゴールを直してほしい", prompt: "どう直してほしいか", purpose: .goalRevision(epicID: epic.id))
+            VStack(spacing: 6) {
+                HStack(spacing: 12) {
+                    Button("直してほしい", systemImage: "pencil") {
+                        textRequest = TextRequest(title: "ゴールを直してほしい", prompt: "どう直してほしいか", purpose: .goalRevision(epicID: epic.id))
+                    }
+                    .buttonStyle(.glass)
+                    Button("開始…", systemImage: "play.fill") { isChoosingMac = true }
+                        .buttonStyle(.glassProminent)
+                        .disabled(goal.isRevising)
                 }
-                .buttonStyle(.glass)
-                Button("開始…", systemImage: "play.fill") { isChoosingMac = true }
-                    .buttonStyle(.glassProminent)
-                    .disabled(goal.isRevising)
+                .controlSize(.large)
+                .disabled(isReflecting)
+                ReflectionStatusView(target)
+                    .frame(maxWidth: 520)
+                    .padding(.horizontal)
             }
-            .controlSize(.large)
             .padding(.vertical, 10)
         } else if epic.isActive, let line = progressLine(epic) {
-            // 開始した後は、司令塔が受け取ったか・どこまで進んだかを出し、epic の画面で続きを見られるようにする
-            NavigationLink(value: AppRoute.epic(epic.id)) {
-                HStack(spacing: 10) {
-                    EpicStatusLabel(line: line)
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .foregroundStyle(.secondary)
-                }
-                .appFont(.subheadline)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .frame(maxWidth: 520)
-                .glassEffect(.regular, in: .rect(cornerRadius: 22))
+            // 開始した後は、司令塔が受け取ったか・どこまで進んだかを出し、epic の画面で続きを見られるようにする。
+            // 開始が反映されるまでは、その様子（司令塔が受け取っていない・断られた）も上に出す
+            VStack(spacing: 8) {
+                ReflectionStatusView(target, framed: true)
+                    .padding(.horizontal, 16)
+                progressLink(epic, line)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
         }
+    }
+
+    /// 開始した後の「いま」の 1 行と、epic の画面へのリンク
+    private func progressLink(_ epic: Epic, _ line: EpicStatusLine) -> some View {
+        NavigationLink(value: AppRoute.epic(epic.id)) {
+            HStack(spacing: 10) {
+                EpicStatusLabel(line: line)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.secondary)
+            }
+            .appFont(.subheadline)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: 520)
+            .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     /// 開始した後の「いま」の最初の 1 行

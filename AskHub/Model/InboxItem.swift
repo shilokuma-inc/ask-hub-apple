@@ -13,6 +13,8 @@ struct InboxItem: Identifiable, Hashable {
     var detail: String
     var since: Date
     var route: AppRoute
+    /// この出番で働きかける対象（送った操作が反映を待っていれば、行に印を出す）
+    var targets: [IntentTarget] = []
 
     /// 区分は通知の頻度と同じにする
     enum Urgency: Hashable {
@@ -281,7 +283,8 @@ enum InboxBuilder {
             context: mac.name,
             detail: "\(mac.cleanupCandidates.count) 件 · \(ByteFormat.string(bytes))",
             since: lastSeen,
-            route: .cleanup(mac.id)
+            route: .cleanup(mac.id),
+            targets: [.cleanup(macID: mac.id)]
         )
     }
 }
@@ -298,8 +301,42 @@ extension InboxItem {
             context: context,
             detail: "",
             since: epic.updatedAt,
-            route: route
+            route: route,
+            targets: Self.targets(of: kind, in: epic, route: route)
         )
+    }
+
+    /// epic の出番で働きかける対象
+    private static func targets(of kind: Kind, in epic: Epic, route: AppRoute) -> [IntentTarget] {
+        switch kind {
+        case .questions:
+            return epic.questions.map { .question(epicID: epic.id, questionID: $0.id) }
+
+        case .goal:
+            return [.goal(epicID: epic.id)]
+
+        case .split:
+            return [.split(epicID: epic.id)]
+
+        case .humanTask:
+            guard case let .humanTask(epicID, taskID) = route else {
+                return []
+            }
+            return [.humanTask(epicID: epicID, taskID: taskID)]
+
+        case .blocker:
+            return [.blocker(epicID: epic.id), .epicControl(epicID: epic.id)]
+
+        case .finalReview:
+            let decisions = epic.finalReview?.decisions.map { IntentTarget.decision(epicID: epic.id, decisionID: $0.id) } ?? []
+            return [.finalPullRequest(epicID: epic.id)] + decisions
+
+        case .verification:
+            return epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
+
+        case .macOffline, .token, .claudeVersion, .cleanup:
+            return []
+        }
     }
 }
 

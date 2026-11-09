@@ -112,6 +112,10 @@ struct StateClientServiceTests {
         }
         #expect(response.optionID == "週ごと")
         #expect(snapshot.sentIntents.first?.state == .waiting)
+        // 送った意図の記録は、画面の意図と同じ対象（反映中を出す場所）を持つ
+        let intent = HumanIntent.answer(epicID: Self.epicID, questionID: "Q1", optionID: "週ごと", note: "")
+        #expect(snapshot.sentIntents.first?.target == intent.targets.first)
+        #expect(snapshot.sentIntents.first?.target == .question(epicID: Self.epicID, questionID: "Q1"))
     }
 
     /// 司令塔が受け付けなかった意図は、先に出すのをやめ、理由を epic の履歴と送った意図の一覧に出す

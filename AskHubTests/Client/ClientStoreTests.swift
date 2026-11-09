@@ -85,9 +85,9 @@ struct ClientStoreTests {
         service.snapshot = DemoScenario.standard.snapshot(now: now)
         let store = ClientStore(service: service, undoDelay: .seconds(60))
         await store.refresh()
-        let card = store.deckCards(.questions("recipe-weekly")).first
+        #expect(store.deckCards(.questions("recipe-weekly")).count == 1)
         let intent = HumanIntent.answer(epicID: "recipe-weekly", questionID: "Q3", optionID: "a", note: "")
-        store.enqueue(intent, message: "回答", itemID: card?.id)
+        store.enqueue(intent, message: "回答")
         #expect(store.pending?.intent == intent)
         #expect(store.deckCards(.questions("recipe-weekly")).isEmpty)
         #expect(service.performed.isEmpty)

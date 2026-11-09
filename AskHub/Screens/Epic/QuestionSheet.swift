@@ -13,6 +13,10 @@ struct QuestionSheet: View {
     @State private var lastIntent: HumanIntent?
     @FocusState private var isEditingNote: Bool
 
+    private var target: IntentTarget {
+        .question(epicID: epic.id, questionID: question.id)
+    }
+
     /// 回答を変えられるのは開始の前まで。開始した後は、答えを待っている実装の途中の質問にだけ答える（答えたら再開するので、答え直せない）。
     /// やめた epic の質問には答えない
     private var canChangeAnswer: Bool {
@@ -34,11 +38,16 @@ struct QuestionSheet: View {
                             }
                         }
                     }
+                } else if store.reflection(for: [target]) != nil {
+                    // 前に送った回答が反映を待っているか、断られた。反映されるまでは答え直せない
+                    CardSection {
+                        ReflectionStatusView(target)
+                    }
                 }
                 QuestionDetailSections(question: question, epic: store.epic(epic.id))
                 if canChangeAnswer {
                     answerSection
-                        .disabled(sending.isSending)
+                        .disabled(sending.isSending || store.isReflecting([target]))
                 }
             }
             .pastelBackground()

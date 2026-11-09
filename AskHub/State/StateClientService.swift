@@ -27,6 +27,10 @@ final class StateClientService: ClientService {
     private var readSends: [SentDraft] = []
     /// 送った後の読み込みに、まだ出ていない意図
     private var unreadSends: [SentDraft] = []
+    /// 読み始めた数と、送る形の引き当て（`index`）に当てた最後の読み込みの番号。
+    /// 後に始めた読み込みが先に終わったら、先に始めた古い読み込みでは引き当てを戻さない（ストアも古い中身を画面に当てない。`ClientStore.refresh`）
+    private var startedReads = 0
+    private var appliedRead = 0
 
     /// 送った意図の中身と、司令塔がまだ受け取っていないか
     private struct SentDraft {
@@ -44,6 +48,8 @@ final class StateClientService: ClientService {
     }
 
     func fetchSnapshot() async throws -> ClientSnapshot {
+        startedReads += 1
+        let generation = startedReads
         let documents: StateDocuments
         do {
             documents = try await StateReader(store: store, device: key.keyID, immutables: immutables).read()
@@ -52,6 +58,10 @@ final class StateClientService: ClientService {
         }
         let date = now()
         let built = StateSnapshotBuilder(documents: documents, now: date).build()
+        guard generation > appliedRead else {
+            return built.snapshot
+        }
+        appliedRead = generation
         index = built.index
         readSends = documents.sentIntents.map { sent in
             let sentAt = sent.envelope.issuedAt.date
@@ -62,7 +72,7 @@ final class StateClientService: ClientService {
         return built.snapshot
     }
 
-    /// 送る。まとめて OK のように 1 つの操作が複数の意図になるときは、順に送り、控えには最後に送ったものを返す
+    /// 送る。まとめて OK のように 1 つの操作が複数の意図になるときは、順に送り、控えには送ったものすべてを返す
     /// （途中で失敗したら、送れた分は送ったまま失敗を返す。もう一度送ると、残りだけを送る）
     @discardableResult
     func perform(_ intent: HumanIntent) async throws -> SendReceipt {
@@ -79,12 +89,19 @@ final class StateClientService: ClientService {
             do {
                 reference = try await sender.send(draft, attachments: attachments)
             } catch {
-                throw ClientServiceError(message: StateServiceError.message(for: error))
+                // 書けた分は司令塔が受け取るので、控えを添えて失敗を返す（反映中として追い続ける）
+                let sent = receipt.sent.isEmpty ? nil : receipt
+                throw ClientServiceError(message: StateServiceError.message(for: error), sentBeforeFailure: sent)
             }
             // 次に読むまでの間も、送ったことを覚えておく（読んだ中に出たら、読んだものに任せる）
             unreadSends.append(SentDraft(nonce: reference.nonce, draft: draft, sentAt: now(), isWaiting: true))
-            let epicID = draft.kind == RequestIntent.kind ? RequestIntent.epicID(for: reference).rawValue : nil
-            receipt = SendReceipt(requestedEpicID: epicID, intentID: reference.nonce.rawValue)
+            var target = StateSnapshotBuilder.target(kind: draft.kind, repo: draft.repo, target: draft.target)
+            if draft.kind == RequestIntent.kind {
+                let epicID = RequestIntent.epicID(for: reference).rawValue
+                receipt.requestedEpicID = epicID
+                target = .request(epicID: epicID)
+            }
+            receipt.sent.append(SendReceipt.Sent(id: reference.nonce.rawValue, target: target))
         }
         return receipt
     }

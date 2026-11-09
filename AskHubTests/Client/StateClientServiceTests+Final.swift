@@ -180,6 +180,7 @@ extension StateClientServiceTests {
         let review = try #require(snapshot.epic(Self.epicID)?.finalReview)
         #expect(review.decisions.first { $0.id == "d1" }?.response == .fixing(request: "見出しを元の長さに戻して"))
         #expect(snapshot.sentIntents.first?.title == "判断「見出しを短くした」への回答 · ランキング")
+        #expect(snapshot.sentIntents.first?.target == .decision(epicID: Self.epicID, decisionID: "d1"))
         // 別案・直してほしいは本文が要る
         await #expect(throws: ClientServiceError.self) {
             let blank = DecisionReply.alternative(" ")
@@ -247,6 +248,8 @@ extension StateClientServiceTests {
         #expect(service.lastSend(of: acceptAll)?.isWaiting == true)
 
         let answered = try await service.fetchSnapshot()
+        // まとめて OK はカードごとの意図になり、それぞれがカードを対象に持つ（画面の意図の対象と同じ）
+        #expect(Set(answered.sentIntents.prefix(2).compactMap(\.target)) == Set(acceptAll.targets))
         let review = try #require(answered.epic(Self.epicID)?.finalReview)
         // #expect の中で key path の関数を渡すと、マクロの展開で throws の扱いが合わないので外で求める
         let allConfirmed = review.decisions.allSatisfy(\.isConfirmed)
@@ -298,6 +301,7 @@ extension StateClientServiceTests {
         #expect(!InboxBuilder.items(from: snapshot, now: now).contains { $0.kind == .finalReview })
         #expect(DeckBuilder.cards(from: snapshot, scope: .decisions(Self.epicID)).isEmpty)
         #expect(snapshot.sentIntents.first?.title == "最終 PR への指示 · ランキング")
+        #expect(snapshot.sentIntents.first?.target == .finalPullRequest(epicID: Self.epicID))
     }
 
     /// 送った後に head が変わったら（直しが push された）、送った答えは司令塔が断るので、答えた結果として出さない

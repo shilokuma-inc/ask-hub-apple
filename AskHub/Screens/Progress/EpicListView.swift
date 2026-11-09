@@ -75,9 +75,13 @@ struct EpicRow: View {
                     Spacer(minLength: 8)
                     StageDots(stage: epic.stage, isBlocked: epic.blocker != nil, isAbandoned: epic.isAbandoned)
                 }
-                Text(store.repository(epic.repositoryID)?.appName ?? epic.repositoryID)
-                    .rowFont(.subtitle)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(store.repository(epic.repositoryID)?.appName ?? epic.repositoryID)
+                        .rowFont(.subtitle)
+                        .foregroundStyle(.secondary)
+                    // この epic への操作のどれかが反映を待っているか、断られた
+                    ReflectionBadge(epicID: epic.id)
+                }
                 ForEach(Array(lines.prefix(2).enumerated()), id: \.offset) { _, line in
                     EpicStatusLabel(line: line)
                         .rowFont(.detail)

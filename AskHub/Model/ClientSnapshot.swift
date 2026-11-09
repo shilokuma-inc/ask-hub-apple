@@ -12,6 +12,8 @@ struct ClientSnapshot: Hashable {
     var sourceFailures: [SourceFailure]
     /// この端末が送った人の意図と、その処理の結果（新しい順）。状態リポジトリにつないだときだけ持つ
     var sentIntents: [SentIntentStatus] = []
+    /// 司令塔の生きている印の時刻（`commander.json` の `seenAt`）。読めていなければ nil
+    var commanderSeenAt: Date?
 }
 
 /// 送った人の意図の処理の結果
@@ -21,6 +23,8 @@ struct SentIntentStatus: Identifiable, Hashable {
     var title: String
     var sentAt: Date
     var state: State
+    /// 意図が働きかける画面の要素。画面の要素に結びつかない意図（鍵の登録など）は nil
+    var target: IntentTarget?
 
     enum State: Hashable {
         /// 司令塔がまだ処理していない

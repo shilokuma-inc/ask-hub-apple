@@ -40,13 +40,7 @@ struct FinalReviewView: View {
             .compactList()
             .navigationTitle("マージを確かめる")
             .hidesTabBar()
-            .safeAreaBar(edge: .bottom) {
-                MergeBar(review: review, onInstruct: instruction(epic, review).map { request in { textRequest = request } }) {
-                    mergeHead = review.headCommit
-                    isConfirmingMerge = true
-                }
-                .keepsControlSize()
-            }
+            .safeAreaBar(edge: .bottom) { mergeBar(epic, review) }
             .sheet(item: $shownDecision) { shown in
                 DecisionSheet(
                     epicID: epic.id,
@@ -84,6 +78,14 @@ struct FinalReviewView: View {
                     }
                 }
             }
+    }
+
+    private func mergeBar(_ epic: Epic, _ review: FinalReview) -> some View {
+        MergeBar(epicID: epic.id, review: review, onInstruct: instruction(epic, review).map { request in { textRequest = request } }) {
+            mergeHead = review.headCommit
+            isConfirmingMerge = true
+        }
+        .keepsControlSize()
     }
 
     private func sections(_ epic: Epic, _ review: FinalReview) -> some View {
@@ -130,7 +132,7 @@ struct FinalReviewView: View {
             }
             ForEach(review.decisions) { decision in
                 Button { shownDecision = ShownDecision(decision: decision, headCommit: review.headCommit) } label: {
-                    DecisionRow(decision: decision)
+                    DecisionRow(epicID: epic.id, decision: decision)
                 }
                 .buttonStyle(.plain)
             }
@@ -138,10 +140,14 @@ struct FinalReviewView: View {
                 Text("見える仮決めはありません").foregroundStyle(.secondary)
             }
             if canAnswer, review.pendingDecisions.count >= 2 {
+                // 残りのどれかへの答えが反映されるまでは押せなくし、反映中か断られた理由をボタンの下に出す
+                let pending = review.pendingDecisions.map { IntentTarget.decision(epicID: epic.id, decisionID: $0.id) }
                 Button("残りをまとめて OK…", systemImage: "checkmark.circle") {
                     acceptAllTarget = AcceptAllTarget(headCommit: review.headCommit, decisionIDs: review.pendingDecisions.map(\.id))
                     isConfirmingAcceptAll = true
                 }
+                .disabled(store.isReflecting(pending))
+                ReflectionStatusView(pending)
             }
         } header: {
             Text("人が決めていない判断 · \(review.reviewedCount) / \(review.decisions.count) を確認")
@@ -268,8 +274,9 @@ private struct ChecksView: View {
     }
 }
 
-/// 判断のカードの 1 行
+/// 判断のカードの 1 行。答えを送ったら、反映されるまで印を出す（断られた理由は、開いたシートと帯に出す）
 private struct DecisionRow: View {
+    let epicID: Epic.ID
     let decision: DecisionCard
 
     var body: some View {
@@ -279,9 +286,12 @@ private struct DecisionRow: View {
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text(decision.title)
-                Text(status)
-                    .appFont(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(status)
+                        .appFont(.caption)
+                        .foregroundStyle(.secondary)
+                    ReflectionBadge([.decision(epicID: epicID, decisionID: decision.id)])
+                }
             }
             Spacer(minLength: 0)
             if decision.after != nil {
@@ -312,14 +322,20 @@ private struct DecisionRow: View {
     }
 }
 
-/// 下のマージのボタンと、最終 PR を直してほしいときの指示のボタン。マージを押せないときは、何が残っているかを書く
+/// 下のマージのボタンと、最終 PR を直してほしいときの指示のボタン。マージを押せないときは、何が残っているかを書く。
+/// マージの承認か指示を送ったら、反映されるまで両方を押せなくし、反映中か断られた理由を出す
 private struct MergeBar: View {
+    let epicID: Epic.ID
     let review: FinalReview
     /// 最終 PR への指示を書く。送れないときは nil（ボタンを出さない）
     let onInstruct: (() -> Void)?
     let onMerge: () -> Void
 
+    @Environment(ClientStore.self) private var store
+
     var body: some View {
+        let target = IntentTarget.finalPullRequest(epicID: epicID)
+        let isReflecting = store.isReflecting([target])
         VStack(spacing: 6) {
             if case .merged(let date, let automatic) = review.state {
                 Label("\(automatic ? "自動で" : "")マージしました（\(RelativeTime.clock(date))）", systemImage: "checkmark.seal.fill")
@@ -329,16 +345,20 @@ private struct MergeBar: View {
                     if let onInstruct {
                         Button("直してほしい…", systemImage: "pencil", action: onInstruct)
                             .buttonStyle(.glass)
+                            .disabled(isReflecting)
                     }
                     Button(action: onMerge) {
                         Text(review.state == .merging ? "マージしています…" : "マージする")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.glassProminent)
-                    .disabled(!review.canMerge)
+                    .disabled(!review.canMerge || isReflecting)
                 }
                 .controlSize(.large)
-                if let reason = blockedReason {
+                if store.reflection(for: [target]) != nil {
+                    ReflectionStatusView(target)
+                        .frame(maxWidth: 520)
+                } else if let reason = blockedReason {
                     Text(reason)
                         .appFont(.caption)
                         .foregroundStyle(.secondary)

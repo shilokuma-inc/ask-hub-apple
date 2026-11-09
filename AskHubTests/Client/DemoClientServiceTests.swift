@@ -131,6 +131,20 @@ struct DemoClientServiceTests {
         #expect(service.state.mac(DemoData.macBookProID)?.jobs.map(\.title) == ["月の上限の通知: タスク 1 の実装"])
     }
 
+    /// 開始は、司令塔が `receiptDelay` 秒の後に受け取る（作業場所の用意は機械の反応の後）。送った記録はゴールを対象に持つ
+    @Test
+    func startIsReceivedAfterReceiptDelay() async throws {
+        let service = DemoClientService(scenario: .standard, reactionDelay: 10, receiptDelay: 2) { [clock] in clock.now }
+        let receipt = try await service.perform(.start(epicID: "budget-limit", macID: DemoData.macBookProID))
+        let waiting = try await service.fetchSnapshot()
+        #expect(waiting.sentIntents.first { $0.id == receipt.intentID }?.target == .goal(epicID: "budget-limit"))
+
+        clock.now += 2
+        let received = try await service.fetchSnapshot()
+        #expect(received.sentIntents.first { $0.id == receipt.intentID }?.state == .accepted(at: clock.now))
+        #expect(received.epic("budget-limit")?.workspace == .pending)
+    }
+
     /// 開始した後に一時停止すると、再開するまで段取りを進めない
     @Test
     func pausedStartWaitsUntilResumed() async throws {
@@ -276,7 +290,7 @@ struct DemoClientServiceTests {
         #expect(epic.tasks.first { $0.id == "rain-t4" }?.state == .pending)
     }
 
-    /// 依頼の控えは作った epic の id を持つ。送った意図はすぐ当てるので、受け取り待ちにはならない
+    /// 依頼の控えは作った epic の id を持つ。司令塔が受け取るまでは、作った epic を対象にした受け取り待ちの記録がある
     @Test
     func requestReceiptPointsToCreatedEpic() async throws {
         let service = makeService()
@@ -284,8 +298,51 @@ struct DemoClientServiceTests {
         let receipt = try await service.perform(request)
         let epicID = try #require(receipt.requestedEpicID)
         #expect(service.state.epic(epicID)?.title == "メモ並べ替え")
-        #expect(service.lastSend(of: request) == SentRecord(sentAt: clock.now, isWaiting: false))
+        #expect(service.lastSend(of: request) == SentRecord(sentAt: clock.now, isWaiting: true))
+        #expect(service.state.sentIntents.first { $0.id == receipt.intentID }?.target == .request(epicID: epicID))
         #expect(service.lastSend(of: .addRepository(repositoryID: "example/other")) == nil)
+    }
+
+    /// 送った意図は、状態に先に当てたうえで、対象ごとの受け取り待ちとして記録し、`receiptDelay` 秒の後に司令塔が受け付ける
+    @Test
+    func intentsWaitForCommanderReceipt() async throws {
+        let service = makeService()
+        let head = service.state.epic("tsundoku-search")?.finalReview?.headCommit
+        let acceptAll = HumanIntent.acceptAllDecisions(epicID: "tsundoku-search", headCommit: head, decisionIDs: ["d3", "d4"])
+        let receipt = try await service.perform(acceptAll)
+        #expect(receipt.intentIDs.count == 2)
+        let waiting = try await service.fetchSnapshot()
+        #expect(waiting.epic("tsundoku-search")?.finalReview?.decisions.first { $0.id == "d3" }?.response == .accepted)
+        let sent = waiting.sentIntents.filter { receipt.intentIDs.contains($0.id) }
+        #expect(Set(sent.compactMap(\.target)) == Set(acceptAll.targets))
+        #expect(sent.allSatisfy { $0.state == .waiting })
+        #expect(service.lastSend(of: acceptAll)?.isWaiting == true)
+
+        clock.now += service.receiptDelay
+        let accepted = try await service.fetchSnapshot()
+        #expect(accepted.sentIntents.filter { receipt.intentIDs.contains($0.id) }.allSatisfy { $0.state == .accepted(at: clock.now) })
+        #expect(service.lastSend(of: acceptAll)?.isWaiting == false)
+        #expect(accepted.commanderSeenAt == clock.now)
+    }
+
+    /// 断る場面では、意図を状態に当てずに、受け取り待ちの後で断る。受け取りを長く遅らせる場面では、司令塔の印が古い
+    @Test
+    func rejectingCommanderLeavesStateAsIs() async throws {
+        let service = DemoClientService(scenario: .standard, reactionDelay: 10, receiptDelay: 3_600, rejectsIntents: true) { [clock] in
+            clock.now
+        }
+        let answer = HumanIntent.answer(epicID: "recipe-weekly", questionID: "Q3", optionID: "a", note: "")
+        let receipt = try await service.perform(answer)
+        let waiting = try await service.fetchSnapshot()
+        #expect(waiting.epic("recipe-weekly")?.question("Q3")?.state == .open)
+        #expect(waiting.sentIntents.first { $0.id == receipt.intentID }?.state == .waiting)
+        let seenAt = try #require(waiting.commanderSeenAt)
+        #expect(clock.now.timeIntervalSince(seenAt) >= ReflectionMessage.commanderSilence)
+
+        clock.now += 3_600
+        let rejected = try await service.fetchSnapshot()
+        let state = rejected.sentIntents.first { $0.id == receipt.intentID }?.state
+        #expect(state == .rejected(at: clock.now, reason: DemoClientService.rejectionReason))
     }
 
     /// 読めない場面では取得が失敗する

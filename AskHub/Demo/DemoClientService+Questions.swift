@@ -255,7 +255,8 @@ extension DemoClientService {
         let intentID = "start-\(epicID)-\(UUID().uuidString)"
         // 状態リポジトリの「送った意図」と同じく、epic の題を添える
         let title = ["開始", state.epic(epicID)?.title].compactMap(\.self).joined(separator: " · ")
-        state.sentIntents.insert(SentIntentStatus(id: intentID, title: title, sentAt: date, state: .waiting), at: 0)
+        let status = SentIntentStatus(id: intentID, title: title, sentAt: date, state: .waiting, target: .goal(epicID: epicID))
+        state.sentIntents.insert(status, at: 0)
         state.updateEpic(epicID) { epic in
             if epic.tasks.isEmpty, let goal = epic.goal {
                 epic.tasks = goal.tasks.enumerated().map { index, task in
@@ -269,8 +270,14 @@ extension DemoClientService {
             epic.log("開始しました。司令塔が受け取るのを待っています", at: date)
         }
         state.recordLastMac(macID, forEpic: epicID)
+        // 司令塔は `receiptDelay` 秒の後に開始を受け取り、作業場所の用意は機械の反応の後に進める（一時停止している間は進めない）
+        scheduleReceipt { [now] snapshot in
+            if let index = snapshot.sentIntents.firstIndex(where: { $0.id == intentID }) {
+                snapshot.sentIntents[index].state = .accepted(at: now())
+            }
+        }
         scheduleProgress(of: epicID) { [weak self, now] snapshot in
-            Self.acceptStart(intentID, epicID: epicID, macID: macID, at: now(), in: &snapshot)
+            Self.prepareStart(epicID: epicID, macID: macID, at: now(), in: &snapshot)
             self?.scheduleProgress(of: epicID) { snapshot in
                 Self.prepareWorkspace(epicID: epicID, macID: macID, at: now(), in: &snapshot)
             }
@@ -278,11 +285,8 @@ extension DemoClientService {
         return intentID
     }
 
-    /// 司令塔が開始を受け取り、選んだ Mac が作業場所を用意し始める
-    private static func acceptStart(_ intentID: String, epicID: Epic.ID, macID: Mac.ID, at date: Date, in snapshot: inout ClientSnapshot) {
-        if let index = snapshot.sentIntents.firstIndex(where: { $0.id == intentID }) {
-            snapshot.sentIntents[index].state = .accepted(at: date)
-        }
+    /// 選んだ Mac が作業場所を用意し始める
+    private static func prepareStart(epicID: Epic.ID, macID: Mac.ID, at date: Date, in snapshot: inout ClientSnapshot) {
         let macName = snapshot.mac(macID)?.name ?? macID
         let title = snapshot.epic(epicID)?.title ?? ""
         snapshot.updateEpic(epicID) { epic in
