@@ -52,6 +52,12 @@ public protocol StateStore: Sendable {
     /// ディレクトリの直下を、件数で切らずにすべて並べる（下の階層は辿らない）。ディレクトリが無ければ nil。
     /// epic やジョブのように増え続け、下の階層まで読むと大きすぎるディレクトリに使う
     func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]?
+
+    /// 読むだけの、今の中身の写し。1 回の処理で多くのファイルを読むとき（司令塔のジョブの見回りなど）に使う。
+    ///
+    /// 写しから読むと、写しを作ったときの中身になる（GitHub では同じコミットの中身。前に読んだ tree と blob を使い回し、変わったものだけを取りに行く）。
+    /// 写しには書かない。書き直すときは、元の置き場所で読み直してから書く
+    func snapshot() async throws(StateStoreError) -> any StateStore
 }
 
 extension StateStore {
@@ -71,6 +77,11 @@ extension StateStore {
     /// `list` をそのまま使う。1 つのディレクトリの一覧に上限の無い置き場所（メモリ上など）で使う
     public func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
         try await list(directory)
+    }
+
+    /// 自分をそのまま返す（読むたびに今の中身を読む）。読むのに時間のかからない置き場所（メモリ上など）で使う
+    public func snapshot() async throws(StateStoreError) -> any StateStore {
+        self
     }
 }
 

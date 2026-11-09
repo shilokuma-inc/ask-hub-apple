@@ -9,6 +9,8 @@ import Foundation
 ///   （Contents API は同じブランチへの並んだ書き込みもぶつかる）ので、`StateFileStore` が読み直してやり直す
 /// - ディレクトリの一覧は 1,000 件まで（Contents API の上限）。増え続けるディレクトリ（人の意図・epic・ジョブなど）は、
 ///   `listFiles(under:)`（下の階層まで）か `listAll(_:)`（直下だけ）で Git Trees API から読む（10 万件・7 MB まで）
+/// - 1 回で多くのファイルを読む処理は、`snapshot()` の写しから読む。ETag の 304 でも 1 回ずつ往復するので、
+///   sha で中身が決まる tree と blob を使い回し、要求そのものを減らす
 public struct GitHubContentsStore: StateStore {
     public let repository: RepositoryFullName
     /// 読み書きするブランチ。nil ならリポジトリの既定のブランチ
@@ -18,8 +20,10 @@ public struct GitHubContentsStore: StateStore {
     private let transport: any HTTPTransport
     private let token: @Sendable () async throws -> String
     private let budget: WriteBudget?
-    private let now: @Sendable () -> Date
+    let now: @Sendable () -> Date
     private let cache = ETagCache()
+    /// sha で中身が決まる tree と blob（`snapshot()` の写しが使い回す）
+    let objects = GitObjectCache()
 
     /// `token` は要求のたびに Keychain などから読む。値はログ・URL・エラーに出さない
     public init(
@@ -126,8 +130,8 @@ public struct GitHubContentsStore: StateStore {
 
     // MARK: - 読み取り
 
-    /// `path` が空なら、リポジトリの直下の一覧（`listFiles(under:)` だけが使う）
-    private func get(_ path: String) async throws(StateStoreError) -> Contents {
+    /// `path` が空なら、リポジトリの直下の一覧（`listFiles(under:)` と `snapshot()` が使う）
+    func get(_ path: String) async throws(StateStoreError) -> Contents {
         guard path.isEmpty || StatePathCheck.isSafe(path) else { throw .invalidPath }
         let request = try await makeRequest(path: path, query: branch.map { [URLQueryItem(name: "ref", value: $0)] } ?? [])
         return try await fetch(request, cacheKey: path, decode: Self.decodeContents)
@@ -252,7 +256,7 @@ public struct GitHubContentsStore: StateStore {
     }
 
     /// リポジトリの API の要求（`apiPath` は `repos/<owner>/<repo>/` からのパス）
-    private func makeRequest(apiPath: String, query: [URLQueryItem]) async throws(StateStoreError) -> URLRequest {
+    func makeRequest(apiPath: String, query: [URLQueryItem]) async throws(StateStoreError) -> URLRequest {
         var components = URLComponents(
             url: apiBase.appendingPathComponent("repos/\(repository.owner)/\(repository.name)/\(apiPath)"),
             resolvingAgainstBaseURL: false
@@ -274,7 +278,7 @@ public struct GitHubContentsStore: StateStore {
         return request
     }
 
-    private func send(_ request: URLRequest) async throws(StateStoreError) -> (Data, HTTPURLResponse) {
+    func send(_ request: URLRequest) async throws(StateStoreError) -> (Data, HTTPURLResponse) {
         do {
             return try await transport.send(request)
         } catch is CancellationError {
