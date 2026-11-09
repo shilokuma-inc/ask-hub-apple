@@ -12,9 +12,11 @@ import Foundation
 /// | レビュー（`ready`） | マージの規則で自動ならマージを作る。手動なら epic を `reviewing` にして人を待つ |
 /// | レビュー（直す判定） | 直しを作る。自動の直しが上限を超えたら、動かさずに人の対応待ちで作る |
 /// | 直し | 仮決めを足し、仕分けていない仮決めがあれば仕分けを、無ければ直した head のレビューを作る |
+/// | 撮影 | 撮ったスクショを `decisions.json` に写し、撮った head でレビューを作る |
 /// | マージ | 片付けを作り、epic を `merged` にする |
 ///
-/// 撮影（`captureScreenshots`）は、ビルドの設定に撮影の方法があるリポジトリだけで行う。今はどのリポジトリにも無いので作らない
+/// 撮影（`captureScreenshots`）は、レビューの前に挟む。ビルドの設定に撮影の方法（`build.screenshots`）があり、
+/// 撮る画面を選んだ見える仮決めがあるときだけ作る（最終 PR の CI と並んで撮る）
 extension TaskFlow {
     /// 最終 PR の段取りに使うもの
     struct FinalPlan {
@@ -72,6 +74,7 @@ extension TaskFlow {
         case .openFinalPullRequest: return try await opened(leaf, in: final)
         case .reviewFinalPullRequest: return try await reviewed(leaf, in: final)
         case .fixFinalPullRequest: return try await fixed(leaf, in: final)
+        case .captureScreenshots: return try await captured(leaf, in: final)
         case .mergeFinalPullRequest: return try await merged(leaf, in: final)
         default: return Advanced(notes: ["epic \(final.epic.id) の最終 PR の段取りに、作らないはずのジョブ（\(leaf.kind.rawValue)）がある"])
         }
@@ -91,17 +94,46 @@ extension TaskFlow {
             // 最終 PR は epic に 1 本だけ出す
             return try await create(.openFinalPullRequest, input: nil, after: parent, seed: "", in: final)
         case let .review(input):
-            return try await create(.reviewFinalPullRequest, input: input, after: parent, seed: "\(parent.id)/\(input.head)", in: final)
+            // 撮る画面を選んだ見える仮決めがあれば、レビューの前に撮る（撮った後に同じ head でレビューする）
+            let kind: JobKind = try await shouldCapture(in: final) ? .captureScreenshots : .reviewFinalPullRequest
+            return try await create(kind, input: input, after: parent, seed: "\(parent.id)/\(input.head)", in: final)
         }
+    }
+
+    /// 撮影のジョブを作るか。リポジトリに撮影の設定があり、撮る画面を選んだ見える仮決めがあるとき
+    func shouldCapture(in final: FinalPlan) async throws(CommanderError) -> Bool {
+        let repository = try await context.read(RepositoryFile.self, at: StatePath.repository(final.epic.repo))
+        guard repository?.build?.screenshots != nil else { return false }
+        let decisions = try await context.read(DecisionsFile.self, at: StatePath.decisions(final.epic.repo, final.epic.id))
+        return decisions?.hasScenes == true
+    }
+
+    /// 撮影が成功した: 撮ったスクショを `decisions.json` に写し、撮った head でレビューを作る（撮れなかったものも、わけを写して先へ進む）
+    func captured(_ capture: JobFile, in final: FinalPlan) async throws(CommanderError) -> Advanced {
+        guard let input = capture.input(as: PullRequestInput.self), input.isValid else {
+            return stuck(capture, "最終 PR か head が無い", in: final)
+        }
+        let screenshots = try await succeededOutputs(of: capture)?.screenshots ?? [:]
+        if !screenshots.isEmpty {
+            try await context.updateDecisions(of: final.epic, message: "判断のカードのスクショを書く") { file in
+                let next = file.capturing(screenshots)
+                guard next != file else { return false }
+                file = next
+                return true
+            }
+        }
+        return try await create(.reviewFinalPullRequest, input: input, after: capture, seed: "\(capture.id)/\(input.head)", in: final)
     }
 
     /// 判断の仕分けが成功した: 見えるとした仮決めを `decisions.json` に写し、仕分けの前のジョブに応じて次を作る
     func classified(_ classify: JobFile, in final: FinalPlan) async throws(CommanderError) -> Advanced {
-        guard let visible = try await succeededOutputs(of: classify)?.visibleDecisions else {
+        let outputs = try await succeededOutputs(of: classify)
+        guard let visible = outputs?.visibleDecisions else {
             return stuck(classify, "見えるとした仮決め（visibleDecisions）が無い", in: final)
         }
+        let scenes = outputs?.decisionScenes ?? [:]
         try await context.updateDecisions(of: final.epic, message: "仮決めを仕分ける") { file in
-            let next = file.classifying(visible: visible)
+            let next = file.classifying(visible: visible, scenes: scenes)
             guard next != file else { return false }
             file = next
             return true

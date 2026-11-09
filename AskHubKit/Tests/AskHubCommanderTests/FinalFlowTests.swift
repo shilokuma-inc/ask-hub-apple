@@ -182,6 +182,53 @@ struct FinalFlowTests {
         #expect(again.dependsOn == [classify.id])
     }
 
+    // MARK: - スクショ
+
+    @Test func capturesScreenshotsBeforeReviewWhenScenesAreChosen() async throws {
+        try await given.putScreenshotSetting()
+        try await given.finished(decisions: [Fixture.decision("d1"), Fixture.decision("d2"), Fixture.decision("d3")])
+        try await given.succeed(try await given.next(.verifyBeforeFinal))
+        // 仕分けた: 見える d1・d2 のうち d1 に画面を選んだ。内部の細部の d3 の画面は書かない
+        let classify = try await given.next(.classifyDecisions)
+        try await given.succeed(classify, outputs: .init(visibleDecisions: ["d1", "d2"], decisionScenes: ["d1": "inbox", "d3": "settings"]))
+        let open = try await given.next(.openFinalPullRequest)
+        #expect(try await given.decisions().items.map(\.scene) == ["inbox", nil, nil])
+
+        // 最終 PR を出した: レビューの前に、epic の Mac で撮る（CI と並んで動く）
+        try await given.succeed(open, outputs: .init(pullRequest: Fixture.pullRequest, commit: Fixture.sha("a")))
+        let capture = try await given.next(.captureScreenshots)
+        let head = PullRequestInput(pullRequest: Fixture.pullRequest, head: Fixture.sha("a"))
+        #expect(capture.input(as: PullRequestInput.self) == head)
+        #expect(capture.assignedMac == Fixture.laptop)
+        #expect(capture.needs == .init(claude: false, build: true))
+        #expect(capture.dependsOn == [open.id])
+
+        // 撮った: decisions.json に写し、撮った head でレビューする
+        let after = StatePath.screenshot(Fixture.repo, Fixture.epicID, commit: Fixture.sha("a"), scene: "inbox")
+        let shots = DecisionsFile.Screenshots(after: after, head: Fixture.sha("a"), note: "Before なし（この画面は epic で足した）")
+        try await given.succeed(capture, outputs: .init(pullRequest: Fixture.pullRequest, commit: Fixture.sha("a"), screenshots: ["d1": shots]))
+        let review = try await given.next(.reviewFinalPullRequest)
+        #expect(review.input(as: PullRequestInput.self) == head)
+        #expect(review.dependsOn == [capture.id])
+        #expect(try await given.decisions().items.map(\.screenshots) == [shots, nil, nil])
+
+        // 直した後も、撮り直してからレビューする
+        try await given.succeed(review, outputs: .init(commit: Fixture.sha("a"), verdict: .fixCI, findings: "落ちた"))
+        let fix = try await given.next(.fixFinalPullRequest)
+        try await given.succeed(fix, outputs: .init(pullRequest: Fixture.pullRequest, commit: Fixture.sha("b"), report: .init(summary: "直した")))
+        let again = try await given.next(.captureScreenshots)
+        #expect(again.input(as: PullRequestInput.self) == PullRequestInput(pullRequest: Fixture.pullRequest, head: Fixture.sha("b")))
+        #expect(again.dependsOn == [fix.id])
+    }
+
+    @Test func reviewsWithoutCapturingWhenNothingToShoot() async throws {
+        // 撮影の設定はあるが、見える仮決めに画面を選んでいない
+        try await given.putScreenshotSetting()
+        try await given.finished(decisions: [Fixture.decision("d1")])
+        let review = try await given.openedFinalPullRequest(visible: ["d1"])
+        #expect(review.kind == .reviewFinalPullRequest)
+    }
+
     @Test func reviewsAgainWhenHeadMovedDuringReview() async throws {
         try await given.finished()
         let review = try await given.openedFinalPullRequest()

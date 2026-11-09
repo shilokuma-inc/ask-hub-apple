@@ -93,6 +93,19 @@ struct FinalFlowFixture {
         if let macSeen { try await putMac(Self.laptop, seen: macSeen) }
     }
 
+    /// 撮影の設定（`build.screenshots`）のある repo.json
+    func putScreenshotSetting() async throws {
+        let phone = BuildDestination.simulator(SimulatorDestination(platform: .iOS, deviceType: "iPhone 17 Pro"))
+        let build = RepositoryFile.Build(
+            xcode: try BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [phone]),
+            childChecks: ["build"],
+            finalChecks: ["build"],
+            screenshots: ScreenshotSettings(scenes: "App/screenshot-scenes.json", destination: phone)
+        )
+        let repository = RepositoryFile(repo: Self.repo, platform: .apple, build: build, addedAt: Timestamp(Self.now))
+        try await put(repository, at: StatePath.repository(Self.repo))
+    }
+
     /// Mac の生きている印（`seen` 秒前）
     func putMac(_ name: MacName, seen: TimeInterval) async throws {
         let check = SelfCheck(checkedAt: Timestamp(Self.now), keychain: .ok, githubToken: .ok, claudeToken: .ok)

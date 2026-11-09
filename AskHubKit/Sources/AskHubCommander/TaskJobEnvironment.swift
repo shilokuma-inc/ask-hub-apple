@@ -17,19 +17,23 @@ public struct TaskRepositorySettings: Equatable, Sendable {
     public var finalChecks: Set<String>?
     /// 指摘を Claude に渡してよいレビューの書き手（`coderabbitai[bot]` など）
     public var trustedReviewers: [String]
+    /// 判断のカードのスクショの撮り方。nil なら撮らない
+    public var screenshots: ScreenshotSettings?
 
     public init(
         baseBranch: String = "develop",
         build: BuildSettings,
         childChecks: Set<String>? = nil,
         finalChecks: Set<String>? = nil,
-        trustedReviewers: [String] = []
+        trustedReviewers: [String] = [],
+        screenshots: ScreenshotSettings? = nil
     ) {
         self.baseBranch = baseBranch
         self.build = build
         self.childChecks = childChecks
         self.finalChecks = finalChecks
         self.trustedReviewers = trustedReviewers
+        self.screenshots = screenshots
     }
 }
 
@@ -41,7 +45,8 @@ extension TaskRepositorySettings {
             build: build.xcode,
             childChecks: Set(build.childChecks),
             finalChecks: Set(build.finalChecks),
-            trustedReviewers: build.trustedReviewers
+            trustedReviewers: build.trustedReviewers,
+            screenshots: build.screenshots
         )
     }
 
