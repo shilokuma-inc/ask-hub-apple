@@ -38,7 +38,15 @@
           ],
           "trustedReviewers": [
             "coderabbitai[bot]"
-          ]
+          ],
+          "screenshots": {
+            "scenes": "App/screenshot-scenes.json",
+            "destination": {
+              "platform": "iOS",
+              "deviceType": "iPhone 17 Pro",
+              "osVersion": "27.0"
+            }
+          }
         }
       },
       "schemaValid": true,
@@ -158,6 +166,105 @@
           "finalChecks": [
             "build"
           ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field-in-screenshots",
+      "payload": {
+        "build": {
+          "baseBranch": "main",
+          "xcode": {
+            "project": "App/App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "iOS",
+                "deviceType": "iPhone 17 Pro",
+                "osVersion": "26.5"
+              },
+              {
+                "platform": "macOS"
+              }
+            ],
+            "testLight": {
+              "onlyTesting": [
+                "AppTests"
+              ]
+            },
+            "testFull": {
+              "testPlan": "Full"
+            }
+          },
+          "childChecks": [
+            "build / build"
+          ],
+          "finalChecks": [
+            "build / build",
+            "ui-test / ui-test"
+          ],
+          "trustedReviewers": [
+            "coderabbitai[bot]"
+          ],
+          "screenshots": {
+            "scenes": "App/screenshot-scenes.json",
+            "destination": {
+              "platform": "iOS",
+              "deviceType": "iPhone 17 Pro",
+              "osVersion": "27.0"
+            },
+            "futureField": 1
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "screenshots-on-macos",
+      "payload": {
+        "build": {
+          "baseBranch": "main",
+          "xcode": {
+            "project": "App/App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "iOS",
+                "deviceType": "iPhone 17 Pro",
+                "osVersion": "26.5"
+              },
+              {
+                "platform": "macOS"
+              }
+            ],
+            "testLight": {
+              "onlyTesting": [
+                "AppTests"
+              ]
+            },
+            "testFull": {
+              "testPlan": "Full"
+            }
+          },
+          "childChecks": [
+            "build / build"
+          ],
+          "finalChecks": [
+            "build / build",
+            "ui-test / ui-test"
+          ],
+          "trustedReviewers": [
+            "coderabbitai[bot]"
+          ],
+          "screenshots": {
+            "scenes": "App/screenshot-scenes.json",
+            "destination": {
+              "platform": "macOS"
+            }
+          }
         }
       },
       "schemaValid": false,
