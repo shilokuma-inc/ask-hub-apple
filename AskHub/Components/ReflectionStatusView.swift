@@ -133,6 +133,7 @@ struct ReflectionBadge: View {
                 HStack(spacing: 3) {
                     ReflectionSymbol(tone: message.tone)
                         .imageScale(.small)
+                        .accessibilityHidden(true)
                     Text(message.badge)
                 }
                 .appFont(.caption2, weight: .semibold)
