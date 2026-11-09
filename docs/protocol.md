@@ -1,5 +1,9 @@
 # AskHub プロトコル
 
+> **今の仕組み（オーケストレーター + ralph-loop）の取り決め。2026-11-09 の切り替えで止めた（#970）。**
+> 新しい仕組みの取り決めは [renewal/protocol.md](renewal/protocol.md)。ここに出てくるオーケストレーター・ループの中継のスクリプト・ワークフローは外してあり、
+> タグ `legacy-final` から取り出せる。この文書は、まだ残っている古い `AskHubKit` ライブラリの仕様として、そのライブラリを削るときに一緒に消す。
+
 AskHub アプリ・オーケストレーター・ループ（Claude）が、GitHub 上で「人間の判断が必要なもの」を
 やり取りするための取り決め。決定の経緯は [Discussion #1](https://github.com/shilokuma-inc/ask-hub-apple/discussions/1) を参照。
 
