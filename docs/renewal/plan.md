@@ -101,7 +101,7 @@
 | 4 | launchd（ログイン中）から Keychain を読めるか。署名したバイナリを更新しても、Keychain と TCC の許可が残るか | LaunchAgent からは読め、ssh からは読めない。署名したバイナリの更新は、署名の証明書を決めてから確かめる |
 | 5 | sandbox の中で `git commit` ができるか（worktree の `.git` は作業場所の外）。partial clone の取り寄せが動くか | commit でき、共有の `.git` にも書ける。Claude には git を許可しない。partial clone はワーカーの作業場所を作るときに確かめる |
 | 6 | github.com を許可せず、取得済みの依存だけでビルドできるか | 許可していない宛先には出られない。ビルドはワーカーが sandbox の外で流すので、依存の扱いはワーカーのビルドの道具を作るときに確かめる |
-| 7 | 画面の無い launchd の下で、Simulator のスクショと macOS アプリの撮影ができるか | Simulator の作成・起動・スクショ・削除ができる。macOS のアプリの撮影は段階 5 で確かめる |
+| 7 | 画面の無い launchd の下で、Simulator のスクショと macOS アプリの撮影ができるか | Simulator の作成・起動・スクショ・削除ができる。判断のカードのスクショは、Simulator で起動引数で画面を開いて撮る（[flows.md](flows.md) の「スクショ」）。macOS のアプリの撮影は段階 5 で確かめる |
 | 8 | GitHub: 想定の頻度の書き込みでの二次の上限、同時の書き込み、ETag の効き方、複数の organization のトークン | 古い版の書き込みは 409 で弾かれる。ETag つきの読み取りは上限に数えられないとみられる。今の仕組みが動いている間は上限の 3 割ほどが使われている。複数の organization のトークンは、トークンの設計で決める |
 | 9 | GitHub: `GITHUB_TOKEN` をブランチ保護の例外に入れられるか、`GITHUB_TOKEN` で作った PR の必須チェック、管理者にも保護を効かせたときの人のマージ | 例外に入れられず、PR も作れない。ルールセットは管理者にも効く。アカウントのトークンの PR なら CI が起動してマージできる。後作業は司令塔の PR で行う |
 | 10 | App Store Connect の API: 配信、取り下げとやり直し、App のプライバシーの申告、課金・App Clip・capability | 段階 5 で確かめる（予定） |
