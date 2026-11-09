@@ -297,7 +297,7 @@ struct DecisionDeckView: View {
         let kind = card?.kindLabel ?? ""
         // 前のカードが消えると、山札から引いた次のカードが前に置かれる
         withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
-            store.enqueue(intent, message: "\(appName) · \(kind): \(label)", itemID: card?.id)
+            store.enqueue(intent, message: "\(appName) · \(kind): \(label)")
             skippedIDs.removeAll { $0 == card?.id }
             leavingID = nil
         }
