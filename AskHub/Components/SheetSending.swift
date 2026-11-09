@@ -1,11 +1,23 @@
 import Observation
 import SwiftUI
 
-/// シートの中から送るときの状態。送っている間はシートを触れなくし、失敗したらシートを閉じずに理由を出す
+/// シートの中から送るときの状態。送っている間はシートを触れなくし、失敗したらシートを閉じずに理由を出す。
+/// 送った結果を先に画面に出せる操作（`submit`）は、送り終えるのを待たずに閉じる
 @Observable
 final class SheetSendState {
     private(set) var isSending = false
     private(set) var failure: String?
+
+    /// 送り始めて、送り終えるのを待たずに戻る。送り始めたら（送ってあったときも）true を返す（呼び出し元はシートを閉じる。
+    /// 送れなかったら帯で知らせて画面を元に戻す）。同じ対象への操作が同期を待っていて送れなければ、理由を `failure` に入れて false
+    func submit(_ intent: HumanIntent, in store: ClientStore) -> Bool {
+        failure = nil
+        if case .blocked(let message) = store.submit(intent) {
+            failure = message
+            return false
+        }
+        return true
+    }
 
     /// 送る。失敗は帯ではなく `failure` に入れる（呼び出し元は、置けたらシートを閉じる）
     func send(_ intent: HumanIntent, in store: ClientStore) async -> ClientStore.SendResult {

@@ -7,10 +7,12 @@ import Foundation
 /// 状態リポジトリ（`docs/renewal/protocol.md`）の窓口。
 ///
 /// 読むのは状態リポジトリだけ（各リポジトリの Discussion・PR は読まない）。人の意図は、この端末の鍵で署名して `intents/` に置く。
-/// 司令塔は 30 秒ほどの間隔で意図を処理するので、送った後の取り直しでは、処理を待つ意図を送った結果として先に出す
+/// 司令塔は 30 秒ほどの間隔で意図を処理するので、処理を待つ意図・送っている途中の意図・送り終えて読み直す前の意図は、送った結果として先に出す
 final class StateClientService: ClientService {
     /// 司令塔が意図を見る間隔に合わせる。変わっていないファイルは ETag で読むので、GitHub の上限に数えられない
     let refreshInterval: Duration = .seconds(30)
+    /// 受け付けの記録を確かめる間隔。記録が無い間の読み取り（404）は GitHub の上限に数えられるので、司令塔の受け取りを待つ意図の 1 つだけを確かめる
+    let receiptCheckInterval: Duration? = .seconds(4)
 
     /// 状態リポジトリへの同時の要求の上限。並べて読むので、GitHub の 2 次のレート制限（同時の要求が多いと 403・429）に当たらないよう抑える
     static let concurrentRequests = 8
@@ -23,6 +25,11 @@ final class StateClientService: ClientService {
     /// 送るたびに使い回す（意図の番号を送った順に大きくする。司令塔は番号の順に処理するので、判断に答えてから承認する、などの順を守る）
     private let sender: IntentSender
     private var index = StateIndex()
+    /// 最後に読んだ状態（送り終えていない意図を当てた形を組み立て直すのに使う）
+    private var documents: StateDocuments?
+    /// 処理を待っていたのを、受け付けたと読んだばかりの意図と、そのとき始めてあった読み込みの最後の番号。
+    /// それより後に始めた読み込みでは状態に反映されているので、当てるのをやめる（`StateSnapshotBuilder.justAccepted`）
+    private var justAccepted: [ULID: Int] = [:]
     /// 最後に読んだ、この端末が送った意図
     private var readSends: [SentDraft] = []
     /// 送った後の読み込みに、まだ出ていない意図
@@ -59,19 +66,94 @@ final class StateClientService: ClientService {
             throw ClientServiceError(message: StateServiceError.message(for: error))
         }
         let date = now()
-        let built = StateSnapshotBuilder(documents: documents, now: date).build()
         guard generation > appliedRead else {
-            return built.snapshot
+            // 後に始めた読み込みがもう当ててあるので、引き当ても当てる意図も戻さない（ストアもこの中身を画面に当てない）
+            return StateSnapshotBuilder(documents: documents, now: date).build().snapshot
         }
         appliedRead = generation
-        index = built.index
+        let waiting = Set((readSends + unreadSends).filter(\.isWaiting).map(\.nonce))
         readSends = documents.sentIntents.map { sent in
             let sentAt = sent.envelope.issuedAt.date
             let isWaiting = sent.consumed == nil && date.timeIntervalSince(sentAt) < StateSnapshotBuilder.intentLifetime
             return SentDraft(nonce: sent.envelope.nonce, draft: IntentDraft(sent.envelope), sentAt: sentAt, isWaiting: isWaiting)
         }
         unreadSends.removeAll { unread in readSends.contains { $0.nonce == unread.nonce } }
+        // 処理を待っていた意図を受け付けたと読んだら、この後に始める読み込みが終わるまで当て続ける（状態が古いまま読んだかもしれない）
+        justAccepted = justAccepted.filter { generation <= $0.value }
+        for sent in documents.sentIntents where sent.consumed?.result == .accepted && waiting.contains(sent.envelope.nonce) {
+            justAccepted[sent.envelope.nonce] = startedReads
+        }
+        self.documents = documents
+        let built = builder(documents, now: date).build()
+        index = built.index
         return built.snapshot
+    }
+
+    func snapshot(overlaying intents: [HumanIntent]) -> ClientSnapshot? {
+        guard let documents else {
+            return nil
+        }
+        let date = now()
+        // 後の意図は、前の意図を当てた後の引き当てで送る形にする（まとめて OK の後のマージの承認など）
+        var drafts: [IntentDraft] = []
+        var index = index
+        for (offset, intent) in intents.enumerated() {
+            guard let mapped = try? StateIntentMapper(index: index).drafts(for: intent) else {
+                continue
+            }
+            drafts += mapped
+            if offset < intents.count - 1 {
+                index = builder(documents, now: date, pending: drafts).build().index
+            }
+        }
+        return builder(documents, now: date, pending: drafts).build().snapshot
+    }
+
+    func hasReceipt(for intentID: String) async throws -> Bool {
+        guard let nonce = ULID(rawValue: intentID) else {
+            return false
+        }
+        do {
+            return try await store.read(StatePath.consumed(device: key.keyID, nonce: nonce)) != nil
+        } catch {
+            throw ClientServiceError(message: StateServiceError.message(for: error), retryAfter: error.retryAfter)
+        }
+    }
+
+    /// 最後に読んだ状態を組み立てる。送り終えて読み直す前の意図と、送り終えていない意図（`pending`。押した順）も、送った結果として当てる
+    private func builder(_ documents: StateDocuments, now date: Date, pending: [IntentDraft] = []) -> StateSnapshotBuilder {
+        let read = Set(documents.sentIntents.map(\.envelope.nonce))
+        let unread = unreadSends.filter { !read.contains($0.nonce) }.map { envelope($0.draft, nonce: $0.nonce, at: $0.sentAt) }
+        // 送り終えていない意図には、まだ番号が無い。当てる順を決めるだけの仮の番号を、送り終えた意図より後の時刻で付ける
+        let unsent = pending.enumerated().map { offset, draft in
+            envelope(draft, nonce: ULID.generate(at: date.addingTimeInterval(Double(offset))), at: date)
+        }
+        return StateSnapshotBuilder(
+            documents: documents,
+            now: date,
+            unread: (unread + unsent).reversed(),
+            justAccepted: Set(justAccepted.keys)
+        )
+    }
+
+    private func envelope(_ draft: IntentDraft, nonce: ULID, at date: Date) -> IntentEnvelope {
+        IntentEnvelope(
+            kind: draft.kind,
+            repo: draft.repo,
+            target: draft.target,
+            targetVersion: draft.targetVersion,
+            payload: draft.payload,
+            issuedAt: Timestamp(date),
+            nonce: nonce,
+            keyId: key.keyID
+        )
+    }
+
+    /// 送る形の引き当てを、送り終えて読み直す前の意図を当てた後のものにする（続けて送る意図が、前の意図を踏まえて送れるように）
+    private func rebuildIndex() {
+        if let documents {
+            index = builder(documents, now: now()).build().index
+        }
     }
 
     /// 送る。まとめて OK のように 1 つの操作が複数の意図になるときは、順に送り、控えには送ったものすべてを返す
@@ -93,6 +175,7 @@ final class StateClientService: ClientService {
             } catch {
                 // 書けた分は司令塔が受け取るので、控えを添えて失敗を返す（反映中として追い続ける）
                 let sent = receipt.sent.isEmpty ? nil : receipt
+                rebuildIndex()
                 throw ClientServiceError(message: StateServiceError.message(for: error), sentBeforeFailure: sent)
             }
             // 次に読むまでの間も、送ったことを覚えておく（読んだ中に出たら、読んだものに任せる）
@@ -105,6 +188,7 @@ final class StateClientService: ClientService {
             }
             receipt.sent.append(SendReceipt.Sent(id: reference.nonce.rawValue, target: target))
         }
+        rebuildIndex()
         return receipt
     }
 

@@ -271,7 +271,7 @@ extension DemoClientService {
         }
         state.recordLastMac(macID, forEpic: epicID)
         // 司令塔は `receiptDelay` 秒の後に開始を受け取り、作業場所の用意は機械の反応の後に進める（一時停止している間は進めない）
-        scheduleReceipt { [now] snapshot in
+        scheduleReceipt(of: [intentID]) { [now] snapshot in
             if let index = snapshot.sentIntents.firstIndex(where: { $0.id == intentID }) {
                 snapshot.sentIntents[index].state = .accepted(at: now())
             }

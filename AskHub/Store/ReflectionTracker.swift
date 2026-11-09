@@ -1,6 +1,9 @@
 import Foundation
 
-/// 送った意図が画面に反映されるまでの、ある対象の様子。操作した場所（カード・ボタン・行）に出す
+/// 送った意図が画面に反映されるまでの、ある対象の様子。
+///
+/// 画面は押した時点で送った結果の形になるので、同期を待つ間は行やカードの隅に小さな印だけを出し、
+/// 司令塔が断った・しばらく受け取っていないときだけ、操作した場所に理由を出す
 struct Reflection: Equatable {
     enum Phase: Equatable {
         /// 送っている（GitHub に書いている）か、取り消しの猶予の間
@@ -31,6 +34,14 @@ struct Reflection: Equatable {
             return false
         }
         return now.timeIntervalSince(since) >= threshold
+    }
+
+    /// 操作した場所に知らせることがあるか（司令塔が断った・しばらく受け取っていない）。同期を待っているだけなら false
+    func needsAttention(now: Date, threshold: TimeInterval) -> Bool {
+        if case .rejected = phase {
+            return true
+        }
+        return isStalled(now: now, threshold: threshold)
     }
 }
 
@@ -218,6 +229,13 @@ struct ReflectionTracker {
                 break
             }
         }
+    }
+
+    /// 司令塔の受け取りを待っている意図のうち、`cutoff` より後に送った一番前のものの id（受け付けの記録を軽く確かめるのに使う）
+    func oldestAwaitingIntentID(sentAfter cutoff: Date) -> String? {
+        let own = awaiting.map { (id: $0.key, sentAt: $0.value.sentAt) }
+        let previous = waitingInSnapshot.values.map { (id: $0.status.id, sentAt: $0.status.sentAt) }
+        return (own + previous).filter { $0.sentAt > cutoff }.min { ($0.sentAt, $0.id) < ($1.sentAt, $1.id) }?.id
     }
 
     // MARK: 対象ごとの様子

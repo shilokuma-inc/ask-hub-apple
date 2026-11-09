@@ -31,8 +31,8 @@ struct DecisionSheet: View {
                             }
                         }
                     }
-                } else if store.reflection(for: [target]) != nil {
-                    // 前に送った答えが反映を待っているか、断られた
+                } else if store.needsAttention([target]) {
+                    // 前に送った答えを司令塔がしばらく受け取っていないか、断った
                     CardSection {
                         ReflectionStatusView(target)
                     }
@@ -61,7 +61,7 @@ struct DecisionSheet: View {
                             )
                         }
                     }
-                    .disabled(sending.isSending || store.isReflecting([target]))
+                    .disabled(store.isReflecting([target]))
                 }
             }
             .pastelBackground()
@@ -88,16 +88,10 @@ struct DecisionSheet: View {
         .sheetSending(sending)
     }
 
-    /// 送る。置けたら（同じ答えを送ってあったときも）閉じ、失敗したら理由を出して残る
+    /// 送る。送り始めたら（同じ答えを送ってあったときも）すぐ閉じ、判断は答えた形になる。送れなければ理由を出して残る
     private func send(_ intent: HumanIntent) {
-        guard !sending.isSending else {
-            return
-        }
         lastIntent = intent
-        Task {
-            if case .failed = await sending.send(intent, in: store) {
-                return
-            }
+        if sending.submit(intent, in: store) {
             dismiss()
         }
     }

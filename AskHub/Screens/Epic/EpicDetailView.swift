@@ -54,7 +54,7 @@ struct EpicDetailView: View {
                 .padding(.vertical, 4)
             }
             if !lines.isEmpty {
-                CardSection("いま") {
+                CardSection {
                     ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                         if let route = line.route, line.owner == .you {
                             NavigationLink(value: route) { EpicStatusLabel(line: line, lineLimit: nil) }
@@ -62,10 +62,17 @@ struct EpicDetailView: View {
                             EpicStatusLabel(line: line, lineLimit: nil)
                         }
                     }
+                } header: {
+                    // 依頼・epic の操作と、送った後に消えた欄（対処・分け方）への操作は、同期を待つ間ここに小さな印を出す
+                    HStack(spacing: 6) {
+                        Text("いま")
+                        ReflectionBadge(Self.epicTargets(epic), syncOnly: true)
+                    }
                 }
             }
-            // 依頼・epic の操作（一時停止・再開・引き継ぎ・やめる）と、送った後に消えた欄（対処・分け方）への操作は、反映されるまでの様子をここに出す
-            if store.reflection(for: Self.epicTargets(epic)) != nil {
+            // 依頼・epic の操作（一時停止・再開・引き継ぎ・やめる）と、送った後に消えた欄（対処・分け方）への操作は、
+            // 司令塔がしばらく受け取っていない・断ったときに、その理由をここに出す
+            if store.needsAttention(Self.epicTargets(epic)) {
                 CardSection {
                     ReflectionStatusView(Self.epicTargets(epic))
                 }
@@ -423,7 +430,7 @@ private struct EpicMenu: ToolbarContent {
         // 一時停止していない epic は、Mac で動いている作業が終わるまで引き継げない（司令塔が断る）。そのときは一時停止を促す
         let handOverNeedsPause = isStarted && !canHandOver && canPause
         let canDiscard = epic.isActive && store.supports(.discard(epicID: epic.id))
-        // 前の操作が反映されるまでは、ほかの操作も押せなくする（反映中は epic の画面の上に出す）
+        // 前の操作の同期を待つ間は、ほかの操作も押せなくする（同期待ちの印は epic の画面の「いま」に出す）
         let isReflecting = store.isReflecting([.epicControl(epicID: epic.id)])
         ToolbarItem(placement: .primaryAction) {
             if canPause || canResume || canHandOver || canDiscard {

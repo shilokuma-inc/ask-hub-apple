@@ -144,6 +144,10 @@
 - PR の本文の画像の添付（gh の `--attach`）は、`POST https://uploads.github.com/user-attachments/assets?name=<名前>&content_type=image/png&repository_id=<リポジトリの数の id>` に中身をそのまま送ると、
   `{"url": "https://github.com/user-attachments/assets/<id>"}` が返る（cli/cli の `internal/attachments`）。書き込みの権限が無いトークンには 403 ではなく 404 を返す。
   public のリポジトリでは誰でも見られ、消せない（2026-11-09、`GitHubPullRequests.uploadAttachment`）
+- 司令塔の受け付けを早く知るために、送った意図の処理の記録（`consumed/<device>/<nonce>.json`）を Contents API で数秒ごとに読むと、記録がまだ無い間は 404 が返り、
+  404 は ETag で 304 にできないので GitHub の上限（5,000 回/時）に数えられる（4 秒ごとなら 1 つの意図で 900 回/時）。待っている意図のうち一番前に送ったもの（司令塔は番号の順に処理する）だけを確かめ、
+  受け取りが遅い（3 分を過ぎた）意図は 30 秒ごとの全体の取り直しに任せ、上限の 403/429 は `retryAfter` の間だけ休む。`consumed/<device>` の一覧を読む案は、Contents API の一覧が 1,000 件までで、
+  ULID の名前の新しい記録が後ろに来るため、送った意図が増えると新しい記録が一覧から外れるのでやめた（2026-11-10、`ClientStore.watchReceipts`）
 
 ## ビルド・テスト
 
@@ -347,6 +351,10 @@
   一時的なファイルの先頭に `// swiftlint:disable line_length` などを書く（コミットしない。2026-11-09、判断のカードのスクショ）
 - デモのデータの文には、今の時刻から作るもの（「22:40 に確かめました」「次は 22:55」など）がある。判断のカードの Before と After を別の時刻に撮ると、その文も変わって写る（2026-11-09、`.askhub/screenshot-scenes.json`）
 - Swift Testing はテストを並べて流すので、一時的なフォルダの名前をジョブの id など見本で同じになる値だけで決めると、ほかのテストが消してしまう。名前に `UUID()` を足す（2026-11-09、`CaptureScreenshotsRunnerTests`）
+- iOS 26 の `safeAreaBar(edge: .bottom)` の帯（マージのボタンなど）の下に一覧の行が隠れていても、UI テストの `exists` は true のままで、`tap()` は帯のほうに当たる
+  （確認のダイアログが出ず、次の待ちで落ちる）。帯の近くの行のボタンを押すときは、一覧の終わりまで `swipeUp()` してから押す（2026-11-10、`testAcceptAllShowsDoneAtOnceAndSyncsLater`）
+- Xcode 26.6 の `xcodebuild test`（iOS Simulator の UI テスト・`-resultBundlePath` あり）も、`Executed N tests` を出した後に戻らないことがあった。`.xcresult` は `Data` と `Staging` だけで、
+  UI テストの画面の録画が `Data/data.0~…` に QuickTime で入る。結果はログの `Test Case … passed/failed` の行で判断して止める（2026-11-10）
 
 ## Keychain
 

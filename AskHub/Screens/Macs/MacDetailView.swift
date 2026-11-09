@@ -156,8 +156,8 @@ struct CleanupView: View {
         .compactList()
         .navigationTitle("片付けの候補")
         .safeAreaBar(edge: .bottom) {
-            // 片付けを送ったら、反映されるまで押せなくし、その様子を出す（送った結果を先に当てて候補が無くなっても、様子は残す）
-            if !candidates.isEmpty || store.reflection(for: [.cleanup(macID: macID)]) != nil {
+            // 片付けを送ったら、司令塔が受け付けるまで押せなくする（送った結果を先に当てて候補が無くなっても、断られた理由などは残す）
+            if !candidates.isEmpty || store.needsAttention([.cleanup(macID: macID)]) {
                 cleanupBar(candidates: candidates, selectedBytes: selectedBytes)
             }
         }
@@ -180,7 +180,7 @@ struct CleanupView: View {
                     .controlSize(.large)
                     .disabled(selectedIDs.isEmpty || store.isReflecting([.cleanup(macID: macID)]))
             }
-            ReflectionStatusView(.cleanup(macID: macID))
+            ReflectionStatusView(.cleanup(macID: macID), showsSyncBadge: true)
                 .frame(maxWidth: 520)
                 .padding(.horizontal)
         }

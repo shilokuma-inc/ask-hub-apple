@@ -27,8 +27,11 @@ struct HumanTaskView: View {
                 AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: epic.title, iconSize: 40)
                 Text(task.title).rowFont(.title)
                 Text(task.why).foregroundStyle(.secondary)
-                stateLabel(task.state, epic: epic, task: task)
-                // 終えたこと（渡すファイル）を送ったら、反映されるまでの様子と、断られた理由
+                HStack(spacing: 8) {
+                    stateLabel(task.state, epic: epic, task: task)
+                    ReflectionBadge([target(epic, task)], syncOnly: true)
+                }
+                // 終えたこと（渡すファイル）を送った後に、司令塔がしばらく受け取っていない・断ったときの理由
                 ReflectionStatusView(target(epic, task))
             }
             CardSection("手順") {

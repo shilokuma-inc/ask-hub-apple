@@ -92,14 +92,15 @@ struct GoalReviewView: View {
                 }
                 .controlSize(.large)
                 .disabled(isReflecting)
-                ReflectionStatusView(target)
+                // 直してほしいを送ったら、司令塔が受け付けるまで両方を押せなくし、その間は小さな印だけを出す
+                ReflectionStatusView(target, showsSyncBadge: true)
                     .frame(maxWidth: 520)
                     .padding(.horizontal)
             }
             .padding(.vertical, 10)
         } else if epic.isActive, let line = progressLine(epic) {
             // 開始した後は、司令塔が受け取ったか・どこまで進んだかを出し、epic の画面で続きを見られるようにする。
-            // 開始が反映されるまでは、その様子（司令塔が受け取っていない・断られた）も上に出す
+            // 司令塔がしばらく受け取っていない・断ったときは、その理由も上に出す（同期を待つ間は、行の小さな印だけ）
             VStack(spacing: 8) {
                 ReflectionStatusView(target, framed: true)
                     .padding(.horizontal, 16)
@@ -113,6 +114,7 @@ struct GoalReviewView: View {
         NavigationLink(value: AppRoute.epic(epic.id)) {
             HStack(spacing: 10) {
                 EpicStatusLabel(line: line)
+                ReflectionBadge([.goal(epicID: epic.id)], syncOnly: true)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .foregroundStyle(.secondary)
@@ -258,15 +260,12 @@ struct StartSheet: View {
         .sheetSending(sending)
     }
 
-    /// 送る。置けたら（同じものを送ってあったときも）閉じ、失敗したら理由を出して残る
+    /// 送る。送り始めたら（同じものを送ってあったときも）すぐ閉じ、epic は開始した形になる。送れなければ理由を出して残る
     private func start() {
-        guard let macID = selectedMacID, !sending.isSending else {
+        guard let macID = selectedMacID else {
             return
         }
-        Task {
-            if case .failed = await sending.send(.start(epicID: epic.id, macID: macID), in: store) {
-                return
-            }
+        if sending.submit(.start(epicID: epic.id, macID: macID), in: store) {
             dismiss()
         }
     }
