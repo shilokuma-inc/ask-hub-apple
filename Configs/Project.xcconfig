@@ -24,6 +24,6 @@ MACOSX_DEPLOYMENT_TARGET = 26.0
 
 // macOS の entitlements。push（com.apple.developer.aps-environment）は provisioning profile が要り、profile の無いアドホック署名では
 // ビルドが「requires a provisioning profile」で止まる。CI・ワーカー・スクショ・archive のアドホック署名は CODE_SIGN_STYLE=Manual にするので、
-// 自動の署名（Xcode が profile を用意する）のときだけ push を付ける
+// 自動の署名（Xcode が profile を用意する）のときだけ push を付ける。配布（TestFlight・App Store）の archive には、_archive.yml が archive の後に足す
 ASKHUB_MACOS_ENTITLEMENTS_Automatic = AskHub/AskHub-macOS.entitlements
 ASKHUB_MACOS_ENTITLEMENTS_Manual =

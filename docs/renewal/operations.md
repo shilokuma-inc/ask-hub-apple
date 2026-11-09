@@ -27,9 +27,10 @@
   - 断られたら、設定の「通知」に、通知が届かないことと、設定アプリ（Mac はシステム設定）の通知の画面を開くボタンを出す
   - デモのデータ（UI テスト・撮影を含む）と、アプリの中で動く単体テストでは、許可を求めず宛先も書かない
   - macOS の push の entitlement は provisioning profile が要り、profile の無いアドホック署名ではビルドが止まる。アドホック署名（CI・ワーカー・スクショ・archive。`CODE_SIGN_STYLE=Manual`）では付けず、自動の署名のときだけ付ける（`Configs/Project.xcconfig` の `ASKHUB_MACOS_ENTITLEMENTS_*`）。アドホック署名の Mac のアプリは通知を受け取れない
-  - iOS の配布（TestFlight・App Store）の archive は署名せずに作るので、`Tools/embed_archive_entitlements.py embed` で entitlement をアドホック署名で埋め込んでから Export する（`_archive.yml`）。
-    Export は archive の署名の entitlement だけを引き継ぐので、埋め込まないと TestFlight の版に `aps-environment` が入らず、APNs への登録が失敗する。
-    Export の後に IPA に残ったかを確かめ（`check`）、落ちていれば App Store Connect に上げずに止める
+  - 配布（TestFlight・App Store）の archive は、iOS は署名せずに、macOS はアドホック署名で作るので、`Tools/embed_archive_entitlements.py embed` で push の entitlement をアドホック署名で埋め込んでから Export する（`_archive.yml`。macOS は sandbox などに足して署名し直す）。
+    Export は archive の署名の entitlement だけを引き継ぐので、埋め込まないと TestFlight の版に push の entitlement が入らず、APNs への登録が失敗する。
+    Export の後に IPA・pkg に残ったかを確かめ（`check`）、落ちていれば App Store Connect に上げずに止める
+  - Mac には、TestFlight の版をデバイス登録なしで入れられる（[docs/release.md](../release.md) の「Mac に TestFlight の版を入れる」）
 - 入れ方: Apple Developer の Identifiers で App ID（`jp.shilokuma.AskHub`）の Push Notifications を有効にする（push の entitlement を付けたので、無効のままだと実機と Mac の自動の署名の profile に入らない。TestFlight の版も配布用の profile に入らず、Upload が Export か IPA の確認で止まる）。
   Keys で APNs の鍵を作って .p8 を落とし、常時オンの Mac の端末で `askhub-commander apns --key-id <鍵の id> --team-id <Team ID> --key-file <.p8 のパス>` を流してから、常駐を読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`）
   - .p8 の中身は Keychain（`apns-key`）にだけ置き、設定には鍵の id・Team ID・Bundle ID（既定 `jp.shilokuma.AskHub`。iOS と macOS で同じ）だけを書く。.p8 は Apple Developer から一度しか落とせないので、Mac には残さず安全な場所に移す
