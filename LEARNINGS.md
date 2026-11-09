@@ -355,6 +355,8 @@
   （確認のダイアログが出ず、次の待ちで落ちる）。帯の近くの行のボタンを押すときは、一覧の終わりまで `swipeUp()` してから押す（2026-11-10、`testAcceptAllShowsDoneAtOnceAndSyncsLater`）
 - Xcode 26.6 の `xcodebuild test`（iOS Simulator の UI テスト・`-resultBundlePath` あり）も、`Executed N tests` を出した後に戻らないことがあった。`.xcresult` は `Data` と `Staging` だけで、
   UI テストの画面の録画が `Data/data.0~…` に QuickTime で入る。結果はログの `Test Case … passed/failed` の行で判断して止める（2026-11-10）
+- Mac 版のビルドが TestFlight にあっても、内部テストのグループの「iPhone と iPad の App を Apple シリコン搭載の Mac でテスト」がオンだと、Apple シリコンの Mac の TestFlight からは iPad 版が入った。
+  iPad 版は `#if os(iOS)` の側で動くので、メニューバーに「設定…」が無く、端末の鍵のラベル（`UIDevice.current.model`）が `iPad` になる。グループの設定をオフにして入れ直すと Mac 版が入った（2026-11-10、個人の Mac での確認）
 
 ## Keychain
 
@@ -365,6 +367,8 @@
   （`DeviceSigningKey` の保存場所が Simulator でも `secureEnclave` になる）（2026-11-07、状態リポジトリへのつなぎ込み）
 - 署名の無い（ad-hoc の）司令塔を入れ替えると、Keychain の項目の「常に許可」が別のプログラムとみなされて効かず、入れ替えのたびに確認が出る。Developer ID と同じ識別子で署名し続ければ、一度の「常に許可」が入れ替えた後も続く（2026-11-08、`scripts/commander/deploy.sh`）
 - ssh のセッションからは、ログインキーチェーンの署名の鍵を使えない。`codesign` が `errSecInternalComponent` で止まり、`launchctl asuser` も「Could not switch to audit session」で使えない。遠隔で署名するときは、ログイン中のセッションの LaunchAgent に依頼のファイルを拾わせて署名させる（2026-11-08、`jp.shilokuma.askhub.deploy`）
+- 同じ Mac で、TestFlight の iPad 版を消して Mac 版を入れ直しても、「この端末の鍵」（Secure Enclave）は同じ公開鍵が出た（同じ Bundle ID・チーム）。
+  Mac 版で登録した後、Mac 版の「登録を確かめ直す」で登録済みになった（iPad 版では登録していない。2026-11-10）
 
 ## Swift
 
