@@ -317,6 +317,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   - `beforeURL`・`afterURL` は GitHub に上げた同じ画像の URL（`https://github.com/user-attachments/assets/…` だけ。最終 PR の本文に載せる）。上げられなければ `null`
   - `head` は After を撮った作業ブランチの先頭、`note` は撮れなかったわけ・Before が無いわけ（人が読む。500 文字まで）
 - `scene`・スクショ・`answer` は、見えると仕分けた仮決めだけが持つ
+- `screens` は画面の変化（仮決めに結びつかない、epic 全体で見た目が変わった画面）。`[{ "scene": "inbox-quiet", "title": "あなたの番が空のとき", "screenshots": { …仮決めと同じ形… } }]`。
+  判断の仕分けで選ぶ前（撮影の設定が無いリポジトリを含む）は省くか `null`、選んで無ければ空。`title` は撮ったときの一覧の説明で、撮る前は `null`。`scene` は重ねない
 - `answer` は `{ "choice": "ok" | "alternative" | "fix", "note": "…", "intent": { "keyId", "nonce" }, "at": "…" }`（型は `DecisionsFile`、`protocol/schemas/state/decisions.schema.json`）
 - `answer` は人の意図（OK・別案・直してほしい）への参照
 - 最終 PR の直し（`fixFinalPullRequest`）で Claude が報告した仮決めも足す。タスクに結びつかないので、`task` は持たず（`null`）、`pullRequest` は最終 PR にする。クライアントは「最終 PR #N の直し」と出す
@@ -421,6 +423,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   - `visibleDecisions`: 判断の仕分け（`classifyDecisions`）で見えるとした仮決めの id。ここに無いものは内部の細部。司令塔が `decisions.json` の `visible` に写す
   - `decisionScenes`: 判断の仕分けで、見えるとした仮決めごとに選んだ撮る画面（仮決めの id → 撮れる画面の一覧の id）。合う画面が無い仮決めは載せない。司令塔が `decisions.json` の `scene` に写す
   - `screenshots`: 撮影（`captureScreenshots`）で撮った、仮決めごとの Before / After（`decisions.json` の `screenshots` と同じ形）。司令塔が `decisions.json` に写す
+  - `changedScenes`: 判断の仕分けで選んだ、epic 全体で見た目が変わった画面（撮れる画面の一覧の id。無ければ空）。撮影の設定があり、画面の変化をまだ選んでいないときだけ書く。司令塔が `decisions.json` の `screens` に写す
+  - `screenChanges`: 撮影で撮った、画面の変化の Before / After（`decisions.json` の `screens` と同じ形）。司令塔が `decisions.json` に写す
   - `findings`: 直すこと（落ちたチェックとログの抜粋・必須の指摘）。20,000 文字まで。トークンらしい文字列は伏せてから書く
   - `report`: 実装と直し（`implementTask`・`fixTask`）で Claude が報告したこと（`summary`・`decisions`・`learnings`・`question`）。司令塔が `decisions.json`・知見を足す PR・質問に写す
 - `branch` は作ったブランチで、作業場所の用意（`prepareWorkspace`）なら作業ブランチ（`epic.json` の `branch` と同じ形。`epic.json` には司令塔がこれを読んで書く）

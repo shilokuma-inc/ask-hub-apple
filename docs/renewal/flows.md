@@ -285,10 +285,10 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 | 成功したジョブ | 司令塔がすること |
 | --- | --- |
 | （タスクがすべて `done`） | epic を `finalizing` にしてから、`verifyBeforeFinal` を作る |
-| `verifyBeforeFinal` | `decisions.json` に仕分けていない（`visible` が `null` の）仮決めがあれば `classifyDecisions` を、無ければ `openFinalPullRequest` を作る |
-| `classifyDecisions` | 試行の `outputs.visibleDecisions` を `decisions.json` に写す（仕分けていない項目だけ。載っている id は `true`、ほかは `false`）。見えるものには `outputs.decisionScenes` の撮る画面を `scene` に写す。前のジョブが直しなら、直した head の `reviewFinalPullRequest` を、そうでなければ `openFinalPullRequest` を作る |
+| `verifyBeforeFinal` | `decisions.json` に仕分けていない（`visible` が `null` の）仮決めがあるか、撮影の設定があって画面の変化（`screens`）をまだ選んでいなければ `classifyDecisions` を、無ければ `openFinalPullRequest` を作る |
+| `classifyDecisions` | 試行の `outputs.visibleDecisions` を `decisions.json` に写す（仕分けていない項目だけ。載っている id は `true`、ほかは `false`）。見えるものには `outputs.decisionScenes` の撮る画面を `scene` に写す。撮影の設定があれば、`outputs.changedScenes` を画面の変化（`screens`）に写す（まだ選んでいないときだけ。`decisions.json` が無ければ作る）。前のジョブが直しなら、直した head の `reviewFinalPullRequest` を、そうでなければ `openFinalPullRequest` を作る |
 | `openFinalPullRequest` | `outputs.pullRequest` を `epic.json` の `finalPullRequest` に書き、`outputs.commit` の head で `reviewFinalPullRequest` を作る |
-| `captureScreenshots` | 試行の `outputs.screenshots` を `decisions.json` の `screenshots` に写し、撮影の input と同じ最終 PR と head で `reviewFinalPullRequest` を作る |
+| `captureScreenshots` | 試行の `outputs.screenshots` を `decisions.json` の `screenshots` に、`outputs.screenChanges` を `screens` に写し、撮影の input と同じ最終 PR と head で `reviewFinalPullRequest` を作る |
 | `reviewFinalPullRequest`（`ready`） | マージの規則（`FinalMergeRule.manualReasons`）に当て、人の確認が要らなければ見た head で `mergeFinalPullRequest` を作る。要れば epic を `reviewing` にして人を待つ。`mergeRisks` が欠けていたら、自動でマージせずに人を待つ |
 | `reviewFinalPullRequest`（`fixCI`・`fixReview`） | 見た head で `fixFinalPullRequest`（`reason` は `ci`・`review`）を作る。自動の直しが 3 回を超えたら、作るが動かさずに `waitingHuman` にする |
 | `reviewFinalPullRequest`（判定なし） | 見ている間に head が進んだ（ワーカーは判定を書かずに今の head を `outputs.commit` に返す）。その head で `reviewFinalPullRequest` を作り直す |
@@ -298,7 +298,7 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 - 段取りのジョブは、前のジョブを `dependsOn` に持つ 1 本の列にする（`verifyBeforeFinal` だけは前を持たない）。列の最後のジョブが、次の一手を決める。人の意図で作る直し・マージも、そのときの最後のレビューにつなぐ
 - 動かす Mac: `verifyBeforeFinal`・`captureScreenshots`・`cleanUp` は epic の Mac、`fixFinalPullRequest` は epic の Mac の生きている印が新しければ epic の Mac、古ければ常時オンの Mac、ほかは常時オンの Mac。使うもの（`needs`）は、`verifyBeforeFinal`・`captureScreenshots` がビルド、`classifyDecisions`・`reviewFinalPullRequest` が Claude、`fixFinalPullRequest` が両方、`openFinalPullRequest`・`mergeFinalPullRequest`・`cleanUp` がどちらも使わない
 - 自動で作るジョブの元の人の意図（`origin`）は開始の意図。人の意図で作る直し・マージは、その意図
-- `reviewFinalPullRequest` を作るときは、撮影の設定（`build.screenshots`）があり、撮る画面を選んだ（`scene` のある）見える仮決めがあれば、先に同じ input の `captureScreenshots` を作る（最終 PR を出した後と直した後。最終 PR の CI と並んで撮る）。撮影が成功したら、撮れなかったものがあっても、同じ head でレビューする
+- `reviewFinalPullRequest` を作るときは、撮影の設定（`build.screenshots`）があり、撮る画面を選んだ（`scene` のある）見える仮決めか、画面の変化（`screens`）があれば、先に同じ input の `captureScreenshots` を作る（最終 PR を出した後と直した後。最終 PR の CI と並んで撮る）。撮影が成功したら、撮れなかったものがあっても、同じ head でレビューする
 - マージした epic は、ジョブを見張る一覧から外れるが、片付けを引き受けられるよう、マージしてから 7 日は見張り続ける（司令塔の `JobSweep` とワーカーの一覧）。片付けを持った Mac のオフラインは知らせない
 
 人の意図は、`targetVersion` が今の最終 PR の head（最後の `reviewFinalPullRequest` の `input.head`）と同じときだけ受け付ける。
@@ -320,6 +320,8 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
   template-app-ios 由来のリポジトリは、App Store のスクショの撮影モード（`ScreenshotDemo`。`-screenshot-demo -screenshot-scene <scene>`）をそのまま使える
 - 画面の選び方（ユーザーの決定）: 実装する Claude が、見た目を変えたら、その画面・状態をデモのデータで開ける画面を一覧に足す（実装の決まり `TaskRules.screenshotRule`）。
   判断の仕分けの Claude が、見える仮決めごとに、作業ブランチの先頭の一覧から変化が写る画面を 1 つ選ぶ（合う画面が無ければ選ばない。カードに「この仮決めが出る画面は、撮れる画面の一覧に無い」と出す）
+- 画面の変化（ユーザーの決定）: 見える仮決めが無くても、epic 全体の差分で見た目が変わった画面は、仕分けの Claude が一覧から選び（`decisions.json` の `screens`）、最終 PR の本文の「画面の変化」と AskHub の最終 PR の確認の画面に Before / After を出す。
+  依頼どおりに画面を変えただけで仮決めの無い epic（2026-11-09 の #984 で、スクショが 1 枚も付かなかった）にも付く。撮影の設定があるリポジトリでは、仮決めが無い epic でも最初の 1 回は仕分けを流して選ばせ、選んだ後は直しの後も選び直さない（同じ画面を撮り直す）。マージの規則には数えない
 - 撮り方（`captureScreenshots`。epic の Mac）: 作業ブランチの先頭（epic の作業場所。DerivedData が温まっている）と、base との分岐点（ジョブのフォルダに取り出す。DerivedData は別）を、それぞれ枠の Simulator 向けにビルドして入れ直し、
   画面ごとにアプリを起動し直して、続けて撮った 2 枚が同じになってから撮る（30 秒たっても動いていれば、最後に撮ったもの）。上端は 9:41・電池は満タン・外観はライトに固定し、差が画面の変化だけになるようにする。画像は長い辺を 1400 px に縮める
 - Before は、base の一覧に同じ画面があるときだけ撮る（無ければ「Before なし（この画面は epic で足した）」）。同じコミット・画面の画像が状態リポジトリにあれば撮り直さない（直しの後は After だけを撮る）
