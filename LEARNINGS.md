@@ -135,6 +135,8 @@
   （状態のファイルを先に読み終え、その後に記録を読んだとき）。受け付けを見つけた読み込みだけで「反映された」とせず、その後に始めた読み込みが終わるまで反映中にする（`ReflectionTracker`。2026-11-09、反映中の UI）
 - CodeRabbit は、PR の head のコミットに付ける印を、commit status `CodeRabbit` から check run `CodeRabbit`（アプリの slug は `coderabbitai`）に切り替えた（2026-10-25 までは commit status、2026-11-01 以降は check run）。
   完了は `completed`・`success`（見出し "Finished"）、上限は `completed`・`neutral`（"Review rate limited"）、見送りは `completed`・`skipped`（"Review skipped…"）。commit status だけを読むと、終わっていても「始まっていない」に見える
+- リポジトリの「マージしたら head のブランチを自動で消す」（`delete_branch_on_merge`）が有効だと、マージの API が返った直後に GitHub がブランチを消す。
+  ブランチを読んでから消すまでの間に消えると、ref の削除（`DELETE /git/refs/heads/…`）は 422 ではなく 404 で返ることがある。404 は権限が無いときにも返るので、読み直して消えていれば「もう無い」とみなす
 
 ## ビルド・テスト
 
