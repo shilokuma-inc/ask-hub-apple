@@ -158,8 +158,10 @@ public actor CommanderLoop {
     /// 1 周。引き受けて動かし始めたジョブを返す
     @discardableResult
     public func cycle() async throws(CommanderError) -> [JobFile] {
+        var timer = CycleTimer()
         try await beatIfDue()
         let verifier = try await verifier()
+        timer.lap("生きている印と鍵")
         let intake = IntentIntake(context: context, verifier: verifier, handlers: Self.handlers)
         // 順に 1 つずつ処理し、状態リポジトリに書けなかったらそこで止める（`IntentIntake.processPending` と同じ。次の周で続きから）
         let pending = try await intake.pending()
@@ -167,7 +169,9 @@ public actor CommanderLoop {
         for intent in pending {
             log("人の意図: \(try await intake.process(intent))")
         }
+        timer.lap("人の意図")
         var swept = try await JobSweep(context: context).sweepAll()
+        timer.lap("ジョブの見回り")
         for job in swept.changed {
             log("ジョブ \(job.kind.rawValue) \(job.id) を \(job.state.rawValue) にした")
         }
@@ -181,10 +185,14 @@ public actor CommanderLoop {
             log(note)
         }
         swept.jobs += advanced.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
+        timer.lap("タスクの流れ")
         let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier))
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
+        timer.lap("引き受けと通知")
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
         await mirror?.syncAll(verifier: verifier)
+        timer.lap("Discussion の写し")
+        if let report = timer.report { log(report) }
         return picked
     }
 

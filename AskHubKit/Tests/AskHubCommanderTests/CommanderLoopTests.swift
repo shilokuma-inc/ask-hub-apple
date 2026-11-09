@@ -183,6 +183,12 @@ extension ClaudeJobRunnerTests {
         #expect(sleeper.waits == Array(repeating: .seconds(5), count: 6))
     }
 
+    @Test func reportsOnlySlowCycles() {
+        let steps: [(name: String, duration: Duration)] = [("人の意図", .milliseconds(1_200)), ("ジョブの見回り", .seconds(40))]
+        #expect(CycleTimer.report(steps: steps, total: .seconds(19)) == nil)
+        #expect(CycleTimer.report(steps: steps, total: .milliseconds(41_200)) == "1 周に 41.2 秒かかった（人の意図 1.2 秒・ジョブの見回り 40.0 秒）")
+    }
+
     @Test func workerSharesLockWithIntake() async throws {
         // Claude の結果を書く処理と人の意図の処理は、同じ排他を使う（読み直してから書くまでに答え直しが割り込まない）
         let loop = loop(InMemoryStateStore(), claude: ScriptedRunner([]))
