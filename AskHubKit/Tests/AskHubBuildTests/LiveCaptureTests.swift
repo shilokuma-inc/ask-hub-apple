@@ -19,7 +19,8 @@ struct LiveCaptureTests {
     @Test func capturesEveryScene() async throws {
         let environment = ProcessInfo.processInfo.environment
         let project = URL(fileURLWithPath: try #require(environment["ASKHUB_LIVE_CAPTURE_PROJECT"]))
-        let settings = try JSONDecoder().decode(BuildSettings.self, from: Data(try #require(environment["ASKHUB_LIVE_CAPTURE_SETTINGS"]).utf8))
+        let settingsJSON = try #require(environment["ASKHUB_LIVE_CAPTURE_SETTINGS"])
+        let settings = try JSONDecoder().decode(BuildSettings.self, from: Data(settingsJSON.utf8))
         let scenesFile = project.appendingPathComponent(try #require(environment["ASKHUB_LIVE_CAPTURE_SCENES"]))
         let scenes = try JSONDecoder().decode(ScreenshotScenesFile.self, from: Data(contentsOf: scenesFile))
         #expect(scenes.problems.isEmpty)
@@ -47,7 +48,8 @@ struct LiveCaptureTests {
             )
             let started = Date()
             let outcome = try await ScreenshotCapturer(tools: tools, runner: ProcessCommandRunner()).capture(request, on: simulator)
-            print("[live] \(Int(Date().timeIntervalSince(started))) 秒: 撮れた \(outcome.images.keys.sorted())・撮れなかった \(outcome.failures)・\(outcome.problem ?? "")")
+            let seconds = Int(Date().timeIntervalSince(started))
+            print("[live] \(seconds) 秒: 撮れた \(outcome.images.keys.sorted())・撮れなかった \(outcome.failures)・\(outcome.problem ?? "")")
             #expect(outcome.problem == nil)
             #expect(outcome.failures.isEmpty)
             #expect(outcome.images.count == scenes.scenes.count)
