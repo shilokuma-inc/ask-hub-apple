@@ -124,6 +124,12 @@
   - 生きている印を書くたび（10 分ごと）に `claude --version` を測り直して `versions.claude` に書く。人が入れ替えたら、読み込み直さなくても次の印で分かる
   - クライアントは、Claude Code の版が司令塔と違う Mac を、Mac の画面と「あなたの番」（時間のあるときに）に出す。オフラインの Mac は、戻ってから出す
   - 版をそろえるには、司令塔と同じ版の `claude` を、その Mac の設定の `claude` の場所に入れる（次の Claude の呼び出しから使う）
+- ビルドとテストに使う Xcode は、Mac の `xcode-select` に任せず、設定の `xcode`（`Xcode.app` か、その下の `Contents/Developer` の絶対パス）で決める
+  - `askhub-commander xcode <Xcode.app のパス>`（ワーカーは `askhub-worker xcode`）で決める。決める前に、その Xcode の `xcodebuild -version` を読めることを確かめる（ライセンスに同意していない Xcode は断る）。`xcode --unset` で xcode-select で選んだものに戻す。`setup` を流し直しても残る
+  - 司令塔とワーカーは、ビルド・テスト・Simulator の操作・スクショの子に `DEVELOPER_DIR` でその Xcode を渡す。人が `xcode-select` を切り替えても、ワーカーのビルドとテストは同じ Xcode で流れる（2026-11-10 に常時オンの Mac の `xcode-select` が Xcode 26.6 に切り替わり、iOS 27.0 の Simulator を使うジョブが 2 回続けて止まった）。決めていなければ今までどおり `xcode-select` で選んだもの
+  - 決めた Xcode を消した・名前を変えたときは、ビルドと Simulator の用意の前に理由の分かる文で止める（環境の不調として人に渡る）。起動のログ・`check`・アプリの Mac の詳細（「Xcode」の行）で、どの Xcode を使っているかが分かる
+  - 生きている印を書くたび（10 分ごと）に `xcodebuild -version` を測り直して `versions.xcode` に書く。決めていない Mac で xcode-select を切り替えたら、次の印で分かる
+  - 決めた値は常駐が起動したときに読むので、決め直したら読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.<役割>`。ターミナルで `askhub-worker run` を流している Mac は流し直す）
 - 生きている印に版を書く。司令塔とワーカーの版が合わないときは、ジョブを受けずに知らせる
 - 更新の手順（常時オンの Mac は遠隔で、ほかの Mac は手で）を、切り替えの前に決める
 - 作業ファイルは TCC の保護の対象の場所（デスクトップ・書類など）に置かない。ワーカー専用のフォルダを使う
@@ -149,8 +155,9 @@
    - 公開鍵の記録の最初の鍵を固定する（後から別の鍵には変えられない）
    - 対象のリポジトリは、Discussions を有効にし、カテゴリ「Ideas」（有効にすると GitHub が作る既定のカテゴリ）を残しておく。無いあいだは Discussion の写しを書かず、司令塔のログに理由を出す（依頼から開始までの流れは止まらない）
 3. `askhub-commander launch-agent` で LaunchAgent の定義を書き、出てくる `launchctl bootstrap` のコマンドで登録する（ログは `~/Library/Logs/AskHub/commander.log`）
-4. `askhub-commander check` で、設定と Keychain の様子・トークンの期限（値は出さない）を確かめる
-5. 状態リポジトリに見張りを入れる（上の「司令塔の見張り」の「正本と入れ方」）
+4. `askhub-commander xcode <Xcode.app のパス>` で、ビルドとテストに使う Xcode を決める（上の「ワーカーと司令塔の配り方」。決めないと `xcode-select` で選んだものを使い、人が切り替えると変わる）
+5. `askhub-commander check` で、設定と Keychain の様子・トークンの期限（値は出さない）・使う Xcode とその版を確かめる
+6. 状態リポジトリに見張りを入れる（上の「司令塔の見張り」の「正本と入れ方」）
 
 - git は、司令塔自身を credential helper（`askhub-commander git-credential`）にして、Keychain の GitHub のトークンを受け取る。git に `credential.useHttpPath=true` を渡し、問い合わせの path（`owner/repo.git`）の持ち主でトークンを選ぶ。持ち主のトークンが無ければ何も返さず、理由（トークンの値は出さない）を標準エラーに出す
 - 開始のときに常時オンの Mac が選ばれたら、司令塔が作業場所の用意（`prepareWorkspace`）も引き受ける（下の「ワーカーの入れ方」と同じ動き）
@@ -170,6 +177,8 @@
   3. 結果は `deploy/last.log`（最後の行が `status=ok` か `status=failed`）。手元のスクリプトがそれを待って出す
 - 最初の 1 回だけ、常時オンの Mac の画面に 2 種類の確認が出る。どちらも「常に許可」にする: `codesign` が署名の鍵を使う確認と、署名した司令塔が Keychain の項目（GitHub のトークン・Claude の setup-token・APNs の鍵）を読む確認
 - 戻すときは、常時オンの Mac で `askhub-commander.prev` を `askhub-commander` に戻して読み込み直す
+- Xcode を上げるときは、新しい Xcode を版の付いた名前（`/Applications/Xcode-27.1.0.app` など）で並べて入れ、動いているジョブが無いときに `askhub-commander xcode <新しい Xcode.app のパス>` で決め直してから読み込み直す。前の Xcode に戻すときも同じ。`xcode-select` は人の作業用に好きに切り替えてよい
+  - `/Applications/Xcode.app` を決めると、App Store の更新で中身が入れ替わったときに、ワーカーの Xcode も知らないうちに変わる。版の付いた名前の Xcode を決める
 
 ### ワーカーの入れ方（段階 3）
 
@@ -184,7 +193,8 @@
 3. 起動する
    - 常駐できる Mac: `askhub-worker launch-agent` で LaunchAgent の定義を書き、出てくる `launchctl bootstrap` のコマンドで登録する（ログは `~/Library/Logs/AskHub/worker.log`）
    - 常駐できない Mac: ターミナルで `askhub-worker run` を流したままにする（ログはそのターミナルに出る）。再起動・ログアウトで止まり、クライアントに「オフライン」と出るので、もう一度流せば続きから再開する
-4. `askhub-worker check` で、設定と Keychain の様子・トークンの期限（値は出さない）を確かめる
+4. `askhub-worker xcode <Xcode.app のパス>` で、ビルドとテストに使う Xcode を決める（司令塔と同じ。決め直したら、常駐を読み込み直すか `run` を流し直す）
+5. `askhub-worker check` で、設定と Keychain の様子・トークンの期限（値は出さない）・使う Xcode とその版を確かめる
 
 - `run` は、この Mac が受け持つ epic（開始のときに選ばれた epic）のジョブを 60 秒ごとに読み、自分宛ての `assigned` のジョブを同時の上限の中で引き受けて試行を書く。生きている印（`macs/<mac>.json`）は 10 分ごとに書く。人の意図の処理とジョブの状態の更新はしない（司令塔の仕事）
 - 引き受けたジョブは、元になった人の意図の署名を確かめてから実行する。確かめられなければ実行せず、想定外の失敗として人に渡す
@@ -352,7 +362,7 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
   ルールセットで必須にしたチェックも、出なければ PR をマージできない。絞っていたら、外す PR を移すときに出す（shariverse/oshikatsu-countdown-ios#161、shilokuma-inc/ask-hub-apple#997）。待たないチェック（ubuntu の軽い検査など）は絞ってよい
 - **作業ブランチの名前**: 今の仕組みの CI は、統合ブランチ `epic/**` を前提に書いてある（子 PR は PR のイベントで Build を動かさない・最終 PR だけ更新でも UI テストまで流す・concurrency のグループ・`.coderabbit.yaml` の子 PR の除外）。
   新しい仕組みの作業ブランチは `askhub/<epic の id>`、子ブランチは `askhub/<epic の id>-<タスクの id>` なので、`epic/` を `askhub/` に読み替える。読み替えないと、子 PR が push と PR のイベントで 2 回（PR のほうは UI テストまで）流れ、macOS のランナーの枠を食う
-- **ワーカーの Xcode**: 各リポジトリの CI は Xcode を固定している（2026-11 は 26.6）が、ワーカーはその Mac の Xcode（Mac mini は 27.1）でビルドとテストを流す。27.1 は Swift の並行性のチェックが厳しく、CI で通るコードが落ちることがある
+- **ワーカーの Xcode**: 各リポジトリの CI は Xcode を固定している（2026-11 は 26.6）が、ワーカーはその Mac の設定で決めた Xcode（`xcode`。決めていなければ `xcode-select` で選んだもの。Mac mini は 27.1）でビルドとテストを流す。27.1 は Swift の並行性のチェックが厳しく、CI で通るコードが落ちることがある
   （shariverse/dokogacha-app-ios は `DGDashedLine.swift` の `Shape` への準拠が `#ConformanceIsolation` で落ちる）。移す前に、ワーカーと同じ Xcode で `build` の設定と同じ `xcodebuild build-for-testing` を流して確かめ、落ちたら移す前に直す
 - **非常口の Keychain の確認**: `askhub add-repository`・`configure-repository` を送るために develop からビルドし直した `askhub` は、署名が変わるので、初回に Keychain（サービス `jp.shilokuma.AskHub.cli`）の項目を読む確認が出る。許可すれば続けて使える
 - **共通リポジトリの前の期間**: 共通リポジトリ（段階 5）ができるまでは、各リポジトリの今のワークフローを入れ替えずに使う
