@@ -152,6 +152,13 @@
   すべて 304 でも約 30 秒かかっていた。Git の tree と blob は sha で中身が決まるので、直下の一覧（ETag つき）だけを毎回読み、その下は前に読んだ tree と blob を使い回すと
   （`StateStore.snapshot()`）、変わっていなければ 1 回・0.3 秒になる（起動の直後の 1 回目は、今までと同じ回数を 200 で読む）。blob は `GET …/git/blobs/{sha}` に
   `Accept: application/vnd.github.raw+json` を付けると、base64 の JSON ではなく中身がそのまま返る（中身から求めた blob の sha が一致することを確かめた。2026-11-10、#989）
+- Actions のワークフローを `paths`・`paths-ignore` で絞ると、当たらない変更ではワークフローの実行そのものが作られず、check run が 1 つも出ない（skipped のチェックも出ない）。
+  AskHub のワーカーは待つチェック（`repo.json` の `build.childChecks`・`finalChecks`）が出るのを 30 分待って「始まらない」の失敗にし、ルールセットで必須にしたチェックなら PR をマージできない。
+  ドキュメントだけの #992 には `build` も `build / build` も無かった。待つチェックを出すワークフローは絞らない（2026-11-10、shariverse/oshikatsu-countdown-ios#161・#997）
+- 再利用ワークフロー（`workflow_call`）を呼ぶジョブが `if` で飛ばされると、check run は `build / build` ではなく呼び出し側のジョブ名だけ（`build`）で、conclusion が `skipped` になる
+  （この repo の PR の synchronize で確かめた）。待つチェックの名前と別なので、飛ばしたイベントの回を成功と取り違えることはない（2026-11-10、#997）
+- 今の仕組みの CI に残っている `epic/**` の判定（子 PR では PR のイベントで Build を動かさない）は、新しい作業ブランチ `askhub/**` に当たらない。
+  そのままだと子 PR（`askhub/<epic>-<task>` → `askhub/<epic>`）が push と PR のイベントで 2 回流れ、PR のほうは UI テストまで流す（#983 で 5 分と 25 分）。移すときに `askhub/` に読み替える（2026-11-10、#997）
 
 ## ビルド・テスト
 
@@ -365,6 +372,9 @@
   `AppNavigator.isShowingSettings = true` と、撮りたい節を `Form` の先頭に移す変更を当ててビルドし、`xcrun simctl io <udid> screenshot` で撮る（コミットしない）。
   Before と After で同じ Simulator を使えば、Keychain の端末の鍵も同じものが出る。UserDefaults の値は `simctl spawn <udid> defaults write <Bundle ID> <キー> -string '…'` で入れる
   （`-string` を付けないと、`'` や括弧を含む値は「Could not parse」で入らない）（2026-11-10、端末の名前の欄）
+- 各リポジトリの CI は Xcode 26.6 で固定しているが、AskHub のワーカー（Mac mini）は Xcode 27.1 でビルドする。shariverse/dokogacha-app-ios は、CI では通るのに 27.1 では
+  `DGDashedLine.swift` の `DashedLineShape: Shape` が `#ConformanceIsolation`（既定の隔離が MainActor の型の `Shape` への準拠）で落ちる。既存のリポジトリを AskHub に移す前に、
+  ワーカーと同じ Xcode で `repo.json` の `build` と同じ `xcodebuild build-for-testing` を流して確かめる（2026-11-09、shariverse の移行の調査）
 
 ## Keychain
 
@@ -377,6 +387,8 @@
 - ssh のセッションからは、ログインキーチェーンの署名の鍵を使えない。`codesign` が `errSecInternalComponent` で止まり、`launchctl asuser` も「Could not switch to audit session」で使えない。遠隔で署名するときは、ログイン中のセッションの LaunchAgent に依頼のファイルを拾わせて署名させる（2026-11-08、`jp.shilokuma.askhub.deploy`）
 - 同じ Mac で、TestFlight の iPad 版を消して Mac 版を入れ直しても、「この端末の鍵」（Secure Enclave）は同じ公開鍵が出た（同じ Bundle ID・チーム）。
   Mac 版で登録した後、Mac 版の「登録を確かめ直す」で登録済みになった（iPad 版では登録していない。2026-11-10）
+- develop からビルドし直した非常口（`askhub`）は、署名が変わるので、初回に Keychain（サービス `jp.shilokuma.AskHub.cli`）の項目を読む確認が出る。許可すれば続けて使える
+  （司令塔と同じく、アドホック署名のビルドは別のプログラムとみなされる。2026-11-10、shariverse の移行）
 
 ## Swift
 
