@@ -369,6 +369,7 @@
   `BuildTools.toolDirectories`（`/opt/homebrew/bin`・`/usr/local/bin`・`~/.local/bin`）から絶対パスで探して起動する。XcodeGen の `Spec validation error:` は理由を次の行に書くので、
   出力の抜粋をエラーの行だけに絞ると理由が落ちる。XcodeGen（2.46）は環境変数 `USER` が無いと「Couldn't find current username」で止まる（`LOGNAME` だけでは足りない）ので、
   環境変数を作り直すときは `USER` を渡す（2026-11-10、`build.xcode.generate`）
+- 判断のカードの Before と After で時刻の文がずれる件は、デモの時計を止める起動引数 `-demoClock <ISO 8601>`（`DemoScenario.clockKey`）を撮れる画面の一覧の全部の画面に渡してそろえる。止めた時計では機械の反応が起きないので、撮影のほかには使わない（2026-11-10、`.askhub/screenshot-scenes.json`）
 
 ## Keychain
 
