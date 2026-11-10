@@ -48,7 +48,7 @@ struct WorkerLoopTests {
             settings: .init(kind: .manual, capacity: .init(claude: 1, build: 1), workerVersion: "0.1.0", claudeVersion: "2.1.316"),
             verifier: { verifier },
             runners: [.prepareWorkspace: runner],
-            status: { CommanderLoop.MachineStatus(diskFreeGB: 120, load: 3.2, selfCheck: selfCheck) },
+            status: { CommanderLoop.MachineStatus(diskFreeGB: 120, load: 3.2, selfCheck: selfCheck, xcodeVersion: "26.6") },
             log: { _ in }
         )
     }
@@ -148,7 +148,7 @@ struct WorkerLoopTests {
         let mac = try StateFileCoder.decode(MacFile.self, from: #require(await store.data(at: path)))
         #expect(mac.kind == .manual)
         #expect(mac.capacity == .init(claude: 1, build: 1))
-        #expect(mac.versions == .init(worker: "0.1.0", claude: "2.1.316"))
+        #expect(mac.versions == .init(worker: "0.1.0", claude: "2.1.316", xcode: "26.6"))
         #expect(mac.diskFreeGB == 120)
         // 間隔の前には書き直さず、過ぎたら書く
         clock.withLock { $0 = Self.now.addingTimeInterval(5 * 60) }

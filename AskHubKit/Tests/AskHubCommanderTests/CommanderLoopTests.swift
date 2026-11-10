@@ -97,7 +97,11 @@ extension ClaudeJobRunnerTests {
             verifier: { IntentVerifier(publicKeys: publicKeys) },
             client: ClaudeClient(setup: QuestionJobsTests.setup, runner: claude),
             workspace: FixedWorkspace(directory: directory),
-            status: { CommanderLoop.MachineStatus(diskFreeGB: 100, load: 0.5, selfCheck: selfCheck, claudeVersion: claudeVersion) },
+            status: {
+                CommanderLoop.MachineStatus(
+                    diskFreeGB: 100, load: 0.5, selfCheck: selfCheck, claudeVersion: claudeVersion, xcodeVersion: "27.1"
+                )
+            },
             log: { _ in },
             sleeper: sleeper,
             mirror: mirror,
@@ -262,6 +266,8 @@ extension ClaudeJobRunnerTests {
         #expect(commander.versions.claude == "2.1.320")
         let mac = try #require(try await read(MacFile.self, at: StatePath.mac(Self.commander), in: store))
         #expect(mac.versions.claude == "2.1.320")
+        // ワーカーがビルドとテストに使う Xcode の版も、印を書くときに測ったものを書く（xcode-select を切り替えたら次の印で分かる）
+        #expect(mac.versions.xcode == "27.1")
         #expect(mac.kind == .alwaysOn)
         #expect(mac.capacity == .init(claude: 2, build: 0))
         // 間隔の前には書き直さない
