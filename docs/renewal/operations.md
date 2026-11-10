@@ -362,7 +362,8 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
 - **待つチェックの起動の条件**: `childChecks`・`finalChecks` のチェックを出すワークフローは、`paths`・`paths-ignore` で絞らない。絞っていると、ドキュメントだけのタスクの子 PR（最終 PR も）でチェックが出ず、ワーカーが 30 分待って「始まらない」（unexpected）の失敗で人に渡す。
   ルールセットで必須にしたチェックも、出なければ PR をマージできない。絞っていたら、外す PR を移すときに出す（shariverse/oshikatsu-countdown-ios#161、shilokuma-inc/ask-hub-apple#997）。待たないチェック（ubuntu の軽い検査など）は絞ってよい
 - **信用するレビューの書き手**: ビルドの設定の `trustedReviewers` に `coderabbitai[bot]` を入れるのは、その organization に CodeRabbit が入っているときだけにする。入れると、ワーカーは最終 PR のレビューで CodeRabbit が始まるのを待つので、入っていなければ最終 PR ごとに 15 分（`FinalReviewTiming` の `reviewerStartLimit`）待ってから進む。
-  入っているかは、最近の PR に coderabbitai のコメントがあるかで分かる（`gh pr list -R <owner>/<repo> --state all --limit 5 --json comments --jq '[.[].comments[].author.login] | unique'`）。tm-family には入っていなかったので、3 本とも空にした
+  入っているかは、organization に入っている GitHub App の一覧に `coderabbitai` があるかで見る（`gh api orgs/<owner>/installations --jq '.installations[] | {app_slug, repository_selection}'`。organization の owner のトークンで読める）。
+  `repository_selection` が `selected` なら、organization の設定の GitHub Apps で、そのリポジトリが選ばれているかも見る。tm-family には入っていなかったので、3 本とも空にした
 - **作業ブランチの名前**: 今の仕組みの CI は、統合ブランチ `epic/**` を前提に書いてある（子 PR は PR のイベントで Build を動かさない・最終 PR だけ更新でも UI テストまで流す・concurrency のグループ・`.coderabbit.yaml` の子 PR の除外）。
   新しい仕組みの作業ブランチは `askhub/<epic の id>`、子ブランチは `askhub/<epic の id>-<タスクの id>` なので、`epic/` を `askhub/` に読み替える。読み替えないと、子 PR が push と PR のイベントで 2 回（PR のほうは UI テストまで）流れ、macOS のランナーの枠を食う
 - **ワーカーの Xcode**: 各リポジトリの CI は Xcode を固定している（2026-11 は 26.6）が、ワーカーはその Mac の設定で決めた Xcode（`xcode`。決めていなければ `xcode-select` で選んだもの。Mac mini は 27.1）でビルドとテストを流す。27.1 は Swift の並行性のチェックが厳しく、CI で通るコードが落ちることがある
