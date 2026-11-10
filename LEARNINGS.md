@@ -398,6 +398,11 @@
   指定した秒のコマを JPEG にできる（返る実際の時刻を見ると、どこでコマが止まったかが分かる）（2026-11-10、#1006）
 - UI テストの最中に Simulator のアプリへ `sample` を 1 秒ごとに当てると、読む間アプリを止めるので所要時間が数倍になり、ほかのテストまで落ちる。CI で止まりを調べるときに時間を比べる回では `sample` を当てない（2026-11-10、#1006）
 - 判断のカードの Before と After で時刻の文がずれる件は、デモの時計を止める起動引数 `-demoClock <ISO 8601>`（`DemoScenario.clockKey`）を撮れる画面の一覧の全部の画面に渡してそろえる。止めた時計では機械の反応が起きないので、撮影のほかには使わない（2026-11-10、`.askhub/screenshot-scenes.json`）
+- ワーカーの枠の Simulator（Xcode 27.1・iOS 27.0）は、中の状態が壊れて、入れたアプリやテストの実行役を起動できなくなることがある。結果のバンドルのエラーと落ちたテストが
+  `Failed to install or launch the test runner`・`Simulator device failed to launch <Bundle ID>. No such process`・
+  `The request was denied by service delegate (SBMainWorkspace) for reason: NotFound ("Unknown application…")`・`The test runner hung before establishing connection.`
+  （出力には `DTServiceHubClient failed to bless service hub` も出る）になり、同じ枠を使う次のジョブにも持ち越す。`xcrun simctl shutdown` で止めてから流し直すと通った。
+  `EpicBuilder` は、結果のバンドルのエラーと落ちたテストがすべてこの形のときだけ、Simulator を消去して起動し直し、1 回だけ流し直す（2026-11-10、Mac mini で 3 回。#1013）
 
 ## Keychain
 
