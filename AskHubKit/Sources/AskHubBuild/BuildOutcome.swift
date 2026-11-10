@@ -89,13 +89,13 @@ enum BuildClassifier {
     ///
     /// 区分が `environment` で、結果のバンドルにエラーか落ちたテストがあり、そのすべてが起動の失敗（`launchPhrases`）のときだけ true にする。
     /// ビルドのエラーや、起動できたうえで落ちたテストが 1 つでもあれば、流し直して epic の変更で落ちたテストを隠さないよう false にする。
-    /// 結果のバンドルを読めなかったときも、ほかに落ちたテストがあったか分からないので false
+    /// テストの要約（件数）を読めなかったとき（ビルドの結果だけ読めたときを含む）も、ほかに落ちたテストがあったか分からないので false
     static func isLaunchFailure(_ failure: BuildFailureKind?, kind: BuildKind, report: BuildReport) -> Bool {
-        guard failure == .environment, kind.isTest else { return false }
+        guard failure == .environment, kind.isTest, let counts = report.tests else { return false }
         let messages = report.errors.map(\.message) + report.failedTests.map(\.message)
         guard !messages.isEmpty, messages.allSatisfy(isLaunchMessage) else { return false }
         // 落ちたテストの数が一覧より多ければ、一覧に出ていない失敗がある
-        return (report.tests?.failed ?? 0) <= report.failedTests.count
+        return counts.failed <= report.failedTests.count
     }
 
     private static func isLaunchMessage(_ message: String) -> Bool {
