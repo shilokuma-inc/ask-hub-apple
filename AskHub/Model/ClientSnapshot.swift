@@ -46,6 +46,11 @@ extension ClientSnapshot {
         repositories.first { $0.id == id }
     }
 
+    /// 対象のリポジトリを持ち主（organization）ごとにまとめたもの。依頼のシートとリポジトリのタブで見出しを付けて並べる
+    var repositoryGroups: [RepositoryOwnerGroup] {
+        RepositoryOwnerGroup.grouping(repositories)
+    }
+
     func epic(_ id: Epic.ID) -> Epic? {
         epics.first { $0.id == id }
     }

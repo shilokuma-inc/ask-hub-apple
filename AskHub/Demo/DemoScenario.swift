@@ -229,10 +229,17 @@ extension DemoData {
     ]
 
     static let candidates: [TargetRepository] = [
-        TargetRepository(owner: owner, name: "memo-widget-ios", appName: "メモウィジェット", icon: .monogram),
-        TargetRepository(owner: owner, name: "sleep-log-apple", appName: "睡眠ログ", icon: .monogram),
-        TargetRepository(owner: secondOwner, name: "plant-water-ios", appName: "水やり当番", icon: .monogram)
+        TargetRepository(owner: owner, ownerAvatar: ownerAvatar(owner), name: "memo-widget-ios", appName: "メモウィジェット", icon: .monogram),
+        TargetRepository(owner: owner, ownerAvatar: ownerAvatar(owner), name: "sleep-log-apple", appName: "睡眠ログ", icon: .monogram),
+        TargetRepository(
+            owner: secondOwner, ownerAvatar: ownerAvatar(secondOwner), name: "plant-water-ios", appName: "水やり当番", icon: .monogram
+        )
     ]
+
+    /// デモの organization のアバター。架空の名前なので GitHub からは取らない（同じ名前の実在のアカウントの画像が写らないように）
+    static func ownerAvatar(_ owner: String) -> RepositoryIcon {
+        owner == secondOwner ? .symbol("leaf.fill", .green) : .symbol("paintpalette.fill", .indigo)
+    }
 
     private static func repository(
         _ name: String,
@@ -242,7 +249,9 @@ extension DemoData {
         owner: String = DemoData.owner,
         lastMac: Mac.ID?
     ) -> TargetRepository {
-        TargetRepository(owner: owner, name: name, appName: appName, icon: .symbol(symbol, tint), lastMacID: lastMac)
+        TargetRepository(
+            owner: owner, ownerAvatar: ownerAvatar(owner), name: name, appName: appName, icon: .symbol(symbol, tint), lastMacID: lastMac
+        )
     }
 
     func macs() -> [Mac] {
