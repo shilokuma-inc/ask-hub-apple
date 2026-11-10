@@ -54,7 +54,12 @@ public struct GitHubDiscussions: DiscussionAPI {
             }
             if thread == nil {
                 thread = DiscussionThread(
-                    id: found.id, number: found.number, title: found.title, body: found.body, viewerDidAuthor: found.viewerDidAuthor
+                    id: found.id,
+                    number: found.number,
+                    title: found.title,
+                    body: found.body,
+                    viewerDidAuthor: found.viewerDidAuthor,
+                    closed: found.closed
                 )
             }
             thread?.comments += comments
@@ -129,6 +134,12 @@ public struct GitHubDiscussions: DiscussionAPI {
         let variables: [String: JSONValue] = ["id": .string(id), "body": .string(body)]
         let response = try await mutate(DiscussionQueries.updateComment, variables: variables, as: UpdateCommentData.self)
         guard try response.requireData().updateDiscussionComment?.comment != nil else { throw .malformed("直したコメントが返らない") }
+    }
+
+    public func closeDiscussion(_ id: String, reason: DiscussionCloseReason) async throws(DiscussionError) {
+        let variables: [String: JSONValue] = ["id": .string(id), "reason": .string(reason.rawValue)]
+        let response = try await mutate(DiscussionQueries.closeDiscussion, variables: variables, as: CloseDiscussionData.self)
+        guard try response.requireData().closeDiscussion?.discussion != nil else { throw .malformed("閉じた Discussion が返らない") }
     }
 
     private static func variables(of repo: RepositoryFullName) -> [String: JSONValue] {
@@ -316,6 +327,7 @@ struct DiscussionData: Decodable {
         let title: String
         let body: String
         let viewerDidAuthor: Bool
+        let closed: Bool
         let comments: Connection<CommentNode>
     }
 
@@ -397,4 +409,12 @@ struct UpdateCommentData: Decodable {
     }
 
     let updateDiscussionComment: Payload?
+}
+
+struct CloseDiscussionData: Decodable {
+    struct Payload: Decodable {
+        let discussion: CreatedNode?
+    }
+
+    let closeDiscussion: Payload?
 }

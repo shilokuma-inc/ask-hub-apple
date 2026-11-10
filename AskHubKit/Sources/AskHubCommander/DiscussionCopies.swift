@@ -20,6 +20,12 @@ struct DiscussionCopies: Equatable, Sendable {
         }
     }
 
+    /// 終わった epic の締めのコメントと、閉じる理由
+    struct Closing: Equatable, Sendable {
+        var copy: Copy
+        var reason: DiscussionCloseReason
+    }
+
     struct QuestionCopy: Equatable, Sendable {
         var id: String
         var copy: Copy
@@ -32,6 +38,8 @@ struct DiscussionCopies: Equatable, Sendable {
     var request: Copy
     var questions: [QuestionCopy]
     var goal: Copy?
+    /// マージした・やめた epic の締め。終わっていなければ nil
+    var closing: Closing?
 
     /// `request` は元の依頼（読めなければ nil）
     init(epic: EpicFile, request: RequestIntent?, questions: QuestionsFile?, goal: GoalFile?, readiness: ReadinessFile?) {
@@ -52,6 +60,7 @@ struct DiscussionCopies: Equatable, Sendable {
             )
         }
         self.goal = goal.map { Copy(marker: Self.marker("goal", epic: epic.id), body: CopyText.goal($0)) }
+        closing = Self.closing(of: epic)
     }
 
     /// 写しの中身のハッシュ。前に写したときと同じなら、GitHub を読まずに済ませる
@@ -62,6 +71,7 @@ struct DiscussionCopies: Equatable, Sendable {
             parts += question.replies.map(\.text)
         }
         parts.append(goal?.text ?? "")
+        parts.append(closing?.copy.text ?? "")
         let digest = SHA256.hash(data: Data(parts.joined(separator: "\u{0}").utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
@@ -80,6 +90,17 @@ struct DiscussionCopies: Equatable, Sendable {
             replies.append(Copy(marker: marker("copy", epic: epic, fields), body: CopyText.answer(answer)))
         }
         return replies
+    }
+
+    /// マージした epic は解決済み、やめた epic は古いとして閉じる
+    private static func closing(of epic: EpicFile) -> Closing? {
+        let reason: DiscussionCloseReason
+        switch epic.stage {
+        case .merged: reason = .resolved
+        case .abandoned: reason = .outdated
+        default: return nil
+        }
+        return Closing(copy: Copy(marker: marker("closing", epic: epic.id), body: CopyText.closing(epic)), reason: reason)
     }
 
     static func marker(_ type: String, epic: ULID, _ fields: [String: JSONValue] = [:]) -> JSONValue {
@@ -160,6 +181,14 @@ enum CopyText {
         lines += section("人がする作業", goal.humanTasks.flatMap(humanTask))
         if let notApplied = goal.notApplied { lines += section("反映しなかった指示", notApplied.map { "- \(plain($0))" }) }
         return lines.joined(separator: "\n")
+    }
+
+    /// 締めのコメント（マージした・やめた epic）
+    static func closing(_ epic: EpicFile) -> String {
+        guard epic.stage != .abandoned else { return "この依頼はやめました。この Discussion を閉じます。" }
+        let pullRequest = epic.finalPullRequest.map { "最終 PR #\($0) を" } ?? ""
+        let commit = epic.merge.map { "（`\($0.commit.prefix(7))`）" } ?? ""
+        return "\(pullRequest)マージしました\(commit)。この Discussion を閉じます。"
     }
 
     // MARK: - 部品

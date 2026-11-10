@@ -11,6 +11,7 @@ import Foundation
 /// - やり直しても重ならない: 作る前に、状態に戻した id（`EpicFile.discussion`・`Question.comment`・`GoalFile.comment`）を見て、
 ///   無ければ自分が書いた（`viewerDidAuthor`）目印で探す。状態に戻した id の写しが一覧に無ければ、消されたか確かめ、消されていなければ何も作らない
 /// - 失敗しても、依頼から開始までの流れを止めない。失敗の区分（`FailurePolicy`）に沿って epic ごとに間を空け、後の周でやり直す
+/// - マージした・やめた epic は、締めのコメントを書いてから Discussion を閉じる。締めた後に人が開き直したら、閉じ直さない
 public actor DiscussionMirror {
     public struct Settings: Sendable {
         /// Discussion を作るカテゴリ（Discussions を有効にすると GitHub が作る既定のカテゴリ。今の仕組みと同じ）
@@ -42,6 +43,8 @@ public actor DiscussionMirror {
     private var repositories: [RepositoryFullName: DiscussionRepository] = [:]
     /// 読み直して署名を確かめた依頼（変わらないので覚えておく）
     private var requests: [ULID: RequestIntent] = [:]
+    /// 締めのコメントを書いたが、まだ閉じられていない epic（次の周で閉じ直す。人が開き直したものと見分ける）
+    var unclosed: Set<ULID> = []
 
     struct Backoff {
         /// これまでの失敗の区分（古い順）

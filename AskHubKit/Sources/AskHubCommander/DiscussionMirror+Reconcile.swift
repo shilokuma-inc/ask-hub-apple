@@ -124,6 +124,36 @@ extension DiscussionMirror {
             throw error
         }
         try await writeBack(created, of: epic)
+        if let closing = copies.closing { try await close(thread, with: closing, epic: epic, existing: existing, api: api) }
+    }
+
+    /// 終わった epic の Discussion に締めのコメントを書いてから閉じる。
+    /// 締めのコメントがあるのに開いていれば、人が開き直したとみなして閉じ直さない（コメントを書いた後に閉じられなかった epic だけ、もう一度閉じる）
+    private func close(
+        _ thread: DiscussionThread,
+        with closing: DiscussionCopies.Closing,
+        epic: EpicFile,
+        existing: ExistingCopies,
+        api: any DiscussionAPI
+    ) async throws(MirrorError) {
+        guard !thread.closed else {
+            unclosed.remove(epic.id)
+            return
+        }
+        if existing.byMarker[closing.copy.marker] == nil {
+            let (discussion, text) = (thread.id, closing.copy.text)
+            _ = try await Self.github { () throws(DiscussionError) in
+                try await api.addComment(to: discussion, replyingTo: nil, body: text)
+            }
+            unclosed.insert(epic.id)
+        } else if !unclosed.contains(epic.id) {
+            log("epic \(epic.id) の Discussion（\(epic.repo)#\(thread.number)）は締めた後に開き直されたので、閉じ直さない")
+            return
+        }
+        let (discussion, reason) = (thread.id, closing.reason)
+        try await Self.github { () throws(DiscussionError) in try await api.closeDiscussion(discussion, reason: reason) }
+        unclosed.remove(epic.id)
+        log("epic \(epic.id) の Discussion を閉じた（\(epic.repo)#\(thread.number)）")
     }
 
     /// 状態に戻した id のうち、消された写し（作り直さない）。一覧に無いのに消されてもいなければ、一覧が欠けているので、重ならないよう何も作らずにやり直す
