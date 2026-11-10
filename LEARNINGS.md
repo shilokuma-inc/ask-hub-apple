@@ -375,6 +375,10 @@
 - 各リポジトリの CI は Xcode 26.6 で固定しているが、AskHub のワーカー（Mac mini）は Xcode 27.1 でビルドする。shariverse/dokogacha-app-ios は、CI では通るのに 27.1 では
   `DGDashedLine.swift` の `DashedLineShape: Shape` が `#ConformanceIsolation`（既定の隔離が MainActor の型の `Shape` への準拠）で落ちる。既存のリポジトリを AskHub に移す前に、
   ワーカーと同じ Xcode で `repo.json` の `build` と同じ `xcodebuild build-for-testing` を流して確かめる（2026-11-09、shariverse の移行の調査）
+- 司令塔とワーカーは LaunchAgent で動き、ビルドの子には PATH を `/usr/bin:/bin:/usr/sbin:/sbin` だけで渡すので、Homebrew の道具（`xcodegen` など）は名前では見つからない。
+  `BuildTools.toolDirectories`（`/opt/homebrew/bin`・`/usr/local/bin`・`~/.local/bin`）から絶対パスで探して起動する。XcodeGen の `Spec validation error:` は理由を次の行に書くので、
+  出力の抜粋をエラーの行だけに絞ると理由が落ちる。XcodeGen（2.46）は環境変数 `USER` が無いと「Couldn't find current username」で止まる（`LOGNAME` だけでは足りない）ので、
+  環境変数を作り直すときは `USER` を渡す（2026-11-10、`build.xcode.generate`）
 
 ## Keychain
 

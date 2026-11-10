@@ -68,6 +68,10 @@
           "pattern": "^(?![/~])(?!(.*/)?\\.\\.(/|$))(?!.*//)(?!.*/$).*\\.(xcodeproj|xcworkspace)$",
           "description": ".xcodeproj か .xcworkspace の、リポジトリの直下からの相対パス"
         },
+        "generate": {
+          "enum": ["xcodegen"],
+          "description": "ビルドの前にプロジェクトを作る道具（.xcodeproj をコミットしないリポジトリ）。xcodegen は、ワーカーが作業場所の直下で xcodegen generate を流す（直下の project.yml）。無ければリポジトリにあるプロジェクトをそのまま使う"
+        },
         "scheme": { "$ref": "#/$defs/argument" },
         "destinations": {
           "type": "array",

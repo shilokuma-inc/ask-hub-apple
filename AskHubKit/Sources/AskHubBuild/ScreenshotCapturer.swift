@@ -58,6 +58,8 @@ public struct CaptureTiming: Equatable, Sendable {
     public var interval: Duration
     /// 落ち着くのを待つ上限。過ぎたら、最後に撮ったものを使う
     public var limit: Duration
+    /// プロジェクトを作る道具（`BuildSettings.generate`）の上限
+    public var generate: Duration
     /// `xcodebuild build` の上限
     public var build: Duration
     /// `simctl` の 1 回の上限
@@ -68,6 +70,7 @@ public struct CaptureTiming: Equatable, Sendable {
         minimum: Duration = .seconds(3),
         interval: Duration = .seconds(1),
         limit: Duration = .seconds(30),
+        generate: Duration = .seconds(5 * 60),
         build: Duration = .seconds(30 * 60),
         simctl: Duration = .seconds(2 * 60)
     ) {
@@ -75,6 +78,7 @@ public struct CaptureTiming: Equatable, Sendable {
         self.minimum = minimum
         self.interval = interval
         self.limit = limit
+        self.generate = generate
         self.build = build
         self.simctl = simctl
     }
@@ -150,6 +154,12 @@ public struct ScreenshotCapturer: Sendable {
     }
 
     private func build(_ request: CaptureRequest, for simulator: Simulator) async throws(CancellationError) -> Result<BuiltApp, Problem> {
+        if let generator = request.settings.generate {
+            let generation = ProjectGeneration(tools: tools, runner: runner, timeout: timing.generate)
+            if case let .failure(failure) = try await generation.run(request.settings, in: request.sourceDirectory) {
+                return .failure(Problem(message: failure.summary(of: generator)))
+            }
+        }
         let common = Self.arguments(request, simulator: simulator)
         let result = try await xcrun(
             ["xcodebuild", "build"] + common + Self.buildOptions, in: request.sourceDirectory, timeout: timing.build

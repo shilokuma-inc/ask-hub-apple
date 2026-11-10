@@ -130,6 +130,36 @@ struct ScreenshotCapturerTests {
         #expect(arguments.last == ["simctl", "status_bar", udid, "clear"])
     }
 
+    @Test func generatesTheProjectBeforeBuilding() async throws {
+        let output = FileManager.default.temporaryDirectory.appendingPathComponent("Capture-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: output) }
+        let place = try ProjectGenerationTests.Place(installed: true)
+        defer { place.remove() }
+        let device = FakeDevice(frames: [try Self.png(width: 10, height: 20, gray: 0.5)])
+        let generation = OSAllocatedUnfairLock(initialState: CommandResult.output(""))
+        let commands = FakeCommands { command in
+            command.executable.lastPathComponent == "xcodegen" ? generation.withLock { $0 } : device.respond(command)
+        }
+        let capturer = ScreenshotCapturer(tools: place.buildTools(), runner: commands, pause: { _ in })
+        var request = try request(output)
+        request.settings.generate = .xcodegen
+        request.scenes = [request.scenes[0]]
+        let outcome = try await capturer.capture(request, on: Self.simulator)
+        #expect(outcome.problem == nil)
+        let generate = try #require(commands.commands.first)
+        #expect(generate.executable == place.tools.appendingPathComponent("xcodegen"))
+        #expect(generate.arguments == ["generate"])
+        #expect(generate.workingDirectory == request.sourceDirectory)
+        #expect(commands.arguments[1].starts(with: ["xcodebuild", "build"]))
+
+        // 作れなければビルドしない
+        generation.withLock { $0 = .failure(1, "Spec validation error") }
+        let before = commands.commands.count
+        let failed = try await capturer.capture(request, on: Self.simulator)
+        #expect(failed.problem == "プロジェクトを作れない（xcodegen generate の終了コード 1）")
+        #expect(commands.commands.count == before + 1)
+    }
+
     @Test func keepsLastFrameWhenScreenNeverSettles() async throws {
         let output = FileManager.default.temporaryDirectory.appendingPathComponent("Capture-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: output) }
