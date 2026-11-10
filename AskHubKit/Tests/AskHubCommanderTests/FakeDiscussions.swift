@@ -13,6 +13,8 @@ final class FakeDiscussions: DiscussionAPI {
         var viewerDidAuthor: Bool
         var createdAt: Date
         var comments: [DiscussionThread.Comment] = []
+        /// 閉じた理由。開いていれば nil
+        var closed: DiscussionCloseReason?
     }
 
     struct State: Sendable {
@@ -37,7 +39,9 @@ final class FakeDiscussions: DiscussionAPI {
     var discussions: [Stored] { state.withLock { $0.discussions } }
 
     /// 書き込みの操作の数
-    var writes: Int { calls.filter { ["createDiscussion", "updateDiscussion", "addComment", "updateComment"].contains($0) }.count }
+    var writes: Int {
+        calls.filter { ["createDiscussion", "updateDiscussion", "addComment", "updateComment", "closeDiscussion"].contains($0) }.count
+    }
 
     func change(_ body: @Sendable (inout State) -> Void) {
         state.withLock { body(&$0) }
@@ -68,7 +72,12 @@ final class FakeDiscussions: DiscussionAPI {
         return state.withLock { state in
             state.discussions.first { $0.number == number }.map { stored in
                 var thread = DiscussionThread(
-                    id: stored.id, number: stored.number, title: stored.title, body: stored.body, viewerDidAuthor: stored.viewerDidAuthor
+                    id: stored.id,
+                    number: stored.number,
+                    title: stored.title,
+                    body: stored.body,
+                    viewerDidAuthor: stored.viewerDidAuthor,
+                    closed: stored.closed != nil
                 )
                 thread.comments = state.hidesComments ? [] : stored.comments
                 return thread
@@ -148,6 +157,22 @@ final class FakeDiscussions: DiscussionAPI {
                     }
                 }
             }
+        }
+    }
+
+    func closeDiscussion(_ id: String, reason: DiscussionCloseReason) async throws(DiscussionError) {
+        try call("closeDiscussion")
+        state.withLock { state in
+            guard let index = state.discussions.firstIndex(where: { $0.id == id }), state.discussions[index].closed == nil else { return }
+            state.discussions[index].closed = reason
+        }
+    }
+
+    /// 人が Discussion を開き直す
+    func reopen(_ number: Int) {
+        state.withLock { state in
+            guard let index = state.discussions.firstIndex(where: { $0.number == number }) else { return }
+            state.discussions[index].closed = nil
         }
     }
 

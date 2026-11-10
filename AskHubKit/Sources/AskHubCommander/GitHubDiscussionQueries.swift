@@ -15,7 +15,7 @@ enum DiscussionQueries {
         query($owner: String!, $name: String!, $number: Int!, $after: String) {
           repository(owner: $owner, name: $name) {
             discussion(number: $number) {
-              id number title body viewerDidAuthor
+              id number title body viewerDidAuthor closed
               comments(first: 100, after: $after) {
                 pageInfo { hasNextPage endCursor }
                 nodes {
@@ -78,6 +78,12 @@ enum DiscussionQueries {
     static let updateComment = """
         mutation($id: ID!, $body: String!) {
           updateDiscussionComment(input: { commentId: $id, body: $body }) { comment { id } }
+        }
+        """
+
+    static let closeDiscussion = """
+        mutation($id: ID!, $reason: DiscussionCloseReason!) {
+          closeDiscussion(input: { discussionId: $id, reason: $reason }) { discussion { id } }
         }
         """
 }

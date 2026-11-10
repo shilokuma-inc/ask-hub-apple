@@ -93,7 +93,7 @@ struct GitHubDiscussionsTests {
         let first = Self.page([comment("C1", mine: true, replies: Self.page([Self.post("R1")], next: "r1"))], next: "c1")
         let second = Self.page([comment("C2", mine: false, replies: Self.page([]))])
         func discussion(_ comments: String) -> StubTransport.Reply {
-            let fields = #""id":"D_1","number":7,"title":"題","body":"本文","viewerDidAuthor":true"#
+            let fields = #""id":"D_1","number":7,"title":"題","body":"本文","viewerDidAuthor":true,"closed":true"#
             return .data(#"{"repository":{"discussion":{\#(fields),"comments":\#(comments)}}}"#)
         }
         let transport = StubTransport([
@@ -103,6 +103,7 @@ struct GitHubDiscussionsTests {
         ])
         let thread = try #require(try await client(transport).discussion(Self.repo, number: 7))
         #expect(thread.id == "D_1")
+        #expect(thread.closed)
         #expect(thread.comments.map(\.post.id) == ["C1", "C2"])
         #expect(thread.comments.map { $0.replies.map(\.id) } == [["R1", "R2"], []])
         #expect(thread.comments.map(\.post.viewerDidAuthor) == [true, false])
@@ -161,6 +162,20 @@ struct GitHubDiscussionsTests {
             guard case .http(.budgetExhausted) = error else { Issue.record("\(error)"); return }
         }
         #expect(transport.requests.count == 2)
+    }
+
+    @Test func closesDiscussionWithReason() async throws {
+        let transport = StubTransport([.data(#"{"closeDiscussion":{"discussion":{"id":"D_1"}}}"#)])
+        try await client(transport).closeDiscussion("D_1", reason: .resolved)
+        #expect(transport.bodies[0]["variables"] == .object(["id": .string("D_1"), "reason": .string("RESOLVED")]))
+        // 権限が足りないなどで payload が null なら、閉じられていない
+        let refused = StubTransport([.data(#"{"closeDiscussion":null}"#)])
+        do {
+            try await client(refused).closeDiscussion("D_1", reason: .outdated)
+            Issue.record("断っていない")
+        } catch {
+            guard case .malformed = error else { Issue.record("\(error)"); return }
+        }
     }
 
     @Test func classifiesFailures() async throws {

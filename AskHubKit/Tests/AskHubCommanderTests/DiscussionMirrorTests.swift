@@ -324,4 +324,8 @@ struct FailingAfter: DiscussionAPI {
     func updateComment(_ id: String, body: String) async throws(DiscussionError) {
         try await inner.updateComment(id, body: body)
     }
+
+    func closeDiscussion(_ id: String, reason: DiscussionCloseReason) async throws(DiscussionError) {
+        try await inner.closeDiscussion(id, reason: reason)
+    }
 }

@@ -23,6 +23,16 @@ public protocol DiscussionAPI: Sendable {
     /// コメントを足して、その id を返す。`parent` があれば、そのコメントへの返信にする
     func addComment(to discussion: String, replyingTo parent: String?, body: String) async throws(DiscussionError) -> String
     func updateComment(_ id: String, body: String) async throws(DiscussionError)
+    /// Discussion を閉じる。すでに閉じていても失敗しない
+    func closeDiscussion(_ id: String, reason: DiscussionCloseReason) async throws(DiscussionError)
+}
+
+/// Discussion を閉じる理由（GraphQL の `DiscussionCloseReason`）
+public enum DiscussionCloseReason: String, Equatable, Sendable {
+    /// 解決済み（epic をマージした）
+    case resolved = "RESOLVED"
+    /// 古い（epic をやめた）
+    case outdated = "OUTDATED"
 }
 
 public struct DiscussionRepository: Equatable, Sendable {
@@ -97,14 +107,25 @@ public struct DiscussionThread: Equatable, Sendable {
     public var title: String
     public var body: String
     public var viewerDidAuthor: Bool
+    /// 閉じているか
+    public var closed: Bool
     public var comments: [Comment]
 
-    public init(id: String, number: Int, title: String, body: String, viewerDidAuthor: Bool, comments: [Comment] = []) {
+    public init(
+        id: String,
+        number: Int,
+        title: String,
+        body: String,
+        viewerDidAuthor: Bool,
+        closed: Bool = false,
+        comments: [Comment] = []
+    ) {
         self.id = id
         self.number = number
         self.title = title
         self.body = body
         self.viewerDidAuthor = viewerDidAuthor
+        self.closed = closed
         self.comments = comments
     }
 }
