@@ -195,18 +195,18 @@ struct MachineSetupTests {
     @Test func selfCheckReportsTokensWithoutValues() async throws {
         let volume = FileManager.default.temporaryDirectory
         let owners = ["shilokuma-inc", "mrs1669"]
-        let empty = await MachineProbe(secrets: InMemorySecretStore(), volume: volume, owners: owners).selfCheck()
+        let empty = await MachineProbe(secrets: InMemorySecretStore(), volume: volume, owners: { owners }).selfCheck()
         #expect(empty.githubToken == .missing)
         #expect(empty.claudeToken == .missing)
         // 前の 1 つのトークンは見ない（持ち主ごとのトークンだけを見る）
         let secrets = InMemorySecretStore([.githubToken: Data("github_pat_old".utf8), .claudeToken: Data("sk-ant-api03-x".utf8)])
         let tokens = GitHubTokens(secrets: secrets)
         try tokens.store("github_pat_a", for: "shilokuma-inc")
-        let partial = await MachineProbe(secrets: secrets, volume: volume, owners: owners).selfCheck()
+        let partial = await MachineProbe(secrets: secrets, volume: volume, owners: { owners }).selfCheck()
         #expect(partial.githubToken == .missing)
         #expect(partial.githubTokens == [.init(owner: "shilokuma-inc", state: .ok), .init(owner: "mrs1669", state: .missing)])
         try tokens.store("github_pat_b", for: "mrs1669")
-        let check = await MachineProbe(secrets: secrets, volume: volume, owners: owners).selfCheck()
+        let check = await MachineProbe(secrets: secrets, volume: volume, owners: { owners }).selfCheck()
         #expect(check.githubToken == .ok)
         #expect(check.claudeToken == .invalid)
         // 期限は問い合わせたときだけ書く

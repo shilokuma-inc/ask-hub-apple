@@ -68,7 +68,7 @@ public struct MachineCommandLine: Sendable {
         print("設定を \(paths.configuration.path) に書き、トークンを Keychain に置きました。")
     }
 
-    /// `token <持ち主>`: 持ち主の GitHub のトークンを入れ直す・足す。足した持ち主は設定にも書く（自己診断で確かめる）
+    /// `token <持ち主>`: 持ち主の GitHub のトークンを入れ直す・足す。足した持ち主は設定にも書く（常駐の自己診断が、印を書くたびに読み直す）
     public func token(_ arguments: [String]) {
         guard arguments.count == 1, let owner = GitHubTokens.normalizedOwner(arguments[0]) else {
             fail("使い方: \(role.program) token <GitHub の持ち主（organization・個人）>", status: EX_USAGE)
@@ -82,7 +82,7 @@ public struct MachineCommandLine: Sendable {
         }
         print("""
             \(owner) の GitHub のトークンを Keychain に置きました。トークンを置いた持ち主: \(configuration.tokenOwners.joined(separator: "、"))
-            常駐していれば、次の要求から使います（読み込み直しは要りません）
+            常駐していれば、読み込み直さなくても次の要求から使い、次の生きている印（10 分ごと）の自己診断にも出します
             """)
     }
 
@@ -205,10 +205,11 @@ public struct MachineCommandLine: Sendable {
     /// 設定と Keychain の様子（秘密の値は出さない）。トークンの期限は GitHub に問い合わせる。役割ごとの行は呼ぶ側で足す
     public func checkLines(version: String) async -> [String] {
         let configuration = try? MachineConfiguration.load(from: paths.configuration, role: role)
+        let owners = configuration?.tokenOwners ?? []
         let probe = MachineProbe(
             secrets: secrets,
             volume: paths.root,
-            owners: configuration?.tokenOwners ?? [],
+            owners: { owners },
             githubExpiry: GitHubTokenExpiry(),
             claudeTokenRecord: paths.claudeTokenRecord
         )

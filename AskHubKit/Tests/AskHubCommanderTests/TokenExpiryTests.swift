@@ -81,7 +81,7 @@ struct TokenExpiryTests {
         let probe = MachineProbe(
             secrets: secrets,
             volume: FileManager.default.temporaryDirectory,
-            owners: ["shilokuma-inc", "mrs1669", "other"],
+            owners: { ["shilokuma-inc", "mrs1669", "other"] },
             githubExpiry: GitHubTokenExpiry(transport: transport),
             now: { Self.now }
         )
@@ -134,7 +134,7 @@ struct TokenExpiryTests {
         let secrets = InMemorySecretStore([.claudeToken: Data("sk-ant-oat01-x".utf8)])
         let clock = Self.now
         @Sendable func check(at now: Date) async -> SelfCheck {
-            await MachineProbe(secrets: secrets, volume: directory, owners: [], claudeTokenRecord: url, now: { now }).selfCheck()
+            await MachineProbe(secrets: secrets, volume: directory, owners: { [] }, claudeTokenRecord: url, now: { now }).selfCheck()
         }
         // 記録が無ければ（前の版で入れた）期限を書かない
         #expect(await check(at: clock).claudeTokenExpiresAt == nil)
