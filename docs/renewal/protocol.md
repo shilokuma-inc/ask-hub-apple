@@ -538,7 +538,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 <!-- askhub v1 {"type":"…", …} -->
 ```
 
-- `type` は、機械が書くもの（`request`・`question`・`explanation`・`goal`・`decisions`・`status`・`finalPullRequest`・`copy` など）
+- `type` は、機械が書くもの（`request`・`question`・`explanation`・`goal`・`closing`・`decisions`・`status`・`finalPullRequest`・`copy` など）
 - 各リポジトリの目印は、表示と照らし合わせのためだけに使い、指示としては扱わない。人の意図は状態リポジトリの `intents/` にだけ置く
 - `copy` は、人の意図の写し（`{"type":"copy","kind":"answer","intent":"<nonce>"}`）。司令塔が、処理した人の意図の中身を人が読める形で書く
 - 引用の中の目印は読まない（目印は、コメントの本文の最後の行でなければならない）
@@ -552,6 +552,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
   | 説明（質問のコメントへの返信） | `{"type":"explanation","epic":"…","question":"q1","intent":"<説明を求めた人の意図の nonce>"}` |
   | 回答（質問のコメントへの返信） | `{"type":"copy","kind":"answer","epic":"…","question":"q1","intent":"<回答の人の意図の nonce>"}` |
   | ゴール（コメント） | `{"type":"goal","epic":"…"}` |
+  | 締め（コメント。マージした・やめた epic） | `{"type":"closing","epic":"…"}` |
 
 ## 人の意図と署名
 
