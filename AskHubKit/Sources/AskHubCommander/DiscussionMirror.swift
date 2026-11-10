@@ -75,11 +75,16 @@ public actor DiscussionMirror {
         self.init(context: context, discussions: { _ in api }, settings: settings, policy: policy, log: log)
     }
 
-    /// 写しを照らし合わせる。失敗しても投げない（ログに書き、後の周でやり直す）
+    /// 写しを照らし合わせる。失敗しても投げない（ログに書き、後の周でやり直す）。
+    ///
+    /// 対象の epic と、写す質問・ゴール・着手前の確認は、読むだけの写しから読む（変わっていないものは取りに行かない）。
+    /// Discussion の番号や id を状態に戻すときは、元の置き場所で読み直して書く
     public func syncAll(verifier: IntentVerifier) async {
+        let reader: CommanderContext
         let epics: [EpicFile]
         do {
-            epics = try await targets()
+            reader = try await context.snapshot()
+            epics = try await targets(in: reader)
         } catch {
             log("写しの対象の epic を読めない（\(error)）。次の周でやり直す")
             return
@@ -88,7 +93,7 @@ public actor DiscussionMirror {
         for epic in epics where remaining > 0 {
             if let backoff = failures[epic.id], context.now() < backoff.retryAt { continue }
             do {
-                if try await sync(epic, verifier: verifier) { remaining -= 1 }
+                if try await sync(epic, verifier: verifier, reading: reader) { remaining -= 1 }
                 failures[epic.id] = nil
             } catch {
                 remaining -= 1
@@ -99,21 +104,22 @@ public actor DiscussionMirror {
     }
 
     /// 写す epic: 終わっていない epic と、終わってから間もない epic
-    private func targets() async throws(CommanderError) -> [EpicFile] {
+    private func targets(in reader: CommanderContext) async throws(CommanderError) -> [EpicFile] {
         let now = context.now()
         let window = TimeInterval(settings.endedEpicWindow.components.seconds)
         var epics: [EpicFile] = []
-        for repo in try await context.repositories() {
-            epics += try await context.epics(of: repo) { epic in
+        for repo in try await reader.repositories() {
+            epics += try await reader.epics(of: repo) { epic in
                 ![.merged, .abandoned].contains(epic.stage) || now.timeIntervalSince(epic.updatedAt.date) < window
             }
         }
         return epics
     }
 
-    /// 1 つの epic の写しを照らし合わせる。GitHub を読み書きしたら true（前に写し終えたときから変わっていなければ false）
-    func sync(_ epic: EpicFile, verifier: IntentVerifier) async throws(MirrorError) -> Bool {
-        let state = try await stateOf(epic)
+    /// 1 つの epic の写しを照らし合わせる。GitHub を読み書きしたら true（前に写し終えたときから変わっていなければ false）。
+    /// 写す状態は `reader`（無ければ `context`）から読む
+    func sync(_ epic: EpicFile, verifier: IntentVerifier, reading reader: CommanderContext? = nil) async throws(MirrorError) -> Bool {
+        let state = try await stateOf(epic, in: reader ?? context)
         let request = try await request(of: epic, verifier: verifier)
         let copies = DiscussionCopies(
             epic: epic, request: request, questions: state.questions, goal: state.goal, readiness: state.readiness

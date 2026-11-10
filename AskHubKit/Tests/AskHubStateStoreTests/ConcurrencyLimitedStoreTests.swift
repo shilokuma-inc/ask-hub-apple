@@ -67,6 +67,35 @@ struct ConcurrencyLimitedStoreTests {
         #expect(await probe.maxInFlight == 4)
     }
 
+    /// 読み取りも写しの読み取りも `probe` に送る
+    struct SnapshottingStore: StateStore {
+        let probe: ProbeStore
+
+        func read(_ path: String) async throws(StateStoreError) -> StoredBlob? { try await probe.read(path) }
+
+        func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? { nil }
+
+        func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String { "" }
+
+        func snapshot() async throws(StateStoreError) -> any StateStore { probe }
+    }
+
+    @Test func snapshotReadsShareLimit() async throws {
+        let probe = ProbeStore()
+        let store = ConcurrencyLimitedStore(SnapshottingStore(probe: probe), limit: 4)
+        let snapshot = try await store.snapshot()
+        let paths = (1...30).map { "file-\($0).json" }
+        await withTaskGroup(of: Void.self) { group in
+            for (index, path) in paths.enumerated() {
+                let target: any StateStore = index.isMultiple(of: 2) ? store : snapshot
+                group.addTask { _ = try? await target.read(path) }
+            }
+        }
+        // 写しから読む要求も、元の置き場所と同じ上限の中で出す（合わせて上限を超えない）
+        #expect(await probe.reads == 30)
+        #expect(await probe.maxInFlight == 4)
+    }
+
     /// `body` を `seconds` 秒まで待つ。終わらなければ nil（空きが返らないと待ち続けるので、テストを止めないように）
     static func within<Value: Sendable>(seconds: Double, _ body: @escaping @Sendable () async throws -> Value) async -> Value? {
         await withTaskGroup(of: Value?.self) { group in

@@ -80,6 +80,23 @@ extension ClaudeJobRunnerTests {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    @Test func mirrorReadsTargetsAndStateFromSnapshot() async throws {
+        let (store, epic) = try await asking()
+        let github = FakeDiscussions { Self.now }
+        let probe = SnapshotProbeStore(store)
+        let mirror = DiscussionMirror(context: CommanderContext(store: probe, mac: Self.commander) { Self.now }, api: github) { _ in }
+        // 1 周目で Discussion と質問の写しを作り、番号と id を元の置き場所で読み直して戻す
+        await mirror.syncAll(verifier: verifier)
+        await mirror.syncAll(verifier: verifier)
+        #expect(try await discussionNumber(of: epic, in: store) > 0)
+        let reads = await probe.liveReads
+        let calls = github.calls.count
+        // 変わっていなければ、元の置き場所も GitHub も読まない（対象の epic と写す状態は、写しから読む）
+        await mirror.syncAll(verifier: verifier)
+        #expect(await probe.liveReads == reads)
+        #expect(github.calls.count == calls)
+    }
+
     @Test func mirrorsQuestionsWithAnswersAndExplanations() async throws {
         let (store, epic) = try await asking { epic in
             [

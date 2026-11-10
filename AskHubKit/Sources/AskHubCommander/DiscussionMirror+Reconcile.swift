@@ -257,13 +257,12 @@ extension DiscussionMirror {
 
     // MARK: - 読む
 
-    nonisolated func stateOf(_ epic: EpicFile) async throws(MirrorError) -> MirrorState {
-        let context = context
-        return try await Self.state { () throws(CommanderError) in
+    nonisolated func stateOf(_ epic: EpicFile, in reader: CommanderContext) async throws(MirrorError) -> MirrorState {
+        try await Self.state { () throws(CommanderError) in
             MirrorState(
-                questions: try await context.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)),
-                goal: try await context.read(GoalFile.self, at: StatePath.goal(epic.repo, epic.id)),
-                readiness: try await context.read(ReadinessFile.self, at: StatePath.readiness(epic.repo, epic.id))
+                questions: try await reader.read(QuestionsFile.self, at: StatePath.questions(epic.repo, epic.id)),
+                goal: try await reader.read(GoalFile.self, at: StatePath.goal(epic.repo, epic.id)),
+                readiness: try await reader.read(ReadinessFile.self, at: StatePath.readiness(epic.repo, epic.id))
             )
         }
     }

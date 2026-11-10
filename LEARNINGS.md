@@ -148,6 +148,10 @@
   404 は ETag で 304 にできないので GitHub の上限（5,000 回/時）に数えられる（4 秒ごとなら 1 つの意図で 900 回/時）。待っている意図のうち一番前に送ったもの（司令塔は番号の順に処理する）だけを確かめ、
   受け取りが遅い（3 分を過ぎた）意図は 30 秒ごとの全体の取り直しに任せ、上限の 403/429 は `retryAfter` の間だけ休む。`consumed/<device>` の一覧を読む案は、Contents API の一覧が 1,000 件までで、
   ULID の名前の新しい記録が後ろに来るため、送った意図が増えると新しい記録が一覧から外れるのでやめた（2026-11-10、`ClientStore.watchReceipts`）
+- Contents API の読み取りは、ETag で 304 になっても 1 回ずつ往復し、1 回およそ 0.3 秒かかる。司令塔のジョブの見回りは、1 周で約 110 件（epic・ジョブ・試行）を 1 件ずつ読み、
+  すべて 304 でも約 30 秒かかっていた。Git の tree と blob は sha で中身が決まるので、直下の一覧（ETag つき）だけを毎回読み、その下は前に読んだ tree と blob を使い回すと
+  （`StateStore.snapshot()`）、変わっていなければ 1 回・0.3 秒になる（起動の直後の 1 回目は、今までと同じ回数を 200 で読む）。blob は `GET …/git/blobs/{sha}` に
+  `Accept: application/vnd.github.raw+json` を付けると、base64 の JSON ではなく中身がそのまま返る（中身から求めた blob の sha が一致することを確かめた。2026-11-10、#989）
 
 ## ビルド・テスト
 
@@ -463,6 +467,9 @@
 - アプリのターゲットは MainActor 既定なので、`static func` をそのまま関数値として渡すと（`optional.flatMap(normalizedLabel)` など）、
   「converting function value of type '@MainActor (String) -> String?' to '(String) -> String?' loses global actor 'MainActor'」でビルドが落ちる。
   状態を持たない関数は `nonisolated` にする（その中で読む `static let` も `nonisolated` にする）（2026-11-10、`ConnectionSettingsModel.normalizedLabel`）
+- protocol の要件に extension で既定の実装を付けたとき、型の側の実装の署名が要件と違う（要件は `async throws(E)`、actor の側は同期で投げない、など）と、
+  `any P` 越しの呼び出しは型の側を使うのに、具体的な型のまま呼ぶと extension の既定のほうが選ばれる（`InMemoryStateStore.snapshot()` が、型のまま呼ぶと自分を返していた）。
+  既定の実装がある要件は、型の側も要件と同じ署名で書く（2026-11-10、#989）
 - MainActor が既定のターゲットで `UIColor { traits in … }`・`NSColor(name:dynamicProvider:)` の処理を書くと、処理が MainActor に縛られる。
   SwiftUI は色を裏のスレッド（`com.apple.SwiftUI.AsyncRenderer`）で決めることがあり、そのとき実行時の確かめ（`_swift_task_checkIsolatedSwift`）で `EXC_BREAKPOINT` で落ちる。処理を `@Sendable` にして縛らない
 

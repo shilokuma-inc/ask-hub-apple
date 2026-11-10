@@ -2,9 +2,12 @@ import Foundation
 
 /// メモリーの中の状態リポジトリ。テストと、GitHub に書かずに試す実行で使う。
 ///
-/// Contents API と同じく、版が合わない書き込み・すでにあるファイルを版なしで書く書き込みを `conflict` で断る
+/// Contents API と同じく、版が合わない書き込み・すでにあるファイルを版なしで書く書き込みを `conflict` で断る。
+/// 読むだけの写し（`snapshot()`）も GitHub と同じく、作ったときの中身のまま、後の書き込みを映さず、書き込みを断る
 public actor InMemoryStateStore: StateStore {
     private var files: [String: StoredBlob] = [:]
+    /// 読むだけの写しなら true
+    private let isSnapshot: Bool
     /// 書き込みの前に投げる失敗（テストで、ほかの書き手とぶつかったときなどを再現する）
     private var injectedWriteFailures: [StateStoreError] = []
     /// 次の書き込みの直前に、ほかの書き手が書いたことにする中身
@@ -13,6 +16,17 @@ public actor InMemoryStateStore: StateStore {
 
     public init(files: [String: Data] = [:]) {
         self.files = files.mapValues { StoredBlob(data: $0, sha: Self.sha(of: $0)) }
+        isSnapshot = false
+    }
+
+    private init(snapshotOf files: [String: StoredBlob]) {
+        self.files = files
+        isSnapshot = true
+    }
+
+    /// 署名を `StateStore` とそろえる（違うと、この型のまま呼んだときに、自分を返す既定のほうが選ばれる）
+    public func snapshot() async throws(StateStoreError) -> any StateStore {
+        Self(snapshotOf: files)
     }
 
     public func read(_ path: String) throws(StateStoreError) -> StoredBlob? {
@@ -42,6 +56,7 @@ public actor InMemoryStateStore: StateStore {
 
     public func write(_ path: String, data: Data, replacing sha: String?, message: String) throws(StateStoreError) -> String {
         guard StatePathCheck.isSafe(path) else { throw .invalidPath }
+        guard !isSnapshot else { throw .unexpected(status: 0, message: "読むだけの写しには書けない（元の置き場所で読み直してから書く）") }
         // Git のツリーと同じく、同じ名前をファイルとディレクトリの両方には使えない
         let parts = path.split(separator: "/")
         let ancestors = parts.indices.dropLast().map { parts[...$0].joined(separator: "/") }

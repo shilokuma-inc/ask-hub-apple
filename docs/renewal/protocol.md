@@ -64,7 +64,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - 時刻は UTC の ISO 8601 で、秒まで（`2026-11-03T10:00:00Z`）。小数の秒と時差の表記は使わない
 - パスに使う値（リポジトリの owner/name・ULID・Mac の名前・鍵の id）は、読むときに形を確かめる。`..` や `/` を含む値で、ほかのファイルを指せないようにする（形は `protocol/schemas/common.schema.json`）
 - 書き込みは Contents API で、読んだときの版（sha）を付けて行う。409（版が合わない）が返ったら読み直してやり直す
-- 読み取りは `git fetch` か、ETag つきの要求で行う
+- 読み取りは `git fetch` か、ETag つきの要求で行う。Git の tree と blob（`git/trees/<sha>`・`git/blobs/<sha>`）は sha で中身が決まるので、読んだものを使い回してよい
 - 空の一覧や 404 を理由に、ファイルを作り直さない（GitHub の障害で一覧が空で返ることがある）
 
 ### repo.json（対象のリポジトリ）
