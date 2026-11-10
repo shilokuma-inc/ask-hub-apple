@@ -383,12 +383,13 @@
   出力の抜粋をエラーの行だけに絞ると理由が落ちる。XcodeGen（2.46）は環境変数 `USER` が無いと「Couldn't find current username」で止まる（`LOGNAME` だけでは足りない）ので、
   環境変数を作り直すときは `USER` を渡す（2026-11-10、`build.xcode.generate`）
 - `AskHubUITestsLaunchTests` の雛形（`runsForEachTargetApplicationUIConfiguration` が true）は、起動テストを構成（縦横・ライトダーク）の数だけ流し、XCTest が端末の向きを変える。
-  CI の Simulator では向きの変更の確認を 60 秒待って「Failed to set device orientation」で落ちることがあり、その直後に流れる最初の `ClientUITests`（`testAcceptAllShowsDoneAtOnceAndSyncsLater`）は、
-  毎回アプリと UI テストの問い合わせが数秒〜40 秒止まった（同じテストを単独で流すと止まらない）。起動テストは false にして今の向きで 1 回だけ流す（2026-11-10、#1006）
+  CI の Simulator では、向きの変更の確認を 60 秒待って「Failed to set device orientation」で落ちることがあった。起動テストは false にして今の向きで 1 回だけ流す（2026-11-10、#1006）
 - 新しく起動した Simulator では、`XCUIDevice.shared.orientation` は `.portrait` を返さない（`!= .portrait` で確かめると、縦向きでも向きを設定し直す）。横向きの後は `.landscapeRight` などが返る。
   縦向きに戻すのは `orientation.isLandscape` のときだけにする（2026-11-10、#1006）
-- CI（GitHub Actions の macOS ランナー）は `Apple M2 Pro (Virtual)` の 5 コアで、UI テストの間は CPU の空きがほぼ 0%・メモリの空きが数百 MB まで減り、起動したばかりの Simulator ではウィジェットやデーモンが次々に動く。
-  アプリが数十秒応えないことがあるので、UI テストで状態の変化を待つ時間は、手元の所要時間の数倍ではなく CI の止まりを見込んで長くとる（印が消えるのを待つ `ClientUITests.syncTimeout` は 90 秒）。
+- CI（GitHub Actions の macOS ランナー）は `Apple M2 Pro (Virtual)` の 5 コアで、Simulator を起動した後の数分は、ウィジェットやデーモンが次々に動いて
+  load average が 500 を超え、CPU の空きは 0%、メモリの空きは数百 MB になる。この間、アプリと UI テストの問い合わせが数秒〜40 秒止まることがあり、
+  同じテストでも、止まるかどうか・どれだけ止まるかは回ごとに違う（単独で流しても、起動テストの後に流しても、止まらない回があった）。
+  UI テストで状態の変化を待つ時間は、手元の所要時間の数倍ではなく CI の止まりを見込んで長くとる（印が消えるのを待つ `ClientUITests.syncTimeout` は 90 秒）。
   通った回のログでも、`Checking existence of …` の行の間が 20 秒以上空いていれば同じ止まりが起きている（30 秒の待ちに収まったかどうかで結果が変わっていた）（2026-11-10、#1006）
 - CI の `TestResults.xcresult`（成果物）には UI テストごとの画面の録画（`kXCTAttachmentScreenRecording` の mp4）が入り、`xcrun xcresulttool export attachments --test-id "<クラス>/<メソッド>()"` で取り出せる。
   録画は画面が変わったときだけコマを足すので、コマの時刻の間（ステータスバーの時計も止まる）で止まった時間が分かる。ffmpeg の無い Mac でも、`AVAssetImageGenerator` の小さな Swift のスクリプトで
