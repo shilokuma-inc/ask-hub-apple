@@ -144,7 +144,7 @@
    - 設定（秘密を含まない）を `~/Library/Application Support/AskHub/commander/config.json` に書く
    - GitHub のトークン（持ち主ごと）と Claude の setup-token は、端末で伏せて入れ、Keychain（サービス `jp.shilokuma.AskHub.commander`）だけに置く。引数や標準入力では受け取らない。Claude の欄に API キー（`sk-ant-api03-`）が貼られたら断る
    - GitHub のトークンは、持ち主（organization・個人）ごとの fine-grained token にする（下の「GitHub のトークン（持ち主ごと）」）。状態リポジトリの持ち主の分と、`--github-owner` で並べた持ち主の分を順に聞く。状態リポジトリの読み書き（人の意図・質問・ジョブ・生きている印）は状態リポジトリの持ち主のトークン、対象のリポジトリの写し（clone・fetch）と Discussion の写し（作る・直す。[flows.md](flows.md) の「Discussion の写し」）は、そのリポジトリの持ち主のトークンを使う
-   - 持ち主のトークンが無いリポジトリは、写しと Discussion の写しが認証の失敗になり、司令塔のログと試行に理由が出る。後から持ち主を足すときは `askhub-commander token <持ち主>` で入れる（設定にも足す。常駐を読み込み直さなくても、次の要求から使う）
+   - 持ち主のトークンが無いリポジトリは、写しと Discussion の写しが認証の失敗になり、司令塔のログと試行に理由が出る。後から持ち主を足すときは `askhub-commander token <持ち主>` で入れる（設定にも足す。常駐を読み込み直さなくても、次の要求から使い、次の生きている印の自己診断に出る。下の「GitHub のトークン（持ち主ごと）」）
    - 段階 3 で、1 つのトークンから持ち主ごとのトークンに変えた。前の 1 つのトークンからは移さないので、段階 2 で入れた常時オンの Mac は `setup` を流し直す（設定の形も変わったので、流し直すまで `run` は止まる。APNs の設定は残す）。前のトークンは Keychain から消す
    - 公開鍵の記録の最初の鍵を固定する（後から別の鍵には変えられない）
    - 対象のリポジトリは、Discussions を有効にし、カテゴリ「Ideas」（有効にすると GitHub が作る既定のカテゴリ）を残しておく。無いあいだは Discussion の写しを書かず、司令塔のログに理由を出す（依頼から開始までの流れは止まらない）
@@ -216,12 +216,18 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
 5. 期限を決めて作り、値（`github_pat_` で始まる）を `setup` か `token <持ち主>` で端末に貼る。値はほかの場所（メモ・チャット・ファイル）に残さない
 6. 対象のリポジトリを足したら、そのリポジトリをトークンの Repository access にも足す（持ち主が新しければ、トークンを作って `token <持ち主>` で入れる）。期限が近づいたら作り直して `token <持ち主>` で入れ直す（下の「トークンの期限」）
 
+`token <持ち主>` は、トークンを Keychain に置き、新しい持ち主なら設定の `githubOwners` にも足す。常駐は読み込み直さなくてよい:
+
+- git の credential helper と GitHub の要求（状態リポジトリ・PR・Discussion など）は、要求のたびに Keychain から持ち主のトークンを読むので、次の要求から使う（設定の持ち主の一覧は見ない）
+- 生きている印の自己診断（`selfCheck.githubTokens`）は、印を書くたびに設定の `githubOwners` を読み直すので、足した持ち主は次の印（10 分以内）に様子と期限が出る。設定を読めないときは前に読めた一覧のまま。状態リポジトリ（先頭の持ち主）は起動したときのまま
+
 ### トークンの期限
 
 GitHub のトークン（持ち主ごと）と Claude の setup-token には期限がある。切れると、その Mac の仕事（状態リポジトリのトークンなら生きている印も）が止まるので、司令塔とワーカーが期限を生きている印の自己診断に書き（値は書かない。[protocol.md](protocol.md) の「macs/<mac>.json」）、クライアントで知らせる。
 
 - GitHub のトークン: 生きている印を書くたび（10 分ごと）に、持ち主ごとのトークンで GitHub の `/rate_limit`（REST の上限に数えられない）を呼び、応答の見出し `github-authentication-token-expiration`（`2027-10-23 12:25:03 UTC` の形）から期限を読む
   - 見出しが無いのは、期限の無いトークン。401 が返ったら使えない（前に読んだ期限を過ぎていれば期限切れ）。つながらないときは前に読んだ期限のまま
+  - 問い合わせる持ち主は、印を書くたびに設定（`githubOwners`）から読み直す。`token <持ち主>` で足した持ち主も、読み込み直さずに次の印から期限が出る
 - Claude の setup-token: 作った日から 1 年使える。`setup`・`claude-token` で新しい値を入れた日を `~/Library/Application Support/AskHub/<役割>/claude-token.json` に記録し（日付だけ）、その 1 年後を期限とする
   - 記録を始める前に入れた setup-token は、期限が分からない（クライアントに「期限は分かりません」と出る）。`claude setup-token` で作り直して `claude-token` で入れると記録される
 - クライアントは、Mac の画面にトークンごとの残り日数を出す
@@ -231,7 +237,7 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
 
   | トークン | 作り直し | 入れ直すコマンド |
   | --- | --- | --- |
-  | GitHub（持ち主ごと） | 上の「GitHub のトークン（持ち主ごと）」の 1〜5（Regenerate でもよい） | `token <持ち主>`。常駐を読み込み直さなくても、次の要求から使う |
+  | GitHub（持ち主ごと） | 上の「GitHub のトークン（持ち主ごと）」の 1〜5（Regenerate でもよい） | `token <持ち主>`。常駐を読み込み直さなくても、次の要求から使い、次の印の自己診断に期限が出る |
   | Claude の setup-token | 人の Mac で `claude setup-token` | `claude-token`。常駐のループは起動したときの値を使うので、読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`、ワーカーは `…askhub.worker`。ターミナルで流しているワーカーは流し直す） |
 
 - `check` で、持ち主ごとの GitHub のトークンと Claude の setup-token の期限を確かめられる
