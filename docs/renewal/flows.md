@@ -214,6 +214,7 @@
 ### Claude にビルドとテストを頼ませる
 
 - Claude Code の sandbox の中ではビルドとテストが動かない。そこで Claude は、「ビルドしてほしい（`build`）」「軽いテスト（`testLight`）」「全部のテスト（`testFull`）」を決まった形の報告で返して、いったん終わる。ワーカーが sandbox の外で決まったコマンドを流し、結果の要約を付けて同じ会話を再開する（`--resume`）。往復は、1 つのタスクで上限（20 回）まで
+- ビルドとテストの失敗は Claude に渡して直させ、Simulator や Xcode の不調（環境の不調）は渡さずに試行の失敗（想定外）にして人に渡す。ただし、Simulator でアプリかテストの実行役を起動できなかったとき（`Failed to install or launch the test runner`・`The test runner hung before establishing connection.` など。Simulator の中の状態が壊れると出て、同じ枠を使う次のジョブにも持ち越す）は、ワーカーが枠の Simulator を止めて中身を消去し、起動し直してから 1 回だけ流し直す。流し直すのは、結果のバンドルのエラーと落ちたテストがすべて起動の失敗のときだけで、起動できたうえで落ちたテストが 1 つでもあれば流し直さない（epic の変更で落ちたテストを隠さない）。流し直しても駄目なら、流し直したことを失敗の文に添えて人に渡す
 - MCP の道具で頼ませる形は採らない。会社の Claude（Team・Enterprise）では、組織の管理の設定で MCP サーバーが止められていることがある。2026-11-07 に社用 MacBook で確かめ、`--restricted` でも外せなかった。これでは、会社の MacBook のワーカーで使えないため
 - Claude に渡す道具は、Read・Edit・Write・Glob・Grep だけにする。Bash は渡さない。道具は `--restricted --tools` で決め、`--settings` の許可の一覧にも同じものを入れる。`--restricted` で、ファイルの読み書きは作業場所（epic の worktree）に限られる
 - 報告の形（JSON Schema）は次のとおり
