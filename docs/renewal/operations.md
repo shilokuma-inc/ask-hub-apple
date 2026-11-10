@@ -340,6 +340,13 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
 
 - **ビルドの設定**: プラットフォーム、テストの行き先（Simulator の種類）、プロジェクトの作り方（XcodeGen なら生成してから）、スキームをリポジトリごとに持つ。ワーカーはこれでビルドとテストを流す（上の「ビルドの設定の入れ方」。XcodeGen などで生成してからビルドするリポジトリは、まだ扱えない）
 - **CI のチェックの名前**: 子 PR で待つ必須のチェックの名前はリポジトリごとに違うので、決め打ちにしない（ルールセットか、develop の最後の回から読んで、ビルドの設定の `childChecks`・`finalChecks` に入れる）
+- **待つチェックの起動の条件**: `childChecks`・`finalChecks` のチェックを出すワークフローは、`paths`・`paths-ignore` で絞らない。絞っていると、ドキュメントだけのタスクの子 PR（最終 PR も）でチェックが出ず、ワーカーが 30 分待って「始まらない」（unexpected）の失敗で人に渡す。
+  ルールセットで必須にしたチェックも、出なければ PR をマージできない。絞っていたら、外す PR を移すときに出す（shariverse/oshikatsu-countdown-ios#161、shilokuma-inc/ask-hub-apple#997）。待たないチェック（ubuntu の軽い検査など）は絞ってよい
+- **作業ブランチの名前**: 今の仕組みの CI は、統合ブランチ `epic/**` を前提に書いてある（子 PR は PR のイベントで Build を動かさない・最終 PR だけ更新でも UI テストまで流す・concurrency のグループ・`.coderabbit.yaml` の子 PR の除外）。
+  新しい仕組みの作業ブランチは `askhub/<epic の id>`、子ブランチは `askhub/<epic の id>-<タスクの id>` なので、`epic/` を `askhub/` に読み替える。読み替えないと、子 PR が push と PR のイベントで 2 回（PR のほうは UI テストまで）流れ、macOS のランナーの枠を食う
+- **ワーカーの Xcode**: 各リポジトリの CI は Xcode を固定している（2026-11 は 26.6）が、ワーカーはその Mac の Xcode（Mac mini は 27.1）でビルドとテストを流す。27.1 は Swift の並行性のチェックが厳しく、CI で通るコードが落ちることがある
+  （shariverse/dokogacha-app-ios は `DGDashedLine.swift` の `Shape` への準拠が `#ConformanceIsolation` で落ちる）。移す前に、ワーカーと同じ Xcode で `build` の設定と同じ `xcodebuild build-for-testing` を流して確かめ、落ちたら移す前に直す
+- **非常口の Keychain の確認**: `askhub add-repository`・`configure-repository` を送るために develop からビルドし直した `askhub` は、署名が変わるので、初回に Keychain（サービス `jp.shilokuma.AskHub.cli`）の項目を読む確認が出る。許可すれば続けて使える
 - **共通リポジトリの前の期間**: 共通リポジトリ（段階 5）ができるまでは、各リポジトリの今のワークフローを入れ替えずに使う
 - **今の仕組みの残りもの**: ラベル・状態用の Issue・ループの中継のスクリプト・CLAUDE.md のループの節を外す PR を、移すときの手順に入れる
 - **移管・改名**: 状態リポジトリのパスは owner/name なので、リポジトリの移管・改名に追って、状態のファイルを移す
