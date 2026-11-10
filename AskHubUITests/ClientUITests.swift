@@ -4,10 +4,13 @@ import XCTest
 final class ClientUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
-        // 起動テスト（AskHubUITestsLaunchTests）は画面の向きを変えたまま残すことがあるので、縦向きに戻す
+        // 横向きのまま残った Simulator なら、縦向きに戻す。縦向きなら向きを変えない
+        // （CI の Simulator では、向きの変更の確認を待ちきれずに落ちることがある。#1006）
         #if os(iOS)
         MainActor.assumeIsolated {
-            XCUIDevice.shared.orientation = .portrait
+            if XCUIDevice.shared.orientation.isLandscape {
+                XCUIDevice.shared.orientation = .portrait
+            }
         }
         #endif
     }
