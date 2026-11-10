@@ -29,7 +29,10 @@ struct ProjectGenerationTests {
 
         func buildTools() -> BuildTools {
             BuildTools(
-                home: URL(fileURLWithPath: "/Users/me"), temporaryDirectory: root.appendingPathComponent("tmp"), toolDirectories: [tools]
+                home: URL(fileURLWithPath: "/Users/me"),
+                temporaryDirectory: root.appendingPathComponent("tmp"),
+                toolDirectories: [tools],
+                userName: "me"
             )
         }
 
@@ -70,8 +73,12 @@ struct ProjectGenerationTests {
         #expect(generate.executable == place.tools.appendingPathComponent("xcodegen"))
         #expect(generate.arguments == ["generate"])
         #expect(generate.workingDirectory == Self.source)
-        // xcodebuild と同じく、作り直した環境変数で流す（トークンなどを渡さない）
-        #expect(generate.environment == runner.tools.environment)
+        // xcodebuild と同じく作り直した環境変数で流し（トークンなどを渡さない）、XcodeGen が要るログインの名前だけを足す
+        var expected = runner.tools.environment
+        expected["USER"] = "me"
+        expected["LOGNAME"] = "me"
+        #expect(generate.environment == expected)
+        #expect(runner.tools.environment["USER"] == nil)
         // 生成の上限（5 分）とビルドの残りの短いほう
         #expect(generate.timeout == .seconds(5 * 60))
         #expect(fake.arguments.dropFirst().first?.prefix(2) == ["xcodebuild", "build"])
