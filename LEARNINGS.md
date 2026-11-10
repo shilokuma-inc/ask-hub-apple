@@ -164,6 +164,8 @@
   これが効くのは base が `askhub/**` でない PR（develop 宛てなど）だけ。`askhub/**` 宛ての子 PR は、開き直しても PR のイベントで Build が動かない（`build.yml` の `if`）ので、
   子 PR のコードの UI テストは手元で流すか、最終 PR（`askhub/<epic>` → develop）で流す
   CI でだけ揺らぐテストを調べるときは、マージしない下書きの PR で `_build.yml` のテストを `-only-testing` で絞ると、ビルドを含めて 4 分ほどで 1 回を流せる（2026-11-10、#1006）
+- organization・ユーザーのアバターは、トークンなしで `https://github.com/<login>.png?size=<画素>` から取れる（`avatars.githubusercontent.com/u/<id>?s=<画素>` へ 302 で転送する。`AsyncImage` は転送を追う）。
+  デモのデータの架空の名前（`demo-studio` など）で取ると、同じ名前の実在のアカウントの画像が写るので、デモでは取らずに記号のアイコンで描く（2026-11-11、#1017）
 
 ## ビルド・テスト
 
