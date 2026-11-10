@@ -1,4 +1,6 @@
 #if os(macOS)
+import AskHubBuild
+import AskHubCommands
 import AskHubKeychain
 import AskHubProtocol
 import Foundation
@@ -49,6 +51,8 @@ public struct MachineCommandLine: Sendable {
             fail("\(error.message)\n\(usage)", status: EX_USAGE)
         }
         var configuration = setup.configuration
+        // 後から決めた Xcode は、setup を流し直しても残す（xcode --unset で戻す）
+        configuration.xcode = MachineConfiguration.preservedXcode(at: paths.configuration)
         adjust(&configuration)
         do {
             for owner in configuration.tokenOwners {
@@ -66,6 +70,44 @@ public struct MachineCommandLine: Sendable {
             fail("セットアップを終えられない（\(error)）", status: EX_SOFTWARE)
         }
         print("設定を \(paths.configuration.path) に書き、トークンを Keychain に置きました。")
+        if let xcode = configuration.xcode { print("ビルドとテストに使う Xcode は、前の設定のまま（\(xcode)）です。") }
+    }
+
+    /// `xcode <Xcode.app のパス>`: ビルドとテストに使う Xcode を決める（`xcode --unset` で xcode-select で選んだものに戻す）。
+    /// 決める前に、その Xcode の `xcodebuild -version` を読めることを確かめる。常駐のループは起動したときの値を使うので、読み込み直してもらう
+    public func xcode(_ arguments: [String]) async {
+        let setup: XcodeSetup
+        do {
+            setup = try XcodeSetup.parse(arguments)
+        } catch {
+            fail("\(error.message)\n使い方: \(role.program) xcode <Xcode.app のパス> | --unset", status: EX_USAGE)
+        }
+        var configuration = loadConfiguration()
+        switch setup {
+        case .set(let path): configuration.xcode = path
+        case .unset: configuration.xcode = nil
+        }
+        let tools = configuration.buildTools(paths: paths)
+        if case .set(let path) = setup, tools.developerDirectoryProblem != nil {
+            fail("\(path) に Xcode が無い（Xcode.app か、その下の Contents/Developer のパスを渡す）", status: EX_DATAERR)
+        }
+        try? FileManager.default.createDirectory(at: paths.buildTemporary, withIntermediateDirectories: true)
+        guard let version = await tools.xcodeVersion(runner: ProcessCommandRunner()) else {
+            let xcode = configuration.xcode ?? "xcode-select で選んだもの"
+            fail("\(xcode) の xcodebuild -version を読めない（ライセンスに同意していない・Command Line Tools だけ、など）", status: EX_DATAERR)
+        }
+        do {
+            try configuration.save(to: paths.configuration)
+        } catch {
+            fail("設定を書けない（\(error.localizedDescription)）", status: EX_CANTCREAT)
+        }
+        let manual = role == .worker ? "（ターミナルで run を流しているなら、止めて流し直す）" : ""
+        let chosen = configuration.xcode.map { "\($0) に決めました" } ?? "xcode-select で選んだものに戻しました"
+        print("""
+            ビルドとテストに使う Xcode を \(chosen)（Xcode \(version)）。
+            動いているループは起動したときの値を使うので、読み込み直してください\(manual):
+              launchctl kickstart -k gui/\(getuid())/\(role.launchAgentLabel)
+            """)
     }
 
     /// `token <持ち主>`: 持ち主の GitHub のトークンを入れ直す・足す。足した持ち主は設定にも書く（常駐の自己診断が、印を書くたびに読み直す）
@@ -219,6 +261,8 @@ public struct MachineCommandLine: Sendable {
         }
         let claudeExpiry = selfCheck.claudeTokenExpiresAt.map { "期限 \($0)（入れた日から 1 年）" } ?? "期限が分からない（claude-token で入れ直すと記録する）"
         let firstKey = (try? TrustAnchor(store: secrets).firstKey()).flatMap { $0 }
+        var xcode = "設定を読めない"
+        if let configuration { xcode = await xcodeLine(configuration) }
         let summary = configuration.map { configuration in
             let capacity = "Claude \(configuration.capacity.claude)・ビルド \(configuration.capacity.build)"
             let mac = "\(configuration.mac)、\(configuration.kind.rawValue)"
@@ -230,8 +274,31 @@ public struct MachineCommandLine: Sendable {
             "Keychain: \(selfCheck.keychain.rawValue)",
             "GitHub のトークン: \(selfCheck.githubToken.rawValue)（\(ownerStates.joined(separator: "・"))）",
             "Claude のトークン: \(selfCheck.claudeToken.rawValue)（\(claudeExpiry)）",
-            "最初の鍵: \(firstKey?.rawValue ?? "固定していない")"
+            "最初の鍵: \(firstKey?.rawValue ?? "固定していない")",
+            "Xcode: \(xcode)"
         ]
+    }
+
+    /// ビルドとテストに使う Xcode と、その版。決めていなければ、xcode-select で選んだものを出す
+    func xcodeLine(_ configuration: MachineConfiguration) async -> String {
+        let tools = configuration.buildTools(paths: paths)
+        if let xcode = configuration.xcode, tools.developerDirectoryProblem != nil {
+            return "設定の \(xcode) に Xcode が無い（ビルドとテストは止まる。xcode <Xcode.app のパス> で決め直す）"
+        }
+        try? FileManager.default.createDirectory(at: paths.buildTemporary, withIntermediateDirectories: true)
+        let version = await tools.xcodeVersion(runner: ProcessCommandRunner()).map { "Xcode \($0)" } ?? "版を読めない"
+        if let xcode = configuration.xcode { return "\(xcode)（\(version)）" }
+        let select = Command(
+            executable: URL(fileURLWithPath: "/usr/bin/xcode-select"),
+            arguments: ["-p"],
+            environment: ["PATH": "/usr/bin:/bin"],
+            workingDirectory: paths.buildTemporary,
+            timeout: .seconds(30)
+        )
+        let selected = (try? await ProcessCommandRunner().run(select)).flatMap { result in
+            result.succeeded ? String(bytes: result.standardOutput, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        }
+        return "設定で決めていない。xcode-select で選んだ \(selected ?? "もの")（\(version)）。人が切り替えると変わるので、xcode <Xcode.app のパス> で決める"
     }
 }
 #endif

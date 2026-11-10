@@ -8,6 +8,7 @@ import Foundation
 /// - `token`: 持ち主の GitHub のトークンを Keychain に入れ直す・足す（人が端末で流す）
 /// - `claude-token`: Claude の setup-token を Keychain に入れ直し、入れた日を記録する（人が端末で流す）
 /// - `apns`: APNs の鍵を Keychain に置き、鍵の id と Team ID を設定に足す（人が端末で流す）
+/// - `xcode`: ビルドとテストに使う Xcode を設定で決める・xcode-select で選んだものに戻す（人が端末で流す）
 /// - `git-credential`: git の credential helper（リポジトリの持ち主の GitHub のトークンを Keychain から git に渡す）
 /// - `launch-agent`: LaunchAgent の定義を書き、登録のコマンドを出す
 /// - `check`: 設定と Keychain の様子・トークンの期限を出す（秘密の値は出さない）
@@ -22,6 +23,7 @@ enum AskHubCommanderMain {
         case "token": commandLine.token(arguments)
         case "claude-token": commandLine.replaceClaudeToken(arguments)
         case "apns": apns(arguments)
+        case "xcode": await commandLine.xcode(arguments)
         case "git-credential": commandLine.gitCredential(arguments)
         case "launch-agent": commandLine.launchAgent()
         case "check": await check()
@@ -37,6 +39,7 @@ enum AskHubCommanderMain {
           token <持ち主>  持ち主（organization・個人）の GitHub の fine-grained token を入れ直す・足す
           claude-token   Claude の setup-token を入れ直す（入れた日から 1 年を期限として記録する）
           apns --key-id <APNs の鍵の id> --team-id <Team ID> --key-file <.p8 のパス> [--topic <Bundle ID>]
+          xcode <Xcode.app のパス>  ビルドとテストに使う Xcode を決める（--unset で xcode-select で選んだものに戻す）
           launch-agent   LaunchAgent の定義を書き、登録のコマンドを出す
           run            常駐のループを回す
           check          設定と Keychain の様子・トークンの期限を出す

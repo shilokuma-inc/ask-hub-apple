@@ -86,6 +86,23 @@ public struct MachineSetup: Equatable, Sendable {
     }
 }
 
+/// `xcode` の引数。ビルドとテストに使う Xcode を、`<Xcode.app のパス>` で決め、`--unset` で xcode-select で選んだものに戻す
+public enum XcodeSetup: Equatable, Sendable {
+    /// 決める Xcode のパス（`~` を展開し、末尾の `/` などを除いた絶対パス）
+    case set(String)
+    case unset
+
+    public static func parse(_ arguments: [String]) throws(MachineSetup.Failure) -> Self {
+        guard arguments.count == 1, let argument = arguments.first, !argument.isEmpty else {
+            throw .init(message: "Xcode.app のパスか --unset を 1 つ渡す")
+        }
+        if argument == "--unset" { return .unset }
+        let path = (argument as NSString).expandingTildeInPath
+        guard path.hasPrefix("/") else { throw .init(message: "Xcode.app の絶対パスを渡す（\(argument)）") }
+        return .set(URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path)
+    }
+}
+
 /// `askhub-commander apns` の引数。APNs の鍵（.p8）を Keychain に置き、鍵の id と Team ID を設定に足す
 public struct APNsSetup: Equatable, Sendable {
     public var configuration: APNsConfiguration
