@@ -174,6 +174,9 @@ struct MachineSetupTests {
         #expect(throws: GitCredential.Problem.missingToken(owner: "yumemi")) {
             try answer("protocol=https\nhost=github.com\npath=yumemi/app.git\n")
         }
+        // 設定の持ち主の一覧は見ず、問い合わせのたびに Keychain から選ぶ（`token` で足した持ち主も、次の要求から使う）
+        try tokens.store("github_pat_yumemi", for: "yumemi")
+        #expect(try answer("protocol=https\nhost=github.com\npath=yumemi/app.git\n").contains("github_pat_yumemi"))
         #expect(throws: GitCredential.Problem.missingPath) { try answer("protocol=https\nhost=github.com\n") }
         #expect(throws: GitCredential.Problem.invalidOwner("../a.git")) { try answer("protocol=https\nhost=github.com\npath=../a.git\n") }
         #expect(!GitCredential.Problem.missingToken(owner: "yumemi").description.contains("github_pat_"))
@@ -195,18 +198,18 @@ struct MachineSetupTests {
     @Test func selfCheckReportsTokensWithoutValues() async throws {
         let volume = FileManager.default.temporaryDirectory
         let owners = ["shilokuma-inc", "mrs1669"]
-        let empty = await MachineProbe(secrets: InMemorySecretStore(), volume: volume, owners: owners).selfCheck()
+        let empty = await MachineProbe(secrets: InMemorySecretStore(), volume: volume, owners: { owners }).selfCheck()
         #expect(empty.githubToken == .missing)
         #expect(empty.claudeToken == .missing)
         // 前の 1 つのトークンは見ない（持ち主ごとのトークンだけを見る）
         let secrets = InMemorySecretStore([.githubToken: Data("github_pat_old".utf8), .claudeToken: Data("sk-ant-api03-x".utf8)])
         let tokens = GitHubTokens(secrets: secrets)
         try tokens.store("github_pat_a", for: "shilokuma-inc")
-        let partial = await MachineProbe(secrets: secrets, volume: volume, owners: owners).selfCheck()
+        let partial = await MachineProbe(secrets: secrets, volume: volume, owners: { owners }).selfCheck()
         #expect(partial.githubToken == .missing)
         #expect(partial.githubTokens == [.init(owner: "shilokuma-inc", state: .ok), .init(owner: "mrs1669", state: .missing)])
         try tokens.store("github_pat_b", for: "mrs1669")
-        let check = await MachineProbe(secrets: secrets, volume: volume, owners: owners).selfCheck()
+        let check = await MachineProbe(secrets: secrets, volume: volume, owners: { owners }).selfCheck()
         #expect(check.githubToken == .ok)
         #expect(check.claudeToken == .invalid)
         // 期限は問い合わせたときだけ書く
@@ -222,6 +225,41 @@ struct MachineSetupTests {
         #expect(configuration.tokenOwners == ["shilokuma-inc", "mrs1669"])
         configuration.githubOwners.append("a/b")
         #expect(configuration.problems == ["githubOwners の a/b は GitHub の持ち主の名前の形でない"])
+    }
+
+    @Test func selfCheckShowsOwnerAddedByTokenWithoutReloading() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MachineSetupTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("config.json")
+        let started = try MachineSetup.parse([
+            "--state-repo", "shilokuma-inc/askhub-state", "--mac", "mac-mini", "--claude", "/opt/claude", "--first-key", Self.keyID,
+            "--key-account", "a", "--github-owner", "mrs1669"
+        ], role: .commander).configuration
+        try started.save(to: url)
+        let secrets = InMemorySecretStore()
+        for owner in ["shilokuma-inc", "mrs1669", "shariverse"] {
+            try GitHubTokens(secrets: secrets).store("github_pat_\(owner)", for: owner)
+        }
+        // 常駐が起動したときの設定で組み立てた自己診断
+        let probe = MachineProbe(secrets: secrets, volume: directory, owners: started.tokenOwnersReloading(from: url, role: .commander))
+        #expect(await probe.selfCheck().githubTokens?.map(\.owner) == ["shilokuma-inc", "mrs1669"])
+        // `token shariverse` と同じく、ほかのプロセスが設定に足して書く（すでにある持ち主は足さない）
+        var added = try MachineConfiguration.load(from: url, role: .commander)
+        let new = added.addTokenOwner("Shariverse")
+        let existing = added.addTokenOwner("mrs1669")
+        #expect(new && !existing)
+        try added.save(to: url)
+        let check = await probe.selfCheck()
+        #expect(check.githubTokens?.map(\.owner) == ["shilokuma-inc", "mrs1669", "shariverse"])
+        #expect(check.githubToken == .ok)
+        // 設定を読めないときは、前に読めた一覧のまま
+        try Data("{".utf8).write(to: url)
+        #expect(await probe.selfCheck().githubTokens?.map(\.owner) == ["shilokuma-inc", "mrs1669", "shariverse"])
+        // 状態リポジトリ（先頭の持ち主）は、常駐が使っている起動したときのまま
+        var moved = added
+        moved.stateRepository = try #require(RepositoryFullName(rawValue: "other/askhub-state"))
+        try moved.save(to: url)
+        #expect(await probe.selfCheck().githubTokens?.map(\.owner) == ["shilokuma-inc", "mrs1669", "shariverse"])
     }
 
     // MARK: - 公開鍵の一覧

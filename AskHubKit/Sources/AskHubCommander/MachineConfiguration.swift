@@ -1,6 +1,7 @@
 import AskHubKeychain
 import AskHubProtocol
 import Foundation
+import os
 
 /// 司令塔とワーカーの役割。どちらも同じ部品（設定・Keychain・作業場所・ジョブの実行）で動き、置き場所と名前だけを分ける
 public enum MachineRole: String, CaseIterable, Sendable {
@@ -79,6 +80,29 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
             owners.append(normalized)
         }
         return owners
+    }
+
+    /// トークンを置く持ち主に足す（`token <持ち主>`）。持ち主の名前の形でない・すでにあれば足さずに false
+    @discardableResult
+    public mutating func addTokenOwner(_ owner: String) -> Bool {
+        guard let normalized = GitHubTokens.normalizedOwner(owner), !tokenOwners.contains(normalized) else { return false }
+        githubOwners.append(normalized)
+        return true
+    }
+
+    /// 生きている印の自己診断が印を書くたびに呼ぶ、持ち主の一覧（`tokenOwners`）。呼ぶたびに設定ファイルの `githubOwners` を読み直すので、
+    /// `token <持ち主>` で足した持ち主は、常駐を読み込み直さなくても次の印に出る。状態リポジトリ（先頭の持ち主）は起動したときのまま。
+    /// 読めない・形が違うときは、前に読めた一覧のまま
+    public func tokenOwnersReloading(from url: URL, role: MachineRole) -> @Sendable () -> [String] {
+        let last = OSAllocatedUnfairLock(initialState: tokenOwners)
+        return { [self] in
+            guard let saved = try? Self.load(from: url, role: role) else { return last.withLock { $0 } }
+            var current = self
+            current.githubOwners = saved.githubOwners
+            let owners = current.tokenOwners
+            last.withLock { $0 = owners }
+            return owners
+        }
     }
 
     /// 設定の形の問題。空なら使える

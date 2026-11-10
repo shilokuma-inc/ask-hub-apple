@@ -7,8 +7,9 @@ public struct MachineProbe: Sendable {
     public var secrets: any SecretStore
     /// 空き容量を測るフォルダ（作業ファイルを置くボリューム）
     public var volume: URL
-    /// GitHub のトークンを置く持ち主（`MachineConfiguration.tokenOwners`）。どれか 1 つでも無ければ `missing`
-    public var owners: [String]
+    /// GitHub のトークンを置く持ち主（`MachineConfiguration.tokenOwners`）。どれか 1 つでも無ければ `missing`。
+    /// 自己診断のたびに呼ぶ（常駐は設定ファイルから読み直し、`token` で足した持ち主を次の印に出す。`MachineConfiguration.tokenOwnersReloading`）
+    public var owners: @Sendable () -> [String]
     /// GitHub のトークンの期限を問い合わせるもの。nil なら問い合わせない（形だけを確かめる）
     public var githubExpiry: GitHubTokenExpiry?
     /// Claude の setup-token を入れた日の記録（`MachinePaths.claudeTokenRecord`）。nil なら期限を書かない
@@ -20,7 +21,7 @@ public struct MachineProbe: Sendable {
     public init(
         secrets: any SecretStore,
         volume: URL,
-        owners: [String],
+        owners: @escaping @Sendable () -> [String],
         githubExpiry: GitHubTokenExpiry? = nil,
         claudeTokenRecord: URL? = nil,
         claudeVersion: @escaping @Sendable () async -> String? = { nil },
@@ -42,11 +43,11 @@ public struct MachineProbe: Sendable {
 
     /// Keychain に必要なものがあり、形が合い、期限が切れていないか。値そのものは書かない
     public func selfCheck() async -> SelfCheck {
-        let now = now()
+        let (now, owners) = (now(), owners())
         let githubTokens: [SelfCheck.GitHubToken]
         let claude: SelfCheck.State
         do {
-            githubTokens = try await githubTokenStates(now: now)
+            githubTokens = try await githubTokenStates(of: owners, now: now)
             claude = Self.state(of: try secrets.read(.claudeToken)) { $0.hasPrefix(Self.claudeTokenPrefix) }
         } catch {
             return SelfCheck(checkedAt: Timestamp(now), keychain: .invalid, githubToken: .missing, claudeToken: .missing)
@@ -65,7 +66,7 @@ public struct MachineProbe: Sendable {
     }
 
     /// 持ち主ごとのトークンの様子。形の合うトークンだけ、GitHub に期限を問い合わせる
-    private func githubTokenStates(now: Date) async throws(SecretStoreError) -> [SelfCheck.GitHubToken] {
+    private func githubTokenStates(of owners: [String], now: Date) async throws(SecretStoreError) -> [SelfCheck.GitHubToken] {
         let tokens = GitHubTokens(secrets: secrets)
         var states: [SelfCheck.GitHubToken] = []
         for owner in owners {

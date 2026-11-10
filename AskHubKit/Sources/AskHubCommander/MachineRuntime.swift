@@ -58,7 +58,7 @@ public struct MachineRuntime: Sendable {
             probe: MachineProbe(
                 secrets: secrets,
                 volume: paths.root,
-                owners: configuration.tokenOwners,
+                owners: configuration.tokenOwnersReloading(from: paths.configuration, role: commandLine.role),
                 githubExpiry: GitHubTokenExpiry(),
                 claudeTokenRecord: paths.claudeTokenRecord,
                 claudeVersion: { await version(of: claude) }
