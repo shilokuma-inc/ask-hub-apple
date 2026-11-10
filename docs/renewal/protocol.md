@@ -102,7 +102,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `appKit` は、共通リポジトリのワークフローを入れる前は `null`
 - `build` は、ビルドの設定（段階 3）。人が設定を入れる意図（`configureRepository`）で書く（入れ方は [operations.md](operations.md) の「ビルドの設定の入れ方」）。形は `protocol/schemas/repository-build.schema.json`（Swift は `RepositoryFile.Build`）
   - `baseBranch`: 作業ブランチの元で、最終 PR の向き先。無ければ develop
-  - `xcode`: ビルドとテストの設定（Swift は `AskHubProtocol` の `BuildSettings`）。`project`（`.xcodeproj` か `.xcworkspace` の、リポジトリの直下からの相対パス）・`scheme`・`destinations`（`{ "platform": "iOS" | "visionOS", "deviceType", "osVersion" }` か `{ "platform": "macOS" }`。並べた順に流す）・`testLight`・`testFull`（`testPlan`・`onlyTesting`・`skipTesting`。無ければ全部）。`xcodebuild` の引数とパスに使うので、`-` で始まる値・制御文字・リポジトリの外を指すパスを受け付けない
+  - `xcode`: ビルドとテストの設定（Swift は `AskHubProtocol` の `BuildSettings`）。`project`（`.xcodeproj` か `.xcworkspace` の、リポジトリの直下からの相対パス）・`generate`（ビルドの前にプロジェクトを作る道具。`"xcodegen"` なら、ワーカーが作業場所の直下で `xcodegen generate` を流す。無ければリポジトリにあるプロジェクトをそのまま使う）・`scheme`・`destinations`（`{ "platform": "iOS" | "visionOS", "deviceType", "osVersion" }` か `{ "platform": "macOS" }`。並べた順に流す）・`testLight`・`testFull`（`testPlan`・`onlyTesting`・`skipTesting`。無ければ全部）。`xcodebuild` の引数とパスに使うので、`-` で始まる値・制御文字・リポジトリの外を指すパスを受け付けない
   - `childChecks`: 子 PR で待つチェックの名前（REST の check run の `name`。再利用ワークフローのジョブは `build / build` の形）。1 つ以上（無いと CI を待たずにマージしてしまう）
   - `finalChecks`: 最終 PR で待つチェックの名前。1 つ以上
   - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。`coderabbitai[bot]` など）。無ければ空

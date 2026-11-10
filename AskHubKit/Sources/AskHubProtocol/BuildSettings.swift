@@ -9,6 +9,8 @@ import Foundation
 public struct BuildSettings: Codable, Equatable, Sendable {
     /// `.xcodeproj` か `.xcworkspace` の、リポジトリの直下からの相対パス
     public var project: String
+    /// ビルドの前にプロジェクトを作る道具。nil ならリポジトリにあるプロジェクトをそのまま使う
+    public var generate: ProjectGenerator?
     public var scheme: String
     /// ビルドとテストの行き先。並べた順に流す
     public var destinations: [BuildDestination]
@@ -19,12 +21,14 @@ public struct BuildSettings: Codable, Equatable, Sendable {
 
     public init(
         project: String,
+        generate: ProjectGenerator? = nil,
         scheme: String,
         destinations: [BuildDestination],
         testLight: TestSelection = TestSelection(),
         testFull: TestSelection = TestSelection()
     ) throws(BuildSettingsError) {
         self.project = project
+        self.generate = generate
         self.scheme = scheme
         self.destinations = destinations
         self.testLight = testLight
@@ -35,6 +39,7 @@ public struct BuildSettings: Codable, Equatable, Sendable {
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         project = try container.decode(String.self, forKey: .project)
+        generate = try container.decodeIfPresent(ProjectGenerator.self, forKey: .generate)
         scheme = try container.decode(String.self, forKey: .scheme)
         destinations = try container.decode([BuildDestination].self, forKey: .destinations)
         testLight = try container.decodeIfPresent(TestSelection.self, forKey: .testLight) ?? TestSelection()
@@ -84,6 +89,13 @@ public struct BuildSettings: Codable, Equatable, Sendable {
             throw BuildSettingsError(field: field, reason: "制御文字を含む")
         }
     }
+}
+
+/// ビルドの前にプロジェクトを作る道具（`.xcodeproj` をコミットしないリポジトリ）。
+/// ワーカーは、ビルド・テスト・スクショのビルドの前に、作業場所の直下で決まったコマンドを流す（`AskHubBuild`）
+public enum ProjectGenerator: String, Codable, Sendable, CaseIterable {
+    /// XcodeGen。直下の `project.yml` から `xcodegen generate` で作る
+    case xcodegen
 }
 
 /// どのテストを流すか（`xcodebuild test` の `-testPlan`・`-only-testing:`・`-skip-testing:`）

@@ -77,6 +77,31 @@
       "read": "valid"
     },
     {
+      "name": "generate-xcodegen",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "generate": "xcodegen",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "missing-build",
       "payload": {},
       "schemaValid": false,
@@ -159,6 +184,31 @@
                 "AppTests"
               ]
             }
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-generator",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "generate": "tuist",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
           },
           "childChecks": [
             "build"

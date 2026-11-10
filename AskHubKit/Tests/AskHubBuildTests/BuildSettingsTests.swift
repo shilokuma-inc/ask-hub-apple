@@ -42,9 +42,24 @@ struct BuildSettingsTests {
     @Test func defaultsTheTestsToEverything() throws {
         let settings = try decode(#"{"project": "App.xcworkspace", "scheme": "App", "destinations": [{"platform": "macOS"}]}"#)
         #expect(settings.projectOption == "-workspace")
+        #expect(settings.generate == nil)
         #expect(settings.testLight == TestSelection())
         #expect(settings.testFull == TestSelection())
         #expect(settings.tests(for: .build) == nil)
+    }
+
+    @Test func readsTheProjectGenerator() throws {
+        let json = #"{"project": "App.xcodeproj", "generate": "xcodegen", "scheme": "App", "destinations": [{"platform": "macOS"}]}"#
+        let settings = try decode(json)
+        #expect(settings.generate == .xcodegen)
+        let again = try JSONDecoder().decode(BuildSettings.self, from: JSONEncoder().encode(settings))
+        #expect(again == settings)
+        // 作らない設定では欄を書かない（今までの設定の形のまま）
+        let plain = try BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [.macOS])
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(plain)) as? [String: Any]
+        #expect(object?["generate"] == nil)
+        // 知らない道具は読まない
+        #expect(throws: DecodingError.self) { try decode(json.replacingOccurrences(of: "xcodegen", with: "tuist")) }
     }
 
     /// 作れなかったときの、誤りの欄

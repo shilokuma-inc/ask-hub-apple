@@ -301,11 +301,12 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
    ```
 
    - `baseBranch` は作業ブランチの元で、最終 PR の向き先（無ければ develop）
-   - `xcode` の値は `xcodebuild` の引数になる。`project` はリポジトリの直下からの相対パス。`destinations` は並べた順に流す（macOS は `{ "platform": "macOS" }`。`osVersion` を省くと、使う Xcode の SDK と同じか古いランタイムのうち最新）。`testLight`（子 PR の前）・`testFull`（最終 PR の前。UI テストを含む）は、省くと全部のテスト
+   - `xcode` の値は `xcodebuild` の引数になる。`project` はリポジトリの直下からの相対パス。`.xcodeproj` をコミットせず XcodeGen で作るリポジトリは `"generate": "xcodegen"` を足す（ワーカーがビルド・テスト・スクショのビルドの前に、作業場所の直下で `xcodegen generate` を流す。ワーカーの Mac の `/opt/homebrew/bin`・`/usr/local/bin`・`~/.local/bin` のどれかに `xcodegen` が要る）。`destinations` は並べた順に流す（macOS は `{ "platform": "macOS" }`。`osVersion` を省くと、使う Xcode の SDK と同じか古いランタイムのうち最新）。`testLight`（子 PR の前）・`testFull`（最終 PR の前。UI テストを含む）は、省くと全部のテスト
    - `childChecks`・`finalChecks` は、待つチェックの名前（1 つ以上）。PR の画面のチェックの表示と同じで、再利用ワークフローのジョブは `build / build` の形になる。develop の最近のコミットのチェックの名前は `gh api repos/<owner>/<repo>/commits/develop/check-runs --jq '.check_runs[].name'` で見られる
    - `trustedReviewers` は、指摘を Claude に渡してよいレビューの書き手（無ければ空。CodeRabbit は最終 PR でだけ待つ）
    - `screenshots` は、判断のカードのスクショの撮り方（無ければ撮らない。下の「判断のカードのスクショの入れ方」）
-2. 非常口から送る: `askhub configure-repository --repo <owner/repo> --file build.json`。送る前に、司令塔と同じ決まり（`-` で始まる値・リポジトリの外を指すパス・知らない欄・チェックが空）で確かめ、合わなければ送らない
+2. 非常口から送る: `askhub configure-repository --repo <owner/repo> --file build.json`。送る前に、司令塔と同じ決まり（`-` で始まる値・リポジトリの外を指すパス・知らない欄・チェックが空）で確かめ、合わなければ送らない。
+   新しく足した欄（`generate` など）は、古い司令塔には知らない欄なので、先に司令塔を更新してから送る
 3. `askhub status` で、送った意図が受け付けられたか（断られたら理由）を見る。送るたびに `build` をまるごと置き換える
 
 - クライアントでの入れ方は、まだ無い（[protocol.md](protocol.md) の「決めていないこと」）
@@ -338,7 +339,7 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
 
 今の仕組みで管理しているリポジトリは、作りがそろっていない（段階 0 の後の調査）。「対象に加える」で次も扱う。
 
-- **ビルドの設定**: プラットフォーム、テストの行き先（Simulator の種類）、プロジェクトの作り方（XcodeGen なら生成してから）、スキームをリポジトリごとに持つ。ワーカーはこれでビルドとテストを流す（上の「ビルドの設定の入れ方」。XcodeGen などで生成してからビルドするリポジトリは、まだ扱えない）
+- **ビルドの設定**: プラットフォーム、テストの行き先（Simulator の種類）、プロジェクトの作り方（XcodeGen なら生成してから）、スキームをリポジトリごとに持つ。ワーカーはこれでビルドとテストを流す（上の「ビルドの設定の入れ方」。XcodeGen で作るリポジトリは `generate`）
 - **CI のチェックの名前**: 子 PR で待つ必須のチェックの名前はリポジトリごとに違うので、決め打ちにしない（ルールセットか、develop の最後の回から読んで、ビルドの設定の `childChecks`・`finalChecks` に入れる）
 - **共通リポジトリの前の期間**: 共通リポジトリ（段階 5）ができるまでは、各リポジトリの今のワークフローを入れ替えずに使う
 - **今の仕組みの残りもの**: ラベル・状態用の Issue・ループの中継のスクリプト・CLAUDE.md のループの節を外す PR を、移すときの手順に入れる
