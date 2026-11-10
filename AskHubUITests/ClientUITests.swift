@@ -42,12 +42,12 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(scrollUntilExists(app.staticTexts["時間のあるときに · 5"], in: app))
     }
 
-    /// 読めなかったときは「ありません」と出さない
+    /// 読めなかったときは、出番が無いときの空の画面を出さない
     @MainActor
     func testFailureIsNotShownAsEmpty() {
         let app = launch(["-demoScenario", "failing"])
         XCTAssertTrue(app.staticTexts["読み込めませんでした"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.staticTexts["あなたの番はありません"].exists)
+        XCTAssertFalse(app.staticTexts["いまは任せて大丈夫です"].exists)
         XCTAssertTrue(app.buttons["もう一度読む"].exists)
         XCTAssertFalse(app.buttons["新しい依頼を出す"].exists)
     }
@@ -56,7 +56,7 @@ final class ClientUITests: XCTestCase {
     @MainActor
     func testQuietScenarioShowsEmptyState() {
         let app = launch(["-demoScenario", "quiet"])
-        XCTAssertTrue(app.staticTexts["あなたの番はありません"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["いまは任せて大丈夫です"].waitForExistence(timeout: 10))
     }
 
     /// 人の出番が無いときの画面から、ツールバーと同じ新しい依頼のシートを開ける
@@ -78,7 +78,7 @@ final class ClientUITests: XCTestCase {
     func testChangingScenarioReloadsData() {
         let app = launch(["-dataSource", "demo"])
         chooseScenario("人の出番が無い", in: app)
-        XCTAssertTrue(app.staticTexts["あなたの番はありません"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["いまは任せて大丈夫です"].waitForExistence(timeout: 10))
         chooseScenario("ひととおり（標準）", in: app)
         XCTAssertTrue(app.staticTexts["まとめて判断する"].waitForExistence(timeout: 10))
     }
