@@ -171,6 +171,7 @@ struct XcodeBuildRunnerTests {
         (.failure(70, "xcodebuild: error: Unable to find a device matching the provided destination specifier:\n{ id:B }"), .environment),
         (.failure(65, "DTServiceHubClient failed to bless service hub\n** BUILD INTERRUPTED **"), .environment),
         (.failure(65, "Test runner never began executing tests after launching."), .environment),
+        (.failure(65, "IDELaunchReport: Finished with error: Simulator device failed to launch com.example.App."), .environment),
         (.failure(74, "xcodebuild: error: Could not resolve package dependencies:\n  Could not resolve host: github.com"), .environment),
         (.failure(65, "/w/App/Foo.swift:3:5: error: cannot find 'x' in scope\n** TEST FAILED **"), .build),
         (.failure(65, "ld: symbol(s) not found\nclang: error: linker command failed with exit code 1"), .build),
@@ -211,6 +212,56 @@ struct XcodeBuildRunnerTests {
         let cancelled = XcodeBuildRunner(tools: tools, directories: directories, runner: FailingRunner(error: CancellationError()))
         let request = try request(.build)
         await #expect(throws: CancellationError.self) { try await cancelled.run(request, timeout: .seconds(600)) }
+    }
+
+    // MARK: - アプリかテストの実行役を起動できなかった
+
+    /// 2026-11-10 に Mac mini で起きた形（入れたアプリを起動できない・実行役がつながる前に固まる）
+    @Test(arguments: [
+        (Fixtures.launchFailureBuild, Fixtures.launchFailureSummary),
+        (Fixtures.hungBuild, Fixtures.hungSummary)
+    ])
+    func marksLaunchFailures(build: String, tests: String) async throws {
+        let (runner, _) = makeRunner(build: build, tests: tests) { _ in
+            .failure(65, "Testing failed:\n\tencountered an error\n** TEST FAILED **\n")
+        }
+        defer { try? FileManager.default.removeItem(at: runner.directories.root) }
+        let outcome = try await runner.run(try request(.testLight), timeout: .seconds(600))
+        #expect(outcome.failure == .environment)
+        #expect(outcome.launchFailed)
+        #expect(outcome.summary == "Simulator か Xcode の不調でビルドとテストを流せない")
+        #expect(outcome.attemptFailure?.failureClass == .unexpected)
+    }
+
+    /// 落ちたテストの数（3 件）が、一覧に出ている失敗（起動の失敗 1 件）より多い
+    static let undercountedLaunchFailure = Fixtures.launchFailureSummary
+        .replacingOccurrences(of: #""failedTests": 1"#, with: #""failedTests": 3"#)
+
+    /// 起動の失敗のほかにも失敗があるとき・ほかの失敗が無いと確かめられないときは、流し直さない（epic の変更で落ちたテストを隠さない）
+    @Test(arguments: [
+        // Unit テストが 1 件落ち、UI テストの実行役は起動できなかった
+        (Fixtures.launchFailureBuild, Fixtures.launchFailureWithFailedTest),
+        (Fixtures.launchFailureBuild, undercountedLaunchFailure),
+        // 結果のバンドルを読めない（出力にだけ起動の失敗がある）
+        (nil, nil)
+    ] as [(String?, String?)])
+    func doesNotMarkOtherFailuresAsLaunchFailures(build: String?, tests: String?) async throws {
+        let (runner, _) = makeRunner(build: build, tests: tests) { _ in
+            .failure(65, "Failed to install or launch the test runner.\n** TEST FAILED **\n")
+        }
+        defer { try? FileManager.default.removeItem(at: runner.directories.root) }
+        let outcome = try await runner.run(try request(.testLight), timeout: .seconds(600))
+        #expect(outcome.failure == .environment)
+        #expect(!outcome.launchFailed)
+    }
+
+    /// ビルドだけのときは、テストの実行役を起動しないので流し直さない
+    @Test func doesNotMarkBuildsAsLaunchFailures() async throws {
+        let (runner, _) = makeRunner(build: Fixtures.launchFailureBuild) { _ in .failure(65, "** BUILD FAILED **\n") }
+        defer { try? FileManager.default.removeItem(at: runner.directories.root) }
+        let outcome = try await runner.run(try request(.build), timeout: .seconds(600))
+        #expect(outcome.failure == .environment)
+        #expect(!outcome.launchFailed)
     }
 
     // MARK: - 置き場所
