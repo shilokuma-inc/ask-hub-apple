@@ -24,6 +24,8 @@ struct ScreenshotScenesTests {
             )
             // 状態リポジトリにつながず、デモのデータで開く（実データを撮らない）
             #expect(arguments["-\(DemoScenario.preferenceKey)"].flatMap(DemoScenario.init(rawValue:)) != nil, "\(scene.id)")
+            // 時計を止め、Before と After を別の時刻に撮っても時刻の文がそろう
+            #expect(arguments["-\(DemoScenario.clockKey)"].flatMap { try? Date($0, strategy: .iso8601) } != nil, "\(scene.id)")
             // 開く画面が読める値で、その場面のデモのデータにある（無い epic を開くと「見つかりません」を撮ってしまう）
             let scenario = arguments["-\(DemoScenario.preferenceKey)"].flatMap(DemoScenario.init)
             if let open = arguments["-\(DemoLaunch.openKey)"], let scenario {
