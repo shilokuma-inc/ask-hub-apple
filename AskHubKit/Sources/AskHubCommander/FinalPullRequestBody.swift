@@ -28,16 +28,17 @@ enum FinalPullRequestBody {
         capturesScreenshots: Bool = false
     ) -> String {
         let items = decisions?.items ?? []
+        let screens = capturesScreenshots ? decisions?.screens ?? [] : []
         let visible = items.filter { $0.visible != false }
         let details = items.filter { $0.visible == false }
         var sections = [
             "AskHub が epic「\(safe(epic.title))」の最終 PR として出しました。作業ブランチ `\(branches.epic)` を `\(branches.base)` に merge commit でマージします。",
             "## 何を作ったか\n\n\(safe(goal.summary))",
             "## タスク\n\n" + list(goal.tasks.map { "\($0.id): \(safe($0.title))" }),
-            "## 人が決めていない判断（見える仮決め）\n\n" + cards(visible, capturesScreenshots: capturesScreenshots)
+            "## 人が決めていない判断（見える仮決め）\n\n" + cards(visible, capturesScreenshots: capturesScreenshots, screens: screens)
         ]
         // 画面の変化（仮決めに結びつかない、epic 全体で見た目が変わった画面）。選んだ画面があるときだけ出す
-        if capturesScreenshots, let screens = decisions?.screens, !screens.isEmpty {
+        if !screens.isEmpty {
             sections.append("## 画面の変化\n\n" + screens.map(screenChange).joined(separator: "\n\n"))
         }
         if !details.isEmpty {
@@ -58,7 +59,7 @@ enum FinalPullRequestBody {
     }
 
     /// 見える仮決めのカード（1 件ずつ見出しを付ける）
-    private static func cards(_ items: [DecisionsFile.Item], capturesScreenshots: Bool) -> String {
+    private static func cards(_ items: [DecisionsFile.Item], capturesScreenshots: Bool, screens: [DecisionsFile.ScreenChange]) -> String {
         guard !items.isEmpty else { return "見える仮決めはありません。" }
         let cards = items.map { item in
             let alternatives = item.alternatives.isEmpty ? "なし" : item.alternatives.map(safe).joined(separator: "・")
@@ -67,7 +68,7 @@ enum FinalPullRequestBody {
 
             - なぜ: \(safe(item.why))
             - ほかの案: \(alternatives)
-            - 画面の変化: \(screenshots(of: item, capturesScreenshots: capturesScreenshots))
+            - 画面の変化: \(screenshots(of: item, capturesScreenshots: capturesScreenshots, screens: screens))
             """
         }
         return "AskHub のクライアントで 1 件ずつ「OK」「別案にする」「直してほしい」を選んでください。全部を確かめ終えるまでマージしません。\n\n"
@@ -75,8 +76,10 @@ enum FinalPullRequestBody {
     }
 
     /// カードの「画面の変化」。GitHub に上げた画像があれば、Before / After の表にする（`DecisionsFile.Screenshots` が確かめた URL だけを載せる）
-    static func screenshots(of item: DecisionsFile.Item, capturesScreenshots: Bool) -> String {
+    /// 「画面の変化」に同じ画面があれば、表を繰り返さずに、そこを見るよう書く（Before / After は同じ画像なので）
+    static func screenshots(of item: DecisionsFile.Item, capturesScreenshots: Bool, screens: [DecisionsFile.ScreenChange] = []) -> String {
         guard capturesScreenshots else { return noScreenshots }
+        if let scene = item.scene, screens.contains(where: { $0.scene == scene }) { return "下の「画面の変化」の `\(scene)` を見る" }
         guard let shots = item.screenshots else { return item.scene == nil ? noScene : capturing }
         let scene = item.scene.map { "`\($0)` の画面" } ?? "画面"
         return images(shots, label: item.id, heading: scene, indent: "  ")
@@ -97,13 +100,14 @@ enum FinalPullRequestBody {
             guard let url, DecisionsFile.Screenshots.isAttachmentURL(url) else { return "なし" }
             return #"<img src="\#(url)" alt="\#(label) \#(side)" width="300">"#
         }
-        return """
-            \(heading)\(note)
-
+        let table = """
             \(indent)| Before | After |
             \(indent)| --- | --- |
             \(indent)| \(cell(shots.beforeURL, "Before")) | \(cell(shots.afterURL, "After")) |
             """
+        // 見出しもわけも無ければ（画面の変化の節）、表だけにする（見出しの下に空行を重ねない）
+        let lead = heading + note
+        return lead.isEmpty ? table : "\(lead)\n\n\(table)"
     }
 
     private static func list(_ lines: [String]) -> String {
