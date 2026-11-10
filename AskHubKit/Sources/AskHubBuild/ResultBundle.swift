@@ -113,10 +113,11 @@ struct ReportCleaner {
         return BuildReport(errors: errors, failedTests: failures, tests: counts)
     }
 
-    /// `xcodebuild` の出力の抜粋。エラーらしい行（`error`・`failed`・`** … **`）があればそれを、無ければ末尾の行を残す
-    func logExcerpt(of output: String, maximumLines: Int = 30) -> String? {
+    /// `xcodebuild` の出力の抜粋。エラーらしい行（`error`・`failed`・`** … **`）があればそれを、無ければ末尾の行を残す。
+    /// `preferringErrors` が false なら、いつも末尾の行を残す（理由が次の行に続く、短い出力の道具）
+    func logExcerpt(of output: String, maximumLines: Int = 30, preferringErrors: Bool = true) -> String? {
         let lines = output.split(whereSeparator: \.isNewline).map(String.init)
-        let errors = lines.filter { line in
+        let errors = !preferringErrors ? [] : lines.filter { line in
             let lowered = line.lowercased()
             return lowered.contains("error") || lowered.contains("failed") || line.hasPrefix("** ")
         }

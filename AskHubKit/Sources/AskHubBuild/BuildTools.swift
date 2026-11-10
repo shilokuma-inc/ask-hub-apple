@@ -12,17 +12,31 @@ public struct BuildTools: Sendable {
     public var home: URL
     /// TMPDIR（ワーカー専用のフォルダの下）
     public var temporaryDirectory: URL
+    /// プロジェクトを作る道具（`xcodegen` など）を探すフォルダ。ワーカーの PATH は引き継がないので、決まった置き場所から順に探す
+    public var toolDirectories: [URL]
 
+    /// Homebrew（Apple シリコン・Intel）と、人のホームフォルダの `~/.local/bin`
+    public static func defaultToolDirectories(home: URL) -> [URL] {
+        [
+            URL(fileURLWithPath: "/opt/homebrew/bin", isDirectory: true),
+            URL(fileURLWithPath: "/usr/local/bin", isDirectory: true),
+            home.appendingPathComponent(".local/bin", isDirectory: true)
+        ]
+    }
+
+    /// `toolDirectories` が nil なら `defaultToolDirectories(home:)`
     public init(
         xcrun: URL = URL(fileURLWithPath: "/usr/bin/xcrun"),
         developerDirectory: URL? = nil,
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
-        temporaryDirectory: URL
+        temporaryDirectory: URL,
+        toolDirectories: [URL]? = nil
     ) {
         self.xcrun = xcrun
         self.developerDirectory = developerDirectory
         self.home = home
         self.temporaryDirectory = temporaryDirectory
+        self.toolDirectories = toolDirectories ?? Self.defaultToolDirectories(home: home)
     }
 
     /// 子に渡す環境変数。ここに無いものは渡らない
@@ -46,7 +60,17 @@ public struct BuildTools: Sendable {
 
     /// `xcrun <arguments>` を、`directory` で、上限 `timeout` で流すコマンド
     func command(_ arguments: [String], in directory: URL, timeout: Duration) -> Command {
-        Command(executable: xcrun, arguments: arguments, environment: environment, workingDirectory: directory, timeout: timeout)
+        command(xcrun, arguments, in: directory, timeout: timeout)
+    }
+
+    /// `executable <arguments>` を、`directory` で、上限 `timeout` で流すコマンド
+    func command(_ executable: URL, _ arguments: [String], in directory: URL, timeout: Duration) -> Command {
+        Command(executable: executable, arguments: arguments, environment: environment, workingDirectory: directory, timeout: timeout)
+    }
+
+    /// `toolDirectories` を順に見て、最初に見つかった `name` の実行ファイル。無ければ nil
+    func tool(named name: String) -> URL? {
+        toolDirectories.lazy.map { $0.appendingPathComponent(name) }.first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 }
 

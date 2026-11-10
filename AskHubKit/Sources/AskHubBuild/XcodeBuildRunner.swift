@@ -31,6 +31,7 @@ public struct BuildRequest: Equatable, Sendable {
 ///
 /// - DerivedData と結果のバンドルは epic ごと（`BuildDirectories`）。結果のバンドルは、操作と行き先ごとに最新の 1 つだけを残す
 /// - 行き先は `-destination id=<UDID>`（Simulator）か `platform=macOS`。macOS はアドホック署名にする（署名用の証明書が無い Mac でも通るように）
+/// - 設定にプロジェクトを作る道具（`BuildSettings.generate`）があれば、`xcodebuild` の前に流して作り直す（`ProjectGeneration`）
 /// - 環境変数は `BuildTools.environment` で作り直す。時間の上限を超えたら、子孫のプロセスまで止める（`CommandRunning`）
 public struct XcodeBuildRunner: Sendable {
     public var tools: BuildTools
@@ -38,12 +39,21 @@ public struct XcodeBuildRunner: Sendable {
     public var runner: any CommandRunning
     /// `xcresulttool` の 1 回の上限
     public var readTimeout: Duration
+    /// プロジェクトを作る道具の 1 回の上限
+    public var generateTimeout: Duration
 
-    public init(tools: BuildTools, directories: BuildDirectories, runner: any CommandRunning, readTimeout: Duration = .seconds(2 * 60)) {
+    public init(
+        tools: BuildTools,
+        directories: BuildDirectories,
+        runner: any CommandRunning,
+        readTimeout: Duration = .seconds(2 * 60),
+        generateTimeout: Duration = .seconds(5 * 60)
+    ) {
         self.tools = tools
         self.directories = directories
         self.runner = runner
         self.readTimeout = readTimeout
+        self.generateTimeout = generateTimeout
     }
 
     /// 流して結果を返す。失敗も結果として返し、投げるのは取り消されたときだけ
@@ -54,6 +64,13 @@ public struct XcodeBuildRunner: Sendable {
             try directories.prepareResultBundle(at: bundle)
         } catch {
             return BuildOutcome(failure: .environment, summary: error.description)
+        }
+        let cleaner = ReportCleaner(sourceDirectory: request.sourceDirectory, home: tools.home)
+        if let generator = request.settings.generate {
+            let generation = ProjectGeneration(tools: tools, runner: runner, timeout: min(timeout, generateTimeout))
+            if case let .failure(failure) = try await generation.run(request.settings, in: request.sourceDirectory) {
+                return failure.outcome(of: generator, cleaner: cleaner)
+            }
         }
         let arguments = Self.arguments(for: request, derivedData: derivedData, resultBundle: bundle)
         let result: CommandResult
@@ -66,7 +83,6 @@ public struct XcodeBuildRunner: Sendable {
         }
         let contents = await ResultBundleReader(tools: tools, runner: runner, timeout: readTimeout).read(bundle, tests: request.kind.isTest)
         if Task.isCancelled { throw CancellationError() }
-        let cleaner = ReportCleaner(sourceDirectory: request.sourceDirectory, home: tools.home)
         var report = cleaner.report(from: contents)
         let failure = BuildClassifier.classify(result, kind: request.kind, report: report)
         // エラーや落ちたテストで理由が分からない失敗には、出力の抜粋を付ける
