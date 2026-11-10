@@ -8,7 +8,7 @@ name: Verify/App Store metadata
 #
 # ドキュメントだけの変更では動かない（paths にドキュメントを含めない）。AskHub のワーカーが待つチェック（repo.json の
 # build.childChecks・finalChecks）には入れていないので、動かなくてもワーカーは止まらない（待つ Build は paths で絞らない）。
-# Build と違い ubuntu ランナーで軽いので、epic/** 宛ての子 PR でも更新（synchronize）のたびに流す。
+# Build と違い ubuntu ランナーで軽いので、AskHub の子 PR（作業ブランチ askhub/** 宛て）でも更新（synchronize）のたびに流す。
 
 on:
   pull_request:

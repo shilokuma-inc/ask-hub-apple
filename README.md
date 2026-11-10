@@ -103,7 +103,7 @@ SKU は Bundle ID と同じ値にします。SKU はユーザーには見えな�
 | `develop` | ✅ | | ✅ |
 | `release/**` | ✅ | | ✅ |
 | その他の作業ブランチ | ✅（Unit テストのみ。macOS で実行） | | |
-| Pull Request の作成時（opened / reopened / ready_for_review） | ✅ | | |
+| Pull Request の作成時（opened / reopened / ready_for_review。AskHub の作業ブランチ `askhub/**` 宛ての子 PR を除く） | ✅ | | |
 | Fork からの Pull Request | ✅ | | |
 
 - Upload は Archive → Export を含むため、`develop` / `release/**` では Archive を別途実行しません
@@ -119,7 +119,7 @@ SKU は Bundle ID と同じ値にします。SKU はユーザーには見えな�
 - リポジトリ変数（Settings → Secrets and variables → Actions → Variables）に `ENABLE_DELIVERY=false` を設定すると Upload をスキップします（Archive は App Store Connect にアプリが無くても通るため止めません）。何もしなければ従来どおり実行されます
 - `ENABLE_MACOS_DELIVERY=false` を設定すると、Upload と Archive の macOS のジョブと、メタデータ・スクリーンショットの macOS のバージョンへの反映をスキップします。何もしなければ macOS のプラットフォームの有無を見て自動で決めます
 - Build・Upload（`develop` / `release/**` への push・手動実行）・Archive（`main` への push）は、ドキュメントだけの変更でも実行します。AskHub のワーカーは子 PR と最終 PR で Build のチェック（`build / build`）を待つため、Build を paths・paths-ignore で絞らないでください（チェックが出ず、ワーカーが待ちきれずに失敗します）
-- 作業ブランチへの push では、Simulator の起動に時間がかかるため iOS はビルドの確認だけにし、UI テスト（`AskHubUITests`）を省いた Unit テストを macOS 上で実行します（アドホック署名・App Sandbox 無効）。UI テストは Pull Request の作成時と `main` / `develop` / `release/**` への push で実行します。Fork からの Pull Request は push で実行されないため、更新（synchronize）を含むすべてのイベントで UI テストまで実行します
+- 作業ブランチへの push では、Simulator の起動に時間がかかるため iOS はビルドの確認だけにし、UI テスト（`AskHubUITests`）を省いた Unit テストを macOS 上で実行します（アドホック署名・App Sandbox 無効）。UI テストは Pull Request の作成時と `main` / `develop` / `release/**` への push で実行します（AskHub の子 PR は PR のイベントでは動かさず、作業ブランチ → `develop` の最終 PR で UI テストまで確かめます）。Fork からの Pull Request は push で実行されないため、更新（synchronize）を含むすべてのイベントで UI テストまで実行します
 - Xcode のバージョンは [.github/workflows/_build.yml](.github/workflows/_build.yml) と [.github/workflows/_archive.yml](.github/workflows/_archive.yml) の `xcode-version` で固定しています。Environment の更新時はあわせて変更してください
 
 ### 5. PR 本文のスクリーンショット
