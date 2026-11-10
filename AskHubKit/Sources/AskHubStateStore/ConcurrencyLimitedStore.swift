@@ -64,8 +64,12 @@ public struct ConcurrencyLimitedStore: StateStore {
     private let limit: ConcurrencyLimit
 
     public init(_ base: any StateStore, limit: Int) {
+        self.init(base, sharing: ConcurrencyLimit(limit))
+    }
+
+    private init(_ base: any StateStore, sharing limit: ConcurrencyLimit) {
         self.base = base
-        self.limit = ConcurrencyLimit(limit)
+        self.limit = limit
     }
 
     public func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
@@ -86,6 +90,12 @@ public struct ConcurrencyLimitedStore: StateStore {
 
     public func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
         try await limited { () throws(StateStoreError) in try await base.listAll(directory) }
+    }
+
+    /// 写しから読む要求も、同じ上限の中で出す
+    public func snapshot() async throws(StateStoreError) -> any StateStore {
+        let snapshot = try await limited { () throws(StateStoreError) in try await base.snapshot() }
+        return Self(snapshot, sharing: limit)
     }
 
     private func limited<Value>(_ body: () async throws(StateStoreError) -> Value) async throws(StateStoreError) -> Value {

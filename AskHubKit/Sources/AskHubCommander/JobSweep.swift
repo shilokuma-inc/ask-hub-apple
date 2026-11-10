@@ -36,17 +36,22 @@ public struct JobSweep: Sendable {
         try await sweepAll().changed
     }
 
-    /// 対象のリポジトリの、ジョブを見張る epic のジョブを見直し、見直した後のジョブの一覧も返す
+    /// 対象のリポジトリの、ジョブを見張る epic のジョブを見直し、見直した後のジョブの一覧も返す。
+    ///
+    /// epic・ジョブ・試行・Mac の印は、周の初めに作る読むだけの写しから読む（変わっていないものは取りに行かない）。
+    /// 状態を変えるときは、元の置き場所で読み直し、写しで読んだときから変わっていなければ書く
     public func sweepAll() async throws(CommanderError) -> Swept {
         var swept = Swept(changed: [], jobs: [])
         let now = context.now()
-        for repo in try await context.repositories() {
+        let reader = try await context.snapshot()
+        for repo in try await reader.repositories() {
             // 終わっていない epic と、マージの後の片付けが残る epic（`EpicFile.watchesJobs(now:)`）
-            for epic in try await context.epics(of: repo, where: { $0.watchesJobs(now: now) }) {
+            for epic in try await reader.epics(of: repo, where: { $0.watchesJobs(now: now) }) {
                 swept.epics.append(epic)
                 // 読めないジョブは、中身が分からないので触らない（新しい司令塔が扱う）
-                for job in try await context.jobList(repo, epic: epic.id).jobs {
-                    guard Self.watchedStates.contains(job.state), let next = try await reconcile(job, in: epic) else {
+                for job in try await reader.jobList(repo, epic: epic.id).jobs {
+                    guard Self.watchedStates.contains(job.state),
+                          let next = try await reconcile(job, in: epic, reading: reader) else {
                         swept.jobs.append(job)
                         continue
                     }
@@ -59,23 +64,21 @@ public struct JobSweep: Sendable {
     }
 
     /// 1 つのジョブの試行を読み、状態が変わるなら書く。読んだ後にほかで書き換わっていたら、書かずに次の周に回す。
-    /// `epic` を渡すと、人の一時停止と引き継ぎ（`EpicHold`）も当てる
-    func reconcile(_ job: JobFile, in epic: EpicFile? = nil) async throws(CommanderError) -> JobFile? {
-        let attempts = try await attempts(of: job)
-        let macName = attempts.max { $0.number < $1.number }?.mac ?? job.assignedMac
-        var mac: MacFile?
-        if let macName { mac = try await context.readable(MacFile.self, at: StatePath.mac(macName)) }
-        let now = context.now()
-        var next = JobReconciler.reconcile(job, attempts: attempts, mac: mac, now: now, policy: policy, timing: timing)
-        if let epic {
-            if let epicMac = epic.mac {
-                next = EpicHold.realign(next, to: epicMac, commander: context.mac, attempts: attempts, now: now)
-            }
-            next = epic.pause == nil
-                ? EpicHold.release(next, was: job, attempts: attempts, now: now)
-                : EpicHold.hold(next, was: job, attempts: attempts, now: now)
-        }
+    /// `epic` を渡すと、人の一時停止と引き継ぎ（`EpicHold`）も当てる。
+    ///
+    /// `reader`（周の初めの写し）を渡すと、試行と Mac の印をまず写しから読む。状態を変えると決めたら、書く前に元の置き場所で読み直して決め直す
+    /// （写しを作った後に書かれた生きている印や結果を見落として、動いている試行を止まったとみなさないように）
+    func reconcile(
+        _ job: JobFile,
+        in epic: EpicFile? = nil,
+        reading reader: CommanderContext? = nil
+    ) async throws(CommanderError) -> JobFile? {
+        var next = try await decide(job, in: epic, reading: reader ?? context)
         guard next != job else { return nil }
+        if reader != nil {
+            next = try await decide(job, in: epic, reading: context)
+            guard next != job else { return nil }
+        }
         var written = false
         do {
             let path = StatePath.job(job.repo, epic: job.epic, job: job.id)
@@ -91,16 +94,35 @@ public struct JobSweep: Sendable {
         return written ? next : nil
     }
 
-    private func attempts(of job: JobFile) async throws(CommanderError) -> [AttemptFile] {
+    /// 試行と Mac の印を `reader` から読み、ジョブの次の状態を決める（変わらなければ `job` のまま）
+    private func decide(_ job: JobFile, in epic: EpicFile?, reading reader: CommanderContext) async throws(CommanderError) -> JobFile {
+        let attempts = try await Self.attempts(of: job, in: reader)
+        let macName = attempts.max { $0.number < $1.number }?.mac ?? job.assignedMac
+        var mac: MacFile?
+        if let macName { mac = try await reader.readable(MacFile.self, at: StatePath.mac(macName)) }
+        let now = context.now()
+        var next = JobReconciler.reconcile(job, attempts: attempts, mac: mac, now: now, policy: policy, timing: timing)
+        if let epic {
+            if let epicMac = epic.mac {
+                next = EpicHold.realign(next, to: epicMac, commander: context.mac, attempts: attempts, now: now)
+            }
+            next = epic.pause == nil
+                ? EpicHold.release(next, was: job, attempts: attempts, now: now)
+                : EpicHold.hold(next, was: job, attempts: attempts, now: now)
+        }
+        return next
+    }
+
+    private static func attempts(of job: JobFile, in reader: CommanderContext) async throws(CommanderError) -> [AttemptFile] {
         let entries: [DirectoryEntry]
         do {
-            entries = try await context.store.listAll(StatePath.attempts(job.repo, epic: job.epic, job: job.id)) ?? []
+            entries = try await reader.store.listAll(StatePath.attempts(job.repo, epic: job.epic, job: job.id)) ?? []
         } catch {
             throw .store(error)
         }
         var attempts: [AttemptFile] = []
         for entry in entries where entry.kind == .file && entry.name.hasSuffix(".json") {
-            if let attempt = try await context.readable(AttemptFile.self, at: entry.path) { attempts.append(attempt) }
+            if let attempt = try await reader.readable(AttemptFile.self, at: entry.path) { attempts.append(attempt) }
         }
         return attempts
     }

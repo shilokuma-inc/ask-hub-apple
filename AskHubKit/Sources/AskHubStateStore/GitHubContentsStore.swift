@@ -9,6 +9,8 @@ import Foundation
 ///   （Contents API は同じブランチへの並んだ書き込みもぶつかる）ので、`StateFileStore` が読み直してやり直す
 /// - ディレクトリの一覧は 1,000 件まで（Contents API の上限）。増え続けるディレクトリ（人の意図・epic・ジョブなど）は、
 ///   `listFiles(under:)`（下の階層まで）か `listAll(_:)`（直下だけ）で Git Trees API から読む（10 万件・7 MB まで）
+/// - 1 回で多くのファイルを読む処理は、`snapshot()` の写しから読む。ETag の 304 でも 1 回ずつ往復するので、
+///   sha で中身が決まる tree と blob を使い回し、要求そのものを減らす
 public struct GitHubContentsStore: StateStore {
     public let repository: RepositoryFullName
     /// 読み書きするブランチ。nil ならリポジトリの既定のブランチ
@@ -18,8 +20,10 @@ public struct GitHubContentsStore: StateStore {
     private let transport: any HTTPTransport
     private let token: @Sendable () async throws -> String
     private let budget: WriteBudget?
-    private let now: @Sendable () -> Date
+    let now: @Sendable () -> Date
     private let cache = ETagCache()
+    /// sha で中身が決まる tree と blob（`snapshot()` の写しが使い回す）
+    let objects = GitObjectCache()
 
     /// `token` は要求のたびに Keychain などから読む。値はログ・URL・エラーに出さない
     public init(
@@ -126,31 +130,36 @@ public struct GitHubContentsStore: StateStore {
 
     // MARK: - 読み取り
 
-    /// `path` が空なら、リポジトリの直下の一覧（`listFiles(under:)` だけが使う）
-    private func get(_ path: String) async throws(StateStoreError) -> Contents {
+    /// `path` が空なら、リポジトリの直下の一覧（`listFiles(under:)` と `snapshot()` が使う）
+    func get(_ path: String) async throws(StateStoreError) -> Contents {
         guard path.isEmpty || StatePathCheck.isSafe(path) else { throw .invalidPath }
         let request = try await makeRequest(path: path, query: branch.map { [URLQueryItem(name: "ref", value: $0)] } ?? [])
         return try await fetch(request, cacheKey: path, decode: Self.decodeContents)
     }
 
     /// tree の下。`recursive` なら下の階層までのファイル（blob）、そうでなければ直下のファイルとディレクトリ。
-    /// tree は sha で決まり中身が変わらないので、ETag でそのまま使い回せる
+    /// tree は sha で決まり中身が変わらないので、前に読んだものがあれば取りに行かない
     private func tree(sha: String, under directory: String, recursive: Bool) async throws(StateStoreError) -> [DirectoryEntry] {
-        let isHex = sha.utf8.allSatisfy { byte in
-            (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
-        }
-        guard !sha.isEmpty, isHex else { throw .unexpected(status: 200, message: "tree の sha の形が違う") }
-        let query = recursive ? [URLQueryItem(name: "recursive", value: "1")] : []
-        let request = try await makeRequest(apiPath: "git/trees/\(sha)", query: query)
+        guard Self.isObjectSHA(sha) else { throw .unexpected(status: 200, message: "tree の sha の形が違う") }
         // `:` は状態リポジトリのパスに使わないので、ファイルの中身の鍵とぶつからない。同じ中身の tree が別のディレクトリにもあり得るので、
         // 読んだディレクトリも鍵に入れる（一覧のパスはディレクトリから作るため）
         let cacheKey = "\(recursive ? "tree" : "entries"):\(sha):\(directory)"
+        if case let .directory(entries, _)? = await cache.entry(for: cacheKey)?.contents { return entries }
+        let query = recursive ? [URLQueryItem(name: "recursive", value: "1")] : []
+        let request = try await makeRequest(apiPath: "git/trees/\(sha)", query: query)
         let contents = try await fetch(request, cacheKey: cacheKey) { body throws(StateStoreError) in
             let entries = try Self.decodeTree(body, under: directory, recursive: recursive)
             return .directory(entries, listed: entries.count)
         }
         guard case let .directory(entries, _) = contents else { throw .wrongKind }
         return entries
+    }
+
+    /// Git のオブジェクトの sha の形（16 進の小文字）か。URL のパスに入れる前に確かめる
+    static func isObjectSHA(_ sha: String) -> Bool {
+        !sha.isEmpty && sha.utf8.allSatisfy { byte in
+            (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
+        }
     }
 
     static func decodeTree(
@@ -247,7 +256,7 @@ public struct GitHubContentsStore: StateStore {
     }
 
     /// リポジトリの API の要求（`apiPath` は `repos/<owner>/<repo>/` からのパス）
-    private func makeRequest(apiPath: String, query: [URLQueryItem]) async throws(StateStoreError) -> URLRequest {
+    func makeRequest(apiPath: String, query: [URLQueryItem]) async throws(StateStoreError) -> URLRequest {
         var components = URLComponents(
             url: apiBase.appendingPathComponent("repos/\(repository.owner)/\(repository.name)/\(apiPath)"),
             resolvingAgainstBaseURL: false
@@ -269,7 +278,7 @@ public struct GitHubContentsStore: StateStore {
         return request
     }
 
-    private func send(_ request: URLRequest) async throws(StateStoreError) -> (Data, HTTPURLResponse) {
+    func send(_ request: URLRequest) async throws(StateStoreError) -> (Data, HTTPURLResponse) {
         do {
             return try await transport.send(request)
         } catch is CancellationError {

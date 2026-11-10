@@ -68,4 +68,85 @@ extension ClaudeJobRunnerTests {
         let after = try await jobs(given.epic.id, in: given.store)
         #expect(JobPicker.pick(from: after, for: Self.commander, capacity: capacity, now: Self.now).map(\.kind) == [.checkReadiness])
     }
+
+    @Test func sweepReadsSnapshotAndRereadsOnlyToWrite() async throws {
+        let given = try await requested()
+        let recorder = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { Self.now }
+        _ = try await recorder.start(given.job)
+        let probe = SnapshotProbeStore(given.store)
+        let sweep = JobSweep(context: CommanderContext(store: probe, mac: Self.commander) { Self.now })
+        // epic・ジョブ・試行・Mac の印は写しから読み、元の置き場所は状態を変えると決めたとき（決め直しと書く前の読み直し）だけ読む
+        #expect(try await sweep.sweep().map(\.state) == [.running])
+        let reads = await probe.liveReads
+        #expect(reads > 0)
+        #expect(try await sweep.sweep().isEmpty)
+        #expect(await probe.liveReads == reads)
+    }
+
+    @Test func sweepRereadsAttemptsBeforeChangingJob() async throws {
+        let given = try await requested()
+        let starting = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { Self.now }
+        let attempt = try await starting.start(given.job)
+        #expect(try await sweep(given.store).sweep().map(\.state) == [.running])
+        let running = try #require(try await job(given.job.id, epic: given.epic.id, in: given.store))
+        // 20 分後: 写しの試行の印（始めたとき）は古いが、写しを作った直後にワーカーが印を書いた
+        let later = Self.now.addingTimeInterval(20 * 60)
+        let beating = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { later }
+        let probe = SnapshotProbeStore(given.store) { _ in _ = try? await beating.beat(attempt, of: running) }
+        let swept = try await JobSweep(context: CommanderContext(store: probe, mac: Self.commander) { later }).sweepAll()
+        // 書く前に元の置き場所で読み直して決め直すので、動いている試行を止まったとみなさない
+        #expect(swept.changed.isEmpty)
+        #expect(try await job(given.job.id, epic: given.epic.id, in: given.store)?.state == .running)
+        // 印がそのまま古くなれば、今までどおり状態を変える
+        #expect(try await sweep(given.store, at: later.addingTimeInterval(20 * 60)).sweep().count == 1)
+    }
+
+    @Test func sweepDoesNotOverwriteJobChangedAfterSnapshot() async throws {
+        let given = try await requested()
+        let recorder = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { Self.now }
+        _ = try await recorder.start(given.job)
+        // 写しを作った後に、ほかの書き手がジョブを取り消した
+        var canceled = given.job
+        canceled.state = .canceled
+        let data = try StateFileCoder.encode(canceled)
+        let path = StatePath.job(Self.repo, epic: given.epic.id, job: given.job.id)
+        let probe = SnapshotProbeStore(given.store) { await $0.put(path, data: data) }
+        let swept = try await JobSweep(context: CommanderContext(store: probe, mac: Self.commander) { Self.now }).sweepAll()
+        // 写しで読んだ assigned のジョブから決めた running を、書き換わった後のジョブに書かない（次の周に回す）
+        #expect(swept.changed.isEmpty)
+        #expect(try await job(given.job.id, epic: given.epic.id, in: given.store)?.state == .canceled)
+        #expect(try await sweep(given.store).sweepAll().jobs.map(\.state) == [.canceled])
+    }
+}
+
+/// 元の置き場所への読み取りを数え、写しを作った直後に `afterSnapshot` を流す（写しで読んだ後に書き換わった状態を再現する）
+actor SnapshotProbeStore: StateStore {
+    let base: InMemoryStateStore
+    private let afterSnapshot: @Sendable (InMemoryStateStore) async -> Void
+    private(set) var liveReads = 0
+
+    init(_ base: InMemoryStateStore, afterSnapshot: @escaping @Sendable (InMemoryStateStore) async -> Void = { _ in }) {
+        self.base = base
+        self.afterSnapshot = afterSnapshot
+    }
+
+    func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
+        liveReads += 1
+        return try await base.read(path)
+    }
+
+    func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        liveReads += 1
+        return try await base.list(directory)
+    }
+
+    func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
+        try await base.write(path, data: data, replacing: sha, message: message)
+    }
+
+    func snapshot() async throws(StateStoreError) -> any StateStore {
+        let snapshot = try await base.snapshot()
+        await afterSnapshot(base)
+        return snapshot
+    }
 }
