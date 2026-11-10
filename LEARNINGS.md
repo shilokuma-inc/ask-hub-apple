@@ -367,7 +367,8 @@
   （`-string` を付けないと、`'` や括弧を含む値は「Could not parse」で入らない）（2026-11-10、端末の名前の欄）
 - 司令塔とワーカーは LaunchAgent で動き、ビルドの子には PATH を `/usr/bin:/bin:/usr/sbin:/sbin` だけで渡すので、Homebrew の道具（`xcodegen` など）は名前では見つからない。
   `BuildTools.toolDirectories`（`/opt/homebrew/bin`・`/usr/local/bin`・`~/.local/bin`）から絶対パスで探して起動する。XcodeGen の `Spec validation error:` は理由を次の行に書くので、
-  出力の抜粋をエラーの行だけに絞ると理由が落ちる（2026-11-10、`build.xcode.generate`）
+  出力の抜粋をエラーの行だけに絞ると理由が落ちる。XcodeGen（2.46）は環境変数 `USER` が無いと「Couldn't find current username」で止まる（`LOGNAME` だけでは足りない）ので、
+  環境変数を作り直すときは `USER` を渡す（2026-11-10、`build.xcode.generate`）
 
 ## Keychain
 
