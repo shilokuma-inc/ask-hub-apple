@@ -85,6 +85,9 @@ struct StateClientServiceTests {
         #expect(mac.residency == .always)
         #expect(mac.loadAverage == 3.2)
         #expect(mac.freeBytes == 120_000_000_000)
+        // ワーカーがビルドとテストに使う Xcode の版は、機種ではなく Xcode の欄に出す（生きている印に機種は無い）
+        #expect(mac.xcodeVersion == "27.1")
+        #expect(mac.model.isEmpty)
     }
 
     /// 回答は、読んだときの質問の版を付けて署名し、`intents/<鍵>/` に置く。処理を待つ間は、回答した結果として出す
