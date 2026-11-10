@@ -93,11 +93,10 @@ struct AskHub: App {
     /// 既定は状態リポジトリ。設定でデモのデータを選んだときと、UI テストと撮影（起動引数 `-demoScenario <場面>`
     /// `-demoReactionDelay <秒>` `-demoSendDelay <秒>` で場面と機械の反応・送るのにかかる速さを決める。
     /// `-demoReceiptDelay <秒>` `-demoRejectIntents YES` `-demoStallAfter <秒>` で司令塔の受け取りを遅らせる・断る）はデモで動く
-    static func makeStore(source: DataSource, scenario: DemoScenario) -> ClientStore {
+    static func makeStore(source: DataSource, scenario: DemoScenario, defaults: UserDefaults = .standard) -> ClientStore {
         if source == .stateRepository {
             return ClientStore(service: StateConnection.makeService())
         }
-        let defaults = UserDefaults.standard
         let reactionDelay = DemoScenario.seconds(forKey: DemoScenario.reactionDelayKey, in: defaults)
         // 撮影モードでは機械の反応を起こさず、撮っている間に画面が変わらないようにする
         let delay = ScreenshotDemo.isEnabled ? 3_600 : reactionDelay ?? 4
