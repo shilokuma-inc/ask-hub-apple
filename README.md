@@ -118,7 +118,7 @@ SKU は Bundle ID と同じ値にします。SKU はユーザーには見えな�
 - Upload は Actions タブから手動でも実行できます（Run workflow）。最終 PR をマージする前に TestFlight で実機確認したいときは、Actions → Upload → Run workflow で作業ブランチ（最終 PR の head）を選んで実行します。ビルド番号は App Store Connect の最新から自動で増えるため、同じバージョンのままビルド番号だけが増えて TestFlight に並びます。App Store Connect には 24 時間あたりのアップロード上限があるため、作業ブランチの push では自動では上げません
 - リポジトリ変数（Settings → Secrets and variables → Actions → Variables）に `ENABLE_DELIVERY=false` を設定すると Upload をスキップします（Archive は App Store Connect にアプリが無くても通るため止めません）。何もしなければ従来どおり実行されます
 - `ENABLE_MACOS_DELIVERY=false` を設定すると、Upload と Archive の macOS のジョブと、メタデータ・スクリーンショットの macOS のバージョンへの反映をスキップします。何もしなければ macOS のプラットフォームの有無を見て自動で決めます
-- ドキュメントだけの変更（`**/*.md`、`docs/**`）では Build を実行しません。Upload（`develop` / `release/**` への push・手動実行）と Archive（`main` への push）は、ドキュメントだけの変更でも実行します
+- Build・Upload（`develop` / `release/**` への push・手動実行）・Archive（`main` への push）は、ドキュメントだけの変更でも実行します。AskHub のワーカーは子 PR と最終 PR で Build のチェック（`build / build`）を待つため、Build を paths・paths-ignore で絞らないでください（チェックが出ず、ワーカーが待ちきれずに失敗します）
 - 作業ブランチへの push では、Simulator の起動に時間がかかるため iOS はビルドの確認だけにし、UI テスト（`AskHubUITests`）を省いた Unit テストを macOS 上で実行します（アドホック署名・App Sandbox 無効）。UI テストは Pull Request の作成時と `main` / `develop` / `release/**` への push で実行します。Fork からの Pull Request は push で実行されないため、更新（synchronize）を含むすべてのイベントで UI テストまで実行します
 - Xcode のバージョンは [.github/workflows/_build.yml](.github/workflows/_build.yml) と [.github/workflows/_archive.yml](.github/workflows/_archive.yml) の `xcode-version` で固定しています。Environment の更新時はあわせて変更してください
 

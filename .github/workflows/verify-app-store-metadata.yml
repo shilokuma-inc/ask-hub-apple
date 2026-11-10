@@ -6,7 +6,8 @@ name: Verify/App Store metadata
 # あわせて、スクリーンショットの撮影設定（枚数の上限、撮影モードの Scene との突き合わせなど）も読めるか確かめる。
 # Tools/ の Python の unittest（Tools/tests/）も同じジョブで流す。
 #
-# ドキュメントだけの変更では動かない（paths にドキュメントを含めない。Build の paths-ignore と同じ考え方）。
+# ドキュメントだけの変更では動かない（paths にドキュメントを含めない）。AskHub のワーカーが待つチェック（repo.json の
+# build.childChecks・finalChecks）には入れていないので、動かなくてもワーカーは止まらない（待つ Build は paths で絞らない）。
 # Build と違い ubuntu ランナーで軽いので、epic/** 宛ての子 PR でも更新（synchronize）のたびに流す。
 
 on:
