@@ -134,7 +134,8 @@ private struct DeckShortcutRow: View {
     }
 }
 
-/// 人の出番が無いとき。機械が何件を進めているかと、いつ確かめたかを出し、新しい依頼を出せるようにする。
+/// 人の出番が無いとき。任せて大丈夫なことを、成功の色の印と前向きな見出しで伝える。
+/// 機械が何件を進めているかと、いつ確かめたかを出し、新しい依頼を出せるようにする。
 /// 対象のリポジトリが無くてもボタンは出す（シートの側で、リポジトリが無いことを出す）
 private struct InboxEmptyView: View {
     @Environment(ClientStore.self) private var store
@@ -143,10 +144,15 @@ private struct InboxEmptyView: View {
     var body: some View {
         let working = store.snapshot?.activeEpics.filter { !$0.activities.isEmpty }.count ?? 0
         ContentUnavailableView {
-            Label("あなたの番はありません", systemImage: "checkmark.circle")
+            Label {
+                Text("いまは任せて大丈夫です")
+            } icon: {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(Theme.success)
+            }
         } description: {
             if let fetchedAt = store.snapshot?.fetchedAt {
-                Text("Claude が \(working) 件を進めています。\(RelativeTime.clock(fetchedAt)) に確かめました")
+                Text("Claude が \(working) 件を順調に進めています。\(RelativeTime.clock(fetchedAt)) に確かめました")
             }
         } actions: {
             Button("新しい依頼を出す") { navigator.isShowingNewRequest = true }
