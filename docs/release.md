@@ -103,9 +103,19 @@ API Key には App Manager 以上の権限が要る。Verify/App Store metadata 
 TestFlight の版は配布用の署名なので、Mac を Apple Developer にデバイス登録しなくても入れられる（Xcode から自動の署名で入れると、その Mac がデバイス登録される）。
 
 1. App Store Connect の TestFlight で、macOS のビルドが内部テストのグループに入っているかを確かめる（自動の配信を切っているグループには、ビルドを足す）
-2. Mac に [TestFlight](https://apps.apple.com/app/testflight/id899247664) を Mac App Store から入れ、内部テスターの Apple ID でサインインする
-3. TestFlight の AskHub から「インストール」する。新しいビルドが上がると、TestFlight が更新する（自動の更新を切っていなければ）
-4. TestFlight の版は production の APNs に登録する。ビルドは 90 日で期限が切れるので、それまでに Upload を流す
+2. 同じグループの設定で「iPhone と iPad の App を Apple シリコン搭載の Mac でテスト」（Test iPhone and iPad Apps on Apple Silicon Macs）をオフにする。
+   オンだと、Apple シリコンの Mac の TestFlight から iPad 版が入る（Mac 版のビルドがあっても）。iPad 版は、メニューバーに「設定…」が無く、端末の鍵のラベルが `iPad` になる
+3. Mac に [TestFlight](https://apps.apple.com/app/testflight/id899247664) を Mac App Store から入れ、内部テスターの Apple ID でサインインする
+4. TestFlight の AskHub から「インストール」する。新しいビルドが上がると、TestFlight が更新する（自動の更新を切っていなければ）
+5. TestFlight の版は production の APNs に登録する。ビルドは 90 日で期限が切れるので、それまでに Upload を流す
+
+入れた後に、状態リポジトリにつなぐ。
+
+1. AskHub → 設定…（⌘,）で、見るデータを状態リポジトリにし、状態リポジトリの名前（既定 `shilokuma-inc/askhub-state`）を確かめる
+2. 状態リポジトリの Contents の読み書きだけを許した Fine-grained token を、その Mac 用に作って入れる（端末ごとに分けると、その端末だけ取り消せる）
+3. 「この端末の鍵」に出る `askhub key add …` を、非常口の鍵を入れた Mac のターミナルで流す（[docs/renewal/operations.md](renewal/operations.md) の「非常口」）。
+   `--label` は表示用の名前なので、Mac が複数あるときは見分けられる名前に変えてよい（1〜64 文字。空白や括弧を入れるときは引用符で囲む）。記録は追記だけなので、後から名前だけは変えられない
+4. 「登録を確かめ直す」で登録済みになると通知の許可を求めるので、許可する。状態リポジトリの `devices/<鍵の id>.json` に `platform: macos`・`environment: production` で宛先が書かれる
 
 ### vars
 
