@@ -79,16 +79,42 @@ jobs:
         # UI テストは共有ランナー上で起動待ちに失敗することがあるため、失敗したテストだけ最大 2 回まで再試行する
         if: inputs.ui-tests
         run: |
-          # 並列テストを有効にすると Simulator の clone を作って起動するため、clone を作らずに実行する
+          # 確かめ用（#1006）: 1 本だけを流し、その間のアプリのスタックと CPU を採る
+          mkdir -p diag
+          (
+            while true; do
+              ts=$(date -u +%H%M%S)
+              pid=$(pgrep -f "/AskHub.app/AskHub$" | head -1)
+              if [ -n "$pid" ]; then
+                sudo sample "$pid" 2 5 -mayDie -file "diag/sample-$ts.txt" > /dev/null 2>&1 &
+              fi
+              top -l 1 -o cpu -n 15 -stats pid,command,cpu,state,threads > "diag/top-$ts.txt" 2>&1
+              sleep 1
+            done
+          ) &
+          sampler=$!
+          sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize > diag/machine.txt
+          system_profiler SPDisplaysDataType >> diag/machine.txt 2>&1 || true
+          set +e
           xcodebuild test \
             -project "$PROJECT_NAME.xcodeproj" \
             -scheme "$SCHEME" \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -derivedDataPath DerivedData \
             -resultBundlePath TestResults.xcresult \
-            -retry-tests-on-failure \
-            -test-iterations 2 \
+            -only-testing:AskHubUITests/ClientUITests/testAcceptAllShowsDoneAtOnceAndSyncsLater \
+            -test-iterations 3 \
             -parallel-testing-enabled NO
+          status=$?
+          kill "$sampler" || true
+          exit $status
+
+      - name: Upload diag
+        if: ${{ !cancelled() && inputs.ui-tests }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: diag
+          path: diag
 
       - name: Build for iOS Simulator
         # 作業ブランチでは Simulator を起動しない。共有ランナーでは Simulator の起動待ちだけで 5 分前後かかるため、
