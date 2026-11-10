@@ -76,10 +76,7 @@ public struct MachineCommandLine: Sendable {
         var configuration = loadConfiguration()
         do {
             try storeGitHubToken(for: owner)
-            if !configuration.tokenOwners.contains(owner) {
-                configuration.githubOwners.append(owner)
-                try configuration.save(to: paths.configuration)
-            }
+            if configuration.addTokenOwner(owner) { try configuration.save(to: paths.configuration) }
         } catch {
             fail("トークンを置けない（\(error)）", status: EX_SOFTWARE)
         }

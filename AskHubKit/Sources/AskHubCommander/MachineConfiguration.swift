@@ -81,6 +81,14 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         return owners
     }
 
+    /// トークンを置く持ち主に足す（`token <持ち主>`）。持ち主の名前の形でない・すでにあれば足さずに false
+    @discardableResult
+    public mutating func addTokenOwner(_ owner: String) -> Bool {
+        guard let normalized = GitHubTokens.normalizedOwner(owner), !tokenOwners.contains(normalized) else { return false }
+        githubOwners.append(normalized)
+        return true
+    }
+
     /// 設定の形の問題。空なら使える
     public var problems: [String] {
         var problems: [String] = []
