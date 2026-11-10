@@ -367,6 +367,7 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
   新しい仕組みの作業ブランチは `askhub/<epic の id>`、子ブランチは `askhub/<epic の id>-<タスクの id>` なので、`epic/` を `askhub/` に読み替える。読み替えないと、子 PR が push と PR のイベントで 2 回（PR のほうは UI テストまで）流れ、macOS のランナーの枠を食う
 - **ワーカーの Xcode**: 各リポジトリの CI は Xcode を固定している（2026-11 は 26.6）が、ワーカーはその Mac の設定で決めた Xcode（`xcode`。決めていなければ `xcode-select` で選んだもの。Mac mini は 27.1）でビルドとテストを流す。27.1 は Swift の並行性のチェックが厳しく、CI で通るコードが落ちることがある
   （shariverse/dokogacha-app-ios は `DGDashedLine.swift` の `Shape` への準拠が `#ConformanceIsolation` で落ちる）。移す前に、ワーカーと同じ Xcode で `build` の設定と同じ `xcodebuild build-for-testing` を流して確かめ、落ちたら移す前に直す
+  - 直し方の例: tm-family/shinkeisuijaku-app-ios も `StampView.swift` の `LockShape` の `Shape` への準拠が同じく落ち、型に `nonisolated` を付けて（`nonisolated struct LockShape: Shape`）直した（tm-family/shinkeisuijaku-app-ios#76）。`Shape` の要件は隔離が無いので、既定の MainActor から外す。この書き方は 26.6 でも通る
 - **非常口の Keychain の確認**: `askhub add-repository`・`configure-repository` を送るために develop からビルドし直した `askhub` は、署名が変わるので、初回に Keychain（サービス `jp.shilokuma.AskHub.cli`）の項目を読む確認が出る。許可すれば続けて使える
 - **共通リポジトリの前の期間**: 共通リポジトリ（段階 5）ができるまでは、各リポジトリの今のワークフローを入れ替えずに使う
 - **今の仕組みの残りもの**: ラベル・状態用の Issue・ループの中継のスクリプト・CLAUDE.md のループの節を外す PR を、移すときの手順に入れる
