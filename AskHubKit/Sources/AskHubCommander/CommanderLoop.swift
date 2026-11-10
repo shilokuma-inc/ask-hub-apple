@@ -47,12 +47,15 @@ public actor CommanderLoop {
         public var selfCheck: SelfCheck
         /// いま使っている `claude` の版。測れなければ nil
         public var claudeVersion: String?
+        /// ビルドとテストに使う Xcode の版（`xcodebuild -version`）。測れなければ nil
+        public var xcodeVersion: String?
 
-        public init(diskFreeGB: Int, load: Double, selfCheck: SelfCheck, claudeVersion: String? = nil) {
+        public init(diskFreeGB: Int, load: Double, selfCheck: SelfCheck, claudeVersion: String? = nil, xcodeVersion: String? = nil) {
             self.diskFreeGB = diskFreeGB
             self.load = load
             self.selfCheck = selfCheck
             self.claudeVersion = claudeVersion
+            self.xcodeVersion = xcodeVersion
         }
     }
 
@@ -264,7 +267,7 @@ public actor CommanderLoop {
             versions: .init(commander: settings.commanderVersion, claude: claude),
             selfCheck: machine.selfCheck
         )
-        let versions = MacFile.Versions(worker: settings.commanderVersion, claude: claude)
+        let versions = MacFile.Versions(worker: settings.commanderVersion, claude: claude, xcode: machine.xcodeVersion)
         let mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
         try await context.put(commander, at: StatePath.commander, message: "司令塔の生きている印")
         try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")

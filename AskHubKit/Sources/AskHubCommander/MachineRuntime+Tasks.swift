@@ -23,7 +23,7 @@ extension MachineRuntime {
         let token = Self.githubTokens(in: secrets)
         let client = ClaudeClient(setup: claude, runner: ProcessCommandRunner())
         let machine = BuildMachine(
-            tools: BuildTools(temporaryDirectory: paths.buildTemporary),
+            tools: configuration.buildTools(paths: paths),
             directories: BuildDirectories(root: paths.builds),
             runner: ProcessCommandRunner()
         )

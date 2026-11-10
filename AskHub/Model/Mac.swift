@@ -5,7 +5,7 @@ struct Mac: Identifiable, Hashable {
     let id: String
     /// 人が付けた名前（例: Mac mini）
     var name: String
-    /// 機種（例: Mac mini（M2））
+    /// 機種（例: Mac mini（M2））。生きている印には無いので、状態リポジトリから組み立てた Mac では空
     var model: String
     var role: Role
     var residency: Residency
@@ -27,6 +27,8 @@ struct Mac: Identifiable, Hashable {
     var claudeVersion: String?
     /// Claude Code の版が司令塔と違うときの、司令塔の版。そろっている・分からなければ nil
     var commanderClaudeVersion: String?
+    /// ワーカーがビルドとテストに使う Xcode の版（`xcodebuild -version`）。分からなければ nil
+    var xcodeVersion: String?
     /// ワーカーが作っていないもの（手で作った clone・Simulator）。人が選んで消す
     var cleanupCandidates: [CleanupCandidate]
     /// 状態リポジトリの生きている印のロードアベレージ。あれば `load` の代わりにこの値を出す

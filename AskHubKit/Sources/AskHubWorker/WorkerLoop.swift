@@ -119,7 +119,9 @@ public actor WorkerLoop {
         let now = context.now()
         if let lastBeat, now.timeIntervalSince(lastBeat) < TimeInterval(settings.heartbeatInterval.components.seconds) { return }
         let (machine, time) = (await status(), Timestamp(now))
-        let versions = MacFile.Versions(worker: settings.workerVersion, claude: machine.claudeVersion ?? settings.claudeVersion)
+        let versions = MacFile.Versions(
+            worker: settings.workerVersion, claude: machine.claudeVersion ?? settings.claudeVersion, xcode: machine.xcodeVersion
+        )
         let mac = machine.macFile(mac: context.mac, kind: settings.kind, at: time, versions: versions, capacity: settings.capacity)
         try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now

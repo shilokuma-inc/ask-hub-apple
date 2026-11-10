@@ -408,6 +408,13 @@
   `The test runner hung before establishing connection.`（出力に `DTServiceHubClient failed to bless service hub`）になり、同じ枠を使うジョブが続けて止まった（2026-11-10 17:3xZ の 2 回。
   `sudo xcode-select -s /Applications/Xcode.app` で 27.1 に戻した。切り替えた時刻は `/var/db/xcode_select_link` の時刻で分かる）。Simulator を起動し直しても直らないので、
   `SimulatorPool.prepare` は、使う Xcode の SDK より新しいランタイムの Simulator を作らずに断る（#1013）
+- `/usr/bin/xcrun` は、環境変数 `DEVELOPER_DIR` があれば `xcode-select` より優先し、その下の `usr/bin/xcrun` に渡す。`Xcode.app` のパスも受け付ける（`Contents/Developer` を足す）。
+  フォルダが無いと「missing DEVELOPER_DIR path」、`usr/bin/xcrun` が無いと「invalid DEVELOPER_DIR path … missing xcrun」で止まる。ワーカーは設定の `xcode` を `DEVELOPER_DIR` で渡し、
+  流す前に `usr/bin/xcodebuild` があるかを確かめる（`BuildTools.developerDirectoryProblem`）。一時フォルダに `usr/bin/xcrun`（`exec "$(dirname "$0")/$1"` で道具に渡すスクリプト）と
+  `usr/bin/xcodebuild` を置いた偽の Xcode でも本物の `xcrun` から動くので、テストでは偽の Xcode で「xcode-select と違う Xcode が使われる」ことを確かめる（`FakeXcode`）（2026-11-11、#1015）
+- `askhub-commander`・`askhub-worker` の置き場所（`MachinePaths`）は `FileManager.default.homeDirectoryForCurrentUser` から作り、環境変数 `HOME` を差し替えても本当のホームフォルダの
+  `~/Library/Application Support/AskHub/<役割>/config.json` を読み書きする。手元で設定を書き換えるコマンドを試すときは、実行ファイルを流さず、テストで
+  `MachineCommandLine(role:executable:home:)` に一時フォルダを渡す。失敗の道は `exit` するので、設定の `kind` と役割が合わない（常時オンの設定をワーカーで読む）とテストのプロセスごと終わる（2026-11-11、#1015）
 
 ## Keychain
 

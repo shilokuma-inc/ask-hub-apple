@@ -62,6 +62,38 @@ public struct BuildTools: Sendable {
         return environment
     }
 
+    /// 使う Xcode のパス（`Xcode.app` か、その下の `Contents/Developer`）を `DEVELOPER_DIR` の形（`Contents/Developer`）にする
+    public static func developerDirectory(forXcode path: String) -> URL {
+        let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+        return url.pathExtension == "app" ? url.appendingPathComponent("Contents/Developer", isDirectory: true) : url
+    }
+
+    /// 決めた Xcode（`developerDirectory`）を使えない理由。決めていない・使えるなら nil。
+    /// 無いフォルダを `DEVELOPER_DIR` に渡すと `xcrun` が「missing DEVELOPER_DIR path」で止まり、理由が分かりにくいので、流す前に確かめる
+    public var developerDirectoryProblem: String? {
+        guard let developerDirectory else { return nil }
+        let xcodebuild = developerDirectory.appendingPathComponent("usr/bin/xcodebuild")
+        guard !FileManager.default.isExecutableFile(atPath: xcodebuild.path) else { return nil }
+        return "ワーカーが使う Xcode として設定した \(developerDirectory.path) に xcodebuild が無い（Xcode を消したか、名前を変えたか）。"
+            + "この Mac で設定の Xcode を決め直す（`askhub-commander xcode <Xcode.app のパス>`。ワーカーは `askhub-worker xcode`。"
+            + "xcode-select で選んだものに戻すなら `xcode --unset`）"
+    }
+
+    /// 使う Xcode の版（`xcodebuild -version` の 1 行目の `Xcode 27.1` の `27.1`）。測れなければ nil
+    public func xcodeVersion(runner: any CommandRunning, timeout: Duration = .seconds(60)) async -> String? {
+        guard developerDirectoryProblem == nil,
+              let result = try? await runner.run(command(["xcodebuild", "-version"], in: temporaryDirectory, timeout: timeout)),
+              result.succeeded else { return nil }
+        return Self.xcodeVersion(fromVersionOutput: result.outputText)
+    }
+
+    /// `xcodebuild -version` の出力から版を読む
+    static func xcodeVersion(fromVersionOutput output: String) -> String? {
+        let words = output.split(whereSeparator: \.isNewline).first?.split(separator: " ") ?? []
+        guard words.count == 2, words[0] == "Xcode" else { return nil }
+        return String(words[1])
+    }
+
     /// プロジェクトを作る道具に渡す環境変数（`environment` に、ログインの名前を足したもの）
     var generatorEnvironment: [String: String] {
         environment.merging(["USER": userName, "LOGNAME": userName]) { $1 }

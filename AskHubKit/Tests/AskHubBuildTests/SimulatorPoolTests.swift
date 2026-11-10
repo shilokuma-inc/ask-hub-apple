@@ -86,23 +86,25 @@ struct SimulatorPoolTests {
     }
 
     /// xcode-select が古い Xcode を指すと、SDK より新しいランタイムの Simulator でアプリを起動できない。作らずに理由の分かる文で断る
-    @Test func refusesRuntimesNewerThanTheSDK() async {
+    @Test func refusesRuntimesNewerThanTheSDK() async throws {
         let destination = SimulatorDestination(platform: .iOS, deviceType: "iPhone 17 Pro", osVersion: "27.0")
         let (older, runner) = pool(FakeSimctl(sdkVersion: "26.5"))
+        let advice = "新しいので使えない。Simulator のランタイムに合う Xcode を設定で決める"
+            + "（`askhub-commander xcode <Xcode.app のパス>`。ワーカーは `askhub-worker xcode`）"
         await #expect(throws: SimulatorError(
-            "iOS 27.0 の Simulator は、ワーカーが使う Xcode（xcode-select で選んだもの。`xcode-select -p` で分かる）の iOS SDK 26.5 より"
-                + "新しいので使えない。Simulator のランタイムに合う Xcode を選ぶ"
+            "iOS 27.0 の Simulator は、ワーカーが使う Xcode（xcode-select で選んだもの。`xcode-select -p` で分かる）の iOS SDK 26.5 より" + advice
         )) {
             try await older.prepare(slot: 0, for: destination)
         }
         #expect(!runner.arguments.contains { $0.dropFirst().first == "create" || $0.dropFirst().first == "bootstatus" })
 
+        let xcode = try FakeXcode(version: "26.6")
+        defer { xcode.remove() }
         var tools = Self.tools
-        tools.developerDirectory = URL(fileURLWithPath: "/Applications/Xcode-26.6.0.app/Contents/Developer")
+        tools.developerDirectory = xcode.developerDirectory
         let pinned = SimulatorPool(tools: tools, runner: FakeCommands { FakeSimctl(sdkVersion: "26.5").respond(to: $0) })
         await #expect(throws: SimulatorError(
-            "iOS 27.0 の Simulator は、ワーカーが使う Xcode（DEVELOPER_DIR の /Applications/Xcode-26.6.0.app/Contents/Developer）の iOS SDK 26.5 より"
-                + "新しいので使えない。Simulator のランタイムに合う Xcode を選ぶ"
+            "iOS 27.0 の Simulator は、ワーカーが使う Xcode（設定で決めた \(xcode.developerDirectory.path)）の iOS SDK 26.5 より" + advice
         )) {
             try await pinned.prepare(slot: 0, for: destination)
         }
