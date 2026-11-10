@@ -1,3 +1,4 @@
+import AskHubBuild
 import AskHubKeychain
 import AskHubProtocol
 import Foundation
@@ -49,6 +50,9 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
     public var githubOwners: [String]
     /// 進行を止めるものを APNs で知らせるための設定（司令塔だけ。`askhub-commander apns` で足す）。無ければ知らせない
     public var apns: APNsConfiguration?
+    /// ビルドとテストに使う Xcode（`Xcode.app` か、その下の `Contents/Developer` の絶対パス。`xcode` で決める）。nil なら xcode-select で選んだもの。
+    /// 決めておけば、人が xcode-select を切り替えても、ワーカーのビルドとテストは同じ Xcode で流れる（子に `DEVELOPER_DIR` で渡す）
+    public var xcode: String?
 
     public init(
         stateRepository: RepositoryFullName,
@@ -59,7 +63,8 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         keyAccounts: [String],
         capacity: MacFile.Capacity = .init(claude: 2, build: 0),
         githubOwners: [String] = [],
-        apns: APNsConfiguration? = nil
+        apns: APNsConfiguration? = nil,
+        xcode: String? = nil
     ) {
         self.stateRepository = stateRepository
         self.stateBranch = stateBranch
@@ -70,6 +75,17 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         self.capacity = capacity
         self.githubOwners = githubOwners
         self.apns = apns
+        self.xcode = xcode
+    }
+
+    /// ビルドとテストに渡す `DEVELOPER_DIR`（`xcode` の `Contents/Developer`）。nil なら xcode-select で選んだもの
+    public var developerDirectory: URL? {
+        xcode.map(BuildTools.developerDirectory(forXcode:))
+    }
+
+    /// ビルドとテストの道具。`xcode` を決めていれば、その Xcode を使う
+    public func buildTools(paths: MachinePaths) -> BuildTools {
+        BuildTools(developerDirectory: developerDirectory, temporaryDirectory: paths.buildTemporary)
     }
 
     /// GitHub のトークンを置く持ち主（状態リポジトリの持ち主が先頭。小文字にそろえ、重ねない）
@@ -112,6 +128,7 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         if keyAccounts.isEmpty || keyAccounts.contains(where: \.isEmpty) { problems.append("keyAccounts に GitHub のアカウントを 1 つ以上書く") }
         if capacity.claude < 1 { problems.append("capacity.claude は 1 以上") }
         if capacity.build < 0 { problems.append("capacity.build は 0 以上") }
+        if let xcode, !xcode.hasPrefix("/") { problems.append("xcode は Xcode.app の絶対パスで書く") }
         if let owner = githubOwners.first(where: { GitHubTokens.normalizedOwner($0) == nil }) {
             problems.append("githubOwners の \(owner) は GitHub の持ち主の名前の形でない")
         }
@@ -128,6 +145,15 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
             throw CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey: problems.joined(separator: "、")])
         }
         return configuration
+    }
+
+    /// 前の設定に書いた `xcode`。setup を流し直しても残す（決めたことを忘れて xcode-select に戻らないように）。
+    /// 設定のほかの欄の形が変わっていても、この欄だけを読む
+    public static func preservedXcode(at url: URL) -> String? {
+        struct Stored: Decodable {
+            var xcode: String?
+        }
+        return (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(Stored.self, from: $0) }?.xcode
     }
 
     public func save(to url: URL) throws {
