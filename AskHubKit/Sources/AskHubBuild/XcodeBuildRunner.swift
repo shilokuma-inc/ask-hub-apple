@@ -58,6 +58,8 @@ public struct XcodeBuildRunner: Sendable {
 
     /// 流して結果を返す。失敗も結果として返し、投げるのは取り消されたときだけ
     public func run(_ request: BuildRequest, timeout: Duration) async throws(CancellationError) -> BuildOutcome {
+        // 決めた Xcode が無ければ、流さずに理由の分かる文で止める（環境の不調として人に渡る）
+        if let problem = tools.developerDirectoryProblem { return BuildOutcome(failure: .environment, summary: problem) }
         let derivedData = directories.derivedData(for: request.epic)
         let bundle = directories.resultBundle(for: request.epic, named: Self.bundleName(for: request))
         do {

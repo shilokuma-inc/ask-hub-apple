@@ -122,10 +122,11 @@ public struct SimulatorPool: Sendable {
     func checkSupported(_ runtime: SimulatorCatalog.Runtime, platform: SimulatorPlatform, sdkVersion: String) throws(SimulatorError) {
         func minor(_ version: String) -> String { version.split(separator: ".").prefix(2).joined(separator: ".") }
         guard SimulatorCatalog.compare(minor(runtime.version), minor(sdkVersion)) == .orderedDescending else { return }
-        let xcode = tools.developerDirectory.map { "DEVELOPER_DIR の \($0.path)" } ?? "xcode-select で選んだもの。`xcode-select -p` で分かる"
+        let xcode = tools.developerDirectory.map { "設定で決めた \($0.path)" } ?? "xcode-select で選んだもの。`xcode-select -p` で分かる"
         throw SimulatorError(
             "\(platform.rawValue) \(runtime.version) の Simulator は、ワーカーが使う Xcode（\(xcode)）の \(platform.rawValue) SDK \(sdkVersion) より"
-                + "新しいので使えない。Simulator のランタイムに合う Xcode を選ぶ"
+                + "新しいので使えない。Simulator のランタイムに合う Xcode を設定で決める"
+                + "（`askhub-commander xcode <Xcode.app のパス>`。ワーカーは `askhub-worker xcode`）"
         )
     }
 
@@ -175,7 +176,9 @@ public struct SimulatorPool: Sendable {
         try await run(tools.command(["simctl"] + arguments, in: tools.temporaryDirectory, timeout: timeout), doing: action)
     }
 
+    /// 決めた Xcode が無ければ、`xcrun` を流さずに理由の分かる文で断る
     private func run(_ command: Command, doing action: String) async throws(SimulatorError) -> CommandResult {
+        if let problem = tools.developerDirectoryProblem { throw SimulatorError("\(action)できない。\(problem)") }
         do {
             return try await runner.run(command)
         } catch is CancellationError {
