@@ -91,7 +91,13 @@ public struct XcodeBuildRunner: Sendable {
         }
         let summary = cleaner.clean(BuildClassifier.summary(failure, kind: request.kind, report: report, result: result))
         let exists = FileManager.default.fileExists(atPath: bundle.path)
-        return BuildOutcome(failure: failure, summary: summary, report: report, resultBundle: exists ? bundle : nil)
+        return BuildOutcome(
+            failure: failure,
+            summary: summary,
+            report: report,
+            resultBundle: exists ? bundle : nil,
+            launchFailed: BuildClassifier.isLaunchFailure(failure, kind: request.kind, report: report)
+        )
     }
 
     /// 結果のバンドルの名前（`testLight-askhub-worker-1-iPhone-17-Pro-iOS-26.5` など）
