@@ -26,7 +26,7 @@ struct EpicBuilderTests {
         let fake = FakeCommands { command in
             switch command.arguments.first {
             case "simctl", "--sdk": simctl.respond(to: command)
-            case "xcodebuild": respond(command)
+            case "xcodebuild", "xcresulttool": respond(command)
             default: .failure(1, "")
             }
         }
@@ -91,6 +91,103 @@ struct EpicBuilderTests {
         #expect(run.attemptFailure?.failureClass == .unexpected)
         #expect(run.results.first?.outcome.report.log?.contains("Unable to boot") == true)
         #expect(xcodebuilds(fake).isEmpty)
+    }
+
+    // MARK: - アプリかテストの実行役を起動できなかった
+
+    static let launchFailure = FakeXcodebuild.Run(
+        result: .failure(65, "Testing failed:\n\tAskHub encountered an error\n** TEST FAILED **\n"),
+        build: Fixtures.launchFailureBuild,
+        tests: Fixtures.launchFailureSummary
+    )
+    static let passed = FakeXcodebuild.Run(result: .output("** TEST SUCCEEDED **"), build: Fixtures.noErrors, tests: Fixtures.passedSummary)
+    static let testFailed = CommandResult.failure(65, "** TEST FAILED **")
+    static let rerunNote = "。1 回目は Simulator でアプリかテストの実行役を起動できず、Simulator を消去して起動し直してから流し直した"
+
+    /// `simctl` と `xcodebuild` を流した順（一覧・SDK の版・結果のバンドルの読み取りは除く）
+    private func steps(_ fake: FakeCommands) -> [String] {
+        fake.arguments.filter { ["simctl", "xcodebuild"].contains($0.first ?? "") && $0.prefix(2) != ["simctl", "list"] }
+            .map { $0.prefix(2).joined(separator: " ") }
+    }
+
+    @Test func erasesTheSimulatorAndRerunsOnceWhenTheTestRunnerCannotLaunch() async throws {
+        let xcodebuild = FakeXcodebuild([Self.launchFailure, Self.passed])
+        let (builder, fake) = try makeBuilder { xcodebuild.respond(to: $0) }
+        defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
+        let run = try await builder.run(.testLight)
+        #expect(run.succeeded)
+        #expect(run.summary == "iPhone 17 Pro（iOS 26.5）: テストが通った（全 2 件）\(Self.rerunNote)\nmacOS: テストが通った（全 2 件）")
+        // 枠の Simulator を止めて消去し、起動し直してから同じ Simulator で流し直す。macOS は 1 回だけ
+        #expect(steps(fake) == [
+            "simctl create", "simctl bootstatus", "xcodebuild test",
+            "simctl shutdown", "simctl erase", "simctl bootstatus", "xcodebuild test",
+            "xcodebuild test"
+        ])
+        let destinations = xcodebuilds(fake).prefix(2).map { command in
+            command.arguments.firstIndex(of: "-destination").map { command.arguments[$0 + 1] }
+        }
+        #expect(Set(destinations).count == 1)
+        #expect(fake.arguments.contains { $0.prefix(2) == ["simctl", "erase"] && destinations.first == "id=\($0[2])" })
+    }
+
+    @Test func handsOverWhenTheTestRunnerStillCannotLaunch() async throws {
+        let xcodebuild = FakeXcodebuild([Self.launchFailure])
+        let (builder, fake) = try makeBuilder { xcodebuild.respond(to: $0) }
+        defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
+        let run = try await builder.run(.testLight)
+        #expect(run.failure == .environment)
+        #expect(run.results.map(\.destination) == [Self.iPhone])
+        // 流し直すのは 1 回だけ
+        #expect(xcodebuild.runCount == 2)
+        #expect(fake.arguments.filter { $0.prefix(2) == ["simctl", "erase"] }.count == 1)
+        #expect(run.attemptFailure?.failureClass == .unexpected)
+        #expect(run.attemptFailure?.message == "iPhone 17 Pro（iOS 26.5）: Simulator か Xcode の不調でビルドとテストを流せない"
+            + "。Simulator を消去して起動し直し、流し直しても、アプリかテストの実行役を起動できなかった")
+        #expect(run.attemptFailure?.logExcerpt?.contains("Failed to install or launch the test runner") == true)
+    }
+
+    /// 起動できたうえで落ちたテストがあるときは、流し直すと通る 2 回目があっても流し直さない（epic の変更で落ちたテストを隠さない）
+    @Test(arguments: [
+        // Unit テストが 1 件落ち、UI テストの実行役は起動できなかった
+        (
+            FakeXcodebuild.Run(result: testFailed, build: Fixtures.launchFailureBuild, tests: Fixtures.launchFailureWithFailedTest),
+            .environment
+        ),
+        (FakeXcodebuild.Run(result: testFailed, build: Fixtures.noErrors, tests: Fixtures.failedSummary(token: "t")), .test)
+    ] as [(FakeXcodebuild.Run, BuildFailureKind)])
+    func doesNotRerunWhenTestsFailed(first: FakeXcodebuild.Run, kind: BuildFailureKind) async throws {
+        let xcodebuild = FakeXcodebuild([first, Self.passed])
+        let (builder, fake) = try makeBuilder { xcodebuild.respond(to: $0) }
+        defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
+        let run = try await builder.run(.testLight)
+        #expect(run.failure == kind)
+        #expect(xcodebuild.runCount == 1)
+        #expect(!fake.arguments.contains { $0.prefix(2) == ["simctl", "erase"] })
+        #expect(run.summary.contains("流し直") == false)
+    }
+
+    @Test func keepsTheFirstFailureWhenTheSimulatorCannotBeErased() async throws {
+        let simctl = FakeSimctl(eraseResult: .failure(1, "Unable to erase contents and settings in current state: Booted"))
+        let xcodebuild = FakeXcodebuild([Self.launchFailure, Self.passed])
+        let (builder, _) = try makeBuilder(simctl: simctl) { xcodebuild.respond(to: $0) }
+        defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
+        let run = try await builder.run(.testLight)
+        #expect(run.failure == .environment)
+        #expect(xcodebuild.runCount == 1)
+        #expect(run.attemptFailure?.message == "iPhone 17 Pro（iOS 26.5）: Simulator か Xcode の不調でビルドとテストを流せない"
+            + "。Simulator を消去して起動し直せなかった（askhub-worker-3-iPhone-17-Pro-iOS-26.5 を消去できない（終了コード 1））")
+    }
+
+    /// macOS には消去して起動し直す Simulator が無いので、流し直さない
+    @Test func doesNotRerunOnMacOS() async throws {
+        let xcodebuild = FakeXcodebuild([Self.passed, Self.launchFailure, Self.passed])
+        let (builder, fake) = try makeBuilder { xcodebuild.respond(to: $0) }
+        defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
+        let run = try await builder.run(.testLight)
+        #expect(run.failure == .environment)
+        #expect(run.results.map(\.destination) == [Self.iPhone, .macOS])
+        #expect(xcodebuild.runCount == 2)
+        #expect(!fake.arguments.contains { $0.prefix(2) == ["simctl", "erase"] })
     }
 
     @Test func labelsDestinations() {

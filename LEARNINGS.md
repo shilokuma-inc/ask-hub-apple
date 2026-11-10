@@ -398,6 +398,16 @@
   指定した秒のコマを JPEG にできる（返る実際の時刻を見ると、どこでコマが止まったかが分かる）（2026-11-10、#1006）
 - UI テストの最中に Simulator のアプリへ `sample` を 1 秒ごとに当てると、読む間アプリを止めるので所要時間が数倍になり、ほかのテストまで落ちる。CI で止まりを調べるときに時間を比べる回では `sample` を当てない（2026-11-10、#1006）
 - 判断のカードの Before と After で時刻の文がずれる件は、デモの時計を止める起動引数 `-demoClock <ISO 8601>`（`DemoScenario.clockKey`）を撮れる画面の一覧の全部の画面に渡してそろえる。止めた時計では機械の反応が起きないので、撮影のほかには使わない（2026-11-10、`.askhub/screenshot-scenes.json`）
+- ワーカーの枠の Simulator は、中の状態が壊れて、入れたアプリやテストの実行役を起動できなくなることがある。結果のバンドルのエラーと落ちたテストが
+  `Failed to install or launch the test runner`・`Simulator device failed to launch <Bundle ID>. No such process`・
+  `The request was denied by service delegate (SBMainWorkspace) for reason: NotFound ("Unknown application…")` になり、`xcrun simctl shutdown` で止めてから流し直すと通った
+  （2026-11-10 08:46Z、Mac mini の Xcode 27.1・iOS 27.0）。`EpicBuilder` は、結果のバンドルのエラーと落ちたテストがすべて起動の失敗のときだけ、Simulator を消去して起動し直し、1 回だけ流し直す。
+  手元では、`xcrun simctl spawn <UDID> launchctl bootout system/com.apple.SpringBoard` で同じ「起動できない」状態を作れ（`Simulator device failed to launch`。止めて起動し直すと戻る）、
+  `LiveBuildTests.recoversWhenTheSimulatorCannotLaunchApps` がこれで流し直しを確かめる（#1013）
+- 常時オンの Mac の `xcode-select` が古い Xcode（Xcode 26.6・iOS SDK 26.5）に切り替わると、iOS 27.0 の Simulator で `Simulator device failed to launch … No such process`・
+  `The test runner hung before establishing connection.`（出力に `DTServiceHubClient failed to bless service hub`）になり、同じ枠を使うジョブが続けて止まった（2026-11-10 17:3xZ の 2 回。
+  `sudo xcode-select -s /Applications/Xcode.app` で 27.1 に戻した。切り替えた時刻は `/var/db/xcode_select_link` の時刻で分かる）。Simulator を起動し直しても直らないので、
+  `SimulatorPool.prepare` は、使う Xcode の SDK より新しいランタイムの Simulator を作らずに断る（#1013）
 
 ## Keychain
 

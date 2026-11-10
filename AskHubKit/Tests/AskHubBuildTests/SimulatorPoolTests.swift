@@ -67,8 +67,8 @@ struct SimulatorPoolTests {
         let simulator = try await pool.prepare(slot: 2, for: destination)
         #expect(simulator.name == "askhub-worker-2-iPad-Pro-13-inch-M5-iOS-26.5")
         #expect(simulator.runtime == FakeSimctl.iOS265)
-        // 版を指定したときは SDK の版を見ない
-        #expect(!runner.arguments.contains { $0.first == "--sdk" })
+        // 版を指定したときも、SDK より新しいランタイムでないかを確かめる
+        #expect(runner.arguments.contains(["--sdk", "iphonesimulator", "--show-sdk-version"]))
 
         let vision = try await pool.prepare(slot: 0, for: SimulatorDestination(platform: .visionOS, deviceType: "Apple Vision Pro"))
         #expect(vision.name == "askhub-worker-0-Apple-Vision-Pro-visionOS-26.5")
@@ -83,6 +83,32 @@ struct SimulatorPoolTests {
         #expect(iPhone17.name == "askhub-worker-0-iPhone-17-Pro-iOS-27.0")
         let iPhone18 = try await pool.prepare(slot: 1, for: SimulatorDestination(platform: .iOS, deviceType: "iPhone 18 Pro"))
         #expect(iPhone18.runtime == FakeSimctl.iOS271)
+    }
+
+    /// xcode-select が古い Xcode を指すと、SDK より新しいランタイムの Simulator でアプリを起動できない。作らずに理由の分かる文で断る
+    @Test func refusesRuntimesNewerThanTheSDK() async {
+        let destination = SimulatorDestination(platform: .iOS, deviceType: "iPhone 17 Pro", osVersion: "27.0")
+        let (older, runner) = pool(FakeSimctl(sdkVersion: "26.5"))
+        await #expect(throws: SimulatorError(
+            "iOS 27.0 の Simulator は、ワーカーが使う Xcode（xcode-select で選んだもの。`xcode-select -p` で分かる）の iOS SDK 26.5 より"
+                + "新しいので使えない。Simulator のランタイムに合う Xcode を選ぶ"
+        )) {
+            try await older.prepare(slot: 0, for: destination)
+        }
+        #expect(!runner.arguments.contains { $0.dropFirst().first == "create" || $0.dropFirst().first == "bootstatus" })
+
+        var tools = Self.tools
+        tools.developerDirectory = URL(fileURLWithPath: "/Applications/Xcode-26.6.0.app/Contents/Developer")
+        let pinned = SimulatorPool(tools: tools, runner: FakeCommands { FakeSimctl(sdkVersion: "26.5").respond(to: $0) })
+        await #expect(throws: SimulatorError(
+            "iOS 27.0 の Simulator は、ワーカーが使う Xcode（DEVELOPER_DIR の /Applications/Xcode-26.6.0.app/Contents/Developer）の iOS SDK 26.5 より"
+                + "新しいので使えない。Simulator のランタイムに合う Xcode を選ぶ"
+        )) {
+            try await pinned.prepare(slot: 0, for: destination)
+        }
+        // SDK の上 2 桁までが同じなら使う（ランタイム 27.0 と SDK 27.0.1）
+        let (patched, _) = pool(FakeSimctl(sdkVersion: "27.0.1"))
+        await #expect(throws: Never.self) { try await patched.prepare(slot: 0, for: destination) }
     }
 
     @Test func reportsMissingRuntimesAndDeviceTypes() async {

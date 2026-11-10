@@ -43,7 +43,8 @@ public struct BuildMachine: Sendable {
 /// 1 つの epic の写しで、種類を選んでビルドとテストを流す入口。
 ///
 /// 設定の行き先を並べた順に流し、最初に失敗した行き先で止める（Claude に早く直させるため）。
-/// Simulator の行き先は、枠 `slot` の Simulator を用意（無ければ作って起動）してから流す。同じ枠を同時に使わないのは呼ぶ側が守る
+/// Simulator の行き先は、枠 `slot` の Simulator を用意（無ければ作って起動）してから流す。アプリかテストの実行役を起動できなかったら
+/// （`BuildOutcome.launchFailed`）、Simulator を消去して起動し直し、1 回だけ流し直す。同じ枠を同時に使わないのは呼ぶ側が守る
 public struct EpicBuilder: Sendable {
     public var machine: BuildMachine
     public var settings: BuildSettings
@@ -72,20 +73,51 @@ public struct EpicBuilder: Sendable {
     }
 
     private func run(_ kind: BuildKind, on destination: BuildDestination) async throws(CancellationError) -> BuildOutcome {
-        let prepared: PreparedDestination
-        switch destination {
-        case .macOS:
-            prepared = .macOS
-        case .simulator(let simulator):
-            do {
-                prepared = .simulator(try await machine.pool.prepare(slot: slot, for: simulator))
-            } catch {
-                if Task.isCancelled { throw CancellationError() }
-                return BuildOutcome(failure: .environment, summary: error.message, report: BuildReport(log: error.log))
-            }
+        guard case .simulator(let target) = destination else {
+            return try await xcodebuild(kind, on: .macOS)
         }
+        let simulator: Simulator
+        do {
+            simulator = try await machine.pool.prepare(slot: slot, for: target)
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            return BuildOutcome(failure: .environment, summary: error.message, report: BuildReport(log: error.log))
+        }
+        let outcome = try await xcodebuild(kind, on: .simulator(simulator))
+        guard outcome.launchFailed else { return outcome }
+        return try await rerun(kind, on: target, resetting: simulator, after: outcome)
+    }
+
+    /// Simulator でアプリかテストの実行役を起動できなかったときに、枠の Simulator を止めて中身を消去し、起動し直してから 1 回だけ流し直す。
+    ///
+    /// Simulator の中の状態が壊れると、入れたアプリを起動できなくなる（2026-11-10 08:46Z に Mac mini で起き、
+    /// 人が止めて起動し直すと通った）。流し直しても駄目なら、その結果を返す（環境の不調として人に渡る）
+    private func rerun(
+        _ kind: BuildKind,
+        on target: SimulatorDestination,
+        resetting simulator: Simulator,
+        after first: BuildOutcome
+    ) async throws(CancellationError) -> BuildOutcome {
+        let reset: Simulator
+        do {
+            try await machine.pool.erase(simulator)
+            reset = try await machine.pool.prepare(slot: slot, for: target)
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            var outcome = first
+            outcome.summary += "。Simulator を消去して起動し直せなかった（\(error.message)）"
+            return outcome
+        }
+        var outcome = try await xcodebuild(kind, on: .simulator(reset))
+        outcome.summary += outcome.launchFailed
+            ? "。Simulator を消去して起動し直し、流し直しても、アプリかテストの実行役を起動できなかった"
+            : "。1 回目は Simulator でアプリかテストの実行役を起動できず、Simulator を消去して起動し直してから流し直した"
+        return outcome
+    }
+
+    private func xcodebuild(_ kind: BuildKind, on destination: PreparedDestination) async throws(CancellationError) -> BuildOutcome {
         let request = BuildRequest(
-            settings: settings, kind: kind, destination: prepared, sourceDirectory: sourceDirectory, epic: epic
+            settings: settings, kind: kind, destination: destination, sourceDirectory: sourceDirectory, epic: epic
         )
         return try await machine.runner.run(request, timeout: machine.timeouts.timeout(for: kind))
     }

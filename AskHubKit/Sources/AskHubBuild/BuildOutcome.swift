@@ -37,12 +37,22 @@ public struct BuildOutcome: Equatable, Sendable {
     public var report: BuildReport
     /// 結果のバンドル。作られなかったら nil
     public var resultBundle: URL?
+    /// アプリかテストの実行役を起動できなかった（`environment` のうち、結果のバンドルのエラーと落ちたテストがすべて起動の失敗のもの）。
+    /// Simulator の行き先なら、`EpicBuilder` が Simulator を消去して起動し直し、1 回だけ流し直す
+    public var launchFailed: Bool
 
-    public init(failure: BuildFailureKind?, summary: String, report: BuildReport = BuildReport(), resultBundle: URL? = nil) {
+    public init(
+        failure: BuildFailureKind?,
+        summary: String,
+        report: BuildReport = BuildReport(),
+        resultBundle: URL? = nil,
+        launchFailed: Bool = false
+    ) {
         self.failure = failure
         self.summary = summary
         self.report = report
         self.resultBundle = resultBundle
+        self.launchFailed = launchFailed
     }
 
     public var succeeded: Bool { failure == nil }
@@ -75,8 +85,36 @@ enum BuildClassifier {
         return .unknown
     }
 
+    /// アプリかテストの実行役を起動できなかったか（`BuildOutcome.launchFailed`）。
+    ///
+    /// 区分が `environment` で、結果のバンドルにエラーか落ちたテストがあり、そのすべてが起動の失敗（`launchPhrases`）のときだけ true にする。
+    /// ビルドのエラーや、起動できたうえで落ちたテストが 1 つでもあれば、流し直して epic の変更で落ちたテストを隠さないよう false にする。
+    /// テストの要約（件数）を読めなかったとき（ビルドの結果だけ読めたときを含む）も、ほかに落ちたテストがあったか分からないので false
+    static func isLaunchFailure(_ failure: BuildFailureKind?, kind: BuildKind, report: BuildReport) -> Bool {
+        guard failure == .environment, kind.isTest, let counts = report.tests else { return false }
+        let messages = report.errors.map(\.message) + report.failedTests.map(\.message)
+        guard !messages.isEmpty, messages.allSatisfy(isLaunchMessage) else { return false }
+        // 落ちたテストの数が一覧より多ければ、一覧に出ていない失敗がある
+        return counts.failed <= report.failedTests.count
+    }
+
+    private static func isLaunchMessage(_ message: String) -> Bool {
+        let lowered = message.lowercased()
+        return launchPhrases.contains(where: lowered.contains)
+    }
+
+    /// アプリかテストの実行役を Simulator で起動できなかったことを示す文（小文字）。Simulator の中の状態が壊れると出て、
+    /// 止めて起動し直すと通る（2026-11-10 08:46Z に Mac mini で。`SBMainWorkspace` の `Unknown application`・`No such process`）。
+    /// 使う Xcode が Simulator のランタイムより古いときにも出るが、それは `SimulatorPool.prepare` が先に断る
+    static let launchPhrases = [
+        "failed to install or launch the test runner",
+        "simulator device failed to launch",
+        "the test runner hung before establishing connection",
+        "test runner never began executing tests"
+    ]
+
     /// Simulator や Xcode の不調を示す文（小文字）
-    static let environmentPhrases = [
+    static let environmentPhrases = launchPhrases + [
         "unable to find a device matching the provided destination",
         "unable to find a destination matching the provided destination",
         "unable to boot",
@@ -84,10 +122,8 @@ enum BuildClassifier {
         // 開発者モードが無効な Mac で、launchd から Simulator のテストを流したとき（LEARNINGS.md）
         "failed to bless service hub",
         "** build interrupted **",
-        "test runner never began executing tests",
         "the test runner hung",
         "lost connection to the test manager service",
-        "failed to install or launch the test runner",
         "coresimulatorservice",
         "could not resolve host",
         "the internet connection appears to be offline"

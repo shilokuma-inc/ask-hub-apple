@@ -41,12 +41,14 @@ public struct SimulatorPool: Sendable {
     // MARK: - 枠の Simulator
 
     /// 枠 `slot` の、`destination` 用の Simulator を用意して起動する。無ければ作り、
-    /// 同じ名前でランタイムや機種が合わないもの（ランタイムを消したものなど）は消して作り直す
+    /// 同じ名前でランタイムや機種が合わないもの（ランタイムを消したものなど）は消して作り直す。
+    /// 使う Xcode の SDK より新しいランタイムは、作らずに断る（`checkSupported`）
     public func prepare(slot: Int, for destination: SimulatorDestination) async throws(SimulatorError) -> Simulator {
         guard slot >= 0 else { throw SimulatorError("枠の番号が正しくない（\(slot)）") }
-        let sdkVersion = destination.osVersion == nil ? try await sdkVersion(of: destination.platform) : nil
+        let sdkVersion = try await sdkVersion(of: destination.platform)
         let catalog = try await list()
-        let (runtime, deviceType) = try catalog.resolve(destination, sdkVersion: sdkVersion)
+        let (runtime, deviceType) = try catalog.resolve(destination, sdkVersion: destination.osVersion == nil ? sdkVersion : nil)
+        try checkSupported(runtime, platform: destination.platform, sdkVersion: sdkVersion)
         let name = Self.name(slot: slot, deviceType: deviceType.name, platform: destination.platform, runtimeVersion: runtime.version)
         let reusable = (catalog.devices[runtime.identifier] ?? []).first { device in
             device.name == name && device.isAvailable == true && device.deviceTypeIdentifier == deviceType.identifier
@@ -112,6 +114,20 @@ public struct SimulatorPool: Sendable {
     }
 
     // MARK: - simctl
+
+    /// ランタイムの版（上 2 桁）が、使う Xcode の SDK より新しければ断る。古い Xcode では、新しいランタイムの Simulator に
+    /// アプリやテストの実行役を起動できない（2026-11-10 に Mac mini の xcode-select が Xcode 26.6（iOS SDK 26.5）を指し、
+    /// iOS 27.0 の Simulator で `Simulator device failed to launch`・`The test runner hung before establishing connection.` になった）。
+    /// Simulator を起動し直しても直らないので、流し直さずに理由の分かる文で止める
+    func checkSupported(_ runtime: SimulatorCatalog.Runtime, platform: SimulatorPlatform, sdkVersion: String) throws(SimulatorError) {
+        func minor(_ version: String) -> String { version.split(separator: ".").prefix(2).joined(separator: ".") }
+        guard SimulatorCatalog.compare(minor(runtime.version), minor(sdkVersion)) == .orderedDescending else { return }
+        let xcode = tools.developerDirectory.map { "DEVELOPER_DIR の \($0.path)" } ?? "xcode-select で選んだもの。`xcode-select -p` で分かる"
+        throw SimulatorError(
+            "\(platform.rawValue) \(runtime.version) の Simulator は、ワーカーが使う Xcode（\(xcode)）の \(platform.rawValue) SDK \(sdkVersion) より"
+                + "新しいので使えない。Simulator のランタイムに合う Xcode を選ぶ"
+        )
+    }
 
     private static func checkOwned(_ simulator: Simulator) throws(SimulatorError) {
         guard isWorkerName(simulator.name) else {
