@@ -67,11 +67,11 @@ struct ConcurrencyLimitedStoreTests {
         #expect(await probe.maxInFlight == 4)
     }
 
-    /// 写しとして `probe` を返す
+    /// 読み取りも写しの読み取りも `probe` に送る
     struct SnapshottingStore: StateStore {
         let probe: ProbeStore
 
-        func read(_ path: String) async throws(StateStoreError) -> StoredBlob? { nil }
+        func read(_ path: String) async throws(StateStoreError) -> StoredBlob? { try await probe.read(path) }
 
         func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? { nil }
 
@@ -86,11 +86,12 @@ struct ConcurrencyLimitedStoreTests {
         let snapshot = try await store.snapshot()
         let paths = (1...30).map { "file-\($0).json" }
         await withTaskGroup(of: Void.self) { group in
-            for path in paths {
-                group.addTask { _ = try? await snapshot.read(path) }
+            for (index, path) in paths.enumerated() {
+                let target: any StateStore = index.isMultiple(of: 2) ? store : snapshot
+                group.addTask { _ = try? await target.read(path) }
             }
         }
-        // 写しから読む要求も、元の置き場所と同じ上限の中で出す
+        // 写しから読む要求も、元の置き場所と同じ上限の中で出す（合わせて上限を超えない）
         #expect(await probe.reads == 30)
         #expect(await probe.maxInFlight == 4)
     }
