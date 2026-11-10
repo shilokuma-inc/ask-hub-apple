@@ -242,6 +242,8 @@ struct XcodeBuildRunnerTests {
         // Unit テストが 1 件落ち、UI テストの実行役は起動できなかった
         (Fixtures.launchFailureBuild, Fixtures.launchFailureWithFailedTest),
         (Fixtures.launchFailureBuild, undercountedLaunchFailure),
+        // ビルドの結果は読めたが、テストの要約を読めない（ほかに落ちたテストがあったか分からない）
+        (Fixtures.launchFailureBuild, nil),
         // 結果のバンドルを読めない（出力にだけ起動の失敗がある）
         (nil, nil)
     ] as [(String?, String?)])
