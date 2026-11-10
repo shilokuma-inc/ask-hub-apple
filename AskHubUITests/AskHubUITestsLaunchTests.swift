@@ -8,8 +8,10 @@
 import XCTest
 
 final class AskHubUITestsLaunchTests: XCTestCase {
+    /// 構成（縦横・ライトダーク）ごとには流さない。構成ごとに流すと XCTest が端末の向きを変え、CI の Simulator では
+    /// 向きの変更の確認を待ちきれずに落ちる・横向きのまま残って後のテストが要素を見つけられないことがあった。起動のスクショは今の向きで 1 枚撮る
     override static var runsForEachTargetApplicationUIConfiguration: Bool {
-        true
+        false
     }
 
     override func setUpWithError() throws {
