@@ -4,10 +4,13 @@ import XCTest
 final class ClientUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
-        // 起動テスト（AskHubUITestsLaunchTests）は画面の向きを変えたまま残すことがあるので、縦向きに戻す
+        // 横向きのまま残った Simulator なら、縦向きに戻す。縦向きなら向きを変えない
+        // （CI の Simulator では、向きの変更の確認を待ちきれずに落ちることがある。#1006）
         #if os(iOS)
         MainActor.assumeIsolated {
-            XCUIDevice.shared.orientation = .portrait
+            if XCUIDevice.shared.orientation.isLandscape {
+                XCUIDevice.shared.orientation = .portrait
+            }
         }
         #endif
     }
@@ -402,8 +405,12 @@ extension ClientUITests {
         XCTAssertFalse(app.staticTexts["反映中"].exists)
         // 送り終えて司令塔が受け付けたら（受け付けの記録を軽く確かめて読み直す）、印は消える
         let synced = NSPredicate(format: "exists == false")
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: synced, evaluatedWith: badge)], timeout: 30), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: synced, evaluatedWith: badge)], timeout: Self.syncTimeout), .completed)
     }
+
+    /// 同期待ちの印が消えるのを待つ上限。手元ではおよそ 10 秒（送る 5 秒・受け付け 3 秒・確かめの間隔）で消える。
+    /// CI の Simulator は負荷が高く、アプリが 40 秒近く応えないことがあった（#1006）ので、CI の遅さに合わせて長くとる
+    private static let syncTimeout: TimeInterval = 90
 
     /// 同期待ちの小さな印
     @MainActor

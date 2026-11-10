@@ -159,6 +159,11 @@
   （この repo の PR の synchronize で確かめた）。待つチェックの名前と別なので、飛ばしたイベントの回を成功と取り違えることはない（2026-11-10、#997）
 - 今の仕組みの CI に残っている `epic/**` の判定（子 PR では PR のイベントで Build を動かさない）は、新しい作業ブランチ `askhub/**` に当たらない。
   そのままだと子 PR（`askhub/<epic>-<task>` → `askhub/<epic>`）が push と PR のイベントで 2 回流れ、PR のほうは UI テストまで流す（#983 で 5 分と 25 分）。移すときに `askhub/` に読み替える（2026-11-10、#997）
+- この repo の Build は、`askhub/**` の最終 PR を除き、PR の更新（synchronize）では UI テストを流さず、push の回も Unit テストだけになる。
+  UI テストを含めて流し直すには、`gh run rerun` のほかに、PR を `gh pr close` → `gh pr reopen` する（reopened のイベントで UI テスト込みで動く）。
+  これが効くのは base が `askhub/**` でない PR（develop 宛てなど）だけ。`askhub/**` 宛ての子 PR は、開き直しても PR のイベントで Build が動かない（`build.yml` の `if`）ので、
+  子 PR のコードの UI テストは手元で流すか、最終 PR（`askhub/<epic>` → develop）で流す
+  CI でだけ揺らぐテストを調べるときは、マージしない下書きの PR で `_build.yml` のテストを `-only-testing` で絞ると、ビルドを含めて 4 分ほどで 1 回を流せる（2026-11-10、#1006）
 
 ## ビルド・テスト
 
@@ -379,6 +384,19 @@
   `BuildTools.toolDirectories`（`/opt/homebrew/bin`・`/usr/local/bin`・`~/.local/bin`）から絶対パスで探して起動する。XcodeGen の `Spec validation error:` は理由を次の行に書くので、
   出力の抜粋をエラーの行だけに絞ると理由が落ちる。XcodeGen（2.46）は環境変数 `USER` が無いと「Couldn't find current username」で止まる（`LOGNAME` だけでは足りない）ので、
   環境変数を作り直すときは `USER` を渡す（2026-11-10、`build.xcode.generate`）
+- `AskHubUITestsLaunchTests` の雛形（`runsForEachTargetApplicationUIConfiguration` が true）は、起動テストを構成（縦横・ライトダーク）の数だけ流し、XCTest が端末の向きを変える。
+  CI の Simulator では、向きの変更の確認を 60 秒待って「Failed to set device orientation」で落ちることがあった。起動テストは false にして今の向きで 1 回だけ流す（2026-11-10、#1006）
+- 新しく起動した Simulator では、`XCUIDevice.shared.orientation` は `.portrait` を返さない（`!= .portrait` で確かめると、縦向きでも向きを設定し直す）。横向きの後は `.landscapeRight` などが返る。
+  縦向きに戻すのは `orientation.isLandscape` のときだけにする（2026-11-10、#1006）
+- CI（GitHub Actions の macOS ランナー）は `Apple M2 Pro (Virtual)` の 5 コアで、Simulator を起動した後の数分は、ウィジェットやデーモンが次々に動いて
+  load average が 500 を超え、CPU の空きは 0%、メモリの空きは数百 MB になる。この間、アプリと UI テストの問い合わせが数秒〜40 秒止まることがあり、
+  同じテストでも、止まるかどうか・どれだけ止まるかは回ごとに違う（単独で流しても、起動テストの後に流しても、止まらない回があった）。
+  UI テストで状態の変化を待つ時間は、手元の所要時間の数倍ではなく CI の止まりを見込んで長くとる（印が消えるのを待つ `ClientUITests.syncTimeout` は 90 秒）。
+  通った回のログでも、`Checking existence of …` の行の間が 20 秒以上空いていれば同じ止まりが起きている（30 秒の待ちに収まったかどうかで結果が変わっていた）（2026-11-10、#1006）
+- CI の `TestResults.xcresult`（成果物）には UI テストごとの画面の録画（`kXCTAttachmentScreenRecording` の mp4）が入り、`xcrun xcresulttool export attachments --path TestResults.xcresult --output-path <出力先のフォルダ> --test-id "<クラス>/<メソッド>()"` で取り出せる（`manifest.json` に添付の名前と時刻が入る）。
+  録画は画面が変わったときだけコマを足すので、コマの時刻の間（ステータスバーの時計も止まる）で止まった時間が分かる。ffmpeg の無い Mac でも、`AVAssetImageGenerator` の小さな Swift のスクリプトで
+  指定した秒のコマを JPEG にできる（返る実際の時刻を見ると、どこでコマが止まったかが分かる）（2026-11-10、#1006）
+- UI テストの最中に Simulator のアプリへ `sample` を 1 秒ごとに当てると、読む間アプリを止めるので所要時間が数倍になり、ほかのテストまで落ちる。CI で止まりを調べるときに時間を比べる回では `sample` を当てない（2026-11-10、#1006）
 - 判断のカードの Before と After で時刻の文がずれる件は、デモの時計を止める起動引数 `-demoClock <ISO 8601>`（`DemoScenario.clockKey`）を撮れる画面の一覧の全部の画面に渡してそろえる。止めた時計では機械の反応が起きないので、撮影のほかには使わない（2026-11-10、`.askhub/screenshot-scenes.json`）
 
 ## Keychain
