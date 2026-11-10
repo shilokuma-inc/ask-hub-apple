@@ -266,6 +266,7 @@ extension DemoData {
             selfChecks: selfChecks(free: "41 GB"),
             tokens: tokens(githubDays: 82, claudeDays: 301),
             claudeVersion: Self.claudeVersion,
+            xcodeVersion: "27.1",
             cleanupCandidates: [
                 CleanupCandidate(id: "c1", kind: .simulator, name: "iPhone 16 Pro（手で作成）", bytes: 6_400 * Self.megabyte, caution: nil),
                 CleanupCandidate(id: "c2", kind: .clone, name: "~/Desktop/ios/old-habit-ios", bytes: 2_100 * Self.megabyte, caution: nil),
@@ -300,6 +301,7 @@ extension DemoData {
             tokens: tokens(githubDays: 10, claudeDays: 290),
             claudeVersion: "2.1.316",
             commanderClaudeVersion: Self.claudeVersion,
+            xcodeVersion: "27.1",
             cleanupCandidates: []
         )
     }
@@ -322,6 +324,7 @@ extension DemoData {
             selfChecks: selfChecks(free: "23 GB", lowDisk: true),
             tokens: tokens(githubDays: 82, claudeDays: 301),
             claudeVersion: Self.claudeVersion,
+            xcodeVersion: "26.6",
             cleanupCandidates: []
         )
     }

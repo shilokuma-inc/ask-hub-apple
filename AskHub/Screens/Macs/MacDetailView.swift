@@ -11,10 +11,13 @@ struct MacDetailView: View {
             List {
                 CardSection {
                     MacRow(mac: mac)
-                    LabeledContent("機種", value: mac.model)
+                    if !mac.model.isEmpty {
+                        LabeledContent("機種", value: mac.model)
+                    }
                     LabeledContent("動き方", value: residency(mac.residency))
                     LabeledContent("版", value: mac.version + (mac.versionMatches ? "" : "（司令塔と合いません）"))
                     claudeVersionRow(mac)
+                    LabeledContent("Xcode", value: mac.xcodeVersion ?? "分かりません")
                 }
                 CardSection("持っているジョブ") {
                     if mac.jobs.isEmpty {

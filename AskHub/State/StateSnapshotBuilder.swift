@@ -141,7 +141,7 @@ struct StateSnapshotBuilder {
         return Mac(
             id: file.mac.rawValue,
             name: file.mac.rawValue,
-            model: file.versions.xcode.map { "Xcode \($0)" } ?? "",
+            model: "",
             role: documents.commander?.mac == file.mac ? .commandCenter : .worker,
             residency: Self.residency(file.kind),
             connection: connection(seenAt: file.seenAt.date),
@@ -156,6 +156,7 @@ struct StateSnapshotBuilder {
             tokens: tokens,
             claudeVersion: file.versions.claude,
             commanderClaudeVersion: commanderClaudeVersion(differingFrom: file.versions.claude),
+            xcodeVersion: file.versions.xcode,
             cleanupCandidates: [],
             loadAverage: file.load
         )
