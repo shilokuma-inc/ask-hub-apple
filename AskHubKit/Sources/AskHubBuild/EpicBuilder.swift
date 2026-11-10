@@ -90,7 +90,7 @@ public struct EpicBuilder: Sendable {
 
     /// Simulator でアプリかテストの実行役を起動できなかったときに、枠の Simulator を止めて中身を消去し、起動し直してから 1 回だけ流し直す。
     ///
-    /// Simulator の中の状態が壊れると、入れたアプリを起動できなくなり、同じ枠を使う次のジョブにも持ち越す（2026-11-10 に Mac mini で 3 回続き、
+    /// Simulator の中の状態が壊れると、入れたアプリを起動できなくなる（2026-11-10 08:46Z に Mac mini で起き、
     /// 人が止めて起動し直すと通った）。流し直しても駄目なら、その結果を返す（環境の不調として人に渡る）
     private func rerun(
         _ kind: BuildKind,

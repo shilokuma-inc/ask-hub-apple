@@ -104,8 +104,8 @@ enum BuildClassifier {
     }
 
     /// アプリかテストの実行役を Simulator で起動できなかったことを示す文（小文字）。Simulator の中の状態が壊れると出て、
-    /// 止めて起動し直すと通る（2026-11-10 に Mac mini で 3 回。`SBMainWorkspace` の `Unknown application`・`No such process`・
-    /// `The test runner hung before establishing connection.`）
+    /// 止めて起動し直すと通る（2026-11-10 08:46Z に Mac mini で。`SBMainWorkspace` の `Unknown application`・`No such process`）。
+    /// 使う Xcode が Simulator のランタイムより古いときにも出るが、それは `SimulatorPool.prepare` が先に断る
     static let launchPhrases = [
         "failed to install or launch the test runner",
         "simulator device failed to launch",
