@@ -66,14 +66,17 @@ extension Color {
         Color(red: red, green: green, blue: blue)
     }
 
-    /// ライトとダークで色を変える
+    /// ライトとダークで色を変える。
+    ///
+    /// 色を決める処理は、SwiftUI が裏のスレッド（`com.apple.SwiftUI.AsyncRenderer`）で呼ぶことがある。
+    /// MainActor に縛られた処理を裏のスレッドで呼ぶと、実行時の確かめで落ちるので、`@Sendable` にして MainActor に縛らない
     init(light: Color, dark: Color) {
         #if os(iOS)
-        self.init(UIColor { traits in
+        self.init(UIColor { @Sendable traits in
             UIColor(traits.userInterfaceStyle == .dark ? dark : light)
         })
         #else
-        self.init(NSColor(name: nil) { appearance in
+        self.init(NSColor(name: nil) { @Sendable appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return NSColor(isDark ? dark : light)
         })

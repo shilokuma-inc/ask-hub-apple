@@ -362,7 +362,6 @@
   Before と After で同じ Simulator を使えば、Keychain の端末の鍵も同じものが出る。UserDefaults の値は `simctl spawn <udid> defaults write <Bundle ID> <キー> -string '…'` で入れる
   （`-string` を付けないと、`'` や括弧を含む値は「Could not parse」で入らない）（2026-11-10、端末の名前の欄）
 
-
 ## Keychain
 
 - macOS で `kSecUseDataProtectionKeychain` を使うには、provisioning profile で許可された entitlement
@@ -464,7 +463,8 @@
 - アプリのターゲットは MainActor 既定なので、`static func` をそのまま関数値として渡すと（`optional.flatMap(normalizedLabel)` など）、
   「converting function value of type '@MainActor (String) -> String?' to '(String) -> String?' loses global actor 'MainActor'」でビルドが落ちる。
   状態を持たない関数は `nonisolated` にする（その中で読む `static let` も `nonisolated` にする）（2026-11-10、`ConnectionSettingsModel.normalizedLabel`）
-
+- MainActor が既定のターゲットで `UIColor { traits in … }`・`NSColor(name:dynamicProvider:)` の処理を書くと、処理が MainActor に縛られる。
+  SwiftUI は色を裏のスレッド（`com.apple.SwiftUI.AsyncRenderer`）で決めることがあり、そのとき実行時の確かめ（`_swift_task_checkIsolatedSwift`）で `EXC_BREAKPOINT` で落ちる。処理を `@Sendable` にして縛らない
 
 ## シェルスクリプト
 
