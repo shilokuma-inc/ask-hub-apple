@@ -14,6 +14,8 @@ public struct BuildTools: Sendable {
     public var temporaryDirectory: URL
     /// プロジェクトを作る道具（`xcodegen` など）を探すフォルダ。ワーカーの PATH は引き継がないので、決まった置き場所から順に探す
     public var toolDirectories: [URL]
+    /// ログインの名前。プロジェクトを作る道具にだけ `USER`・`LOGNAME` で渡す（XcodeGen は人ごとの設定の名前に使い、無いと止まる）
+    public var userName: String
 
     /// Homebrew（Apple シリコン・Intel）と、人のホームフォルダの `~/.local/bin`
     public static func defaultToolDirectories(home: URL) -> [URL] {
@@ -30,13 +32,15 @@ public struct BuildTools: Sendable {
         developerDirectory: URL? = nil,
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         temporaryDirectory: URL,
-        toolDirectories: [URL]? = nil
+        toolDirectories: [URL]? = nil,
+        userName: String = NSUserName()
     ) {
         self.xcrun = xcrun
         self.developerDirectory = developerDirectory
         self.home = home
         self.temporaryDirectory = temporaryDirectory
         self.toolDirectories = toolDirectories ?? Self.defaultToolDirectories(home: home)
+        self.userName = userName
     }
 
     /// 子に渡す環境変数。ここに無いものは渡らない
@@ -58,14 +62,14 @@ public struct BuildTools: Sendable {
         return environment
     }
 
-    /// `xcrun <arguments>` を、`directory` で、上限 `timeout` で流すコマンド
-    func command(_ arguments: [String], in directory: URL, timeout: Duration) -> Command {
-        command(xcrun, arguments, in: directory, timeout: timeout)
+    /// プロジェクトを作る道具に渡す環境変数（`environment` に、ログインの名前を足したもの）
+    var generatorEnvironment: [String: String] {
+        environment.merging(["USER": userName, "LOGNAME": userName]) { $1 }
     }
 
-    /// `executable <arguments>` を、`directory` で、上限 `timeout` で流すコマンド
-    func command(_ executable: URL, _ arguments: [String], in directory: URL, timeout: Duration) -> Command {
-        Command(executable: executable, arguments: arguments, environment: environment, workingDirectory: directory, timeout: timeout)
+    /// `xcrun <arguments>` を、`directory` で、上限 `timeout` で流すコマンド
+    func command(_ arguments: [String], in directory: URL, timeout: Duration) -> Command {
+        Command(executable: xcrun, arguments: arguments, environment: environment, workingDirectory: directory, timeout: timeout)
     }
 
     /// `toolDirectories` を順に見て、最初に見つかった `name` の実行ファイル。無ければ nil

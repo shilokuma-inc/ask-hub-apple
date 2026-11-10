@@ -21,7 +21,7 @@ extension ProjectGenerator {
 /// ビルドの前に、設定の道具でプロジェクトを作る（`BuildSettings.generate`。`.xcodeproj` をコミットしないリポジトリ）。
 ///
 /// ビルドのたびに作り直す（Claude がファイルや `project.yml` を変えても、プロジェクトに入るように）。
-/// `xcodebuild` と同じく、作業場所の直下で、作り直した環境変数（`BuildTools.environment`）で流す
+/// `xcodebuild` と同じく、作業場所の直下で、作り直した環境変数（`BuildTools.generatorEnvironment`）で流す
 struct ProjectGeneration {
     /// 作れなかったわけ
     enum Failure: Error, Equatable {
@@ -46,7 +46,14 @@ struct ProjectGeneration {
         }
         let result: CommandResult
         do {
-            result = try await runner.run(tools.command(executable, generator.arguments, in: directory, timeout: timeout))
+            let command = Command(
+                executable: executable,
+                arguments: generator.arguments,
+                environment: tools.generatorEnvironment,
+                workingDirectory: directory,
+                timeout: timeout
+            )
+            result = try await runner.run(command)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
