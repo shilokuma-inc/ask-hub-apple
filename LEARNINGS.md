@@ -361,6 +361,10 @@
   UI テストの画面の録画が `Data/data.0~…` に QuickTime で入る。結果はログの `Test Case … passed/failed` の行で判断して止める（2026-11-10）
 - Mac 版のビルドが TestFlight にあっても、内部テストのグループの「iPhone と iPad の App を Apple シリコン搭載の Mac でテスト」がオンだと、Apple シリコンの Mac の TestFlight からは iPad 版が入った。
   iPad 版は `#if os(iOS)` の側で動くので、メニューバーに「設定…」が無く、端末の鍵のラベル（`UIDevice.current.model`）が `iPad` になる。グループの設定をオフにして入れ直すと Mac 版が入った（2026-11-10、個人の Mac での確認）
+- 設定の画面（シートで開く `AppSettingsView`）は起動引数で開けない。Simulator を操作できない（タップできない）ときは、撮影用の取り出しだけに
+  `AppNavigator.isShowingSettings = true` と、撮りたい節を `Form` の先頭に移す変更を当ててビルドし、`xcrun simctl io <udid> screenshot` で撮る（コミットしない）。
+  Before と After で同じ Simulator を使えば、Keychain の端末の鍵も同じものが出る。UserDefaults の値は `simctl spawn <udid> defaults write <Bundle ID> <キー> -string '…'` で入れる
+  （`-string` を付けないと、`'` や括弧を含む値は「Could not parse」で入らない）（2026-11-10、端末の名前の欄）
 
 ## Keychain
 
@@ -460,6 +464,9 @@
 - `-demoReactionDelay` も文字列から読むように直し（デモの秒数はすべて `DemoScenario.seconds(forKey:in:)` で読む）、UI テストでは機械の反応と司令塔の受け取り（既定は反応の半分）がすぐ起きるようになった。
   送った直後の読み直しで受け付けが見つかるので、送れたことの帯（「…を送りました」）はすぐ「…を受け付けました」に替わる。受け取る前の画面を UI テストで見るときは、
   `-demoReceiptDelay` で受け取りだけを遅らせる（受け取りが遅いと知らせる 3 分より短くする。`testRequestShowsProgressAndConfirmsDuplicate`）（2026-11-09、#954）
+- アプリのターゲットは MainActor 既定なので、`static func` をそのまま関数値として渡すと（`optional.flatMap(normalizedLabel)` など）、
+  「converting function value of type '@MainActor (String) -> String?' to '(String) -> String?' loses global actor 'MainActor'」でビルドが落ちる。
+  状態を持たない関数は `nonisolated` にする（その中で読む `static let` も `nonisolated` にする）（2026-11-10、`ConnectionSettingsModel.normalizedLabel`）
 - protocol の要件に extension で既定の実装を付けたとき、型の側の実装の署名が要件と違う（要件は `async throws(E)`、actor の側は同期で投げない、など）と、
   `any P` 越しの呼び出しは型の側を使うのに、具体的な型のまま呼ぶと extension の既定のほうが選ばれる（`InMemoryStateStore.snapshot()` が、型のまま呼ぶと自分を返していた）。
   既定の実装がある要件は、型の側も要件と同じ署名で書く（2026-11-10、#989）
