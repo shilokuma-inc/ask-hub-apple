@@ -101,15 +101,18 @@ struct AskHub: App {
         let reactionDelay = DemoScenario.seconds(forKey: DemoScenario.reactionDelayKey, in: defaults)
         // 撮影モードでは機械の反応を起こさず、撮っている間に画面が変わらないようにする
         let delay = ScreenshotDemo.isEnabled ? 3_600 : reactionDelay ?? 4
+        // 判断のカードのスクショでは時計を止め、Before と After の時刻の文をそろえる
+        let now: () -> Date = DemoScenario.clock(in: defaults).map { fixed in { fixed } } ?? Date.init
         let service = DemoClientService(
             scenario: scenario,
             reactionDelay: delay,
             sendDelay: .seconds(DemoScenario.seconds(forKey: DemoScenario.sendDelayKey, in: defaults) ?? 0),
             receiptDelay: DemoScenario.seconds(forKey: DemoScenario.receiptDelayKey, in: defaults),
-            rejectsIntents: defaults.bool(forKey: DemoScenario.rejectsIntentsKey)
+            rejectsIntents: defaults.bool(forKey: DemoScenario.rejectsIntentsKey),
+            now: now
         )
         let stallThreshold = DemoScenario.seconds(forKey: DemoScenario.stallThresholdKey, in: defaults)
-        return ClientStore(service: service, stallThreshold: stallThreshold ?? ClientStore.defaultStallThreshold)
+        return ClientStore(service: service, stallThreshold: stallThreshold ?? ClientStore.defaultStallThreshold, now: now)
     }
 }
 

@@ -29,6 +29,14 @@ enum DemoScenario: String, CaseIterable {
     static let rejectsIntentsKey = "demoRejectIntents"
     /// 司令塔の受け取りを待ったまま、受け取りが遅いと知らせるまでの秒数を決める UserDefaults のキー（起動引数 `-demoStallAfter 5` で渡す）
     static let stallThresholdKey = "demoStallAfter"
+    /// デモの時計を止める時刻の UserDefaults のキー（判断のカードのスクショで、起動引数 `-demoClock 2026-01-15T00:41:00Z` で渡す。
+    /// Before と After を別の時刻に撮っても「9:41 に確かめました」などの時刻の文が同じに写る。機械の反応は起きなくなる）
+    static let clockKey = "demoClock"
+
+    /// 起動引数で渡した止める時刻を読む（ISO 8601）。渡していない・読めないときは nil（時計は止めない）
+    static func clock(in defaults: UserDefaults) -> Date? {
+        defaults.string(forKey: clockKey).flatMap { try? Date($0, strategy: .iso8601) }
+    }
 
     /// 起動引数で渡した秒数を読む。起動引数の値は文字列で入る（`object(forKey:) as? Double` では読めない）ので、文字列から読む。
     /// 数でない・有限でない（`nan`・`inf`）値は、渡していないものとする

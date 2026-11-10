@@ -25,6 +25,20 @@ struct DemoLaunchTests {
     }
 }
 
+/// デモの時計を止める起動引数（`-demoClock 2026-01-15T00:41:00Z`）
+@MainActor
+struct DemoClockTests {
+    @Test
+    func readsFixedClock() throws {
+        let defaults = try #require(UserDefaults(suiteName: "DemoClockTests-\(UUID().uuidString)"))
+        #expect(DemoScenario.clock(in: defaults) == nil)
+        defaults.set("2026-01-15T00:41:00Z", forKey: DemoScenario.clockKey)
+        #expect(DemoScenario.clock(in: defaults) == Date(timeIntervalSince1970: 1_768_437_660))
+        defaults.set("あした", forKey: DemoScenario.clockKey)
+        #expect(DemoScenario.clock(in: defaults) == nil)
+    }
+}
+
 /// デモの速さを決める起動引数の秒数（`-demoReactionDelay 0` など）
 @MainActor
 struct DemoSecondsTests {
