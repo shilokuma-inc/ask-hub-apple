@@ -142,7 +142,9 @@ extension DiscussionMirror {
         }
         if existing.byMarker[closing.copy.marker] == nil {
             let (discussion, text) = (thread.id, closing.copy.text)
-            _ = try await Self.github { () throws(DiscussionError) in try await api.addComment(to: discussion, replyingTo: nil, body: text) }
+            _ = try await Self.github { () throws(DiscussionError) in
+                try await api.addComment(to: discussion, replyingTo: nil, body: text)
+            }
             unclosed.insert(epic.id)
         } else if !unclosed.contains(epic.id) {
             log("epic \(epic.id) の Discussion（\(epic.repo)#\(thread.number)）は締めた後に開き直されたので、閉じ直さない")
