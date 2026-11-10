@@ -77,6 +77,8 @@ struct DemoData {
     let now: Date
 
     static let owner = "demo-studio"
+    /// 2 つ目の organization。依頼のシートとリポジトリのタブで、organization ごとに分かれて並ぶのを見せる
+    static let secondOwner = "kurashi-apps"
 
     func ago(minutes: Double) -> Date {
         now.addingTimeInterval(-minutes * 60)
@@ -210,8 +212,9 @@ extension DemoData {
     static let macBookProID = "macbook-pro"
     static let macBookAirID = "macbook-air"
 
+    /// デモのリポジトリの id。デモのリポジトリは organization をまたいでも名前が重ならないので、名前から持ち主を引く
     static func repositoryID(_ name: String) -> TargetRepository.ID {
-        "\(owner)/\(name)".lowercased()
+        (repositories + candidates).first { $0.name == name }?.id ?? "\(owner)/\(name)".lowercased()
     }
 
     static let repositories: [TargetRepository] = [
@@ -220,25 +223,35 @@ extension DemoData {
         repository("rain-ios", "雨雲チェック", "cloud.rain.fill", .blue, lastMac: macBookProID),
         // ゴールを確かめて開始する epic がある。開始のときは前回の MacBook Pro を選んである
         repository("pocket-budget-ios", "おこづかい帳", "yensign.circle.fill", .purple, lastMac: macBookProID),
-        repository("tsundoku-ios", "積読リスト", "books.vertical.fill", .teal, lastMac: macMiniID),
+        repository("tsundoku-ios", "積読リスト", "books.vertical.fill", .teal, owner: secondOwner, lastMac: macMiniID),
         // 前回の Mac（MacBook Air）がオフラインなので、開始のときは何も選んでいない
-        repository("kaji-share-ios", "家事シェア", "house.fill", .pink, lastMac: macBookAirID)
+        repository("kaji-share-ios", "家事シェア", "house.fill", .pink, owner: secondOwner, lastMac: macBookAirID)
     ]
 
     static let candidates: [TargetRepository] = [
-        TargetRepository(owner: owner, name: "memo-widget-ios", appName: "メモウィジェット", icon: .monogram),
-        TargetRepository(owner: owner, name: "sleep-log-apple", appName: "睡眠ログ", icon: .monogram),
-        TargetRepository(owner: owner, name: "plant-water-ios", appName: "水やり当番", icon: .monogram)
+        TargetRepository(owner: owner, ownerAvatar: ownerAvatar(owner), name: "memo-widget-ios", appName: "メモウィジェット", icon: .monogram),
+        TargetRepository(owner: owner, ownerAvatar: ownerAvatar(owner), name: "sleep-log-apple", appName: "睡眠ログ", icon: .monogram),
+        TargetRepository(
+            owner: secondOwner, ownerAvatar: ownerAvatar(secondOwner), name: "plant-water-ios", appName: "水やり当番", icon: .monogram
+        )
     ]
+
+    /// デモの organization のアバター。架空の名前なので GitHub からは取らない（同じ名前の実在のアカウントの画像が写らないように）
+    static func ownerAvatar(_ owner: String) -> RepositoryIcon {
+        owner == secondOwner ? .symbol("leaf.fill", .green) : .symbol("paintpalette.fill", .indigo)
+    }
 
     private static func repository(
         _ name: String,
         _ appName: String,
         _ symbol: String,
         _ tint: IconTint,
+        owner: String = DemoData.owner,
         lastMac: Mac.ID?
     ) -> TargetRepository {
-        TargetRepository(owner: owner, name: name, appName: appName, icon: .symbol(symbol, tint), lastMacID: lastMac)
+        TargetRepository(
+            owner: owner, ownerAvatar: ownerAvatar(owner), name: name, appName: appName, icon: .symbol(symbol, tint), lastMacID: lastMac
+        )
     }
 
     func macs() -> [Mac] {

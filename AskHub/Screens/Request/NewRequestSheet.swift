@@ -8,7 +8,7 @@ struct RequestDraft: Identifiable, Hashable {
     var body: String
 }
 
-/// 新しい依頼。依頼先には対象のリポジトリだけを出す。
+/// 新しい依頼。依頼先には対象のリポジトリだけを、organization ごとに分けて出す。
 ///
 /// 送っている間は触れなくし、置けたら送った依頼（司令塔が受け取る前の epic）へ移る。同じ下書きのまま、もう一度送れる状態に残さない
 struct NewRequestSheet: View {
@@ -37,7 +37,7 @@ struct NewRequestSheet: View {
     }
 
     var body: some View {
-        let repositories = store.snapshot?.repositories ?? []
+        let groups = store.snapshot?.repositoryGroups ?? []
         NavigationStack {
             Form {
                 if sending.showsStatus {
@@ -49,12 +49,19 @@ struct NewRequestSheet: View {
                     Section("依頼先") {
                         Picker("アプリ", selection: $repositoryID) {
                             Text("選んでください").tag(TargetRepository.ID?.none)
-                            ForEach(repositories) { repository in
-                                Text(repository.appName).tag(Optional(repository.id))
+                            // organization ごとの見出しで分ける（同じ名前のリポジトリが別の organization にあっても見分けられる）
+                            ForEach(groups) { group in
+                                Section(group.owner) {
+                                    ForEach(group.repositories) { repository in
+                                        Text(repository.appName).tag(Optional(repository.id))
+                                    }
+                                }
                             }
                         }
                         if let repository = store.repository(repositoryID) {
-                            AppHeaderView(repository: repository, subtitle: repository.fullName)
+                            AppHeaderView(repository: repository) {
+                                OwnerLabel(repository: repository)
+                            }
                         }
                     }
                     Section("作りたいもの") {
