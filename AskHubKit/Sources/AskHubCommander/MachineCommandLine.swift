@@ -92,9 +92,10 @@ public struct MachineCommandLine: Sendable {
             fail("\(path) に Xcode が無い（Xcode.app か、その下の Contents/Developer のパスを渡す）", status: EX_DATAERR)
         }
         try? FileManager.default.createDirectory(at: paths.buildTemporary, withIntermediateDirectories: true)
-        guard let version = await tools.xcodeVersion(runner: ProcessCommandRunner()) else {
-            let xcode = configuration.xcode ?? "xcode-select で選んだもの"
-            fail("\(xcode) の xcodebuild -version を読めない（ライセンスに同意していない・Command Line Tools だけ、など）", status: EX_DATAERR)
+        let version = await tools.xcodeVersion(runner: ProcessCommandRunner())
+        // 決めるときだけ、版を読めることを確かめる（戻すときは、xcode-select が Command Line Tools を指していても戻せるようにする）
+        if case .set(let path) = setup, version == nil {
+            fail("\(path) の xcodebuild -version を読めない（ライセンスに同意していない、など）", status: EX_DATAERR)
         }
         do {
             try configuration.save(to: paths.configuration)
@@ -104,7 +105,7 @@ public struct MachineCommandLine: Sendable {
         let manual = role == .worker ? "（ターミナルで run を流しているなら、止めて流し直す）" : ""
         let chosen = configuration.xcode.map { "\($0) に決めました" } ?? "xcode-select で選んだものに戻しました"
         print("""
-            ビルドとテストに使う Xcode を \(chosen)（Xcode \(version)）。
+            ビルドとテストに使う Xcode を \(chosen)（\(version.map { "Xcode \($0)" } ?? "版を読めない")）。
             動いているループは起動したときの値を使うので、読み込み直してください\(manual):
               launchctl kickstart -k gui/\(getuid())/\(role.launchAgentLabel)
             """)
