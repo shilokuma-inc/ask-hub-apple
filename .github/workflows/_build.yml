@@ -84,12 +84,8 @@ jobs:
           (
             while true; do
               ts=$(date -u +%H%M%S)
-              pid=$(pgrep -f "AskHub\.app/AskHub" | head -1)
-              if [ -n "$pid" ]; then
-                sudo sample "$pid" 2 5 -mayDie -file "diag/sample-$ts.txt" > /dev/null 2>&1 &
-              fi
-              top -l 1 -o cpu -n 15 -stats pid,command,cpu,state,threads > "diag/top-$ts.txt" 2>&1
-              sleep 1
+              top -l 1 -n 0 > "diag/top-$ts.txt" 2>&1
+              sleep 5
             done
           ) &
           sampler=$!
