@@ -333,6 +333,7 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
 4. ビルドの設定の JSON に `screenshots`（一覧のパスと撮る Simulator）を足して、`askhub configure-repository` で送り直す（`build` はまるごと置き換わるので、今の設定に足して送る）
 
 - 撮った画像は最終 PR の本文（public）に載り、消せない。一覧には、デモのデータの画面だけを書く
+- アプリの中の時刻の文（「9:41 に確かめました」など）は、撮る時刻で変わる。Before と After をそろえるため、デモの時計を止める起動引数（ask-hub-apple は `-demoClock 2026-01-15T00:41:00Z`）も一覧の画面に渡す
 - 一覧の画面の `id` は変えない（変えると Before と比べられなくなる）
 
 ### 既存のリポジトリを移すとき

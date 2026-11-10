@@ -25,6 +25,35 @@ struct DemoLaunchTests {
     }
 }
 
+/// デモの時計を止める起動引数（`-demoClock 2026-01-15T00:41:00Z`）
+@MainActor
+struct DemoClockTests {
+    @Test
+    func readsFixedClock() throws {
+        let defaults = try #require(UserDefaults(suiteName: "DemoClockTests-\(UUID().uuidString)"))
+        #expect(DemoScenario.clock(in: defaults) == nil)
+        defaults.set("2026-01-15T00:41:00Z", forKey: DemoScenario.clockKey)
+        #expect(DemoScenario.clock(in: defaults) == Date(timeIntervalSince1970: 1_768_437_660))
+        defaults.set("あした", forKey: DemoScenario.clockKey)
+        #expect(DemoScenario.clock(in: defaults) == nil)
+    }
+
+    /// 起動引数の時刻で、デモの窓口とストアの時計が止まる（読み直しても「9:41 に確かめました」のまま）
+    @Test
+    func fixedClockStopsDemoStoreAndService() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "DemoClockTests-\(UUID().uuidString)"))
+        defaults.set("2026-01-15T00:41:00Z", forKey: DemoScenario.clockKey)
+        defaults.set("0", forKey: DemoScenario.reactionDelayKey)
+        let fixed = Date(timeIntervalSince1970: 1_768_437_660)
+        let store = AskHub.makeStore(source: .demo, scenario: .quiet, defaults: defaults)
+        await store.refresh()
+        #expect(store.snapshot?.fetchedAt == fixed)
+        await store.refresh()
+        #expect(store.snapshot?.fetchedAt == fixed)
+        #expect(store.currentDate() == fixed)
+    }
+}
+
 /// デモの速さを決める起動引数の秒数（`-demoReactionDelay 0` など）
 @MainActor
 struct DemoSecondsTests {

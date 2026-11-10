@@ -155,9 +155,31 @@ struct CaptureScreenshotsRunnerTests {
         #expect(changes[1].screenshots?.note == "Before なし（この画面は epic で足した）")
         #expect(result.outputs?.screenshots == nil)
         let body = try #require(given.fixture.pulls.current.bodies.last?.body)
-        #expect(body.contains("## 画面の変化\n\n### ranking の画面（`ranking`）"))
+        // 見出しの下に空行を重ねず、すぐに表を置く
+        #expect(body.contains("## 画面の変化\n\n### ranking の画面（`ranking`）\n\n| Before | After |"))
         #expect(body.contains(#"alt="ranking After" width="300">"#))
         #expect(body.contains("見える仮決めはありません。"))
+    }
+
+    @Test func decisionSharingScreenChangePointsToItInsteadOfRepeatingTable() async throws {
+        let given = Given()
+        defer { try? FileManager.default.removeItem(at: given.root) }
+        // d1 は画面の変化と同じ画面、d2 は画面の変化に無い画面
+        try await given.prepare(
+            headScenes: ["ranking", "ranking-empty"],
+            baseScenes: ["ranking", "ranking-empty"],
+            decisions: [Self.decision("d1", scene: "ranking"), Self.decision("d2", scene: "ranking-empty")],
+            screens: [.init(scene: "ranking")]
+        )
+        let result = try await given.run()
+        // スクショは今どおり仮決めにも書く（AskHub のカードに出す）
+        #expect(result.outputs?.screenshots?["d1"]?.after == given.path(Fixture.head, "ranking"))
+        let body = try #require(given.fixture.pulls.current.bodies.last?.body)
+        #expect(body.contains("- 画面の変化: 下の「画面の変化」の `ranking` を見る"))
+        #expect(!body.contains(#"alt="d1 After""#))
+        #expect(body.components(separatedBy: #"alt="ranking After""#).count == 2)
+        // 画面の変化に無い画面のカードには、今どおり表を載せる
+        #expect(body.contains(#"alt="d2 After" width="300">"#))
     }
 
     @Test func doesNothingWithoutChosenScenes() async throws {
