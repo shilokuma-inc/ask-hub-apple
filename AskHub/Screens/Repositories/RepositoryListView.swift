@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 「リポジトリ」。対象のリポジトリ（AskHub でループ開発を回すもの）を並べる
+/// 「リポジトリ」。対象のリポジトリ（AskHub でループ開発を回すもの）を、organization ごとの見出しを付けて並べる
 struct RepositoryListView: View {
     let selection: Binding<AppRoute?>?
 
@@ -8,21 +8,27 @@ struct RepositoryListView: View {
     @State private var isAdding = false
 
     var body: some View {
-        let repositories = store.snapshot?.repositories ?? []
+        let groups = store.snapshot?.repositoryGroups ?? []
         RouteList(selection: selection) {
-            CardSection {
-                ForEach(repositories) { repository in
-                    NavigationLink(value: AppRoute.repository(repository.id)) {
-                        RepositoryRow(repository: repository)
+            ForEach(groups) { group in
+                CardSection {
+                    ForEach(group.repositories) { repository in
+                        NavigationLink(value: AppRoute.repository(repository.id)) {
+                            RepositoryRow(repository: repository)
+                        }
+                    }
+                } header: {
+                    OwnerLabel(group: group)
+                } footer: {
+                    if group.id == groups.last?.id {
+                        Text("対象に加えても、どの Mac にも clone しません。ジョブが要るときに、その Mac でだけ取り寄せます")
                     }
                 }
-            } footer: {
-                Text("対象に加えても、どの Mac にも clone しません。ジョブが要るときに、その Mac でだけ取り寄せます")
             }
         }
         .overlay {
             LoadStateOverlay(
-                isEmpty: repositories.isEmpty,
+                isEmpty: groups.isEmpty,
                 empty: ContentUnavailableView("対象のリポジトリはありません", systemImage: "folder")
             )
         }
@@ -54,9 +60,12 @@ private struct RepositoryRow: View {
                     // 対象に加えたのが反映されるまでの印（断られたら赤）
                     ReflectionBadge([.repository(repository.id)])
                 }
-                Text(repository.fullName)
-                    .rowFont(.detail)
-                    .foregroundStyle(.secondary)
+                // 持ち主は見出しに出ているので、repo の名前だけを出す。アプリ名と同じなら出さない（状態リポジトリのリポジトリはいつも同じ）
+                if repository.name != repository.appName {
+                    Text(repository.name)
+                        .rowFont(.detail)
+                        .foregroundStyle(.secondary)
+                }
                 if let active {
                     Text(active.title)
                         .rowFont(.subtitle)
@@ -84,7 +93,9 @@ struct RepositoryDetailView: View {
                         AppIconView(repository: repository, size: 60)
                         VStack(alignment: .leading) {
                             Text(repository.appName).appFont(.title2, weight: .semibold)
-                            Text(repository.fullName).appFont(.subheadline).foregroundStyle(.secondary)
+                            OwnerLabel(repository: repository, avatarSize: 18)
+                                .appFont(.subheadline)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
