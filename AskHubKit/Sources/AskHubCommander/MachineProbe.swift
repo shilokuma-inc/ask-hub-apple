@@ -2,7 +2,7 @@ import AskHubKeychain
 import AskHubProtocol
 import Foundation
 
-/// 生きている印に書く、この Mac の様子（空き容量・負荷・自己診断・Claude の版）
+/// 生きている印に書く、この Mac の様子（空き容量・負荷・自己診断・Claude と Xcode の版）
 public struct MachineProbe: Sendable {
     public var secrets: any SecretStore
     /// 空き容量を測るフォルダ（作業ファイルを置くボリューム）
@@ -16,6 +16,8 @@ public struct MachineProbe: Sendable {
     public var claudeTokenRecord: URL?
     /// 使っている `claude` の版を測る（人が入れ替えたら次の印で分かるよう、印を書くたびに測る）
     public var claudeVersion: @Sendable () async -> String?
+    /// ビルドとテストに使う Xcode の版を測る（xcode-select を切り替えた・Xcode を上げたら次の印で分かるよう、印を書くたびに測る）
+    public var xcodeVersion: @Sendable () async -> String?
     public var now: @Sendable () -> Date
 
     public init(
@@ -25,6 +27,7 @@ public struct MachineProbe: Sendable {
         githubExpiry: GitHubTokenExpiry? = nil,
         claudeTokenRecord: URL? = nil,
         claudeVersion: @escaping @Sendable () async -> String? = { nil },
+        xcodeVersion: @escaping @Sendable () async -> String? = { nil },
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.secrets = secrets
@@ -33,12 +36,15 @@ public struct MachineProbe: Sendable {
         self.githubExpiry = githubExpiry
         self.claudeTokenRecord = claudeTokenRecord
         self.claudeVersion = claudeVersion
+        self.xcodeVersion = xcodeVersion
         self.now = now
     }
 
     public func status() async -> CommanderLoop.MachineStatus {
-        let (check, claude) = (await selfCheck(), await claudeVersion())
-        return CommanderLoop.MachineStatus(diskFreeGB: diskFreeGB(), load: load(), selfCheck: check, claudeVersion: claude)
+        let (check, claude, xcode) = (await selfCheck(), await claudeVersion(), await xcodeVersion())
+        return CommanderLoop.MachineStatus(
+            diskFreeGB: diskFreeGB(), load: load(), selfCheck: check, claudeVersion: claude, xcodeVersion: xcode
+        )
     }
 
     /// Keychain に必要なものがあり、形が合い、期限が切れていないか。値そのものは書かない

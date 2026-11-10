@@ -1,4 +1,5 @@
 #if os(macOS)
+import AskHubBuild
 import AskHubClaude
 import AskHubCommands
 import AskHubKeychain
@@ -39,6 +40,8 @@ public struct MachineRuntime: Sendable {
             budget: budget,
             token: githubToken(for: configuration.stateRepository.owner, in: secrets)
         )
+        let tools = configuration.buildTools(paths: paths)
+        await logXcode(configuration, tools: tools)
         let claude = ClaudeSetup(
             executable: URL(fileURLWithPath: configuration.claude),
             configDirectory: paths.claudeConfig,
@@ -61,7 +64,8 @@ public struct MachineRuntime: Sendable {
                 owners: configuration.tokenOwnersReloading(from: paths.configuration, role: commandLine.role),
                 githubExpiry: GitHubTokenExpiry(),
                 claudeTokenRecord: paths.claudeTokenRecord,
-                claudeVersion: { await version(of: claude) }
+                claudeVersion: { await version(of: claude) },
+                xcodeVersion: { await tools.xcodeVersion(runner: ProcessCommandRunner()) }
             ),
             workspace: GitRepositoryWorkspace(
                 setup: .init(root: paths.work, credentialHelper: GitCredential.helper(executable: commandLine.executable)),
@@ -84,6 +88,17 @@ public struct MachineRuntime: Sendable {
     /// リポジトリの持ち主を受け取り、その持ち主の GitHub のトークンを Keychain から読む（`AskHubPullRequests` に渡す形）
     public static func githubTokens(in secrets: KeychainSecretStore) -> @Sendable (_ owner: String) async throws -> String {
         { owner in try await githubToken(for: owner, in: secrets)() }
+    }
+
+    /// ビルドとテストに使う Xcode をログに出す。決めた Xcode が無ければ、その理由も出す（ビルドの前にも止める）
+    private static func logXcode(_ configuration: MachineConfiguration, tools: BuildTools) async {
+        if let problem = tools.developerDirectoryProblem {
+            MachineCommandLine.log(problem)
+            return
+        }
+        let version = await tools.xcodeVersion(runner: ProcessCommandRunner()).map { "Xcode \($0)" } ?? "版を読めない"
+        let xcode = configuration.xcode ?? "設定で決めていない。xcode-select で選んだもの"
+        MachineCommandLine.log("ビルドとテストに使う Xcode: \(xcode)（\(version)）")
     }
 
     /// `claude --version` の版。分からなければ nil。生きている印を書くたびに測るので、ここでも自分で更新させない
