@@ -93,23 +93,25 @@ struct AskHub: App {
     /// 既定は状態リポジトリ。設定でデモのデータを選んだときと、UI テストと撮影（起動引数 `-demoScenario <場面>`
     /// `-demoReactionDelay <秒>` `-demoSendDelay <秒>` で場面と機械の反応・送るのにかかる速さを決める。
     /// `-demoReceiptDelay <秒>` `-demoRejectIntents YES` `-demoStallAfter <秒>` で司令塔の受け取りを遅らせる・断る）はデモで動く
-    static func makeStore(source: DataSource, scenario: DemoScenario) -> ClientStore {
+    static func makeStore(source: DataSource, scenario: DemoScenario, defaults: UserDefaults = .standard) -> ClientStore {
         if source == .stateRepository {
             return ClientStore(service: StateConnection.makeService())
         }
-        let defaults = UserDefaults.standard
         let reactionDelay = DemoScenario.seconds(forKey: DemoScenario.reactionDelayKey, in: defaults)
         // 撮影モードでは機械の反応を起こさず、撮っている間に画面が変わらないようにする
         let delay = ScreenshotDemo.isEnabled ? 3_600 : reactionDelay ?? 4
+        // 判断のカードのスクショでは時計を止め、Before と After の時刻の文をそろえる
+        let now: () -> Date = DemoScenario.clock(in: defaults).map { fixed in { fixed } } ?? Date.init
         let service = DemoClientService(
             scenario: scenario,
             reactionDelay: delay,
             sendDelay: .seconds(DemoScenario.seconds(forKey: DemoScenario.sendDelayKey, in: defaults) ?? 0),
             receiptDelay: DemoScenario.seconds(forKey: DemoScenario.receiptDelayKey, in: defaults),
-            rejectsIntents: defaults.bool(forKey: DemoScenario.rejectsIntentsKey)
+            rejectsIntents: defaults.bool(forKey: DemoScenario.rejectsIntentsKey),
+            now: now
         )
         let stallThreshold = DemoScenario.seconds(forKey: DemoScenario.stallThresholdKey, in: defaults)
-        return ClientStore(service: service, stallThreshold: stallThreshold ?? ClientStore.defaultStallThreshold)
+        return ClientStore(service: service, stallThreshold: stallThreshold ?? ClientStore.defaultStallThreshold, now: now)
     }
 }
 
