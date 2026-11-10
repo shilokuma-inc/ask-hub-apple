@@ -52,6 +52,48 @@ struct LiveBuildTests {
         if let failure { throw failure }
     }
 
+    /// Simulator でアプリを起動できない状態にして（SpringBoard を launchd から外す。`Simulator device failed to launch` になり、止めて起動し直すと戻る）、
+    /// `EpicBuilder` が Simulator を消去して起動し直し、流し直して通ることを確かめる。
+    /// `ASKHUB_LIVE_BUILD_PROJECT`・`ASKHUB_LIVE_BUILD_SETTINGS` が要り、テストの種類（`ASKHUB_LIVE_BUILD_KIND`）で流す。最初の Simulator の行き先だけを使う
+    @Test func recoversWhenTheSimulatorCannotLaunchApps() async throws {
+        guard let settings = try LiveBuild.settings(), let project = LiveBuild.environment["ASKHUB_LIVE_BUILD_PROJECT"] else { return }
+        let kind = LiveBuild.kind
+        let destination = settings.destinations.lazy.compactMap { destination -> SimulatorDestination? in
+            if case .simulator(let simulator) = destination { return simulator }
+            return nil
+        }.first
+        guard kind.isTest, let destination else { return }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("askhub-build-live-\(UUID().uuidString)")
+        let temporary = root.appendingPathComponent("tmp")
+        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tools = BuildTools(temporaryDirectory: temporary)
+        let machine = BuildMachine(
+            tools: tools, directories: BuildDirectories(root: root.appendingPathComponent("builds")), runner: ProcessCommandRunner()
+        )
+        var single = settings
+        single.destinations = [.simulator(destination)]
+        let epic = try #require(ULID(rawValue: "01JC0000000000000000000000"))
+        let source = URL(fileURLWithPath: project)
+        let builder = EpicBuilder(machine: machine, settings: single, epic: epic, sourceDirectory: source, slot: Self.slot)
+
+        let simulator = try await machine.pool.prepare(slot: Self.slot, for: destination)
+        var failure: (any Error)?
+        do {
+            let bootout = ["simctl", "spawn", simulator.udid, "launchctl", "bootout", "system/com.apple.SpringBoard"]
+            let broken = try await ProcessCommandRunner().run(tools.command(bootout, in: temporary, timeout: .seconds(60)))
+            #expect(broken.succeeded, "\(broken.outputText)")
+            let run = try await builder.run(kind)
+            print("[live] \(run.summary)\n\(run.text())")
+            #expect(run.succeeded)
+            #expect(run.summary.contains("1 回目は Simulator でアプリかテストの実行役を起動できず"))
+        } catch {
+            failure = error
+        }
+        try await machine.pool.delete(simulator)
+        if let failure { throw failure }
+    }
+
     private func check(_ simulator: Simulator, pool: SimulatorPool) async throws {
         #expect(SimulatorPool.isWorkerName(simulator.name))
         #expect(UUID(uuidString: simulator.udid) != nil)
@@ -64,7 +106,7 @@ struct LiveBuildTests {
     }
 
     private func build(_ settings: BuildSettings, in project: URL, on simulator: Simulator, runner: XcodeBuildRunner) async throws {
-        let kind = LiveBuild.environment["ASKHUB_LIVE_BUILD_KIND"].flatMap(BuildKind.init(rawValue:)) ?? .testLight
+        let kind = LiveBuild.kind
         let epic = try #require(ULID(rawValue: "01JC0000000000000000000000"))
         let request = BuildRequest(
             settings: settings, kind: kind, destination: .simulator(simulator), sourceDirectory: project, epic: epic
@@ -91,6 +133,8 @@ enum LiveBuild {
     static var environment: [String: String] { ProcessInfo.processInfo.environment }
 
     static var isEnabled: Bool { environment["ASKHUB_LIVE_BUILD"] == "1" }
+
+    static var kind: BuildKind { environment["ASKHUB_LIVE_BUILD_KIND"].flatMap(BuildKind.init(rawValue:)) ?? .testLight }
 
     static func settings() throws -> BuildSettings? {
         guard let json = environment["ASKHUB_LIVE_BUILD_SETTINGS"] else { return nil }
