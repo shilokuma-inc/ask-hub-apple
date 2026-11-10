@@ -320,6 +320,7 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
    - `xcode` の値は `xcodebuild` の引数になる。`project` はリポジトリの直下からの相対パス。`.xcodeproj` をコミットせず XcodeGen で作るリポジトリは `"generate": "xcodegen"` を足す（ワーカーがビルド・テスト・スクショのビルドの前に、作業場所の直下で `xcodegen generate` を流す。ワーカーの Mac の `/opt/homebrew/bin`・`/usr/local/bin`・`~/.local/bin` のどれかに `xcodegen` が要る）。`destinations` は並べた順に流す（macOS は `{ "platform": "macOS" }`。`osVersion` を省くと、使う Xcode の SDK と同じか古いランタイムのうち最新）。`testLight`（子 PR の前）・`testFull`（最終 PR の前。UI テストを含む）は、省くと全部のテスト
    - `childChecks`・`finalChecks` は、待つチェックの名前（1 つ以上）。PR の画面のチェックの表示と同じで、再利用ワークフローのジョブは `build / build` の形になる。develop の最近のコミットのチェックの名前は `gh api repos/<owner>/<repo>/commits/develop/check-runs --jq '.check_runs[].name'` で見られる
    - `trustedReviewers` は、指摘を Claude に渡してよいレビューの書き手（無ければ空。CodeRabbit は最終 PR でだけ待つ）
+     - CodeRabbit が入っていない organization のリポジトリには `coderabbitai[bot]` を入れない（下の「既存のリポジトリを移すとき」の「信用するレビューの書き手」）
    - `screenshots` は、判断のカードのスクショの撮り方（無ければ撮らない。下の「判断のカードのスクショの入れ方」）
 2. 非常口から送る: `askhub configure-repository --repo <owner/repo> --file build.json`。送る前に、司令塔と同じ決まり（`-` で始まる値・リポジトリの外を指すパス・知らない欄・チェックが空）で確かめ、合わなければ送らない。
    新しく足した欄（`generate` など）は、古い司令塔には知らない欄なので、先に司令塔を更新してから送る
@@ -360,6 +361,8 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
 - **CI のチェックの名前**: 子 PR で待つ必須のチェックの名前はリポジトリごとに違うので、決め打ちにしない（ルールセットか、develop の最後の回から読んで、ビルドの設定の `childChecks`・`finalChecks` に入れる）
 - **待つチェックの起動の条件**: `childChecks`・`finalChecks` のチェックを出すワークフローは、`paths`・`paths-ignore` で絞らない。絞っていると、ドキュメントだけのタスクの子 PR（最終 PR も）でチェックが出ず、ワーカーが 30 分待って「始まらない」（unexpected）の失敗で人に渡す。
   ルールセットで必須にしたチェックも、出なければ PR をマージできない。絞っていたら、外す PR を移すときに出す（shariverse/oshikatsu-countdown-ios#161、shilokuma-inc/ask-hub-apple#997）。待たないチェック（ubuntu の軽い検査など）は絞ってよい
+- **信用するレビューの書き手**: ビルドの設定の `trustedReviewers` に `coderabbitai[bot]` を入れるのは、その organization に CodeRabbit が入っているときだけにする。入れると、ワーカーは最終 PR のレビューで CodeRabbit が始まるのを待つので、入っていなければ最終 PR ごとに 15 分（`FinalReviewTiming` の `reviewerStartLimit`）待ってから進む。
+  入っているかは、最近の PR に coderabbitai のコメントがあるかで分かる（`gh pr list -R <owner>/<repo> --state all --limit 5 --json comments --jq '[.[].comments[].author.login] | unique'`）。tm-family には入っていなかったので、3 本とも空にした
 - **作業ブランチの名前**: 今の仕組みの CI は、統合ブランチ `epic/**` を前提に書いてある（子 PR は PR のイベントで Build を動かさない・最終 PR だけ更新でも UI テストまで流す・concurrency のグループ・`.coderabbit.yaml` の子 PR の除外）。
   新しい仕組みの作業ブランチは `askhub/<epic の id>`、子ブランチは `askhub/<epic の id>-<タスクの id>` なので、`epic/` を `askhub/` に読み替える。読み替えないと、子 PR が push と PR のイベントで 2 回（PR のほうは UI テストまで）流れ、macOS のランナーの枠を食う
 - **ワーカーの Xcode**: 各リポジトリの CI は Xcode を固定している（2026-11 は 26.6）が、ワーカーはその Mac の設定で決めた Xcode（`xcode`。決めていなければ `xcode-select` で選んだもの。Mac mini は 27.1）でビルドとテストを流す。27.1 は Swift の並行性のチェックが厳しく、CI で通るコードが落ちることがある
