@@ -365,6 +365,9 @@
   `AppNavigator.isShowingSettings = true` と、撮りたい節を `Form` の先頭に移す変更を当ててビルドし、`xcrun simctl io <udid> screenshot` で撮る（コミットしない）。
   Before と After で同じ Simulator を使えば、Keychain の端末の鍵も同じものが出る。UserDefaults の値は `simctl spawn <udid> defaults write <Bundle ID> <キー> -string '…'` で入れる
   （`-string` を付けないと、`'` や括弧を含む値は「Could not parse」で入らない）（2026-11-10、端末の名前の欄）
+- 司令塔とワーカーは LaunchAgent で動き、ビルドの子には PATH を `/usr/bin:/bin:/usr/sbin:/sbin` だけで渡すので、Homebrew の道具（`xcodegen` など）は名前では見つからない。
+  `BuildTools.toolDirectories`（`/opt/homebrew/bin`・`/usr/local/bin`・`~/.local/bin`）から絶対パスで探して起動する。XcodeGen の `Spec validation error:` は理由を次の行に書くので、
+  出力の抜粋をエラーの行だけに絞ると理由が落ちる（2026-11-10、`build.xcode.generate`）
 
 ## Keychain
 
