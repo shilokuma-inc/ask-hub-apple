@@ -79,6 +79,21 @@ public struct BuildTools: Sendable {
             + "xcode-select で選んだものに戻すなら `xcode --unset`）"
     }
 
+    /// 使う Xcode の版（`xcodebuild -version` の 1 行目の `Xcode 27.1` の `27.1`）。測れなければ nil
+    public func xcodeVersion(runner: any CommandRunning, timeout: Duration = .seconds(60)) async -> String? {
+        guard developerDirectoryProblem == nil,
+              let result = try? await runner.run(command(["xcodebuild", "-version"], in: temporaryDirectory, timeout: timeout)),
+              result.succeeded else { return nil }
+        return Self.xcodeVersion(fromVersionOutput: result.outputText)
+    }
+
+    /// `xcodebuild -version` の出力から版を読む
+    static func xcodeVersion(fromVersionOutput output: String) -> String? {
+        let words = output.split(whereSeparator: \.isNewline).first?.split(separator: " ") ?? []
+        guard words.count == 2, words[0] == "Xcode" else { return nil }
+        return String(words[1])
+    }
+
     /// プロジェクトを作る道具に渡す環境変数（`environment` に、ログインの名前を足したもの）
     var generatorEnvironment: [String: String] {
         environment.merging(["USER": userName, "LOGNAME": userName]) { $1 }
