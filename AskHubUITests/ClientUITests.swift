@@ -419,3 +419,48 @@ extension ClientUITests {
         return app.descendants(matching: .any).matching(predicate).firstMatch
     }
 }
+
+// MARK: - organization ごとに分けて並べる
+
+extension ClientUITests {
+    /// 依頼のシートのアプリのメニューは organization ごとの見出しで分かれ、選ぶと、選んだアプリの下に organization 付きの名前が出る
+    @MainActor
+    func testRequestPickerGroupsRepositoriesByOwner() {
+        let app = launch(["-demoScenario", "standard"])
+        let plus = app.buttons["新しい依頼"].firstMatch
+        XCTAssertTrue(plus.waitForExistence(timeout: 10))
+        plus.tap()
+        let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "アプリ")).firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.tap()
+        let first = app.staticTexts["demo-studio"]
+        let second = app.staticTexts["kurashi-apps"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        XCTAssertTrue(second.exists)
+        // kurashi-apps のアプリは、kurashi-apps の見出しの下に並ぶ
+        let item = app.buttons["積読リスト"].firstMatch
+        XCTAssertTrue(item.exists)
+        XCTAssertGreaterThan(second.frame.minY, first.frame.minY)
+        XCTAssertGreaterThan(item.frame.minY, second.frame.minY)
+        item.tap()
+        let header = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "kurashi-apps/tsundoku-ios"))
+            .firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+    }
+
+    /// リポジトリのタブは organization ごとの節に分かれ、節の見出しに organization の名前が出る（名前順）
+    @MainActor
+    func testRepositoriesAreGroupedByOwner() {
+        let app = launch(["-demoScenario", "standard", "-demoOpen", "section:repositories"])
+        let first = app.staticTexts["demo-studio"]
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        let second = app.staticTexts["kurashi-apps"]
+        XCTAssertTrue(scrollUntilExists(second, in: app))
+        let row = app.staticTexts["家事シェア"]
+        XCTAssertTrue(scrollUntilExists(row, in: app))
+        XCTAssertGreaterThan(row.frame.minY, second.frame.minY)
+        // 見出しの持ち主は大文字にしない（GitHub の名前は書かれたとおりに出す）
+        XCTAssertFalse(app.staticTexts["KURASHI-APPS"].exists)
+    }
+}
