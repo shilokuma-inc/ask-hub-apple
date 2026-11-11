@@ -100,7 +100,10 @@ struct SplitRootView: View {
                 if let route = navigator.selection {
                     RouteDestination(route: route)
                 } else {
+                    // ほかの列と同じパステルの背景にする（無いと詳細の列だけ白い）
                     ContentUnavailableView("項目を選んでください", systemImage: navigator.section.systemImage)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .pastelBackground()
                 }
             }
             .routeDestinations()
