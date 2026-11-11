@@ -63,6 +63,12 @@ public struct FixTaskInput: JobInput {
     public var isValid: Bool { PullRequestInput(pullRequest: pullRequest, head: head).isValid && (question.map(LocalIDs.isValid) ?? true) }
 }
 
+extension FixTaskInput {
+    /// Claude に直させる回数の上限（`docs/renewal/protocol.md` の「失敗の後の扱い」）。司令塔は、上限を超えた直しのジョブを
+    /// 動かさずに人の対応待ち（`waitingHuman`）で作るので、クライアントはその理由を出すのに使う
+    public static let maxAutomaticRounds = 3
+}
+
 /// 落ちたジョブの流し直し（`rerunChecks`）。コードに触れない
 public struct RerunChecksInput: JobInput {
     public var pullRequest: Int
