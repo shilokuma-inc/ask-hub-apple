@@ -1,3 +1,4 @@
+import AskHubProtocol
 import SwiftUI
 
 /// 最終 PR の確認。自動でマージするかとその理由を最初に出し、人が決めていない判断を確かめてからマージする
@@ -261,7 +262,7 @@ private struct ChecksView: View {
         case .running: "CI を流しています"
         case .reviewing: "CI とレビューの結果を待って、確かめています"
         case let .waitingForRunner(retry, nextAt): "ランナーの空きを待っています（再試行 \(retry) 回目・次は \(RelativeTime.clock(nextAt))）"
-        case let .fixing(category, attempt): "\(category.label)を自動で直しています（\(attempt) / 3）"
+        case let .fixing(category, attempt): "\(category.label)を自動で直しています（\(attempt) / \(FixTaskInput.maxAutomaticRounds)）"
         case .fixingByRequest: "頼まれた直しをしています"
         case .failed: "CI が通りませんでした"
         }
