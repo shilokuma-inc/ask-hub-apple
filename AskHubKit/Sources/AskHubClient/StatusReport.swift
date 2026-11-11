@@ -66,13 +66,15 @@ public struct StatusReport: Sendable {
     /// 人の対応を待っているジョブと、最後の試行の失敗を出す（やり直す・やめるに渡す番号つき）
     private mutating func addWaitingJobs(of epic: EpicFile) async throws {
         for entry in try await files.store.listAll(StatePath.jobs(epic.repo, epic: epic.id)) ?? [] where entry.kind == .file {
-            // 読めないジョブは、人の対応待ちかどうか分からないので、見落とさないよう出す
+            // 読めないジョブは、人の対応待ちかどうか分からないので、見落とさないよう出す。
+            // 読みに行けなかった失敗（GitHub の上限・認証など）は出さずに返す（`--watch` が上限の戻りを待ち、認証切れで止まれるように）
             let job: JobFile
             do {
                 guard let read = try await files.read(JobFile.self, at: entry.path)?.file else { continue }
                 job = read
             } catch {
-                add("    読めないジョブ \(entry.name)（\(error)）")
+                guard case let .unreadable(_, reason) = error else { throw error }
+                add("    読めないジョブ \(entry.name)（\(reason)）")
                 continue
             }
             guard job.state == .waitingHuman else { continue }
@@ -83,7 +85,8 @@ public struct StatusReport: Sendable {
                     add("      失敗: \(failure.failureClass.rawValue) \(failure.message)")
                 }
             } catch {
-                add("      失敗の理由を読めない（\(error)）")
+                guard case let .unreadable(_, reason) = error else { throw error }
+                add("      失敗の理由を読めない（\(reason)）")
             }
             let target = "--repo \(epic.repo.rawValue) --epic \(epic.id.rawValue) --job \(job.id.rawValue) --attempt \(job.attempts)"
             add("      やり直す: askhub retry \(target)")
