@@ -52,6 +52,8 @@ struct RootView: View {
         SplitRootView()
             // 窓を小さくすると詳細の列が潰れるので、3 列（サイドバー・一覧・詳細の最小の幅）が収まる大きさより小さくしない
             .frame(minWidth: SplitRootView.minimumWindowSize.width, minHeight: SplitRootView.minimumWindowSize.height)
+            // macOS 27 では、ツールバーの下が不透明の帯になり、詳細の列だけ白く抜ける。26 と同じく、列のパステルを透かす
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
     }
 }
