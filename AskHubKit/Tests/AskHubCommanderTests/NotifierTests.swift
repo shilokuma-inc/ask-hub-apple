@@ -354,28 +354,88 @@ struct NotifierTests {
 
     // MARK: - 常駐のループ
 
-    @Test func loopNotifiesAfterSweepingJobs() async throws {
-        let store = try await storeWithDevice()
-        try await put(epic(.asking), at: StatePath.epic(Self.repo, Self.epicID), in: store)
-        try await put(QuestionsFile(questions: [Self.question("q1", .open)]), at: StatePath.questions(Self.repo, Self.epicID), in: store)
-        let sender = RecordingPushSender()
+    /// 通知を送る常駐のループ。`rateLimit` は GitHub の REST の上限の残りを読むもの
+    func loop(
+        _ store: InMemoryStateStore,
+        sender: RecordingPushSender,
+        rateLimit: @escaping @Sendable () async -> GitHubRateLimit? = { nil }
+    ) -> CommanderLoop {
         let clock = clock
         let context = CommanderContext(store: store, mac: EpicHandlersTests.commander) { clock.now }
         let selfCheck = SelfCheck(checkedAt: Timestamp(Self.now), keychain: .ok, githubToken: .ok, claudeToken: .ok)
         let publicKeys = [deviceID: device.publicKey.derRepresentation]
-        let loop = CommanderLoop(
+        return CommanderLoop(
             context: context,
             settings: .init(capacity: .init(claude: 1, build: 0), commanderVersion: "0.1.0"),
             verifier: { IntentVerifier(publicKeys: publicKeys) },
             client: ClaudeClient(setup: QuestionJobsTests.setup, runner: ScriptedRunner([])),
             workspace: FixedWorkspace(directory: FileManager.default.temporaryDirectory),
             status: { CommanderLoop.MachineStatus(diskFreeGB: 100, load: 0.5, selfCheck: selfCheck) },
+            rateLimit: rateLimit,
             notifier: Notifier(context: context, sender: sender, log: { _ in }),
             log: { _ in }
         )
+    }
+
+    @Test func loopNotifiesAfterSweepingJobs() async throws {
+        let store = try await storeWithDevice()
+        try await put(epic(.asking), at: StatePath.epic(Self.repo, Self.epicID), in: store)
+        try await put(QuestionsFile(questions: [Self.question("q1", .open)]), at: StatePath.questions(Self.repo, Self.epicID), in: store)
+        let sender = RecordingPushSender()
+        let loop = loop(store, sender: sender)
 
         try await loop.cycle()
         #expect(await sender.sent.map(\.notice.body) == ["質問 1 件が回答を待っています"])
+        try await loop.cycle()
+        #expect(await sender.sent.count == 1)
+    }
+}
+
+// MARK: - GitHub の上限
+
+extension NotifierTests {
+    @Test func notifiesLowRateLimitOncePerWindow() async throws {
+        let store = try await storeWithDevice()
+        let sender = RecordingPushSender()
+        let clock = clock
+        let context = CommanderContext(store: store, mac: EpicHandlersTests.commander) { clock.now }
+        let settings = Notifier.Settings(timeZone: try #require(TimeZone(identifier: "Asia/Tokyo")))
+        let notifier = Notifier(context: context, sender: sender, settings: settings, log: { _ in })
+        let resetAt = Timestamp(Self.now.addingTimeInterval(54 * 60))
+        let low = GitHubRateLimit(limit: 5_000, remaining: 820, resetAt: resetAt)
+
+        // 1,000 回までは知らせない
+        let enough = GitHubRateLimit(limit: 5_000, remaining: 1_000, resetAt: resetAt)
+        #expect(try await notifier.notify(epics: [], jobs: [], trusted: [deviceID], rateLimit: enough).isEmpty)
+        let notices = try await notifier.notify(epics: [], jobs: [], trusted: [deviceID], rateLimit: low)
+        #expect(notices.map(\.keys) == [["github/rate-limit/\(resetAt)"]])
+        #expect(notices.first?.title == "GitHub の残りが少なくなりました")
+        #expect(notices.first?.body == "残り 820 回（1 時間 5,000 回）。11:54 に戻ります。\naskhub status のループなど、GitHub を多く使うものを止めてください")
+        // 通知から司令塔の Mac を開く
+        #expect(notices.first?.target == ["mac": EpicHandlersTests.commander.rawValue])
+
+        // 同じ窓では、もっと減っても知らせ直さない
+        clock.advance(minutes: 5)
+        let fewer = GitHubRateLimit(limit: 5_000, remaining: 100, resetAt: resetAt)
+        #expect(try await notifier.notify(epics: [], jobs: [], trusted: [deviceID], rateLimit: fewer).isEmpty)
+        // 戻る時刻を過ぎた残りでは知らせない。次の窓でまた少なくなれば知らせ直す
+        clock.advance(minutes: 60)
+        #expect(try await notifier.notify(epics: [], jobs: [], trusted: [deviceID], rateLimit: low).isEmpty)
+        let next = GitHubRateLimit(limit: 5_000, remaining: 900, resetAt: Timestamp(clock.now.addingTimeInterval(30 * 60)))
+        #expect(try await notifier.notify(epics: [], jobs: [], trusted: [deviceID], rateLimit: next).count == 1)
+        #expect(await sender.sent.count == 2)
+    }
+
+    @Test func loopNotifiesLowRateLimitItRead() async throws {
+        let store = try await storeWithDevice()
+        let sender = RecordingPushSender()
+        let resetAt = Timestamp(Self.now.addingTimeInterval(30 * 60))
+        let loop = loop(store, sender: sender) { GitHubRateLimit(limit: 5_000, remaining: 820, resetAt: resetAt) }
+
+        // 周の初めに読んだ残りで知らせる。同じ窓では、次の周で知らせ直さない
+        try await loop.cycle()
+        #expect(await sender.sent.map(\.notice.title) == ["GitHub の残りが少なくなりました"])
+        clock.advance(minutes: 2)
         try await loop.cycle()
         #expect(await sender.sent.count == 1)
     }

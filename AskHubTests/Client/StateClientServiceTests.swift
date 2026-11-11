@@ -308,6 +308,21 @@ struct StateClientServiceTests {
         #expect(await KeyRegistration.read(from: store, device: phone.keyID) == .registered(label: "iPhone"))
     }
 
+    /// 取り直しは、元の置き場所を 1 つずつ読まずに、読むだけの写しから読む（終わった epic が増えても、変わっていない取り直しの要求が増えないように）
+    @Test
+    func refreshReadsFromSnapshot() async throws {
+        let base = InMemoryStateStore(files: Self.askingEpic().mapValues { Data($0.utf8) })
+        let store = SnapshotOnlyStore(base: base)
+        let key = try DeviceSigningKey.loadOrCreate(in: InMemorySecretStore(), useSecureEnclave: false)
+        let now = now
+        let service = StateClientService(store: store, key: key) { now }
+
+        #expect(try await service.fetchSnapshot().epic(Self.epicID)?.stage == .questions)
+        _ = try await service.fetchSnapshot()
+        // 取り直しのたびに、今の中身の写しを作り直す
+        #expect(await store.snapshots == 2)
+    }
+
     func sentEnvelope(in store: InMemoryStateStore, key: DeviceSigningKey) async throws -> IntentEnvelope {
         struct Stored: Decodable {
             var envelope: IntentEnvelope
@@ -316,5 +331,33 @@ struct StateClientServiceTests {
         let latest = try #require(entries.max { $0.name < $1.name })
         let data = try #require(await store.data(at: latest.path))
         return try JSONDecoder().decode(Stored.self, from: data).envelope
+    }
+}
+
+/// 写しからだけ読める状態リポジトリ。元の置き場所を読むと失敗する（取り直しが写しから読むことを確かめる）
+private actor SnapshotOnlyStore: StateStore {
+    let base: InMemoryStateStore
+    private(set) var snapshots = 0
+
+    init(base: InMemoryStateStore) {
+        self.base = base
+    }
+
+    func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
+        throw .unexpected(status: 0, message: "元の置き場所は読まない")
+    }
+
+    func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        throw .unexpected(status: 0, message: "元の置き場所は読まない")
+    }
+
+    func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
+        try await base.write(path, data: data, replacing: sha, message: message)
+    }
+
+    /// 署名を `StateStore` とそろえる（違うと、自分を返す既定のほうが選ばれる）
+    func snapshot() async throws(StateStoreError) -> any StateStore {
+        snapshots += 1
+        return try await base.snapshot()
     }
 }

@@ -27,8 +27,8 @@ public struct PushNotice: Equatable, Sendable {
         collapseID = digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    /// 出来事を、epic か Mac ごとの通知にまとめる。並びは見つけた順
-    static func compose(_ blockers: [Blocker], epics: [EpicFile], now: Date) -> [PushNotice] {
+    /// 出来事を、epic か Mac ごとの通知にまとめる。並びは見つけた順。時刻は `timeZone`（司令塔の Mac の時間帯）で書く
+    static func compose(_ blockers: [Blocker], epics: [EpicFile], now: Date, timeZone: TimeZone = .current) -> [PushNotice] {
         var scopes: [Blocker.Scope] = []
         var groups: [Blocker.Scope: [Blocker]] = [:]
         for blocker in blockers {
@@ -56,8 +56,26 @@ public struct PushNotice: Equatable, Sendable {
                     target: ["mac": mac.rawValue],
                     keys: blockers.map(\.key)
                 )
+            case let .rateLimit(mac):
+                return PushNotice(
+                    title: "GitHub の残りが少なくなりました",
+                    body: blockers.compactMap { rateLimitLines($0.reason, timeZone: timeZone) }.joined(separator: "\n"),
+                    thread: "github/rate-limit",
+                    target: ["mac": mac.rawValue],
+                    keys: blockers.map(\.key)
+                )
             }
         }
+    }
+
+    /// 例: 残り 820 回（1 時間 5,000 回）。15:54 に戻ります。（改行）askhub status のループなど、GitHub を多く使うものを止めてください
+    private static func rateLimitLines(_ reason: Blocker.Reason, timeZone: TimeZone) -> String? {
+        guard case let .rateLimit(limit) = reason else { return nil }
+        let locale = Locale(identifier: "ja_JP")
+        let count = { (value: Int) in value.formatted(.number.locale(locale)) }
+        let reset = limit.resetAt.date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, timeZone: timeZone))
+        return "残り \(count(limit.remaining)) 回（1 時間 \(count(limit.limit)) 回）。\(reset) に戻ります。\n"
+            + "askhub status のループなど、GitHub を多く使うものを止めてください"
     }
 
     /// epic の出来事の文。人がすることの順（開始・分け方・回答・最終 PR の確認・失敗の判断）に並べる

@@ -14,15 +14,19 @@ public actor Notifier {
         public var retention: Duration
         /// どの端末にも送れなかったときの待ち。続いた回数ごとに長くする
         public var retryWaits: [Duration]
+        /// 通知の文に書く時刻の時間帯（司令塔の Mac の時間帯）
+        public var timeZone: TimeZone
 
         public init(
             macOfflineAfter: Duration = .seconds(60 * 60),
             retention: Duration = .seconds(7 * 24 * 60 * 60),
-            retryWaits: [Duration] = [.seconds(60), .seconds(120), .seconds(300), .seconds(600), .seconds(1_800)]
+            retryWaits: [Duration] = [.seconds(60), .seconds(120), .seconds(300), .seconds(600), .seconds(1_800)],
+            timeZone: TimeZone = .current
         ) {
             self.macOfflineAfter = macOfflineAfter
             self.retention = retention
             self.retryWaits = retryWaits
+            self.timeZone = timeZone
         }
     }
 
@@ -49,13 +53,19 @@ public actor Notifier {
         self.log = log
     }
 
-    /// 1 周。`epics` と `jobs` は `JobSweep` で見直した後のもの、`trusted` は確かめた公開鍵の id（取り消した端末には送らない）。
-    /// 送って記録に残した通知を返す
+    /// 1 周。`epics` と `jobs` は `JobSweep` で見直した後のもの、`trusted` は確かめた公開鍵の id（取り消した端末には送らない）、
+    /// `rateLimit` は司令塔が読んだ GitHub の REST の上限の残り（読めなければ nil）。送って記録に残した通知を返す
     @discardableResult
-    public func notify(epics: [EpicFile], jobs: [JobFile], trusted: Set<KeyID>) async throws(CommanderError) -> [PushNotice] {
+    public func notify(
+        epics: [EpicFile],
+        jobs: [JobFile],
+        trusted: Set<KeyID>,
+        rateLimit: GitHubRateLimit? = nil
+    ) async throws(CommanderError) -> [PushNotice] {
         let now = context.now()
         if let retryAt, now < retryAt { return [] }
-        let blockers = try await BlockerScan(context: context, macOfflineAfter: settings.macOfflineAfter).scan(epics: epics, jobs: jobs)
+        let scan = BlockerScan(context: context, macOfflineAfter: settings.macOfflineAfter)
+        let blockers = try await scan.scan(epics: epics, jobs: jobs, rateLimit: rateLimit)
         guard !blockers.isEmpty else { return [] }
         let ledger: NotificationsFile?
         do {
@@ -79,7 +89,7 @@ public actor Notifier {
         try await record(fresh.map(\.key), current: Set(blockers.map(\.key)), exists: ledger != nil, now: now)
         var settled: [PushNotice] = []
         var unsent: Set<String> = []
-        for notice in PushNotice.compose(fresh, epics: epics, now: now) {
+        for notice in PushNotice.compose(fresh, epics: epics, now: now, timeZone: settings.timeZone) {
             if await deliver(notice, to: devices) {
                 settled.append(notice)
             } else {

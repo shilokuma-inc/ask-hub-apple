@@ -36,7 +36,9 @@ struct ConnectionSettingsSections: View {
                 }
             } else {
                 LabeledContent("状態リポジトリ") {
-                    TextField("owner/name", text: $repositoryInput)
+                    // 名前は LabeledContent が出すので、Mac で入力欄の左にもう一度並べない
+                    TextField("owner/name", text: $repositoryInput, prompt: Text("owner/name"))
+                        .labelsHidden()
                         .multilineTextAlignment(.trailing)
                         .autocorrectionDisabled()
                         #if os(iOS)
@@ -89,7 +91,9 @@ struct ConnectionSettingsSections: View {
                     Text(key.keyID).appFont(.caption).monospaced().lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 }
                 LabeledContent("この端末の名前") {
-                    TextField(ConnectionSettingsModel.defaultDeviceLabel, text: $model.deviceName)
+                    let placeholder = ConnectionSettingsModel.defaultDeviceLabel
+                    TextField(placeholder, text: $model.deviceName, prompt: Text(placeholder))
+                        .labelsHidden()
                         .multilineTextAlignment(.trailing)
                         .autocorrectionDisabled()
                 }

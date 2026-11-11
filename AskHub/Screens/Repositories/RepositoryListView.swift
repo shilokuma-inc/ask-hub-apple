@@ -147,7 +147,8 @@ struct AddRepositorySheet: View {
                 if allCandidates.isEmpty {
                     // 状態リポジトリにつないだときは、トークンが状態リポジトリしか見えないので候補を並べられない
                     Section {
-                        TextField("owner/name", text: $fullName)
+                        TextField("owner/name", text: $fullName, prompt: Text("owner/name"))
+                            .labelsHidden()
                             .autocorrectionDisabled()
                             #if os(iOS)
                             .textInputAutocapitalization(.never)
@@ -173,6 +174,7 @@ struct AddRepositorySheet: View {
             }
             .disabled(sending.isSending)
             .searchable(text: $query, prompt: "名前で探す")
+            .formStyle(.grouped)
             .pastelBackground()
             .navigationTitle("対象に加える")
             .toolbar {
@@ -187,6 +189,7 @@ struct AddRepositorySheet: View {
             }
         }
         .sheetSending(sending)
+        .sheetSize(.form)
     }
 
     /// 送る。送り始めたら（同じものを送ってあったときも）すぐ閉じ、一覧は加えた形になる。送れなければ理由を出して残る

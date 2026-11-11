@@ -166,6 +166,13 @@
   使い切ると、アプリ（「取り直せませんでした」）も司令塔も Claude のセッションの `gh` も、戻るまで止まる。`gh api rate_limit` は上限に数えられないので、使われ方は 1 分ごとの `used` の増え方で測る。GraphQL の上限は別に数える
 - epic の進み具合を見張るときは、`askhub status`（1 回で REST の要求が約 30 回）を短い間隔で流さない。2026-11-11 に 2 つのセッションが 15〜30 秒おきに流し、1 時間の上限を使い切った。
   見張るなら、上限に数えられない司令塔のログ（`ssh macmini 'tail ~/Library/Logs/AskHub/commander.log'`）を見る。状態リポジトリをまとめて読むなら、git の clone・fetch（REST の上限に数えられない）を使う
+- `askhub status` は、初めて読むときは読んだものがすべて上限に数えられる（11/11 の状態で `--repo` 1 つが 30〜70 回、`--repo` なしが約 280 回）。
+  状態リポジトリの写し（`snapshot()`）から読むので、無いファイルの 404 は出ない。tree と blob は `~/Library/Caches/jp.shilokuma.AskHub.cli/state-objects` にも持つので、
+  次の実行からは直下の一覧の 1 回（ETag はメモリーにだけ持つので 200）と変わった分だけになる。`askhub status --watch <秒>`（60 秒以上）は 1 つのプロセスで読み直すので、
+  変わらない周は直下の一覧の 304（上限に数えない）だけ、ジョブが 1 つ変わった周は 8 回（直下の一覧・そこまでの tree 6 つ・そのジョブの blob）で済む（2026-11-12、#1039）
+- アプリの 30 秒ごとの取り直しを Contents API で 1 ファイルずつ読むと、終わった epic も 1 本ごとに 4〜5 回読み、まだ無いファイル（やめた epic の `goal.json` など）は毎回 404 で上限に数えられる
+  （2026-11-11 の 14 本で 1 回 132 回・約 5 秒、404 は 10 回）。ETag はメモリーにだけ持つので、起動のたびに全件を 200 で読み、すべて数えられる（iPhone は裏で落とされると開くたびに起動し直す）。
+  取り直しは `StateStore.snapshot()` から読み、tree と blob は sha で決まるので Caches のファイルにも持つ（`objectsDirectory`）。変わらなければ直下の一覧の 1 回（304）で済み、起動の直後も直下の一覧の 1 回と変わった分だけになる（2026-11-11、#1031）
 
 ## ビルド・テスト
 
@@ -413,6 +420,15 @@
 - `askhub-commander`・`askhub-worker` の置き場所（`MachinePaths`）は `FileManager.default.homeDirectoryForCurrentUser` から作り、環境変数 `HOME` を差し替えても本当のホームフォルダの
   `~/Library/Application Support/AskHub/<役割>/config.json` を読み書きする。手元で設定を書き換えるコマンドを試すときは、実行ファイルを流さず、テストで
   `MachineCommandLine(role:executable:home:)` に一時フォルダを渡す。失敗の道は `exit` するので、設定の `kind` と役割が合わない（常時オンの設定をワーカーで読む）とテストのプロセスごと終わる（2026-11-11、#1015）
+- UI テストが変えた Simulator の端末の向き（`XCUIDevice.shared.orientation`）は、Simulator を起動している間ずっと残り、次の `xcodebuild test` は横向きのまま始まる
+  （ログに `Interface orientation changed to Landscape Right`）。`simctl` には向きを読む・変えるコマンドが無く（Xcode 26.6・27.1）、`simctl io <UDID> screenshot` も横向きのときに縦長の画像（1206×2622）を返すので、
+  外から向きを確かめられない。`simctl shutdown` → `simctl bootstatus <UDID> -b` で縦向きに戻る（手元の iOS 26.5 で 13〜22 秒）。外観（`simctl ui <UDID> appearance dark`）は起動し直しても戻らない。
+  ワーカーはテストと撮影の前に、起動していた枠の Simulator を止めてから起動し直す（2026-11-11、#1027）
+- SSH で入った Mac（macOS 27 の Mac mini など）では、画面収録の許可が無く `screencapture` が「could not create image from display」で撮れない。
+  アプリが自分の窓を撮るなら許可は要らないので、DEBUG の起動引数 `-demoSnapshot <名前>`（`-demoWindowSize 1240x820`・`-demoAppearance dark`・`-demoPress "ボタンの名前"`・`-demoSettings YES`）で
+  コンテナの tmp（`~/Library/Containers/jp.shilokuma.AskHub/Data/tmp/`）に窓ごとの PNG を書く（`DemoWindowSnapshot`）。ビルドした .app を `rsync` で送り、`ssh <Mac> open -g -n <.app> --args …` で起動する。
+  `cacheDisplay(in:to:)` で描くと、NavigationSplitView のサイドバーと詳細の列が白や黒に抜けるので、`CGWindowListCreateImage`（macOS 15 の SDK で使えないので `dlsym` で引く）で撮る。
+  macOS 27 では支援技術がつながるまで SwiftUI がアクセシビリティの木を作らず、アプリの中から名前でボタンを探せないので、`NSApp` に `AXManualAccessibility` を立てる（2026-11-12、Mac の UI の直し）
 
 ## Keychain
 
@@ -650,3 +666,6 @@
   呼び出し側で `if` を重ねるのは、`CardSection` で包むときのように、包む側だけが残ってしまうときだけでよい（2026-11-09、反映中の UI）
 - Mac・iPad の 3 列（`NavigationSplitView`）では、詳細の列に出す画面の `navigationTitle` がどこにも出ない（ツールバーに出るのは真ん中の列の名前だけ）。
   iPhone では大きな見出しになるので気づきにくい。詳細の列に出す一覧は、リポジトリの詳細のように札の中か、セクションの見出しにも画面の名前を入れる（2026-11-11、#1032 の `FinishedEpicListView`）
+- Mac のシートは中身の理想の大きさで開くので、高さを持たない `List`・`Form` を入れると、見出しと閉じるボタンだけの高さに潰れて中身が空になる（macOS 26・27）。
+  `presentationSizing(.form)`・`.page` で決まった大きさで開く（iOS 18 / macOS 15 からの共通の API。iPhone のシートには効かないので `#if os` は要らない。`SheetSize`）。
+  Mac の `Form` の既定（columns）は、`TextField` の名前を欄の左の列に並べて欄を狭め、長い名前は左端で切れる。`.formStyle(.grouped)` にし、名前は `prompt:` と `.labelsHidden()` で欄の中に出す（iOS の見た目は変わらない）（2026-11-12、Mac の UI の直し）
