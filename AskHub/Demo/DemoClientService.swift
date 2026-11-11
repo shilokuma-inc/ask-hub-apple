@@ -42,6 +42,8 @@ final class DemoClientService: ClientService {
 
     /// 断るときの理由（デモ）
     static let rejectionReason = "デモ: 司令塔が断ったときの画面です"
+    /// 上限に当たる場面で、戻るまでの時間（デモ）
+    static let rateLimitWait: Duration = .seconds(32 * 60)
 
     private struct Reaction {
         var dueAt: Date
@@ -72,6 +74,9 @@ final class DemoClientService: ClientService {
     func fetchSnapshot() async throws -> ClientSnapshot {
         if scenario == .failing {
             throw ClientServiceError(message: "GitHub に接続できませんでした（デモ: 読めないときの画面）")
+        }
+        if scenario == .rateLimited, lastFetchedAt != nil {
+            throw ClientServiceError(message: "GitHub の上限に達しました（デモ: 上限に当たったときの画面）", retryAfter: Self.rateLimitWait)
         }
         applyDueReactions()
         lastFetchedAt = now()

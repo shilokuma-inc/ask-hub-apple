@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 接続の状態の 1 行。取り直しの失敗・一部の取得元の失敗・司令塔の印の古さを、0 件と取り違えないように出す
+/// 接続の状態の 1 行。取り直しの失敗（GitHub の上限なら戻る時刻）・一部の取得元の失敗・司令塔の印の古さを、0 件と取り違えないように出す
 struct ConnectionStatusView: View {
     /// 司令塔の印がこれより古ければ知らせる
     static let staleHeartbeat: TimeInterval = 15 * 60
@@ -41,13 +41,20 @@ struct ConnectionStatusView: View {
     }
 
     static func status(store: ClientStore) -> Status {
+        let paused = store.isRefreshPaused ? store.refreshPausedUntil : nil
         guard let snapshot = store.snapshot else {
+            if let paused {
+                return rateLimited(until: paused, detail: nil)
+            }
             if case .failed = store.phase {
                 return Status(title: "読み込めませんでした", systemImage: "wifi.exclamationmark", tint: Theme.danger, offersRetry: true)
             }
             return Status(title: "読み込んでいます", systemImage: "arrow.triangle.2.circlepath", tint: .secondary)
         }
         let checked = "\(RelativeTime.clock(snapshot.fetchedAt)) の内容です"
+        if let paused {
+            return rateLimited(until: paused, detail: checked)
+        }
         if let failure = store.refreshFailure {
             return Status(
                 title: "取り直せませんでした",
@@ -81,6 +88,16 @@ struct ConnectionStatusView: View {
             detail: "\(RelativeTime.clock(snapshot.fetchedAt)) に確かめました",
             systemImage: "checkmark.circle.fill",
             tint: Theme.success
+        )
+    }
+
+    /// GitHub の上限に当たり、戻る時刻まで取り直しを休んでいる（読み直しても弾かれるので、もう一度読むボタンは出さない）
+    private static func rateLimited(until: Date, detail: String?) -> Status {
+        Status(
+            title: "GitHub の上限に当たりました",
+            detail: ["\(RelativeTime.clock(until)) に戻ります", detail].compactMap(\.self).joined(separator: "。"),
+            systemImage: "hourglass",
+            tint: Theme.warning
         )
     }
 

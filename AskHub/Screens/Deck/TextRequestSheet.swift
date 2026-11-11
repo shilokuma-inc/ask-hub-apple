@@ -22,7 +22,9 @@ struct TextRequestSheet: View {
                     }
                 }
                 Section {
-                    TextField(request.prompt, text: $text, axis: .vertical)
+                    // Mac の Form では名前が入力欄の左に並んで欄が狭くなるので、名前は隠して入力欄の中に出す
+                    TextField(request.prompt, text: $text, prompt: Text(request.prompt), axis: .vertical)
+                        .labelsHidden()
                         .lineLimit(4...10)
                         .focused($isFocused)
                         .accessibilityIdentifier("textRequest.field")
@@ -32,6 +34,7 @@ struct TextRequestSheet: View {
                     }
                 }
             }
+            .formStyle(.grouped)
             .pastelBackground()
             .navigationTitle(request.title)
             .toolbar {
@@ -52,6 +55,7 @@ struct TextRequestSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .sheetSize(.form)
     }
 }
 

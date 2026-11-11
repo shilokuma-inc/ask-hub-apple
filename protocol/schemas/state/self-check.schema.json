@@ -31,6 +31,10 @@
               "expiresAt": {
                 "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }],
                 "description": "GitHub の API の応答の見出し github-authentication-token-expiration で分かった期限。期限の無いトークン・まだ分からないときは書かない"
+              },
+              "rateLimit": {
+                "anyOf": [{ "$ref": "#/$defs/rateLimit" }, { "type": "null" }],
+                "description": "このトークンで読んだ REST の上限の残り（GET /rate_limit の resources.core）。読めなかったときは書かない"
               }
             }
           }
@@ -41,6 +45,17 @@
   },
   "$defs": {
     "state": { "enum": ["ok", "missing", "invalid", "expired"] },
+    "rateLimit": {
+      "description": "GitHub の REST の一次の上限。アカウントごとに数える",
+      "type": "object",
+      "required": ["limit", "remaining", "resetAt"],
+      "additionalProperties": false,
+      "properties": {
+        "limit": { "type": "integer", "minimum": 0, "description": "1 時間の上限（ふつうは 5,000）" },
+        "remaining": { "type": "integer", "minimum": 0, "description": "今の窓の残り" },
+        "resetAt": { "$ref": "../common.schema.json#/$defs/timestamp", "description": "今の窓が終わり、limit に戻る時刻" }
+      }
+    },
     "owner": {
       "description": "GitHub の持ち主（organization・個人）の名前。英数字とハイフンで 1〜39 文字。ハイフンで始まらない",
       "type": "string",

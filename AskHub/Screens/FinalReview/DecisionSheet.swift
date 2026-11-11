@@ -86,6 +86,7 @@ struct DecisionSheet: View {
             }
         }
         .sheetSending(sending)
+        .sheetSize(.page)
     }
 
     /// 送る。送り始めたら（同じ答えを送ってあったときも）すぐ閉じ、判断は答えた形になる。送れなければ理由を出して残る

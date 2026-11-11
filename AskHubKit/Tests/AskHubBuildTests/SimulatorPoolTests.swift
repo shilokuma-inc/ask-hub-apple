@@ -60,6 +60,132 @@ struct SimulatorPoolTests {
         #expect(simctl.current.filter { !SimulatorPool.isWorkerName($0.name) } == Self.humanDevices)
     }
 
+    /// 前の回が使ったまま起動している、枠 1 の Simulator
+    static let bootedSlot = FakeSimctl.Device(
+        udid: uuid(6),
+        name: "askhub-worker-1-iPhone-17-Pro-iOS-27.0",
+        runtime: FakeSimctl.iOS270,
+        deviceType: FakeSimctl.iPhone17Pro,
+        state: "Booted"
+    )
+
+    /// 前の回の UI テストが横向きにしたまま起動している Simulator は、止めてから起動し直す（止めると縦向きに戻る）
+    @Test func restartsABootedSimulatorOnlyWhenAsked() async throws {
+        let booted = Self.bootedSlot
+        let simctl = FakeSimctl(devices: Self.humanDevices + [booted])
+        let (pool, runner) = pool(simctl)
+        // 外観（`ui`）は restoresTheLightAppearanceOnlyWhenRestarting で確かめる
+        let steps = { runner.arguments.filter { $0.first == "simctl" && !["list", "ui"].contains($0[1]) } }
+
+        // 頼まれなければ、起動しているものをそのまま使う
+        _ = try await pool.prepare(slot: 1, for: Self.iPhone)
+        #expect(steps() == [["simctl", "bootstatus", booted.udid, "-b"]])
+
+        let restarted = try await pool.prepare(slot: 1, for: Self.iPhone, restarting: true)
+        #expect(restarted.udid == booted.udid)
+        #expect(restarted.state == "Booted")
+        #expect(steps().dropFirst() == [["simctl", "shutdown", booted.udid], ["simctl", "bootstatus", booted.udid, "-b"]])
+        #expect(simctl.current.first { $0.udid == booted.udid }?.state == "Booted")
+
+        // 止まっているもの・作ったばかりのものは、起動すれば新しく始まるので止めない
+        try await pool.shutdown(restarted)
+        let before = steps().count
+        _ = try await pool.prepare(slot: 1, for: Self.iPhone, restarting: true)
+        let created = try await pool.prepare(slot: 2, for: Self.iPhone, restarting: true)
+        #expect(steps().dropFirst(before) == [
+            ["simctl", "bootstatus", booted.udid, "-b"],
+            ["simctl", "create", created.name, FakeSimctl.iPhone17Pro, FakeSimctl.iOS270],
+            ["simctl", "bootstatus", created.udid, "-b"]
+        ])
+        // 人が作ったものは、起動していても止めない
+        #expect(simctl.current.filter { !SimulatorPool.isWorkerName($0.name) } == Self.humanDevices)
+    }
+
+    @Test func reportsRestartFailures() async {
+        let shutdown = CommandResult.failure(1, "Unable to shutdown device in current state: Booting")
+        let simctl = FakeSimctl(devices: [Self.bootedSlot], shutdownResult: shutdown)
+        let (pool, runner) = pool(simctl)
+        do throws(SimulatorError) {
+            _ = try await pool.prepare(slot: 1, for: Self.iPhone, restarting: true)
+            Issue.record("止められなかったのに投げなかった")
+        } catch {
+            #expect(error.message == "askhub-worker-1-iPhone-17-Pro-iOS-27.0 を停止できない（終了コード 1）")
+            #expect(error.log?.contains("Unable to shutdown") == true)
+        }
+        #expect(!runner.arguments.contains { $0.dropFirst().first == "bootstatus" })
+    }
+
+    /// 前の回の UI テスト（LaunchTests の構成ごとの実行）がダークにした外観は、止めても残るので、起動し直した後にライトに戻す
+    @Test func restoresTheLightAppearanceOnlyWhenRestarting() async throws {
+        var dark = Self.bootedSlot
+        dark.appearance = "dark"
+        let simctl = FakeSimctl(devices: [dark])
+        let (pool, runner) = pool(simctl)
+        let ui = { runner.arguments.filter { $0.prefix(2) == ["simctl", "ui"] } }
+        let appearance = { simctl.current.first { $0.udid == dark.udid }?.appearance }
+
+        // 頼まれなければ、外観に触れない
+        _ = try await pool.prepare(slot: 1, for: Self.iPhone)
+        #expect(ui().isEmpty)
+        #expect(appearance() == "dark")
+
+        // 起動してから読み、ダークならライトにする
+        _ = try await pool.prepare(slot: 1, for: Self.iPhone, restarting: true)
+        let restarted = runner.arguments.filter { $0.first == "simctl" && $0[1] != "list" }
+        #expect(restarted.suffix(4) == [
+            ["simctl", "shutdown", dark.udid],
+            ["simctl", "bootstatus", dark.udid, "-b"],
+            ["simctl", "ui", dark.udid, "appearance"],
+            ["simctl", "ui", dark.udid, "appearance", "light"]
+        ])
+        #expect(appearance() == "light")
+
+        // ライトなら読むだけ
+        _ = try await pool.prepare(slot: 1, for: Self.iPhone, restarting: true)
+        #expect(ui().dropFirst(2) == [["simctl", "ui", dark.udid, "appearance"]])
+    }
+
+    /// 止まっている Simulator にもダークは残っているが、止まったままでは読めも変えもできないので、起動してから戻す
+    @Test func restoresTheLightAppearanceOfAStoppedSimulatorAfterBooting() async throws {
+        var dark = Self.bootedSlot
+        dark.state = "Shutdown"
+        dark.appearance = "dark"
+        let simctl = FakeSimctl(devices: [dark])
+        let (pool, runner) = pool(simctl)
+        _ = try await pool.prepare(slot: 1, for: Self.iPhone, restarting: true)
+        #expect(runner.arguments.filter { $0.first == "simctl" && $0[1] != "list" } == [
+            ["simctl", "bootstatus", dark.udid, "-b"],
+            ["simctl", "ui", dark.udid, "appearance"],
+            ["simctl", "ui", dark.udid, "appearance", "light"]
+        ])
+        #expect(simctl.current.first { $0.udid == dark.udid }?.appearance == "light")
+    }
+
+    /// 外観に対応しないランタイムの Simulator（`appearance` が `unsupported`）は、変えずにそのまま使う（変えようとすると失敗する）
+    @Test func leavesUnsupportedAppearancesAlone() async throws {
+        var unsupported = Self.bootedSlot
+        unsupported.appearance = "unsupported"
+        let simctl = FakeSimctl(devices: [unsupported])
+        let (pool, runner) = pool(simctl)
+        let simulator = try await pool.prepare(slot: 1, for: Self.iPhone, restarting: true)
+        #expect(simulator.udid == unsupported.udid)
+        #expect(runner.arguments.filter { $0.prefix(2) == ["simctl", "ui"] } == [["simctl", "ui", unsupported.udid, "appearance"]])
+    }
+
+    @Test func reportsAppearanceFailures() async {
+        var dark = Self.bootedSlot
+        dark.appearance = "dark"
+        let simctl = FakeSimctl(devices: [dark], appearanceResult: .failure(1, "Failed to set appearance"))
+        let (pool, _) = pool(simctl)
+        do throws(SimulatorError) {
+            _ = try await pool.prepare(slot: 1, for: Self.iPhone, restarting: true)
+            Issue.record("外観を戻せなかったのに投げなかった")
+        } catch {
+            #expect(error.message == "askhub-worker-1-iPhone-17-Pro-iOS-27.0 の外観をライトに設定できない（終了コード 1）")
+            #expect(error.log?.contains("Failed to set appearance") == true)
+        }
+    }
+
     @Test func choosesTheRequestedRuntimeAndDeviceTypeIdentifier() async throws {
         let simctl = FakeSimctl()
         let (pool, runner) = pool(simctl)

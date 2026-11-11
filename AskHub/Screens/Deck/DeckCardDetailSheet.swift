@@ -42,6 +42,7 @@ struct DeckCardDetailSheet: View {
                 }
             }
         }
+        .sheetSize(.page)
     }
 }
 

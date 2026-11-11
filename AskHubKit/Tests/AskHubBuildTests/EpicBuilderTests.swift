@@ -93,6 +93,81 @@ struct EpicBuilderTests {
         #expect(xcodebuilds(fake).isEmpty)
     }
 
+    // MARK: - テストの前の起動し直し
+
+    /// 前の回が使ったまま起動している、枠 3 の Simulator
+    static let bootedSlot = FakeSimctl.Device(
+        udid: SimulatorPoolTests.uuid(3),
+        name: "askhub-worker-3-iPhone-17-Pro-iOS-26.5",
+        runtime: FakeSimctl.iOS265,
+        deviceType: FakeSimctl.iPhone17Pro,
+        state: "Booted"
+    )
+
+    /// 前の回の UI テストが横向きにしたまま残さないように、テストの前は起動していた Simulator を止めてから起動し直す。ビルドだけなら起動し直さない
+    @Test func restartsTheBootedSimulatorBeforeTestsButNotBuilds() async throws {
+        let (builder, fake) = try makeBuilder(simctl: FakeSimctl(devices: [Self.bootedSlot])) { _ in .output("** TEST SUCCEEDED **") }
+        defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
+        #expect(try await builder.run(.build).succeeded)
+        #expect(steps(fake) == ["simctl bootstatus", "xcodebuild build", "xcodebuild build"])
+
+        for kind in [BuildKind.testLight, .testFull] {
+            let before = steps(fake).count
+            #expect(try await builder.run(kind).succeeded)
+            #expect(steps(fake).dropFirst(before) == [
+                "simctl shutdown", "simctl bootstatus", "simctl ui", "xcodebuild test", "xcodebuild test"
+            ])
+        }
+        #expect(fake.arguments.filter { $0.prefix(2) == ["simctl", "shutdown"] }.allSatisfy { $0[2] == Self.bootedSlot.udid })
+    }
+
+    /// 前の回の UI テストがダークにした外観は、起動し直しても残るので、テストの前にライトに戻す。ビルドだけなら触れない
+    @Test func restoresTheLightAppearanceBeforeTestsButNotBuilds() async throws {
+        var dark = Self.bootedSlot
+        dark.appearance = "dark"
+        let simctl = FakeSimctl(devices: [dark])
+        let appearance = { simctl.current.first { $0.udid == dark.udid }?.appearance }
+        let (builder, fake) = try makeBuilder(simctl: simctl) { _ in .output("** TEST SUCCEEDED **") }
+        defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
+        #expect(try await builder.run(.build).succeeded)
+        #expect(appearance() == "dark")
+
+        let before = fake.arguments.count
+        #expect(try await builder.run(.testLight).succeeded)
+        let steps = fake.arguments.dropFirst(before).filter { ["simctl", "xcodebuild"].contains($0.first ?? "") && $0[1] != "list" }
+        #expect(steps.prefix(4).map { $0.prefix(2).joined(separator: " ") } == [
+            "simctl shutdown", "simctl bootstatus", "simctl ui", "simctl ui"
+        ])
+        #expect(steps.dropFirst(3).first == ["simctl", "ui", dark.udid, "appearance", "light"])
+        #expect(steps.dropFirst(4).first?.prefix(2) == ["xcodebuild", "test"])
+        #expect(appearance() == "light")
+    }
+
+    @Test func reportsAppearanceFailuresAsEnvironmentFailures() async throws {
+        var dark = Self.bootedSlot
+        dark.appearance = "dark"
+        let simctl = FakeSimctl(devices: [dark], appearanceResult: .failure(1, "Failed to set appearance"))
+        let (builder, fake) = try makeBuilder(simctl: simctl) { _ in .output("** TEST SUCCEEDED **") }
+        defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
+        let run = try await builder.run(.testLight)
+        #expect(run.failure == .environment)
+        #expect(run.attemptFailure?.message
+            == "iPhone 17 Pro（iOS 26.5）: askhub-worker-3-iPhone-17-Pro-iOS-26.5 の外観をライトに設定できない（終了コード 1）")
+        #expect(xcodebuilds(fake).isEmpty)
+    }
+
+    @Test func reportsRestartFailuresAsEnvironmentFailures() async throws {
+        let shutdown = CommandResult.failure(1, "Unable to shutdown device in current state: Booting")
+        let simctl = FakeSimctl(devices: [Self.bootedSlot], shutdownResult: shutdown)
+        let (builder, fake) = try makeBuilder(simctl: simctl) { _ in .output("** TEST SUCCEEDED **") }
+        defer { try? FileManager.default.removeItem(at: builder.sourceDirectory) }
+        let run = try await builder.run(.testLight)
+        #expect(run.failure == .environment)
+        #expect(run.attemptFailure?.message == "iPhone 17 Pro（iOS 26.5）: askhub-worker-3-iPhone-17-Pro-iOS-26.5 を停止できない（終了コード 1）")
+        #expect(run.results.first?.outcome.report.log?.contains("Unable to shutdown") == true)
+        #expect(xcodebuilds(fake).isEmpty)
+    }
+
     // MARK: - アプリかテストの実行役を起動できなかった
 
     static let launchFailure = FakeXcodebuild.Run(
@@ -119,7 +194,7 @@ struct EpicBuilderTests {
         #expect(run.summary == "iPhone 17 Pro（iOS 26.5）: テストが通った（全 2 件）\(Self.rerunNote)\nmacOS: テストが通った（全 2 件）")
         // 枠の Simulator を止めて消去し、起動し直してから同じ Simulator で流し直す。macOS は 1 回だけ
         #expect(steps(fake) == [
-            "simctl create", "simctl bootstatus", "xcodebuild test",
+            "simctl create", "simctl bootstatus", "simctl ui", "xcodebuild test",
             "simctl shutdown", "simctl erase", "simctl bootstatus", "xcodebuild test",
             "xcodebuild test"
         ])

@@ -18,16 +18,20 @@ public struct Blocker: Equatable, Sendable {
         case job(JobKind)
         /// ジョブを持った Mac が、決めた時間より長く戻らない
         case macOffline(jobs: Int, seenAt: Timestamp)
+        /// GitHub の REST の上限の残りが少ない（`GitHubRateLimit.lowRemaining` を切った）。使い切ると司令塔もクライアントも戻るまで止まる
+        case rateLimit(GitHubRateLimit)
     }
 
     /// まとめて 1 つの通知にする単位
     public enum Scope: Hashable, Sendable {
         case epic(RepositoryFullName, ULID)
         case mac(MacName)
+        /// GitHub の上限。通知から司令塔の Mac を開く
+        case rateLimit(MacName)
     }
 
     /// 同じ出来事を見分ける文字列（`notifications.json` の `key`）。見直した質問・直したゴール・人が頼んだ直しの後の最終 PR・次の試行・
-    /// Mac が戻った後のオフラインは、別の出来事として知らせ直す
+    /// Mac が戻った後のオフライン・次の窓の上限の残りは、別の出来事として知らせ直す
     public var key: String
     public var scope: Scope
     public var reason: Reason
@@ -48,8 +52,8 @@ struct BlockerScan {
     /// ジョブを持っているとみなす状態（人に渡したジョブは、人の判断を待つ通知で知らせる）
     static let heldStates: Set<JobState> = [.assigned, .running, .paused]
 
-    /// `epics` はジョブを見張る epic、`jobs` はその epic のジョブ（`JobSweep` で見直した後のもの）
-    func scan(epics: [EpicFile], jobs: [JobFile]) async throws(CommanderError) -> [Blocker] {
+    /// `epics` はジョブを見張る epic、`jobs` はその epic のジョブ（`JobSweep` で見直した後のもの）、`rateLimit` は司令塔が読んだ GitHub の REST の上限の残り
+    func scan(epics: [EpicFile], jobs: [JobFile], rateLimit: GitHubRateLimit? = nil) async throws(CommanderError) -> [Blocker] {
         let jobsOfEpics = Dictionary(grouping: jobs) { Blocker.Scope.epic($0.repo, $0.epic) }
         var blockers: [Blocker] = []
         for epic in epics.sorted(by: { $0.id < $1.id }) {
@@ -59,7 +63,13 @@ struct BlockerScan {
             let key = "job/\(job.repo)/\(job.epic)/\(job.id)/\(job.attempts)"
             blockers.append(Blocker(key: key, scope: .epic(job.repo, job.epic), reason: .job(job.kind)))
         }
-        return blockers + (try await offlineMacs(holding: jobs))
+        return blockers + (try await offlineMacs(holding: jobs)) + lowRateLimit(rateLimit)
+    }
+
+    /// GitHub の REST の上限の残りが少ない。窓（戻る時刻）ごとに 1 つの出来事にし、次の窓でまた少なくなれば知らせ直す
+    private func lowRateLimit(_ rateLimit: GitHubRateLimit?) -> [Blocker] {
+        guard let rateLimit, rateLimit.isLow(at: context.now()) else { return [] }
+        return [Blocker(key: "github/rate-limit/\(rateLimit.resetAt)", scope: .rateLimit(context.mac), reason: .rateLimit(rateLimit))]
     }
 
     /// epic が人の返事を待っているもの（質問・分け方の判断・ゴールの確認と開始・最終 PR の確認とマージの承認）。`jobs` はその epic のジョブ

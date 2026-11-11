@@ -59,11 +59,17 @@ final class ClientStore {
     static let receiptTrackingWindow: TimeInterval = 10 * 60
     /// 司令塔は 30 秒ほどの周ごとに意図を受け取る。これより長く受け取らなければ、司令塔が動いていない可能性をその場に出す
     static let defaultStallThreshold: TimeInterval = 3 * 60
+    /// 延ばした取り直しの間隔（Mac で前面でないとき）。GitHub の上限をほかのもの（司令塔・Claude のセッション）に残す
+    static let relaxedRefreshInterval: Duration = .seconds(2 * 60)
 
     private(set) var snapshot: ClientSnapshot?
     private(set) var phase: Phase = .idle
     /// 前回の取り直しの失敗。スナップショットは前のものを残し、失敗したことを帯で出す
     private(set) var refreshFailure: String?
+    /// GitHub の上限に当たって、自動の取り直しを休んでいる間の、戻る時刻（読めたら消す）
+    private(set) var refreshPausedUntil: Date?
+    /// 最後に読み込みを終えた時点。自動の取り直しの間隔は、ここからの経過時間で数える（`ClientStore+Refresh`。時計を止めたデモでも回るように）
+    private(set) var lastRefreshEndedAt: ContinuousClock.Instant?
     private(set) var pending: PendingIntent?
     private(set) var sendFailure: SendFailure?
     private(set) var notice: SendNotice?
@@ -135,6 +141,9 @@ final class ClientStore {
         }
         startedRefreshes += 1
         let generation = startedRefreshes
+        defer {
+            lastRefreshEndedAt = .now
+        }
         do {
             let fetched = try await service.fetchSnapshot()
             // 後に始めた読み込みが先に終わっていたら、古い中身で上書きしない
@@ -149,6 +158,7 @@ final class ClientStore {
             }
             phase = .loaded
             refreshFailure = nil
+            refreshPausedUntil = nil
             let receipts = reflections.receive(
                 fetched,
                 generation: generation,
@@ -166,20 +176,19 @@ final class ClientStore {
             guard generation > appliedRefresh else {
                 return
             }
-            let message = error.localizedDescription
+            var message = error.localizedDescription
+            // 上限に当たったら、言われた時刻まで取り直しも受け付けの確かめも休む（休まずに読むと、戻った直後の残りを食い潰す）
+            if let wait = (error as? ClientServiceError)?.retryAfter {
+                let until = now().addingTimeInterval(TimeInterval(wait.components.seconds))
+                refreshPausedUntil = until
+                receiptCheckPausedUntil = until
+                message = Self.rateLimitMessage(until: until)
+            }
             if snapshot == nil {
                 phase = .failed(message)
             } else {
                 refreshFailure = message
             }
-        }
-    }
-
-    /// 画面を開いている間、決まった間隔で取り直す。呼び出し元の Task が取り消されると止まる
-    func runAutoRefresh() async {
-        while !Task.isCancelled {
-            await refresh()
-            try? await Task.sleep(for: service.refreshInterval)
         }
     }
 

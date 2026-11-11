@@ -166,6 +166,10 @@
   使い切ると、アプリ（「取り直せませんでした」）も司令塔も Claude のセッションの `gh` も、戻るまで止まる。`gh api rate_limit` は上限に数えられないので、使われ方は 1 分ごとの `used` の増え方で測る。GraphQL の上限は別に数える
 - epic の進み具合を見張るときは、`askhub status`（1 回で REST の要求が約 30 回）を短い間隔で流さない。2026-11-11 に 2 つのセッションが 15〜30 秒おきに流し、1 時間の上限を使い切った。
   見張るなら、上限に数えられない司令塔のログ（`ssh macmini 'tail ~/Library/Logs/AskHub/commander.log'`）を見る。状態リポジトリをまとめて読むなら、git の clone・fetch（REST の上限に数えられない）を使う
+- `askhub status` は、初めて読むときは読んだものがすべて上限に数えられる（11/11 の状態で `--repo` 1 つが 30〜70 回、`--repo` なしが約 280 回）。
+  状態リポジトリの写し（`snapshot()`）から読むので、無いファイルの 404 は出ない。tree と blob は `~/Library/Caches/jp.shilokuma.AskHub.cli/state-objects` にも持つので、
+  次の実行からは直下の一覧の 1 回（ETag はメモリーにだけ持つので 200）と変わった分だけになる。`askhub status --watch <秒>`（60 秒以上）は 1 つのプロセスで読み直すので、
+  変わらない周は直下の一覧の 304（上限に数えない）だけ、ジョブが 1 つ変わった周は 8 回（直下の一覧・そこまでの tree 6 つ・そのジョブの blob）で済む（2026-11-12、#1039）
 - アプリの 30 秒ごとの取り直しを Contents API で 1 ファイルずつ読むと、終わった epic も 1 本ごとに 4〜5 回読み、まだ無いファイル（やめた epic の `goal.json` など）は毎回 404 で上限に数えられる
   （2026-11-11 の 14 本で 1 回 132 回・約 5 秒、404 は 10 回）。ETag はメモリーにだけ持つので、起動のたびに全件を 200 で読み、すべて数えられる（iPhone は裏で落とされると開くたびに起動し直す）。
   取り直しは `StateStore.snapshot()` から読み、tree と blob は sha で決まるので Caches のファイルにも持つ（`objectsDirectory`）。変わらなければ直下の一覧の 1 回（304）で済み、起動の直後も直下の一覧の 1 回と変わった分だけになる（2026-11-11、#1031）
@@ -420,6 +424,18 @@
   テストの後に同じ Simulator で PR のスクショを撮るときは、`simctl boot`・`bootstatus -b` で起動し直してから入れる（止まったままだと `simctl install` が「Unable to lookup in current state: Shutdown」で失敗する）（2026-11-12、#1055）
 - 状態リポジトリの見本のファイルで PR のスクショを撮るとき、ジョブの `updatedAt` などを固定の時刻にすると、画面の相対時刻（「12 分前」）が撮った時刻で変わる。見本の時刻をアプリの起動の時刻から引いて作ると、
   Before と After を別の時刻に撮っても同じ文になる（2026-11-12、#1055）
+- UI テストが変えた Simulator の端末の向き（`XCUIDevice.shared.orientation`）は、Simulator を起動している間ずっと残り、次の `xcodebuild test` は横向きのまま始まる
+  （ログに `Interface orientation changed to Landscape Right`）。`simctl` には向きを読む・変えるコマンドが無く（Xcode 26.6・27.1）、`simctl io <UDID> screenshot` も横向きのときに縦長の画像（1206×2622）を返すので、
+  外から向きを確かめられない。`simctl shutdown` → `simctl bootstatus <UDID> -b` で縦向きに戻る（手元の iOS 26.5 で 13〜22 秒）。外観（`simctl ui <UDID> appearance dark`）は起動し直しても戻らない。
+  ワーカーはテストと撮影の前に、起動していた枠の Simulator を止めてから起動し直す（2026-11-11、#1027）
+- Simulator の外観（`simctl ui <UDID> appearance`）は、止めて起動し直してもダークのまま残り、消去（`simctl erase`）するとライトに戻る。止まっている Simulator では、読むと `unknown`（終了コード 0）、
+  変えると `Unable to lookup in current state: Shutdown`（終了コード 149）になるので、起動してから読み書きする。visionOS 26.5 の Simulator も `light`・`dark` を読み書きできる（`unsupported` ではない）。
+  読み書きの時間は `simctl getenv` などほかの `simctl` 1 回と同じくらい（手元の Xcode 26.6・iOS 26.5）。ワーカーはテストと撮影の前に、起動し直した後で外観を読み、`dark` ならライトに戻す（2026-11-12、#1045）
+- SSH で入った Mac（macOS 27 の Mac mini など）では、画面収録の許可が無く `screencapture` が「could not create image from display」で撮れない。
+  アプリが自分の窓を撮るなら許可は要らないので、DEBUG の起動引数 `-demoSnapshot <名前>`（`-demoWindowSize 1240x820`・`-demoAppearance dark`・`-demoPress "ボタンの名前"`・`-demoSettings YES`）で
+  コンテナの tmp（`~/Library/Containers/jp.shilokuma.AskHub/Data/tmp/`）に窓ごとの PNG を書く（`DemoWindowSnapshot`）。ビルドした .app を `rsync` で送り、`ssh <Mac> open -g -n <.app> --args …` で起動する。
+  `cacheDisplay(in:to:)` で描くと、NavigationSplitView のサイドバーと詳細の列が白や黒に抜けるので、`CGWindowListCreateImage`（macOS 15 の SDK で使えないので `dlsym` で引く）で撮る。
+  macOS 27 では支援技術がつながるまで SwiftUI がアクセシビリティの木を作らず、アプリの中から名前でボタンを探せないので、`NSApp` に `AXManualAccessibility` を立てる（2026-11-12、Mac の UI の直し）
 
 ## Keychain
 
@@ -657,3 +673,9 @@
   低い高さのまま書かせるには `.large` を並べない。キーボードの上の「完了」（`ToolbarItemGroup(placement: .keyboard)`）は、低いシートではシートの中に重なって入力欄を狭める（2026-11-06、自由回答のシート）
 - `List` の `Section` の中に、本体が `if` で何も出さないことのある View（`ReflectionStatusView` など）をそのまま置いても、何も出さないときは空の行にならない（iOS 26 で確かめた）。
   呼び出し側で `if` を重ねるのは、`CardSection` で包むときのように、包む側だけが残ってしまうときだけでよい（2026-11-09、反映中の UI）
+- アプリの自動の取り直しのように、次に読む時刻を `ClientStore` の時計（`now`）で数えると、デモの時計を止めて撮る（`-demoClock`）ときに時計が進まず、2 回目の取り直しが来ない。
+  間隔は `ContinuousClock` の経過時間で数え、時計は GitHub の上限の戻る時刻のような「時刻」の比べにだけ使う（2026-11-12、`ClientStore.delayBeforeAutoRefresh`）
+- `xcrun simctl launch` の直後に `xcrun simctl io <udid> screenshot` を撮ると、起動の途中の白い画面が写ることがある。数秒待ってから撮り、写ったものを目で確かめる（2026-11-12）
+- Mac のシートは中身の理想の大きさで開くので、高さを持たない `List`・`Form` を入れると、見出しと閉じるボタンだけの高さに潰れて中身が空になる（macOS 26・27）。
+  `presentationSizing(.form)`・`.page` で決まった大きさで開く（iOS 18 / macOS 15 からの共通の API。iPhone のシートには効かないので `#if os` は要らない。`SheetSize`）。
+  Mac の `Form` の既定（columns）は、`TextField` の名前を欄の左の列に並べて欄を狭め、長い名前は左端で切れる。`.formStyle(.grouped)` にし、名前は `prompt:` と `.labelsHidden()` で欄の中に出す（iOS の見た目は変わらない）（2026-11-12、Mac の UI の直し）
