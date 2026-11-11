@@ -275,6 +275,7 @@ public struct MachineCommandLine: Sendable {
             "Keychain: \(selfCheck.keychain.rawValue)",
             "GitHub のトークン: \(selfCheck.githubToken.rawValue)（\(ownerStates.joined(separator: "・"))）",
             "Claude のトークン: \(selfCheck.claudeToken.rawValue)（\(claudeExpiry)）",
+            "GitHub の REST の残り: \(selfCheck.githubRateLimit.map { "\($0.remaining) / \($0.limit) 回（\($0.resetAt) に戻る）" } ?? "読めない")",
             "最初の鍵: \(firstKey?.rawValue ?? "固定していない")",
             "Xcode: \(xcode)"
         ]
