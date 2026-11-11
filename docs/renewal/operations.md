@@ -117,8 +117,8 @@
 
 ## ワーカーと司令塔の配り方
 
-- CI でビルドし、Developer ID で署名したものを配る
-- 入れ方は、プログラムのファイルをホームフォルダの下に置き、`setup`（想定のコマンド）で値を登録するだけ。管理者の権限は使わない
+- 常時オンの Mac で Developer ID で署名し、Hardened Runtime を付けたものを配る（下の「署名と公証」）。自分の Mac には手元から ssh で入れ替え、共同開発者には GitHub Releases で配る（下の「ワーカーの更新」「GitHub Releases」）
+- 入れ方は、プログラムのファイルをホームフォルダの下（`~/Library/Application Support/AskHub/bin/`）に置き、`setup` で値を登録するだけ。管理者の権限は使わない
 - 常駐できる Mac では、ログイン中のセッションの LaunchAgent として登録する（ssh のセッションからは Keychain を読めないため）。常駐できない Mac では、ターミナルで `askhub-worker run` を流したままにする（下の「ワーカーの入れ方」）
 - `claude` は 1 か所にだけ入れ、版を固定する。段階 0 で、常時オンの Mac に 2 か所・別の版で入っていたことが分かった
   - 司令塔とワーカーは、設定の `claude`（`setup --claude` で渡した絶対パス）だけを使い、`DISABLE_AUTOUPDATER=1` を渡して自分で更新させない
@@ -131,8 +131,8 @@
   - 決めた Xcode を消した・名前を変えたときは、ビルドと Simulator の用意の前に理由の分かる文で止める（環境の不調として人に渡る）。起動のログ・`check`・アプリの Mac の詳細（「Xcode」の行）で、どの Xcode を使っているかが分かる
   - 生きている印を書くたび（10 分ごと）に `xcodebuild -version` を測り直して `versions.xcode` に書く。決めていない Mac で xcode-select を切り替えたら、次の印で分かる
   - 決めた値は常駐が起動したときに読むので、決め直したら読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.<役割>`。ターミナルで `askhub-worker run` を流している Mac は流し直す）
-- 生きている印に版を書く。司令塔とワーカーの版が合わないときは、ジョブを受けずに知らせる
-- 更新の手順（常時オンの Mac は遠隔で、ほかの Mac は手で）を、切り替えの前に決める
+- 生きている印に版と互換の番号を書く。互換の番号が司令塔と合わないワーカーは、ジョブを引き受けずに知らせる（下の「版」）
+- 更新は、常時オンの Mac と ssh で届く自分の Mac は手元から遠隔で、共同開発者の Mac はその人が手で行う（下の「司令塔の更新」「ワーカーの更新」「共同開発者の Mac」）
 - 作業ファイルは TCC の保護の対象の場所（デスクトップ・書類など）に置かない。ワーカー専用のフォルダを使う
   - 設定と Claude のフォルダは `~/Library/Application Support/AskHub/<役割>/`
   - 対象のリポジトリの写し・epic の作業場所・DerivedData・ビルドの一時フォルダは、パスに空白の無い `~/Library/Developer/AskHub/<役割>/`（`work`・`builds`・`builds-tmp`）。パスの空白を扱えないビルドのプラグインやスクリプトがあるため（2026-11-09、prime-pick-ios の LicenseList のプラグインが `SourcePackages not found` で止まった）
@@ -141,6 +141,50 @@
     - 消す前に、epic の作業場所（`work/epics/<epic>/repository/<リポジトリ名>`。`work/epics/<epic>/` は git の作業場所ではない）に、push していない変更や stash が残っていないかを `git -C <作業場所> status`・`git -C <作業場所> log HEAD --not --remotes`・`git -C <作業場所> stash list` で確かめる。epic の作業ブランチには upstream が無いので、`git log @{u}..` は使えない
     - 残っていれば作業ブランチに push してから消す。ただし、場所を移す前に止まった試行の、コミットしていない変更が残っていることがある。新しい場所でやり直したタスクのコミットと見比べて、中身が入っていれば push は要らない（2026-11-09、prime-pick-ios）
     - 消すのはゴミ箱に入れる（取り消せるように）。ssh 越しでは Finder を使えないので、`~/.Trash/<名前>/` に `mv` する（Finder の「戻す」は使えないので、戻すときも `mv`）。ゴミ箱に入れただけでは空き容量は増えず、ゴミ箱を空にしたとき（Finder の「30 日後にゴミ箱から削除」が有効なら 30 日後）に空く
+
+### 署名と公証
+
+司令塔・ワーカー・非常口は、どれも Developer ID Application（チーム `XU74X3434S`）で署名する。同じ識別子とチームで署名し続ければ、Keychain の項目の「常に許可」と TCC の許可が、入れ替えた後も続く（アドホック署名はビルドのたびに別のプログラムとみなされ、確認が項目の数だけ出る。[LEARNINGS.md](../../LEARNINGS.md) の「Keychain」）。実装は、署名と自分の Mac への入れ替えが #1064、公証と GitHub Releases が #1065。
+
+| 実行ファイル | 識別子 | Keychain のサービス |
+| --- | --- | --- |
+| `askhub-commander` | `jp.shilokuma.askhub.commander` | `jp.shilokuma.AskHub.commander` |
+| `askhub-worker` | `jp.shilokuma.askhub.worker` | `jp.shilokuma.AskHub.worker` |
+| `askhub`（非常口） | `jp.shilokuma.askhub.cli` | `jp.shilokuma.AskHub.cli` |
+
+- 署名は、常時オンの Mac の常駐（`jp.shilokuma.askhub.deploy`。下の「司令塔の更新」）が行う。署名の鍵は常時オンの Mac のログインキーチェーンにだけ置き、CI（GitHub の Secrets）には置かない
+  - public のリポジトリでは、Secrets を読めるワークフローが 1 つでも誘導されると、個人の名前の Developer ID で何にでも署名できるようになる。漏れたら証明書を失効させ、作り直した証明書で署名し直して、すべての Mac に配り直すことになる。今のワークフローは Environment ではなく repository の Secrets を使っていて、[security.md](security.md) の「public のリポジトリと Secrets」の決まりにまだ合っていない
+  - 司令塔は常時オンの Mac が無いと動かないので、署名をそこに頼っても、止まる理由は増えない
+  - タグからの再現できるビルドと公開のログ（build provenance）が要るようになったら、「CI が秘密なしでビルドし、常時オンの Mac が確かめてから署名する」形に移す。鍵は動かさない
+- ビルドは、鍵の無い手元の Mac で行う。`origin/develop` に入ったコミット（リリースはタグ）を一時の git worktree に取り出してビルドし、作業中の変更を入れない
+  - アーキテクチャは arm64 だけ（macOS 27 は Apple シリコンだけで、今の Mac もすべて Apple シリコン）。Intel の Mac が要るときは `--arch x86_64` を足す
+- 署名は `codesign --force --sign <Developer ID Application> --identifier <識別子> --options runtime --timestamp`。entitlement は付けない
+  - Hardened Runtime を付けても、今の動き（`Process` での claude・git・xcodebuild・simctl の起動とその孫のプロセス、Keychain の読み書き）は変わらない。JIT・DYLD の環境変数・ほかのチームのライブラリの読み込み・Apple Events を使わないため。リンク先は OS のライブラリ（`/usr/lib`・`/System/Library`）だけなので、ライブラリの検証にも当たらない（2026-11-12 に、アドホック署名に Hardened Runtime を付けて確かめた）
+  - 署名の要件（designated requirement）は識別子とチームで決まり、証明書そのものには結びつかない。証明書を作り直しても、Hardened Runtime を後から付けても、同じ識別子とチームなら Keychain の許可は続く
+  - 入れる前に、要件で確かめる: `codesign --verify --strict --test-requirement '=anchor apple generic and identifier "jp.shilokuma.askhub.worker" and certificate leaf[subject.OU] = "XU74X3434S"' <ファイル>`。`codesign --verify` は ssh のセッションでも使える（使えないのは署名だけ）
+- 公証（notarization）は、GitHub Releases に出す版だけにする
+  - Gatekeeper が確かめるのは、隔離の印（`com.apple.quarantine`）が付いたファイルだけ。ブラウザで落としたファイルには付き、`scp`・`gh release download`・`curl` で取ったファイルには付かない（2026-11-12 に確かめた）。ssh で送る自分の Mac の版は、公証しなくても動く
+  - 裸の Mach-O は staple できないので、zip（`ditto -c -k --keepParent`）にして `xcrun notarytool submit --wait` に出し、配るのもその zip にする。チケットは Apple のサーバーにあり、ブラウザで落とした zip から出したものは、初めて動かすときに Gatekeeper がネットで確かめる
+  - pkg は使わない。Developer ID Installer の証明書が別に要り、入れる先が既定でシステムの場所になり、管理者の権限が要る。dmg は staple できるが、CLI 1 つにマウントの手間が増える
+  - 公証の資格は、App Store Connect の Team の API キー（役割 Developer。Apple の文書には無くフォーラムの報告によるので、作るときに `store-credentials` で確かめる）。常時オンの Mac で `xcrun notarytool store-credentials askhub-notary --key <.p8> --key-id <id> --issuer <id>` で Keychain に置き、.p8 は置いた後に消す（APNs の鍵と同じ扱い）
+
+### 版
+
+- 版は実行ファイルに埋め込む（ビルドのときに Info.plist を `__TEXT,__info_plist` に入れる）。`git describe --tags --match 'machine-v*'` から作り、タグそのものなら `0.2.0`、その後のコミットなら `0.2.0-3-gabc1234`。埋め込んでいないビルドは `0.0.0-dev`。今は `CommanderVersion.current` が `0.1.0` の固定で、どのビルドか分からない（#1063）
+- 生きている印（`versions.worker`・`versions.commander`）・`check`・起動のログに、版とコミットを出す
+- 照らし合わせは、版の一致ではなく互換の番号（整数）で行う。共同開発者のワーカーは、司令塔を入れ替えるたびにそろえられないため
+  - 互換の番号は、司令塔とワーカーの間の決まり（ジョブの種類・入力と出力・試行の書き方・状態のファイルの形）を変えたときだけ上げる
+  - 司令塔と互換の番号が合わないワーカーは、ジョブを引き受けず（持っているジョブは手放さない）、理由を生きている印に書く。クライアントは Mac の画面と「あなたの番」に更新の手順を出す
+  - 版が違うだけ（互換の番号は同じ）なら、Mac の詳細に出すだけで、更新を急かさない
+
+### GitHub Releases
+
+共同開発者には、ask-hub-apple（public）の GitHub Releases で配る（#1065）。実行ファイルに秘密は無い（設定と秘密は各 Mac の設定のファイルと Keychain にある）ので、誰でも取れてよい。
+
+- タグは `machine-v<版>`（例 `machine-v0.2.0`）。アプリのリリースのタグ・GitHub Release と混ざらないよう接頭辞を分け、GitHub の「Latest」はアプリのリリースに残す（`--latest=false`）。取る側も Latest ではなく、`machine-v*` の一番新しいものを選ぶ
+- 1 つのリリースに、3 つの zip（`askhub-worker-<版>-macos-arm64.zip`・`askhub-commander-…`・`askhub-…`）と `SHA256SUMS` を付ける。3 つは同じパッケージから作るので、同じ版で出す
+- 出し方（手元の Mac）: `origin/develop` のコミットにタグを作って push → タグを一時の git worktree でビルド → 常時オンの Mac で署名・公証 → 戻ってきた zip を要件で確かめて `gh release create machine-v<版> --verify-tag --latest=false`。本文には、前の `machine-v*` からの変更と互換の番号を書く
+- 出すのは、共同開発者に届けたい区切り（互換の番号を上げたとき・直しを届けたいとき）だけ。自分の Mac には、リリースを待たずに develop のコミットを入れてよい（下の「ワーカーの更新」）
 
 ### 司令塔の入れ方（段階 2）
 
@@ -178,6 +222,7 @@
   3. 結果は `deploy/last.log`（最後の行が `status=ok` か `status=failed`）。手元のスクリプトがそれを待って出す
 - 最初の 1 回だけ、常時オンの Mac の画面に 2 種類の確認が出る。どちらも「常に許可」にする: `codesign` が署名の鍵を使う確認と、署名した司令塔が Keychain の項目（GitHub のトークン・Claude の setup-token・APNs の鍵）を読む確認
 - 戻すときは、常時オンの Mac で `askhub-commander.prev` を `askhub-commander` に戻して読み込み直す
+- 今の常駐は、司令塔だけを Hardened Runtime なしで署名している。Hardened Runtime を付け、ワーカーと非常口も同じ常駐で署名して手元に戻すように広げる（上の「署名と公証」。#1064）。依頼には役割を書き、識別子は表の 3 つだけを受ける。公証は GitHub Releases に出すときだけ行う（#1065）
 - Xcode を上げるときは、新しい Xcode を版の付いた名前（`/Applications/Xcode-27.1.0.app` など）で並べて入れ、動いているジョブが無いときに `askhub-commander xcode <新しい Xcode.app のパス>` で決め直してから読み込み直す。前の Xcode に戻すときも同じ。`xcode-select` は人の作業用に好きに切り替えてよい
   - `/Applications/Xcode.app` を決めると、App Store の更新で中身が入れ替わったときに、ワーカーの Xcode も知らないうちに変わる。版の付いた名前の Xcode を決める
 
@@ -185,7 +230,7 @@
 
 開始のときに人が選ぶ Mac に入れる。ログインしているユーザーが端末から流す（ssh からは Keychain を読めない）。
 
-1. `askhub-worker` を置く（ホームフォルダの下。管理者の権限は使わない）
+1. 署名した `askhub-worker` を `~/Library/Application Support/AskHub/bin/` に置く（管理者の権限は使わない）。自分の Mac には手元から送り（下の「ワーカーの更新」）、共同開発者は GitHub Releases から取る（下の「共同開発者の Mac」）
 2. `askhub-worker setup --state-repo <owner/repo> --mac <名前> --kind resident|manual --claude <claude の絶対パス> --first-key <最初の鍵の id> --key-account <GitHub のアカウント> [--github-owner <対象のリポジトリの持ち主> ...]`
    - `--kind` は、LaunchAgent で常駐できる Mac なら `resident`、できない Mac（会社の決まりで launchd に常駐させられない社用の MacBook など）なら `manual`
    - 同時の上限は `--claude-capacity`（既定 2）と `--build-capacity`（既定 1）で変えられる
@@ -201,6 +246,48 @@
 - 引き受けたジョブは、元になった人の意図の署名を確かめてから実行する。確かめられなければ実行せず、想定外の失敗として人に渡す
 - 作業場所の用意（`prepareWorkspace`）では、ワーカー専用のフォルダの clone から epic の作業場所（`work/epics/<epic>/`。ジョブを超えて残す）に作業ブランチ `askhub/<epic の id>` を取り出し、リモートに無ければ `origin/develop` から作って push する（force push しない）。リモートにあれば作り直さずに使う。作業ブランチの名前と先頭のコミットは試行の `outputs` に書く（`epic.json` は司令塔が書く）
 - git の credential helper はワーカー自身（`askhub-worker git-credential`）。トークンの選び方は司令塔と同じ
+
+### ワーカーの更新
+
+自分の Mac（ssh で届く Mac）のワーカーは、手元から遠隔で入れ替える（#1064）。
+
+1. 手元で `origin/develop` のコミットをビルドし、常時オンの Mac の常駐に `jp.shilokuma.askhub.worker` で署名させて取り戻す（常時オンの Mac には入れない）
+2. 入れる先に ssh で送り、そこで要件（上の「署名と公証」）を確かめ、前のものを `askhub-worker.prev` に残して差し替える
+3. `launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.worker` で読み込み直す。ssh のセッションからも、gui の領域の常駐を登録・読み込み直し・外せる（2026-11-12 に MacBook Pro で確かめた。ssh のセッションの中で使えないのは署名と Keychain）。ssh から読み込み直した常駐が Keychain を読めるかは、#1064 の最初の入れ替えで確かめる。読めなければ、司令塔と同じく、ログイン中のセッションの常駐に差し替えと読み込み直しを任せる
+4. ログ（`~/Library/Logs/AskHub/worker.log`）の起動の行と、次の生きている印の `versions.worker` で確かめる。`kickstart -k` の後に起動しない（`spawn scheduled` のまま。2026-10-06 に前の仕組みで起きた）ときは、`launchctl bootout` → `bootstrap` する
+
+- 入れ替えは、その Mac に動いているジョブが無いときに行う（読み込み直すと、動いているジョブの試行が止まる）
+- 常駐できない Mac（`--kind manual`）は、差し替えた後に、その Mac の人がターミナルの `run` を流し直す
+- 戻すときは、`askhub-worker.prev` を `askhub-worker` に戻して読み込み直す
+- アドホック署名のワーカーから切り替える最初の 1 回だけ、Keychain の項目ごとに確認が出る（項目を作ったのがアドホック署名のワーカーのため）。その Mac の前にいるときに入れ替え、端末で `askhub-worker check` を流して、出る確認を「常に許可」にする。常駐が読むときにも画面に出るが、誰もいないと答えられないまま止まる
+- 共同開発者の Mac は、その人が手で更新する（下の「共同開発者の Mac」）
+
+### 共同開発者の Mac
+
+共同開発者のワーカーは、その人の Mac・その人の GitHub のアカウント・その人の Claude の契約で動かす（[security.md](security.md) の「共同開発者（後から足す）」）。受け入れの仕組み（鍵と GitHub のアカウントの結びつけと書き込み権限の確認・依頼した人の Mac と契約だけでジョブを動かす割り当て・見せる範囲）ができるまでは、自分の Mac にだけ配る。
+
+| 項目 | 共同開発者の Mac での扱い |
+| --- | --- |
+| Mac | Apple シリコン・macOS 26 以上。版の付いた名前の Xcode（上の「ワーカーと司令塔の配り方」）。`claude` は司令塔と同じ版を 1 か所に入れ、自動の更新を切る |
+| GitHub のアカウント | 状態リポジトリ（private）と対象のリポジトリに書ける、共同開発者自身のアカウント。ワーカーのコミット・PR・コメントは、その人の名前で出る |
+| GitHub のトークン | 共同開発者が自分のアカウントで、持ち主ごとの fine-grained token を作る（下の「GitHub のトークン（持ち主ごと）」）。ほかの人のトークンを渡さない。organization によっては管理者の承認が要る。organization のメンバーでない人（outside collaborator）が organization を持ち主に選べるかは、受け入れの前に確かめる |
+| REST の上限 | アカウントごとに 1 時間 5,000 回なので、共同開発者のワーカーは共同開発者の枠を使い、自分の枠を減らさない。ただし、残りが少ないときの通知は、司令塔が自分のトークンで 1 分ごとに読む分だけ。共同開発者の残りは、その Mac の生きている印（10 分ごと）に出るだけなので、受け入れのときに通知の対象に足す |
+| 最初の鍵（`--first-key`） | 司令塔と同じ最初の鍵（状態リポジトリの公開鍵の記録の根。`keys/1.json`）を固定する。共同開発者の端末の鍵は、登録済みの端末で承認して記録に足す |
+| `--key-account` | 公開鍵を結びつけてよい GitHub のアカウント。最初の鍵の持ち主と共同開発者の両方を並べる（`--key-account` を重ねる）。司令塔とほかのワーカーの設定にも、共同開発者のアカウントを足す（今は `setup` を流し直すしかない） |
+| Claude | 共同開発者の契約で `claude setup-token` を作って入れる。ほかの人の依頼を、その人の契約で処理しない |
+| Mac の名前（`--mac`） | 状態リポジトリで重ならない名前にする（`<GitHub のアカウント>-<機種>` など） |
+
+入れ方（#1065 の後）:
+
+1. GitHub Releases から zip を取り、`SHA256SUMS` で照らし合わせる: `gh release download machine-v<版> -R shilokuma-inc/ask-hub-apple -p 'askhub-worker-*.zip' -p SHA256SUMS` → `shasum -a 256 -c --ignore-missing SHA256SUMS`
+2. `ditto -x -k askhub-worker-<版>-macos-arm64.zip ~/Library/Application\ Support/AskHub/bin/` で出し、上の「署名と公証」の要件で確かめる
+3. 上の「ワーカーの入れ方」の 2〜5（`setup`・起動・`xcode`・`check`）
+
+更新:
+
+- 互換の番号が司令塔と合わなくなると、ワーカーがジョブを引き受けなくなり、クライアントに出る（上の「版」）。版が違うだけなら急がない
+- `askhub-worker update [<版>]`（#1065）で、一番新しい `machine-v*`（または指定した版）を取り、SHA-256・要件・公証を確かめてから差し替える。常駐なら読み込み直し、ターミナルで流しているなら流し直しを案内する。それまでは、上の入れ方の 1・2 で差し替えて読み込み直す
+- 自動では入れ替えない。共同開発者の Mac で動くプログラムを、ほかの人の都合で黙って替えない
 
 ### GitHub のトークン（持ち主ごと）
 
