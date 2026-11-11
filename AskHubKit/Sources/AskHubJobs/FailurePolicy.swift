@@ -15,8 +15,8 @@ public enum FailureDecision: Equatable, Sendable {
 
 /// 失敗の区分ごとの既定の扱い（`docs/renewal/architecture.md` の「失敗の区分と既定の扱い」）
 public struct FailurePolicy: Sendable, Equatable {
-    /// Claude に直させる回数の上限（ビルド・テストの失敗、レビューの必須の指摘、コンフリクト）
-    public var maxFixRounds = 3
+    /// Claude に直させる回数の上限（ビルド・テストの失敗、レビューの必須の指摘、コンフリクト）。クライアントと同じ値を使う
+    public var maxFixRounds = FixTaskInput.maxAutomaticRounds
     /// ランナー不足の待ち。最初の待ちから倍にしていき、上限で止める。回数の上限は無い
     public var runnerWaitFirst: Duration = .seconds(10 * 60)
     public var runnerWaitMax: Duration = .seconds(60 * 60)
