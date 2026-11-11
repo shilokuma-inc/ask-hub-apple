@@ -101,7 +101,7 @@ struct GitHubStateSnapshot: StateStore {
     }
 }
 
-/// sha で中身が決まる Git のオブジェクト（tree の直下と blob）。メモリーにだけ持つ。
+/// sha で中身が決まる Git のオブジェクト（tree の直下と blob）。メモリーに持ち、置き場所（`directory`）を渡せば端末のファイルにも持つ（`GitObjectDiskStore`）。
 ///
 /// 書き込みのたびに、変わったファイルまでの tree が新しくなり、古いものは使われなくなる。持ちすぎないよう、2 つの世代に分けて持ち、
 /// 今の世代がいっぱいになったら前の世代を捨てる。前の世代から読んだものは今の世代に移すので、続けて使うもの（終わった epic など）は捨てられない
@@ -136,20 +136,36 @@ actor GitObjectCache {
     private var current: [Key: Object] = [:]
     private var currentSize = 0
     private var previous: [Key: Object] = [:]
+    /// 端末のファイルの持ち物。nil ならメモリーにだけ持つ
+    private var disk: GitObjectDiskStore?
 
-    init(generationCount: Int = 10_000, generationSize: Int = 32 * 1_024 * 1_024) {
+    /// `directory` を渡すと、端末のファイルにも同じ上限で持つ
+    init(generationCount: Int = 10_000, generationSize: Int = 32 * 1_024 * 1_024, directory: URL? = nil) {
         self.generationCount = generationCount
         self.generationSize = generationSize
+        disk = directory.map { GitObjectDiskStore(directory: $0, generationCount: generationCount, generationSize: generationSize) }
     }
 
     func object(for key: Key) -> Object? {
         if let object = current[key] { return object }
-        guard let object = previous.removeValue(forKey: key) else { return nil }
-        store(object, for: key)
+        if let object = previous.removeValue(forKey: key) {
+            keep(object, for: key)
+            return object
+        }
+        // メモリーに無ければ、端末のファイルから読む（起動の直後など）
+        guard let object = disk?.object(for: key) else { return nil }
+        keep(object, for: key)
         return object
     }
 
+    /// GitHub から読んだものを持つ
     func store(_ object: Object, for key: Key) {
+        keep(object, for: key)
+        disk?.store(object, for: key)
+    }
+
+    /// メモリーの今の世代に持つ
+    private func keep(_ object: Object, for key: Key) {
         // 1 つで上限を超えるものは持たない
         guard current[key] == nil, object.size <= generationSize else { return }
         if current.count >= generationCount || currentSize + object.size > generationSize {
