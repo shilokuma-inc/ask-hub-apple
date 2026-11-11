@@ -24,6 +24,15 @@
               "owner": "shilokuma-inc",
               "state": "expired",
               "expiresAt": "2026-11-01T00:00:00Z"
+            },
+            {
+              "owner": "mrs1669",
+              "state": "ok",
+              "rateLimit": {
+                "limit": 5000,
+                "remaining": 820,
+                "resetAt": "2026-11-03T10:30:00Z"
+              }
             }
           ]
         }

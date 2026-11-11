@@ -25,11 +25,14 @@ public struct SelfCheck: Codable, Equatable, Sendable {
         public var state: State
         /// GitHub の API の応答の見出し（`github-authentication-token-expiration`）で分かった期限。期限の無いトークン・まだ分からないときは nil
         public var expiresAt: Timestamp?
+        /// このトークンで読んだ REST の上限の残り。読めなかった（使えないトークン・GitHub の障害・前の版）ときは nil
+        public var rateLimit: GitHubRateLimit?
 
-        public init(owner: String, state: State, expiresAt: Timestamp? = nil) {
+        public init(owner: String, state: State, expiresAt: Timestamp? = nil, rateLimit: GitHubRateLimit? = nil) {
             self.owner = owner
             self.state = state
             self.expiresAt = expiresAt
+            self.rateLimit = rateLimit
         }
     }
 
@@ -62,11 +65,19 @@ public struct SelfCheck: Codable, Equatable, Sendable {
         self.githubTokens = githubTokens
     }
 
+    /// 持ち主ごとのトークンで読んだ REST の上限の残りのうち、一番少ないもの。読めていなければ nil
+    public var githubRateLimit: GitHubRateLimit? {
+        githubTokens?.compactMap(\.rateLimit).min { $0.remaining < $1.remaining }
+    }
+
     public var violations: [String] {
         guard let githubTokens else { return [] }
         var violations: [String] = []
         if githubTokens.contains(where: { !Self.isOwnerName($0.owner) }) { violations.append("githubTokens.owner の形が違う") }
         if Set(githubTokens.map(\.owner)).count != githubTokens.count { violations.append("githubTokens の持ち主が重なる") }
+        if githubTokens.contains(where: { $0.rateLimit.map { $0.limit < 0 || $0.remaining < 0 } == true }) {
+            violations.append("githubTokens.rateLimit の回数は 0 以上")
+        }
         return violations
     }
 
@@ -77,6 +88,33 @@ public struct SelfCheck: Codable, Equatable, Sendable {
             scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || scalar == "-")
         }
         return (1...39).contains(scalars.count) && !owner.hasPrefix("-") && scalars.allSatisfy(isAllowed)
+    }
+}
+
+/// GitHub の REST の一次の上限（`GET /rate_limit` の `resources.core`）。
+///
+/// 上限はトークンごとではなくアカウントごとに数える（同じアカウントの司令塔・アプリ・`gh` のトークンは、同じ回数を分け合う）
+public struct GitHubRateLimit: Codable, Equatable, Sendable {
+    /// 1 時間の上限（ふつうは 5,000）
+    public var limit: Int
+    /// 今の窓の残り
+    public var remaining: Int
+    /// 今の窓が終わり、`limit` に戻る時刻
+    public var resetAt: Timestamp
+
+    public init(limit: Int, remaining: Int, resetAt: Timestamp) {
+        self.limit = limit
+        self.remaining = remaining
+        self.resetAt = resetAt
+    }
+
+    /// 残りがこれを切ったら少ないとみなす（司令塔の通知・クライアントの警告と取り直しの間隔）。
+    /// 2026-11-11 の使い切りの勢い（1 分に約 180 回）でも、使い切る 5 分ほど前に気づける
+    public static let lowRemaining = 1_000
+
+    /// 残りが少ないか。戻る時刻を過ぎていれば、もう戻っているので少なくない
+    public func isLow(at now: Date) -> Bool {
+        remaining < Self.lowRemaining && now < resetAt.date
     }
 }
 
