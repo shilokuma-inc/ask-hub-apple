@@ -327,7 +327,8 @@ private struct DecisionRow: View {
 }
 
 /// 下のマージのボタンと、最終 PR を直してほしいときの指示のボタン。マージを押せないときは、何が残っているかを書く。
-/// マージの承認か指示を送ったら、すぐ送った後の形（マージしています…）にし、司令塔が受け付けるまで両方を押せなくする
+/// マージの承認か指示を送ったら、すぐ送った後の形（マージしています…）にし、司令塔が受け付けるまで両方を押せなくする。
+/// マージ済みなら、押せない「マージ済」のボタンだけを出す
 private struct MergeBar: View {
     let epicID: Epic.ID
     let review: FinalReview
@@ -341,9 +342,18 @@ private struct MergeBar: View {
         let target = IntentTarget.finalPullRequest(epicID: epicID)
         let isReflecting = store.isReflecting([target])
         VStack(spacing: 6) {
-            if case .merged(let date, let automatic) = review.state {
-                Label("\(automatic ? "自動で" : "")マージしました（\(RelativeTime.clock(date))）", systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(Theme.success)
+            if let mergedNote = review.mergedNote {
+                // マージ済みは押せない「マージ済」のボタンにし、直しの指示は出さない。自動でかどうかと時刻は下に小さく残す
+                Button {} label: {
+                    Label("マージ済", systemImage: "checkmark.seal.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+                .disabled(true)
+                Text(mergedNote)
+                    .appFont(.caption)
+                    .foregroundStyle(.secondary)
             } else {
                 HStack(spacing: 12) {
                     if let onInstruct {
