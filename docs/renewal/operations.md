@@ -183,7 +183,7 @@
 
 - タグは `machine-v<版>`（例 `machine-v0.2.0`）。アプリのリリースのタグ・GitHub Release と混ざらないよう接頭辞を分け、GitHub の「Latest」はアプリのリリースに残す（`--latest=false`）。取る側も Latest ではなく、`machine-v*` の一番新しいものを選ぶ
 - 1 つのリリースに、3 つの zip（`askhub-worker-<版>-macos-arm64.zip`・`askhub-commander-…`・`askhub-…`）と `SHA256SUMS` を付ける。3 つは同じパッケージから作るので、同じ版で出す
-- 出し方（手元の Mac）: `origin/develop` のコミットにタグを作って push → タグを一時の git worktree でビルド → 常時オンの Mac で署名・公証 → 戻ってきた zip を要件で確かめて `gh release create machine-v<版> --verify-tag --latest=false`。本文には、前の `machine-v*` からの変更と互換の番号を書く
+- 出し方（手元の Mac）: `origin/develop` のコミットにタグを作って push → タグを一時の git worktree でビルド → 常時オンの Mac で署名・公証 → 戻ってきた zip を要件で確かめる → `gh release create machine-v<版> --verify-tag --latest=false --draft <3 つの zip> SHA256SUMS` で下書きに資産を付け、4 つそろったのを確かめてから `gh release edit machine-v<版> --draft=false` で出す（上げ損ねた資産が欠けたまま出ないように）。本文には、前の `machine-v*` からの変更と互換の番号を書く
 - 出すのは、共同開発者に届けたい区切り（互換の番号を上げたとき・直しを届けたいとき）だけ。自分の Mac には、リリースを待たずに develop のコミットを入れてよい（下の「ワーカーの更新」）
 
 ### 司令塔の入れ方（段階 2）
@@ -231,6 +231,7 @@
 開始のときに人が選ぶ Mac に入れる。ログインしているユーザーが端末から流す（ssh からは Keychain を読めない）。
 
 1. 署名した `askhub-worker` を `~/Library/Application Support/AskHub/bin/` に置く（管理者の権限は使わない）。自分の Mac には手元から送り（下の「ワーカーの更新」）、共同開発者は GitHub Releases から取る（下の「共同開発者の Mac」）
+   - この場所は PATH に入っていないので、ここからのコマンドは置いた場所の絶対パスで流す（`"$HOME/Library/Application Support/AskHub/bin/askhub-worker" setup …`。パスに空白があるので引用符で囲む）。LaunchAgent の定義と git の credential helper には、ワーカーが起動した実行ファイルの絶対パスを書く
 2. `askhub-worker setup --state-repo <owner/repo> --mac <名前> --kind resident|manual --claude <claude の絶対パス> --first-key <最初の鍵の id> --key-account <GitHub のアカウント> [--github-owner <対象のリポジトリの持ち主> ...]`
    - `--kind` は、LaunchAgent で常駐できる Mac なら `resident`、できない Mac（会社の決まりで launchd に常駐させられない社用の MacBook など）なら `manual`
    - 同時の上限は `--claude-capacity`（既定 2）と `--build-capacity`（既定 1）で変えられる
@@ -280,7 +281,7 @@
 入れ方（#1065 の後）:
 
 1. GitHub Releases から zip を取り、`SHA256SUMS` で照らし合わせる: `gh release download machine-v<版> -R shilokuma-inc/ask-hub-apple -p 'askhub-worker-*.zip' -p SHA256SUMS` → `shasum -a 256 -c --ignore-missing SHA256SUMS`
-2. `ditto -x -k askhub-worker-<版>-macos-arm64.zip ~/Library/Application\ Support/AskHub/bin/` で出し、上の「署名と公証」の要件で確かめる
+2. 一時フォルダ（`mktemp -d`）に `ditto -x -k askhub-worker-<版>-macos-arm64.zip <一時フォルダ>` で出し、その中の `askhub-worker` を上の「署名と公証」の要件で確かめる。通ったら `askhub-worker` だけを `~/Library/Application Support/AskHub/bin/` に移す（zip のほかのファイルは使わない。確かめる前に `bin/` へ直接出さない）
 3. 上の「ワーカーの入れ方」の 2〜5（`setup`・起動・`xcode`・`check`）
 
 更新:
