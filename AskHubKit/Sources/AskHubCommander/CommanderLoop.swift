@@ -22,12 +22,15 @@ public actor CommanderLoop {
         /// この Mac で同時に動かす数
         public var capacity: MacFile.Capacity
         public var commanderVersion: String
+        /// 生きている印に書く互換の番号。ワーカーはこれと自分の番号を照らし合わせる
+        public var compatibility: Int
         /// 起動したときの `claude` の版。印を書くときに測れなかったら、これを書く
         public var claudeVersion: String?
 
         public init(
             capacity: MacFile.Capacity,
             commanderVersion: String,
+            compatibility: Int = MachineCompatibility.current,
             claudeVersion: String? = nil,
             pollInterval: Duration = .seconds(30),
             intentCheckInterval: Duration = .seconds(5),
@@ -36,6 +39,7 @@ public actor CommanderLoop {
         ) {
             self.capacity = capacity
             self.commanderVersion = commanderVersion
+            self.compatibility = compatibility
             self.claudeVersion = claudeVersion
             self.pollInterval = pollInterval
             self.intentCheckInterval = intentCheckInterval
@@ -316,10 +320,13 @@ public actor CommanderLoop {
         let commander = CommanderFile(
             mac: context.mac,
             seenAt: time,
-            versions: .init(commander: settings.commanderVersion, claude: claude),
+            versions: .init(commander: settings.commanderVersion, compatibility: settings.compatibility, claude: claude),
             selfCheck: machine.selfCheck
         )
-        let versions = MacFile.Versions(worker: settings.commanderVersion, claude: claude, xcode: machine.xcodeVersion)
+        // 常時オンの Mac のワーカーは司令塔と同じ実行ファイルなので、互換の番号はいつも合う
+        let versions = MacFile.Versions(
+            worker: settings.commanderVersion, compatibility: settings.compatibility, claude: claude, xcode: machine.xcodeVersion
+        )
         let mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
         try await context.put(commander, at: StatePath.commander, message: "司令塔の生きている印")
         try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
