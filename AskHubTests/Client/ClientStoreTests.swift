@@ -351,3 +351,69 @@ struct ClientStoreTests {
         #expect(store.rejections.isEmpty)
     }
 }
+
+// MARK: - 取り直しの間隔
+
+extension ClientStoreTests {
+    /// GitHub の上限に当たったら、言われた時刻まで自動の取り直しを休み、戻る時刻を出す
+    @Test
+    func pausesAutoRefreshUntilRateLimitResets() async throws {
+        let clock = Clock(now)
+        let service = FakeService()
+        service.snapshot = DemoScenario.standard.snapshot(now: now)
+        let store = ClientStore(service: service) { clock.now }
+        await store.refresh()
+        service.fetchError = ClientServiceError(message: "GitHub の上限に達しました", retryAfter: .seconds(600))
+        await store.refresh()
+        let ended = try #require(store.lastRefreshEndedAt)
+        let until = now.addingTimeInterval(600)
+        #expect(store.refreshPausedUntil == until)
+        #expect(store.isRefreshPaused)
+        #expect(store.refreshFailure == "GitHub の上限に当たりました。\(RelativeTime.clock(until)) に戻ります")
+        // 間隔（60 秒）が空いても、戻る時刻まで待つ。もう一度読むボタンは出さない
+        #expect(store.delayBeforeAutoRefresh(relaxed: false, at: ended + .seconds(60)) == .seconds(600))
+        let status = ConnectionStatusView.status(store: store)
+        #expect(status.title == "GitHub の上限に当たりました")
+        #expect(status.detail == "\(RelativeTime.clock(until)) に戻ります。\(RelativeTime.clock(now)) の内容です")
+        #expect(!status.offersRetry)
+
+        // 戻ったら読み、読めたら休みを解く
+        clock.now = until
+        #expect(!store.isRefreshPaused)
+        #expect(store.delayBeforeAutoRefresh(relaxed: false, at: ended + .seconds(60)) == .zero)
+        service.fetchError = nil
+        await store.refresh()
+        #expect(store.refreshPausedUntil == nil)
+        #expect(store.refreshFailure == nil)
+    }
+
+    /// 一度も読めないうちに上限に当たっても、戻る時刻を出す
+    @Test
+    func showsResetTimeWhenRateLimitedBeforeFirstLoad() async {
+        let service = FakeService()
+        service.fetchError = ClientServiceError(message: "GitHub の上限に達しました", retryAfter: .seconds(90))
+        let store = ClientStore(service: service) { now }
+        await store.refresh()
+        let until = now.addingTimeInterval(90)
+        #expect(store.phase == .failed("GitHub の上限に当たりました。\(RelativeTime.clock(until)) に戻ります"))
+        #expect(ConnectionStatusView.status(store: store).title == "GitHub の上限に当たりました")
+    }
+
+    /// 前の読み込みを終えてから間隔を空ける。Mac で前面でないときは 2 分に延ばす（時計が止まっていても、経過時間で回る）
+    @Test
+    func relaxesAutoRefreshWhenNotFrontmost() async throws {
+        let service = FakeService()
+        service.snapshot = DemoScenario.standard.snapshot(now: now)
+        let store = ClientStore(service: service) { now }
+        // まだ読んでいなければ、すぐ読む
+        #expect(store.delayBeforeAutoRefresh(relaxed: true) == .zero)
+        await store.refresh()
+        let ended = try #require(store.lastRefreshEndedAt)
+        #expect(store.delayBeforeAutoRefresh(relaxed: false, at: ended) == .seconds(60))
+        #expect(store.delayBeforeAutoRefresh(relaxed: true, at: ended) == ClientStore.relaxedRefreshInterval)
+        // 前面に戻って回し直しても、間隔が空いていなければすぐには読まない
+        #expect(store.delayBeforeAutoRefresh(relaxed: false, at: ended + .seconds(50)) == .seconds(10))
+        #expect(store.delayBeforeAutoRefresh(relaxed: false, at: ended + .seconds(70)) == .seconds(-10))
+        #expect(store.delayBeforeAutoRefresh(relaxed: true, at: ended + .seconds(70)) == .seconds(50))
+    }
+}
