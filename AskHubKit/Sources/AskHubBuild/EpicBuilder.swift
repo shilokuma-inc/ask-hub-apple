@@ -44,8 +44,9 @@ public struct BuildMachine: Sendable {
 ///
 /// 設定の行き先を並べた順に流し、最初に失敗した行き先で止める（Claude に早く直させるため）。
 /// Simulator の行き先は、枠 `slot` の Simulator を用意（無ければ作って起動）してから流す。テストの前は、起動していた Simulator を
-/// 止めてから起動し直す（前の回の UI テストが横向きにしたまま残さない。`SimulatorPool.prepare`）。アプリかテストの実行役を起動できなかったら
-/// （`BuildOutcome.launchFailed`）、Simulator を消去して起動し直し、1 回だけ流し直す。同じ枠を同時に使わないのは呼ぶ側が守る
+/// 止めてから起動し直し、外観をライトに戻す（前の回の UI テストが横向き・ダークにしたまま残さない。`SimulatorPool.prepare`）。
+/// アプリかテストの実行役を起動できなかったら（`BuildOutcome.launchFailed`）、Simulator を消去して起動し直し、1 回だけ流し直す。
+/// 同じ枠を同時に使わないのは呼ぶ側が守る
 public struct EpicBuilder: Sendable {
     public var machine: BuildMachine
     public var settings: BuildSettings

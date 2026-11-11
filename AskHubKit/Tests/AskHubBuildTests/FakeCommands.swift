@@ -71,7 +71,7 @@ final class FakeXcodebuild: Sendable {
     private var latest: Run { runs[min(max(runCount, 1), runs.count) - 1] }
 }
 
-/// `xcrun simctl` の振る舞いをまねる（一覧・作成・起動・停止・消去・削除と、SDK の版）
+/// `xcrun simctl` の振る舞いをまねる（一覧・作成・起動・停止・消去・削除・外観と、SDK の版）
 final class FakeSimctl: Sendable {
     struct Device: Equatable, Sendable {
         var udid: String
@@ -80,6 +80,8 @@ final class FakeSimctl: Sendable {
         var deviceType: String
         var state = "Shutdown"
         var isAvailable = true
+        /// `simctl ui <UDID> appearance` が返すもの（`light`・`dark`・`unsupported`）。止めても消去するまで残る
+        var appearance = "light"
     }
 
     static let iOS265 = "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
@@ -98,6 +100,8 @@ final class FakeSimctl: Sendable {
     private let eraseResult: CommandResult?
     /// 起動しているものの停止（`shutdown`）の結果を差し替える
     private let shutdownResult: CommandResult?
+    /// 外観の設定（`ui <UDID> appearance light`）の結果を差し替える
+    private let appearanceResult: CommandResult?
     let sdkVersion: String
 
     init(
@@ -105,13 +109,15 @@ final class FakeSimctl: Sendable {
         sdkVersion: String = "27.0",
         bootResult: CommandResult? = nil,
         eraseResult: CommandResult? = nil,
-        shutdownResult: CommandResult? = nil
+        shutdownResult: CommandResult? = nil,
+        appearanceResult: CommandResult? = nil
     ) {
         self.devices = OSAllocatedUnfairLock(initialState: devices)
         self.sdkVersion = sdkVersion
         self.bootResult = bootResult
         self.eraseResult = eraseResult
         self.shutdownResult = shutdownResult
+        self.appearanceResult = appearanceResult
     }
 
     var current: [Device] { devices.withLock { $0 } }
@@ -125,21 +131,47 @@ final class FakeSimctl: Sendable {
         case "list": return .output(listJSON())
         case "create": return create(name: arguments[2], deviceType: arguments[3], runtime: arguments[4])
         case "bootstatus": return bootResult ?? update(udid) { $0.state = "Booted" }
-        case "shutdown":
-            guard current.first(where: { $0.udid == udid })?.state != "Shutdown" else {
-                return .failure(
-                    149,
-                    "An error was encountered processing the command (domain=com.apple.CoreSimulator.SimError, code=405):\n"
-                        + "Unable to shutdown device in current state: Shutdown"
-                )
-            }
-            return shutdownResult ?? update(udid) { $0.state = "Shutdown" }
-        case "erase": return eraseResult ?? update(udid) { _ in }
+        case "shutdown": return shutdown(udid)
+        // 消去すると、外観も作ったときのもの（ライト）に戻る
+        case "erase": return eraseResult ?? update(udid) { $0.appearance = $0.appearance == "dark" ? "light" : $0.appearance }
+        case "ui": return ui(udid, Array(arguments.dropFirst(3)))
         case "delete":
             devices.withLock { $0.removeAll { $0.udid == udid } }
             return .output("")
         default: return .failure(64, "unknown subcommand")
         }
+    }
+
+    private func shutdown(_ udid: String) -> CommandResult {
+        guard current.first(where: { $0.udid == udid })?.state != "Shutdown" else {
+            return .failure(
+                149,
+                "An error was encountered processing the command (domain=com.apple.CoreSimulator.SimError, code=405):\n"
+                    + "Unable to shutdown device in current state: Shutdown"
+            )
+        }
+        return shutdownResult ?? update(udid) { $0.state = "Shutdown" }
+    }
+
+    /// `ui <UDID> appearance [light|dark]`。止まっているものの外観は読めず（`unknown`）、変えられない
+    private func ui(_ udid: String, _ arguments: [String]) -> CommandResult {
+        guard arguments.first == "appearance", let device = current.first(where: { $0.udid == udid }) else {
+            return .failure(64, "unknown")
+        }
+        // 値が無ければ読む
+        guard let appearance = arguments.dropFirst().first else {
+            return .output((device.state == "Booted" ? device.appearance : "unknown") + "\n")
+        }
+        if let appearanceResult { return appearanceResult }
+        guard device.state == "Booted" else {
+            return .failure(
+                149,
+                "An error was encountered processing the command (domain=com.apple.CoreSimulator.SimError, code=405):\n"
+                    + "Unable to lookup in current state: \(device.state)"
+            )
+        }
+        guard device.appearance != "unsupported" else { return .failure(1, "unsupported") }
+        return update(udid) { $0.appearance = appearance }
     }
 
     private func create(name: String, deviceType: String, runtime: String) -> CommandResult {

@@ -424,6 +424,9 @@
   （ログに `Interface orientation changed to Landscape Right`）。`simctl` には向きを読む・変えるコマンドが無く（Xcode 26.6・27.1）、`simctl io <UDID> screenshot` も横向きのときに縦長の画像（1206×2622）を返すので、
   外から向きを確かめられない。`simctl shutdown` → `simctl bootstatus <UDID> -b` で縦向きに戻る（手元の iOS 26.5 で 13〜22 秒）。外観（`simctl ui <UDID> appearance dark`）は起動し直しても戻らない。
   ワーカーはテストと撮影の前に、起動していた枠の Simulator を止めてから起動し直す（2026-11-11、#1027）
+- Simulator の外観（`simctl ui <UDID> appearance`）は、止めて起動し直してもダークのまま残り、消去（`simctl erase`）するとライトに戻る。止まっている Simulator では、読むと `unknown`（終了コード 0）、
+  変えると `Unable to lookup in current state: Shutdown`（終了コード 149）になるので、起動してから読み書きする。visionOS 26.5 の Simulator も `light`・`dark` を読み書きできる（`unsupported` ではない）。
+  読み書きの時間は `simctl getenv` などほかの `simctl` 1 回と同じくらい（手元の Xcode 26.6・iOS 26.5）。ワーカーはテストと撮影の前に、起動し直した後で外観を読み、`dark` ならライトに戻す（2026-11-12、#1045）
 - SSH で入った Mac（macOS 27 の Mac mini など）では、画面収録の許可が無く `screencapture` が「could not create image from display」で撮れない。
   アプリが自分の窓を撮るなら許可は要らないので、DEBUG の起動引数 `-demoSnapshot <名前>`（`-demoWindowSize 1240x820`・`-demoAppearance dark`・`-demoPress "ボタンの名前"`・`-demoSettings YES`）で
   コンテナの tmp（`~/Library/Containers/jp.shilokuma.AskHub/Data/tmp/`）に窓ごとの PNG を書く（`DemoWindowSnapshot`）。ビルドした .app を `rsync` で送り、`ssh <Mac> open -g -n <.app> --args …` で起動する。
