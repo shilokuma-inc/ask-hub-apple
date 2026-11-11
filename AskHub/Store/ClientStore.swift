@@ -132,6 +132,11 @@ final class ClientStore {
         }
     }
 
+    /// 対象のアプリのアイコンの中身。読めなければ nil（頭文字のまま出す）
+    func appIcon(at path: String, version: String) async -> Data? {
+        try? await service.appIcon(at: path, version: version)
+    }
+
     // MARK: 読む
 
     /// 読み直す。司令塔が受け付けた意図を見つけたら、状態が反映されるよう、続けてもう一度読む

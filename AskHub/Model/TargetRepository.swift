@@ -54,10 +54,12 @@ struct RepositoryOwnerGroup: Identifiable, Hashable {
     }
 }
 
-/// アプリのアイコン。対象に加えるときとアイコンが変わったときに、司令塔かワーカーが画像を取り出して状態リポジトリに置く想定
+/// アプリのアイコンと、持ち主のアバター。アプリのアイコンは、司令塔が対象のリポジトリから取り出して状態リポジトリに置く（`repo.json` の `icon`）
 enum RepositoryIcon: Hashable {
-    /// 状態リポジトリに置いた画像
+    /// URL でそのまま読める画像（GitHub の持ち主のアバター）
     case image(URL)
+    /// 司令塔が状態リポジトリに置いた画像（`path`）。`version` は画像の git の blob の sha で、端末にしまっておく鍵にする
+    case stored(path: String, version: String)
     /// デモのデータ用に描くアイコン（SF Symbols と色）
     case symbol(String, IconTint)
     /// 画像がまだ無い。アプリ名の頭文字で代わりのアイコンを描く

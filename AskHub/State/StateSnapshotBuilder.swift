@@ -114,11 +114,18 @@ struct StateSnapshotBuilder {
     // MARK: リポジトリ
 
     private func repository(_ file: RepositoryFile, epics: [Epic], index: inout StateIndex) -> TargetRepository {
-        let repository = Self.repository(file.repo)
+        var repository = Self.repository(file.repo)
         index.repositories[repository.id] = file.repo
-        var lastMac = repository
-        lastMac.lastMacID = epics.filter { $0.repositoryID == repository.id && $0.macID != nil }.max { $0.updatedAt < $1.updatedAt }?.macID
-        return lastMac
+        repository.icon = Self.appIcon(of: file)
+        repository.lastMacID = epics.filter { $0.repositoryID == repository.id && $0.macID != nil }
+            .max { $0.updatedAt < $1.updatedAt }?.macID
+        return repository
+    }
+
+    /// 司令塔が置いたアプリのアイコン。まだ無ければ頭文字
+    static func appIcon(of file: RepositoryFile) -> RepositoryIcon {
+        guard let icon = file.icon else { return .monogram }
+        return .stored(path: StatePath.appIcon(file.repo), version: icon.image)
     }
 
     static func repository(_ repo: RepositoryFullName) -> TargetRepository {

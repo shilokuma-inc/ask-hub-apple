@@ -34,6 +34,33 @@ public struct RepositoryFile: StateFile {
         }
     }
 
+    /// 対象のアプリのアイコン（画像は `StatePath.appIcon`）。司令塔が、対象のリポジトリの既定のブランチから取り出して書く
+    public struct AppIcon: Codable, Equatable, Sendable {
+        /// 取り出した元（Icon Composer の `.icon` か、Asset Catalog の `.appiconset` のフォルダ）の、リポジトリの直下からのパス
+        public var source: String
+        /// 元のフォルダの git の tree の sha。変わったときだけ書き出し直す
+        public var sourceTree: String
+        /// 書いた画像（PNG）の git の blob の sha。クライアントは、これを鍵に画像をしまっておく
+        public var image: String
+        public var updatedAt: Timestamp
+
+        public init(source: String, sourceTree: String, image: String, updatedAt: Timestamp) {
+            self.source = source
+            self.sourceTree = sourceTree
+            self.image = image
+            self.updatedAt = updatedAt
+        }
+
+        var problems: [String] {
+            var problems: [String] = []
+            if source.isEmpty || source.utf8.count > 1_000 { problems.append("icon.source は空でなく、1000 バイトまで") }
+            // git の tree と blob の sha は、コミットと同じ 40 桁の 16 進
+            if !AttemptFile.isCommitSHA(sourceTree) { problems.append("icon.sourceTree の形が違う") }
+            if !AttemptFile.isCommitSHA(image) { problems.append("icon.image の形が違う") }
+            return problems
+        }
+    }
+
     public var repo: RepositoryFullName
     public var platform: RepositoryPlatform
     /// 同時に回す epic の上限（最初の版は 1）
@@ -43,6 +70,8 @@ public struct RepositoryFile: StateFile {
     public var protection: Protection
     /// ビルドの設定。人が入れる前は nil（開始を断る）
     public var build: Build?
+    /// 対象のアプリのアイコン。まだ取り出していない・見つからないなら nil（クライアントは頭文字を出す）
+    public var icon: AppIcon?
     public var addedAt: Timestamp
 
     public init(
@@ -52,6 +81,7 @@ public struct RepositoryFile: StateFile {
         appKit: AppKit? = nil,
         protection: Protection = Protection(),
         build: Build? = nil,
+        icon: AppIcon? = nil,
         addedAt: Timestamp
     ) {
         self.repo = repo
@@ -60,6 +90,7 @@ public struct RepositoryFile: StateFile {
         self.appKit = appKit
         self.protection = protection
         self.build = build
+        self.icon = icon
         self.addedAt = addedAt
     }
 
@@ -68,6 +99,7 @@ public struct RepositoryFile: StateFile {
         if maxConcurrentEpics < 1 { violations.append("maxConcurrentEpics は 1 以上") }
         if let appKit, appKit.ref.isEmpty { violations.append("appKit.ref が空") }
         violations += build?.problems ?? []
+        violations += icon?.problems ?? []
         return violations
     }
 }

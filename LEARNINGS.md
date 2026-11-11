@@ -420,6 +420,12 @@
 - `askhub-commander`・`askhub-worker` の置き場所（`MachinePaths`）は `FileManager.default.homeDirectoryForCurrentUser` から作り、環境変数 `HOME` を差し替えても本当のホームフォルダの
   `~/Library/Application Support/AskHub/<役割>/config.json` を読み書きする。手元で設定を書き換えるコマンドを試すときは、実行ファイルを流さず、テストで
   `MachineCommandLine(role:executable:home:)` に一時フォルダを渡す。失敗の道は `exit` するので、設定の `kind` と役割が合わない（常時オンの設定をワーカーで読む）とテストのプロセスごと終わる（2026-11-11、#1015）
+- Icon Composer の `.icon` を PNG に書き出せるのは `Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool`（`--export-image --platform iOS --rendition Default --width --height --scale`）。
+  `xcrun ictool` が見つける `Contents/Developer/usr/bin/ictool` は Asset Catalog 用の別のもので、`--export-image` を「Unknown argument」（actool の形の plist）で断る。
+  書き出した PNG は角が透明の角丸で、iOS 26 のガラスの質感が入る（256px で 200 KB ほど）（2026-11-12、#1033）
+- `git ls-tree -r -d <コミット>` は tree だけを下の階層まで並べる（ファイルを並べないので、大きなリポジトリでも出力が小さい）。`-z` ならパスを引用符で囲まずに NUL で区切る。
+  `--filter=blob:none` の partial clone でも tree は手元にあるので、`ls-tree -r -d` は通信しない。`ls-tree -l`（大きさ）と `cat-file blob` は、無い blob をその場で 1 つずつ取りに行く（2026-11-12、#1033）
+- `xcrun devicectl device capture screenshot --device <名前か UDID> --destination <PNG>` で、つないだ実機の画面を撮れる（Xcode 26.6）（2026-11-12、#1033）
 - UI テストが変えた Simulator の端末の向き（`XCUIDevice.shared.orientation`）は、Simulator を起動している間ずっと残り、次の `xcodebuild test` は横向きのまま始まる
   （ログに `Interface orientation changed to Landscape Right`）。`simctl` には向きを読む・変えるコマンドが無く（Xcode 26.6・27.1）、`simctl io <UDID> screenshot` も横向きのときに縦長の画像（1206×2622）を返すので、
   外から向きを確かめられない。`simctl shutdown` → `simctl bootstatus <UDID> -b` で縦向きに戻る（手元の iOS 26.5 で 13〜22 秒）。外観（`simctl ui <UDID> appearance dark`）は起動し直しても戻らない。
