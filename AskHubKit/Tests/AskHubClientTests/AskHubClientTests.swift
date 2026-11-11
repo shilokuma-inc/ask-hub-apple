@@ -142,6 +142,27 @@ struct AskHubClientTests {
         #expect(try HumanTaskDoneIntent(envelope: envelope(.humanTaskDone(humanTask, file: file))).file == file)
     }
 
+    /// 試行の前に人に渡したジョブ（直しの上限を超えた直し）には、試行の番号 0 を付けて送り、司令塔がそのまま読める
+    @Test func jobDraftsForUntriedJobAreRead() throws {
+        let key = try key()
+        func envelope(_ draft: IntentDraft) -> IntentEnvelope {
+            #expect(draft.targetVersion == "0")
+            return IntentEnvelope(
+                kind: draft.kind,
+                repo: draft.repo,
+                target: draft.target,
+                targetVersion: draft.targetVersion,
+                payload: draft.payload,
+                issuedAt: Timestamp(Self.now),
+                nonce: ULID.generate(at: Self.now),
+                keyId: key.keyID
+            )
+        }
+        let job = JobTarget(repo: Self.repo, epic: ULID.generate(at: Self.now), job: ULID.generate(at: Self.now), attempt: 0)
+        #expect(try RetryJobIntent(envelope: envelope(.retry(job))).target == job)
+        #expect(try GiveUpJobIntent(envelope: envelope(.giveUp(job))).target == job)
+    }
+
     /// 一時停止・再開・引き継ぎは、版を付けずに epic を対象にする
     @Test func pauseDraftsAreReadAsTheirKinds() throws {
         let key = try key()
