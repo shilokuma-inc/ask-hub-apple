@@ -39,6 +39,8 @@ enum AppRoute: Hashable {
     case mac(Mac.ID)
     case cleanup(Mac.ID)
     case repository(TargetRepository.ID)
+    /// 終わったもの（マージした・やめた epic）をすべて。進行中には新しいものだけを出す
+    case finishedEpics
 }
 
 /// 判断のカードを、どの範囲で流すか
