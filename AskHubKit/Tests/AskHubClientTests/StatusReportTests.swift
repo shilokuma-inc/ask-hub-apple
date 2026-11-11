@@ -81,6 +81,17 @@ struct StatusReportTests {
         #expect(report.contains("人の対応待ちのジョブ implementTask \(Self.waiting.rawValue)（試行 1）"))
     }
 
+    @Test func showsWaitingJobHandedOverBeforeAnyAttempt() async throws {
+        // 直しの回数が上限を超えたジョブは、試行の前に人に渡される（試行の番号は 0 で、試行のファイルは無い）
+        var files = try Self.files()
+        var fix = Self.job(Self.waiting, state: .waitingHuman)
+        fix.attempts = 0
+        files[StatePath.job(Self.repo, epic: Self.epic, job: Self.waiting)] = try StateFileCoder.encode(fix)
+        let report = try await StatusReport.render(InMemoryStateStore(files: files), repository: Self.repo, device: Self.device)
+        #expect(report.contains("人の対応待ちのジョブ implementTask \(Self.waiting.rawValue)（試行 0）"))
+        #expect(!report.contains("失敗:"))
+    }
+
     @Test func rereadingUnchangedStateSendsOnlyRootListing() async throws {
         let github = FakeGitHubState(files: try Self.files())
         let store = GitHubContentsStore(repository: FakeGitHubState.repository, transport: github, budget: nil) { "test-token-not-real" }
