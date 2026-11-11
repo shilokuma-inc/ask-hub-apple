@@ -101,6 +101,7 @@ extension InboxItem.Kind {
         case .macOffline: "wifi.slash"
         case .token: "key.fill"
         case .claudeVersion: "arrow.trianglehead.2.clockwise"
+        case .compatibility: "arrow.up.circle.fill"
         case .finalReview: "arrow.triangle.merge"
         case .verification: "iphone"
         case .cleanup: "trash.fill"
@@ -117,6 +118,7 @@ extension InboxItem.Kind {
         case .macOffline: Theme.Tone.slate
         case .token: Theme.Tone.butter
         case .claudeVersion: Theme.Tone.slate
+        case .compatibility: Theme.Tone.rose
         case .finalReview: Theme.Tone.lavender
         case .verification: Theme.Tone.aqua
         case .cleanup: Theme.Tone.butter

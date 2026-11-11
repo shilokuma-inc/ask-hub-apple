@@ -5,7 +5,7 @@ import AskHubStateStore
 import Foundation
 import Testing
 
-/// Mac のトークンの期限（残り日数・入れ直しの知らせ・止まっていること）と、Claude Code の版のずれ
+/// Mac のトークンの期限（残り日数・入れ直しの知らせ・止まっていること）と、Claude Code の版・互換の番号のずれ
 @MainActor
 struct MacNoticeTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -86,7 +86,93 @@ struct MacNoticeTests {
         #expect(!InboxBuilder.items(from: offline, now: now).contains { $0.kind == .claudeVersion })
     }
 
+    /// 互換の番号が司令塔と合わないオンラインの Mac は、更新の手順とともに進行を止めるものとして出す。版が違うだけなら出さない
+    @Test
+    func incompatibleMacAsksForUpdate() throws {
+        var snapshot = snapshot
+        snapshot.updateMac(DemoData.macBookProID) { mac in
+            mac.compatibility = 1
+            mac.incompatibility = Mac.Incompatibility(commanderCompatibility: 2, message: nil)
+        }
+        let item = try #require(InboxBuilder.items(from: snapshot, now: now).first { $0.kind == .compatibility })
+        #expect(item.id == "mac/\(DemoData.macBookProID)/compatibility")
+        #expect(item.urgency == .blocking)
+        #expect(item.title == "ワーカーを更新する")
+        let reload = "launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.worker"
+        #expect(item.detail == "互換の番号が合いません（この Mac は 1、司令塔は 2） · \(reload)")
+        #expect(item.route == .mac(DemoData.macBookProID))
+
+        // ワーカーのほうが新しければ、司令塔を更新する
+        snapshot.updateMac(DemoData.macBookProID) { $0.compatibility = 3 }
+        let newer = try #require(InboxBuilder.items(from: snapshot, now: now).first { $0.kind == .compatibility })
+        #expect(newer.title == "司令塔を更新する")
+        #expect(newer.detail == "互換の番号が合いません（この Mac は 3、司令塔は 2） · scripts/commander/deploy.sh")
+
+        // 常駐できない Mac は run を流し直す。オフラインの Mac は戻ってから更新するので出さない
+        snapshot.updateMac(DemoData.macBookAirID) { mac in
+            mac.compatibility = 1
+            mac.incompatibility = Mac.Incompatibility(commanderCompatibility: 2, message: nil)
+        }
+        let manualID = "mac/\(DemoData.macBookAirID)/compatibility"
+        #expect(!InboxBuilder.items(from: snapshot, now: now).contains { $0.id == manualID })
+        snapshot.updateMac(DemoData.macBookAirID) { $0.connection = .online(lastSeen: now) }
+        let manual = try #require(InboxBuilder.items(from: snapshot, now: now).first { $0.id == manualID })
+        #expect(manual.detail.hasSuffix(" · askhub-worker run"))
+
+        var versionOnly = self.snapshot
+        versionOnly.updateMac(DemoData.macBookProID) { $0.commanderVersion = "0.3.0" }
+        #expect(!InboxBuilder.items(from: versionOnly, now: now).contains { $0.kind == .compatibility })
+    }
+
     // MARK: 状態リポジトリから
+
+    /// 互換の番号が司令塔と違う・ワーカーが引き受けない理由を書いた Mac を、合わない Mac にする。版が違うだけなら、司令塔の版を添えるだけにする
+    @Test
+    func buildsCompatibilityFromHeartbeats() async throws {
+        let selfCheck = #"{"checkedAt":"2027-01-15T07:50:00Z","keychain":"ok","githubToken":"ok","claudeToken":"ok"}"#
+        let refusal = "司令塔の互換の番号は 2、このワーカーは 1。ワーカーを更新するまで新しいジョブを引き受けない"
+        let files = [
+            "commander.json": """
+            {"v":1,"mac":"mac-mini","seenAt":"2027-01-15T07:50:00Z","versions":{"commander":"0.3.0","compatibility":2},
+             "selfCheck":\(selfCheck)}
+            """,
+            "macs/mac-mini.json": heartbeat(mac: "mac-mini", kind: "alwaysOn", versions: #"{"worker":"0.3.0","compatibility":2}"#),
+            "macs/macbook-a.json": heartbeat(
+                mac: "macbook-a",
+                kind: "resident",
+                versions: #"{"worker":"0.2.0","compatibility":1}"#,
+                extra: #","refusal":{"reason":"incompatible","message":"\#(refusal)"}"#
+            ),
+            "macs/macbook-b.json": heartbeat(mac: "macbook-b", kind: "manual", versions: #"{"worker":"0.2.9","compatibility":2}"#),
+            "macs/macbook-c.json": heartbeat(mac: "macbook-c", kind: "resident", versions: #"{"worker":"1.0.0"}"#)
+        ]
+        let store = InMemoryStateStore(files: files.mapValues { Data($0.utf8) })
+        let key = try DeviceSigningKey.loadOrCreate(in: InMemorySecretStore(), useSecureEnclave: false)
+        let now = now
+        let snapshot = try await StateClientService(store: store, key: key) { now }.fetchSnapshot()
+        #expect(snapshot.sourceFailures.isEmpty)
+
+        let mini = try #require(snapshot.mac("mac-mini"))
+        #expect(mini.compatibility == 2)
+        #expect(mini.incompatibility == nil)
+        #expect(mini.commanderVersion == nil)
+
+        let older = try #require(snapshot.mac("macbook-a"))
+        #expect(older.incompatibility == Mac.Incompatibility(commanderCompatibility: 2, message: refusal))
+        #expect(older.refusalReason == "司令塔と互換の番号が合わず、新しいジョブを引き受けていません")
+        #expect(older.compatibilityText == "この Mac は 1、司令塔は 2")
+        #expect(older.commanderVersion == "0.3.0")
+
+        let versionOnly = try #require(snapshot.mac("macbook-b"))
+        #expect(versionOnly.incompatibility == nil)
+        #expect(versionOnly.refusalReason == nil)
+        #expect(versionOnly.commanderVersion == "0.3.0")
+
+        // 互換の番号を書かない（前の版の）Mac は、引き受けない理由を書いていなければ照らし合わせない
+        let previous = try #require(snapshot.mac("macbook-c"))
+        #expect(previous.compatibility == nil)
+        #expect(previous.incompatibility == nil)
+    }
 
     /// 生きている印の自己診断から、持ち主ごとのトークンの期限と Claude Code の版のずれを組み立てる
     @Test
@@ -168,6 +254,14 @@ struct MacNoticeTests {
         low.remaining = 999
         #expect(low.isLow(now: now))
         #expect(!low.isLow(now: resetAt))
+    }
+
+    private func heartbeat(mac: String, kind: String, versions: String, extra: String = "") -> String {
+        """
+        {"v":1,"mac":"\(mac)","kind":"\(kind)","seenAt":"2027-01-15T07:50:00Z","versions":\(versions),
+         "diskFreeGB":120,"load":0.5,"capacity":{"claude":2,"build":1},
+         "selfCheck":{"checkedAt":"2027-01-15T07:50:00Z","keychain":"ok","githubToken":"ok","claudeToken":"ok"}\(extra)}
+        """
     }
 
     private func heartbeat(mac: String, kind: String, claude: String, selfCheck: String) -> String {

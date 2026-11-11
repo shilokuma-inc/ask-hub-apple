@@ -15,9 +15,13 @@ struct MacDetailView: View {
                         LabeledContent("機種", value: mac.model)
                     }
                     LabeledContent("動き方", value: residency(mac.residency))
-                    LabeledContent("版", value: mac.version + (mac.versionMatches ? "" : "（司令塔と合いません）"))
+                    LabeledContent("版", value: mac.version + (mac.commanderVersion.map { "（司令塔は \($0)）" } ?? ""))
+                    LabeledContent("互換の番号", value: mac.compatibility.map(String.init) ?? "分かりません")
                     claudeVersionRow(mac)
                     LabeledContent("Xcode", value: mac.xcodeVersion ?? "分かりません")
+                }
+                if let incompatibility = mac.incompatibility {
+                    updateSection(mac, incompatibility: incompatibility)
                 }
                 CardSection("持っているジョブ") {
                     if mac.jobs.isEmpty {
@@ -66,6 +70,31 @@ struct MacDetailView: View {
             .navigationTitle(mac.name)
         } else {
             ContentUnavailableView("この Mac は見つかりません", systemImage: "laptopcomputer.slash")
+        }
+    }
+
+    /// 司令塔と互換の番号が合わないときの、更新の手順。版が違うだけ（互換の番号が合う）なら出さない
+    private func updateSection(_ mac: Mac, incompatibility: Mac.Incompatibility) -> some View {
+        CardSection {
+            Label(mac.compatibilityText, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(Theme.warning)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(mac.updateStep)
+                Text(mac.updateCommand)
+                    .appFont(.caption)
+                    .monospaced()
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            if let message = incompatibility.message {
+                Text(message)
+                    .appFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text(mac.updatesCommander ? "司令塔の更新" : "ワーカーの更新")
+        } footer: {
+            Text("互換の番号が合うまで、この Mac は新しいジョブを引き受けません。持っているジョブは最後まで動かします")
         }
     }
 
