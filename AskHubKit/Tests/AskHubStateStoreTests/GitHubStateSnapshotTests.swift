@@ -9,8 +9,19 @@ struct GitHubStateSnapshotTests {
     private static let mac = Data(#"{"v":1,"mac":"mac-mini"}"#.utf8)
     private static let version = Data(#"{"v":1}"#.utf8)
 
-    private func store(_ transport: StubTransport, branch: String? = nil) -> GitHubContentsStore {
-        GitHubContentsStore(repository: Self.repository, branch: branch, transport: transport, budget: nil) { "test-token-not-real" }
+    private func store(_ transport: StubTransport, branch: String? = nil, objectsDirectory: URL? = nil) -> GitHubContentsStore {
+        GitHubContentsStore(
+            repository: Self.repository,
+            branch: branch,
+            transport: transport,
+            budget: nil,
+            objectsDirectory: objectsDirectory
+        ) { "test-token-not-real" }
+    }
+
+    /// テストごとの、端末のファイルの持ち物の置き場所
+    private static func temporaryDirectory() -> URL {
+        FileManager.default.temporaryDirectory.appending(path: "GitObjectDiskStoreTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     }
 
     /// 直下の一覧（Contents API）。`macs` は tree の sha が `macs`
@@ -171,6 +182,68 @@ struct GitHubStateSnapshotTests {
         #expect(await cache.object(for: .blob("d")) == object("d"))
         // tree と blob は別のものとして持つ
         #expect(await cache.object(for: .tree("d")) == nil)
+    }
+
+    @Test func objectsDirectoryKeepsTreesAndBlobsAcrossLaunches() async throws {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let macSHA = GitBlobSHA.of(Self.mac)
+        let first = StubTransport([
+            Self.root(macs: "aaa111", etag: "\"r1\""),
+            Self.tree("aaa111", [.init(path: "mac-mini.json", sha: macSHA)]),
+            Self.blob(Self.mac)
+        ])
+        _ = try await store(first, objectsDirectory: directory).snapshot().read("macs/mac-mini.json")
+        #expect(first.requests.count == 3)
+        // 起動し直すと、ETag もメモリーの持ち物も無いので直下の一覧は読み直すが、その下の tree と blob はファイルから読む
+        let second = StubTransport([Self.root(macs: "aaa111", etag: "\"r1\"")])
+        let snapshot = try await store(second, objectsDirectory: directory).snapshot()
+        #expect(try await snapshot.read("macs/mac-mini.json") == StoredBlob(data: Self.mac, sha: macSHA))
+        #expect(try await snapshot.list("macs")?.map(\.name) == ["mac-mini.json"])
+        #expect(second.requests.count == 1)
+    }
+
+    @Test func objectDiskStoreDropsBrokenFiles() throws {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sha = GitBlobSHA.of(Self.mac)
+        let tree = GitObjectCache.Object.tree([.init(name: "mac-mini.json", kind: .file, sha: sha)])
+        var disk = GitObjectDiskStore(directory: directory, generationCount: 10, generationSize: 1_024)
+        disk.store(.blob(Self.mac), for: .blob(sha))
+        disk.store(tree, for: .tree("aaa111"))
+        #expect(disk.object(for: .blob(sha)) == .blob(Self.mac))
+        #expect(disk.object(for: .tree("aaa111")) == tree)
+        // 中身が sha と合わない blob・読めない tree は使わずに消す（GitHub から読み直させる）
+        let blobFile = directory.appending(path: "current/\(GitObjectDiskStore.fileName(for: .blob(sha)))")
+        try Data("other".utf8).write(to: blobFile)
+        try Data("{".utf8).write(to: directory.appending(path: "current/\(GitObjectDiskStore.fileName(for: .tree("aaa111")))"))
+        var reopened = GitObjectDiskStore(directory: directory, generationCount: 10, generationSize: 1_024)
+        #expect(reopened.object(for: .blob(sha)) == nil)
+        #expect(reopened.object(for: .tree("aaa111")) == nil)
+        #expect(!FileManager.default.fileExists(atPath: blobFile.path))
+    }
+
+    @Test func objectDiskStoreKeepsObjectsInUseAcrossGenerations() {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let blob = { (text: String) in
+            (object: GitObjectCache.Object.blob(Data(text.utf8)), key: GitObjectCache.Key.blob(GitBlobSHA.of(Data(text.utf8))))
+        }
+        let (first, second, third, fourth) = (blob("a"), blob("b"), blob("c"), blob("d"))
+        var disk = GitObjectDiskStore(directory: directory, generationCount: 2, generationSize: 1_024)
+        disk.store(first.object, for: first.key)
+        disk.store(second.object, for: second.key)
+        // 今の世代がいっぱいなので、前の世代に回す
+        disk.store(third.object, for: third.key)
+        // 前の世代から読んだものは、今の世代に移す
+        #expect(disk.object(for: first.key) == first.object)
+        disk.store(fourth.object, for: fourth.key)
+        // 起動し直した後も、2 つの世代のあいだ使わなかったものだけが消えている
+        var reopened = GitObjectDiskStore(directory: directory, generationCount: 2, generationSize: 1_024)
+        #expect(reopened.object(for: second.key) == nil)
+        #expect(reopened.object(for: first.key) == first.object)
+        #expect(reopened.object(for: third.key) == third.object)
+        #expect(reopened.object(for: fourth.key) == fourth.object)
     }
 
     @Test func objectCacheSkipsTooLargeObject() async {
