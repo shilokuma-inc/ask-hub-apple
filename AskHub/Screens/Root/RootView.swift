@@ -50,6 +50,8 @@ struct RootView: View {
         }
         #else
         SplitRootView()
+            // 窓を小さくすると詳細の列が潰れるので、3 列（サイドバー・一覧・詳細の最小の幅）が収まる大きさより小さくしない
+            .frame(minWidth: SplitRootView.minimumWindowSize.width, minHeight: SplitRootView.minimumWindowSize.height)
         #endif
     }
 }
@@ -80,6 +82,9 @@ struct TabRootView: View {
 
 /// Mac と iPad の 3 列
 struct SplitRootView: View {
+    /// Mac の窓の最小の大きさ。サイドバー（180）・一覧（300）・詳細（440）の最小の幅が並ぶ
+    static let minimumWindowSize = CGSize(width: 960, height: 600)
+
     @Environment(ClientStore.self) private var store
     @Environment(AppNavigator.self) private var navigator
 
@@ -99,6 +104,8 @@ struct SplitRootView: View {
                 }
             }
             .routeDestinations()
+            // 段階の名前や判断の札が折り返さずに収まる幅（まとめて判断するの札は 440pt まで広がる）
+            .navigationSplitViewColumnWidth(min: 440, ideal: 560)
         }
         .environment(\.showsSendStatusBar, false)
         .overlay(alignment: .bottom) {
