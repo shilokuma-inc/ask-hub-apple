@@ -11,9 +11,12 @@ public struct StatusReport: Sendable {
         self.files = files
     }
 
-    /// `repository` が nil なら、状態リポジトリにあるすべてのリポジトリを出す。`device` は送った意図の処理の結果を読む端末の鍵
+    /// `repository` が nil なら、状態リポジトリにあるすべてのリポジトリを出す。`device` は送った意図の処理の結果を読む端末の鍵。
+    ///
+    /// 1 回で多くのファイルを読むので、写し（`snapshot()`）から読む。無いファイルは tree で分かるので取りに行かない（GitHub は 404 も上限に数える）。
+    /// 同じ `store` で読み直すと、変わっていない tree と blob は取りに行かない
     public static func render(_ store: any StateStore, repository: RepositoryFullName?, device: KeyID) async throws -> String {
-        var report = StatusReport(files: StateFileStore(store: store))
+        var report = StatusReport(files: StateFileStore(store: try await store.snapshot()))
         let repos: [RepositoryFullName]
         if let repository {
             repos = [repository]
