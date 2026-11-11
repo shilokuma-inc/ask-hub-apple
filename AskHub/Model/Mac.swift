@@ -33,6 +33,8 @@ struct Mac: Identifiable, Hashable {
     var cleanupCandidates: [CleanupCandidate]
     /// 状態リポジトリの生きている印のロードアベレージ。あれば `load` の代わりにこの値を出す
     var loadAverage: Double?
+    /// この Mac が生きている印を書くときに読んだ GitHub の REST の上限の残り。読めていない（前の版の Mac）ときは nil
+    var githubQuota: GitHubQuota?
 
     enum Role: Hashable {
         /// 常時オンで、司令塔とワーカーが動く

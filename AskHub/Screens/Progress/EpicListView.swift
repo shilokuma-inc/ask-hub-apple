@@ -2,6 +2,9 @@ import SwiftUI
 
 /// 「進行中」。epic を、人が待たれているもの・一時停止しているもの・機械が進めているもの・終わったものに分けて並べる
 struct EpicListView: View {
+    /// 終わったものは、新しい順にこの件数だけ出す。それより前のものは「すべて見る」から見返す（増え続けて一覧が長くならないように。ユーザーが決めた。2026-11-11）
+    static let finishedLimit = 10
+
     let selection: Binding<AppRoute?>?
 
     @Environment(ClientStore.self) private var store
@@ -37,8 +40,13 @@ struct EpicListView: View {
             }
             if !finished.isEmpty {
                 CardSection("終わったもの") {
-                    ForEach(finished) { epic in
+                    ForEach(finished.prefix(Self.finishedLimit)) { epic in
                         NavigationLink(value: AppRoute.epic(epic.id)) { EpicRow(epic: epic) }
+                    }
+                    if finished.count > Self.finishedLimit {
+                        NavigationLink(value: AppRoute.finishedEpics) {
+                            LabeledContent("すべて見る", value: "\(finished.count) 件")
+                        }
                     }
                 }
             }

@@ -67,7 +67,9 @@ let package = Package(
         .executableTarget(name: "askhub", dependencies: ["AskHubClient", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]),
         .executableTarget(
             name: "askhub-commander",
-            dependencies: ["AskHubClaude", "AskHubCommander", "AskHubCommands", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"]
+            dependencies: [
+                "AskHubBuild", "AskHubClaude", "AskHubCommander", "AskHubCommands", "AskHubKeychain", "AskHubProtocol", "AskHubStateStore"
+            ]
         ),
         .executableTarget(name: "askhub-worker", dependencies: ["AskHubCommander", "AskHubWorker", "AskHubProtocol", "AskHubStateStore"]),
         .testTarget(name: "AskHubKitTests", dependencies: ["AskHubKit"]),

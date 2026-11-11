@@ -66,6 +66,14 @@ extension ClientSnapshot {
         epics.filter(\.isActive)
     }
 
+    /// 今の窓の GitHub の REST の上限の残り。Mac ごとの印のうち一番新しく読んだもの（上限はアカウントごとなので、どの Mac も同じ回数を数える）。
+    /// どの Mac も書いていない・戻る時刻を過ぎていれば nil
+    func githubQuota(now: Date) -> GitHubQuota? {
+        macs.compactMap(\.githubQuota)
+            .filter { $0.isCurrent(now: now) }
+            .max { ($0.checkedAt, -$0.remaining) < ($1.checkedAt, -$1.remaining) }
+    }
+
     /// 開始のときに選べる Mac（オンラインの Mac すべて）
     var startableMacs: [Mac] {
         macs.filter(\.isOnline)
