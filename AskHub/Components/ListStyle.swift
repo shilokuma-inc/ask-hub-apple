@@ -57,19 +57,29 @@ struct CardSection<Content: View, Header: View, Footer: View>: View {
                         item.row.cardRow(CardRowPosition(index: item.index, count: items.count))
                     }
                 }
+                #if os(macOS)
+                footerRow(leading: side - AppList.platformRowInset)
+                #endif
             } header: {
                 cardHeader(side: side)
             } footer: {
+                #if os(iOS)
                 footer.listRowInsets(.horizontal, side)
+                #endif
             }
             .listSectionSeparator(.hidden)
         } else {
             Section {
                 content
+                #if os(macOS)
+                footerRow(leading: nil)
+                #endif
             } header: {
                 header
             } footer: {
+                #if os(iOS)
                 footer
+                #endif
             }
         }
     }
@@ -87,6 +97,21 @@ struct CardSection<Content: View, Header: View, Footer: View>: View {
         header.listRowInsets(.horizontal, side)
         #endif
     }
+
+    #if os(macOS)
+    /// Mac の一覧の注記は Section の footer に置くと 1 行で切れるので、札の外の行として置いて折り返す
+    @ViewBuilder private func footerRow(leading: CGFloat?) -> some View {
+        if Footer.self != EmptyView.self {
+            footer
+                .appFont(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(leading.map { EdgeInsets(top: 2, leading: $0, bottom: 10, trailing: $0) })
+        }
+    }
+    #endif
 }
 
 /// 札の中の 1 行と、その id（セクションの id と、セクションの中の行の id を合わせる）
