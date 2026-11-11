@@ -1,3 +1,4 @@
+import AskHubBuild
 import AskHubClaude
 import AskHubCommander
 import AskHubCommands
@@ -21,6 +22,15 @@ extension AskHubCommanderMain {
         // 人の意図の処理・Claude のジョブの結果・通知の記録・写しの id の書き戻しは、同じ排他を使うよう、同じ `context` を渡す
         let context = CommanderContext(store: runtime.store, mac: configuration.mac)
         let cleanUp = runtime.finishedEpicCleanUp(context: context, log: log)
+        // 対象のアプリのアイコンは、常時オンの Mac の clone から取り出し、ビルドに使う Xcode の Icon Composer で書き出す
+        let appIcons = AppIconSync(
+            context: context,
+            source: GitAppIconSource(
+                workspace: runtime.workspace,
+                renderer: AppIconRenderer(tools: configuration.buildTools(paths: runtime.paths), runner: ProcessCommandRunner())
+            ),
+            log: log
+        )
         let loop = CommanderLoop(
             context: context,
             settings: .init(
@@ -35,7 +45,8 @@ extension AskHubCommanderMain {
             mirror: DiscussionMirror(context: context, discussions: discussions, log: log),
             epicWorkspace: runtime.workspace,
             taskRunners: runtime.taskRunners(context: context, settings: TaskRepositorySettings.reader(context: context)),
-            tidy: { await cleanUp.run() }
+            tidy: { await cleanUp.run() },
+            appIcons: appIcons
         )
         log("起動しました（pid \(ProcessInfo.processInfo.processIdentifier)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
         await loop.run()
