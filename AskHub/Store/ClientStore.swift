@@ -59,7 +59,7 @@ final class ClientStore {
     static let receiptTrackingWindow: TimeInterval = 10 * 60
     /// 司令塔は 30 秒ほどの周ごとに意図を受け取る。これより長く受け取らなければ、司令塔が動いていない可能性をその場に出す
     static let defaultStallThreshold: TimeInterval = 3 * 60
-    /// 延ばした取り直しの間隔（Mac で前面でないとき）。GitHub の上限をほかのもの（司令塔・Claude のセッション）に残す
+    /// 延ばした取り直しの間隔（Mac で前面でない・GitHub の REST の残りが少ないとき）。GitHub の上限をほかのもの（司令塔・Claude のセッション）に残す
     static let relaxedRefreshInterval: Duration = .seconds(2 * 60)
 
     private(set) var snapshot: ClientSnapshot?
