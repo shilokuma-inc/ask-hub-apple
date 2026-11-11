@@ -261,6 +261,8 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
    - ほかの端末の鍵は `askhub key add --public-key <base64url> --account … --label …`、取り消しは `askhub key revoke <鍵の id>`
 3. `askhub add-repository --repo <owner/repo>` → `askhub configure-repository --repo … --file <build.json>`（下の「ビルドの設定の入れ方」。開始の前に要る）→ `askhub request --repo … --title … --body …`
 4. `askhub status` で epic・答える質問（id と版と選択肢）・ゴール・送った意図の処理の結果を見て、`answer`・`clarify`・`decide-split`・`revise-goal`・`start` で進める
+   - 続けて見張るときは `askhub status --watch 60`（間隔は 60 秒以上。中身が変わったときだけ出す。Ctrl-C で止める）。1 つのプロセスで読んだものを使い回すので、変わらない周は GitHub の上限に数えられない
+   - 外のループ（`while … sleep`）で `askhub status` を流さない。毎回すべてを読み直し、1 回で 30〜280 回（`--repo` の有無と epic・ジョブの数による）を上限に数えられる
 5. 要らなくなった依頼は、開始する前なら `askhub abandon --repo … --epic …` で取り下げる。開始した後の一時停止・再開・引き継ぎは、上の「Mac の一時停止・再開・引き継ぎ」
 6. 人の対応待ちのジョブ（認証切れ・想定外の失敗など）は、`askhub status` に失敗の理由と、`retry`（やり直す）・`give-up`（やめる）に渡す引数（ジョブの id と試行の番号）が出る。原因を直してから `retry` を送る
 
