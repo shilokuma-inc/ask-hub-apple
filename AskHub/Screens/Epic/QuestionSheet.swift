@@ -65,6 +65,7 @@ struct QuestionSheet: View {
             .keyboardDoneButton($isEditingNote)
         }
         .sheetSending(sending)
+        .sheetSize(.page)
     }
 
     private var answerSection: some View {
