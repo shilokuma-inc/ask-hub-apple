@@ -52,6 +52,7 @@ struct TextRequestSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .sheetSize(.form)
     }
 }
 

@@ -187,6 +187,7 @@ struct AddRepositorySheet: View {
             }
         }
         .sheetSending(sending)
+        .sheetSize(.form)
     }
 
     /// 送る。送り始めたら（同じものを送ってあったときも）すぐ閉じ、一覧は加えた形になる。送れなければ理由を出して残る

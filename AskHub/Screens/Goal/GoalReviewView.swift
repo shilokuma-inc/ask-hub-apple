@@ -258,6 +258,7 @@ struct StartSheet: View {
             }
         }
         .sheetSending(sending)
+        .sheetSize(.form)
     }
 
     /// 送る。送り始めたら（同じものを送ってあったときも）すぐ閉じ、epic は開始した形になる。送れなければ理由を出して残る
