@@ -66,6 +66,21 @@ struct StatusReportTests {
         #expect(await store.snapshots == 2)
     }
 
+    @Test func passesStoreFailuresAndShowsOnlyUnreadableFiles() async throws {
+        var files = try Self.files()
+        let path = StatePath.job(Self.repo, epic: Self.epic, job: Self.succeeded)
+        // 読みに行けなかった失敗は、読めないジョブとして出さずに返す（`--watch` が上限の戻りを待てるように）
+        let limited = FailingPathStore(InMemoryStateStore(files: files), failing: path, with: .rateLimited(retryAfter: .seconds(30)))
+        await #expect(throws: StateFileStore.Failure.store(.rateLimited(retryAfter: .seconds(30)))) {
+            try await StatusReport.render(limited, repository: Self.repo, device: Self.device)
+        }
+        // 形の違うファイルは、見落とさないよう読めないジョブとして出す
+        files[path] = Data("not json".utf8)
+        let report = try await StatusReport.render(InMemoryStateStore(files: files), repository: Self.repo, device: Self.device)
+        #expect(report.contains("    読めないジョブ \(Self.succeeded.rawValue).json（"))
+        #expect(report.contains("人の対応待ちのジョブ implementTask \(Self.waiting.rawValue)（試行 1）"))
+    }
+
     @Test func rereadingUnchangedStateSendsOnlyRootListing() async throws {
         let github = FakeGitHubState(files: try Self.files())
         let store = GitHubContentsStore(repository: FakeGitHubState.repository, transport: github, budget: nil) { "test-token-not-real" }
@@ -111,6 +126,32 @@ actor SnapshotOnlyStore: StateStore {
     func snapshot() async throws(StateStoreError) -> any StateStore {
         snapshots += 1
         return try await inner.snapshot()
+    }
+}
+
+/// 1 つのパスの読み取りだけを失敗させる（写しは自分をそのまま返す）
+actor FailingPathStore: StateStore {
+    private let inner: InMemoryStateStore
+    private let path: String
+    private let error: StateStoreError
+
+    init(_ inner: InMemoryStateStore, failing path: String, with error: StateStoreError) {
+        self.inner = inner
+        self.path = path
+        self.error = error
+    }
+
+    func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
+        if path == self.path { throw error }
+        return try await inner.read(path)
+    }
+
+    func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await inner.list(directory)
+    }
+
+    func write(_ path: String, data: Data, replacing sha: String?, message: String) throws(StateStoreError) -> String {
+        throw .unexpected(status: 0, message: "書かない")
     }
 }
 
