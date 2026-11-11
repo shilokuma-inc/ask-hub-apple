@@ -444,6 +444,11 @@
   通ったテストでは、作ったばかりの Simulator の 1 回目でも流れなかった。`-collect-test-diagnostics never` なら止まらず、`test-results summary` の `testFailures` の文と、テストごとの添付
   （クラッシュのレポート `.ips`・画面の録画）は残る。ワーカー（`XcodeBuildRunner`）はテストのときにいつも `never` を渡す。止まりを調べるときは、`ps` で `simctl diagnose` の子を探し、
   xcodebuild の出力の `IDETestOperationsObserverDebug: Failure collecting diagnostics` の行を見る（2026-11-12、#1047）
+- Release の構成を開発用の署名（`xcodebuild -configuration Release -allowProvisioningUpdates` の自動の署名）で実機向けにビルドすると、entitlement のファイルの `aps-environment` が `production` でも、
+  Xcode は profile に合わせて `development` で署名する（Info.plist に入れたビルド設定の値は `production` のまま）。APNs は署名の環境のトークンを返すので、ビルド設定から環境を決めると
+  development のトークンを production の宛先に書き、`400 BadDeviceToken` で断られる。環境は、iOS は埋め込みの `embedded.mobileprovision`（CMS で包んだ XML の plist）の `Entitlements`、
+  macOS は `SecTaskCopyValueForEntitlement` で読む（iOS では使えない）。同じ端末でも、開発用の署名の版と TestFlight の版でトークンが違う。
+  ビルドした .app の値は、`codesign -d --entitlements - --xml <.app>` と `security cms -D -i <.app>/embedded.mobileprovision` で確かめられる（2026-11-12、#1059）
 
 ## Keychain
 
