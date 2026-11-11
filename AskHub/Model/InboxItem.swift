@@ -343,6 +343,12 @@ extension InboxItem {
 /// 容量の表示（例: 48 GB）
 enum ByteFormat {
     static func string(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        // 既定では 0 を「Zero KB」と英語で出すので、数字で出す（片付けで何も選んでいないとき）。
+        // バイトの単位も「bytes」と英語になるので、KB から使う
+        formatter.allowsNonnumericFormatting = false
+        formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
+        return formatter.string(fromByteCount: bytes)
     }
 }

@@ -108,7 +108,7 @@ struct HumanTaskView: View {
         CardSection {
             if let file = pickedFile {
                 LabeledContent {
-                    Text(Int64(file.size).formatted(.byteCount(style: .file)))
+                    Text(ByteFormat.string(Int64(file.size)))
                 } label: {
                     Label(file.name, systemImage: "doc")
                 }
