@@ -684,3 +684,7 @@
   `.windowToolbar` は iOS に無いので Mac の分岐の中に書く（2026-11-12、Mac の UI の直し）
 - Mac の NavigationSplitView は窓の最小の大きさを列の最小の幅から決めないので、窓を小さくすると詳細の列だけ 200pt ほどに潰れる。
   詳細の列にも `navigationSplitViewColumnWidth(min:ideal:)` を付け、窓の中身に `.frame(minWidth:minHeight:)`（3 列の最小の幅の合計）を付ける（2026-11-12、Mac の UI の直し）
+- Mac の `List` で `Group(subviews:)` の行を `ForEach(..., id: \.element.id)` で並べると、id がセクションをまたいで重なり、ほかのセクションの行（先頭の見出しの行など）の中身が別のセクションに出る（iOS では起きない）。
+  セクションごとの `@State` の UUID と合わせた id にする（`CardRowItem`）。Mac の plain の一覧では、ほかにも
+  セクションの footer が 1 行で切れる（`fixedSize` も効かないので、注記は札の外の行として置く）・見出しに `listRowInsets` が効かない・行と見出しの中身に左右 8pt を自分で足す・
+  区切り線が行の中身の幅で切れて最後の行の下にも出る・`DisclosureGroup` の三角が行の左の外に出る。札（`CardSection`）は Mac でも行の地に区切り線を描き、開閉は `DisclosureGroupStyle` で見出しの右の山形にした（2026-11-12、Mac の UI の直し）
