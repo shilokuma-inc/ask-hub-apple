@@ -79,6 +79,20 @@ extension StateClientServiceTests {
         #expect(state() == .merging)
 
         // 司令塔が片付けを作り、epic をマージ済みにしてマージの記録を書いた
+        await markMerged(approval, in: fixture)
+        await store.refresh()
+        let merged = FinalReview.State.merged(at: Self.flowDate("07:58"), automatic: false)
+        #expect(state() == merged)
+        #expect(store.epic(Self.epicID)?.stage == .done)
+
+        // 読み直しても、マージ済みのまま
+        await store.refresh()
+        #expect(state() == merged)
+        #expect(service.snapshot(overlaying: [])?.epic(Self.epicID)?.finalReview?.state == merged)
+    }
+
+    /// 司令塔がマージの後にすること: 片付けを作り、epic をマージ済みにして、承認でマージした記録を書く
+    private func markMerged(_ approval: IntentEnvelope, in fixture: Fixture) async {
         let reference = #"{"keyId":"\#(fixture.key.keyID.rawValue)","nonce":"\#(approval.nonce.rawValue)"}"#
         let record = #"{"commit":"\#(Self.mergeCommit)","approval":\#(reference),"at":"2027-01-15T07:58:00Z"}"#
         let cleanUp = Self.finalJob(
@@ -91,15 +105,6 @@ extension StateClientServiceTests {
         )
         await put(cleanUp, in: fixture.store)
         await put(["\(Self.finalBase)/epic.json": Self.flowEpic(stage: "merged", merge: record, updatedAt: "07:58")], in: fixture.store)
-        await store.refresh()
-        let merged = FinalReview.State.merged(at: Self.flowDate("07:58"), automatic: false)
-        #expect(state() == merged)
-        #expect(store.epic(Self.epicID)?.stage == .done)
-
-        // 読み直しても、マージ済みのまま
-        await store.refresh()
-        #expect(state() == merged)
-        #expect(service.snapshot(overlaying: [])?.epic(Self.epicID)?.finalReview?.state == merged)
     }
 
     /// 承認した head を固定したマージのジョブ（最後のレビューの後）
