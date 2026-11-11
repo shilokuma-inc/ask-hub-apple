@@ -228,6 +228,7 @@ extension View {
             environment(\.drawsCardSections, false)
         } else {
             listStyle(.plain)
+                .disclosureGroupStyle(CardDisclosureStyle())
         }
         #endif
     }
@@ -253,3 +254,30 @@ extension View {
             #endif
     }
 }
+
+#if os(macOS)
+/// Mac の一覧の開閉。標準では開閉の三角が行の左の外（札の外）に出るので、見出しの右に山形を置いて札の中に収める（iOS の標準と同じ並び）
+private struct CardDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.snappy) { configuration.isExpanded.toggle() }
+            } label: {
+                HStack {
+                    configuration.label
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .appFont(.caption, weight: .semibold)
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            if configuration.isExpanded {
+                configuration.content
+            }
+        }
+    }
+}
+#endif
