@@ -667,3 +667,8 @@
 - Mac のシートは中身の理想の大きさで開くので、高さを持たない `List`・`Form` を入れると、見出しと閉じるボタンだけの高さに潰れて中身が空になる（macOS 26・27）。
   `presentationSizing(.form)`・`.page` で決まった大きさで開く（iOS 18 / macOS 15 からの共通の API。iPhone のシートには効かないので `#if os` は要らない。`SheetSize`）。
   Mac の `Form` の既定（columns）は、`TextField` の名前を欄の左の列に並べて欄を狭め、長い名前は左端で切れる。`.formStyle(.grouped)` にし、名前は `prompt:` と `.labelsHidden()` で欄の中に出す（iOS の見た目は変わらない）（2026-11-12、Mac の UI の直し）
+- Xcode 26 の SDK でビルドした Mac のアプリを macOS 27 で動かすと、窓のツールバーの下が不透明の帯になり、背景を付けていない列（NavigationSplitView の詳細）だけツールバーの下が白く抜ける
+  （26 はツールバーが透けて、下の列の背景が上まで見える）。`scrollEdgeEffectStyle(.soft, for: .top)` では消えず、`toolbarBackgroundVisibility(.hidden, for: .windowToolbar)` で 26 と同じになった。
+  `.windowToolbar` は iOS に無いので Mac の分岐の中に書く（2026-11-12、Mac の UI の直し）
+- Mac の NavigationSplitView は窓の最小の大きさを列の最小の幅から決めないので、窓を小さくすると詳細の列だけ 200pt ほどに潰れる。
+  詳細の列にも `navigationSplitViewColumnWidth(min:ideal:)` を付け、窓の中身に `.frame(minWidth:minHeight:)`（3 列の最小の幅の合計）を付ける（2026-11-12、Mac の UI の直し）
