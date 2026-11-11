@@ -84,9 +84,10 @@ extension StateSnapshotBuilder {
 
     private func blocker(_ job: JobFile, target: JobTarget, stage: EpicStage, attempts: [AttemptFile], others: Int) -> Blocker {
         let failure = attempts.last { $0.number == job.attempts }?.failure
-        let category = failure?.failureClass.category ?? .unexpected
+        let overLimit = failure == nil ? Self.fixOverLimit(job) : nil
+        let category = failure?.failureClass.category ?? overLimit?.category ?? .unexpected
         let subject = subject(of: job)
-        var summary = failure?.message ?? "失敗の理由は書かれていません"
+        var summary = failure?.message ?? overLimit?.summary ?? "失敗の理由は書かれていません"
         if others > 0 {
             summary += "\nほかに \(others) 件の作業も対処を待っています（これを片付けると出ます）"
         }
@@ -101,6 +102,23 @@ extension StateSnapshotBuilder {
             subject: subject,
             target: Self.blockerTarget(target)
         )
+    }
+
+    /// 直しの上限を超えて、試行の前に人に渡された直しの区分と理由（司令塔は、上限を超えた直しを動かさずに人の対応待ちで作る）。
+    /// 区分は、直しの元になった失敗（CI・レビューの必須の指摘・コンフリクト）。ほかのジョブは nil
+    private static func fixOverLimit(_ job: JobFile) -> (category: FailureCategory, summary: String)? {
+        guard job.attempts == 0, [.fixTask, .fixFinalPullRequest].contains(job.kind) else {
+            return nil
+        }
+        let remaining: (category: FailureCategory, text: String)? = switch job.input(as: FixTaskInput.self)?.reason {
+        case .ci: (.build, "CI が通らないまま")
+        case .review: (.review, "レビューの必須の指摘が残ったまま")
+        case .conflict: (.conflict, "コンフリクトが残ったまま")
+        // 人が頼んだ直しは上限で止めないので来ない
+        case .human, nil: nil
+        }
+        let limit = "自動の直しが上限（\(FixTaskInput.maxAutomaticRounds) 回）を超えたので止めています。もう一度試すと、もう 1 回直します"
+        return (remaining?.category ?? .unexpected, remaining.map { "\($0.text)、\(limit)" } ?? limit)
     }
 
     /// 選べる操作。司令塔が受け付けるものだけを出す（やり直しはどの種類でも、やめるは `JobKind.giveUpEffect(at:)` で扱いが決まっているものだけ）。
