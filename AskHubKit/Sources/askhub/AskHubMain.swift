@@ -55,7 +55,9 @@ enum AskHubMain {
           human-task-done --repo <owner/repo> --epic <id> --task <h1> --version <ゴールの版> [--file <渡すファイル>]
           retry --repo <owner/repo> --epic <id> --job <id> --attempt <試行の番号>     人の対応待ちのジョブをやり直させる
           give-up --repo <owner/repo> --epic <id> --job <id> --attempt <試行の番号>   人の対応待ちのジョブをやめる
-          status [--repo <owner/repo>]   epic・質問・ゴール・人の対応待ちのジョブと、送った意図の処理の結果を出す
+          status [--repo <owner/repo>] [--watch <秒>]   epic・質問・ゴール・人の対応待ちのジョブと、送った意図の処理の結果を出す
+            --watch は 60 秒以上の間隔で読み直し、変わったときだけ出す（Ctrl-C で止める）。
+            見張るときは --watch を使い、外のループ（while … sleep）で流さない（毎回すべてを GitHub の上限に数えられる）
         """
 
     static var secrets: KeychainSecretStore { KeychainSecretStore(service: ClientConfiguration.keychainService) }
