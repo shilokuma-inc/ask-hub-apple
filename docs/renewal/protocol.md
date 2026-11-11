@@ -367,7 +367,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `fixFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`・`human`・`conflict`。`human` は判断のカードの「直してほしい」「別案にする」と `instructFinal` で、元の人の意図はジョブの `origin`。`conflict` は、ワーカーが base を作業ブランチに取り込み、コンフリクトしたファイルを Claude に解消させる） |
 | `notify` | 段階 4 で決める |
 
-- タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）は、司令塔が元のジョブの結果から作り、`task` にタスクの id、`dependsOn` に元のジョブ（`implementTask` は作業場所の用意）を書く。同じタスクの直しが 3 回を超えたら、`fixTask` を `waitingHuman` で作る（[flows.md](flows.md) の「司令塔がタスクを進める」）
+- タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）は、司令塔が元のジョブの結果から作り、`task` にタスクの id、`dependsOn` に元のジョブ（`implementTask` は作業場所の用意）を書く。同じタスクの直しが 3 回を超えたら、`fixTask` を `waitingHuman` で作る（試行の前なので `attempts` は 0。[flows.md](flows.md) の「司令塔がタスクを進める」）
 - `kind` の最初の一覧: `makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`prepareWorkspace`・`implementTask`・`reviewTask`・`fixTask`・`integrateDevelop`・`verifyBeforeFinal`・`openFinalPullRequest`・`reviewFinalPullRequest`・`fixFinalPullRequest`・`rerunChecks`・`classifyDecisions`・`captureScreenshots`・`mergeFinalPullRequest`・`cleanUp`・`notify`
 - `state` は `queued`・`assigned`・`running`・`succeeded`・`failed`・`waitingHuman`・`paused`・`canceled`
 - ジョブのファイルは司令塔だけが書く。ワーカーは、自分の試行のファイルに「始めた」を書くことで、ジョブを引き受けたことを示す。司令塔は試行を読んでジョブの `state` を更新する
@@ -590,7 +590,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始する前の epic だけ |
-| `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
+| `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository`・`applyProtection` | リポジトリ | — | 設定 |

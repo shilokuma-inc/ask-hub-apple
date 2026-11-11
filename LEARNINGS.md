@@ -547,6 +547,8 @@
   既定の実装がある要件は、型の側も要件と同じ署名で書く（2026-11-10、#989）
 - MainActor が既定のターゲットで `UIColor { traits in … }`・`NSColor(name:dynamicProvider:)` の処理を書くと、処理が MainActor に縛られる。
   SwiftUI は色を裏のスレッド（`com.apple.SwiftUI.AsyncRenderer`）で決めることがあり、そのとき実行時の確かめ（`_swift_task_checkIsolatedSwift`）で `EXC_BREAKPOINT` で落ちる。処理を `@Sendable` にして縛らない
+- ジョブの `attempts` は、試行の前に人に渡したジョブ（直しの上限を超えた `fixTask`・`fixFinalPullRequest`）では 0 のまま `waitingHuman` になる。試行の番号を読む・使うところでは 0 を考える。
+  `StatePath.attempt` は 1 以上の precondition で止まり（`askhub status` が止まった。#1039）、質問の版の読み方（`AnswerIntent.version`。1 以上）を流用した `JobTarget` は、やり直しの `targetVersion` の `"0"` を断っていた（2026-11-12、#1043）
 
 ## シェルスクリプト
 

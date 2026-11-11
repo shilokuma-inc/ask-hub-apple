@@ -142,6 +142,27 @@ struct AskHubClientTests {
         #expect(try HumanTaskDoneIntent(envelope: envelope(.humanTaskDone(humanTask, file: file))).file == file)
     }
 
+    /// 試行の前に人に渡したジョブ（直しの上限を超えた直し）には、試行の番号 0 を付けて送り、司令塔がそのまま読める
+    @Test func jobDraftsForUntriedJobAreRead() throws {
+        let key = try key()
+        func envelope(_ draft: IntentDraft) -> IntentEnvelope {
+            #expect(draft.targetVersion == "0")
+            return IntentEnvelope(
+                kind: draft.kind,
+                repo: draft.repo,
+                target: draft.target,
+                targetVersion: draft.targetVersion,
+                payload: draft.payload,
+                issuedAt: Timestamp(Self.now),
+                nonce: ULID.generate(at: Self.now),
+                keyId: key.keyID
+            )
+        }
+        let job = JobTarget(repo: Self.repo, epic: ULID.generate(at: Self.now), job: ULID.generate(at: Self.now), attempt: 0)
+        #expect(try RetryJobIntent(envelope: envelope(.retry(job))).target == job)
+        #expect(try GiveUpJobIntent(envelope: envelope(.giveUp(job))).target == job)
+    }
+
     /// 一時停止・再開・引き継ぎは、版を付けずに epic を対象にする
     @Test func pauseDraftsAreReadAsTheirKinds() throws {
         let key = try key()
@@ -181,6 +202,11 @@ struct CommandArgumentsTests {
         #expect(throws: CommandArguments.Failure(message: "--repo の値が無い")) { try CommandArguments(["--repo"]) }
         #expect(throws: CommandArguments.Failure(message: "--version は 1 以上の数")) {
             try CommandArguments(["--version", "0"]).integer("version")
+        }
+        // 試行の番号は、試行の前に人に渡したジョブのために 0 から受け付ける
+        #expect(try CommandArguments(["--attempt", "0"]).integer("attempt", minimum: 0) == 0)
+        #expect(throws: CommandArguments.Failure(message: "--attempt は 0 以上の数")) {
+            try CommandArguments(["--attempt", "-1"]).integer("attempt", minimum: 0)
         }
     }
 }

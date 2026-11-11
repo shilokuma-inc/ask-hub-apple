@@ -123,6 +123,23 @@ struct JobHandlersTests {
         #expect(try await job(waiting, in: store).state == .waitingHuman)
     }
 
+    /// 直しの上限を超えて、試行の前に人に渡した直し（試行 0）もやり直せる。やめる扱いはまだ決めていないので、形ではなくその理由で断る
+    @Test(arguments: zip([JobKind.fixTask, .fixFinalPullRequest], [EpicStage.running, .finalizing]))
+    func retryReassignsFixHandedOverBeforeAnyAttempt(kind: JobKind, stage: EpicStage) async throws {
+        let (store, waiting) = try await waitingJob(kind, stage: stage, attempts: 0)
+        try await retry(waiting, attempt: 0, kind: "giveUp", in: store)
+        let reason = "\(kind.rawValue) のジョブをやめる扱いは、まだ決めていない"
+        #expect(try await intake(store).processPending() == [.rejected(kind: "giveUp", reason: reason)])
+        #expect(try await job(waiting, in: store) == waiting)
+
+        try await retry(waiting, attempt: 0, in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "retry")])
+        let retried = try await job(waiting, in: store)
+        #expect(retried.state == .assigned)
+        // 次の試行は 1 番になる
+        #expect(retried.attempts == 0)
+    }
+
     /// 前の周で戻した後に記録を書く前に止まっても、次の周で同じ意図を受け付け直す
     @Test func redoingRetryIsAccepted() async throws {
         let (store, assigned) = try await waitingJob(state: .assigned)

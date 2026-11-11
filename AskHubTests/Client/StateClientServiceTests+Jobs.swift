@@ -123,6 +123,28 @@ extension StateClientServiceTests {
         #expect(again.summary == "失敗の理由は書かれていません")
     }
 
+    /// 直しの上限を超えて試行の前に人に渡された直し（試行 0）も出し、やり直しは試行の番号 0 を付けて送る
+    @Test
+    func fixHandedOverBeforeAnyAttemptIsRetriedWithAttemptZero() async throws {
+        let input = #"{"pullRequest":41,"head":"\#(String(repeating: "a", count: 40))","reason":"ci"}"#
+        let files = Self.askingEpic(stage: "running", extra: [Self.jobPath(): Self.job(kind: "fixTask", attempts: 0, input: input)])
+        let fixture = try makeService(files: files)
+        let service = fixture.service
+        let blocker = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.blocker)
+        #expect(blocker.title == "タスクの修正が止まっています")
+        #expect(blocker.attempts.isEmpty)
+        // 直しをやめる扱いはまだ決めていない（司令塔も断る）ので、やり直しだけを出す
+        #expect(blocker.actions == [.retry])
+        #expect(blocker.target == "\(Self.jobID)/0")
+
+        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .retry, instruction: "", target: blocker.target))
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(envelope.kind == RetryJobIntent.kind)
+        #expect(envelope.targetVersion == "0")
+        // 処理を待つ間は出さない
+        #expect(try await service.fetchSnapshot().epic(Self.epicID)?.blocker == nil)
+    }
+
     /// 説明をやめると、処理を待つ間は質問を回答待ちに戻して出す
     @Test
     func givingUpExplanationReopensQuestion() async throws {

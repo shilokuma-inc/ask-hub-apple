@@ -71,8 +71,9 @@ public struct CommandArguments: Sendable {
         return epic
     }
 
-    public func integer(_ name: String) throws(Failure) -> Int {
-        guard let value = Int(try string(name)), value >= 1 else { throw Failure(message: "--\(name) は 1 以上の数") }
+    /// `minimum` 以上の整数。版は 1 から、試行の番号は 0 から（試行の前に人に渡したジョブは 0）
+    public func integer(_ name: String, minimum: Int = 1) throws(Failure) -> Int {
+        guard let value = Int(try string(name)), value >= minimum else { throw Failure(message: "--\(name) は \(minimum) 以上の数") }
         return value
     }
 
