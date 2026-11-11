@@ -27,10 +27,6 @@
 - GitHub 上のマージ（`gh pr merge` や PR の画面）は `.gitattributes` の `merge=union` を使わない。並行する PR が同じ箇所に追記すると、
   GitHub ではコンフリクトになる。ローカルで統合ブランチに rebase すれば union で自動解消されるので、検証してから `--force-with-lease` で push する
 - `gh pr merge` が失敗しても後続のコマンドは続いてしまう。Issue のクローズなどは、PR の state が `MERGED` になったのを確かめてから行う
-- リポジトリごとのラベル（`askhub-orchestrator` の担当の印など）を org 全体で読むときは、GraphQL の
-  `organization.repositories(first: 100, after: $after, isArchived: false) { pageInfo { hasNextPage endCursor } nodes { nameWithOwner label(name:) { description } } }`
-  を使い、`hasNextPage` が `false` になるまで `after` に `endCursor` を渡して取り直す（connection は `first` / `last` が必須で 1〜100 件）。
-  Search API ではないので 30 回/分の制限も検索インデックスによる件数のずれも無い
 - 別の worktree で checkout 中のブランチの PR を `gh pr merge --delete-branch` すると、ローカルのブランチと一緒にその worktree のディレクトリまで消えることがある。
   先に `git -C <worktree> checkout --detach` しておくと消えない
 - 検索クエリの `org:a org:b` は OR になる（Issue でも Discussion でも件数がそれぞれの合計になる）。organization が増えても検索は 1 回で済む。
@@ -225,10 +221,6 @@
   入力欄が切り替わったことは、画面の上にある要素（`template-picker` など）で確かめる。セグメントの `Picker` は `app.segmentedControls["<ID>"].buttons["<文言>"]` で引け、`isSelected` で選択中かが分かる
 - iOS の UI テストでは、`Form` の中の `LabeledContent("元の PR", value: "#17")` は名前だけの StaticText（`元の PR`）と、名前と値をつないだ StaticText（`元の PR, #17`）になり、
   値だけ（`#17`）では引けない。値を確かめるときは `app.staticTexts["元の PR, #17"]` で引く
-- `AskHubKit` の public な型の名前を変えた直後の `swift test --package-path AskHubKit` は、別のターゲット（`OrchestratorKitTests` など）の古いオブジェクトが残り、
-  「Undefined symbols」（古い型名の `init`）でリンクが落ちることがある。コードの誤りではないので、`AskHubKit/.build` を消してビルドし直す
-- ralph-loop の xcodebuild のラッパー（別の Mac で実行する）で UI テストを流すと、`.xcresult` は実行した Mac に残り、ログの末尾にそのパスが出る。
-  `-resultBundlePath` で手元に書かせることはできないので、スクリーンショットはそのパスを `rsync` で取り寄せてから `xcrun xcresulttool export attachments` で取り出す
 - ssh 越しに流した `xcodebuild` では、macOS 向けの署名が `errSecInternalComponent` で失敗する（ssh のセッションからはログインのキーチェーンの鍵を使えない）。
   `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=`（アドホック署名）にすれば通る。xcb は署名の指定が無ければ自動で足す。
   一度失敗した DerivedData のまま流し直すと、作りかけの署名（`.cstemp`）が残って `invalid or unsupported format for signature` になるので、別の DerivedData でやり直す
@@ -563,8 +555,6 @@
 - macOS の `/bin/bash`（3.2）には連想配列（`declare -A`）が無い（`declare: -A: invalid option`）。bash 3.2 で動かすスクリプト（`capture_screenshots.sh` など・ワークフローの `run:` を手元で流す道具）では、
   `eval "name_$key=…"` か、`key=value` の行のファイルで代わりにする
 - テンプレートの `scripts/rename.sh` を手元で確かめるときは、最後に `gh repo view` / `gh repo edit --enable-discussions` を本物のリポジトリに向けて呼ぶので、`printf '#!/bin/sh\nexit 1\n'` の偽の `gh` を前に置いた PATH で流す。警告が出るだけで名前の変更は終わる（2026-10-21、visionOS のテンプレート）
-- ralph-kit の `install.sh <checkout>` は中継のファイルを置き、CLAUDE.md の ralph-kit:snippet の目印の間を書き換えるだけで、CLAUDE.md に「## ralph-loop による自律開発」の節が無いときは
-  案内を表示して終了コード 0 で終わる（節は足さない。コミットもしない）。節の無いリポジトリに入れるときは、先に kit の `templates/CLAUDE.snippet.md` の見出しから end の目印までを足してから流す（`add-repo.sh`）
 - 同じ内容のコミットを作り直してブランチに push し直すと、コミットの時刻が違うので fast-forward にならず断られる。やり直しで同じブランチに push するスクリプトは、
   `git fetch origin refs/heads/<branch>` の後に `FETCH_HEAD^{tree}` と `HEAD^{tree}` を比べ、同じなら push を飛ばす（force しない）
 - 偽の `gh` とローカルの bare リポジトリでスクリプトを確かめるときは、clone した checkout の origin を `https://github.com/<owner>/<repo>.git` にしたうえで
