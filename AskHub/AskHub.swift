@@ -38,6 +38,9 @@ struct AskHub: App {
         }
         #endif
         _navigator = State(initialValue: navigator)
+        #if DEBUG && os(macOS)
+        DemoWindowSnapshot.start()
+        #endif
         // 英数字は Nunito、かなと漢字はシステムの書体（Typography）
         AppFont.register()
     }
