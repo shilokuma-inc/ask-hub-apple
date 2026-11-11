@@ -25,6 +25,12 @@ extension ClientStore {
     /// マージ中の epic を短い間隔で読み直し続ける長さ。これより長くマージ中のままなら、ふだんの取り直しに任せる
     static let mergeWatchWindow: TimeInterval = 10 * 60
 
+    /// 読めた後に、受け付けの記録の確かめと、マージ中の epic の読み直しを始める（どちらも要るときだけ）
+    func watchAfterRefresh() {
+        watchReceipts()
+        watchMerges()
+    }
+
     /// マージ中の epic がある間だけ、窓口の `mergeWatchInterval` ごとに読み直す（ふだんの取り直しの間隔は変えない）。
     /// GitHub の上限に当たって取り直しを休んでいる間は読まない
     func watchMerges() {

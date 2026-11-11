@@ -172,8 +172,7 @@ final class ClientStore {
             if receipts.needsReread {
                 await refresh()
             }
-            watchReceipts()
-            watchMerges()
+            watchAfterRefresh()
         } catch {
             // 後に始めた読み込みがもう読めていれば、古い失敗は出さない
             guard generation > appliedRefresh else {
@@ -453,7 +452,7 @@ extension ClientStore {
 extension ClientStore {
     /// 司令塔の受け取りを待つ意図がある間だけ、受け付けの記録を数秒ごとに軽く確かめ、見つけたら全体を読み直す。
     /// 全体の取り直しの間隔は変えない。送ってから `stallThreshold` を過ぎた意図は確かめず、ふだんの取り直しに任せる
-    private func watchReceipts() {
+    func watchReceipts() {
         guard receiptWatch == nil, let interval = service.receiptCheckInterval, awaitedIntentID() != nil else {
             return
         }
