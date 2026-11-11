@@ -416,4 +416,29 @@ extension ClientStoreTests {
         #expect(store.delayBeforeAutoRefresh(relaxed: false, at: ended + .seconds(70)) == .seconds(-10))
         #expect(store.delayBeforeAutoRefresh(relaxed: true, at: ended + .seconds(70)) == .seconds(50))
     }
+
+    /// GitHub の REST の残りを接続の行に小さく添え、少なくなったら警告にして、取り直しの間隔を延ばす
+    @Test
+    func showsGitHubQuotaAndRelaxesWhenLow() async throws {
+        let service = FakeService()
+        var snapshot = DemoScenario.standard.snapshot(now: now)
+        service.snapshot = snapshot
+        let store = ClientStore(service: service) { now }
+        await store.refresh()
+        let ended = try #require(store.lastRefreshEndedAt)
+        let status = ConnectionStatusView.status(store: store)
+        #expect(status.title == "Mac 2 / 3 台がオンライン")
+        #expect(status.detail == "\(RelativeTime.clock(now)) に確かめました · GitHub の残り 4,210 回")
+        #expect(store.delayBeforeAutoRefresh(relaxed: false, at: ended) == .seconds(60))
+
+        snapshot.updateMac(DemoData.macMiniID) { $0.githubQuota?.remaining = 820 }
+        service.snapshot = snapshot
+        await store.refresh()
+        let resetAt = try #require(snapshot.mac(DemoData.macMiniID)?.githubQuota?.resetAt)
+        let low = ConnectionStatusView.status(store: store)
+        #expect(low.title == "GitHub の残りが少なくなっています（820 回）")
+        #expect(low.detail == "\(RelativeTime.clock(resetAt)) に戻ります。GitHub を多く使うものを止めてください")
+        let lowEnded = try #require(store.lastRefreshEndedAt)
+        #expect(store.delayBeforeAutoRefresh(relaxed: false, at: lowEnded) == ClientStore.relaxedRefreshInterval)
+    }
 }
