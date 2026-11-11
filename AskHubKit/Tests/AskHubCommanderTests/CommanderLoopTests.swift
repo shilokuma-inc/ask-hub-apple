@@ -89,6 +89,7 @@ extension ClaudeJobRunnerTests {
         sleeper: any Sleeper = TaskSleeper(),
         failingVerifier: CommanderError? = nil,
         verifierCalls: OSAllocatedUnfairLock<Int> = .init(initialState: 0),
+        rateLimit: @escaping @Sendable () async -> GitHubRateLimit? = { nil },
         tidy: @escaping @Sendable () async -> Void = {}
     ) -> CommanderLoop {
         let publicKeys = [keyID: key.publicKey.derRepresentation]
@@ -108,6 +109,7 @@ extension ClaudeJobRunnerTests {
                     diskFreeGB: 100, load: 0.5, selfCheck: selfCheck, claudeVersion: claudeVersion, xcodeVersion: "27.1"
                 )
             },
+            rateLimit: rateLimit,
             log: { _ in },
             sleeper: sleeper,
             mirror: mirror,
@@ -331,6 +333,39 @@ extension ClaudeJobRunnerTests {
         #expect(try await read(CommanderFile.self, at: StatePath.commander, in: store)?.seenAt == Timestamp(later))
         #expect(try await read(MacFile.self, at: StatePath.mac(Self.commander), in: store)?.seenAt == Timestamp(later))
         #expect(tidied.withLock { $0 } == 2)
+    }
+
+    @Test func loopRewritesHeartbeatsOnceWhenRateLimitGetsLow() async throws {
+        let store = try await storeWithRequest(count: 0)
+        let clock = OSAllocatedUnfairLock(initialState: Self.now)
+        let resetAt = Timestamp(Self.now.addingTimeInterval(50 * 60))
+        // 1 回目に読んだ残りには余裕があり、2 回目から少ない
+        let reads = OSAllocatedUnfairLock(initialState: 0)
+        let loop = loop(store, claude: ScriptedRunner([]), now: { clock.withLock { $0 } }, rateLimit: {
+            let count = reads.withLock { reads in
+                reads += 1
+                return reads
+            }
+            return GitHubRateLimit(limit: 5_000, remaining: count == 1 ? 3_000 : 900, resetAt: resetAt)
+        })
+        _ = try await loop.cycle()
+        #expect(try await read(CommanderFile.self, at: StatePath.commander, in: store)?.seenAt == Timestamp(Self.now))
+        // 1 分たつまでは読み直さない（/rate_limit は上限に数えられないが、周ごとには呼ばない）
+        clock.withLock { $0 = $0.addingTimeInterval(30) }
+        _ = try await loop.cycle()
+        #expect(reads.withLock { $0 } == 1)
+        // 少なくなったら、10 分を待たずに生きている印を書き直す（クライアントがすぐ気づけるように）
+        let low = Self.now.addingTimeInterval(61)
+        clock.withLock { $0 = low }
+        _ = try await loop.cycle()
+        #expect(reads.withLock { $0 } == 2)
+        #expect(try await read(CommanderFile.self, at: StatePath.commander, in: store)?.seenAt == Timestamp(low))
+        #expect(try await read(MacFile.self, at: StatePath.mac(Self.commander), in: store)?.seenAt == Timestamp(low))
+        // 同じ窓では、少ないままでも書き直さない
+        clock.withLock { $0 = low.addingTimeInterval(61) }
+        _ = try await loop.cycle()
+        #expect(reads.withLock { $0 } == 3)
+        #expect(try await read(CommanderFile.self, at: StatePath.commander, in: store)?.seenAt == Timestamp(low))
     }
 
     @Test func loopDoesNotTakeAnotherJobBeforeAttemptIsWritten() async throws {
