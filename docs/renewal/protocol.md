@@ -504,8 +504,9 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 }
 ```
 
-- `push.environment` は APNs の送り先の環境。Xcode から入れた版は `development`、TestFlight と App Store の版は `production`。APNs の宛先では必ず書く
-  - クライアントは、ビルド設定 `APS_ENVIRONMENT`（Debug は `development`、Release は `production`。entitlement の `aps-environment` と同じ値）を書く
+- `push.environment` は APNs の送り先の環境。開発用の署名の版（Xcode から入れた版）は `development`、TestFlight と App Store の版は `production`。APNs の宛先では必ず書く
+  - クライアントは、ビルドの構成ではなく署名から決めた値を書く（iOS の実機は埋め込みの provisioning profile の `aps-environment`、profile が無ければ `production`。macOS は署名の entitlement。[operations.md](operations.md) の「通知」）
+  - 司令塔は、`400 BadDeviceToken` で断られたら、もう一方の環境に 1 回だけ送る（環境を取り違えて書いた古い版のアプリのため）
 - クライアントは、トークン・環境・端末の種類のどれかが変わったときだけ書き直す（起動のたびに書かない）
 - `push.token` は送るときに URL のパスに入るので、16 進だけを受け付ける
 - Android を足すときに、`platform` と `push.service`（FCM）を足す

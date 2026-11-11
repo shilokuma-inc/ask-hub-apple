@@ -61,6 +61,6 @@ extension AskHubCommanderMain {
         }
         let state = APNsKey.state(in: secrets)
         if state != .ok { log("Keychain の APNs の鍵が \(state.rawValue)。通知は送れずに待つ（askhub-commander apns で登録し直す）") }
-        return Notifier(context: context, sender: APNsSender(configuration: apns, secrets: secrets), log: log)
+        return Notifier(context: context, sender: APNsSender(configuration: apns, secrets: secrets, log: log), log: log)
     }
 }
