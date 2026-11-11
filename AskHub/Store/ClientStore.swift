@@ -84,6 +84,8 @@ final class ClientStore {
     private var receiptWatch: Task<Void, Never>?
     /// GitHub の上限に当たったときに、受け付けの記録を確かめるのを休む時刻
     private var receiptCheckPausedUntil: Date?
+    /// マージ中の epic を、マージ済みになるまで短い間隔で読み直している様子（`ClientStore+MergeWatch`）
+    @ObservationIgnored var mergeWatch = MergeWatch()
     /// 読み込みを始めた数と、画面に当てた最後の読み込みの番号（後に始めた読み込みの結果を、先に始めた読み込みで上書きしない。
     /// 窓口も同じ決まりで送る形の引き当てを更新するので、読めなかった読み込みは番号を進めない）
     private var startedRefreshes = 0
@@ -171,6 +173,7 @@ final class ClientStore {
                 await refresh()
             }
             watchReceipts()
+            watchMerges()
         } catch {
             // 後に始めた読み込みがもう読めていれば、古い失敗は出さない
             guard generation > appliedRefresh else {
