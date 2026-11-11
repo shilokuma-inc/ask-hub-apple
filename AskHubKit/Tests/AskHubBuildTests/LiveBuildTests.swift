@@ -141,6 +141,60 @@ struct LiveBuildTests {
         if let failure { throw failure }
     }
 
+    /// 前の回の UI テストが外観をダークにしたまま終わっても、`EpicBuilder` が流す次の UI テストはライトで始まることを確かめる。
+    /// `ASKHUB_LIVE_BUILD_PROJECT`・`ASKHUB_LIVE_BUILD_SETTINGS` と、ダークにして終わる UI テスト（`ASKHUB_LIVE_BUILD_DARKEN_TEST`）・
+    /// ライトで始まったかを確かめる UI テスト（`ASKHUB_LIVE_BUILD_LIGHT_TEST`）が要る（`-only-testing` の形）。最初の Simulator の行き先だけを使う
+    @Test func startsTestsInLightAfterADarkRun() async throws {
+        let environment = LiveBuild.environment
+        guard let settings = try LiveBuild.settings(), let project = environment["ASKHUB_LIVE_BUILD_PROJECT"],
+              let darken = environment["ASKHUB_LIVE_BUILD_DARKEN_TEST"], let light = environment["ASKHUB_LIVE_BUILD_LIGHT_TEST"],
+              let destination = settings.destinations.lazy.compactMap({ destination -> SimulatorDestination? in
+                  if case .simulator(let simulator) = destination { return simulator }
+                  return nil
+              }).first else { return }
+        let (machine, root) = try liveMachine()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let epic = try #require(ULID(rawValue: "01JC0000000000000000000000"))
+        let source = URL(fileURLWithPath: project)
+        func only(_ test: String) -> BuildSettings {
+            var single = settings
+            single.destinations = [.simulator(destination)]
+            single.testLight = TestSelection(onlyTesting: [test])
+            return single
+        }
+        func builder(_ test: String) -> EpicBuilder {
+            EpicBuilder(machine: machine, settings: only(test), epic: epic, sourceDirectory: source, slot: Self.slot)
+        }
+
+        var failure: (any Error)?
+        do {
+            let darkened = try await builder(darken).run(.testLight)
+            print("[live] ダークにする: \(darkened.summary)")
+            #expect(darkened.succeeded)
+            // 止めて起動し直すだけでは、ダークのまま始まって落ちる（向きだけを戻していたワーカーと同じ）
+            let booted = try await machine.pool.prepare(slot: Self.slot, for: destination)
+            try await machine.pool.shutdown(booted)
+            let simulator = try await machine.pool.prepare(slot: Self.slot, for: destination)
+            let request = BuildRequest(
+                settings: only(light), kind: .testLight, destination: .simulator(simulator), sourceDirectory: source, epic: epic
+            )
+            let stale = try await machine.runner.run(request, timeout: .seconds(20 * 60))
+            print("[live] 起動し直しただけで流す: \(stale.summary)\n\(stale.report.text())")
+            #expect(stale.failure == .test)
+            // EpicBuilder はテストの前に外観もライトに戻すので、ライトで始まる
+            let fresh = try await builder(light).run(.testLight)
+            print("[live] EpicBuilder で流す: \(fresh.summary)\n\(fresh.text())")
+            #expect(fresh.succeeded)
+        } catch {
+            failure = error
+        }
+        let prefix = "\(SimulatorPool.namePrefix)\(Self.slot)-"
+        for simulator in try await machine.pool.workerSimulators() where simulator.name.hasPrefix(prefix) {
+            try await machine.pool.delete(simulator)
+        }
+        if let failure { throw failure }
+    }
+
     /// 本物の道具で流す `BuildMachine` と、その作業場所（`root`。使い終えたら消す）
     private func liveMachine() throws -> (machine: BuildMachine, root: URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("askhub-build-live-\(UUID().uuidString)")
