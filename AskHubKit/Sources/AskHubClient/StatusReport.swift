@@ -79,14 +79,17 @@ public struct StatusReport: Sendable {
             }
             guard job.state == .waitingHuman else { continue }
             add("    人の対応待ちのジョブ \(job.kind.rawValue) \(job.id.rawValue)（試行 \(job.attempts)）")
-            let path = StatePath.attempt(epic.repo, epic: epic.id, job: job.id, number: job.attempts)
-            do {
-                if let failure = try await files.read(AttemptFile.self, at: path)?.file.failure {
-                    add("      失敗: \(failure.failureClass.rawValue) \(failure.message)")
+            // 直しの回数が上限を超えたジョブは、試行の前に人に渡されるので、試行が無い
+            if job.attempts >= 1 {
+                let path = StatePath.attempt(epic.repo, epic: epic.id, job: job.id, number: job.attempts)
+                do {
+                    if let failure = try await files.read(AttemptFile.self, at: path)?.file.failure {
+                        add("      失敗: \(failure.failureClass.rawValue) \(failure.message)")
+                    }
+                } catch {
+                    guard case let .unreadable(_, reason) = error else { throw error }
+                    add("      失敗の理由を読めない（\(reason)）")
                 }
-            } catch {
-                guard case let .unreadable(_, reason) = error else { throw error }
-                add("      失敗の理由を読めない（\(reason)）")
             }
             let target = "--repo \(epic.repo.rawValue) --epic \(epic.id.rawValue) --job \(job.id.rawValue) --attempt \(job.attempts)"
             add("      やり直す: askhub retry \(target)")
