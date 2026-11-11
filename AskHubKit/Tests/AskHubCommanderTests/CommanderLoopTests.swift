@@ -87,6 +87,8 @@ extension ClaudeJobRunnerTests {
         epicWorkspace: (any EpicWorkspace)? = nil,
         claudeVersion: String? = nil,
         sleeper: any Sleeper = TaskSleeper(),
+        failingVerifier: CommanderError? = nil,
+        verifierCalls: OSAllocatedUnfairLock<Int> = .init(initialState: 0),
         tidy: @escaping @Sendable () async -> Void = {}
     ) -> CommanderLoop {
         let publicKeys = [keyID: key.publicKey.derRepresentation]
@@ -94,7 +96,11 @@ extension ClaudeJobRunnerTests {
         return CommanderLoop(
             context: CommanderContext(store: store, mac: Self.commander, now: now),
             settings: .init(capacity: .init(claude: capacity, build: 0), commanderVersion: "0.1.0"),
-            verifier: { IntentVerifier(publicKeys: publicKeys) },
+            verifier: { () throws(CommanderError) -> IntentVerifier in
+                verifierCalls.withLock { $0 += 1 }
+                if let failingVerifier { throw failingVerifier }
+                return IntentVerifier(publicKeys: publicKeys)
+            },
             client: ClaudeClient(setup: QuestionJobsTests.setup, runner: claude),
             workspace: FixedWorkspace(directory: directory),
             status: {
@@ -195,6 +201,28 @@ extension ClaudeJobRunnerTests {
         #expect(CommanderLoop.wait(after: .store(.budgetExhausted(retryAfter: .seconds(6))), pollInterval: poll) == poll)
         #expect(CommanderLoop.wait(after: .files(.store(.rateLimited(retryAfter: .seconds(90)))), pollInterval: poll) == .seconds(90))
         #expect(CommanderLoop.wait(after: .store(.invalidPath), pollInterval: poll) == poll)
+    }
+
+    @Test func runDoesNotCutRestShortAfterFailedCycle() async throws {
+        // 意図を受け付ける前に失敗する（鍵を読めない）と、前の周で見た意図の記録は古いまま。届いている依頼で休みを切り上げず、言われた時間を待つ
+        let store = try await storeWithRequest()
+        let calls = OSAllocatedUnfairLock(initialState: 0)
+        let sleeper = HoldingSleeper()
+        let loop = loop(
+            store,
+            claude: ScriptedRunner([]),
+            sleeper: sleeper,
+            failingVerifier: .store(.rateLimited(retryAfter: .seconds(120))),
+            verifierCalls: calls
+        )
+        let running = Task { await loop.run() }
+        for _ in 0..<200 where sleeper.waits.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        running.cancel()
+        await running.value
+        #expect(sleeper.waits == [.seconds(120)])
+        #expect(calls.withLock { $0 } == 1)
     }
 
     @Test func reportsOnlySlowCycles() {
@@ -372,5 +400,17 @@ extension ClaudeJobRunnerTests {
         #expect(try await loop.cycle().count == 1)
         await loop.waitForJobs()
         try? FileManager.default.removeItem(at: directory)
+    }
+}
+
+/// 待つ時間を残し、取り消されるまで待ち続ける（ループが休みに入ったところで止める）
+final class HoldingSleeper: Sleeper {
+    private let state = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+
+    var waits: [Duration] { state.withLock { $0 } }
+
+    func sleep(for duration: Duration) async throws {
+        state.withLock { $0.append(duration) }
+        try await Task.sleep(for: .seconds(3_600))
     }
 }
