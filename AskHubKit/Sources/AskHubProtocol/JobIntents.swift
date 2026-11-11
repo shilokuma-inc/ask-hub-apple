@@ -1,6 +1,7 @@
 import Foundation
 
-/// ジョブを対象にする人の意図の対象。`target` は `{type: job, epic, id: <ジョブ>}`、`targetVersion` は人が見たときの試行の番号（ジョブの `attempts`）
+/// ジョブを対象にする人の意図の対象。`target` は `{type: job, epic, id: <ジョブ>}`、`targetVersion` は人が見たときの試行の番号（ジョブの `attempts`）。
+/// 試行の前に人に渡したジョブ（直しの上限を超えた直し）は 0
 public struct JobTarget: Equatable, Sendable {
     public static let targetType = "job"
 
@@ -23,8 +24,13 @@ public struct JobTarget: Equatable, Sendable {
               let job = target.id.flatMap(ULID.init(rawValue:)) else {
             throw .init(detail: "target がジョブでない")
         }
-        guard let attempt = envelope.targetVersion.flatMap(AnswerIntent.version) else { throw .init(detail: "targetVersion が試行の番号でない") }
+        guard let attempt = envelope.targetVersion.flatMap(Self.attempt) else { throw .init(detail: "targetVersion が試行の番号でない") }
         self.init(repo: repo, epic: epic, job: job, attempt: attempt)
+    }
+
+    /// 0 以上の 10 進の整数（先頭の 0・符号を受け付けない）
+    static func attempt(_ text: String) -> Int? {
+        text == "0" ? 0 : AnswerIntent.version(text)
     }
 
     public var target: IntentEnvelope.Target { .init(type: Self.targetType, epic: epic, id: job.rawValue) }

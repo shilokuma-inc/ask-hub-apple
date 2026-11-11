@@ -207,6 +207,10 @@ struct EpicIntentsTests {
         #expect(retry.target == JobTarget(repo: repo, epic: Self.epic, job: Self.job, attempt: 2))
         #expect(retry.target.target == .init(type: "job", epic: Self.epic, id: Self.job.rawValue))
         #expect(retry.target.targetVersion == "2")
+        // 試行の前に人に渡したジョブ（直しの上限を超えた直し）は、試行の番号が 0
+        let untried = try GiveUpJobIntent(envelope: envelope(kind: "giveUp", target: retry.target.target, targetVersion: "0", payload: [:]))
+        #expect(untried.target == JobTarget(repo: repo, epic: Self.epic, job: Self.job, attempt: 0))
+        #expect(untried.target.targetVersion == "0")
         // ジョブでない対象・ジョブの id が ULID でない・試行の番号でない版は読まない
         let cases: [(IntentEnvelope.Target?, String?)] = [
             (nil, "2"),
@@ -215,7 +219,10 @@ struct EpicIntentsTests {
             (.init(type: "job", id: Self.job.rawValue), "2"),
             (.init(type: "job", epic: Self.epic, id: "../job"), "2"),
             (.init(type: "job", epic: Self.epic, id: Self.job.rawValue), nil),
-            (.init(type: "job", epic: Self.epic, id: Self.job.rawValue), "0")
+            (.init(type: "job", epic: Self.epic, id: Self.job.rawValue), "00"),
+            (.init(type: "job", epic: Self.epic, id: Self.job.rawValue), "02"),
+            (.init(type: "job", epic: Self.epic, id: Self.job.rawValue), "-1"),
+            (.init(type: "job", epic: Self.epic, id: Self.job.rawValue), "")
         ]
         for (target, version) in cases {
             #expect(throws: MalformedIntent.self) {
