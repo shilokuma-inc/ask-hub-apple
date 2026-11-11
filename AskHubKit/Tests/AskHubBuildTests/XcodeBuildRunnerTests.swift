@@ -90,6 +90,8 @@ struct XcodeBuildRunnerTests {
         #expect(value(after: "-testPlan", in: arguments) == "Full")
         #expect(arguments.contains("-skip-testing:AppUITests/LaunchTests"))
         #expect(!arguments.contains("-only-testing:AppTests"))
+        // 全部のテスト・macOS でも、落ちたテストの後に診断を集めて止まらない
+        #expect(value(after: "-collect-test-diagnostics", in: arguments) == "never")
         // macOS はアドホック署名
         #expect(arguments.suffix(4) == [
             "CODE_SIGN_IDENTITY=-", "CODE_SIGN_STYLE=Manual", "DEVELOPMENT_TEAM=", "PROVISIONING_PROFILE_SPECIFIER="
@@ -101,6 +103,7 @@ struct XcodeBuildRunnerTests {
         let build = XcodeBuildRunner.arguments(for: request, derivedData: derivedData, resultBundle: bundle)
         #expect(build.prefix(4) == ["xcodebuild", "build", "-workspace", "App.xcworkspace"])
         #expect(!build.contains("-parallel-testing-enabled"))
+        #expect(!build.contains("-collect-test-diagnostics"))
         #expect(!build.contains("-testPlan"))
     }
 
