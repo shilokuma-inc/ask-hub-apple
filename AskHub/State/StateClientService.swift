@@ -66,7 +66,7 @@ final class StateClientService: ClientService {
             let snapshot = try await store.snapshot()
             documents = try await StateReader(store: snapshot, device: key.keyID, immutables: immutables).read()
         } catch {
-            throw ClientServiceError(message: StateServiceError.message(for: error))
+            throw ClientServiceError(message: StateServiceError.message(for: error), retryAfter: error.retryAfter)
         }
         let date = now()
         guard generation > appliedRead else {

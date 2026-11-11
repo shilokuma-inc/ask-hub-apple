@@ -361,6 +361,19 @@ struct DemoClientServiceTests {
             _ = try await service.fetchSnapshot()
         }
     }
+
+    /// 上限に当たる場面では、初めの 1 回だけ読め、その後は戻るまでの時間つきで失敗する
+    @Test
+    func rateLimitedScenarioThrowsAfterFirstRead() async throws {
+        let service = makeService(.rateLimited)
+        _ = try await service.fetchSnapshot()
+        do {
+            _ = try await service.fetchSnapshot()
+            Issue.record("2 回目は上限に当たるはず")
+        } catch let error as ClientServiceError {
+            #expect(error.retryAfter == DemoClientService.rateLimitWait)
+        }
+    }
 }
 
 // MARK: - 送り終えていない意図を当てる

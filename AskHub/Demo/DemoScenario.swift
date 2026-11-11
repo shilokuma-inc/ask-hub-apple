@@ -18,6 +18,8 @@ enum DemoScenario: String, CaseIterable {
     case started
     /// 標準の場面に、前に終わった epic を足す（進行中の終わったものが 10 件を超え、「すべて見る」の行が出る）
     case manyFinished
+    /// 初めの 1 回だけ読め、その後は GitHub の上限に当たる（戻る時刻まで取り直しを休む画面）
+    case rateLimited
 
     /// 機械の反応までの秒数を決める UserDefaults のキー（UI テストは起動引数 `-demoReactionDelay 0` で渡す）
     static let reactionDelayKey = "demoReactionDelay"
@@ -52,7 +54,7 @@ enum DemoScenario: String, CaseIterable {
     func snapshot(now: Date) -> ClientSnapshot {
         let data = DemoData(now: now)
         switch self {
-        case .standard, .failing:
+        case .standard, .failing, .rateLimited:
             return data.standard()
 
         case .quiet:

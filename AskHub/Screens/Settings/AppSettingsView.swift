@@ -60,6 +60,7 @@ extension DemoScenario {
         case .tooLarge: "大きすぎる依頼がある"
         case .started: "開始した後の段取り"
         case .manyFinished: "終わったものが多い"
+        case .rateLimited: "GitHub の上限に当たった"
         }
     }
 }
