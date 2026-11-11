@@ -9,7 +9,7 @@ import Foundation
 /// 読むのは状態リポジトリだけ（各リポジトリの Discussion・PR は読まない）。人の意図は、この端末の鍵で署名して `intents/` に置く。
 /// 司令塔は 30 秒ほどの間隔で意図を処理するので、処理を待つ意図・送っている途中の意図・送り終えて読み直す前の意図は、送った結果として先に出す
 final class StateClientService: ClientService {
-    /// 司令塔が意図を見る間隔に合わせる。変わっていないファイルは ETag で読むので、GitHub の上限に数えられない
+    /// 司令塔が意図を見る間隔に合わせる。読むだけの写しから読むので、変わっていなければ直下の一覧の 1 回（ETag の 304。GitHub の上限に数えられない）で済む
     let refreshInterval: Duration = .seconds(30)
     /// 受け付けの記録を確かめる間隔。記録が無い間の読み取り（404）は GitHub の上限に数えられるので、司令塔の受け取りを待つ意図の 1 つだけを確かめる
     let receiptCheckInterval: Duration? = .seconds(4)
@@ -61,7 +61,10 @@ final class StateClientService: ClientService {
         let generation = startedReads
         let documents: StateDocuments
         do {
-            documents = try await StateReader(store: store, device: key.keyID, immutables: immutables).read()
+            // 読むだけの写しから読む。直下の一覧だけを ETag つきで読み、その下は前に読んだ tree と blob を sha で使い回すので、
+            // 終わった epic が増えても、変わっていない取り直しの要求は増えない。無いファイルも tree で分かるので、404 を受けない
+            let snapshot = try await store.snapshot()
+            documents = try await StateReader(store: snapshot, device: key.keyID, immutables: immutables).read()
         } catch {
             throw ClientServiceError(message: StateServiceError.message(for: error))
         }

@@ -23,15 +23,18 @@ public struct GitHubContentsStore: StateStore {
     let now: @Sendable () -> Date
     private let cache = ETagCache()
     /// sha で中身が決まる tree と blob（`snapshot()` の写しが使い回す）
-    let objects = GitObjectCache()
+    let objects: GitObjectCache
 
-    /// `token` は要求のたびに Keychain などから読む。値はログ・URL・エラーに出さない
+    /// `token` は要求のたびに Keychain などから読む。値はログ・URL・エラーに出さない。
+    /// `objectsDirectory` を渡すと、写しが読んだ tree と blob をそのディレクトリのファイルにも持ち、起動し直しても GitHub から読み直さない
+    /// （中身は状態リポジトリのファイルだけで、トークンは書かない）
     public init(
         repository: RepositoryFullName,
         branch: String? = nil,
         apiBase: URL = URL(string: "https://api.github.com")!,
         transport: any HTTPTransport = GitHubURLSessionTransport(),
         budget: WriteBudget?,
+        objectsDirectory: URL? = nil,
         now: @escaping @Sendable () -> Date = { Date() },
         token: @escaping @Sendable () async throws -> String
     ) {
@@ -40,6 +43,7 @@ public struct GitHubContentsStore: StateStore {
         self.apiBase = apiBase
         self.transport = transport
         self.budget = budget
+        objects = GitObjectCache(directory: objectsDirectory)
         self.now = now
         self.token = token
     }
