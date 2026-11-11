@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// 接続の状態の 1 行。取り直しの失敗（GitHub の上限なら戻る時刻）・一部の取得元の失敗・司令塔の印の古さを、0 件と取り違えないように出す
+/// 接続の状態の 1 行。取り直しの失敗（GitHub の上限なら戻る時刻）・一部の取得元の失敗・司令塔の印の古さを、0 件と取り違えないように出す。
+/// GitHub の REST の上限の残りは、ふだんは小さく添え、少なくなったら警告にする
 struct ConnectionStatusView: View {
     /// 司令塔の印がこれより古ければ知らせる
     static let staleHeartbeat: TimeInterval = 15 * 60
@@ -82,10 +83,25 @@ struct ConnectionStatusView: View {
                 tint: Theme.danger
             )
         }
+        return healthy(snapshot, now: store.currentDate())
+    }
+
+    /// 読めていて、司令塔も動いているとき。GitHub の REST の残りを小さく添え、少なくなったら警告にする
+    private static func healthy(_ snapshot: ClientSnapshot, now: Date) -> Status {
+        let quota = snapshot.githubQuota(now: now)
+        if let quota, quota.isLow(now: now) {
+            return Status(
+                title: "GitHub の残りが少なくなっています（\(GitHubQuota.count(quota.remaining)) 回）",
+                detail: "\(RelativeTime.clock(quota.resetAt)) に戻ります。GitHub を多く使うものを止めてください",
+                systemImage: "gauge.with.dots.needle.0percent",
+                tint: Theme.warning
+            )
+        }
         let online = snapshot.macs.filter(\.isOnline).count
+        let remaining = quota.map { " · GitHub の残り \(GitHubQuota.count($0.remaining)) 回" } ?? ""
         return Status(
             title: "Mac \(online) / \(snapshot.macs.count) 台がオンライン",
-            detail: "\(RelativeTime.clock(snapshot.fetchedAt)) に確かめました",
+            detail: "\(RelativeTime.clock(snapshot.fetchedAt)) に確かめました\(remaining)",
             systemImage: "checkmark.circle.fill",
             tint: Theme.success
         )

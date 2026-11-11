@@ -130,6 +130,46 @@ struct MacNoticeTests {
         #expect(laptop.renewalCommand(for: try #require(laptop.tokens.first)) == "askhub-worker token <持ち主>")
     }
 
+    /// 生きている印の自己診断の残り（持ち主ごとのうち一番少ないもの）を Mac に付け、全体では一番新しく読んだ今の窓のものを使う
+    @Test
+    func buildsGitHubQuotaFromHeartbeats() async throws {
+        let files = [
+            "macs/mac-mini.json": heartbeat(mac: "mac-mini", kind: "alwaysOn", claude: "2.1.320", selfCheck: """
+                {"checkedAt":"2027-01-15T07:58:00Z","keychain":"ok","githubToken":"ok","claudeToken":"ok",
+                 "githubTokens":[
+                   {"owner":"shilokuma-inc","state":"ok","rateLimit":{"limit":5000,"remaining":4210,"resetAt":"2027-01-15T08:41:00Z"}},
+                   {"owner":"mrs1669","state":"ok","rateLimit":{"limit":5000,"remaining":4190,"resetAt":"2027-01-15T08:41:00Z"}}]}
+                """),
+            "macs/macbook-a.json": heartbeat(mac: "macbook-a", kind: "resident", claude: "2.1.320", selfCheck: """
+                {"checkedAt":"2027-01-15T07:50:00Z","keychain":"ok","githubToken":"ok","claudeToken":"ok",
+                 "githubTokens":[
+                   {"owner":"mrs1669","state":"ok","rateLimit":{"limit":5000,"remaining":4400,"resetAt":"2027-01-15T08:41:00Z"}}]}
+                """),
+            "macs/macbook-b.json": heartbeat(mac: "macbook-b", kind: "resident", claude: "2.1.320", selfCheck: """
+                {"checkedAt":"2027-01-15T07:50:00Z","keychain":"ok","githubToken":"ok","claudeToken":"ok"}
+                """)
+        ]
+        let store = InMemoryStateStore(files: files.mapValues { Data($0.utf8) })
+        let key = try DeviceSigningKey.loadOrCreate(in: InMemorySecretStore(), useSecureEnclave: false)
+        let now = now
+        let snapshot = try await StateClientService(store: store, key: key) { now }.fetchSnapshot()
+
+        let resetAt = try #require(Timestamp(rawValue: "2027-01-15T08:41:00Z")).date
+        let checkedAt = try #require(Timestamp(rawValue: "2027-01-15T07:58:00Z")).date
+        let quota = GitHubQuota(limit: 5_000, remaining: 4_190, resetAt: resetAt, checkedAt: checkedAt)
+        #expect(snapshot.mac("mac-mini")?.githubQuota == quota)
+        // 残りを書かない（前の版の）Mac は持たない
+        #expect(snapshot.mac("macbook-b")?.githubQuota == nil)
+        // 上限はアカウントごとなので、一番新しく読んだものを使う。戻る時刻を過ぎたら使わない
+        #expect(snapshot.githubQuota(now: now) == quota)
+        #expect(snapshot.githubQuota(now: resetAt) == nil)
+        #expect(!quota.isLow(now: now))
+        var low = quota
+        low.remaining = 999
+        #expect(low.isLow(now: now))
+        #expect(!low.isLow(now: resetAt))
+    }
+
     private func heartbeat(mac: String, kind: String, claude: String, selfCheck: String) -> String {
         """
         {"v":1,"mac":"\(mac)","kind":"\(kind)","seenAt":"2027-01-15T07:50:00Z","versions":{"worker":"1.0.0","claude":"\(claude)"},
