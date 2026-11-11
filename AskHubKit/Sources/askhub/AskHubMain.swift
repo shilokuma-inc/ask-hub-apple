@@ -69,6 +69,14 @@ enum AskHubMain {
         var store: GitHubContentsStore
     }
 
+    /// 状態リポジトリの tree と blob（sha で中身が決まる）を持つ場所。1 回きりの `status` も、2 回目からは変わったものだけを GitHub から読む。
+    /// 置くのは状態リポジトリの中身だけ（トークンと鍵は置かない）。消えても読み直すだけなので Caches に置く（アプリ・司令塔とは分ける）
+    static var objectsDirectory: URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appending(path: ClientConfiguration.keychainService, directoryHint: .isDirectory)
+            .appending(path: "state-objects", directoryHint: .isDirectory)
+    }
+
     static func connection() throws -> Connection {
         let configuration: ClientConfiguration
         do {
@@ -83,7 +91,8 @@ enum AskHubMain {
         let store = GitHubContentsStore(
             repository: configuration.stateRepository,
             branch: configuration.stateBranch,
-            budget: WriteBudget(limits: .client)
+            budget: WriteBudget(limits: .client),
+            objectsDirectory: objectsDirectory
         ) {
             guard let data = try secrets.read(.githubToken), let token = String(bytes: data, encoding: .utf8), !token.isEmpty else {
                 throw StateStoreError.tokenUnavailable
