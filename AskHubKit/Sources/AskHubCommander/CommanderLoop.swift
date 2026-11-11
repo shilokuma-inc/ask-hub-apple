@@ -8,7 +8,7 @@ import Foundation
 ///
 /// 1 周ごとに、人の意図を処理し終えてから、試行を読んでジョブの状態を決め、実装している epic のタスクと最終 PR を進めるジョブを作り（`TaskFlow`）、
 /// 自分宛ての Claude のジョブを引き受けて並んで動かし、進行を止めているものを知らせる。最後に、状態を Discussion の写しと照らし合わせる（写しに失敗しても、周は止めない）。
-/// 生きている印（`commander.json`・`macs/<mac>.json`）は、決めた間隔で書く
+/// 生きている印（`commander.json`・`macs/<mac>.json`）は、決めた間隔で書く。GitHub の REST の上限の残りは、それより短い間隔で見て、少なくなったら知らせる
 public actor CommanderLoop {
     public struct Settings: Sendable {
         /// 1 周の間隔（`intents/` は ETag つきで読むので、変わっていなければ上限に数えられない）
@@ -17,6 +17,8 @@ public actor CommanderLoop {
         public var intentCheckInterval: Duration
         /// 生きている印を書く間隔
         public var heartbeatInterval: Duration
+        /// GitHub の REST の上限の残りを見る間隔（`/rate_limit` は上限に数えられない）。生きている印の間隔より短くし、使い切る前に気づく
+        public var rateLimitInterval: Duration
         /// この Mac で同時に動かす数
         public var capacity: MacFile.Capacity
         public var commanderVersion: String
@@ -29,7 +31,8 @@ public actor CommanderLoop {
             claudeVersion: String? = nil,
             pollInterval: Duration = .seconds(30),
             intentCheckInterval: Duration = .seconds(5),
-            heartbeatInterval: Duration = .seconds(10 * 60)
+            heartbeatInterval: Duration = .seconds(10 * 60),
+            rateLimitInterval: Duration = .seconds(60)
         ) {
             self.capacity = capacity
             self.commanderVersion = commanderVersion
@@ -37,6 +40,7 @@ public actor CommanderLoop {
             self.pollInterval = pollInterval
             self.intentCheckInterval = intentCheckInterval
             self.heartbeatInterval = heartbeatInterval
+            self.rateLimitInterval = rateLimitInterval
         }
     }
 
@@ -69,6 +73,8 @@ public actor CommanderLoop {
     nonisolated let client: ClaudeClient
     nonisolated let workspace: any RepositoryWorkspace
     nonisolated let status: @Sendable () async -> MachineStatus
+    /// GitHub の REST の上限の残りを読む（`MachineProbe.githubRateLimit`）。読めなければ nil
+    nonisolated let rateLimit: @Sendable () async -> GitHubRateLimit?
     /// 進行を止めているものを知らせるもの。APNs の設定が無ければ nil（知らせない）
     nonisolated let notifier: Notifier?
     nonisolated let log: @Sendable (String) -> Void
@@ -88,6 +94,11 @@ public actor CommanderLoop {
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
     private var lastBeat: Date?
+    /// 最後に GitHub の REST の上限の残りを見た時刻と、読んだ残り（通知に使う。読めなければ nil）
+    private var lastRateLimitCheck: Date?
+    private var latestRateLimit: GitHubRateLimit?
+    /// 残りが少なくなって、生きている印をすぐ書き直した窓（戻る時刻）。同じ窓では書き直さない
+    private var lowRateLimitWindow: Timestamp?
     /// ログに出したタスクの流れの知らせ（同じものを周ごとに出さない）
     private var reportedNotes: Set<String> = []
     /// 前の周の初めに見た、まだ処理していなかった意図（休みを切り上げるかを決めるのに使う）
@@ -100,6 +111,7 @@ public actor CommanderLoop {
         client: ClaudeClient,
         workspace: any RepositoryWorkspace,
         status: @escaping @Sendable () async -> MachineStatus,
+        rateLimit: @escaping @Sendable () async -> GitHubRateLimit? = { nil },
         notifier: Notifier? = nil,
         log: @escaping @Sendable (String) -> Void,
         sleeper: any Sleeper = TaskSleeper(),
@@ -115,6 +127,7 @@ public actor CommanderLoop {
         self.client = client
         self.workspace = workspace
         self.status = status
+        self.rateLimit = rateLimit
         self.notifier = notifier
         self.log = log
         self.sleeper = sleeper
@@ -183,6 +196,7 @@ public actor CommanderLoop {
     @discardableResult
     public func cycle() async throws(CommanderError) -> [JobFile] {
         var timer = CycleTimer()
+        await checkRateLimitIfDue()
         try await beatIfDue()
         let verifier = try await verifier()
         timer.lap("生きている印と鍵")
@@ -266,12 +280,29 @@ public actor CommanderLoop {
     private func notify(_ swept: JobSweep.Swept, trusted: Set<KeyID>) async {
         guard let notifier else { return }
         do {
-            for notice in try await notifier.notify(epics: swept.epics, jobs: swept.jobs, trusted: trusted) {
+            for notice in try await notifier.notify(epics: swept.epics, jobs: swept.jobs, trusted: trusted, rateLimit: latestRateLimit) {
                 log("通知した: \(notice.title)（\(notice.body.replacingOccurrences(of: "\n", with: "・"))）")
             }
         } catch {
             log("通知を終えられなかった（\(error)）。次の周でやり直す")
         }
+    }
+
+    // MARK: - GitHub の上限
+
+    /// GitHub の REST の上限の残りを、決めた間隔で読む。少なくなったら、その窓で 1 回だけ生きている印をすぐ書き直す
+    /// （クライアントが次の印を待たずに気づけるように）。知らせるのは `notify`（窓ごとに 1 回）
+    private func checkRateLimitIfDue() async {
+        let now = context.now()
+        if let lastRateLimitCheck, now.timeIntervalSince(lastRateLimitCheck) < TimeInterval(settings.rateLimitInterval.components.seconds) {
+            return
+        }
+        lastRateLimitCheck = now
+        latestRateLimit = await rateLimit()
+        guard let limit = latestRateLimit, limit.isLow(at: now), lowRateLimitWindow != limit.resetAt else { return }
+        lowRateLimitWindow = limit.resetAt
+        lastBeat = nil
+        log("GitHub の REST の残りが \(limit.remaining) 回になった（\(limit.resetAt) に \(limit.limit) 回に戻る）。生きている印を書き直して知らせる")
     }
 
     // MARK: - 生きている印

@@ -110,6 +110,75 @@ struct TokenExpiryTests {
         #expect(String(bytes: encoded, encoding: .utf8)?.contains("github_pat_") == false)
     }
 
+    // MARK: - REST の上限の残り
+
+    /// `/rate_limit` の本文（GitHub の文書の形。`core` のほかに GraphQL・検索なども並ぶ）
+    static func rateLimitBody(remaining: Int, reset: Int = 1_793_759_400) -> String {
+        """
+        {"resources":{"core":{"limit":5000,"used":\(5_000 - remaining),"remaining":\(remaining),"reset":\(reset),"resource":"core"},
+        "graphql":{"limit":5000,"used":0,"remaining":5000,"reset":\(reset),"resource":"graphql"}},
+        "rate":{"limit":5000,"used":\(5_000 - remaining),"remaining":\(remaining),"reset":\(reset),"resource":"core"}}
+        """
+    }
+
+    @Test func readsRemainingRateLimitFromBody() async throws {
+        let reply = StubTransport.Reply.json(
+            200, Self.rateLimitBody(remaining: 820), headers: ["GitHub-Authentication-Token-Expiration": "2026-11-20 00:00:00 UTC"]
+        )
+        let expiry = GitHubTokenExpiry(transport: StubTransport([reply]))
+        let checked = await expiry.check(owner: "mrs1669", token: Self.token, now: Self.now)
+        // REST の一次の上限（core）を読む。GraphQL は別に数えるので使わない
+        let resetAt = Timestamp(Date(timeIntervalSince1970: 1_793_759_400))
+        #expect(checked.rateLimit == GitHubRateLimit(limit: 5_000, remaining: 820, resetAt: resetAt))
+        #expect(checked.expiresAt == Timestamp(rawValue: "2026-11-20T00:00:00Z"))
+        // 形の違う本文・負の数は読まない
+        #expect(GitHubTokenExpiry.rateLimit(from: Data("{}".utf8)) == nil)
+        #expect(GitHubTokenExpiry.rateLimit(from: Data(Self.rateLimitBody(remaining: -1).utf8)) == nil)
+    }
+
+    @Test func forgetsRateLimitWhenGitHubCannotAnswer() async throws {
+        // 前に読んだ残りは古くなるので、読めなかった回（障害・つながらない・断られた）には書かない
+        let transport = StubTransport([
+            .json(200, Self.rateLimitBody(remaining: 4_210)), .json(503, Self.rateLimitBody(remaining: 4_000)), .json(401, "{}")
+        ])
+        let expiry = GitHubTokenExpiry(transport: transport)
+        #expect(await expiry.check(owner: "a", token: Self.token, now: Self.now).rateLimit?.remaining == 4_210)
+        #expect(await expiry.check(owner: "a", token: Self.token, now: Self.now).rateLimit == nil)
+        #expect(await expiry.check(owner: "a", token: Self.token, now: Self.now).rateLimit == nil)
+        #expect(await expiry.check(owner: "a", token: Self.token, now: Self.now).rateLimit == nil)
+    }
+
+    @Test func probeReportsLowestRemainingAcrossOwners() async throws {
+        let secrets = InMemorySecretStore([.claudeToken: Data("sk-ant-oat01-x".utf8)])
+        let tokens = GitHubTokens(secrets: secrets)
+        for owner in ["shilokuma-inc", "mrs1669"] {
+            try tokens.store(Self.token, for: owner)
+        }
+        // 同じアカウントのトークンは同じ回数を分け合うが、読んだ時刻の差で少しずれる。少ないほうを出す
+        let transport = StubTransport([.json(200, Self.rateLimitBody(remaining: 1_200)), .json(200, Self.rateLimitBody(remaining: 1_180))])
+        let probe = MachineProbe(
+            secrets: secrets,
+            volume: FileManager.default.temporaryDirectory,
+            owners: { ["shilokuma-inc", "mrs1669"] },
+            githubExpiry: GitHubTokenExpiry(transport: transport),
+            now: { Self.now }
+        )
+        #expect(await probe.githubRateLimit()?.remaining == 1_180)
+        // 期限を問い合わせないとき（check の形だけを確かめる）は、残りも分からない
+        let unchecked = MachineProbe(
+            secrets: secrets, volume: FileManager.default.temporaryDirectory, owners: { ["mrs1669"] }, now: { Self.now }
+        )
+        #expect(await unchecked.githubRateLimit() == nil)
+    }
+
+    @Test func rateLimitIsLowOnlyBelowThresholdUntilReset() throws {
+        let resetAt = Timestamp(Self.now.addingTimeInterval(30 * 60))
+        #expect(GitHubRateLimit(limit: 5_000, remaining: 999, resetAt: resetAt).isLow(at: Self.now))
+        #expect(!GitHubRateLimit(limit: 5_000, remaining: 1_000, resetAt: resetAt).isLow(at: Self.now))
+        // 戻る時刻を過ぎれば、もう戻っている
+        #expect(!GitHubRateLimit(limit: 5_000, remaining: 0, resetAt: resetAt).isLow(at: resetAt.date))
+    }
+
     @Test func summarizesOwnerStates() {
         #expect(MachineProbe.summary(of: [.ok, .ok]) == .ok)
         #expect(MachineProbe.summary(of: [.ok, .expired]) == .expired)

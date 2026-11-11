@@ -40,6 +40,7 @@ extension AskHubCommanderMain {
             client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
             workspace: runtime.workspace,
             status: { await runtime.probe.status() },
+            rateLimit: { await runtime.probe.githubRateLimit() },
             notifier: notifier(configuration.apns, secrets: runtime.secrets, context: context),
             log: log,
             mirror: DiscussionMirror(context: context, discussions: discussions, log: log),

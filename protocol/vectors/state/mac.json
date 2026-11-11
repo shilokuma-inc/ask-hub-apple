@@ -31,7 +31,12 @@
             {
               "owner": "shilokuma-inc",
               "state": "ok",
-              "expiresAt": "2026-11-20T00:00:00Z"
+              "expiresAt": "2026-11-20T00:00:00Z",
+              "rateLimit": {
+                "limit": 5000,
+                "remaining": 4210,
+                "resetAt": "2026-11-03T10:30:00Z"
+              }
             },
             {
               "owner": "mrs1669",
@@ -558,6 +563,52 @@
             },
             {
               "owner": "mrs1669"
+            }
+          ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "negative-rate-limit",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 120,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z",
+          "githubTokenExpiresAt": "2026-11-20T00:00:00Z",
+          "githubTokens": [
+            {
+              "owner": "shilokuma-inc",
+              "state": "ok",
+              "expiresAt": "2026-11-20T00:00:00Z",
+              "rateLimit": {
+                "limit": 5000,
+                "remaining": -1,
+                "resetAt": "2026-11-03T10:30:00Z"
+              }
+            },
+            {
+              "owner": "mrs1669",
+              "state": "ok"
             }
           ]
         }

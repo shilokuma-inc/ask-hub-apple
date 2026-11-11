@@ -71,6 +71,12 @@ public struct MachineProbe: Sendable {
         )
     }
 
+    /// GitHub の REST の上限の残り（持ち主ごとのトークンで読んだもののうち、一番少ないもの）。読めなければ nil。
+    /// 生きている印より短い間隔で呼ぶ（`/rate_limit` は上限に数えられない。Claude と Xcode の版は測らない）
+    public func githubRateLimit() async -> GitHubRateLimit? {
+        await selfCheck().githubRateLimit
+    }
+
     /// 持ち主ごとのトークンの様子。形の合うトークンだけ、GitHub に期限を問い合わせる
     private func githubTokenStates(of owners: [String], now: Date) async throws(SecretStoreError) -> [SelfCheck.GitHubToken] {
         let tokens = GitHubTokens(secrets: secrets)

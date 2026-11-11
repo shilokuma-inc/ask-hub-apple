@@ -48,9 +48,17 @@ enum StateConnection {
         try DeviceSigningKey.loadOrCreate(in: keyStore)
     }
 
+    /// 状態リポジトリの tree と blob（sha で中身が決まる）を持つ場所。起動し直しても、変わっていないものを GitHub から読み直さない。
+    /// 置くのは状態リポジトリの中身だけ（トークンと鍵は置かない）。端末の容量が足りないときに消されてもよい Caches に置く
+    static var objectsDirectory: URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appending(path: Bundle.main.bundleIdentifier ?? keychainService, directoryHint: .isDirectory)
+            .appending(path: "state-objects", directoryHint: .isDirectory)
+    }
+
     /// 状態リポジトリの読み書き。トークンは要求のたびに Keychain から読み、ほかには持たない
     static func makeStore(repository: RepositoryFullName, tokens: any SecretStore = tokenStore) -> GitHubContentsStore {
-        GitHubContentsStore(repository: repository, budget: WriteBudget(limits: .client)) {
+        GitHubContentsStore(repository: repository, budget: WriteBudget(limits: .client), objectsDirectory: objectsDirectory) {
             guard let data = try? tokens.read(.githubToken), let token = String(bytes: data, encoding: .utf8), !token.isEmpty else {
                 throw StateStoreError.tokenUnavailable
             }

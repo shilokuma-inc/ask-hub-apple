@@ -166,6 +166,9 @@
   使い切ると、アプリ（「取り直せませんでした」）も司令塔も Claude のセッションの `gh` も、戻るまで止まる。`gh api rate_limit` は上限に数えられないので、使われ方は 1 分ごとの `used` の増え方で測る。GraphQL の上限は別に数える
 - epic の進み具合を見張るときは、`askhub status`（1 回で REST の要求が約 30 回）を短い間隔で流さない。2026-11-11 に 2 つのセッションが 15〜30 秒おきに流し、1 時間の上限を使い切った。
   見張るなら、上限に数えられない司令塔のログ（`ssh macmini 'tail ~/Library/Logs/AskHub/commander.log'`）を見る。状態リポジトリをまとめて読むなら、git の clone・fetch（REST の上限に数えられない）を使う
+- アプリの 30 秒ごとの取り直しを Contents API で 1 ファイルずつ読むと、終わった epic も 1 本ごとに 4〜5 回読み、まだ無いファイル（やめた epic の `goal.json` など）は毎回 404 で上限に数えられる
+  （2026-11-11 の 14 本で 1 回 132 回・約 5 秒、404 は 10 回）。ETag はメモリーにだけ持つので、起動のたびに全件を 200 で読み、すべて数えられる（iPhone は裏で落とされると開くたびに起動し直す）。
+  取り直しは `StateStore.snapshot()` から読み、tree と blob は sha で決まるので Caches のファイルにも持つ（`objectsDirectory`）。変わらなければ直下の一覧の 1 回（304）で済み、起動の直後も直下の一覧の 1 回と変わった分だけになる（2026-11-11、#1031）
 
 ## ビルド・テスト
 
@@ -419,6 +422,10 @@
 - `git ls-tree -r -d <コミット>` は tree だけを下の階層まで並べる（ファイルを並べないので、大きなリポジトリでも出力が小さい）。`-z` ならパスを引用符で囲まずに NUL で区切る。
   `--filter=blob:none` の partial clone でも tree は手元にあるので、`ls-tree -r -d` は通信しない。`ls-tree -l`（大きさ）と `cat-file blob` は、無い blob をその場で 1 つずつ取りに行く（2026-11-12、#1033）
 - `xcrun devicectl device capture screenshot --device <名前か UDID> --destination <PNG>` で、つないだ実機の画面を撮れる（Xcode 26.6）（2026-11-12、#1033）
+- UI テストが変えた Simulator の端末の向き（`XCUIDevice.shared.orientation`）は、Simulator を起動している間ずっと残り、次の `xcodebuild test` は横向きのまま始まる
+  （ログに `Interface orientation changed to Landscape Right`）。`simctl` には向きを読む・変えるコマンドが無く（Xcode 26.6・27.1）、`simctl io <UDID> screenshot` も横向きのときに縦長の画像（1206×2622）を返すので、
+  外から向きを確かめられない。`simctl shutdown` → `simctl bootstatus <UDID> -b` で縦向きに戻る（手元の iOS 26.5 で 13〜22 秒）。外観（`simctl ui <UDID> appearance dark`）は起動し直しても戻らない。
+  ワーカーはテストと撮影の前に、起動していた枠の Simulator を止めてから起動し直す（2026-11-11、#1027）
 
 ## Keychain
 
