@@ -84,6 +84,7 @@ struct CardSection<Content: View, Header: View, Footer: View>: View {
         }
     }
 
+    /// 札の見出し。行の文字の先頭（`side`）にそろえる
     @ViewBuilder private func cardHeader(side: CGFloat) -> some View {
         #if os(macOS)
         // Mac の plain の一覧にはセクションの間が無いので、見出しの無いセクションも前の札から離す
