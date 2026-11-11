@@ -420,6 +420,10 @@
 - `askhub-commander`・`askhub-worker` の置き場所（`MachinePaths`）は `FileManager.default.homeDirectoryForCurrentUser` から作り、環境変数 `HOME` を差し替えても本当のホームフォルダの
   `~/Library/Application Support/AskHub/<役割>/config.json` を読み書きする。手元で設定を書き換えるコマンドを試すときは、実行ファイルを流さず、テストで
   `MachineCommandLine(role:executable:home:)` に一時フォルダを渡す。失敗の道は `exit` するので、設定の `kind` と役割が合わない（常時オンの設定をワーカーで読む）とテストのプロセスごと終わる（2026-11-11、#1015）
+- iOS Simulator の `xcodebuild test -only-testing:AskHubTests` は、指定した Simulator の複製（`Clone 1 of <名前>`）でテストを流し、終わった後は元の Simulator が止まっていた（起動していたのに Shutdown）。
+  テストの後に同じ Simulator で PR のスクショを撮るときは、`simctl boot`・`bootstatus -b` で起動し直してから入れる（止まったままだと `simctl install` が「Unable to lookup in current state: Shutdown」で失敗する）（2026-11-12、#1055）
+- 状態リポジトリの見本のファイルで PR のスクショを撮るとき、ジョブの `updatedAt` などを固定の時刻にすると、画面の相対時刻（「12 分前」）が撮った時刻で変わる。見本の時刻をアプリの起動の時刻から引いて作ると、
+  Before と After を別の時刻に撮っても同じ文になる（2026-11-12、#1055）
 - Icon Composer の `.icon` を PNG に書き出せるのは `Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool`（`--export-image --platform iOS --rendition Default --width --height --scale`）。
   `xcrun ictool` が見つける `Contents/Developer/usr/bin/ictool` は Asset Catalog 用の別のもので、`--export-image` を「Unknown argument」（actool の形の plist）で断る。
   書き出した PNG は角が透明の角丸で、iOS 26 のガラスの質感が入る（256px で 200 KB ほど）（2026-11-12、#1033）
