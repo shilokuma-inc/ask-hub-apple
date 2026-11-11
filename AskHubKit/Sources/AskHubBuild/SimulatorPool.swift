@@ -42,8 +42,16 @@ public struct SimulatorPool: Sendable {
 
     /// 枠 `slot` の、`destination` 用の Simulator を用意して起動する。無ければ作り、
     /// 同じ名前でランタイムや機種が合わないもの（ランタイムを消したものなど）は消して作り直す。
-    /// 使う Xcode の SDK より新しいランタイムは、作らずに断る（`checkSupported`）
-    public func prepare(slot: Int, for destination: SimulatorDestination) async throws(SimulatorError) -> Simulator {
+    /// 使う Xcode の SDK より新しいランタイムは、作らずに断る（`checkSupported`）。
+    ///
+    /// `restarting` なら、起動していた Simulator を止めてから起動し直す。前の回の UI テストが変えた端末の向きは、
+    /// Simulator を起動している間だけ残り、`simctl` では読めも戻せもしないが、止めると縦向きに戻る
+    /// （2026-11-11 に、前の回の LaunchTests の横向きのまま残った枠の Simulator で、次の UI テストが画面の外の要素を押せずに落ちた）
+    public func prepare(
+        slot: Int,
+        for destination: SimulatorDestination,
+        restarting: Bool = false
+    ) async throws(SimulatorError) -> Simulator {
         guard slot >= 0 else { throw SimulatorError("枠の番号が正しくない（\(slot)）") }
         let sdkVersion = try await sdkVersion(of: destination.platform)
         let catalog = try await list()
@@ -59,6 +67,10 @@ public struct SimulatorPool: Sendable {
         var simulator: Simulator
         if let reusable {
             simulator = Simulator(udid: reusable.udid, name: name, runtime: runtime.identifier, state: reusable.state ?? "")
+            // 止まっている・起動の途中のものは、この後の起動で新しく始まる
+            if restarting && simulator.state == "Booted" {
+                try await shutdown(simulator)
+            }
         } else {
             let udid = try await create(name: name, deviceType: deviceType.identifier, runtime: runtime.identifier)
             simulator = Simulator(udid: udid, name: name, runtime: runtime.identifier, state: "Shutdown")

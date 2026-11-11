@@ -96,13 +96,22 @@ final class FakeSimctl: Sendable {
     private let bootResult: CommandResult?
     /// 消去（`erase`）の結果を差し替える
     private let eraseResult: CommandResult?
+    /// 起動しているものの停止（`shutdown`）の結果を差し替える
+    private let shutdownResult: CommandResult?
     let sdkVersion: String
 
-    init(devices: [Device] = [], sdkVersion: String = "27.0", bootResult: CommandResult? = nil, eraseResult: CommandResult? = nil) {
+    init(
+        devices: [Device] = [],
+        sdkVersion: String = "27.0",
+        bootResult: CommandResult? = nil,
+        eraseResult: CommandResult? = nil,
+        shutdownResult: CommandResult? = nil
+    ) {
         self.devices = OSAllocatedUnfairLock(initialState: devices)
         self.sdkVersion = sdkVersion
         self.bootResult = bootResult
         self.eraseResult = eraseResult
+        self.shutdownResult = shutdownResult
     }
 
     var current: [Device] { devices.withLock { $0 } }
@@ -124,7 +133,7 @@ final class FakeSimctl: Sendable {
                         + "Unable to shutdown device in current state: Shutdown"
                 )
             }
-            return update(udid) { $0.state = "Shutdown" }
+            return shutdownResult ?? update(udid) { $0.state = "Shutdown" }
         case "erase": return eraseResult ?? update(udid) { _ in }
         case "delete":
             devices.withLock { $0.removeAll { $0.udid == udid } }

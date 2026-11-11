@@ -46,7 +46,8 @@ public struct MachineFinalBuilds: FinalBuilding {
     ) async throws(CancellationError) -> CaptureOutcome {
         let simulator: Simulator
         do {
-            simulator = try await machine.pool.prepare(slot: slot, for: destination)
+            // 最終 PR の前の検証（UI テスト）の後に撮るので、横向きのまま撮らないように起動し直す
+            simulator = try await machine.pool.prepare(slot: slot, for: destination, restarting: true)
         } catch {
             if Task.isCancelled { throw CancellationError() }
             return CaptureOutcome(problem: "Simulator を用意できない（\(error.message)）")
