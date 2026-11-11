@@ -675,6 +675,8 @@
   低い高さのまま書かせるには `.large` を並べない。キーボードの上の「完了」（`ToolbarItemGroup(placement: .keyboard)`）は、低いシートではシートの中に重なって入力欄を狭める（2026-11-06、自由回答のシート）
 - `List` の `Section` の中に、本体が `if` で何も出さないことのある View（`ReflectionStatusView` など）をそのまま置いても、何も出さないときは空の行にならない（iOS 26 で確かめた）。
   呼び出し側で `if` を重ねるのは、`CardSection` で包むときのように、包む側だけが残ってしまうときだけでよい（2026-11-09、反映中の UI）
+- Mac・iPad の 3 列（`NavigationSplitView`）では、詳細の列に出す画面の `navigationTitle` がどこにも出ない（ツールバーに出るのは真ん中の列の名前だけ）。
+  iPhone では大きな見出しになるので気づきにくい。詳細の列に出す一覧は、リポジトリの詳細のように札の中か、セクションの見出しにも画面の名前を入れる（2026-11-11、#1032 の `FinishedEpicListView`）
 - アプリの自動の取り直しのように、次に読む時刻を `ClientStore` の時計（`now`）で数えると、デモの時計を止めて撮る（`-demoClock`）ときに時計が進まず、2 回目の取り直しが来ない。
   間隔は `ContinuousClock` の経過時間で数え、時計は GitHub の上限の戻る時刻のような「時刻」の比べにだけ使う（2026-11-12、`ClientStore.delayBeforeAutoRefresh`）
 - `xcrun simctl launch` の直後に `xcrun simctl io <udid> screenshot` を撮ると、起動の途中の白い画面が写ることがある。数秒待ってから撮り、写ったものを目で確かめる（2026-11-12）

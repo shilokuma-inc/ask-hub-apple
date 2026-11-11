@@ -16,6 +16,8 @@ enum DemoScenario: String, CaseIterable {
     case tooLarge
     /// 開始した後の段取り（作業場所の用意・実装中・実装の途中の質問・直し）を並べる
     case started
+    /// 標準の場面に、前に終わった epic を足す（進行中の終わったものが 10 件を超え、「すべて見る」の行が出る）
+    case manyFinished
     /// 初めの 1 回だけ読め、その後は GitHub の上限に当たる（戻る時刻まで取り直しを休む画面）
     case rateLimited
 
@@ -70,6 +72,11 @@ enum DemoScenario: String, CaseIterable {
 
         case .started:
             return data.started()
+
+        case .manyFinished:
+            var snapshot = data.standard()
+            snapshot.epics += data.pastEpics()
+            return snapshot
         }
     }
 }

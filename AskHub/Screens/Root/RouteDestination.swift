@@ -39,6 +39,9 @@ struct RouteDestination: View {
 
             case .repository(let id):
                 RepositoryDetailView(repositoryID: id)
+
+            case .finishedEpics:
+                FinishedEpicListView()
             }
         }
         .sendStatusBar()

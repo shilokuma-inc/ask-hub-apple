@@ -14,6 +14,9 @@ struct DemoLaunchTests {
         #expect(DemoLaunch.destination(from: "epic:rain-draft")?.route == .epic("rain-draft"))
         let human = DemoLaunch.destination(from: "human:rain-draft:ht-app-group")
         #expect(human?.route == .humanTask(epicID: "rain-draft", taskID: "ht-app-group"))
+        let finished = DemoLaunch.destination(from: "finished")
+        #expect(finished?.section == .progress)
+        #expect(finished?.route == .finishedEpics)
     }
 
     /// 読めない値は無視する

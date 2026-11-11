@@ -53,6 +53,8 @@ struct ScreenshotScenesTests {
             return snapshot.repositories.contains { $0.id == id } ? nil : "リポジトリ \(id) が無い"
         case .deck(.all):
             return nil
+        case .finishedEpics:
+            return snapshot.epics.contains { !$0.isActive } ? nil : "終わった epic が無い"
         }
     }
 }
