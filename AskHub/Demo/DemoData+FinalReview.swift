@@ -199,6 +199,71 @@ extension DemoData {
         )
     }
 
+    /// 前に終わった epic（`manyFinished` の場面）。新しい順に 1 日ずつ前に終わり、いくつかはやめた
+    func pastEpics() -> [Epic] {
+        let past: [(repository: String, title: String)] = [
+            ("recipe-apple", "材料の分量を人数で変える"),
+            ("rain-ios", "降り始めの通知"),
+            ("habit-ios", "続いた日数を出す"),
+            ("pocket-budget-ios", "レシートの写真を添える"),
+            ("tsundoku-ios", "読み終えた本のメモ"),
+            ("kaji-share-ios", "当番の入れ替え"),
+            ("habit-ios", "ウィジェットの色を選ぶ"),
+            ("recipe-apple", "献立を家族と共有する"),
+            ("rain-ios", "雨雲の地図を広げる"),
+            ("tsundoku-ios", "バーコードで本を足す"),
+            ("pocket-budget-ios", "月ごとのグラフ"),
+            ("kaji-share-ios", "家事にかかった時間")
+        ]
+        // やめた epic（4 つ目と 8 つ目）
+        let abandoned: Set<Int> = [3, 7]
+        return past.enumerated().map { index, item in
+            let isAbandoned = abandoned.contains(index)
+            let finishedAt = ago(minutes: 60 * 24 * Double(index + 2))
+            var epic = Epic(
+                id: "past-\(index + 1)",
+                title: item.title,
+                repositoryID: Self.repositoryID(item.repository),
+                request: EpicRequest(
+                    summary: item.title,
+                    body: "\(item.title)。",
+                    requestedAt: finishedAt.addingTimeInterval(-3 * 24 * 60 * 60),
+                    source: .app,
+                    attachmentCount: 0
+                ),
+                stage: isAbandoned ? .questions : .done,
+                questions: [],
+                goal: nil,
+                humanTasks: [],
+                tasks: [],
+                macID: Self.macMiniID,
+                activities: [],
+                blocker: nil,
+                finalReview: isAbandoned ? nil : pastReview(number: 20 - index, mergedAt: finishedAt),
+                history: [Epic.HistoryEntry(date: finishedAt, text: isAbandoned ? "やめました" : "マージしました（#\(20 - index)）")],
+                updatedAt: finishedAt
+            )
+            epic.isAbandoned = isAbandoned
+            return epic
+        }
+    }
+
+    private func pastReview(number: Int, mergedAt: Date) -> FinalReview {
+        FinalReview(
+            pullRequestNumber: number,
+            additions: nil,
+            deletions: nil,
+            headCommit: nil,
+            reviewedHeadCommit: nil,
+            checks: FinalChecks(ci: .passed, requiredFindings: 0, securityFindings: 0, hasConflict: false),
+            mergePolicy: .manual([]),
+            decisions: [],
+            internalDecisions: [],
+            verifications: [],
+            state: .merged(at: mergedAt, automatic: false)
+        )
+    }
+
     private func habitDoneReview() -> FinalReview {
         FinalReview(
             pullRequestNumber: 31,

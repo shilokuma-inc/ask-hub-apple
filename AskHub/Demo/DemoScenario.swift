@@ -16,6 +16,8 @@ enum DemoScenario: String, CaseIterable {
     case tooLarge
     /// 開始した後の段取り（作業場所の用意・実装中・実装の途中の質問・直し）を並べる
     case started
+    /// 標準の場面に、前に終わった epic を足す（進行中の終わったものが 10 件を超え、「すべて見る」の行が出る）
+    case manyFinished
 
     /// 機械の反応までの秒数を決める UserDefaults のキー（UI テストは起動引数 `-demoReactionDelay 0` で渡す）
     static let reactionDelayKey = "demoReactionDelay"
@@ -68,6 +70,11 @@ enum DemoScenario: String, CaseIterable {
 
         case .started:
             return data.started()
+
+        case .manyFinished:
+            var snapshot = data.standard()
+            snapshot.epics += data.pastEpics()
+            return snapshot
         }
     }
 }
