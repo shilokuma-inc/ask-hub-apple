@@ -40,6 +40,9 @@ struct MacDetailView: View {
                 } footer: {
                     Text("期限まで 14 日を切ったら、この Mac の端末でコマンドを流して入れ直します。GitHub のトークンは作り直してから、Claude のトークンは claude setup-token で作ってから貼ります")
                 }
+                if let quota = mac.githubQuota, quota.isCurrent(now: store.currentDate()) {
+                    quotaSection(quota)
+                }
                 CardSection("自己診断") {
                     ForEach(mac.selfChecks) { check in
                         LabeledContent {
@@ -63,6 +66,19 @@ struct MacDetailView: View {
             .navigationTitle(mac.name)
         } else {
             ContentUnavailableView("この Mac は見つかりません", systemImage: "laptopcomputer.slash")
+        }
+    }
+
+    /// GitHub の REST の上限の残り（この Mac が生きている印を書くときに読んだもの）。少なければ警告の色にする
+    private func quotaSection(_ quota: GitHubQuota) -> some View {
+        CardSection {
+            LabeledContent("残り", value: "\(GitHubQuota.count(quota.remaining)) / \(GitHubQuota.count(quota.limit)) 回")
+                .foregroundStyle(quota.isLow(now: store.currentDate()) ? Theme.warning : Color.primary)
+            LabeledContent("戻る時刻", value: RelativeTime.clock(quota.resetAt))
+        } header: {
+            Text("GitHub の上限")
+        } footer: {
+            Text("\(RelativeTime.clock(quota.checkedAt)) にこの Mac が読んだ値です。1 時間の回数を、アプリ・司令塔・Claude のセッションの gh が分け合います")
         }
     }
 
