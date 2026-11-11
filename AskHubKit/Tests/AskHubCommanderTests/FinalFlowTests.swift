@@ -146,6 +146,8 @@ struct FinalFlowTests {
         let handedOver = try #require(step.created.first)
         #expect(handedOver.kind == .fixFinalPullRequest)
         #expect(handedOver.state == .waitingHuman)
+        // 試行の前に渡すので、人の「やり直す」は試行の番号 0 で届く（JobHandlersTests）
+        #expect(handedOver.attempts == 0)
         #expect(step.notes.first?.contains("人に渡した") == true)
         #expect(try await given.advance() == TaskFlow.Advanced())
         #expect(try await given.epic().stage == .finalizing)
