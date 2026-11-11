@@ -9,6 +9,7 @@ import UserNotifications
 import UIKit
 #else
 import AppKit
+import Security
 #endif
 
 /// 通知の許可と、この端末の宛先（`devices/<device>.json`）の登録（`docs/renewal/operations.md` の「通知」）。
@@ -48,10 +49,26 @@ final class PushRegistration {
         source == .stateRepository && environment["XCTestConfigurationFilePath"] == nil
     }
 
-    /// この版の APNs の環境。entitlement の aps-environment と同じ `APS_ENVIRONMENT`（Debug は development、Release は production）を
-    /// Info.plist に入れてある
-    static let environment = (Bundle.main.object(forInfoDictionaryKey: "AskHubAPNsEnvironment") as? String)
-        .flatMap(APNsEnvironment.init(rawValue:))
+    /// この版の APNs の環境。APNs は署名の entitlement の環境のトークンを返し、自動の署名はその値を profile に合わせる（開発用の署名で作った
+    /// Release の版も development）ので、ビルドの構成ではなく署名から決める。ビルド設定の値を書くと、トークンと食い違って BadDeviceToken で断られる
+    static let environment: APNsEnvironment? = {
+        #if os(macOS)
+        // macOS は自分の署名の entitlement を読める。アドホック署名の版には push の entitlement が無い
+        guard let task = SecTaskCreateFromSelf(nil) else {
+            return nil
+        }
+        let value = SecTaskCopyValueForEntitlement(task, "com.apple.developer.aps-environment" as CFString, nil)
+        return (value as? String).flatMap(APNsEnvironment.init(rawValue:))
+        #elseif targetEnvironment(simulator)
+        // Simulator のトークンは、いつも sandbox の APNs のもの
+        return .development
+        #else
+        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision") else {
+            return APNsProvisioning.environment(embeddedProfile: nil)
+        }
+        return (try? Data(contentsOf: url)).flatMap { APNsProvisioning.environment(embeddedProfile: $0) }
+        #endif
+    }()
 
     /// 許可の様子を確かめ、許可されていれば APNs に登録する。まだ許可を求めていなければ、この端末の鍵が登録されているときだけ求める
     func activate() async {
