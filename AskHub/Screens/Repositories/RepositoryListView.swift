@@ -147,7 +147,8 @@ struct AddRepositorySheet: View {
                 if allCandidates.isEmpty {
                     // 状態リポジトリにつないだときは、トークンが状態リポジトリしか見えないので候補を並べられない
                     Section {
-                        TextField("owner/name", text: $fullName)
+                        TextField("owner/name", text: $fullName, prompt: Text("owner/name"))
+                            .labelsHidden()
                             .autocorrectionDisabled()
                             #if os(iOS)
                             .textInputAutocapitalization(.never)
@@ -173,6 +174,7 @@ struct AddRepositorySheet: View {
             }
             .disabled(sending.isSending)
             .searchable(text: $query, prompt: "名前で探す")
+            .formStyle(.grouped)
             .pastelBackground()
             .navigationTitle("対象に加える")
             .toolbar {

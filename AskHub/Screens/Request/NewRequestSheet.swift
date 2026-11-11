@@ -65,9 +65,12 @@ struct NewRequestSheet: View {
                         }
                     }
                     Section("作りたいもの") {
-                        TextField("要約（例: 週ごとのまとめ通知）", text: $summary)
+                        // Mac の Form では名前が入力欄の左に並んで欄が狭くなるので、名前は隠して入力欄の中に出す
+                        TextField("要約（例: 週ごとのまとめ通知）", text: $summary, prompt: Text("要約（例: 週ごとのまとめ通知）"))
+                            .labelsHidden()
                             .focused($isEditing)
-                        TextField("依頼の内容", text: $requestBody, axis: .vertical)
+                        TextField("依頼の内容", text: $requestBody, prompt: Text("依頼の内容"), axis: .vertical)
+                            .labelsHidden()
                             .lineLimit(4...12)
                             .focused($isEditing)
                     }
@@ -78,6 +81,7 @@ struct NewRequestSheet: View {
                 }
                 .disabled(sending.isSending)
             }
+            .formStyle(.grouped)
             .pastelBackground()
             .navigationTitle("新しい依頼")
             .toolbar {
