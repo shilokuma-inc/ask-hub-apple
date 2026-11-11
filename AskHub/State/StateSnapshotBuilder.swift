@@ -169,7 +169,8 @@ struct StateSnapshotBuilder {
             commanderClaudeVersion: commanderClaudeVersion(differingFrom: file.versions.claude),
             xcodeVersion: file.versions.xcode,
             cleanupCandidates: [],
-            loadAverage: file.load
+            loadAverage: file.load,
+            githubQuota: Self.quota(file.selfCheck)
         )
     }
 
@@ -193,8 +194,16 @@ struct StateSnapshotBuilder {
             selfChecks: Self.selfChecks(file.selfCheck),
             tokens: tokens,
             claudeVersion: file.versions.claude,
-            cleanupCandidates: []
+            cleanupCandidates: [],
+            githubQuota: Self.quota(file.selfCheck)
         )
+    }
+
+    /// 自己診断の、持ち主ごとのトークンで読んだ残りのうち一番少ないもの
+    private static func quota(_ check: SelfCheck) -> GitHubQuota? {
+        check.githubRateLimit.map { limit in
+            GitHubQuota(limit: limit.limit, remaining: limit.remaining, resetAt: limit.resetAt.date, checkedAt: check.checkedAt.date)
+        }
     }
 
     /// Claude Code の版が司令塔と違うときの、司令塔の版（どちらかが分からなければ比べない）
