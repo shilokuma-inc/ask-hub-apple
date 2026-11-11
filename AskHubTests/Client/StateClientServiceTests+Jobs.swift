@@ -126,12 +126,16 @@ extension StateClientServiceTests {
     /// 直しの上限を超えて試行の前に人に渡された直し（試行 0）も出し、やり直しは試行の番号 0 を付けて送る
     @Test
     func fixHandedOverBeforeAnyAttemptIsRetriedWithAttemptZero() async throws {
-        let input = #"{"pullRequest":41,"head":"\#(String(repeating: "a", count: 40))","reason":"ci"}"#
-        let files = Self.askingEpic(stage: "running", extra: [Self.jobPath(): Self.job(kind: "fixTask", attempts: 0, input: input)])
+        let job = Self.job(kind: "fixTask", attempts: 0, input: Self.fixInput("ci"))
+        let files = Self.askingEpic(stage: "running", extra: [Self.jobPath(): job])
         let fixture = try makeService(files: files)
         let service = fixture.service
         let blocker = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.blocker)
         #expect(blocker.title == "タスクの修正が止まっています")
+        // 試行が無いので、失敗の理由の代わりに止めた理由を出す。区分は直しの元になった失敗
+        #expect(blocker.category == .build)
+        #expect(blocker.summary == "CI が通らないまま、自動の直しが上限（3 回）を超えたので止めています。もう一度試すと、もう 1 回直します")
+        #expect(blocker.logExcerpt == nil)
         #expect(blocker.attempts.isEmpty)
         // 直しをやめる扱いはまだ決めていない（司令塔も断る）ので、やり直しだけを出す
         #expect(blocker.actions == [.retry])
@@ -143,6 +147,22 @@ extension StateClientServiceTests {
         #expect(envelope.targetVersion == "0")
         // 処理を待つ間は出さない
         #expect(try await service.fetchSnapshot().epic(Self.epicID)?.blocker == nil)
+    }
+
+    /// 上限を超えた最終 PR の直しも、直しの元になった失敗の区分と止めた理由を出す
+    @Test
+    func finalFixHandedOverBeforeAnyAttemptShowsWhyItStopped() async throws {
+        let job = Self.job(kind: "fixFinalPullRequest", attempts: 0, input: Self.fixInput("conflict"))
+        let fixture = try makeService(files: Self.askingEpic(stage: "finalizing", extra: [Self.jobPath(): job]))
+        let blocker = try #require(try await fixture.service.fetchSnapshot().epic(Self.epicID)?.blocker)
+        #expect(blocker.title == "最終 PR の修正が止まっています")
+        #expect(blocker.category == .conflict)
+        #expect(blocker.summary == "コンフリクトが残ったまま、自動の直しが上限（3 回）を超えたので止めています。もう一度試すと、もう 1 回直します")
+    }
+
+    /// 直しの入力（子 PR・最終 PR と見た head、直す理由）
+    private static func fixInput(_ reason: String) -> String {
+        #"{"pullRequest":41,"head":"\#(String(repeating: "a", count: 40))","reason":"\#(reason)"}"#
     }
 
     /// 説明をやめると、処理を待つ間は質問を回答待ちに戻して出す
