@@ -31,6 +31,8 @@ enum DemoScenario: String, CaseIterable {
     static let rejectsIntentsKey = "demoRejectIntents"
     /// 司令塔の受け取りを待ったまま、受け取りが遅いと知らせるまでの秒数を決める UserDefaults のキー（起動引数 `-demoStallAfter 5` で渡す）
     static let stallThresholdKey = "demoStallAfter"
+    /// 司令塔の Mac が読んだ GitHub の REST の残りを決める UserDefaults のキー（残りが少ないときの画面を撮るときに、起動引数 `-demoGitHubRemaining 820` で渡す）
+    static let githubRemainingKey = "demoGitHubRemaining"
     /// デモの時計を止める時刻の UserDefaults のキー（判断のカードのスクショで、起動引数 `-demoClock 2026-01-15T00:41:00Z` で渡す。
     /// Before と After を別の時刻に撮っても「9:41 に確かめました」などの時刻の文が同じに写る。機械の反応は起きなくなる）
     static let clockKey = "demoClock"
@@ -292,7 +294,8 @@ extension DemoData {
                     bytes: 1_200 * Self.megabyte,
                     caution: "未 push のコミットが 2 つあります"
                 )
-            ]
+            ],
+            githubQuota: GitHubQuota(limit: 5_000, remaining: 4_210, resetAt: ago(minutes: -41), checkedAt: ago(minutes: 2))
         )
     }
 

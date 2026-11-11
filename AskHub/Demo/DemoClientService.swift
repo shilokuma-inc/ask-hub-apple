@@ -57,6 +57,7 @@ final class DemoClientService: ClientService {
         sendDelay: Duration = .zero,
         receiptDelay: TimeInterval? = nil,
         rejectsIntents: Bool = false,
+        githubRemaining: Int? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.scenario = scenario
@@ -67,6 +68,13 @@ final class DemoClientService: ClientService {
         self.rejectsIntents = rejectsIntents
         self.now = now
         state = scenario.snapshot(now: now())
+        if let githubRemaining {
+            state.macs = state.macs.map { mac in
+                var mac = mac
+                mac.githubQuota?.remaining = githubRemaining
+                return mac
+            }
+        }
         let stopped = (receiptDelay ?? 0) >= ReflectionMessage.commanderSilence
         stoppedCommanderSeenAt = stopped ? now().addingTimeInterval(-2 * ReflectionMessage.commanderSilence) : nil
     }
