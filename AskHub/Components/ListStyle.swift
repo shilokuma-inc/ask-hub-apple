@@ -11,6 +11,13 @@ enum AppList {
     static let sideMargin: CGFloat = 16
     static let rowSideInset: CGFloat = 16
 
+    /// Mac の plain の一覧が、行と見出しの中身の左右に自分で足す余白。札の中の文字を iOS と同じ位置にそろえるため、行の余白から引く
+    #if os(macOS)
+    static let platformRowInset: CGFloat = 8
+    #else
+    static let platformRowInset: CGFloat = 0
+    #endif
+
     /// 札の角の半径。iOS 26 の標準の一覧（insetGrouped）は約 24pt で丸すぎるので、カードの選択肢の行と同じ 12pt にする
     /// （ユーザーが 24・16・12・10・8pt を見比べて決めた。2026-11-03）
     static let cornerRadius: CGFloat = 12
@@ -27,39 +34,80 @@ struct CardRowPosition: Equatable {
     }
 }
 
-/// 一覧のセクション。iOS では札を自分で描いて角の丸みを決める（標準の insetGrouped の角は小さくできないため）。
-/// 中の行を順に見て、最初と最後の行の角だけを丸める。Mac は標準の Section のまま
+/// 一覧のセクション。札を自分で描いて角の丸みを決める（標準の insetGrouped の角は小さくできず、Mac の一覧には札の形が無いため）。
+/// 中の行を順に見て、最初と最後の行の角だけを丸める。Mac の一覧の列（選ぶ側）は標準の Section のまま（`compactList(selectable:)`）
 struct CardSection<Content: View, Header: View, Footer: View>: View {
     @ViewBuilder let content: Content
     @ViewBuilder let header: Header
     @ViewBuilder let footer: Footer
 
+    @Environment(\.drawsCardSections) private var drawsCards
+    /// このセクションの行の id の頭。Mac の一覧は行をセクションをまたいだ id で見分けるので、
+    /// `Group(subviews:)` の id だけだと、ほかのセクションの行と取り違えて同じ中身を出す
+    @State private var sectionID = UUID()
+
     var body: some View {
-        #if os(iOS)
         // 見出しと注記は、札の中の行の文字の先頭にそろえる（標準の insetGrouped と同じ並び）
         let side = AppList.sideMargin + AppList.rowSideInset
-        Section {
-            Group(subviews: content) { rows in
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    row.cardRow(CardRowPosition(index: index, count: rows.count))
+        if drawsCards {
+            Section {
+                Group(subviews: content) { rows in
+                    let items = rows.enumerated().map { CardRowItem(section: sectionID, index: $0.offset, row: $0.element) }
+                    ForEach(items) { item in
+                        item.row.cardRow(CardRowPosition(index: item.index, count: items.count))
+                    }
                 }
+            } header: {
+                cardHeader(side: side)
+            } footer: {
+                footer.listRowInsets(.horizontal, side)
             }
-        } header: {
-            header.listRowInsets(.horizontal, side)
-        } footer: {
-            footer.listRowInsets(.horizontal, side)
+            .listSectionSeparator(.hidden)
+        } else {
+            Section {
+                content
+            } header: {
+                header
+            } footer: {
+                footer
+            }
         }
-        .listSectionSeparator(.hidden)
+    }
+
+    @ViewBuilder private func cardHeader(side: CGFloat) -> some View {
+        #if os(macOS)
+        // Mac の plain の一覧にはセクションの間が無いので、見出しの無いセクションも前の札から離す
+        if Header.self == EmptyView.self {
+            Color.clear.frame(height: 2)
+        } else {
+            // Mac の見出しには listRowInsets が効かないので、札の中の行の文字の先頭まで寄せる
+            header.padding(.leading, side - AppList.platformRowInset)
+        }
         #else
-        Section {
-            content
-        } header: {
-            header
-        } footer: {
-            footer
-        }
+        header.listRowInsets(.horizontal, side)
         #endif
     }
+}
+
+/// 札の中の 1 行と、その id（セクションの id と、セクションの中の行の id を合わせる）
+private struct CardRowItem: Identifiable {
+    struct Key: Hashable {
+        let section: UUID
+        let row: Subview.ID
+    }
+
+    let section: UUID
+    let index: Int
+    let row: Subview
+
+    var id: Key {
+        Key(section: section, row: row.id)
+    }
+}
+
+extension EnvironmentValues {
+    /// CardSection が札を描くか。Mac の一覧の列（選ぶ側）では描かない
+    @Entry var drawsCardSections = true
 }
 
 extension CardSection where Header == EmptyView, Footer == EmptyView {
@@ -86,7 +134,6 @@ extension CardSection where Header == EmptyView {
     }
 }
 
-#if os(iOS)
 /// 札の中の 1 行の地。最初の行は上の角、最後の行は下の角を丸める
 private struct CardRowBackground: View {
     let position: CardRowPosition
@@ -101,11 +148,28 @@ private struct CardRowBackground: View {
             topTrailingRadius: top,
             style: .continuous
         )
-        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        .fill(Self.fill)
+        #if os(macOS)
+        // Mac の一覧の区切り線は行の中身の幅で切れて長さがまちまちになり、最後の行の下にも出るので、札の中に自分で引く
+        .overlay(alignment: .top) {
+            if !position.isFirst {
+                Rectangle()
+                    .fill(.separator)
+                    .frame(height: 1)
+                    .padding(.leading, AppList.rowSideInset)
+            }
+        }
+        #endif
         .padding(.horizontal, AppList.sideMargin)
     }
+
+    /// 札の地の色。iOS の標準の一覧の札と同じ（ライトは白、ダークは少し明るい灰色）
+    #if os(iOS)
+    private static let fill = Color(uiColor: .secondarySystemGroupedBackground)
+    #else
+    private static let fill = Color(nsColor: .controlBackgroundColor)
+    #endif
 }
-#endif
 
 /// 一覧の行の文字の役割。標準の text style より一段小さくする（行の見出しを headline から下げた。ユーザーの要望。2026-11-03）
 enum RowFont {
@@ -127,15 +191,19 @@ extension View {
         }
     }
 
-    /// 一覧の余白を詰める（List に付ける）。iOS では札を CardSection で描くので、角の無い grouped にする。
-    /// Mac の一覧はもともと詰まっていて、セクションの間の指定も無いので、そのままにする
-    @ViewBuilder func compactList() -> some View {
+    /// 一覧の余白を詰める（List に付ける）。札を CardSection で描くので、iOS では角の無い grouped、Mac では素の plain にする。
+    /// Mac の一覧の列（選ぶ側。`selectable`）は、選んだ行の濃い背景が札と重ならないよう、標準の一覧のまま札を描かない
+    @ViewBuilder func compactList(selectable: Bool = false) -> some View {
         #if os(iOS)
         listStyle(.grouped)
             .listSectionSpacing(AppList.sectionSpacing)
             .environment(\.defaultMinListRowHeight, 44)
         #else
-        self
+        if selectable {
+            environment(\.drawsCardSections, false)
+        } else {
+            listStyle(.plain)
+        }
         #endif
     }
 
@@ -148,13 +216,15 @@ extension View {
         #endif
     }
 
-    #if os(iOS)
     /// 札の中の 1 行にする（地・余白・区切り線の端）。CardSection が行ごとに付ける
     fileprivate func cardRow(_ position: CardRowPosition) -> some View {
-        let side = AppList.sideMargin + AppList.rowSideInset
+        let side = AppList.sideMargin + AppList.rowSideInset - AppList.platformRowInset
         return listRowBackground(CardRowBackground(position: position))
             .listRowInsets(EdgeInsets(top: AppList.rowVerticalInset, leading: side, bottom: AppList.rowVerticalInset, trailing: side))
+            #if os(iOS)
             .alignmentGuide(.listRowSeparatorTrailing) { $0[.trailing] }
+            #else
+            .listRowSeparator(.hidden)
+            #endif
     }
-    #endif
 }

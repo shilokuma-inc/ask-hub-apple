@@ -235,7 +235,7 @@ struct StartSheet: View {
                 }
             }
             .pastelBackground()
-            .compactList()
+            .compactList(selectable: true)
             .navigationTitle("開始する")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
