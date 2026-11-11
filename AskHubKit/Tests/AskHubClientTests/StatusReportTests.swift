@@ -92,6 +92,24 @@ struct StatusReportTests {
         #expect(!report.contains("失敗:"))
     }
 
+    @Test func nextRunWithObjectsDirectorySendsOnlyRootListing() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "askhub-status-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let github = FakeGitHubState(files: try Self.files())
+        // 非常口は 1 回ごとにプロセスが新しく、置き場所も作り直す
+        func store() -> GitHubContentsStore {
+            GitHubContentsStore(repository: FakeGitHubState.repository, transport: github, budget: nil, objectsDirectory: directory) {
+                "test-token-not-real"
+            }
+        }
+        let first = try await StatusReport.render(store(), repository: Self.repo, device: Self.device)
+        #expect(github.statuses.count == 16)
+        // 次の実行は、tree と blob をディスクから読み、直下の一覧の 1 回（ETag はメモリーにだけ持つので 200）だけ
+        #expect(try await StatusReport.render(store(), repository: Self.repo, device: Self.device) == first)
+        #expect(github.statuses.dropFirst(16) == [200])
+    }
+
     @Test func rereadingUnchangedStateSendsOnlyRootListing() async throws {
         let github = FakeGitHubState(files: try Self.files())
         let store = GitHubContentsStore(repository: FakeGitHubState.repository, transport: github, budget: nil) { "test-token-not-real" }
