@@ -63,14 +63,8 @@ struct LiveBuildTests {
             return nil
         }.first
         guard kind.isTest, let destination else { return }
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("askhub-build-live-\(UUID().uuidString)")
-        let temporary = root.appendingPathComponent("tmp")
-        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+        let (machine, root) = try liveMachine()
         defer { try? FileManager.default.removeItem(at: root) }
-        let tools = BuildTools(temporaryDirectory: temporary)
-        let machine = BuildMachine(
-            tools: tools, directories: BuildDirectories(root: root.appendingPathComponent("builds")), runner: ProcessCommandRunner()
-        )
         var single = settings
         single.destinations = [.simulator(destination)]
         let epic = try #require(ULID(rawValue: "01JC0000000000000000000000"))
@@ -81,7 +75,8 @@ struct LiveBuildTests {
         var failure: (any Error)?
         do {
             let bootout = ["simctl", "spawn", simulator.udid, "launchctl", "bootout", "system/com.apple.SpringBoard"]
-            let broken = try await ProcessCommandRunner().run(tools.command(bootout, in: temporary, timeout: .seconds(60)))
+            let tools = machine.pool.tools
+            let broken = try await ProcessCommandRunner().run(tools.command(bootout, in: tools.temporaryDirectory, timeout: .seconds(60)))
             #expect(broken.succeeded, "\(broken.outputText)")
             let run = try await builder.run(kind)
             print("[live] \(run.summary)\n\(run.text())")
@@ -105,14 +100,8 @@ struct LiveBuildTests {
                   if case .simulator(let simulator) = destination { return simulator }
                   return nil
               }).first else { return }
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("askhub-build-live-\(UUID().uuidString)")
-        let temporary = root.appendingPathComponent("tmp")
-        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+        let (machine, root) = try liveMachine()
         defer { try? FileManager.default.removeItem(at: root) }
-        let tools = BuildTools(temporaryDirectory: temporary)
-        let machine = BuildMachine(
-            tools: tools, directories: BuildDirectories(root: root.appendingPathComponent("builds")), runner: ProcessCommandRunner()
-        )
         let epic = try #require(ULID(rawValue: "01JC0000000000000000000000"))
         let source = URL(fileURLWithPath: project)
         func only(_ test: String) -> BuildSettings {
@@ -150,6 +139,19 @@ struct LiveBuildTests {
             try await machine.pool.delete(simulator)
         }
         if let failure { throw failure }
+    }
+
+    /// 本物の道具で流す `BuildMachine` と、その作業場所（`root`。使い終えたら消す）
+    private func liveMachine() throws -> (machine: BuildMachine, root: URL) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("askhub-build-live-\(UUID().uuidString)")
+        let temporary = root.appendingPathComponent("tmp")
+        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+        let machine = BuildMachine(
+            tools: BuildTools(temporaryDirectory: temporary),
+            directories: BuildDirectories(root: root.appendingPathComponent("builds")),
+            runner: ProcessCommandRunner()
+        )
+        return (machine, root)
     }
 
     private func check(_ simulator: Simulator, pool: SimulatorPool) async throws {
