@@ -139,7 +139,7 @@ struct ScreenshotZoomSheet: View {
                 }
             }
         }
-        .frame(minWidth: 360, minHeight: 600)
+        .sheetSize(.page)
     }
 }
 
