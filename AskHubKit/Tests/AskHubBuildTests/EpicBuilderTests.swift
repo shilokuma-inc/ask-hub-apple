@@ -114,7 +114,9 @@ struct EpicBuilderTests {
         for kind in [BuildKind.testLight, .testFull] {
             let before = steps(fake).count
             #expect(try await builder.run(kind).succeeded)
-            #expect(steps(fake).dropFirst(before) == ["simctl shutdown", "simctl bootstatus", "xcodebuild test", "xcodebuild test"])
+            #expect(steps(fake).dropFirst(before) == [
+                "simctl shutdown", "simctl bootstatus", "simctl ui", "xcodebuild test", "xcodebuild test"
+            ])
         }
         #expect(fake.arguments.filter { $0.prefix(2) == ["simctl", "shutdown"] }.allSatisfy { $0[2] == Self.bootedSlot.udid })
     }
@@ -157,7 +159,7 @@ struct EpicBuilderTests {
         #expect(run.summary == "iPhone 17 Pro（iOS 26.5）: テストが通った（全 2 件）\(Self.rerunNote)\nmacOS: テストが通った（全 2 件）")
         // 枠の Simulator を止めて消去し、起動し直してから同じ Simulator で流し直す。macOS は 1 回だけ
         #expect(steps(fake) == [
-            "simctl create", "simctl bootstatus", "xcodebuild test",
+            "simctl create", "simctl bootstatus", "simctl ui", "xcodebuild test",
             "simctl shutdown", "simctl erase", "simctl bootstatus", "xcodebuild test",
             "xcodebuild test"
         ])

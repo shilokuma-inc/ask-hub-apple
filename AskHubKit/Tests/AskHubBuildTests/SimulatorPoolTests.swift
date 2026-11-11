@@ -74,7 +74,8 @@ struct SimulatorPoolTests {
         let booted = Self.bootedSlot
         let simctl = FakeSimctl(devices: Self.humanDevices + [booted])
         let (pool, runner) = pool(simctl)
-        let steps = { runner.arguments.filter { $0.first == "simctl" && $0[1] != "list" } }
+        // 外観（`ui`）は restoresTheLightAppearanceOnlyWhenRestarting で確かめる
+        let steps = { runner.arguments.filter { $0.first == "simctl" && !["list", "ui"].contains($0[1]) } }
 
         // 頼まれなければ、起動しているものをそのまま使う
         _ = try await pool.prepare(slot: 1, for: Self.iPhone)

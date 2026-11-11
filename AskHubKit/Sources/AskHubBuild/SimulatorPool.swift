@@ -44,9 +44,10 @@ public struct SimulatorPool: Sendable {
     /// 同じ名前でランタイムや機種が合わないもの（ランタイムを消したものなど）は消して作り直す。
     /// 使う Xcode の SDK より新しいランタイムは、作らずに断る（`checkSupported`）。
     ///
-    /// `restarting` なら、起動していた Simulator を止めてから起動し直す。前の回の UI テストが変えた端末の向きは、
+    /// `restarting` なら、起動していた Simulator を止めてから起動し直し、外観をライトに戻す。前の回の UI テストが変えた端末の向きは、
     /// Simulator を起動している間だけ残り、`simctl` では読めも戻せもしないが、止めると縦向きに戻る
-    /// （2026-11-11 に、前の回の LaunchTests の横向きのまま残った枠の Simulator で、次の UI テストが画面の外の要素を押せずに落ちた）
+    /// （2026-11-11 に、前の回の LaunchTests の横向きのまま残った枠の Simulator で、次の UI テストが画面の外の要素を押せずに落ちた）。
+    /// 外観（LaunchTests の構成ごとの実行はダークにもする）は止めても戻らないので、起動してから `simctl ui` で戻す
     public func prepare(
         slot: Int,
         for destination: SimulatorDestination,
@@ -78,7 +79,19 @@ public struct SimulatorPool: Sendable {
         // 起動していなければ起動し、使えるようになるまで待つ
         try await simctl(["bootstatus", simulator.udid, "-b"], doing: "\(name) を起動")
         simulator.state = "Booted"
+        if restarting {
+            try await restoreLightAppearance(of: simulator)
+        }
         return simulator
+    }
+
+    /// 起動している Simulator の外観がダークなら、ライトに戻す。外観に対応しないランタイム（`unsupported`）などはそのままにする。
+    /// 外観は止まっている Simulator では読めも変えもできない（`unknown`・`Unable to lookup in current state: Shutdown`）ので、起動してから呼ぶ
+    private func restoreLightAppearance(of simulator: Simulator) async throws(SimulatorError) {
+        let result = try await simctl(["ui", simulator.udid, "appearance"], doing: "\(simulator.name) の外観を取得")
+        let current = String(data: result.standardOutput, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard current == "dark" else { return }
+        try await simctl(["ui", simulator.udid, "appearance", "light"], doing: "\(simulator.name) の外観をライトに設定")
     }
 
     /// 止めてから中身を消す（入れたアプリ・設定・Keychain）。次の epic に前の状態を持ち越さないときや、調子が悪いときに使う
