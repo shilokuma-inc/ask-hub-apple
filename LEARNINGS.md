@@ -432,6 +432,12 @@
   コンテナの tmp（`~/Library/Containers/jp.shilokuma.AskHub/Data/tmp/`）に窓ごとの PNG を書く（`DemoWindowSnapshot`）。ビルドした .app を `rsync` で送り、`ssh <Mac> open -g -n <.app> --args …` で起動する。
   `cacheDisplay(in:to:)` で描くと、NavigationSplitView のサイドバーと詳細の列が白や黒に抜けるので、`CGWindowListCreateImage`（macOS 15 の SDK で使えないので `dlsym` で引く）で撮る。
   macOS 27 では支援技術がつながるまで SwiftUI がアクセシビリティの木を作らず、アプリの中から名前でボタンを探せないので、`NSApp` に `AXManualAccessibility` を立てる（2026-11-12、Mac の UI の直し）
+- `xcodebuild test` は、既定（`-collect-test-diagnostics on-failure`）では、テストが落ちると、テストの後に `simctl diagnose -l -b --timeout=600 --log-option=--last --log-option=2m --output=<結果のバンドル>/Staging/1_Test/Diagnostics/simctl_diagnostics` を流す。
+  手元（Xcode 26.6・iOS 26.5）では中のログの取り出しが終わらず、`Failure collecting diagnostics from simulator: Timed out after 600.0 seconds` まで 10 分止まった（結果のバンドルも 5.5MB → 46MB。Mac の DiagnosticReports の写しなどが入る）。
+  集めるのは、記録された issue があるか、テストの実行役がエラーで終わったときだけ（IDEFoundation の `IDETestRunSession` の `_atLeastOneTestFailed`・`_atLeastOneTestRunnerFailedWithError`。Xcode 26.6・27.1 で同じ）で、
+  通ったテストでは、作ったばかりの Simulator の 1 回目でも流れなかった。`-collect-test-diagnostics never` なら止まらず、`test-results summary` の `testFailures` の文と、テストごとの添付
+  （クラッシュのレポート `.ips`・画面の録画）は残る。ワーカー（`XcodeBuildRunner`）はテストのときにいつも `never` を渡す。止まりを調べるときは、`ps` で `simctl diagnose` の子を探し、
+  xcodebuild の出力の `IDETestOperationsObserverDebug: Failure collecting diagnostics` の行を見る（2026-11-12、#1047）
 
 ## Keychain
 
