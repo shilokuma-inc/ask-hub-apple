@@ -182,5 +182,10 @@ struct CommandArgumentsTests {
         #expect(throws: CommandArguments.Failure(message: "--version は 1 以上の数")) {
             try CommandArguments(["--version", "0"]).integer("version")
         }
+        // 試行の番号は、試行の前に人に渡したジョブのために 0 から受け付ける
+        #expect(try CommandArguments(["--attempt", "0"]).integer("attempt", minimum: 0) == 0)
+        #expect(throws: CommandArguments.Failure(message: "--attempt は 0 以上の数")) {
+            try CommandArguments(["--attempt", "-1"]).integer("attempt", minimum: 0)
+        }
     }
 }
