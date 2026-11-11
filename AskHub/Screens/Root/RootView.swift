@@ -6,6 +6,8 @@ struct RootView: View {
     @Environment(AppNavigator.self) private var navigator
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Mac で前面にあるか。前面でない間は、取り直しの間隔を延ばす
+    @State private var isFrontmost = true
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -18,13 +20,15 @@ struct RootView: View {
             .onChange(of: dynamicTypeSize) { AppFont.applyToSystemBars() }
             // 主な色はラベンダー（パステルの見た目。Theme）
             .tint(Theme.accent)
-            // 開いている間（バックグラウンド以外）は決まった間隔で取り直す。デモの場面を変えて store を作り直したら、新しい store で回し直す
-            .task(id: AutoRefreshKey(isActive: scenePhase != .background, store: ObjectIdentifier(store))) {
+            // 開いている間（バックグラウンド以外）は決まった間隔で取り直す。Mac で前面でない間は間隔を延ばし、前面に戻ったら回し直す。
+            // デモの場面を変えて store を作り直したら、新しい store で回し直す
+            .task(id: AutoRefreshKey(isActive: scenePhase != .background, isFrontmost: isFrontmost, store: ObjectIdentifier(store))) {
                 guard scenePhase != .background else {
                     return
                 }
-                await store.runAutoRefresh()
+                await store.runAutoRefresh(relaxed: !isFrontmost)
             }
+            .modifier(FrontmostTracking(isFrontmost: $isFrontmost))
             .sheet(isPresented: $navigator.isShowingNewRequest) {
                 NewRequestSheet()
             }
@@ -35,9 +39,10 @@ struct RootView: View {
             #endif
     }
 
-    /// 取り直しを回し直すきっかけ（バックグラウンドから戻った・store が替わった）
+    /// 取り直しを回し直すきっかけ（バックグラウンドから戻った・Mac で前面に出た・前面から外れた・store が替わった）
     private struct AutoRefreshKey: Hashable {
         let isActive: Bool
+        let isFrontmost: Bool
         let store: ObjectIdentifier
     }
 
@@ -145,5 +150,24 @@ struct SidebarView: View {
         case .progress, .repositories:
             0
         }
+    }
+}
+
+/// Mac で、アプリが前面にあるかを `isFrontmost` に入れる。iOS は前面にいる間しか取り直さないので、いつも前面とみなす
+private struct FrontmostTracking: ViewModifier {
+    @Binding var isFrontmost: Bool
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                isFrontmost = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                isFrontmost = false
+            }
+        #else
+        content
+        #endif
     }
 }
