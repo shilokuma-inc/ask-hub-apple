@@ -137,40 +137,49 @@ final class FakeGitHubState: HTTPTransport {
         state.withLock { $0.files[path] = data }
     }
 
+    private struct Reply {
+        var status: Int
+        var body = Data()
+        var headers: [String: String] = [:]
+
+        static func json(_ object: Any, headers: [String: String] = [:]) -> Self {
+            Self(status: 200, body: (try? JSONSerialization.data(withJSONObject: object)) ?? Data(), headers: headers)
+        }
+    }
+
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (status, body, headers) = state.withLock { state in
+        let reply = state.withLock { state in
             let reply = Self.reply(to: request, objects: GitObjects(files: state.files))
             state.statuses.append(reply.status)
             return reply
         }
         guard let url = request.url,
-              let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: headers) else {
+              let response = HTTPURLResponse(url: url, statusCode: reply.status, httpVersion: nil, headerFields: reply.headers) else {
             throw URLError(.badServerResponse)
         }
-        return (body, response)
+        return (reply.body, response)
     }
 
-    private static func reply(to request: URLRequest, objects: GitObjects) -> (status: Int, body: Data, headers: [String: String]) {
+    private static func reply(to request: URLRequest, objects: GitObjects) -> Reply {
         let prefix = "/repos/\(repository.rawValue)/"
-        guard let path = request.url?.path, path.hasPrefix(prefix) else { return (404, Data(), [:]) }
+        guard let path = request.url?.path, path.hasPrefix(prefix) else { return Reply(status: 404) }
         let rest = path.dropFirst(prefix.count)
         if rest == "contents" || rest == "contents/" {
             let etag = "\"\(objects.root)\""
-            if request.value(forHTTPHeaderField: "If-None-Match") == etag { return (304, Data(), [:]) }
+            if request.value(forHTTPHeaderField: "If-None-Match") == etag { return Reply(status: 304) }
             let listing = (objects.trees[objects.root] ?? []).map { entry in
                 ["type": entry.isTree ? "dir" : "file", "name": entry.name, "path": entry.name, "sha": entry.sha]
             }
-            return (200, (try? JSONSerialization.data(withJSONObject: listing)) ?? Data(), ["ETag": etag])
+            return .json(listing, headers: ["ETag": etag])
         }
         if rest.hasPrefix("git/trees/"), let tree = objects.trees[String(rest.dropFirst("git/trees/".count))] {
             let items = tree.map { ["path": $0.name, "type": $0.isTree ? "tree" : "blob", "sha": $0.sha] }
-            let body: [String: Any] = ["truncated": false, "tree": items]
-            return (200, (try? JSONSerialization.data(withJSONObject: body)) ?? Data(), [:])
+            return .json(["truncated": false, "tree": items] as [String: Any])
         }
         if rest.hasPrefix("git/blobs/"), let blob = objects.blobs[String(rest.dropFirst("git/blobs/".count))] {
-            return (200, blob, [:])
+            return Reply(status: 200, body: blob)
         }
-        return (404, Data(), [:])
+        return Reply(status: 404)
     }
 }
 
