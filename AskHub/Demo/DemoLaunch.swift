@@ -3,7 +3,7 @@ import Foundation
 #if DEBUG
 /// UI テストと撮影のために、起動引数で開く画面を決める（DEBUG だけ）。
 ///
-/// 例: `-demoOpen deck:all`・`-demoOpen epic:rain-draft`・`-demoOpen section:macs`、
+/// 例: `-demoOpen deck:all`・`-demoOpen epic:rain-draft`・`-demoOpen section:macs`・`-demoOpen finished`（終わったものをすべて）、
 /// スワイプの途中の色を撮るときは `-demoDrag 0:0.8`（選択肢の添字:進み具合）
 enum DemoLaunch {
     static let openKey = "demoOpen"
@@ -34,6 +34,9 @@ enum DemoLaunch {
 
         case "human":
             return parts.count == 3 ? (.inbox, .humanTask(epicID: parts[1], taskID: parts[2])) : nil
+
+        case "finished":
+            return (.progress, .finishedEpics)
 
         default:
             return nil

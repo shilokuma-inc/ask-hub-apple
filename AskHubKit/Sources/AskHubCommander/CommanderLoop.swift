@@ -88,6 +88,8 @@ public actor CommanderLoop {
     nonisolated let taskRunners: [JobKind: any JobRunning]
     /// 生きている印を書いた後に、リポジトリの写しのほかに片付けるもの（終わった epic の残りもの。`FinishedEpicCleanUp`）
     nonisolated let tidy: @Sendable () async -> Void
+    /// 対象のアプリのアイコンを状態リポジトリに置くもの。生きている印を書いた後に、周の外で確かめ始める。nil なら置かない
+    nonisolated let appIcons: AppIconSync?
 
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
@@ -116,7 +118,8 @@ public actor CommanderLoop {
         mirror: DiscussionMirror? = nil,
         epicWorkspace: (any EpicWorkspace)? = nil,
         taskRunners: [JobKind: any JobRunning] = [:],
-        tidy: @escaping @Sendable () async -> Void = {}
+        tidy: @escaping @Sendable () async -> Void = {},
+        appIcons: AppIconSync? = nil
     ) {
         self.context = context
         self.settings = settings
@@ -132,6 +135,7 @@ public actor CommanderLoop {
         self.epicWorkspace = epicWorkspace
         self.taskRunners = taskRunners
         self.tidy = tidy
+        self.appIcons = appIcons
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
     }
@@ -323,5 +327,6 @@ public actor CommanderLoop {
         // しばらく使っていないリポジトリの写しと、終わった epic の残りものを片付ける
         await workspace.tidy()
         await tidy()
+        appIcons?.start()
     }
 }

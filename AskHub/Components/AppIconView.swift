@@ -40,6 +40,11 @@ struct IconTile: View {
                 monogram
             }
 
+        case let .stored(path, version):
+            // 版が変わったら、前の画像を残さずに読み直す
+            StoredIconImage(path: path, version: version) { monogram }
+                .id(version)
+
         case let .symbol(name, tint):
             ZStack {
                 // 上を少し明るくしたパステルのグラデーション
@@ -60,6 +65,31 @@ struct IconTile: View {
             Text(initial)
                 .font(.system(size: side * 0.46, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// 司令塔が状態リポジトリに置いたアイコン。読むまでと読めなかったときは、代わりのもの（頭文字）を出す
+private struct StoredIconImage<Placeholder: View>: View {
+    let path: String
+    let version: String
+    @ViewBuilder let placeholder: Placeholder
+    @Environment(ClientStore.self) private var store
+    @State private var image: CGImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                placeholder
+            }
+        }
+        .task {
+            guard let data = await store.appIcon(at: path, version: version) else { return }
+            image = StoredScreenshotImage.image(from: data)
         }
     }
 }

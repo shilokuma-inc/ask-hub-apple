@@ -216,6 +216,7 @@ struct StateFileTests {
         #expect(StatePath.version == "version.json")
         #expect(StatePath.commander == "commander.json")
         #expect(StatePath.repository(repo) == "\(base)/repo.json")
+        #expect(StatePath.appIcon(repo) == "\(base)/icon.png")
         #expect(StatePath.epic(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/epic.json")
         #expect(StatePath.questions(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/questions.json")
         #expect(StatePath.goal(repo, epic) == "\(base)/epics/01JCEP1C000000000000000001/goal.json")

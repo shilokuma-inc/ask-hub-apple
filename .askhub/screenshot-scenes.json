@@ -5,6 +5,7 @@
     { "id": "inbox-quiet", "title": "あなたの番が空のとき", "arguments": ["-demoScenario", "quiet", "-demoOpen", "section:inbox", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "inbox-failing", "title": "あなたの番に失敗と対処が並ぶとき", "arguments": ["-demoScenario", "failing", "-demoOpen", "section:inbox", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "progress", "title": "進行中の epic の一覧", "arguments": ["-demoScenario", "standard", "-demoOpen", "section:progress", "-demoClock", "2026-01-15T00:41:00Z"] },
+    { "id": "finished-epics", "title": "終わったものをすべて（進行中には新しい 10 件だけを出す）", "arguments": ["-demoScenario", "manyFinished", "-demoOpen", "finished", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "epic-detail", "title": "進行中の epic の詳細（タスクとジョブの進み具合）", "arguments": ["-demoScenario", "standard", "-demoOpen", "epic:rain-draft", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "macs", "title": "Mac の一覧（ワーカーの生きている印と容量）", "arguments": ["-demoScenario", "standard", "-demoOpen", "section:macs", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "repositories", "title": "対象のリポジトリの一覧", "arguments": ["-demoScenario", "standard", "-demoOpen", "section:repositories", "-demoClock", "2026-01-15T00:41:00Z"] },

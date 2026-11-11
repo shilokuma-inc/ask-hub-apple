@@ -16,6 +16,8 @@ enum DemoScenario: String, CaseIterable {
     case tooLarge
     /// 開始した後の段取り（作業場所の用意・実装中・実装の途中の質問・直し）を並べる
     case started
+    /// 標準の場面に、前に終わった epic を足す（進行中の終わったものが 10 件を超え、「すべて見る」の行が出る）
+    case manyFinished
     /// 初めの 1 回だけ読め、その後は GitHub の上限に当たる（戻る時刻まで取り直しを休む画面）
     case rateLimited
 
@@ -31,6 +33,8 @@ enum DemoScenario: String, CaseIterable {
     static let rejectsIntentsKey = "demoRejectIntents"
     /// 司令塔の受け取りを待ったまま、受け取りが遅いと知らせるまでの秒数を決める UserDefaults のキー（起動引数 `-demoStallAfter 5` で渡す）
     static let stallThresholdKey = "demoStallAfter"
+    /// 司令塔の Mac が読んだ GitHub の REST の残りを決める UserDefaults のキー（残りが少ないときの画面を撮るときに、起動引数 `-demoGitHubRemaining 820` で渡す）
+    static let githubRemainingKey = "demoGitHubRemaining"
     /// デモの時計を止める時刻の UserDefaults のキー（判断のカードのスクショで、起動引数 `-demoClock 2026-01-15T00:41:00Z` で渡す。
     /// Before と After を別の時刻に撮っても「9:41 に確かめました」などの時刻の文が同じに写る。機械の反応は起きなくなる）
     static let clockKey = "demoClock"
@@ -70,6 +74,11 @@ enum DemoScenario: String, CaseIterable {
 
         case .started:
             return data.started()
+
+        case .manyFinished:
+            var snapshot = data.standard()
+            snapshot.epics += data.pastEpics()
+            return snapshot
         }
     }
 }
@@ -292,7 +301,8 @@ extension DemoData {
                     bytes: 1_200 * Self.megabyte,
                     caution: "未 push のコミットが 2 つあります"
                 )
-            ]
+            ],
+            githubQuota: GitHubQuota(limit: 5_000, remaining: 4_210, resetAt: ago(minutes: -41), checkedAt: ago(minutes: 2))
         )
     }
 

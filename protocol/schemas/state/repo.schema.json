@@ -34,6 +34,23 @@
       "anyOf": [{ "$ref": "../repository-build.schema.json" }, { "type": "null" }],
       "description": "ビルドの設定（人が configureRepository で入れる）。無いリポジトリでは開始を断る"
     },
+    "icon": {
+      "description": "対象のアプリのアイコン（画像は repos/<owner>/<repo>/icon.png）。司令塔が対象のリポジトリの既定のブランチから取り出して書く。まだ取り出していない・見つからないなら null",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["source", "sourceTree", "image", "updatedAt"],
+          "additionalProperties": false,
+          "properties": {
+            "source": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "取り出した元（.icon か .appiconset のフォルダ）の、リポジトリの直下からのパス" },
+            "sourceTree": { "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40, "description": "元のフォルダの git の tree の sha。変わったときだけ書き出し直す" },
+            "image": { "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40, "description": "書いた画像（PNG）の git の blob の sha。クライアントはこれを鍵に画像をしまっておく" },
+            "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
     "addedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
   }
 }

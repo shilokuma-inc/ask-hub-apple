@@ -114,11 +114,18 @@ struct StateSnapshotBuilder {
     // MARK: リポジトリ
 
     private func repository(_ file: RepositoryFile, epics: [Epic], index: inout StateIndex) -> TargetRepository {
-        let repository = Self.repository(file.repo)
+        var repository = Self.repository(file.repo)
         index.repositories[repository.id] = file.repo
-        var lastMac = repository
-        lastMac.lastMacID = epics.filter { $0.repositoryID == repository.id && $0.macID != nil }.max { $0.updatedAt < $1.updatedAt }?.macID
-        return lastMac
+        repository.icon = Self.appIcon(of: file)
+        repository.lastMacID = epics.filter { $0.repositoryID == repository.id && $0.macID != nil }
+            .max { $0.updatedAt < $1.updatedAt }?.macID
+        return repository
+    }
+
+    /// 司令塔が置いたアプリのアイコン。まだ無ければ頭文字
+    static func appIcon(of file: RepositoryFile) -> RepositoryIcon {
+        guard let icon = file.icon else { return .monogram }
+        return .stored(path: StatePath.appIcon(file.repo), version: icon.image)
     }
 
     static func repository(_ repo: RepositoryFullName) -> TargetRepository {
@@ -169,7 +176,8 @@ struct StateSnapshotBuilder {
             commanderClaudeVersion: commanderClaudeVersion(differingFrom: file.versions.claude),
             xcodeVersion: file.versions.xcode,
             cleanupCandidates: [],
-            loadAverage: file.load
+            loadAverage: file.load,
+            githubQuota: Self.quota(file.selfCheck)
         )
     }
 
@@ -193,8 +201,16 @@ struct StateSnapshotBuilder {
             selfChecks: Self.selfChecks(file.selfCheck),
             tokens: tokens,
             claudeVersion: file.versions.claude,
-            cleanupCandidates: []
+            cleanupCandidates: [],
+            githubQuota: Self.quota(file.selfCheck)
         )
+    }
+
+    /// 自己診断の、持ち主ごとのトークンで読んだ残りのうち一番少ないもの
+    private static func quota(_ check: SelfCheck) -> GitHubQuota? {
+        check.githubRateLimit.map { limit in
+            GitHubQuota(limit: limit.limit, remaining: limit.remaining, resetAt: limit.resetAt.date, checkedAt: check.checkedAt.date)
+        }
     }
 
     /// Claude Code の版が司令塔と違うときの、司令塔の版（どちらかが分からなければ比べない）
