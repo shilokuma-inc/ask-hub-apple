@@ -76,7 +76,7 @@ struct XcodeBuildRunnerTests {
             "-derivedDataPath", "/w/builds/01JC0000000000000000000000/DerivedData",
             "-resultBundlePath", bundle.path,
             "-skipPackagePluginValidation", "-skipMacroValidation",
-            "-parallel-testing-enabled", "NO", "-only-testing:AppTests",
+            "-parallel-testing-enabled", "NO", "-collect-test-diagnostics", "never", "-only-testing:AppTests",
             "COMPILER_INDEX_STORE_ENABLE=NO"
         ])
     }
