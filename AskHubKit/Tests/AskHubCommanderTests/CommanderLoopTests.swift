@@ -187,6 +187,16 @@ extension ClaudeJobRunnerTests {
         #expect(sleeper.waits == Array(repeating: .seconds(5), count: 6))
     }
 
+    @Test func failedCycleRestsWithoutEarlyWake() {
+        // 上限なら言われた時間（長すぎれば 15 分まで）、短ければ 1 周の間隔。ほかの失敗も 1 周の間隔
+        let poll: Duration = .seconds(30)
+        #expect(CommanderLoop.wait(after: .store(.rateLimited(retryAfter: .seconds(120))), pollInterval: poll) == .seconds(120))
+        #expect(CommanderLoop.wait(after: .store(.rateLimited(retryAfter: .seconds(1_574))), pollInterval: poll) == .seconds(15 * 60))
+        #expect(CommanderLoop.wait(after: .store(.budgetExhausted(retryAfter: .seconds(6))), pollInterval: poll) == poll)
+        #expect(CommanderLoop.wait(after: .files(.store(.rateLimited(retryAfter: .seconds(90)))), pollInterval: poll) == .seconds(90))
+        #expect(CommanderLoop.wait(after: .store(.invalidPath), pollInterval: poll) == poll)
+    }
+
     @Test func reportsOnlySlowCycles() {
         let steps: [(name: String, duration: Duration)] = [("人の意図", .milliseconds(1_200)), ("ジョブの見回り", .seconds(40))]
         #expect(CycleTimer.report(steps: steps, total: .seconds(19)) == nil)

@@ -126,18 +126,35 @@ public actor CommanderLoop {
     /// 止められるまで回す。1 周で失敗しても、次の周でやり直す
     public func run() async {
         while !Task.isCancelled {
+            var failureWait: Duration?
             do {
                 _ = try await cycle()
             } catch {
-                log("1 周を終えられなかった（\(error)）。次の周でやり直す")
+                failureWait = Self.wait(after: error, pollInterval: settings.pollInterval)
+                log("1 周を終えられなかった（\(error)）。\(CycleTimer.seconds(failureWait ?? settings.pollInterval)) 秒休んでから、次の周でやり直す")
             }
             do {
-                try await rest()
+                if let failureWait {
+                    try await sleeper.sleep(for: failureWait)
+                } else {
+                    try await rest()
+                }
             } catch {
                 break
             }
         }
     }
+
+    /// 周を終えられなかったときに休む時間。意図の一覧を見て休みを切り上げない（意図を受け付ける前に失敗すると、前の周で見た意図の記録が古いままで、
+    /// 休まずに失敗をくり返し、GitHub の上限を食い尽くすため）。上限（GitHub・書き込みの予算）なら言われた時間（長すぎれば `maxFailureWait` まで）、
+    /// ほかの失敗は 1 周の間隔
+    static func wait(after error: CommanderError, pollInterval: Duration) -> Duration {
+        guard let retryAfter = error.retryAfter else { return pollInterval }
+        return min(max(retryAfter, pollInterval), maxFailureWait)
+    }
+
+    /// 上限で休むときの長さの上限（生きている印が古くなりすぎないように）
+    static let maxFailureWait: Duration = .seconds(15 * 60)
 
     /// 次の周まで `pollInterval` 休む。休む間も `intentCheckInterval` ごとに意図の一覧を見て（ETag つきなので、変わっていなければ上限に数えられない）、
     /// 前の周で見ていない意図が届いていたら、休みを切り上げる（人の操作を早く受け付けるため。1 周の途中に届いた意図も、周が終わってすぐ受け付ける）。
