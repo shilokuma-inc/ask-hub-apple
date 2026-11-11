@@ -367,7 +367,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `fixFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`・`human`・`conflict`。`human` は判断のカードの「直してほしい」「別案にする」と `instructFinal` で、元の人の意図はジョブの `origin`。`conflict` は、ワーカーが base を作業ブランチに取り込み、コンフリクトしたファイルを Claude に解消させる） |
 | `notify` | 段階 4 で決める |
 
-- タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）は、司令塔が元のジョブの結果から作り、`task` にタスクの id、`dependsOn` に元のジョブ（`implementTask` は作業場所の用意）を書く。同じタスクの直しが 3 回を超えたら、`fixTask` を `waitingHuman` で作る（試行の前なので `attempts` は 0。[flows.md](flows.md) の「司令塔がタスクを進める」）
+- タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）は、司令塔が元のジョブの結果から作り、`task` にタスクの id、`dependsOn` に元のジョブ（`implementTask` は作業場所の用意）を書く。同じタスクの直しが 3 回を超えたら、`fixTask` を `waitingHuman` で作る（試行の前なので `attempts` は 0。[flows.md](flows.md) の「司令塔がタスクを進める」）。最終 PR の直し（`fixFinalPullRequest`）も同じ。
+  上限の回数は Swift の `FixTaskInput.maxAutomaticRounds` で、司令塔とクライアントが同じ値を使う。クライアントは、試行の無い（`attempts` が 0 の）人の対応待ちの直しを、上限を超えて止めたものとして、直す理由（`reason`）の区分（`ci` はビルド・テスト、`review` はレビューの指摘、`conflict` はコンフリクト）と止めた理由の文で「対処が要ります」に出す
 - `kind` の最初の一覧: `makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`prepareWorkspace`・`implementTask`・`reviewTask`・`fixTask`・`integrateDevelop`・`verifyBeforeFinal`・`openFinalPullRequest`・`reviewFinalPullRequest`・`fixFinalPullRequest`・`rerunChecks`・`classifyDecisions`・`captureScreenshots`・`mergeFinalPullRequest`・`cleanUp`・`notify`
 - `state` は `queued`・`assigned`・`running`・`succeeded`・`failed`・`waitingHuman`・`paused`・`canceled`
 - ジョブのファイルは司令塔だけが書く。ワーカーは、自分の試行のファイルに「始めた」を書くことで、ジョブを引き受けたことを示す。司令塔は試行を読んでジョブの `state` を更新する
