@@ -153,7 +153,7 @@
 | `askhub`（非常口） | `jp.shilokuma.askhub.cli` | `jp.shilokuma.AskHub.cli` |
 
 - 署名は、常時オンの Mac の常駐（`jp.shilokuma.askhub.deploy`。下の「司令塔の更新」）が行う。署名の鍵は常時オンの Mac のログインキーチェーンにだけ置き、CI（GitHub の Secrets）には置かない
-  - public のリポジトリでは、Secrets を読めるワークフローが 1 つでも誘導されると、個人の名前の Developer ID で何にでも署名できるようになる。漏れたら証明書を失効させ、作り直した証明書で署名し直して、すべての Mac に配り直すことになる。今のワークフローは Environment ではなく repository の Secrets を使っていて、[security.md](security.md) の「public のリポジトリと Secrets」の決まりにまだ合っていない
+  - public のリポジトリでは、Secrets を読めるワークフローが 1 つでも誘導されると、個人の名前の Developer ID で何にでも署名できるようになる。漏れたら証明書を失効させ、作り直した証明書で署名し直して、すべての Mac に配り直すことになる。今のワークフローは Environment ではなく organization の Secrets（多くは公開範囲がすべてのリポジトリ）を使っていて、[security.md](security.md) の「public のリポジトリと Secrets」の決まりにまだ合っていない（#1067）
   - 司令塔は常時オンの Mac が無いと動かないので、署名をそこに頼っても、止まる理由は増えない
   - タグからの再現できるビルドと公開のログ（build provenance）が要るようになったら、「CI が秘密なしでビルドし、常時オンの Mac が確かめてから署名する」形に移す。鍵は動かさない
 - ビルドは、鍵の無い手元の Mac で行う。`origin/develop` に入ったコミット（リリースはタグ）を一時の git worktree に取り出してビルドし、作業中の変更を入れない
