@@ -664,6 +664,9 @@
   低い高さのまま書かせるには `.large` を並べない。キーボードの上の「完了」（`ToolbarItemGroup(placement: .keyboard)`）は、低いシートではシートの中に重なって入力欄を狭める（2026-11-06、自由回答のシート）
 - `List` の `Section` の中に、本体が `if` で何も出さないことのある View（`ReflectionStatusView` など）をそのまま置いても、何も出さないときは空の行にならない（iOS 26 で確かめた）。
   呼び出し側で `if` を重ねるのは、`CardSection` で包むときのように、包む側だけが残ってしまうときだけでよい（2026-11-09、反映中の UI）
+- アプリの自動の取り直しのように、次に読む時刻を `ClientStore` の時計（`now`）で数えると、デモの時計を止めて撮る（`-demoClock`）ときに時計が進まず、2 回目の取り直しが来ない。
+  間隔は `ContinuousClock` の経過時間で数え、時計は GitHub の上限の戻る時刻のような「時刻」の比べにだけ使う（2026-11-12、`ClientStore.delayBeforeAutoRefresh`）
+- `xcrun simctl launch` の直後に `xcrun simctl io <udid> screenshot` を撮ると、起動の途中の白い画面が写ることがある。数秒待ってから撮り、写ったものを目で確かめる（2026-11-12）
 - Mac のシートは中身の理想の大きさで開くので、高さを持たない `List`・`Form` を入れると、見出しと閉じるボタンだけの高さに潰れて中身が空になる（macOS 26・27）。
   `presentationSizing(.form)`・`.page` で決まった大きさで開く（iOS 18 / macOS 15 からの共通の API。iPhone のシートには効かないので `#if os` は要らない。`SheetSize`）。
   Mac の `Form` の既定（columns）は、`TextField` の名前を欄の左の列に並べて欄を狭め、長い名前は左端で切れる。`.formStyle(.grouped)` にし、名前は `prompt:` と `.labelsHidden()` で欄の中に出す（iOS の見た目は変わらない）（2026-11-12、Mac の UI の直し）
