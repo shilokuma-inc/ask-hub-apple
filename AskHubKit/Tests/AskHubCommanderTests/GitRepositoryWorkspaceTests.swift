@@ -51,7 +51,7 @@ struct GitRepositoryWorkspaceTests {
     @Test func clonesOnceAndAddsWorktreePerJob() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let git = FakeGit(claude: "# askhub\n\n## 全員向けの事実\nSwiftUI のアプリ\n\n## 人のセッション向けの手順\nPR を作る")
-        let prepared = try await workspace(git).prepare(Self.repo, for: Self.job)
+        let prepared = try await workspace(git).prepare(Self.repo, base: nil, for: Self.job)
         #expect(prepared.directory.path.hasSuffix("jobs/\(Self.job.rawValue)/repository/askhub-sandbox"))
         #expect(prepared.facts == "SwiftUI のアプリ")
         let steps = git.commands.map { $0.arguments.prefix(2).joined(separator: " ") }
@@ -65,7 +65,7 @@ struct GitRepositoryWorkspaceTests {
             at: root.appendingPathComponent("repos/shilokuma-inc/askhub-sandbox/.git"), withIntermediateDirectories: true
         )
         let again = FakeGit()
-        _ = try await workspace(again).prepare(Self.repo, for: Self.job)
+        _ = try await workspace(again).prepare(Self.repo, base: nil, for: Self.job)
         #expect(again.commands.map { $0.arguments.prefix(2).joined(separator: " ") } == [
             "fetch --prune", "remote set-head", "worktree prune", "worktree add"
         ])
@@ -107,7 +107,7 @@ struct GitRepositoryWorkspaceTests {
         ]
         for (result, kind) in cases {
             do {
-                _ = try await workspace(FakeGit(failures: ["clone": result])).prepare(Self.repo, for: Self.job)
+                _ = try await workspace(FakeGit(failures: ["clone": result])).prepare(Self.repo, base: nil, for: Self.job)
                 Issue.record("失敗しなかった")
             } catch {
                 #expect(error.kind == kind)
@@ -121,8 +121,8 @@ struct GitRepositoryWorkspaceTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let workspace = workspace(FakeGit())
         let other = ULID(rawValue: "01JCJ0B0000000000000000002")!
-        let first = try await workspace.prepare(Self.repo, for: Self.job)
-        let second = try await workspace.prepare(Self.repo, for: other)
+        let first = try await workspace.prepare(Self.repo, base: nil, for: Self.job)
+        let second = try await workspace.prepare(Self.repo, base: nil, for: other)
         #expect(first.directory != second.directory)
         // 片方を片付けても、もう片方の写しは残る
         await workspace.release(Self.job)
@@ -130,7 +130,7 @@ struct GitRepositoryWorkspaceTests {
         #expect(FileManager.default.fileExists(atPath: second.directory.path))
         // リポジトリの名前が attachments でも、写しと添付の置き場所は重ならない
         let named = RepositoryFullName(rawValue: "shilokuma-inc/attachments")!
-        let copy = try await workspace.prepare(named, for: other)
+        let copy = try await workspace.prepare(named, base: nil, for: other)
         #expect(copy.directory != (try await workspace.attachmentsDirectory(for: other)))
     }
 

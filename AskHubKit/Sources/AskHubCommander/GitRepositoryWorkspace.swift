@@ -5,7 +5,8 @@ import Foundation
 /// 対象のリポジトリの写しを、ワーカー専用のフォルダに git で用意する（`docs/renewal/architecture.md` の「対象のリポジトリと clone」）。
 ///
 /// - リポジトリごとに、中身を必要になるまで取らない clone（`--filter=blob:none --no-checkout`）を 1 つ持ち、使うたびに fetch する
-/// - ジョブごとに、既定のブランチの最新を worktree で取り出す（並んで動くジョブの写しを分ける）。ジョブを終えたら消す
+/// - ジョブごとに、base（`repo.json` の `build.baseBranch`。無ければ既定のブランチ）の最新を worktree で取り出す
+///   （並んで動くジョブの写しを分ける）。ジョブを終えたら消す
 /// - epic の作業場所（作業ブランチの worktree）は、ジョブを超えて残す（`GitRepositoryWorkspace+Epic.swift`）
 /// - リポジトリの中の設定を効かせない（hooks・シンボリックリンク・人の git の設定）。トークンは引数にも環境変数にも置かず、
 ///   credential helper（Keychain から読むコマンド）で git に渡す
@@ -56,17 +57,18 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
         return ["-c", "user.name=\(author.name)", "-c", "user.email=\(author.email)"]
     }
 
-    public func prepare(_ repo: RepositoryFullName, for job: ULID) async throws(WorkspaceError) -> PreparedWorkspace {
+    public func prepare(_ repo: RepositoryFullName, base: String?, for job: ULID) async throws(WorkspaceError) -> PreparedWorkspace {
         let clone = cloneDirectory(of: repo)
         // 添付（`attachments`）と重ならないよう、写しは `repository/` の下に置く
         let worktree = jobDirectory(job).appendingPathComponent("repository/\(repo.name)", isDirectory: true)
         try await locks.withLock(repo.rawValue) { () throws(WorkspaceError) in
             try await update(clone, of: repo)
             markUsed(clone)
+            let start = try await readingPoint(base: base, in: clone)
             // 前の試行の写しが残っていれば作り直す
             try remove(worktree)
             try await git(["worktree", "prune"], in: clone)
-            try await git(["worktree", "add", "--detach", "--force", worktree.path, "origin/HEAD"], in: clone)
+            try await git(["worktree", "add", "--detach", "--force", worktree.path, start], in: clone)
         }
         let claude = try? String(contentsOf: worktree.appendingPathComponent("CLAUDE.md"), encoding: .utf8)
         return PreparedWorkspace(directory: worktree, facts: claude.map(RepositoryFacts.extract) ?? "")
@@ -148,6 +150,18 @@ public struct GitRepositoryWorkspace: RepositoryWorkspace {
     }
 
     // MARK: - git
+
+    /// 読むだけのもの（ジョブの写し・アイコン）を取り出す元。base があればそのリモートのブランチ、無ければ既定のブランチ（`origin/HEAD`）。
+    /// base は、ワーカーが作業ブランチを作り、人がレビューしたものをマージする先なので、既定のブランチ（`main` など）より新しいことがある。
+    /// base がリモートに無ければ断る（既定のブランチで代わりにすると、古いコードを元に質問を作ってしまう）
+    func readingPoint(base: String?, in clone: URL) async throws(WorkspaceError) -> String {
+        guard let base else { return "origin/HEAD" }
+        guard EpicFile.isBranchName(base) else { throw .failed("base のブランチの名前（\(base)）の形が違う") }
+        // 同じ名前のタグと取り違えないよう、リモートのブランチの参照の名前で渡す
+        let reference = "refs/remotes/origin/\(base)"
+        guard try await commit(of: reference, in: clone) != nil else { throw .failed("base のブランチ \(base) がリモートに無い") }
+        return reference
+    }
 
     /// clone が無ければ作り、あれば最新にする（既定のブランチが変わっていれば追う）
     func update(_ clone: URL, of repo: RepositoryFullName) async throws(WorkspaceError) {
