@@ -82,6 +82,16 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: ApplyProtectionIntent.kind, repo: repo, payload: ["requiredChecks": .array(requiredChecks.map(JSONValue.string))])
     }
 
+    /// 準備の PR（ワークフローの直し）のマージを承認する。見たときの head に結びつける（承認の後に push された変更はマージしない）
+    public static func approveSetupPullRequest(_ repo: RepositoryFullName, number: Int, head: String) -> Self {
+        Self(
+            kind: ApproveSetupPullRequestIntent.kind,
+            repo: repo,
+            target: .init(type: ApproveSetupPullRequestIntent.targetType, id: String(number)),
+            targetVersion: head
+        )
+    }
+
     /// 開始する前の epic を取り下げる
     public static func abandonEpic(repo: RepositoryFullName, epic: ULID) -> Self {
         Self(kind: AbandonEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))
