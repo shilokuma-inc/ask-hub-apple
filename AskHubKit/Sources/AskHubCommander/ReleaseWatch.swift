@@ -189,11 +189,27 @@ public actor ReleaseWatch {
     func advance(_ release: ReleaseFile, settings: RepositoryFile) async -> ReleaseFile {
         var file = release
         // 次の版の PR は、コミットやタグを待たずに進める（develop の Upload が配信済みの版で断られないように）
-        file = await step(.nextVersion, file) { try await self.advanceNextVersion($0, settings: settings) }
-        if file.commit == nil { file = await step(.commit, file) { try await self.findCommit($0) } }
-        if file.commit != nil, file.tag == nil { file = await step(.tag, file) { try await self.tag($0) } }
-        if file.tag != nil, file.githubRelease == nil { file = await step(.githubRelease, file) { try await self.advanceRelease($0) } }
+        if !isHeld(.nextVersion, file) {
+            file = await step(.nextVersion, file) { try await self.advanceNextVersion($0, settings: settings) }
+        }
+        if file.commit == nil, !isHeld(.commit, file) { file = await step(.commit, file) { try await self.findCommit($0) } }
+        if file.commit != nil, file.tag == nil, !isHeld(.tag, file) { file = await step(.tag, file) { try await self.tag($0) } }
+        if file.tag != nil, file.githubRelease == nil, !isHeld(.githubRelease, file) {
+            file = await step(.githubRelease, file) { try await self.advanceRelease($0) }
+        }
         return file
+    }
+
+    /// 人が直す問題を書いた段取りを、もう一度試すまでの長さ（人が直したかを見に行く）。
+    /// リリース文の下書きは Claude を呼ぶので長くする（下書きを作れない間、見回りのたびに呼ばない）
+    static func retryInterval(for step: ReleaseFile.Step) -> TimeInterval {
+        step == .githubRelease ? 6 * 60 * 60 : 30 * 60
+    }
+
+    /// 人が直す問題を書いてから、まだ試し直さない段取りか
+    private func isHeld(_ step: ReleaseFile.Step, _ file: ReleaseFile) -> Bool {
+        guard let problem = file.problem, problem.step == step, problem.needsHuman else { return false }
+        return context.now().timeIntervalSince(problem.at.date) < Self.retryInterval(for: step)
     }
 
     /// 1 つの段取り。進めたら記録を書き直したものを返す。進められなければ `problem` に書く（同じ理由なら書き直さない）
@@ -251,6 +267,9 @@ public actor ReleaseWatch {
         return try await context.writingResult { () throws(CommanderError) -> ReleaseFile in
             do throws(StateFileStore.Failure) {
                 return try await context.files.update(ReleaseFile.self, at: path, message: message) { file in
+                    // 人が直す問題がほかの段取りに残っていれば、先に書いたほうを残す（2 つの問題が見回りのたびに書き換わらないように。
+                    // 先の問題が片付いたら、次の見回りで書く）
+                    if let current = file.problem, current.needsHuman, current.step != problem.step { return false }
                     // 同じ理由なら書き直さない。待てば直る理由は、文が変わっても（上限の待ち時間など）同じ段取りなら書き直さない
                     if let current = file.problem, current.step == problem.step, current.needsHuman == problem.needsHuman,
                        !problem.needsHuman || current.message == problem.message {
