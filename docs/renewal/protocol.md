@@ -109,7 +109,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。`coderabbitai[bot]` など）。無ければ空
   - `screenshots`: 判断のカードのスクショの撮り方（Swift は `ScreenshotSettings`）。`scenes`（撮れる画面の一覧のファイルの、リポジトリの直下からの相対パス。`.json`）と `destination`（撮る Simulator。`destinations` と同じ形で、macOS はまだ撮らない）。無ければ撮らない（[flows.md](flows.md) の「スクショ」）
 - `build` が無いリポジトリでは、開始を断る
-- `icon`: 対象のアプリのアイコン（Swift は `RepositoryFile.AppIcon`）。司令塔が対象のリポジトリの既定のブランチから取り出し、256px の PNG にして `icon.png` に置く（[architecture.md](architecture.md) の「対象のアプリのアイコン」）。まだ取り出していない・見つからないなら `null`（クライアントは頭文字を出す）
+- `icon`: 対象のアプリのアイコン（Swift は `RepositoryFile.AppIcon`）。司令塔が対象のリポジトリの base（`build.baseBranch`。`build` が無ければ既定のブランチ）から取り出し、256px の PNG にして `icon.png` に置く（[architecture.md](architecture.md) の「対象のアプリのアイコン」）。まだ取り出していない・見つからないなら `null`（クライアントは頭文字を出す）
   - `source`: 取り出した元（Icon Composer の `.icon` か、Asset Catalog の `.appiconset` のフォルダ）の、リポジトリの直下からのパス
   - `sourceTree`: 元のフォルダの git の tree の sha。変わったときだけ書き出し直す
   - `image`: 書いた `icon.png` の git の blob の sha。クライアントは、これを鍵に画像を端末にしまっておく（同じ sha なら読み直さない）
