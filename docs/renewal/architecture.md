@@ -76,7 +76,9 @@ flowchart TB
 
 - リポジトリは AskHub で「対象に加える」だけにする。加えるときに行うのは、GitHub 側の準備と、設定を状態リポジトリに書くことだけで、どの Mac にも clone しない
 - clone は、ジョブが要るときにその Mac でだけ、ワーカー専用のフォルダに作る（必要になるまで中身を取らない partial clone）
-  - 読むだけのジョブ（質問づくり・確認など）は、リポジトリごとに 1 つの clone（取り出さない）を fetch し、ジョブごとに worktree で既定のブランチの最新を取り出す。並んで動くジョブの写しを分け、ジョブを終えたら消す
+  - 読むだけのジョブ（質問づくり・確認など）は、リポジトリごとに 1 つの clone（取り出さない）を fetch し、ジョブごとに worktree で base（`repo.json` の `build.baseBranch`）の最新を取り出す。並んで動くジョブの写しを分け、ジョブを終えたら消す
+    - base は、ワーカーが作業ブランチを作り、最終 PR をマージする先。GitHub の既定のブランチ（`main` など）と違うリポジトリでは既定のブランチが古いことがあり、そこから読むと、もうあるものを「まだ無い」とした質問・ゴールになる
+    - ビルドをまだ設定していない（`build` が無い）リポジトリは、既定のブランチ（`origin/HEAD`）の最新を取り出す。`build` があるのに base がリモートに無ければ、既定のブランチで代わりにせず、ジョブを失敗にする
   - git にはリポジトリの hooks・シンボリックリンク・人の git の設定を効かせない（設定は `GIT_CONFIG_COUNT` の環境変数で渡し、`GIT_CONFIG_GLOBAL=/dev/null`）。GitHub のトークンは引数にも環境変数にも置かず、credential helper（Keychain から読むコマンド）で渡す
   - ワーカーが作るコミット（タスクの実装・直し・最終 PR の base の取り込み）の書き手は、そのリポジトリの持ち主に使う GitHub のトークンの持ち主（GitHub のアカウント）にする（ユーザーの決定。PR を開く・マージするアカウントとそろえる）。メールアドレスは本当のアドレスを出さないよう noreply アドレス（`<id>+<login>@users.noreply.github.com`）にし、名前はプロフィールの名前（無ければ login）。アカウントは `GET /user` で読んで持ち主ごとに覚え、読めないときは `AskHub <worker@askhub.invalid>` で書いて次のコミットで読み直す
 - epic の作業場所（worktree・Simulator・DerivedData）は、最終 PR のマージ後に消す。clone 本体は、最後に使ってから 7 日で消す。空き容量が少なければ早めに消す
@@ -87,7 +89,7 @@ flowchart TB
 クライアントの一覧・カード・札の裏に対象のアプリのアイコンを出すため、司令塔が対象のリポジトリから取り出して、状態リポジトリに置く（[protocol.md](protocol.md) の `repo.json` の `icon`。`AppIconSync`）。
 
 - 司令塔が生きている印を書くとき（10 分ごと）に、前に確かめてから 6 時間たったリポジトリを確かめる（起動し直した後は、すべてのリポジトリ）。周を待たせないよう、周の外で 1 つずつ行う
-- 常時オンの Mac の clone（上と同じもの）を `git fetch` し、既定のブランチの tree からアイコンの元を探す。REST の上限には数えられない
+- 常時オンの Mac の clone（上と同じもの）を `git fetch` し、読むだけのジョブの写しと同じく base（`build` が無ければ既定のブランチ）の tree からアイコンの元を探す。REST の上限には数えられない
   - 元は、Icon Composer の `.icon` か、Asset Catalog の `.appiconset` のフォルダ。`AppIcon.icon`・`AppIcon.appiconset`・ほかの `.icon`・ほかの `.appiconset` の順に選び、同じ順なら浅いものを選ぶ。テスト（名前が `Tests` で終わるフォルダ）・Pods・Carthage・`.build`・`Preview Content` の下は見ない
   - 元のフォルダの tree の sha が `icon.sourceTree` と同じなら、何もしない（アイコンが変わったときだけ書き出す）
 - 書き出しは、元のフォルダの中身だけを取り出し（partial clone なので、ここで中身を取りに行く。シンボリックリンクは取り出さない）、`.icon` は Icon Composer の `ictool` で、`.appiconset` はいちばん大きいライトの画像を縮めて、256px の PNG にする。ファイルの数と大きさに上限を置く

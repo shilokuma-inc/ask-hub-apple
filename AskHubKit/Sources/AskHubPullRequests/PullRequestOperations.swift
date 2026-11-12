@@ -16,6 +16,12 @@ public protocol PullRequestOperations: Sendable {
     func rerunFailedJobs(runID: Int) async throws(PullRequestError)
     /// GitHub Actions の job のログ（長いログは末尾だけ）
     func jobLog(jobID: Int) async throws(PullRequestError) -> String
+    /// head の SHA の GitHub Actions の実行
+    func workflowRuns(at sha: String) async throws(PullRequestError) -> [WorkflowRun]
+    /// GitHub Actions の実行の、最後の試行のジョブの数
+    func jobCount(runID: Int) async throws(PullRequestError) -> Int
+    /// PR を閉じる・開き直す
+    func setState(number: Int, to state: PullRequest.State) async throws(PullRequestError)
     /// 信用する書き手の、未解決の行コメントのスレッドとレビューの本文を読む
     func reviewFeedback(number: Int, trusted: TrustedAuthors) async throws(PullRequestError) -> ReviewFeedback
     /// merge commit でマージする。`headSHA` と今の head が違えば断る

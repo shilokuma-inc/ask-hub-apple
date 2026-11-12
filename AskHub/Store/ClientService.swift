@@ -27,6 +27,8 @@ protocol ClientService: AnyObject {
     var receiptCheckInterval: Duration? { get }
     /// 送った意図（`SendReceipt.Sent.id`）を司令塔が処理したか（受け付けた・断った）を、処理の記録だけを読んで確かめる。状態は読まない
     func hasReceipt(for intentID: String) async throws -> Bool
+    /// マージ中の epic があるときに、マージ済みになるまで読み直す間隔（ふだんの取り直しより短い）。読み直さない窓口は nil
+    var mergeWatchInterval: Duration? { get }
 }
 
 extension ClientService {
@@ -37,6 +39,8 @@ extension ClientService {
     var receiptCheckInterval: Duration? { nil }
 
     func hasReceipt(for intentID: String) async throws -> Bool { false }
+
+    var mergeWatchInterval: Duration? { nil }
 
     func screenshot(at path: String) async throws -> Data {
         throw ClientServiceError(message: "このデータの元にはスクショが無い")

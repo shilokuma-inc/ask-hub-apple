@@ -10,14 +10,15 @@ extension GitRepositoryWorkspace {
     /// 取り出すファイルの合計の大きさの上限（バイト）
     static let maximumAppIconTotalSize = 30_000_000
 
-    /// clone を最新にしてから、既定のブランチの先頭のアイコンの元を探す。見つからなければ nil。
+    /// clone を最新にしてから、base（nil なら既定のブランチ）の先頭のアイコンの元を探す。見つからなければ nil。
     /// clone を使った印は付けない（アイコンを確かめるためだけに、使っていない clone を残し続けないように）
-    public func locateAppIcon(_ repo: RepositoryFullName) async throws(WorkspaceError) -> AppIconLocator.Source? {
+    public func locateAppIcon(_ repo: RepositoryFullName, base: String?) async throws(WorkspaceError) -> AppIconLocator.Source? {
         let clone = cloneDirectory(of: repo)
         var listing = ""
         try await locks.withLock(repo.rawValue) { () throws(WorkspaceError) in
             try await update(clone, of: repo)
-            listing = try await git(["ls-tree", "-r", "-d", "-z", "origin/HEAD"], in: clone)
+            let start = try await readingPoint(base: base, in: clone)
+            listing = try await git(["ls-tree", "-r", "-d", "-z", start], in: clone)
         }
         return AppIconLocator.choose(fromTreeListing: listing)
     }

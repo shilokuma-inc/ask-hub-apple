@@ -113,7 +113,7 @@ struct GitAppIconTests {
     @Test func locatesAndExportsIconFolderWithoutLinks() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let workspace = try makeWorkspace()
-        let source = try #require(try await workspace.locateAppIcon(Self.repo))
+        let source = try #require(try await workspace.locateAppIcon(Self.repo, base: nil))
         #expect(source.path == "App/AppIcon.icon")
         #expect(source.tree == (try shell("git --git-dir='\(origin.path)' rev-parse develop:App/AppIcon.icon")))
 
@@ -125,6 +125,21 @@ struct GitAppIconTests {
         #expect(!FileManager.default.fileExists(atPath: folder.appendingPathComponent("Assets/link.png").path))
     }
 
+    @Test func locatesIconOnBaseBranchInsteadOfDefaultBranch() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = try makeWorkspace()
+        // 既定のブランチを、アイコンの無い main にする（base の develop にだけアイコンがある）
+        try shell("""
+            cd '\(root.appendingPathComponent("seed").path)' && git checkout --quiet -b main && git rm --quiet -r App && \
+            git -c user.name=t -c user.email=t@example.invalid commit --quiet -m template && git push --quiet '\(origin.path)' main && \
+            git --git-dir='\(origin.path)' symbolic-ref HEAD refs/heads/main
+            """)
+        #expect(try await workspace.locateAppIcon(Self.repo, base: nil) == nil)
+        let source = try #require(try await workspace.locateAppIcon(Self.repo, base: "develop"))
+        #expect(source.path == "App/AppIcon.icon")
+        #expect(source.tree == (try shell("git --git-dir='\(origin.path)' rev-parse develop:App/AppIcon.icon")))
+    }
+
     @Test func findsNothingWithoutIcon() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let workspace = try makeWorkspace()
@@ -133,6 +148,6 @@ struct GitAppIconTests {
             git -c user.name=t -c user.email=t@example.invalid commit --quiet -m remove && git push --quiet '\(origin.path)' develop
             """)
         // テストのフォルダの下のアイコンは選ばない
-        #expect(try await workspace.locateAppIcon(Self.repo) == nil)
+        #expect(try await workspace.locateAppIcon(Self.repo, base: nil) == nil)
     }
 }

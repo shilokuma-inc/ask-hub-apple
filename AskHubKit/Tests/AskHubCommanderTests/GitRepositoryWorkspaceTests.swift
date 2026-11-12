@@ -51,7 +51,7 @@ struct GitRepositoryWorkspaceTests {
     @Test func clonesOnceAndAddsWorktreePerJob() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let git = FakeGit(claude: "# askhub\n\n## 全員向けの事実\nSwiftUI のアプリ\n\n## 人のセッション向けの手順\nPR を作る")
-        let prepared = try await workspace(git).prepare(Self.repo, for: Self.job)
+        let prepared = try await workspace(git).prepare(Self.repo, base: nil, for: Self.job)
         #expect(prepared.directory.path.hasSuffix("jobs/\(Self.job.rawValue)/repository/askhub-sandbox"))
         #expect(prepared.facts == "SwiftUI のアプリ")
         let steps = git.commands.map { $0.arguments.prefix(2).joined(separator: " ") }
@@ -65,7 +65,7 @@ struct GitRepositoryWorkspaceTests {
             at: root.appendingPathComponent("repos/shilokuma-inc/askhub-sandbox/.git"), withIntermediateDirectories: true
         )
         let again = FakeGit()
-        _ = try await workspace(again).prepare(Self.repo, for: Self.job)
+        _ = try await workspace(again).prepare(Self.repo, base: nil, for: Self.job)
         #expect(again.commands.map { $0.arguments.prefix(2).joined(separator: " ") } == [
             "fetch --prune", "remote set-head", "worktree prune", "worktree add"
         ])
@@ -107,7 +107,7 @@ struct GitRepositoryWorkspaceTests {
         ]
         for (result, kind) in cases {
             do {
-                _ = try await workspace(FakeGit(failures: ["clone": result])).prepare(Self.repo, for: Self.job)
+                _ = try await workspace(FakeGit(failures: ["clone": result])).prepare(Self.repo, base: nil, for: Self.job)
                 Issue.record("失敗しなかった")
             } catch {
                 #expect(error.kind == kind)
@@ -121,8 +121,8 @@ struct GitRepositoryWorkspaceTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let workspace = workspace(FakeGit())
         let other = ULID(rawValue: "01JCJ0B0000000000000000002")!
-        let first = try await workspace.prepare(Self.repo, for: Self.job)
-        let second = try await workspace.prepare(Self.repo, for: other)
+        let first = try await workspace.prepare(Self.repo, base: nil, for: Self.job)
+        let second = try await workspace.prepare(Self.repo, base: nil, for: other)
         #expect(first.directory != second.directory)
         // 片方を片付けても、もう片方の写しは残る
         await workspace.release(Self.job)
@@ -130,7 +130,7 @@ struct GitRepositoryWorkspaceTests {
         #expect(FileManager.default.fileExists(atPath: second.directory.path))
         // リポジトリの名前が attachments でも、写しと添付の置き場所は重ならない
         let named = RepositoryFullName(rawValue: "shilokuma-inc/attachments")!
-        let copy = try await workspace.prepare(named, for: other)
+        let copy = try await workspace.prepare(named, base: nil, for: other)
         #expect(copy.directory != (try await workspace.attachmentsDirectory(for: other)))
     }
 
@@ -168,6 +168,77 @@ struct GitRepositoryWorkspaceTests {
         #expect(FileManager.default.fileExists(atPath: attachments.path))
         await workspace.release(Self.job)
         #expect(!FileManager.default.fileExists(atPath: workspace.jobDirectory(Self.job).path))
+    }
+}
+
+/// 本物の git で、既定のブランチと base が違うリポジトリの写しを確かめる（`TaskGitTests` と同じ形）
+struct GitRepositoryWorkspaceBaseTests {
+    static let repo = RepositoryFullName(rawValue: "shilokuma-inc/askhub-sandbox")!
+    static let job = ULID(rawValue: "01JCJ0B0000000000000000001")!
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("GitRepositoryWorkspaceBaseTests-\(UUID().uuidString)")
+    var origin: URL { root.appendingPathComponent("origin.git") }
+
+    /// 既定のブランチが main（雛形だけ）で、develop に先の変更がある origin と、ワーカーの clone を作る
+    func makeWorkspace() throws -> GitRepositoryWorkspace {
+        let seed = root.appendingPathComponent("seed")
+        try FileManager.default.createDirectory(at: seed, withIntermediateDirectories: true)
+        try shell("git init --quiet --bare --initial-branch=main '\(origin.path)'")
+        try "## 全員向けの事実\n\n- 雛形だけ\n".write(to: seed.appendingPathComponent("CLAUDE.md"), atomically: true, encoding: .utf8)
+        let commit = "git -c user.name=t -c user.email=t@example.invalid commit --quiet"
+        try shell("""
+            cd '\(seed.path)' && git init --quiet --initial-branch=main && git add . && \(commit) -m init && \
+            git push --quiet '\(origin.path)' main && git checkout --quiet -b develop && \
+            printf '## 全員向けの事実\\n\\n- メモを検索できる\\n' > CLAUDE.md && echo 'struct Search {}' > Search.swift && \
+            git add . && \(commit) -m search && git push --quiet '\(origin.path)' develop
+            """)
+        let work = root.appendingPathComponent("work")
+        let clone = work.appendingPathComponent("repos/\(Self.repo.owner)/\(Self.repo.name)")
+        try shell("git clone --quiet --no-checkout '\(origin.path)' '\(clone.path)'")
+        let wrapper = root.appendingPathComponent("git")
+        try "#!/bin/sh\nexec /usr/bin/git -c protocol.file.allow=always \"$@\"\n".write(to: wrapper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper.path)
+        return GitRepositoryWorkspace(setup: .init(root: work, git: wrapper, credentialHelper: "!true"), runner: ProcessCommandRunner())
+    }
+
+    @discardableResult
+    func shell(_ script: String) throws -> String {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", script]
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+        let text = String(bytes: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard process.terminationStatus == 0 else { throw TaskGitTests.ShellFailure(output: text) }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @Test func copiesBaseBranchInsteadOfDefaultBranch() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = try makeWorkspace()
+        let search = "Search.swift"
+        // base の develop から取り出す（既定のブランチの main には、まだ検索が無い）
+        let base = try await workspace.prepare(Self.repo, base: "develop", for: Self.job)
+        #expect(FileManager.default.fileExists(atPath: base.directory.appendingPathComponent(search).path))
+        #expect(base.facts == "- メモを検索できる")
+        let develop = try shell("git --git-dir='\(origin.path)' rev-parse develop")
+        #expect(try shell("git -C '\(base.directory.path)' rev-parse HEAD") == develop)
+
+        // ビルドを設定する前（base が無い）は、既定のブランチから取り出す
+        let other = ULID(rawValue: "01JCJ0B0000000000000000002")!
+        let main = try await workspace.prepare(Self.repo, base: nil, for: other)
+        #expect(!FileManager.default.fileExists(atPath: main.directory.appendingPathComponent(search).path))
+        #expect(main.facts == "- 雛形だけ")
+
+        // base がリモートに無ければ、既定のブランチで代わりにせず断る
+        do {
+            _ = try await workspace.prepare(Self.repo, base: "missing", for: other)
+            Issue.record("断らなかった")
+        } catch {
+            #expect(error.kind == .failed)
+        }
     }
 }
 

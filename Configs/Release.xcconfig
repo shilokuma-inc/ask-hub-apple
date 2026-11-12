@@ -7,5 +7,6 @@
 
 #include "Project.xcconfig"
 
-// APNs の送り先の環境（entitlement の aps-environment と、アプリが devices/ に書く push.environment）
+// entitlement の aps-environment の値。自動の署名は profile の値に合わせて署名するので、開発用の署名ではどの構成でも development になる。
+// アプリが devices/ に書く push.environment は、この値ではなく署名から決める（PushRegistration.environment）
 APS_ENVIRONMENT = production
