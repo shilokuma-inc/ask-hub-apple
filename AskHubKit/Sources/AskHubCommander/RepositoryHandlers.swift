@@ -55,7 +55,9 @@ public struct RemoveRepositoryHandler: IntentHandler {
         }
         // 前の周で外した（やり直し）か、もう外している
         if repository.isRemoved { return .accept }
-        let unfinished = try await context.epics(of: remove.repo) { !Self.finishedStages.contains($0.stage) }
+        guard let unfinished = try await Self.unfinishedEpics(of: remove.repo, in: context) else {
+            return .reject("読めない epic があり、終わっていない epic が無いかを確かめられない（司令塔を新しくする）")
+        }
         if !unfinished.isEmpty {
             let names = unfinished.map { "「\($0.title)」（\($0.stage.rawValue)）" }.joined(separator: "・")
             return .reject("終わっていない epic がある: \(names)。取り下げるか、終わってから外す")
@@ -70,5 +72,24 @@ public struct RemoveRepositoryHandler: IntentHandler {
             throw .files(error)
         }
         return .accept
+    }
+
+    /// 終わっていない epic。読めない（知らない版などの）epic があれば、終わっているかを確かめられないので nil
+    /// （共有の `epics(of:where:)` は読めない epic を飛ばすので使わない。開始の処理の `runningEpics` と同じ扱い）
+    static func unfinishedEpics(of repo: RepositoryFullName, in context: CommanderContext) async throws(CommanderError) -> [EpicFile]? {
+        var unfinished: [EpicFile] = []
+        for name in try await context.directories(in: StatePath.epics(repo)) {
+            guard let id = ULID(rawValue: name) else { continue }
+            let epic: EpicFile?
+            do {
+                epic = try await context.files.read(EpicFile.self, at: StatePath.epic(repo, id))?.file
+            } catch .unreadable {
+                return nil
+            } catch {
+                throw .files(error)
+            }
+            if let epic, !finishedStages.contains(epic.stage) { unfinished.append(epic) }
+        }
+        return unfinished
     }
 }

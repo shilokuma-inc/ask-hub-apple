@@ -71,6 +71,17 @@ struct RemoveRepositoryHandlerTests {
         #expect(try await repository()?.isRemoved == false)
     }
 
+    /// 読めない（知らない版の）epic があれば、終わっているかを確かめられないので外さない
+    @Test func refusesWhenAnEpicIsUnreadable() async throws {
+        try await prepare(epics: [.merged])
+        let unknown = ULID.generate(at: Self.now.addingTimeInterval(-3600))
+        await store.put(StatePath.epic(Self.repo, unknown), data: Data(#"{"v":99}"#.utf8))
+        try await send(Self.remove, second: 0)
+        let reason = "読めない epic があり、終わっていない epic が無いかを確かめられない（司令塔を新しくする）"
+        #expect(try await intake.processPending() == [.rejected(kind: "removeRepository", reason: reason)])
+        #expect(try await repository()?.isRemoved == false)
+    }
+
     @Test func removesKeepingFilesAndRefusesNewWork() async throws {
         try await prepare(epics: [.merged, .abandoned])
         try await send(Self.remove, second: 0)
