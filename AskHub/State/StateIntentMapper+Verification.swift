@@ -5,6 +5,21 @@ import Foundation
 // MARK: - 実機確認
 
 extension StateIntentMapper {
+    /// マージした後の操作を送れるか。リリース文の公開は下書きがあってまだ公開していない版だけ、
+    /// 実機確認への答えはマージした epic の、まだ答えていない項目だけ
+    func supportsAfterMerge(_ intent: HumanIntent) -> Bool {
+        switch intent {
+        case let .publishRelease(repositoryID, version, _, _):
+            index.releases[Release.id(repositoryID, version)]?.canPublish == true
+
+        case let .verify(epicID, itemID, _):
+            index.epics[epicID]?.verification?.unanswered.contains(itemID) == true
+
+        default:
+            false
+        }
+    }
+
     /// 実機確認への答え。確かめたゴールの版に結びつける。「問題あり」は、確かめた項目・元の epic・最終 PR を添えた依頼も一緒に送り、
     /// 新しい epic で直してもらう（司令塔は答えを記録するだけ）
     func verifyDrafts(

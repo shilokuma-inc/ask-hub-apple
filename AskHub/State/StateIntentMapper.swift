@@ -42,11 +42,8 @@ struct StateIntentMapper {
         case let .handOver(epicID, _):
             index.epics[epicID]?.canHandOver == true
 
-        case let .publishRelease(repositoryID, version, _, _):
-            index.releases[Release.id(repositoryID, version)]?.canPublish == true
-
-        case let .verify(epicID, itemID, _):
-            index.epics[epicID]?.verification?.unanswered.contains(itemID) == true
+        case .publishRelease, .verify:
+            supportsAfterMerge(intent)
 
         case .cleanUp:
             false
