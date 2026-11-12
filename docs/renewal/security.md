@@ -60,7 +60,7 @@
 - 秘密（GitHub のトークン・Claude の setup-token・APNs の鍵・公開鍵の一覧と最初の鍵の指紋）は、Keychain だけに置く。ファイルや環境変数には置かない
   - APNs の鍵は、Apple Developer から落とした .p8 のファイルを `askhub-commander apns` が読んで Keychain に置く（.p8 は 1 行に収まらず、端末で伏せて入れられないため）。置いた後は、.p8 を Mac に残さない（[operations.md](operations.md) の「通知」）
 - Keychain の項目は、読めるアプリを署名したワーカーと司令塔に限る。ほかのプロセスが読もうとすると確認の画面が出るが、画面の無い実行では許可できないので失敗する。見覚えの無い確認の画面が出たら拒否する
-- ワーカーと司令塔は Developer ID で署名し、Hardened Runtime でビルドする。CI でビルドして署名したものを各 Mac に配る。署名が同じなら、更新しても Keychain の許可が続く
+- ワーカーと司令塔は Developer ID で署名し、Hardened Runtime を付ける。署名は常時オンの Mac で行い、署名の鍵は CI（GitHub の Secrets）に置かない（[operations.md](operations.md) の「署名と公証」）。同じ識別子とチームで署名し続ければ、更新しても Keychain の許可が続く
 - Keychain はログインしている間だけ開く。常時オンの Mac は、再起動の後にログインが要る
 - 司令塔とワーカーは、ログイン中のセッションの LaunchAgent として動かす。ssh のセッションからは Keychain を読めず（User interaction is not allowed）、LaunchAgent からは読めることを段階 0 で確認した
 
