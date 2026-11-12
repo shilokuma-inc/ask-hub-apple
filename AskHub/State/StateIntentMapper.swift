@@ -41,6 +41,9 @@ struct StateIntentMapper {
         case let .handOver(epicID, _):
             index.epics[epicID]?.canHandOver == true
 
+        case .applyProtection(let repositoryID, _), .approveSetup(let repositoryID, _, _):
+            index.repositories[repositoryID] != nil
+
         case .verify, .cleanUp:
             false
         }
@@ -86,7 +89,7 @@ struct StateIntentMapper {
         case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
-        case .request, .addRepository:
+        case .request, .addRepository, .applyProtection, .approveSetup:
             return try repositoryDraft(intent)
 
         case let .resolveBlocker(epicID, action, _, target):
@@ -172,6 +175,16 @@ struct StateIntentMapper {
                 throw ClientServiceError(message: "owner/name の形で入れてください")
             }
             return .addRepository(repo)
+
+        case let .applyProtection(repositoryID, checks):
+            let problems = ProtectionPolicy.problems(ofRequiredChecks: checks)
+            guard problems.isEmpty else {
+                throw ClientServiceError(message: problems.joined(separator: "、"))
+            }
+            return .applyProtection(try repository(repositoryID), requiredChecks: checks)
+
+        case let .approveSetup(repositoryID, pullRequest, head):
+            return .approveSetupPullRequest(try repository(repositoryID), number: pullRequest, head: head)
 
         default:
             throw Self.unsupported

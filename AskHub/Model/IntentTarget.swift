@@ -79,7 +79,7 @@ extension HumanIntent {
         case let .cleanUp(macID, _):
             [.cleanup(macID: macID)]
 
-        case .addRepository(let repositoryID):
+        case .addRepository(let repositoryID), .applyProtection(let repositoryID, _), .approveSetup(let repositoryID, _, _):
             [.repository(repositoryID)]
 
         case .request:

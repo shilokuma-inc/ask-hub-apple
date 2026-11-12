@@ -32,6 +32,10 @@ enum HumanIntent: Hashable {
     /// 依頼。添付の中身は、意図より先に状態リポジトリに置く
     case request(repositoryID: TargetRepository.ID, summary: String, body: String, attachments: [RequestFile] = [])
     case addRepository(repositoryID: TargetRepository.ID)
+    /// 保護の設定（司令塔が管理用のトークンでルールセットを掛ける）。必須のチェックは人が確かめて直したもの
+    case applyProtection(repositoryID: TargetRepository.ID, requiredChecks: [String])
+    /// 加えるときに司令塔が出したワークフローの直しの PR のマージの承認。見たときの head に結びつける
+    case approveSetup(repositoryID: TargetRepository.ID, pullRequest: Int, head: String)
 }
 
 enum SplitChoice: Hashable {
@@ -83,6 +87,12 @@ extension HumanIntent {
 
         case .addRepository(let repositoryID):
             "対象に加える（\(repositoryID)）"
+
+        case .applyProtection:
+            "保護の設定"
+
+        case .approveSetup:
+            "ワークフローの直しの承認"
 
         case let .resolveBlocker(_, action, _, _):
             Self.label(of: action)

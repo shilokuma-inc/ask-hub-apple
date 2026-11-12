@@ -41,6 +41,8 @@ struct InboxItem: Identifiable, Hashable {
         case finalReview
         case verification
         case cleanup
+        /// 対象のリポジトリの保護のずれ・加えるときの準備（Ideas を作る・ワークフローの直しを承認する・準備をやり直す）
+        case repositorySetup
     }
 }
 
@@ -67,6 +69,7 @@ enum InboxBuilder {
         items += snapshot.macs.compactMap(claudeVersionItem)
         items += snapshot.macs.compactMap(compatibilityItem)
         items += snapshot.macs.compactMap(cleanupItem)
+        items += snapshot.repositories.flatMap(administrationItems)
         return items.sorted { lhs, rhs in
             if lhs.urgency != rhs.urgency {
                 return lhs.urgency == .blocking
@@ -363,7 +366,7 @@ extension InboxItem {
         case .verification:
             return epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
 
-        case .macOffline, .token, .claudeVersion, .compatibility, .cleanup:
+        case .macOffline, .token, .claudeVersion, .compatibility, .cleanup, .repositorySetup:
             return []
         }
     }

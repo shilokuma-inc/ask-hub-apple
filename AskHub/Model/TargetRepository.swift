@@ -15,6 +15,10 @@ struct TargetRepository: Identifiable, Hashable {
     var icon: RepositoryIcon
     /// 前回このリポジトリを回した Mac。開始のときに既定で選ぶ。まだ回していなければ nil
     var lastMacID: Mac.ID?
+    /// ブランチの保護の様子。読めていない（デモの一部）なら nil
+    var protection: RepositoryProtection?
+    /// 対象に加えるときの GitHub 側の準備の様子。まだ流していなければ nil
+    var setup: RepositorySetupStatus?
 
     var fullName: String { "\(owner)/\(name)" }
 
