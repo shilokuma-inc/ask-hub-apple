@@ -26,6 +26,7 @@ struct StateFileKind: Sendable, CustomTestStringConvertible {
         .of(GoalFile.self, "goal"),
         .of(ReadinessFile.self, "readiness"),
         .of(DecisionsFile.self, "decisions"),
+        .of(ReleaseFile.self, "release"),
         .of(VerificationsFile.self, "verifications")
     ]
 

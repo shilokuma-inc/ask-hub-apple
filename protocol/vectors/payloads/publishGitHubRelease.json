@@ -1,0 +1,45 @@
+{
+  "description": "リリース文を確かめて GitHub Release を公開する人の意図の payload の例。read は、封筒の target が正しいときに、読む側が公開の意図として読めるか",
+  "schema": "payloads/publishGitHubRelease.schema.json",
+  "cases": [
+    {
+      "name": "draft-as-is",
+      "payload": {
+        "notes": "## 新しい機能\n- 予定に写真を付けられるようになりました"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty",
+      "payload": {
+        "notes": ""
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "whitespace-only",
+      "payload": {
+        "notes": " \n "
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "missing",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "notes": "本文",
+        "tag": "v1.0.0"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}
