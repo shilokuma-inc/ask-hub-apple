@@ -4,7 +4,8 @@ import Security
 
 /// Keychain に置くもの（`docs/renewal/security.md` の「秘密の置き場所」）。秘密はここ以外（ファイル・環境変数・ログ・URL）に置かない
 ///
-/// 項目の名前（`rawValue`）は Keychain の account に使う。決まった項目のほかに、持ち主ごとの GitHub のトークン（`GitHubTokens`）がある
+/// 項目の名前（`rawValue`）は Keychain の account に使う。決まった項目のほかに、持ち主ごとの GitHub のトークン（`GitHubTokens`）と、
+/// 司令塔の持ち主ごとの管理用のトークン（`GitHubAdminTokens`）がある
 public struct SecretItem: RawRepresentable, Hashable, Sendable, CustomStringConvertible {
     public let rawValue: String
 
@@ -34,6 +35,11 @@ public struct SecretItem: RawRepresentable, Hashable, Sendable, CustomStringConv
     /// `owner` は `GitHubTokens.normalizedOwner(_:)` でそろえた名前（GitHub の持ち主の名前は大文字と小文字を区別しない）
     static func githubToken(normalizedOwner owner: String) -> Self {
         Self(rawValue: "github-token/\(owner)")
+    }
+
+    /// 持ち主ごとの管理用の GitHub の fine-grained token（司令塔だけ。`GitHubAdminTokens`）。毎日のトークンとは別の名前で置く
+    static func githubAdminToken(normalizedOwner owner: String) -> Self {
+        Self(rawValue: "github-admin-token/\(owner)")
     }
 }
 
