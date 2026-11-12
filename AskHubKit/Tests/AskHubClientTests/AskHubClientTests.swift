@@ -184,6 +184,10 @@ struct AskHubClientTests {
         #expect(try ResumeEpicIntent(envelope: envelope(.resumeEpic(repo: Self.repo, epic: epic))).epic == epic)
         let handover = try HandoverIntent(envelope: envelope(.handover(repo: Self.repo, epic: epic, to: MacName(rawValue: "macbook-a")!)))
         #expect(handover.mac.rawValue == "macbook-a")
+        // 対象から外すは epic を対象にしない（封筒の repo だけ）
+        let remove = IntentDraft.removeRepository(Self.repo)
+        #expect(remove.target == nil)
+        #expect(try RemoveRepositoryIntent(envelope: envelope(remove)).repo == Self.repo)
     }
 }
 
