@@ -34,7 +34,7 @@ public struct RepositoryFile: StateFile {
         }
     }
 
-    /// 対象のアプリのアイコン（画像は `StatePath.appIcon`）。司令塔が、対象のリポジトリの既定のブランチから取り出して書く
+    /// 対象のアプリのアイコン（画像は `StatePath.appIcon`）。司令塔が、対象のリポジトリの base（`build.baseBranch`。`build` が無ければ既定のブランチ）から取り出して書く
     public struct AppIcon: Codable, Equatable, Sendable {
         /// 取り出した元（Icon Composer の `.icon` か、Asset Catalog の `.appiconset` のフォルダ）の、リポジトリの直下からのパス
         public var source: String

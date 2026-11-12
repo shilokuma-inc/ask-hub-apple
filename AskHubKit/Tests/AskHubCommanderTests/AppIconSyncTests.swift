@@ -12,6 +12,7 @@ final class FakeAppIconSource: AppIconSource {
         var image = Data("png-1".utf8)
         var failure: String?
         var located: [RepositoryFullName] = []
+        var bases: [String?] = []
         var rendered: [AppIconLocator.Source] = []
     }
 
@@ -21,9 +22,10 @@ final class FakeAppIconSource: AppIconSource {
 
     let state = OSAllocatedUnfairLock(initialState: State())
 
-    func locate(_ repo: RepositoryFullName) async throws -> AppIconLocator.Source? {
+    func locate(_ repo: RepositoryFullName, base: String?) async throws -> AppIconLocator.Source? {
         try state.withLock { state in
             state.located.append(repo)
+            state.bases.append(base)
             if let failure = state.failure { throw Failure(message: failure) }
             return state.found[repo]
         }
@@ -113,6 +115,23 @@ struct AppIconSyncTests {
         source.state.withLock { $0.found[Self.repo] = .init(path: "App/AppIcon.icon", tree: String(repeating: "c", count: 40)) }
         #expect(try await sync.refresh(Self.repo))
         #expect(await store.writeCount == writes + 1)
+    }
+
+    @Test func locatesSourceOnBaseBranchOnceBuildIsConfigured() async throws {
+        try await add(Self.repo)
+        let sync = sync()
+        // ビルドを設定する前は既定のブランチ、設定した後は build.baseBranch から探す
+        try await sync.refresh(Self.repo)
+        var file = try await repository()
+        file.build = RepositoryFile.Build(
+            baseBranch: "release",
+            xcode: try BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [.macOS]),
+            childChecks: ["build / build"],
+            finalChecks: ["build / build"]
+        )
+        await store.put(StatePath.repository(Self.repo), data: try StateFileCoder.encode(file))
+        try await sync.refresh(Self.repo)
+        #expect(source.state.withLock { $0.bases } == [nil, "release"])
     }
 
     @Test func skipsRepositoryWithoutSettings() async throws {
