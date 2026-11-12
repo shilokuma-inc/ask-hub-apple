@@ -14,6 +14,9 @@ public struct ReviewTiming: Equatable, Sendable {
     public var queuedLimit: Duration
     /// 待つチェックがどれも動いていない（まだ出てこない）まま待つ上限
     public var idleLimit: Duration
+    /// 待つチェックが出ないとき、head の GitHub Actions の実行を読む間隔。
+    /// queued のままこれより長く、ジョブが 0 個の実行は、GitHub 側で止まったとみなす
+    public var stalledAfter: Duration
     /// 落ちたジョブを流し直した後、新しい実行が出てくるのを待つ上限
     public var rerunGrace: Duration
     /// ログを読むときに GitHub の上限に当たったら、待ち時間がこれより短ければ待って読み直す
@@ -25,6 +28,7 @@ public struct ReviewTiming: Equatable, Sendable {
         shortageMax: Duration = .seconds(60 * 60),
         queuedLimit: Duration = .seconds(30 * 60),
         idleLimit: Duration = .seconds(30 * 60),
+        stalledAfter: Duration = .seconds(10 * 60),
         rerunGrace: Duration = .seconds(10 * 60),
         logRetryLimit: Duration = .seconds(5 * 60)
     ) {
@@ -33,6 +37,7 @@ public struct ReviewTiming: Equatable, Sendable {
         self.shortageMax = shortageMax
         self.queuedLimit = queuedLimit
         self.idleLimit = idleLimit
+        self.stalledAfter = stalledAfter
         self.rerunGrace = rerunGrace
         self.logRetryLimit = logRetryLimit
     }
@@ -64,6 +69,13 @@ struct CheckWaitState: Equatable {
     var shortages = 0
     /// 待つチェックがどれも動いていない状態が始まった時刻
     var idleSince: Date?
+    /// 待つチェックが出ないときに、head の GitHub Actions の実行を最後に読んだ時刻
+    var inspectedAt: Date?
+    /// 止まった実行を見つけて、CI を起こし直すために PR を閉じて開き直した時刻と、そのとき見つけた実行。開き直しは 1 回だけ
+    var reopenedAt: Date?
+    var stalledRun: WorkflowRun?
+    /// 開き直したときにあった実行の id の最大。開き直した後は、これより新しい実行だけを見る
+    var newestRunBeforeReopen = 0
 }
 
 /// 次にすること
@@ -72,6 +84,8 @@ enum CheckStep: Equatable {
     case wait(Duration)
     /// GitHub Actions の run の、落ちた job を流し直す（揺らぎ）
     case rerun([Int])
+    /// 待つチェックが出ないので、head の GitHub Actions の実行を読み、止まっていれば PR を開き直す（`ReviewTaskRunner+StalledRuns.swift`）
+    case inspectRuns
     case fail(AttemptFailure)
 }
 
@@ -79,6 +93,7 @@ extension ReviewTaskRunner {
     /// PR の head のチェックを、通るか落ちるまで待つ。待つ間は、ワーカー（`JobWorker`）が試行の生きている印を書き続ける
     func waitForChecks(
         _ pulls: any PullRequestOperations,
+        pullRequest: Int,
         head: String,
         required: Set<String>?,
         subject: CheckSubject = .child
@@ -90,7 +105,7 @@ extension ReviewTaskRunner {
             let summary = try await environment.github("\(subject.name)のチェックを読む") { () throws(PullRequestError) in
                 try await pulls.checks(at: head, policy: policy)
             }
-            switch Self.next(after: summary, state: &state, timing: timing, now: environment.context.now(), subject: subject) {
+            switch Self.next(after: summary, state: &state, timing: timing, now: environment.context.now()) {
             case let .done(wait):
                 return wait
             case let .wait(duration):
@@ -102,6 +117,9 @@ extension ReviewTaskRunner {
                     }
                 }
                 try await sleep(for: timing.poll, subject: subject)
+            case .inspectRuns:
+                let target = StallTarget(pullRequest: pullRequest, head: head, missing: summary.missing, subject: subject)
+                try await inspectRuns(pulls, target: target, state: &state)
             case let .fail(failure):
                 throw .finish(JobResult(failure: failure))
             }
@@ -113,10 +131,12 @@ extension ReviewTaskRunner {
         after summary: CheckSummary,
         state: inout CheckWaitState,
         timing: ReviewTiming,
-        now: Date,
-        subject: CheckSubject = .child
+        now: Date
     ) -> CheckStep {
-        if summary.verdict != .pending || !summary.unfinished.isEmpty { state.idleSince = nil }
+        if summary.verdict != .pending || !summary.unfinished.isEmpty {
+            state.idleSince = nil
+            state.inspectedAt = nil
+        }
         if summary.verdict != .runnerShortage { state.shortages = 0 }
         switch summary.verdict {
         case .passed:
@@ -125,14 +145,10 @@ extension ReviewTaskRunner {
             guard summary.unfinished.isEmpty else { return .wait(timing.poll) }
             let since = state.idleSince ?? now
             state.idleSince = since
-            guard now.timeIntervalSince(since) < TaskRunner.seconds(timing.idleLimit) else {
-                let names = summary.missing.isEmpty ? "チェック" : "チェック（\(summary.missing.joined(separator: "・"))）"
-                return .fail(AttemptFailure(
-                    failureClass: .unexpected,
-                    message: "\(subject.name)の\(names)が \(timing.idleLimit) 待っても始まらない（repo.json の \(subject.setting) の名前とワークフローを確かめる）"
-                ))
-            }
-            return .wait(timing.poll)
+            // 出ないまま長くなったら、実行が無いのか、GitHub 側で止まっているのかを実行の一覧で見分ける（出ていれば読まない）
+            let idle = now.timeIntervalSince(since) >= TaskRunner.seconds(timing.idleLimit)
+            let due = now.timeIntervalSince(state.inspectedAt ?? since) >= TaskRunner.seconds(timing.stalledAfter)
+            return idle || due ? .inspectRuns : .wait(timing.poll)
         case .runnerShortage:
             // 人の対応は要らないので、間隔を広げて待ち続ける
             let wait = min(timing.shortageFirst * (1 << min(state.shortages, 16)), timing.shortageMax)
@@ -165,7 +181,7 @@ extension ReviewTaskRunner {
         return .rerun(runs)
     }
 
-    private func sleep(for duration: Duration, subject: CheckSubject) async throws(TaskJobExit) {
+    func sleep(for duration: Duration, subject: CheckSubject) async throws(TaskJobExit) {
         do {
             try await environment.sleeper.sleep(for: duration)
         } catch {

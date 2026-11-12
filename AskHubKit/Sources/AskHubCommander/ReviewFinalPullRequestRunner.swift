@@ -41,7 +41,13 @@ public struct ReviewFinalPullRequestRunner: JobRunning {
         let checks = ReviewTaskRunner(environment: environment.tasks, timing: environment.timing.checks)
         let waited: CheckWait
         do {
-            waited = try await checks.waitForChecks(pulls, head: input.head, required: target.settings.finalChecks, subject: .final)
+            waited = try await checks.waitForChecks(
+                pulls,
+                pullRequest: input.pullRequest,
+                head: input.head,
+                required: target.settings.finalChecks,
+                subject: .final
+            )
         } catch {
             // コンフリクトしていると、PR のチェックが始まらずに待ちきる
             if case .finish = error, let early = try await recheck(input, target: target, pulls: pulls, conflict: conflict) { return early }
