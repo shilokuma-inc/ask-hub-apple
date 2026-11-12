@@ -287,7 +287,7 @@ extension DemoData {
             ],
             refusalReason: nil,
             selfChecks: selfChecks(free: "41 GB"),
-            tokens: tokens(githubDays: 82, claudeDays: 301),
+            tokens: tokens(githubDays: 82, claudeDays: 301, adminDays: 120),
             claudeVersion: Self.claudeVersion,
             xcodeVersion: "27.1",
             cleanupCandidates: [
@@ -361,13 +361,15 @@ extension DemoData {
     /// 司令塔の Claude Code の版
     static let claudeVersion = "2.1.320"
 
-    /// 期限まで指定した日数のトークン（GitHub は持ち主ごと）
-    func tokens(githubDays: Double, claudeDays: Double) -> [MacToken] {
+    /// 期限まで指定した日数のトークン（GitHub は持ち主ごと）。`adminDays` を渡すと、司令塔の管理用のトークンも並べる
+    func tokens(githubDays: Double, claudeDays: Double, adminDays: Double? = nil) -> [MacToken] {
         let day: TimeInterval = 24 * 60 * 60
-        return [
-            MacToken(kind: .github(owner: Self.owner), state: .ok, expiresAt: now.addingTimeInterval(githubDays * day - 60)),
-            MacToken(kind: .claude, state: .ok, expiresAt: now.addingTimeInterval(claudeDays * day - 60))
-        ]
+        let admin = adminDays.map { days in
+            MacToken(kind: .githubAdmin(owner: Self.owner), state: .ok, expiresAt: now.addingTimeInterval(days * day - 60))
+        }
+        return [MacToken(kind: .github(owner: Self.owner), state: .ok, expiresAt: now.addingTimeInterval(githubDays * day - 60))]
+            + (admin.map { [$0] } ?? [])
+            + [MacToken(kind: .claude, state: .ok, expiresAt: now.addingTimeInterval(claudeDays * day - 60))]
     }
 
     static let megabyte: Int64 = 1_000_000

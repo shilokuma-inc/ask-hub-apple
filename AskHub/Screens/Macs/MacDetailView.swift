@@ -42,7 +42,7 @@ struct MacDetailView: View {
                 } header: {
                     Text("トークン")
                 } footer: {
-                    Text("期限まで 14 日を切ったら、この Mac の端末でコマンドを流して入れ直します。GitHub のトークンは作り直してから、Claude のトークンは claude setup-token で作ってから貼ります")
+                    Text(tokenFooter(mac))
                 }
                 if let quota = mac.githubQuota, quota.isCurrent(now: store.currentDate()) {
                     quotaSection(quota)
@@ -117,6 +117,15 @@ struct MacDetailView: View {
     private func claudeVersionRow(_ mac: Mac) -> some View {
         let commander = mac.commanderClaudeVersion.map { "（司令塔は \($0)）" } ?? ""
         return LabeledContent("Claude Code", value: (mac.claudeVersion ?? "分かりません") + commander)
+    }
+
+    /// 入れ直し方。管理用のトークンを置いた Mac（司令塔）は、その使い道も添える
+    private func tokenFooter(_ mac: Mac) -> String {
+        let renewal = "期限まで 14 日を切ったら、この Mac の端末でコマンドを流して入れ直します。GitHub のトークンは作り直してから、Claude のトークンは claude setup-token で作ってから貼ります"
+        guard mac.tokens.contains(where: { !$0.stopsWork }) else {
+            return renewal
+        }
+        return renewal + "。管理用のトークンは、保護の設定と対象に加えるときの準備にだけ使います。切れてもほかの仕事は止まりません"
     }
 
     /// トークンの期限。入れ直すときは、Mac の端末で流すコマンドを出す
