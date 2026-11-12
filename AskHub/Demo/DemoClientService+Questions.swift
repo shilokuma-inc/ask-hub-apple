@@ -15,7 +15,7 @@ extension DemoClientService {
         case let .start(epicID, macID):
             return SendReceipt(intentID: start(epicID: epicID, macID: macID))
 
-        case .reviseGoal, .decideSplit, .addRepository, .removeRepository:
+        case .reviseGoal, .decideSplit, .addRepository, .removeRepository, .configureRepository:
             applySetupIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
@@ -65,6 +65,19 @@ extension DemoClientService {
             }
             state.repositories.removeAll { $0.id == repositoryID }
             state.removedRepositories.append(repository)
+
+        case let .configureRepository(repositoryID, json):
+            guard let index = state.repositories.firstIndex(where: { $0.id == repositoryID }) else {
+                return
+            }
+            let draft = BuildSettingsDraft(json: json)
+            state.repositories[index].build = RepositoryBuildSettings(
+                scheme: draft.scheme,
+                destinations: draft.destinations.map { $0.platform == "macOS" ? "Mac" : $0.deviceType },
+                childChecks: draft.childChecks.split(separator: "\n").map(String.init),
+                finalChecks: draft.finalChecks.split(separator: "\n").map(String.init),
+                json: json
+            )
 
         default:
             break

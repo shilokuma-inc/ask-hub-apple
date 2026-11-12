@@ -5,11 +5,14 @@ import Foundation
 // MARK: - 対象のリポジトリ
 
 extension StateIntentMapper {
-    /// 対象から外す（終わっていない epic が無い対象のリポジトリだけ）を送れるか。片付けは、まだ送れない
+    /// 対象から外す（終わっていない epic が無い対象のリポジトリだけ）・ビルドの設定（対象のリポジトリだけ）を送れるか。片付けは、まだ送れない
     func supportsRepositoryIntent(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .removeRepository(let repositoryID):
             index.repositories[repositoryID] != nil && !index.busyRepositories.contains(repositoryID)
+
+        case let .configureRepository(repositoryID, _):
+            index.repositories[repositoryID] != nil
 
         default:
             false
@@ -44,8 +47,26 @@ extension StateIntentMapper {
             }
             return .removeRepository(try repository(repositoryID))
 
+        case let .configureRepository(repositoryID, json):
+            return .configureRepository(try repository(repositoryID), build: try Self.build(json))
+
         default:
             throw Self.unsupported
+        }
+    }
+
+    /// ビルドの設定の JSON を、司令塔と同じ決まりで読む（合わなければ送らない）
+    static func build(_ json: String) throws(ClientServiceError) -> RepositoryFile.Build {
+        let value: JSONValue
+        do {
+            value = try JSONValue(parsing: json)
+        } catch {
+            throw ClientServiceError(message: "JSON として読めません")
+        }
+        do {
+            return try ConfigureRepositoryIntent.build(from: value)
+        } catch {
+            throw ClientServiceError(message: "ビルドの設定が決まりに合いません（\(error.detail)）")
         }
     }
 }
