@@ -125,7 +125,7 @@ struct NewRequestSheet: View {
             .keyboardDoneButton($isEditing)
         }
         .sheetSending(sending)
-        .sheetSize(.form)
+        .sheetSize(.page)
     }
 
     /// 送る。同じ内容の依頼を少し前に送っていたら、先に確かめる
