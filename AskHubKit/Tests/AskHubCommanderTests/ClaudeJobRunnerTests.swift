@@ -6,14 +6,17 @@ import AskHubProtocol
 import AskHubStateStore
 import CryptoKit
 import Foundation
+import os
 import Testing
 
-/// 決まったフォルダを返す作業場所
+/// 決まったフォルダを返す作業場所。写しを取り出す元（base）を記録する
 struct FixedWorkspace: RepositoryWorkspace {
     var directory: URL
     var failure: WorkspaceError?
+    let bases = OSAllocatedUnfairLock<[String?]>(initialState: [])
 
     func prepare(_ repo: RepositoryFullName, base: String?, for job: ULID) async throws(WorkspaceError) -> PreparedWorkspace {
+        bases.withLock { $0.append(base) }
         if let failure { throw failure }
         return PreparedWorkspace(directory: directory.appendingPathComponent("repo"), facts: "SwiftUI のアプリ")
     }
@@ -46,10 +49,14 @@ struct ClaudeJobRunnerTests {
     }
 
     func runner(_ store: InMemoryStateStore, claude: any CommandRunning, workspace failure: WorkspaceError? = nil) -> ClaudeJobRunner {
+        runner(store, claude: claude, workspace: FixedWorkspace(directory: directory, failure: failure))
+    }
+
+    func runner(_ store: InMemoryStateStore, claude: any CommandRunning, workspace: FixedWorkspace) -> ClaudeJobRunner {
         ClaudeJobRunner(
             context: context(store),
             client: ClaudeClient(setup: QuestionJobsTests.setup, runner: claude),
-            workspace: FixedWorkspace(directory: directory, failure: failure),
+            workspace: workspace,
             verifier: IntentVerifier(publicKeys: [keyID: key.publicKey.derRepresentation])
         )
     }
@@ -173,6 +180,30 @@ struct ClaudeJobRunnerTests {
         #expect(try await read(QuestionsFile.self, at: StatePath.questions(Self.repo, epic.id), in: store) == earlier)
         #expect(try await read(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .asking)
         #expect(try await jobs(epic.id, in: store).map(\.kind) == [.makeQuestions])
+    }
+
+    @Test func copiesRepositoryFromBaseBranchOnceBuildIsConfigured() async throws {
+        let given = try await requested()
+        let (store, job) = (given.store, given.job)
+        let workspace = FixedWorkspace(directory: directory)
+        // ビルドを設定する前は、既定のブランチから取り出す
+        let claude = ScriptedRunner([QuestionJobsTests.result(#"{"summary":"文言を直す。","questions":[]}"#)])
+        guard case .written = try await runner(store, claude: claude, workspace: workspace).run(job) else { Issue.record("書けていない"); return }
+        // 設定した後は、作業ブランチを作る元（build.baseBranch）から取り出す。既定のブランチ（main など）と違うことがある
+        var repository = try #require(try await read(RepositoryFile.self, at: StatePath.repository(Self.repo), in: store))
+        repository.build = RepositoryFile.Build(
+            baseBranch: "release",
+            xcode: try BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [.macOS]),
+            childChecks: ["build / build"],
+            finalChecks: ["build / build"]
+        )
+        try await put(repository, at: StatePath.repository(Self.repo), in: store)
+        var epic = given.epic
+        epic.stage = .drafting
+        try await put(epic, at: StatePath.epic(Self.repo, epic.id), in: store)
+        _ = try await runner(store, claude: ScriptedRunner([QuestionJobsTests.result("{}")]), workspace: workspace).run(job)
+        #expect(workspace.bases.withLock { $0 } == [nil, "release"])
+        try? FileManager.default.removeItem(at: directory)
     }
 
     @Test func workspaceFailureIsReportedWithoutCallingClaude() async throws {
