@@ -84,6 +84,7 @@ struct RepositoryDetailView: View {
 
     @Environment(ClientStore.self) private var store
     @State private var isConfirmingRemoval = false
+    @State private var isEditingBuild = false
 
     var body: some View {
         if let repository = store.repository(repositoryID) {
@@ -103,6 +104,8 @@ struct RepositoryDetailView: View {
                 }
                 if isRemoved {
                     RemovedRepositorySection(repositoryID: repositoryID)
+                } else {
+                    BuildSettingsSection(repository: repository, isEditing: $isEditingBuild)
                 }
                 CardSection("epic") {
                     ForEach(epics) { epic in
@@ -131,6 +134,9 @@ struct RepositoryDetailView: View {
             .pastelBackground()
             .compactList()
             .navigationTitle(repository.appName)
+            .sheet(isPresented: $isEditingBuild) {
+                BuildSettingsSheet(repository: repository)
+            }
             .toolbar {
                 if !isRemoved {
                     RepositoryMenu(repositoryID: repositoryID, isConfirmingRemoval: $isConfirmingRemoval)
