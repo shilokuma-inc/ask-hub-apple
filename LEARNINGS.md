@@ -177,6 +177,9 @@
   質問づくりの写しを既定のブランチから取り出していたため、develop にある検索・色の絞り込みを「まだ無い」とした質問が作られた。リポジトリのコードを読むところは、どれも base から取り出す（2026-11-12、#1071）
 - git のリビジョンの短い名前 `origin/<ブランチ>` は、同じ名前のタグ（`refs/tags/origin/<ブランチ>`）があるとそちらを指す（`refname 'origin/develop' is ambiguous` の警告だけで、リモートのブランチより先に選ばれる。Apple Git 2.50.1 で確かめた）。
   取り違えないよう、リモートのブランチは `refs/remotes/origin/<ブランチ>` の形で渡す（2026-11-12）
+- 最終 PR の「マージしています…」は、マージのジョブが成功してから司令塔が epic を merged にするまで（司令塔の次の周、30 秒ほど）も出る（`finalState`）。
+  アプリの 30 秒ごとの取り直し（Mac で前面でなければ 2 分）を待つと、マージ済みの表示がさらに遅れ、切り替わらないように見えた。
+  承認から merged までを実際の順に読み直すテスト（アプリ・司令塔の両方）は直す前から通り、人も「待てば切り替わった」と確かめたので（epic のゴールの q1 の前提を、後の q4 の答えで改めた）、不具合ではなく遅れだった。マージ中の epic がある間だけ 10 秒ごとに読み直す（`ClientStore.watchMerges`。2026-11-12）
 
 ## ビルド・テスト
 
@@ -446,6 +449,8 @@
   コンテナの tmp（`~/Library/Containers/jp.shilokuma.AskHub/Data/tmp/`）に窓ごとの PNG を書く（`DemoWindowSnapshot`）。ビルドした .app を `rsync` で送り、`ssh <Mac> open -g -n <.app> --args …` で起動する。
   `cacheDisplay(in:to:)` で描くと、NavigationSplitView のサイドバーと詳細の列が白や黒に抜けるので、`CGWindowListCreateImage`（macOS 15 の SDK で使えないので `dlsym` で引く）で撮る。
   macOS 27 では支援技術がつながるまで SwiftUI がアクセシビリティの木を作らず、アプリの中から名前でボタンを探せないので、`NSApp` に `AXManualAccessibility` を立てる（2026-11-12、Mac の UI の直し）
+- 最終 PR の CI（pull_request）は develop を取り込んだ merge ref で `swiftlint lint --strict` を流すので、作業ブランチでは通っても、限度ちょうどの関数・型
+  （`ClientStore.refresh()` は function_body_length の 50 行ちょうどだった）が develop 側の追加と合わさって落ちることがある。限度ぎりぎりの関数は extension の小さな関数に分けて余裕を残す（2026-11-12、#1070）
 - `xcodebuild test` は、既定（`-collect-test-diagnostics on-failure`）では、テストが落ちると、テストの後に `simctl diagnose -l -b --timeout=600 --log-option=--last --log-option=2m --output=<結果のバンドル>/Staging/1_Test/Diagnostics/simctl_diagnostics` を流す。
   手元（Xcode 26.6・iOS 26.5）では中のログの取り出しが終わらず、`Failure collecting diagnostics from simulator: Timed out after 600.0 seconds` まで 10 分止まった（結果のバンドルも 5.5MB → 46MB。Mac の DiagnosticReports の写しなどが入る）。
   集めるのは、記録された issue があるか、テストの実行役がエラーで終わったときだけ（IDEFoundation の `IDETestRunSession` の `_atLeastOneTestFailed`・`_atLeastOneTestRunnerFailedWithError`。Xcode 26.6・27.1 で同じ）で、

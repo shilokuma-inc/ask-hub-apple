@@ -202,6 +202,14 @@ extension FinalReview {
             && !headChangedAfterReview && headCommit != nil
     }
 
+    /// マージ済みのとき、自動でかどうかとマージした時刻（例: 自動でマージしました（15:42））。マージ済みでなければ nil
+    var mergedNote: String? {
+        guard case let .merged(date, automatic) = state else {
+            return nil
+        }
+        return "\(automatic ? "自動で" : "")マージしました（\(RelativeTime.clock(date))）"
+    }
+
     /// 追加・削除の行数（例: +1,204 −310）。分からなければ nil
     var lineChanges: String? {
         guard let additions, let deletions else {
