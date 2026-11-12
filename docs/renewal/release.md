@@ -1,6 +1,6 @@
 # リリース
 
-リリースの仕組みは、共通リポジトリから全リポジトリに配る（[operations.md](operations.md)）。今のリリースのワークフローは ask-hub-apple にしか無く、一度も実行されていないので、流れから作り直す。
+リリースの仕組みは、共通リポジトリから全リポジトリに配る（[operations.md](operations.md)）。今のリリースのワークフロー（Release/Prepare・Notes・Sync・Finish）は ask-hub-apple にしか無く、一度も実行されていないので、流れから作り直し、置き換えたものから外す（[plan.md](plan.md) の「段階 5 の順」）。
 
 ## 流れ
 
@@ -9,10 +9,10 @@
 | 1 | リリースを始める | 人 | バージョンを選ぶ（既定は次のマイナー） |
 | 2 | 準備 | 自動 | release ブランチを作り、develop のバージョンを次に上げ（司令塔の PR）、最新情報の下書きを作り、Upload する |
 | 3 | 下書きとビルドの確認 | 人 | 最新情報・スクショの差分・その版の未確認の実機確認を確かめる |
-| 4 | 審査に出す | 人がボタンを押す | ワークフローが App Store Connect の API で提出する |
-| 5 | 審査の状態の見張り | 自動 | 審査中・承認・リジェクトをクライアントに出す |
-| 6 | 配信 | 既定は自動 | 承認されたら配信する（リリースごとに変えられる） |
-| 7 | 後作業 | 自動 | main と develop への取り込み（司令塔の PR）・タグ・GitHub Release |
+| 4 | 審査に出す | 人がボタンを押す | 司令塔が App Store Connect の API で提出する（下の「App Store Connect の状態と操作」） |
+| 5 | 審査の状態の見張り | 自動 | 司令塔が審査中・承認・リジェクトを読み、クライアントに出す |
+| 6 | 配信 | 既定は自動 | 承認されたら配信する（審査に出すときに人が選んだ配信の方式。リリースごとに変えられる） |
+| 7 | 後作業 | 自動 | 司令塔が配信を見つけ、main と develop への取り込み（司令塔の PR）・タグ・GitHub Release を行う |
 
 ### バージョン
 
@@ -63,14 +63,23 @@
 | 最新情報 | リリースのたび。前回のリリースから入った最終 PR をもとに Claude が下書きし、人が確定する |
 | 説明文・キーワードなどほかのメタデータ | リリースのとき、App Store Connect の値と差があるときだけ反映する |
 | スクショ | リリースのとき、画面に差があるときだけ反映する（下の「App Store の素材」） |
-| App Store Connect の状態の読み取り | Linux のランナーの定期実行（30 分ごと）と、Upload・提出の直後 |
 
 - main では Upload も Archive も走らせない。main に入るのは release ブランチの先頭そのもの
 - 後作業の取り込み（release → main、release → develop）は、GitHub Actions の `GITHUB_TOKEN` では行わない。`GITHUB_TOKEN` はブランチ保護の例外に入れられず、既定では PR も作れないため（段階 0 で確認）。配信を見つけたら司令塔が PR を作り、CI が通ったら自動でマージする
 - 審査に出したビルドの dSYM は、Upload のときに App Store Connect に送り、クラッシュの解析はそちらに任せる
 - archive は、誰でも取れる場所に置かない。GitHub Release にも Actions の成果物（artifact）にも付けない（public のリポジトリでは誰でも取れるため）。GitHub のランナーで作った archive はジョブの終わりに消えるので、残したいときは手元の Mac に置く
-- App Store Connect の API の鍵は、今までどおり GitHub の Secrets（Environment の Secrets）に置く。読み取りは Linux のランナーで行うので、macOS のランナーの不足に左右されない
-- public のリポジトリの定期実行は、60 日動きが無いと止まる。定期実行は public の制御用のリポジトリ 1 つにまとめ、その定期実行も止まっていないかを見張る
+- Upload に使う App Store Connect の API の鍵は、今までどおり GitHub の Secrets（Environment の Secrets）に置く
+- App Store Connect の状態の読み取りと、人が押した操作（審査に出す・配信する・取り下げ）は、ワークフローではなく司令塔が行う（下の「App Store Connect の状態と操作」）
+
+### App Store Connect の状態と操作
+
+2026-11-12 に決めた。段階 5 の 1・2 から作る。
+
+- App Store Connect の状態（バージョン・ビルドの処理・審査の状態・配信）は、司令塔が読む。読む鍵（App Store Connect の API キー）は、常時オンの Mac の Keychain に置く
+  - 入れ方は APNs の鍵と同じ形にする（Apple の画面から落とした .p8 をコマンドで読んで Keychain に置き、.p8 は Mac に残さない。設定には鍵の id と Issuer ID だけを書く。[operations.md](operations.md) の「通知」）。Apple のチームが複数あれば、チームごとに 1 つ
+- 読むのは定期的に（30 分ごとを目安）と、Upload・提出の直後。読んだ状態は状態リポジトリに書いてクライアントに出し、配信を見つけたら後作業の PR を作る
+- 読み取りは自動で行う。審査に出す・配信する（手動の配信のとき）・取り下げとやり直しは、人がクライアントで押した（署名した意図の）ときだけ司令塔が行う。そのため、鍵の役割は App Manager にする（Admin は使わない）
+- GitHub Actions の定期実行で読む形は採らない。状態リポジトリに書くためのトークンを Secrets に置くことになり、public のリポジトリの定期実行は 60 日動きが無いと止まるため。司令塔が止まると読み取りも止まるが、司令塔の見張りで分かる（[operations.md](operations.md) の「司令塔の見張り」）
 
 ## App Store Connect でしかできない作業
 
