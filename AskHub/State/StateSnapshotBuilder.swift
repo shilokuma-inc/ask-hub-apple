@@ -64,6 +64,10 @@ struct StateIndex {
         var items: [String: String]
         /// まだ答えていない項目の id。処理を待つ答えを当てた後のもの
         var unanswered: Set<String>
+        /// 「問題あり」と答えた項目の説明（依頼を送れなかったときの送り直しに使う）
+        var problemNotes: [String: String] = [:]
+        /// この端末の、司令塔がまだ処理していない答えだけで答えた項目
+        var pendingAnswers: Set<String> = []
     }
 
     struct QuestionEntry {
