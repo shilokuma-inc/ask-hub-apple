@@ -18,7 +18,7 @@ extension StateSnapshotBuilder {
         case RequestIntent.kind:
             return nil
 
-        case AddRepositoryIntent.kind:
+        case AddRepositoryIntent.kind, RemoveRepositoryIntent.kind:
             return repo.map { .repository(repository($0).id) }
 
         case PublishGitHubReleaseIntent.kind:

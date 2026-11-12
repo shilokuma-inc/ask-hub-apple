@@ -15,7 +15,7 @@ extension DemoClientService {
         case let .start(epicID, macID):
             return SendReceipt(intentID: start(epicID: epicID, macID: macID))
 
-        case .reviseGoal, .decideSplit, .addRepository:
+        case .reviseGoal, .decideSplit, .addRepository, .removeRepository:
             applySetupIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
@@ -52,11 +52,19 @@ extension DemoClientService {
             decideSplit(epicID: epicID, choice: choice)
 
         case .addRepository(let repositoryID):
-            guard let repository = state.candidateRepositories.first(where: { $0.id == repositoryID }) else {
+            guard let repository = (state.candidateRepositories + state.removedRepositories).first(where: { $0.id == repositoryID }) else {
                 return
             }
             state.candidateRepositories.removeAll { $0.id == repositoryID }
+            state.removedRepositories.removeAll { $0.id == repositoryID }
             state.repositories.append(repository)
+
+        case .removeRepository(let repositoryID):
+            guard let repository = state.repositories.first(where: { $0.id == repositoryID }) else {
+                return
+            }
+            state.repositories.removeAll { $0.id == repositoryID }
+            state.removedRepositories.append(repository)
 
         default:
             break

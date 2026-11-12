@@ -5,6 +5,8 @@ struct ClientSnapshot: Hashable {
     var repositories: [TargetRepository]
     /// まだ対象になっていないリポジトリ（「対象に加える」で選ぶ候補）
     var candidateRepositories: [TargetRepository]
+    /// 対象から外したリポジトリ（`repo.json` は残っている）。「対象に加える」で戻せる。終わった epic の名前とアイコンにも使う
+    var removedRepositories: [TargetRepository] = []
     var epics: [Epic]
     var macs: [Mac]
     var fetchedAt: Date
@@ -44,8 +46,14 @@ struct SourceFailure: Hashable {
 }
 
 extension ClientSnapshot {
+    /// 対象のリポジトリ。外したリポジトリも返す（外す前の epic の名前とアイコンを出すため）
     func repository(_ id: TargetRepository.ID) -> TargetRepository? {
-        repositories.first { $0.id == id }
+        repositories.first { $0.id == id } ?? removedRepositories.first { $0.id == id }
+    }
+
+    /// 対象から外したリポジトリか
+    func isRemoved(_ id: TargetRepository.ID) -> Bool {
+        !repositories.contains { $0.id == id } && removedRepositories.contains { $0.id == id }
     }
 
     /// 対象のリポジトリを持ち主（organization）ごとにまとめたもの。依頼のシートとリポジトリのタブで見出しを付けて並べる

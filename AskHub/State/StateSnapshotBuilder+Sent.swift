@@ -28,17 +28,19 @@ extension StateSnapshotBuilder {
     }
 
     /// 送った意図を、送った結果として画面に出す。送った後に対象が変わっていれば（司令塔が断る）、出さない
-    func apply(_ envelope: IntentEnvelope, to epics: inout [Epic], repositories: inout [TargetRepository], index: inout StateIndex) {
+    func apply(
+        _ envelope: IntentEnvelope,
+        to epics: inout [Epic],
+        repositories: inout [TargetRepository],
+        removed: inout [TargetRepository],
+        index: inout StateIndex
+    ) {
         switch envelope.kind {
         case RequestIntent.kind:
             applyRequest(envelope, to: &epics)
 
-        case AddRepositoryIntent.kind:
-            guard let repo = envelope.repo, index.repositories[Self.repository(repo).id] == nil else {
-                return
-            }
-            repositories.append(Self.repository(repo))
-            index.repositories[Self.repository(repo).id] = repo
+        case AddRepositoryIntent.kind, RemoveRepositoryIntent.kind:
+            applyRepositoryIntent(envelope, repositories: &repositories, removed: &removed, index: &index)
 
         case AnswerIntent.kind:
             applyAnswer(envelope, to: &epics, index: index)
@@ -412,9 +414,6 @@ extension StateSnapshotBuilder {
         case DecideSplitIntent.kind:
             return "分け方の判断"
 
-        case AddRepositoryIntent.kind:
-            return "対象に加える（\(envelope.repo?.rawValue ?? "")）"
-
         case RetryJobIntent.kind:
             return "やり直し" + job
 
@@ -425,7 +424,7 @@ extension StateSnapshotBuilder {
             return "取り下げ"
 
         default:
-            return finalLabel(envelope) ?? pauseLabel(envelope) ?? releaseLabel(envelope) ?? envelope.kind
+            return finalLabel(envelope) ?? pauseLabel(envelope) ?? releaseLabel(envelope) ?? Self.repositoryLabel(envelope) ?? envelope.kind
         }
     }
 
