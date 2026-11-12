@@ -5,6 +5,12 @@ App Store Connect に出す値と審査で指摘されやすい点は [docs/app-
 
 ワークフローは、テンプレート（[shilokuma-inc/template-app-ios](https://github.com/shilokuma-inc/template-app-ios)）と見比べやすいよう、なるべく同じ形で置いている。
 
+> **今の仕組み（2026-10）のリリースの文書。** この文書のリリースのワークフロー（Release/Prepare・Notes・Sync・Finish）は ask-hub-apple にしか無く、一度も流れていない。
+> 新しいリリースの流れは [renewal/release.md](renewal/release.md) で、段階 5 で作り、置き換えたものからここのワークフローを外す（[renewal/plan.md](renewal/plan.md) の「段階 5 の順」）。
+> アプリのリリースの画面はリニューアルで外したので、アプリからの操作（リリース準備を始める・最新情報の確定）はできない。ワークフローは Actions から手で起動する（下の「AskHub アプリとの関係」）。
+> Release/Finish は `GITHUB_TOKEN` で main・develop に直接 push するので、新しいルールセット（PR 必須・例外なし。[renewal/security.md](renewal/security.md) の「ブランチ保護」）を掛けると止まる。置き換える前に ask-hub-apple に保護を掛けるなら、先に Release/Sync を止める（Actions → Release/Sync → Disable workflow）。
+> App Store のメタデータ・スクリーンショット・macOS 版のアップロード・Upload（develop への push で TestFlight に上げる）は、今もそのまま動く。
+
 ## App Store のメタデータ
 
 App Store の説明文・キーワード・プロモーションテキスト・最新情報・URL を、リポジトリの JSON から App Store Connect に反映する。
@@ -315,7 +321,7 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 ## リリース準備
 
 `develop` から release ブランチを切り、App Store Connect にバージョン・バイナリ・スクリーンショット・メタデータを用意する（Discussion #605 の「リリース準備」）。
-ワークフローは `.github/workflows/release-prepare.yml`（Release/Prepare）。AskHub アプリの「リリース準備」が `workflow_dispatch` で起動する。Actions から手で起動してもよい。
+ワークフローは `.github/workflows/release-prepare.yml`（Release/Prepare）。Actions から手で起動する（`workflow_dispatch`。今の仕組みのアプリの「リリース準備」の画面はリニューアルで外した）。
 
 ### 流れ
 
@@ -330,7 +336,7 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 
 - inputs は `version`（必須）と `resume`（任意。既定 `false`。下の「失敗したとき」）。`develop` 以外から起動すると止まる（`Tools/` は `develop` のものを使うため。
   `resume` でも作業ツリーは `develop` のままで、release ブランチは先頭のコミットで起動するワークフローのファイルの有無を見るだけ）
-- run の表示名（`run-name`）は `Release/Prepare <version>`。runs の一覧の API は inputs を返さないので、AskHub アプリ（`WorkflowRun.displayTitle`）はこの名前でどのバージョンの run かを見分けられる。
+- run の表示名（`run-name`）は `Release/Prepare <version>`。runs の一覧の API は inputs を返さないので、今の仕組みのアプリ（`legacy-final` の `WorkflowRun.displayTitle`）はこの名前でどのバージョンの run かを見分けていた。
   inputs は `run-name` の表示にだけ式で使い、`run:` の中には環境変数で渡す
 - コミットの作者は `github-actions[bot]`。`GITHUB_TOKEN` での push は新しいワークフローの run を起こさないので、Upload などは 5 で `workflow_dispatch` する。
   同じ理由で、release ブランチの先頭では Build（CI）が動かない（リリース後作業が `main`・`develop` に取り込む前に流す）
@@ -348,7 +354,7 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
   並べて準備すると、前のリリースのバージョンの番号を書き換えてしまう（`prepare` は古い編集できるバージョンを書き換える）。やめたリリースは release ブランチを消す
 - **`develop` の `MARKETING_VERSION` より大きいバージョンでしか始めない。** ビルドの紐付け（`attach-build`）はビルドをバージョンとプラットフォームだけで選び、
   上がったブランチを区別できない。同じバージョンだと、`develop` への push で上がったビルドが release ブランチのバージョンに紐付きうる。
-  アプリの既定値は `develop` の次のマイナー（`1.0.0` → `1.1.0`）なので、ふつうは当たらない
+  今の仕組みのアプリが入れていた既定値は `develop` の次のマイナー（`1.0.0` → `1.1.0`）なので、ふつうは当たらない
 - **同じ値は、前の `v*` タグ（`MAJOR.MINOR.PATCH` の形のもの）が 1 つも無い初回だけ許す**（App Store の最初のバージョンを `develop` の `MARKETING_VERSION` のまま出すため。PR #627 の ask の回答 B）。
   このときは `MARKETING_VERSION` を書き換えるコミットを積まない。`develop` への push で上がったビルドと release のビルドが同じバージョンになり、
   Release/Sync の紐付けはアップロードの新しいものを選ぶので、Job Summary に注意を出す。審査に出す前に、紐付いたビルドが release ブランチから上がったもの（ビルド番号・アップロードの時刻）か確かめる。
@@ -358,7 +364,7 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 ### 最新情報の下書き
 
 `AppStore/whats-new-draft.json`（release ブランチにだけある）。Release/Notes（`release-notes.yml`）が確定して `AppStore/metadata/<言語>.json` の `whatsNew` に書くと消える。
-アプリは Contents API でこのファイルを読み、「下書きあり（未確定）」を出す。
+今の仕組みのアプリは Contents API でこのファイルを読み、「下書きあり（未確定）」を出していた。
 
 ```json
 {
@@ -400,14 +406,14 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 - 本文に載せるのは【FEAT】【FIX】【PERF】と、【TYPE】の無いタイトル。【CI】【DOCS】【TEST】【CHORE】【REFACTOR】などは一覧に `included: false` で残し、本文には載せない
 - 本文は「・タイトル」の箇条書き。載せるものが無ければ「細かな改善と不具合の修正を行いました。」
 - 前のタグが無い（初めてのリリース）ときは、PR を並べず「はじめてのリリースです。」にする（App Store は最初のバージョンに最新情報を出さない）
-- 言語が複数あっても、どの言語にも同じ（日本語の）本文を入れる。確定の前にアプリで直す
+- 言語が複数あっても、どの言語にも同じ（日本語の）本文を入れる。確定のとき（Release/Notes の入力）に直す
 
 ### 人がすること
 
 1. 前もって: App Store Connect にアプリを作る（[docs/app-review.md](app-review.md)）。macOS も出すならプラットフォームを追加する（「macOS 版のアップロード」）
-2. AskHub の「新しい依頼」→「リリース準備」でリポジトリとバージョンを選んで起動する。手で起動するときは Actions → **Release/Prepare** → Run workflow で、ブランチは `develop` のまま `version` を入れる
+2. Actions → **Release/Prepare** → Run workflow で、ブランチは `develop` のまま `version` を入れて起動する
 3. run の Job Summary で、release ブランチ・App Store Connect のバージョン・起動したワークフローを確かめる。起動された Upload・Screenshots/App Store・Metadata/App Store の run が成功するのを待つ
-4. AskHub で最新情報の下書きを確かめ、直して確定する（Release/Notes）
+4. 最新情報の下書きを確かめ、直して確定する（Release/Notes。下の「最新情報の確定」）
 5. 処理が終わったビルドは定期実行（Release/Sync）がバージョンに紐付ける。App Store Connect で審査に提出し、輸出コンプライアンスなどに答える
 
 ### 失敗したとき
@@ -420,20 +426,18 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 | ワークフローの起動に失敗した | 失敗したワークフローを Actions から `release/<v>` を選んで手で起動するか、`resume` をオンにして起動し直す（Upload も起動し直すので、24 時間あたりのアップロード上限に気をつける） |
 | push に失敗した | 同じ名前の release ブランチが先にできていないか確かめる。ブランチがあれば `resume` で続ける |
 
-`resume` は、`release/<v>` があってタグが無いときに、ブランチ・コミット・下書きは作り直さず、4・5 だけをやり直す。下書きを作り直したいときは、release ブランチの `AppStore/whats-new-draft.json` を直すか、アプリで確定する。
+`resume` は、`release/<v>` があってタグが無いときに、ブランチ・コミット・下書きは作り直さず、4・5 だけをやり直す。下書きを作り直したいときは、release ブランチの `AppStore/whats-new-draft.json` を直すか、Release/Notes で確定する。
 
 ### 権限・Secrets / vars
 
 - ジョブの権限は `contents: write`（release ブランチの push）・`actions: write`（`workflow_dispatch`）・`pull-requests: read`（PR のタイトル）。`GITHUB_TOKEN` だけを使う
 - Secrets は Metadata/App Store と同じ（`APPLE_API_KEY_BASE64`・`APPLE_API_KEY_ID`・`APPLE_API_ISSUER_ID`）。新しい Secret・vars は要らない
 - vars は任意の `ENABLE_DELIVERY`・`ENABLE_MACOS_DELIVERY`（上の「流れ」）
-- アプリのトークン（Fine-grained PAT）は、リリース準備には Actions の Read and write（起動と run の表示）と Contents の Read（release ブランチ・下書きの読み取り）があればよい
-  （依頼の添付は依頼先ではなく状態リポジトリに置くので、依頼先の Contents の書き込みは要らない。[renewal/protocol.md](renewal/protocol.md) の「ファイルの置き方」）
 
 ## 最新情報の確定
 
 リリース準備が作った最新情報の下書きを人が確かめて直し、確定した本文を release ブランチに書いて App Store Connect に反映する（Discussion #605 の Q5）。
-ワークフローは `.github/workflows/release-notes.yml`（Release/Notes）。AskHub アプリの最新情報の確定が `workflow_dispatch` で起動する。Actions から手で起動してもよい。
+ワークフローは `.github/workflows/release-notes.yml`（Release/Notes）。Actions から手で起動する（`workflow_dispatch`。今の仕組みのアプリの確定の画面はリニューアルで外した）。
 
 ### 流れ
 
@@ -463,23 +467,22 @@ HTTP を偽物（`Tools/tests/fake_app_store_connect.py`）に差し替えて流
 App Store Connect は、そのプラットフォームの最初のバージョンに最新情報（`whatsNew`）の欄を持たない（Web の画面にも出ない）。
 
 - Release/Notes は初めてのリリース（前の `v*` タグが無い）でも、確定した本文（下書きの既定は「はじめてのリリースです。」）を `whatsNew` に書く。
-  アプリが「確定済み」と見分けられるように、また GitHub Release の本文に使うため。Job Summary に注意を出す
+  確定済みと見分けられるように（今の仕組みのアプリが見ていた）、また GitHub Release の本文に使うため。Job Summary に注意を出す
 - Metadata/App Store（`Tools/upload_metadata.py`）は、反映先がそのプラットフォームの最初のバージョン（ほかに配信した・配信を終えたバージョンが無い）なら `whatsNew` を送らず、ログに「最初のバージョンなので、whatsNew は書き込みません」と出す。
   説明文などはそのまま反映する。iOS と macOS は別に数える（macOS を後から足したリリースでは、macOS にだけ送らない）
 - App Store Connect が最初のバージョンへの `whatsNew` を実際に弾くかは、まだ確かめていない（実機確認の Issue で確かめる）
 
-### アプリからの確定
+### 起動する ref
 
-アプリは `release-notes.yml` を **`release/<v>` の ref で**起動する（inputs は `version` と `whats_new`。`ReleaseWorkflow.notesInputs`）。
+`release-notes.yml` は **`release/<v>` の ref で**起動する（inputs は `version` と `whats_new`）。言語・字数・空でないことは、このワークフローが確かめ、止まったときの理由は run の Job Summary に出る。
 
-- アプリが送る前に見るのは形だけでよい（言語・字数・空でないことの正本はこのワークフローの検査）。止まったときの理由は run の Job Summary に出る
 - `release/<v>` を切った時点の `develop` に `release-notes.yml` が無かった release ブランチでは、`release/<v>` の ref では起動できない（dispatch がエラーになる）。そのときは Actions から `develop` を選んで起動する。
   このとき確定は `develop` の `Tools/` で行うが、起動される Metadata/App Store は `release/<v>` で動き、release ブランチの古い `Tools/upload_metadata.py` を使うので、上の「初めてのリリースの最新情報」の `whatsNew` の除外が効かない（初めてのリリースでは、App Store Connect が `whatsNew` を弾くと Metadata/App Store が失敗しうる）
-- 確定すると、release ブランチの `AppStore/whats-new-draft.json` が消え、すべての言語の `whatsNew.version` が `<v>` になる（アプリの「確定済み」）
+- 確定すると、release ブランチの `AppStore/whats-new-draft.json` が消え、すべての言語の `whatsNew.version` が `<v>` になる（確定済み）
 
 ### 人がすること
 
-1. AskHub で最新情報の下書きを確かめ、直して確定する。手で起動するときは Actions → **Release/Notes** → Run workflow で、ブランチは `release/<v>`（無ければ `develop`）を選び、
+1. 最新情報の下書きを確かめ、直して確定する。Actions → **Release/Notes** → Run workflow で、ブランチは `release/<v>`（無ければ `develop`）を選び、
    `version` と `whats_new`（例: `{"ja":"・受信箱を絞り込めるようにする\n・起動時に落ちる不具合を直す"}`。改行は `\n`）を入れる
 2. run の Job Summary で、言語ごとの字数・コミットを確かめる。起動された Metadata/App Store の run の Job Summary で、iOS / macOS に最新情報が書き込まれたかを確かめる
 3. App Store Connect で審査に提出する（人が行う）。提出した後（審査中）は App Store Connect の最新情報を書き換えられないので、確定し直しても反映は失敗する
@@ -632,7 +635,7 @@ App Store Connect で閉じたバージョン（配信済み）に上げよう�
 
 - `develop` への取り込みで止まって人が PR をマージした後も、同じバージョンで起動し直すと、`develop` がもう release を含んでいても `MARKETING_VERSION` が `<v>` 以下ならこのコミットだけを足す
   （取り込みと同じく、一時ブランチ → check run → fast-forward で push する）。人のマージの push では Upload が動き、配信済みの `<v>` に上げようとして失敗することがある（起動し直してバージョンを上げれば、次の push から通る）
-- アプリのリリース準備の既定値は `develop` の次のマイナーなので、`1.1.1` → `1.2.0` になり、飛ばない（次のマイナーにすると既定値が `1.3.0` になる）
+- 今の仕組みのアプリのリリース準備の既定値は `develop` の次のマイナーなので、`1.1.1` → `1.2.0` になり、飛ばない（次のマイナーにすると既定値が `1.3.0` になる）
 - リリース準備は `develop` の `MARKETING_VERSION` より大きいバージョンしか受け付けないので、配信した `1.1.0` の不具合を直すリリースは `1.1.2` 以上にする（`1.1.1` は `develop` の TestFlight 用）
 
 ### 人がすること
@@ -643,7 +646,7 @@ App Store Connect で閉じたバージョン（配信済み）に上げよう�
 
 ### 取り込めなかったとき
 
-コンフリクトしたとき・push を断られたときは、release の先頭から一時ブランチ `release-finish/<v>/pr-<main|develop>` を作り、そこ → 取り込み先（`main` / `develop`）の PR を作って（もうあれば使って）止め、run を失敗にする（AskHub のリリースの進み具合に「リリース後作業 失敗」と出る）。
+コンフリクトしたとき・push を断られたときは、release の先頭から一時ブランチ `release-finish/<v>/pr-<main|develop>` を作り、そこ → 取り込み先（`main` / `develop`）の PR を作って（もうあれば使って）止め、run を失敗にする。
 PR のタイトルは `【CHORE】release/<v> を <main|develop> に取り込む`、本文に理由とすることを書く。
 **PR を作れないとき**（リポジトリの Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」が無効。ask-hub-apple は 2026-10 の時点で無効）は、
 代わりに Issue `【CHORE】release/<v> を <main|develop> に取り込めませんでした`（同じタイトルの開いた Issue があれば作らない）で知らせ、人がその一時ブランチから PR を作る。
@@ -680,78 +683,10 @@ PR のタイトルは `【CHORE】release/<v> を <main|develop> に取り込む
 - App Store Connect の Secrets・vars は使わない。新しい Secret・vars は要らない
 - PR を残すには、リポジトリの Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」が要る（無効でも取り込み・タグ・Release は動き、取り込めなかったときに PR の代わりに Issue で知らせる）。この設定は変えなくてよい
 
-## AskHub アプリが読むもの・起動するもの
+## AskHub アプリとの関係
 
-AskHub アプリは App Store Connect を見られないので、リリースの進み具合は GitHub の情報（release ブランチ・タグ・各ワークフローの run・下書きのファイル）だけで出す。
-API と表示の決まりは、今の仕組みの `docs/protocol.md`（タグ `legacy-final`）の「リリース準備と最新情報の確定」にあった。新しい仕組みの取り決めは [renewal/protocol.md](renewal/protocol.md)、リリースの流れは [renewal/release.md](renewal/release.md)。
+リニューアルで、アプリのリリースの画面（リリース準備を始める・進み具合・最新情報の確定）を外した。今のアプリは、リポジトリの画面に「リリースの画面は、リリースの段階で作ります」と出すだけで、この文書のワークフローを起動も表示もしない。
+上の各ワークフローは、Actions から手で起動する。前のアプリの画面の決まり（読むもの・起動するもの・止めるもの・デモモード・トークンの権限）は、タグ `legacy-final` のこの文書と `docs/protocol.md` にある。
 
-| 読むもの | 場所 |
-| --- | --- |
-| バージョンの既定値 | `develop` の `Configs/Project.xcconfig` の `MARKETING_VERSION` の次のマイナー（`1.0.0` → `1.1.0`。形が `MAJOR.MINOR.PATCH` でなければ既定値を入れない） |
-| 準備中のリリース | `release/<v>` のブランチがあって `v<v>` のタグが無いもの |
-| 最新情報 | `release/<v>` の `AppStore/whats-new-draft.json`（あれば未確定）と、`AppStore/languages.json` の言語ごとの `AppStore/metadata/<言語>.json` の `whatsNew`（すべての言語で `version` が `<v>` なら確定済み） |
-| ワークフローの有無と run | `release-prepare.yml`・`release-notes.yml`・`release-finish.yml`。依頼の種類の「リリース準備」は常に出し、無い（404）リポジトリを選んだときにその旨を出してボタンを押せなくする（一覧を出す前に全リポジトリへ問い合わせない） |
-
-### アプリからのリリース準備
-
-依頼タブの種類で「リリース準備」を選び、リポジトリを選ぶと、バージョンの欄に `develop` の `MARKETING_VERSION` の次のマイナーが入る（書き換えられる。読めなければ空のまま）。
-「リリース準備を始める」で確認ダイアログ（`develop` から `release/<v>` を作ること・App Store Connect に iOS / macOS のバージョンを作ること・バイナリのアップロード・メタデータとスクリーンショットの反映）を出し、
-`release-prepare.yml` を `develop` で起動する（inputs は `version`）。
-
-- **アプリが止めるもの**: 形が `MAJOR.MINOR.PATCH` でない・`release/<v>` か `v<v>` がすでにある・タグの無い別の release ブランチがある（準備中のリリースを終えてから）・
-  リリース準備の run が実行中・起動した直後。`MARKETING_VERSION` との大小はアプリでは判定しない（ワークフローの入力の検査が正本）
-- **ワークフローが無い・無効**: `release-prepare.yml` が無い（404。`state` が `deleted` も同じ）リポジトリでは「このリポジトリにはリリースのワークフローがありません」と出し、ボタンを押せない。
-  無効にされている（`disabled_manually` など）ときは、Actions で有効にするよう案内する
-- **run の表示**: `develop` の `workflow_dispatch` の run の直近の 1 件（状態・`run-name`・開始時刻・GitHub へのリンク）。dispatch は run の id を返さないので、起動してから
-  起動の直前に読み直した直近の run より id の大きい run が出るまで「起動しました」と出し、10 秒後に取り直す（ツールバーの「更新」か、iOS では下に引いても読み直せる）。
-  端末の時計がずれていても見分けられるよう、開始時刻とは比べない。10 分たっても出なければ押し直せる
-- **デモモード**: GitHub に送らず、起動したことにして実行中の run を出す。run は数秒で成功したことになり、始めたバージョンの release ブランチが準備中のリリースになる（アップロード・下書きと進む）
-
-### アプリでのリリースの進み具合と最新情報の確定
-
-依頼タブの「リリース準備」でリポジトリを選び、タグの無い release ブランチ（準備中のリリース）があれば、その進み具合を「準備中のリリース <v>」に出す（iOS のタブはいっぱいなので増やさない）。
-GitHub の情報だけで出すので、App Store Connect の処理・審査の状況は出ない。
-
-| 段 | 見るもの | 表示 |
-| --- | --- | --- |
-| リリース準備 | `develop` の `release-prepare.yml` の `workflow_dispatch` の run のうち、`run-name`（`Release/Prepare <v>`）がこのバージョンの直近のもの | 実行中 / 済み / 失敗（run が見えなくても、release ブランチがあれば済み） |
-| アップロード | `release/<v>` の `upload.yml` の直近の run | 実行中 / 済み / 失敗 / まだ。`upload.yml` が無ければ不明 |
-| 最新情報 | 下書き（`AppStore/whats-new-draft.json`）と `AppStore/metadata/<言語>.json` の `whatsNew`、`release-notes.yml` の run | 下書きあり（待ち）/ 確定済み / 反映中 / 読めない下書き / どちらも無い。直近の確定の run が失敗していれば、確定済みでも失敗 |
-| 配信 | 最新情報が確定済みで、リリース後作業の run がまだ成功していない | 待ち（審査への提出と配信は App Store Connect で人が行う）。リリース後作業の run が成功していれば済み（手で起動したこともあるので「配信を検知した」とは言わない。実行中・失敗の run は配信前に手で起動したものかもしれないので済みにしない） |
-| リリース後作業 | `release-finish.yml` の、このリリースの直近の run | 実行中 / 済み / 失敗 / まだ（配信を検知すると自動で始まる）。無ければ不明 |
-| タグと Release | `v<v>` のタグ | タグができると準備中のリリースではなくなり、この欄は消える |
-
-`release-notes.yml`・`release-finish.yml` の run は、起動した ref が `release/<v>` か、`run-name` にバージョン（前後が数字・`.` でない `<v>`）が入っているもので見分ける（一覧の API は inputs を返さないため）。
-リリース後作業のワークフローには `run-name` にバージョンを入れる。
-
-「最新情報の下書きを確かめて確定する」から最新情報の画面を開くと、言語（`AppStore/languages.json` の順）ごとに下書き（確定済みならその本文）を直せる。
-下書きの元にした PR（本文に載せなかったものは灰色で「（載せない）」を付ける）と、作ったときの説明も出す。「確定して反映」で確認ダイアログを出し、`release-notes.yml` を **`release/<v>` で**起動する
-（inputs は `version` と `whats_new`。`whats_new` は言語コード → 本文の JSON の文字列で、本文の前後の空白・改行は外す）。
-
-- **アプリが止めるもの**: 本文が空・4000 字を超える（`Tools/upload_metadata.py` と同じく Unicode のスカラー値で数える）・`release-notes.yml` が無い / 無効・
-  確定の run が実行中・リリース準備の run が実行中・起動した直後・読めない下書き（`schemaVersion` が知らない値）
-- **起動したあと**は、入力中の本文を送った本文（前後の空白を外したもの）にそろえる。確定が反映されて読んだ本文と同じになれば「直した」扱いも終わる
-- **読み直しに失敗したとき**は、前に読んだ進み具合と入力中の本文を残し（iOS で最新情報の画面を開いていても閉じない）、理由を最新情報の画面にも出して確定を止める。
-  最新情報だけ読めなかったときも、言語と読んだ本文は前のままにする
-- **入力中の本文はリリース（リポジトリとバージョン）ごとに持つ**。別のリポジトリを選んで戻ってきても、直した本文は残る（アプリを終えると消える）
-- **確定済みのとき**も直して確定し直せる（`release-notes.yml` は同じバージョンで何度起動しても上書きで直せる）
-- **起動した run の見分け方**: リリース準備と同じく、起動の直前に読み直した直近の run より id の大きい run が出るまで「起動しました」と出し、10 秒後に取り直す。
-  起動の直前の読み直しで実行中の run が見つかって送らなかったときも、すぐに読み直して進み具合に出す
-- **リリース後作業**はアプリからは起動しない（Q7 で自動にしたため）。手で起動したいときのために、ワークフローがあれば GitHub の Actions のページへのリンクを出す
-- **デモモード**: GitHub に送らず、送ったことにするだけ。サンプルのリポジトリでリリースの各状態を出す（`AskHub/SampleRelease.swift`）
-
-  | リポジトリ | 状態 |
-  | --- | --- |
-  | ask-hub-apple | 準備中のリリースなし（既定値は 1.3.0）。「リリース準備を始める」で準備中になる |
-  | claude-plugins | 準備中（release/0.4.0 のリリース準備の run が実行中） |
-  | notti-ios | 下書きあり（release/2.1.0。準備とアップロードが済んだ）。「確定して反映」で run が実行中 → 数秒で成功になり、送った本文で確定済みになる |
-  | beat-tap-ios | 初めてのリリース（タグなし） |
-  | web-tools | 最新情報を確定済みで、配信待ち（release/1.5.0） |
-  | sandbox | 完了（release/0.9.0 のリリース後作業の run が成功した） |
-  | dotfiles など | リリースのワークフローが無い |
-
-### アプリのトークンの権限
-
-Fine-grained PAT に **Actions の Read and write**（起動と run の表示。TestFlight への手動アップロードと同じ）と **Contents の Read**（上の表の読み取り）を付ける。
-アプリからは push・タグ・Release の作成をしない（ワークフローが `GITHUB_TOKEN` で行う）ので、リリース準備には Contents の Write は要らない。
-依頼の添付も、依頼先ではなく状態リポジトリに置くので、依頼先の Contents の Write は要らない（[renewal/protocol.md](renewal/protocol.md) の「ファイルの置き方」）。
+新しいリリースの流れ（司令塔が App Store Connect を読み、審査に出す・配信するは人が AskHub で押す）は [renewal/release.md](renewal/release.md) にあり、段階 5 で作る（[renewal/plan.md](renewal/plan.md) の「段階 5 の順」）。
+新しいアプリのトークンは状態リポジトリだけを読み書きするので、ここのワークフローの起動に要る Actions の権限は持たない。
