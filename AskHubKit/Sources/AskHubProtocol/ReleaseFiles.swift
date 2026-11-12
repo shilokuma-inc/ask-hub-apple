@@ -340,14 +340,14 @@ public struct ReleaseFile: StateFile {
     }
 
     /// ビルドの番号（`CFBundleVersion`）。0 以上の整数を `.` で 1〜3 個つないだもの（App Store Connect の決まり）
-    static func isBuildNumber(_ text: String) -> Bool {
+    public static func isBuildNumber(_ text: String) -> Bool {
         let parts = text.split(separator: ".", omittingEmptySubsequences: false)
         return (1...3).contains(parts.count) && parts.allSatisfy { part in
             (1...18).contains(part.utf8.count) && part.utf8.allSatisfy { (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) }
         }
     }
 
-    static func isCommit(_ text: String) -> Bool {
+    public static func isCommit(_ text: String) -> Bool {
         text.utf8.count == 40 && text.utf8.allSatisfy { byte in
             (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
         }

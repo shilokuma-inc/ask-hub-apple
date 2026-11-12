@@ -185,6 +185,8 @@
   queued のまま長い実行の `GET /actions/runs/{id}/jobs` の `total_count` が 0 かを見る（ランナー不足ならジョブはあり、queued の check run として出る）。
   `gh run cancel` は「Cannot cancel a workflow run that is completed」で断られて消せない。PR を閉じてすぐ開き直す（`PATCH pulls/{n}` の `state`）と `reopened` のイベントで新しい実行が作られ、動き出した。
   止まった古い実行は queued のまま残るので、開き直した後は、それより新しい実行（id は作られた順に大きくなる）だけを見る。ワーカーは待つチェックが 10 分出なければ実行を読み、止まっていれば 1 回の待ちで 1 回だけ開き直す（2026-11-12、#1073）
+- 移したリポジトリのルールセット `askhub-protect` は develop・main・`release/**` のブランチだけが対象なので、タグの作成（`git push origin refs/tags/v1.0.0`・Git Data API の `POST git/refs`）は止めない。注釈付きのタグは tagger の名前とアドレスが public に残るので、手で付けるときもリポジトリのコミットと同じ（noreply の）アドレスにする（2026-11-12、OshiCon 1.0.0）
+- `GET /repos/{o}/{r}/actions/runs?created=<開始>..<終わり>`（ISO 8601 の範囲）で、作られた時刻で実行を絞れる。ビルドを上げた Upload の実行を、上げた時刻から探すのに使う（2026-11-12、配信の検知）
 
 ## ビルド・テスト
 
@@ -729,5 +731,13 @@
   セクションごとの `@State` の UUID と合わせた id にする（`CardRowItem`）。Mac の plain の一覧では、ほかにも
   セクションの footer が 1 行で切れる（`fixedSize` も効かないので、注記は札の外の行として置く）・見出しに `listRowInsets` が効かない・行と見出しの中身に左右 8pt を自分で足す・
   区切り線が行の中身の幅で切れて最後の行の下にも出る・`DisclosureGroup` の三角が行の左の外に出る。札（`CardSection`）は Mac でも行の地に区切り線を描き、開閉は `DisclosureGroupStyle` で見出しの右の山形にした（2026-11-12、Mac の UI の直し）
+
+## App Store Connect
+
+- 配信中かは `appVersionState` の `READY_FOR_DISTRIBUTION` で見る。`appStoreState`（`READY_FOR_SALE`）は型ごと非推奨。`GET /v1/apps/{id}/appStoreVersions?filter[appVersionState]=READY_FOR_DISTRIBUTION&include=build` で、ビルドの番号（build の `version`）と上げた時刻（`uploadedDate`）も一度に取れる。この一覧には `sort` が無い（2026-11-12、配信の検知）
+- `GET /v1/apps?filter[bundleId]=…` が完全一致かは文書に書かれていない。返った `bundleId` を比べ直す（2026-11-12、配信の検知）
+- App Store Connect の API の JWT は、`exp - iat` が 20 分を超えると断られる（apps・appStoreVersions・builds は長期のトークンの例外に入らない）。上限は鍵ごとに直前の 1 時間で数え、`X-Rate-Limit: user-hour-lim:3500;user-hour-rem:…` で分かる。429 に `Retry-After` は付かない（2026-11-12、配信の検知）
+- ビルドの番号は、Upload の実行番号とは限らない。Xcode に採番させる（`manageAppVersionAndBuildNumber = YES`）リポジトリでは「App Store Connect で見えている最新 + 1」で、採番は版（`MARKETING_VERSION`）ごと。
+  おしかつカウントダウンの 1.0.0 は、ビルド (12) が Upload の実行 13 だった（実行番号の採番に替えたのは実行 20 から）。配信したコミットは、上げた時刻に動いていた Upload の実行で決め、番号は候補が残ったときの絞り込みにだけ使う（2026-11-12、配信の検知）
 - Mac の `presentationSizing(.form)` のシートは、中身にかかわらず 600×520pt ほどで開き、Form の 3 つ目のセクションはスクロールしないと見えない（スクロールバーも出ないので、下に欄があることが分からない）。
   欄を足したシートは Mac で撮って見え方を確かめ、隠れるなら `.page`（720×800pt ほど）にする（2026-11-12、依頼の添付 #1075）

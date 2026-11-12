@@ -53,6 +53,9 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
     public var adminOwners: [String]?
     /// 進行を止めるものを APNs で知らせるための設定（司令塔だけ。`askhub-commander apns` で足す）。無ければ知らせない
     public var apns: APNsConfiguration?
+    /// App Store での配信を見つけるための App Store Connect の API キーの設定（司令塔だけ。Apple のチームごとに 1 つ。
+    /// `askhub-commander app-store-connect` で足す）。無ければ配信を見つけない
+    public var appStoreConnect: [AppStoreConnectConfiguration]?
     /// ビルドとテストに使う Xcode（`Xcode.app` か、その下の `Contents/Developer` の絶対パス。`xcode` で決める）。nil なら xcode-select で選んだもの。
     /// 決めておけば、人が xcode-select を切り替えても、ワーカーのビルドとテストは同じ Xcode で流れる（子に `DEVELOPER_DIR` で渡す）
     public var xcode: String?
@@ -68,6 +71,7 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         githubOwners: [String] = [],
         adminOwners: [String]? = nil,
         apns: APNsConfiguration? = nil,
+        appStoreConnect: [AppStoreConnectConfiguration]? = nil,
         xcode: String? = nil
     ) {
         self.stateRepository = stateRepository
@@ -80,6 +84,7 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         self.githubOwners = githubOwners
         self.adminOwners = adminOwners
         self.apns = apns
+        self.appStoreConnect = appStoreConnect
         self.xcode = xcode
     }
 
@@ -180,6 +185,8 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
             problems.append("adminOwners の \(owner) は GitHub の持ち主の名前の形でない")
         }
         problems += apns?.problems ?? []
+        problems += (appStoreConnect ?? []).flatMap(\.problems)
+        if let keys = appStoreConnect, Set(keys.map(\.keyId)).count != keys.count { problems.append("appStoreConnect の鍵の id が重複している") }
         return problems
     }
 

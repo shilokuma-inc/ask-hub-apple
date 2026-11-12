@@ -41,6 +41,11 @@ public struct SecretItem: RawRepresentable, Hashable, Sendable, CustomStringConv
     static func githubAdminToken(normalizedOwner owner: String) -> Self {
         Self(rawValue: "github-admin-token/\(owner)")
     }
+
+    /// App Store Connect の API キー（.p8。司令塔）。Apple のチームごとに 1 つ置くので、鍵の id（英大文字・数字の 10 文字）で分ける
+    public static func appStoreConnectKey(id: String) -> Self {
+        Self(rawValue: "app-store-connect-key/\(id)")
+    }
 }
 
 /// Keychain の操作の失敗。秘密の値は含めない
