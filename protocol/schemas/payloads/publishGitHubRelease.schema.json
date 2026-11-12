@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/publishGitHubRelease.schema.json",
+  "title": "リリース文を確かめて GitHub Release を公開する人の意図（kind が publishGitHubRelease）の payload",
+  "description": "封筒の target は {type: release, id: <版>}、targetVersion は人が見たときのリリース文の版（releases/<版>.json の notes.version）。notes は公開する本文（下書きのままでも、人が直したものでもよい）。空白だけの本文は読む側で弾く。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "notes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "notes": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    }
+  }
+}
