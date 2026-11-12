@@ -78,7 +78,14 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "platform": "apple",
   "maxConcurrentEpics": 1,
   "appKit": { "ref": "<共通リポジトリのコミット>" },
-  "protection": { "appliedAt": null },
+  "protection": {
+    "appliedAt": "2026-11-13T10:00:00Z",
+    "requiredChecks": ["build / build"],
+    "rulesetId": 26926767,
+    "replaced": [{ "kind": "classic", "name": "develop" }],
+    "remaining": [],
+    "drift": null
+  },
   "build": {
     "baseBranch": "develop",
     "xcode": {
@@ -103,6 +110,10 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `maxConcurrentEpics` は 1 以上
 - `appKit` は、共通リポジトリのワークフローを入れる前は `null`
 - 対象から外した（`removeRepository`）リポジトリの `repo.json` は消さず、外した印（外した時刻と意図。欄の名前と形は段階 4 の 4 で決めて、ここに書く）を付けて残す。印のあるリポジトリへの依頼・開始・ビルドの設定は断り、もう一度 `addRepository` すると印を外す（[operations.md](operations.md) の「対象から外す」）
+- `protection`: ブランチの保護（ルールセット `askhub-protect`。[operations.md](operations.md) の「保護の設定」）。司令塔が保護の設定（`applyProtection`）を処理して書き、掛けた後のずれを点検して `drift` を書く。まだ掛けていなければ `appliedAt` が無い
+  - `requiredChecks`: 必須にしたチェックの名前（`applyProtection` の `requiredChecks`）。`rulesetId`: 掛けたルールセットの id
+  - `replaced`・`remaining`: 掛けたときに外した・外せずに残った、重なる保護（`{ "kind": "classic" | "ruleset" | "organizationRuleset", "name" }`。`classic` の `name` はパターン）
+  - `drift`: 掛けた後のずれ（`{ "foundAt", "problems": [人が読む文] }`）。ずれていなければ `null`。ずれの中身が変わったときだけ書き直す
 - `build` は、ビルドの設定（段階 3）。人が設定を入れる意図（`configureRepository`）で書く（入れ方は [operations.md](operations.md) の「ビルドの設定の入れ方」）。形は `protocol/schemas/repository-build.schema.json`（Swift は `RepositoryFile.Build`）
   - `baseBranch`: 作業ブランチの元で、最終 PR の向き先。無ければ develop
   - `xcode`: ビルドとテストの設定（Swift は `AskHubProtocol` の `BuildSettings`）。`project`（`.xcodeproj` か `.xcworkspace` の、リポジトリの直下からの相対パス）・`generate`（ビルドの前にプロジェクトを作る道具。`"xcodegen"` なら、ワーカーが作業場所の直下で `xcodegen generate` を流す。無ければリポジトリにあるプロジェクトをそのまま使う）・`scheme`・`destinations`（`{ "platform": "iOS" | "visionOS", "deviceType", "osVersion" }` か `{ "platform": "macOS" }`。並べた順に流す）・`testLight`・`testFull`（`testPlan`・`onlyTesting`・`skipTesting`。無ければ全部）。`xcodebuild` の引数とパスに使うので、`-` で始まる値・制御文字・リポジトリの外を指すパスを受け付けない
@@ -648,7 +659,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空の見込み。終わっていない epic があれば断る（段階 4 の 4 で作る） |
-| `applyProtection` | リポジトリ（封筒の `repo`） | — | 保護の設定（形は段階 4 の 4 で決める）。司令塔が管理用のトークンで掛ける |
+| `applyProtection` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `requiredChecks`（必須にするチェックの名前。1〜20 個・重ならない。`payloads/applyProtection.schema.json`）。司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛けてから重なる保護を外し、`repo.json` の `protection` を書く。管理用のトークンが無い・private のリポジトリなどは理由を付けて断る |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
