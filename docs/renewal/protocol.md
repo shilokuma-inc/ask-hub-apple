@@ -112,6 +112,10 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。`coderabbitai[bot]` など）。無ければ空
   - `screenshots`: 判断のカードのスクショの撮り方（Swift は `ScreenshotSettings`）。`scenes`（撮れる画面の一覧のファイルの、リポジトリの直下からの相対パス。`.json`）と `destination`（撮る Simulator。`destinations` と同じ形で、macOS はまだ撮らない）。無ければ撮らない（[flows.md](flows.md) の「スクショ」）
 - `build` が無いリポジトリでは、開始を断る
+- `removedAt`: 対象から外した時刻（`removeRepository`）。外していなければ省くか `null`。外しても `repos/<owner>/<repo>/` のファイルは消さない
+  - 外したリポジトリには、依頼・開始・ビルドの設定を受け付けない。司令塔はアイコンを読みに行かない。クライアントは一覧から外し、「対象に加える」の候補に戻す
+  - もう一度 `addRepository` を送ると、印を外して戻る（`build` などの設定もそのまま戻る）
+  - 終わった epic は、ほかのリポジトリと同じく 30 日後に `archive/` へ移す
 - `icon`: 対象のアプリのアイコン（Swift は `RepositoryFile.AppIcon`）。司令塔が対象のリポジトリの base（`build.baseBranch`。`build` が無ければ既定のブランチ）から取り出し、256px の PNG にして `icon.png` に置く（[architecture.md](architecture.md) の「対象のアプリのアイコン」）。まだ取り出していない・見つからないなら `null`（クライアントは頭文字を出す）
   - `source`: 取り出した元（Icon Composer の `.icon` か、Asset Catalog の `.appiconset` のフォルダ）の、リポジトリの直下からのパス
   - `sourceTree`: 元のフォルダの git の tree の sha。変わったときだけ書き出し直す
@@ -662,7 +666,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
-| `removeRepository` | リポジトリ（封筒の `repo`） | — | 空の見込み。終わっていない epic があれば断る（段階 4 の 4 で作る） |
+| `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
 | `applyProtection` | リポジトリ（封筒の `repo`） | — | 保護の設定（形は段階 4 の 4 で決める）。司令塔が管理用のトークンで掛ける |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |

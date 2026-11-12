@@ -73,6 +73,11 @@ public struct RepositoryFile: StateFile {
     /// 対象のアプリのアイコン。まだ取り出していない・見つからないなら nil（クライアントは頭文字を出す）
     public var icon: AppIcon?
     public var addedAt: Timestamp
+    /// 対象から外した時刻（`removeRepository`）。外していなければ nil。外してもファイルは消さず、加え直すと nil に戻す（設定はそのまま戻る）
+    public var removedAt: Timestamp?
+
+    /// 対象から外したか。外したリポジトリには、依頼・開始・ビルドの設定を受け付けない
+    public var isRemoved: Bool { removedAt != nil }
 
     public init(
         repo: RepositoryFullName,
@@ -82,7 +87,8 @@ public struct RepositoryFile: StateFile {
         protection: Protection = Protection(),
         build: Build? = nil,
         icon: AppIcon? = nil,
-        addedAt: Timestamp
+        addedAt: Timestamp,
+        removedAt: Timestamp? = nil
     ) {
         self.repo = repo
         self.platform = platform
@@ -92,6 +98,7 @@ public struct RepositoryFile: StateFile {
         self.build = build
         self.icon = icon
         self.addedAt = addedAt
+        self.removedAt = removedAt
     }
 
     public var violations: [String] {

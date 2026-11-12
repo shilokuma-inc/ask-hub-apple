@@ -72,6 +72,11 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: AddRepositoryIntent.kind, repo: repo, payload: ["platform": .string(platform.rawValue)])
     }
 
+    /// 対象から外す（終わっていない epic があれば司令塔が断る。状態リポジトリのファイルは残る）
+    public static func removeRepository(_ repo: RepositoryFullName) -> Self {
+        Self(kind: RemoveRepositoryIntent.kind, repo: repo)
+    }
+
     /// ビルドの設定を入れる（対象に加えた後に送る。`repo.json` の `build` をまるごと置き換える）
     public static func configureRepository(_ repo: RepositoryFullName, build: RepositoryFile.Build) -> Self {
         Self(kind: ConfigureRepositoryIntent.kind, repo: repo, payload: ConfigureRepositoryIntent.payload(for: build))
