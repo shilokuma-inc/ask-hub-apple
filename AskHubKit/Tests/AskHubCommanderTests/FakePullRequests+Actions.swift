@@ -18,9 +18,11 @@ extension FakePullRequests {
     func setState(number: Int, to newState: PullRequest.State) async throws(PullRequestError) {
         let result = update { state -> Result<Void, PullRequestError> in
             if newState == .open, !state.reopenFailures.isEmpty { return .failure(state.reopenFailures.removeFirst()) }
+            let lost = newState == .closed && !state.closeFailures.isEmpty ? state.closeFailures.removeFirst() : nil
+            if let lost, !lost.applied { return .failure(lost.error) }
             state.stateChanges.append((number, newState))
             state.pulls[number]?.state = newState
-            return .success(())
+            return lost.map { .failure($0.error) } ?? .success(())
         }
         try result.get()
     }

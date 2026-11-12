@@ -232,9 +232,10 @@ final class FakePullRequests: PullRequestOperations {
         var workflowRuns: [[WorkflowRun]] = [[]]
         var workflowRunReads = 0
         var jobCounts: [Int: Int] = [:]
-        /// 閉じた・開き直した PR（番号と状態）と、開き直すときに先に投げる失敗（1 回ずつ使う）
+        /// 閉じた・開き直した PR（番号と状態）と、閉じる・開き直すときに投げる失敗（1 回ずつ使う。`applied` なら閉じてから投げる）
         var stateChanges: [(number: Int, state: PullRequest.State)] = []
         var reopenFailures: [PullRequestError] = []
+        var closeFailures: [(applied: Bool, error: PullRequestError)] = []
     }
 
     private let state: OSAllocatedUnfairLock<State>

@@ -74,6 +74,52 @@ struct StalledRunsTests {
         #expect(fixture.pulls.current.stateChanges.map(\.state) == [.closed])
     }
 
+    @Test func waitsRetryAfterWhenReopeningIsRateLimited() async throws {
+        let checks = Array(repeating: Self.missing, count: 11) + [CheckSummary(verdict: .passed)]
+        let fixture = try await fixture(checks: checks, runs: [[Self.run(100)]], jobs: [100: 0], reviews: [Self.noFindings])
+        fixture.pulls.update { $0.reopenFailures = [.rateLimited(retryAfter: .seconds(90))] }
+        let result = try await review(fixture)
+        #expect(result.outputs?.verdict == .merged)
+        #expect(fixture.sleeper.waits.contains(.seconds(90)))
+        #expect(!fixture.sleeper.waits.contains(ReviewTaskRunner.reopenRetryWait))
+    }
+
+    @Test func reopensWhenResponseToClosingIsLost() async throws {
+        // GitHub は閉じたが、応答が届かなかった。読み直して閉じていれば、開き直す
+        let checks = Array(repeating: Self.missing, count: 11) + [CheckSummary(verdict: .passed)]
+        let fixture = try await fixture(checks: checks, runs: [[Self.run(100)]], jobs: [100: 0], reviews: [Self.noFindings])
+        fixture.pulls.update { $0.closeFailures = [(applied: true, error: .transport("URLError -1005"))] }
+        let result = try await review(fixture)
+        #expect(result.outputs?.verdict == .merged)
+        #expect(fixture.pulls.current.stateChanges.map(\.state) == [.closed, .open])
+    }
+
+    @Test func stopsWhenClosingIsNotApplied() async throws {
+        let fixture = try await fixture(checks: [Self.missing], runs: [[Self.run(100)]], jobs: [100: 0])
+        fixture.pulls.update { $0.closeFailures = [(applied: false, error: .serverError(status: 502))] }
+        let result = try await review(fixture)
+        #expect(result.failure?.failureClass == .githubOutage)
+        #expect(result.failure?.message.contains("CI を起こし直すために子 PR #41 を閉じる") == true)
+        #expect(fixture.pulls.current.stateChanges.isEmpty)
+        #expect(fixture.pulls.current.pulls[41]?.state == .open)
+    }
+
+    @Test func doesNotReopenPullRequestClosedWhileWaiting() async throws {
+        let fixture = try await fixture(checks: [Self.missing], runs: [[Self.run(100)]], jobs: [100: 0])
+        // 始めに読んだ後、待っている間に人が閉じた
+        let reads = OSAllocatedCounter()
+        fixture.pulls.update { state in
+            state.onRead = { pull in
+                if reads.increment() > 1 { pull.state = .closed }
+            }
+        }
+        let result = try await review(fixture)
+        #expect(result.failure?.failureClass == .unexpected)
+        #expect(result.failure?.message.contains("子 PR #41 が、チェックを待っている間に閉じられた") == true)
+        #expect(fixture.pulls.current.stateChanges.isEmpty)
+        #expect(fixture.pulls.current.pulls[41]?.state == .closed)
+    }
+
     // MARK: - 開き直しても始まらない
 
     @Test func handsOverWhenNewRunAlsoStalls() async throws {
