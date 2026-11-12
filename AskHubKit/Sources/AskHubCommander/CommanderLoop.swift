@@ -271,7 +271,8 @@ public actor CommanderLoop {
         "decision": DecisionHandler(),
         "approveMerge": ApproveMergeHandler(),
         "instructFinal": InstructFinalHandler(),
-        "humanTaskDone": HumanTaskDoneHandler()
+        "humanTaskDone": HumanTaskDoneHandler(),
+        "verify": VerifyHandler()
     ]
 
     // MARK: - 通知
