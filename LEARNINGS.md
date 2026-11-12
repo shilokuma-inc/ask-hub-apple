@@ -187,6 +187,9 @@
   止まった古い実行は queued のまま残るので、開き直した後は、それより新しい実行（id は作られた順に大きくなる）だけを見る。ワーカーは待つチェックが 10 分出なければ実行を読み、止まっていれば 1 回の待ちで 1 回だけ開き直す（2026-11-12、#1073）
 - 移したリポジトリのルールセット `askhub-protect` は develop・main・`release/**` のブランチだけが対象なので、タグの作成（`git push origin refs/tags/v1.0.0`・Git Data API の `POST git/refs`）は止めない。注釈付きのタグは tagger の名前とアドレスが public に残るので、手で付けるときもリポジトリのコミットと同じ（noreply の）アドレスにする（2026-11-12、OshiCon 1.0.0）
 - `GET /repos/{o}/{r}/actions/runs?created=<開始>..<終わり>`（ISO 8601 の範囲）で、作られた時刻で実行を絞れる。ビルドを上げた Upload の実行を、上げた時刻から探すのに使う（2026-11-12、配信の検知）
+- テンプレート由来のリポジトリを移すときは、CLAUDE.md と `build.yml` だけでなく、README の「ブランチ運用と CI」の表と説明も直す。
+  表の「Pull Request の作成時 ✅」のままだと、`askhub/**` 宛ての子 PR（PR のイベントでは Build が動かない）にも当たるように読める。
+  子 PR と最終 PR（更新でも UI テストまで流す）の行を足し、`.coderabbit.yaml` の「ループには触らせない」のような ralph-loop の言い回しも直す（2026-11-12、shariverse/oshikatsu-countdown-ios#163）
 
 ## ビルド・テスト
 
@@ -739,3 +742,7 @@
   おしかつカウントダウンの 1.0.0 は、ビルド (12) が Upload の実行 13 だった（実行番号の採番に替えたのは実行 20 から）。配信したコミットは、上げた時刻に動いていた Upload の実行で決め、番号は候補が残ったときの絞り込みにだけ使う（2026-11-12、配信の検知）
 - Mac の `presentationSizing(.form)` のシートは、中身にかかわらず 600×520pt ほどで開き、Form の 3 つ目のセクションはスクロールしないと見えない（スクロールバーも出ないので、下に欄があることが分からない）。
   欄を足したシートは Mac で撮って見え方を確かめ、隠れるなら `.page`（720×800pt ほど）にする（2026-11-12、依頼の添付 #1075）
+- 配信した後の版（`MARKETING_VERSION`）のままの develop の Upload は、`Invalid Pre-Release Train. The train version '1.0.0' is closed for new build submissions` と
+  `CFBundleShortVersionString [1.0.0] … must contain a higher version than that of the previously approved version [1.0.0]` で落ち（`EXPORT FAILED`、exit 70）、TestFlight に上がらない。
+  司令塔が配信を見つけて作る次の版の PR（`askhub/version-<次の版>` → develop）がマージされれば通る。司令塔は App Store Connect の鍵（`askhub-commander app-store-connect`）が無いと配信を見つけず、起動のログに出るだけなので、
+  配信の後に develop の Upload がこのエラーで落ちたら、まず鍵の設定と次の版の PR があるかを見る（2026-11-12、OshiCon 1.0.0 → 1.1.0 の #164）
