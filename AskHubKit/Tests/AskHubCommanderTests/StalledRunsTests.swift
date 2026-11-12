@@ -76,12 +76,12 @@ struct StalledRunsTests {
 
     // MARK: - 開き直しても始まらない
 
-    @Test func failsAsGitHubOutageWhenNewRunAlsoStalls() async throws {
+    @Test func handsOverWhenNewRunAlsoStalls() async throws {
         // 開き直した（10 分後）ときにできた新しい実行も、queued のままジョブが 0 個
         let after = [Self.run(100), Self.run(102, event: "pull_request", minutes: 10)]
         let fixture = try await fixture(checks: [Self.missing], runs: [[Self.run(100)], after], jobs: [100: 0, 102: 0])
         let result = try await review(fixture)
-        #expect(result.failure?.failureClass == .githubOutage)
+        #expect(result.failure?.failureClass == .unexpected)
         #expect(result.failure?.message.contains("PR を閉じて開き直した後も queued のままジョブが 0 個で止まっている") == true)
         #expect(result.failure?.message.contains("repo.json") == false)
         // 開き直すのは 1 回だけ。開き直してから 10 分後に諦める

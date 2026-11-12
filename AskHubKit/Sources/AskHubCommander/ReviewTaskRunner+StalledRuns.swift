@@ -100,7 +100,7 @@ extension ReviewTaskRunner {
             return idle ? .fail(messages.notStarted(inspection.runs)) : .wait
         }
         if let stalled = inspection.stalled {
-            // 新しい実行も止まった。GitHub の障害とみなし、待ってからやり直す（やり直しの試行で、もう 1 回開き直す）
+            // 新しい実行も止まった。同じ head で自動では開き直し続けない（やり直しの試行のたびに PR を閉じ直さない）ので、人へ渡す
             return .fail(messages.stalledAgain(stalled))
         }
         let fresh = inspection.runs.filter { $0.id > state.newestRunBeforeReopen }
@@ -161,8 +161,8 @@ private struct StallMessages {
 
     func stalledAgain(_ run: WorkflowRun) -> AttemptFailure {
         let message = "\(target.subject.name)の GitHub Actions の実行（\(Self.describe(run))）が、PR を閉じて開き直した後も queued のままジョブが 0 個で止まっている。"
-            + "GitHub 側で実行が止まっているので、待ってからやり直す"
-        return AttemptFailure(failureClass: .githubOutage, message: message)
+            + "GitHub 側で実行が止まっている。GitHub の様子（githubstatus.com の Actions）を確かめてから、もう一度試す（もう 1 回開き直す）"
+        return AttemptFailure(failureClass: .unexpected, message: message)
     }
 
     func noNewRun(_ stalled: WorkflowRun?) -> AttemptFailure {
