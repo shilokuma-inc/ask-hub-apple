@@ -31,6 +31,7 @@ extension AskHubCommanderMain {
             ),
             log: log
         )
+        let releases = releaseWatch(runtime: runtime, context: context, transport: transport)
         let loop = CommanderLoop(
             context: context,
             settings: .init(
@@ -47,11 +48,40 @@ extension AskHubCommanderMain {
             epicWorkspace: runtime.workspace,
             taskRunners: runtime.taskRunners(context: context, settings: TaskRepositorySettings.reader(context: context)),
             tidy: { await cleanUp.run() },
-            appIcons: appIcons
+            appIcons: appIcons,
+            releases: releases
         )
         let pid = ProcessInfo.processInfo.processIdentifier
         log("起動しました（版 \(CommanderVersion.build.summary)、pid \(pid)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
         await loop.run()
+    }
+
+    /// App Store での配信を見つけ、リリースの後作業を進めるもの。App Store Connect の鍵の設定が無ければ、配信は見つけず、
+    /// 前に見つけた版の後作業だけを進める
+    private static func releaseWatch(runtime: MachineRuntime, context: CommanderContext, transport: any HTTPTransport) -> ReleaseWatch {
+        let stores = (runtime.configuration.appStoreConnect ?? []).map { configuration in
+            AppStoreConnectClient(configuration: configuration, secrets: runtime.secrets, transport: transport)
+        }
+        if stores.isEmpty { log("App Store Connect の鍵の設定が無いので、配信を見つけない（askhub-commander app-store-connect で登録する）") }
+        for store in runtime.configuration.appStoreConnect ?? [] {
+            let state = AppStoreConnectKey.state(of: store, in: runtime.secrets)
+            if state != .ok {
+                log("Keychain の App Store Connect の鍵 \(store.keyId) が \(state.rawValue)。配信は見つけられずに待つ（app-store-connect で登録し直す）")
+            }
+        }
+        let token = MachineRuntime.githubTokens(in: runtime.secrets)
+        return ReleaseWatch(
+            context: context,
+            stores: stores,
+            sources: runtime.workspace,
+            hosting: GitHubReleaseHosting(transport: transport, token: token),
+            drafter: ClaudeReleaseNotesDrafter(
+                client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
+                sources: runtime.workspace
+            ),
+            authors: GitHubCommitAuthors(token: token, log: log),
+            log: log
+        )
     }
 
     /// 進行を止めるものを知らせるもの。APNs の設定が無ければ nil（知らせない）

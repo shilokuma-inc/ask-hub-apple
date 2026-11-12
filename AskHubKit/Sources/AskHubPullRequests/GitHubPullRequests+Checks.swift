@@ -187,4 +187,11 @@ enum GitHubDate {
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return fractional.date(from: text)
     }
+
+    /// Git Data API に渡す時刻（`2026-11-25T01:00:00Z`）
+    static func format(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: date)
+    }
 }

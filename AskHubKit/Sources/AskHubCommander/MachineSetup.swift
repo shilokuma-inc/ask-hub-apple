@@ -129,3 +129,39 @@ public struct APNsSetup: Equatable, Sendable {
         return (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(Stored.self, from: $0) }?.apns
     }
 }
+
+/// `askhub-commander app-store-connect` の引数（App Store Connect の API キーを Keychain に置き、鍵の id と Issuer ID を設定に足す）
+public struct AppStoreConnectSetup: Equatable, Sendable {
+    public var configuration: AppStoreConnectConfiguration
+    /// App Store Connect から落とした .p8 のパス。中身は Keychain にだけ置き、設定には書かない
+    public var keyFile: String
+
+    public static func parse(_ arguments: [String]) throws(MachineSetup.Failure) -> Self {
+        let values = try MachineSetup.flags(arguments, known: ["key-id", "issuer-id", "key-file"])
+        let configuration = AppStoreConnectConfiguration(
+            keyId: try MachineSetup.required("key-id", in: values),
+            issuerId: try MachineSetup.required("issuer-id", in: values)
+        )
+        if let problem = configuration.problems.first { throw .init(message: problem) }
+        return Self(configuration: configuration, keyFile: try MachineSetup.required("key-file", in: values))
+    }
+
+    /// 設定の一覧に足す（同じ鍵の id があれば置き換える）
+    public static func adding(
+        _ configuration: AppStoreConnectConfiguration,
+        to list: [AppStoreConnectConfiguration]?
+    ) -> [AppStoreConnectConfiguration] {
+        var list = (list ?? []).filter { $0.keyId != configuration.keyId }
+        list.append(configuration)
+        return list
+    }
+
+    /// 前の設定に書いた App Store Connect の設定。setup を流し直しても残す（.p8 は Mac に残さないので、登録し直せないことがある）。
+    /// 設定のほかの欄の形が変わっていても、この欄だけを読む
+    public static func preserved(at url: URL) -> [AppStoreConnectConfiguration]? {
+        struct Stored: Decodable {
+            var appStoreConnect: [AppStoreConnectConfiguration]?
+        }
+        return (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(Stored.self, from: $0) }?.appStoreConnect
+    }
+}
