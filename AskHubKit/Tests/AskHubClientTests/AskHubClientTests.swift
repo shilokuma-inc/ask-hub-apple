@@ -146,6 +146,8 @@ struct AskHubClientTests {
             finalChecks: ["build / build"]
         )
         #expect(try ConfigureRepositoryIntent(envelope: envelope(.configureRepository(Self.repo, build: build))).build == build)
+        let protection = try ApplyProtectionIntent(envelope: envelope(.applyProtection(Self.repo, requiredChecks: ["build / build", "lint"])))
+        #expect(protection.requiredChecks == ["build / build", "lint"])
         let job = JobTarget(repo: Self.repo, epic: epic, job: ULID.generate(at: Self.now), attempt: 2)
         #expect(try RetryJobIntent(envelope: envelope(.retry(job))).target == job)
         #expect(try GiveUpJobIntent(envelope: envelope(.giveUp(job))).target == job)

@@ -63,6 +63,16 @@ extension AskHubMain {
         }
     }
 
+    /// 保護の設定の必須のチェック（`--checks` はカンマ区切り。無ければ `build / build`）
+    static func requiredChecks(_ arguments: CommandArguments) throws -> [String] {
+        let checks = arguments.values["checks"].map { text in
+            text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        } ?? ProtectionPolicy.defaultRequiredChecks
+        let problems = ProtectionPolicy.problems(ofRequiredChecks: checks)
+        guard problems.isEmpty else { throw CommandArguments.Failure(message: "--checks: \(problems.joined(separator: "、"))") }
+        return checks
+    }
+
     /// 人の意図を作って送る
     static func send(_ command: String, _ arguments: CommandArguments) async throws {
         let (draft, attachments) = command == "human-task-done" ? try humanTaskDone(arguments) : (try draft(command, arguments), [])
@@ -79,6 +89,9 @@ extension AskHubMain {
         case "configure-repository":
             try arguments.only(["repo", "file"])
             return .configureRepository(try arguments.repository(), build: try build(at: try arguments.string("file")))
+        case "apply-protection":
+            try arguments.only(["repo", "checks"])
+            return .applyProtection(try arguments.repository(), requiredChecks: try requiredChecks(arguments))
         case "request":
             try arguments.only(["repo", "title", "body"])
             return .request(repo: try arguments.repository(), title: try arguments.string("title"), body: arguments.values["body"] ?? "")
