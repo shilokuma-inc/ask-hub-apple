@@ -17,6 +17,11 @@
       "additionalProperties": false,
       "properties": {
         "worker": { "type": "string", "minLength": 1 },
+        "compatibility": {
+          "description": "ワーカーの互換の番号（司令塔とワーカーの間の決まりを変えたときだけ上げる）。書かない Mac（前の版）もある",
+          "type": "integer",
+          "minimum": 1
+        },
         "claude": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
         "xcode": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
       }
@@ -30,6 +35,16 @@
       "additionalProperties": false,
       "properties": { "claude": { "type": "integer", "minimum": 0 }, "build": { "type": "integer", "minimum": 0 } }
     },
-    "selfCheck": { "$ref": "self-check.schema.json" }
+    "selfCheck": { "$ref": "self-check.schema.json" },
+    "refusal": {
+      "description": "新しいジョブを引き受けていない理由。引き受けているときは書かない（動かしているジョブは手放さない）",
+      "type": "object",
+      "required": ["reason", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "reason": { "enum": ["incompatible"] },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
   }
 }

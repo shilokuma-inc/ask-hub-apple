@@ -16,6 +16,11 @@
       "additionalProperties": false,
       "properties": {
         "commander": { "type": "string", "minLength": 1 },
+        "compatibility": {
+          "description": "司令塔の互換の番号。ワーカーは自分の番号と照らし合わせ、合わなければ新しいジョブを引き受けない。書かない司令塔（前の版）もある",
+          "type": "integer",
+          "minimum": 1
+        },
         "claude": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
       }
     },

@@ -9,7 +9,8 @@
         "mac": "mac-mini",
         "seenAt": "2026-11-03T10:05:00Z",
         "versions": {
-          "commander": "1.0.0",
+          "commander": "0.2.0",
+          "compatibility": 1,
           "claude": "2.1.316"
         },
         "selfCheck": {
@@ -173,6 +174,27 @@
         "versions": {
           "commander": "1.0.0",
           "claude": "2.1.316"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "compatibility-zero",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "commander": "1.0.0",
+          "compatibility": 0
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
         }
       },
       "schemaValid": false,
