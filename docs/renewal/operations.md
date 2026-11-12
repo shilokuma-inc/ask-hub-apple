@@ -329,6 +329,36 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
 - git の credential helper と GitHub の要求（状態リポジトリ・PR・Discussion など）は、要求のたびに Keychain から持ち主のトークンを読むので、次の要求から使う（設定の持ち主の一覧は見ない）
 - 生きている印の自己診断（`selfCheck.githubTokens`）は、印を書くたびに設定の `githubOwners` を読み直すので、足した持ち主は次の印（10 分以内）に様子と期限が出る。設定を読めないときは前に読めた一覧のまま。状態リポジトリ（先頭の持ち主）は起動したときのまま
 
+### 管理用のトークン（持ち主ごと）
+
+保護の設定（ルールセット）・Discussions を有効にする・ワークフローのファイルを変える PR などの管理の操作は、毎日のトークン（上の「GitHub のトークン（持ち主ごと）」）ではできない。
+毎日のトークンには Administration・Workflows を付けず、常時オンの Mac の司令塔の Keychain に、持ち主ごとの管理用のトークンを別に置く（[security.md](security.md) の「管理用のトークン」。2026-11-12 に決めた）。
+
+- 使うのは司令塔だけで、署名した人の意図を処理するときだけ（保護の設定・対象に加えるときの GitHub 側の準備）。自動では使わない
+- git の credential helper（`git-credential`）・Claude のジョブ・ワーカーには渡さない。Keychain の名前（`github-admin-token/<持ち主>`）も読む部品（`GitHubAdminTokens`）も、毎日のトークンとは別にしてある
+- 管理用のトークンが無い持ち主のリポジトリへの管理の操作は、「管理用のトークンが無い（`askhub-commander admin-token <持ち主>` で入れる）」の理由で断り、クライアントに出す。毎日の仕事（依頼から最終 PR まで）は止めない
+
+作り方（毎日のトークンと同じ画面で、別のトークンとして作る）:
+
+1. GitHub の Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token。名前は毎日のものと見分けがつくもの（`askhub-admin-<持ち主>` など）
+2. Resource owner に持ち主を選ぶ。Repository access は Only select repositories で、その持ち主の対象のリポジトリを選ぶ（状態リポジトリは要らない）
+3. Repository permissions:
+
+   | 権限 | 付け方 | 使う所 |
+   | --- | --- | --- |
+   | Administration | Read and write | ルールセット・クラシックの保護・Discussions を有効にする |
+   | Contents | Read and write | ワークフローの直しのブランチとコミット |
+   | Pull requests | Read and write | ワークフローの直しの PR を出す・マージする |
+   | Workflows | Read and write | `.github/workflows/` のファイルを変える |
+   | Discussions | Read-only | カテゴリ「Ideas」があるかを確かめる |
+   | Secrets・Environments | Read and write | Secrets の登録（後で足す。付けておけば作り直さなくてよい） |
+   | Metadata | Read-only（自動で付く） | |
+
+4. 期限を決めて作り、常時オンの Mac のログインしている端末で `askhub-commander admin-token <持ち主>` を流して貼る（ssh からは Keychain を読めない）。値はほかの場所に残さない
+   - 毎日のトークンと同じ値は断る（逆に、`token <持ち主>` に管理用のトークンと同じ値を貼っても断る）
+   - 持ち主は設定の `adminOwners` に足す。常駐を読み込み直さなくても、次の管理の操作から使い、次の生きている印（10 分以内）の自己診断（`selfCheck.githubAdminTokens`）に様子と期限が出る。`setup` を流し直しても `adminOwners` は残る
+5. 対象のリポジトリを足したら、そのリポジトリを管理用のトークンの Repository access にも足す（足し忘れると、管理の操作が 404・403 で断られる）
+
 ### トークンの期限
 
 GitHub のトークン（持ち主ごと）と Claude の setup-token には期限がある。切れると、その Mac の仕事（状態リポジトリのトークンなら生きている印も）が止まるので、司令塔とワーカーが期限を生きている印の自己診断に書き（値は書かない。[protocol.md](protocol.md) の「macs/<mac>.json」）、クライアントで知らせる。
@@ -336,19 +366,22 @@ GitHub のトークン（持ち主ごと）と Claude の setup-token には期�
 - GitHub のトークン: 生きている印を書くたび（10 分ごと）に、持ち主ごとのトークンで GitHub の `/rate_limit`（REST の上限に数えられない）を呼び、応答の見出し `github-authentication-token-expiration`（`2027-10-23 12:25:03 UTC` の形）から期限を読む
   - 見出しが無いのは、期限の無いトークン。401 が返ったら使えない（前に読んだ期限を過ぎていれば期限切れ）。つながらないときは前に読んだ期限のまま
   - 問い合わせる持ち主は、印を書くたびに設定（`githubOwners`）から読み直す。`token <持ち主>` で足した持ち主も、読み込み直さずに次の印から期限が出る
+- 管理用のトークン（司令塔だけ）: 毎日のトークンと同じ読み方で、設定の `adminOwners` の持ち主ごとに期限を読み、自己診断の `githubAdminTokens` に書く。毎日のトークンのまとめ（`githubToken`）には入れない。上限の残りを見る 1 分ごとの問い合わせには使わない
 - Claude の setup-token: 作った日から 1 年使える。`setup`・`claude-token` で新しい値を入れた日を `~/Library/Application Support/AskHub/<役割>/claude-token.json` に記録し（日付だけ）、その 1 年後を期限とする
   - 記録を始める前に入れた setup-token は、期限が分からない（クライアントに「期限は分かりません」と出る）。`claude setup-token` で作り直して `claude-token` で入れると記録される
 - クライアントは、Mac の画面にトークンごとの残り日数を出す
   - 期限まで 14 日を切ったら、「あなたの番」（時間のあるときに）に入れ直すコマンドを出す
   - 期限が切れた・使えないトークンは、進行を止めるものとして「止まっています」と出す（状態リポジトリのトークンが切れた Mac は印を書けずにオフラインになるが、オフラインが 7 日を超えるまでは出す）
+  - 管理用のトークンは、切れても毎日の仕事は止まらないので、「止まっています」にはせず、「あなたの番」（時間のあるときに）に「管理用のトークンを入れ直す」と出す。Mac が新しいループを受けない理由にもしない
 - 入れ直し（その Mac の端末で流す。常時オンの Mac は `askhub-commander`、ほかの Mac は `askhub-worker`）
 
   | トークン | 作り直し | 入れ直すコマンド |
   | --- | --- | --- |
   | GitHub（持ち主ごと） | 上の「GitHub のトークン（持ち主ごと）」の 1〜5（Regenerate でもよい） | `token <持ち主>`。常駐を読み込み直さなくても、次の要求から使い、次の印の自己診断に期限が出る |
+  | 管理用（持ち主ごと。常時オンの Mac だけ） | 上の「管理用のトークン（持ち主ごと）」の 1〜4（Regenerate でもよい） | `askhub-commander admin-token <持ち主>`。読み込み直さなくてよい |
   | Claude の setup-token | 人の Mac で `claude setup-token` | `claude-token`。常駐のループは起動したときの値を使うので、読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`、ワーカーは `…askhub.worker`。ターミナルで流しているワーカーは流し直す） |
 
-- `check` で、持ち主ごとの GitHub のトークンと Claude の setup-token の期限を確かめられる
+- `check` で、持ち主ごとの GitHub のトークン・管理用のトークン（司令塔）と Claude の setup-token の期限を確かめられる
 
 ### 非常口（`askhub`）
 

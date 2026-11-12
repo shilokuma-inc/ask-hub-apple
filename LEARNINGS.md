@@ -584,6 +584,8 @@
   SwiftUI は色を裏のスレッド（`com.apple.SwiftUI.AsyncRenderer`）で決めることがあり、そのとき実行時の確かめ（`_swift_task_checkIsolatedSwift`）で `EXC_BREAKPOINT` で落ちる。処理を `@Sendable` にして縛らない
 - ジョブの `attempts` は、試行の前に人に渡したジョブ（直しの上限を超えた `fixTask`・`fixFinalPullRequest`）では 0 のまま `waitingHuman` になる。試行の番号を読む・使うところでは 0 を考える。
   `StatePath.attempt` は 1 以上の precondition で止まり（`askhub status` が止まった。#1039）、質問の版の読み方（`AnswerIntent.version`。1 以上）を流用した `JobTarget` は、やり直しの `targetVersion` の `"0"` を断っていた（2026-11-12、#1043）
+- 三項演算子で「`@Sendable () -> [String]` を返す関数の呼び出し」と「閉包のリテラル（`{ [] }`）」を選ぶと、Swift 6 のコンパイラが
+  `failed to produce diagnostic for expression` で落ちる（型の注釈を付けても同じ。2026-11-13、`MachineRuntime`）。`var` に既定の閉包を入れて `if` で差し替えるか、関数に分ける
 
 ## シェルスクリプト
 
