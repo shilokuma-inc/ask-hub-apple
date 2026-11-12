@@ -4,6 +4,7 @@ import AskHubCommander
 import AskHubCommands
 import AskHubKeychain
 import AskHubProtocol
+import AskHubPullRequests
 import AskHubStateStore
 import Foundation
 
@@ -49,7 +50,14 @@ extension AskHubCommanderMain {
             taskRunners: runtime.taskRunners(context: context, settings: TaskRepositorySettings.reader(context: context)),
             tidy: { await cleanUp.run() },
             appIcons: appIcons,
-            releases: releases
+            releases: releases,
+            // ずれの点検は自動で行うので、毎日のトークンで読むだけにする。管理用のトークンは人の意図の処理にだけ渡す
+            protection: ProtectionWatch(
+                context: context,
+                github: { GitHubPullRequests(repository: $0, transport: transport, token: MachineRuntime.githubTokens(in: secrets)) },
+                log: log
+            ),
+            admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) }
         )
         let pid = ProcessInfo.processInfo.processIdentifier
         log("起動しました（版 \(CommanderVersion.build.summary)、pid \(pid)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
