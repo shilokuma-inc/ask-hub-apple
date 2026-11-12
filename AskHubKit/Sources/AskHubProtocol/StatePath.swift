@@ -48,6 +48,16 @@ public enum StatePath {
         "\(epicDirectory(repo, epic))/screenshots/\(commit)-\(scene).png"
     }
 
+    /// App Store で配信した版の記録を置くディレクトリ（`releases/<版>.json`）
+    public static func releases(_ repo: RepositoryFullName) -> String {
+        "\(repositoryDirectory(repo))/releases"
+    }
+
+    /// App Store で配信した版と、その後作業の進み具合
+    public static func release(_ repo: RepositoryFullName, _ version: MarketingVersion) -> String {
+        "\(releases(repo))/\(version.rawValue).json"
+    }
+
     /// リポジトリの epic を置くディレクトリ（`epics/<epic>/`）
     public static func epics(_ repo: RepositoryFullName) -> String {
         "\(repositoryDirectory(repo))/epics"
