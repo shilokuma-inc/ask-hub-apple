@@ -11,6 +11,8 @@ struct StateDocuments {
         var readiness: ReadinessFile?
         /// 人が決めていない判断。最終 PR を出した epic のものだけ読む
         var decisions: DecisionsFile?
+        /// 実機確認への答え。マージした epic のものだけ読む（答えが 1 つも無ければ nil）
+        var verifications: VerificationsFile?
         /// ジョブ。終わった（マージした・やめた）epic のものは読まない
         var jobs: [JobFile] = []
         /// 試行（古い順）。人の対応を待っているジョブはすべて、動いているジョブと、最後に終わった最終 PR のレビューは最後の 1 つだけ
@@ -133,21 +135,15 @@ struct StateReader {
             readiness: readinessPart.value
         )
         async let decisions = readDecisions(of: epic)
+        async let verifications = readVerifications(of: epic)
         let jobs = await readJobsAndAttempts(of: epic)
-        let decisionsPart = await decisions
+        let (decisionsPart, verificationsPart) = await (decisions, verifications)
         documents.decisions = decisionsPart.value
+        documents.verifications = verificationsPart.value
         documents.jobs = jobs.value.jobs
         documents.attempts = jobs.value.attempts
-        failures += decisionsPart.failures + jobs.failures
+        failures += decisionsPart.failures + verificationsPart.failures + jobs.failures
         return Part(value: documents, failures: failures)
-    }
-
-    /// 判断のカードは最終 PR の確認で出す。仮決めは実装の間も増えるが、最終 PR を出すまでは画面に出さないので読まない
-    private func readDecisions(of epic: EpicFile) async -> Part<DecisionsFile?> {
-        guard epic.finalPullRequest != nil, epic.stage != .abandoned else {
-            return Part(value: nil)
-        }
-        return await read(DecisionsFile.self, at: StatePath.decisions(epic.repo, epic.id))
     }
 
     /// 最後に終わった最終 PR のレビュー（試行に判定を書いたもの）
@@ -387,6 +383,26 @@ struct StateReader {
         default:
             "読めませんでした"
         }
+    }
+}
+
+// MARK: - 最終 PR の後のファイル
+
+extension StateReader {
+    /// 判断のカードは最終 PR の確認で出す。仮決めは実装の間も増えるが、最終 PR を出すまでは画面に出さないので読まない
+    private func readDecisions(of epic: EpicFile) async -> Part<DecisionsFile?> {
+        guard epic.finalPullRequest != nil, epic.stage != .abandoned else {
+            return Part(value: nil)
+        }
+        return await read(DecisionsFile.self, at: StatePath.decisions(epic.repo, epic.id))
+    }
+
+    /// 実機確認はマージした後に出す
+    private func readVerifications(of epic: EpicFile) async -> Part<VerificationsFile?> {
+        guard epic.stage == .merged else {
+            return Part(value: nil)
+        }
+        return await read(VerificationsFile.self, at: StatePath.verifications(epic.repo, epic.id))
     }
 }
 

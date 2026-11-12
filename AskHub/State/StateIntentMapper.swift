@@ -13,7 +13,8 @@ struct StateIntentMapper {
     /// 人に渡されたジョブへの操作は、最後に読んだ状態の「対処が要ります」に出した操作だけ（やり直す・やめる）、取り下げは開始する前の epic だけ、
     /// 最終 PR への操作（判断のカードへの答え・マージの承認・指示）は最終 PR を出した epic だけ、
     /// 人がする作業を終えたことは、ゴールの確認の待ちと実装の間の、終えていない作業だけ送れる。
-    /// 一時停止・再開・引き継ぎは開始した後の epic だけで、引き継ぎは、一時停止していなければ epic の Mac でジョブが動いていないときだけ送れる
+    /// 一時停止・再開・引き継ぎは開始した後の epic だけで、引き継ぎは、一時停止していなければ epic の Mac でジョブが動いていないときだけ送れる。
+    /// 実機確認への答えは、マージした epic の、まだ答えていない項目だけ送れる
     func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
@@ -41,10 +42,10 @@ struct StateIntentMapper {
         case let .handOver(epicID, _):
             index.epics[epicID]?.canHandOver == true
 
-        case let .publishRelease(repositoryID, version, _, _):
-            index.releases[Release.id(repositoryID, version)]?.canPublish == true
+        case .publishRelease, .verify:
+            supportsAfterMerge(intent)
 
-        case .verify, .cleanUp:
+        case .cleanUp:
             false
         }
     }
@@ -66,6 +67,9 @@ struct StateIntentMapper {
     /// 送る形。まとめて OK は、答えの無いカードそれぞれへの OK にする（司令塔は判断のカードへの答えを 1 枚ずつ受け取る）。
     /// 人が見ていなかった答え待ちのカードがあれば（見た後に足された）、どれも送らない
     func drafts(for intent: HumanIntent) throws(ClientServiceError) -> [IntentDraft] {
+        if case let .verify(epicID, itemID, reply) = intent {
+            return try verifyDrafts(epicID: epicID, itemID: itemID, reply: reply)
+        }
         guard case let .acceptAllDecisions(epicID, headCommit, shownIDs) = intent else {
             return [try draft(for: intent)]
         }
@@ -108,6 +112,7 @@ struct StateIntentMapper {
             return try releaseDraft(repositoryID: repositoryID, version: version, notesVersion: notesVersion, notes: notes)
 
         case .acceptAllDecisions, .verify, .cleanUp:
+            // まとめて OK と実機確認は、いくつかの意図になることがあるので `drafts(for:)` で作る
             throw Self.unsupported
         }
     }
@@ -352,7 +357,7 @@ struct StateIntentMapper {
         return text
     }
 
-    private func epic(_ id: Epic.ID) throws(ClientServiceError) -> StateIndex.EpicEntry {
+    func epic(_ id: Epic.ID) throws(ClientServiceError) -> StateIndex.EpicEntry {
         guard let epic = index.epics[id] else {
             throw ClientServiceError(message: "この epic は、状態リポジトリにまだありません。取り直してから送ってください")
         }

@@ -191,7 +191,7 @@ enum InboxBuilder {
         var item = InboxItem(epic: epic, kind: .verification, context: context, route: .deck(.verifications(epic.id)))
         item.urgency = .whenFree
         item.title = "実機で確かめる"
-        item.detail = "TestFlight \(build) · \(ready.count) 項目"
+        item.detail = "\(VerificationItem.buildLabel(build)) · \(ready.count) 項目"
         return [item]
     }
 

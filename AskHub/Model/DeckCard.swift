@@ -220,7 +220,7 @@ enum DeckBuilder {
     static func verificationCards(_ epic: Epic) -> [DeckCard] {
         let items = epic.finalReview?.verifications.filter(\.isReady) ?? []
         return items.map { item in
-            var build = ""
+            var build: String?
             if case .ready(let value) = item.state {
                 build = value
             }
@@ -229,9 +229,10 @@ enum DeckBuilder {
                 epicID: epic.id,
                 repositoryID: epic.repositoryID,
                 content: .verification(item),
-                kindLabel: "実機で確かめる · TestFlight \(build)",
+                kindLabel: "実機で確かめる · \(VerificationItem.buildLabel(build))",
                 title: item.text,
-                detail: "手順: \(item.steps)",
+                // 状態リポジトリの項目（ゴールの完了の条件）には手順が無い
+                detail: item.steps.isEmpty ? "TestFlight に上がった版を入れて、この条件を満たすか確かめてください" : "手順: \(item.steps)",
                 choices: [
                     DeckCard.Choice(
                         id: "confirmed",
