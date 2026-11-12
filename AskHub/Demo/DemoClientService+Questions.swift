@@ -23,6 +23,9 @@ extension DemoClientService {
 
         case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .cleanUp:
             applyOperationIntent(intent)
+
+        case .publishRelease:
+            applyReleaseIntent(intent)
         }
         return SendReceipt()
     }

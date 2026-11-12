@@ -115,7 +115,8 @@ struct DemoData {
             ],
             macs: macs(),
             fetchedAt: now,
-            sourceFailures: []
+            sourceFailures: [],
+            releases: releases()
         )
     }
 

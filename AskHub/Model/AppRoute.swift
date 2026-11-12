@@ -39,6 +39,8 @@ enum AppRoute: Hashable {
     case mac(Mac.ID)
     case cleanup(Mac.ID)
     case repository(TargetRepository.ID)
+    /// App Store で配信した版と、その後作業
+    case release(repositoryID: TargetRepository.ID, version: String)
     /// 終わったもの（マージした・やめた epic）をすべて。進行中には新しいものだけを出す
     case finishedEpics
 }

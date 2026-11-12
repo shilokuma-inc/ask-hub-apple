@@ -26,6 +26,8 @@ struct StateDocuments {
 
     var repositories: [RepositoryFile] = []
     var epics: [EpicDocuments] = []
+    /// App Store で配信した版の記録（`releases/<版>.json`）。リポジトリの順、その中は版の小さい順
+    var releases: [ReleaseFile] = []
     var macs: [MacFile] = []
     var commander: CommanderFile?
     /// 新しい順
@@ -63,6 +65,7 @@ struct StateReader {
     private struct RepositoryPart {
         var repository: RepositoryFile?
         var epics: [StateDocuments.EpicDocuments] = []
+        var releases: [ReleaseFile] = []
         var failures: [SourceFailure] = []
     }
 
@@ -75,6 +78,7 @@ struct StateReader {
         for part in try await repositories.get() {
             part.repository.map { documents.repositories.append($0) }
             documents.epics += part.epics
+            documents.releases += part.releases
             documents.failures += part.failures
         }
         let macsPart = try await macs.get()
@@ -108,19 +112,6 @@ struct StateReader {
             read.append(try part.get())
         }
         return read
-    }
-
-    private func readRepository(_ repo: RepositoryFullName) async throws(StateStoreError) -> RepositoryPart {
-        async let file = read(RepositoryFile.self, at: StatePath.repository(repo))
-        async let listed = Self.capture { () throws(StateStoreError) in try await directories(StatePath.epics(repo)) }
-        let fileRead = await file
-        var part = RepositoryPart(repository: fileRead.value, failures: fileRead.failures)
-        let ids = try await listed.get().compactMap(ULID.init(rawValue:))
-        for epic in await Self.inOrder(ids, { id in await readEpic(id, of: repo) }) {
-            epic.value.map { part.epics.append($0) }
-            part.failures += epic.failures
-        }
-        return part
     }
 
     private func readEpic(_ id: ULID, of repo: RepositoryFullName) async -> Part<StateDocuments.EpicDocuments?> {
@@ -425,5 +416,53 @@ final class ImmutableFileCache {
     func keep(_ paths: Set<String>) {
         envelopes = envelopes.filter { paths.contains($0.key) }
         records = records.filter { paths.contains($0.key) }
+    }
+}
+
+// MARK: - リポジトリごとのファイルと、App Store で配信した版
+
+extension StateReader {
+    private func readRepository(_ repo: RepositoryFullName) async throws(StateStoreError) -> RepositoryPart {
+        async let file = read(RepositoryFile.self, at: StatePath.repository(repo))
+        async let listed = Self.capture { () throws(StateStoreError) in try await directories(StatePath.epics(repo)) }
+        async let releases = readReleases(of: repo)
+        let fileRead = await file
+        var part = RepositoryPart(repository: fileRead.value, failures: fileRead.failures)
+        let ids = try await listed.get().compactMap(ULID.init(rawValue:))
+        for epic in await Self.inOrder(ids, { id in await readEpic(id, of: repo) }) {
+            epic.value.map { part.epics.append($0) }
+            part.failures += epic.failures
+        }
+        let releasesRead = await releases
+        part.releases = releasesRead.value
+        part.failures += releasesRead.failures
+        return part
+    }
+
+    /// App Store で配信した版の記録（版の小さい順）。置き場所と中身（リポジトリ・版）が合うものだけ出す
+    private func readReleases(of repo: RepositoryFullName) async -> Part<[ReleaseFile]> {
+        let directory = StatePath.releases(repo)
+        let entries: [DirectoryEntry]
+        do {
+            entries = try await store.listAll(directory) ?? []
+        } catch {
+            return Part(value: [], failures: [SourceFailure(source: directory, message: StateServiceError.message(for: error))])
+        }
+        let files = entries.filter { $0.kind == .file && $0.name.hasSuffix(".json") }
+            .compactMap { entry in MarketingVersion(rawValue: String(entry.name.dropLast(".json".count))).map { (entry, $0) } }
+            .sorted { $0.1 < $1.1 }
+        var part = Part<[ReleaseFile]>(value: [])
+        for ((entry, version), read) in zip(files, await Self.inOrder(files, { file in await read(ReleaseFile.self, at: file.0.path) })) {
+            part.failures += read.failures
+            guard let release = read.value else {
+                continue
+            }
+            guard release.repo == repo, release.version == version, entry.path == StatePath.release(repo, version) else {
+                part.failures.append(SourceFailure(source: entry.path, message: Self.misplaced))
+                continue
+            }
+            part.value.append(release)
+        }
+        return part
     }
 }

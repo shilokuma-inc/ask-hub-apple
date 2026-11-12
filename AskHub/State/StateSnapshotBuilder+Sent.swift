@@ -425,8 +425,16 @@ extension StateSnapshotBuilder {
             return "取り下げ"
 
         default:
-            return finalLabel(envelope) ?? pauseLabel(envelope) ?? envelope.kind
+            return finalLabel(envelope) ?? pauseLabel(envelope) ?? releaseLabel(envelope) ?? envelope.kind
         }
+    }
+
+    /// 配信した版への意図の呼び名。どれでもなければ nil
+    private func releaseLabel(_ envelope: IntentEnvelope) -> String? {
+        guard envelope.kind == PublishGitHubReleaseIntent.kind else {
+            return nil
+        }
+        return "GitHub Release の公開（\(envelope.repo?.name ?? "") \(envelope.target?.id ?? "")）"
     }
 
     /// 一時停止・再開・引き継ぎの呼び名。どれでもなければ nil

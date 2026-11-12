@@ -105,6 +105,8 @@ extension InboxItem.Kind {
         case .finalReview: "arrow.triangle.merge"
         case .verification: "iphone"
         case .cleanup: "trash.fill"
+        case .releaseNotes: "shippingbox.fill"
+        case .releaseProblem: "exclamationmark"
         }
     }
 
@@ -122,6 +124,8 @@ extension InboxItem.Kind {
         case .finalReview: Theme.Tone.lavender
         case .verification: Theme.Tone.aqua
         case .cleanup: Theme.Tone.butter
+        case .releaseNotes: Theme.Tone.mint
+        case .releaseProblem: Theme.Tone.rose
         }
     }
 }
