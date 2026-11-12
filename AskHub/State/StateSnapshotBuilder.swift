@@ -16,6 +16,8 @@ struct StateIndex {
         var canAbandon = false
         /// 最終 PR（出した後だけ）
         var final: FinalEntry?
+        /// 実機確認（マージした後だけ）
+        var verification: VerificationEntry?
         /// 終えたことを送れる人がする作業（ゴールの確認の待ちと実装の間の、終えていないもの）と、その渡すものの種類
         var humanTasks: [HumanTask.ID: HandoverKind] = [:]
         /// 開始した後（実装・最終 PR の段取り・人の確認の待ち）か。一時停止・再開・引き継ぎは、このときだけ送れる
@@ -50,6 +52,18 @@ struct StateIndex {
         var target: ReleaseTarget
         /// 公開を送れるか（下書きがあり、まだ公開していない）。処理を待つ公開を当てた後のもの
         var canPublish: Bool
+    }
+
+    /// 実機確認への答え（`verify`）と、「問題あり」で一緒に送る依頼の材料
+    struct VerificationEntry {
+        var goalVersion: Int
+        /// epic の題と最終 PR の番号（依頼の本文に書く）
+        var title: String
+        var pullRequest: Int
+        /// 項目の id（`v1` など）から、確かめること（ゴールの完了の条件）
+        var items: [String: String]
+        /// まだ答えていない項目の id。処理を待つ答えを当てた後のもの
+        var unanswered: Set<String>
     }
 
     struct QuestionEntry {

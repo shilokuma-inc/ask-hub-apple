@@ -51,6 +51,9 @@ extension StateSnapshotBuilder {
         case HumanTaskDoneIntent.kind:
             .humanTask(epicID: epicID, taskID: id)
 
+        case VerifyIntent.kind:
+            .verification(epicID: epicID, itemID: id)
+
         default:
             nil
         }
