@@ -110,15 +110,29 @@ extension ReviewTaskRunner {
         return idle ? .fail(messages.notStartedAfterReopen(fresh, stalled: state.stalledRun)) : .wait
     }
 
-    /// CI を起こし直すため、PR を閉じてすぐ開き直す。
-    /// 閉じたまま残さないよう、開き直しに失敗したら少し待って試し直す（ワーカーを止められても試す）。それでも開けなければ人へ渡す
+    /// CI を起こし直すため、PR を閉じてすぐ開き直す。待っている間に人が閉じた PR は、開き直さずに人へ渡す。
+    /// 閉じたまま残さないよう、閉じる要求の応答が失われても閉じたかを読み直し、開き直しに失敗したら少し待って試し直す
+    /// （上限なら `Retry-After` まで待つ。ワーカーを止められても試す）。それでも開けなければ人へ渡す
     private func reopen(_ pulls: any PullRequestOperations, target: StallTarget) async throws(TaskJobExit) {
         let name = "\(target.subject.name) #\(target.pullRequest)"
-        try await environment.github("CI を起こし直すために\(name) を閉じる") { () throws(PullRequestError) in
+        let current = try await environment.github("\(name) を読む") { () throws(PullRequestError) in
+            try await pulls.pullRequest(number: target.pullRequest)
+        }
+        guard current.state == .open, !current.merged else {
+            throw .fail(.unexpected, "\(name) が、チェックを待っている間に閉じられた（開き直さない）")
+        }
+        do {
             try await pulls.setState(number: target.pullRequest, to: .closed)
+        } catch {
+            // GitHub が閉じた後に、応答だけが失われたかもしれない。開いたままと分かったときだけ、閉じられなかったとして終える
+            if (try? await pulls.pullRequest(number: target.pullRequest))?.state == .open {
+                let failure = error.attemptFailure(doing: "CI を起こし直すために\(name) を閉じる", now: environment.context.now())
+                throw .finish(JobResult(failure: failure))
+            }
         }
         var tries = 0
         while true {
+            let wait: Duration
             do {
                 try await pulls.setState(number: target.pullRequest, to: .open)
                 return
@@ -127,9 +141,16 @@ extension ReviewTaskRunner {
                 guard tries < Self.reopenTries else {
                     throw .fail(.unexpected, "CI を起こし直すために\(name) を閉じたが、開き直せない（\(error)）。GitHub で開き直してから、もう一度試す")
                 }
+                wait = Self.reopenWait(after: error)
             }
-            try? await environment.sleeper.sleep(for: Self.reopenRetryWait)
+            try? await environment.sleeper.sleep(for: wait)
         }
+    }
+
+    /// 開き直しに失敗した後、次に試すまでの待ち。上限なら、GitHub が示す待ち時間（`Retry-After` など）まで待つ
+    static func reopenWait(after error: PullRequestError) -> Duration {
+        guard case let .rateLimited(retryAfter) = error else { return reopenRetryWait }
+        return max(retryAfter, reopenRetryWait)
     }
 }
 
