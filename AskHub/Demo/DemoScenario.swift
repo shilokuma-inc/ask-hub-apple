@@ -95,13 +95,36 @@ struct DemoData {
         now.addingTimeInterval(-minutes * 60)
     }
 
+    /// 家事シェアは対象に加えたばかりで、保護をまだ掛けておらず、準備の PR の承認と Discussions のカテゴリを待っている
+    func repositoriesWithSetup() -> [TargetRepository] {
+        Self.repositories.map { repository in
+            guard repository.name == "kaji-share-ios" else {
+                return repository
+            }
+            var added = repository
+            added.protection = RepositoryProtection(state: .notApplied, requiredChecks: ["build / build"])
+            added.setup = RepositorySetupStatus(
+                updatedAt: ago(minutes: 30),
+                discussions: .missingCategory,
+                workflowPullRequest: .init(
+                    number: 42,
+                    head: String(repeating: "a", count: 40),
+                    state: .open,
+                    changes: ["build.yml の paths を外す", "close-goal-discussion.yml を外す"]
+                ),
+                workflowsChecked: true
+            )
+            return added
+        }
+    }
+
     func later(minutes: Double) -> Date {
         now.addingTimeInterval(minutes * 60)
     }
 
     func standard() -> ClientSnapshot {
         ClientSnapshot(
-            repositories: Self.repositories,
+            repositories: repositoriesWithSetup(),
             candidateRepositories: Self.candidates,
             epics: [
                 recipeEpic(),
@@ -260,9 +283,16 @@ extension DemoData {
         owner: String = DemoData.owner,
         lastMac: Mac.ID?
     ) -> TargetRepository {
-        TargetRepository(
+        var repository = TargetRepository(
             owner: owner, ownerAvatar: ownerAvatar(owner), name: name, appName: appName, icon: .symbol(symbol, tint), lastMacID: lastMac
         )
+        // デモの時計（2026-01-15）より前に掛けた保護
+        repository.protection = RepositoryProtection(
+            state: .applied(at: Date(timeIntervalSince1970: 1_767_225_600)),
+            requiredChecks: ["build / build"],
+            replaced: ["クラシックの保護 develop"]
+        )
+        return repository
     }
 
     func macs() -> [Mac] {

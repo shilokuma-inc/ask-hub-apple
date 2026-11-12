@@ -15,7 +15,7 @@ extension DemoClientService {
         case let .start(epicID, macID):
             return SendReceipt(intentID: start(epicID: epicID, macID: macID))
 
-        case .reviseGoal, .decideSplit, .addRepository:
+        case .reviseGoal, .decideSplit, .addRepository, .applyProtection, .approveSetup:
             applySetupIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
@@ -55,9 +55,22 @@ extension DemoClientService {
             state.candidateRepositories.removeAll { $0.id == repositoryID }
             state.repositories.append(repository)
 
+        case let .applyProtection(repositoryID, checks):
+            updateRepository(repositoryID) { $0.protection = RepositoryProtection(state: .applied(at: now()), requiredChecks: checks) }
+
+        case .approveSetup(let repositoryID, _, _):
+            updateRepository(repositoryID) { $0.setup?.workflowPullRequest?.state = .merged }
+
         default:
             break
         }
+    }
+
+    private func updateRepository(_ repositoryID: TargetRepository.ID, _ change: (inout TargetRepository) -> Void) {
+        guard let index = state.repositories.firstIndex(where: { $0.id == repositoryID }) else {
+            return
+        }
+        change(&state.repositories[index])
     }
 
     private func answer(epicID: Epic.ID, questionID: Question.ID, optionID: Question.Option.ID?, note: String) {
