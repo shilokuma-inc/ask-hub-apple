@@ -1,6 +1,6 @@
 # リリース
 
-リリースの仕組みは、共通リポジトリから全リポジトリに配る（[operations.md](operations.md)）。今のリリースのワークフロー（Release/Prepare・Notes・Sync・Finish）は ask-hub-apple にしか無く、一度も実行されていないので、流れから作り直し、置き換えたものから外す（[plan.md](plan.md) の「段階 5 の順」）。
+リリースの仕組みは、共通リポジトリから全リポジトリに配る（[operations.md](operations.md)）。今の仕組みのリリースのワークフロー（Release/Prepare・Notes・Sync・Finish）は ask-hub-apple にしか無く、一度も実行されていないので、流れから作り直す。今の仕組みのものは #1087 で外した（[plan.md](plan.md) の「段階 5 の順」）。
 
 ## 流れ
 

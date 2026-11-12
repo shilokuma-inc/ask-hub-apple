@@ -40,13 +40,13 @@
 
 ### 段階 5 の順
 
-それぞれ別の依頼にする。今の仕組みのリリースのワークフロー（ask-hub-apple の Release/Prepare・Notes・Sync・Finish と `Tools/release_*.py`）は一度も流れておらず、置き換えたものから外す。
+それぞれ別の依頼にする。今の仕組みのリリースのワークフロー（ask-hub-apple の Release/Prepare・Notes・Sync・Finish と `Tools/release_*.py`）は、一度も流れないまま #1087 で外した。
 
 | 順 | 作るもの | 中身 |
 | --- | --- | --- |
 | 1 | App Store Connect の API の確かめと鍵の入れ方 | 下の「段階 0 で確かめること」の項目 10。司令塔が読む鍵を常時オンの Mac の Keychain に置く（[release.md](release.md) の「ワークフロー」） |
-| 2 | 配信の検知と後作業 | 司令塔が配信を見つけ、タグ・リリース文の下書き（人が確かめて公開する）・GitHub Release・次の版に上げる PR を行う（[release.md](release.md) の「配信の検知と後作業」。配信の記録と公開の意図は #1078 で入れた）。release ブランチを使うときの main と develop への取り込みは 3 で足す。できたら、ask-hub-apple の今の Release/Sync・Finish を外す（`GITHUB_TOKEN` で main・develop に直接 push する作りで、ルールセットの下では止まる） |
-| 3 | リリースを始める・準備・審査に出す・審査の見張り・配信 | 人が押す操作の意図の種類（[protocol.md](protocol.md) の「決めていないこと」）を足す。できたら、今の Release/Prepare・Notes を外す |
+| 2 | 配信の検知と後作業 | 司令塔が配信を見つけ、タグ・リリース文の下書き（人が確かめて公開する）・GitHub Release・次の版に上げる PR を行う（[release.md](release.md) の「配信の検知と後作業」。配信の記録と公開の意図は #1078 で入れた）。release ブランチを使うときの main と develop への取り込みは 3 で足す |
+| 3 | リリースを始める・準備・審査に出す・審査の見張り・配信 | 人が押す操作の意図の種類（[protocol.md](protocol.md) の「決めていないこと」）を足す |
 | 4 | リリース中の直し・hotfix・リジェクト | [release.md](release.md) の「リリース中の直し」「リジェクト」「hotfix」。通知のリジェクト（[operations.md](operations.md) の「通知」）も |
 | 5 | 共通リポジトリ（app-kit）とテンプレートの作り直し・配布 | [operations.md](operations.md) の「共通リポジトリとテンプレートの配布」。今あるリポジトリにも「対象に加える」と同じ手順を流してそろえる |
 | 6 | App Store の素材 | スクショの差分・プロダクトページのヘッダー・検索結果の素材・チャットでの手直し（[release.md](release.md) の「App Store の素材」） |
