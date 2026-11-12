@@ -1,0 +1,69 @@
+{
+  "description": "保護の設定を掛ける人の意図の payload の例。read は、封筒の repo があり target と targetVersion が無いときに、読む側が保護の設定として読めるか",
+  "schema": "payloads/applyProtection.schema.json",
+  "cases": [
+    {
+      "name": "build",
+      "payload": {
+        "requiredChecks": ["build / build"]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "several-checks",
+      "payload": {
+        "requiredChecks": ["build / build", "ui-test / ui-test"]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "missing-checks",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "no-checks",
+      "payload": {
+        "requiredChecks": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "repeated-checks",
+      "payload": {
+        "requiredChecks": ["build / build", "build / build"]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-check-name",
+      "payload": {
+        "requiredChecks": [""]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "check-not-string",
+      "payload": {
+        "requiredChecks": [1]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "requiredChecks": ["build / build"],
+        "bypass": true
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

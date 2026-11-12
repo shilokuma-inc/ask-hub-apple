@@ -24,10 +24,39 @@
       ]
     },
     "protection": {
+      "description": "ブランチの保護（ルールセット askhub-protect）。司令塔が applyProtection を処理して書き、掛けた後のずれを定期的に点検して drift に書く",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "appliedAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "人がクライアントで押して保護を設定した時刻" }
+        "appliedAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "人がクライアントで押して保護を設定した時刻" },
+        "requiredChecks": {
+          "anyOf": [{ "$ref": "../payloads/applyProtection.schema.json#/$defs/requiredChecks" }, { "type": "null" }],
+          "description": "必須にしたチェックの名前（applyProtection の requiredChecks）"
+        },
+        "rulesetId": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }], "description": "掛けたルールセットの id" },
+        "replaced": {
+          "anyOf": [{ "type": "array", "items": { "$ref": "#/$defs/existingProtection" } }, { "type": "null" }],
+          "description": "掛けたときに外した、develop・main・release/**（と既定のブランチ）に重なる保護"
+        },
+        "remaining": {
+          "anyOf": [{ "type": "array", "items": { "$ref": "#/$defs/existingProtection" } }, { "type": "null" }],
+          "description": "外せずに残った、重なる保護（organization のルールセット）"
+        },
+        "drift": {
+          "description": "掛けた後のずれ。ずれていない・まだ確かめていなければ null",
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["foundAt", "problems"],
+              "additionalProperties": false,
+              "properties": {
+                "foundAt": { "$ref": "../common.schema.json#/$defs/timestamp", "description": "今のずれを見つけた時刻（中身が変わったときだけ書き直す）" },
+                "problems": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 500 }, "description": "人が読むずれの説明" }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
       }
     },
     "build": {
@@ -52,5 +81,16 @@
       ]
     },
     "addedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+  },
+  "$defs": {
+    "existingProtection": {
+      "type": "object",
+      "required": ["kind", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["classic", "ruleset", "organizationRuleset"], "description": "classic はクラシックのブランチ保護（name はパターン）、ruleset はリポジトリのルールセット、organizationRuleset は organization のルールセット" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 }
+      }
+    }
   }
 }

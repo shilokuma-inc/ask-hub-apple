@@ -372,6 +372,276 @@
       "read": "malformed"
     },
     {
+      "name": "protection-applied",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {
+          "appliedAt": "2026-11-13T10:00:00Z",
+          "requiredChecks": [
+            "build / build"
+          ],
+          "rulesetId": 26926767,
+          "replaced": [
+            {
+              "kind": "classic",
+              "name": "develop"
+            },
+            {
+              "kind": "ruleset",
+              "name": "protect-develop"
+            }
+          ],
+          "remaining": [
+            {
+              "kind": "organizationRuleset",
+              "name": "org-default"
+            }
+          ],
+          "drift": {
+            "foundAt": "2026-11-14T04:00:00Z",
+            "problems": [
+              "必須のチェックが変わった（今は 無し）"
+            ]
+          }
+        },
+        "addedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "protection-no-drift",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {
+          "appliedAt": "2026-11-13T10:00:00Z",
+          "requiredChecks": [
+            "build / build"
+          ],
+          "rulesetId": 26926767,
+          "replaced": [
+            {
+              "kind": "classic",
+              "name": "develop"
+            },
+            {
+              "kind": "ruleset",
+              "name": "protect-develop"
+            }
+          ],
+          "remaining": [],
+          "drift": null
+        },
+        "addedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "protection-no-checks",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {
+          "appliedAt": "2026-11-13T10:00:00Z",
+          "requiredChecks": [],
+          "rulesetId": 26926767,
+          "replaced": [
+            {
+              "kind": "classic",
+              "name": "develop"
+            },
+            {
+              "kind": "ruleset",
+              "name": "protect-develop"
+            }
+          ],
+          "remaining": [
+            {
+              "kind": "organizationRuleset",
+              "name": "org-default"
+            }
+          ],
+          "drift": {
+            "foundAt": "2026-11-14T04:00:00Z",
+            "problems": [
+              "必須のチェックが変わった（今は 無し）"
+            ]
+          }
+        },
+        "addedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "protection-repeated-checks",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {
+          "appliedAt": "2026-11-13T10:00:00Z",
+          "requiredChecks": [
+            "build / build",
+            "build / build"
+          ],
+          "rulesetId": 26926767,
+          "replaced": [
+            {
+              "kind": "classic",
+              "name": "develop"
+            },
+            {
+              "kind": "ruleset",
+              "name": "protect-develop"
+            }
+          ],
+          "remaining": [
+            {
+              "kind": "organizationRuleset",
+              "name": "org-default"
+            }
+          ],
+          "drift": {
+            "foundAt": "2026-11-14T04:00:00Z",
+            "problems": [
+              "必須のチェックが変わった（今は 無し）"
+            ]
+          }
+        },
+        "addedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "protection-unknown-kind",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {
+          "appliedAt": "2026-11-13T10:00:00Z",
+          "requiredChecks": [
+            "build / build"
+          ],
+          "rulesetId": 26926767,
+          "replaced": [
+            {
+              "kind": "tag",
+              "name": "v*"
+            }
+          ],
+          "remaining": [
+            {
+              "kind": "organizationRuleset",
+              "name": "org-default"
+            }
+          ],
+          "drift": {
+            "foundAt": "2026-11-14T04:00:00Z",
+            "problems": [
+              "必須のチェックが変わった（今は 無し）"
+            ]
+          }
+        },
+        "addedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "protection-drift-without-problems",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {
+          "appliedAt": "2026-11-13T10:00:00Z",
+          "requiredChecks": [
+            "build / build"
+          ],
+          "rulesetId": 26926767,
+          "replaced": [
+            {
+              "kind": "classic",
+              "name": "develop"
+            },
+            {
+              "kind": "ruleset",
+              "name": "protect-develop"
+            }
+          ],
+          "remaining": [
+            {
+              "kind": "organizationRuleset",
+              "name": "org-default"
+            }
+          ],
+          "drift": {
+            "foundAt": "2026-11-14T04:00:00Z",
+            "problems": []
+          }
+        },
+        "addedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "protection-ruleset-zero",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {
+          "appliedAt": "2026-11-13T10:00:00Z",
+          "requiredChecks": [
+            "build / build"
+          ],
+          "rulesetId": 0,
+          "replaced": [
+            {
+              "kind": "classic",
+              "name": "develop"
+            },
+            {
+              "kind": "ruleset",
+              "name": "protect-develop"
+            }
+          ],
+          "remaining": [
+            {
+              "kind": "organizationRuleset",
+              "name": "org-default"
+            }
+          ],
+          "drift": {
+            "foundAt": "2026-11-14T04:00:00Z",
+            "problems": [
+              "必須のチェックが変わった（今は 無し）"
+            ]
+          }
+        },
+        "addedAt": "2026-11-03T10:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "build-full",
       "value": {
         "v": 1,
