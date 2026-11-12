@@ -127,6 +127,19 @@ public struct IntentDraft: Equatable, Sendable {
         )
     }
 
+    /// 実機確認への答え（「問題あり」は説明が要る。直してほしいことは、別に依頼として送る）
+    public static func verify(_ target: VerificationTarget, result: VerifyIntent.Result, note: String = "") -> Self {
+        var payload: [String: JSONValue] = ["result": .string(result.rawValue)]
+        if !note.isEmpty { payload["note"] = .string(note) }
+        return Self(
+            kind: VerifyIntent.kind,
+            repo: target.repo,
+            target: target.target,
+            targetVersion: target.targetVersion,
+            payload: payload
+        )
+    }
+
     /// 最終 PR への指示
     public static func instructFinal(_ target: FinalPullRequestTarget, instruction: String) -> Self {
         Self(
