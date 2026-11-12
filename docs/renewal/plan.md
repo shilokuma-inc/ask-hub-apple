@@ -45,7 +45,7 @@
 | 順 | 作るもの | 中身 |
 | --- | --- | --- |
 | 1 | App Store Connect の API の確かめと鍵の入れ方 | 下の「段階 0 で確かめること」の項目 10。司令塔が読む鍵を常時オンの Mac の Keychain に置く（[release.md](release.md) の「ワークフロー」） |
-| 2 | 配信の検知と後作業 | 司令塔が配信を見つけ、main と develop への取り込み・タグ・GitHub Release を司令塔の PR で行う。できたら、ask-hub-apple の今の Release/Sync・Finish を外す（`GITHUB_TOKEN` で main・develop に直接 push する作りで、ルールセットの下では止まる） |
+| 2 | 配信の検知と後作業 | 司令塔が配信を見つけ、タグ・リリース文の下書き（人が確かめて公開する）・GitHub Release・次の版に上げる PR を行う（[release.md](release.md) の「配信の検知と後作業」。配信の記録と公開の意図は #1078 で入れた）。release ブランチを使うときの main と develop への取り込みは 3 で足す。できたら、ask-hub-apple の今の Release/Sync・Finish を外す（`GITHUB_TOKEN` で main・develop に直接 push する作りで、ルールセットの下では止まる） |
 | 3 | リリースを始める・準備・審査に出す・審査の見張り・配信 | 人が押す操作の意図の種類（[protocol.md](protocol.md) の「決めていないこと」）を足す。できたら、今の Release/Prepare・Notes を外す |
 | 4 | リリース中の直し・hotfix・リジェクト | [release.md](release.md) の「リリース中の直し」「リジェクト」「hotfix」。通知のリジェクト（[operations.md](operations.md) の「通知」）も |
 | 5 | 共通リポジトリ（app-kit）とテンプレートの作り直し・配布 | [operations.md](operations.md) の「共通リポジトリとテンプレートの配布」。今あるリポジトリにも「対象に加える」と同じ手順を流してそろえる |
@@ -71,7 +71,6 @@
 文書だけでは直せないもの。段階 4・5 の作業の中で直す。
 
 - 最終 PR の本文（`FinalPullRequestBody.swift`）が、まだ出来ない実機確認の「確認した」「問題あり」を頼んでいる（段階 4 の 2）
-- 意図の封筒のスキーマ（`protocol/schemas/intent-envelope.schema.json`）の `kind` の一覧に `configureRepository` が無い（payload のスキーマはある）。意図の種類を足すときに一緒に直す
 - `JobKind` の `rerunChecks`・`integrateDevelop`・`notify` は名前だけで、作らなかった。流し直しは `reviewTask`・`reviewFinalPullRequest` の中で、base の取り込みは最終 PR のコンフリクトの直し（`fixFinalPullRequest` の `conflict`）で扱う
 - `addRepository` の処理（`EpicHandlers.swift`）のコメントが「GitHub 側の準備は後で足す」のまま（段階 4 の 4）
 - ワーカーと司令塔の配り方: 文書（[operations.md](operations.md) の「署名と公証」。PR #1066）は、どれも常時オンの Mac で Developer ID の署名をして配る形だが、今 Developer ID で署名しているのは司令塔だけで、MacBook Pro のワーカーはアドホック署名（段階 4 の 1。#1064・#1065）

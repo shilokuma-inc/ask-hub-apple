@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/release.schema.json",
+  "title": "repos/<owner>/<repo>/releases/<版>.json（App Store で配信した版と、その後作業の進み具合）",
+  "description": "司令塔だけが書く。司令塔が App Store Connect で配信（READY_FOR_DISTRIBUTION）を見つけたときに作り、後作業（コミットを求める → タグ → リリース文 → GitHub Release と、develop の版を次に上げる PR）を進めるたびに書き足す。人はリリース文を確かめ、publishGitHubRelease（targetVersion は notes.version）で公開する。欄どうしの決まり（タグはコミットの後・GitHub Release はタグの後・tag.name が v<版>・Upload の実行から求めたコミットは run と runNumber を持つ・次の版は配信した版より大きい など）は読む側で確かめる",
+  "type": "object",
+  "required": [
+    "v",
+    "repo",
+    "version",
+    "platforms",
+    "detectedAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "marketingVersion": {
+      "description": "版の番号（MARKETING_VERSION）。0 以上の整数（先頭の 0 なし・4 桁まで）を . で 1〜3 個つないだもの",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,3})(\\.(0|[1-9][0-9]{0,3})){0,2}$",
+      "maxLength": 14
+    },
+    "buildNumber": {
+      "description": "ビルドの番号（CFBundleVersion）。0 以上の整数を . で 1〜3 個つないだもの",
+      "type": "string",
+      "pattern": "^[0-9]{1,18}(\\.[0-9]{1,18}){0,2}$",
+      "maxLength": 56
+    },
+    "platform": {
+      "enum": [
+        "iOS",
+        "macOS",
+        "visionOS",
+        "tvOS"
+      ]
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "maxLength": 40
+    }
+  },
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "repo": {
+      "$ref": "../common.schema.json#/$defs/repositoryFullName"
+    },
+    "version": {
+      "$ref": "#/$defs/marketingVersion"
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "description": "配信したプラットフォーム（見つけた順）。プラットフォームは重ねない",
+      "items": {
+        "type": "object",
+        "required": [
+          "platform",
+          "build",
+          "detectedAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "platform": {
+            "$ref": "#/$defs/platform"
+          },
+          "build": {
+            "$ref": "#/$defs/buildNumber"
+          },
+          "uploadedAt": {
+            "$ref": "../common.schema.json#/$defs/timestamp",
+            "description": "そのビルドを App Store Connect に上げた時刻（コミットを求めるのに使う）"
+          },
+          "detectedAt": {
+            "$ref": "../common.schema.json#/$defs/timestamp"
+          }
+        }
+      }
+    },
+    "commit": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "配信したコミット。uploadRun は、ビルドを上げた Upload の実行の head。existingTag は、前からあったタグ v<版> が指すコミット",
+      "required": [
+        "sha",
+        "source"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sha": {
+          "$ref": "#/$defs/commit"
+        },
+        "source": {
+          "enum": [
+            "uploadRun",
+            "existingTag"
+          ]
+        },
+        "platform": {
+          "$ref": "#/$defs/platform"
+        },
+        "build": {
+          "$ref": "#/$defs/buildNumber"
+        },
+        "run": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Upload の実行の id"
+        },
+        "runNumber": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Upload の実行の番号"
+        }
+      }
+    },
+    "tag": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "name",
+        "created",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "v<版>"
+        },
+        "created": {
+          "type": "boolean",
+          "description": "司令塔が作ったなら true。前からあったなら false"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "notes": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "リリース文。draft は Claude の下書き、confirmed は人が確かめて公開を押したもの",
+      "required": [
+        "version",
+        "draft",
+        "draftedAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "下書きを作り直すたびに上げる。publishGitHubRelease の targetVersion"
+        },
+        "previousTag": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^v(0|[1-9][0-9]{0,3})(\\.(0|[1-9][0-9]{0,3})){0,2}$",
+          "description": "変更を数え始めたタグ。初めての配信なら null"
+        },
+        "draft": {
+          "type": "string",
+          "minLength": 1
+        },
+        "draftedAt": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "confirmed": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "text",
+            "approval",
+            "at"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "approval": {
+              "$ref": "../common.schema.json#/$defs/intentReference"
+            },
+            "at": {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            }
+          }
+        }
+      }
+    },
+    "githubRelease": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "url",
+        "created",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "created": {
+          "type": "boolean",
+          "description": "司令塔が公開したなら true。前からあったなら false"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "nextVersion": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "develop の MARKETING_VERSION を次の版に上げる PR。skipped は、develop の版がもう配信した版より大きかったので上げなかった",
+      "required": [
+        "version",
+        "state",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "$ref": "#/$defs/marketingVersion"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "merged",
+            "skipped"
+          ]
+        },
+        "pullRequest": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "problem": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "後作業を進められなかった理由（進められたら消す）。needsHuman が true なら、やり直しても進まないので人が直す",
+      "required": [
+        "step",
+        "message",
+        "needsHuman",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "step": {
+          "enum": [
+            "commit",
+            "tag",
+            "notes",
+            "githubRelease",
+            "nextVersion"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "needsHuman": {
+          "type": "boolean"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "detectedAt": {
+      "$ref": "../common.schema.json#/$defs/timestamp"
+    },
+    "updatedAt": {
+      "$ref": "../common.schema.json#/$defs/timestamp"
+    }
+  }
+}
