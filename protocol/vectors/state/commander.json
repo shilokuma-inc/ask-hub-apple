@@ -35,6 +35,18 @@
                 "resetAt": "2026-11-03T10:30:00Z"
               }
             }
+          ],
+          "githubAdminTokens": [
+            {
+              "owner": "shilokuma-inc",
+              "state": "ok",
+              "expiresAt": "2027-02-01T00:00:00Z"
+            },
+            {
+              "owner": "mrs1669",
+              "state": "expired",
+              "expiresAt": "2026-11-02T00:00:00Z"
+            }
           ]
         }
       },
@@ -195,6 +207,62 @@
           "githubToken": "ok",
           "claudeToken": "ok",
           "claudeTokenExpiresAt": "2027-11-03T10:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "admin-token-owners-repeated",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "commander": "1.0.0"
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z",
+          "githubAdminTokens": [
+            {
+              "owner": "shilokuma-inc",
+              "state": "ok"
+            },
+            {
+              "owner": "shilokuma-inc",
+              "state": "missing"
+            }
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "admin-token-owner-with-slash",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "commander": "1.0.0"
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z",
+          "githubAdminTokens": [
+            {
+              "owner": "shilokuma-inc/x",
+              "state": "ok"
+            }
+          ]
         }
       },
       "schemaValid": false,
