@@ -51,7 +51,8 @@ extension AskHubCommanderMain {
             appIcons: appIcons,
             releases: releases
         )
-        log("起動しました（pid \(ProcessInfo.processInfo.processIdentifier)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
+        let pid = ProcessInfo.processInfo.processIdentifier
+        log("起動しました（版 \(CommanderVersion.build.summary)、pid \(pid)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
         await loop.run()
     }
 

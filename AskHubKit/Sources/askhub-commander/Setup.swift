@@ -72,8 +72,12 @@ extension AskHubCommanderMain {
             """)
     }
 
-    /// 設定と Keychain の様子を出す（秘密の値は出さない）
-    static func check() async {
+    /// 版と互換の番号・設定と Keychain の様子を出す（秘密の値は出さない）。
+    /// `versionOnly` なら版・コミット・互換の番号だけを出す（Keychain を読まないので、ssh のセッションからも流せる）
+    static func check(versionOnly: Bool = false) async {
+        guard !versionOnly else {
+            return print(CommanderVersion.build.summary)
+        }
         let configuration = try? MachineConfiguration.load(from: paths.configuration, role: .commander)
         let key = APNsKey.state(in: commandLine.secrets).rawValue
         let apns = configuration?.apns.map { "\($0.keyId)（Team \($0.teamId)、\($0.topic)）、鍵: \(key)" }
@@ -81,7 +85,7 @@ extension AskHubCommanderMain {
             "\(store.keyId)（Issuer \(store.issuerId)）、鍵: \(AppStoreConnectKey.state(of: store, in: commandLine.secrets).rawValue)"
         }
         let appStore = stores.isEmpty ? "設定していない（配信を見つけない。app-store-connect で登録する）" : stores.joined(separator: "・")
-        let lines = await commandLine.checkLines(version: CommanderVersion.current)
+        let lines = await commandLine.checkLines(version: CommanderVersion.build.summary)
             + ["APNs: \(apns ?? "設定していない（通知を送らない。apns で登録する）")", "App Store Connect: \(appStore)"]
         print(lines.joined(separator: "\n"))
     }

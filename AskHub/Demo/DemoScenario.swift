@@ -281,7 +281,6 @@ extension DemoData {
             totalBytes: 256 * Self.gigabyte,
             load: 0.42,
             version: "1.0.0",
-            versionMatches: true,
             jobs: [
                 Mac.Job(id: "job-explain", title: "献立メモ: Q4 の説明を書いています", epicID: "recipe-weekly", startedAt: ago(minutes: 6)),
                 Mac.Job(id: "job-shopping", title: "買い物リストの並べ替え: タスク 2 の子 PR のレビュー", epicID: "recipe-shopping", startedAt: ago(minutes: 6))
@@ -318,7 +317,6 @@ extension DemoData {
             totalBytes: 1_000 * Self.gigabyte,
             load: 0.18,
             version: "1.0.0",
-            versionMatches: true,
             jobs: [],
             refusalReason: nil,
             selfChecks: selfChecks(free: "412 GB"),
@@ -343,7 +341,6 @@ extension DemoData {
             totalBytes: 512 * Self.gigabyte,
             load: 0,
             version: "1.0.0",
-            versionMatches: true,
             jobs: [Mac.Job(id: "job-kaji", title: "家事シェア: タスク 5 の実装", epicID: "kaji-notify", startedAt: ago(minutes: 200))],
             refusalReason: "空き容量が 30 GB を下回っています",
             selfChecks: selfChecks(free: "23 GB", lowDisk: true),

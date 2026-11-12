@@ -156,6 +156,7 @@ struct StateSnapshotBuilder {
     private func mac(_ file: MacFile) -> Mac {
         let checks = Self.selfChecks(file.selfCheck)
         let tokens = Self.tokens(file.selfCheck)
+        let incompatibility = incompatibility(of: file)
         return Mac(
             id: file.mac.rawValue,
             name: file.mac.rawValue,
@@ -167,9 +168,8 @@ struct StateSnapshotBuilder {
             totalBytes: 0,
             load: 0,
             version: file.versions.worker,
-            versionMatches: true,
             jobs: runningJobs(on: file.mac),
-            refusalReason: refusalReason(tokens: tokens, checks: checks),
+            refusalReason: incompatibility == nil ? refusalReason(tokens: tokens, checks: checks) : Self.incompatibleReason,
             selfChecks: checks,
             tokens: tokens,
             claudeVersion: file.versions.claude,
@@ -177,7 +177,10 @@ struct StateSnapshotBuilder {
             xcodeVersion: file.versions.xcode,
             cleanupCandidates: [],
             loadAverage: file.load,
-            githubQuota: Self.quota(file.selfCheck)
+            githubQuota: Self.quota(file.selfCheck),
+            compatibility: file.versions.compatibility,
+            commanderVersion: commanderVersion(differingFrom: file.versions.worker),
+            incompatibility: incompatibility
         )
     }
 
@@ -195,15 +198,41 @@ struct StateSnapshotBuilder {
             totalBytes: 0,
             load: 0,
             version: file.versions.commander,
-            versionMatches: true,
             jobs: [],
             refusalReason: refusalReason(tokens: tokens, checks: []) ?? "ワーカーが動いていません",
             selfChecks: Self.selfChecks(file.selfCheck),
             tokens: tokens,
             claudeVersion: file.versions.claude,
             cleanupCandidates: [],
-            githubQuota: Self.quota(file.selfCheck)
+            githubQuota: Self.quota(file.selfCheck),
+            compatibility: file.versions.compatibility
         )
+    }
+
+    /// 互換の番号が司令塔と合わないワーカーの、新しいループを受けない理由
+    static let incompatibleReason = "司令塔と互換の番号が合わず、新しいジョブを引き受けていません"
+
+    /// 司令塔と互換の番号が合わない Mac。ワーカーが引き受けない理由を印に書いていれば、それも添える。
+    /// 常時オンの Mac のワーカーは司令塔と同じ実行ファイルなので比べない。番号を書かない（前の版の）ものとは、ワーカーが理由を書いていなければ比べない
+    private func incompatibility(of file: MacFile) -> Mac.Incompatibility? {
+        guard documents.commander?.mac != file.mac else {
+            return nil
+        }
+        let commander = documents.commander?.versions.compatibility
+        let refusal = file.refusal.flatMap { $0.reason == .incompatible ? $0.message : nil }
+        let differs = commander != nil && file.versions.compatibility != nil && commander != file.versions.compatibility
+        guard differs || refusal != nil else {
+            return nil
+        }
+        return Mac.Incompatibility(commanderCompatibility: commander, message: refusal)
+    }
+
+    /// 版が司令塔と違うときの、司令塔の版（分からなければ比べない）
+    private func commanderVersion(differingFrom version: String) -> String? {
+        guard let commander = documents.commander?.versions.commander, commander != version else {
+            return nil
+        }
+        return commander
     }
 
     /// 自己診断の、持ち主ごとのトークンで読んだ残りのうち一番少ないもの
