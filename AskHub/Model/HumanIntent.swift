@@ -29,7 +29,8 @@ enum HumanIntent: Hashable {
     case completeHumanTask(epicID: Epic.ID, taskID: HumanTask.ID, file: HandoverFile? = nil)
     case verify(epicID: Epic.ID, itemID: VerificationItem.ID, reply: VerificationReply)
     case cleanUp(macID: Mac.ID, candidateIDs: [CleanupCandidate.ID])
-    case request(repositoryID: TargetRepository.ID, summary: String, body: String)
+    /// 依頼。添付の中身は、意図より先に状態リポジトリに置く
+    case request(repositoryID: TargetRepository.ID, summary: String, body: String, attachments: [RequestFile] = [])
     case addRepository(repositoryID: TargetRepository.ID)
 }
 
@@ -62,7 +63,7 @@ extension HumanIntent {
     /// 送ったことを知らせるときの呼び名（状態リポジトリの「送った意図」と同じ呼び方。例: 依頼「週ごとのまとめ」・回答・開始）
     var label: String {
         switch self {
-        case let .request(_, summary, _):
+        case let .request(_, summary, _, _):
             "依頼「\(summary)」"
 
         case .answer:
