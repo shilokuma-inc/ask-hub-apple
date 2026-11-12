@@ -21,6 +21,13 @@ extension StateSnapshotBuilder {
         case AddRepositoryIntent.kind:
             return repo.map { .repository(repository($0).id) }
 
+        case PublishGitHubReleaseIntent.kind:
+            // 配信した版は epic に属さないので、リポジトリと版（`target.id`）で決める
+            guard let repo, target?.type == ReleaseTarget.targetType, let version = target?.id else {
+                return nil
+            }
+            return .release(repositoryID: repository(repo).id, version: version)
+
         default:
             guard let epicID = target?.epic?.rawValue else {
                 return nil
