@@ -108,10 +108,19 @@ struct RepositoryDetailView: View {
                     }
                 }
                 CardSection {
-                    Label("リリースの画面は、リリースの段階で作ります", systemImage: "shippingbox")
-                        .foregroundStyle(.secondary)
+                    let releases = store.snapshot?.releases(of: repositoryID) ?? []
+                    ForEach(releases) { release in
+                        NavigationLink(value: AppRoute.release(repositoryID: release.repositoryID, version: release.version)) {
+                            ReleaseRow(release: release)
+                        }
+                    }
+                    if releases.isEmpty {
+                        Text("App Store で配信した版はまだありません").foregroundStyle(.secondary)
+                    }
                 } header: {
                     Text("リリース")
+                } footer: {
+                    Text("App Store で配信すると、司令塔が見つけて、タグ・GitHub Release・次の版の PR を作ります")
                 }
             }
             .pastelBackground()
@@ -209,5 +218,35 @@ struct AddRepositorySheet: View {
             return nil
         }
         return parts.joined(separator: "/")
+    }
+}
+
+/// 配信した版の行（版・プラットフォーム・後作業の様子）
+private struct ReleaseRow: View {
+    let release: Release
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(release.version).appFont(.headline, weight: .semibold)
+                Text(release.platformSummary)
+                    .foregroundStyle(.secondary)
+            }
+            Text(summary)
+                .appFont(.subheadline)
+                .foregroundStyle(release.needsHuman ? Theme.danger : .secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var summary: String {
+        if release.isFinished {
+            return "後作業は済みました"
+        }
+        if let step = release.steps.first(where: { $0.state == .problem || $0.state == .waitingHuman }) {
+            return "\(step.title): \(step.detail)"
+        }
+        let done = release.steps.filter { $0.state == .done }.count
+        return "後作業を進めています（\(done)/\(release.steps.count)）"
     }
 }

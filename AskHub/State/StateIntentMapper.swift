@@ -41,6 +41,9 @@ struct StateIntentMapper {
         case let .handOver(epicID, _):
             index.epics[epicID]?.canHandOver == true
 
+        case let .publishRelease(repositoryID, version, _, _):
+            index.releases[Release.id(repositoryID, version)]?.canPublish == true
+
         case .verify, .cleanUp:
             false
         }
@@ -100,6 +103,9 @@ struct StateIntentMapper {
 
         case .pause, .resume, .handOver:
             return try pauseDraft(intent)
+
+        case let .publishRelease(repositoryID, version, notesVersion, notes):
+            return try releaseDraft(repositoryID: repositoryID, version: version, notesVersion: notesVersion, notes: notes)
 
         case .acceptAllDecisions, .verify, .cleanUp:
             throw Self.unsupported
@@ -378,5 +384,30 @@ struct StateIntentMapper {
             throw ClientServiceError(message: "このリポジトリは、まだ対象に加わっていません")
         }
         return repo
+    }
+}
+
+// MARK: - App Store で配信した版
+
+extension StateIntentMapper {
+    /// 配信した版のリリース文を公開する。人が見た下書きの版に結びつける（その後に下書きが作り直されていれば、司令塔が断る）
+    func releaseDraft(
+        repositoryID: TargetRepository.ID,
+        version: String,
+        notesVersion: Int,
+        notes: String
+    ) throws(ClientServiceError) -> IntentDraft {
+        guard let entry = index.releases[Release.id(repositoryID, version)], entry.canPublish else {
+            throw ClientServiceError(message: "この版のリリース文は、いまは公開できません。取り直してから送ってください")
+        }
+        guard entry.target.notesVersion == notesVersion else {
+            throw ClientServiceError(message: "リリース文の下書きが作り直されました。見直してから公開してください")
+        }
+        // 司令塔（`PayloadReader`）と同じく、Unicode のコードポイントで数える
+        let text = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.unicodeScalars.count <= PublishGitHubReleaseIntent.notesLimit else {
+            throw ClientServiceError(message: "リリース文は 1〜\(PublishGitHubReleaseIntent.notesLimit) 文字で書いてください")
+        }
+        return .publishGitHubRelease(entry.target, notes: text)
     }
 }
