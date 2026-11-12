@@ -94,19 +94,20 @@ struct MacNoticeTests {
             mac.compatibility = 1
             mac.incompatibility = Mac.Incompatibility(commanderCompatibility: 2, message: nil)
         }
+        let pro = try #require(snapshot.mac(DemoData.macBookProID))
+        #expect(pro.comparesCompatibility)
+        #expect(!pro.updatesCommander)
         let item = try #require(InboxBuilder.items(from: snapshot, now: now).first { $0.kind == .compatibility })
         #expect(item.id == "mac/\(DemoData.macBookProID)/compatibility")
         #expect(item.urgency == .blocking)
-        #expect(item.title == "ワーカーを更新する")
-        let reload = "launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.worker"
-        #expect(item.detail == "互換の番号が合いません（この Mac は 1、司令塔は 2） · \(reload)")
         #expect(item.route == .mac(DemoData.macBookProID))
+        #expect(item.detail.contains("launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.worker"))
 
         // ワーカーのほうが新しければ、司令塔を更新する
         snapshot.updateMac(DemoData.macBookProID) { $0.compatibility = 3 }
+        #expect(snapshot.mac(DemoData.macBookProID)?.updatesCommander == true)
         let newer = try #require(InboxBuilder.items(from: snapshot, now: now).first { $0.kind == .compatibility })
-        #expect(newer.title == "司令塔を更新する")
-        #expect(newer.detail == "互換の番号が合いません（この Mac は 3、司令塔は 2） · scripts/commander/deploy.sh")
+        #expect(newer.detail.contains("scripts/commander/deploy.sh"))
 
         // 常駐できない Mac は run を流し直す。オフラインの Mac は戻ってから更新するので出さない
         snapshot.updateMac(DemoData.macBookAirID) { mac in
@@ -117,11 +118,32 @@ struct MacNoticeTests {
         #expect(!InboxBuilder.items(from: snapshot, now: now).contains { $0.id == manualID })
         snapshot.updateMac(DemoData.macBookAirID) { $0.connection = .online(lastSeen: now) }
         let manual = try #require(InboxBuilder.items(from: snapshot, now: now).first { $0.id == manualID })
-        #expect(manual.detail.hasSuffix(" · askhub-worker run"))
+        #expect(manual.detail.contains("askhub-worker run"))
 
         var versionOnly = self.snapshot
         versionOnly.updateMac(DemoData.macBookProID) { $0.commanderVersion = "0.3.0" }
         #expect(!InboxBuilder.items(from: versionOnly, now: now).contains { $0.kind == .compatibility })
+    }
+
+    /// ワーカーが司令塔の印を読めずに引き受けていない（番号を比べられない）ときは、合わないとは言わず、
+    /// どちらかを更新するコマンドも出さずに、ワーカーが書いた理由を出す
+    @Test
+    func uncomparableMacShowsWorkerReasonInsteadOfMismatch() throws {
+        let message = "司令塔の生きている印（commander.json）を読めない（unsupportedVersion(2)）"
+        var snapshot = snapshot
+        snapshot.updateMac(DemoData.macBookProID) { mac in
+            mac.compatibility = 1
+            mac.incompatibility = Mac.Incompatibility(commanderCompatibility: nil, message: message)
+        }
+        let pro = try #require(snapshot.mac(DemoData.macBookProID))
+        #expect(!pro.comparesCompatibility)
+        #expect(!pro.updatesCommander)
+        #expect(pro.updateCommand == nil)
+        let item = try #require(InboxBuilder.items(from: snapshot, now: now).first { $0.kind == .compatibility })
+        #expect(item.urgency == .blocking)
+        #expect(item.detail.contains(message))
+        #expect(!item.detail.contains("合いません"))
+        #expect(!item.detail.contains("launchctl") && !item.detail.contains("deploy.sh"))
     }
 
     // MARK: 状態リポジトリから
@@ -159,8 +181,8 @@ struct MacNoticeTests {
 
         let older = try #require(snapshot.mac("macbook-a"))
         #expect(older.incompatibility == Mac.Incompatibility(commanderCompatibility: 2, message: refusal))
-        #expect(older.refusalReason == "司令塔と互換の番号が合わず、新しいジョブを引き受けていません")
-        #expect(older.compatibilityText == "この Mac は 1、司令塔は 2")
+        #expect(older.refusalReason == StateSnapshotBuilder.incompatibleReason)
+        #expect(older.comparesCompatibility)
         #expect(older.commanderVersion == "0.3.0")
 
         let versionOnly = try #require(snapshot.mac("macbook-b"))

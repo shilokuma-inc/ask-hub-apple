@@ -267,19 +267,22 @@ enum InboxBuilder {
         )
     }
 
-    /// 互換の番号が司令塔と合わず、新しいジョブを引き受けていない Mac（オンラインのものだけ）。版が違うだけなら出さない
+    /// 互換の番号が司令塔と合わず、新しいジョブを引き受けていない Mac（オンラインのものだけ）。版が違うだけなら出さない。
+    /// 番号を比べられない（ワーカーが司令塔の印を読めない）ときは、合わないとは言わず、ワーカーが書いた理由を出す
     private static func compatibilityItem(_ mac: Mac) -> InboxItem? {
-        guard case .online(let lastSeen) = mac.connection, mac.incompatibility != nil else {
+        guard case .online(let lastSeen) = mac.connection, let incompatibility = mac.incompatibility else {
             return nil
         }
+        let detail = mac.updateCommand.map { "互換の番号が合いません（\(mac.compatibilityText)） · \($0)" }
+            ?? "\(mac.compatibilityText) · \(incompatibility.message ?? mac.updateStep)"
         return InboxItem(
             id: "mac/\(mac.id)/compatibility",
             urgency: .blocking,
             kind: .compatibility,
             repositoryID: nil,
-            title: mac.updatesCommander ? "司令塔を更新する" : "ワーカーを更新する",
+            title: mac.updateTitle,
             context: mac.name,
-            detail: "互換の番号が合いません（\(mac.compatibilityText)） · \(mac.updateCommand)",
+            detail: detail,
             since: lastSeen,
             route: .mac(mac.id)
         )

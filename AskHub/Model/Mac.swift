@@ -161,16 +161,37 @@ extension Mac {
         }
     }
 
+    /// 司令塔とこの Mac の互換の番号を、両方読めて違うと確かめられたか。
+    /// ワーカーが司令塔の印を読めずに引き受けていない（番号を比べられない）ときは false
+    var comparesCompatibility: Bool {
+        guard let compatibility, let commander = incompatibility?.commanderCompatibility else {
+            return false
+        }
+        return compatibility != commander
+    }
+
     /// 互換の番号を合わせるのに、司令塔を更新するか（この Mac のほうが新しい）。ほかはこの Mac のワーカーを更新する
     var updatesCommander: Bool {
-        guard let compatibility, let commander = incompatibility?.commanderCompatibility else {
+        guard comparesCompatibility, let compatibility, let commander = incompatibility?.commanderCompatibility else {
             return false
         }
         return compatibility > commander
     }
 
-    /// 互換の番号を合わせる手順（`docs/renewal/operations.md` の「ワーカーの更新」「司令塔の更新」）
+    /// 合わない Mac で人がすること（例: ワーカーを更新する）
+    var updateTitle: String {
+        guard comparesCompatibility else {
+            return "互換の番号を確かめる"
+        }
+        return updatesCommander ? "司令塔を更新する" : "ワーカーを更新する"
+    }
+
+    /// 互換の番号を合わせる手順（`docs/renewal/operations.md` の「ワーカーの更新」「司令塔の更新」）。
+    /// 番号を比べられないときは、どちらを更新するか決められないので、司令塔の印と両方の版を確かめる
     var updateStep: String {
+        guard comparesCompatibility else {
+            return "司令塔の生きている印（commander.json）と、この Mac・司令塔の版を確かめます。古いほうを更新するか、印を直します"
+        }
         if updatesCommander {
             return "手元の Mac で司令塔を更新します"
         }
@@ -179,8 +200,11 @@ extension Mac {
             : "新しい askhub-worker に差し替えて、常駐を読み込み直します"
     }
 
-    /// 互換の番号を合わせるときに流すコマンド
-    var updateCommand: String {
+    /// 互換の番号を合わせるときに流すコマンド。番号を比べられないときは nil
+    var updateCommand: String? {
+        guard comparesCompatibility else {
+            return nil
+        }
         if updatesCommander {
             return "scripts/commander/deploy.sh"
         }
@@ -189,7 +213,7 @@ extension Mac {
 
     /// 例: この Mac は 1、司令塔は 2
     var compatibilityText: String {
-        guard let compatibility, let commander = incompatibility?.commanderCompatibility else {
+        guard comparesCompatibility, let compatibility, let commander = incompatibility?.commanderCompatibility else {
             return "司令塔と互換の番号を照らし合わせられません"
         }
         return "この Mac は \(compatibility)、司令塔は \(commander)"

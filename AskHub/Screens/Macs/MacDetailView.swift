@@ -80,11 +80,13 @@ struct MacDetailView: View {
                 .foregroundStyle(Theme.warning)
             VStack(alignment: .leading, spacing: 4) {
                 Text(mac.updateStep)
-                Text(mac.updateCommand)
-                    .appFont(.caption)
-                    .monospaced()
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                if let command = mac.updateCommand {
+                    Text(command)
+                        .appFont(.caption)
+                        .monospaced()
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
             }
             if let message = incompatibility.message {
                 Text(message)
@@ -92,7 +94,7 @@ struct MacDetailView: View {
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text(mac.updatesCommander ? "司令塔の更新" : "ワーカーの更新")
+            Text(mac.comparesCompatibility ? (mac.updatesCommander ? "司令塔の更新" : "ワーカーの更新") : "互換の番号の確認")
         } footer: {
             Text("互換の番号が合うまで、この Mac は新しいジョブを引き受けません。持っているジョブは最後まで動かします")
         }
