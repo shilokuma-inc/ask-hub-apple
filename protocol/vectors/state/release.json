@@ -1,0 +1,685 @@
+{
+  "description": "repos/<owner>/<repo>/releases/<版>.json（App Store で配信した版と、その後作業の進み具合）を読む例。schemaValid は protocol/schemas/state/release.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。知らない欄は、スキーマでは弾くが、読む側は読み飛ばす。スキーマで表せない決まり（欄どうしの関係）は、スキーマに合っても読む側が弾く",
+  "schema": "state/release.schema.json",
+  "cases": [
+    {
+      "name": "detected",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "awaiting-notes",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "commit": {
+          "sha": "514fe370b24bc02796114e1e7ae1860ed72d163e",
+          "source": "uploadRun",
+          "platform": "iOS",
+          "build": "31",
+          "run": 19000000001,
+          "runNumber": 31
+        },
+        "tag": {
+          "name": "v1.1.0",
+          "created": true,
+          "at": "2026-11-25T01:00:05Z"
+        },
+        "notes": {
+          "version": 1,
+          "previousTag": "v1.0.0",
+          "draft": "## 新しい機能\n- 予定に写真を付けられるようになりました",
+          "draftedAt": "2026-11-25T01:02:00Z"
+        },
+        "nextVersion": {
+          "version": "1.2.0",
+          "state": "open",
+          "pullRequest": 170,
+          "at": "2026-11-25T01:00:10Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "confirmed",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "commit": {
+          "sha": "514fe370b24bc02796114e1e7ae1860ed72d163e",
+          "source": "uploadRun",
+          "platform": "iOS",
+          "build": "31",
+          "run": 19000000001,
+          "runNumber": 31
+        },
+        "tag": {
+          "name": "v1.1.0",
+          "created": true,
+          "at": "2026-11-25T01:00:05Z"
+        },
+        "notes": {
+          "version": 1,
+          "previousTag": "v1.0.0",
+          "draft": "## 新しい機能\n- 予定に写真を付けられるようになりました",
+          "draftedAt": "2026-11-25T01:02:00Z",
+          "confirmed": {
+            "text": "## 新しい機能\n- 予定に写真を付けられます",
+            "approval": {
+              "keyId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "nonce": "01JC0000000000000000000000"
+            },
+            "at": "2026-11-25T02:00:00Z"
+          }
+        },
+        "nextVersion": {
+          "version": "1.2.0",
+          "state": "merged",
+          "pullRequest": 170,
+          "at": "2026-11-25T01:00:10Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "finished-by-hand",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.0.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "12",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          },
+          {
+            "platform": "macOS",
+            "build": "12",
+            "detectedAt": "2026-11-26T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "commit": {
+          "sha": "514fe370b24bc02796114e1e7ae1860ed72d163e",
+          "source": "existingTag"
+        },
+        "tag": {
+          "name": "v1.0.0",
+          "created": false,
+          "at": "2026-11-25T01:00:05Z"
+        },
+        "githubRelease": {
+          "url": "https://github.com/shariverse/oshikatsu-countdown-ios/releases/tag/v1.0.0",
+          "created": false,
+          "at": "2026-11-25T01:00:06Z"
+        },
+        "nextVersion": {
+          "version": "1.1.0",
+          "state": "skipped",
+          "pullRequest": null,
+          "at": "2026-11-25T01:00:07Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "first-release-notes",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "commit": {
+          "sha": "514fe370b24bc02796114e1e7ae1860ed72d163e",
+          "source": "uploadRun",
+          "platform": "iOS",
+          "build": "31",
+          "run": 19000000001,
+          "runNumber": 31
+        },
+        "tag": {
+          "name": "v1.1.0",
+          "created": true,
+          "at": "2026-11-25T01:00:05Z"
+        },
+        "notes": {
+          "version": 1,
+          "previousTag": null,
+          "draft": "## 新しい機能\n- 予定に写真を付けられるようになりました",
+          "draftedAt": "2026-11-25T01:02:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "problem",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "problem": {
+          "step": "commit",
+          "message": "ビルド (31) を上げた Upload の実行が見つからない",
+          "needsHuman": true,
+          "at": "2026-11-25T01:00:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "two-part-version",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "2.1",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "nextVersion": {
+          "version": "2.2",
+          "state": "open",
+          "pullRequest": 3,
+          "at": "2026-11-25T01:00:10Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "extra": true
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "tag-without-commit",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "tag": {
+          "name": "v1.1.0",
+          "created": true,
+          "at": "2026-11-25T01:00:05Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "tag-name-mismatch",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "commit": {
+          "sha": "514fe370b24bc02796114e1e7ae1860ed72d163e",
+          "source": "uploadRun",
+          "platform": "iOS",
+          "build": "31",
+          "run": 19000000001,
+          "runNumber": 31
+        },
+        "tag": {
+          "name": "1.1.0",
+          "created": true,
+          "at": "2026-11-25T01:00:05Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "upload-run-without-run",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "commit": {
+          "sha": "514fe370b24bc02796114e1e7ae1860ed72d163e",
+          "source": "uploadRun",
+          "platform": "iOS",
+          "build": "31"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "existing-tag-with-run",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "commit": {
+          "sha": "514fe370b24bc02796114e1e7ae1860ed72d163e",
+          "source": "existingTag",
+          "run": 3,
+          "runNumber": 3
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "release-without-tag",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "commit": {
+          "sha": "514fe370b24bc02796114e1e7ae1860ed72d163e",
+          "source": "uploadRun",
+          "platform": "iOS",
+          "build": "31",
+          "run": 19000000001,
+          "runNumber": 31
+        },
+        "githubRelease": {
+          "url": "https://github.com/x/y/releases/tag/v1.1.0",
+          "created": true,
+          "at": "2026-11-25T01:00:06Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "duplicate-platform",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          },
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "next-version-not-greater",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "nextVersion": {
+          "version": "1.1.0",
+          "state": "open",
+          "pullRequest": 170,
+          "at": "2026-11-25T01:00:10Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "open-without-pull-request",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "nextVersion": {
+          "version": "1.2.0",
+          "state": "open",
+          "pullRequest": null,
+          "at": "2026-11-25T01:00:10Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "skipped-with-pull-request",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "nextVersion": {
+          "version": "1.2.0",
+          "state": "skipped",
+          "pullRequest": 170,
+          "at": "2026-11-25T01:00:10Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "leading-zero-version",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "01.0.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "path-version",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "../1.0.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-platforms",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "bad-build",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31a",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "bad-previous-tag",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "commit": {
+          "sha": "514fe370b24bc02796114e1e7ae1860ed72d163e",
+          "source": "uploadRun",
+          "platform": "iOS",
+          "build": "31",
+          "run": 19000000001,
+          "runNumber": 31
+        },
+        "tag": {
+          "name": "v1.1.0",
+          "created": true,
+          "at": "2026-11-25T01:00:05Z"
+        },
+        "notes": {
+          "version": 1,
+          "previousTag": "1.0.0",
+          "draft": "## 新しい機能\n- 予定に写真を付けられるようになりました",
+          "draftedAt": "2026-11-25T01:02:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-step",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z",
+        "problem": {
+          "step": "deploy",
+          "message": "x",
+          "needsHuman": false,
+          "at": "2026-11-25T01:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unsupported-version",
+      "value": {
+        "v": 2,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.1.0",
+        "platforms": [
+          {
+            "platform": "iOS",
+            "build": "31",
+            "uploadedAt": "2026-11-20T03:10:00Z",
+            "detectedAt": "2026-11-25T01:00:00Z"
+          }
+        ],
+        "detectedAt": "2026-11-25T01:00:00Z",
+        "updatedAt": "2026-11-25T01:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    }
+  ]
+}

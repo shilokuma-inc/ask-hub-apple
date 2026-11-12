@@ -54,6 +54,46 @@
 - 後作業で main と develop の両方に取り込む
 - App Store Connect の編集できるバージョンはプラットフォームごとに 1 つなので、通常のリリースが進行中のときは hotfix を優先する。進行中の版をいったん取り下げ、hotfix を配信してから、進行中の版の準備をやり直す。取り下げの前にクライアントで確認を挟む（取り下げとやり直しを API でどこまでできるかは要確認）
 
+## 配信の検知と後作業
+
+App Store で対象のアプリの版が配信された（Ready for Sale）ことを司令塔が見つけ、後作業を進める（段階 5 の 2）。
+今は develop から上げたビルドを審査に出しているので、release ブランチと main は使わない。release ブランチを使うリリース（「リリースを始める」）を作るときに、取り込みの PR を足す。
+
+### 読むもの
+
+- 鍵は、App Store Connect のチームの API キー（役割は App Manager。Admin は使わない）。Mac mini の Keychain に置く。入れ方は APNs と同じく、.p8 をコマンドで読ませる（`askhub-commander app-store-connect --key-id <鍵の id> --issuer-id <Issuer ID> --key-file <.p8 のパス>`）。.p8 は Mac に残さない。設定には鍵の id と Issuer ID だけを書く。Apple のチームが複数あれば、チームごとに 1 つ足す
+- 使うのは読み取りだけ。審査に出す・配信する・取り下げは、人が AskHub で押したときだけ（「リリースを始める」の段階で作る）
+- 司令塔は、生きている印を書くとき（10 分ごと）に、前に読んでから 30 分たったリポジトリを、周の外で 1 つずつ読む（対象のアプリのアイコンと同じ形。[architecture.md](architecture.md)）
+  1. アプリを探す: リポジトリの base の `*.xcconfig`・`project.yml`・`*.pbxproj` にある `APP_BUNDLE_IDENTIFIER`・`PRODUCT_BUNDLE_IDENTIFIER` の値（`$(…)` を含まないもの）を候補にし、鍵ごとに `GET /v1/apps?filter[bundleId]=…` で探す。返った `bundleId` と完全に一致するものだけを使う（文書に完全一致とは書かれていない）。見つけた鍵とアプリは覚えておく（起動し直したら探し直す）
+  2. 配信中の版を読む: `GET /v1/apps/{id}/appStoreVersions?filter[appVersionState]=READY_FOR_DISTRIBUTION&include=build`。`appStoreState`（`READY_FOR_SALE`）は非推奨なので使わない。読むのは `platform`・`versionString` と、ビルドの `version`（番号）・`uploadedDate`
+  3. 配信の記録（`releases/<版>.json`。[protocol.md](protocol.md)）が無ければ作り、あれば見つけたプラットフォームを足す
+- 読むのは今配信中の版だけで、置き換わった古い版（`REPLACED_WITH_NEW_VERSION`）にはさかのぼらない。AskHub を入れる前に配信した版も、配信中なら同じ後作業をする（タグと Release が手で作ってあれば、それを記録するだけ）
+- JWT は ES256（`kid` は鍵の id、`iss` は Issuer ID、`aud` は `appstoreconnect-v1`）。20 分までしか使えないので、15 分使い回して作り直す
+- App Store Connect の上限は、鍵ごとに直前の 1 時間で 3,500 回ほど（応答の `X-Rate-Limit`）。1 リポジトリ 30 分に 1〜2 回なので足りる。429 のときは、次に読むときにやり直す
+
+### 後作業の段取り
+
+順に進め、進めるたびに配信の記録に書く。進められなければ、記録の `problem` に理由を書き、次に確かめるとき（10 分ごと）にやり直す。やり直しても進まないもの（人が直すもの）は `needsHuman` にして、クライアントに出す。
+タグ・Release・PR は、作る前にあるかを確かめ、二重に作らない。どれも司令塔の持ち主ごとのトークン（Contents・Pull requests・Actions の権限）で行い、ルールセット（PR 必須・例外なし）を越える直接の push はしない。
+
+1. **コミットを求める**: 最初に見つけたプラットフォームのビルドから、そのビルドを上げた Upload の実行を探す
+   - `GET /repos/{owner}/{repo}/actions/runs?created=<上げた時刻の 6 時間前>..<上げた時刻>` のうち、ワークフローのファイルが `.github/workflows/upload.yml` で、始めてから終わるまで（終わりは 15 分のゆとりを持つ）の間に上げた時刻が入る実行を候補にする
+   - 候補の head が 1 つにそろえば、それを配信したコミットにする。そろわなければ、実行番号がビルドの番号と同じ候補（ビルドの番号を実行番号にするリポジトリ）に絞る。それでも決まらない・候補が無いときは、人が直す問題にする
+   - ビルドの番号だけでは決めない。Xcode に採番させるリポジトリ（テンプレート・ask-hub-apple）や、実行番号にする前のビルドがあるため（おしかつカウントダウンの 1.0.0 は、ビルド (12) が Upload の実行 13 だった）
+   - タグ `v<版>` がすでにあれば、そのタグが指すコミットを使う（人が手で付けたもの）
+2. **タグ**: 配信したコミットに、注釈付きのタグ `v<版>` を Git Data API で作る。書き手はワーカーのコミットと同じ（トークンのアカウントの noreply アドレス。[architecture.md](architecture.md)）。本文は 1 行目が `<アプリの名前> <版> (<ビルド>)`、3 行目が `App Store で配信した <版> のビルド (<ビルド>) のコミット。`。ルールセット（`askhub-protect`）はブランチだけが対象なので、タグは止められない
+3. **リリース文の下書き**: 常時オンの Mac の Claude（読むだけ）が、配信したコミットの写しを読み、前のタグ（配信したコミットに含まれる `v<版>` のタグのうち、この版より小さい最大のもの）からの変更で、日本語のリリース文を下書きする
+   - 材料: その間にマージした epic（状態リポジトリの題と要約）と、PR（マージコミットの題）。前のタグが無い（初めての配信）なら、そのコミットの時点の App Store の説明文（あれば）とアプリの中身。develop の最新から作らない（配信していない変更が入るため）
+   - 人が読む文にする。URL・トークンらしい文字列・内部の語（AskHub・epic・ループ・CI など）は入れない。入っていたら、司令塔が書き直させる
+4. **人が確かめる**: クライアントの「あなたの番」に下書きを出し、通知する。人はそのまま、または直して「公開する」を押す（`publishGitHubRelease`）。押した本文を記録の `notes.confirmed` に写す
+5. **GitHub Release**: 押した本文で、タグ `v<版>` の Release を公開する（名前はタグと同じ。Latest にする）。すでにあれば記録するだけ
+6. **次の版**: 1 と並んで、配信を見つけたらすぐ、develop の `MARKETING_VERSION` を次のマイナーに上げる PR を出す
+   - ブランチは `askhub/version-<次の版>`、コミットは `[chore] MARKETING_VERSION を <次の版> に上げる`、PR は `【CHORE】MARKETING_VERSION を <次の版> に上げる`
+   - 書き換えるのは、develop の `*.xcconfig`・`project.yml`・`*.pbxproj` で、`MARKETING_VERSION` に配信した版か、それより小さい版を書いた行だけ
+   - develop の版がもう配信した版より大きければ、上げない（`skipped`）
+   - `repo.json` の `build.finalChecks` のチェックがすべて通ったら、マージコミットでマージする。落ちたら人が直す問題にする（司令塔は直さない）
+   - 大きく上げたいとき（2.0.0 など）は、次のリリースを始めるときに選び直す
+
 ## ワークフロー
 
 | ワークフロー | 動かすとき |
@@ -63,14 +103,13 @@
 | 最新情報 | リリースのたび。前回のリリースから入った最終 PR をもとに Claude が下書きし、人が確定する |
 | 説明文・キーワードなどほかのメタデータ | リリースのとき、App Store Connect の値と差があるときだけ反映する |
 | スクショ | リリースのとき、画面に差があるときだけ反映する（下の「App Store の素材」） |
-| App Store Connect の状態の読み取り | Linux のランナーの定期実行（30 分ごと）と、Upload・提出の直後 |
+| App Store Connect の状態の読み取り | ワークフローではなく司令塔が読む（30 分ごと。下の「配信の検知と後作業」） |
 
 - main では Upload も Archive も走らせない。main に入るのは release ブランチの先頭そのもの
 - 後作業の取り込み（release → main、release → develop）は、GitHub Actions の `GITHUB_TOKEN` では行わない。`GITHUB_TOKEN` はブランチ保護の例外に入れられず、既定では PR も作れないため（段階 0 で確認）。配信を見つけたら司令塔が PR を作り、CI が通ったら自動でマージする
 - 審査に出したビルドの dSYM は、Upload のときに App Store Connect に送り、クラッシュの解析はそちらに任せる
 - archive は、誰でも取れる場所に置かない。GitHub Release にも Actions の成果物（artifact）にも付けない（public のリポジトリでは誰でも取れるため）。GitHub のランナーで作った archive はジョブの終わりに消えるので、残したいときは手元の Mac に置く
-- App Store Connect の API の鍵は、今までどおり GitHub の Secrets（Environment の Secrets）に置く。読み取りは Linux のランナーで行うので、macOS のランナーの不足に左右されない
-- public のリポジトリの定期実行は、60 日動きが無いと止まる。定期実行は public の制御用のリポジトリ 1 つにまとめ、その定期実行も止まっていないかを見張る
+- Upload に使う App Store Connect の API の鍵は、今までどおり GitHub の Secrets（Environment の Secrets）に置く。状態の読み取りに使う鍵は別に作り、Mac mini の Keychain に置いて司令塔が読む（ユーザーの決定。GitHub Actions から状態リポジトリには書かない。public の制御用のリポジトリの定期実行も作らない）
 
 ## App Store Connect でしかできない作業
 
