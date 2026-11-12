@@ -20,9 +20,12 @@ struct ReleaseDetailView: View {
     private func content(_ release: Release) -> some View {
         List {
             CardSection {
-                AppHeaderView(repository: store.repository(release.repositoryID), subtitle: "App Store で配信しました", iconSize: 40)
-                Text(release.version).rowFont(.title)
-                Text(release.platformSummary).foregroundStyle(.secondary)
+                AppHeaderView(
+                    repository: store.repository(release.repositoryID),
+                    subtitle: "App Store で配信 · \(release.platformSummary)",
+                    iconSize: 40
+                )
+                // 公開を送った後に、司令塔がしばらく受け取っていない・断ったときの理由
                 ReflectionStatusView(target(release))
             }
             CardSection {
@@ -32,7 +35,7 @@ struct ReleaseDetailView: View {
             } header: {
                 Text("後作業")
             } footer: {
-                Text("配信したコミットにタグを付け、確かめたリリース文で GitHub Release を公開し、develop の版を次に上げる PR を出します。どれも PR とタグで行い、直接は push しません")
+                Text("司令塔が順に進めます。develop には PR で入れ、直接は push しません")
             }
             if let notes = release.notes {
                 notesSection(release, notes: notes)
