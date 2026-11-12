@@ -3,7 +3,7 @@ import Foundation
 
 /// Claude に読ませる、対象のリポジトリの作業場所
 public struct PreparedWorkspace: Sendable {
-    /// 対象のリポジトリの既定のブランチの写し（読むだけ）
+    /// 対象のリポジトリの base（無ければ既定のブランチ）の写し（読むだけ）
     public var directory: URL
     /// リポジトリの事実（CLAUDE.md の全員向けの事実）。`--restricted` では CLAUDE.md が読まれないので、決まりの文に入れて渡す
     public var facts: String
@@ -16,8 +16,8 @@ public struct PreparedWorkspace: Sendable {
 
 /// 対象のリポジトリの写しを用意する（常時オンの Mac のワーカー専用のフォルダに partial clone で作り、使うたびに最新にする）
 public protocol RepositoryWorkspace: Sendable {
-    /// ジョブ用の写し（既定のブランチの最新）を用意する。並んで動くほかのジョブの写しとは分ける
-    func prepare(_ repo: RepositoryFullName, for job: ULID) async throws(WorkspaceError) -> PreparedWorkspace
+    /// ジョブ用の写し（`base` の最新。nil なら既定のブランチの最新）を用意する。並んで動くほかのジョブの写しとは分ける
+    func prepare(_ repo: RepositoryFullName, base: String?, for job: ULID) async throws(WorkspaceError) -> PreparedWorkspace
 
     /// 依頼の添付を置く、Claude が読んでよいフォルダ（ジョブごとに作る）
     func attachmentsDirectory(for job: ULID) async throws(WorkspaceError) -> URL

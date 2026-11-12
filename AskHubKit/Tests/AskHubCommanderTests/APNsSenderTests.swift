@@ -60,10 +60,14 @@ struct APNsSenderTests {
         return DeviceFile(device: id, platform: .ios, push: push, updatedAt: Timestamp(Self.now))
     }
 
-    func sender(_ transport: APNsStubTransport, secrets: (any SecretStore)? = nil) -> APNsSender {
+    func sender(
+        _ transport: APNsStubTransport,
+        secrets: (any SecretStore)? = nil,
+        log: @escaping @Sendable (String) -> Void = { _ in }
+    ) -> APNsSender {
         let clock = clock
         let secrets = secrets ?? InMemorySecretStore([.apnsKey: Data(key.pemRepresentation.utf8)])
-        return APNsSender(configuration: Self.configuration, secrets: secrets, transport: transport) { clock.now }
+        return APNsSender(configuration: Self.configuration, secrets: secrets, transport: transport, now: { clock.now }, log: log)
     }
 
     /// JWT のヘッダーと中身
@@ -148,7 +152,6 @@ struct APNsSenderTests {
 
     @Test(arguments: [
         (APNsStubTransport.Reply.status(410, reason: "Unregistered"), PushDelivery.rejected("410 Unregistered")),
-        (.status(400, reason: "BadDeviceToken"), .rejected("400 BadDeviceToken")),
         (.status(400, reason: "DeviceTokenNotForTopic"), .rejected("400 DeviceTokenNotForTopic")),
         (.status(400, reason: "BadTopic"), .failed("APNs が断った（400 BadTopic）")),
         (.status(403, reason: "InvalidProviderToken"), .failed("APNs が断った（403 InvalidProviderToken）")),
@@ -157,6 +160,36 @@ struct APNsSenderTests {
     ])
     func classifiesReplies(_ reply: APNsStubTransport.Reply, _ expected: PushDelivery) async {
         #expect(await sender(APNsStubTransport([reply])).send(notice, to: device()) == expected)
+    }
+
+    /// 開発用の署名の Release の版は、development のトークンを production と書いていた。BadDeviceToken なら、もう一方の環境に 1 回だけ送る
+    @Test(arguments: [APNsEnvironment.production, .development])
+    func retriesOtherEnvironmentOnBadDeviceToken(_ written: APNsEnvironment) async throws {
+        let transport = APNsStubTransport([.status(400, reason: "BadDeviceToken"), .status(200)])
+        let logs = OSAllocatedUnfairLock(initialState: [String]())
+        let sender = sender(transport) { line in logs.withLock { $0.append(line) } }
+        #expect(await sender.send(notice, to: device(written)) == .delivered)
+
+        let hosts = ["api.push.apple.com", "api.sandbox.push.apple.com"]
+        #expect(transport.requests.map { $0.url?.host } == (written == .production ? hosts : hosts.reversed()))
+        #expect(transport.requests.map { $0.url?.path } == Array(repeating: "/3/device/\(NotifierTests.token)", count: 2))
+        #expect(logs.withLock { $0 }.count == 1)
+        #expect(logs.withLock { $0 }.first?.contains("\(written.rawValue) と書いてあるが") == true)
+    }
+
+    /// もう一方の環境でも使えなければ、その結果を返す（どちらでも BadDeviceToken なら、送り直さない）
+    @Test(arguments: [
+        (
+            APNsStubTransport.Reply.status(400, reason: "BadDeviceToken"),
+            PushDelivery.rejected("400 BadDeviceToken（production・development のどちらでも）")
+        ),
+        (.status(410, reason: "Unregistered"), .rejected("410 Unregistered")),
+        (.status(503, reason: "ServiceUnavailable"), .failed("APNs が断った（503 ServiceUnavailable）"))
+    ])
+    func reportsOtherEnvironmentResult(_ reply: APNsStubTransport.Reply, _ expected: PushDelivery) async {
+        let transport = APNsStubTransport([.status(400, reason: "BadDeviceToken"), reply])
+        #expect(await sender(transport).send(notice, to: device()) == expected)
+        #expect(transport.requests.count == 2)
     }
 
     @Test func failsWithoutKeyOrConnection() async throws {

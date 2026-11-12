@@ -135,10 +135,15 @@ struct DecisionDeckView: View {
         #endif
     }
 
-    /// カードの大きさ。どのカードも同じ大きさの札にする
+    /// カードの大きさ。どのカードも同じ大きさの札にする。
+    /// iPhone では縦長（幅の 1.55 倍まで）。Mac・iPad のように札を置く場所が広いと、縦に伸びて質問と選択肢の間が大きく空くので、
+    /// 場所が広いほど縦横の比を下げて、幅の 1.25 倍まで抑える（ユーザーの決定。2026-11-12）。iPhone の幅（Pro Max まで）では変わらない
     static func cardSize(in available: CGSize) -> CGSize {
-        let width = min(available.width - 44, 440)
-        let height = min(available.height - 64, width * 1.55)
+        let room = available.width - 44
+        let width = min(room, 440)
+        // 札を置く幅が 396pt（iPhone の Pro Max）から 516pt までの間で、比を 1.55 から 1.25 へなめらかに下げる（窓の幅を変えても札が跳ねない）
+        let wideness = min(max((room - 396) / 120, 0), 1)
+        let height = min(available.height - 64, width * (1.55 - 0.30 * wideness))
         return CGSize(width: max(width, 0), height: max(height, 0))
     }
 

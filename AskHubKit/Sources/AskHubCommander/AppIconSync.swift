@@ -5,8 +5,8 @@ import Foundation
 
 /// 対象のアプリのアイコンを取り出す元（本物は `GitAppIconSource`）
 public protocol AppIconSource: Sendable {
-    /// 既定のブランチの先頭のアイコンの元。見つからなければ nil
-    func locate(_ repo: RepositoryFullName) async throws -> AppIconLocator.Source?
+    /// base（`repo.json` の `build.baseBranch`。nil なら既定のブランチ）の先頭のアイコンの元。見つからなければ nil
+    func locate(_ repo: RepositoryFullName, base: String?) async throws -> AppIconLocator.Source?
     /// 元を PNG にする
     func render(_ source: AppIconLocator.Source, of repo: RepositoryFullName) async throws -> Data
 }
@@ -21,8 +21,8 @@ public struct GitAppIconSource: AppIconSource {
         self.renderer = renderer
     }
 
-    public func locate(_ repo: RepositoryFullName) async throws -> AppIconLocator.Source? {
-        try await workspace.locateAppIcon(repo)
+    public func locate(_ repo: RepositoryFullName, base: String?) async throws -> AppIconLocator.Source? {
+        try await workspace.locateAppIcon(repo, base: base)
     }
 
     /// 元のフォルダを、ビルドの一時フォルダの下に取り出して書き出す。取り出したものは書き出した後に消す
@@ -96,12 +96,12 @@ public actor AppIconSync {
     }
 
     /// 1 つのリポジトリのアイコンを確かめ、元が変わっていれば書き出して置く。書いたら true。
-    /// 元が見つからなくなっても、前のアイコンは残す
+    /// 元は、Claude のジョブの写しと同じく base（ビルドを設定する前は既定のブランチ）から探す。元が見つからなくなっても、前のアイコンは残す
     @discardableResult
     func refresh(_ repo: RepositoryFullName) async throws -> Bool {
         let path = StatePath.repository(repo)
         guard let file = try await context.readable(RepositoryFile.self, at: path),
-              let found = try await source.locate(repo) else { return false }
+              let found = try await source.locate(repo, base: file.build?.baseBranch) else { return false }
         if file.icon?.source == found.path, file.icon?.sourceTree == found.tree { return false }
         let png = try await source.render(found, of: repo)
         guard png.count <= Self.maximumImageSize else {

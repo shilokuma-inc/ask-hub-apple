@@ -39,7 +39,8 @@ public struct ReviewTaskRunner: JobRunning {
         }
         try Self.check(pull, against: input, branches: target.branches)
         let outputs = AttemptFile.Outputs(pullRequest: input.pullRequest, commit: input.head, branch: target.branches.task)
-        if case let .failed(failures) = try await waitForChecks(pulls, head: input.head, required: target.settings.childChecks) {
+        let waited = try await waitForChecks(pulls, pullRequest: input.pullRequest, head: input.head, required: target.settings.childChecks)
+        if case let .failed(failures) = waited {
             let findings = await ciFindings(failures, pulls: pulls)
             return JobResult(outputs: outputs.with(verdict: .fixCI, findings: findings))
         }

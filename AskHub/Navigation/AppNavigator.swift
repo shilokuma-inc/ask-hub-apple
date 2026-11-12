@@ -47,7 +47,7 @@ struct RouteList<Content: View>: View {
                 List(content: content)
             }
         }
-        .compactList()
+        .compactList(selectable: selection != nil)
     }
 }
 

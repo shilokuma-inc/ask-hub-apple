@@ -173,6 +173,18 @@
 - アプリの 30 秒ごとの取り直しを Contents API で 1 ファイルずつ読むと、終わった epic も 1 本ごとに 4〜5 回読み、まだ無いファイル（やめた epic の `goal.json` など）は毎回 404 で上限に数えられる
   （2026-11-11 の 14 本で 1 回 132 回・約 5 秒、404 は 10 回）。ETag はメモリーにだけ持つので、起動のたびに全件を 200 で読み、すべて数えられる（iPhone は裏で落とされると開くたびに起動し直す）。
   取り直しは `StateStore.snapshot()` から読み、tree と blob は sha で決まるので Caches のファイルにも持つ（`objectsDirectory`）。変わらなければ直下の一覧の 1 回（304）で済み、起動の直後も直下の一覧の 1 回と変わった分だけになる（2026-11-11、#1031）
+- 対象のリポジトリの GitHub の既定のブランチ（`origin/HEAD`）と base（`repo.json` の `build.baseBranch`）は違うことがある（askhub-sandbox は既定のブランチの `main` が雛形だけで、base は `develop`）。
+  質問づくりの写しを既定のブランチから取り出していたため、develop にある検索・色の絞り込みを「まだ無い」とした質問が作られた。リポジトリのコードを読むところは、どれも base から取り出す（2026-11-12、#1071）
+- git のリビジョンの短い名前 `origin/<ブランチ>` は、同じ名前のタグ（`refs/tags/origin/<ブランチ>`）があるとそちらを指す（`refname 'origin/develop' is ambiguous` の警告だけで、リモートのブランチより先に選ばれる。Apple Git 2.50.1 で確かめた）。
+  取り違えないよう、リモートのブランチは `refs/remotes/origin/<ブランチ>` の形で渡す（2026-11-12）
+- 最終 PR の「マージしています…」は、マージのジョブが成功してから司令塔が epic を merged にするまで（司令塔の次の周、30 秒ほど）も出る（`finalState`）。
+  アプリの 30 秒ごとの取り直し（Mac で前面でなければ 2 分）を待つと、マージ済みの表示がさらに遅れ、切り替わらないように見えた。
+  承認から merged までを実際の順に読み直すテスト（アプリ・司令塔の両方）は直す前から通り、人も「待てば切り替わった」と確かめたので（epic のゴールの q1 の前提を、後の q4 の答えで改めた）、不具合ではなく遅れだった。マージ中の epic がある間だけ 10 秒ごとに読み直す（`ClientStore.watchMerges`。2026-11-12）
+- GitHub Actions の実行が、queued のままジョブが 0 個で止まることがある（GitHub 側の不具合。BeaconFun4/demomoni-remake-ios#172 では push と pull_request の 2 つとも 14 時間止まった）。
+  check run が 1 つも出ないので、待つチェックが「始まらない」ように見え、設定ミスと見分けがつかない。見分けるには `GET /repos/{o}/{r}/actions/runs?head_sha=<sha>` で head の実行を読み、
+  queued のまま長い実行の `GET /actions/runs/{id}/jobs` の `total_count` が 0 かを見る（ランナー不足ならジョブはあり、queued の check run として出る）。
+  `gh run cancel` は「Cannot cancel a workflow run that is completed」で断られて消せない。PR を閉じてすぐ開き直す（`PATCH pulls/{n}` の `state`）と `reopened` のイベントで新しい実行が作られ、動き出した。
+  止まった古い実行は queued のまま残るので、開き直した後は、それより新しい実行（id は作られた順に大きくなる）だけを見る。ワーカーは待つチェックが 10 分出なければ実行を読み、止まっていれば 1 回の待ちで 1 回だけ開き直す（2026-11-12、#1073）
 
 ## ビルド・テスト
 
@@ -442,12 +454,19 @@
   コンテナの tmp（`~/Library/Containers/jp.shilokuma.AskHub/Data/tmp/`）に窓ごとの PNG を書く（`DemoWindowSnapshot`）。ビルドした .app を `rsync` で送り、`ssh <Mac> open -g -n <.app> --args …` で起動する。
   `cacheDisplay(in:to:)` で描くと、NavigationSplitView のサイドバーと詳細の列が白や黒に抜けるので、`CGWindowListCreateImage`（macOS 15 の SDK で使えないので `dlsym` で引く）で撮る。
   macOS 27 では支援技術がつながるまで SwiftUI がアクセシビリティの木を作らず、アプリの中から名前でボタンを探せないので、`NSApp` に `AXManualAccessibility` を立てる（2026-11-12、Mac の UI の直し）
+- 最終 PR の CI（pull_request）は develop を取り込んだ merge ref で `swiftlint lint --strict` を流すので、作業ブランチでは通っても、限度ちょうどの関数・型
+  （`ClientStore.refresh()` は function_body_length の 50 行ちょうどだった）が develop 側の追加と合わさって落ちることがある。限度ぎりぎりの関数は extension の小さな関数に分けて余裕を残す（2026-11-12、#1070）
 - `xcodebuild test` は、既定（`-collect-test-diagnostics on-failure`）では、テストが落ちると、テストの後に `simctl diagnose -l -b --timeout=600 --log-option=--last --log-option=2m --output=<結果のバンドル>/Staging/1_Test/Diagnostics/simctl_diagnostics` を流す。
   手元（Xcode 26.6・iOS 26.5）では中のログの取り出しが終わらず、`Failure collecting diagnostics from simulator: Timed out after 600.0 seconds` まで 10 分止まった（結果のバンドルも 5.5MB → 46MB。Mac の DiagnosticReports の写しなどが入る）。
   集めるのは、記録された issue があるか、テストの実行役がエラーで終わったときだけ（IDEFoundation の `IDETestRunSession` の `_atLeastOneTestFailed`・`_atLeastOneTestRunnerFailedWithError`。Xcode 26.6・27.1 で同じ）で、
   通ったテストでは、作ったばかりの Simulator の 1 回目でも流れなかった。`-collect-test-diagnostics never` なら止まらず、`test-results summary` の `testFailures` の文と、テストごとの添付
   （クラッシュのレポート `.ips`・画面の録画）は残る。ワーカー（`XcodeBuildRunner`）はテストのときにいつも `never` を渡す。止まりを調べるときは、`ps` で `simctl diagnose` の子を探し、
   xcodebuild の出力の `IDETestOperationsObserverDebug: Failure collecting diagnostics` の行を見る（2026-11-12、#1047）
+- Release の構成を開発用の署名（`xcodebuild -configuration Release -allowProvisioningUpdates` の自動の署名）で実機向けにビルドすると、entitlement のファイルの `aps-environment` が `production` でも、
+  Xcode は profile に合わせて `development` で署名する（Info.plist に入れたビルド設定の値は `production` のまま）。APNs は署名の環境のトークンを返すので、ビルド設定から環境を決めると
+  development のトークンを production の宛先に書き、`400 BadDeviceToken` で断られる。環境は、iOS は埋め込みの `embedded.mobileprovision`（CMS で包んだ XML の plist）の `Entitlements`、
+  macOS は `SecTaskCopyValueForEntitlement` で読む（iOS では使えない）。同じ端末でも、開発用の署名の版と TestFlight の版でトークンが違う。
+  ビルドした .app の値は、`codesign -d --entitlements - --xml <.app>` と `security cms -D -i <.app>/embedded.mobileprovision` で確かめられる（2026-11-12、#1059）
 
 ## Keychain
 
@@ -698,3 +717,7 @@
   `.windowToolbar` は iOS に無いので Mac の分岐の中に書く（2026-11-12、Mac の UI の直し）
 - Mac の NavigationSplitView は窓の最小の大きさを列の最小の幅から決めないので、窓を小さくすると詳細の列だけ 200pt ほどに潰れる。
   詳細の列にも `navigationSplitViewColumnWidth(min:ideal:)` を付け、窓の中身に `.frame(minWidth:minHeight:)`（3 列の最小の幅の合計）を付ける（2026-11-12、Mac の UI の直し）
+- Mac の `List` で `Group(subviews:)` の行を `ForEach(..., id: \.element.id)` で並べると、id がセクションをまたいで重なり、ほかのセクションの行（先頭の見出しの行など）の中身が別のセクションに出る（iOS では起きない）。
+  セクションごとの `@State` の UUID と合わせた id にする（`CardRowItem`）。Mac の plain の一覧では、ほかにも
+  セクションの footer が 1 行で切れる（`fixedSize` も効かないので、注記は札の外の行として置く）・見出しに `listRowInsets` が効かない・行と見出しの中身に左右 8pt を自分で足す・
+  区切り線が行の中身の幅で切れて最後の行の下にも出る・`DisclosureGroup` の三角が行の左の外に出る。札（`CardSection`）は Mac でも行の地に区切り線を描き、開閉は `DisclosureGroupStyle` で見出しの右の山形にした（2026-11-12、Mac の UI の直し）

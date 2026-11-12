@@ -91,18 +91,21 @@ public actor APNsSender: PushSender {
     nonisolated let secrets: any SecretStore
     nonisolated let transport: any HTTPTransport
     nonisolated let now: @Sendable () -> Date
+    nonisolated let log: @Sendable (String) -> Void
     private var token: (value: String, issuedAt: Date)?
 
     public init(
         configuration: APNsConfiguration,
         secrets: any SecretStore,
         transport: any HTTPTransport = APNsURLSessionTransport(),
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        log: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.configuration = configuration
         self.secrets = secrets
         self.transport = transport
         self.now = now
+        self.log = log
     }
 
     /// 端末が受け取らなくても、1 日は APNs に送り直してもらう
@@ -116,34 +119,67 @@ public actor APNsSender: PushSender {
         } catch {
             return .failed("通知の中身を作れない（\(error)）")
         }
-        // 古くなった JWT で断られたら、作り直して 1 回だけ送り直す
+        switch await post(notice, body: body, token: device.push.token, environment: environment) {
+        case let .done(result):
+            return result
+
+        case .badDeviceToken:
+            break
+        }
+        // トークンと宛先の環境が食い違うと BadDeviceToken で断られる（環境を取り違えて登録した古い版のアプリなど）。
+        // もう一方の環境のトークンのことがあるので、1 回だけそちらに送る
+        let other: APNsEnvironment = environment == .production ? .development : .production
+        switch await post(notice, body: body, token: device.push.token, environment: other) {
+        case .done(.delivered):
+            log("端末 \(device.device) の宛先は \(environment.rawValue) と書いてあるが、\(other.rawValue) で届いた（アプリを新しい版にして開くと登録し直す）")
+            return .delivered
+
+        case let .done(result):
+            return result
+
+        case .badDeviceToken:
+            return .rejected("400 BadDeviceToken（\(environment.rawValue)・\(other.rawValue) のどちらでも）")
+        }
+    }
+
+    /// 1 つの環境に送った結果
+    private enum Attempt {
+        case done(PushDelivery)
+        /// トークンがこの環境のものでない
+        case badDeviceToken
+    }
+
+    /// 1 つの環境に送る。古くなった JWT で断られたら、作り直して 1 回だけ送り直す
+    private func post(_ notice: PushNotice, body: Data, token: String, environment: APNsEnvironment) async -> Attempt {
         for renewing in [false, true] {
             let jwt: String
             switch bearer(renewing: renewing) {
             case let .success(value): jwt = value
-            case let .failure(problem): return .failed(problem.message)
+            case let .failure(problem): return .done(.failed(problem.message))
             }
-            let request = request(notice, body: body, url: Self.url(token: device.push.token, environment: environment), jwt: jwt)
+            let request = request(notice, body: body, url: Self.url(token: token, environment: environment), jwt: jwt)
             let response: (Data, HTTPURLResponse)
             do {
                 response = try await transport.send(request)
             } catch {
-                return .failed("APNs につながらない（\(error.localizedDescription)）")
+                return .done(.failed("APNs につながらない（\(error.localizedDescription)）"))
             }
             let (data, http) = response
             let reason = (try? JSONDecoder().decode(Reply.self, from: data))?.reason ?? ""
             switch (http.statusCode, reason) {
             case (200, _):
-                return .delivered
+                return .done(.delivered)
             case (403, "ExpiredProviderToken") where !renewing:
                 continue
-            case (400, "BadDeviceToken"), (400, "DeviceTokenNotForTopic"), (410, _):
-                return .rejected("\(http.statusCode) \(reason)")
+            case (400, "BadDeviceToken"):
+                return .badDeviceToken
+            case (400, "DeviceTokenNotForTopic"), (410, _):
+                return .done(.rejected("\(http.statusCode) \(reason)"))
             default:
-                return .failed("APNs が断った（\(http.statusCode) \(reason)）")
+                return .done(.failed("APNs が断った（\(http.statusCode) \(reason)）"))
             }
         }
-        return .failed("APNs が JWT を受け付けない")
+        return .done(.failed("APNs が JWT を受け付けない"))
     }
 
     private struct Problem: Error {
