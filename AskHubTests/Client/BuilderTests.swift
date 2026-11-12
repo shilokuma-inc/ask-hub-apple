@@ -17,7 +17,7 @@ struct BuilderTests {
         let blocking = Set(items.filter { $0.urgency == .blocking }.map(\.kind))
         let whenFree = Set(items.filter { $0.urgency == .whenFree }.map(\.kind))
         #expect(blocking == [.questions, .goal, .humanTask, .blocker, .macOffline])
-        #expect(whenFree == [.finalReview, .verification, .cleanup, .token, .claudeVersion])
+        #expect(whenFree == [.finalReview, .verification, .cleanup, .token, .claudeVersion, .repositorySetup])
     }
 
     /// 急ぎを先に新しい順に並べる
