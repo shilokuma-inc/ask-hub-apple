@@ -470,3 +470,23 @@ extension ClientUITests {
         XCTAssertFalse(app.staticTexts["KURASHI-APPS"].exists)
     }
 }
+
+// MARK: - 進行中
+
+extension ClientUITests {
+    /// 進行中の終わったものは新しい 10 件だけを出し、それより前のものは「すべて見る」の画面で見返せる
+    @MainActor
+    func testFinishedEpicsShowRecentOnesAndAll() {
+        let app = launch(["-demoScenario", "manyFinished"])
+        XCTAssertTrue(app.tabBars.buttons["進行中"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["進行中"].tap()
+        let showAll = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "すべて見る")).firstMatch
+        XCTAssertTrue(scrollUntilExists(showAll, in: app, maxSwipes: 8))
+        // 一番前に終わったもの（13 件のうち 13 番目）は、進行中には出さない
+        let oldest = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "家事にかかった時間")).firstMatch
+        XCTAssertFalse(oldest.exists)
+        showAll.tap()
+        XCTAssertTrue(app.navigationBars["終わったもの"].waitForExistence(timeout: 5))
+        XCTAssertTrue(scrollUntilExists(oldest, in: app, maxSwipes: 8))
+    }
+}

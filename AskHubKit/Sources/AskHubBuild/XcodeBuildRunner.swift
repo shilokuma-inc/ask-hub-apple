@@ -131,6 +131,9 @@ public struct XcodeBuildRunner: Sendable {
         if let tests = settings.tests(for: request.kind) {
             // 並列のテストは Simulator の複製を作って場所を取り、遅くもなるので使わない
             arguments += ["-parallel-testing-enabled", "NO"]
+            // 既定（on-failure）では、テストが落ちると最後に Simulator の診断（`simctl diagnose`）を集め、最長 10 分止まる。
+            // ワーカーが読むのは結果のバンドルの失敗の文だけで、診断は使わない
+            arguments += ["-collect-test-diagnostics", "never"]
             if let plan = tests.testPlan {
                 arguments += ["-testPlan", plan]
             }

@@ -423,6 +423,16 @@
 - `askhub-commander`・`askhub-worker` の置き場所（`MachinePaths`）は `FileManager.default.homeDirectoryForCurrentUser` から作り、環境変数 `HOME` を差し替えても本当のホームフォルダの
   `~/Library/Application Support/AskHub/<役割>/config.json` を読み書きする。手元で設定を書き換えるコマンドを試すときは、実行ファイルを流さず、テストで
   `MachineCommandLine(role:executable:home:)` に一時フォルダを渡す。失敗の道は `exit` するので、設定の `kind` と役割が合わない（常時オンの設定をワーカーで読む）とテストのプロセスごと終わる（2026-11-11、#1015）
+- iOS Simulator の `xcodebuild test -only-testing:AskHubTests` は、指定した Simulator の複製（`Clone 1 of <名前>`）でテストを流し、終わった後は元の Simulator が止まっていた（起動していたのに Shutdown）。
+  テストの後に同じ Simulator で PR のスクショを撮るときは、`simctl boot`・`bootstatus -b` で起動し直してから入れる（止まったままだと `simctl install` が「Unable to lookup in current state: Shutdown」で失敗する）（2026-11-12、#1055）
+- 状態リポジトリの見本のファイルで PR のスクショを撮るとき、ジョブの `updatedAt` などを固定の時刻にすると、画面の相対時刻（「12 分前」）が撮った時刻で変わる。見本の時刻をアプリの起動の時刻から引いて作ると、
+  Before と After を別の時刻に撮っても同じ文になる（2026-11-12、#1055）
+- Icon Composer の `.icon` を PNG に書き出せるのは `Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool`（`--export-image --platform iOS --rendition Default --width --height --scale`）。
+  `xcrun ictool` が見つける `Contents/Developer/usr/bin/ictool` は Asset Catalog 用の別のもので、`--export-image` を「Unknown argument」（actool の形の plist）で断る。
+  書き出した PNG は角が透明の角丸で、iOS 26 のガラスの質感が入る（256px で 200 KB ほど）（2026-11-12、#1033）
+- `git ls-tree -r -d <コミット>` は tree だけを下の階層まで並べる（ファイルを並べないので、大きなリポジトリでも出力が小さい）。`-z` ならパスを引用符で囲まずに NUL で区切る。
+  `--filter=blob:none` の partial clone でも tree は手元にあるので、`ls-tree -r -d` は通信しない。`ls-tree -l`（大きさ）と `cat-file blob` は、無い blob をその場で 1 つずつ取りに行く（2026-11-12、#1033）
+- `xcrun devicectl device capture screenshot --device <名前か UDID> --destination <PNG>` で、つないだ実機の画面を撮れる（Xcode 26.6）（2026-11-12、#1033）
 - UI テストが変えた Simulator の端末の向き（`XCUIDevice.shared.orientation`）は、Simulator を起動している間ずっと残り、次の `xcodebuild test` は横向きのまま始まる
   （ログに `Interface orientation changed to Landscape Right`）。`simctl` には向きを読む・変えるコマンドが無く（Xcode 26.6・27.1）、`simctl io <UDID> screenshot` も横向きのときに縦長の画像（1206×2622）を返すので、
   外から向きを確かめられない。`simctl shutdown` → `simctl bootstatus <UDID> -b` で縦向きに戻る（手元の iOS 26.5 で 13〜22 秒）。外観（`simctl ui <UDID> appearance dark`）は起動し直しても戻らない。
@@ -437,6 +447,17 @@
   macOS 27 では支援技術がつながるまで SwiftUI がアクセシビリティの木を作らず、アプリの中から名前でボタンを探せないので、`NSApp` に `AXManualAccessibility` を立てる（2026-11-12、Mac の UI の直し）
 - 最終 PR の CI（pull_request）は develop を取り込んだ merge ref で `swiftlint lint --strict` を流すので、作業ブランチでは通っても、限度ちょうどの関数・型
   （`ClientStore.refresh()` は function_body_length の 50 行ちょうどだった）が develop 側の追加と合わさって落ちることがある。限度ぎりぎりの関数は extension の小さな関数に分けて余裕を残す（2026-11-12、#1070）
+- `xcodebuild test` は、既定（`-collect-test-diagnostics on-failure`）では、テストが落ちると、テストの後に `simctl diagnose -l -b --timeout=600 --log-option=--last --log-option=2m --output=<結果のバンドル>/Staging/1_Test/Diagnostics/simctl_diagnostics` を流す。
+  手元（Xcode 26.6・iOS 26.5）では中のログの取り出しが終わらず、`Failure collecting diagnostics from simulator: Timed out after 600.0 seconds` まで 10 分止まった（結果のバンドルも 5.5MB → 46MB。Mac の DiagnosticReports の写しなどが入る）。
+  集めるのは、記録された issue があるか、テストの実行役がエラーで終わったときだけ（IDEFoundation の `IDETestRunSession` の `_atLeastOneTestFailed`・`_atLeastOneTestRunnerFailedWithError`。Xcode 26.6・27.1 で同じ）で、
+  通ったテストでは、作ったばかりの Simulator の 1 回目でも流れなかった。`-collect-test-diagnostics never` なら止まらず、`test-results summary` の `testFailures` の文と、テストごとの添付
+  （クラッシュのレポート `.ips`・画面の録画）は残る。ワーカー（`XcodeBuildRunner`）はテストのときにいつも `never` を渡す。止まりを調べるときは、`ps` で `simctl diagnose` の子を探し、
+  xcodebuild の出力の `IDETestOperationsObserverDebug: Failure collecting diagnostics` の行を見る（2026-11-12、#1047）
+- Release の構成を開発用の署名（`xcodebuild -configuration Release -allowProvisioningUpdates` の自動の署名）で実機向けにビルドすると、entitlement のファイルの `aps-environment` が `production` でも、
+  Xcode は profile に合わせて `development` で署名する（Info.plist に入れたビルド設定の値は `production` のまま）。APNs は署名の環境のトークンを返すので、ビルド設定から環境を決めると
+  development のトークンを production の宛先に書き、`400 BadDeviceToken` で断られる。環境は、iOS は埋め込みの `embedded.mobileprovision`（CMS で包んだ XML の plist）の `Entitlements`、
+  macOS は `SecTaskCopyValueForEntitlement` で読む（iOS では使えない）。同じ端末でも、開発用の署名の版と TestFlight の版でトークンが違う。
+  ビルドした .app の値は、`codesign -d --entitlements - --xml <.app>` と `security cms -D -i <.app>/embedded.mobileprovision` で確かめられる（2026-11-12、#1059）
 
 ## Keychain
 
@@ -546,6 +567,8 @@
   既定の実装がある要件は、型の側も要件と同じ署名で書く（2026-11-10、#989）
 - MainActor が既定のターゲットで `UIColor { traits in … }`・`NSColor(name:dynamicProvider:)` の処理を書くと、処理が MainActor に縛られる。
   SwiftUI は色を裏のスレッド（`com.apple.SwiftUI.AsyncRenderer`）で決めることがあり、そのとき実行時の確かめ（`_swift_task_checkIsolatedSwift`）で `EXC_BREAKPOINT` で落ちる。処理を `@Sendable` にして縛らない
+- ジョブの `attempts` は、試行の前に人に渡したジョブ（直しの上限を超えた `fixTask`・`fixFinalPullRequest`）では 0 のまま `waitingHuman` になる。試行の番号を読む・使うところでは 0 を考える。
+  `StatePath.attempt` は 1 以上の precondition で止まり（`askhub status` が止まった。#1039）、質問の版の読み方（`AnswerIntent.version`。1 以上）を流用した `JobTarget` は、やり直しの `targetVersion` の `"0"` を断っていた（2026-11-12、#1043）
 
 ## シェルスクリプト
 
@@ -672,9 +695,16 @@
   低い高さのまま書かせるには `.large` を並べない。キーボードの上の「完了」（`ToolbarItemGroup(placement: .keyboard)`）は、低いシートではシートの中に重なって入力欄を狭める（2026-11-06、自由回答のシート）
 - `List` の `Section` の中に、本体が `if` で何も出さないことのある View（`ReflectionStatusView` など）をそのまま置いても、何も出さないときは空の行にならない（iOS 26 で確かめた）。
   呼び出し側で `if` を重ねるのは、`CardSection` で包むときのように、包む側だけが残ってしまうときだけでよい（2026-11-09、反映中の UI）
+- Mac・iPad の 3 列（`NavigationSplitView`）では、詳細の列に出す画面の `navigationTitle` がどこにも出ない（ツールバーに出るのは真ん中の列の名前だけ）。
+  iPhone では大きな見出しになるので気づきにくい。詳細の列に出す一覧は、リポジトリの詳細のように札の中か、セクションの見出しにも画面の名前を入れる（2026-11-11、#1032 の `FinishedEpicListView`）
 - アプリの自動の取り直しのように、次に読む時刻を `ClientStore` の時計（`now`）で数えると、デモの時計を止めて撮る（`-demoClock`）ときに時計が進まず、2 回目の取り直しが来ない。
   間隔は `ContinuousClock` の経過時間で数え、時計は GitHub の上限の戻る時刻のような「時刻」の比べにだけ使う（2026-11-12、`ClientStore.delayBeforeAutoRefresh`）
 - `xcrun simctl launch` の直後に `xcrun simctl io <udid> screenshot` を撮ると、起動の途中の白い画面が写ることがある。数秒待ってから撮り、写ったものを目で確かめる（2026-11-12）
 - Mac のシートは中身の理想の大きさで開くので、高さを持たない `List`・`Form` を入れると、見出しと閉じるボタンだけの高さに潰れて中身が空になる（macOS 26・27）。
   `presentationSizing(.form)`・`.page` で決まった大きさで開く（iOS 18 / macOS 15 からの共通の API。iPhone のシートには効かないので `#if os` は要らない。`SheetSize`）。
   Mac の `Form` の既定（columns）は、`TextField` の名前を欄の左の列に並べて欄を狭め、長い名前は左端で切れる。`.formStyle(.grouped)` にし、名前は `prompt:` と `.labelsHidden()` で欄の中に出す（iOS の見た目は変わらない）（2026-11-12、Mac の UI の直し）
+- Xcode 26 の SDK でビルドした Mac のアプリを macOS 27 で動かすと、窓のツールバーの下が不透明の帯になり、背景を付けていない列（NavigationSplitView の詳細）だけツールバーの下が白く抜ける
+  （26 はツールバーが透けて、下の列の背景が上まで見える）。`scrollEdgeEffectStyle(.soft, for: .top)` では消えず、`toolbarBackgroundVisibility(.hidden, for: .windowToolbar)` で 26 と同じになった。
+  `.windowToolbar` は iOS に無いので Mac の分岐の中に書く（2026-11-12、Mac の UI の直し）
+- Mac の NavigationSplitView は窓の最小の大きさを列の最小の幅から決めないので、窓を小さくすると詳細の列だけ 200pt ほどに潰れる。
+  詳細の列にも `navigationSplitViewColumnWidth(min:ideal:)` を付け、窓の中身に `.frame(minWidth:minHeight:)`（3 列の最小の幅の合計）を付ける（2026-11-12、Mac の UI の直し）

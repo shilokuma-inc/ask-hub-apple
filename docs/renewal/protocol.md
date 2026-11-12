@@ -31,6 +31,7 @@
 ```
 version.json                                       形の版（書き手: 人が作るときだけ）
 repos/<owner>/<repo>/repo.json                     対象のリポジトリの設定（司令塔）
+repos/<owner>/<repo>/icon.png                      対象のアプリのアイコン（司令塔）
 repos/<owner>/<repo>/epics/<epic>/epic.json        epic の状態（司令塔）
 repos/<owner>/<repo>/epics/<epic>/questions.json   質問と、その状態（司令塔）
 repos/<owner>/<repo>/epics/<epic>/goal.json        ゴール（司令塔）
@@ -108,6 +109,11 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。`coderabbitai[bot]` など）。無ければ空
   - `screenshots`: 判断のカードのスクショの撮り方（Swift は `ScreenshotSettings`）。`scenes`（撮れる画面の一覧のファイルの、リポジトリの直下からの相対パス。`.json`）と `destination`（撮る Simulator。`destinations` と同じ形で、macOS はまだ撮らない）。無ければ撮らない（[flows.md](flows.md) の「スクショ」）
 - `build` が無いリポジトリでは、開始を断る
+- `icon`: 対象のアプリのアイコン（Swift は `RepositoryFile.AppIcon`）。司令塔が対象のリポジトリの既定のブランチから取り出し、256px の PNG にして `icon.png` に置く（[architecture.md](architecture.md) の「対象のアプリのアイコン」）。まだ取り出していない・見つからないなら `null`（クライアントは頭文字を出す）
+  - `source`: 取り出した元（Icon Composer の `.icon` か、Asset Catalog の `.appiconset` のフォルダ）の、リポジトリの直下からのパス
+  - `sourceTree`: 元のフォルダの git の tree の sha。変わったときだけ書き出し直す
+  - `image`: 書いた `icon.png` の git の blob の sha。クライアントは、これを鍵に画像を端末にしまっておく（同じ sha なら読み直さない）
+  - `updatedAt`: 書いた時刻
 
 ### 撮れる画面の一覧（対象のリポジトリに置くファイル）
 
@@ -367,7 +373,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `fixFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`・`human`・`conflict`。`human` は判断のカードの「直してほしい」「別案にする」と `instructFinal` で、元の人の意図はジョブの `origin`。`conflict` は、ワーカーが base を作業ブランチに取り込み、コンフリクトしたファイルを Claude に解消させる） |
 | `notify` | 段階 4 で決める |
 
-- タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）は、司令塔が元のジョブの結果から作り、`task` にタスクの id、`dependsOn` に元のジョブ（`implementTask` は作業場所の用意）を書く。同じタスクの直しが 3 回を超えたら、`fixTask` を `waitingHuman` で作る（[flows.md](flows.md) の「司令塔がタスクを進める」）
+- タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）は、司令塔が元のジョブの結果から作り、`task` にタスクの id、`dependsOn` に元のジョブ（`implementTask` は作業場所の用意）を書く。同じタスクの直しが 3 回を超えたら、`fixTask` を `waitingHuman` で作る（試行の前なので `attempts` は 0。[flows.md](flows.md) の「司令塔がタスクを進める」）。最終 PR の直し（`fixFinalPullRequest`）も同じ。
+  上限の回数は Swift の `FixTaskInput.maxAutomaticRounds` で、司令塔とクライアントが同じ値を使う。クライアントは、試行の無い（`attempts` が 0 の）人の対応待ちの直しを、上限を超えて止めたものとして、直す理由（`reason`）の区分（`ci` はビルド・テスト、`review` はレビューの指摘、`conflict` はコンフリクト）と止めた理由の文で「対処が要ります」に出す
 - `kind` の最初の一覧: `makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`prepareWorkspace`・`implementTask`・`reviewTask`・`fixTask`・`integrateDevelop`・`verifyBeforeFinal`・`openFinalPullRequest`・`reviewFinalPullRequest`・`fixFinalPullRequest`・`rerunChecks`・`classifyDecisions`・`captureScreenshots`・`mergeFinalPullRequest`・`cleanUp`・`notify`
 - `state` は `queued`・`assigned`・`running`・`succeeded`・`failed`・`waitingHuman`・`paused`・`canceled`
 - ジョブのファイルは司令塔だけが書く。ワーカーは、自分の試行のファイルに「始めた」を書くことで、ジョブを引き受けたことを示す。司令塔は試行を読んでジョブの `state` を更新する
@@ -497,8 +504,9 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 }
 ```
 
-- `push.environment` は APNs の送り先の環境。Xcode から入れた版は `development`、TestFlight と App Store の版は `production`。APNs の宛先では必ず書く
-  - クライアントは、ビルド設定 `APS_ENVIRONMENT`（Debug は `development`、Release は `production`。entitlement の `aps-environment` と同じ値）を書く
+- `push.environment` は APNs の送り先の環境。開発用の署名の版（Xcode から入れた版）は `development`、TestFlight と App Store の版は `production`。APNs の宛先では必ず書く
+  - クライアントは、ビルドの構成ではなく署名から決めた値を書く（iOS の実機は埋め込みの provisioning profile の `aps-environment`、profile が無ければ `production`。macOS は署名の entitlement。[operations.md](operations.md) の「通知」）
+  - 司令塔は、`400 BadDeviceToken` で断られたら、もう一方の環境に 1 回だけ送る（環境を取り違えて書いた古い版のアプリのため）
 - クライアントは、トークン・環境・端末の種類のどれかが変わったときだけ書き直す（起動のたびに書かない）
 - `push.token` は送るときに URL のパスに入るので、16 進だけを受け付ける
 - Android を足すときに、`platform` と `push.service`（FCM）を足す
@@ -590,7 +598,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始する前の epic だけ |
-| `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
+| `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository`・`applyProtection` | リポジトリ | — | 設定 |

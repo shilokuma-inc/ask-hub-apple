@@ -18,13 +18,18 @@
   - 最終 PR の確認の待ちは、最後のレビュー（見た head）ごとに別の出来事にする。人が頼んだ直し（判断のカードの「別案にする」「直してほしい」・最終 PR への指示）の後にもう一度 `reviewing` になれば、直した head の確認の待ちとして知らせ直す。直しで head が変わらなくても、直させたカードは答え待ちに戻るので知らせ直す
   - 1 つの epic（Mac）について同じ周に見つけた出来事は、1 通にまとめる（質問が 5 件出ても 1 通）
   - どの端末にも届かず、送り直せる失敗（APNs の障害・上限・つながらない・鍵や設定の誤り）だったときは、記録から外し、1・2・5・10・30 分と待ちを延ばして送り直す。宛先が使えないだけ（アプリを消した・古い宛先）なら送り直さない
+  - APNs が `400 BadDeviceToken`（トークンが送り先の環境のものでない）で断ったときは、もう一方の環境（production と development）にその場で 1 回だけ送る。環境を取り違えて登録した古い版のアプリでも届くようにするため。届いたら司令塔のログに、宛先の環境が違うことを出す
   - 送る途中で司令塔が落ちたときは送り直さない（二重より取りこぼしを選ぶ。記録してから送り終えるまでの数秒の間だけ）
   - 終わった出来事の記録は、7 日たってから消す（GitHub の障害で一覧が空に見えた周に、記録を消して知らせ直さないため）
 - 送る宛先は、`devices/` のうち、確かめた公開鍵の一覧にある（登録済みで取り消していない）端末だけ。なくした端末の鍵を取り消せば、その端末には送らない
 - クライアント（iOS・macOS）は、状態リポジトリにつながってこの端末の鍵が登録された後に、一度だけ通知の許可を求める（`AskHub/Push/PushRegistration.swift`）
   - 鍵の登録は、起動のときと、設定を開いたとき（「登録を確かめ直す」を含む）に確かめる。登録の前に許可を求めないのは、登録されていない端末には司令塔が送らないため
   - 許可されていれば、起動のたびに APNs に登録し、届いたデバイストークンを `devices/<この端末の鍵の id>.json` に書く。トークン・APNs の環境・端末の種類が同じなら書かない（変わったら書き直す）
-  - APNs の環境は、entitlement の `aps-environment` と同じビルド設定 `APS_ENVIRONMENT`（`Configs/Debug.xcconfig` は `development`、`Release.xcconfig` は `production`）を Info.plist の `AskHubAPNsEnvironment` に入れて読む
+  - APNs の環境は、ビルドの構成（Debug・Release）ではなく署名から決める（`PushRegistration.environment`）。APNs は署名の entitlement の環境のトークンを返し、Xcode の自動の署名はその値を provisioning profile に合わせるので、開発用の署名で作った Release の版も `development` になる
+    - iOS の実機は、埋め込みの profile（`embedded.mobileprovision`）の `aps-environment`。profile の無い版（App Store・TestFlight。Apple が profile を外して配る）は `production`（`AskHubClient/APNsProvisioning`）
+    - iOS の Simulator は `development`。macOS は、自分の署名の entitlement（`com.apple.developer.aps-environment`）を読む
+    - ビルド設定 `APS_ENVIRONMENT`（`Configs/Debug.xcconfig` は `development`、`Release.xcconfig` は `production`）は entitlement のファイルに入れる値で、署名の値とは限らない。前は Info.plist に入れて書いていたので、開発用の署名の Release の版が development のトークンを `production` と書き、通知が BadDeviceToken で断られた（#1059）
+    - Xcode から入れた版と TestFlight の版はトークンが違う。入れ替えたら一度アプリを開くと、新しいトークンと環境に書き直す（開くまでは前の版のトークンのままで届かない）
   - 断られたら、設定の「通知」に、通知が届かないことと、設定アプリ（Mac はシステム設定）の通知の画面を開くボタンを出す
   - デモのデータ（UI テスト・撮影を含む）と、アプリの中で動く単体テストでは、許可を求めず宛先も書かない
   - macOS の push の entitlement は provisioning profile が要り、profile の無いアドホック署名ではビルドが止まる。アドホック署名（CI・ワーカー・スクショ・archive。`CODE_SIGN_STYLE=Manual`）では付けず、自動の署名のときだけ付ける（`Configs/Project.xcconfig` の `ASKHUB_MACOS_ENTITLEMENTS_*`）。アドホック署名の Mac のアプリは通知を受け取れない
@@ -277,7 +282,11 @@ GitHub の REST の上限（1 時間に 5,000 回）は、トークンごとで�
   - 使い切った後は、状態リポジトリに書けない（通知の記録も書けない）ので知らせられない。知らせるのは使い切る前だけ
 - `askhub-commander check` に、今の残りと戻る時刻が出る
 - クライアントは、上限に当たったら（状態の読み込みが 403・429 で `retryAfter` が分かったら）、言われた時刻まで自動の取り直しと受け付けの確かめを休み、接続の行に「GitHub の上限に当たりました」「15:54 に戻ります」と出す（`ClientStore+Refresh`）。休む間は「もう一度読む」を出さない（読んでも弾かれる）
-  - 取り直しの間隔は、前の読み込みを終えてから数える。Mac で前面でない間は 30 秒を 2 分に延ばし、前面に戻ったら間隔が空いていればすぐ読む
+  - 取り直しの間隔は、前の読み込みを終えてから数える。Mac で前面でない間と、残りが 1,000 回を切っている間は 30 秒を 2 分に延ばす（最後の残りを司令塔に回す）。前面に戻ったら、間隔が空いていればすぐ読む
+- クライアントは、Mac の生きている印に書かれた残りのうち、一番新しく読んだ今の窓のもの（戻る時刻を過ぎたものは使わない）を出す
+  - 接続の行（「あなたの番」の上。Mac・iPad ではサイドバーの下）の 2 行目に「GitHub の残り 4,210 回」と小さく添える
+  - 1,000 回を切ったら、接続の行を「GitHub の残りが少なくなっています（820 回）」「15:54 に戻ります。GitHub を多く使うものを止めてください」の警告にする
+  - Mac の詳細の「GitHub の上限」に、その Mac が読んだ残り・上限・戻る時刻と、読んだ時刻（印は 10 分ごとなので、最大 10 分前の値）を出す
 - 減っているときに探すもの: Claude のセッションの `gh`・`askhub status` のループ（[LEARNINGS.md](../../LEARNINGS.md) の「GitHub」）。使われ方は `gh api rate_limit` の `used` の 1 分ごとの増え方で測る（これも上限に数えられない）
 
 ## 容量

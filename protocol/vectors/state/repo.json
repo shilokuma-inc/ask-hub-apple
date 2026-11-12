@@ -69,6 +69,95 @@
       "read": "valid"
     },
     {
+      "name": "with-icon",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "icon": {
+          "source": "AskHub/AppIcon.icon",
+          "sourceTree": "6f32531d992fd53c35be5eef0453974ce69c268c",
+          "image": "0123456789abcdef0123456789abcdef01234567",
+          "updatedAt": "2026-11-11T15:00:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "icon-null",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "icon": null
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "icon-bad-sha",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "icon": {
+          "source": "AskHub/AppIcon.icon",
+          "sourceTree": "6f32531d992fd53c35be5eef0453974ce69c268c",
+          "image": "not-a-sha",
+          "updatedAt": "2026-11-11T15:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "icon-empty-source",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "icon": {
+          "source": "",
+          "sourceTree": "6f32531d992fd53c35be5eef0453974ce69c268c",
+          "image": "0123456789abcdef0123456789abcdef01234567",
+          "updatedAt": "2026-11-11T15:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "icon-missing-image",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "icon": {
+          "source": "AskHub/AppIcon.icon",
+          "sourceTree": "6f32531d992fd53c35be5eef0453974ce69c268c",
+          "updatedAt": "2026-11-11T15:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "future-version",
       "value": {
         "v": 2,

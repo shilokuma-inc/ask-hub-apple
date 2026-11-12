@@ -206,7 +206,7 @@
 | `prepareWorkspace` | 試行の `outputs.branch` を `epic.json` の `branch` に書き、最初のタスク（`dependsOn` がすべて済んだ `pending` のもの。ゴールの並びの順）の `implementTask` を作って、`goal.json` のそのタスクを `running` にする |
 | `implementTask` | `outputs.report.decisions` を `decisions.json` に足し（`task`・`pullRequest` 付き。`visible` は `null`）、`reviewTask`（`outputs.pullRequest` と、push した head の `outputs.commit`）を作る |
 | `reviewTask`（`verdict` が `merged`） | タスクを `done` にし、次のタスクの `implementTask` を作る。すべて済んだら、epic を `finalizing` にして最終 PR の段取りに進む（下の「司令塔が最終 PR を進める」） |
-| `reviewTask`（`fixCI`・`fixReview`） | `fixTask`（子 PR と、レビューが見た head。`reason` は `ci`・`review`）を作る。同じタスクの直しが 3 回（`FailurePolicy.maxFixRounds`）を超えたら、作るが動かさずに人の対応待ち（`waitingHuman`）にする（失敗の扱いの「4 回目で人へ」と同じ。人が「やり直す」を送れば、もう 1 回直す） |
+| `reviewTask`（`fixCI`・`fixReview`） | `fixTask`（子 PR と、レビューが見た head。`reason` は `ci`・`review`）を作る。同じタスクの直しが 3 回（`FailurePolicy.maxFixRounds`）を超えたら、作るが動かさずに人の対応待ち（`waitingHuman`）にする（失敗の扱いの「4 回目で人へ」と同じ。人が「やり直す」を送れば、もう 1 回直す。試行の前に渡すので、やり直しの試行の番号は 0） |
 | `fixTask` | 実装と同じく仮決めを足し、新しい head（`outputs.commit`）で `reviewTask` を作る |
 
 - タスクのジョブは、epic の Mac（`epic.mac`）に割り当て、ジョブの `task` にタスクの id を書く。元になった人の意図（`origin`）は開始の意図（作業場所の用意のジョブと同じ。ワーカーが署名を確かめる）

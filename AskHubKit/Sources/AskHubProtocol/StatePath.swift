@@ -16,6 +16,11 @@ public enum StatePath {
         "\(repositoryDirectory(repo))/repo.json"
     }
 
+    /// 対象のアプリのアイコンの画像（PNG。`repo.json` の `icon`）
+    public static func appIcon(_ repo: RepositoryFullName) -> String {
+        "\(repositoryDirectory(repo))/icon.png"
+    }
+
     public static func epic(_ repo: RepositoryFullName, _ epic: ULID) -> String {
         "\(epicDirectory(repo, epic))/epic.json"
     }

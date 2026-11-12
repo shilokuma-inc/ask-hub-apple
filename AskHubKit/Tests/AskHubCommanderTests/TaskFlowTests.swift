@@ -203,6 +203,8 @@ struct TaskFlowTests {
         let handedOver = try #require(step.created.first)
         #expect(handedOver.kind == .fixTask)
         #expect(handedOver.state == .waitingHuman)
+        // 試行の前に渡すので、人の「やり直す」は試行の番号 0 で届く（JobHandlersTests）
+        #expect(handedOver.attempts == 0)
         #expect(step.notes.first?.contains("人に渡した") == true)
         #expect(try await jobs().filter { $0.kind == .fixTask }.count == 4)
         // 人の対応を待つ間は、何もしない

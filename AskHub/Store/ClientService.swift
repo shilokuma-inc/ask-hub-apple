@@ -18,6 +18,8 @@ protocol ClientService: AnyObject {
     func lastSend(of intent: HumanIntent) -> SentRecord?
     /// 判断のカードのスクショ（状態リポジトリの中のパス）の中身。読めなければ投げる
     func screenshot(at path: String) async throws -> Data
+    /// 対象のアプリのアイコン（`RepositoryIcon.stored`）の中身。読めなければ投げる
+    func appIcon(at path: String, version: String) async throws -> Data
     /// 最後に読んだ状態に、送り終えていない意図（取り消しの猶予の間を含む。古い順）を送った結果として当てたもの。
     /// 押した直後から済んだ形で出すのに使う（送り終えて読み直していない意図も当てる）。当てられない（まだ読めていない）ときは nil
     func snapshot(overlaying intents: [HumanIntent]) -> ClientSnapshot?
@@ -42,6 +44,10 @@ extension ClientService {
 
     func screenshot(at path: String) async throws -> Data {
         throw ClientServiceError(message: "このデータの元にはスクショが無い")
+    }
+
+    func appIcon(at path: String, version: String) async throws -> Data {
+        throw ClientServiceError(message: "このデータの元にはアプリのアイコンが無い")
     }
 }
 

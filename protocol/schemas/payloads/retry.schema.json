@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/retry.schema.json",
   "title": "やり直しの人の意図（kind が retry）の payload",
-  "description": "封筒の target は {type: job, epic, id: <ジョブの ULID>}、targetVersion は人が見たときの試行の番号（ジョブの attempts）を 10 進で書く。payload は空。知らない欄のある payload は読まない",
+  "description": "封筒の target は {type: job, epic, id: <ジョブの ULID>}、targetVersion は人が見たときの試行の番号（ジョブの attempts。試行の前に人に渡したジョブは 0）を 10 進で書く。payload は空。知らない欄のある payload は読まない",
   "type": "object",
   "additionalProperties": false,
   "properties": {}

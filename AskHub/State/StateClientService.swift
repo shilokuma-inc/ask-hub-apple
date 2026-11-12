@@ -39,6 +39,11 @@ final class StateClientService: ClientService {
     private var unreadSends: [SentDraft] = []
     /// 読んだスクショ（パス → 中身）。パスはコミットと画面で決まり、同じパスの中身は変わらないので、読み直さない
     private var screenshots: [String: Data] = [:]
+    /// 読んだアプリのアイコン（画像の blob の sha → 中身）と、端末にしまったもの
+    private var appIcons: [String: Data] = [:]
+    private let appIconCache: AppIconCache
+    /// 読んでいるアプリのアイコン（パスと版 → 読み込み）。同じアイコンを並べて出すときに、1 回だけ読む
+    private var appIconLoads: [String: Task<StoredBlob?, any Error>] = [:]
     /// 読み始めた数と、送る形の引き当て（`index`）に当てた最後の読み込みの番号。
     /// 後に始めた読み込みが先に終わったら、先に始めた古い読み込みでは引き当てを戻さない（ストアも古い中身を画面に当てない。`ClientStore.refresh`）
     private var startedReads = 0
@@ -52,9 +57,15 @@ final class StateClientService: ClientService {
         var isWaiting: Bool
     }
 
-    init(store: any StateStore, key: DeviceSigningKey, now: @escaping @Sendable () -> Date = Date.init) {
+    init(
+        store: any StateStore,
+        key: DeviceSigningKey,
+        appIconCache: AppIconCache = .standard,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.store = ConcurrencyLimitedStore(store, limit: Self.concurrentRequests)
         self.key = key
+        self.appIconCache = appIconCache
         self.now = now
         sender = IntentSender(store: self.store, key: key, now: now)
     }
@@ -215,6 +226,42 @@ final class StateClientService: ClientService {
         guard let data = blob?.data else { throw ClientServiceError(message: "スクショが状態リポジトリに無い") }
         screenshots[path] = data
         return data
+    }
+
+    /// 対象のアプリのアイコンを読む。読んだもの・端末にしまったものがあれば、状態リポジトリを読まない。
+    /// `repos/<owner>/<repo>/icon.png` だけを読む
+    func appIcon(at path: String, version: String) async throws -> Data {
+        if let data = appIcons[version] ?? appIconCache.data(for: version) {
+            appIcons[version] = data
+            return data
+        }
+        guard Self.isAppIconPath(path) else { throw ClientServiceError(message: "アプリのアイコンのパスの形が違う") }
+        let key = "\(path)@\(version)"
+        let store = store
+        let loading = appIconLoads[key] ?? Task { try await store.read(path) }
+        appIconLoads[key] = loading
+        defer { appIconLoads[key] = nil }
+        let blob: StoredBlob?
+        do {
+            blob = try await loading.value
+        } catch let error as StateStoreError {
+            throw ClientServiceError(message: StateServiceError.message(for: error))
+        } catch {
+            throw ClientServiceError(message: error.localizedDescription)
+        }
+        guard let blob else { throw ClientServiceError(message: "アプリのアイコンが状態リポジトリに無い") }
+        // repo.json と画像の書き込みの間に読んだときは、中身が版と違うので、端末にはしまわない
+        if blob.sha == version {
+            appIcons[version] = blob.data
+            appIconCache.store(blob.data, for: version)
+        }
+        return blob.data
+    }
+
+    static func isAppIconPath(_ path: String) -> Bool {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        return parts.count == 4 && parts[0] == "repos" && parts[3] == "icon.png"
+            && !parts.contains { $0.isEmpty || $0 == "." || $0 == ".." }
     }
 
     /// 送る形（対象の版は最後に読んだ状態から取る）が同じ意図のうち、最後に送ったもの。複数の意図になる操作は、すべてを送ってあるときだけ返し、
