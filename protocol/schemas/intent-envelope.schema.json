@@ -12,7 +12,7 @@
       "type": "string",
       "enum": [
         "request", "answer", "startEpic", "reviseGoal", "decideSplit", "decision", "approveMerge", "instructFinal", "humanTaskDone",
-        "pauseEpic", "resumeEpic", "handover", "retry", "giveUp", "abandonEpic", "addRepository", "removeRepository", "applyProtection",
+        "pauseEpic", "resumeEpic", "handover", "retry", "giveUp", "abandonEpic", "verify", "addRepository", "removeRepository", "applyProtection",
         "registerKey", "revokeKey"
       ]
     },

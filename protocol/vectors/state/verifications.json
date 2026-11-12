@@ -1,0 +1,124 @@
+{
+  "description": "repos/<owner>/<repo>/epics/<epic>/verifications.json（実機確認への答え）を読む例。schemaValid は protocol/schemas/state/verifications.schema.json に合うか、read は読む側（StateFileCoder など）の結果（valid・notJSON・missingVersion・unsupportedVersion・malformed）。スキーマで表せない決まり（id の重複・problem の note が空でないこと）は、スキーマに合っても読む側が弾く",
+  "schema": "state/verifications.schema.json",
+  "cases": [
+    {
+      "name": "confirmed-and-problem",
+      "value": {
+        "v": 1,
+        "answers": [
+          {
+            "id": "v2",
+            "result": "confirmed",
+            "note": "",
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "at": "2026-11-12T10:00:00Z"
+          },
+          {
+            "id": "v1",
+            "result": "problem",
+            "note": "日曜の夜に開くと、先週の振り返りが出る",
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000002"
+            },
+            "at": "2026-11-12T10:05:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty",
+      "value": {
+        "v": 1,
+        "answers": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "duplicated-item",
+      "value": {
+        "v": 1,
+        "answers": [
+          {
+            "id": "v1",
+            "result": "confirmed",
+            "note": "",
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "at": "2026-11-12T10:00:00Z"
+          },
+          {
+            "id": "v1",
+            "result": "confirmed",
+            "note": "",
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000002"
+            },
+            "at": "2026-11-12T10:05:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "problem-without-note",
+      "value": {
+        "v": 1,
+        "answers": [
+          {
+            "id": "v1",
+            "result": "problem",
+            "note": "",
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "at": "2026-11-12T10:00:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "item-id-with-leading-zero",
+      "value": {
+        "v": 1,
+        "answers": [
+          {
+            "id": "v01",
+            "result": "confirmed",
+            "note": "",
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "at": "2026-11-12T10:00:00Z"
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-version",
+      "value": {
+        "v": 2,
+        "answers": []
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    }
+  ]
+}

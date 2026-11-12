@@ -1,0 +1,57 @@
+{
+  "description": "実機確認への答えの payload の例。read は、封筒の target と targetVersion が正しいときに、読む側が答えとして読めるか",
+  "schema": "payloads/verify.schema.json",
+  "cases": [
+    {
+      "name": "confirmed",
+      "payload": {
+        "result": "confirmed"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "problem-with-note",
+      "payload": {
+        "result": "problem",
+        "note": "ダークモードでグラフの線が背景に溶けて見えない"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "problem-without-note",
+      "payload": {
+        "result": "problem"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "problem-with-empty-note",
+      "payload": {
+        "result": "problem",
+        "note": ""
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-result",
+      "payload": {
+        "result": "skipped"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "result": "confirmed",
+        "build": "1.4.0 (52)"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}
