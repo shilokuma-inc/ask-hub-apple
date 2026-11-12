@@ -36,6 +36,7 @@ repos/<owner>/<repo>/epics/<epic>/epic.json        epic の状態（司令塔）
 repos/<owner>/<repo>/epics/<epic>/questions.json   質問と、その状態（司令塔）
 repos/<owner>/<repo>/epics/<epic>/goal.json        ゴール（司令塔）
 repos/<owner>/<repo>/epics/<epic>/decisions.json   人が決めていない判断（司令塔）
+repos/<owner>/<repo>/epics/<epic>/verifications.json  実機確認への答え（司令塔）
 repos/<owner>/<repo>/epics/<epic>/screenshots/<commit>-<scene>.png  見える仮決めのスクショ（撮ったワーカー）
 repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json  ジョブ（司令塔）
 repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json  試行（実行した Mac のワーカー）
@@ -367,6 +368,23 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `problem` は後作業を進められなかった理由（`step` は `commit`・`tag`・`notes`・`githubRelease`・`nextVersion`）。進められたら消す。`needsHuman` が true なら、やり直しても進まないので人が直す（クライアントに出す）
 - クライアントは、`notes` があって `confirmed` も `githubRelease` も無い版を、人の番として出す（Swift は `ReleaseFile.awaitsNotesReview`）。タグ・GitHub Release・次の版（`merged`・`skipped`）がそろったら終わり（`isFinished`）
 
+### verifications.json（実機確認への答え）
+
+```json
+{
+  "v": 1,
+  "answers": [
+    { "id": "v2", "result": "confirmed", "note": "", "intent": { "keyId": "…", "nonce": "…" }, "at": "…" },
+    { "id": "v1", "result": "problem", "note": "日曜の夜に開くと、先週の振り返りが出る", "intent": { "keyId": "…", "nonce": "…" }, "at": "…" }
+  ]
+}
+```
+
+- 何を確かめるか（項目）は、ゴールの完了の条件（`doneWhen`）。順に `v1`・`v2`… と数える（最終 PR の本文の「実機で確かめてほしいこと」と同じ id）
+- ここには人が答えた項目だけを、答えた順に置く。1 つの項目に答えるのは 1 回だけ（答え直さない）。ファイルは最初の答えで司令塔が作る
+- `result` は `confirmed`（確認した）・`problem`（問題あり）。`note` は問題ありの説明（問題ありは空にしない。確認したは空で、意図に `note` があれば読まない）
+- 型は `VerificationsFile`、スキーマは `protocol/schemas/state/verifications.schema.json`
+
 ### jobs/<job>.json（ジョブ）
 
 ```json
@@ -641,6 +659,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `approveMerge` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | —（見える仮決めにすべて答えた後でだけ受け付ける） |
 | `instructFinal` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | `instruction`（指示の本文） |
 | `humanTaskDone` | 人がする作業（`{ "type": "humanTask", "epic", "id": "h1" }`） | ゴールの `version` | `none` は空、`file` は `attachments`（1 件。依頼の添付と同じ形・置き場所・上限） |
+| `verify` | 実機確認の項目（`{ "type": "verification", "epic", "id": "v1" }`） | ゴールの `version` | `result`（`confirmed`・`problem`）、`note`（問題ありの説明。`payloads/verify.schema.json`）。最終 PR をマージした（`merged` の）epic の、完了の条件の項目に 1 回だけ。答えは `verifications.json` に書く。問題ありの直しは、クライアントが同時に送る依頼（`request`）が新しい epic になる |
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。今は開始する前の epic だけ。段階 4 の 3 から、開始した後の epic も受け付ける（マージした epic は断る） |

@@ -45,6 +45,13 @@ struct StateIndex {
         var isReviewable: Bool
     }
 
+    /// 配信した版への意図（リリース文の公開）の対象
+    struct ReleaseEntry {
+        var target: ReleaseTarget
+        /// 公開を送れるか（下書きがあり、まだ公開していない）。処理を待つ公開を当てた後のもの
+        var canPublish: Bool
+    }
+
     struct QuestionEntry {
         /// プロトコルの質問の id（画面では大文字にして出す）
         var id: String
@@ -54,6 +61,7 @@ struct StateIndex {
     var epics: [Epic.ID: EpicEntry] = [:]
     var questions: [Epic.ID: [Question.ID: QuestionEntry]] = [:]
     var repositories: [TargetRepository.ID: RepositoryFullName] = [:]
+    var releases: [Release.ID: ReleaseEntry] = [:]
 }
 
 /// 状態リポジトリのファイル（`StateDocuments`）を、画面用のモデル（`ClientSnapshot`）に変える。
@@ -98,6 +106,7 @@ struct StateSnapshotBuilder {
             applyPauseControls(of: epic, to: &index)
         }
         applyRejections(to: &epics)
+        let releases = releases(index: &index, overlaid: overlaid)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             candidateRepositories: [],
@@ -106,7 +115,8 @@ struct StateSnapshotBuilder {
             fetchedAt: now,
             sourceFailures: documents.failures,
             sentIntents: documents.sentIntents.map(sentStatus),
-            commanderSeenAt: documents.commander?.seenAt.date
+            commanderSeenAt: documents.commander?.seenAt.date,
+            releases: releases
         )
         return (snapshot, index)
     }

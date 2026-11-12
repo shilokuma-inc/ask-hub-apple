@@ -14,6 +14,8 @@ struct ClientSnapshot: Hashable {
     var sentIntents: [SentIntentStatus] = []
     /// 司令塔の生きている印の時刻（`commander.json` の `seenAt`）。読めていなければ nil
     var commanderSeenAt: Date?
+    /// App Store で配信した版と、その後作業（リポジトリの順、その中は新しい版から）
+    var releases: [Release] = []
 }
 
 /// 送った人の意図の処理の結果
@@ -49,6 +51,15 @@ extension ClientSnapshot {
     /// 対象のリポジトリを持ち主（organization）ごとにまとめたもの。依頼のシートとリポジトリのタブで見出しを付けて並べる
     var repositoryGroups: [RepositoryOwnerGroup] {
         RepositoryOwnerGroup.grouping(repositories)
+    }
+
+    /// リポジトリの配信した版（新しい版から）
+    func releases(of repositoryID: TargetRepository.ID) -> [Release] {
+        releases.filter { $0.repositoryID == repositoryID }
+    }
+
+    func release(_ id: Release.ID) -> Release? {
+        releases.first { $0.id == id }
     }
 
     func epic(_ id: Epic.ID) -> Epic? {

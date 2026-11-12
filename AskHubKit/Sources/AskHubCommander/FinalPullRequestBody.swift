@@ -45,10 +45,7 @@ enum FinalPullRequestBody {
             let lines = details.map { "- \($0.id): \(safe($0.what))（\(safe($0.why))）" }.joined(separator: "\n")
             sections.append("<details><summary>内部の細部の仮決め（\(details.count) 件）</summary>\n\n\(lines)\n\n</details>")
         }
-        sections.append(
-            "## 実機で確かめてほしいこと\n\nマージは止めません。TestFlight に上がった後に、AskHub のクライアントで「確認した」「問題あり」を付けてください。\n\n"
-                + list(goal.doneWhen.map(safe))
-        )
+        sections.append("## 実機で確かめてほしいこと\n\n\(verificationGuide)\n\n" + list(verificationItems(goal)))
         let done = goal.humanTasks.filter { $0.state == .done }
         if !done.isEmpty {
             sections.append("## 人がした作業\n\n" + list(done.map { "\($0.id): \(safe($0.title))" }))
@@ -108,6 +105,17 @@ enum FinalPullRequestBody {
         // 見出しもわけも無ければ（画面の変化の節）、表だけにする（見出しの下に空行を重ねない）
         let lead = heading + note
         return lead.isEmpty ? table : "\(lead)\n\n\(table)"
+    }
+
+    /// 「実機で確かめてほしいこと」の頼み方（クライアントの実機確認のカードと同じ操作を書く）
+    static let verificationGuide = """
+        マージは止めません。マージした後に AskHub の「あなたの番」に「実機で確かめる」が出るので、TestFlight に上がった版で確かめて、\
+        項目ごとに「確認した」か「問題あり」を付けてください。「問題あり」は新しい依頼になります。
+        """
+
+    /// 実機確認の項目。ゴールの完了の条件を、クライアントと同じ id（`v1` から）で並べる
+    static func verificationItems(_ goal: GoalFile) -> [String] {
+        goal.doneWhen.enumerated().map { "\(VerificationTarget.itemID(at: $0.offset)): \(safe($0.element))" }
     }
 
     private static func list(_ lines: [String]) -> String {

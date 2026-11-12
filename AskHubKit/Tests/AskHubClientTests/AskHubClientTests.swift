@@ -102,6 +102,27 @@ struct AskHubClientTests {
         #expect(await store.data(at: StatePath.epic(Self.repo, epic)) != nil)
     }
 
+    @Test func verifyDraftIsReadAsVerifyIntent() throws {
+        let key = try key()
+        let verification = VerificationTarget(repo: Self.repo, epic: ULID.generate(at: Self.now), item: "v2", goalVersion: 3)
+        func read(_ draft: IntentDraft) throws -> VerifyIntent {
+            try VerifyIntent(envelope: IntentEnvelope(
+                kind: draft.kind,
+                repo: draft.repo,
+                target: draft.target,
+                targetVersion: draft.targetVersion,
+                payload: draft.payload,
+                issuedAt: Timestamp(Self.now),
+                nonce: ULID.generate(at: Self.now),
+                keyId: key.keyID
+            ))
+        }
+        let problem = try read(.verify(verification, result: .problem, note: "線が見えない"))
+        #expect(problem.target == verification)
+        #expect(problem.note == "線が見えない")
+        #expect(try read(.verify(verification, result: .confirmed)).result == .confirmed)
+    }
+
     @Test func sendsAttachmentsBeforeIntent() async throws {
         let store = InMemoryStateStore()
         let key = try key()

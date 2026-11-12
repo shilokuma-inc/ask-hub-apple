@@ -281,6 +281,7 @@ public actor CommanderLoop {
         "approveMerge": ApproveMergeHandler(),
         "instructFinal": InstructFinalHandler(),
         "humanTaskDone": HumanTaskDoneHandler(),
+        "verify": VerifyHandler(),
         "publishGitHubRelease": PublishGitHubReleaseHandler()
     ]
 
