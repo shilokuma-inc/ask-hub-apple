@@ -26,7 +26,10 @@ struct DeckCardDetailSheet: View {
                 case .verification(let item):
                     CardSection("確かめること") {
                         Text(item.text)
-                        LabeledContent("手順", value: item.steps)
+                        // 状態リポジトリの項目（ゴールの完了の条件）には手順が無い
+                        if !item.steps.isEmpty {
+                            LabeledContent("手順", value: item.steps)
+                        }
                     }
                 }
             }
