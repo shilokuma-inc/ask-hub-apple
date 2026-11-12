@@ -435,6 +435,8 @@
   コンテナの tmp（`~/Library/Containers/jp.shilokuma.AskHub/Data/tmp/`）に窓ごとの PNG を書く（`DemoWindowSnapshot`）。ビルドした .app を `rsync` で送り、`ssh <Mac> open -g -n <.app> --args …` で起動する。
   `cacheDisplay(in:to:)` で描くと、NavigationSplitView のサイドバーと詳細の列が白や黒に抜けるので、`CGWindowListCreateImage`（macOS 15 の SDK で使えないので `dlsym` で引く）で撮る。
   macOS 27 では支援技術がつながるまで SwiftUI がアクセシビリティの木を作らず、アプリの中から名前でボタンを探せないので、`NSApp` に `AXManualAccessibility` を立てる（2026-11-12、Mac の UI の直し）
+- 最終 PR の CI（pull_request）は develop を取り込んだ merge ref で `swiftlint lint --strict` を流すので、作業ブランチでは通っても、限度ちょうどの関数・型
+  （`ClientStore.refresh()` は function_body_length の 50 行ちょうどだった）が develop 側の追加と合わさって落ちることがある。限度ぎりぎりの関数は extension の小さな関数に分けて余裕を残す（2026-11-12、#1070）
 
 ## Keychain
 

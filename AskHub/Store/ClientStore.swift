@@ -178,19 +178,7 @@ final class ClientStore {
             guard generation > appliedRefresh else {
                 return
             }
-            var message = error.localizedDescription
-            // 上限に当たったら、言われた時刻まで取り直しも受け付けの確かめも休む（休まずに読むと、戻った直後の残りを食い潰す）
-            if let wait = (error as? ClientServiceError)?.retryAfter {
-                let until = now().addingTimeInterval(TimeInterval(wait.components.seconds))
-                refreshPausedUntil = until
-                receiptCheckPausedUntil = until
-                message = Self.rateLimitMessage(until: until)
-            }
-            if snapshot == nil {
-                phase = .failed(message)
-            } else {
-                refreshFailure = message
-            }
+            applyRefreshFailure(error)
         }
     }
 
@@ -390,6 +378,27 @@ final class ClientStore {
     private func clearFailure(of intent: HumanIntent) {
         if sendFailure?.intent == intent {
             sendFailure = nil
+        }
+    }
+}
+
+// MARK: - 読めなかったとき
+
+extension ClientStore {
+    /// 読めなかったことを出す。一度も読めていなければ画面ごと、読めていれば帯で出す
+    private func applyRefreshFailure(_ error: any Error) {
+        var message = error.localizedDescription
+        // 上限に当たったら、言われた時刻まで取り直しも受け付けの確かめも休む（休まずに読むと、戻った直後の残りを食い潰す）
+        if let wait = (error as? ClientServiceError)?.retryAfter {
+            let until = now().addingTimeInterval(TimeInterval(wait.components.seconds))
+            refreshPausedUntil = until
+            receiptCheckPausedUntil = until
+            message = Self.rateLimitMessage(until: until)
+        }
+        if snapshot == nil {
+            phase = .failed(message)
+        } else {
+            refreshFailure = message
         }
     }
 }
