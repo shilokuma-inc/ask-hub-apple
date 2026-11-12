@@ -237,6 +237,22 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
 - git の credential helper と GitHub の要求（状態リポジトリ・PR・Discussion など）は、要求のたびに Keychain から持ち主のトークンを読むので、次の要求から使う（設定の持ち主の一覧は見ない）
 - 生きている印の自己診断（`selfCheck.githubTokens`）は、印を書くたびに設定の `githubOwners` を読み直すので、足した持ち主は次の印（10 分以内）に様子と期限が出る。設定を読めないときは前に読めた一覧のまま。状態リポジトリ（先頭の持ち主）は起動したときのまま
 
+### App Store Connect の API キー（配信の検知）
+
+司令塔が App Store での配信を見つけるために読む（[release.md](release.md) の「配信の検知と後作業」）。Upload に使う GitHub の Secrets の鍵とは別に作る。
+
+1. App Store Connect の Users and Access → Integrations → App Store Connect API → Team Keys で、鍵を作る。名前は `AskHub commander` など、役割は **App Manager**（Admin は使わない。審査に出す・配信するなど、人が AskHub で押した操作を後で足すため）
+2. .p8 を落とし（一度しか落とせない）、鍵の id（Key ID）と Issuer ID を控える
+3. 常時オンの Mac の画面の端末（ssh からは Keychain に書けない）で流す:
+   `askhub-commander app-store-connect --key-id <Key ID> --issuer-id <Issuer ID> --key-file <.p8 のパス>`
+4. 常駐を読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`）。30 分ごとに配信を見回り始める
+5. .p8 は Mac に残さず、安全な場所（パスワードマネージャーなど）に移す
+
+- .p8 の中身は Keychain（`app-store-connect-key/<Key ID>`）にだけ置き、設定（`config.json` の `appStoreConnect`）には鍵の id と Issuer ID だけを書く。`setup` を流し直しても残す
+- Apple のチームが複数あれば、チームごとに 1 つ足す（同じ Key ID で流し直すと置き換える）。どのチームのアプリかは、アプリの Bundle ID を鍵ごとに探して決める
+- 鍵の設定が無ければ配信を見つけない（起動のログに出る。前に見つけた版の後作業だけは進める）。`askhub-commander check` で鍵の様子（値は出さない）を確かめる
+- 鍵を取り消したら、見回りは 401 で止まり、ログに出す。作り直して流し直す
+
 ### トークンの期限
 
 GitHub のトークン（持ち主ごと）と Claude の setup-token には期限がある。切れると、その Mac の仕事（状態リポジトリのトークンなら生きている印も）が止まるので、司令塔とワーカーが期限を生きている印の自己診断に書き（値は書かない。[protocol.md](protocol.md) の「macs/<mac>.json」）、クライアントで知らせる。
