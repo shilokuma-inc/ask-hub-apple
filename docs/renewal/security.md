@@ -97,13 +97,14 @@ Claude とビルド・テストは、ワーカーと同じ macOS のユーザー
 ### 管理用のトークン
 
 保護の設定（ルールセット）・テンプレートからの作成・Discussions を有効にする・Secrets の登録・ワークフローのファイルを変える PR は、毎日のトークンではできない。
-そこで、常時オンの Mac の Keychain に、持ち主ごとの管理用のトークンを別に置く（2026-11-12 に決めた。段階 4 の 4 で作る）。
+そこで、常時オンの Mac の Keychain に、持ち主ごとの管理用のトークンを別に置く（2026-11-12 に決めた。入れ方は [operations.md](operations.md) の「管理用のトークン（持ち主ごと）」の `askhub-commander admin-token <持ち主>`）。
 
 - 毎日のトークン（Claude の書いたコードを push するもの）には、Administration・Secrets・Workflows を足さない。リポジトリの削除・保護の解除・ワークフローの書き換えができるトークンを、毎日の push に使わない
 - 使うのは司令塔だけで、署名した人の意図を処理するときだけ使う（保護の設定・作成・Secrets の登録・対象に加えるときの準備）。自動では使わない
 - git の credential helper と、ワーカー・Claude のジョブには渡さない
-- 権限は Administration・Secrets・Environments・Workflows の Read and write と、PR を出すための Contents・Pull requests の Read and write。テンプレートから作るには、作る前のリポジトリを選べないので、その持ち主の All repositories が要る見込み（段階 4 の 5 で確かめる）
-- 期限は毎日のトークンと同じく自己診断に書き、クライアントで知らせる。管理用のトークンが無い持ち主への操作は、理由を書いて断る
+- 毎日のトークンとは、Keychain の名前（`github-admin-token/<持ち主>`）も読む部品（`GitHubAdminTokens`）も分ける。git の credential helper は毎日のトークンの部品しか受け取らないので、管理用のトークンが git に渡る道は無い。毎日のトークンと同じ値は入れられない
+- 権限は Administration・Secrets・Environments・Workflows の Read and write と、PR を出すための Contents・Pull requests の Read and write（Discussions のカテゴリを確かめるための Discussions の Read-only も付ける）。テンプレートから作るには、作る前のリポジトリを選べないので、その持ち主の All repositories が要る見込み（段階 4 の 5 で確かめる）
+- 期限は毎日のトークンと同じく自己診断（`githubAdminTokens`）に書き、クライアントで知らせる。切れても毎日の仕事は止まらないので、「止まっています」にはしない。管理用のトークンが無い持ち主への操作は、理由を書いて断る
 - ワークフローのファイルを変える PR は、ワーカーの epic では push できない（ワーカーは Workflows を持たない）。司令塔が決まった手順で PR を出し、人が承認してからマージする（[operations.md](operations.md) の「対象のリポジトリ」）
 - Secrets の値は、クライアントが GitHub の公開鍵で暗号化し、司令塔は暗号文を渡すだけ（[flows.md](flows.md) の「人がする作業」）
 
