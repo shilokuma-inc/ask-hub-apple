@@ -158,6 +158,48 @@
       "read": "malformed"
     },
     {
+      "name": "removed",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "removedAt": "2026-11-12T10:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "removed-null",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "removedAt": null
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "removed-not-a-date",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "removedAt": "きのう"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "future-version",
       "value": {
         "v": 2,

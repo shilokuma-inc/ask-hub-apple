@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/removeRepository.schema.json",
+  "title": "対象から外す人の意図（kind が removeRepository）の payload",
+  "description": "封筒の repo が対象のリポジトリ。target・targetVersion は持たない。payload は空（省いてもよい）。知らない欄のある payload は読まない",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}
