@@ -54,18 +54,20 @@ public actor Notifier {
     }
 
     /// 1 周。`epics` と `jobs` は `JobSweep` で見直した後のもの、`trusted` は確かめた公開鍵の id（取り消した端末には送らない）、
-    /// `rateLimit` は司令塔が読んだ GitHub の REST の上限の残り（読めなければ nil）。送って記録に残した通知を返す
+    /// `rateLimit` は司令塔が読んだ GitHub の REST の上限の残り（読めなければ nil）、`releases` は配信した版の人を待っているもの
+    /// （`ReleaseWatch.blockers`）。送って記録に残した通知を返す
     @discardableResult
     public func notify(
         epics: [EpicFile],
         jobs: [JobFile],
         trusted: Set<KeyID>,
-        rateLimit: GitHubRateLimit? = nil
+        rateLimit: GitHubRateLimit? = nil,
+        releases: [Blocker] = []
     ) async throws(CommanderError) -> [PushNotice] {
         let now = context.now()
         if let retryAt, now < retryAt { return [] }
         let scan = BlockerScan(context: context, macOfflineAfter: settings.macOfflineAfter)
-        let blockers = try await scan.scan(epics: epics, jobs: jobs, rateLimit: rateLimit)
+        let blockers = try await scan.scan(epics: epics, jobs: jobs, rateLimit: rateLimit) + releases
         guard !blockers.isEmpty else { return [] }
         let ledger: NotificationsFile?
         do {

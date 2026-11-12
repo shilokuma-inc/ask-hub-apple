@@ -149,6 +149,10 @@ def read_commander(text: str) -> dict:
             problems.append("versions.commander が空です")
         if versions.get("claude") is not None and not isinstance(versions["claude"], str):
             problems.append("versions.claude が文字列ではありません")
+        # 互換の番号（MachineCompatibility）は、書くなら 1 以上の整数（bool は int の仲間なので弾く）
+        compatibility = versions.get("compatibility")
+        if compatibility is not None and (isinstance(compatibility, bool) or not isinstance(compatibility, int) or compatibility < 1):
+            problems.append("versions.compatibility が 1 以上の整数ではありません")
     self_check = value.get("selfCheck")
     if not isinstance(self_check, dict):
         problems.append("selfCheck がありません")

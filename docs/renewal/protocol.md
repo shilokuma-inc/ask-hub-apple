@@ -576,6 +576,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   | ジョブが人の判断を待っている | `job/<owner>/<repo>/<epic>/<job>/<attempts>` |
   | ジョブを持った Mac が戻らない | `mac/<mac>/<その Mac の seenAt>` |
   | リリース文の確認と公開を待っている | `release/<owner>/<repo>/<版>/<notes の version>` |
+  | 配信した版の後作業が、人が直すまで進まない | `release/<owner>/<repo>/<版>/problem/<段取り>/<problem の at>` |
 
 - どの端末にも送れなかった出来事は、記録から外して送り直す。終わった出来事の記録は、7 日たってから消す
 - 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`）。APNs の `thread-id` は epic の id か `mac/<mac>`、`apns-collapse-id` はまとめた出来事の key から決める

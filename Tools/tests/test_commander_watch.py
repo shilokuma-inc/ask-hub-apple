@@ -34,9 +34,13 @@ from commander_watch import (  # noqa: E402
     watch_issues,
 )
 
-from Tools.tests.test_release_prepare import GIT_ENV  # noqa: E402
-
 ROOT = TOOLS.parent
+#: 一時ディレクトリの git に使う作者と設定（手元の ~/.gitconfig に左右されない）
+GIT_ENV = {
+    "GIT_AUTHOR_NAME": "test", "GIT_AUTHOR_EMAIL": "test@example.com",
+    "GIT_COMMITTER_NAME": "test", "GIT_COMMITTER_EMAIL": "test@example.com",
+    "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+}
 REPO = "org/askhub-state"
 NOW = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
 
