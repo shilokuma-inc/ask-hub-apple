@@ -21,6 +21,8 @@ public struct MachineRuntime: Sendable {
     public var claude: ClaudeSetup
     /// `claude --version` の版（生きている印に書く）。分からなければ nil
     public var claudeVersion: String?
+    /// 管理用のトークン（司令塔だけ。ワーカーは nil）。署名した人の意図の処理にだけ渡す
+    public var adminTokens: AdminTokens?
     /// epic の作業場所の排他。ジョブ（`taskRunners`）と、終わった epic の残りものの片付け（`finishedEpicCleanUp`）で同じものを使う
     public var epicLocks = EpicLocks()
 
@@ -58,23 +60,41 @@ public struct MachineRuntime: Sendable {
             trusted: TrustedKeys(
                 anchor: TrustAnchor(store: secrets), store: store, accounts: Set(configuration.keyAccounts), log: MachineCommandLine.log
             ),
-            probe: MachineProbe(
-                secrets: secrets,
-                volume: paths.root,
-                owners: configuration.tokenOwnersReloading(from: paths.configuration, role: commandLine.role),
-                githubExpiry: GitHubTokenExpiry(),
-                claudeTokenRecord: paths.claudeTokenRecord,
-                claudeVersion: { await version(of: claude) },
-                xcodeVersion: { await tools.xcodeVersion(runner: ProcessCommandRunner()) }
-            ),
+            probe: probe(commandLine, configuration: configuration, claude: claude, tools: tools),
             workspace: GitRepositoryWorkspace(
                 setup: .init(root: paths.work, credentialHelper: GitCredential.helper(executable: commandLine.executable)),
                 runner: ProcessCommandRunner(),
                 authors: GitHubCommitAuthors(token: githubTokens(in: secrets), log: MachineCommandLine.log)
             ),
             claude: claude,
-            claudeVersion: await version(of: claude)
+            claudeVersion: await version(of: claude),
+            // 管理用のトークンは常時オンの Mac の司令塔にだけ置く
+            adminTokens: commandLine.role == .commander ? AdminTokens(secrets: secrets) : nil
         )
+    }
+
+    /// 生きている印に書く様子を測るもの。管理用のトークンは司令塔だけが確かめる（ワーカーは自己診断にも書かない）
+    private static func probe(
+        _ commandLine: MachineCommandLine,
+        configuration: MachineConfiguration,
+        claude: ClaudeSetup,
+        tools: BuildTools
+    ) -> MachineProbe {
+        let paths = commandLine.paths
+        var probe = MachineProbe(
+            secrets: commandLine.secrets,
+            volume: paths.root,
+            owners: configuration.tokenOwnersReloading(from: paths.configuration, role: commandLine.role),
+            githubExpiry: GitHubTokenExpiry(),
+            claudeTokenRecord: paths.claudeTokenRecord,
+            claudeVersion: { await version(of: claude) },
+            xcodeVersion: { await tools.xcodeVersion(runner: ProcessCommandRunner()) }
+        )
+        if commandLine.role == .commander {
+            probe.adminOwners = configuration.adminOwnersReloading(from: paths.configuration, role: commandLine.role)
+            probe.adminExpiry = GitHubTokenExpiry()
+        }
+        return probe
     }
 
     /// 持ち主の GitHub のトークンを、要求のたびに Keychain から読む（`token` で入れ直したら、次の要求から使う）

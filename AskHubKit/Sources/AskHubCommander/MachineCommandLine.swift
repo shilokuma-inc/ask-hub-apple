@@ -51,8 +51,9 @@ public struct MachineCommandLine: Sendable {
             fail("\(error.message)\n\(usage)", status: EX_USAGE)
         }
         var configuration = setup.configuration
-        // 後から決めた Xcode は、setup を流し直しても残す（xcode --unset で戻す）
+        // 後から決めた Xcode と、管理用のトークンを置いた持ち主は、setup を流し直しても残す（xcode --unset で戻す）
         configuration.xcode = MachineConfiguration.preservedXcode(at: paths.configuration)
+        configuration.adminOwners = MachineConfiguration.preservedAdminOwners(at: paths.configuration)
         adjust(&configuration)
         do {
             for owner in configuration.tokenOwners {
@@ -129,6 +130,27 @@ public struct MachineCommandLine: Sendable {
             """)
     }
 
+    /// `admin-token <持ち主>`: 持ち主の管理用のトークンを入れ直す・足す（司令塔だけ）。足した持ち主は設定の `adminOwners` にも書く
+    /// （常駐の自己診断が、印を書くたびに読み直す）。管理用のトークンは、署名した人の意図の処理（保護の設定・対象に加えるときの準備）にだけ使い、
+    /// git・Claude のジョブ・ワーカーには渡さない（`docs/renewal/security.md` の「管理用のトークン」）
+    public func adminToken(_ arguments: [String]) {
+        guard role == .commander else { fail("管理用のトークンは、常時オンの Mac の askhub-commander にだけ置く", status: EX_USAGE) }
+        guard arguments.count == 1, let owner = GitHubTokens.normalizedOwner(arguments[0]) else {
+            fail("使い方: \(role.program) admin-token <GitHub の持ち主（organization・個人）>", status: EX_USAGE)
+        }
+        var configuration = loadConfiguration()
+        do {
+            try storeAdminToken(for: owner)
+            if configuration.addAdminOwner(owner) { try configuration.save(to: paths.configuration) }
+        } catch {
+            fail("トークンを置けない（\(error)）", status: EX_SOFTWARE)
+        }
+        print("""
+            \(owner) の管理用のトークンを Keychain に置きました。管理用のトークンを置いた持ち主: \(configuration.adminTokenOwners.joined(separator: "、"))
+            常駐していれば、読み込み直さなくても次の管理の操作から使い、次の生きている印（10 分ごと）の自己診断にも期限を出します
+            """)
+    }
+
     /// `claude-token`: Claude の setup-token を入れ直す（期限の 1 年が近づいたら、`claude setup-token` で作り直して貼る）。
     /// 常駐のループは起動したときに読んだ値を使うので、読み込み直してもらう
     public func replaceClaudeToken(_ arguments: [String]) {
@@ -164,6 +186,28 @@ public struct MachineCommandLine: Sendable {
             return
         }
         if let problem = GitHubTokens.problem(of: value) { fail(problem, status: EX_USAGE) }
+        // 毎日のトークン（Claude の書いたコードを push する）に、管理用の権限を持たせない
+        if try GitHubAdminTokens(secrets: secrets).token(for: owner) == value {
+            fail("\(owner) の管理用のトークンと同じ値。毎日のトークンは別に作る（Administration・Workflows を付けない）", status: EX_USAGE)
+        }
+        try tokens.store(value, for: owner)
+    }
+
+    /// 持ち主の管理用の fine-grained token を、端末で伏せて入れてもらって置く。すでにあれば、空のまま Enter で今のままにする。
+    /// 毎日のトークンと同じ値は断る（管理用の権限を毎日の push に使わない）
+    func storeAdminToken(for owner: String) throws {
+        let tokens = GitHubAdminTokens(secrets: secrets)
+        let existing = try tokens.contains(owner)
+        let prompt = "\(owner) の管理用の fine-grained token（github_pat_ で始まる。毎日のトークンとは別に作る）: "
+        let value = readSecret(existing ? prompt + "（今のままなら空で Enter）" : prompt)
+        if value.isEmpty {
+            guard existing else { fail("値が空", status: EX_USAGE) }
+            return
+        }
+        if let problem = GitHubTokens.problem(of: value) { fail(problem, status: EX_USAGE) }
+        if try GitHubTokens(secrets: secrets).token(for: owner) == value {
+            fail("\(owner) の毎日のトークンと同じ値。管理用のトークンは別に作る（docs/renewal/operations.md の「管理用のトークン」）", status: EX_USAGE)
+        }
         try tokens.store(value, for: owner)
     }
 
@@ -249,17 +293,22 @@ public struct MachineCommandLine: Sendable {
     public func checkLines(version: String) async -> [String] {
         let configuration = try? MachineConfiguration.load(from: paths.configuration, role: role)
         let owners = configuration?.tokenOwners ?? []
+        let adminOwners = configuration?.adminTokenOwners ?? []
         let probe = MachineProbe(
             secrets: secrets,
             volume: paths.root,
             owners: { owners },
             githubExpiry: GitHubTokenExpiry(),
+            adminOwners: { adminOwners },
+            adminExpiry: GitHubTokenExpiry(),
             claudeTokenRecord: paths.claudeTokenRecord
         )
         let selfCheck = await probe.selfCheck()
-        let ownerStates = (selfCheck.githubTokens ?? []).map { token in
+        let describe = { (token: SelfCheck.GitHubToken) in
             "\(token.owner) \(token.state.rawValue)、\(token.expiresAt.map { "期限 \($0)" } ?? "期限なし・分からない")"
         }
+        let ownerStates = (selfCheck.githubTokens ?? []).map(describe)
+        let adminStates = (selfCheck.githubAdminTokens ?? []).map(describe)
         let claudeExpiry = selfCheck.claudeTokenExpiresAt.map { "期限 \($0)（入れた日から 1 年）" } ?? "期限が分からない（claude-token で入れ直すと記録する）"
         let firstKey = (try? TrustAnchor(store: secrets).firstKey()).flatMap { $0 }
         var xcode = "設定を読めない"
@@ -269,11 +318,13 @@ public struct MachineCommandLine: Sendable {
             let mac = "\(configuration.mac)、\(configuration.kind.rawValue)"
             return "\(configuration.stateRepository)（\(mac)、同時 \(capacity)、claude \(configuration.claude)）"
         }
+        let admin = adminStates.isEmpty ? "置いていない（管理の操作は断る。admin-token <持ち主> で入れる）" : adminStates.joined(separator: "・")
         return [
             "版: \(version)",
             "設定: \(summary ?? "読めない（setup を流す）")",
             "Keychain: \(selfCheck.keychain.rawValue)",
-            "GitHub のトークン: \(selfCheck.githubToken.rawValue)（\(ownerStates.joined(separator: "・"))）",
+            "GitHub のトークン: \(selfCheck.githubToken.rawValue)（\(ownerStates.joined(separator: "・"))）"
+        ] + (role == .commander ? ["管理用のトークン: \(admin)"] : []) + [
             "Claude のトークン: \(selfCheck.claudeToken.rawValue)（\(claudeExpiry)）",
             "GitHub の REST の残り: \(selfCheck.githubRateLimit.map { "\($0.remaining) / \($0.limit) 回（\($0.resetAt) に戻る）" } ?? "読めない")",
             "最初の鍵: \(firstKey?.rawValue ?? "固定していない")",

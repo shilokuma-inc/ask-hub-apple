@@ -48,6 +48,9 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
     /// GitHub のトークンを置く、状態リポジトリのほかの持ち主（対象のリポジトリの organization・個人）。
     /// fine-grained token は 1 つの持ち主のリポジトリしか扱えないので、持ち主ごとに Keychain に置く（`tokenOwners`）
     public var githubOwners: [String]
+    /// 管理用のトークン（`GitHubAdminTokens`）を置いた持ち主（司令塔だけ。`askhub-commander admin-token` で足す）。
+    /// 生きている印の自己診断で、この持ち主の様子と期限を書く。無ければ nil（前の版の設定も nil で読む）
+    public var adminOwners: [String]?
     /// 進行を止めるものを APNs で知らせるための設定（司令塔だけ。`askhub-commander apns` で足す）。無ければ知らせない
     public var apns: APNsConfiguration?
     /// ビルドとテストに使う Xcode（`Xcode.app` か、その下の `Contents/Developer` の絶対パス。`xcode` で決める）。nil なら xcode-select で選んだもの。
@@ -63,6 +66,7 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         keyAccounts: [String],
         capacity: MacFile.Capacity = .init(claude: 2, build: 0),
         githubOwners: [String] = [],
+        adminOwners: [String]? = nil,
         apns: APNsConfiguration? = nil,
         xcode: String? = nil
     ) {
@@ -74,6 +78,7 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         self.keyAccounts = keyAccounts
         self.capacity = capacity
         self.githubOwners = githubOwners
+        self.adminOwners = adminOwners
         self.apns = apns
         self.xcode = xcode
     }
@@ -106,16 +111,55 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         return true
     }
 
+    /// 管理用のトークンを置いた持ち主（小文字にそろえ、重ねない）
+    public var adminTokenOwners: [String] {
+        var owners: [String] = []
+        for owner in adminOwners ?? [] {
+            guard let normalized = GitHubTokens.normalizedOwner(owner), !owners.contains(normalized) else { continue }
+            owners.append(normalized)
+        }
+        return owners
+    }
+
+    /// 管理用のトークンを置いた持ち主に足す（`admin-token <持ち主>`）。持ち主の名前の形でない・すでにあれば足さずに false
+    @discardableResult
+    public mutating func addAdminOwner(_ owner: String) -> Bool {
+        guard let normalized = GitHubTokens.normalizedOwner(owner), !adminTokenOwners.contains(normalized) else { return false }
+        adminOwners = (adminOwners ?? []) + [normalized]
+        return true
+    }
+
     /// 生きている印の自己診断が印を書くたびに呼ぶ、持ち主の一覧（`tokenOwners`）。呼ぶたびに設定ファイルの `githubOwners` を読み直すので、
     /// `token <持ち主>` で足した持ち主は、常駐を読み込み直さなくても次の印に出る。状態リポジトリ（先頭の持ち主）は起動したときのまま。
     /// 読めない・形が違うときは、前に読めた一覧のまま
     public func tokenOwnersReloading(from url: URL, role: MachineRole) -> @Sendable () -> [String] {
-        let last = OSAllocatedUnfairLock(initialState: tokenOwners)
+        reloading(from: url, role: role) { current, saved in
+            current.githubOwners = saved.githubOwners
+            return current.tokenOwners
+        }
+    }
+
+    /// 自己診断が印を書くたびに呼ぶ、管理用のトークンを置いた持ち主の一覧（`adminTokenOwners`）。`tokenOwnersReloading` と同じく、
+    /// `admin-token <持ち主>` で足した持ち主は、常駐を読み込み直さなくても次の印に出る
+    public func adminOwnersReloading(from url: URL, role: MachineRole) -> @Sendable () -> [String] {
+        reloading(from: url, role: role) { current, saved in
+            current.adminOwners = saved.adminOwners
+            return current.adminTokenOwners
+        }
+    }
+
+    /// 呼ぶたびに設定ファイルを読み直し、`pick` で一覧を取り出す。読めない・形が違うときは、前に読めた一覧のまま
+    private func reloading(
+        from url: URL,
+        role: MachineRole,
+        pick: @escaping @Sendable (inout Self, Self) -> [String]
+    ) -> @Sendable () -> [String] {
+        var initial = self
+        let last = OSAllocatedUnfairLock(initialState: pick(&initial, self))
         return { [self] in
             guard let saved = try? Self.load(from: url, role: role) else { return last.withLock { $0 } }
             var current = self
-            current.githubOwners = saved.githubOwners
-            let owners = current.tokenOwners
+            let owners = pick(&current, saved)
             last.withLock { $0 = owners }
             return owners
         }
@@ -131,6 +175,9 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         if let xcode, !xcode.hasPrefix("/") { problems.append("xcode は Xcode.app の絶対パスで書く") }
         if let owner = githubOwners.first(where: { GitHubTokens.normalizedOwner($0) == nil }) {
             problems.append("githubOwners の \(owner) は GitHub の持ち主の名前の形でない")
+        }
+        if let owner = adminOwners?.first(where: { GitHubTokens.normalizedOwner($0) == nil }) {
+            problems.append("adminOwners の \(owner) は GitHub の持ち主の名前の形でない")
         }
         problems += apns?.problems ?? []
         return problems
@@ -154,6 +201,14 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
             var xcode: String?
         }
         return (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(Stored.self, from: $0) }?.xcode
+    }
+
+    /// 前の設定に書いた `adminOwners`。setup を流し直しても残す（管理用のトークンは Keychain に残るので、自己診断から落とさないように）
+    public static func preservedAdminOwners(at url: URL) -> [String]? {
+        struct Stored: Decodable {
+            var adminOwners: [String]?
+        }
+        return (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(Stored.self, from: $0) }?.adminOwners
     }
 
     public func save(to url: URL) throws {
