@@ -20,6 +20,10 @@ public struct Blocker: Equatable, Sendable {
         case macOffline(jobs: Int, seenAt: Timestamp)
         /// GitHub の REST の上限の残りが少ない（`GitHubRateLimit.lowRemaining` を切った）。使い切ると司令塔もクライアントも戻るまで止まる
         case rateLimit(GitHubRateLimit)
+        /// App Store で配信した版のリリース文の下書きが、人が確かめて公開するのを待っている
+        case releaseNotes
+        /// 配信した版の後作業が、人が直すまで進まない
+        case releaseProblem(ReleaseFile.Step)
     }
 
     /// まとめて 1 つの通知にする単位
@@ -28,6 +32,8 @@ public struct Blocker: Equatable, Sendable {
         case mac(MacName)
         /// GitHub の上限。通知から司令塔の Mac を開く
         case rateLimit(MacName)
+        /// App Store で配信した版
+        case release(RepositoryFullName, MarketingVersion)
     }
 
     /// 同じ出来事を見分ける文字列（`notifications.json` の `key`）。見直した質問・直したゴール・人が頼んだ直しの後の最終 PR・次の試行・
@@ -154,5 +160,22 @@ struct BlockerScan {
         } catch {
             throw .files(error)
         }
+    }
+}
+
+extension Blocker {
+    /// 配信した版の記録から、人を待っているもの（リリース文の確認・人が直す後作業）を拾う（`ReleaseWatch` が見回りのたびに作る）
+    static func waiting(on release: ReleaseFile) -> [Blocker] {
+        let scope = Scope.release(release.repo, release.version)
+        let base = "release/\(release.repo.rawValue)/\(release.version.rawValue)"
+        var blockers: [Blocker] = []
+        if release.awaitsNotesReview, let notes = release.notes {
+            blockers.append(Blocker(key: "\(base)/\(notes.version)", scope: scope, reason: .releaseNotes))
+        }
+        if let problem = release.problem, problem.needsHuman {
+            let key = "\(base)/problem/\(problem.step.rawValue)/\(problem.at.rawValue)"
+            blockers.append(Blocker(key: key, scope: scope, reason: .releaseProblem(problem.step)))
+        }
+        return blockers
     }
 }

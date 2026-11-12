@@ -64,6 +64,15 @@ public struct PushNotice: Equatable, Sendable {
                     target: ["mac": mac.rawValue],
                     keys: blockers.map(\.key)
                 )
+            case let .release(repo, version):
+                return PushNotice(
+                    title: "\(repo.name) \(version) を配信しました",
+                    subtitle: repo.rawValue,
+                    body: blockers.compactMap { releaseLine($0.reason) }.joined(separator: "\n"),
+                    thread: "release/\(repo.rawValue)/\(version.rawValue)",
+                    target: ["repo": repo.rawValue, "release": version.rawValue],
+                    keys: blockers.map(\.key)
+                )
             }
         }
     }
@@ -105,6 +114,14 @@ public struct PushNotice: Equatable, Sendable {
         return lines
     }
 
+    private static func releaseLine(_ reason: Blocker.Reason) -> String? {
+        switch reason {
+        case .releaseNotes: "リリース文を確かめて、GitHub Release を公開してください"
+        case let .releaseProblem(step): "後作業（\(step.label)）が止まっています。確かめてください"
+        default: nil
+        }
+    }
+
     private static func macLine(_ reason: Blocker.Reason, now: Date) -> String {
         guard case let .macOffline(jobs, seenAt) = reason else { return "" }
         let hours = max(Int(now.timeIntervalSince(seenAt.date) / 3_600), 1)
@@ -141,6 +158,19 @@ extension JobKind {
         case .mergeFinalPullRequest: "最終 PR のマージ"
         case .cleanUp: "片付け"
         case .notify: "通知"
+        }
+    }
+}
+
+extension ReleaseFile.Step {
+    /// 通知とログに出す名前
+    var label: String {
+        switch self {
+        case .commit: "配信したコミットを求める"
+        case .tag: "タグ"
+        case .notes: "リリース文"
+        case .githubRelease: "GitHub Release"
+        case .nextVersion: "次の版の PR"
         }
     }
 }
