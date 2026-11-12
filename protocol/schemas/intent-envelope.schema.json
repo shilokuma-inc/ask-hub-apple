@@ -12,8 +12,8 @@
       "type": "string",
       "enum": [
         "request", "answer", "startEpic", "reviseGoal", "decideSplit", "decision", "approveMerge", "instructFinal", "humanTaskDone",
-        "pauseEpic", "resumeEpic", "handover", "retry", "giveUp", "abandonEpic", "addRepository", "removeRepository", "applyProtection",
-        "registerKey", "revokeKey"
+        "pauseEpic", "resumeEpic", "handover", "retry", "giveUp", "abandonEpic", "addRepository", "configureRepository", "removeRepository",
+        "applyProtection", "publishGitHubRelease", "registerKey", "revokeKey"
       ]
     },
     "repo": { "$ref": "common.schema.json#/$defs/repositoryFullName" },

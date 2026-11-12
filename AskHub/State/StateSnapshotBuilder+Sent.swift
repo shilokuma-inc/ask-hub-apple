@@ -87,7 +87,7 @@ extension StateSnapshotBuilder {
                     body: envelope.string("body") ?? "",
                     requestedAt: sentAt,
                     source: .app,
-                    attachmentCount: 0
+                    attachmentCount: Self.attachmentCount(envelope)
                 ),
                 stage: .request,
                 questions: [],

@@ -46,12 +46,18 @@ struct StateIntentMapper {
         }
     }
 
-    /// 意図より先に状態リポジトリに置く中身（渡すファイル）。`drafts(for:)` の payload の `attachments` の順
+    /// 意図より先に状態リポジトリに置く中身（依頼の添付・渡すファイル）。`drafts(for:)` の payload の `attachments` の順
     static func attachments(for intent: HumanIntent) -> [Data] {
-        guard case let .completeHumanTask(_, _, file?) = intent else {
-            return []
+        switch intent {
+        case let .request(_, _, _, files):
+            files.map(\.data)
+
+        case let .completeHumanTask(_, _, file?):
+            [file.data]
+
+        default:
+            []
         }
-        return [file.data]
     }
 
     /// 送る形。まとめて OK は、答えの無いカードそれぞれへの OK にする（司令塔は判断のカードへの答えを 1 枚ずつ受け取る）。
@@ -149,12 +155,16 @@ struct StateIntentMapper {
 
     private func repositoryDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
         switch intent {
-        case let .request(repositoryID, summary, body):
+        case let .request(repositoryID, summary, body, files):
             guard summary.count <= RequestIntent.maximumTitleLength, body.count <= RequestIntent.maximumBodyLength else {
                 let limits = "要約は \(RequestIntent.maximumTitleLength) 文字、内容は \(RequestIntent.maximumBodyLength) 文字まで"
                 throw ClientServiceError(message: "\(limits)です")
             }
-            return .request(repo: try repository(repositoryID), title: summary, body: body)
+            // 司令塔は 1 から順の番号を求める（添付欄の順に振ったものを、そのまま送る）
+            guard files.count <= RequestIntent.maximumAttachments, files.enumerated().allSatisfy({ $1.attachment.number == $0 + 1 }) else {
+                throw ClientServiceError(message: "添付の番号が合いません。添付し直してください")
+            }
+            return .request(repo: try repository(repositoryID), title: summary, body: body, attachments: files.map(\.attachment))
 
         case .addRepository(let repositoryID):
             // 状態リポジトリにつないだときは候補の一覧が無いので、人が入れた owner/name を id にして送る

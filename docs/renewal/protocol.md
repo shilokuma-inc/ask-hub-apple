@@ -39,6 +39,7 @@ repos/<owner>/<repo>/epics/<epic>/decisions.json   人が決めていない判�
 repos/<owner>/<repo>/epics/<epic>/screenshots/<commit>-<scene>.png  見える仮決めのスクショ（撮ったワーカー）
 repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json  ジョブ（司令塔）
 repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json  試行（実行した Mac のワーカー）
+repos/<owner>/<repo>/releases/<版>.json             App Store で配信した版と、その後作業の進み具合（司令塔）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
 commander.json                                     司令塔の生きている印（司令塔）
 notifications.json                                 進行を止めるものを知らせた記録（司令塔）
@@ -334,6 +335,36 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - 最終 PR の直し（`fixFinalPullRequest`）で Claude が報告した仮決めも足す。タスクに結びつかないので、`task` は持たず（`null`）、`pullRequest` は最終 PR にする。クライアントは「最終 PR #N の直し」と出す
 - 「別案にする」「直してほしい」の直しが済んだら、司令塔がその答えを外して答え待ちに戻す（直った後を見て答え直してもらう）。同じカードへの答え直しは受け付けない（[flows.md](flows.md) の「司令塔が最終 PR を進める」）
 
+### releases/<版>.json（App Store で配信した版と後作業）
+
+```json
+{
+  "v": 1,
+  "repo": "shariverse/oshikatsu-countdown-ios",
+  "version": "1.1.0",
+  "platforms": [{ "platform": "iOS", "build": "31", "uploadedAt": "…", "detectedAt": "…" }],
+  "commit": { "sha": "<コミット>", "source": "uploadRun", "platform": "iOS", "build": "31", "run": 19000000001, "runNumber": 31 },
+  "tag": { "name": "v1.1.0", "created": true, "at": "…" },
+  "notes": { "version": 1, "previousTag": "v1.0.0", "draft": "…", "draftedAt": "…", "confirmed": null },
+  "githubRelease": null,
+  "nextVersion": { "version": "1.2.0", "state": "open", "pullRequest": 170, "at": "…" },
+  "problem": null,
+  "detectedAt": "…",
+  "updatedAt": "…"
+}
+```
+
+- 司令塔が App Store Connect で配信（`READY_FOR_DISTRIBUTION`）を見つけたときに作り、後作業を進めるたびに書き足す（[release.md](release.md) の「配信の検知と後作業」）。形は `protocol/schemas/state/release.schema.json`（Swift は `ReleaseFile`）
+- `version` は版の番号（`MARKETING_VERSION`・App Store Connect の `versionString`）。0 以上の整数（先頭の 0 なし・4 桁まで）を `.` で 1〜3 個つないだもの。パスとタグの名前（`v<版>`）に使うので、読むときに形を確かめる（Swift は `MarketingVersion`）
+- `platforms` は配信したプラットフォーム（`iOS`・`macOS`・`visionOS`・`tvOS`）。見つけた順に足し、重ねない。`build` はビルドの番号、`uploadedAt` はそのビルドを上げた時刻（コミットを求めるのに使う）
+- `commit` は配信したコミット。`source` は `uploadRun`（ビルドを上げた Upload の実行の head。`platform`・`build`・`run`（実行の id）・`runNumber` を持つ）か `existingTag`（前からあったタグ `v<版>` が指すコミット。`run`・`runNumber` を持たない）
+- `tag` は配信したコミットに付けたタグ。`name` は `v<版>`。`created` は司令塔が作ったか（前からあったなら false）。コミットを求めてから作る
+- `notes` はリリース文。`draft` は Claude の下書き、`previousTag` は変更を数え始めたタグ（初めての配信なら `null`）。下書きを作り直すたびに `version` を上げる。`confirmed` は、人が確かめて公開を押した本文と、その人の意図（`approval`）
+- `githubRelease` は公開した GitHub Release（`url`・`created`）。タグを作ってから公開する
+- `nextVersion` は develop の `MARKETING_VERSION` を次の版に上げる PR。`state` は `open`（CI を待っている）・`merged`・`skipped`（develop の版がもう大きかったので上げなかった。`pullRequest` を持たない）。`open`・`merged` の `version` は配信した版より大きい
+- `problem` は後作業を進められなかった理由（`step` は `commit`・`tag`・`notes`・`githubRelease`・`nextVersion`）。進められたら消す。`needsHuman` が true なら、やり直しても進まないので人が直す（クライアントに出す）
+- クライアントは、`notes` があって `confirmed` も `githubRelease` も無い版を、人の番として出す（Swift は `ReleaseFile.awaitsNotesReview`）。タグ・GitHub Release・次の版（`merged`・`skipped`）がそろったら終わり（`isFinished`）
+
 ### jobs/<job>.json（ジョブ）
 
 ```json
@@ -452,7 +483,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "mac": "macbook-a",
   "kind": "resident",
   "seenAt": "…",
-  "versions": { "worker": "1.0.0", "claude": "2.1.316", "xcode": "27.1" },
+  "versions": { "worker": "0.2.0-3-gabc1234", "compatibility": 1, "claude": "2.1.316", "xcode": "27.1" },
   "diskFreeGB": 120,
   "load": 3.2,
   "capacity": { "claude": 2, "build": 1 },
@@ -467,11 +498,18 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
       { "owner": "shilokuma-inc", "state": "ok", "expiresAt": "…", "rateLimit": { "limit": 5000, "remaining": 4210, "resetAt": "…" } },
       { "owner": "mrs1669", "state": "ok" }
     ]
-  }
+  },
+  "refusal": { "reason": "incompatible", "message": "司令塔の互換の番号は 2、このワーカーは 1。ワーカーを更新するまで新しいジョブを引き受けない" }
 }
 ```
 
 - `kind` は `alwaysOn`・`resident`・`manual`
+- `versions.worker` は実行ファイルに埋め込んだ版（`git describe --tags --match 'machine-v*'` から作る。タグそのものなら `0.2.0`、その後のコミットなら `0.2.0-3-gabc1234`。埋め込んでいないビルドは `0.0.0-dev`）。`versions.compatibility` は互換の番号（整数）。照らし合わせ方は下に書く。合わないときの更新の手順は [operations.md](operations.md) の「司令塔の更新」「ワーカーの入れ方（段階 3）」（差し替えて読み込み直す）
+  - 互換の番号は、司令塔とワーカーの間の決まり（ジョブの種類・入力と出力・試行の書き方・状態のファイルの形）を変えたときだけ上げる（`MachineCompatibility.current`）
+  - ワーカーは、司令塔（`commander.json`）の `versions.compatibility` と自分の番号が合わないとき・`commander.json` を読めない（知らない版・形の違うもの）ときは、新しいジョブを引き受けず、`refusal` に理由を書く。動かしているジョブは手放さない。番号を書かない司令塔（前の版）・`commander.json` が無いときは照らし合わせない
+  - 起動してから `commander.json` を一度も読めていない（GitHub に届かないなど）間は、新しいジョブを引き受けない。一度読めた後に読めなくなったときは、前の判断のまま続ける
+  - クライアントは、互換の番号が司令塔と合わない Mac（または `refusal` が `incompatible` の Mac）を Mac の画面と「あなたの番」に出し、更新の手順を添える。番号を比べられない（ワーカーが `commander.json` を読めない）ときは、どちらを更新するかを決めずに、ワーカーが書いた理由を出す。版が違うだけ（互換の番号は同じ）なら、Mac の詳細に出すだけにする
+- `refusal` は、新しいジョブを引き受けていないときだけ書く。`reason` は `incompatible`（司令塔と互換の番号が合わない・`commander.json` を読めない）、`message` は人が読む説明
 - `versions.claude` は、印を書くたびに測る `claude --version`。クライアントは、司令塔（`commander.json`）と違う Mac を知らせる
 - `selfCheck` は印を書くたびに確かめる。各項目は `ok`・`missing`・`invalid`・`expired`。トークンの値そのものは書かない
   - `githubTokens` は、持ち主（organization・個人。小文字にそろえる）ごとの GitHub のトークンの様子と期限。持ち主は重ねない
@@ -487,7 +525,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "v": 1,
   "mac": "mac-mini",
   "seenAt": "…",
-  "versions": { "commander": "1.0.0", "claude": "2.1.316" },
+  "versions": { "commander": "0.2.0-3-gabc1234", "compatibility": 1, "claude": "2.1.316" },
   "selfCheck": { "checkedAt": "…", "keychain": "ok", "githubToken": "ok", "claudeToken": "ok" }
 }
 ```
@@ -539,6 +577,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   | 最終 PR の確認とマージの承認を待っている | `review/<owner>/<repo>/<epic>/<最後のレビューが見た head>/<最後のレビューのジョブ>` |
   | ジョブが人の判断を待っている | `job/<owner>/<repo>/<epic>/<job>/<attempts>` |
   | ジョブを持った Mac が戻らない | `mac/<mac>/<その Mac の seenAt>` |
+  | リリース文の確認と公開を待っている | `release/<owner>/<repo>/<版>/<notes の version>` |
 
 - どの端末にも送れなかった出来事は、記録から外して送り直す。終わった出来事の記録は、7 日たってから消す
 - 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`）。APNs の `thread-id` は epic の id か `mac/<mac>`、`apns-collapse-id` はまとめた出来事の key から決める
@@ -607,9 +646,10 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
 | `applyProtection` | リポジトリ | — | 設定 |
+| `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
-リリースの操作（審査に出す・配信する など）の `kind` は、段階 5 で足す。
+リリースの操作（審査に出す・配信する など）の `kind` は、段階 5 の「リリースを始める」で足す。
 
 ### 署名のしかた
 

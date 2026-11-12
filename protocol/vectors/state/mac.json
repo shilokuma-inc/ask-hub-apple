@@ -10,7 +10,8 @@
         "kind": "resident",
         "seenAt": "2026-11-03T10:05:00Z",
         "versions": {
-          "worker": "1.0.0",
+          "worker": "0.2.0-3-gabc1234",
+          "compatibility": 1,
           "claude": "2.1.316",
           "xcode": "27.1"
         },
@@ -43,6 +44,10 @@
               "state": "ok"
             }
           ]
+        },
+        "refusal": {
+          "reason": "incompatible",
+          "message": "司令塔の互換の番号は 2、このワーカーは 1。ワーカーを更新するまで新しいジョブを引き受けない"
         }
       },
       "schemaValid": true,
@@ -611,6 +616,149 @@
               "state": "ok"
             }
           ]
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "compatibility-zero",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "kind": "alwaysOn",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "compatibility": 0
+        },
+        "diskFreeGB": 0,
+        "load": 0,
+        "capacity": {
+          "claude": 0,
+          "build": 0
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "expired",
+          "claudeToken": "missing"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "compatibility-not-integer",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "kind": "alwaysOn",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0",
+          "compatibility": "1"
+        },
+        "diskFreeGB": 0,
+        "load": 0,
+        "capacity": {
+          "claude": 0,
+          "build": 0
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "expired",
+          "claudeToken": "missing"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-refusal-reason",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "kind": "alwaysOn",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0"
+        },
+        "diskFreeGB": 0,
+        "load": 0,
+        "capacity": {
+          "claude": 0,
+          "build": 0
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "expired",
+          "claudeToken": "missing"
+        },
+        "refusal": {
+          "reason": "diskLow",
+          "message": "空き容量が少ない"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "refusal-without-message",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "kind": "alwaysOn",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0"
+        },
+        "diskFreeGB": 0,
+        "load": 0,
+        "capacity": {
+          "claude": 0,
+          "build": 0
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "expired",
+          "claudeToken": "missing"
+        },
+        "refusal": {
+          "reason": "incompatible"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-refusal-message",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "kind": "alwaysOn",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "1.0.0"
+        },
+        "diskFreeGB": 0,
+        "load": 0,
+        "capacity": {
+          "claude": 0,
+          "build": 0
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "expired",
+          "claudeToken": "missing"
+        },
+        "refusal": {
+          "reason": "incompatible",
+          "message": ""
         }
       },
       "schemaValid": false,
