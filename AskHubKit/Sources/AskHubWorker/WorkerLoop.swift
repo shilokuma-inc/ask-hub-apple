@@ -63,6 +63,8 @@ public actor WorkerLoop {
     private var lastBeat: Date?
     /// 新しいジョブを引き受けていない理由（司令塔と互換の番号が合わない）。引き受けているときは nil
     private var refusal: JobRefusal?
+    /// 司令塔の生きている印を一度でも読んで照らし合わせたか。読めるまでは新しいジョブを引き受けない
+    private var compatibilityChecked = false
 
     public init(
         context: CommanderContext,
@@ -106,8 +108,9 @@ public actor WorkerLoop {
     public func cycle() async throws(CommanderError) -> [JobFile] {
         await checkCompatibility()
         try await beatIfDue()
-        // 動かしているジョブは、引き受けないと決めた後もそのまま終わらせて試行を書く
-        guard refusal == nil else { return [] }
+        // 動かしているジョブは、引き受けないと決めた後もそのまま終わらせて試行を書く。
+        // 起動して司令塔の印をまだ読めていないときも、合わない司令塔のジョブを引き受けないよう待つ
+        guard compatibilityChecked, refusal == nil else { return [] }
         let verifier = try await verifier()
         let jobs = try await context.jobsOfEpics(on: context.mac)
         return await slots.fill(from: jobs, now: context.now(), with: worker(verifier))
@@ -154,13 +157,14 @@ public actor WorkerLoop {
             refusal = Self.refusal(commander: commander?.versions.compatibility, own: settings.compatibility)
         } catch .unreadable(_, let error) {
             // 知らない版・形の違う commander.json は、司令塔の決まりが変わったとみなす
-            let message = "司令塔の生きている印（\(StatePath.commander)）を読めない（\(error)）。ワーカーを更新するまで新しいジョブを引き受けない"
+            let message = "司令塔の生きている印（\(StatePath.commander)）を読めない（\(error)）。ワーカーか司令塔を更新するか、印を直すまで新しいジョブを引き受けない"
             refusal = JobRefusal(reason: .incompatible, message: message)
         } catch {
             // GitHub に届かないなどで読めなかったときは、前の周の判断のままにする
             log("司令塔の生きている印を読めなかった（\(error)）。互換の番号は前の周の判断のままにする")
             return
         }
+        compatibilityChecked = true
         guard refusal != self.refusal else { return }
         self.refusal = refusal
         lastBeat = nil

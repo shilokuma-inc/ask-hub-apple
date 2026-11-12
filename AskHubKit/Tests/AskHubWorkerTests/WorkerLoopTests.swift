@@ -61,6 +61,41 @@ final class GatedJob: JobRunning {
     }
 }
 
+/// 司令塔の生きている印の読み取りを、決めた回数だけ失敗させる（GitHub に届かないときを再現する）
+actor FlakyCommanderStore: StateStore {
+    let base: InMemoryStateStore
+    private var failures: Int
+
+    init(_ base: InMemoryStateStore, failures: Int) {
+        self.base = base
+        self.failures = failures
+    }
+
+    func read(_ path: String) async throws(StateStoreError) -> StoredBlob? {
+        if path == StatePath.commander, failures > 0 {
+            failures -= 1
+            throw .transport("つながらない")
+        }
+        return try await base.read(path)
+    }
+
+    func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await base.list(directory)
+    }
+
+    func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
+        try await base.listAll(directory)
+    }
+
+    func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
+        try await base.write(path, data: data, replacing: sha, message: message)
+    }
+
+    func snapshot() async throws(StateStoreError) -> any StateStore {
+        self
+    }
+}
+
 struct WorkerLoopTests {
     static let repo = RepositoryFullName(rawValue: "shilokuma-inc/askhub-sandbox")!
     static let mac = MacName(rawValue: "macbook-a")!
@@ -73,7 +108,7 @@ struct WorkerLoopTests {
     var verifier: IntentVerifier { IntentVerifier(publicKeys: [keyID: key.publicKey.derRepresentation]) }
 
     func loop(
-        _ store: InMemoryStateStore,
+        _ store: any StateStore,
         runner: any JobRunning,
         clock: OSAllocatedUnfairLock<Date> = .init(initialState: now)
     ) -> WorkerLoop {
@@ -264,12 +299,31 @@ struct WorkerLoopTests {
         let refusal = try #require(try await heartbeat(in: store).refusal)
         #expect(refusal.reason == .incompatible)
         #expect(refusal.message.hasPrefix("司令塔の生きている印（commander.json）を読めない"))
+        // 番号を比べられないので、ワーカーだけを更新すればよいとは言わない
+        #expect(refusal.message.contains("ワーカーか司令塔を更新するか、印を直すまで"))
 
         try await commander(compatibility: nil, in: store)
         #expect(try await loop.cycle().count == 1)
         #expect(try await heartbeat(in: store).refusal == nil)
         await loop.waitForJobs()
         #expect(WorkerLoop.refusal(commander: nil, own: 1) == nil)
+    }
+
+    /// 起動してから司令塔の印を読めるまでは、新しいジョブを引き受けない（合わない司令塔のジョブを始めない）。読めた後の失敗では、前の判断のまま
+    @Test func waitsForFirstCompatibilityCheckBeforeTakingJobs() async throws {
+        let base = InMemoryStateStore()
+        try await commander(compatibility: MachineCompatibility.current, in: base)
+        let first = try await epic(1, on: Self.mac, origin: try await signedOrigin(in: base, nonce: 1), in: base)
+        let runner = RecordingJob(JobResult(outputs: Self.outputs))
+        let loop = loop(FlakyCommanderStore(base, failures: 2), runner: runner)
+        #expect(try await loop.cycle().isEmpty)
+        #expect(runner.called.isEmpty)
+        // 生きている印は書く（照らし合わせを待っているだけで、引き受けない理由は書かない）
+        #expect(try await heartbeat(in: base).refusal == nil)
+        #expect(try await loop.cycle().isEmpty)
+        #expect(try await loop.cycle().map(\.id) == [first.id])
+        await loop.waitForJobs()
+        #expect(runner.called == [first.id])
     }
 
     /// 合わせるために更新するものを、互換の番号の大小で出す（ワーカーのほうが新しければ司令塔）
