@@ -642,6 +642,175 @@
       "read": "malformed"
     },
     {
+      "name": "setup-open",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-13T10:00:00Z",
+          "discussions": "missingCategory",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 12,
+            "head": "0123456789abcdef0123456789abcdef01234567",
+            "changes": [
+              {
+                "kind": "removeLegacy",
+                "path": ".github/workflows/close-goal-discussion.yml"
+              },
+              {
+                "kind": "removePathFilters",
+                "path": ".github/workflows/build.yml"
+              }
+            ]
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "setup-not-needed",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-13T10:00:00Z",
+          "discussions": "ready",
+          "workflows": {
+            "state": "notNeeded",
+            "changes": []
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "setup-without-admin-token",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-13T10:00:00Z",
+          "problems": [
+            "shilokuma-inc の管理用のトークンが無い（常時オンの Mac で askhub-commander admin-token shilokuma-inc を流して入れる）"
+          ]
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "setup-open-without-head",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-13T10:00:00Z",
+          "discussions": "missingCategory",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 12,
+            "head": null,
+            "changes": [
+              {
+                "kind": "removeLegacy",
+                "path": ".github/workflows/close-goal-discussion.yml"
+              },
+              {
+                "kind": "removePathFilters",
+                "path": ".github/workflows/build.yml"
+              }
+            ]
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "setup-unknown-discussions",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-13T10:00:00Z",
+          "discussions": "enabled",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 12,
+            "head": "0123456789abcdef0123456789abcdef01234567",
+            "changes": [
+              {
+                "kind": "removeLegacy",
+                "path": ".github/workflows/close-goal-discussion.yml"
+              },
+              {
+                "kind": "removePathFilters",
+                "path": ".github/workflows/build.yml"
+              }
+            ]
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "setup-empty-problems",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-13T10:00:00Z",
+          "discussions": "missingCategory",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 12,
+            "head": "0123456789abcdef0123456789abcdef01234567",
+            "changes": [
+              {
+                "kind": "removeLegacy",
+                "path": ".github/workflows/close-goal-discussion.yml"
+              },
+              {
+                "kind": "removePathFilters",
+                "path": ".github/workflows/build.yml"
+              }
+            ]
+          },
+          "problems": []
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "build-full",
       "value": {
         "v": 1,

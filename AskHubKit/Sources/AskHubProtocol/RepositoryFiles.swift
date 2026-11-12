@@ -142,6 +142,8 @@ public struct RepositoryFile: StateFile {
     public var build: Build?
     /// 対象のアプリのアイコン。まだ取り出していない・見つからないなら nil（クライアントは頭文字を出す）
     public var icon: AppIcon?
+    /// 対象に加えるときの GitHub 側の準備の結果。まだ流していなければ nil
+    public var setup: RepositorySetup?
     public var addedAt: Timestamp
 
     public init(
@@ -171,6 +173,7 @@ public struct RepositoryFile: StateFile {
         violations += build?.problems ?? []
         violations += icon?.problems ?? []
         violations += protection.problems
+        violations += setup?.violations ?? []
         return violations
     }
 }
