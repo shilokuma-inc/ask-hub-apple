@@ -302,10 +302,13 @@ extension ClaudeJobRunnerTests {
         let commander = try #require(try await read(CommanderFile.self, at: StatePath.commander, in: store))
         #expect(commander.mac == Self.commander)
         #expect(commander.versions.commander == "0.1.0")
+        // 互換の番号は、司令塔の印にも常時オンの Mac のワーカーの印にも同じものを書く（ワーカーはこれと照らし合わせる）
+        #expect(commander.versions.compatibility == MachineCompatibility.current)
         // claude の版は、印を書くときに測ったものを書く（人が入れ替えたら次の印で分かる）
         #expect(commander.versions.claude == "2.1.320")
         let mac = try #require(try await read(MacFile.self, at: StatePath.mac(Self.commander), in: store))
         #expect(mac.versions.claude == "2.1.320")
+        #expect(mac.versions.compatibility == MachineCompatibility.current)
         // ワーカーがビルドとテストに使う Xcode の版も、印を書くときに測ったものを書く（xcode-select を切り替えたら次の印で分かる）
         #expect(mac.versions.xcode == "27.1")
         #expect(mac.kind == .alwaysOn)

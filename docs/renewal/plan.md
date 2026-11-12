@@ -30,7 +30,7 @@
 
 | 順 | 作るもの | 中身 |
 | --- | --- | --- |
-| 1 | 司令塔とワーカーの版の照らし合わせと、別の Mac での実地の確かめ | 版が合わなければジョブを受けずに知らせる（[operations.md](operations.md) の「ワーカーと司令塔の配り方」。PR #1068）。その後、常駐（resident）・コマンドで起動（manual）のワーカーで、一時停止 → 再開・引き継ぎを試しの epic で確かめる。MacBook Pro（`macbook-pro-m1pro`）の常駐のワーカーは、確かめの epic を最後まで通した（2026-11-12） |
+| 1 | 司令塔とワーカーの版の照らし合わせ・署名と配り方と、別の Mac での実地の確かめ | 互換の番号が合わなければジョブを受けずに知らせる（[operations.md](operations.md) の「版」。PR #1068）。署名と配り方は、Developer ID の署名と自分の Mac への入れ替えが #1064、公証と GitHub Releases が #1065（[operations.md](operations.md) の「署名と公証」）。その後、常駐（resident）・コマンドで起動（manual）のワーカーで、一時停止 → 再開・引き継ぎを試しの epic で確かめる。MacBook Pro（`macbook-pro-m1pro`）の常駐のワーカーは、確かめの epic を最後まで通した（2026-11-12） |
 | 2 | 今「出来ない操作」を出している所を直す | 依頼の添付をつなぐ（部品と司令塔の確かめはある。画面と `IntentSender.request` だけ）。実機確認の「確認した」「問題あり」（「問題あり」は新しい依頼になる。止めないものの通知を 1 日数回まとめる）。最終 PR の本文の「確認した・問題ありを付けて」の文（`FinalPullRequestBody.swift`）は、実機確認ができるまで直す |
 | 3 | 開始した後の取り下げと、giveUp のそのほかの種類 | [flows.md](flows.md) の「司令塔の動き」の取り下げ・やめる（2026-11-12 に決めた） |
 | 4 | 管理用のトークンと、リポジトリの管理 | 管理用のトークン（入れ方・期限・自己診断。[security.md](security.md) の「トークン」）→ 保護の設定と点検（`applyProtection`）・対象に加えるときの GitHub 側の準備・対象から外す（`removeRepository`）・加える画面の候補の一覧（まだ対象でないものだけ・検索）・クライアントからのビルドの設定（`configureRepository`）・Secrets の登録（人がする作業の `secret`）。中身は [operations.md](operations.md) の「対象のリポジトリ」 |
@@ -74,7 +74,8 @@
 - 意図の封筒のスキーマ（`protocol/schemas/intent-envelope.schema.json`）の `kind` の一覧に `configureRepository` が無い（payload のスキーマはある）。意図の種類を足すときに一緒に直す
 - `JobKind` の `rerunChecks`・`integrateDevelop`・`notify` は名前だけで、作らなかった。流し直しは `reviewTask`・`reviewFinalPullRequest` の中で、base の取り込みは最終 PR のコンフリクトの直し（`fixFinalPullRequest` の `conflict`）で扱う
 - `addRepository` の処理（`EpicHandlers.swift`）のコメントが「GitHub 側の準備は後で足す」のまま（段階 4 の 4）
-- ワーカーと司令塔の配り方: 文書は「CI でビルドし Developer ID で署名して配る」だが、今は手元でビルドして常時オンの Mac で Developer ID の署名（`scripts/commander/deploy.sh`）、MacBook Pro はアドホック署名。署名と配り方の設計は PR #1066
+- ワーカーと司令塔の配り方: 文書（[operations.md](operations.md) の「署名と公証」。PR #1066）は、どれも常時オンの Mac で Developer ID の署名をして配る形だが、今 Developer ID で署名しているのは司令塔だけで、MacBook Pro のワーカーはアドホック署名（段階 4 の 1。#1064・#1065）
+- 各リポジトリの Secrets は、文書（[security.md](security.md) の「public のリポジトリと Secrets」）では Environment の Secrets だが、今は organization の Secrets（#1067）
 
 ### まだ割り当てないもの
 
@@ -157,7 +158,7 @@
 | 1 | Claude Code の sandbox の中で `xcodebuild`・`simctl` が動くか | 動かない。ビルドとテストはワーカーが sandbox の外で流す |
 | 2 | 専用の設定フォルダ（`CLAUDE_CONFIG_DIR`）で人の `~/.claude` が効かないか。リポジトリの hooks・環境変数・`.mcp.json`・CLAUDE.md がどこまで読まれるか | 通常の起動ではすべて効く。`--restricted --strict-mcp-config` と専用の設定フォルダなら、どれも効かず人の指示も見えない |
 | 3 | `claude setup-token` で無人実行できるか、使えるモデル、認証の変数の優先順位 | 無人で動く。モデルを指定しないと Sonnet 5.5 になるので、毎回 `--model` で指定する |
-| 4 | launchd（ログイン中）から Keychain を読めるか。署名したバイナリを更新しても、Keychain と TCC の許可が残るか | LaunchAgent からは読め、ssh からは読めない。司令塔は Developer ID で署名し続けるので、一度「常に許可」を付ければ入れ替えても確認が出ない（[operations.md](operations.md) の「司令塔の更新」） |
+| 4 | launchd（ログイン中）から Keychain を読めるか。署名したバイナリを更新しても、Keychain と TCC の許可が残るか | LaunchAgent からは読め、ssh からは読めない。署名したバイナリの更新は、署名の証明書を決めてから確かめる。同じ Developer ID と識別子で署名し続ければ、入れ替えても Keychain の許可が残る（2026-11-08 に司令塔で確かめた。[operations.md](operations.md) の「署名と公証」） |
 | 5 | sandbox の中で `git commit` ができるか（worktree の `.git` は作業場所の外）。partial clone の取り寄せが動くか | commit でき、共有の `.git` にも書ける。Claude には git を許可しない。partial clone はワーカーの作業場所を作るときに確かめる |
 | 6 | github.com を許可せず、取得済みの依存だけでビルドできるか | 許可していない宛先には出られない。ビルドはワーカーが sandbox の外で流すので、依存の扱いはワーカーのビルドの道具を作るときに確かめる |
 | 7 | 画面の無い launchd の下で、Simulator のスクショと macOS アプリの撮影ができるか | Simulator の作成・起動・スクショ・削除ができる。判断のカードのスクショは、Simulator で起動引数で画面を開いて撮る（[flows.md](flows.md) の「スクショ」）。macOS のアプリの撮影は段階 5 の 7 で確かめる |

@@ -68,7 +68,7 @@
 - 後作業の取り込み（release → main、release → develop）は、GitHub Actions の `GITHUB_TOKEN` では行わない。`GITHUB_TOKEN` はブランチ保護の例外に入れられず、既定では PR も作れないため（段階 0 で確認）。配信を見つけたら司令塔が PR を作り、CI が通ったら自動でマージする
 - 審査に出したビルドの dSYM は、Upload のときに App Store Connect に送り、クラッシュの解析はそちらに任せる
 - archive は、誰でも取れる場所に置かない。GitHub Release にも Actions の成果物（artifact）にも付けない（public のリポジトリでは誰でも取れるため）。GitHub のランナーで作った archive はジョブの終わりに消えるので、残したいときは手元の Mac に置く
-- Upload に使う App Store Connect の API の鍵は、今までどおり GitHub の Secrets（Environment の Secrets）に置く
+- Upload に使う App Store Connect の API の鍵は、今までどおり GitHub の Secrets に置く（今は organization の Secrets。Environment の Secrets に移すのは #1067。[security.md](security.md) の「public のリポジトリと Secrets」）
 - App Store Connect の状態の読み取りと、人が押した操作（審査に出す・配信する・取り下げ）は、ワークフローではなく司令塔が行う（下の「App Store Connect の状態と操作」）
 
 ### App Store Connect の状態と操作

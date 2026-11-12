@@ -481,6 +481,12 @@
   Mac 版で登録した後、Mac 版の「登録を確かめ直す」で登録済みになった（iPad 版では登録していない。2026-11-10）
 - develop からビルドし直した非常口（`askhub`）は、署名が変わるので、初回に Keychain（サービス `jp.shilokuma.AskHub.cli`）の項目を読む確認が出る。許可すれば続けて使える
   （司令塔と同じく、アドホック署名のビルドは別のプログラムとみなされる。2026-11-10、shariverse の移行）
+- Developer ID で署名した司令塔の要件（`codesign -d -r-`）は `identifier "jp.shilokuma.askhub.commander" and anchor apple generic and … certificate leaf[subject.OU] = XU74X3434S` で、
+  証明書そのものや Hardened Runtime の有無を含まない。同じチームなら、証明書を作り直しても・`--options runtime` を後から付けても、要件は変わらない（2026-11-12、#1062）
+- 司令塔・ワーカーと同じ部品（AskHubCommands の `ProcessCommandRunner`・AskHubKeychain の `KeychainSecretStore`）は、Hardened Runtime（`codesign -o runtime`）を付けても entitlement なしで動く。
+  git・`xcrun xcodebuild`・`xcrun simctl`・bash の孫のプロセス・`claude` の起動と、従来の Keychain の書き込み・読み取り・削除を確かめた。リンク先は `/usr/lib`・`/System/Library` だけ（2026-11-12、#1062）
+- ssh のセッションからでも、`launchctl bootstrap gui/$(id -u) <plist>`・`kickstart -k gui/$(id -u)/<ラベル>`・`bootout` は通る（macOS 27.2 の MacBook Pro で、使い捨ての常駐で確かめた）。
+  ssh のセッションの中で使えないのは、ログインキーチェーンの鍵（署名）と Keychain の読み取り。ssh から読み込み直した常駐が Keychain を読めるかは、まだ確かめていない（#1064 で確かめる。2026-11-12、#1062）
 
 ## Swift
 
@@ -721,3 +727,5 @@
   セクションごとの `@State` の UUID と合わせた id にする（`CardRowItem`）。Mac の plain の一覧では、ほかにも
   セクションの footer が 1 行で切れる（`fixedSize` も効かないので、注記は札の外の行として置く）・見出しに `listRowInsets` が効かない・行と見出しの中身に左右 8pt を自分で足す・
   区切り線が行の中身の幅で切れて最後の行の下にも出る・`DisclosureGroup` の三角が行の左の外に出る。札（`CardSection`）は Mac でも行の地に区切り線を描き、開閉は `DisclosureGroupStyle` で見出しの右の山形にした（2026-11-12、Mac の UI の直し）
+- Mac の `presentationSizing(.form)` のシートは、中身にかかわらず 600×520pt ほどで開き、Form の 3 つ目のセクションはスクロールしないと見えない（スクロールバーも出ないので、下に欄があることが分からない）。
+  欄を足したシートは Mac で撮って見え方を確かめ、隠れるなら `.page`（720×800pt ほど）にする（2026-11-12、依頼の添付 #1075）
