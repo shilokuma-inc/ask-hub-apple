@@ -21,7 +21,7 @@ final class FakeAppIconSource: AppIconSource {
 
     let state = OSAllocatedUnfairLock(initialState: State())
 
-    func locate(_ repo: RepositoryFullName) async throws -> AppIconLocator.Source? {
+    func locate(_ repo: RepositoryFullName, base: String?) async throws -> AppIconLocator.Source? {
         try state.withLock { state in
             state.located.append(repo)
             if let failure = state.failure { throw Failure(message: failure) }

@@ -113,7 +113,7 @@ struct GitAppIconTests {
     @Test func locatesAndExportsIconFolderWithoutLinks() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let workspace = try makeWorkspace()
-        let source = try #require(try await workspace.locateAppIcon(Self.repo))
+        let source = try #require(try await workspace.locateAppIcon(Self.repo, base: nil))
         #expect(source.path == "App/AppIcon.icon")
         #expect(source.tree == (try shell("git --git-dir='\(origin.path)' rev-parse develop:App/AppIcon.icon")))
 
@@ -133,6 +133,6 @@ struct GitAppIconTests {
             git -c user.name=t -c user.email=t@example.invalid commit --quiet -m remove && git push --quiet '\(origin.path)' develop
             """)
         // テストのフォルダの下のアイコンは選ばない
-        #expect(try await workspace.locateAppIcon(Self.repo) == nil)
+        #expect(try await workspace.locateAppIcon(Self.repo, base: nil) == nil)
     }
 }
