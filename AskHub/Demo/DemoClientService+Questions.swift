@@ -5,8 +5,9 @@ import Foundation
 extension DemoClientService {
     func apply(_ intent: HumanIntent) -> SendReceipt {
         switch intent {
-        case let .request(repositoryID, summary, body):
-            return SendReceipt(requestedEpicID: addRequest(repositoryID: repositoryID, summary: summary, body: body))
+        case let .request(repositoryID, summary, body, files):
+            let epicID = addRequest(repositoryID: repositoryID, summary: summary, body: body, attachmentCount: files.count)
+            return SendReceipt(requestedEpicID: epicID)
 
         case .answer, .requestExplanation:
             applyQuestionIntent(intent)
@@ -318,14 +319,14 @@ extension DemoClientService {
     }
 
     /// 依頼を epic にして、その id を返す
-    private func addRequest(repositoryID: TargetRepository.ID, summary: String, body: String) -> Epic.ID {
+    private func addRequest(repositoryID: TargetRepository.ID, summary: String, body: String, attachmentCount: Int) -> Epic.ID {
         let date = now()
         let id = "request-\(Int(date.timeIntervalSince1970))"
         let epic = Epic(
             id: id,
             title: summary,
             repositoryID: repositoryID,
-            request: EpicRequest(summary: summary, body: body, requestedAt: date, source: .app, attachmentCount: 0),
+            request: EpicRequest(summary: summary, body: body, requestedAt: date, source: .app, attachmentCount: attachmentCount),
             stage: .request,
             questions: [],
             goal: nil,
