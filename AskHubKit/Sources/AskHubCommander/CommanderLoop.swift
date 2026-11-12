@@ -266,6 +266,7 @@ public actor CommanderLoop {
         "handover": HandoverHandler(),
         "addRepository": AddRepositoryHandler(),
         "configureRepository": ConfigureRepositoryHandler(),
+        "removeRepository": RemoveRepositoryHandler(),
         "retry": RetryJobHandler(),
         "giveUp": GiveUpJobHandler(),
         "decision": DecisionHandler(),
