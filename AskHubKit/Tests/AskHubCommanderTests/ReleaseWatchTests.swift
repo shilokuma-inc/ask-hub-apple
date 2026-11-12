@@ -92,6 +92,7 @@ final class FakeReleaseHosting: ReleaseHosting {
         var pull: PullRequest?
         var checks = CheckSummary(verdict: .pending)
         var merged: [Int] = []
+        var required: [Set<String>?] = []
         var calls = 0
     }
 
@@ -159,8 +160,11 @@ final class FakeReleaseHosting: ReleaseHosting {
         return pull
     }
 
-    func checks(_ repo: RepositoryFullName, at sha: String, required: Set<String>) async throws(PullRequestError) -> CheckSummary {
-        call { $0.checks }
+    func checks(_ repo: RepositoryFullName, at sha: String, required: Set<String>?) async throws(PullRequestError) -> CheckSummary {
+        call { state in
+            state.required.append(required)
+            return state.checks
+        }
     }
 
     func merge(_ repo: RepositoryFullName, number: Int, headSHA: String) async throws(PullRequestError) -> MergedPullRequest {
@@ -176,9 +180,12 @@ final class FakeReleaseHosting: ReleaseHosting {
 /// 決めた下書きを返し、受け取った材料を残す
 final class FakeNotesDrafter: ReleaseNotesDrafting {
     let materials = OSAllocatedUnfairLock<[ReleaseNotesMaterial]>(initialState: [])
+    /// 決めると、下書きを作れずにこれを投げる
+    let failure = OSAllocatedUnfairLock<ReleaseNotesFailure?>(initialState: nil)
 
     func draft(_ material: ReleaseNotesMaterial) async throws(ReleaseNotesFailure) -> String {
         materials.withLock { $0.append(material) }
+        if let failure = failure.withLock({ $0 }) { throw failure }
         return "## 新しい機能\n- 写真を切り抜けるようになりました"
     }
 }
@@ -317,6 +324,8 @@ struct ReleaseWatchTests {
         #expect(file.nextVersion?.state == .merged)
         #expect(file.isFinished)
         #expect(hosting.state.withLock { ($0.releases["v1.1.0"], $0.merged) } == ("## 新しい機能\n- 写真を切り抜けます", [170]))
+        // 最終 PR と同じチェックを待ってからマージする
+        #expect(hosting.state.withLock { $0.required } == [["build / build"]])
 
         // 終わった記録は、もう GitHub を読まない
         let calls = hosting.state.withLock { $0.calls }
@@ -361,9 +370,9 @@ struct ReleaseWatchTests {
         await watch.refresh()
         #expect(await store.writeCount == writes)
 
-        // 人がタグを手で付けたら、そのコミットで続ける
+        // 人がタグを手で付けたら、試し直すとき（人が直す問題から 30 分後）に、そのコミットで続ける
         hosting.state.withLock { $0.tags["v1.1.0"] = Self.released }
-        clock.advance(minutes: 10)
+        clock.advance(minutes: 20)
         await watch.refresh()
         let resumed = try await release()
         #expect(resumed.commit?.source == .existingTag && resumed.problem == nil && resumed.notes != nil)
@@ -396,7 +405,7 @@ struct ReleaseWatchTests {
         #expect(problem.scope == .release(Self.repo, Self.version))
 
         hosting.state.withLock { $0.runs = [uploadRun()] }
-        clock.advance(minutes: 10)
+        clock.advance(minutes: 30)
         await watch.refresh()
         let blockers = await watch.blockers
         #expect(blockers.map(\.key) == ["release/shariverse/oshikatsu-countdown-ios/1.1.0/1"])
@@ -407,6 +416,27 @@ struct ReleaseWatchTests {
         #expect(notice.body == "リリース文を確かめて、GitHub Release を公開してください")
         #expect(notice.target == ["repo": "shariverse/oshikatsu-countdown-ios", "release": "1.1.0"])
         #expect(notice.thread == "release/shariverse/oshikatsu-countdown-ios/1.1.0")
+    }
+
+    @Test func waitsBeforeDraftingAgainAfterAProblemForHuman() async throws {
+        try await addRepository()
+        live()
+        hosting.state.withLock { $0.runs = [uploadRun()] }
+        drafter.failure.withLock { $0 = ReleaseNotesFailure(message: "下書きが決まりに合わない", retryable: false) }
+        let watch = watch()
+        await watch.refresh()
+        #expect(try await release().problem?.step == .githubRelease)
+        // 人が直す問題のある下書きは、見回りのたびに Claude を呼ばない
+        clock.advance(minutes: 10)
+        await watch.refresh()
+        #expect(drafter.materials.withLock { $0.count } == 1)
+        // 決めた長さがたったら、もう一度試す
+        drafter.failure.withLock { $0 = nil }
+        clock.advance(minutes: 6 * 60)
+        await watch.refresh()
+        let file = try await release()
+        #expect(drafter.materials.withLock { $0.count } == 2)
+        #expect(file.notes != nil && file.problem == nil)
     }
 
     @Test func continuesPostWorkWithoutAppStoreConnectKeys() async throws {
