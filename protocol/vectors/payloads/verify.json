@@ -37,6 +37,15 @@
       "read": "malformed"
     },
     {
+      "name": "confirmed-with-note",
+      "payload": {
+        "result": "confirmed",
+        "note": "問題なく開けた"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
       "name": "unknown-result",
       "payload": {
         "result": "skipped"

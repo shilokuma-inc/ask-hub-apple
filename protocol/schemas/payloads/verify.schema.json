@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/verify.schema.json",
   "title": "実機確認への答えの人の意図（kind が verify）の payload",
-  "description": "封筒の target は {type: verification, epic, id: v<n>}（ゴールの完了の条件を順に v1 から数えた項目）、targetVersion は人が見たときのゴールの版。problem のときは note が要る（読む側で確かめる）。知らない欄のある payload は読まない",
+  "description": "封筒の target は {type: verification, epic, id: v<n>}（ゴールの完了の条件を順に v1 から数えた項目）、targetVersion は人が見たときのゴールの版。problem のときは note が要り、confirmed のときは持たない（読む側で確かめる）。知らない欄のある payload は読まない",
   "type": "object",
   "required": [
     "result"

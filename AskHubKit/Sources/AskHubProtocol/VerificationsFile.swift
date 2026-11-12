@@ -45,6 +45,7 @@ public struct VerificationsFile: StateFile {
                 problems.append("\(answer.id) の note が \(VerifyIntent.maximumNoteLength) 文字を超える")
             }
             if answer.result == .problem && answer.note.isEmpty { problems.append("\(answer.id) は問題ありなのに note が空") }
+            if answer.result == .confirmed && !answer.note.isEmpty { problems.append("\(answer.id) は確認したなのに note がある") }
         }
         return problems
     }

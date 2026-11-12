@@ -92,6 +92,26 @@
       "read": "malformed"
     },
     {
+      "name": "confirmed-with-note",
+      "value": {
+        "v": 1,
+        "answers": [
+          {
+            "id": "v1",
+            "result": "confirmed",
+            "note": "問題なく開けた",
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "at": "2026-11-12T10:00:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
       "name": "item-id-with-leading-zero",
       "value": {
         "v": 1,

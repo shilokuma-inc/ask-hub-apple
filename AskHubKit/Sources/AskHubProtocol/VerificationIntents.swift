@@ -47,7 +47,7 @@ public struct VerificationTarget: Equatable, Sendable {
     }
 }
 
-/// 実機確認への答え（`kind` が `verify`）。マージした epic の項目に「確認した」「問題あり」を付ける。「問題あり」は問題の説明（`note`）が要る。
+/// 実機確認への答え（`kind` が `verify`）。マージした epic の項目に「確認した」「問題あり」を付ける。「問題あり」は問題の説明（`note`）が要り、「確認した」は持たない。
 ///
 /// この意図は答えを記録するだけにする。「問題あり」の直しは、クライアントが同時に送る依頼（`request`）で頼む
 public struct VerifyIntent: Equatable, Sendable {
@@ -80,8 +80,9 @@ public struct VerifyIntent: Equatable, Sendable {
         guard let result = Result(rawValue: try reader.text("result", required: true, limit: 16)) else {
             throw .init(detail: "result が confirmed・problem のどちらでもない")
         }
-        // 問題ありは、何が起きたかが無いと直せない
+        // 問題ありは、何が起きたかが無いと直せない。確認したは説明を持たない（記録の `note` を空にそろえる）
         let note = try reader.text("note", required: result == .problem, limit: Self.maximumNoteLength)
+        guard result == .problem || note.isEmpty else { throw .init(detail: "確認したに note がある") }
         self.init(target: target, result: result, note: note, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
     }
 

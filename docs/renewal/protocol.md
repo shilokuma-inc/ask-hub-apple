@@ -376,7 +376,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - 何を確かめるか（項目）は、ゴールの完了の条件（`doneWhen`）。順に `v1`・`v2`… と数える（最終 PR の本文の「実機で確かめてほしいこと」と同じ id）
 - ここには人が答えた項目だけを、答えた順に置く。1 つの項目に答えるのは 1 回だけ（答え直さない）。ファイルは最初の答えで司令塔が作る
-- `result` は `confirmed`（確認した）・`problem`（問題あり）。`note` は問題ありの説明（問題ありは空にしない。確認したは空）
+- `result` は `confirmed`（確認した）・`problem`（問題あり）。`note` は問題ありの説明（問題ありは空にしない。確認したは空で、意図に `note` があれば読まない）
 - 型は `VerificationsFile`、スキーマは `protocol/schemas/state/verifications.schema.json`
 
 ### jobs/<job>.json（ジョブ）
