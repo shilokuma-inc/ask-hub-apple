@@ -180,6 +180,11 @@
 - 最終 PR の「マージしています…」は、マージのジョブが成功してから司令塔が epic を merged にするまで（司令塔の次の周、30 秒ほど）も出る（`finalState`）。
   アプリの 30 秒ごとの取り直し（Mac で前面でなければ 2 分）を待つと、マージ済みの表示がさらに遅れ、切り替わらないように見えた。
   承認から merged までを実際の順に読み直すテスト（アプリ・司令塔の両方）は直す前から通り、人も「待てば切り替わった」と確かめたので（epic のゴールの q1 の前提を、後の q4 の答えで改めた）、不具合ではなく遅れだった。マージ中の epic がある間だけ 10 秒ごとに読み直す（`ClientStore.watchMerges`。2026-11-12）
+- GitHub Actions の実行が、queued のままジョブが 0 個で止まることがある（GitHub 側の不具合。BeaconFun4/demomoni-remake-ios#172 では push と pull_request の 2 つとも 14 時間止まった）。
+  check run が 1 つも出ないので、待つチェックが「始まらない」ように見え、設定ミスと見分けがつかない。見分けるには `GET /repos/{o}/{r}/actions/runs?head_sha=<sha>` で head の実行を読み、
+  queued のまま長い実行の `GET /actions/runs/{id}/jobs` の `total_count` が 0 かを見る（ランナー不足ならジョブはあり、queued の check run として出る）。
+  `gh run cancel` は「Cannot cancel a workflow run that is completed」で断られて消せない。PR を閉じてすぐ開き直す（`PATCH pulls/{n}` の `state`）と `reopened` のイベントで新しい実行が作られ、動き出した。
+  止まった古い実行は queued のまま残るので、開き直した後は、それより新しい実行（id は作られた順に大きくなる）だけを見る。ワーカーは待つチェックが 10 分出なければ実行を読み、止まっていれば 1 回の待ちで 1 回だけ開き直す（2026-11-12、#1073）
 
 ## ビルド・テスト
 
