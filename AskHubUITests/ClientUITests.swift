@@ -41,8 +41,8 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["まとめて判断する"].exists)
         // 出番があるときは、空の画面の「新しい依頼を出す」を出さない
         XCTAssertFalse(app.buttons["新しい依頼を出す"].exists)
-        // 「時間のあるときに」は下にあるので、一覧を送ってから確かめる
-        XCTAssertTrue(scrollUntilExists(app.staticTexts["時間のあるときに · 5"], in: app))
+        // 「時間のあるときに」は下にあるので、一覧を送ってから確かめる（家事シェアの準備の 2 件を含む）
+        XCTAssertTrue(scrollUntilExists(app.staticTexts["時間のあるときに · 7"], in: app))
     }
 
     /// 読めなかったときは、出番が無いときの空の画面を出さない
