@@ -41,7 +41,8 @@ final class FakeTaskGit: TaskGit {
         state = OSAllocatedUnfairLock(initialState: State(remote: remote))
     }
 
-    func update(_ body: @Sendable (inout State) -> Void) {
+    @discardableResult
+    func update<Value: Sendable>(_ body: @Sendable (inout State) -> Value) -> Value {
         state.withLock { body(&$0) }
     }
 
@@ -227,6 +228,13 @@ final class FakePullRequests: PullRequestOperations {
         var uploadError: PullRequestError?
         /// 書き換えた本文（PR の番号と本文）
         var bodies: [(number: Int, body: String)] = []
+        /// head の GitHub Actions の実行。読むたびに先頭から返す（最後の 1 つは残す）。ジョブの数は実行ごと（無ければ 1）
+        var workflowRuns: [[WorkflowRun]] = [[]]
+        var workflowRunReads = 0
+        var jobCounts: [Int: Int] = [:]
+        /// 閉じた・開き直した PR（番号と状態）と、開き直すときに先に投げる失敗（1 回ずつ使う）
+        var stateChanges: [(number: Int, state: PullRequest.State)] = []
+        var reopenFailures: [PullRequestError] = []
     }
 
     private let state: OSAllocatedUnfairLock<State>
@@ -235,7 +243,8 @@ final class FakePullRequests: PullRequestOperations {
         self.state = OSAllocatedUnfairLock(initialState: state)
     }
 
-    func update(_ body: @Sendable (inout State) -> Void) {
+    @discardableResult
+    func update<Value: Sendable>(_ body: @Sendable (inout State) -> Value) -> Value {
         state.withLock { body(&$0) }
     }
 
