@@ -377,3 +377,21 @@ extension EpicIntentsTests {
         }
     }
 }
+
+/// 依頼の添付の参照を、中身から作る（クライアントが送る前に、司令塔と同じ決まりで確かめる）
+struct RequestAttachmentTests {
+    @Test func makesRequestAttachmentFromContents() throws {
+        let attachment = try #require(RequestAttachment(number: 2, name: "memo.txt", contents: Data("abc".utf8)))
+        // "abc" の SHA-256
+        #expect(attachment == RequestAttachment(
+            number: 2,
+            name: "memo.txt",
+            size: 3,
+            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        ))
+        // 司令塔が意図を読むときの決まりに合わない名前・空の中身は作らない
+        #expect(RequestAttachment(number: 1, name: "a/b.txt", contents: Data("abc".utf8)) == nil)
+        #expect(RequestAttachment(number: 1, name: String(repeating: "あ", count: 201), contents: Data("abc".utf8)) == nil)
+        #expect(RequestAttachment(number: 1, name: "empty.txt", contents: Data()) == nil)
+    }
+}

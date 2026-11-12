@@ -28,7 +28,7 @@ extension StateSnapshotBuilder {
                 body: requestBody(of: file),
                 requestedAt: file.createdAt.date,
                 source: .app,
-                attachmentCount: 0
+                attachmentCount: requestAttachmentCount(of: file)
             ),
             stage: file.stage == .abandoned ? Self.abandonedStage(documents) : Self.stage(file.stage),
             questions: questions,
@@ -82,12 +82,31 @@ extension StateSnapshotBuilder {
 
     /// 依頼の本文は epic のファイルに無いので、この端末が送った依頼なら、送った意図から読む
     private func requestBody(of file: EpicFile) -> String {
-        guard let origin = file.origin,
-              let sent = documents.sentIntents.first(where: { $0.envelope.keyId == origin.keyId && $0.envelope.nonce == origin.nonce }),
-              case .string(let body)? = sent.envelope.payload?["body"] else {
+        guard case .string(let body)? = origin(of: file)?.payload?["body"] else {
             return ""
         }
         return body
+    }
+
+    /// 依頼に付いていた添付の数（中身は読まない）
+    private func requestAttachmentCount(of file: EpicFile) -> Int {
+        origin(of: file).map(Self.attachmentCount) ?? 0
+    }
+
+    /// epic を作った依頼の意図（自分の端末から送ったものだけ読める）
+    private func origin(of file: EpicFile) -> IntentEnvelope? {
+        guard let origin = file.origin else {
+            return nil
+        }
+        return documents.sentIntents.first { $0.envelope.keyId == origin.keyId && $0.envelope.nonce == origin.nonce }?.envelope
+    }
+
+    /// 依頼の意図の payload の `attachments` の数
+    static func attachmentCount(_ envelope: IntentEnvelope) -> Int {
+        guard case .array(let attachments)? = envelope.payload?["attachments"] else {
+            return 0
+        }
+        return attachments.count
     }
 
     static func displayID(_ id: String) -> Question.ID {

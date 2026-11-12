@@ -36,6 +36,8 @@ struct InboxItem: Identifiable, Hashable {
         case token
         /// Claude Code の版が Mac の間でそろっていない
         case claudeVersion
+        /// ワーカーの互換の番号が司令塔と合わず、新しいジョブを引き受けていない（更新する）
+        case compatibility
         case finalReview
         case verification
         case cleanup
@@ -63,6 +65,7 @@ enum InboxBuilder {
         items += snapshot.macs.compactMap { offlineItem($0, now: now) }
         items += snapshot.macs.flatMap { tokenItems($0, now: now) }
         items += snapshot.macs.compactMap(claudeVersionItem)
+        items += snapshot.macs.compactMap(compatibilityItem)
         items += snapshot.macs.compactMap(cleanupItem)
         return items.sorted { lhs, rhs in
             if lhs.urgency != rhs.urgency {
@@ -264,6 +267,27 @@ enum InboxBuilder {
         )
     }
 
+    /// 互換の番号が司令塔と合わず、新しいジョブを引き受けていない Mac（オンラインのものだけ）。版が違うだけなら出さない。
+    /// 番号を比べられない（ワーカーが司令塔の印を読めない）ときは、合わないとは言わず、ワーカーが書いた理由を出す
+    private static func compatibilityItem(_ mac: Mac) -> InboxItem? {
+        guard case .online(let lastSeen) = mac.connection, let incompatibility = mac.incompatibility else {
+            return nil
+        }
+        let detail = mac.updateCommand.map { "互換の番号が合いません（\(mac.compatibilityText)） · \($0)" }
+            ?? "\(mac.compatibilityText) · \(incompatibility.message ?? mac.updateStep)"
+        return InboxItem(
+            id: "mac/\(mac.id)/compatibility",
+            urgency: .blocking,
+            kind: .compatibility,
+            repositoryID: nil,
+            title: mac.updateTitle,
+            context: mac.name,
+            detail: detail,
+            since: lastSeen,
+            route: .mac(mac.id)
+        )
+    }
+
     private static func cleanupItem(_ mac: Mac) -> InboxItem? {
         guard !mac.cleanupCandidates.isEmpty else {
             return nil
@@ -334,7 +358,7 @@ extension InboxItem {
         case .verification:
             return epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
 
-        case .macOffline, .token, .claudeVersion, .cleanup:
+        case .macOffline, .token, .claudeVersion, .compatibility, .cleanup:
             return []
         }
     }

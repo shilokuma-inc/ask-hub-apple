@@ -34,9 +34,13 @@ public struct IntentDraft: Equatable, Sendable {
         self.payload = payload
     }
 
-    /// 依頼（添付は、置き方を決めてから足す）
-    public static func request(repo: RepositoryFullName, title: String, body: String) -> Self {
-        Self(kind: "request", repo: repo, payload: ["title": .string(title), "body": .string(body)])
+    /// 依頼。添付は参照（番号・名前・大きさ・ハッシュ）だけを書き、中身は `IntentSender.send(_:attachments:)` で意図より先に置く
+    public static func request(repo: RepositoryFullName, title: String, body: String, attachments: [RequestAttachment] = []) -> Self {
+        var payload: [String: JSONValue] = ["title": .string(title), "body": .string(body)]
+        if !attachments.isEmpty {
+            payload["attachments"] = .array(attachments.map(\.jsonValue))
+        }
+        return Self(kind: RequestIntent.kind, repo: repo, payload: payload)
     }
 
     /// 回答。`choice` は選択肢の label（自由記述だけなら nil）

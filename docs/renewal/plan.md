@@ -102,7 +102,7 @@
 | 1 | Claude Code の sandbox の中で `xcodebuild`・`simctl` が動くか | 動かない。ビルドとテストはワーカーが sandbox の外で流す |
 | 2 | 専用の設定フォルダ（`CLAUDE_CONFIG_DIR`）で人の `~/.claude` が効かないか。リポジトリの hooks・環境変数・`.mcp.json`・CLAUDE.md がどこまで読まれるか | 通常の起動ではすべて効く。`--restricted --strict-mcp-config` と専用の設定フォルダなら、どれも効かず人の指示も見えない |
 | 3 | `claude setup-token` で無人実行できるか、使えるモデル、認証の変数の優先順位 | 無人で動く。モデルを指定しないと Sonnet 5.5 になるので、毎回 `--model` で指定する |
-| 4 | launchd（ログイン中）から Keychain を読めるか。署名したバイナリを更新しても、Keychain と TCC の許可が残るか | LaunchAgent からは読め、ssh からは読めない。署名したバイナリの更新は、署名の証明書を決めてから確かめる |
+| 4 | launchd（ログイン中）から Keychain を読めるか。署名したバイナリを更新しても、Keychain と TCC の許可が残るか | LaunchAgent からは読め、ssh からは読めない。署名したバイナリの更新は、署名の証明書を決めてから確かめる。同じ Developer ID と識別子で署名し続ければ、入れ替えても Keychain の許可が残る（2026-11-08 に司令塔で確かめた。[operations.md](operations.md) の「署名と公証」） |
 | 5 | sandbox の中で `git commit` ができるか（worktree の `.git` は作業場所の外）。partial clone の取り寄せが動くか | commit でき、共有の `.git` にも書ける。Claude には git を許可しない。partial clone はワーカーの作業場所を作るときに確かめる |
 | 6 | github.com を許可せず、取得済みの依存だけでビルドできるか | 許可していない宛先には出られない。ビルドはワーカーが sandbox の外で流すので、依存の扱いはワーカーのビルドの道具を作るときに確かめる |
 | 7 | 画面の無い launchd の下で、Simulator のスクショと macOS アプリの撮影ができるか | Simulator の作成・起動・スクショ・削除ができる。判断のカードのスクショは、Simulator で起動引数で画面を開いて撮る（[flows.md](flows.md) の「スクショ」）。macOS のアプリの撮影は段階 5 で確かめる |

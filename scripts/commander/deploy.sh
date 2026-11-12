@@ -13,7 +13,8 @@ HOST="${1:-macmini}"
 cd "$(git rev-parse --show-toplevel)"
 REMOTE='Library/Application Support/AskHub/deploy'
 
-swift build -c release --package-path AskHubKit --product askhub-commander
+# 版とコミットを埋め込む（scripts/machine/build.sh。生きている印・check・起動のログに出る）
+scripts/machine/build.sh askhub-commander
 BINARY="AskHubKit/.build/release/askhub-commander"
 SUM=$(shasum -a 256 "$BINARY" | awk '{print $1}')
 

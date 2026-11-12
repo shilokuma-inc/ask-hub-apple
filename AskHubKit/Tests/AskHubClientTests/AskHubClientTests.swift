@@ -77,6 +77,31 @@ struct AskHubClientTests {
         #expect(await store.data(at: StatePath.epic(Self.repo, epic)) != nil)
     }
 
+    @Test func commanderAcceptsRequestWithAttachments() async throws {
+        let store = InMemoryStateStore()
+        let key = try key()
+        let sender = IntentSender(store: store, key: key) { Self.now }
+        let intake = IntentIntake(
+            context: CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { Self.now },
+            verifier: IntentVerifier(publicKeys: [key.keyID: key.publicKeyDER]),
+            handlers: ["addRepository": AddRepositoryHandler(), "request": RequestHandler()]
+        )
+        try await sender.send(.addRepository(Self.repo))
+        #expect(try await intake.processPending() == [.accepted(kind: "addRepository")])
+        let contents = [Data("# 画面の案".utf8), Data("width,height\n1,2".utf8)]
+        let files = try [
+            #require(RequestAttachment(number: 1, name: "案.md", contents: contents[0])),
+            #require(RequestAttachment(number: 2, name: "size.csv", contents: contents[1]))
+        ]
+        let draft = IntentDraft.request(repo: Self.repo, title: "画面を直したい", body: "添付の案のとおりに", attachments: files)
+        let sent = try await sender.send(draft, attachments: contents)
+        // 司令塔は、置いた中身の大きさとハッシュが封筒と合うかを確かめてから受け付ける
+        #expect(try await intake.processPending() == [.accepted(kind: "request")])
+        #expect(await store.data(at: StatePath.attachment(device: sent.keyId, nonce: sent.nonce, number: 2)) == contents[1])
+        let epic = RequestHandler.epicID(for: sent)
+        #expect(await store.data(at: StatePath.epic(Self.repo, epic)) != nil)
+    }
+
     @Test func verifyDraftIsReadAsVerifyIntent() throws {
         let key = try key()
         let verification = VerificationTarget(repo: Self.repo, epic: ULID.generate(at: Self.now), item: "v2", goalVersion: 3)

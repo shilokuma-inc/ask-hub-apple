@@ -11,7 +11,8 @@ import Foundation
 /// - `xcode`: ビルドとテストに使う Xcode を設定で決める・xcode-select で選んだものに戻す（人が端末で流す）
 /// - `git-credential`: git の credential helper（リポジトリの持ち主の GitHub のトークンを Keychain から git に渡す）
 /// - `launch-agent`: LaunchAgent の定義を書き、登録のコマンドを出す
-/// - `check`: 設定と Keychain の様子・トークンの期限を出す（秘密の値は出さない）
+/// - `check`: 版と互換の番号・設定と Keychain の様子・トークンの期限を出す（秘密の値は出さない）
+/// - `version`: 版・コミット・互換の番号を出す（Keychain を読まないので、ssh のセッションからも流せる）
 @main
 enum AskHubCommanderMain {
     static func main() async {
@@ -26,7 +27,7 @@ enum AskHubCommanderMain {
         case "xcode": await commandLine.xcode(arguments)
         case "git-credential": commandLine.gitCredential(arguments)
         case "launch-agent": commandLine.launchAgent()
-        case "check": await check()
+        case "check", "version": await check(versionOnly: command == "version")
         default: commandLine.fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
         }
     }
@@ -42,7 +43,8 @@ enum AskHubCommanderMain {
           xcode <Xcode.app のパス>  ビルドとテストに使う Xcode を決める（--unset で xcode-select で選んだものに戻す）
           launch-agent   LaunchAgent の定義を書き、登録のコマンドを出す
           run            常駐のループを回す
-          check          設定と Keychain の様子・トークンの期限を出す
+          check          版と互換の番号・設定と Keychain の様子・トークンの期限を出す
+          version        版・コミット・互換の番号を出す
         """
 
     static let commandLine = MachineCommandLine(role: .commander, executable: MachineCommandLine.currentExecutable)

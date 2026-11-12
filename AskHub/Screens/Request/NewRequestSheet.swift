@@ -1,3 +1,4 @@
+import AskHubKit
 import SwiftUI
 
 /// 依頼の下書き（分け方の案から依頼し直すとき）
@@ -8,7 +9,7 @@ struct RequestDraft: Identifiable, Hashable {
     var body: String
 }
 
-/// 新しい依頼。依頼先には対象のリポジトリだけを、organization ごとに分けて出す。
+/// 新しい依頼。依頼先には対象のリポジトリだけを、organization ごとに分けて出す。添付は、意図より先に状態リポジトリに置く。
 ///
 /// 送っている間は触れなくし、置けたら送った依頼（司令塔が受け取る前の epic）へ移る。同じ下書きのまま、もう一度送れる状態に残さない
 struct NewRequestSheet: View {
@@ -18,6 +19,9 @@ struct NewRequestSheet: View {
     @State private var repositoryID: TargetRepository.ID?
     @State private var summary: String
     @State private var requestBody: String
+    @State private var attachments: [AttachmentFile] = []
+    /// 選んだのに足さなかったファイル・送れなかったファイルの説明
+    @State private var attachmentNotices: [String] = []
     @State private var sending = SheetSendState()
     /// 同じ内容の依頼を少し前に送った時刻（重ねて送るかを確かめる）
     @State private var duplicateSentAt: Date?
@@ -29,11 +33,23 @@ struct NewRequestSheet: View {
         _requestBody = State(initialValue: draft?.body ?? "")
     }
 
-    private var intent: HumanIntent? {
-        guard let repositoryID, !summary.trimmingCharacters(in: .whitespaces).isEmpty else {
+    private var canSend: Bool {
+        repositoryID != nil && !summary.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// 送る意図。添付のハッシュを計るので、描くたびではなく送るときに作る。送れない添付があれば、説明を添付欄に出して nil
+    private func makeIntent() -> HumanIntent? {
+        guard let repositoryID, canSend else {
             return nil
         }
-        return .request(repositoryID: repositoryID, summary: summary, body: requestBody)
+        switch RequestFile.make(attachments) {
+        case let .success(files):
+            return .request(repositoryID: repositoryID, summary: summary, body: requestBody, attachments: files)
+
+        case let .failure(rejection):
+            attachmentNotices = [rejection.message]
+            return nil
+        }
     }
 
     var body: some View {
@@ -69,19 +85,21 @@ struct NewRequestSheet: View {
                         TextField("要約（例: 週ごとのまとめ通知）", text: $summary, prompt: Text("要約（例: 週ごとのまとめ通知）"))
                             .labelsHidden()
                             .focused($isEditing)
+                            .attachmentDropExcluded()
                         TextField("依頼の内容", text: $requestBody, prompt: Text("依頼の内容"), axis: .vertical)
                             .labelsHidden()
                             .lineLimit(4...12)
                             .focused($isEditing)
+                            .attachmentDropExcluded()
                     }
-                    Section {
-                        Label("添付は、つなぎ込みのときに今の部品を使って足します", systemImage: "paperclip")
-                            .foregroundStyle(.secondary)
-                    }
+                    // 送信中は一覧を変えさせない（送れたら閉じるので、送信中に足したものが黙って消えないように）
+                    AttachmentPickerSection(attachments: $attachments, notices: $attachmentNotices, isDisabled: sending.isSending)
                 }
                 .disabled(sending.isSending)
             }
             .formStyle(.grouped)
+            // macOS では、フォームのどこに落としても添付になる（Discussion #784）
+            .attachmentDropTarget(attachments: $attachments, notices: $attachmentNotices) { !sending.isSending }
             .pastelBackground()
             .navigationTitle("新しい依頼")
             .toolbar {
@@ -91,7 +109,7 @@ struct NewRequestSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     SheetSendButton("送る", isSending: sending.isSending) { submit() }
-                        .disabled(intent == nil)
+                        .disabled(!canSend)
                 }
             }
             .confirmationDialog(
@@ -102,17 +120,17 @@ struct NewRequestSheet: View {
             ) { _ in
                 Button("もう一度送る") { submit(confirmed: true) }
             } message: { sentAt in
-                Text("\(sentAt.formatted(date: .omitted, time: .shortened)) に、同じアプリ・要約・内容の依頼を送っています。もう一度送ると、別の epic がもう 1 つできます")
+                Text("\(sentAt.formatted(date: .omitted, time: .shortened)) に、同じアプリ・要約・内容・添付の依頼を送っています。もう一度送ると、別の epic がもう 1 つできます")
             }
             .keyboardDoneButton($isEditing)
         }
         .sheetSending(sending)
-        .sheetSize(.form)
+        .sheetSize(.page)
     }
 
     /// 送る。同じ内容の依頼を少し前に送っていたら、先に確かめる
     private func submit(confirmed: Bool = false) {
-        guard let intent, !sending.isSending else {
+        guard !sending.isSending, let intent = makeIntent() else {
             return
         }
         if !confirmed, let sentAt = store.recentlySentRequest(intent) {

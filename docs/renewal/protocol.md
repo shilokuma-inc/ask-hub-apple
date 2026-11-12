@@ -466,7 +466,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "mac": "macbook-a",
   "kind": "resident",
   "seenAt": "…",
-  "versions": { "worker": "1.0.0", "claude": "2.1.316", "xcode": "27.1" },
+  "versions": { "worker": "0.2.0-3-gabc1234", "compatibility": 1, "claude": "2.1.316", "xcode": "27.1" },
   "diskFreeGB": 120,
   "load": 3.2,
   "capacity": { "claude": 2, "build": 1 },
@@ -481,11 +481,18 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
       { "owner": "shilokuma-inc", "state": "ok", "expiresAt": "…", "rateLimit": { "limit": 5000, "remaining": 4210, "resetAt": "…" } },
       { "owner": "mrs1669", "state": "ok" }
     ]
-  }
+  },
+  "refusal": { "reason": "incompatible", "message": "司令塔の互換の番号は 2、このワーカーは 1。ワーカーを更新するまで新しいジョブを引き受けない" }
 }
 ```
 
 - `kind` は `alwaysOn`・`resident`・`manual`
+- `versions.worker` は実行ファイルに埋め込んだ版（`git describe --tags --match 'machine-v*'` から作る。タグそのものなら `0.2.0`、その後のコミットなら `0.2.0-3-gabc1234`。埋め込んでいないビルドは `0.0.0-dev`）。`versions.compatibility` は互換の番号（整数）。照らし合わせ方は下に書く。合わないときの更新の手順は [operations.md](operations.md) の「司令塔の更新」「ワーカーの入れ方（段階 3）」（差し替えて読み込み直す）
+  - 互換の番号は、司令塔とワーカーの間の決まり（ジョブの種類・入力と出力・試行の書き方・状態のファイルの形）を変えたときだけ上げる（`MachineCompatibility.current`）
+  - ワーカーは、司令塔（`commander.json`）の `versions.compatibility` と自分の番号が合わないとき・`commander.json` を読めない（知らない版・形の違うもの）ときは、新しいジョブを引き受けず、`refusal` に理由を書く。動かしているジョブは手放さない。番号を書かない司令塔（前の版）・`commander.json` が無いときは照らし合わせない
+  - 起動してから `commander.json` を一度も読めていない（GitHub に届かないなど）間は、新しいジョブを引き受けない。一度読めた後に読めなくなったときは、前の判断のまま続ける
+  - クライアントは、互換の番号が司令塔と合わない Mac（または `refusal` が `incompatible` の Mac）を Mac の画面と「あなたの番」に出し、更新の手順を添える。番号を比べられない（ワーカーが `commander.json` を読めない）ときは、どちらを更新するかを決めずに、ワーカーが書いた理由を出す。版が違うだけ（互換の番号は同じ）なら、Mac の詳細に出すだけにする
+- `refusal` は、新しいジョブを引き受けていないときだけ書く。`reason` は `incompatible`（司令塔と互換の番号が合わない・`commander.json` を読めない）、`message` は人が読む説明
 - `versions.claude` は、印を書くたびに測る `claude --version`。クライアントは、司令塔（`commander.json`）と違う Mac を知らせる
 - `selfCheck` は印を書くたびに確かめる。各項目は `ok`・`missing`・`invalid`・`expired`。トークンの値そのものは書かない
   - `githubTokens` は、持ち主（organization・個人。小文字にそろえる）ごとの GitHub のトークンの様子と期限。持ち主は重ねない
@@ -501,7 +508,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "v": 1,
   "mac": "mac-mini",
   "seenAt": "…",
-  "versions": { "commander": "1.0.0", "claude": "2.1.316" },
+  "versions": { "commander": "0.2.0-3-gabc1234", "compatibility": 1, "claude": "2.1.316" },
   "selfCheck": { "checkedAt": "…", "keychain": "ok", "githubToken": "ok", "claudeToken": "ok" }
 }
 ```

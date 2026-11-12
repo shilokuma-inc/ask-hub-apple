@@ -12,7 +12,8 @@ import Foundation
 /// - `run`: 常駐のループを回す。常駐できる Mac は LaunchAgent から、できない Mac（社用の MacBook など）はターミナルで流し続ける
 /// - `launch-agent`: 常駐できる Mac で、LaunchAgent の定義を書き、登録のコマンドを出す
 /// - `git-credential`: git の credential helper（リポジトリの持ち主の GitHub のトークンを Keychain から git に渡す）
-/// - `check`: 設定と Keychain の様子・トークンの期限を出す（秘密の値は出さない）
+/// - `check`: 版と互換の番号・設定と Keychain の様子・トークンの期限を出す（秘密の値は出さない）
+/// - `version`: 版・コミット・互換の番号を出す（Keychain を読まないので、ssh のセッションからも流せる）
 ///
 /// ssh のセッションからは Keychain を読めないので、ログインしている Mac の端末か LaunchAgent から起動する
 @main
@@ -28,7 +29,8 @@ enum AskHubWorkerMain {
         case "xcode": await commandLine.xcode(arguments)
         case "git-credential": commandLine.gitCredential(arguments)
         case "launch-agent": launchAgent()
-        case "check": print(await commandLine.checkLines(version: CommanderVersion.current).joined(separator: "\n"))
+        case "check": print(await commandLine.checkLines(version: CommanderVersion.build.summary).joined(separator: "\n"))
+        case "version": print(CommanderVersion.build.summary)
         default: commandLine.fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
         }
     }
@@ -44,7 +46,8 @@ enum AskHubWorkerMain {
           xcode <Xcode.app のパス>  ビルドとテストに使う Xcode を決める（--unset で xcode-select で選んだものに戻す）
           run            ジョブを引き受けて動かし続ける（常駐できない Mac では、ターミナルで流したままにする）
           launch-agent   常駐できる Mac で、LaunchAgent の定義を書き、登録のコマンドを出す
-          check          設定と Keychain の様子・トークンの期限を出す
+          check          版と互換の番号・設定と Keychain の様子・トークンの期限を出す
+          version        版・コミット・互換の番号を出す
         """
 
     static let commandLine = MachineCommandLine(role: .worker, executable: MachineCommandLine.currentExecutable)
@@ -102,7 +105,7 @@ enum AskHubWorkerMain {
         )
         let kind = configuration.kind.rawValue
         let pid = ProcessInfo.processInfo.processIdentifier
-        log("起動しました（pid \(pid)、\(configuration.mac)、\(kind)、状態リポジトリ \(configuration.stateRepository)）")
+        log("起動しました（版 \(CommanderVersion.build.summary)、pid \(pid)、\(configuration.mac)、\(kind)、状態リポジトリ \(configuration.stateRepository)）")
         if configuration.kind == .manual {
             log("このターミナルを開いたままにしてください。止めるときは Control-C（動いていた試行は、もう一度 run を流すと続きから試します）")
         }

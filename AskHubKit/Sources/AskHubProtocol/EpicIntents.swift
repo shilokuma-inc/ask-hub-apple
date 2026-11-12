@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// 依頼の添付の 1 つ（中身は `attachments/<device>/<nonce>/<n>`）
@@ -18,6 +19,13 @@ public struct RequestAttachment: Codable, Equatable, Sendable {
         self.name = name
         self.size = size
         self.sha256 = sha256
+    }
+
+    /// 中身から作る（大きさとハッシュを計る）。名前か大きさが、司令塔が意図を読むときの決まりに合わなければ nil
+    public init?(number: Int, name: String, contents: Data) {
+        guard RequestIntent.isAttachmentName(name), (1...RequestIntent.maximumAttachmentBytes).contains(contents.count) else { return nil }
+        let digest = SHA256.hash(data: contents).map { String(format: "%02x", $0) }.joined()
+        self.init(number: number, name: name, size: contents.count, sha256: digest)
     }
 
     /// 意図の payload の `attachments` の 1 つ
@@ -96,7 +104,8 @@ public struct RequestIntent: Equatable, Sendable {
         return attachments
     }
 
-    private static func isAttachmentName(_ name: String) -> Bool {
+    /// 添付の名前の決まり（1〜200 文字・パスの区切りと制御文字を含まない）
+    static func isAttachmentName(_ name: String) -> Bool {
         (1...200).contains(name.unicodeScalars.count) && !name.contains("/") && !name.contains("\\") && name != "." && name != ".."
             && !name.unicodeScalars.contains { $0.properties.generalCategory == .control }
     }

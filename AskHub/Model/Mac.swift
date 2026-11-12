@@ -15,8 +15,6 @@ struct Mac: Identifiable, Hashable {
     /// 負荷（0〜1）
     var load: Double
     var version: String
-    /// 司令塔と版が合っているか。合わないときはジョブを受けない
-    var versionMatches: Bool
     var jobs: [Job]
     /// 新しいループを受けないときの理由（空き容量が少ない・版が合わない など）。受けるときは nil
     var refusalReason: String?
@@ -35,6 +33,12 @@ struct Mac: Identifiable, Hashable {
     var loadAverage: Double?
     /// この Mac が生きている印を書くときに読んだ GitHub の REST の上限の残り。読めていない（前の版の Mac）ときは nil
     var githubQuota: GitHubQuota?
+    /// 互換の番号（司令塔とワーカーの間の決まりの番号）。書かない（前の版の）Mac は nil
+    var compatibility: Int?
+    /// 版が司令塔と違うときの、司令塔の版。互換の番号が合えば急がないので、Mac の詳細に出すだけにする。そろっている・分からなければ nil
+    var commanderVersion: String?
+    /// 司令塔と互換の番号が合わず、新しいジョブを引き受けていないとき。合う・照らし合わせられないときは nil
+    var incompatibility: Incompatibility?
 
     enum Role: Hashable {
         /// 常時オンで、司令塔とワーカーが動く
@@ -63,6 +67,14 @@ struct Mac: Identifiable, Hashable {
         var title: String
         var epicID: Epic.ID?
         var startedAt: Date
+    }
+
+    /// 司令塔と互換の番号が合わない（`docs/renewal/operations.md` の「版」）
+    struct Incompatibility: Hashable {
+        /// 司令塔の互換の番号。司令塔の印に無い・読めないときは nil
+        var commanderCompatibility: Int?
+        /// ワーカーが生きている印に書いた、引き受けない理由。書いていなければ nil
+        var message: String?
     }
 
     /// 起動したときの自己診断（Keychain・空き容量など）
@@ -147,6 +159,64 @@ extension Mac {
         case .github(let owner): "\(program) token \(owner ?? "<持ち主>")"
         case .claude: "\(program) claude-token"
         }
+    }
+
+    /// 司令塔とこの Mac の互換の番号を、両方読めて違うと確かめられたか。
+    /// ワーカーが司令塔の印を読めずに引き受けていない（番号を比べられない）ときは false
+    var comparesCompatibility: Bool {
+        guard let compatibility, let commander = incompatibility?.commanderCompatibility else {
+            return false
+        }
+        return compatibility != commander
+    }
+
+    /// 互換の番号を合わせるのに、司令塔を更新するか（この Mac のほうが新しい）。ほかはこの Mac のワーカーを更新する
+    var updatesCommander: Bool {
+        guard comparesCompatibility, let compatibility, let commander = incompatibility?.commanderCompatibility else {
+            return false
+        }
+        return compatibility > commander
+    }
+
+    /// 合わない Mac で人がすること（例: ワーカーを更新する）
+    var updateTitle: String {
+        guard comparesCompatibility else {
+            return "互換の番号を確かめる"
+        }
+        return updatesCommander ? "司令塔を更新する" : "ワーカーを更新する"
+    }
+
+    /// 互換の番号を合わせる手順（`docs/renewal/operations.md` の「ワーカーの更新」「司令塔の更新」）。
+    /// 番号を比べられないときは、どちらを更新するか決められないので、司令塔の印と両方の版を確かめる
+    var updateStep: String {
+        guard comparesCompatibility else {
+            return "司令塔の生きている印（commander.json）と、この Mac・司令塔の版を確かめます。古いほうを更新するか、印を直します"
+        }
+        if updatesCommander {
+            return "手元の Mac で司令塔を更新します"
+        }
+        return residency == .manual
+            ? "新しい askhub-worker に差し替えて、ターミナルの run を流し直します"
+            : "新しい askhub-worker に差し替えて、常駐を読み込み直します"
+    }
+
+    /// 互換の番号を合わせるときに流すコマンド。番号を比べられないときは nil
+    var updateCommand: String? {
+        guard comparesCompatibility else {
+            return nil
+        }
+        if updatesCommander {
+            return "scripts/commander/deploy.sh"
+        }
+        return residency == .manual ? "askhub-worker run" : "launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.worker"
+    }
+
+    /// 例: この Mac は 1、司令塔は 2
+    var compatibilityText: String {
+        guard comparesCompatibility, let compatibility, let commander = incompatibility?.commanderCompatibility else {
+            return "司令塔と互換の番号を照らし合わせられません"
+        }
+        return "この Mac は \(compatibility)、司令塔は \(commander)"
     }
 
     var usedFraction: Double {

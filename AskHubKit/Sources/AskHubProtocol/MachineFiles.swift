@@ -118,17 +118,38 @@ public struct GitHubRateLimit: Codable, Equatable, Sendable {
     }
 }
 
+/// ワーカーが新しいジョブを引き受けていない理由（`macs/<mac>.json` の `refusal`。動かしているジョブは手放さない）
+public struct JobRefusal: Codable, Equatable, Sendable {
+    public enum Reason: String, Codable, Sendable, CaseIterable {
+        /// 司令塔と互換の番号が合わない・司令塔の生きている印を読めない（ワーカーか司令塔を更新する）
+        case incompatible
+    }
+
+    public var reason: Reason
+    /// 人が読む説明（照らし合わせた互換の番号など）
+    public var message: String
+
+    public init(reason: Reason, message: String) {
+        self.reason = reason
+        self.message = message
+    }
+}
+
 /// `macs/<mac>.json`（ワーカーの生きている印）。その Mac のワーカーだけが書く。変化があったときと、一定の間隔（10 分程度）でだけ書く
 public struct MacFile: StateFile {
     public static let formatVersion = 1
 
     public struct Versions: Codable, Equatable, Sendable {
+        /// ワーカーの版（`CommanderVersion.current`）
         public var worker: String
+        /// ワーカーの互換の番号（`MachineCompatibility.current`）。書かない Mac（前の版）もある
+        public var compatibility: Int?
         public var claude: String?
         public var xcode: String?
 
-        public init(worker: String, claude: String? = nil, xcode: String? = nil) {
+        public init(worker: String, compatibility: Int? = nil, claude: String? = nil, xcode: String? = nil) {
             self.worker = worker
+            self.compatibility = compatibility
             self.claude = claude
             self.xcode = xcode
         }
@@ -153,6 +174,8 @@ public struct MacFile: StateFile {
     public var load: Double
     public var capacity: Capacity
     public var selfCheck: SelfCheck
+    /// 新しいジョブを引き受けていないときだけ書く
+    public var refusal: JobRefusal?
 
     public init(
         mac: MacName,
@@ -162,7 +185,8 @@ public struct MacFile: StateFile {
         diskFreeGB: Int,
         load: Double,
         capacity: Capacity,
-        selfCheck: SelfCheck
+        selfCheck: SelfCheck,
+        refusal: JobRefusal? = nil
     ) {
         self.mac = mac
         self.kind = kind
@@ -172,11 +196,14 @@ public struct MacFile: StateFile {
         self.load = load
         self.capacity = capacity
         self.selfCheck = selfCheck
+        self.refusal = refusal
     }
 
     public var violations: [String] {
         var violations: [String] = []
         if versions.worker.isEmpty { violations.append("versions.worker が空") }
+        if versions.compatibility.map({ $0 < 1 }) == true { violations.append("versions.compatibility は 1 以上") }
+        if refusal?.message.isEmpty == true { violations.append("refusal.message が空") }
         if diskFreeGB < 0 { violations.append("diskFreeGB は 0 以上") }
         if !(load >= 0) { violations.append("load は 0 以上") }
         if capacity.claude < 0 || capacity.build < 0 { violations.append("capacity は 0 以上") }
@@ -191,11 +218,15 @@ public struct CommanderFile: StateFile {
     public static let formatVersion = 1
 
     public struct Versions: Codable, Equatable, Sendable {
+        /// 司令塔の版（`CommanderVersion.current`）
         public var commander: String
+        /// 司令塔の互換の番号（`MachineCompatibility.current`）。ワーカーはこれと自分の番号を照らし合わせる。書かない司令塔（前の版）もある
+        public var compatibility: Int?
         public var claude: String?
 
-        public init(commander: String, claude: String? = nil) {
+        public init(commander: String, compatibility: Int? = nil, claude: String? = nil) {
             self.commander = commander
+            self.compatibility = compatibility
             self.claude = claude
         }
     }
@@ -214,7 +245,10 @@ public struct CommanderFile: StateFile {
     }
 
     public var violations: [String] {
-        (versions.commander.isEmpty ? ["versions.commander が空"] : []) + selfCheck.violations
+        var violations: [String] = []
+        if versions.commander.isEmpty { violations.append("versions.commander が空") }
+        if versions.compatibility.map({ $0 < 1 }) == true { violations.append("versions.compatibility は 1 以上") }
+        return violations + selfCheck.violations
     }
 }
 
