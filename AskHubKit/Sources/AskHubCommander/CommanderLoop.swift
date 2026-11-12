@@ -94,6 +94,8 @@ public actor CommanderLoop {
     nonisolated let tidy: @Sendable () async -> Void
     /// 対象のアプリのアイコンを状態リポジトリに置くもの。生きている印を書いた後に、周の外で確かめ始める。nil なら置かない
     nonisolated let appIcons: AppIconSync?
+    /// App Store での配信を見つけ、リリースの後作業を進めるもの。生きている印を書いた後に、周の外で見回り始める。nil なら見回らない
+    nonisolated let releases: ReleaseWatch?
 
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
@@ -123,7 +125,8 @@ public actor CommanderLoop {
         epicWorkspace: (any EpicWorkspace)? = nil,
         taskRunners: [JobKind: any JobRunning] = [:],
         tidy: @escaping @Sendable () async -> Void = {},
-        appIcons: AppIconSync? = nil
+        appIcons: AppIconSync? = nil,
+        releases: ReleaseWatch? = nil
     ) {
         self.context = context
         self.settings = settings
@@ -140,6 +143,7 @@ public actor CommanderLoop {
         self.taskRunners = taskRunners
         self.tidy = tidy
         self.appIcons = appIcons
+        self.releases = releases
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
     }
@@ -275,7 +279,8 @@ public actor CommanderLoop {
         "decision": DecisionHandler(),
         "approveMerge": ApproveMergeHandler(),
         "instructFinal": InstructFinalHandler(),
-        "humanTaskDone": HumanTaskDoneHandler()
+        "humanTaskDone": HumanTaskDoneHandler(),
+        "publishGitHubRelease": PublishGitHubReleaseHandler()
     ]
 
     // MARK: - 通知
@@ -284,7 +289,11 @@ public actor CommanderLoop {
     private func notify(_ swept: JobSweep.Swept, trusted: Set<KeyID>) async {
         guard let notifier else { return }
         do {
-            for notice in try await notifier.notify(epics: swept.epics, jobs: swept.jobs, trusted: trusted, rateLimit: latestRateLimit) {
+            let releaseBlockers = await releases?.blockers ?? []
+            let notices = try await notifier.notify(
+                epics: swept.epics, jobs: swept.jobs, trusted: trusted, rateLimit: latestRateLimit, releases: releaseBlockers
+            )
+            for notice in notices {
                 log("通知した: \(notice.title)（\(notice.body.replacingOccurrences(of: "\n", with: "・"))）")
             }
         } catch {
@@ -335,5 +344,6 @@ public actor CommanderLoop {
         await workspace.tidy()
         await tidy()
         appIcons?.start()
+        releases?.start()
     }
 }

@@ -9,7 +9,7 @@
 - 目印の無い書き込みは、同じアカウントのものでも指示として扱わない。人が自分の Claude のセッションから PR にコメントしても、ループは動かない
 - 機械が書くものの目印は、1 つの書式にそろえて版の番号を付ける。読み書きは 1 つのライブラリだけで行う
 
-人の意図にあたるもの: 依頼・回答・説明を求める・ゴールの修正・開始・最終 PR への指示・判断のカードへの答え・マージの承認・引き継ぎ・人がする作業の完了・リリースの操作（審査に出す・配信する など）・リポジトリの登録・保護の設定。
+人の意図にあたるもの: 依頼・回答・説明を求める・ゴールの修正・開始・取り下げ・最終 PR への指示・判断のカードへの答え・マージの承認・引き継ぎ・人がする作業の完了（Secrets の登録を含む）・実機確認の「確認した」「問題あり」・リリースの操作（審査に出す・配信する など）・リポジトリの登録と外す・テンプレートからの作成・保護の設定。
 
 ## 人の意図の署名
 
@@ -57,7 +57,7 @@
 
 ## 秘密の置き場所
 
-- 秘密（GitHub のトークン・Claude の setup-token・APNs の鍵・公開鍵の一覧と最初の鍵の指紋）は、Keychain だけに置く。ファイルや環境変数には置かない
+- 秘密（GitHub のトークン（持ち主ごとの毎日のものと、管理用のもの）・Claude の setup-token・APNs の鍵・App Store Connect の API キー・公開鍵の一覧と最初の鍵の指紋）は、Keychain だけに置く。ファイルや環境変数には置かない
   - APNs の鍵は、Apple Developer から落とした .p8 のファイルを `askhub-commander apns` が読んで Keychain に置く（.p8 は 1 行に収まらず、端末で伏せて入れられないため）。置いた後は、.p8 を Mac に残さない（[operations.md](operations.md) の「通知」）
 - Keychain の項目は、読めるアプリを署名したワーカーと司令塔に限る。ほかのプロセスが読もうとすると確認の画面が出るが、画面の無い実行では許可できないので失敗する。見覚えの無い確認の画面が出たら拒否する
 - ワーカーと司令塔は Developer ID で署名し、Hardened Runtime を付ける。署名は常時オンの Mac で行い、署名の鍵は CI（GitHub の Secrets）に置かない（[operations.md](operations.md) の「署名と公証」）。同じ識別子とチームで署名し続ければ、更新しても Keychain の許可が続く
@@ -87,11 +87,25 @@ Claude とビルド・テストは、ワーカーと同じ macOS のユーザー
   | --- | --- |
   | ワーカー | 対象のリポジトリの Contents・Pull requests・Issues・Discussions と、状態リポジトリ。Workflows・Secrets・Administration は持たない |
   | 司令塔 | ワーカーと同じ範囲と、通知に要る読み取り |
-  | クライアント | 人の操作（マージ・Secrets の登録・保護の設定など） |
-  | GitHub Actions | 状態リポジトリの決まった場所への書き込みだけ（`GITHUB_TOKEN` では別のリポジトリに書けないので、方法は段階 5 で決める） |
+  | 司令塔の管理用 | Administration・Secrets・Environments・Workflows の書き込み（と Contents・Pull requests）。署名した人の意図を処理するときだけ使う（下の「管理用のトークン」） |
+  | クライアント | 状態リポジトリだけ。人の操作（マージ・Secrets の登録・保護の設定など）は、署名した意図として状態リポジトリに書き、司令塔が行う |
+  | GitHub Actions | 状態リポジトリには書かない。司令塔の見張り（`Commander/Watch`）が `GITHUB_TOKEN` で状態リポジトリに Issue を立てるだけ。App Store Connect の状態は司令塔が読む（[release.md](release.md) の「ワークフロー」） |
 
 - 対象のリポジトリは複数の organization にまたがる。fine-grained token は 1 つの持ち主のリポジトリしか扱えないので、持ち主（organization・個人）ごとに 1 つ作り、Keychain に持ち主の名前で置く。ワーカーと司令塔は、リポジトリの持ち主でトークンを選ぶ。権限は、Contents・Pull requests・Issues・Discussions・Actions（揺らいだ CI の流し直し）の読み書きと、Commit statuses の読み取り（Checks は fine-grained token では選べない。check runs は public のリポジトリなら権限なしで読める）。Workflows は付けない（ユーザーの決定。classic token は権限を絞れないので使わない）
 - トークンの期限を状態リポジトリ（生きている印の自己診断）に記録し、14 日前からクライアントで知らせる。値は記録しない（[operations.md](operations.md) の「トークンの期限」）
+
+### 管理用のトークン
+
+保護の設定（ルールセット）・テンプレートからの作成・Discussions を有効にする・Secrets の登録・ワークフローのファイルを変える PR は、毎日のトークンではできない。
+そこで、常時オンの Mac の Keychain に、持ち主ごとの管理用のトークンを別に置く（2026-11-12 に決めた。段階 4 の 4 で作る）。
+
+- 毎日のトークン（Claude の書いたコードを push するもの）には、Administration・Secrets・Workflows を足さない。リポジトリの削除・保護の解除・ワークフローの書き換えができるトークンを、毎日の push に使わない
+- 使うのは司令塔だけで、署名した人の意図を処理するときだけ使う（保護の設定・作成・Secrets の登録・対象に加えるときの準備）。自動では使わない
+- git の credential helper と、ワーカー・Claude のジョブには渡さない
+- 権限は Administration・Secrets・Environments・Workflows の Read and write と、PR を出すための Contents・Pull requests の Read and write。テンプレートから作るには、作る前のリポジトリを選べないので、その持ち主の All repositories が要る見込み（段階 4 の 5 で確かめる）
+- 期限は毎日のトークンと同じく自己診断に書き、クライアントで知らせる。管理用のトークンが無い持ち主への操作は、理由を書いて断る
+- ワークフローのファイルを変える PR は、ワーカーの epic では push できない（ワーカーは Workflows を持たない）。司令塔が決まった手順で PR を出し、人が承認してからマージする（[operations.md](operations.md) の「対象のリポジトリ」）
+- Secrets の値は、クライアントが GitHub の公開鍵で暗号化し、司令塔は暗号文を渡すだけ（[flows.md](flows.md) の「人がする作業」）
 
 ## public のリポジトリと Secrets
 
@@ -110,4 +124,4 @@ Claude とビルド・テストは、ワーカーと同じ macOS のユーザー
 - 例外は作らない。リリースの後作業（バージョンを上げるコミット・main と develop への取り込み）も、司令塔が自分のトークンで PR を作り、CI が通ったら自動でマージする。アカウントのトークンで作った PR では CI が起動し、保護の下でマージできることを確かめた
   - `GITHUB_TOKEN` は、ルールセットの例外に入れられない（GitHub Actions のアプリが organization に属していないため）。既定の設定では PR も作れない。GitHub Actions に PR を作らせる設定は、オンにしない
 - 今の組織のプランでは、private のリポジトリにルールセットを掛けられない。状態リポジトリ（private）の守りは、書き手ごとのファイル・版の確認・人の意図の署名で行う
-- 保護の設定は、司令塔が自動で行わない。人がクライアントで押したときだけ行う。ずれは点検して知らせる
+- 保護の設定は、司令塔が自動で行わない。人がクライアントで押したときだけ、管理用のトークンで行う。ずれ（ルールセットが外れた・変わった）は定期的に点検して知らせる（段階 4 の 4 で作る。今は移すときに Claude のセッションが `gh` で手で掛けている）

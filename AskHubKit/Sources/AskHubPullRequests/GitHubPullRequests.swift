@@ -177,9 +177,11 @@ private struct MergeResponse: Decodable {
     let merged: Bool
 }
 
-private struct RefPayload: Decodable {
+struct RefPayload: Decodable {
     struct Object: Decodable {
         let sha: String
+        /// `commit`（ブランチ・軽量のタグ）か `tag`（注釈付きのタグのオブジェクト）
+        let type: String?
     }
 
     let object: Object
