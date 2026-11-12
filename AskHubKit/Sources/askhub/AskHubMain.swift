@@ -24,7 +24,8 @@ enum AskHubMain {
         switch command {
         case "setup": try setup(CommandArguments(arguments))
         case "key": try await key(arguments)
-        case "add-repository", "configure-repository", "apply-protection", "request", "answer", "clarify", "start", "revise-goal", "decide-split", "abandon",
+        case "add-repository", "configure-repository", "apply-protection",
+             "request", "answer", "clarify", "start", "revise-goal", "decide-split", "abandon",
              "pause", "resume", "handover", "retry", "give-up", "decide", "approve-merge", "instruct-final", "human-task-done":
             try await send(command, CommandArguments(arguments))
         case "status": try await status(CommandArguments(arguments))

@@ -63,6 +63,21 @@ extension AskHubMain {
         }
     }
 
+    /// 対象のリポジトリの設定の意図（対象に加える・ビルドの設定・保護の設定）
+    static func repositoryDraft(_ command: String, _ arguments: CommandArguments) throws -> IntentDraft {
+        switch command {
+        case "add-repository":
+            try arguments.only(["repo"])
+            return .addRepository(try arguments.repository())
+        case "configure-repository":
+            try arguments.only(["repo", "file"])
+            return .configureRepository(try arguments.repository(), build: try build(at: try arguments.string("file")))
+        default:
+            try arguments.only(["repo", "checks"])
+            return .applyProtection(try arguments.repository(), requiredChecks: try requiredChecks(arguments))
+        }
+    }
+
     /// 保護の設定の必須のチェック（`--checks` はカンマ区切り。無ければ `build / build`）
     static func requiredChecks(_ arguments: CommandArguments) throws -> [String] {
         let checks = arguments.values["checks"].map { text in
@@ -83,15 +98,8 @@ extension AskHubMain {
 
     static func draft(_ command: String, _ arguments: CommandArguments) throws -> IntentDraft {
         switch command {
-        case "add-repository":
-            try arguments.only(["repo"])
-            return .addRepository(try arguments.repository())
-        case "configure-repository":
-            try arguments.only(["repo", "file"])
-            return .configureRepository(try arguments.repository(), build: try build(at: try arguments.string("file")))
-        case "apply-protection":
-            try arguments.only(["repo", "checks"])
-            return .applyProtection(try arguments.repository(), requiredChecks: try requiredChecks(arguments))
+        case "add-repository", "configure-repository", "apply-protection":
+            return try repositoryDraft(command, arguments)
         case "request":
             try arguments.only(["repo", "title", "body"])
             return .request(repo: try arguments.repository(), title: try arguments.string("title"), body: arguments.values["body"] ?? "")

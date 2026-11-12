@@ -114,6 +114,32 @@ struct AskHubClientTests {
         #expect(await store.data(at: StatePath.intent(device: sent.keyId, nonce: sent.nonce)) != nil)
     }
 
+    /// 対象のリポジトリの設定の意図（対象に加える・ビルドの設定・保護の設定）
+    @Test func repositoryDraftsAreReadAsTheirKinds() throws {
+        let key = try key()
+        func envelope(_ draft: IntentDraft) -> IntentEnvelope {
+            IntentEnvelope(
+                kind: draft.kind,
+                repo: draft.repo,
+                target: draft.target,
+                targetVersion: draft.targetVersion,
+                payload: draft.payload,
+                issuedAt: Timestamp(Self.now),
+                nonce: ULID.generate(at: Self.now),
+                keyId: key.keyID
+            )
+        }
+        #expect(try AddRepositoryIntent(envelope: envelope(.addRepository(Self.repo))).platform == .apple)
+        let build = RepositoryFile.Build(
+            xcode: try BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [.macOS]),
+            childChecks: ["build / build"],
+            finalChecks: ["build / build"]
+        )
+        #expect(try ConfigureRepositoryIntent(envelope: envelope(.configureRepository(Self.repo, build: build))).build == build)
+        let checks = ["build / build", "lint"]
+        #expect(try ApplyProtectionIntent(envelope: envelope(.applyProtection(Self.repo, requiredChecks: checks))).requiredChecks == checks)
+    }
+
     @Test func draftsAreReadAsTheirKinds() throws {
         let key = try key()
         func envelope(_ draft: IntentDraft) -> IntentEnvelope {
@@ -139,15 +165,6 @@ struct AskHubClientTests {
         #expect(try StartEpicIntent(envelope: envelope(.startEpic(target, mac: MacName(rawValue: "mac-mini")!))).mac.rawValue == "mac-mini")
         #expect(try ReviseGoalIntent(envelope: envelope(.reviseGoal(target, instruction: "完了の条件を足して"))).instruction == "完了の条件を足して")
         #expect(try DecideSplitIntent(envelope: envelope(.decideSplit(target, choice: .proceed))).choice == .proceed)
-        #expect(try AddRepositoryIntent(envelope: envelope(.addRepository(Self.repo))).platform == .apple)
-        let build = RepositoryFile.Build(
-            xcode: try BuildSettings(project: "App.xcodeproj", scheme: "App", destinations: [.macOS]),
-            childChecks: ["build / build"],
-            finalChecks: ["build / build"]
-        )
-        #expect(try ConfigureRepositoryIntent(envelope: envelope(.configureRepository(Self.repo, build: build))).build == build)
-        let protection = try ApplyProtectionIntent(envelope: envelope(.applyProtection(Self.repo, requiredChecks: ["build / build", "lint"])))
-        #expect(protection.requiredChecks == ["build / build", "lint"])
         let job = JobTarget(repo: Self.repo, epic: epic, job: ULID.generate(at: Self.now), attempt: 2)
         #expect(try RetryJobIntent(envelope: envelope(.retry(job))).target == job)
         #expect(try GiveUpJobIntent(envelope: envelope(.giveUp(job))).target == job)
