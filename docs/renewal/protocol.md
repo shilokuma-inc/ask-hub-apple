@@ -55,7 +55,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - 常時オンの Mac では司令塔とワーカーが両方動くので、1 つのファイルの書き手を 1 つにするため、生きている印を `macs/<mac>.json`（ワーカー）と `commander.json`（司令塔）に分ける
 - 人の意図は、リポジトリ単位の作業かどうかにかかわらず、すべて `intents/` に置く
 - 依頼の添付（画像など）は `attachments/` に置く（段階 2 で決めた）。public のリポジトリに上げないので、URL を知っていても見られず、終わった epic と一緒に畳める。添付の名前・大きさ・ハッシュは依頼の封筒に入れ、署名で守る
-- 終わった epic（マージ済み・やめたもの）は、マージかやめてから 30 日後に `archive/` に移し、まとめて畳む
+- 終わった epic（マージ済み・やめたもの）は、マージかやめてから 30 日後に `archive/` に移し、まとめて畳む（段階 4 の 6 で作る。今は `repos/` に残る）
 
 ### 共通の決まり
 
@@ -102,6 +102,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - `maxConcurrentEpics` は 1 以上
 - `appKit` は、共通リポジトリのワークフローを入れる前は `null`
+- 対象から外した（`removeRepository`）リポジトリの `repo.json` は消さず、外した印（外した時刻と意図。欄の名前と形は段階 4 の 4 で決めて、ここに書く）を付けて残す。印のあるリポジトリへの依頼・開始・ビルドの設定は断り、もう一度 `addRepository` すると印を外す（[operations.md](operations.md) の「対象から外す」）
 - `build` は、ビルドの設定（段階 3）。人が設定を入れる意図（`configureRepository`）で書く（入れ方は [operations.md](operations.md) の「ビルドの設定の入れ方」）。形は `protocol/schemas/repository-build.schema.json`（Swift は `RepositoryFile.Build`）
   - `baseBranch`: 作業ブランチの元で、最終 PR の向き先。無ければ develop
   - `xcode`: ビルドとテストの設定（Swift は `AskHubProtocol` の `BuildSettings`）。`project`（`.xcodeproj` か `.xcworkspace` の、リポジトリの直下からの相対パス）・`generate`（ビルドの前にプロジェクトを作る道具。`"xcodegen"` なら、ワーカーが作業場所の直下で `xcodegen generate` を流す。無ければリポジトリにあるプロジェクトをそのまま使う）・`scheme`・`destinations`（`{ "platform": "iOS" | "visionOS", "deviceType", "osVersion" }` か `{ "platform": "macOS" }`。並べた順に流す）・`testLight`・`testFull`（`testPlan`・`onlyTesting`・`skipTesting`。無ければ全部）。`xcodebuild` の引数とパスに使うので、`-` で始まる値・制御文字・リポジトリの外を指すパスを受け付けない
@@ -183,7 +184,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `merged` | マージされた | — |
 | `abandoned` | やめた | — |
 
-開始する前の段階（`drafting`〜`awaitingStart`）からは、人の取り下げ（`abandonEpic`）か、先に進めなくなるジョブを人がやめたとき（`giveUp`）にも `abandoned` になる
+開始する前の段階（`drafting`〜`awaitingStart`）からは、人の取り下げ（`abandonEpic`）か、先に進めなくなるジョブを人がやめたとき（`giveUp`）にも `abandoned` になる。
+開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げか、実装・最終 PR の段取りのジョブを人がやめたときに `abandoned` になる（2026-11-12 に決めた。段階 4 の 3 で作る。[flows.md](flows.md) の「開始した後の取り下げ」）
 
 ### readiness.json（最後の着手前の確認の結果）
 
@@ -286,7 +288,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - ゴールを直すたびに `version` を上げる。「開始」の人の意図は、確かめたゴールの `version` を持つ
 - タスクの `state` は `pending`・`locked`（人がする作業の待ち）・`running`・`done`。`dependsOn` には、ほかのタスクと人がする作業の id を書ける
   - 司令塔が、`pending` → `running`（実装のジョブを作ったとき）→ `done`（子 PR をマージしたとき）にする（[flows.md](flows.md) の「司令塔がタスクを進める」）。人が読むゴールの中身は変えないので、`version` は上げない
-- 人がする作業の `handover` は、終わったら渡すもの: `none`（「終わった」を押すだけ）・`file`（ファイルを渡す）・`secret`（GitHub の Secrets に入れる。`name` に Secrets の名前。値はどこにも残さない）。段階 3 では `none` と `file` を作り、`secret` は後で作る
+- 人がする作業の `handover` は、終わったら渡すもの: `none`（「終わった」を押すだけ）・`file`（ファイルを渡す）・`secret`（GitHub の Secrets に入れる。`name` に Secrets の名前。値はどこにも残さない）。段階 3 では `none` と `file` を作り、`secret` は段階 4 の 4 で作る（値はクライアントが GitHub の公開鍵で暗号化し、暗号文だけを意図に入れる。[flows.md](flows.md) の「人がする作業」）
 - 人がする作業を終えたら、司令塔が `state` を `done` にし、`done` に `{ "intent": { "keyId", "nonce" }, "at": "…", "file": <依頼の添付と同じ形の参照> | null }` を書く。人が読むゴールの中身は変えないので、`version` は上げない
 - `comment` は、Discussion のゴールの写しのコメントの id
 
@@ -401,12 +403,12 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `implementTask` | `{}`（タスクはジョブの `task`）。実装の途中の質問の答えで再開するときは `{ "question": "q5" }` |
 | `reviewTask` | `{ "pullRequest": 41, "head": "<コミット>" }`（実装・直しの試行の `outputs.pullRequest` と、push した head の `outputs.commit`） |
 | `fixTask` | `{ "pullRequest": 41, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`。`head` は判定を出したレビューの input の head。直しの回は試行から数える）。実装の途中の質問の答えで再開するときは、元の input に `"question": "q5"` を足す（`fixFinalPullRequest` も同じ） |
-| `rerunChecks` | `{ "pullRequest": 41, "head": "<コミット>", "runs": [123] }` |
-| `integrateDevelop` | `{ "base": "<取り込む base のコミット>" }` |
+| `rerunChecks` | 使っていない（流し直しは `reviewTask`・`reviewFinalPullRequest` の中で行う） |
+| `integrateDevelop` | 使っていない（base の取り込みは `fixFinalPullRequest` の `conflict` で行う） |
 | `verifyBeforeFinal`・`classifyDecisions`・`openFinalPullRequest`・`cleanUp` | `{}` |
 | `captureScreenshots`・`reviewFinalPullRequest`・`mergeFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>" }`（撮影は、続けてレビューする最終 PR と head） |
 | `fixFinalPullRequest` | `{ "pullRequest": 512, "head": "<コミット>", "reason": "ci" }`（`reason` は `ci`・`review`・`human`・`conflict`。`human` は判断のカードの「直してほしい」「別案にする」と `instructFinal` で、元の人の意図はジョブの `origin`。`conflict` は、ワーカーが base を作業ブランチに取り込み、コンフリクトしたファイルを Claude に解消させる） |
-| `notify` | 段階 4 で決める |
+| `notify` | 使っていない（通知はジョブにせず、司令塔の周の中で送る。[operations.md](operations.md) の「通知」） |
 
 - タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）は、司令塔が元のジョブの結果から作り、`task` にタスクの id、`dependsOn` に元のジョブ（`implementTask` は作業場所の用意）を書く。同じタスクの直しが 3 回を超えたら、`fixTask` を `waitingHuman` で作る（試行の前なので `attempts` は 0。[flows.md](flows.md) の「司令塔がタスクを進める」）。最終 PR の直し（`fixFinalPullRequest`）も同じ。
   上限の回数は Swift の `FixTaskInput.maxAutomaticRounds` で、司令塔とクライアントが同じ値を使う。クライアントは、試行の無い（`attempts` が 0 の）人の対応待ちの直しを、上限を超えて止めたものとして、直す理由（`reason`）の区分（`ci` はビルド・テスト、`review` はレビューの指摘、`conflict` はコンフリクト）と止めた理由の文で「対処が要ります」に出す
@@ -641,16 +643,16 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `humanTaskDone` | 人がする作業（`{ "type": "humanTask", "epic", "id": "h1" }`） | ゴールの `version` | `none` は空、`file` は `attachments`（1 件。依頼の添付と同じ形・置き場所・上限） |
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
-| `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始する前の epic だけ |
+| `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。今は開始する前の epic だけ。段階 4 の 3 から、開始した後の epic も受け付ける（マージした epic は断る） |
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
-| `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
-| `applyProtection` | リポジトリ | — | 設定 |
+| `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
+| `applyProtection` | リポジトリ（封筒の `repo`） | — | 保護の設定（形は段階 4 の 4 で決める）。司令塔が管理用のトークンで掛ける |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
-リリースの操作（審査に出す・配信する など）の `kind` は、段階 5 の「リリースを始める」で足す。
+テンプレートからの作成・実機確認の「確認した」「問題あり」・ワークフローの PR の承認の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作（審査に出す・配信する・取り下げ など）の `kind` は、段階 5 の 3（リリースを始める）で足す。
 
 ### 署名のしかた
 
@@ -717,5 +719,6 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 
 ## 決めていないこと
 
-- リリースの操作の `kind` と、App Store の素材の形（段階 5）
-- クライアントでの `repo.json` の `build` の入れ方（今は非常口の `askhub configure-repository` だけ。[operations.md](operations.md) の「ビルドの設定の入れ方」）
+- リリースの操作の `kind`・App Store Connect の状態の置き方・App Store の素材の形（段階 5）
+- 段階 4 で足す意図（作成・実機確認・保護の設定・ワークフローの PR の承認・Secrets の登録）の形と、対象から外した印の形（実装のときに決めて、上の表と `repo.json` に書く）
+- クライアントでの `repo.json` の `build` の入れ方は、段階 4 の 4 で作る（今は非常口の `askhub configure-repository` だけ。[operations.md](operations.md) の「ビルドの設定の入れ方」）
