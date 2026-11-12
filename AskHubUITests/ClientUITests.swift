@@ -372,6 +372,12 @@ final class ClientUITests: XCTestCase {
         let summary = app.textFields.matching(NSPredicate(format: "placeholderValue BEGINSWITH %@", "要約")).firstMatch
         XCTAssertTrue(summary.waitForExistence(timeout: 5))
         summary.tap()
+        // 押した直後はまだフォーカスが移っていないことがあり、そのまま打つと「has keyboard focus」で落ちる。移るまで待ち、移らなければ押し直す
+        let focused = NSPredicate(format: "hasKeyboardFocus == true")
+        if XCTWaiter.wait(for: [expectation(for: focused, evaluatedWith: summary)], timeout: 3) != .completed {
+            summary.tap()
+            wait(for: [expectation(for: focused, evaluatedWith: summary)], timeout: 5)
+        }
         summary.typeText("メモ並べ替え")
     }
 }

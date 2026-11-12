@@ -13,6 +13,9 @@ final class StateClientService: ClientService {
     let refreshInterval: Duration = .seconds(30)
     /// 受け付けの記録を確かめる間隔。記録が無い間の読み取り（404）は GitHub の上限に数えられるので、司令塔の受け取りを待つ意図の 1 つだけを確かめる
     let receiptCheckInterval: Duration? = .seconds(4)
+    /// マージ中の epic を読み直す間隔。司令塔はマージし終えた次の周（30 秒ほど）で epic をマージ済みにするので、30 秒の取り直しを待つと
+    /// 表示が最大で 1 分ほど遅れる。変わっていなければ直下の一覧の 304 だけで済む（GitHub の上限に数えられない）
+    let mergeWatchInterval: Duration? = .seconds(10)
 
     /// 状態リポジトリへの同時の要求の上限。並べて読むので、GitHub の 2 次のレート制限（同時の要求が多いと 403・429）に当たらないよう抑える
     static let concurrentRequests = 8

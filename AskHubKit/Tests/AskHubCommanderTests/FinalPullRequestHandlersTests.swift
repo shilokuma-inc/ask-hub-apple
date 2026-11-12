@@ -124,6 +124,44 @@ struct FinalPullRequestHandlersTests {
         #expect(merged.merge == EpicFile.Merge(commit: Fixture.sha("e"), approval: intent, at: try #require(merged.merge?.at)))
     }
 
+    @Test func approvedMergeIsMarkedMergedInLoopOrder() async throws {
+        // 司令塔の 1 周と同じ順（人の意図 → ジョブの見回り → タスクの流れ）で、承認からマージ済みまで進める
+        let review = try await given.reviewing()
+        try await given.answer("d1", .ok)
+        let intent = try await given.approve()
+        #expect(try await process() == [.accepted(kind: "decision"), .accepted(kind: "approveMerge")])
+        var merge = try await given.job(CommanderContext.jobID(.mergeFinalPullRequest, origin: intent, seed: ""))
+        #expect(merge.dependsOn == [review.id])
+
+        // ワーカーがマージのジョブを引き受け、成功を書いた（ジョブの状態は、見回りが試行から決める）
+        merge.state = .running
+        merge.attempts = 1
+        try await given.put(merge, at: StatePath.job(Fixture.repo, epic: Fixture.epicID, job: merge.id))
+        let time = Timestamp(Fixture.now)
+        let attempt = AttemptFile(
+            job: merge.id,
+            number: 1,
+            mac: Fixture.commander,
+            startedAt: time,
+            heartbeatAt: time,
+            endedAt: time,
+            outcome: .succeeded,
+            outputs: .init(pullRequest: Fixture.pullRequest, commit: Fixture.sha("e"), branch: "askhub/\(Fixture.epicID)")
+        )
+        try await given.put(attempt, at: StatePath.attempt(Fixture.repo, epic: Fixture.epicID, job: merge.id, number: 1))
+        #expect(try await given.epic().stage == .reviewing)
+
+        let swept = try await JobSweep(context: given.context).sweepAll()
+        #expect(swept.changed.map(\.id) == [merge.id])
+        #expect(swept.changed.first?.state == .succeeded)
+        let advanced = await given.flow.advance(epics: swept.epics, jobs: swept.jobs)
+        #expect(advanced.created.map(\.kind) == [.cleanUp])
+        let merged = try await given.epic()
+        #expect(merged.stage == .merged)
+        #expect(merged.merge?.commit == Fixture.sha("e"))
+        #expect(merged.merge?.approval == intent)
+    }
+
     @Test func approveMergeIsRejectedUntilEverythingIsSettled() async throws {
         try await given.reviewing()
         // 答えていない見えるカードがある・head が進んだ
