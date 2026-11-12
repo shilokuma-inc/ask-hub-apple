@@ -144,7 +144,8 @@ extension ReleaseWatch {
         guard pull.state == .open else {
             throw ReleaseStepProblem("版を上げる PR #\(number) が、マージされずに閉じられた。人が develop の MARKETING_VERSION を上げる", needsHuman: true)
         }
-        let required = Set(settings.build?.finalChecks ?? [])
+        // ビルドの設定が無ければ、すべてのチェックを待つ（空の集合は「何も待たない」になり、CI を待たずにマージしてしまう）
+        let required = settings.build.map { Set($0.finalChecks) }
         let summary = try await github { () throws(PullRequestError) in
             try await hosting.checks(file.repo, at: pull.headSHA, required: required)
         }

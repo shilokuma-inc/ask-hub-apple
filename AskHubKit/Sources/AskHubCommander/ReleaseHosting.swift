@@ -13,7 +13,8 @@ public protocol ReleaseHosting: Sendable {
     func commitFiles(_ repo: RepositoryFullName, _ commit: VersionCommit) async throws(PullRequestError) -> String
     func openPullRequest(_ repo: RepositoryFullName, _ draft: PullRequestDraft) async throws(PullRequestError) -> PullRequest
     func pullRequest(_ repo: RepositoryFullName, number: Int) async throws(PullRequestError) -> PullRequest
-    func checks(_ repo: RepositoryFullName, at sha: String, required: Set<String>) async throws(PullRequestError) -> CheckSummary
+    /// `required` が nil なら、すべてのチェックを待つ
+    func checks(_ repo: RepositoryFullName, at sha: String, required: Set<String>?) async throws(PullRequestError) -> CheckSummary
     func merge(_ repo: RepositoryFullName, number: Int, headSHA: String) async throws(PullRequestError) -> MergedPullRequest
 }
 
@@ -132,7 +133,7 @@ public struct GitHubReleaseHosting: ReleaseHosting {
     public func checks(
         _ repo: RepositoryFullName,
         at sha: String,
-        required: Set<String>
+        required: Set<String>?
     ) async throws(PullRequestError) -> CheckSummary {
         try await github(repo).checks(at: sha, policy: CheckPolicy(required: required))
     }
