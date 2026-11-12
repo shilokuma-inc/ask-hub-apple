@@ -272,7 +272,12 @@ public actor CommanderLoop {
 
     /// 人の意図の種類ごとの処理。`admin` が nil（ワーカー・テスト）なら、管理の操作（保護の設定）は理由を付けて断る
     static func handlers(admin: AdminGitHub?) -> [String: any IntentHandler] {
-        commonHandlers.merging(["applyProtection": ApplyProtectionHandler(admin: admin)]) { current, _ in current }
+        let administered: [String: any IntentHandler] = [
+            "addRepository": AddRepositoryHandler(admin: admin),
+            "applyProtection": ApplyProtectionHandler(admin: admin),
+            "approveSetupPullRequest": ApproveSetupPullRequestHandler(admin: admin)
+        ]
+        return commonHandlers.merging(administered) { _, administered in administered }
     }
 
     /// 管理用のトークンを使わない処理
@@ -286,7 +291,6 @@ public actor CommanderLoop {
         "pauseEpic": PauseEpicHandler(),
         "resumeEpic": ResumeEpicHandler(),
         "handover": HandoverHandler(),
-        "addRepository": AddRepositoryHandler(),
         "configureRepository": ConfigureRepositoryHandler(),
         "retry": RetryJobHandler(),
         "giveUp": GiveUpJobHandler(),
