@@ -1,4 +1,5 @@
 @testable import AskHub
+import AskHubClient
 import AskHubProtocol
 import AskHubStateStore
 import Foundation
@@ -100,5 +101,54 @@ extension StateClientServiceTests {
         let reviewing = try makeService(files: Self.mergedEpic(stage: "reviewing")).service
         #expect(try await reviewing.fetchSnapshot().epic(Self.epicID)?.finalReview?.verifications.isEmpty == true)
         #expect(!reviewing.supports(.verify(epicID: Self.epicID, itemID: "v1", reply: .confirmed)))
+    }
+
+    /// 「問題あり」の答えだけが届いて依頼を送れなかったときは、同じ説明で送り直すと依頼だけを送る（答えは重ねない）
+    @Test
+    func problemRetrySendsOnlyTheMissingRequest() async throws {
+        let fixture = try makeService(files: Self.mergedEpic())
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        // 答えだけを送った形（依頼の送信は失敗した）
+        let repo = try #require(RepositoryFullName(rawValue: Self.repo))
+        let target = VerificationTarget(repo: repo, epic: try #require(ULID(rawValue: Self.epicID)), item: "v2", goalVersion: 1)
+        let now = now
+        try await IntentSender(store: fixture.store, key: fixture.key) { now }.send(.verify(target, result: .problem, note: "線が見えない"))
+        _ = try await service.fetchSnapshot()
+        // 違う説明・「確認した」は送らない
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.verify(epicID: Self.epicID, itemID: "v2", reply: .problem(note: "別の問題")))
+        }
+        try await service.perform(.verify(epicID: Self.epicID, itemID: "v2", reply: .problem(note: "線が見えない")))
+        // 同じ時刻に送ると番号の順が決まらないので、種類ごとの数で確かめる
+        let kinds = try await sentEnvelopes(in: fixture).map(\.kind)
+        #expect(kinds.filter { $0 == VerifyIntent.kind }.count == 1, "\(kinds)")
+        #expect(kinds.filter { $0 == RequestIntent.kind }.count == 1, "\(kinds)")
+    }
+
+    /// 司令塔が「問題あり」を記録した後に送り直すと、依頼だけを作る
+    @Test
+    func problemRetryAfterRecordSendsRequest() async throws {
+        let answers = """
+        {"v":1,"answers":[{"id":"v1","result":"problem","note":"先週の分が出る",
+          "intent":{"keyId":"\(String(repeating: "k", count: 43))","nonce":"01JCN0NCE00000000000000001"},"at":"2027-01-15T07:50:00Z"}]}
+        """
+        let fixture = try makeService(files: Self.mergedEpic(extra: ["\(Self.verificationBase)/verifications.json": answers]))
+        _ = try await fixture.service.fetchSnapshot()
+        try await fixture.service.perform(.verify(epicID: Self.epicID, itemID: "v1", reply: .problem(note: "先週の分が出る")))
+        let sent = try await sentEnvelopes(in: fixture)
+        #expect(sent.map(\.kind) == [RequestIntent.kind])
+        #expect(try RequestIntent(envelope: sent[0]).body.hasSuffix("先週の分が出る"))
+    }
+
+    /// 答えの記録を読めなければ、どの項目に答えたかが分からないので、実機確認を出さず答えも送らない
+    @Test
+    func unreadableAnswersHideVerifications() async throws {
+        let files = Self.mergedEpic(extra: ["\(Self.verificationBase)/verifications.json": #"{"v":99,"answers":[]}"#])
+        let service = try makeService(files: files).service
+        let snapshot = try await service.fetchSnapshot()
+        #expect(!snapshot.sourceFailures.isEmpty)
+        #expect(snapshot.epic(Self.epicID)?.finalReview?.verifications.isEmpty == true)
+        #expect(!service.supports(.verify(epicID: Self.epicID, itemID: "v1", reply: .confirmed)))
     }
 }
