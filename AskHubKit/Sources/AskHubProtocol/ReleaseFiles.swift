@@ -12,7 +12,7 @@ public struct MarketingVersion: RawRepresentable, Codable, Hashable, Comparable,
         guard (1...3).contains(parts.count) else { return nil }
         var components: [Int] = []
         for part in parts {
-            // 先頭の 0 は 0 そのものだけ（`01` は受け付けない）。桁は App Store Connect の上限に合わせて 4 桁まで
+            // 先頭の 0 は 0 そのものだけ（`01` は受け付けない）。パスとタグの名前に使うので、1 つの数は 4 桁まで（`2026.11.3` のような年の版も入る）
             guard (1...4).contains(part.utf8.count), part.utf8.allSatisfy({ (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) }),
                   part.utf8.count == 1 || part.first != "0", let value = Int(part) else {
                 return nil
