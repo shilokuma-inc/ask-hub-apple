@@ -150,20 +150,6 @@ enum InboxBuilder {
         return item
     }
 
-    /// 答えられる質問は残っていないが、Claude が見直している質問があるとき。答えた質問の行が消えて、質問が無くなったように見えないよう、
-    /// 見直しが終わるまで出しておく（人の出番ではないので、時間のあるときに）
-    private static func revisingItem(_ epic: Epic, context: String) -> InboxItem? {
-        let revising = epic.questions.filter { $0.state == .reviewing }
-        guard epic.stage == .questions, !revising.isEmpty else {
-            return nil
-        }
-        var item = InboxItem(epic: epic, kind: .questions, context: context, route: .epic(epic.id))
-        item.urgency = .whenFree
-        item.title = "質問の見直しを待っています"
-        item.detail = "Claude が \(revising.map(\.id).joined(separator: "・")) を見直しています。終わったら答えられます"
-        return item
-    }
-
     private static func humanTaskItem(_ task: HumanTask, epic: Epic, context: String) -> InboxItem {
         var item = InboxItem(epic: epic, kind: .humanTask, context: context, route: .humanTask(epicID: epic.id, taskID: task.id))
         item.id = "\(epic.id)/human/\(task.id)"
@@ -441,5 +427,23 @@ enum ByteFormat {
         formatter.allowsNonnumericFormatting = false
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
         return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - 見直し中の質問
+
+extension InboxBuilder {
+    /// 答えられる質問は残っていないが、Claude が見直している質問があるとき。答えた質問の行が消えて、質問が無くなったように見えないよう、
+    /// 見直しが終わるまで出しておく（人の出番ではないので、時間のあるときに）
+    private static func revisingItem(_ epic: Epic, context: String) -> InboxItem? {
+        let revising = epic.questions.filter { $0.state == .reviewing }
+        guard epic.stage == .questions, !revising.isEmpty else {
+            return nil
+        }
+        var item = InboxItem(epic: epic, kind: .questions, context: context, route: .epic(epic.id))
+        item.urgency = .whenFree
+        item.title = "質問の見直しを待っています"
+        item.detail = "Claude が \(revising.map(\.id).joined(separator: "・")) を見直しています。終わったら答えられます"
+        return item
     }
 }
