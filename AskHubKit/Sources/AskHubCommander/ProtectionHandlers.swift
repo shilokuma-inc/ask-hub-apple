@@ -44,9 +44,10 @@ public struct ApplyProtectionHandler: IntentHandler {
             return .reject("保護の設定の形が違う（\(error.detail)）")
         }
         let path = StatePath.repository(apply.repo)
-        guard try await context.read(RepositoryFile.self, at: path) != nil else {
+        guard let repository = try await context.read(RepositoryFile.self, at: path) else {
             return .reject("\(apply.repo) は対象のリポジトリに加えていない。先に対象に加える")
         }
+        guard !repository.isRemoved else { return .reject("\(apply.repo) は対象から外した。保護を掛けるには加え直す") }
         guard let admin else { return .reject("この司令塔は管理用のトークンを使えない（常時オンの Mac の askhub-commander で動かす）") }
         let github: GitHubPullRequests
         switch admin.pullRequests(for: apply.repo) {
