@@ -197,12 +197,26 @@ struct QuestionFlowTests {
         #expect(change.effects == [.revise(question: "q2", basis: expected)])
     }
 
+    /// 同じ選択・同じメモの答え直しは、前の回答の記録（意図）のままにする
     @Test func sameAnswerAgainKeepsDependents() throws {
         let file = try answeredChain()
         let change = try accept(Fixtures.answer("q1", intent: 4), file)
         #expect(change.questions.states() == ["q1": .answered, "q2": .answered, "q3": .answered])
-        #expect(change.questions.question("q1")?.answer?.intent == Fixtures.intent(4))
+        #expect(change.questions.question("q1")?.answer?.intent == Fixtures.intent(1))
+        #expect(change.questions == file)
         #expect(change.effects == [.checkReadiness])
+    }
+
+    /// 見直しを頼んだ後に同じ答えがもう一度届いても、頼んだ見直しの結果を書ける（前提の回答の記録が替わらない）
+    @Test func sameAnswerWhileRevisingKeepsRevisionBasis() throws {
+        var file = try Flow.start(chain).questions
+        file = try accept(Fixtures.answer("q1", intent: 1), file).questions
+        let requested = basis("q2", in: file)
+        let again = try accept(Fixtures.answer("q1", intent: 2), file)
+        #expect(again.questions == file)
+        #expect(again.effects.isEmpty)
+        let revised = checked(try Flow.revise("q2", basis: requested, outcome: .keep, in: again.questions))
+        #expect(revised.questions.question("q2")?.state == .open)
     }
 
     @Test func relockCancelsWorkInProgressAndDropsPendingQuestion() throws {

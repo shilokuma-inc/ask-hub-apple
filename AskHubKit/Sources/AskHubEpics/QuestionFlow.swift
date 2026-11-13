@@ -198,6 +198,12 @@ extension QuestionFlow {
                 throw .notAnswerable(question: question.id, state: question.state)
             }
             let accepted = try decision(answer, for: question, at: now)
+            // 同じ選択・同じメモで答え直した（二度押し・送り直し）ときは、前の回答の記録のままにする。
+            // 依存する質問の見直しは前の回答（意図）を前提に頼んでいるので、記録を替えると見直しの結果が古いとみなされて捨てられ、
+            // 見直しを出し直す道も無いので、依存する質問が見直しのまま止まる
+            if question.state == .answered, let previous = question.answer, isSameDecision(previous, accepted) {
+                break
+            }
             book.questions[index].answer = accepted
             book.questions[index].state = .answered
             // 開始の前に回答を変えたら、依存する質問の回答を取り消し、ロックに戻して見直しからやり直す
