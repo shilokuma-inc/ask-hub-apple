@@ -5,13 +5,13 @@ import Foundation
 // MARK: - 対象のリポジトリ
 
 extension StateIntentMapper {
-    /// 対象から外す（終わっていない epic が無い対象のリポジトリだけ）・ビルドの設定（対象のリポジトリだけ）を送れるか。片付けは、まだ送れない
+    /// 対象から外す（終わっていない epic が無い対象のリポジトリだけ）・ビルドの設定と保護の設定と準備の PR の承認（対象のリポジトリだけ）を送れるか。片付けは、まだ送れない
     func supportsRepositoryIntent(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .removeRepository(let repositoryID):
             index.repositories[repositoryID] != nil && !index.busyRepositories.contains(repositoryID)
 
-        case let .configureRepository(repositoryID, _):
+        case let .configureRepository(repositoryID, _), let .applyProtection(repositoryID, _), let .approveSetup(repositoryID, _, _):
             index.repositories[repositoryID] != nil
 
         default:
@@ -49,6 +49,27 @@ extension StateIntentMapper {
 
         case let .configureRepository(repositoryID, json):
             return .configureRepository(try repository(repositoryID), build: try Self.build(json))
+
+        case .applyProtection, .approveSetup:
+            return try administrationDraft(intent)
+
+        default:
+            throw Self.unsupported
+        }
+    }
+
+    /// 管理用のトークンで司令塔が行う操作（保護の設定・準備の PR の承認）。必須のチェックは、司令塔と同じ決まりで送る前に確かめる
+    private func administrationDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
+        switch intent {
+        case let .applyProtection(repositoryID, checks):
+            let problems = ProtectionPolicy.problems(ofRequiredChecks: checks)
+            guard problems.isEmpty else {
+                throw ClientServiceError(message: problems.joined(separator: "、"))
+            }
+            return .applyProtection(try repository(repositoryID), requiredChecks: checks)
+
+        case let .approveSetup(repositoryID, pullRequest, head):
+            return .approveSetupPullRequest(try repository(repositoryID), number: pullRequest, head: head)
 
         default:
             throw Self.unsupported

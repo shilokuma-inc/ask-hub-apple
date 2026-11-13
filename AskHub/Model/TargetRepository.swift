@@ -17,6 +17,10 @@ struct TargetRepository: Identifiable, Hashable {
     var lastMacID: Mac.ID?
     /// ビルドの設定。まだ入れていなければ nil（開始を断られる）
     var build: RepositoryBuildSettings?
+    /// ブランチの保護の様子。読めていない（デモの一部）なら nil
+    var protection: RepositoryProtection?
+    /// 対象に加えるときの GitHub 側の準備の様子。まだ流していなければ nil
+    var setup: RepositorySetupStatus?
 
     var fullName: String { "\(owner)/\(name)" }
 

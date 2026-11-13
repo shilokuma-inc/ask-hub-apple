@@ -81,7 +81,8 @@ extension HumanIntent {
         case let .cleanUp(macID, _):
             [.cleanup(macID: macID)]
 
-        case .addRepository(let repositoryID), .removeRepository(let repositoryID), .configureRepository(let repositoryID, _):
+        case .addRepository(let repositoryID), .removeRepository(let repositoryID), .configureRepository(let repositoryID, _),
+             .applyProtection(let repositoryID, _), .approveSetup(let repositoryID, _, _):
             [.repository(repositoryID)]
 
         case let .publishRelease(repositoryID, version, _, _):

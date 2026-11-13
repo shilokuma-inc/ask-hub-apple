@@ -18,6 +18,9 @@ extension DemoClientService {
         case .reviseGoal, .decideSplit, .addRepository, .removeRepository, .configureRepository:
             applySetupIntent(intent)
 
+        case .applyProtection, .approveSetup:
+            applyAdministrationIntent(intent)
+
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
             applyReviewIntent(intent)
 
@@ -77,6 +80,27 @@ extension DemoClientService {
         default:
             break
         }
+    }
+
+    /// 保護の設定・準備の PR の承認（デモでは、司令塔が受け付けた形にすぐ変える）
+    private func applyAdministrationIntent(_ intent: HumanIntent) {
+        switch intent {
+        case let .applyProtection(repositoryID, checks):
+            updateRepository(repositoryID) { $0.protection = RepositoryProtection(state: .applied(at: now()), requiredChecks: checks) }
+
+        case .approveSetup(let repositoryID, _, _):
+            updateRepository(repositoryID) { $0.setup?.workflowPullRequest?.state = .merged }
+
+        default:
+            break
+        }
+    }
+
+    private func updateRepository(_ repositoryID: TargetRepository.ID, _ change: (inout TargetRepository) -> Void) {
+        guard let index = state.repositories.firstIndex(where: { $0.id == repositoryID }) else {
+            return
+        }
+        change(&state.repositories[index])
     }
 
     private func answer(epicID: Epic.ID, questionID: Question.ID, optionID: Question.Option.ID?, note: String) {

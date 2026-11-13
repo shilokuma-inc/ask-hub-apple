@@ -115,6 +115,12 @@ struct RepositoryDetailView: View {
                         Text("ありません").foregroundStyle(.secondary)
                     }
                 }
+                if let setup = repository.setup {
+                    RepositorySetupSection(repository: repository, setup: setup)
+                }
+                if let protection = repository.protection {
+                    ProtectionSection(repository: repository, protection: protection)
+                }
                 CardSection {
                     let releases = store.snapshot?.releases(of: repositoryID) ?? []
                     ForEach(releases) { release in

@@ -38,6 +38,10 @@ enum HumanIntent: Hashable {
     case removeRepository(repositoryID: TargetRepository.ID)
     /// ビルドの設定を入れる（`json` は `repo.json` の `build` と同じ形。送るたびにまるごと置き換える）
     case configureRepository(repositoryID: TargetRepository.ID, json: String)
+    /// 保護の設定（司令塔が管理用のトークンでルールセットを掛ける）。必須のチェックは人が確かめて直したもの
+    case applyProtection(repositoryID: TargetRepository.ID, requiredChecks: [String])
+    /// 加えるときに司令塔が出したワークフローの直しの PR のマージの承認。見たときの head に結びつける
+    case approveSetup(repositoryID: TargetRepository.ID, pullRequest: Int, head: String)
 }
 
 enum SplitChoice: Hashable {
@@ -98,6 +102,12 @@ extension HumanIntent {
 
         case .configureRepository(let repositoryID, _):
             "ビルドの設定（\(repositoryID)）"
+
+        case .applyProtection:
+            "保護の設定"
+
+        case .approveSetup:
+            "ワークフローの直しの承認"
 
         case let .resolveBlocker(_, action, _, _):
             Self.label(of: action)
