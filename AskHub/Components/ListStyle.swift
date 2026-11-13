@@ -35,7 +35,7 @@ struct CardRowPosition: Equatable {
 }
 
 /// 一覧のセクション。札を自分で描いて角の丸みを決める（標準の insetGrouped の角は小さくできず、Mac の一覧には札の形が無いため）。
-/// 中の行を順に見て、最初と最後の行の角だけを丸める。Mac の一覧の列（選ぶ側）は標準の Section のまま（`compactList(selectable:)`）
+/// 中の行を順に見て、最初と最後の行の角だけを丸める。Mac の `List(selection:)` の一覧（サイドバーと一覧の列）は標準の Section のまま（`compactList(selectable:)`）
 struct CardSection<Content: View, Header: View, Footer: View>: View {
     @ViewBuilder let content: Content
     @ViewBuilder let header: Header
@@ -132,7 +132,7 @@ private struct CardRowItem: Identifiable {
 }
 
 extension EnvironmentValues {
-    /// CardSection が札を描くか。Mac の一覧の列（選ぶ側）では描かない
+    /// CardSection が札を描くか。Mac の `List(selection:)` の一覧では描かない
     @Entry var drawsCardSections = true
 }
 
@@ -218,7 +218,8 @@ extension View {
     }
 
     /// 一覧の余白を詰める（List に付ける）。札を CardSection で描くので、iOS では角の無い grouped、Mac では素の plain にする。
-    /// Mac の一覧の列（選ぶ側。`selectable`）は、選んだ行の濃い背景が札と重ならないよう、標準の一覧のまま札を描かない
+    /// Mac の `List(selection:)` の一覧（`selectable`。サイドバーと一覧の列）は、選んだ行の濃い背景が札と重ならないよう、標準の一覧のまま札を描かない。
+    /// シートの中で 1 つを選ぶ一覧（開始のときの Mac など）は List の選択を使わず、行のボタンとチェックで選ぶので、ほかの一覧と同じく札を描く
     @ViewBuilder func compactList(selectable: Bool = false) -> some View {
         #if os(iOS)
         listStyle(.grouped)

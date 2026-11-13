@@ -5,10 +5,22 @@ import Foundation
 ///
 /// 例: `-demoOpen deck:all`・`-demoOpen epic:rain-draft`・`-demoOpen section:macs`・`-demoOpen finished`（終わったものをすべて）、
 /// `-demoOpen release:demo-studio/habit-ios:1.2.0`（配信した版）、
-/// スワイプの途中の色を撮るときは `-demoDrag 0:0.8`（選択肢の添字:進み具合）
+/// スワイプの途中の色を撮るときは `-demoDrag 0:0.8`（選択肢の添字:進み具合）、
+/// 開いた画面のシートを撮るときは `-demoSheet start`（ゴールの画面の、Mac を選ぶシート）
 enum DemoLaunch {
     static let openKey = "demoOpen"
     static let dragKey = "demoDrag"
+    static let sheetKey = "demoSheet"
+
+    /// 開いた画面で、最初から開いておくシート（撮影用）
+    enum Sheet: String {
+        /// ゴールの画面の、開始のときに回す Mac を選ぶシート
+        case start
+    }
+
+    static func initialSheet(defaults: UserDefaults = .standard) -> Sheet? {
+        defaults.string(forKey: sheetKey).flatMap(Sheet.init(rawValue:))
+    }
 
     static func initialDestination(defaults: UserDefaults = .standard) -> (section: AppSection, route: AppRoute?)? {
         guard let value = defaults.string(forKey: openKey) else {

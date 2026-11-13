@@ -29,6 +29,17 @@ struct DemoLaunchTests {
         #expect(DemoLaunch.destination(from: "deck:questions") == nil)
         #expect(DemoLaunch.destination(from: "section:nothing") == nil)
     }
+
+    /// 最初から開いておくシートを読む。読めない値と、渡していないときは開かない
+    @Test
+    func readsInitialSheet() throws {
+        let defaults = try #require(UserDefaults(suiteName: "DemoLaunchTests-\(UUID().uuidString)"))
+        #expect(DemoLaunch.initialSheet(defaults: defaults) == nil)
+        defaults.set("start", forKey: DemoLaunch.sheetKey)
+        #expect(DemoLaunch.initialSheet(defaults: defaults) == .start)
+        defaults.set("unknown", forKey: DemoLaunch.sheetKey)
+        #expect(DemoLaunch.initialSheet(defaults: defaults) == nil)
+    }
 }
 
 /// デモの時計を止める起動引数（`-demoClock 2026-01-15T00:41:00Z`）

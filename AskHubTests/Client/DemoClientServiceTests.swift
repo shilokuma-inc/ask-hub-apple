@@ -186,6 +186,18 @@ struct DemoClientServiceTests {
         #expect(snapshot.startableMacs.map(\.id) == [DemoData.macMiniID, DemoData.macBookProID])
     }
 
+    /// 開始のシートで Mac の行を押すと、その Mac に選び直す。断る理由がある Mac は押しても選ばず、前の選択のまま
+    @Test
+    func tappingMacRowMovesChoiceExceptRefusingMac() throws {
+        var mac = try #require(makeService().state.mac(DemoData.macMiniID))
+        mac.refusalReason = nil
+        #expect(StartSheet.choice(after: mac, from: DemoData.macBookProID) == DemoData.macMiniID)
+        #expect(StartSheet.choice(after: mac, from: nil) == DemoData.macMiniID)
+        mac.refusalReason = "空き容量が 30 GB を下回っています"
+        #expect(StartSheet.choice(after: mac, from: DemoData.macBookProID) == DemoData.macBookProID)
+        #expect(StartSheet.choice(after: mac, from: nil) == nil)
+    }
+
     /// 開始した Mac が、そのリポジトリの次の開始の既定になる
     @Test
     func startRemembersMacForRepository() async throws {

@@ -6,7 +6,7 @@ struct GoalReviewView: View {
 
     @Environment(ClientStore.self) private var store
     @State private var textRequest: TextRequest?
-    @State private var isChoosingMac = false
+    @State private var isChoosingMac = Self.initialChoosingMac
 
     var body: some View {
         if let epic = store.epic(epicID), let goal = epic.goal {
@@ -86,7 +86,7 @@ struct GoalReviewView: View {
                         textRequest = TextRequest(title: "ゴールを直してほしい", prompt: "どう直してほしいか", purpose: .goalRevision(epicID: epic.id))
                     }
                     .buttonStyle(.glass)
-                    Button("開始…", systemImage: "play.fill") { isChoosingMac = true }
+                    Button("開始する", systemImage: "play.fill") { isChoosingMac = true }
                         .buttonStyle(.glassProminent)
                         .disabled(goal.isRevising)
                 }
@@ -166,6 +166,15 @@ struct GoalReviewView: View {
             ForEach(items, id: \.self) { Text($0) }
         }
     }
+
+    /// 撮影では、起動引数で Mac を選ぶシートを開いておく
+    private static var initialChoosingMac: Bool {
+        #if DEBUG
+        DemoLaunch.initialSheet() == .start
+        #else
+        false
+        #endif
+    }
 }
 
 /// ゴールの画面のシート（直してほしい・開始）
@@ -207,7 +216,8 @@ struct StartSheet: View {
         let lastMacID = store.repository(epic.repositoryID)?.lastMacID
         let defaultMacID = store.snapshot?.defaultStartMacID(for: epic.repositoryID)
         NavigationStack {
-            List(selection: $selectedMacID) {
+            // List の選択は使わない（iOS は編集の丸、Mac は選んだ行の濃い背景が出る）。行を押して選び、選んだ行にチェックを出す
+            List {
                 if sending.showsStatus {
                     CardSection {
                         SheetSendStatus(state: sending) { start() }
@@ -215,9 +225,7 @@ struct StartSheet: View {
                 }
                 CardSection {
                     ForEach(macs) { mac in
-                        MacChoiceRow(mac: mac, isLastUsed: mac.id == lastMacID)
-                            .tag(mac.id)
-                            .selectionDisabled(mac.refusalReason != nil)
+                        macButton(mac, isLastUsed: mac.id == lastMacID)
                     }
                     if macs.isEmpty {
                         Text("オンラインの Mac がありません").foregroundStyle(.secondary)
@@ -235,11 +243,10 @@ struct StartSheet: View {
                 }
             }
             .pastelBackground()
-            .compactList(selectable: true)
+            .compactList()
             .navigationTitle("開始する")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            .environment(\.editMode, .constant(.active))
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -261,6 +268,25 @@ struct StartSheet: View {
         .sheetSize(.form)
     }
 
+    /// Mac の行。行全体を押すと選び、断る理由がある Mac は押せない
+    private func macButton(_ mac: Mac, isLastUsed: Bool) -> some View {
+        let isSelected = mac.id == selectedMacID
+        return Button {
+            selectedMacID = Self.choice(after: mac, from: selectedMacID)
+        } label: {
+            MacChoiceRow(mac: mac, isLastUsed: isLastUsed, isSelected: isSelected)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(mac.refusalReason != nil)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// 行を押した後に選んでいる Mac。新しいループを受けない Mac（断る理由がある Mac）は選ばず、前の選択のまま
+    static func choice(after mac: Mac, from current: Mac.ID?) -> Mac.ID? {
+        mac.refusalReason == nil ? mac.id : current
+    }
+
     /// 送る。送り始めたら（同じものを送ってあったときも）すぐ閉じ、epic は開始した形になる。送れなければ理由を出して残る
     private func start() {
         guard let macID = selectedMacID else {
@@ -272,10 +298,11 @@ struct StartSheet: View {
     }
 }
 
-/// Mac を選ぶ行（オンラインか・空き容量・負荷・前回このリポジトリを回したか）
+/// Mac を選ぶ行（オンラインか・空き容量・負荷・前回このリポジトリを回したか・選んでいるか）
 struct MacChoiceRow: View {
     let mac: Mac
     var isLastUsed = false
+    var isSelected = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -286,6 +313,12 @@ struct MacChoiceRow: View {
                 }
                 Spacer()
                 ConnectionBadge(mac: mac)
+                // 選んでいない行にも場所を取っておき、選び直しても接続の印の位置が動かないようにする
+                Image(systemName: "checkmark")
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Theme.accent)
+                    .opacity(isSelected ? 1 : 0)
+                    .accessibilityHidden(true)
             }
             Text("空き \(ByteFormat.string(mac.freeBytes)) · \(mac.loadText)")
                 .appFont(.caption)
