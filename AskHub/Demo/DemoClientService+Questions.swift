@@ -67,17 +67,12 @@ extension DemoClientService {
             state.removedRepositories.append(repository)
 
         case let .configureRepository(repositoryID, json):
-            guard let index = state.repositories.firstIndex(where: { $0.id == repositoryID }) else {
+            // 状態リポジトリにつないだときと同じ決まりで読み、同じ形で出す（行き先の OS の版も出す）
+            guard let index = state.repositories.firstIndex(where: { $0.id == repositoryID }),
+                  let build = try? StateIntentMapper.build(json) else {
                 return
             }
-            let draft = BuildSettingsDraft(json: json)
-            state.repositories[index].build = RepositoryBuildSettings(
-                scheme: draft.scheme,
-                destinations: draft.destinations.map { $0.platform == "macOS" ? "Mac" : $0.deviceType },
-                childChecks: draft.childChecks.split(separator: "\n").map(String.init),
-                finalChecks: draft.finalChecks.split(separator: "\n").map(String.init),
-                json: json
-            )
+            state.repositories[index].build = StateSnapshotBuilder.buildSettings(build)
 
         default:
             break
