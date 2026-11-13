@@ -18,33 +18,32 @@
     "claudeTokenExpiresAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "setup-token は登録した日から 1 年" },
     "githubTokens": {
       "description": "持ち主ごとの GitHub のトークンの様子。持ち主は重ねない（読む側が弾く）",
-      "anyOf": [
-        {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["owner", "state"],
-            "additionalProperties": false,
-            "properties": {
-              "owner": { "$ref": "#/$defs/owner" },
-              "state": { "$ref": "#/$defs/state" },
-              "expiresAt": {
-                "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }],
-                "description": "GitHub の API の応答の見出し github-authentication-token-expiration で分かった期限。期限の無いトークン・まだ分からないときは書かない"
-              },
-              "rateLimit": {
-                "anyOf": [{ "$ref": "#/$defs/rateLimit" }, { "type": "null" }],
-                "description": "このトークンで読んだ REST の上限の残り（GET /rate_limit の resources.core）。読めなかったときは書かない"
-              }
-            }
-          }
-        },
-        { "type": "null" }
-      ]
+      "anyOf": [{ "type": "array", "items": { "$ref": "#/$defs/githubToken" } }, { "type": "null" }]
+    },
+    "githubAdminTokens": {
+      "description": "持ち主ごとの管理用のトークンの様子と期限（司令塔だけが書く。askhub-commander admin-token で入れた持ち主だけ）。持ち主は重ねない（読む側が弾く）。githubToken のまとめには入れず、rateLimit は書かない",
+      "anyOf": [{ "type": "array", "items": { "$ref": "#/$defs/githubToken" } }, { "type": "null" }]
     }
   },
   "$defs": {
     "state": { "enum": ["ok", "missing", "invalid", "expired"] },
+    "githubToken": {
+      "type": "object",
+      "required": ["owner", "state"],
+      "additionalProperties": false,
+      "properties": {
+        "owner": { "$ref": "#/$defs/owner" },
+        "state": { "$ref": "#/$defs/state" },
+        "expiresAt": {
+          "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }],
+          "description": "GitHub の API の応答の見出し github-authentication-token-expiration で分かった期限。期限の無いトークン・まだ分からないときは書かない"
+        },
+        "rateLimit": {
+          "anyOf": [{ "$ref": "#/$defs/rateLimit" }, { "type": "null" }],
+          "description": "このトークンで読んだ REST の上限の残り（GET /rate_limit の resources.core）。読めなかったときは書かない"
+        }
+      }
+    },
     "rateLimit": {
       "description": "GitHub の REST の一次の上限。アカウントごとに数える",
       "type": "object",

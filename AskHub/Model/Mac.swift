@@ -91,6 +91,9 @@ struct MacToken: Identifiable, Hashable {
     enum Kind: Hashable {
         /// 持ち主（organization・個人）ごとの GitHub の fine-grained token。内訳を書かない Mac は nil
         case github(owner: String?)
+        /// 持ち主ごとの管理用のトークン（常時オンの Mac の司令塔だけ。保護の設定・対象に加えるときの準備に使う）。
+        /// 切れても毎日の仕事は止まらない
+        case githubAdmin(owner: String)
         /// Claude の setup-token（入れた日から 1 年）
         case claude
     }
@@ -111,8 +114,17 @@ struct MacToken: Identifiable, Hashable {
     var id: String {
         switch kind {
         case .github(let owner): "github/\(owner ?? "")"
+        case .githubAdmin(let owner): "github-admin/\(owner)"
         case .claude: "claude"
         }
+    }
+
+    /// 切れると、その Mac の仕事が止まるか。管理用のトークンは、管理の操作（保護の設定など）を断るだけで、仕事は止めない
+    var stopsWork: Bool {
+        if case .githubAdmin = kind {
+            return false
+        }
+        return true
     }
 }
 
@@ -157,6 +169,7 @@ extension Mac {
     func renewalCommand(for token: MacToken) -> String {
         switch token.kind {
         case .github(let owner): "\(program) token \(owner ?? "<持ち主>")"
+        case .githubAdmin(let owner): "askhub-commander admin-token \(owner)"
         case .claude: "\(program) claude-token"
         }
     }
@@ -240,8 +253,13 @@ extension MacToken {
         case stopped(State)
     }
 
-    /// 期限が切れた・無い・使えない（その Mac の仕事が止まっている）
+    /// 期限が切れた・無い・使えない（その Mac の仕事が止まっている）。管理用のトークンは仕事を止めないので false
     func isStopped(now: Date) -> Bool {
+        stopsWork && isUnusable(now: now)
+    }
+
+    /// 期限が切れた・無い・使えない
+    func isUnusable(now: Date) -> Bool {
         if case .stopped = status(now: now) {
             return true
         }
@@ -269,6 +287,7 @@ extension MacToken {
         switch kind {
         case .github(let owner?): "GitHub のトークン（\(owner)）"
         case .github(nil): "GitHub のトークン"
+        case .githubAdmin(let owner): "管理用のトークン（\(owner)）"
         case .claude: "Claude の setup-token"
         }
     }

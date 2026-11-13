@@ -517,6 +517,9 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
     "githubTokens": [
       { "owner": "shilokuma-inc", "state": "ok", "expiresAt": "…", "rateLimit": { "limit": 5000, "remaining": 4210, "resetAt": "…" } },
       { "owner": "mrs1669", "state": "ok" }
+    ],
+    "githubAdminTokens": [
+      { "owner": "shilokuma-inc", "state": "ok", "expiresAt": "…" }
     ]
   },
   "refusal": { "reason": "incompatible", "message": "司令塔の互換の番号は 2、このワーカーは 1。ワーカーを更新するまで新しいジョブを引き受けない" }
@@ -535,6 +538,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   - `githubTokens` は、持ち主（organization・個人。小文字にそろえる）ごとの GitHub のトークンの様子と期限。持ち主は重ねない
   - `githubToken` は持ち主ごとの様子をまとめたもの（1 つでも無ければ `missing`、次に `invalid`・`expired` の順）。`githubTokenExpiresAt` は持ち主ごとの期限のうち一番早いもの
   - トークンの期限は、分かるときだけ書く。GitHub のトークンは GitHub の API の応答の見出し `github-authentication-token-expiration` で分かったもの（期限の無いトークンには書かない）、setup-token は入れた日から 1 年（入れた日が分からなければ書かない）。読み方と知らせ方は [operations.md](operations.md) の「トークンの期限」
+  - `githubAdminTokens` は、持ち主ごとの管理用のトークン（[operations.md](operations.md) の「管理用のトークン（持ち主ごと）」）の様子と期限。常時オンの Mac の司令塔だけが、`admin-token` で入れた持ち主の分を書く（`commander.json` と、常時オンの Mac の `macs/<mac>.json`）。形は `githubTokens` と同じだが、`rateLimit` は書かない。無くても毎日の仕事は止まらないので、`githubToken`・`githubTokenExpiresAt` のまとめには入れない
   - `githubTokens[].rateLimit` は、そのトークンで読んだ GitHub の REST の一次の上限（`GET /rate_limit` の `resources.core`）。`limit`（1 時間の上限）・`remaining`（今の窓の残り）・`resetAt`（窓が終わって `limit` に戻る時刻）。読めなかった（使えないトークン・GitHub の障害）ときは書かない。上限はアカウントごとに数えるので、同じアカウントのトークンはほぼ同じ値になる。クライアントは一番少ないものを出す（[operations.md](operations.md) の「GitHub の上限」）
 - 変化があったときと、一定の間隔（10 分程度）でだけ書く
 

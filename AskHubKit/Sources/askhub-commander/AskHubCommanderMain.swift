@@ -6,6 +6,7 @@ import Foundation
 /// - `run`: 常駐のループを回す（LaunchAgent から起動する）
 /// - `setup`: 設定を書き、トークンを Keychain に置き、最初の鍵を固定する（人が端末で流す）
 /// - `token`: 持ち主の GitHub のトークンを Keychain に入れ直す・足す（人が端末で流す）
+/// - `admin-token`: 持ち主の管理用のトークンを Keychain に入れ直す・足す（人が端末で流す。保護の設定・対象に加えるときの準備に使う）
 /// - `claude-token`: Claude の setup-token を Keychain に入れ直し、入れた日を記録する（人が端末で流す）
 /// - `apns`: APNs の鍵を Keychain に置き、鍵の id と Team ID を設定に足す（人が端末で流す）
 /// - `app-store-connect`: App Store Connect の API キーを Keychain に置き、鍵の id と Issuer ID を設定に足す（人が端末で流す）
@@ -19,13 +20,12 @@ enum AskHubCommanderMain {
     static func main() async {
         var arguments = Array(CommandLine.arguments.dropFirst())
         let command = arguments.isEmpty ? "" : arguments.removeFirst()
-        // 鍵を Keychain に置くコマンド（APNs・App Store Connect）は、同じ形なので一覧から選ぶ
+        // トークンを端末で伏せて入れてもらうコマンドと、鍵（APNs・App Store Connect）を Keychain に置くコマンドは、同じ形なので一覧から選ぶ
+        if let store = tokenCommands[command] { return store(arguments) }
         if let register = keyCommands[command] { return register(arguments) }
         switch command {
         case "run": await run()
         case "setup": setup(arguments)
-        case "token": commandLine.token(arguments)
-        case "claude-token": commandLine.replaceClaudeToken(arguments)
         case "xcode": await commandLine.xcode(arguments)
         case "git-credential": commandLine.gitCredential(arguments)
         case "launch-agent": commandLine.launchAgent()
@@ -33,6 +33,13 @@ enum AskHubCommanderMain {
         default: commandLine.fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
         }
     }
+
+    /// トークンを端末で伏せて入れてもらい、Keychain に置くコマンド
+    static let tokenCommands: [String: @Sendable ([String]) -> Void] = [
+        "token": { commandLine.token($0) },
+        "admin-token": { commandLine.adminToken($0) },
+        "claude-token": { commandLine.replaceClaudeToken($0) }
+    ]
 
     /// 鍵（.p8）を Keychain に置き、鍵の id を設定に足すコマンド
     static let keyCommands: [String: @Sendable ([String]) -> Void] = [
@@ -46,6 +53,7 @@ enum AskHubCommanderMain {
                 --key-account <GitHub のアカウント> [--github-owner <対象のリポジトリの持ち主> ...]
                 [--state-branch <ブランチ>] [--claude-capacity <数>]
           token <持ち主>  持ち主（organization・個人）の GitHub の fine-grained token を入れ直す・足す
+          admin-token <持ち主>  持ち主の管理用の fine-grained token（保護の設定・対象に加えるときの準備に使う）を入れ直す・足す
           claude-token   Claude の setup-token を入れ直す（入れた日から 1 年を期限として記録する）
           apns --key-id <APNs の鍵の id> --team-id <Team ID> --key-file <.p8 のパス> [--topic <Bundle ID>]
           app-store-connect --key-id <API キーの id> --issuer-id <Issuer ID> --key-file <.p8 のパス>

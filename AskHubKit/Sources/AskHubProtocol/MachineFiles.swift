@@ -46,6 +46,9 @@ public struct SelfCheck: Codable, Equatable, Sendable {
     public var claudeTokenExpiresAt: Timestamp?
     /// 持ち主ごとの内訳。書かない Mac（前の版）もある
     public var githubTokens: [GitHubToken]?
+    /// 持ち主ごとの管理用のトークンの様子と期限（司令塔だけが書く。`askhub-commander admin-token` で入れた持ち主だけ）。
+    /// 無くても毎日の仕事は止まらないので、`githubToken` のまとめには入れない。上限の残りは書かない（同じアカウントで数える）
+    public var githubAdminTokens: [GitHubToken]?
 
     public init(
         checkedAt: Timestamp,
@@ -54,7 +57,8 @@ public struct SelfCheck: Codable, Equatable, Sendable {
         claudeToken: State,
         githubTokenExpiresAt: Timestamp? = nil,
         claudeTokenExpiresAt: Timestamp? = nil,
-        githubTokens: [GitHubToken]? = nil
+        githubTokens: [GitHubToken]? = nil,
+        githubAdminTokens: [GitHubToken]? = nil
     ) {
         self.checkedAt = checkedAt
         self.keychain = keychain
@@ -63,6 +67,7 @@ public struct SelfCheck: Codable, Equatable, Sendable {
         self.githubTokenExpiresAt = githubTokenExpiresAt
         self.claudeTokenExpiresAt = claudeTokenExpiresAt
         self.githubTokens = githubTokens
+        self.githubAdminTokens = githubAdminTokens
     }
 
     /// 持ち主ごとのトークンで読んだ REST の上限の残りのうち、一番少ないもの。読めていなければ nil
@@ -71,12 +76,16 @@ public struct SelfCheck: Codable, Equatable, Sendable {
     }
 
     public var violations: [String] {
-        guard let githubTokens else { return [] }
+        Self.violations(of: githubTokens, name: "githubTokens") + Self.violations(of: githubAdminTokens, name: "githubAdminTokens")
+    }
+
+    private static func violations(of tokens: [GitHubToken]?, name: String) -> [String] {
+        guard let tokens else { return [] }
         var violations: [String] = []
-        if githubTokens.contains(where: { !Self.isOwnerName($0.owner) }) { violations.append("githubTokens.owner の形が違う") }
-        if Set(githubTokens.map(\.owner)).count != githubTokens.count { violations.append("githubTokens の持ち主が重なる") }
-        if githubTokens.contains(where: { $0.rateLimit.map { $0.limit < 0 || $0.remaining < 0 } == true }) {
-            violations.append("githubTokens.rateLimit の回数は 0 以上")
+        if tokens.contains(where: { !isOwnerName($0.owner) }) { violations.append("\(name).owner の形が違う") }
+        if Set(tokens.map(\.owner)).count != tokens.count { violations.append("\(name) の持ち主が重なる") }
+        if tokens.contains(where: { $0.rateLimit.map { $0.limit < 0 || $0.remaining < 0 } == true }) {
+            violations.append("\(name).rateLimit の回数は 0 以上")
         }
         return violations
     }

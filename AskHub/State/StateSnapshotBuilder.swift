@@ -319,12 +319,16 @@ struct StateSnapshotBuilder {
         [Mac.SelfCheck(name: "Keychain", isOK: check.keychain == .ok, detail: label(check.keychain))]
     }
 
-    /// 期限のあるトークン。持ち主ごとの内訳を書かない Mac（前の版）は、まとめた様子を 1 つにして出す
+    /// 期限のあるトークン。持ち主ごとの内訳を書かない Mac（前の版）は、まとめた様子を 1 つにして出す。
+    /// 管理用のトークンは、司令塔が置いた持ち主の分だけ、毎日のトークンの後に並べる
     private static func tokens(_ check: SelfCheck) -> [MacToken] {
         let github = check.githubTokens?.map { token in
             MacToken(kind: .github(owner: token.owner), state: state(token.state), expiresAt: token.expiresAt?.date)
         } ?? [MacToken(kind: .github(owner: nil), state: state(check.githubToken), expiresAt: check.githubTokenExpiresAt?.date)]
-        return github + [MacToken(kind: .claude, state: state(check.claudeToken), expiresAt: check.claudeTokenExpiresAt?.date)]
+        let admin = (check.githubAdminTokens ?? []).map { token in
+            MacToken(kind: .githubAdmin(owner: token.owner), state: state(token.state), expiresAt: token.expiresAt?.date)
+        }
+        return github + admin + [MacToken(kind: .claude, state: state(check.claudeToken), expiresAt: check.claudeTokenExpiresAt?.date)]
     }
 
     private static func state(_ state: SelfCheck.State) -> MacToken.State {

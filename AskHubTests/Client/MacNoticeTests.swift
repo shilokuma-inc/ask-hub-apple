@@ -60,6 +60,27 @@ struct MacNoticeTests {
         #expect(item.since == now.addingTimeInterval(-2 * day))
     }
 
+    /// 管理用のトークンは、切れても Mac の仕事を止めない。「止まっています」ではなく、時間のあるときに入れ直してもらう
+    @Test
+    func expiredAdminTokenAsksForRenewalWithoutStoppingMac() throws {
+        var snapshot = snapshot
+        snapshot.updateMac(DemoData.macMiniID) { mac in
+            mac.tokens = [token(days: 60), token(.githubAdmin(owner: "shariverse"), days: -1), token(.claude, days: 300)]
+        }
+        let items = InboxBuilder.items(from: snapshot, now: now)
+        let item = try #require(items.first { $0.id == "mac/\(DemoData.macMiniID)/token/github-admin/shariverse" })
+        #expect(item.urgency == .whenFree)
+        #expect(item.title == "管理用のトークンを入れ直す")
+        #expect(item.detail == "管理用のトークン（shariverse）が切れました。保護の設定と対象に加えるときの準備を断ります · askhub-commander admin-token shariverse")
+        let admin = token(.githubAdmin(owner: "shariverse"), days: -1)
+        #expect(!admin.isStopped(now: now))
+        #expect(admin.isUnusable(now: now))
+        #expect(admin.detail(now: now) == "期限が切れています")
+        // 期限が近いときは、毎日のトークンと同じく入れ直しを知らせる
+        let soon = token(.githubAdmin(owner: "shariverse"), days: 5)
+        #expect(soon.status(now: now) == .expiringSoon(daysLeft: 5))
+    }
+
     /// 状態リポジトリのトークンが切れて印を書けない Mac も、しばらくは知らせる。長くオフラインの Mac では知らせない
     @Test
     func tokenNoticeStopsForLongOfflineMac() {
@@ -208,7 +229,8 @@ struct MacNoticeTests {
                 {"checkedAt":"2027-01-15T07:50:00Z","keychain":"ok","githubToken":"ok","claudeToken":"ok",
                  "githubTokenExpiresAt":"2027-01-20T00:00:00Z","claudeTokenExpiresAt":"2027-11-01T00:00:00Z",
                  "githubTokens":[{"owner":"shilokuma-inc","state":"ok","expiresAt":"2027-01-20T00:00:00Z"},
-                                 {"owner":"mrs1669","state":"ok"}]}
+                                 {"owner":"mrs1669","state":"ok"}],
+                 "githubAdminTokens":[{"owner":"shilokuma-inc","state":"expired","expiresAt":"2027-01-10T00:00:00Z"}]}
                 """),
             "macs/macbook-a.json": heartbeat(mac: "macbook-a", kind: "resident", claude: "2.1.316", selfCheck: """
                 {"checkedAt":"2027-01-15T07:50:00Z","keychain":"ok","githubToken":"expired","claudeToken":"ok",
@@ -222,7 +244,12 @@ struct MacNoticeTests {
         #expect(snapshot.sourceFailures.isEmpty)
 
         let mini = try #require(snapshot.macs.first { $0.id == "mac-mini" })
-        #expect(mini.tokens.map(\.kind) == [.github(owner: "shilokuma-inc"), .github(owner: "mrs1669"), .claude])
+        #expect(mini.tokens.map(\.kind) == [
+            .github(owner: "shilokuma-inc"), .github(owner: "mrs1669"), .githubAdmin(owner: "shilokuma-inc"), .claude
+        ])
+        // 管理用のトークンが切れていても、司令塔は止まっていない
+        #expect(mini.tokens[2].status(now: now) == .stopped(.expired))
+        #expect(mini.renewalCommand(for: mini.tokens[2]) == "askhub-commander admin-token shilokuma-inc")
         #expect(mini.tokens.first?.status(now: now) == .expiringSoon(daysLeft: 5))
         #expect(mini.tokens[1].status(now: now) == .ok(daysLeft: nil))
         #expect(mini.claudeVersion == "2.1.320")

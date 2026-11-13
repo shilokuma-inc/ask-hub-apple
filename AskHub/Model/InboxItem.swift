@@ -238,6 +238,11 @@ enum InboxBuilder {
                 title = "トークンを入れ直す"
                 detail = "\(token.name)があと \(days) 日で切れます"
                 since = token.expiresAt.map { $0.addingTimeInterval(-MacToken.renewalNotice) } ?? lastSeen
+            case .stopped(let state) where !token.stopsWork:
+                // 管理用のトークンは、管理の操作を断るだけで仕事は止めないので、時間のあるときに入れ直してもらう
+                title = "管理用のトークンを入れ直す"
+                detail = "\(token.name)が\(state == .expired ? "切れました" : "使えません")。保護の設定と対象に加えるときの準備を断ります"
+                since = token.expiresAt.map { min($0, lastSeen) } ?? lastSeen
             case .stopped(let state):
                 title = state == .expired ? "トークンの期限が切れて止まっています" : "トークンが使えず止まっています"
                 detail = token.name
