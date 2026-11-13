@@ -6,6 +6,15 @@ extension EpicIntentsTests {
     static let protectionKinds: [Kind] = [
         Kind(vectors: "payloads/applyProtection.json", kind: "applyProtection", target: nil, targetVersion: nil) {
             try ApplyProtectionIntent(envelope: $0).payload
+        },
+        Kind(
+            vectors: "payloads/approveSetupPullRequest.json",
+            kind: "approveSetupPullRequest",
+            target: .init(type: "setupPullRequest", id: "12"),
+            targetVersion: head
+        ) {
+            _ = try ApproveSetupPullRequestIntent(envelope: $0)
+            return [:]
         }
     ]
 }
@@ -80,5 +89,33 @@ struct ProtectionProtocolTests {
         #expect(protection.remaining == [.init(kind: .organizationRuleset, name: "org-default")])
         #expect(protection.drift?.problems == ["必須のチェックが変わった（今は 無し）"])
         #expect(protection.drift?.foundAt.rawValue == "2026-11-14T04:00:00Z")
+    }
+
+    @Test func readsSetupApprovalTarget() throws {
+        let head = String(repeating: "a", count: 40)
+        let make = { (target: IntentEnvelope.Target?, version: String?) in
+            IntentEnvelope(
+                kind: ApproveSetupPullRequestIntent.kind,
+                repo: RepositoryFullName(rawValue: "shilokuma-inc/askhub-sandbox"),
+                target: target,
+                targetVersion: version,
+                payload: [:],
+                issuedAt: Timestamp(rawValue: "2026-11-13T10:00:00Z")!,
+                nonce: ULID(rawValue: "01JCN0NCE00000000000000001")!,
+                keyId: KeyID(rawValue: String(repeating: "k", count: 43))!
+            )
+        }
+        let intent = try ApproveSetupPullRequestIntent(envelope: make(.init(type: "setupPullRequest", id: "12"), head))
+        #expect(intent.pullRequest == 12)
+        #expect(intent.head == head)
+        #expect(intent.target == .init(type: "setupPullRequest", id: "12"))
+        for (target, version) in [
+            (IntentEnvelope.Target(type: "setupPullRequest", id: "012"), head),
+            (IntentEnvelope.Target(type: "setupPullRequest", id: "0"), head),
+            (IntentEnvelope.Target(type: "finalPullRequest", id: "12"), head),
+            (IntentEnvelope.Target(type: "setupPullRequest", id: "12"), "main")
+        ] {
+            #expect(throws: MalformedIntent.self) { try ApproveSetupPullRequestIntent(envelope: make(target, version)) }
+        }
     }
 }

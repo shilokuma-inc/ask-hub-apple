@@ -159,6 +159,9 @@ struct AskHubClientTests {
         #expect(try ConfigureRepositoryIntent(envelope: envelope(.configureRepository(Self.repo, build: build))).build == build)
         let checks = ["build / build", "lint"]
         #expect(try ApplyProtectionIntent(envelope: envelope(.applyProtection(Self.repo, requiredChecks: checks))).requiredChecks == checks)
+        let head = String(repeating: "b", count: 40)
+        let approval = try ApproveSetupPullRequestIntent(envelope: envelope(.approveSetupPullRequest(Self.repo, number: 12, head: head)))
+        #expect(approval.pullRequest == 12 && approval.head == head)
     }
 
     @Test func intentWrittenBeforeLostResponseIsSent() async throws {

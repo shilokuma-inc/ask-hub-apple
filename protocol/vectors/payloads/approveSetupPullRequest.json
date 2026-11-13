@@ -1,0 +1,20 @@
+{
+  "description": "準備の PR のマージを承認する人の意図の payload の例。read は、target が setupPullRequest の PR の番号で、targetVersion が head のコミットのときに、読む側が承認として読めるか",
+  "schema": "payloads/approveSetupPullRequest.schema.json",
+  "cases": [
+    {
+      "name": "empty",
+      "payload": {},
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "force": true
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

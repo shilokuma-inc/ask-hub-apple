@@ -281,9 +281,15 @@ public struct DecideSplitHandler: IntentHandler {
     }
 }
 
-/// 対象に加える（`addRepository`）を受け付け、`repo.json` を作る。段階 2 では設定を書くだけで、GitHub 側の準備（保護・Discussions）は後で足す
+/// 対象に加える（`addRepository`）を受け付け、`repo.json` を作る。管理用のトークンを持つ司令塔なら、続けて GitHub 側の準備
+/// （Discussions・ワークフローの直しの PR。`RepositorySetupStep`）を流す。保護は掛けない（人が保護の設定を押したときだけ）
 public struct AddRepositoryHandler: IntentHandler {
-    public init() {}
+    /// GitHub 側の準備に使う管理用のトークン。nil（ワーカー・テスト）なら準備を流さない
+    public var admin: AdminGitHub?
+
+    public init(admin: AdminGitHub? = nil) {
+        self.admin = admin
+    }
 
     public func handle(_ envelope: IntentEnvelope, in context: CommanderContext) async throws(CommanderError) -> IntentDecision {
         let add: AddRepositoryIntent
@@ -311,6 +317,8 @@ public struct AddRepositoryHandler: IntentHandler {
         } catch {
             throw .files(error)
         }
+        // 加え直したとき（準備をやり直す）も流す。準備が止まっても、加えるのは受け付ける
+        if let admin { try await RepositorySetupStep(admin: admin).run(for: add.repo, in: context) }
         return .accept
     }
 }

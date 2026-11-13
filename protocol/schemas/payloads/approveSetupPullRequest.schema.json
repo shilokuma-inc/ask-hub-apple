@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/approveSetupPullRequest.schema.json",
+  "title": "ワークフローを直す準備の PR のマージを承認する人の意図（kind が approveSetupPullRequest）の payload",
+  "description": "封筒の repo が対象のリポジトリ、target が { type: setupPullRequest, id: <PR の番号> }、targetVersion が人が見たときの PR の head のコミット。payload は空。司令塔が管理用のトークンで、この head のままマージする",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

@@ -72,7 +72,6 @@
 
 - 最終 PR の本文（`FinalPullRequestBody.swift`）が、まだ出来ない実機確認の「確認した」「問題あり」を頼んでいる（段階 4 の 2）
 - `JobKind` の `rerunChecks`・`integrateDevelop`・`notify` は名前だけで、作らなかった。流し直しは `reviewTask`・`reviewFinalPullRequest` の中で、base の取り込みは最終 PR のコンフリクトの直し（`fixFinalPullRequest` の `conflict`）で扱う
-- `addRepository` の処理（`EpicHandlers.swift`）のコメントが「GitHub 側の準備は後で足す」のまま（段階 4 の 4）
 - ワーカーと司令塔の配り方: 文書（[operations.md](operations.md) の「署名と公証」。PR #1066）は、どれも常時オンの Mac で Developer ID の署名をして配る形だが、今 Developer ID で署名しているのは司令塔だけで、MacBook Pro のワーカーはアドホック署名（段階 4 の 1。#1064・#1065）
 - 各リポジトリの Secrets は、文書（[security.md](security.md) の「public のリポジトリと Secrets」）では Environment の Secrets だが、今は organization の Secrets（#1067）
 

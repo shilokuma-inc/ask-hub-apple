@@ -80,6 +80,56 @@
         { "type": "null" }
       ]
     },
+    "setup": {
+      "description": "対象に加えるときの GitHub 側の準備の結果。司令塔が addRepository を処理したとき（加え直したときも）に、管理用のトークンで流して書く。まだ流していなければ null",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["updatedAt"],
+          "additionalProperties": false,
+          "properties": {
+            "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+            "discussions": {
+              "anyOf": [{ "enum": ["ready", "missingCategory", "unknown"] }, { "type": "null" }],
+              "description": "ready は Discussions が有効でカテゴリ Ideas がある、missingCategory は Ideas が無い（人が作る）、unknown は有効にできない・確かめられない（理由は problems）"
+            },
+            "workflows": {
+              "description": "ワークフローを直す、決まった手順の PR。確かめられなかったら null",
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["state", "changes"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "state": { "enum": ["notNeeded", "open", "merged", "closed"] },
+                    "pullRequest": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
+                    "head": { "anyOf": [{ "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40 }, { "type": "null" }], "description": "PR を出したときの head。承認（approveSetupPullRequest）はこれに結びつく" },
+                    "changes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["kind", "path"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": { "enum": ["removeLegacy", "removePathFilters"] },
+                          "path": { "type": "string", "minLength": 1, "maxLength": 1000 }
+                        }
+                      }
+                    }
+                  }
+                },
+                { "type": "null" }
+              ]
+            },
+            "problems": {
+              "anyOf": [{ "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 1000 } }, { "type": "null" }],
+              "description": "準備を止めた・できなかった理由（人が読む文。管理用のトークンが無い など）"
+            }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
     "addedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
     "removedAt": {
       "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }],

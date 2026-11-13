@@ -63,7 +63,7 @@ extension AskHubMain {
         }
     }
 
-    /// 対象のリポジトリの設定の意図（対象に加える・ビルドの設定・保護の設定）
+    /// 対象のリポジトリの設定の意図（対象に加える・ビルドの設定・保護の設定・準備の PR の承認）
     static func repositoryDraft(_ command: String, _ arguments: CommandArguments) throws -> IntentDraft {
         switch command {
         case "add-repository":
@@ -72,6 +72,11 @@ extension AskHubMain {
         case "configure-repository":
             try arguments.only(["repo", "file"])
             return .configureRepository(try arguments.repository(), build: try build(at: try arguments.string("file")))
+        case "approve-setup":
+            try arguments.only(["repo", "pr", "head"])
+            let head = try arguments.string("head")
+            guard AttemptFile.isCommitSHA(head) else { throw CommandArguments.Failure(message: "--head は 40 桁のコミット") }
+            return .approveSetupPullRequest(try arguments.repository(), number: try arguments.integer("pr", minimum: 1), head: head)
         default:
             try arguments.only(["repo", "checks"])
             return .applyProtection(try arguments.repository(), requiredChecks: try requiredChecks(arguments))
@@ -98,7 +103,7 @@ extension AskHubMain {
 
     static func draft(_ command: String, _ arguments: CommandArguments) throws -> IntentDraft {
         switch command {
-        case "add-repository", "configure-repository", "apply-protection":
+        case "add-repository", "configure-repository", "apply-protection", "approve-setup":
             return try repositoryDraft(command, arguments)
         case "request":
             try arguments.only(["repo", "title", "body"])
