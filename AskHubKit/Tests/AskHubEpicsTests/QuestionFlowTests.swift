@@ -287,6 +287,44 @@ struct QuestionFlowTests {
         _ = checked(try Flow.revise("q2", basis: basis("q2", in: file), outcome: .keep, in: file))
     }
 
+    // MARK: - 止まった見直し
+
+    @Test func revisionWithoutPendingJobOfCurrentBasisIsRequestedAgain() throws {
+        var file = try Flow.start([Fixtures.draft("q1"), Fixtures.draft("q2", dependsOn: ["q1"]), Fixtures.draft("q4", dependsOn: ["q1"])])
+            .questions
+        file = try accept(Fixtures.answer("q1", intent: 1), file).questions
+        let old = basis("q2", in: file)
+        // 見直しを頼んだ後に回答の意図だけが差し替わった（前の司令塔が、同じ回答の 2 回目で書き換えた）
+        file.questions[0].answer?.intent = Fixtures.intent(2)
+        let current = basis("q2", in: file)
+        #expect(Flow.stalledRevisions(in: file, pending: [("q2", current), ("q4", basis("q4", in: file))]).isEmpty)
+        #expect(Flow.stalledRevisions(in: file, pending: [("q2", old), ("q4", old)]) == [
+            .revise(question: "q2", basis: current), .revise(question: "q4", basis: basis("q4", in: file))
+        ])
+        // 見直していない質問は頼み直さない
+        file = try checked(Flow.revise("q2", basis: current, outcome: .keep, in: file)).questions
+        #expect(Flow.stalledRevisions(in: file, pending: []) == [.revise(question: "q4", basis: basis("q4", in: file))])
+    }
+
+    @Test func revisionOriginIsLatestAnswerOfDependencies() throws {
+        let drafts = [
+            Fixtures.draft("q1"), Fixtures.draft("q2"),
+            Fixtures.draft("q3", dependsOn: ["q1", "q2"]), Fixtures.draft("q4", dependsOn: ["q3"])
+        ]
+        var file = try Flow.start(drafts).questions
+        #expect(Flow.revisionOrigin(of: "q3", in: file) == nil)
+        file = try accept(Fixtures.answer("q2", intent: 7), file).questions
+        file = try accept(Fixtures.answer("q1", intent: 3), file).questions
+        // 同じ時刻に受け付けた回答は、意図の番号の大きいほう（後に出したほう）
+        #expect(Flow.revisionOrigin(of: "q3", in: file) == Fixtures.intent(7))
+        file.questions[0].answer?.at = Timestamp(Fixtures.now.date.addingTimeInterval(60))
+        #expect(Flow.revisionOrigin(of: "q3", in: file) == Fixtures.intent(3))
+        // 依存先が要らなくなったら、その先の回答をたどる
+        file = try checked(Flow.revise("q3", basis: basis("q3", in: file), outcome: .drop(reason: "…"), in: file)).questions
+        #expect(file.question("q4")?.state == .revising)
+        #expect(Flow.revisionOrigin(of: "q4", in: file) == Fixtures.intent(3))
+    }
+
     // MARK: - 慎重に決めてほしい理由
 
     @Test func cautionIsCarriedFromDraftAndReplacedByRewrite() throws {
