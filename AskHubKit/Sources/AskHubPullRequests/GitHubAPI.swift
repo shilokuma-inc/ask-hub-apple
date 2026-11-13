@@ -30,6 +30,11 @@ struct GitHubAPI: Sendable {
         return url
     }
 
+    /// `repos/<owner>/<repo>`（リポジトリそのもの）の URL
+    func repositoryURL() -> URL {
+        apiBase.appendingPathComponent("repos/\(repository.owner)/\(repository.name)")
+    }
+
     /// 要求を送り、2xx なら本文を返す。それ以外は失敗の種類に分ける
     func send(
         _ method: String,

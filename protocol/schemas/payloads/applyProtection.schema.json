@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/applyProtection.schema.json",
+  "title": "保護の設定を掛ける人の意図（kind が applyProtection）の payload",
+  "description": "封筒の repo が対象のリポジトリ（対象に加えた後に送る）。target と targetVersion は持たない。司令塔が管理用のトークンで、develop・main・release/** にルールセット askhub-protect（PR 必須・必須のチェック・force push と削除の禁止・例外なし）を掛け、重なるクラシックの保護とリポジトリのルールセットを外す",
+  "type": "object",
+  "required": ["requiredChecks"],
+  "additionalProperties": false,
+  "properties": {
+    "requiredChecks": { "$ref": "#/$defs/requiredChecks" }
+  },
+  "$defs": {
+    "requiredChecks": {
+      "description": "必須にするチェックの名前（REST の check run の name。再利用ワークフローのジョブは build / build の形）。GitHub Actions が出したものだけを通す。重ならない",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+    }
+  }
+}

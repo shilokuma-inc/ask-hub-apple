@@ -12,6 +12,38 @@ public enum RepositoryPlatform: String, Codable, Sendable, CaseIterable {
     case apple
 }
 
+/// 保護を掛けたときに外した・外せずに残った、重なる保護（`repo.json` の `protection.replaced`・`remaining`）
+public struct ExistingProtection: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable, CaseIterable {
+        /// クラシックのブランチ保護（`name` はパターン）
+        case classic
+        /// リポジトリのルールセット
+        case ruleset
+        /// organization のルールセット（リポジトリの側からは外せない）
+        case organizationRuleset
+    }
+
+    public var kind: Kind
+    public var name: String
+
+    public init(kind: Kind, name: String) {
+        self.kind = kind
+        self.name = name
+    }
+}
+
+/// 掛けたルールセットのずれ（`repo.json` の `protection.drift`。人が読む文）。ずれていなければ `drift` を nil にする
+public struct ProtectionDrift: Codable, Equatable, Sendable {
+    /// 今のずれを見つけた時刻（ずれの中身が変わったときだけ書き直す）
+    public var foundAt: Timestamp
+    public var problems: [String]
+
+    public init(foundAt: Timestamp, problems: [String]) {
+        self.foundAt = foundAt
+        self.problems = problems
+    }
+}
+
 /// `repos/<owner>/<repo>/repo.json`（対象のリポジトリの設定）。司令塔だけが書く
 public struct RepositoryFile: StateFile {
     public static let formatVersion = 1
@@ -25,12 +57,50 @@ public struct RepositoryFile: StateFile {
         }
     }
 
+    /// ブランチの保護（ルールセット `askhub-protect`。`ProtectionPolicy`）。司令塔が、人の保護の設定（`applyProtection`）を処理して書き、
+    /// 掛けた後のずれ（`drift`）を定期的に点検して書く
     public struct Protection: Codable, Equatable, Sendable {
         /// 人がクライアントで押して、保護を設定した時刻。まだなら nil
         public var appliedAt: Timestamp?
+        /// 必須にしたチェックの名前（`applyProtection` の `requiredChecks`）
+        public var requiredChecks: [String]?
+        /// 掛けたルールセットの id
+        public var rulesetId: Int?
+        /// 掛けたときに外した、重なる保護
+        public var replaced: [ExistingProtection]?
+        /// 外せずに残った、重なる保護（organization のルールセット）
+        public var remaining: [ExistingProtection]?
+        /// 掛けた後のずれ。ずれていない・まだ確かめていなければ nil
+        public var drift: ProtectionDrift?
 
-        public init(appliedAt: Timestamp? = nil) {
+        public init(
+            appliedAt: Timestamp? = nil,
+            requiredChecks: [String]? = nil,
+            rulesetId: Int? = nil,
+            replaced: [ExistingProtection]? = nil,
+            remaining: [ExistingProtection]? = nil,
+            drift: ProtectionDrift? = nil
+        ) {
             self.appliedAt = appliedAt
+            self.requiredChecks = requiredChecks
+            self.rulesetId = rulesetId
+            self.replaced = replaced
+            self.remaining = remaining
+            self.drift = drift
+        }
+
+        var problems: [String] {
+            var problems: [String] = []
+            if let requiredChecks { problems += ProtectionPolicy.problems(ofRequiredChecks: requiredChecks) }
+            if let rulesetId, rulesetId < 1 { problems.append("protection.rulesetId は 1 以上") }
+            let existing = (replaced ?? []) + (remaining ?? [])
+            if existing.contains(where: { $0.name.isEmpty || $0.name.unicodeScalars.count > 300 }) {
+                problems.append("protection の外した・残った保護の名前は空でなく、300 文字まで")
+            }
+            if let drift, drift.problems.isEmpty || drift.problems.contains(where: { $0.isEmpty || $0.unicodeScalars.count > 500 }) {
+                problems.append("protection.drift.problems は 1 つ以上で、空でなく 500 文字まで")
+            }
+            return problems
         }
     }
 
@@ -107,6 +177,7 @@ public struct RepositoryFile: StateFile {
         if let appKit, appKit.ref.isEmpty { violations.append("appKit.ref が空") }
         violations += build?.problems ?? []
         violations += icon?.problems ?? []
+        violations += protection.problems
         return violations
     }
 }
