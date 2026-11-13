@@ -44,7 +44,10 @@ public struct AnswerHandler: IntentHandler {
         }
         let resumptions = change.effects.filter { if case .resume = $0 { true } else { false } }
         try await context.perform(change.effects.filter { !resumptions.contains($0) }, for: epic, origin: answer.intent)
-        try await context.write(change.questions, replacing: questions, of: epic, message: "回答を受け付ける")
+        // 同じ答えの送り直しなど、質問の一覧が変わらないときは書かない
+        if change.questions != questions {
+            try await context.write(change.questions, replacing: questions, of: epic, message: "回答を受け付ける")
+        }
         try await context.perform(resumptions, for: epic, origin: answer.intent)
         return .accept
     }

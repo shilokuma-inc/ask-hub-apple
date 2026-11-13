@@ -104,6 +104,23 @@ struct IntentIntakeTests {
         #expect(try await questions(in: store).question("q2")?.state == .revising)
     }
 
+    /// 同じ答えがもう一度届いても、回答の記録と見直しのジョブはそのまま（見直しの結果が古いとみなされて捨てられない）
+    @Test func sameAnswerAgainKeepsRecordAndReviseJob() async throws {
+        let (intake, store) = try await setUp([draft("q1"), draft("q2", dependsOn: ["q1"])])
+        let first = try await put("q1", in: store)
+        _ = try await intake.processPending()
+        let before = try await questions(in: store)
+        let writes = await store.writeCount
+        let again = try await put("q1", nonce: .generate(at: Self.now.addingTimeInterval(1)), in: store)
+        #expect(try await intake.processPending() == [.accepted(kind: "answer")])
+        #expect(try await consumed(again, in: store)?.result == .accepted)
+        #expect(try await questions(in: store) == before)
+        #expect(try await questions(in: store).question("q1")?.answer?.intent.nonce == first)
+        #expect(try await jobs(in: store).map(\.kind) == [.reviseQuestion])
+        // 書いたのは処理した記録だけ
+        #expect(await store.writeCount == writes + 1)
+    }
+
     @Test func lastAnswerStartsReadinessCheck() async throws {
         let (intake, store) = try await setUp([draft("q1")])
         try await put("q1", in: store)
