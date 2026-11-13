@@ -45,8 +45,8 @@ struct StateIntentMapper {
         case .publishRelease, .verify:
             supportsAfterMerge(intent)
 
-        case .cleanUp:
-            false
+        case .removeRepository, .cleanUp:
+            supportsRepositoryIntent(intent)
         }
     }
 
@@ -93,7 +93,7 @@ struct StateIntentMapper {
         case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
-        case .request, .addRepository:
+        case .request, .addRepository, .removeRepository:
             return try repositoryDraft(intent)
 
         case let .resolveBlocker(epicID, action, _, target):
@@ -117,7 +117,7 @@ struct StateIntentMapper {
         }
     }
 
-    private static let unsupported = ClientServiceError(message: "この操作は、まだ状態リポジトリに送れません")
+    static let unsupported = ClientServiceError(message: "この操作は、まだ状態リポジトリに送れません")
     /// 人が見た後に最終 PR が変わった（head が進んだ・答え待ちのカードが増えた）。見ていない状態に答えを結びつけないよう、送らない
     private static let updated = ClientServiceError(message: "最終 PR が更新されました。見直してから答えてください")
 
@@ -158,31 +158,6 @@ struct StateIntentMapper {
                 throw ClientServiceError(message: "開始した epic の取り下げは、まだ送れません")
             }
             return .abandonEpic(repo: epic.repo, epic: epic.id)
-
-        default:
-            throw Self.unsupported
-        }
-    }
-
-    private func repositoryDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
-        switch intent {
-        case let .request(repositoryID, summary, body, files):
-            guard summary.count <= RequestIntent.maximumTitleLength, body.count <= RequestIntent.maximumBodyLength else {
-                let limits = "要約は \(RequestIntent.maximumTitleLength) 文字、内容は \(RequestIntent.maximumBodyLength) 文字まで"
-                throw ClientServiceError(message: "\(limits)です")
-            }
-            // 司令塔は 1 から順の番号を求める（添付欄の順に振ったものを、そのまま送る）
-            guard files.count <= RequestIntent.maximumAttachments, files.enumerated().allSatisfy({ $1.attachment.number == $0 + 1 }) else {
-                throw ClientServiceError(message: "添付の番号が合いません。添付し直してください")
-            }
-            return .request(repo: try repository(repositoryID), title: summary, body: body, attachments: files.map(\.attachment))
-
-        case .addRepository(let repositoryID):
-            // 状態リポジトリにつないだときは候補の一覧が無いので、人が入れた owner/name を id にして送る
-            guard let repo = index.repositories[repositoryID] ?? RepositoryFullName(rawValue: repositoryID) else {
-                throw ClientServiceError(message: "owner/name の形で入れてください")
-            }
-            return .addRepository(repo)
 
         default:
             throw Self.unsupported
@@ -384,7 +359,7 @@ struct StateIntentMapper {
         return EpicTarget(repo: epic.repo, epic: epic.id, version: version)
     }
 
-    private func repository(_ id: TargetRepository.ID) throws(ClientServiceError) -> RepositoryFullName {
+    func repository(_ id: TargetRepository.ID) throws(ClientServiceError) -> RepositoryFullName {
         guard let repo = index.repositories[id] else {
             throw ClientServiceError(message: "このリポジトリは、まだ対象に加わっていません")
         }

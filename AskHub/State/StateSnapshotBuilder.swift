@@ -80,6 +80,10 @@ struct StateIndex {
     var questions: [Epic.ID: [Question.ID: QuestionEntry]] = [:]
     var repositories: [TargetRepository.ID: RepositoryFullName] = [:]
     var releases: [Release.ID: ReleaseEntry] = [:]
+    /// 対象から外したリポジトリ（加え直すときに、元の owner/name の書き方で送る）
+    var removedRepositories: [TargetRepository.ID: RepositoryFullName] = [:]
+    /// 終わっていない epic のあるリポジトリ（対象から外すと司令塔が断る）。処理を待つ意図を当てた後のもの
+    var busyRepositories: Set<TargetRepository.ID> = []
 }
 
 /// 状態リポジトリのファイル（`StateDocuments`）を、画面用のモデル（`ClientSnapshot`）に変える。
@@ -105,11 +109,12 @@ struct StateSnapshotBuilder {
     func build() -> (snapshot: ClientSnapshot, index: StateIndex) {
         var index = StateIndex()
         var epics = documents.epics.map { epic($0, index: &index) }
-        var repositories = documents.repositories.map { repository($0, epics: epics, index: &index) }
+        var repositories = documents.repositories.filter { !$0.isRemoved }.map { repository($0, epics: epics, index: &index) }
+        var removed = documents.repositories.filter(\.isRemoved).map { removedRepository($0, index: &index) }
         let overlaid = intentsToOverlay()
         // 古い順に当てる（同じ質問に答え直したときは、新しい回答が残る）
         for envelope in overlaid.reversed() {
-            apply(envelope, to: &epics, repositories: &repositories, index: &index)
+            apply(envelope, to: &epics, repositories: &repositories, removed: &removed, index: &index)
         }
         applyBlockers(to: &epics, overlaid: overlaid, index: &index)
         for epic in epics {
@@ -123,11 +128,13 @@ struct StateSnapshotBuilder {
             index.epics[epic.id]?.canAbandon = epic.isActive && epic.stage < .implementing
             applyPauseControls(of: epic, to: &index)
         }
+        index.busyRepositories = Set(epics.filter(\.isActive).map(\.repositoryID))
         applyRejections(to: &epics)
         let releases = releases(index: &index, overlaid: overlaid)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             candidateRepositories: [],
+            removedRepositories: removed.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             epics: epics.sorted { $0.updatedAt > $1.updatedAt },
             macs: macs(),
             fetchedAt: now,
@@ -147,6 +154,14 @@ struct StateSnapshotBuilder {
         repository.icon = Self.appIcon(of: file)
         repository.lastMacID = epics.filter { $0.repositoryID == repository.id && $0.macID != nil }
             .max { $0.updatedAt < $1.updatedAt }?.macID
+        return repository
+    }
+
+    /// 対象から外したリポジトリ。送るときは元の owner/name の書き方を使う
+    private func removedRepository(_ file: RepositoryFile, index: inout StateIndex) -> TargetRepository {
+        var repository = Self.repository(file.repo)
+        index.removedRepositories[repository.id] = file.repo
+        repository.icon = Self.appIcon(of: file)
         return repository
     }
 
