@@ -187,6 +187,9 @@
   止まった古い実行は queued のまま残るので、開き直した後は、それより新しい実行（id は作られた順に大きくなる）だけを見る。ワーカーは待つチェックが 10 分出なければ実行を読み、止まっていれば 1 回の待ちで 1 回だけ開き直す（2026-11-12、#1073）
 - 移したリポジトリのルールセット `askhub-protect` は develop・main・`release/**` のブランチだけが対象なので、タグの作成（`git push origin refs/tags/v1.0.0`・Git Data API の `POST git/refs`）は止めない。注釈付きのタグは tagger の名前とアドレスが public に残るので、手で付けるときもリポジトリのコミットと同じ（noreply の）アドレスにする（2026-11-12、OshiCon 1.0.0）
 - `GET /repos/{o}/{r}/actions/runs?created=<開始>..<終わり>`（ISO 8601 の範囲）で、作られた時刻で実行を絞れる。ビルドを上げた Upload の実行を、上げた時刻から探すのに使う（2026-11-12、配信の検知）
+- CI の `build / build` が、テストの失敗ではなく `cancelled`（チェックの表示は fail）で終わることがある。ジョブの注記に「The job was not acquired by Runner of type hosted even after multiple attempts」と
+  「Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times」が出ていれば、GitHub の macOS のランナーが足りずに打ち切られたもので、コードの問題ではない。
+  注記は `gh api repos/<owner>/<repo>/check-runs/<ジョブの id>/annotations` で読める（`--log-failed` にはログが出ない）。同じコミットのまま `gh run rerun <実行の id>` で流し直す（2026-11-13、#1084）
 
 ## ビルド・テスト
 
