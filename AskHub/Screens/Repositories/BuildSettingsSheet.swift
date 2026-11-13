@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// リポジトリの画面の「ビルドの設定」。入れていなければ、開始の前に要ることを出す。
-/// シートは List の外（リポジトリの画面）に付ける（List の中のセクションに付けると開かない）
+/// シートは List の外（リポジトリの画面）に付ける（List の中のセクションに付けたときは、開かないことがあった）
 struct BuildSettingsSection: View {
     let repository: TargetRepository
     @Binding var isEditing: Bool
