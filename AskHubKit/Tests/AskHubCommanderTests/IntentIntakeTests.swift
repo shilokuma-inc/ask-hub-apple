@@ -170,6 +170,19 @@ struct IntentIntakeTests {
         #expect(try await questions(in: store).question("q1")?.answer?.choice == "案2")
     }
 
+    @Test func sameAnswerTwiceKeepsFirstAnswerAndRevision() async throws {
+        let (intake, store) = try await setUp([draft("q1"), draft("q2", dependsOn: ["q1"])])
+        let first = try await put("q1", nonce: .generate(at: Self.now), in: store)
+        #expect(try await intake.processPending() == [.accepted(kind: "answer")])
+        let answered = try await questions(in: store)
+        // 同じ決定の 2 回目（二度押し・送り直し）は受け付けるが、前の回答の意図を残し、見直しを頼み直さない
+        try await put("q1", nonce: .generate(at: Self.now.addingTimeInterval(14)), in: store)
+        #expect(try await intake.processPending() == [.accepted(kind: "answer")])
+        #expect(try await questions(in: store) == answered)
+        #expect(answered.question("q1")?.answer?.intent.nonce == first)
+        #expect(try await jobs(in: store).count == 1)
+    }
+
     @Test func redoingAfterStopBeforeRecordDoesNotDuplicate() async throws {
         let (intake, store) = try await setUp([draft("q1"), draft("q2", dependsOn: ["q1"])])
         let nonce = try await put("q1", in: store)

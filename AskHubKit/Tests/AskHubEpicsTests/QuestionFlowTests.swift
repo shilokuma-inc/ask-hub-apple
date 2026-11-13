@@ -197,12 +197,33 @@ struct QuestionFlowTests {
         #expect(change.effects == [.revise(question: "q2", basis: expected)])
     }
 
-    @Test func sameAnswerAgainKeepsDependents() throws {
+    @Test func sameAnswerAgainChangesNothing() throws {
         let file = try answeredChain()
-        let change = try accept(Fixtures.answer("q1", intent: 4), file)
-        #expect(change.questions.states() == ["q1": .answered, "q2": .answered, "q3": .answered])
-        #expect(change.questions.question("q1")?.answer?.intent == Fixtures.intent(4))
-        #expect(change.effects == [.checkReadiness])
+        // 同じ決定の回答がもう一度届いても、前の回答の意図を残し、着手前の確認もやり直さない
+        for stage in [EpicStage.asking, .checking, .awaitingStart] {
+            let change = try accept(Fixtures.answer("q1", intent: 4), file, stage: stage)
+            #expect(change.questions == file)
+            #expect(change.effects.isEmpty)
+        }
+        // 自由記述が変われば、別の決定として答え直す
+        let noted = try accept(Fixtures.answer("q1", note: "祝日も", intent: 5), file)
+        #expect(noted.questions.question("q1")?.answer?.intent == Fixtures.intent(5))
+        #expect(noted.questions.states() == ["q1": .answered, "q2": .revising, "q3": .locked])
+    }
+
+    @Test func sameAnswerWhileDependentIsRevisingKeepsItsBasis() throws {
+        // 2026-11-13: 同じ回答が 2 回届き、2 回目で回答の意図が差し替わって、見直しの結果が basis の違いで捨てられた
+        var file = try Flow.start([Fixtures.draft("q1"), Fixtures.draft("q2", dependsOn: ["q1"]), Fixtures.draft("q4", dependsOn: ["q1"])])
+            .questions
+        let first = try accept(Fixtures.answer("q1", intent: 1), file)
+        file = first.questions
+        let requested = basis("q2", in: file)
+        #expect(first.effects.contains(.revise(question: "q2", basis: requested)))
+        let again = try accept(Fixtures.answer("q1", intent: 2), file)
+        #expect(again.questions == file)
+        #expect(again.effects.isEmpty)
+        let revised = checked(try Flow.revise("q2", basis: requested, outcome: .keep, in: again.questions))
+        #expect(revised.questions.question("q2")?.state == .open)
     }
 
     @Test func relockCancelsWorkInProgressAndDropsPendingQuestion() throws {
