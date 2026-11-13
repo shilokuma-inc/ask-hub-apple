@@ -193,6 +193,11 @@
 - テンプレート由来のリポジトリを移すときは、CLAUDE.md と `build.yml` だけでなく、README の「ブランチ運用と CI」の表と説明も直す。
   表の「Pull Request の作成時 ✅」のままだと、`askhub/**` 宛ての子 PR（PR のイベントでは Build が動かない）にも当たるように読める。
   子 PR と最終 PR（更新でも UI テストまで流す）の行を足し、`.coderabbit.yaml` の「ループには触らせない」のような ralph-loop の言い回しも直す（2026-11-12、shariverse/oshikatsu-countdown-ios#163）
+- Contents API の PUT は、通信が応答の前後で切れた・応答を読めない・5xx でも、GitHub が書いた後のことがある。失敗として送り直すと別の番号の同じ意図になり、
+  司令塔に同じ回答が 2 回届いた（2026-11-13、askhub-sandbox の epic。1 回目の受け付けより前に 2 回目が届いた）。`IntentSender` は、書いたかもしれない失敗のときに同じパスを読み直し、
+  同じ中身があれば送れたことにする（`mayHaveWritten`。上限・権限・取り消しは読み直さない）（2026-11-14、#1103）
+- 状態リポジトリの実データで司令塔の処理を確かめたいときは、`askhub-state` を `git clone` し（REST の上限に数えない）、一時的なテストで epic のファイル（`epic.json`・`questions.json`・`jobs/`）を
+  `InMemoryStateStore` に `put` して流す。実データを読むパスは環境変数で渡し、テストはコミットしない（2026-11-14、#1103 の止まった見直しの頼み直し）
 
 ## ビルド・テスト
 
@@ -592,6 +597,11 @@
   SwiftUI は色を裏のスレッド（`com.apple.SwiftUI.AsyncRenderer`）で決めることがあり、そのとき実行時の確かめ（`_swift_task_checkIsolatedSwift`）で `EXC_BREAKPOINT` で落ちる。処理を `@Sendable` にして縛らない
 - ジョブの `attempts` は、試行の前に人に渡したジョブ（直しの上限を超えた `fixTask`・`fixFinalPullRequest`）では 0 のまま `waitingHuman` になる。試行の番号を読む・使うところでは 0 を考える。
   `StatePath.attempt` は 1 以上の precondition で止まり（`askhub status` が止まった。#1039）、質問の版の読み方（`AnswerIntent.version`。1 以上）を流用した `JobTarget` は、やり直しの `targetVersion` の `"0"` を断っていた（2026-11-12、#1043）
+- 司令塔が人の意図の参照（鍵と番号）を、頼んだ後に変わったかの比べ（見直しの `RevisionBasis`）に入れているときに、同じ決定の回答で意図だけを差し替えると、
+  比べが合わずに結果が捨てられ、新しいジョブも作られずに質問が `revising` のまま止まった（2026-11-13）。同じ決定の意図は前のものを残して何も書かない（冪等にする）。
+  結果を捨てる比べがあるなら、捨てた後に作り直す見回り（`RevisionRestart`。今の basis のジョブが無い `revising` を探す）も一緒に用意する（2026-11-14、#1103）
+- アプリの `ReflectionTracker.reflection(…, excluding:)` は、まとめて OK の残りを送り直せるよう、同じ `HumanIntent` が送った分を数えない。そのため同じ回答の 2 回目は、
+  窓口の控え（`lastSend`）で見つからないと止まらなかった。1 つの意図で済む操作は、この起動で受け取り待ちの同じ操作が対象のすべてを覆っていれば送らない（`isAwaitingAll`）（2026-11-14、#1103）
 
 ## シェルスクリプト
 
