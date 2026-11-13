@@ -36,6 +36,8 @@ public struct AnswerHandler: IntentHandler {
         } catch {
             return .reject(error.reason)
         }
+        // 同じ決定の回答がもう一度届いた。前の回答のまま、何も書かずに受け付ける
+        if change.questions == questions && change.effects.isEmpty { return .accept }
         // 実装の途中の質問の答えは、質問したジョブを再開する。ジョブが読めなければ、再開できないので受け付けない
         for case let .resume(question, job) in change.effects {
             guard try await read(JobFile.self, at: StatePath.job(epic.repo, epic: epic.id, job: job), in: context) != nil else {

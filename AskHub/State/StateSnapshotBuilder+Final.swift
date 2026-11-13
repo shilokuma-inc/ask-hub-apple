@@ -61,7 +61,7 @@ extension StateSnapshotBuilder {
             mergePolicy: manualReasons.isEmpty ? .automatic : .manual(manualReasons),
             decisions: cards,
             internalDecisions: items.filter { $0.visible == false }.map(\.what),
-            verifications: [],
+            verifications: verifications(of: epicDocuments, pullRequest: number, index: &index),
             screenChanges: (decisions?.screens ?? []).map(Self.screenChange),
             state: state,
             acceptsApproval: canApprove

@@ -100,7 +100,8 @@ public actor AppIconSync {
     @discardableResult
     func refresh(_ repo: RepositoryFullName) async throws -> Bool {
         let path = StatePath.repository(repo)
-        guard let file = try await context.readable(RepositoryFile.self, at: path),
+        // 対象から外したリポジトリは見ない（GitHub に触れない）
+        guard let file = try await context.readable(RepositoryFile.self, at: path), !file.isRemoved,
               let found = try await source.locate(repo, base: file.build?.baseBranch) else { return false }
         if file.icon?.source == found.path, file.icon?.sourceTree == found.tree { return false }
         let png = try await source.render(found, of: repo)

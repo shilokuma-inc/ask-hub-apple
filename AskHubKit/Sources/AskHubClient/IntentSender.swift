@@ -72,6 +72,11 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: AddRepositoryIntent.kind, repo: repo, payload: ["platform": .string(platform.rawValue)])
     }
 
+    /// 対象から外す（終わっていない epic があれば司令塔が断る。状態リポジトリのファイルは残る）
+    public static func removeRepository(_ repo: RepositoryFullName) -> Self {
+        Self(kind: RemoveRepositoryIntent.kind, repo: repo)
+    }
+
     /// ビルドの設定を入れる（対象に加えた後に送る。`repo.json` の `build` をまるごと置き換える）
     public static func configureRepository(_ repo: RepositoryFullName, build: RepositoryFile.Build) -> Self {
         Self(kind: ConfigureRepositoryIntent.kind, repo: repo, payload: ConfigureRepositoryIntent.payload(for: build))
@@ -128,6 +133,30 @@ public struct IntentDraft: Equatable, Sendable {
             target: target.target,
             targetVersion: target.targetVersion,
             payload: file.map { ["attachments": .array([$0.jsonValue])] } ?? [:]
+        )
+    }
+
+    /// 実機確認への答え（「問題あり」は説明が要る。直してほしいことは、別に依頼として送る）
+    public static func verify(_ target: VerificationTarget, result: VerifyIntent.Result, note: String = "") -> Self {
+        var payload: [String: JSONValue] = ["result": .string(result.rawValue)]
+        if !note.isEmpty { payload["note"] = .string(note) }
+        return Self(
+            kind: VerifyIntent.kind,
+            repo: target.repo,
+            target: target.target,
+            targetVersion: target.targetVersion,
+            payload: payload
+        )
+    }
+
+    /// 配信した版のリリース文を確かめて、GitHub Release を公開する（`notes` は公開する本文。下書きのままでも、直したものでもよい）
+    public static func publishGitHubRelease(_ target: ReleaseTarget, notes: String) -> Self {
+        Self(
+            kind: PublishGitHubReleaseIntent.kind,
+            repo: target.repo,
+            target: target.target,
+            targetVersion: target.targetVersion,
+            payload: ["notes": .string(notes)]
         )
     }
 
@@ -234,17 +263,27 @@ public struct IntentSender: Sendable {
             throw .signing(error)
         }
         let stored = JSONValue.object(["envelope": value, "sig": .string(signature)])
+        let path = StatePath.intent(device: key.keyID, nonce: nonce)
+        let data = CanonicalJSON.data(for: stored)
         do {
-            _ = try await store.write(
-                StatePath.intent(device: key.keyID, nonce: nonce),
-                data: CanonicalJSON.data(for: stored),
-                replacing: nil,
-                message: "[intent] \(draft.kind)"
-            )
+            _ = try await store.write(path, data: data, replacing: nil, message: "[intent] \(draft.kind)")
         } catch {
-            throw .store(error)
+            // 応答を受け取れなかった・読めなかったときは、GitHub が書いた後のことがある。読み直して同じ中身があれば、送れたことにする
+            // （失敗として送り直すと、別の番号の同じ意図になる。2026-11-13、同じ回答が 2 回届いた）
+            guard Self.mayHaveWritten(error), (try? await store.read(path))?.data == data else { throw .store(error) }
         }
         return IntentReference(keyId: key.keyID, nonce: nonce)
+    }
+
+    /// 書き込みが失敗に見えても、書けていることがある失敗（応答の前後で通信が切れた・応答を読めない・GitHub の障害・ぶつかった）
+    static func mayHaveWritten(_ error: StateStoreError) -> Bool {
+        switch error {
+        case .transport, .unexpected, .serverError, .conflict:
+            true
+        case .rateLimited, .budgetExhausted, .unauthorized, .tokenUnavailable, .forbidden, .notFound, .redirected, .wrongKind, .invalidPath,
+             .cancelled:
+            false
+        }
     }
 }
 

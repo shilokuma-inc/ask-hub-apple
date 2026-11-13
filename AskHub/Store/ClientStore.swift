@@ -298,7 +298,9 @@ final class ClientStore {
         guard !unsent.contains(intent) else {
             return .skipped(.alreadySent)
         }
-        if !intent.isRequest, service.lastSend(of: intent)?.isWaiting == true {
+        // この起動で送って司令塔の受け取りを待っている同じ操作も、送り直さない（窓口の控えで見つからなくても。二度押し・送り直しで、
+        // 同じ回答が別の番号で 2 回届かないように）
+        if !intent.isRequest, service.lastSend(of: intent)?.isWaiting == true || reflections.isAwaitingAll(of: intent) {
             clearFailure(of: intent)
             if announces {
                 announce(SendNotice(message: "\(intent.label)は送ってあります"))

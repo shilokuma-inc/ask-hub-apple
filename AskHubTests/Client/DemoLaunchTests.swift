@@ -17,6 +17,9 @@ struct DemoLaunchTests {
         let finished = DemoLaunch.destination(from: "finished")
         #expect(finished?.section == .progress)
         #expect(finished?.route == .finishedEpics)
+        let release = DemoLaunch.destination(from: "release:demo-studio/habit-ios:1.2.0")
+        #expect(release?.section == .repositories)
+        #expect(release?.route == .release(repositoryID: "demo-studio/habit-ios", version: "1.2.0"))
     }
 
     /// 読めない値は無視する

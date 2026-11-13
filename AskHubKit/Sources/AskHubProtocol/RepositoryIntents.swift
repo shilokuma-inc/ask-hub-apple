@@ -30,6 +30,30 @@ public struct AddRepositoryIntent: Equatable, Sendable {
     }
 }
 
+/// 対象から外す人の意図（`removeRepository`）。封筒の `repo` が対象のリポジトリ。`target`・`targetVersion`・payload の欄は持たない。
+/// 終わっていない epic があれば司令塔が断る。外しても状態リポジトリのファイルは消さず、`repo.json` に外した印を付ける
+public struct RemoveRepositoryIntent: Equatable, Sendable {
+    public static let kind = "removeRepository"
+
+    public var repo: RepositoryFullName
+    public var intent: IntentReference
+
+    public init(repo: RepositoryFullName, intent: IntentReference) {
+        self.repo = repo
+        self.intent = intent
+    }
+
+    public init(envelope: IntentEnvelope) throws(MalformedIntent) {
+        guard envelope.kind == Self.kind else { throw .init(detail: "kind が removeRepository でない") }
+        guard let repo = envelope.repo else { throw .init(detail: "repo が無い") }
+        guard envelope.target == nil, envelope.targetVersion == nil else { throw .init(detail: "対象から外す意図に target か targetVersion がある") }
+        _ = try PayloadReader(envelope.payload, allowed: [])
+        self.init(repo: repo, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
+    }
+
+    public var payload: [String: JSONValue] { [:] }
+}
+
 /// ビルドの設定を入れる人の意図（`configureRepository`）。封筒の `repo` が対象のリポジトリ（対象に加えた後に送る）。
 /// `target`・`targetVersion` は持たず、送るたびに `repo.json` の `build` をまるごと置き換える
 public struct ConfigureRepositoryIntent: Equatable, Sendable {

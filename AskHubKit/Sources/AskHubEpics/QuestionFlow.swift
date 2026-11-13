@@ -198,12 +198,13 @@ extension QuestionFlow {
                 throw .notAnswerable(question: question.id, state: question.state)
             }
             let accepted = try decision(answer, for: question, at: now)
+            // 同じ決定の回答がもう一度届いた（二度押し・送り直し）ら、前の回答の意図を残して何も変えない。
+            // 意図を差し替えると、依存する質問の見直しを頼んだときの依存先の回答（basis）と合わなくなり、見直しの結果が捨てられる
+            if let previous = question.answer, isSameDecision(previous, accepted) { return Change(questions: file, effects: []) }
             book.questions[index].answer = accepted
             book.questions[index].state = .answered
             // 開始の前に回答を変えたら、依存する質問の回答を取り消し、ロックに戻して見直しからやり直す
-            if let previous = question.answer, !isSameDecision(previous, accepted) {
-                book.relockDependents(of: question.id)
-            }
+            if question.answer != nil { book.relockDependents(of: question.id) }
             book.promote()
         }
         if epic.stage != .asking { book.effects.insert(.reopen, at: 0) }
@@ -347,5 +348,38 @@ extension QuestionFlow {
         question.reason = rewrite.reason
         question.caution = rewrite.caution
         return question
+    }
+}
+
+// MARK: - 止まった見直し
+
+extension QuestionFlow {
+    /// 見直している（`revising`）のに、今の質問と依存先の版と回答（basis）で見直すジョブが無い質問の、見直しを頼み直す。
+    /// `pending` は、終わっていない（動いている・人を待っている）見直しのジョブの、質問と basis。
+    ///
+    /// 見直しの結果は、頼んだ後に basis が変わっていれば捨てる（`revise` の `stale`）。そのとき新しいジョブが無いと、
+    /// 質問は見直しのまま止まり、人には答えられない
+    public static func stalledRevisions(in file: QuestionsFile, pending: [(question: String, basis: RevisionBasis)]) -> [Effect] {
+        let book = Book(file)
+        return file.questions.filter { $0.state == .revising }.compactMap { question in
+            let basis = book.basis(of: question)
+            guard !pending.contains(where: { $0.question == question.id && $0.basis == basis }) else { return nil }
+            return .revise(question: question.id, basis: basis)
+        }
+    }
+
+    /// 見直しを頼み直すジョブの元にする人の意図。依存先を（間接にも）たどって、最後に受け付けた回答の意図にする
+    /// （ふつうに頼んだときと同じく、見直しを始めた回答になる）。回答が 1 つも無ければ nil
+    public static func revisionOrigin(of id: String, in file: QuestionsFile) -> IntentReference? {
+        let questions = Dictionary(file.questions.map { ($0.id, $0) }) { first, _ in first }
+        var queue = questions[id]?.dependsOn ?? []
+        var seen: Set<String> = []
+        var answers: [QuestionsFile.Answer] = []
+        while let next = queue.popLast() {
+            guard seen.insert(next).inserted, let question = questions[next] else { continue }
+            if let answer = question.answer { answers.append(answer) }
+            queue += question.dependsOn
+        }
+        return answers.max { ($0.at, $0.intent.nonce.rawValue) < ($1.at, $1.intent.nonce.rawValue) }?.intent
     }
 }
