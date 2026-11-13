@@ -120,7 +120,7 @@ enum InboxBuilder {
     private static func questionItem(_ epic: Epic, context: String) -> InboxItem? {
         let answerable = epic.awaitedQuestions
         guard !answerable.isEmpty else {
-            return nil
+            return revisingItem(epic, context: context)
         }
         // 実装の途中の質問は、答えるまで epic が止まっていることと、どこで出たかを出す
         if let point = answerable.first?.during {
@@ -135,7 +135,11 @@ enum InboxBuilder {
         if explaining > 0 {
             parts.append("説明待ち \(explaining)")
         }
-        let locked = epic.questions.filter { $0.state == .locked || $0.state == .reviewing }.count
+        let revising = epic.questions.filter { $0.state == .reviewing }.count
+        if revising > 0 {
+            parts.append("見直し中 \(revising)")
+        }
+        let locked = epic.questions.filter { $0.state == .locked }.count
         if locked > 0 {
             parts.append("ロック \(locked)")
         }
@@ -423,5 +427,23 @@ enum ByteFormat {
         formatter.allowsNonnumericFormatting = false
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
         return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - 見直し中の質問
+
+extension InboxBuilder {
+    /// 答えられる質問は残っていないが、Claude が見直している質問があるとき。答えた質問の行が消えて、質問が無くなったように見えないよう、
+    /// 見直しが終わるまで出しておく（人の出番ではないので、時間のあるときに）
+    private static func revisingItem(_ epic: Epic, context: String) -> InboxItem? {
+        let revising = epic.questions.filter { $0.state == .reviewing }
+        guard epic.stage == .questions, !revising.isEmpty else {
+            return nil
+        }
+        var item = InboxItem(epic: epic, kind: .questions, context: context, route: .epic(epic.id))
+        item.urgency = .whenFree
+        item.title = "質問の見直しを待っています"
+        item.detail = "Claude が \(revising.map(\.id).joined(separator: "・")) を見直しています。終わったら答えられます"
+        return item
     }
 }

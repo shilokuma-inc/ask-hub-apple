@@ -173,6 +173,23 @@ struct ClientStoreTests {
         #expect(service.performed == [intent])
     }
 
+    /// この起動で送って司令塔の受け取りを待っている同じ回答は、窓口の控えに無くても送り直さない
+    /// （2026-11-13、同じ回答が別の番号で 2 回届き、依存する質問の見直しが止まった）
+    @Test
+    func doesNotResendSameAnswerAwaitingCommander() async {
+        let service = FakeService()
+        service.snapshot = DemoScenario.standard.snapshot(now: now)
+        service.receiptIntentID = "nonce-1"
+        let store = ClientStore(service: service, now: { [now] in now })
+        await store.refresh()
+        let intent = HumanIntent.answer(epicID: "recipe-weekly", questionID: "Q3", optionID: "a", note: "")
+
+        #expect(await store.send(intent) == .sent(SendReceipt(intentID: "nonce-1")))
+        #expect(await store.send(intent) == .alreadySent)
+        #expect(service.performed == [intent])
+        #expect(store.notice?.message == "\(intent.label)は送ってあります")
+    }
+
     /// 送れただけでは帯を出さず（画面は送った結果の形になる）、司令塔が受け付けたら帯で知らせ、しばらくしたら消す
     @Test
     func announcesAcceptedIntentAndHidesNoticeLater() async throws {

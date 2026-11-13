@@ -197,12 +197,33 @@ struct QuestionFlowTests {
         #expect(change.effects == [.revise(question: "q2", basis: expected)])
     }
 
-    @Test func sameAnswerAgainKeepsDependents() throws {
+    @Test func sameAnswerAgainChangesNothing() throws {
         let file = try answeredChain()
-        let change = try accept(Fixtures.answer("q1", intent: 4), file)
-        #expect(change.questions.states() == ["q1": .answered, "q2": .answered, "q3": .answered])
-        #expect(change.questions.question("q1")?.answer?.intent == Fixtures.intent(4))
-        #expect(change.effects == [.checkReadiness])
+        // 同じ決定の回答がもう一度届いても、前の回答の意図を残し、着手前の確認もやり直さない
+        for stage in [EpicStage.asking, .checking, .awaitingStart] {
+            let change = try accept(Fixtures.answer("q1", intent: 4), file, stage: stage)
+            #expect(change.questions == file)
+            #expect(change.effects.isEmpty)
+        }
+        // 自由記述が変われば、別の決定として答え直す
+        let noted = try accept(Fixtures.answer("q1", note: "祝日も", intent: 5), file)
+        #expect(noted.questions.question("q1")?.answer?.intent == Fixtures.intent(5))
+        #expect(noted.questions.states() == ["q1": .answered, "q2": .revising, "q3": .locked])
+    }
+
+    @Test func sameAnswerWhileDependentIsRevisingKeepsItsBasis() throws {
+        // 2026-11-13: 同じ回答が 2 回届き、2 回目で回答の意図が差し替わって、見直しの結果が basis の違いで捨てられた
+        var file = try Flow.start([Fixtures.draft("q1"), Fixtures.draft("q2", dependsOn: ["q1"]), Fixtures.draft("q4", dependsOn: ["q1"])])
+            .questions
+        let first = try accept(Fixtures.answer("q1", intent: 1), file)
+        file = first.questions
+        let requested = basis("q2", in: file)
+        #expect(first.effects.contains(.revise(question: "q2", basis: requested)))
+        let again = try accept(Fixtures.answer("q1", intent: 2), file)
+        #expect(again.questions == file)
+        #expect(again.effects.isEmpty)
+        let revised = checked(try Flow.revise("q2", basis: requested, outcome: .keep, in: again.questions))
+        #expect(revised.questions.question("q2")?.state == .open)
     }
 
     @Test func relockCancelsWorkInProgressAndDropsPendingQuestion() throws {
@@ -264,6 +285,44 @@ struct QuestionFlowTests {
         #expect(file.question("q2")?.state == .revising)
         #expect(throws: Flow.ResultError.stale) { try Flow.revise("q2", basis: old, outcome: .keep, in: file) }
         _ = checked(try Flow.revise("q2", basis: basis("q2", in: file), outcome: .keep, in: file))
+    }
+
+    // MARK: - 止まった見直し
+
+    @Test func revisionWithoutPendingJobOfCurrentBasisIsRequestedAgain() throws {
+        var file = try Flow.start([Fixtures.draft("q1"), Fixtures.draft("q2", dependsOn: ["q1"]), Fixtures.draft("q4", dependsOn: ["q1"])])
+            .questions
+        file = try accept(Fixtures.answer("q1", intent: 1), file).questions
+        let old = basis("q2", in: file)
+        // 見直しを頼んだ後に回答の意図だけが差し替わった（前の司令塔が、同じ回答の 2 回目で書き換えた）
+        file.questions[0].answer?.intent = Fixtures.intent(2)
+        let current = basis("q2", in: file)
+        #expect(Flow.stalledRevisions(in: file, pending: [("q2", current), ("q4", basis("q4", in: file))]).isEmpty)
+        #expect(Flow.stalledRevisions(in: file, pending: [("q2", old), ("q4", old)]) == [
+            .revise(question: "q2", basis: current), .revise(question: "q4", basis: basis("q4", in: file))
+        ])
+        // 見直していない質問は頼み直さない
+        file = try checked(Flow.revise("q2", basis: current, outcome: .keep, in: file)).questions
+        #expect(Flow.stalledRevisions(in: file, pending: []) == [.revise(question: "q4", basis: basis("q4", in: file))])
+    }
+
+    @Test func revisionOriginIsLatestAnswerOfDependencies() throws {
+        let drafts = [
+            Fixtures.draft("q1"), Fixtures.draft("q2"),
+            Fixtures.draft("q3", dependsOn: ["q1", "q2"]), Fixtures.draft("q4", dependsOn: ["q3"])
+        ]
+        var file = try Flow.start(drafts).questions
+        #expect(Flow.revisionOrigin(of: "q3", in: file) == nil)
+        file = try accept(Fixtures.answer("q2", intent: 7), file).questions
+        file = try accept(Fixtures.answer("q1", intent: 3), file).questions
+        // 同じ時刻に受け付けた回答は、意図の番号の大きいほう（後に出したほう）
+        #expect(Flow.revisionOrigin(of: "q3", in: file) == Fixtures.intent(7))
+        file.questions[0].answer?.at = Timestamp(Fixtures.now.date.addingTimeInterval(60))
+        #expect(Flow.revisionOrigin(of: "q3", in: file) == Fixtures.intent(3))
+        // 依存先が要らなくなったら、その先の回答をたどる
+        file = try checked(Flow.revise("q3", basis: basis("q3", in: file), outcome: .drop(reason: "…"), in: file)).questions
+        #expect(file.question("q4")?.state == .revising)
+        #expect(Flow.revisionOrigin(of: "q4", in: file) == Fixtures.intent(3))
     }
 
     // MARK: - 慎重に決めてほしい理由
