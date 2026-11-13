@@ -198,12 +198,13 @@ extension QuestionFlow {
                 throw .notAnswerable(question: question.id, state: question.state)
             }
             let accepted = try decision(answer, for: question, at: now)
+            // 同じ決定の回答がもう一度届いた（二度押し・送り直し）ら、前の回答の意図を残して何も変えない。
+            // 意図を差し替えると、依存する質問の見直しを頼んだときの依存先の回答（basis）と合わなくなり、見直しの結果が捨てられる
+            if let previous = question.answer, isSameDecision(previous, accepted) { return Change(questions: file, effects: []) }
             book.questions[index].answer = accepted
             book.questions[index].state = .answered
             // 開始の前に回答を変えたら、依存する質問の回答を取り消し、ロックに戻して見直しからやり直す
-            if let previous = question.answer, !isSameDecision(previous, accepted) {
-                book.relockDependents(of: question.id)
-            }
+            if question.answer != nil { book.relockDependents(of: question.id) }
             book.promote()
         }
         if epic.stage != .asking { book.effects.insert(.reopen, at: 0) }
