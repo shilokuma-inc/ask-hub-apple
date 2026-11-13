@@ -32,7 +32,28 @@ extension StateSnapshotBuilder {
         index.repositories[id] = index.removedRepositories.removeValue(forKey: id) ?? repo
     }
 
-    /// 対象に加える・外すの呼び名。どちらでもなければ nil
+    /// 画面に出すビルドの設定と、直すときの元の JSON
+    static func buildSettings(_ build: RepositoryFile.Build) -> RepositoryBuildSettings {
+        RepositoryBuildSettings(
+            scheme: build.xcode.scheme,
+            destinations: build.xcode.destinations.map(Self.destinationName),
+            childChecks: build.childChecks,
+            finalChecks: build.finalChecks,
+            json: ConfigureRepositoryIntent.payload(for: build)["build"].map(BuildSettingsDraft.pretty) ?? ""
+        )
+    }
+
+    private static func destinationName(_ destination: BuildDestination) -> String {
+        switch destination {
+        case .macOS:
+            "Mac"
+
+        case .simulator(let simulator):
+            simulator.osVersion.map { "\(simulator.deviceType)（\(simulator.platform.rawValue) \($0)）" } ?? simulator.deviceType
+        }
+    }
+
+    /// 対象に加える・外す・ビルドの設定の呼び名。どれでもなければ nil
     static func repositoryLabel(_ envelope: IntentEnvelope) -> String? {
         switch envelope.kind {
         case AddRepositoryIntent.kind:
@@ -40,6 +61,9 @@ extension StateSnapshotBuilder {
 
         case RemoveRepositoryIntent.kind:
             "対象から外す（\(envelope.repo?.rawValue ?? "")）"
+
+        case ConfigureRepositoryIntent.kind:
+            "ビルドの設定（\(envelope.repo?.rawValue ?? "")）"
 
         default:
             nil

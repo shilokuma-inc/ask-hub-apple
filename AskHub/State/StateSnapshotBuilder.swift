@@ -152,6 +152,7 @@ struct StateSnapshotBuilder {
         var repository = Self.repository(file.repo)
         index.repositories[repository.id] = file.repo
         repository.icon = Self.appIcon(of: file)
+        repository.build = file.build.map(Self.buildSettings)
         repository.lastMacID = epics.filter { $0.repositoryID == repository.id && $0.macID != nil }
             .max { $0.updatedAt < $1.updatedAt }?.macID
         return repository

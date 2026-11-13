@@ -36,6 +36,8 @@ enum HumanIntent: Hashable {
     case publishRelease(repositoryID: TargetRepository.ID, version: String, notesVersion: Int, notes: String)
     /// 対象から外す（終わっていない epic があれば司令塔が断る。状態リポジトリのファイルと GitHub のリポジトリは消さない）
     case removeRepository(repositoryID: TargetRepository.ID)
+    /// ビルドの設定を入れる（`json` は `repo.json` の `build` と同じ形。送るたびにまるごと置き換える）
+    case configureRepository(repositoryID: TargetRepository.ID, json: String)
 }
 
 enum SplitChoice: Hashable {
@@ -93,6 +95,9 @@ extension HumanIntent {
 
         case .removeRepository(let repositoryID):
             "対象から外す（\(repositoryID)）"
+
+        case .configureRepository(let repositoryID, _):
+            "ビルドの設定（\(repositoryID)）"
 
         case let .resolveBlocker(_, action, _, _):
             Self.label(of: action)

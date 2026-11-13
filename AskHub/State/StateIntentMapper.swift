@@ -45,7 +45,7 @@ struct StateIntentMapper {
         case .publishRelease, .verify:
             supportsAfterMerge(intent)
 
-        case .removeRepository, .cleanUp:
+        case .removeRepository, .configureRepository, .cleanUp:
             supportsRepositoryIntent(intent)
         }
     }
@@ -93,7 +93,7 @@ struct StateIntentMapper {
         case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
-        case .request, .addRepository, .removeRepository:
+        case .request, .addRepository, .removeRepository, .configureRepository:
             return try repositoryDraft(intent)
 
         case let .resolveBlocker(epicID, action, _, target):
