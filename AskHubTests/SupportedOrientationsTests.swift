@@ -27,7 +27,7 @@ struct SupportedOrientationsTests {
             "UIInterfaceOrientationPortrait",
             "UIInterfaceOrientationPortraitUpsideDown",
             "UIInterfaceOrientationLandscapeLeft",
-            "UIInterfaceOrientationLandscapeRight",
+            "UIInterfaceOrientationLandscapeRight"
         ])
     }
 }
