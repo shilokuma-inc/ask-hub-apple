@@ -263,17 +263,27 @@ public struct IntentSender: Sendable {
             throw .signing(error)
         }
         let stored = JSONValue.object(["envelope": value, "sig": .string(signature)])
+        let path = StatePath.intent(device: key.keyID, nonce: nonce)
+        let data = CanonicalJSON.data(for: stored)
         do {
-            _ = try await store.write(
-                StatePath.intent(device: key.keyID, nonce: nonce),
-                data: CanonicalJSON.data(for: stored),
-                replacing: nil,
-                message: "[intent] \(draft.kind)"
-            )
+            _ = try await store.write(path, data: data, replacing: nil, message: "[intent] \(draft.kind)")
         } catch {
-            throw .store(error)
+            // 応答を受け取れなかった・読めなかったときは、GitHub が書いた後のことがある。読み直して同じ中身があれば、送れたことにする
+            // （失敗として送り直すと、別の番号の同じ意図になる。2026-11-13、同じ回答が 2 回届いた）
+            guard Self.mayHaveWritten(error), (try? await store.read(path))?.data == data else { throw .store(error) }
         }
         return IntentReference(keyId: key.keyID, nonce: nonce)
+    }
+
+    /// 書き込みが失敗に見えても、書けていることがある失敗（応答の前後で通信が切れた・応答を読めない・GitHub の障害・ぶつかった）
+    static func mayHaveWritten(_ error: StateStoreError) -> Bool {
+        switch error {
+        case .transport, .unexpected, .serverError, .conflict:
+            true
+        case .rateLimited, .budgetExhausted, .unauthorized, .tokenUnavailable, .forbidden, .notFound, .redirected, .wrongKind, .invalidPath,
+             .cancelled:
+            false
+        }
     }
 }
 
