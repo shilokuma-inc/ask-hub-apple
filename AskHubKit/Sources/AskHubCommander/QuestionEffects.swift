@@ -21,10 +21,7 @@ extension CommanderContext {
                 let input: [String: JSONValue] = ["question": .string(question), "asked": JSONValue.encoding(asked) ?? .null]
                 try await create(claudeJob(.explain, for: epic, origin: asked, seed: question, input: input, after: parents))
             case let .revise(question, basis):
-                let input: [String: JSONValue] = ["question": .string(question), "basis": JSONValue.encoding(basis) ?? .null]
-                let dependencies = basis.dependencies.map { "\($0.id):\($0.version):\($0.answer?.nonce.rawValue ?? "-")" }
-                let seed = "\(question)/\(basis.version)/\(dependencies.joined(separator: ","))"
-                try await create(claudeJob(.reviseQuestion, for: epic, origin: origin, seed: seed, input: input, after: parents))
+                try await create(revisionJob(question, basis: basis, for: epic, origin: origin, after: parents))
             // 取り消すのは、ほかの意図が作ったジョブだけ。この意図が前の周で作ったジョブ（やり直しのとき）は残す
             case let .cancel(question):
                 try await cancelJobs(epic.repo, epic: epic.id) { job in
@@ -47,6 +44,22 @@ extension CommanderContext {
                 try await create(try await resumption(of: asking, question: question, answer: origin, epic: epic))
             }
         }
+    }
+
+    /// 質問を見直すジョブ。id は元の人の意図と、質問と依存先の版と回答（basis）から決める。
+    /// `restart` は、見直しのまま止まった質問の見直しを頼み直すとき（前に頼んだジョブと別の id にする。`RevisionRestart`）
+    func revisionJob(
+        _ question: String,
+        basis: RevisionBasis,
+        for epic: EpicFile,
+        origin: IntentReference,
+        after parents: [ULID] = [],
+        restart: Bool = false
+    ) -> JobFile {
+        let input: [String: JSONValue] = ["question": .string(question), "basis": JSONValue.encoding(basis) ?? .null]
+        let dependencies = basis.dependencies.map { "\($0.id):\($0.version):\($0.answer?.nonce.rawValue ?? "-")" }
+        let seed = "\(question)/\(basis.version)/\(dependencies.joined(separator: ","))\(restart ? "/restart" : "")"
+        return claudeJob(.reviseQuestion, for: epic, origin: origin, seed: seed, input: input, after: parents)
     }
 
     /// 開始の前の段階（質問づくり・回答・着手前の確認・分け方の判断・開始の待ち）

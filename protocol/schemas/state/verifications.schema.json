@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/verifications.schema.json",
+  "title": "repos/<owner>/<repo>/epics/<epic>/verifications.json（実機確認への答え）",
+  "description": "司令塔だけが書く。何を確かめるかはゴールの完了の条件（v1 から順に数える）で、ここには人が答えた項目だけを答えた順に置く。id の重複・problem の note が空でないこと・confirmed の note が空であることは読む側で確かめる",
+  "type": "object",
+  "required": [
+    "v",
+    "answers"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "result",
+          "note",
+          "intent",
+          "at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^v[1-9][0-9]{0,2}$",
+            "maxLength": 4
+          },
+          "result": {
+            "enum": [
+              "confirmed",
+              "problem"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 10000
+          },
+          "intent": {
+            "$ref": "../common.schema.json#/$defs/intentReference"
+          },
+          "at": {
+            "$ref": "../common.schema.json#/$defs/timestamp"
+          }
+        }
+      }
+    }
+  }
+}

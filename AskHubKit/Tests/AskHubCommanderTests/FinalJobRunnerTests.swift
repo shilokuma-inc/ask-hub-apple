@@ -241,7 +241,9 @@ struct FinalJobRunnerTests {
         #expect(draft.body.contains("<details><summary>内部の細部の仮決め（1 件）</summary>"))
         #expect(!draft.body.contains("### d3"))
         #expect(draft.body.contains("## 実機で確かめてほしいこと"))
-        #expect(draft.body.contains("ランキングの画面に上位 10 件が出る"))
+        // 実機確認の項目は、クライアントのカードと同じ id（完了の条件の順に v1 から）で並べる
+        #expect(draft.body.contains("- v1: ランキングの画面に上位 10 件が出る"))
+        #expect(draft.body.contains("「確認した」か「問題あり」を付けてください"))
         // Claude の文のメンションは効かなくする（CodeRabbit への指示にならない）
         #expect(!draft.body.contains("@coderabbitai"))
         let marker = try #require(ProtocolMarker.parse(draft.body))

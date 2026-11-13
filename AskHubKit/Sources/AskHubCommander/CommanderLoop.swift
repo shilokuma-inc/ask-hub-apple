@@ -240,6 +240,15 @@ public actor CommanderLoop {
         }
         swept.jobs += advanced.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
         timer.lap("タスクの流れ")
+        // 見直しのまま止まった質問（見直すジョブが無い）の見直しを頼み直す
+        let restarted = await RevisionRestart(context: context).restart(epics: swept.epics, jobs: swept.jobs, reading: swept.reader)
+        for job in restarted.created {
+            log("見直しのまま止まった質問 \(job.input?["question"]?.stringValue ?? "?") の見直し \(job.id) を作り直した")
+        }
+        for note in restarted.notes where reportedNotes.insert(note).inserted {
+            log(note)
+        }
+        swept.jobs += restarted.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
         let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier))
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
         timer.lap("引き受けと通知")
@@ -288,12 +297,14 @@ public actor CommanderLoop {
         "handover": HandoverHandler(),
         "addRepository": AddRepositoryHandler(),
         "configureRepository": ConfigureRepositoryHandler(),
+        "removeRepository": RemoveRepositoryHandler(),
         "retry": RetryJobHandler(),
         "giveUp": GiveUpJobHandler(),
         "decision": DecisionHandler(),
         "approveMerge": ApproveMergeHandler(),
         "instructFinal": InstructFinalHandler(),
         "humanTaskDone": HumanTaskDoneHandler(),
+        "verify": VerifyHandler(),
         "publishGitHubRelease": PublishGitHubReleaseHandler()
     ]
 

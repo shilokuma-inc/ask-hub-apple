@@ -7,7 +7,7 @@ App Store Connect に出す値と審査で指摘されやすい点は [docs/app-
 
 > **今のワークフローの文書。** ここにあるのは、App Store のメタデータ・スクリーンショット・macOS 版のアップロード・Upload（develop への push で TestFlight に上げる）。
 > 今の仕組み（2026-10）のリリースのワークフロー（Release/Prepare・Notes・Sync・Finish）と道具（`Tools/release_*.py`）は、一度も流れないまま #1087 で外した。前の説明はタグ `legacy-final` のこの文書にある。
-> 新しいリリースの流れ（司令塔が配信を見つけて後作業をする・人が AskHub で押す）は [renewal/release.md](renewal/release.md) で、段階 5 で作る（[renewal/plan.md](renewal/plan.md) の「段階 5 の順」）。
+> 新しいリリースの流れは [renewal/release.md](renewal/release.md)。配信を司令塔が見つけて、タグ・GitHub Release・次の版の PR を作る後作業は #1085・#1091 で入れた。審査に出す・配信するなど人が AskHub で押す操作は、段階 5 の 3 で作る（[renewal/plan.md](renewal/plan.md) の「段階 5 の順」）。
 
 ## App Store のメタデータ
 
@@ -246,8 +246,8 @@ Secrets / vars は「App Store のメタデータ」と同じ（`APPLE_API_KEY_B
 
 ## AskHub アプリとの関係
 
-リニューアルで、アプリのリリースの画面（リリース準備を始める・進み具合・最新情報の確定）を外した。今のアプリは、リポジトリの画面に「リリースの画面は、リリースの段階で作ります」と出すだけで、この文書のワークフローを起動も表示もしない。
+リニューアルで、前のアプリのリリースの画面（リリース準備を始める・進み具合・最新情報の確定）を外した。今のアプリは、リポジトリの画面に App Store で配信した版と後作業の進み具合を出し、リリース文を確かめて GitHub Release を公開できる（状態リポジトリの `releases/<版>.json` を読み、`publishGitHubRelease` を送る。#1091）。この文書のワークフローは、起動も表示もしない。
 上の各ワークフローは、Actions から手で起動する（Upload は develop への push で動く）。前のアプリの画面の決まり（読むもの・起動するもの・止めるもの・デモモード・トークンの権限）は、タグ `legacy-final` のこの文書と `docs/protocol.md` にある。
 
-新しいリリースの流れ（司令塔が App Store Connect を読み、審査に出す・配信するは人が AskHub で押す）は [renewal/release.md](renewal/release.md) にあり、段階 5 で作る（[renewal/plan.md](renewal/plan.md) の「段階 5 の順」）。
+新しいリリースの流れ（司令塔が App Store Connect を読み、審査に出す・配信するは人が AskHub で押す）は [renewal/release.md](renewal/release.md) にある。配信の検知と後作業は入れた。審査に出す・配信するは段階 5 の 3 で作る（[renewal/plan.md](renewal/plan.md) の「段階 5 の順」）。
 新しいアプリのトークンは状態リポジトリだけを読み書きするので、ここのワークフローの起動に要る Actions の権限は持たない。

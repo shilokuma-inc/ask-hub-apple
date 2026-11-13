@@ -32,6 +32,12 @@ enum HumanIntent: Hashable {
     /// 依頼。添付の中身は、意図より先に状態リポジトリに置く
     case request(repositoryID: TargetRepository.ID, summary: String, body: String, attachments: [RequestFile] = [])
     case addRepository(repositoryID: TargetRepository.ID)
+    /// 配信した版のリリース文を確かめて、GitHub Release を公開する。見た下書きの版に結びつける（見た後に下書きが作り直されていれば、司令塔が断る）
+    case publishRelease(repositoryID: TargetRepository.ID, version: String, notesVersion: Int, notes: String)
+    /// 対象から外す（終わっていない epic があれば司令塔が断る。状態リポジトリのファイルと GitHub のリポジトリは消さない）
+    case removeRepository(repositoryID: TargetRepository.ID)
+    /// ビルドの設定を入れる（`json` は `repo.json` の `build` と同じ形。送るたびにまるごと置き換える）
+    case configureRepository(repositoryID: TargetRepository.ID, json: String)
 }
 
 enum SplitChoice: Hashable {
@@ -83,6 +89,15 @@ extension HumanIntent {
 
         case .addRepository(let repositoryID):
             "対象に加える（\(repositoryID)）"
+
+        case let .publishRelease(_, version, _, _):
+            "GitHub Release の公開（\(version)）"
+
+        case .removeRepository(let repositoryID):
+            "対象から外す（\(repositoryID)）"
+
+        case .configureRepository(let repositoryID, _):
+            "ビルドの設定（\(repositoryID)）"
 
         case let .resolveBlocker(_, action, _, _):
             Self.label(of: action)

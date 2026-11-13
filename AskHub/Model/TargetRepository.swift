@@ -15,6 +15,8 @@ struct TargetRepository: Identifiable, Hashable {
     var icon: RepositoryIcon
     /// 前回このリポジトリを回した Mac。開始のときに既定で選ぶ。まだ回していなければ nil
     var lastMacID: Mac.ID?
+    /// ビルドの設定。まだ入れていなければ nil（開始を断られる）
+    var build: RepositoryBuildSettings?
 
     var fullName: String { "\(owner)/\(name)" }
 
