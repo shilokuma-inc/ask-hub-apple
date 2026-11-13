@@ -17,9 +17,10 @@ public struct RequestHandler: IntentHandler {
         } catch {
             return .reject("依頼の形が違う（\(error.detail)）")
         }
-        guard try await context.read(RepositoryFile.self, at: StatePath.repository(request.repo)) != nil else {
+        guard let repository = try await context.read(RepositoryFile.self, at: StatePath.repository(request.repo)) else {
             return .reject("\(request.repo) は対象のリポジトリに加えていない")
         }
+        guard !repository.isRemoved else { return .reject("\(request.repo) は対象から外した。依頼するには加え直す") }
         // 添付は確かめること（protocol.md の 3）なので、合わなければ記録を作らずに残す（置き直せば次の周で受け付ける）
         if let problem = try await attachmentProblem(of: request, in: context) { return .ignore(problem) }
         let epic = EpicFile(
@@ -117,8 +118,7 @@ public struct StartEpicHandler: IntentHandler {
     ) async throws(CommanderError) -> String? {
         guard epic.stage == .awaitingStart else { return "開始できる段階でない（今は \(epic.stage.rawValue)）" }
         let repository = try await context.read(RepositoryFile.self, at: StatePath.repository(epic.repo))
-        // ワーカーはビルドの設定でビルド・テストし、子 PR と最終 PR のチェックを待つので、無ければ始めない
-        guard repository?.build != nil else { return "\(epic.repo) のビルドの設定（repo.json の build）が無い。設定を入れてから開始する" }
+        if let problem = Self.repositoryProblem(repository, of: epic.repo) { return problem }
         let goal = try await context.read(GoalFile.self, at: StatePath.goal(epic.repo, epic.id))
         guard let goal else { return "ゴールが無い" }
         guard goal.version == start.target.version else { return "ゴールが直された（今の版は \(goal.version)）。新しいゴールを確かめて開始し直す" }
@@ -133,6 +133,14 @@ public struct StartEpicHandler: IntentHandler {
             return "読めない epic があり、同時に回している数を確かめられない（司令塔を新しくする）"
         }
         if running >= limit { return "同時に回せる epic の上限（\(limit) 本）に達している。ほかの epic が終わってから開始する" }
+        return nil
+    }
+
+    /// リポジトリの設定で始められない理由。始められれば nil
+    private static func repositoryProblem(_ repository: RepositoryFile?, of repo: RepositoryFullName) -> String? {
+        if repository?.isRemoved == true { return "\(repo) は対象から外した。開始するには加え直す" }
+        // ワーカーはビルドの設定でビルド・テストし、子 PR と最終 PR のチェックを待つので、無ければ始めない
+        guard repository?.build != nil else { return "\(repo) のビルドの設定（repo.json の build）が無い。設定を入れてから開始する" }
         return nil
     }
 
@@ -292,10 +300,20 @@ public struct AddRepositoryHandler: IntentHandler {
         }
         // 同時に回す epic は、最初の版では 1 本（ユーザーの決定）
         let file = RepositoryFile(repo: add.repo, platform: add.platform, maxConcurrentEpics: 1, addedAt: context.timestamp)
+        let path = StatePath.repository(add.repo)
         do {
-            try await context.files.create(file, at: StatePath.repository(add.repo), message: "\(add.repo) を対象に加える")
+            try await context.files.create(file, at: path, message: "\(add.repo) を対象に加える")
         } catch .alreadyExists {
-            // 加え済み（やり直し、または同じリポジトリを加え直した）
+            // 加え済み（やり直し、または同じリポジトリを加え直した）。対象から外していたら、印を外して戻す（ビルドの設定などはそのまま）
+            do {
+                try await context.files.update(RepositoryFile.self, at: path, message: "\(add.repo) を対象に加え直す") {
+                    guard $0.isRemoved else { return false }
+                    $0.removedAt = nil
+                    return true
+                }
+            } catch {
+                throw .files(error)
+            }
         } catch {
             throw .files(error)
         }

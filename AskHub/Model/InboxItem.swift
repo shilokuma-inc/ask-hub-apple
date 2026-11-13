@@ -41,6 +41,10 @@ struct InboxItem: Identifiable, Hashable {
         case finalReview
         case verification
         case cleanup
+        /// App Store で配信した版のリリース文を確かめて、公開する
+        case releaseNotes
+        /// 配信した版の後作業が、人が直すまで進まない
+        case releaseProblem
     }
 }
 
@@ -67,6 +71,7 @@ enum InboxBuilder {
         items += snapshot.macs.compactMap(claudeVersionItem)
         items += snapshot.macs.compactMap(compatibilityItem)
         items += snapshot.macs.compactMap(cleanupItem)
+        items += snapshot.releases.flatMap { releaseItems($0, snapshot: snapshot) }
         return items.sorted { lhs, rhs in
             if lhs.urgency != rhs.urgency {
                 return lhs.urgency == .blocking
@@ -115,7 +120,7 @@ enum InboxBuilder {
     private static func questionItem(_ epic: Epic, context: String) -> InboxItem? {
         let answerable = epic.awaitedQuestions
         guard !answerable.isEmpty else {
-            return nil
+            return revisingItem(epic, context: context)
         }
         // 実装の途中の質問は、答えるまで epic が止まっていることと、どこで出たかを出す
         if let point = answerable.first?.during {
@@ -130,7 +135,11 @@ enum InboxBuilder {
         if explaining > 0 {
             parts.append("説明待ち \(explaining)")
         }
-        let locked = epic.questions.filter { $0.state == .locked || $0.state == .reviewing }.count
+        let revising = epic.questions.filter { $0.state == .reviewing }.count
+        if revising > 0 {
+            parts.append("見直し中 \(revising)")
+        }
+        let locked = epic.questions.filter { $0.state == .locked }.count
         if locked > 0 {
             parts.append("ロック \(locked)")
         }
@@ -186,7 +195,7 @@ enum InboxBuilder {
         var item = InboxItem(epic: epic, kind: .verification, context: context, route: .deck(.verifications(epic.id)))
         item.urgency = .whenFree
         item.title = "実機で確かめる"
-        item.detail = "TestFlight \(build) · \(ready.count) 項目"
+        item.detail = "\(VerificationItem.buildLabel(build)) · \(ready.count) 項目"
         return [item]
     }
 
@@ -293,6 +302,49 @@ enum InboxBuilder {
         )
     }
 
+    /// 配信した版の人の番（司令塔が通知するものと同じ: リリース文の確認と、人が直す後作業）
+    private static func releaseItems(_ release: Release, snapshot: ClientSnapshot) -> [InboxItem] {
+        let appName = snapshot.repository(release.repositoryID)?.appName ?? release.repositoryID
+        let context = "\(appName) · \(release.version)"
+        let route = AppRoute.release(repositoryID: release.repositoryID, version: release.version)
+        let targets: [IntentTarget] = [.release(repositoryID: release.repositoryID, version: release.version)]
+        var items: [InboxItem] = []
+        if release.awaitsNotesReview {
+            let detail: String = if case .rejected(let reason) = release.publish {
+                "公開を受け付けませんでした: \(reason)"
+            } else {
+                "App Store で配信しました。GitHub Release に載せる文を確かめてください"
+            }
+            items.append(InboxItem(
+                id: "release/\(release.id)/notes",
+                urgency: .blocking,
+                kind: .releaseNotes,
+                repositoryID: release.repositoryID,
+                title: "リリース文を確かめて公開する",
+                context: context,
+                detail: detail,
+                since: release.updatedAt,
+                route: route,
+                targets: targets
+            ))
+        }
+        if let problem = release.problem, problem.needsHuman {
+            items.append(InboxItem(
+                id: "release/\(release.id)/problem",
+                urgency: .blocking,
+                kind: .releaseProblem,
+                repositoryID: release.repositoryID,
+                title: "配信の後作業を直す: \(problem.step.label)",
+                context: context,
+                detail: problem.message,
+                since: problem.at,
+                route: route,
+                targets: targets
+            ))
+        }
+        return items
+    }
+
     private static func cleanupItem(_ mac: Mac) -> InboxItem? {
         guard !mac.cleanupCandidates.isEmpty else {
             return nil
@@ -363,7 +415,7 @@ extension InboxItem {
         case .verification:
             return epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
 
-        case .macOffline, .token, .claudeVersion, .compatibility, .cleanup:
+        case .macOffline, .token, .claudeVersion, .compatibility, .cleanup, .releaseNotes, .releaseProblem:
             return []
         }
     }
@@ -380,5 +432,23 @@ enum ByteFormat {
         formatter.allowsNonnumericFormatting = false
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
         return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - 見直し中の質問
+
+extension InboxBuilder {
+    /// 答えられる質問は残っていないが、Claude が見直している質問があるとき。答えた質問の行が消えて、質問が無くなったように見えないよう、
+    /// 見直しが終わるまで出しておく（人の出番ではないので、時間のあるときに）
+    private static func revisingItem(_ epic: Epic, context: String) -> InboxItem? {
+        let revising = epic.questions.filter { $0.state == .reviewing }
+        guard epic.stage == .questions, !revising.isEmpty else {
+            return nil
+        }
+        var item = InboxItem(epic: epic, kind: .questions, context: context, route: .epic(epic.id))
+        item.urgency = .whenFree
+        item.title = "質問の見直しを待っています"
+        item.detail = "Claude が \(revising.map(\.id).joined(separator: "・")) を見直しています。終わったら答えられます"
+        return item
     }
 }

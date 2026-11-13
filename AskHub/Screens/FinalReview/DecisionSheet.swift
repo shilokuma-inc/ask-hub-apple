@@ -137,7 +137,8 @@ struct VerificationSection: View {
     private func status(for state: VerificationItem.State) -> String {
         switch state {
         case .waitingForBuild: "TestFlight に上がるのを待っています"
-        case .ready(let build): "TestFlight \(build) で確かめられます"
+        case .ready(let build?): "TestFlight \(build) で確かめられます"
+        case .ready(nil): "マージしました。TestFlight に上がった版で確かめてください"
         case .confirmed: "確認しました"
         case .problem(let note): "問題あり: \(note)"
         }

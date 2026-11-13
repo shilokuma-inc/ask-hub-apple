@@ -29,6 +29,8 @@ public struct JobSweep: Sendable {
         public var jobs: [JobFile]
         /// ジョブを見張る epic（終わっていない epic と、片付けが残るマージしてから間もない epic。進行を止めているものを知らせるのに使う）
         public var epics: [EpicFile] = []
+        /// 見直したときに読んだ、周の初めの読むだけの写し（見直しのまま止まった質問を探すのに使う。`RevisionRestart`）
+        var reader: CommanderContext?
     }
 
     /// 対象のリポジトリの、ジョブを見張る epic のジョブを見直す。状態を変えたジョブを返す
@@ -44,6 +46,7 @@ public struct JobSweep: Sendable {
         var swept = Swept(changed: [], jobs: [])
         let now = context.now()
         let reader = try await context.snapshot()
+        swept.reader = reader
         for repo in try await reader.repositories() {
             // 終わっていない epic と、マージの後の片付けが残る epic（`EpicFile.watchesJobs(now:)`）
             for epic in try await reader.epics(of: repo, where: { $0.watchesJobs(now: now) }) {

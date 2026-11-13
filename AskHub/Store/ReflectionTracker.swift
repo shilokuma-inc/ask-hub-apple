@@ -231,6 +231,12 @@ struct ReflectionTracker {
         }
     }
 
+    /// この起動で送った同じ操作が、操作の対象のすべてで司令塔の受け取りを待っているか（途中で失敗したまとめて OK は、残りの対象を送り直せる）
+    func isAwaitingAll(of intent: HumanIntent) -> Bool {
+        let targets = awaiting.values.filter { $0.intent == intent }.flatMap(\.targets)
+        return !targets.isEmpty && intent.targets.allSatisfy(targets.contains)
+    }
+
     /// 司令塔の受け取りを待っている意図のうち、`cutoff` より後に送った一番前のものの id（受け付けの記録を軽く確かめるのに使う）
     func oldestAwaitingIntentID(sentAfter cutoff: Date) -> String? {
         let own = awaiting.map { (id: $0.key, sentAt: $0.value.sentAt) }

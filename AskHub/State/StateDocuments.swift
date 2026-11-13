@@ -11,6 +11,8 @@ struct StateDocuments {
         var readiness: ReadinessFile?
         /// 人が決めていない判断。最終 PR を出した epic のものだけ読む
         var decisions: DecisionsFile?
+        /// 実機確認への答え。マージした epic のものだけ読む（答えが 1 つも無ければ nil）
+        var verifications: VerificationsFile?
         /// ジョブ。終わった（マージした・やめた）epic のものは読まない
         var jobs: [JobFile] = []
         /// 試行（古い順）。人の対応を待っているジョブはすべて、動いているジョブと、最後に終わった最終 PR のレビューは最後の 1 つだけ
@@ -26,6 +28,8 @@ struct StateDocuments {
 
     var repositories: [RepositoryFile] = []
     var epics: [EpicDocuments] = []
+    /// App Store で配信した版の記録（`releases/<版>.json`）。リポジトリの順、その中は版の小さい順
+    var releases: [ReleaseFile] = []
     var macs: [MacFile] = []
     var commander: CommanderFile?
     /// 新しい順
@@ -63,6 +67,7 @@ struct StateReader {
     private struct RepositoryPart {
         var repository: RepositoryFile?
         var epics: [StateDocuments.EpicDocuments] = []
+        var releases: [ReleaseFile] = []
         var failures: [SourceFailure] = []
     }
 
@@ -75,6 +80,7 @@ struct StateReader {
         for part in try await repositories.get() {
             part.repository.map { documents.repositories.append($0) }
             documents.epics += part.epics
+            documents.releases += part.releases
             documents.failures += part.failures
         }
         let macsPart = try await macs.get()
@@ -110,19 +116,6 @@ struct StateReader {
         return read
     }
 
-    private func readRepository(_ repo: RepositoryFullName) async throws(StateStoreError) -> RepositoryPart {
-        async let file = read(RepositoryFile.self, at: StatePath.repository(repo))
-        async let listed = Self.capture { () throws(StateStoreError) in try await directories(StatePath.epics(repo)) }
-        let fileRead = await file
-        var part = RepositoryPart(repository: fileRead.value, failures: fileRead.failures)
-        let ids = try await listed.get().compactMap(ULID.init(rawValue:))
-        for epic in await Self.inOrder(ids, { id in await readEpic(id, of: repo) }) {
-            epic.value.map { part.epics.append($0) }
-            part.failures += epic.failures
-        }
-        return part
-    }
-
     private func readEpic(_ id: ULID, of repo: RepositoryFullName) async -> Part<StateDocuments.EpicDocuments?> {
         // epic.json と、epic.json に依らないファイルを並べて読む。epic.json を読めなければ、ほかは使わない（失敗も出さない）
         async let epicRead = read(EpicFile.self, at: StatePath.epic(repo, id))
@@ -142,21 +135,15 @@ struct StateReader {
             readiness: readinessPart.value
         )
         async let decisions = readDecisions(of: epic)
+        async let verifications = readVerifications(of: epic)
         let jobs = await readJobsAndAttempts(of: epic)
-        let decisionsPart = await decisions
+        let (decisionsPart, verificationsPart) = await (decisions, verifications)
         documents.decisions = decisionsPart.value
+        documents.verifications = verificationsPart.value
         documents.jobs = jobs.value.jobs
         documents.attempts = jobs.value.attempts
-        failures += decisionsPart.failures + jobs.failures
+        failures += decisionsPart.failures + verificationsPart.failures + jobs.failures
         return Part(value: documents, failures: failures)
-    }
-
-    /// 判断のカードは最終 PR の確認で出す。仮決めは実装の間も増えるが、最終 PR を出すまでは画面に出さないので読まない
-    private func readDecisions(of epic: EpicFile) async -> Part<DecisionsFile?> {
-        guard epic.finalPullRequest != nil, epic.stage != .abandoned else {
-            return Part(value: nil)
-        }
-        return await read(DecisionsFile.self, at: StatePath.decisions(epic.repo, epic.id))
     }
 
     /// 最後に終わった最終 PR のレビュー（試行に判定を書いたもの）
@@ -399,6 +386,26 @@ struct StateReader {
     }
 }
 
+// MARK: - 最終 PR の後のファイル
+
+extension StateReader {
+    /// 判断のカードは最終 PR の確認で出す。仮決めは実装の間も増えるが、最終 PR を出すまでは画面に出さないので読まない
+    private func readDecisions(of epic: EpicFile) async -> Part<DecisionsFile?> {
+        guard epic.finalPullRequest != nil, epic.stage != .abandoned else {
+            return Part(value: nil)
+        }
+        return await read(DecisionsFile.self, at: StatePath.decisions(epic.repo, epic.id))
+    }
+
+    /// 実機確認はマージした後に出す
+    private func readVerifications(of epic: EpicFile) async -> Part<VerificationsFile?> {
+        guard epic.stage == .merged else {
+            return Part(value: nil)
+        }
+        return await read(VerificationsFile.self, at: StatePath.verifications(epic.repo, epic.id))
+    }
+}
+
 /// 書いたら変わらないファイル（送った意図・司令塔の処理の記録）の、読んだ中身。
 /// 30 秒ごとの取り直しのたびに読み直さないよう、一覧の sha が同じなら取り直さずに使う（変わらないファイルでも、sha が変われば読み直す）
 final class ImmutableFileCache {
@@ -425,5 +432,53 @@ final class ImmutableFileCache {
     func keep(_ paths: Set<String>) {
         envelopes = envelopes.filter { paths.contains($0.key) }
         records = records.filter { paths.contains($0.key) }
+    }
+}
+
+// MARK: - リポジトリごとのファイルと、App Store で配信した版
+
+extension StateReader {
+    private func readRepository(_ repo: RepositoryFullName) async throws(StateStoreError) -> RepositoryPart {
+        async let file = read(RepositoryFile.self, at: StatePath.repository(repo))
+        async let listed = Self.capture { () throws(StateStoreError) in try await directories(StatePath.epics(repo)) }
+        async let releases = readReleases(of: repo)
+        let fileRead = await file
+        var part = RepositoryPart(repository: fileRead.value, failures: fileRead.failures)
+        let ids = try await listed.get().compactMap(ULID.init(rawValue:))
+        for epic in await Self.inOrder(ids, { id in await readEpic(id, of: repo) }) {
+            epic.value.map { part.epics.append($0) }
+            part.failures += epic.failures
+        }
+        let releasesRead = await releases
+        part.releases = releasesRead.value
+        part.failures += releasesRead.failures
+        return part
+    }
+
+    /// App Store で配信した版の記録（版の小さい順）。置き場所と中身（リポジトリ・版）が合うものだけ出す
+    private func readReleases(of repo: RepositoryFullName) async -> Part<[ReleaseFile]> {
+        let directory = StatePath.releases(repo)
+        let entries: [DirectoryEntry]
+        do {
+            entries = try await store.listAll(directory) ?? []
+        } catch {
+            return Part(value: [], failures: [SourceFailure(source: directory, message: StateServiceError.message(for: error))])
+        }
+        let files = entries.filter { $0.kind == .file && $0.name.hasSuffix(".json") }
+            .compactMap { entry in MarketingVersion(rawValue: String(entry.name.dropLast(".json".count))).map { (entry, $0) } }
+            .sorted { $0.1 < $1.1 }
+        var part = Part<[ReleaseFile]>(value: [])
+        for ((entry, version), read) in zip(files, await Self.inOrder(files, { file in await read(ReleaseFile.self, at: file.0.path) })) {
+            part.failures += read.failures
+            guard let release = read.value else {
+                continue
+            }
+            guard release.repo == repo, release.version == version, entry.path == StatePath.release(repo, version) else {
+                part.failures.append(SourceFailure(source: entry.path, message: Self.misplaced))
+                continue
+            }
+            part.value.append(release)
+        }
+        return part
     }
 }

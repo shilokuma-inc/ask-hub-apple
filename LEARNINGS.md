@@ -187,6 +187,17 @@
   止まった古い実行は queued のまま残るので、開き直した後は、それより新しい実行（id は作られた順に大きくなる）だけを見る。ワーカーは待つチェックが 10 分出なければ実行を読み、止まっていれば 1 回の待ちで 1 回だけ開き直す（2026-11-12、#1073）
 - 移したリポジトリのルールセット `askhub-protect` は develop・main・`release/**` のブランチだけが対象なので、タグの作成（`git push origin refs/tags/v1.0.0`・Git Data API の `POST git/refs`）は止めない。注釈付きのタグは tagger の名前とアドレスが public に残るので、手で付けるときもリポジトリのコミットと同じ（noreply の）アドレスにする（2026-11-12、OshiCon 1.0.0）
 - `GET /repos/{o}/{r}/actions/runs?created=<開始>..<終わり>`（ISO 8601 の範囲）で、作られた時刻で実行を絞れる。ビルドを上げた Upload の実行を、上げた時刻から探すのに使う（2026-11-12、配信の検知）
+- CI の `build / build` が、テストの失敗ではなく `cancelled`（チェックの表示は fail）で終わることがある。ジョブの注記に「The job was not acquired by Runner of type hosted even after multiple attempts」と
+  「Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times」が出ていれば、GitHub の macOS のランナーが足りずに打ち切られたもので、コードの問題ではない。
+  注記は `gh api repos/<owner>/<repo>/check-runs/<ジョブの id>/annotations` で読める（`--log-failed` にはログが出ない）。同じコミットのまま `gh run rerun <実行の id>` で流し直す（2026-11-13、#1084）
+- テンプレート由来のリポジトリを移すときは、CLAUDE.md と `build.yml` だけでなく、README の「ブランチ運用と CI」の表と説明も直す。
+  表の「Pull Request の作成時 ✅」のままだと、`askhub/**` 宛ての子 PR（PR のイベントでは Build が動かない）にも当たるように読める。
+  子 PR と最終 PR（更新でも UI テストまで流す）の行を足し、`.coderabbit.yaml` の「ループには触らせない」のような ralph-loop の言い回しも直す（2026-11-12、shariverse/oshikatsu-countdown-ios#163）
+- Contents API の PUT は、通信が応答の前後で切れた・応答を読めない・5xx でも、GitHub が書いた後のことがある。失敗として送り直すと別の番号の同じ意図になり、
+  司令塔に同じ回答が 2 回届いた（2026-11-13、askhub-sandbox の epic。1 回目の受け付けより前に 2 回目が届いた）。`IntentSender` は、書いたかもしれない失敗のときに同じパスを読み直し、
+  同じ中身があれば送れたことにする（`mayHaveWritten`。上限・権限・取り消しは読み直さない）（2026-11-14、#1103）
+- 状態リポジトリの実データで司令塔の処理を確かめたいときは、`askhub-state` を `git clone` し（REST の上限に数えない）、一時的なテストで epic のファイル（`epic.json`・`questions.json`・`jobs/`）を
+  `InMemoryStateStore` に `put` して流す。実データを読むパスは環境変数で渡し、テストはコミットしない（2026-11-14、#1103 の止まった見直しの頼み直し）
 
 ## ビルド・テスト
 
@@ -588,6 +599,11 @@
   `StatePath.attempt` は 1 以上の precondition で止まり（`askhub status` が止まった。#1039）、質問の版の読み方（`AnswerIntent.version`。1 以上）を流用した `JobTarget` は、やり直しの `targetVersion` の `"0"` を断っていた（2026-11-12、#1043）
 - 三項演算子で「`@Sendable () -> [String]` を返す関数の呼び出し」と「閉包のリテラル（`{ [] }`）」を選ぶと、Swift 6 のコンパイラが
   `failed to produce diagnostic for expression` で落ちる（型の注釈を付けても同じ。2026-11-13、`MachineRuntime`）。`var` に既定の閉包を入れて `if` で差し替えるか、関数に分ける
+- 司令塔が人の意図の参照（鍵と番号）を、頼んだ後に変わったかの比べ（見直しの `RevisionBasis`）に入れているときに、同じ決定の回答で意図だけを差し替えると、
+  比べが合わずに結果が捨てられ、新しいジョブも作られずに質問が `revising` のまま止まった（2026-11-13）。同じ決定の意図は前のものを残して何も書かない（冪等にする）。
+  結果を捨てる比べがあるなら、捨てた後に作り直す見回り（`RevisionRestart`。今の basis のジョブが無い `revising` を探す）も一緒に用意する（2026-11-14、#1103）
+- アプリの `ReflectionTracker.reflection(…, excluding:)` は、まとめて OK の残りを送り直せるよう、同じ `HumanIntent` が送った分を数えない。そのため同じ回答の 2 回目は、
+  窓口の控え（`lastSend`）で見つからないと止まらなかった。1 つの意図で済む操作は、この起動で受け取り待ちの同じ操作が対象のすべてを覆っていれば送らない（`isAwaitingAll`）（2026-11-14、#1103）
 
 ## シェルスクリプト
 
@@ -741,3 +757,7 @@
   おしかつカウントダウンの 1.0.0 は、ビルド (12) が Upload の実行 13 だった（実行番号の採番に替えたのは実行 20 から）。配信したコミットは、上げた時刻に動いていた Upload の実行で決め、番号は候補が残ったときの絞り込みにだけ使う（2026-11-12、配信の検知）
 - Mac の `presentationSizing(.form)` のシートは、中身にかかわらず 600×520pt ほどで開き、Form の 3 つ目のセクションはスクロールしないと見えない（スクロールバーも出ないので、下に欄があることが分からない）。
   欄を足したシートは Mac で撮って見え方を確かめ、隠れるなら `.page`（720×800pt ほど）にする（2026-11-12、依頼の添付 #1075）
+- 配信した後の版（`MARKETING_VERSION`）のままの develop の Upload は、`Invalid Pre-Release Train. The train version '1.0.0' is closed for new build submissions` と
+  `CFBundleShortVersionString [1.0.0] … must contain a higher version than that of the previously approved version [1.0.0]` で落ち（`EXPORT FAILED`、exit 70）、TestFlight に上がらない。
+  司令塔が配信を見つけて作る次の版の PR（`askhub/version-<次の版>` → develop）がマージされれば通る。司令塔は App Store Connect の鍵（`askhub-commander app-store-connect`）が無いと配信を見つけず、起動のログに出るだけなので、
+  配信の後に develop の Upload がこのエラーで落ちたら、まず鍵の設定と次の版の PR があるかを見る（2026-11-12、OshiCon 1.0.0 → 1.1.0 の #164）

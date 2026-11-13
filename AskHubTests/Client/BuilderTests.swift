@@ -16,7 +16,7 @@ struct BuilderTests {
         let items = InboxBuilder.items(from: snapshot, now: now)
         let blocking = Set(items.filter { $0.urgency == .blocking }.map(\.kind))
         let whenFree = Set(items.filter { $0.urgency == .whenFree }.map(\.kind))
-        #expect(blocking == [.questions, .goal, .humanTask, .blocker, .macOffline])
+        #expect(blocking == [.questions, .goal, .humanTask, .blocker, .macOffline, .releaseNotes])
         #expect(whenFree == [.finalReview, .verification, .cleanup, .token, .claudeVersion])
     }
 
@@ -45,6 +45,36 @@ struct BuilderTests {
         let item = try #require(InboxBuilder.items(from: snapshot, now: now).first { $0.id == "recipe-weekly/questions" })
         #expect(item.detail == "残り 1 問 · 説明待ち 1 · ロック 2")
         #expect(item.route == .deck(.questions("recipe-weekly")))
+    }
+
+    /// 見直している質問は、ロックと分けて数える
+    @Test
+    func questionRowCountsRevisingApartFromLocked() throws {
+        var snapshot = snapshot
+        snapshot.updateEpic("recipe-weekly") { $0.updateQuestion("Q5") { $0.state = .reviewing } }
+        let item = try #require(InboxBuilder.items(from: snapshot, now: now).first { $0.id == "recipe-weekly/questions" })
+        #expect(item.detail == "残り 1 問 · 説明待ち 1 · 見直し中 1 · ロック 1")
+    }
+
+    /// 答えられる質問が残っていなくても、見直している質問があれば、消えたように見せずに時間のあるときの行で出す
+    @Test
+    func epicWithOnlyRevisingQuestionsStaysWhenFree() throws {
+        var snapshot = snapshot
+        let answered = Question.State.answered(Question.Response(optionID: "a", note: "", answeredAt: now))
+        snapshot.updateEpic("recipe-weekly") { epic in
+            epic.updateQuestion("Q3") { $0.state = answered }
+            epic.updateQuestion("Q4") { $0.state = answered }
+            epic.updateQuestion("Q5") { $0.state = .reviewing }
+        }
+        let item = try #require(InboxBuilder.items(from: snapshot, now: now).first { $0.id == "recipe-weekly/questions" })
+        #expect(item.urgency == .whenFree)
+        #expect(item.title == "質問の見直しを待っています")
+        #expect(item.detail == "Claude が Q5 を見直しています。終わったら答えられます")
+        #expect(item.route == .epic("recipe-weekly"))
+
+        // ロックだけが残るときは出さない（見直しは、依存先に答えてから始まる）
+        snapshot.updateEpic("recipe-weekly") { $0.updateQuestion("Q5") { $0.state = .locked } }
+        #expect(!InboxBuilder.items(from: snapshot, now: now).contains { $0.id == "recipe-weekly/questions" })
     }
 
     /// 自動でマージする最終 PR は出さない

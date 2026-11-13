@@ -40,6 +40,9 @@ struct RouteDestination: View {
             case .repository(let id):
                 RepositoryDetailView(repositoryID: id)
 
+            case let .release(repositoryID, version):
+                ReleaseDetailView(repositoryID: repositoryID, version: version)
+
             case .finishedEpics:
                 FinishedEpicListView()
             }

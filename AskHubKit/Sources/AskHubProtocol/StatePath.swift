@@ -42,6 +42,11 @@ public enum StatePath {
         "\(epicDirectory(repo, epic))/decisions.json"
     }
 
+    /// 実機確認への答え
+    public static func verifications(_ repo: RepositoryFullName, _ epic: ULID) -> String {
+        "\(epicDirectory(repo, epic))/verifications.json"
+    }
+
     /// 撮影のジョブが撮った画像（`<コミット>-<画面>.png`）。Before は base との分岐点、After は作業ブランチの先頭のコミットで、
     /// 同じコミット・画面は撮り直さずに使い回す（いくつかの仮決めが同じ画像を指すことがある）
     public static func screenshot(_ repo: RepositoryFullName, _ epic: ULID, commit: String, scene: String) -> String {
