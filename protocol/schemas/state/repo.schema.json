@@ -130,7 +130,11 @@
         { "type": "null" }
       ]
     },
-    "addedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+    "addedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+    "removedAt": {
+      "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }],
+      "description": "対象から外した時刻（removeRepository）。外していなければ省くか null。加え直すと外す"
+    }
   },
   "$defs": {
     "existingProtection": {

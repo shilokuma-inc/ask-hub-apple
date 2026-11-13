@@ -64,7 +64,8 @@ public actor ProtectionWatch {
     @discardableResult
     func check(_ repo: RepositoryFullName) async throws -> Bool {
         let path = StatePath.repository(repo)
-        guard let file = try await context.readable(RepositoryFile.self, at: path),
+        // 対象から外したリポジトリは点検しない（GitHub 側には触れないので、保護は掛かったまま）
+        guard let file = try await context.readable(RepositoryFile.self, at: path), !file.isRemoved,
               file.protection.appliedAt != nil else { return false }
         let problems = try await Self.problems(
             github: github(repo), requiredChecks: file.protection.requiredChecks ?? ProtectionPolicy.defaultRequiredChecks

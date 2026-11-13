@@ -102,6 +102,27 @@ struct AskHubClientTests {
         #expect(await store.data(at: StatePath.epic(Self.repo, epic)) != nil)
     }
 
+    @Test func verifyDraftIsReadAsVerifyIntent() throws {
+        let key = try key()
+        let verification = VerificationTarget(repo: Self.repo, epic: ULID.generate(at: Self.now), item: "v2", goalVersion: 3)
+        func read(_ draft: IntentDraft) throws -> VerifyIntent {
+            try VerifyIntent(envelope: IntentEnvelope(
+                kind: draft.kind,
+                repo: draft.repo,
+                target: draft.target,
+                targetVersion: draft.targetVersion,
+                payload: draft.payload,
+                issuedAt: Timestamp(Self.now),
+                nonce: ULID.generate(at: Self.now),
+                keyId: key.keyID
+            ))
+        }
+        let problem = try read(.verify(verification, result: .problem, note: "線が見えない"))
+        #expect(problem.target == verification)
+        #expect(problem.note == "線が見えない")
+        #expect(try read(.verify(verification, result: .confirmed)).result == .confirmed)
+    }
+
     @Test func sendsAttachmentsBeforeIntent() async throws {
         let store = InMemoryStateStore()
         let key = try key()
@@ -141,6 +162,24 @@ struct AskHubClientTests {
         let head = String(repeating: "b", count: 40)
         let approval = try ApproveSetupPullRequestIntent(envelope: envelope(.approveSetupPullRequest(Self.repo, number: 12, head: head)))
         #expect(approval.pullRequest == 12 && approval.head == head)
+    }
+
+    @Test func intentWrittenBeforeLostResponseIsSent() async throws {
+        let store = InMemoryStateStore()
+        let key = try key()
+        let question = QuestionTarget(repo: Self.repo, epic: ULID.generate(at: Self.now), question: "q1", version: 1)
+        let draft = IntentDraft.answer(question, choice: "案1", note: "")
+        // 書いた後に応答を受け取れなかった（通信が切れた）。読み直して書けていれば、送れたことにする（送り直させない）
+        let lostStore = WriteThenFailStore(base: store, error: .transport("URLError -1005"), writes: true)
+        let lost = IntentSender(store: lostStore, key: key) { Self.now }
+        let sent = try await lost.send(draft)
+        #expect(await store.data(at: StatePath.intent(device: sent.keyId, nonce: sent.nonce)) != nil)
+        // 書けていなければ、失敗のまま返す
+        let failedStore = WriteThenFailStore(base: store, error: .transport("URLError -1009"), writes: false)
+        let failed = IntentSender(store: failedStore, key: key) { Self.now }
+        await #expect(throws: ClientError.self) { try await failed.send(draft) }
+        // 書いていないと分かる失敗（上限など）は、読み直さない
+        #expect(!IntentSender.mayHaveWritten(.rateLimited(retryAfter: .seconds(60))))
     }
 
     @Test func draftsAreReadAsTheirKinds() throws {
@@ -231,6 +270,10 @@ struct AskHubClientTests {
         #expect(try ResumeEpicIntent(envelope: envelope(.resumeEpic(repo: Self.repo, epic: epic))).epic == epic)
         let handover = try HandoverIntent(envelope: envelope(.handover(repo: Self.repo, epic: epic, to: MacName(rawValue: "macbook-a")!)))
         #expect(handover.mac.rawValue == "macbook-a")
+        // 対象から外すは epic を対象にしない（封筒の repo だけ）
+        let remove = IntentDraft.removeRepository(Self.repo)
+        #expect(remove.target == nil)
+        #expect(try RemoveRepositoryIntent(envelope: envelope(remove)).repo == Self.repo)
     }
 }
 
@@ -255,5 +298,22 @@ struct CommandArgumentsTests {
         #expect(throws: CommandArguments.Failure(message: "--attempt は 0 以上の数")) {
             try CommandArguments(["--attempt", "-1"]).integer("attempt", minimum: 0)
         }
+    }
+}
+
+/// 書き込みで、書いてから（`writes`）、または書かずに失敗を返す
+private struct WriteThenFailStore: StateStore {
+    let base: InMemoryStateStore
+    let error: StateStoreError
+    let writes: Bool
+
+    func read(_ path: String) async throws(StateStoreError) -> StoredBlob? { try await base.read(path) }
+    func list(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? { try await base.list(directory) }
+    func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]? { try await base.listAll(directory) }
+    func snapshot() async throws(StateStoreError) -> any StateStore { try await base.snapshot() }
+
+    func write(_ path: String, data: Data, replacing sha: String?, message: String) async throws(StateStoreError) -> String {
+        if writes { _ = try await base.write(path, data: data, replacing: sha, message: message) }
+        throw error
     }
 }

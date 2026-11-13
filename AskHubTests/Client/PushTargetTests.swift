@@ -26,6 +26,22 @@ struct PushTargetTests {
         #expect(navigator.paths[.progress] == [.epic(epic)])
     }
 
+    /// 配信した版の知らせ（リリース文の確認・人が直す後作業）は、リポジトリの一覧からその版の画面を開く
+    @Test
+    func opensReleaseFromReleaseNotice() throws {
+        let target = try #require(PushTarget(userInfo: userInfo(["repo": "shariverse/OshiKatsu-Countdown-iOS", "release": "1.1.0"])))
+        let repo = try #require(RepositoryFullName(rawValue: "shariverse/OshiKatsu-Countdown-iOS"))
+        #expect(target == .release(repo: repo, version: try #require(MarketingVersion(rawValue: "1.1.0"))))
+
+        let navigator = AppNavigator()
+        navigator.open(target)
+        #expect(navigator.section == .repositories)
+        // 画面のリポジトリの id は小文字にそろえる
+        #expect(navigator.paths[.repositories] == [.release(repositoryID: "shariverse/oshikatsu-countdown-ios", version: "1.1.0")])
+        // 版の形の違う値では開かない
+        #expect(PushTarget(userInfo: userInfo(["repo": "shariverse/oshikatsu-countdown-ios", "release": "../1.1.0"])) == nil)
+    }
+
     /// Mac がオフラインの知らせは、Mac の一覧からその Mac の画面を開く
     @Test
     func opensMacFromMacNotice() throws {

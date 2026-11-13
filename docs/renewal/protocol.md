@@ -36,6 +36,7 @@ repos/<owner>/<repo>/epics/<epic>/epic.json        epic の状態（司令塔）
 repos/<owner>/<repo>/epics/<epic>/questions.json   質問と、その状態（司令塔）
 repos/<owner>/<repo>/epics/<epic>/goal.json        ゴール（司令塔）
 repos/<owner>/<repo>/epics/<epic>/decisions.json   人が決めていない判断（司令塔）
+repos/<owner>/<repo>/epics/<epic>/verifications.json  実機確認への答え（司令塔）
 repos/<owner>/<repo>/epics/<epic>/screenshots/<commit>-<scene>.png  見える仮決めのスクショ（撮ったワーカー）
 repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json  ジョブ（司令塔）
 repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json  試行（実行した Mac のワーカー）
@@ -126,6 +127,10 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。`coderabbitai[bot]` など）。無ければ空
   - `screenshots`: 判断のカードのスクショの撮り方（Swift は `ScreenshotSettings`）。`scenes`（撮れる画面の一覧のファイルの、リポジトリの直下からの相対パス。`.json`）と `destination`（撮る Simulator。`destinations` と同じ形で、macOS はまだ撮らない）。無ければ撮らない（[flows.md](flows.md) の「スクショ」）
 - `build` が無いリポジトリでは、開始を断る
+- `removedAt`: 対象から外した時刻（`removeRepository`）。外していなければ省くか `null`。外しても `repos/<owner>/<repo>/` のファイルは消さない
+  - 外したリポジトリには、依頼・開始・ビルドの設定を受け付けない。司令塔はアイコンを読みに行かない。クライアントは一覧から外し、「対象に加える」の候補に戻す
+  - もう一度 `addRepository` を送ると、印を外して戻る（`build` などの設定もそのまま戻る）
+  - 終わった epic は、ほかのリポジトリと同じく 30 日後に `archive/` へ移す
 - `icon`: 対象のアプリのアイコン（Swift は `RepositoryFile.AppIcon`）。司令塔が対象のリポジトリの base（`build.baseBranch`。`build` が無ければ既定のブランチ）から取り出し、256px の PNG にして `icon.png` に置く（[architecture.md](architecture.md) の「対象のアプリのアイコン」）。まだ取り出していない・見つからないなら `null`（クライアントは頭文字を出す）
   - `source`: 取り出した元（Icon Composer の `.icon` か、Asset Catalog の `.appiconset` のフォルダ）の、リポジトリの直下からのパス
   - `sourceTree`: 元のフォルダの git の tree の sha。変わったときだけ書き出し直す
@@ -377,6 +382,23 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `nextVersion` は develop の `MARKETING_VERSION` を次の版に上げる PR。`state` は `open`（CI を待っている）・`merged`・`skipped`（develop の版がもう大きかったので上げなかった。`pullRequest` を持たない）。`open`・`merged` の `version` は配信した版より大きい
 - `problem` は後作業を進められなかった理由（`step` は `commit`・`tag`・`notes`・`githubRelease`・`nextVersion`）。進められたら消す。`needsHuman` が true なら、やり直しても進まないので人が直す（クライアントに出す）
 - クライアントは、`notes` があって `confirmed` も `githubRelease` も無い版を、人の番として出す（Swift は `ReleaseFile.awaitsNotesReview`）。タグ・GitHub Release・次の版（`merged`・`skipped`）がそろったら終わり（`isFinished`）
+
+### verifications.json（実機確認への答え）
+
+```json
+{
+  "v": 1,
+  "answers": [
+    { "id": "v2", "result": "confirmed", "note": "", "intent": { "keyId": "…", "nonce": "…" }, "at": "…" },
+    { "id": "v1", "result": "problem", "note": "日曜の夜に開くと、先週の振り返りが出る", "intent": { "keyId": "…", "nonce": "…" }, "at": "…" }
+  ]
+}
+```
+
+- 何を確かめるか（項目）は、ゴールの完了の条件（`doneWhen`）。順に `v1`・`v2`… と数える（最終 PR の本文の「実機で確かめてほしいこと」と同じ id）
+- ここには人が答えた項目だけを、答えた順に置く。1 つの項目に答えるのは 1 回だけ（答え直さない）。ファイルは最初の答えで司令塔が作る
+- `result` は `confirmed`（確認した）・`problem`（問題あり）。`note` は問題ありの説明（問題ありは空にしない。確認したは空で、意図に `note` があれば読まない）
+- 型は `VerificationsFile`、スキーマは `protocol/schemas/state/verifications.schema.json`
 
 ### jobs/<job>.json（ジョブ）
 
@@ -656,13 +678,14 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `approveMerge` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | —（見える仮決めにすべて答えた後でだけ受け付ける） |
 | `instructFinal` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | `instruction`（指示の本文） |
 | `humanTaskDone` | 人がする作業（`{ "type": "humanTask", "epic", "id": "h1" }`） | ゴールの `version` | `none` は空、`file` は `attachments`（1 件。依頼の添付と同じ形・置き場所・上限） |
+| `verify` | 実機確認の項目（`{ "type": "verification", "epic", "id": "v1" }`） | ゴールの `version` | `result`（`confirmed`・`problem`）、`note`（問題ありの説明。`payloads/verify.schema.json`）。最終 PR をマージした（`merged` の）epic の、完了の条件の項目に 1 回だけ。答えは `verifications.json` に書く。問題ありの直しは、クライアントが同時に送る依頼（`request`）が新しい epic になる |
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。今は開始する前の epic だけ。段階 4 の 3 から、開始した後の epic も受け付ける（マージした epic は断る） |
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
-| `removeRepository` | リポジトリ（封筒の `repo`） | — | 空の見込み。終わっていない epic があれば断る（段階 4 の 4 で作る） |
+| `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
 | `applyProtection` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `requiredChecks`（必須にするチェックの名前。1〜20 個・重ならない。`payloads/applyProtection.schema.json`）。司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛けてから重なる保護を外し、`repo.json` の `protection` を書く。管理用のトークンが無い・private のリポジトリなどは理由を付けて断る |
 | `approveSetupPullRequest` | 準備の PR（`{ "type": "setupPullRequest", "id": "<PR の番号>" }`。封筒の `repo` が対象のリポジトリ） | 人が見たときの PR の head のコミット（`repo.json` の `setup.workflows.head`） | 空（`payloads/approveSetupPullRequest.schema.json`）。司令塔が出した開いた準備の PR で、head が変わっていないときだけ、管理用のトークンで merge commit にする |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |

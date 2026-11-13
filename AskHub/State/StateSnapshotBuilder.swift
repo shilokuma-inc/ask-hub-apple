@@ -16,6 +16,8 @@ struct StateIndex {
         var canAbandon = false
         /// 最終 PR（出した後だけ）
         var final: FinalEntry?
+        /// 実機確認（マージした後だけ）
+        var verification: VerificationEntry?
         /// 終えたことを送れる人がする作業（ゴールの確認の待ちと実装の間の、終えていないもの）と、その渡すものの種類
         var humanTasks: [HumanTask.ID: HandoverKind] = [:]
         /// 開始した後（実装・最終 PR の段取り・人の確認の待ち）か。一時停止・再開・引き継ぎは、このときだけ送れる
@@ -45,6 +47,29 @@ struct StateIndex {
         var isReviewable: Bool
     }
 
+    /// 配信した版への意図（リリース文の公開）の対象
+    struct ReleaseEntry {
+        var target: ReleaseTarget
+        /// 公開を送れるか（下書きがあり、まだ公開していない）。処理を待つ公開を当てた後のもの
+        var canPublish: Bool
+    }
+
+    /// 実機確認への答え（`verify`）と、「問題あり」で一緒に送る依頼の材料
+    struct VerificationEntry {
+        var goalVersion: Int
+        /// epic の題と最終 PR の番号（依頼の本文に書く）
+        var title: String
+        var pullRequest: Int
+        /// 項目の id（`v1` など）から、確かめること（ゴールの完了の条件）
+        var items: [String: String]
+        /// まだ答えていない項目の id。処理を待つ答えを当てた後のもの
+        var unanswered: Set<String>
+        /// 「問題あり」と答えた項目の説明（依頼を送れなかったときの送り直しに使う）
+        var problemNotes: [String: String] = [:]
+        /// この端末の、司令塔がまだ処理していない答えだけで答えた項目
+        var pendingAnswers: Set<String> = []
+    }
+
     struct QuestionEntry {
         /// プロトコルの質問の id（画面では大文字にして出す）
         var id: String
@@ -54,6 +79,11 @@ struct StateIndex {
     var epics: [Epic.ID: EpicEntry] = [:]
     var questions: [Epic.ID: [Question.ID: QuestionEntry]] = [:]
     var repositories: [TargetRepository.ID: RepositoryFullName] = [:]
+    var releases: [Release.ID: ReleaseEntry] = [:]
+    /// 対象から外したリポジトリ（加え直すときに、元の owner/name の書き方で送る）
+    var removedRepositories: [TargetRepository.ID: RepositoryFullName] = [:]
+    /// 終わっていない epic のあるリポジトリ（対象から外すと司令塔が断る）。処理を待つ意図を当てた後のもの
+    var busyRepositories: Set<TargetRepository.ID> = []
 }
 
 /// 状態リポジトリのファイル（`StateDocuments`）を、画面用のモデル（`ClientSnapshot`）に変える。
@@ -79,11 +109,12 @@ struct StateSnapshotBuilder {
     func build() -> (snapshot: ClientSnapshot, index: StateIndex) {
         var index = StateIndex()
         var epics = documents.epics.map { epic($0, index: &index) }
-        var repositories = documents.repositories.map { repository($0, epics: epics, index: &index) }
+        var repositories = documents.repositories.filter { !$0.isRemoved }.map { repository($0, epics: epics, index: &index) }
+        var removed = documents.repositories.filter(\.isRemoved).map { removedRepository($0, index: &index) }
         let overlaid = intentsToOverlay()
         // 古い順に当てる（同じ質問に答え直したときは、新しい回答が残る）
         for envelope in overlaid.reversed() {
-            apply(envelope, to: &epics, repositories: &repositories, index: &index)
+            apply(envelope, to: &epics, repositories: &repositories, removed: &removed, index: &index)
         }
         applyBlockers(to: &epics, overlaid: overlaid, index: &index)
         for epic in epics {
@@ -97,16 +128,20 @@ struct StateSnapshotBuilder {
             index.epics[epic.id]?.canAbandon = epic.isActive && epic.stage < .implementing
             applyPauseControls(of: epic, to: &index)
         }
+        index.busyRepositories = Set(epics.filter(\.isActive).map(\.repositoryID))
         applyRejections(to: &epics)
+        let releases = releases(index: &index, overlaid: overlaid)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             candidateRepositories: [],
+            removedRepositories: removed.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             epics: epics.sorted { $0.updatedAt > $1.updatedAt },
             macs: macs(),
             fetchedAt: now,
             sourceFailures: documents.failures,
             sentIntents: documents.sentIntents.map(sentStatus),
-            commanderSeenAt: documents.commander?.seenAt.date
+            commanderSeenAt: documents.commander?.seenAt.date,
+            releases: releases
         )
         return (snapshot, index)
     }
@@ -117,10 +152,19 @@ struct StateSnapshotBuilder {
         var repository = Self.repository(file.repo)
         index.repositories[repository.id] = file.repo
         repository.icon = Self.appIcon(of: file)
+        repository.build = file.build.map(Self.buildSettings)
         repository.protection = protection(of: file)
         repository.setup = setup(of: file)
         repository.lastMacID = epics.filter { $0.repositoryID == repository.id && $0.macID != nil }
             .max { $0.updatedAt < $1.updatedAt }?.macID
+        return repository
+    }
+
+    /// 対象から外したリポジトリ。送るときは元の owner/name の書き方を使う
+    private func removedRepository(_ file: RepositoryFile, index: inout StateIndex) -> TargetRepository {
+        var repository = Self.repository(file.repo)
+        index.removedRepositories[repository.id] = file.repo
+        repository.icon = Self.appIcon(of: file)
         return repository
     }
 

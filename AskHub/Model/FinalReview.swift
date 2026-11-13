@@ -161,7 +161,8 @@ struct VerificationItem: Identifiable, Hashable {
     enum State: Hashable {
         /// TestFlight に上がるのを待っている
         case waitingForBuild
-        case ready(build: String)
+        /// 確かめられる。`build` は確かめる版（TestFlight の検知が無いあいだは nil。マージしたら確かめられるものとして出す）
+        case ready(build: String?)
         case confirmed
         case problem(note: String)
     }
@@ -171,6 +172,11 @@ struct VerificationItem: Identifiable, Hashable {
             return true
         }
         return false
+    }
+
+    /// 確かめる版の説明（「TestFlight 1.4.0 (52)」）。版が分からないとき（マージしたら出すもの）は、上がった版で確かめるよう書く
+    static func buildLabel(_ build: String?) -> String {
+        build.map { "TestFlight \($0)" } ?? "TestFlight に上がった版で"
     }
 }
 

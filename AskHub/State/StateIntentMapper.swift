@@ -13,7 +13,8 @@ struct StateIntentMapper {
     /// 人に渡されたジョブへの操作は、最後に読んだ状態の「対処が要ります」に出した操作だけ（やり直す・やめる）、取り下げは開始する前の epic だけ、
     /// 最終 PR への操作（判断のカードへの答え・マージの承認・指示）は最終 PR を出した epic だけ、
     /// 人がする作業を終えたことは、ゴールの確認の待ちと実装の間の、終えていない作業だけ送れる。
-    /// 一時停止・再開・引き継ぎは開始した後の epic だけで、引き継ぎは、一時停止していなければ epic の Mac でジョブが動いていないときだけ送れる
+    /// 一時停止・再開・引き継ぎは開始した後の epic だけで、引き継ぎは、一時停止していなければ epic の Mac でジョブが動いていないときだけ送れる。
+    /// 実機確認への答えは、マージした epic の、まだ答えていない項目だけ送れる
     func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
@@ -41,11 +42,11 @@ struct StateIntentMapper {
         case let .handOver(epicID, _):
             index.epics[epicID]?.canHandOver == true
 
-        case .applyProtection(let repositoryID, _), .approveSetup(let repositoryID, _, _):
-            index.repositories[repositoryID] != nil
+        case .publishRelease, .verify:
+            supportsAfterMerge(intent)
 
-        case .verify, .cleanUp:
-            false
+        case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp:
+            supportsRepositoryIntent(intent)
         }
     }
 
@@ -66,6 +67,9 @@ struct StateIntentMapper {
     /// 送る形。まとめて OK は、答えの無いカードそれぞれへの OK にする（司令塔は判断のカードへの答えを 1 枚ずつ受け取る）。
     /// 人が見ていなかった答え待ちのカードがあれば（見た後に足された）、どれも送らない
     func drafts(for intent: HumanIntent) throws(ClientServiceError) -> [IntentDraft] {
+        if case let .verify(epicID, itemID, reply) = intent {
+            return try verifyDrafts(epicID: epicID, itemID: itemID, reply: reply)
+        }
         guard case let .acceptAllDecisions(epicID, headCommit, shownIDs) = intent else {
             return [try draft(for: intent)]
         }
@@ -89,7 +93,7 @@ struct StateIntentMapper {
         case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
-        case .request, .addRepository, .applyProtection, .approveSetup:
+        case .request, .addRepository, .removeRepository, .configureRepository, .applyProtection, .approveSetup:
             return try repositoryDraft(intent)
 
         case let .resolveBlocker(epicID, action, _, target):
@@ -104,12 +108,16 @@ struct StateIntentMapper {
         case .pause, .resume, .handOver:
             return try pauseDraft(intent)
 
+        case let .publishRelease(repositoryID, version, notesVersion, notes):
+            return try releaseDraft(repositoryID: repositoryID, version: version, notesVersion: notesVersion, notes: notes)
+
         case .acceptAllDecisions, .verify, .cleanUp:
+            // まとめて OK と実機確認は、いくつかの意図になることがあるので `drafts(for:)` で作る
             throw Self.unsupported
         }
     }
 
-    private static let unsupported = ClientServiceError(message: "この操作は、まだ状態リポジトリに送れません")
+    static let unsupported = ClientServiceError(message: "この操作は、まだ状態リポジトリに送れません")
     /// 人が見た後に最終 PR が変わった（head が進んだ・答え待ちのカードが増えた）。見ていない状態に答えを結びつけないよう、送らない
     private static let updated = ClientServiceError(message: "最終 PR が更新されました。見直してから答えてください")
 
@@ -150,41 +158,6 @@ struct StateIntentMapper {
                 throw ClientServiceError(message: "開始した epic の取り下げは、まだ送れません")
             }
             return .abandonEpic(repo: epic.repo, epic: epic.id)
-
-        default:
-            throw Self.unsupported
-        }
-    }
-
-    private func repositoryDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
-        switch intent {
-        case let .request(repositoryID, summary, body, files):
-            guard summary.count <= RequestIntent.maximumTitleLength, body.count <= RequestIntent.maximumBodyLength else {
-                let limits = "要約は \(RequestIntent.maximumTitleLength) 文字、内容は \(RequestIntent.maximumBodyLength) 文字まで"
-                throw ClientServiceError(message: "\(limits)です")
-            }
-            // 司令塔は 1 から順の番号を求める（添付欄の順に振ったものを、そのまま送る）
-            guard files.count <= RequestIntent.maximumAttachments, files.enumerated().allSatisfy({ $1.attachment.number == $0 + 1 }) else {
-                throw ClientServiceError(message: "添付の番号が合いません。添付し直してください")
-            }
-            return .request(repo: try repository(repositoryID), title: summary, body: body, attachments: files.map(\.attachment))
-
-        case .addRepository(let repositoryID):
-            // 状態リポジトリにつないだときは候補の一覧が無いので、人が入れた owner/name を id にして送る
-            guard let repo = index.repositories[repositoryID] ?? RepositoryFullName(rawValue: repositoryID) else {
-                throw ClientServiceError(message: "owner/name の形で入れてください")
-            }
-            return .addRepository(repo)
-
-        case let .applyProtection(repositoryID, checks):
-            let problems = ProtectionPolicy.problems(ofRequiredChecks: checks)
-            guard problems.isEmpty else {
-                throw ClientServiceError(message: problems.joined(separator: "、"))
-            }
-            return .applyProtection(try repository(repositoryID), requiredChecks: checks)
-
-        case let .approveSetup(repositoryID, pullRequest, head):
-            return .approveSetupPullRequest(try repository(repositoryID), number: pullRequest, head: head)
 
         default:
             throw Self.unsupported
@@ -359,7 +332,7 @@ struct StateIntentMapper {
         return text
     }
 
-    private func epic(_ id: Epic.ID) throws(ClientServiceError) -> StateIndex.EpicEntry {
+    func epic(_ id: Epic.ID) throws(ClientServiceError) -> StateIndex.EpicEntry {
         guard let epic = index.epics[id] else {
             throw ClientServiceError(message: "この epic は、状態リポジトリにまだありません。取り直してから送ってください")
         }
@@ -386,10 +359,35 @@ struct StateIntentMapper {
         return EpicTarget(repo: epic.repo, epic: epic.id, version: version)
     }
 
-    private func repository(_ id: TargetRepository.ID) throws(ClientServiceError) -> RepositoryFullName {
+    func repository(_ id: TargetRepository.ID) throws(ClientServiceError) -> RepositoryFullName {
         guard let repo = index.repositories[id] else {
             throw ClientServiceError(message: "このリポジトリは、まだ対象に加わっていません")
         }
         return repo
+    }
+}
+
+// MARK: - App Store で配信した版
+
+extension StateIntentMapper {
+    /// 配信した版のリリース文を公開する。人が見た下書きの版に結びつける（その後に下書きが作り直されていれば、司令塔が断る）
+    func releaseDraft(
+        repositoryID: TargetRepository.ID,
+        version: String,
+        notesVersion: Int,
+        notes: String
+    ) throws(ClientServiceError) -> IntentDraft {
+        guard let entry = index.releases[Release.id(repositoryID, version)], entry.canPublish else {
+            throw ClientServiceError(message: "この版のリリース文は、いまは公開できません。取り直してから送ってください")
+        }
+        guard entry.target.notesVersion == notesVersion else {
+            throw ClientServiceError(message: "リリース文の下書きが作り直されました。見直してから公開してください")
+        }
+        // 司令塔（`PayloadReader`）と同じく、Unicode のコードポイントで数える
+        let text = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.unicodeScalars.count <= PublishGitHubReleaseIntent.notesLimit else {
+            throw ClientServiceError(message: "リリース文は 1〜\(PublishGitHubReleaseIntent.notesLimit) 文字で書いてください")
+        }
+        return .publishGitHubRelease(entry.target, notes: text)
     }
 }

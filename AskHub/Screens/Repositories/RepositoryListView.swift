@@ -78,15 +78,18 @@ private struct RepositoryRow: View {
     }
 }
 
-/// リポジトリの詳細（進めている epic・リリース）
+/// リポジトリの詳細（進めている epic・リリース）。外したリポジトリは、加え直すボタンを出す
 struct RepositoryDetailView: View {
     let repositoryID: TargetRepository.ID
 
     @Environment(ClientStore.self) private var store
+    @State private var isConfirmingRemoval = false
+    @State private var isEditingBuild = false
 
     var body: some View {
         if let repository = store.repository(repositoryID) {
             let epics = store.snapshot?.epics.filter { $0.repositoryID == repositoryID } ?? []
+            let isRemoved = store.snapshot?.isRemoved(repositoryID) == true
             List {
                 CardSection {
                     HStack(spacing: 14) {
@@ -98,6 +101,11 @@ struct RepositoryDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                }
+                if isRemoved {
+                    RemovedRepositorySection(repositoryID: repositoryID)
+                } else {
+                    BuildSettingsSection(repository: repository, isEditing: $isEditingBuild)
                 }
                 CardSection("epic") {
                     ForEach(epics) { epic in
@@ -114,17 +122,85 @@ struct RepositoryDetailView: View {
                     ProtectionSection(repository: repository, protection: protection)
                 }
                 CardSection {
-                    Label("リリースの画面は、リリースの段階で作ります", systemImage: "shippingbox")
-                        .foregroundStyle(.secondary)
+                    let releases = store.snapshot?.releases(of: repositoryID) ?? []
+                    ForEach(releases) { release in
+                        NavigationLink(value: AppRoute.release(repositoryID: release.repositoryID, version: release.version)) {
+                            ReleaseRow(release: release)
+                        }
+                    }
+                    if releases.isEmpty {
+                        Text("App Store で配信した版はまだありません").foregroundStyle(.secondary)
+                    }
                 } header: {
                     Text("リリース")
+                } footer: {
+                    Text("App Store で配信すると、司令塔が見つけて、タグ・GitHub Release・次の版の PR を作ります")
                 }
             }
             .pastelBackground()
             .compactList()
             .navigationTitle(repository.appName)
+            .sheet(isPresented: $isEditingBuild) {
+                BuildSettingsSheet(repository: repository)
+            }
+            .toolbar {
+                if !isRemoved {
+                    RepositoryMenu(repositoryID: repositoryID, isConfirmingRemoval: $isConfirmingRemoval)
+                }
+            }
+            .confirmationDialog("「\(repository.appName)」を対象から外しますか？", isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
+                Button("外す", role: .destructive) {
+                    Task { await store.send(.removeRepository(repositoryID: repositoryID)) }
+                }
+            } message: {
+                Text("GitHub のリポジトリと、AskHub の記録（終わった epic など）は消しません。外すと依頼できなくなります。「対象に加える」から戻すと、ビルドの設定などもそのまま戻ります")
+            }
         } else {
             ContentUnavailableView("このリポジトリは見つかりません", systemImage: "questionmark.folder")
+        }
+    }
+}
+
+/// リポジトリの操作。進めている epic があるあいだは外せない（司令塔が断る）ので、押せなくしてわけを出す
+private struct RepositoryMenu: ToolbarContent {
+    let repositoryID: TargetRepository.ID
+    @Binding var isConfirmingRemoval: Bool
+
+    @Environment(ClientStore.self) private var store
+
+    var body: some ToolbarContent {
+        let canRemove = store.supports(.removeRepository(repositoryID: repositoryID))
+        ToolbarItem(placement: .primaryAction) {
+            Menu("操作", systemImage: "ellipsis.circle") {
+                if canRemove {
+                    Button("対象から外す…", systemImage: "folder.badge.minus", role: .destructive) { isConfirmingRemoval = true }
+                } else {
+                    Button("対象から外す（進めている epic があるあいだは外せません）", systemImage: "folder.badge.minus") {}
+                        .disabled(true)
+                }
+            }
+            // 前の操作（加える・外す）の同期を待つ間は押せなくする
+            .disabled(store.isReflecting([.repository(repositoryID)]))
+        }
+    }
+}
+
+/// 外したリポジトリの案内と、加え直すボタン
+private struct RemovedRepositorySection: View {
+    let repositoryID: TargetRepository.ID
+
+    @Environment(ClientStore.self) private var store
+
+    var body: some View {
+        CardSection {
+            Label("対象から外しています", systemImage: "folder.badge.minus")
+                .foregroundStyle(.secondary)
+            Button("対象に加え直す", systemImage: "folder.badge.plus") {
+                Task { await store.send(.addRepository(repositoryID: repositoryID)) }
+            }
+            .disabled(store.isReflecting([.repository(repositoryID)]))
+        } footer: {
+            Text("加え直すと、ビルドの設定などは外す前のまま戻ります")
         }
     }
 }
@@ -140,6 +216,7 @@ struct AddRepositorySheet: View {
 
     var body: some View {
         let allCandidates = store.snapshot?.candidateRepositories ?? []
+        let removed = store.snapshot?.removedRepositories ?? []
         let candidates = allCandidates.filter {
             query.isEmpty || $0.fullName.localizedCaseInsensitiveContains(query) || $0.appName.localizedCaseInsensitiveContains(query)
         }
@@ -175,6 +252,21 @@ struct AddRepositorySheet: View {
                         }
                         .pickerStyle(.inline)
                         .labelsHidden()
+                    }
+                }
+                if !removed.isEmpty {
+                    Section {
+                        Picker("外したリポジトリ", selection: $selectedID) {
+                            ForEach(removed) { repository in
+                                Text("\(repository.appName)（\(repository.fullName)）").tag(Optional(repository.id))
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    } header: {
+                        Text("外したリポジトリを戻す")
+                    } footer: {
+                        Text("ビルドの設定などは、外す前のまま戻ります")
                     }
                 }
             }
@@ -215,5 +307,35 @@ struct AddRepositorySheet: View {
             return nil
         }
         return parts.joined(separator: "/")
+    }
+}
+
+/// 配信した版の行（版・プラットフォーム・後作業の様子）
+private struct ReleaseRow: View {
+    let release: Release
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(release.version).appFont(.headline, weight: .semibold)
+                Text(release.platformSummary)
+                    .foregroundStyle(.secondary)
+            }
+            Text(summary)
+                .appFont(.subheadline)
+                .foregroundStyle(release.needsHuman ? Theme.danger : .secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var summary: String {
+        if release.isFinished {
+            return "後作業は済みました"
+        }
+        if let step = release.steps.first(where: { $0.state == .problem || $0.state == .waitingHuman }) {
+            return "\(step.title): \(step.detail)"
+        }
+        let done = release.steps.filter { $0.state == .done }.count
+        return "後作業を進めています（\(done)/\(release.steps.count)）"
     }
 }

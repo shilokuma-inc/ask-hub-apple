@@ -51,6 +51,8 @@ struct ScreenshotScenesTests {
             return snapshot.macs.contains { $0.id == id } ? nil : "Mac \(id) が無い"
         case .repository(let id):
             return snapshot.repositories.contains { $0.id == id } ? nil : "リポジトリ \(id) が無い"
+        case let .release(repositoryID, version):
+            return snapshot.release(Release.id(repositoryID, version)) == nil ? "配信した版 \(repositoryID) \(version) が無い" : nil
         case .deck(.all):
             return nil
         case .finishedEpics:

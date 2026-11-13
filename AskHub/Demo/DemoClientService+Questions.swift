@@ -15,14 +15,20 @@ extension DemoClientService {
         case let .start(epicID, macID):
             return SendReceipt(intentID: start(epicID: epicID, macID: macID))
 
-        case .reviseGoal, .decideSplit, .addRepository, .applyProtection, .approveSetup:
+        case .reviseGoal, .decideSplit, .addRepository, .removeRepository, .configureRepository:
             applySetupIntent(intent)
+
+        case .applyProtection, .approveSetup:
+            applyAdministrationIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
             applyReviewIntent(intent)
 
         case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .cleanUp:
             applyOperationIntent(intent)
+
+        case .publishRelease:
+            applyReleaseIntent(intent)
         }
         return SendReceipt()
     }
@@ -49,12 +55,36 @@ extension DemoClientService {
             decideSplit(epicID: epicID, choice: choice)
 
         case .addRepository(let repositoryID):
-            guard let repository = state.candidateRepositories.first(where: { $0.id == repositoryID }) else {
+            guard let repository = (state.candidateRepositories + state.removedRepositories).first(where: { $0.id == repositoryID }) else {
                 return
             }
             state.candidateRepositories.removeAll { $0.id == repositoryID }
+            state.removedRepositories.removeAll { $0.id == repositoryID }
             state.repositories.append(repository)
 
+        case .removeRepository(let repositoryID):
+            guard let repository = state.repositories.first(where: { $0.id == repositoryID }) else {
+                return
+            }
+            state.repositories.removeAll { $0.id == repositoryID }
+            state.removedRepositories.append(repository)
+
+        case let .configureRepository(repositoryID, json):
+            // 状態リポジトリにつないだときと同じ決まりで読み、同じ形で出す（行き先の OS の版も出す）
+            guard let index = state.repositories.firstIndex(where: { $0.id == repositoryID }),
+                  let build = try? StateIntentMapper.build(json) else {
+                return
+            }
+            state.repositories[index].build = StateSnapshotBuilder.buildSettings(build)
+
+        default:
+            break
+        }
+    }
+
+    /// 保護の設定・準備の PR の承認（デモでは、司令塔が受け付けた形にすぐ変える）
+    private func applyAdministrationIntent(_ intent: HumanIntent) {
+        switch intent {
         case let .applyProtection(repositoryID, checks):
             updateRepository(repositoryID) { $0.protection = RepositoryProtection(state: .applied(at: now()), requiredChecks: checks) }
 
