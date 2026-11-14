@@ -8,10 +8,21 @@ struct LivenessTests {
     @Test func comparesSubsecondLimits() {
         var timing = JobTiming()
         timing.attemptStaleAfter = .milliseconds(500)
+        timing.heartbeatInterval = .milliseconds(100)
         let attempt = Fixtures.attempt(1)
-        let mac = Fixtures.mac(seenMinute: 0)
+        // 時刻は秒までしか持たないので、Mac の印は試行の印の 1 秒後にする
+        let mac = Fixtures.mac(seenMinute: 1.0 / 60)
         #expect(AttemptLiveness.of(attempt, mac: mac, now: Fixtures.start.addingTimeInterval(0.3), timing: timing) == .alive)
         #expect(AttemptLiveness.of(attempt, mac: mac, now: Fixtures.start.addingTimeInterval(0.7), timing: timing) == .stalled)
+    }
+
+    /// 試行の印が古くても、Mac の印が試行の次の印の時刻より後に書かれていなければ、ワーカーごと止まったか分からないので決めない
+    @Test func waitsUntilMacBeatsPastAttemptHeartbeat() {
+        let attempt = Fixtures.attempt(1)
+        let now = Fixtures.time(20)
+        #expect(AttemptLiveness.of(attempt, mac: Fixtures.mac(seenMinute: 5), now: now) == .alive)
+        #expect(AttemptLiveness.of(attempt, mac: Fixtures.mac(seenMinute: 6), now: now) == .stalled)
+        #expect(AttemptLiveness.of(attempt, mac: Fixtures.mac(seenMinute: 5), now: Fixtures.time(36)) == .macOffline)
     }
 }
 
