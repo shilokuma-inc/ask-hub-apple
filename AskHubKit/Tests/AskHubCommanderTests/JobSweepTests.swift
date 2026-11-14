@@ -83,6 +83,20 @@ extension ClaudeJobRunnerTests {
         #expect(await probe.liveReads == reads)
     }
 
+    /// この起動より前に印を書いた、この Mac の実行中の試行（前の起動で残ったもの）は、`JobSlots` が閉じるまで決めない
+    @Test func sweepLeavesOwnLeftoverOfPreviousRunUntilClosed() async throws {
+        let given = try await requested()
+        let recorder = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { Self.now }
+        _ = try await recorder.start(given.job)
+        #expect(try await sweep(given.store).sweep().map(\.state) == [.running])
+        // 1 時間後に起動し直した。試行の印は古いが、前の起動のものなので決めない
+        let restarted = Self.now.addingTimeInterval(60 * 60)
+        let context = CommanderContext(store: given.store, mac: Self.commander) { restarted }
+        #expect(try await JobSweep(context: context, leftoversBefore: restarted).sweep().isEmpty)
+        // 起動の時刻を渡さなければ、今までどおり状態を変える
+        #expect(try await JobSweep(context: context).sweep().count == 1)
+    }
+
     @Test func sweepRereadsAttemptsBeforeChangingJob() async throws {
         let given = try await requested()
         let starting = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { Self.now }

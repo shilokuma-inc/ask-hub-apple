@@ -99,6 +99,8 @@ public actor CommanderLoop {
 
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
+    /// この起動の始まり。これより前に印を書いたこの Mac の実行中の試行は、前の起動で残ったもの（`JobSweep.leftoversBefore`）
+    nonisolated let startedAt: Date
     private var lastBeat: Date?
     /// 最後に GitHub の REST の上限の残りを見た時刻と、読んだ残り（通知に使う。読めなければ nil）
     private var lastRateLimitCheck: Date?
@@ -146,6 +148,7 @@ public actor CommanderLoop {
         self.releases = releases
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
+        startedAt = context.now()
     }
 
     /// 止められるまで回す。1 周で失敗しても、次の周でやり直す
@@ -216,7 +219,7 @@ public actor CommanderLoop {
             log("人の意図: \(try await intake.process(intent))")
         }
         timer.lap("人の意図")
-        var swept = try await JobSweep(context: context).sweepAll()
+        var swept = try await JobSweep(context: context, leftoversBefore: startedAt).sweepAll()
         timer.lap("ジョブの見回り")
         for job in swept.changed {
             log("ジョブ \(job.kind.rawValue) \(job.id) を \(job.state.rawValue) にした")
