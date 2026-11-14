@@ -113,6 +113,18 @@ struct JobReconcilerTests {
         #expect(retriedAgain.state == .assigned)
     }
 
+    /// ワーカーが起動し直して前の試行を「Mac がオフライン」で閉じたら、時間切れに数えずに試し直す。
+    /// その後の試行が本当に止まっても、続けて時間切れではないので 1 回は試し直す
+    @Test func closedLeftoverIsNotCountedAsTimeout() {
+        let closed = [Sample.attempt(1, heartbeatMinute: 10, failure: .macOffline)]
+        let retried = reconcile(Sample.job(state: .running, attempts: 1), closed, macSeen: 10, at: 11)
+        #expect(retried.state == .assigned)
+        let stalled = closed + [Sample.attempt(2, startedMinute: 12)]
+        let timedOut = reconcile(retried, stalled, macSeen: 30, at: 31)
+        #expect(timedOut.state == .assigned)
+        #expect(timedOut.attempts == 2)
+    }
+
     /// Mac の印が、試行が次の印を書くはずだった時刻より後に書かれたら、ワーカーは動いていて試行だけが止まった（時間切れ）
     @Test func stalledOnlyAfterMacBeatsPastAttemptHeartbeat() {
         let waiting = reconcile(Sample.job(state: .running, attempts: 1), [Sample.attempt(1)], macSeen: 5, at: 16)

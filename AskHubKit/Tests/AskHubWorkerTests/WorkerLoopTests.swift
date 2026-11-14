@@ -244,6 +244,35 @@ struct WorkerLoopTests {
         #expect(later.seenAt == Timestamp(Self.now.addingTimeInterval(10 * 60)))
     }
 
+    /// 起動して最初の周で、前の起動で動いていた自分の試行（実行中のまま残ったもの）を、Mac がオフラインで中断したものとして閉じる。
+    /// ほかの Mac の試行と、終わった試行には触らない
+    @Test func closesLeftoverAttemptsOfPreviousRun() async throws {
+        let store = InMemoryStateStore()
+        try await commander(compatibility: MachineCompatibility.current, in: store)
+        var running = try await epic(1, on: Self.mac, origin: try await signedOrigin(in: store, nonce: 1), in: store)
+        running.state = .running
+        running.attempts = 1
+        await store.put(StatePath.job(Self.repo, epic: running.epic, job: running.id), data: try StateFileCoder.encode(running))
+        let time = Timestamp(Self.now)
+        let leftover = AttemptFile(job: running.id, number: 1, mac: Self.mac, startedAt: time, heartbeatAt: time, outcome: .running)
+        let path = StatePath.attempt(Self.repo, epic: running.epic, job: running.id, number: 1)
+        await store.put(path, data: try StateFileCoder.encode(leftover))
+        let other = try await epic(2, on: Self.mac, origin: try await signedOrigin(in: store, nonce: 2), in: store)
+        let elsewhere = AttemptFile(job: other.id, number: 1, mac: Self.other, startedAt: time, heartbeatAt: time, outcome: .running)
+        let elsewherePath = StatePath.attempt(Self.repo, epic: other.epic, job: other.id, number: 1)
+        await store.put(elsewherePath, data: try StateFileCoder.encode(elsewhere))
+
+        let runner = RecordingJob(JobResult(outputs: Self.outputs))
+        let loop = loop(store, runner: runner)
+        _ = try await loop.cycle()
+        await loop.waitForJobs()
+        let closed = try #require(try await attempt(of: running, in: store))
+        #expect(closed.outcome == .failed)
+        #expect(closed.failure?.failureClass == .macOffline)
+        #expect(try await attempt(of: other, in: store)?.outcome == .running)
+        #expect(!runner.called.contains(running.id))
+    }
+
     // MARK: - 互換の番号
 
     /// 司令塔と互換の番号が合わなければ新しいジョブを引き受けず、理由を生きている印に書く。合ったら、間隔を待たずに印を書き直して引き受ける
