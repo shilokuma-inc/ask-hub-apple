@@ -107,6 +107,13 @@ public actor WorkerLoop {
     @discardableResult
     public func cycle() async throws(CommanderError) -> [JobFile] {
         await checkCompatibility()
+        // 前の起動で残った自分の試行は、生きている印を書く前に閉じる（Mac の印が新しくなってから閉じるまでの間に、司令塔が時間切れと決めないように）
+        if compatibilityChecked, refusal == nil, await slots.needsClosingLeftovers {
+            let recorder = AttemptRecorder(files: context.files, mac: context.mac, now: context.now)
+            await slots.closeLeftovers(of: try await context.jobsOfEpics(on: context.mac), with: recorder)
+        }
+        // 閉じ終えるまで（司令塔の印をまだ読めていないときも）は、生きている印を書かない。司令塔と合わずに引き受けないときは、理由を出すために書く
+        if refusal == nil, await slots.needsClosingLeftovers { return [] }
         try await beatIfDue()
         // 動かしているジョブは、引き受けないと決めた後もそのまま終わらせて試行を書く。
         // 起動して司令塔の印をまだ読めていないときも、合わない司令塔のジョブを引き受けないよう待つ
