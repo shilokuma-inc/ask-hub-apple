@@ -92,6 +92,36 @@ struct JobReconcilerTests {
         #expect(resumed.state == .running)
     }
 
+    /// ジョブの途中でワーカーごと止まった（閉じた）ら、試行の印が 15 分古くなっても時間切れにせず、Mac の印が 30 分古くなったら一時停止する。
+    /// 戻ったが試行は止まったまま（ワーカーを起動し直した）なら、時間切れに数えずに続きから試す（何度止まっても人には渡さない）
+    @Test func macStoppedMidJobIsPausedAndRetriedWithoutTimeout() {
+        // 試行の最後の印は 0 分、Mac の最後の印は 3 分（試行が次の印を書くはずだった 5 分より前）
+        let waiting = reconcile(Sample.job(state: .running, attempts: 1), [Sample.attempt(1)], macSeen: 3, at: 20)
+        #expect(waiting.state == .running)
+        let paused = reconcile(waiting, [Sample.attempt(1)], macSeen: 3, at: 34)
+        #expect(paused.state == .paused)
+        let retried = reconcile(paused, [Sample.attempt(1)], macSeen: 120, at: 121)
+        #expect(retried.state == .assigned)
+        #expect(retried.nextRunAt == Sample.stamp(121))
+        #expect(reconcile(retried, [Sample.attempt(1)], macSeen: 121, at: 122) == retried)
+
+        let attempts = [Sample.attempt(1), Sample.attempt(2, startedMinute: 122)]
+        let pausedAgain = reconcile(retried, attempts, macSeen: 123, at: 160)
+        #expect(pausedAgain.state == .paused)
+        #expect(pausedAgain.attempts == 2)
+        let retriedAgain = reconcile(pausedAgain, attempts, macSeen: 200, at: 201)
+        #expect(retriedAgain.state == .assigned)
+    }
+
+    /// Mac の印が、試行が次の印を書くはずだった時刻より後に書かれたら、ワーカーは動いていて試行だけが止まった（時間切れ）
+    @Test func stalledOnlyAfterMacBeatsPastAttemptHeartbeat() {
+        let waiting = reconcile(Sample.job(state: .running, attempts: 1), [Sample.attempt(1)], macSeen: 5, at: 16)
+        #expect(waiting.state == .running)
+        let timedOut = reconcile(waiting, [Sample.attempt(1)], macSeen: 6, at: 17)
+        #expect(timedOut.state == .assigned)
+        #expect(timedOut.nextRunAt == Sample.stamp(17))
+    }
+
     @Test func offlineFailureWaitsForMacThenRetries() {
         let paused = reconcile(Sample.job(state: .running, attempts: 1), [Sample.attempt(1, failure: .macOffline)], macSeen: nil, at: 5)
         #expect(paused.state == .paused)
