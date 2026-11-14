@@ -269,8 +269,41 @@ struct WorkerLoopTests {
         let closed = try #require(try await attempt(of: running, in: store))
         #expect(closed.outcome == .failed)
         #expect(closed.failure?.failureClass == .macOffline)
+        // 生きている印を書く前に閉じる（Mac の印が新しくなってから閉じるまでの間に、司令塔が時間切れと決めないように）
+        let written = await store.writtenPaths
+        let closedAt = try #require(written.firstIndex(of: path))
+        let beatAt = try #require(written.firstIndex(of: StatePath.mac(Self.mac)))
+        #expect(closedAt < beatAt)
         #expect(try await attempt(of: other, in: store)?.outcome == .running)
         #expect(!runner.called.contains(running.id))
+    }
+
+    /// 前の起動で残った試行を閉じられなかったジョブは、閉じるまで引き受けない（引き受けると古い試行が実行中のまま残る）
+    @Test func waitsToTakeJobUntilLeftoverIsClosed() async throws {
+        let store = InMemoryStateStore()
+        try await commander(compatibility: MachineCompatibility.current, in: store)
+        // 前の起動の試行 #1 が止まったので、司令塔が試し直しにした（assigned・attempts 1）
+        var retried = try await epic(1, on: Self.mac, origin: try await signedOrigin(in: store, nonce: 1), in: store)
+        retried.attempts = 1
+        await store.put(StatePath.job(Self.repo, epic: retried.epic, job: retried.id), data: try StateFileCoder.encode(retried))
+        let time = Timestamp(Self.now)
+        let leftover = AttemptFile(job: retried.id, number: 1, mac: Self.mac, startedAt: time, heartbeatAt: time, outcome: .running)
+        let path = StatePath.attempt(Self.repo, epic: retried.epic, job: retried.id, number: 1)
+        await store.put(path, data: try StateFileCoder.encode(leftover))
+
+        let runner = RecordingJob(JobResult(outputs: Self.outputs))
+        let loop = loop(store, runner: runner)
+        // 生きている印の前と、引き受けの前の 2 回とも閉じられない
+        await store.failNextWrites(to: path, with: [.serverError(status: 502), .serverError(status: 502)])
+        #expect(try await loop.cycle().isEmpty)
+        await loop.waitForJobs()
+        #expect(runner.called.isEmpty)
+        #expect(try await attempt(of: retried, in: store)?.outcome == .running)
+
+        #expect(try await loop.cycle().map(\.id) == [retried.id])
+        await loop.waitForJobs()
+        #expect(try await attempt(of: retried, in: store)?.failure?.failureClass == .macOffline)
+        #expect(runner.called == [retried.id])
     }
 
     // MARK: - 互換の番号
