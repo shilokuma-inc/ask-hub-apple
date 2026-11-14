@@ -293,17 +293,19 @@ struct WorkerLoopTests {
 
         let runner = RecordingJob(JobResult(outputs: Self.outputs))
         let loop = loop(store, runner: runner)
-        // 生きている印の前と、引き受けの前の 2 回とも閉じられない
-        await store.failNextWrites(to: path, with: [.serverError(status: 502), .serverError(status: 502)])
+        // 閉じられなければ、引き受けず、生きている印も書かない（古い試行と新しい印から、司令塔が時間切れと決めないように）
+        await store.failNextWrites(to: path, with: [.serverError(status: 502)])
         #expect(try await loop.cycle().isEmpty)
         await loop.waitForJobs()
         #expect(runner.called.isEmpty)
         #expect(try await attempt(of: retried, in: store)?.outcome == .running)
+        #expect(await store.data(at: StatePath.mac(Self.mac)) == nil)
 
         #expect(try await loop.cycle().map(\.id) == [retried.id])
         await loop.waitForJobs()
         #expect(try await attempt(of: retried, in: store)?.failure?.failureClass == .macOffline)
         #expect(runner.called == [retried.id])
+        #expect(await store.data(at: StatePath.mac(Self.mac)) != nil)
     }
 
     // MARK: - 互換の番号
@@ -380,10 +382,12 @@ struct WorkerLoopTests {
         let loop = loop(FlakyCommanderStore(base, failures: 2), runner: runner)
         #expect(try await loop.cycle().isEmpty)
         #expect(runner.called.isEmpty)
-        // 生きている印は書く（照らし合わせを待っているだけで、引き受けない理由は書かない）
-        #expect(try await heartbeat(in: base).refusal == nil)
+        // 照らし合わせるまでは、前の起動で残った試行を閉じられないので、生きている印もまだ書かない
+        #expect(await base.data(at: StatePath.mac(Self.mac)) == nil)
         #expect(try await loop.cycle().isEmpty)
         #expect(try await loop.cycle().map(\.id) == [first.id])
+        // 照らし合わせた後の印には、引き受けない理由を書かない
+        #expect(try await heartbeat(in: base).refusal == nil)
         await loop.waitForJobs()
         #expect(runner.called == [first.id])
     }

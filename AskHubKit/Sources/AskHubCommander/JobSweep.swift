@@ -110,8 +110,10 @@ public struct JobSweep: Sendable {
     private func decide(_ job: JobFile, in epic: EpicFile?, reading reader: CommanderContext) async throws(CommanderError) -> JobFile {
         let attempts = try await Self.attempts(of: job, in: reader)
         let latest = attempts.max { $0.number < $1.number }
-        if let leftoversBefore, let latest, latest.mac == context.mac, latest.outcome == .running,
-           latest.heartbeatAt.date < leftoversBefore {
+        // 時刻は秒までしか書かないので、起動の時刻も秒にそろえて比べる（この起動の同じ秒に始めた試行を、残ったものとみなさない）。
+        // 閉じるのは自分宛てのジョブだけ（`JobSlots.closeLeftovers`）なので、待つのも自分宛てのジョブだけ
+        if let leftoversBefore, let latest, job.assignedMac == context.mac, latest.mac == context.mac, latest.outcome == .running,
+           latest.heartbeatAt < Timestamp(leftoversBefore) {
             return job
         }
         let macName = latest?.mac ?? job.assignedMac

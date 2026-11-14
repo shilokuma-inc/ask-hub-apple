@@ -97,6 +97,16 @@ extension ClaudeJobRunnerTests {
         #expect(try await JobSweep(context: context).sweep().count == 1)
     }
 
+    /// 起動と同じ秒に始めた試行は、時刻を秒に切り捨てて書くので起動より前に見えるが、残ったものとはみなさない
+    @Test func sweepTreatsAttemptStartedInSameSecondAsCurrentRun() async throws {
+        let given = try await requested()
+        let started = Self.now.addingTimeInterval(0.5)
+        let recorder = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { started.addingTimeInterval(0.3) }
+        _ = try await recorder.start(given.job)
+        let context = CommanderContext(store: given.store, mac: Self.commander) { started.addingTimeInterval(1) }
+        #expect(try await JobSweep(context: context, leftoversBefore: started).sweep().map(\.state) == [.running])
+    }
+
     @Test func sweepRereadsAttemptsBeforeChangingJob() async throws {
         let given = try await requested()
         let starting = AttemptRecorder(files: StateFileStore(store: given.store), mac: Self.commander) { Self.now }
