@@ -312,15 +312,15 @@ sequenceDiagram
 
 | 役割 | 場所 |
 | --- | --- |
-| 端末の鍵（Secure Enclave） | `AskHubKit/Sources/AskHubKeychain/DeviceSigningKey.swift` |
-| 封筒と、署名・時刻の確認 | `AskHubKit/Sources/AskHubProtocol/Intent.swift`（`IntentEnvelope`・`IntentVerifier`） |
-| 署名と鍵の id | `AskHubKit/Sources/AskHubProtocol/IntentSignature.swift` |
-| JSON のそろえ方（RFC 8785） | `AskHubKit/Sources/AskHubProtocol/CanonicalJSON.swift` |
-| 公開鍵の記録の確認 | `AskHubKit/Sources/AskHubProtocol/KeyLedger.swift` |
-| 最初の鍵の固定と、確かめた一覧（Keychain） | `AskHubKit/Sources/AskHubKeychain/TrustAnchor.swift` |
-| 意図を署名して置く（アプリ・非常口） | `AskHubKit/Sources/AskHubClient/IntentSender.swift` |
-| 公開鍵の記録を足す（非常口） | `AskHubKit/Sources/AskHubClient/KeyLedgerWriter.swift` |
-| 意図の受け付け（司令塔） | `AskHubKit/Sources/AskHubCommander/IntentIntake.swift`・`TrustedKeys.swift` |
-| ジョブの元の意図の確認（ワーカー） | `AskHubKit/Sources/AskHubCommander/MachineJobs.swift`（`OriginCheckedRunner`） |
-| アプリの登録の表示 | `AskHub/State/KeyRegistration.swift`・`AskHub/Screens/Settings/ConnectionSettingsSections.swift` |
-| 言語によらないテスト用の例 | `protocol/vectors/intent-signature.json`・`stored-intent.json`・`key-ledger.json`・`canonical-json.json` |
+| 端末の鍵（Secure Enclave） | [`DeviceSigningKey.swift`](../../AskHubKit/Sources/AskHubKeychain/DeviceSigningKey.swift) |
+| 封筒と、署名・時刻の確認 | [`Intent.swift`](../../AskHubKit/Sources/AskHubProtocol/Intent.swift)（`IntentEnvelope`・`IntentVerifier`） |
+| 署名と鍵の id | [`IntentSignature.swift`](../../AskHubKit/Sources/AskHubProtocol/IntentSignature.swift) |
+| JSON のそろえ方（RFC 8785） | [`CanonicalJSON.swift`](../../AskHubKit/Sources/AskHubProtocol/CanonicalJSON.swift) |
+| 公開鍵の記録の確認 | [`KeyLedger.swift`](../../AskHubKit/Sources/AskHubProtocol/KeyLedger.swift) |
+| 最初の鍵の固定と、確かめた一覧（Keychain） | [`TrustAnchor.swift`](../../AskHubKit/Sources/AskHubKeychain/TrustAnchor.swift) |
+| 意図を署名して置く（アプリ・非常口） | [`IntentSender.swift`](../../AskHubKit/Sources/AskHubClient/IntentSender.swift) |
+| 公開鍵の記録を足す（非常口） | [`KeyLedgerWriter.swift`](../../AskHubKit/Sources/AskHubClient/KeyLedgerWriter.swift) |
+| 意図の受け付け（司令塔） | [`IntentIntake.swift`](../../AskHubKit/Sources/AskHubCommander/IntentIntake.swift)・[`TrustedKeys.swift`](../../AskHubKit/Sources/AskHubCommander/TrustedKeys.swift) |
+| ジョブの元の意図の確認（ワーカー） | [`MachineJobs.swift`](../../AskHubKit/Sources/AskHubCommander/MachineJobs.swift)（`OriginCheckedRunner`） |
+| アプリの登録の表示 | [`KeyRegistration.swift`](../../AskHub/State/KeyRegistration.swift)・[`ConnectionSettingsSections.swift`](../../AskHub/Screens/Settings/ConnectionSettingsSections.swift) |
+| 言語によらないテスト用の例 | [`intent-signature.json`](../../protocol/vectors/intent-signature.json)・[`stored-intent.json`](../../protocol/vectors/stored-intent.json)・[`key-ledger.json`](../../protocol/vectors/key-ledger.json)・[`canonical-json.json`](../../protocol/vectors/canonical-json.json) |
