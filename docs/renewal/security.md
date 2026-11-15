@@ -13,6 +13,8 @@
 
 ## 人の意図の署名
 
+図とたとえを使った解説は [signing-guide.md](signing-guide.md) にある。決まりの正本はこの節と [protocol.md](protocol.md) の「人の意図と署名」。
+
 ### 鍵
 
 - クライアントの端末ごとに鍵を作る。方式は ECDSA P-256（iPhone・Mac の Secure Enclave と Android の Keystore の両方で、鍵を端末の外に出さずに扱える）
