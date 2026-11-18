@@ -143,6 +143,7 @@ struct LocalCleanupMachineTests {
         defer { try? FileManager.default.removeItem(at: root) }
         _ = try prepare()
         let scan = await machine(SimctlStubRunner(devicesJSON: Self.devices)).scan()
+        try #require(Set(scan.candidates.map(\.location)).count == scan.candidates.count)
         let byLocation = Dictionary(uniqueKeysWithValues: scan.candidates.map { ($0.location, $0) })
         #expect(Set(byLocation.keys) == [
             "~/Desktop/ios/clean-app", "~/Desktop/ios/dirty-app", "~/Projects/with-worktree", "~/Projects/local-only",
@@ -227,6 +228,21 @@ struct LocalCleanupMachineTests {
         try git(["checkout", "-q", "--detach", "HEAD@{1}"], in: detached)
         #expect(await machine.cloneCaution(detached) == "未 push のコミットがある")
         #expect(await machine.cloneCaution(parent) == "中に別の clone か worktree がある")
+        // 依存のフォルダの中の clone（`.build/checkouts` など、道具が取り直せるもの）は、消さない理由にしない
+        let package = try clone("Projects/package", remote: prepared.remote)
+        try ".build/\n".write(to: package.appendingPathComponent(".git/info/exclude"), atomically: true, encoding: .utf8)
+        _ = try clone("Projects/package/.build/checkouts/dependency", remote: prepared.remote)
+        #expect(await machine.cloneCaution(package) == nil)
+    }
+
+    /// プロジェクトの名前が空になる DerivedData のフォルダは、フォルダの名前のまま出す（候補のファイルの決まりで、名前は空にできない）
+    @Test func derivedDataWithoutProjectNameKeepsFolderName() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = home.appendingPathComponent("Library/Developer/Xcode/DerivedData/-abcdefghijklmnopqrstuvwxyzab", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let found = await machine(SimctlStubRunner(devicesJSON: Self.devices)).derivedDataCandidates()
+        #expect(!found.unreadable)
+        #expect(found.candidates.map(\.name) == ["-abcdefghijklmnopqrstuvwxyzab"])
     }
 
     /// HEAD を確かめられなければ（時間切れなど）、HEAD がまだ無いとは見なさず、消さない

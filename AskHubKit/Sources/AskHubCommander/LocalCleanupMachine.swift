@@ -159,7 +159,9 @@ public struct LocalCleanupMachine: CleanupMachine {
     /// clone の中（自分の `.git` のほか）に、別の clone か worktree（`.git` のフォルダかファイル）があるか。確かめられなければ nil
     func containsNestedRepository(_ directory: URL) async -> Bool? {
         let own = directory.appendingPathComponent(".git").path
-        let arguments = [directory.path, "-path", own, "-prune", "-o", "-name", ".git", "-print", "-quit"]
+        // 依存のフォルダ（`.build/checkouts` など、道具が取り直せる clone）は、探すときと同じく降りない。親と一緒にゴミ箱に移る
+        let pruned = Self.prunedNames.flatMap { ["-o", "-name", $0] }
+        let arguments = [directory.path, "(", "-path", own] + pruned + [")", "-prune", "-o", "-name", ".git", "-print", "-quit"]
         let command = Command(
             executable: URL(fileURLWithPath: "/usr/bin/find"), arguments: arguments, workingDirectory: home, timeout: timeout
         )
@@ -183,7 +185,8 @@ public struct LocalCleanupMachine: CleanupMachine {
         where (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
             let location = display(folder)
             // `<プロジェクト>-<28 文字のハッシュ>` の形なら、プロジェクトの名前だけにする
-            let name = folder.lastPathComponent.replacing(#/-[a-z]{28}$/#, with: "")
+            let project = folder.lastPathComponent.replacing(#/-[a-z]{28}$/#, with: "")
+            let name = project.isEmpty ? folder.lastPathComponent : project
             candidates.append(.init(
                 id: Self.id(kind: .derivedData, location: location),
                 kind: .derivedData,
