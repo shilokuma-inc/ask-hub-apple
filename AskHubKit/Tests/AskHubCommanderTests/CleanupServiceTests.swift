@@ -258,7 +258,8 @@ struct CleanupServiceTests {
         try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 1))
         await run(service)
         var file = try await candidates()
-        file.candidates[0].location = "~/Documents"
+        let index = try #require(file.candidates.firstIndex { $0.id == Self.clean.id })
+        file.candidates[index].location = "~/Documents"
         await store.put(StatePath.cleanupCandidates(Self.mac), data: try StateFileCoder.encode(file))
         let payload: [String: JSONValue] = [
             "mac": .string(Self.mac.rawValue),
@@ -357,6 +358,9 @@ struct CleanupServiceTests {
         await run(restarted)
         #expect(again.removed.isEmpty)
         #expect(try await candidates().handled.last?.problem == CleanupService.interruptedProblem)
+        // どれを消したか分からないので、候補と探した時刻を残さない（探し直すまで、どの頼みでも消さない）
+        #expect(try await candidates().candidates.isEmpty)
+        #expect(try await candidates().scannedAt == nil)
         #expect(!FileManager.default.fileExists(atPath: journal.path))
     }
 
@@ -459,5 +463,35 @@ extension CleanupServiceTests {
         try FileManager.default.removeItem(at: journal)
         await run(service)
         #expect(machine.scans == 1)
+    }
+    /// 同じ秒に探し直しても、探した時刻を変える。前に探したときの時刻で選んだ頼みでは、何も消さない
+    @Test func findingAgainInSameSecondMovesScannedAt() async throws {
+        let machine = RecordingCleanupMachine(candidates: [Self.clean])
+        let service = CleanupService(context: context, machine: machine) { _ in }
+        for nonce in [1, 2] {
+            try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: nonce))
+            await run(service)
+        }
+        #expect(try await candidates().scannedAt == Timestamp(Self.now.addingTimeInterval(1)))
+        let payload: [String: JSONValue] = [
+            "mac": .string(Self.mac.rawValue),
+            "scannedAt": .string(Timestamp(Self.now).rawValue),
+            "candidates": .array([.string(Self.clean.id)])
+        ]
+        try await accept(try await signed("removeCleanupCandidates", payload: payload, nonce: 3))
+        await run(service)
+        #expect(machine.removed.isEmpty)
+        #expect(try await candidates().handled.last?.problem?.hasPrefix("選んだ後に探し直したので") == true)
+    }
+
+    /// 頼みのファイルの形が読めなければ、投げずに断る（ほかの意図と見回りを止めない）
+    @Test func rejectsWhenRequestsFileIsUnreadable() async throws {
+        await store.put(StatePath.cleanupRequests(Self.mac), data: Data(#"{"v":99}"#.utf8))
+        let decision = try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 1))
+        guard case let .reject(reason) = decision else {
+            Issue.record("断らなかった: \(decision)")
+            return
+        }
+        #expect(reason.contains("片付けの頼みのファイル"))
     }
 }

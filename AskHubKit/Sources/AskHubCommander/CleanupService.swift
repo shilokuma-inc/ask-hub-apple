@@ -148,19 +148,11 @@ public actor CleanupService {
         } else {
             switch request.action {
             case .find:
-                let scan = await machine.scan()
-                file.scannedAt = context.timestamp
-                let largestFirst = scan.candidates.sorted { ($0.bytes, $1.id) > ($1.bytes, $0.id) }
-                file.candidates = Array(largestFirst.prefix(CleanupCandidatesFile.maximumCandidates))
-                file.unreadable = scan.unreadable.isEmpty ? nil : scan.unreadable
-                record.at = context.timestamp
-                log("片付けの候補を \(file.candidates.count) 件見つけた（読めなかった場所 \(scan.unreadable.count) か所）")
+                await find(into: &file, record: &record)
             case .remove:
                 // 消し始める前に、途中で止まったときの結果を手元に書いておく。起動し直したらそれを書き、頼みをやり直さない
                 // （どれを消したか分からないまま、同じ頼みで消し直さない）。書けなければ消し始めず、次の周でやり直す
-                var interrupted = record
-                interrupted.problem = Self.interruptedProblem
-                guard saveJournal(Self.appending(interrupted, to: file)) else {
+                guard saveJournal(Self.interrupted(record, in: file)) else {
                     log("片付けの頼み \(request.intent.nonce) の書き置きを手元に残せなかったので、消し始めずに次の周でやり直す")
                     return
                 }
@@ -180,6 +172,34 @@ public actor CleanupService {
 
     /// 消している途中で止まったときに書く理由
     static let interruptedProblem = "消している途中で止まったので、どれを消したか分からない。探し直してください"
+
+    /// 消している途中で止まったときの結果。どれを消したか分からないので、候補と探した時刻を残さない
+    /// （同じ時刻で選んだ別の頼みで、消した後に作り直された同じ場所のものを消さない。探し直すまで何も消さない）
+    static func interrupted(_ record: CleanupCandidatesFile.Handled, in file: CleanupCandidatesFile) -> CleanupCandidatesFile {
+        var record = record
+        record.problem = interruptedProblem
+        var file = appending(record, to: file)
+        file.candidates = []
+        file.scannedAt = nil
+        file.unreadable = nil
+        return file
+    }
+
+    /// 探して、候補を書き換える
+    private func find(into file: inout CleanupCandidatesFile, record: inout CleanupCandidatesFile.Handled) async {
+        let scan = await machine.scan()
+        // 時刻は秒の単位なので、同じ秒に探し直しても前と違う時刻にする（前の候補で選んだ頼みで、探し直した後の候補を消さない）
+        var scannedAt = context.timestamp
+        if let previous = file.scannedAt, scannedAt.date <= previous.date {
+            scannedAt = Timestamp(previous.date.addingTimeInterval(1))
+        }
+        file.scannedAt = scannedAt
+        let largestFirst = scan.candidates.sorted { ($0.bytes, $1.id) > ($1.bytes, $0.id) }
+        file.candidates = Array(largestFirst.prefix(CleanupCandidatesFile.maximumCandidates))
+        file.unreadable = scan.unreadable.isEmpty ? nil : scan.unreadable
+        record.at = context.timestamp
+        log("片付けの候補を \(file.candidates.count) 件見つけた（読めなかった場所 \(scan.unreadable.count) か所）")
+    }
 
     /// 済ませた記録を足す（古いものから落とす）
     static func appending(_ record: CleanupCandidatesFile.Handled, to file: CleanupCandidatesFile) -> CleanupCandidatesFile {

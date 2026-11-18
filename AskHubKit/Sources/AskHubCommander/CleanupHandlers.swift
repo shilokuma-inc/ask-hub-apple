@@ -40,6 +40,9 @@ public struct CleanupRequestHandler: IntentHandler {
             }
         } catch .alreadyExists {
             throw .changedWhileProcessing(path)
+        } catch let .unreadable(path, error) {
+            // 形が読めない頼みのファイルで、ほかの意図と見回りを止めない（一時的に読めないときは投げて、次の周でやり直す）
+            return .reject("\(mac) の片付けの頼みのファイル（\(path)）を読めない（\(error)）。直すか消してから送り直す")
         } catch {
             throw .files(error)
         }
