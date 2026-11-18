@@ -214,14 +214,16 @@ struct GraphQLError: Decodable {
     let message: String?
 
     /// 一次の上限は 200 で返り、`x-ratelimit-remaining` が 0 になる（`type` が `RATE_LIMITED` のこともある）。
-    /// 二次の上限は 200 か 403 で返る（403 は REST と同じく `PullRequestError.classify` で分ける）
+    /// 二次の上限は 200 か 403 で返る（403 は REST と同じく `PullRequestError.classify` で分ける）。
+    /// 待ち時間は REST と同じく `Retry-After` を先に見て、無ければリセットの時刻から決める
     static func classify(_ errors: [Self], response: HTTPURLResponse, now: Date) -> PullRequestError {
         let message = errors.compactMap(\.message).joined(separator: " / ")
         let types = Set(errors.compactMap(\.type))
         let limited = types.contains("RATE_LIMITED") || message.localizedCaseInsensitiveContains("rate limit")
-        if limited || PullRequestError.resetWait(response, now: now) != nil {
-            let wait = PullRequestError.resetWait(response, now: now) ?? PullRequestError.defaultSecondaryWait
-            return .rateLimited(retryAfter: wait)
+        let retryAfter = response.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init).map { Duration.seconds(max($0, 0)) }
+        let reset = PullRequestError.resetWait(response, now: now)
+        if limited || retryAfter != nil || reset != nil {
+            return .rateLimited(retryAfter: retryAfter ?? reset ?? PullRequestError.defaultSecondaryWait)
         }
         if types.contains("NOT_FOUND") { return .notFound }
         if types.contains("FORBIDDEN") { return .forbidden(message: message) }

@@ -73,4 +73,27 @@ extension ProtectionTests {
         #expect(later == .accept)
         #expect(transport.requests.count == 5)
     }
+
+    /// GraphQL の上限（200 の `errors`）でも `Retry-After` を待つ（クラシックの保護の一覧で当たったとき）
+    @Test func graphQLRateLimitWaitsForRetryAfter() async throws {
+        let store = try await registered()
+        let limited = #"{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}"#
+        let transport = StubTransport([
+            .json(200, #"{"default_branch":"develop","private":false}"#),
+            .json(200, "[]"),
+            .json(201, Self.ours),
+            .json(200, limited, headers: ["Retry-After": "120"])
+        ])
+        let admin = admin(transport)
+        let first = try await ApplyProtectionHandler(admin: admin).handle(envelope(), in: context(store))
+        guard case let .reject(reason) = first else {
+            Issue.record("断っていない: \(first)")
+            return
+        }
+        #expect(reason.contains("GitHub の上限に当たったので、残りの保護を確かめずに止めた（120 秒ほど待ってから押し直す）"))
+        let soon = try await ApplyProtectionHandler(admin: admin)
+            .handle(envelope(), in: context(store, now: Self.now.addingTimeInterval(90)))
+        #expect(soon == .reject(AdminRefusal.rateLimited(owner: "shilokuma-inc", wait: .seconds(30)).description))
+        #expect(transport.requests.count == 4)
+    }
 }
