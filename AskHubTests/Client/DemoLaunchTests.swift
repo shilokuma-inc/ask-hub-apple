@@ -11,6 +11,9 @@ struct DemoLaunchTests {
         #expect(DemoLaunch.destination(from: "section:macs")?.section == .macs)
         #expect(DemoLaunch.destination(from: "deck:all")?.route == .deck(.all))
         #expect(DemoLaunch.destination(from: "deck:questions:recipe-weekly")?.route == .deck(.questions("recipe-weekly")))
+        // epic を付けない実機確認は、アプリをまたいだ実機確認のカード
+        #expect(DemoLaunch.destination(from: "deck:verifications")?.route == .deck(.allVerifications))
+        #expect(DemoLaunch.destination(from: "deck:verifications:habit-review")?.route == .deck(.verifications("habit-review")))
         #expect(DemoLaunch.destination(from: "epic:rain-draft")?.route == .epic("rain-draft"))
         let human = DemoLaunch.destination(from: "human:rain-draft:ht-app-group")
         #expect(human?.route == .humanTask(epicID: "rain-draft", taskID: "ht-app-group"))
