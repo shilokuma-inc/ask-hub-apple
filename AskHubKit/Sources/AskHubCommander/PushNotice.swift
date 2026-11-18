@@ -49,8 +49,9 @@ public struct PushNotice: Equatable, Sendable {
                     keys: blockers.map(\.key)
                 )
             case let .mac(mac):
+                let offline = blockers.contains { if case .macOffline = $0.reason { true } else { false } }
                 return PushNotice(
-                    title: "\(mac) がオフライン",
+                    title: offline ? "\(mac) がオフライン" : "\(mac) の空きが少なくなりました",
                     body: blockers.map { macLine($0.reason, now: now) }.joined(separator: "\n"),
                     thread: "mac/\(mac)",
                     target: ["mac": mac.rawValue],
@@ -180,9 +181,15 @@ public struct PushNotice: Equatable, Sendable {
     }
 
     private static func macLine(_ reason: Blocker.Reason, now: Date) -> String {
-        guard case let .macOffline(jobs, seenAt) = reason else { return "" }
-        let hours = max(Int(now.timeIntervalSince(seenAt.date) / 3_600), 1)
-        return "ジョブ \(jobs) 件を持ったまま、\(hours) 時間以上戻っていません"
+        switch reason {
+        case let .macOffline(jobs, seenAt):
+            let hours = max(Int(now.timeIntervalSince(seenAt.date) / 3_600), 1)
+            return "ジョブ \(jobs) 件を持ったまま、\(hours) 時間以上戻っていません"
+        case let .lowDisk(jobs, diskFreeGB):
+            return "空き容量が \(diskFreeGB) GB で、\(MacFile.lowDiskFreeGB) GB を下回っています。片付けるまで、ジョブ \(jobs) 件を引き受けません"
+        default:
+            return ""
+        }
     }
 
     /// 長い題は、通知の 1 行に収まるよう縮める

@@ -144,12 +144,13 @@ public struct StartEpicHandler: IntentHandler {
         return nil
     }
 
-    /// 選ばれた Mac で始められない理由（登録されていない・オフライン）。始められれば nil
+    /// 選ばれた Mac で始められない理由（登録されていない・オフライン・空きが少ない）。始められれば nil
     private func macProblem(_ name: MacName, in context: CommanderContext) async throws(CommanderError) -> String? {
         guard let mac = try await context.read(MacFile.self, at: StatePath.mac(name)) else { return "Mac \(name) が登録されていない" }
         if context.now().timeIntervalSince(mac.seenAt.date) > TimeInterval(timing.macStaleAfter.components.seconds) {
             return "Mac \(name) がオフライン（最後の生きている印は \(mac.seenAt)）"
         }
+        if mac.isLowOnDisk { return mac.lowDiskProblem(doing: "開始する") }
         return nil
     }
 
