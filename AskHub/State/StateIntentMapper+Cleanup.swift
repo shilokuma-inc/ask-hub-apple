@@ -6,6 +6,12 @@ import Foundation
 extension StateIntentMapper {
     /// 探すのは生きている印のある Mac だけ。消すのは、探し終えた候補だけ（探した時刻を一緒に送り、その後に探し直していればワーカーが消さない）
     func cleanupDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
+        if case let .cleanUp(macID, _) = intent, index.macs[macID]?.cleanupUnknown == true {
+            throw Self.cleanupUnknown
+        }
+        if case let .findCleanupCandidates(macID) = intent, index.macs[macID]?.cleanupUnknown == true {
+            throw Self.cleanupUnknown
+        }
         switch intent {
         case .findCleanupCandidates(let macID):
             guard let mac = index.macs[macID] else { throw ClientServiceError(message: "Mac が見つかりません。読み直してから探してください") }
@@ -22,4 +28,7 @@ extension StateIntentMapper {
             throw Self.unsupported
         }
     }
+
+    /// 片付けのファイルを読めず、済ませたかどうかが分からないとき（重ねて頼まない）
+    static let cleanupUnknown = ClientServiceError(message: "片付けの状態を読めませんでした。読み直してから送ってください")
 }

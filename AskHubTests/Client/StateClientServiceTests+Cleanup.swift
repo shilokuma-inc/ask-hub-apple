@@ -71,6 +71,14 @@ extension StateClientServiceTests {
         requestsBroken["cleanup/mac-mini/requests.json"] = #"{"v":99}"#
         let unknown = try await makeService(files: Self.askingEpic(extra: requestsBroken)).service.fetchSnapshot()
         #expect(try #require(unknown.mac("mac-mini")).cleanupWork == .unknown)
+        // 状態が分からない間は、探す・消すを送らない（画面のダイアログを開いた後に分からなくなったときも、送る側で断る）
+        let unknownService = try makeService(files: Self.askingEpic(extra: requestsBroken))
+        _ = try await unknownService.service.fetchSnapshot()
+        #expect(!unknownService.service.supports(.findCleanupCandidates(macID: "mac-mini")))
+        #expect(!unknownService.service.supports(.cleanUp(macID: "mac-mini", candidateIDs: ["0123456789abcdef"])))
+        await #expect(throws: ClientServiceError.self) {
+            try await unknownService.service.perform(.cleanUp(macID: "mac-mini", candidateIDs: ["0123456789abcdef"]))
+        }
     }
 
     @Test

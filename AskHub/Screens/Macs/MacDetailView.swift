@@ -225,6 +225,8 @@ struct CleanupView: View {
             Button("消す", role: .destructive) {
                 let ids = chosen.map(\.id)
                 selectedIDs = []
+                // ダイアログを開いている間に状態が分からなくなったら送らない（送る側でも断る）
+                guard store.mac(macID)?.cleanupWork != .unknown else { return }
                 Task { await store.send(.cleanUp(macID: macID, candidateIDs: ids)) }
             }
         } message: {

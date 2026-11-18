@@ -15,10 +15,10 @@ extension StateIntentMapper {
             index.repositories[repositoryID] != nil
 
         case .findCleanupCandidates(let macID):
-            index.macs[macID] != nil
+            index.macs[macID].map { !$0.cleanupUnknown } ?? false
 
         case let .cleanUp(macID, candidateIDs):
-            index.macs[macID]?.cleanupScannedAt != nil && !candidateIDs.isEmpty
+            index.macs[macID].map { $0.cleanupScannedAt != nil && !$0.cleanupUnknown } == true && !candidateIDs.isEmpty
 
         case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
             supportsSubmissionIntent(intent)

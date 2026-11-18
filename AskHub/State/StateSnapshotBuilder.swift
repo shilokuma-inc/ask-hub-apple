@@ -98,6 +98,8 @@ struct StateIndex {
     struct MacEntry {
         var name: MacName
         var cleanupScannedAt: Timestamp?
+        /// 片付けのファイルを読めず、済ませたかどうかが分からない（読み直すまで、探す・消すを送らない）
+        var cleanupUnknown = false
     }
     var repositories: [TargetRepository.ID: RepositoryFullName] = [:]
     var releases: [Release.ID: ReleaseEntry] = [:]
@@ -222,6 +224,9 @@ struct StateSnapshotBuilder {
             index.macs[file.mac.rawValue] = .init(name: file.mac, cleanupScannedAt: documents.cleanupCandidates[file.mac]?.scannedAt)
         }
         var macs = documents.macs.map(mac)
+        for mac in macs where mac.cleanupWork == .unknown {
+            index.macs[mac.id]?.cleanupUnknown = true
+        }
         if let commander = documents.commander, !macs.contains(where: { $0.id == commander.mac.rawValue }) {
             macs.append(commanderOnly(commander))
         }
