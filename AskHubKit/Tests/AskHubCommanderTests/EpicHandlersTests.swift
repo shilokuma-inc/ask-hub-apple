@@ -180,6 +180,7 @@ struct EpicHandlersTests {
     /// ゴールの確認を待っている epic（ゴールは 2 版）と、生きている Mac
     private func awaitingStart(
         macSeen: TimeInterval = -5 * 60,
+        diskFreeGB: Int = 200,
         stage: EpicStage = .awaitingStart,
         configured: Bool = true
     ) async throws -> (InMemoryStateStore, EpicFile) {
@@ -194,7 +195,7 @@ struct EpicHandlersTests {
             kind: .resident,
             seenAt: Timestamp(Self.now.addingTimeInterval(macSeen)),
             versions: .init(worker: "1.0"),
-            diskFreeGB: 200,
+            diskFreeGB: diskFreeGB,
             load: 0.2,
             capacity: .init(claude: 1, build: 1),
             selfCheck: check
@@ -244,6 +245,12 @@ struct EpicHandlersTests {
         try await start(epic, in: store)
         guard case let .rejected(_, reason)? = try await intake(store).processPending().first else { Issue.record("開始してしまった"); return }
         #expect(reason.hasPrefix("Mac macbook がオフライン"))
+
+        // 空きが少ない Mac では始めない（ワーカーが新しいジョブを引き受けない）
+        (store, epic) = try await awaitingStart(diskFreeGB: MacFile.lowDiskFreeGB - 1)
+        try await start(epic, in: store)
+        let lowDisk = "Mac macbook の空き容量が 29 GB で、30 GB を下回っている。片付けてから開始するか、ほかの Mac を選ぶ"
+        #expect(try await intake(store).processPending().first == .rejected(kind: "startEpic", reason: lowDisk))
 
         (store, epic) = try await awaitingStart()
         try await start(epic, mac: "studio", in: store)
