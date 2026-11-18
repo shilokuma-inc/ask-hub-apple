@@ -265,6 +265,34 @@ struct MacNoticeTests {
         #expect(laptop.renewalCommand(for: try #require(laptop.tokens.first)) == "askhub-worker token <持ち主>")
     }
 
+    /// 空き容量を自己診断に出し、しきい値を下回る Mac は開始・引き継ぎで選べないよう理由を付ける（ワーカーが理由を書かない前の版でも同じ）
+    @Test
+    func buildsLowDiskRefusalFromHeartbeats() async throws {
+        let refusal = #","refusal":{"reason":"lowDisk","message":"空き容量が 23 GB","since":"2027-01-15T07:40:00Z"}"#
+        let files = [
+            "macs/macbook-a.json": heartbeat(
+                mac: "macbook-a", kind: "resident", versions: #"{"worker":"1.0.0"}"#, diskFreeGB: 23, extra: refusal
+            ),
+            "macs/macbook-b.json": heartbeat(mac: "macbook-b", kind: "manual", versions: #"{"worker":"0.9.0"}"#, diskFreeGB: 29),
+            "macs/macbook-c.json": heartbeat(mac: "macbook-c", kind: "manual", versions: #"{"worker":"1.0.0"}"#, diskFreeGB: 30)
+        ]
+        let store = InMemoryStateStore(files: files.mapValues { Data($0.utf8) })
+        let key = try DeviceSigningKey.loadOrCreate(in: InMemorySecretStore(), useSecureEnclave: false)
+        let now = now
+        let snapshot = try await StateClientService(store: store, key: key) { now }.fetchSnapshot()
+        #expect(snapshot.sourceFailures.isEmpty)
+
+        let low = try #require(snapshot.mac("macbook-a"))
+        #expect(low.refusalReason == StateSnapshotBuilder.lowDiskReason)
+        #expect(low.refusalReason == "空き容量が 30 GB を下回っています")
+        #expect(low.selfChecks.last == Mac.SelfCheck(name: "空き容量", isOK: false, detail: "23 GB"))
+        #expect(low.incompatibility == nil)
+        #expect(snapshot.mac("macbook-b")?.refusalReason == StateSnapshotBuilder.lowDiskReason)
+        let enough = try #require(snapshot.mac("macbook-c"))
+        #expect(enough.refusalReason == nil)
+        #expect(enough.selfChecks.last == Mac.SelfCheck(name: "空き容量", isOK: true, detail: "30 GB"))
+    }
+
     /// 生きている印の自己診断の残り（持ち主ごとのうち一番少ないもの）を Mac に付け、全体では一番新しく読んだ今の窓のものを使う
     @Test
     func buildsGitHubQuotaFromHeartbeats() async throws {
@@ -305,10 +333,10 @@ struct MacNoticeTests {
         #expect(!low.isLow(now: resetAt))
     }
 
-    private func heartbeat(mac: String, kind: String, versions: String, extra: String = "") -> String {
+    private func heartbeat(mac: String, kind: String, versions: String, diskFreeGB: Int = 120, extra: String = "") -> String {
         """
         {"v":1,"mac":"\(mac)","kind":"\(kind)","seenAt":"2027-01-15T07:50:00Z","versions":\(versions),
-         "diskFreeGB":120,"load":0.5,"capacity":{"claude":2,"build":1},
+         "diskFreeGB":\(diskFreeGB),"load":0.5,"capacity":{"claude":2,"build":1},
          "selfCheck":{"checkedAt":"2027-01-15T07:50:00Z","keychain":"ok","githubToken":"ok","claudeToken":"ok"}\(extra)}
         """
     }

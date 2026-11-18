@@ -71,6 +71,8 @@ final class FakeReleaseHosting: ReleaseHosting {
         var merged: [Int] = []
         var required: [Set<String>?] = []
         var branches: [String: String] = [:]
+        /// `<base>...<head>` → 進んでいるコミットの数（無ければ 0）
+        var ahead: [String: Int] = [:]
         var calls = 0
     }
 
@@ -164,6 +166,10 @@ final class FakeReleaseHosting: ReleaseHosting {
             state.branches[branch] = sha
             return sha
         }
+    }
+
+    func compare(_ repo: RepositoryFullName, base: String, head: String) async throws(PullRequestError) -> (ahead: Int, behind: Int) {
+        call { state in (state.ahead["\(base)...\(head)"] ?? 0, 0) }
     }
 }
 

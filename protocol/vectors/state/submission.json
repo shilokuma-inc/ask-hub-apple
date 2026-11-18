@@ -640,6 +640,108 @@
       "read": "valid"
     },
     {
+      "name": "integrating",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [
+          {
+            "platform": "iOS",
+            "state": "readyForDistribution",
+            "since": "2026-11-21T09:30:00Z",
+            "submittedAt": "2026-11-20T02:01:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "submit": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000002"
+          },
+          "at": "2026-11-20T02:00:00Z",
+          "builds": [
+            {
+              "platform": "iOS",
+              "build": "20261120.11000"
+            }
+          ],
+          "whatsNew": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "releaseType": "afterApproval"
+        },
+        "end": {
+          "reason": "distributed",
+          "at": "2026-11-21T09:30:00Z"
+        },
+        "integration": [
+          {
+            "base": "develop",
+            "state": "skipped",
+            "at": "2026-11-21T09:40:00Z"
+          },
+          {
+            "base": "main",
+            "state": "open",
+            "pullRequest": 215,
+            "at": "2026-11-21T09:41:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "abandoned",
       "value": {
         "v": 1,
@@ -1901,6 +2003,107 @@
       },
       "schemaValid": false,
       "read": "unsupportedVersion"
+    },
+    {
+      "name": "integration-without-pull-request",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [
+          {
+            "platform": "iOS",
+            "state": "readyForDistribution",
+            "since": "2026-11-21T09:30:00Z",
+            "submittedAt": "2026-11-20T02:01:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "submit": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000002"
+          },
+          "at": "2026-11-20T02:00:00Z",
+          "builds": [
+            {
+              "platform": "iOS",
+              "build": "20261120.11000"
+            }
+          ],
+          "whatsNew": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "releaseType": "afterApproval"
+        },
+        "end": {
+          "reason": "distributed",
+          "at": "2026-11-21T09:30:00Z"
+        },
+        "integration": [
+          {
+            "base": "develop",
+            "state": "skipped",
+            "at": "2026-11-21T09:40:00Z"
+          },
+          {
+            "base": "main",
+            "state": "open",
+            "at": "2026-11-21T09:41:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
     }
   ]
 }

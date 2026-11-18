@@ -42,8 +42,12 @@
       "required": ["reason", "message"],
       "additionalProperties": false,
       "properties": {
-        "reason": { "enum": ["incompatible"] },
-        "message": { "type": "string", "minLength": 1 }
+        "reason": {
+          "description": "incompatible は司令塔と互換の番号が合わない、lowDisk は空き容量がしきい値（30 GB）を下回る（片付けと Claude だけのジョブは引き受ける）",
+          "enum": ["incompatible", "lowDisk"]
+        },
+        "message": { "type": "string", "minLength": 1 },
+        "since": { "description": "引き受けなくなった時刻。下回るたびに 1 回知らせる区切りに使う", "$ref": "../common.schema.json#/$defs/timestamp" }
       }
     }
   }

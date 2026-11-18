@@ -81,9 +81,11 @@ public struct HandoverHandler: IntentHandler {
         guard TaskFlow.stages.contains(epic.stage), let current = epic.mac else {
             return .reject("開始した後だけ引き継げる（今は \(epic.stage.rawValue)）")
         }
-        guard try await context.read(MacFile.self, at: StatePath.mac(handover.mac)) != nil else {
+        guard let target = try await context.read(MacFile.self, at: StatePath.mac(handover.mac)) else {
             return .reject("Mac \(handover.mac) が登録されていない（ワーカーが一度も動いていない）")
         }
+        // 移す先は、空きが少ないと新しいジョブを引き受けない
+        if target.isLowOnDisk { return .reject(target.lowDiskProblem(doing: "引き継ぐ")) }
         if epic.pause == nil, let problem = try await runningProblem(of: epic, on: current, in: context) { return .reject(problem) }
         try await context.updateEpic(epic, message: "epic を \(handover.mac) に引き継ぐ") { file in
             guard TaskFlow.stages.contains(file.stage), file.mac == current else { return false }

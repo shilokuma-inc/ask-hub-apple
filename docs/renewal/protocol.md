@@ -80,7 +80,13 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "platform": "apple",
   "maxConcurrentEpics": 1,
   "appKit": { "ref": "<共通リポジトリのコミット>" },
-  "protection": { "appliedAt": null },
+  "protection": {
+    "appliedAt": "2026-11-13T10:00:00Z",
+    "requiredChecks": ["build / build"],
+    "rulesetId": 26926767,
+    "replaced": [{ "kind": "classic", "name": "develop" }],
+    "remaining": [{ "kind": "classic", "name": "*", "reason": "守るブランチのほかにも掛かるので外さなかった" }]
+  },
   "build": {
     "baseBranch": "develop",
     "xcode": {
@@ -105,6 +111,10 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `maxConcurrentEpics` は 1 以上
 - `appKit` は、共通リポジトリのワークフローを入れる前は `null`
 - 対象から外した（`removeRepository`）リポジトリの `repo.json` は消さず、外した印（外した時刻と意図。欄の名前と形は段階 4 の 4 で決めて、ここに書く）を付けて残す。印のあるリポジトリへの依頼・開始・ビルドの設定は断り、もう一度 `addRepository` すると印を外す（[operations.md](operations.md) の「対象から外す」）
+- `protection`: ブランチの保護（ルールセット `askhub-protect`。[operations.md](operations.md) の「保護の設定」）。司令塔が保護の設定（`applyProtection`）を処理して書き、掛けた後のずれを点検して `drift` を書く。まだ掛けていなければ `appliedAt` が無い
+  - `requiredChecks`: 必須にしたチェックの名前（`applyProtection` の `requiredChecks`）。`rulesetId`: 掛けたルールセットの id
+  - `replaced`・`remaining`: 掛けたときに外した、守る範囲（develop・main・`release/` の下）に収まる保護と、外さずに残した重なる保護（`{ "kind": "classic" | "ruleset" | "organizationRuleset", "name", "reason" }`。`classic` の `name` はパターン。`reason` は残したわけで、`remaining` だけに書く）。守る範囲の外も守るもの・外せなかったもの・organization のルールセットは残す
+  - `drift`: 掛けた後のずれ（`{ "foundAt", "problems": [人が読む文。1 つ 500 文字まで] }`）。ずれていなければ `drift` を書かない（`null` も同じに読む）。ずれの中身が変わったときだけ書き直す
 - `build` は、ビルドの設定（段階 3）。人が設定を入れる意図（`configureRepository`）で書く（入れ方は [operations.md](operations.md) の「ビルドの設定の入れ方」）。形は `protocol/schemas/repository-build.schema.json`（Swift は `RepositoryFile.Build`）
   - `baseBranch`: 作業ブランチの元で、最終 PR の向き先。無ければ develop
   - `xcode`: ビルドとテストの設定（Swift は `AskHubProtocol` の `BuildSettings`）。`project`（`.xcodeproj` か `.xcworkspace` の、リポジトリの直下からの相対パス）・`generate`（ビルドの前にプロジェクトを作る道具。`"xcodegen"` なら、ワーカーが作業場所の直下で `xcodegen generate` を流す。無ければリポジトリにあるプロジェクトをそのまま使う）・`scheme`・`destinations`（`{ "platform": "iOS" | "visionOS", "deviceType", "osVersion" }` か `{ "platform": "macOS" }`。並べた順に流す）・`testLight`・`testFull`（`testPlan`・`onlyTesting`・`skipTesting`。無ければ全部）。`xcodebuild` の引数とパスに使うので、`-` で始まる値・制御文字・リポジトリの外を指すパスを受け付けない
@@ -388,6 +398,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   "distribution": { "approval": { … }, "at": "…", "doneAt": null },
   "withdrawal": null,
   "end": null,
+  "integration": null,
   "problem": null,
   "createdAt": "…",
   "updatedAt": "…"
@@ -403,7 +414,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `review` はプラットフォームごとの審査の状態（App Store Connect の `appVersionState` を `prepareForSubmission`・`waitingForReview`・`inReview`・`pendingDeveloperRelease`・`processingForDistribution`・`readyForDistribution`・`rejected`・`metadataRejected`・`developerRejected` などの camelCase にしたもの）。`since` は今の状態を読んだ時刻
 - `distribution`・`withdrawal` は人が押した「配信する」（`distributeRelease`）・「審査の取り下げ」（`withdrawSubmission`）。司令塔が App Store Connect に送ったら `doneAt` が付く
 - `end` は終わりの印。`distributed`（配信を見つけた。後作業は `releases/<版>.json`）・`abandoned`（人がやめた。`approval` を持つ）・`superseded`（もっと新しい版を配信した）
-- `problem` は進められなかった理由（`step` は `branch`・`nextVersion`・`whatsNew`・`builds`・`submit`・`distribute`・`withdraw`・`review`）。`needsHuman` なら人が直す（クライアントに出す）
+- `integration` は、配信した後に release ブランチを取り込んだ様子（取り込む先ごとに `base`・`state`・`pullRequest`・`at`）。取り込む先は base の develop と main。`state` は `open`（PR を開いている）・`merged`・`skipped`（取り込むコミットが無かった）・`created`（main が無かったので release ブランチの先頭から作った）。`end` が `distributed` の記録も、すべての取り込む先が終わるまで司令塔が進める
+- `problem` は進められなかった理由（`step` は `branch`・`nextVersion`・`whatsNew`・`builds`・`submit`・`distribute`・`withdraw`・`review`・`integration`）。`needsHuman` なら人が直す（クライアントに出す）
 - クライアントは、準備がそろい（`isPrepared`）、まだ出していない（`submit` も審査中のプラットフォームも無い）版を、人の番として出す（`awaitsSubmission`）。審査に通って配信の方式が手動の版（`pendingDeveloperRelease`）も人の番（`awaitsDistribution`）。審査を待っている・審査中なら取り下げられ（`canWithdraw`）、審査に出していない・取り下げた・断られた版はやめられる（`canAbandon`）
 
 ### verifications.json（実機確認への答え）
@@ -574,7 +586,10 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   - ワーカーは、司令塔（`commander.json`）の `versions.compatibility` と自分の番号が合わないとき・`commander.json` を読めない（知らない版・形の違うもの）ときは、新しいジョブを引き受けず、`refusal` に理由を書く。動かしているジョブは手放さない。番号を書かない司令塔（前の版）・`commander.json` が無いときは照らし合わせない
   - 起動してから `commander.json` を一度も読めていない（GitHub に届かないなど）間は、新しいジョブを引き受けない。一度読めた後に読めなくなったときは、前の判断のまま続ける
   - クライアントは、互換の番号が司令塔と合わない Mac（または `refusal` が `incompatible` の Mac）を Mac の画面と「あなたの番」に出し、更新の手順を添える。番号を比べられない（ワーカーが `commander.json` を読めない）ときは、どちらを更新するかを決めずに、ワーカーが書いた理由を出す。版が違うだけ（互換の番号は同じ）なら、Mac の詳細に出すだけにする
-- `refusal` は、新しいジョブを引き受けていないときだけ書く。`reason` は `incompatible`（司令塔と互換の番号が合わない・`commander.json` を読めない）、`message` は人が読む説明
+- `refusal` は、新しいジョブを引き受けていないときだけ書く。`reason` は `incompatible`（司令塔と互換の番号が合わない・`commander.json` を読めない）か `lowDisk`（空き容量が 30 GB を下回る。`MacFile.lowDiskFreeGB`）、`message` は人が読む説明、`since` は引き受けなくなった時刻（任意）
+  - `lowDisk` は、印を書くとき（10 分ごと）に測った `diskFreeGB` で決める。空きを増やす片付け（`cleanUp`）と、作業場所・ビルドを使わない Claude のジョブ（`makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`notify`。`JobKind.isAcceptedWhileLowOnDisk`）は引き受ける。常時オンの Mac の空きで、ほかの Mac の epic の質問まで止めないため。両方に当たるときは `incompatible` を書く
+  - `since` は、少ないまま印を書き直しても変えない。司令塔は、これを区切りに、空きが少ない Mac を下回るたびに 1 回知らせる
+  - クライアントと司令塔は、`refusal` によらず `diskFreeGB` で空きが少ないかを決める（`lowDisk` を書かない前の版のワーカーも、開始・引き継ぎの先に選ばない）
 - `versions.claude` は、印を書くたびに測る `claude --version`。クライアントは、司令塔（`commander.json`）と違う Mac を知らせる
 - `selfCheck` は印を書くたびに確かめる。各項目は `ok`・`missing`・`invalid`・`expired`。トークンの値そのものは書かない
   - `githubTokens` は、持ち主（organization・個人。小文字にそろえる）ごとの GitHub のトークンの様子と期限。持ち主は重ねない
@@ -716,7 +731,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
-| `applyProtection` | リポジトリ（封筒の `repo`） | — | 保護の設定（形は段階 4 の 4 で決める）。司令塔が管理用のトークンで掛ける |
+| `applyProtection` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `requiredChecks`（必須にするチェックの名前。1〜20 個・重ならない・空白だけの名前と制御文字（改行など）を含む名前は受け付けない。スキーマでは表せないので読む側が断る。`payloads/applyProtection.schema.json`）。司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛けてから重なる保護を外し、`repo.json` の `protection` を書く。管理用のトークンが無い・private のリポジトリなどは理由を付けて断る |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
 | `startRelease` | リポジトリ（封筒の `repo`） | — | `version`（始める版。`payloads/startRelease.schema.json`）。対象のリポジトリで、終わっていないリリース（`submissions/` の `end` の無い記録）が無く、配信した版（`releases/`）より大きいときだけ受け付ける。やめた版は始め直せる |
 | `submitForReview` | リリースを始めた版（`{ "type": "submission", "id": "<版>" }`） | 人が見たときの準備の版（`submissions/<版>.json` の `revision`） | `builds`（出すビルド。`[{ "platform", "build" }]`）、`whatsNew`（人が確かめた What's New。`[{ "locale", "text" }]`。下書きと同じ言語）、`releaseType`（`afterApproval`・`manual`・`scheduled`）、`earliestReleaseDate`（`scheduled` のときだけ。`payloads/submitForReview.schema.json`）。準備がそろい、まだ出していない版だけ受け付ける |

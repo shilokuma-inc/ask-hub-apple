@@ -48,7 +48,9 @@ extension InboxBuilder {
 
     /// リリースを始めた版の人の番（司令塔が通知するものと同じ: 審査に出す・配信する・人が直す準備）と、リジェクトの知らせ
     static func submissionItems(_ submission: Submission, snapshot: ClientSnapshot) -> [InboxItem] {
-        guard !submission.isEnded, submission.sending == nil else { return [] }
+        // 配信した後は、release ブランチの取り込みで人が直す問題だけ出す
+        let integrationOnly = submission.end == .distributed
+        guard !submission.isEnded || integrationOnly, submission.sending == nil else { return [] }
         let appName = snapshot.repository(submission.repositoryID)?.appName ?? submission.repositoryID
         let context = "\(appName) · \(submission.version)"
         let route = AppRoute.submission(repositoryID: submission.repositoryID, version: submission.version)
@@ -68,6 +70,11 @@ extension InboxBuilder {
             )
         }
         var items: [InboxItem] = []
+        if integrationOnly {
+            guard let problem = submission.problem, problem.step == .integration, problem.needsHuman else { return [] }
+            let title = "配信の後作業を直す: \(problem.step.label)"
+            return [item(.submissionProblem, "problem", title: title, detail: problem.message, since: problem.at)]
+        }
         if submission.awaitsSubmission {
             let detail = submission.rejected.map { "受け付けませんでした: \($0)" }
                 ?? "ビルド \(submission.buildSummary) の準備ができました。What's New を確かめて、配信の方式を選んでください"
