@@ -45,6 +45,41 @@ extension DemoData {
         ]
     }
 
+    /// リリースを始めた版。レシピ帳の 2.1.0 は、準備がそろって審査に出すのを待っている
+    func submissions() -> [Submission] {
+        let recipe = Self.repositoryID("recipe-apple")
+        var submission = Submission(
+            repositoryID: recipe,
+            version: "2.1.0",
+            startedInAskHub: true,
+            branch: "release/2.1.0",
+            nextVersion: .init(version: "2.2.0", state: .merged, pullRequest: 203),
+            builds: [.init(platform: "iOS", build: "131"), .init(platform: "macOS", build: "132")],
+            drafts: [
+                .init(locale: "ja", text: Self.recipeWhatsNewJapanese),
+                .init(locale: "en-US", text: Self.recipeWhatsNewEnglish)
+            ],
+            revision: 2,
+            createdAt: ago(minutes: 60 * 3),
+            updatedAt: ago(minutes: 25)
+        )
+        submission.awaitsSubmission = true
+        submission.canAbandon = true
+        return [submission]
+    }
+
+    static let recipeWhatsNewJapanese = """
+        ・材料の分量を、人数に合わせて自動で計算できるようになりました
+        ・買い物リストを Mac と iPhone で同じものにしました
+        ・写真の読み込みを速くしました
+        """
+
+    static let recipeWhatsNewEnglish = """
+        - Ingredient amounts now scale automatically to the number of servings
+        - Your shopping list now stays in sync between Mac and iPhone
+        - Photos load faster
+        """
+
     static let habitNotes = """
         ## 新しい機能
         - 習慣ごとに、続けた日数をカレンダーで見られるようになりました

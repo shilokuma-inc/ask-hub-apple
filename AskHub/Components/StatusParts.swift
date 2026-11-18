@@ -107,6 +107,10 @@ extension InboxItem.Kind {
         case .cleanup: "trash.fill"
         case .releaseNotes: "shippingbox.fill"
         case .releaseProblem: "exclamationmark"
+        case .submissionReady: "paperplane.fill"
+        case .submissionDistribution: "shippingbox.fill"
+        case .submissionProblem: "exclamationmark"
+        case .submissionRejected: "xmark.octagon.fill"
         }
     }
 
@@ -126,6 +130,9 @@ extension InboxItem.Kind {
         case .cleanup: Theme.Tone.butter
         case .releaseNotes: Theme.Tone.mint
         case .releaseProblem: Theme.Tone.rose
+        case .submissionReady: Theme.Tone.lavender
+        case .submissionDistribution: Theme.Tone.mint
+        case .submissionProblem, .submissionRejected: Theme.Tone.rose
         }
     }
 }

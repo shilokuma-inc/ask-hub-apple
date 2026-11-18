@@ -576,7 +576,10 @@ cleanup/<mac>/candidates.json                      片付けの候補と、頼�
   - ワーカーは、司令塔（`commander.json`）の `versions.compatibility` と自分の番号が合わないとき・`commander.json` を読めない（知らない版・形の違うもの）ときは、新しいジョブを引き受けず、`refusal` に理由を書く。動かしているジョブは手放さない。番号を書かない司令塔（前の版）・`commander.json` が無いときは照らし合わせない
   - 起動してから `commander.json` を一度も読めていない（GitHub に届かないなど）間は、新しいジョブを引き受けない。一度読めた後に読めなくなったときは、前の判断のまま続ける
   - クライアントは、互換の番号が司令塔と合わない Mac（または `refusal` が `incompatible` の Mac）を Mac の画面と「あなたの番」に出し、更新の手順を添える。番号を比べられない（ワーカーが `commander.json` を読めない）ときは、どちらを更新するかを決めずに、ワーカーが書いた理由を出す。版が違うだけ（互換の番号は同じ）なら、Mac の詳細に出すだけにする
-- `refusal` は、新しいジョブを引き受けていないときだけ書く。`reason` は `incompatible`（司令塔と互換の番号が合わない・`commander.json` を読めない）、`message` は人が読む説明
+- `refusal` は、新しいジョブを引き受けていないときだけ書く。`reason` は `incompatible`（司令塔と互換の番号が合わない・`commander.json` を読めない）か `lowDisk`（空き容量が 30 GB を下回る。`MacFile.lowDiskFreeGB`）、`message` は人が読む説明、`since` は引き受けなくなった時刻（任意）
+  - `lowDisk` は、印を書くとき（10 分ごと）に測った `diskFreeGB` で決める。空きを増やす片付け（`cleanUp`）と、作業場所・ビルドを使わない Claude のジョブ（`makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`notify`。`JobKind.isAcceptedWhileLowOnDisk`）は引き受ける。常時オンの Mac の空きで、ほかの Mac の epic の質問まで止めないため。両方に当たるときは `incompatible` を書く
+  - `since` は、少ないまま印を書き直しても変えない。司令塔は、これを区切りに、空きが少ない Mac を下回るたびに 1 回知らせる
+  - クライアントと司令塔は、`refusal` によらず `diskFreeGB` で空きが少ないかを決める（`lowDisk` を書かない前の版のワーカーも、開始・引き継ぎの先に選ばない）
 - `versions.claude` は、印を書くたびに測る `claude --version`。クライアントは、司令塔（`commander.json`）と違う Mac を知らせる
 - `selfCheck` は印を書くたびに確かめる。各項目は `ok`・`missing`・`invalid`・`expired`。トークンの値そのものは書かない
   - `githubTokens` は、持ち主（organization・個人。小文字にそろえる）ごとの GitHub のトークンの様子と期限。持ち主は重ねない

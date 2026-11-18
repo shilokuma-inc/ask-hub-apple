@@ -109,6 +109,9 @@ public actor CommanderLoop {
     private var lastBeat: Date?
     /// 最後に GitHub の REST の上限の残りを見た時刻と、読んだ残り（通知に使う。読めなければ nil）
     private var lastRateLimitCheck: Date?
+    /// 空き容量が少ないので、片付けと Claude だけのジョブのほかは新しく引き受けていない理由（常時オンの Mac のワーカーとして）。
+    /// 生きている印を書くときに測って決める。少なくなければ nil
+    private var diskRefusal: JobRefusal?
     private var latestRateLimit: GitHubRateLimit?
     /// 残りが少なくなって、生きている印をすぐ書き直した窓（戻る時刻）。同じ窓では書き直さない
     private var lowRateLimitWindow: Timestamp?
@@ -182,17 +185,6 @@ public actor CommanderLoop {
         }
     }
 
-    /// 周を終えられなかったときに休む時間。意図の一覧を見て休みを切り上げない（意図を受け付ける前に失敗すると、前の周で見た意図の記録が古いままで、
-    /// 休まずに失敗をくり返し、GitHub の上限を食い尽くすため）。上限（GitHub・書き込みの予算）なら言われた時間（長すぎれば `maxFailureWait` まで）、
-    /// ほかの失敗は 1 周の間隔
-    static func wait(after error: CommanderError, pollInterval: Duration) -> Duration {
-        guard let retryAfter = error.retryAfter else { return pollInterval }
-        return min(max(retryAfter, pollInterval), maxFailureWait)
-    }
-
-    /// 上限で休むときの長さの上限（生きている印が古くなりすぎないように）
-    static let maxFailureWait: Duration = .seconds(15 * 60)
-
     /// 次の周まで `pollInterval` 休む。休む間も `intentCheckInterval` ごとに意図の一覧を見て（ETag つきなので、変わっていなければ上限に数えられない）、
     /// 前の周で見ていない意図が届いていたら、休みを切り上げる（人の操作を早く受け付けるため。1 周の途中に届いた意図も、周が終わってすぐ受け付ける）。
     /// 前の周で見た意図（扱えずに残したもの・書けずに残したもの）では切り上げない（同じ意図で休まずに回り続けないように）
@@ -255,7 +247,7 @@ public actor CommanderLoop {
             log(note)
         }
         swept.jobs += restarted.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
-        let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier))
+        let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier), lowOnDisk: diskRefusal != nil)
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
         await cleanup?.poll(verifier: verifier)
         timer.lap("引き受けと通知")
@@ -375,7 +367,13 @@ public actor CommanderLoop {
         let versions = MacFile.Versions(
             worker: settings.commanderVersion, compatibility: settings.compatibility, claude: claude, xcode: machine.xcodeVersion
         )
-        let mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
+        let refusal = machine.diskRefusal(previous: diskRefusal, at: time)
+        if (refusal == nil) != (diskRefusal == nil) {
+            log(refusal.map { "新しいジョブを引き受けない: \($0.message)" } ?? "空き容量が \(MacFile.lowDiskFreeGB) GB 以上に戻ったので、新しいジョブを引き受ける")
+        }
+        diskRefusal = refusal
+        var mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
+        mac.refusal = refusal
         try await context.put(commander, at: StatePath.commander, message: "司令塔の生きている印")
         try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now
@@ -385,4 +383,19 @@ public actor CommanderLoop {
         appIcons?.start()
         releases?.start()
     }
+}
+
+// MARK: - 失敗の後の休み
+
+extension CommanderLoop {
+    /// 周を終えられなかったときに休む時間。意図の一覧を見て休みを切り上げない（意図を受け付ける前に失敗すると、前の周で見た意図の記録が古いままで、
+    /// 休まずに失敗をくり返し、GitHub の上限を食い尽くすため）。上限（GitHub・書き込みの予算）なら言われた時間（長すぎれば `maxFailureWait` まで）、
+    /// ほかの失敗は 1 周の間隔
+    static func wait(after error: CommanderError, pollInterval: Duration) -> Duration {
+        guard let retryAfter = error.retryAfter else { return pollInterval }
+        return min(max(retryAfter, pollInterval), maxFailureWait)
+    }
+
+    /// 上限で休むときの長さの上限（生きている印が古くなりすぎないように）
+    static let maxFailureWait: Duration = .seconds(15 * 60)
 }

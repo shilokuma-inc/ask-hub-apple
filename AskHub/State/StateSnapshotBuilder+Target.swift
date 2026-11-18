@@ -9,6 +9,10 @@ extension StateSnapshotBuilder {
         guard envelope.kind != RequestIntent.kind else {
             return .request(epicID: epicID(forRequest: envelope).rawValue)
         }
+        // リリースを始める意図は、版を payload に持つ
+        if envelope.kind == StartReleaseIntent.kind, let start = try? StartReleaseIntent(envelope: envelope) {
+            return .submission(repositoryID: repository(start.repo).id, version: start.version.rawValue)
+        }
         return target(kind: envelope.kind, repo: envelope.repo, target: envelope.target)
     }
 
@@ -20,6 +24,13 @@ extension StateSnapshotBuilder {
 
         case AddRepositoryIntent.kind, RemoveRepositoryIntent.kind, ConfigureRepositoryIntent.kind:
             return repo.map { .repository(repository($0).id) }
+
+        case SubmitForReviewIntent.kind, DistributeReleaseIntent.kind, WithdrawSubmissionIntent.kind, AbandonReleaseIntent.kind:
+            // リリースを始めた版も epic に属さないので、リポジトリと版（`target.id`）で決める
+            guard let repo, target?.type == SubmissionTarget.targetType, let version = target?.id else {
+                return nil
+            }
+            return .submission(repositoryID: repository(repo).id, version: version)
 
         case PublishGitHubReleaseIntent.kind:
             // 配信した版は epic に属さないので、リポジトリと版（`target.id`）で決める
