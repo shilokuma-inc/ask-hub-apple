@@ -26,11 +26,12 @@ public actor JobSlots {
         self.log = log
     }
 
-    /// 引き受けられるジョブを選んで動かし始める。動かし始めたジョブを返す
+    /// 引き受けられるジョブを選んで動かし始める。動かし始めたジョブを返す。
+    /// `lowOnDisk` なら、空きが少ない間も引き受ける種類（`JobKind.isAcceptedWhileLowOnDisk`）だけを選ぶ（動かしているジョブは手放さない）
     @discardableResult
-    public func fill(from jobs: [JobFile], now: Date, with worker: JobWorker) async -> [JobFile] {
+    public func fill(from jobs: [JobFile], now: Date, with worker: JobWorker, lowOnDisk: Bool = false) async -> [JobFile] {
         await closeLeftovers(of: jobs, with: worker.recorder)
-        let picked = pick(from: jobs, now: now)
+        let picked = pick(from: jobs, now: now, lowOnDisk: lowOnDisk)
         for job in picked {
             start(job, with: worker)
         }
@@ -45,14 +46,16 @@ public actor JobSlots {
     }
 
     /// 引き受けるジョブ。動かしているのにまだ試行が読まれていない（`assigned` のままの）ジョブは選ばず、そのぶん空きを減らす
-    func pick(from jobs: [JobFile], now: Date) -> [JobFile] {
+    func pick(from jobs: [JobFile], now: Date, lowOnDisk: Bool = false) -> [JobFile] {
         let pending = jobs.filter { inFlight[$0.id] != nil && $0.state != .running }
         var capacity = capacity
         capacity.claude = max(0, capacity.claude - pending.filter(\.needs.claude).count)
         capacity.build = max(0, capacity.build - pending.filter(\.needs.build).count)
         // 引き受けない種類の assigned のジョブは、空きを取られないよう候補から外す（running・succeeded は空きと依存の判断に要るので残す）
         let candidates = jobs.filter { job in
-            job.state != .assigned || (kinds.contains(job.kind) && inFlight[job.id] == nil && !unclosed.contains(job.id))
+            job.state != .assigned
+                || (kinds.contains(job.kind) && (!lowOnDisk || job.kind.isAcceptedWhileLowOnDisk) && inFlight[job.id] == nil
+                    && !unclosed.contains(job.id))
         }
         return JobPicker.pick(from: candidates, for: mac, capacity: capacity, now: now)
     }

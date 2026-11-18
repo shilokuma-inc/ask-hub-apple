@@ -11,7 +11,8 @@ import Foundation
 /// 決めた間隔で書く。人の意図の処理とジョブの状態の更新はしない（司令塔の仕事）。
 ///
 /// 周ごとに司令塔の生きている印（`commander.json`）の互換の番号と自分の番号を照らし合わせ、合わなければ新しいジョブを引き受けず、
-/// 理由を生きている印に書く（動かしているジョブは手放さない。`docs/renewal/operations.md` の「版」）
+/// 理由を生きている印に書く（動かしているジョブは手放さない。`docs/renewal/operations.md` の「版」）。
+/// 生きている印を書くときに空き容量が少なければ、片付けのほかの新しいジョブを引き受けず、理由を印に書く（`docs/renewal/operations.md` の「容量」）
 public actor WorkerLoop {
     public struct Settings: Sendable {
         /// この Mac の種類（常駐できるか・できないか）
@@ -63,6 +64,8 @@ public actor WorkerLoop {
     private var lastBeat: Date?
     /// 新しいジョブを引き受けていない理由（司令塔と互換の番号が合わない）。引き受けているときは nil
     private var refusal: JobRefusal?
+    /// 空き容量が少ないので、片付けのほかの新しいジョブを引き受けていない理由。生きている印を書くときに測って決める。少なくなければ nil
+    private var diskRefusal: JobRefusal?
     /// 司令塔の生きている印を一度でも読んで照らし合わせたか。読めるまでは新しいジョブを引き受けない
     private var compatibilityChecked = false
 
@@ -120,7 +123,7 @@ public actor WorkerLoop {
         guard compatibilityChecked, refusal == nil else { return [] }
         let verifier = try await verifier()
         let jobs = try await context.jobsOfEpics(on: context.mac)
-        return await slots.fill(from: jobs, now: context.now(), with: worker(verifier))
+        return await slots.fill(from: jobs, now: context.now(), with: worker(verifier), lowOnDisk: diskRefusal != nil)
     }
 
     /// 動かしているジョブが終わるまで待つ
@@ -141,6 +144,7 @@ public actor WorkerLoop {
         let now = context.now()
         if let lastBeat, now.timeIntervalSince(lastBeat) < TimeInterval(settings.heartbeatInterval.components.seconds) { return }
         let (machine, time) = (await status(), Timestamp(now))
+        updateDiskRefusal(machine.diskRefusal(previous: diskRefusal, at: time))
         let versions = MacFile.Versions(
             worker: settings.workerVersion,
             compatibility: settings.compatibility,
@@ -148,10 +152,18 @@ public actor WorkerLoop {
             xcode: machine.xcodeVersion
         )
         var mac = machine.macFile(mac: context.mac, kind: settings.kind, at: time, versions: versions, capacity: settings.capacity)
-        mac.refusal = refusal
+        mac.refusal = refusal ?? diskRefusal
         try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now
         await tidy()
+    }
+
+    /// 空き容量で引き受けるかどうかが変わったら、ログに出す
+    private func updateDiskRefusal(_ refusal: JobRefusal?) {
+        if (refusal == nil) != (diskRefusal == nil) {
+            log(refusal.map { "新しいジョブを引き受けない: \($0.message)" } ?? "空き容量が \(MacFile.lowDiskFreeGB) GB 以上に戻ったので、新しいジョブを引き受ける")
+        }
+        diskRefusal = refusal
     }
 
     // MARK: - 互換の番号
