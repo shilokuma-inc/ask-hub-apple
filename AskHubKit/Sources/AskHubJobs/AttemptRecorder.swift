@@ -24,6 +24,11 @@ public struct AttemptRecorder: Sendable {
         return try await files.create(attempt, at: path(job, attempt.number), message: message).file
     }
 
+    /// 試行を読む。無ければ nil
+    public func read(_ job: JobFile, number: Int) async throws(StateFileStore.Failure) -> AttemptFile? {
+        try await files.read(AttemptFile.self, at: path(job, number))?.file
+    }
+
     /// 生きている印を書く（`JobTiming.heartbeatInterval` ごと）
     @discardableResult
     public func beat(_ attempt: AttemptFile, of job: JobFile) async throws(StateFileStore.Failure) -> AttemptFile {

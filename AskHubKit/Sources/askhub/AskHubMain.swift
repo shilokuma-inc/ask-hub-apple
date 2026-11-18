@@ -49,7 +49,7 @@ enum AskHubMain {
           start --repo <owner/repo> --epic <id> --version <ゴールの版> --mac <Mac の名前>
           revise-goal --repo <owner/repo> --epic <id> --version <ゴールの版> --instruction <指示>
           decide-split --repo <owner/repo> --epic <id> --version <確認の結果の版> --choice split|proceed
-          abandon --repo <owner/repo> --epic <id>   開始する前の epic を取り下げる
+          abandon --repo <owner/repo> --epic <id>   epic を取り下げる（開始した後なら PR を閉じる。ブランチは残す）
           pause --repo <owner/repo> --epic <id>   開始した epic を一時停止する（動いているジョブは最後まで終わらせる）
           resume --repo <owner/repo> --epic <id>   一時停止した epic を再開する
           handover --repo <owner/repo> --epic <id> --mac <Mac の名前>   開始した epic をほかの Mac に引き継ぐ

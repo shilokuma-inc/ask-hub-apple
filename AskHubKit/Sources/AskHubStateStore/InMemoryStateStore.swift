@@ -10,9 +10,13 @@ public actor InMemoryStateStore: StateStore {
     private let isSnapshot: Bool
     /// 書き込みの前に投げる失敗（テストで、ほかの書き手とぶつかったときなどを再現する）
     private var injectedWriteFailures: [StateStoreError] = []
+    /// パスごとに、書き込みで投げる失敗（テストで、決まったファイルだけ書けない状態を再現する）
+    private var injectedPathWriteFailures: [String: [StateStoreError]] = [:]
     /// 次の書き込みの直前に、ほかの書き手が書いたことにする中身
     private var interleavedWrites: [(path: String, data: Data)] = []
     public private(set) var writeCount = 0
+    /// 書けたパスを、書いた順に（テストで、書く順番を確かめる）
+    public private(set) var writtenPaths: [String] = []
 
     public init(files: [String: Data] = [:]) {
         self.files = files.mapValues { StoredBlob(data: $0, sha: Self.sha(of: $0)) }
@@ -64,6 +68,10 @@ public actor InMemoryStateStore: StateStore {
             throw .wrongKind
         }
         if !injectedWriteFailures.isEmpty { throw injectedWriteFailures.removeFirst() }
+        if let failure = injectedPathWriteFailures[path]?.first {
+            injectedPathWriteFailures[path]?.removeFirst()
+            throw failure
+        }
         if !interleavedWrites.isEmpty {
             let other = interleavedWrites.removeFirst()
             put(other.path, data: other.data)
@@ -72,12 +80,18 @@ public actor InMemoryStateStore: StateStore {
         let blob = StoredBlob(data: data, sha: Self.sha(of: data))
         files[path] = blob
         writeCount += 1
+        writtenPaths.append(path)
         return blob.sha
     }
 
     /// 次の書き込みで、順に投げる失敗を足す
     public func failNextWrites(with failures: [StateStoreError]) {
         injectedWriteFailures += failures
+    }
+
+    /// そのパスへの次の書き込みで、順に投げる失敗を足す
+    public func failNextWrites(to path: String, with failures: [StateStoreError]) {
+        injectedPathWriteFailures[path, default: []] += failures
     }
 
     /// 次の書き込みの直前に、ほかの書き手が書いたことにする（読んだ後に書き換えられた状態を再現する）

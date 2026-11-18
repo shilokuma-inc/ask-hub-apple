@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 
-/// GitHub Actions の実行の読み取りと、PR の閉じる・開き直す
+/// GitHub Actions の実行の読み取りと、PR の閉じる・開き直す・探す・コメント
 struct ActionsTests {
     private static func run(_ id: Int, name: Any = "Build", event: String = "push", status: String = "queued") -> [String: Any] {
         [
@@ -70,6 +70,41 @@ struct ActionsTests {
         #expect(requests.map(Fixture.path) == Array(repeating: "/repos/shilokuma-inc/ask-hub-apple/pulls/41", count: 2))
         #expect(Fixture.body(requests[0]) as? [String: String] == ["state": "closed"])
         #expect(Fixture.body(requests[1]) as? [String: String] == ["state": "open"])
+    }
+
+    /// やめた epic の PR を探す: 向き先か head で絞り、フォークからの PR とほかのブランチの PR は除く
+    @Test func listsOpenPullRequestsOfSameRepositoryFollowingPages() async throws {
+        let next = "https://api.github.com/repositories/1/pulls?base=askhub%2Fepic&page=2"
+        let fork = Fixture.pull(3, head: "askhub/epic/t1", base: "askhub/epic", headRepo: "someone/ask-hub-apple")
+        let other = Fixture.pull(4, head: "askhub/epic/t2", base: "develop")
+        let first = [Fixture.pull(1, head: "askhub/epic/t1", base: "askhub/epic"), fork]
+        let transport = StubTransport([
+            .json(200, Fixture.json(first), headers: Fixture.link(next: next)),
+            .json(200, Fixture.json([Fixture.pull(2, head: "askhub/epic/t2", base: "askhub/epic"), other]))
+        ])
+        let pulls = try await Fixture.client(transport).openPullRequests(base: "askhub/epic")
+        #expect(pulls.map(\.number) == [1, 2])
+        let requests = transport.requests
+        try #require(requests.count == 2)
+        #expect(Fixture.path(requests[0]) == "/repos/shilokuma-inc/ask-hub-apple/pulls")
+        #expect(Fixture.query(requests[0]) == ["state": "open", "base": "askhub/epic", "per_page": "100"])
+        #expect(requests[1].url?.absoluteString == next)
+    }
+
+    @Test func listsOpenPullRequestsFromHead() async throws {
+        let transport = StubTransport([.json(200, Fixture.json([Fixture.pull(9, head: "askhub/epic", base: "develop")]))])
+        let pulls = try await Fixture.client(transport).openPullRequests(head: "askhub/epic")
+        #expect(pulls.map(\.number) == [9])
+        #expect(Fixture.query(transport.requests.first) == ["state": "open", "head": "shilokuma-inc:askhub/epic", "per_page": "100"])
+    }
+
+    @Test func commentsOnPullRequest() async throws {
+        let transport = StubTransport([.json(201, Fixture.json(["id": 1]))])
+        try await Fixture.client(transport).comment(number: 41, body: "閉じます")
+        let request = transport.requests.first
+        #expect(request?.httpMethod == "POST")
+        #expect(Fixture.path(request) == "/repos/shilokuma-inc/ask-hub-apple/issues/41/comments")
+        #expect(Fixture.body(request) as? [String: String] == ["body": "閉じます"])
     }
 
     @Test func reportsRejectedReopen() async {
