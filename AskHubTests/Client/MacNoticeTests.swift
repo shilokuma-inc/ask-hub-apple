@@ -270,7 +270,9 @@ struct MacNoticeTests {
     func buildsLowDiskRefusalFromHeartbeats() async throws {
         let refusal = #","refusal":{"reason":"lowDisk","message":"空き容量が 23 GB","since":"2027-01-15T07:40:00Z"}"#
         let files = [
-            "macs/macbook-a.json": heartbeat(mac: "macbook-a", kind: "resident", versions: #"{"worker":"1.0.0"}"#, diskFreeGB: 23, extra: refusal),
+            "macs/macbook-a.json": heartbeat(
+                mac: "macbook-a", kind: "resident", versions: #"{"worker":"1.0.0"}"#, diskFreeGB: 23, extra: refusal
+            ),
             "macs/macbook-b.json": heartbeat(mac: "macbook-b", kind: "manual", versions: #"{"worker":"0.9.0"}"#, diskFreeGB: 29),
             "macs/macbook-c.json": heartbeat(mac: "macbook-c", kind: "manual", versions: #"{"worker":"1.0.0"}"#, diskFreeGB: 30)
         ]

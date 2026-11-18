@@ -255,10 +255,14 @@ struct NotifierTests {
         let epics = [epic(.running)]
 
         // 空きが少ない間も引き受けるジョブ（Claude だけのもの・片付け）しか持っていなければ、止まっていないので知らせない
-        let claudeOnly = [job(1, kind: .makeQuestions, mac: Self.laptop, state: .assigned), job(2, kind: .cleanUp, mac: Self.laptop, state: .assigned)]
+        let claudeOnly = [
+            job(1, kind: .makeQuestions, mac: Self.laptop, state: .assigned), job(2, kind: .cleanUp, mac: Self.laptop, state: .assigned)
+        ]
         #expect(try await notifier.notify(epics: epics, jobs: claudeOnly, trusted: [deviceID]).isEmpty)
 
-        let jobs = [job(1, kind: .implementTask, mac: Self.laptop, state: .assigned), job(2, kind: .makeQuestions, mac: Self.laptop, state: .assigned)]
+        let jobs = [
+            job(1, kind: .implementTask, mac: Self.laptop, state: .assigned), job(2, kind: .makeQuestions, mac: Self.laptop, state: .assigned)
+        ]
         let notices = try await notifier.notify(epics: epics, jobs: jobs, trusted: [deviceID])
         #expect(notices.map(\.keys) == [["disk/\(Self.laptop)/\(since)"]])
         #expect(notices.first?.title == "macbook の空きが少なくなりました")
