@@ -318,7 +318,7 @@ public struct AddRepositoryHandler: IntentHandler {
 /// 取り下げ（`abandonEpic`）を受け付ける。epic を `abandoned` にし、終わっていないジョブを取り消す（`docs/renewal/flows.md` の「司令塔の動き」）。
 ///
 /// 動いている Claude のジョブは、結果を書く前に epic を読み直して捨てる。開始した後の epic の開いている子 PR と最終 PR は、
-/// 周の最後に `AbandonedPullRequests` が閉じる（作業ブランチと子ブランチは消さない）。マージした epic は断る
+/// 周の最後に `AbandonedPullRequests` が閉じる（作業ブランチと子ブランチは消さない）。マージした epic と、最終 PR をマージしている途中の epic は断る
 public struct AbandonEpicHandler: IntentHandler {
     public init() {}
 
@@ -339,6 +339,11 @@ public struct AbandonEpicHandler: IntentHandler {
         case .merged:
             return .reject("マージした epic は取り下げられない")
         default:
+            // 最終 PR をマージしているジョブ（動いている・終えたがまだ merged にしていない）があれば、マージは取り消せないので断る
+            let merging = try await context.jobList(epic.repo, epic: epic.id).jobs.contains { job in
+                job.kind == .mergeFinalPullRequest && [.running, .succeeded].contains(job.state)
+            }
+            if merging { return .reject("最終 PR をマージしている途中なので取り下げられない") }
             try await context.abandon(epic)
         }
         try await context.cancelJobs(epic.repo, epic: epic.id) { _ in true }
