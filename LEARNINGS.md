@@ -483,6 +483,23 @@
 - Mac 版のデモ撮影（`-demoPress`）で、ツールバーの SwiftUI の `Menu("操作", systemImage: …)` は、アクセシビリティでは `AXMenuButton` の名前 `More` になり、「操作」では見つからない。
   `-demoPress "More|やめる…"` で開いたメニューの項目まで押せる。`-demoPress` は窓の中で名前が最初に合う要素を押すので、同じ名前のボタン（epic の「やめる…」と、「対処が要ります」の「やめる…」）があれば、
   画面の上にあるほうが押される。押せなかった名前は、コンテナの tmp の `demo-snapshot.log` に「… が見つかりません」と、その時の要素の一覧が出る（2026-11-18、開始した後の取り下げの撮影）
+- `swift test --package-path AskHubKit` の全体で、テストのプロセスごと十数秒止まることがあった（2026-11-18 の CI の run 44291314793 では 16 秒、手元の Mac では 35 秒。
+  その間に流れていた計算だけのテストまで同じだけかかり、時間を測るテストが落ちる）。原因は、git で準備するテストの補助関数 `shell()` が `Process.waitUntilExit()` で同期的に待ち、
+  協調スレッドをふさいでいたこと（`sample <テストのプロセスの pid> 1` で採ると、協調スレッド 19 本のうち 15 本が `waitUntilExit` で止まっていた）。協調スレッドはコアの数しかなく、
+  CI の 3 コアのランナーでは 3 つ重なるだけで全部止まる。テストで `Process` を流すときは、`terminationHandler` で終わりを待つ（`AskHubCommanderTests/ShellScript.swift` の `runShell`）か
+  `ProcessCommandRunner` を使い、`waitUntilExit()`・`DispatchSemaphore.wait()` のように協調スレッドをふさぐ待ち方をしない（#1146）
+- 全体を流し始めた直後は協調スレッドが混み、テストの中で作った `Task { … }` が動き出すまでに 2〜4 秒待たされる（手元の Mac）。`ProcessCommandRunner` は時間切れのタイマーの Task の中で
+  `Task.sleep(for: timeout)` を数えていたため、時間切れがその分遅れていた。起動した時点で `ContinuousClock.now + timeout` を決め、`Task.sleep(until:)` で待つ。
+  「起動から N 秒」を Task の中で数えるところは、Task を作る前に締め切りを決める（2026-11-18、#1146）
+- `ContinuousClock.now - start < 上限` で「待たずに戻った」ことを確かめるテストは、上限を 60 秒にし、待たないはずの猶予や `sleep` を上限の倍にする（`ProcessCommandRunnerTests.returnLimit`）。
+  時間のテストが揺らいだら、上限を広げる前に、段ごとの時刻を `FileHandle.standardError` に書き、テストのプロセスを `sample` で採って、どこが遅いかを確かめる
+  （#1146 では、SIGINT を送ってから終わるまでは 1 ミリ秒ほどで、遅れはタイマーが鳴るまでと、プロセス全体の止まりに出ていた）
+- 時間切れで止める前にスクリプトに準備（trap の設定・子の PID を書く）をさせたいテストは、時間切れを 15 秒にする（`ProcessCommandRunnerTests.setupTimeout`・`EpicBuildServiceTests`）。
+  協調スレッドをふさがなくすると、全体を流し始めた直後にプロセスの起動が重なり、手元の Mac（プロセスの起動を検査するソフトが入っている）では、`process.run()` は 0.3 秒以内に戻るのに、
+  `/bin/sh` が最初の行に届くまで 2〜5 秒かかった。2〜3 秒の時間切れでは、trap を設定する前に SIGINT が届いて `sh` がシグナル 2 で終わり、子の PID のファイルもできない（2026-11-18、#1146）
+- `&` で後ろに回したプロセスは SIGINT を無視した状態で始まり、無視されたまま始まったシグナルは `trap` できない。ジョブ制御の無いシェル（Claude の Bash など）で `sh -c "trap … INT; …" &` として試すと、
+  trap が動かないように見える。SIGINT の挙動は Python の `subprocess.Popen` などから起動して試す。bash 3.2（macOS の `/bin/sh`）は、前で待っている子が SIGINT を受けずに普通に終わっても、
+  trap があれば子が終わった後に trap を動かす（`sh` だけに送っても後片付けは動く）（2026-11-18、#1146）
 
 ## Keychain
 
