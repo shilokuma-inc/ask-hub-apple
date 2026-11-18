@@ -65,10 +65,10 @@ struct BlockerSection: View {
     }
 
     private var discardMessage: String {
-        guard let subject = blocker.subject else {
-            return "epic ごとやめます。元に戻せません"
-        }
-        return "\(subject)をやめると先に進めないので、epic ごとやめます。元に戻せません"
+        let lead = blocker.subject.map { "\($0)をやめると先に進めないので、epic ごとやめます。" } ?? "epic ごとやめます。"
+        // 開始した後なら、司令塔が開いている子 PR と最終 PR を閉じる（ブランチは残す）
+        guard epic.stage >= .implementing else { return lead + "元に戻せません" }
+        return lead + "開いている子 PR と最終 PR は、マージせずに閉じます。作業ブランチと子ブランチは残すので、後から取り出せます。元に戻せません"
     }
 
     /// 対象を付けた意図（送り直すまでに対象が替わっていたら、窓口が送らない）
