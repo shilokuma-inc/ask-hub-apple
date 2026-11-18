@@ -16,6 +16,10 @@ public protocol ReleaseHosting: Sendable {
     /// `required` が nil なら、すべてのチェックを待つ
     func checks(_ repo: RepositoryFullName, at sha: String, required: Set<String>?) async throws(PullRequestError) -> CheckSummary
     func merge(_ repo: RepositoryFullName, number: Int, headSHA: String) async throws(PullRequestError) -> MergedPullRequest
+    /// ブランチの先頭。無ければ nil
+    func branchHead(_ repo: RepositoryFullName, branch: String) async throws(PullRequestError) -> String?
+    /// `sha` を指すブランチを作る。すでにあれば作らずに今の先頭を返す
+    func createBranch(_ repo: RepositoryFullName, branch: String, at sha: String) async throws(PullRequestError) -> String
 }
 
 /// 配信したコミットに付ける注釈付きのタグ
@@ -140,6 +144,14 @@ public struct GitHubReleaseHosting: ReleaseHosting {
 
     public func merge(_ repo: RepositoryFullName, number: Int, headSHA: String) async throws(PullRequestError) -> MergedPullRequest {
         try await github(repo).merge(number: number, headSHA: headSHA)
+    }
+
+    public func branchHead(_ repo: RepositoryFullName, branch: String) async throws(PullRequestError) -> String? {
+        try await github(repo).branchHead(branch)
+    }
+
+    public func createBranch(_ repo: RepositoryFullName, branch: String, at sha: String) async throws(PullRequestError) -> String {
+        try await github(repo).createBranch(branch, at: sha)
     }
 }
 

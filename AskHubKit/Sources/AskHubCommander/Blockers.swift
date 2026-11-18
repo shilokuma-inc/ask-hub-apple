@@ -19,12 +19,22 @@ public struct Blocker: Equatable, Sendable {
         case job(JobKind)
         /// ジョブを持った Mac が、決めた時間より長く戻らない
         case macOffline(jobs: Int, seenAt: Timestamp)
+        /// ジョブを持った Mac の空き容量が少なく、`jobs` 件を新しく引き受けずに止めている（`JobRefusal.Reason.lowDisk`）
+        case lowDisk(jobs: Int, diskFreeGB: Int)
         /// GitHub の REST の上限の残りが少ない（`GitHubRateLimit.lowRemaining` を切った）。使い切ると司令塔もクライアントも戻るまで止まる
         case rateLimit(GitHubRateLimit)
         /// App Store で配信した版のリリース文の下書きが、人が確かめて公開するのを待っている
         case releaseNotes
         /// 配信した版の後作業が、人が直すまで進まない
         case releaseProblem(ReleaseFile.Step)
+        /// リリースを始めた版の準備がそろい、人が What's New とビルドを確かめて審査に出すのを待っている
+        case submissionReady
+        /// リリースを始めた版の準備・審査の操作が、人が直すまで進まない
+        case submissionProblem(SubmissionFile.Step)
+        /// 審査の状態が変わった（審査中・承認・リジェクト）。人を止めないものもあるが、知らせる
+        case reviewState(AppStorePlatform, AppStoreVersionState)
+        /// リリースを始めた版を配信した
+        case submissionDistributed
         /// マージした epic の実機確認の、まだ答えていない項目（止めないもの）。`items` は項目の数
         case verification(repo: RepositoryFullName, epic: ULID, items: Int)
     }
@@ -37,6 +47,8 @@ public struct Blocker: Equatable, Sendable {
         case rateLimit(MacName)
         /// App Store で配信した版
         case release(RepositoryFullName, MarketingVersion)
+        /// リリースを始めた版（準備から配信まで）
+        case submission(RepositoryFullName, MarketingVersion)
         /// 止めないもの（実機確認）のまとめ。決めた時刻ごとに、epic をまたいで 1 通にする
         case verifications
     }
@@ -74,7 +86,7 @@ struct BlockerScan {
             let key = "job/\(job.repo)/\(job.epic)/\(job.id)/\(job.attempts)"
             blockers.append(Blocker(key: key, scope: .epic(job.repo, job.epic), reason: .job(job.kind)))
         }
-        return blockers + (try await offlineMacs(holding: jobs)) + lowRateLimit(rateLimit)
+        return blockers + (try await stoppedMacs(holding: jobs)) + lowRateLimit(rateLimit)
     }
 
     /// GitHub の REST の上限の残りが少ない。窓（戻る時刻）ごとに 1 つの出来事にし、次の窓でまた少なくなれば知らせ直す
@@ -140,19 +152,26 @@ struct BlockerScan {
         return [Blocker(key: key, scope: .epic(epic.repo, epic.id), reason: reason)]
     }
 
-    /// ジョブを持ったまま、決めた時間より長く生きている印を書いていない Mac。
-    /// 印の時刻を出来事に含めるので、同じ Mac でも、一度戻ってからまた止まれば知らせ直す
-    private func offlineMacs(holding jobs: [JobFile]) async throws(CommanderError) -> [Blocker] {
+    /// ジョブを持ったまま、決めた時間より長く生きている印を書いていない Mac と、空き容量が少なくてジョブを引き受けていない Mac。
+    /// オフラインは印の時刻を、空きは引き受けなくなった時刻を出来事に含めるので、同じ Mac でも、一度戻ってからまた止まれば知らせ直す
+    private func stoppedMacs(holding jobs: [JobFile]) async throws(CommanderError) -> [Blocker] {
         // マージの後の片付けは進行を止めないので、Mac が戻るのを待つだけにする（知らせない）
         let held = Dictionary(grouping: jobs.filter { Self.heldStates.contains($0.state) && $0.kind != .cleanUp }) { $0.assignedMac }
         let limit = Double(macOfflineAfter.components.seconds)
         var blockers: [Blocker] = []
         for (name, jobs) in held.sorted(by: { ($0.key?.rawValue ?? "") < ($1.key?.rawValue ?? "") }) {
             // 印が無い・読めない Mac は、いつから戻っていないかが分からないので知らせない
-            guard let name, let mac = try await readable(MacFile.self, at: StatePath.mac(name)), mac.mac == name,
-                  context.now().timeIntervalSince(mac.seenAt.date) > limit else { continue }
-            let reason = Blocker.Reason.macOffline(jobs: jobs.count, seenAt: mac.seenAt)
-            blockers.append(Blocker(key: "mac/\(name)/\(mac.seenAt)", scope: .mac(name), reason: reason))
+            guard let name, let mac = try await readable(MacFile.self, at: StatePath.mac(name)), mac.mac == name else { continue }
+            if context.now().timeIntervalSince(mac.seenAt.date) > limit {
+                let reason = Blocker.Reason.macOffline(jobs: jobs.count, seenAt: mac.seenAt)
+                blockers.append(Blocker(key: "mac/\(name)/\(mac.seenAt)", scope: .mac(name), reason: reason))
+                continue
+            }
+            // 空きが少ない間も引き受けるジョブ（Claude だけのもの）は止まらない。引き受けなくなった時刻を書かない印は、印の時刻で分ける
+            let stalled = jobs.filter { !$0.kind.isAcceptedWhileLowOnDisk }
+            guard let refusal = mac.refusal, refusal.reason == .lowDisk, !stalled.isEmpty else { continue }
+            let reason = Blocker.Reason.lowDisk(jobs: stalled.count, diskFreeGB: mac.diskFreeGB)
+            blockers.append(Blocker(key: "disk/\(name)/\(refusal.since ?? mac.seenAt)", scope: .mac(name), reason: reason))
         }
         return blockers
     }
@@ -180,6 +199,25 @@ extension Blocker {
         if let problem = release.problem, problem.needsHuman {
             let key = "\(base)/problem/\(problem.step.rawValue)/\(problem.at.rawValue)"
             blockers.append(Blocker(key: key, scope: scope, reason: .releaseProblem(problem.step)))
+        }
+        return blockers
+    }
+}
+
+extension Blocker {
+    /// リリースを始めた版の記録から、人を待っているもの（審査に出す・人が直す準備）を拾う（`ReleaseWatch` が見回りのたびに作る）
+    static func waiting(on submission: SubmissionFile) -> [Blocker] {
+        let scope = Scope.submission(submission.repo, submission.version)
+        let base = "submission/\(submission.repo.rawValue)/\(submission.version.rawValue)"
+        var blockers: [Blocker] = []
+        guard !submission.isEnded else { return [] }
+        // ビルドか What's New が変わったら（revision が上がったら）知らせ直す
+        if submission.awaitsSubmission {
+            blockers.append(Blocker(key: "\(base)/ready/\(submission.revision)", scope: scope, reason: .submissionReady))
+        }
+        if let problem = submission.problem, problem.needsHuman {
+            let key = "\(base)/problem/\(problem.step.rawValue)/\(problem.at.rawValue)"
+            blockers.append(Blocker(key: key, scope: scope, reason: .submissionProblem(problem.step)))
         }
         return blockers
     }

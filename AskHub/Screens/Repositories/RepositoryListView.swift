@@ -85,6 +85,16 @@ struct RepositoryDetailView: View {
     @Environment(ClientStore.self) private var store
     @State private var isConfirmingRemoval = false
     @State private var isEditingBuild = false
+    @State private var isStartingRelease = Self.initialStartingRelease
+
+    /// 撮影では、起動引数でリリースを始めるシートを開いておく
+    private static var initialStartingRelease: Bool {
+        #if DEBUG
+        DemoLaunch.initialSheet() == .startRelease
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         if let repository = store.repository(repositoryID) {
@@ -121,27 +131,16 @@ struct RepositoryDetailView: View {
                 if let protection = repository.protection {
                     ProtectionSection(repository: repository, protection: protection)
                 }
-                CardSection {
-                    let releases = store.snapshot?.releases(of: repositoryID) ?? []
-                    ForEach(releases) { release in
-                        NavigationLink(value: AppRoute.release(repositoryID: release.repositoryID, version: release.version)) {
-                            ReleaseRow(release: release)
-                        }
-                    }
-                    if releases.isEmpty {
-                        Text("App Store で配信した版はまだありません").foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("リリース")
-                } footer: {
-                    Text("App Store で配信すると、司令塔が見つけて、タグ・GitHub Release・次の版の PR を作ります")
-                }
+                ReleaseSection(repository: repository, isRemoved: isRemoved, isStarting: $isStartingRelease)
             }
             .pastelBackground()
             .compactList()
             .navigationTitle(repository.appName)
             .sheet(isPresented: $isEditingBuild) {
                 BuildSettingsSheet(repository: repository)
+            }
+            .sheet(isPresented: $isStartingRelease) {
+                StartReleaseSheet(repository: repository) { isStartingRelease = false }
             }
             .toolbar {
                 if !isRemoved {
@@ -307,6 +306,67 @@ struct AddRepositorySheet: View {
             return nil
         }
         return parts.joined(separator: "/")
+    }
+}
+
+/// リポジトリのリリース。リリースを始めるボタン、進めている版（準備から配信まで）、配信した版の順に並べる
+private struct ReleaseSection: View {
+    let repository: TargetRepository
+    let isRemoved: Bool
+    @Binding var isStarting: Bool
+
+    @Environment(ClientStore.self) private var store
+
+    var body: some View {
+        let releases = store.snapshot?.releases(of: repository.id) ?? []
+        let submissions = (store.snapshot?.submissions(of: repository.id) ?? []).filter { !$0.isEnded }
+        let suggested = store.snapshot?.suggestedReleaseVersion(of: repository.id) ?? "1.0.0"
+        CardSection {
+            // 進めているリリースがあるあいだは始められない（司令塔が断る）ので出さない。わけは下の注記に出す
+            if !isRemoved, submissions.isEmpty, store.supports(.startRelease(repositoryID: repository.id, version: suggested)) {
+                Button("リリースを始める…", systemImage: "airplane.departure") { isStarting = true }
+                    .accessibilityIdentifier("release-start")
+            }
+            ForEach(submissions) { submission in
+                NavigationLink(value: AppRoute.submission(repositoryID: submission.repositoryID, version: submission.version)) {
+                    SubmissionRow(submission: submission)
+                }
+            }
+            ForEach(releases) { release in
+                NavigationLink(value: AppRoute.release(repositoryID: release.repositoryID, version: release.version)) {
+                    ReleaseRow(release: release)
+                }
+            }
+            if releases.isEmpty && submissions.isEmpty {
+                Text("App Store で配信した版はまだありません").foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("リリース")
+        } footer: {
+            Text(submissions.isEmpty
+                ? "リリースを始めると、司令塔が release ブランチ・What's New・ビルドを用意し、あなたが確かめてから審査に出します"
+                : "進めているリリースが終わると、次のリリースを始められます（App Store Connect の編集できる版は 1 つ）")
+        }
+    }
+}
+
+/// 進めている版の行（版・今の段取り）
+private struct SubmissionRow: View {
+    let submission: Submission
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(submission.version).appFont(.headline, weight: .semibold)
+                Text(submission.startedInAskHub ? "リリース中" : "審査に出した版")
+                    .foregroundStyle(.secondary)
+                ReflectionBadge([.submission(repositoryID: submission.repositoryID, version: submission.version)])
+            }
+            Text(submission.summary)
+                .appFont(.subheadline)
+                .foregroundStyle(submission.needsHuman || submission.isRejected ? Theme.danger : .secondary)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

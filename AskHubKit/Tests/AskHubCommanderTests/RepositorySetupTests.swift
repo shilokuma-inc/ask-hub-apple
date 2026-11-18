@@ -209,7 +209,7 @@ struct RepositorySetupTests {
         ])
         let github = GitHubPullRequests(repository: Self.repo, transport: transport) { _ in "t" }
         let previous = WorkflowSetup(state: .open, pullRequest: 12, head: Self.commit, changes: [.init(kind: .removeLegacy, path: "a.yml")])
-        let setup = await RepositorySetupRunner(github: github, now: Timestamp(Self.now)).run(build: nil, previous: previous)
+        let setup = await RepositorySetupRunner(github: github, now: Timestamp(Self.now)).run(build: nil, previous: previous).setup
         #expect(setup.discussions == .ready)
         #expect(setup.workflows == previous)
         #expect(transport.requests.count == 3)
@@ -266,5 +266,25 @@ struct RepositorySetupTests {
         #expect(try await handler.handle(other, in: context(store)) == .reject("承認したときと準備の PR が違う（今は open）。見直して承認し直す"))
         #expect(transport.requests.count == 1)
         #expect(try await repository(in: store)?.setup?.workflows?.state == .open)
+    }
+
+    /// 準備の途中で上限に当たったら、残りは送らずに止め（前に出した PR の記録は残す）、待つ間は承認も GitHub に送らずに断る
+    @Test func setupStopsAtRateLimitAndApprovalWaits() async throws {
+        let previous = WorkflowSetup(state: .open, pullRequest: 12, head: Self.commit)
+        let store = try await registered(previous)
+        let transport = StubTransport([
+            .json(200, #"{"default_branch":"develop","private":false,"has_discussions":true}"#),
+            .json(429, #"{"message":"rate limited"}"#, headers: ["Retry-After": "90"])
+        ])
+        let admin = AdminGitHub(tokens: AdminTokens { _ in ProtectionTests.adminToken }, transport: transport)
+        try await RepositorySetupStep(admin: admin).run(for: Self.repo, in: context(store))
+        let setup = try #require(try await repository(in: store)?.setup)
+        #expect(setup.discussions == .unknown)
+        #expect(setup.workflows == previous)
+        #expect(setup.problems?.last == "GitHub の上限に当たったので、ワークフローの直しは確かめずに止めた（90 秒ほど待ってから準備をやり直す）")
+        #expect(transport.requests.count == 2)
+        let approval = try await ApproveSetupPullRequestHandler(admin: admin).handle(approveEnvelope(), in: context(store))
+        #expect(approval == .reject(AdminRefusal.rateLimited(owner: "shilokuma-inc", wait: .seconds(90)).description))
+        #expect(transport.requests.count == 2)
     }
 }

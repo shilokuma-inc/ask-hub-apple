@@ -47,6 +47,14 @@ struct InboxItem: Identifiable, Hashable {
         case releaseProblem
         /// 対象のリポジトリの保護のずれ・加えるときの準備（Ideas を作る・ワークフローの直しを承認する・準備をやり直す）
         case repositorySetup
+        /// リリースを始めた版の準備がそろい、What's New とビルドを確かめて審査に出す
+        case submissionReady
+        /// 審査に通った版を配信する（配信の方式が手動）
+        case submissionDistribution
+        /// リリースを始めた版の準備・審査の操作が、人が直すまで進まない
+        case submissionProblem
+        /// 審査で断られた（リジェクト）
+        case submissionRejected
     }
 }
 
@@ -75,6 +83,7 @@ enum InboxBuilder {
         items += snapshot.macs.compactMap(cleanupItem)
         items += snapshot.releases.flatMap { releaseItems($0, snapshot: snapshot) }
         items += snapshot.repositories.flatMap(administrationItems)
+        items += snapshot.submissions.flatMap { submissionItems($0, snapshot: snapshot) }
         return items.sorted { lhs, rhs in
             if lhs.urgency != rhs.urgency {
                 return lhs.urgency == .blocking
@@ -305,49 +314,6 @@ enum InboxBuilder {
         )
     }
 
-    /// 配信した版の人の番（司令塔が通知するものと同じ: リリース文の確認と、人が直す後作業）
-    private static func releaseItems(_ release: Release, snapshot: ClientSnapshot) -> [InboxItem] {
-        let appName = snapshot.repository(release.repositoryID)?.appName ?? release.repositoryID
-        let context = "\(appName) · \(release.version)"
-        let route = AppRoute.release(repositoryID: release.repositoryID, version: release.version)
-        let targets: [IntentTarget] = [.release(repositoryID: release.repositoryID, version: release.version)]
-        var items: [InboxItem] = []
-        if release.awaitsNotesReview {
-            let detail: String = if case .rejected(let reason) = release.publish {
-                "公開を受け付けませんでした: \(reason)"
-            } else {
-                "App Store で配信しました。GitHub Release に載せる文を確かめてください"
-            }
-            items.append(InboxItem(
-                id: "release/\(release.id)/notes",
-                urgency: .blocking,
-                kind: .releaseNotes,
-                repositoryID: release.repositoryID,
-                title: "リリース文を確かめて公開する",
-                context: context,
-                detail: detail,
-                since: release.updatedAt,
-                route: route,
-                targets: targets
-            ))
-        }
-        if let problem = release.problem, problem.needsHuman {
-            items.append(InboxItem(
-                id: "release/\(release.id)/problem",
-                urgency: .blocking,
-                kind: .releaseProblem,
-                repositoryID: release.repositoryID,
-                title: "配信の後作業を直す: \(problem.step.label)",
-                context: context,
-                detail: problem.message,
-                since: problem.at,
-                route: route,
-                targets: targets
-            ))
-        }
-        return items
-    }
-
     private static func cleanupItem(_ mac: Mac) -> InboxItem? {
         guard !mac.cleanupCandidates.isEmpty else {
             return nil
@@ -418,7 +384,8 @@ extension InboxItem {
         case .verification:
             return epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
 
-        case .macOffline, .token, .claudeVersion, .compatibility, .cleanup, .releaseNotes, .releaseProblem, .repositorySetup:
+        case .macOffline, .token, .claudeVersion, .compatibility, .cleanup, .releaseNotes, .releaseProblem, .repositorySetup,
+             .submissionReady, .submissionDistribution, .submissionProblem, .submissionRejected:
             return []
         }
     }

@@ -14,6 +14,9 @@ extension StateIntentMapper {
         case let .configureRepository(repositoryID, _), let .applyProtection(repositoryID, _), let .approveSetup(repositoryID, _, _):
             index.repositories[repositoryID] != nil
 
+        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
+            supportsSubmissionIntent(intent)
+
         default:
             false
         }

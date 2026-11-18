@@ -45,6 +45,37 @@ struct ProtectionRulesTests {
         #expect(ProtectionRules.coverage(ruleset: ruleset(["refs/heads/feature/**/*"]), defaultBranch: "main") == .disjoint)
         let everythingElse = ruleset(["~ALL"], excludes: ["refs/heads/develop", "refs/heads/main", "refs/heads/release/**/*"])
         #expect(ProtectionRules.coverage(ruleset: everythingElse, defaultBranch: "main") == .disjoint)
+        // 決まった名前は、除外に合えば重ならない（実際に守るのは stable だけ）
+        let developExcluded = ruleset(["refs/heads/develop", "refs/heads/stable"], excludes: ["refs/heads/dev*"])
+        #expect(ProtectionRules.coverage(ruleset: developExcluded, defaultBranch: "main") == .disjoint)
+    }
+
+    /// 除外が例の名前だけを外していても、release/ の下のほかの名前（release/v2 など）を守るなら重なる
+    @Test func rulesetCoverageDoesNotTrustSampleNamesOnly() {
+        func ruleset(_ includes: [String], excludes: [String]) -> Ruleset {
+            Ruleset(
+                id: 1,
+                name: "x",
+                source: .repository,
+                enforcement: "active",
+                includes: includes,
+                excludes: excludes,
+                rules: [],
+                bypassActorCount: 0
+            )
+        }
+        let samples = ProtectionRules.sampleBranches.map { "refs/heads/\($0)" }
+        #expect(ProtectionRules.coverage(ruleset: ruleset(["~ALL"], excludes: samples), defaultBranch: "main") == .broader)
+        // release/ の下を 1 階層だけ外しても、深い名前（release/mobile/2.0）は残る
+        let shallow = ruleset(["~ALL"], excludes: ["refs/heads/develop", "refs/heads/main", "refs/heads/release/*"])
+        #expect(ProtectionRules.coverage(ruleset: shallow, defaultBranch: "main") == .broader)
+        let releases = ruleset(
+            ["refs/heads/release/*", "refs/heads/master"], excludes: ["refs/heads/release/1.0.0", "refs/heads/release/x"]
+        )
+        #expect(ProtectionRules.coverage(ruleset: releases, defaultBranch: "main") == .broader)
+        // 深さによらず外す除外があれば、release/ の下だけを守る対象は重ならない
+        let deep = ruleset(["refs/heads/release/v*", "refs/heads/master"], excludes: ["refs/heads/**/*"])
+        #expect(ProtectionRules.coverage(ruleset: deep, defaultBranch: "main") == .disjoint)
     }
 
     /// GitHub と同じく、`*` と末尾の `**` は `/` をまたがず、`**/` は 0 個以上の階層にまたがる

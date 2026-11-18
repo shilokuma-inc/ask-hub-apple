@@ -45,7 +45,9 @@ struct StateIntentMapper {
         case .publishRelease, .verify:
             supportsAfterMerge(intent)
 
-        case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp:
+        case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp, .startRelease, .submitForReview,
+             .distributeRelease, .withdrawSubmission, .abandonRelease:
+            // リリースの操作も、リポジトリに属する操作として判定する（`supportsSubmissionIntent`）
             supportsRepositoryIntent(intent)
         }
     }
@@ -110,6 +112,9 @@ struct StateIntentMapper {
 
         case let .publishRelease(repositoryID, version, notesVersion, notes):
             return try releaseDraft(repositoryID: repositoryID, version: version, notesVersion: notesVersion, notes: notes)
+
+        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
+            return try submissionDraft(intent)
 
         case .acceptAllDecisions, .verify, .cleanUp:
             // まとめて OK と実機確認は、いくつかの意図になることがあるので `drafts(for:)` で作る

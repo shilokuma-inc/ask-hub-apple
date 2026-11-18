@@ -54,6 +54,58 @@
       "read": "valid"
     },
     {
+      "name": "low-disk",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "kind": "resident",
+        "seenAt": "2026-11-03T10:05:00Z",
+        "versions": {
+          "worker": "0.2.0-3-gabc1234",
+          "compatibility": 1,
+          "claude": "2.1.316",
+          "xcode": "27.1"
+        },
+        "diskFreeGB": 23,
+        "load": 3.2,
+        "capacity": {
+          "claude": 2,
+          "build": 1
+        },
+        "selfCheck": {
+          "checkedAt": "2026-11-03T10:00:00Z",
+          "keychain": "ok",
+          "githubToken": "ok",
+          "claudeToken": "ok",
+          "claudeTokenExpiresAt": "2027-11-03T10:00:00Z",
+          "githubTokenExpiresAt": "2026-11-20T00:00:00Z",
+          "githubTokens": [
+            {
+              "owner": "shilokuma-inc",
+              "state": "ok",
+              "expiresAt": "2026-11-20T00:00:00Z",
+              "rateLimit": {
+                "limit": 5000,
+                "remaining": 4210,
+                "resetAt": "2026-11-03T10:30:00Z"
+              }
+            },
+            {
+              "owner": "mrs1669",
+              "state": "ok"
+            }
+          ]
+        },
+        "refusal": {
+          "reason": "lowDisk",
+          "message": "空き容量が 23 GB で、30 GB を下回っている。片付けと Claude だけのジョブのほかは、新しいジョブを引き受けない",
+          "since": "2026-11-03T09:55:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "minimal",
       "value": {
         "v": 1,

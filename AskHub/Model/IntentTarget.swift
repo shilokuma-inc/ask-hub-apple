@@ -30,6 +30,8 @@ nonisolated enum IntentTarget: Hashable {
     case cleanup(macID: Mac.ID)
     /// App Store で配信した版（リリース文の公開）
     case release(repositoryID: TargetRepository.ID, version: String)
+    /// リリースを始めた版（始める・審査に出す・配信する・取り下げ・やめる）
+    case submission(repositoryID: TargetRepository.ID, version: String)
 
     /// 対象の epic。epic に属さない対象（リポジトリ・Mac）は nil
     var epicID: Epic.ID? {
@@ -38,7 +40,7 @@ nonisolated enum IntentTarget: Hashable {
              let .blocker(epicID), let .epicControl(epicID), let .humanTask(epicID, _), let .verification(epicID, _), let .request(epicID):
             epicID
 
-        case .repository, .cleanup, .release:
+        case .repository, .cleanup, .release, .submission:
             nil
         }
     }
@@ -87,6 +89,11 @@ extension HumanIntent {
 
         case let .publishRelease(repositoryID, version, _, _):
             [.release(repositoryID: repositoryID, version: version)]
+
+        case let .startRelease(repositoryID, version), let .submitForReview(repositoryID, version, _),
+             let .distributeRelease(repositoryID, version), let .withdrawSubmission(repositoryID, version),
+             let .abandonRelease(repositoryID, version):
+            [.submission(repositoryID: repositoryID, version: version)]
 
         case .request:
             []

@@ -42,17 +42,34 @@ enum ProtectionRules {
     }
 
     /// ルールセットの対象の重なり（`~ALL`・`~DEFAULT_BRANCH`・`refs/heads/…` のパターン）。除外は対象を狭めるだけなので、
-    /// 対象がすべて守る範囲に収まれば外してよい。収まらないものは、除外も見て重なるかを確かめる（確かめられなければ重なるとみなす）
+    /// 対象がすべて守る範囲に収まれば外してよい。収まらないものは、守る範囲に合うかもしれない対象を、除外がすべて外すと言い切れるときだけ
+    /// 重ならないとみなす（例の名前だけでは、`release/` の下の深い名前まで確かめきれないため）
     static func coverage(ruleset: Ruleset, defaultBranch: String) -> Coverage {
         let includes = ruleset.includes.map { refCoverage($0, defaultBranch: defaultBranch) }
         if !includes.isEmpty, includes.allSatisfy({ $0 == .within }) { return .within }
-        let sampled = sampleBranches.contains { branch in
-            let matches = { (pattern: String) in refPattern(pattern, matches: branch, defaultBranch: defaultBranch) }
-            return ruleset.includes.contains(where: matches) && !ruleset.excludes.contains(where: matches)
+        let overlaps = zip(ruleset.includes, includes).contains { pattern, coverage in
+            coverage != .disjoint && !excludesCover(pattern, excludes: ruleset.excludes, defaultBranch: defaultBranch)
         }
-        // `~ALL` は例の名前の照らし合わせ（除外も見る）だけで決める。ほかのパターンは、合う名前があるかもしれなければ重なるとみなす
-        let mayOverlap = zip(ruleset.includes, includes).contains { $0 != "~ALL" && $1 == .broader }
-        return sampled || mayOverlap ? .broader : .disjoint
+        return overlaps ? .broader : .disjoint
+    }
+
+    /// 対象のパターンに合う守る範囲の名前を、除外がすべて外すと言い切れる。決まった名前は、その名前が除外に合うかで決める。
+    /// ワイルドカード（`~ALL` を含む）は、`release/` の下を深さによらず外す除外（`release/**/*` など）があり、
+    /// `release/` の下でないものは develop・main も外すときだけ
+    private static func excludesCover(_ pattern: String, excludes: [String], defaultBranch: String) -> Bool {
+        let isExcluded = { (branch: String) in excludes.contains { refPattern($0, matches: branch, defaultBranch: defaultBranch) } }
+        if let branch = literalBranch(pattern, defaultBranch: defaultBranch) { return isExcluded(branch) }
+        let releases = excludes.contains { ["~ALL", "refs/heads/**/*", "refs/heads/release/**/*"].contains($0) }
+        if pattern.hasPrefix("refs/heads/release/") { return releases }
+        return releases && isExcluded("develop") && isExcluded("main")
+    }
+
+    /// ワイルドカードを含まない対象のブランチの名前（`~DEFAULT_BRANCH` は既定のブランチ）
+    private static func literalBranch(_ pattern: String, defaultBranch: String) -> String? {
+        if pattern == "~DEFAULT_BRANCH" { return defaultBranch }
+        guard pattern.hasPrefix("refs/heads/") else { return nil }
+        let name = String(pattern.dropFirst("refs/heads/".count))
+        return Glob.literalPrefix(name) == name ? name : nil
     }
 
     private static func refCoverage(_ pattern: String, defaultBranch: String) -> Coverage {

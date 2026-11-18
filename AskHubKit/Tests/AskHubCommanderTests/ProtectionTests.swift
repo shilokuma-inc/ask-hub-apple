@@ -12,8 +12,8 @@ struct ProtectionTests {
     static let now = Date(timeIntervalSince1970: 1_793_757_600)
     static let adminToken = "github_pat_" + String(repeating: "a", count: 40)
 
-    func context(_ store: any StateStore) -> CommanderContext {
-        CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { Self.now }
+    func context(_ store: any StateStore, now: Date = Self.now) -> CommanderContext {
+        CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { now }
     }
 
     func registered(protection: RepositoryFile.Protection = .init()) async throws -> InMemoryStateStore {
@@ -27,7 +27,7 @@ struct ProtectionTests {
         try await store.data(at: StatePath.repository(Self.repo)).map { try StateFileCoder.decode(RepositoryFile.self, from: $0) }
     }
 
-    private func envelope(checks: [String] = ["build / build"]) -> IntentEnvelope {
+    func envelope(checks: [String] = ["build / build"]) -> IntentEnvelope {
         IntentEnvelope(
             kind: ApplyProtectionIntent.kind,
             repo: Self.repo,
@@ -38,7 +38,7 @@ struct ProtectionTests {
         )
     }
 
-    private func admin(_ transport: StubTransport, tokens: AdminTokens? = nil) -> AdminGitHub {
+    func admin(_ transport: StubTransport, tokens: AdminTokens? = nil) -> AdminGitHub {
         AdminGitHub(tokens: tokens ?? AdminTokens { _ in Self.adminToken }, transport: transport)
     }
 
@@ -86,6 +86,7 @@ struct ProtectionTests {
                  {"id":14,"name":"tags","target":"tag","source_type":"Repository","source":"x"}]
                 """),
             .json(200, Self.ours),
+            .json(200, Self.ours),
             .json(200, Self.ruleset(id: 11, name: "protect-develop", includes: ["refs/heads/develop"])),
             .json(204, ""),
             .json(200, Self.ruleset(id: 12, name: "org-default", source: "Organization", includes: ["~DEFAULT_BRANCH"])),
@@ -100,16 +101,14 @@ struct ProtectionTests {
         #expect(requests == [
             "GET /repos/shilokuma-inc/askhub-sandbox",
             "GET /repos/shilokuma-inc/askhub-sandbox/rulesets",
-            // 先に掛けてから外す（同じ名前のルールセットは置き換える）
+            // 先に掛けてから外す（同じ名前のルールセットは、守る範囲に収まると確かめてから置き換える）
+            "GET /repos/shilokuma-inc/askhub-sandbox/rulesets/10",
             "PUT /repos/shilokuma-inc/askhub-sandbox/rulesets/10",
             "GET /repos/shilokuma-inc/askhub-sandbox/rulesets/11",
             "DELETE /repos/shilokuma-inc/askhub-sandbox/rulesets/11",
             "GET /repos/shilokuma-inc/askhub-sandbox/rulesets/12",
-            "GET /repos/shilokuma-inc/askhub-sandbox/rulesets/13",
-            "POST /graphql",
-            "POST /graphql",
-            "POST /graphql"
-        ])
+            "GET /repos/shilokuma-inc/askhub-sandbox/rulesets/13"
+        ] + Array(repeating: "POST /graphql", count: 3))
         // 管理用のトークンだけを使う
         #expect(Set(transport.requests.map { $0.value(forHTTPHeaderField: "Authorization") }) == ["Bearer \(Self.adminToken)"])
         try expectPolicyBody(try #require(transport.bodies.first))
@@ -247,6 +246,7 @@ struct ProtectionTests {
                  {"id":12,"name":"old-main","target":"branch","source_type":"Repository","source":"x"}]
                 """),
             .json(200, Self.ours),
+            .json(200, Self.ours),
             .json(200, Self.ruleset(id: 11, name: "old-develop", includes: ["refs/heads/develop"])),
             .json(204, ""),
             .json(429, #"{"message":"rate limited"}"#, headers: ["Retry-After": "120"])
@@ -258,7 +258,7 @@ struct ProtectionTests {
         }
         #expect(reason.contains("GitHub の上限に当たったので、残りの保護を確かめずに止めた（120 秒ほど待ってから押し直す）"))
         // 上限の後は、クラシックの保護の一覧も読まない
-        #expect(transport.requests.count == 6)
+        #expect(transport.requests.count == 7)
         let protection = try #require(try await repository(in: store)?.protection)
         #expect(protection.replaced == [.init(kind: .classic, name: "develop"), .init(kind: .ruleset, name: "old-develop")])
     }
