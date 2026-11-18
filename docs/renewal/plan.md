@@ -31,11 +31,11 @@
 | 順 | 作るもの | 中身 |
 | --- | --- | --- |
 | 1 | 司令塔とワーカーの版の照らし合わせ・署名と配り方と、別の Mac での実地の確かめ | 互換の番号が合わなければジョブを受けずに知らせる（[operations.md](operations.md) の「版」。2026-11-12 に #1068 で入れた）。署名と配り方は、Developer ID の署名と自分の Mac への入れ替えが #1064、公証と GitHub Releases が #1065（[operations.md](operations.md) の「署名と公証」）。その後、常駐（resident）・コマンドで起動（manual）のワーカーで、一時停止 → 再開・引き継ぎを試しの epic で確かめる。MacBook Pro（`macbook-pro-m1pro`）の常駐のワーカーは、確かめの epic を最後まで通した（2026-11-12） |
-| 2 | 今「出来ない操作」を出している所を直す | 依頼の添付をつなぐ（2026-11-12 に #1080 でつないだ）。実機確認の「確認した」「問題あり」（「問題あり」は新しい依頼になる。止めないものの通知を 1 日数回まとめる）。最終 PR の本文の「確認した・問題ありを付けて」の文（`FinalPullRequestBody.swift`）は、実機確認ができるまで直す |
-| 3 | 開始した後の取り下げと、giveUp のそのほかの種類 | [flows.md](flows.md) の「司令塔の動き」の取り下げ・やめる（2026-11-12 に決めた） |
+| 2 | 今「出来ない操作」を出している所を直す | 依頼の添付をつなぐ（2026-11-12 に #1080 でつないだ）。実機確認の「確認した」「問題あり」（「問題あり」は新しい依頼になる。#1082・#1098 で作った）と、止めないものの通知を 1 日数回まとめる（#1133 の PR で作った）。最終 PR の本文の「確認した・問題ありを付けて」の文（`FinalPullRequestBody.swift`）は、今のクライアントの実機確認の操作（「あなたの番」の「実機で確かめる」・「確認した」「問題あり」）と合っている（2026-11-18 に確かめた） |
+| 3 | 開始した後の取り下げと、giveUp のそのほかの種類 | [flows.md](flows.md) の「司令塔の動き」の取り下げ・やめる（2026-11-12 に決めた）。開始した後の取り下げは #1123（司令塔）・#1125（アプリ）、giveUp は #1126 の PR で作った（2026-11-18） |
 | 4 | 管理用のトークンと、リポジトリの管理 | 管理用のトークン（入れ方・期限・自己診断。[security.md](security.md) の「トークン」）→ 保護の設定と点検（`applyProtection`）・対象に加えるときの GitHub 側の準備・対象から外す（`removeRepository`）・加える画面の候補の一覧（まだ対象でないものだけ・検索）・クライアントからのビルドの設定（`configureRepository`）・Secrets の登録（人がする作業の `secret`）。中身は [operations.md](operations.md) の「対象のリポジトリ」 |
 | 5 | テンプレートからの新規作成 | テンプレート（template-app-ios・visionOS のもの）から今の仕組みの跡を外す → 作る意図と、管理用のトークンでテンプレートから作る処理 → 作った後は「対象に加える」と同じ準備を流す。共通リポジトリ（段階 5）を待たない（2026-11-12 に決めた） |
-| 6 | 容量と暴走の残り | 空きが少ない Mac は新しい epic を受けない（[operations.md](operations.md) の「容量」）・`--max-budget-usd`・動いているループに属さない Simulator の見回り（`SimulatorPool.removeStray` をつなぐ）・片付けの候補（探す・選んで消す）・終わった epic を 30 日後に `archive/` へ（[protocol.md](protocol.md)） |
+| 6 | 容量と暴走の残り | 空きが少ない Mac は新しい epic を受けない（[operations.md](operations.md) の「容量」）・動いているループに属さない Simulator の見回り（`SimulatorPool.removeStray` をつなぐ）・片付けの候補（探す・選んで消す）・終わった epic を 30 日後に `archive/` へ（[protocol.md](protocol.md)）。`--max-budget-usd` は、サブスクリプションの枠で動かすので入れない（2026-11-18 に決めた。[operations.md](operations.md) の「Claude の利用上限」） |
 | 7 | Siri・ショートカットからの依頼 | 今の仕組みには有った（タグ `legacy-final` の `SendIdeaRequestIntent.swift`）。App Intents で依頼を出す。鍵はロックの解除中なら画面の外からも使える（[security.md](security.md) の「鍵」） |
 
 ### 段階 5 の順
@@ -70,7 +70,6 @@
 
 文書だけでは直せないもの。段階 4・5 の作業の中で直す。
 
-- 最終 PR の本文（`FinalPullRequestBody.swift`）が、まだ出来ない実機確認の「確認した」「問題あり」を頼んでいる（段階 4 の 2）
 - `JobKind` の `rerunChecks`・`integrateDevelop`・`notify` は名前だけで、作らなかった。流し直しは `reviewTask`・`reviewFinalPullRequest` の中で、base の取り込みは最終 PR のコンフリクトの直し（`fixFinalPullRequest` の `conflict`）で扱う
 - ワーカーと司令塔の配り方: 文書（[operations.md](operations.md) の「署名と公証」。PR #1066）は、どれも常時オンの Mac で Developer ID の署名をして配る形だが、今 Developer ID で署名しているのは司令塔だけで、MacBook Pro のワーカーはアドホック署名（段階 4 の 1。#1064・#1065）
 - 各リポジトリの Secrets は、文書（[security.md](security.md) の「public のリポジトリと Secrets」）では Environment の Secrets だが、今は organization の Secrets（#1067）

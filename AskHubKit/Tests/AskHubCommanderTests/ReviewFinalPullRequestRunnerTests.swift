@@ -62,6 +62,36 @@ struct ReviewFinalPullRequestRunnerTests {
         #expect(fixture.git.current.calls == ["checkOutFinal \(Self.head)", "release \(job.id.rawValue)"])
     }
 
+    /// 撮影をやめて作ったレビュー（元が人の giveUp）は、先に最終 PR の本文を書き直し、撮っていないカードを「撮影中」のままにしない。
+    /// ほかのレビューは本文を書き直さない
+    @Test func rewritesBodyFirstWhenScreenshotsWereSkipped() async throws {
+        let fixture = try await fixture(reviews: [Self.noFindings, Self.noFindings], statuses: [Self.completed, Self.completed])
+        let skipped = DecisionsFile.Screenshots(head: Self.head, note: DecisionsFile.skippedScreenshotsNote)
+        let item = DecisionsFile.Item(
+            id: "d1",
+            task: "t1",
+            visible: true,
+            what: "見出しを短くした",
+            why: "幅に収める",
+            scene: "home",
+            screenshots: skipped
+        )
+        let path = StatePath.decisions(TaskJobFixture.repo, TaskJobFixture.epic)
+        try await fixture.files.create(DecisionsFile(items: [item]), at: path, message: "decisions")
+        let captureJob = fixture.job(.captureScreenshots, "0C").id
+        let capture = JobTarget(repo: TaskJobFixture.repo, epic: TaskJobFixture.epic, job: captureJob, attempt: 1)
+        let origin = try await fixture.intent(GiveUpJobIntent.kind, target: capture.target, version: capture.targetVersion, payload: [:])
+        let runner = ReviewFinalPullRequestRunner(environment: try fixture.environment())
+        let result = try await runner.execute(fixture.job(.reviewFinalPullRequest, "01", input: Self.input.jobInput, origin: origin))
+        #expect(result.outputs?.verdict == .ready)
+        let body = try #require(fixture.pulls.current.bodies.last?.body)
+        #expect(body.contains("- 画面の変化: スクショ無し（撮影をやめた）"))
+        #expect(!body.contains(FinalPullRequestBody.capturing))
+
+        #expect(try await review(fixture).outputs?.verdict == .ready)
+        #expect(fixture.pulls.current.bodies.count == 1)
+    }
+
     @Test func readyWithoutRisksWritesEmptyList() async throws {
         let fixture = try await fixture()
         let result = try await review(fixture)

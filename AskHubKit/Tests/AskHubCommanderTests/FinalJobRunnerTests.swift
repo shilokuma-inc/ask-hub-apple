@@ -244,6 +244,7 @@ struct FinalJobRunnerTests {
         // 実機確認の項目は、クライアントのカードと同じ id（完了の条件の順に v1 から）で並べる
         #expect(draft.body.contains("- v1: ランキングの画面に上位 10 件が出る"))
         #expect(draft.body.contains("「確認した」か「問題あり」を付けてください"))
+        #expect(draft.body.contains("通知は 1 日数回にまとめて届く"))
         // Claude の文のメンションは効かなくする（CodeRabbit への指示にならない）
         #expect(!draft.body.contains("@coderabbitai"))
         let marker = try #require(ProtocolMarker.parse(draft.body))
