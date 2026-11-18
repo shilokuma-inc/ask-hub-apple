@@ -607,6 +607,10 @@
   結果を捨てる比べがあるなら、捨てた後に作り直す見回り（`RevisionRestart`。今の basis のジョブが無い `revising` を探す）も一緒に用意する（2026-11-14、#1103）
 - アプリの `ReflectionTracker.reflection(…, excluding:)` は、まとめて OK の残りを送り直せるよう、同じ `HumanIntent` が送った分を数えない。そのため同じ回答の 2 回目は、
   窓口の控え（`lastSend`）で見つからないと止まらなかった。1 つの意図で済む操作は、この起動で受け取り待ちの同じ操作が対象のすべてを覆っていれば送らない（`isAwaitingAll`）（2026-11-14、#1103）
+- `switch` の `case 400, 404, 409, 422 where 条件:` の `where` は、最後のパターン（422）にしか掛からない。いくつかのパターンに同じ条件を付けるなら、
+  `case 400, 404, 409, 422:` の中で `guard` する（App Store Connect の書き込みの失敗の分け方。2026-11-18、#1140）
+- この repo の SwiftLint は、列挙の関連値を 5 個未満にする（`enum_case_associated_values_count`）。`HumanIntent` に中身の多い操作を足すときは、
+  中身を構造体にまとめて 1 つの関連値にする（`Submission.SubmitRequest`。2026-11-18、#1142）
 
 ## シェルスクリプト
 
@@ -754,6 +758,8 @@
   Mac では選んだ行の背景が濃くなって札（`CardSection`）と重なる。行を `.buttonStyle(.plain)` のボタン（label に `.contentShape(.rect)`）にして選び、
   選んだ行にチェックと `.isSelected` の trait を付けると、`#if os` 無しで両方そろう。チェックは `opacity` で隠して場所を取っておくと、選び直しても右の印が動かない。
   撮影でシートを開いておくときは `-demoSheet start` のように起動引数で `@State` の初期値を決める（`DemoLaunch.initialSheet`）（2026-11-14、開始のシート）
+- デモのクライアント（`DemoClientService`）は `supports` を実装しておらず、`ClientService` の既定でいつも true を返す。
+  状態によって出し分けるボタンは、`store.supports` だけでなく画面用のモデルの印（`Submission.awaitsSubmission` など）でも決めないと、デモと撮影で全部のボタンが出る（2026-11-18、#1142）
 
 ## App Store Connect
 
@@ -768,3 +774,12 @@
   `CFBundleShortVersionString [1.0.0] … must contain a higher version than that of the previously approved version [1.0.0]` で落ち（`EXPORT FAILED`、exit 70）、TestFlight に上がらない。
   司令塔が配信を見つけて作る次の版の PR（`askhub/version-<次の版>` → develop）がマージされれば通る。司令塔は App Store Connect の鍵（`askhub-commander app-store-connect`）が無いと配信を見つけず、起動のログに出るだけなので、
   配信の後に develop の Upload がこのエラーで落ちたら、まず鍵の設定と次の版の PR があるかを見る（2026-11-12、OshiCon 1.0.0 → 1.1.0 の #164）
+- App Store Connect の API の文書（developer.apple.com/documentation/appstoreconnectapi/…）は JavaScript で描くので、取ってもタイトルしか返らない。
+  同じ中身の DocC の JSON（`https://developer.apple.com/tutorials/data/documentation/appstoreconnectapi/<slug>.json`）を読む（2026-11-18、#1127）
+- 審査の提出の一覧は `GET /v1/reviewSubmissions`（`filter[app]` が必須。`filter[state]`・`filter[platform]`・`include=appStoreVersionForReview`）で、
+  `/v1/apps/{id}/reviewSubmissions` ではない。`POST /v1/reviewSubmissions` の `platform` は任意。提出は `PATCH …/reviewSubmissions/{id}` の `submitted: true`、
+  取り下げは `canceled: true`。手動の配信（`POST /v1/appStoreVersionReleaseRequests`）は Pending Developer Release の版だけで、取り消せない。
+  承認された後の取り下げ（Developer Reject）の API は文書に見当たらない。役割ごとの可否の表は画像で、App Manager の鍵で書き込めるかは文書から読めない（2026-11-18、#1127）
+- 審査に出す前の版（`appStoreVersions`）は、編集できる状態（Prepare for Submission・Developer Rejected など）ならプラットフォームごとに 1 つ。
+  やめたリリースで作った版が残っていれば、`PATCH` で `versionString` ごと直して使う（新しく作ると断られる見込み。#1140 の `AppStoreSubmission`）。
+  初めての版は What's New を持たないので、配信中の版が無いアプリでは下書きしない（2026-11-18）

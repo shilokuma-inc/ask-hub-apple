@@ -136,7 +136,8 @@ struct AppStoreConnectSubmissionsTests {
         #expect(attributes["platform"] as? String == "IOS")
         #expect(attributes["versionString"] as? String == "1.4.0")
         #expect(attributes["releaseType"] as? String == "AFTER_APPROVAL")
-        #expect(attributes["earliestReleaseDate"] is NSNull)
+        // 作るときは日時を送らない（直すときだけ null で消す）
+        #expect(attributes["earliestReleaseDate"] == nil)
         let relationships = try #require(post["relationships"] as? [String: Any])
         #expect(((relationships["build"] as? [String: Any])?["data"] as? [String: String]) == ["type": "builds", "id": "b45"])
         #expect(((relationships["app"] as? [String: Any])?["data"] as? [String: String]) == ["type": "apps", "id": "6740000001"])
