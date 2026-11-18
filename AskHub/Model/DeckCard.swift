@@ -117,6 +117,9 @@ enum DeckBuilder {
 
         case .verifications(let id):
             return snapshot.epic(id).map(verificationCards) ?? []
+
+        case .allVerifications:
+            return snapshot.epics.flatMap(verificationCards)
         }
     }
 

@@ -55,4 +55,6 @@ enum DeckScope: Hashable {
     case decisions(Epic.ID)
     /// その epic の実機確認
     case verifications(Epic.ID)
+    /// アプリをまたいで、マージした epic の実機確認をすべて（実機確認のまとめの通知から開く）
+    case allVerifications
 }

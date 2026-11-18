@@ -3,7 +3,7 @@ import Foundation
 #if DEBUG
 /// UI テストと撮影のために、起動引数で開く画面を決める（DEBUG だけ）。
 ///
-/// 例: `-demoOpen deck:all`・`-demoOpen epic:rain-draft`・`-demoOpen section:macs`・`-demoOpen finished`（終わったものをすべて）、
+/// 例: `-demoOpen deck:all`・`-demoOpen deck:verifications`（アプリをまたいだ実機確認）・`-demoOpen epic:rain-draft`・`-demoOpen section:macs`・`-demoOpen finished`（終わったものをすべて）、
 /// `-demoOpen release:demo-studio/habit-ios:1.2.0`（配信した版）、
 /// スワイプの途中の色を撮るときは `-demoDrag 0:0.8`（選択肢の添字:進み具合）、
 /// 開いた画面のシートを撮るときは `-demoSheet start`（ゴールの画面の、Mac を選ぶシート）
@@ -76,6 +76,10 @@ enum DemoLaunch {
         }
         if parts[1] == "all" {
             return .all
+        }
+        // epic を付けない `deck:verifications` は、アプリをまたいで実機確認をすべて
+        if parts == ["deck", "verifications"] {
+            return .allVerifications
         }
         guard parts.count == 3 else {
             return nil
