@@ -243,39 +243,6 @@ struct NotifierTests {
         #expect(try await notifier.notify(epics: epics, jobs: [job(1, mac: Self.laptop, state: .succeeded)], trusted: [deviceID]).isEmpty)
     }
 
-    /// 空きが少なくてジョブを引き受けていない Mac は、空きが少ない間に引き受けないジョブを持っていれば、下回るたびに 1 回知らせる
-    @Test func notifiesMacLowOnDiskOncePerRefusal() async throws {
-        let store = try await storeWithDevice()
-        let notifier = notifier(store, sender: RecordingPushSender())
-        let since = Timestamp(Self.now.addingTimeInterval(-30 * 60))
-        var low = mac(Self.laptop, seenMinutesAgo: 1)
-        low.diskFreeGB = 23
-        low.refusal = JobRefusal(reason: .lowDisk, message: "空き容量が 23 GB", since: since)
-        try await put(low, at: StatePath.mac(Self.laptop), in: store)
-        let epics = [epic(.running)]
-
-        // 空きが少ない間も引き受けるジョブ（Claude だけのもの・片付け）しか持っていなければ、止まっていないので知らせない
-        let claudeOnly = [
-            job(1, kind: .makeQuestions, mac: Self.laptop, state: .assigned), job(2, kind: .cleanUp, mac: Self.laptop, state: .assigned)
-        ]
-        #expect(try await notifier.notify(epics: epics, jobs: claudeOnly, trusted: [deviceID]).isEmpty)
-
-        let jobs = [
-            job(1, kind: .implementTask, mac: Self.laptop, state: .assigned), job(2, kind: .makeQuestions, mac: Self.laptop, state: .assigned)
-        ]
-        let notices = try await notifier.notify(epics: epics, jobs: jobs, trusted: [deviceID])
-        #expect(notices.map(\.keys) == [["disk/\(Self.laptop)/\(since)"]])
-        #expect(notices.first?.title == "macbook の空きが少なくなりました")
-        #expect(notices.first?.body == "空き容量が 23 GB で、30 GB を下回っています。片付けるまで、ジョブ 1 件を引き受けません")
-        #expect(notices.first?.target == ["mac": Self.laptop.rawValue])
-        // 少ないままなら知らせ直さず、一度戻ってからまた下回ったら知らせ直す
-        clock.advance(minutes: 10)
-        #expect(try await notifier.notify(epics: epics, jobs: jobs, trusted: [deviceID]).isEmpty)
-        low.refusal?.since = Timestamp(clock.now)
-        try await put(low, at: StatePath.mac(Self.laptop), in: store)
-        #expect(try await notifier.notify(epics: epics, jobs: jobs, trusted: [deviceID]).count == 1)
-    }
-
     // MARK: - 宛先・送り直し
 
     @Test func waitsWithoutTrustedDevicesAndDoesNotRecord() async throws {
@@ -471,5 +438,45 @@ extension NotifierTests {
         clock.advance(minutes: 2)
         try await loop.cycle()
         #expect(await sender.sent.count == 1)
+    }
+}
+
+// MARK: - 空きが少ない Mac
+
+extension NotifierTests {
+    /// 空きが少なくてジョブを引き受けていない Mac は、空きが少ない間に引き受けないジョブを持っていれば、下回るたびに 1 回知らせる
+    @Test func notifiesMacLowOnDiskOncePerRefusal() async throws {
+        let store = try await storeWithDevice()
+        let notifier = notifier(store, sender: RecordingPushSender())
+        let since = Timestamp(Self.now.addingTimeInterval(-30 * 60))
+        var low = mac(Self.laptop, seenMinutesAgo: 1)
+        low.diskFreeGB = 23
+        low.refusal = JobRefusal(reason: .lowDisk, message: "空き容量が 23 GB", since: since)
+        try await put(low, at: StatePath.mac(Self.laptop), in: store)
+        let epics = [epic(.running)]
+
+        // 空きが少ない間も引き受けるジョブ（Claude だけのもの・片付け）しか持っていなければ、止まっていないので知らせない
+        let claudeOnly = [
+            job(1, kind: .makeQuestions, mac: Self.laptop, state: .assigned),
+            job(2, kind: .cleanUp, mac: Self.laptop, state: .assigned)
+        ]
+        #expect(try await notifier.notify(epics: epics, jobs: claudeOnly, trusted: [deviceID]).isEmpty)
+
+        let jobs = [
+            job(1, kind: .implementTask, mac: Self.laptop, state: .assigned),
+            job(2, kind: .makeQuestions, mac: Self.laptop, state: .assigned)
+        ]
+        let notices = try await notifier.notify(epics: epics, jobs: jobs, trusted: [deviceID])
+        #expect(notices.map(\.keys) == [["disk/\(Self.laptop)/\(since)"]])
+        #expect(notices.first?.title == "macbook の空きが少なくなりました")
+        let body = "空き容量が 23 GB で、30 GB を下回っています。片付けるまで、ジョブ 1 件を引き受けません"
+        #expect(notices.first?.body == body)
+        #expect(notices.first?.target == ["mac": Self.laptop.rawValue])
+        // 少ないままなら知らせ直さず、一度戻ってからまた下回ったら知らせ直す
+        clock.advance(minutes: 10)
+        #expect(try await notifier.notify(epics: epics, jobs: jobs, trusted: [deviceID]).isEmpty)
+        low.refusal?.since = Timestamp(clock.now)
+        try await put(low, at: StatePath.mac(Self.laptop), in: store)
+        #expect(try await notifier.notify(epics: epics, jobs: jobs, trusted: [deviceID]).count == 1)
     }
 }
