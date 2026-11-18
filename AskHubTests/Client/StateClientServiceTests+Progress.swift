@@ -262,7 +262,8 @@ extension StateClientServiceTests {
         #expect(epic.activities.isEmpty)
         #expect(epic.blocker?.title == "タスク 2「一覧に出す」の実装が止まっています")
         #expect(epic.blocker?.summary == "ビルドが通らない")
-        #expect(epic.blocker?.actions == [.retry])
+        // 実装をやめると先に進めないので、やめるは epic ごと
+        #expect(epic.blocker?.actions == [.retry, .discard])
 
         // やり直しを送ったら、司令塔が受け取るまでは止まったとは出さず、受け取り待ちを「いま」に出す
         let fixture = try makeService(files: files)

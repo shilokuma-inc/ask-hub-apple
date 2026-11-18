@@ -34,6 +34,7 @@ public struct ReviewFinalPullRequestRunner: JobRunning {
             throw .fail(.unexpected, "reviewFinalPullRequest の入力（PR と head）の形が違う")
         }
         let pulls = environment.tasks.pullRequests(job.repo)
+        try await rewriteBodyAfterSkippedScreenshots(job, input: input, target: target, pulls: pulls)
         let outputs = AttemptFile.Outputs(pullRequest: input.pullRequest, commit: input.head)
         let conflicting = "最終 PR #\(input.pullRequest) が base（\(target.branches.base)）とコンフリクトしている"
         let conflict = outputs.with(verdict: .fixConflict, findings: conflicting)
@@ -77,6 +78,21 @@ public struct ReviewFinalPullRequestRunner: JobRunning {
             FinalMergeRisks.risks(paths: checkout.paths, projectLines: checkout.projectLines)
         )
         return JobResult(outputs: ready, claude: claude.claude)
+    }
+
+    /// 撮影をやめて作ったレビュー（元が人の `giveUp`）なら、先に最終 PR の本文を書き直す（撮っていないカードを「撮影中」のままにしない）。
+    /// 書けなくても、スクショが無いことは AskHub で見られるので止めない
+    private func rewriteBodyAfterSkippedScreenshots(
+        _ job: JobFile,
+        input: PullRequestInput,
+        target: FinalTarget,
+        pulls: any PullRequestOperations
+    ) async throws(TaskJobExit) {
+        guard try await environment.origin(of: job)?.kind == GiveUpJobIntent.kind,
+              let decisions = try await environment.tasks.read(DecisionsFile.self, at: StatePath.decisions(job.repo, job.epic)) else {
+            return
+        }
+        _ = await CaptureScreenshotsRunner.rewriteBody(of: input.pullRequest, with: decisions, target: target, pulls: pulls)
     }
 
     /// head が進んだときの結果。古い head の判定は書かず、今の head だけを書く（司令塔は、新しい head でレビューし直せる）

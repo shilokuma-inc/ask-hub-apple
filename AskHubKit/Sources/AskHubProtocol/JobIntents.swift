@@ -83,29 +83,38 @@ public struct GiveUpJobIntent: Equatable, Sendable {
 
 /// 人に渡したジョブをやめたときの扱い（`docs/renewal/flows.md` の「人に渡したジョブ」）。司令塔とクライアントで同じ扱いにする
 public enum GiveUpEffect: Equatable, Sendable {
-    /// やめると epic が先に進めなくなるので、epic ごとやめる（`abandoned`）
+    /// やめると epic が先に進めなくなるので、epic ごとやめる（`abandoned`）。開始した後なら、開いている子 PR と最終 PR を閉じる（ブランチは残す）
     case abandonsEpic
     /// ジョブだけをやめる
     case jobOnly
+    /// 撮らずに先へ進む（同じ最終 PR と head でレビューする。判断のカードと画面の変化は「スクショ無し（撮影をやめた）」）
+    case skipsScreenshots
 }
 
 extension JobKind {
-    /// やめたときの扱い。nil はやめられない（扱いは段階 3 で決める）
+    /// 開始の前の段取りのジョブ（質問づくり・質問の見直し・着手前の確認）
+    static let planningKinds: Set<JobKind> = [.makeQuestions, .reviseQuestion, .checkReadiness]
+
+    /// やめたときの扱い。nil はやめられない（作らない種類）
     public var giveUpEffect: GiveUpEffect? {
         switch self {
         case .makeQuestions, .reviseQuestion, .checkReadiness: .abandonsEpic
-        case .explain, .reviseGoal: .jobOnly
-        case .prepareWorkspace, .implementTask, .reviewTask, .fixTask, .integrateDevelop, .verifyBeforeFinal, .openFinalPullRequest,
-             .reviewFinalPullRequest, .fixFinalPullRequest, .rerunChecks, .classifyDecisions, .captureScreenshots, .mergeFinalPullRequest,
-             .cleanUp, .notify:
-            nil
+        // 実装と最終 PR の段取りは、どれが欠けても先に進めない（2026-11-12 のユーザーの決定）
+        case .prepareWorkspace, .implementTask, .reviewTask, .fixTask, .verifyBeforeFinal, .classifyDecisions, .openFinalPullRequest,
+             .reviewFinalPullRequest, .fixFinalPullRequest, .mergeFinalPullRequest:
+            .abandonsEpic
+        // 片付けの残りは、終わってから 1 日後の見回りで消える
+        case .explain, .reviseGoal, .cleanUp: .jobOnly
+        case .captureScreenshots: .skipsScreenshots
+        // 名前だけで作らない種類
+        case .integrateDevelop, .rerunChecks, .notify: nil
         }
     }
 
-    /// epic の段階が `stage` のときにやめた扱い。開始した後の epic は開始の前のジョブが無くても先に進めるので、
-    /// epic ごとやめる種類でもジョブだけをやめる（epic は開始の前の段階に戻せず、実装のジョブを止めることになる）
+    /// epic の段階が `stage` のときにやめた扱い。開始の前の段取りのジョブ（質問づくりなど）が開始した後の epic に残っていたら、
+    /// epic は先に進めるので、ジョブだけをやめる（epic は開始の前の段階に戻せず、実装のジョブを止めることになる）
     public func giveUpEffect(at stage: EpicStage) -> GiveUpEffect? {
-        guard giveUpEffect == .abandonsEpic, [.running, .finalizing, .reviewing].contains(stage) else { return giveUpEffect }
+        guard Self.planningKinds.contains(self), [.running, .finalizing, .reviewing].contains(stage) else { return giveUpEffect }
         return .jobOnly
     }
 }
