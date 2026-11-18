@@ -82,6 +82,46 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: ConfigureRepositoryIntent.kind, repo: repo, payload: ConfigureRepositoryIntent.payload(for: build))
     }
 
+    /// リリースを始める（司令塔が release ブランチを作り、準備を進める）
+    public static func startRelease(_ repo: RepositoryFullName, version: MarketingVersion) -> Self {
+        Self(kind: StartReleaseIntent.kind, repo: repo, payload: ["version": .string(version.rawValue)])
+    }
+
+    /// 審査に出す（`revision` は人が見たときの準備の版。ビルドか What's New が変わっていれば司令塔が断る）
+    public static func submitForReview(
+        _ target: SubmissionTarget,
+        revision: Int,
+        builds: [SubmissionFile.BuildChoice],
+        whatsNew: [LocalizedText],
+        releaseType: AppStoreReleaseType,
+        earliestReleaseDate: Timestamp? = nil
+    ) -> Self {
+        Self(
+            kind: SubmitForReviewIntent.kind,
+            repo: target.repo,
+            target: target.target,
+            targetVersion: String(revision),
+            payload: SubmitForReviewIntent.payload(
+                builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate
+            )
+        )
+    }
+
+    /// 審査に通った版を配信する（App Store Connect では取り消せない）
+    public static func distributeRelease(_ target: SubmissionTarget) -> Self {
+        Self(kind: DistributeReleaseIntent.kind, repo: target.repo, target: target.target)
+    }
+
+    /// 審査を取り下げる
+    public static func withdrawSubmission(_ target: SubmissionTarget) -> Self {
+        Self(kind: WithdrawSubmissionIntent.kind, repo: target.repo, target: target.target)
+    }
+
+    /// このリリースをやめる（release ブランチ・App Store Connect の版は消さない）
+    public static func abandonRelease(_ target: SubmissionTarget) -> Self {
+        Self(kind: AbandonReleaseIntent.kind, repo: target.repo, target: target.target)
+    }
+
     /// epic を取り下げる（開始した後なら、開いている子 PR と最終 PR を閉じる。ブランチは残す。マージした epic は取り下げられない）
     public static func abandonEpic(repo: RepositoryFullName, epic: ULID) -> Self {
         Self(kind: AbandonEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))

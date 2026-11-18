@@ -54,6 +54,20 @@ struct StateIndex {
         var canPublish: Bool
     }
 
+    /// リリースを始めた版への意図（審査に出す・配信する・取り下げ・やめる）の対象と、送れるか。処理を待つ意図を当てた後のもの
+    struct SubmissionEntry {
+        var target: SubmissionTarget
+        var revision: Int
+        /// release ブランチから上げたビルド（審査に出せるもの）
+        var builds: [SubmissionFile.BuildChoice]
+        /// What's New の下書きの言語（審査に出すときは同じ言語をそろえる）
+        var locales: [String]
+        var canSubmit: Bool
+        var canDistribute: Bool
+        var canWithdraw: Bool
+        var canAbandon: Bool
+    }
+
     /// 実機確認への答え（`verify`）と、「問題あり」で一緒に送る依頼の材料
     struct VerificationEntry {
         var goalVersion: Int
@@ -80,6 +94,11 @@ struct StateIndex {
     var questions: [Epic.ID: [Question.ID: QuestionEntry]] = [:]
     var repositories: [TargetRepository.ID: RepositoryFullName] = [:]
     var releases: [Release.ID: ReleaseEntry] = [:]
+    var submissions: [Submission.ID: SubmissionEntry] = [:]
+    /// 終わっていないリリースのあるリポジトリ（リリースを始められない）。処理を待つ意図を当てた後のもの
+    var releasingRepositories: Set<TargetRepository.ID> = []
+    /// リポジトリの配信した版の最大（これより大きい版だけ始められる）
+    var releasedVersions: [TargetRepository.ID: MarketingVersion] = [:]
     /// 対象から外したリポジトリ（加え直すときに、元の owner/name の書き方で送る）
     var removedRepositories: [TargetRepository.ID: RepositoryFullName] = [:]
     /// 終わっていない epic のあるリポジトリ（対象から外すと司令塔が断る）。処理を待つ意図を当てた後のもの
@@ -131,6 +150,7 @@ struct StateSnapshotBuilder {
         index.busyRepositories = Set(epics.filter(\.isActive).map(\.repositoryID))
         applyRejections(to: &epics)
         let releases = releases(index: &index, overlaid: overlaid)
+        let submissions = submissions(index: &index, overlaid: overlaid)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             candidateRepositories: [],
@@ -141,7 +161,8 @@ struct StateSnapshotBuilder {
             sourceFailures: documents.failures,
             sentIntents: documents.sentIntents.map(sentStatus),
             commanderSeenAt: documents.commander?.seenAt.date,
-            releases: releases
+            releases: releases,
+            submissions: submissions
         )
         return (snapshot, index)
     }
