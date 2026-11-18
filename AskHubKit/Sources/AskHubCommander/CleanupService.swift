@@ -33,6 +33,8 @@ public actor CleanupService {
     nonisolated let machine: any CleanupMachine
     nonisolated let log: @Sendable (String) -> Void
     private var running: Task<Void, Never>?
+    /// 済ませたが書けなかった結果。次の周で、頼みをやり直さずに同じ結果を書き直す（消したものを、もう一度消そうとして「消さなかった」と記録しない）
+    private var unpublished: CleanupCandidatesFile?
 
     public init(context: CommanderContext, machine: any CleanupMachine, log: @escaping @Sendable (String) -> Void) {
         self.context = context
@@ -43,6 +45,10 @@ public actor CleanupService {
     /// 済ませていない頼みがあり、動いているものが無ければ、古いものから 1 つ動かし始める。読めないときは次の周でやり直す
     public func poll(verifier: IntentVerifier) async {
         guard running == nil else { return }
+        if let unpublished {
+            guard await publish(unpublished) else { return }
+            self.unpublished = nil
+        }
         let next: CleanupRequestsFile.Request
         do {
             let path = StatePath.cleanupRequests(context.mac)
@@ -69,7 +75,19 @@ public actor CleanupService {
         running = nil
     }
 
-    /// 頼みを 1 つ済ませ、結果を書く。書けなければ次の周で同じ頼みをやり直す（探すのはやり直しても同じ。消したものは、次は候補に無いので消さない）
+    /// 結果を書く。書けたら true
+    private func publish(_ file: CleanupCandidatesFile) async -> Bool {
+        do {
+            try await context.put(file, at: StatePath.cleanupCandidates(context.mac), message: "\(context.mac) の片付けの候補")
+            return true
+        } catch {
+            log("片付けの結果を書けなかった（\(error)）。次の周で、同じ結果を書き直す")
+            return false
+        }
+    }
+
+    /// 頼みを 1 つ済ませ、結果を書く。書けなければ、次の周で頼みをやり直さずに同じ結果を書き直す。
+    /// 元の意図を一時的に読めない（GitHub に届かないなど）ときは、済ませたことにせず、次の周でやり直す
     func handle(_ request: CleanupRequestsFile.Request, verifier: IntentVerifier) async {
         let now = context.timestamp
         var file: CleanupCandidatesFile
@@ -80,7 +98,14 @@ public actor CleanupService {
             return
         }
         var record = CleanupCandidatesFile.Handled(intent: request.intent, action: request.action, at: now)
-        if let problem = await originProblem(of: request, verifier: verifier) {
+        let originProblem: String?
+        do {
+            originProblem = try await self.originProblem(of: request, verifier: verifier)
+        } catch {
+            log("片付けの頼み \(request.intent.nonce) の元の人の意図を読めなかった（\(error)）。次の周でやり直す")
+            return
+        }
+        if let problem = originProblem {
             record.problem = problem
             log("片付けの頼み \(request.intent.nonce) を済ませなかった: \(problem)")
         } else {
@@ -98,11 +123,7 @@ public actor CleanupService {
             }
         }
         file.handled = Array((file.handled + [record]).suffix(CleanupCandidatesFile.keptHandled))
-        do {
-            try await context.put(file, at: StatePath.cleanupCandidates(context.mac), message: "\(context.mac) の片付けの候補")
-        } catch {
-            log("片付けの結果を書けなかった（\(error)）。次の周でやり直す")
-        }
+        if !(await publish(file)) { unpublished = file }
     }
 
     /// 選んだ候補を消す。選んだ後に探し直していれば、選んだものと今の候補が違うかもしれないので、何も消さない
@@ -122,6 +143,11 @@ public actor CleanupService {
                 skipped.append(.init(id: id, reason: "候補に無い（もう消した・探し直した）"))
                 continue
             }
+            // 候補のファイルの場所だけが書き換えられていれば、選んだ id のまま別の場所を消さない
+            guard candidate.isBoundToLocation else {
+                skipped.append(.init(id: id, reason: "候補の場所が、探したときの id と合わないので消さなかった"))
+                continue
+            }
             if let caution = candidate.caution {
                 skipped.append(.init(id: id, reason: "\(caution)ので消さなかった"))
             } else if let reason = await machine.remove(candidate) {
@@ -137,14 +163,10 @@ public actor CleanupService {
         log("片付けの候補を \(removed.count) 件消した（消さなかったもの \(skipped.count) 件）")
     }
 
-    /// 頼みの元の人の意図が、署名を確かめられ、この Mac 宛てで、頼みと中身が合うか。合わなければその理由
-    private func originProblem(of request: CleanupRequestsFile.Request, verifier: IntentVerifier) async -> String? {
-        let envelope: IntentEnvelope?
-        do {
-            envelope = try await context.envelope(of: request.intent, verifier: verifier)
-        } catch {
-            return "元の人の意図を読めない（\(error)）"
-        }
+    /// 頼みの元の人の意図が、署名を確かめられ、この Mac 宛てで、頼みと中身が合うか。合わなければその理由（確かに断れるものだけ）。
+    /// 一時的に読めないときは投げる（済ませたことにしない）
+    private func originProblem(of request: CleanupRequestsFile.Request, verifier: IntentVerifier) async throws(CommanderError) -> String? {
+        let envelope = try await context.envelope(of: request.intent, verifier: verifier)
         guard let envelope else { return "元の人の意図が無い・署名を確かめられない" }
         do {
             switch request.action {

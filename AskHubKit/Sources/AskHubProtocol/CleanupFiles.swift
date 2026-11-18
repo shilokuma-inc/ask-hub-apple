@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // 片付けの候補（`docs/renewal/operations.md` の「容量」）。ワーカーが作っていないもの（人が作った clone・Simulator・Xcode の DerivedData）を、
@@ -189,6 +190,16 @@ public struct CleanupCandidatesFile: StateFile {
             self.bytes = bytes
             self.lastUsedAt = lastUsedAt
             self.caution = caution
+        }
+
+        /// 候補の id。種類と場所から決める（探し直しても同じものは同じ id）。消す前に、書かれた場所から求め直して照らし合わせる
+        public static func id(kind: CleanupCandidateKind, location: String) -> String {
+            SHA256.hash(data: Data("\(kind.rawValue):\(location)".utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+        }
+
+        /// 書かれた種類と場所から求めた id と、`id` が合うか（候補のファイルの場所だけを書き換えても、選んだ id のまま別の場所を消させない）
+        public var isBoundToLocation: Bool {
+            Self.id(kind: kind, location: location) == id
         }
 
         /// 候補の id の形（16 桁の 16 進の小文字）か

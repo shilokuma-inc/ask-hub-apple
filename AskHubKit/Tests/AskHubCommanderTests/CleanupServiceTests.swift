@@ -38,13 +38,21 @@ struct CleanupServiceTests {
     static let mac = MacName(rawValue: "macbook-a")!
     static let other = MacName(rawValue: "mac-mini")!
     static let now = Date(timeIntervalSince1970: 1_800_000_000)
-    static let clean = CleanupCandidatesFile.Candidate(id: "0000000000000001", kind: .clone, name: "old", location: "~/old", bytes: 10)
-    static let pushed = CleanupCandidatesFile.Candidate(
-        id: "0000000000000002", kind: .clone, name: "wip", location: "~/wip", bytes: 30, caution: "未 push のコミットがある"
-    )
-    static let simulator = CleanupCandidatesFile.Candidate(
-        id: "0000000000000003", kind: .simulator, name: "iPhone（iOS 26.5）", location: "11111111-1111-1111-1111-111111111111", bytes: 20
-    )
+    static let clean = candidate(.clone, name: "old", location: "~/old", bytes: 10)
+    static let pushed = candidate(.clone, name: "wip", location: "~/wip", bytes: 30, caution: "未 push のコミットがある")
+    static let simulator = candidate(.simulator, name: "iPhone（iOS 26.5）", location: "11111111-1111-1111-1111-111111111111", bytes: 20)
+
+    /// 種類と場所から id を求めた候補（ワーカーが探して書くものと同じ）
+    static func candidate(
+        _ kind: CleanupCandidateKind,
+        name: String,
+        location: String,
+        bytes: Int64,
+        caution: String? = nil
+    ) -> CleanupCandidatesFile.Candidate {
+        let id = CleanupCandidatesFile.Candidate.id(kind: kind, location: location)
+        return .init(id: id, kind: kind, name: name, location: location, bytes: bytes, caution: caution)
+    }
 
     let key = P256.Signing.PrivateKey()
     let store = InMemoryStateStore()
@@ -198,11 +206,84 @@ struct CleanupServiceTests {
         let path = StatePath.cleanupRequests(Self.mac)
         var file = try StateFileCoder.decode(CleanupRequestsFile.self, from: #require(await store.data(at: path)))
         #expect(file.requests.map(\.intent.nonce) == [find.nonce])
-        for number in 3..<(3 + CleanupRequestsFile.keptRequests) {
+        for number in 3..<(2 + CleanupRequestsFile.keptRequests) {
             try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: number))
         }
+        // 済ませていない頼みだけで上限なら、落とさずに新しい頼みを断る
+        let overflow = try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 30)
+        guard case .reject = try await accept(overflow) else { Issue.record("上限を超えて積んだ"); return }
+        file = try StateFileCoder.decode(CleanupRequestsFile.self, from: #require(await store.data(at: path)))
+        #expect(file.requests.count == CleanupRequestsFile.keptRequests)
+        #expect(file.requests.first?.intent.nonce == find.nonce)
+        // ワーカーが済ませた頼みは、古いものから落として積む
+        let reference = IntentReference(keyId: keyID, nonce: find.nonce)
+        let handled = CleanupCandidatesFile.Handled(intent: reference, action: .find, at: Timestamp(Self.now))
+        let done = CleanupCandidatesFile(mac: Self.mac, handled: [handled])
+        await store.put(StatePath.cleanupCandidates(Self.mac), data: try StateFileCoder.encode(done))
+        let next = try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 31)
+        #expect(try await accept(next) == .accept)
         file = try StateFileCoder.decode(CleanupRequestsFile.self, from: #require(await store.data(at: path)))
         #expect(file.requests.count == CleanupRequestsFile.keptRequests)
         #expect(!file.requests.contains { $0.intent.nonce == find.nonce })
+    }
+
+    /// 候補のファイルの場所だけが書き換えられていれば（id は元の場所から求めたもの）、選んだ id のまま別の場所を消さない
+    @Test func refusesCandidateWhoseLocationWasRewritten() async throws {
+        let machine = RecordingCleanupMachine(candidates: [Self.clean])
+        let service = CleanupService(context: context, machine: machine) { _ in }
+        try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 1))
+        await run(service)
+        var file = try await candidates()
+        file.candidates[0].location = "~/Documents"
+        await store.put(StatePath.cleanupCandidates(Self.mac), data: try StateFileCoder.encode(file))
+        let payload: [String: JSONValue] = [
+            "mac": .string(Self.mac.rawValue),
+            "scannedAt": .string(Timestamp(Self.now).rawValue),
+            "candidates": .array([.string(Self.clean.id)])
+        ]
+        try await accept(try await signed("removeCleanupCandidates", payload: payload, nonce: 2))
+        await run(service)
+        #expect(machine.removed.isEmpty)
+        #expect(try await candidates().handled.last?.skipped?.first?.reason == "候補の場所が、探したときの id と合わないので消さなかった")
+    }
+
+    /// 消した後に結果を書けなければ、次の周で頼みをやり直さずに同じ結果を書き直す（消したものを「消さなかった」と記録しない）
+    @Test func republishesResultWithoutRemovingAgain() async throws {
+        let machine = RecordingCleanupMachine(candidates: [Self.clean])
+        let service = CleanupService(context: context, machine: machine) { _ in }
+        try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 1))
+        await run(service)
+        let payload: [String: JSONValue] = [
+            "mac": .string(Self.mac.rawValue),
+            "scannedAt": .string(Timestamp(Self.now).rawValue),
+            "candidates": .array([.string(Self.clean.id)])
+        ]
+        try await accept(try await signed("removeCleanupCandidates", payload: payload, nonce: 2))
+        await store.failNextWrites(with: [.forbidden(message: nil)])
+        await run(service)
+        #expect(machine.removed == [Self.clean.id])
+        #expect(try await candidates().handled.count == 1)
+        await run(service)
+        await run(service)
+        #expect(machine.removed == [Self.clean.id])
+        #expect(try await candidates().handled.last?.removed == [Self.clean.id])
+        #expect(try await candidates().candidates.isEmpty)
+    }
+
+    /// 封筒はあるが署名だけが合わない頼みでは動かない
+    @Test func refusesRequestWithTamperedSignature() async throws {
+        let machine = RecordingCleanupMachine(candidates: [Self.clean])
+        let service = CleanupService(context: context, machine: machine) { _ in }
+        let find = try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 1)
+        try await accept(find)
+        let path = StatePath.intent(device: keyID, nonce: find.nonce)
+        let stored = try #require(await store.data(at: path))
+        let other = P256.Signing.PrivateKey()
+        var object = try #require(try JSONSerialization.jsonObject(with: stored) as? [String: Any])
+        object["sig"] = try IntentSignature.sign(envelope: try find.jsonValue(), with: other)
+        await store.put(path, data: try JSONSerialization.data(withJSONObject: object))
+        await run(service)
+        #expect(machine.scans == 0)
+        #expect(try await candidates().handled.last?.problem == "元の人の意図が無い・署名を確かめられない")
     }
 }

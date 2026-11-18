@@ -20,6 +20,9 @@ public struct CleanupRequestHandler: IntentHandler {
         }
         let path = StatePath.cleanupRequests(mac)
         let message = "\(mac) の片付けを頼む（\(request.action.rawValue)）"
+        // 上限に達したら、ワーカーが済ませた頼みだけを古いものから落とす（済ませていない頼みは落とさない）
+        let handled = try await context.readable(CleanupCandidatesFile.self, at: StatePath.cleanupCandidates(mac))
+        var full = false
         do {
             if try await context.files.read(CleanupRequestsFile.self, at: path) == nil {
                 _ = try await context.files.create(CleanupRequestsFile(requests: [request]), at: path, message: message)
@@ -27,7 +30,11 @@ public struct CleanupRequestHandler: IntentHandler {
                 _ = try await context.files.update(CleanupRequestsFile.self, at: path, message: message) { file in
                     // 前の周で積んだ（やり直し）なら書かない
                     guard !file.requests.contains(where: { $0.intent == request.intent }) else { return false }
-                    file.requests = Array((file.requests + [request]).suffix(CleanupRequestsFile.keptRequests))
+                    guard let requests = Self.appending(request, to: file.requests, handled: handled) else {
+                        full = true
+                        return false
+                    }
+                    file.requests = requests
                     return true
                 }
             }
@@ -36,7 +43,24 @@ public struct CleanupRequestHandler: IntentHandler {
         } catch {
             throw .files(error)
         }
+        if full {
+            return .reject("\(mac) の片付けの頼みが \(CleanupRequestsFile.keptRequests) 件たまっていて、ワーカーがまだ済ませていない。済んでから送り直す")
+        }
         return .accept
+    }
+
+    /// 頼みを後ろに足す。上限を超えるなら、済ませた頼みを古いものから落とす。済ませていない頼みだけで上限なら nil
+    static func appending(
+        _ request: CleanupRequestsFile.Request,
+        to requests: [CleanupRequestsFile.Request],
+        handled: CleanupCandidatesFile?
+    ) -> [CleanupRequestsFile.Request]? {
+        var requests = requests
+        while requests.count >= CleanupRequestsFile.keptRequests {
+            guard let index = requests.firstIndex(where: { handled?.hasHandled($0.intent) == true }) else { return nil }
+            requests.remove(at: index)
+        }
+        return requests + [request]
     }
 
     static func request(
