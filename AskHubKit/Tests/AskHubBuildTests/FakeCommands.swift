@@ -82,6 +82,8 @@ final class FakeSimctl: Sendable {
         var isAvailable = true
         /// `simctl ui <UDID> appearance` が返すもの（`light`・`dark`・`unsupported`）。止めても消去するまで残る
         var appearance = "light"
+        /// 最後に使った時刻（`simctl list -j` の `lastUsedAt`）。一度も起動していないものは nil
+        var lastUsedAt: String?
     }
 
     static let iOS265 = "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
@@ -207,10 +209,12 @@ final class FakeSimctl: Sendable {
         ]
         var grouped: [String: [[String: Any]]] = [:]
         for device in current {
-            grouped[device.runtime, default: []].append([
+            var entry: [String: Any] = [
                 "udid": device.udid, "name": device.name, "state": device.state, "isAvailable": device.isAvailable,
                 "deviceTypeIdentifier": device.deviceType, "dataPath": "/Users/me/Library/Developer/CoreSimulator/Devices/\(device.udid)"
-            ])
+            ]
+            entry["lastUsedAt"] = device.lastUsedAt
+            grouped[device.runtime, default: []].append(entry)
         }
         let object: [String: Any] = ["devicetypes": [iPhone17, iPhone18, iPad], "runtimes": runtimes, "devices": grouped, "pairs": [:]]
         let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()

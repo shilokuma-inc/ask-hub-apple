@@ -92,6 +92,23 @@ extension DecisionsFile {
         return file
     }
 
+    /// 撮影をやめた（`giveUp`）ときに、判断のカードと画面の変化に出す文
+    static let skippedScreenshotsNote = "スクショ無し（撮影をやめた）"
+
+    /// 撮影をやめた: 撮る画面を選んだ見える仮決めと画面の変化のうち、`head` で撮っていないものを「スクショ無し（撮影をやめた）」にする
+    /// （前の head で撮ったものは今の差分と合わないので、残さない）
+    func skippingScreenshots(head: String) -> Self {
+        var file = self
+        let skipped = Screenshots(head: head, note: Self.skippedScreenshotsNote)
+        for index in file.items.indices where file.items[index].visible == true && file.items[index].scene != nil {
+            if file.items[index].screenshots?.head != head { file.items[index].screenshots = skipped }
+        }
+        for index in (file.screens ?? []).indices where file.screens?[index].screenshots?.head != head {
+            file.screens?[index].screenshots = skipped
+        }
+        return file
+    }
+
     /// 人が頼んだ直しが済んだ: その意図の答え（「別案にする」「直してほしい」）を外し、判断のカードを答え待ちに戻す（直った後を見て答え直してもらう）
     func reopening(answeredBy intent: IntentReference) -> Self {
         var file = self

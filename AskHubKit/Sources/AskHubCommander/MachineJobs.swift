@@ -51,7 +51,24 @@ extension EpicFile {
     }
 }
 
+extension MacFile {
+    /// 空きが少ない Mac を選んだ意図を断る理由（`doing` は「開始する」など）
+    func lowDiskProblem(doing action: String) -> String {
+        "Mac \(mac) の空き容量が \(diskFreeGB) GB で、\(Self.lowDiskFreeGB) GB を下回っている。片付けてから\(action)か、ほかの Mac を選ぶ"
+    }
+}
+
 extension CommanderLoop.MachineStatus {
+    /// 空き容量が少ないときに印に書く、新しいジョブを引き受けない理由。少なくなければ nil。
+    /// 前の印から少ないままなら、引き受けなくなった時刻（`since`）を引き継ぐ（下回るたびに 1 回だけ知らせるため）
+    public func diskRefusal(previous: JobRefusal?, at time: Timestamp) -> JobRefusal? {
+        guard diskFreeGB < MacFile.lowDiskFreeGB else { return nil }
+        let since = previous?.reason == .lowDisk ? previous?.since ?? time : time
+        let message = "空き容量が \(diskFreeGB) GB で、\(MacFile.lowDiskFreeGB) GB を下回っている。片付けと、作業場所・ビルドを使わない Claude のジョブのほかは、"
+            + "新しいジョブを引き受けない"
+        return JobRefusal(reason: .lowDisk, message: message, since: since)
+    }
+
     /// `macs/<mac>.json` に書く生きている印
     public func macFile(
         mac: MacName,

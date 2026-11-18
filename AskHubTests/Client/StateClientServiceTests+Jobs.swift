@@ -137,8 +137,8 @@ extension StateClientServiceTests {
         #expect(blocker.summary == "CI が通らないまま、自動の直しが上限（3 回）を超えたので止めています。もう一度試すと、もう 1 回直します")
         #expect(blocker.logExcerpt == nil)
         #expect(blocker.attempts.isEmpty)
-        // 直しをやめる扱いはまだ決めていない（司令塔も断る）ので、やり直しだけを出す
-        #expect(blocker.actions == [.retry])
+        // 直しをやめると先に進めないので、epic ごとやめる
+        #expect(blocker.actions == [.retry, .discard])
         #expect(blocker.target == "\(Self.jobID)/0")
 
         try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .retry, instruction: "", target: blocker.target))
@@ -239,6 +239,45 @@ extension StateClientServiceTests {
         #expect(!epic.isAbandoned)
         #expect(epic.blocker == nil)
         #expect(epic.history.last?.text == "着手前の確認をやめました。司令塔が受け取るのを待っています")
+    }
+
+    /// 実装・最終 PR の段取りのジョブをやめると、epic ごとやめる（司令塔が開いている子 PR と最終 PR を閉じる）
+    @Test
+    func givingUpFinalJobAbandonsStartedEpic() async throws {
+        let failure = #"{"class":"unexpected","message":"結果の形が違う"}"#
+        let job = Self.waitingJob(kind: "verifyBeforeFinal", lastFailure: failure)
+        let fixture = try makeService(files: Self.askingEpic(stage: "finalizing", extra: job))
+        let service = fixture.service
+        let blocker = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.blocker)
+        #expect(blocker.actions == [.retry, .discard])
+
+        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .discard, instruction: "", target: blocker.target))
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(envelope.kind == GiveUpJobIntent.kind)
+        let abandoned = try #require(try await service.fetchSnapshot().epic(Self.epicID))
+        #expect(abandoned.isAbandoned)
+        #expect(abandoned.blocker == nil)
+    }
+
+    /// 撮影をやめると、epic はやめずに、スクショ無しでレビューに進むと出す
+    @Test
+    func givingUpScreenshotsKeepsEpic() async throws {
+        let failure = #"{"class":"macOffline","message":"撮影を取り消した"}"#
+        let input = #"{"pullRequest":512,"head":"\#(String(repeating: "a", count: 40))"}"#
+        let job = Self.waitingJob(kind: "captureScreenshots", input: input, lastFailure: failure)
+        let fixture = try makeService(files: Self.askingEpic(stage: "finalizing", extra: job))
+        let service = fixture.service
+        let blocker = try #require(try await service.fetchSnapshot().epic(Self.epicID)?.blocker)
+        #expect(blocker.actions == [.retry, .cancelJob])
+
+        try await service.perform(.resolveBlocker(epicID: Self.epicID, action: .cancelJob, instruction: "", target: blocker.target))
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(envelope.kind == GiveUpJobIntent.kind)
+        let epic = try #require(try await service.fetchSnapshot().epic(Self.epicID))
+        #expect(!epic.isAbandoned)
+        #expect(epic.blocker == nil)
+        let text = "スクリーンショットの撮影をやめました。スクショ無しで最終 PR のレビューに進みます。司令塔が受け取るのを待っています"
+        #expect(epic.history.last?.text == text)
     }
 
     /// 開始を待つ epic にゴールの修正を送って受け付けられ、その修正のジョブが人に渡された状態。`origin` は修正の意図

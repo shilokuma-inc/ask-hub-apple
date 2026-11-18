@@ -193,7 +193,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 | `abandoned` | やめた | — |
 
 開始する前の段階（`drafting`〜`awaitingStart`）からは、人の取り下げ（`abandonEpic`）か、先に進めなくなるジョブを人がやめたとき（`giveUp`）にも `abandoned` になる。
-開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げで `abandoned` になる。開いている子 PR と最終 PR は閉じ、作業ブランチと子ブランチは残す（2026-11-12 に決めた。[flows.md](flows.md) の「開始した後の取り下げ」）。実装・最終 PR の段取りのジョブを人がやめたときも同じにする（段階 4 の 3 で作る）
+開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げか、実装・最終 PR の段取りのジョブを人がやめたときに `abandoned` になる。開いている子 PR と最終 PR は閉じ、作業ブランチと子ブランチは残す（2026-11-12 に決めた。[flows.md](flows.md) の「開始した後の取り下げ」）
 
 ### readiness.json（最後の着手前の確認の結果）
 
@@ -580,7 +580,10 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   - ワーカーは、司令塔（`commander.json`）の `versions.compatibility` と自分の番号が合わないとき・`commander.json` を読めない（知らない版・形の違うもの）ときは、新しいジョブを引き受けず、`refusal` に理由を書く。動かしているジョブは手放さない。番号を書かない司令塔（前の版）・`commander.json` が無いときは照らし合わせない
   - 起動してから `commander.json` を一度も読めていない（GitHub に届かないなど）間は、新しいジョブを引き受けない。一度読めた後に読めなくなったときは、前の判断のまま続ける
   - クライアントは、互換の番号が司令塔と合わない Mac（または `refusal` が `incompatible` の Mac）を Mac の画面と「あなたの番」に出し、更新の手順を添える。番号を比べられない（ワーカーが `commander.json` を読めない）ときは、どちらを更新するかを決めずに、ワーカーが書いた理由を出す。版が違うだけ（互換の番号は同じ）なら、Mac の詳細に出すだけにする
-- `refusal` は、新しいジョブを引き受けていないときだけ書く。`reason` は `incompatible`（司令塔と互換の番号が合わない・`commander.json` を読めない）、`message` は人が読む説明
+- `refusal` は、新しいジョブを引き受けていないときだけ書く。`reason` は `incompatible`（司令塔と互換の番号が合わない・`commander.json` を読めない）か `lowDisk`（空き容量が 30 GB を下回る。`MacFile.lowDiskFreeGB`）、`message` は人が読む説明、`since` は引き受けなくなった時刻（任意）
+  - `lowDisk` は、印を書くとき（10 分ごと）に測った `diskFreeGB` で決める。空きを増やす片付け（`cleanUp`）と、作業場所・ビルドを使わない Claude のジョブ（`makeQuestions`・`explain`・`reviseQuestion`・`checkReadiness`・`reviseGoal`・`notify`。`JobKind.isAcceptedWhileLowOnDisk`）は引き受ける。常時オンの Mac の空きで、ほかの Mac の epic の質問まで止めないため。両方に当たるときは `incompatible` を書く
+  - `since` は、少ないまま印を書き直しても変えない。司令塔は、これを区切りに、空きが少ない Mac を下回るたびに 1 回知らせる
+  - クライアントと司令塔は、`refusal` によらず `diskFreeGB` で空きが少ないかを決める（`lowDisk` を書かない前の版のワーカーも、開始・引き継ぎの先に選ばない）
 - `versions.claude` は、印を書くたびに測る `claude --version`。クライアントは、司令塔（`commander.json`）と違う Mac を知らせる
 - `selfCheck` は印を書くたびに確かめる。各項目は `ok`・`missing`・`invalid`・`expired`。トークンの値そのものは書かない
   - `githubTokens` は、持ち主（organization・個人。小文字にそろえる）ごとの GitHub のトークンの様子と期限。持ち主は重ねない
@@ -718,7 +721,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始した後の epic も受け付け、開いている子 PR と最終 PR を閉じる（ブランチは残す）。マージした epic は断る |
-| `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
+| `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`）。やめたときの扱い（epic ごとやめる・ジョブだけやめる・撮らずに進む）はジョブの種類で決まる（`JobKind.giveUpEffect`。[flows.md](flows.md) の「司令塔の動き」） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
