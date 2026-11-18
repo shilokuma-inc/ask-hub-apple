@@ -15,7 +15,7 @@
   - リジェクトは、審査の状態を状態リポジトリに持つ段階 5 で足す
 - 止めないもの（人が答えなくても先に進むもの）は、決めた時刻（司令塔の Mac の時間帯の 9 時・13 時・18 時。`Notifier.Settings.verificationHours`）ごとに、それまでの分を 1 通にまとめて送る（`VerificationDigest`）
   - 実機確認: 最終 PR をマージした epic（`merged`。マージしてから 7 日の間）のうち、ゴールの完了の条件にまだ答えていない項目があるもの。最後の時刻より前にマージした epic だけを入れ、その後にマージした epic は次の時刻に回す。司令塔が止まっていて時刻を過ぎたら、戻った最初の周に送る
-  - epic をまたいで 1 通にする（「『ランキング』の 2 件」のように epic ごとの項目の数を並べる）。epic が 1 つなら、通知からその epic を開く。いくつもあれば開く先を持たない（アプリを開くと「あなたの番」に並ぶ）
+  - epic をまたいで 1 通にする（「『ランキング』の 2 件」のように epic ごとの項目の数を並べる）。epic が 1 つなら、通知からその epic を開く。いくつもあれば、「あなたの番」から、アプリをまたいで実機確認だけを流すカード（「実機で確かめる」）を開く
   - 1 つの epic は 1 回だけ知らせる（出来事の key は `verification/<repo>/<epic>`）。答えていない項目を、時刻ごとに促し直さない。答えがすべて揃った epic は、司令塔のメモリに覚えて読み直さない
 - 同じ出来事は二度送らない。知らせた出来事を `notifications.json` に記録し（[protocol.md](protocol.md)）、記録を書けたときだけ送る
   - 見直して版が変わった質問・説明ができた質問・直したゴール・次の試行で人に渡したジョブ・一度戻ってからまた止まった Mac・次の窓（1 時間）でまた少なくなった GitHub の残りは、別の出来事として知らせ直す
@@ -45,7 +45,7 @@
   Keys で APNs の鍵を作って .p8 を落とし、常時オンの Mac の端末で `askhub-commander apns --key-id <鍵の id> --team-id <Team ID> --key-file <.p8 のパス>` を流してから、常駐を読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`）
   - .p8 の中身は Keychain（`apns-key`）にだけ置き、設定には鍵の id・Team ID・Bundle ID（既定 `jp.shilokuma.AskHub`。iOS と macOS で同じ）だけを書く。.p8 は Apple Developer から一度しか落とせないので、Mac には残さず安全な場所に移す
   - APNs の設定が無ければ通知を送らない（起動のログに出る）。`askhub-commander check` で鍵の様子（値は出さない）を確かめる
-- 通知の中身の `askhub`（`repo`・`epic`・`mac`）は、クライアントが通知から開く先。epic は「進行中」のその epic の画面、Mac は「Mac」のその Mac の画面を開く（`AskHub/Model/PushTarget.swift`）。形の違う値では開かない
+- 通知の中身の `askhub`（`repo`・`epic`・`mac`・`release`・`verification`）は、クライアントが通知から開く先。epic は「進行中」のその epic の画面、Mac は「Mac」のその Mac の画面、配信した版は「リポジトリ」のその版の画面、いくつもの epic の実機確認のまとめ（`{"verification": "all"}`）は「あなたの番」のアプリをまたいだ実機確認のカードを開く（`AskHub/Model/PushTarget.swift`）。形の違う値・知らない形では開かない（古いアプリは新しい開く先を無視する）
   - アプリを開いている間に届いた通知も、バナーで出す
 - 頻度
 

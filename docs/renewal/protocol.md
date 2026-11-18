@@ -648,7 +648,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   | マージした epic の実機確認に、まだ答えていない項目がある（止めないもの。決めた時刻にまとめて送る） | `verification/<owner>/<repo>/<epic>` |
 
 - どの端末にも送れなかった出来事は、記録から外して送り直す。終わった出来事の記録は、7 日たってから消す
-- 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`。実機確認のまとめは、epic が 1 つならその epic、いくつもあれば `{}`）。APNs の `thread-id` は epic の id か `mac/<mac>`（実機確認のまとめは `verification`）、`apns-collapse-id` はまとめた出来事の key から決める
+- 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`、配信した版は `{"repo": "<owner/repo>", "release": "<版>"}`。実機確認のまとめは、epic が 1 つならその epic、いくつもあれば `{"verification": "all"}`（あなたの番から、アプリをまたいだ実機確認のカードを開く）。クライアントは知らない形の開く先を無視する）。APNs の `thread-id` は epic の id か `mac/<mac>`（実機確認のまとめは `verification`）、`apns-collapse-id` はまとめた出来事の key から決める
 
 ## 各リポジトリに書く目印
 
