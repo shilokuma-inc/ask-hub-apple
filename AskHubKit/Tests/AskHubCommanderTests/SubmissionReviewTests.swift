@@ -1,5 +1,6 @@
 @testable import AskHubCommander
 import AskHubProtocol
+import AskHubPullRequests
 import AskHubStateStore
 import Foundation
 import Testing
@@ -251,5 +252,67 @@ extension ReleaseWatchTests {
         await watch.refresh()
         let scope = Blocker.Scope.submission(Self.repo, MarketingVersion(rawValue: "1.3.0")!)
         #expect(await watch.blockers.filter { $0.scope == scope }.map(\.reason) == [.reviewState(.iOS, .rejected)])
+    }
+}
+
+/// 配信した後に、release ブランチを main と develop に取り込む
+extension ReleaseWatchTests {
+    func distributedSubmission() async throws -> SubmissionFile {
+        try await addRepository()
+        var file = SubmissionHandlersTests.prepared()
+        file.end = .init(reason: .distributed, at: file.createdAt)
+        try await putSubmission(file)
+        hosting.state.withLock { state in
+            state.branches = ["develop": Self.developHead, "release/1.2.0": Self.released, "main": Self.epicMerge]
+        }
+        return file
+    }
+
+    @Test func integratesReleaseBranchIntoMainOnly() async throws {
+        _ = try await distributedSubmission()
+        // release ブランチに直しが入っていなければ develop には取り込まない。main には PR を出す
+        hosting.state.withLock { $0.ahead["main...release/1.2.0"] = 3 }
+        let watch = watch()
+        await watch.refresh()
+        var file = try await submission()
+        #expect(file.integration?.first { $0.base == "develop" }?.state == .skipped)
+        #expect(file.integration?.first { $0.base == "main" }?.state == .open)
+        let opened = try #require(hosting.state.withLock { $0.opened.last })
+        #expect(opened.base == "main" && opened.head == "release/1.2.0")
+        #expect(opened.title == "【CHORE】release/1.2.0 を main に取り込む")
+
+        // チェックが通ったらマージし、取り込みを終える
+        hosting.state.withLock { $0.checks = CheckSummary(verdict: .passed) }
+        await watch.refresh()
+        file = try await submission()
+        #expect(file.integration?.first { $0.base == "main" }?.state == .merged)
+        #expect(!file.awaitsIntegration(bases: ["develop", "main"]))
+        #expect(hosting.state.withLock { $0.merged } == [170])
+    }
+
+    @Test func createsMainWhenMissing() async throws {
+        _ = try await distributedSubmission()
+        hosting.state.withLock { $0.branches["main"] = nil }
+        await watch().refresh()
+        let file = try await submission()
+        #expect(file.integration?.first { $0.base == "main" }?.state == .created)
+        #expect(hosting.state.withLock { $0.branches["main"] } == Self.released)
+    }
+
+    @Test func asksHumanWhenIntegrationIsClosed() async throws {
+        var file = try await distributedSubmission()
+        file.integration = [
+            .init(base: "develop", state: .skipped, at: file.createdAt),
+            .init(base: "main", state: .open, pullRequest: 170, at: file.createdAt)
+        ]
+        try await putSubmission(file)
+        hosting.state.withLock { state in
+            state.pull = PullRequest(number: 170, state: .closed, merged: false, head: ("release/1.2.0", Self.released), baseRef: "main")
+        }
+        let watch = watch()
+        await watch.refresh()
+        #expect(try await submission().problem?.step == .integration)
+        // 配信してから 1 日の間は、配信の知らせも出し続ける
+        #expect(await submissionBlockers(watch).map(\.reason) == [.submissionProblem(.integration), .submissionDistributed])
     }
 }

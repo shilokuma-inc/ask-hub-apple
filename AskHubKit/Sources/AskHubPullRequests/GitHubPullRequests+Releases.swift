@@ -112,6 +112,14 @@ extension GitHubPullRequests {
         }
     }
 
+    /// `head` が `base` より何コミット進み、何コミット遅れているか（`GET compare/{base}...{head}`。release ブランチを取り込むかを決める）
+    public func compare(base: String, head: String) async throws(PullRequestError) -> (ahead: Int, behind: Int) {
+        try GitNames.checkBranch(base)
+        try GitNames.checkBranch(head)
+        let payload = try await api.get("compare/\(base)...\(head)", as: ComparePayload.self)
+        return (payload.aheadBy, payload.behindBy)
+    }
+
     // MARK: - ファイルを書き換えるコミット
 
     /// `base` のコミットの tree に `files`（パス → 中身）を書いたコミットを作り、新しいブランチ `branch` をそこに向ける（`FileCommit`）。
@@ -258,6 +266,11 @@ private struct TagPayload: Decodable {
     }
 
     let object: Object
+}
+
+private struct ComparePayload: Decodable {
+    let aheadBy: Int
+    let behindBy: Int
 }
 
 private struct ShaPayload: Decodable {
