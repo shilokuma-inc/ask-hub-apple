@@ -345,11 +345,13 @@ enum InboxBuilder {
         return items
     }
 
+    /// 消せる（注意の無い）片付けの候補がある Mac
     private static func cleanupItem(_ mac: Mac) -> InboxItem? {
-        guard !mac.cleanupCandidates.isEmpty else {
+        let removable = mac.cleanupCandidates.filter { $0.caution == nil }
+        guard !removable.isEmpty else {
             return nil
         }
-        let bytes = mac.cleanupCandidates.reduce(Int64(0)) { $0 + $1.bytes }
+        let bytes = removable.reduce(Int64(0)) { $0 + $1.bytes }
         let lastSeen: Date
         switch mac.connection {
         case .online(let date), .offline(let date):
@@ -362,7 +364,7 @@ enum InboxBuilder {
             repositoryID: nil,
             title: "片付けの候補",
             context: mac.name,
-            detail: "\(mac.cleanupCandidates.count) 件 · \(ByteFormat.string(bytes))",
+            detail: "\(removable.count) 件 · \(ByteFormat.string(bytes))",
             since: lastSeen,
             route: .cleanup(mac.id),
             targets: [.cleanup(macID: mac.id)]
