@@ -1,5 +1,6 @@
 import AskHubProtocol
 import AskHubStateStore
+import CryptoKit
 import Foundation
 
 /// この Mac で、片付けの候補を探して書き、人が選んだ候補を消すもの（`LocalCleanupMachine`。テストでは差し替える）
@@ -168,6 +169,14 @@ public actor CleanupService {
             // 起動し直しても書き直せるよう、手元に残す（残せなくても、動いている間は書き直す）
             _ = saveJournal(file)
         }
+    }
+
+    /// 手元の書き置きの名前。状態リポジトリ・ブランチ・Mac ごとに分ける（設定を変えて起動し直したとき、前の置き場所の結果を新しい置き場所に書かない）。
+    /// ブランチの名前は `/` などを含み得るので、組をハッシュにする
+    public static func journalName(repository: RepositoryFullName, branch: String?, mac: MacName) -> String {
+        let identity = "\(repository.owner)/\(repository.name)\n\(branch ?? "")\n\(mac)"
+        let digest = SHA256.hash(data: Data(identity.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+        return "cleanup-unpublished-\(digest).json"
     }
 
     /// 消している途中で止まったときに書く理由

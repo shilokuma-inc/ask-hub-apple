@@ -80,10 +80,9 @@ extension MachineRuntime {
             tools: configuration.buildTools(paths: paths),
             runner: ProcessCommandRunner()
         )
-        // 状態リポジトリと Mac ごとに分ける（設定を変えて起動し直したとき、前の置き場所の結果を新しい置き場所に書かない）。
-        // owner と Mac の名前は `.` を含まないので、名前から元の組を取り違えない
-        let repository = configuration.stateRepository
-        let name = "cleanup-unpublished.\(repository.owner).\(repository.name).\(configuration.mac).json"
+        let name = CleanupService.journalName(
+            repository: configuration.stateRepository, branch: configuration.stateBranch, mac: configuration.mac
+        )
         let journal = paths.root.appendingPathComponent(name)
         return CleanupService(context: context, machine: machine, journal: journal, log: log)
     }
