@@ -25,6 +25,14 @@ public struct Blocker: Equatable, Sendable {
         case releaseNotes
         /// 配信した版の後作業が、人が直すまで進まない
         case releaseProblem(ReleaseFile.Step)
+        /// リリースを始めた版の準備がそろい、人が What's New とビルドを確かめて審査に出すのを待っている
+        case submissionReady
+        /// リリースを始めた版の準備・審査の操作が、人が直すまで進まない
+        case submissionProblem(SubmissionFile.Step)
+        /// 審査の状態が変わった（審査中・承認・リジェクト）。人を止めないものもあるが、知らせる
+        case reviewState(AppStorePlatform, AppStoreVersionState)
+        /// リリースを始めた版を配信した
+        case submissionDistributed
         /// マージした epic の実機確認の、まだ答えていない項目（止めないもの）。`items` は項目の数
         case verification(repo: RepositoryFullName, epic: ULID, items: Int)
     }
@@ -37,6 +45,8 @@ public struct Blocker: Equatable, Sendable {
         case rateLimit(MacName)
         /// App Store で配信した版
         case release(RepositoryFullName, MarketingVersion)
+        /// リリースを始めた版（準備から配信まで）
+        case submission(RepositoryFullName, MarketingVersion)
         /// 止めないもの（実機確認）のまとめ。決めた時刻ごとに、epic をまたいで 1 通にする
         case verifications
     }
@@ -180,6 +190,25 @@ extension Blocker {
         if let problem = release.problem, problem.needsHuman {
             let key = "\(base)/problem/\(problem.step.rawValue)/\(problem.at.rawValue)"
             blockers.append(Blocker(key: key, scope: scope, reason: .releaseProblem(problem.step)))
+        }
+        return blockers
+    }
+}
+
+extension Blocker {
+    /// リリースを始めた版の記録から、人を待っているもの（審査に出す・人が直す準備）を拾う（`ReleaseWatch` が見回りのたびに作る）
+    static func waiting(on submission: SubmissionFile) -> [Blocker] {
+        let scope = Scope.submission(submission.repo, submission.version)
+        let base = "submission/\(submission.repo.rawValue)/\(submission.version.rawValue)"
+        var blockers: [Blocker] = []
+        guard !submission.isEnded else { return [] }
+        // ビルドか What's New が変わったら（revision が上がったら）知らせ直す
+        if submission.awaitsSubmission {
+            blockers.append(Blocker(key: "\(base)/ready/\(submission.revision)", scope: scope, reason: .submissionReady))
+        }
+        if let problem = submission.problem, problem.needsHuman {
+            let key = "\(base)/problem/\(problem.step.rawValue)/\(problem.at.rawValue)"
+            blockers.append(Blocker(key: key, scope: scope, reason: .submissionProblem(problem.step)))
         }
         return blockers
     }

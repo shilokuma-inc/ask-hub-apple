@@ -32,7 +32,7 @@ public struct LocalizedText: Codable, Hashable, Sendable {
     }
 
     /// What's New の並びの合わない点（言語の形・重なり・空の文・長さ）
-    static func problems(of texts: [LocalizedText], name: String) -> [String] {
+    public static func problems(of texts: [LocalizedText], name: String) -> [String] {
         var problems: [String] = []
         if texts.count > localeLimit { problems.append("\(name) の言語が \(localeLimit) を超えている") }
         if Set(texts.map(\.locale)).count != texts.count { problems.append("\(name) の言語が重複している") }
