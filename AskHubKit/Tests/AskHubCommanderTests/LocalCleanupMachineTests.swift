@@ -30,12 +30,16 @@ final class SimctlStubRunner: CommandRunning {
     }
 }
 
-/// `git rev-parse` だけを時間切れにし、ほかのコマンドは本当に流す
-final class HeadTimeoutRunner: CommandRunning {
+/// `git rev-parse` だけを決まった結果（時間切れ・シグナルでの終わり）にし、ほかのコマンドは本当に流す
+final class HeadFailureRunner: CommandRunning {
+    let result: CommandResult
+
+    init(_ result: CommandResult) {
+        self.result = result
+    }
+
     func run(_ command: Command) async throws -> CommandResult {
-        if command.executable.lastPathComponent == "git", command.arguments.contains("rev-parse") {
-            return CommandResult(status: 15, terminatedBySignal: true, standardOutput: Data(), standardError: Data(), timedOut: true)
-        }
+        if command.executable.lastPathComponent == "git", command.arguments.contains("rev-parse") { return result }
         return try await ProcessCommandRunner().run(command)
     }
 }
@@ -229,7 +233,15 @@ struct LocalCleanupMachineTests {
     @Test func cautionsWhenHeadCannotBeChecked() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let prepared = try prepare()
-        let machine = LocalCleanupMachine(home: home, tools: BuildTools(home: home, temporaryDirectory: root), runner: HeadTimeoutRunner())
-        #expect(await machine.cloneCaution(prepared.clean) == "git の状態を読めない")
+        let failures = [
+            CommandResult(status: 15, terminatedBySignal: true, standardOutput: Data(), standardError: Data(), timedOut: true),
+            // SIGHUP（1）で終わると、終了コードの 1（HEAD がまだ無い）と同じ番号になる
+            CommandResult(status: 1, terminatedBySignal: true, standardOutput: Data(), standardError: Data())
+        ]
+        for failure in failures {
+            let tools = BuildTools(home: home, temporaryDirectory: root)
+            let machine = LocalCleanupMachine(home: home, tools: tools, runner: HeadFailureRunner(failure))
+            #expect(await machine.cloneCaution(prepared.clean) == "git の状態を読めない")
+        }
     }
 }

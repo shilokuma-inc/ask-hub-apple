@@ -127,7 +127,7 @@ public struct LocalCleanupMachine: CleanupMachine {
         // 未 push は、ブランチに加えて detached の HEAD も見る（HEAD がまだコミットを指さなければ見ない）。出力はコミットの id だけにする
         // HEAD がまだコミットを指さないとき（終了コード 1・出力なし）だけ HEAD を外す。時間切れなど確かめられなければ消さない
         guard let head = await gitResult(["rev-parse", "--verify", "--quiet", "HEAD"], in: directory), !head.timedOut,
-              head.succeeded || (head.status == 1 && head.standardOutput.isEmpty) else {
+              head.succeeded || (head.status == 1 && !head.terminatedBySignal && head.standardOutput.isEmpty) else {
             return "git の状態を読めない"
         }
         let hasHead = head.succeeded
