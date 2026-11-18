@@ -27,8 +27,16 @@ struct Mac: Identifiable, Hashable {
     var commanderClaudeVersion: String?
     /// ワーカーがビルドとテストに使う Xcode の版（`xcodebuild -version`）。分からなければ nil
     var xcodeVersion: String?
-    /// ワーカーが作っていないもの（手で作った clone・Simulator）。人が選んで消す
+    /// ワーカーが作っていないもの（手で作った clone・Simulator・DerivedData）。人が選んで消す
     var cleanupCandidates: [CleanupCandidate]
+    /// 片付けの候補を最後に探し終えた時刻。まだ探していなければ nil（状態リポジトリでは、消すときにこの時刻を送る）
+    var cleanupScannedAt: Date?
+    /// ワーカーがまだ済ませていない片付けの頼み（探している・消している）。無ければ nil
+    var cleanupWork: CleanupWork?
+    /// 片付けの候補を探せなかった場所（macOS の許可が無いなど）
+    var cleanupUnreadable: [String] = []
+    /// 最後に済ませた片付けの頼みの結果（消したもの・消さなかったもの・済ませられなかった理由）。無ければ nil
+    var cleanupResult: String?
     /// 状態リポジトリの生きている印のロードアベレージ。あれば `load` の代わりにこの値を出す
     var loadAverage: Double?
     /// この Mac が生きている印を書くときに読んだ GitHub の REST の上限の残り。読めていない（前の版の Mac）ときは nil
@@ -39,6 +47,12 @@ struct Mac: Identifiable, Hashable {
     var commanderVersion: String?
     /// 司令塔と互換の番号が合わず、新しいジョブを引き受けていないとき。合う・照らし合わせられないときは nil
     var incompatibility: Incompatibility?
+
+    /// ワーカーがまだ済ませていない片付けの頼み
+    enum CleanupWork: Hashable {
+        case finding
+        case removing
+    }
 
     enum Role: Hashable {
         /// 常時オンで、司令塔とワーカーが動く
@@ -134,8 +148,10 @@ struct CleanupCandidate: Identifiable, Hashable {
     var kind: Kind
     var name: String
     var bytes: Int64
-    /// 消す前に確かめたこと（未 push のコミット・stash など）。問題が無ければ nil
+    /// 消す前に確かめたこと（未 push のコミット・stash など）。問題が無ければ nil。問題があるものは消せない
     var caution: String?
+    /// 最後に使った時刻。分からなければ nil
+    var lastUsedAt: Date?
 
     enum Kind: Hashable {
         case clone

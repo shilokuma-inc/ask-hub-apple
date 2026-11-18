@@ -31,6 +31,9 @@ struct StateDocuments {
     /// App Store で配信した版の記録（`releases/<版>.json`）。リポジトリの順、その中は版の小さい順
     var releases: [ReleaseFile] = []
     var macs: [MacFile] = []
+    /// Mac ごとの片付けの候補（ワーカーが書く）と、受け付けた片付けの頼み（司令塔が書く）
+    var cleanupCandidates: [MacName: CleanupCandidatesFile] = [:]
+    var cleanupRequests: [MacName: CleanupRequestsFile] = [:]
     var commander: CommanderFile?
     /// 新しい順
     var sentIntents: [SentIntent] = []
@@ -86,6 +89,7 @@ struct StateReader {
         let macsPart = try await macs.get()
         documents.macs = macsPart.value
         documents.failures += macsPart.failures
+        await readCleanup(into: &documents)
         let commanderPart = await commander
         documents.commander = commanderPart.value
         documents.failures += commanderPart.failures
@@ -334,7 +338,7 @@ struct StateReader {
     // MARK: 読み方
 
     /// 読む。読めない（知らない版・形の違い・取得の失敗）ときは、失敗を添えて nil を返す
-    private func read<File: StateFile>(_ type: File.Type, at path: String) async -> Part<File?> {
+    func read<File: StateFile>(_ type: File.Type, at path: String) async -> Part<File?> {
         do {
             return Part(value: try await files.read(type, at: path)?.file)
         } catch {

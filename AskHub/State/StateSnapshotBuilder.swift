@@ -78,6 +78,13 @@ struct StateIndex {
 
     var epics: [Epic.ID: EpicEntry] = [:]
     var questions: [Epic.ID: [Question.ID: QuestionEntry]] = [:]
+    /// 生きている印のある Mac と、片付けの候補を最後に探し終えた時刻（消すときに送る。まだ探していなければ nil）
+    var macs: [Mac.ID: MacEntry] = [:]
+
+    struct MacEntry {
+        var name: MacName
+        var cleanupScannedAt: Timestamp?
+    }
     var repositories: [TargetRepository.ID: RepositoryFullName] = [:]
     var releases: [Release.ID: ReleaseEntry] = [:]
     /// 対象から外したリポジトリ（加え直すときに、元の owner/name の書き方で送る）
@@ -136,7 +143,7 @@ struct StateSnapshotBuilder {
             candidateRepositories: [],
             removedRepositories: removed.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             epics: epics.sorted { $0.updatedAt > $1.updatedAt },
-            macs: macs(),
+            macs: macs(index: &index),
             fetchedAt: now,
             sourceFailures: documents.failures,
             sentIntents: documents.sentIntents.map(sentStatus),
@@ -189,7 +196,10 @@ struct StateSnapshotBuilder {
 
     // MARK: Mac
 
-    private func macs() -> [Mac] {
+    private func macs(index: inout StateIndex) -> [Mac] {
+        for file in documents.macs {
+            index.macs[file.mac.rawValue] = .init(name: file.mac, cleanupScannedAt: documents.cleanupCandidates[file.mac]?.scannedAt)
+        }
         var macs = documents.macs.map(mac)
         if let commander = documents.commander, !macs.contains(where: { $0.id == commander.mac.rawValue }) {
             macs.append(commanderOnly(commander))
@@ -201,7 +211,7 @@ struct StateSnapshotBuilder {
         let checks = Self.selfChecks(file.selfCheck)
         let tokens = Self.tokens(file.selfCheck)
         let incompatibility = incompatibility(of: file)
-        return Mac(
+        var mac = Mac(
             id: file.mac.rawValue,
             name: file.mac.rawValue,
             model: "",
@@ -226,6 +236,49 @@ struct StateSnapshotBuilder {
             commanderVersion: commanderVersion(differingFrom: file.versions.worker),
             incompatibility: incompatibility
         )
+        applyCleanup(of: file.mac, to: &mac)
+        return mac
+    }
+
+    /// 片付けの候補（ワーカーが書いた `cleanup/<mac>/candidates.json`）と、まだ済ませていない頼み（司令塔が積んだ `requests.json`）を Mac に付ける
+    private func applyCleanup(of name: MacName, to mac: inout Mac) {
+        let file = documents.cleanupCandidates[name]
+        mac.cleanupCandidates = (file?.candidates ?? []).map(Self.candidate)
+        mac.cleanupScannedAt = file?.scannedAt?.date
+        mac.cleanupUnreadable = file?.unreadable ?? []
+        let pending = (documents.cleanupRequests[name]?.requests ?? []).filter { file?.hasHandled($0.intent) != true }
+        mac.cleanupWork = pending.last.map { $0.action == .find ? .finding : .removing }
+        mac.cleanupResult = file?.handled.last.flatMap(Self.cleanupResult)
+    }
+
+    private static func candidate(_ candidate: CleanupCandidatesFile.Candidate) -> CleanupCandidate {
+        let kind: CleanupCandidate.Kind = switch candidate.kind {
+        case .clone: .clone
+        case .simulator: .simulator
+        case .derivedData: .derivedData
+        }
+        // clone はホームからのパスで見分ける（同じ名前のフォルダがほかの場所にもあり得る）
+        let name = candidate.kind == .clone ? candidate.location : candidate.name
+        return CleanupCandidate(
+            id: candidate.id,
+            kind: kind,
+            name: name,
+            bytes: candidate.bytes,
+            caution: candidate.caution,
+            lastUsedAt: candidate.lastUsedAt?.date
+        )
+    }
+
+    /// 済ませた頼みの結果の文。探しただけなら、済ませられなかったときだけ
+    static func cleanupResult(_ handled: CleanupCandidatesFile.Handled) -> String? {
+        if let problem = handled.problem {
+            return handled.action == .find ? "探せませんでした: \(problem)" : "消しませんでした: \(problem)"
+        }
+        guard handled.action == .remove else { return nil }
+        let removed = "\(handled.removed?.count ?? 0) 件を消しました"
+        let skipped = handled.skipped ?? []
+        guard !skipped.isEmpty else { return removed }
+        return "\(removed)。\(skipped.count) 件は消しませんでした（\(skipped.map(\.reason).joined(separator: "・"))）"
     }
 
     /// 司令塔だけが動いていて、ワーカーの印が無い Mac。ループは受けない
