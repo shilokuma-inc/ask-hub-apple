@@ -40,6 +40,27 @@ struct InMemoryStateStoreTests {
         #expect(await store.data(at: "archive/repos/o/r/epics/e1/jobs/j.json") == Data("2".utf8))
         #expect(try await store.list("repos/o/r/epics")?.map(\.name) == ["e2"])
         #expect(await store.writeCount == 1)
-        await #expect(throws: (any Error).self) { try await snapshot.move([taken], message: "m") }
+        // 写しは、書ける置き場所なら移せる入力でも断る
+        let fresh = InMemoryStateStore(files: ["repos/o/r/epics/e1/epic.json": Data("1".utf8)])
+        let freshSnapshot = try await fresh.snapshot()
+        await #expect(throws: (any Error).self) { try await freshSnapshot.move([first], message: "m") }
+        #expect(await fresh.data(at: "repos/o/r/epics/e1/epic.json") == Data("1".utf8))
+    }
+
+    /// 移す元と先は呼んだときの中身で決める。同じ呼び出しの前の移動の先を、後の移動の元にせず、先の重なりと、先の親がファイルのときは断る
+    @Test func movesResolveSourcesAtStartAndRefuseFileAncestors() async throws {
+        let store = InMemoryStateStore(files: ["a/x": Data("1".utf8), "archive": Data("file".utf8)])
+        try await store.move([StateMove(from: "a", to: "b"), StateMove(from: "b", to: "c")], message: "m")
+        #expect(await store.data(at: "b/x") == Data("1".utf8))
+        #expect(await store.data(at: "c/x") == nil)
+        let other = InMemoryStateStore(files: ["a/x": Data("1".utf8), "d/y": Data("2".utf8)])
+        await #expect(throws: StateStoreError.conflict) {
+            try await other.move([StateMove(from: "a", to: "e"), StateMove(from: "d", to: "e")], message: "m")
+        }
+        #expect(await other.data(at: "a/x") == Data("1".utf8))
+        await #expect(throws: StateStoreError.wrongKind) {
+            try await store.move([StateMove(from: "b", to: "archive/e")], message: "m")
+        }
+        #expect(await store.data(at: "b/x") == Data("1".utf8))
     }
 }
