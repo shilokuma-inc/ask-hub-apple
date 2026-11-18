@@ -83,11 +83,15 @@ extension AskHubMain {
         }
     }
 
-    /// 保護の設定の必須のチェック（`--checks` はカンマ区切り。無ければ `build / build`）
+    /// 保護の設定の必須のチェック（`--checks` はカンマ区切り。かっこの中のカンマでは分けない。無ければ `build / build`）
     static func requiredChecks(_ arguments: CommandArguments) throws -> [String] {
-        let checks = arguments.values["checks"].map { text in
-            text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        } ?? ProtectionPolicy.defaultRequiredChecks
+        var checks = ProtectionPolicy.defaultRequiredChecks
+        if let text = arguments.values["checks"] {
+            guard let listed = ProtectionPolicy.checks(fromList: text) else {
+                throw CommandArguments.Failure(message: "--checks に空の名前がある（カンマが続いている・前後にある）")
+            }
+            checks = listed
+        }
         let problems = ProtectionPolicy.problems(ofRequiredChecks: checks)
         guard problems.isEmpty else { throw CommandArguments.Failure(message: "--checks: \(problems.joined(separator: "、"))") }
         return checks

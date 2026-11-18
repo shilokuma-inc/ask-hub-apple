@@ -3,6 +3,7 @@ import AskHubProtocol
 import AskHubPullRequests
 import AskHubStateStore
 import Foundation
+import os
 import Testing
 
 /// 保護の設定（`applyProtection`）を管理用のトークンで掛け、重なる保護を外し、ずれを点検する
@@ -11,18 +12,18 @@ struct ProtectionTests {
     static let now = Date(timeIntervalSince1970: 1_793_757_600)
     static let adminToken = "github_pat_" + String(repeating: "a", count: 40)
 
-    private func context(_ store: any StateStore) -> CommanderContext {
+    func context(_ store: any StateStore) -> CommanderContext {
         CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { Self.now }
     }
 
-    private func registered(protection: RepositoryFile.Protection = .init()) async throws -> InMemoryStateStore {
+    func registered(protection: RepositoryFile.Protection = .init()) async throws -> InMemoryStateStore {
         let store = InMemoryStateStore()
         let file = RepositoryFile(repo: Self.repo, platform: .apple, protection: protection, addedAt: Timestamp(Self.now))
         await store.put(StatePath.repository(Self.repo), data: try StateFileCoder.encode(file))
         return store
     }
 
-    private func repository(in store: InMemoryStateStore) async throws -> RepositoryFile? {
+    func repository(in store: InMemoryStateStore) async throws -> RepositoryFile? {
         try await store.data(at: StatePath.repository(Self.repo)).map { try StateFileCoder.decode(RepositoryFile.self, from: $0) }
     }
 
@@ -48,7 +49,8 @@ struct ProtectionTests {
              "conditions":{"ref_name":{"include":[\(includes.map { "\"\($0)\"" }.joined(separator: ","))],"exclude":[]}},
              "rules":[{"type":"deletion"},{"type":"non_fast_forward"},
                       {"type":"pull_request","parameters":{"required_approving_review_count":0}},
-                      {"type":"required_status_checks","parameters":{"required_status_checks":[\(contexts)]}}],
+                      {"type":"required_status_checks",
+                       "parameters":{"required_status_checks":[\(contexts)],"do_not_enforce_on_create":true}}],
              "bypass_actors":[]}
             """
     }
@@ -59,7 +61,12 @@ struct ProtectionTests {
           "pageInfo":{"hasNextPage":false,"endCursor":null}}}}
         """
 
-    static let protectedRefs = ["refs/heads/develop", "refs/heads/main", "refs/heads/release/**"]
+    /// クラシックの保護の一覧の応答（1 ページ）
+    static func classicRules(_ nodes: String) -> String {
+        #"{"repository":{"branchProtectionRules":{"nodes":\#(nodes),"pageInfo":{"hasNextPage":false,"endCursor":null}}}}"#
+    }
+
+    static let protectedRefs = ["refs/heads/develop", "refs/heads/main", "refs/heads/release/**/*"]
 
     static let ours = ruleset(
         id: 10, name: "askhub-protect", includes: protectedRefs, checks: ["build / build"]
@@ -118,7 +125,9 @@ struct ProtectionTests {
             .init(kind: .classic, name: "develop"),
             .init(kind: .classic, name: "release/v*")
         ])
-        #expect(protection.remaining == [.init(kind: .organizationRuleset, name: "org-default")])
+        #expect(protection.remaining == [
+            .init(kind: .organizationRuleset, name: "org-default", reason: "organization のルールセットは、リポジトリの側からは外せない")
+        ])
         #expect(protection.drift == nil)
     }
 
@@ -128,14 +137,15 @@ struct ProtectionTests {
         #expect(body["bypass_actors"] == .array([]))
         #expect(body["enforcement"] == .string("active"))
         #expect(body["conditions"]?["ref_name"]?["include"] == .array([
-            .string("refs/heads/develop"), .string("refs/heads/main"), .string("refs/heads/release/**")
+            .string("refs/heads/develop"), .string("refs/heads/main"), .string("refs/heads/release/**/*")
         ]))
         let rules = try #require(body["rules"].flatMap { value -> [JSONValue]? in
             if case let .array(items) = value { return items }
             return nil
         })
         let types = ["deletion", "non_fast_forward", "pull_request", "required_status_checks"]
-        #expect(rules.map { $0["type"] } == types.map(JSONValue.string))
+        // 並びが違えば、添字で読む前に止める
+        try #require(rules.map { $0["type"] } == types.map(JSONValue.string))
         #expect(rules[2]["parameters"]?["required_approving_review_count"] == .integer(0))
         #expect(rules[3]["parameters"]?["do_not_enforce_on_create"] == .bool(true))
         #expect(rules[3]["parameters"]?["required_status_checks"] == .array([
@@ -204,123 +214,86 @@ struct ProtectionTests {
         #expect(protection.rulesetId == 10)
     }
 
-    // MARK: - 重なり
-
-    @Test(arguments: [
-        ("develop", true), ("main", true), ("release/*", true), ("release/v*", true), ("*", true), ("**", true),
-        ("dev*", true), ("master", true), ("feature/*", false), ("gh-pages", false), ("renewal", false)
-    ])
-    func classicPatternOverlapsProtectedBranches(pattern: String, overlaps: Bool) {
-        #expect(ProtectionRules.overlaps(classic: pattern, defaultBranch: "master") == overlaps)
+    /// 範囲の外も守るクラシックの保護は外さず、わけを添えて残す
+    @Test func keepsBroaderClassicProtection() async throws {
+        let store = try await registered()
+        let transport = StubTransport([
+            .json(200, #"{"default_branch":"develop","private":false}"#),
+            .json(200, "[]"),
+            .json(201, Self.ours),
+            .data(Self.classicRules(#"[{"id":"BPR1","pattern":"*"}]"#))
+        ])
+        #expect(try await ApplyProtectionHandler(admin: admin(transport)).handle(envelope(), in: context(store)) == .accept)
+        #expect(transport.requests.count == 4)
+        let protection = try #require(try await repository(in: store)?.protection)
+        #expect(protection.replaced?.isEmpty == true)
+        #expect(protection.remaining == [.init(kind: .classic, name: "*", reason: ProtectionApplier.broaderReason)])
     }
 
-    @Test func rulesetOverlapReadsSpecialTargetsAndExcludes() {
-        func ruleset(_ includes: [String], excludes: [String] = []) -> Ruleset {
-            Ruleset(
-                id: 1,
-                name: "x",
-                source: .repository,
-                enforcement: "active",
-                includes: includes,
-                excludes: excludes,
-                rules: [],
-                bypassActorCount: 0
-            )
+    /// GitHub の上限に当たったら、同じトークンで続けて送らずに止め、掛け直すと前に外したものも残す
+    @Test func stopsAtRateLimitAndKeepsReplacedOnRetry() async throws {
+        let applied = RepositoryFile.Protection(
+            appliedAt: Timestamp(Self.now),
+            requiredChecks: ["build / build"],
+            rulesetId: 10,
+            replaced: [.init(kind: .classic, name: "develop")]
+        )
+        let store = try await registered(protection: applied)
+        let transport = StubTransport([
+            .json(200, #"{"default_branch":"develop","private":false}"#),
+            .json(200, """
+                [{"id":10,"name":"askhub-protect","target":"branch","source_type":"Repository","source":"x"},
+                 {"id":11,"name":"old-develop","target":"branch","source_type":"Repository","source":"x"},
+                 {"id":12,"name":"old-main","target":"branch","source_type":"Repository","source":"x"}]
+                """),
+            .json(200, Self.ours),
+            .json(200, Self.ruleset(id: 11, name: "old-develop", includes: ["refs/heads/develop"])),
+            .json(204, ""),
+            .json(429, #"{"message":"rate limited"}"#, headers: ["Retry-After": "120"])
+        ])
+        let decision = try await ApplyProtectionHandler(admin: admin(transport)).handle(envelope(), in: context(store))
+        guard case let .reject(reason) = decision else {
+            Issue.record("断っていない: \(decision)")
+            return
         }
-        #expect(ProtectionRules.overlaps(ruleset: ruleset(["~ALL"]), defaultBranch: "main"))
-        #expect(ProtectionRules.overlaps(ruleset: ruleset(["~DEFAULT_BRANCH"]), defaultBranch: "trunk"))
-        #expect(ProtectionRules.overlaps(ruleset: ruleset(["refs/heads/release/v*"]), defaultBranch: "main"))
-        #expect(!ProtectionRules.overlaps(ruleset: ruleset(["refs/heads/feature/**"]), defaultBranch: "main"))
-        let everythingElse = ruleset(["~ALL"], excludes: ["refs/heads/develop", "refs/heads/main", "refs/heads/release/**"])
-        #expect(!ProtectionRules.overlaps(ruleset: everythingElse, defaultBranch: "main"))
-        #expect(Glob.matches("release/**", "release/1.0/hotfix"))
-        #expect(!Glob.matches("release/*", "release/1.0/hotfix"))
-        #expect(Glob.matches("v[0-9].?", "v1.x"))
-        #expect(!Glob.matches("v[!0-9]", "v1"))
-        #expect(Glob.matches("a.b", "a.b") && !Glob.matches("a.b", "aXb"))
+        #expect(reason.contains("GitHub の上限に当たったので、残りの保護を確かめずに止めた（120 秒ほど待ってから押し直す）"))
+        // 上限の後は、クラシックの保護の一覧も読まない
+        #expect(transport.requests.count == 6)
+        let protection = try #require(try await repository(in: store)?.protection)
+        #expect(protection.replaced == [.init(kind: .classic, name: "develop"), .init(kind: .ruleset, name: "old-develop")])
+    }
+
+    /// 外そうとして断られた保護は、わけを添えて残したものに書く
+    @Test func recordsProtectionThatCouldNotBeRemoved() async throws {
+        let store = try await registered()
+        let transport = StubTransport([
+            .json(200, #"{"default_branch":"develop","private":false}"#),
+            .json(200, #"[{"id":11,"name":"old-develop","target":"branch","source_type":"Repository","source":"x"}]"#),
+            .json(201, Self.ours),
+            .json(200, Self.ruleset(id: 11, name: "old-develop", includes: ["refs/heads/develop"])),
+            .json(403, #"{"message":"Resource not accessible"}"#),
+            .data(Self.classicRules("[]"))
+        ])
+        let decision = try await ApplyProtectionHandler(admin: admin(transport)).handle(envelope(), in: context(store))
+        guard case .reject = decision else {
+            Issue.record("断っていない: \(decision)")
+            return
+        }
+        let remaining = try #require(try await repository(in: store)?.protection.remaining)
+        #expect(remaining.map(\.name) == ["old-develop"])
+        #expect(remaining.first?.reason?.hasPrefix("外せなかった") == true)
     }
 
     // MARK: - ずれ
 
-    @Test func driftListsWhatChangedFromPolicy() throws {
-        let checks = Ruleset.Rule.requiredStatusChecks([.init(context: "build / build", integrationID: 15_368)])
-        let fine = Ruleset(
-            id: 10,
-            name: "askhub-protect",
-            source: .repository,
-            enforcement: "active",
-            includes: ["refs/heads/develop", "refs/heads/main", "refs/heads/release/**"],
-            excludes: [],
-            rules: [.deletion, .nonFastForward, .pullRequest(requiredApprovals: 0), checks],
-            bypassActorCount: nil
-        )
-        #expect(ProtectionRules.drift(of: fine, requiredChecks: ["build / build"]).isEmpty)
-        var changed = fine
-        changed.enforcement = "evaluate"
-        changed.includes = ["refs/heads/develop"]
-        changed.rules = [.pullRequest(requiredApprovals: 1), .requiredStatusChecks([])]
-        changed.bypassActorCount = 1
-        #expect(ProtectionRules.drift(of: changed, requiredChecks: ["build / build"]) == [
-            "ルールセット askhub-protect が有効でない（evaluate）",
-            "ルールセット askhub-protect の対象のブランチが変わった",
-            "ブランチの削除が禁止されていない",
-            "force push が禁止されていない",
-            "PR に承認が要る（同じアカウントでは承認できず、マージが止まる）",
-            "必須のチェックが変わった（今は 無し）",
-            "例外（bypass）が足された"
-        ])
-    }
-
-    /// 掛けたリポジトリだけを、毎日のトークンで読んで点検し、ずれが変わったときだけ書く
-    @Test func watchWritesDriftOnlyWhenItChanges() async throws {
-        let applied = RepositoryFile.Protection(appliedAt: Timestamp(Self.now), requiredChecks: ["build / build"], rulesetId: 10)
-        let store = try await registered(protection: applied)
-        let transport = StubTransport([
-            // 1 回目: 必須のチェックが外された
-            .json(200, #"[{"id":10,"name":"askhub-protect","target":"branch","source_type":"Repository","source":"x"}]"#),
-            .json(200, Self.ruleset(
-                id: 10, name: "askhub-protect", includes: ["refs/heads/develop", "refs/heads/main", "refs/heads/release/**"]
-            )),
-            // 2 回目: 同じずれ（書かない）
-            .json(200, #"[{"id":10,"name":"askhub-protect","target":"branch","source_type":"Repository","source":"x"}]"#),
-            .json(200, Self.ruleset(
-                id: 10, name: "askhub-protect", includes: ["refs/heads/develop", "refs/heads/main", "refs/heads/release/**"]
-            )),
-            // 3 回目: 直った
-            .json(200, #"[{"id":10,"name":"askhub-protect","target":"branch","source_type":"Repository","source":"x"}]"#),
-            .json(200, Self.ours),
-            // 4 回目: ルールセットごと外された
-            .json(200, "[]")
-        ])
-        let watch = ProtectionWatch(
-            context: context(store),
-            github: { GitHubPullRequests(repository: $0, transport: transport) { _ in "github_pat_daily" } },
-            log: { _ in }
-        )
-        #expect(try await watch.check(Self.repo))
-        let drift = ProtectionDrift(foundAt: Timestamp(Self.now), problems: ["必須のチェックが変わった（今は 無し）"])
-        #expect(try await repository(in: store)?.protection.drift == drift)
-        #expect(try await !watch.check(Self.repo))
-        #expect(try await watch.check(Self.repo))
-        #expect(try await repository(in: store)?.protection.drift == nil)
-        #expect(try await watch.check(Self.repo))
-        #expect(try await repository(in: store)?.protection.drift?.problems == ["ルールセット askhub-protect が無い（外された）"])
-        // 点検は読むだけで、毎日のトークンを使う
-        #expect(transport.requests.allSatisfy { request in
-            request.httpMethod == "GET" && request.value(forHTTPHeaderField: "Authorization") == "Bearer github_pat_daily"
-        })
-        // 掛けた時刻・必須のチェックは変えない
-        #expect(try await repository(in: store)?.protection.appliedAt == Timestamp(Self.now))
-    }
-
-    /// 保護を掛けていないリポジトリは点検しない
-    @Test func watchSkipsRepositoriesWithoutProtection() async throws {
-        let store = try await registered()
-        let transport = StubTransport([])
-        let watch = ProtectionWatch(
-            context: context(store), github: { GitHubPullRequests(repository: $0, transport: transport) { _ in "t" } }, log: { _ in }
-        )
-        #expect(try await !watch.check(Self.repo))
-        #expect(transport.requests.isEmpty)
+    /// 次のページのカーソルが同じものを繰り返したら、追いきれないので失敗にする（同じページを読み続けない）
+    @Test func classicRulesPaginationStopsOnRepeatedCursor() async throws {
+        let page = #"{"repository":{"branchProtectionRules":{"nodes":[],"pageInfo":{"hasNextPage":true,"endCursor":"c1"}}}}"#
+        let transport = StubTransport([.data(page), .data(page), .data(page)])
+        let github = GitHubPullRequests(repository: Self.repo, transport: transport) { _ in "t" }
+        await #expect(throws: PullRequestError.malformed("branchProtectionRules の次のページを追えない")) {
+            try await github.branchProtectionRules()
+        }
+        #expect(transport.requests.count == 2)
     }
 }

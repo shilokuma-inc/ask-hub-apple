@@ -48,6 +48,10 @@ public actor ProtectionWatch {
         for repo in repositories where isDue(repo) {
             do {
                 try await check(repo)
+            } catch PullRequestError.rateLimited(let wait) {
+                // 上限はアカウントで数えるので、ほかのリポジトリも続けて読まない。残りは次の生きている印のときに確かめる
+                log("保護のずれを確かめる途中で GitHub の上限に当たった（\(wait.components.seconds) 秒）。残りは次の生きている印のときに確かめる")
+                return
             } catch {
                 log("\(repo) の保護のずれを確かめられない（\(error)）。次に確かめるときにやり直す")
             }
@@ -71,24 +75,35 @@ public actor ProtectionWatch {
             github: github(repo), requiredChecks: file.protection.requiredChecks ?? ProtectionPolicy.defaultRequiredChecks
         )
         guard problems != (file.protection.drift?.problems ?? []) else { return false }
-        try await write(problems.isEmpty ? nil : .init(foundAt: context.timestamp, problems: problems), for: repo)
+        let drift = problems.isEmpty ? nil : ProtectionDrift(foundAt: context.timestamp, problems: problems)
+        guard try await write(drift, for: repo, checked: file.protection) else { return false }
         log(problems.isEmpty ? "\(repo) の保護のずれが無くなった" : "\(repo) の保護がずれている: \(problems.joined(separator: "・"))")
         return true
     }
 
-    /// ずれを書く。保護を掛けていない（掛け直す前に外れた）・同じずれなら書かない
-    nonisolated private func write(_ drift: ProtectionDrift?, for repo: RepositoryFullName) async throws(CommanderError) {
+    /// ずれを書く。書いたら true。点検を始めた後に掛け直された（掛けた時刻か必須のチェックが変わった）・対象から外した・
+    /// 同じずれなら書かない（古い設定と比べた結果を、新しい設定に書かない）
+    nonisolated private func write(
+        _ drift: ProtectionDrift?,
+        for repo: RepositoryFullName,
+        checked: RepositoryFile.Protection
+    ) async throws(CommanderError) -> Bool {
         let path = StatePath.repository(repo)
-        try await context.writingResult { () throws(CommanderError) in
+        return try await context.writingResult { () throws(CommanderError) -> Bool in
+            var written = false
             do throws(StateFileStore.Failure) {
                 try await context.files.update(RepositoryFile.self, at: path, message: "\(repo) の保護のずれを書く") { file in
-                    guard file.protection.appliedAt != nil, file.protection.drift?.problems != drift?.problems else { return false }
+                    guard !file.isRemoved, file.protection.appliedAt == checked.appliedAt,
+                          file.protection.requiredChecks == checked.requiredChecks,
+                          file.protection.drift?.problems != drift?.problems else { return false }
                     file.protection.drift = drift
+                    written = true
                     return true
                 }
             } catch {
                 throw .files(error)
             }
+            return written
         }
     }
 
@@ -104,7 +119,7 @@ public actor ProtectionWatch {
         let defaultBranch = try await github.repositorySettings().defaultBranch
         for summary in others {
             let ruleset = try await github.ruleset(id: summary.id)
-            if ProtectionRules.overlaps(ruleset: ruleset, defaultBranch: defaultBranch) {
+            if ProtectionRules.coverage(ruleset: ruleset, defaultBranch: defaultBranch) != .disjoint {
                 problems.append("ほかのルールセット \(summary.name) が重なっている")
             }
         }

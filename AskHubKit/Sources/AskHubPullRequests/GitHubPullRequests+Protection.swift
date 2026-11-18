@@ -58,15 +58,20 @@ extension GitHubPullRequests {
     public func branchProtectionRules() async throws(PullRequestError) -> [BranchProtectionRule] {
         var rules: [BranchProtectionRule] = []
         var after: String?
-        repeat {
+        var seenCursors: Set<String> = []
+        for _ in 0..<GitHubAPI.maxPages {
             let variables = ProtectionRulesVariables(owner: repository.owner, name: repository.name, after: after)
             let response = try await api.graphQL(Self.protectionRulesQuery, variables: variables, as: ProtectionRulesData.self)
             guard let connection = response.repository?.branchProtectionRules else { throw .notFound }
             rules += connection.nodes.compactMap { $0.map { BranchProtectionRule(id: $0.id, pattern: $0.pattern) } }
-            after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : nil
-            guard rules.count <= 100 * GitHubAPI.maxPages else { throw .malformed("branchProtectionRules が多すぎる") }
-        } while after != nil
-        return rules
+            guard connection.pageInfo.hasNextPage else { return rules }
+            // 次のページがあるのにカーソルが無い・同じカーソルがまた出たら、一覧を最後まで追えないので失敗にする
+            guard let cursor = connection.pageInfo.endCursor, seenCursors.insert(cursor).inserted else {
+                throw .malformed("branchProtectionRules の次のページを追えない")
+            }
+            after = cursor
+        }
+        throw .malformed("branchProtectionRules のページが \(GitHubAPI.maxPages) を超えた")
     }
 
     /// クラシックのブランチ保護の規則を消す
