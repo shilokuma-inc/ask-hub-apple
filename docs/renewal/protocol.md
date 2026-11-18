@@ -43,7 +43,7 @@ repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json  試行（実行した
 repos/<owner>/<repo>/releases/<版>.json             App Store で配信した版と、その後作業の進み具合（司令塔）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
 commander.json                                     司令塔の生きている印（司令塔）
-notifications.json                                 進行を止めるものを知らせた記録（司令塔）
+notifications.json                                 進行を止めるもの・止めないもの（実機確認）を知らせた記録（司令塔）
 devices/<device>.json                              通知の宛先（その端末のクライアント）
 keys/<seq>.json                                    公開鍵の追記の記録（クライアント。署名つき）
 intents/<device>/<intent>.json                     人の意図（クライアント。署名つき）
@@ -582,7 +582,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - Android を足すときに、`platform` と `push.service`（FCM）を足す
 - 司令塔は、ファイルの名前と `device` が合い、確かめた公開鍵の一覧にある（登録済みで取り消していない）端末にだけ送る
 
-### notifications.json（進行を止めるものを知らせた記録）
+### notifications.json（進行を止めるもの・止めないものを知らせた記録）
 
 ```json
 {
@@ -607,9 +607,10 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   | ジョブを持った Mac が戻らない | `mac/<mac>/<その Mac の seenAt>` |
   | リリース文の確認と公開を待っている | `release/<owner>/<repo>/<版>/<notes の version>` |
   | 配信した版の後作業が、人が直すまで進まない | `release/<owner>/<repo>/<版>/problem/<段取り>/<problem の at>` |
+  | マージした epic の実機確認に、まだ答えていない項目がある（止めないもの。決めた時刻にまとめて送る） | `verification/<owner>/<repo>/<epic>` |
 
 - どの端末にも送れなかった出来事は、記録から外して送り直す。終わった出来事の記録は、7 日たってから消す
-- 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`）。APNs の `thread-id` は epic の id か `mac/<mac>`、`apns-collapse-id` はまとめた出来事の key から決める
+- 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`。実機確認のまとめは、epic が 1 つならその epic、いくつもあれば `{}`）。APNs の `thread-id` は epic の id か `mac/<mac>`（実機確認のまとめは `verification`）、`apns-collapse-id` はまとめた出来事の key から決める
 
 ## 各リポジトリに書く目印
 
