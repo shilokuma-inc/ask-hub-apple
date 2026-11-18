@@ -8,6 +8,7 @@ import Foundation
 /// - マージの規則で人の確認が要る最終 PR（見える仮決めがある・レビューがマージの規則の材料を返した）は、同じ head への人の承認（`approveMerge`）を
 ///   元にしたジョブでだけマージする。司令塔の取り違えで、人の確認を飛ばさないよう、ワーカーでも確かめる
 /// - マージしたら作業ブランチを消す（マージの後に push されていれば残す）
+/// - 動いている間に epic をやめたら、マージしない（マージの直前に epic を読み直す）
 public struct MergeFinalPullRequestRunner: JobRunning {
     public var environment: FinalJobEnvironment
 
@@ -43,6 +44,10 @@ public struct MergeFinalPullRequestRunner: JobRunning {
             throw .fail(.unexpected, "最終 PR #\(input.pullRequest) の head が、マージする head（\(input.head)）から動いた（\(pull.headSHA)）")
         }
         try await checkApproval(job, input: input)
+        // 取り下げ（`abandonEpic`）は、このジョブが動いている間にも届く。マージの直前に epic を読み直し、やめていればマージせずに終える
+        guard try await environment.tasks.read(EpicFile.self, at: StatePath.epic(job.repo, job.epic))?.stage != .abandoned else {
+            throw .finish(JobResult())
+        }
         let merge = try await environment.tasks.github("最終 PR をマージする") { () throws(PullRequestError) in
             try await pulls.merge(number: input.pullRequest, headSHA: input.head, commitTitle: nil, commitMessage: nil)
         }
