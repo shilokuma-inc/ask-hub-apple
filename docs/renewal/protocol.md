@@ -44,7 +44,7 @@ repos/<owner>/<repo>/releases/<版>.json             App Store で配信した�
 repos/<owner>/<repo>/submissions/<版>.json          リリースを始めた版の準備と審査（司令塔）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
 commander.json                                     司令塔の生きている印（司令塔）
-notifications.json                                 進行を止めるものを知らせた記録（司令塔）
+notifications.json                                 進行を止めるもの・止めないもの（実機確認）を知らせた記録（司令塔）
 devices/<device>.json                              通知の宛先（その端末のクライアント）
 keys/<seq>.json                                    公開鍵の追記の記録（クライアント。署名つき）
 intents/<device>/<intent>.json                     人の意図（クライアント。署名つき）
@@ -201,7 +201,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `abandoned` | やめた | — |
 
 開始する前の段階（`drafting`〜`awaitingStart`）からは、人の取り下げ（`abandonEpic`）か、先に進めなくなるジョブを人がやめたとき（`giveUp`）にも `abandoned` になる。
-開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げで `abandoned` になる。開いている子 PR と最終 PR は閉じ、作業ブランチと子ブランチは残す（2026-11-12 に決めた。[flows.md](flows.md) の「開始した後の取り下げ」）。実装・最終 PR の段取りのジョブを人がやめたときも同じにする（段階 4 の 3 で作る）
+開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げか、実装・最終 PR の段取りのジョブを人がやめたときに `abandoned` になる。開いている子 PR と最終 PR は閉じ、作業ブランチと子ブランチは残す（2026-11-12 に決めた。[flows.md](flows.md) の「開始した後の取り下げ」）
 
 ### readiness.json（最後の着手前の確認の結果）
 
@@ -634,7 +634,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - Android を足すときに、`platform` と `push.service`（FCM）を足す
 - 司令塔は、ファイルの名前と `device` が合い、確かめた公開鍵の一覧にある（登録済みで取り消していない）端末にだけ送る
 
-### notifications.json（進行を止めるものを知らせた記録）
+### notifications.json（進行を止めるもの・止めないものを知らせた記録）
 
 ```json
 {
@@ -659,9 +659,10 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   | ジョブを持った Mac が戻らない | `mac/<mac>/<その Mac の seenAt>` |
   | リリース文の確認と公開を待っている | `release/<owner>/<repo>/<版>/<notes の version>` |
   | 配信した版の後作業が、人が直すまで進まない | `release/<owner>/<repo>/<版>/problem/<段取り>/<problem の at>` |
+  | マージした epic の実機確認に、まだ答えていない項目がある（止めないもの。決めた時刻にまとめて送る） | `verification/<owner>/<repo>/<epic>` |
 
 - どの端末にも送れなかった出来事は、記録から外して送り直す。終わった出来事の記録は、7 日たってから消す
-- 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`）。APNs の `thread-id` は epic の id か `mac/<mac>`、`apns-collapse-id` はまとめた出来事の key から決める
+- 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`。実機確認のまとめは、epic が 1 つならその epic、いくつもあれば `{}`）。APNs の `thread-id` は epic の id か `mac/<mac>`（実機確認のまとめは `verification`）、`apns-collapse-id` はまとめた出来事の key から決める
 
 ## 各リポジトリに書く目印
 
@@ -725,7 +726,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始した後の epic も受け付け、開いている子 PR と最終 PR を閉じる（ブランチは残す）。マージした epic は断る |
-| `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
+| `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`）。やめたときの扱い（epic ごとやめる・ジョブだけやめる・撮らずに進む）はジョブの種類で決まる（`JobKind.giveUpEffect`。[flows.md](flows.md) の「司令塔の動き」） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |

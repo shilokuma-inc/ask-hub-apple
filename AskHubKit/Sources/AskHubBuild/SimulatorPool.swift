@@ -29,7 +29,21 @@ public struct SimulatorPool: Sendable {
 
     /// ワーカーが作った Simulator の名前か（`askhub-worker-<数字>-` で始まり、英数字・`.`・`-` だけ）
     public static func isWorkerName(_ name: String) -> Bool {
-        name.wholeMatch(of: #/askhub-worker-[0-9]+-[A-Za-z0-9.\-]+/#) != nil
+        slot(of: name) != nil
+    }
+
+    /// ワーカーが作った Simulator の名前の、枠の番号。ワーカーが作った名前でなければ nil
+    static func slot(of name: String) -> Int? {
+        name.wholeMatch(of: #/askhub-worker-([0-9]+)-[A-Za-z0-9.\-]+/#).flatMap { Int($0.1) }
+    }
+
+    /// 動いているループに属さないワーカーの Simulator か（`docs/renewal/operations.md` の「容量」）。
+    /// 枠の数 `slots` を超えた番号の枠のもの・ランタイムが無くなったもの・最後に使ってから `unusedFor` たったもの。
+    /// 最後に使った時刻が分からないもの（書かない Xcode もある）は、日数では決めない。人が作った Simulator は当たらない
+    public static func isStray(_ simulator: Simulator, slots: Int, now: Date, unusedFor: TimeInterval) -> Bool {
+        guard let slot = slot(of: simulator.name) else { return false }
+        if slot >= slots || !simulator.isAvailable { return true }
+        return simulator.lastUsedAt.map { now.timeIntervalSince($0) >= unusedFor } ?? false
     }
 
     /// 英数字と `.` のほかを `-` にし、続く `-` を 1 つにまとめる（`iPad Pro 13-inch (M5)` → `iPad-Pro-13-inch-M5`）
@@ -126,8 +140,19 @@ public struct SimulatorPool: Sendable {
     /// 枠に属さないワーカーの Simulator（`keeping` に名前が無いもの）を消す。人が作った Simulator には触れない。
     /// 1 台を消せなくても残りは続け、消せなかったものは `failures` に入れる
     public func removeStray(keeping: Set<String>) async throws(SimulatorError) -> StraySimulators {
+        await remove(try await workerSimulators().filter { !keeping.contains($0.name) })
+    }
+
+    /// 動いているループに属さないワーカーの Simulator（`isStray`）を消す（見回り）。人が作った Simulator には触れない。
+    /// 枠の Simulator を使っているジョブがある間は呼ばない（呼ぶ側がビルドの枠をすべて借りてから呼ぶ）
+    public func removeStray(slots: Int, now: Date, unusedFor: TimeInterval) async throws(SimulatorError) -> StraySimulators {
+        await remove(try await workerSimulators().filter { Self.isStray($0, slots: slots, now: now, unusedFor: unusedFor) })
+    }
+
+    /// 止めてから消す。1 台を消せなくても残りは続け、消せなかったものは `failures` に入れる
+    private func remove(_ simulators: [Simulator]) async -> StraySimulators {
         var sweep = StraySimulators()
-        for simulator in try await workerSimulators() where !keeping.contains(simulator.name) {
+        for simulator in simulators {
             do {
                 try await delete(simulator)
                 sweep.removed.append(simulator)
