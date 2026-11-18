@@ -85,8 +85,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
     "requiredChecks": ["build / build"],
     "rulesetId": 26926767,
     "replaced": [{ "kind": "classic", "name": "develop" }],
-    "remaining": [],
-    "drift": null
+    "remaining": [{ "kind": "classic", "name": "*", "reason": "守るブランチのほかにも掛かるので外さなかった" }]
   },
   "build": {
     "baseBranch": "develop",
@@ -114,8 +113,8 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - 対象から外した（`removeRepository`）リポジトリの `repo.json` は消さず、外した印（外した時刻と意図。欄の名前と形は段階 4 の 4 で決めて、ここに書く）を付けて残す。印のあるリポジトリへの依頼・開始・ビルドの設定は断り、もう一度 `addRepository` すると印を外す（[operations.md](operations.md) の「対象から外す」）
 - `protection`: ブランチの保護（ルールセット `askhub-protect`。[operations.md](operations.md) の「保護の設定」）。司令塔が保護の設定（`applyProtection`）を処理して書き、掛けた後のずれを点検して `drift` を書く。まだ掛けていなければ `appliedAt` が無い
   - `requiredChecks`: 必須にしたチェックの名前（`applyProtection` の `requiredChecks`）。`rulesetId`: 掛けたルールセットの id
-  - `replaced`・`remaining`: 掛けたときに外した・外せずに残った、重なる保護（`{ "kind": "classic" | "ruleset" | "organizationRuleset", "name" }`。`classic` の `name` はパターン）
-  - `drift`: 掛けた後のずれ（`{ "foundAt", "problems": [人が読む文] }`）。ずれていなければ `null`。ずれの中身が変わったときだけ書き直す
+  - `replaced`・`remaining`: 掛けたときに外した、守る範囲（develop・main・`release/` の下）に収まる保護と、外さずに残した重なる保護（`{ "kind": "classic" | "ruleset" | "organizationRuleset", "name", "reason" }`。`classic` の `name` はパターン。`reason` は残したわけで、`remaining` だけに書く）。守る範囲の外も守るもの・外せなかったもの・organization のルールセットは残す
+  - `drift`: 掛けた後のずれ（`{ "foundAt", "problems": [人が読む文。1 つ 500 文字まで] }`）。ずれていなければ `drift` を書かない（`null` も同じに読む）。ずれの中身が変わったときだけ書き直す
 - `setup`: 対象に加えるときの GitHub 側の準備の結果（[operations.md](operations.md) の「対象に加えるときの GitHub 側の準備」）。司令塔が `addRepository` を処理したとき（加え直したときも）に、管理用のトークンで流して書く。まだ流していなければ `null`
   - `updatedAt`: 流した時刻。`problems`: 準備を止めた・できなかった理由（人が読む文。管理用のトークンが無い など）。無ければ `null`
   - `discussions`: `ready`（Discussions が有効でカテゴリ「Ideas」がある）・`missingCategory`（「Ideas」が無い。人が作る）・`unknown`（有効にできない・確かめられない）
@@ -730,7 +729,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
-| `applyProtection` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `requiredChecks`（必須にするチェックの名前。1〜20 個・重ならない。`payloads/applyProtection.schema.json`）。司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛けてから重なる保護を外し、`repo.json` の `protection` を書く。管理用のトークンが無い・private のリポジトリなどは理由を付けて断る |
+| `applyProtection` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `requiredChecks`（必須にするチェックの名前。1〜20 個・重ならない・空白だけの名前と制御文字（改行など）を含む名前は受け付けない。スキーマでは表せないので読む側が断る。`payloads/applyProtection.schema.json`）。司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛けてから重なる保護を外し、`repo.json` の `protection` を書く。管理用のトークンが無い・private のリポジトリなどは理由を付けて断る |
 | `approveSetupPullRequest` | 準備の PR（`{ "type": "setupPullRequest", "id": "<PR の番号>" }`。封筒の `repo` が対象のリポジトリ） | 人が見たときの PR の head のコミット（`repo.json` の `setup.workflows.head`） | 空（`payloads/approveSetupPullRequest.schema.json`）。司令塔が出した開いた準備の PR で、head が変わっていないときだけ、管理用のトークンで merge commit にする |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
 | `startRelease` | リポジトリ（封筒の `repo`） | — | `version`（始める版。`payloads/startRelease.schema.json`）。対象のリポジトリで、終わっていないリリース（`submissions/` の `end` の無い記録）が無く、配信した版（`releases/`）より大きいときだけ受け付ける。やめた版は始め直せる |

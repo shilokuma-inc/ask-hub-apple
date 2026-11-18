@@ -5,7 +5,9 @@
     {
       "name": "build",
       "payload": {
-        "requiredChecks": ["build / build"]
+        "requiredChecks": [
+          "build / build"
+        ]
       },
       "schemaValid": true,
       "read": "valid"
@@ -13,7 +15,10 @@
     {
       "name": "several-checks",
       "payload": {
-        "requiredChecks": ["build / build", "ui-test / ui-test"]
+        "requiredChecks": [
+          "build / build",
+          "ui-test / ui-test"
+        ]
       },
       "schemaValid": true,
       "read": "valid"
@@ -35,7 +40,10 @@
     {
       "name": "repeated-checks",
       "payload": {
-        "requiredChecks": ["build / build", "build / build"]
+        "requiredChecks": [
+          "build / build",
+          "build / build"
+        ]
       },
       "schemaValid": false,
       "read": "malformed"
@@ -43,7 +51,9 @@
     {
       "name": "empty-check-name",
       "payload": {
-        "requiredChecks": [""]
+        "requiredChecks": [
+          ""
+        ]
       },
       "schemaValid": false,
       "read": "malformed"
@@ -51,15 +61,49 @@
     {
       "name": "check-not-string",
       "payload": {
-        "requiredChecks": [1]
+        "requiredChecks": [
+          1
+        ]
       },
       "schemaValid": false,
       "read": "malformed"
     },
     {
+      "name": "whitespace-check-name",
+      "payload": {
+        "requiredChecks": [
+          " "
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "check-name-with-newline",
+      "payload": {
+        "requiredChecks": [
+          "build\n"
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "matrix-check-name",
+      "payload": {
+        "requiredChecks": [
+          "test (macOS, debug)"
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "unknown-field",
       "payload": {
-        "requiredChecks": ["build / build"],
+        "requiredChecks": [
+          "build / build"
+        ],
         "bypass": true
       },
       "schemaValid": false,

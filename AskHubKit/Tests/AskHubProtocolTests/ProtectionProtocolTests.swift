@@ -71,7 +71,7 @@ struct ProtectionProtocolTests {
 
     @Test func policyProtectsDevelopMainAndReleaseBranches() {
         #expect(ProtectionPolicy.rulesetName == "askhub-protect")
-        #expect(ProtectionPolicy.branches == ["develop", "main", "release/**"])
+        #expect(ProtectionPolicy.branches == ["develop", "main", "release/**/*"])
         #expect(ProtectionPolicy.defaultRequiredChecks == ["build / build"])
         #expect(ProtectionPolicy.problems(ofRequiredChecks: ProtectionPolicy.defaultRequiredChecks).isEmpty)
     }
@@ -86,7 +86,10 @@ struct ProtectionProtocolTests {
         #expect(protection.requiredChecks == ["build / build"])
         #expect(protection.rulesetId == 26_926_767)
         #expect(protection.replaced == [.init(kind: .classic, name: "develop"), .init(kind: .ruleset, name: "protect-develop")])
-        #expect(protection.remaining == [.init(kind: .organizationRuleset, name: "org-default")])
+        #expect(protection.remaining == [
+            .init(kind: .organizationRuleset, name: "org-default", reason: "organization のルールセットは、リポジトリの側からは外せない"),
+            .init(kind: .classic, name: "*", reason: "守るブランチのほかにも掛かるので外さなかった")
+        ])
         #expect(protection.drift?.problems == ["必須のチェックが変わった（今は 無し）"])
         #expect(protection.drift?.foundAt.rawValue == "2026-11-14T04:00:00Z")
     }
@@ -117,5 +120,14 @@ struct ProtectionProtocolTests {
         ] {
             #expect(throws: MalformedIntent.self) { try ApproveSetupPullRequestIntent(envelope: make(target, version)) }
         }
+    }
+
+    /// 非常口の `--checks` は、かっこの中のカンマでは分けず、空の名前があれば読まない
+    @Test func readsCheckListKeepingMatrixNames() {
+        #expect(ProtectionPolicy.checks(fromList: "build / build, test (macOS, debug)") == ["build / build", "test (macOS, debug)"])
+        #expect(ProtectionPolicy.checks(fromList: "build") == ["build"])
+        #expect(ProtectionPolicy.checks(fromList: "build,,lint") == nil)
+        #expect(ProtectionPolicy.checks(fromList: ",build") == nil)
+        #expect(ProtectionPolicy.checks(fromList: "build,") == nil)
     }
 }

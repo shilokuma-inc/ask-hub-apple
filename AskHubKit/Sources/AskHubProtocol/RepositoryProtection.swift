@@ -2,13 +2,14 @@ import Foundation
 
 /// 司令塔が掛けるブランチの保護（ルールセット）の決まり（`docs/renewal/security.md` の「ブランチ保護」）。
 ///
-/// develop・main・`release/**` に、PR 必須・必須のチェック・force push と削除の禁止を、例外なしで掛ける。
+/// develop・main・`release/` の下のすべてのブランチに、PR 必須・必須のチェック・force push と削除の禁止を、例外なしで掛ける。
 /// 人がクライアントで「保護の設定」を押したとき（`applyProtection`）だけ、司令塔が管理用のトークンで掛ける
 public enum ProtectionPolicy {
     /// ルールセットの名前。同じ名前のリポジトリのルールセットがあれば、置き換える
     public static let rulesetName = "askhub-protect"
-    /// 守るブランチ（ルールセットの `refs/heads/` の後ろ。`**` は `/` をまたぐ）
-    public static let branches = ["develop", "main", "release/**"]
+    /// 守るブランチ（ルールセットの `refs/heads/` の後ろ）。GitHub のパターン（`File::FNM_PATHNAME`）では、末尾の `**` は `/` をまたがず
+    /// `**/` だけがまたぐので、`release/` の下を深さによらず守るには `release/**/*` にする（`release/1.0` も `release/mobile/1.0` も合う）
+    public static let branches = ["develop", "main", "release/**/*"]
     /// 必須のチェックの既定（ビルドの設定の `childChecks` が無いとき）
     public static let defaultRequiredChecks = ["build / build"]
     /// 必須のチェックを出してよいアプリ（GitHub Actions）。ほかのアプリや commit status で同じ名前を出しても通らない
@@ -17,6 +18,29 @@ public enum ProtectionPolicy {
     public static let maxRequiredChecks = 20
     /// チェックの名前の長さの上限（Unicode のコードポイント）
     public static let maxCheckNameLength = 200
+
+    /// カンマ区切りの必須のチェックの名前（非常口の `--checks`）。かっこの中のカンマでは分けない（行列のジョブの名前
+    /// `test (macOS, debug)` を 1 つの名前のままにする）。前後の空白は除く。空の名前があれば nil（打ち間違いを黙って捨てない）
+    public static func checks(fromList text: String) -> [String]? {
+        var checks: [String] = []
+        var current = ""
+        var depth = 0
+        for character in text {
+            switch character {
+            case "(": depth += 1
+            case ")": depth = max(depth - 1, 0)
+            case "," where depth == 0:
+                checks.append(current)
+                current = ""
+                continue
+            default: break
+            }
+            current.append(character)
+        }
+        checks.append(current)
+        let trimmed = checks.map { $0.trimmingCharacters(in: .whitespaces) }
+        return trimmed.contains(where: \.isEmpty) ? nil : trimmed
+    }
 
     /// 必須のチェックの名前の並びの問題。1 つ以上・重ならない・空でない・制御文字を含まない・長すぎない
     public static func problems(ofRequiredChecks checks: [String]) -> [String] {
