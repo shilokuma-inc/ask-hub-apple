@@ -149,6 +149,60 @@
       },
       "schemaValid": false,
       "read": "malformed"
+    },
+    {
+      "name": "id-with-newline",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "candidates": [
+          {
+            "id": "0123456789abcdef\n",
+            "kind": "clone",
+            "name": "a",
+            "location": "~/a",
+            "bytes": 1
+          }
+        ],
+        "handled": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "nulls-as-unset",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "scannedAt": null,
+        "candidates": [
+          {
+            "id": "0123456789abcdef",
+            "kind": "clone",
+            "name": "a",
+            "location": "~/a",
+            "bytes": 1,
+            "lastUsedAt": null,
+            "caution": null
+          }
+        ],
+        "unreadable": null,
+        "handled": [
+          {
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "action": "find",
+            "at": "2026-11-18T10:05:00Z",
+            "removed": null,
+            "skipped": null,
+            "problem": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
     }
   ]
 }

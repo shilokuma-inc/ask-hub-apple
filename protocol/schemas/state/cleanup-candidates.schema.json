@@ -4,56 +4,190 @@
   "title": "cleanup/<mac>/candidates.json（片付けの候補と、頼みを済ませた記録）",
   "description": "その Mac のワーカーだけが書く。候補は、ワーカーが作っていないもの（人が作った clone・Simulator・Xcode の DerivedData）。消すのは、人が選んで消す意図を送ったものだけ",
   "type": "object",
-  "required": ["v", "mac", "candidates", "handled"],
+  "required": [
+    "v",
+    "mac",
+    "candidates",
+    "handled"
+  ],
   "additionalProperties": false,
   "$defs": {
-    "candidateId": { "type": "string", "pattern": "^[0-9a-f]{16}$" }
+    "candidateId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "maxLength": 16
+    }
   },
   "properties": {
-    "v": { "const": 1 },
-    "mac": { "$ref": "../common.schema.json#/$defs/macName" },
-    "scannedAt": { "$ref": "../common.schema.json#/$defs/timestamp", "description": "最後に探し終えた時刻。まだ探していなければ書かない" },
+    "v": {
+      "const": 1
+    },
+    "mac": {
+      "$ref": "../common.schema.json#/$defs/macName"
+    },
+    "scannedAt": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "最後に探し終えた時刻。まだ探していなければ書かない"
+    },
     "candidates": {
       "type": "array",
       "maxItems": 200,
       "items": {
         "type": "object",
-        "required": ["id", "kind", "name", "location", "bytes"],
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "location",
+          "bytes"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "$ref": "#/$defs/candidateId" },
-          "kind": { "enum": ["clone", "simulator", "derivedData"] },
-          "name": { "type": "string", "minLength": 1 },
-          "location": { "type": "string", "minLength": 1, "description": "clone と DerivedData はホームからのパス（~/…）、Simulator は UDID" },
-          "bytes": { "type": "integer", "minimum": 0 },
-          "lastUsedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
-          "caution": { "type": "string", "minLength": 1, "description": "消せない理由（未コミット・未 push・stash・起動中など）。あれば消さない" }
+          "id": {
+            "$ref": "#/$defs/candidateId"
+          },
+          "kind": {
+            "enum": [
+              "clone",
+              "simulator",
+              "derivedData"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1,
+            "description": "clone と DerivedData はホームからのパス（~/…）、Simulator は UDID"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastUsedAt": {
+            "anyOf": [
+              {
+                "$ref": "../common.schema.json#/$defs/timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "caution": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "消せない理由（未コミット・未 push・stash・起動中など）。あれば消さない"
+          }
         }
       }
     },
-    "unreadable": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "探せなかった場所（ホームからのパス）" },
+    "unreadable": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "探せなかった場所（ホームからのパス）"
+    },
     "handled": {
       "type": "array",
       "maxItems": 20,
       "items": {
         "type": "object",
-        "required": ["intent", "action", "at"],
+        "required": [
+          "intent",
+          "action",
+          "at"
+        ],
         "additionalProperties": false,
         "properties": {
-          "intent": { "$ref": "../common.schema.json#/$defs/intentReference" },
-          "action": { "enum": ["find", "remove"] },
-          "at": { "$ref": "../common.schema.json#/$defs/timestamp" },
-          "removed": { "type": "array", "items": { "$ref": "#/$defs/candidateId" } },
-          "skipped": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["id", "reason"],
-              "additionalProperties": false,
-              "properties": { "id": { "$ref": "#/$defs/candidateId" }, "reason": { "type": "string", "minLength": 1 } }
-            }
+          "intent": {
+            "$ref": "../common.schema.json#/$defs/intentReference"
           },
-          "problem": { "type": "string", "minLength": 1 }
+          "action": {
+            "enum": [
+              "find",
+              "remove"
+            ]
+          },
+          "at": {
+            "$ref": "../common.schema.json#/$defs/timestamp"
+          },
+          "removed": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/candidateId"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "reason"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "$ref": "#/$defs/candidateId"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
         }
       }
     }

@@ -86,6 +86,26 @@
       },
       "schemaValid": false,
       "read": "unsupportedVersion"
+    },
+    {
+      "name": "find-with-nulls",
+      "value": {
+        "v": 1,
+        "requests": [
+          {
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "action": "find",
+            "candidates": null,
+            "scannedAt": null,
+            "acceptedAt": "2026-11-18T10:00:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
     }
   ]
 }
