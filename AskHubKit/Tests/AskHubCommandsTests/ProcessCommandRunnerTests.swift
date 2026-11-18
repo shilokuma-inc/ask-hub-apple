@@ -7,6 +7,10 @@ import Testing
 struct ProcessCommandRunnerTests {
     private let runner = ProcessCommandRunner()
 
+    /// 猶予まで待たずに戻ったとみなす上限。ふだんは 2 秒ほどで戻るが、負荷の高い CI ではテストのプロセスごと十数秒止まることがある
+    /// （2026-11-18 の CI では、その間に流れていた計算だけのテストまで 16〜19 秒かかり、このテストは 20.5 秒かかった）
+    private static let returnLimit: Duration = .seconds(60)
+
     private func makeDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("askhub-commands-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -79,15 +83,19 @@ struct ProcessCommandRunnerTests {
     @Test func interruptLetsCommandFinishWithoutWaitingForGrace() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        // SIGINT で後片付けして終わるコマンドは、SIGTERM の猶予まで待たない
+        // SIGINT で後片付けして終わるコマンドは、SIGTERM の猶予まで待たない。
+        // 猶予は上限の倍にして、プロセスが止まって遅れても上限を超えず、猶予まで待ったときだけ超えるようにする
         var command = shell("trap 'echo cleaned; exit 0' INT; while true; do sleep 0.1; done", in: directory, timeout: .seconds(2))
-        command.interruptGrace = .seconds(20)
-        command.terminateGrace = .seconds(20)
+        command.interruptGrace = Self.returnLimit * 2
+        command.terminateGrace = Self.returnLimit * 2
         let started = ContinuousClock.now
         let result = try await runner.run(command)
         #expect(result.timedOut)
+        // trap の exit 0 で終わった（SIGTERM・SIGKILL で止めていない）
+        #expect(result.status == 0)
+        #expect(!result.terminatedBySignal)
         #expect(String(bytes: result.standardOutput, encoding: .utf8)?.contains("cleaned") == true)
-        #expect(ContinuousClock.now - started < .seconds(15))
+        #expect(ContinuousClock.now - started < Self.returnLimit)
     }
 
     @Test func cancellationStopsCommandAndDescendants() async throws {
