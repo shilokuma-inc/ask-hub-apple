@@ -59,15 +59,18 @@ public struct AppStoreVersionChange: Equatable, Sendable {
         self.buildID = buildID
     }
 
-    /// 本文の attributes（`versionString`・`releaseType`・`earliestReleaseDate`）
-    var attributes: [String: Any] {
-        var date: Any = NSNull()
+    /// 本文の attributes（`versionString`・`releaseType`・`earliestReleaseDate`）。`clearsDate` なら、日時を使わない方式で null を送って消す
+    /// （直すとき。作るときは送らない）
+    func attributes(clearsDate: Bool) -> [String: Any] {
+        var attributes: [String: Any] = ["versionString": version.rawValue, "releaseType": releaseType.appStoreConnectValue]
         if releaseType == .scheduled, let earliestReleaseDate {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime]
-            date = formatter.string(from: earliestReleaseDate)
+            attributes["earliestReleaseDate"] = formatter.string(from: earliestReleaseDate)
+        } else if clearsDate {
+            attributes["earliestReleaseDate"] = NSNull()
         }
-        return ["versionString": version.rawValue, "releaseType": releaseType.appStoreConnectValue, "earliestReleaseDate": date]
+        return attributes
     }
 }
 
@@ -260,7 +263,7 @@ extension AppStoreConnectClient: AppStoreConnectSubmitting {
         try Self.checkID(change.buildID)
         let body = try Self.document(
             "appStoreVersions",
-            attributes: change.attributes.merging(["platform": platform.appStoreConnectValue]) { current, _ in current },
+            attributes: change.attributes(clearsDate: false).merging(["platform": platform.appStoreConnectValue]) { current, _ in current },
             relationships: ["app": ("apps", appID), "build": ("builds", change.buildID)]
         )
         let data = try await send("POST", "v1/appStoreVersions", body: body)
@@ -280,7 +283,10 @@ extension AppStoreConnectClient: AppStoreConnectSubmitting {
         try Self.checkID(versionID)
         try Self.checkID(change.buildID)
         let body = try Self.document(
-            "appStoreVersions", id: versionID, attributes: change.attributes, relationships: ["build": ("builds", change.buildID)]
+            "appStoreVersions",
+            id: versionID,
+            attributes: change.attributes(clearsDate: true),
+            relationships: ["build": ("builds", change.buildID)]
         )
         _ = try await send("PATCH", "v1/appStoreVersions/\(versionID)", body: body)
     }

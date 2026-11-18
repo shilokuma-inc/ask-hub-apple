@@ -24,8 +24,10 @@ extension ReleaseWatch {
         for version in versions {
             guard let file = try? await context.readable(SubmissionFile.self, at: StatePath.submission(repo, version)) else { continue }
             guard !file.isEnded else {
-                // 配信の知らせを出し続ける間は返す（進めることは無い）
-                if file.end?.reason == .distributed { advanced.append(file) }
+                // 配信した版は、release ブランチを main と develop に取り込み、配信の知らせを出し続ける間は返す
+                guard file.end?.reason == .distributed else { continue }
+                let bases = Self.integrationBases(settings)
+                advanced.append(file.awaitsIntegration(bases: bases) ? await integrate(file, settings: settings) : file)
                 continue
             }
             var progressed = await performRequests(file, settings: settings)
@@ -250,8 +252,8 @@ extension ReleaseWatch {
         return try await context.writingResult { () throws(CommanderError) -> SubmissionFile in
             do throws(StateFileStore.Failure) {
                 return try await context.files.update(SubmissionFile.self, at: path, message: message) { file in
-                    // やめた後に進めたものは書かない
-                    guard !file.isEnded else { return false }
+                    // やめた後に進めたものは書かない（配信した後の取り込みのほか）
+                    guard !file.isEnded || (step == .integration && file.end?.reason == .distributed) else { return false }
                     let before = file
                     Self.merge(changed, into: &file, step: step)
                     if file.problem?.step == step { file.problem = nil }
@@ -284,6 +286,8 @@ extension ReleaseWatch {
             }
         case .submit, .distribute, .withdraw, .review:
             mergeRequests(changed, into: &file, step: step)
+        case .integration:
+            file.integration = changed.integration
         }
     }
 
@@ -321,7 +325,7 @@ extension ReleaseWatch {
         return try await context.writingResult { () throws(CommanderError) -> SubmissionFile in
             do throws(StateFileStore.Failure) {
                 return try await context.files.update(SubmissionFile.self, at: path, message: message) { file in
-                    guard !file.isEnded else { return false }
+                    guard !file.isEnded || problem.step == .integration else { return false }
                     // 人が直す問題がほかの区切りに残っていれば、先に書いたほうを残す
                     if let current = file.problem, current.needsHuman, current.step != problem.step { return false }
                     if let current = file.problem, current.step == problem.step, current.needsHuman == problem.needsHuman,
