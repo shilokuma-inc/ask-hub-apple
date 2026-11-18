@@ -25,10 +25,13 @@ public struct ExistingProtection: Codable, Equatable, Sendable {
 
     public var kind: Kind
     public var name: String
+    /// 残したわけ（`remaining` だけ。ほかのブランチも守る・外せなかった など、人が読む文）。無ければ nil
+    public var reason: String?
 
-    public init(kind: Kind, name: String) {
+    public init(kind: Kind, name: String, reason: String? = nil) {
         self.kind = kind
         self.name = name
+        self.reason = reason
     }
 }
 
@@ -96,6 +99,9 @@ public struct RepositoryFile: StateFile {
             let existing = (replaced ?? []) + (remaining ?? [])
             if existing.contains(where: { $0.name.isEmpty || $0.name.unicodeScalars.count > 300 }) {
                 problems.append("protection の外した・残った保護の名前は空でなく、300 文字まで")
+            }
+            if existing.contains(where: { $0.reason.map { $0.isEmpty || $0.unicodeScalars.count > 500 } == true }) {
+                problems.append("protection の残した保護のわけは空でなく、500 文字まで")
             }
             if let drift, drift.problems.isEmpty || drift.problems.contains(where: { $0.isEmpty || $0.unicodeScalars.count > 500 }) {
                 problems.append("protection.drift.problems は 1 つ以上で、空でなく 500 文字まで")

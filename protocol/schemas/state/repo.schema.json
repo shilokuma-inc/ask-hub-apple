@@ -36,14 +36,14 @@
         "rulesetId": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }], "description": "掛けたルールセットの id" },
         "replaced": {
           "anyOf": [{ "type": "array", "items": { "$ref": "#/$defs/existingProtection" } }, { "type": "null" }],
-          "description": "掛けたときに外した、develop・main・release/**（と既定のブランチ）に重なる保護"
+          "description": "掛けたときに外した、守る範囲（develop・main・release/ の下）に収まる保護"
         },
         "remaining": {
           "anyOf": [{ "type": "array", "items": { "$ref": "#/$defs/existingProtection" } }, { "type": "null" }],
-          "description": "外せずに残った、重なる保護（organization のルールセット）"
+          "description": "外さずに残した、重なる保護（守る範囲の外も守るもの・外せなかったもの・organization のルールセット）。わけを reason に書く"
         },
         "drift": {
-          "description": "掛けた後のずれ。ずれていない・まだ確かめていなければ null",
+          "description": "掛けた後のずれ。ずれていない・まだ確かめていなければ書かない（null と同じ）",
           "anyOf": [
             {
               "type": "object",
@@ -93,7 +93,11 @@
       "additionalProperties": false,
       "properties": {
         "kind": { "enum": ["classic", "ruleset", "organizationRuleset"], "description": "classic はクラシックのブランチ保護（name はパターン）、ruleset はリポジトリのルールセット、organizationRuleset は organization のルールセット" },
-        "name": { "type": "string", "minLength": 1, "maxLength": 300 }
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "reason": {
+          "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 500 }, { "type": "null" }],
+          "description": "残したわけ（remaining だけ。ほかのブランチも守るので外さなかった・外せなかった など、人が読む文）"
+        }
       }
     }
   }

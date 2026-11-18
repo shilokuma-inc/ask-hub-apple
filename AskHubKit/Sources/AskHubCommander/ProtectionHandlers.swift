@@ -60,11 +60,13 @@ public struct ApplyProtectionHandler: IntentHandler {
         } catch {
             return .reject(ProtectionApplier.reason(error, repo: apply.repo))
         }
+        // 同じルールセットへの掛け直し（外しきれずに押し直したとき）は、前に外したものも残す（外した保護は GitHub の一覧に出なくなるため）
+        let previous = repository.protection.rulesetId == outcome.rulesetID ? repository.protection.replaced ?? [] : []
         let protection = RepositoryFile.Protection(
             appliedAt: context.timestamp,
             requiredChecks: apply.requiredChecks,
             rulesetId: outcome.rulesetID,
-            replaced: outcome.replaced,
+            replaced: previous + outcome.replaced.filter { !previous.contains($0) },
             remaining: outcome.remaining
         )
         do {
@@ -82,7 +84,7 @@ public struct ApplyProtectionHandler: IntentHandler {
     }
 }
 
-/// ルールセットを掛け、重なる保護を外す
+/// ルールセットを掛け、守る範囲に収まる保護を外す。範囲の外も守る保護は、外すとほかのブランチの保護が消えるので、残して知らせる
 struct ProtectionApplier {
     struct Outcome: Equatable {
         var rulesetID: Int
@@ -90,6 +92,8 @@ struct ProtectionApplier {
         var remaining: [ExistingProtection]
         /// 外せなかった・読めなかったもの（人が読む文）
         var failures: [String]
+        /// GitHub の上限に当たり、残りを確かめずに止めた（同じトークンで続けて送らない）。上限でなければ nil
+        var stoppedFor: Duration?
     }
 
     var github: GitHubPullRequests
@@ -101,48 +105,80 @@ struct ProtectionApplier {
         // 先に掛ける。ここで失敗したら、何も外さない
         let applied = try await github.putRuleset(ProtectionRules.draft(requiredChecks: requiredChecks), id: existing?.id)
         var outcome = Outcome(rulesetID: applied.id, replaced: [], remaining: [], failures: [])
-        for summary in summaries where summary.id != applied.id {
+        for summary in summaries where summary.id != applied.id && outcome.stoppedFor == nil {
             await replace(summary, defaultBranch: settings.defaultBranch, into: &outcome)
         }
-        await replaceClassicRules(defaultBranch: settings.defaultBranch, into: &outcome)
+        if outcome.stoppedFor == nil { await replaceClassicRules(into: &outcome) }
+        if let wait = outcome.stoppedFor {
+            outcome.failures.append("GitHub の上限に当たったので、残りの保護を確かめずに止めた（\(wait.components.seconds) 秒ほど待ってから押し直す）")
+        }
         return outcome
     }
 
-    /// 重なるルールセットを外す。organization のものは外せないので、残ったものとして書く
+    /// 重なるルールセットを外す。範囲の外も守るもの・organization のもの（リポジトリの側からは外せない）は、残したものとして書く
     private func replace(_ summary: RulesetSummary, defaultBranch: String, into outcome: inout Outcome) async {
+        let ruleset: Ruleset
         do throws(PullRequestError) {
-            let ruleset = try await github.ruleset(id: summary.id)
-            guard ProtectionRules.overlaps(ruleset: ruleset, defaultBranch: defaultBranch) else { return }
-            switch ruleset.source {
-            case .repository:
+            ruleset = try await github.ruleset(id: summary.id)
+        } catch {
+            record(error, as: "ルールセット \(summary.name) を読めない", into: &outcome)
+            return
+        }
+        switch (ruleset.source, ProtectionRules.coverage(ruleset: ruleset, defaultBranch: defaultBranch)) {
+        case (_, .disjoint):
+            return
+        case (.organization, _):
+            outcome.remaining.append(.init(kind: .organizationRuleset, name: ruleset.name, reason: "organization のルールセットは、リポジトリの側からは外せない"))
+        case (.repository, .broader):
+            outcome.remaining.append(.init(kind: .ruleset, name: ruleset.name, reason: Self.broaderReason))
+        case (.repository, .within):
+            do throws(PullRequestError) {
                 try await github.deleteRuleset(id: ruleset.id)
                 outcome.replaced.append(.init(kind: .ruleset, name: ruleset.name))
-            case .organization:
-                outcome.remaining.append(.init(kind: .organizationRuleset, name: ruleset.name))
+            } catch {
+                outcome.remaining.append(.init(kind: .ruleset, name: ruleset.name, reason: "外せなかった（\(Self.describe(error))）"))
+                record(error, as: "ルールセット \(ruleset.name) を外せない", into: &outcome)
             }
-        } catch {
-            outcome.failures.append("ルールセット \(summary.name)（\(Self.describe(error))）")
         }
     }
 
-    /// 重なるクラシックの保護を外す
-    private func replaceClassicRules(defaultBranch: String, into outcome: inout Outcome) async {
+    /// 守る範囲に収まるクラシックの保護を外す。範囲の外も守るものは残したものとして書く
+    private func replaceClassicRules(into outcome: inout Outcome) async {
         let rules: [BranchProtectionRule]
         do throws(PullRequestError) {
             rules = try await github.branchProtectionRules()
         } catch {
-            outcome.failures.append("クラシックの保護を読めない（\(Self.describe(error))）")
+            record(error, as: "クラシックの保護を読めない", into: &outcome)
             return
         }
-        for rule in rules where ProtectionRules.overlaps(classic: rule.pattern, defaultBranch: defaultBranch) {
-            do throws(PullRequestError) {
-                try await github.deleteBranchProtectionRule(id: rule.id)
-                outcome.replaced.append(.init(kind: .classic, name: rule.pattern))
-            } catch {
-                outcome.failures.append("クラシックの保護 \(rule.pattern)（\(Self.describe(error))）")
+        for rule in rules where outcome.stoppedFor == nil {
+            switch ProtectionRules.coverage(classic: rule.pattern) {
+            case .disjoint:
+                continue
+            case .broader:
+                outcome.remaining.append(.init(kind: .classic, name: rule.pattern, reason: Self.broaderReason))
+            case .within:
+                do throws(PullRequestError) {
+                    try await github.deleteBranchProtectionRule(id: rule.id)
+                    outcome.replaced.append(.init(kind: .classic, name: rule.pattern))
+                } catch {
+                    outcome.remaining.append(.init(kind: .classic, name: rule.pattern, reason: "外せなかった（\(Self.describe(error))）"))
+                    record(error, as: "クラシックの保護 \(rule.pattern) を外せない", into: &outcome)
+                }
             }
         }
     }
+
+    /// 失敗を書く。上限なら、続けて送らないよう止める
+    private func record(_ error: PullRequestError, as what: String, into outcome: inout Outcome) {
+        if case let .rateLimited(wait) = error {
+            outcome.stoppedFor = wait
+            return
+        }
+        outcome.failures.append("\(what)（\(Self.describe(error))）")
+    }
+
+    static let broaderReason = "守るブランチのほかにも掛かる（かもしれない）ので、ほかのブランチの保護を消さないよう外さなかった。要らなければ GitHub の画面で外す"
 
     /// 掛けられなかった理由（人が読む文）
     static func reason(_ error: PullRequestError, repo: RepositoryFullName) -> String {

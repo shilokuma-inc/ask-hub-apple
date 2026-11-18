@@ -40,10 +40,10 @@ public struct Ruleset: Equatable, Sendable {
     public enum Rule: Equatable, Sendable {
         case deletion
         case nonFastForward
-        /// PR 必須。`requiredApprovals` は要る承認の数
-        case pullRequest(requiredApprovals: Int)
-        /// 必須のチェック（名前と、出してよいアプリ）
-        case requiredStatusChecks([RequiredCheck])
+        /// PR 必須（要る承認の数と、マージを止める承認の条件）
+        case pullRequest(PullRequestRule)
+        /// 必須のチェック（名前と、出してよいアプリ。ブランチを作るときに止めないか）
+        case requiredStatusChecks(StatusChecksRule)
         /// ほかの種類（`type` の値）
         case other(String)
     }
@@ -88,6 +88,37 @@ public struct Ruleset: Equatable, Sendable {
         self.excludes = excludes
         self.rules = rules
         self.bypassActorCount = bypassActorCount
+    }
+}
+
+/// PR 必須の規則のうち、マージを止める条件（どれかが入ると、同じアカウントだけでは PR をマージできなくなる）
+public struct PullRequestRule: Equatable, Sendable {
+    /// 要る承認の数
+    public var requiredApprovals: Int
+    /// コードオーナーの承認が要るか
+    public var codeOwnerReview: Bool
+    /// 最後の push の後の承認が要るか
+    public var lastPushApproval: Bool
+    /// 会話（レビューのスレッド）をすべて解決する必要があるか
+    public var threadResolution: Bool
+
+    public init(requiredApprovals: Int, codeOwnerReview: Bool = false, lastPushApproval: Bool = false, threadResolution: Bool = false) {
+        self.requiredApprovals = requiredApprovals
+        self.codeOwnerReview = codeOwnerReview
+        self.lastPushApproval = lastPushApproval
+        self.threadResolution = threadResolution
+    }
+}
+
+/// 必須のチェックの規則
+public struct StatusChecksRule: Equatable, Sendable {
+    public var checks: [Ruleset.RequiredCheck]
+    /// ブランチを作るときに止めないか。応答に無ければ nil
+    public var doNotEnforceOnCreate: Bool?
+
+    public init(checks: [Ruleset.RequiredCheck], doNotEnforceOnCreate: Bool? = nil) {
+        self.checks = checks
+        self.doNotEnforceOnCreate = doNotEnforceOnCreate
     }
 }
 
@@ -188,7 +219,11 @@ struct RefNamePayload: Decodable {
 struct RulePayload: Decodable {
     struct Parameters: Decodable {
         let requiredApprovingReviewCount: Int?
+        let requireCodeOwnerReview: Bool?
+        let requireLastPushApproval: Bool?
+        let requiredReviewThreadResolution: Bool?
         let requiredStatusChecks: [RequiredCheckPayload]?
+        let doNotEnforceOnCreate: Bool?
     }
 
     let type: String
@@ -198,11 +233,18 @@ struct RulePayload: Decodable {
         switch type {
         case "deletion": .deletion
         case "non_fast_forward": .nonFastForward
-        case "pull_request": .pullRequest(requiredApprovals: parameters?.requiredApprovingReviewCount ?? 0)
+        case "pull_request":
+            .pullRequest(PullRequestRule(
+                requiredApprovals: parameters?.requiredApprovingReviewCount ?? 0,
+                codeOwnerReview: parameters?.requireCodeOwnerReview ?? false,
+                lastPushApproval: parameters?.requireLastPushApproval ?? false,
+                threadResolution: parameters?.requiredReviewThreadResolution ?? false
+            ))
         case "required_status_checks":
-            .requiredStatusChecks((parameters?.requiredStatusChecks ?? []).map { check in
-                .init(context: check.context, integrationID: check.integrationId)
-            })
+            .requiredStatusChecks(StatusChecksRule(
+                checks: (parameters?.requiredStatusChecks ?? []).map { .init(context: $0.context, integrationID: $0.integrationId) },
+                doNotEnforceOnCreate: parameters?.doNotEnforceOnCreate
+            ))
         default: .other(type)
         }
     }
