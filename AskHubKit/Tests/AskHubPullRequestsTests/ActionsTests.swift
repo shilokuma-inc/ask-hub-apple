@@ -85,6 +85,7 @@ struct ActionsTests {
         let pulls = try await Fixture.client(transport).openPullRequests(base: "askhub/epic")
         #expect(pulls.map(\.number) == [1, 2])
         let requests = transport.requests
+        try #require(requests.count == 2)
         #expect(Fixture.path(requests[0]) == "/repos/shilokuma-inc/ask-hub-apple/pulls")
         #expect(Fixture.query(requests[0]) == ["state": "open", "base": "askhub/epic", "per_page": "100"])
         #expect(requests[1].url?.absoluteString == next)
