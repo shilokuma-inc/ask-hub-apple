@@ -89,9 +89,11 @@ enum FinalPullRequestBody {
         return "### \(title)\n\n" + images(shots, label: screen.scene, heading: "", indent: "")
     }
 
-    /// Before / After の表。上げた画像が無ければ、AskHub で見られることと、撮れなかったわけを書く
+    /// Before / After の表。上げた画像が無ければ、AskHub で見られることと、撮れなかったわけを書く。
+    /// 1 枚も撮っていなければ（撮影をやめたなど）、わけだけを書く
     private static func images(_ shots: DecisionsFile.Screenshots, label: String, heading: String, indent: String) -> String {
         let note = shots.note.map { "（\(safe($0))）" } ?? ""
+        if shots.before == nil, shots.after == nil, let text = shots.note { return safe(text) }
         guard shots.beforeURL != nil || shots.afterURL != nil else { return onlyInClient + note }
         let cell = { (url: String?, side: String) in
             guard let url, DecisionsFile.Screenshots.isAttachmentURL(url) else { return "なし" }
