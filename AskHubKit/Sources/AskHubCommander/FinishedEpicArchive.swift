@@ -8,15 +8,17 @@ import Foundation
 /// epic のフォルダ（`repos/<owner>/<repo>/epics/<epic>/`）と、依頼の添付（`attachments/<device>/<intent>/`）を、`archive/` の下の同じパスに移す。
 /// 1 回の見回りの分は、1 つの書き込み（GitHub では 1 つのコミット）でまとめて移す（`StateStore.move`）。
 /// 畳んだ epic は、クライアント・司令塔・ワーカーが読まなくなる（クライアントの「終わったもの」にも出ない。2026-11-18 に決めた）
-public struct FinishedEpicArchive: Sendable {
+public actor FinishedEpicArchive {
     /// 終わってから畳むまでの時間の既定
     public static let defaultAge: TimeInterval = 30 * 24 * 60 * 60
     /// 1 回で畳む epic の数の上限（tree を作る要求を大きくしすぎない。残りは次の見回りで畳む）
     public static let batchLimit = 20
 
-    public var context: CommanderContext
-    public var age: TimeInterval
-    public var log: @Sendable (String) -> Void
+    nonisolated public let context: CommanderContext
+    nonisolated public let age: TimeInterval
+    nonisolated let log: @Sendable (String) -> Void
+    /// GitHub の上限・書き込みの予算に当たったときに、次に試してよい時刻。それまでは畳まない（ほかの見回りは続ける）
+    private var resumeAt: Date?
 
     public init(context: CommanderContext, age: TimeInterval = defaultAge, log: @escaping @Sendable (String) -> Void) {
         self.context = context
@@ -26,10 +28,13 @@ public struct FinishedEpicArchive: Sendable {
 
     /// 1 回見回る。読めない・書けないときは何もせず、次の見回りでやり直す
     public func run() async {
+        if let resumeAt, context.now() < resumeAt { return }
+        resumeAt = nil
         let due: [EpicFile]
         do {
             due = try await dueEpics()
         } catch {
+            wait(after: error.retryAfter)
             log("畳む epic を状態リポジトリから読めないので、次の見回りに回す（\(error)）")
             return
         }
@@ -39,8 +44,15 @@ public struct FinishedEpicArchive: Sendable {
             try await context.store.move(due.flatMap(Self.moves), message: "終わってから 30 日たった epic \(due.count) 本を archive/ に畳む")
             log("終わってから 30 日たった epic を archive/ に畳んだ: \(names)")
         } catch {
+            wait(after: error.retryAfter)
             log("終わってから 30 日たった epic を archive/ に畳めなかった（\(error)。\(names)）。次の見回りでやり直す")
         }
+    }
+
+    /// 上限で待てと言われたら、その時刻まで畳まない
+    private func wait(after retryAfter: Duration?) {
+        guard let retryAfter else { return }
+        resumeAt = context.now().addingTimeInterval(TimeInterval(retryAfter.components.seconds))
     }
 
     /// 終わってから `age` たった epic。古い順に `batchLimit` 本まで。読めない（知らない版など）epic は畳まない

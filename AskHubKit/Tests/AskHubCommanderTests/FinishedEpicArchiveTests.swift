@@ -87,4 +87,24 @@ struct FinishedEpicArchiveTests {
         await archive().run()
         #expect(await store.data(at: StatePath.epic(Self.repo, Self.id(1))) == nil)
     }
+
+    /// GitHub の上限に当たったら、言われた時刻までは畳まない（ほかの見回りは止めない）
+    @Test func waitsUntilRetryAfterBeforeArchivingAgain() async throws {
+        try await put(1, .abandoned, updatedAgo: 31)
+        let clock = OSAllocatedUnfairLock(initialState: Self.now)
+        let context = CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { clock.withLock { $0 } }
+        let archive = FinishedEpicArchive(context: context) { _ in }
+        await store.failNextWrites(with: [.rateLimited(retryAfter: .seconds(15 * 60))])
+        await archive.run()
+        let attempts = await store.writeCount
+        // 10 分後の見回りでは、まだ試さない
+        clock.withLock { $0 = Self.now.addingTimeInterval(10 * 60) }
+        await archive.run()
+        #expect(await store.writeCount == attempts)
+        #expect(await store.data(at: StatePath.epic(Self.repo, Self.id(1))) != nil)
+        // 戻る時刻を過ぎたら畳む
+        clock.withLock { $0 = Self.now.addingTimeInterval(16 * 60) }
+        await archive.run()
+        #expect(await store.data(at: StatePath.epic(Self.repo, Self.id(1))) == nil)
+    }
 }
