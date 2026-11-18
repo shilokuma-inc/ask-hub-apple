@@ -302,7 +302,9 @@ public actor CommanderLoop {
         "instructFinal": InstructFinalHandler(),
         "humanTaskDone": HumanTaskDoneHandler(),
         "verify": VerifyHandler(),
-        "publishGitHubRelease": PublishGitHubReleaseHandler()
+        "publishGitHubRelease": PublishGitHubReleaseHandler(),
+        "findCleanupCandidates": CleanupRequestHandler(),
+        "removeCleanupCandidates": CleanupRequestHandler()
     ]
 
     // MARK: - 通知
