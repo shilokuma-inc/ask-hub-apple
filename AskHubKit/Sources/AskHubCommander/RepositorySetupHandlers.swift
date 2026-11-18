@@ -18,8 +18,10 @@ struct RepositorySetupStep {
         case let .failure(refusal):
             setup = RepositorySetup(updatedAt: context.timestamp, problems: [refusal.description])
         case let .success(github):
-            setup = await RepositorySetupRunner(github: github, now: context.timestamp)
+            let outcome = await RepositorySetupRunner(github: github, now: context.timestamp)
                 .run(build: file.build, previous: file.setup?.workflows)
+            if let wait = outcome.stoppedFor { await admin.pause(repo.owner, for: wait, now: context.now()) }
+            setup = outcome.setup
         }
         do {
             try await context.files.update(RepositoryFile.self, at: path, message: "\(repo) の GitHub 側の準備を書く") {
@@ -32,20 +34,27 @@ struct RepositorySetupStep {
     }
 }
 
-/// 準備の中身（Discussions・ワークフローの直しの PR）。1 つが失敗しても、ほかは流す
+/// 準備の中身（Discussions・ワークフローの直しの PR）。1 つが失敗しても、ほかは流す（GitHub の上限に当たったら、続けて送らずに止める）
 struct RepositorySetupRunner {
+    struct Outcome {
+        var setup: RepositorySetup
+        /// GitHub の上限に当たり、残りを確かめずに止めた（待つ時間）。上限でなければ nil
+        var stoppedFor: Duration?
+    }
+
     var github: GitHubPullRequests
     var now: Timestamp
 
-    func run(build: RepositoryFile.Build?, previous: WorkflowSetup?) async -> RepositorySetup {
+    func run(build: RepositoryFile.Build?, previous: WorkflowSetup?) async -> Outcome {
         let settings: RepositorySettings
         do throws(PullRequestError) {
             settings = try await github.repositorySettings()
         } catch {
-            return RepositorySetup(updatedAt: now, problems: [Self.reason("リポジトリの設定を読めない", error)])
+            return Outcome(setup: RepositorySetup(updatedAt: now, problems: [Self.reason("リポジトリの設定を読めない", error)]), stoppedFor: error.wait)
         }
         var setup = RepositorySetup(updatedAt: now)
         var problems: [String] = []
+        var stoppedFor: Duration?
         do throws(PullRequestError) {
             if !settings.hasDiscussions { try await github.enableDiscussions() }
             let categories = try await github.discussionCategoryNames()
@@ -53,14 +62,22 @@ struct RepositorySetupRunner {
         } catch {
             setup.discussions = .unknown
             problems.append(Self.reason("Discussions を有効にできない・確かめられない", error))
+            stoppedFor = error.wait
         }
-        do throws(PullRequestError) {
-            setup.workflows = try await workflows(base: build?.baseBranch ?? settings.defaultBranch, build: build, previous: previous)
-        } catch {
-            problems.append(Self.reason("ワークフローの直しの PR を出せない", error))
+        if let wait = stoppedFor {
+            // 前に出した PR の記録は残す
+            setup.workflows = previous
+            problems.append("GitHub の上限に当たったので、ワークフローの直しは確かめずに止めた（\(wait.components.seconds) 秒ほど待ってから準備をやり直す）")
+        } else {
+            do throws(PullRequestError) {
+                setup.workflows = try await workflows(base: build?.baseBranch ?? settings.defaultBranch, build: build, previous: previous)
+            } catch {
+                problems.append(Self.reason("ワークフローの直しの PR を出せない", error))
+                stoppedFor = error.wait
+            }
         }
         setup.problems = problems.isEmpty ? nil : problems
-        return setup
+        return Outcome(setup: setup, stoppedFor: stoppedFor)
     }
 
     /// 直すところがあれば、決まった手順の PR を出す。前に出した PR が開いていれば、出し直さない
@@ -145,6 +162,7 @@ public struct ApproveSetupPullRequestHandler: IntentHandler {
         do throws(PullRequestError) {
             state = try await merge(approve, with: github)
         } catch {
+            await admin.note(error, owner: approve.repo.owner, now: context.now())
             return .reject(Self.reason(error))
         }
         try await record(state, of: approve, at: path, in: context)
@@ -189,5 +207,13 @@ public struct ApproveSetupPullRequestHandler: IntentHandler {
         case .rateLimited, .serverError, .transport, .cancelled: "GitHub に届かない・混んでいる（\(error)）。少し待ってから承認し直す"
         default: RepositorySetupRunner.reason("準備の PR をマージできない", error)
         }
+    }
+}
+
+private extension PullRequestError {
+    /// 上限なら、待つ時間
+    var wait: Duration? {
+        if case let .rateLimited(wait) = self { return wait }
+        return nil
     }
 }
