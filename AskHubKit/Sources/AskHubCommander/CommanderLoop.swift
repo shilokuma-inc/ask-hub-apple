@@ -107,6 +107,9 @@ public actor CommanderLoop {
     private var lastBeat: Date?
     /// 最後に GitHub の REST の上限の残りを見た時刻と、読んだ残り（通知に使う。読めなければ nil）
     private var lastRateLimitCheck: Date?
+    /// 空き容量が少ないので、片付けと Claude だけのジョブのほかは新しく引き受けていない理由（常時オンの Mac のワーカーとして）。
+    /// 生きている印を書くときに測って決める。少なくなければ nil
+    private var diskRefusal: JobRefusal?
     private var latestRateLimit: GitHubRateLimit?
     /// 残りが少なくなって、生きている印をすぐ書き直した窓（戻る時刻）。同じ窓では書き直さない
     private var lowRateLimitWindow: Timestamp?
@@ -251,7 +254,7 @@ public actor CommanderLoop {
             log(note)
         }
         swept.jobs += restarted.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
-        let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier))
+        let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier), lowOnDisk: diskRefusal != nil)
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
         timer.lap("引き受けと通知")
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
@@ -368,7 +371,13 @@ public actor CommanderLoop {
         let versions = MacFile.Versions(
             worker: settings.commanderVersion, compatibility: settings.compatibility, claude: claude, xcode: machine.xcodeVersion
         )
-        let mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
+        let refusal = machine.diskRefusal(previous: diskRefusal, at: time)
+        if (refusal == nil) != (diskRefusal == nil) {
+            log(refusal.map { "新しいジョブを引き受けない: \($0.message)" } ?? "空き容量が \(MacFile.lowDiskFreeGB) GB 以上に戻ったので、新しいジョブを引き受ける")
+        }
+        diskRefusal = refusal
+        var mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
+        mac.refusal = refusal
         try await context.put(commander, at: StatePath.commander, message: "司令塔の生きている印")
         try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now

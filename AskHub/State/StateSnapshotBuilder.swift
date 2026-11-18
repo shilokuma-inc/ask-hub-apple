@@ -219,7 +219,7 @@ struct StateSnapshotBuilder {
     }
 
     private func mac(_ file: MacFile) -> Mac {
-        let checks = Self.selfChecks(file.selfCheck)
+        let checks = Self.selfChecks(file.selfCheck) + [Self.diskCheck(file)]
         let tokens = Self.tokens(file.selfCheck)
         let incompatibility = incompatibility(of: file)
         return Mac(
@@ -234,7 +234,8 @@ struct StateSnapshotBuilder {
             load: 0,
             version: file.versions.worker,
             jobs: runningJobs(on: file.mac),
-            refusalReason: incompatibility == nil ? refusalReason(tokens: tokens, checks: checks) : Self.incompatibleReason,
+            refusalReason: incompatibility == nil
+                ? refusalReason(tokens: tokens, checks: checks, lowOnDisk: file.isLowOnDisk) : Self.incompatibleReason,
             selfChecks: checks,
             tokens: tokens,
             claudeVersion: file.versions.claude,
@@ -277,6 +278,9 @@ struct StateSnapshotBuilder {
     /// 互換の番号が司令塔と合わないワーカーの、新しいループを受けない理由
     static let incompatibleReason = "司令塔と互換の番号が合わず、新しいジョブを引き受けていません"
 
+    /// 空き容量が少ない Mac の、新しいループを受けない理由（ワーカーは片付けのほかの新しいジョブを引き受けない）
+    static let lowDiskReason = "空き容量が \(MacFile.lowDiskFreeGB) GB を下回っています"
+
     /// 司令塔と互換の番号が合わない Mac。ワーカーが引き受けない理由を印に書いていれば、それも添える。
     /// 常時オンの Mac のワーカーは司令塔と同じ実行ファイルなので比べない。番号を書かない（前の版の）ものとは、ワーカーが理由を書いていなければ比べない
     private func incompatibility(of file: MacFile) -> Mac.Incompatibility? {
@@ -315,11 +319,12 @@ struct StateSnapshotBuilder {
         return commander
     }
 
-    /// 新しいループを受けない理由。止まっているトークンを先に出す
-    private func refusalReason(tokens: [MacToken], checks: [Mac.SelfCheck]) -> String? {
+    /// 新しいループを受けない理由。止まっているトークン、空き容量の順に先に出す
+    private func refusalReason(tokens: [MacToken], checks: [Mac.SelfCheck], lowOnDisk: Bool = false) -> String? {
         if let token = tokens.first(where: { $0.isStopped(now: now) }) {
             return token.status(now: now) == .stopped(.expired) ? "\(token.name)の期限が切れて止まっています" : "\(token.name)が使えず止まっています"
         }
+        if lowOnDisk { return Self.lowDiskReason }
         return checks.allSatisfy(\.isOK) ? nil : "自己診断で問題が見つかっています"
     }
 
@@ -333,6 +338,11 @@ struct StateSnapshotBuilder {
         case .resident: .whileOpen
         case .manual: .manual
         }
+    }
+
+    /// 空き容量（`MacFile.lowDiskFreeGB` を下回ると問題あり）
+    private static func diskCheck(_ file: MacFile) -> Mac.SelfCheck {
+        Mac.SelfCheck(name: "空き容量", isOK: !file.isLowOnDisk, detail: "\(file.diskFreeGB) GB")
     }
 
     /// トークンは期限と合わせて `tokens` に出すので、ここには Keychain だけを出す

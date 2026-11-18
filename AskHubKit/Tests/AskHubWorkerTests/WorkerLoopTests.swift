@@ -110,7 +110,9 @@ struct WorkerLoopTests {
     func loop(
         _ store: any StateStore,
         runner: any JobRunning,
-        clock: OSAllocatedUnfairLock<Date> = .init(initialState: now)
+        kinds: [JobKind] = [.prepareWorkspace],
+        clock: OSAllocatedUnfairLock<Date> = .init(initialState: now),
+        disk: OSAllocatedUnfairLock<Int> = .init(initialState: 120)
     ) -> WorkerLoop {
         let selfCheck = SelfCheck(checkedAt: Timestamp(Self.now), keychain: .ok, githubToken: .ok, claudeToken: .ok)
         let verifier = verifier
@@ -118,8 +120,10 @@ struct WorkerLoopTests {
             context: CommanderContext(store: store, mac: Self.mac) { clock.withLock { $0 } },
             settings: .init(kind: .manual, capacity: .init(claude: 1, build: 1), workerVersion: "0.1.0", claudeVersion: "2.1.316"),
             verifier: { verifier },
-            runners: [.prepareWorkspace: runner],
-            status: { CommanderLoop.MachineStatus(diskFreeGB: 120, load: 3.2, selfCheck: selfCheck, xcodeVersion: "26.6") },
+            runners: Dictionary(uniqueKeysWithValues: kinds.map { ($0, runner) }),
+            status: {
+                CommanderLoop.MachineStatus(diskFreeGB: disk.withLock { $0 }, load: 3.2, selfCheck: selfCheck, xcodeVersion: "26.6")
+            },
             log: { _ in }
         )
     }
@@ -143,15 +147,21 @@ struct WorkerLoopTests {
         return IntentReference(keyId: keyID, nonce: nonce)
     }
 
-    /// epic と、その作業場所の用意のジョブを置く
+    /// epic と、その作業場所の用意（`kind`）のジョブを置く
     @discardableResult
-    func epic(_ number: Int, on mac: MacName, origin: IntentReference?, in store: InMemoryStateStore) async throws -> JobFile {
+    func epic(
+        _ number: Int,
+        on mac: MacName,
+        origin: IntentReference?,
+        kind: JobKind = .prepareWorkspace,
+        in store: InMemoryStateStore
+    ) async throws -> JobFile {
         let epic = try #require(ULID(rawValue: "01JCJ0A00000000000000000\(String(format: "%02d", number))"))
         let time = Timestamp(Self.now)
         let file = EpicFile(id: epic, repo: Self.repo, title: "epic \(number)", stage: .running, mac: mac, createdAt: time, updatedAt: time)
         let job = JobFile(
             id: try #require(ULID(rawValue: "01JCJ0B00000000000000000\(String(format: "%02d", number))")),
-            kind: .prepareWorkspace,
+            kind: kind,
             repo: Self.repo,
             epic: epic,
             assignedMac: mac,
@@ -331,6 +341,41 @@ struct WorkerLoopTests {
         await loop.waitForJobs()
         #expect(try await heartbeat(in: store).refusal == nil)
         #expect(runner.called == [job.id])
+    }
+
+    /// 空き容量が少ない間は、片付けのほかの新しいジョブを引き受けず、理由と引き受けなくなった時刻を印に書く。
+    /// 少ないまま印を書き直しても時刻は変えず（下回るたびに 1 回知らせる区切り）、戻ったら次の印から引き受ける
+    @Test func takesOnlyCleanUpWhileLowOnDisk() async throws {
+        let store = InMemoryStateStore()
+        try await commander(compatibility: MachineCompatibility.current, in: store)
+        let clock = OSAllocatedUnfairLock(initialState: Self.now)
+        let disk = OSAllocatedUnfairLock(initialState: MacFile.lowDiskFreeGB - 1)
+        let prepare = try await epic(1, on: Self.mac, origin: try await signedOrigin(in: store, nonce: 1), in: store)
+        let cleanUp = try await epic(2, on: Self.mac, origin: try await signedOrigin(in: store, nonce: 2), kind: .cleanUp, in: store)
+        let runner = RecordingJob(JobResult())
+        let loop = loop(store, runner: runner, kinds: [.prepareWorkspace, .cleanUp], clock: clock, disk: disk)
+        #expect(try await loop.cycle().map(\.id) == [cleanUp.id])
+        await loop.waitForJobs()
+        let refusal = try #require(try await heartbeat(in: store).refusal)
+        #expect(refusal.reason == .lowDisk)
+        #expect(refusal.since == Timestamp(Self.now))
+        #expect(refusal.message.contains("空き容量が \(MacFile.lowDiskFreeGB - 1) GB"))
+        #expect(try await attempt(of: prepare, in: store) == nil)
+        // 司令塔が試行を読んで、片付けを終えたことにする
+        var done = cleanUp
+        done.state = .succeeded
+        await store.put(StatePath.job(Self.repo, epic: done.epic, job: done.id), data: try StateFileCoder.encode(done))
+
+        clock.withLock { $0 = Self.now.addingTimeInterval(10 * 60) }
+        #expect(try await loop.cycle().isEmpty)
+        #expect(try await heartbeat(in: store).refusal?.since == Timestamp(Self.now))
+
+        disk.withLock { $0 = MacFile.lowDiskFreeGB }
+        clock.withLock { $0 = Self.now.addingTimeInterval(20 * 60) }
+        #expect(try await loop.cycle().map(\.id) == [prepare.id])
+        await loop.waitForJobs()
+        #expect(try await heartbeat(in: store).refusal == nil)
+        #expect(runner.called == [cleanUp.id, prepare.id])
     }
 
     /// 引き受けないと決めても、動かしているジョブは手放さずに終わらせて試行を書く
