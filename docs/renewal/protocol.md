@@ -50,6 +50,8 @@ keys/<seq>.json                                    公開鍵の追記の記録�
 intents/<device>/<intent>.json                     人の意図（クライアント。署名つき）
 attachments/<device>/<intent>/<n>                  依頼の添付（クライアント。<n> は 1 からの番号）
 consumed/<device>/<intent>.json                    処理した人の意図の記録（司令塔）
+cleanup/<mac>/requests.json                        片付けの頼み（司令塔が受け付けた片付けの意図）
+cleanup/<mac>/candidates.json                      片付けの候補と、頼みを済ませた記録（その Mac のワーカー）
 ```
 
 - `<epic>`・`<job>`・`<intent>` は ULID（時刻の順に並ぶ一意な id）
@@ -676,6 +678,19 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 
 - 開始した後にやめた epic の、閉じた子 PR と最終 PR へのコメント（[flows.md](flows.md) の「開始した後の取り下げ」）の目印は `{"type":"abandoned","epic":"…"}`。書くだけで、司令塔は読まない
 
+## 片付けの候補
+
+ワーカーが作っていないもの（人が作った clone・Simulator・Xcode の DerivedData）を、人がクライアントで「探す」を押したときだけ、その Mac のワーカーが探し、
+人が選んで「消す」を押したときだけ消す（[operations.md](operations.md) の「容量」）。形は `protocol/schemas/state/cleanup-requests.schema.json`・`cleanup-candidates.schema.json`（Swift は `CleanupRequestsFile`・`CleanupCandidatesFile`）。
+
+- `cleanup/<mac>/requests.json`（司令塔）: 受け付けた片付けの意図を、新しいものを後ろにして 20 件まで積む。`action` は `find`（探す）か `remove`（消す。`candidates` と `scannedAt` を持つ）
+- `cleanup/<mac>/candidates.json`（その Mac のワーカー）: 最後に探し終えた時刻（`scannedAt`）、候補（`candidates`。大きいものから 200 件まで）、探せなかった場所（`unreadable`）、頼みを済ませた記録（`handled`。20 件まで）
+  - 候補は `id`（種類と場所から決まる 16 桁の 16 進）・`kind`（`clone`・`simulator`・`derivedData`）・`name`・`location`（clone と DerivedData はホームからのパス `~/…`、Simulator は UDID）・`bytes`・`lastUsedAt`・`caution`（消さない理由。あるものは消さない）
+  - 済ませた記録は、元の意図・`action`・時刻と、消したもの（`removed`）・消さなかったものと理由（`skipped`）・頼み全体を済ませられなかった理由（`problem`）
+- ワーカーは周ごとに `requests.json` を見て、済ませていない頼みを古いものから 1 つずつ裏で済ませる。元の人の意図の署名を自分で確かめ、この Mac 宛てで、頼みと中身が合うときだけ動く（司令塔を通さずに書かれた頼みでは動かない）
+- 消すのは、自分が探して書いた候補の id だけ。意図に書かれたパスは使わない。選んだ後に探し直していれば（`scannedAt` が違えば）何も消さない。消すときに、まだ候補の決まりに合うかを確かめ直す
+- 互換の番号は上げない。前の版のワーカーは頼みを読まないので、探しも消しもしない（クライアントは「探しています」のまま出す）
+
 ## 人の意図と署名
 
 ### 封筒
@@ -723,6 +738,8 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `distributeRelease` | リリースを始めた版 | —（版の今の状態に対してだけ意味を持つ） | 空（`payloads/distributeRelease.schema.json`）。審査に通って配信を待っている（`pendingDeveloperRelease`）版だけ。App Store Connect では取り消せない |
 | `withdrawSubmission` | リリースを始めた版 | —（同上） | 空（`payloads/withdrawSubmission.schema.json`）。審査を待っている・審査中の版だけ。取り下げた後は出し直せる |
 | `abandonRelease` | リリースを始めた版 | —（同上） | 空（`payloads/abandonRelease.schema.json`）。審査に出していない・取り下げた・断られた版だけ。記録に `end` を付けるだけで、release ブランチ・App Store Connect の版は消さない |
+| `findCleanupCandidates` | —（封筒に `repo`・`target` を書かない） | — | `mac`（探す Mac。`payloads/findCleanupCandidates.schema.json`）。司令塔は登録された Mac なら `cleanup/<mac>/requests.json` に積むだけで、その Mac のワーカーが元の意図の署名を確かめてから探す（下の「片付けの候補」） |
+| `removeCleanupCandidates` | —（同上） | — | `mac`、`scannedAt`（選んだ候補を探した時刻）、`candidates`（消す候補の id。パスは送らない。`payloads/removeCleanupCandidates.schema.json`）。積み方は `findCleanupCandidates` と同じ |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
 テンプレートからの作成・実機確認の「確認した」「問題あり」・ワークフローの PR の承認の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作の `kind`（`startRelease`・`submitForReview`・`distributeRelease`・`withdrawSubmission`・`abandonRelease`）は、段階 5 の 3 で足した。
