@@ -139,6 +139,16 @@ public enum StatePath {
         "consumed/\(device)/\(nonce).json"
     }
 
+    /// 片付けの頼み（司令塔が受け付けた片付けの意図）
+    public static func cleanupRequests(_ mac: MacName) -> String {
+        "cleanup/\(mac)/requests.json"
+    }
+
+    /// 片付けの候補と、頼みを済ませた記録（その Mac のワーカー）
+    public static func cleanupCandidates(_ mac: MacName) -> String {
+        "cleanup/\(mac)/candidates.json"
+    }
+
     private static func repositoryDirectory(_ repo: RepositoryFullName) -> String {
         "\(repositories)/\(repo.owner)/\(repo.name)"
     }
