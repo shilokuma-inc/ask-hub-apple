@@ -142,6 +142,16 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
     public var targetVersion: String { String(revision) }
 
     public var payload: [String: JSONValue] {
+        Self.payload(builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate)
+    }
+
+    /// 送る payload（クライアントが作る）
+    public static func payload(
+        builds: [SubmissionFile.BuildChoice],
+        whatsNew: [LocalizedText],
+        releaseType: AppStoreReleaseType,
+        earliestReleaseDate: Timestamp?
+    ) -> [String: JSONValue] {
         let payload = Payload(builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate)
         guard case let .object(fields)? = (try? JSONEncoder().encode(payload)).flatMap({ try? JSONValue(parsing: $0) }) else { return [:] }
         return fields

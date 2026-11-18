@@ -95,6 +95,23 @@ extension GitHubPullRequests {
         }
     }
 
+    // MARK: - ブランチ
+
+    /// `sha` を指す新しいブランチを作る（release ブランチ）。すでにあれば作らずに今の先頭を返す（前の試行が作った後に落ちたとき・人が手で作ったとき）
+    public func createBranch(_ branch: String, at sha: String) async throws(PullRequestError) -> String {
+        try GitNames.checkBranch(branch)
+        try GitNames.checkSHA(sha)
+        if let head = try await branchHead(branch) { return head }
+        do throws(PullRequestError) {
+            _ = try await api.send("POST", api.url("git/refs"), body: RefBody(ref: "refs/heads/\(branch)", sha: sha))
+            return sha
+        } catch .rejected(let message) {
+            // 読んだ後に、ほかの試行が同じ名前のブランチを先に作った（422 の "Reference already exists"）
+            if let head = try await branchHead(branch) { return head }
+            throw .rejected(message: message)
+        }
+    }
+
     // MARK: - ファイルを書き換えるコミット
 
     /// `base` のコミットの tree に `files`（パス → 中身）を書いたコミットを作り、新しいブランチ `branch` をそこに向ける（`FileCommit`）。

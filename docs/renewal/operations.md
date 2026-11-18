@@ -45,7 +45,7 @@
   Keys で APNs の鍵を作って .p8 を落とし、常時オンの Mac の端末で `askhub-commander apns --key-id <鍵の id> --team-id <Team ID> --key-file <.p8 のパス>` を流してから、常駐を読み込み直す（`launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.commander`）
   - .p8 の中身は Keychain（`apns-key`）にだけ置き、設定には鍵の id・Team ID・Bundle ID（既定 `jp.shilokuma.AskHub`。iOS と macOS で同じ）だけを書く。.p8 は Apple Developer から一度しか落とせないので、Mac には残さず安全な場所に移す
   - APNs の設定が無ければ通知を送らない（起動のログに出る）。`askhub-commander check` で鍵の様子（値は出さない）を確かめる
-- 通知の中身の `askhub`（`repo`・`epic`・`mac`・`release`・`verification`）は、クライアントが通知から開く先。epic は「進行中」のその epic の画面、Mac は「Mac」のその Mac の画面、配信した版は「リポジトリ」のその版の画面、いくつもの epic の実機確認のまとめ（`{"verification": "all"}`）は「あなたの番」のアプリをまたいだ実機確認のカードを開く（`AskHub/Model/PushTarget.swift`）。形の違う値・知らない形では開かない（古いアプリは新しい開く先を無視する）
+- 通知の中身の `askhub`（`repo`・`epic`・`mac`・`release`・`submission`・`verification`）は、クライアントが通知から開く先。epic は「進行中」のその epic の画面、Mac は「Mac」のその Mac の画面、配信した版・リリースを始めた版は「リポジトリ」のその版の画面、いくつもの epic の実機確認のまとめ（`{"verification": "all"}`）は「あなたの番」のアプリをまたいだ実機確認のカードを開く（`AskHub/Model/PushTarget.swift`）。形の違う値・知らない形では開かない（古いアプリは新しい開く先を無視する）
   - アプリを開いている間に届いた通知も、バナーで出す
 - 頻度
 

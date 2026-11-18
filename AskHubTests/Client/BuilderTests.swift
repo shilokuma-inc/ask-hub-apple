@@ -16,7 +16,7 @@ struct BuilderTests {
         let items = InboxBuilder.items(from: snapshot, now: now)
         let blocking = Set(items.filter { $0.urgency == .blocking }.map(\.kind))
         let whenFree = Set(items.filter { $0.urgency == .whenFree }.map(\.kind))
-        #expect(blocking == [.questions, .goal, .humanTask, .blocker, .macOffline, .releaseNotes])
+        #expect(blocking == [.questions, .goal, .humanTask, .blocker, .macOffline, .releaseNotes, .submissionReady])
         #expect(whenFree == [.finalReview, .verification, .cleanup, .token, .claudeVersion])
     }
 
