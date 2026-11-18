@@ -25,6 +25,8 @@ public struct MachineRuntime: Sendable {
     public var adminTokens: AdminTokens?
     /// epic の作業場所の排他。ジョブ（`taskRunners`）と、終わった epic の残りものの片付け（`finishedEpicCleanUp`）で同じものを使う
     public var epicLocks = EpicLocks()
+    /// ビルドの枠（枠の Simulator の番号）。ジョブ（`taskRunners`）と、使っていない枠の Simulator の見回り（`straySimulatorSweep`）で同じものを使う
+    public var buildSlots: BuildSlots
 
     /// 設定と Keychain から組み立てる。設定や Claude の setup-token が無ければ止める
     public static func load(_ commandLine: MachineCommandLine, budget limits: WriteBudget.Limits) async -> Self {
@@ -69,7 +71,8 @@ public struct MachineRuntime: Sendable {
             claude: claude,
             claudeVersion: await version(of: claude),
             // 管理用のトークンは常時オンの Mac の司令塔にだけ置く
-            adminTokens: commandLine.role == .commander ? AdminTokens(secrets: secrets) : nil
+            adminTokens: commandLine.role == .commander ? AdminTokens(secrets: secrets) : nil,
+            buildSlots: BuildSlots(count: configuration.capacity.build)
         )
     }
 

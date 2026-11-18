@@ -75,6 +75,8 @@ public struct PushNotice: Equatable, Sendable {
                     target: ["repo": repo.rawValue, "release": version.rawValue],
                     keys: blockers.map(\.key)
                 )
+            case let .submission(repo, version):
+                return submissionNotice(repo, version, blockers: blockers)
             }
         }
     }
@@ -143,6 +145,40 @@ public struct PushNotice: Equatable, Sendable {
         }
     }
 
+    /// リリースを始めた版の通知。通知から、その版のリリースの画面を開く
+    private static func submissionNotice(_ repo: RepositoryFullName, _ version: MarketingVersion, blockers: [Blocker]) -> PushNotice {
+        PushNotice(
+            title: "\(repo.name) \(version) のリリース",
+            subtitle: repo.rawValue,
+            body: blockers.compactMap { submissionLine($0.reason) }.joined(separator: "\n"),
+            thread: "submission/\(repo.rawValue)/\(version.rawValue)",
+            target: ["repo": repo.rawValue, "submission": version.rawValue],
+            keys: blockers.map(\.key)
+        )
+    }
+
+    private static func submissionLine(_ reason: Blocker.Reason) -> String? {
+        switch reason {
+        case .submissionReady: "審査に出す準備ができました。What's New とビルドを確かめて、審査に出してください"
+        case let .submissionProblem(step): "リリース（\(step.label)）が止まっています。確かめてください"
+        case let .reviewState(platform, state): reviewLine(platform, state)
+        case .submissionDistributed: "App Store で配信しました"
+        default: nil
+        }
+    }
+
+    private static func reviewLine(_ platform: AppStorePlatform, _ state: AppStoreVersionState) -> String? {
+        switch state {
+        case .inReview: "\(platform.rawValue) の審査が始まりました"
+        case .pendingDeveloperRelease: "\(platform.rawValue) が審査に通りました。「配信する」を押すと配信します"
+        case .pendingAppleRelease, .accepted: "\(platform.rawValue) が審査に通りました"
+        case .processingForDistribution: "\(platform.rawValue) が審査に通りました。まもなく配信されます"
+        case .rejected, .metadataRejected, .invalidBinary:
+            "\(platform.rawValue) が審査で断られました（リジェクト）。App Store Connect で理由を確かめてください"
+        default: nil
+        }
+    }
+
     private static func macLine(_ reason: Blocker.Reason, now: Date) -> String {
         guard case let .macOffline(jobs, seenAt) = reason else { return "" }
         let hours = max(Int(now.timeIntervalSince(seenAt.date) / 3_600), 1)
@@ -192,6 +228,22 @@ extension ReleaseFile.Step {
         case .notes: "リリース文"
         case .githubRelease: "GitHub Release"
         case .nextVersion: "次の版の PR"
+        }
+    }
+}
+
+extension SubmissionFile.Step {
+    /// 通知とログに出す名前
+    var label: String {
+        switch self {
+        case .branch: "release ブランチ"
+        case .nextVersion: "次の版の PR"
+        case .whatsNew: "What's New の下書き"
+        case .builds: "ビルド"
+        case .submit: "審査に出す"
+        case .distribute: "配信する"
+        case .withdraw: "審査の取り下げ"
+        case .review: "審査の状態"
         }
     }
 }

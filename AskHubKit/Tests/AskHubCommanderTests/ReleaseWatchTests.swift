@@ -6,29 +6,6 @@ import Foundation
 import os
 import Testing
 
-/// 決めたアプリと配信中の版を返し、読んだ回数を数える
-final class FakeAppStore: AppStoreConnectReading {
-    struct State {
-        var apps: [AppStoreApp] = []
-        var versions: [LiveAppVersion] = []
-        var reads = 0
-    }
-
-    let keyID = "ABCDE12345"
-    let state = OSAllocatedUnfairLock(initialState: State())
-
-    func apps(bundleIDs: [String]) async throws(AppStoreConnectError) -> [AppStoreApp] {
-        state.withLock { $0.apps.filter { bundleIDs.contains($0.bundleId) } }
-    }
-
-    func liveVersions(of appID: String) async throws(AppStoreConnectError) -> [LiveAppVersion] {
-        state.withLock { state in
-            state.reads += 1
-            return state.versions
-        }
-    }
-}
-
 /// 決めた Bundle ID・版のファイル・変更を返す
 final class FakeReleaseSources: ReleaseSourceReading {
     struct State {
@@ -93,6 +70,7 @@ final class FakeReleaseHosting: ReleaseHosting {
         var checks = CheckSummary(verdict: .pending)
         var merged: [Int] = []
         var required: [Set<String>?] = []
+        var branches: [String: String] = [:]
         var calls = 0
     }
 
@@ -175,6 +153,18 @@ final class FakeReleaseHosting: ReleaseHosting {
             return MergedPullRequest(sha: nil, mergedNow: true)
         }
     }
+
+    func branchHead(_ repo: RepositoryFullName, branch: String) async throws(PullRequestError) -> String? {
+        call { $0.branches[branch] }
+    }
+
+    func createBranch(_ repo: RepositoryFullName, branch: String, at sha: String) async throws(PullRequestError) -> String {
+        call { state in
+            if let head = state.branches[branch] { return head }
+            state.branches[branch] = sha
+            return sha
+        }
+    }
 }
 
 /// 決めた下書きを返し、受け取った材料を残す
@@ -187,6 +177,16 @@ final class FakeNotesDrafter: ReleaseNotesDrafting {
         materials.withLock { $0.append(material) }
         if let failure = failure.withLock({ $0 }) { throw failure }
         return "## 新しい機能\n- 写真を切り抜けるようになりました"
+    }
+}
+
+/// 言語ごとに決めた下書きを返し、受け取った材料を残す
+final class FakeWhatsNewDrafter: WhatsNewDrafting {
+    let materials = OSAllocatedUnfairLock<[WhatsNewMaterial]>(initialState: [])
+
+    func draft(_ material: WhatsNewMaterial) async throws(ReleaseNotesFailure) -> [LocalizedText] {
+        materials.withLock { $0.append(material) }
+        return material.locales.map { LocalizedText(locale: $0, text: "・\($0) の新しい機能") }
     }
 }
 
@@ -205,9 +205,10 @@ struct ReleaseWatchTests {
     let sources = FakeReleaseSources()
     let hosting = FakeReleaseHosting()
     let drafter = FakeNotesDrafter()
+    let whatsNewDrafter = FakeWhatsNewDrafter()
     let clock = TestClock(Self.now)
 
-    func watch(stores: [any AppStoreConnectReading]? = nil) -> ReleaseWatch {
+    func watch(stores: [any AppStoreConnectSubmitting]? = nil) -> ReleaseWatch {
         let clock = clock
         return ReleaseWatch(
             context: CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { clock.now },
@@ -215,6 +216,7 @@ struct ReleaseWatchTests {
             sources: sources,
             hosting: hosting,
             drafter: drafter,
+            whatsNew: whatsNewDrafter,
             authors: FixedCommitAuthor(GitAuthor(name: "Takumi", email: "1+mrs1669@users.noreply.github.com")),
             log: { _ in }
         )

@@ -39,7 +39,7 @@ extension MachineRuntime {
                 )
                 return TaskRunner(client: client, builds: EpicBuildService(builder: builder))
             },
-            slots: BuildSlots(count: configuration.capacity.build),
+            slots: buildSlots,
             reviewer: client,
             verifier: { () throws(CommanderError) in try await trusted.verifier() },
             locks: epicLocks
@@ -63,6 +63,14 @@ extension MachineRuntime {
             .mergeFinalPullRequest: MergeFinalPullRequestRunner(environment: final),
             .cleanUp: CleanUpRunner(environment: final)
         ]
+    }
+
+    /// 動いているループに属さない枠の Simulator を消すもの。生きている印を書いた後の見回りで流す。
+    /// ジョブと同じビルドの枠（`buildSlots`）を使い、枠を使っているジョブがある間は見回らない
+    public func straySimulatorSweep(log: @escaping @Sendable (String) -> Void) -> StraySimulatorSweep {
+        StraySimulatorSweep(
+            pool: SimulatorPool(tools: configuration.buildTools(paths: paths), runner: ProcessCommandRunner()), slots: buildSlots, log: log
+        )
     }
 
     /// 片付けの頼み（人が「探す」「消す」を押した意図）を、この Mac で済ませるもの。周ごとに `poll` を呼ぶ

@@ -91,6 +91,7 @@ enum AskHubWorkerMain {
         var runners = runtime.taskRunners(context: context, settings: TaskRepositorySettings.reader(context: context))
         runners[.prepareWorkspace] = PrepareWorkspaceRunner(context: context, workspace: runtime.workspace)
         let cleanUp = runtime.finishedEpicCleanUp(context: context, log: log)
+        let simulators = runtime.straySimulatorSweep(log: log)
         let loop = WorkerLoop(
             context: context,
             settings: settings,
@@ -100,6 +101,7 @@ enum AskHubWorkerMain {
             tidy: {
                 await runtime.workspace.tidy()
                 await cleanUp.run()
+                await simulators.run()
             },
             cleanup: runtime.cleanupService(context: context, log: log),
             log: log

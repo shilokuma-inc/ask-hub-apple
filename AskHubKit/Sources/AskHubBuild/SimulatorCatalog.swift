@@ -22,6 +22,8 @@ struct SimulatorCatalog: Decodable, Equatable {
         var state: String?
         var isAvailable: Bool?
         var deviceTypeIdentifier: String?
+        /// 最後に使った（起動した・止めた）時刻（`2026-11-18T01:20:55Z`）。一度も起動していないものと、書かない Xcode では無い
+        var lastUsedAt: String?
     }
 
     var runtimes: [Runtime]
@@ -37,7 +39,8 @@ struct SimulatorCatalog: Decodable, Equatable {
                     name: device.name,
                     runtime: runtime,
                     state: device.state ?? "",
-                    isAvailable: device.isAvailable == true
+                    isAvailable: device.isAvailable == true,
+                    lastUsedAt: device.lastUsedAt.flatMap { try? Date.ISO8601FormatStyle().parse($0) }
                 )
             }
         }
@@ -96,13 +99,16 @@ public struct Simulator: Equatable, Hashable, Sendable {
     public var state: String
     /// ランタイムが消えたものは false
     public var isAvailable: Bool
+    /// 最後に使った時刻（`simctl list` の `lastUsedAt`）。分からなければ nil
+    public var lastUsedAt: Date?
 
-    public init(udid: String, name: String, runtime: String, state: String, isAvailable: Bool = true) {
+    public init(udid: String, name: String, runtime: String, state: String, isAvailable: Bool = true, lastUsedAt: Date? = nil) {
         self.udid = udid
         self.name = name
         self.runtime = runtime
         self.state = state
         self.isAvailable = isAvailable
+        self.lastUsedAt = lastUsedAt
     }
 }
 

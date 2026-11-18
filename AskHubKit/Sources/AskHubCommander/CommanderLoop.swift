@@ -225,7 +225,9 @@ public actor CommanderLoop {
         let pending = try await intake.pending()
         seenIntents = Set(pending)
         for intent in pending {
-            log("人の意図: \(try await intake.process(intent))")
+            let outcome = try await intake.process(intent)
+            log("人の意図: \(outcome)")
+            if case let .accepted(kind) = outcome, Self.releaseKinds.contains(kind) { releases?.wake() }
         }
         timer.lap("人の意図")
         var swept = try await JobSweep(context: context, leftoversBefore: startedAt).sweepAll()
@@ -308,9 +310,17 @@ public actor CommanderLoop {
         "humanTaskDone": HumanTaskDoneHandler(),
         "verify": VerifyHandler(),
         "publishGitHubRelease": PublishGitHubReleaseHandler(),
+        "startRelease": StartReleaseHandler(),
+        "submitForReview": SubmitForReviewHandler(),
+        "distributeRelease": DistributeReleaseHandler(),
+        "withdrawSubmission": WithdrawSubmissionHandler(),
+        "abandonRelease": AbandonReleaseHandler(),
         "findCleanupCandidates": CleanupRequestHandler(),
         "removeCleanupCandidates": CleanupRequestHandler()
     ]
+
+    /// 受け付けたら、生きている印を待たずにリリースの見回りを起こす種類（release ブランチを作る・App Store Connect に出すなど）
+    static let releaseKinds: Set<String> = ["startRelease", "submitForReview", "distributeRelease", "withdrawSubmission"]
 
     // MARK: - 通知
 

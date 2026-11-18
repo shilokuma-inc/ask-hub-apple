@@ -1,0 +1,255 @@
+@testable import AskHubCommander
+import AskHubProtocol
+import AskHubStateStore
+import Foundation
+import Testing
+
+/// 審査に出す・配信する・取り下げの人の意図（`SubmitForReviewHandler` など）
+extension SubmissionHandlersTests {
+    func submitEnvelope(revision: String = "2", releaseType: String = "afterApproval", locales: [String] = ["ja"]) -> IntentEnvelope {
+        IntentEnvelope(
+            kind: SubmitForReviewIntent.kind,
+            repo: ReleaseWatchTests.repo,
+            target: .init(type: "submission", id: "1.2.0"),
+            targetVersion: revision,
+            payload: [
+                "builds": .array([.object(["platform": .string("iOS"), "build": .string("45")])]),
+                "whatsNew": .array(locales.map { .object(["locale": .string($0), "text": .string("・\($0) を直した")]) }),
+                "releaseType": .string(releaseType)
+            ],
+            issuedAt: Timestamp(ReleaseWatchTests.now),
+            nonce: ULID(rawValue: "01JCN0NCE00000000000000005")!,
+            keyId: Self.keyID
+        )
+    }
+
+    static func prepared() -> SubmissionFile {
+        var file = started()
+        let now = Timestamp(ReleaseWatchTests.now)
+        file.branch = .init(name: "release/1.2.0", commit: ReleaseWatchTests.developHead, created: true, at: now)
+        file.whatsNew = .init(drafts: [.init(locale: "ja", text: "・下書き")], draftedAt: now)
+        file.builds = [.init(platform: .iOS, build: "45", uploadedAt: now)]
+        file.revision = 2
+        return file
+    }
+
+    @Test func recordsSubmitOnlyForWhatHumanSaw() async throws {
+        try await put(Self.prepared())
+        let handler = SubmitForReviewHandler()
+        // 準備の版が違う・言語が違う
+        #expect(try await handler.handle(submitEnvelope(revision: "1"), in: context) != .accept)
+        #expect(try await handler.handle(submitEnvelope(locales: ["ja", "en-US"]), in: context) != .accept)
+        #expect(try await file()?.submit == nil)
+        #expect(try await handler.handle(submitEnvelope(releaseType: "manual"), in: context) == .accept)
+        let submit = try #require(try await file()?.submit)
+        #expect(submit.releaseType == .manual && submit.builds == [.init(platform: .iOS, build: "45")])
+        #expect(submit.whatsNew == [.init(locale: "ja", text: "・ja を直した")])
+        // やり直しは受け付ける
+        #expect(try await handler.handle(submitEnvelope(releaseType: "manual"), in: context) == .accept)
+    }
+
+    @Test func recordsDistributionAndWithdrawalByState() async throws {
+        var record = Self.prepared()
+        record.submit = .init(
+            approval: record.start!.approval,
+            at: record.createdAt,
+            builds: [.init(platform: .iOS, build: "45")],
+            whatsNew: [],
+            releaseType: .manual
+        )
+        record.review = [.init(platform: .iOS, state: .inReview, since: record.createdAt, submittedAt: record.createdAt)]
+        try await put(record)
+        // 審査中は配信できず、取り下げられる
+        #expect(try await DistributeReleaseHandler().handle(envelope("distributeRelease"), in: context) != .accept)
+        #expect(try await WithdrawSubmissionHandler().handle(envelope("withdrawSubmission"), in: context) == .accept)
+        #expect(try await file()?.withdrawal?.doneAt == nil)
+        // 取り下げを送っている間は、もう一度は受け付けない
+        let again = envelope("withdrawSubmission", nonce: "01JCN0NCE00000000000000006")
+        #expect(try await WithdrawSubmissionHandler().handle(again, in: context) != .accept)
+
+        record.withdrawal = nil
+        record.review = [.init(platform: .iOS, state: .pendingDeveloperRelease, since: record.createdAt, submittedAt: record.createdAt)]
+        try await put(record)
+        let approved = envelope("withdrawSubmission", nonce: "01JCN0NCE00000000000000007")
+        #expect(try await WithdrawSubmissionHandler().handle(approved, in: context) != .accept)
+        #expect(try await DistributeReleaseHandler().handle(envelope("distributeRelease"), in: context) == .accept)
+        #expect(try await file()?.distribution?.approval.nonce.rawValue == "01JCN0NCE00000000000000001")
+    }
+}
+
+/// App Store Connect に出す・配信する・取り下げと、審査の状態の見張り
+extension ReleaseWatchTests {
+    func putSubmission(_ file: SubmissionFile) async throws {
+        await store.put(StatePath.submission(Self.repo, file.version), data: try StateFileCoder.encode(file))
+    }
+
+    /// App Store Connect の 1.2.0 の iOS の版
+    func version(_ state: AppStoreVersionState) -> AppStoreVersionInfo {
+        AppStoreVersionInfo(id: "v-1.2.0", platform: .iOS, versionString: "1.2.0", state: state)
+    }
+
+    func readyToSubmit(releaseType: AppStoreReleaseType = .afterApproval) async throws -> SubmissionFile {
+        try await startRelease()
+        hosting.state.withLock { $0.branches["release/1.2.0"] = Self.developHead }
+        var file = SubmissionHandlersTests.prepared()
+        file.nextVersion = .init(version: MarketingVersion(rawValue: "1.3.0")!, state: .skipped, at: file.createdAt)
+        let drafts: [LocalizedText] = [.init(locale: "ja", text: "・下書き"), .init(locale: "en-US", text: "- Draft")]
+        file.whatsNew = .init(drafts: drafts, draftedAt: file.createdAt)
+        file.submit = .init(
+            approval: IntentReference(keyId: SubmissionHandlersTests.keyID, nonce: ULID(rawValue: "01JCN0NCE00000000000000005")!),
+            at: Timestamp(Self.now),
+            builds: [.init(platform: .iOS, build: "45")],
+            whatsNew: [.init(locale: "ja", text: "・速くなりました"), .init(locale: "en-US", text: "- Faster")],
+            releaseType: releaseType
+        )
+        try await putSubmission(file)
+        appStore.state.withLock { state in
+            // release ブランチを作ったとき（今）に上げたビルド
+            state.builds = [build("45", minutesFromNow: 0)]
+            state.localizations["v-1.2.0"] = [
+                AppStoreLocalization(id: "l-ja", locale: "ja", whatsNew: nil),
+                AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: "- Faster")
+            ]
+        }
+        return file
+    }
+
+    @Test func submitsToAppStoreConnectOnce() async throws {
+        _ = try await readyToSubmit()
+        let watch = watch()
+        await watch.refresh()
+        let writes = appStore.state.withLock { $0.writes }
+        #expect(writes == [
+            "createVersion iOS 1.2.0 afterApproval b45",
+            "updateWhatsNew l-ja ・速くなりました",
+            "createReviewSubmission iOS",
+            "addToReviewSubmission s-iOS v-1.2.0",
+            "submitReviewSubmission s-iOS"
+        ])
+        let file = try await submission()
+        #expect(file.review.map(\.state) == [.waitingForReview])
+        #expect(file.review.first?.submittedAt == Timestamp(Self.now))
+        #expect(!file.isSubmitting && file.problem == nil)
+        // 出し終えたら、もう一度は出さない
+        await watch.refresh()
+        #expect(appStore.state.withLock { $0.writes }.count == writes.count)
+    }
+
+    @Test func reusesEditableVersionAndReportsRefusal() async throws {
+        _ = try await readyToSubmit()
+        appStore.state.withLock { state in
+            // やめたリリースで作った版（番号を直して使う）
+            state.others = [AppStoreVersionInfo(id: "v-old", platform: .iOS, versionString: "1.1.9", state: .prepareForSubmission)]
+            state.localizations["v-old"] = [
+                AppStoreLocalization(id: "l-ja", locale: "ja", whatsNew: nil),
+                AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: nil)
+            ]
+            state.refusal = .refused(status: 409, detail: "You must upload screenshots.")
+        }
+        let watch = watch()
+        await watch.refresh()
+        let file = try await submission()
+        #expect(file.isSubmitting)
+        #expect(file.problem?.step == .submit && file.problem?.needsHuman == true)
+        #expect(file.problem?.message.contains("You must upload screenshots.") == true)
+        #expect(await submissionBlockers(watch).map(\.reason) == [.submissionProblem(.submit)])
+
+        appStore.state.withLock { $0.refusal = nil }
+        clock.advance(minutes: 31)
+        await watch.refresh()
+        #expect(appStore.state.withLock { $0.writes }.first == "updateVersion v-old 1.2.0 afterApproval b45")
+        #expect(try await submission().problem == nil)
+    }
+
+    @Test func tracksReviewStatesAndNotifies() async throws {
+        var file = try await readyToSubmit(releaseType: .manual)
+        file.review = [.init(platform: .iOS, state: .waitingForReview, since: Timestamp(Self.now), submittedAt: Timestamp(Self.now))]
+        try await putSubmission(file)
+        let inReview = AppStoreVersionInfo(id: "v-1.2.0", platform: .iOS, versionString: "1.2.0", state: .inReview)
+        appStore.state.withLock { $0.others = [inReview] }
+        let watch = watch()
+        await watch.refresh()
+        #expect(try await submission().review.map(\.state) == [.inReview])
+        #expect(await submissionBlockers(watch).map(\.reason) == [.reviewState(.iOS, .inReview)])
+
+        // 承認された（手動の配信）。人が配信するを押すと、見回りが配信する
+        appStore.state.withLock { $0.others = [self.version(.pendingDeveloperRelease)] }
+        clock.advance(minutes: 31)
+        await watch.refresh()
+        var approved = try await submission()
+        #expect(approved.awaitsDistribution)
+        #expect(await submissionBlockers(watch).map(\.reason) == [.reviewState(.iOS, .pendingDeveloperRelease)])
+        approved.distribution = .init(approval: approved.start!.approval, at: Timestamp(clock.now))
+        try await putSubmission(approved)
+        await watch.refresh()
+        #expect(appStore.state.withLock { $0.writes }.last == "requestRelease v-1.2.0")
+        #expect(try await submission().distribution?.doneAt != nil)
+
+        // 配信を見つけたら終え、配信の知らせを出す。GitHub Release は審査に出したときの What's New で公開する
+        appStore.state.withLock { state in
+            state.others = []
+            let uploaded = Self.now.addingTimeInterval(-300)
+            state.versions = [LiveAppVersion(platform: .iOS, version: Self.next, build: "45", uploadedAt: uploaded)]
+            state.apps = [AppStoreApp(id: "6740000001", bundleId: "jp.shilokuma.OshiCon", name: "推し活カウントダウン")]
+        }
+        hosting.state.withLock { $0.tags["v1.2.0"] = Self.released }
+        await watch.refresh()
+        let ended = try await submission()
+        #expect(ended.end?.reason == .distributed)
+        #expect(await submissionBlockers(watch).map(\.reason) == [.submissionDistributed])
+        let release = try StateFileCoder.decode(
+            ReleaseFile.self, from: try #require(await store.data(at: StatePath.release(Self.repo, Self.next)))
+        )
+        #expect(release.notes?.confirmed?.text == "・速くなりました")
+        #expect(release.githubRelease != nil)
+        #expect(hosting.state.withLock { $0.releases["v1.2.0"] } == "・速くなりました")
+        #expect(drafter.materials.withLock { $0 }.isEmpty)
+    }
+
+    @Test func withdrawsAndAllowsResubmit() async throws {
+        var file = try await readyToSubmit()
+        file.review = [.init(platform: .iOS, state: .waitingForReview, since: Timestamp(Self.now), submittedAt: Timestamp(Self.now))]
+        file.withdrawal = .init(approval: file.start!.approval, at: Timestamp(Self.now))
+        try await putSubmission(file)
+        appStore.state.withLock { state in
+            state.others = [AppStoreVersionInfo(id: "v-1.2.0", platform: .iOS, versionString: "1.2.0", state: .waitingForReview)]
+            state.submissions = [AppStoreReviewSubmission(id: "s1", platform: .iOS, state: .waitingForReview, versionID: "v-1.2.0")]
+        }
+        let watch = watch()
+        await watch.refresh()
+        #expect(appStore.state.withLock { $0.writes } == ["cancelReviewSubmission s1"])
+        var withdrawn = try await submission()
+        #expect(withdrawn.submit == nil && withdrawn.withdrawal?.doneAt != nil)
+        // 取り下げが済んだら（Developer Rejected）、出し直せる
+        appStore.state.withLock { $0.others = [self.version(.developerRejected)] }
+        await watch.refresh()
+        withdrawn = try await submission()
+        #expect(withdrawn.review.map(\.state) == [.developerRejected])
+        #expect(withdrawn.awaitsSubmission && withdrawn.canAbandon)
+    }
+
+    @Test func recordsVersionsSubmittedByHand() async throws {
+        try await addRepository()
+        live()
+        appStore.state.withLock { state in
+            state.others = [
+                AppStoreVersionInfo(id: "v-1.3.0", platform: .iOS, versionString: "1.3.0", state: .rejected),
+                // 配信中の版より古い・まだ出していない版は記録しない
+                AppStoreVersionInfo(id: "v-1.0.9", platform: .iOS, versionString: "1.0.9", state: .rejected),
+                AppStoreVersionInfo(id: "v-1.4.0", platform: .macOS, versionString: "1.4.0", state: .prepareForSubmission)
+            ]
+        }
+        let watch = watch()
+        await watch.refresh()
+        let data = try #require(await store.data(at: StatePath.submission(Self.repo, MarketingVersion(rawValue: "1.3.0")!)))
+        let found = try StateFileCoder.decode(SubmissionFile.self, from: data)
+        #expect(found.origin == .appStoreConnect && found.review.map(\.state) == [.rejected])
+        #expect(await store.data(at: StatePath.submission(Self.repo, MarketingVersion(rawValue: "1.0.9")!)) == nil)
+        #expect(await store.data(at: StatePath.submission(Self.repo, MarketingVersion(rawValue: "1.4.0")!)) == nil)
+        // 次の見回りで、リジェクトを知らせる
+        clock.advance(minutes: 31)
+        await watch.refresh()
+        let scope = Blocker.Scope.submission(Self.repo, MarketingVersion(rawValue: "1.3.0")!)
+        #expect(await watch.blockers.filter { $0.scope == scope }.map(\.reason) == [.reviewState(.iOS, .rejected)])
+    }
+}

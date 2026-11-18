@@ -121,6 +121,8 @@ public enum AppStoreConnectError: Error, Equatable, Sendable, CustomStringConver
     case unavailable(String)
     /// 応答の形が違う・ほかの 4xx
     case malformed(String)
+    /// 書き込みを断られた（400・404・409・422）。`detail` は App Store Connect の説明（鍵の値は含まない）
+    case refused(status: Int, detail: String)
 
     public var description: String {
         switch self {
@@ -129,6 +131,7 @@ public enum AppStoreConnectError: Error, Equatable, Sendable, CustomStringConver
         case .rateLimited: "App Store Connect の上限に当たった（429）"
         case let .unavailable(detail): "App Store Connect に届かない（\(detail)）"
         case let .malformed(detail): "App Store Connect の応答を読めない（\(detail)）"
+        case let .refused(status, detail): "App Store Connect に断られた（\(status)。\(detail)）"
         }
     }
 }
@@ -226,17 +229,36 @@ public actor AppStoreConnectClient: AppStoreConnectReading {
 
     // MARK: - 要求
 
-    private func get<Value: Decodable>(
+    func get<Value: Decodable>(
         _ path: String,
         query: [URLQueryItem],
         as type: Value.Type
     ) async throws(AppStoreConnectError) -> Value {
+        let data = try await send("GET", path, query: query)
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw .malformed("\(path) の応答")
+        }
+    }
+
+    /// 1 つの要求を送り、応答の本文を返す（204 なら空）。`body` は JSON:API の本文
+    func send(
+        _ method: String,
+        _ path: String,
+        query: [URLQueryItem] = [],
+        body: Data? = nil
+    ) async throws(AppStoreConnectError) -> Data {
         var components = URLComponents(url: apiBase.appendingPathComponent(path), resolvingAgainstBaseURL: false)
-        components?.queryItems = query
+        components?.queryItems = query.isEmpty ? nil : query
         guard let url = components?.url else { throw .malformed("URL を作れない") }
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
         request.setValue("Bearer \(try currentToken())", forHTTPHeaderField: "Authorization")
         let (data, response): (Data, HTTPURLResponse)
         do {
@@ -246,7 +268,7 @@ public actor AppStoreConnectClient: AppStoreConnectReading {
         }
         switch response.statusCode {
         case 200..<300:
-            break
+            return data
         case 401, 403:
             // 鍵を入れ替えたかもしれないので、次は作り直す
             token = nil
@@ -255,13 +277,13 @@ public actor AppStoreConnectClient: AppStoreConnectReading {
             throw .rateLimited
         case 500...:
             throw .unavailable("HTTP \(response.statusCode)")
+        case 400, 404, 409, 422:
+            // 読み取りで返るなら、こちらの要求の形の誤り
+            guard method != "GET" else { throw .malformed("HTTP \(response.statusCode)") }
+            // 書き込みを断られた理由（足りない掲載文・状態が合わないなど）。App Store Connect の errors の detail を人に見せる
+            throw .refused(status: response.statusCode, detail: AppStoreConnectErrors.detail(data))
         default:
             throw .malformed("HTTP \(response.statusCode)")
-        }
-        do {
-            return try JSONDecoder().decode(type, from: data)
-        } catch {
-            throw .malformed("\(path) の応答")
         }
     }
 
@@ -334,6 +356,7 @@ struct AppStoreConnectVersionsResponse: Decodable {
         var platform: String?
         var versionString: String?
         var appVersionState: String?
+        var releaseType: String?
     }
 
     struct Relationships: Decodable {
