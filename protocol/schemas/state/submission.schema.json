@@ -1,0 +1,414 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/submission.schema.json",
+  "title": "repos/<owner>/<repo>/submissions/<版>.json（リリースを始めた版の準備と審査）",
+  "description": "司令塔だけが書く。人が startRelease を押したときに作り（origin が askhub）、release ブランチ・develop の版を上げる PR・What's New の下書き・release ブランチから上げたビルドを足す。人が submitForReview（targetVersion は revision）を押すと司令塔が App Store Connect に出し、審査の状態をプラットフォームごとに review に書く。App Store Connect の Web で手で出した版を見つけたときも作る（origin が appStoreConnect。準備の欄を持たない）。配信を見つけたら end を付ける。欄どうしの決まり（origin ごとの欄・branch の name が release/<版>・次の版は始めた版より大きい・earliestReleaseDate は scheduled のときだけ・end の approval は abandoned のときだけ・言語とプラットフォームを重ねない など）は読む側で確かめる",
+  "type": "object",
+  "required": [
+    "v",
+    "repo",
+    "version",
+    "origin",
+    "builds",
+    "revision",
+    "review",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "localizedTexts": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": [
+          "locale",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "locale": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
+            "maxLength": 21,
+            "description": "App Store Connect の言語（ja・en-US・zh-Hans など）"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        }
+      }
+    },
+    "buildChoice": {
+      "type": "object",
+      "required": [
+        "platform",
+        "build"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "platform": {
+          "$ref": "release.schema.json#/$defs/platform"
+        },
+        "build": {
+          "$ref": "release.schema.json#/$defs/buildNumber"
+        }
+      }
+    }
+  },
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "repo": {
+      "$ref": "../common.schema.json#/$defs/repositoryFullName"
+    },
+    "version": {
+      "$ref": "release.schema.json#/$defs/marketingVersion"
+    },
+    "origin": {
+      "enum": [
+        "askhub",
+        "appStoreConnect"
+      ]
+    },
+    "start": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "approval",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "$ref": "../common.schema.json#/$defs/intentReference"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      },
+      "description": "リリースを始めた人の意図（origin が askhub のときだけ）"
+    },
+    "branch": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "release ブランチ。commit は作ったときの先頭（develop の先頭）。created は司令塔が作ったか",
+      "required": [
+        "name",
+        "commit",
+        "created",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^release/",
+          "maxLength": 32
+        },
+        "commit": {
+          "$ref": "release.schema.json#/$defs/commit"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "nextVersion": {
+      "$ref": "release.schema.json#/properties/nextVersion"
+    },
+    "builds": {
+      "type": "array",
+      "maxItems": 4,
+      "description": "release ブランチから上げたビルド（プラットフォームごとに、処理を終えた最新のもの）",
+      "items": {
+        "type": "object",
+        "required": [
+          "platform",
+          "build"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "platform": {
+            "$ref": "release.schema.json#/$defs/platform"
+          },
+          "build": {
+            "$ref": "release.schema.json#/$defs/buildNumber"
+          },
+          "uploadedAt": {
+            "$ref": "../common.schema.json#/$defs/timestamp"
+          }
+        }
+      }
+    },
+    "whatsNew": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "What's New の下書き（言語ごと）。drafts が空なら、App Store にまだ版が無い（初めての版は What's New を持たない）",
+      "required": [
+        "drafts",
+        "draftedAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "drafts": {
+          "$ref": "#/$defs/localizedTexts"
+        },
+        "draftedAt": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "ビルドか What's New の下書きが変わるたびに上げる。submitForReview の targetVersion"
+    },
+    "submit": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "人が審査に出すを押した中身。司令塔が出し終えたら review に submittedAt が付く。取り下げを終えたら消す",
+      "required": [
+        "approval",
+        "at",
+        "builds",
+        "whatsNew",
+        "releaseType"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "$ref": "../common.schema.json#/$defs/intentReference"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "builds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/buildChoice"
+          }
+        },
+        "whatsNew": {
+          "$ref": "#/$defs/localizedTexts"
+        },
+        "releaseType": {
+          "enum": [
+            "afterApproval",
+            "manual",
+            "scheduled"
+          ]
+        },
+        "earliestReleaseDate": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "review": {
+      "type": "array",
+      "maxItems": 4,
+      "description": "プラットフォームごとの審査の状態（司令塔が App Store Connect の appVersionState を読んだもの）",
+      "items": {
+        "type": "object",
+        "required": [
+          "platform",
+          "state",
+          "since"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "platform": {
+            "$ref": "release.schema.json#/$defs/platform"
+          },
+          "state": {
+            "enum": [
+              "prepareForSubmission",
+              "readyForReview",
+              "waitingForReview",
+              "inReview",
+              "pendingDeveloperRelease",
+              "pendingAppleRelease",
+              "processingForDistribution",
+              "readyForDistribution",
+              "rejected",
+              "metadataRejected",
+              "developerRejected",
+              "accepted",
+              "invalidBinary",
+              "waitingForExportCompliance",
+              "replacedWithNewVersion"
+            ]
+          },
+          "since": {
+            "$ref": "../common.schema.json#/$defs/timestamp"
+          },
+          "submittedAt": {
+            "anyOf": [
+              {
+                "$ref": "../common.schema.json#/$defs/timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "distribution": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "approval",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "$ref": "../common.schema.json#/$defs/intentReference"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "doneAt": {
+          "anyOf": [
+            {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "description": "人が配信するを押した（distributeRelease）。司令塔が App Store Connect に送ったら doneAt が付く"
+    },
+    "withdrawal": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "approval",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "$ref": "../common.schema.json#/$defs/intentReference"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "doneAt": {
+          "anyOf": [
+            {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "description": "人が審査の取り下げを押した（withdrawSubmission）。司令塔が取り下げたら doneAt が付く"
+    },
+    "end": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "終わりの印。distributed は配信を見つけた、abandoned は人がやめた、superseded はもっと新しい版を配信した",
+      "required": [
+        "reason",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "enum": [
+            "distributed",
+            "abandoned",
+            "superseded"
+          ]
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "approval": {
+          "anyOf": [
+            {
+              "$ref": "../common.schema.json#/$defs/intentReference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "problem": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "進められなかった理由（進められたら消す）。needsHuman が true なら、やり直しても進まないので人が直す",
+      "required": [
+        "step",
+        "message",
+        "needsHuman",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "step": {
+          "enum": [
+            "branch",
+            "nextVersion",
+            "whatsNew",
+            "builds",
+            "submit",
+            "distribute",
+            "withdraw",
+            "review"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "needsHuman": {
+          "type": "boolean"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "createdAt": {
+      "$ref": "../common.schema.json#/$defs/timestamp"
+    },
+    "updatedAt": {
+      "$ref": "../common.schema.json#/$defs/timestamp"
+    }
+  }
+}
