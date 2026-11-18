@@ -84,6 +84,28 @@ public actor InMemoryStateStore: StateStore {
         return blob.sha
     }
 
+    /// ディレクトリの下のファイルを、まとめて移す（すべて移すか、何も移さない）。
+    /// 署名を `StateStore` とそろえる（違うと、この型のまま呼んだときに、断る既定のほうが選ばれる）
+    public func move(_ moves: [StateMove], message: String) async throws(StateStoreError) {
+        guard moves.allSatisfy({ StatePathCheck.isSafe($0.from) && StatePathCheck.isSafe($0.to) }) else { throw .invalidPath }
+        guard !isSnapshot else { throw .unexpected(status: 0, message: "読むだけの写しには書けない（元の置き場所で読み直してから書く）") }
+        if !injectedWriteFailures.isEmpty { throw injectedWriteFailures.removeFirst() }
+        var moved = files
+        for move in moves {
+            let prefix = move.from + "/"
+            let under = moved.filter { $0.key.hasPrefix(prefix) }
+            guard !under.isEmpty else { continue }
+            guard !moved.keys.contains(where: { $0 == move.to || $0.hasPrefix(move.to + "/") }) else { throw .conflict }
+            for (path, blob) in under {
+                moved[path] = nil
+                moved[move.to + "/" + path.dropFirst(prefix.count)] = blob
+            }
+        }
+        guard moved != files else { return }
+        files = moved
+        writeCount += 1
+    }
+
     /// 次の書き込みで、順に投げる失敗を足す
     public func failNextWrites(with failures: [StateStoreError]) {
         injectedWriteFailures += failures

@@ -19,7 +19,7 @@ public struct GitHubContentsStore: StateStore {
     private let apiBase: URL
     private let transport: any HTTPTransport
     private let token: @Sendable () async throws -> String
-    private let budget: WriteBudget?
+    let budget: WriteBudget?
     let now: @Sendable () -> Date
     private let cache = ETagCache()
     /// sha で中身が決まる tree と blob（`snapshot()` の写しが使い回す）
@@ -83,7 +83,7 @@ public struct GitHubContentsStore: StateStore {
     static let contentsListLimit = 1_000
 
     /// 親の一覧から読む、ディレクトリの tree の sha。ディレクトリが無ければ nil
-    private func treeSHA(of directory: String) async throws(StateStoreError) -> String? {
+    func treeSHA(of directory: String) async throws(StateStoreError) -> String? {
         guard StatePathCheck.isSafe(directory) else { throw .invalidPath }
         let parts = directory.split(separator: "/").map(String.init)
         let parent = parts.dropLast().joined(separator: "/")
@@ -143,7 +143,7 @@ public struct GitHubContentsStore: StateStore {
 
     /// tree の下。`recursive` なら下の階層までのファイル（blob）、そうでなければ直下のファイルとディレクトリ。
     /// tree は sha で決まり中身が変わらないので、前に読んだものがあれば取りに行かない
-    private func tree(sha: String, under directory: String, recursive: Bool) async throws(StateStoreError) -> [DirectoryEntry] {
+    func tree(sha: String, under directory: String, recursive: Bool) async throws(StateStoreError) -> [DirectoryEntry] {
         guard Self.isObjectSHA(sha) else { throw .unexpected(status: 200, message: "tree の sha の形が違う") }
         // `:` は状態リポジトリのパスに使わないので、ファイルの中身の鍵とぶつからない。同じ中身の tree が別のディレクトリにもあり得るので、
         // 読んだディレクトリも鍵に入れる（一覧のパスはディレクトリから作るため）

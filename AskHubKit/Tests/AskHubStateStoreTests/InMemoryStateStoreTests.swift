@@ -17,4 +17,29 @@ struct InMemoryStateStoreTests {
         }
         #expect(try await store.read("macs/mac-mini.json")?.data == Data("2".utf8))
     }
+
+    /// ディレクトリの下をまとめて移す。移す元が無いものは飛ばし、移す先に何かあれば何も移さない。写しでは断る
+    @Test func movesDirectoriesTogetherOrNotAtAll() async throws {
+        let store = InMemoryStateStore(files: [
+            "repos/o/r/epics/e1/epic.json": Data("1".utf8),
+            "repos/o/r/epics/e1/jobs/j.json": Data("2".utf8),
+            "repos/o/r/epics/e2/epic.json": Data("3".utf8),
+            "archive/repos/o/r/epics/e2/epic.json": Data("old".utf8)
+        ])
+        let snapshot = try await store.snapshot()
+        let first = StateMove(from: "repos/o/r/epics/e1", to: "archive/repos/o/r/epics/e1")
+        let missing = StateMove(from: "repos/o/r/epics/e9", to: "archive/repos/o/r/epics/e9")
+        let taken = StateMove(from: "repos/o/r/epics/e2", to: "archive/repos/o/r/epics/e2")
+        await #expect(throws: StateStoreError.conflict) { try await store.move([first, taken], message: "m") }
+        #expect(await store.data(at: "repos/o/r/epics/e1/epic.json") == Data("1".utf8))
+        #expect(await store.writeCount == 0)
+
+        try await store.move([first, missing], message: "m")
+        #expect(await store.data(at: "repos/o/r/epics/e1/epic.json") == nil)
+        #expect(await store.data(at: "archive/repos/o/r/epics/e1/epic.json") == Data("1".utf8))
+        #expect(await store.data(at: "archive/repos/o/r/epics/e1/jobs/j.json") == Data("2".utf8))
+        #expect(try await store.list("repos/o/r/epics")?.map(\.name) == ["e2"])
+        #expect(await store.writeCount == 1)
+        await #expect(throws: (any Error).self) { try await snapshot.move([taken], message: "m") }
+    }
 }
