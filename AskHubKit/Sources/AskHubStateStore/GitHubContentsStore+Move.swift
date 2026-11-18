@@ -14,7 +14,7 @@ extension GitHubContentsStore {
         var entries: [MoveTreeEntry] = []
         for move in moves {
             guard let sha = try await treeSHA(of: move.from) else { continue }
-            guard try await treeSHA(of: move.to) == nil, try await read(move.to) == nil else { throw .conflict }
+            guard try await !exists(move.to) else { throw .conflict }
             for file in try await tree(sha: sha, under: move.from, recursive: true) {
                 entries.append(MoveTreeEntry(path: file.path, sha: nil))
                 entries.append(MoveTreeEntry(path: move.to + file.path.dropFirst(move.from.count), sha: file.sha))
@@ -27,9 +27,20 @@ extension GitHubContentsStore {
         let commit = try await decode(ShaPayload.self, from: try await request("POST", "git/commits", body: commitBody))
         do {
             _ = try await request("PATCH", "git/refs/heads/\(branch)", body: RefBody(sha: commit.sha, force: false))
-        } catch .unexpected(status: 422, _) {
-            // 早送りにならない（読んだ後にほかの書き手が書いた）
+        } catch let .unexpected(status: 422, message) where message?.localizedCaseInsensitiveContains("fast forward") == true {
+            // 早送りにならない（読んだ後にほかの書き手が書いた）。ほかの 422（ルールで断られたなど）は、理由を残すためそのまま伝える
             throw .conflict
+        }
+    }
+
+    /// パスに何か（ディレクトリかファイル）があるか
+    private func exists(_ path: String) async throws(StateStoreError) -> Bool {
+        do throws(StateStoreError) {
+            if try await treeSHA(of: path) != nil { return true }
+            return try await read(path) != nil
+        } catch .wrongKind {
+            // 親かそのものがファイル
+            return true
         }
     }
 
@@ -37,9 +48,11 @@ extension GitHubContentsStore {
     private func branchName() async throws(StateStoreError) -> String {
         if let branch { return branch }
         let name = try await decode(RepositoryPayload.self, from: try await request("GET", nil)).defaultBranch
-        // ブランチの名前は URL のパスに入れるので、形を確かめる
-        guard !name.isEmpty, !name.hasPrefix("-"), name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "._-/".contains($0)) }),
-              !name.contains("..") else {
+        // git の ref の名前の決まり（`git check-ref-format`）のうち、URL のパスに関わるものを確かめる。
+        // パスに入れるときは、要求を組み立てるところ（`appendingPathComponent`）が要る文字をエンコードする
+        let forbidden = CharacterSet(charactersIn: " ~^:?*[\\").union(.controlCharacters)
+        guard !name.isEmpty, !name.hasPrefix("-"), !name.hasPrefix("/"), !name.hasSuffix("/"), !name.hasSuffix("."),
+              !name.contains(".."), !name.contains("@{"), !name.contains("//"), name.rangeOfCharacter(from: forbidden) == nil else {
             throw .unexpected(status: 200, message: "既定のブランチの名前の形が違う")
         }
         return name
