@@ -64,6 +64,8 @@ public struct PushNotice: Equatable, Sendable {
                     target: ["mac": mac.rawValue],
                     keys: blockers.map(\.key)
                 )
+            case .verifications:
+                return verificationNotice(blockers, titles: titles)
             case let .release(repo, version):
                 return PushNotice(
                     title: "\(repo.name) \(version) を配信しました",
@@ -75,6 +77,25 @@ public struct PushNotice: Equatable, Sendable {
                 )
             }
         }
+    }
+
+    /// 止めないもの（実機確認）のまとめの通知。epic が 1 つなら、その epic を開く（いくつもあれば開く先を持たない）
+    private static func verificationNotice(_ blockers: [Blocker], titles: [ULID: String]) -> PushNotice {
+        var lines: [String] = []
+        var targets: [[String: String]] = []
+        for case let .verification(repo, epic, items) in blockers.map(\.reason) {
+            lines.append("「\(shortened(titles[epic] ?? repo.name))」の \(items) 件")
+            targets.append(["repo": repo.rawValue, "epic": epic.rawValue])
+        }
+        let single = targets.count == 1 ? targets.first : nil
+        return PushNotice(
+            title: "実機で確かめてほしいことがあります",
+            subtitle: single?["repo"],
+            body: (lines + ["TestFlight に上がった版で確かめて、「確認した」か「問題あり」を付けてください"]).joined(separator: "\n"),
+            thread: "verification",
+            target: single ?? [:],
+            keys: blockers.map(\.key)
+        )
     }
 
     /// 例: 残り 820 回（1 時間 5,000 回）。15:54 に戻ります。（改行）askhub status のループなど、GitHub を多く使うものを止めてください
