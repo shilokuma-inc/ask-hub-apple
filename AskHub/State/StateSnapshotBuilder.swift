@@ -268,10 +268,10 @@ struct StateSnapshotBuilder {
         mac.cleanupCandidates = (file?.candidates ?? []).map(Self.candidate)
         mac.cleanupScannedAt = file?.scannedAt?.date
         mac.cleanupUnreadable = file?.unreadable ?? []
-        // どちらかを読めなければ、済ませたかどうかが分からないので、探している途中とも済んだとも出さない
+        // どちらかを読めなければ、済ませたかどうかが分からないので、探している途中とも済んだとも出さず、探す・消すも送らない
         let paths = [StatePath.cleanupCandidates(name), StatePath.cleanupRequests(name)]
         guard !documents.failures.contains(where: { paths.contains($0.source) }) else {
-            mac.cleanupResult = "片付けの状態を読めませんでした。読み直してください"
+            mac.cleanupWork = .unknown
             return
         }
         // ワーカーは古い頼みから済ませるので、次に済ませるものを出す

@@ -52,6 +52,8 @@ struct Mac: Identifiable, Hashable {
     enum CleanupWork: Hashable {
         case finding
         case removing
+        /// 片付けのファイルを読めず、済ませたかどうかが分からない（読み直すまで、探す・消すを送らない）
+        case unknown
     }
 
     enum Role: Hashable {

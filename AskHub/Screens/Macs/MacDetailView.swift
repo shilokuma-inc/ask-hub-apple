@@ -193,7 +193,9 @@ struct CleanupView: View {
                 statusSection(mac)
             }
             CardSection {
-                if candidates.isEmpty {
+                if candidates.isEmpty, mac?.cleanupWork == .unknown {
+                    Text("片付けの状態を読めませんでした").foregroundStyle(.secondary)
+                } else if candidates.isEmpty {
                     Text(mac?.cleanupScannedAt == nil
                         ? "まだ探していません。「探す」を押すと、この Mac のワーカーが、手で作った clone・Simulator・DerivedData を探します"
                         : "片付けの候補はありません")
@@ -253,6 +255,9 @@ struct CleanupView: View {
                     .foregroundStyle(.secondary)
             case .removing?:
                 Label("消しています", systemImage: "trash")
+            case .unknown?:
+                Label("片付けの状態を読めませんでした。読み直すまで、探す・消すは送れません", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Theme.warning)
             case nil:
                 LabeledContent("最後に探した時刻") {
                     Text(mac.cleanupScannedAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "まだ探していません")

@@ -65,8 +65,12 @@ extension StateClientServiceTests {
         unreadable["cleanup/mac-mini/candidates.json"] = #"{"v":99}"#
         let broken = try await makeService(files: Self.askingEpic(extra: unreadable)).service.fetchSnapshot()
         let brokenMac = try #require(broken.mac("mac-mini"))
-        #expect(brokenMac.cleanupWork == nil)
-        #expect(brokenMac.cleanupResult == "片付けの状態を読めませんでした。読み直してください")
+        #expect(brokenMac.cleanupWork == .unknown)
+        // 頼みのファイルだけを読めないときも、探している途中とも済んだとも出さない（重ねて探すを送らない）
+        var requestsBroken = Self.cleanupFiles(scanned: true)
+        requestsBroken["cleanup/mac-mini/requests.json"] = #"{"v":99}"#
+        let unknown = try await makeService(files: Self.askingEpic(extra: requestsBroken)).service.fetchSnapshot()
+        #expect(try #require(unknown.mac("mac-mini")).cleanupWork == .unknown)
     }
 
     @Test
