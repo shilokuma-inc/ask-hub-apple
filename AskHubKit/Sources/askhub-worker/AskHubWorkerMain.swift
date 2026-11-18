@@ -101,6 +101,7 @@ enum AskHubWorkerMain {
                 await runtime.workspace.tidy()
                 await cleanUp.run()
             },
+            cleanup: runtime.cleanupService(context: context, log: log),
             log: log
         )
         let kind = configuration.kind.rawValue

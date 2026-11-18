@@ -54,7 +54,8 @@ extension AskHubCommanderMain {
             taskRunners: runtime.taskRunners(context: context, settings: TaskRepositorySettings.reader(context: context)),
             tidy: { await cleanUp.run() },
             appIcons: appIcons,
-            releases: releases
+            releases: releases,
+            cleanup: runtime.cleanupService(context: context, log: log)
         )
         let pid = ProcessInfo.processInfo.processIdentifier
         log("起動しました（版 \(CommanderVersion.build.summary)、pid \(pid)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")

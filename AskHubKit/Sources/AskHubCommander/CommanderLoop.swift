@@ -99,6 +99,8 @@ public actor CommanderLoop {
     nonisolated let appIcons: AppIconSync?
     /// App Store での配信を見つけ、リリースの後作業を進めるもの。生きている印を書いた後に、周の外で見回り始める。nil なら見回らない
     nonisolated let releases: ReleaseWatch?
+    /// 片付けの頼みを、常時オンの Mac（ワーカーを兼ねる）で済ませる。周ごとに見る
+    nonisolated let cleanup: CleanupService?
 
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
@@ -132,7 +134,8 @@ public actor CommanderLoop {
         taskRunners: [JobKind: any JobRunning] = [:],
         tidy: @escaping @Sendable () async -> Void = {},
         appIcons: AppIconSync? = nil,
-        releases: ReleaseWatch? = nil
+        releases: ReleaseWatch? = nil,
+        cleanup: CleanupService? = nil
     ) {
         self.context = context
         self.settings = settings
@@ -151,6 +154,7 @@ public actor CommanderLoop {
         self.tidy = tidy
         self.appIcons = appIcons
         self.releases = releases
+        self.cleanup = cleanup
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
         startedAt = context.now()
@@ -251,6 +255,7 @@ public actor CommanderLoop {
         swept.jobs += restarted.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
         let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier))
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
+        await cleanup?.poll(verifier: verifier)
         timer.lap("引き受けと通知")
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
         await mirror?.syncAll(verifier: verifier)

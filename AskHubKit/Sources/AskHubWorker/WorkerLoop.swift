@@ -56,6 +56,8 @@ public actor WorkerLoop {
     nonisolated let status: @Sendable () async -> CommanderLoop.MachineStatus
     /// 生きている印を書いた後に、しばらく使っていない写しを片付ける
     nonisolated let tidy: @Sendable () async -> Void
+    /// 片付けの頼み（人が「探す」「消す」を押した意図）を、この Mac で済ませる。周ごとに見る
+    nonisolated let cleanup: CleanupService?
     nonisolated let log: @Sendable (String) -> Void
     nonisolated let sleeper: any Sleeper
     nonisolated let slots: JobSlots
@@ -73,6 +75,7 @@ public actor WorkerLoop {
         runners: [JobKind: any JobRunning],
         status: @escaping @Sendable () async -> CommanderLoop.MachineStatus,
         tidy: @escaping @Sendable () async -> Void = {},
+        cleanup: CleanupService? = nil,
         log: @escaping @Sendable (String) -> Void,
         sleeper: any Sleeper = TaskSleeper()
     ) {
@@ -82,6 +85,7 @@ public actor WorkerLoop {
         self.runners = runners
         self.status = status
         self.tidy = tidy
+        self.cleanup = cleanup
         self.log = log
         self.sleeper = sleeper
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: Set(runners.keys), log: log)
@@ -119,6 +123,7 @@ public actor WorkerLoop {
         // 起動して司令塔の印をまだ読めていないときも、合わない司令塔のジョブを引き受けないよう待つ
         guard compatibilityChecked, refusal == nil else { return [] }
         let verifier = try await verifier()
+        await cleanup?.poll(verifier: verifier)
         let jobs = try await context.jobsOfEpics(on: context.mac)
         return await slots.fill(from: jobs, now: context.now(), with: worker(verifier))
     }

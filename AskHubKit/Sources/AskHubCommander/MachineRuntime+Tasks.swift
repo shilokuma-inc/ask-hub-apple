@@ -65,6 +65,16 @@ extension MachineRuntime {
         ]
     }
 
+    /// 片付けの頼み（人が「探す」「消す」を押した意図）を、この Mac で済ませるもの。周ごとに `poll` を呼ぶ
+    public func cleanupService(context: CommanderContext, log: @escaping @Sendable (String) -> Void) -> CleanupService {
+        let machine = LocalCleanupMachine(
+            home: FileManager.default.homeDirectoryForCurrentUser,
+            tools: configuration.buildTools(paths: paths),
+            runner: ProcessCommandRunner()
+        )
+        return CleanupService(context: context, machine: machine, log: log)
+    }
+
     /// 終わった epic の、この Mac に残ったもの（作業場所・手元のブランチ・DerivedData）を片付けるもの。生きている印を書いた後の見回りで流す。
     /// ジョブと同じ epic の作業場所の排他（`epicLocks`）を使う
     public func finishedEpicCleanUp(context: CommanderContext, log: @escaping @Sendable (String) -> Void) -> FinishedEpicCleanUp {
