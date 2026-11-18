@@ -295,40 +295,6 @@ public actor CommanderLoop {
         await slots.waitForJobs()
     }
 
-    /// 人の意図の種類ごとの処理。`admin` が nil（ワーカー・テスト）なら、管理の操作（保護の設定）は理由を付けて断る
-    static func handlers(admin: AdminGitHub?) -> [String: any IntentHandler] {
-        commonHandlers.merging(["applyProtection": ApplyProtectionHandler(admin: admin)]) { current, _ in current }
-    }
-
-    /// 管理用のトークンを使わない処理
-    static let commonHandlers: [String: any IntentHandler] = [
-        "request": RequestHandler(),
-        "answer": AnswerHandler(),
-        "startEpic": StartEpicHandler(),
-        "reviseGoal": ReviseGoalHandler(),
-        "decideSplit": DecideSplitHandler(),
-        "abandonEpic": AbandonEpicHandler(),
-        "pauseEpic": PauseEpicHandler(),
-        "resumeEpic": ResumeEpicHandler(),
-        "handover": HandoverHandler(),
-        "addRepository": AddRepositoryHandler(),
-        "configureRepository": ConfigureRepositoryHandler(),
-        "removeRepository": RemoveRepositoryHandler(),
-        "retry": RetryJobHandler(),
-        "giveUp": GiveUpJobHandler(),
-        "decision": DecisionHandler(),
-        "approveMerge": ApproveMergeHandler(),
-        "instructFinal": InstructFinalHandler(),
-        "humanTaskDone": HumanTaskDoneHandler(),
-        "verify": VerifyHandler(),
-        "publishGitHubRelease": PublishGitHubReleaseHandler(),
-        "startRelease": StartReleaseHandler(),
-        "submitForReview": SubmitForReviewHandler(),
-        "distributeRelease": DistributeReleaseHandler(),
-        "withdrawSubmission": WithdrawSubmissionHandler(),
-        "abandonRelease": AbandonReleaseHandler()
-    ]
-
     /// 受け付けたら、生きている印を待たずにリリースの見回りを起こす種類（release ブランチを作る・App Store Connect に出すなど）
     static let releaseKinds: Set<String> = ["startRelease", "submitForReview", "distributeRelease", "withdrawSubmission"]
 
