@@ -6,7 +6,8 @@ import Foundation
 /// 例: `-demoOpen deck:all`・`-demoOpen epic:rain-draft`・`-demoOpen section:macs`・`-demoOpen finished`（終わったものをすべて）、
 /// `-demoOpen release:demo-studio/habit-ios:1.2.0`（配信した版）、
 /// スワイプの途中の色を撮るときは `-demoDrag 0:0.8`（選択肢の添字:進み具合）、
-/// 開いた画面のシートを撮るときは `-demoSheet start`（ゴールの画面の、Mac を選ぶシート）
+/// 開いた画面のシートを撮るときは `-demoSheet start`（ゴールの画面の、Mac を選ぶシート）・`-demoSheet submitReview`（審査に出す）・
+/// `-demoSheet startRelease`（リリースを始める）
 enum DemoLaunch {
     static let openKey = "demoOpen"
     static let dragKey = "demoDrag"
@@ -16,6 +17,10 @@ enum DemoLaunch {
     enum Sheet: String {
         /// ゴールの画面の、開始のときに回す Mac を選ぶシート
         case start
+        /// リリースを始めた版の画面の、審査に出すシート
+        case submitReview
+        /// リポジトリの画面の、リリースを始めるシート
+        case startRelease
     }
 
     static func initialSheet(defaults: UserDefaults = .standard) -> Sheet? {
@@ -51,6 +56,10 @@ enum DemoLaunch {
         case "release":
             // `release:<リポジトリの id>:<版>`（例: `release:demo-studio/habit-ios:1.2.0`）
             return parts.count == 3 ? (.repositories, .release(repositoryID: parts[1], version: parts[2])) : nil
+
+        case "submission":
+            // `submission:<リポジトリの id>:<版>`（例: `submission:demo-studio/recipe-apple:2.1.0`）
+            return parts.count == 3 ? (.repositories, .submission(repositoryID: parts[1], version: parts[2])) : nil
 
         case "finished":
             return (.progress, .finishedEpics)

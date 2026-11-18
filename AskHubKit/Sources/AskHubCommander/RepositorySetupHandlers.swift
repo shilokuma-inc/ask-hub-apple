@@ -14,9 +14,9 @@ struct RepositorySetupStep {
         let path = StatePath.repository(repo)
         guard let file = try await context.read(RepositoryFile.self, at: path) else { return }
         let setup: RepositorySetup
-        switch admin.pullRequests(for: repo) {
-        case let .failure(problem):
-            setup = RepositorySetup(updatedAt: context.timestamp, problems: [problem.description])
+        switch await admin.pullRequests(for: repo, now: context.now()) {
+        case let .failure(refusal):
+            setup = RepositorySetup(updatedAt: context.timestamp, problems: [refusal.description])
         case let .success(github):
             setup = await RepositorySetupRunner(github: github, now: context.timestamp)
                 .run(build: file.build, previous: file.setup?.workflows)
@@ -137,9 +137,9 @@ public struct ApproveSetupPullRequestHandler: IntentHandler {
         }
         guard let admin else { return .reject("この司令塔は管理用のトークンを使えない（常時オンの Mac の askhub-commander で動かす）") }
         let github: GitHubPullRequests
-        switch admin.pullRequests(for: approve.repo) {
+        switch await admin.pullRequests(for: approve.repo, now: context.now()) {
         case let .success(made): github = made
-        case let .failure(problem): return .reject(problem.description)
+        case let .failure(refusal): return .reject(refusal.description)
         }
         let state: WorkflowSetup.State
         do throws(PullRequestError) {
