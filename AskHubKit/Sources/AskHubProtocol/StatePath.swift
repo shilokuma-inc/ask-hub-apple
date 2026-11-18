@@ -63,6 +63,16 @@ public enum StatePath {
         "\(releases(repo))/\(version.rawValue).json"
     }
 
+    /// リリースを始めた版の記録を置くディレクトリ（`submissions/<版>.json`）
+    public static func submissions(_ repo: RepositoryFullName) -> String {
+        "\(repositoryDirectory(repo))/submissions"
+    }
+
+    /// リリースを始めた版の準備と審査
+    public static func submission(_ repo: RepositoryFullName, _ version: MarketingVersion) -> String {
+        "\(submissions(repo))/\(version.rawValue).json"
+    }
+
     /// リポジトリの epic を置くディレクトリ（`epics/<epic>/`）
     public static func epics(_ repo: RepositoryFullName) -> String {
         "\(repositoryDirectory(repo))/epics"
