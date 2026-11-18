@@ -104,6 +104,25 @@ extension StateClientServiceTests {
         #expect(remove.scannedAt.rawValue == "2027-01-15T07:30:00Z")
     }
 
+    /// 送れる状態を読んだ後（確かめのダイアログを開いた後）に頼みのファイルを読めなくなったら、送る側で断り、意図を書かない
+    @Test
+    func refusesRemovalWhenStateTurnsUnknownAfterChoosing() async throws {
+        let fixture = try makeService(files: Self.askingEpic(extra: Self.cleanupFiles(scanned: true)))
+        _ = try await fixture.service.fetchSnapshot()
+        let removal = HumanIntent.cleanUp(macID: "mac-mini", candidateIDs: ["0123456789abcdef"])
+        #expect(fixture.service.supports(removal))
+
+        await fixture.store.put("cleanup/mac-mini/requests.json", data: Data(#"{"v":99}"#.utf8))
+        let snapshot = try await fixture.service.fetchSnapshot()
+        #expect(try #require(snapshot.mac("mac-mini")).cleanupWork == .unknown)
+        #expect(!fixture.service.supports(removal))
+        await #expect(throws: ClientServiceError.self) {
+            try await fixture.service.perform(removal)
+        }
+        let sent = try await fixture.store.listAll("\(StatePath.intents)/\(fixture.key.keyID.rawValue)") ?? []
+        #expect(sent.isEmpty)
+    }
+
     /// 消す前の確かめの文は、ゴミ箱に移すものと、元に戻せない Simulator を分けて書く
     @Test
     func confirmationTellsTrashFromPermanentDeletion() {
