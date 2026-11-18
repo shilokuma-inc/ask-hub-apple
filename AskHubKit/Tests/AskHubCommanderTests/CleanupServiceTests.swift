@@ -377,3 +377,38 @@ struct CleanupServiceTests {
         #expect(try await candidates().handled.last?.problem == "元の人の意図が無い・署名を確かめられない")
     }
 }
+
+extension CleanupServiceTests {
+    /// 結果を書いた後、手元の書き置きを消す前に止まった（書き置きを消せなかったときも同じ）なら、起動し直しても書き置きで上書きしない
+    @Test func keepsPublishedResultWhenJournalOutlivesIt() async throws {
+        let journal = FileManager.default.temporaryDirectory.appendingPathComponent("cleanup-journal-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: journal) }
+        let finder = RecordingCleanupMachine(candidates: [Self.clean])
+        try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 1))
+        await run(CleanupService(context: context, machine: finder, journal: journal) { _ in })
+        let payload: [String: JSONValue] = [
+            "mac": .string(Self.mac.rawValue),
+            "scannedAt": .string(Timestamp(Self.now).rawValue),
+            "candidates": .array([.string(Self.clean.id)])
+        ]
+        try await accept(try await signed("removeCleanupCandidates", payload: payload, nonce: 2))
+        let peeking = JournalPeekingMachine(journal: journal, candidates: [Self.clean])
+        await run(CleanupService(context: context, machine: peeking, journal: journal) { _ in })
+        #expect(try await candidates().handled.last?.removed == [Self.clean.id])
+        #expect(!FileManager.default.fileExists(atPath: journal.path))
+
+        // 結果を書いた直後に止まり、消している間の書き置き（途中で止まった）が残ったことにして、起動し直す
+        let written = try #require(peeking.journalWhileRemoving)
+        try written.write(to: journal)
+        let again = RecordingCleanupMachine(candidates: [Self.clean])
+        let restarted = CleanupService(context: context, machine: again, journal: journal) { _ in }
+        await run(restarted)
+        await run(restarted)
+        #expect(again.removed.isEmpty)
+        let published = try await candidates()
+        #expect(published.handled.last?.removed == [Self.clean.id])
+        #expect(published.handled.last?.problem == nil)
+        #expect(published.candidates.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: journal.path))
+    }
+}

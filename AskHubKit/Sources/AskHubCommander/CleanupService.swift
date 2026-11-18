@@ -57,7 +57,7 @@ public actor CleanupService {
             unpublished = try? StateFileCoder.decode(CleanupCandidatesFile.self, from: data)
         }
         if let unpublished {
-            guard await publish(unpublished) else { return }
+            guard await republish(unpublished) else { return }
             self.unpublished = nil
             if let journal { try? FileManager.default.removeItem(at: journal) }
         }
@@ -96,6 +96,21 @@ public actor CleanupService {
             log("片付けの結果を書けなかった（\(error)）。次の周で、同じ結果を書き直す")
             return false
         }
+    }
+
+    /// 書けなかった結果を書き直す。書き直せたか、もう書いてあれば true。
+    /// 結果を書いた後、手元の書き置きを消す前に止まった（消せなかった）なら、もう書いてあるので書き直さない
+    /// （消している間の書き置き「途中で止まった」で、書けた結果を上書きしない）
+    private func republish(_ file: CleanupCandidatesFile) async -> Bool {
+        if let last = file.handled.last {
+            do {
+                if try await currentFile().hasHandled(last.intent) { return true }
+            } catch {
+                log("片付けの候補を読めなかった（\(error)）。次の周で、書けなかった結果を書き直す")
+                return false
+            }
+        }
+        return await publish(file)
     }
 
     /// 頼みを 1 つ済ませ、結果を書く。書けなければ、次の周で頼みをやり直さずに同じ結果を書き直す。
