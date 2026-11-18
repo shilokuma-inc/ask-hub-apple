@@ -416,8 +416,9 @@ extension CleanupServiceTests {
         #expect(!FileManager.default.fileExists(atPath: journal.path))
     }
 
-    /// 書き置きを消せない間は、次の頼みを済ませない（済ませた記録が上限で落ちた後に、古い書き置きで上書きしない）
-    @Test func waitsForJournalRemovalBeforeNextRequest() async throws {
+    /// 書き置きを消せない（0o555）・読めもしない（0o000）間は、次の頼みを済ませない（済ませた記録が上限で落ちた後に、古い書き置きで上書きしない）
+    @Test(arguments: [0o555, 0o000])
+    func waitsForJournalRemovalBeforeNextRequest(locked permissions: Int) async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cleanup-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let writable = [FileAttributeKey.posixPermissions: 0o755]
@@ -427,8 +428,8 @@ extension CleanupServiceTests {
         }
         let journal = folder.appendingPathComponent("cleanup-unpublished.json")
         try await publishRemovalLeavingJournal(journal)
-        // 書き置きのフォルダを書けなくして（消せなくして）、次の探す頼みを積む
-        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        // 書き置きのフォルダを書けなく（消せなく）して、次の探す頼みを積む
+        try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: folder.path)
         try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 3))
         let again = RecordingCleanupMachine(candidates: [Self.clean])
         let restarted = CleanupService(context: context, machine: again, journal: journal) { _ in }
@@ -436,7 +437,6 @@ extension CleanupServiceTests {
         await run(restarted)
         #expect(again.scans == 0)
         #expect(try await candidates().handled.last?.removed == [Self.clean.id])
-        #expect(FileManager.default.fileExists(atPath: journal.path))
 
         // 消せるようになれば、書き置きを消してから次の頼みを済ませる
         try FileManager.default.setAttributes(writable, ofItemAtPath: folder.path)
@@ -445,5 +445,19 @@ extension CleanupServiceTests {
         #expect(again.scans == 1)
         #expect(try await candidates().handled.last?.action == .find)
         #expect(!FileManager.default.fileExists(atPath: journal.path))
+    }
+    /// 形が違って読めない書き置きは、無いものとして扱わない（次の頼みを済ませない）。消えたら次の頼みを済ませる
+    @Test func waitsWhileJournalCannotBeDecoded() async throws {
+        let journal = FileManager.default.temporaryDirectory.appendingPathComponent("cleanup-journal-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: journal) }
+        try Data("{".utf8).write(to: journal)
+        try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 1))
+        let machine = RecordingCleanupMachine(candidates: [Self.clean])
+        let service = CleanupService(context: context, machine: machine, journal: journal) { _ in }
+        await run(service)
+        #expect(machine.scans == 0)
+        try FileManager.default.removeItem(at: journal)
+        await run(service)
+        #expect(machine.scans == 1)
     }
 }

@@ -53,8 +53,14 @@ public actor CleanupService {
     /// 済ませていない頼みがあり、動いているものが無ければ、古いものから 1 つ動かし始める。読めないときは次の周でやり直す
     public func poll(verifier: IntentVerifier) async {
         guard running == nil else { return }
-        if unpublished == nil, let journal, let data = try? Data(contentsOf: journal) {
-            unpublished = try? StateFileCoder.decode(CleanupCandidatesFile.self, from: data)
+        if unpublished == nil, let journal {
+            // 書き置きがあるのに読めない間も、次の頼みを済ませない（読めるようになった後に、古い書き置きで新しい結果を上書きしない）
+            do {
+                unpublished = try Self.loadJournal(journal)
+            } catch {
+                log("片付けの書き置き \(journal.path) を読めなかった（\(error)）。次の頼みを済ませずに次の周でやり直す")
+                return
+            }
         }
         if let unpublished {
             guard await republish(unpublished) else { return }
@@ -180,6 +186,17 @@ public actor CleanupService {
         var file = file
         file.handled = Array((file.handled + [record]).suffix(CleanupCandidatesFile.keptHandled))
         return file
+    }
+
+    /// 手元の書き置き。無ければ nil。あるのに読めない（書き置きのフォルダに入れない・形が違うなど）ときは投げる
+    static func loadJournal(_ url: URL) throws -> CleanupCandidatesFile? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch CocoaError.fileReadNoSuchFile {
+            return nil
+        }
+        return try StateFileCoder.decode(CleanupCandidatesFile.self, from: data)
     }
 
     /// 手元の書き置きを消す。もう無い（手元に残さない設定も）なら true
