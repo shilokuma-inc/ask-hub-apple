@@ -81,6 +81,35 @@ struct EpicBuildServiceTests {
         #expect(await slots.withSlot { $0 } == 0)
     }
 
+    /// 枠の Simulator の見回りは、どの枠も使われていないときだけ、すべての枠を借りて動く。使われていれば待たずに諦め、借りている間のジョブは待たせる
+    @Test func lendsAllSlotsOnlyWhenIdle() async {
+        let slots = BuildSlots(count: 2)
+        let used = await slots.acquire()
+        #expect(await slots.withAllSlotsIfIdle { 1 } == nil)
+        await slots.release(used)
+
+        let (started, finish) = AsyncStream.makeStream(of: Void.self)
+        let (gate, open) = AsyncStream.makeStream(of: Void.self)
+        let sweep = Task {
+            await slots.withAllSlotsIfIdle {
+                finish.yield()
+                for await _ in gate { break }
+                return 2
+            }
+        }
+        for await _ in started { break }
+        let waiting = Task { await slots.acquire() }
+        while await slots.waiting == 0 {
+            await Task.yield()
+        }
+        open.yield()
+        #expect(await sweep.value == 2)
+        // 見回りが返した枠は、待っていたジョブに渡る
+        #expect(await waiting.value == 0)
+        await slots.release(0)
+        #expect(await slots.withAllSlotsIfIdle { 3 } == 3)
+    }
+
     static func waitUntil(seconds: Double = 10, _ condition: () -> Bool) async -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while Date() < deadline {
