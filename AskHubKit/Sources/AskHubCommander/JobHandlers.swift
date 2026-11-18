@@ -51,7 +51,10 @@ enum WaitingJob {
         }
         guard job.attempts == target.attempt else { return .rejected("試行の番号が今のジョブと違う（今は \(job.attempts)）") }
         if done.contains(job.state) { return .done(job, epic) }
-        guard !epic.isFinished else { return .rejected("epic はもう終わっている（\(epic.stage.rawValue)）") }
+        // 片付けはマージした後に動くので、マージした epic でもやり直せる・やめられる
+        guard !epic.isFinished || (job.kind == .cleanUp && epic.stage == .merged) else {
+            return .rejected("epic はもう終わっている（\(epic.stage.rawValue)）")
+        }
         guard job.state == .waitingHuman else { return .rejected("ジョブは人の対応を待っていない（\(job.state.rawValue)）") }
         return .waiting(job, epic)
     }
@@ -83,8 +86,10 @@ enum WaitingJob {
 ///
 /// - 質問づくり・質問の見直し・着手前の確認: epic が先に進めないので、epic ごとやめる（`abandoned`）。epic の段階の 1 回の書き込みで決まる。
 ///   開始した後の epic に残っていたものは、epic が先に進めるので、ジョブだけやめる（実装のジョブを止めない）
+/// - 実装と最終 PR の段取り: epic が先に進めないので、epic ごとやめる。開いている子 PR と最終 PR は、周の最後に `AbandonedPullRequests` が閉じる
+/// - 撮影: 撮らずに、同じ最終 PR と head のレビューを作る。撮っていない判断のカードと画面の変化は「スクショ無し（撮影をやめた）」にする
 /// - 説明: ジョブをやめ、説明を待つ問いを外して、質問を回答待ちに戻す
-/// - ゴールの修正: ジョブだけやめる（前のゴールのまま開始を待つ）
+/// - ゴールの修正・片付け: ジョブだけやめる（前のゴールのまま開始を待つ。片付けの残りは終わってから 1 日後の見回りで消える）
 public struct GiveUpJobHandler: IntentHandler {
     public init() {}
 
@@ -102,14 +107,15 @@ public struct GiveUpJobHandler: IntentHandler {
             return .reject("epic が無い")
         }
         guard let effect = job.kind.giveUpEffect(at: epic.stage) else {
-            return .reject("\(job.kind.rawValue) のジョブをやめる扱いは、まだ決めていない")
+            return .reject("\(job.kind.rawValue) のジョブはやめられない")
         }
         if effect == .abandonsEpic { return try await abandonEpic(target, in: context) }
+        let stopped: (job: JobFile, epic: EpicFile)
         switch try await WaitingJob.read(target, done: [.canceled], in: context) {
         case let .rejected(reason):
             return .reject(reason)
         case let .done(job, epic):
-            try await reopenQuestion(of: job, epic: epic, in: context)
+            stopped = (job, epic)
         case let .waiting(job, epic):
             let now = context.timestamp
             try await WaitingJob.write(job, message: "ジョブ \(job.kind.rawValue) をやめる", in: context) {
@@ -117,8 +123,43 @@ public struct GiveUpJobHandler: IntentHandler {
                 $0.nextRunAt = nil
                 $0.updatedAt = now
             }
-            try await reopenQuestion(of: job, epic: epic, in: context)
+            stopped = (job, epic)
         }
+        if effect == .skipsScreenshots {
+            return try await skipScreenshots(stopped.job, epic: stopped.epic, origin: giveUp.intent, in: context)
+        }
+        try await reopenQuestion(of: stopped.job, epic: stopped.epic, in: context)
+        return .accept
+    }
+
+    /// 撮影をやめた: 撮っていない判断のカードと画面の変化を「スクショ無し（撮影をやめた）」にして、撮影の前のジョブの後に、同じ最終 PR と head の
+    /// レビューを作る（取り消したジョブは段取りの列に入らないので、撮影の代わりにつなぐ）。前の周でやめていれば、続きだけをする
+    private func skipScreenshots(
+        _ capture: JobFile,
+        epic: EpicFile,
+        origin: IntentReference,
+        in context: CommanderContext
+    ) async throws(CommanderError) -> IntentDecision {
+        // 撮影のジョブは、やめる（ここ）か epic の取り下げでしか取り消さないので、終わった epic のものはレビューに進めない
+        guard !epic.isFinished else { return .reject("epic はもう終わっている（\(epic.stage.rawValue)）") }
+        guard let input = capture.input(as: PullRequestInput.self), input.isValid, let jobs = FinalJobs(context: context, epic: epic) else {
+            return .reject("撮影のジョブに最終 PR と head が無いので、レビューに進めない")
+        }
+        _ = try await context.updateDecisions(of: epic, message: "撮影をやめたことを判断のカードに書く") { file in
+            let next = file.skippingScreenshots(head: input.head)
+            guard next != file else { return false }
+            file = next
+            return true
+        }
+        let kind = JobKind.reviewFinalPullRequest
+        let spec = JobSpec(
+            kind: kind,
+            mac: try await jobs.mac(for: kind),
+            needs: FinalJobs.needs(kind),
+            input: input.jobInput,
+            dependsOn: capture.dependsOn
+        )
+        try await context.create(context.job(spec, for: epic, origin: origin, seed: "\(capture.id)/\(input.head)"))
         return .accept
     }
 
@@ -134,7 +175,8 @@ public struct GiveUpJobHandler: IntentHandler {
             try await context.cancelJobs(epic.repo, epic: epic.id) { _ in true }
             return .accept
         case let .waiting(_, epic), let .done(_, epic):
-            try await context.setStage(.abandoned, of: epic, from: CommanderContext.planningStages)
+            // 開始した後なら、開いている子 PR と最終 PR は周の最後に閉じる（取り下げと同じ。ブランチは残す）
+            try await context.abandon(epic)
             try await context.cancelJobs(epic.repo, epic: epic.id) { _ in true }
             return .accept
         }
