@@ -89,9 +89,11 @@ enum FinalPullRequestBody {
         return "### \(title)\n\n" + images(shots, label: screen.scene, heading: "", indent: "")
     }
 
-    /// Before / After の表。上げた画像が無ければ、AskHub で見られることと、撮れなかったわけを書く
+    /// Before / After の表。上げた画像が無ければ、AskHub で見られることと、撮れなかったわけを書く。
+    /// 1 枚も撮っていなければ（撮影をやめたなど）、わけだけを書く
     private static func images(_ shots: DecisionsFile.Screenshots, label: String, heading: String, indent: String) -> String {
         let note = shots.note.map { "（\(safe($0))）" } ?? ""
+        if shots.before == nil, shots.after == nil, let text = shots.note { return safe(text) }
         guard shots.beforeURL != nil || shots.afterURL != nil else { return onlyInClient + note }
         let cell = { (url: String?, side: String) in
             guard let url, DecisionsFile.Screenshots.isAttachmentURL(url) else { return "なし" }
@@ -109,8 +111,8 @@ enum FinalPullRequestBody {
 
     /// 「実機で確かめてほしいこと」の頼み方（クライアントの実機確認のカードと同じ操作を書く）
     static let verificationGuide = """
-        マージは止めません。マージした後に AskHub の「あなたの番」に「実機で確かめる」が出るので、TestFlight に上がった版で確かめて、\
-        項目ごとに「確認した」か「問題あり」を付けてください。「問題あり」は新しい依頼になります。
+        マージは止めません。マージした後に AskHub の「あなたの番」に「実機で確かめる」が出る（通知は 1 日数回にまとめて届く）ので、\
+        TestFlight に上がった版で確かめて、項目ごとに「確認した」か「問題あり」を付けてください。「問題あり」は新しい依頼になります。
         """
 
     /// 実機確認の項目。ゴールの完了の条件を、クライアントと同じ id（`v1` から）で並べる

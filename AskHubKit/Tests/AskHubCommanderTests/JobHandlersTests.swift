@@ -123,21 +123,24 @@ struct JobHandlersTests {
         #expect(try await job(waiting, in: store).state == .waitingHuman)
     }
 
-    /// 直しの上限を超えて、試行の前に人に渡した直し（試行 0）もやり直せる。やめる扱いはまだ決めていないので、形ではなくその理由で断る
+    /// 直しの上限を超えて、試行の前に人に渡した直し（試行 0）もやり直せる
     @Test(arguments: zip([JobKind.fixTask, .fixFinalPullRequest], [EpicStage.running, .finalizing]))
     func retryReassignsFixHandedOverBeforeAnyAttempt(kind: JobKind, stage: EpicStage) async throws {
         let (store, waiting) = try await waitingJob(kind, stage: stage, attempts: 0)
-        try await retry(waiting, attempt: 0, kind: "giveUp", in: store)
-        let reason = "\(kind.rawValue) のジョブをやめる扱いは、まだ決めていない"
-        #expect(try await intake(store).processPending() == [.rejected(kind: "giveUp", reason: reason)])
-        #expect(try await job(waiting, in: store) == waiting)
-
         try await retry(waiting, attempt: 0, in: store)
         #expect(try await intake(store).processPending() == [.accepted(kind: "retry")])
         let retried = try await job(waiting, in: store)
         #expect(retried.state == .assigned)
         // 次の試行は 1 番になる
         #expect(retried.attempts == 0)
+    }
+
+    /// マージした epic の片付けは、やり直せる（片付けはマージの後に動く）
+    @Test func retryReassignsCleanUpOfMergedEpic() async throws {
+        let (store, waiting) = try await waitingJob(.cleanUp, stage: .merged)
+        try await retry(waiting, attempt: 1, in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "retry")])
+        #expect(try await job(waiting, in: store).state == .assigned)
     }
 
     /// 前の周で戻した後に記録を書く前に止まっても、次の周で同じ意図を受け付け直す
@@ -212,5 +215,93 @@ struct JobHandlersTests {
         #expect(try await intake(store).processPending() == [.accepted(kind: "giveUp")])
         #expect(try await job(waiting, in: store).state == .canceled)
         #expect(try await epic(of: waiting, in: store).stage == .awaitingStart)
+    }
+
+    // MARK: - 実装と最終 PR の段取りのジョブをやめる
+
+    /// 実装と最終 PR の段取りのジョブをやめると、epic ごと取り下げ、ほかのジョブも取り消し、一時停止の印を外す
+    /// （開いている子 PR と最終 PR は、周の最後に `AbandonedPullRequests` が閉じる）
+    @Test(arguments: [
+        (JobKind.prepareWorkspace, EpicStage.running), (.implementTask, .running), (.reviewTask, .running), (.fixTask, .running),
+        (.verifyBeforeFinal, .finalizing), (.classifyDecisions, .finalizing), (.openFinalPullRequest, .finalizing),
+        (.reviewFinalPullRequest, .finalizing), (.fixFinalPullRequest, .reviewing), (.mergeFinalPullRequest, .reviewing)
+    ])
+    func givingUpImplementationJobAbandonsStartedEpic(kind: JobKind, stage: EpicStage) async throws {
+        let time = Self.timestamp
+        let pause = EpicFile.Pause(since: time, origin: .init(keyId: keyID, nonce: .generate(at: Self.now)))
+        var started = EpicFile(id: .generate(at: Self.now), repo: Self.repo, title: "ランキング", stage: stage, createdAt: time, updatedAt: time)
+        started.mac = Self.commander
+        started.pause = pause
+        let (store, waiting) = try await waitingJob(kind, epic: started)
+        let (_, other) = try await waitingJob(.implementTask, state: .running, epic: started, in: store)
+        try await retry(waiting, attempt: 1, kind: "giveUp", in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "giveUp")])
+        let abandoned = try await epic(of: waiting, in: store)
+        #expect(abandoned.stage == .abandoned)
+        #expect(abandoned.pause == nil)
+        #expect(try await job(waiting, in: store).state == .canceled)
+        #expect(try await job(other, in: store).state == .canceled)
+    }
+
+    /// マージした epic の片付けは、ジョブだけやめる（残りは見回りで消える）
+    @Test func givingUpCleanUpCancelsOnlyThatJob() async throws {
+        let (store, waiting) = try await waitingJob(.cleanUp, stage: .merged)
+        try await retry(waiting, attempt: 1, kind: "giveUp", in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "giveUp")])
+        #expect(try await job(waiting, in: store).state == .canceled)
+        #expect(try await epic(of: waiting, in: store).stage == .merged)
+    }
+
+    /// 撮影をやめると、撮っていない判断のカードと画面の変化を「スクショ無し（撮影をやめた）」にし、撮影の前のジョブの後に、
+    /// 同じ最終 PR と head のレビューを作る（撮影の代わりに段取りの列につなぐ）
+    @Test func givingUpScreenshotsReviewsWithoutThem() async throws {
+        let time = Self.timestamp
+        let head = String(repeating: "c", count: 40)
+        let id = ULID.generate(at: Self.now)
+        var epic = EpicFile(id: id, repo: Self.repo, title: "ランキング", stage: .finalizing, createdAt: time, updatedAt: time)
+        epic.mac = MacName(rawValue: "macbook")
+        epic.finalPullRequest = 512
+        let shot = DecisionsFile.Screenshots(before: nil, after: nil, head: head, note: "撮った")
+        let decisions = DecisionsFile(
+            items: [
+                .init(id: "d1", task: "t1", visible: true, what: "見出しを短くした", why: "幅", scene: "home"),
+                .init(id: "d2", task: "t1", visible: true, what: "色を変えた", why: "読みやすさ", scene: "list", screenshots: shot),
+                .init(id: "d3", task: "t1", visible: false, what: "名前を変えた", why: "揃える")
+            ],
+            screens: [.init(scene: "settings")]
+        )
+        let store = InMemoryStateStore()
+        await store.put(StatePath.decisions(Self.repo, epic.id), data: try StateFileCoder.encode(decisions))
+        let (_, open) = try await waitingJob(.openFinalPullRequest, state: .succeeded, epic: epic, in: store)
+        let input = PullRequestInput(pullRequest: 512, head: head).jobInput
+        var (_, capture) = try await waitingJob(.captureScreenshots, input: input, epic: epic, in: store)
+        capture.dependsOn = [open.id]
+        await store.put(StatePath.job(Self.repo, epic: epic.id, job: capture.id), data: try StateFileCoder.encode(capture))
+
+        try await retry(capture, attempt: 1, kind: "giveUp", in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "giveUp")])
+        #expect(try await job(capture, in: store).state == .canceled)
+        #expect(try await self.epic(of: capture, in: store).stage == .finalizing)
+        let data = try #require(await store.data(at: StatePath.decisions(Self.repo, epic.id)))
+        let written = try StateFileCoder.decode(DecisionsFile.self, from: data)
+        let skipped = DecisionsFile.Screenshots(head: head, note: "スクショ無し（撮影をやめた）")
+        #expect(written.items.map(\.screenshots) == [skipped, shot, nil])
+        #expect(written.screens?.map(\.screenshots) == [skipped])
+
+        let jobs = try await jobList(epic, in: store)
+        let review = try #require(jobs.first { $0.kind == .reviewFinalPullRequest })
+        #expect(review.input(as: PullRequestInput.self) == PullRequestInput(pullRequest: 512, head: head))
+        #expect(review.dependsOn == [open.id])
+        #expect(review.assignedMac == Self.commander)
+        #expect(review.state == .assigned)
+        #expect(FinalChain(jobs: jobs).ordered?.map(\.kind) == [.openFinalPullRequest, .reviewFinalPullRequest])
+    }
+
+    private func jobList(_ epic: EpicFile, in store: InMemoryStateStore) async throws -> [JobFile] {
+        var jobs: [JobFile] = []
+        for entry in try await store.list(StatePath.jobs(Self.repo, epic: epic.id)) ?? [] {
+            jobs.append(try StateFileCoder.decode(JobFile.self, from: #require(await store.data(at: entry.path))))
+        }
+        return jobs
     }
 }

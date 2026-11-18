@@ -130,7 +130,8 @@ extension StateSnapshotBuilder {
         case .abandonsEpic:
             actions.append(.discard)
 
-        case .jobOnly:
+        // 撮影をやめると、epic は撮らずにレビューへ進む
+        case .jobOnly, .skipsScreenshots:
             actions.append(.cancelJob)
 
         case nil:

@@ -3,6 +3,7 @@ import AskHubStateStore
 import Foundation
 
 /// 進行を止めているもの（`Blocker`）を、まだ知らせていなければ、登録された端末（`devices/`）に送る（`docs/renewal/operations.md` の「通知」）。
+/// 止めないもの（実機確認）は、決めた時刻（`Settings.verificationHours`）ごとにまとめて送る（`VerificationDigest`）。
 ///
 /// 二重に送らないよう、送る前に `notifications.json` へ出来事の key を書く（書けなければ送らない）。どの端末にも届かず、
 /// 送り直せる失敗だったときだけ記録から外し、間を空けて送り直す。送る途中で司令塔が落ちたときは送り直さない（二重より取りこぼしを選ぶ）
@@ -14,19 +15,23 @@ public actor Notifier {
         public var retention: Duration
         /// どの端末にも送れなかったときの待ち。続いた回数ごとに長くする
         public var retryWaits: [Duration]
-        /// 通知の文に書く時刻の時間帯（司令塔の Mac の時間帯）
+        /// 通知の文に書く時刻と、実機確認をまとめて送る時刻の時間帯（司令塔の Mac の時間帯）
         public var timeZone: TimeZone
+        /// 止めないもの（実機確認）をまとめて送る時刻（`timeZone` の 0〜23 時。1 日数回）
+        public var verificationHours: [Int]
 
         public init(
             macOfflineAfter: Duration = .seconds(60 * 60),
             retention: Duration = .seconds(7 * 24 * 60 * 60),
             retryWaits: [Duration] = [.seconds(60), .seconds(120), .seconds(300), .seconds(600), .seconds(1_800)],
-            timeZone: TimeZone = .current
+            timeZone: TimeZone = .current,
+            verificationHours: [Int] = [9, 13, 18]
         ) {
             self.macOfflineAfter = macOfflineAfter
             self.retention = retention
             self.retryWaits = retryWaits
             self.timeZone = timeZone
+            self.verificationHours = verificationHours
         }
     }
 
@@ -40,6 +45,8 @@ public actor Notifier {
     private var failures = 0
     /// 最後に出した「送らずに待つ」理由（同じ理由を周ごとに出さない）
     private var waiting: String?
+    /// 実機確認の答えがすべて揃った（知らせることが無い）epic。答えは取り消せないので、周ごとに読み直さない
+    private var verified: Set<ULID> = []
 
     public init(
         context: CommanderContext,
@@ -67,8 +74,10 @@ public actor Notifier {
         let now = context.now()
         if let retryAt, now < retryAt { return [] }
         let scan = BlockerScan(context: context, macOfflineAfter: settings.macOfflineAfter)
-        let blockers = try await scan.scan(epics: epics, jobs: jobs, rateLimit: rateLimit) + releases
-        guard !blockers.isEmpty else { return [] }
+        var blockers = try await scan.scan(epics: epics, jobs: jobs, rateLimit: rateLimit) + releases
+        let digest = VerificationDigest(context: context, hours: settings.verificationHours, timeZone: settings.timeZone)
+        let due = digest.due(epics, now: now).filter { !verified.contains($0.id) }
+        guard !blockers.isEmpty || !due.isEmpty else { return [] }
         let ledger: NotificationsFile?
         do {
             ledger = try await context.files.read(NotificationsFile.self, at: StatePath.notifications)?.file
@@ -79,6 +88,7 @@ public actor Notifier {
             throw .files(error)
         }
         let sent = Set(ledger?.sent.map(\.key) ?? [])
+        blockers += try await verifications(due.filter { !sent.contains(VerificationDigest.key(of: $0)) }, digest: digest)
         var seen = Set<String>()
         let fresh = blockers.filter { !sent.contains($0.key) && seen.insert($0.key).inserted }
         guard !fresh.isEmpty else { return [] }
@@ -100,6 +110,21 @@ public actor Notifier {
         }
         try await retryLater(unsent, now: now)
         return settled
+    }
+
+    /// まだ知らせていない、マージした epic の実機確認。答えがすべて揃った epic は覚えて、次から読まない
+    private func verifications(_ epics: [EpicFile], digest: VerificationDigest) async throws(CommanderError) -> [Blocker] {
+        var blockers: [Blocker] = []
+        for epic in epics {
+            guard let items = try await digest.unanswered(of: epic) else { continue }
+            guard items > 0 else {
+                verified.insert(epic.id)
+                continue
+            }
+            let reason = Blocker.Reason.verification(repo: epic.repo, epic: epic.id, items: items)
+            blockers.append(Blocker(key: VerificationDigest.key(of: epic), scope: .verifications, reason: reason))
+        }
+        return blockers
     }
 
     /// すべての端末に送る。記録に残してよい（どこかに届いた・宛先が使えないだけで送り直しても届かない）なら true

@@ -140,4 +140,21 @@ public actor BuildSlots {
         await release(slot)
         return value
     }
+
+    /// どの枠も使われておらず、待っているジョブも無ければ、すべての枠を借りて `body` を流し、終わったら返す。
+    /// 使われていれば待たずに nil を返す（枠の Simulator を見回るとき。ジョブを待たせないよう、空いているときだけ動く）
+    nonisolated public func withAllSlotsIfIdle<Value: Sendable>(_ body: () async -> Value) async -> Value? {
+        guard await acquireAllIfIdle() else { return nil }
+        let value = await body()
+        for slot in 0..<count {
+            await release(slot)
+        }
+        return value
+    }
+
+    private func acquireAllIfIdle() -> Bool {
+        guard used.isEmpty, waiters.isEmpty else { return false }
+        used = Set(0..<count)
+        return true
+    }
 }
