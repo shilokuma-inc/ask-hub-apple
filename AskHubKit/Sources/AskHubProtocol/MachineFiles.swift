@@ -132,15 +132,21 @@ public struct JobRefusal: Codable, Equatable, Sendable {
     public enum Reason: String, Codable, Sendable, CaseIterable {
         /// 司令塔と互換の番号が合わない・司令塔の生きている印を読めない（ワーカーか司令塔を更新する）
         case incompatible
+        /// 空き容量が `MacFile.lowDiskFreeGB` を下回る（片付けて空ける）。空きを増やす片付けと、作業場所・ビルドを使わない Claude のジョブは
+        /// 引き受ける（`JobKind.isAcceptedWhileLowOnDisk`）
+        case lowDisk
     }
 
     public var reason: Reason
-    /// 人が読む説明（照らし合わせた互換の番号など）
+    /// 人が読む説明（照らし合わせた互換の番号・空き容量など）
     public var message: String
+    /// 引き受けなくなった時刻。空きが少ない Mac を、下回るたびに 1 回知らせる区切りに使う。書かない Mac（前の版）もある
+    public var since: Timestamp?
 
-    public init(reason: Reason, message: String) {
+    public init(reason: Reason, message: String, since: Timestamp? = nil) {
         self.reason = reason
         self.message = message
+        self.since = since
     }
 }
 
@@ -206,6 +212,15 @@ public struct MacFile: StateFile {
         self.capacity = capacity
         self.selfCheck = selfCheck
         self.refusal = refusal
+    }
+
+    /// 空き容量がこれを下回ったら、新しい epic を受けず、片付けなどのほかの新しいジョブを引き受けない（`docs/renewal/operations.md` の「容量」）。
+    /// epic 1 本の DerivedData と Simulator で 10〜20 GB 使うので、1 本分の余裕を残す（2026-11-18 に決めた）
+    public static let lowDiskFreeGB = 30
+
+    /// 空き容量が少ないか。クライアントと司令塔は、ワーカーの `refusal` によらずこれで決める（空きを書く前の版のワーカーも同じに扱う）
+    public var isLowOnDisk: Bool {
+        diskFreeGB < Self.lowDiskFreeGB
     }
 
     public var violations: [String] {

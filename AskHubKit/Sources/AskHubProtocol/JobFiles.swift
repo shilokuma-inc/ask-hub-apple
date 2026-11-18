@@ -26,6 +26,21 @@ public enum JobKind: String, Codable, Sendable, CaseIterable {
     case notify
 }
 
+extension JobKind {
+    /// 空き容量が少ない Mac（`MacFile.isLowOnDisk`）でも、新しく引き受けるジョブか。
+    /// 空きを増やす片付けと、作業場所・ビルドを使わずに状態リポジトリと写しを読むだけの Claude のジョブ（常時オンの Mac が受け持つ、開始の前の段取り）。
+    /// 常時オンの Mac の空きで、ほかの Mac の epic の質問まで止めないため
+    public var isAcceptedWhileLowOnDisk: Bool {
+        switch self {
+        case .cleanUp, .notify, .makeQuestions, .explain, .reviseQuestion, .checkReadiness, .reviseGoal:
+            true
+        case .prepareWorkspace, .implementTask, .reviewTask, .fixTask, .integrateDevelop, .verifyBeforeFinal, .openFinalPullRequest,
+             .reviewFinalPullRequest, .fixFinalPullRequest, .rerunChecks, .classifyDecisions, .captureScreenshots, .mergeFinalPullRequest:
+            false
+        }
+    }
+}
+
 public enum JobState: String, Codable, Sendable, CaseIterable {
     case queued
     case assigned
