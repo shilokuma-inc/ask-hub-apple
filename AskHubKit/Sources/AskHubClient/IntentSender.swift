@@ -82,6 +82,11 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: ConfigureRepositoryIntent.kind, repo: repo, payload: ConfigureRepositoryIntent.payload(for: build))
     }
 
+    /// 保護の設定を掛ける（司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛け、重なる保護を外す。`ProtectionPolicy`）
+    public static func applyProtection(_ repo: RepositoryFullName, requiredChecks: [String]) -> Self {
+        Self(kind: ApplyProtectionIntent.kind, repo: repo, payload: ["requiredChecks": .array(requiredChecks.map(JSONValue.string))])
+    }
+
     /// リリースを始める（司令塔が release ブランチを作り、準備を進める）
     public static func startRelease(_ repo: RepositoryFullName, version: MarketingVersion) -> Self {
         Self(kind: StartReleaseIntent.kind, repo: repo, payload: ["version": .string(version.rawValue)])

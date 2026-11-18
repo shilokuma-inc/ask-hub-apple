@@ -68,18 +68,23 @@ public struct PushNotice: Equatable, Sendable {
             case .verifications:
                 return verificationNotice(blockers, titles: titles)
             case let .release(repo, version):
-                return PushNotice(
-                    title: "\(repo.name) \(version) を配信しました",
-                    subtitle: repo.rawValue,
-                    body: blockers.compactMap { releaseLine($0.reason) }.joined(separator: "\n"),
-                    thread: "release/\(repo.rawValue)/\(version.rawValue)",
-                    target: ["repo": repo.rawValue, "release": version.rawValue],
-                    keys: blockers.map(\.key)
-                )
+                return releaseNotice(repo, version, blockers: blockers)
             case let .submission(repo, version):
                 return submissionNotice(repo, version, blockers: blockers)
             }
         }
+    }
+
+    /// 配信した版の後作業の通知
+    private static func releaseNotice(_ repo: RepositoryFullName, _ version: MarketingVersion, blockers: [Blocker]) -> PushNotice {
+        PushNotice(
+            title: "\(repo.name) \(version) を配信しました",
+            subtitle: repo.rawValue,
+            body: blockers.compactMap { releaseLine($0.reason) }.joined(separator: "\n"),
+            thread: "release/\(repo.rawValue)/\(version.rawValue)",
+            target: ["repo": repo.rawValue, "release": version.rawValue],
+            keys: blockers.map(\.key)
+        )
     }
 
     /// 止めないもの（実機確認）のまとめの通知。epic が 1 つなら、その epic を開く（いくつもあれば開く先を持たない）
@@ -251,6 +256,7 @@ extension SubmissionFile.Step {
         case .distribute: "配信する"
         case .withdraw: "審査の取り下げ"
         case .review: "審査の状態"
+        case .integration: "release ブランチの取り込み"
         }
     }
 }

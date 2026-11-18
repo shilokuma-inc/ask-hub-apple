@@ -28,7 +28,7 @@ struct EpicPauseTests {
         IntentIntake(
             context: context(at: now),
             verifier: IntentVerifier(publicKeys: [keyID: key.publicKey.derRepresentation]),
-            handlers: CommanderLoop.handlers
+            handlers: CommanderLoop.handlers(admin: nil)
         )
     }
 
