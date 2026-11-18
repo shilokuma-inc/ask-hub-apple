@@ -11,7 +11,7 @@ struct StateIndex {
         /// 「対処が要ります」に出した、人の対応を待っているジョブ（やり直す・やめるの対象）と、そこに出した操作
         var blockedJob: JobTarget?
         var blockerActions: Set<Blocker.Action> = []
-        /// やめていないか・取り下げられるか（開始する前で、やめていない）。どちらも処理を待つ意図を当てた後の状態で決める
+        /// やめていないか・取り下げられるか（マージしておらず、やめていない）。どちらも処理を待つ意図を当てた後の状態で決める
         var isActive = true
         var canAbandon = false
         /// 最終 PR（出した後だけ）
@@ -124,8 +124,8 @@ struct StateSnapshotBuilder {
                 index.epics[epic.id]?.humanTasks = [:]
             }
             index.epics[epic.id]?.final?.isReviewable = epic.isActive && epic.finalReview?.state == .reviewable
-            // 開始した後の取り下げ（作業のブランチの片付けなど）は段階 3 で送る
-            index.epics[epic.id]?.canAbandon = epic.isActive && epic.stage < .implementing
+            // 開始した後も取り下げられる（司令塔が開いている子 PR と最終 PR を閉じる。ブランチは残す）。マージした epic は取り下げられない
+            index.epics[epic.id]?.canAbandon = epic.isActive
             applyPauseControls(of: epic, to: &index)
         }
         index.busyRepositories = Set(epics.filter(\.isActive).map(\.repositoryID))
