@@ -269,8 +269,43 @@ struct WorkerLoopTests {
         let closed = try #require(try await attempt(of: running, in: store))
         #expect(closed.outcome == .failed)
         #expect(closed.failure?.failureClass == .macOffline)
+        // 生きている印を書く前に閉じる（Mac の印が新しくなってから閉じるまでの間に、司令塔が時間切れと決めないように）
+        let written = await store.writtenPaths
+        let closedAt = try #require(written.firstIndex(of: path))
+        let beatAt = try #require(written.firstIndex(of: StatePath.mac(Self.mac)))
+        #expect(closedAt < beatAt)
         #expect(try await attempt(of: other, in: store)?.outcome == .running)
         #expect(!runner.called.contains(running.id))
+    }
+
+    /// 前の起動で残った試行を閉じられなかったジョブは、閉じるまで引き受けない（引き受けると古い試行が実行中のまま残る）
+    @Test func waitsToTakeJobUntilLeftoverIsClosed() async throws {
+        let store = InMemoryStateStore()
+        try await commander(compatibility: MachineCompatibility.current, in: store)
+        // 前の起動の試行 #1 が止まったので、司令塔が試し直しにした（assigned・attempts 1）
+        var retried = try await epic(1, on: Self.mac, origin: try await signedOrigin(in: store, nonce: 1), in: store)
+        retried.attempts = 1
+        await store.put(StatePath.job(Self.repo, epic: retried.epic, job: retried.id), data: try StateFileCoder.encode(retried))
+        let time = Timestamp(Self.now)
+        let leftover = AttemptFile(job: retried.id, number: 1, mac: Self.mac, startedAt: time, heartbeatAt: time, outcome: .running)
+        let path = StatePath.attempt(Self.repo, epic: retried.epic, job: retried.id, number: 1)
+        await store.put(path, data: try StateFileCoder.encode(leftover))
+
+        let runner = RecordingJob(JobResult(outputs: Self.outputs))
+        let loop = loop(store, runner: runner)
+        // 閉じられなければ、引き受けず、生きている印も書かない（古い試行と新しい印から、司令塔が時間切れと決めないように）
+        await store.failNextWrites(to: path, with: [.serverError(status: 502)])
+        #expect(try await loop.cycle().isEmpty)
+        await loop.waitForJobs()
+        #expect(runner.called.isEmpty)
+        #expect(try await attempt(of: retried, in: store)?.outcome == .running)
+        #expect(await store.data(at: StatePath.mac(Self.mac)) == nil)
+
+        #expect(try await loop.cycle().map(\.id) == [retried.id])
+        await loop.waitForJobs()
+        #expect(try await attempt(of: retried, in: store)?.failure?.failureClass == .macOffline)
+        #expect(runner.called == [retried.id])
+        #expect(await store.data(at: StatePath.mac(Self.mac)) != nil)
     }
 
     // MARK: - 互換の番号
@@ -347,10 +382,12 @@ struct WorkerLoopTests {
         let loop = loop(FlakyCommanderStore(base, failures: 2), runner: runner)
         #expect(try await loop.cycle().isEmpty)
         #expect(runner.called.isEmpty)
-        // 生きている印は書く（照らし合わせを待っているだけで、引き受けない理由は書かない）
-        #expect(try await heartbeat(in: base).refusal == nil)
+        // 照らし合わせるまでは、前の起動で残った試行を閉じられないので、生きている印もまだ書かない
+        #expect(await base.data(at: StatePath.mac(Self.mac)) == nil)
         #expect(try await loop.cycle().isEmpty)
         #expect(try await loop.cycle().map(\.id) == [first.id])
+        // 照らし合わせた後の印には、引き受けない理由を書かない
+        #expect(try await heartbeat(in: base).refusal == nil)
         await loop.waitForJobs()
         #expect(runner.called == [first.id])
     }

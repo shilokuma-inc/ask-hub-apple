@@ -11,11 +11,20 @@ public struct JobSweep: Sendable {
     public var context: CommanderContext
     public var policy: FailurePolicy
     public var timing: JobTiming
+    /// この起動の始まり。これより前に印を書いた、この Mac（司令塔）の実行中の試行は、前の起動で残ったものなので、
+    /// `JobSlots` が「Mac がオフライン」で閉じるまで決めない（閉じる前に時間切れと決めないように）
+    public var leftoversBefore: Date?
 
-    public init(context: CommanderContext, policy: FailurePolicy = FailurePolicy(), timing: JobTiming = JobTiming()) {
+    public init(
+        context: CommanderContext,
+        policy: FailurePolicy = FailurePolicy(),
+        timing: JobTiming = JobTiming(),
+        leftoversBefore: Date? = nil
+    ) {
         self.context = context
         self.policy = policy
         self.timing = timing
+        self.leftoversBefore = leftoversBefore
     }
 
     /// 試行を読んで状態を決めるジョブ（人に渡したジョブも、後から成功が書かれれば成功にする）
@@ -100,7 +109,14 @@ public struct JobSweep: Sendable {
     /// 試行と Mac の印を `reader` から読み、ジョブの次の状態を決める（変わらなければ `job` のまま）
     private func decide(_ job: JobFile, in epic: EpicFile?, reading reader: CommanderContext) async throws(CommanderError) -> JobFile {
         let attempts = try await Self.attempts(of: job, in: reader)
-        let macName = attempts.max { $0.number < $1.number }?.mac ?? job.assignedMac
+        let latest = attempts.max { $0.number < $1.number }
+        // 時刻は秒までしか書かないので、起動の時刻も秒にそろえて比べる（この起動の同じ秒に始めた試行を、残ったものとみなさない）。
+        // 閉じるのは自分宛てのジョブだけ（`JobSlots.closeLeftovers`）なので、待つのも自分宛てのジョブだけ
+        if let leftoversBefore, let latest, job.assignedMac == context.mac, latest.mac == context.mac, latest.outcome == .running,
+           latest.heartbeatAt < Timestamp(leftoversBefore) {
+            return job
+        }
+        let macName = latest?.mac ?? job.assignedMac
         var mac: MacFile?
         if let macName { mac = try await reader.readable(MacFile.self, at: StatePath.mac(macName)) }
         let now = context.now()
