@@ -33,6 +33,30 @@ final class RecordingCleanupMachine: CleanupMachine {
     }
 }
 
+/// 消すときに、その時点の手元の書き置きを写しておく（消している途中で止まったことを再現する）
+final class JournalPeekingMachine: CleanupMachine {
+    private let state = OSAllocatedUnfairLock<Data?>(initialState: nil)
+    let journal: URL
+    let candidates: [CleanupCandidatesFile.Candidate]
+
+    init(journal: URL, candidates: [CleanupCandidatesFile.Candidate]) {
+        self.journal = journal
+        self.candidates = candidates
+    }
+
+    var journalWhileRemoving: Data? { state.withLock { $0 } }
+
+    func scan() async -> CleanupScan {
+        CleanupScan(candidates: candidates)
+    }
+
+    func remove(_ candidate: CleanupCandidatesFile.Candidate) async -> String? {
+        let data = try? Data(contentsOf: journal)
+        state.withLock { $0 = data }
+        return nil
+    }
+}
+
 /// 片付けの意図を司令塔が頼みに積み、その Mac のワーカーが署名を確かめてから探し・消す
 struct CleanupServiceTests {
     static let mac = MacName(rawValue: "macbook-a")!
@@ -297,6 +321,42 @@ struct CleanupServiceTests {
         #expect(second.removed.isEmpty)
         #expect(try await candidates().handled.last?.removed == [Self.clean.id])
         #expect(try await candidates().candidates.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: journal.path))
+    }
+
+    /// 消し始める前に書き置きを手元に残し、消している途中で止まって起動し直しても、頼みをやり直さずに「途中で止まった」を書く。
+    /// 書き置きを残せなければ、消し始めない
+    @Test func recordsInterruptedRemovalInsteadOfRemovingAgain() async throws {
+        let journal = FileManager.default.temporaryDirectory.appendingPathComponent("cleanup-journal-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: journal) }
+        let unwritable = FileManager.default.temporaryDirectory.appendingPathComponent("missing-\(UUID().uuidString)/journal.json")
+        let blocked = RecordingCleanupMachine(candidates: [Self.clean])
+        let noJournal = CleanupService(context: context, machine: blocked, journal: unwritable) { _ in }
+        try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 1))
+        await run(noJournal)
+        let payload: [String: JSONValue] = [
+            "mac": .string(Self.mac.rawValue),
+            "scannedAt": .string(Timestamp(Self.now).rawValue),
+            "candidates": .array([.string(Self.clean.id)])
+        ]
+        try await accept(try await signed("removeCleanupCandidates", payload: payload, nonce: 2))
+        await run(noJournal)
+        #expect(blocked.removed.isEmpty)
+        #expect(try await candidates().handled.count == 1)
+
+        let beforeRemoving = try #require(await store.data(at: StatePath.cleanupCandidates(Self.mac)))
+        let peeking = JournalPeekingMachine(journal: journal, candidates: [Self.clean])
+        await run(CleanupService(context: context, machine: peeking, journal: journal) { _ in })
+        let written = try #require(peeking.journalWhileRemoving)
+        // 消した直後に止まった（結果を書く前）ことにして、起動し直す
+        await store.put(StatePath.cleanupCandidates(Self.mac), data: beforeRemoving)
+        try written.write(to: journal)
+        let again = RecordingCleanupMachine(candidates: [Self.clean])
+        let restarted = CleanupService(context: context, machine: again, journal: journal) { _ in }
+        await run(restarted)
+        await run(restarted)
+        #expect(again.removed.isEmpty)
+        #expect(try await candidates().handled.last?.problem == CleanupService.interruptedProblem)
         #expect(!FileManager.default.fileExists(atPath: journal.path))
     }
 

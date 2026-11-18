@@ -131,14 +131,45 @@ public actor CleanupService {
                 record.at = context.timestamp
                 log("片付けの候補を \(file.candidates.count) 件見つけた（読めなかった場所 \(scan.unreadable.count) か所）")
             case .remove:
+                // 消し始める前に、途中で止まったときの結果を手元に書いておく。起動し直したらそれを書き、頼みをやり直さない
+                // （どれを消したか分からないまま、同じ頼みで消し直さない）。書けなければ消し始めず、次の周でやり直す
+                var interrupted = record
+                interrupted.problem = Self.interruptedProblem
+                guard saveJournal(Self.appending(interrupted, to: file)) else {
+                    log("片付けの頼み \(request.intent.nonce) の書き置きを手元に残せなかったので、消し始めずに次の周でやり直す")
+                    return
+                }
                 await remove(request, from: &file, into: &record)
             }
         }
-        file.handled = Array((file.handled + [record]).suffix(CleanupCandidatesFile.keptHandled))
-        if !(await publish(file)) {
+        file = Self.appending(record, to: file)
+        if await publish(file) {
+            if let journal { try? FileManager.default.removeItem(at: journal) }
+        } else {
             unpublished = file
             // 起動し直しても書き直せるよう、手元に残す（残せなくても、動いている間は書き直す）
-            if let journal, let data = try? StateFileCoder.encode(file) { try? data.write(to: journal, options: .atomic) }
+            _ = saveJournal(file)
+        }
+    }
+
+    /// 消している途中で止まったときに書く理由
+    static let interruptedProblem = "消している途中で止まったので、どれを消したか分からない。探し直してください"
+
+    /// 済ませた記録を足す（古いものから落とす）
+    static func appending(_ record: CleanupCandidatesFile.Handled, to file: CleanupCandidatesFile) -> CleanupCandidatesFile {
+        var file = file
+        file.handled = Array((file.handled + [record]).suffix(CleanupCandidatesFile.keptHandled))
+        return file
+    }
+
+    /// 手元のファイルに書く。手元に残さない設定なら、書かずに true
+    private func saveJournal(_ file: CleanupCandidatesFile) -> Bool {
+        guard let journal else { return true }
+        do {
+            try StateFileCoder.encode(file).write(to: journal, options: .atomic)
+            return true
+        } catch {
+            return false
         }
     }
 
