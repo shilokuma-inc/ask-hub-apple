@@ -71,12 +71,14 @@ extension StateSnapshotBuilder {
         return last.consumed?.reason ?? "理由は書かれていません"
     }
 
+    /// 外した・残した保護の呼び名。残したわけがあれば添える
     private static func label(_ existing: ExistingProtection) -> String {
-        switch existing.kind {
+        let name = switch existing.kind {
         case .classic: "クラシックの保護 \(existing.name)"
         case .ruleset: "ルールセット \(existing.name)"
         case .organizationRuleset: "organization のルールセット \(existing.name)"
         }
+        return existing.reason.map { "\(name)（\($0)）" } ?? name
     }
 
     private static func label(_ change: WorkflowChange) -> String {

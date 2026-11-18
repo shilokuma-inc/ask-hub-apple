@@ -34,7 +34,7 @@ struct ProtectionSection: View {
         } header: {
             Text("保護")
         } footer: {
-            Text("develop・main・release/** に、PR 必須・必須のチェック・force push と削除の禁止を、例外なしで掛けます。司令塔が管理用のトークンで掛け、ずれは 6 時間ごとに確かめます")
+            Text("develop・main・release/ の下に、PR 必須・必須のチェック・force push と削除の禁止を、例外なしで掛けます。司令塔が管理用のトークンで掛け、ずれは 6 時間ごとに確かめます")
         }
         .sheet(isPresented: $showsSheet) {
             ProtectionSheet(repository: repository, protection: protection)
@@ -134,7 +134,7 @@ struct ProtectionSheet: View {
 
     /// 掛ける前に確かめてほしいこと
     static let cautions: [(text: String, symbol: String)] = [
-        ("develop・main・release/** に重なるクラシックの保護と、このリポジトリのルールセットは、置き換えて外します", "arrow.triangle.swap"),
+        ("develop・main・release/ の下に収まるクラシックの保護とルールセットは、置き換えて外します。ほかのブランチも守るものは残して知らせます", "arrow.triangle.swap"),
         (
             "develop・main への直接の push（GitHub Actions の GITHUB_TOKEN のものを含む）は止まります。直接 push するワークフローが残っていないかを先に確かめてください",
             "exclamationmark.triangle"

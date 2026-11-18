@@ -22,8 +22,8 @@ struct RepositoryProtection: Hashable {
     /// 最後に送った保護の設定を、司令塔が断った理由。無ければ nil
     var rejection: String?
 
-    /// 守るブランチ（`ProtectionPolicy.branches`）
-    static let branches = ["develop", "main", "release/**"]
+    /// 守るブランチの呼び名（`ProtectionPolicy.branches` は `release/**/*` のパターン）
+    static let branches = ["develop", "main", "release/ の下"]
 }
 
 /// 対象に加えるときの GitHub 側の準備の様子（`repo.json` の `setup`。`docs/renewal/operations.md` の「対象に加えるときの GitHub 側の準備」）
