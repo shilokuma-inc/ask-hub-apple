@@ -485,6 +485,9 @@
   `CODE_SIGN_IDENTITY` を渡して増分でビルドし直しても署名の手順は走らないので、できた .app を Apple Development の証明書（チーム XU74X3434S）で `codesign --force --sign <証明書> --entitlements <AskHub.app.xcent> --generate-entitlement-der` で署名し直す
   （中の `AskHub.debug.dylib`・`__preview.dylib` も同じ証明書で先に署名する）。`codesign -dv` の `TeamIdentifier` で確かめる（2026-11-18、#1122）
 - Simulator の操作の文字入力（`simctl` の text）は日本語を送れない（text encoding のエラー）。`printf '…' | xcrun simctl pbcopy <udid>` で Simulator のクリップボードに入れ、欄を長押しして「ペースト」で入れる（2026-11-18、#1122）
+- Mac 版のデモ撮影（`-demoPress`）で、ツールバーの SwiftUI の `Menu("操作", systemImage: …)` は、アクセシビリティでは `AXMenuButton` の名前 `More` になり、「操作」では見つからない。
+  `-demoPress "More|やめる…"` で開いたメニューの項目まで押せる。`-demoPress` は窓の中で名前が最初に合う要素を押すので、同じ名前のボタン（epic の「やめる…」と、「対処が要ります」の「やめる…」）があれば、
+  画面の上にあるほうが押される。押せなかった名前は、コンテナの tmp の `demo-snapshot.log` に「… が見つかりません」と、その時の要素の一覧が出る（2026-11-18、開始した後の取り下げの撮影）
 
 ## Keychain
 

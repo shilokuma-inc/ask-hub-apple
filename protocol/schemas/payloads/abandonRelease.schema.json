@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/abandonRelease.schema.json",
+  "title": "このリリースをやめる人の意図（kind が abandonRelease）の payload",
+  "description": "封筒の target は {type: submission, id: <版>}。targetVersion は書かない。payload は空。知らない欄のある payload は読まない",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

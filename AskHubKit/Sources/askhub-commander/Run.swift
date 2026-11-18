@@ -45,6 +45,11 @@ extension AskHubCommanderMain {
             notifier: notifier(configuration.apns, secrets: runtime.secrets, context: context),
             log: log,
             mirror: DiscussionMirror(context: context, discussions: discussions, log: log),
+            abandonedPullRequests: AbandonedPullRequests(
+                context: context,
+                github: GitHubPullRequestClosing(transport: transport, token: MachineRuntime.githubTokens(in: secrets)),
+                log: log
+            ),
             epicWorkspace: runtime.workspace,
             taskRunners: runtime.taskRunners(context: context, settings: TaskRepositorySettings.reader(context: context)),
             tidy: { await cleanUp.run() },

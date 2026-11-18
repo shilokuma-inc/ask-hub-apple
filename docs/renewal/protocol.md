@@ -41,9 +41,10 @@ repos/<owner>/<repo>/epics/<epic>/screenshots/<commit>-<scene>.png  見える仮
 repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json  ジョブ（司令塔）
 repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json  試行（実行した Mac のワーカー）
 repos/<owner>/<repo>/releases/<版>.json             App Store で配信した版と、その後作業の進み具合（司令塔）
+repos/<owner>/<repo>/submissions/<版>.json          リリースを始めた版の準備と審査（司令塔）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
 commander.json                                     司令塔の生きている印（司令塔）
-notifications.json                                 進行を止めるものを知らせた記録（司令塔）
+notifications.json                                 進行を止めるもの・止めないもの（実機確認）を知らせた記録（司令塔）
 devices/<device>.json                              通知の宛先（その端末のクライアント）
 keys/<seq>.json                                    公開鍵の追記の記録（クライアント。署名つき）
 intents/<device>/<intent>.json                     人の意図（クライアント。署名つき）
@@ -186,7 +187,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `abandoned` | やめた | — |
 
 開始する前の段階（`drafting`〜`awaitingStart`）からは、人の取り下げ（`abandonEpic`）か、先に進めなくなるジョブを人がやめたとき（`giveUp`）にも `abandoned` になる。
-開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げか、実装・最終 PR の段取りのジョブを人がやめたときに `abandoned` になる（2026-11-12 に決めた。段階 4 の 3 で作る。[flows.md](flows.md) の「開始した後の取り下げ」）
+開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げで `abandoned` になる。開いている子 PR と最終 PR は閉じ、作業ブランチと子ブランチは残す（2026-11-12 に決めた。[flows.md](flows.md) の「開始した後の取り下げ」）。実装・最終 PR の段取りのジョブを人がやめたときも同じにする（段階 4 の 3 で作る）
 
 ### readiness.json（最後の着手前の確認の結果）
 
@@ -367,6 +368,43 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - `nextVersion` は develop の `MARKETING_VERSION` を次の版に上げる PR。`state` は `open`（CI を待っている）・`merged`・`skipped`（develop の版がもう大きかったので上げなかった。`pullRequest` を持たない）。`open`・`merged` の `version` は配信した版より大きい
 - `problem` は後作業を進められなかった理由（`step` は `commit`・`tag`・`notes`・`githubRelease`・`nextVersion`）。進められたら消す。`needsHuman` が true なら、やり直しても進まないので人が直す（クライアントに出す）
 - クライアントは、`notes` があって `confirmed` も `githubRelease` も無い版を、人の番として出す（Swift は `ReleaseFile.awaitsNotesReview`）。タグ・GitHub Release・次の版（`merged`・`skipped`）がそろったら終わり（`isFinished`）
+
+### submissions/<版>.json（リリースを始めた版の準備と審査）
+
+```json
+{
+  "v": 1,
+  "repo": "shilokuma-inc/prime-pick-ios",
+  "version": "1.4.0",
+  "origin": "askhub",
+  "start": { "approval": { "keyId": "…", "nonce": "…" }, "at": "…" },
+  "branch": { "name": "release/1.4.0", "commit": "<develop の先頭>", "created": true, "at": "…" },
+  "nextVersion": { "version": "1.5.0", "state": "open", "pullRequest": 210, "at": "…" },
+  "builds": [{ "platform": "iOS", "build": "45", "uploadedAt": "…" }],
+  "whatsNew": { "drafts": [{ "locale": "ja", "text": "…" }, { "locale": "en-US", "text": "…" }], "draftedAt": "…" },
+  "revision": 2,
+  "submit": { "approval": { … }, "at": "…", "builds": [{ "platform": "iOS", "build": "45" }], "whatsNew": [ … ], "releaseType": "manual" },
+  "review": [{ "platform": "iOS", "state": "pendingDeveloperRelease", "since": "…", "submittedAt": "…" }],
+  "distribution": { "approval": { … }, "at": "…", "doneAt": null },
+  "withdrawal": null,
+  "end": null,
+  "problem": null,
+  "createdAt": "…",
+  "updatedAt": "…"
+}
+```
+
+- 人が「リリースを始める」（`startRelease`）を押したときに司令塔が作る（`origin` が `askhub`）。App Store Connect の Web で手で審査に出した版を見つけたときも作る（`origin` が `appStoreConnect`。`start`・`branch`・`nextVersion`・`builds`・`whatsNew`・`submit` を持たない）。形は `protocol/schemas/state/submission.schema.json`（Swift は `SubmissionFile`）。流れは [release.md](release.md) の「リリースを始めてから配信まで」
+- `branch` は release ブランチ（名前は `release/<版>`）。`commit` は作ったときの先頭（develop の先頭）、`created` は司令塔が作ったか（前からあったなら false）
+- `nextVersion` は develop の `MARKETING_VERSION` を次の版に上げる PR。形と意味は `releases/<版>.json` の `nextVersion` と同じ（次の版は始めた版より大きい）
+- `builds` は release ブランチから上げたビルドのうち、App Store Connect の処理を終えた最新のもの（プラットフォームごとに 1 つ）。`whatsNew` は Claude の What's New の下書き（App Store Connect にある言語ごと。4,000 文字まで）。`drafts` が空なら初めての版（What's New を持たない）
+- `revision` は、ビルドか What's New の下書きが変わるたびに上げる。審査に出す意図の `targetVersion`（人が見たものを出す）
+- `submit` は人が「審査に出す」を押した中身（出すビルド・人が確かめた What's New・配信の方式 `releaseType`・`scheduled` のときの `earliestReleaseDate`）。司令塔が App Store Connect に出し終えると、そのプラットフォームの `review` に `submittedAt`（`submit.at` より後）が付く。取り下げを終えたら `submit` を消す（出し直せる）
+- `review` はプラットフォームごとの審査の状態（App Store Connect の `appVersionState` を `prepareForSubmission`・`waitingForReview`・`inReview`・`pendingDeveloperRelease`・`processingForDistribution`・`readyForDistribution`・`rejected`・`metadataRejected`・`developerRejected` などの camelCase にしたもの）。`since` は今の状態を読んだ時刻
+- `distribution`・`withdrawal` は人が押した「配信する」（`distributeRelease`）・「審査の取り下げ」（`withdrawSubmission`）。司令塔が App Store Connect に送ったら `doneAt` が付く
+- `end` は終わりの印。`distributed`（配信を見つけた。後作業は `releases/<版>.json`）・`abandoned`（人がやめた。`approval` を持つ）・`superseded`（もっと新しい版を配信した）
+- `problem` は進められなかった理由（`step` は `branch`・`nextVersion`・`whatsNew`・`builds`・`submit`・`distribute`・`withdraw`・`review`）。`needsHuman` なら人が直す（クライアントに出す）
+- クライアントは、準備がそろい（`isPrepared`）、まだ出していない（`submit` も審査中のプラットフォームも無い）版を、人の番として出す（`awaitsSubmission`）。審査に通って配信の方式が手動の版（`pendingDeveloperRelease`）も人の番（`awaitsDistribution`）。審査を待っている・審査中なら取り下げられ（`canWithdraw`）、審査に出していない・取り下げた・断られた版はやめられる（`canAbandon`）
 
 ### verifications.json（実機確認への答え）
 
@@ -582,7 +620,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - Android を足すときに、`platform` と `push.service`（FCM）を足す
 - 司令塔は、ファイルの名前と `device` が合い、確かめた公開鍵の一覧にある（登録済みで取り消していない）端末にだけ送る
 
-### notifications.json（進行を止めるものを知らせた記録）
+### notifications.json（進行を止めるもの・止めないものを知らせた記録）
 
 ```json
 {
@@ -607,9 +645,10 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
   | ジョブを持った Mac が戻らない | `mac/<mac>/<その Mac の seenAt>` |
   | リリース文の確認と公開を待っている | `release/<owner>/<repo>/<版>/<notes の version>` |
   | 配信した版の後作業が、人が直すまで進まない | `release/<owner>/<repo>/<版>/problem/<段取り>/<problem の at>` |
+  | マージした epic の実機確認に、まだ答えていない項目がある（止めないもの。決めた時刻にまとめて送る） | `verification/<owner>/<repo>/<epic>` |
 
 - どの端末にも送れなかった出来事は、記録から外して送り直す。終わった出来事の記録は、7 日たってから消す
-- 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`）。APNs の `thread-id` は epic の id か `mac/<mac>`、`apns-collapse-id` はまとめた出来事の key から決める
+- 通知の中身の `askhub` は、クライアントが通知から開く先（epic の出来事は `{"repo": "<owner/repo>", "epic": "<epic>"}`、Mac は `{"mac": "<mac>"}`。実機確認のまとめは、epic が 1 つならその epic、いくつもあれば `{}`）。APNs の `thread-id` は epic の id か `mac/<mac>`（実機確認のまとめは `verification`）、`apns-collapse-id` はまとめた出来事の key から決める
 
 ## 各リポジトリに書く目印
 
@@ -634,6 +673,8 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
   | 回答（質問のコメントへの返信） | `{"type":"copy","kind":"answer","epic":"…","question":"q1","intent":"<回答の人の意図の nonce>"}` |
   | ゴール（コメント） | `{"type":"goal","epic":"…"}` |
   | 締め（コメント。マージした・やめた epic） | `{"type":"closing","epic":"…"}` |
+
+- 開始した後にやめた epic の、閉じた子 PR と最終 PR へのコメント（[flows.md](flows.md) の「開始した後の取り下げ」）の目印は `{"type":"abandoned","epic":"…"}`。書くだけで、司令塔は読まない
 
 ## 人の意図と署名
 
@@ -670,16 +711,21 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `verify` | 実機確認の項目（`{ "type": "verification", "epic", "id": "v1" }`） | ゴールの `version` | `result`（`confirmed`・`problem`）、`note`（問題ありの説明。`payloads/verify.schema.json`）。最終 PR をマージした（`merged` の）epic の、完了の条件の項目に 1 回だけ。答えは `verifications.json` に書く。問題ありの直しは、クライアントが同時に送る依頼（`request`）が新しい epic になる |
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
-| `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。今は開始する前の epic だけ。段階 4 の 3 から、開始した後の epic も受け付ける（マージした epic は断る） |
+| `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始した後の epic も受け付け、開いている子 PR と最終 PR を閉じる（ブランチは残す）。マージした epic は断る |
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
 | `applyProtection` | リポジトリ（封筒の `repo`） | — | 保護の設定（形は段階 4 の 4 で決める）。司令塔が管理用のトークンで掛ける |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
+| `startRelease` | リポジトリ（封筒の `repo`） | — | `version`（始める版。`payloads/startRelease.schema.json`）。対象のリポジトリで、終わっていないリリース（`submissions/` の `end` の無い記録）が無く、配信した版（`releases/`）より大きいときだけ受け付ける。やめた版は始め直せる |
+| `submitForReview` | リリースを始めた版（`{ "type": "submission", "id": "<版>" }`） | 人が見たときの準備の版（`submissions/<版>.json` の `revision`） | `builds`（出すビルド。`[{ "platform", "build" }]`）、`whatsNew`（人が確かめた What's New。`[{ "locale", "text" }]`。下書きと同じ言語）、`releaseType`（`afterApproval`・`manual`・`scheduled`）、`earliestReleaseDate`（`scheduled` のときだけ。`payloads/submitForReview.schema.json`）。準備がそろい、まだ出していない版だけ受け付ける |
+| `distributeRelease` | リリースを始めた版 | —（版の今の状態に対してだけ意味を持つ） | 空（`payloads/distributeRelease.schema.json`）。審査に通って配信を待っている（`pendingDeveloperRelease`）版だけ。App Store Connect では取り消せない |
+| `withdrawSubmission` | リリースを始めた版 | —（同上） | 空（`payloads/withdrawSubmission.schema.json`）。審査を待っている・審査中の版だけ。取り下げた後は出し直せる |
+| `abandonRelease` | リリースを始めた版 | —（同上） | 空（`payloads/abandonRelease.schema.json`）。審査に出していない・取り下げた・断られた版だけ。記録に `end` を付けるだけで、release ブランチ・App Store Connect の版は消さない |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
-テンプレートからの作成・実機確認の「確認した」「問題あり」・ワークフローの PR の承認の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作（審査に出す・配信する・取り下げ など）の `kind` は、段階 5 の 3（リリースを始める）で足す。
+テンプレートからの作成・実機確認の「確認した」「問題あり」・ワークフローの PR の承認の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作の `kind`（`startRelease`・`submitForReview`・`distributeRelease`・`withdrawSubmission`・`abandonRelease`）は、段階 5 の 3 で足した。
 
 ### 署名のしかた
 
@@ -746,6 +792,6 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 
 ## 決めていないこと
 
-- リリースの操作の `kind`・App Store Connect の状態の置き方・App Store の素材の形（段階 5）
+- App Store の素材の形（段階 5 の 6）。リリース中の直し・hotfix・リジェクトの対処の意図（段階 5 の 4）
 - 段階 4 で足す意図（作成・実機確認・保護の設定・ワークフローの PR の承認・Secrets の登録）の形と、対象から外した印の形（実装のときに決めて、上の表と `repo.json` に書く）
 - クライアントでの `repo.json` の `build` の入れ方は、段階 4 の 4 で作る（今は非常口の `askhub configure-repository` だけ。[operations.md](operations.md) の「ビルドの設定の入れ方」）

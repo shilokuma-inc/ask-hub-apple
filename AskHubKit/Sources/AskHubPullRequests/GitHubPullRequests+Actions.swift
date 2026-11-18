@@ -23,6 +23,12 @@ extension GitHubPullRequests {
         try GitNames.checkNumber(number)
         _ = try await api.send("PATCH", api.url("pulls/\(number)"), body: StateBody(state: state.rawValue))
     }
+
+    /// PR にコメントを書く（PR の会話のコメントは、Issue のコメントの API で書く）
+    public func comment(number: Int, body: String) async throws(PullRequestError) {
+        try GitNames.checkNumber(number)
+        _ = try await api.send("POST", api.url("issues/\(number)/comments"), body: CommentBody(body: body))
+    }
 }
 
 /// GitHub Actions の実行（workflow run）の今の様子
@@ -51,6 +57,10 @@ public struct WorkflowRun: Sendable, Equatable {
 
 private struct StateBody: Encodable, Sendable {
     let state: String
+}
+
+private struct CommentBody: Encodable, Sendable {
+    let body: String
 }
 
 struct WorkflowRunsPage: Decodable {
