@@ -253,6 +253,43 @@ struct FixMergeFinalPullRequestRunnerTests {
         #expect(fixture.pulls.current.merges.count == 1)
     }
 
+    /// 動いている間に取り下げが届いたら、マージの直前に epic を読み直して、マージせずに終える
+    @Test func doesNotMergeWhenEpicIsAbandonedWhileRunning() async throws {
+        let fixture = try await fixture()
+        try await reviewed(fixture, "01", outputs: AttemptFile.Outputs(verdict: .ready, mergeRisks: []))
+        var environment = try fixture.environment()
+        let settings = try Fixture.settings()
+        let files = fixture.files
+        // 始めに epic を読んだ後（リポジトリの設定を読むとき）に、取り下げが届く
+        environment.tasks.settings = { _ throws(CommanderError) in
+            _ = try? await files.update(EpicFile.self, at: StatePath.epic(Tasks.repo, Tasks.epic), message: "やめる") { epic in
+                epic.stage = .abandoned
+                return true
+            }
+            return settings
+        }
+        let job = fixture.job(.mergeFinalPullRequest, "0M", input: Self.pull.jobInput)
+        let result = try await MergeFinalPullRequestRunner(environment: environment).execute(job)
+        #expect(result.failure == nil)
+        #expect(result.outputs?.commit == nil)
+        #expect(fixture.pulls.current.merges.isEmpty)
+        #expect(fixture.pulls.current.deletions.isEmpty)
+
+        // 前の試行がマージした後に取り下げが届いても、取り下げた epic の作業ブランチは消さない
+        fixture.pulls.update {
+            $0.pulls[512]?.state = .closed
+            $0.pulls[512]?.merged = true
+        }
+        _ = try? await files.update(EpicFile.self, at: StatePath.epic(Tasks.repo, Tasks.epic), message: "戻す") { epic in
+            epic.stage = .reviewing
+            return true
+        }
+        let merged = try await MergeFinalPullRequestRunner(environment: environment).execute(job)
+        #expect(merged.failure == nil)
+        #expect(merged.outputs?.commit == nil)
+        #expect(fixture.pulls.current.deletions.isEmpty)
+    }
+
     @Test func refusesWhenHeadMovedFromPinnedHead() async throws {
         let fixture = try await fixture()
         try await reviewed(fixture, "01", outputs: AttemptFile.Outputs(verdict: .ready, mergeRisks: []))

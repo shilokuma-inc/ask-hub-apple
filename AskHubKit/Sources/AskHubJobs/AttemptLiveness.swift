@@ -24,10 +24,15 @@ public enum AttemptLiveness: Equatable, Sendable {
     /// Mac は動いているのに、試行の印が古い（ワーカーの中で止まった）
     case stalled
 
-    /// `attempt` は実行中の試行。`mac` は試行を実行している Mac の生きている印（読めなければ nil）
+    /// `attempt` は実行中の試行。`mac` は試行を実行している Mac の生きている印（読めなければ nil）。
+    ///
+    /// ワーカーごと止まった（閉じた・眠った・ワーカーを止めた）ときは、試行の印が先に古くなり（15 分）、そのとき Mac の印はまだ 30 分たっていない。
+    /// そこで、Mac の印が、試行が次の印を書くはずだった時刻（最後の印 + 試行の印の間隔）より後に書かれたときだけ、ワーカーは動いていて試行だけが止まった（`stalled`）とみなす。
+    /// まだ書かれていなければ見分けられないので、Mac の次の印か、Mac の印が古くなる（`macOffline`）まで、動いているものとして決めない
     public static func of(_ attempt: AttemptFile, mac: MacFile?, now: Date, timing: JobTiming = JobTiming()) -> Self {
         guard isOlder(attempt.heartbeatAt, than: timing.attemptStaleAfter, now: now) else { return .alive }
         guard let mac, mac.mac == attempt.mac, !isOlder(mac.seenAt, than: timing.macStaleAfter, now: now) else { return .macOffline }
+        guard isOlder(attempt.heartbeatAt, than: timing.heartbeatInterval, now: mac.seenAt.date) else { return .alive }
         return .stalled
     }
 

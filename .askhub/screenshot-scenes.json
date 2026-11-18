@@ -12,6 +12,7 @@
     { "id": "deck-all", "title": "答えるカードの山（質問・判断・実機の確認をまとめて）", "arguments": ["-demoScenario", "standard", "-demoOpen", "deck:all", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "deck-questions", "title": "質問のカード（献立メモの epic）", "arguments": ["-demoScenario", "standard", "-demoOpen", "deck:questions:recipe-weekly", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "goal", "title": "ゴールの確認（月の上限の通知の epic）", "arguments": ["-demoScenario", "standard", "-demoOpen", "goal:budget-limit", "-demoClock", "2026-01-15T00:41:00Z"] },
+    { "id": "goal-start-sheet", "title": "開始のときに回す Mac を選ぶシート（選んでいる Mac にチェック）", "arguments": ["-demoScenario", "standard", "-demoOpen", "goal:budget-limit", "-demoSheet", "start", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "final-review", "title": "最終 PR の確認画面（見える仮決め・マージの規則・承認）", "arguments": ["-demoScenario", "standard", "-demoOpen", "final:tsundoku-search", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "final-review-merged", "title": "マージ済みの最終 PR の確認画面（下のバーの押せない「マージ済」）", "arguments": ["-demoScenario", "standard", "-demoOpen", "final:habit-review", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "deck-decisions", "title": "見える仮決めのカード（Before / After のスクショ付き）", "arguments": ["-demoScenario", "standard", "-demoOpen", "deck:decisions:tsundoku-search", "-demoClock", "2026-01-15T00:41:00Z"] },

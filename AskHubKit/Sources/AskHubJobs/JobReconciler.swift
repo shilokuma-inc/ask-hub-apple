@@ -30,8 +30,16 @@ public enum JobReconciler {
         let earlier = Array(ownAttempts.dropLast().compactMap(earlierFailure))
         switch latest.outcome {
         case .running:
-            apply(AttemptLiveness.of(latest, mac: mac, now: now, timing: timing), to: &next) {
-                policy.decide(.timeout, retryAt: nil, earlier: earlier, now: now)
+            let liveness = AttemptLiveness.of(latest, mac: mac, now: now, timing: timing)
+            if isFollowUp, job.state == .paused, liveness == .stalled {
+                // Mac がオフラインで止めたジョブの Mac が戻ったが、試行は止まったまま（ワーカーを止めた・Mac を再起動した）。
+                // オフラインの間の中断は失敗に数えないので、時間切れとして決めずに続きから試し直す
+                next.state = .assigned
+                next.nextRunAt = Timestamp(now)
+            } else {
+                apply(liveness, to: &next) {
+                    policy.decide(.timeout, retryAt: nil, earlier: earlier, now: now)
+                }
             }
         case .succeeded:
             next.state = .succeeded

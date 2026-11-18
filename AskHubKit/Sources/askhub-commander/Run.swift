@@ -23,15 +23,6 @@ extension AskHubCommanderMain {
         // 人の意図の処理・Claude のジョブの結果・通知の記録・写しの id の書き戻しは、同じ排他を使うよう、同じ `context` を渡す
         let context = CommanderContext(store: runtime.store, mac: configuration.mac)
         let cleanUp = runtime.finishedEpicCleanUp(context: context, log: log)
-        // 対象のアプリのアイコンは、常時オンの Mac の clone から取り出し、ビルドに使う Xcode の Icon Composer で書き出す
-        let appIcons = AppIconSync(
-            context: context,
-            source: GitAppIconSource(
-                workspace: runtime.workspace,
-                renderer: AppIconRenderer(tools: configuration.buildTools(paths: runtime.paths), runner: ProcessCommandRunner())
-            ),
-            log: log
-        )
         let releases = releaseWatch(runtime: runtime, context: context, transport: transport)
         let loop = CommanderLoop(
             context: context,
@@ -46,22 +37,47 @@ extension AskHubCommanderMain {
             notifier: notifier(configuration.apns, secrets: runtime.secrets, context: context),
             log: log,
             mirror: DiscussionMirror(context: context, discussions: discussions, log: log),
+            abandonedPullRequests: AbandonedPullRequests(
+                context: context,
+                github: GitHubPullRequestClosing(transport: transport, token: MachineRuntime.githubTokens(in: secrets)),
+                log: log
+            ),
             epicWorkspace: runtime.workspace,
             taskRunners: runtime.taskRunners(context: context, settings: TaskRepositorySettings.reader(context: context)),
             tidy: { await cleanUp.run() },
-            appIcons: appIcons,
+            appIcons: appIcons(runtime: runtime, context: context),
             releases: releases,
-            // ずれの点検は自動で行うので、毎日のトークンで読むだけにする。管理用のトークンは人の意図の処理にだけ渡す
-            protection: ProtectionWatch(
-                context: context,
-                github: { GitHubPullRequests(repository: $0, transport: transport, token: MachineRuntime.githubTokens(in: secrets)) },
-                log: log
-            ),
+            protection: protectionWatch(secrets: secrets, context: context, transport: transport),
             admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) }
         )
         let pid = ProcessInfo.processInfo.processIdentifier
         log("起動しました（版 \(CommanderVersion.build.summary)、pid \(pid)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
         await loop.run()
+    }
+
+    /// 対象のアプリのアイコンは、常時オンの Mac の clone から取り出し、ビルドに使う Xcode の Icon Composer で書き出す
+    private static func appIcons(runtime: MachineRuntime, context: CommanderContext) -> AppIconSync {
+        AppIconSync(
+            context: context,
+            source: GitAppIconSource(
+                workspace: runtime.workspace,
+                renderer: AppIconRenderer(tools: runtime.configuration.buildTools(paths: runtime.paths), runner: ProcessCommandRunner())
+            ),
+            log: log
+        )
+    }
+
+    /// 掛けた保護のずれの点検。自動で行うので、毎日のトークンで読むだけにする（管理用のトークンは人の意図の処理にだけ渡す）
+    private static func protectionWatch(
+        secrets: KeychainSecretStore,
+        context: CommanderContext,
+        transport: any HTTPTransport
+    ) -> ProtectionWatch {
+        ProtectionWatch(
+            context: context,
+            github: { GitHubPullRequests(repository: $0, transport: transport, token: MachineRuntime.githubTokens(in: secrets)) },
+            log: log
+        )
     }
 
     /// App Store での配信を見つけ、リリースの後作業を進めるもの。App Store Connect の鍵の設定が無ければ、配信は見つけず、

@@ -8,6 +8,7 @@ import Foundation
 /// - マージの規則で人の確認が要る最終 PR（見える仮決めがある・レビューがマージの規則の材料を返した）は、同じ head への人の承認（`approveMerge`）を
 ///   元にしたジョブでだけマージする。司令塔の取り違えで、人の確認を飛ばさないよう、ワーカーでも確かめる
 /// - マージしたら作業ブランチを消す（マージの後に push されていれば残す）
+/// - 動いている間に epic をやめたら、マージもブランチの削除もしない（マージの直前に epic を読み直す）
 public struct MergeFinalPullRequestRunner: JobRunning {
     public var environment: FinalJobEnvironment
 
@@ -31,6 +32,7 @@ public struct MergeFinalPullRequestRunner: JobRunning {
             try await pulls.pullRequest(number: input.pullRequest)
         }
         try FinalJobEnvironment.checkDirection(pull, branches: target.branches)
+        try await stopIfAbandoned(job)
         // 前の試行がマージした後、記録する前に落ちた（見る head でマージしたものだけを、終わったとみなす）
         if pull.merged {
             guard pull.headSHA == input.head else {
@@ -43,6 +45,7 @@ public struct MergeFinalPullRequestRunner: JobRunning {
             throw .fail(.unexpected, "最終 PR #\(input.pullRequest) の head が、マージする head（\(input.head)）から動いた（\(pull.headSHA)）")
         }
         try await checkApproval(job, input: input)
+        try await stopIfAbandoned(job)
         let merge = try await environment.tasks.github("最終 PR をマージする") { () throws(PullRequestError) in
             try await pulls.merge(number: input.pullRequest, headSHA: input.head, commitTitle: nil, commitMessage: nil)
         }
@@ -54,6 +57,14 @@ public struct MergeFinalPullRequestRunner: JobRunning {
             throw .fail(.unexpected, "最終 PR #\(input.pullRequest) が、base（\(target.branches.base)）ではなく \(landed.baseRef) にマージされた。人が確かめる")
         }
         return try await merged(input, sha: merge.sha ?? landed.mergeCommitSHA, target: target, pulls: pulls)
+    }
+
+    /// 取り下げ（`abandonEpic`）は、このジョブが動いている間にも届く。epic を読み直し、やめていれば、マージも作業ブランチの削除もせずに終える
+    /// （取り下げた epic のブランチは残す）。マージの直前にも読み直して、取り下げとぶつかる幅を縮める
+    private func stopIfAbandoned(_ job: JobFile) async throws(TaskJobExit) {
+        guard try await environment.tasks.read(EpicFile.self, at: StatePath.epic(job.repo, job.epic))?.stage != .abandoned else {
+            throw .finish(JobResult())
+        }
     }
 
     /// マージの規則で人の確認が要るなら、ジョブの元が同じ head への人の承認かを確かめる

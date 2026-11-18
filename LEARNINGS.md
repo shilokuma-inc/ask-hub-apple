@@ -747,6 +747,10 @@
   セクションごとの `@State` の UUID と合わせた id にする（`CardRowItem`）。Mac の plain の一覧では、ほかにも
   セクションの footer が 1 行で切れる（`fixedSize` も効かないので、注記は札の外の行として置く）・見出しに `listRowInsets` が効かない・行と見出しの中身に左右 8pt を自分で足す・
   区切り線が行の中身の幅で切れて最後の行の下にも出る・`DisclosureGroup` の三角が行の左の外に出る。札（`CardSection`）は Mac でも行の地に区切り線を描き、開閉は `DisclosureGroupStyle` で見出しの右の山形にした（2026-11-12、Mac の UI の直し）
+- シートの中で 1 つを選ぶ一覧に `List(selection:)` を使うと、iOS では `editMode` を `.active` にしないと押しても選べず、そのときは行の左に編集の丸が出る。
+  Mac では選んだ行の背景が濃くなって札（`CardSection`）と重なる。行を `.buttonStyle(.plain)` のボタン（label に `.contentShape(.rect)`）にして選び、
+  選んだ行にチェックと `.isSelected` の trait を付けると、`#if os` 無しで両方そろう。チェックは `opacity` で隠して場所を取っておくと、選び直しても右の印が動かない。
+  撮影でシートを開いておくときは `-demoSheet start` のように起動引数で `@State` の初期値を決める（`DemoLaunch.initialSheet`）（2026-11-14、開始のシート）
 
 ## App Store Connect
 
