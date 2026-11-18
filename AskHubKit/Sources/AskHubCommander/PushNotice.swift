@@ -244,6 +244,7 @@ extension SubmissionFile.Step {
         case .distribute: "配信する"
         case .withdraw: "審査の取り下げ"
         case .review: "審査の状態"
+        case .integration: "release ブランチの取り込み"
         }
     }
 }

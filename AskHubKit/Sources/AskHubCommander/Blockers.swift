@@ -201,7 +201,12 @@ extension Blocker {
         let scope = Scope.submission(submission.repo, submission.version)
         let base = "submission/\(submission.repo.rawValue)/\(submission.version.rawValue)"
         var blockers: [Blocker] = []
-        guard !submission.isEnded else { return [] }
+        // 配信した後は、release ブランチの取り込みで人が直す問題だけ知らせる
+        guard !submission.isEnded else {
+            guard let problem = submission.problem, problem.step == .integration, problem.needsHuman else { return [] }
+            let key = "\(base)/problem/integration/\(problem.at.rawValue)"
+            return [Blocker(key: key, scope: scope, reason: .submissionProblem(.integration))]
+        }
         // ビルドか What's New が変わったら（revision が上がったら）知らせ直す
         if submission.awaitsSubmission {
             blockers.append(Blocker(key: "\(base)/ready/\(submission.revision)", scope: scope, reason: .submissionReady))
