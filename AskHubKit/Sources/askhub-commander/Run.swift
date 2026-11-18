@@ -22,6 +22,7 @@ extension AskHubCommanderMain {
         // 人の意図の処理・Claude のジョブの結果・通知の記録・写しの id の書き戻しは、同じ排他を使うよう、同じ `context` を渡す
         let context = CommanderContext(store: runtime.store, mac: configuration.mac)
         let cleanUp = runtime.finishedEpicCleanUp(context: context, log: log)
+        let simulators = runtime.straySimulatorSweep(log: log)
         // 対象のアプリのアイコンは、常時オンの Mac の clone から取り出し、ビルドに使う Xcode の Icon Composer で書き出す
         let appIcons = AppIconSync(
             context: context,
@@ -52,7 +53,10 @@ extension AskHubCommanderMain {
             ),
             epicWorkspace: runtime.workspace,
             taskRunners: runtime.taskRunners(context: context, settings: TaskRepositorySettings.reader(context: context)),
-            tidy: { await cleanUp.run() },
+            tidy: {
+                await cleanUp.run()
+                await simulators.run()
+            },
             appIcons: appIcons,
             releases: releases
         )
