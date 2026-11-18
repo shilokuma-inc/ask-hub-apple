@@ -122,7 +122,9 @@ struct FinishedEpicCleanUpTests {
 
     /// 終わって 30 日たって archive/ に畳まれた epic でも、長くオフラインだった Mac に残ったものは片付けの対象にする
     @Test func findsArchivedEpicsToo() async throws {
+        defer { try? FileManager.default.removeItem(at: base.root) }
         let workspace = try await base.makeWorkspace()
+        try FileManager.default.createDirectory(at: builds.derivedData(for: Self.abandoned), withIntermediateDirectories: true)
         let repository = RepositoryFile(repo: Self.repo, platform: .apple, addedAt: Timestamp(Self.now))
         await store.put(StatePath.repository(Self.repo), data: try StateFileCoder.encode(repository))
         try await put(Self.abandoned, .abandoned, since: 40 * 24 * 60 * 60)
@@ -132,6 +134,10 @@ struct FinishedEpicCleanUpTests {
         #expect(await store.data(at: epicPath) == nil)
         let found = try await cleanUp(workspace).finishedEpics(among: [Self.abandoned, Self.unknown])
         #expect(found.map(\.id) == [Self.abandoned])
+        // 畳んだ先で見つけた epic の DerivedData も消す
+        await cleanUp(workspace).run()
+        #expect(builds.epics().isEmpty)
+        #expect(logs.withLock { $0 }.contains { $0.contains(Self.abandoned.rawValue) })
     }
 
     @Test func doesNothingWithoutLeftovers() async throws {
