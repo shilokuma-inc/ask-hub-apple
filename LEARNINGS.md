@@ -765,11 +765,11 @@
   Mac では選んだ行の背景が濃くなって札（`CardSection`）と重なる。行を `.buttonStyle(.plain)` のボタン（label に `.contentShape(.rect)`）にして選び、
   選んだ行にチェックと `.isSelected` の trait を付けると、`#if os` 無しで両方そろう。チェックは `opacity` で隠して場所を取っておくと、選び直しても右の印が動かない。
   撮影でシートを開いておくときは `-demoSheet start` のように起動引数で `@State` の初期値を決める（`DemoLaunch.initialSheet`）（2026-11-14、開始のシート）
+- デモのクライアント（`DemoClientService`）は `supports` を実装しておらず、`ClientService` の既定でいつも true を返す。
+  状態によって出し分けるボタンは、`store.supports` だけでなく画面用のモデルの印（`Submission.awaitsSubmission` など）でも決めないと、デモと撮影で全部のボタンが出る（2026-11-18、#1142）
 - PR のスクショを `NSHostingView` の `cacheDisplay(in:to:)` で撮ると、`safeAreaBar(edge: .bottom)` にガラスのボタンを置いた画面は、中身ごと白く描かれる。
   iOS のテスト（Simulator）で、`UIWindow(windowScene:)`（シーンに付けないと白くなる）に `UIHostingController` を載せ、`drawHierarchy(in:afterScreenUpdates:)` で PNG にすれば描ける。
   状態リポジトリの組み立て（`StateClientService` + `InMemoryStateStore`）を通したデータを、develop とブランチの両方で同じテストから撮れば、同じ条件の Before / After になる（2026-11-18、片付けの候補）
-- デモのクライアント（`DemoClientService`）は `supports` を実装しておらず、`ClientService` の既定でいつも true を返す。
-  状態によって出し分けるボタンは、`store.supports` だけでなく画面用のモデルの印（`Submission.awaitsSubmission` など）でも決めないと、デモと撮影で全部のボタンが出る（2026-11-18、#1142）
 
 ## App Store Connect
 
