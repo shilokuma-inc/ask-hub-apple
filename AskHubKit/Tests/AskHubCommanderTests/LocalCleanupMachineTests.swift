@@ -30,6 +30,11 @@ final class SimctlStubRunner: CommandRunning {
     }
 }
 
+/// テスト用の git の置き場所を作れなかった
+struct GitFixtureFailure: Error {
+    var arguments: [String]
+}
+
 /// 一時フォルダをホームにして、本物の git の clone と DerivedData を置いて探し、選んだものを消す（ゴミ箱は一時フォルダに差し替える）
 struct LocalCleanupMachineTests {
     static let derivedDataPath = "Library/Developer/Xcode/DerivedData/OldApp-abcdefghijklmnopqrstuvwxyzab"
@@ -62,11 +67,15 @@ struct LocalCleanupMachineTests {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         let identity = ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "init.defaultBranch=main"]
         process.arguments = ["-C", directory.path] + identity + arguments
+        // 人の git の設定（グローバル・システム）を読まない
+        process.environment = ["GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "HOME": root.path, "PATH": "/usr/bin:/bin"]
         let output = Pipe()
         process.standardOutput = output
         process.standardError = Pipe()
         try process.run()
         process.waitUntilExit()
+        // 置き場所を作れなければ、その場で止める（後の確かめが、置けなかったことで通ってしまわないように）
+        guard process.terminationStatus == 0 else { throw GitFixtureFailure(arguments: arguments) }
         // swiftlint:disable:next optional_data_string_conversion
         return String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
     }
@@ -81,6 +90,7 @@ struct LocalCleanupMachineTests {
 
     /// 置いたもの
     struct Prepared {
+        var remote: URL
         var clean: URL
         var dirty: URL
         var derivedData: URL
@@ -112,7 +122,7 @@ struct LocalCleanupMachineTests {
         let derivedData = home.appendingPathComponent(Self.derivedDataPath, isDirectory: true)
         try FileManager.default.createDirectory(at: derivedData, withIntermediateDirectories: true)
         try Data(count: 4_096).write(to: derivedData.appendingPathComponent("build.db"))
-        return Prepared(clean: clean, dirty: dirty, derivedData: derivedData)
+        return Prepared(remote: remote, clean: clean, dirty: dirty, derivedData: derivedData)
     }
 
     @Test func findsHumanClonesSimulatorsAndDerivedDataWithCautions() async throws {
@@ -179,5 +189,29 @@ struct LocalCleanupMachineTests {
         workerSimulator.location = Self.worker
         #expect(await machine.remove(workerSimulator) == "ワーカーの枠の Simulator なので消さなかった（見回りで消す）")
         #expect(runner.deletedUDIDs == [Self.human])
+    }
+
+    /// 人の設定で未追跡のファイルを隠していても、detached の HEAD にだけあるコミットも、親の ignore に入る中の clone も、消さない理由にする
+    @Test func cautionsCoverHiddenUntrackedDetachedHeadAndNestedClones() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let prepared = try prepare()
+        let hidden = prepared.clean
+        try git(["config", "status.showUntrackedFiles", "no"], in: hidden)
+        try "new".write(to: hidden.appendingPathComponent("NEW.md"), atomically: true, encoding: .utf8)
+        let detached = try clone("Projects/detached", remote: prepared.remote)
+        try git(["checkout", "-q", "--detach"], in: detached)
+        try "detached".write(to: detached.appendingPathComponent("README"), atomically: true, encoding: .utf8)
+        try git(["commit", "-q", "-am", "detached"], in: detached)
+        try git(["checkout", "-q", "main"], in: detached)
+        let parent = try clone("Projects/parent", remote: prepared.remote)
+        try "vendor/\n".write(to: parent.appendingPathComponent(".git/info/exclude"), atomically: true, encoding: .utf8)
+        _ = try clone("Projects/parent/vendor/child", remote: prepared.remote)
+
+        let machine = machine(SimctlStubRunner(devicesJSON: Self.devices))
+        #expect(await machine.cloneCaution(hidden) == "未コミットの変更がある")
+        #expect(await machine.cloneCaution(detached) == nil)
+        try git(["checkout", "-q", "--detach", "HEAD@{1}"], in: detached)
+        #expect(await machine.cloneCaution(detached) == "未 push のコミットがある")
+        #expect(await machine.cloneCaution(parent) == "中に別の clone か worktree がある")
     }
 }

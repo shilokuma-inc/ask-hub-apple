@@ -52,7 +52,9 @@ public struct LocalCleanupMachine: CleanupMachine {
         for clone in clones {
             scan.candidates.append(await cloneCandidate(clone))
         }
-        scan.candidates += await derivedDataCandidates()
+        let derivedData = await derivedDataCandidates()
+        scan.candidates += derivedData.candidates
+        if derivedData.unreadable { scan.unreadable.append(display(derivedDataRoot)) }
         switch await humanSimulators() {
         case let .success(simulators):
             scan.candidates += simulators
@@ -80,7 +82,7 @@ public struct LocalCleanupMachine: CleanupMachine {
         for root in roots {
             let pruned = Self.prunedNames.flatMap { ["-o", "-name", $0] }
             let arguments = [root.path, "-maxdepth", "\(Self.searchDepth)", "("] + ["-name", ".Trash"] + pruned
-                + [")", "-prune", "-o", "-name", ".git", "-type", "d", "-print", "-prune"]
+                + [")", "-prune", "-o", "-name", ".git", "-type", "d", "-print0", "-prune"]
             let command = Command(
                 executable: URL(fileURLWithPath: "/usr/bin/find"), arguments: arguments, workingDirectory: home, timeout: timeout
             )
@@ -88,8 +90,9 @@ public struct LocalCleanupMachine: CleanupMachine {
                 unreadable.append(display(root))
                 continue
             }
-            let found = Self.lines(result.standardOutput).map { line in
-                URL(fileURLWithPath: line).deletingLastPathComponent().standardizedFileURL
+            // パスに改行を含むフォルダもあり得るので、NUL で区切る
+            let found = result.standardOutput.split(separator: 0).compactMap { bytes in
+                String(bytes: bytes, encoding: .utf8).map { URL(fileURLWithPath: $0).deletingLastPathComponent().standardizedFileURL }
             }
             clones += found
             if result.timedOut {
@@ -120,10 +123,14 @@ public struct LocalCleanupMachine: CleanupMachine {
     /// clone を消してはいけない理由（未コミット・未 push・stash・worktree・リモートが無い）。無ければ nil
     func cloneCaution(_ directory: URL) async -> String? {
         var reasons: [String] = []
-        guard let status = await git(["status", "--porcelain"], in: directory),
+        // 未追跡のファイルは、人の設定（`status.showUntrackedFiles=no`）によらず出させる。
+        // 未 push は、ブランチに加えて detached の HEAD も見る（HEAD がまだコミットを指さなければ見ない）。出力はコミットの id だけにする
+        let hasHead = await git(["rev-parse", "--verify", "--quiet", "HEAD"], in: directory) != nil
+        let unpushedArguments = ["rev-list", "--max-count=1", "--branches"] + (hasHead ? ["HEAD"] : []) + ["--not", "--remotes"]
+        guard let status = await git(["status", "--porcelain", "--untracked-files=normal"], in: directory),
               let remotes = await git(["remote"], in: directory),
-              let unpushed = await git(["log", "--branches", "--not", "--remotes", "--oneline", "-1"], in: directory),
-              let stash = await git(["stash", "list"], in: directory),
+              let unpushed = await git(unpushedArguments, in: directory),
+              let stash = await git(["stash", "list", "--format=%H"], in: directory),
               let worktrees = await git(["worktree", "list", "--porcelain"], in: directory) else {
             return "git の状態を読めない"
         }
@@ -135,13 +142,37 @@ public struct LocalCleanupMachine: CleanupMachine {
         }
         if !stash.isEmpty { reasons.append("stash がある") }
         if worktrees.components(separatedBy: "\n").filter({ $0.hasPrefix("worktree ") }).count > 1 { reasons.append("worktree がある") }
+        // 親の .gitignore に入る別の clone・worktree は、親の git status に出ないので、中を探して確かめる（一緒にゴミ箱に移さない）
+        switch await containsNestedRepository(directory) {
+        case true?: reasons.append("中に別の clone か worktree がある")
+        case nil: reasons.append("中の別の clone を確かめられない")
+        case false?: break
+        }
         return reasons.isEmpty ? nil : reasons.joined(separator: "・")
     }
 
+    /// clone の中（自分の `.git` のほか）に、別の clone か worktree（`.git` のフォルダかファイル）があるか。確かめられなければ nil
+    func containsNestedRepository(_ directory: URL) async -> Bool? {
+        let own = directory.appendingPathComponent(".git").path
+        let arguments = [directory.path, "-path", own, "-prune", "-o", "-name", ".git", "-print", "-quit"]
+        let command = Command(
+            executable: URL(fileURLWithPath: "/usr/bin/find"), arguments: arguments, workingDirectory: home, timeout: timeout
+        )
+        guard let result = try? await runner.run(command), result.succeeded else { return nil }
+        return !result.standardOutput.isEmpty
+    }
+
     /// Xcode の DerivedData の直下のフォルダ
-    func derivedDataCandidates() async -> [CleanupCandidatesFile.Candidate] {
-        let manager = FileManager.default
-        let folders = (try? manager.contentsOfDirectory(at: derivedDataRoot, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+    /// フォルダが無ければ候補も無い。読めなければ（許可が無いなど）`unreadable`
+    func derivedDataCandidates() async -> (candidates: [CleanupCandidatesFile.Candidate], unreadable: Bool) {
+        let folders: [URL]
+        do {
+            folders = try FileManager.default.contentsOfDirectory(at: derivedDataRoot, includingPropertiesForKeys: [.isDirectoryKey])
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return ([], false)
+        } catch {
+            return ([], true)
+        }
         var candidates: [CleanupCandidatesFile.Candidate] = []
         for folder in folders.sorted(by: { $0.path < $1.path })
         where (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
@@ -157,7 +188,7 @@ public struct LocalCleanupMachine: CleanupMachine {
                 lastUsedAt: lastModified(folder)
             ))
         }
-        return candidates
+        return (candidates, false)
     }
 
     /// ワーカーが作っていない Simulator
@@ -236,7 +267,7 @@ public struct LocalCleanupMachine: CleanupMachine {
 
     /// 候補の id。種類と場所から決める（探し直しても同じものは同じ id）
     static func id(kind: CleanupCandidateKind, location: String) -> String {
-        SHA256.hash(data: Data("\(kind.rawValue):\(location)".utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+        CleanupCandidatesFile.Candidate.id(kind: kind, location: location)
     }
 
     /// ホームからのパス（`~/Desktop/ios/app`）
@@ -276,8 +307,10 @@ public struct LocalCleanupMachine: CleanupMachine {
             workingDirectory: directory,
             timeout: timeout
         )
-        guard let result = try? await runner.run(command), result.succeeded else { return nil }
-        return Self.lines(result.standardOutput).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        // UTF-8 で読めない出力は、空（変更なし）と取り違えないよう、読めなかったことにする
+        guard let result = try? await runner.run(command), result.succeeded,
+              let text = String(bytes: result.standardOutput, encoding: .utf8) else { return nil }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// 出力の行。UTF-8 で読めない出力は空にする
