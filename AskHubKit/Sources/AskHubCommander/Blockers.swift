@@ -2,7 +2,8 @@ import AskHubProtocol
 import AskHubStateStore
 import Foundation
 
-/// 進行を止めているもの（`docs/renewal/operations.md` の「通知」）。人が動くまで先に進まないので、見つけたらすぐ知らせる
+/// 知らせる出来事（`docs/renewal/operations.md` の「通知」）。進行を止めているものは、人が動くまで先に進まないので、見つけたらすぐ知らせる。
+/// 止めないもの（実機確認）は、決めた時刻にまとめて知らせる（`VerificationDigest`）
 public struct Blocker: Equatable, Sendable {
     public enum Reason: Equatable, Sendable {
         /// 質問が回答を待っている
@@ -32,6 +33,8 @@ public struct Blocker: Equatable, Sendable {
         case reviewState(AppStorePlatform, AppStoreVersionState)
         /// リリースを始めた版を配信した
         case submissionDistributed
+        /// マージした epic の実機確認の、まだ答えていない項目（止めないもの）。`items` は項目の数
+        case verification(repo: RepositoryFullName, epic: ULID, items: Int)
     }
 
     /// まとめて 1 つの通知にする単位
@@ -44,6 +47,8 @@ public struct Blocker: Equatable, Sendable {
         case release(RepositoryFullName, MarketingVersion)
         /// リリースを始めた版（準備から配信まで）
         case submission(RepositoryFullName, MarketingVersion)
+        /// 止めないもの（実機確認）のまとめ。決めた時刻ごとに、epic をまたいで 1 通にする
+        case verifications
     }
 
     /// 同じ出来事を見分ける文字列（`notifications.json` の `key`）。見直した質問・直したゴール・人が頼んだ直しの後の最終 PR・次の試行・
