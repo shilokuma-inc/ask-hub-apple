@@ -197,7 +197,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `abandoned` | やめた | — |
 
 開始する前の段階（`drafting`〜`awaitingStart`）からは、人の取り下げ（`abandonEpic`）か、先に進めなくなるジョブを人がやめたとき（`giveUp`）にも `abandoned` になる。
-開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げか、実装・最終 PR の段取りのジョブを人がやめたときに `abandoned` になる（2026-11-12 に決めた。段階 4 の 3 で作る。[flows.md](flows.md) の「開始した後の取り下げ」）
+開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げで `abandoned` になる。開いている子 PR と最終 PR は閉じ、作業ブランチと子ブランチは残す（2026-11-12 に決めた。[flows.md](flows.md) の「開始した後の取り下げ」）。実装・最終 PR の段取りのジョブを人がやめたときも同じにする（段階 4 の 3 で作る）
 
 ### readiness.json（最後の着手前の確認の結果）
 
@@ -460,7 +460,11 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 
 - 引き受ける順は、人が待っているジョブ（説明・質問やゴールの見直し・通知）→ 質問づくり・着手前の確認 → 最終 PR の対処 → 実装 → 片付け
 - どの試行でも成功が書かれたら、ジョブは成功にする（時間切れとみなして試し直しにした後や、人に渡した後に、元のワーカーが成功を書いたときも、同じ作業をもう一度流さない）
-- 実行中の試行の `heartbeatAt` が 15 分より古いときは、その Mac の生きている印（`seenAt`）が 30 分より古ければ「Mac がオフライン」（一時停止）、新しければ「時間切れ」として扱う。オフラインで止めたジョブは、同じ Mac が戻って試行の印が新しくなれば再開する
+- 実行中の試行の `heartbeatAt` が 15 分より古いときは、その Mac の生きている印（`seenAt`）が 30 分より古ければ「Mac がオフライン」（一時停止）、試行が次の印を書くはずだった時刻（`heartbeatAt` + 5 分）より後に書かれていれば「時間切れ」として扱う。どちらでもない間は決めずに待つ（ワーカーごと止まると、試行の印が先に 15 分古くなり、そのとき Mac の印はまだ 30 分たっていないので、すぐ決めると Mac を閉じただけで時間切れに数えてしまう。ワーカーは Mac の印を 10 分ごとに書くので、動いていれば待つのは数分）
+- オフラインで止めたジョブは、同じ Mac が戻って試行の印が新しくなれば再開する。Mac が戻っても試行が止まったまま（ワーカーを止めた・Mac を再起動した）なら、時間切れに数えずに `assigned` に戻して続きから試す（オフラインの間の中断は失敗に数えない）
+- 司令塔とワーカーは止める合図を扱わないので、止めた・再起動した・入れ替えたときに、試行が実行中のまま残る。起動して最初に引き受ける前に、自分宛ての（`assigned`・`running`・`paused` の）ジョブの `attempts` 番と `attempts + 1` 番の試行のうち、自分の Mac の実行中のものを「Mac がオフライン」（`macOffline`）で閉じる。30 分たたずに戻ったときも時間切れに数えず、後の試行の失敗の扱いでも時間切れとして数えない
+  - 閉じる前に時間切れと決めないよう、ワーカーは閉じ終えるまで生きている印を書かない（司令塔と互換の番号が合わずに引き受けないときは、理由を出すために書く）。司令塔の見回りは、この起動より前に印を書いた自分宛てのジョブの自分の Mac の実行中の試行を、閉じるまで決めない（時刻は秒までしか書かないので、起動の時刻も秒にそろえて比べる）
+  - 閉じられなかったジョブは、閉じるまで引き受けない（新しい試行を始めると、古い試行が実行中のまま残るため）
 - 失敗の後の扱い（`architecture.md` の表の細部）:
   - ランナー不足: 10 分から倍にして最大 60 分待ち、回数の上限なしで試し直す
   - 揺らぎ: 1 回だけ流し直す。2 回目からはテストの失敗として直させる
@@ -642,6 +646,8 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
   | ゴール（コメント） | `{"type":"goal","epic":"…"}` |
   | 締め（コメント。マージした・やめた epic） | `{"type":"closing","epic":"…"}` |
 
+- 開始した後にやめた epic の、閉じた子 PR と最終 PR へのコメント（[flows.md](flows.md) の「開始した後の取り下げ」）の目印は `{"type":"abandoned","epic":"…"}`。書くだけで、司令塔は読まない
+
 ## 人の意図と署名
 
 ### 封筒
@@ -677,7 +683,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `verify` | 実機確認の項目（`{ "type": "verification", "epic", "id": "v1" }`） | ゴールの `version` | `result`（`confirmed`・`problem`）、`note`（問題ありの説明。`payloads/verify.schema.json`）。最終 PR をマージした（`merged` の）epic の、完了の条件の項目に 1 回だけ。答えは `verifications.json` に書く。問題ありの直しは、クライアントが同時に送る依頼（`request`）が新しい epic になる |
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
-| `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。今は開始する前の epic だけ。段階 4 の 3 から、開始した後の epic も受け付ける（マージした epic は断る） |
+| `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始した後の epic も受け付け、開いている子 PR と最終 PR を閉じる（ブランチは残す）。マージした epic は断る |
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |

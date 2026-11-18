@@ -87,7 +87,7 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: ApplyProtectionIntent.kind, repo: repo, payload: ["requiredChecks": .array(requiredChecks.map(JSONValue.string))])
     }
 
-    /// 開始する前の epic を取り下げる
+    /// epic を取り下げる（開始した後なら、開いている子 PR と最終 PR を閉じる。ブランチは残す。マージした epic は取り下げられない）
     public static func abandonEpic(repo: RepositoryFullName, epic: ULID) -> Self {
         Self(kind: AbandonEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))
     }

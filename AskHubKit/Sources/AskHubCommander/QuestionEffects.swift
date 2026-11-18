@@ -65,6 +65,15 @@ extension CommanderContext {
     /// 開始の前の段階（質問づくり・回答・着手前の確認・分け方の判断・開始の待ち）
     static let planningStages: Set<EpicStage> = [.drafting, .asking, .checking, .awaitingSplit, .awaitingStart]
 
+    /// 開始した後の、終わっていない段階（実装・最終 PR の段取り・人の確認の待ち）
+    static let startedStages: Set<EpicStage> = [.running, .finalizing, .reviewing]
+
+    /// epic をやめる（`abandoned`）。開始の前でも後でもやめられるが、マージした epic は戻さない。一時停止の印は外す
+    /// （やめた epic は再開しないので、一時停止中と出さない）
+    func abandon(_ epic: EpicFile) async throws(CommanderError) {
+        try await setStage(.abandoned, of: epic, from: Self.planningStages.union(Self.startedStages)) { $0.pause = nil }
+    }
+
     /// epic の段階を変える。今の段階が `from` のどれかのときだけ変える（開始した・やめた epic を戻さない）。
     /// `change` で、ほかの欄も一緒に変えられる
     func setStage(
