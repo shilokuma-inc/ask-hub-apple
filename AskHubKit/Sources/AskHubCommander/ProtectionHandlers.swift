@@ -9,6 +9,8 @@ public struct AdminGitHub: Sendable {
     public var tokens: AdminTokens
     public var transport: any HTTPTransport
     public var apiBase: URL
+    /// 上限に当たった持ち主（写しの間で分け合う）
+    let pauses = AdminPauses()
 
     public init(tokens: AdminTokens, transport: any HTTPTransport, apiBase: URL = URL(string: "https://api.github.com")!) {
         self.tokens = tokens
@@ -16,11 +18,50 @@ public struct AdminGitHub: Sendable {
         self.apiBase = apiBase
     }
 
-    /// リポジトリの持ち主の管理用のトークンで操作する部品。トークンが無い・読めなければ、断る理由
-    func pullRequests(for repo: RepositoryFullName) -> Result<GitHubPullRequests, AdminTokenProblem> {
-        tokens.token(for: repo.owner).map { token in
-            GitHubPullRequests(repository: repo, apiBase: apiBase, transport: transport) { _ in token }
+    /// リポジトリの持ち主の管理用のトークンで操作する部品。トークンが無い・読めない・上限で待っている間なら、送らずに断るわけ
+    func pullRequests(for repo: RepositoryFullName, now: Date) async -> Result<GitHubPullRequests, AdminRefusal> {
+        if let wait = await pauses.wait(for: repo.owner, now: now) { return .failure(.rateLimited(owner: repo.owner, wait: wait)) }
+        switch tokens.token(for: repo.owner) {
+        case let .success(token):
+            return .success(GitHubPullRequests(repository: repo, apiBase: apiBase, transport: transport) { _ in token })
+        case let .failure(problem): return .failure(.token(problem))
         }
+    }
+
+    /// 上限に当たったことを書く。待つ時間が過ぎるまで、持ち主の管理の操作は（ほかの人の意図でも）送らない
+    func pause(_ owner: String, for wait: Duration, now: Date) async {
+        await pauses.pause(owner, for: wait, now: now)
+    }
+}
+
+/// 管理の操作を GitHub に送らずに断るわけ
+enum AdminRefusal: Error, Equatable, CustomStringConvertible {
+    case token(AdminTokenProblem)
+    /// 持ち主の管理用のトークンが上限に当たって待っている（残りの時間）
+    case rateLimited(owner: String, wait: Duration)
+
+    var description: String {
+        switch self {
+        case let .token(problem): problem.description
+        case let .rateLimited(owner, wait):
+            "\(owner) の管理用のトークンは GitHub の上限に当たっているので、送らなかった（\(wait.components.seconds) 秒ほど待ってから押し直す）"
+        }
+    }
+}
+
+/// 管理用のトークンが GitHub の上限に当たった持ち主と、次に送ってよい時刻。上限はアカウントで数えるので、人の意図をまたいで分け合う
+actor AdminPauses {
+    private var until: [String: Date] = [:]
+
+    func wait(for owner: String, now: Date) -> Duration? {
+        guard let end = until[owner.lowercased()], end > now else { return nil }
+        return .seconds(Int(end.timeIntervalSince(now).rounded(.up)))
+    }
+
+    func pause(_ owner: String, for wait: Duration, now: Date) {
+        let key = owner.lowercased()
+        let end = now.addingTimeInterval(TimeInterval(wait.components.seconds))
+        until[key] = max(until[key] ?? end, end)
     }
 }
 
@@ -50,15 +91,14 @@ public struct ApplyProtectionHandler: IntentHandler {
         guard !repository.isRemoved else { return .reject("\(apply.repo) は対象から外した。保護を掛けるには加え直す") }
         guard let admin else { return .reject("この司令塔は管理用のトークンを使えない（常時オンの Mac の askhub-commander で動かす）") }
         let github: GitHubPullRequests
-        switch admin.pullRequests(for: apply.repo) {
+        switch await admin.pullRequests(for: apply.repo, now: context.now()) {
         case let .success(made): github = made
-        case let .failure(problem): return .reject(problem.description)
+        case let .failure(refusal): return .reject(refusal.description)
         }
         let outcome: ProtectionApplier.Outcome
-        do {
-            outcome = try await ProtectionApplier(github: github).apply(requiredChecks: apply.requiredChecks)
-        } catch {
-            return .reject(ProtectionApplier.reason(error, repo: apply.repo))
+        switch await Self.applying(apply, github: github, admin: admin, now: context.now) {
+        case let .success(made): outcome = made
+        case let .failure(failure): return .reject(ProtectionApplier.reason(failure, repo: apply.repo))
         }
         // 同じルールセットへの掛け直し（外しきれずに押し直したとき）は、前に外したものも残す（外した保護は GitHub の一覧に出なくなるため）
         let previous = repository.protection.rulesetId == outcome.rulesetID ? repository.protection.replaced ?? [] : []
@@ -81,6 +121,23 @@ public struct ApplyProtectionHandler: IntentHandler {
             return .reject("ルールセットは掛けたが、重なる保護を外しきれなかった: \(outcome.failures.joined(separator: "・"))。もう一度押すと残りを外す")
         }
         return .accept
+    }
+
+    /// 掛ける。上限に当たったら、持ち主の管理の操作をしばらく送らない
+    private static func applying(
+        _ apply: ApplyProtectionIntent,
+        github: GitHubPullRequests,
+        admin: AdminGitHub,
+        now: @Sendable () -> Date
+    ) async -> Result<ProtectionApplier.Outcome, ProtectionApplier.Failure> {
+        do throws(ProtectionApplier.Failure) {
+            let outcome = try await ProtectionApplier(github: github).apply(requiredChecks: apply.requiredChecks)
+            if let wait = outcome.stoppedFor { await admin.pause(apply.repo.owner, for: wait, now: now()) }
+            return .success(outcome)
+        } catch {
+            if case let .github(.rateLimited(wait)) = error { await admin.pause(apply.repo.owner, for: wait, now: now()) }
+            return .failure(error)
+        }
     }
 }
 
