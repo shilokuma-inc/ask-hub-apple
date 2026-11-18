@@ -306,6 +306,9 @@ public actor CommanderLoop {
         "verify": VerifyHandler(),
         "publishGitHubRelease": PublishGitHubReleaseHandler(),
         "startRelease": StartReleaseHandler(),
+        "submitForReview": SubmitForReviewHandler(),
+        "distributeRelease": DistributeReleaseHandler(),
+        "withdrawSubmission": WithdrawSubmissionHandler(),
         "abandonRelease": AbandonReleaseHandler()
     ]
 
