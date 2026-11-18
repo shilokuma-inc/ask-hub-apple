@@ -92,22 +92,22 @@ public actor InMemoryStateStore: StateStore {
         if !injectedWriteFailures.isEmpty { throw injectedWriteFailures.removeFirst() }
         // 移す元と先は、呼んだときの中身で決める（GitHub と同じく、同じ呼び出しの前の移動の結果を、後の移動の元にしない）
         var moved = files
-        var reserved: [String] = []
+        var reserved: Set<String> = []
         for move in moves {
             let prefix = move.from + "/"
             let under = files.filter { $0.key.hasPrefix(prefix) }
             guard !under.isEmpty else { continue }
             let occupied = { (path: String) in path == move.to || path.hasPrefix(move.to + "/") }
             guard !files.keys.contains(where: occupied), !reserved.contains(where: occupied) else { throw .conflict }
-            // 先の祖先がファイルなら、ファイルとディレクトリが同じ名前になるので断る（`write` と同じ）
+            // 先の祖先がファイル（同じ呼び出しで先に置くと決めたものも）なら、ファイルとディレクトリが同じ名前になるので断る（`write` と同じ）
             let parts = move.to.split(separator: "/")
             let ancestors = parts.indices.dropLast().map { parts[...$0].joined(separator: "/") }
-            guard !ancestors.contains(where: { files[$0] != nil }) else { throw .wrongKind }
+            guard !ancestors.contains(where: { files[$0] != nil || reserved.contains($0) }) else { throw .wrongKind }
             for (path, blob) in under {
                 moved[path] = nil
                 let destination = move.to + "/" + path.dropFirst(prefix.count)
                 moved[destination] = blob
-                reserved.append(destination)
+                reserved.insert(destination)
             }
         }
         guard moved != files else { return }

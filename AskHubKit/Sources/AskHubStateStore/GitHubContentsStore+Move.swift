@@ -12,12 +12,19 @@ extension GitHubContentsStore {
         let head = try await decode(RefPayload.self, from: try await request("GET", "git/ref/heads/\(branch)")).object.sha
         let base = try await decode(CommitPayload.self, from: try await request("GET", "git/commits/\(head)")).tree.sha
         var entries: [MoveTreeEntry] = []
+        // 同じ呼び出しで先に置くと決めたファイル。後の移動の先と重なれば（同じパス・その下・祖先がファイル）、何も書かずに断る
+        var reserved: Set<String> = []
         for move in moves {
             guard let sha = try await treeSHA(of: move.from) else { continue }
-            guard try await !exists(move.to) else { throw .conflict }
+            let parts = move.to.split(separator: "/")
+            let ancestors = parts.indices.dropLast().map { parts[...$0].joined(separator: "/") }
+            guard !reserved.contains(where: { $0 == move.to || $0.hasPrefix(move.to + "/") }),
+                  !ancestors.contains(where: reserved.contains), try await !exists(move.to) else { throw .conflict }
             for file in try await tree(sha: sha, under: move.from, recursive: true) {
+                let destination = move.to + file.path.dropFirst(move.from.count)
                 entries.append(MoveTreeEntry(path: file.path, sha: nil))
-                entries.append(MoveTreeEntry(path: move.to + file.path.dropFirst(move.from.count), sha: file.sha))
+                entries.append(MoveTreeEntry(path: destination, sha: file.sha))
+                reserved.insert(destination)
             }
         }
         guard !entries.isEmpty else { return }

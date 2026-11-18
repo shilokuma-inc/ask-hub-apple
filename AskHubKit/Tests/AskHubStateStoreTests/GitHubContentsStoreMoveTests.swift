@@ -100,6 +100,30 @@ extension GitHubContentsStoreTests {
         }
     }
 
+    /// 同じ呼び出しで 2 つの元を同じ先に移そうとしたら、何も書かずに `conflict`（メモリの上の置き場所と同じ）
+    @Test func moveRefusesOverlappingDestinations() async throws {
+        let listing = #"[{"type":"dir","name":"a","path":"x/a","sha":"aa01"},{"type":"dir","name":"d","path":"x/d","sha":"aa03"}]"#
+        let files = #"{"sha":"aa01","truncated":false,"tree":[{"path":"f","mode":"100644","type":"blob","sha":"bb01"}]}"#
+        let replies: [StubTransport.Reply] = [
+            .json(200, #"{"object":{"sha":"cc01"}}"#),
+            .json(200, #"{"tree":{"sha":"dd00"}}"#),
+            .json(200, listing),
+            .json(404, #"{"message":"Not Found"}"#),
+            .json(404, #"{"message":"Not Found"}"#),
+            .json(200, files),
+            .json(200, listing)
+        ]
+        for second in ["y/b", "y/b/f/g"] {
+            let transport = StubTransport(replies)
+            await #expect(throws: StateStoreError.conflict) {
+                try await store(transport, branch: "main").move(
+                    [StateMove(from: "x/a", to: "y/b"), StateMove(from: "x/d", to: second)], message: "m"
+                )
+            }
+            #expect(!transport.requests.contains { $0.httpMethod == "POST" || $0.httpMethod == "PATCH" })
+        }
+    }
+
     /// ブランチを決めていなければ、リポジトリの既定のブランチを読んで使う。移す元が無ければ何も書かない
     @Test func moveUsesDefaultBranchAndSkipsMissingSources() async throws {
         let transport = StubTransport([

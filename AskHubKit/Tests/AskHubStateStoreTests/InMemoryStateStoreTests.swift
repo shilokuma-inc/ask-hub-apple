@@ -62,5 +62,12 @@ struct InMemoryStateStoreTests {
             try await store.move([StateMove(from: "b", to: "archive/e")], message: "m")
         }
         #expect(await store.data(at: "b/x") == Data("1".utf8))
+        // 先に置くと決めたファイルが、後の移動の先の祖先になるときも断る（`b/x` と `b/x/y/z` を両方作らない）
+        let nested = InMemoryStateStore(files: ["a/x": Data("1".utf8), "d/z": Data("2".utf8)])
+        await #expect(throws: StateStoreError.wrongKind) {
+            try await nested.move([StateMove(from: "a", to: "b"), StateMove(from: "d", to: "b/x/y")], message: "m")
+        }
+        #expect(await nested.data(at: "a/x") == Data("1".utf8))
+        #expect(await nested.data(at: "b/x") == nil)
     }
 }
