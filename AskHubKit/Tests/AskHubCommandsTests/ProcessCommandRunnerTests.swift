@@ -7,7 +7,11 @@ import Testing
 struct ProcessCommandRunnerTests {
     private let runner = ProcessCommandRunner()
 
-    /// 猶予まで待たずに戻ったとみなす上限。ふだんは 2 秒ほどで戻るが、負荷の高い CI ではテストのプロセスごと十数秒止まることがある
+    /// 時間切れで止める前に、スクリプトに準備（trap の設定・子プロセスの起動）をさせる時間。全体を並べて流すと、
+    /// 起動した `/bin/sh` が最初の行に届くまで 2〜5 秒かかることがある（手元の Mac。プロセスの起動を検査するソフトが入っている）
+    private static let setupTimeout: Duration = .seconds(15)
+
+    /// 猶予まで待たずに戻ったとみなす上限。ふだんは時間切れの直後に戻るが、負荷の高い CI ではテストのプロセスごと十数秒止まったことがある
     /// （2026-11-18 の CI では、その間に流れていた計算だけのテストまで 16〜19 秒かかり、このテストは 20.5 秒かかった）
     private static let returnLimit: Duration = .seconds(60)
 
@@ -73,7 +77,7 @@ struct ProcessCommandRunnerTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         // 子の sleep は SIGINT と SIGTERM を無視する。最後の SIGKILL で止まる
         let script = "(trap '' INT TERM; sleep 60) & echo $! > child.pid; wait"
-        let result = try await runner.run(shell(script, in: directory, timeout: .seconds(3)))
+        let result = try await runner.run(shell(script, in: directory, timeout: Self.setupTimeout))
         #expect(result.timedOut)
         let text = try String(contentsOf: directory.appendingPathComponent("child.pid"), encoding: .utf8)
         let child = try #require(pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)))
@@ -85,7 +89,7 @@ struct ProcessCommandRunnerTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         // SIGINT で後片付けして終わるコマンドは、SIGTERM の猶予まで待たない。
         // 猶予は上限の倍にして、プロセスが止まって遅れても上限を超えず、猶予まで待ったときだけ超えるようにする
-        var command = shell("trap 'echo cleaned; exit 0' INT; while true; do sleep 0.1; done", in: directory, timeout: .seconds(2))
+        var command = shell("trap 'echo cleaned; exit 0' INT; while true; do sleep 0.1; done", in: directory, timeout: Self.setupTimeout)
         command.interruptGrace = Self.returnLimit * 2
         command.terminateGrace = Self.returnLimit * 2
         let started = ContinuousClock.now
