@@ -274,6 +274,37 @@ public struct SubmissionFile: StateFile {
         }
     }
 
+    public enum IntegrationState: String, Codable, Sendable, CaseIterable {
+        /// 取り込む PR を開いている（CI を待っている）
+        case open
+        /// PR をマージした
+        case merged
+        /// 取り込むコミットが無かった（release ブランチに直しが入っていない）
+        case skipped
+        /// 取り込む先のブランチ（main）が無かったので、release ブランチの先頭から作った
+        case created
+    }
+
+    /// 配信した後に release ブランチを取り込む先（main と develop）の 1 つ
+    public struct Integration: Codable, Equatable, Sendable {
+        /// 取り込む先のブランチ（`main`・base の `develop`）
+        public var base: String
+        public var state: IntegrationState
+        /// 取り込む PR の番号（`open`・`merged` のときだけ）
+        public var pullRequest: Int?
+        public var at: Timestamp
+
+        public init(base: String, state: IntegrationState, pullRequest: Int? = nil, at: Timestamp) {
+            self.base = base
+            self.state = state
+            self.pullRequest = pullRequest
+            self.at = at
+        }
+
+        /// 終わった（マージした・取り込むものが無かった・作った）
+        public var isDone: Bool { state != .open }
+    }
+
     /// 進めることの区切り
     public enum Step: String, Codable, Sendable, CaseIterable {
         case branch
@@ -284,6 +315,7 @@ public struct SubmissionFile: StateFile {
         case distribute
         case withdraw
         case review
+        case integration
     }
 
     /// 進められなかった理由（進められたら消す）
@@ -319,6 +351,8 @@ public struct SubmissionFile: StateFile {
     public var distribution: Request?
     public var withdrawal: Request?
     public var end: End?
+    /// 配信した後に release ブランチを取り込んだ様子（main と develop）。release ブランチを作った版だけ
+    public var integration: [Integration]?
     public var problem: Problem?
     public var createdAt: Timestamp
     public var updatedAt: Timestamp
@@ -338,6 +372,7 @@ public struct SubmissionFile: StateFile {
         distribution: Request? = nil,
         withdrawal: Request? = nil,
         end: End? = nil,
+        integration: [Integration]? = nil,
         problem: Problem? = nil,
         createdAt: Timestamp,
         updatedAt: Timestamp
@@ -356,6 +391,7 @@ public struct SubmissionFile: StateFile {
         self.distribution = distribution
         self.withdrawal = withdrawal
         self.end = end
+        self.integration = integration
         self.problem = problem
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -396,6 +432,12 @@ public struct SubmissionFile: StateFile {
 
     /// このリリースをやめられる（審査に出していない・取り下げた・断られた）
     public var canAbandon: Bool { !isEnded && !hasReviewInFlight && !isSubmitting }
+
+    /// 配信した後に、release ブランチを main と develop に取り込むのを待っている（取り込む先がすべて終わるまで見回る）
+    public func awaitsIntegration(bases: [String]) -> Bool {
+        guard end?.reason == .distributed, branch != nil else { return false }
+        return bases.contains { base in !(integration ?? []).contains { $0.base == base && $0.isDone } }
+    }
 
     public var violations: [String] {
         var violations: [String] = []
@@ -438,6 +480,13 @@ public struct SubmissionFile: StateFile {
         if Set(review.map(\.platform)).count != review.count { violations.append("review のプラットフォームが重複している") }
         if let end, (end.reason == .abandoned) != (end.approval != nil) {
             violations.append("end の approval は、人がやめた（abandoned）ときだけ持つ")
+        }
+        if let integration {
+            if Set(integration.map(\.base)).count != integration.count { violations.append("integration の取り込む先が重複している") }
+            if integration.contains(where: { ($0.state == .open || $0.state == .merged) != (($0.pullRequest ?? 0) >= 1) }) {
+                violations.append("integration の PR の番号は、open・merged のときだけ持つ")
+            }
+            if branch == nil { violations.append("integration は release ブランチを作った版だけ持つ") }
         }
         if problem?.message.isEmpty == true { violations.append("problem の message が空") }
         return violations
