@@ -198,6 +198,7 @@
   同じ中身があれば送れたことにする（`mayHaveWritten`。上限・権限・取り消しは読み直さない）（2026-11-14、#1103）
 - 状態リポジトリの実データで司令塔の処理を確かめたいときは、`askhub-state` を `git clone` し（REST の上限に数えない）、一時的なテストで epic のファイル（`epic.json`・`questions.json`・`jobs/`）を
   `InMemoryStateStore` に `put` して流す。実データを読むパスは環境変数で渡し、テストはコミットしない（2026-11-14、#1103 の止まった見直しの頼み直し）
+- このリポジトリは、設定で PR の auto-merge を使えない（有効にしようとすると「Auto merge is not allowed for this repository」）。CI が通ってから `gh pr merge --merge --delete-branch` で手でマージする（2026-11-18、#1149）
 
 ## ビルド・テスト
 
