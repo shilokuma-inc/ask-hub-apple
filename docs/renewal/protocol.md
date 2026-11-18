@@ -49,6 +49,8 @@ keys/<seq>.json                                    公開鍵の追記の記録�
 intents/<device>/<intent>.json                     人の意図（クライアント。署名つき）
 attachments/<device>/<intent>/<n>                  依頼の添付（クライアント。<n> は 1 からの番号）
 consumed/<device>/<intent>.json                    処理した人の意図の記録（司令塔）
+archive/repos/<owner>/<repo>/epics/<epic>/         終わってから 30 日たった epic（司令塔が移す。だれも読まない）
+archive/attachments/<device>/<intent>/             畳んだ epic の依頼の添付（司令塔が移す）
 ```
 
 - `<epic>`・`<job>`・`<intent>` は ULID（時刻の順に並ぶ一意な id）
@@ -56,7 +58,11 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 - 常時オンの Mac では司令塔とワーカーが両方動くので、1 つのファイルの書き手を 1 つにするため、生きている印を `macs/<mac>.json`（ワーカー）と `commander.json`（司令塔）に分ける
 - 人の意図は、リポジトリ単位の作業かどうかにかかわらず、すべて `intents/` に置く
 - 依頼の添付（画像など）は `attachments/` に置く（段階 2 で決めた）。public のリポジトリに上げないので、URL を知っていても見られず、終わった epic と一緒に畳める。添付の名前・大きさ・ハッシュは依頼の封筒に入れ、署名で守る
-- 終わった epic（マージ済み・やめたもの）は、マージかやめてから 30 日後に `archive/` に移し、まとめて畳む（段階 4 の 6 で作る。今は `repos/` に残る）
+- 終わった epic（マージ済み・やめたもの）は、マージかやめてから 30 日後に `archive/` に移し、まとめて畳む（`FinishedEpicArchive`）
+  - 司令塔が、生きている印を書いた後の見回り（10 分ごと）で、epic のフォルダ（`repos/<owner>/<repo>/epics/<epic>/`）と依頼の添付（`attachments/<device>/<intent>/`）を、`archive/` の下の同じパス（`archive/repos/…`・`archive/attachments/…`）に移す。マージした epic はマージの時刻（`merge.at`）から、やめた epic は `updatedAt` から数える
+  - 1 回の見回りの分（20 本まで）を、Git Data API の 1 つのコミットでまとめて移す（`StateStore.move`）。ファイルの中身（blob）は同じものを指すだけで、内容を作る要求は tree・コミット・ブランチの更新の 3 回。読んだ後にほかの書き手が書いていればブランチを進められないので、何も移さずに次の見回りでやり直す
+  - クライアント・司令塔・ワーカーは `archive/` を読まない。畳んだ epic は、クライアントの「終わったもの」「すべて見る」にも出ない（2026-11-18 に決めた。PR・Discussion は各リポジトリに残る）。終わった epic 10 本を畳むと、クライアントの読み込みは 59 回から 14 回に減る（`ArchivedEpicsLoadTests`）
+  - 畳んだ epic への人の意図（やり直すなど）は、epic が無いものとして断る
 
 ### 共通の決まり
 
