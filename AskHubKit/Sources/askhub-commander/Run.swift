@@ -24,6 +24,7 @@ extension AskHubCommanderMain {
         let context = CommanderContext(store: runtime.store, mac: configuration.mac)
         let cleanUp = runtime.finishedEpicCleanUp(context: context, log: log)
         let simulators = runtime.straySimulatorSweep(log: log)
+        let archive = FinishedEpicArchive(context: context, log: log)
         let releases = releaseWatch(runtime: runtime, context: context, transport: transport)
         let loop = CommanderLoop(
             context: context,
@@ -48,6 +49,7 @@ extension AskHubCommanderMain {
             tidy: {
                 await cleanUp.run()
                 await simulators.run()
+                await archive.run()
             },
             appIcons: appIcons(runtime: runtime, context: context),
             releases: releases,

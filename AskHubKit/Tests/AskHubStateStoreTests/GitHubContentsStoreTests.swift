@@ -5,11 +5,11 @@ import Testing
 
 struct GitHubContentsStoreTests {
     /// テスト用の値。本物のトークンではない
-    private static let token = "test-token-not-real-0123456789"
-    private static let repository = RepositoryFullName(rawValue: "shilokuma-inc/askhub-state")!
-    private static let now = Date(timeIntervalSince1970: 1_793_700_000)
+    static let token = "test-token-not-real-0123456789"
+    static let repository = RepositoryFullName(rawValue: "shilokuma-inc/askhub-state")!
+    static let now = Date(timeIntervalSince1970: 1_793_700_000)
 
-    private func store(_ transport: StubTransport, branch: String? = nil, budget: WriteBudget? = nil) -> GitHubContentsStore {
+    func store(_ transport: StubTransport, branch: String? = nil, budget: WriteBudget? = nil) -> GitHubContentsStore {
         GitHubContentsStore(
             repository: Self.repository,
             branch: branch,

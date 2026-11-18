@@ -120,7 +120,7 @@ struct DecisionDeckView: View {
         case .all: "まとめて判断する"
         case .questions: "質問に答える"
         case .decisions: "判断を確かめる"
-        case .verifications: "実機で確かめる"
+        case .verifications, .allVerifications: "実機で確かめる"
         }
     }
 
@@ -331,11 +331,18 @@ private extension DeckScope {
             store.epic(epicID).map(Self.decisionTargets) ?? []
 
         case .verifications(let epicID):
-            store.epic(epicID)?.finalReview?.verifications.map { .verification(epicID: epicID, itemID: $0.id) } ?? []
+            store.epic(epicID).map(Self.verificationTargets) ?? []
+
+        case .allVerifications:
+            store.snapshot?.epics.flatMap(Self.verificationTargets) ?? []
 
         case .all:
             store.snapshot?.activeEpics.flatMap { Self.questionTargets($0) + Self.decisionTargets($0) } ?? []
         }
+    }
+
+    static func verificationTargets(_ epic: Epic) -> [IntentTarget] {
+        epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
     }
 
     static func questionTargets(_ epic: Epic) -> [IntentTarget] {
