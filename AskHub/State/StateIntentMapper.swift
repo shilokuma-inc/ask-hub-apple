@@ -155,7 +155,7 @@ struct StateIntentMapper {
         case .discard(let epicID):
             let epic = try epic(epicID)
             guard epic.canAbandon else {
-                throw ClientServiceError(message: "開始した epic の取り下げは、まだ送れません")
+                throw ClientServiceError(message: "終わった epic は取り下げられません")
             }
             return .abandonEpic(repo: epic.repo, epic: epic.id)
 

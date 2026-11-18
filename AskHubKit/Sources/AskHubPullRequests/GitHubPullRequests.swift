@@ -56,21 +56,29 @@ public struct GitHubPullRequests: Sendable {
 
     /// 同じリポジトリの head から base への開いた PR。無ければ nil
     public func openPullRequest(head: String, base: String) async throws(PullRequestError) -> PullRequest? {
-        try GitNames.checkBranch(head)
-        try GitNames.checkBranch(base)
-        let query = [
-            URLQueryItem(name: "state", value: "open"),
-            URLQueryItem(name: "head", value: "\(repository.owner):\(head)"),
-            URLQueryItem(name: "base", value: base),
-            URLQueryItem(name: "per_page", value: "100")
-        ]
-        let pages = try await api.pages("pulls", query: query, as: [PullRequestPayload].self)
-        // `head` の絞り込みは持ち主とブランチ名だけなので、同じ持ち主のほかのリポジトリ（フォーク）の PR を除く
-        let match = pages.joined().first { payload in
-            payload.head.ref == head && payload.base.ref == base
-                && payload.head.repo?.fullName.lowercased() == repository.rawValue.lowercased()
+        try await openPullRequests(head: head, base: base).first
+    }
+
+    /// 同じリポジトリのブランチからの開いた PR を、ページングを最後まで追って読む。`head` を渡せばそのブランチからの PR、
+    /// `base` を渡せばその向き先の PR に絞る（フォークからの PR は含めない）
+    public func openPullRequests(head: String? = nil, base: String? = nil) async throws(PullRequestError) -> [PullRequest] {
+        var query = [URLQueryItem(name: "state", value: "open"), URLQueryItem(name: "per_page", value: "100")]
+        if let head {
+            try GitNames.checkBranch(head)
+            query.append(URLQueryItem(name: "head", value: "\(repository.owner):\(head)"))
         }
-        return try match?.model()
+        if let base {
+            try GitNames.checkBranch(base)
+            query.append(URLQueryItem(name: "base", value: base))
+        }
+        let pages = try await api.pages("pulls", query: query, as: [PullRequestPayload].self)
+        var pulls: [PullRequest] = []
+        // `head` の絞り込みは持ち主とブランチ名だけなので、同じ持ち主のほかのリポジトリ（フォーク）の PR を除く
+        for payload in pages.joined() where payload.head.repo?.fullName.lowercased() == repository.rawValue.lowercased() {
+            guard head.map({ payload.head.ref == $0 }) ?? true, base.map({ payload.base.ref == $0 }) ?? true else { continue }
+            pulls.append(try payload.model())
+        }
+        return pulls
     }
 
     /// PR の様子を読む

@@ -282,10 +282,28 @@ struct StateClientServiceTests {
         #expect(rejected.history.contains { $0.isFailure && $0.text == "取り下げを受け付けませんでした: epic はもう始まっている" })
     }
 
-    /// 開始した epic の取り下げは段階 3 で送るので、まだ送れない
+    /// 開始した後も取り下げられ（司令塔が開いている子 PR と最終 PR を閉じる）、処理を待つ間はやめたと出す
     @Test
-    func startedEpicCannotBeAbandoned() async throws {
-        let service = try makeService(files: Self.askingEpic(stage: "running")).service
+    func startedEpicIsAbandoned() async throws {
+        let fixture = try makeService(files: Self.askingEpic(stage: "running"))
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        #expect(service.supports(.discard(epicID: Self.epicID)))
+        try await service.perform(.discard(epicID: Self.epicID))
+
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(envelope.kind == AbandonEpicIntent.kind)
+        #expect(envelope.targetVersion == nil)
+        let abandoned = try #require(try await service.fetchSnapshot().epic(Self.epicID))
+        #expect(abandoned.isAbandoned)
+        #expect(abandoned.stage == .implementing)
+        #expect(abandoned.history.contains { $0.text == "取り下げました。司令塔が受け取るのを待っています" })
+    }
+
+    /// マージした epic は取り下げられない
+    @Test
+    func mergedEpicCannotBeAbandoned() async throws {
+        let service = try makeService(files: Self.askingEpic(stage: "merged")).service
         _ = try await service.fetchSnapshot()
         #expect(!service.supports(.discard(epicID: Self.epicID)))
         await #expect(throws: ClientServiceError.self) {
