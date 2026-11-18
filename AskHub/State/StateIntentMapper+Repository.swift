@@ -14,6 +14,12 @@ extension StateIntentMapper {
         case let .configureRepository(repositoryID, _):
             index.repositories[repositoryID] != nil
 
+        case .findCleanupCandidates(let macID):
+            index.macs[macID] != nil
+
+        case let .cleanUp(macID, candidateIDs):
+            index.macs[macID]?.cleanupScannedAt != nil && !candidateIDs.isEmpty
+
         default:
             false
         }
@@ -51,7 +57,7 @@ extension StateIntentMapper {
             return .configureRepository(try repository(repositoryID), build: try Self.build(json))
 
         default:
-            throw Self.unsupported
+            return try cleanupDraft(intent)
         }
     }
 

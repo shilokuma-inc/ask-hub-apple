@@ -54,9 +54,16 @@ extension DemoClientService {
 
         case let .cleanUp(macID, candidateIDs):
             state.updateMac(macID) { mac in
-                let removed = mac.cleanupCandidates.filter { candidateIDs.contains($0.id) }
+                let removed = mac.cleanupCandidates.filter { candidateIDs.contains($0.id) && $0.caution == nil }
                 mac.freeBytes += removed.reduce(Int64(0)) { $0 + $1.bytes }
-                mac.cleanupCandidates.removeAll { candidateIDs.contains($0.id) }
+                mac.cleanupCandidates.removeAll { removed.map(\.id).contains($0.id) }
+                mac.cleanupResult = "\(removed.count) 件を消しました"
+            }
+
+        case let .findCleanupCandidates(macID):
+            let date = now()
+            state.updateMac(macID) { mac in
+                mac.cleanupScannedAt = date
             }
 
         default:

@@ -78,7 +78,7 @@ extension HumanIntent {
         case let .verify(epicID, itemID, _):
             [.verification(epicID: epicID, itemID: itemID)]
 
-        case let .cleanUp(macID, _):
+        case let .cleanUp(macID, _), let .findCleanupCandidates(macID):
             [.cleanup(macID: macID)]
 
         case .addRepository(let repositoryID), .removeRepository(let repositoryID), .configureRepository(let repositoryID, _):

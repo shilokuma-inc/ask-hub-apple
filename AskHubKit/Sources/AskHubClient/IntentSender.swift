@@ -82,6 +82,19 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: ConfigureRepositoryIntent.kind, repo: repo, payload: ConfigureRepositoryIntent.payload(for: build))
     }
 
+    /// Mac の片付けの候補を探す（その Mac のワーカーが、人が作った clone・Simulator・DerivedData を探す）
+    public static func findCleanupCandidates(mac: MacName) -> Self {
+        Self(kind: FindCleanupCandidatesIntent.kind, payload: ["mac": .string(mac.rawValue)])
+    }
+
+    /// 選んだ片付けの候補を消す（`scannedAt` は選んだ候補を探した時刻。その後に探し直していれば、ワーカーは消さない）
+    public static func removeCleanupCandidates(mac: MacName, scannedAt: Timestamp, candidates: [String]) -> Self {
+        let payload: [String: JSONValue] = [
+            "mac": .string(mac.rawValue), "scannedAt": .string(scannedAt.rawValue), "candidates": .array(candidates.map(JSONValue.string))
+        ]
+        return Self(kind: RemoveCleanupCandidatesIntent.kind, payload: payload)
+    }
+
     /// epic を取り下げる（開始した後なら、開いている子 PR と最終 PR を閉じる。ブランチは残す。マージした epic は取り下げられない）
     public static func abandonEpic(repo: RepositoryFullName, epic: ULID) -> Self {
         Self(kind: AbandonEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))
