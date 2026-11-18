@@ -274,6 +274,20 @@ struct FixMergeFinalPullRequestRunnerTests {
         #expect(result.outputs?.commit == nil)
         #expect(fixture.pulls.current.merges.isEmpty)
         #expect(fixture.pulls.current.deletions.isEmpty)
+
+        // 前の試行がマージした後に取り下げが届いても、取り下げた epic の作業ブランチは消さない
+        fixture.pulls.update {
+            $0.pulls[512]?.state = .closed
+            $0.pulls[512]?.merged = true
+        }
+        _ = try? await files.update(EpicFile.self, at: StatePath.epic(Tasks.repo, Tasks.epic), message: "戻す") { epic in
+            epic.stage = .reviewing
+            return true
+        }
+        let merged = try await MergeFinalPullRequestRunner(environment: environment).execute(job)
+        #expect(merged.failure == nil)
+        #expect(merged.outputs?.commit == nil)
+        #expect(fixture.pulls.current.deletions.isEmpty)
     }
 
     @Test func refusesWhenHeadMovedFromPinnedHead() async throws {
