@@ -11,9 +11,10 @@ final class FakePullRequestClosing: PullRequestClosing {
     struct State {
         var pulls: [PullRequest] = []
         var lists: [(head: String?, base: String?)] = []
+        var closes: [Int] = []
         var comments: [(number: Int, body: String)] = []
-        /// コメントを書くときに返す失敗（1 回だけ）
-        var commentFailure: PullRequestError?
+        /// コメントを書くときに返す失敗（PR ごとに 1 回だけ）
+        var commentFailures: [Int: PullRequestError] = [:]
     }
 
     let state = OSAllocatedUnfairLock(initialState: State())
@@ -35,6 +36,7 @@ final class FakePullRequestClosing: PullRequestClosing {
 
     func close(_ repo: RepositoryFullName, number: Int) async throws(PullRequestError) {
         state.withLock { state in
+            state.closes.append(number)
             guard let index = state.pulls.firstIndex(where: { $0.number == number }) else { return }
             state.pulls[index].state = .closed
         }
@@ -42,9 +44,11 @@ final class FakePullRequestClosing: PullRequestClosing {
 
     func comment(_ repo: RepositoryFullName, number: Int, body: String) async throws(PullRequestError) {
         let failure = state.withLock { state -> PullRequestError? in
-            defer { state.commentFailure = nil }
-            if state.commentFailure == nil { state.comments.append((number, body)) }
-            return state.commentFailure
+            guard let failure = state.commentFailures.removeValue(forKey: number) else {
+                state.comments.append((number, body))
+                return nil
+            }
+            return failure
         }
         if let failure { throw failure }
     }
@@ -72,6 +76,13 @@ struct AbandonedPullRequestsTests {
         clock.withLock { $0 = $0.addingTimeInterval(minutes * 60) }
     }
 
+    /// ビルドの設定（最終 PR の向き先は develop）のあるリポジトリを置く
+    func putRepository() async throws {
+        var repository = RepositoryFile(repo: Self.repo, platform: .apple, maxConcurrentEpics: 1, addedAt: Timestamp(Self.start))
+        repository.build = try RepositoryHandlersTests.build()
+        try await StateFileStore(store: store).create(repository, at: StatePath.repository(Self.repo), message: "repo")
+    }
+
     /// epic を置く。`mac` が nil なら開始する前の epic
     func put(_ id: ULID = epic, stage: EpicStage = .abandoned, mac: MacName? = mac, age: TimeInterval = 60) async throws {
         let time = Timestamp(Self.start.addingTimeInterval(-age))
@@ -94,6 +105,7 @@ struct AbandonedPullRequestsTests {
     }
 
     @Test func closesChildAndFinalPullRequestsWithComment() async throws {
+        try await putRepository()
         try await put()
         let other = PrepareWorkspaceRunner.branch(of: ULID(rawValue: "01JCJ0A0000000000000000002")!)
         github.update {
@@ -101,6 +113,8 @@ struct AbandonedPullRequestsTests {
                 Self.pull(11, head: "\(Self.branch)/t1", base: Self.branch),
                 Self.pull(12, head: "\(Self.branch)/t2", base: Self.branch),
                 Self.pull(13, head: Self.branch, base: "develop"),
+                // 作業ブランチから base 以外への PR は、最終 PR ではないので閉じない
+                Self.pull(16, head: Self.branch, base: "release/1.0"),
                 Self.pull(14, head: "feat/other", base: "develop"),
                 Self.pull(15, head: "\(other)/t1", base: other)
             ]
@@ -109,6 +123,7 @@ struct AbandonedPullRequestsTests {
         let current = github.current
         #expect(current.pulls.filter { $0.state == .closed }.map(\.number) == [11, 12, 13])
         #expect(current.comments.map(\.number) == [11, 12, 13])
+        #expect(current.lists.map(\.base) == [Self.branch, "develop"])
         let comment = try #require(current.comments.first?.body)
         #expect(comment.contains("元の依頼（依頼: #7）を取り下げたので、マージせずに閉じました"))
         #expect(comment.contains("ブランチは消さずに残しています"))
@@ -145,26 +160,48 @@ struct AbandonedPullRequestsTests {
         #expect(github.current.comments.map(\.number) == [21])
     }
 
-    /// 閉じた後にコメントを書けなかったら、後でコメントだけを書き直す（閉じ直さない・コメントを重ねない）
-    @Test func retriesCommentAfterFailure() async throws {
+    /// 閉じた後にコメントを書けなかったら、ほかの PR は閉じ続け、後でコメントだけを書き直す（閉じ直さない・コメントを重ねない）
+    @Test func retriesCommentAfterFailureWithoutStoppingOthers() async throws {
         try await put()
         github.update {
-            $0.pulls = [Self.pull(11, head: "\(Self.branch)/t1", base: Self.branch)]
-            $0.commentFailure = .serverError(status: 502)
+            $0.pulls = [
+                Self.pull(11, head: "\(Self.branch)/t1", base: Self.branch),
+                Self.pull(12, head: "\(Self.branch)/t2", base: Self.branch)
+            ]
+            $0.commentFailures = [11: .serverError(status: 502)]
         }
         let closer = closer()
         await closer.closeAll()
-        #expect(github.current.pulls.map(\.state) == [.closed])
-        #expect(github.current.comments.isEmpty)
+        #expect(github.current.pulls.map(\.state) == [.closed, .closed])
+        #expect(github.current.comments.map(\.number) == [12])
         #expect(await closer.uncommented[Self.epic] == [11])
 
         advance(minutes: 1)
         await closer.closeAll()
-        #expect(github.current.comments.isEmpty)
+        #expect(github.current.comments.map(\.number) == [12])
 
         advance(minutes: 5)
         await closer.closeAll()
-        #expect(github.current.comments.map(\.number) == [11])
+        #expect(github.current.comments.map(\.number) == [12, 11])
+        #expect(github.current.closes == [11, 12])
         #expect(await closer.uncommented[Self.epic]?.isEmpty != false)
+    }
+
+    /// 見る期間の終わりにコメントを書けなくても、期間を過ぎてからコメントだけを書き直す（PR は探さない）
+    @Test func retriesCommentAfterWindow() async throws {
+        try await put(age: 24 * 60 * 60 + 29 * 60)
+        github.update {
+            $0.pulls = [Self.pull(11, head: "\(Self.branch)/t1", base: Self.branch)]
+            $0.commentFailures = [11: .serverError(status: 502)]
+        }
+        let closer = closer()
+        await closer.closeAll()
+        #expect(github.current.closes == [11])
+        #expect(github.current.lists.count == 2)
+
+        advance(minutes: 6)
+        await closer.closeAll()
+        #expect(github.current.comments.map(\.number) == [11])
+        #expect(github.current.lists.count == 2)
     }
 }
