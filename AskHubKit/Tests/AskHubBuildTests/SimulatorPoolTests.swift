@@ -300,43 +300,6 @@ struct SimulatorPoolTests {
         #expect(Set(simctl.current.map(\.name)) == Set(Self.humanDevices.map(\.name) + [kept.name]))
     }
 
-    /// 見回りで消すのは、ワーカーの枠の Simulator のうち、枠の数を超えた番号のもの・ランタイムが無いもの・最後に使ってから 7 日たったものだけ。
-    /// 最後に使った時刻が分からないものは日数では消さず、人が作った Simulator は古くても消さない
-    @Test func removesStraySlotSimulatorsBySlotRuntimeAndLastUse() async throws {
-        let now = try Date.ISO8601FormatStyle().parse("2026-11-18T10:00:00Z")
-        let week: TimeInterval = 7 * 24 * 60 * 60
-        func device(_ digit: Int, _ name: String, lastUsedAt: String?, isAvailable: Bool = true) -> FakeSimctl.Device {
-            FakeSimctl.Device(
-                udid: Self.uuid(digit), name: name, runtime: FakeSimctl.iOS270, deviceType: FakeSimctl.iPhone17Pro,
-                isAvailable: isAvailable, lastUsedAt: lastUsedAt
-            )
-        }
-        let recent = device(4, "askhub-worker-0-iPhone-17-Pro-iOS-27.0", lastUsedAt: "2026-11-17T10:00:00Z")
-        let unknown = device(5, "askhub-worker-0-iPad-Pro-13-inch-M5-iOS-26.5", lastUsedAt: nil)
-        let old = device(6, "askhub-worker-0-iPhone-17-Pro-iOS-26.5", lastUsedAt: "2026-11-11T10:00:00Z")
-        let extraSlot = device(7, "askhub-worker-1-iPhone-17-Pro-iOS-27.0", lastUsedAt: "2026-11-18T09:00:00Z")
-        let noRuntime = device(8, "askhub-worker-0-iPhone-18-Pro-iOS-27.1", lastUsedAt: "2026-11-18T09:00:00Z", isAvailable: false)
-        let humanOld = device(9, "xcb-prime-pick-ralph-a-iPhone 17 Pro-26-5", lastUsedAt: "2026-10-01T10:00:00Z")
-        let simctl = FakeSimctl(devices: Self.humanDevices + [recent, unknown, old, extraSlot, noRuntime, humanOld])
-        let (pool, runner) = pool(simctl)
-
-        let all = try await pool.workerSimulators()
-        #expect(all.first { $0.udid == recent.udid }?.lastUsedAt == now.addingTimeInterval(-24 * 60 * 60))
-        #expect(all.first { $0.udid == unknown.udid }?.lastUsedAt == nil)
-
-        let sweep = try await pool.removeStray(slots: 1, now: now, unusedFor: week)
-        #expect(Set(sweep.removed.map(\.udid)) == [old.udid, extraSlot.udid, noRuntime.udid])
-        #expect(sweep.failures.isEmpty)
-        #expect(Set(simctl.current.map(\.udid)) == Set((Self.humanDevices + [recent, unknown, humanOld]).map(\.udid)))
-        // 消すのは止めてから simctl delete で（人が作ったものには、止めることもしない）
-        #expect(!runner.arguments.contains { $0.contains(humanOld.udid) })
-        // ちょうど 7 日のものは消す
-        let weekOld = Simulator(
-            udid: Self.uuid(4), name: recent.name, runtime: FakeSimctl.iOS270, state: "Shutdown", lastUsedAt: now.addingTimeInterval(-week)
-        )
-        #expect(SimulatorPool.isStray(weekOld, slots: 1, now: now, unusedFor: week))
-    }
-
     @Test func reportsBootFailuresWithoutSecrets() async {
         let token = "ghp_" + String(repeating: "b", count: 36)
         let simctl = FakeSimctl(bootResult: .failure(1, "Unable to boot device in current state\nAuthorization: \(token)"))
@@ -380,5 +343,50 @@ struct SimulatorPoolTests {
         #expect(SimulatorCatalog.compare("27.0", "27") == .orderedSame)
         #expect(SimulatorCatalog.compare("26.10", "26.9") == .orderedDescending)
         #expect(SimulatorCatalog.compare("26.5.1", "26.5") == .orderedDescending)
+    }
+}
+
+// MARK: - 使っていない枠の Simulator の見回り
+
+extension SimulatorPoolTests {
+    /// 見回りで消すのは、ワーカーの枠の Simulator のうち、枠の数を超えた番号のもの・ランタイムが無いもの・最後に使ってから 7 日たったものだけ。
+    /// 最後に使った時刻が分からないものは日数では消さず、人が作った Simulator は古くても消さない
+    @Test func removesStraySlotSimulatorsBySlotRuntimeAndLastUse() async throws {
+        let now = try Date.ISO8601FormatStyle().parse("2026-11-18T10:00:00Z")
+        let week: TimeInterval = 7 * 24 * 60 * 60
+        func device(_ digit: Int, _ name: String, lastUsedAt: String?, isAvailable: Bool = true) -> FakeSimctl.Device {
+            FakeSimctl.Device(
+                udid: Self.uuid(digit),
+                name: name,
+                runtime: FakeSimctl.iOS270,
+                deviceType: FakeSimctl.iPhone17Pro,
+                isAvailable: isAvailable,
+                lastUsedAt: lastUsedAt
+            )
+        }
+        let recent = device(4, "askhub-worker-0-iPhone-17-Pro-iOS-27.0", lastUsedAt: "2026-11-17T10:00:00Z")
+        let unknown = device(5, "askhub-worker-0-iPad-Pro-13-inch-M5-iOS-26.5", lastUsedAt: nil)
+        let old = device(6, "askhub-worker-0-iPhone-17-Pro-iOS-26.5", lastUsedAt: "2026-11-11T10:00:00Z")
+        let extraSlot = device(7, "askhub-worker-1-iPhone-17-Pro-iOS-27.0", lastUsedAt: "2026-11-18T09:00:00Z")
+        let noRuntime = device(8, "askhub-worker-0-iPhone-18-Pro-iOS-27.1", lastUsedAt: "2026-11-18T09:00:00Z", isAvailable: false)
+        let humanOld = device(9, "xcb-prime-pick-ralph-a-iPhone 17 Pro-26-5", lastUsedAt: "2026-10-01T10:00:00Z")
+        let simctl = FakeSimctl(devices: Self.humanDevices + [recent, unknown, old, extraSlot, noRuntime, humanOld])
+        let (pool, runner) = pool(simctl)
+
+        let all = try await pool.workerSimulators()
+        #expect(all.first { $0.udid == recent.udid }?.lastUsedAt == now.addingTimeInterval(-24 * 60 * 60))
+        #expect(all.first { $0.udid == unknown.udid }?.lastUsedAt == nil)
+
+        let sweep = try await pool.removeStray(slots: 1, now: now, unusedFor: week)
+        #expect(Set(sweep.removed.map(\.udid)) == [old.udid, extraSlot.udid, noRuntime.udid])
+        #expect(sweep.failures.isEmpty)
+        #expect(Set(simctl.current.map(\.udid)) == Set((Self.humanDevices + [recent, unknown, humanOld]).map(\.udid)))
+        // 消すのは止めてから simctl delete で（人が作ったものには、止めることもしない）
+        #expect(!runner.arguments.contains { $0.contains(humanOld.udid) })
+        // ちょうど 7 日のものは消す
+        let weekOld = Simulator(
+            udid: Self.uuid(4), name: recent.name, runtime: FakeSimctl.iOS270, state: "Shutdown", lastUsedAt: now.addingTimeInterval(-week)
+        )
+        #expect(SimulatorPool.isStray(weekOld, slots: 1, now: now, unusedFor: week))
     }
 }
