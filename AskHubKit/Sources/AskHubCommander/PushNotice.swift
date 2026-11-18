@@ -49,14 +49,7 @@ public struct PushNotice: Equatable, Sendable {
                     keys: blockers.map(\.key)
                 )
             case let .mac(mac):
-                let offline = blockers.contains { if case .macOffline = $0.reason { true } else { false } }
-                return PushNotice(
-                    title: offline ? "\(mac) がオフライン" : "\(mac) の空きが少なくなりました",
-                    body: blockers.map { macLine($0.reason, now: now) }.joined(separator: "\n"),
-                    thread: "mac/\(mac)",
-                    target: ["mac": mac.rawValue],
-                    keys: blockers.map(\.key)
-                )
+                return macNotice(mac, blockers: blockers, now: now)
             case let .rateLimit(mac):
                 return PushNotice(
                     title: "GitHub の残りが少なくなりました",
@@ -80,6 +73,18 @@ public struct PushNotice: Equatable, Sendable {
                 return submissionNotice(repo, version, blockers: blockers)
             }
         }
+    }
+
+    /// Mac の通知（オフライン・空きが少ない）。オフラインがあればオフラインを題にする
+    private static func macNotice(_ mac: MacName, blockers: [Blocker], now: Date) -> PushNotice {
+        let offline = blockers.contains { if case .macOffline = $0.reason { true } else { false } }
+        return PushNotice(
+            title: offline ? "\(mac) がオフライン" : "\(mac) の空きが少なくなりました",
+            body: blockers.map { macLine($0.reason, now: now) }.joined(separator: "\n"),
+            thread: "mac/\(mac)",
+            target: ["mac": mac.rawValue],
+            keys: blockers.map(\.key)
+        )
     }
 
     /// 止めないもの（実機確認）のまとめの通知。epic が 1 つなら、その epic を開く（いくつもあれば開く先を持たない）
