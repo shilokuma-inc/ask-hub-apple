@@ -96,6 +96,8 @@ extension ReleaseWatch {
             file.githubRelease = .init(url: existing.url.absoluteString, created: false, at: context.timestamp)
             return file
         }
+        // AskHub で審査に出した版は、そのときに人が確かめた What's New で、確かめ直さずに公開する（2026-11-18 にユーザーが決めた）
+        if let published = try await publishWithWhatsNew(file, tag: tag) { return published }
         let changes: ReleaseChanges
         do {
             changes = try await sources.changes(file.repo, upTo: commit.sha, below: file.version)
@@ -125,21 +127,52 @@ extension ReleaseWatch {
         return file
     }
 
+    /// 審査に出したときの What's New で GitHub Release を公開し、確かめた本文として記録する。AskHub で審査に出していなければ nil
+    func publishWithWhatsNew(_ file: ReleaseFile, tag: ReleaseFile.Tag) async throws -> ReleaseFile? {
+        guard let whatsNew = await confirmedWhatsNew(file.repo, version: file.version) else { return nil }
+        let published = try await github { () throws(PullRequestError) in
+            try await hosting.publishRelease(file.repo, tag: tag.name, body: whatsNew.text)
+        }
+        log("\(file.repo) の GitHub Release \(tag.name) を、審査に出したときの What's New で公開した")
+        var file = file
+        let confirmed = ReleaseFile.ConfirmedNotes(text: whatsNew.text, approval: whatsNew.approval, at: context.timestamp)
+        file.notes = .init(version: 1, draft: whatsNew.text, draftedAt: context.timestamp, confirmed: confirmed)
+        file.githubRelease = .init(url: published.url.absoluteString, created: true, at: context.timestamp)
+        return file
+    }
+
     // MARK: - 6. 次の版
 
     func advanceNextVersion(_ file: ReleaseFile, settings: RepositoryFile) async throws -> ReleaseFile? {
+        let reason = "App Store で \(file.version) の配信を見つけたので"
+        let next = try await nextVersionStep(
+            file.repo, version: file.version, current: file.nextVersion, settings: settings, reason: reason
+        )
+        guard let next else { return nil }
         var file = file
+        file.nextVersion = next
+        return file
+    }
+
+    /// develop の版を `version` の次に上げる PR を進める（配信の後作業と、リリースを始めた版の準備で使う）。
+    /// 変えたら新しい様子を返し、変えることが無ければ nil。`reason` は PR の本文の書き出し（「〜ので」）
+    func nextVersionStep(
+        _ repo: RepositoryFullName,
+        version: MarketingVersion,
+        current: ReleaseFile.NextVersion?,
+        settings: RepositoryFile,
+        reason: String
+    ) async throws -> ReleaseFile.NextVersion? {
         let base = settings.build?.baseBranch ?? "develop"
-        guard let next = file.nextVersion else {
-            file.nextVersion = try await openNextVersion(file, base: base)
-            return file
+        guard var next = current else {
+            return try await openNextVersion(repo, version: version, base: base, reason: reason)
         }
         guard next.state == .open, let number = next.pullRequest else { return nil }
-        let pull = try await github { () throws(PullRequestError) in try await hosting.pullRequest(file.repo, number: number) }
+        let pull = try await github { () throws(PullRequestError) in try await hosting.pullRequest(repo, number: number) }
         if pull.merged {
-            file.nextVersion?.state = .merged
-            file.nextVersion?.at = context.timestamp
-            return file
+            next.state = .merged
+            next.at = context.timestamp
+            return next
         }
         guard pull.state == .open else {
             throw ReleaseStepProblem("版を上げる PR #\(number) が、マージされずに閉じられた。人が develop の MARKETING_VERSION を上げる", needsHuman: true)
@@ -147,7 +180,7 @@ extension ReleaseWatch {
         // ビルドの設定が無ければ、すべてのチェックを待つ（空の集合は「何も待たない」になり、CI を待たずにマージしてしまう）
         let required = settings.build.map { Set($0.finalChecks) }
         let summary = try await github { () throws(PullRequestError) in
-            try await hosting.checks(file.repo, at: pull.headSHA, required: required)
+            try await hosting.checks(repo, at: pull.headSHA, required: required)
         }
         switch summary.verdict {
         case .pending, .runnerShortage:
@@ -157,54 +190,59 @@ extension ReleaseWatch {
             throw ReleaseStepProblem("版を上げる PR #\(number) のチェックが落ちた（\(names)）。人が直す", needsHuman: true)
         case .passed:
             _ = try await github { () throws(PullRequestError) in
-                try await hosting.merge(file.repo, number: number, headSHA: pull.headSHA)
+                try await hosting.merge(repo, number: number, headSHA: pull.headSHA)
             }
-            log("\(file.repo) の版を上げる PR #\(number) をマージした")
-            file.nextVersion?.state = .merged
-            file.nextVersion?.at = context.timestamp
-            return file
+            log("\(repo) の版を上げる PR #\(number) をマージした")
+            next.state = .merged
+            next.at = context.timestamp
+            return next
         }
     }
 
     /// develop の版がもう大きければ上げない。そうでなければ、版を上げるコミットのブランチと PR を作る
-    func openNextVersion(_ file: ReleaseFile, base: String) async throws -> ReleaseFile.NextVersion {
+    func openNextVersion(
+        _ repo: RepositoryFullName,
+        version: MarketingVersion,
+        base: String,
+        reason: String
+    ) async throws -> ReleaseFile.NextVersion {
         let snapshot: MarketingVersionSnapshot
         do {
-            snapshot = try await sources.marketingVersions(file.repo, base: base)
+            snapshot = try await sources.marketingVersions(repo, base: base)
         } catch {
             throw ReleaseStepProblem("\(base) の MARKETING_VERSION を読めない（\(error)）", needsHuman: false)
         }
         guard let current = snapshot.current else {
             throw ReleaseStepProblem("\(base) のビルドの設定に MARKETING_VERSION が見つからない。人が次の版に上げる", needsHuman: true)
         }
-        if current > file.version {
-            log("\(file.repo) の \(base) の版（\(current)）は配信した \(file.version) より大きいので、上げない")
+        if current > version {
+            log("\(repo) の \(base) の版（\(current)）は \(version) より大きいので、上げない")
             return .init(version: current, state: .skipped, at: context.timestamp)
         }
-        let next = file.version.nextMinor
+        let next = version.nextMinor
         var files: [String: String] = [:]
         for source in snapshot.files {
-            if let edited = MarketingVersionEdit.replacing(in: source.content, atMost: file.version, with: next) {
+            if let edited = MarketingVersionEdit.replacing(in: source.content, atMost: version, with: next) {
                 files[source.path] = edited
             }
         }
         let branch = "askhub/version-\(next)"
-        let author = await authors.author(for: file.repo.owner)
+        let author = await authors.author(for: repo.owner)
         let now = context.now()
         let title = "MARKETING_VERSION を \(next) に上げる"
         let message = "[chore] \(title)"
         let commit = VersionCommit(files: files, snapshot: snapshot, message: message, author: author, date: now, branch: branch)
-        _ = try await github { () throws(PullRequestError) in try await hosting.commitFiles(file.repo, commit) }
+        _ = try await github { () throws(PullRequestError) in try await hosting.commitFiles(repo, commit) }
         let body = """
-            App Store で \(file.version) の配信を見つけたので、\(base) の `MARKETING_VERSION` を次の版（\(next)）に上げます。
-            配信済みの版のままだと、\(base) の Upload が App Store Connect に断られるためです。
+            \(reason)、\(base) の `MARKETING_VERSION` を次の版（\(next)）に上げます。
+            \(version) のままだと、\(base) の Upload が \(version) のビルドを上げ続けるためです（配信した後は App Store Connect に断られます）。
 
             チェックが通ったら AskHub がマージします。大きく上げたい（2.0.0 など）ときは、この PR を閉じて手で上げてください。
             """
         let pull = try await github { () throws(PullRequestError) in
-            try await hosting.openPullRequest(file.repo, PullRequestDraft(base: base, head: branch, title: "【CHORE】\(title)", body: body))
+            try await hosting.openPullRequest(repo, PullRequestDraft(base: base, head: branch, title: "【CHORE】\(title)", body: body))
         }
-        log("\(file.repo) の版を \(next) に上げる PR #\(pull.number) を作った")
+        log("\(repo) の版を \(next) に上げる PR #\(pull.number) を作った")
         return .init(version: next, state: .open, pullRequest: pull.number, at: context.timestamp)
     }
 

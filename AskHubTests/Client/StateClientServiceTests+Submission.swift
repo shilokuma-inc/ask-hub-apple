@@ -1,0 +1,123 @@
+@testable import AskHub
+import AskHubClient
+import AskHubProtocol
+import AskHubStateStore
+import Foundation
+import Testing
+
+/// リリースを始めてから配信まで: 準備と審査の進み具合を出し、審査に出す・配信するを「あなたの番」に出し、操作を見たものに結びつけて送る
+extension StateClientServiceTests {
+    private static let submissionDirectory = "repos/\(repo)/submissions"
+
+    /// 1.2.0 は準備がそろって審査に出すのを待っている。1.1.0 は配信した
+    static func submissionFiles(extra: [String: String] = [:]) -> [String: String] {
+        let key = String(repeating: "k", count: 43)
+        let commit = String(repeating: "b", count: 40)
+        let ready = """
+            {"v":1,"repo":"\(repo)","version":"1.2.0","origin":"askhub",
+             "start":{"approval":{"keyId":"\(key)","nonce":"01JCN0NCE00000000000000009"},"at":"2027-01-20T01:00:00Z"},
+             "branch":{"name":"release/1.2.0","commit":"\(commit)","created":true,"at":"2027-01-20T01:01:00Z"},
+             "nextVersion":{"version":"1.3.0","state":"merged","pullRequest":180,"at":"2027-01-20T01:20:00Z"},
+             "builds":[{"platform":"iOS","build":"45","uploadedAt":"2027-01-20T01:40:00Z"}],
+             "whatsNew":{"drafts":[{"locale":"ja","text":"・速くなりました"},{"locale":"en-US","text":"- Faster"}],
+                         "draftedAt":"2027-01-20T01:05:00Z"},
+             "revision":2,"review":[],"createdAt":"2027-01-20T01:00:00Z","updatedAt":"2027-01-20T01:40:00Z"}
+            """
+        return releaseFiles(extra: ["\(submissionDirectory)/1.2.0.json": ready].merging(extra) { $1 })
+    }
+
+    private var submissionRepositoryID: TargetRepository.ID { Self.repo.lowercased() }
+
+    private var request: Submission.SubmitRequest {
+        Submission.SubmitRequest(
+            revision: 2,
+            builds: [.init(platform: "iOS", build: "45")],
+            whatsNew: [.init(locale: "ja", text: " ・速くなりました（直した）\n"), .init(locale: "en-US", text: "- Faster")],
+            releaseType: .manual
+        )
+    }
+
+    @Test
+    func readsSubmissionAwaitingReview() async throws {
+        let fixture = try makeService(files: Self.submissionFiles())
+        let snapshot = try await fixture.service.fetchSnapshot()
+        #expect(snapshot.sourceFailures.isEmpty)
+        let submission = try #require(snapshot.submission(Submission.id(submissionRepositoryID, "1.2.0")))
+        #expect(submission.startedInAskHub && submission.awaitsSubmission && submission.canAbandon)
+        #expect(submission.buildSummary == "iOS (45)")
+        #expect(submission.drafts?.map(\.locale) == ["ja", "en-US"])
+        #expect(submission.steps.map(\.state) == [.done, .done, .done, .done, .waitingHuman, .working])
+        // 次のリリースは、この版が終わるまで始められない。配信した版（1.1.0）より大きくない版も始められない
+        #expect(!fixture.service.supports(.startRelease(repositoryID: submissionRepositoryID, version: "1.3.0")))
+        let items = InboxBuilder.items(from: snapshot, now: now).filter { $0.kind == .submissionReady }
+        #expect(items.first?.route == .submission(repositoryID: submissionRepositoryID, version: "1.2.0"))
+        #expect(snapshot.suggestedReleaseVersion(of: submissionRepositoryID) == "1.2.0")
+    }
+
+    @Test
+    func submittingSendsWhatHumanSaw() async throws {
+        let fixture = try makeService(files: Self.submissionFiles())
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        let intent = HumanIntent.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: request)
+        #expect(service.supports(intent))
+        #expect(!service.supports(.distributeRelease(repositoryID: submissionRepositoryID, version: "1.2.0")))
+        #expect(!service.supports(.withdrawSubmission(repositoryID: submissionRepositoryID, version: "1.2.0")))
+        try await service.perform(intent)
+
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(envelope.kind == SubmitForReviewIntent.kind)
+        #expect(envelope.target == IntentEnvelope.Target(type: "submission", id: "1.2.0"))
+        #expect(envelope.targetVersion == "2")
+        let submit = try SubmitForReviewIntent(envelope: envelope)
+        #expect(submit.releaseType == .manual)
+        #expect(submit.whatsNew == [.init(locale: "ja", text: "・速くなりました（直した）"), .init(locale: "en-US", text: "- Faster")])
+
+        // 送った後は、受け付けを待っている間として出し、あなたの番から外す
+        let sent = try await service.fetchSnapshot()
+        let submission = try #require(sent.submission(Submission.id(submissionRepositoryID, "1.2.0")))
+        #expect(submission.sending == .submit)
+        #expect(!service.supports(intent))
+        #expect(!InboxBuilder.items(from: sent, now: now).contains { $0.kind == .submissionReady })
+        #expect(sent.sentIntents.first?.title == "審査に出す（sample-ios 1.2.0）")
+        #expect(sent.sentIntents.first?.target == .submission(repositoryID: submissionRepositoryID, version: "1.2.0"))
+    }
+
+    @Test
+    func refusesStaleRevisionAndMismatchedLocales() async throws {
+        let fixture = try makeService(files: Self.submissionFiles())
+        _ = try await fixture.service.fetchSnapshot()
+        var stale = request
+        stale.revision = 1
+        await #expect(throws: ClientServiceError.self) {
+            try await fixture.service.perform(.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: stale))
+        }
+        var missing = request
+        missing.whatsNew = [.init(locale: "ja", text: "本文")]
+        await #expect(throws: ClientServiceError.self) {
+            try await fixture.service.perform(.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: missing))
+        }
+    }
+
+    @Test
+    func startsReleaseAndShowsItUntilTheCommanderRecordsIt() async throws {
+        let fixture = try makeService(files: Self.releaseFiles())
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        // 配信した版（1.1.0）より大きい版だけ始められる
+        #expect(!service.supports(.startRelease(repositoryID: submissionRepositoryID, version: "1.1.0")))
+        let intent = HumanIntent.startRelease(repositoryID: submissionRepositoryID, version: "1.2.0")
+        #expect(service.supports(intent))
+        try await service.perform(intent)
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(envelope.kind == StartReleaseIntent.kind)
+        #expect(envelope.payload == ["version": .string("1.2.0")])
+        #expect(envelope.target == nil)
+
+        let sent = try await service.fetchSnapshot()
+        let placeholder = try #require(sent.submission(Submission.id(submissionRepositoryID, "1.2.0")))
+        #expect(placeholder.sending == .start)
+        #expect(!service.supports(.startRelease(repositoryID: submissionRepositoryID, version: "1.3.0")))
+        #expect(sent.sentIntents.first?.target == .submission(repositoryID: submissionRepositoryID, version: "1.2.0"))
+    }
+}

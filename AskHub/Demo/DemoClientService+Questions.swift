@@ -26,6 +26,9 @@ extension DemoClientService {
 
         case .publishRelease:
             applyReleaseIntent(intent)
+
+        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
+            applySubmissionIntent(intent)
         }
         return SendReceipt()
     }
