@@ -208,6 +208,11 @@ extension StateSnapshotBuilder {
                 epics[epicIndex].activities.removeAll { $0.kind == .revisingGoal }
             }
 
+        case .skipsScreenshots:
+            let text = "\(subject)をやめました。スクショ無しで最終 PR のレビューに進みます。司令塔が受け取るのを待っています"
+            epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
+            return
+
         case nil:
             return
         }
