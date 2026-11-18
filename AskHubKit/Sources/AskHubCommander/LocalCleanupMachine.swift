@@ -125,7 +125,12 @@ public struct LocalCleanupMachine: CleanupMachine {
         var reasons: [String] = []
         // 未追跡のファイルは、人の設定（`status.showUntrackedFiles=no`）によらず出させる。
         // 未 push は、ブランチに加えて detached の HEAD も見る（HEAD がまだコミットを指さなければ見ない）。出力はコミットの id だけにする
-        let hasHead = await git(["rev-parse", "--verify", "--quiet", "HEAD"], in: directory) != nil
+        // HEAD がまだコミットを指さないとき（終了コード 1・出力なし）だけ HEAD を外す。時間切れなど確かめられなければ消さない
+        guard let head = await gitResult(["rev-parse", "--verify", "--quiet", "HEAD"], in: directory), !head.timedOut,
+              head.succeeded || (head.status == 1 && head.standardOutput.isEmpty) else {
+            return "git の状態を読めない"
+        }
+        let hasHead = head.succeeded
         let unpushedArguments = ["rev-list", "--max-count=1", "--branches"] + (hasHead ? ["HEAD"] : []) + ["--not", "--remotes"]
         guard let status = await git(["status", "--porcelain", "--untracked-files=normal"], in: directory),
               let remotes = await git(["remote"], in: directory),
@@ -300,6 +305,14 @@ public struct LocalCleanupMachine: CleanupMachine {
 
     /// `git -C <directory> <arguments>` の出力（前後の空白を除く）。失敗したら nil。作業場所の状態を書き換えない（index を書かない）
     func git(_ arguments: [String], in directory: URL) async -> String? {
+        // UTF-8 で読めない出力は、空（変更なし）と取り違えないよう、読めなかったことにする
+        guard let result = await gitResult(arguments, in: directory), result.succeeded,
+              let text = String(bytes: result.standardOutput, encoding: .utf8) else { return nil }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// `git -C <directory> <arguments>` の結果。起動できなければ nil
+    func gitResult(_ arguments: [String], in directory: URL) async -> CommandResult? {
         let command = Command(
             executable: URL(fileURLWithPath: "/usr/bin/git"),
             arguments: ["-C", directory.path, "-c", "core.fsmonitor=false"] + arguments,
@@ -307,10 +320,7 @@ public struct LocalCleanupMachine: CleanupMachine {
             workingDirectory: directory,
             timeout: timeout
         )
-        // UTF-8 で読めない出力は、空（変更なし）と取り違えないよう、読めなかったことにする
-        guard let result = try? await runner.run(command), result.succeeded,
-              let text = String(bytes: result.standardOutput, encoding: .utf8) else { return nil }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try? await runner.run(command)
     }
 
     /// 出力の行。UTF-8 で読めない出力は空にする

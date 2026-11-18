@@ -30,6 +30,16 @@ final class SimctlStubRunner: CommandRunning {
     }
 }
 
+/// `git rev-parse` だけを時間切れにし、ほかのコマンドは本当に流す
+final class HeadTimeoutRunner: CommandRunning {
+    func run(_ command: Command) async throws -> CommandResult {
+        if command.executable.lastPathComponent == "git", command.arguments.contains("rev-parse") {
+            return CommandResult(status: 15, terminatedBySignal: true, standardOutput: Data(), standardError: Data(), timedOut: true)
+        }
+        return try await ProcessCommandRunner().run(command)
+    }
+}
+
 /// テスト用の git の置き場所を作れなかった
 struct GitFixtureFailure: Error {
     var arguments: [String]
@@ -213,5 +223,13 @@ struct LocalCleanupMachineTests {
         try git(["checkout", "-q", "--detach", "HEAD@{1}"], in: detached)
         #expect(await machine.cloneCaution(detached) == "未 push のコミットがある")
         #expect(await machine.cloneCaution(parent) == "中に別の clone か worktree がある")
+    }
+
+    /// HEAD を確かめられなければ（時間切れなど）、HEAD がまだ無いとは見なさず、消さない
+    @Test func cautionsWhenHeadCannotBeChecked() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let prepared = try prepare()
+        let machine = LocalCleanupMachine(home: home, tools: BuildTools(home: home, temporaryDirectory: root), runner: HeadTimeoutRunner())
+        #expect(await machine.cloneCaution(prepared.clean) == "git の状態を読めない")
     }
 }
