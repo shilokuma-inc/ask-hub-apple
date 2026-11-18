@@ -84,6 +84,10 @@ extension AskHubCommanderMain {
                 client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
                 sources: runtime.workspace
             ),
+            whatsNew: ClaudeWhatsNewDrafter(
+                client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
+                sources: runtime.workspace
+            ),
             authors: GitHubCommitAuthors(token: token, log: log),
             log: log
         )

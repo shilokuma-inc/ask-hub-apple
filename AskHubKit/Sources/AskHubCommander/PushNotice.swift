@@ -73,6 +73,8 @@ public struct PushNotice: Equatable, Sendable {
                     target: ["repo": repo.rawValue, "release": version.rawValue],
                     keys: blockers.map(\.key)
                 )
+            case let .submission(repo, version):
+                return submissionNotice(repo, version, blockers: blockers)
             }
         }
     }
@@ -118,6 +120,26 @@ public struct PushNotice: Equatable, Sendable {
         switch reason {
         case .releaseNotes: "リリース文を確かめて、GitHub Release を公開してください"
         case let .releaseProblem(step): "後作業（\(step.label)）が止まっています。確かめてください"
+        default: nil
+        }
+    }
+
+    /// リリースを始めた版の通知。通知から、その版のリリースの画面を開く
+    private static func submissionNotice(_ repo: RepositoryFullName, _ version: MarketingVersion, blockers: [Blocker]) -> PushNotice {
+        PushNotice(
+            title: "\(repo.name) \(version) のリリース",
+            subtitle: repo.rawValue,
+            body: blockers.compactMap { submissionLine($0.reason) }.joined(separator: "\n"),
+            thread: "submission/\(repo.rawValue)/\(version.rawValue)",
+            target: ["repo": repo.rawValue, "submission": version.rawValue],
+            keys: blockers.map(\.key)
+        )
+    }
+
+    private static func submissionLine(_ reason: Blocker.Reason) -> String? {
+        switch reason {
+        case .submissionReady: "審査に出す準備ができました。What's New とビルドを確かめて、審査に出してください"
+        case let .submissionProblem(step): "リリース（\(step.label)）が止まっています。確かめてください"
         default: nil
         }
     }
@@ -171,6 +193,22 @@ extension ReleaseFile.Step {
         case .notes: "リリース文"
         case .githubRelease: "GitHub Release"
         case .nextVersion: "次の版の PR"
+        }
+    }
+}
+
+extension SubmissionFile.Step {
+    /// 通知とログに出す名前
+    var label: String {
+        switch self {
+        case .branch: "release ブランチ"
+        case .nextVersion: "次の版の PR"
+        case .whatsNew: "What's New の下書き"
+        case .builds: "ビルド"
+        case .submit: "審査に出す"
+        case .distribute: "配信する"
+        case .withdraw: "審査の取り下げ"
+        case .review: "審査の状態"
         }
     }
 }

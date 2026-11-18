@@ -10,31 +10,37 @@ import Foundation
 /// リリース文 → GitHub Release と、次の版の PR）を進める。どの段取りも、作る前にあるかを確かめ、途中で止まってもやり直せば同じになる
 public actor ReleaseWatch {
     nonisolated let context: CommanderContext
-    /// App Store Connect の読み取り（Apple のチームごとの API キー）。空なら配信を見つけない（後作業だけ進める）
-    nonisolated let stores: [any AppStoreConnectReading]
+    /// App Store Connect（Apple のチームごとの API キー）。空なら配信を見つけない（後作業だけ進める）。
+    /// 書き込み（審査に出す・取り下げ・配信）は、人の意図を受け付けたときだけ使う
+    nonisolated let stores: [any AppStoreConnectSubmitting]
     nonisolated let sources: any ReleaseSourceReading
     nonisolated let hosting: any ReleaseHosting
     nonisolated let drafter: any ReleaseNotesDrafting
+    /// What's New の下書き。nil なら下書きを作れない（準備の問題として出す）
+    nonisolated let whatsNew: (any WhatsNewDrafting)?
     nonisolated let authors: any CommitAuthors
     nonisolated let log: @Sendable (String) -> Void
     /// 1 つのリポジトリの App Store Connect を読む間隔
     nonisolated let detectInterval: TimeInterval
 
-    private var detectedAt: [RepositoryFullName: Date] = [:]
+    var detectedAt: [RepositoryFullName: Date] = [:]
     /// 見つけたアプリと、それを読める鍵（`stores` の番号）。起動し直したら探し直す
     var apps: [RepositoryFullName: (store: Int, app: AppStoreApp)] = [:]
     /// ログに出した知らせ（同じものを見回りのたびに出さない）
     private var reported: Set<String> = []
     private var running = false
+    /// 見回っている間に起こされた（終わったらもう一度見回る）
+    private var wokenWhileRunning = false
     /// 人を待っているもの（リリース文の確認・人が直す後作業）。見回りのたびに作り直し、司令塔の通知（`Notifier`）が読む
     private(set) var blockers: [Blocker] = []
 
     public init(
         context: CommanderContext,
-        stores: [any AppStoreConnectReading],
+        stores: [any AppStoreConnectSubmitting],
         sources: any ReleaseSourceReading,
         hosting: any ReleaseHosting,
         drafter: any ReleaseNotesDrafting,
+        whatsNew: (any WhatsNewDrafting)? = nil,
         authors: any CommitAuthors,
         log: @escaping @Sendable (String) -> Void,
         detectInterval: Duration = .seconds(30 * 60)
@@ -44,6 +50,7 @@ public actor ReleaseWatch {
         self.sources = sources
         self.hosting = hosting
         self.drafter = drafter
+        self.whatsNew = whatsNew
         self.authors = authors
         self.log = log
         self.detectInterval = TimeInterval(detectInterval.components.seconds)
@@ -54,11 +61,31 @@ public actor ReleaseWatch {
         Task { await refresh() }
     }
 
+    /// リリースの操作の人の意図を受け付けたときに、生きている印を待たずに見回る。見回っている最中なら、終わった後にもう一度見回る
+    nonisolated public func wake() {
+        Task { await wakeUp() }
+    }
+
+    private func wakeUp() async {
+        if running {
+            wokenWhileRunning = true
+            return
+        }
+        await refresh()
+    }
+
     /// 対象のリポジトリを 1 つずつ見回る。見回っているときに呼ばれたら、何もしない
     func refresh() async {
         guard !running else { return }
         running = true
         defer { running = false }
+        repeat {
+            wokenWhileRunning = false
+            await refreshOnce()
+        } while wokenWhileRunning
+    }
+
+    private func refreshOnce() async {
         let repositories: [RepositoryFullName]
         do {
             repositories = try await context.repositories()
@@ -77,6 +104,7 @@ public actor ReleaseWatch {
                 detectedAt[repo] = context.now()
             }
             waiting += await advanceAll(repo, settings: file).flatMap(Blocker.waiting(on:))
+            waiting += await advanceSubmissions(repo, settings: file).flatMap(Blocker.waiting(on:))
         }
         blockers = waiting
     }
@@ -89,11 +117,12 @@ public actor ReleaseWatch {
 
     // MARK: - 配信を見つける
 
-    /// App Store Connect で配信中の版を読み、記録を作る（あれば、見つけたプラットフォームを足す）
+    /// App Store Connect で版を読み、配信中の版の記録を作る（あれば、見つけたプラットフォームを足す）
     func detect(_ repo: RepositoryFullName, settings: RepositoryFile) async {
         do {
             guard let found = try await app(of: repo, base: settings.build?.baseBranch) else { return }
-            for live in try await stores[found.store].liveVersions(of: found.app.id) {
+            let versions = try await stores[found.store].versions(of: found.app.id)
+            for live in Self.live(versions) {
                 guard let build = live.build else {
                     report("\(repo) の \(live.platform.rawValue) \(live.version) は配信中だが、ビルドを読めない。次に読むときにやり直す")
                     continue
@@ -110,8 +139,18 @@ public actor ReleaseWatch {
         }
     }
 
+    /// 配信中の版（プラットフォームごとに 1 つ。番号の形が違う版は飛ばす）
+    static func live(_ versions: [AppStoreVersionInfo]) -> [LiveAppVersion] {
+        var live: [LiveAppVersion] = []
+        for info in versions where info.state == .readyForDistribution && !live.contains(where: { $0.platform == info.platform }) {
+            guard let version = info.version else { continue }
+            live.append(LiveAppVersion(platform: info.platform, version: version, build: info.build, uploadedAt: info.uploadedAt))
+        }
+        return live
+    }
+
     /// リポジトリのアプリ。base の Bundle ID の候補を、鍵ごとに App Store Connect で探す。見つからなければ nil
-    private func app(of repo: RepositoryFullName, base: String?) async throws -> (store: Int, app: AppStoreApp)? {
+    func app(of repo: RepositoryFullName, base: String?) async throws -> (store: Int, app: AppStoreApp)? {
         if let found = apps[repo] { return found }
         let bundleIDs = try await sources.bundleIdentifiers(repo, base: base)
         guard !bundleIDs.isEmpty else {

@@ -24,6 +24,10 @@ public struct Blocker: Equatable, Sendable {
         case releaseNotes
         /// 配信した版の後作業が、人が直すまで進まない
         case releaseProblem(ReleaseFile.Step)
+        /// リリースを始めた版の準備がそろい、人が What's New とビルドを確かめて審査に出すのを待っている
+        case submissionReady
+        /// リリースを始めた版の準備・審査の操作が、人が直すまで進まない
+        case submissionProblem(SubmissionFile.Step)
     }
 
     /// まとめて 1 つの通知にする単位
@@ -34,6 +38,8 @@ public struct Blocker: Equatable, Sendable {
         case rateLimit(MacName)
         /// App Store で配信した版
         case release(RepositoryFullName, MarketingVersion)
+        /// リリースを始めた版（準備から配信まで）
+        case submission(RepositoryFullName, MarketingVersion)
     }
 
     /// 同じ出来事を見分ける文字列（`notifications.json` の `key`）。見直した質問・直したゴール・人が頼んだ直しの後の最終 PR・次の試行・
@@ -175,6 +181,24 @@ extension Blocker {
         if let problem = release.problem, problem.needsHuman {
             let key = "\(base)/problem/\(problem.step.rawValue)/\(problem.at.rawValue)"
             blockers.append(Blocker(key: key, scope: scope, reason: .releaseProblem(problem.step)))
+        }
+        return blockers
+    }
+}
+
+extension Blocker {
+    /// リリースを始めた版の記録から、人を待っているもの（審査に出す・人が直す準備）を拾う（`ReleaseWatch` が見回りのたびに作る）
+    static func waiting(on submission: SubmissionFile) -> [Blocker] {
+        let scope = Scope.submission(submission.repo, submission.version)
+        let base = "submission/\(submission.repo.rawValue)/\(submission.version.rawValue)"
+        var blockers: [Blocker] = []
+        // ビルドか What's New が変わったら（revision が上がったら）知らせ直す
+        if submission.awaitsSubmission {
+            blockers.append(Blocker(key: "\(base)/ready/\(submission.revision)", scope: scope, reason: .submissionReady))
+        }
+        if let problem = submission.problem, problem.needsHuman {
+            let key = "\(base)/problem/\(problem.step.rawValue)/\(problem.at.rawValue)"
+            blockers.append(Blocker(key: key, scope: scope, reason: .submissionProblem(problem.step)))
         }
         return blockers
     }
