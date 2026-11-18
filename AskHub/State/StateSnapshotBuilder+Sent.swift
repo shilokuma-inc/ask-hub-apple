@@ -429,10 +429,16 @@ extension StateSnapshotBuilder {
 
     /// 配信した版への意図の呼び名。どれでもなければ nil
     private func releaseLabel(_ envelope: IntentEnvelope) -> String? {
-        guard envelope.kind == PublishGitHubReleaseIntent.kind else {
-            return nil
+        let name = envelope.repo?.name ?? ""
+        switch envelope.kind {
+        case PublishGitHubReleaseIntent.kind:
+            return "GitHub Release の公開（\(name) \(envelope.target?.id ?? "")）"
+        case StartReleaseIntent.kind:
+            return "リリースを始める（\(name) \(envelope.string("version") ?? "")）"
+        default:
+            guard let action = Self.action(of: envelope.kind) else { return nil }
+            return "\(action.label)（\(name) \(envelope.target?.id ?? "")）"
         }
-        return "GitHub Release の公開（\(envelope.repo?.name ?? "") \(envelope.target?.id ?? "")）"
     }
 
     /// 一時停止・再開・引き継ぎの呼び名。どれでもなければ nil

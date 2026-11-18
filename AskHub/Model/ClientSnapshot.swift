@@ -18,6 +18,8 @@ struct ClientSnapshot: Hashable {
     var commanderSeenAt: Date?
     /// App Store で配信した版と、その後作業（リポジトリの順、その中は新しい版から）
     var releases: [Release] = []
+    /// リリースを始めた版（準備から配信まで）。リポジトリの順、その中は新しい版から
+    var submissions: [Submission] = []
 }
 
 /// 送った人の意図の処理の結果
@@ -68,6 +70,33 @@ extension ClientSnapshot {
 
     func release(_ id: Release.ID) -> Release? {
         releases.first { $0.id == id }
+    }
+
+    /// リポジトリのリリースを始めた版（新しい版から）
+    func submissions(of repositoryID: TargetRepository.ID) -> [Submission] {
+        submissions.filter { $0.repositoryID == repositoryID }
+    }
+
+    func submission(_ id: Submission.ID) -> Submission? {
+        submissions.first { $0.id == id }
+    }
+
+    /// リリースを始めるときの版の既定（前に配信した版の次のマイナー。develop の版を上げた PR があれば、その版）
+    func suggestedReleaseVersion(of repositoryID: TargetRepository.ID) -> String {
+        guard let latest = releases(of: repositoryID).max(by: { Self.isOlder($0.version, $1.version) }) else { return "1.0.0" }
+        if let next = latest.nextVersion?.version, Self.isOlder(latest.version, next) { return next }
+        var parts = latest.version.split(separator: ".").compactMap { Int($0) }
+        while parts.count < 3 { parts.append(0) }
+        return "\(parts[0]).\(parts[1] + 1).0"
+    }
+
+    /// 版の番号を数の並びとして比べる（`1.10.0` は `1.9.0` より大きい）
+    static func isOlder(_ lhs: String, _ rhs: String) -> Bool {
+        let left = lhs.split(separator: ".").map { Int($0) ?? 0 }
+        let right = rhs.split(separator: ".").map { Int($0) ?? 0 }
+        let count = max(left.count, right.count)
+        return (left + Array(repeating: 0, count: count - left.count))
+            .lexicographicallyPrecedes(right + Array(repeating: 0, count: count - right.count))
     }
 
     func epic(_ id: Epic.ID) -> Epic? {
