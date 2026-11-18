@@ -96,6 +96,8 @@ extension ReleaseWatch {
             file.githubRelease = .init(url: existing.url.absoluteString, created: false, at: context.timestamp)
             return file
         }
+        // AskHub で審査に出した版は、そのときに人が確かめた What's New で、確かめ直さずに公開する（2026-11-18 にユーザーが決めた）
+        if let published = try await publishWithWhatsNew(file, tag: tag) { return published }
         let changes: ReleaseChanges
         do {
             changes = try await sources.changes(file.repo, upTo: commit.sha, below: file.version)
@@ -122,6 +124,20 @@ extension ReleaseWatch {
         }
         log("\(file.repo) の \(file.version) のリリース文を下書きした。人が確かめるのを待つ")
         file.notes = .init(version: 1, previousTag: changes.previousTag, draft: draft, draftedAt: context.timestamp)
+        return file
+    }
+
+    /// 審査に出したときの What's New で GitHub Release を公開し、確かめた本文として記録する。AskHub で審査に出していなければ nil
+    func publishWithWhatsNew(_ file: ReleaseFile, tag: ReleaseFile.Tag) async throws -> ReleaseFile? {
+        guard let whatsNew = await confirmedWhatsNew(file.repo, version: file.version) else { return nil }
+        let published = try await github { () throws(PullRequestError) in
+            try await hosting.publishRelease(file.repo, tag: tag.name, body: whatsNew.text)
+        }
+        log("\(file.repo) の GitHub Release \(tag.name) を、審査に出したときの What's New で公開した")
+        var file = file
+        let confirmed = ReleaseFile.ConfirmedNotes(text: whatsNew.text, approval: whatsNew.approval, at: context.timestamp)
+        file.notes = .init(version: 1, draft: whatsNew.text, draftedAt: context.timestamp, confirmed: confirmed)
+        file.githubRelease = .init(url: published.url.absoluteString, created: true, at: context.timestamp)
         return file
     }
 
