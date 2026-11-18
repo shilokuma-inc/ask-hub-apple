@@ -186,7 +186,7 @@ consumed/<device>/<intent>.json                    処理した人の意図の�
 | `abandoned` | やめた | — |
 
 開始する前の段階（`drafting`〜`awaitingStart`）からは、人の取り下げ（`abandonEpic`）か、先に進めなくなるジョブを人がやめたとき（`giveUp`）にも `abandoned` になる。
-開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げか、実装・最終 PR の段取りのジョブを人がやめたときに `abandoned` になる（2026-11-12 に決めた。段階 4 の 3 で作る。[flows.md](flows.md) の「開始した後の取り下げ」）
+開始した後の段階（`running`・`finalizing`・`reviewing`）からも、人の取り下げで `abandoned` になる。開いている子 PR と最終 PR は閉じ、作業ブランチと子ブランチは残す（2026-11-12 に決めた。[flows.md](flows.md) の「開始した後の取り下げ」）。実装・最終 PR の段取りのジョブを人がやめたときも同じにする（段階 4 の 3 で作る）
 
 ### readiness.json（最後の着手前の確認の結果）
 
@@ -638,6 +638,8 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
   | ゴール（コメント） | `{"type":"goal","epic":"…"}` |
   | 締め（コメント。マージした・やめた epic） | `{"type":"closing","epic":"…"}` |
 
+- 開始した後にやめた epic の、閉じた子 PR と最終 PR へのコメント（[flows.md](flows.md) の「開始した後の取り下げ」）の目印は `{"type":"abandoned","epic":"…"}`。書くだけで、司令塔は読まない
+
 ## 人の意図と署名
 
 ### 封筒
@@ -673,7 +675,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `verify` | 実機確認の項目（`{ "type": "verification", "epic", "id": "v1" }`） | ゴールの `version` | `result`（`confirmed`・`problem`）、`note`（問題ありの説明。`payloads/verify.schema.json`）。最終 PR をマージした（`merged` の）epic の、完了の条件の項目に 1 回だけ。答えは `verifications.json` に書く。問題ありの直しは、クライアントが同時に送る依頼（`request`）が新しい epic になる |
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
-| `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。今は開始する前の epic だけ。段階 4 の 3 から、開始した後の epic も受け付ける（マージした epic は断る） |
+| `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始した後の epic も受け付け、開いている子 PR と最終 PR を閉じる（ブランチは残す）。マージした epic は断る |
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |

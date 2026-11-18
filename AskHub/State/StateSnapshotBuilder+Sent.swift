@@ -263,11 +263,10 @@ extension StateSnapshotBuilder {
         }
     }
 
-    /// 取り下げ。状態リポジトリにある、開始する前の epic だけを出す（開始した後は司令塔が断る）
+    /// 取り下げ。状態リポジトリにある、終わっていない epic だけを出す（マージした epic は司令塔が断る）
     private func applyAbandon(_ envelope: IntentEnvelope, to epics: inout [Epic], index: StateIndex) {
         guard let epicID = envelope.target?.epic?.rawValue, index.epics[epicID] != nil,
-              let epicIndex = epics.firstIndex(where: { $0.id == epicID }),
-              epics[epicIndex].isActive, epics[epicIndex].stage < .implementing else {
+              let epicIndex = epics.firstIndex(where: { $0.id == epicID }), epics[epicIndex].isActive else {
             return
         }
         epics[epicIndex].isAbandoned = true

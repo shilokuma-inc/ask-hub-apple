@@ -234,7 +234,8 @@ public struct DecideSplitIntent: Equatable, Sendable {
     public var payload: [String: JSONValue] { ["choice": .string(choice.rawValue)] }
 }
 
-/// 取り下げの人の意図（`kind` が `abandonEpic`）。開始する前の epic をやめる。`target` は `{type: epic, epic}`。
+/// 取り下げの人の意図（`kind` が `abandonEpic`）。epic をやめる（開始した後なら、開いている子 PR と最終 PR を閉じる。ブランチは残す）。
+/// マージした epic は取り下げられない。`target` は `{type: epic, epic}`。
 /// どの段階でも取り下げの意味は変わらないので、`targetVersion` は書かない。payload は持たない
 public struct AbandonEpicIntent: Equatable, Sendable {
     public static let kind = "abandonEpic"

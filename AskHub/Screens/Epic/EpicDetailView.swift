@@ -113,7 +113,7 @@ struct EpicDetailView: View {
         guard epic.stage >= .implementing else {
             return "開始する前なので、作業ブランチや子 PR はまだありません。元に戻せません"
         }
-        return "作業ブランチと子 PR は片付けます。元に戻せません"
+        return "開いている子 PR と最終 PR は、マージせずに閉じます。作業ブランチと子ブランチは残すので、後から取り出せます。元に戻せません"
     }
 
     private func subtitle(_ epic: Epic) -> String {

@@ -323,9 +323,11 @@ struct EpicHandlersTests {
         #expect(outcomes.contains(.rejected(kind: "startEpic", reason: "ゴールを直している途中。直し終えてから開始する")))
         #expect(outcomes.contains(.rejected(kind: "reviseGoal", reason: "ほかの指示でゴールを直している途中。直し終えてから指示し直す")))
     }
+}
 
-    // MARK: - 取り下げ
+// MARK: - 取り下げ
 
+extension EpicHandlersTests {
     private func abandon(_ epic: ULID, in store: InMemoryStateStore) async throws {
         try await put("abandonEpic", target: .init(type: "epic", epic: epic), payload: [:], in: store)
     }
@@ -345,14 +347,54 @@ struct EpicHandlersTests {
         #expect(try await intake(store).processPending() == [.accepted(kind: "abandonEpic")])
     }
 
-    /// 開始した後の取り下げは、段階 3 で決めるまで受け付けない
-    @Test func abandonIsRejectedAfterStart() async throws {
+    /// 開始した後も取り下げられ、動いているジョブを取り消し、一時停止の印を外す（開いている PR は周の最後に閉じる）
+    @Test func abandonStopsEpicAfterStart() async throws {
         let (store, epic) = try await awaitingStart()
         try await start(epic, in: store)
         #expect(try await intake(store).processPending() == [.accepted(kind: "startEpic")])
+        let path = StatePath.epic(Self.repo, epic.id)
+        var paused = try #require(try await file(EpicFile.self, at: path, in: store))
+        paused.pause = .init(since: Self.timestamp, origin: .init(keyId: keyID, nonce: .generate(at: Self.now)))
+        try await put(paused, at: path, in: store)
+
         try await abandon(epic.id, in: store)
-        #expect(try await intake(store).processPending() == [.rejected(kind: "abandonEpic", reason: "開始した後は取り下げられない（今は running）")])
-        #expect(try await file(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .running)
-        #expect(try await jobs(epic.id, in: store).map(\.state) == [.assigned])
+        #expect(try await intake(store).processPending() == [.accepted(kind: "abandonEpic")])
+        let abandoned = try #require(try await file(EpicFile.self, at: path, in: store))
+        #expect(abandoned.stage == .abandoned)
+        #expect(abandoned.pause == nil)
+        #expect(abandoned.mac == Self.laptop)
+        #expect(try await jobs(epic.id, in: store).map(\.state) == [.canceled])
+    }
+
+    /// マージした epic は取り下げられない
+    @Test func abandonIsRejectedAfterMerge() async throws {
+        let (store, epic) = try await awaitingStart(stage: .merged)
+        try await abandon(epic.id, in: store)
+        #expect(try await intake(store).processPending() == [.rejected(kind: "abandonEpic", reason: "マージした epic は取り下げられない")])
+        #expect(try await file(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .merged)
+    }
+
+    /// 最終 PR をマージしているジョブがあれば、マージは取り消せないので断る
+    @Test func abandonIsRejectedWhileMergingFinalPullRequest() async throws {
+        let (store, epic) = try await awaitingStart(stage: .reviewing)
+        let time = Self.timestamp
+        let merge = JobFile(
+            id: .generate(at: Self.now),
+            kind: .mergeFinalPullRequest,
+            repo: Self.repo,
+            epic: epic.id,
+            assignedMac: Self.commander,
+            needs: .init(claude: false, build: false),
+            state: .running,
+            attempts: 1,
+            createdAt: time,
+            updatedAt: time
+        )
+        try await put(merge, at: StatePath.job(Self.repo, epic: epic.id, job: merge.id), in: store)
+        try await abandon(epic.id, in: store)
+        let reason = "最終 PR をマージしている途中なので取り下げられない"
+        #expect(try await intake(store).processPending() == [.rejected(kind: "abandonEpic", reason: reason)])
+        #expect(try await file(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .reviewing)
+        #expect(try await jobs(epic.id, in: store).map(\.state) == [.running])
     }
 }

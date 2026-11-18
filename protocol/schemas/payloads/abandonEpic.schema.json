@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/abandonEpic.schema.json",
   "title": "取り下げの人の意図（kind が abandonEpic）の payload",
-  "description": "封筒の target は {type: epic, epic}。targetVersion は書かない。payload は空。知らない欄のある payload は読まない",
+  "description": "封筒の target は {type: epic, epic}。targetVersion は書かない。payload は空。知らない欄のある payload は読まない。開始した後の epic も取り下げられる（開いている子 PR と最終 PR を閉じ、ブランチは残す）。マージした epic は断る",
   "type": "object",
   "additionalProperties": false,
   "properties": {}

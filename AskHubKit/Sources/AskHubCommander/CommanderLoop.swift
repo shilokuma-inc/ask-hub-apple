@@ -7,7 +7,8 @@ import Foundation
 /// 常時オンの Mac の司令塔とワーカーの常駐のループ（`docs/renewal/flows.md` の「司令塔の動き」）。
 ///
 /// 1 周ごとに、人の意図を処理し終えてから、試行を読んでジョブの状態を決め、実装している epic のタスクと最終 PR を進めるジョブを作り（`TaskFlow`）、
-/// 自分宛ての Claude のジョブを引き受けて並んで動かし、進行を止めているものを知らせる。最後に、状態を Discussion の写しと照らし合わせる（写しに失敗しても、周は止めない）。
+/// 自分宛ての Claude のジョブを引き受けて並んで動かし、進行を止めているものを知らせる。最後に、状態を Discussion の写しと照らし合わせ、
+/// 開始した後にやめた epic の開いている PR を閉じる（どちらも失敗しても、周は止めない）。
 /// 生きている印（`commander.json`・`macs/<mac>.json`）は、決めた間隔で書く。GitHub の REST の上限の残りは、それより短い間隔で見て、少なくなったら知らせる
 public actor CommanderLoop {
     public struct Settings: Sendable {
@@ -85,6 +86,8 @@ public actor CommanderLoop {
     nonisolated let sleeper: any Sleeper
     /// Discussion の写し。nil なら写さない
     nonisolated let mirror: DiscussionMirror?
+    /// 開始した後にやめた epic の、開いている子 PR と最終 PR を閉じるもの。nil なら閉じない
+    nonisolated let abandonedPullRequests: AbandonedPullRequests?
     /// epic の作業場所。この Mac が開始のときに選ばれたら、作業場所の用意（`prepareWorkspace`）も引き受ける。nil なら引き受けない
     nonisolated let epicWorkspace: (any EpicWorkspace)?
     /// タスクのジョブ（`implementTask`・`reviewTask`・`fixTask`）を動かすもの（`MachineRuntime.taskRunners`）。
@@ -127,6 +130,7 @@ public actor CommanderLoop {
         log: @escaping @Sendable (String) -> Void,
         sleeper: any Sleeper = TaskSleeper(),
         mirror: DiscussionMirror? = nil,
+        abandonedPullRequests: AbandonedPullRequests? = nil,
         epicWorkspace: (any EpicWorkspace)? = nil,
         taskRunners: [JobKind: any JobRunning] = [:],
         tidy: @escaping @Sendable () async -> Void = {},
@@ -144,6 +148,7 @@ public actor CommanderLoop {
         self.log = log
         self.sleeper = sleeper
         self.mirror = mirror
+        self.abandonedPullRequests = abandonedPullRequests
         self.epicWorkspace = epicWorkspace
         self.taskRunners = taskRunners
         self.tidy = tidy
@@ -253,6 +258,9 @@ public actor CommanderLoop {
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
         await mirror?.syncAll(verifier: verifier)
         timer.lap("Discussion の写し")
+        // やめた epic の PR を閉じるのも、状態に GitHub を合わせるだけなので、失敗しても周を止めない
+        await abandonedPullRequests?.closeAll()
+        timer.lap("やめた epic の PR")
         if let report = timer.report { log(report) }
         return picked
     }
