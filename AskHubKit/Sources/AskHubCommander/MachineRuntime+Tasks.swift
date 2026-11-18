@@ -80,7 +80,8 @@ extension MachineRuntime {
             tools: configuration.buildTools(paths: paths),
             runner: ProcessCommandRunner()
         )
-        return CleanupService(context: context, machine: machine, log: log)
+        let journal = paths.root.appendingPathComponent("cleanup-unpublished.json")
+        return CleanupService(context: context, machine: machine, journal: journal, log: log)
     }
 
     /// 終わった epic の、この Mac に残ったもの（作業場所・手元のブランチ・DerivedData）を片付けるもの。生きている印を書いた後の見回りで流す。

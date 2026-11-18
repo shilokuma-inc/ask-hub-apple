@@ -35,19 +35,31 @@ public actor CleanupService {
     private var running: Task<Void, Never>?
     /// 済ませたが書けなかった結果。次の周で、頼みをやり直さずに同じ結果を書き直す（消したものを、もう一度消そうとして「消さなかった」と記録しない）
     private var unpublished: CleanupCandidatesFile?
+    /// 書けなかった結果を残す手元のファイル。止まって起動し直しても、頼みをやり直さずに書き直す（nil なら手元に残さない）
+    nonisolated let journal: URL?
 
-    public init(context: CommanderContext, machine: any CleanupMachine, log: @escaping @Sendable (String) -> Void) {
+    public init(
+        context: CommanderContext,
+        machine: any CleanupMachine,
+        journal: URL? = nil,
+        log: @escaping @Sendable (String) -> Void
+    ) {
         self.context = context
         self.machine = machine
+        self.journal = journal
         self.log = log
     }
 
     /// 済ませていない頼みがあり、動いているものが無ければ、古いものから 1 つ動かし始める。読めないときは次の周でやり直す
     public func poll(verifier: IntentVerifier) async {
         guard running == nil else { return }
+        if unpublished == nil, let journal, let data = try? Data(contentsOf: journal) {
+            unpublished = try? StateFileCoder.decode(CleanupCandidatesFile.self, from: data)
+        }
         if let unpublished {
             guard await publish(unpublished) else { return }
             self.unpublished = nil
+            if let journal { try? FileManager.default.removeItem(at: journal) }
         }
         let next: CleanupRequestsFile.Request
         do {
@@ -123,7 +135,11 @@ public actor CleanupService {
             }
         }
         file.handled = Array((file.handled + [record]).suffix(CleanupCandidatesFile.keptHandled))
-        if !(await publish(file)) { unpublished = file }
+        if !(await publish(file)) {
+            unpublished = file
+            // 起動し直しても書き直せるよう、手元に残す（残せなくても、動いている間は書き直す）
+            if let journal, let data = try? StateFileCoder.encode(file) { try? data.write(to: journal, options: .atomic) }
+        }
     }
 
     /// 選んだ候補を消す。選んだ後に探し直していれば、選んだものと今の候補が違うかもしれないので、何も消さない

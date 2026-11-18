@@ -270,6 +270,36 @@ struct CleanupServiceTests {
         #expect(try await candidates().candidates.isEmpty)
     }
 
+    /// 結果を書けないまま止まって起動し直しても、手元に残した結果を書き直し、頼みをやり直さない
+    @Test func republishesJournaledResultAfterRestart() async throws {
+        let journal = FileManager.default.temporaryDirectory.appendingPathComponent("cleanup-journal-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: journal) }
+        let first = RecordingCleanupMachine(candidates: [Self.clean])
+        let service = CleanupService(context: context, machine: first, journal: journal) { _ in }
+        try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 1))
+        await run(service)
+        let payload: [String: JSONValue] = [
+            "mac": .string(Self.mac.rawValue),
+            "scannedAt": .string(Timestamp(Self.now).rawValue),
+            "candidates": .array([.string(Self.clean.id)])
+        ]
+        try await accept(try await signed("removeCleanupCandidates", payload: payload, nonce: 2))
+        await store.failNextWrites(with: [.forbidden(message: nil)])
+        await run(service)
+        #expect(first.removed == [Self.clean.id])
+        #expect(FileManager.default.fileExists(atPath: journal.path))
+
+        // 起動し直した（新しい CleanupService）
+        let second = RecordingCleanupMachine(candidates: [Self.clean])
+        let restarted = CleanupService(context: context, machine: second, journal: journal) { _ in }
+        await run(restarted)
+        await run(restarted)
+        #expect(second.removed.isEmpty)
+        #expect(try await candidates().handled.last?.removed == [Self.clean.id])
+        #expect(try await candidates().candidates.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: journal.path))
+    }
+
     /// 封筒はあるが署名だけが合わない頼みでは動かない
     @Test func refusesRequestWithTamperedSignature() async throws {
         let machine = RecordingCleanupMachine(candidates: [Self.clean])
