@@ -1,0 +1,483 @@
+{
+  "description": "審査に出す人の意図の payload の例。read は、封筒の target と targetVersion が正しいときに、読む側が審査に出す意図として読めるか",
+  "schema": "payloads/submitForReview.schema.json",
+  "cases": [
+    {
+      "name": "after-approval",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "manual",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "manual"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "scheduled",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "scheduled",
+        "earliestReleaseDate": "2026-11-25T00:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "first-release",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "ios-and-macos",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          },
+          {
+            "platform": "macOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "scheduled-without-date",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "scheduled"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "date-without-scheduled",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "earliestReleaseDate": "2026-11-25T00:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "duplicate-platform",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          },
+          {
+            "platform": "iOS",
+            "build": "46"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "duplicate-locale",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "a"
+          },
+          {
+            "locale": "ja",
+            "text": "b"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "blank-text",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": " \n"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-text",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": ""
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "too-long",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "wrong-locale",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "Japanese",
+            "text": "a"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "no-builds",
+      "payload": {
+        "builds": [],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "wrong-build",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "1.2.3.4"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-platform",
+      "payload": {
+        "builds": [
+          {
+            "platform": "android",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-release-type",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "phased"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "missing-whats-new",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "releaseType": "manual"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "null-date",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "earliestReleaseDate": null
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "phased": true
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field-in-build",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45",
+            "id": "x"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}
