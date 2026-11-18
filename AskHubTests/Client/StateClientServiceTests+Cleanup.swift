@@ -42,6 +42,7 @@ extension StateClientServiceTests {
         let snapshot = try await service.fetchSnapshot()
         #expect(snapshot.sourceFailures.isEmpty)
         let mac = try #require(snapshot.mac("mac-mini"))
+        try #require(mac.cleanupCandidates.count == 3)
         #expect(mac.cleanupCandidates.map(\.id) == ["0123456789abcdef", "1123456789abcdef", "2123456789abcdef"])
         // clone はホームからのパスで出す
         #expect(mac.cleanupCandidates.first?.name == "~/Desktop/ios/old-habit-ios")
@@ -55,10 +56,17 @@ extension StateClientServiceTests {
         #expect(mac.cleanupResult == "1 件を消しました。1 件は消しませんでした（未 push のコミットがあるので消さなかった）")
 
         let removing = try await makeService(files: Self.askingEpic(extra: Self.cleanupFiles(scanned: true, pending: "remove"))).service
-        #expect(try await removing.fetchSnapshot().mac("mac-mini")?.cleanupWork == .removing)
+        #expect(try #require(try await removing.fetchSnapshot().mac("mac-mini")).cleanupWork == .removing)
         // 頼みを済ませれば、済ませていない頼みは無い
         let idle = try await makeService(files: Self.askingEpic(extra: Self.cleanupFiles(scanned: true))).service
-        #expect(try await idle.fetchSnapshot().mac("mac-mini")?.cleanupWork == nil)
+        #expect(try #require(try await idle.fetchSnapshot().mac("mac-mini")).cleanupWork == nil)
+        // 候補のファイルを読めなければ、探している途中とも済んだとも出さない
+        var unreadable = Self.cleanupFiles(scanned: false, pending: "find")
+        unreadable["cleanup/mac-mini/candidates.json"] = #"{"v":99}"#
+        let broken = try await makeService(files: Self.askingEpic(extra: unreadable)).service.fetchSnapshot()
+        let brokenMac = try #require(broken.mac("mac-mini"))
+        #expect(brokenMac.cleanupWork == nil)
+        #expect(brokenMac.cleanupResult == "片付けの状態を読めませんでした。読み直してください")
     }
 
     @Test

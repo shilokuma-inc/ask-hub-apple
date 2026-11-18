@@ -12,6 +12,7 @@ extension StateIntentMapper {
             return .findCleanupCandidates(mac: mac.name)
 
         case let .cleanUp(macID, candidateIDs):
+            guard !candidateIDs.isEmpty else { throw ClientServiceError(message: "消す候補を選んでください") }
             guard let mac = index.macs[macID], let scannedAt = mac.cleanupScannedAt else {
                 throw ClientServiceError(message: "片付けの候補をまだ探していません。探してから選んでください")
             }

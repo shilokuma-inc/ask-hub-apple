@@ -185,45 +185,48 @@ struct CleanupView: View {
     var body: some View {
         let mac = store.mac(macID)
         let candidates = mac?.cleanupCandidates ?? []
-        let selectedBytes = candidates.filter { selectedIDs.contains($0.id) }.reduce(Int64(0)) { $0 + $1.bytes }
+        // 選んだ後に注意が付いた（消せなくなった）候補は、選んだ数にも送るものにも入れない
+        let chosen = candidates.filter { selectedIDs.contains($0.id) && $0.caution == nil }
+        let selectedBytes = chosen.reduce(Int64(0)) { $0 + $1.bytes }
         List {
             if let mac {
                 statusSection(mac)
             }
-            if !candidates.isEmpty {
-                CardSection {
-                    ForEach(candidates) { candidate in
-                        candidateRow(candidate)
-                    }
-                } footer: {
+            CardSection {
+                if candidates.isEmpty {
+                    Text(mac?.cleanupScannedAt == nil
+                        ? "まだ探していません。「探す」を押すと、この Mac のワーカーが、手で作った clone・Simulator・DerivedData を探します"
+                        : "片付けの候補はありません")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(candidates) { candidate in
+                    candidateRow(candidate)
+                }
+            } footer: {
+                if !candidates.isEmpty {
                     Text("未コミット・未 push・stash などがあるものは選べません。消すときにも、もう一度確かめます")
                 }
             }
         }
-        .overlay {
-            if candidates.isEmpty {
-                ContentUnavailableView {
-                    Label(mac?.cleanupScannedAt == nil ? "まだ探していません" : "片付けの候補はありません", systemImage: "sparkles")
-                } description: {
-                    Text(mac?.cleanupScannedAt == nil ? "「探す」を押すと、この Mac のワーカーが、手で作った clone・Simulator・DerivedData を探します" : "")
-                }
-            }
+        // 探し直したら、前の一覧で選んだものは消す（同じ id でも、注意の付き方が変わっているかもしれない）
+        .onChange(of: mac?.cleanupScannedAt) {
+            selectedIDs = []
         }
         .pastelBackground()
         .compactList()
         .navigationTitle("片付けの候補")
         .safeAreaBar(edge: .bottom) {
             // 片付けを送ったら、司令塔が受け付けてワーカーが済ませるまで押せなくする（断られた理由などは残す）
-            cleanupBar(candidates: candidates, selectedBytes: selectedBytes)
+            cleanupBar(candidates: candidates, chosen: chosen, selectedBytes: selectedBytes)
         }
         .confirmationDialog("\(selectedIDs.count) 件を消しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
             Button("消す", role: .destructive) {
-                let ids = Array(selectedIDs)
+                let ids = chosen.map(\.id)
                 selectedIDs = []
                 Task { await store.send(.cleanUp(macID: macID, candidateIDs: ids)) }
             }
         } message: {
-            Text(Self.confirmation(candidates.filter { selectedIDs.contains($0.id) }, bytes: selectedBytes))
+            Text(Self.confirmation(chosen, bytes: selectedBytes))
         }
     }
 
@@ -245,6 +248,9 @@ struct CleanupView: View {
             switch mac.cleanupWork {
             case .finding?:
                 Label("探しています。数分かかることがあります", systemImage: "magnifyingglass")
+                Text("しばらくたっても終わらないときは、この Mac のワーカー（常時オンの Mac は司令塔）が、片付けの候補に対応した版か確かめてください")
+                    .appFont(.caption)
+                    .foregroundStyle(.secondary)
             case .removing?:
                 Label("消しています", systemImage: "trash")
             case nil:
@@ -293,7 +299,7 @@ struct CleanupView: View {
         return ByteFormat.string(candidate.bytes) + used
     }
 
-    private func cleanupBar(candidates: [CleanupCandidate], selectedBytes: Int64) -> some View {
+    private func cleanupBar(candidates: [CleanupCandidate], chosen: [CleanupCandidate], selectedBytes: Int64) -> some View {
         let busy = store.isReflecting([.cleanup(macID: macID)]) || store.mac(macID)?.cleanupWork != nil
         return VStack(spacing: 6) {
             HStack {
@@ -308,7 +314,7 @@ struct CleanupView: View {
                     Button("選んだものを消す（\(ByteFormat.string(selectedBytes))）", role: .destructive) { isConfirming = true }
                         .buttonStyle(.glassProminent)
                         .controlSize(.large)
-                        .disabled(selectedIDs.isEmpty || busy)
+                        .disabled(chosen.isEmpty || busy)
                 }
             }
             ReflectionStatusView(.cleanup(macID: macID), showsSyncBadge: true)
