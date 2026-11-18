@@ -338,14 +338,30 @@ struct EpicHandlersTests {
         #expect(try await intake(store).processPending() == [.accepted(kind: "abandonEpic")])
     }
 
-    /// 開始した後の取り下げは、段階 3 で決めるまで受け付けない
-    @Test func abandonIsRejectedAfterStart() async throws {
+    /// 開始した後も取り下げられ、動いているジョブを取り消し、一時停止の印を外す（開いている PR は周の最後に閉じる）
+    @Test func abandonStopsEpicAfterStart() async throws {
         let (store, epic) = try await awaitingStart()
         try await start(epic, in: store)
         #expect(try await intake(store).processPending() == [.accepted(kind: "startEpic")])
+        let path = StatePath.epic(Self.repo, epic.id)
+        var paused = try #require(try await file(EpicFile.self, at: path, in: store))
+        paused.pause = .init(since: Self.timestamp, origin: .init(keyId: keyID, nonce: .generate(at: Self.now)))
+        try await put(paused, at: path, in: store)
+
         try await abandon(epic.id, in: store)
-        #expect(try await intake(store).processPending() == [.rejected(kind: "abandonEpic", reason: "開始した後は取り下げられない（今は running）")])
-        #expect(try await file(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .running)
-        #expect(try await jobs(epic.id, in: store).map(\.state) == [.assigned])
+        #expect(try await intake(store).processPending() == [.accepted(kind: "abandonEpic")])
+        let abandoned = try #require(try await file(EpicFile.self, at: path, in: store))
+        #expect(abandoned.stage == .abandoned)
+        #expect(abandoned.pause == nil)
+        #expect(abandoned.mac == Self.laptop)
+        #expect(try await jobs(epic.id, in: store).map(\.state) == [.canceled])
+    }
+
+    /// マージした epic は取り下げられない
+    @Test func abandonIsRejectedAfterMerge() async throws {
+        let (store, epic) = try await awaitingStart(stage: .merged)
+        try await abandon(epic.id, in: store)
+        #expect(try await intake(store).processPending() == [.rejected(kind: "abandonEpic", reason: "マージした epic は取り下げられない")])
+        #expect(try await file(EpicFile.self, at: StatePath.epic(Self.repo, epic.id), in: store)?.stage == .merged)
     }
 }
