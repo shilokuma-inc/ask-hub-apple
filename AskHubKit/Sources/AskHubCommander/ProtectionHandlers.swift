@@ -96,23 +96,64 @@ struct ProtectionApplier {
         var stoppedFor: Duration?
     }
 
+    /// 掛けられなかったわけ（何も変えていない）
+    enum Failure: Error, Equatable {
+        case github(PullRequestError)
+        /// 同じ名前のルールセットが、守る範囲の外にも掛かる（かもしれない）。置き換えると、そのブランチの保護が消える
+        case existingBeyondPolicy
+    }
+
     var github: GitHubPullRequests
 
-    func apply(requiredChecks: [String]) async throws(PullRequestError) -> Outcome {
-        let settings = try await github.repositorySettings()
-        let summaries = try await github.branchRulesets()
-        let existing = summaries.first { $0.source == .repository && $0.name == ProtectionPolicy.rulesetName }
+    func apply(requiredChecks: [String]) async throws(Failure) -> Outcome {
+        let current: Current
+        do throws(PullRequestError) {
+            current = try await read()
+        } catch {
+            throw .github(error)
+        }
+        if let existing = current.existing, !existing.includes.isEmpty,
+           ProtectionRules.coverage(ruleset: existing, defaultBranch: current.settings.defaultBranch) != .within {
+            throw .existingBeyondPolicy
+        }
         // 先に掛ける。ここで失敗したら、何も外さない
-        let applied = try await github.putRuleset(ProtectionRules.draft(requiredChecks: requiredChecks), id: existing?.id)
+        let applied: Ruleset
+        do throws(PullRequestError) {
+            applied = try await github.putRuleset(ProtectionRules.draft(requiredChecks: requiredChecks), id: current.existing?.id)
+        } catch {
+            throw .github(error)
+        }
         var outcome = Outcome(rulesetID: applied.id, replaced: [], remaining: [], failures: [])
-        for summary in summaries where summary.id != applied.id && outcome.stoppedFor == nil {
-            await replace(summary, defaultBranch: settings.defaultBranch, into: &outcome)
+        // 掛けた結果が決まりの形でなければ（例外が残ったなど）、ほかの保護を外すと守りが弱くなるので、何も外さない
+        let problems = ProtectionRules.drift(of: applied, requiredChecks: requiredChecks)
+        guard problems.isEmpty else {
+            outcome.failures.append("掛けたルールセットが決まりの形にならなかったので、何も外さなかった（\(problems.joined(separator: "・"))）")
+            return outcome
+        }
+        for summary in current.summaries where summary.id != applied.id && outcome.stoppedFor == nil {
+            await replace(summary, defaultBranch: current.settings.defaultBranch, into: &outcome)
         }
         if outcome.stoppedFor == nil { await replaceClassicRules(into: &outcome) }
         if let wait = outcome.stoppedFor {
             outcome.failures.append("GitHub の上限に当たったので、残りの保護を確かめずに止めた（\(wait.components.seconds) 秒ほど待ってから押し直す）")
         }
         return outcome
+    }
+
+    /// 掛ける前に読むもの
+    private struct Current {
+        var settings: RepositorySettings
+        var summaries: [RulesetSummary]
+        /// 置き換える同じ名前のルールセットの中身。無ければ nil（作る）
+        var existing: Ruleset?
+    }
+
+    private func read() async throws(PullRequestError) -> Current {
+        let settings = try await github.repositorySettings()
+        let summaries = try await github.branchRulesets()
+        let summary = summaries.first { $0.source == .repository && $0.name == ProtectionPolicy.rulesetName }
+        guard let summary else { return Current(settings: settings, summaries: summaries, existing: nil) }
+        return Current(settings: settings, summaries: summaries, existing: try await github.ruleset(id: summary.id))
     }
 
     /// 重なるルールセットを外す。範囲の外も守るもの・organization のもの（リポジトリの側からは外せない）は、残したものとして書く
@@ -181,7 +222,17 @@ struct ProtectionApplier {
     static let broaderReason = "守るブランチのほかにも掛かる（かもしれない）ので、ほかのブランチの保護を消さないよう外さなかった。要らなければ GitHub の画面で外す"
 
     /// 掛けられなかった理由（人が読む文）
-    static func reason(_ error: PullRequestError, repo: RepositoryFullName) -> String {
+    static func reason(_ failure: Failure, repo: RepositoryFullName) -> String {
+        switch failure {
+        case let .github(error):
+            reason(error, repo: repo)
+        case .existingBeyondPolicy:
+            "\(repo) に今あるルールセット \(ProtectionPolicy.rulesetName) は、守るブランチ（develop・main・release/ の下）のほかにも掛かる（かもしれない）。" +
+                "置き換えるとそのブランチの保護が消えるので、何も変えなかった。GitHub の画面で \(ProtectionPolicy.rulesetName) の対象を直すか、名前を変えてから押し直す"
+        }
+    }
+
+    private static func reason(_ error: PullRequestError, repo: RepositoryFullName) -> String {
         switch error {
         case let .forbidden(message) where message?.localizedCaseInsensitiveContains("upgrade") == true:
             "\(repo) は private のリポジトリで、今のプランではルールセットを掛けられない（GitHub: \(message ?? "")）"
