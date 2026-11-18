@@ -480,6 +480,9 @@
   development のトークンを production の宛先に書き、`400 BadDeviceToken` で断られる。環境は、iOS は埋め込みの `embedded.mobileprovision`（CMS で包んだ XML の plist）の `Entitlements`、
   macOS は `SecTaskCopyValueForEntitlement` で読む（iOS では使えない）。同じ端末でも、開発用の署名の版と TestFlight の版でトークンが違う。
   ビルドした .app の値は、`codesign -d --entitlements - --xml <.app>` と `security cms -D -i <.app>/embedded.mobileprovision` で確かめられる（2026-11-12、#1059）
+- Mac 版のデモ撮影（`-demoPress`）で、ツールバーの SwiftUI の `Menu("操作", systemImage: …)` は、アクセシビリティでは `AXMenuButton` の名前 `More` になり、「操作」では見つからない。
+  `-demoPress "More|やめる…"` で開いたメニューの項目まで押せる。`-demoPress` は窓の中で名前が最初に合う要素を押すので、同じ名前のボタン（epic の「やめる…」と、「対処が要ります」の「やめる…」）があれば、
+  画面の上にあるほうが押される。押せなかった名前は、コンテナの tmp の `demo-snapshot.log` に「… が見つかりません」と、その時の要素の一覧が出る（2026-11-18、開始した後の取り下げの撮影）
 
 ## Keychain
 
