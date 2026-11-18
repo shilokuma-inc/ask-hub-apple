@@ -99,6 +99,10 @@ public actor CommanderLoop {
     nonisolated let appIcons: AppIconSync?
     /// App Store での配信を見つけ、リリースの後作業を進めるもの。生きている印を書いた後に、周の外で見回り始める。nil なら見回らない
     nonisolated let releases: ReleaseWatch?
+    /// 掛けた保護のずれを点検するもの。生きている印を書いた後に、周の外で確かめ始める。nil なら点検しない
+    nonisolated let protection: ProtectionWatch?
+    /// 人の意図の種類ごとの処理。管理用のトークンで GitHub を操作するもの（`AdminGitHub`）は、ここ（保護の設定など）にだけ渡す
+    nonisolated let handlers: [String: any IntentHandler]
 
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
@@ -135,7 +139,9 @@ public actor CommanderLoop {
         taskRunners: [JobKind: any JobRunning] = [:],
         tidy: @escaping @Sendable () async -> Void = {},
         appIcons: AppIconSync? = nil,
-        releases: ReleaseWatch? = nil
+        releases: ReleaseWatch? = nil,
+        protection: ProtectionWatch? = nil,
+        admin: AdminGitHub? = nil
     ) {
         self.context = context
         self.settings = settings
@@ -154,6 +160,8 @@ public actor CommanderLoop {
         self.tidy = tidy
         self.appIcons = appIcons
         self.releases = releases
+        self.protection = protection
+        handlers = Self.handlers(admin: admin)
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
         startedAt = context.now()
@@ -219,7 +227,7 @@ public actor CommanderLoop {
         try await beatIfDue()
         let verifier = try await verifier()
         timer.lap("生きている印と鍵")
-        let intake = IntentIntake(context: context, verifier: verifier, handlers: Self.handlers)
+        let intake = IntentIntake(context: context, verifier: verifier, handlers: handlers)
         // 順に 1 つずつ処理し、状態リポジトリに書けなかったらそこで止める（`IntentIntake.processPending` と同じ。次の周で続きから）
         let pending = try await intake.pending()
         seenIntents = Set(pending)
@@ -286,34 +294,6 @@ public actor CommanderLoop {
     public func waitForJobs() async {
         await slots.waitForJobs()
     }
-
-    static let handlers: [String: any IntentHandler] = [
-        "request": RequestHandler(),
-        "answer": AnswerHandler(),
-        "startEpic": StartEpicHandler(),
-        "reviseGoal": ReviseGoalHandler(),
-        "decideSplit": DecideSplitHandler(),
-        "abandonEpic": AbandonEpicHandler(),
-        "pauseEpic": PauseEpicHandler(),
-        "resumeEpic": ResumeEpicHandler(),
-        "handover": HandoverHandler(),
-        "addRepository": AddRepositoryHandler(),
-        "configureRepository": ConfigureRepositoryHandler(),
-        "removeRepository": RemoveRepositoryHandler(),
-        "retry": RetryJobHandler(),
-        "giveUp": GiveUpJobHandler(),
-        "decision": DecisionHandler(),
-        "approveMerge": ApproveMergeHandler(),
-        "instructFinal": InstructFinalHandler(),
-        "humanTaskDone": HumanTaskDoneHandler(),
-        "verify": VerifyHandler(),
-        "publishGitHubRelease": PublishGitHubReleaseHandler(),
-        "startRelease": StartReleaseHandler(),
-        "submitForReview": SubmitForReviewHandler(),
-        "distributeRelease": DistributeReleaseHandler(),
-        "withdrawSubmission": WithdrawSubmissionHandler(),
-        "abandonRelease": AbandonReleaseHandler()
-    ]
 
     /// 受け付けたら、生きている印を待たずにリリースの見回りを起こす種類（release ブランチを作る・App Store Connect に出すなど）
     static let releaseKinds: Set<String> = ["startRelease", "submitForReview", "distributeRelease", "withdrawSubmission"]
@@ -386,5 +366,6 @@ public actor CommanderLoop {
         await tidy()
         appIcons?.start()
         releases?.start()
+        protection?.start()
     }
 }
