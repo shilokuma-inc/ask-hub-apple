@@ -59,7 +59,11 @@ public actor CleanupService {
         if let unpublished {
             guard await republish(unpublished) else { return }
             self.unpublished = nil
-            if let journal { try? FileManager.default.removeItem(at: journal) }
+            // 書き置きを消せないまま次の頼みを済ませると、済ませた記録が上限で落ちた後に、古い書き置きで新しい結果を上書きしてしまう
+            guard removeJournal() else {
+                log("片付けの書き置きを手元から消せなかったので、次の頼みを済ませずに次の周でやり直す")
+                return
+            }
         }
         let next: CleanupRequestsFile.Request
         do {
@@ -159,7 +163,8 @@ public actor CleanupService {
         }
         file = Self.appending(record, to: file)
         if await publish(file) {
-            if let journal { try? FileManager.default.removeItem(at: journal) }
+            // 消せなければ、次の周で消し直すまで次の頼みを済ませない（`poll`）
+            _ = removeJournal()
         } else {
             unpublished = file
             // 起動し直しても書き直せるよう、手元に残す（残せなくても、動いている間は書き直す）
@@ -175,6 +180,13 @@ public actor CleanupService {
         var file = file
         file.handled = Array((file.handled + [record]).suffix(CleanupCandidatesFile.keptHandled))
         return file
+    }
+
+    /// 手元の書き置きを消す。もう無い（手元に残さない設定も）なら true
+    private func removeJournal() -> Bool {
+        guard let journal else { return true }
+        try? FileManager.default.removeItem(at: journal)
+        return !FileManager.default.fileExists(atPath: journal.path)
     }
 
     /// 手元のファイルに書く。手元に残さない設定なら、書かずに true

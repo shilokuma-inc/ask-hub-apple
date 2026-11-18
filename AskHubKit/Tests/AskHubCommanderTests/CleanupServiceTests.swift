@@ -379,10 +379,9 @@ struct CleanupServiceTests {
 }
 
 extension CleanupServiceTests {
-    /// 結果を書いた後、手元の書き置きを消す前に止まった（書き置きを消せなかったときも同じ）なら、起動し直しても書き置きで上書きしない
-    @Test func keepsPublishedResultWhenJournalOutlivesIt() async throws {
-        let journal = FileManager.default.temporaryDirectory.appendingPathComponent("cleanup-journal-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: journal) }
+    /// 消す頼みを済ませて結果を書いた後、消している間の書き置き（途中で止まった）が手元に残ったことにする
+    /// （結果を書いた直後に止まった・書き置きを消せなかった）
+    func publishRemovalLeavingJournal(_ journal: URL) async throws {
         let finder = RecordingCleanupMachine(candidates: [Self.clean])
         try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 1))
         await run(CleanupService(context: context, machine: finder, journal: journal) { _ in })
@@ -396,10 +395,15 @@ extension CleanupServiceTests {
         await run(CleanupService(context: context, machine: peeking, journal: journal) { _ in })
         #expect(try await candidates().handled.last?.removed == [Self.clean.id])
         #expect(!FileManager.default.fileExists(atPath: journal.path))
-
-        // 結果を書いた直後に止まり、消している間の書き置き（途中で止まった）が残ったことにして、起動し直す
         let written = try #require(peeking.journalWhileRemoving)
         try written.write(to: journal)
+    }
+
+    /// 結果を書いた後に書き置きが残っても、起動し直したときに書き置きで上書きしない
+    @Test func keepsPublishedResultWhenJournalOutlivesIt() async throws {
+        let journal = FileManager.default.temporaryDirectory.appendingPathComponent("cleanup-journal-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: journal) }
+        try await publishRemovalLeavingJournal(journal)
         let again = RecordingCleanupMachine(candidates: [Self.clean])
         let restarted = CleanupService(context: context, machine: again, journal: journal) { _ in }
         await run(restarted)
@@ -409,6 +413,37 @@ extension CleanupServiceTests {
         #expect(published.handled.last?.removed == [Self.clean.id])
         #expect(published.handled.last?.problem == nil)
         #expect(published.candidates.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: journal.path))
+    }
+
+    /// 書き置きを消せない間は、次の頼みを済ませない（済ませた記録が上限で落ちた後に、古い書き置きで上書きしない）
+    @Test func waitsForJournalRemovalBeforeNextRequest() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cleanup-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let writable = [FileAttributeKey.posixPermissions: 0o755]
+        defer {
+            try? FileManager.default.setAttributes(writable, ofItemAtPath: folder.path)
+            try? FileManager.default.removeItem(at: folder)
+        }
+        let journal = folder.appendingPathComponent("cleanup-unpublished.json")
+        try await publishRemovalLeavingJournal(journal)
+        // 書き置きのフォルダを書けなくして（消せなくして）、次の探す頼みを積む
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        try await accept(try await signed("findCleanupCandidates", payload: ["mac": .string(Self.mac.rawValue)], nonce: 3))
+        let again = RecordingCleanupMachine(candidates: [Self.clean])
+        let restarted = CleanupService(context: context, machine: again, journal: journal) { _ in }
+        await run(restarted)
+        await run(restarted)
+        #expect(again.scans == 0)
+        #expect(try await candidates().handled.last?.removed == [Self.clean.id])
+        #expect(FileManager.default.fileExists(atPath: journal.path))
+
+        // 消せるようになれば、書き置きを消してから次の頼みを済ませる
+        try FileManager.default.setAttributes(writable, ofItemAtPath: folder.path)
+        await run(restarted)
+        await run(restarted)
+        #expect(again.scans == 1)
+        #expect(try await candidates().handled.last?.action == .find)
         #expect(!FileManager.default.fileExists(atPath: journal.path))
     }
 }
