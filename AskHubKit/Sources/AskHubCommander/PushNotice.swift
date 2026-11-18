@@ -140,6 +140,20 @@ public struct PushNotice: Equatable, Sendable {
         switch reason {
         case .submissionReady: "審査に出す準備ができました。What's New とビルドを確かめて、審査に出してください"
         case let .submissionProblem(step): "リリース（\(step.label)）が止まっています。確かめてください"
+        case let .reviewState(platform, state): reviewLine(platform, state)
+        case .submissionDistributed: "App Store で配信しました"
+        default: nil
+        }
+    }
+
+    private static func reviewLine(_ platform: AppStorePlatform, _ state: AppStoreVersionState) -> String? {
+        switch state {
+        case .inReview: "\(platform.rawValue) の審査が始まりました"
+        case .pendingDeveloperRelease: "\(platform.rawValue) が審査に通りました。「配信する」を押すと配信します"
+        case .pendingAppleRelease, .accepted: "\(platform.rawValue) が審査に通りました"
+        case .processingForDistribution: "\(platform.rawValue) が審査に通りました。まもなく配信されます"
+        case .rejected, .metadataRejected, .invalidBinary:
+            "\(platform.rawValue) が審査で断られました（リジェクト）。App Store Connect で理由を確かめてください"
         default: nil
         }
     }

@@ -22,13 +22,15 @@ extension ReleaseWatch {
             .sorted()
         var advanced: [SubmissionFile] = []
         for version in versions {
-            guard let file = try? await context.readable(SubmissionFile.self, at: StatePath.submission(repo, version)),
-                  !file.isEnded else { continue }
-            if file.origin == .askhub {
-                advanced.append(await prepare(file, settings: settings))
-            } else {
-                advanced.append(file)
+            guard let file = try? await context.readable(SubmissionFile.self, at: StatePath.submission(repo, version)) else { continue }
+            guard !file.isEnded else {
+                // 配信の知らせを出し続ける間は返す（進めることは無い）
+                if file.end?.reason == .distributed { advanced.append(file) }
+                continue
             }
+            var progressed = await performRequests(file, settings: settings)
+            if progressed.origin == .askhub { progressed = await prepare(progressed, settings: settings) }
+            advanced.append(progressed)
         }
         return advanced
     }
@@ -281,6 +283,31 @@ extension ReleaseWatch {
                 file.revision += 1
             }
         case .submit, .distribute, .withdraw, .review:
+            mergeRequests(changed, into: &file, step: step)
+        }
+    }
+
+    /// 人が押した操作を送った結果を写す。記録を読んだ後に、人がほかの操作を押していれば写さない
+    static func mergeRequests(_ changed: SubmissionFile, into file: inout SubmissionFile, step: SubmissionFile.Step) {
+        switch step {
+        case .submit:
+            // 同じ「審査に出す」のままなら、出し終えたプラットフォームの状態を写す
+            guard file.submit == changed.submit else { return }
+            for review in changed.review where review.submittedAt != nil {
+                guard file.review.first(where: { $0.platform == review.platform }) != review else { continue }
+                file.review.removeAll { $0.platform == review.platform }
+                file.review.append(review)
+            }
+        case .distribute:
+            if file.distribution?.approval == changed.distribution?.approval, file.distribution?.doneAt == nil {
+                file.distribution?.doneAt = changed.distribution?.doneAt
+            }
+        case .withdraw:
+            guard file.withdrawal?.approval == changed.withdrawal?.approval, file.withdrawal?.doneAt == nil,
+                  changed.withdrawal?.doneAt != nil else { return }
+            file.withdrawal = changed.withdrawal
+            file.submit = nil
+        default:
             break
         }
     }

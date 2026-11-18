@@ -104,7 +104,10 @@ public actor ReleaseWatch {
                 detectedAt[repo] = context.now()
             }
             waiting += await advanceAll(repo, settings: file).flatMap(Blocker.waiting(on:))
-            waiting += await advanceSubmissions(repo, settings: file).flatMap(Blocker.waiting(on:))
+            let now = context.now()
+            waiting += await advanceSubmissions(repo, settings: file).flatMap { submission in
+                Blocker.waiting(on: submission) + Blocker.reviewNotices(on: submission, now: now)
+            }
         }
         blockers = waiting
     }
@@ -122,6 +125,8 @@ public actor ReleaseWatch {
         do {
             guard let found = try await app(of: repo, base: settings.build?.baseBranch) else { return }
             let versions = try await stores[found.store].versions(of: found.app.id)
+            // 審査の状態を、リリースを始めた版の記録に書く（審査中・承認・リジェクト・配信の知らせのもと）
+            await trackReview(repo, versions: versions)
             for live in Self.live(versions) {
                 guard let build = live.build else {
                     report("\(repo) の \(live.platform.rawValue) \(live.version) は配信中だが、ビルドを読めない。次に読むときにやり直す")

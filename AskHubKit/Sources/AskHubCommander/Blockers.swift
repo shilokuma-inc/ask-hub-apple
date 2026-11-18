@@ -28,6 +28,10 @@ public struct Blocker: Equatable, Sendable {
         case submissionReady
         /// リリースを始めた版の準備・審査の操作が、人が直すまで進まない
         case submissionProblem(SubmissionFile.Step)
+        /// 審査の状態が変わった（審査中・承認・リジェクト）。人を止めないものもあるが、知らせる
+        case reviewState(AppStorePlatform, AppStoreVersionState)
+        /// リリースを始めた版を配信した
+        case submissionDistributed
     }
 
     /// まとめて 1 つの通知にする単位
@@ -192,6 +196,7 @@ extension Blocker {
         let scope = Scope.submission(submission.repo, submission.version)
         let base = "submission/\(submission.repo.rawValue)/\(submission.version.rawValue)"
         var blockers: [Blocker] = []
+        guard !submission.isEnded else { return [] }
         // ビルドか What's New が変わったら（revision が上がったら）知らせ直す
         if submission.awaitsSubmission {
             blockers.append(Blocker(key: "\(base)/ready/\(submission.revision)", scope: scope, reason: .submissionReady))
