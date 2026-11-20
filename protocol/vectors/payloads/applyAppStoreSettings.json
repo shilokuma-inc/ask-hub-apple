@@ -36,7 +36,8 @@
       "payload": {
         "supportUrl": "https://example.com/support",
         "marketingUrl": "https://example.com",
-        "copyright": "2026 Shilokuma Inc."
+        "copyright": "2026 Shilokuma Inc.",
+        "reviewContact": "copyFromOtherApp"
       },
       "schemaValid": true,
       "read": "valid"
@@ -45,6 +46,14 @@
       "name": "copyright-only",
       "payload": {
         "copyright": "© 2026 しろくま"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "review-contact-only",
+      "payload": {
+        "reviewContact": "copyFromOtherApp"
       },
       "schemaValid": true,
       "read": "valid"
@@ -131,6 +140,17 @@
       "name": "empty-copyright",
       "payload": {
         "copyright": ""
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "review-contact-values",
+      "payload": {
+        "reviewContact": {
+          "contactFirstName": "Taro",
+          "contactEmail": "taro@example.com"
+        }
       },
       "schemaValid": false,
       "read": "malformed"
