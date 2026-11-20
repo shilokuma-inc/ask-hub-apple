@@ -73,6 +73,17 @@ public enum StatePath {
         "\(submissions(repo))/\(version.rawValue).json"
     }
 
+    /// リリースを始めた版の App Store のスクショの見本（差のある画面だけ。人が確かめる。元の画像は常時オンの Mac に置く）
+    public static func storeScreenshot(
+        _ repo: RepositoryFullName,
+        _ version: MarketingVersion,
+        displayType: String,
+        locale: String,
+        index: Int
+    ) -> String {
+        "\(repositoryDirectory(repo))/store-screenshots/\(version.rawValue)/\(displayType)/\(locale)/\(index).jpg"
+    }
+
     /// 新しいアプリを App Store に載せる準備（チェックリスト）
     public static func appStoreSetup(_ repo: RepositoryFullName) -> String {
         "\(repositoryDirectory(repo))/app-store.json"

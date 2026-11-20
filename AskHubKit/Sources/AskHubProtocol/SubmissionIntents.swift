@@ -70,7 +70,8 @@ public struct StartReleaseIntent: Equatable, Sendable {
 /// `builds` は出すビルド（プラットフォームごと）、`whatsNew` は人が確かめた What's New（言語ごと。初めての版は空）、
 /// `releaseType` は審査に通った後の配信の方式、`earliestReleaseDate` は `scheduled` のときの配信の日時、
 /// `listing` は人が確かめた掲載文の直し（変える言語だけ。nil の欄は変えない。無ければ掲載文を変えない）、
-/// `appReview` は人が確かめた App Review の情報の直し（nil の欄は変えない。無ければ変えない。パスワードは持たない）
+/// `appReview` は人が確かめた App Review の情報の直し（nil の欄は変えない。無ければ変えない。パスワードは持たない）、
+/// `screenshots` は人が確かめたスクショ（撮影のコミットと、前のままにする画面。無ければスクショを変えない）
 public struct SubmitForReviewIntent: Equatable, Sendable {
     public static let kind = "submitForReview"
     /// 一度に出せるプラットフォームの数の上限
@@ -84,6 +85,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
     public var earliestReleaseDate: Timestamp?
     public var listing: [ListingText]
     public var appReview: ReviewInformation?
+    public var screenshots: SubmissionFile.ScreenshotDecision?
     public var intent: IntentReference
 
     public init(
@@ -95,6 +97,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         earliestReleaseDate: Timestamp? = nil,
         listing: [ListingText] = [],
         appReview: ReviewInformation? = nil,
+        screenshots: SubmissionFile.ScreenshotDecision? = nil,
         intent: IntentReference
     ) {
         self.target = target
@@ -105,6 +108,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         self.earliestReleaseDate = earliestReleaseDate
         self.listing = listing
         self.appReview = appReview
+        self.screenshots = screenshots
         self.intent = intent
     }
 
@@ -115,6 +119,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         var earliestReleaseDate: Timestamp?
         var listing: [ListingText]?
         var appReview: ReviewInformation?
+        var screenshots: SubmissionFile.ScreenshotDecision?
     }
 
     public init(envelope: IntentEnvelope) throws(MalformedIntent) {
@@ -140,6 +145,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
             earliestReleaseDate: payload.earliestReleaseDate,
             listing: payload.listing ?? [],
             appReview: payload.appReview,
+            screenshots: payload.screenshots,
             intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
         )
     }
@@ -161,6 +167,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
             let problems = ReviewInformation.problems(of: appReview, name: "appReview")
             if !problems.isEmpty { throw .init(detail: problems.joined(separator: "、")) }
         }
+        if let problems = payload.screenshots?.problems, !problems.isEmpty { throw .init(detail: problems.joined(separator: "、")) }
     }
 
     public var targetVersion: String { String(revision) }
@@ -172,7 +179,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
             releaseType: releaseType,
             earliestReleaseDate: earliestReleaseDate,
             listing: listing,
-            appReview: appReview
+            appReview: appReview,
+            screenshots: screenshots
         )
     }
 
@@ -183,7 +191,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         releaseType: AppStoreReleaseType,
         earliestReleaseDate: Timestamp?,
         listing: [ListingText] = [],
-        appReview: ReviewInformation? = nil
+        appReview: ReviewInformation? = nil,
+        screenshots: SubmissionFile.ScreenshotDecision? = nil
     ) -> [String: JSONValue] {
         let payload = Payload(
             builds: builds,
@@ -191,7 +200,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
             releaseType: releaseType,
             earliestReleaseDate: earliestReleaseDate,
             listing: listing.isEmpty ? nil : listing,
-            appReview: appReview
+            appReview: appReview,
+            screenshots: screenshots
         )
         guard case let .object(fields)? = (try? JSONEncoder().encode(payload)).flatMap({ try? JSONValue(parsing: $0) }) else { return [:] }
         return fields
