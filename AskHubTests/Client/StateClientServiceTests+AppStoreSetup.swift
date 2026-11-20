@@ -140,13 +140,18 @@ extension StateClientServiceTests {
                       {"id":"supportUrl","state":"todo","note":"まだ書いていない言語: ja","checkedAt":"2027-01-20T01:00:00Z"},
                       {"id":"copyright","state":"todo","checkedAt":"2027-01-20T01:00:00Z"},
                       {"id":"reviewContact","state":"todo","checkedAt":"2027-01-20T01:00:00Z"}],
+             "settingsRequest":{"approval":{"keyId":"\(String(repeating: "k", count: 43))","nonce":"01JCN0NCE00000000000000008"},
+                                "at":"2027-01-20T01:00:00Z","settings":{"reviewContact":"copyFromOtherApp"},
+                                "doneAt":"2027-01-20T01:10:00Z","reviewContactFrom":{"id":"6740000009","name":"ほかのアプリ"}},
              "checkedAt":"2027-01-20T01:00:00Z","createdAt":"2027-01-20T01:00:00Z","updatedAt":"2027-01-20T01:00:00Z"}
             """
         let fixture = try makeService(files: Self.askingEpic(extra: [Self.setupPath: setup]))
         let service = fixture.service
         let snapshot = try await fixture.service.fetchSnapshot()
-        // 連絡先は AskHub から書かない（App Store Connect で入れる）
-        #expect(snapshot.appStoreSetup(of: setupRepositoryID)?.writableItems.map(\.kind) == [.supportUrl, .copyright])
+        // 連絡先は値を持たずに、ほかのアプリの版から写す（写したアプリの名前だけを出す）
+        let loaded = try #require(snapshot.appStoreSetup(of: setupRepositoryID))
+        #expect(loaded.writableItems.map(\.kind) == [.supportUrl, .copyright, .reviewContact])
+        #expect(loaded.settingsRequest?.reviewContactFrom == "ほかのアプリ")
         // マーケティング URL だけは送れない（サポート URL と一緒に書く）
         await #expect(throws: ClientServiceError.self) {
             try await service.perform(.applyAppStoreSettings(
@@ -157,7 +162,8 @@ extension StateClientServiceTests {
         let request = AppStoreSettingsRequest(
             supportURL: " https://example.com/support ",
             marketingURL: "https://example.com",
-            copyright: " 2026 Example Inc. "
+            copyright: " 2026 Example Inc. ",
+            copyReviewContact: true
         )
         try await service.perform(.applyAppStoreSettings(repositoryID: setupRepositoryID, request: request))
         let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
@@ -165,7 +171,8 @@ extension StateClientServiceTests {
         #expect(apply.settings == AppStoreSettings(
             supportUrl: "https://example.com/support",
             marketingUrl: "https://example.com",
-            copyright: "2026 Example Inc."
+            copyright: "2026 Example Inc.",
+            reviewContact: .copyFromOtherApp
         ))
     }
 
