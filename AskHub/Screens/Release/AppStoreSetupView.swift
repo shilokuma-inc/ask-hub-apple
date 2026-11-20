@@ -78,7 +78,7 @@ struct AppStoreSetupView: View {
         if setup.isExcluded { return "App Store に出さないリポジトリです" }
         if setup.releasedAt != nil { return "初めての版を配信しました" }
         let remaining = setup.pendingItems(firstRelease: true).count
-        if setup.app == nil { return "App Store Connect にアプリがありません（残り \(remaining)）" }
+        if setup.app == nil { return "アプリがまだ無い · 残り \(remaining)" }
         return remaining == 0 ? "準備は終わっています" : (firstRelease ? "初めての版を審査に出すまでに、残り \(remaining)" : "残り \(remaining)")
     }
 
@@ -335,7 +335,7 @@ struct AppStoreSettingsSheet: View {
             }
             .formStyle(.grouped)
             .pastelBackground()
-            .navigationTitle("App Store Connect に書く")
+            .navigationTitle("値を書く")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル", action: onClose)
@@ -343,6 +343,13 @@ struct AppStoreSettingsSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     SheetSendButton("書く", isSending: sending.isSending) { submit() }
                         .disabled(composed.isEmpty)
+                }
+            }
+            .onAppear {
+                // 無料・すべての地域は、まだ決めていなければ既定で選んでおく（書くのは「書く」を押したときだけ）
+                if !sending.showsStatus {
+                    request.free = needs(.price)
+                    request.everywhere = needs(.availability)
                 }
             }
         }
