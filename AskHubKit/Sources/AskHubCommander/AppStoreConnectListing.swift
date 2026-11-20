@@ -1,7 +1,8 @@
 import AskHubProtocol
 import Foundation
 
-// 新しいアプリを App Store に載せる準備の API（Bundle ID・コンテンツの権利・カテゴリ・プライバシーポリシーの URL・価格・配信の地域・年齢制限）。
+// 新しいアプリを App Store に載せる準備の API（Bundle ID・コンテンツの権利・カテゴリ・プライバシーポリシーの URL・価格・配信の地域・年齢制限。
+// 初めての版の項目は `AppStoreConnectVersionSetup.swift`）。
 // 読み取りは見回りで、書き込みは人の意図を受け付けたときだけ使う（`docs/renewal/release.md` の「新しいアプリを載せる」）
 
 /// App Store Connect で読んだ、アプリの準備の様子。nil の欄は読めなかった（API が断った・無かった）
@@ -70,6 +71,11 @@ public protocol AppStoreConnectListing: Sendable {
     func setFreePrice(of appID: String) async throws(AppStoreConnectError)
     /// すべての地域と、これから足される地域に配信する
     func setAvailableEverywhere(of appID: String) async throws(AppStoreConnectError)
+    /// 初めての版の枠の準備の様子（著作権表示・言語ごとのサポート URL とマーケティング URL・App Review の連絡先がそろっているか）
+    func versionSetupState(of versionID: String) async throws(AppStoreConnectError) -> AppStoreVersionSetupState
+    func setCopyright(_ text: String, versionID: String) async throws(AppStoreConnectError)
+    /// 版の 1 つの言語に、サポート URL とマーケティング URL を書く（nil の欄は送らない）
+    func setVersionURLs(support: String?, marketing: String?, localizationID: String) async throws(AppStoreConnectError)
 }
 
 /// 審査の API と準備の API の両方（司令塔の見回りが使う）
