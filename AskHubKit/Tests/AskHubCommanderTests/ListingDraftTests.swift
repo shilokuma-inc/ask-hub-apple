@@ -37,6 +37,12 @@ struct ListingDraftTests {
         )
         let problems = ListingRules.problems(added, current: current)
         #expect(problems.contains { $0.contains("URL") } && problems.contains { $0.contains("開発の道具") })
+        // 今の文に URL があっても、別の URL を足したら断る
+        let another = ListingProposal(
+            drafts: [ListingText(locale: "ja", description: "推しの予定を数えるアプリ。お問い合わせ: https://example.com/support https://example.org")],
+            reason: "説明を足した"
+        )
+        #expect(ListingRules.problems(another, current: current).contains { $0.contains("https://example.org") })
     }
 
     @Test func refusesUnknownLocalesLongKeywordsAndEmptyItems() {

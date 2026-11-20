@@ -83,10 +83,9 @@ public enum ListingRules {
             let now = current.first { $0.locale == draft.locale }
             for field in ListingText.Field.allCases {
                 guard let value = draft[field] else { continue }
-                // GitHub Release の決まりと同じもの（URL・メールアドレス・トークン・開発の道具の名前）を足さない。今の文にもあるものは許す
-                let before = Set(ReleaseNotesRules.problems(now?[field] ?? ""))
-                let found = ReleaseNotesRules.problems(value).filter { !before.contains($0) && !$0.contains("文字を超えている") && $0 != "本文が空" }
-                problems += found.map { "\(draft.locale) の \(field.rawValue): \($0)" }
+                // GitHub Release の決まりと同じもの（URL・メールアドレス・トークン・開発の道具の名前）を足さない。今の文にもある同じものは許す
+                let added = additions(value, current: now?[field] ?? "")
+                problems += added.map { "\(draft.locale) の \(field.rawValue): \($0)" }
                 if field == .keywords, value.split(separator: ",", omittingEmptySubsequences: false).contains(where: {
                     $0.trimmingCharacters(in: .whitespaces).isEmpty
                 }) {
@@ -94,6 +93,28 @@ public enum ListingRules {
                 }
             }
         }
+        return problems
+    }
+}
+
+extension ListingRules {
+    /// 案で新しく足した URL・メールアドレス・トークンのような文字列・開発の道具の名前（今の文にある同じものは除く）
+    static func additions(_ text: String, current: String) -> [String] {
+        func matches(_ pattern: Regex<Substring>, in text: String) -> Set<String> {
+            Set(text.matches(of: pattern).map { String($0.output) })
+        }
+        let kinds: [(Regex<Substring>, String)] = [
+            (/[A-Za-z][A-Za-z0-9+.\-]*:\/\/[^\s]+/, "URL"),
+            (/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/, "メールアドレス"),
+            (/(?:gh[pousr]_|github_pat_|sk-ant-)[A-Za-z0-9_]{8,}|[A-Za-z0-9+\/_\-]{40,}/, "トークン・ハッシュのような長い文字列")
+        ]
+        var problems: [String] = []
+        for (pattern, name) in kinds {
+            let added = matches(pattern, in: text).subtracting(matches(pattern, in: current))
+            if !added.isEmpty { problems.append("\(name)（\(added.sorted().joined(separator: "・"))）を足さない") }
+        }
+        let words = ReleaseNotesRules.internalWords.filter { text.contains($0) && !current.contains($0) }
+        if !words.isEmpty { problems.append("開発の道具の名前（\(words.joined(separator: "・"))）を入れない") }
         return problems
     }
 }
