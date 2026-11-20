@@ -169,6 +169,8 @@ public struct PushNotice: Equatable, Sendable {
         case let .submissionProblem(step): "リリース（\(step.label)）が止まっています。確かめてください"
         case let .reviewState(platform, state): reviewLine(platform, state)
         case .submissionDistributed: "App Store で配信しました"
+        case let .slotKept(platform):
+            "やめたリリースの \(platform.rawValue) の版を、App Store Connect から消せませんでした。App Store Connect で確かめてください"
         default: nil
         }
     }
@@ -257,6 +259,7 @@ extension SubmissionFile.Step {
         case .withdraw: "審査の取り下げ"
         case .review: "審査の状態"
         case .integration: "release ブランチの取り込み"
+        case .appStoreVersion: "App Store Connect の版の枠"
         }
     }
 }

@@ -86,7 +86,7 @@ extension ReleaseWatchTests {
 
     /// App Store Connect の 1.2.0 の iOS の版
     func version(_ state: AppStoreVersionState) -> AppStoreVersionInfo {
-        AppStoreVersionInfo(id: "v-1.2.0", platform: .iOS, versionString: "1.2.0", state: state)
+        AppStoreVersionInfo(id: "v-1-2-0", platform: .iOS, versionString: "1.2.0", state: state)
     }
 
     func readyToSubmit(releaseType: AppStoreReleaseType = .afterApproval) async throws -> SubmissionFile {
@@ -107,7 +107,7 @@ extension ReleaseWatchTests {
         appStore.state.withLock { state in
             // release ブランチを作ったとき（今）に上げたビルド
             state.builds = [build("45", minutesFromNow: 0)]
-            state.localizations["v-1.2.0"] = [
+            state.localizations["v-1-2-0"] = [
                 AppStoreLocalization(id: "l-ja", locale: "ja", whatsNew: nil),
                 AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: "- Faster")
             ]
@@ -124,7 +124,7 @@ extension ReleaseWatchTests {
             "createVersion iOS 1.2.0 afterApproval b45",
             "updateWhatsNew l-ja ・速くなりました",
             "createReviewSubmission iOS",
-            "addToReviewSubmission s-iOS v-1.2.0",
+            "addToReviewSubmission s-iOS v-1-2-0",
             "submitReviewSubmission s-iOS"
         ])
         let file = try await submission()
@@ -166,7 +166,7 @@ extension ReleaseWatchTests {
         var file = try await readyToSubmit(releaseType: .manual)
         file.review = [.init(platform: .iOS, state: .waitingForReview, since: Timestamp(Self.now), submittedAt: Timestamp(Self.now))]
         try await putSubmission(file)
-        let inReview = AppStoreVersionInfo(id: "v-1.2.0", platform: .iOS, versionString: "1.2.0", state: .inReview)
+        let inReview = AppStoreVersionInfo(id: "v-1-2-0", platform: .iOS, versionString: "1.2.0", state: .inReview)
         appStore.state.withLock { $0.others = [inReview] }
         let watch = watch()
         await watch.refresh()
@@ -183,7 +183,7 @@ extension ReleaseWatchTests {
         approved.distribution = .init(approval: approved.start!.approval, at: Timestamp(clock.now))
         try await putSubmission(approved)
         await watch.refresh()
-        #expect(appStore.state.withLock { $0.writes }.last == "requestRelease v-1.2.0")
+        #expect(appStore.state.withLock { $0.writes }.last == "requestRelease v-1-2-0")
         #expect(try await submission().distribution?.doneAt != nil)
 
         // 配信を見つけたら終え、配信の知らせを出す。GitHub Release は審査に出したときの What's New で公開する
@@ -213,8 +213,8 @@ extension ReleaseWatchTests {
         file.withdrawal = .init(approval: file.start!.approval, at: Timestamp(Self.now))
         try await putSubmission(file)
         appStore.state.withLock { state in
-            state.others = [AppStoreVersionInfo(id: "v-1.2.0", platform: .iOS, versionString: "1.2.0", state: .waitingForReview)]
-            state.submissions = [AppStoreReviewSubmission(id: "s1", platform: .iOS, state: .waitingForReview, versionID: "v-1.2.0")]
+            state.others = [AppStoreVersionInfo(id: "v-1-2-0", platform: .iOS, versionString: "1.2.0", state: .waitingForReview)]
+            state.submissions = [AppStoreReviewSubmission(id: "s1", platform: .iOS, state: .waitingForReview, versionID: "v-1-2-0")]
         }
         let watch = watch()
         await watch.refresh()

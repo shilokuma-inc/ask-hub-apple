@@ -24,6 +24,15 @@ extension ReleaseWatch {
         for version in versions {
             guard let file = try? await context.readable(SubmissionFile.self, at: StatePath.submission(repo, version)) else { continue }
             guard !file.isEnded else {
+                // やめた版は、まだ審査に出していない App Store Connect の版の枠を消す。消せなかった枠を知らせる間は返す
+                if file.end?.reason == .abandoned {
+                    if file.awaitsSlotRemoval {
+                        advanced.append(await submissionStep(.appStoreVersion, file) { try await self.removeSlots($0, settings: settings) })
+                    } else if file.appStoreVersions?.contains(where: { $0.removal == .kept }) == true {
+                        advanced.append(file)
+                    }
+                    continue
+                }
                 // 配信した版は、release ブランチを main と develop に取り込み、配信の知らせを出し続ける間は返す
                 guard file.end?.reason == .distributed else { continue }
                 let bases = Self.integrationBases(settings)
@@ -40,6 +49,10 @@ extension ReleaseWatch {
     /// 1 つの版の準備を、進められるところまで進める
     func prepare(_ submission: SubmissionFile, settings: RepositoryFile) async -> SubmissionFile {
         var file = submission
+        // App Store Connect の版の枠は、リリースを始めたらすぐ作る（スクショや説明文を先に直せるように）。審査に出した後は、提出の段取りに任せる
+        if file.appStoreVersions != nil, file.submit == nil, !file.hasReviewInFlight, !isHeld(.appStoreVersion, file) {
+            file = await submissionStep(.appStoreVersion, file) { try await self.syncSlots($0, settings: settings) }
+        }
         if file.branch == nil, !isHeld(.branch, file) {
             file = await submissionStep(.branch, file) { try await self.createReleaseBranch($0, settings: settings) }
         }
@@ -62,6 +75,10 @@ extension ReleaseWatch {
         // 審査に出した後は、出したビルドを変えない（出し直すときは取り下げてから）
         if file.submit == nil, !file.hasReviewInFlight, !isHeld(.builds, file) {
             file = await submissionStep(.builds, file) { try await self.findBuilds($0, settings: settings) }
+        }
+        // 見つけたビルドと下書きを、この見回りのうちに枠に入れる
+        if file.appStoreVersions?.isEmpty == false, file.submit == nil, !file.hasReviewInFlight, !isHeld(.appStoreVersion, file) {
+            file = await submissionStep(.appStoreVersion, file) { try await self.syncSlots($0, settings: settings) }
         }
         return file
     }
@@ -252,8 +269,10 @@ extension ReleaseWatch {
         return try await context.writingResult { () throws(CommanderError) -> SubmissionFile in
             do throws(StateFileStore.Failure) {
                 return try await context.files.update(SubmissionFile.self, at: path, message: message) { file in
-                    // やめた後に進めたものは書かない（配信した後の取り込みのほか）
-                    guard !file.isEnded || (step == .integration && file.end?.reason == .distributed) else { return false }
+                    // やめた後に進めたものは書かない（配信した後の取り込み・やめた版の枠を消すのほか）
+                    let afterEnd = (step == .integration && file.end?.reason == .distributed)
+                        || (step == .appStoreVersion && file.end?.reason == .abandoned)
+                    guard !file.isEnded || afterEnd else { return false }
                     let before = file
                     Self.merge(changed, into: &file, step: step)
                     if file.problem?.step == step { file.problem = nil }
@@ -286,9 +305,31 @@ extension ReleaseWatch {
             }
         case .submit, .distribute, .withdraw, .review:
             mergeRequests(changed, into: &file, step: step)
-        case .integration:
-            file.integration = changed.integration
+        case .integration, .appStoreVersion:
+            mergeAppStoreSide(changed, into: &file, step: step)
         }
+    }
+
+    /// 配信した後の取り込みと、App Store Connect の版の枠を写す
+    static func mergeAppStoreSide(_ changed: SubmissionFile, into file: inout SubmissionFile, step: SubmissionFile.Step) {
+        if step == .integration {
+            file.integration = changed.integration
+        } else {
+            mergeSlots(changed, into: &file)
+        }
+    }
+
+    /// 枠を写す。今の記録で消した・消さなかった枠は、その結果を残す（枠を入れる見回りと、やめた後の消すが重ならないように）
+    static func mergeSlots(_ changed: SubmissionFile, into file: inout SubmissionFile) {
+        guard var slots = changed.appStoreVersions else { return }
+        for index in slots.indices {
+            guard let current = file.appStoreVersions?.first(where: { $0.platform == slots[index].platform }), current.removal != nil else {
+                continue
+            }
+            slots[index].removal = current.removal
+            slots[index].removalNote = current.removalNote
+        }
+        file.appStoreVersions = slots
     }
 
     /// 人が押した操作を送った結果を写す。記録を読んだ後に、人がほかの操作を押していれば写さない
@@ -325,7 +366,7 @@ extension ReleaseWatch {
         return try await context.writingResult { () throws(CommanderError) -> SubmissionFile in
             do throws(StateFileStore.Failure) {
                 return try await context.files.update(SubmissionFile.self, at: path, message: message) { file in
-                    guard !file.isEnded || problem.step == .integration else { return false }
+                    guard !file.isEnded || problem.step == .integration || problem.step == .appStoreVersion else { return false }
                     // 人が直す問題がほかの区切りに残っていれば、先に書いたほうを残す
                     if let current = file.problem, current.needsHuman, current.step != problem.step { return false }
                     if let current = file.problem, current.step == problem.step, current.needsHuman == problem.needsHuman,
