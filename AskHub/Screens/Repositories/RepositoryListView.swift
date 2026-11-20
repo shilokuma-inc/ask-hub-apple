@@ -125,6 +125,12 @@ struct RepositoryDetailView: View {
                         Text("ありません").foregroundStyle(.secondary)
                     }
                 }
+                if let setup = repository.setup {
+                    RepositorySetupSection(repository: repository, setup: setup)
+                }
+                if let protection = repository.protection {
+                    ProtectionSection(repository: repository, protection: protection)
+                }
                 ReleaseSection(repository: repository, isRemoved: isRemoved, isStarting: $isStartingRelease)
             }
             .pastelBackground()
