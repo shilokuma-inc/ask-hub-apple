@@ -269,7 +269,7 @@ public struct ClaudeListingDrafter: ListingDrafting {
         "properties": .object([
             "notes": .object([
                 "type": .string("string"),
-                "maxLength": .integer(Int64(ReviewInformation.notesLimit / 3)),
+                "maxLength": .integer(Int64(ReviewInformation.notesLimit)),
                 "description": .string("直した審査メモの全文（UTF-8 で 4,000 バイトまで）。変えないなら省く")
             ]),
             "demoAccountRequired": .object(["type": .string("boolean"), "description": .string("審査にデモアカウントが要るか。変えないなら省く")]),
