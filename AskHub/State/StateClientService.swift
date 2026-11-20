@@ -216,7 +216,9 @@ final class StateClientService: ClientService {
     /// 判断のカードのスクショを状態リポジトリから読む。epic の `screenshots/` の下の PNG だけを読む
     func screenshot(at path: String) async throws -> Data {
         if let data = screenshots[path] { return data }
-        guard DecisionsFile.isScreenshotPath(path) else { throw ClientServiceError(message: "スクショのパスの形が違う") }
+        guard DecisionsFile.isScreenshotPath(path) || StatePath.isStoreScreenshotPath(path) else {
+            throw ClientServiceError(message: "スクショのパスの形が違う")
+        }
         let blob: StoredBlob?
         do {
             blob = try await store.read(path)

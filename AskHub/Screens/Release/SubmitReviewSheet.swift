@@ -12,6 +12,8 @@ struct SubmitReviewSheet: View {
     @State private var loadedListing = false
     /// App Review の情報の直し（nil なら変えない）。開いたときに案を入れる
     @State private var appReview: Submission.ReviewInfo?
+    /// 前のままにするスクショ
+    @State private var screenshotKeep: Set<Submission.ShotKey> = []
     /// 案を入れたときの準備の版。開いている間に司令塔が案を書き直したら、送るときに断られる（古い案のまま出さない）
     @State private var loadedRevision: Int?
     @State private var platforms: Set<String> = []
@@ -68,6 +70,9 @@ struct SubmitReviewSheet: View {
                 if let review = submission.appReview, review.draft != nil {
                     AppReviewEditor(review: review, change: $appReview)
                 }
+                if let screenshots = submission.screenshots {
+                    StoreScreenshotsSection(screenshots: screenshots, keep: $screenshotKeep)
+                }
                 Section {
                     Picker("配信の方式", selection: $kind) {
                         Text("承認後すぐ").tag(Kind.afterApproval)
@@ -99,7 +104,7 @@ struct SubmitReviewSheet: View {
             .confirmationDialog("App Store の審査に出しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
                 Button("審査に出す") { submit() }
             } message: {
-                Text("司令塔が App Store Connect に、版・ビルド・What's New・掲載文と App Review の情報の直しを書いて提出します。審査を待っている・審査中なら取り下げられます")
+                Text("司令塔が App Store Connect に、版・ビルド・What's New・掲載文と App Review の情報の直し・スクショを書いて提出します。審査を待っている・審査中なら取り下げられます")
             }
             .onAppear {
                 if platforms.isEmpty { platforms = Set(submission.builds.map(\.platform)) }
@@ -199,7 +204,8 @@ struct SubmitReviewSheet: View {
                 guard let values = listing[current.locale], !values.isEmpty else { return nil }
                 return Submission.ListingTexts(locale: current.locale, values: values)
             },
-            appReview: appReview
+            appReview: appReview,
+            screenshotKeep: submission.screenshots?.state == .captured ? Array(screenshotKeep) : nil
         )
         let intent = HumanIntent.submitForReview(repositoryID: submission.repositoryID, version: submission.version, request: request)
         if sending.submit(intent, in: store) { onClose() }

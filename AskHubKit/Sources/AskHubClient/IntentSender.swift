@@ -125,7 +125,8 @@ public struct IntentDraft: Equatable, Sendable {
         releaseType: AppStoreReleaseType,
         earliestReleaseDate: Timestamp? = nil,
         listing: [ListingText] = [],
-        appReview: ReviewInformation? = nil
+        appReview: ReviewInformation? = nil,
+        screenshots: SubmissionFile.ScreenshotDecision? = nil
     ) -> Self {
         Self(
             kind: SubmitForReviewIntent.kind,
@@ -138,7 +139,8 @@ public struct IntentDraft: Equatable, Sendable {
                 releaseType: releaseType,
                 earliestReleaseDate: earliestReleaseDate,
                 listing: listing,
-                appReview: appReview
+                appReview: appReview,
+                screenshots: screenshots
             )
         )
     }

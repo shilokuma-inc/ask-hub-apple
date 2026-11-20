@@ -149,6 +149,8 @@ enum Screenshot: Hashable {
     case stored(String)
     /// デモのデータ用。アプリの中で描く
     case demo(DemoScreen)
+    /// App Store Connect の CDN にある画像（前回の App Store のスクショ。誰でも読める URL）
+    case remote(URL)
 }
 
 /// 実機で確かめてほしいこと。マージは止めない
