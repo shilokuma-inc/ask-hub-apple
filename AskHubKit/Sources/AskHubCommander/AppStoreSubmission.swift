@@ -89,10 +89,11 @@ struct AppStoreSubmission: Sendable {
         guard let change = request.appReview, !change.isEmpty else { return }
         let detail = try await call { () throws(AppStoreConnectError) in try await store.reviewDetail(of: target.id) }
         var update = change
+        // 今の情報の空の欄は nil で読むので、空の文字列と同じとみなして比べる（変える側の nil は「変えない」のまま）
         if let current = detail?.information {
-            if update.notes == current.notes { update.notes = nil }
+            if update.notes == (current.notes ?? "") { update.notes = nil }
             if update.demoAccountRequired == current.demoAccountRequired { update.demoAccountRequired = nil }
-            if update.demoAccountName == current.demoAccountName { update.demoAccountName = nil }
+            if update.demoAccountName == (current.demoAccountName ?? "") { update.demoAccountName = nil }
         }
         guard !update.isEmpty else { return }
         try await call { () throws(AppStoreConnectError) in
