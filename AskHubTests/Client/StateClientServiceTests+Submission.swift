@@ -134,11 +134,14 @@ extension StateClientServiceTests {
         let submit = try SubmitForReviewIntent(envelope: try await sentEnvelope(in: fixture.store, key: fixture.key))
         #expect(submit.screenshots?.commit == String(repeating: "b", count: 40))
         #expect(submit.screenshots?.keep == [.init(displayType: "APP_IPHONE_67", locale: "ja", index: 2)])
-        // 差の無い画面は前のままにできない（取り直しを促す）
+        // 差の無い画面は前のままにできない（取り直しを促す）。送った後の「受け付けを待っている」で断られないよう、取り直す
+        let fresh = try makeService(files: Self.submissionFiles())
+        _ = try await fresh.service.fetchSnapshot()
         var unchanged = request
         unchanged.screenshotKeep = [.init(displayType: "APP_IPHONE_67", locale: "ja", index: 1)]
         let intent = HumanIntent.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: unchanged)
-        await #expect(throws: ClientServiceError.self) { try await fixture.service.perform(intent) }
+        #expect(fresh.service.supports(intent))
+        await #expect(throws: ClientServiceError.self) { try await fresh.service.perform(intent) }
     }
 
     @Test
