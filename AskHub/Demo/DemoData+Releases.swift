@@ -64,6 +64,11 @@ extension DemoData {
                 .init(locale: "en-US", text: Self.recipeWhatsNewEnglish)
             ],
             listing: Self.recipeListing,
+            appReview: .init(
+                current: .init(notes: "ログインは不要です。レシピは右上の＋から足せます。", demoAccountRequired: false),
+                draft: .init(notes: "ログインは不要です。レシピは右上の＋から足せます。レシピの画面の「人数」を変えると、材料の分量が変わります。"),
+                reason: "人数に合わせた分量の計算は見つけにくいので、試し方を審査メモに足す案です"
+            ),
             revision: 3,
             createdAt: ago(minutes: 60 * 3),
             updatedAt: ago(minutes: 25)

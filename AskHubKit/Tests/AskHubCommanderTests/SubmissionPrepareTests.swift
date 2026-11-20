@@ -144,6 +144,9 @@ extension ReleaseWatchTests {
         }
         live()
         appStore.state.withLock { state in
+            state.reviewDetails["live-0"] = AppStoreReviewDetail(
+                id: "r-live", information: ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: false)
+            )
             state.localizations["live-0"] = [
                 AppStoreLocalization(
                     id: "l-ja",
@@ -205,6 +208,11 @@ extension ReleaseWatchTests {
         #expect(file.listing?.drafts == [.init(locale: "ja", keywords: "推し活,カウントダウン,ウィジェット")])
         let listingMaterial = try #require(listingDrafter.materials.withLock { $0.first })
         #expect(listingMaterial.commit == Self.developHead && listingMaterial.current.first?.keywords == "推し活,カウントダウン")
+        // App Review の情報も同じ下書きで案を書く（今の情報はパスワードを持たない）
+        #expect(listingMaterial.review == ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: false))
+        #expect(file.appReview?.current == ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: false))
+        #expect(file.appReview?.draft == ReviewInformation(notes: "ログインは不要です。ウィジェットはホーム画面の長押しから足せます。"))
+        #expect(file.appReview?.reason == "ウィジェットの足し方を審査の人に伝える案です")
         // ビルドがまだ無いので、人の番にしない
         #expect(file.builds.isEmpty && file.revision == 2 && !file.awaitsSubmission)
         #expect(await submissionBlockers(watch).isEmpty)
@@ -261,9 +269,12 @@ extension ReleaseWatchTests {
         try await startRelease()
         listingDrafter.proposal.withLock { $0 = ListingProposal(drafts: [], reason: "使う人に見える変更が無いので変えません") }
         await watch().refresh()
-        let listing = try #require(try await submission().listing)
+        let file = try await submission()
+        let listing = try #require(file.listing)
         #expect(listing.drafts.isEmpty && listing.reason == "使う人に見える変更が無いので変えません")
         #expect(listing.current.count == 2)
+        // App Review の情報も変えない（理由が無ければ決まった文）
+        #expect(file.appReview?.draft == nil && file.appReview?.reason == "審査する人に伝えることは変わらないので、変えません")
     }
 
     @Test func doesNotDraftListingAfterSubmission() async throws {

@@ -162,6 +162,10 @@ public protocol AppStoreConnectSubmitting: AppStoreConnectReading {
     func updateWhatsNew(_ localizationID: String, text: String) async throws(AppStoreConnectError)
     /// 掲載文の欄を書く（nil の欄は送らない）
     func updateListing(_ localizationID: String, _ text: ListingText) async throws(AppStoreConnectError)
+    /// 版の App Review の情報。まだ無ければ nil
+    func reviewDetail(of versionID: String) async throws(AppStoreConnectError) -> AppStoreReviewDetail?
+    /// App Review の情報を書く（nil の欄は送らない）。`detailID` が nil なら、版に作る
+    func writeReviewDetail(_ detailID: String?, versionID: String, _ information: ReviewInformation) async throws(AppStoreConnectError)
     /// 終わっていない提出（審査に出す前・審査を待っている・審査中・断られたもの）
     func reviewSubmissions(of appID: String, platform: AppStorePlatform) async throws(AppStoreConnectError) -> [AppStoreReviewSubmission]
     func createReviewSubmission(of appID: String, platform: AppStorePlatform) async throws(AppStoreConnectError) -> AppStoreReviewSubmission

@@ -177,7 +177,8 @@ public struct SubmitForReviewHandler: IntentHandler {
             whatsNew: submit.whatsNew,
             releaseType: submit.releaseType,
             earliestReleaseDate: submit.earliestReleaseDate,
-            listing: submit.listing
+            listing: submit.listing,
+            appReview: submit.appReview
         )
         let saved: SubmissionFile
         do {
@@ -219,6 +220,7 @@ public struct SubmitForReviewHandler: IntentHandler {
         if let locale = submit.listing.map(\.locale).first(where: { !listed.contains($0) }) {
             return listed.isEmpty ? "初めての版の掲載文は App Store Connect で書く" : "掲載文の言語（\(locale)）が配信中の版に無い"
         }
+        if submit.appReview != nil, file.appReview == nil { return "App Review の情報の案がまだ無い（初めての版は App Store Connect で書く）" }
         if let date = submit.earliestReleaseDate, date.date <= now { return "配信の日時が過ぎている" }
         return nil
     }

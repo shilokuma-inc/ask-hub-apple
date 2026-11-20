@@ -170,20 +170,14 @@ extension ReleaseWatch {
                 needsHuman: file.appStoreVersions == nil
             )
         }
-        var listings: [[ListingText]] = []
-        for source in sources {
-            let localizations = try await appStoreConnect { () throws(AppStoreConnectError) in
-                try await store.localizations(of: source.id)
-            }
-            listings.append(localizations.map(\.listing))
-        }
-        let current = live == nil ? Self.commonListing(listings) : listings[0]
+        let current = try await currentListing(sources, firstVersion: live == nil, store: store)
         guard !current.isEmpty else {
             throw ReleaseStepProblem("\(live == nil ? "初めての" : "配信中の")版（\(first.versionString)）の掲載文の言語を読めない", needsHuman: true)
         }
         guard let drafter = listing else {
             throw ReleaseStepProblem("掲載文の案を書く仕組みが司令塔に無い", needsHuman: true)
         }
+        let review = try await reviewDetail(of: live, store: store)
         let (changes, epics) = try await changeMaterial(file, upTo: branch.commit)
         let material = ListingMaterial(
             repo: file.repo,
@@ -193,6 +187,7 @@ extension ReleaseWatch {
             changes: changes,
             epics: epics,
             current: current,
+            review: review?.information,
             firstVersion: live == nil
         )
         let proposal: ListingProposal
@@ -204,7 +199,40 @@ extension ReleaseWatch {
         let locales = proposal.drafts.map(\.locale)
         log("\(file.repo) の \(file.version) の掲載文の案を書いた（\(locales.isEmpty ? "変えない" : locales.joined(separator: "・"))）")
         file.listing = .init(current: current, drafts: proposal.drafts, reason: proposal.reason, draftedAt: context.timestamp)
+        file.appReview = live == nil ? nil : appReview(proposal, current: review)
         return file
+    }
+
+    /// 今の掲載文。配信中の版ならその文、初めての版なら編集できる版のすべてにそろっている欄だけ
+    private func currentListing(
+        _ sources: [AppStoreVersionInfo],
+        firstVersion: Bool,
+        store: any AppStoreConnectSubmitting
+    ) async throws -> [ListingText] {
+        var listings: [[ListingText]] = []
+        for source in sources {
+            let localizations = try await appStoreConnect { () throws(AppStoreConnectError) in
+                try await store.localizations(of: source.id)
+            }
+            listings.append(localizations.map(\.listing))
+        }
+        return firstVersion ? Self.commonListing(listings) : listings.first ?? []
+    }
+
+    /// 配信中の版の App Review の情報（パスワードと連絡先は読まない）。初めての版は案を書かない（App Store の準備のチェックリストで扱う）
+    private func reviewDetail(of live: AppStoreVersionInfo?, store: any AppStoreConnectSubmitting) async throws -> AppStoreReviewDetail? {
+        guard let live else { return nil }
+        return try await appStoreConnect { () throws(AppStoreConnectError) in try await store.reviewDetail(of: live.id) }
+    }
+
+    /// App Review の情報の案（理由が無ければ、変えないとする決まった文）
+    private func appReview(_ proposal: ListingProposal, current: AppStoreReviewDetail?) -> SubmissionFile.AppReview {
+        .init(
+            current: current?.information ?? ReviewInformation(),
+            draft: proposal.review,
+            reason: proposal.reviewReason.flatMap { $0.isEmpty ? nil : $0 } ?? "審査する人に伝えることは変わらないので、変えません",
+            draftedAt: context.timestamp
+        )
     }
 
     /// 配信中の版（iOS を先に見る。掲載文の言語はプラットフォームごとにあるが、ふつうは同じ）。無ければ初めての版
@@ -385,6 +413,7 @@ extension ReleaseWatch {
         case .listing:
             guard file.listing == nil, file.submit == nil, let listing = changed.listing else { return }
             file.listing = listing
+            file.appReview = changed.appReview
         case .builds:
             guard file.submit == nil, file.builds != changed.builds else { return }
             file.builds = changed.builds

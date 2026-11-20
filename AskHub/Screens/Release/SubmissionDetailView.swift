@@ -61,6 +61,7 @@ struct SubmissionDetailView: View {
             }
             whatsNewSection(submission)
             listingSection(submission)
+            appReviewSection(submission)
             links(submission)
         }
         .pastelBackground()
@@ -203,6 +204,24 @@ struct SubmissionDetailView: View {
                 Text(submission.submitted == nil ? "掲載文の案" : submission.isSubmitting ? "審査に出している掲載文" : "審査に出した掲載文")
             } footer: {
                 if submission.submitted == nil { Text(listing.reason) }
+            }
+        }
+    }
+
+    /// App Review の情報の案（変えるときだけ。審査に出した後は、出した直し）
+    @ViewBuilder private func appReviewSection(_ submission: Submission) -> some View {
+        let submitted = submission.submitted
+        if let review = submission.appReview, let change = submitted == nil ? review.draft : submitted?.appReview {
+            CardSection {
+                if let notes = change.notes { Text(notes) }
+                if let required = change.demoAccountRequired {
+                    Text(required ? "デモアカウント: 要る（パスワードは App Store Connect で入れる）" : "デモアカウント: 要らない")
+                }
+                if let name = change.demoAccountName { Text("デモアカウントの名前: \(name)") }
+            } header: {
+                Text(submitted == nil ? "App Review の情報の案" : "審査に出した App Review の情報")
+            } footer: {
+                if submitted == nil { Text(review.reason) }
             }
         }
     }

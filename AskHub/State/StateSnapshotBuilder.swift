@@ -72,8 +72,10 @@ struct StateIndex {
         var builds: [SubmissionFile.BuildChoice]
         /// What's New の下書きの言語（審査に出すときは同じ言語をそろえる）
         var locales: [String]
-        /// 配信中の版の掲載文（掲載文を直せる言語と、変わっていない欄を送らないための元）
+        /// 配信中の版の掲載文（掲載文を直せる言語）
         var listing: [ListingText] = []
+        /// App Review の情報の案がある（直しを送れる）
+        var hasAppReview = false
         var canSubmit: Bool
         var canDistribute: Bool
         var canWithdraw: Bool

@@ -25,6 +25,9 @@ extension StateClientServiceTests {
                                    {"locale":"en-US","description":"A prime quiz","promotionalText":"New!"}],
                         "drafts":[{"locale":"ja","keywords":"素数,クイズ,タイムアタック"}],
                         "reason":"タイムアタックを足したので、キーワードに入れる案です","draftedAt":"2027-01-20T01:06:00Z"},
+             "appReview":{"current":{"notes":"ログインは不要です。","demoAccountRequired":false},
+                          "draft":{"notes":"ログインは不要です。タイムアタックは右上のボタンから始めます。"},
+                          "reason":"タイムアタックの始め方を伝える案です","draftedAt":"2027-01-20T01:06:00Z"},
              "revision":2,"review":[],"createdAt":"2027-01-20T01:00:00Z","updatedAt":"2027-01-20T01:40:00Z"}
             """
         return releaseFiles(extra: ["\(submissionDirectory)/1.2.0.json": ready].merging(extra) { $1 })
@@ -107,6 +110,30 @@ extension StateClientServiceTests {
             ListingText(locale: "ja", description: "素数のクイズ", keywords: "素数,クイズ,タイムアタック"),
             ListingText(locale: "en-US", promotionalText: "")
         ])
+    }
+
+    @Test
+    func sendsAppReviewWithoutPassword() async throws {
+        let fixture = try makeService(files: Self.submissionFiles())
+        let snapshot = try await fixture.service.fetchSnapshot()
+        let review = try #require(snapshot.submission(Submission.id(submissionRepositoryID, "1.2.0"))?.appReview)
+        #expect(review.draft?.notes == "ログインは不要です。タイムアタックは右上のボタンから始めます。")
+        var withReview = request
+        withReview.appReview = .init(notes: " ログインは不要です。 ", demoAccountRequired: true, demoAccountName: "review@example.com")
+        try await fixture.service.perform(.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: withReview))
+        let submit = try SubmitForReviewIntent(envelope: try await sentEnvelope(in: fixture.store, key: fixture.key))
+        let expected = ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: true, demoAccountName: "review@example.com")
+        #expect(submit.appReview == expected)
+        // 長すぎるメモ・改行のある名前は送らない（送った後の「受け付けを待っている」で断られないよう、値ごとに取り直す）
+        for invalid: Submission.ReviewInfo in [.init(notes: String(repeating: "審", count: 1_400)), .init(demoAccountName: "a\nb")] {
+            let fresh = try makeService(files: Self.submissionFiles())
+            _ = try await fresh.service.fetchSnapshot()
+            var changed = request
+            changed.appReview = invalid
+            let intent = HumanIntent.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: changed)
+            #expect(fresh.service.supports(intent))
+            await #expect(throws: ClientServiceError.self) { try await fresh.service.perform(intent) }
+        }
     }
 
     @Test

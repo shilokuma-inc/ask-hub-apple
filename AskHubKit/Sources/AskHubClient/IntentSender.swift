@@ -124,7 +124,8 @@ public struct IntentDraft: Equatable, Sendable {
         whatsNew: [LocalizedText],
         releaseType: AppStoreReleaseType,
         earliestReleaseDate: Timestamp? = nil,
-        listing: [ListingText] = []
+        listing: [ListingText] = [],
+        appReview: ReviewInformation? = nil
     ) -> Self {
         Self(
             kind: SubmitForReviewIntent.kind,
@@ -132,7 +133,12 @@ public struct IntentDraft: Equatable, Sendable {
             target: target.target,
             targetVersion: String(revision),
             payload: SubmitForReviewIntent.payload(
-                builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate, listing: listing
+                builds: builds,
+                whatsNew: whatsNew,
+                releaseType: releaseType,
+                earliestReleaseDate: earliestReleaseDate,
+                listing: listing,
+                appReview: appReview
             )
         )
     }

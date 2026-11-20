@@ -54,7 +54,8 @@ extension StateIntentMapper {
                 whatsNew: try Self.whatsNew(request.whatsNew, locales: entry.locales),
                 releaseType: Self.releaseType(request.releaseType),
                 earliestReleaseDate: try Self.releaseDate(request.releaseType),
-                listing: try Self.listing(request.listing, current: entry.listing)
+                listing: try Self.listing(request.listing, current: entry.listing),
+                appReview: try Self.appReview(request.appReview, available: entry.hasAppReview)
             )
 
         case let .distributeRelease(repositoryID, version):
@@ -136,6 +137,21 @@ extension StateIntentMapper {
             if !text.isEmpty { texts.append(text) }
         }
         return texts
+    }
+
+    /// 人が確かめた App Review の情報の直し。前後の空白を除き、司令塔と同じく、メモは UTF-8 のバイトで数える。パスワードは扱わない
+    private static func appReview(_ change: Submission.ReviewInfo?, available: Bool) throws(ClientServiceError) -> ReviewInformation? {
+        guard let change, !change.isEmpty else { return nil }
+        guard available else { throw ClientServiceError(message: "App Review の情報の案がまだありません。取り直してから送ってください") }
+        let notes = change.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = change.demoAccountName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let notes, notes.utf8.count > Submission.ReviewInfo.notesLimit {
+            throw ClientServiceError(message: "審査メモは 4,000 バイトまでで書いてください")
+        }
+        if let name, name.unicodeScalars.count > Submission.ReviewInfo.nameLimit || name.contains(where: \.isNewline) {
+            throw ClientServiceError(message: "デモアカウントの名前は、改行の無い \(Submission.ReviewInfo.nameLimit) 文字までで書いてください")
+        }
+        return ReviewInformation(notes: notes, demoAccountRequired: change.demoAccountRequired, demoAccountName: name)
     }
 
     private static func releaseType(_ type: Submission.ReleaseType) -> AppStoreReleaseType {

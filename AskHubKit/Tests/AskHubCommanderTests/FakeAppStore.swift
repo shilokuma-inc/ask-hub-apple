@@ -13,6 +13,8 @@ final class FakeAppStore: AppStoreConnecting {
         var others: [AppStoreVersionInfo] = []
         var builds: [AppStoreBuild] = []
         var localizations: [String: [AppStoreLocalization]] = [:]
+        /// 版の id ごとの App Review の情報
+        var reviewDetails: [String: AppStoreReviewDetail] = [:]
         var submissions: [AppStoreReviewSubmission] = []
         /// 書き込みの記録（「createVersion 1.4.0」など）
         var writes: [String] = []
@@ -101,6 +103,18 @@ final class FakeAppStore: AppStoreConnecting {
     func updateListing(_ localizationID: String, _ text: ListingText) async throws(AppStoreConnectError) {
         let fields = ListingText.Field.allCases.compactMap { field in text[field].map { "\(field.rawValue)=\($0)" } }
         try write("updateListing \(localizationID) \(fields.joined(separator: " "))")
+    }
+
+    func reviewDetail(of versionID: String) async throws(AppStoreConnectError) -> AppStoreReviewDetail? {
+        state.withLock { $0.reviewDetails[versionID] }
+    }
+
+    func writeReviewDetail(_ detailID: String?, versionID: String, _ information: ReviewInformation) async throws(AppStoreConnectError) {
+        var fields: [String] = []
+        if let notes = information.notes { fields.append("notes=\(notes)") }
+        if let required = information.demoAccountRequired { fields.append("demoAccountRequired=\(required)") }
+        if let name = information.demoAccountName { fields.append("demoAccountName=\(name)") }
+        try write("writeReviewDetail \(detailID ?? "new:\(versionID)") \(fields.joined(separator: " "))")
     }
 
     func reviewSubmissions(of appID: String, platform: AppStorePlatform) async throws(AppStoreConnectError) -> [AppStoreReviewSubmission] {
