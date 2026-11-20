@@ -817,6 +817,11 @@
   やめたリリースで作った版が残っていれば、`PATCH` で `versionString` ごと直して使う（新しく作ると断られる見込み。#1140 の `AppStoreSubmission`）。
   初めての版は What's New を持たないので、配信中の版が無いアプリでは下書きしない（2026-11-18）
 - App Manager の役割のチームの API キーで、`appStoreVersions` の作成・ビルドの選択・`appStoreVersionLocalizations` の What's New の更新・`reviewSubmissions` の提出まで書ける（2026-11-20、OshiCon 1.2.0 を AskHub から審査に出して確かめた。Admin は要らない）
+- 掲載文の上限は、説明文・What's New が 4,000 文字、プロモーションテキストが 170 文字、キーワードが **100 バイト**（App Store Connect のヘルプの Platform version information。キーワードだけバイトで書かれている。多バイト文字の数え方は書かれていないので、AskHub は多めに数える UTF-8 で数える）。
+  App Review のメモも 4,000 バイト。`PATCH /v1/appStoreVersionLocalizations/{id}` で変えられるのは `description`・`keywords`・`marketingUrl`・`promotionalText`・`supportUrl`・`whatsNew` で、送った欄だけ変わる。
+  配信中の版のプロモーションテキストを API で変えられるかは、文書に書かれていない（ヘルプには「審査に出さずに変えられる」とだけある）（2026-11-20、#1156）
+- スクショの `appScreenshots`・`appScreenshotSets`・並べ替えの API は、API 4.5 で非推奨になり、App Asset Library（`AppAssetLibraryImage`）と placements に移った。
+  `screenshotDisplayType` の値に iPhone Duo（`APP_IPHONE_DUO` など）は無い（ヘルプのサイズ表には iPhone Duo がある）（2026-11-20、#1156 で調べた）
 - App Store Connect の API の文書の入れ子の型（作成の要求の `data`・`attributes`・`relationships`）は、DocC の JSON の slug に `/data-data.dictionary/attributes-data.dictionary` のように足すと読める（例: `appavailabilityv2createrequest/data-data.dictionary/relationships-data.dictionary.json`）。
   App のプライバシー（データの収集の申告）・DSA の申告・契約と税と口座の API は無い。スクショの `appScreenshotSets`・`appScreenshots` は 4.5.1 で非推奨になり、App Asset Library（`appAssetLibraryImages`・`appAssetLibraryPlacements`）に替わった。
   App Manager のチームの鍵で Provisioning（`bundleIds`）を使えるかは文書に無い（役割の表では App Manager は Certificates, Identifiers & Profiles のアクセスを与えられたときだけ）（2026-11-20、#1157）

@@ -285,6 +285,7 @@ extension SubmissionFile.Step {
         case .review: "審査の状態"
         case .integration: "release ブランチの取り込み"
         case .appStoreVersion: "App Store Connect の版の枠"
+        case .listing: "掲載文の案"
         }
     }
 }

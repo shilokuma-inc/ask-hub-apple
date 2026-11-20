@@ -49,6 +49,9 @@ struct AppStoreConnectLocalizationsResponse: Decodable {
     struct Attributes: Decodable {
         var locale: String?
         var whatsNew: String?
+        var description: String?
+        var keywords: String?
+        var promotionalText: String?
     }
 
     var data: [AppStoreConnectResource<Attributes>]

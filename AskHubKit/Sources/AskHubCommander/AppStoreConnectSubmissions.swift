@@ -98,16 +98,19 @@ public struct AppStoreBuild: Equatable, Sendable {
     }
 }
 
-/// 版の 1 つの言語の掲載文（What's New だけを読む）
+/// 版の 1 つの言語の掲載文（What's New・説明文・キーワード・プロモーションテキスト）
 public struct AppStoreLocalization: Equatable, Sendable {
     public var id: String
     public var locale: String
     public var whatsNew: String?
+    /// 説明文・キーワード・プロモーションテキスト（空の欄は nil）
+    public var listing: ListingText
 
-    public init(id: String, locale: String, whatsNew: String?) {
+    public init(id: String, locale: String, whatsNew: String?, listing: ListingText? = nil) {
         self.id = id
         self.locale = locale
         self.whatsNew = whatsNew
+        self.listing = listing ?? ListingText(locale: locale)
     }
 }
 
@@ -157,6 +160,8 @@ public protocol AppStoreConnectSubmitting: AppStoreConnectReading {
     /// まだ審査に出していない版を消す（やめたリリースの版の枠）
     func deleteVersion(_ versionID: String) async throws(AppStoreConnectError)
     func updateWhatsNew(_ localizationID: String, text: String) async throws(AppStoreConnectError)
+    /// 掲載文の欄を書く（nil の欄は送らない）
+    func updateListing(_ localizationID: String, _ text: ListingText) async throws(AppStoreConnectError)
     /// 終わっていない提出（審査に出す前・審査を待っている・審査中・断られたもの）
     func reviewSubmissions(of appID: String, platform: AppStorePlatform) async throws(AppStoreConnectError) -> [AppStoreReviewSubmission]
     func createReviewSubmission(of appID: String, platform: AppStorePlatform) async throws(AppStoreConnectError) -> AppStoreReviewSubmission
@@ -247,15 +252,23 @@ extension AppStoreConnectClient: AppStoreConnectSubmitting {
     public func localizations(of versionID: String) async throws(AppStoreConnectError) -> [AppStoreLocalization] {
         try Self.checkID(versionID)
         let query = [
-            URLQueryItem(name: "fields[appStoreVersionLocalizations]", value: "locale,whatsNew"),
+            URLQueryItem(name: "fields[appStoreVersionLocalizations]", value: "locale,whatsNew,description,keywords,promotionalText"),
             URLQueryItem(name: "limit", value: "50")
         ]
         let response = try await get(
             "v1/appStoreVersions/\(versionID)/appStoreVersionLocalizations", query: query, as: AppStoreConnectLocalizationsResponse.self
         )
         return response.data.compactMap { item in
-            guard Self.isID(item.id), let locale = item.attributes?.locale, LocalizedText.isLocale(locale) else { return nil }
-            return AppStoreLocalization(id: item.id, locale: locale, whatsNew: item.attributes?.whatsNew)
+            guard Self.isID(item.id), let attributes = item.attributes,
+                  let locale = attributes.locale, LocalizedText.isLocale(locale) else { return nil }
+            // 空の欄は無いものとして持つ（App Store Connect は空の文字列か null で返す）
+            let listing = ListingText(
+                locale: locale,
+                description: attributes.description.flatMap { $0.isEmpty ? nil : $0 },
+                keywords: attributes.keywords.flatMap { $0.isEmpty ? nil : $0 },
+                promotionalText: attributes.promotionalText.flatMap { $0.isEmpty ? nil : $0 }
+            )
+            return AppStoreLocalization(id: item.id, locale: locale, whatsNew: attributes.whatsNew, listing: listing)
         }
     }
 
@@ -312,6 +325,17 @@ extension AppStoreConnectClient: AppStoreConnectSubmitting {
     public func updateWhatsNew(_ localizationID: String, text: String) async throws(AppStoreConnectError) {
         try Self.checkID(localizationID)
         let body = try Self.document("appStoreVersionLocalizations", id: localizationID, attributes: ["whatsNew": text])
+        _ = try await send("PATCH", "v1/appStoreVersionLocalizations/\(localizationID)", body: body)
+    }
+
+    public func updateListing(_ localizationID: String, _ text: ListingText) async throws(AppStoreConnectError) {
+        try Self.checkID(localizationID)
+        var attributes: [String: Any] = [:]
+        for field in ListingText.Field.allCases {
+            if let value = text[field] { attributes[field.rawValue] = value }
+        }
+        guard !attributes.isEmpty else { return }
+        let body = try Self.document("appStoreVersionLocalizations", id: localizationID, attributes: attributes)
         _ = try await send("PATCH", "v1/appStoreVersionLocalizations/\(localizationID)", body: body)
     }
 

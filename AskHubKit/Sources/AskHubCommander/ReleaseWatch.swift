@@ -18,6 +18,8 @@ public actor ReleaseWatch {
     nonisolated let drafter: any ReleaseNotesDrafting
     /// What's New の下書き。nil なら下書きを作れない（準備の問題として出す）
     nonisolated let whatsNew: (any WhatsNewDrafting)?
+    /// 掲載文の案。nil なら案を作れない（準備の問題として出す）
+    nonisolated let listing: (any ListingDrafting)?
     nonisolated let authors: any CommitAuthors
     nonisolated let log: @Sendable (String) -> Void
     /// 1 つのリポジトリの App Store Connect を読む間隔
@@ -43,6 +45,7 @@ public actor ReleaseWatch {
         hosting: any ReleaseHosting,
         drafter: any ReleaseNotesDrafting,
         whatsNew: (any WhatsNewDrafting)? = nil,
+        listing: (any ListingDrafting)? = nil,
         authors: any CommitAuthors,
         log: @escaping @Sendable (String) -> Void,
         detectInterval: Duration = .seconds(30 * 60)
@@ -53,6 +56,7 @@ public actor ReleaseWatch {
         self.hosting = hosting
         self.drafter = drafter
         self.whatsNew = whatsNew
+        self.listing = listing
         self.authors = authors
         self.log = log
         self.detectInterval = TimeInterval(detectInterval.components.seconds)

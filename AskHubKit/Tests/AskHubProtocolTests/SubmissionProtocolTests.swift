@@ -53,6 +53,9 @@ struct SubmissionProtocolTests {
     private func file(
         builds: [SubmissionFile.Build] = [.init(platform: .iOS, build: "45")],
         whatsNew: SubmissionFile.WhatsNew? = .init(drafts: [.init(locale: "ja", text: "速くなりました")], draftedAt: at),
+        listing: SubmissionFile.Listing? = .init(
+            current: [.init(locale: "ja", description: "素数のクイズ")], drafts: [], reason: "変えない", draftedAt: at
+        ),
         submit: SubmissionFile.Submit? = nil,
         review: [SubmissionFile.Review] = [],
         withdrawal: SubmissionFile.Request? = nil,
@@ -65,6 +68,7 @@ struct SubmissionProtocolTests {
             start: .init(approval: Self.reference, at: Self.at),
             builds: builds,
             whatsNew: whatsNew,
+            listing: listing,
             revision: 2,
             submit: submit,
             review: review,
@@ -105,6 +109,7 @@ struct SubmissionProtocolTests {
         #expect(file().awaitsSubmission)
         #expect(!file(builds: []).awaitsSubmission)
         #expect(!file(whatsNew: nil).awaitsSubmission)
+        #expect(!file(listing: nil).awaitsSubmission)
         // 初めての版は What's New を持たない（下書きが空でも準備はそろっている）
         #expect(file(whatsNew: .init(drafts: [], draftedAt: Self.at)).awaitsSubmission)
         #expect(!file(submit: submit()).awaitsSubmission)

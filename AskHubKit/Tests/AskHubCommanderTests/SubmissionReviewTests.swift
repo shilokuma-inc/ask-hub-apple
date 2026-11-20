@@ -7,17 +7,24 @@ import Testing
 
 /// 審査に出す・配信する・取り下げの人の意図（`SubmitForReviewHandler` など）
 extension SubmissionHandlersTests {
-    func submitEnvelope(revision: String = "2", releaseType: String = "afterApproval", locales: [String] = ["ja"]) -> IntentEnvelope {
+    func submitEnvelope(
+        revision: String = "2",
+        releaseType: String = "afterApproval",
+        locales: [String] = ["ja"],
+        listing: [ListingText] = []
+    ) -> IntentEnvelope {
         IntentEnvelope(
             kind: SubmitForReviewIntent.kind,
             repo: ReleaseWatchTests.repo,
             target: .init(type: "submission", id: "1.2.0"),
             targetVersion: revision,
-            payload: [
-                "builds": .array([.object(["platform": .string("iOS"), "build": .string("45")])]),
-                "whatsNew": .array(locales.map { .object(["locale": .string($0), "text": .string("・\($0) を直した")]) }),
-                "releaseType": .string(releaseType)
-            ],
+            payload: SubmitForReviewIntent.payload(
+                builds: [.init(platform: .iOS, build: "45")],
+                whatsNew: locales.map { LocalizedText(locale: $0, text: "・\($0) を直した") },
+                releaseType: AppStoreReleaseType(rawValue: releaseType)!,
+                earliestReleaseDate: nil,
+                listing: listing
+            ),
             issuedAt: Timestamp(ReleaseWatchTests.now),
             nonce: ULID(rawValue: "01JCN0NCE00000000000000005")!,
             keyId: Self.keyID
@@ -29,6 +36,12 @@ extension SubmissionHandlersTests {
         let now = Timestamp(ReleaseWatchTests.now)
         file.branch = .init(name: "release/1.2.0", commit: ReleaseWatchTests.developHead, created: true, at: now)
         file.whatsNew = .init(drafts: [.init(locale: "ja", text: "・下書き")], draftedAt: now)
+        file.listing = .init(
+            current: [.init(locale: "ja", description: "推しの予定を数えるアプリ", keywords: "推し活")],
+            drafts: [.init(locale: "ja", keywords: "推し活,ウィジェット")],
+            reason: "ウィジェットを足したので、キーワードに入れる案です",
+            draftedAt: now
+        )
         file.builds = [.init(platform: .iOS, build: "45", uploadedAt: now)]
         file.revision = 2
         return file
@@ -45,8 +58,20 @@ extension SubmissionHandlersTests {
         let submit = try #require(try await file()?.submit)
         #expect(submit.releaseType == .manual && submit.builds == [.init(platform: .iOS, build: "45")])
         #expect(submit.whatsNew == [.init(locale: "ja", text: "・ja を直した")])
+        #expect(submit.listing?.isEmpty == true)
         // やり直しは受け付ける
         #expect(try await handler.handle(submitEnvelope(releaseType: "manual"), in: context) == .accept)
+    }
+
+    @Test func recordsListingOnlyForLiveLocales() async throws {
+        try await put(Self.prepared())
+        let handler = SubmitForReviewHandler()
+        // 配信中の版に無い言語は断る
+        let unknown = [ListingText(locale: "fr", keywords: "oshi")]
+        #expect(try await handler.handle(submitEnvelope(listing: unknown), in: context) != .accept)
+        let changes = [ListingText(locale: "ja", description: "推しの予定を数え、ウィジェットにも出せるアプリ", promotionalText: "")]
+        #expect(try await handler.handle(submitEnvelope(listing: changes), in: context) == .accept)
+        #expect(try await file()?.submit?.listing == changes)
     }
 
     @Test func recordsDistributionAndWithdrawalByState() async throws {
@@ -89,7 +114,7 @@ extension ReleaseWatchTests {
         AppStoreVersionInfo(id: "v-1-2-0", platform: .iOS, versionString: "1.2.0", state: state)
     }
 
-    func readyToSubmit(releaseType: AppStoreReleaseType = .afterApproval) async throws -> SubmissionFile {
+    func readyToSubmit(releaseType: AppStoreReleaseType = .afterApproval, listing: [ListingText] = []) async throws -> SubmissionFile {
         try await startRelease()
         hosting.state.withLock { $0.branches["release/1.2.0"] = Self.developHead }
         var file = SubmissionHandlersTests.prepared()
@@ -101,18 +126,44 @@ extension ReleaseWatchTests {
             at: Timestamp(Self.now),
             builds: [.init(platform: .iOS, build: "45")],
             whatsNew: [.init(locale: "ja", text: "・速くなりました"), .init(locale: "en-US", text: "- Faster")],
-            releaseType: releaseType
+            releaseType: releaseType,
+            listing: listing
         )
         try await putSubmission(file)
         appStore.state.withLock { state in
             // release ブランチを作ったとき（今）に上げたビルド
             state.builds = [build("45", minutesFromNow: 0)]
             state.localizations["v-1-2-0"] = [
-                AppStoreLocalization(id: "l-ja", locale: "ja", whatsNew: nil),
+                AppStoreLocalization(
+                    id: "l-ja",
+                    locale: "ja",
+                    whatsNew: nil,
+                    listing: .init(locale: "ja", description: "推しの予定を数えるアプリ", keywords: "推し活", promotionalText: "毎日に推しを")
+                ),
                 AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: "- Faster")
             ]
         }
         return file
+    }
+
+    @Test func writesOnlyChangedListingFields() async throws {
+        let listing = [
+            // キーワードは今の文と同じなので書かない。プロモーションテキストは空にする
+            ListingText(locale: "ja", description: "推しの予定を数え、ウィジェットにも出せるアプリ", keywords: "推し活", promotionalText: ""),
+            // 英語は今の文と同じなので書かない
+            ListingText(locale: "en-US", promotionalText: "")
+        ]
+        _ = try await readyToSubmit(listing: listing)
+        await watch().refresh()
+        let writes = appStore.state.withLock { $0.writes }
+        #expect(writes == [
+            "createVersion iOS 1.2.0 afterApproval b45",
+            "updateWhatsNew l-ja ・速くなりました",
+            "updateListing l-ja description=推しの予定を数え、ウィジェットにも出せるアプリ promotionalText=",
+            "createReviewSubmission iOS",
+            "addToReviewSubmission s-iOS v-1-2-0",
+            "submitReviewSubmission s-iOS"
+        ])
     }
 
     @Test func submitsToAppStoreConnectOnce() async throws {

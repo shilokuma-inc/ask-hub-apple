@@ -1,8 +1,44 @@
 import Foundation
 
-// `SubmissionFile` の、App Store Connect の版の枠と配信した後の取り込みの形
+// `SubmissionFile` の、掲載文の案・App Store Connect の版の枠・配信した後の取り込みの形
 
 extension SubmissionFile {
+    /// 掲載文の案（Claude が、配信中の版の掲載文と前に配信した版からの変更をもとに、言語ごとに書いたもの）
+    public struct Listing: Codable, Equatable, Sendable {
+        /// 配信中の版の掲載文（言語ごと。人が見比べ、直すときの元にする）。空なら初めての版で、案を書かない
+        public var current: [ListingText]
+        /// 直す案（変える言語だけ。nil の欄は変えない）。空なら「変えない」
+        public var drafts: [ListingText]
+        /// 案の理由（変えないなら、その理由）。人が読む
+        public var reason: String
+        public var draftedAt: Timestamp
+
+        public init(current: [ListingText], drafts: [ListingText], reason: String, draftedAt: Timestamp) {
+            self.current = current
+            self.drafts = drafts
+            self.reason = reason
+            self.draftedAt = draftedAt
+        }
+
+        /// 理由の長さの上限（Unicode のコードポイント）
+        public static let reasonLimit = 1_000
+
+        /// 合わない点（言語・長さ・案の言語が今の文に無い）
+        public static func problems(of listing: Listing, name: String) -> [String] {
+            var problems = ListingText.localeProblems(of: listing.current, name: "\(name) の current")
+            problems += ListingText.problems(of: listing.drafts, name: "\(name) の drafts")
+            let locales = Set(listing.current.map(\.locale))
+            if listing.drafts.contains(where: { !locales.contains($0.locale) }) {
+                problems.append("\(name) の drafts に、今の文に無い言語がある")
+            }
+            let reason = listing.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+            if reason.isEmpty || listing.reason.unicodeScalars.count > reasonLimit {
+                problems.append("\(name) の reason は 1〜\(reasonLimit) 文字")
+            }
+            return problems
+        }
+    }
+
     /// やめたリリースの版の枠を消した結果
     public enum SlotRemoval: String, Codable, Sendable, CaseIterable {
         /// 消した（すでに無かったときも）

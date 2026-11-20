@@ -98,6 +98,11 @@ final class FakeAppStore: AppStoreConnecting {
         try write("updateWhatsNew \(localizationID) \(text)")
     }
 
+    func updateListing(_ localizationID: String, _ text: ListingText) async throws(AppStoreConnectError) {
+        let fields = ListingText.Field.allCases.compactMap { field in text[field].map { "\(field.rawValue)=\($0)" } }
+        try write("updateListing \(localizationID) \(fields.joined(separator: " "))")
+    }
+
     func reviewSubmissions(of appID: String, platform: AppStorePlatform) async throws(AppStoreConnectError) -> [AppStoreReviewSubmission] {
         state.withLock { $0.submissions.filter { $0.platform == platform } }
     }

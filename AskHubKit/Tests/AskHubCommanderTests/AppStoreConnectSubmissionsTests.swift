@@ -118,6 +118,31 @@ struct AppStoreConnectSubmissionsTests {
         #expect((data["attributes"] as? [String: Any])?["whatsNew"] as? String == "・速くなりました")
     }
 
+    @Test func readsAndWritesListing() async throws {
+        let list = """
+            {"data":[
+              {"type":"appStoreVersionLocalizations","id":"l-ja","attributes":{"locale":"ja","whatsNew":null,
+               "description":"推しの予定を数えるアプリ","keywords":"推し活,カウントダウン","promotionalText":""}}
+            ]}
+            """
+        let transport = StubTransport([.json(200, list), .json(200, #"{"data":{"type":"appStoreVersionLocalizations","id":"l-ja"}}"#)])
+        let client = client(transport)
+        let localizations = try await client.localizations(of: "v2")
+        // 空の欄は無いものとして持つ
+        #expect(localizations.first?.listing == ListingText(locale: "ja", description: "推しの予定を数えるアプリ", keywords: "推し活,カウントダウン"))
+        let fields = query(transport.requests.first)["fields[appStoreVersionLocalizations]"]?.split(separator: ",").map(String.init) ?? []
+        #expect(Set(fields) == ["locale", "whatsNew", "description", "keywords", "promotionalText"])
+        // 送るのは nil でない欄だけ（空の文字列は送る）
+        try await client.updateListing("l-ja", ListingText(locale: "ja", keywords: "推し活,ウィジェット", promotionalText: ""))
+        let attributes = try #require(try body(transport.requests[1])["attributes"] as? [String: Any])
+        #expect(Set(attributes.keys) == ["keywords", "promotionalText"])
+        #expect(attributes["keywords"] as? String == "推し活,ウィジェット")
+        #expect((attributes["promotionalText"] as? String)?.isEmpty == true)
+        // 変える欄が無ければ送らない
+        try await client.updateListing("l-ja", ListingText(locale: "ja"))
+        #expect(transport.requests.count == 2)
+    }
+
     @Test func createsAndUpdatesVersions() async throws {
         let transport = StubTransport([
             .json(201, #"{"data":{"type":"appStoreVersions","id":"v-new","attributes":{"appVersionState":"PREPARE_FOR_SUBMISSION"}}}"#),

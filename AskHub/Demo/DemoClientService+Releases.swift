@@ -82,7 +82,9 @@ extension DemoClientService {
             submission.canAbandon = false
         }
         updateSoon(id, sending: .submit) { submission in
-            submission.submitted = .init(builds: request.builds, whatsNew: request.whatsNew, releaseType: request.releaseType, at: Date())
+            submission.submitted = .init(
+                builds: request.builds, whatsNew: request.whatsNew, releaseType: request.releaseType, at: Date(), listing: request.listing
+            )
             submission.review = request.builds.map { .init(platform: $0.platform, state: .waitingForReview, since: Date()) }
             submission.canWithdraw = true
         }
