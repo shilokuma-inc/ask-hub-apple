@@ -12,6 +12,12 @@ public struct AppStoreSettings: Codable, Hashable, Sendable {
         case allTerritories
     }
 
+    /// App Review の連絡先。今は同じ鍵のほかのアプリ（配信中か審査に出した版）の連絡先を写す（`copyFromOtherApp`）だけ。
+    /// 連絡先は個人の情報なので、値は意図にも記録にも持たない（GitHub の Secrets は司令塔から読めないので、App Store Connect の中で写す）
+    public enum ReviewContact: String, Codable, Sendable, CaseIterable {
+        case copyFromOtherApp
+    }
+
     public var contentRights: ContentRightsDeclaration?
     /// 主なカテゴリ（App Store Connect の `appCategories` の id。`PRODUCTIVITY` など）
     public var primaryCategory: String?
@@ -27,6 +33,8 @@ public struct AppStoreSettings: Codable, Hashable, Sendable {
     public var marketingUrl: String?
     /// 初めての版の著作権表示（`2026 Shilokuma Inc.` のように、権利を得た年と持ち主）。版の枠のうち、まだ書かれていないものに書く
     public var copyright: String?
+    /// 初めての版の App Review の連絡先。版の枠のうち、まだ入れていない欄に写す
+    public var reviewContact: ReviewContact?
 
     public init(
         contentRights: ContentRightsDeclaration? = nil,
@@ -37,7 +45,8 @@ public struct AppStoreSettings: Codable, Hashable, Sendable {
         availability: Availability? = nil,
         supportUrl: String? = nil,
         marketingUrl: String? = nil,
-        copyright: String? = nil
+        copyright: String? = nil,
+        reviewContact: ReviewContact? = nil
     ) {
         self.contentRights = contentRights
         self.primaryCategory = primaryCategory
@@ -48,6 +57,7 @@ public struct AppStoreSettings: Codable, Hashable, Sendable {
         self.supportUrl = supportUrl
         self.marketingUrl = marketingUrl
         self.copyright = copyright
+        self.reviewContact = reviewContact
     }
 
     /// URL（プライバシーポリシー・サポート・マーケティング）の長さの上限
@@ -66,6 +76,7 @@ public struct AppStoreSettings: Codable, Hashable, Sendable {
         if availability != nil { items.append(.availability) }
         if supportUrl != nil { items.append(.supportUrl) }
         if copyright != nil { items.append(.copyright) }
+        if reviewContact != nil { items.append(.reviewContact) }
         return items
     }
 

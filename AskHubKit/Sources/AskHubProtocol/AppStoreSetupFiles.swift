@@ -4,9 +4,9 @@ import Foundation
 ///
 /// 司令塔が App Store Connect にアプリを見つけられない・配信中の版が無いリポジトリに作り、チェックリストの項目が終わったかを API で確かめて書く。
 /// API で確かめられない項目（App のプライバシー・DSA の申告）は、人が「終わった」を押す（`confirmAppStoreItem`）。
-/// 決まった値（価格・配信の地域・カテゴリ・コンテンツの権利・プライバシーポリシーの URL、初めての版のサポート URL・著作権表示）と Bundle ID の登録は、
-/// 人が値を確かめて押したときだけ司令塔が API で書く（`applyAppStoreSettings`・`registerBundleId`）。版の項目（`ItemKind.isVersionItem`）は、
-/// 初めての版のリリースを始めて版の枠があるときだけ確かめる。配信中の版を見つけたら終わりの印（`releasedAt`）を付ける
+/// 決まった値（価格・配信の地域・カテゴリ・コンテンツの権利・プライバシーポリシーの URL、初めての版のサポート URL・著作権表示・App Review の連絡先）と
+/// Bundle ID の登録は、人が値を確かめて押したときだけ司令塔が API で書く（`applyAppStoreSettings`・`registerBundleId`）。
+/// 版の項目（`ItemKind.isVersionItem`）は、初めての版のリリースを始めて版の枠があるときだけ確かめる。配信中の版を見つけたら終わりの印（`releasedAt`）を付ける
 /// （`docs/renewal/release.md` の「新しいアプリを載せる」）
 public struct AppStoreSetupFile: StateFile {
     public static let formatVersion = 1
@@ -46,8 +46,10 @@ public struct AppStoreSetupFile: StateFile {
         /// 人が値を確かめて押したら、司令塔が API で書ける
         public var isWritable: Bool { Self.settingKinds.contains(self) || self == .bundleId }
 
-        /// 決まった値を書く意図（`applyAppStoreSettings`）で書く項目
-        public static let settingKinds: [Self] = [.contentRights, .category, .privacyPolicy, .price, .availability, .supportUrl, .copyright]
+        /// 決まった値を書く意図（`applyAppStoreSettings`）で書く項目。App Review の連絡先は、値を持たずに同じ鍵のほかのアプリから写す
+        public static let settingKinds: [Self] = [
+            .contentRights, .category, .privacyPolicy, .price, .availability, .supportUrl, .copyright, .reviewContact
+        ]
 
         /// アプリを作るまで（TestFlight に上げるのに要る）の項目か。ほかは初めての版を審査に出すまでに要る
         public var isNeededForApp: Bool { self == .bundleId || self == .app }
@@ -165,26 +167,42 @@ public struct AppStoreSetupFile: StateFile {
         }
     }
 
-    /// 決まった値を書く人の意図（`applyAppStoreSettings`）。司令塔が送り終えたら `doneAt` が付き、断られた項目は `failures` に書く
+    /// App Review の連絡先を写したアプリ（連絡先の値は持たない）
+    public struct SourceApp: Codable, Equatable, Sendable {
+        /// App Store Connect のアプリの id（数字だけ）
+        public var id: String
+        public var name: String
+
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
+    }
+
+    /// 決まった値を書く人の意図（`applyAppStoreSettings`）。司令塔が送り終えたら `doneAt` が付き、断られた項目は `failures` に書く。
+    /// App Review の連絡先を写したら、写したアプリを `reviewContactFrom` に書く
     public struct SettingsRequest: Codable, Equatable, Sendable {
         public var approval: IntentReference
         public var at: Timestamp
         public var settings: AppStoreSettings
         public var doneAt: Timestamp?
         public var failures: [Failure]?
+        public var reviewContactFrom: SourceApp?
 
         public init(
             approval: IntentReference,
             at: Timestamp,
             settings: AppStoreSettings,
             doneAt: Timestamp? = nil,
-            failures: [Failure]? = nil
+            failures: [Failure]? = nil,
+            reviewContactFrom: SourceApp? = nil
         ) {
             self.approval = approval
             self.at = at
             self.settings = settings
             self.doneAt = doneAt
             self.failures = failures
+            self.reviewContactFrom = reviewContactFrom
         }
     }
 
@@ -320,6 +338,13 @@ public struct AppStoreSetupFile: StateFile {
             violations += Self.problems(of: request.failures, doneAt: request.doneAt, name: "settingsRequest")
             if request.failures?.contains(where: { !ItemKind.settingKinds.contains($0.item) }) ?? false {
                 violations.append("settingsRequest の failures に決まった値でない項目がある")
+            }
+            if let source = request.reviewContactFrom {
+                if request.doneAt == nil || request.settings.reviewContact == nil {
+                    violations.append("settingsRequest の reviewContactFrom は、連絡先を写すのを送り終えたときだけ持つ")
+                }
+                if !App.isID(source.id) { violations.append("settingsRequest の reviewContactFrom の id の形が違う") }
+                if source.name.isEmpty { violations.append("settingsRequest の reviewContactFrom の name が空") }
             }
         }
         if problem?.message.isEmpty == true { violations.append("problem の message が空") }

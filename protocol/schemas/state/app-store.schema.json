@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/app-store.schema.json",
   "title": "repos/<owner>/<repo>/app-store.json（新しいアプリを App Store に載せる準備）",
-  "description": "司令塔だけが書く。App Store Connect にアプリが無い・配信中の版が無いリポジトリに作り、チェックリストの項目が終わったかを API で確かめて items に書く。API で確かめられない項目は、人が confirmAppStoreItem を押すと confirmed が付く。決まった値（初めての版のサポート URL・著作権表示を含む）と Bundle ID の登録は、人が押した（applyAppStoreSettings・registerBundleId）ときだけ司令塔が書き、結果を settingsRequest・bundleIdRequest に書く。配信中の版を見つけたら releasedAt を付ける。欄どうしの決まり（項目を重ねない・app は人の終わったを持たない・failures は送り終えたときだけ・決まった値の形 など）は読む側で確かめる",
+  "description": "司令塔だけが書く。App Store Connect にアプリが無い・配信中の版が無いリポジトリに作り、チェックリストの項目が終わったかを API で確かめて items に書く。API で確かめられない項目は、人が confirmAppStoreItem を押すと confirmed が付く。決まった値（初めての版のサポート URL・著作権表示・App Review の連絡先を写すのを含む）と Bundle ID の登録は、人が押した（applyAppStoreSettings・registerBundleId）ときだけ司令塔が書き、結果を settingsRequest・bundleIdRequest に書く。配信中の版を見つけたら releasedAt を付ける。欄どうしの決まり（項目を重ねない・app は人の終わったを持たない・failures は送り終えたときだけ・決まった値の形 など）は読む側で確かめる",
   "type": "object",
   "required": [
     "v",
@@ -132,6 +132,12 @@
             "pattern": "[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]"
           },
           "description": "初めての版の著作権表示（権利を得た年と持ち主。2026 Shilokuma Inc. など）。前後に空白を置かず、改行を含まない"
+        },
+        "reviewContact": {
+          "enum": [
+            "copyFromOtherApp"
+          ],
+          "description": "初めての版の App Review の連絡先を、同じ鍵のほかのアプリ（配信中か審査に出した版）から写す。連絡先の値は持たない"
         }
       },
       "allOf": [
@@ -170,6 +176,11 @@
             {
               "required": [
                 "copyright"
+              ]
+            },
+            {
+              "required": [
+                "reviewContact"
               ]
             }
           ]
@@ -393,6 +404,28 @@
         },
         "failures": {
           "$ref": "#/$defs/failures"
+        },
+        "reviewContactFrom": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "App Review の連絡先を写したアプリ（連絡先の値は持たない）。連絡先を写すのを送り終えたときだけ",
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[0-9]{1,20}$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       }
     },
