@@ -51,6 +51,14 @@ enum HumanIntent: Hashable {
     case removeRepository(repositoryID: TargetRepository.ID)
     /// ビルドの設定を入れる（`json` は `repo.json` の `build` と同じ形。送るたびにまるごと置き換える）
     case configureRepository(repositoryID: TargetRepository.ID, json: String)
+    /// Bundle ID を登録する（司令塔が App Store Connect に送る）
+    case registerBundleId(repositoryID: TargetRepository.ID, identifier: String, platform: AppStoreSetup.BundlePlatform)
+    /// 決まった値（価格・配信の地域・カテゴリ・コンテンツの権利・プライバシーポリシーの URL）を App Store Connect に書く
+    case applyAppStoreSettings(repositoryID: TargetRepository.ID, request: AppStoreSettingsRequest)
+    /// App Store Connect の Web でした作業を「終わった」にする
+    case confirmAppStoreItem(repositoryID: TargetRepository.ID, item: AppStoreSetup.ItemKind)
+    /// App Store に出さない（`excluded` が false なら出すに戻す）
+    case excludeFromAppStore(repositoryID: TargetRepository.ID, excluded: Bool)
 }
 
 enum SplitChoice: Hashable {
@@ -126,6 +134,18 @@ extension HumanIntent {
 
         case .configureRepository(let repositoryID, _):
             "ビルドの設定（\(repositoryID)）"
+
+        case let .registerBundleId(_, identifier, _):
+            "Bundle ID の登録（\(identifier)）"
+
+        case .applyAppStoreSettings:
+            "App Store Connect に値を書く"
+
+        case let .confirmAppStoreItem(_, item):
+            "終わった（\(item.title)）"
+
+        case let .excludeFromAppStore(_, excluded):
+            excluded ? "App Store に出さない" : "App Store に出すに戻す"
 
         case let .resolveBlocker(_, action, _, _):
             Self.label(of: action)
