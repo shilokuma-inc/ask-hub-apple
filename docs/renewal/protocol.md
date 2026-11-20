@@ -393,6 +393,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `bundleIdRequest`・`settingsRequest` は、人が押した書き込み（`registerBundleId`・`applyAppStoreSettings`）の最後のもの。司令塔が App Store Connect に送り終えたら `doneAt` を付け、断られた項目を `failures`（`item`・`message`）に書く。`settings` は `applyAppStoreSettings` の payload と同じ形
 - `excluded` は、人が「App Store に出さない」を押した印（`excludeFromAppStore`）。出すに戻したら `null`。印があれば、司令塔は確かめず、クライアントは出さない
 - `releasedAt` は、配信中の版を見つけた時刻（初めての版が配信された）。これより後は確かめない
+- `checkedAt` は、確かめて様子が変わったのを書いた時刻。項目の `checkedAt` も様子が変わったときだけ書き直す（30 分ごとの確かめで、様子が同じなら記録を書かない）
 - `problem` は確かめられなかった理由（鍵が無い・断られた）。確かめられたら消す
 - クライアントは、印が無く配信していない記録のうち、アプリを作るまでの項目が終わっていないもの（アプリが無い）を、人の番として出す。配信中の版が無いアプリでリリースを始めた（`submissions/` に終わっていない記録がある）ら、残りの項目も出す（`pendingItems(firstRelease:)`）
 

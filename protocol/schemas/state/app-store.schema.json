@@ -246,7 +246,8 @@
             "description": "人が読む補足（今の値・読めなかった理由など）"
           },
           "checkedAt": {
-            "$ref": "../common.schema.json#/$defs/timestamp"
+            "$ref": "../common.schema.json#/$defs/timestamp",
+            "description": "司令塔が今の様子を確かめた時刻（様子が変わったときだけ書き直す）"
           },
           "confirmed": {
             "oneOf": [
@@ -375,7 +376,7 @@
           "$ref": "../common.schema.json#/$defs/timestamp"
         }
       ],
-      "description": "最後に App Store Connect で確かめた時刻"
+      "description": "App Store Connect で確かめて、様子が変わったのを書いた時刻（変わらなければ書き直さない）"
     },
     "problem": {
       "type": [

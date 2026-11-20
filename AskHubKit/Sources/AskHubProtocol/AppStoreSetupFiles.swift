@@ -73,7 +73,7 @@ public struct AppStoreSetupFile: StateFile {
         public var state: ItemState
         /// 人が読む補足（今の値・読めなかった理由など）。500 文字まで
         public var note: String?
-        /// 司令塔が最後に確かめた時刻
+        /// 司令塔が今の様子を確かめた時刻（様子が変わったときだけ書き直す。記録を見回りのたびに書かないため）
         public var checkedAt: Timestamp
         /// 人が「終わった」を押した（API で確かめられない項目と、確かめが合わないときの上書き）
         public var confirmed: Approval?
@@ -204,7 +204,7 @@ public struct AppStoreSetupFile: StateFile {
     public var excluded: Approval?
     /// 配信中の版を見つけた時刻（初めての版が配信された。これより後は確かめない）
     public var releasedAt: Timestamp?
-    /// 最後に App Store Connect で確かめた時刻
+    /// App Store Connect で確かめて、様子が変わったのを書いた時刻（変わらなければ書き直さない）
     public var checkedAt: Timestamp?
     public var problem: Problem?
     public var createdAt: Timestamp
