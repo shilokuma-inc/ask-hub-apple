@@ -34,6 +34,10 @@ extension CommanderLoop {
         "distributeRelease": DistributeReleaseHandler(),
         "withdrawSubmission": WithdrawSubmissionHandler(),
         "abandonRelease": AbandonReleaseHandler(),
+        "registerBundleId": RegisterBundleIdHandler(),
+        "applyAppStoreSettings": ApplyAppStoreSettingsHandler(),
+        "confirmAppStoreItem": ConfirmAppStoreItemHandler(),
+        "excludeFromAppStore": ExcludeFromAppStoreHandler(),
         "findCleanupCandidates": CleanupRequestHandler(),
         "removeCleanupCandidates": CleanupRequestHandler()
     ]

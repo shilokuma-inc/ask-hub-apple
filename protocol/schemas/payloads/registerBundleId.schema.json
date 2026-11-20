@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/registerBundleId.schema.json",
+  "title": "Bundle ID を登録する人の意図（kind が registerBundleId）の payload",
+  "description": "封筒の repo が対象のリポジトリ。target・targetVersion は書かない。identifier は登録する Bundle ID、platform はそのプラットフォーム（iOS・macOS・universal）。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "identifier",
+    "platform"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "identifier": {
+      "$ref": "../state/app-store.schema.json#/$defs/bundleId"
+    },
+    "platform": {
+      "enum": [
+        "iOS",
+        "macOS",
+        "universal"
+      ]
+    }
+  }
+}

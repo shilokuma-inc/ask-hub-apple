@@ -1,0 +1,45 @@
+{
+  "description": "App Store に出さない・出すに戻す人の意図の payload の例。read は、封筒の repo が正しいときに、読む側が出さない意図として読めるか",
+  "schema": "payloads/excludeFromAppStore.schema.json",
+  "cases": [
+    {
+      "name": "exclude",
+      "payload": {
+        "excluded": true
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "include",
+      "payload": {
+        "excluded": false
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "string",
+      "payload": {
+        "excluded": "true"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "missing",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "excluded": true,
+        "reason": "試しのリポジトリ"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

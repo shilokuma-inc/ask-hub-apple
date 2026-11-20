@@ -228,7 +228,7 @@ struct ReleaseWatchTests {
     let listingDrafter = FakeListingDrafter()
     let clock = TestClock(Self.now)
 
-    func watch(stores: [any AppStoreConnectSubmitting]? = nil) -> ReleaseWatch {
+    func watch(stores: [any AppStoreConnecting]? = nil) -> ReleaseWatch {
         let clock = clock
         return ReleaseWatch(
             context: CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { clock.now },

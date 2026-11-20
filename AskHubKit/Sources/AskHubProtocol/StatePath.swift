@@ -73,6 +73,11 @@ public enum StatePath {
         "\(submissions(repo))/\(version.rawValue).json"
     }
 
+    /// 新しいアプリを App Store に載せる準備（チェックリスト）
+    public static func appStoreSetup(_ repo: RepositoryFullName) -> String {
+        "\(repositoryDirectory(repo))/app-store.json"
+    }
+
     /// リポジトリの epic を置くディレクトリ（`epics/<epic>/`）
     public static func epics(_ repo: RepositoryFullName) -> String {
         "\(repositoryDirectory(repo))/epics"

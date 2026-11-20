@@ -4,7 +4,7 @@ import Foundation
 import os
 
 /// 決めたアプリ・版・ビルド・掲載文を返し、読んだ回数と書き込みを残す
-final class FakeAppStore: AppStoreConnectSubmitting {
+final class FakeAppStore: AppStoreConnecting {
     struct State {
         var apps: [AppStoreApp] = []
         /// 配信中の版（`versions(of:)` は、`others` の後に配信中の版として返す）
@@ -19,6 +19,12 @@ final class FakeAppStore: AppStoreConnectSubmitting {
         /// 決めると、書き込みをこれで断る
         var refusal: AppStoreConnectError?
         var reads = 0
+        /// 登録してある Bundle ID
+        var bundleIDs: [String] = []
+        /// 決めると、Bundle ID の読み取りをこれで断る
+        var bundleIDRefusal: AppStoreConnectError?
+        /// アプリの準備の様子（書き込むと変わる）
+        var setup = AppStoreSetupState()
     }
 
     let keyID = "ABCDE12345"
@@ -138,5 +144,51 @@ final class FakeAppStore: AppStoreConnectSubmitting {
     func deleteVersion(_ versionID: String) async throws(AppStoreConnectError) {
         try write("deleteVersion \(versionID)")
         state.withLock { $0.others.removeAll { $0.id == versionID } }
+    }
+
+    // MARK: - 準備
+
+    func registeredBundleIDs(_ identifiers: [String]) async throws(AppStoreConnectError) -> [String] {
+        let (registered, refusal) = state.withLock { ($0.bundleIDs, $0.bundleIDRefusal) }
+        if let refusal { throw refusal }
+        return identifiers.filter(registered.contains)
+    }
+
+    func registerBundleID(_ identifier: String, name: String, platform: BundleIDPlatform) async throws(AppStoreConnectError) {
+        try write("registerBundleID \(identifier) \(platform.rawValue) \(name)")
+        state.withLock { $0.bundleIDs.append(identifier) }
+    }
+
+    func setupState(of appID: String) async throws(AppStoreConnectError) -> AppStoreSetupState {
+        state.withLock { $0.setup }
+    }
+
+    func setContentRights(_ value: ContentRightsDeclaration, of appID: String) async throws(AppStoreConnectError) {
+        try write("setContentRights \(value.rawValue)")
+        state.withLock { $0.setup.contentRights = value.appStoreConnectValue }
+    }
+
+    func setCategory(_ primary: String, subcategory: String?, appInfoID: String) async throws(AppStoreConnectError) {
+        try write("setCategory \(appInfoID) \(primary) \(subcategory ?? "-")")
+        state.withLock { $0.setup.primaryCategory = primary }
+    }
+
+    func setPrivacyPolicyURL(_ url: String, localizationID: String) async throws(AppStoreConnectError) {
+        try write("setPrivacyPolicyURL \(localizationID) \(url)")
+        state.withLock { state in
+            if let index = state.setup.infoLocalizations.firstIndex(where: { $0.id == localizationID }) {
+                state.setup.infoLocalizations[index].privacyPolicyUrl = url
+            }
+        }
+    }
+
+    func setFreePrice(of appID: String) async throws(AppStoreConnectError) {
+        try write("setFreePrice")
+        state.withLock { $0.setup.hasPrice = true }
+    }
+
+    func setAvailableEverywhere(of appID: String) async throws(AppStoreConnectError) {
+        try write("setAvailableEverywhere")
+        state.withLock { $0.setup.hasAvailability = true }
     }
 }

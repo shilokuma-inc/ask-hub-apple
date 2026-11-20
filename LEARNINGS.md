@@ -822,3 +822,6 @@
   配信中の版のプロモーションテキストを API で変えられるかは、文書に書かれていない（ヘルプには「審査に出さずに変えられる」とだけある）（2026-11-20、#1156）
 - スクショの `appScreenshots`・`appScreenshotSets`・並べ替えの API は、API 4.5 で非推奨になり、App Asset Library（`AppAssetLibraryImage`）と placements に移った。
   `screenshotDisplayType` の値に iPhone Duo（`APP_IPHONE_DUO` など）は無い（ヘルプのサイズ表には iPhone Duo がある）（2026-11-20、#1156 で調べた）
+- App Store Connect の API の文書の入れ子の型（作成の要求の `data`・`attributes`・`relationships`）は、DocC の JSON の slug に `/data-data.dictionary/attributes-data.dictionary` のように足すと読める（例: `appavailabilityv2createrequest/data-data.dictionary/relationships-data.dictionary.json`）。
+  App のプライバシー（データの収集の申告）・DSA の申告・契約と税と口座の API は無い。スクショの `appScreenshotSets`・`appScreenshots` は 4.5.1 で非推奨になり、App Asset Library（`appAssetLibraryImages`・`appAssetLibraryPlacements`）に替わった。
+  App Manager のチームの鍵で Provisioning（`bundleIds`）を使えるかは文書に無い（役割の表では App Manager は Certificates, Identifiers & Profiles のアクセスを与えられたときだけ）（2026-11-20、#1157）

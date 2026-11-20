@@ -290,7 +290,10 @@ public actor CommanderLoop {
     }
 
     /// 受け付けたら、生きている印を待たずにリリースの見回りを起こす種類（release ブランチを作る・App Store Connect に出すなど）
-    static let releaseKinds: Set<String> = ["startRelease", "submitForReview", "distributeRelease", "withdrawSubmission"]
+    static let releaseKinds: Set<String> = [
+        "startRelease", "submitForReview", "distributeRelease", "withdrawSubmission",
+        "registerBundleId", "applyAppStoreSettings", "confirmAppStoreItem", "excludeFromAppStore"
+    ]
 
     // MARK: - 通知
 

@@ -71,6 +71,8 @@ public struct PushNotice: Equatable, Sendable {
                 return releaseNotice(repo, version, blockers: blockers)
             case let .submission(repo, version):
                 return submissionNotice(repo, version, blockers: blockers)
+            case let .appStore(repo):
+                return appStoreNotice(repo, blockers: blockers)
             }
         }
     }
@@ -161,6 +163,29 @@ public struct PushNotice: Equatable, Sendable {
             target: ["repo": repo.rawValue, "submission": version.rawValue],
             keys: blockers.map(\.key)
         )
+    }
+
+    /// 新しいアプリを App Store に載せる準備の通知。通知から、準備のチェックリストを開く
+    private static func appStoreNotice(_ repo: RepositoryFullName, blockers: [Blocker]) -> PushNotice {
+        PushNotice(
+            title: "\(repo.name) の App Store の準備",
+            subtitle: repo.rawValue,
+            body: blockers.compactMap { appStoreLine($0.reason) }.joined(separator: "\n"),
+            thread: "appStore/\(repo.rawValue)",
+            target: ["repo": repo.rawValue, "appStore": "setup"],
+            keys: blockers.map(\.key)
+        )
+    }
+
+    private static func appStoreLine(_ reason: Blocker.Reason) -> String? {
+        switch reason {
+        case .appStoreApp: "App Store Connect にアプリがありません。チェックリストを見て、App Store Connect でアプリを作ってください"
+        case let .appStoreFirstRelease(remaining): "初めての版を審査に出すまでに、App Store の準備が \(remaining) 個残っています"
+        case let .appStoreRefused(items):
+            "App Store Connect に書けなかった項目があります（\(items.map(\.rawValue).joined(separator: "・"))）。理由を確かめてください"
+        case .appStoreProblem: "App Store の準備を確かめられません。確かめてください"
+        default: nil
+        }
     }
 
     private static func submissionLine(_ reason: Blocker.Reason) -> String? {
