@@ -11,6 +11,14 @@
       "read": "valid"
     },
     {
+      "name": "version-item",
+      "payload": {
+        "item": "reviewContact"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "digital-services-act",
       "payload": {
         "item": "digitalServicesAct"
