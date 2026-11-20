@@ -48,11 +48,22 @@ struct AppStoreSubmission: Sendable {
         }
     }
 
-    /// 人が確かめた What's New と掲載文の直しを、言語ごとに書く（今の文と同じ欄は書かない。確かめなかった欄は App Store Connect の文を残す）
+    /// 人が確かめた What's New と掲載文の直しを、言語ごとに書く（今の文と同じ欄は書かない。確かめなかった欄は App Store Connect の文を残す）。
+    /// 書く前に、直した後の掲載文でどの言語にも説明文とキーワードがそろうかを確かめ、そろわなければ書かずに止める
+    /// （App Store Connect は空の版を審査に出させない。初めての版で、後から足したプラットフォームの版や、人が「変える」を外した欄が空のまま残ることがある）
     private func writeTexts(of target: AppStoreVersionInfo) async throws {
         let changes = request.listing ?? []
-        guard !request.whatsNew.isEmpty || !changes.isEmpty else { return }
         let localizations = try await call { () throws(AppStoreConnectError) in try await store.localizations(of: target.id) }
+        guard !localizations.isEmpty else {
+            throw ReleaseStepProblem("\(target.platform.rawValue) の版に掲載文の言語が無い。App Store Connect で言語と掲載文を書く", needsHuman: true)
+        }
+        let missing = Self.missingRequired(localizations, changes: changes)
+        guard missing.isEmpty else {
+            throw ReleaseStepProblem(
+                "\(target.platform.rawValue) の版の掲載文に、\(missing.joined(separator: "・")) が無い。App Store Connect で書く（書けば次の見回りで出し直す）",
+                needsHuman: true
+            )
+        }
         func localization(_ locale: String) throws -> AppStoreLocalization {
             guard let localization = localizations.first(where: { $0.locale == locale }) else {
                 throw ReleaseStepProblem(
@@ -91,6 +102,17 @@ struct AppStoreSubmission: Sendable {
         guard !update.isEmpty else { return }
         try await call { () throws(AppStoreConnectError) in
             try await store.writeReviewDetail(detail?.id, versionID: target.id, update)
+        }
+    }
+
+    /// 人の直しを当てた後で、説明文かキーワードが空の言語と欄（「ja の description」など）
+    static func missingRequired(_ localizations: [AppStoreLocalization], changes: [ListingText]) -> [String] {
+        localizations.flatMap { localization in
+            let change = changes.first { $0.locale == localization.locale }
+            return [ListingText.Field.description, .keywords].compactMap { field in
+                let text = change?[field] ?? localization.listing[field] ?? ""
+                return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "\(localization.locale) の \(field.rawValue)" : nil
+            }
         }
     }
 

@@ -161,7 +161,13 @@ extension ReleaseWatchTests {
                     whatsNew: nil,
                     listing: .init(locale: "ja", description: "推しの予定を数えるアプリ", keywords: "推し活", promotionalText: "毎日に推しを")
                 ),
-                AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: "- Faster")
+                // 2 つ目以降の版は、App Store Connect が前の版の掲載文を写す
+                AppStoreLocalization(
+                    id: "l-en",
+                    locale: "en-US",
+                    whatsNew: "- Faster",
+                    listing: .init(locale: "en-US", description: "Count down to your oshi events", keywords: "oshi")
+                )
             ]
         }
         return file
@@ -233,8 +239,12 @@ extension ReleaseWatchTests {
             // やめたリリースで作った版（番号を直して使う）
             state.others = [AppStoreVersionInfo(id: "v-old", platform: .iOS, versionString: "1.1.9", state: .prepareForSubmission)]
             state.localizations["v-old"] = [
-                AppStoreLocalization(id: "l-ja", locale: "ja", whatsNew: nil),
-                AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: nil)
+                AppStoreLocalization(
+                    id: "l-ja", locale: "ja", whatsNew: nil, listing: .init(locale: "ja", description: "推し活", keywords: "推し")
+                ),
+                AppStoreLocalization(
+                    id: "l-en", locale: "en-US", whatsNew: nil, listing: .init(locale: "en-US", description: "Oshi", keywords: "oshi")
+                )
             ]
             state.refusal = .refused(status: 409, detail: "You must upload screenshots.")
         }
@@ -405,5 +415,50 @@ extension ReleaseWatchTests {
         #expect(try await submission().problem?.step == .integration)
         // 配信してから 1 日の間は、配信の知らせも出し続ける
         #expect(await submissionBlockers(watch).map(\.reason) == [.submissionProblem(.integration), .submissionDistributed])
+    }
+}
+
+/// 審査に出す前に、提出先の版のどの言語にも説明文とキーワードがそろうかを確かめる（初めての版で、後から足した版・「変える」を外した欄）
+extension ReleaseWatchTests {
+    @Test func stopsBeforeSubmittingWhenRequiredListingIsEmpty() {
+        let localizations = [
+            AppStoreLocalization(id: "l-ja", locale: "ja", whatsNew: nil, listing: .init(locale: "ja", description: "日数を数えます。")),
+            AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: nil, listing: .init(locale: "en-US"))
+        ]
+        // 人が「変える」を外した（直しが無い）
+        #expect(AppStoreSubmission.missingRequired(localizations, changes: []) == [
+            "ja の keywords", "en-US の description", "en-US の keywords"
+        ])
+        // 人が確かめた直しを当てるとそろう
+        let changes = [
+            ListingText(locale: "ja", keywords: "推し活"),
+            ListingText(locale: "en-US", description: "Counts days.", keywords: "oshi")
+        ]
+        #expect(AppStoreSubmission.missingRequired(localizations, changes: changes).isEmpty)
+    }
+
+    @Test func doesNotSubmitVersionWithEmptyListing() async throws {
+        _ = try await readyToSubmit()
+        // 後から足した版のように、英語の掲載文が空
+        appStore.state.withLock { state in
+            state.localizations["v-1-2-0"]?[1] = AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: "- Faster")
+        }
+        let watch = watch()
+        await watch.refresh()
+        let file = try await submission()
+        #expect(file.problem?.step == .submit && file.problem?.needsHuman == true)
+        #expect(file.problem?.message.contains("en-US の description・en-US の keywords") == true)
+        // 掲載文も提出も書かない（版を作るだけ）
+        #expect(appStore.state.withLock { $0.writes } == ["createVersion iOS 1.2.0 afterApproval b45"])
+    }
+
+    @Test func doesNotSubmitVersionWithoutLocales() async throws {
+        _ = try await readyToSubmit()
+        appStore.state.withLock { $0.localizations["v-1-2-0"] = [] }
+        await watch().refresh()
+        let file = try await submission()
+        #expect(file.problem?.step == .submit && file.problem?.needsHuman == true)
+        #expect(file.problem?.message.contains("掲載文の言語が無い") == true)
+        #expect(appStore.state.withLock { $0.writes } == ["createVersion iOS 1.2.0 afterApproval b45"])
     }
 }

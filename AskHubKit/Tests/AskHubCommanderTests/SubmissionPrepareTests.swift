@@ -260,8 +260,10 @@ extension ReleaseWatchTests {
         let file = try await submission()
         #expect(file.whatsNew?.drafts.isEmpty == true)
         #expect(whatsNewDrafter.materials.withLock { $0 }.isEmpty)
-        // 掲載文も案を書かない（App Store Connect で書く）
-        #expect(file.listing?.current.isEmpty == true && file.listing?.drafts.isEmpty == true)
+        // 掲載文は、初めての版でも一から書く（2026-11-20 にユーザーが決めた）。この記録は版の枠を作らない（この仕組みの前に始めた）ので、
+        // 編集できる版が無ければ待っても進まない。人が App Store Connect で版を作る問題にする
+        #expect(file.listing == nil)
+        #expect(file.problem?.step == .listing && file.problem?.needsHuman == true)
         #expect(listingDrafter.materials.withLock { $0 }.isEmpty)
     }
 

@@ -29,6 +29,9 @@ extension DemoClientService {
 
         case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
             applySubmissionIntent(intent)
+
+        case .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
+            applyAppStoreSetupIntent(intent)
         }
         return SendReceipt()
     }

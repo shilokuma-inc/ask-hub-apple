@@ -43,6 +43,8 @@ enum AppRoute: Hashable {
     case release(repositoryID: TargetRepository.ID, version: String)
     /// リリースを始めた版（準備から配信まで）
     case submission(repositoryID: TargetRepository.ID, version: String)
+    /// 新しいアプリを App Store に載せる準備のチェックリスト
+    case appStoreSetup(TargetRepository.ID)
     /// 終わったもの（マージした・やめた epic）をすべて。進行中には新しいものだけを出す
     case finishedEpics
 }

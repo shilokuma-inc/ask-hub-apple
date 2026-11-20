@@ -72,7 +72,8 @@ extension Submission {
 
     /// 掲載文の案
     struct Listing: Hashable {
-        /// 配信中の版の掲載文（言語ごと）。空なら初めての版で、案を書かない
+        /// 配信中の版の掲載文（言語ごと）。初めての版なら、編集できる版の今の文（欄が空のこともある）。
+        /// 空なら、初めての版の案を書かなかったころの記録
         var current: [ListingTexts]
         /// 直す案（変える言語だけ）。空なら「変えない」
         var drafts: [ListingTexts]

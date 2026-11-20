@@ -428,7 +428,8 @@ extension StateSnapshotBuilder {
             return "取り下げ"
 
         default:
-            return finalLabel(envelope) ?? pauseLabel(envelope) ?? releaseLabel(envelope) ?? Self.repositoryLabel(envelope) ?? envelope.kind
+            return finalLabel(envelope) ?? pauseLabel(envelope) ?? releaseLabel(envelope) ?? Self.repositoryLabel(envelope)
+                ?? Self.appStoreSetupLabel(envelope) ?? envelope.kind
         }
     }
 

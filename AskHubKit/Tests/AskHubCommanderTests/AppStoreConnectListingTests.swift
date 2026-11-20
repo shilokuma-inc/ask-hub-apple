@@ -88,7 +88,38 @@ struct AppStoreConnectListingTests {
             "/v1/apps/6740000002/appPriceSchedule",
             "/v1/apps/6740000002/appAvailabilityV2"
         ])
-        #expect(query(transport.requests[1])["include"] == "ageRatingDeclaration")
+        #expect(query(transport.requests[1])["include"] == "ageRatingDeclaration,primaryCategory")
+    }
+
+    @Test func readsChosenCategoryOnlyFromIncludedRelationship() async throws {
+        let app = """
+            {"data":{"type":"apps","id":"6740000003",
+                     "attributes":{"primaryLocale":"ja","contentRightsDeclaration":"DOES_NOT_USE_THIRD_PARTY_CONTENT"}}}
+            """
+        // 配信中の版のある App 情報と、準備している App 情報。include したので、カテゴリの関係に data が入る
+        let infos = """
+            {"data":[
+              {"type":"appInfos","id":"info-live","attributes":{"state":"READY_FOR_DISTRIBUTION"},
+               "relationships":{"primaryCategory":{"data":{"type":"appCategories","id":"GAMES"}},
+                                "ageRatingDeclaration":{"links":{"related":"x"}}}},
+              {"type":"appInfos","id":"info-next","attributes":{"state":"PREPARE_FOR_SUBMISSION"},
+               "relationships":{"primaryCategory":{"links":{"related":"y"},"data":{"type":"appCategories","id":"ENTERTAINMENT"}},
+                                "ageRatingDeclaration":{"links":{"related":"z"}}}}
+            ],
+            "included":[{"type":"appCategories","id":"ENTERTAINMENT","attributes":{"platforms":["IOS"]}}]}
+            """
+        let transport = StubTransport([
+            .json(200, app),
+            .json(200, infos),
+            .json(200, #"{"data":[]}"#),
+            .json(200, #"{"data":{"type":"appPriceSchedules","id":"s","relationships":{"manualPrices":{"data":[{"id":"p"}]}}}}"#),
+            .json(200, #"{"data":{"type":"appAvailabilities","id":"a"}}"#)
+        ])
+        let state = try await client(transport).setupState(of: "6740000003")
+        #expect(state.appInfoID == "info-next" && state.primaryCategory == "ENTERTAINMENT")
+        // 年齢制限の申告が include に無ければ、読めないとする（答えていないと決めつけない）
+        #expect(state.unansweredAgeRatings == nil)
+        #expect(state.hasPrice == true && state.hasAvailability == true)
     }
 
     @Test func setsFreePriceWithZeroPricePointOfBaseTerritory() async throws {
