@@ -100,6 +100,16 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: ApplyProtectionIntent.kind, repo: repo, payload: ["requiredChecks": .array(requiredChecks.map(JSONValue.string))])
     }
 
+    /// 配信中の版のプロモーションテキストを直す（審査に出さずに、司令塔がすぐ App Store Connect に書く）
+    public static func updatePromotionalText(_ repo: RepositoryFullName, version: MarketingVersion, texts: [LocalizedText]) -> Self {
+        Self(
+            kind: UpdatePromotionalTextIntent.kind,
+            repo: repo,
+            target: .init(type: ReleaseTarget.targetType, id: version.rawValue),
+            payload: UpdatePromotionalTextIntent.payload(texts: texts)
+        )
+    }
+
     /// リリースを始める（司令塔が release ブランチを作り、準備を進める）
     public static func startRelease(_ repo: RepositoryFullName, version: MarketingVersion) -> Self {
         Self(kind: StartReleaseIntent.kind, repo: repo, payload: ["version": .string(version.rawValue)])
@@ -125,6 +135,27 @@ public struct IntentDraft: Equatable, Sendable {
                 builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate, listing: listing
             )
         )
+    }
+
+    /// Bundle ID を登録する（司令塔が App Store Connect に送る。`identifier` はリポジトリのビルドの設定にあるもの）
+    public static func registerBundleId(_ repo: RepositoryFullName, identifier: String, platform: BundleIDPlatform) -> Self {
+        let payload = RegisterBundleIdIntent.payload(identifier: identifier, platform: platform)
+        return Self(kind: RegisterBundleIdIntent.kind, repo: repo, payload: payload)
+    }
+
+    /// 決まった値を App Store Connect に書く（書く欄だけ。まだ決めていない項目だけを司令塔が書く）
+    public static func applyAppStoreSettings(_ repo: RepositoryFullName, settings: AppStoreSettings) -> Self {
+        Self(kind: ApplyAppStoreSettingsIntent.kind, repo: repo, payload: ApplyAppStoreSettingsIntent.payload(settings))
+    }
+
+    /// App Store Connect の Web でした作業を「終わった」にする
+    public static func confirmAppStoreItem(_ repo: RepositoryFullName, item: AppStoreSetupFile.ItemKind) -> Self {
+        Self(kind: ConfirmAppStoreItemIntent.kind, repo: repo, payload: ConfirmAppStoreItemIntent.payload(item: item))
+    }
+
+    /// App Store に出さない（`excluded` が false なら出すに戻す）
+    public static func excludeFromAppStore(_ repo: RepositoryFullName, excluded: Bool) -> Self {
+        Self(kind: ExcludeFromAppStoreIntent.kind, repo: repo, payload: ExcludeFromAppStoreIntent.payload(excluded: excluded))
     }
 
     /// 審査に通った版を配信する（App Store Connect では取り消せない）

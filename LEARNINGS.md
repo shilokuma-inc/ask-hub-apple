@@ -825,3 +825,5 @@
 - App Store Connect の API の文書の入れ子の型（作成の要求の `data`・`attributes`・`relationships`）は、DocC の JSON の slug に `/data-data.dictionary/attributes-data.dictionary` のように足すと読める（例: `appavailabilityv2createrequest/data-data.dictionary/relationships-data.dictionary.json`）。
   App のプライバシー（データの収集の申告）・DSA の申告・契約と税と口座の API は無い。スクショの `appScreenshotSets`・`appScreenshots` は 4.5.1 で非推奨になり、App Asset Library（`appAssetLibraryImages`・`appAssetLibraryPlacements`）に替わった。
   App Manager のチームの鍵で Provisioning（`bundleIds`）を使えるかは文書に無い（役割の表では App Manager は Certificates, Identifiers & Profiles のアクセスを与えられたときだけ）（2026-11-20、#1157）
+- App Store Connect の API の応答の関係（`relationships.<名前>.data`）は、`include` でその関係を求めたときだけ相手の id が入り、求めないと `links` だけになる。
+  `GET /v1/apps/{id}/appInfos` の `primaryCategory` を `include` しないと、カテゴリを決めてあっても無いと読む（2026-11-20、#1168。反映後に deki-roulette のカテゴリが「まだ」になって分かった）

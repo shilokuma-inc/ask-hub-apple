@@ -8,6 +8,7 @@ struct ReleaseDetailView: View {
 
     @Environment(ClientStore.self) private var store
     @State private var isEditing = false
+    @State private var isEditingPromotionalText = false
 
     var body: some View {
         if let release = store.snapshot?.release(Release.id(repositoryID, version)) {
@@ -40,19 +41,10 @@ struct ReleaseDetailView: View {
             if let notes = release.notes {
                 notesSection(release, notes: notes)
             }
-            if let url = release.githubReleaseURL {
-                CardSection {
-                    Link(destination: url) {
-                        Label("GitHub Release を開く", systemImage: "safari")
-                    }
-                    if let pull = release.nextVersion?.pullRequest,
-                       let pullURL = store.repository(release.repositoryID)?.pullRequestURL(pull) {
-                        Link(destination: pullURL) {
-                            Label("版を上げる PR #\(pull) を開く", systemImage: "arrow.triangle.pull")
-                        }
-                    }
-                }
+            if let promotionalText = release.promotionalText {
+                promotionalTextSection(release, promotionalText)
             }
+            links(release)
         }
         .pastelBackground()
         .compactList()
@@ -61,6 +53,62 @@ struct ReleaseDetailView: View {
             if let notes = release.notes {
                 ReleaseNotesSheet(release: release, notes: notes) { isEditing = false }
             }
+        }
+        .sheet(isPresented: $isEditingPromotionalText) {
+            if let promotionalText = release.promotionalText {
+                PromotionalTextSheet(release: release, promotionalText: promotionalText) { isEditingPromotionalText = false }
+            }
+        }
+    }
+
+    @ViewBuilder private func links(_ release: Release) -> some View {
+        if let url = release.githubReleaseURL {
+            CardSection {
+                Link(destination: url) {
+                    Label("GitHub Release を開く", systemImage: "safari")
+                }
+                if let pull = release.nextVersion?.pullRequest,
+                   let pullURL = store.repository(release.repositoryID)?.pullRequestURL(pull) {
+                    Link(destination: pullURL) {
+                        Label("版を上げる PR #\(pull) を開く", systemImage: "arrow.triangle.pull")
+                    }
+                }
+            }
+        }
+    }
+
+    /// 配信中の版のプロモーションテキスト（審査に出さずに直せる）
+    @ViewBuilder private func promotionalTextSection(_ release: Release, _ promotionalText: Release.PromotionalText) -> some View {
+        let probe = HumanIntent.updatePromotionalText(repositoryID: release.repositoryID, version: release.version, texts: [])
+        CardSection {
+            ForEach(promotionalText.current) { text in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(text.localeName).appFont(.footnote, weight: .semibold).foregroundStyle(.secondary)
+                    Text(text.text.isEmpty ? "（空）" : text.text).foregroundStyle(text.text.isEmpty ? .secondary : .primary)
+                }
+            }
+            if let status = Self.status(of: promotionalText.request) {
+                Text(status).appFont(.footnote).foregroundStyle(.secondary)
+            }
+            if store.supports(probe) {
+                Button("直して反映する…", systemImage: "pencil") { isEditingPromotionalText = true }
+                    .accessibilityIdentifier("release-promotional-text")
+            }
+        } header: {
+            Text("プロモーションテキスト")
+        } footer: {
+            Text("審査に出さずに、App Store の配信中の版にすぐ反映されます（\(Release.PromotionalText.limit) 文字まで）")
+        }
+    }
+
+    private static func status(of request: Release.PromotionalTextRequest) -> String? {
+        switch request {
+        case .none: nil
+        case .sending: "直した文を送りました。受け付けるのを待っています"
+        case .writing: "App Store Connect に書いています"
+        case .done(let date): "\(date.formatted(date: .abbreviated, time: .shortened)) に反映しました"
+        case .failed(let reason): "App Store Connect が断りました: \(reason)"
+        case .rejected(let reason): "受け付けませんでした: \(reason)"
         }
     }
 
