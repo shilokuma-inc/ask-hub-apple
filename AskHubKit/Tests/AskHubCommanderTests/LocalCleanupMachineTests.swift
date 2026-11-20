@@ -76,29 +76,30 @@ struct LocalCleanupMachineTests {
     }
 
     @discardableResult
-    func git(_ arguments: [String], in directory: URL) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+    func git(_ arguments: [String], in directory: URL) async throws -> String {
         let identity = ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "init.defaultBranch=main"]
-        process.arguments = ["-C", directory.path] + identity + arguments
-        // 人の git の設定（グローバル・システム）を読まない
-        process.environment = ["GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "HOME": root.path, "PATH": "/usr/bin:/bin"]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
+        // 協調スレッドをふさがないよう、ProcessCommandRunner で流す（`runShell` と同じ理由）
+        let command = Command(
+            executable: URL(fileURLWithPath: "/usr/bin/git"),
+            arguments: ["-C", directory.path] + identity + arguments,
+            // 人の git の設定（グローバル・システム）を読まない
+            environment: ["GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "HOME": root.path, "PATH": "/usr/bin:/bin"],
+            workingDirectory: directory,
+            timeout: .seconds(10 * 60)
+        )
+        // 出力は切り詰めずに全部残す（`runShell` と同じ）
+        let result = try await ProcessCommandRunner(outputLimit: .max).run(command)
         // 置き場所を作れなければ、その場で止める（後の確かめが、置けなかったことで通ってしまわないように）
-        guard process.terminationStatus == 0 else { throw GitFixtureFailure(arguments: arguments) }
+        guard result.succeeded else { throw GitFixtureFailure(arguments: arguments) }
         // swiftlint:disable:next optional_data_string_conversion
-        return String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return String(decoding: result.standardOutput, as: UTF8.self)
     }
 
     /// `path` に、push 済みの clone を作る
-    func clone(_ path: String, remote: URL) throws -> URL {
+    func clone(_ path: String, remote: URL) async throws -> URL {
         let directory = home.appendingPathComponent(path, isDirectory: true)
         try FileManager.default.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try git(["clone", "-q", remote.path, directory.path], in: root)
+        try await git(["clone", "-q", remote.path, directory.path], in: root)
         return directory
     }
 
@@ -110,29 +111,30 @@ struct LocalCleanupMachineTests {
         var derivedData: URL
     }
 
-    func prepare() throws -> Prepared {
+    func prepare() async throws -> Prepared {
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         let seed = root.appendingPathComponent("seed", isDirectory: true)
         try FileManager.default.createDirectory(at: seed, withIntermediateDirectories: true)
-        try git(["init", "-q"], in: seed)
+        try await git(["init", "-q"], in: seed)
         try "hello".write(to: seed.appendingPathComponent("README"), atomically: true, encoding: .utf8)
-        try git(["add", "."], in: seed)
-        try git(["commit", "-q", "-m", "first"], in: seed)
+        try await git(["add", "."], in: seed)
+        try await git(["commit", "-q", "-m", "first"], in: seed)
         let remote = root.appendingPathComponent("remote.git", isDirectory: true)
-        try git(["clone", "-q", "--bare", seed.path, remote.path], in: root)
+        try await git(["clone", "-q", "--bare", seed.path, remote.path], in: root)
 
-        let clean = try clone("Desktop/ios/clean-app", remote: remote)
-        let dirty = try clone("Desktop/ios/dirty-app", remote: remote)
+        let clean = try await clone("Desktop/ios/clean-app", remote: remote)
+        let dirty = try await clone("Desktop/ios/dirty-app", remote: remote)
         try "change".write(to: dirty.appendingPathComponent("README"), atomically: true, encoding: .utf8)
-        let worktree = try clone("Projects/with-worktree", remote: remote)
+        let worktree = try await clone("Projects/with-worktree", remote: remote)
         // linked worktree（`.git` がファイル）は候補に出さず、元の clone に注意を付ける
-        try git(["worktree", "add", "-q", "-b", "side", home.appendingPathComponent("Projects/with-worktree-side").path], in: worktree)
+        let side = home.appendingPathComponent("Projects/with-worktree-side")
+        try await git(["worktree", "add", "-q", "-b", "side", side.path], in: worktree)
         let local = home.appendingPathComponent("Projects/local-only", isDirectory: true)
         try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
-        try git(["init", "-q"], in: local)
+        try await git(["init", "-q"], in: local)
         // 依存のフォルダと ~/Library の中の clone は探さない
-        _ = try clone("Projects/web/node_modules/pkg", remote: remote)
-        _ = try clone("Library/Developer/AskHub/worker/work/repos/o/r", remote: remote)
+        _ = try await clone("Projects/web/node_modules/pkg", remote: remote)
+        _ = try await clone("Library/Developer/AskHub/worker/work/repos/o/r", remote: remote)
         let derivedData = home.appendingPathComponent(Self.derivedDataPath, isDirectory: true)
         try FileManager.default.createDirectory(at: derivedData, withIntermediateDirectories: true)
         try Data(count: 4_096).write(to: derivedData.appendingPathComponent("build.db"))
@@ -141,7 +143,7 @@ struct LocalCleanupMachineTests {
 
     @Test func findsHumanClonesSimulatorsAndDerivedDataWithCautions() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        _ = try prepare()
+        _ = try await prepare()
         let scan = await machine(SimctlStubRunner(devicesJSON: Self.devices)).scan()
         try #require(Set(scan.candidates.map(\.location)).count == scan.candidates.count)
         let byLocation = Dictionary(uniqueKeysWithValues: scan.candidates.map { ($0.location, $0) })
@@ -170,7 +172,7 @@ struct LocalCleanupMachineTests {
 
     @Test func removesOnlyWhatStillQualifies() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let prepared = try prepare()
+        let prepared = try await prepare()
         let (clean, dirty, derivedData) = (prepared.clean, prepared.dirty, prepared.derivedData)
         let runner = SimctlStubRunner(devicesJSON: Self.devices)
         let machine = machine(runner)
@@ -209,29 +211,29 @@ struct LocalCleanupMachineTests {
     /// 人の設定で未追跡のファイルを隠していても、detached の HEAD にだけあるコミットも、親の ignore に入る中の clone も、消さない理由にする
     @Test func cautionsCoverHiddenUntrackedDetachedHeadAndNestedClones() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let prepared = try prepare()
+        let prepared = try await prepare()
         let hidden = prepared.clean
-        try git(["config", "status.showUntrackedFiles", "no"], in: hidden)
+        try await git(["config", "status.showUntrackedFiles", "no"], in: hidden)
         try "new".write(to: hidden.appendingPathComponent("NEW.md"), atomically: true, encoding: .utf8)
-        let detached = try clone("Projects/detached", remote: prepared.remote)
-        try git(["checkout", "-q", "--detach"], in: detached)
+        let detached = try await clone("Projects/detached", remote: prepared.remote)
+        try await git(["checkout", "-q", "--detach"], in: detached)
         try "detached".write(to: detached.appendingPathComponent("README"), atomically: true, encoding: .utf8)
-        try git(["commit", "-q", "-am", "detached"], in: detached)
-        try git(["checkout", "-q", "main"], in: detached)
-        let parent = try clone("Projects/parent", remote: prepared.remote)
+        try await git(["commit", "-q", "-am", "detached"], in: detached)
+        try await git(["checkout", "-q", "main"], in: detached)
+        let parent = try await clone("Projects/parent", remote: prepared.remote)
         try "vendor/\n".write(to: parent.appendingPathComponent(".git/info/exclude"), atomically: true, encoding: .utf8)
-        _ = try clone("Projects/parent/vendor/child", remote: prepared.remote)
+        _ = try await clone("Projects/parent/vendor/child", remote: prepared.remote)
 
         let machine = machine(SimctlStubRunner(devicesJSON: Self.devices))
         #expect(await machine.cloneCaution(hidden) == "未コミットの変更がある")
         #expect(await machine.cloneCaution(detached) == nil)
-        try git(["checkout", "-q", "--detach", "HEAD@{1}"], in: detached)
+        try await git(["checkout", "-q", "--detach", "HEAD@{1}"], in: detached)
         #expect(await machine.cloneCaution(detached) == "未 push のコミットがある")
         #expect(await machine.cloneCaution(parent) == "中に別の clone か worktree がある")
         // 依存のフォルダの中の clone（`.build/checkouts` など、道具が取り直せるもの）は、消さない理由にしない
-        let package = try clone("Projects/package", remote: prepared.remote)
+        let package = try await clone("Projects/package", remote: prepared.remote)
         try ".build/\n".write(to: package.appendingPathComponent(".git/info/exclude"), atomically: true, encoding: .utf8)
-        _ = try clone("Projects/package/.build/checkouts/dependency", remote: prepared.remote)
+        _ = try await clone("Projects/package/.build/checkouts/dependency", remote: prepared.remote)
         #expect(await machine.cloneCaution(package) == nil)
     }
 
@@ -248,7 +250,7 @@ struct LocalCleanupMachineTests {
     /// HEAD を確かめられなければ（時間切れなど）、HEAD がまだ無いとは見なさず、消さない
     @Test func cautionsWhenHeadCannotBeChecked() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let prepared = try prepare()
+        let prepared = try await prepare()
         let failures = [
             CommandResult(status: 15, terminatedBySignal: true, standardOutput: Data(), standardError: Data(), timedOut: true),
             // SIGHUP（1）で終わると、終了コードの 1（HEAD がまだ無い）と同じ番号になる

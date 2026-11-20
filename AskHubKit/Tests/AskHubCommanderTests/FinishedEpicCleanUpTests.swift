@@ -69,8 +69,8 @@ struct FinishedEpicCleanUpTests {
         return workspace
     }
 
-    func localBranches() throws -> Set<String> {
-        let branches = try base.shell("cd '\(clone.path)' && git for-each-ref --format='%(refname:short)' refs/heads/")
+    func localBranches() async throws -> Set<String> {
+        let branches = try await base.shell("cd '\(clone.path)' && git for-each-ref --format='%(refname:short)' refs/heads/")
         return Set(branches.split(separator: "\n").map(String.init))
     }
 
@@ -83,14 +83,14 @@ struct FinishedEpicCleanUpTests {
         // マージから 1 日たった epic と、やめてから 1 日たった epic のものだけを消す
         #expect(workspace.epicsWithWorkspace() == [Self.running, Self.recent])
         #expect(builds.epics() == [Self.running, Self.recent, Self.unknown])
-        let branches = try localBranches()
+        let branches = try await localBranches()
         #expect(!branches.contains(FinalGitTests.branches.epic))
         #expect(!branches.contains(TaskGitTests.branches.task))
         #expect(branches.contains(PrepareWorkspaceRunner.branch(of: Self.running)))
         #expect(branches.contains(PrepareWorkspaceRunner.branch(of: Self.recent)))
         // clone と、リモートの作業ブランチには触れない
         #expect(FileManager.default.fileExists(atPath: clone.appendingPathComponent(".git").path))
-        #expect(try base.remoteHead(FinalGitTests.branches.epic) != nil)
+        #expect(try await base.remoteHead(FinalGitTests.branches.epic) != nil)
         let logged = logs.withLock { $0 }
         #expect(logged.count == 2)
         #expect(logged.allSatisfy { $0.contains("この Mac に残った作業場所と DerivedData を消した") })
@@ -146,6 +146,6 @@ struct FinishedEpicCleanUpTests {
         try await put(Self.merged, .merged, since: 2 * 24 * 60 * 60)
         await cleanUp(workspace).run()
         #expect(logs.withLock { $0.isEmpty })
-        #expect(try localBranches() == ["develop"])
+        #expect(try await localBranches() == ["develop"])
     }
 }
