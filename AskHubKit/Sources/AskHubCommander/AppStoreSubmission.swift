@@ -48,6 +48,9 @@ struct AppStoreSubmission: Sendable {
     private func writeTexts(of target: AppStoreVersionInfo) async throws {
         let changes = request.listing ?? []
         let localizations = try await call { () throws(AppStoreConnectError) in try await store.localizations(of: target.id) }
+        guard !localizations.isEmpty else {
+            throw ReleaseStepProblem("\(target.platform.rawValue) の版に掲載文の言語が無い。App Store Connect で言語と掲載文を書く", needsHuman: true)
+        }
         let missing = Self.missingRequired(localizations, changes: changes)
         guard missing.isEmpty else {
             throw ReleaseStepProblem(

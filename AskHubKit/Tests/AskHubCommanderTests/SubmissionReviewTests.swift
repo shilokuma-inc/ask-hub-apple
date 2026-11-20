@@ -411,4 +411,14 @@ extension ReleaseWatchTests {
         // 掲載文も提出も書かない（版を作るだけ）
         #expect(appStore.state.withLock { $0.writes } == ["createVersion iOS 1.2.0 afterApproval b45"])
     }
+
+    @Test func doesNotSubmitVersionWithoutLocales() async throws {
+        _ = try await readyToSubmit()
+        appStore.state.withLock { $0.localizations["v-1-2-0"] = [] }
+        await watch().refresh()
+        let file = try await submission()
+        #expect(file.problem?.step == .submit && file.problem?.needsHuman == true)
+        #expect(file.problem?.message.contains("掲載文の言語が無い") == true)
+        #expect(appStore.state.withLock { $0.writes } == ["createVersion iOS 1.2.0 afterApproval b45"])
+    }
 }
