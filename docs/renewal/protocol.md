@@ -42,6 +42,7 @@ repos/<owner>/<repo>/epics/<epic>/jobs/<job>.json  ジョブ（司令塔）
 repos/<owner>/<repo>/epics/<epic>/attempts/<job>/<n>.json  試行（実行した Mac のワーカー）
 repos/<owner>/<repo>/releases/<版>.json             App Store で配信した版と、その後作業の進み具合（司令塔）
 repos/<owner>/<repo>/submissions/<版>.json          リリースを始めた版の準備と審査（司令塔）
+repos/<owner>/<repo>/app-store.json                新しいアプリを App Store に載せる準備（司令塔）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
 commander.json                                     司令塔の生きている印（司令塔）
 notifications.json                                 進行を止めるもの・止めないもの（実機確認）を知らせた記録（司令塔）
@@ -356,6 +357,44 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `answer` は人の意図（OK・別案・直してほしい）への参照
 - 最終 PR の直し（`fixFinalPullRequest`）で Claude が報告した仮決めも足す。タスクに結びつかないので、`task` は持たず（`null`）、`pullRequest` は最終 PR にする。クライアントは「最終 PR #N の直し」と出す
 - 「別案にする」「直してほしい」の直しが済んだら、司令塔がその答えを外して答え待ちに戻す（直った後を見て答え直してもらう）。同じカードへの答え直しは受け付けない（[flows.md](flows.md) の「司令塔が最終 PR を進める」）
+
+### app-store.json（新しいアプリを App Store に載せる準備）
+
+```json
+{
+  "v": 1,
+  "repo": "shilokuma-inc/new-app-ios",
+  "bundleIds": ["jp.shilokuma.NewApp", "jp.shilokuma.NewAppTests"],
+  "app": { "id": "6738000000", "name": "NewApp", "bundleId": "jp.shilokuma.NewApp", "primaryLocale": "ja" },
+  "items": [
+    { "id": "bundleId", "state": "done", "checkedAt": "…" },
+    { "id": "app", "state": "done", "checkedAt": "…" },
+    { "id": "category", "state": "todo", "checkedAt": "…" },
+    { "id": "ageRating", "state": "todo", "note": "答えていない質問がある", "checkedAt": "…" },
+    { "id": "appPrivacy", "state": "unknown", "checkedAt": "…", "confirmed": { "approval": { "keyId": "…", "nonce": "…" }, "at": "…" } }
+  ],
+  "bundleIdRequest": { "approval": { … }, "at": "…", "identifier": "jp.shilokuma.NewApp", "platform": "iOS", "doneAt": "…" },
+  "settingsRequest": { "approval": { … }, "at": "…", "settings": { "primaryCategory": "PRODUCTIVITY", "price": "free" }, "doneAt": null },
+  "excluded": null,
+  "releasedAt": null,
+  "checkedAt": "…",
+  "problem": null,
+  "createdAt": "…",
+  "updatedAt": "…"
+}
+```
+
+- 司令塔が、対象の Apple のリポジトリのうち、App Store Connect にアプリが見つからない・配信中の版が無いものに作る（[release.md](release.md) の「新しいアプリを載せる」）。形は `protocol/schemas/state/app-store.schema.json`（Swift は `AppStoreSetupFile`）
+- `bundleIds` は、リポジトリの base のビルドの設定にある Bundle ID（`APP_BUNDLE_IDENTIFIER`・`PRODUCT_BUNDLE_IDENTIFIER`。変数を含まないもの）を見つけた順に並べたもの。テストのターゲットのものも含む（アプリ本体は `AppStoreSetupFile.mainBundleID(among:)` で選ぶ）
+- `app` は App Store Connect で見つけたアプリ（`id` は数字だけ）。まだ無ければ `null`
+- `items` はチェックリスト（項目ごとに 1 つ）。`id` は `bundleId`・`app`・`contentRights`・`category`・`privacyPolicy`・`price`・`availability`・`ageRating`・`appPrivacy`・`digitalServicesAct`。`state` は `todo`（終わっていない）・`done`（API で確かめた）・`unknown`（API で読めない。鍵の役割が足りない・API が無い）。`note` は人が読む補足（500 文字まで）
+  - `confirmed` は、人が「終わった」を押した（`confirmAppStoreItem`）印。API で確かめられない項目（`appPrivacy`・`digitalServicesAct`）と、確かめが合わないときの上書きに使う。`app` は持たない（アプリが無いと、ほかの何も確かめられない）
+  - 終わった（`done` か `confirmed` がある）項目は出さない。`bundleId`・`app` はアプリを作るまで（TestFlight に上げるのに要る）、ほかは初めての版を審査に出すまでに要る
+- `bundleIdRequest`・`settingsRequest` は、人が押した書き込み（`registerBundleId`・`applyAppStoreSettings`）の最後のもの。司令塔が App Store Connect に送り終えたら `doneAt` を付け、断られた項目を `failures`（`item`・`message`）に書く。`settings` は `applyAppStoreSettings` の payload と同じ形
+- `excluded` は、人が「App Store に出さない」を押した印（`excludeFromAppStore`）。出すに戻したら `null`。印があれば、司令塔は確かめず、クライアントは出さない
+- `releasedAt` は、配信中の版を見つけた時刻（初めての版が配信された）。これより後は確かめない
+- `problem` は確かめられなかった理由（鍵が無い・断られた）。確かめられたら消す
+- クライアントは、印が無く配信していない記録のうち、アプリを作るまでの項目が終わっていないもの（アプリが無い）を、人の番として出す。配信中の版が無いアプリでリリースを始めた（`submissions/` に終わっていない記録がある）ら、残りの項目も出す（`pendingItems(firstRelease:)`）
 
 ### releases/<版>.json（App Store で配信した版と後作業）
 
@@ -762,11 +801,15 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `distributeRelease` | リリースを始めた版 | —（版の今の状態に対してだけ意味を持つ） | 空（`payloads/distributeRelease.schema.json`）。審査に通って配信を待っている（`pendingDeveloperRelease`）版だけ。App Store Connect では取り消せない |
 | `withdrawSubmission` | リリースを始めた版 | —（同上） | 空（`payloads/withdrawSubmission.schema.json`）。審査を待っている・審査中の版だけ。取り下げた後は出し直せる |
 | `abandonRelease` | リリースを始めた版 | —（同上） | 空（`payloads/abandonRelease.schema.json`）。審査に出していない・取り下げた・断られた版だけ。記録に `end` を付ける。release ブランチは消さない。リリースを始めたときに作った App Store Connect の版の枠は、まだ審査に出していなければ司令塔が消す（消せなければ理由を記録して知らせる） |
+| `registerBundleId` | リポジトリ（封筒の `repo`） | — | `identifier`（登録する Bundle ID）、`platform`（`iOS`・`macOS`・`universal`。`payloads/registerBundleId.schema.json`）。`identifier` はリポジトリのビルドの設定にあるものだけ受け付ける。`app-store.json` の `bundleIdRequest` に写し、司令塔が App Store Connect に登録する |
+| `applyAppStoreSettings` | リポジトリ（封筒の `repo`） | — | 書く欄だけ: `contentRights`（`doesNotUseThirdPartyContent`・`usesThirdPartyContent`）、`primaryCategory`・`primarySubcategory`（App Store Connect のカテゴリの id）、`privacyPolicyUrl`（https）、`price`（`free`）、`availability`（`allTerritories`）。1 つ以上（`payloads/applyAppStoreSettings.schema.json`）。App Store Connect にアプリがあるときだけ受け付け、`settingsRequest` に写す。前の書き込みを送り終えていなければ断る |
+| `confirmAppStoreItem` | リポジトリ（封筒の `repo`） | — | `item`（チェックリストの項目。`app` は送れない。`payloads/confirmAppStoreItem.schema.json`）。項目に `confirmed` を付ける |
+| `excludeFromAppStore` | リポジトリ（封筒の `repo`） | — | `excluded`（true で出さない、false で出すに戻す。`payloads/excludeFromAppStore.schema.json`）。記録が無ければ作る |
 | `findCleanupCandidates` | —（封筒に `repo`・`target` を書かない） | — | `mac`（探す Mac。`payloads/findCleanupCandidates.schema.json`）。司令塔は登録された Mac なら `cleanup/<mac>/requests.json` に積むだけで、その Mac のワーカーが元の意図の署名を確かめてから探す（上の「片付けの候補」） |
 | `removeCleanupCandidates` | —（同上） | — | `mac`、`scannedAt`（選んだ候補を探した時刻）、`candidates`（消す候補の id。パスは送らない。`payloads/removeCleanupCandidates.schema.json`）。積み方は `findCleanupCandidates` と同じ（上の「片付けの候補」） |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
-テンプレートからの作成・実機確認の「確認した」「問題あり」・ワークフローの PR の承認の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作の `kind`（`startRelease`・`submitForReview`・`distributeRelease`・`withdrawSubmission`・`abandonRelease`）は、段階 5 の 3 で足した。
+テンプレートからの作成・実機確認の「確認した」「問題あり」・ワークフローの PR の承認の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作の `kind`（`startRelease`・`submitForReview`・`distributeRelease`・`withdrawSubmission`・`abandonRelease`）は、段階 5 の 3 で足した。新しいアプリを App Store に載せる準備の `kind`（`registerBundleId`・`applyAppStoreSettings`・`confirmAppStoreItem`・`excludeFromAppStore`）は、2026-11-20 に足した。
 
 ### 署名のしかた
 
