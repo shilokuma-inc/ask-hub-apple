@@ -103,6 +103,7 @@ enum AskHubWorkerMain {
                 await cleanUp.run()
                 await simulators.run()
             },
+            cleanup: runtime.cleanupService(context: context, log: log),
             log: log
         )
         let kind = configuration.kind.rawValue

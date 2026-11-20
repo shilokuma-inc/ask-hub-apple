@@ -21,11 +21,14 @@ extension DemoClientService {
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
             applyReviewIntent(intent)
 
-        case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .cleanUp:
+        case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .cleanUp, .findCleanupCandidates:
             applyOperationIntent(intent)
 
         case .publishRelease:
             applyReleaseIntent(intent)
+
+        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
+            applySubmissionIntent(intent)
         }
         return SendReceipt()
     }

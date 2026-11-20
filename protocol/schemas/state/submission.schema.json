@@ -366,6 +366,48 @@
         }
       }
     },
+    "integration": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "maxItems": 4,
+      "description": "配信した後に release ブランチを取り込んだ様子（main と base の develop）。open は PR を開いている、merged はマージした、skipped は取り込むコミットが無かった、created は main が無かったので release ブランチの先頭から作った。PR の番号は open・merged のときだけ持つ",
+      "items": {
+        "type": "object",
+        "required": [
+          "base",
+          "state",
+          "at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "state": {
+            "enum": [
+              "open",
+              "merged",
+              "skipped",
+              "created"
+            ]
+          },
+          "pullRequest": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "at": {
+            "$ref": "../common.schema.json#/$defs/timestamp"
+          }
+        }
+      }
+    },
     "problem": {
       "type": [
         "object",
@@ -389,7 +431,8 @@
             "submit",
             "distribute",
             "withdraw",
-            "review"
+            "review",
+            "integration"
           ]
         },
         "message": {

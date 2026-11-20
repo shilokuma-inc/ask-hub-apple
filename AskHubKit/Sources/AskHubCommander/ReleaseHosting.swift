@@ -20,6 +20,8 @@ public protocol ReleaseHosting: Sendable {
     func branchHead(_ repo: RepositoryFullName, branch: String) async throws(PullRequestError) -> String?
     /// `sha` を指すブランチを作る。すでにあれば作らずに今の先頭を返す
     func createBranch(_ repo: RepositoryFullName, branch: String, at sha: String) async throws(PullRequestError) -> String
+    /// `head` が `base` より進んでいる・遅れているコミットの数
+    func compare(_ repo: RepositoryFullName, base: String, head: String) async throws(PullRequestError) -> (ahead: Int, behind: Int)
 }
 
 /// 配信したコミットに付ける注釈付きのタグ
@@ -152,6 +154,14 @@ public struct GitHubReleaseHosting: ReleaseHosting {
 
     public func createBranch(_ repo: RepositoryFullName, branch: String, at sha: String) async throws(PullRequestError) -> String {
         try await github(repo).createBranch(branch, at: sha)
+    }
+
+    public func compare(
+        _ repo: RepositoryFullName,
+        base: String,
+        head: String
+    ) async throws(PullRequestError) -> (ahead: Int, behind: Int) {
+        try await github(repo).compare(base: base, head: head)
     }
 }
 

@@ -32,6 +32,17 @@ public struct DirectoryEntry: Sendable, Equatable {
     }
 }
 
+/// ディレクトリを移す元と先（`StateStore.move(_:message:)`）
+public struct StateMove: Sendable, Equatable {
+    public var from: String
+    public var to: String
+
+    public init(from: String, to: String) {
+        self.from = from
+        self.to = to
+    }
+}
+
 /// 状態リポジトリの読み書き（`docs/renewal/protocol.md` の「共通の決まり」）。パスは状態リポジトリの中の相対パス（`StatePath`）
 public protocol StateStore: Sendable {
     /// ファイルを読む。無ければ nil（GitHub は、リポジトリやブランチが見えないときも同じ 404 を返すので、そのときも nil）
@@ -53,6 +64,11 @@ public protocol StateStore: Sendable {
     /// epic やジョブのように増え続け、下の階層まで読むと大きすぎるディレクトリに使う
     func listAll(_ directory: String) async throws(StateStoreError) -> [DirectoryEntry]?
 
+    /// ディレクトリ（下のファイルすべて）を、1 回の書き込み（GitHub では 1 つのコミット）でまとめて移す（終わった epic を `archive/` に畳むとき）。
+    /// 移す元が無いものは飛ばし、移す先にすでに何かあれば何も移さずに `conflict`。読んでから書くまでにほかの書き手が書いたときも `conflict`
+    /// （読み直してやり直す）。まとめて移せない置き場所（読むだけの写しなど）は断る
+    func move(_ moves: [StateMove], message: String) async throws(StateStoreError)
+
     /// 読むだけの、今の中身の写し。1 回の処理で多くのファイルを読むとき（司令塔のジョブの見回りなど）に使う。
     ///
     /// 写しから読むと、写しを作ったときの中身になる（GitHub では同じコミットの中身。前に読んだ tree と blob を使い回し、変わったものだけを取りに行く）。
@@ -61,6 +77,11 @@ public protocol StateStore: Sendable {
 }
 
 extension StateStore {
+    /// まとめて移せない置き場所（読むだけの写し・テストの置き場所など）は断る
+    public func move(_ moves: [StateMove], message: String) async throws(StateStoreError) {
+        throw .unexpected(status: 0, message: "この置き場所では、ディレクトリをまとめて移せない")
+    }
+
     /// `list` を下の階層まで辿る。1 つのディレクトリの一覧に上限の無い置き場所（メモリ上など）で使う
     public func listFiles(under directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
         guard let entries = try await list(directory) else { return nil }

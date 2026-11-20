@@ -139,11 +139,35 @@ public enum StatePath {
         "consumed/\(device)/\(nonce).json"
     }
 
+    /// 片付けの頼み（司令塔が受け付けた片付けの意図）
+    public static func cleanupRequests(_ mac: MacName) -> String {
+        "cleanup/\(mac)/requests.json"
+    }
+
+    /// 片付けの候補と、頼みを済ませた記録（その Mac のワーカー）
+    public static func cleanupCandidates(_ mac: MacName) -> String {
+        "cleanup/\(mac)/candidates.json"
+    }
+
+    /// 依頼の添付のフォルダ（終わった epic と一緒に畳む）
+    public static func attachments(device: KeyID, nonce: ULID) -> String {
+        "attachments/\(device)/\(nonce)"
+    }
+
+    /// 終わった epic を畳んで置く場所。元と同じパスを `archive/` の下に置く（クライアントと司令塔は読まない）
+    public static let archive = "archive"
+
+    /// `path` を畳んだ先
+    public static func archived(_ path: String) -> String {
+        "\(archive)/\(path)"
+    }
+
     private static func repositoryDirectory(_ repo: RepositoryFullName) -> String {
         "\(repositories)/\(repo.owner)/\(repo.name)"
     }
 
-    private static func epicDirectory(_ repo: RepositoryFullName, _ epic: ULID) -> String {
+    /// epic のフォルダ（終わった epic を畳むときに、まとめて移す）
+    public static func epicDirectory(_ repo: RepositoryFullName, _ epic: ULID) -> String {
         "\(repositoryDirectory(repo))/epics/\(epic)"
     }
 }

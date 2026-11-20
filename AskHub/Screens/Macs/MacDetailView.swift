@@ -174,7 +174,7 @@ struct MacDetailView: View {
     }
 }
 
-/// 片付けの候補。選んだものだけを消す
+/// 片付けの候補。「探す」を押すとその Mac のワーカーが探し、選んだものだけを消す
 struct CleanupView: View {
     let macID: Mac.ID
 
@@ -183,61 +183,146 @@ struct CleanupView: View {
     @State private var isConfirming = false
 
     var body: some View {
-        let candidates = store.mac(macID)?.cleanupCandidates ?? []
-        let selectedBytes = candidates.filter { selectedIDs.contains($0.id) }.reduce(Int64(0)) { $0 + $1.bytes }
+        let mac = store.mac(macID)
+        let candidates = mac?.cleanupCandidates ?? []
+        // 選んだ後に注意が付いた（消せなくなった）候補は、選んだ数にも送るものにも入れない
+        let chosen = candidates.filter { selectedIDs.contains($0.id) && $0.caution == nil }
+        let selectedBytes = chosen.reduce(Int64(0)) { $0 + $1.bytes }
         List {
+            if let mac {
+                statusSection(mac)
+            }
             CardSection {
+                if candidates.isEmpty, mac?.cleanupWork == .unknown {
+                    Text("片付けの状態を読めませんでした").foregroundStyle(.secondary)
+                } else if candidates.isEmpty {
+                    Text(mac?.cleanupScannedAt == nil
+                        ? "まだ探していません。「探す」を押すと、この Mac のワーカーが、手で作った clone・Simulator・DerivedData を探します"
+                        : "片付けの候補はありません")
+                        .foregroundStyle(.secondary)
+                }
                 ForEach(candidates) { candidate in
-                    Toggle(isOn: binding(for: candidate.id)) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Label(candidate.name, systemImage: symbol(candidate.kind))
-                            Text(ByteFormat.string(candidate.bytes))
-                                .appFont(.caption)
-                                .foregroundStyle(.secondary)
-                            if let caution = candidate.caution {
-                                Label(caution, systemImage: "exclamationmark.triangle.fill")
-                                    .appFont(.caption)
-                                    .foregroundStyle(Theme.warning)
-                            }
-                        }
-                    }
+                    candidateRow(candidate)
                 }
             } footer: {
-                Text("消す前に、未コミット・未 push・stash が無いかを確かめます")
+                if !candidates.isEmpty {
+                    Text("未コミット・未 push・stash などがあるものは選べません。消すときにも、もう一度確かめます")
+                }
             }
         }
-        .overlay {
-            if candidates.isEmpty {
-                ContentUnavailableView("片付けの候補はありません", systemImage: "sparkles")
-            }
+        // 探し直したら、前の一覧で選んだものは消す（同じ id でも、注意の付き方が変わっているかもしれない）
+        .onChange(of: mac?.cleanupScannedAt) {
+            selectedIDs = []
         }
         .pastelBackground()
         .compactList()
         .navigationTitle("片付けの候補")
         .safeAreaBar(edge: .bottom) {
-            // 片付けを送ったら、司令塔が受け付けるまで押せなくする（送った結果を先に当てて候補が無くなっても、断られた理由などは残す）
-            if !candidates.isEmpty || store.needsAttention([.cleanup(macID: macID)]) {
-                cleanupBar(candidates: candidates, selectedBytes: selectedBytes)
-            }
+            // 片付けを送ったら、司令塔が受け付けてワーカーが済ませるまで押せなくする（断られた理由などは残す）
+            cleanupBar(candidates: candidates, chosen: chosen, selectedBytes: selectedBytes)
         }
         .confirmationDialog("\(selectedIDs.count) 件を消しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
             Button("消す", role: .destructive) {
-                let ids = Array(selectedIDs)
+                let ids = chosen.map(\.id)
                 selectedIDs = []
+                // ダイアログを開いている間に状態が分からなくなったら送らない（送る側でも断る）
+                guard store.mac(macID)?.cleanupWork != .unknown else { return }
                 Task { await store.send(.cleanUp(macID: macID, candidateIDs: ids)) }
             }
         } message: {
-            Text("合計 \(ByteFormat.string(selectedBytes)) を消します。元に戻せません")
+            Text(Self.confirmation(chosen, bytes: selectedBytes))
         }
     }
 
-    private func cleanupBar(candidates: [CleanupCandidate], selectedBytes: Int64) -> some View {
-        VStack(spacing: 6) {
-            if !candidates.isEmpty {
-                Button("選んだものを消す（\(ByteFormat.string(selectedBytes))）", role: .destructive) { isConfirming = true }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.large)
-                    .disabled(selectedIDs.isEmpty || store.isReflecting([.cleanup(macID: macID)]))
+    /// 消す前の確かめの文。ゴミ箱に移すもの（clone・DerivedData）と、元に戻せないもの（Simulator）を分けて書く
+    static func confirmation(_ selected: [CleanupCandidate], bytes: Int64) -> String {
+        var lines = ["合計 \(ByteFormat.string(bytes)) を消します。"]
+        if selected.contains(where: { $0.kind != .simulator }) {
+            lines.append("clone と DerivedData はゴミ箱に移します（ゴミ箱を空にするまで空き容量は増えません）。")
+        }
+        if selected.contains(where: { $0.kind == .simulator }) {
+            lines.append("Simulator は元に戻せません。")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// 最後に探した時刻・探している途中・読めなかった場所・最後の結果
+    private func statusSection(_ mac: Mac) -> some View {
+        CardSection {
+            switch mac.cleanupWork {
+            case .finding?:
+                Label("探しています。数分かかることがあります", systemImage: "magnifyingglass")
+                Text("しばらくたっても終わらないときは、この Mac のワーカー（常時オンの Mac は司令塔）が、片付けの候補に対応した版か確かめてください")
+                    .appFont(.caption)
+                    .foregroundStyle(.secondary)
+            case .removing?:
+                Label("消しています", systemImage: "trash")
+            case .unknown?:
+                Label("片付けの状態を読めませんでした。読み直すまで、探す・消すは送れません", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Theme.warning)
+            case nil:
+                LabeledContent("最後に探した時刻") {
+                    Text(mac.cleanupScannedAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "まだ探していません")
+                }
+            }
+            if let result = mac.cleanupResult {
+                Text(result)
+                    .appFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if !mac.cleanupUnreadable.isEmpty {
+                Label("読めなかった場所: \(mac.cleanupUnreadable.joined(separator: "・"))", systemImage: "exclamationmark.triangle.fill")
+                    .appFont(.caption)
+                    .foregroundStyle(Theme.warning)
+            }
+        } footer: {
+            if !mac.cleanupUnreadable.isEmpty {
+                Text("デスクトップ・書類などを探すには、この Mac のシステム設定の「プライバシーとセキュリティ」で、ワーカー（常時オンの Mac は司令塔）にファイルとフォルダへのアクセスを許可します")
+            }
+        }
+    }
+
+    private func candidateRow(_ candidate: CleanupCandidate) -> some View {
+        Toggle(isOn: binding(for: candidate.id)) {
+            VStack(alignment: .leading, spacing: 2) {
+                Label(candidate.name, systemImage: symbol(candidate.kind))
+                Text(detail(of: candidate))
+                    .appFont(.caption)
+                    .foregroundStyle(.secondary)
+                if let caution = candidate.caution {
+                    Label(caution, systemImage: "exclamationmark.triangle.fill")
+                        .appFont(.caption)
+                        .foregroundStyle(Theme.warning)
+                }
+            }
+        }
+        // 消さない理由のあるものは選べない（ワーカーも消さない）
+        .disabled(candidate.caution != nil)
+    }
+
+    /// 例: 2.1 GB · 最後に使った日 2026/09/01
+    private func detail(of candidate: CleanupCandidate) -> String {
+        let used = candidate.lastUsedAt.map { " · 最後に使った日 \($0.formatted(date: .numeric, time: .omitted))" } ?? ""
+        return ByteFormat.string(candidate.bytes) + used
+    }
+
+    private func cleanupBar(candidates: [CleanupCandidate], chosen: [CleanupCandidate], selectedBytes: Int64) -> some View {
+        let busy = store.isReflecting([.cleanup(macID: macID)]) || store.mac(macID)?.cleanupWork != nil
+        return VStack(spacing: 6) {
+            HStack {
+                Button("探す") {
+                    selectedIDs = []
+                    Task { await store.send(.findCleanupCandidates(macID: macID)) }
+                }
+                .buttonStyle(.glass)
+                .controlSize(.large)
+                .disabled(busy)
+                if !candidates.isEmpty {
+                    Button("選んだものを消す（\(ByteFormat.string(selectedBytes))）", role: .destructive) { isConfirming = true }
+                        .buttonStyle(.glassProminent)
+                        .controlSize(.large)
+                        .disabled(chosen.isEmpty || busy)
+                }
             }
             ReflectionStatusView(.cleanup(macID: macID), showsSyncBadge: true)
                 .frame(maxWidth: 520)

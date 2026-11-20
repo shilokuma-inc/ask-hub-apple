@@ -99,6 +99,12 @@ public actor CommanderLoop {
     nonisolated let appIcons: AppIconSync?
     /// App Store での配信を見つけ、リリースの後作業を進めるもの。生きている印を書いた後に、周の外で見回り始める。nil なら見回らない
     nonisolated let releases: ReleaseWatch?
+    /// 掛けた保護のずれを点検するもの。生きている印を書いた後に、周の外で確かめ始める。nil なら点検しない
+    nonisolated let protection: ProtectionWatch?
+    /// 人の意図の種類ごとの処理。管理用のトークンで GitHub を操作するもの（`AdminGitHub`）は、ここ（保護の設定など）にだけ渡す
+    nonisolated let handlers: [String: any IntentHandler]
+    /// 片付けの頼みを、常時オンの Mac（ワーカーを兼ねる）で済ませる。周ごとに見る
+    nonisolated let cleanup: CleanupService?
 
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
@@ -107,6 +113,9 @@ public actor CommanderLoop {
     private var lastBeat: Date?
     /// 最後に GitHub の REST の上限の残りを見た時刻と、読んだ残り（通知に使う。読めなければ nil）
     private var lastRateLimitCheck: Date?
+    /// 空き容量が少ないので、片付けと Claude だけのジョブのほかは新しく引き受けていない理由（常時オンの Mac のワーカーとして）。
+    /// 生きている印を書くときに測って決める。少なくなければ nil
+    private var diskRefusal: JobRefusal?
     private var latestRateLimit: GitHubRateLimit?
     /// 残りが少なくなって、生きている印をすぐ書き直した窓（戻る時刻）。同じ窓では書き直さない
     private var lowRateLimitWindow: Timestamp?
@@ -132,7 +141,10 @@ public actor CommanderLoop {
         taskRunners: [JobKind: any JobRunning] = [:],
         tidy: @escaping @Sendable () async -> Void = {},
         appIcons: AppIconSync? = nil,
-        releases: ReleaseWatch? = nil
+        releases: ReleaseWatch? = nil,
+        protection: ProtectionWatch? = nil,
+        admin: AdminGitHub? = nil,
+        cleanup: CleanupService? = nil
     ) {
         self.context = context
         self.settings = settings
@@ -151,6 +163,9 @@ public actor CommanderLoop {
         self.tidy = tidy
         self.appIcons = appIcons
         self.releases = releases
+        self.protection = protection
+        handlers = Self.handlers(admin: admin)
+        self.cleanup = cleanup
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
         startedAt = context.now()
@@ -177,17 +192,6 @@ public actor CommanderLoop {
             }
         }
     }
-
-    /// 周を終えられなかったときに休む時間。意図の一覧を見て休みを切り上げない（意図を受け付ける前に失敗すると、前の周で見た意図の記録が古いままで、
-    /// 休まずに失敗をくり返し、GitHub の上限を食い尽くすため）。上限（GitHub・書き込みの予算）なら言われた時間（長すぎれば `maxFailureWait` まで）、
-    /// ほかの失敗は 1 周の間隔
-    static func wait(after error: CommanderError, pollInterval: Duration) -> Duration {
-        guard let retryAfter = error.retryAfter else { return pollInterval }
-        return min(max(retryAfter, pollInterval), maxFailureWait)
-    }
-
-    /// 上限で休むときの長さの上限（生きている印が古くなりすぎないように）
-    static let maxFailureWait: Duration = .seconds(15 * 60)
 
     /// 次の周まで `pollInterval` 休む。休む間も `intentCheckInterval` ごとに意図の一覧を見て（ETag つきなので、変わっていなければ上限に数えられない）、
     /// 前の周で見ていない意図が届いていたら、休みを切り上げる（人の操作を早く受け付けるため。1 周の途中に届いた意図も、周が終わってすぐ受け付ける）。
@@ -216,7 +220,7 @@ public actor CommanderLoop {
         try await beatIfDue()
         let verifier = try await verifier()
         timer.lap("生きている印と鍵")
-        let intake = IntentIntake(context: context, verifier: verifier, handlers: Self.handlers)
+        let intake = IntentIntake(context: context, verifier: verifier, handlers: handlers)
         // 順に 1 つずつ処理し、状態リポジトリに書けなかったらそこで止める（`IntentIntake.processPending` と同じ。次の周で続きから）
         let pending = try await intake.pending()
         seenIntents = Set(pending)
@@ -251,8 +255,9 @@ public actor CommanderLoop {
             log(note)
         }
         swept.jobs += restarted.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
-        let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier))
+        let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier), lowOnDisk: diskRefusal != nil)
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
+        await cleanup?.poll(verifier: verifier)
         timer.lap("引き受けと通知")
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
         await mirror?.syncAll(verifier: verifier)
@@ -283,34 +288,6 @@ public actor CommanderLoop {
     public func waitForJobs() async {
         await slots.waitForJobs()
     }
-
-    static let handlers: [String: any IntentHandler] = [
-        "request": RequestHandler(),
-        "answer": AnswerHandler(),
-        "startEpic": StartEpicHandler(),
-        "reviseGoal": ReviseGoalHandler(),
-        "decideSplit": DecideSplitHandler(),
-        "abandonEpic": AbandonEpicHandler(),
-        "pauseEpic": PauseEpicHandler(),
-        "resumeEpic": ResumeEpicHandler(),
-        "handover": HandoverHandler(),
-        "addRepository": AddRepositoryHandler(),
-        "configureRepository": ConfigureRepositoryHandler(),
-        "removeRepository": RemoveRepositoryHandler(),
-        "retry": RetryJobHandler(),
-        "giveUp": GiveUpJobHandler(),
-        "decision": DecisionHandler(),
-        "approveMerge": ApproveMergeHandler(),
-        "instructFinal": InstructFinalHandler(),
-        "humanTaskDone": HumanTaskDoneHandler(),
-        "verify": VerifyHandler(),
-        "publishGitHubRelease": PublishGitHubReleaseHandler(),
-        "startRelease": StartReleaseHandler(),
-        "submitForReview": SubmitForReviewHandler(),
-        "distributeRelease": DistributeReleaseHandler(),
-        "withdrawSubmission": WithdrawSubmissionHandler(),
-        "abandonRelease": AbandonReleaseHandler()
-    ]
 
     /// 受け付けたら、生きている印を待たずにリリースの見回りを起こす種類（release ブランチを作る・App Store Connect に出すなど）
     static let releaseKinds: Set<String> = ["startRelease", "submitForReview", "distributeRelease", "withdrawSubmission"]
@@ -368,7 +345,13 @@ public actor CommanderLoop {
         let versions = MacFile.Versions(
             worker: settings.commanderVersion, compatibility: settings.compatibility, claude: claude, xcode: machine.xcodeVersion
         )
-        let mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
+        let refusal = machine.diskRefusal(previous: diskRefusal, at: time)
+        if (refusal == nil) != (diskRefusal == nil) {
+            log(refusal.map { "新しいジョブを引き受けない: \($0.message)" } ?? "空き容量が \(MacFile.lowDiskFreeGB) GB 以上に戻ったので、新しいジョブを引き受ける")
+        }
+        diskRefusal = refusal
+        var mac = machine.macFile(mac: context.mac, kind: .alwaysOn, at: time, versions: versions, capacity: settings.capacity)
+        mac.refusal = refusal
         try await context.put(commander, at: StatePath.commander, message: "司令塔の生きている印")
         try await context.put(mac, at: StatePath.mac(context.mac), message: "\(context.mac) の生きている印")
         lastBeat = now
@@ -377,5 +360,21 @@ public actor CommanderLoop {
         await tidy()
         appIcons?.start()
         releases?.start()
+        protection?.start()
     }
+}
+
+// MARK: - 失敗の後の休み
+
+extension CommanderLoop {
+    /// 周を終えられなかったときに休む時間。意図の一覧を見て休みを切り上げない（意図を受け付ける前に失敗すると、前の周で見た意図の記録が古いままで、
+    /// 休まずに失敗をくり返し、GitHub の上限を食い尽くすため）。上限（GitHub・書き込みの予算）なら言われた時間（長すぎれば `maxFailureWait` まで）、
+    /// ほかの失敗は 1 周の間隔
+    static func wait(after error: CommanderError, pollInterval: Duration) -> Duration {
+        guard let retryAfter = error.retryAfter else { return pollInterval }
+        return min(max(retryAfter, pollInterval), maxFailureWait)
+    }
+
+    /// 上限で休むときの長さの上限（生きている印が古くなりすぎないように）
+    static let maxFailureWait: Duration = .seconds(15 * 60)
 }

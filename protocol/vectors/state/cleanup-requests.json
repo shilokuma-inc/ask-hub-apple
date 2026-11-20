@@ -1,0 +1,111 @@
+{
+  "description": "cleanup/<mac>/requests.json（片付けの頼み）を読む例。schemaValid は protocol/schemas/state/cleanup-requests.schema.json に合うか、read は読む側の結果",
+  "schema": "state/cleanup-requests.schema.json",
+  "cases": [
+    {
+      "name": "find-and-remove",
+      "value": {
+        "v": 1,
+        "requests": [
+          {
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "action": "find",
+            "acceptedAt": "2026-11-18T10:00:00Z"
+          },
+          {
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000002"
+            },
+            "action": "remove",
+            "candidates": [
+              "0123456789abcdef"
+            ],
+            "scannedAt": "2026-11-18T10:05:00Z",
+            "acceptedAt": "2026-11-18T10:10:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty",
+      "value": {
+        "v": 1,
+        "requests": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "remove-without-candidates",
+      "value": {
+        "v": 1,
+        "requests": [
+          {
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000002"
+            },
+            "action": "remove",
+            "scannedAt": "2026-11-18T10:05:00Z",
+            "acceptedAt": "2026-11-18T10:10:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-action",
+      "value": {
+        "v": 1,
+        "requests": [
+          {
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "action": "empty-trash",
+            "acceptedAt": "2026-11-18T10:00:00Z"
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "future-version",
+      "value": {
+        "v": 2,
+        "requests": []
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    },
+    {
+      "name": "find-with-nulls",
+      "value": {
+        "v": 1,
+        "requests": [
+          {
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "action": "find",
+            "candidates": null,
+            "scannedAt": null,
+            "acceptedAt": "2026-11-18T10:00:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    }
+  ]
+}

@@ -199,6 +199,9 @@
 - 状態リポジトリの実データで司令塔の処理を確かめたいときは、`askhub-state` を `git clone` し（REST の上限に数えない）、一時的なテストで epic のファイル（`epic.json`・`questions.json`・`jobs/`）を
   `InMemoryStateStore` に `put` して流す。実データを読むパスは環境変数で渡し、テストはコミットしない（2026-11-14、#1103 の止まった見直しの頼み直し）
 - このリポジトリは、設定で PR の auto-merge を使えない（有効にしようとすると「Auto merge is not allowed for this repository」）。CI が通ってから `gh pr merge --merge --delete-branch` で手でマージする（2026-11-18、#1149）
+- Git Data API でディレクトリを移す（`git/trees` に `base_tree` と「元のパスを消す・先のパスに同じ blob を置く」を並べ、`git/commits`・`PATCH git/refs/heads/<branch>`）とき、
+  消すほうは `"sha": null` を明示する（欄を省くと消えない）。Swift の合成の `Encodable` は nil の欄を省くので、`encode(to:)` を自前で書く。
+  ブランチの更新を `force: false` にすると、読んだ後にほかの書き手が書いていれば 422（早送りにならない）になるので、読み直してやり直す（2026-11-18、終わった epic の `archive/`）
 
 ## ビルド・テスト
 
@@ -481,6 +484,11 @@
   development のトークンを production の宛先に書き、`400 BadDeviceToken` で断られる。環境は、iOS は埋め込みの `embedded.mobileprovision`（CMS で包んだ XML の plist）の `Entitlements`、
   macOS は `SecTaskCopyValueForEntitlement` で読む（iOS では使えない）。同じ端末でも、開発用の署名の版と TestFlight の版でトークンが違う。
   ビルドした .app の値は、`codesign -d --entitlements - --xml <.app>` と `security cms -D -i <.app>/embedded.mobileprovision` で確かめられる（2026-11-12、#1059）
+- Simulator でショートカットのアプリから App Shortcuts（App Intents）を動かすと、コマンドラインのビルド（Simulator 向けはアドホック署名）では「アプリのショートカットを実行できません」で止まる。
+  Simulator のログに linkd の `Unable to get teamId from jp.shilokuma.AskHub` と `Couldn't find AppShortcutsProvider` が出る（Team ID の無い署名のアプリからの接続を linkd が断る）。
+  `CODE_SIGN_IDENTITY` を渡して増分でビルドし直しても署名の手順は走らないので、できた .app を Apple Development の証明書（チーム XU74X3434S）で `codesign --force --sign <証明書> --entitlements <AskHub.app.xcent> --generate-entitlement-der` で署名し直す
+  （中の `AskHub.debug.dylib`・`__preview.dylib` も同じ証明書で先に署名する）。`codesign -dv` の `TeamIdentifier` で確かめる（2026-11-18、#1122）
+- Simulator の操作の文字入力（`simctl` の text）は日本語を送れない（text encoding のエラー）。`printf '…' | xcrun simctl pbcopy <udid>` で Simulator のクリップボードに入れ、欄を長押しして「ペースト」で入れる（2026-11-18、#1122）
 - Mac 版のデモ撮影（`-demoPress`）で、ツールバーの SwiftUI の `Menu("操作", systemImage: …)` は、アクセシビリティでは `AXMenuButton` の名前 `More` になり、「操作」では見つからない。
   `-demoPress "More|やめる…"` で開いたメニューの項目まで押せる。`-demoPress` は窓の中で名前が最初に合う要素を押すので、同じ名前のボタン（epic の「やめる…」と、「対処が要ります」の「やめる…」）があれば、
   画面の上にあるほうが押される。押せなかった名前は、コンテナの tmp の `demo-snapshot.log` に「… が見つかりません」と、その時の要素の一覧が出る（2026-11-18、開始した後の取り下げの撮影）
@@ -501,6 +509,10 @@
 - `&` で後ろに回したプロセスは SIGINT を無視した状態で始まり、無視されたまま始まったシグナルは `trap` できない。ジョブ制御の無いシェル（Claude の Bash など）で `sh -c "trap … INT; …" &` として試すと、
   trap が動かないように見える。SIGINT の挙動は Python の `subprocess.Popen` などから起動して試す。bash 3.2（macOS の `/bin/sh`）は、前で待っている子が SIGINT を受けずに普通に終わっても、
   trap があれば子が終わった後に trap を動かす（`sh` だけに送っても後片付けは動く）（2026-11-18、#1146）
+- `xcrun simctl list -j devices` の各 Simulator には `lastUsedAt`（`2026-11-18T01:20:55Z` の形。一度も起動していないものには無い）と `dataPathSize`（バイト）がある（Xcode 26.6 で確かめた）。
+  使っていない Simulator を日数で見分けるときは `lastUsedAt` を使い、無いものは日数では決めない（書かない版の Xcode もあり得る）（2026-11-18、枠の Simulator の見回り）
+- CI の SwiftLint は `lint --strict` なので、行の長さ（140 字）・型の本体の長さ（300 行）・入れ子の型（2 段）・`String(decoding:as:)` も error になる。
+  テストの struct が 300 行を超えたら、足したテストを同じファイルの `extension` に移す（`private` の補助はそのまま使える）。PR の前に手元の DerivedData の `swiftlint` で `lint --strict` を流す（2026-11-18）
 
 ## Keychain
 
@@ -625,6 +637,10 @@
   結果を捨てる比べがあるなら、捨てた後に作り直す見回り（`RevisionRestart`。今の basis のジョブが無い `revising` を探す）も一緒に用意する（2026-11-14、#1103）
 - アプリの `ReflectionTracker.reflection(…, excluding:)` は、まとめて OK の残りを送り直せるよう、同じ `HumanIntent` が送った分を数えない。そのため同じ回答の 2 回目は、
   窓口の控え（`lastSend`）で見つからないと止まらなかった。1 つの意図で済む操作は、この起動で受け取り待ちの同じ操作が対象のすべてを覆っていれば送らない（`isAwaitingAll`）（2026-11-14、#1103）
+- `switch` の `case 400, 404, 409, 422 where 条件:` の `where` は、最後のパターン（422）にしか掛からない。いくつかのパターンに同じ条件を付けるなら、
+  `case 400, 404, 409, 422:` の中で `guard` する（App Store Connect の書き込みの失敗の分け方。2026-11-18、#1140）
+- この repo の SwiftLint は、列挙の関連値を 5 個未満にする（`enum_case_associated_values_count`）。`HumanIntent` に中身の多い操作を足すときは、
+  中身を構造体にまとめて 1 つの関連値にする（`Submission.SubmitRequest`。2026-11-18、#1142）
 
 ## シェルスクリプト
 
@@ -772,6 +788,11 @@
   Mac では選んだ行の背景が濃くなって札（`CardSection`）と重なる。行を `.buttonStyle(.plain)` のボタン（label に `.contentShape(.rect)`）にして選び、
   選んだ行にチェックと `.isSelected` の trait を付けると、`#if os` 無しで両方そろう。チェックは `opacity` で隠して場所を取っておくと、選び直しても右の印が動かない。
   撮影でシートを開いておくときは `-demoSheet start` のように起動引数で `@State` の初期値を決める（`DemoLaunch.initialSheet`）（2026-11-14、開始のシート）
+- デモのクライアント（`DemoClientService`）は `supports` を実装しておらず、`ClientService` の既定でいつも true を返す。
+  状態によって出し分けるボタンは、`store.supports` だけでなく画面用のモデルの印（`Submission.awaitsSubmission` など）でも決めないと、デモと撮影で全部のボタンが出る（2026-11-18、#1142）
+- PR のスクショを `NSHostingView` の `cacheDisplay(in:to:)` で撮ると、`safeAreaBar(edge: .bottom)` にガラスのボタンを置いた画面は、中身ごと白く描かれる。
+  iOS のテスト（Simulator）で、`UIWindow(windowScene:)`（シーンに付けないと白くなる）に `UIHostingController` を載せ、`drawHierarchy(in:afterScreenUpdates:)` で PNG にすれば描ける。
+  状態リポジトリの組み立て（`StateClientService` + `InMemoryStateStore`）を通したデータを、develop とブランチの両方で同じテストから撮れば、同じ条件の Before / After になる（2026-11-18、片付けの候補）
 
 ## App Store Connect
 
@@ -786,3 +807,12 @@
   `CFBundleShortVersionString [1.0.0] … must contain a higher version than that of the previously approved version [1.0.0]` で落ち（`EXPORT FAILED`、exit 70）、TestFlight に上がらない。
   司令塔が配信を見つけて作る次の版の PR（`askhub/version-<次の版>` → develop）がマージされれば通る。司令塔は App Store Connect の鍵（`askhub-commander app-store-connect`）が無いと配信を見つけず、起動のログに出るだけなので、
   配信の後に develop の Upload がこのエラーで落ちたら、まず鍵の設定と次の版の PR があるかを見る（2026-11-12、OshiCon 1.0.0 → 1.1.0 の #164）
+- App Store Connect の API の文書（developer.apple.com/documentation/appstoreconnectapi/…）は JavaScript で描くので、取ってもタイトルしか返らない。
+  同じ中身の DocC の JSON（`https://developer.apple.com/tutorials/data/documentation/appstoreconnectapi/<slug>.json`）を読む（2026-11-18、#1127）
+- 審査の提出の一覧は `GET /v1/reviewSubmissions`（`filter[app]` が必須。`filter[state]`・`filter[platform]`・`include=appStoreVersionForReview`）で、
+  `/v1/apps/{id}/reviewSubmissions` ではない。`POST /v1/reviewSubmissions` の `platform` は任意。提出は `PATCH …/reviewSubmissions/{id}` の `submitted: true`、
+  取り下げは `canceled: true`。手動の配信（`POST /v1/appStoreVersionReleaseRequests`）は Pending Developer Release の版だけで、取り消せない。
+  承認された後の取り下げ（Developer Reject）の API は文書に見当たらない。役割ごとの可否の表は画像で、App Manager の鍵で書き込めるかは文書から読めない（2026-11-18、#1127）
+- 審査に出す前の版（`appStoreVersions`）は、編集できる状態（Prepare for Submission・Developer Rejected など）ならプラットフォームごとに 1 つ。
+  やめたリリースで作った版が残っていれば、`PATCH` で `versionString` ごと直して使う（新しく作ると断られる見込み。#1140 の `AppStoreSubmission`）。
+  初めての版は What's New を持たないので、配信中の版が無いアプリでは下書きしない（2026-11-18）

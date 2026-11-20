@@ -18,7 +18,7 @@
 | 試運転 | ask-hub-apple と prime-pick-ios で新しい仕組みを試す | 済み（2026-11-09） |
 | 切り替え | 全部のリポジトリを新しい仕組みに移し、今の仕組みを片付ける | 取り込みは済み（2026-11-09）。残りのリポジトリの移行は続く（近いうちに開発するものだけ） |
 | 4. 運用と、AskHub だけで完結させる残り | 下の「段階 4 の順」 | 進行中 |
-| 5. リリースと配布 | 下の「段階 5 の順」。1 つの段階にせず、別々の依頼に分ける | 進行中（配信の検知と後作業を入れた。鍵を入れて実地で確かめる） |
+| 5. リリースと配布 | 下の「段階 5 の順」。1 つの段階にせず、別々の依頼に分ける | 進行中（配信の検知と後作業、リリースを始めてから配信までを入れた。審査に出すのは実地で確かめる） |
 | 6. Android | Android のクライアントと、Android のリポジトリの開発 | これから |
 
 「済み」は、依頼 → 質問 → ゴール → 実装 → 子 PR → 最終 PR → 判断のカード → マージまでが動くこと。資料に「作る」と書いた機能がすべて出来たのではない。
@@ -35,8 +35,8 @@
 | 3 | 開始した後の取り下げと、giveUp のそのほかの種類 | [flows.md](flows.md) の「司令塔の動き」の取り下げ・やめる（2026-11-12 に決めた）。開始した後の取り下げは #1123（司令塔）・#1125（アプリ）、giveUp は #1126 の PR で作った（2026-11-18） |
 | 4 | 管理用のトークンと、リポジトリの管理 | 管理用のトークン（入れ方・期限・自己診断。[security.md](security.md) の「トークン」）→ 保護の設定と点検（`applyProtection`）・対象に加えるときの GitHub 側の準備・対象から外す（`removeRepository`）・加える画面の候補の一覧（まだ対象でないものだけ・検索）・クライアントからのビルドの設定（`configureRepository`）・Secrets の登録（人がする作業の `secret`）。中身は [operations.md](operations.md) の「対象のリポジトリ」 |
 | 5 | テンプレートからの新規作成 | テンプレート（template-app-ios・visionOS のもの）から今の仕組みの跡を外す → 作る意図と、管理用のトークンでテンプレートから作る処理 → 作った後は「対象に加える」と同じ準備を流す。共通リポジトリ（段階 5）を待たない（2026-11-12 に決めた） |
-| 6 | 容量と暴走の残り | 空きが少ない Mac は新しい epic を受けない（[operations.md](operations.md) の「容量」）・動いているループに属さない Simulator の見回り（`SimulatorPool.removeStray` をつなぐ）・片付けの候補（探す・選んで消す）・終わった epic を 30 日後に `archive/` へ（[protocol.md](protocol.md)）。`--max-budget-usd` は、サブスクリプションの枠で動かすので入れない（2026-11-18 に決めた。[operations.md](operations.md) の「Claude の利用上限」） |
-| 7 | Siri・ショートカットからの依頼 | 今の仕組みには有った（タグ `legacy-final` の `SendIdeaRequestIntent.swift`）。App Intents で依頼を出す。鍵はロックの解除中なら画面の外からも使える（[security.md](security.md) の「鍵」） |
+| 6 | 容量と暴走の残り | 空きが少ない Mac は新しい epic を受けない（[operations.md](operations.md) の「容量」）・動いているループに属さない Simulator の見回り（`SimulatorPool.removeStray` をつなぐ）・片付けの候補（探す・選んで消す）・終わった epic を 30 日後に `archive/` へ（[protocol.md](protocol.md)）。`--max-budget-usd` は、サブスクリプションの枠で動かすので入れない（2026-11-18 に決めた。[operations.md](operations.md) の「Claude の利用上限」）。2026-11-18 に作った: 空きが 30 GB を下回る Mac は新しい epic と、片付け・Claude だけのジョブのほかの新しいジョブを受けない #1134、Simulator の見回り #1137、終わった epic を 30 日後に畳む #1143、片付けの候補 #1150、`--max-budget-usd` を入れないと決めた #1129 |
+| 7 | Siri・ショートカットからの依頼 | 今の仕組みには有った（タグ `legacy-final` の `SendIdeaRequestIntent.swift`）。App Intents で依頼を出す。鍵はロックの解除中なら画面の外からも使える（[security.md](security.md) の「鍵」）。2026-11-18 に #1122 で入れた（[flows.md](flows.md) の「Siri・ショートカットからの依頼」） |
 
 ### 段階 5 の順
 
@@ -46,7 +46,7 @@
 | --- | --- | --- |
 | 1 | App Store Connect の API の確かめと鍵の入れ方 | 下の「段階 0 で確かめること」の項目 10。司令塔が読む鍵を常時オンの Mac の Keychain に置く（[release.md](release.md) の「ワークフロー」）。読み取り（配信中の版とビルド）は確かめて #1085 で入れ、鍵は `askhub-commander app-store-connect` で入れる（[operations.md](operations.md) の「App Store Connect の API キー（配信の検知）」）。審査に出す・配信するの API は 3 で確かめる |
 | 2 | 配信の検知と後作業 | 司令塔が配信を見つけ、タグ・リリース文の下書き（人が確かめて公開する）・GitHub Release・次の版に上げる PR を行う（[release.md](release.md) の「配信の検知と後作業」。配信の記録と公開の意図は #1078、司令塔は #1085、アプリは #1091 で入れ、今の仕組みの Release/* は #1087 で外した）。release ブランチを使うときの main と develop への取り込みは 3 で足す |
-| 3 | リリースを始める・準備・審査に出す・審査の見張り・配信 | 人が押す操作の意図の種類（[protocol.md](protocol.md) の「決めていないこと」）を足す |
+| 3 | リリースを始める・準備・審査に出す・審査の見張り・配信 | 記録と意図は #1127、司令塔は #1140、アプリは #1142、release ブランチの取り込みは #1151（[release.md](release.md) の「リリースを始めてから配信まで」）。App Manager の鍵で書き込めるかは、最初の提出で確かめる |
 | 4 | リリース中の直し・hotfix・リジェクト | [release.md](release.md) の「リリース中の直し」「リジェクト」「hotfix」。通知のリジェクト（[operations.md](operations.md) の「通知」）も |
 | 5 | 共通リポジトリ（app-kit）とテンプレートの作り直し・配布 | [operations.md](operations.md) の「共通リポジトリとテンプレートの配布」。今あるリポジトリにも「対象に加える」と同じ手順を流してそろえる |
 | 6 | App Store の素材 | スクショの差分・プロダクトページのヘッダー・検索結果の素材・チャットでの手直し（[release.md](release.md) の「App Store の素材」） |
@@ -162,6 +162,6 @@
 | 7 | 画面の無い launchd の下で、Simulator のスクショと macOS アプリの撮影ができるか | Simulator の作成・起動・スクショ・削除ができる。判断のカードのスクショは、Simulator で起動引数で画面を開いて撮る（[flows.md](flows.md) の「スクショ」）。macOS のアプリの撮影は段階 5 の 7 で確かめる |
 | 8 | GitHub: 想定の頻度の書き込みでの二次の上限、同時の書き込み、ETag の効き方、複数の organization のトークン | 古い版の書き込みは 409 で弾かれる。ETag つきの読み取りは上限に数えられないとみられる。今の仕組みが動いている間は上限の 3 割ほどが使われている。複数の organization のトークンは、持ち主ごとに 1 つにした（[operations.md](operations.md) の「GitHub のトークン（持ち主ごと）」） |
 | 9 | GitHub: `GITHUB_TOKEN` をブランチ保護の例外に入れられるか、`GITHUB_TOKEN` で作った PR の必須チェック、管理者にも保護を効かせたときの人のマージ | 例外に入れられず、PR も作れない。ルールセットは管理者にも効く。アカウントのトークンの PR なら CI が起動してマージできる。後作業は司令塔の PR で行う |
-| 10 | App Store Connect の API: 状態の読み取り（審査・配信）に足りる役割、審査に出す（Review Submissions）、配信、取り下げとやり直し、App のプライバシーの申告、課金・App Clip・capability | 段階 5 の 1 で確かめる |
+| 10 | App Store Connect の API: 状態の読み取り（審査・配信）に足りる役割、審査に出す（Review Submissions）、配信、取り下げとやり直し、App のプライバシーの申告、課金・App Clip・capability | 読み取り（App Manager）は #1085 で確かめた。審査に出す・取り下げ・手動の配信の API は文書で確かめ、#1140 で入れた（App Manager で書き込めるかは最初の提出で確かめる。承認後の取り下げの API は見つからない）。プライバシーの申告・課金・App Clip・capability はまだ |
 | 11 | 利用上限に当たったとき、`claude -p` の出力から解除の時刻を取れるか | 実際に当たったときに確かめる（読み取りは実装済み。2026-11-12 までまだ当たっていない） |
 | 12 | 今の仕組みで、最終 PR の CI の自動修正が失敗していた原因（常時オンの Mac のログ） | 60 分の時間切れが「結果を読み取れませんでした」に見えていた。失敗の区分に「時間切れ」を持たせる |

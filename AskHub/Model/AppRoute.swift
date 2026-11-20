@@ -41,6 +41,8 @@ enum AppRoute: Hashable {
     case repository(TargetRepository.ID)
     /// App Store で配信した版と、その後作業
     case release(repositoryID: TargetRepository.ID, version: String)
+    /// リリースを始めた版（準備から配信まで）
+    case submission(repositoryID: TargetRepository.ID, version: String)
     /// 終わったもの（マージした・やめた epic）をすべて。進行中には新しいものだけを出す
     case finishedEpics
 }
@@ -55,4 +57,6 @@ enum DeckScope: Hashable {
     case decisions(Epic.ID)
     /// その epic の実機確認
     case verifications(Epic.ID)
+    /// アプリをまたいで、マージした epic の実機確認をすべて（実機確認のまとめの通知から開く）
+    case allVerifications
 }

@@ -30,7 +30,7 @@ struct ReleaseDetailView: View {
             }
             CardSection {
                 ForEach(release.steps) { step in
-                    ReleaseStepRow(step: step)
+                    StepStatusRow(title: step.title, detail: step.detail, state: step.state)
                 }
             } header: {
                 Text("後作業")
@@ -95,9 +95,11 @@ struct ReleaseDetailView: View {
     }
 }
 
-/// 後作業の 1 段取り
-private struct ReleaseStepRow: View {
-    let step: Release.StepStatus
+/// 段取りの 1 行（配信の後作業・リリースの準備と審査）
+struct StepStatusRow: View {
+    let title: String
+    let detail: String
+    let state: Release.StepState
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -105,9 +107,9 @@ private struct ReleaseStepRow: View {
                 .foregroundStyle(tint)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(step.title).appFont(.headline, weight: .semibold)
-                Text(step.detail)
-                    .foregroundStyle(step.state == .problem ? Theme.danger : .secondary)
+                Text(title).appFont(.headline, weight: .semibold)
+                Text(detail)
+                    .foregroundStyle(state == .problem ? Theme.danger : .secondary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -115,7 +117,7 @@ private struct ReleaseStepRow: View {
     }
 
     private var symbol: String {
-        switch step.state {
+        switch state {
         case .done: "checkmark.circle.fill"
         case .working: "clock"
         case .waitingHuman: "person.fill"
@@ -124,7 +126,7 @@ private struct ReleaseStepRow: View {
     }
 
     private var tint: Color {
-        switch step.state {
+        switch state {
         case .done: Theme.Tone.mint
         case .working: .secondary
         case .waitingHuman: Theme.Tone.lavender
@@ -133,7 +135,7 @@ private struct ReleaseStepRow: View {
     }
 
     private var stateLabel: String {
-        switch step.state {
+        switch state {
         case .done: "済み"
         case .working: "進めています"
         case .waitingHuman: "あなたの番"

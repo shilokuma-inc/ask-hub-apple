@@ -28,12 +28,25 @@ enum HumanIntent: Hashable {
     /// GitHub の Secrets に入れる作業は、人が GitHub の設定画面で入れてから終えたことにする（値は受け取らない）
     case completeHumanTask(epicID: Epic.ID, taskID: HumanTask.ID, file: HandoverFile? = nil)
     case verify(epicID: Epic.ID, itemID: VerificationItem.ID, reply: VerificationReply)
+    /// 選んだ片付けの候補を消す（clone と DerivedData はゴミ箱に移し、Simulator は消す）
     case cleanUp(macID: Mac.ID, candidateIDs: [CleanupCandidate.ID])
+    /// Mac の片付けの候補を探す（その Mac のワーカーが探す）
+    case findCleanupCandidates(macID: Mac.ID)
     /// 依頼。添付の中身は、意図より先に状態リポジトリに置く
     case request(repositoryID: TargetRepository.ID, summary: String, body: String, attachments: [RequestFile] = [])
     case addRepository(repositoryID: TargetRepository.ID)
     /// 配信した版のリリース文を確かめて、GitHub Release を公開する。見た下書きの版に結びつける（見た後に下書きが作り直されていれば、司令塔が断る）
     case publishRelease(repositoryID: TargetRepository.ID, version: String, notesVersion: Int, notes: String)
+    /// リリースを始める（`version` は始める版）
+    case startRelease(repositoryID: TargetRepository.ID, version: String)
+    /// 審査に出す（`revision` は見たときの準備の版。ビルドか What's New が変わっていれば司令塔が断る）
+    case submitForReview(repositoryID: TargetRepository.ID, version: String, request: Submission.SubmitRequest)
+    /// 審査に通った版を配信する（取り消せない）
+    case distributeRelease(repositoryID: TargetRepository.ID, version: String)
+    /// 審査を取り下げる
+    case withdrawSubmission(repositoryID: TargetRepository.ID, version: String)
+    /// このリリースをやめる
+    case abandonRelease(repositoryID: TargetRepository.ID, version: String)
     /// 対象から外す（終わっていない epic があれば司令塔が断る。状態リポジトリのファイルと GitHub のリポジトリは消さない）
     case removeRepository(repositoryID: TargetRepository.ID)
     /// ビルドの設定を入れる（`json` は `repo.json` の `build` と同じ形。送るたびにまるごと置き換える）
@@ -93,6 +106,21 @@ extension HumanIntent {
         case let .publishRelease(_, version, _, _):
             "GitHub Release の公開（\(version)）"
 
+        case let .startRelease(_, version):
+            "リリースを始める（\(version)）"
+
+        case let .submitForReview(_, version, _):
+            "審査に出す（\(version)）"
+
+        case let .distributeRelease(_, version):
+            "配信する（\(version)）"
+
+        case let .withdrawSubmission(_, version):
+            "審査の取り下げ（\(version)）"
+
+        case let .abandonRelease(_, version):
+            "リリースをやめる（\(version)）"
+
         case .removeRepository(let repositoryID):
             "対象から外す（\(repositoryID)）"
 
@@ -134,6 +162,9 @@ extension HumanIntent {
 
         case .cleanUp:
             "片付け"
+
+        case .findCleanupCandidates:
+            "片付けの候補を探す頼み"
         }
     }
 

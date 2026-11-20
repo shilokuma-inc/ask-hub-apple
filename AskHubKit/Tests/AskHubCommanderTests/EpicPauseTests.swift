@@ -28,7 +28,7 @@ struct EpicPauseTests {
         IntentIntake(
             context: context(at: now),
             verifier: IntentVerifier(publicKeys: [keyID: key.publicKey.derRepresentation]),
-            handlers: CommanderLoop.handlers
+            handlers: CommanderLoop.handlers(admin: nil)
         )
     }
 
@@ -99,14 +99,14 @@ struct EpicPauseTests {
         return prepare
     }
 
-    func mac(_ name: MacName, seen: Date) async throws {
+    func mac(_ name: MacName, seen: Date, diskFreeGB: Int = 100) async throws {
         let check = SelfCheck(checkedAt: Timestamp(seen), keychain: .ok, githubToken: .ok, claudeToken: .ok)
         let file = MacFile(
             mac: name,
             kind: .resident,
             seenAt: Timestamp(seen),
             versions: .init(worker: "1.0.0"),
-            diskFreeGB: 100,
+            diskFreeGB: diskFreeGB,
             load: 1,
             capacity: .init(claude: 1, build: 1),
             selfCheck: check
@@ -338,6 +338,16 @@ struct EpicPauseTests {
         #expect(try await send("handover", payload: ["mac": .string("imac")], at: 1) == [.rejected(kind: "handover", reason: unknown)])
         let malformed = try await send("handover", payload: ["mac": .string("../mac")], at: 2)
         #expect(malformed == [.rejected(kind: "handover", reason: "引き継ぎの形が違う（mac の形が違う）")])
+        #expect(try await epic().mac == Self.laptop)
+    }
+
+    /// 空きが少ない Mac には引き継がない（移す先が新しいジョブを引き受けない）
+    @Test func handoverRejectsMacLowOnDisk() async throws {
+        try await started()
+        try await mac(Self.other, seen: Self.now, diskFreeGB: MacFile.lowDiskFreeGB - 5)
+        let reason = "Mac \(Self.other) の空き容量が 25 GB で、30 GB を下回っている。片付けてから引き継ぐか、ほかの Mac を選ぶ"
+        let outcome = try await send("handover", payload: ["mac": .string(Self.other.rawValue)], at: 1)
+        #expect(outcome == [.rejected(kind: "handover", reason: reason)])
         #expect(try await epic().mac == Self.laptop)
     }
 }
