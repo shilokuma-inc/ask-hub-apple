@@ -139,9 +139,13 @@ extension AppStoreConnectClient: AppStoreConnectListing {
 
     /// 準備しているほうの App 情報（カテゴリ・年齢制限・言語ごとのプライバシーポリシーの URL）を読む
     private func readAppInfo(of appID: String, into state: inout AppStoreSetupState) async throws(AppStoreConnectError) {
+        // 関係の相手の id（`data`）は、include で求めたときだけ返る。カテゴリも求める（求めないと、決めてあっても無いと読む）
         let infos = try await get(
             "v1/apps/\(appID)/appInfos",
-            query: [URLQueryItem(name: "include", value: "ageRatingDeclaration"), URLQueryItem(name: "limit", value: "10")],
+            query: [
+                URLQueryItem(name: "include", value: "ageRatingDeclaration,primaryCategory"),
+                URLQueryItem(name: "limit", value: "10")
+            ],
             as: AppStoreConnectAppInfosResponse.self
         )
         // 配信中の版があるアプリは App 情報を 2 つ持つ。準備しているほう（配信中でないもの）を見る
