@@ -101,6 +101,49 @@ extension DemoData {
         reason: "人数に合わせて分量を計算できるようにしたので、日本語の説明文に一文足し、キーワードに「分量」を足す案です"
     )
 
+    /// App Store に載せる準備。家事シェアは App Store Connect にアプリがまだ無く（あなたの番に出る）、
+    /// おこづかい帳はアプリを作った後で、初めての版に要る設定が残っている（リリースを始めるまでは、あなたの番に出さない）
+    func appStoreSetups() -> [AppStoreSetup] {
+        [
+            AppStoreSetup(
+                repositoryID: Self.repositoryID("kaji-share-ios"),
+                bundleIDs: ["jp.shilokuma.KajiShare", "jp.shilokuma.KajiShareTests"],
+                mainBundleID: "jp.shilokuma.KajiShare",
+                items: [
+                    .init(kind: .bundleId, state: .done, confirmed: false),
+                    .init(
+                        kind: .app,
+                        state: .todo,
+                        note: "App Store Connect の「アプリ」の「＋」で作る（Bundle ID と SKU は jp.shilokuma.KajiShare）",
+                        confirmed: false
+                    )
+                ],
+                isExcluded: false,
+                updatedAt: ago(minutes: 40)
+            ),
+            AppStoreSetup(
+                repositoryID: Self.repositoryID("pocket-budget-ios"),
+                bundleIDs: ["jp.shilokuma.PocketBudget"],
+                mainBundleID: "jp.shilokuma.PocketBudget",
+                app: .init(id: "6740000123", name: "おこづかい帳", bundleID: "jp.shilokuma.PocketBudget", primaryLocale: "ja"),
+                items: [
+                    .init(kind: .bundleId, state: .done, confirmed: false),
+                    .init(kind: .app, state: .done, confirmed: false),
+                    .init(kind: .contentRights, state: .done, note: "第三者のコンテンツを使わない", confirmed: false),
+                    .init(kind: .category, state: .todo, confirmed: false),
+                    .init(kind: .privacyPolicy, state: .todo, note: "まだ書いていない言語: ja・en-US", confirmed: false),
+                    .init(kind: .price, state: .todo, confirmed: false),
+                    .init(kind: .availability, state: .todo, confirmed: false),
+                    .init(kind: .ageRating, state: .todo, note: "答えていない質問が 6 個ある", confirmed: false),
+                    .init(kind: .appPrivacy, state: .unknown, note: "API が無い。「App のプライバシー」で答えて公開する", confirmed: false),
+                    .init(kind: .digitalServicesAct, state: .unknown, note: "API が無い。「App 情報」で DSA の申告をする", confirmed: true)
+                ],
+                isExcluded: false,
+                updatedAt: ago(minutes: 90)
+            )
+        ]
+    }
+
     static let recipeWhatsNewJapanese = """
         ・材料の分量を、人数に合わせて自動で計算できるようになりました
         ・買い物リストを Mac と iPhone で同じものにしました
