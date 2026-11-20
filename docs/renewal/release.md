@@ -80,6 +80,9 @@
   長さはキーワードが 100 バイト（Apple の文書がバイトで書いている。多バイト文字の数え方は書かれていないので、多めに数える UTF-8 で数える）、説明文が 4,000 文字、プロモーションテキストが 170 文字。初めての版は案を書かない（App Store Connect で書く）。
   プロモーションテキストは審査なしで変えられるので、配信中の版にいつでも反映できる（同じ日にユーザーが決めた。#1160）。司令塔が配信の見回り（30 分ごと）で配信中の版の今の文を読んで配信の記録（`releases/<版>.json` の `promotionalText`）に書き、
   人が配信した版の画面で言語ごとに直して「反映する」を押す（`updatePromotionalText`）と、司令塔が配信中の版（プラットフォームごと）の `promotionalText` に書く。App Store Connect が断ったら、理由を記録に書いて画面に出す
+- App Review の情報: 審査メモ・デモアカウントの要否と名前は、掲載文の案と同じ Claude の下書きで、審査する人が新しい機能を試すのに手順や説明が要るとき（見つけにくい機能・ログイン・課金・権限など）だけ直す案を書く（#1164）。
+  審査に出すシートには、案があるときだけ「App Review の情報」の欄を出し（変わったときだけ人が直す）、司令塔は人が確かめた欄だけを審査に出す版の `appStoreReviewDetail` に書く（無ければ作る）。
+  デモアカウントのパスワードと連絡先は読まない・書かない・状態リポジトリに置かない。パスワードは人が App Store Connect で入れる（2026-11-20 にユーザーが決めた）
 - release ブランチの取り込み: 取り込む先（base の develop と main）ごとに、release ブランチが進んでいれば（`compare`）司令塔の PR を出し、チェックが通ったらマージコミットでマージする。進んでいなければ取り込まない（直しの無いリリースの develop）。main が無ければ release ブランチの先頭から作る。release ブランチで版を変えていないので、develop の版は上書きされない。コンフリクト・チェックの失敗・閉じられた PR は人が直す問題にする
 - 取り下げ（`withdrawSubmission`）: 審査を待っている・審査中なら、reviewSubmission を取り消す（`canceled`）。取り下げた後は、ビルドや What's New を直して出し直せる
 - やめる（`abandonRelease`）: 審査に出していない・取り下げた・断られた版なら、記録に終わりの印を付け、リリースを始めたときに作った版の枠のうち、まだ審査に出していないものを `DELETE /v1/appStoreVersions/{id}` で消す。審査に出ている・API で消せない枠は消さずに理由を記録して知らせる（人が App Store Connect で確かめる）。release ブランチ・develop の版を上げる PR には触れない
@@ -95,6 +98,7 @@
 | --- | --- |
 | 版の状態を読む | `GET /v1/apps/{id}/appStoreVersions?filter[appVersionState]=…`（置き換わった版のほかすべて。配信の検知と同じ要求で読む） |
 | ビルドを読む | `GET /v1/builds?filter[app]=…&filter[preReleaseVersion.version]=<版>&filter[processingState]=VALID` |
+| App Review の情報を読む・書く | `GET /v1/appStoreVersions/{id}/appStoreReviewDetail`（`fields[appStoreReviewDetails]=notes,demoAccountRequired,demoAccountName`。パスワードと連絡先は読まない）、`PATCH /v1/appStoreReviewDetails/{id}`、無ければ `POST /v1/appStoreReviewDetails` |
 | 掲載文の言語を読む・What's New と掲載文を書く | `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations`、`PATCH /v1/appStoreVersionLocalizations/{id}`（`whatsNew`・`description`・`keywords`・`promotionalText`。送った欄だけ変わる） |
 | 版を作る・直す・消す | `POST /v1/appStoreVersions`（`platform`・`versionString`・`releaseType`。`earliestReleaseDate` は日時を指定するときだけ）、`PATCH /v1/appStoreVersions/{id}`（送った欄だけ直す。`relationships.build` でビルドも選ぶ）、`DELETE /v1/appStoreVersions/{id}`（まだ審査に出していない版） |
 | 提出する | `GET /v1/reviewSubmissions?filter[app]=…&filter[platform]=…&filter[state]=READY_FOR_REVIEW`（開いているものを使う）か `POST /v1/reviewSubmissions` → `POST /v1/reviewSubmissionItems` → `PATCH /v1/reviewSubmissions/{id}`（`submitted: true`） |
