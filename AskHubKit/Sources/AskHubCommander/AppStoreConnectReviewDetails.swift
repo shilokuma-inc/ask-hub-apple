@@ -19,15 +19,10 @@ extension AppStoreConnectClient {
         try Self.checkID(versionID)
         // パスワードと連絡先は読まない（状態リポジトリに置かないため）
         let query = [URLQueryItem(name: "fields[appStoreReviewDetails]", value: "notes,demoAccountRequired,demoAccountName")]
-        let response: AppStoreConnectReviewDetailResponse
-        do {
-            response = try await get(
-                "v1/appStoreVersions/\(versionID)/appStoreReviewDetail", query: query, as: AppStoreConnectReviewDetailResponse.self
-            )
-        } catch .refused(404, _) {
-            return nil
-        }
-        guard let item = response.data, Self.isID(item.id) else { return nil }
+        // まだ作っていない版は 404 か、200 で data が null
+        let path = "v1/appStoreVersions/\(versionID)/appStoreReviewDetail"
+        guard let response = try await getIfPresent(path, query: query, as: AppStoreConnectReviewDetailResponse.self),
+              let item = response.data, Self.isID(item.id) else { return nil }
         let attributes = item.attributes
         return AppStoreReviewDetail(
             id: item.id,
