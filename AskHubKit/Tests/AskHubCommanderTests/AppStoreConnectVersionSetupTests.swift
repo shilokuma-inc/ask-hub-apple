@@ -44,6 +44,7 @@ struct AppStoreConnectVersionSetupTests {
         ])
         // 連絡先は、入れていない欄だけを返す（入れた名前は返さない）
         #expect(state.missingReviewContact == [.phone, .email])
+        #expect(state.reviewDetailID == "r-1")
         #expect(transport.requests.map { $0.url?.path ?? "" } == [
             "/v1/appStoreVersions/v-1",
             "/v1/appStoreVersions/v-1/appStoreVersionLocalizations",
@@ -92,5 +93,42 @@ struct AppStoreConnectVersionSetupTests {
             try await client.setVersionURLs(support: "http://example.com", marketing: nil, localizationID: "l-ja")
         }
         #expect(transport.requests.isEmpty)
+    }
+
+    @Test func readsAndWritesReviewContactWithoutShowingValues() async throws {
+        let detail = """
+            {"data":{"type":"appStoreReviewDetails","id":"r-9",
+                     "attributes":{"contactFirstName":"Taro","contactLastName":"Yamada",
+                                   "contactPhone":"+81 90 0000 0000","contactEmail":"taro@example.com"}}}
+            """
+        let created = #"{"data":{"type":"appStoreReviewDetails","id":"r-new"}}"#
+        let transport = StubTransport([.json(200, detail), .json(200, "{}"), .json(201, created)])
+        let client = client(transport)
+        let found = try #require(try await client.reviewContact(of: "v-9"))
+        #expect(found.detailID == "r-9" && found.contact.isComplete)
+        // 文字列にしても値を出さない（ログに混ざらないように）
+        #expect(!"\(found.contact)".contains("Taro") && !String(reflecting: found.contact).contains("taro@example.com"))
+        try await client.writeReviewContact(found.contact, fields: [.phone], detailID: "r-1", versionID: "v-1")
+        try await client.writeReviewContact(found.contact, fields: ReviewContactField.allCases, detailID: nil, versionID: "v-2")
+        #expect(transport.requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" } == [
+            "GET /v1/appStoreVersions/v-9/appStoreReviewDetail",
+            "PATCH /v1/appStoreReviewDetails/r-1",
+            "POST /v1/appStoreReviewDetails"
+        ])
+        // 入れていない欄だけを送る
+        #expect(try attributes(transport.requests[1]) == ["contactPhone": "+81 90 0000 0000"])
+        #expect(try attributes(transport.requests[2]).count == 4)
+    }
+
+    @Test func listsEveryAppAcrossPages() async throws {
+        let first = """
+            {"data":[{"type":"apps","id":"6740000001","attributes":{"bundleId":"jp.example.A","name":"A"}}],
+             "links":{"next":"https://api.appstoreconnect.apple.com/v1/apps?cursor=Mg&limit=200"}}
+            """
+        let second = #"{"data":[{"type":"apps","id":"6740000002","attributes":{"bundleId":"jp.example.B","name":"B"}}],"links":{}}"#
+        let transport = StubTransport([.json(200, first), .json(200, second)])
+        let apps = try await client(transport).allApps()
+        #expect(apps.map(\.id) == ["6740000001", "6740000002"])
+        #expect(query(transport.requests[1])["cursor"] == "Mg")
     }
 }

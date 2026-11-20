@@ -176,4 +176,69 @@ struct AppStoreVersionSetupTests {
         #expect(file.settingsRequest?.failures?.map(\.item) == [.supportUrl])
         #expect(await watch.blockers.contains { $0.reason == .appStoreRefused([.supportUrl]) })
     }
+
+    // MARK: - App Review の連絡先を写す
+
+    static let contact = ReviewContact(values: [
+        .firstName: "Taro", .lastName: "Yamada", .phone: "+81 90 0000 0000", .email: "taro@example.com"
+    ])
+
+    func version(_ id: String, _ state: AppStoreVersionState) -> AppStoreVersionInfo {
+        AppStoreVersionInfo(id: id, platform: .iOS, versionString: "1.0.0", state: state)
+    }
+
+    @Test func copiesReviewContactFromOtherAppWithoutRecordingValues() async throws {
+        try await base.addRepository()
+        setup.app()
+        base.appStore.state.withLock { state in
+            state.apps += [
+                AppStoreApp(id: "6740000010", bundleId: "jp.shilokuma.Half", name: "連絡先が欠けたアプリ"),
+                AppStoreApp(id: "6740000009", bundleId: "jp.shilokuma.Other", name: "ほかのアプリ")
+            ]
+            // 配信中でも、欄が欠けた連絡先は写さない
+            state.versionsByApp["6740000010"] = [version("half-live", .readyForDistribution)]
+            state.reviewContacts["half-live"] = .init(detailID: "rd-half", contact: .init(values: [.firstName: "Hanako"]))
+            // 審査に出していない版の連絡先は使わず、審査に出した（リジェクトされた）版から写す
+            state.versionsByApp["6740000009"] = [version("other-draft", .prepareForSubmission), version("other-rejected", .rejected)]
+            state.reviewContacts["other-draft"] = .init(detailID: "rd-draft", contact: Self.contact)
+            state.reviewContacts["other-rejected"] = .init(detailID: "rd-other", contact: Self.contact)
+        }
+        versionSetup("v-1", .init(
+            localizations: [.init(id: "l-ja", locale: "ja")], missingReviewContact: [.phone, .email], reviewDetailID: "rd-1"
+        ))
+        try await putRelease(slots: [slot("v-1")])
+        let watch = base.watch()
+        await watch.refresh()
+        let apply = setup.envelope("applyAppStoreSettings", ApplyAppStoreSettingsIntent.payload(.init(reviewContact: .copyFromOtherApp)))
+        #expect(try await ApplyAppStoreSettingsHandler().handle(apply, in: setup.context) == .accept)
+        await watch.refresh()
+        // まだ入れていない欄だけを、今の App Review の情報に書く
+        #expect(base.appStore.state.withLock { $0.writes }.filter { $0.hasPrefix("writeReviewContact") } == [
+            "writeReviewContact v-1 contactPhone,contactEmail rd-1"
+        ])
+        let file = try #require(try await setup.setup())
+        #expect(file.settingsRequest?.reviewContactFrom == .init(id: "6740000009", name: "ほかのアプリ"))
+        #expect(file.settingsRequest?.failures == nil)
+        #expect(file.item(.reviewContact)?.state == .done)
+        // 連絡先の値は記録に書かない
+        let text = try #require(String(bytes: try StateFileCoder.encode(file), encoding: .utf8))
+        #expect(!text.contains("taro@example.com") && !text.contains("+81 90") && !text.contains("Yamada"))
+    }
+
+    @Test func leavesReviewContactToHumanWhenNoOtherAppHasOne() async throws {
+        try await base.addRepository()
+        setup.app()
+        versionSetup("v-1", .init(localizations: [.init(id: "l-ja", locale: "ja")], missingReviewContact: ReviewContactField.allCases))
+        try await putRelease(slots: [slot("v-1")])
+        let watch = base.watch()
+        await watch.refresh()
+        let apply = setup.envelope("applyAppStoreSettings", ApplyAppStoreSettingsIntent.payload(.init(reviewContact: .copyFromOtherApp)))
+        #expect(try await ApplyAppStoreSettingsHandler().handle(apply, in: setup.context) == .accept)
+        await watch.refresh()
+        let file = try #require(try await setup.setup())
+        #expect(file.settingsRequest?.failures?.map(\.item) == [.reviewContact])
+        #expect(file.settingsRequest?.failures?.first?.message.contains("App Store Connect で入れて") == true)
+        #expect(file.settingsRequest?.reviewContactFrom == nil)
+        #expect(await watch.blockers.contains { $0.reason == .appStoreRefused([.reviewContact]) })
+    }
 }
