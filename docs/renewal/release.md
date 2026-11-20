@@ -178,6 +178,13 @@ App Store Connect にまだアプリが無い・配信中の版が無いアプ�
 - 自動で出す。App Store Connect にアプリが無ければ「アプリを作る」を、配信中の版が無いアプリでリリースを始めたら初めての版の残りを出す。出さないリポジトリは「App Store に出さない」で外す
 - 初めての版の掲載文（説明文・キーワードなど）は Claude が下書きする（版ごとの掲載文の仕組みに乗せる。上の「掲載文」）
 
+2026-11-21 に足したこと:
+
+- 初めての版の版の項目（サポート URL・著作権表示・App Review の連絡先）もチェックリストに出す。初めての版のリリースを始めて版の枠を作ったときだけ確かめる
+- サポート URL・マーケティング URL（任意）・著作権表示は、プライバシーポリシーの URL と同じく決まった値にし、人がチェックリストで値を確かめて押したら司令塔が書く
+- App Review の連絡先（姓・名・電話・メール）は、AskHub で終わらせる（App Store Connect を開かない）。個人の情報なので状態リポジトリには置かず、人がチェックリストで「ほかのアプリの連絡先を写す」を押したら、司令塔が同じ鍵のほかのアプリ（配信中か審査に出した版）の連絡先を App Store Connect の中で新しい版に写す。値は記録・ログ・通知に出さず、どのアプリから写したかだけを書く。写せるアプリが無ければ、人が App Store Connect で入れて「終わった」を押す
+  - 連絡先は organization の GitHub の Secrets（`APP_REVIEW_CONTACT_*`。テンプレートの `app-store-metadata.yml` が App Review の情報に書く）にもあるが、Secrets は API で値を読めないので、司令塔は使えない。ほかのアプリの連絡先は、そのワークフローが書いた同じ値の見込み
+
 ### App Store Connect の API でできること
 
 2026-11-20 に Apple の文書（API は DocC の JSON、役割は Help の役割の表）で確かめた。鍵は App Manager の役割のチームの鍵（Admin は使わない）。
@@ -195,9 +202,9 @@ App Store Connect にまだアプリが無い・配信中の版が無いアプ�
 | 年齢制限 | `PATCH /v1/ageRatingDeclarations/{id}` | できる（Help） | 人が Web で答える。司令塔は答えていない質問があるかを確かめる |
 | App のプライバシー（データの収集） | 無い | —（Web では App Manager で答えられる） | 人が Web で答えて「終わった」を押す |
 | DSA（EU のデジタルサービス法）の申告 | 見当たらない | — | 人が Web で答えて「終わった」を押す |
-| 初めての版の掲載文 | `POST`・`PATCH /v1/appStoreVersionLocalizations`（`description`・`keywords`・`promotionalText`・`supportUrl`・`marketingUrl`）、`appStoreVersions` の `copyright` | できる | 説明文・キーワード・プロモーションテキストは Claude が下書きし、審査に出すときに書く（上の「掲載文」）。サポート URL・マーケティング URL・著作権表示は、まだ人が Web で書く |
+| 初めての版の掲載文 | `POST`・`PATCH /v1/appStoreVersionLocalizations`（`description`・`keywords`・`promotionalText`・`supportUrl`・`marketingUrl`）、`appStoreVersions` の `copyright` | できる | 説明文・キーワード・プロモーションテキストは Claude が下書きし、審査に出すときに書く（上の「掲載文」）。サポート URL・マーケティング URL・著作権表示は、人がチェックリストで値を確かめて押したら、版の枠のうちまだ書いていない言語・版に書く |
 | スクショ | `appScreenshotSets`・`appScreenshots` は 4.5.1 で非推奨。新しい App Asset Library（`appAssetLibraryImages`・`appAssetLibraryPlacements`） | できる（文書に明記） | 「App Store の素材」の流れ（段階 5 の 6） |
-| App Review の情報 | `POST`・`PATCH /v1/appStoreReviewDetails`（連絡先・デモアカウント・メモ） | 推定でできる（役割の表に行が無い） | 「App Store の素材」の流れ（段階 5 の 6） |
+| App Review の情報 | `POST`・`PATCH /v1/appStoreReviewDetails`（連絡先・デモアカウント・メモ） | 推定でできる（役割の表に行が無い） | メモ・デモアカウントは「App Store の素材」の流れ（段階 5 の 6）。連絡先は、人が押したら同じ鍵のほかのアプリの版から写す（値は状態リポジトリに置かない） |
 | 輸出コンプライアンス | `PATCH /v1/builds/{id}`（`usesNonExemptEncryption`） | 文書に無い | テンプレートの Info.plist の `ITSAppUsesNonExemptEncryption`（上の「審査に出す」） |
 | 契約・税・口座 | 無い | できない（Account Holder・Admin・Finance） | 無料のアプリは要らない。有料にするときは人が Web で |
 
@@ -218,9 +225,14 @@ App Store Connect にまだアプリが無い・配信中の版が無いアプ�
 | 年齢制限（`ageRating`） | `ageRatingDeclaration` の質問（暴力・性的な内容・ギャンブル・広告・メッセージなど）がすべて答えてある | 人（Web） |
 | App のプライバシー（`appPrivacy`） | API が無い | 人（Web。終わったら「終わった」を押す） |
 | DSA の申告（`digitalServicesAct`） | API が無い | 人（Web。同上） |
+| サポート URL（`supportUrl`） | 版の枠の `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations` のすべての言語に `supportUrl` がある | 司令塔（人が値を確かめて押したとき。マーケティング URL は任意で一緒に書く） |
+| 著作権表示（`copyright`） | 版の枠の `GET /v1/appStoreVersions/{id}` に `copyright` がある | 同上 |
+| App Review の連絡先（`reviewContact`） | 版の枠の `GET /v1/appStoreVersions/{id}/appStoreReviewDetail` に `contactFirstName`・`contactLastName`・`contactPhone`・`contactEmail` がそろう（値は記録に書かない。入れていない欄の名前だけ） | 司令塔（人が押したとき。同じ鍵のほかのアプリの、配信中か審査に出した版の 4 つの欄がそろった連絡先を写す）。写せなければ人（Web で入れて「終わった」） |
 
 - 司令塔は、ほかの App Store Connect の読み取りと同じく、生きている印を書くとき（10 分ごと）に、前に読んでから 30 分たったリポジトリを 1 つずつ読む。人が押した後は、待たずに読む
 - アプリが無いリポジトリでは、`bundleId` と `app` だけを確かめる。アプリを見つけたら、ほかの項目も確かめる。配信中の版を見つけたら `releasedAt` を付けて、それより後は確かめない
+- 版の項目（`supportUrl`・`copyright`・`reviewContact`）は、初めての版のリリースを始めて版の枠（`submissions/<版>.json` の `appStoreVersions`）があるときだけ確かめる。枠が iOS と macOS の 2 つなら、どちらにもそろったら終わり。枠を作ったら 30 分を待たずに確かめ、リリースをやめて枠を消したら項目を外す
+- 連絡先を写すときは、同じ鍵のアプリ（`GET /v1/apps`）のうち、このアプリでないものの版（配信中・審査に出した版。`GET /v1/apps/{id}/appStoreVersions`）の App Review の情報を順に読み、4 つの欄がそろったものを選ぶ。新しい版のまだ入れていない欄だけに書き（App Review の情報が無ければ作る）、写したアプリを記録の `settingsRequest.reviewContactFrom` に書く。値はメモリーの中だけで使い、記録・ログ・通知・断られた理由に出さない
 - 確かめが合わない（API で読めない・答えてあるのに残る）ときは、人がどの項目でも「終わった」を押して先に進められる（`app` を除く）
 - 「あなたの番」には、アプリが無ければ「アプリを作る」、配信中の版が無いアプリでリリースを始めたら「App Store の準備を終える」を出す。どちらも同じチェックリストの画面を開く
 - 「App Store に出さない」を押したリポジトリは、確かめも出しもしない（試しのリポジトリなど）。リポジトリの画面から戻せる
