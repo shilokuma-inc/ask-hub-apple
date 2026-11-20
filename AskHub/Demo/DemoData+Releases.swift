@@ -18,7 +18,11 @@ extension DemoData {
                 tagName: "v2.0.1",
                 notes: .init(version: 1, previousTag: "v2.0.0", draft: Self.recipeNotes, confirmed: Self.recipeNotes),
                 githubReleaseURL: URL(string: "https://github.com/\(recipe)/releases/tag/v2.0.1"),
-                nextVersion: .init(version: "2.1.0", state: .merged, pullRequest: 188)
+                nextVersion: .init(version: "2.1.0", state: .merged, pullRequest: 188),
+                promotionalText: .init(current: [
+                    .init(locale: "ja", text: "Mac でも使えるようになりました。"),
+                    .init(locale: "en-US", text: "")
+                ])
             ),
             Release(
                 repositoryID: habit,

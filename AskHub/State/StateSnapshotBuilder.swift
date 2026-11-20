@@ -54,6 +54,16 @@ struct StateIndex {
         var canPublish: Bool
     }
 
+    /// 配信中の版のプロモーションテキストを直す意図の材料。処理を待つ意図を当てた後のもの
+    struct PromotionalTextEntry {
+        var repo: RepositoryFullName
+        var version: MarketingVersion
+        /// 今の文（直せる言語と、変わっていない言語を送らないための元）
+        var current: [LocalizedText]
+        /// 送れるか（この端末から送って、司令塔がまだ受け付けていない中身が無い）
+        var canUpdate: Bool
+    }
+
     /// リリースを始めた版への意図（審査に出す・配信する・取り下げ・やめる）の対象と、送れるか。処理を待つ意図を当てた後のもの
     struct SubmissionEntry {
         var target: SubmissionTarget
@@ -105,6 +115,7 @@ struct StateIndex {
     }
     var repositories: [TargetRepository.ID: RepositoryFullName] = [:]
     var releases: [Release.ID: ReleaseEntry] = [:]
+    var promotionalTexts: [Release.ID: PromotionalTextEntry] = [:]
     var submissions: [Submission.ID: SubmissionEntry] = [:]
     /// 終わっていないリリースのあるリポジトリ（リリースを始められない）。処理を待つ意図を当てた後のもの
     var releasingRepositories: Set<TargetRepository.ID> = []

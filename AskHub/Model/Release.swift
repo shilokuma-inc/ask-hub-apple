@@ -24,6 +24,33 @@ struct Release: Identifiable, Hashable {
     var problem: Problem?
     /// この端末から送った公開の様子
     var publish: PublishState = .none
+    /// 配信中の版のプロモーションテキスト。司令塔がまだ読んでいない・配信中の版でなければ nil
+    var promotionalText: PromotionalText?
+
+    /// 配信中の版のプロモーションテキスト（審査に出さずに変えられる）
+    struct PromotionalText: Hashable {
+        /// 言語ごとの今の文（空の言語は空の文字列）
+        var current: [Submission.Localized]
+        var request: PromotionalTextRequest = .none
+
+        /// 長さの上限（司令塔の `ListingText.Field.promotionalText` と同じ。Unicode のコードポイント）
+        static let limit = 170
+    }
+
+    /// 直したプロモーションテキストの様子
+    enum PromotionalTextRequest: Hashable {
+        case none
+        /// この端末から送り、司令塔が受け付けるのを待っている
+        case sending
+        /// 司令塔が受け付け、App Store Connect に書くのを待っている
+        case writing
+        /// App Store Connect に書いた
+        case done(Date)
+        /// App Store Connect が断った
+        case failed(String)
+        /// 送った中身を、司令塔が受け付けなかった
+        case rejected(String)
+    }
 
     struct Platform: Hashable {
         /// `iOS`・`macOS` など

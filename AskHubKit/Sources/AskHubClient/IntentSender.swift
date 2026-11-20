@@ -100,6 +100,16 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: ApplyProtectionIntent.kind, repo: repo, payload: ["requiredChecks": .array(requiredChecks.map(JSONValue.string))])
     }
 
+    /// 配信中の版のプロモーションテキストを直す（審査に出さずに、司令塔がすぐ App Store Connect に書く）
+    public static func updatePromotionalText(_ repo: RepositoryFullName, version: MarketingVersion, texts: [LocalizedText]) -> Self {
+        Self(
+            kind: UpdatePromotionalTextIntent.kind,
+            repo: repo,
+            target: .init(type: ReleaseTarget.targetType, id: version.rawValue),
+            payload: UpdatePromotionalTextIntent.payload(texts: texts)
+        )
+    }
+
     /// リリースを始める（司令塔が release ブランチを作り、準備を進める）
     public static func startRelease(_ repo: RepositoryFullName, version: MarketingVersion) -> Self {
         Self(kind: StartReleaseIntent.kind, repo: repo, payload: ["version": .string(version.rawValue)])

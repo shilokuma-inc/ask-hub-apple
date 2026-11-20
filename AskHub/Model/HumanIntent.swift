@@ -37,6 +37,8 @@ enum HumanIntent: Hashable {
     case addRepository(repositoryID: TargetRepository.ID)
     /// 配信した版のリリース文を確かめて、GitHub Release を公開する。見た下書きの版に結びつける（見た後に下書きが作り直されていれば、司令塔が断る）
     case publishRelease(repositoryID: TargetRepository.ID, version: String, notesVersion: Int, notes: String)
+    /// 配信中の版のプロモーションテキストを直して、すぐ反映する（変える言語だけ。空の文は空にする）
+    case updatePromotionalText(repositoryID: TargetRepository.ID, version: String, texts: [Submission.Localized])
     /// リリースを始める（`version` は始める版）
     case startRelease(repositoryID: TargetRepository.ID, version: String)
     /// 審査に出す（`revision` は見たときの準備の版。ビルドか What's New が変わっていれば司令塔が断る）
@@ -105,6 +107,9 @@ extension HumanIntent {
 
         case let .publishRelease(_, version, _, _):
             "GitHub Release の公開（\(version)）"
+
+        case let .updatePromotionalText(_, version, _):
+            "プロモーションテキストの反映（\(version)）"
 
         case let .startRelease(_, version):
             "リリースを始める（\(version)）"

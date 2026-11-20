@@ -24,7 +24,7 @@ extension DemoClientService {
         case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .cleanUp, .findCleanupCandidates:
             applyOperationIntent(intent)
 
-        case .publishRelease:
+        case .publishRelease, .updatePromotionalText:
             applyReleaseIntent(intent)
 
         case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:

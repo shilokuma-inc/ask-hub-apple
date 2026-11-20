@@ -42,7 +42,7 @@ struct StateIntentMapper {
         case let .handOver(epicID, _):
             index.epics[epicID]?.canHandOver == true
 
-        case .publishRelease, .verify:
+        case .publishRelease, .updatePromotionalText, .verify:
             supportsAfterMerge(intent)
 
         case .removeRepository, .configureRepository, .cleanUp, .findCleanupCandidates, .startRelease, .submitForReview, .distributeRelease,
@@ -110,8 +110,8 @@ struct StateIntentMapper {
         case .pause, .resume, .handOver:
             return try pauseDraft(intent)
 
-        case let .publishRelease(repositoryID, version, notesVersion, notes):
-            return try releaseDraft(repositoryID: repositoryID, version: version, notesVersion: notesVersion, notes: notes)
+        case .publishRelease, .updatePromotionalText:
+            return try releaseDraft(intent)
 
         case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
             return try submissionDraft(intent)
@@ -375,6 +375,18 @@ struct StateIntentMapper {
 // MARK: - App Store で配信した版
 
 extension StateIntentMapper {
+    /// 配信した版への意図（リリース文の公開・プロモーションテキストの直し）
+    func releaseDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
+        switch intent {
+        case let .publishRelease(repositoryID, version, notesVersion, notes):
+            return try releaseDraft(repositoryID: repositoryID, version: version, notesVersion: notesVersion, notes: notes)
+        case let .updatePromotionalText(repositoryID, version, texts):
+            return try promotionalTextDraft(repositoryID: repositoryID, version: version, texts: texts)
+        default:
+            throw Self.unsupported
+        }
+    }
+
     /// 配信した版のリリース文を公開する。人が見た下書きの版に結びつける（その後に下書きが作り直されていれば、司令塔が断る）
     func releaseDraft(
         repositoryID: TargetRepository.ID,
@@ -394,5 +406,29 @@ extension StateIntentMapper {
             throw ClientServiceError(message: "リリース文は 1〜\(PublishGitHubReleaseIntent.notesLimit) 文字で書いてください")
         }
         return .publishGitHubRelease(entry.target, notes: text)
+    }
+
+    /// 配信中の版のプロモーションテキストを直す。前後の空白を除き、今の文と同じ言語は送らない（司令塔と同じく、Unicode のコードポイントで数える）
+    func promotionalTextDraft(
+        repositoryID: TargetRepository.ID,
+        version: String,
+        texts: [Submission.Localized]
+    ) throws(ClientServiceError) -> IntentDraft {
+        guard let entry = index.promotionalTexts[Release.id(repositoryID, version)], entry.canUpdate else {
+            throw ClientServiceError(message: "この版のプロモーションテキストは、いまは直せません。取り直してから送ってください")
+        }
+        var changes: [LocalizedText] = []
+        for text in texts {
+            guard let current = entry.current.first(where: { $0.locale == text.locale }) else {
+                throw ClientServiceError(message: "プロモーションテキストの言語（\(text.locale)）が配信中の版にありません。取り直してから送ってください")
+            }
+            let trimmed = text.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.unicodeScalars.count <= Release.PromotionalText.limit else {
+                throw ClientServiceError(message: "プロモーションテキスト（\(text.locale)）は \(Release.PromotionalText.limit) 文字までで書いてください")
+            }
+            if trimmed != current.text { changes.append(LocalizedText(locale: text.locale, text: trimmed)) }
+        }
+        guard !changes.isEmpty else { throw ClientServiceError(message: "プロモーションテキストが今の文から変わっていません") }
+        return .updatePromotionalText(entry.repo, version: entry.version, texts: changes)
     }
 }
