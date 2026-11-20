@@ -168,7 +168,8 @@ struct SubmissionDetailView: View {
                     }
                 }
             } header: {
-                Text(submission.submitted == nil ? "What's New の下書き" : "審査に出した What's New")
+                let title = submission.isSubmitting ? "審査に出している What's New" : "審査に出した What's New"
+                Text(submission.submitted == nil ? "What's New の下書き" : title)
             } footer: {
                 if let submitted = submission.submitted {
                     let builds = submitted.builds.map { "\($0.platform) (\($0.build))" }.joined(separator: "・")
@@ -186,19 +187,20 @@ struct SubmissionDetailView: View {
             let changes = submission.submitted?.listing ?? listing.drafts
             CardSection {
                 if changes.isEmpty {
-                    Text(submission.submitted == nil ? "変えません" : "変えずに審査に出しました").foregroundStyle(.secondary)
+                    let text = submission.submitted == nil ? "変えません" : submission.isSubmitting ? "変えずに審査に出しています" : "変えずに審査に出しました"
+                    Text(text).foregroundStyle(.secondary)
                 }
                 ForEach(changes) { change in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(change.localeName).appFont(.footnote, weight: .semibold).foregroundStyle(.secondary)
                         ForEach(Submission.ListingField.allCases.filter { change.values[$0] != nil }) { field in
                             let value = change.values[field] ?? ""
-                            Text("\(field.label)：\(value.isEmpty ? "（空にする）" : value)").lineLimit(4)
+                            Text("\(field.label)：\(value.isEmpty ? "（空にする）" : value)")
                         }
                     }
                 }
             } header: {
-                Text(submission.submitted == nil ? "掲載文の案" : "審査に出した掲載文")
+                Text(submission.submitted == nil ? "掲載文の案" : submission.isSubmitting ? "審査に出している掲載文" : "審査に出した掲載文")
             } footer: {
                 if submission.submitted == nil { Text(listing.reason) }
             }

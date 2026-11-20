@@ -340,7 +340,9 @@ extension Submission {
     /// 段取りの並び。AskHub で始めた版は release ブランチから、手で出した版は審査から
     var steps: [StepStatus] {
         guard startedInAskHub else { return [reviewStatus, distributionStatus] }
-        let preparation = [branchStatus, nextVersionStatus, whatsNewStatus, listingStatus, buildsStatus]
+        // 掲載文を扱う前に審査に出した版は、案を作らないので段取りに出さない
+        let listing = listing == nil && submitted != nil ? [] : [listingStatus]
+        let preparation = [branchStatus, nextVersionStatus, whatsNewStatus] + listing + [buildsStatus]
         return preparation + (slots == nil ? [] : [slotsStatus]) + [reviewStatus, distributionStatus]
     }
 
