@@ -153,12 +153,15 @@ extension StateClientServiceTests {
         let submit = try SubmitForReviewIntent(envelope: try await sentEnvelope(in: fixture.store, key: fixture.key))
         let expected = ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: true, demoAccountName: "review@example.com")
         #expect(submit.appReview == expected)
-        // 長すぎるメモ・改行のある名前は送らない
+        // 長すぎるメモ・改行のある名前は送らない（送った後の「受け付けを待っている」で断られないよう、値ごとに取り直す）
         for invalid: Submission.ReviewInfo in [.init(notes: String(repeating: "審", count: 1_400)), .init(demoAccountName: "a\nb")] {
+            let fresh = try makeService(files: Self.submissionFiles())
+            _ = try await fresh.service.fetchSnapshot()
             var changed = request
             changed.appReview = invalid
             let intent = HumanIntent.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: changed)
-            await #expect(throws: ClientServiceError.self) { try await fixture.service.perform(intent) }
+            #expect(fresh.service.supports(intent))
+            await #expect(throws: ClientServiceError.self) { try await fresh.service.perform(intent) }
         }
     }
 

@@ -171,6 +171,14 @@ struct AppStoreConnectSubmissionsTests {
         #expect((relationship?["data"] as? [String: Any])?["id"] as? String == "v2")
     }
 
+    @Test func treatsMissingReviewDetailAsNil() async throws {
+        // まだ作っていない版は 404 か、200 で data が null
+        let transport = StubTransport([.json(404, #"{"errors":[{"detail":"not found"}]}"#), .json(200, #"{"data":null}"#)])
+        let client = client(transport)
+        #expect(try await client.reviewDetail(of: "v2") == nil)
+        #expect(try await client.reviewDetail(of: "v2") == nil)
+    }
+
     @Test func createsAndUpdatesVersions() async throws {
         let transport = StubTransport([
             .json(201, #"{"data":{"type":"appStoreVersions","id":"v-new","attributes":{"appVersionState":"PREPARE_FOR_SUBMISSION"}}}"#),

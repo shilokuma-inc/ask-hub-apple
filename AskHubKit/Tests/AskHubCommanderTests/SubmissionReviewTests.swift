@@ -186,6 +186,14 @@ extension ReleaseWatchTests {
         #expect(writes.firstIndex { $0.hasPrefix("writeReviewDetail") }! < writes.firstIndex { $0.hasPrefix("submitReviewSubmission") }!)
     }
 
+    @Test func doesNotRewriteAnEmptyFieldWithAnEmptyString() async throws {
+        // 今のメモは空（nil で読む）。空にする直しは書かず、名前だけ書く
+        _ = try await readyToSubmit(appReview: ReviewInformation(notes: "", demoAccountName: "review@example.com"))
+        appStore.state.withLock { $0.reviewDetails["v-1-2-0"] = AppStoreReviewDetail(id: "r-1", information: ReviewInformation()) }
+        await watch().refresh()
+        #expect(appStore.state.withLock { $0.writes }.contains("writeReviewDetail r-1 demoAccountName=review@example.com"))
+    }
+
     @Test func createsAppReviewWhenMissing() async throws {
         _ = try await readyToSubmit(appReview: ReviewInformation(notes: "ウィジェットはホーム画面の長押しから足せます。"))
         await watch().refresh()
