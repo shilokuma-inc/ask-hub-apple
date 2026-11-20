@@ -77,20 +77,21 @@ struct LocalCleanupMachineTests {
 
     @discardableResult
     func git(_ arguments: [String], in directory: URL) async throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         let identity = ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "init.defaultBranch=main"]
-        process.arguments = ["-C", directory.path] + identity + arguments
-        // 人の git の設定（グローバル・システム）を読まない
-        process.environment = ["GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "HOME": root.path, "PATH": "/usr/bin:/bin"]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = Pipe()
-        try await runUntilExit(process)
+        // 協調スレッドをふさがないよう、ProcessCommandRunner で流す（`runShell` と同じ理由）
+        let command = Command(
+            executable: URL(fileURLWithPath: "/usr/bin/git"),
+            arguments: ["-C", directory.path] + identity + arguments,
+            // 人の git の設定（グローバル・システム）を読まない
+            environment: ["GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "HOME": root.path, "PATH": "/usr/bin:/bin"],
+            workingDirectory: directory,
+            timeout: .seconds(10 * 60)
+        )
+        let result = try await ProcessCommandRunner().run(command)
         // 置き場所を作れなければ、その場で止める（後の確かめが、置けなかったことで通ってしまわないように）
-        guard process.terminationStatus == 0 else { throw GitFixtureFailure(arguments: arguments) }
+        guard result.succeeded else { throw GitFixtureFailure(arguments: arguments) }
         // swiftlint:disable:next optional_data_string_conversion
-        return String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return String(decoding: result.standardOutput, as: UTF8.self)
     }
 
     /// `path` に、push 済みの clone を作る
