@@ -54,7 +54,8 @@ extension AskHubCommanderMain {
             appIcons: appIcons(runtime: runtime, context: context),
             releases: releases,
             protection: protectionWatch(secrets: secrets, context: context, transport: transport),
-            admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) }
+            admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) },
+            cleanup: runtime.cleanupService(context: context, log: log)
         )
         let pid = ProcessInfo.processInfo.processIdentifier
         log("起動しました（版 \(CommanderVersion.build.summary)、pid \(pid)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")

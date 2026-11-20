@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/cleanup-requests.schema.json",
+  "title": "cleanup/<mac>/requests.json（片付けの頼み）",
+  "description": "司令塔だけが書く。受け付けた片付けの意図を、新しいものを後ろにして 20 件まで積む。その Mac のワーカーは、元の意図の署名を確かめてから探し・消す",
+  "type": "object",
+  "required": [
+    "v",
+    "requests"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "requests": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": [
+          "intent",
+          "action",
+          "acceptedAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "intent": {
+            "$ref": "../common.schema.json#/$defs/intentReference"
+          },
+          "action": {
+            "enum": [
+              "find",
+              "remove"
+            ],
+            "description": "find は探す、remove は選んだ候補を消す"
+          },
+          "candidates": {
+            "anyOf": [
+              {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "cleanup-candidates.schema.json#/$defs/candidateId"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "消す候補の id（remove のときだけ）"
+          },
+          "scannedAt": {
+            "anyOf": [
+              {
+                "$ref": "../common.schema.json#/$defs/timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "消す候補を探した時刻（remove のときだけ）"
+          },
+          "acceptedAt": {
+            "$ref": "../common.schema.json#/$defs/timestamp"
+          }
+        }
+      }
+    }
+  }
+}

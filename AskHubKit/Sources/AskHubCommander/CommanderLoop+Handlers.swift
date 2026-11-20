@@ -33,6 +33,8 @@ extension CommanderLoop {
         "submitForReview": SubmitForReviewHandler(),
         "distributeRelease": DistributeReleaseHandler(),
         "withdrawSubmission": WithdrawSubmissionHandler(),
-        "abandonRelease": AbandonReleaseHandler()
+        "abandonRelease": AbandonReleaseHandler(),
+        "findCleanupCandidates": CleanupRequestHandler(),
+        "removeCleanupCandidates": CleanupRequestHandler()
     ]
 }

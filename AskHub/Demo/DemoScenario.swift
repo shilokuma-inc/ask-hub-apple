@@ -303,6 +303,8 @@ extension DemoData {
                     caution: "未 push のコミットが 2 つあります"
                 )
             ],
+            cleanupScannedAt: ago(minutes: 40),
+            cleanupUnreadable: ["~/Documents"],
             githubQuota: GitHubQuota(limit: 5_000, remaining: 4_210, resetAt: ago(minutes: -41), checkedAt: ago(minutes: 2))
         )
     }

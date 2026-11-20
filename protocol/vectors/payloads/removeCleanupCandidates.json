@@ -1,0 +1,77 @@
+{
+  "description": "選んだ片付けの候補を消す人の意図の payload の例。read は、封筒に repo・target・targetVersion が無いときに、読む側が消す意図として読めるか。パスは送らず、ワーカーが書いた候補の id だけを送る",
+  "schema": "payloads/removeCleanupCandidates.schema.json",
+  "cases": [
+    {
+      "name": "candidates",
+      "payload": {
+        "mac": "macbook-a",
+        "scannedAt": "2026-11-18T10:00:00Z",
+        "candidates": [
+          "0123456789abcdef",
+          "fedcba9876543210"
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty-candidates",
+      "payload": {
+        "mac": "macbook-a",
+        "scannedAt": "2026-11-18T10:00:00Z",
+        "candidates": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "duplicate-candidates",
+      "payload": {
+        "mac": "macbook-a",
+        "scannedAt": "2026-11-18T10:00:00Z",
+        "candidates": [
+          "0123456789abcdef",
+          "0123456789abcdef"
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "path-instead-of-id",
+      "payload": {
+        "mac": "macbook-a",
+        "scannedAt": "2026-11-18T10:00:00Z",
+        "candidates": [
+          "~/Desktop/ios/app"
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "missing-scanned-at",
+      "payload": {
+        "mac": "macbook-a",
+        "candidates": [
+          "0123456789abcdef"
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "bad-scanned-at",
+      "payload": {
+        "mac": "macbook-a",
+        "scannedAt": "2026-11-18 10:00",
+        "candidates": [
+          "0123456789abcdef"
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "description": "片付けの候補を探す人の意図の payload の例。read は、封筒に repo・target・targetVersion が無いときに、読む側が探す意図として読めるか",
+  "schema": "payloads/findCleanupCandidates.schema.json",
+  "cases": [
+    {
+      "name": "mac",
+      "payload": {
+        "mac": "macbook-a"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "missing-mac",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "mac-with-path",
+      "payload": {
+        "mac": "../mac"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "mac": "macbook-a",
+        "path": "~/Desktop"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}
