@@ -102,21 +102,61 @@ extension ReleaseWatch {
         return text.unicodeScalars.count > limit ? String(String.UnicodeScalarView(text.unicodeScalars.prefix(limit - 1))) + "…" : text
     }
 
+    // MARK: - App Review の連絡先を写すもと
+
+    /// App Review の連絡先を写すもと（同じ鍵のほかのアプリの版）。連絡先の値はメモリーの中だけで使う
+    struct ContactSource: Sendable {
+        var app: AppStoreApp
+        var contact: ReviewContact
+    }
+
+    /// 連絡先を探すアプリの数の上限（App Store Connect を読みすぎない）
+    static let contactSourceAppLimit = 20
+
+    /// 同じ鍵のほかのアプリの、配信中か審査に出した版のうち、App Review の連絡先の 4 つの欄がそろったもの（アプリごとに配信中の版を先に見る）。
+    /// 無ければ nil
+    func reviewContactSource(
+        store: any AppStoreConnecting,
+        excluding appID: String
+    ) async throws(AppStoreConnectError) -> ContactSource? {
+        let neverSubmitted: [AppStoreVersionState] = [.prepareForSubmission, .readyForReview]
+        for app in try await store.allApps().filter({ $0.id != appID }).prefix(Self.contactSourceAppLimit) {
+            let versions = try await store.versions(of: app.id).filter { !neverSubmitted.contains($0.state) }
+            let ordered = versions.filter { $0.state == .readyForDistribution } + versions.filter { $0.state != .readyForDistribution }
+            for version in ordered {
+                if let found = try await store.reviewContact(of: version.id), found.contact.isComplete {
+                    return ContactSource(app: app, contact: found.contact)
+                }
+            }
+        }
+        return nil
+    }
+
+    /// 連絡先を書けなかった理由（App Store Connect の説明は、送った値を含むことがあるので出さない）
+    static func contactFailureMessage(_ error: AppStoreConnectError) -> String {
+        switch error {
+        case let .refused(status, _): "App Review の連絡先を書けない（App Store Connect に断られた。\(status)）"
+        case .malformed: "App Review の連絡先を書けない（App Store Connect の応答を読めない）"
+        default: "App Review の連絡先を書けない（\(error)）"
+        }
+    }
+
     // MARK: - 書く
 
-    /// 初めての版の決まった値（サポート URL・マーケティング URL・著作権表示）のうち、まだ書いていない言語・版に書き、断られた項目を返す。
-    /// マーケティング URL は任意で項目を持たないので、断られたらサポート URL の項目に書く
+    /// 初めての版の決まった値（サポート URL・マーケティング URL・著作権表示・App Review の連絡先）のうち、まだ書いていない言語・版・欄に書き、
+    /// 断られた項目と、連絡先を写したアプリを返す。マーケティング URL は任意で項目を持たないので、断られたらサポート URL の項目に書く
     func writeVersionSettings(
         _ repo: RepositoryFullName,
         _ settings: AppStoreSettings,
         to store: any AppStoreConnecting,
-        setups: [VersionSetup]
-    ) async -> [AppStoreSetupFile.Failure] {
+        setups: [VersionSetup],
+        contactSource: ContactSource? = nil
+    ) async -> (failures: [AppStoreSetupFile.Failure], reviewContactFrom: AppStoreSetupFile.SourceApp?) {
         let wantsURLs = settings.supportUrl != nil
-        guard wantsURLs || settings.copyright != nil else { return [] }
+        guard settings.items.contains(where: \.isVersionItem) else { return ([], nil) }
         guard !setups.isEmpty else {
             let message = "初めての版のリリースを始めていない（App Store Connect に版の枠が無い）"
-            return settings.items.filter(\.isVersionItem).map { .init(item: $0, message: message) }
+            return (settings.items.filter(\.isVersionItem).map { .init(item: $0, message: message) }, nil)
         }
         var failures: [AppStoreSetupFile.Failure] = []
         for setup in setups {
@@ -138,7 +178,45 @@ extension ReleaseWatch {
                 }
             }
         }
-        return failures
+        guard settings.reviewContact != nil else { return (failures, nil) }
+        let copied = await copyReviewContact(repo, to: store, setups: setups, source: contactSource)
+        return (failures + copied.failures, copied.from)
+    }
+
+    /// 連絡先を、まだ入れていない欄がある枠に写す。値はログ・記録に出さず、写したアプリの名前だけを出す
+    private func copyReviewContact(
+        _ repo: RepositoryFullName,
+        to store: any AppStoreConnecting,
+        setups: [VersionSetup],
+        source: ContactSource?
+    ) async -> (failures: [AppStoreSetupFile.Failure], from: AppStoreSetupFile.SourceApp?) {
+        let targets = setups.filter { !$0.state.missingReviewContact.isEmpty }
+        guard !targets.isEmpty else { return ([], nil) }
+        guard let source else {
+            let message = "同じ鍵のほかのアプリの版に、4 つの欄がそろった App Review の連絡先が無い。App Store Connect で入れて「終わった」を押す"
+            report("\(repo) の App Review の連絡先を写せない（写すもとのアプリが無い）")
+            return ([.init(item: .reviewContact, message: message)], nil)
+        }
+        var failures: [AppStoreSetupFile.Failure] = []
+        var wrote = false
+        for setup in targets {
+            do {
+                try await store.writeReviewContact(
+                    source.contact,
+                    fields: setup.state.missingReviewContact,
+                    detailID: setup.state.reviewDetailID,
+                    versionID: setup.slot.id
+                )
+                wrote = true
+            } catch {
+                let message = Self.contactFailureMessage(error)
+                report("\(repo) の \(setup.slot.platform.rawValue) の版に、\(message)")
+                failures.append(.init(item: .reviewContact, message: message))
+            }
+        }
+        guard wrote else { return (failures, nil) }
+        log("\(repo) の App Review の連絡先を、「\(source.app.name)」の版から写した")
+        return (failures, .init(id: source.app.id, name: source.app.name))
     }
 
     // MARK: - 枠が変わったら確かめ直す

@@ -257,6 +257,7 @@ extension ReleaseWatch {
         let found: (store: Int, app: AppStoreApp)
         let state: AppStoreSetupState
         var versions: [VersionSetup] = []
+        var contactSource: ContactSource?
         do {
             guard let app = try await app(of: repo, base: repository.build?.baseBranch) else {
                 await finishSettings(repo, request: request, failures: request.settings.items.map {
@@ -270,14 +271,18 @@ extension ReleaseWatch {
                 guard let slots = await firstReleaseSlots(repo) else { return false }
                 versions = try await versionSetups(slots, store: stores[app.store])
             }
+            if request.settings.reviewContact != nil, versions.contains(where: { !$0.state.missingReviewContact.isEmpty }) {
+                contactSource = try await reviewContactSource(store: stores[app.store], excluding: app.app.id)
+            }
         } catch {
             report("\(repo) の App Store Connect の値を書く前に読めない（\(error)）。次の見回りでやり直す")
             return false
         }
         let store = stores[found.store]
         var failures = await writeSettings(repo, request.settings, to: store, appID: found.app.id, state: state)
-        failures += await writeVersionSettings(repo, request.settings, to: store, setups: versions)
-        await finishSettings(repo, request: request, failures: failures)
+        let version = await writeVersionSettings(repo, request.settings, to: store, setups: versions, contactSource: contactSource)
+        failures += version.failures
+        await finishSettings(repo, request: request, failures: failures, reviewContactFrom: version.reviewContactFrom)
         return true
     }
 
@@ -342,7 +347,8 @@ extension ReleaseWatch {
     private func finishSettings(
         _ repo: RepositoryFullName,
         request: AppStoreSetupFile.SettingsRequest,
-        failures: [AppStoreSetupFile.Failure]
+        failures: [AppStoreSetupFile.Failure],
+        reviewContactFrom: AppStoreSetupFile.SourceApp? = nil
     ) async {
         // 同じ項目の失敗は 1 つにまとめる（言語ごとのプライバシーポリシーの URL・サポート URL など）
         var merged: [AppStoreSetupFile.Failure] = []
@@ -352,6 +358,7 @@ extension ReleaseWatch {
             guard file.settingsRequest?.approval == request.approval, file.settingsRequest?.doneAt == nil else { return false }
             file.settingsRequest?.doneAt = self.context.timestamp
             file.settingsRequest?.failures = result.isEmpty ? nil : result
+            file.settingsRequest?.reviewContactFrom = reviewContactFrom
             return true
         }
     }
