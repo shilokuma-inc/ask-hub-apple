@@ -161,11 +161,64 @@ App Store で対象のアプリの版が配信された（Ready for Sale）こ�
 - 読み取りは自動で行う。審査に出す・配信する（手動の配信のとき）・取り下げとやり直しは、人がクライアントで押した（署名した意図の）ときだけ司令塔が行う（段階 5 の 3。[plan.md](plan.md) の「段階 5 の順」）。そのため、鍵の役割は App Manager にする（Admin は使わない）
 - GitHub Actions の定期実行で読む形は採らない。状態リポジトリに書くためのトークンを Secrets に置くことになり、public のリポジトリの定期実行は 60 日動きが無いと止まるため。司令塔が止まると読み取りも止まるが、司令塔の見張りで分かる（[operations.md](operations.md) の「司令塔の見張り」）
 
-## App Store Connect でしかできない作業
+## 新しいアプリを載せる
 
-- アプリの新規作成（名前・SKU・Bundle ID）・プラットフォームの追加・審査とのやり取りの本文・契約と税と口座は、Web でしかできない
-- どれもアプリごとに最初の 1 回だけなので、リポジトリの作成のときや初めてのリリースのときに、「人がする作業」としてチェックリストで出す。終わったかどうかは API で確かめて、自動で次に進む
-- API でできる見込みのもの（課金のアイテム・サブスクリプション・App Clip の体験・Bundle ID と capability・年齢制限の回答・サブタイトル・プライバシーポリシーの URL・カテゴリ）は、実装の前に確かめる
+App Store Connect にまだアプリが無い・配信中の版が無いアプリを、最初のリリースまで進める（2026-11-20）。アプリの作成は API が無いので人が Web で行い、
+司令塔は API で終わったかを確かめて、残りを「あなたの番」のチェックリストに出す。記録は `app-store.json`（[protocol.md](protocol.md)）。
+
+2026-11-20 にユーザーが決めたこと:
+
+- 決まった値（価格は無料・配信の地域はすべて・カテゴリ・コンテンツの権利・プライバシーポリシーの URL）は、人がチェックリストで値を確かめて押したら司令塔が API で書く。Bundle ID の登録も人が押したとき。アプリの作成・App のプライバシー・DSA の申告・年齢制限は人が Web で行う
+- 自動で出す。App Store Connect にアプリが無ければ「アプリを作る」を、配信中の版が無いアプリでリリースを始めたら初めての版の残りを出す。出さないリポジトリは「App Store に出さない」で外す
+- 初めての版の掲載文（説明文・キーワードなど）は Claude が下書きする（版ごとの掲載文の仕組みに乗せる。別の Issue）
+
+### App Store Connect の API でできること
+
+2026-11-20 に Apple の文書（API は DocC の JSON、役割は Help の役割の表）で確かめた。鍵は App Manager の役割のチームの鍵（Admin は使わない）。
+
+| すること | API | App Manager の鍵で | AskHub では |
+| --- | --- | --- | --- |
+| アプリ（App のレコード）の作成 | 無い（Apps の文書に、新しいアプリは Web で作るよう書かれている） | —（Web では App Manager で作れる） | 人が Web で作る。司令塔は `GET /v1/apps?filter[bundleId]=…` で見つけたら終わりにする |
+| Bundle ID の登録 | `POST /v1/bundleIds`（`identifier`・`name`・`platform`）、読むのは `GET /v1/bundleIds?filter[identifier]=…` | 文書に無い（役割の表では、App Manager は Certificates, Identifiers & Profiles のアクセスを与えられたときだけ。個人の鍵は Provisioning を使えない） | 人が押したら司令塔が登録する。断られたら、Upload の Export（`-allowProvisioningUpdates`。GitHub の Secrets の鍵）に任せる |
+| capability | `POST /v1/bundleIdCapabilities` | 同上 | 扱わない（Upload の自動の署名が entitlements から付ける） |
+| コンテンツの権利 | `PATCH /v1/apps/{id}`（`contentRightsDeclaration`） | 文書に無い（Web では App Manager が直せる） | 人が押したら書く |
+| カテゴリ | `PATCH /v1/appInfos/{id}`（`primaryCategory` などの関係） | できる（Edit App Store details） | 人が押したら書く（主なカテゴリと、ゲームのサブカテゴリ） |
+| プライバシーポリシーの URL | `PATCH /v1/appInfoLocalizations/{id}`（`privacyPolicyUrl`） | できる | 人が押したら、まだ書かれていない言語に書く |
+| 価格 | `POST /v1/appPriceSchedules`（`baseTerritory`・`manualPrices`）、価格の点は `GET /v1/apps/{id}/appPricePoints?filter[territory]=…` | できる（Edit app pricing and availability） | 人が押したら無料にする（基準の地域の、`customerPrice` が 0 の点） |
+| 配信の地域 | `POST /v2/appAvailabilities`（`availableInNewTerritories`・地域ごとの `available`） | できる | 人が押したら、すべての地域と新しい地域に配信する |
+| 年齢制限 | `PATCH /v1/ageRatingDeclarations/{id}` | できる（Help） | 人が Web で答える。司令塔は答えていない質問があるかを確かめる |
+| App のプライバシー（データの収集） | 無い | —（Web では App Manager で答えられる） | 人が Web で答えて「終わった」を押す |
+| DSA（EU のデジタルサービス法）の申告 | 見当たらない | — | 人が Web で答えて「終わった」を押す |
+| 初めての版の掲載文 | `POST`・`PATCH /v1/appStoreVersionLocalizations`（`description`・`keywords`・`promotionalText`・`supportUrl`・`marketingUrl`）、`appStoreVersions` の `copyright` | できる | Claude が下書きし、審査に出すときに書く（別の Issue） |
+| スクショ | `appScreenshotSets`・`appScreenshots` は 4.5.1 で非推奨。新しい App Asset Library（`appAssetLibraryImages`・`appAssetLibraryPlacements`） | できる（文書に明記） | 「App Store の素材」の流れ（段階 5 の 6） |
+| App Review の情報 | `POST`・`PATCH /v1/appStoreReviewDetails`（連絡先・デモアカウント・メモ） | 推定でできる（役割の表に行が無い） | 「App Store の素材」の流れ（段階 5 の 6） |
+| 輸出コンプライアンス | `PATCH /v1/builds/{id}`（`usesNonExemptEncryption`） | 文書に無い | テンプレートの Info.plist の `ITSAppUsesNonExemptEncryption`（上の「審査に出す」） |
+| 契約・税・口座 | 無い | できない（Account Holder・Admin・Finance） | 無料のアプリは要らない。有料にするときは人が Web で |
+
+- 初めての提出に要るもの（Help の required properties）: App 情報（名前・年齢制限・Bundle ID・SKU・コンテンツの権利・主な言語・主なカテゴリ・DSA の申告）、版（サポート URL・著作権表示・App Review の情報・スクショ・説明文・キーワード・ビルド）、価格と配信の地域、プライバシー（プライバシーポリシーの URL・データの収集）。What's New は 2 つ目の版から
+- 文書で確かめられなかったこと: `GET /v1/bundleIds` の `filter[identifier]` が完全一致か（返った `identifier` を比べ直す）、App Manager のチームの鍵で Provisioning（`bundleIds`）を使えるか、価格 0 の点の `customerPrice` の値、`POST /v2/appAvailabilities` を予約注文でない最初の配信に使えるか（文書のページ名が pre-order）、Web で作ったアプリに最初の版・言語・App Review の情報が自動で作られるか。どれも、司令塔が送って断られたら理由を記録に書き、人が Web で行う
+
+### チェックリスト
+
+| 項目 | 確かめ方 | するのは |
+| --- | --- | --- |
+| Bundle ID の登録（`bundleId`） | `GET /v1/bundleIds?filter[identifier]=<アプリ本体の Bundle ID>`。読めなければ `unknown`（Upload の Export で登録される） | 司令塔（人が押したとき）か、Upload |
+| アプリの作成（`app`） | `GET /v1/apps?filter[bundleId]=…` で見つかる | 人（Web。名前・主な言語・Bundle ID・SKU（Bundle ID と同じ）・User Access はチェックリストに案を出す） |
+| コンテンツの権利（`contentRights`） | `apps` の `contentRightsDeclaration` がある | 司令塔（人が値を確かめて押したとき） |
+| カテゴリ（`category`） | `appInfos` の `primaryCategory` がある | 同上 |
+| プライバシーポリシーの URL（`privacyPolicy`） | `appInfoLocalizations` のすべての言語に `privacyPolicyUrl` がある | 同上 |
+| 価格（`price`） | `GET /v1/apps/{id}/appPriceSchedule` の `manualPrices` がある | 同上 |
+| 配信の地域（`availability`） | `GET /v1/apps/{id}/appAvailabilityV2` がある | 同上 |
+| 年齢制限（`ageRating`） | `ageRatingDeclaration` の質問（暴力・性的な内容・ギャンブル・広告・メッセージなど）がすべて答えてある | 人（Web） |
+| App のプライバシー（`appPrivacy`） | API が無い | 人（Web。終わったら「終わった」を押す） |
+| DSA の申告（`digitalServicesAct`） | API が無い | 人（Web。同上） |
+
+- 司令塔は、ほかの App Store Connect の読み取りと同じく、生きている印を書くとき（10 分ごと）に、前に読んでから 30 分たったリポジトリを 1 つずつ読む。人が押した後は、待たずに読む
+- アプリが無いリポジトリでは、`bundleId` と `app` だけを確かめる。アプリを見つけたら、ほかの項目も確かめる。配信中の版を見つけたら `releasedAt` を付けて、それより後は確かめない
+- 確かめが合わない（API で読めない・答えてあるのに残る）ときは、人がどの項目でも「終わった」を押して先に進められる（`app` を除く）
+- 「あなたの番」には、アプリが無ければ「アプリを作る」、配信中の版が無いアプリでリリースを始めたら「App Store の準備を終える」を出す。どちらも同じチェックリストの画面を開く
+- 「App Store に出さない」を押したリポジトリは、確かめも出しもしない（試しのリポジトリなど）。リポジトリの画面から戻せる
+- 書き込み（`registerBundleId`・`applyAppStoreSettings`）は、人の意図を受け付けたときだけ。意図の処理では記録に写すだけで、見回りが App Store Connect に送る。断られた項目は記録の `failures` に理由を書き、人が直して押し直すか、Web で行う
 
 ## App Store の素材
 

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/confirmAppStoreItem.schema.json",
+  "title": "App Store Connect の Web でした作業を終わったにする人の意図（kind が confirmAppStoreItem）の payload",
+  "description": "封筒の repo が対象のリポジトリ。target・targetVersion は書かない。item はチェックリストの項目（app は API で確かめるので送れない）。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "item"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "item": {
+      "allOf": [
+        {
+          "$ref": "../state/app-store.schema.json#/$defs/itemKind"
+        },
+        {
+          "not": {
+            "const": "app"
+          }
+        }
+      ]
+    }
+  }
+}
