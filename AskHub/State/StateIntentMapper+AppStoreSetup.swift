@@ -101,6 +101,7 @@ extension StateIntentMapper {
             }
             settings.copyright = copyright
         }
+        settings.reviewContact = request.copyReviewContact ? .copyFromOtherApp : nil
         guard settings.problems.isEmpty else { throw ClientServiceError(message: "書く値を 1 つ以上選んでください") }
         return settings
     }

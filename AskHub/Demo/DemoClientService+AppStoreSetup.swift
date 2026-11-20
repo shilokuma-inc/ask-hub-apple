@@ -29,6 +29,7 @@ extension DemoClientService {
             schedule(after: 2) { snapshot in
                 snapshot.updateAppStoreSetup(repositoryID) { setup in
                     setup.settingsRequest?.isDone = true
+                    if request.copyReviewContact { setup.settingsRequest?.reviewContactFrom = "推し活カウントダウン" }
                     for kind in request.items { setup.mark(kind, done: true) }
                 }
             }

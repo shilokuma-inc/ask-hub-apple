@@ -167,11 +167,17 @@ struct AppStoreSetupView: View {
                 }
                 confirmButton(setup, item.kind)
             }
+            if let source = setup.settingsRequest?.reviewContactFrom {
+                Label("App Review の連絡先を「\(source)」の版から写しました", systemImage: "person.crop.rectangle.stack")
+                    .appFont(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             writeButton(setup, versionItems: true)
         } header: {
             Text(version.map { "初めての版（\($0)）" } ?? "初めての版")
         } footer: {
-            Text("リリースを始めて App Store Connect に版ができると出ます。サポート URL と著作権表示は、あなたが値を確かめて押したら司令塔が書きます")
+            Text("リリースを始めて App Store Connect に版ができると出ます。あなたが値を確かめて押したら、司令塔が書きます"
+                + "（App Review の連絡先は、同じ鍵のほかのアプリの版から写します。連絡先は AskHub に置きません）")
         }
     }
 
@@ -187,10 +193,10 @@ struct AppStoreSetupView: View {
         }
     }
 
-    /// 「終わった」（API で確かめられない項目と、確かめが合わないときの上書き）
+    /// 「終わった」（API で確かめられない項目と、確かめが合わない・書けなかったときに Web でした作業）
     @ViewBuilder private func confirmButton(_ setup: AppStoreSetup, _ kind: AppStoreSetup.ItemKind) -> some View {
         if let item = setup.item(kind), !item.isDone, item.state != .done,
-           kind.needsConfirmation || item.state == .unknown,
+           kind.needsConfirmation || item.state == .unknown || setup.failures.contains(where: { $0.item == kind }),
            store.supports(.confirmAppStoreItem(repositoryID: setup.repositoryID, item: kind)) {
             Button("\(kind.title)は終わった", systemImage: "checkmark.circle") {
                 send(.confirmAppStoreItem(repositoryID: setup.repositoryID, item: kind))
@@ -380,6 +386,17 @@ struct AppStoreSettingsSheet: View {
                         Text("権利を得た年と、持ち主（会社名か個人名）を書きます。URL は入れません")
                     }
                 }
+                if needs(.reviewContact) {
+                    Section {
+                        Toggle("ほかのアプリの連絡先を写す", isOn: $request.copyReviewContact)
+                            .accessibilityIdentifier("app-store-copy-review-contact")
+                    } header: {
+                        Text("App Review の連絡先")
+                    } footer: {
+                        Text("司令塔が、同じ鍵のほかのアプリの配信中か審査に出した版から、姓・名・電話番号・メールアドレスを写します。"
+                            + "連絡先は AskHub に置きません。写せるアプリが無いときは、App Store Connect で入れてください")
+                    }
+                }
             }
             .formStyle(.grouped)
             .pastelBackground()
@@ -394,10 +411,11 @@ struct AppStoreSettingsSheet: View {
                 }
             }
             .onAppear {
-                // 無料・すべての地域は、まだ決めていなければ既定で選んでおく（書くのは「書く」を押したときだけ）
+                // 無料・すべての地域・連絡先を写すは、まだ決めていなければ既定で選んでおく（書くのは「書く」を押したときだけ）
                 if !sending.showsStatus {
                     request.free = needs(.price)
                     request.everywhere = needs(.availability)
+                    request.copyReviewContact = needs(.reviewContact)
                     // 著作権表示は、今年を入れておく（持ち主は人が書く）
                     if needs(.copyright), copyright.isEmpty { copyright = "\(Calendar.current.component(.year, from: Date())) " }
                 }

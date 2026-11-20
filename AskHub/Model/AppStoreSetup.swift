@@ -91,14 +91,16 @@ struct AppStoreSetup: Identifiable, Hashable {
             case .appPrivacy: "App Store Connect の「App のプライバシー」で、集めるデータに答えて公開します。終わったら「終わった」を押します"
             case .digitalServicesAct: "App Store Connect の「App 情報」で、EU のデジタルサービス法の申告（事業者かどうか）をします。終わったら「終わった」を押します"
             case .reviewContact:
-                "App Store Connect のこの版のページの「App Review に関する情報」で、連絡先（姓・名・電話番号・メールアドレス）を入れます。"
-                    + "連絡先は AskHub に置かず、入れたかだけを確かめます"
+                "「値を確かめて App Store Connect に書く」で、同じ鍵のほかのアプリの連絡先を写せます。"
+                    + "写せるアプリが無いときは、App Store Connect のこの版のページの「App Review に関する情報」で入れて「終わった」を押します"
             default: nil
             }
         }
 
         /// 決まった値を AskHub から書ける（`applyAppStoreSettings`）
-        static let settingKinds: [Self] = [.contentRights, .category, .privacyPolicy, .price, .availability, .supportUrl, .copyright]
+        static let settingKinds: [Self] = [
+            .contentRights, .category, .privacyPolicy, .price, .availability, .supportUrl, .copyright, .reviewContact
+        ]
 
         /// アプリを作るまで（TestFlight に上げるのに要る）の項目
         var isNeededForApp: Bool { self == .bundleId || self == .app }
@@ -134,6 +136,8 @@ struct AppStoreSetup: Identifiable, Hashable {
         var isDone: Bool
         /// 断られた項目
         var failures: [Failure] = []
+        /// App Review の連絡先を写したアプリの名前（連絡先の値は持たない）
+        var reviewContactFrom: String?
     }
 
     struct Failure: Hashable {
@@ -238,6 +242,8 @@ struct AppStoreSettingsRequest: Hashable {
     var marketingURL: String?
     /// 初めての版の著作権表示
     var copyright: String?
+    /// 初めての版の App Review の連絡先を、同じ鍵のほかのアプリの版から写す
+    var copyReviewContact = false
 
     var isEmpty: Bool { items.isEmpty }
 
@@ -251,6 +257,7 @@ struct AppStoreSettingsRequest: Hashable {
         if everywhere { items.append(.availability) }
         if supportURL != nil { items.append(.supportUrl) }
         if copyright != nil { items.append(.copyright) }
+        if copyReviewContact { items.append(.reviewContact) }
         return items
     }
 }
