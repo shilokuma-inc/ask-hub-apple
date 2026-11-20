@@ -143,6 +143,34 @@ struct AppStoreConnectSubmissionsTests {
         #expect(transport.requests.count == 2)
     }
 
+    @Test func readsAndWritesReviewDetailWithoutPassword() async throws {
+        let detail = """
+            {"data":{"type":"appStoreReviewDetails","id":"r-1",
+              "attributes":{"notes":"ログインは不要です。","demoAccountRequired":false,"demoAccountName":""}}}
+            """
+        let transport = StubTransport([
+            .json(200, detail),
+            .json(200, #"{"data":{"type":"appStoreReviewDetails","id":"r-1"}}"#),
+            .json(201, #"{"data":{"type":"appStoreReviewDetails","id":"r-2"}}"#)
+        ])
+        let client = client(transport)
+        let read = try await client.reviewDetail(of: "v2")
+        #expect(read == AppStoreReviewDetail(id: "r-1", information: ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: false)))
+        #expect(transport.requests[0].url?.path == "/v1/appStoreVersions/v2/appStoreReviewDetail")
+        // パスワードと連絡先は読まない
+        #expect(query(transport.requests[0])["fields[appStoreReviewDetails]"] == "notes,demoAccountRequired,demoAccountName")
+        try await client.writeReviewDetail("r-1", versionID: "v2", ReviewInformation(demoAccountRequired: true))
+        #expect(transport.requests[1].httpMethod == "PATCH" && transport.requests[1].url?.path == "/v1/appStoreReviewDetails/r-1")
+        let patched = try #require(try body(transport.requests[1])["attributes"] as? [String: Any])
+        #expect(Set(patched.keys) == ["demoAccountRequired"])
+        // 無ければ版に作る
+        try await client.writeReviewDetail(nil, versionID: "v2", ReviewInformation(notes: "メモ"))
+        #expect(transport.requests[2].httpMethod == "POST" && transport.requests[2].url?.path == "/v1/appStoreReviewDetails")
+        let created = try body(transport.requests[2])
+        let relationship = (created["relationships"] as? [String: Any])?["appStoreVersion"] as? [String: Any]
+        #expect((relationship?["data"] as? [String: Any])?["id"] as? String == "v2")
+    }
+
     @Test func createsAndUpdatesVersions() async throws {
         let transport = StubTransport([
             .json(201, #"{"data":{"type":"appStoreVersions","id":"v-new","attributes":{"appVersionState":"PREPARE_FOR_SUBMISSION"}}}"#),
