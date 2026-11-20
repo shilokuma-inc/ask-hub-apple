@@ -46,8 +46,9 @@ struct StateIntentMapper {
             supportsAfterMerge(intent)
 
         case .removeRepository, .configureRepository, .cleanUp, .findCleanupCandidates, .startRelease, .submitForReview, .distributeRelease,
-             .withdrawSubmission, .abandonRelease:
-            // リリースの操作も、リポジトリに属する操作として判定する（`supportsSubmissionIntent`）。片付けは Mac ごと（`supportsRepositoryIntent` の中で分ける）
+             .withdrawSubmission, .abandonRelease, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
+            // リリースと App Store の準備の操作も、リポジトリに属する操作として判定する（`supportsSubmissionIntent`・`supportsAppStoreSetupIntent`）。
+            // 片付けは Mac ごと（`supportsRepositoryIntent` の中で分ける）
             supportsRepositoryIntent(intent)
         }
     }
@@ -113,8 +114,9 @@ struct StateIntentMapper {
         case let .publishRelease(repositoryID, version, notesVersion, notes):
             return try releaseDraft(repositoryID: repositoryID, version: version, notesVersion: notesVersion, notes: notes)
 
-        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
-            return try submissionDraft(intent)
+        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .registerBundleId,
+             .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
+            return try releaseFlowDraft(intent)
 
         case .acceptAllDecisions, .verify:
             // まとめて OK と実機確認は、いくつかの意図になることがあるので `drafts(for:)` で作る

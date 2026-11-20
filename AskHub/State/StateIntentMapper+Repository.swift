@@ -23,6 +23,9 @@ extension StateIntentMapper {
         case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
             supportsSubmissionIntent(intent)
 
+        case .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
+            supportsAppStoreSetupIntent(intent)
+
         default:
             false
         }
