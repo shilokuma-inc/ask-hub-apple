@@ -43,6 +43,9 @@ struct ListingDraftTests {
             reason: "説明を足した"
         )
         #expect(ListingRules.problems(another, current: current).contains { $0.contains("https://example.org") })
+        // 括弧や句点で囲まれた同じ URL は、足したことにしない
+        #expect(ListingRules.additions("詳細: https://example.com/help です。", current: "詳細（https://example.com/help）").isEmpty)
+        #expect(!ListingRules.additions("詳細: https://example.com/other", current: "詳細（https://example.com/help）").isEmpty)
     }
 
     @Test func refusesUnknownLocalesLongKeywordsAndEmptyItems() {

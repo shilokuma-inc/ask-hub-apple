@@ -100,11 +100,12 @@ public enum ListingRules {
 extension ListingRules {
     /// 案で新しく足した URL・メールアドレス・トークンのような文字列・開発の道具の名前（今の文にある同じものは除く）
     static func additions(_ text: String, current: String) -> [String] {
+        // 文の終わりの句読点は URL・メールアドレスに含めない（括弧や読点は、下の形でそもそも取らない）
         func matches(_ pattern: Regex<Substring>, in text: String) -> Set<String> {
-            Set(text.matches(of: pattern).map { String($0.output) })
+            Set(text.matches(of: pattern).map { String($0.output).trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?")) })
         }
         let kinds: [(Regex<Substring>, String)] = [
-            (/[A-Za-z][A-Za-z0-9+.\-]*:\/\/[^\s]+/, "URL"),
+            (/[A-Za-z][A-Za-z0-9+.\-]*:\/\/[^\s()\[\]{}<>（）「」『』【】、。，"']+/, "URL"),
             (/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/, "メールアドレス"),
             (/(?:gh[pousr]_|github_pat_|sk-ant-)[A-Za-z0-9_]{8,}|[A-Za-z0-9+\/_\-]{40,}/, "トークン・ハッシュのような長い文字列")
         ]
