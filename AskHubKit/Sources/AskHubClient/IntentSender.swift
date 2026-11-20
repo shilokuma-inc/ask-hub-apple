@@ -105,14 +105,16 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: StartReleaseIntent.kind, repo: repo, payload: ["version": .string(version.rawValue)])
     }
 
-    /// 審査に出す（`revision` は人が見たときの準備の版。ビルドか What's New が変わっていれば司令塔が断る）
+    /// 審査に出す（`revision` は人が見たときの準備の版。ビルド・What's New・掲載文の案が変わっていれば司令塔が断る）。
+    /// `listing` は人が確かめた掲載文の直し（変える言語・欄だけ）
     public static func submitForReview(
         _ target: SubmissionTarget,
         revision: Int,
         builds: [SubmissionFile.BuildChoice],
         whatsNew: [LocalizedText],
         releaseType: AppStoreReleaseType,
-        earliestReleaseDate: Timestamp? = nil
+        earliestReleaseDate: Timestamp? = nil,
+        listing: [ListingText] = []
     ) -> Self {
         Self(
             kind: SubmitForReviewIntent.kind,
@@ -120,7 +122,7 @@ public struct IntentDraft: Equatable, Sendable {
             target: target.target,
             targetVersion: String(revision),
             payload: SubmitForReviewIntent.payload(
-                builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate
+                builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate, listing: listing
             )
         )
     }

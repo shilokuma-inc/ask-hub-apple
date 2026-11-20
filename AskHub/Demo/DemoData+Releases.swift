@@ -59,7 +59,8 @@ extension DemoData {
                 .init(locale: "ja", text: Self.recipeWhatsNewJapanese),
                 .init(locale: "en-US", text: Self.recipeWhatsNewEnglish)
             ],
-            revision: 2,
+            listing: Self.recipeListing,
+            revision: 3,
             createdAt: ago(minutes: 60 * 3),
             updatedAt: ago(minutes: 25)
         )
@@ -67,6 +68,29 @@ extension DemoData {
         submission.canAbandon = true
         return [submission]
     }
+
+    /// レシピ帳の掲載文の案（人数に合わせた分量の計算を、日本語の説明文とキーワード・英語のキーワードに入れる）
+    static let recipeListing = Submission.Listing(
+        current: [
+            .init(locale: "ja", values: [
+                .description: "毎日のごはん作りを助けるレシピ帳です。写真付きでレシピを残し、買い物リストを作れます。",
+                .keywords: "レシピ,料理,献立,買い物リスト",
+                .promotionalText: "Mac でも使えるようになりました。"
+            ]),
+            .init(locale: "en-US", values: [
+                .description: "A recipe book for everyday cooking. Save recipes with photos and build shopping lists.",
+                .keywords: "recipe,cooking,meal plan,shopping list"
+            ])
+        ],
+        drafts: [
+            .init(locale: "ja", values: [
+                .description: "毎日のごはん作りを助けるレシピ帳です。写真付きでレシピを残し、買い物リストを作れます。人数に合わせて材料の分量を自動で計算します。",
+                .keywords: "レシピ,料理,献立,買い物リスト,分量"
+            ]),
+            .init(locale: "en-US", values: [.keywords: "recipe,cooking,meal plan,shopping list,servings"])
+        ],
+        reason: "人数に合わせて分量を計算できるようにしたので、日本語の説明文に一文足し、キーワードに「分量」を足す案です"
+    )
 
     static let recipeWhatsNewJapanese = """
         ・材料の分量を、人数に合わせて自動で計算できるようになりました
