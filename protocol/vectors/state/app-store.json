@@ -148,6 +148,136 @@
       "read": "valid"
     },
     {
+      "name": "first-version",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/new-app-ios",
+        "bundleIds": [
+          "jp.shilokuma.NewApp",
+          "jp.shilokuma.NewAppTests"
+        ],
+        "items": [
+          {
+            "id": "bundleId",
+            "state": "done",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "app",
+            "state": "done",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "contentRights",
+            "state": "done",
+            "checkedAt": "2026-11-20T02:00:00Z",
+            "note": "第三者のコンテンツを使わない"
+          },
+          {
+            "id": "category",
+            "state": "todo",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "privacyPolicy",
+            "state": "todo",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "price",
+            "state": "done",
+            "checkedAt": "2026-11-20T02:00:00Z",
+            "note": "無料"
+          },
+          {
+            "id": "availability",
+            "state": "todo",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "ageRating",
+            "state": "todo",
+            "checkedAt": "2026-11-20T02:00:00Z",
+            "note": "答えていない質問がある"
+          },
+          {
+            "id": "appPrivacy",
+            "state": "unknown",
+            "checkedAt": "2026-11-20T02:00:00Z",
+            "confirmed": {
+              "approval": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000001"
+              },
+              "at": "2026-11-20T03:00:00Z"
+            }
+          },
+          {
+            "id": "digitalServicesAct",
+            "state": "unknown",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "supportUrl",
+            "state": "todo",
+            "checkedAt": "2026-11-20T02:00:00Z",
+            "note": "まだ書いていない言語: ja・en-US"
+          },
+          {
+            "id": "copyright",
+            "state": "done",
+            "checkedAt": "2026-11-20T02:00:00Z",
+            "note": "2026 Shilokuma Inc."
+          },
+          {
+            "id": "reviewContact",
+            "state": "todo",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T03:00:00Z",
+        "app": {
+          "id": "6738000000",
+          "name": "NewApp",
+          "bundleId": "jp.shilokuma.NewApp",
+          "primaryLocale": "ja"
+        },
+        "bundleIdRequest": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z",
+          "identifier": "jp.shilokuma.NewApp",
+          "platform": "iOS",
+          "doneAt": "2026-11-20T02:00:00Z"
+        },
+        "settingsRequest": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000002"
+          },
+          "at": "2026-11-20T02:00:00Z",
+          "settings": {
+            "supportUrl": "https://example.com/support",
+            "marketingUrl": "https://example.com",
+            "copyright": "2026 Shilokuma Inc."
+          },
+          "doneAt": "2026-11-20T03:00:00Z",
+          "failures": [
+            {
+              "item": "supportUrl",
+              "message": "App Store Connect に断られた（409）"
+            }
+          ]
+        },
+        "checkedAt": "2026-11-20T03:00:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "released",
       "value": {
         "v": 1,
@@ -1122,6 +1252,111 @@
               "message": "App Store Connect に断られた（409）"
             }
           ]
+        },
+        "checkedAt": "2026-11-20T03:00:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "marketing-without-support",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/new-app-ios",
+        "bundleIds": [
+          "jp.shilokuma.NewApp",
+          "jp.shilokuma.NewAppTests"
+        ],
+        "items": [
+          {
+            "id": "bundleId",
+            "state": "done",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "app",
+            "state": "done",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "contentRights",
+            "state": "done",
+            "checkedAt": "2026-11-20T02:00:00Z",
+            "note": "第三者のコンテンツを使わない"
+          },
+          {
+            "id": "category",
+            "state": "todo",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "privacyPolicy",
+            "state": "todo",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "price",
+            "state": "done",
+            "checkedAt": "2026-11-20T02:00:00Z",
+            "note": "無料"
+          },
+          {
+            "id": "availability",
+            "state": "todo",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          },
+          {
+            "id": "ageRating",
+            "state": "todo",
+            "checkedAt": "2026-11-20T02:00:00Z",
+            "note": "答えていない質問がある"
+          },
+          {
+            "id": "appPrivacy",
+            "state": "unknown",
+            "checkedAt": "2026-11-20T02:00:00Z",
+            "confirmed": {
+              "approval": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000001"
+              },
+              "at": "2026-11-20T03:00:00Z"
+            }
+          },
+          {
+            "id": "digitalServicesAct",
+            "state": "unknown",
+            "checkedAt": "2026-11-20T02:00:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T03:00:00Z",
+        "app": {
+          "id": "6738000000",
+          "name": "NewApp",
+          "bundleId": "jp.shilokuma.NewApp",
+          "primaryLocale": "ja"
+        },
+        "bundleIdRequest": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z",
+          "identifier": "jp.shilokuma.NewApp",
+          "platform": "iOS",
+          "doneAt": "2026-11-20T02:00:00Z"
+        },
+        "settingsRequest": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T03:00:00Z",
+          "settings": {
+            "copyright": "2026 Shilokuma Inc.",
+            "marketingUrl": "https://example.com"
+          }
         },
         "checkedAt": "2026-11-20T03:00:00Z"
       },

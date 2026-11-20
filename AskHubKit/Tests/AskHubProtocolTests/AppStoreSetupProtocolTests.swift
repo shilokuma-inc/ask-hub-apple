@@ -93,6 +93,38 @@ struct AppStoreSetupProtocolTests {
         #expect(!AppStoreSettings().problems.isEmpty)
     }
 
+    @Test func versionSettingsNeedSupportURLForMarketingURL() {
+        let settings = AppStoreSettings(
+            supportUrl: "https://example.com/support",
+            marketingUrl: "https://example.com",
+            copyright: "2026 Shilokuma Inc."
+        )
+        #expect(settings.items == [.supportUrl, .copyright])
+        #expect(settings.problems.isEmpty)
+        // マーケティング URL は任意なので項目を持たず、サポート URL と一緒にだけ送れる
+        #expect(!AppStoreSettings(marketingUrl: "https://example.com").problems.isEmpty)
+        #expect(AppStoreSettings(copyright: "2026 Shilokuma Inc.").problems.isEmpty)
+    }
+
+    @Test func checksCopyrightShape() {
+        #expect(AppStoreSettings.isCopyright("2026 Shilokuma Inc."))
+        #expect(AppStoreSettings.isCopyright("© 2026 しろくま"))
+        #expect(!AppStoreSettings.isCopyright(""))
+        #expect(!AppStoreSettings.isCopyright(" 2026 Shilokuma Inc."))
+        #expect(!AppStoreSettings.isCopyright("2026\nShilokuma Inc."))
+        #expect(!AppStoreSettings.isCopyright(String(repeating: "a", count: AppStoreSettings.copyrightLimit + 1)))
+    }
+
+    @Test func versionItemsAreCheckedOnlyWithVersionSlots() {
+        #expect(AppStoreSetupFile.ItemKind.allCases.filter(\.isVersionItem) == [.supportUrl, .copyright, .reviewContact])
+        #expect(AppStoreSetupFile.ItemKind.supportUrl.isWritable && AppStoreSetupFile.ItemKind.copyright.isWritable)
+        #expect(AppStoreSetupFile.ItemKind.reviewContact.isVerifiable && !AppStoreSetupFile.ItemKind.reviewContact.isWritable)
+        // 版の項目は、初めての版を審査に出すまでに要る（アプリを作るまでの項目ではない）
+        let setup = file(items: [item(.app, .done), item(.supportUrl, .todo), item(.reviewContact, .todo)])
+        #expect(setup.pendingItems(firstRelease: false).isEmpty)
+        #expect(setup.pendingItems(firstRelease: true).map(\.id) == [.supportUrl, .reviewContact])
+    }
+
     @Test func refusesTargetsAndOtherKinds() {
         let target = IntentEnvelope.Target(type: "repository", id: "x")
         #expect(throws: MalformedIntent.self) {
