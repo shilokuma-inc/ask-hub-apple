@@ -10,6 +10,8 @@ struct SubmitReviewSheet: View {
     /// 言語ごとの、変える掲載文の欄と文（無い欄は変えない）。開いたときに案を入れる
     @State private var listing: [String: [Submission.ListingField: String]] = [:]
     @State private var loadedListing = false
+    /// 案を入れたときの準備の版。開いている間に司令塔が案を書き直したら、送るときに断られる（古い案のまま出さない）
+    @State private var loadedRevision: Int?
     @State private var platforms: Set<String> = []
     @State private var kind = Kind.afterApproval
     @State private var releaseDate = Self.defaultReleaseDate
@@ -97,6 +99,7 @@ struct SubmitReviewSheet: View {
                 if platforms.isEmpty { platforms = Set(submission.builds.map(\.platform)) }
                 if !loadedListing {
                     loadedListing = true
+                    loadedRevision = submission.revision
                     for draft in submission.listing?.drafts ?? [] { listing[draft.locale] = draft.values }
                 }
             }
@@ -181,7 +184,7 @@ struct SubmitReviewSheet: View {
         case .scheduled: .scheduled(releaseDate)
         }
         let request = Submission.SubmitRequest(
-            revision: submission.revision,
+            revision: loadedRevision ?? submission.revision,
             builds: submission.builds.filter { platforms.contains($0.platform) },
             whatsNew: (submission.drafts ?? []).map { Submission.Localized(locale: $0.locale, text: texts[$0.locale] ?? $0.text) },
             releaseType: releaseType,

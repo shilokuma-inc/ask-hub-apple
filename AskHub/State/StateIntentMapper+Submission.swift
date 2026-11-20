@@ -114,14 +114,15 @@ extension StateIntentMapper {
         }
     }
 
-    /// 人が確かめた掲載文の直し。前後の空白を除き、配信中の版と同じ欄は送らない（司令塔と同じく、キーワードは UTF-8 のバイトで数える）
+    /// 人が確かめた掲載文の直し。前後の空白を除いて、人が「変える」にした欄をすべて送る（配信中の版と同じ文でも、版の枠の文が
+    /// App Store Connect で直されていることがあるので、比べて省くのは司令塔に任せる）。司令塔と同じく、キーワードは UTF-8 のバイトで数える
     private static func listing(
         _ changes: [Submission.ListingTexts],
         current: [ListingText]
     ) throws(ClientServiceError) -> [ListingText] {
         var texts: [ListingText] = []
         for change in changes {
-            guard let now = current.first(where: { $0.locale == change.locale }) else {
+            guard current.contains(where: { $0.locale == change.locale }) else {
                 throw ClientServiceError(message: "掲載文の言語（\(change.locale)）が配信中の版にありません。取り直してから送ってください")
             }
             var text = ListingText(locale: change.locale)
@@ -130,10 +131,7 @@ extension StateIntentMapper {
                 guard field.accepts(value) else {
                     throw ClientServiceError(message: "\(field.label)（\(change.locale)）は \(field.rangeLabel)で書いてください")
                 }
-                let protocolField = StateSnapshotBuilder.listingField(field)
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard trimmed != (now[protocolField] ?? "") else { continue }
-                text[protocolField] = trimmed
+                text[StateSnapshotBuilder.listingField(field)] = value.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             if !text.isEmpty { texts.append(text) }
         }

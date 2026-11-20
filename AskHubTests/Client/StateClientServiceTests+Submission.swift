@@ -95,7 +95,7 @@ extension StateClientServiceTests {
         _ = try await fixture.service.fetchSnapshot()
         var withListing = request
         withListing.listing = [
-            // 説明文は今の文と同じなので送らない。キーワードは前後の空白を除いて送る
+            // 「変える」にした欄は、今の文と同じでも送る（比べて省くのは司令塔）。前後の空白は除く
             .init(locale: "ja", values: [.description: "素数のクイズ", .keywords: " 素数,クイズ,タイムアタック\n"]),
             // プロモーションテキストは空にできる
             .init(locale: "en-US", values: [.promotionalText: ""])
@@ -104,7 +104,7 @@ extension StateClientServiceTests {
         let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
         let submit = try SubmitForReviewIntent(envelope: envelope)
         #expect(submit.listing == [
-            ListingText(locale: "ja", keywords: "素数,クイズ,タイムアタック"),
+            ListingText(locale: "ja", description: "素数のクイズ", keywords: "素数,クイズ,タイムアタック"),
             ListingText(locale: "en-US", promotionalText: "")
         ])
     }
