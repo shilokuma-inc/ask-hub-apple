@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/app-store.schema.json",
+  "title": "repos/<owner>/<repo>/app-store.json（新しいアプリを App Store に載せる準備）",
+  "description": "司令塔だけが書く。App Store Connect にアプリが無い・配信中の版が無いリポジトリに作り、チェックリストの項目が終わったかを API で確かめて items に書く。API で確かめられない項目は、人が confirmAppStoreItem を押すと confirmed が付く。決まった値と Bundle ID の登録は、人が押した（applyAppStoreSettings・registerBundleId）ときだけ司令塔が書き、結果を settingsRequest・bundleIdRequest に書く。配信中の版を見つけたら releasedAt を付ける。欄どうしの決まり（項目を重ねない・app は人の終わったを持たない・failures は送り終えたときだけ・決まった値の形 など）は読む側で確かめる",
+  "type": "object",
+  "required": [
+    "v",
+    "repo",
+    "bundleIds",
+    "items",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "bundleId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*$",
+      "maxLength": 155,
+      "description": "Bundle ID（英数字・-・.。変数を含まない）"
+    },
+    "itemKind": {
+      "enum": [
+        "bundleId",
+        "app",
+        "contentRights",
+        "category",
+        "privacyPolicy",
+        "price",
+        "availability",
+        "ageRating",
+        "appPrivacy",
+        "digitalServicesAct"
+      ],
+      "description": "チェックリストの項目。appPrivacy・digitalServicesAct は API で確かめられない"
+    },
+    "approval": {
+      "type": "object",
+      "required": [
+        "approval",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "$ref": "../common.schema.json#/$defs/intentReference"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "failures": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "送れなかった項目と理由（送り終えた doneAt があるときだけ）",
+      "items": {
+        "type": "object",
+        "required": [
+          "item",
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "$ref": "#/$defs/itemKind"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "description": "決まった値（applyAppStoreSettings の payload と同じ形）。書く欄だけを持ち、1 つ以上持つ。primarySubcategory は primaryCategory と一緒に持つ",
+      "additionalProperties": false,
+      "properties": {
+        "contentRights": {
+          "enum": [
+            "doesNotUseThirdPartyContent",
+            "usesThirdPartyContent"
+          ]
+        },
+        "primaryCategory": {
+          "$ref": "#/$defs/category"
+        },
+        "primarySubcategory": {
+          "$ref": "#/$defs/category"
+        },
+        "privacyPolicyUrl": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$",
+          "maxLength": 512
+        },
+        "price": {
+          "enum": [
+            "free"
+          ]
+        },
+        "availability": {
+          "enum": [
+            "allTerritories"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": [
+                "contentRights"
+              ]
+            },
+            {
+              "required": [
+                "primaryCategory"
+              ]
+            },
+            {
+              "required": [
+                "privacyPolicyUrl"
+              ]
+            },
+            {
+              "required": [
+                "price"
+              ]
+            },
+            {
+              "required": [
+                "availability"
+              ]
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "not": {
+                "required": [
+                  "primarySubcategory"
+                ]
+              }
+            },
+            {
+              "required": [
+                "primaryCategory"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "category": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "maxLength": 64,
+      "description": "App Store Connect の appCategories の id（PRODUCTIVITY・GAMES_PUZZLE など）"
+    }
+  },
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "repo": {
+      "$ref": "../common.schema.json#/$defs/repositoryFullName"
+    },
+    "bundleIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/bundleId"
+      },
+      "description": "リポジトリの base のビルドの設定にある Bundle ID（見つけた順。テストのターゲットのものも含む）"
+    },
+    "app": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "App Store Connect で見つけたアプリ。まだ無ければ null",
+      "required": [
+        "id",
+        "name",
+        "bundleId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9]{1,20}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bundleId": {
+          "$ref": "#/$defs/bundleId"
+        },
+        "primaryLocale": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
+          "maxLength": 21
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "description": "チェックリスト（項目ごとに 1 つ）",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "checkedAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/itemKind"
+          },
+          "state": {
+            "enum": [
+              "todo",
+              "done",
+              "unknown"
+            ],
+            "description": "todo は終わっていない、done は API で確かめた、unknown は API で読めない（人が終わったを押すまで終わったとみなさない）"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "人が読む補足（今の値・読めなかった理由など）"
+          },
+          "checkedAt": {
+            "$ref": "../common.schema.json#/$defs/timestamp"
+          },
+          "confirmed": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/approval"
+              }
+            ],
+            "description": "人が「終わった」を押した（confirmAppStoreItem）。app は持たない"
+          }
+        }
+      }
+    },
+    "bundleIdRequest": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "人が押した Bundle ID の登録（registerBundleId。最後のもの）",
+      "required": [
+        "approval",
+        "at",
+        "identifier",
+        "platform"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "$ref": "../common.schema.json#/$defs/intentReference"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "identifier": {
+          "$ref": "#/$defs/bundleId"
+        },
+        "platform": {
+          "enum": [
+            "iOS",
+            "macOS",
+            "universal"
+          ]
+        },
+        "doneAt": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            }
+          ]
+        },
+        "failures": {
+          "$ref": "#/$defs/failures"
+        }
+      }
+    },
+    "settingsRequest": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "人が押した決まった値の書き込み（applyAppStoreSettings。最後のもの）",
+      "required": [
+        "approval",
+        "at",
+        "settings"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "$ref": "../common.schema.json#/$defs/intentReference"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "settings": {
+          "$ref": "#/$defs/settings"
+        },
+        "doneAt": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            }
+          ]
+        },
+        "failures": {
+          "$ref": "#/$defs/failures"
+        }
+      }
+    },
+    "excluded": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/approval"
+        }
+      ],
+      "description": "人が「App Store に出さない」を押した（excludeFromAppStore）。出すに戻したら null"
+    },
+    "releasedAt": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      ],
+      "description": "配信中の版を見つけた時刻（初めての版が配信された。これより後は確かめない）"
+    },
+    "checkedAt": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      ],
+      "description": "最後に App Store Connect で確かめた時刻"
+    },
+    "problem": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "確かめられなかった理由（確かめられたら消す）。needsHuman が true なら人が直す（鍵が無い・断られた）",
+      "required": [
+        "message",
+        "needsHuman",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "needsHuman": {
+          "type": "boolean"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "createdAt": {
+      "$ref": "../common.schema.json#/$defs/timestamp"
+    },
+    "updatedAt": {
+      "$ref": "../common.schema.json#/$defs/timestamp"
+    }
+  }
+}

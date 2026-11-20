@@ -28,6 +28,7 @@ struct StateFileKind: Sendable, CustomTestStringConvertible {
         .of(DecisionsFile.self, "decisions"),
         .of(ReleaseFile.self, "release"),
         .of(SubmissionFile.self, "submission"),
+        .of(AppStoreSetupFile.self, "app-store"),
         .of(VerificationsFile.self, "verifications"),
         .of(CleanupRequestsFile.self, "cleanup-requests"),
         .of(CleanupCandidatesFile.self, "cleanup-candidates")
