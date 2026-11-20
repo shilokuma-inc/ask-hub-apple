@@ -109,6 +109,7 @@ public actor ReleaseWatch {
                 await detect(repo, settings: file)
                 detectedAt[repo] = context.now()
             }
+            await applyPromotionalText(repo, settings: file)
             waiting += await advanceAll(repo, settings: file).flatMap(Blocker.waiting(on:))
             let now = context.now()
             let submissions = await advanceSubmissions(repo, settings: file)
@@ -155,6 +156,8 @@ public actor ReleaseWatch {
                 )
                 try await record(platform, version: live.version, of: repo)
             }
+            // 配信中の版のプロモーションテキスト（審査に出さずに変えられる。人が AskHub で直すときの元）
+            try await readPromotionalText(repo, versions: versions, store: stores[found.store])
         } catch let error as AppStoreConnectError {
             report("\(repo) の配信を読めない（\(error)）。次に読むときにやり直す")
         } catch {
