@@ -59,6 +59,7 @@ extension StateSnapshotBuilder {
             builds: file.builds.map { .init(platform: $0.platform, build: $0.build) },
             locales: file.whatsNew?.drafts.map(\.locale) ?? [],
             listing: file.listing?.current ?? [],
+            hasAppReview: file.appReview != nil,
             canSubmit: file.awaitsSubmission && idle,
             canDistribute: file.awaitsDistribution && idle,
             canWithdraw: file.canWithdraw && idle,
@@ -78,6 +79,9 @@ extension StateSnapshotBuilder {
             builds: file.builds.map { Submission.Build(platform: $0.platform.rawValue, build: $0.build) },
             drafts: file.whatsNew.map { $0.drafts.map { Submission.Localized(locale: $0.locale, text: $0.text) } },
             listing: file.listing.map(listing),
+            appReview: file.appReview.map { review in
+                Submission.AppReview(current: reviewInfo(review.current), draft: review.draft.map(reviewInfo), reason: review.reason)
+            },
             revision: file.revision,
             review: file.review.map { review in
                 Submission.Review(platform: review.platform.rawValue, state: reviewState(review.state), since: review.since.date)
@@ -102,7 +106,8 @@ extension StateSnapshotBuilder {
                 whatsNew: submit.whatsNew.map { Submission.Localized(locale: $0.locale, text: $0.text) },
                 releaseType: releaseType(submit.releaseType, date: submit.earliestReleaseDate),
                 at: submit.at.date,
-                listing: (submit.listing ?? []).map(listingTexts)
+                listing: (submit.listing ?? []).map(listingTexts),
+                appReview: submit.appReview.map(reviewInfo)
             )
         }
         submission.slots = file.appStoreVersions.map { $0.map(slot) }
@@ -120,6 +125,12 @@ extension StateSnapshotBuilder {
 
     private static func listing(_ listing: SubmissionFile.Listing) -> Submission.Listing {
         Submission.Listing(current: listing.current.map(listingTexts), drafts: listing.drafts.map(listingTexts), reason: listing.reason)
+    }
+
+    private static func reviewInfo(_ information: ReviewInformation) -> Submission.ReviewInfo {
+        Submission.ReviewInfo(
+            notes: information.notes, demoAccountRequired: information.demoAccountRequired, demoAccountName: information.demoAccountName
+        )
     }
 
     static func listingTexts(_ text: ListingText) -> Submission.ListingTexts {

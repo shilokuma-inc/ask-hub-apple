@@ -19,6 +19,8 @@ struct Submission: Identifiable, Hashable {
     var drafts: [Localized]?
     /// 掲載文（説明文・キーワード・プロモーションテキスト）の案。nil ならまだ書いていない
     var listing: Listing?
+    /// App Review の情報の案。nil ならまだ書いていない・初めての版
+    var appReview: AppReview?
     /// ビルド・What's New の下書き・掲載文の案が変わるたびに上がる（審査に出すときに、見たものに結びつける）
     var revision: Int
     /// 審査に出した中身。出していなければ nil
@@ -81,83 +83,6 @@ struct Submission: Identifiable, Hashable {
         }
     }
 
-    /// 掲載文の欄（司令塔の `ListingText.Field` と同じ）
-    enum ListingField: String, CaseIterable, Hashable, Identifiable {
-        case description
-        case keywords
-        case promotionalText
-
-        var id: String { rawValue }
-
-        var label: String {
-            switch self {
-            case .description: "説明文"
-            case .keywords: "キーワード"
-            case .promotionalText: "プロモーションテキスト"
-            }
-        }
-
-        /// 長さの上限（キーワードは UTF-8 のバイト、ほかは Unicode のコードポイント。App Store Connect の上限）
-        var limit: Int {
-            switch self {
-            case .description: 4_000
-            case .keywords: 100
-            case .promotionalText: 170
-            }
-        }
-
-        /// 例: 12 / 100 バイト
-        func usage(of text: String) -> String {
-            switch self {
-            case .keywords: "\(text.utf8.count) / 100 バイト"
-            case .description: "\(text.unicodeScalars.count) / 4,000 文字"
-            case .promotionalText: "\(text.unicodeScalars.count) / 170 文字"
-            }
-        }
-
-        /// 送れる長さ
-        var rangeLabel: String {
-            switch self {
-            case .description: "1〜4,000 文字"
-            case .keywords: "1〜100 バイト"
-            case .promotionalText: "170 文字まで"
-            }
-        }
-
-        /// 送れる長さか（説明文とキーワードは空にできない）
-        func accepts(_ text: String) -> Bool {
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { return self == .promotionalText }
-            let length = self == .keywords ? trimmed.utf8.count : trimmed.unicodeScalars.count
-            return length <= limit
-        }
-    }
-
-    /// 1 つの言語の掲載文。案・直しでは、無い欄は変えない
-    struct ListingTexts: Hashable, Identifiable {
-        var locale: String
-        var values: [ListingField: String] = [:]
-
-        var id: String { locale }
-
-        var localeName: String { Localized(locale: locale, text: "").localeName }
-
-        /// 例: 説明文・キーワード
-        var fieldSummary: String {
-            ListingField.allCases.filter { values[$0] != nil }.map(\.label).joined(separator: "・")
-        }
-    }
-
-    /// 掲載文の案
-    struct Listing: Hashable {
-        /// 配信中の版の掲載文（言語ごと）。空なら初めての版で、案を書かない
-        var current: [ListingTexts]
-        /// 直す案（変える言語だけ）。空なら「変えない」
-        var drafts: [ListingTexts]
-        /// 案の理由（変えないなら、その理由）
-        var reason: String
-    }
-
     /// 審査に通った後の配信の方式
     enum ReleaseType: Hashable {
         case afterApproval
@@ -182,6 +107,8 @@ struct Submission: Identifiable, Hashable {
         var releaseType: ReleaseType
         /// 人が確かめた掲載文の直し（変える言語・欄だけ）
         var listing: [ListingTexts] = []
+        /// 人が確かめた App Review の情報の直し。nil なら変えない
+        var appReview: ReviewInfo?
     }
 
     struct Submitted: Hashable {
@@ -191,6 +118,8 @@ struct Submission: Identifiable, Hashable {
         var at: Date
         /// 審査に出した掲載文の直し
         var listing: [ListingTexts] = []
+        /// 審査に出した App Review の情報の直し
+        var appReview: ReviewInfo?
     }
 
     /// 審査の状態（App Store Connect の版の状態をまとめたもの）
