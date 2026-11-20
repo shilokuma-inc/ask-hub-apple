@@ -65,4 +65,20 @@ extension ReleaseWatchTests {
         )
         #expect(ClaudeListingDrafter.firstVersionPrompt(material).contains("初めての版 1.2.0"))
     }
+
+    @Test func keepsOnlyFieldsFilledOnEveryPlatform() {
+        let iOS = [ListingText(locale: "ja", description: "日数を数えます。", keywords: "推し活"), ListingText(locale: "en-US", keywords: "oshi")]
+        let macOS = [ListingText(locale: "ja", description: "日数を数えます。"), ListingText(locale: "fr-FR", description: "Compte.")]
+        let common = Self.commonListingForTest([iOS, macOS])
+        // 説明文は両方に同じ文があるので残し、キーワードは macOS に無いので空にする（案で書く）。言語はどれかの版にあるものすべて
+        #expect(common == [
+            ListingText(locale: "ja", description: "日数を数えます。"),
+            ListingText(locale: "en-US"),
+            ListingText(locale: "fr-FR")
+        ])
+    }
+
+    static func commonListingForTest(_ listings: [[ListingText]]) -> [ListingText] {
+        ReleaseWatch.commonListing(listings)
+    }
 }

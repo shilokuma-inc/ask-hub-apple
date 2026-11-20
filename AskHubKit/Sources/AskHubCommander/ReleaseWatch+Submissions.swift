@@ -158,15 +158,28 @@ extension ReleaseWatch {
         let (store, app) = try await submissionApp(file.repo, settings: settings)
         let versions = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.versions(of: app.id) }
         var file = file
-        // 今の文: 配信中の版のもの。初めての版なら、編集できる版（版の枠）のもの
-        let firstVersion = Self.liveVersion(versions) == nil
-        guard let source = firstVersion ? Self.editableVersion(versions, of: file) : Self.liveVersion(versions) else {
-            throw ReleaseStepProblem("初めての版の App Store Connect の版がまだ無い（版の枠を作るのを待つ）", needsHuman: false)
+        // 今の文: 配信中の版のもの。初めての版なら、編集できる版（プラットフォームごとの版の枠）のすべてにそろっている欄だけ
+        let live = Self.liveVersion(versions)
+        let sources = live.map { [$0] } ?? Self.editableVersions(versions, of: file)
+        guard let first = sources.first else {
+            // 版の枠を作る記録なら、枠ができるのを待つ。この仕組みの前に始めた記録（枠を作らない）は、人が App Store Connect で版を作る
+            throw ReleaseStepProblem(
+                file.appStoreVersions == nil
+                    ? "初めての版 \(file.version) の編集できる版が App Store Connect に無い。App Store Connect で版を作るか、リリースをやめて始め直す"
+                    : "初めての版の App Store Connect の版がまだ無い（版の枠を作るのを待つ）",
+                needsHuman: file.appStoreVersions == nil
+            )
         }
-        let localizations = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.localizations(of: source.id) }
-        let current = localizations.map(\.listing)
+        var listings: [[ListingText]] = []
+        for source in sources {
+            let localizations = try await appStoreConnect { () throws(AppStoreConnectError) in
+                try await store.localizations(of: source.id)
+            }
+            listings.append(localizations.map(\.listing))
+        }
+        let current = live == nil ? Self.commonListing(listings) : listings[0]
         guard !current.isEmpty else {
-            throw ReleaseStepProblem("\(firstVersion ? "初めての" : "配信中の")版（\(source.versionString)）の掲載文の言語を読めない", needsHuman: true)
+            throw ReleaseStepProblem("\(live == nil ? "初めての" : "配信中の")版（\(first.versionString)）の掲載文の言語を読めない", needsHuman: true)
         }
         guard let drafter = listing else {
             throw ReleaseStepProblem("掲載文の案を書く仕組みが司令塔に無い", needsHuman: true)
@@ -180,7 +193,7 @@ extension ReleaseWatch {
             changes: changes,
             epics: epics,
             current: current,
-            firstVersion: firstVersion
+            firstVersion: live == nil
         )
         let proposal: ListingProposal
         do {
@@ -192,15 +205,6 @@ extension ReleaseWatch {
         log("\(file.repo) の \(file.version) の掲載文の案を書いた（\(locales.isEmpty ? "変えない" : locales.joined(separator: "・"))）")
         file.listing = .init(current: current, drafts: proposal.drafts, reason: proposal.reason, draftedAt: context.timestamp)
         return file
-    }
-
-    /// 初めての版の、編集できる版（記録の版の枠を先に、無ければ同じ番号の編集できる版。iOS を先に見る）
-    static func editableVersion(_ versions: [AppStoreVersionInfo], of file: SubmissionFile) -> AppStoreVersionInfo? {
-        let slots = Set((file.appStoreVersions ?? []).map(\.id))
-        let editable = versions.filter { $0.isEditable && (slots.contains($0.id) || $0.versionString == file.version.rawValue) }
-        return editable.min { lhs, rhs in
-            (slots.contains(lhs.id) ? 0 : 1, lhs.platform == .iOS ? 0 : 1) < (slots.contains(rhs.id) ? 0 : 1, rhs.platform == .iOS ? 0 : 1)
-        }
     }
 
     /// 配信中の版（iOS を先に見る。掲載文の言語はプラットフォームごとにあるが、ふつうは同じ）。無ければ初めての版
