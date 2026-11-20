@@ -1245,16 +1245,7 @@
           "at": "2026-11-20T01:11:00Z"
         },
         "whatsNew": {
-          "drafts": [
-            {
-              "locale": "ja",
-              "text": "・素数の判定が速くなりました"
-            },
-            {
-              "locale": "en-US",
-              "text": "- Faster prime checks"
-            }
-          ],
+          "drafts": [],
           "draftedAt": "2026-11-20T01:20:00Z"
         },
         "listing": {
