@@ -13,14 +13,19 @@ func runShell(_ script: String) async throws -> String {
     process.arguments = ["-c", script]
     process.standardOutput = output
     process.standardError = output
+    try await runUntilExit(process)
+    let text = String(bytes: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    guard process.terminationStatus == 0 else { throw ShellFailure(output: text) }
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+/// `process` を起動し、終わるまで待つ。待つ間は協調スレッドを返す（`waitUntilExit()` で待たない理由は `runShell` を見る）
+func runUntilExit(_ process: Process) async throws {
     let exited = AsyncStream<Void> { exit in
         process.terminationHandler = { _ in exit.finish() }
     }
     try process.run()
     for await _ in exited {}
-    let text = String(bytes: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    guard process.terminationStatus == 0 else { throw ShellFailure(output: text) }
-    return text.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 struct ShellFailure: Error {
