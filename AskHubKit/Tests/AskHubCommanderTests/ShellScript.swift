@@ -16,7 +16,8 @@ func runShell(_ script: String) async throws -> String {
         workingDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath),
         timeout: .seconds(10 * 60)
     )
-    let result = try await ProcessCommandRunner().run(command)
+    // 出力は切り詰めずに全部残す（既定の上限では末尾だけになり、UTF-8 の文字の途中で切れると文字列にできない）
+    let result = try await ProcessCommandRunner(outputLimit: .max).run(command)
     let text = String(bytes: result.standardOutput, encoding: .utf8) ?? ""
     guard result.succeeded else { throw ShellFailure(output: text) }
     return text.trimmingCharacters(in: .whitespacesAndNewlines)

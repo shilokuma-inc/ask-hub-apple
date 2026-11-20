@@ -87,7 +87,8 @@ struct LocalCleanupMachineTests {
             workingDirectory: directory,
             timeout: .seconds(10 * 60)
         )
-        let result = try await ProcessCommandRunner().run(command)
+        // 出力は切り詰めずに全部残す（`runShell` と同じ）
+        let result = try await ProcessCommandRunner(outputLimit: .max).run(command)
         // 置き場所を作れなければ、その場で止める（後の確かめが、置けなかったことで通ってしまわないように）
         guard result.succeeded else { throw GitFixtureFailure(arguments: arguments) }
         // swiftlint:disable:next optional_data_string_conversion
