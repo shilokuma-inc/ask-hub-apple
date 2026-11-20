@@ -798,3 +798,4 @@
 - 審査に出す前の版（`appStoreVersions`）は、編集できる状態（Prepare for Submission・Developer Rejected など）ならプラットフォームごとに 1 つ。
   やめたリリースで作った版が残っていれば、`PATCH` で `versionString` ごと直して使う（新しく作ると断られる見込み。#1140 の `AppStoreSubmission`）。
   初めての版は What's New を持たないので、配信中の版が無いアプリでは下書きしない（2026-11-18）
+- App Manager の役割のチームの API キーで、`appStoreVersions` の作成・ビルドの選択・`appStoreVersionLocalizations` の What's New の更新・`reviewSubmissions` の提出まで書ける（2026-11-20、OshiCon 1.2.0 を AskHub から審査に出して確かめた。Admin は要らない）
