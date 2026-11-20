@@ -3,7 +3,8 @@ import Foundation
 
 // 初めての版の、版の項目の API（サポート URL・マーケティング URL・著作権表示・App Review の連絡先）。
 // 版の枠（`submissions/<版>.json` の `appStoreVersions`）があるときだけ読み、書き込みは人の意図を受け付けたときだけ使う
-// （`docs/renewal/release.md` の「新しいアプリを載せる」）
+// （`docs/renewal/release.md` の「新しいアプリを載せる」）。App Review の連絡先は、同じ鍵のほかのアプリの版から写すときだけ値を読み、
+// 値はメモリーの中だけで使う（記録・ログ・通知に出さない）
 
 /// App Review の連絡先の欄（値は読んでも持たない。状態リポジトリに置かないため）
 public enum ReviewContactField: String, CaseIterable, Sendable {
@@ -19,6 +20,37 @@ public enum ReviewContactField: String, CaseIterable, Sendable {
         case .phone: "電話番号"
         case .email: "メールアドレス"
         }
+    }
+}
+
+/// App Review の連絡先の値。ほかのアプリの版から写すときだけ読み、メモリーの中だけで使う。
+/// 状態リポジトリ・ログ・通知に出さないため、文字列にしたとき（`"\(contact)"`・`dump`）は値を伏せる
+public struct ReviewContact: Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    let values: [ReviewContactField: String]
+
+    public init(values: [ReviewContactField: String]) {
+        self.values = values.filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    /// 入れていない欄
+    public var missing: [ReviewContactField] { ReviewContactField.allCases.filter { values[$0] == nil } }
+
+    public var isComplete: Bool { missing.isEmpty }
+
+    public var description: String { "App Review の連絡先（値は出さない）" }
+    public var debugDescription: String { description }
+    public var customMirror: Mirror { Mirror(self, children: [:]) }
+}
+
+/// 版の App Review の情報の、連絡先
+public struct AppStoreReviewContact: Equatable, Sendable {
+    /// App Review の情報（`appStoreReviewDetails`）の id
+    public var detailID: String
+    public var contact: ReviewContact
+
+    public init(detailID: String, contact: ReviewContact) {
+        self.detailID = detailID
+        self.contact = contact
     }
 }
 
@@ -44,11 +76,19 @@ public struct AppStoreVersionSetupState: Equatable, Sendable {
     public var localizations: [Localization]
     /// App Review の連絡先のうち、入れていない欄（App Review の情報が無ければ、すべて）。入れた値は持たない
     public var missingReviewContact: [ReviewContactField]
+    /// App Review の情報（`appStoreReviewDetails`）の id。まだ無ければ nil（連絡先を写すときに作る）
+    public var reviewDetailID: String?
 
-    public init(copyright: String? = nil, localizations: [Localization] = [], missingReviewContact: [ReviewContactField] = []) {
+    public init(
+        copyright: String? = nil,
+        localizations: [Localization] = [],
+        missingReviewContact: [ReviewContactField] = [],
+        reviewDetailID: String? = nil
+    ) {
         self.copyright = copyright
         self.localizations = localizations
         self.missingReviewContact = missingReviewContact
+        self.reviewDetailID = reviewDetailID
     }
 }
 
@@ -79,19 +119,73 @@ extension AppStoreConnectClient {
                 marketingUrl: Self.nonEmpty(item.attributes?.marketingUrl)
             )
         }
-        // 連絡先は、入れてあるかだけを見る（値は返さない）。App Review の情報がまだ無ければ 404 か data が null
+        // 連絡先は、入れてあるかだけを返す（値は返さない）
+        let detail = try await reviewContact(of: versionID)
+        state.reviewDetailID = detail?.detailID
+        state.missingReviewContact = detail?.contact.missing ?? ReviewContactField.allCases
+        return state
+    }
+
+    /// 版の App Review の連絡先。App Review の情報がまだ無ければ（404 か data が null）nil。パスワード・メモは求めない
+    public func reviewContact(of versionID: String) async throws(AppStoreConnectError) -> AppStoreReviewContact? {
+        try Self.checkID(versionID)
         let fields = ReviewContactField.allCases.map(\.rawValue).joined(separator: ",")
         let detail = try await getIfPresent(
             "v1/appStoreVersions/\(versionID)/appStoreReviewDetail",
             query: [URLQueryItem(name: "fields[appStoreReviewDetails]", value: fields)],
             as: AppStoreConnectReviewContactResponse.self
         )
-        let contact = detail?.data?.attributes ?? [:]
-        state.missingReviewContact = ReviewContactField.allCases.filter { field in
-            guard case let .string(value)? = contact[field.rawValue] else { return true }
-            return value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard let item = detail?.data, Self.isID(item.id) else { return nil }
+        let attributes = item.attributes ?? [:]
+        var values: [ReviewContactField: String] = [:]
+        for field in ReviewContactField.allCases {
+            if case let .string(value)? = attributes[field.rawValue] { values[field] = value }
         }
-        return state
+        return AppStoreReviewContact(detailID: item.id, contact: ReviewContact(values: values))
+    }
+
+    /// 版の App Review の連絡先のうち、`fields` の欄だけを書く（App Review の情報が無ければ作る）
+    public func writeReviewContact(
+        _ contact: ReviewContact,
+        fields: [ReviewContactField],
+        detailID: String?,
+        versionID: String
+    ) async throws(AppStoreConnectError) {
+        try Self.checkID(versionID)
+        var attributes: [String: Any] = [:]
+        for field in fields {
+            if let value = contact.values[field] { attributes[field.rawValue] = value }
+        }
+        guard !attributes.isEmpty else { return }
+        if let detailID {
+            try Self.checkID(detailID)
+            let body = try Self.document("appStoreReviewDetails", id: detailID, attributes: attributes)
+            _ = try await send("PATCH", "v1/appStoreReviewDetails/\(detailID)", body: body)
+        } else {
+            let body = try Self.document(
+                "appStoreReviewDetails", attributes: attributes, relationships: ["appStoreVersion": ("appStoreVersions", versionID)]
+            )
+            _ = try await send("POST", "v1/appStoreReviewDetails", body: body)
+        }
+    }
+
+    /// この鍵で見られるすべてのアプリ（連絡先を写すもとを探す）。ページを最後まで追う
+    public func allApps() async throws(AppStoreConnectError) -> [AppStoreApp] {
+        var query = [
+            URLQueryItem(name: "fields[apps]", value: "bundleId,name"),
+            URLQueryItem(name: "limit", value: String(Self.pageLimit))
+        ]
+        var apps: [AppStoreApp] = []
+        for _ in 0..<20 {
+            let page = try await get("v1/apps", query: query, as: AppStoreConnectAppsPage.self)
+            apps += page.data.compactMap { app in
+                guard Self.isAppID(app.id), let bundleID = app.attributes?.bundleId else { return nil }
+                return AppStoreApp(id: app.id, bundleId: bundleID, name: app.attributes?.name ?? bundleID)
+            }
+            guard let next = page.links?.next.flatMap(URLComponents.init(string:))?.queryItems, !next.isEmpty else { break }
+            query = next
+        }
+        return apps
     }
 
     public func setCopyright(_ text: String, versionID: String) async throws(AppStoreConnectError) {
@@ -134,7 +228,16 @@ struct AppStoreConnectVersionURLsResponse: Decodable {
     var data: [AppStoreConnectResource<Attributes>]
 }
 
-/// App Review の情報の連絡先（値は JSON の値のまま読み、入れてあるかだけを見て捨てる）
+/// App Review の情報の連絡先（値は JSON の値のまま読む）
 struct AppStoreConnectReviewContactResponse: Decodable {
     var data: AppStoreConnectResource<[String: JSONValue]>?
+}
+
+struct AppStoreConnectAppsPage: Decodable {
+    struct Links: Decodable {
+        var next: String?
+    }
+
+    var data: [AppStoreConnectResource<AppStoreConnectAppsResponse.Attributes>]
+    var links: Links?
 }

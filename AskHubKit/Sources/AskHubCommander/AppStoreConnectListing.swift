@@ -76,6 +76,17 @@ public protocol AppStoreConnectListing: Sendable {
     func setCopyright(_ text: String, versionID: String) async throws(AppStoreConnectError)
     /// 版の 1 つの言語に、サポート URL とマーケティング URL を書く（nil の欄は送らない）
     func setVersionURLs(support: String?, marketing: String?, localizationID: String) async throws(AppStoreConnectError)
+    /// この鍵で見られるすべてのアプリ（App Review の連絡先を写すもとを探す）
+    func allApps() async throws(AppStoreConnectError) -> [AppStoreApp]
+    /// 版の App Review の連絡先（写すもとを読む。値はメモリーの中だけで使う）
+    func reviewContact(of versionID: String) async throws(AppStoreConnectError) -> AppStoreReviewContact?
+    /// 版の App Review の連絡先のうち、`fields` の欄だけを書く（App Review の情報が無ければ作る）
+    func writeReviewContact(
+        _ contact: ReviewContact,
+        fields: [ReviewContactField],
+        detailID: String?,
+        versionID: String
+    ) async throws(AppStoreConnectError)
 }
 
 /// 審査の API と準備の API の両方（司令塔の見回りが使う）
