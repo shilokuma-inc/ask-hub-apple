@@ -76,6 +76,10 @@ extension ReleaseWatch {
         if file.listing == nil, file.submit == nil, !file.hasReviewInFlight, !isHeld(.listing, file) {
             file = await submissionStep(.listing, file) { try await self.draftListing($0, settings: settings) }
         }
+        // スクショは見回りの外で撮る（UI テストは長い）
+        if file.submit == nil, !file.hasReviewInFlight, !isHeld(.screenshots, file) {
+            file = await prepareScreenshots(file, settings: settings)
+        }
         // 審査に出した後は、出したビルドを変えない（出し直すときは取り下げてから）
         if file.submit == nil, !file.hasReviewInFlight, !isHeld(.builds, file) {
             file = await submissionStep(.builds, file) { try await self.findBuilds($0, settings: settings) }
@@ -201,38 +205,6 @@ extension ReleaseWatch {
         file.listing = .init(current: current, drafts: proposal.drafts, reason: proposal.reason, draftedAt: context.timestamp)
         file.appReview = live == nil ? nil : appReview(proposal, current: review)
         return file
-    }
-
-    /// 今の掲載文。配信中の版ならその文、初めての版なら編集できる版のすべてにそろっている欄だけ
-    private func currentListing(
-        _ sources: [AppStoreVersionInfo],
-        firstVersion: Bool,
-        store: any AppStoreConnectSubmitting
-    ) async throws -> [ListingText] {
-        var listings: [[ListingText]] = []
-        for source in sources {
-            let localizations = try await appStoreConnect { () throws(AppStoreConnectError) in
-                try await store.localizations(of: source.id)
-            }
-            listings.append(localizations.map(\.listing))
-        }
-        return firstVersion ? Self.commonListing(listings) : listings.first ?? []
-    }
-
-    /// 配信中の版の App Review の情報（パスワードと連絡先は読まない）。初めての版は案を書かない（App Store の準備のチェックリストで扱う）
-    private func reviewDetail(of live: AppStoreVersionInfo?, store: any AppStoreConnectSubmitting) async throws -> AppStoreReviewDetail? {
-        guard let live else { return nil }
-        return try await appStoreConnect { () throws(AppStoreConnectError) in try await store.reviewDetail(of: live.id) }
-    }
-
-    /// App Review の情報の案（理由が無ければ、変えないとする決まった文）
-    private func appReview(_ proposal: ListingProposal, current: AppStoreReviewDetail?) -> SubmissionFile.AppReview {
-        .init(
-            current: current?.information ?? ReviewInformation(),
-            draft: proposal.review,
-            reason: proposal.reviewReason.flatMap { $0.isEmpty ? nil : $0 } ?? "審査する人に伝えることは変わらないので、変えません",
-            draftedAt: context.timestamp
-        )
     }
 
     /// 配信中の版（iOS を先に見る。掲載文の言語はプラットフォームごとにあるが、ふつうは同じ）。無ければ初めての版
@@ -401,6 +373,8 @@ extension ReleaseWatch {
             mergeRequests(changed, into: &file, step: step)
         case .integration, .appStoreVersion:
             mergeAppStoreSide(changed, into: &file, step: step)
+        case .screenshots:
+            mergeScreenshots(changed, into: &file)
         }
     }
 

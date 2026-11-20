@@ -55,7 +55,8 @@ extension StateIntentMapper {
                 releaseType: Self.releaseType(request.releaseType),
                 earliestReleaseDate: try Self.releaseDate(request.releaseType),
                 listing: try Self.listing(request.listing, current: entry.listing),
-                appReview: try Self.appReview(request.appReview, available: entry.hasAppReview)
+                appReview: try Self.appReview(request.appReview, available: entry.hasAppReview),
+                screenshots: try Self.screenshots(request.screenshotKeep, entry: entry)
             )
 
         case let .distributeRelease(repositoryID, version):
@@ -152,6 +153,19 @@ extension StateIntentMapper {
             throw ClientServiceError(message: "デモアカウントの名前は、改行の無い \(Submission.ReviewInfo.nameLimit) 文字までで書いてください")
         }
         return ReviewInformation(notes: notes, demoAccountRequired: change.demoAccountRequired, demoAccountName: name)
+    }
+
+    /// 人が確かめたスクショ。前のままにする画面は、撮って比べた差のある画面だけ
+    private static func screenshots(
+        _ keep: [Submission.ShotKey]?,
+        entry: StateIndex.SubmissionEntry
+    ) throws(ClientServiceError) -> SubmissionFile.ScreenshotDecision? {
+        guard let keep, let commit = entry.screenshotCommit, !entry.changedShots.isEmpty else { return nil }
+        guard keep.allSatisfy(entry.changedShots.contains) else {
+            throw ClientServiceError(message: "前のままにするスクショが、差のある画面と合いません。取り直してから送ってください")
+        }
+        let references = keep.map { SubmissionFile.ShotReference(displayType: $0.displayType, locale: $0.locale, index: $0.index) }
+        return SubmissionFile.ScreenshotDecision(commit: commit, keep: references)
     }
 
     private static func releaseType(_ type: Submission.ReleaseType) -> AppStoreReleaseType {

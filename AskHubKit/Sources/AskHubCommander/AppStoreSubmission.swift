@@ -9,6 +9,10 @@ struct AppStoreSubmission: Sendable {
     var app: AppStoreApp
     var version: MarketingVersion
     var request: SubmissionFile.Submit
+    /// 撮って比べたスクショ（人が確かめたものを上げる）
+    var screenshots: SubmissionFile.StoreScreenshots?
+    /// 撮った元の画像のフォルダ（常時オンの Mac）
+    var originals: URL?
 
     /// `build` のプラットフォームを審査に出し、出した後の状態を返す。`versions` はアプリの版（出す前に読んだもの）
     func send(_ build: AppStoreBuild, versions: [AppStoreVersionInfo]) async throws -> AppStoreVersionState {
@@ -19,6 +23,7 @@ struct AppStoreSubmission: Sendable {
         let target = try await prepareVersion(build, mine: mine, versions: versions)
         try await writeTexts(of: target)
         try await writeReview(of: target)
+        try await writeScreenshots(of: target)
         return try await sendForReview(target)
     }
 
@@ -142,7 +147,7 @@ struct AppStoreSubmission: Sendable {
         return .waitingForReview
     }
 
-    private func call<Value>(_ body: () async throws(AppStoreConnectError) -> Value) async throws -> Value {
+    func call<Value>(_ body: () async throws(AppStoreConnectError) -> Value) async throws -> Value {
         do {
             return try await body()
         } catch {

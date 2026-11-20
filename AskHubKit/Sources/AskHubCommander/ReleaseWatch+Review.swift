@@ -42,7 +42,12 @@ extension ReleaseWatch {
             try await store.builds(of: app.id, version: file.version)
         }
         var file = file
-        let submission = AppStoreSubmission(store: store, app: app, version: file.version, request: request)
+        let originals = file.screenshots?.commit.flatMap { commit in
+            screenshots?.originals(file.repo, version: file.version, commit: commit)
+        }
+        let submission = AppStoreSubmission(
+            store: store, app: app, version: file.version, request: request, screenshots: file.screenshots, originals: originals
+        )
         for choice in request.builds {
             let review = file.review.first { $0.platform == choice.platform }
             if let submitted = review?.submittedAt, submitted >= request.at { continue }

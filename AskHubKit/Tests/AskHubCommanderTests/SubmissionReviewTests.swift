@@ -44,6 +44,7 @@ extension SubmissionHandlersTests {
             reason: "ウィジェットを足したので、キーワードに入れる案です",
             draftedAt: now
         )
+        file.screenshots = .init(state: .notConfigured, startedAt: now, finishedAt: now)
         file.builds = [.init(platform: .iOS, build: "45", uploadedAt: now)]
         file.revision = 2
         return file

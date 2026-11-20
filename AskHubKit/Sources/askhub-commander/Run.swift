@@ -118,6 +118,13 @@ extension AskHubCommanderMain {
                 client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
                 sources: runtime.workspace
             ),
+            // App Store のスクショは、ジョブと同じビルドの枠と Simulator の枠で撮る
+            screenshots: MachineStoreScreenshots(
+                pool: SimulatorPool(tools: runtime.configuration.buildTools(paths: runtime.paths), runner: ProcessCommandRunner()),
+                slots: runtime.buildSlots,
+                root: runtime.paths.root.appendingPathComponent("store-screenshots", isDirectory: true),
+                log: log
+            ),
             authors: GitHubCommitAuthors(token: token, log: log),
             log: log
         )

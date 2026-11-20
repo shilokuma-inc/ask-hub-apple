@@ -53,6 +53,8 @@ extension SubmissionFile {
         public var listing: [ListingText]?
         /// 人が確かめた App Review の情報の直し（nil の欄は変えない）。nil なら変えない
         public var appReview: ReviewInformation?
+        /// 人が確かめたスクショ（前のままにする画面）。nil ならスクショを変えない
+        public var screenshots: ScreenshotDecision?
 
         public init(
             approval: IntentReference,
@@ -62,7 +64,8 @@ extension SubmissionFile {
             releaseType: AppStoreReleaseType,
             earliestReleaseDate: Timestamp? = nil,
             listing: [ListingText]? = nil,
-            appReview: ReviewInformation? = nil
+            appReview: ReviewInformation? = nil,
+            screenshots: ScreenshotDecision? = nil
         ) {
             self.approval = approval
             self.at = at
@@ -72,6 +75,7 @@ extension SubmissionFile {
             self.earliestReleaseDate = earliestReleaseDate
             self.listing = listing
             self.appReview = appReview
+            self.screenshots = screenshots
         }
     }
 
