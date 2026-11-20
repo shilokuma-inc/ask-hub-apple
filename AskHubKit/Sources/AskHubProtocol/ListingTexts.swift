@@ -94,3 +94,36 @@ public struct ListingText: Codable, Hashable, Sendable {
         return problems
     }
 }
+
+/// App Review の情報（審査する人に見せるメモとデモアカウント。App Store Connect の `appStoreReviewDetails`）。
+/// デモアカウントのパスワードと連絡先は扱わない（パスワードは App Store Connect で人が入れる）。直す案・人が確かめた直しでは、nil の欄は「変えない」
+public struct ReviewInformation: Codable, Hashable, Sendable {
+    public var notes: String?
+    public var demoAccountRequired: Bool?
+    public var demoAccountName: String?
+
+    public init(notes: String? = nil, demoAccountRequired: Bool? = nil, demoAccountName: String? = nil) {
+        self.notes = notes
+        self.demoAccountRequired = demoAccountRequired
+        self.demoAccountName = demoAccountName
+    }
+
+    /// メモの長さの上限（UTF-8 のバイト。App Store Connect のヘルプが 4,000 バイトと書いている）
+    public static let notesLimit = 4_000
+    /// デモアカウントの名前の長さの上限（Unicode のコードポイント。文書に上限が無いので、十分に大きくした）
+    public static let nameLimit = 255
+
+    /// 変える欄が無い
+    public var isEmpty: Bool { notes == nil && demoAccountRequired == nil && demoAccountName == nil }
+
+    /// 合わない点（長さ・改行を含む名前）
+    public static func problems(of information: ReviewInformation, name: String) -> [String] {
+        var problems: [String] = []
+        if let notes = information.notes, notes.utf8.count > notesLimit { problems.append("\(name) の notes が 4,000 バイトを超えている") }
+        if let account = information.demoAccountName {
+            if account.unicodeScalars.count > nameLimit { problems.append("\(name) の demoAccountName が \(nameLimit) 文字を超えている") }
+            if account.contains(where: \.isNewline) { problems.append("\(name) の demoAccountName に改行がある") }
+        }
+        return problems
+    }
+}

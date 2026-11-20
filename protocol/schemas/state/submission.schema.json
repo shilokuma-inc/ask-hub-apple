@@ -120,6 +120,24 @@
           }
         }
       }
+    },
+    "reviewInformation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "App Review の情報（appStoreReviewDetails の notes・demoAccountRequired・demoAccountName）。デモアカウントのパスワードと連絡先は持たない。直す案・人が確かめた直しでは、無い欄は変えない。notes は UTF-8 で 4,000 バイトまで（読む側で確かめる）",
+      "properties": {
+        "notes": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "demoAccountRequired": {
+          "type": "boolean"
+        },
+        "demoAccountName": {
+          "type": "string",
+          "maxLength": 255
+        }
+      }
     }
   },
   "properties": {
@@ -265,6 +283,42 @@
         }
       }
     },
+    "appReview": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "App Review の情報の案（掲載文の案と同じ Claude の下書きで書く）。current は配信中の版の App Review の情報、draft は直す案（無い欄は変えない。null なら変えない）、reason は案の理由。初めての版・App Review の情報を扱う前に書いた案は null",
+      "required": [
+        "current",
+        "reason",
+        "draftedAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "current": {
+          "$ref": "#/$defs/reviewInformation"
+        },
+        "draft": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/reviewInformation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "draftedAt": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
     "revision": {
       "type": "integer",
       "minimum": 0,
@@ -315,6 +369,10 @@
         "listing": {
           "$ref": "#/$defs/listingTexts",
           "description": "人が確かめた掲載文の直し（変える言語だけ）。無ければ掲載文を扱う前に受け付けたもの"
+        },
+        "appReview": {
+          "$ref": "#/$defs/reviewInformation",
+          "description": "人が確かめた App Review の情報の直し（無い欄は変えない）。無ければ変えない"
         }
       }
     },
