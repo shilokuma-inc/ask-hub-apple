@@ -4,8 +4,9 @@ import Foundation
 ///
 /// 司令塔が App Store Connect にアプリを見つけられない・配信中の版が無いリポジトリに作り、チェックリストの項目が終わったかを API で確かめて書く。
 /// API で確かめられない項目（App のプライバシー・DSA の申告）は、人が「終わった」を押す（`confirmAppStoreItem`）。
-/// 決まった値（価格・配信の地域・カテゴリ・コンテンツの権利・プライバシーポリシーの URL）と Bundle ID の登録は、人が値を確かめて押したときだけ
-/// 司令塔が API で書く（`applyAppStoreSettings`・`registerBundleId`）。配信中の版を見つけたら終わりの印（`releasedAt`）を付ける
+/// 決まった値（価格・配信の地域・カテゴリ・コンテンツの権利・プライバシーポリシーの URL、初めての版のサポート URL・著作権表示）と Bundle ID の登録は、
+/// 人が値を確かめて押したときだけ司令塔が API で書く（`applyAppStoreSettings`・`registerBundleId`）。版の項目（`ItemKind.isVersionItem`）は、
+/// 初めての版のリリースを始めて版の枠があるときだけ確かめる。配信中の版を見つけたら終わりの印（`releasedAt`）を付ける
 /// （`docs/renewal/release.md` の「新しいアプリを載せる」）
 public struct AppStoreSetupFile: StateFile {
     public static let formatVersion = 1
@@ -32,6 +33,12 @@ public struct AppStoreSetupFile: StateFile {
         case appPrivacy
         /// EU のデジタルサービス法（DSA）の申告。API が無い
         case digitalServicesAct
+        /// 初めての版のサポート URL（版の言語ごとの `appStoreVersionLocalizations` の `supportUrl`）
+        case supportUrl
+        /// 初めての版の著作権表示（`appStoreVersions` の `copyright`）
+        case copyright
+        /// 初めての版の App Review の連絡先（`appStoreReviewDetails` の `contactFirstName`・`contactLastName`・`contactPhone`・`contactEmail`）
+        case reviewContact
 
         /// API で終わったかを確かめられる（できないものは、人が「終わった」を押す）
         public var isVerifiable: Bool { self != .appPrivacy && self != .digitalServicesAct }
@@ -40,10 +47,16 @@ public struct AppStoreSetupFile: StateFile {
         public var isWritable: Bool { Self.settingKinds.contains(self) || self == .bundleId }
 
         /// 決まった値を書く意図（`applyAppStoreSettings`）で書く項目
-        public static let settingKinds: [Self] = [.contentRights, .category, .privacyPolicy, .price, .availability]
+        public static let settingKinds: [Self] = [.contentRights, .category, .privacyPolicy, .price, .availability, .supportUrl, .copyright]
 
         /// アプリを作るまで（TestFlight に上げるのに要る）の項目か。ほかは初めての版を審査に出すまでに要る
         public var isNeededForApp: Bool { self == .bundleId || self == .app }
+
+        /// 版の項目か。初めての版のリリースを始めて、App Store Connect に版の枠（`submissions/<版>.json` の `appStoreVersions`）が
+        /// あるときだけ確かめる（枠が無ければ、記録に持たない）
+        public var isVersionItem: Bool { Self.versionKinds.contains(self) }
+
+        public static let versionKinds: [Self] = [.supportUrl, .copyright, .reviewContact]
     }
 
     /// 項目の様子
@@ -376,6 +389,12 @@ public struct AppStoreSettings: Codable, Hashable, Sendable {
     public var privacyPolicyUrl: String?
     public var price: Price?
     public var availability: Availability?
+    /// 初めての版のサポート URL（https）。版の枠の言語のうち、まだ書かれていないものに書く
+    public var supportUrl: String?
+    /// 初めての版のマーケティング URL（https。任意）。`supportUrl` と一緒に送り、版の枠の言語のうち、まだ書かれていないものに書く
+    public var marketingUrl: String?
+    /// 初めての版の著作権表示（`2026 Shilokuma Inc.` のように、権利を得た年と持ち主）。版の枠のうち、まだ書かれていないものに書く
+    public var copyright: String?
 
     public init(
         contentRights: ContentRightsDeclaration? = nil,
@@ -383,7 +402,10 @@ public struct AppStoreSettings: Codable, Hashable, Sendable {
         primarySubcategory: String? = nil,
         privacyPolicyUrl: String? = nil,
         price: Price? = nil,
-        availability: Availability? = nil
+        availability: Availability? = nil,
+        supportUrl: String? = nil,
+        marketingUrl: String? = nil,
+        copyright: String? = nil
     ) {
         self.contentRights = contentRights
         self.primaryCategory = primaryCategory
@@ -391,12 +413,18 @@ public struct AppStoreSettings: Codable, Hashable, Sendable {
         self.privacyPolicyUrl = privacyPolicyUrl
         self.price = price
         self.availability = availability
+        self.supportUrl = supportUrl
+        self.marketingUrl = marketingUrl
+        self.copyright = copyright
     }
 
-    /// プライバシーポリシーの URL の長さの上限
+    /// URL（プライバシーポリシー・サポート・マーケティング）の長さの上限
     public static let urlLimit = 512
 
-    /// 書く項目（チェックリストの項目）
+    /// 著作権表示の長さの上限
+    public static let copyrightLimit = 200
+
+    /// 書く項目（チェックリストの項目）。マーケティング URL は任意なので項目を持たず、サポート URL と一緒に書く
     public var items: [AppStoreSetupFile.ItemKind] {
         var items: [AppStoreSetupFile.ItemKind] = []
         if contentRights != nil { items.append(.contentRights) }
@@ -404,10 +432,12 @@ public struct AppStoreSettings: Codable, Hashable, Sendable {
         if privacyPolicyUrl != nil { items.append(.privacyPolicy) }
         if price != nil { items.append(.price) }
         if availability != nil { items.append(.availability) }
+        if supportUrl != nil { items.append(.supportUrl) }
+        if copyright != nil { items.append(.copyright) }
         return items
     }
 
-    /// 合わない点（何も書かない・カテゴリの形・URL の形）
+    /// 合わない点（何も書かない・カテゴリの形・URL の形・著作権表示の形）
     public var problems: [String] {
         var problems: [String] = []
         if items.isEmpty { problems.append("書く値が 1 つも無い") }
@@ -417,7 +447,23 @@ public struct AppStoreSettings: Codable, Hashable, Sendable {
             if primaryCategory == nil { problems.append("primarySubcategory は primaryCategory と一緒に送る") }
         }
         if let privacyPolicyUrl, !Self.isURL(privacyPolicyUrl) { problems.append("privacyPolicyUrl が https の URL でない") }
+        if let supportUrl, !Self.isURL(supportUrl) { problems.append("supportUrl が https の URL でない") }
+        if let marketingUrl {
+            if !Self.isURL(marketingUrl) { problems.append("marketingUrl が https の URL でない") }
+            if supportUrl == nil { problems.append("marketingUrl は supportUrl と一緒に送る") }
+        }
+        if let copyright, !Self.isCopyright(copyright) {
+            problems.append("copyright が空か、改行を含むか、\(Self.copyrightLimit) 文字を超えている")
+        }
         return problems
+    }
+
+    /// 著作権表示の形（前後に空白が無く、改行・制御文字を含まず、`copyrightLimit` 文字まで）
+    public static func isCopyright(_ text: String) -> Bool {
+        let forbidden = CharacterSet.newlines.union(.controlCharacters)
+        return (1...copyrightLimit).contains(text.unicodeScalars.count)
+            && text.trimmingCharacters(in: .whitespaces) == text
+            && !text.unicodeScalars.contains(where: forbidden.contains)
     }
 
     /// App Store Connect のカテゴリの id の形（英大文字・数字・`_`）

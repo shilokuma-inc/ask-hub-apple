@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/app-store.schema.json",
   "title": "repos/<owner>/<repo>/app-store.json（新しいアプリを App Store に載せる準備）",
-  "description": "司令塔だけが書く。App Store Connect にアプリが無い・配信中の版が無いリポジトリに作り、チェックリストの項目が終わったかを API で確かめて items に書く。API で確かめられない項目は、人が confirmAppStoreItem を押すと confirmed が付く。決まった値と Bundle ID の登録は、人が押した（applyAppStoreSettings・registerBundleId）ときだけ司令塔が書き、結果を settingsRequest・bundleIdRequest に書く。配信中の版を見つけたら releasedAt を付ける。欄どうしの決まり（項目を重ねない・app は人の終わったを持たない・failures は送り終えたときだけ・決まった値の形 など）は読む側で確かめる",
+  "description": "司令塔だけが書く。App Store Connect にアプリが無い・配信中の版が無いリポジトリに作り、チェックリストの項目が終わったかを API で確かめて items に書く。API で確かめられない項目は、人が confirmAppStoreItem を押すと confirmed が付く。決まった値（初めての版のサポート URL・著作権表示を含む）と Bundle ID の登録は、人が押した（applyAppStoreSettings・registerBundleId）ときだけ司令塔が書き、結果を settingsRequest・bundleIdRequest に書く。配信中の版を見つけたら releasedAt を付ける。欄どうしの決まり（項目を重ねない・app は人の終わったを持たない・failures は送り終えたときだけ・決まった値の形 など）は読む側で確かめる",
   "type": "object",
   "required": [
     "v",
@@ -31,9 +31,12 @@
         "availability",
         "ageRating",
         "appPrivacy",
-        "digitalServicesAct"
+        "digitalServicesAct",
+        "supportUrl",
+        "copyright",
+        "reviewContact"
       ],
-      "description": "チェックリストの項目。appPrivacy・digitalServicesAct は API で確かめられない"
+      "description": "チェックリストの項目。appPrivacy・digitalServicesAct は API で確かめられない。supportUrl・copyright・reviewContact は初めての版の項目で、版の枠があるときだけ持つ"
     },
     "approval": {
       "type": "object",
@@ -78,7 +81,7 @@
     },
     "settings": {
       "type": "object",
-      "description": "決まった値（applyAppStoreSettings の payload と同じ形）。書く欄だけを持ち、1 つ以上持つ。primarySubcategory は primaryCategory と一緒に持つ",
+      "description": "決まった値（applyAppStoreSettings の payload と同じ形）。書く欄だけを持ち、1 つ以上持つ（marketingUrl だけでは足りない）。primarySubcategory は primaryCategory と、marketingUrl は supportUrl と一緒に持つ",
       "additionalProperties": false,
       "properties": {
         "contentRights": {
@@ -107,6 +110,28 @@
           "enum": [
             "allTerritories"
           ]
+        },
+        "supportUrl": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$",
+          "maxLength": 512,
+          "description": "初めての版のサポート URL（版の枠の言語のうち、まだ書いていないものに書く）"
+        },
+        "marketingUrl": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$",
+          "maxLength": 512,
+          "description": "初めての版のマーケティング URL（任意。supportUrl と一緒に送る）"
+        },
+        "copyright": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^\\S(.*\\S)?$",
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]"
+          },
+          "description": "初めての版の著作権表示（権利を得た年と持ち主。2026 Shilokuma Inc. など）。前後に空白を置かず、改行を含まない"
         }
       },
       "allOf": [
@@ -136,6 +161,16 @@
               "required": [
                 "availability"
               ]
+            },
+            {
+              "required": [
+                "supportUrl"
+              ]
+            },
+            {
+              "required": [
+                "copyright"
+              ]
             }
           ]
         },
@@ -151,6 +186,22 @@
             {
               "required": [
                 "primaryCategory"
+              ]
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "not": {
+                "required": [
+                  "marketingUrl"
+                ]
+              }
+            },
+            {
+              "required": [
+                "supportUrl"
               ]
             }
           ]
