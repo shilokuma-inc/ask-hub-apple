@@ -75,7 +75,21 @@ extension DemoData {
         )
         submission.awaitsSubmission = true
         submission.canAbandon = true
-        return [submission]
+        // おこづかい帳の初めての版。App Store の準備の残り（初めての版の項目を含む）を、あなたの番に出す
+        var first = Submission(
+            repositoryID: Self.repositoryID("pocket-budget-ios"),
+            version: "1.0.0",
+            startedInAskHub: true,
+            branch: "release/1.0.0",
+            nextVersion: .init(version: "1.1.0", state: .merged, pullRequest: 12),
+            drafts: [],
+            revision: 1,
+            slots: [.init(platform: "iOS")],
+            createdAt: ago(minutes: 60),
+            updatedAt: ago(minutes: 30)
+        )
+        first.canAbandon = true
+        return [submission, first]
     }
 
     /// レシピ帳の掲載文の案（人数に合わせた分量の計算を、日本語の説明文とキーワード・英語のキーワードに入れる）
@@ -102,7 +116,7 @@ extension DemoData {
     )
 
     /// App Store に載せる準備。家事シェアは App Store Connect にアプリがまだ無く（あなたの番に出る）、
-    /// おこづかい帳はアプリを作った後で、初めての版に要る設定が残っている（リリースを始めるまでは、あなたの番に出さない）
+    /// おこづかい帳はアプリを作り、初めての版（1.0.0）のリリースを始めて、初めての版に要る設定が残っている（あなたの番に出る）
     func appStoreSetups() -> [AppStoreSetup] {
         [
             AppStoreSetup(
@@ -136,7 +150,10 @@ extension DemoData {
                     .init(kind: .availability, state: .todo, confirmed: false),
                     .init(kind: .ageRating, state: .todo, note: "答えていない質問が 6 個ある", confirmed: false),
                     .init(kind: .appPrivacy, state: .unknown, note: "API が無い。「App のプライバシー」で答えて公開する", confirmed: false),
-                    .init(kind: .digitalServicesAct, state: .unknown, note: "API が無い。「App 情報」で DSA の申告をする", confirmed: true)
+                    .init(kind: .digitalServicesAct, state: .unknown, note: "API が無い。「App 情報」で DSA の申告をする", confirmed: true),
+                    .init(kind: .supportUrl, state: .todo, note: "まだ書いていない言語: ja・en-US", confirmed: false),
+                    .init(kind: .copyright, state: .todo, confirmed: false),
+                    .init(kind: .reviewContact, state: .todo, note: "まだ入れていない欄: 電話番号", confirmed: false)
                 ],
                 isExcluded: false,
                 updatedAt: ago(minutes: 90)
