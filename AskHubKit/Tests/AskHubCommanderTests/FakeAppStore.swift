@@ -27,6 +27,8 @@ final class FakeAppStore: AppStoreConnecting {
         var bundleIDRefusal: AppStoreConnectError?
         /// アプリの準備の様子（書き込むと変わる）
         var setup = AppStoreSetupState()
+        /// 版の枠ごとの、初めての版の項目の様子（書き込むと変わる）
+        var versionSetups: [String: AppStoreVersionSetupState] = [:]
     }
 
     let keyID = "ABCDE12345"
@@ -204,5 +206,25 @@ final class FakeAppStore: AppStoreConnecting {
     func setAvailableEverywhere(of appID: String) async throws(AppStoreConnectError) {
         try write("setAvailableEverywhere")
         state.withLock { $0.setup.hasAvailability = true }
+    }
+
+    func versionSetupState(of versionID: String) async throws(AppStoreConnectError) -> AppStoreVersionSetupState {
+        state.withLock { $0.versionSetups[versionID] ?? AppStoreVersionSetupState(missingReviewContact: ReviewContactField.allCases) }
+    }
+
+    func setCopyright(_ text: String, versionID: String) async throws(AppStoreConnectError) {
+        try write("setCopyright \(versionID) \(text)")
+        state.withLock { $0.versionSetups[versionID, default: .init()].copyright = text }
+    }
+
+    func setVersionURLs(support: String?, marketing: String?, localizationID: String) async throws(AppStoreConnectError) {
+        try write("setVersionURLs \(localizationID) \(support ?? "-") \(marketing ?? "-")")
+        state.withLock { state in
+            for (versionID, setup) in state.versionSetups {
+                guard let index = setup.localizations.firstIndex(where: { $0.id == localizationID }) else { continue }
+                if let support { state.versionSetups[versionID]?.localizations[index].supportUrl = support }
+                if let marketing { state.versionSetups[versionID]?.localizations[index].marketingUrl = marketing }
+            }
+        }
     }
 }
