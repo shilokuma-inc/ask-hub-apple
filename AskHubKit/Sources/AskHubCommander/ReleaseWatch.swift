@@ -12,7 +12,7 @@ public actor ReleaseWatch {
     nonisolated let context: CommanderContext
     /// App Store Connect（Apple のチームごとの API キー）。空なら配信を見つけない（後作業だけ進める）。
     /// 書き込み（審査に出す・取り下げ・配信）は、人の意図を受け付けたときだけ使う
-    nonisolated let stores: [any AppStoreConnectSubmitting]
+    nonisolated let stores: [any AppStoreConnecting]
     nonisolated let sources: any ReleaseSourceReading
     nonisolated let hosting: any ReleaseHosting
     nonisolated let drafter: any ReleaseNotesDrafting
@@ -26,6 +26,8 @@ public actor ReleaseWatch {
     var detectedAt: [RepositoryFullName: Date] = [:]
     /// 見つけたアプリと、それを読める鍵（`stores` の番号）。起動し直したら探し直す
     var apps: [RepositoryFullName: (store: Int, app: AppStoreApp)] = [:]
+    /// 最後に読んだ、リポジトリの base のビルドの設定の Bundle ID（App Store に載せる準備の記録に書く）
+    var bundleIdentifiers: [RepositoryFullName: [String]] = [:]
     /// ログに出した知らせ（同じものを見回りのたびに出さない）
     private var reported: Set<String> = []
     private var running = false
@@ -36,7 +38,7 @@ public actor ReleaseWatch {
 
     public init(
         context: CommanderContext,
-        stores: [any AppStoreConnectSubmitting],
+        stores: [any AppStoreConnecting],
         sources: any ReleaseSourceReading,
         hosting: any ReleaseHosting,
         drafter: any ReleaseNotesDrafting,
@@ -105,8 +107,14 @@ public actor ReleaseWatch {
             }
             waiting += await advanceAll(repo, settings: file).flatMap(Blocker.waiting(on:))
             let now = context.now()
-            waiting += await advanceSubmissions(repo, settings: file).flatMap { submission in
+            let submissions = await advanceSubmissions(repo, settings: file)
+            waiting += submissions.flatMap { submission in
                 Blocker.waiting(on: submission) + Blocker.reviewNotices(on: submission, now: now) + Blocker.keptSlots(on: submission)
+            }
+            if let setup = await advanceSetup(repo, settings: file) {
+                // 配信中の版が無いアプリで始めたリリース（準備の記録があるのは、配信中の版が無いアプリだけ）
+                let firstRelease = submissions.first { !$0.isEnded }?.version
+                waiting += Blocker.waiting(on: setup, firstRelease: firstRelease)
             }
         }
         blockers = waiting
@@ -123,10 +131,16 @@ public actor ReleaseWatch {
     /// App Store Connect で版を読み、配信中の版の記録を作る（あれば、見つけたプラットフォームを足す）
     func detect(_ repo: RepositoryFullName, settings: RepositoryFile) async {
         do {
-            guard let found = try await app(of: repo, base: settings.build?.baseBranch) else { return }
+            guard let found = try await app(of: repo, base: settings.build?.baseBranch) else {
+                // App Store Connect にアプリが無い。アプリを作る準備を確かめる
+                await checkSetup(repo, found: nil, live: false)
+                return
+            }
             let versions = try await stores[found.store].versions(of: found.app.id)
             // 審査の状態を、リリースを始めた版の記録に書く（審査中・承認・リジェクト・配信の知らせのもと）
             await trackReview(repo, versions: versions)
+            // 配信中の版が無ければ、初めての版の準備を確かめる（配信したら終わりの印を付ける）
+            await checkSetup(repo, found: found, live: !Self.live(versions).isEmpty)
             for live in Self.live(versions) {
                 guard let build = live.build else {
                     report("\(repo) の \(live.platform.rawValue) \(live.version) は配信中だが、ビルドを読めない。次に読むときにやり直す")
@@ -158,6 +172,7 @@ public actor ReleaseWatch {
     func app(of repo: RepositoryFullName, base: String?) async throws -> (store: Int, app: AppStoreApp)? {
         if let found = apps[repo] { return found }
         let bundleIDs = try await sources.bundleIdentifiers(repo, base: base)
+        bundleIdentifiers[repo] = bundleIDs
         guard !bundleIDs.isEmpty else {
             report("\(repo) のビルドの設定に Bundle ID が見つからない。配信を見つけられない")
             return nil
