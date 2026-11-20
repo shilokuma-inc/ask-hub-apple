@@ -18,6 +18,7 @@ struct AppStoreSubmission: Sendable {
         if let sent = mine.first(where: { $0.state.isInFlight }) { return sent.state }
         let target = try await prepareVersion(build, mine: mine, versions: versions)
         try await writeTexts(of: target)
+        try await writeReview(of: target)
         return try await sendForReview(target)
     }
 
@@ -69,6 +70,22 @@ struct AppStoreSubmission: Sendable {
             }
             guard !update.isEmpty else { continue }
             try await call { () throws(AppStoreConnectError) in try await store.updateListing(localization.id, update) }
+        }
+    }
+
+    /// 人が確かめた App Review の情報の直しを書く（今と同じ欄は書かない。無ければ作る）。パスワードは扱わない
+    private func writeReview(of target: AppStoreVersionInfo) async throws {
+        guard let change = request.appReview, !change.isEmpty else { return }
+        let detail = try await call { () throws(AppStoreConnectError) in try await store.reviewDetail(of: target.id) }
+        var update = change
+        if let current = detail?.information {
+            if update.notes == current.notes { update.notes = nil }
+            if update.demoAccountRequired == current.demoAccountRequired { update.demoAccountRequired = nil }
+            if update.demoAccountName == current.demoAccountName { update.demoAccountName = nil }
+        }
+        guard !update.isEmpty else { return }
+        try await call { () throws(AppStoreConnectError) in
+            try await store.writeReviewDetail(detail?.id, versionID: target.id, update)
         }
     }
 

@@ -171,6 +171,8 @@ extension ReleaseWatch {
         guard let drafter = listing else {
             throw ReleaseStepProblem("掲載文の案を書く仕組みが司令塔に無い", needsHuman: true)
         }
+        // App Review の情報（パスワードと連絡先は読まない）。まだ無ければ、空の今の情報として案を書く
+        let review = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.reviewDetail(of: live.id) }
         let (changes, epics) = try await changeMaterial(file, upTo: branch.commit)
         let material = ListingMaterial(
             repo: file.repo,
@@ -179,7 +181,8 @@ extension ReleaseWatch {
             commit: branch.commit,
             changes: changes,
             epics: epics,
-            current: current
+            current: current,
+            review: review?.information
         )
         let proposal: ListingProposal
         do {
@@ -190,6 +193,12 @@ extension ReleaseWatch {
         let locales = proposal.drafts.map(\.locale)
         log("\(file.repo) の \(file.version) の掲載文の案を書いた（\(locales.isEmpty ? "変えない" : locales.joined(separator: "・"))）")
         file.listing = .init(current: current, drafts: proposal.drafts, reason: proposal.reason, draftedAt: context.timestamp)
+        file.appReview = .init(
+            current: review?.information ?? ReviewInformation(),
+            draft: proposal.review,
+            reason: proposal.reviewReason.flatMap { $0.isEmpty ? nil : $0 } ?? "審査する人に伝えることは変わらないので、変えません",
+            draftedAt: context.timestamp
+        )
         return file
     }
 
@@ -371,6 +380,7 @@ extension ReleaseWatch {
         case .listing:
             guard file.listing == nil, file.submit == nil, let listing = changed.listing else { return }
             file.listing = listing
+            file.appReview = changed.appReview
         case .builds:
             guard file.submit == nil, file.builds != changed.builds else { return }
             file.builds = changed.builds

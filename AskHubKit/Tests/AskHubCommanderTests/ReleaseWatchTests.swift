@@ -205,7 +205,13 @@ final class FakeListingDrafter: ListingDrafting {
         materials.withLock { $0.append(material) }
         if let proposal = proposal.withLock({ $0 }) { return proposal }
         let keywords = (material.current.first { $0.locale == "ja" }?.keywords).map { $0 + ",ウィジェット" } ?? "ウィジェット"
-        return ListingProposal(drafts: [ListingText(locale: "ja", keywords: keywords)], reason: "ウィジェットを足したので、キーワードに入れる案です")
+        let notes = (material.review?.notes ?? "") + "ウィジェットはホーム画面の長押しから足せます。"
+        return ListingProposal(
+            drafts: [ListingText(locale: "ja", keywords: keywords)],
+            reason: "ウィジェットを足したので、キーワードに入れる案です",
+            review: ReviewInformation(notes: notes),
+            reviewReason: "ウィジェットの足し方を審査の人に伝える案です"
+        )
     }
 }
 

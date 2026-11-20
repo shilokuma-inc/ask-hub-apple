@@ -11,7 +11,8 @@ extension SubmissionHandlersTests {
         revision: String = "2",
         releaseType: String = "afterApproval",
         locales: [String] = ["ja"],
-        listing: [ListingText] = []
+        listing: [ListingText] = [],
+        appReview: ReviewInformation? = nil
     ) -> IntentEnvelope {
         IntentEnvelope(
             kind: SubmitForReviewIntent.kind,
@@ -23,7 +24,8 @@ extension SubmissionHandlersTests {
                 whatsNew: locales.map { LocalizedText(locale: $0, text: "・\($0) を直した") },
                 releaseType: AppStoreReleaseType(rawValue: releaseType)!,
                 earliestReleaseDate: nil,
-                listing: listing
+                listing: listing,
+                appReview: appReview
             ),
             issuedAt: Timestamp(ReleaseWatchTests.now),
             nonce: ULID(rawValue: "01JCN0NCE00000000000000005")!,
@@ -61,6 +63,19 @@ extension SubmissionHandlersTests {
         #expect(submit.listing?.isEmpty == true)
         // やり直しは受け付ける
         #expect(try await handler.handle(submitEnvelope(releaseType: "manual"), in: context) == .accept)
+    }
+
+    @Test func refusesAppReviewWithoutDraft() async throws {
+        var file = Self.prepared()
+        file.appReview = nil
+        try await put(file)
+        let handler = SubmitForReviewHandler()
+        let withReview = submitEnvelope(appReview: ReviewInformation(notes: "メモ"))
+        #expect(try await handler.handle(withReview, in: context) != .accept)
+        file.appReview = .init(current: ReviewInformation(), draft: nil, reason: "変えない", draftedAt: file.createdAt)
+        try await put(file)
+        #expect(try await handler.handle(withReview, in: context) == .accept)
+        #expect(try await self.file()?.submit?.appReview == ReviewInformation(notes: "メモ"))
     }
 
     @Test func recordsListingOnlyForLiveLocales() async throws {
@@ -114,7 +129,11 @@ extension ReleaseWatchTests {
         AppStoreVersionInfo(id: "v-1-2-0", platform: .iOS, versionString: "1.2.0", state: state)
     }
 
-    func readyToSubmit(releaseType: AppStoreReleaseType = .afterApproval, listing: [ListingText] = []) async throws -> SubmissionFile {
+    func readyToSubmit(
+        releaseType: AppStoreReleaseType = .afterApproval,
+        listing: [ListingText] = [],
+        appReview: ReviewInformation? = nil
+    ) async throws -> SubmissionFile {
         try await startRelease()
         hosting.state.withLock { $0.branches["release/1.2.0"] = Self.developHead }
         var file = SubmissionHandlersTests.prepared()
@@ -127,7 +146,8 @@ extension ReleaseWatchTests {
             builds: [.init(platform: .iOS, build: "45")],
             whatsNew: [.init(locale: "ja", text: "・速くなりました"), .init(locale: "en-US", text: "- Faster")],
             releaseType: releaseType,
-            listing: listing
+            listing: listing,
+            appReview: appReview
         )
         try await putSubmission(file)
         appStore.state.withLock { state in
@@ -144,6 +164,25 @@ extension ReleaseWatchTests {
             ]
         }
         return file
+    }
+
+    @Test func writesAppReviewWithoutPassword() async throws {
+        // 今のメモと同じ欄は書かず、デモアカウントの要否と名前だけ書く（パスワードは扱わない）
+        let change = ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: true, demoAccountName: "review@example.com")
+        _ = try await readyToSubmit(appReview: change)
+        appStore.state.withLock { state in
+            state.reviewDetails["v-1-2-0"] = AppStoreReviewDetail(id: "r-1", information: ReviewInformation(notes: "ログインは不要です。"))
+        }
+        await watch().refresh()
+        let writes = appStore.state.withLock { $0.writes }
+        #expect(writes.contains("writeReviewDetail r-1 demoAccountRequired=true demoAccountName=review@example.com"))
+        #expect(writes.firstIndex { $0.hasPrefix("writeReviewDetail") }! < writes.firstIndex { $0.hasPrefix("submitReviewSubmission") }!)
+    }
+
+    @Test func createsAppReviewWhenMissing() async throws {
+        _ = try await readyToSubmit(appReview: ReviewInformation(notes: "ウィジェットはホーム画面の長押しから足せます。"))
+        await watch().refresh()
+        #expect(appStore.state.withLock { $0.writes }.contains("writeReviewDetail new:v-1-2-0 notes=ウィジェットはホーム画面の長押しから足せます。"))
     }
 
     @Test func writesOnlyChangedListingFields() async throws {
