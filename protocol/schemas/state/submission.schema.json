@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/submission.schema.json",
   "title": "repos/<owner>/<repo>/submissions/<版>.json（リリースを始めた版の準備と審査）",
-  "description": "司令塔だけが書く。人が startRelease を押したときに作り（origin が askhub）、release ブランチ・develop の版を上げる PR・What's New の下書き・release ブランチから上げたビルドを足す。人が submitForReview（targetVersion は revision）を押すと司令塔が App Store Connect に出し、審査の状態をプラットフォームごとに review に書く。App Store Connect の Web で手で出した版を見つけたときも作る（origin が appStoreConnect。準備の欄を持たない）。配信を見つけたら end を付ける。欄どうしの決まり（origin ごとの欄・branch の name が release/<版>・次の版は始めた版より大きい・earliestReleaseDate は scheduled のときだけ・end の approval は abandoned のときだけ・言語とプラットフォームを重ねない など）は読む側で確かめる",
+  "description": "司令塔だけが書く。人が startRelease を押したときに作り（origin が askhub）、release ブランチ・develop の版を上げる PR・What's New の下書き・掲載文の案・release ブランチから上げたビルドを足す。人が submitForReview（targetVersion は revision）を押すと司令塔が App Store Connect に出し、審査の状態をプラットフォームごとに review に書く。App Store Connect の Web で手で出した版を見つけたときも作る（origin が appStoreConnect。準備の欄を持たない）。配信を見つけたら end を付ける。欄どうしの決まり（origin ごとの欄・branch の name が release/<版>・次の版は始めた版より大きい・earliestReleaseDate は scheduled のときだけ・end の approval は abandoned のときだけ・言語とプラットフォームを重ねない など）は読む側で確かめる",
   "type": "object",
   "required": [
     "v",
@@ -55,6 +55,69 @@
         },
         "build": {
           "$ref": "release.schema.json#/$defs/buildNumber"
+        }
+      }
+    },
+    "listingTexts": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "言語ごとの掲載文（appStoreVersionLocalizations の description・keywords・promotionalText）。直す案・人が確かめた直しでは、無い欄は変えない（変える欄の無い言語は置かない）。言語を重ねない・空白だけの文・長さ（キーワードは UTF-8 で 100 バイトまで、ほかはコードポイントで数える）は読む側で確かめる",
+      "items": {
+        "type": "object",
+        "required": [
+          "locale"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "locale": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
+            "maxLength": 21,
+            "description": "App Store Connect の言語（ja・en-US・zh-Hans など）"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "keywords": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "promotionalText": {
+            "type": "string",
+            "maxLength": 170
+          }
+        }
+      }
+    },
+    "currentListingTexts": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "配信中の版の掲載文（App Store Connect から読んだもの。長さは確かめない）。無い欄は App Store Connect で空",
+      "items": {
+        "type": "object",
+        "required": [
+          "locale"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "locale": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
+            "maxLength": 21,
+            "description": "App Store Connect の言語（ja・en-US・zh-Hans など）"
+          },
+          "description": {
+            "type": "string"
+          },
+          "keywords": {
+            "type": "string"
+          },
+          "promotionalText": {
+            "type": "string"
+          }
         }
       }
     }
@@ -172,10 +235,40 @@
         }
       }
     },
+    "listing": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "掲載文の案（Claude が、配信中の版の掲載文と前に配信した版からの変更をもとに、言語ごとに書いたもの）。current は配信中の版の掲載文（空なら初めての版で、案を書かない）、drafts は直す案（変える言語だけ。空なら変えない。言語は current にあるものだけ）、reason は案の理由（変えないなら、その理由）",
+      "required": [
+        "current",
+        "drafts",
+        "reason",
+        "draftedAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "current": {
+          "$ref": "#/$defs/currentListingTexts"
+        },
+        "drafts": {
+          "$ref": "#/$defs/listingTexts"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "draftedAt": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
     "revision": {
       "type": "integer",
       "minimum": 0,
-      "description": "ビルドか What's New の下書きが変わるたびに上げる。submitForReview の targetVersion"
+      "description": "ビルド・What's New の下書き・掲載文の案が変わるたびに上げる。submitForReview の targetVersion"
     },
     "submit": {
       "type": [
@@ -218,6 +311,10 @@
         },
         "earliestReleaseDate": {
           "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "listing": {
+          "$ref": "#/$defs/listingTexts",
+          "description": "人が確かめた掲載文の直し（変える言語だけ）。無ければ掲載文を扱う前に受け付けたもの"
         }
       }
     },
@@ -490,7 +587,8 @@
             "withdraw",
             "review",
             "integration",
-            "appStoreVersion"
+            "appStoreVersion",
+            "listing"
           ]
         },
         "message": {

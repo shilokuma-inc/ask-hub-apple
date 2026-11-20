@@ -46,6 +46,9 @@ struct RouteDestination: View {
             case let .submission(repositoryID, version):
                 SubmissionDetailView(repositoryID: repositoryID, version: version)
 
+            case .appStoreSetup(let repositoryID):
+                AppStoreSetupView(repositoryID: repositoryID)
+
             case .finishedEpics:
                 FinishedEpicListView()
             }

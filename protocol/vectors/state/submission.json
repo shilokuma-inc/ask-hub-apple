@@ -1054,6 +1054,327 @@
       "read": "valid"
     },
     {
+      "name": "with-listing",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 3,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "listing-unchanged",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 3,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [],
+          "reason": "使う人に見える変更が無いので、掲載文は変えません",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "listing-first-release",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 3,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [],
+          "drafts": [],
+          "reason": "初めての版なので、掲載文は App Store Connect で書きます",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "submitting-with-listing",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 3,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "submit": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000002"
+          },
+          "at": "2026-11-20T02:00:00Z",
+          "builds": [
+            {
+              "platform": "iOS",
+              "build": "20261120.11000"
+            }
+          ],
+          "whatsNew": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "releaseType": "afterApproval",
+          "listing": [
+            {
+              "locale": "ja",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": ""
+            }
+          ]
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "unknown-field",
       "value": {
         "v": 1,
@@ -2450,6 +2771,838 @@
         "appStoreVersions": []
       },
       "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-draft-unknown-locale",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            },
+            {
+              "locale": "fr",
+              "keywords": "premier"
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-draft-without-fields",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US"
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "blank-listing-description",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "   ",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-keywords-too-long",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-keywords-over-100-bytes",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "素数素数素数素数素数素数素数素数素数素数素数素数素数素数素数素数素数素数素数素数"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-without-reason",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            }
+          ],
+          "reason": "",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-duplicate-current-locale",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            },
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-unknown-field",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "素数,クイズ,算数,タイムアタック",
+              "subtitle": "素数クイズ"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "listing-on-app-store-connect-record",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.2.0",
+        "origin": "appStoreConnect",
+        "builds": [],
+        "revision": 0,
+        "review": [
+          {
+            "platform": "iOS",
+            "state": "inReview",
+            "since": "2026-11-20T05:00:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T04:30:00Z",
+        "updatedAt": "2026-11-20T05:00:00Z",
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "submit-listing-too-long",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 3,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "submit": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000002"
+          },
+          "at": "2026-11-20T02:00:00Z",
+          "builds": [
+            {
+              "platform": "iOS",
+              "build": "20261120.11000"
+            }
+          ],
+          "whatsNew": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "releaseType": "afterApproval",
+          "listing": [
+            {
+              "locale": "ja",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        },
+        "listing": {
+          "current": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。",
+              "keywords": "素数,クイズ,算数",
+              "promotionalText": "毎日の脳トレに。"
+            },
+            {
+              "locale": "en-US",
+              "description": "A quick quiz to spot prime numbers.",
+              "keywords": "prime,quiz,math"
+            }
+          ],
+          "drafts": [
+            {
+              "locale": "ja",
+              "description": "素数をすばやく見分けるクイズです。タイムアタックで記録に挑戦できます。",
+              "keywords": "素数,クイズ,算数,タイムアタック"
+            },
+            {
+              "locale": "en-US",
+              "promotionalText": "Try the new time attack mode."
+            }
+          ],
+          "reason": "タイムアタックを足したので、説明文とキーワード・英語のプロモーションテキストに入れる案です",
+          "draftedAt": "2026-11-20T01:21:00Z"
+        }
+      },
+      "schemaValid": false,
       "read": "malformed"
     }
   ]

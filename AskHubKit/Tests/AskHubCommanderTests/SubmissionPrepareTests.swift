@@ -145,8 +145,18 @@ extension ReleaseWatchTests {
         live()
         appStore.state.withLock { state in
             state.localizations["live-0"] = [
-                AppStoreLocalization(id: "l-ja", locale: "ja", whatsNew: nil),
-                AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: nil)
+                AppStoreLocalization(
+                    id: "l-ja",
+                    locale: "ja",
+                    whatsNew: nil,
+                    listing: .init(locale: "ja", description: "推しの予定を数えるアプリ", keywords: "推し活,カウントダウン")
+                ),
+                AppStoreLocalization(
+                    id: "l-en",
+                    locale: "en-US",
+                    whatsNew: nil,
+                    listing: .init(locale: "en-US", description: "Count down to your oshi events", promotionalText: "New!")
+                )
             ]
         }
     }
@@ -189,8 +199,14 @@ extension ReleaseWatchTests {
         #expect(file.whatsNew?.drafts.map(\.locale) == ["ja", "en-US"])
         let material = try #require(whatsNewDrafter.materials.withLock { $0.first })
         #expect(material.commit == Self.developHead && material.locales == ["ja", "en-US"])
+        // 配信中の版の掲載文をもとに、直す案を書く（今の文も残す）
+        #expect(file.listing?.current.map(\.locale) == ["ja", "en-US"])
+        #expect(file.listing?.current.last?.promotionalText == "New!")
+        #expect(file.listing?.drafts == [.init(locale: "ja", keywords: "推し活,カウントダウン,ウィジェット")])
+        let listingMaterial = try #require(listingDrafter.materials.withLock { $0.first })
+        #expect(listingMaterial.commit == Self.developHead && listingMaterial.current.first?.keywords == "推し活,カウントダウン")
         // ビルドがまだ無いので、人の番にしない
-        #expect(file.builds.isEmpty && file.revision == 1 && !file.awaitsSubmission)
+        #expect(file.builds.isEmpty && file.revision == 2 && !file.awaitsSubmission)
         #expect(await submissionBlockers(watch).isEmpty)
         // App Store Connect には書かない
         #expect(appStore.state.withLock { $0.writes }.isEmpty)
@@ -215,16 +231,16 @@ extension ReleaseWatchTests {
         await watch.refresh()
         let file = try await submission()
         #expect(file.builds.map(\.build) == ["46", "45"])
-        #expect(file.revision == 2 && file.awaitsSubmission)
+        #expect(file.revision == 3 && file.awaitsSubmission)
         let blockers = await submissionBlockers(watch)
         #expect(blockers.map(\.reason) == [.submissionReady])
-        #expect(blockers.first?.key == "submission/shariverse/oshikatsu-countdown-ios/1.2.0/ready/2")
+        #expect(blockers.first?.key == "submission/shariverse/oshikatsu-countdown-ios/1.2.0/ready/3")
         #expect(blockers.first?.scope == .submission(Self.repo, Self.next))
 
         // 同じビルドなら、版を上げない
         clock.advance(minutes: 10)
         await watch.refresh()
-        #expect(try await submission().revision == 2)
+        #expect(try await submission().revision == 3)
     }
 
     @Test func doesNotDraftWhatsNewForTheFirstVersion() async throws {
@@ -234,6 +250,36 @@ extension ReleaseWatchTests {
         let file = try await submission()
         #expect(file.whatsNew?.drafts.isEmpty == true)
         #expect(whatsNewDrafter.materials.withLock { $0 }.isEmpty)
+        // 掲載文も案を書かない（App Store Connect で書く）
+        #expect(file.listing?.current.isEmpty == true && file.listing?.drafts.isEmpty == true)
+        #expect(listingDrafter.materials.withLock { $0 }.isEmpty)
+    }
+
+    @Test func keepsListingWhenNothingToChange() async throws {
+        try await startRelease()
+        listingDrafter.proposal.withLock { $0 = ListingProposal(drafts: [], reason: "使う人に見える変更が無いので変えません") }
+        await watch().refresh()
+        let listing = try #require(try await submission().listing)
+        #expect(listing.drafts.isEmpty && listing.reason == "使う人に見える変更が無いので変えません")
+        #expect(listing.current.count == 2)
+    }
+
+    @Test func doesNotDraftListingAfterSubmission() async throws {
+        try await startRelease()
+        var file = SubmissionHandlersTests.started()
+        file.branch = .init(name: "release/1.2.0", commit: Self.developHead, created: true, at: file.createdAt)
+        file.whatsNew = .init(drafts: [.init(locale: "ja", text: "・下書き")], draftedAt: file.createdAt)
+        file.submit = .init(
+            approval: file.start!.approval,
+            at: file.createdAt,
+            builds: [.init(platform: .iOS, build: "45")],
+            whatsNew: [.init(locale: "ja", text: "・下書き")],
+            releaseType: .afterApproval
+        )
+        await store.put(StatePath.submission(Self.repo, Self.next), data: try StateFileCoder.encode(file))
+        await watch().refresh()
+        #expect(try await submission().listing == nil)
+        #expect(listingDrafter.materials.withLock { $0 }.isEmpty)
     }
 
     @Test func asksHumanToAnswerExportCompliance() async throws {

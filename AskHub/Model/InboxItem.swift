@@ -53,6 +53,8 @@ struct InboxItem: Identifiable, Hashable {
         case submissionProblem
         /// 審査で断られた（リジェクト）
         case submissionRejected
+        /// 新しいアプリを App Store に載せる準備（アプリを作る・初めての版の残り・書けなかった項目）
+        case appStoreSetup
     }
 }
 
@@ -81,6 +83,7 @@ enum InboxBuilder {
         items += snapshot.macs.compactMap(cleanupItem)
         items += snapshot.releases.flatMap { releaseItems($0, snapshot: snapshot) }
         items += snapshot.submissions.flatMap { submissionItems($0, snapshot: snapshot) }
+        items += snapshot.appStoreSetups.flatMap { appStoreSetupItems($0, snapshot: snapshot) }
         return items.sorted { lhs, rhs in
             if lhs.urgency != rhs.urgency {
                 return lhs.urgency == .blocking
@@ -384,7 +387,7 @@ extension InboxItem {
             return epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
 
         case .macOffline, .token, .claudeVersion, .compatibility, .cleanup, .releaseNotes, .releaseProblem, .submissionReady,
-             .submissionDistribution, .submissionProblem, .submissionRejected:
+             .submissionDistribution, .submissionProblem, .submissionRejected, .appStoreSetup:
             return []
         }
     }

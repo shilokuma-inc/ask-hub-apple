@@ -20,16 +20,7 @@ extension StateSnapshotBuilder {
             } else {
                 submission.rejected = rejectedRequest(repo: file.repo, version: file.version)
             }
-            index.submissions[submission.id] = StateIndex.SubmissionEntry(
-                target: SubmissionTarget(repo: file.repo, version: file.version),
-                revision: file.revision,
-                builds: file.builds.map { .init(platform: $0.platform, build: $0.build) },
-                locales: file.whatsNew?.drafts.map(\.locale) ?? [],
-                canSubmit: file.awaitsSubmission && pending.isEmpty,
-                canDistribute: file.awaitsDistribution && pending.isEmpty,
-                canWithdraw: file.canWithdraw && pending.isEmpty,
-                canAbandon: file.canAbandon && pending.isEmpty
-            )
+            index.submissions[submission.id] = Self.entry(file, idle: pending.isEmpty)
             if !file.isEnded, pending.allSatisfy({ $0.kind != AbandonReleaseIntent.kind }) {
                 index.releasingRepositories.insert(submission.repositoryID)
             }
@@ -60,6 +51,21 @@ extension StateSnapshotBuilder {
         }
     }
 
+    /// 操作を送るときに確かめる中身。`idle` は、この端末から送って司令塔がまだ処理していない操作が無いか
+    private static func entry(_ file: SubmissionFile, idle: Bool) -> StateIndex.SubmissionEntry {
+        StateIndex.SubmissionEntry(
+            target: SubmissionTarget(repo: file.repo, version: file.version),
+            revision: file.revision,
+            builds: file.builds.map { .init(platform: $0.platform, build: $0.build) },
+            locales: file.whatsNew?.drafts.map(\.locale) ?? [],
+            listing: file.listing?.current ?? [],
+            canSubmit: file.awaitsSubmission && idle,
+            canDistribute: file.awaitsDistribution && idle,
+            canWithdraw: file.canWithdraw && idle,
+            canAbandon: file.canAbandon && idle
+        )
+    }
+
     static func submission(_ file: SubmissionFile) -> Submission {
         var submission = Submission(
             repositoryID: repository(file.repo).id,
@@ -71,6 +77,7 @@ extension StateSnapshotBuilder {
             },
             builds: file.builds.map { Submission.Build(platform: $0.platform.rawValue, build: $0.build) },
             drafts: file.whatsNew.map { $0.drafts.map { Submission.Localized(locale: $0.locale, text: $0.text) } },
+            listing: file.listing.map(listing),
             revision: file.revision,
             review: file.review.map { review in
                 Submission.Review(platform: review.platform.rawValue, state: reviewState(review.state), since: review.since.date)
@@ -94,21 +101,42 @@ extension StateSnapshotBuilder {
                 builds: submit.builds.map { Submission.Build(platform: $0.platform.rawValue, build: $0.build) },
                 whatsNew: submit.whatsNew.map { Submission.Localized(locale: $0.locale, text: $0.text) },
                 releaseType: releaseType(submit.releaseType, date: submit.earliestReleaseDate),
-                at: submit.at.date
+                at: submit.at.date,
+                listing: (submit.listing ?? []).map(listingTexts)
             )
         }
-        submission.slots = file.appStoreVersions.map { slots in
-            slots.map { slot in
-                let keptNote = slot.removal == .kept ? slot.removalNote : nil
-                return Submission.Slot(platform: slot.platform.rawValue, build: slot.build, keptNote: keptNote)
-            }
-        }
+        submission.slots = file.appStoreVersions.map { $0.map(slot) }
         submission.awaitsSubmission = file.awaitsSubmission
         submission.awaitsDistribution = file.awaitsDistribution
         submission.canWithdraw = file.canWithdraw
         submission.canAbandon = file.canAbandon
         submission.isSubmitting = file.isSubmitting
         return submission
+    }
+
+    private static func slot(_ slot: SubmissionFile.VersionSlot) -> Submission.Slot {
+        Submission.Slot(platform: slot.platform.rawValue, build: slot.build, keptNote: slot.removal == .kept ? slot.removalNote : nil)
+    }
+
+    private static func listing(_ listing: SubmissionFile.Listing) -> Submission.Listing {
+        Submission.Listing(current: listing.current.map(listingTexts), drafts: listing.drafts.map(listingTexts), reason: listing.reason)
+    }
+
+    static func listingTexts(_ text: ListingText) -> Submission.ListingTexts {
+        var values: [Submission.ListingField: String] = [:]
+        for field in Submission.ListingField.allCases {
+            if let value = text[listingField(field)] { values[field] = value }
+        }
+        return Submission.ListingTexts(locale: text.locale, values: values)
+    }
+
+    /// 画面の掲載文の欄に当たる、プロトコルの欄
+    static func listingField(_ field: Submission.ListingField) -> ListingText.Field {
+        switch field {
+        case .description: .description
+        case .keywords: .keywords
+        case .promotionalText: .promotionalText
+        }
     }
 
     /// その版への、リリースの操作の意図か

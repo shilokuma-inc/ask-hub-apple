@@ -415,6 +415,8 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   "githubRelease": null,
   "nextVersion": { "version": "1.2.0", "state": "open", "pullRequest": 170, "at": "…" },
   "problem": null,
+  "promotionalText": { "current": [{ "locale": "ja", "text": "…" }, { "locale": "en-US", "text": "" }], "readAt": "…",
+                       "request": { "approval": { … }, "at": "…", "texts": [{ "locale": "en-US", "text": "…" }], "doneAt": "…" } },
   "detectedAt": "…",
   "updatedAt": "…"
 }
@@ -429,6 +431,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `githubRelease` は公開した GitHub Release（`url`・`created`）。タグを作ってから公開する
 - `nextVersion` は develop の `MARKETING_VERSION` を次の版に上げる PR。`state` は `open`（CI を待っている）・`merged`・`skipped`（develop の版がもう大きかったので上げなかった。`pullRequest` を持たない）。`open`・`merged` の `version` は配信した版より大きい
 - `problem` は後作業を進められなかった理由（`step` は `commit`・`tag`・`notes`・`githubRelease`・`nextVersion`）。進められたら消す。`needsHuman` が true なら、やり直しても進まないので人が直す（クライアントに出す）
+- `promotionalText` は配信中の版のプロモーションテキスト（審査に出さずに変えられる）。`current` は司令塔が配信の見回り（30 分ごと）で App Store Connect から読んだ今の文（言語ごと。空の言語は空の文字列。170 文字まで）で、読んだ文が変わったときだけ `readAt` ごと書き直す。`request` は人が `updatePromotionalText` で直した中身（`texts` は変える言語だけ。空の文字列は空にする）。司令塔が書き終えたら `doneAt`、App Store Connect が断ったら `failure`（どちらかだけ。断られたら、新しく押すまで書き直さない）。直せるのは記録のうち最も新しい版（配信中の版）だけ
 - クライアントは、`notes` があって `confirmed` も `githubRelease` も無い版を、人の番として出す（Swift は `ReleaseFile.awaitsNotesReview`）。タグ・GitHub Release・次の版（`merged`・`skipped`）がそろったら終わり（`isFinished`）
 
 ### submissions/<版>.json（リリースを始めた版の準備と審査）
@@ -444,8 +447,9 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   "nextVersion": { "version": "1.5.0", "state": "open", "pullRequest": 210, "at": "…" },
   "builds": [{ "platform": "iOS", "build": "45", "uploadedAt": "…" }],
   "whatsNew": { "drafts": [{ "locale": "ja", "text": "…" }, { "locale": "en-US", "text": "…" }], "draftedAt": "…" },
+  "listing": { "current": [{ "locale": "ja", "description": "…", "keywords": "…", "promotionalText": "…" }], "drafts": [{ "locale": "ja", "keywords": "…" }], "reason": "…", "draftedAt": "…" },
   "revision": 2,
-  "submit": { "approval": { … }, "at": "…", "builds": [{ "platform": "iOS", "build": "45" }], "whatsNew": [ … ], "releaseType": "manual" },
+  "submit": { "approval": { … }, "at": "…", "builds": [{ "platform": "iOS", "build": "45" }], "whatsNew": [ … ], "releaseType": "manual", "listing": [{ "locale": "ja", "keywords": "…" }] },
   "review": [{ "platform": "iOS", "state": "pendingDeveloperRelease", "since": "…", "submittedAt": "…" }],
   "distribution": { "approval": { … }, "at": "…", "doneAt": null },
   "withdrawal": null,
@@ -458,18 +462,19 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 }
 ```
 
-- 人が「リリースを始める」（`startRelease`）を押したときに司令塔が作る（`origin` が `askhub`）。App Store Connect の Web で手で審査に出した版を見つけたときも作る（`origin` が `appStoreConnect`。`start`・`branch`・`nextVersion`・`builds`・`whatsNew`・`submit` を持たない）。形は `protocol/schemas/state/submission.schema.json`（Swift は `SubmissionFile`）。流れは [release.md](release.md) の「リリースを始めてから配信まで」
+- 人が「リリースを始める」（`startRelease`）を押したときに司令塔が作る（`origin` が `askhub`）。App Store Connect の Web で手で審査に出した版を見つけたときも作る（`origin` が `appStoreConnect`。`start`・`branch`・`nextVersion`・`builds`・`whatsNew`・`listing`・`submit` を持たない）。形は `protocol/schemas/state/submission.schema.json`（Swift は `SubmissionFile`）。流れは [release.md](release.md) の「リリースを始めてから配信まで」
 - `branch` は release ブランチ（名前は `release/<版>`）。`commit` は作ったときの先頭（develop の先頭）、`created` は司令塔が作ったか（前からあったなら false）
 - `nextVersion` は develop の `MARKETING_VERSION` を次の版に上げる PR。形と意味は `releases/<版>.json` の `nextVersion` と同じ（次の版は始めた版より大きい）
 - `builds` は release ブランチから上げたビルドのうち、App Store Connect の処理を終えた最新のもの（プラットフォームごとに 1 つ）。`whatsNew` は Claude の What's New の下書き（App Store Connect にある言語ごと。4,000 文字まで）。`drafts` が空なら初めての版（What's New を持たない）
-- `revision` は、ビルドか What's New の下書きが変わるたびに上げる。審査に出す意図の `targetVersion`（人が見たものを出す）
-- `submit` は人が「審査に出す」を押した中身（出すビルド・人が確かめた What's New・配信の方式 `releaseType`・`scheduled` のときの `earliestReleaseDate`）。司令塔が App Store Connect に出し終えると、そのプラットフォームの `review` に `submittedAt`（`submit.at` より後）が付く。取り下げを終えたら `submit` を消す（出し直せる）
+- `listing` は掲載文（説明文 `description`・キーワード `keywords`・プロモーションテキスト `promotionalText`）の案。`current` は配信中の版の掲載文（言語ごと。App Store Connect で空の欄は持たない）、`drafts` は Claude の直す案（変える言語だけ。無い欄は変えない。空なら変えない）、`reason` は案の理由（変えないなら、その理由）。`current` が空なら初めての版で、案を書かない（App Store Connect で書く）。長さは説明文 4,000 文字・キーワード 100 バイト（UTF-8 で数える）・プロモーションテキスト 170 文字まで。審査に出した後は作らない
+- `revision` は、ビルド・What's New の下書き・掲載文の案が変わるたびに上げる。審査に出す意図の `targetVersion`（人が見たものを出す）
+- `submit` は人が「審査に出す」を押した中身（出すビルド・人が確かめた What's New・配信の方式 `releaseType`・`scheduled` のときの `earliestReleaseDate`・人が確かめた掲載文の直し `listing`。`listing` は変える言語・欄だけで、無い欄は App Store Connect の文を残す）。司令塔が App Store Connect に出し終えると、そのプラットフォームの `review` に `submittedAt`（`submit.at` より後）が付く。取り下げを終えたら `submit` を消す（出し直せる）
 - `review` はプラットフォームごとの審査の状態（App Store Connect の `appVersionState` を `prepareForSubmission`・`waitingForReview`・`inReview`・`pendingDeveloperRelease`・`processingForDistribution`・`readyForDistribution`・`rejected`・`metadataRejected`・`developerRejected` などの camelCase にしたもの）。`since` は今の状態を読んだ時刻
 - `distribution`・`withdrawal` は人が押した「配信する」（`distributeRelease`）・「審査の取り下げ」（`withdrawSubmission`）。司令塔が App Store Connect に送ったら `doneAt` が付く
 - `end` は終わりの印。`distributed`（配信を見つけた。後作業は `releases/<版>.json`）・`abandoned`（人がやめた。`approval` を持つ）・`superseded`（もっと新しい版を配信した）
 - `integration` は、配信した後に release ブランチを取り込んだ様子（取り込む先ごとに `base`・`state`・`pullRequest`・`at`）。取り込む先は base の develop と main。`state` は `open`（PR を開いている）・`merged`・`skipped`（取り込むコミットが無かった）・`created`（main が無かったので release ブランチの先頭から作った）。`end` が `distributed` の記録も、すべての取り込む先が終わるまで司令塔が進める
 - `appStoreVersions` は App Store Connect の版の枠（プラットフォームごと。`id` は版の id、`build` は枠に選んだビルドの番号、`whatsNew` は下書きを各言語に書いたか）。`startRelease` を受け付けたときに空の並びで作り、司令塔が作った・見つけた編集できる版を足す。`null` の記録（この仕組みの前に始めた版）には枠を作らない。やめた版は、まだ審査に出していない枠を消し、`removal`（`deleted`・`kept`）に結果を書く。`kept` なら `removalNote` に理由（人が App Store Connect で確かめる）
-- `problem` は進められなかった理由（`step` は `branch`・`nextVersion`・`whatsNew`・`builds`・`submit`・`distribute`・`withdraw`・`review`・`integration`・`appStoreVersion`）。`needsHuman` なら人が直す（クライアントに出す）
+- `problem` は進められなかった理由（`step` は `branch`・`nextVersion`・`whatsNew`・`listing`・`builds`・`submit`・`distribute`・`withdraw`・`review`・`integration`・`appStoreVersion`）。`needsHuman` なら人が直す（クライアントに出す）
 - クライアントは、準備がそろい（`isPrepared`）、まだ出していない（`submit` も審査中のプラットフォームも無い）版を、人の番として出す（`awaitsSubmission`）。審査に通って配信の方式が手動の版（`pendingDeveloperRelease`）も人の番（`awaitsDistribution`）。審査を待っている・審査中なら取り下げられ（`canWithdraw`）、審査に出していない・取り下げた・断られた版はやめられる（`canAbandon`）
 
 ### verifications.json（実機確認への答え）
@@ -801,9 +806,10 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
 | `applyProtection` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `requiredChecks`（必須にするチェックの名前。1〜20 個・重ならない・空白だけの名前と制御文字（改行など）を含む名前は受け付けない。スキーマでは表せないので読む側が断る。`payloads/applyProtection.schema.json`）。司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛けてから重なる保護を外し、`repo.json` の `protection` を書く。管理用のトークンが無い・private のリポジトリなどは理由を付けて断る |
 | `approveSetupPullRequest` | 準備の PR（`{ "type": "setupPullRequest", "id": "<PR の番号>" }`。封筒の `repo` が対象のリポジトリ） | 人が見たときの PR の head のコミット（`repo.json` の `setup.workflows.head`） | 空（`payloads/approveSetupPullRequest.schema.json`）。司令塔が出した開いた準備の PR で、head が変わっていないときだけ、管理用のトークンで merge commit にする |
+| `updatePromotionalText` | 配信した版（`{ "type": "release", "id": "<版>" }`） | なし | `texts`（書く文。`[{ "locale", "text" }]`。変える言語だけ。1 つ以上。170 文字まで。空の文字列は空にする。`payloads/updatePromotionalText.schema.json`）。配信中の版（記録のうち最も新しい版）で、司令塔が今の文を読んだもの・今の文にある言語だけ受け付ける。審査に出さずに、司令塔がすぐ App Store Connect に書く |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
 | `startRelease` | リポジトリ（封筒の `repo`） | — | `version`（始める版。`payloads/startRelease.schema.json`）。対象のリポジトリで、終わっていないリリース（`submissions/` の `end` の無い記録）が無く、配信した版（`releases/`）より大きいときだけ受け付ける。やめた版は始め直せる |
-| `submitForReview` | リリースを始めた版（`{ "type": "submission", "id": "<版>" }`） | 人が見たときの準備の版（`submissions/<版>.json` の `revision`） | `builds`（出すビルド。`[{ "platform", "build" }]`）、`whatsNew`（人が確かめた What's New。`[{ "locale", "text" }]`。下書きと同じ言語）、`releaseType`（`afterApproval`・`manual`・`scheduled`）、`earliestReleaseDate`（`scheduled` のときだけ。`payloads/submitForReview.schema.json`）。準備がそろい、まだ出していない版だけ受け付ける |
+| `submitForReview` | リリースを始めた版（`{ "type": "submission", "id": "<版>" }`） | 人が見たときの準備の版（`submissions/<版>.json` の `revision`） | `builds`（出すビルド。`[{ "platform", "build" }]`）、`whatsNew`（人が確かめた What's New。`[{ "locale", "text" }]`。下書きと同じ言語）、`releaseType`（`afterApproval`・`manual`・`scheduled`）、`earliestReleaseDate`（`scheduled` のときだけ）、`listing`（人が確かめた掲載文の直し。`[{ "locale", "description"?, "keywords"?, "promotionalText"? }]`。変える言語・欄だけ。言語は `listing.current` にあるものだけ。変えないなら送らない。`payloads/submitForReview.schema.json`）。準備がそろい、まだ出していない版だけ受け付ける |
 | `distributeRelease` | リリースを始めた版 | —（版の今の状態に対してだけ意味を持つ） | 空（`payloads/distributeRelease.schema.json`）。審査に通って配信を待っている（`pendingDeveloperRelease`）版だけ。App Store Connect では取り消せない |
 | `withdrawSubmission` | リリースを始めた版 | —（同上） | 空（`payloads/withdrawSubmission.schema.json`）。審査を待っている・審査中の版だけ。取り下げた後は出し直せる |
 | `abandonRelease` | リリースを始めた版 | —（同上） | 空（`payloads/abandonRelease.schema.json`）。審査に出していない・取り下げた・断られた版だけ。記録に `end` を付ける。release ブランチは消さない。リリースを始めたときに作った App Store Connect の版の枠は、まだ審査に出していなければ司令塔が消す（消せなければ理由を記録して知らせる） |

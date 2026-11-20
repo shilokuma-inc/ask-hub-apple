@@ -428,7 +428,8 @@ extension StateSnapshotBuilder {
             return "取り下げ"
 
         default:
-            return finalLabel(envelope) ?? pauseLabel(envelope) ?? releaseLabel(envelope) ?? Self.repositoryLabel(envelope) ?? envelope.kind
+            return finalLabel(envelope) ?? pauseLabel(envelope) ?? releaseLabel(envelope) ?? Self.repositoryLabel(envelope)
+                ?? Self.appStoreSetupLabel(envelope) ?? envelope.kind
         }
     }
 
@@ -438,6 +439,8 @@ extension StateSnapshotBuilder {
         switch envelope.kind {
         case PublishGitHubReleaseIntent.kind:
             return "GitHub Release の公開（\(name) \(envelope.target?.id ?? "")）"
+        case UpdatePromotionalTextIntent.kind:
+            return "プロモーションテキストの反映（\(name) \(envelope.target?.id ?? "")）"
         case StartReleaseIntent.kind:
             return "リリースを始める（\(name) \(envelope.string("version") ?? "")）"
         default:

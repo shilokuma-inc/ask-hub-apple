@@ -7,6 +7,9 @@ extension EpicIntentsTests {
     static let releaseKinds: [Kind] = [
         Kind(vectors: "payloads/publishGitHubRelease.json", kind: "publishGitHubRelease", target: releaseTarget, targetVersion: "2") {
             try PublishGitHubReleaseIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/updatePromotionalText.json", kind: "updatePromotionalText", target: releaseTarget, targetVersion: nil) {
+            try UpdatePromotionalTextIntent(envelope: $0).payload
         }
     ]
 }

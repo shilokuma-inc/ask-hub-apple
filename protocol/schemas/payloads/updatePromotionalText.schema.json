@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/updatePromotionalText.schema.json",
+  "title": "配信中の版のプロモーションテキストを直す人の意図（kind が updatePromotionalText）の payload",
+  "description": "封筒の target は {type: release, id: <版>}、targetVersion は持たない。texts は書く文（変える言語だけ。1 つ以上。空の文字列は空にする。170 文字まで）。言語を重ねないこと・言語が配信中の版にあることは読む側で確かめる。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "texts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "texts": {
+      "allOf": [
+        {
+          "$ref": "../state/release.schema.json#/$defs/promotionalTexts"
+        }
+      ],
+      "minItems": 1
+    }
+  }
+}

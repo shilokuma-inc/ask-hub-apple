@@ -18,7 +18,11 @@ extension DemoData {
                 tagName: "v2.0.1",
                 notes: .init(version: 1, previousTag: "v2.0.0", draft: Self.recipeNotes, confirmed: Self.recipeNotes),
                 githubReleaseURL: URL(string: "https://github.com/\(recipe)/releases/tag/v2.0.1"),
-                nextVersion: .init(version: "2.1.0", state: .merged, pullRequest: 188)
+                nextVersion: .init(version: "2.1.0", state: .merged, pullRequest: 188),
+                promotionalText: .init(current: [
+                    .init(locale: "ja", text: "Mac でも使えるようになりました。"),
+                    .init(locale: "en-US", text: "")
+                ])
             ),
             Release(
                 repositoryID: habit,
@@ -59,13 +63,80 @@ extension DemoData {
                 .init(locale: "ja", text: Self.recipeWhatsNewJapanese),
                 .init(locale: "en-US", text: Self.recipeWhatsNewEnglish)
             ],
-            revision: 2,
+            listing: Self.recipeListing,
+            revision: 3,
             createdAt: ago(minutes: 60 * 3),
             updatedAt: ago(minutes: 25)
         )
         submission.awaitsSubmission = true
         submission.canAbandon = true
         return [submission]
+    }
+
+    /// レシピ帳の掲載文の案（人数に合わせた分量の計算を、日本語の説明文とキーワード・英語のキーワードに入れる）
+    static let recipeListing = Submission.Listing(
+        current: [
+            .init(locale: "ja", values: [
+                .description: "毎日のごはん作りを助けるレシピ帳です。写真付きでレシピを残し、買い物リストを作れます。",
+                .keywords: "レシピ,料理,献立,買い物リスト",
+                .promotionalText: "Mac でも使えるようになりました。"
+            ]),
+            .init(locale: "en-US", values: [
+                .description: "A recipe book for everyday cooking. Save recipes with photos and build shopping lists.",
+                .keywords: "recipe,cooking,meal plan,shopping list"
+            ])
+        ],
+        drafts: [
+            .init(locale: "ja", values: [
+                .description: "毎日のごはん作りを助けるレシピ帳です。写真付きでレシピを残し、買い物リストを作れます。人数に合わせて材料の分量を自動で計算します。",
+                .keywords: "レシピ,料理,献立,買い物リスト,分量"
+            ]),
+            .init(locale: "en-US", values: [.keywords: "recipe,cooking,meal plan,shopping list,servings"])
+        ],
+        reason: "人数に合わせて分量を計算できるようにしたので、日本語の説明文に一文足し、キーワードに「分量」を足す案です"
+    )
+
+    /// App Store に載せる準備。家事シェアは App Store Connect にアプリがまだ無く（あなたの番に出る）、
+    /// おこづかい帳はアプリを作った後で、初めての版に要る設定が残っている（リリースを始めるまでは、あなたの番に出さない）
+    func appStoreSetups() -> [AppStoreSetup] {
+        [
+            AppStoreSetup(
+                repositoryID: Self.repositoryID("kaji-share-ios"),
+                bundleIDs: ["jp.shilokuma.KajiShare", "jp.shilokuma.KajiShareTests"],
+                mainBundleID: "jp.shilokuma.KajiShare",
+                items: [
+                    .init(kind: .bundleId, state: .done, confirmed: false),
+                    .init(
+                        kind: .app,
+                        state: .todo,
+                        note: "App Store Connect の「アプリ」の「＋」で作る（Bundle ID と SKU は jp.shilokuma.KajiShare）",
+                        confirmed: false
+                    )
+                ],
+                isExcluded: false,
+                updatedAt: ago(minutes: 40)
+            ),
+            AppStoreSetup(
+                repositoryID: Self.repositoryID("pocket-budget-ios"),
+                bundleIDs: ["jp.shilokuma.PocketBudget"],
+                mainBundleID: "jp.shilokuma.PocketBudget",
+                app: .init(id: "6740000123", name: "おこづかい帳", bundleID: "jp.shilokuma.PocketBudget", primaryLocale: "ja"),
+                items: [
+                    .init(kind: .bundleId, state: .done, confirmed: false),
+                    .init(kind: .app, state: .done, confirmed: false),
+                    .init(kind: .contentRights, state: .done, note: "第三者のコンテンツを使わない", confirmed: false),
+                    .init(kind: .category, state: .todo, confirmed: false),
+                    .init(kind: .privacyPolicy, state: .todo, note: "まだ書いていない言語: ja・en-US", confirmed: false),
+                    .init(kind: .price, state: .todo, confirmed: false),
+                    .init(kind: .availability, state: .todo, confirmed: false),
+                    .init(kind: .ageRating, state: .todo, note: "答えていない質問が 6 個ある", confirmed: false),
+                    .init(kind: .appPrivacy, state: .unknown, note: "API が無い。「App のプライバシー」で答えて公開する", confirmed: false),
+                    .init(kind: .digitalServicesAct, state: .unknown, note: "API が無い。「App 情報」で DSA の申告をする", confirmed: true)
+                ],
+                isExcluded: false,
+                updatedAt: ago(minutes: 90)
+            )
+        ]
     }
 
     static let recipeWhatsNewJapanese = """

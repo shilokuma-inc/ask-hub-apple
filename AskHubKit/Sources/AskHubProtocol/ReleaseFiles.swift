@@ -258,6 +258,8 @@ public struct ReleaseFile: StateFile {
     public var githubRelease: GitHubRelease?
     public var nextVersion: NextVersion?
     public var problem: Problem?
+    /// 配信中の版のプロモーションテキスト（司令塔が読んだ今の文と、人が直した中身）。まだ読んでいなければ nil
+    public var promotionalText: PromotionalText?
     public var detectedAt: Timestamp
     public var updatedAt: Timestamp
 
@@ -271,6 +273,7 @@ public struct ReleaseFile: StateFile {
         githubRelease: GitHubRelease? = nil,
         nextVersion: NextVersion? = nil,
         problem: Problem? = nil,
+        promotionalText: PromotionalText? = nil,
         detectedAt: Timestamp,
         updatedAt: Timestamp
     ) {
@@ -283,6 +286,7 @@ public struct ReleaseFile: StateFile {
         self.githubRelease = githubRelease
         self.nextVersion = nextVersion
         self.problem = problem
+        self.promotionalText = promotionalText
         self.detectedAt = detectedAt
         self.updatedAt = updatedAt
     }
@@ -336,7 +340,7 @@ public struct ReleaseFile: StateFile {
             }
         }
         if problem?.message.isEmpty == true { violations.append("problem の message が空") }
-        return violations
+        return violations + promotionalTextViolations
     }
 
     /// ビルドの番号（`CFBundleVersion`）。0 以上の整数を `.` で 1〜3 個つないだもの（App Store Connect の決まり）

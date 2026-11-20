@@ -38,6 +38,31 @@
       "type": "string",
       "pattern": "^[0-9a-f]{40}$",
       "maxLength": 40
+    },
+    "promotionalTexts": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "言語ごとのプロモーションテキスト（170 文字まで。空の文字列は空）。言語を重ねないことは読む側で確かめる",
+      "items": {
+        "type": "object",
+        "required": [
+          "locale",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "locale": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
+            "maxLength": 21,
+            "description": "App Store Connect の言語（ja・en-US・zh-Hans など）"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 170
+          }
+        }
+      }
     }
   },
   "properties": {
@@ -293,6 +318,71 @@
         },
         "at": {
           "$ref": "../common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "promotionalText": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "配信中の版のプロモーションテキスト（審査に出さずに変えられる）。current は司令塔が App Store Connect で読んだ今の文（言語ごと。空の言語は空の文字列。読んだ文が変わったときだけ readAt ごと書き直す）、request は人が updatePromotionalText で直した中身（texts は変える言語だけ。書き終えたら doneAt、App Store Connect が断ったら failure。どちらかだけ）",
+      "required": [
+        "current",
+        "readAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "current": {
+          "$ref": "#/$defs/promotionalTexts"
+        },
+        "readAt": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "request": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "approval",
+            "at",
+            "texts"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "approval": {
+              "$ref": "../common.schema.json#/$defs/intentReference"
+            },
+            "at": {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            },
+            "texts": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/promotionalTexts"
+                }
+              ],
+              "minItems": 1
+            },
+            "doneAt": {
+              "anyOf": [
+                {
+                  "$ref": "../common.schema.json#/$defs/timestamp"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "failure": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1
+            }
+          }
         }
       }
     },

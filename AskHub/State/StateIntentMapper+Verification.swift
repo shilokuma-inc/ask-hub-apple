@@ -5,12 +5,15 @@ import Foundation
 // MARK: - 実機確認
 
 extension StateIntentMapper {
-    /// マージした後の操作を送れるか。リリース文の公開は下書きがあってまだ公開していない版だけ、
+    /// マージした後の操作を送れるか。リリース文の公開は下書きがあってまだ公開していない版だけ、プロモーションテキストは配信中の版だけ、
     /// 実機確認への答えはマージした epic の、まだ答えていない項目だけ
     func supportsAfterMerge(_ intent: HumanIntent) -> Bool {
         switch intent {
         case let .publishRelease(repositoryID, version, _, _):
             index.releases[Release.id(repositoryID, version)]?.canPublish == true
+
+        case let .updatePromotionalText(repositoryID, version, _):
+            index.promotionalTexts[Release.id(repositoryID, version)]?.canUpdate == true
 
         case let .verify(epicID, itemID, _):
             index.epics[epicID]?.verification?.unanswered.contains(itemID) == true

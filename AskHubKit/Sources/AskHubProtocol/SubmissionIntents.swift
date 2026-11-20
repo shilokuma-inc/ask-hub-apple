@@ -68,7 +68,8 @@ public struct StartReleaseIntent: Equatable, Sendable {
 
 /// 審査に出す人の意図（`kind` が `submitForReview`）。`targetVersion` は人が見たときの準備の版（`revision`）。
 /// `builds` は出すビルド（プラットフォームごと）、`whatsNew` は人が確かめた What's New（言語ごと。初めての版は空）、
-/// `releaseType` は審査に通った後の配信の方式、`earliestReleaseDate` は `scheduled` のときの配信の日時
+/// `releaseType` は審査に通った後の配信の方式、`earliestReleaseDate` は `scheduled` のときの配信の日時、
+/// `listing` は人が確かめた掲載文の直し（変える言語だけ。nil の欄は変えない。無ければ掲載文を変えない）
 public struct SubmitForReviewIntent: Equatable, Sendable {
     public static let kind = "submitForReview"
     /// 一度に出せるプラットフォームの数の上限
@@ -80,6 +81,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
     public var whatsNew: [LocalizedText]
     public var releaseType: AppStoreReleaseType
     public var earliestReleaseDate: Timestamp?
+    public var listing: [ListingText]
     public var intent: IntentReference
 
     public init(
@@ -89,6 +91,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         whatsNew: [LocalizedText],
         releaseType: AppStoreReleaseType,
         earliestReleaseDate: Timestamp? = nil,
+        listing: [ListingText] = [],
         intent: IntentReference
     ) {
         self.target = target
@@ -97,6 +100,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         self.whatsNew = whatsNew
         self.releaseType = releaseType
         self.earliestReleaseDate = earliestReleaseDate
+        self.listing = listing
         self.intent = intent
     }
 
@@ -105,6 +109,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         var whatsNew: [LocalizedText]
         var releaseType: AppStoreReleaseType
         var earliestReleaseDate: Timestamp?
+        var listing: [ListingText]?
     }
 
     public init(envelope: IntentEnvelope) throws(MalformedIntent) {
@@ -128,6 +133,9 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         if (payload.releaseType == .scheduled) != (payload.earliestReleaseDate != nil) {
             throw .init(detail: "earliestReleaseDate は、配信の方式が scheduled のときだけ持つ")
         }
+        let listing = payload.listing ?? []
+        let listingProblems = ListingText.problems(of: listing, name: "listing")
+        if !listingProblems.isEmpty { throw .init(detail: listingProblems.joined(separator: "、")) }
         self.init(
             target: target,
             revision: revision ?? 0,
@@ -135,6 +143,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
             whatsNew: payload.whatsNew,
             releaseType: payload.releaseType,
             earliestReleaseDate: payload.earliestReleaseDate,
+            listing: listing,
             intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
         )
     }
@@ -142,17 +151,26 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
     public var targetVersion: String { String(revision) }
 
     public var payload: [String: JSONValue] {
-        Self.payload(builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate)
+        Self.payload(
+            builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate, listing: listing
+        )
     }
 
-    /// 送る payload（クライアントが作る）
+    /// 送る payload（クライアントが作る）。掲載文を変えないなら `listing` を送らない
     public static func payload(
         builds: [SubmissionFile.BuildChoice],
         whatsNew: [LocalizedText],
         releaseType: AppStoreReleaseType,
-        earliestReleaseDate: Timestamp?
+        earliestReleaseDate: Timestamp?,
+        listing: [ListingText] = []
     ) -> [String: JSONValue] {
-        let payload = Payload(builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate)
+        let payload = Payload(
+            builds: builds,
+            whatsNew: whatsNew,
+            releaseType: releaseType,
+            earliestReleaseDate: earliestReleaseDate,
+            listing: listing.isEmpty ? nil : listing
+        )
         guard case let .object(fields)? = (try? JSONEncoder().encode(payload)).flatMap({ try? JSONValue(parsing: $0) }) else { return [:] }
         return fields
     }
