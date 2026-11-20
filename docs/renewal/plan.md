@@ -36,7 +36,7 @@
 | 4 | 管理用のトークンと、リポジトリの管理 | 管理用のトークン（入れ方・期限・自己診断。[security.md](security.md) の「トークン」）→ 保護の設定と点検（`applyProtection`）・対象に加えるときの GitHub 側の準備・対象から外す（`removeRepository`）・加える画面の候補の一覧（まだ対象でないものだけ・検索）・クライアントからのビルドの設定（`configureRepository`）・Secrets の登録（人がする作業の `secret`）。中身は [operations.md](operations.md) の「対象のリポジトリ」 |
 | 5 | テンプレートからの新規作成 | テンプレート（template-app-ios・visionOS のもの）から今の仕組みの跡を外す → 作る意図と、管理用のトークンでテンプレートから作る処理 → 作った後は「対象に加える」と同じ準備を流す。共通リポジトリ（段階 5）を待たない（2026-11-12 に決めた） |
 | 6 | 容量と暴走の残り | 空きが少ない Mac は新しい epic を受けない（[operations.md](operations.md) の「容量」）・動いているループに属さない Simulator の見回り（`SimulatorPool.removeStray` をつなぐ）・片付けの候補（探す・選んで消す）・終わった epic を 30 日後に `archive/` へ（[protocol.md](protocol.md)）。`--max-budget-usd` は、サブスクリプションの枠で動かすので入れない（2026-11-18 に決めた。[operations.md](operations.md) の「Claude の利用上限」）。2026-11-18 に作った: 空きが 30 GB を下回る Mac は新しい epic と、片付け・Claude だけのジョブのほかの新しいジョブを受けない #1134、Simulator の見回り #1137、終わった epic を 30 日後に畳む #1143、片付けの候補 #1150、`--max-budget-usd` を入れないと決めた #1129 |
-| 7 | Siri・ショートカットからの依頼 | 今の仕組みには有った（タグ `legacy-final` の `SendIdeaRequestIntent.swift`）。App Intents で依頼を出す。鍵はロックの解除中なら画面の外からも使える（[security.md](security.md) の「鍵」） |
+| 7 | Siri・ショートカットからの依頼 | 今の仕組みには有った（タグ `legacy-final` の `SendIdeaRequestIntent.swift`）。App Intents で依頼を出す。鍵はロックの解除中なら画面の外からも使える（[security.md](security.md) の「鍵」）。2026-11-18 に #1122 で入れた（[flows.md](flows.md) の「Siri・ショートカットからの依頼」） |
 
 ### 段階 5 の順
 
