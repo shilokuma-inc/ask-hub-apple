@@ -125,6 +125,51 @@ extension StateClientServiceTests {
     }
 
     @Test
+    func writesFirstVersionSettingsOnlyAfterVersionItemsAreChecked() async throws {
+        // 版の枠が無い（版の項目が記録に無い）うちは、サポート URL と著作権表示を送れない
+        let before = try makeService(files: Self.firstReleaseFiles())
+        _ = try await before.service.fetchSnapshot()
+        let copyright = AppStoreSettingsRequest(copyright: "2026 Example Inc.")
+        #expect(!before.service.supports(.applyAppStoreSettings(repositoryID: setupRepositoryID, request: copyright)))
+
+        let setup = """
+            {"v":1,"repo":"\(Self.repo)","bundleIds":["jp.example.Sample"],
+             "app":{"id":"6740000002","name":"サンプル","bundleId":"jp.example.Sample","primaryLocale":"ja"},
+             "items":[{"id":"bundleId","state":"done","checkedAt":"2027-01-20T01:00:00Z"},
+                      {"id":"app","state":"done","checkedAt":"2027-01-20T01:00:00Z"},
+                      {"id":"supportUrl","state":"todo","note":"まだ書いていない言語: ja","checkedAt":"2027-01-20T01:00:00Z"},
+                      {"id":"copyright","state":"todo","checkedAt":"2027-01-20T01:00:00Z"},
+                      {"id":"reviewContact","state":"todo","checkedAt":"2027-01-20T01:00:00Z"}],
+             "checkedAt":"2027-01-20T01:00:00Z","createdAt":"2027-01-20T01:00:00Z","updatedAt":"2027-01-20T01:00:00Z"}
+            """
+        let fixture = try makeService(files: Self.askingEpic(extra: [Self.setupPath: setup]))
+        let service = fixture.service
+        let snapshot = try await fixture.service.fetchSnapshot()
+        // 連絡先は AskHub から書かない（App Store Connect で入れる）
+        #expect(snapshot.appStoreSetup(of: setupRepositoryID)?.writableItems.map(\.kind) == [.supportUrl, .copyright])
+        // マーケティング URL だけは送れない（サポート URL と一緒に書く）
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.applyAppStoreSettings(
+                repositoryID: setupRepositoryID,
+                request: .init(marketingURL: "https://example.com", copyright: "2026 Example Inc.")
+            ))
+        }
+        let request = AppStoreSettingsRequest(
+            supportURL: " https://example.com/support ",
+            marketingURL: "https://example.com",
+            copyright: " 2026 Example Inc. "
+        )
+        try await service.perform(.applyAppStoreSettings(repositoryID: setupRepositoryID, request: request))
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        let apply = try ApplyAppStoreSettingsIntent(envelope: envelope)
+        #expect(apply.settings == AppStoreSettings(
+            supportUrl: "https://example.com/support",
+            marketingUrl: "https://example.com",
+            copyright: "2026 Example Inc."
+        ))
+    }
+
+    @Test
     func confirmationAndExclusionAreShownBeforeTheCommanderReadsThem() async throws {
         let fixture = try makeService(files: Self.firstReleaseFiles())
         let service = fixture.service
