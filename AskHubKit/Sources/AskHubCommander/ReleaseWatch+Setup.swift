@@ -139,12 +139,20 @@ extension ReleaseWatch {
         return [bundle, app]
     }
 
-    /// アプリがあるとき: すべての項目
+    /// アプリがあるとき: すべての項目。初めての版の項目は、版の枠があるときだけ
     private func checkApp(_ repo: RepositoryFullName, found: (store: Int, app: AppStoreApp)) async -> SetupCheck {
         let now = context.timestamp
+        guard let slots = await firstReleaseSlots(repo) else {
+            let message = "リリースの記録を読めないので、初めての版の項目を確かめられない"
+            return SetupCheck(items: [], problem: .init(message: message, needsHuman: false, at: now))
+        }
+        // 枠が変わったら確かめ直すための印（読めなくても付ける。同じ枠で何度も読まない）
+        checkedSlots[repo] = slots.map(\.id)
         let state: AppStoreSetupState
+        let versions: [VersionSetup]
         do {
             state = try await stores[found.store].setupState(of: found.app.id)
+            versions = try await versionSetups(slots, store: stores[found.store])
         } catch {
             report("\(repo) の App Store の準備を読めない（\(error)）。次に読むときにやり直す")
             let needsHuman = Self.problem(error).needsHuman
@@ -153,7 +161,7 @@ extension ReleaseWatch {
         }
         let locale = state.primaryLocale.flatMap { LocalizedText.isLocale($0) ? $0 : nil }
         let app = AppStoreSetupFile.App(id: found.app.id, name: found.app.name, bundleId: found.app.bundleId, primaryLocale: locale)
-        return SetupCheck(app: app, items: Self.items(from: state, at: now))
+        return SetupCheck(app: app, items: Self.items(from: state, at: now) + Self.versionItems(from: versions, at: now))
     }
 
     /// 読んだ様子から項目を作る
@@ -248,6 +256,7 @@ extension ReleaseWatch {
     ) async -> Bool {
         let found: (store: Int, app: AppStoreApp)
         let state: AppStoreSetupState
+        var versions: [VersionSetup] = []
         do {
             guard let app = try await app(of: repo, base: repository.build?.baseBranch) else {
                 await finishSettings(repo, request: request, failures: request.settings.items.map {
@@ -257,11 +266,17 @@ extension ReleaseWatch {
             }
             found = app
             state = try await stores[app.store].setupState(of: app.app.id)
+            if request.settings.items.contains(where: \.isVersionItem) {
+                guard let slots = await firstReleaseSlots(repo) else { return false }
+                versions = try await versionSetups(slots, store: stores[app.store])
+            }
         } catch {
             report("\(repo) の App Store Connect の値を書く前に読めない（\(error)）。次の見回りでやり直す")
             return false
         }
-        let failures = await writeSettings(repo, request.settings, to: stores[found.store], appID: found.app.id, state: state)
+        let store = stores[found.store]
+        var failures = await writeSettings(repo, request.settings, to: store, appID: found.app.id, state: state)
+        failures += await writeVersionSettings(repo, request.settings, to: store, setups: versions)
         await finishSettings(repo, request: request, failures: failures)
         return true
     }
@@ -309,7 +324,7 @@ extension ReleaseWatch {
     }
 
     /// 1 つの書き込みを送る。断られたら理由を返す
-    private func attempt(
+    func attempt(
         _ repo: RepositoryFullName,
         _ item: AppStoreSetupFile.ItemKind,
         _ body: () async throws(AppStoreConnectError) -> Void
@@ -329,7 +344,7 @@ extension ReleaseWatch {
         request: AppStoreSetupFile.SettingsRequest,
         failures: [AppStoreSetupFile.Failure]
     ) async {
-        // 同じ項目の失敗は 1 つにまとめる（言語ごとのプライバシーポリシーの URL など）
+        // 同じ項目の失敗は 1 つにまとめる（言語ごとのプライバシーポリシーの URL・サポート URL など）
         var merged: [AppStoreSetupFile.Failure] = []
         for failure in failures where !merged.contains(where: { $0.item == failure.item }) { merged.append(failure) }
         let result = merged
