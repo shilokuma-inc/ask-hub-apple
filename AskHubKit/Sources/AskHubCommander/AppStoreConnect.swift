@@ -242,6 +242,20 @@ public actor AppStoreConnectClient: AppStoreConnectReading {
         }
     }
 
+    /// 読む。404 なら nil（まだ作っていない資源。決めていない価格など）
+    func getIfPresent<Value: Decodable>(
+        _ path: String,
+        query: [URLQueryItem],
+        as type: Value.Type
+    ) async throws(AppStoreConnectError) -> Value? {
+        guard let data = try await send("GET", path, query: query, missingIsNil: true) else { return nil }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw .malformed("\(path) の応答")
+        }
+    }
+
     /// 1 つの要求を送り、応答の本文を返す（204 なら空）。`body` は JSON:API の本文
     func send(
         _ method: String,
@@ -249,6 +263,20 @@ public actor AppStoreConnectClient: AppStoreConnectReading {
         query: [URLQueryItem] = [],
         body: Data? = nil
     ) async throws(AppStoreConnectError) -> Data {
+        guard let data = try await send(method, path, query: query, body: body, missingIsNil: false) else {
+            throw .malformed("HTTP 404")
+        }
+        return data
+    }
+
+    /// 1 つの要求を送る。`missingIsNil` なら、読み取りの 404 を nil で返す
+    private func send(
+        _ method: String,
+        _ path: String,
+        query: [URLQueryItem] = [],
+        body: Data? = nil,
+        missingIsNil: Bool
+    ) async throws(AppStoreConnectError) -> Data? {
         var components = URLComponents(url: apiBase.appendingPathComponent(path), resolvingAgainstBaseURL: false)
         components?.queryItems = query.isEmpty ? nil : query
         guard let url = components?.url else { throw .malformed("URL を作れない") }
@@ -269,21 +297,31 @@ public actor AppStoreConnectClient: AppStoreConnectReading {
         switch response.statusCode {
         case 200..<300:
             return data
+        case 404 where missingIsNil && method == "GET":
+            return nil
         case 401, 403:
             // 鍵を入れ替えたかもしれないので、次は作り直す
             token = nil
             throw .unauthorized(status: response.statusCode)
+        default:
+            throw Self.failure(status: response.statusCode, method: method, data: data)
+        }
+    }
+
+    /// 成功でない応答の失敗（401・403 のほか）
+    static func failure(status: Int, method: String, data: Data) -> AppStoreConnectError {
+        switch status {
         case 429:
-            throw .rateLimited
+            return .rateLimited
         case 500...:
-            throw .unavailable("HTTP \(response.statusCode)")
+            return .unavailable("HTTP \(status)")
         case 400, 404, 409, 422:
             // 読み取りで返るなら、こちらの要求の形の誤り
-            guard method != "GET" else { throw .malformed("HTTP \(response.statusCode)") }
+            guard method != "GET" else { return .malformed("HTTP \(status)") }
             // 書き込みを断られた理由（足りない掲載文・状態が合わないなど）。App Store Connect の errors の detail を人に見せる
-            throw .refused(status: response.statusCode, detail: AppStoreConnectErrors.detail(data))
+            return .refused(status: status, detail: AppStoreConnectErrors.detail(data))
         default:
-            throw .malformed("HTTP \(response.statusCode)")
+            return .malformed("HTTP \(status)")
         }
     }
 

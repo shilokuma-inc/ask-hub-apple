@@ -196,6 +196,19 @@ final class FakeWhatsNewDrafter: WhatsNewDrafting {
     }
 }
 
+/// 決めた案を返し、受け取った材料を残す。`proposal` が nil なら、日本語のキーワードに「ウィジェット」を足す案
+final class FakeListingDrafter: ListingDrafting {
+    let materials = OSAllocatedUnfairLock<[ListingMaterial]>(initialState: [])
+    let proposal = OSAllocatedUnfairLock<ListingProposal?>(initialState: nil)
+
+    func draft(_ material: ListingMaterial) async throws(ReleaseNotesFailure) -> ListingProposal {
+        materials.withLock { $0.append(material) }
+        if let proposal = proposal.withLock({ $0 }) { return proposal }
+        let keywords = (material.current.first { $0.locale == "ja" }?.keywords).map { $0 + ",ウィジェット" } ?? "ウィジェット"
+        return ListingProposal(drafts: [ListingText(locale: "ja", keywords: keywords)], reason: "ウィジェットを足したので、キーワードに入れる案です")
+    }
+}
+
 /// App Store での配信の検知と後作業（`ReleaseWatch`）
 struct ReleaseWatchTests {
     static let repo = RepositoryFullName(rawValue: "shariverse/oshikatsu-countdown-ios")!
@@ -212,9 +225,10 @@ struct ReleaseWatchTests {
     let hosting = FakeReleaseHosting()
     let drafter = FakeNotesDrafter()
     let whatsNewDrafter = FakeWhatsNewDrafter()
+    let listingDrafter = FakeListingDrafter()
     let clock = TestClock(Self.now)
 
-    func watch(stores: [any AppStoreConnectSubmitting]? = nil) -> ReleaseWatch {
+    func watch(stores: [any AppStoreConnecting]? = nil) -> ReleaseWatch {
         let clock = clock
         return ReleaseWatch(
             context: CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { clock.now },
@@ -223,6 +237,7 @@ struct ReleaseWatchTests {
             hosting: hosting,
             drafter: drafter,
             whatsNew: whatsNewDrafter,
+            listing: listingDrafter,
             authors: FixedCommitAuthor(GitAuthor(name: "Takumi", email: "1+mrs1669@users.noreply.github.com")),
             log: { _ in }
         )

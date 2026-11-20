@@ -21,6 +21,10 @@ extension StateClientServiceTests {
              "builds":[{"platform":"iOS","build":"45","uploadedAt":"2027-01-20T01:40:00Z"}],
              "whatsNew":{"drafts":[{"locale":"ja","text":"・速くなりました"},{"locale":"en-US","text":"- Faster"}],
                          "draftedAt":"2027-01-20T01:05:00Z"},
+             "listing":{"current":[{"locale":"ja","description":"素数のクイズ","keywords":"素数,クイズ"},
+                                   {"locale":"en-US","description":"A prime quiz","promotionalText":"New!"}],
+                        "drafts":[{"locale":"ja","keywords":"素数,クイズ,タイムアタック"}],
+                        "reason":"タイムアタックを足したので、キーワードに入れる案です","draftedAt":"2027-01-20T01:06:00Z"},
              "revision":2,"review":[],"createdAt":"2027-01-20T01:00:00Z","updatedAt":"2027-01-20T01:40:00Z"}
             """
         return releaseFiles(extra: ["\(submissionDirectory)/1.2.0.json": ready].merging(extra) { $1 })
@@ -46,7 +50,9 @@ extension StateClientServiceTests {
         #expect(submission.startedInAskHub && submission.awaitsSubmission && submission.canAbandon)
         #expect(submission.buildSummary == "iOS (45)")
         #expect(submission.drafts?.map(\.locale) == ["ja", "en-US"])
-        #expect(submission.steps.map(\.state) == [.done, .done, .done, .done, .waitingHuman, .working])
+        #expect(submission.listing?.current.map(\.locale) == ["ja", "en-US"])
+        #expect(submission.listing?.drafts == [.init(locale: "ja", values: [.keywords: "素数,クイズ,タイムアタック"])])
+        #expect(submission.steps.map(\.state) == [.done, .done, .done, .done, .done, .waitingHuman, .working])
         // 次のリリースは、この版が終わるまで始められない。配信した版（1.1.0）より大きくない版も始められない
         #expect(!fixture.service.supports(.startRelease(repositoryID: submissionRepositoryID, version: "1.3.0")))
         let items = InboxBuilder.items(from: snapshot, now: now).filter { $0.kind == .submissionReady }
@@ -81,6 +87,44 @@ extension StateClientServiceTests {
         #expect(!InboxBuilder.items(from: sent, now: now).contains { $0.kind == .submissionReady })
         #expect(sent.sentIntents.first?.title == "審査に出す（sample-ios 1.2.0）")
         #expect(sent.sentIntents.first?.target == .submission(repositoryID: submissionRepositoryID, version: "1.2.0"))
+    }
+
+    @Test
+    func sendsOnlyChangedListingFields() async throws {
+        let fixture = try makeService(files: Self.submissionFiles())
+        _ = try await fixture.service.fetchSnapshot()
+        var withListing = request
+        withListing.listing = [
+            // 「変える」にした欄は、今の文と同じでも送る（比べて省くのは司令塔）。前後の空白は除く
+            .init(locale: "ja", values: [.description: "素数のクイズ", .keywords: " 素数,クイズ,タイムアタック\n"]),
+            // プロモーションテキストは空にできる
+            .init(locale: "en-US", values: [.promotionalText: ""])
+        ]
+        try await fixture.service.perform(.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: withListing))
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        let submit = try SubmitForReviewIntent(envelope: envelope)
+        #expect(submit.listing == [
+            ListingText(locale: "ja", description: "素数のクイズ", keywords: "素数,クイズ,タイムアタック"),
+            ListingText(locale: "en-US", promotionalText: "")
+        ])
+    }
+
+    @Test
+    func refusesListingThatCannotBeSent() async throws {
+        let fixture = try makeService(files: Self.submissionFiles())
+        _ = try await fixture.service.fetchSnapshot()
+        // 配信中の版に無い言語・空の説明文・100 バイトを超えるキーワード
+        let invalid: [[Submission.ListingTexts]] = [
+            [.init(locale: "fr", values: [.keywords: "premier"])],
+            [.init(locale: "ja", values: [.description: "  "])],
+            [.init(locale: "ja", values: [.keywords: String(repeating: "素数,", count: 30)])]
+        ]
+        for listing in invalid {
+            var changed = request
+            changed.listing = listing
+            let intent = HumanIntent.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: changed)
+            await #expect(throws: ClientServiceError.self) { try await fixture.service.perform(intent) }
+        }
     }
 
     @Test

@@ -45,7 +45,7 @@ extension StateIntentMapper {
         case let .submitForReview(repositoryID, version, request):
             let entry = try entry(repositoryID, version, \.canSubmit, unavailable: "この版は、いまは審査に出せません。取り直してから送ってください")
             guard entry.revision == request.revision else {
-                throw ClientServiceError(message: "ビルドか What's New の下書きが変わりました。見直してから審査に出してください")
+                throw ClientServiceError(message: "ビルド・What's New・掲載文の案が変わりました。見直してから審査に出してください")
             }
             return .submitForReview(
                 entry.target,
@@ -53,7 +53,8 @@ extension StateIntentMapper {
                 builds: try Self.builds(request.builds, available: entry.builds),
                 whatsNew: try Self.whatsNew(request.whatsNew, locales: entry.locales),
                 releaseType: Self.releaseType(request.releaseType),
-                earliestReleaseDate: try Self.releaseDate(request.releaseType)
+                earliestReleaseDate: try Self.releaseDate(request.releaseType),
+                listing: try Self.listing(request.listing, current: entry.listing)
             )
 
         case let .distributeRelease(repositoryID, version):
@@ -111,6 +112,30 @@ extension StateIntentMapper {
             }
             return LocalizedText(locale: locale, text: text)
         }
+    }
+
+    /// 人が確かめた掲載文の直し。前後の空白を除いて、人が「変える」にした欄をすべて送る（配信中の版と同じ文でも、版の枠の文が
+    /// App Store Connect で直されていることがあるので、比べて省くのは司令塔に任せる）。司令塔と同じく、キーワードは UTF-8 のバイトで数える
+    private static func listing(
+        _ changes: [Submission.ListingTexts],
+        current: [ListingText]
+    ) throws(ClientServiceError) -> [ListingText] {
+        var texts: [ListingText] = []
+        for change in changes {
+            guard current.contains(where: { $0.locale == change.locale }) else {
+                throw ClientServiceError(message: "掲載文の言語（\(change.locale)）が配信中の版にありません。取り直してから送ってください")
+            }
+            var text = ListingText(locale: change.locale)
+            for field in Submission.ListingField.allCases {
+                guard let value = change.values[field] else { continue }
+                guard field.accepts(value) else {
+                    throw ClientServiceError(message: "\(field.label)（\(change.locale)）は \(field.rangeLabel)で書いてください")
+                }
+                text[StateSnapshotBuilder.listingField(field)] = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if !text.isEmpty { texts.append(text) }
+        }
+        return texts
     }
 
     private static func releaseType(_ type: Submission.ReleaseType) -> AppStoreReleaseType {

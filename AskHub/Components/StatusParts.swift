@@ -112,6 +112,7 @@ extension InboxItem.Kind {
         case .submissionDistribution: "shippingbox.fill"
         case .submissionProblem: "exclamationmark"
         case .submissionRejected: "xmark.octagon.fill"
+        case .appStoreSetup: "checklist"
         }
     }
 
@@ -135,6 +136,7 @@ extension InboxItem.Kind {
         case .submissionReady: Theme.Tone.lavender
         case .submissionDistribution: Theme.Tone.mint
         case .submissionProblem, .submissionRejected: Theme.Tone.rose
+        case .appStoreSetup: Theme.Tone.sky
         }
     }
 }

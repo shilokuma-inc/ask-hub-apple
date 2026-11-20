@@ -53,3 +53,56 @@ public struct PublishGitHubReleaseHandler: IntentHandler {
         return nil
     }
 }
+
+/// 配信中の版のプロモーションテキストを直す人の意図（`updatePromotionalText`）。
+///
+/// 直した中身を配信の記録の `promotionalText.request` に写すだけで、App Store Connect には見回り（`ReleaseWatch`）が書く。
+/// 配信中の版（記録のうち最も新しい版で、司令塔が今の文を読んだもの）の、今の文にある言語だけを受け付ける
+public struct UpdatePromotionalTextHandler: IntentHandler {
+    public init() {}
+
+    public func handle(_ envelope: IntentEnvelope, in context: CommanderContext) async throws(CommanderError) -> IntentDecision {
+        let update: UpdatePromotionalTextIntent
+        do {
+            update = try UpdatePromotionalTextIntent(envelope: envelope)
+        } catch {
+            return .reject("プロモーションテキストを直す意図の形が違う（\(error.detail)）")
+        }
+        let path = StatePath.release(update.repo, update.version)
+        guard let file = try await context.read(ReleaseFile.self, at: path) else {
+            return .reject("\(update.repo) の \(update.version) の配信の記録が無い")
+        }
+        // 前の周で写した（やり直し）
+        if file.promotionalText?.request?.approval == update.intent { return .accept }
+        let newer = try await StartReleaseHandler.releasedVersions(of: update.repo, in: context).filter { $0 > update.version }
+        if let latest = newer.max() { return .reject("\(update.version) は配信中の版でない（\(latest) を配信した）") }
+        if let problem = Self.problem(updating: update, on: file) { return .reject(problem) }
+        let request = ReleaseFile.PromotionalTextRequest(approval: update.intent, at: context.timestamp, texts: update.texts)
+        let saved: ReleaseFile
+        do {
+            let message = "\(update.repo) の \(update.version) のプロモーションテキストを直す"
+            saved = try await context.files.update(ReleaseFile.self, at: path, message: message) { file in
+                guard Self.problem(updating: update, on: file) == nil else { return false }
+                file.promotionalText?.request = request
+                file.updatedAt = context.timestamp
+                return true
+            }.file
+        } catch {
+            throw .files(error)
+        }
+        guard saved.promotionalText?.request == request else { throw .changedWhileProcessing(path) }
+        return .accept
+    }
+
+    /// 受け付けられない理由。受け付けられれば nil
+    static func problem(updating update: UpdatePromotionalTextIntent, on file: ReleaseFile) -> String? {
+        guard let promotionalText = file.promotionalText else {
+            return "\(file.version) のプロモーションテキストをまだ読んでいない（司令塔が App Store Connect を読むのを待つ）"
+        }
+        let locales = Set(promotionalText.current.map(\.locale))
+        if let locale = update.texts.map(\.locale).first(where: { !locales.contains($0) }) {
+            return "プロモーションテキストの言語（\(locale)）が配信中の版に無い"
+        }
+        return nil
+    }
+}

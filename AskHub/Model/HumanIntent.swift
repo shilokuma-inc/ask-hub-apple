@@ -37,6 +37,8 @@ enum HumanIntent: Hashable {
     case addRepository(repositoryID: TargetRepository.ID)
     /// 配信した版のリリース文を確かめて、GitHub Release を公開する。見た下書きの版に結びつける（見た後に下書きが作り直されていれば、司令塔が断る）
     case publishRelease(repositoryID: TargetRepository.ID, version: String, notesVersion: Int, notes: String)
+    /// 配信中の版のプロモーションテキストを直して、すぐ反映する（変える言語だけ。空の文は空にする）
+    case updatePromotionalText(repositoryID: TargetRepository.ID, version: String, texts: [Submission.Localized])
     /// リリースを始める（`version` は始める版）
     case startRelease(repositoryID: TargetRepository.ID, version: String)
     /// 審査に出す（`revision` は見たときの準備の版。ビルドか What's New が変わっていれば司令塔が断る）
@@ -55,6 +57,14 @@ enum HumanIntent: Hashable {
     case applyProtection(repositoryID: TargetRepository.ID, requiredChecks: [String])
     /// 加えるときに司令塔が出したワークフローの直しの PR のマージの承認。見たときの head に結びつける
     case approveSetup(repositoryID: TargetRepository.ID, pullRequest: Int, head: String)
+    /// Bundle ID を登録する（司令塔が App Store Connect に送る）
+    case registerBundleId(repositoryID: TargetRepository.ID, identifier: String, platform: AppStoreSetup.BundlePlatform)
+    /// 決まった値（価格・配信の地域・カテゴリ・コンテンツの権利・プライバシーポリシーの URL）を App Store Connect に書く
+    case applyAppStoreSettings(repositoryID: TargetRepository.ID, request: AppStoreSettingsRequest)
+    /// App Store Connect の Web でした作業を「終わった」にする
+    case confirmAppStoreItem(repositoryID: TargetRepository.ID, item: AppStoreSetup.ItemKind)
+    /// App Store に出さない（`excluded` が false なら出すに戻す）
+    case excludeFromAppStore(repositoryID: TargetRepository.ID, excluded: Bool)
 }
 
 enum SplitChoice: Hashable {
@@ -110,6 +120,9 @@ extension HumanIntent {
         case let .publishRelease(_, version, _, _):
             "GitHub Release の公開（\(version)）"
 
+        case let .updatePromotionalText(_, version, _):
+            "プロモーションテキストの反映（\(version)）"
+
         case let .startRelease(_, version):
             "リリースを始める（\(version)）"
 
@@ -136,6 +149,18 @@ extension HumanIntent {
 
         case .approveSetup:
             "ワークフローの直しの承認"
+
+        case let .registerBundleId(_, identifier, _):
+            "Bundle ID の登録（\(identifier)）"
+
+        case .applyAppStoreSettings:
+            "App Store Connect に値を書く"
+
+        case let .confirmAppStoreItem(_, item):
+            "終わった（\(item.title)）"
+
+        case let .excludeFromAppStore(_, excluded):
+            excluded ? "App Store に出さない" : "App Store に出すに戻す"
 
         case let .resolveBlocker(_, action, _, _):
             Self.label(of: action)

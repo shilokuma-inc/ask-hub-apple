@@ -17,7 +17,9 @@ struct Submission: Identifiable, Hashable {
     var builds: [Build] = []
     /// What's New の下書き。nil ならまだ下書きしていない、空なら初めての版（What's New を持たない）
     var drafts: [Localized]?
-    /// ビルドか What's New の下書きが変わるたびに上がる（審査に出すときに、見たものに結びつける）
+    /// 掲載文（説明文・キーワード・プロモーションテキスト）の案。nil ならまだ書いていない
+    var listing: Listing?
+    /// ビルド・What's New の下書き・掲載文の案が変わるたびに上がる（審査に出すときに、見たものに結びつける）
     var revision: Int
     /// 審査に出した中身。出していなければ nil
     var submitted: Submitted?
@@ -79,6 +81,83 @@ struct Submission: Identifiable, Hashable {
         }
     }
 
+    /// 掲載文の欄（司令塔の `ListingText.Field` と同じ）
+    enum ListingField: String, CaseIterable, Hashable, Identifiable {
+        case description
+        case keywords
+        case promotionalText
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .description: "説明文"
+            case .keywords: "キーワード"
+            case .promotionalText: "プロモーションテキスト"
+            }
+        }
+
+        /// 長さの上限（キーワードは UTF-8 のバイト、ほかは Unicode のコードポイント。App Store Connect の上限）
+        var limit: Int {
+            switch self {
+            case .description: 4_000
+            case .keywords: 100
+            case .promotionalText: 170
+            }
+        }
+
+        /// 例: 12 / 100 バイト
+        func usage(of text: String) -> String {
+            switch self {
+            case .keywords: "\(text.utf8.count) / 100 バイト"
+            case .description: "\(text.unicodeScalars.count) / 4,000 文字"
+            case .promotionalText: "\(text.unicodeScalars.count) / 170 文字"
+            }
+        }
+
+        /// 送れる長さ
+        var rangeLabel: String {
+            switch self {
+            case .description: "1〜4,000 文字"
+            case .keywords: "1〜100 バイト"
+            case .promotionalText: "170 文字まで"
+            }
+        }
+
+        /// 送れる長さか（説明文とキーワードは空にできない）
+        func accepts(_ text: String) -> Bool {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return self == .promotionalText }
+            let length = self == .keywords ? trimmed.utf8.count : trimmed.unicodeScalars.count
+            return length <= limit
+        }
+    }
+
+    /// 1 つの言語の掲載文。案・直しでは、無い欄は変えない
+    struct ListingTexts: Hashable, Identifiable {
+        var locale: String
+        var values: [ListingField: String] = [:]
+
+        var id: String { locale }
+
+        var localeName: String { Localized(locale: locale, text: "").localeName }
+
+        /// 例: 説明文・キーワード
+        var fieldSummary: String {
+            ListingField.allCases.filter { values[$0] != nil }.map(\.label).joined(separator: "・")
+        }
+    }
+
+    /// 掲載文の案
+    struct Listing: Hashable {
+        /// 配信中の版の掲載文（言語ごと）。空なら初めての版で、案を書かない
+        var current: [ListingTexts]
+        /// 直す案（変える言語だけ）。空なら「変えない」
+        var drafts: [ListingTexts]
+        /// 案の理由（変えないなら、その理由）
+        var reason: String
+    }
+
     /// 審査に通った後の配信の方式
     enum ReleaseType: Hashable {
         case afterApproval
@@ -101,6 +180,8 @@ struct Submission: Identifiable, Hashable {
         var builds: [Build]
         var whatsNew: [Localized]
         var releaseType: ReleaseType
+        /// 人が確かめた掲載文の直し（変える言語・欄だけ）
+        var listing: [ListingTexts] = []
     }
 
     struct Submitted: Hashable {
@@ -108,6 +189,8 @@ struct Submission: Identifiable, Hashable {
         var whatsNew: [Localized]
         var releaseType: ReleaseType
         var at: Date
+        /// 審査に出した掲載文の直し
+        var listing: [ListingTexts] = []
     }
 
     /// 審査の状態（App Store Connect の版の状態をまとめたもの）
@@ -175,6 +258,7 @@ struct Submission: Identifiable, Hashable {
         case review
         case integration
         case appStoreVersion
+        case listing
 
         var label: String {
             switch self {
@@ -188,6 +272,7 @@ struct Submission: Identifiable, Hashable {
             case .review: "審査の状態"
             case .integration: "release ブランチの取り込み"
             case .appStoreVersion: "App Store Connect の版"
+            case .listing: "掲載文"
             }
         }
     }
@@ -255,7 +340,9 @@ extension Submission {
     /// 段取りの並び。AskHub で始めた版は release ブランチから、手で出した版は審査から
     var steps: [StepStatus] {
         guard startedInAskHub else { return [reviewStatus, distributionStatus] }
-        let preparation = [branchStatus, nextVersionStatus, whatsNewStatus, buildsStatus]
+        // 掲載文を扱う前に審査に出した版は、案を作らないので段取りに出さない
+        let listing = listing == nil && submitted != nil ? [] : [listingStatus]
+        let preparation = [branchStatus, nextVersionStatus, whatsNewStatus] + listing + [buildsStatus]
         return preparation + (slots == nil ? [] : [slotsStatus]) + [reviewStatus, distributionStatus]
     }
 
@@ -316,6 +403,22 @@ extension Submission {
             ?? StepStatus(id: "whatsNew", title: title, detail: "前の版からの変更をもとに、言語ごとに下書きします", state: .working)
     }
 
+    private var listingStatus: StepStatus {
+        let title = Step.listing.label
+        if let listing {
+            let detail = if listing.current.isEmpty {
+                "初めての版なので、App Store Connect で書きます"
+            } else if listing.drafts.isEmpty {
+                "変えません（\(listing.reason)）"
+            } else {
+                "直す案を書きました（\(listing.drafts.map(\.locale).joined(separator: "・"))）"
+            }
+            return StepStatus(id: "listing", title: title, detail: detail, state: .done)
+        }
+        return problemStatus(.listing, id: "listing", title: title)
+            ?? StepStatus(id: "listing", title: title, detail: "配信中の版の説明文・キーワードをもとに、直す案を書きます", state: .working)
+    }
+
     private var slotsStatus: StepStatus {
         let title = Step.appStoreVersion.label
         if let problem = problemStatus(.appStoreVersion, id: "slots", title: title) { return problem }
@@ -355,7 +458,7 @@ extension Submission {
             return StepStatus(id: "review", title: title, detail: "審査を取り下げています", state: .working)
         }
         if awaitsSubmission {
-            return StepStatus(id: "review", title: title, detail: "What's New とビルドを確かめて、審査に出してください", state: .waitingHuman)
+            return StepStatus(id: "review", title: title, detail: "What's New・掲載文・ビルドを確かめて、審査に出してください", state: .waitingHuman)
         }
         if review.isEmpty {
             return StepStatus(id: "review", title: title, detail: "準備がそろったら、審査に出せます", state: .working)

@@ -176,7 +176,8 @@ public struct SubmitForReviewHandler: IntentHandler {
             builds: submit.builds,
             whatsNew: submit.whatsNew,
             releaseType: submit.releaseType,
-            earliestReleaseDate: submit.earliestReleaseDate
+            earliestReleaseDate: submit.earliestReleaseDate,
+            listing: submit.listing
         )
         let saved: SubmissionFile
         do {
@@ -202,7 +203,7 @@ public struct SubmitForReviewHandler: IntentHandler {
         if file.isEnded { return "\(file.version) のリリースはもう終わっている" }
         guard file.origin == .askhub else { return "\(file.version) は App Store Connect で手で審査に出した版。AskHub からは出せない" }
         if file.revision != submit.revision {
-            return "\(file.version) の準備（ビルドか What's New）が変わった（今の版は \(file.revision)）。見直してから送り直す"
+            return "\(file.version) の準備（ビルド・What's New・掲載文の案）が変わった（今の版は \(file.revision)）。見直してから送り直す"
         }
         guard file.awaitsSubmission else {
             return file.submit != nil || file.hasReviewInFlight ? "\(file.version) はもう審査に出している" : "\(file.version) の準備がまだそろっていない"
@@ -213,6 +214,10 @@ public struct SubmitForReviewHandler: IntentHandler {
         let drafted = Set(file.whatsNew?.drafts.map(\.locale) ?? [])
         if Set(submit.whatsNew.map(\.locale)) != drafted {
             return drafted.isEmpty ? "初めての版は What's New を持たない" : "What's New の言語が下書き（\(drafted.sorted().joined(separator: "・"))）と違う"
+        }
+        let listed = Set(file.listing?.current.map(\.locale) ?? [])
+        if let locale = submit.listing.map(\.locale).first(where: { !listed.contains($0) }) {
+            return listed.isEmpty ? "初めての版の掲載文は App Store Connect で書く" : "掲載文の言語（\(locale)）が配信中の版に無い"
         }
         if let date = submit.earliestReleaseDate, date.date <= now { return "配信の日時が過ぎている" }
         return nil

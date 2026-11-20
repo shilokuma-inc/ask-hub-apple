@@ -140,7 +140,8 @@ struct DemoData {
             fetchedAt: now,
             sourceFailures: [],
             releases: releases(),
-            submissions: submissions()
+            submissions: submissions(),
+            appStoreSetups: appStoreSetups()
         )
     }
 

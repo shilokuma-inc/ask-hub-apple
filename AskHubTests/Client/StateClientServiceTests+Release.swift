@@ -145,3 +145,66 @@ extension StateClientServiceTests {
         #expect(snapshot.sourceFailures.map(\.source) == ["\(Self.releaseDirectory)/0.9.0.json"])
     }
 }
+
+/// 配信中の版のプロモーションテキスト: 最も新しい版だけに出し、直した言語だけを送る
+extension StateClientServiceTests {
+    private static let promotionalReleaseDirectory = "repos/\(repo)/releases"
+
+    /// 1.1.0 に今のプロモーションテキストを足し、古い 1.0.0 にも読んだ跡を残したもの
+    static func promotionalTextFiles() -> [String: String] {
+        let platforms = #"[{"platform":"iOS","build":"31","detectedAt":"2027-01-15T06:00:00Z"}]"#
+        let promotional = #"{"current":[{"locale":"ja","text":"推しの予定を数えよう"},{"locale":"en-US","text":""}],"readAt":"2027-01-15T06:00:00Z"}"#
+        let live = """
+            {"v":1,"repo":"\(repo)","version":"1.1.0","platforms":\(platforms),"promotionalText":\(promotional),
+             "detectedAt":"2027-01-15T06:00:00Z","updatedAt":"2027-01-15T06:00:00Z"}
+            """
+        let old = """
+            {"v":1,"repo":"\(repo)","version":"1.0.0","platforms":\(platforms),"promotionalText":\(promotional),
+             "detectedAt":"2026-12-01T00:00:00Z","updatedAt":"2026-12-01T00:00:00Z"}
+            """
+        return releaseFiles(extra: ["\(promotionalReleaseDirectory)/1.1.0.json": live, "\(promotionalReleaseDirectory)/1.0.0.json": old])
+    }
+
+    @Test
+    func sendsOnlyChangedPromotionalText() async throws {
+        let fixture = try makeService(files: Self.promotionalTextFiles())
+        let service = fixture.service
+        let snapshot = try await service.fetchSnapshot()
+        let id = Self.repo.lowercased()
+        let live = try #require(snapshot.release(Release.id(id, "1.1.0"))?.promotionalText)
+        #expect(live.current.map(\.text) == ["推しの予定を数えよう", ""])
+        // 古い版は直せない（配信中の版でない）
+        #expect(snapshot.release(Release.id(id, "1.0.0"))?.promotionalText == nil)
+        #expect(!service.supports(.updatePromotionalText(repositoryID: id, version: "1.0.0", texts: [])))
+
+        let texts: [Submission.Localized] = [.init(locale: "ja", text: "推しの予定を数えよう"), .init(locale: "en-US", text: " New widgets\n")]
+        let intent = HumanIntent.updatePromotionalText(repositoryID: id, version: "1.1.0", texts: texts)
+        #expect(service.supports(intent))
+        try await service.perform(intent)
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        let update = try UpdatePromotionalTextIntent(envelope: envelope)
+        #expect(update.texts == [LocalizedText(locale: "en-US", text: "New widgets")])
+        #expect(envelope.target == IntentEnvelope.Target(type: "release", id: "1.1.0"))
+
+        // 送った後は受け付けを待つ間として出し、もう一度は送れない
+        let sent = try await service.fetchSnapshot()
+        #expect(sent.release(Release.id(id, "1.1.0"))?.promotionalText?.request == .sending)
+        #expect(!service.supports(intent))
+    }
+
+    @Test
+    func refusesUnchangedOrTooLongPromotionalText() async throws {
+        let fixture = try makeService(files: Self.promotionalTextFiles())
+        _ = try await fixture.service.fetchSnapshot()
+        let id = Self.repo.lowercased()
+        let invalid: [[Submission.Localized]] = [
+            [.init(locale: "ja", text: "推しの予定を数えよう")],
+            [.init(locale: "ja", text: String(repeating: "あ", count: 171))],
+            [.init(locale: "fr", text: "Nouveau")]
+        ]
+        for texts in invalid {
+            let intent = HumanIntent.updatePromotionalText(repositoryID: id, version: "1.1.0", texts: texts)
+            await #expect(throws: ClientServiceError.self) { try await fixture.service.perform(intent) }
+        }
+    }
+}

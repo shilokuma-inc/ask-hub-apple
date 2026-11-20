@@ -54,6 +54,16 @@ struct StateIndex {
         var canPublish: Bool
     }
 
+    /// 配信中の版のプロモーションテキストを直す意図の材料。処理を待つ意図を当てた後のもの
+    struct PromotionalTextEntry {
+        var repo: RepositoryFullName
+        var version: MarketingVersion
+        /// 今の文（直せる言語と、変わっていない言語を送らないための元）
+        var current: [LocalizedText]
+        /// 送れるか（この端末から送って、司令塔がまだ受け付けていない中身が無い）
+        var canUpdate: Bool
+    }
+
     /// リリースを始めた版への意図（審査に出す・配信する・取り下げ・やめる）の対象と、送れるか。処理を待つ意図を当てた後のもの
     struct SubmissionEntry {
         var target: SubmissionTarget
@@ -62,6 +72,8 @@ struct StateIndex {
         var builds: [SubmissionFile.BuildChoice]
         /// What's New の下書きの言語（審査に出すときは同じ言語をそろえる）
         var locales: [String]
+        /// 配信中の版の掲載文（掲載文を直せる言語と、変わっていない欄を送らないための元）
+        var listing: [ListingText] = []
         var canSubmit: Bool
         var canDistribute: Bool
         var canWithdraw: Bool
@@ -103,6 +115,7 @@ struct StateIndex {
     }
     var repositories: [TargetRepository.ID: RepositoryFullName] = [:]
     var releases: [Release.ID: ReleaseEntry] = [:]
+    var promotionalTexts: [Release.ID: PromotionalTextEntry] = [:]
     var submissions: [Submission.ID: SubmissionEntry] = [:]
     /// 終わっていないリリースのあるリポジトリ（リリースを始められない）。処理を待つ意図を当てた後のもの
     var releasingRepositories: Set<TargetRepository.ID> = []
@@ -112,6 +125,19 @@ struct StateIndex {
     var removedRepositories: [TargetRepository.ID: RepositoryFullName] = [:]
     /// 終わっていない epic のあるリポジトリ（対象から外すと司令塔が断る）。処理を待つ意図を当てた後のもの
     var busyRepositories: Set<TargetRepository.ID> = []
+    /// 新しいアプリを App Store に載せる準備（処理を待つ意図を当てた後のもの）
+    var appStoreSetups: [TargetRepository.ID: AppStoreSetupEntry] = [:]
+
+    struct AppStoreSetupEntry {
+        var bundleIDs: [String]
+        var hasApp: Bool
+        var isActive: Bool
+        var isExcluded: Bool
+        /// 前の書き込み（Bundle ID の登録・決まった値）を送り終えていない
+        var isWriting: Bool
+        /// 「終わった」を押せる項目（確かめた項目のうち、終わっていないもの）
+        var confirmable: Set<AppStoreSetup.ItemKind>
+    }
 }
 
 /// 状態リポジトリのファイル（`StateDocuments`）を、画面用のモデル（`ClientSnapshot`）に変える。
@@ -160,6 +186,7 @@ struct StateSnapshotBuilder {
         applyRejections(to: &epics)
         let releases = releases(index: &index, overlaid: overlaid)
         let submissions = submissions(index: &index, overlaid: overlaid)
+        let appStoreSetups = appStoreSetups(index: &index, overlaid: overlaid)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             candidateRepositories: [],
@@ -171,7 +198,8 @@ struct StateSnapshotBuilder {
             sentIntents: documents.sentIntents.map(sentStatus),
             commanderSeenAt: documents.commander?.seenAt.date,
             releases: releases,
-            submissions: submissions
+            submissions: submissions,
+            appStoreSetups: appStoreSetups
         )
         return (snapshot, index)
     }
