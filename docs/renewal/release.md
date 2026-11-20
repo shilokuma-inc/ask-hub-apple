@@ -64,22 +64,22 @@
 | 順 | 段取り | するのは | 中身 |
 | --- | --- | --- | --- |
 | 1 | リリースを始める | 人（`startRelease`） | リポジトリの画面で版を選ぶ（既定は前に配信した版の次のマイナー）。終わっていないリリースがあれば始められない（App Store Connect の編集できる版はプラットフォームごとに 1 つ） |
-| 2 | release ブランチ | 司令塔 | develop の先頭から `release/<版>` を Git Data API で作る（ルールセットはブランチの作成を止めない）。作ると Upload が動き、TestFlight に上がる |
+| 2 | release ブランチと版の枠 | 司令塔 | develop の先頭から `release/<版>` を Git Data API で作る（ルールセットはブランチの作成を止めない）。作ると Upload が動き、TestFlight に上がる。あわせて、App Store Connect にプラットフォームごとの編集できる版（番号は始めた版、配信の方式は既定の承認後すぐ）を作り、スクショや説明文を先に直せるようにする（2026-11-20 にユーザーが決めた）。同じ番号の編集できる版があればそれを使い、別の番号の編集できる版があれば作らずに人が直す問題にする（hotfix との兼ね合いは段階 5 の 4） |
 | 3 | 次の版 | 司令塔 | develop の `MARKETING_VERSION` を次のマイナーに上げる PR（配信の後作業の「次の版」と同じ作り。CI が通ったらマージ）。release ブランチを作ってから出す |
 | 4 | What's New の下書き | 司令塔（Claude） | 前に配信した版のタグから release ブランチの先頭までの変更で、App Store Connect にある言語ごとに下書きする（言語は配信中の版の掲載文の言語。配信中の版が無ければ初めての版なので下書きしない） |
-| 5 | ビルドを待つ | 司令塔 | App Store Connect の、その版のビルドのうち、release ブランチを作った後に上げて処理を終えた（`VALID`）最新のものを、プラットフォームごとに記録する |
+| 5 | ビルドを待つ | 司令塔 | App Store Connect の、その版のビルドのうち、release ブランチを作った後に上げて処理を終えた（`VALID`）最新のものを、プラットフォームごとに記録し、版の枠に選ぶ（配信の方式は送らない）。What's New の下書きができたら、枠の各言語に 1 回だけ書いておく（審査に出すまで公開されない。後で人が App Store Connect で直した文は上書きしない） |
 | 6 | 審査に出す | 人（`submitForReview`） | 「あなたの番」で、ビルドと What's New（言語ごとに直せる）を確かめ、配信の方式（承認後すぐ・手動・日時を指定）を選んで押す |
-| 7 | App Store Connect に出す | 司令塔 | プラットフォームごとに、編集できる版を作るか直し（版の番号・配信の方式）、ビルドを選び、What's New を書き、reviewSubmission に版を足して提出する。どれも、する前に今の様子を読み、途中で止まってもやり直せば同じになる |
+| 7 | App Store Connect に出す | 司令塔 | プラットフォームごとに、編集できる版（ふつうは 2 で作った枠）を直し（版の番号・配信の方式）、ビルドを選び、人が確かめた What's New で上書きし、reviewSubmission に版を足して提出する。どれも、する前に今の様子を読み、途中で止まってもやり直せば同じになる |
 | 8 | 審査の見張り | 司令塔 | 30 分ごとと、操作の直後に、版の状態（`appVersionState`）を読む。審査中・承認・リジェクトになったら知らせる（リジェクトの対処は段階 5 の 4） |
 | 9 | 配信する | 人（`distributeRelease`）か App Store | 配信の方式が手動なら、承認された版に「配信する」を出す。ほかの方式は App Store Connect が配信する |
 | 10 | 後作業 | 司令塔 | 配信を見つけたら記録に終わりの印を付け、今までの後作業（`releases/<版>.json`）に渡す。GitHub Release は、審査に出したときの What's New（日本語。無ければ最初の言語）で確認なしに公開する。release ブランチを main と develop に取り込む（下の「release ブランチの取り込み」） |
 
 - release ブランチの取り込み: 取り込む先（base の develop と main）ごとに、release ブランチが進んでいれば（`compare`）司令塔の PR を出し、チェックが通ったらマージコミットでマージする。進んでいなければ取り込まない（直しの無いリリースの develop）。main が無ければ release ブランチの先頭から作る。release ブランチで版を変えていないので、develop の版は上書きされない。コンフリクト・チェックの失敗・閉じられた PR は人が直す問題にする
 - 取り下げ（`withdrawSubmission`）: 審査を待っている・審査中なら、reviewSubmission を取り消す（`canceled`）。取り下げた後は、ビルドや What's New を直して出し直せる
-- やめる（`abandonRelease`）: 審査に出していない・取り下げた・断られた版なら、記録に終わりの印を付ける。release ブランチ・develop の版を上げる PR・App Store Connect の版には触れない（次のリリースの「App Store Connect に出す」が、編集できる版の番号を直して使う）
+- やめる（`abandonRelease`）: 審査に出していない・取り下げた・断られた版なら、記録に終わりの印を付け、リリースを始めたときに作った版の枠のうち、まだ審査に出していないものを `DELETE /v1/appStoreVersions/{id}` で消す。審査に出ている・API で消せない枠は消さずに理由を記録して知らせる（人が App Store Connect で確かめる）。release ブランチ・develop の版を上げる PR には触れない
 - 承認された後の取り下げ（Developer Reject）は、API が見つからないので作らない（App Store Connect の Web で行う）
 - 手で審査に出した版: 審査を待っている以降の状態の版を見つけ、記録が無ければ `origin` が `appStoreConnect` の記録を作って見張る。手動の配信の版なら「配信する」も出す
-- App Store Connect の書き込みは、どれも人の意図を受け付けたときだけ行う。リリースを始める・準備で行うのは GitHub の操作と App Store Connect の読み取りだけ
+- App Store Connect の書き込みは、どれも人の意図を受け付けたときだけ行う。リリースを始める（`startRelease`）で書くのは、審査に出すまで公開されない版の枠（版・ビルドの選択・What's New の下書き）だけ。この仕組みの前に始めた版（記録の `appStoreVersions` が `null`）には枠を作らない
 
 ### App Store Connect の API
 
@@ -90,7 +90,7 @@
 | 版の状態を読む | `GET /v1/apps/{id}/appStoreVersions?filter[appVersionState]=…`（置き換わった版のほかすべて。配信の検知と同じ要求で読む） |
 | ビルドを読む | `GET /v1/builds?filter[app]=…&filter[preReleaseVersion.version]=<版>&filter[processingState]=VALID` |
 | 掲載文の言語を読む・What's New を書く | `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations`、`PATCH /v1/appStoreVersionLocalizations/{id}`（`whatsNew`） |
-| 版を作る・直す | `POST /v1/appStoreVersions`（`platform`・`versionString`・`releaseType`・`earliestReleaseDate`）、`PATCH /v1/appStoreVersions/{id}`（`relationships.build` でビルドも選ぶ） |
+| 版を作る・直す・消す | `POST /v1/appStoreVersions`（`platform`・`versionString`・`releaseType`。`earliestReleaseDate` は日時を指定するときだけ）、`PATCH /v1/appStoreVersions/{id}`（送った欄だけ直す。`relationships.build` でビルドも選ぶ）、`DELETE /v1/appStoreVersions/{id}`（まだ審査に出していない版） |
 | 提出する | `GET /v1/reviewSubmissions?filter[app]=…&filter[platform]=…&filter[state]=READY_FOR_REVIEW`（開いているものを使う）か `POST /v1/reviewSubmissions` → `POST /v1/reviewSubmissionItems` → `PATCH /v1/reviewSubmissions/{id}`（`submitted: true`） |
 | 取り下げる | `PATCH /v1/reviewSubmissions/{id}`（`canceled: true`） |
 | 手動で配信する | `POST /v1/appStoreVersionReleaseRequests`（Pending Developer Release の版だけ。取り消せない） |
