@@ -73,16 +73,19 @@ final class FakeAppStore: AppStoreConnectSubmitting {
         platform: AppStorePlatform,
         _ change: AppStoreVersionChange
     ) async throws(AppStoreConnectError) -> AppStoreVersionInfo {
-        try write("createVersion \(platform.rawValue) \(change.version) \(change.releaseType.rawValue) \(change.buildID)")
+        try write("createVersion \(platform.rawValue) \(change.version) \(change.releaseType?.rawValue ?? "-") \(change.buildID ?? "-")")
         let created = AppStoreVersionInfo(
-            id: "v-\(change.version)", platform: platform, versionString: change.version.rawValue, state: .prepareForSubmission
+            id: "v-\(change.version.rawValue.replacingOccurrences(of: ".", with: "-"))",
+            platform: platform,
+            versionString: change.version.rawValue,
+            state: .prepareForSubmission
         )
         state.withLock { $0.others.append(created) }
         return created
     }
 
     func updateVersion(_ versionID: String, _ change: AppStoreVersionChange) async throws(AppStoreConnectError) {
-        try write("updateVersion \(versionID) \(change.version) \(change.releaseType.rawValue) \(change.buildID)")
+        try write("updateVersion \(versionID) \(change.version) \(change.releaseType?.rawValue ?? "-") \(change.buildID ?? "-")")
     }
 
     func updateWhatsNew(_ localizationID: String, text: String) async throws(AppStoreConnectError) {
@@ -125,5 +128,10 @@ final class FakeAppStore: AppStoreConnectSubmitting {
 
     func requestRelease(of versionID: String) async throws(AppStoreConnectError) {
         try write("requestRelease \(versionID)")
+    }
+
+    func deleteVersion(_ versionID: String) async throws(AppStoreConnectError) {
+        try write("deleteVersion \(versionID)")
+        state.withLock { $0.others.removeAll { $0.id == versionID } }
     }
 }
