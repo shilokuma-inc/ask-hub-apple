@@ -55,6 +55,22 @@ struct PushTargetTests {
         #expect(navigator.selection == .mac("macbook-a"))
     }
 
+    /// いくつもの epic の実機確認のまとめは、あなたの番からアプリをまたいだ実機確認のカードを開く
+    @Test
+    func opensAllVerificationsFromVerificationDigest() throws {
+        let target = try #require(PushTarget(userInfo: userInfo(["verification": "all"])))
+        #expect(target == .verifications)
+
+        let navigator = AppNavigator()
+        navigator.section = .progress
+        navigator.open(target)
+        #expect(navigator.section == .inbox)
+        #expect(navigator.selection == .deck(.allVerifications))
+        #expect(navigator.paths[.inbox] == [.deck(.allVerifications)])
+        // 知らない値では開かない
+        #expect(PushTarget(userInfo: userInfo(["verification": "today"])) == nil)
+    }
+
     /// 形の違う値や、`askhub` の無い通知では、どこも開かない
     @Test
     func ignoresMalformedTargets() {
@@ -65,5 +81,7 @@ struct PushTargetTests {
         #expect(PushTarget(userInfo: userInfo(["mac": "../macs/macbook-a"])) == nil)
         // epic の id だけで repo が無いものは開かない
         #expect(PushTarget(userInfo: userInfo(["epic": epic])) == nil)
+        // 開く先を持たない通知（古い司令塔の、いくつもの epic の実機確認のまとめ）は開かない
+        #expect(PushTarget(userInfo: userInfo([:])) == nil)
     }
 }

@@ -54,9 +54,18 @@ extension DemoClientService {
 
         case let .cleanUp(macID, candidateIDs):
             state.updateMac(macID) { mac in
-                let removed = mac.cleanupCandidates.filter { candidateIDs.contains($0.id) }
-                mac.freeBytes += removed.reduce(Int64(0)) { $0 + $1.bytes }
-                mac.cleanupCandidates.removeAll { candidateIDs.contains($0.id) }
+                let removed = mac.cleanupCandidates.filter { candidateIDs.contains($0.id) && $0.caution == nil }
+                // ゴミ箱に移したもの（clone・DerivedData）は、ゴミ箱を空にするまで空き容量を増やさない
+                mac.freeBytes += removed.filter { $0.kind == .simulator }.reduce(Int64(0)) { $0 + $1.bytes }
+                mac.cleanupCandidates.removeAll { removed.map(\.id).contains($0.id) }
+                mac.cleanupResult = "\(removed.count) 件を消しました"
+            }
+
+        case let .findCleanupCandidates(macID):
+            let date = now()
+            state.updateMac(macID) { mac in
+                mac.cleanupScannedAt = date
+                mac.cleanupResult = nil
             }
 
         default:

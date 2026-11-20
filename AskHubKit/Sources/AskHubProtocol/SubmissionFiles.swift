@@ -274,37 +274,6 @@ public struct SubmissionFile: StateFile {
         }
     }
 
-    public enum IntegrationState: String, Codable, Sendable, CaseIterable {
-        /// 取り込む PR を開いている（CI を待っている）
-        case open
-        /// PR をマージした
-        case merged
-        /// 取り込むコミットが無かった（release ブランチに直しが入っていない）
-        case skipped
-        /// 取り込む先のブランチ（main）が無かったので、release ブランチの先頭から作った
-        case created
-    }
-
-    /// 配信した後に release ブランチを取り込む先（main と develop）の 1 つ
-    public struct Integration: Codable, Equatable, Sendable {
-        /// 取り込む先のブランチ（`main`・base の `develop`）
-        public var base: String
-        public var state: IntegrationState
-        /// 取り込む PR の番号（`open`・`merged` のときだけ）
-        public var pullRequest: Int?
-        public var at: Timestamp
-
-        public init(base: String, state: IntegrationState, pullRequest: Int? = nil, at: Timestamp) {
-            self.base = base
-            self.state = state
-            self.pullRequest = pullRequest
-            self.at = at
-        }
-
-        /// 終わった（マージした・取り込むものが無かった・作った）
-        public var isDone: Bool { state != .open }
-    }
-
     /// 進めることの区切り
     public enum Step: String, Codable, Sendable, CaseIterable {
         case branch
@@ -316,6 +285,7 @@ public struct SubmissionFile: StateFile {
         case withdraw
         case review
         case integration
+        case appStoreVersion
     }
 
     /// 進められなかった理由（進められたら消す）
@@ -353,6 +323,8 @@ public struct SubmissionFile: StateFile {
     public var end: End?
     /// 配信した後に release ブランチを取り込んだ様子（main と develop）。release ブランチを作った版だけ
     public var integration: [Integration]?
+    /// App Store Connect の版の枠。nil なら枠を作らない（この仕組みの前に始めた記録）。リリースを始めたときに空の並びで作り、司令塔が埋める
+    public var appStoreVersions: [VersionSlot]?
     public var problem: Problem?
     public var createdAt: Timestamp
     public var updatedAt: Timestamp
@@ -373,6 +345,7 @@ public struct SubmissionFile: StateFile {
         withdrawal: Request? = nil,
         end: End? = nil,
         integration: [Integration]? = nil,
+        appStoreVersions: [VersionSlot]? = nil,
         problem: Problem? = nil,
         createdAt: Timestamp,
         updatedAt: Timestamp
@@ -392,6 +365,7 @@ public struct SubmissionFile: StateFile {
         self.withdrawal = withdrawal
         self.end = end
         self.integration = integration
+        self.appStoreVersions = appStoreVersions
         self.problem = problem
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -432,6 +406,11 @@ public struct SubmissionFile: StateFile {
 
     /// このリリースをやめられる（審査に出していない・取り下げた・断られた）
     public var canAbandon: Bool { !isEnded && !hasReviewInFlight && !isSubmitting }
+
+    /// やめたリリースの、まだ消していない版の枠がある
+    public var awaitsSlotRemoval: Bool {
+        end?.reason == .abandoned && (appStoreVersions ?? []).contains { $0.removal == nil }
+    }
 
     /// 配信した後に、release ブランチを main と develop に取り込むのを待っている（取り込む先がすべて終わるまで見回る）
     public func awaitsIntegration(bases: [String]) -> Bool {
@@ -487,6 +466,17 @@ public struct SubmissionFile: StateFile {
                 violations.append("integration の PR の番号は、open・merged のときだけ持つ")
             }
             if branch == nil { violations.append("integration は release ブランチを作った版だけ持つ") }
+        }
+        if let slots = appStoreVersions {
+            if origin != .askhub { violations.append("版の枠は AskHub で始めた記録だけ持つ") }
+            if Set(slots.map(\.platform)).count != slots.count { violations.append("appStoreVersions のプラットフォームが重複している") }
+            if slots.contains(where: { !VersionSlot.isID($0.id) }) { violations.append("appStoreVersions の id の形が違う") }
+            if slots.contains(where: { $0.build.map { !ReleaseFile.isBuildNumber($0) } ?? false }) {
+                violations.append("appStoreVersions の build の形が違う")
+            }
+            if slots.contains(where: { ($0.removal == .kept) != ($0.removalNote != nil) }) {
+                violations.append("appStoreVersions の removalNote は、消さなかった（kept）ときだけ持つ")
+            }
         }
         if problem?.message.isEmpty == true { violations.append("problem の message が空") }
         return violations

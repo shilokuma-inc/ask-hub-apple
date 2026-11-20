@@ -11,7 +11,7 @@ public struct PushNotice: Equatable, Sendable {
     public var thread: String
     /// 同じ通知を端末で 1 つにまとめる id。まとめた出来事の key から決める（APNs の上限の 64 バイトに収まる）
     public var collapseID: String
-    /// クライアントが開く先（`repo`・`epic`・`mac`）
+    /// クライアントが開く先（`repo`・`epic`・`mac`・`release`・`submission`・`verification`）
     public var target: [String: String]
     /// まとめた出来事の key
     public var keys: [String]
@@ -87,7 +87,7 @@ public struct PushNotice: Equatable, Sendable {
         )
     }
 
-    /// 止めないもの（実機確認）のまとめの通知。epic が 1 つなら、その epic を開く（いくつもあれば開く先を持たない）
+    /// 止めないもの（実機確認）のまとめの通知。epic が 1 つなら、その epic を開く。いくつもあれば、アプリをまたいだ実機確認のカードを開く
     private static func verificationNotice(_ blockers: [Blocker], titles: [ULID: String]) -> PushNotice {
         var lines: [String] = []
         var targets: [[String: String]] = []
@@ -101,7 +101,7 @@ public struct PushNotice: Equatable, Sendable {
             subtitle: single?["repo"],
             body: (lines + ["TestFlight に上がった版で確かめて、「確認した」か「問題あり」を付けてください"]).joined(separator: "\n"),
             thread: "verification",
-            target: single ?? [:],
+            target: single ?? ["verification": "all"],
             keys: blockers.map(\.key)
         )
     }
@@ -169,6 +169,8 @@ public struct PushNotice: Equatable, Sendable {
         case let .submissionProblem(step): "リリース（\(step.label)）が止まっています。確かめてください"
         case let .reviewState(platform, state): reviewLine(platform, state)
         case .submissionDistributed: "App Store で配信しました"
+        case let .slotKept(platform):
+            "やめたリリースの \(platform.rawValue) の版を、App Store Connect から消せませんでした。App Store Connect で確かめてください"
         default: nil
         }
     }
@@ -257,6 +259,7 @@ extension SubmissionFile.Step {
         case .withdraw: "審査の取り下げ"
         case .review: "審査の状態"
         case .integration: "release ブランチの取り込み"
+        case .appStoreVersion: "App Store Connect の版の枠"
         }
     }
 }

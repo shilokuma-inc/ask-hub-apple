@@ -75,7 +75,7 @@ struct VerificationDigestTests {
         base.clock.advance(minutes: 1)
         #expect(try await notifier.notify(epics: [first], jobs: [], trusted: [base.deviceID]).isEmpty)
 
-        // 13:30 と 14:00 にマージした epic は、18:00 に 1 通にまとめる（いくつもあれば開く先を持たない）。答えが揃った epic は出さない
+        // 13:30 と 14:00 にマージした epic は、18:00 に 1 通にまとめる（いくつもあれば、アプリをまたいだ実機確認のカードを開く）。答えが揃った epic は出さない
         let second = try await merged(2, title: "検索", minutes: -150, answered: ["v1"], in: store)
         let third = try await merged(3, title: "通知", minutes: -180, in: store)
         let done = try await merged(4, title: "設定", minutes: -180, answered: ["v1", "v2"], in: store)
@@ -85,7 +85,7 @@ struct VerificationDigestTests {
         base.clock.advance(minutes: 179)
         let evening = try await notifier.notify(epics: epics, jobs: [], trusted: [base.deviceID])
         #expect(evening.first?.body == "「検索」の 1 件\n「通知」の 2 件\nTestFlight に上がった版で確かめて、「確認した」か「問題あり」を付けてください")
-        #expect(evening.first?.target.isEmpty == true)
+        #expect(evening.first?.target == ["verification": "all"])
         #expect(evening.first?.subtitle == nil)
         #expect(await sender.sent.count == 2)
     }

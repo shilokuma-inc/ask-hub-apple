@@ -106,7 +106,7 @@ public actor ReleaseWatch {
             waiting += await advanceAll(repo, settings: file).flatMap(Blocker.waiting(on:))
             let now = context.now()
             waiting += await advanceSubmissions(repo, settings: file).flatMap { submission in
-                Blocker.waiting(on: submission) + Blocker.reviewNotices(on: submission, now: now)
+                Blocker.waiting(on: submission) + Blocker.reviewNotices(on: submission, now: now) + Blocker.keptSlots(on: submission)
             }
         }
         blockers = waiting

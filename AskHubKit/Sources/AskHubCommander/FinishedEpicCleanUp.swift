@@ -87,12 +87,18 @@ public struct FinishedEpicCleanUp: Sendable {
         let now = context.now()
         var finished: [EpicFile] = []
         for repo in try await context.repositories() {
-            for name in try await context.directories(in: StatePath.epics(repo)) {
-                guard let id = ULID(rawValue: name), local.contains(id),
-                      let epic = try await context.readable(EpicFile.self, at: StatePath.epic(repo, id)),
-                      epic.id == id, epic.repo == repo, epic.isFinished,
-                      now.timeIntervalSince(epic.updatedAt.date) >= lifetime else { continue }
-                finished.append(epic)
+            // 終わって 30 日たった epic は archive/ に畳まれるので、長くオフラインだった Mac の残りものは、畳んだ先でも探す
+            for (directory, epicPath) in [
+                (StatePath.epics(repo), { (id: ULID) in StatePath.epic(repo, id) }),
+                (StatePath.archived(StatePath.epics(repo)), { (id: ULID) in StatePath.archived(StatePath.epic(repo, id)) })
+            ] {
+                for name in try await context.directories(in: directory) {
+                    guard let id = ULID(rawValue: name), local.contains(id), !finished.contains(where: { $0.id == id }),
+                          let epic = try await context.readable(EpicFile.self, at: epicPath(id)),
+                          epic.id == id, epic.repo == repo, epic.isFinished,
+                          now.timeIntervalSince(epic.updatedAt.date) >= lifetime else { continue }
+                    finished.append(epic)
+                }
             }
         }
         return finished

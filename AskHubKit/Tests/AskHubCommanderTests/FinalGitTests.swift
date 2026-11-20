@@ -16,7 +16,7 @@ struct FinalGitTests {
         defer { try? FileManager.default.removeItem(at: base.root) }
         let workspace = try await base.makeWorkspace()
         let epic = try await workspace.checkOutEpic(Self.repo, epic: Self.epic, branches: Self.branches)
-        #expect(epic.head == (try base.remoteHead(Self.branches.epic)))
+        #expect(epic.head == (try await base.remoteHead(Self.branches.epic)))
         #expect(epic.facts == "- Swift 6 で書く")
         #expect(epic.directory == workspace.epicDirectory(Self.repo, epic: Self.epic))
         // 変更が無ければコミットも push もしない
@@ -25,7 +25,7 @@ struct FinalGitTests {
         try "struct Ranking {}\n".write(to: epic.directory.appendingPathComponent("Ranking.swift"), atomically: true, encoding: .utf8)
         let trailer = "AskHub-Job: \(Self.job.rawValue)"
         let head = try #require(try await workspace.commitAndPush(epic, message: "最終 PR を直す\n\n\(trailer)"))
-        #expect(try base.remoteHead(Self.branches.epic) == head)
+        #expect(try await base.remoteHead(Self.branches.epic) == head)
         let messages = try #require(try await workspace.messages(after: epic.head, upTo: head, in: epic))
         #expect(messages.count == 1)
         #expect(messages.first?.contains(trailer) == true)
@@ -46,7 +46,7 @@ struct FinalGitTests {
         let epic = try await workspace.checkOutEpic(Self.repo, epic: Self.epic, branches: Self.branches)
         try "# 作業ブランチの App\n".write(to: epic.directory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
         let mine = try #require(try await workspace.commitAndPush(epic, message: "作業ブランチで変える"))
-        try base.shell("""
+        try await base.shell("""
             cd '\(base.root.path)/seed' && echo '# base の App' > README.md && echo later > Later.md && git add . && \
             git -c user.name=t -c user.email=t@example.invalid commit --quiet -m base && git push --quiet '\(base.origin.path)' develop
             """)
@@ -58,9 +58,9 @@ struct FinalGitTests {
         try "# 作業ブランチと base の App\n".write(to: fresh.directory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
         #expect(await workspace.unresolvedConflicts(conflicts, in: fresh).isEmpty)
         let merged = try #require(try await workspace.commitAndPush(fresh, message: "base を取り込む"))
-        #expect(try base.remoteHead(Self.branches.epic) == merged)
+        #expect(try await base.remoteHead(Self.branches.epic) == merged)
         // マージのコミット（親が 2 つ）で、コンフリクトしなかった base の変更も入る
-        let parents = try base.shell("git -C '\(base.origin.path)' rev-list --parents -n 1 \(merged)")
+        let parents = try await base.shell("git -C '\(base.origin.path)' rev-list --parents -n 1 \(merged)")
         #expect(parents.split(separator: " ").count == 3)
         #expect(FileManager.default.fileExists(atPath: fresh.directory.appendingPathComponent("Later.md").path))
         // base がもう入っているので、次は何もしない
@@ -75,7 +75,7 @@ struct FinalGitTests {
         let epic = try await workspace.checkOutEpic(Self.repo, epic: Self.epic, branches: Self.branches)
         try "# 作業ブランチの App\n".write(to: epic.directory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
         let mine = try #require(try await workspace.commitAndPush(epic, message: "作業ブランチで変える"))
-        try base.shell("""
+        try await base.shell("""
             cd '\(base.root.path)/seed' && echo '# base の App' > README.md && git add . && \
             git -c user.name=t -c user.email=t@example.invalid commit --quiet -m base && git push --quiet '\(base.origin.path)' develop
             """)
@@ -89,7 +89,7 @@ struct FinalGitTests {
         try "# 作業ブランチと base の App\n".write(to: reused.directory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
         #expect(await workspace.unresolvedConflicts(["README.md"], in: reused).isEmpty)
         let merged = try #require(try await workspace.commitAndPush(reused, message: "base を取り込む"))
-        let parents = try base.shell("git -C '\(base.origin.path)' rev-list --parents -n 1 \(merged)")
+        let parents = try await base.shell("git -C '\(base.origin.path)' rev-list --parents -n 1 \(merged)")
         #expect(parents.split(separator: " ").count == 3)
         #expect(try await workspace.conflictedPaths(in: reused).isEmpty)
     }
@@ -97,14 +97,14 @@ struct FinalGitTests {
     @Test func mergesBaseWithoutConflicts() async throws {
         defer { try? FileManager.default.removeItem(at: base.root) }
         let workspace = try await base.makeWorkspace()
-        try base.shell("""
+        try await base.shell("""
             cd '\(base.root.path)/seed' && echo later > Later.md && git add . && \
             git -c user.name=t -c user.email=t@example.invalid commit --quiet -m later && git push --quiet '\(base.origin.path)' develop
             """)
         let epic = try await workspace.checkOutEpic(Self.repo, epic: Self.epic, branches: Self.branches)
         #expect(try await workspace.mergeBase(into: epic)?.isEmpty == true)
         let merged = try #require(try await workspace.commitAndPush(epic, message: "base を取り込む"))
-        #expect(try base.remoteHead(Self.branches.epic) == merged)
+        #expect(try await base.remoteHead(Self.branches.epic) == merged)
     }
 
     @Test func findsOnlyConflictMarkerLines() {
@@ -118,7 +118,7 @@ struct FinalGitTests {
         defer { try? FileManager.default.removeItem(at: base.root) }
         let workspace = try await base.makeWorkspace()
         // base に後から入った変更は、最終 PR の差分に含めない
-        try base.shell("""
+        try await base.shell("""
             cd '\(base.root.path)/seed' && echo later > Later.md && git add . && \
             git -c user.name=t -c user.email=t@example.invalid commit --quiet -m later && git push --quiet '\(base.origin.path)' develop
             """)
@@ -140,7 +140,7 @@ struct FinalGitTests {
         #expect(Set(review.paths) == ["App.xcodeproj/project.pbxproj", "Docs.md", "README.md"])
         #expect(review.projectLines == ["+shellScript = \"swiftlint\";"])
         #expect(review.facts == "- Swift 6 で書く")
-        #expect(try base.shell("cd '\(review.directory.path)' && git rev-parse HEAD") == head)
+        #expect(try await base.shell("cd '\(review.directory.path)' && git rev-parse HEAD") == head)
 
         await workspace.release(Self.job)
         #expect(!FileManager.default.fileExists(atPath: review.directory.path))
@@ -155,17 +155,17 @@ struct FinalGitTests {
         let clone = base.root.appendingPathComponent("work/repos/\(Self.repo.owner)/\(Self.repo.name)")
         // ほかの epic の作業ブランチ
         let other = "askhub/01JCJ0A0000000000000000009"
-        try base.shell("cd '\(clone.path)' && git branch \(other) \(epic.head)")
+        try await base.shell("cd '\(clone.path)' && git branch \(other) \(epic.head)")
 
         try await workspace.removeEpic(Self.repo, epic: Self.epic, branch: Self.branches.epic)
         #expect(!FileManager.default.fileExists(atPath: base.root.appendingPathComponent("work/epics/\(Self.epic.rawValue)").path))
-        let branches = try base.shell("cd '\(clone.path)' && git for-each-ref --format='%(refname:short)' refs/heads/")
+        let branches = try await base.shell("cd '\(clone.path)' && git for-each-ref --format='%(refname:short)' refs/heads/")
         let names = Set(branches.split(separator: "\n").map(String.init))
         #expect(!names.contains(Self.branches.epic))
         #expect(!names.contains(TaskGitTests.branches.task))
         #expect(names.contains(other))
         // リモートの作業ブランチには触れない
-        #expect(try base.remoteHead(Self.branches.epic) == epic.head)
+        #expect(try await base.remoteHead(Self.branches.epic) == epic.head)
         // もう一度片付けても失敗しない
         try await workspace.removeEpic(Self.repo, epic: Self.epic, branch: Self.branches.epic)
     }

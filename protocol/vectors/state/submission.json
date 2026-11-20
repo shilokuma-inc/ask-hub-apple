@@ -80,6 +80,124 @@
       "read": "valid"
     },
     {
+      "name": "with-version-slots",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "appStoreVersions": [
+          {
+            "platform": "iOS",
+            "id": "0c1d2e3f-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+            "build": "20261120.11000",
+            "whatsNew": true,
+            "at": "2026-11-20T01:45:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "slots-not-created-yet",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "appStoreVersions": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "submitting",
       "value": {
         "v": 1,
@@ -799,6 +917,78 @@
             "nonce": "01JCN0NCE00000000000000005"
           }
         }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "abandoned-slot-kept",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "end": {
+          "reason": "abandoned",
+          "at": "2026-11-20T03:00:00Z",
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000005"
+          }
+        },
+        "appStoreVersions": [
+          {
+            "platform": "iOS",
+            "id": "0c1d2e3f",
+            "whatsNew": false,
+            "at": "2026-11-20T01:45:00Z",
+            "removal": "kept",
+            "removalNote": "App Store Connect が消せないと答えた"
+          }
+        ]
       },
       "schemaValid": true,
       "read": "valid"
@@ -2101,6 +2291,163 @@
             "at": "2026-11-21T09:41:00Z"
           }
         ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "slot-with-bad-id",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "appStoreVersions": [
+          {
+            "platform": "iOS",
+            "id": "../v1",
+            "build": "20261120.11000",
+            "whatsNew": true,
+            "at": "2026-11-20T01:45:00Z"
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "kept-without-note",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:45:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "end": {
+          "reason": "abandoned",
+          "at": "2026-11-20T03:00:00Z",
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000005"
+          }
+        },
+        "appStoreVersions": [
+          {
+            "platform": "iOS",
+            "id": "0c1d2e3f",
+            "whatsNew": false,
+            "at": "2026-11-20T01:45:00Z",
+            "removal": "kept"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "slots-on-app-store-connect-record",
+      "value": {
+        "v": 1,
+        "repo": "shariverse/oshikatsu-countdown-ios",
+        "version": "1.2.0",
+        "origin": "appStoreConnect",
+        "builds": [],
+        "revision": 0,
+        "review": [
+          {
+            "platform": "iOS",
+            "state": "inReview",
+            "since": "2026-11-20T05:00:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T04:30:00Z",
+        "updatedAt": "2026-11-20T05:00:00Z",
+        "appStoreVersions": []
       },
       "schemaValid": true,
       "read": "malformed"

@@ -1,0 +1,90 @@
+{
+  "description": "決まった値を App Store Connect に書く人の意図の payload の例。read は、封筒の repo が正しいときに、読む側が決まった値を書く意図として読めるか",
+  "schema": "payloads/applyAppStoreSettings.schema.json",
+  "cases": [
+    {
+      "name": "all",
+      "payload": {
+        "contentRights": "doesNotUseThirdPartyContent",
+        "primaryCategory": "PRODUCTIVITY",
+        "privacyPolicyUrl": "https://example.com/privacy",
+        "price": "free",
+        "availability": "allTerritories"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "game",
+      "payload": {
+        "primaryCategory": "GAMES",
+        "primarySubcategory": "GAMES_PUZZLE"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "price-only",
+      "payload": {
+        "price": "free"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "subcategory-only",
+      "payload": {
+        "primarySubcategory": "GAMES_PUZZLE"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "lowercase-category",
+      "payload": {
+        "primaryCategory": "productivity"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "http-url",
+      "payload": {
+        "privacyPolicyUrl": "http://example.com/privacy"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "url-with-space",
+      "payload": {
+        "privacyPolicyUrl": "https://example.com/a b"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "paid",
+      "payload": {
+        "price": "paid"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "price": "free",
+        "secondaryCategory": "UTILITIES"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

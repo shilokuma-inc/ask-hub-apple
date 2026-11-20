@@ -28,7 +28,10 @@ enum HumanIntent: Hashable {
     /// GitHub の Secrets に入れる作業は、人が GitHub の設定画面で入れてから終えたことにする（値は受け取らない）
     case completeHumanTask(epicID: Epic.ID, taskID: HumanTask.ID, file: HandoverFile? = nil)
     case verify(epicID: Epic.ID, itemID: VerificationItem.ID, reply: VerificationReply)
+    /// 選んだ片付けの候補を消す（clone と DerivedData はゴミ箱に移し、Simulator は消す）
     case cleanUp(macID: Mac.ID, candidateIDs: [CleanupCandidate.ID])
+    /// Mac の片付けの候補を探す（その Mac のワーカーが探す）
+    case findCleanupCandidates(macID: Mac.ID)
     /// 依頼。添付の中身は、意図より先に状態リポジトリに置く
     case request(repositoryID: TargetRepository.ID, summary: String, body: String, attachments: [RequestFile] = [])
     case addRepository(repositoryID: TargetRepository.ID)
@@ -159,6 +162,9 @@ extension HumanIntent {
 
         case .cleanUp:
             "片付け"
+
+        case .findCleanupCandidates:
+            "片付けの候補を探す頼み"
         }
     }
 
