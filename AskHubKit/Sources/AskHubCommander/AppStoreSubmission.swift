@@ -2,7 +2,7 @@ import AskHubProtocol
 import Foundation
 
 /// 1 つの版を、プラットフォームごとに審査に出す（`docs/renewal/release.md` の「リリースを始めてから配信まで」の 7）。
-/// 編集できる版を作るか直し（版の番号・配信の方式・ビルド）、What's New を書き、reviewSubmission に版を足して提出する。
+/// 編集できる版を作るか直し（版の番号・配信の方式・ビルド）、What's New と掲載文の直しを書き、reviewSubmission に版を足して提出する。
 /// どれも、する前に今の様子を読み、途中で止まってもやり直せば同じになる
 struct AppStoreSubmission: Sendable {
     var store: any AppStoreConnectSubmitting
@@ -17,7 +17,7 @@ struct AppStoreSubmission: Sendable {
         // 前の試行が出し終えた後に落ちた（記録する前）
         if let sent = mine.first(where: { $0.state.isInFlight }) { return sent.state }
         let target = try await prepareVersion(build, mine: mine, versions: versions)
-        try await writeWhatsNew(of: target)
+        try await writeTexts(of: target)
         return try await sendForReview(target)
     }
 
@@ -42,18 +42,33 @@ struct AppStoreSubmission: Sendable {
         }
     }
 
-    /// 人が確かめた What's New を、言語ごとに書く（同じ文なら書かない）
-    private func writeWhatsNew(of target: AppStoreVersionInfo) async throws {
-        guard !request.whatsNew.isEmpty else { return }
+    /// 人が確かめた What's New と掲載文の直しを、言語ごとに書く（今の文と同じ欄は書かない。確かめなかった欄は App Store Connect の文を残す）
+    private func writeTexts(of target: AppStoreVersionInfo) async throws {
+        let changes = request.listing ?? []
+        guard !request.whatsNew.isEmpty || !changes.isEmpty else { return }
         let localizations = try await call { () throws(AppStoreConnectError) in try await store.localizations(of: target.id) }
-        for text in request.whatsNew {
-            guard let localization = localizations.first(where: { $0.locale == text.locale }) else {
+        func localization(_ locale: String) throws -> AppStoreLocalization {
+            guard let localization = localizations.first(where: { $0.locale == locale }) else {
                 throw ReleaseStepProblem(
-                    "\(target.platform.rawValue) の版に \(text.locale) の掲載文が無い。App Store Connect で言語を確かめる", needsHuman: true
+                    "\(target.platform.rawValue) の版に \(locale) の掲載文が無い。App Store Connect で言語を確かめる", needsHuman: true
                 )
             }
+            return localization
+        }
+        for text in request.whatsNew {
+            let localization = try localization(text.locale)
             guard localization.whatsNew != text.text else { continue }
             try await call { () throws(AppStoreConnectError) in try await store.updateWhatsNew(localization.id, text: text.text) }
+        }
+        for change in changes {
+            let localization = try localization(change.locale)
+            var update = ListingText(locale: change.locale)
+            for field in ListingText.Field.allCases {
+                guard let text = change[field], text != (localization.listing[field] ?? "") else { continue }
+                update[field] = text
+            }
+            guard !update.isEmpty else { continue }
+            try await call { () throws(AppStoreConnectError) in try await store.updateListing(localization.id, update) }
         }
     }
 
