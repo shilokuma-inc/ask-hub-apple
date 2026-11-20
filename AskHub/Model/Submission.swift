@@ -27,6 +27,8 @@ struct Submission: Identifiable, Hashable {
     var withdrawal: RequestState = .none
     var end: EndReason?
     var problem: Problem?
+    /// App Store Connect の版の枠。nil ならこの仕組みの前に始めた版（枠を作らない）
+    var slots: [Slot]?
     var createdAt: Date
     var updatedAt: Date
     /// 人が What's New とビルドを確かめて「審査に出す」を押すのを待っている
@@ -172,6 +174,7 @@ struct Submission: Identifiable, Hashable {
         case withdraw
         case review
         case integration
+        case appStoreVersion
 
         var label: String {
             switch self {
@@ -184,8 +187,18 @@ struct Submission: Identifiable, Hashable {
             case .withdraw: "審査の取り下げ"
             case .review: "審査の状態"
             case .integration: "release ブランチの取り込み"
+            case .appStoreVersion: "App Store Connect の版"
             }
         }
+    }
+
+    /// App Store Connect の版の枠（プラットフォームごと）
+    struct Slot: Hashable {
+        var platform: String
+        /// 枠に選んだビルドの番号
+        var build: String?
+        /// やめたリリースの枠を消せなかった理由。消した・まだなら nil
+        var keptNote: String?
     }
 
     struct Problem: Hashable {
@@ -242,7 +255,8 @@ extension Submission {
     /// 段取りの並び。AskHub で始めた版は release ブランチから、手で出した版は審査から
     var steps: [StepStatus] {
         guard startedInAskHub else { return [reviewStatus, distributionStatus] }
-        return [branchStatus, nextVersionStatus, whatsNewStatus, buildsStatus, reviewStatus, distributionStatus]
+        let preparation = [branchStatus, nextVersionStatus, whatsNewStatus, buildsStatus]
+        return preparation + (slots == nil ? [] : [slotsStatus]) + [reviewStatus, distributionStatus]
     }
 
     /// 一覧の行に出す、今の段取りの一言
@@ -300,6 +314,21 @@ extension Submission {
         }
         return problemStatus(.whatsNew, id: "whatsNew", title: title)
             ?? StepStatus(id: "whatsNew", title: title, detail: "前の版からの変更をもとに、言語ごとに下書きします", state: .working)
+    }
+
+    private var slotsStatus: StepStatus {
+        let title = Step.appStoreVersion.label
+        if let problem = problemStatus(.appStoreVersion, id: "slots", title: title) { return problem }
+        guard let slots, !slots.isEmpty else {
+            return StepStatus(id: "slots", title: title, detail: "\(version) の版を App Store Connect に作ります", state: .working)
+        }
+        let platforms = slots.map(\.platform).joined(separator: "・")
+        return StepStatus(
+            id: "slots",
+            title: title,
+            detail: "\(platforms) の \(version) を作りました。スクショや説明文は App Store Connect で先に直せます",
+            state: .done
+        )
     }
 
     private var buildsStatus: StepStatus {

@@ -408,6 +408,63 @@
         }
       }
     },
+    "appStoreVersions": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "maxItems": 4,
+      "description": "App Store Connect の版の枠（プラットフォームごと）。null なら枠を作らない（この仕組みの前に始めた記録）。startRelease を受け付けたときに空の並びで作り、司令塔が作った・見つけた編集できる版を足す。build は枠に選んだビルドの番号、whatsNew は下書きを各言語に書いたか、removal はやめたリリースの枠を消した結果（deleted・kept。kept なら removalNote に理由）",
+      "items": {
+        "type": "object",
+        "required": [
+          "platform",
+          "id",
+          "whatsNew",
+          "at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "platform": {
+            "$ref": "release.schema.json#/$defs/platform"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9-]{1,64}$"
+          },
+          "build": {
+            "anyOf": [
+              {
+                "$ref": "release.schema.json#/$defs/buildNumber"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "whatsNew": {
+            "type": "boolean"
+          },
+          "at": {
+            "$ref": "../common.schema.json#/$defs/timestamp"
+          },
+          "removal": {
+            "enum": [
+              "deleted",
+              "kept",
+              null
+            ]
+          },
+          "removalNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          }
+        }
+      }
+    },
     "problem": {
       "type": [
         "object",
@@ -432,7 +489,8 @@
             "distribute",
             "withdraw",
             "review",
-            "integration"
+            "integration",
+            "appStoreVersion"
           ]
         },
         "message": {

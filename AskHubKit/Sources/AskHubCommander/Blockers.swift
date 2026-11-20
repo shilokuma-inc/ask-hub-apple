@@ -35,6 +35,8 @@ public struct Blocker: Equatable, Sendable {
         case reviewState(AppStorePlatform, AppStoreVersionState)
         /// リリースを始めた版を配信した
         case submissionDistributed
+        /// やめたリリースの版の枠を、App Store Connect から消せなかった
+        case slotKept(AppStorePlatform)
         /// マージした epic の実機確認の、まだ答えていない項目（止めないもの）。`items` は項目の数
         case verification(repo: RepositoryFullName, epic: ULID, items: Int)
     }
