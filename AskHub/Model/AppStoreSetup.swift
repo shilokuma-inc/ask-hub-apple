@@ -61,6 +61,9 @@ struct AppStoreSetup: Identifiable, Hashable {
         case ageRating
         case appPrivacy
         case digitalServicesAct
+        case supportUrl
+        case copyright
+        case reviewContact
 
         var title: String {
             switch self {
@@ -74,6 +77,9 @@ struct AppStoreSetup: Identifiable, Hashable {
             case .ageRating: "年齢制限"
             case .appPrivacy: "App のプライバシー"
             case .digitalServicesAct: "DSA（EU のデジタルサービス法）の申告"
+            case .supportUrl: "サポート URL"
+            case .copyright: "著作権表示"
+            case .reviewContact: "App Review の連絡先"
             }
         }
 
@@ -84,15 +90,21 @@ struct AppStoreSetup: Identifiable, Hashable {
             case .ageRating: "App Store Connect の「App 情報」→「年齢制限」で、質問にすべて答えます"
             case .appPrivacy: "App Store Connect の「App のプライバシー」で、集めるデータに答えて公開します。終わったら「終わった」を押します"
             case .digitalServicesAct: "App Store Connect の「App 情報」で、EU のデジタルサービス法の申告（事業者かどうか）をします。終わったら「終わった」を押します"
+            case .reviewContact:
+                "App Store Connect のこの版のページの「App Review に関する情報」で、連絡先（姓・名・電話番号・メールアドレス）を入れます。"
+                    + "連絡先は AskHub に置かず、入れたかだけを確かめます"
             default: nil
             }
         }
 
         /// 決まった値を AskHub から書ける（`applyAppStoreSettings`）
-        static let settingKinds: [Self] = [.contentRights, .category, .privacyPolicy, .price, .availability]
+        static let settingKinds: [Self] = [.contentRights, .category, .privacyPolicy, .price, .availability, .supportUrl, .copyright]
 
         /// アプリを作るまで（TestFlight に上げるのに要る）の項目
         var isNeededForApp: Bool { self == .bundleId || self == .app }
+
+        /// 初めての版の項目（リリースを始めて、App Store Connect に版の枠ができてから司令塔が確かめる）
+        var isVersionItem: Bool { self == .supportUrl || self == .copyright || self == .reviewContact }
 
         /// API で確かめられず、人が「終わった」を押す項目
         var needsConfirmation: Bool { self == .appPrivacy || self == .digitalServicesAct }
@@ -220,10 +232,16 @@ struct AppStoreSettingsRequest: Hashable {
     var free = false
     /// すべての地域に配信する
     var everywhere = false
+    /// 初めての版のサポート URL
+    var supportURL: String?
+    /// 初めての版のマーケティング URL（任意。サポート URL と一緒に書く）
+    var marketingURL: String?
+    /// 初めての版の著作権表示
+    var copyright: String?
 
     var isEmpty: Bool { items.isEmpty }
 
-    /// 書く項目
+    /// 書く項目（マーケティング URL は任意なので項目を持たない）
     var items: [AppStoreSetup.ItemKind] {
         var items: [AppStoreSetup.ItemKind] = []
         if contentRights != nil { items.append(.contentRights) }
@@ -231,6 +249,8 @@ struct AppStoreSettingsRequest: Hashable {
         if privacyPolicyURL != nil { items.append(.privacyPolicy) }
         if free { items.append(.price) }
         if everywhere { items.append(.availability) }
+        if supportURL != nil { items.append(.supportUrl) }
+        if copyright != nil { items.append(.copyright) }
         return items
     }
 }

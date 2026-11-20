@@ -5,7 +5,7 @@ import Foundation
 // MARK: - 新しいアプリを App Store に載せる準備
 
 extension StateIntentMapper {
-    /// 準備の操作を送れるか。Bundle ID の登録はビルドの設定にある Bundle ID だけ、決まった値はアプリがあるときだけ、
+    /// 準備の操作を送れるか。Bundle ID の登録はビルドの設定にある Bundle ID だけ、決まった値はアプリがあるとき（初めての版の項目は記録にあるとき）だけ、
     /// どちらも前の書き込みを送り終えてから。「終わった」は確かめた項目のうち終わっていないもの（アプリの作成を除く）。
     /// 出さない・出すに戻すは、対象のリポジトリならいつでも
     func supportsAppStoreSetupIntent(_ intent: HumanIntent) -> Bool {
@@ -20,7 +20,9 @@ extension StateIntentMapper {
 
         case let .applyAppStoreSettings(repositoryID, request):
             guard let entry = index.appStoreSetups[repositoryID], entry.isActive, !entry.isWriting else { return false }
-            return entry.hasApp && !request.isEmpty
+            // 初めての版の項目は、司令塔が版の枠を確かめて記録に出したものだけ
+            let versionItems = request.items.filter(\.isVersionItem)
+            return entry.hasApp && !request.isEmpty && versionItems.allSatisfy(entry.confirmable.contains)
 
         case let .confirmAppStoreItem(repositoryID, item):
             guard let entry = index.appStoreSetups[repositoryID], entry.isActive else { return false }
@@ -73,7 +75,7 @@ extension StateIntentMapper {
         }
     }
 
-    /// 画面で選んだ値を、送る形にする。プライバシーポリシーの URL は前後の空白を外して確かめる
+    /// 画面で選んだ値を、送る形にする。URL と著作権表示は前後の空白を外して確かめる
     static func settings(_ request: AppStoreSettingsRequest) throws(ClientServiceError) -> AppStoreSettings {
         var settings = AppStoreSettings()
         switch request.contentRights {
@@ -83,15 +85,30 @@ extension StateIntentMapper {
         }
         settings.primaryCategory = request.category?.primary
         settings.primarySubcategory = request.category?.subcategory
-        if let url = request.privacyPolicyURL?.trimmingCharacters(in: .whitespacesAndNewlines) {
-            guard AppStoreSettings.isURL(url) else {
-                throw ClientServiceError(message: "プライバシーポリシーの URL は https:// で始まる URL にしてください")
-            }
-            settings.privacyPolicyUrl = url
-        }
+        settings.privacyPolicyUrl = try url(request.privacyPolicyURL, name: "プライバシーポリシーの URL")
         settings.price = request.free ? .free : nil
         settings.availability = request.everywhere ? .allTerritories : nil
+        settings.supportUrl = try url(request.supportURL, name: "サポート URL")
+        if let marketing = try url(request.marketingURL, name: "マーケティング URL") {
+            guard settings.supportUrl != nil else {
+                throw ClientServiceError(message: "マーケティング URL は、サポート URL と一緒に書いてください")
+            }
+            settings.marketingUrl = marketing
+        }
+        if let copyright = request.copyright?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            guard AppStoreSettings.isCopyright(copyright) else {
+                throw ClientServiceError(message: "著作権表示は、改行を入れず \(AppStoreSettings.copyrightLimit) 文字までにしてください")
+            }
+            settings.copyright = copyright
+        }
         guard settings.problems.isEmpty else { throw ClientServiceError(message: "書く値を 1 つ以上選んでください") }
         return settings
+    }
+
+    /// 前後の空白を外した https の URL
+    private static func url(_ text: String?, name: String) throws(ClientServiceError) -> String? {
+        guard let url = text?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        guard AppStoreSettings.isURL(url) else { throw ClientServiceError(message: "\(name) は https:// で始まる URL にしてください") }
+        return url
     }
 }
