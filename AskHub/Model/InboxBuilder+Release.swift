@@ -50,7 +50,9 @@ extension InboxBuilder {
     static func submissionItems(_ submission: Submission, snapshot: ClientSnapshot) -> [InboxItem] {
         // 配信した後は、release ブランチの取り込みで人が直す問題だけ出す
         let integrationOnly = submission.end == .distributed
-        guard !submission.isEnded || integrationOnly, submission.sending == nil else { return [] }
+        guard !submission.isEnded || integrationOnly, submission.sending == nil else {
+            return abandonedSlotItems(submission, snapshot: snapshot)
+        }
         let appName = snapshot.repository(submission.repositoryID)?.appName ?? submission.repositoryID
         let context = "\(appName) · \(submission.version)"
         let route = AppRoute.submission(repositoryID: submission.repositoryID, version: submission.version)
@@ -94,5 +96,25 @@ extension InboxBuilder {
             items.append(item(.submissionProblem, "problem", title: title, detail: problem.message, since: problem.at))
         }
         return items
+    }
+
+    /// やめたリリースの、App Store Connect から消せなかった版の枠（人が App Store Connect で確かめる）
+    static func abandonedSlotItems(_ submission: Submission, snapshot: ClientSnapshot) -> [InboxItem] {
+        let kept = (submission.slots ?? []).filter { $0.keptNote != nil }
+        guard submission.end == .abandoned, !kept.isEmpty, submission.sending == nil else { return [] }
+        let appName = snapshot.repository(submission.repositoryID)?.appName ?? submission.repositoryID
+        let item = InboxItem(
+            id: "submission/\(submission.id)/slots",
+            urgency: .blocking,
+            kind: .submissionProblem,
+            repositoryID: submission.repositoryID,
+            title: "やめたリリースの版を App Store Connect で確かめる",
+            context: "\(appName) · \(submission.version)",
+            detail: kept.compactMap { slot in slot.keptNote.map { "\(slot.platform): \($0)" } }.joined(separator: "\n"),
+            since: submission.updatedAt,
+            route: .submission(repositoryID: submission.repositoryID, version: submission.version),
+            targets: [.submission(repositoryID: submission.repositoryID, version: submission.version)]
+        )
+        return [item]
     }
 }

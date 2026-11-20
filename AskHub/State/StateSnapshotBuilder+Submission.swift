@@ -97,6 +97,12 @@ extension StateSnapshotBuilder {
                 at: submit.at.date
             )
         }
+        submission.slots = file.appStoreVersions.map { slots in
+            slots.map { slot in
+                let keptNote = slot.removal == .kept ? slot.removalNote : nil
+                return Submission.Slot(platform: slot.platform.rawValue, build: slot.build, keptNote: keptNote)
+            }
+        }
         submission.awaitsSubmission = file.awaitsSubmission
         submission.awaitsDistribution = file.awaitsDistribution
         submission.canWithdraw = file.canWithdraw

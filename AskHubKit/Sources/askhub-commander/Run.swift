@@ -24,6 +24,7 @@ extension AskHubCommanderMain {
         let context = CommanderContext(store: runtime.store, mac: configuration.mac)
         let cleanUp = runtime.finishedEpicCleanUp(context: context, log: log)
         let simulators = runtime.straySimulatorSweep(log: log)
+        let archive = FinishedEpicArchive(context: context, log: log)
         let releases = releaseWatch(runtime: runtime, context: context, transport: transport)
         let loop = CommanderLoop(
             context: context,
@@ -48,11 +49,13 @@ extension AskHubCommanderMain {
             tidy: {
                 await cleanUp.run()
                 await simulators.run()
+                await archive.run()
             },
             appIcons: appIcons(runtime: runtime, context: context),
             releases: releases,
             protection: protectionWatch(secrets: secrets, context: context, transport: transport),
-            admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) }
+            admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) },
+            cleanup: runtime.cleanupService(context: context, log: log)
         )
         let pid = ProcessInfo.processInfo.processIdentifier
         log("起動しました（版 \(CommanderVersion.build.summary)、pid \(pid)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")

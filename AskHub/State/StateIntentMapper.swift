@@ -9,7 +9,7 @@ import Foundation
 struct StateIntentMapper {
     let index: StateIndex
 
-    /// 状態リポジトリに送れる意図か。段階 3 の操作のうち、確認・片付けなどは、まだ送れない。
+    /// 状態リポジトリに送れる意図か。
     /// 人に渡されたジョブへの操作は、最後に読んだ状態の「対処が要ります」に出した操作だけ（やり直す・やめる）、取り下げは開始する前の epic だけ、
     /// 最終 PR への操作（判断のカードへの答え・マージの承認・指示）は最終 PR を出した epic だけ、
     /// 人がする作業を終えたことは、ゴールの確認の待ちと実装の間の、終えていない作業だけ送れる。
@@ -45,9 +45,9 @@ struct StateIntentMapper {
         case .publishRelease, .verify:
             supportsAfterMerge(intent)
 
-        case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp, .startRelease, .submitForReview,
-             .distributeRelease, .withdrawSubmission, .abandonRelease:
-            // リリースの操作も、リポジトリに属する操作として判定する（`supportsSubmissionIntent`）
+        case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp, .findCleanupCandidates, .startRelease,
+             .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
+            // リリースの操作も、リポジトリに属する操作として判定する（`supportsSubmissionIntent`）。片付けは Mac ごと（`supportsRepositoryIntent` の中で分ける）
             supportsRepositoryIntent(intent)
         }
     }
@@ -95,7 +95,8 @@ struct StateIntentMapper {
         case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
-        case .request, .addRepository, .removeRepository, .configureRepository, .applyProtection, .approveSetup:
+        case .request, .addRepository, .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp,
+             .findCleanupCandidates:
             return try repositoryDraft(intent)
 
         case let .resolveBlocker(epicID, action, _, target):
@@ -116,7 +117,7 @@ struct StateIntentMapper {
         case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
             return try submissionDraft(intent)
 
-        case .acceptAllDecisions, .verify, .cleanUp:
+        case .acceptAllDecisions, .verify:
             // まとめて OK と実機確認は、いくつかの意図になることがあるので `drafts(for:)` で作る
             throw Self.unsupported
         }

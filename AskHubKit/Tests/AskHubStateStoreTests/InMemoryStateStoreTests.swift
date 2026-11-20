@@ -17,4 +17,57 @@ struct InMemoryStateStoreTests {
         }
         #expect(try await store.read("macs/mac-mini.json")?.data == Data("2".utf8))
     }
+
+    /// ディレクトリの下をまとめて移す。移す元が無いものは飛ばし、移す先に何かあれば何も移さない。写しでは断る
+    @Test func movesDirectoriesTogetherOrNotAtAll() async throws {
+        let store = InMemoryStateStore(files: [
+            "repos/o/r/epics/e1/epic.json": Data("1".utf8),
+            "repos/o/r/epics/e1/jobs/j.json": Data("2".utf8),
+            "repos/o/r/epics/e2/epic.json": Data("3".utf8),
+            "archive/repos/o/r/epics/e2/epic.json": Data("old".utf8)
+        ])
+        let snapshot = try await store.snapshot()
+        let first = StateMove(from: "repos/o/r/epics/e1", to: "archive/repos/o/r/epics/e1")
+        let missing = StateMove(from: "repos/o/r/epics/e9", to: "archive/repos/o/r/epics/e9")
+        let taken = StateMove(from: "repos/o/r/epics/e2", to: "archive/repos/o/r/epics/e2")
+        await #expect(throws: StateStoreError.conflict) { try await store.move([first, taken], message: "m") }
+        #expect(await store.data(at: "repos/o/r/epics/e1/epic.json") == Data("1".utf8))
+        #expect(await store.writeCount == 0)
+
+        try await store.move([first, missing], message: "m")
+        #expect(await store.data(at: "repos/o/r/epics/e1/epic.json") == nil)
+        #expect(await store.data(at: "archive/repos/o/r/epics/e1/epic.json") == Data("1".utf8))
+        #expect(await store.data(at: "archive/repos/o/r/epics/e1/jobs/j.json") == Data("2".utf8))
+        #expect(try await store.list("repos/o/r/epics")?.map(\.name) == ["e2"])
+        #expect(await store.writeCount == 1)
+        // 写しは、書ける置き場所なら移せる入力でも断る
+        let fresh = InMemoryStateStore(files: ["repos/o/r/epics/e1/epic.json": Data("1".utf8)])
+        let freshSnapshot = try await fresh.snapshot()
+        await #expect(throws: (any Error).self) { try await freshSnapshot.move([first], message: "m") }
+        #expect(await fresh.data(at: "repos/o/r/epics/e1/epic.json") == Data("1".utf8))
+    }
+
+    /// 移す元と先は呼んだときの中身で決める。同じ呼び出しの前の移動の先を、後の移動の元にせず、先の重なりと、先の親がファイルのときは断る
+    @Test func movesResolveSourcesAtStartAndRefuseFileAncestors() async throws {
+        let store = InMemoryStateStore(files: ["a/x": Data("1".utf8), "archive": Data("file".utf8)])
+        try await store.move([StateMove(from: "a", to: "b"), StateMove(from: "b", to: "c")], message: "m")
+        #expect(await store.data(at: "b/x") == Data("1".utf8))
+        #expect(await store.data(at: "c/x") == nil)
+        let other = InMemoryStateStore(files: ["a/x": Data("1".utf8), "d/y": Data("2".utf8)])
+        await #expect(throws: StateStoreError.conflict) {
+            try await other.move([StateMove(from: "a", to: "e"), StateMove(from: "d", to: "e")], message: "m")
+        }
+        #expect(await other.data(at: "a/x") == Data("1".utf8))
+        await #expect(throws: StateStoreError.wrongKind) {
+            try await store.move([StateMove(from: "b", to: "archive/e")], message: "m")
+        }
+        #expect(await store.data(at: "b/x") == Data("1".utf8))
+        // 先に置くと決めたファイルが、後の移動の先の祖先になるときも断る（`b/x` と `b/x/y/z` を両方作らない）
+        let nested = InMemoryStateStore(files: ["a/x": Data("1".utf8), "d/z": Data("2".utf8)])
+        await #expect(throws: StateStoreError.wrongKind) {
+            try await nested.move([StateMove(from: "a", to: "b"), StateMove(from: "d", to: "b/x/y")], message: "m")
+        }
+        #expect(await nested.data(at: "a/x") == Data("1".utf8))
+        #expect(await nested.data(at: "b/x") == nil)
+    }
 }

@@ -64,33 +64,33 @@
 | 順 | 段取り | するのは | 中身 |
 | --- | --- | --- | --- |
 | 1 | リリースを始める | 人（`startRelease`） | リポジトリの画面で版を選ぶ（既定は前に配信した版の次のマイナー）。終わっていないリリースがあれば始められない（App Store Connect の編集できる版はプラットフォームごとに 1 つ） |
-| 2 | release ブランチ | 司令塔 | develop の先頭から `release/<版>` を Git Data API で作る（ルールセットはブランチの作成を止めない）。作ると Upload が動き、TestFlight に上がる |
+| 2 | release ブランチと版の枠 | 司令塔 | develop の先頭から `release/<版>` を Git Data API で作る（ルールセットはブランチの作成を止めない）。作ると Upload が動き、TestFlight に上がる。あわせて、App Store Connect にプラットフォームごとの編集できる版（番号は始めた版、配信の方式は既定の承認後すぐ）を作り、スクショや説明文を先に直せるようにする（2026-11-20 にユーザーが決めた）。同じ番号の編集できる版があればそれを使い、別の番号の編集できる版があれば作らずに人が直す問題にする（hotfix との兼ね合いは段階 5 の 4） |
 | 3 | 次の版 | 司令塔 | develop の `MARKETING_VERSION` を次のマイナーに上げる PR（配信の後作業の「次の版」と同じ作り。CI が通ったらマージ）。release ブランチを作ってから出す |
 | 4 | What's New の下書き | 司令塔（Claude） | 前に配信した版のタグから release ブランチの先頭までの変更で、App Store Connect にある言語ごとに下書きする（言語は配信中の版の掲載文の言語。配信中の版が無ければ初めての版なので下書きしない） |
-| 5 | ビルドを待つ | 司令塔 | App Store Connect の、その版のビルドのうち、release ブランチを作った後に上げて処理を終えた（`VALID`）最新のものを、プラットフォームごとに記録する |
+| 5 | ビルドを待つ | 司令塔 | App Store Connect の、その版のビルドのうち、release ブランチを作った後に上げて処理を終えた（`VALID`）最新のものを、プラットフォームごとに記録し、版の枠に選ぶ（配信の方式は送らない）。What's New の下書きができたら、枠の各言語に 1 回だけ書いておく（審査に出すまで公開されない。後で人が App Store Connect で直した文は上書きしない） |
 | 6 | 審査に出す | 人（`submitForReview`） | 「あなたの番」で、ビルドと What's New（言語ごとに直せる）を確かめ、配信の方式（承認後すぐ・手動・日時を指定）を選んで押す |
-| 7 | App Store Connect に出す | 司令塔 | プラットフォームごとに、編集できる版を作るか直し（版の番号・配信の方式）、ビルドを選び、What's New を書き、reviewSubmission に版を足して提出する。どれも、する前に今の様子を読み、途中で止まってもやり直せば同じになる |
+| 7 | App Store Connect に出す | 司令塔 | プラットフォームごとに、編集できる版（ふつうは 2 で作った枠）を直し（版の番号・配信の方式）、ビルドを選び、人が確かめた What's New で上書きし、reviewSubmission に版を足して提出する。どれも、する前に今の様子を読み、途中で止まってもやり直せば同じになる |
 | 8 | 審査の見張り | 司令塔 | 30 分ごとと、操作の直後に、版の状態（`appVersionState`）を読む。審査中・承認・リジェクトになったら知らせる（リジェクトの対処は段階 5 の 4） |
 | 9 | 配信する | 人（`distributeRelease`）か App Store | 配信の方式が手動なら、承認された版に「配信する」を出す。ほかの方式は App Store Connect が配信する |
 | 10 | 後作業 | 司令塔 | 配信を見つけたら記録に終わりの印を付け、今までの後作業（`releases/<版>.json`）に渡す。GitHub Release は、審査に出したときの What's New（日本語。無ければ最初の言語）で確認なしに公開する。release ブランチを main と develop に取り込む（下の「release ブランチの取り込み」） |
 
 - release ブランチの取り込み: 取り込む先（base の develop と main）ごとに、release ブランチが進んでいれば（`compare`）司令塔の PR を出し、チェックが通ったらマージコミットでマージする。進んでいなければ取り込まない（直しの無いリリースの develop）。main が無ければ release ブランチの先頭から作る。release ブランチで版を変えていないので、develop の版は上書きされない。コンフリクト・チェックの失敗・閉じられた PR は人が直す問題にする
 - 取り下げ（`withdrawSubmission`）: 審査を待っている・審査中なら、reviewSubmission を取り消す（`canceled`）。取り下げた後は、ビルドや What's New を直して出し直せる
-- やめる（`abandonRelease`）: 審査に出していない・取り下げた・断られた版なら、記録に終わりの印を付ける。release ブランチ・develop の版を上げる PR・App Store Connect の版には触れない（次のリリースの「App Store Connect に出す」が、編集できる版の番号を直して使う）
+- やめる（`abandonRelease`）: 審査に出していない・取り下げた・断られた版なら、記録に終わりの印を付け、リリースを始めたときに作った版の枠のうち、まだ審査に出していないものを `DELETE /v1/appStoreVersions/{id}` で消す。審査に出ている・API で消せない枠は消さずに理由を記録して知らせる（人が App Store Connect で確かめる）。release ブランチ・develop の版を上げる PR には触れない
 - 承認された後の取り下げ（Developer Reject）は、API が見つからないので作らない（App Store Connect の Web で行う）
 - 手で審査に出した版: 審査を待っている以降の状態の版を見つけ、記録が無ければ `origin` が `appStoreConnect` の記録を作って見張る。手動の配信の版なら「配信する」も出す
-- App Store Connect の書き込みは、どれも人の意図を受け付けたときだけ行う。リリースを始める・準備で行うのは GitHub の操作と App Store Connect の読み取りだけ
+- App Store Connect の書き込みは、どれも人の意図を受け付けたときだけ行う。リリースを始める（`startRelease`）で書くのは、審査に出すまで公開されない版の枠（版・ビルドの選択・What's New の下書き）だけ。この仕組みの前に始めた版（記録の `appStoreVersions` が `null`）には枠を作らない
 
 ### App Store Connect の API
 
-2026-11-18 に Apple の文書で確かめた。App Manager の役割の鍵で書き込みができるかは文書に書かれていない（役割の表が画像）ので、最初の提出で確かめる。
+2026-11-18 に Apple の文書で確かめた。App Manager の役割の鍵で書き込めるかは文書に書かれていない（役割の表が画像）が、2026-11-20 に OshiCon 1.2.0 を AskHub から審査に出し、版の作成・ビルドの選択・What's New・提出（reviewSubmissions）まで書けることを確かめた。手動の配信・取り下げ・版を消す・release ブランチの main への取り込みは、まだ実地で通していない。
 
 | すること | API |
 | --- | --- |
 | 版の状態を読む | `GET /v1/apps/{id}/appStoreVersions?filter[appVersionState]=…`（置き換わった版のほかすべて。配信の検知と同じ要求で読む） |
 | ビルドを読む | `GET /v1/builds?filter[app]=…&filter[preReleaseVersion.version]=<版>&filter[processingState]=VALID` |
 | 掲載文の言語を読む・What's New を書く | `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations`、`PATCH /v1/appStoreVersionLocalizations/{id}`（`whatsNew`） |
-| 版を作る・直す | `POST /v1/appStoreVersions`（`platform`・`versionString`・`releaseType`・`earliestReleaseDate`）、`PATCH /v1/appStoreVersions/{id}`（`relationships.build` でビルドも選ぶ） |
+| 版を作る・直す・消す | `POST /v1/appStoreVersions`（`platform`・`versionString`・`releaseType`。`earliestReleaseDate` は日時を指定するときだけ）、`PATCH /v1/appStoreVersions/{id}`（送った欄だけ直す。`relationships.build` でビルドも選ぶ）、`DELETE /v1/appStoreVersions/{id}`（まだ審査に出していない版） |
 | 提出する | `GET /v1/reviewSubmissions?filter[app]=…&filter[platform]=…&filter[state]=READY_FOR_REVIEW`（開いているものを使う）か `POST /v1/reviewSubmissions` → `POST /v1/reviewSubmissionItems` → `PATCH /v1/reviewSubmissions/{id}`（`submitted: true`） |
 | 取り下げる | `PATCH /v1/reviewSubmissions/{id}`（`canceled: true`） |
 | 手動で配信する | `POST /v1/appStoreVersionReleaseRequests`（Pending Developer Release の版だけ。取り消せない） |
@@ -161,11 +161,64 @@ App Store で対象のアプリの版が配信された（Ready for Sale）こ�
 - 読み取りは自動で行う。審査に出す・配信する（手動の配信のとき）・取り下げとやり直しは、人がクライアントで押した（署名した意図の）ときだけ司令塔が行う（段階 5 の 3。[plan.md](plan.md) の「段階 5 の順」）。そのため、鍵の役割は App Manager にする（Admin は使わない）
 - GitHub Actions の定期実行で読む形は採らない。状態リポジトリに書くためのトークンを Secrets に置くことになり、public のリポジトリの定期実行は 60 日動きが無いと止まるため。司令塔が止まると読み取りも止まるが、司令塔の見張りで分かる（[operations.md](operations.md) の「司令塔の見張り」）
 
-## App Store Connect でしかできない作業
+## 新しいアプリを載せる
 
-- アプリの新規作成（名前・SKU・Bundle ID）・プラットフォームの追加・審査とのやり取りの本文・契約と税と口座は、Web でしかできない
-- どれもアプリごとに最初の 1 回だけなので、リポジトリの作成のときや初めてのリリースのときに、「人がする作業」としてチェックリストで出す。終わったかどうかは API で確かめて、自動で次に進む
-- API でできる見込みのもの（課金のアイテム・サブスクリプション・App Clip の体験・Bundle ID と capability・年齢制限の回答・サブタイトル・プライバシーポリシーの URL・カテゴリ）は、実装の前に確かめる
+App Store Connect にまだアプリが無い・配信中の版が無いアプリを、最初のリリースまで進める（2026-11-20）。アプリの作成は API が無いので人が Web で行い、
+司令塔は API で終わったかを確かめて、残りを「あなたの番」のチェックリストに出す。記録は `app-store.json`（[protocol.md](protocol.md)）。
+
+2026-11-20 にユーザーが決めたこと:
+
+- 決まった値（価格は無料・配信の地域はすべて・カテゴリ・コンテンツの権利・プライバシーポリシーの URL）は、人がチェックリストで値を確かめて押したら司令塔が API で書く。Bundle ID の登録も人が押したとき。アプリの作成・App のプライバシー・DSA の申告・年齢制限は人が Web で行う
+- 自動で出す。App Store Connect にアプリが無ければ「アプリを作る」を、配信中の版が無いアプリでリリースを始めたら初めての版の残りを出す。出さないリポジトリは「App Store に出さない」で外す
+- 初めての版の掲載文（説明文・キーワードなど）は Claude が下書きする（版ごとの掲載文の仕組みに乗せる。別の Issue）
+
+### App Store Connect の API でできること
+
+2026-11-20 に Apple の文書（API は DocC の JSON、役割は Help の役割の表）で確かめた。鍵は App Manager の役割のチームの鍵（Admin は使わない）。
+
+| すること | API | App Manager の鍵で | AskHub では |
+| --- | --- | --- | --- |
+| アプリ（App のレコード）の作成 | 無い（Apps の文書に、新しいアプリは Web で作るよう書かれている） | —（Web では App Manager で作れる） | 人が Web で作る。司令塔は `GET /v1/apps?filter[bundleId]=…` で見つけたら終わりにする |
+| Bundle ID の登録 | `POST /v1/bundleIds`（`identifier`・`name`・`platform`）、読むのは `GET /v1/bundleIds?filter[identifier]=…` | 文書に無い（役割の表では、App Manager は Certificates, Identifiers & Profiles のアクセスを与えられたときだけ。個人の鍵は Provisioning を使えない） | 人が押したら司令塔が登録する。断られたら、Upload の Export（`-allowProvisioningUpdates`。GitHub の Secrets の鍵）に任せる |
+| capability | `POST /v1/bundleIdCapabilities` | 同上 | 扱わない（Upload の自動の署名が entitlements から付ける） |
+| コンテンツの権利 | `PATCH /v1/apps/{id}`（`contentRightsDeclaration`） | 文書に無い（Web では App Manager が直せる） | 人が押したら書く |
+| カテゴリ | `PATCH /v1/appInfos/{id}`（`primaryCategory` などの関係） | できる（Edit App Store details） | 人が押したら書く（主なカテゴリと、ゲームのサブカテゴリ） |
+| プライバシーポリシーの URL | `PATCH /v1/appInfoLocalizations/{id}`（`privacyPolicyUrl`） | できる | 人が押したら、まだ書かれていない言語に書く |
+| 価格 | `POST /v1/appPriceSchedules`（`baseTerritory`・`manualPrices`）、価格の点は `GET /v1/apps/{id}/appPricePoints?filter[territory]=…` | できる（Edit app pricing and availability） | 人が押したら無料にする（基準の地域の、`customerPrice` が 0 の点） |
+| 配信の地域 | `POST /v2/appAvailabilities`（`availableInNewTerritories`・地域ごとの `available`） | できる | 人が押したら、すべての地域と新しい地域に配信する |
+| 年齢制限 | `PATCH /v1/ageRatingDeclarations/{id}` | できる（Help） | 人が Web で答える。司令塔は答えていない質問があるかを確かめる |
+| App のプライバシー（データの収集） | 無い | —（Web では App Manager で答えられる） | 人が Web で答えて「終わった」を押す |
+| DSA（EU のデジタルサービス法）の申告 | 見当たらない | — | 人が Web で答えて「終わった」を押す |
+| 初めての版の掲載文 | `POST`・`PATCH /v1/appStoreVersionLocalizations`（`description`・`keywords`・`promotionalText`・`supportUrl`・`marketingUrl`）、`appStoreVersions` の `copyright` | できる | Claude が下書きし、審査に出すときに書く（別の Issue） |
+| スクショ | `appScreenshotSets`・`appScreenshots` は 4.5.1 で非推奨。新しい App Asset Library（`appAssetLibraryImages`・`appAssetLibraryPlacements`） | できる（文書に明記） | 「App Store の素材」の流れ（段階 5 の 6） |
+| App Review の情報 | `POST`・`PATCH /v1/appStoreReviewDetails`（連絡先・デモアカウント・メモ） | 推定でできる（役割の表に行が無い） | 「App Store の素材」の流れ（段階 5 の 6） |
+| 輸出コンプライアンス | `PATCH /v1/builds/{id}`（`usesNonExemptEncryption`） | 文書に無い | テンプレートの Info.plist の `ITSAppUsesNonExemptEncryption`（上の「審査に出す」） |
+| 契約・税・口座 | 無い | できない（Account Holder・Admin・Finance） | 無料のアプリは要らない。有料にするときは人が Web で |
+
+- 初めての提出に要るもの（Help の required properties）: App 情報（名前・年齢制限・Bundle ID・SKU・コンテンツの権利・主な言語・主なカテゴリ・DSA の申告）、版（サポート URL・著作権表示・App Review の情報・スクショ・説明文・キーワード・ビルド）、価格と配信の地域、プライバシー（プライバシーポリシーの URL・データの収集）。What's New は 2 つ目の版から
+- 文書で確かめられなかったこと: `GET /v1/bundleIds` の `filter[identifier]` が完全一致か（返った `identifier` を比べ直す）、App Manager のチームの鍵で Provisioning（`bundleIds`）を使えるか、価格 0 の点の `customerPrice` の値、`POST /v2/appAvailabilities` を予約注文でない最初の配信に使えるか（文書のページ名が pre-order）、Web で作ったアプリに最初の版・言語・App Review の情報が自動で作られるか。どれも、司令塔が送って断られたら理由を記録に書き、人が Web で行う
+
+### チェックリスト
+
+| 項目 | 確かめ方 | するのは |
+| --- | --- | --- |
+| Bundle ID の登録（`bundleId`） | `GET /v1/bundleIds?filter[identifier]=<アプリ本体の Bundle ID>`。読めなければ `unknown`（Upload の Export で登録される） | 司令塔（人が押したとき）か、Upload |
+| アプリの作成（`app`） | `GET /v1/apps?filter[bundleId]=…` で見つかる | 人（Web。名前・主な言語・Bundle ID・SKU（Bundle ID と同じ）・User Access はチェックリストに案を出す） |
+| コンテンツの権利（`contentRights`） | `apps` の `contentRightsDeclaration` がある | 司令塔（人が値を確かめて押したとき） |
+| カテゴリ（`category`） | `appInfos` の `primaryCategory` がある | 同上 |
+| プライバシーポリシーの URL（`privacyPolicy`） | `appInfoLocalizations` のすべての言語に `privacyPolicyUrl` がある | 同上 |
+| 価格（`price`） | `GET /v1/apps/{id}/appPriceSchedule` の `manualPrices` がある | 同上 |
+| 配信の地域（`availability`） | `GET /v1/apps/{id}/appAvailabilityV2` がある | 同上 |
+| 年齢制限（`ageRating`） | `ageRatingDeclaration` の質問（暴力・性的な内容・ギャンブル・広告・メッセージなど）がすべて答えてある | 人（Web） |
+| App のプライバシー（`appPrivacy`） | API が無い | 人（Web。終わったら「終わった」を押す） |
+| DSA の申告（`digitalServicesAct`） | API が無い | 人（Web。同上） |
+
+- 司令塔は、ほかの App Store Connect の読み取りと同じく、生きている印を書くとき（10 分ごと）に、前に読んでから 30 分たったリポジトリを 1 つずつ読む。人が押した後は、待たずに読む
+- アプリが無いリポジトリでは、`bundleId` と `app` だけを確かめる。アプリを見つけたら、ほかの項目も確かめる。配信中の版を見つけたら `releasedAt` を付けて、それより後は確かめない
+- 確かめが合わない（API で読めない・答えてあるのに残る）ときは、人がどの項目でも「終わった」を押して先に進められる（`app` を除く）
+- 「あなたの番」には、アプリが無ければ「アプリを作る」、配信中の版が無いアプリでリリースを始めたら「App Store の準備を終える」を出す。どちらも同じチェックリストの画面を開く
+- 「App Store に出さない」を押したリポジトリは、確かめも出しもしない（試しのリポジトリなど）。リポジトリの画面から戻せる
+- 書き込み（`registerBundleId`・`applyAppStoreSettings`）は、人の意図を受け付けたときだけ。意図の処理では記録に写すだけで、見回りが App Store Connect に送る。断られた項目は記録の `failures` に理由を書き、人が直して押し直すか、Web で行う
 
 ## App Store の素材
 

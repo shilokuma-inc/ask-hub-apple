@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/findCleanupCandidates.schema.json",
+  "title": "片付けの候補を探す人の意図（kind が findCleanupCandidates）の payload",
+  "description": "封筒の repo・target・targetVersion は書かない。mac は探す Mac の名前。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": ["mac"],
+  "additionalProperties": false,
+  "properties": {
+    "mac": { "$ref": "../common.schema.json#/$defs/macName" }
+  }
+}

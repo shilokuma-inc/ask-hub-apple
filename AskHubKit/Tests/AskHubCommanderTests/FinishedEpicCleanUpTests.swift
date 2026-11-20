@@ -69,8 +69,8 @@ struct FinishedEpicCleanUpTests {
         return workspace
     }
 
-    func localBranches() throws -> Set<String> {
-        let branches = try base.shell("cd '\(clone.path)' && git for-each-ref --format='%(refname:short)' refs/heads/")
+    func localBranches() async throws -> Set<String> {
+        let branches = try await base.shell("cd '\(clone.path)' && git for-each-ref --format='%(refname:short)' refs/heads/")
         return Set(branches.split(separator: "\n").map(String.init))
     }
 
@@ -83,14 +83,14 @@ struct FinishedEpicCleanUpTests {
         // マージから 1 日たった epic と、やめてから 1 日たった epic のものだけを消す
         #expect(workspace.epicsWithWorkspace() == [Self.running, Self.recent])
         #expect(builds.epics() == [Self.running, Self.recent, Self.unknown])
-        let branches = try localBranches()
+        let branches = try await localBranches()
         #expect(!branches.contains(FinalGitTests.branches.epic))
         #expect(!branches.contains(TaskGitTests.branches.task))
         #expect(branches.contains(PrepareWorkspaceRunner.branch(of: Self.running)))
         #expect(branches.contains(PrepareWorkspaceRunner.branch(of: Self.recent)))
         // clone と、リモートの作業ブランチには触れない
         #expect(FileManager.default.fileExists(atPath: clone.appendingPathComponent(".git").path))
-        #expect(try base.remoteHead(FinalGitTests.branches.epic) != nil)
+        #expect(try await base.remoteHead(FinalGitTests.branches.epic) != nil)
         let logged = logs.withLock { $0 }
         #expect(logged.count == 2)
         #expect(logged.allSatisfy { $0.contains("この Mac に残った作業場所と DerivedData を消した") })
@@ -120,12 +120,32 @@ struct FinishedEpicCleanUpTests {
         #expect(!builds.epics().contains(Self.merged))
     }
 
+    /// 終わって 30 日たって archive/ に畳まれた epic でも、長くオフラインだった Mac に残ったものは片付けの対象にする
+    @Test func findsArchivedEpicsToo() async throws {
+        defer { try? FileManager.default.removeItem(at: base.root) }
+        let workspace = try await base.makeWorkspace()
+        try FileManager.default.createDirectory(at: builds.derivedData(for: Self.abandoned), withIntermediateDirectories: true)
+        let repository = RepositoryFile(repo: Self.repo, platform: .apple, addedAt: Timestamp(Self.now))
+        await store.put(StatePath.repository(Self.repo), data: try StateFileCoder.encode(repository))
+        try await put(Self.abandoned, .abandoned, since: 40 * 24 * 60 * 60)
+        let epicPath = StatePath.epic(Self.repo, Self.abandoned)
+        let folder = StatePath.epicDirectory(Self.repo, Self.abandoned)
+        try await store.move([StateMove(from: folder, to: StatePath.archived(folder))], message: "archive")
+        #expect(await store.data(at: epicPath) == nil)
+        let found = try await cleanUp(workspace).finishedEpics(among: [Self.abandoned, Self.unknown])
+        #expect(found.map(\.id) == [Self.abandoned])
+        // 畳んだ先で見つけた epic の DerivedData も消す
+        await cleanUp(workspace).run()
+        #expect(builds.epics().isEmpty)
+        #expect(logs.withLock { $0 }.contains { $0.contains(Self.abandoned.rawValue) })
+    }
+
     @Test func doesNothingWithoutLeftovers() async throws {
         defer { try? FileManager.default.removeItem(at: base.root) }
         let workspace = try await base.makeWorkspace()
         try await put(Self.merged, .merged, since: 2 * 24 * 60 * 60)
         await cleanUp(workspace).run()
         #expect(logs.withLock { $0.isEmpty })
-        #expect(try localBranches() == ["develop"])
+        #expect(try await localBranches() == ["develop"])
     }
 }

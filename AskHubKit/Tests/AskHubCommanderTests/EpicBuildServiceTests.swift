@@ -54,7 +54,8 @@ struct EpicBuildServiceTests {
         let builder = EpicBuilder(machine: machine, settings: settings, epic: Self.epic, sourceDirectory: root, slot: 0)
 
         let started = ContinuousClock.now
-        let result = await EpicBuildService(builder: builder).run(.build, timeout: .seconds(3))
+        // 時間切れの前にスクリプトが子の PID を書けるよう、時間切れは長めにする（全体を並べて流すと、スクリプトが最初の行に届くまで 2〜5 秒かかることがある）
+        let result = await EpicBuildService(builder: builder).run(.build, timeout: .seconds(15))
         let text = (try? String(contentsOf: pids, encoding: .utf8)) ?? ""
         let child = try #require(pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)))
         defer { kill(child, SIGKILL) }

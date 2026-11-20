@@ -14,6 +14,12 @@ extension StateIntentMapper {
         case let .configureRepository(repositoryID, _), let .applyProtection(repositoryID, _), let .approveSetup(repositoryID, _, _):
             index.repositories[repositoryID] != nil
 
+        case .findCleanupCandidates(let macID):
+            index.macs[macID].map { !$0.cleanupUnknown } ?? false
+
+        case let .cleanUp(macID, candidateIDs):
+            index.macs[macID].map { $0.cleanupScannedAt != nil && !$0.cleanupUnknown } == true && !candidateIDs.isEmpty
+
         case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
             supportsSubmissionIntent(intent)
 
@@ -57,7 +63,7 @@ extension StateIntentMapper {
             return try administrationDraft(intent)
 
         default:
-            throw Self.unsupported
+            return try cleanupDraft(intent)
         }
     }
 

@@ -44,15 +44,16 @@ public struct AppStoreVersionInfo: Equatable, Sendable {
     }
 }
 
-/// 版に入れる中身（版の番号・配信の方式・ビルド）。`earliestReleaseDate` は `scheduled` のときだけ送り、ほかは消す
+/// 版に入れる中身（版の番号・配信の方式・ビルド）。nil の欄は送らない（人が App Store Connect で変えたものを上書きしない）。
+/// `earliestReleaseDate` は `scheduled` のときだけ送り、配信の方式を送るほかのときは消す
 public struct AppStoreVersionChange: Equatable, Sendable {
     public var version: MarketingVersion
-    public var releaseType: AppStoreReleaseType
+    public var releaseType: AppStoreReleaseType?
     public var earliestReleaseDate: Date?
     /// 選ぶビルドの id
-    public var buildID: String
+    public var buildID: String?
 
-    public init(version: MarketingVersion, releaseType: AppStoreReleaseType, earliestReleaseDate: Date? = nil, buildID: String) {
+    public init(version: MarketingVersion, releaseType: AppStoreReleaseType?, earliestReleaseDate: Date? = nil, buildID: String?) {
         self.version = version
         self.releaseType = releaseType
         self.earliestReleaseDate = earliestReleaseDate
@@ -62,7 +63,9 @@ public struct AppStoreVersionChange: Equatable, Sendable {
     /// 本文の attributes（`versionString`・`releaseType`・`earliestReleaseDate`）。`clearsDate` なら、日時を使わない方式で null を送って消す
     /// （直すとき。作るときは送らない）
     func attributes(clearsDate: Bool) -> [String: Any] {
-        var attributes: [String: Any] = ["versionString": version.rawValue, "releaseType": releaseType.appStoreConnectValue]
+        var attributes: [String: Any] = ["versionString": version.rawValue]
+        guard let releaseType else { return attributes }
+        attributes["releaseType"] = releaseType.appStoreConnectValue
         if releaseType == .scheduled, let earliestReleaseDate {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime]
@@ -151,6 +154,8 @@ public protocol AppStoreConnectSubmitting: AppStoreConnectReading {
     ) async throws(AppStoreConnectError) -> AppStoreVersionInfo
     /// 編集できる版の番号・配信の方式・ビルドを直す
     func updateVersion(_ versionID: String, _ change: AppStoreVersionChange) async throws(AppStoreConnectError)
+    /// まだ審査に出していない版を消す（やめたリリースの版の枠）
+    func deleteVersion(_ versionID: String) async throws(AppStoreConnectError)
     func updateWhatsNew(_ localizationID: String, text: String) async throws(AppStoreConnectError)
     /// 終わっていない提出（審査に出す前・審査を待っている・審査中・断られたもの）
     func reviewSubmissions(of appID: String, platform: AppStorePlatform) async throws(AppStoreConnectError) -> [AppStoreReviewSubmission]
@@ -260,11 +265,15 @@ extension AppStoreConnectClient: AppStoreConnectSubmitting {
         _ change: AppStoreVersionChange
     ) async throws(AppStoreConnectError) -> AppStoreVersionInfo {
         try Self.checkID(appID)
-        try Self.checkID(change.buildID)
+        var relationships: [String: (type: String, id: String)] = ["app": ("apps", appID)]
+        if let buildID = change.buildID {
+            try Self.checkID(buildID)
+            relationships["build"] = ("builds", buildID)
+        }
         let body = try Self.document(
             "appStoreVersions",
             attributes: change.attributes(clearsDate: false).merging(["platform": platform.appStoreConnectValue]) { current, _ in current },
-            relationships: ["app": ("apps", appID), "build": ("builds", change.buildID)]
+            relationships: relationships
         )
         let data = try await send("POST", "v1/appStoreVersions", body: body)
         guard let created = try? JSONDecoder().decode(AppStoreConnectCreated.self, from: data), Self.isID(created.data.id) else {
@@ -281,14 +290,23 @@ extension AppStoreConnectClient: AppStoreConnectSubmitting {
 
     public func updateVersion(_ versionID: String, _ change: AppStoreVersionChange) async throws(AppStoreConnectError) {
         try Self.checkID(versionID)
-        try Self.checkID(change.buildID)
+        var relationships: [String: (type: String, id: String)] = [:]
+        if let buildID = change.buildID {
+            try Self.checkID(buildID)
+            relationships["build"] = ("builds", buildID)
+        }
         let body = try Self.document(
             "appStoreVersions",
             id: versionID,
             attributes: change.attributes(clearsDate: true),
-            relationships: ["build": ("builds", change.buildID)]
+            relationships: relationships
         )
         _ = try await send("PATCH", "v1/appStoreVersions/\(versionID)", body: body)
+    }
+
+    public func deleteVersion(_ versionID: String) async throws(AppStoreConnectError) {
+        try Self.checkID(versionID)
+        _ = try await send("DELETE", "v1/appStoreVersions/\(versionID)")
     }
 
     public func updateWhatsNew(_ localizationID: String, text: String) async throws(AppStoreConnectError) {

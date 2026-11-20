@@ -160,6 +160,28 @@ struct BuilderTests {
         #expect(cards.allSatisfy { $0.choices.map(\.id) == ["confirmed", "problem"] })
     }
 
+    /// 実機確認のまとめ（通知から開く）は、アプリをまたいで実機確認だけを流す。TestFlight の版が無い項目は出さない
+    @Test
+    func allVerificationsScopeSpansEpics() throws {
+        var snapshot = snapshot
+        #expect(DeckBuilder.cards(from: snapshot, scope: .allVerifications).map(\.epicID) == ["habit-review", "habit-review"])
+
+        // 積読の検索の版が TestFlight に上がると、その項目も並ぶ
+        let index = try #require(snapshot.epics.firstIndex { $0.id == "tsundoku-search" })
+        let items = try #require(snapshot.epics[index].finalReview?.verifications)
+        snapshot.epics[index].finalReview?.verifications = items.map { item in
+            var item = item
+            item.state = .ready(build: "2.1.0 (88)")
+            return item
+        }
+        let cards = DeckBuilder.cards(from: snapshot, scope: .allVerifications)
+        #expect(Set(cards.map(\.epicID)) == ["habit-review", "tsundoku-search"])
+        #expect(Set(cards.map(\.repositoryID)).count == 2)
+        #expect(cards.allSatisfy { $0.choices.map(\.id) == ["confirmed", "problem"] })
+        // 質問・最終 PR の判断のカードは混ぜない
+        #expect(cards.count == 4)
+    }
+
     /// まとめて判断するはアプリをまたいで流す
     @Test
     func allScopeSpansApps() {

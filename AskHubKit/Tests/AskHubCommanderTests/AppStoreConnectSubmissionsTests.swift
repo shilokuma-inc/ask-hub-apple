@@ -153,6 +153,34 @@ struct AppStoreConnectSubmissionsTests {
         #expect((patch["attributes"] as? [String: Any])?["releaseType"] as? String == "SCHEDULED")
     }
 
+    @Test func choosesBuildWithoutTouchingReleaseTypeAndDeletesVersions() async throws {
+        let transport = StubTransport([
+            .json(201, #"{"data":{"type":"appStoreVersions","id":"v-slot"}}"#),
+            .json(200, #"{"data":{"type":"appStoreVersions","id":"v-slot"}}"#),
+            .json(204, ""),
+            .json(409, #"{"errors":[{"detail":"The version can't be deleted."}]}"#)
+        ])
+        let client = client(transport)
+        let version = MarketingVersion(rawValue: "1.4.0")!
+        // 枠を作るときはビルドを選ばない
+        let slot = AppStoreVersionChange(version: version, releaseType: .afterApproval, buildID: nil)
+        _ = try await client.createVersion(of: "6740000001", platform: .iOS, slot)
+        let created = try body(transport.requests[0])
+        #expect((created["relationships"] as? [String: Any])?["build"] == nil)
+        // ビルドだけ選ぶときは、配信の方式と日時を送らない（人が App Store Connect で選んだものを残す）
+        try await client.updateVersion("v-slot", AppStoreVersionChange(version: version, releaseType: nil, buildID: "b45"))
+        let patch = try body(transport.requests[1])
+        #expect((patch["attributes"] as? [String: String]) == ["versionString": "1.4.0"])
+        let build = (patch["relationships"] as? [String: Any])?["build"] as? [String: Any]
+        #expect(build?["data"] as? [String: String] == ["type": "builds", "id": "b45"])
+        try await client.deleteVersion("v-slot")
+        #expect(transport.requests[2].httpMethod == "DELETE")
+        #expect(transport.requests[2].url?.path == "/v1/appStoreVersions/v-slot")
+        await #expect(throws: AppStoreConnectError.refused(status: 409, detail: "The version can't be deleted.")) {
+            try await client.deleteVersion("v-slot")
+        }
+    }
+
     @Test func submitsCancelsAndReleases() async throws {
         let open = """
             {"data":[{"type":"reviewSubmissions","id":"s1","attributes":{"platform":"IOS","state":"READY_FOR_REVIEW"},

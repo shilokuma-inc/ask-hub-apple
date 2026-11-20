@@ -24,7 +24,7 @@ extension DemoClientService {
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
             applyReviewIntent(intent)
 
-        case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .cleanUp:
+        case .resolveBlocker, .handOver, .pause, .resume, .discard, .completeHumanTask, .cleanUp, .findCleanupCandidates:
             applyOperationIntent(intent)
 
         case .publishRelease:

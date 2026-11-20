@@ -1,0 +1,60 @@
+{
+  "description": "Bundle ID を登録する人の意図の payload の例。read は、封筒の repo が正しいときに、読む側が Bundle ID を登録する意図として読めるか",
+  "schema": "payloads/registerBundleId.schema.json",
+  "cases": [
+    {
+      "name": "ios",
+      "payload": {
+        "identifier": "jp.shilokuma.NewApp",
+        "platform": "iOS"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "universal",
+      "payload": {
+        "identifier": "jp.shilokuma.AskHub",
+        "platform": "universal"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "variable",
+      "payload": {
+        "identifier": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+        "platform": "iOS"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-platform",
+      "payload": {
+        "identifier": "jp.shilokuma.NewApp",
+        "platform": "tvOS"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "missing-platform",
+      "payload": {
+        "identifier": "jp.shilokuma.NewApp"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "identifier": "jp.shilokuma.NewApp",
+        "platform": "iOS",
+        "name": "NewApp"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

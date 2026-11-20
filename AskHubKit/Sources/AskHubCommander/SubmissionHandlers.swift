@@ -23,11 +23,13 @@ public struct StartReleaseHandler: IntentHandler {
         // 前の周で作った（やり直し）
         if existing?.start?.approval == start.intent { return .accept }
         if let problem = try await Self.problem(starting: start, existing: existing, in: context) { return .reject(problem) }
+        // App Store Connect の版の枠は、見回りが作る（空の並びは「これから作る」の印）
         let file = SubmissionFile(
             repo: start.repo,
             version: start.version,
             origin: .askhub,
             start: .init(approval: start.intent, at: context.timestamp),
+            appStoreVersions: [],
             createdAt: context.timestamp,
             updatedAt: context.timestamp
         )

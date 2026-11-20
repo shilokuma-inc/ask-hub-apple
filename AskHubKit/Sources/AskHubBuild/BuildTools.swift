@@ -100,7 +100,7 @@ public struct BuildTools: Sendable {
     }
 
     /// `xcrun <arguments>` を、`directory` で、上限 `timeout` で流すコマンド
-    func command(_ arguments: [String], in directory: URL, timeout: Duration) -> Command {
+    public func command(_ arguments: [String], in directory: URL, timeout: Duration) -> Command {
         Command(executable: xcrun, arguments: arguments, environment: environment, workingDirectory: directory, timeout: timeout)
     }
 

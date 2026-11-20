@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/excludeFromAppStore.schema.json",
+  "title": "App Store に出さない・出すに戻す人の意図（kind が excludeFromAppStore）の payload",
+  "description": "封筒の repo が対象のリポジトリ。target・targetVersion は書かない。excluded が true なら出さない、false なら出すに戻す。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "excluded"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "excluded": {
+      "type": "boolean"
+    }
+  }
+}

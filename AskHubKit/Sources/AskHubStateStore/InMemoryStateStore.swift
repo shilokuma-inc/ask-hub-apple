@@ -84,6 +84,37 @@ public actor InMemoryStateStore: StateStore {
         return blob.sha
     }
 
+    /// ディレクトリの下のファイルを、まとめて移す（すべて移すか、何も移さない）。
+    /// 署名を `StateStore` とそろえる（違うと、この型のまま呼んだときに、断る既定のほうが選ばれる）
+    public func move(_ moves: [StateMove], message: String) async throws(StateStoreError) {
+        guard moves.allSatisfy({ StatePathCheck.isSafe($0.from) && StatePathCheck.isSafe($0.to) }) else { throw .invalidPath }
+        guard !isSnapshot else { throw .unexpected(status: 0, message: "読むだけの写しには書けない（元の置き場所で読み直してから書く）") }
+        if !injectedWriteFailures.isEmpty { throw injectedWriteFailures.removeFirst() }
+        // 移す元と先は、呼んだときの中身で決める（GitHub と同じく、同じ呼び出しの前の移動の結果を、後の移動の元にしない）
+        var moved = files
+        var reserved: Set<String> = []
+        for move in moves {
+            let prefix = move.from + "/"
+            let under = files.filter { $0.key.hasPrefix(prefix) }
+            guard !under.isEmpty else { continue }
+            let occupied = { (path: String) in path == move.to || path.hasPrefix(move.to + "/") }
+            guard !files.keys.contains(where: occupied), !reserved.contains(where: occupied) else { throw .conflict }
+            // 先の祖先がファイル（同じ呼び出しで先に置くと決めたものも）なら、ファイルとディレクトリが同じ名前になるので断る（`write` と同じ）
+            let parts = move.to.split(separator: "/")
+            let ancestors = parts.indices.dropLast().map { parts[...$0].joined(separator: "/") }
+            guard !ancestors.contains(where: { files[$0] != nil || reserved.contains($0) }) else { throw .wrongKind }
+            for (path, blob) in under {
+                moved[path] = nil
+                let destination = move.to + "/" + path.dropFirst(prefix.count)
+                moved[destination] = blob
+                reserved.insert(destination)
+            }
+        }
+        guard moved != files else { return }
+        files = moved
+        writeCount += 1
+    }
+
     /// 次の書き込みで、順に投げる失敗を足す
     public func failNextWrites(with failures: [StateStoreError]) {
         injectedWriteFailures += failures

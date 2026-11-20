@@ -33,6 +33,9 @@ struct StateDocuments {
     /// リリースを始めた版の記録（`submissions/<版>.json`）。リポジトリの順、その中は版の小さい順
     var submissions: [SubmissionFile] = []
     var macs: [MacFile] = []
+    /// Mac ごとの片付けの候補（ワーカーが書く）と、受け付けた片付けの頼み（司令塔が書く）
+    var cleanupCandidates: [MacName: CleanupCandidatesFile] = [:]
+    var cleanupRequests: [MacName: CleanupRequestsFile] = [:]
     var commander: CommanderFile?
     /// 新しい順
     var sentIntents: [SentIntent] = []
@@ -90,6 +93,7 @@ struct StateReader {
         let macsPart = try await macs.get()
         documents.macs = macsPart.value
         documents.failures += macsPart.failures
+        await readCleanup(into: &documents)
         let commanderPart = await commander
         documents.commander = commanderPart.value
         documents.failures += commanderPart.failures
@@ -250,16 +254,6 @@ struct StateReader {
 
     // MARK: Mac と送った意図
 
-    private func readMacs() async throws(StateStoreError) -> Part<[MacFile]> {
-        let entries = (try await store.listAll(Self.macsDirectory) ?? []).filter { $0.kind == .file && $0.name.hasSuffix(".json") }
-        var part = Part<[MacFile]>(value: [])
-        for read in await Self.inOrder(entries, { entry in await read(MacFile.self, at: entry.path) }) {
-            read.value.map { part.value.append($0) }
-            part.failures += read.failures
-        }
-        return part
-    }
-
     /// この端末の意図のうち新しいものと、その処理の記録
     private func sentIntents() async throws(StateStoreError) -> Part<[StateDocuments.SentIntent]> {
         async let sentList = Self.capture { () throws(StateStoreError) in
@@ -338,7 +332,7 @@ struct StateReader {
     // MARK: 読み方
 
     /// 読む。読めない（知らない版・形の違い・取得の失敗）ときは、失敗を添えて nil を返す
-    private func read<File: StateFile>(_ type: File.Type, at path: String) async -> Part<File?> {
+    func read<File: StateFile>(_ type: File.Type, at path: String) async -> Part<File?> {
         do {
             return Part(value: try await files.read(type, at: path)?.file)
         } catch {

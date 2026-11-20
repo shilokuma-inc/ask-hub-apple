@@ -14,7 +14,8 @@
         "request", "answer", "startEpic", "reviseGoal", "decideSplit", "decision", "approveMerge", "instructFinal", "humanTaskDone",
         "pauseEpic", "resumeEpic", "handover", "retry", "giveUp", "abandonEpic", "verify", "addRepository", "configureRepository", "removeRepository",
         "applyProtection", "approveSetupPullRequest", "publishGitHubRelease", "startRelease", "submitForReview", "distributeRelease", "withdrawSubmission",
-        "abandonRelease", "registerKey", "revokeKey"
+        "abandonRelease", "registerBundleId", "applyAppStoreSettings", "confirmAppStoreItem", "excludeFromAppStore",
+        "registerKey", "revokeKey"
       ]
     },
     "repo": { "$ref": "common.schema.json#/$defs/repositoryFullName" },
