@@ -88,7 +88,7 @@ extension HumanIntent {
         case .addRepository(let repositoryID), .removeRepository(let repositoryID), .configureRepository(let repositoryID, _):
             [.repository(repositoryID)]
 
-        case let .publishRelease(repositoryID, version, _, _):
+        case let .publishRelease(repositoryID, version, _, _), let .updatePromotionalText(repositoryID, version, _):
             [.release(repositoryID: repositoryID, version: version)]
 
         case let .startRelease(repositoryID, version), let .submitForReview(repositoryID, version, _),

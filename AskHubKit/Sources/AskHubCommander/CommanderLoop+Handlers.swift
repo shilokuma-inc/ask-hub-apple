@@ -29,6 +29,7 @@ extension CommanderLoop {
         "humanTaskDone": HumanTaskDoneHandler(),
         "verify": VerifyHandler(),
         "publishGitHubRelease": PublishGitHubReleaseHandler(),
+        "updatePromotionalText": UpdatePromotionalTextHandler(),
         "startRelease": StartReleaseHandler(),
         "submitForReview": SubmitForReviewHandler(),
         "distributeRelease": DistributeReleaseHandler(),

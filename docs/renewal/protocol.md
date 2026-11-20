@@ -411,6 +411,8 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   "githubRelease": null,
   "nextVersion": { "version": "1.2.0", "state": "open", "pullRequest": 170, "at": "…" },
   "problem": null,
+  "promotionalText": { "current": [{ "locale": "ja", "text": "…" }, { "locale": "en-US", "text": "" }], "readAt": "…",
+                       "request": { "approval": { … }, "at": "…", "texts": [{ "locale": "en-US", "text": "…" }], "doneAt": "…" } },
   "detectedAt": "…",
   "updatedAt": "…"
 }
@@ -425,6 +427,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `githubRelease` は公開した GitHub Release（`url`・`created`）。タグを作ってから公開する
 - `nextVersion` は develop の `MARKETING_VERSION` を次の版に上げる PR。`state` は `open`（CI を待っている）・`merged`・`skipped`（develop の版がもう大きかったので上げなかった。`pullRequest` を持たない）。`open`・`merged` の `version` は配信した版より大きい
 - `problem` は後作業を進められなかった理由（`step` は `commit`・`tag`・`notes`・`githubRelease`・`nextVersion`）。進められたら消す。`needsHuman` が true なら、やり直しても進まないので人が直す（クライアントに出す）
+- `promotionalText` は配信中の版のプロモーションテキスト（審査に出さずに変えられる）。`current` は司令塔が配信の見回り（30 分ごと）で App Store Connect から読んだ今の文（言語ごと。空の言語は空の文字列。170 文字まで）で、読んだ文が変わったときだけ `readAt` ごと書き直す。`request` は人が `updatePromotionalText` で直した中身（`texts` は変える言語だけ。空の文字列は空にする）。司令塔が書き終えたら `doneAt`、App Store Connect が断ったら `failure`（どちらかだけ。断られたら、新しく押すまで書き直さない）。直せるのは記録のうち最も新しい版（配信中の版）だけ
 - クライアントは、`notes` があって `confirmed` も `githubRelease` も無い版を、人の番として出す（Swift は `ReleaseFile.awaitsNotesReview`）。タグ・GitHub Release・次の版（`merged`・`skipped`）がそろったら終わり（`isFinished`）
 
 ### submissions/<版>.json（リリースを始めた版の準備と審査）
@@ -798,6 +801,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
 | `applyProtection` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `requiredChecks`（必須にするチェックの名前。1〜20 個・重ならない・空白だけの名前と制御文字（改行など）を含む名前は受け付けない。スキーマでは表せないので読む側が断る。`payloads/applyProtection.schema.json`）。司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛けてから重なる保護を外し、`repo.json` の `protection` を書く。管理用のトークンが無い・private のリポジトリなどは理由を付けて断る |
+| `updatePromotionalText` | 配信した版（`{ "type": "release", "id": "<版>" }`） | なし | `texts`（書く文。`[{ "locale", "text" }]`。変える言語だけ。1 つ以上。170 文字まで。空の文字列は空にする。`payloads/updatePromotionalText.schema.json`）。配信中の版（記録のうち最も新しい版）で、司令塔が今の文を読んだもの・今の文にある言語だけ受け付ける。審査に出さずに、司令塔がすぐ App Store Connect に書く |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
 | `startRelease` | リポジトリ（封筒の `repo`） | — | `version`（始める版。`payloads/startRelease.schema.json`）。対象のリポジトリで、終わっていないリリース（`submissions/` の `end` の無い記録）が無く、配信した版（`releases/`）より大きいときだけ受け付ける。やめた版は始め直せる |
 | `submitForReview` | リリースを始めた版（`{ "type": "submission", "id": "<版>" }`） | 人が見たときの準備の版（`submissions/<版>.json` の `revision`） | `builds`（出すビルド。`[{ "platform", "build" }]`）、`whatsNew`（人が確かめた What's New。`[{ "locale", "text" }]`。下書きと同じ言語）、`releaseType`（`afterApproval`・`manual`・`scheduled`）、`earliestReleaseDate`（`scheduled` のときだけ）、`listing`（人が確かめた掲載文の直し。`[{ "locale", "description"?, "keywords"?, "promotionalText"? }]`。変える言語・欄だけ。言語は `listing.current` にあるものだけ。変えないなら送らない。`payloads/submitForReview.schema.json`）。準備がそろい、まだ出していない版だけ受け付ける |

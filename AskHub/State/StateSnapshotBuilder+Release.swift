@@ -8,6 +8,12 @@ extension StateSnapshotBuilder {
     /// 断られた公開は、その下書きのままなら理由を出す
     func releases(index: inout StateIndex, overlaid: [IntentEnvelope]) -> [Release] {
         var releases: [Release] = []
+        // リポジトリごとの配信中の版（記録のうち最も新しい版）。プロモーションテキストは、この版だけ直せる
+        var latest: [String: MarketingVersion] = [:]
+        for file in documents.releases {
+            let key = file.repo.rawValue.lowercased()
+            latest[key] = max(latest[key] ?? file.version, file.version)
+        }
         let files = documents.releases.sorted { lhs, rhs in
             lhs.repo.rawValue.lowercased() == rhs.repo.rawValue.lowercased() ? lhs.version > rhs.version
                 : lhs.repo.rawValue.localizedStandardCompare(rhs.repo.rawValue) == .orderedAscending
@@ -27,9 +33,57 @@ extension StateSnapshotBuilder {
                     release.publish = .rejected(reason)
                 }
             }
+            if let promotionalText = file.promotionalText, file.version == latest[file.repo.rawValue.lowercased()] {
+                release.promotionalText = promotionalTextState(of: file, promotionalText, overlaid: overlaid)
+                index.promotionalTexts[release.id] = StateIndex.PromotionalTextEntry(
+                    repo: file.repo,
+                    version: file.version,
+                    current: promotionalText.current,
+                    canUpdate: release.promotionalText?.request != .sending
+                )
+            }
             releases.append(release)
         }
         return releases
+    }
+
+    /// 配信中の版のプロモーションテキスト。この端末が送って司令塔がまだ処理していない中身は送った結果として先に出し、断られた中身は理由を出す
+    private func promotionalTextState(
+        of file: ReleaseFile,
+        _ promotionalText: ReleaseFile.PromotionalText,
+        overlaid: [IntentEnvelope]
+    ) -> Release.PromotionalText {
+        let current = promotionalText.current.map { Submission.Localized(locale: $0.locale, text: $0.text) }
+        let isSending = overlaid.contains { Self.updatesPromotionalText($0, file: file) }
+        let request: Release.PromotionalTextRequest = if isSending {
+            .sending
+        } else if let reason = rejectedPromotionalText(of: file) {
+            .rejected(reason)
+        } else if let failure = promotionalText.request?.failure {
+            .failed(failure)
+        } else if let doneAt = promotionalText.request?.doneAt {
+            .done(doneAt.date)
+        } else if promotionalText.request != nil {
+            .writing
+        } else {
+            .none
+        }
+        return Release.PromotionalText(current: current, request: request)
+    }
+
+    /// その版への、プロモーションテキストを直す意図か
+    private static func updatesPromotionalText(_ envelope: IntentEnvelope, file: ReleaseFile) -> Bool {
+        guard envelope.kind == UpdatePromotionalTextIntent.kind, let intent = try? UpdatePromotionalTextIntent(envelope: envelope) else {
+            return false
+        }
+        return intent.repo.rawValue.lowercased() == file.repo.rawValue.lowercased() && intent.version == file.version
+    }
+
+    /// その版への最後のプロモーションテキストの直しを、司令塔が断った理由。断られていなければ（受け付けた・送っていない）nil
+    private func rejectedPromotionalText(of file: ReleaseFile) -> String? {
+        let latest = documents.sentIntents.first { Self.updatesPromotionalText($0.envelope, file: file) }
+        guard let consumed = latest?.consumed, consumed.result == .rejected else { return nil }
+        return consumed.reason ?? "理由は書かれていません"
     }
 
     static func release(_ file: ReleaseFile) -> Release {
