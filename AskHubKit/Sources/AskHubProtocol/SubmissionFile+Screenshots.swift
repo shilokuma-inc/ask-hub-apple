@@ -108,13 +108,24 @@ extension SubmissionFile {
         public var status: String?
         /// 終わった run の結論（`success`・`failure`・`cancelled` など）
         public var conclusion: String?
+        /// 起動の前からあった、ブランチの `workflow_dispatch` の run の最大の id（無ければ 0）。id の分からない run を一覧から探すとき、
+        /// これより新しい run だけを候補にする（起動の前に人が起動した run を取り違えない）
+        public var after: Int?
 
-        public init(id: Int? = nil, url: String? = nil, dispatchedAt: Timestamp, status: String? = nil, conclusion: String? = nil) {
+        public init(
+            id: Int? = nil,
+            url: String? = nil,
+            dispatchedAt: Timestamp,
+            status: String? = nil,
+            conclusion: String? = nil,
+            after: Int? = nil
+        ) {
             self.id = id
             self.url = url
             self.dispatchedAt = dispatchedAt
             self.status = status
             self.conclusion = conclusion
+            self.after = after
         }
 
         /// 終わった
@@ -123,6 +134,7 @@ extension SubmissionFile {
         var problems: [String] {
             var problems: [String] = []
             if let id, id <= 0 { problems.append("screenshots の run の id は 1 以上") }
+            if let after, after < 0 { problems.append("screenshots の run の after は 0 以上") }
             if let url, !url.hasPrefix("https://github.com/") || url.count > 400 { problems.append("screenshots の run の url は GitHub の画面") }
             let words = [status, conclusion].compactMap(\.self)
             if !words.allSatisfy({ $0.wholeMatch(of: #/[a-z_]{1,40}/#) != nil }) {

@@ -241,25 +241,52 @@ extension ReleaseWatchTests {
     @Test func findsTheRunWhenTheDispatchReturnsNoID() async throws {
         try await startRelease()
         try await addWorkflowScreenshotRepository()
-        hosting.workflows.withLock { $0.dispatchReply = .success(nil) }
+        // 起動の前から、人が起動した実行がある（直前の 1 秒前に作られたものも）
+        let before = [
+            screenshotRun(id: 44_900_000_090, createdAt: Self.now.addingTimeInterval(-3_600)),
+            screenshotRun(id: 44_900_000_095, status: "completed", conclusion: "success", createdAt: Self.now.addingTimeInterval(-1))
+        ]
+        hosting.workflows.withLock { state in
+            state.dispatchReply = .success(nil)
+            state.dispatchedRuns = before
+        }
         let watch = watch()
         await watch.refresh()
-        #expect(try await submission().screenshots?.run?.id == nil)
+        let marked = try #require(try await submission().screenshots?.run)
+        #expect(marked.id == nil && marked.after == 44_900_000_095)
 
         hosting.workflows.withLock { state in
-            state.dispatchedRuns = [
-                // ほかのブランチ・ずっと前の実行は使わない。起動の直前に人が起動した実行より、送った時刻に近い実行を選ぶ
+            // ほかのブランチの実行は使わない。起動の前からあった実行（after 以下）も使わない
+            state.dispatchedRuns = before + [
                 screenshotRun(id: 44_900_000_099, branch: "release/1.1.0", createdAt: Self.now.addingTimeInterval(10)),
-                screenshotRun(id: 44_900_000_090, createdAt: Self.now.addingTimeInterval(-3_600)),
-                screenshotRun(id: 44_900_000_095, status: "completed", conclusion: "success", createdAt: Self.now.addingTimeInterval(-30)),
                 screenshotRun(id: Self.screenshotRun, status: "queued", createdAt: Self.now.addingTimeInterval(3))
             ]
         }
         clock.advance(minutes: 5)
         await watch.refresh()
         let run = try #require(try await submission().screenshots?.run)
-        #expect(run.id == Self.screenshotRun && run.status == "queued")
+        #expect(run.id == Self.screenshotRun && run.status == "queued" && run.after == 44_900_000_095)
         #expect(run.dispatchedAt == Timestamp(Self.now))
+        #expect(hosting.workflows.withLock { $0.dispatches.count } == 1)
+    }
+
+    @Test func doesNotGuessWhenAnotherRunStartedAfterTheDispatch() async throws {
+        try await startRelease()
+        try await addWorkflowScreenshotRepository()
+        hosting.workflows.withLock { $0.dispatchReply = .success(nil) }
+        let watch = watch()
+        await watch.refresh()
+        hosting.workflows.withLock { state in
+            // 起動の後に、人も同じワークフローを起動した
+            state.dispatchedRuns = [
+                screenshotRun(id: Self.screenshotRun, status: "queued", createdAt: Self.now.addingTimeInterval(3)),
+                screenshotRun(id: 44_900_000_102, status: "queued", createdAt: Self.now.addingTimeInterval(4))
+            ]
+        }
+        clock.advance(minutes: 5)
+        await watch.refresh()
+        let shots = try #require(try await submission().screenshots)
+        #expect(shots.state == .failed && shots.failure?.contains("見分けられない") == true && shots.run?.id == nil)
         #expect(hosting.workflows.withLock { $0.dispatches.count } == 1)
     }
 

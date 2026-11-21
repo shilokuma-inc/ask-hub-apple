@@ -556,7 +556,7 @@
             "object",
             "null"
           ],
-          "description": "撮影のワークフローの実行（capture: actions のときだけ）。id は run の id（起動の応答か、起動した後の一覧で分かる）、url は run の画面、dispatchedAt は起動を送った時刻、status・conclusion は GitHub の run の様子と結論",
+          "description": "撮影のワークフローの実行（capture: actions のときだけ）。id は run の id（起動の応答か、起動した後の一覧で分かる）、url は run の画面、dispatchedAt は起動を送った時刻、status・conclusion は GitHub の run の様子と結論。after は起動の前からあった、ブランチの workflow_dispatch の run の最大の id（id の分からない run を一覧から探すとき、これより新しいものだけを候補にする）",
           "required": [
             "dispatchedAt"
           ],
@@ -593,6 +593,13 @@
                 "null"
               ],
               "pattern": "^[a-z_]{1,40}$"
+            },
+            "after": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
             }
           }
         }

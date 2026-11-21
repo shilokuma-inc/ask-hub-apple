@@ -52,9 +52,14 @@ extension ReleaseWatch {
             guard let head, ReleaseFile.isCommit(head) else {
                 throw ReleaseStepProblem("\(branch.name) が無い。リリースをやめて始め直す", needsHuman: true)
             }
+            // 起動の前からある実行を覚えておく（送った後に落ちて id を書けなかったとき、これより新しい実行だけを探す）
+            let existing = try await self.github { () throws(PullRequestError) in
+                try await self.hosting.dispatchedRuns(file.repo, workflow: workflow.workflow, branch: branch.name)
+            }
+            let after = Self.matching(existing, workflow: workflow.workflow, branch: branch.name).map(\.id).max() ?? 0
             var file = file
             let startedAt = file.screenshots?.startedAt ?? now
-            file.screenshots = .init(state: .capturing, commit: head, startedAt: startedAt, run: .init(dispatchedAt: now))
+            file.screenshots = .init(state: .capturing, commit: head, startedAt: startedAt, run: .init(dispatchedAt: now, after: after))
             return file
         }
         guard let marked = started.screenshots, marked.state == .capturing, let run = marked.run, run.id == nil,
@@ -107,15 +112,23 @@ extension ReleaseWatch {
                 try await self.hosting.dispatchedRuns(file.repo, workflow: workflow.workflow, branch: branch.name)
             }
             var file = file
-            if let found = Self.dispatchedRun(in: runs, workflow: workflow.workflow, branch: branch.name, since: run.dispatchedAt.date) {
-                file.screenshots?.run = Self.record(found, dispatchedAt: run.dispatchedAt)
+            switch Self.dispatchedRun(in: runs, workflow: workflow.workflow, branch: branch.name, run: run) {
+            case let .found(found):
+                file.screenshots?.run = Self.record(found, dispatchedAt: run.dispatchedAt, previous: run)
                 if ReleaseFile.isCommit(found.headSHA) { file.screenshots?.commit = found.headSHA }
                 return file
+            case let .ambiguous(ids):
+                // 起動の後に、ほかにも同じワークフローがこのブランチで起動された。どれがこの撮影か分からないので、自動では決めない
+                let list = ids.map(String.init).joined(separator: "・")
+                return Self.failedScreenshots(
+                    file, "撮影の実行を見分けられない（起動の後に、同じワークフローの実行が \(list) とほかにもある）。撮り直す", at: now
+                )
+            case .none:
+                guard self.context.now().timeIntervalSince(run.dispatchedAt.date) >= Self.screenshotRedispatchAfter else { return nil }
+                // 送り直す。先に送った時刻を書き直す（ここで落ちても、また一覧から探してから送る）
+                file.screenshots?.run = .init(dispatchedAt: now, after: run.after)
+                return file
             }
-            guard self.context.now().timeIntervalSince(run.dispatchedAt.date) >= Self.screenshotRedispatchAfter else { return nil }
-            // 送り直す。先に送った時刻を書き直す（ここで落ちても、また一覧から探してから送る）
-            file.screenshots?.run = .init(dispatchedAt: now)
-            return file
         }
         guard let marked = found.screenshots?.run, marked.id == nil, marked.dispatchedAt == now else { return found }
         return await dispatchScreenshotWorkflow(found, workflow: workflow, branch: branch)
@@ -200,17 +213,48 @@ extension ReleaseWatch {
         }
     }
 
-    /// ブランチで起動した、そのワークフローの実行のうち、作られた時刻が起動を送った時刻に最も近いもの（1 分前〜10 分後。時計のずれと、
-    /// 実行が一覧に出るまでの遅れを許す）。最も古いものを選ぶと、起動の直前に人が起動した実行を取り違えるので、送った時刻との近さで選ぶ
-    static func dispatchedRun(in runs: [WorkflowRunDetail], workflow: String, branch: String, since: Date) -> WorkflowRunDetail? {
+    /// 一覧から探した、id の分からない撮影の実行
+    enum DispatchedRunSearch: Equatable {
+        case found(WorkflowRunDetail)
+        /// まだ一覧に無い
+        case none
+        /// 候補が 2 つ以上あり、どれか分からない（候補の id）
+        case ambiguous([Int])
+    }
+
+    /// ブランチで起動した、そのワークフローの実行（呼び出されたワークフローなどでは path が `<ファイル>@<ref>` になる）
+    static func matching(_ runs: [WorkflowRunDetail], workflow: String, branch: String) -> [WorkflowRunDetail] {
         let path = ".github/workflows/\(workflow)"
         return runs.filter { run in
-            // 呼び出されたワークフローなどでは path が <ファイル>@<ref> になる
             let file = run.path.split(separator: "@", maxSplits: 1).first.map(String.init) ?? run.path
-            let offset = run.createdAt.timeIntervalSince(since)
-            return run.event == "workflow_dispatch" && file == path && run.headBranch == branch && (-60...600).contains(offset)
+            return run.event == "workflow_dispatch" && file == path && run.headBranch == branch
         }
-        .min { abs($0.createdAt.timeIntervalSince(since)) < abs($1.createdAt.timeIntervalSince(since)) }
+    }
+
+    /// id の分からない撮影の実行を一覧から探す。起動の前からあった実行（`run.after` 以下の id。GitHub の実行の id は後のものほど大きい）は除き、
+    /// 送った時刻の 1 分前より後に作られたものを候補にする。候補が 1 つならそれ、2 つ以上なら見分けられない。
+    /// `after` の無い記録（この欄を足す前に起動したもの）は、送った時刻との近さだけで選ぶ
+    static func dispatchedRun(
+        in runs: [WorkflowRunDetail],
+        workflow: String,
+        branch: String,
+        run: SubmissionFile.CaptureRun
+    ) -> DispatchedRunSearch {
+        let since = run.dispatchedAt.date.addingTimeInterval(-60)
+        let candidates = matching(runs, workflow: workflow, branch: branch).filter { candidate in
+            candidate.createdAt >= since && run.after.map { candidate.id > $0 } ?? true
+        }
+        guard run.after != nil else {
+            let nearest = candidates.min {
+                abs($0.createdAt.timeIntervalSince(run.dispatchedAt.date)) < abs($1.createdAt.timeIntervalSince(run.dispatchedAt.date))
+            }
+            return nearest.map(DispatchedRunSearch.found) ?? .none
+        }
+        switch candidates.count {
+        case 0: return .none
+        case 1: return .found(candidates[0])
+        default: return .ambiguous(candidates.map(\.id).sorted())
+        }
     }
 
     /// 実行の様子を記録の形にする（URL は前に書いたものを残す）
@@ -224,7 +268,8 @@ extension ReleaseWatch {
             url: detail.url?.absoluteString ?? previous?.url,
             dispatchedAt: dispatchedAt,
             status: Self.word(detail.status),
-            conclusion: detail.conclusion.flatMap(Self.word)
+            conclusion: detail.conclusion.flatMap(Self.word),
+            after: previous?.after
         )
     }
 
