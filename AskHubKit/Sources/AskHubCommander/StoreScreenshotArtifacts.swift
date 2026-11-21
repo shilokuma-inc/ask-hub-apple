@@ -28,6 +28,8 @@ public struct UnzipArtifactExtractor: StoreScreenshotArtifactExtracting {
     public static let maximumFileBytes = 20 * 1024 * 1024
     /// 1 つの zip の画像の数の上限（言語 50 × 10 枚）
     public static let maximumFiles = 500
+    /// 1 つの zip の項目（画像と言語のフォルダ）の数の上限
+    public static let maximumEntries = maximumFiles + 50
 
     public var runner: any CommandRunning
 
@@ -44,13 +46,8 @@ public struct UnzipArtifactExtractor: StoreScreenshotArtifactExtracting {
         try zip.write(to: archive, options: .atomic)
         defer { try? fileManager.removeItem(at: archive) }
 
-        // 取り出す前に、中身の名前（`<言語>/<名前>.png` だけ）と合計の大きさを確かめる
-        let names = try await lines(of: "/usr/bin/zipinfo", ["-1", archive.path], in: directory).filter { !$0.hasSuffix("/") }
-        guard !names.isEmpty else { throw ArtifactProblem("artifact に画像が無い") }
-        guard names.count <= Self.maximumFiles else { throw ArtifactProblem("artifact の画像が \(Self.maximumFiles) 枚を超える") }
-        if let wrong = names.first(where: { !Self.isEntry($0) }) {
-            throw ArtifactProblem("artifact に決まった形（<言語>/<名前>.png）でないもの（\(wrong.prefix(80))）がある")
-        }
+        // 取り出す前に、すべての項目の名前（`<言語>/<名前>.png` と、`<言語>/` のフォルダだけ）・数・重なりと、合計の大きさを確かめる
+        let names = try Self.images(in: try await lines(of: "/usr/bin/zipinfo", ["-1", archive.path], in: directory))
         let listing = try await lines(of: "/usr/bin/unzip", ["-l", archive.path], in: directory)
         guard let total = Self.expandedBytes(listing), total <= Self.maximumExpandedBytes else {
             throw ArtifactProblem("artifact を取り出した大きさが分からないか、\(Self.maximumExpandedBytes / 1_048_576) MB を超える")
@@ -76,9 +73,28 @@ public struct UnzipArtifactExtractor: StoreScreenshotArtifactExtracting {
         return folders
     }
 
+    /// zip の項目の名前を確かめ、画像の名前を返す。`<言語>/<名前>.png` と `<言語>/` のフォルダのほかの項目・同じ名前の項目
+    /// （後のものが先のものを上書きする）・多すぎる項目を断る
+    static func images(in entries: [String]) throws -> [String] {
+        guard entries.count <= maximumEntries else { throw ArtifactProblem("artifact の項目が \(maximumEntries) を超える") }
+        if let wrong = entries.first(where: { !isEntry($0) && !isFolder($0) }) {
+            throw ArtifactProblem("artifact に決まった形（<言語>/<名前>.png）でないもの（\(wrong.prefix(80))）がある")
+        }
+        guard Set(entries).count == entries.count else { throw ArtifactProblem("artifact に同じ名前の項目が 2 つ以上ある") }
+        let names = entries.filter { !$0.hasSuffix("/") }
+        guard !names.isEmpty else { throw ArtifactProblem("artifact に画像が無い") }
+        guard names.count <= maximumFiles else { throw ArtifactProblem("artifact の画像が \(maximumFiles) 枚を超える") }
+        return names
+    }
+
     /// `<言語>/<名前>.png`（言語は英数字・- _ で 20 文字まで、名前は英数字で始まり英数字・. _ - で 100 文字まで）
     static func isEntry(_ name: String) -> Bool {
         name.wholeMatch(of: #/[A-Za-z0-9_-]{1,20}/[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.png/#) != nil && !name.contains("..")
+    }
+
+    /// 言語のフォルダの項目（`ja/`）
+    static func isFolder(_ name: String) -> Bool {
+        name.wholeMatch(of: #/[A-Za-z0-9_-]{1,20}//#) != nil
     }
 
     /// `unzip -l` の最後の行（`  4987593                     5 files`）の、取り出した合計の大きさ

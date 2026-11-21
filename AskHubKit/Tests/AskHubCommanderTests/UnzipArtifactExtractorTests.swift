@@ -76,6 +76,18 @@ struct UnzipArtifactExtractorTests {
         #expect(UnzipArtifactExtractor.isEntry(name) == valid)
     }
 
+    @Test func checksEveryEntryBeforeExtracting() throws {
+        #expect(try UnzipArtifactExtractor.images(in: ["ja/", "ja/01.png", "en/01.png"]) == ["ja/01.png", "en/01.png"])
+        // 言語の下のフォルダ・同じ名前の項目・画像の無い zip・多すぎる項目は断る
+        #expect(throws: ArtifactProblem.self) { try UnzipArtifactExtractor.images(in: ["ja/", "ja/d00001/", "ja/01.png"]) }
+        #expect(throws: ArtifactProblem("artifact に同じ名前の項目が 2 つ以上ある")) {
+            try UnzipArtifactExtractor.images(in: ["ja/01.png", "ja/01.png"])
+        }
+        #expect(throws: ArtifactProblem("artifact に画像が無い")) { try UnzipArtifactExtractor.images(in: ["ja/"]) }
+        let many = (0...UnzipArtifactExtractor.maximumEntries).map { "ja/\($0).png" }
+        #expect(throws: ArtifactProblem.self) { try UnzipArtifactExtractor.images(in: many) }
+    }
+
     @Test func readsTheExpandedSizeFromTheListing() {
         let listing = [
             "Archive:  a.zip",
