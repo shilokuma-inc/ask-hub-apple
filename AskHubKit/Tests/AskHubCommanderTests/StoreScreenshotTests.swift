@@ -98,13 +98,13 @@ extension ReleaseWatchTests {
                 )
             }
         }
-        let iPhone = shots(images, prefix: "iphone"), duo = shots([duo], prefix: "duo")
+        let iPhoneShots = shots(images, prefix: "iphone"), duoShots = shots([duo], prefix: "duo")
         appStore.state.withLock { state in
             state.screenshotSets[localization] = [
-                AppStoreScreenshotSet(displayType: Self.iPhone, screenshots: iPhone),
-                AppStoreScreenshotSet(displayType: Self.duo, screenshots: duo)
+                AppStoreScreenshotSet(displayType: Self.iPhone, screenshots: iPhoneShots),
+                AppStoreScreenshotSet(displayType: Self.duo, screenshots: duoShots)
             ]
-            for (shot, data) in zip(iPhone + duo, images + [commanderPNG()]) { state.images[shot.imageURL!] = data }
+            for (shot, data) in zip(iPhoneShots + duoShots, images + [duo]) { state.images[shot.imageURL!] = data }
         }
     }
 
@@ -297,7 +297,7 @@ extension ReleaseWatchTests {
             "deletePlacement e-p2",
             "deletePlacement e-p4",
             "placeScreenshot \(uploaded) e-ja",
-            "orderScreenshots e-ja e-p1,placement-\(uploaded),e-p3"
+            "orderScreenshots e-ja e-p1,placement-1,e-p3"
         ])
     }
 

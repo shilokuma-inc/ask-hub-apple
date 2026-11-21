@@ -23,6 +23,8 @@ final class FakeAppStore: AppStoreConnecting {
         ]
         /// ライブラリの画像（参照名ごと。上げると足す）
         var libraryImages: [String: [AppStoreLibraryImage]] = [:]
+        /// 作った配置の数（配置の id の番号）
+        var placementCount = 0
         /// スクショの画像（URL ごと）
         var images: [URL: Data] = [:]
         var submissions: [AppStoreReviewSubmission] = []
@@ -173,8 +175,10 @@ final class FakeAppStore: AppStoreConnecting {
 
     func placeScreenshot(_ imageID: String, on localizationID: String, displayType: String) async throws(AppStoreConnectError) -> String {
         try write("placeScreenshot \(imageID) \(localizationID)")
-        let shot = AppStoreScreenshot(id: "placement-\(imageID)", imageID: imageID, checksum: nil, imageURL: nil)
-        state.withLock { state in
+        return state.withLock { state in
+            // 同じ画像を言語ごとに置いても、配置の id は配置ごとに違う
+            state.placementCount += 1
+            let shot = AppStoreScreenshot(id: "placement-\(state.placementCount)", imageID: imageID, checksum: nil, imageURL: nil)
             var sets = state.screenshotSets[localizationID] ?? []
             if let index = sets.firstIndex(where: { $0.displayType == displayType }) {
                 sets[index].screenshots.append(shot)
@@ -182,8 +186,8 @@ final class FakeAppStore: AppStoreConnecting {
                 sets.append(AppStoreScreenshotSet(displayType: displayType, screenshots: [shot]))
             }
             state.screenshotSets[localizationID] = sets
+            return shot.id
         }
-        return shot.id
     }
 
     func deletePlacement(_ id: String) async throws(AppStoreConnectError) {
