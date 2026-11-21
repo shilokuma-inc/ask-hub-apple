@@ -1,22 +1,31 @@
 import AskHubProtocol
 import Foundation
 
-/// リリースを始めた版の App Store のスクショ（`docs/renewal/release.md` の「スクショ」）。
-/// release ブランチを作ったら撮り始めた印を書き、見回りの外の Task で撮って比べ、結果を記録に書く（UI テストは長いので、見回りを止めない）。
-/// 撮り方（`build.storeScreenshots`）の無いリポジトリは撮らない。人が直す失敗は `failed` にし、スクショを変えずに審査に出せるようにする
+/// リリースを始めた版の App Store のスクショ（`docs/renewal/release.md` の「スクショ」・`docs/renewal/store-screenshots.md`）。
+/// 撮り方（`build.storeScreenshots`）の無いリポジトリは撮らない。リポジトリの撮影のワークフローで撮る（`capture: actions`）なら、
+/// 起動して見張る（`ReleaseWatch+ScreenshotWorkflow`）。UI テストで撮る（`uiTest`）なら、release ブランチを作ったら撮り始めた印を書き、
+/// 見回りの外の Task で撮って比べ、結果を記録に書く（UI テストは長いので、見回りを止めない）。
+/// 人が直す失敗は `failed` にし、スクショを変えずに審査に出せるようにする
 extension ReleaseWatch {
     func prepareScreenshots(_ file: SubmissionFile, settings: RepositoryFile) async -> SubmissionFile {
         guard let branch = file.branch, file.screenshots?.state.isSettled != true else { return file }
         let key = Self.screenshotKey(file)
         guard !capturing.contains(key) else { return file }
         let now = context.timestamp
-        guard let storeSettings = settings.build?.storeScreenshots, let build = settings.build?.xcode else {
+        let storeSettings: StoreScreenshotSettings
+        switch settings.build?.storeScreenshots {
+        case let .actions(workflow)?:
+            return await advanceScreenshotWorkflow(file, workflow: workflow)
+        case let .uiTest(settings)?:
+            storeSettings = settings
+        case nil:
             return await submissionStep(.screenshots, file) { file in
                 var file = file
                 file.screenshots = .init(state: .notConfigured, startedAt: now, finishedAt: now)
                 return file
             }
         }
+        guard let build = settings.build?.xcode else { return file }
         guard screenshots != nil else {
             return await submissionStep(.screenshots, file) { file in
                 var file = file
@@ -92,14 +101,18 @@ extension ReleaseWatch {
         "\(file.repo.rawValue)/\(file.version.rawValue)"
     }
 
-    /// 撮り始めた印は、まだ何も無いときだけ書く。結果は、撮り始めた印（同じコミット）の上にだけ書き、`revision` を上げる。審査に出した後は変えない
+    /// 撮り始めた印は、まだ何も無いときだけ書く。結果は、撮り始めた印（同じ撮影: 同じコミットか、同じ撮り始めの時刻）の上にだけ書き、
+    /// `revision` を上げる。撮っている間は、撮影のワークフローの実行（`run`）と、実行が撮ったコミットの進みだけを写す。審査に出した後は変えない
     static func mergeScreenshots(_ changed: SubmissionFile, into file: inout SubmissionFile) {
         guard file.submit == nil, let screenshots = changed.screenshots else { return }
-        if screenshots.state == .capturing {
-            guard file.screenshots == nil else { return }
-        } else {
-            let isStarted = file.screenshots?.state == .capturing && file.screenshots?.commit == screenshots.commit
-            guard file.screenshots == nil || isStarted else { return }
+        if let current = file.screenshots {
+            let isSameCapture = current.commit == screenshots.commit || current.startedAt == screenshots.startedAt
+            guard current.state == .capturing, isSameCapture else { return }
+            if screenshots.state == .capturing {
+                file.screenshots?.run = screenshots.run ?? current.run
+                if screenshots.run != nil { file.screenshots?.commit = screenshots.commit }
+                return
+            }
         }
         file.screenshots = screenshots
         if screenshots.state.isSettled { file.revision += 1 }

@@ -1,6 +1,6 @@
 import Foundation
 
-/// App Store のスクショの撮り方（`repo.json` の `build.storeScreenshots`。`docs/renewal/release.md` の「スクショ」）。無いリポジトリでは撮らない。
+/// App Store のスクショの UI テストでの撮り方（`repo.json` の `build.storeScreenshots` の `capture: uiTest`。`docs/renewal/release.md` の「スクショ」）。
 ///
 /// 司令塔が release ブランチの先頭で、リポジトリの UI テスト（`test`）を表示サイズ・言語ごとに流し、テストが添付した画像（`XCTAttachment`）を
 /// 添付した順に、App Store の 1 枚目・2 枚目… として使う。テストはデモのデータで開き、言語は環境変数で受け取る
