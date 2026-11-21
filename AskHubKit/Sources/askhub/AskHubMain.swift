@@ -24,7 +24,7 @@ enum AskHubMain {
         switch command {
         case "setup": try setup(CommandArguments(arguments))
         case "key": try await key(arguments)
-        case "add-repository", "configure-repository", "apply-protection",
+        case "add-repository", "configure-repository", "apply-protection", "approve-setup",
              "request", "answer", "clarify", "start", "revise-goal", "decide-split", "abandon",
              "pause", "resume", "handover", "retry", "give-up", "decide", "approve-merge", "instruct-final", "human-task-done":
             try await send(command, CommandArguments(arguments))
@@ -40,6 +40,7 @@ enum AskHubMain {
           key add --public-key <base64url> --account <アカウント> --label <名前> | key revoke <鍵の id>
           add-repository --repo <owner/repo>
           configure-repository --repo <owner/repo> --file <build.json>   ビルドの設定（repo.json の build と同じ形）を入れる
+          approve-setup --repo <owner/repo> --pr <番号> --head <PR の head>   加えるときに司令塔が出したワークフローの直しの PR を承認する
           apply-protection --repo <owner/repo> [--checks <名前,名前>]   保護の設定（ルールセット askhub-protect）を司令塔に掛けてもらう
                          （必須のチェックは既定で build / build。司令塔の管理用のトークンで掛け、重なる保護を外す）
           request --repo <owner/repo> --title <題> [--body <本文>]

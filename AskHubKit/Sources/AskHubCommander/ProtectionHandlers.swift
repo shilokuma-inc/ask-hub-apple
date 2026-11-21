@@ -32,6 +32,11 @@ public struct AdminGitHub: Sendable {
     func pause(_ owner: String, for wait: Duration, now: Date) async {
         await pauses.pause(owner, for: wait, now: now)
     }
+
+    /// GitHub の失敗が上限なら、上限に当たったことを書く
+    func note(_ error: PullRequestError, owner: String, now: Date) async {
+        if case let .rateLimited(wait) = error { await pause(owner, for: wait, now: now) }
+    }
 }
 
 /// 管理の操作を GitHub に送らずに断るわけ
@@ -135,7 +140,7 @@ public struct ApplyProtectionHandler: IntentHandler {
             if let wait = outcome.stoppedFor { await admin.pause(apply.repo.owner, for: wait, now: now()) }
             return .success(outcome)
         } catch {
-            if case let .github(.rateLimited(wait)) = error { await admin.pause(apply.repo.owner, for: wait, now: now()) }
+            if case let .github(error) = error { await admin.note(error, owner: apply.repo.owner, now: now()) }
             return .failure(error)
         }
     }

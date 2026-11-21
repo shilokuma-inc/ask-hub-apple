@@ -135,6 +135,10 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   - `requiredChecks`: 必須にしたチェックの名前（`applyProtection` の `requiredChecks`）。`rulesetId`: 掛けたルールセットの id
   - `replaced`・`remaining`: 掛けたときに外した、守る範囲（develop・main・`release/` の下）に収まる保護と、外さずに残した重なる保護（`{ "kind": "classic" | "ruleset" | "organizationRuleset", "name", "reason" }`。`classic` の `name` はパターン。`reason` は残したわけで、`remaining` だけに書く）。守る範囲の外も守るもの・外せなかったもの・organization のルールセットは残す
   - `drift`: 掛けた後のずれ（`{ "foundAt", "problems": [人が読む文。1 つ 500 文字まで] }`）。ずれていなければ `drift` を書かない（`null` も同じに読む）。ずれの中身が変わったときだけ書き直す
+- `setup`: 対象に加えるときの GitHub 側の準備の結果（[operations.md](operations.md) の「対象に加えるときの GitHub 側の準備」）。司令塔が `addRepository` を処理したとき（加え直したときも）に、管理用のトークンで流して書く。まだ流していなければ `null`
+  - `updatedAt`: 流した時刻。`problems`: 準備を止めた・できなかった理由（人が読む文。管理用のトークンが無い など）。無ければ `null`
+  - `discussions`: `ready`（Discussions が有効でカテゴリ「Ideas」がある）・`missingCategory`（「Ideas」が無い。人が作る）・`unknown`（有効にできない・確かめられない）
+  - `workflows`: ワークフローを直す決まった手順の PR（`{ "state": "notNeeded" | "open" | "merged" | "closed", "pullRequest", "head", "changes": [{ "kind": "removeLegacy" | "removePathFilters", "path" }] }`）。`open` の PR は、人の `approveSetupPullRequest` でマージする
 - `build` は、ビルドの設定（段階 3）。人が設定を入れる意図（`configureRepository`）で書く（入れ方は [operations.md](operations.md) の「ビルドの設定の入れ方」）。形は `protocol/schemas/repository-build.schema.json`（Swift は `RepositoryFile.Build`）
   - `baseBranch`: 作業ブランチの元で、最終 PR の向き先。無ければ develop
   - `xcode`: ビルドとテストの設定（Swift は `AskHubProtocol` の `BuildSettings`）。`project`（`.xcodeproj` か `.xcworkspace` の、リポジトリの直下からの相対パス）・`generate`（ビルドの前にプロジェクトを作る道具。`"xcodegen"` なら、ワーカーが作業場所の直下で `xcodegen generate` を流す。無ければリポジトリにあるプロジェクトをそのまま使う）・`scheme`・`destinations`（`{ "platform": "iOS" | "visionOS", "deviceType", "osVersion" }` か `{ "platform": "macOS" }`。並べた順に流す）・`testLight`・`testFull`（`testPlan`・`onlyTesting`・`skipTesting`。無ければ全部）。`xcodebuild` の引数とパスに使うので、`-` で始まる値・制御文字・リポジトリの外を指すパスを受け付けない
@@ -816,6 +820,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
 | `applyProtection` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `requiredChecks`（必須にするチェックの名前。1〜20 個・重ならない・空白だけの名前と制御文字（改行など）を含む名前は受け付けない。スキーマでは表せないので読む側が断る。`payloads/applyProtection.schema.json`）。司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛けてから重なる保護を外し、`repo.json` の `protection` を書く。管理用のトークンが無い・private のリポジトリなどは理由を付けて断る |
+| `approveSetupPullRequest` | 準備の PR（`{ "type": "setupPullRequest", "id": "<PR の番号>" }`。封筒の `repo` が対象のリポジトリ） | 人が見たときの PR の head のコミット（`repo.json` の `setup.workflows.head`） | 空（`payloads/approveSetupPullRequest.schema.json`）。司令塔が出した開いた準備の PR で、head が変わっていないときだけ、管理用のトークンで merge commit にする |
 | `updatePromotionalText` | 配信した版（`{ "type": "release", "id": "<版>" }`） | なし | `texts`（書く文。`[{ "locale", "text" }]`。変える言語だけ。1 つ以上。170 文字まで。空の文字列は空にする。`payloads/updatePromotionalText.schema.json`）。配信中の版（記録のうち最も新しい版）で、司令塔が今の文を読んだもの・今の文にある言語だけ受け付ける。審査に出さずに、司令塔がすぐ App Store Connect に書く |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
 | `startRelease` | リポジトリ（封筒の `repo`） | — | `version`（始める版。`payloads/startRelease.schema.json`）。対象のリポジトリで、終わっていないリリース（`submissions/` の `end` の無い記録）が無く、配信した版（`releases/`）より大きいときだけ受け付ける。やめた版は始め直せる |
@@ -831,7 +836,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `removeCleanupCandidates` | —（同上） | — | `mac`、`scannedAt`（選んだ候補を探した時刻）、`candidates`（消す候補の id。パスは送らない。`payloads/removeCleanupCandidates.schema.json`）。積み方は `findCleanupCandidates` と同じ（上の「片付けの候補」） |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
-テンプレートからの作成・実機確認の「確認した」「問題あり」・ワークフローの PR の承認の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作の `kind`（`startRelease`・`submitForReview`・`distributeRelease`・`withdrawSubmission`・`abandonRelease`）は、段階 5 の 3 で足した。新しいアプリを App Store に載せる準備の `kind`（`registerBundleId`・`applyAppStoreSettings`・`confirmAppStoreItem`・`excludeFromAppStore`）は、2026-11-20 に足した。
+テンプレートからの作成・実機確認の「確認した」「問題あり」の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作の `kind`（`startRelease`・`submitForReview`・`distributeRelease`・`withdrawSubmission`・`abandonRelease`）は、段階 5 の 3 で足した。新しいアプリを App Store に載せる準備の `kind`（`registerBundleId`・`applyAppStoreSettings`・`confirmAppStoreItem`・`excludeFromAppStore`）は、2026-11-20 に足した。
 
 ### 署名のしかた
 
@@ -899,5 +904,5 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 ## 決めていないこと
 
 - App Store の素材の形（段階 5 の 6）。リリース中の直し・hotfix・リジェクトの対処の意図（段階 5 の 4）
-- 段階 4 で足す意図（作成・実機確認・保護の設定・ワークフローの PR の承認・Secrets の登録）の形と、対象から外した印の形（実装のときに決めて、上の表と `repo.json` に書く）
+- 段階 4 で足す意図（作成・実機確認・Secrets の登録）の形と、対象から外した印の形（実装のときに決めて、上の表と `repo.json` に書く）
 - クライアントでの `repo.json` の `build` の入れ方は、段階 4 の 4 で作る（今は非常口の `askhub configure-repository` だけ。[operations.md](operations.md) の「ビルドの設定の入れ方」）
