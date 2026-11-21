@@ -58,6 +58,8 @@ extension ReleaseWatchTests {
         clock.advance(minutes: 5)
         await watch.refresh()
         await watch.waitForScreenshotCaptures()
+        // 取り込みを終えた Task が起こした見回りも待つ
+        await watch.waitForRefresh()
     }
 
     @Test func importsArtifactsAndComparesEveryLocaleWithTheLiveVersion() async throws {
@@ -161,5 +163,106 @@ extension ReleaseWatchTests {
         await captureOnActions(watch)
         let shots = try #require(try await submission().screenshots)
         #expect(shots.state == .failed && shots.failure?.contains("置く場所") == true)
+    }
+}
+
+/// 取り込みの直し（#1198 のレビュー）
+extension ReleaseWatchTests {
+    @Test func doesNotImportARecoveredRunThatWasCancelled() async throws {
+        try await startRelease()
+        try await addWorkflowScreenshotRepository()
+        hosting.workflows.withLock { $0.dispatchReply = .success(nil) }
+        let watch = watch(screenshots: FakeStoreScreenshots())
+        await watch.refresh()
+        // 一覧から見つけ直した実行が、取り消されて終わっていた
+        hosting.workflows.withLock {
+            $0.dispatchedRuns = [screenshotRun(status: "completed", conclusion: "cancelled", createdAt: Self.now.addingTimeInterval(3))]
+        }
+        clock.advance(minutes: 5)
+        await watch.refresh()
+        clock.advance(minutes: 5)
+        await watch.refresh()
+        await watch.waitForScreenshotCaptures()
+        let shots = try #require(try await submission().screenshots)
+        #expect(shots.state == .failed && shots.failure?.contains("cancelled") == true)
+        #expect(hosting.workflows.withLock { $0.artifactReads } == 0)
+    }
+
+    @Test func waitsFiveMinutesBeforeRetryingAFailedImport() async throws {
+        try await startRelease()
+        try await addWorkflowScreenshotRepository()
+        liveScreenshots([Self.home], localization: "l-ja", locale: "ja")
+        screenshotArtifacts(iPhone: ["ja": [Self.home], "en": [Self.home]])
+        hosting.workflows.withLock { $0.artifactsFailure = .serverError(status: 502) }
+        let watch = watch(screenshots: FakeStoreScreenshots())
+        await captureOnActions(watch)
+        #expect(try await submission().screenshots?.state == .capturing)
+        #expect(hosting.workflows.withLock { $0.artifactReads } == 1)
+        // 一時的な失敗では見回りを起こさず、5 分たつまで取り込み直さない
+        await watch.refresh()
+        await watch.waitForScreenshotCaptures()
+        #expect(hosting.workflows.withLock { $0.artifactReads } == 1)
+        hosting.workflows.withLock { $0.artifactsFailure = nil }
+        clock.advance(minutes: 5)
+        await watch.refresh()
+        await watch.waitForScreenshotCaptures()
+        await watch.waitForRefresh()
+        #expect(hosting.workflows.withLock { $0.artifactReads } == 2)
+        #expect(try await submission().screenshots?.state == .captured)
+    }
+
+    @Test func comparesALanguageThatTheLiveVersionDoesNotHaveYet() async throws {
+        try await startRelease()
+        try await addWorkflowScreenshotRepository()
+        // 配信中の版は日本語だけ。英語は設定に足したばかり
+        liveScreenshots([Self.home], localization: "l-ja", locale: "ja")
+        appStore.state.withLock { state in
+            state.localizations["live-0"] = state.localizations["live-0"]?.filter { $0.locale == "ja" }
+        }
+        screenshotArtifacts(iPhone: ["ja": [Self.home], "en": [Self.home]])
+        let watch = watch(screenshots: FakeStoreScreenshots())
+        await captureOnActions(watch)
+        let shots = try #require(try await submission().screenshots)
+        let english = try #require(shots.sets.first { $0.locale == "en-US" })
+        #expect(english.shots.map(\.changed) == [true] && english.shots[0].before == nil)
+        #expect(shots.sets.first { $0.locale == "ja" }?.isChanged == false)
+    }
+
+    @Test func skipsOnlyTheArtifactThatDisappeared() async throws {
+        try await startRelease()
+        try await addWorkflowScreenshotRepository()
+        liveScreenshots([Self.home], localization: "l-ja", locale: "ja", duo: Self.home)
+        liveScreenshots([Self.home], localization: "l-en", locale: "en-US", duo: Self.home)
+        screenshotArtifacts(iPhone: ["ja": [Self.home], "en": [Self.home]], duo: ["ja": [Self.home], "en": [Self.home]])
+        // iPhone Duo の artifact は、一覧を読んだ後に消えた
+        hosting.workflows.withLock { _ = $0.zips.removeValue(forKey: 2) }
+        let watch = watch(screenshots: FakeStoreScreenshots())
+        await captureOnActions(watch)
+        let shots = try #require(try await submission().screenshots)
+        #expect(shots.state == .captured && Set(shots.sets.map(\.displayType)) == [Self.iPhone])
+        #expect(shots.skipped.contains { $0.displayType == Self.duo && $0.reason.contains("落とせない") })
+    }
+}
+
+/// 初めての版のスクショを審査に出す
+extension ReleaseWatchTests {
+    @Test func submitsEveryScreenOfTheFirstVersion() async throws {
+        let (originals, capturer) = try await readyToSubmitScreenshots(keep: [])
+        // 配信中の版が無い（初めての版）。撮った画面はすべて新しく、編集できる版にはまだスクショが無い
+        let first = StoreScreenshotRun.original(in: originals, target: Self.japanese, index: 1)
+        try commanderPNG(mark: CGRect(x: 1, y: 1, width: 5, height: 5)).write(to: first)
+        var file = try await submission()
+        let preview = try #require(file.screenshots?.sets[0].shots[1].preview)
+        file.screenshots?.sets[0].shots = (1...3).map { .init(index: $0, name: "0\($0)", changed: true, preview: preview) }
+        file.screenshots?.sets[0].removed = 0
+        try await putSubmission(file)
+        appStore.state.withLock { state in
+            state.versions = []
+            state.screenshotSets["e-ja"] = []
+        }
+        await watch(screenshots: capturer).refresh()
+        let placed = appStore.state.withLock { $0.writes }.filter { $0.hasPrefix("placeScreenshot") }
+        #expect(placed.count == 3 && placed.allSatisfy { $0.hasSuffix(" e-ja") })
+        #expect(try await submission().problem == nil)
     }
 }

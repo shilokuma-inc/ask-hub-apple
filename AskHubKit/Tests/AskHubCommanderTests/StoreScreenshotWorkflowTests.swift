@@ -32,11 +32,19 @@ struct FakeWorkflows {
     var artifacts: [Int: [RunArtifact]] = [:]
     /// artifact の id → zip（`FakeArtifactExtractor.zip` の形）
     var zips: [Int: Data] = [:]
+    /// artifact の一覧を読んだ数と、決めると一覧を読めずにこれを投げる
+    var artifactReads = 0
+    var artifactsFailure: PullRequestError?
 }
 
 extension FakeReleaseHosting {
     func runArtifacts(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [RunArtifact] {
-        workflows.withLock { $0.artifacts[runID] ?? [] }
+        let (artifacts, failure) = workflows.withLock { state in
+            state.artifactReads += 1
+            return (state.artifacts[runID] ?? [], state.artifactsFailure)
+        }
+        if let failure { throw failure }
+        return artifacts
     }
 
     func downloadArtifact(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) -> Data {
