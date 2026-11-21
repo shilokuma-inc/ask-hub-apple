@@ -939,7 +939,7 @@
           "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "keep": [
             {
-              "displayType": "APP_IPHONE_67",
+              "displayType": "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE",
               "locale": "ja",
               "index": 11
             }

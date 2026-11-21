@@ -33,7 +33,8 @@ public struct StoreScreenshotSettings: Codable, Equatable, Sendable {
     public var languages: [String: Language]
     /// 基準の言語（App Store Connect の言語）。毎回撮り、ほかの言語は基準の言語で差が出たときだけ撮る
     public var baseLocale: String
-    /// App Store Connect の表示サイズ（`APP_IPHONE_67` など）ごとの、撮る Simulator の機種の名前（上から順に、ある機種を使う）。
+    /// App Store Connect の表示サイズ（App Asset Library の配置グループ。`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など）ごとの、
+    /// 撮る Simulator の機種の名前（上から順に、ある機種を使う）。
     /// App Store Connect にあってここに無い表示サイズは、撮れない表示サイズとして知らせる
     public var displayTypes: [String: [String]]
 
@@ -100,7 +101,7 @@ public struct StoreScreenshotSettings: Codable, Equatable, Sendable {
         text.wholeMatch(of: #/[A-Z][A-Z0-9_]{0,59}/#) != nil
     }
 
-    /// App Store Connect の表示サイズ（`APP_IPHONE_67` など）
+    /// App Store Connect の表示サイズ（App Asset Library の配置グループ。`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など）
     public static func isDisplayType(_ text: String) -> Bool {
         text.wholeMatch(of: #/[A-Z][A-Z0-9_]{1,59}/#) != nil
     }

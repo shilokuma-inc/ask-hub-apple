@@ -139,11 +139,11 @@
             },
             "baseLocale": "ja",
             "displayTypes": {
-              "APP_IPHONE_67": [
+              "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": [
                 "iPhone 17 Pro Max",
                 "iPhone 16 Pro Max"
               ],
-              "APP_IPAD_PRO_3GEN_129": [
+              "IPAD_13_PROFILE": [
                 "iPad Pro 13-inch (M5)"
               ]
             }
@@ -530,11 +530,11 @@
             },
             "baseLocale": "fr",
             "displayTypes": {
-              "APP_IPHONE_67": [
+              "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": [
                 "iPhone 17 Pro Max",
                 "iPhone 16 Pro Max"
               ],
-              "APP_IPAD_PRO_3GEN_129": [
+              "IPAD_13_PROFILE": [
                 "iPad Pro 13-inch (M5)"
               ]
             }
@@ -582,11 +582,11 @@
             },
             "baseLocale": "ja",
             "displayTypes": {
-              "APP_IPHONE_67": [
+              "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": [
                 "iPhone 17 Pro Max",
                 "iPhone 16 Pro Max"
               ],
-              "APP_IPAD_PRO_3GEN_129": [
+              "IPAD_13_PROFILE": [
                 "iPad Pro 13-inch (M5)"
               ]
             }
@@ -634,11 +634,11 @@
             },
             "baseLocale": "ja",
             "displayTypes": {
-              "APP_IPHONE_67": [
+              "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": [
                 "iPhone 17 Pro Max",
                 "iPhone 16 Pro Max"
               ],
-              "APP_IPAD_PRO_3GEN_129": [
+              "IPAD_13_PROFILE": [
                 "iPad Pro 13-inch (M5)"
               ]
             }
@@ -686,7 +686,7 @@
             },
             "baseLocale": "ja",
             "displayTypes": {
-              "APP_IPHONE_67": []
+              "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": []
             }
           }
         }
