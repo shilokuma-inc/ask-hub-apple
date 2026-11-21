@@ -88,7 +88,7 @@
 - やめる（`abandonRelease`）: 審査に出していない・取り下げた・断られた版なら、記録に終わりの印を付け、リリースを始めたときに作った版の枠のうち、まだ審査に出していないものを `DELETE /v1/appStoreVersions/{id}` で消す。審査に出ている・API で消せない枠は消さずに理由を記録して知らせる（人が App Store Connect で確かめる）。release ブランチ・develop の版を上げる PR には触れない
 - 承認された後の取り下げ（Developer Reject）は、API が見つからないので作らない（App Store Connect の Web で行う）
 - 手で審査に出した版: 審査を待っている以降の状態の版を見つけ、記録が無ければ `origin` が `appStoreConnect` の記録を作って見張る。手動の配信の版なら「配信する」も出す
-- App Store Connect の書き込みは、どれも人の意図を受け付けたときだけ行う。リリースを始める（`startRelease`）で書くのは、審査に出すまで公開されない版の枠（版・ビルドの選択・What's New の下書き）だけ。この仕組みの前に始めた版（記録の `appStoreVersions` が `null`）には枠を作らない
+- App Store Connect の書き込みは、どれも人の意図を受け付けたときだけ行う。リリースを始める（`startRelease`）で書くのは、審査に出すまで公開されない版の枠（版・ビルドの選択・What's New の下書き）と、撮って比べたスクショの画像のライブラリへの上げ（配置はしない。2026-11-22 に決めた。[store-screenshots.md](store-screenshots.md)）だけ。この仕組みの前に始めた版（記録の `appStoreVersions` が `null`）には枠を作らない
 
 ### App Store Connect の API
 
@@ -246,7 +246,7 @@ App Store Connect にまだアプリが無い・配信中の版が無いアプ�
 
 ### スクショ
 
-撮る場所を各リポジトリの GitHub Actions に移す設計を [store-screenshots.md](store-screenshots.md) にまとめている（#1192。案の段階）。決まったら、ここに書いた今の作りを直す。
+2026-11-22 に、撮る場所を各リポジトリの GitHub Actions に移すと決めた（[store-screenshots.md](store-screenshots.md)。#1192）。下の今の作りは、実装の PR ごとに直す。
 
 - リリースのたびに撮り、前回 App Store に出したものと見比べる。差があれば、クライアントで Before / After を確かめてから反映する
 - 基準の言語は毎回撮る。ほかの言語は、基準の言語で差が出たときか、その言語の文言のファイルが変わったときだけ撮る
