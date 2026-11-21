@@ -32,11 +32,16 @@ extension ReleaseWatchTests {
         #expect(promotionalText.current == [.init(locale: "en-US", text: ""), .init(locale: "ja", text: "推しの予定を数えよう")])
         #expect(promotionalText.readAt == Timestamp(Self.now) && promotionalText.request == nil)
 
-        // 変わっていなければ書き直さない。変わったら書き直す
+        // 変わっていなければ書き直さない。App Store Connect の言語の並びが変わっただけでも書き直さない
         clock.advance(minutes: 31)
         await watch.refresh()
         #expect(try await release().promotionalText?.readAt == Timestamp(Self.now))
-        appStore.state.withLock { $0.localizations["live-0"]?[1].listing.promotionalText = "Count down" }
+        appStore.state.withLock { $0.localizations["live-0"]?.reverse() }
+        clock.advance(minutes: 31)
+        await watch.refresh()
+        #expect(try await release().promotionalText?.readAt == Timestamp(Self.now))
+        // 文が変わったら書き直す
+        appStore.state.withLock { $0.localizations["live-0"]?[0].listing.promotionalText = "Count down" }
         clock.advance(minutes: 31)
         await watch.refresh()
         #expect(try await release().promotionalText?.current.first?.text == "Count down")
