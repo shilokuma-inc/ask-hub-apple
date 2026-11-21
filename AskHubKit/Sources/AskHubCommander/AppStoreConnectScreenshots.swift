@@ -69,10 +69,13 @@ public struct AppStoreLibraryImage: Equatable, Sendable {
     public var id: String
     /// 処理の様子（`AWAITING_UPLOAD`・`UPLOAD_COMPLETE`・`PREPARE_FOR_SUBMISSION`・`APPROVED` など）
     public var state: String?
+    /// 処理に失敗したわけ（`stateDetails` の誤りの文）
+    public var details: String?
 
-    public init(id: String, state: String?) {
+    public init(id: String, state: String?, details: String? = nil) {
         self.id = id
         self.state = state
+        self.details = details
     }
 
     /// 処理を終え、置ける。上げ終わっていない・処理の途中・失敗したものは置かない
@@ -80,6 +83,12 @@ public struct AppStoreLibraryImage: Equatable, Sendable {
         guard let state else { return false }
         return !["AWAITING_UPLOAD", "UPLOAD_COMPLETE", "FAILED"].contains(state)
     }
+
+    /// 処理に失敗した（Apple が受け付けなかった）
+    public var isFailed: Bool { state == "FAILED" }
+
+    /// 上げ終えて、Apple が処理している（待てば置ける）
+    public var isProcessing: Bool { state == "UPLOAD_COMPLETE" }
 }
 
 /// App Store Connect のスクショの読み書き（テストでは差し替える）
@@ -94,8 +103,10 @@ public protocol AppStoreConnectScreenshots: Sendable {
     func assetLibrary(of appID: String) async throws(AppStoreConnectError) -> String
     /// ライブラリの、参照名が `referenceName` の画像
     func libraryImages(in libraryID: String, referenceName: String) async throws(AppStoreConnectError) -> [AppStoreLibraryImage]
-    /// 1 枚上げる（予約 → 送る → 終わりを伝える → 処理を待つ）。上げた画像の id を返す
-    func uploadImage(to libraryID: String, fileName: String, referenceName: String, data: Data) async throws(AppStoreConnectError) -> String
+    /// 1 枚上げる（予約 → 送る → 終わりを伝える）。処理は待たない（何時間かかることもあるので、見回りの周で `libraryImage` を読む）。上げた画像の id を返す
+    func sendImage(to libraryID: String, fileName: String, referenceName: String, data: Data) async throws(AppStoreConnectError) -> String
+    /// ライブラリの 1 枚の画像の様子
+    func libraryImage(_ id: String) async throws(AppStoreConnectError) -> AppStoreLibraryImage
     /// ライブラリの画像を消す（置いていないものだけ消せる）
     func deleteImage(_ id: String) async throws(AppStoreConnectError)
     /// 画像を、版の言語の表示サイズに置く。配置の id を返す
@@ -208,7 +219,7 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
         try Self.checkID(libraryID)
         let query = [
             URLQueryItem(name: "filter[referenceName]", value: referenceName),
-            URLQueryItem(name: "fields[appAssetLibraryImages]", value: "referenceName,state"),
+            URLQueryItem(name: "fields[appAssetLibraryImages]", value: "referenceName,state,stateDetails"),
             URLQueryItem(name: "limit", value: "50")
         ]
         let response = try await get(
@@ -217,11 +228,20 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
         // 絞り込みが完全一致とは文書に書かれていないので、返った参照名を比べ直す
         return response.data.compactMap { item in
             guard Self.isID(item.id), item.attributes?.referenceName == referenceName else { return nil }
-            return AppStoreLibraryImage(id: item.id, state: item.attributes?.state)
+            return AppStoreLibraryImage(id: item.id, state: item.attributes?.state, details: item.attributes?.stateDetails?.message)
         }
     }
 
-    public func uploadImage(
+    public func libraryImage(_ id: String) async throws(AppStoreConnectError) -> AppStoreLibraryImage {
+        try Self.checkID(id)
+        let query = [URLQueryItem(name: "fields[appAssetLibraryImages]", value: "state,stateDetails")]
+        let image = try await get(
+            "v1/appAssetLibraryImages/\(id)", query: query, as: AppStoreConnectSingle<AppStoreConnectImageAttributes>.self
+        )
+        return AppStoreLibraryImage(id: id, state: image.data.attributes?.state, details: image.data.attributes?.stateDetails?.message)
+    }
+
+    public func sendImage(
         to libraryID: String,
         fileName: String,
         referenceName: String,
@@ -247,7 +267,6 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
         // App Asset Library の終わりの知らせは `uploaded` だけ（MD5 は送らない。予約の大きさと比べられる）
         let commit = try Self.document("appAssetLibraryImages", id: id, attributes: ["uploaded": true])
         _ = try await send("PATCH", "v1/appAssetLibraryImages/\(id)", body: commit)
-        try await waitForProcessing(of: id)
         return id
     }
 
@@ -319,23 +338,5 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
             throw .unavailable(String(describing: Swift.type(of: error)))
         }
         guard (200..<300).contains(response.statusCode) else { throw .refused(status: response.statusCode, detail: "スクショを送れない") }
-    }
-
-    /// 上げた画像の処理が終わる（置ける状態になる）まで待つ。失敗（`FAILED`）は、画像を消して断りにする。待ちすぎたら、待てば直るものとして投げる
-    private func waitForProcessing(of id: String) async throws(AppStoreConnectError) {
-        let query = [URLQueryItem(name: "fields[appAssetLibraryImages]", value: "state")]
-        for attempt in 0..<30 {
-            let image = try await get(
-                "v1/appAssetLibraryImages/\(id)", query: query, as: AppStoreConnectSingle<AppStoreConnectImageAttributes>.self
-            )
-            let state = AppStoreLibraryImage(id: id, state: image.data.attributes?.state)
-            if state.isPlaceable { return }
-            if state.state == "FAILED" {
-                try? await deleteImage(id)
-                throw .refused(status: 409, detail: "上げたスクショの処理に失敗した（大きさが App Store の表示サイズに合わないなど）")
-            }
-            try? await Task.sleep(for: .seconds(attempt < 5 ? 2 : 5))
-        }
-        throw .unavailable("上げたスクショの処理が終わらない")
     }
 }
