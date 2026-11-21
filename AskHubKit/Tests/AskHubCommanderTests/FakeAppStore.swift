@@ -15,8 +15,14 @@ final class FakeAppStore: AppStoreConnecting {
         var localizations: [String: [AppStoreLocalization]] = [:]
         /// 版の id ごとの App Review の情報
         var reviewDetails: [String: AppStoreReviewDetail] = [:]
-        /// 掲載文の id ごとのスクショの組
+        /// 掲載文の id ごとのスクショの組（配置を作る・消すと変わる）
         var screenshotSets: [String: [AppStoreScreenshotSet]] = [:]
+        /// 表示サイズ（配置グループ）ごとのプラットフォーム
+        var displayTypePlatforms: [String: AppStorePlatform] = [
+            "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": .iOS, "IPHONE_DUO_PROFILE": .iOS, "MAC_PROFILE": .macOS
+        ]
+        /// ライブラリの画像（参照名ごと。上げると足す）
+        var libraryImages: [String: [AppStoreLibraryImage]] = [:]
         /// スクショの画像（URL ごと）
         var images: [URL: Data] = [:]
         var submissions: [AppStoreReviewSubmission] = []
@@ -137,24 +143,69 @@ final class FakeAppStore: AppStoreConnecting {
         return data
     }
 
-    func createScreenshotSet(of localizationID: String, displayType: String) async throws(AppStoreConnectError) -> AppStoreScreenshotSet {
-        try write("createScreenshotSet \(localizationID) \(displayType)")
-        let set = AppStoreScreenshotSet(id: "set-\(localizationID)-\(displayType)", displayType: displayType, screenshots: [])
-        state.withLock { $0.screenshotSets[localizationID, default: []].append(set) }
-        return set
+    func displayTypePlatforms() async throws(AppStoreConnectError) -> [String: AppStorePlatform] {
+        state.withLock { $0.displayTypePlatforms }
     }
 
-    func uploadScreenshot(to setID: String, fileName: String, data: Data) async throws(AppStoreConnectError) -> String {
-        try write("uploadScreenshot \(setID) \(fileName)")
-        return "new-\(fileName)"
+    func assetLibrary(of appID: String) async throws(AppStoreConnectError) -> String {
+        "library-\(appID)"
     }
 
-    func deleteScreenshot(_ id: String) async throws(AppStoreConnectError) {
-        try write("deleteScreenshot \(id)")
+    func libraryImages(in libraryID: String, referenceName: String) async throws(AppStoreConnectError) -> [AppStoreLibraryImage] {
+        state.withLock { $0.libraryImages[referenceName] ?? [] }
     }
 
-    func orderScreenshots(of setID: String, ids: [String]) async throws(AppStoreConnectError) {
-        try write("orderScreenshots \(setID) \(ids.joined(separator: ","))")
+    func uploadImage(
+        to libraryID: String,
+        fileName: String,
+        referenceName: String,
+        data: Data
+    ) async throws(AppStoreConnectError) -> String {
+        try write("uploadImage \(fileName)")
+        let image = AppStoreLibraryImage(id: "image-\(fileName)", state: "PREPARE_FOR_SUBMISSION")
+        state.withLock { $0.libraryImages[referenceName, default: []].append(image) }
+        return image.id
+    }
+
+    func deleteImage(_ id: String) async throws(AppStoreConnectError) {
+        try write("deleteImage \(id)")
+    }
+
+    func placeScreenshot(_ imageID: String, on localizationID: String, displayType: String) async throws(AppStoreConnectError) -> String {
+        try write("placeScreenshot \(imageID) \(localizationID)")
+        let shot = AppStoreScreenshot(id: "placement-\(imageID)", imageID: imageID, checksum: nil, imageURL: nil)
+        state.withLock { state in
+            var sets = state.screenshotSets[localizationID] ?? []
+            if let index = sets.firstIndex(where: { $0.displayType == displayType }) {
+                sets[index].screenshots.append(shot)
+            } else {
+                sets.append(AppStoreScreenshotSet(displayType: displayType, screenshots: [shot]))
+            }
+            state.screenshotSets[localizationID] = sets
+        }
+        return shot.id
+    }
+
+    func deletePlacement(_ id: String) async throws(AppStoreConnectError) {
+        try write("deletePlacement \(id)")
+        state.withLock { state in
+            for (localization, sets) in state.screenshotSets {
+                state.screenshotSets[localization] = sets.map { set in
+                    AppStoreScreenshotSet(displayType: set.displayType, screenshots: set.screenshots.filter { $0.id != id })
+                }
+            }
+        }
+    }
+
+    func orderScreenshots(on localizationID: String, displayType: String, ids: [String]) async throws(AppStoreConnectError) {
+        try write("orderScreenshots \(localizationID) \(ids.joined(separator: ","))")
+        state.withLock { state in
+            state.screenshotSets[localizationID] = (state.screenshotSets[localizationID] ?? []).map { set in
+                guard set.displayType == displayType else { return set }
+                let ordered = ids.compactMap { id in set.screenshots.first { $0.id == id } }
+                return AppStoreScreenshotSet(displayType: displayType, screenshots: ordered)
+            }
+        }
     }
 
     func reviewSubmissions(of appID: String, platform: AppStorePlatform) async throws(AppStoreConnectError) -> [AppStoreReviewSubmission] {

@@ -2,34 +2,37 @@ import AskHubProtocol
 import CryptoKit
 import Foundation
 
-// App Store Connect のスクショ（appScreenshotSets / appScreenshots）。API 4.5 で非推奨になり App Asset Library に移ったが、
-// iPhone Duo のほかの表示サイズは今の API で扱える（`docs/renewal/release.md` の「スクショ」）。書き込みは人が審査に出したときだけ
+// App Store Connect のスクショ（App Asset Library。API 4.5.1 で appScreenshotSets / appScreenshots に替わった）。
+// 画像はアプリに 1 つのライブラリに上げ、配置（placement）で版の言語の表示サイズ（配置グループ）に置く
+// （`docs/renewal/release.md` の「スクショ」）。書き込みは人が審査に出したときだけ
 
-/// 版の 1 つの言語の、1 つの表示サイズのスクショの組
+/// 版の 1 つの言語の、1 つの表示サイズのスクショ
 public struct AppStoreScreenshotSet: Equatable, Sendable {
-    public var id: String
-    /// 表示サイズ（`APP_IPHONE_67` など。知らない値もそのまま持つ）
+    /// 表示サイズ（App Asset Library の配置グループ。`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など。知らない値もそのまま持つ）
     public var displayType: String
     /// 並びの順のスクショ
     public var screenshots: [AppStoreScreenshot]
 
-    public init(id: String, displayType: String, screenshots: [AppStoreScreenshot]) {
-        self.id = id
+    public init(displayType: String, screenshots: [AppStoreScreenshot]) {
         self.displayType = displayType
         self.screenshots = screenshots
     }
 }
 
-/// 1 枚のスクショ
+/// 1 枚のスクショ（版の言語に置いた配置と、その画像）
 public struct AppStoreScreenshot: Equatable, Sendable {
+    /// 配置の id
     public var id: String
-    /// 上げたファイルの MD5（`sourceFileChecksum`）
+    /// ライブラリの画像の id
+    public var imageID: String
+    /// AskHub が上げた画像のファイルの MD5（参照名から読む）。ほかで上げた画像は nil
     public var checksum: String?
     /// 元の大きさの画像の URL（`imageAsset` の `templateUrl` に幅・高さ・形式を入れたもの）。処理の途中なら nil
     public var imageURL: URL?
 
-    public init(id: String, checksum: String?, imageURL: URL?) {
+    public init(id: String, imageID: String, checksum: String?, imageURL: URL?) {
         self.id = id
+        self.imageID = imageID
         self.checksum = checksum
         self.imageURL = imageURL
     }
@@ -43,124 +46,116 @@ public struct AppStoreScreenshot: Equatable, Sendable {
         guard let url = URL(string: text), url.scheme == "https" else { return nil }
         return url
     }
+
+    /// ファイルの MD5
+    static func checksum(of data: Data) -> String {
+        Insecure.MD5.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// AskHub が上げる画像の参照名（`askhub-<ファイルの MD5>`）。App Asset Library はファイルの MD5 を返さないので、参照名に入れて、
+    /// 前回と同じ画像かを画素を比べずに分かるようにし、同じ画像を言語や版をまたいで上げ直さない
+    static func referenceName(checksum: String) -> String {
+        "askhub-\(checksum)"
+    }
+
+    /// 参照名から MD5 を読む。AskHub の形でなければ nil
+    static func checksum(referenceName: String?) -> String? {
+        referenceName?.wholeMatch(of: #/askhub-([0-9a-f]{32})/#).map { String($0.1) }
+    }
+}
+
+/// ライブラリの画像
+public struct AppStoreLibraryImage: Equatable, Sendable {
+    public var id: String
+    /// 処理の様子（`AWAITING_UPLOAD`・`UPLOAD_COMPLETE`・`PREPARE_FOR_SUBMISSION`・`APPROVED` など）
+    public var state: String?
+
+    public init(id: String, state: String?) {
+        self.id = id
+        self.state = state
+    }
+
+    /// 処理を終え、置ける。上げ終わっていない・処理の途中・失敗したものは置かない
+    public var isPlaceable: Bool {
+        guard let state else { return false }
+        return !["AWAITING_UPLOAD", "UPLOAD_COMPLETE", "FAILED"].contains(state)
+    }
 }
 
 /// App Store Connect のスクショの読み書き（テストでは差し替える）
 public protocol AppStoreConnectScreenshots: Sendable {
-    /// 版の言語ごとの掲載文の、表示サイズごとのスクショの組
+    /// 版の言語ごとの掲載文の、表示サイズごとのスクショ
     func screenshotSets(of localizationID: String) async throws(AppStoreConnectError) -> [AppStoreScreenshotSet]
     /// 前回の App Store の画像を取る（App Store Connect の CDN。鍵は送らない）
     func downloadScreenshot(_ url: URL) async throws(AppStoreConnectError) -> Data
-    func createScreenshotSet(of localizationID: String, displayType: String) async throws(AppStoreConnectError) -> AppStoreScreenshotSet
-    /// 1 枚上げる（予約 → 送る → 終わりを伝える → 処理を待つ）。上げたスクショの id を返す
-    func uploadScreenshot(to setID: String, fileName: String, data: Data) async throws(AppStoreConnectError) -> String
-    func deleteScreenshot(_ id: String) async throws(AppStoreConnectError)
-    /// 組のスクショの並びを決める（並べたものだけが組に残る）
-    func orderScreenshots(of setID: String, ids: [String]) async throws(AppStoreConnectError)
-}
-
-extension AppStoreScreenshot {
-    /// ファイルの MD5（`sourceFileChecksum` と比べる）
-    static func checksum(of data: Data) -> String {
-        Insecure.MD5.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    }
-}
-
-struct AppStoreConnectScreenshotLinks: Decodable {
-    var data: [AppStoreConnectLink]?
-}
-
-struct AppStoreConnectScreenshotSetsResponse: Decodable {
-    struct Relationships: Decodable {
-        var appScreenshots: AppStoreConnectScreenshotLinks?
-    }
-
-    struct Item: Decodable {
-        var id: String
-        var attributes: SetAttributes?
-        var relationships: Relationships?
-    }
-
-    struct SetAttributes: Decodable {
-        var screenshotDisplayType: String?
-    }
-
-    struct ImageAsset: Decodable {
-        var templateUrl: String?
-        var width: Int?
-        var height: Int?
-    }
-
-    struct ScreenshotAttributes: Decodable {
-        var sourceFileChecksum: String?
-        var imageAsset: ImageAsset?
-    }
-
-    var data: [Item]
-    var included: [AppStoreConnectResource<ScreenshotAttributes>]?
-}
-
-struct AppStoreConnectScreenshotReservation: Decodable {
-    struct Header: Decodable {
-        var name: String
-        var value: String
-    }
-
-    struct Operation: Decodable {
-        var method: String
-        var url: String
-        var length: Int
-        var offset: Int
-        var requestHeaders: [Header]?
-    }
-
-    struct State: Decodable {
-        var state: String?
-    }
-
-    struct Attributes: Decodable {
-        var uploadOperations: [Operation]?
-        var assetDeliveryState: State?
-    }
-
-    struct Resource: Decodable {
-        var id: String
-        var attributes: Attributes?
-    }
-
-    var data: Resource
+    /// 表示サイズ（配置グループ）ごとのプラットフォーム（App Asset Library のリファレンスデータ）
+    func displayTypePlatforms() async throws(AppStoreConnectError) -> [String: AppStorePlatform]
+    /// アプリの App Asset Library の id
+    func assetLibrary(of appID: String) async throws(AppStoreConnectError) -> String
+    /// ライブラリの、参照名が `referenceName` の画像
+    func libraryImages(in libraryID: String, referenceName: String) async throws(AppStoreConnectError) -> [AppStoreLibraryImage]
+    /// 1 枚上げる（予約 → 送る → 終わりを伝える → 処理を待つ）。上げた画像の id を返す
+    func uploadImage(to libraryID: String, fileName: String, referenceName: String, data: Data) async throws(AppStoreConnectError) -> String
+    /// ライブラリの画像を消す（置いていないものだけ消せる）
+    func deleteImage(_ id: String) async throws(AppStoreConnectError)
+    /// 画像を、版の言語の表示サイズに置く。配置の id を返す
+    func placeScreenshot(_ imageID: String, on localizationID: String, displayType: String) async throws(AppStoreConnectError) -> String
+    /// 配置を消す（画像はライブラリに残る）
+    func deletePlacement(_ id: String) async throws(AppStoreConnectError)
+    /// 版の言語の表示サイズの、配置の並びを決める（`ids` がその表示サイズのすべての配置）
+    func orderScreenshots(on localizationID: String, displayType: String, ids: [String]) async throws(AppStoreConnectError)
 }
 
 extension AppStoreConnectClient: AppStoreConnectScreenshots {
+    /// 配置の種類（スクショ）
+    static let screenshotPlacement = "APP_SCREENSHOT"
+
     public func screenshotSets(of localizationID: String) async throws(AppStoreConnectError) -> [AppStoreScreenshotSet] {
         try Self.checkID(localizationID)
-        let query = [
-            URLQueryItem(name: "fields[appScreenshotSets]", value: "screenshotDisplayType,appScreenshots"),
-            URLQueryItem(name: "include", value: "appScreenshots"),
-            URLQueryItem(name: "fields[appScreenshots]", value: "sourceFileChecksum,imageAsset"),
-            URLQueryItem(name: "limit[appScreenshots]", value: String(StoreScreenshotSettings.maximumShots)),
-            URLQueryItem(name: "limit", value: "50")
+        var query = [
+            URLQueryItem(name: "filter[placementType]", value: Self.screenshotPlacement),
+            URLQueryItem(name: "sort", value: "placementGroupPosition"),
+            URLQueryItem(name: "include", value: "image"),
+            URLQueryItem(name: "fields[appAssetLibraryPlacements]", value: "placementGroup,image"),
+            URLQueryItem(name: "fields[appAssetLibraryImages]", value: "referenceName,imageAsset"),
+            URLQueryItem(name: "limit", value: String(Self.pageLimit))
         ]
-        let path = "v1/appStoreVersionLocalizations/\(localizationID)/appScreenshotSets"
-        let response = try await get(path, query: query, as: AppStoreConnectScreenshotSetsResponse.self)
-        let shots = Dictionary(
-            (response.included ?? []).filter { $0.type == "appScreenshots" && Self.isID($0.id) }.map { ($0.id, $0.attributes) },
+        var pages: [AppStoreConnectPlacementsResponse] = []
+        for _ in 0..<10 {
+            let path = "v1/appStoreVersionLocalizations/\(localizationID)/placements"
+            let page = try await get(path, query: query, as: AppStoreConnectPlacementsResponse.self)
+            pages.append(page)
+            guard let next = page.links?.next.flatMap(URLComponents.init(string:))?.queryItems, !next.isEmpty else { break }
+            query = next
+        }
+        return Self.screenshotSets(pages)
+    }
+
+    /// 配置の応答を、表示サイズごとの並びにする（応答の順が並びの順）。形の読めない配置は飛ばす
+    static func screenshotSets(_ pages: [AppStoreConnectPlacementsResponse]) -> [AppStoreScreenshotSet] {
+        let images = Dictionary(
+            pages.flatMap { $0.included ?? [] }.filter { $0.type == "appAssetLibraryImages" && isID($0.id) }.map { ($0.id, $0.attributes) },
             uniquingKeysWith: { first, _ in first }
         )
-        return response.data.compactMap { item in
-            guard Self.isID(item.id), let type = item.attributes?.screenshotDisplayType else { return nil }
-            let screenshots = (item.relationships?.appScreenshots?.data ?? []).compactMap { link -> AppStoreScreenshot? in
-                guard Self.isID(link.id) else { return nil }
-                let attributes = shots[link.id].flatMap { $0 }
-                let asset = attributes?.imageAsset
-                return AppStoreScreenshot(
-                    id: link.id,
-                    checksum: attributes?.sourceFileChecksum,
-                    imageURL: AppStoreScreenshot.imageURL(template: asset?.templateUrl, width: asset?.width, height: asset?.height)
-                )
+        var sets: [AppStoreScreenshotSet] = []
+        for item in pages.flatMap(\.data) {
+            guard isID(item.id), let group = item.attributes?.placementGroup, StoreScreenshotSettings.isDisplayType(group),
+                  let imageID = item.relationships?.image?.data?.id, isID(imageID) else { continue }
+            let image = images[imageID].flatMap { $0 }
+            let asset = image?.imageAsset
+            let shot = AppStoreScreenshot(
+                id: item.id,
+                imageID: imageID,
+                checksum: AppStoreScreenshot.checksum(referenceName: image?.referenceName),
+                imageURL: AppStoreScreenshot.imageURL(template: asset?.templateUrl, width: asset?.width, height: asset?.height)
+            )
+            if let index = sets.firstIndex(where: { $0.displayType == group }) {
+                sets[index].screenshots.append(shot)
+            } else {
+                sets.append(AppStoreScreenshotSet(displayType: group, screenshots: [shot]))
             }
-            return AppStoreScreenshotSet(id: item.id, displayType: type, screenshots: screenshots)
         }
+        return sets
     }
 
     public func downloadScreenshot(_ url: URL) async throws(AppStoreConnectError) -> Data {
@@ -175,33 +170,73 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
         return data
     }
 
-    public func createScreenshotSet(
-        of localizationID: String,
-        displayType: String
-    ) async throws(AppStoreConnectError) -> AppStoreScreenshotSet {
-        try Self.checkID(localizationID)
-        guard StoreScreenshotSettings.isDisplayType(displayType) else { throw .malformed("表示サイズの形が違う") }
-        let body = try Self.document(
-            "appScreenshotSets",
-            attributes: ["screenshotDisplayType": displayType],
-            relationships: ["appStoreVersionLocalization": ("appStoreVersionLocalizations", localizationID)]
-        )
-        let data = try await send("POST", "v1/appScreenshotSets", body: body)
-        guard let created = try? JSONDecoder().decode(AppStoreConnectCreated.self, from: data), Self.isID(created.data.id) else {
-            throw .malformed("作ったスクショの組の応答")
+    public func displayTypePlatforms() async throws(AppStoreConnectError) -> [String: AppStorePlatform] {
+        let query = [URLQueryItem(name: "fields[appAssetLibraryRefData]", value: "placementProfileGroups")]
+        let response = try await get("v1/appAssetLibraryRefData", query: query, as: AppStoreConnectRefDataResponse.self)
+        var platforms: [String: AppStorePlatform] = [:]
+        for group in response.data.flatMap({ $0.attributes?.placementProfileGroups ?? [] }) {
+            guard let id = group.placementProfileGroupId, StoreScreenshotSettings.isDisplayType(id),
+                  let platform = group.platform.flatMap(Self.platform(ofPlacement:)) else { continue }
+            platforms[id] = platform
         }
-        return AppStoreScreenshotSet(id: created.data.id, displayType: displayType, screenshots: [])
+        return platforms
     }
 
-    public func uploadScreenshot(to setID: String, fileName: String, data: Data) async throws(AppStoreConnectError) -> String {
-        try Self.checkID(setID)
-        let body = try Self.document(
-            "appScreenshots",
-            attributes: ["fileName": fileName, "fileSize": data.count],
-            relationships: ["appScreenshotSet": ("appScreenshotSets", setID)]
+    /// 配置のプラットフォーム（`AppAssetLibraryPlacementPlatform`）を、載せる版のプラットフォームにする。
+    /// Apple Watch・iMessage のスクショは iOS の版に載る
+    static func platform(ofPlacement value: String) -> AppStorePlatform? {
+        switch value {
+        case "IPHONE_APP_STORE", "IPAD_APP_STORE", "WATCH_APP_STORE", "IMESSAGE_APP_STORE": .iOS
+        case "MAC_APP_STORE": .macOS
+        case "VISION_PRO_APP_STORE": .visionOS
+        case "TV_APP_STORE": .tvOS
+        default: nil
+        }
+    }
+
+    public func assetLibrary(of appID: String) async throws(AppStoreConnectError) -> String {
+        try Self.checkID(appID)
+        let response = try await get("v1/apps/\(appID)/assetLibrary", query: [], as: AppStoreConnectCreated.self)
+        guard Self.isID(response.data.id) else { throw .malformed("App Asset Library の id の形が違う") }
+        return response.data.id
+    }
+
+    public func libraryImages(
+        in libraryID: String,
+        referenceName: String
+    ) async throws(AppStoreConnectError) -> [AppStoreLibraryImage] {
+        try Self.checkID(libraryID)
+        let query = [
+            URLQueryItem(name: "filter[referenceName]", value: referenceName),
+            URLQueryItem(name: "fields[appAssetLibraryImages]", value: "referenceName,state"),
+            URLQueryItem(name: "limit", value: "50")
+        ]
+        let response = try await get(
+            "v1/appAssetLibraries/\(libraryID)/images", query: query, as: AppStoreConnectImagesResponse.self
         )
-        let reply = try await send("POST", "v1/appScreenshots", body: body)
-        guard let reservation = try? JSONDecoder().decode(AppStoreConnectScreenshotReservation.self, from: reply),
+        // 絞り込みが完全一致とは文書に書かれていないので、返った参照名を比べ直す
+        return response.data.compactMap { item in
+            guard Self.isID(item.id), item.attributes?.referenceName == referenceName else { return nil }
+            return AppStoreLibraryImage(id: item.id, state: item.attributes?.state)
+        }
+    }
+
+    public func uploadImage(
+        to libraryID: String,
+        fileName: String,
+        referenceName: String,
+        data: Data
+    ) async throws(AppStoreConnectError) -> String {
+        try Self.checkID(libraryID)
+        let body = try Self.document(
+            "appAssetLibraryImages",
+            attributes: [
+                "fileName": fileName, "fileSize": data.count, "category": "APP_SCREENSHOTS_AND_PREVIEWS", "referenceName": referenceName
+            ],
+            relationships: ["assetLibrary": ("appAssetLibraries", libraryID)]
+        )
+        let reply = try await send("POST", "v1/appAssetLibraryImages", body: body)
+        guard let reservation = try? JSONDecoder().decode(AppStoreConnectImageReservation.self, from: reply),
               Self.isID(reservation.data.id) else {
             throw .malformed("スクショの予約の応答")
         }
@@ -209,34 +244,66 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
         for operation in reservation.data.attributes?.uploadOperations ?? [] {
             try await put(operation, from: data)
         }
-        let commit = try Self.document(
-            "appScreenshots", id: id, attributes: ["uploaded": true, "sourceFileChecksum": AppStoreScreenshot.checksum(of: data)]
-        )
-        _ = try await send("PATCH", "v1/appScreenshots/\(id)", body: commit)
-        try await waitForDelivery(of: id)
+        // App Asset Library の終わりの知らせは `uploaded` だけ（MD5 は送らない。予約の大きさと比べられる）
+        let commit = try Self.document("appAssetLibraryImages", id: id, attributes: ["uploaded": true])
+        _ = try await send("PATCH", "v1/appAssetLibraryImages/\(id)", body: commit)
+        try await waitForProcessing(of: id)
         return id
     }
 
-    public func deleteScreenshot(_ id: String) async throws(AppStoreConnectError) {
+    public func deleteImage(_ id: String) async throws(AppStoreConnectError) {
         try Self.checkID(id)
-        _ = try await send("DELETE", "v1/appScreenshots/\(id)")
+        _ = try await send("DELETE", "v1/appAssetLibraryImages/\(id)")
     }
 
-    public func orderScreenshots(of setID: String, ids: [String]) async throws(AppStoreConnectError) {
-        try Self.checkID(setID)
-        for id in ids { try Self.checkID(id) }
-        let body: Data
-        do {
-            let links = ids.map { ["type": "appScreenshots", "id": $0] }
-            body = try JSONSerialization.data(withJSONObject: ["data": links], options: [.sortedKeys])
-        } catch {
-            throw .malformed("並びの本文を作れない")
+    public func placeScreenshot(
+        _ imageID: String,
+        on localizationID: String,
+        displayType: String
+    ) async throws(AppStoreConnectError) -> String {
+        try Self.checkID(imageID)
+        try Self.checkID(localizationID)
+        guard StoreScreenshotSettings.isDisplayType(displayType) else { throw .malformed("表示サイズの形が違う") }
+        let body = try Self.document(
+            "appAssetLibraryPlacements",
+            attributes: ["placementType": Self.screenshotPlacement, "placementGroup": displayType],
+            relationships: [
+                "image": ("appAssetLibraryImages", imageID),
+                "appStoreVersionLocalization": ("appStoreVersionLocalizations", localizationID)
+            ]
+        )
+        let data = try await send("POST", "v1/appAssetLibraryPlacements", body: body)
+        guard let created = try? JSONDecoder().decode(AppStoreConnectCreated.self, from: data), Self.isID(created.data.id) else {
+            throw .malformed("作ったスクショの配置の応答")
         }
-        _ = try await send("PATCH", "v1/appScreenshotSets/\(setID)/relationships/appScreenshots", body: body)
+        return created.data.id
+    }
+
+    public func deletePlacement(_ id: String) async throws(AppStoreConnectError) {
+        try Self.checkID(id)
+        _ = try await send("DELETE", "v1/appAssetLibraryPlacements/\(id)")
+    }
+
+    public func orderScreenshots(on localizationID: String, displayType: String, ids: [String]) async throws(AppStoreConnectError) {
+        try Self.checkID(localizationID)
+        guard StoreScreenshotSettings.isDisplayType(displayType) else { throw .malformed("表示サイズの形が違う") }
+        for id in ids { try Self.checkID(id) }
+        let relationships: [String: Any] = [
+            "orderedPlacements": ["data": ids.map { ["type": "appAssetLibraryPlacements", "id": $0] }],
+            "appStoreVersionLocalization": ["data": ["type": "appStoreVersionLocalizations", "id": localizationID]]
+        ]
+        let body = try Self.json([
+            "data": [
+                "type": "appAssetLibraryPlacementOrderingRequests",
+                "attributes": ["placementGroup": displayType],
+                "relationships": relationships
+            ]
+        ])
+        _ = try await send("POST", "v1/appAssetLibraryPlacementOrderingRequests", body: body)
     }
 
     /// 予約が示した URL に、示された範囲を送る（鍵は送らない。URL は時間を限った署名つき）
-    private func put(_ operation: AppStoreConnectScreenshotReservation.Operation, from data: Data) async throws(AppStoreConnectError) {
+    private func put(_ operation: AppStoreConnectImageReservation.Operation, from data: Data) async throws(AppStoreConnectError) {
         guard let url = URL(string: operation.url), url.scheme == "https", operation.offset >= 0, operation.length > 0,
               operation.offset + operation.length <= data.count else {
             throw .malformed("スクショを送る先の形が違う")
@@ -254,19 +321,20 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
         guard (200..<300).contains(response.statusCode) else { throw .refused(status: response.statusCode, detail: "スクショを送れない") }
     }
 
-    /// 上げたスクショの処理が終わる（`COMPLETE`）まで待つ。失敗（`FAILED`）は断りにする。待ちすぎたら、待てば直るものとして投げる
-    private func waitForDelivery(of id: String) async throws(AppStoreConnectError) {
-        let query = [URLQueryItem(name: "fields[appScreenshots]", value: "assetDeliveryState")]
+    /// 上げた画像の処理が終わる（置ける状態になる）まで待つ。失敗（`FAILED`）は、画像を消して断りにする。待ちすぎたら、待てば直るものとして投げる
+    private func waitForProcessing(of id: String) async throws(AppStoreConnectError) {
+        let query = [URLQueryItem(name: "fields[appAssetLibraryImages]", value: "state")]
         for attempt in 0..<30 {
-            let state = try await get("v1/appScreenshots/\(id)", query: query, as: AppStoreConnectScreenshotReservation.self)
-            switch state.data.attributes?.assetDeliveryState?.state {
-            case "COMPLETE":
-                return
-            case "FAILED":
-                throw .refused(status: 409, detail: "上げたスクショの処理に失敗した")
-            default:
-                try? await Task.sleep(for: .seconds(attempt < 5 ? 2 : 5))
+            let image = try await get(
+                "v1/appAssetLibraryImages/\(id)", query: query, as: AppStoreConnectSingle<AppStoreConnectImageAttributes>.self
+            )
+            let state = AppStoreLibraryImage(id: id, state: image.data.attributes?.state)
+            if state.isPlaceable { return }
+            if state.state == "FAILED" {
+                try? await deleteImage(id)
+                throw .refused(status: 409, detail: "上げたスクショの処理に失敗した（大きさが App Store の表示サイズに合わないなど）")
             }
+            try? await Task.sleep(for: .seconds(attempt < 5 ? 2 : 5))
         }
         throw .unavailable("上げたスクショの処理が終わらない")
     }

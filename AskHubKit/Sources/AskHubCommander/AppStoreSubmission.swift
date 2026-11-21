@@ -23,7 +23,7 @@ struct AppStoreSubmission: Sendable {
         let target = try await prepareVersion(build, mine: mine, versions: versions)
         try await writeTexts(of: target)
         try await writeReview(of: target)
-        try await writeScreenshots(of: target)
+        try await writeScreenshots(of: target, versions: versions)
         return try await sendForReview(target)
     }
 

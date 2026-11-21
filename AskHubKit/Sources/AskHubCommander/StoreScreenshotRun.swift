@@ -69,7 +69,7 @@ struct StoreScreenshotRun: Sendable {
         let (current, locales) = (live.sets, live.locales)
         let liveTypes = Set(current.keys.map(\.displayType)).sorted()
         var skipped = liveTypes.filter { settings.displayTypes[$0] == nil }.map { type in
-            SubmissionFile.SkippedDisplayType(displayType: type, reason: Self.skipReason(type))
+            SubmissionFile.SkippedDisplayType(displayType: type, reason: Self.unconfiguredReason)
         }
         let types = liveTypes.filter { settings.displayTypes[$0] != nil }
         guard !types.isEmpty else {
@@ -127,6 +127,12 @@ struct StoreScreenshotRun: Sendable {
         let locales = localizations.map(\.locale).filter { settings.languages[$0] != nil }
         guard locales.contains(settings.baseLocale) else {
             throw Unavailable(message: "配信中の版に基準の言語（\(settings.baseLocale)）の掲載文が無い")
+        }
+        // 配信中の版には必ずスクショがある。配置として読めないなら、比べられないので撮らない（古い API で上げたスクショは読まない）
+        guard current.contains(where: { $0.key.locale == settings.baseLocale && !$0.value.screenshots.isEmpty }) else {
+            throw Unavailable(
+                message: "配信中の版の基準の言語（\(settings.baseLocale)）のスクショを、App Asset Library の配置として読めない（App Store Connect で確かめる）"
+            )
         }
         return Live(sets: current, locales: locales)
     }
@@ -226,12 +232,8 @@ struct StoreScreenshotRun: Sendable {
         originals.appendingPathComponent(target.displayType).appendingPathComponent(target.locale).appendingPathComponent("\(index).png")
     }
 
-    /// 撮らない表示サイズのわけ
-    static func skipReason(_ displayType: String) -> String {
-        displayType.contains("DUO")
-            ? "iPhone Duo は Xcode 27 と iOS 27.1 が要り、今のスクショの API の表示サイズにも無いので、まだ撮らない（App Store Connect で上げる）"
-            : "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い"
-    }
+    /// 撮り方に機種の無い表示サイズのわけ
+    static let unconfiguredReason = "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い"
 
     /// 変わった所（小数 4 桁）
     static func area(_ rect: CGRect) -> SubmissionFile.ChangedArea {
