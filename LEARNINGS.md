@@ -835,3 +835,18 @@
 - App Store Connect の API の応答の関係（`relationships.<名前>.data`）は、`include` でその関係を求めたときだけ相手の id が入り、求めないと `links` だけになる。
   `GET /v1/apps/{id}/appInfos` の `primaryCategory` を `include` しないと、カテゴリを決めてあっても無いと読む（2026-11-20、#1168。反映後に deki-roulette のカテゴリが「まだ」になって分かった）
 - `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations` の言語の並びは、読むたびに変わることがある。読んだ並びのまま記録と比べると、文が同じでも書き直してしまうので、言語の順に並べてから比べる（OshiCon の配信の記録で、並びだけが違う書き直しが続いた。#1180）。
+
+## ワーカー・司令塔の運用
+
+- アドホック署名のワーカーを自分の Mac で入れ替える手順: 手元で `scripts/machine/build.sh askhub-worker` → `scp` で `askhub-worker.new` に送り、`shasum -a 256` と `askhub-worker.new version` で照らし合わせる → 前のものを `askhub-worker.prev` に残して差し替え →
+  その Mac の画面の端末で `"$HOME/Library/Application Support/AskHub/bin/askhub-worker" check` を流し、Keychain の確認を項目ごとに「常に許可」にする → ssh から `launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.worker`。
+  ssh から読み込み直した gui の常駐も、許可した後は Keychain を読めた（2026-11-12・2026-11-21、MacBook Pro）。`askhub-worker` は PATH に無く、`bin` のフォルダの中でも zsh は今のフォルダを探さないので、`./askhub-worker` かフルパスで流してもらう
+- resident と manual の切り替えは `setup` の流し直しだけで済む（すでに置いたトークンは、聞かれたら空の Enter で今のまま）。manual にするときは `launchctl bootout gui/$(id -u)/jp.shilokuma.askhub.worker` → `setup … --kind manual` → 端末で `run`。
+  resident に戻すときは `run` を Control-C → `setup … --kind resident` → `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.shilokuma.askhub.worker.plist`（定義のファイルは残っている）。manual のワーカーはログを端末に出し、`worker.log` には書かないので、遠隔では状態リポジトリの試行で進みを見る
+- ワーカーを止めて確かめるときは `launchctl bootout` を使う（`kill` は `KeepAlive` で起動し直される）。司令塔もワーカーも SIGTERM を扱わないので、止める・入れ替えると試行が実行中のまま残る。
+  #1114・#1116 の後は、起動して最初に（ワーカーは生きている印を書く前に）自分の残った試行を「Mac がオフライン」で閉じるので、時間切れに数えない
+- ジョブの途中で Mac がオフラインになったときの判定は、試行の印が 15 分・Mac の印が 30 分で古いとみなす。#1114 の前は、15 分の時点で Mac の印がまだ新しいので時間切れ（`running` → `assigned`）になり、一時停止（`paused`）にならなかった（2026-11-13 の実地の確かめ）。
+  オフラインを実地で確かめるときは、止めてから 30 分以上待つ
+- 人の一時停止の間は、動いているジョブは最後まで終わり、次のジョブは「止められる」のではなく作られない（実装の後のレビューが作られない）。確かめるときは、ジョブの一覧ではなく epic の `pause` と状態リポジトリの git log を見る
+- 実地の確かめで「実装の途中で一時停止・引き継ぎ」を合図で押してもらう段取りは、取り逃しやすい（askhub-sandbox の小さなタスクでは、レビューは 30 秒〜数分、実装は 2〜4 分で終わり、2 回逃した）。
+  開始した直後に一時停止すれば、作業場所の用意（`prepareWorkspace`）が動く前に `paused` で止まるので、そこで引き継ぐ → 再開すれば確実に確かめられる（引き継いだ先が作業場所の用意から行う）。見張りは状態リポジトリの git fetch を 15〜20 秒ごとにし、テストや PR の直しなどの重い作業と並べない
