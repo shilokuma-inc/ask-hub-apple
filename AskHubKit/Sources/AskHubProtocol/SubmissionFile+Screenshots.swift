@@ -96,6 +96,42 @@ extension SubmissionFile {
         }
     }
 
+    /// 撮影のワークフローの実行（`capture: actions`。`docs/renewal/store-screenshots.md` の「撮影の起動と見張り」）
+    public struct CaptureRun: Codable, Equatable, Sendable {
+        /// run の id。起動の応答か、起動した後の一覧で分かる。分かるまでは nil
+        public var id: Int?
+        /// run の画面（`html_url`）
+        public var url: String?
+        /// 起動を送った時刻（送る前に書く。id が分からないまま時間がたてば送り直す）
+        public var dispatchedAt: Timestamp
+        /// GitHub の run の様子（`queued`・`in_progress`・`completed` など）。まだ読んでいなければ nil
+        public var status: String?
+        /// 終わった run の結論（`success`・`failure`・`cancelled` など）
+        public var conclusion: String?
+
+        public init(id: Int? = nil, url: String? = nil, dispatchedAt: Timestamp, status: String? = nil, conclusion: String? = nil) {
+            self.id = id
+            self.url = url
+            self.dispatchedAt = dispatchedAt
+            self.status = status
+            self.conclusion = conclusion
+        }
+
+        /// 終わった
+        public var isCompleted: Bool { status == "completed" }
+
+        var problems: [String] {
+            var problems: [String] = []
+            if let id, id <= 0 { problems.append("screenshots の run の id は 1 以上") }
+            if let url, !url.hasPrefix("https://github.com/") || url.count > 400 { problems.append("screenshots の run の url は GitHub の画面") }
+            let words = [status, conclusion].compactMap(\.self)
+            if !words.allSatisfy({ $0.wholeMatch(of: #/[a-z_]{1,40}/#) != nil }) {
+                problems.append("screenshots の run の status・conclusion の形が違う")
+            }
+            return problems
+        }
+    }
+
     /// App Store のスクショを撮って比べた結果
     public struct StoreScreenshots: Codable, Equatable, Sendable {
         public var state: ScreenshotState
@@ -108,6 +144,8 @@ extension SubmissionFile {
         public var skipped: [SkippedDisplayType]
         /// 撮れなかった理由（`failed` のとき）
         public var failure: String?
+        /// 撮影のワークフローの実行（`capture: actions` のときだけ）
+        public var run: CaptureRun?
 
         public init(
             state: ScreenshotState,
@@ -116,7 +154,8 @@ extension SubmissionFile {
             finishedAt: Timestamp? = nil,
             sets: [ScreenshotSet] = [],
             skipped: [SkippedDisplayType] = [],
-            failure: String? = nil
+            failure: String? = nil,
+            run: CaptureRun? = nil
         ) {
             self.state = state
             self.commit = commit
@@ -125,11 +164,13 @@ extension SubmissionFile {
             self.sets = sets
             self.skipped = skipped
             self.failure = failure
+            self.run = run
         }
 
         /// 合わない点
         var problems: [String] {
             var problems: [String] = []
+            problems += run?.problems ?? []
             if commit.map({ !ReleaseFile.isCommit($0) }) ?? false { problems.append("screenshots の commit が 40 桁の 16 進でない") }
             if (state == .failed) != (failure != nil) { problems.append("screenshots の failure は、failed のときだけ持つ") }
             if failure?.isEmpty == true { problems.append("screenshots の failure が空") }

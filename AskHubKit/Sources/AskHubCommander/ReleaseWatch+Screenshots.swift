@@ -10,7 +10,8 @@ extension ReleaseWatch {
         let key = Self.screenshotKey(file)
         guard !capturing.contains(key) else { return file }
         let now = context.timestamp
-        guard let storeSettings = settings.build?.storeScreenshots, let build = settings.build?.xcode else {
+        // リポジトリの撮影のワークフローで撮る（`capture: actions`）のは、次の変更で入れる。それまでは撮らない
+        guard case let .uiTest(storeSettings)? = settings.build?.storeScreenshots, let build = settings.build?.xcode else {
             return await submissionStep(.screenshots, file) { file in
                 var file = file
                 file.screenshots = .init(state: .notConfigured, startedAt: now, finishedAt: now)

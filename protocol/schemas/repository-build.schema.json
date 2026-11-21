@@ -81,86 +81,149 @@
       "description": "判断のカードのスクショの撮り方（docs/renewal/flows.md の「スクショ」）。無ければ撮らない"
     },
     "storeScreenshots": {
-      "type": "object",
-      "required": [
-        "test",
-        "languageVariable",
-        "languages",
-        "baseLocale",
-        "displayTypes"
-      ],
-      "additionalProperties": false,
-      "description": "App Store のスクショの撮り方（docs/renewal/release.md の「スクショ」）。司令塔が release ブランチの先頭で UI テスト test を表示サイズ・言語ごとに流し、テストが添付した画像を添付した順に使う。無ければ撮らない。基準の言語が languages にあること・環境変数の名前が重ならないことは読む側で確かめる",
-      "properties": {
-        "test": {
-          "type": "string",
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*){1,2}$",
-          "maxLength": 300,
-          "description": "xcodebuild test -only-testing: の値（<テストのターゲット>/<クラス>[/<メソッド>]）"
-        },
-        "environment": {
+      "description": "App Store のスクショの撮り方（docs/renewal/release.md の「スクショ」・docs/renewal/store-screenshots.md）。capture で UI テスト（uiTest）とリポジトリの撮影のワークフロー（actions）を分ける。無ければ撮らない",
+      "oneOf": [
+        {
           "type": "object",
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          },
-          "description": "テストに渡す決まった環境変数（キーは英大文字・数字・_。xcodebuild には TEST_RUNNER_ を付けて渡す）"
-        },
-        "languageVariable": {
-          "type": "string",
-          "pattern": "^[A-Z][A-Z0-9_]{0,59}$",
-          "maxLength": 60,
-          "description": "言語を渡す環境変数の名前"
-        },
-        "regionVariable": {
-          "type": "string",
-          "pattern": "^[A-Z][A-Z0-9_]{0,59}$",
-          "maxLength": 60,
-          "description": "地域を渡す環境変数の名前。無ければ渡さない"
-        },
-        "languages": {
-          "type": "object",
-          "description": "App Store Connect の言語ごとの、アプリの言語と地域。ここに無い言語は撮らない",
-          "additionalProperties": {
-            "type": "object",
-            "required": [
-              "language"
-            ],
-            "additionalProperties": false,
-            "properties": {
-              "language": {
+          "required": [
+            "test",
+            "languageVariable",
+            "languages",
+            "baseLocale",
+            "displayTypes"
+          ],
+          "additionalProperties": false,
+          "description": "UI テストで撮る（capture が uiTest か無い。#1173）。司令塔が release ブランチの先頭で UI テスト test を表示サイズ・言語ごとに流し、テストが添付した画像を添付した順に使う。基準の言語が languages にあること・環境変数の名前が重ならないことは読む側で確かめる",
+          "properties": {
+            "capture": {
+              "const": "uiTest",
+              "description": "撮り方の種類。無ければ uiTest"
+            },
+            "test": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*){1,2}$",
+              "maxLength": 300,
+              "description": "xcodebuild test -only-testing: の値（<テストのターゲット>/<クラス>[/<メソッド>]）"
+            },
+            "environment": {
+              "type": "object",
+              "additionalProperties": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9_-]{1,20}$"
+                "minLength": 1,
+                "maxLength": 200
               },
-              "region": {
-                "type": "string",
-                "pattern": "^[A-Za-z0-9_-]{1,20}$"
+              "description": "テストに渡す決まった環境変数（キーは英大文字・数字・_。xcodebuild には TEST_RUNNER_ を付けて渡す）"
+            },
+            "languageVariable": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{0,59}$",
+              "maxLength": 60,
+              "description": "言語を渡す環境変数の名前"
+            },
+            "regionVariable": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{0,59}$",
+              "maxLength": 60,
+              "description": "地域を渡す環境変数の名前。無ければ渡さない"
+            },
+            "languages": {
+              "type": "object",
+              "description": "App Store Connect の言語ごとの、アプリの言語と地域。ここに無い言語は撮らない",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "language"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,20}$"
+                  },
+                  "region": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,20}$"
+                  }
+                }
+              }
+            },
+            "baseLocale": {
+              "type": "string",
+              "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
+              "maxLength": 21,
+              "description": "基準の言語。毎回撮り、ほかの言語は基準の言語で差が出たときだけ撮る"
+            },
+            "displayTypes": {
+              "type": "object",
+              "description": "App Store Connect の表示サイズ（App Asset Library の配置グループ。IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE など）ごとの、撮る Simulator の機種（上から順に、ある機種を使う）",
+              "additionalProperties": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
               }
             }
           }
         },
-        "baseLocale": {
-          "type": "string",
-          "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
-          "maxLength": 21,
-          "description": "基準の言語。毎回撮り、ほかの言語は基準の言語で差が出たときだけ撮る"
-        },
-        "displayTypes": {
+        {
           "type": "object",
-          "description": "App Store Connect の表示サイズ（App Asset Library の配置グループ。IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE など）ごとの、撮る Simulator の機種（上から順に、ある機種を使う）",
-          "additionalProperties": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 10,
-            "items": {
+          "required": [
+            "capture",
+            "workflow",
+            "artifacts",
+            "languages",
+            "baseLocale"
+          ],
+          "additionalProperties": false,
+          "description": "リポジトリの撮影のワークフロー（GitHub Actions）で撮る（docs/renewal/store-screenshots.md）。司令塔が release ブランチで workflow を upload: false で起動し、artifact（screenshots-<表示サイズ>。中身は <言語>/<名前>.png）を取り込む。artifacts のキーが配置グループの形であること・基準の言語が languages にあることは読む側で確かめる",
+          "properties": {
+            "capture": {
+              "const": "actions"
+            },
+            "workflow": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 200
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,94}\\.ya?ml$",
+              "maxLength": 100,
+              "description": ".github/workflows/ の下のワークフローのファイル名（app-store-screenshots.yml）"
+            },
+            "artifacts": {
+              "type": "object",
+              "description": "App Store Connect の表示サイズ（App Asset Library の配置グループ）ごとの、artifact の表示サイズの名前（APP_IPHONE_67 など。artifact は screenshots-<名前>）。1〜20 個",
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$"
+              }
+            },
+            "languages": {
+              "type": "object",
+              "description": "App Store Connect の言語ごとの、artifact のフォルダの言語（template の AppStore/languages.json の language）。ここに無い言語は取り込まない",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "language"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,20}$"
+                  }
+                }
+              }
+            },
+            "baseLocale": {
+              "type": "string",
+              "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
+              "maxLength": 21,
+              "description": "基準の言語。毎回撮り、ほかの言語は基準の言語で差が出たときだけ撮る"
             }
           }
         }
-      }
+      ]
     }
   },
   "$defs": {
