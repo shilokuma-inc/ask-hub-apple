@@ -24,6 +24,9 @@ final class FakeReleaseSources: ReleaseSourceReading {
             previousTag: "v1.0.0",
             changes: [.init(commit: ReleaseWatchTests.epicMerge, pullRequest: 150, title: "写しを切り抜く")]
         )
+        var localizations = LocalizationChanges()
+        /// 文言の差を求めたタグとコミット
+        var localizationRanges: [String] = []
     }
 
     let state = OSAllocatedUnfairLock(initialState: State())
@@ -42,6 +45,17 @@ final class FakeReleaseSources: ReleaseSourceReading {
         below version: MarketingVersion
     ) async throws(WorkspaceError) -> ReleaseChanges {
         state.withLock { $0.changes }
+    }
+
+    func localizationChanges(
+        _ repo: RepositoryFullName,
+        from tag: String,
+        to commit: String
+    ) async throws(WorkspaceError) -> LocalizationChanges {
+        state.withLock { state in
+            state.localizationRanges.append("\(tag)..\(commit)")
+            return state.localizations
+        }
     }
 
     func prepare(_ repo: RepositoryFullName, commit: String, for id: ULID) async throws(WorkspaceError) -> PreparedWorkspace {
