@@ -26,6 +26,8 @@ struct FakeWorkflows {
     /// ブランチの workflow_dispatch の実行の一覧
     var dispatchedRuns: [WorkflowRunDetail] = []
     var cancelledRuns: [Int] = []
+    /// 取り消しの応答
+    var cancelReply: Result<Void, PullRequestError> = .success(())
 }
 
 extension FakeReleaseHosting {
@@ -60,7 +62,11 @@ extension FakeReleaseHosting {
     }
 
     func cancelWorkflowRun(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) {
-        workflows.withLock { $0.cancelledRuns.append(id) }
+        let reply = workflows.withLock { state in
+            state.cancelledRuns.append(id)
+            return state.cancelReply
+        }
+        try reply.get()
     }
 }
 
@@ -267,6 +273,29 @@ extension ReleaseWatchTests {
         let shots = try #require(try await submission().screenshots)
         #expect(hosting.workflows.withLock { $0.cancelledRuns } == [Self.screenshotRun])
         #expect(shots.state == .failed && shots.failure?.contains("6 時間") == true)
+    }
+
+    @Test func keepsWatchingWhenTheCancelFailsForAWhile() async throws {
+        try await startRelease()
+        try await addWorkflowScreenshotRepository()
+        let watch = watch()
+        await watch.refresh()
+        hosting.workflows.withLock { state in
+            state.runs[Self.screenshotRun] = screenshotRun(status: "in_progress")
+            state.cancelReply = .failure(.serverError(status: 502))
+        }
+        clock.advance(minutes: 6 * 60)
+        await watch.refresh()
+        // 取り消せなかったので、撮っている印のまま次の見回りで取り消し直す（実行を動かしたまま終えない）
+        var file = try await submission()
+        #expect(file.screenshots?.state == .capturing && file.problem?.needsHuman == false)
+
+        hosting.workflows.withLock { $0.cancelReply = .success(()) }
+        clock.advance(minutes: 5)
+        await watch.refresh()
+        file = try await submission()
+        #expect(hosting.workflows.withLock { $0.cancelledRuns } == [Self.screenshotRun, Self.screenshotRun])
+        #expect(file.screenshots?.state == .failed && file.screenshots?.failure?.contains("取り消した") == true)
     }
 
     @Test func screenshotInputsJoinTheArtifactNames() {

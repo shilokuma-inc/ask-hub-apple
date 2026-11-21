@@ -137,12 +137,21 @@ extension ReleaseWatch {
                     // 様子が変わらなければ書かない（書き込みの予算のため）
                     return file.screenshots == original.screenshots ? nil : file
                 }
-                do {
-                    try await self.hosting.cancelWorkflowRun(file.repo, id: id)
-                } catch {
-                    self.report("\(file.repo) の \(file.version) のスクショの撮影（実行 \(id)）を取り消せない（\(error)）")
-                }
                 let hours = Int(Self.screenshotRunTimeout / 3600)
+                do throws(PullRequestError) {
+                    try await self.hosting.cancelWorkflowRun(file.repo, id: id)
+                } catch .conflict {
+                    // 読んだ後に終わった（終わった実行は取り消せない）。次の見回りで終わった実行として読む
+                    return file.screenshots == original.screenshots ? nil : file
+                } catch {
+                    // 待てば直る失敗は、撮っている印のまま次の見回りで取り消し直す（実行を動かしたまま終えない）
+                    guard !Self.isTransient(error) else {
+                        throw ReleaseStepProblem("撮影の実行 \(id) を取り消せない（\(error)）。次の見回りでやり直す", needsHuman: false)
+                    }
+                    return Self.failedScreenshots(
+                        file, "撮影の実行 \(id) が \(hours) 時間で終わらないが、取り消せない（\(error)）。GitHub で取り消す", at: now
+                    )
+                }
                 return Self.failedScreenshots(file, "撮影の実行 \(id) が \(hours) 時間で終わらないので取り消した", at: now)
             }
             self.log("\(file.repo) の \(file.version) のスクショの撮影（実行 \(id)）が終わった（\(detail.conclusion ?? "結論なし")）")
@@ -168,11 +177,18 @@ extension ReleaseWatch {
         ["upload": "false", "display_types": Set(workflow.artifacts.values).sorted().joined(separator: ",")]
     }
 
-    /// 起動を送り直しても直らない失敗のわけ。待てば直る失敗（上限・GitHub の障害・届かない）は nil
-    static func lastingDispatchFailure(_ error: PullRequestError, workflow: String) -> String? {
+    /// 待てば直る失敗（上限・GitHub の障害・届かない）
+    static func isTransient(_ error: PullRequestError) -> Bool {
         switch error {
-        case .rateLimited, .serverError, .transport, .cancelled, .malformed:
-            nil
+        case .rateLimited, .serverError, .transport, .cancelled, .malformed: true
+        default: false
+        }
+    }
+
+    /// 起動を送り直しても直らない失敗のわけ。待てば直る失敗は nil
+    static func lastingDispatchFailure(_ error: PullRequestError, workflow: String) -> String? {
+        if isTransient(error) { return nil }
+        return switch error {
         case .notFound:
             "撮影のワークフロー（\(workflow)）が GitHub に無い（登録されていない・名前が違う）。直してから撮り直す"
         case let .rejected(message):
