@@ -40,6 +40,8 @@ struct DemoLaunchTests {
         #expect(DemoLaunch.initialSheet(defaults: defaults) == nil)
         defaults.set("start", forKey: DemoLaunch.sheetKey)
         #expect(DemoLaunch.initialSheet(defaults: defaults) == .start)
+        defaults.set("settings", forKey: DemoLaunch.sheetKey)
+        #expect(DemoLaunch.initialSheet(defaults: defaults) == .settings)
         defaults.set("unknown", forKey: DemoLaunch.sheetKey)
         #expect(DemoLaunch.initialSheet(defaults: defaults) == nil)
     }
