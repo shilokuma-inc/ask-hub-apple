@@ -765,6 +765,9 @@
   撮影でシートを開いておくときは `-demoSheet start` のように起動引数で `@State` の初期値を決める（`DemoLaunch.initialSheet`）（2026-11-14、開始のシート）
 - デモのクライアント（`DemoClientService`）は `supports` を実装しておらず、`ClientService` の既定でいつも true を返す。
   状態によって出し分けるボタンは、`store.supports` だけでなく画面用のモデルの印（`Submission.awaitsSubmission` など）でも決めないと、デモと撮影で全部のボタンが出る（2026-11-18、#1142）
+- iOS の設定のシート（`AppSettingsView`）は、`-demoSheet settings` で起動のときに開ける（`AskHub.init` で `AppNavigator.isShowingSettings` を決める。macOS は設定のウィンドウなので開かない）。
+  `@AppStorage` は起動引数の領域（`-<キー> <値>`）も読むので、テーマは `-appTheme dark` のように渡すと、保存された値によらずその見た目で撮れる。
+  ただし起動引数の値が優先されるので、その起動の間は画面で選び直しても見た目が変わらない（2026-11-21、テーマのセグメント）
 
 ## App Store Connect
 

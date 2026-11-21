@@ -7,7 +7,8 @@ import Foundation
 /// `-demoOpen release:demo-studio/habit-ios:1.2.0`（配信した版）、
 /// スワイプの途中の色を撮るときは `-demoDrag 0:0.8`（選択肢の添字:進み具合）、
 /// 開いた画面のシートを撮るときは `-demoSheet start`（ゴールの画面の、Mac を選ぶシート）・`-demoSheet submitReview`（審査に出す）・
-/// `-demoSheet startRelease`（リリースを始める）
+/// `-demoSheet startRelease`（リリースを始める）・`-demoSheet settings`（iOS の設定のシート）。
+/// テーマは `-appTheme dark` のように保存のキーを起動引数で渡すと、保存された値によらずその見た目で撮れる
 enum DemoLaunch {
     static let openKey = "demoOpen"
     static let dragKey = "demoDrag"
@@ -21,6 +22,8 @@ enum DemoLaunch {
         case submitReview
         /// リポジトリの画面の、リリースを始めるシート
         case startRelease
+        /// 設定のシート（iOS。macOS は設定のウィンドウなので開かない）
+        case settings
     }
 
     static func initialSheet(defaults: UserDefaults = .standard) -> Sheet? {

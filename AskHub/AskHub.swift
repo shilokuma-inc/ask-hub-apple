@@ -37,6 +37,7 @@ struct AskHub: App {
                 navigator.open(route, in: destination.section)
             }
         }
+        navigator.isShowingSettings = DemoLaunch.initialSheet() == .settings
         #endif
         _navigator = State(initialValue: navigator)
         #if DEBUG && os(macOS)
