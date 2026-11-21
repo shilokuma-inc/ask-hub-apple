@@ -28,9 +28,22 @@ struct FakeWorkflows {
     var cancelledRuns: [Int] = []
     /// 取り消しの応答
     var cancelReply: Result<Void, PullRequestError> = .success(())
+    /// 実行の id → artifact
+    var artifacts: [Int: [RunArtifact]] = [:]
+    /// artifact の id → zip
+    var zips: [Int: Data] = [:]
 }
 
 extension FakeReleaseHosting {
+    func runArtifacts(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [RunArtifact] {
+        workflows.withLock { $0.artifacts[runID] ?? [] }
+    }
+
+    func downloadArtifact(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) -> Data {
+        guard let zip = workflows.withLock({ $0.zips[id] }) else { throw .notFound }
+        return zip
+    }
+
     func dispatchWorkflow(
         _ repo: RepositoryFullName,
         workflow: String,

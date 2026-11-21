@@ -35,6 +35,10 @@ public protocol ReleaseHosting: Sendable {
     func dispatchedRuns(_ repo: RepositoryFullName, workflow: String, branch: String) async throws(PullRequestError) -> [WorkflowRunDetail]
     /// 実行を取り消す
     func cancelWorkflowRun(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError)
+    /// 実行の artifact
+    func runArtifacts(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [RunArtifact]
+    /// artifact の zip
+    func downloadArtifact(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) -> Data
 }
 
 /// 配信したコミットに付ける注釈付きのタグ
@@ -134,6 +138,14 @@ public struct GitHubReleaseHosting: ReleaseHosting {
 
     public func cancelWorkflowRun(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) {
         try await github(repo).cancelWorkflowRun(id: id)
+    }
+
+    public func runArtifacts(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [RunArtifact] {
+        try await github(repo).runArtifacts(runID: runID)
+    }
+
+    public func downloadArtifact(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) -> Data {
+        try await github(repo).downloadArtifact(id: id)
     }
 
     public func createAnnotatedTag(_ repo: RepositoryFullName, _ tag: AnnotatedTag) async throws(PullRequestError) {
