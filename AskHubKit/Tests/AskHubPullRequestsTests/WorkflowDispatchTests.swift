@@ -82,7 +82,7 @@ struct WorkflowDispatchTests {
         #expect(runs.map(\.id) == [44_900_000_101])
         let request = transport.requests.first
         #expect(Fixture.path(request) == "/repos/shilokuma-inc/ask-hub-apple/actions/workflows/app-store-screenshots.yml/runs")
-        #expect(Fixture.query(request) == ["branch": "release/1.2.0", "event": "workflow_dispatch", "per_page": "20"])
+        #expect(Fixture.query(request) == ["branch": "release/1.2.0", "event": "workflow_dispatch", "per_page": "100"])
     }
 
     @Test func cancelsARun() async throws {

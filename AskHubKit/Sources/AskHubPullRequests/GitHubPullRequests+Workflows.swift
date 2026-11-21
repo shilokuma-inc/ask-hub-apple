@@ -30,18 +30,18 @@ extension GitHubPullRequests {
         return model
     }
 
-    /// ワークフローの、ブランチで `workflow_dispatch` から起こした実行（新しい順）。起動した直後に落ちて id を書けなかったときに探すのに使うので、
-    /// 最初のページ（20 件）だけを読む
+    /// ワークフローの、ブランチで `workflow_dispatch` から起こした実行（新しい順。ページングを最後まで追う）。
+    /// 起動した直後に落ちて id を書けなかったときに探すのに使う（release ブランチの撮影の実行はふつう数件なので、1 ページで済む）
     public func dispatchedRuns(_ workflow: String, branch: String) async throws(PullRequestError) -> [WorkflowRunDetail] {
         try Self.checkWorkflow(workflow)
         try GitNames.checkBranch(branch)
         let query = [
             URLQueryItem(name: "branch", value: branch),
             URLQueryItem(name: "event", value: "workflow_dispatch"),
-            URLQueryItem(name: "per_page", value: "20")
+            URLQueryItem(name: "per_page", value: "100")
         ]
-        let page = try await api.get("actions/workflows/\(workflow)/runs", query: query, as: WorkflowRunDetailsPage.self)
-        return page.workflowRuns.compactMap(\.model)
+        let pages = try await api.pages("actions/workflows/\(workflow)/runs", query: query, as: WorkflowRunDetailsPage.self)
+        return pages.flatMap(\.workflowRuns).compactMap(\.model)
     }
 
     /// 実行を取り消す（終わっている実行なら GitHub が 409 で断る）
