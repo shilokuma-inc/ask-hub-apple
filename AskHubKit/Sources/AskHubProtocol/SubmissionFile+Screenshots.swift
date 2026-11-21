@@ -52,14 +52,25 @@ extension SubmissionFile {
         public var before: String?
         /// 変わった所。差が無い・全体が違う（大きさが違うなど）ときは nil
         public var area: ChangedArea?
+        /// App Store Connect のライブラリが受け付けなかったわけ（取り込みに失敗した・終わらない）。この画面は前のままにするしかない
+        public var rejected: String?
 
-        public init(index: Int, name: String, changed: Bool, preview: String? = nil, before: String? = nil, area: ChangedArea? = nil) {
+        public init(
+            index: Int,
+            name: String,
+            changed: Bool,
+            preview: String? = nil,
+            before: String? = nil,
+            area: ChangedArea? = nil,
+            rejected: String? = nil
+        ) {
             self.index = index
             self.name = name
             self.changed = changed
             self.preview = preview
             self.before = before
             self.area = area
+            self.rejected = rejected
         }
     }
 
@@ -144,6 +155,27 @@ extension SubmissionFile {
         }
     }
 
+    /// 撮って比べた画像を、App Store Connect のライブラリに先に上げた様子（`docs/renewal/store-screenshots.md` の「先に上げておく」）。
+    /// 配置はしない（審査に出すときに置く）。すべて置ける状態になる（か受け付けられない）まで、撮影は決着しない
+    public struct LibraryUpload: Codable, Equatable, Sendable {
+        /// 上げた画像の数（同じ画像は 1 つと数える）
+        public var total: Int
+        /// 処理を終え、置ける画像の数
+        public var ready: Int
+        /// 上げ終えた時刻（取り込みを打ち切る時間を数える）
+        public var sentAt: Timestamp
+
+        public init(total: Int, ready: Int = 0, sentAt: Timestamp) {
+            self.total = total
+            self.ready = ready
+            self.sentAt = sentAt
+        }
+
+        var problems: [String] {
+            total >= 0 && (0...max(total, 0)).contains(ready) ? [] : ["screenshots の library の ready は 0〜total"]
+        }
+    }
+
     /// App Store のスクショを撮って比べた結果
     public struct StoreScreenshots: Codable, Equatable, Sendable {
         public var state: ScreenshotState
@@ -158,6 +190,8 @@ extension SubmissionFile {
         public var failure: String?
         /// 撮影のワークフローの実行（`capture: actions` のときだけ）
         public var run: CaptureRun?
+        /// App Store Connect のライブラリに先に上げた様子（上げている間・取り込みを待つ間。撮影は `capturing` のまま）
+        public var library: LibraryUpload?
 
         public init(
             state: ScreenshotState,
@@ -167,7 +201,8 @@ extension SubmissionFile {
             sets: [ScreenshotSet] = [],
             skipped: [SkippedDisplayType] = [],
             failure: String? = nil,
-            run: CaptureRun? = nil
+            run: CaptureRun? = nil,
+            library: LibraryUpload? = nil
         ) {
             self.state = state
             self.commit = commit
@@ -177,12 +212,16 @@ extension SubmissionFile {
             self.skipped = skipped
             self.failure = failure
             self.run = run
+            self.library = library
         }
 
         /// 合わない点
         var problems: [String] {
             var problems: [String] = []
             problems += run?.problems ?? []
+            problems += library?.problems ?? []
+            let rejected = sets.flatMap(\.shots).compactMap(\.rejected)
+            if rejected.contains(where: { $0.isEmpty || $0.count > 1000 }) { problems.append("screenshots の rejected は 1〜1,000 文字") }
             if commit.map({ !ReleaseFile.isCommit($0) }) ?? false { problems.append("screenshots の commit が 40 桁の 16 進でない") }
             if (state == .failed) != (failure != nil) { problems.append("screenshots の failure は、failed のときだけ持つ") }
             if failure?.isEmpty == true { problems.append("screenshots の failure が空") }
