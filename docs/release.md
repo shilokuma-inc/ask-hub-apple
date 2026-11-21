@@ -93,7 +93,7 @@ API Key には App Manager 以上の権限が要る。Verify/App Store metadata 
   `Tools/embed_archive_entitlements.py embed` で sandbox などに足して署名し直し、Export に引き継がせる（iOS と同じ仕組み）。
   Export の後に pkg の中の .app に残ったかを確かめ（`check`）、落ちていれば App Store Connect に上げずに止める
 - Mac App Store にはカテゴリ（`LSApplicationCategoryType`）が要るので、`AskHub/Info.plist` に `public.app-category.developer-tools`（開発ツール。[docs/app-review.md](app-review.md) のカテゴリと同じ）を書いている
-- Archive（`main` への push）も、iOS と macOS の両方を Export まで確かめる（アップロードはしない）
+- Archive（手動実行）も、iOS と macOS の両方を Export まで確かめる（アップロードはしない）。`main` への push では動かさない
 - 実行中の macOS のランナーは、iOS と macOS で 1 回の Upload につき 2 台。org 全体で同時に 5 台までなので、続けて push すると待たされることがある
 
 ### 人がすること

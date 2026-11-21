@@ -35,6 +35,16 @@ public struct Blocker: Equatable, Sendable {
         case reviewState(AppStorePlatform, AppStoreVersionState)
         /// リリースを始めた版を配信した
         case submissionDistributed
+        /// やめたリリースの版の枠を、App Store Connect から消せなかった
+        case slotKept(AppStorePlatform)
+        /// App Store Connect にアプリが無い（アプリを作る・Bundle ID を登録する）
+        case appStoreApp
+        /// 配信中の版が無いアプリでリリースを始めたが、App Store の準備が `remaining` 個残っている
+        case appStoreFirstRelease(remaining: Int)
+        /// 人が押した App Store Connect への書き込みを断られた項目
+        case appStoreRefused([AppStoreSetupFile.ItemKind])
+        /// App Store の準備を確かめられない（鍵が無い・断られた）
+        case appStoreProblem
         /// マージした epic の実機確認の、まだ答えていない項目（止めないもの）。`items` は項目の数
         case verification(repo: RepositoryFullName, epic: ULID, items: Int)
     }
@@ -49,6 +59,8 @@ public struct Blocker: Equatable, Sendable {
         case release(RepositoryFullName, MarketingVersion)
         /// リリースを始めた版（準備から配信まで）
         case submission(RepositoryFullName, MarketingVersion)
+        /// 新しいアプリを App Store に載せる準備
+        case appStore(RepositoryFullName)
         /// 止めないもの（実機確認）のまとめ。決めた時刻ごとに、epic をまたいで 1 通にする
         case verifications
     }

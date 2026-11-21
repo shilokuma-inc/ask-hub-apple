@@ -20,6 +20,8 @@ struct ClientSnapshot: Hashable {
     var releases: [Release] = []
     /// リリースを始めた版（準備から配信まで）。リポジトリの順、その中は新しい版から
     var submissions: [Submission] = []
+    /// 新しいアプリを App Store に載せる準備（リポジトリの順）
+    var appStoreSetups: [AppStoreSetup] = []
 }
 
 /// 送った人の意図の処理の結果
@@ -70,6 +72,17 @@ extension ClientSnapshot {
 
     func release(_ id: Release.ID) -> Release? {
         releases.first { $0.id == id }
+    }
+
+    /// リポジトリの App Store の準備。記録が無ければ nil
+    func appStoreSetup(of repositoryID: TargetRepository.ID) -> AppStoreSetup? {
+        appStoreSetups.first { $0.repositoryID == repositoryID }
+    }
+
+    /// 配信中の版が無いアプリで、リリースを始めている（初めての版の準備の残りも出す）
+    func isFirstRelease(of repositoryID: TargetRepository.ID) -> Bool {
+        guard let setup = appStoreSetup(of: repositoryID), setup.isActive, setup.app != nil else { return false }
+        return submissions(of: repositoryID).contains { !$0.isEnded }
     }
 
     /// リポジトリのリリースを始めた版（新しい版から）

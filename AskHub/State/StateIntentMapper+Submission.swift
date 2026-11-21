@@ -45,7 +45,7 @@ extension StateIntentMapper {
         case let .submitForReview(repositoryID, version, request):
             let entry = try entry(repositoryID, version, \.canSubmit, unavailable: "この版は、いまは審査に出せません。取り直してから送ってください")
             guard entry.revision == request.revision else {
-                throw ClientServiceError(message: "ビルドか What's New の下書きが変わりました。見直してから審査に出してください")
+                throw ClientServiceError(message: "ビルド・What's New・掲載文の案が変わりました。見直してから審査に出してください")
             }
             return .submitForReview(
                 entry.target,
@@ -53,7 +53,10 @@ extension StateIntentMapper {
                 builds: try Self.builds(request.builds, available: entry.builds),
                 whatsNew: try Self.whatsNew(request.whatsNew, locales: entry.locales),
                 releaseType: Self.releaseType(request.releaseType),
-                earliestReleaseDate: try Self.releaseDate(request.releaseType)
+                earliestReleaseDate: try Self.releaseDate(request.releaseType),
+                listing: try Self.listing(request.listing, current: entry.listing),
+                appReview: try Self.appReview(request.appReview, available: entry.hasAppReview),
+                screenshots: try Self.screenshots(request.screenshotKeep, entry: entry)
             )
 
         case let .distributeRelease(repositoryID, version):
@@ -111,6 +114,58 @@ extension StateIntentMapper {
             }
             return LocalizedText(locale: locale, text: text)
         }
+    }
+
+    /// 人が確かめた掲載文の直し。前後の空白を除いて、人が「変える」にした欄をすべて送る（配信中の版と同じ文でも、版の枠の文が
+    /// App Store Connect で直されていることがあるので、比べて省くのは司令塔に任せる）。司令塔と同じく、キーワードは UTF-8 のバイトで数える
+    private static func listing(
+        _ changes: [Submission.ListingTexts],
+        current: [ListingText]
+    ) throws(ClientServiceError) -> [ListingText] {
+        var texts: [ListingText] = []
+        for change in changes {
+            guard current.contains(where: { $0.locale == change.locale }) else {
+                throw ClientServiceError(message: "掲載文の言語（\(change.locale)）が配信中の版にありません。取り直してから送ってください")
+            }
+            var text = ListingText(locale: change.locale)
+            for field in Submission.ListingField.allCases {
+                guard let value = change.values[field] else { continue }
+                guard field.accepts(value) else {
+                    throw ClientServiceError(message: "\(field.label)（\(change.locale)）は \(field.rangeLabel)で書いてください")
+                }
+                text[StateSnapshotBuilder.listingField(field)] = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if !text.isEmpty { texts.append(text) }
+        }
+        return texts
+    }
+
+    /// 人が確かめた App Review の情報の直し。前後の空白を除き、司令塔と同じく、メモは UTF-8 のバイトで数える。パスワードは扱わない
+    private static func appReview(_ change: Submission.ReviewInfo?, available: Bool) throws(ClientServiceError) -> ReviewInformation? {
+        guard let change, !change.isEmpty else { return nil }
+        guard available else { throw ClientServiceError(message: "App Review の情報の案がまだありません。取り直してから送ってください") }
+        let notes = change.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = change.demoAccountName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let notes, notes.utf8.count > Submission.ReviewInfo.notesLimit {
+            throw ClientServiceError(message: "審査メモは 4,000 バイトまでで書いてください")
+        }
+        if let name, name.unicodeScalars.count > Submission.ReviewInfo.nameLimit || name.contains(where: \.isNewline) {
+            throw ClientServiceError(message: "デモアカウントの名前は、改行の無い \(Submission.ReviewInfo.nameLimit) 文字までで書いてください")
+        }
+        return ReviewInformation(notes: notes, demoAccountRequired: change.demoAccountRequired, demoAccountName: name)
+    }
+
+    /// 人が確かめたスクショ。前のままにする画面は、撮って比べた差のある画面だけ
+    private static func screenshots(
+        _ keep: [Submission.ShotKey]?,
+        entry: StateIndex.SubmissionEntry
+    ) throws(ClientServiceError) -> SubmissionFile.ScreenshotDecision? {
+        guard let keep, let commit = entry.screenshotCommit, !entry.changedShots.isEmpty else { return nil }
+        guard keep.allSatisfy(entry.changedShots.contains) else {
+            throw ClientServiceError(message: "前のままにするスクショが、差のある画面と合いません。取り直してから送ってください")
+        }
+        let references = keep.map { SubmissionFile.ShotReference(displayType: $0.displayType, locale: $0.locale, index: $0.index) }
+        return SubmissionFile.ScreenshotDecision(commit: commit, keep: references)
     }
 
     private static func releaseType(_ type: Submission.ReleaseType) -> AppStoreReleaseType {

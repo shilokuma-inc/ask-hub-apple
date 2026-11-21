@@ -35,6 +35,8 @@ public struct ProcessCommandRunner: CommandRunning {
         let standardOutput = OutputBuffer(reading: output.fileHandleForReading, limit: outputLimit)
         let standardError = OutputBuffer(reading: error.fileHandleForReading, limit: outputLimit)
         try process.run()
+        // 上限は起動した時点から数える（協調スレッドが混んでタイマーの Task が動き出すのが遅れても、その分だけ長く流さない）
+        let deadline = ContinuousClock.now + command.timeout
 
         let pid = process.processIdentifier
         // 起動した直後に起動時刻を読む。読めなければ、もう終わっている
@@ -47,7 +49,7 @@ public struct ProcessCommandRunner: CommandRunning {
         // 上限を過ぎたか。過ぎた後は、コマンドが先に終わっても、残った子孫を止めるまで続ける
         let expired = OSAllocatedUnfairLock(initialState: false)
         let timer = Task {
-            try await Task.sleep(for: command.timeout)
+            try await Task.sleep(until: deadline)
             expired.withLock { $0 = true }
             await stop()
         }

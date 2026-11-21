@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/submitForReview.schema.json",
   "title": "審査に出す人の意図（kind が submitForReview）の payload",
-  "description": "封筒の target は {type: submission, id: <版>}、targetVersion は人が見たときの準備の版（submissions/<版>.json の revision）。builds は出すビルド（プラットフォームを重ねない）、whatsNew は人が確かめた What's New（言語を重ねない。初めての版は空）、releaseType は審査に通った後の配信の方式、earliestReleaseDate は scheduled のときだけ持つ配信の日時。空白だけの文・欄どうしの決まりは読む側で弾く。知らない欄のある payload は読まない",
+  "description": "封筒の target は {type: submission, id: <版>}、targetVersion は人が見たときの準備の版（submissions/<版>.json の revision）。builds は出すビルド（プラットフォームを重ねない）、whatsNew は人が確かめた What's New（言語を重ねない。初めての版は空）、releaseType は審査に通った後の配信の方式、earliestReleaseDate は scheduled のときだけ持つ配信の日時、listing は人が確かめた掲載文の直し（変える言語だけ。言語は submissions/<版>.json の listing の current にあるものだけ）、appReview は人が確かめた App Review の情報の直し（変える欄だけ。パスワードは持たない）。空白だけの文・欄どうしの決まりは読む側で弾く。知らない欄のある payload は読まない",
   "type": "object",
   "required": [
     "builds",
@@ -31,6 +31,18 @@
     },
     "earliestReleaseDate": {
       "$ref": "../common.schema.json#/$defs/timestamp"
+    },
+    "listing": {
+      "$ref": "../state/submission.schema.json#/$defs/listingTexts",
+      "description": "人が確かめた掲載文の直し（変える言語だけ。無い欄は変えない）。掲載文を変えないなら送らない"
+    },
+    "appReview": {
+      "$ref": "../state/submission.schema.json#/$defs/reviewInformation",
+      "description": "人が確かめた App Review の情報の直し（無い欄は変えない。1 つ以上の欄を持つ）。変えないなら送らない。パスワードは持たない"
+    },
+    "screenshots": {
+      "$ref": "../state/submission.schema.json#/$defs/screenshotDecision",
+      "description": "人が確かめたスクショ（撮影のコミットと、前のままにする画面）。スクショを変えないなら送らない"
     }
   }
 }

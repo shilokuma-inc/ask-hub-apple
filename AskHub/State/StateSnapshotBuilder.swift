@@ -54,6 +54,16 @@ struct StateIndex {
         var canPublish: Bool
     }
 
+    /// 配信中の版のプロモーションテキストを直す意図の材料。処理を待つ意図を当てた後のもの
+    struct PromotionalTextEntry {
+        var repo: RepositoryFullName
+        var version: MarketingVersion
+        /// 今の文（直せる言語と、変わっていない言語を送らないための元）
+        var current: [LocalizedText]
+        /// 送れるか（この端末から送って、司令塔がまだ受け付けていない中身が無い）
+        var canUpdate: Bool
+    }
+
     /// リリースを始めた版への意図（審査に出す・配信する・取り下げ・やめる）の対象と、送れるか。処理を待つ意図を当てた後のもの
     struct SubmissionEntry {
         var target: SubmissionTarget
@@ -62,6 +72,13 @@ struct StateIndex {
         var builds: [SubmissionFile.BuildChoice]
         /// What's New の下書きの言語（審査に出すときは同じ言語をそろえる）
         var locales: [String]
+        /// 配信中の版の掲載文（掲載文を直せる言語）
+        var listing: [ListingText] = []
+        /// App Review の情報の案がある（直しを送れる）
+        var hasAppReview = false
+        /// 撮って比べたスクショ（撮ったコミットと、差のある画面）。撮っていなければ nil
+        var screenshotCommit: String?
+        var changedShots: Set<Submission.ShotKey> = []
         var canSubmit: Bool
         var canDistribute: Bool
         var canWithdraw: Bool
@@ -92,8 +109,18 @@ struct StateIndex {
 
     var epics: [Epic.ID: EpicEntry] = [:]
     var questions: [Epic.ID: [Question.ID: QuestionEntry]] = [:]
+    /// 生きている印のある Mac と、片付けの候補を最後に探し終えた時刻（消すときに送る。まだ探していなければ nil）
+    var macs: [Mac.ID: MacEntry] = [:]
+
+    struct MacEntry {
+        var name: MacName
+        var cleanupScannedAt: Timestamp?
+        /// 片付けのファイルを読めず、済ませたかどうかが分からない（読み直すまで、探す・消すを送らない）
+        var cleanupUnknown = false
+    }
     var repositories: [TargetRepository.ID: RepositoryFullName] = [:]
     var releases: [Release.ID: ReleaseEntry] = [:]
+    var promotionalTexts: [Release.ID: PromotionalTextEntry] = [:]
     var submissions: [Submission.ID: SubmissionEntry] = [:]
     /// 終わっていないリリースのあるリポジトリ（リリースを始められない）。処理を待つ意図を当てた後のもの
     var releasingRepositories: Set<TargetRepository.ID> = []
@@ -103,6 +130,19 @@ struct StateIndex {
     var removedRepositories: [TargetRepository.ID: RepositoryFullName] = [:]
     /// 終わっていない epic のあるリポジトリ（対象から外すと司令塔が断る）。処理を待つ意図を当てた後のもの
     var busyRepositories: Set<TargetRepository.ID> = []
+    /// 新しいアプリを App Store に載せる準備（処理を待つ意図を当てた後のもの）
+    var appStoreSetups: [TargetRepository.ID: AppStoreSetupEntry] = [:]
+
+    struct AppStoreSetupEntry {
+        var bundleIDs: [String]
+        var hasApp: Bool
+        var isActive: Bool
+        var isExcluded: Bool
+        /// 前の書き込み（Bundle ID の登録・決まった値）を送り終えていない
+        var isWriting: Bool
+        /// 「終わった」を押せる項目（確かめた項目のうち、終わっていないもの）
+        var confirmable: Set<AppStoreSetup.ItemKind>
+    }
 }
 
 /// 状態リポジトリのファイル（`StateDocuments`）を、画面用のモデル（`ClientSnapshot`）に変える。
@@ -151,18 +191,20 @@ struct StateSnapshotBuilder {
         applyRejections(to: &epics)
         let releases = releases(index: &index, overlaid: overlaid)
         let submissions = submissions(index: &index, overlaid: overlaid)
+        let appStoreSetups = appStoreSetups(index: &index, overlaid: overlaid)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             candidateRepositories: [],
             removedRepositories: removed.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             epics: epics.sorted { $0.updatedAt > $1.updatedAt },
-            macs: macs(),
+            macs: macs(index: &index),
             fetchedAt: now,
             sourceFailures: documents.failures,
             sentIntents: documents.sentIntents.map(sentStatus),
             commanderSeenAt: documents.commander?.seenAt.date,
             releases: releases,
-            submissions: submissions
+            submissions: submissions,
+            appStoreSetups: appStoreSetups
         )
         return (snapshot, index)
     }
@@ -210,8 +252,14 @@ struct StateSnapshotBuilder {
 
     // MARK: Mac
 
-    private func macs() -> [Mac] {
+    private func macs(index: inout StateIndex) -> [Mac] {
+        for file in documents.macs {
+            index.macs[file.mac.rawValue] = .init(name: file.mac, cleanupScannedAt: documents.cleanupCandidates[file.mac]?.scannedAt)
+        }
         var macs = documents.macs.map(mac)
+        for mac in macs where mac.cleanupWork == .unknown {
+            index.macs[mac.id]?.cleanupUnknown = true
+        }
         if let commander = documents.commander, !macs.contains(where: { $0.id == commander.mac.rawValue }) {
             macs.append(commanderOnly(commander))
         }
@@ -222,7 +270,7 @@ struct StateSnapshotBuilder {
         let checks = Self.selfChecks(file.selfCheck) + [Self.diskCheck(file)]
         let tokens = Self.tokens(file.selfCheck)
         let incompatibility = incompatibility(of: file)
-        return Mac(
+        var mac = Mac(
             id: file.mac.rawValue,
             name: file.mac.rawValue,
             model: "",
@@ -248,6 +296,56 @@ struct StateSnapshotBuilder {
             commanderVersion: commanderVersion(differingFrom: file.versions.worker),
             incompatibility: incompatibility
         )
+        applyCleanup(of: file.mac, to: &mac)
+        return mac
+    }
+
+    /// 片付けの候補（ワーカーが書いた `cleanup/<mac>/candidates.json`）と、まだ済ませていない頼み（司令塔が積んだ `requests.json`）を Mac に付ける
+    private func applyCleanup(of name: MacName, to mac: inout Mac) {
+        let file = documents.cleanupCandidates[name]
+        mac.cleanupCandidates = (file?.candidates ?? []).map(Self.candidate)
+        mac.cleanupScannedAt = file?.scannedAt?.date
+        mac.cleanupUnreadable = file?.unreadable ?? []
+        // どちらかを読めなければ、済ませたかどうかが分からないので、探している途中とも済んだとも出さず、探す・消すも送らない
+        let paths = [StatePath.cleanupCandidates(name), StatePath.cleanupRequests(name)]
+        guard !documents.failures.contains(where: { paths.contains($0.source) }) else {
+            mac.cleanupWork = .unknown
+            return
+        }
+        // ワーカーは古い頼みから済ませるので、次に済ませるものを出す
+        let pending = (documents.cleanupRequests[name]?.requests ?? []).filter { file?.hasHandled($0.intent) != true }
+        mac.cleanupWork = pending.first.map { $0.action == .find ? .finding : .removing }
+        mac.cleanupResult = file?.handled.last.flatMap(Self.cleanupResult)
+    }
+
+    private static func candidate(_ candidate: CleanupCandidatesFile.Candidate) -> CleanupCandidate {
+        let kind: CleanupCandidate.Kind = switch candidate.kind {
+        case .clone: .clone
+        case .simulator: .simulator
+        case .derivedData: .derivedData
+        }
+        // clone はホームからのパスで見分ける（同じ名前のフォルダがほかの場所にもあり得る）
+        let name = candidate.kind == .clone ? candidate.location : candidate.name
+        return CleanupCandidate(
+            id: candidate.id,
+            kind: kind,
+            name: name,
+            bytes: candidate.bytes,
+            caution: candidate.caution,
+            lastUsedAt: candidate.lastUsedAt?.date
+        )
+    }
+
+    /// 済ませた頼みの結果の文。探しただけなら、済ませられなかったときだけ
+    static func cleanupResult(_ handled: CleanupCandidatesFile.Handled) -> String? {
+        if let problem = handled.problem {
+            return handled.action == .find ? "探せませんでした: \(problem)" : "消しませんでした: \(problem)"
+        }
+        guard handled.action == .remove else { return nil }
+        let removed = "\(handled.removed?.count ?? 0) 件を消しました"
+        let skipped = handled.skipped ?? []
+        guard !skipped.isEmpty else { return removed }
+        return "\(removed)。\(skipped.count) 件は消しませんでした（\(skipped.map(\.reason).joined(separator: "・"))）"
     }
 
     /// 司令塔だけが動いていて、ワーカーの印が無い Mac。ループは受けない

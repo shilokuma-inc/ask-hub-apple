@@ -1,0 +1,133 @@
+{
+  "description": "配信中の版のプロモーションテキストを直す人の意図の payload の例。read は、封筒の target（{type: release, id: <版>}）が正しく targetVersion が無いときに、読む側が読めるか",
+  "schema": "payloads/updatePromotionalText.schema.json",
+  "cases": [
+    {
+      "name": "one-locale",
+      "payload": {
+        "texts": [
+          {
+            "locale": "ja",
+            "text": "新しいウィジェットで、推しの予定をホーム画面に"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "clear-and-set",
+      "payload": {
+        "texts": [
+          {
+            "locale": "ja",
+            "text": ""
+          },
+          {
+            "locale": "en-US",
+            "text": "New widgets"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty-texts",
+      "payload": {
+        "texts": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "missing-texts",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "duplicate-locale",
+      "payload": {
+        "texts": [
+          {
+            "locale": "ja",
+            "text": "a"
+          },
+          {
+            "locale": "ja",
+            "text": "b"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "too-long",
+      "payload": {
+        "texts": [
+          {
+            "locale": "ja",
+            "text": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "wrong-locale",
+      "payload": {
+        "texts": [
+          {
+            "locale": "Japanese",
+            "text": "a"
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "missing-text",
+      "payload": {
+        "texts": [
+          {
+            "locale": "ja"
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "texts": [
+          {
+            "locale": "ja",
+            "text": "a"
+          }
+        ],
+        "version": "1.1.0"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field-in-text",
+      "payload": {
+        "texts": [
+          {
+            "locale": "ja",
+            "text": "a",
+            "keywords": "b"
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

@@ -73,6 +73,29 @@ public enum StatePath {
         "\(submissions(repo))/\(version.rawValue).json"
     }
 
+    /// リリースを始めた版の App Store のスクショの見本（差のある画面だけ。人が確かめる。元の画像は常時オンの Mac に置く）
+    public static func storeScreenshot(
+        _ repo: RepositoryFullName,
+        _ version: MarketingVersion,
+        displayType: String,
+        locale: String,
+        index: Int
+    ) -> String {
+        "\(repositoryDirectory(repo))/store-screenshots/\(version.rawValue)/\(displayType)/\(locale)/\(index).jpg"
+    }
+
+    /// リリースを始めた版の App Store のスクショの見本のパスか（`..` や絶対パスを含まない）
+    public static func isStoreScreenshotPath(_ path: String) -> Bool {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        return path.hasPrefix("repos/") && path.hasSuffix(".jpg") && parts.count == 8 && parts[3] == "store-screenshots"
+            && !parts.contains { $0.isEmpty || $0 == "." || $0 == ".." }
+    }
+
+    /// 新しいアプリを App Store に載せる準備（チェックリスト）
+    public static func appStoreSetup(_ repo: RepositoryFullName) -> String {
+        "\(repositoryDirectory(repo))/app-store.json"
+    }
+
     /// リポジトリの epic を置くディレクトリ（`epics/<epic>/`）
     public static func epics(_ repo: RepositoryFullName) -> String {
         "\(repositoryDirectory(repo))/epics"
@@ -137,6 +160,16 @@ public enum StatePath {
     /// 処理した人の意図の記録
     public static func consumed(device: KeyID, nonce: ULID) -> String {
         "consumed/\(device)/\(nonce).json"
+    }
+
+    /// 片付けの頼み（司令塔が受け付けた片付けの意図）
+    public static func cleanupRequests(_ mac: MacName) -> String {
+        "cleanup/\(mac)/requests.json"
+    }
+
+    /// 片付けの候補と、頼みを済ませた記録（その Mac のワーカー）
+    public static func cleanupCandidates(_ mac: MacName) -> String {
+        "cleanup/\(mac)/candidates.json"
     }
 
     /// 依頼の添付のフォルダ（終わった epic と一緒に畳む）

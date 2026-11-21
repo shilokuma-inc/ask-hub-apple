@@ -316,6 +316,13 @@ private struct ReleaseSection: View {
         let submissions = (store.snapshot?.submissions(of: repository.id) ?? []).filter { !$0.isEnded }
         let suggested = store.snapshot?.suggestedReleaseVersion(of: repository.id) ?? "1.0.0"
         CardSection {
+            // App Store に載せる準備（アプリが無い・初めての版の残りがある）。出さないリポジトリは、出すに戻せるように行を残す
+            if let setup = store.snapshot?.appStoreSetup(of: repository.id), setup.releasedAt == nil, !isRemoved {
+                NavigationLink(value: AppRoute.appStoreSetup(repository.id)) {
+                    AppStoreSetupRow(setup: setup)
+                }
+                .accessibilityIdentifier("app-store-setup")
+            }
             // 進めているリリースがあるあいだは始められない（司令塔が断る）ので出さない。わけは下の注記に出す
             if !isRemoved, submissions.isEmpty, store.supports(.startRelease(repositoryID: repository.id, version: suggested)) {
                 Button("リリースを始める…", systemImage: "airplane.departure") { isStarting = true }
@@ -341,6 +348,28 @@ private struct ReleaseSection: View {
                 ? "リリースを始めると、司令塔が release ブランチ・What's New・ビルドを用意し、あなたが確かめてから審査に出します"
                 : "進めているリリースが終わると、次のリリースを始められます（App Store Connect の編集できる版は 1 つ）")
         }
+    }
+}
+
+/// App Store に載せる準備の行（残りの数・出さない）
+private struct AppStoreSetupRow: View {
+    let setup: AppStoreSetup
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Label("App Store の準備", systemImage: "checklist").appFont(.headline, weight: .semibold)
+                ReflectionBadge([.appStore(setup.repositoryID)])
+            }
+            Text(detail).appFont(.subheadline).foregroundStyle(.secondary)
+        }
+    }
+
+    private var detail: String {
+        if setup.isExcluded { return "App Store に出さない" }
+        let remaining = setup.pendingItems(firstRelease: true).count
+        if setup.app == nil { return "App Store Connect にアプリがありません" }
+        return remaining == 0 ? "済み" : "残り \(remaining)"
     }
 }
 

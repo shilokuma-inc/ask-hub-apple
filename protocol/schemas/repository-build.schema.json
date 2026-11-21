@@ -4,42 +4,163 @@
   "title": "リポジトリのビルドの設定（repo.json の build と、configureRepository の payload の build）",
   "description": "ワーカーがビルドとテスト・子 PR・最終 PR で読む。xcode の値は xcodebuild の引数とファイルのパスに使うので、- で始まる値・制御文字・リポジトリの外を指すパスを受け付けない。知らない欄は書かない",
   "type": "object",
-  "required": ["xcode", "childChecks", "finalChecks"],
+  "required": [
+    "xcode",
+    "childChecks",
+    "finalChecks"
+  ],
   "additionalProperties": false,
   "properties": {
     "baseBranch": {
       "type": "string",
       "pattern": "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._/-]{1,200}$",
-      "not": { "pattern": "\\n" },
+      "not": {
+        "pattern": "\\n"
+      },
       "description": "作業ブランチの元で、最終 PR の向き先。無ければ develop"
     },
-    "xcode": { "$ref": "#/$defs/xcode" },
-    "childChecks": { "$ref": "#/$defs/checks", "description": "子 PR で待つチェックの名前（REST の check run の name。再利用ワークフローのジョブは build / build の形）" },
-    "finalChecks": { "$ref": "#/$defs/checks", "description": "最終 PR で待つチェックの名前" },
+    "xcode": {
+      "$ref": "#/$defs/xcode"
+    },
+    "childChecks": {
+      "$ref": "#/$defs/checks",
+      "description": "子 PR で待つチェックの名前（REST の check run の name。再利用ワークフローのジョブは build / build の形）"
+    },
+    "finalChecks": {
+      "$ref": "#/$defs/checks",
+      "description": "最終 PR で待つチェックの名前"
+    },
     "trustedReviewers": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\\[bot\\])?$", "maxLength": 44 },
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\\[bot\\])?$",
+        "maxLength": 44
+      },
       "description": "指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。coderabbitai[bot] など）。無ければ空"
     },
     "screenshots": {
       "type": "object",
-      "required": ["scenes", "destination"],
+      "required": [
+        "scenes",
+        "destination"
+      ],
       "additionalProperties": false,
       "properties": {
         "scenes": {
-          "allOf": [{ "$ref": "#/$defs/argument" }],
+          "allOf": [
+            {
+              "$ref": "#/$defs/argument"
+            }
+          ],
           "type": "string",
           "pattern": "^(?![/~])(?!(.*/)?\\.\\.(/|$))(?!.*//)(?!.*/$).*\\.json$",
           "description": "撮れる画面の一覧のファイル（screenshot-scenes.schema.json の形）の、リポジトリの直下からの相対パス"
         },
         "destination": {
-          "allOf": [{ "$ref": "#/$defs/destination" }],
-          "not": { "type": "object", "properties": { "platform": { "const": "macOS" } }, "required": ["platform"] },
+          "allOf": [
+            {
+              "$ref": "#/$defs/destination"
+            }
+          ],
+          "not": {
+            "type": "object",
+            "properties": {
+              "platform": {
+                "const": "macOS"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
           "description": "撮る Simulator（iOS・visionOS）。macOS はまだ撮らない"
         }
       },
       "description": "判断のカードのスクショの撮り方（docs/renewal/flows.md の「スクショ」）。無ければ撮らない"
+    },
+    "storeScreenshots": {
+      "type": "object",
+      "required": [
+        "test",
+        "languageVariable",
+        "languages",
+        "baseLocale",
+        "displayTypes"
+      ],
+      "additionalProperties": false,
+      "description": "App Store のスクショの撮り方（docs/renewal/release.md の「スクショ」）。司令塔が release ブランチの先頭で UI テスト test を表示サイズ・言語ごとに流し、テストが添付した画像を添付した順に使う。無ければ撮らない。基準の言語が languages にあること・環境変数の名前が重ならないことは読む側で確かめる",
+      "properties": {
+        "test": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*){1,2}$",
+          "maxLength": 300,
+          "description": "xcodebuild test -only-testing: の値（<テストのターゲット>/<クラス>[/<メソッド>]）"
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": "テストに渡す決まった環境変数（キーは英大文字・数字・_。xcodebuild には TEST_RUNNER_ を付けて渡す）"
+        },
+        "languageVariable": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,59}$",
+          "maxLength": 60,
+          "description": "言語を渡す環境変数の名前"
+        },
+        "regionVariable": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,59}$",
+          "maxLength": 60,
+          "description": "地域を渡す環境変数の名前。無ければ渡さない"
+        },
+        "languages": {
+          "type": "object",
+          "description": "App Store Connect の言語ごとの、アプリの言語と地域。ここに無い言語は撮らない",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "language"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "language": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,20}$"
+              },
+              "region": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,20}$"
+              }
+            }
+          }
+        },
+        "baseLocale": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
+          "maxLength": 21,
+          "description": "基準の言語。毎回撮り、ほかの言語は基準の言語で差が出たときだけ撮る"
+        },
+        "displayTypes": {
+          "type": "object",
+          "description": "App Store Connect の表示サイズ（APP_IPHONE_67 など）ごとの、撮る Simulator の機種（上から順に、ある機種を使う）",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -47,63 +168,111 @@
       "type": "string",
       "minLength": 1,
       "pattern": "^[^-]",
-      "not": { "pattern": "[\\u0000-\\u001f\\u007f]" },
+      "not": {
+        "pattern": "[\\u0000-\\u001f\\u007f]"
+      },
       "description": "xcodebuild の引数に渡す値。空・- で始まる値・制御文字を受け付けない"
     },
     "checks": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1, "maxLength": 200, "not": { "pattern": "[\\u0000-\\u001f\\u007f]" } },
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200,
+        "not": {
+          "pattern": "[\\u0000-\\u001f\\u007f]"
+        }
+      },
       "description": "待つチェックは 1 つ以上（無いと CI を待たずにマージしてしまう）"
     },
     "xcode": {
       "type": "object",
-      "required": ["project", "scheme", "destinations"],
+      "required": [
+        "project",
+        "scheme",
+        "destinations"
+      ],
       "additionalProperties": false,
       "properties": {
         "project": {
-          "allOf": [{ "$ref": "#/$defs/argument" }],
+          "allOf": [
+            {
+              "$ref": "#/$defs/argument"
+            }
+          ],
           "type": "string",
           "pattern": "^(?![/~])(?!(.*/)?\\.\\.(/|$))(?!.*//)(?!.*/$).*\\.(xcodeproj|xcworkspace)$",
           "description": ".xcodeproj か .xcworkspace の、リポジトリの直下からの相対パス"
         },
         "generate": {
-          "enum": ["xcodegen"],
+          "enum": [
+            "xcodegen"
+          ],
           "description": "ビルドの前にプロジェクトを作る道具（.xcodeproj をコミットしないリポジトリ）。xcodegen は、ワーカーが作業場所の直下で xcodegen generate を流す（直下の project.yml）。無ければリポジトリにあるプロジェクトをそのまま使う"
         },
-        "scheme": { "$ref": "#/$defs/argument" },
+        "scheme": {
+          "$ref": "#/$defs/argument"
+        },
         "destinations": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/destination" },
+          "items": {
+            "$ref": "#/$defs/destination"
+          },
           "description": "ビルドとテストの行き先。並べた順に流し、最初に失敗した行き先で止める"
         },
-        "testLight": { "$ref": "#/$defs/tests", "description": "軽いテスト（子 PR の前に流す）。無ければ全部" },
-        "testFull": { "$ref": "#/$defs/tests", "description": "全部のテスト（最終 PR を出す前に流す。UI テストを含む）。無ければ全部" }
+        "testLight": {
+          "$ref": "#/$defs/tests",
+          "description": "軽いテスト（子 PR の前に流す）。無ければ全部"
+        },
+        "testFull": {
+          "$ref": "#/$defs/tests",
+          "description": "全部のテスト（最終 PR を出す前に流す。UI テストを含む）。無ければ全部"
+        }
       }
     },
     "destination": {
       "oneOf": [
         {
           "type": "object",
-          "required": ["platform"],
+          "required": [
+            "platform"
+          ],
           "additionalProperties": false,
-          "properties": { "platform": { "const": "macOS" } },
+          "properties": {
+            "platform": {
+              "const": "macOS"
+            }
+          },
           "description": "ワーカーの Mac そのもので流す"
         },
         {
           "type": "object",
-          "required": ["platform", "deviceType"],
+          "required": [
+            "platform",
+            "deviceType"
+          ],
           "additionalProperties": false,
           "properties": {
-            "platform": { "enum": ["iOS", "visionOS"] },
-            "deviceType": { "$ref": "#/$defs/argument", "description": "機種の名前（iPhone 17 Pro）か識別子" },
+            "platform": {
+              "enum": [
+                "iOS",
+                "visionOS"
+              ]
+            },
+            "deviceType": {
+              "$ref": "#/$defs/argument",
+              "description": "機種の名前（iPhone 17 Pro）か識別子"
+            },
             "osVersion": {
               "type": "string",
               "pattern": "^[0-9]+(\\.[0-9]+){0,2}$",
-              "not": { "pattern": "\\n" },
+              "not": {
+                "pattern": "\\n"
+              },
               "description": "OS の版。無ければ、使う Xcode の SDK と同じか古いランタイムのうち最新"
             }
           },
@@ -115,9 +284,24 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "testPlan": { "$ref": "#/$defs/argument", "description": "スキームに含まれるテストプランの名前。無ければスキームの既定" },
-        "onlyTesting": { "type": "array", "items": { "$ref": "#/$defs/argument" }, "description": "流すテスト。空なら全部" },
-        "skipTesting": { "type": "array", "items": { "$ref": "#/$defs/argument" }, "description": "流さないテスト" }
+        "testPlan": {
+          "$ref": "#/$defs/argument",
+          "description": "スキームに含まれるテストプランの名前。無ければスキームの既定"
+        },
+        "onlyTesting": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/argument"
+          },
+          "description": "流すテスト。空なら全部"
+        },
+        "skipTesting": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/argument"
+          },
+          "description": "流さないテスト"
+        }
       }
     }
   }

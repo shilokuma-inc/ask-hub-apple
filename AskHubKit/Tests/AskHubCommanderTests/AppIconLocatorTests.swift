@@ -70,7 +70,7 @@ struct GitAppIconTests {
     var origin: URL { root.appendingPathComponent("origin.git") }
 
     /// アイコンの元を持つ origin と、ワーカーの clone を作る
-    func makeWorkspace() throws -> GitRepositoryWorkspace {
+    func makeWorkspace() async throws -> GitRepositoryWorkspace {
         let seed = root.appendingPathComponent("seed")
         let icon = seed.appendingPathComponent("App/AppIcon.icon/Assets")
         let fixture = seed.appendingPathComponent("AppTests/AppIcon.icon")
@@ -81,14 +81,14 @@ struct GitAppIconTests {
         try Data((0..<3000).map { UInt8($0 % 251) }).write(to: icon.appendingPathComponent("a b.png"))
         try FileManager.default.createSymbolicLink(atPath: icon.appendingPathComponent("link.png").path, withDestinationPath: "/etc/hosts")
         try Data("{}".utf8).write(to: fixture.appendingPathComponent("icon.json"))
-        try shell("git init --quiet --bare --initial-branch=develop '\(origin.path)'")
-        try shell("""
+        try await shell("git init --quiet --bare --initial-branch=develop '\(origin.path)'")
+        try await shell("""
             cd '\(seed.path)' && git init --quiet --initial-branch=develop && git add . && \
             git -c user.name=t -c user.email=t@example.invalid commit --quiet -m init && git push --quiet '\(origin.path)' develop
             """)
         let work = root.appendingPathComponent("work")
         let clone = work.appendingPathComponent("repos/\(Self.repo.owner)/\(Self.repo.name)")
-        try shell("git clone --quiet --no-checkout '\(origin.path)' '\(clone.path)'")
+        try await shell("git clone --quiet --no-checkout '\(origin.path)' '\(clone.path)'")
         let wrapper = root.appendingPathComponent("git")
         try "#!/bin/sh\nexec /usr/bin/git -c protocol.file.allow=always \"$@\"\n".write(to: wrapper, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper.path)
@@ -96,26 +96,16 @@ struct GitAppIconTests {
     }
 
     @discardableResult
-    func shell(_ script: String) throws -> String {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", script]
-        process.standardOutput = output
-        process.standardError = output
-        try process.run()
-        process.waitUntilExit()
-        let text = String(bytes: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        guard process.terminationStatus == 0 else { throw TaskGitTests.ShellFailure(output: text) }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    func shell(_ script: String) async throws -> String {
+        try await runShell(script)
     }
 
     @Test func locatesAndExportsIconFolderWithoutLinks() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let workspace = try makeWorkspace()
+        let workspace = try await makeWorkspace()
         let source = try #require(try await workspace.locateAppIcon(Self.repo, base: nil))
         #expect(source.path == "App/AppIcon.icon")
-        #expect(source.tree == (try shell("git --git-dir='\(origin.path)' rev-parse develop:App/AppIcon.icon")))
+        #expect(source.tree == (try await shell("git --git-dir='\(origin.path)' rev-parse develop:App/AppIcon.icon")))
 
         let destination = root.appendingPathComponent("export")
         let folder = try await workspace.exportAppIcon(source, of: Self.repo, to: destination)
@@ -127,9 +117,9 @@ struct GitAppIconTests {
 
     @Test func locatesIconOnBaseBranchInsteadOfDefaultBranch() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let workspace = try makeWorkspace()
+        let workspace = try await makeWorkspace()
         // 既定のブランチを、アイコンの無い main にする（base の develop にだけアイコンがある）
-        try shell("""
+        try await shell("""
             cd '\(root.appendingPathComponent("seed").path)' && git checkout --quiet -b main && git rm --quiet -r App && \
             git -c user.name=t -c user.email=t@example.invalid commit --quiet -m template && git push --quiet '\(origin.path)' main && \
             git --git-dir='\(origin.path)' symbolic-ref HEAD refs/heads/main
@@ -137,13 +127,13 @@ struct GitAppIconTests {
         #expect(try await workspace.locateAppIcon(Self.repo, base: nil) == nil)
         let source = try #require(try await workspace.locateAppIcon(Self.repo, base: "develop"))
         #expect(source.path == "App/AppIcon.icon")
-        #expect(source.tree == (try shell("git --git-dir='\(origin.path)' rev-parse develop:App/AppIcon.icon")))
+        #expect(source.tree == (try await shell("git --git-dir='\(origin.path)' rev-parse develop:App/AppIcon.icon")))
     }
 
     @Test func findsNothingWithoutIcon() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let workspace = try makeWorkspace()
-        try shell("""
+        let workspace = try await makeWorkspace()
+        try await shell("""
             cd '\(root.appendingPathComponent("seed").path)' && git rm --quiet -r App && \
             git -c user.name=t -c user.email=t@example.invalid commit --quiet -m remove && git push --quiet '\(origin.path)' develop
             """)

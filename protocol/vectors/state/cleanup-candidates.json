@@ -1,0 +1,208 @@
+{
+  "description": "cleanup/<mac>/candidates.json（片付けの候補と、頼みを済ませた記録）を読む例。schemaValid は protocol/schemas/state/cleanup-candidates.schema.json に合うか、read は読む側の結果",
+  "schema": "state/cleanup-candidates.schema.json",
+  "cases": [
+    {
+      "name": "full",
+      "value": {
+        "v": 1,
+        "mac": "macbook-a",
+        "scannedAt": "2026-11-18T10:05:00Z",
+        "candidates": [
+          {
+            "id": "0123456789abcdef",
+            "kind": "clone",
+            "name": "old-habit-ios",
+            "location": "~/Desktop/ios/old-habit-ios",
+            "bytes": 2100000000,
+            "lastUsedAt": "2026-09-01T00:00:00Z"
+          },
+          {
+            "id": "1123456789abcdef",
+            "kind": "clone",
+            "name": "wip-ios",
+            "location": "~/Desktop/ios/wip-ios",
+            "bytes": 800000000,
+            "caution": "未 push のコミットがある"
+          },
+          {
+            "id": "2123456789abcdef",
+            "kind": "simulator",
+            "name": "iPhone 16 Pro（iOS 26.5）",
+            "location": "11111111-1111-1111-1111-111111111111",
+            "bytes": 6400000000
+          },
+          {
+            "id": "3123456789abcdef",
+            "kind": "derivedData",
+            "name": "OldHabit",
+            "location": "~/Library/Developer/Xcode/DerivedData/OldHabit-abc",
+            "bytes": 4200000000
+          }
+        ],
+        "unreadable": [
+          "~/Documents"
+        ],
+        "handled": [
+          {
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "action": "find",
+            "at": "2026-11-18T10:05:00Z"
+          },
+          {
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000002"
+            },
+            "action": "remove",
+            "at": "2026-11-18T10:12:00Z",
+            "removed": [
+              "3123456789abcdef"
+            ],
+            "skipped": [
+              {
+                "id": "1123456789abcdef",
+                "reason": "未 push のコミットがあるので消さなかった"
+              }
+            ]
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "not-scanned",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "candidates": [],
+        "handled": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "duplicate-id",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "scannedAt": "2026-11-18T10:05:00Z",
+        "candidates": [
+          {
+            "id": "0123456789abcdef",
+            "kind": "clone",
+            "name": "a",
+            "location": "~/a",
+            "bytes": 1
+          },
+          {
+            "id": "0123456789abcdef",
+            "kind": "clone",
+            "name": "b",
+            "location": "~/b",
+            "bytes": 1
+          }
+        ],
+        "handled": []
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "bad-id",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "candidates": [
+          {
+            "id": "../x",
+            "kind": "clone",
+            "name": "a",
+            "location": "~/a",
+            "bytes": 1
+          }
+        ],
+        "handled": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-kind",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "candidates": [
+          {
+            "id": "0123456789abcdef",
+            "kind": "archive",
+            "name": "a",
+            "location": "~/a",
+            "bytes": 1
+          }
+        ],
+        "handled": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "id-with-newline",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "candidates": [
+          {
+            "id": "0123456789abcdef\n",
+            "kind": "clone",
+            "name": "a",
+            "location": "~/a",
+            "bytes": 1
+          }
+        ],
+        "handled": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "nulls-as-unset",
+      "value": {
+        "v": 1,
+        "mac": "mac-mini",
+        "scannedAt": null,
+        "candidates": [
+          {
+            "id": "0123456789abcdef",
+            "kind": "clone",
+            "name": "a",
+            "location": "~/a",
+            "bytes": 1,
+            "lastUsedAt": null,
+            "caution": null
+          }
+        ],
+        "unreadable": null,
+        "handled": [
+          {
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "action": "find",
+            "at": "2026-11-18T10:05:00Z",
+            "removed": null,
+            "skipped": null,
+            "problem": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    }
+  ]
+}

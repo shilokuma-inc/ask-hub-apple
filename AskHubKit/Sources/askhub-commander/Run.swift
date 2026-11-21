@@ -54,7 +54,8 @@ extension AskHubCommanderMain {
             appIcons: appIcons(runtime: runtime, context: context),
             releases: releases,
             protection: protectionWatch(secrets: secrets, context: context, transport: transport),
-            admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) }
+            admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) },
+            cleanup: runtime.cleanupService(context: context, log: log)
         )
         let pid = ProcessInfo.processInfo.processIdentifier
         log("起動しました（版 \(CommanderVersion.build.summary)、pid \(pid)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
@@ -112,6 +113,17 @@ extension AskHubCommanderMain {
             whatsNew: ClaudeWhatsNewDrafter(
                 client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
                 sources: runtime.workspace
+            ),
+            listing: ClaudeListingDrafter(
+                client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
+                sources: runtime.workspace
+            ),
+            // App Store のスクショは、ジョブと同じビルドの枠と Simulator の枠で撮る
+            screenshots: MachineStoreScreenshots(
+                pool: SimulatorPool(tools: runtime.configuration.buildTools(paths: runtime.paths), runner: ProcessCommandRunner()),
+                slots: runtime.buildSlots,
+                root: runtime.paths.root.appendingPathComponent("store-screenshots", isDirectory: true),
+                log: log
             ),
             authors: GitHubCommitAuthors(token: token, log: log),
             log: log

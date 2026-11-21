@@ -18,7 +18,11 @@ extension DemoData {
                 tagName: "v2.0.1",
                 notes: .init(version: 1, previousTag: "v2.0.0", draft: Self.recipeNotes, confirmed: Self.recipeNotes),
                 githubReleaseURL: URL(string: "https://github.com/\(recipe)/releases/tag/v2.0.1"),
-                nextVersion: .init(version: "2.1.0", state: .merged, pullRequest: 188)
+                nextVersion: .init(version: "2.1.0", state: .merged, pullRequest: 188),
+                promotionalText: .init(current: [
+                    .init(locale: "ja", text: "Mac でも使えるようになりました。"),
+                    .init(locale: "en-US", text: "")
+                ])
             ),
             Release(
                 repositoryID: habit,
@@ -59,13 +63,138 @@ extension DemoData {
                 .init(locale: "ja", text: Self.recipeWhatsNewJapanese),
                 .init(locale: "en-US", text: Self.recipeWhatsNewEnglish)
             ],
-            revision: 2,
+            listing: Self.recipeListing,
+            appReview: .init(
+                current: .init(notes: "ログインは不要です。レシピは右上の＋から足せます。", demoAccountRequired: false),
+                draft: .init(notes: "ログインは不要です。レシピは右上の＋から足せます。レシピの画面の「人数」を変えると、材料の分量が変わります。"),
+                reason: "人数に合わせた分量の計算は見つけにくいので、試し方を審査メモに足す案です"
+            ),
+            revision: 4,
             createdAt: ago(minutes: 60 * 3),
             updatedAt: ago(minutes: 25)
         )
+        submission.screenshots = Self.recipeScreenshots
         submission.awaitsSubmission = true
         submission.canAbandon = true
-        return [submission]
+        // おこづかい帳の初めての版。App Store の準備の残り（初めての版の項目を含む）を、あなたの番に出す
+        var first = Submission(
+            repositoryID: Self.repositoryID("pocket-budget-ios"),
+            version: "1.0.0",
+            startedInAskHub: true,
+            branch: "release/1.0.0",
+            nextVersion: .init(version: "1.1.0", state: .merged, pullRequest: 12),
+            drafts: [],
+            revision: 1,
+            slots: [.init(platform: "iOS")],
+            createdAt: ago(minutes: 60),
+            updatedAt: ago(minutes: 30)
+        )
+        first.canAbandon = true
+        return [submission, first]
+    }
+
+    /// レシピ帳の掲載文の案（人数に合わせた分量の計算を、日本語の説明文とキーワード・英語のキーワードに入れる）
+    static let recipeListing = Submission.Listing(
+        current: [
+            .init(locale: "ja", values: [
+                .description: "毎日のごはん作りを助けるレシピ帳です。写真付きでレシピを残し、買い物リストを作れます。",
+                .keywords: "レシピ,料理,献立,買い物リスト",
+                .promotionalText: "Mac でも使えるようになりました。"
+            ]),
+            .init(locale: "en-US", values: [
+                .description: "A recipe book for everyday cooking. Save recipes with photos and build shopping lists.",
+                .keywords: "recipe,cooking,meal plan,shopping list"
+            ])
+        ],
+        drafts: [
+            .init(locale: "ja", values: [
+                .description: "毎日のごはん作りを助けるレシピ帳です。写真付きでレシピを残し、買い物リストを作れます。人数に合わせて材料の分量を自動で計算します。",
+                .keywords: "レシピ,料理,献立,買い物リスト,分量"
+            ]),
+            .init(locale: "en-US", values: [.keywords: "recipe,cooking,meal plan,shopping list,servings"])
+        ],
+        reason: "人数に合わせて分量を計算できるようにしたので、日本語の説明文に一文足し、キーワードに「分量」を足す案です"
+    )
+
+    /// レシピ帳のスクショ（2 枚目のレシピの画面に、人数の欄が増えた）
+    static let recipeScreenshots: Submission.StoreScreenshots = {
+        let list = DemoScreen(title: "レシピ", toolbarItem: "plus", elements: [
+            .search(highlighted: false),
+            .row("鶏の照り焼き", detail: "20 分", highlighted: false),
+            .row("具だくさん豚汁", detail: "30 分", highlighted: false)
+        ])
+        let before = DemoScreen(title: "鶏の照り焼き", elements: [
+            .section("材料", highlighted: false),
+            .row("鶏もも肉", detail: "300 g", highlighted: false),
+            .row("しょうゆ", detail: "大さじ 2", highlighted: false)
+        ])
+        let after = DemoScreen(title: "鶏の照り焼き", elements: [
+            .section("人数", highlighted: true),
+            .row("4 人分", detail: nil, highlighted: true),
+            .section("材料", highlighted: false),
+            .row("鶏もも肉", detail: "600 g", highlighted: false),
+            .row("しょうゆ", detail: "大さじ 4", highlighted: false)
+        ])
+        let area = CGRect(x: 0, y: 0.12, width: 1, height: 0.22)
+        func set(_ locale: String) -> Submission.ScreenshotSet {
+            let shots: [Submission.Shot] = [
+                .init(index: 1, name: "01-レシピ", changed: false, before: .demo(list)),
+                .init(index: 2, name: "02-材料", changed: true, before: .demo(before), after: .demo(after), area: area)
+            ]
+            return Submission.ScreenshotSet(displayType: "APP_IPHONE_67", locale: locale, shots: shots, removed: 0)
+        }
+        return Submission.StoreScreenshots(
+            state: .captured,
+            commit: String(repeating: "c", count: 40),
+            sets: [set("ja"), set("en-US")],
+            skipped: [.init(displayType: "APP_IPHONE_DUO", reason: "iPhone Duo はまだ撮らない（App Store Connect で上げる）")]
+        )
+    }()
+
+    /// App Store に載せる準備。家事シェアは App Store Connect にアプリがまだ無く（あなたの番に出る）、
+    /// おこづかい帳はアプリを作り、初めての版（1.0.0）のリリースを始めて、初めての版に要る設定が残っている（あなたの番に出る）
+    func appStoreSetups() -> [AppStoreSetup] {
+        [
+            AppStoreSetup(
+                repositoryID: Self.repositoryID("kaji-share-ios"),
+                bundleIDs: ["jp.shilokuma.KajiShare", "jp.shilokuma.KajiShareTests"],
+                mainBundleID: "jp.shilokuma.KajiShare",
+                items: [
+                    .init(kind: .bundleId, state: .done, confirmed: false),
+                    .init(
+                        kind: .app,
+                        state: .todo,
+                        note: "App Store Connect の「アプリ」の「＋」で作る（Bundle ID と SKU は jp.shilokuma.KajiShare）",
+                        confirmed: false
+                    )
+                ],
+                isExcluded: false,
+                updatedAt: ago(minutes: 40)
+            ),
+            AppStoreSetup(
+                repositoryID: Self.repositoryID("pocket-budget-ios"),
+                bundleIDs: ["jp.shilokuma.PocketBudget"],
+                mainBundleID: "jp.shilokuma.PocketBudget",
+                app: .init(id: "6740000123", name: "おこづかい帳", bundleID: "jp.shilokuma.PocketBudget", primaryLocale: "ja"),
+                items: [
+                    .init(kind: .bundleId, state: .done, confirmed: false),
+                    .init(kind: .app, state: .done, confirmed: false),
+                    .init(kind: .contentRights, state: .done, note: "第三者のコンテンツを使わない", confirmed: false),
+                    .init(kind: .category, state: .todo, confirmed: false),
+                    .init(kind: .privacyPolicy, state: .todo, note: "まだ書いていない言語: ja・en-US", confirmed: false),
+                    .init(kind: .price, state: .todo, confirmed: false),
+                    .init(kind: .availability, state: .todo, confirmed: false),
+                    .init(kind: .ageRating, state: .todo, note: "答えていない質問が 6 個ある", confirmed: false),
+                    .init(kind: .appPrivacy, state: .unknown, note: "API が無い。「App のプライバシー」で答えて公開する", confirmed: false),
+                    .init(kind: .digitalServicesAct, state: .unknown, note: "API が無い。「App 情報」で DSA の申告をする", confirmed: true),
+                    .init(kind: .supportUrl, state: .todo, note: "まだ書いていない言語: ja・en-US", confirmed: false),
+                    .init(kind: .copyright, state: .todo, confirmed: false),
+                    .init(kind: .reviewContact, state: .todo, note: "まだ入れていない欄: 電話番号", confirmed: false)
+                ],
+                isExcluded: false,
+                updatedAt: ago(minutes: 90)
+            )
+        ]
     }
 
     static let recipeWhatsNewJapanese = """

@@ -118,6 +118,67 @@ struct AppStoreConnectSubmissionsTests {
         #expect((data["attributes"] as? [String: Any])?["whatsNew"] as? String == "・速くなりました")
     }
 
+    @Test func readsAndWritesListing() async throws {
+        let list = """
+            {"data":[
+              {"type":"appStoreVersionLocalizations","id":"l-ja","attributes":{"locale":"ja","whatsNew":null,
+               "description":"推しの予定を数えるアプリ","keywords":"推し活,カウントダウン","promotionalText":""}}
+            ]}
+            """
+        let transport = StubTransport([.json(200, list), .json(200, #"{"data":{"type":"appStoreVersionLocalizations","id":"l-ja"}}"#)])
+        let client = client(transport)
+        let localizations = try await client.localizations(of: "v2")
+        // 空の欄は無いものとして持つ
+        #expect(localizations.first?.listing == ListingText(locale: "ja", description: "推しの予定を数えるアプリ", keywords: "推し活,カウントダウン"))
+        let fields = query(transport.requests.first)["fields[appStoreVersionLocalizations]"]?.split(separator: ",").map(String.init) ?? []
+        #expect(Set(fields) == ["locale", "whatsNew", "description", "keywords", "promotionalText"])
+        // 送るのは nil でない欄だけ（空の文字列は送る）
+        try await client.updateListing("l-ja", ListingText(locale: "ja", keywords: "推し活,ウィジェット", promotionalText: ""))
+        let attributes = try #require(try body(transport.requests[1])["attributes"] as? [String: Any])
+        #expect(Set(attributes.keys) == ["keywords", "promotionalText"])
+        #expect(attributes["keywords"] as? String == "推し活,ウィジェット")
+        #expect((attributes["promotionalText"] as? String)?.isEmpty == true)
+        // 変える欄が無ければ送らない
+        try await client.updateListing("l-ja", ListingText(locale: "ja"))
+        #expect(transport.requests.count == 2)
+    }
+
+    @Test func readsAndWritesReviewDetailWithoutPassword() async throws {
+        let detail = """
+            {"data":{"type":"appStoreReviewDetails","id":"r-1",
+              "attributes":{"notes":"ログインは不要です。","demoAccountRequired":false,"demoAccountName":""}}}
+            """
+        let transport = StubTransport([
+            .json(200, detail),
+            .json(200, #"{"data":{"type":"appStoreReviewDetails","id":"r-1"}}"#),
+            .json(201, #"{"data":{"type":"appStoreReviewDetails","id":"r-2"}}"#)
+        ])
+        let client = client(transport)
+        let read = try await client.reviewDetail(of: "v2")
+        #expect(read == AppStoreReviewDetail(id: "r-1", information: ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: false)))
+        #expect(transport.requests[0].url?.path == "/v1/appStoreVersions/v2/appStoreReviewDetail")
+        // パスワードと連絡先は読まない
+        #expect(query(transport.requests[0])["fields[appStoreReviewDetails]"] == "notes,demoAccountRequired,demoAccountName")
+        try await client.writeReviewDetail("r-1", versionID: "v2", ReviewInformation(demoAccountRequired: true))
+        #expect(transport.requests[1].httpMethod == "PATCH" && transport.requests[1].url?.path == "/v1/appStoreReviewDetails/r-1")
+        let patched = try #require(try body(transport.requests[1])["attributes"] as? [String: Any])
+        #expect(Set(patched.keys) == ["demoAccountRequired"])
+        // 無ければ版に作る
+        try await client.writeReviewDetail(nil, versionID: "v2", ReviewInformation(notes: "メモ"))
+        #expect(transport.requests[2].httpMethod == "POST" && transport.requests[2].url?.path == "/v1/appStoreReviewDetails")
+        let created = try body(transport.requests[2])
+        let relationship = (created["relationships"] as? [String: Any])?["appStoreVersion"] as? [String: Any]
+        #expect((relationship?["data"] as? [String: Any])?["id"] as? String == "v2")
+    }
+
+    @Test func treatsMissingReviewDetailAsNil() async throws {
+        // まだ作っていない版は 404 か、200 で data が null
+        let transport = StubTransport([.json(404, #"{"errors":[{"detail":"not found"}]}"#), .json(200, #"{"data":null}"#)])
+        let client = client(transport)
+        #expect(try await client.reviewDetail(of: "v2") == nil)
+        #expect(try await client.reviewDetail(of: "v2") == nil)
+    }
+
     @Test func createsAndUpdatesVersions() async throws {
         let transport = StubTransport([
             .json(201, #"{"data":{"type":"appStoreVersions","id":"v-new","attributes":{"appVersionState":"PREPARE_FOR_SUBMISSION"}}}"#),
@@ -151,6 +212,34 @@ struct AppStoreConnectSubmissionsTests {
         #expect(transport.requests[1].url?.path == "/v1/appStoreVersions/v-new")
         #expect((patch["attributes"] as? [String: Any])?["earliestReleaseDate"] as? String == "2026-11-26T00:00:00Z")
         #expect((patch["attributes"] as? [String: Any])?["releaseType"] as? String == "SCHEDULED")
+    }
+
+    @Test func choosesBuildWithoutTouchingReleaseTypeAndDeletesVersions() async throws {
+        let transport = StubTransport([
+            .json(201, #"{"data":{"type":"appStoreVersions","id":"v-slot"}}"#),
+            .json(200, #"{"data":{"type":"appStoreVersions","id":"v-slot"}}"#),
+            .json(204, ""),
+            .json(409, #"{"errors":[{"detail":"The version can't be deleted."}]}"#)
+        ])
+        let client = client(transport)
+        let version = MarketingVersion(rawValue: "1.4.0")!
+        // 枠を作るときはビルドを選ばない
+        let slot = AppStoreVersionChange(version: version, releaseType: .afterApproval, buildID: nil)
+        _ = try await client.createVersion(of: "6740000001", platform: .iOS, slot)
+        let created = try body(transport.requests[0])
+        #expect((created["relationships"] as? [String: Any])?["build"] == nil)
+        // ビルドだけ選ぶときは、配信の方式と日時を送らない（人が App Store Connect で選んだものを残す）
+        try await client.updateVersion("v-slot", AppStoreVersionChange(version: version, releaseType: nil, buildID: "b45"))
+        let patch = try body(transport.requests[1])
+        #expect((patch["attributes"] as? [String: String]) == ["versionString": "1.4.0"])
+        let build = (patch["relationships"] as? [String: Any])?["build"] as? [String: Any]
+        #expect(build?["data"] as? [String: String] == ["type": "builds", "id": "b45"])
+        try await client.deleteVersion("v-slot")
+        #expect(transport.requests[2].httpMethod == "DELETE")
+        #expect(transport.requests[2].url?.path == "/v1/appStoreVersions/v-slot")
+        await #expect(throws: AppStoreConnectError.refused(status: 409, detail: "The version can't be deleted.")) {
+            try await client.deleteVersion("v-slot")
+        }
     }
 
     @Test func submitsCancelsAndReleases() async throws {

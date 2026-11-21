@@ -103,6 +103,8 @@ public actor CommanderLoop {
     nonisolated let protection: ProtectionWatch?
     /// 人の意図の種類ごとの処理。管理用のトークンで GitHub を操作するもの（`AdminGitHub`）は、ここ（保護の設定など）にだけ渡す
     nonisolated let handlers: [String: any IntentHandler]
+    /// 片付けの頼みを、常時オンの Mac（ワーカーを兼ねる）で済ませる。周ごとに見る
+    nonisolated let cleanup: CleanupService?
 
     /// 自分宛てのジョブを、同時の上限の中で並んで動かす
     nonisolated let slots: JobSlots
@@ -141,7 +143,8 @@ public actor CommanderLoop {
         appIcons: AppIconSync? = nil,
         releases: ReleaseWatch? = nil,
         protection: ProtectionWatch? = nil,
-        admin: AdminGitHub? = nil
+        admin: AdminGitHub? = nil,
+        cleanup: CleanupService? = nil
     ) {
         self.context = context
         self.settings = settings
@@ -162,6 +165,7 @@ public actor CommanderLoop {
         self.releases = releases
         self.protection = protection
         handlers = Self.handlers(admin: admin)
+        self.cleanup = cleanup
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
         startedAt = context.now()
@@ -188,17 +192,6 @@ public actor CommanderLoop {
             }
         }
     }
-
-    /// 周を終えられなかったときに休む時間。意図の一覧を見て休みを切り上げない（意図を受け付ける前に失敗すると、前の周で見た意図の記録が古いままで、
-    /// 休まずに失敗をくり返し、GitHub の上限を食い尽くすため）。上限（GitHub・書き込みの予算）なら言われた時間（長すぎれば `maxFailureWait` まで）、
-    /// ほかの失敗は 1 周の間隔
-    static func wait(after error: CommanderError, pollInterval: Duration) -> Duration {
-        guard let retryAfter = error.retryAfter else { return pollInterval }
-        return min(max(retryAfter, pollInterval), maxFailureWait)
-    }
-
-    /// 上限で休むときの長さの上限（生きている印が古くなりすぎないように）
-    static let maxFailureWait: Duration = .seconds(15 * 60)
 
     /// 次の周まで `pollInterval` 休む。休む間も `intentCheckInterval` ごとに意図の一覧を見て（ETag つきなので、変わっていなければ上限に数えられない）、
     /// 前の周で見ていない意図が届いていたら、休みを切り上げる（人の操作を早く受け付けるため。1 周の途中に届いた意図も、周が終わってすぐ受け付ける）。
@@ -264,6 +257,7 @@ public actor CommanderLoop {
         swept.jobs += restarted.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
         let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier), lowOnDisk: diskRefusal != nil)
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
+        await cleanup?.poll(verifier: verifier)
         timer.lap("引き受けと通知")
         // 写しは表示のためだけのもの。人の意図とジョブを先に進め、写しの失敗は写しの中で扱う（次の周でやり直す）
         await mirror?.syncAll(verifier: verifier)
@@ -296,7 +290,10 @@ public actor CommanderLoop {
     }
 
     /// 受け付けたら、生きている印を待たずにリリースの見回りを起こす種類（release ブランチを作る・App Store Connect に出すなど）
-    static let releaseKinds: Set<String> = ["startRelease", "submitForReview", "distributeRelease", "withdrawSubmission"]
+    static let releaseKinds: Set<String> = [
+        "startRelease", "submitForReview", "distributeRelease", "withdrawSubmission", "updatePromotionalText",
+        "registerBundleId", "applyAppStoreSettings", "confirmAppStoreItem", "excludeFromAppStore"
+    ]
 
     // MARK: - 通知
 
@@ -368,4 +365,19 @@ public actor CommanderLoop {
         releases?.start()
         protection?.start()
     }
+}
+
+// MARK: - 失敗の後の休み
+
+extension CommanderLoop {
+    /// 周を終えられなかったときに休む時間。意図の一覧を見て休みを切り上げない（意図を受け付ける前に失敗すると、前の周で見た意図の記録が古いままで、
+    /// 休まずに失敗をくり返し、GitHub の上限を食い尽くすため）。上限（GitHub・書き込みの予算）なら言われた時間（長すぎれば `maxFailureWait` まで）、
+    /// ほかの失敗は 1 周の間隔
+    static func wait(after error: CommanderError, pollInterval: Duration) -> Duration {
+        guard let retryAfter = error.retryAfter else { return pollInterval }
+        return min(max(retryAfter, pollInterval), maxFailureWait)
+    }
+
+    /// 上限で休むときの長さの上限（生きている印が古くなりすぎないように）
+    static let maxFailureWait: Duration = .seconds(15 * 60)
 }

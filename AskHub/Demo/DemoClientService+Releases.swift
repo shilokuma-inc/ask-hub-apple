@@ -3,8 +3,13 @@ import Foundation
 // MARK: - 人の意図を当てる（配信した版）
 
 extension DemoClientService {
-    /// リリース文の公開。司令塔が受け付けて本文を記録に写し、次の見回りで GitHub Release を公開するのをまねる
+    /// リリース文の公開。司令塔が受け付けて本文を記録に写し、次の見回りで GitHub Release を公開するのをまねる。
+    /// プロモーションテキストは、受け付けて App Store Connect に書くのをまねる
     func applyReleaseIntent(_ intent: HumanIntent) {
+        if case let .updatePromotionalText(repositoryID, version, texts) = intent {
+            updatePromotionalText(Release.id(repositoryID, version), texts: texts)
+            return
+        }
         guard case let .publishRelease(repositoryID, version, _, notes) = intent else {
             return
         }
@@ -19,6 +24,24 @@ extension DemoClientService {
         schedule(after: 2) { snapshot in
             snapshot.updateRelease(id) { release in
                 release.githubReleaseURL = URL(string: "https://github.com/\(repositoryID)/releases/tag/v\(version)")
+            }
+        }
+    }
+}
+
+extension DemoClientService {
+    private func updatePromotionalText(_ id: Release.ID, texts: [Submission.Localized]) {
+        state.updateRelease(id) { $0.promotionalText?.request = .sending }
+        schedule { snapshot in
+            snapshot.updateRelease(id) { $0.promotionalText?.request = .writing }
+        }
+        schedule(after: 2) { snapshot in
+            snapshot.updateRelease(id) { release in
+                for text in texts {
+                    guard let index = release.promotionalText?.current.firstIndex(where: { $0.locale == text.locale }) else { continue }
+                    release.promotionalText?.current[index].text = text.text
+                }
+                release.promotionalText?.request = .done(Date())
             }
         }
     }
@@ -82,7 +105,14 @@ extension DemoClientService {
             submission.canAbandon = false
         }
         updateSoon(id, sending: .submit) { submission in
-            submission.submitted = .init(builds: request.builds, whatsNew: request.whatsNew, releaseType: request.releaseType, at: Date())
+            submission.submitted = .init(
+                builds: request.builds,
+                whatsNew: request.whatsNew,
+                releaseType: request.releaseType,
+                at: Date(),
+                listing: request.listing,
+                appReview: request.appReview
+            )
             submission.review = request.builds.map { .init(platform: $0.platform, state: .waitingForReview, since: Date()) }
             submission.canWithdraw = true
         }

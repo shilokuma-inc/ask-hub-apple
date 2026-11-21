@@ -71,6 +71,8 @@ public struct PushNotice: Equatable, Sendable {
                 return releaseNotice(repo, version, blockers: blockers)
             case let .submission(repo, version):
                 return submissionNotice(repo, version, blockers: blockers)
+            case let .appStore(repo):
+                return appStoreNotice(repo, blockers: blockers)
             }
         }
     }
@@ -163,12 +165,37 @@ public struct PushNotice: Equatable, Sendable {
         )
     }
 
+    /// 新しいアプリを App Store に載せる準備の通知。通知から、準備のチェックリストを開く
+    private static func appStoreNotice(_ repo: RepositoryFullName, blockers: [Blocker]) -> PushNotice {
+        PushNotice(
+            title: "\(repo.name) の App Store の準備",
+            subtitle: repo.rawValue,
+            body: blockers.compactMap { appStoreLine($0.reason) }.joined(separator: "\n"),
+            thread: "appStore/\(repo.rawValue)",
+            target: ["repo": repo.rawValue, "appStore": "setup"],
+            keys: blockers.map(\.key)
+        )
+    }
+
+    private static func appStoreLine(_ reason: Blocker.Reason) -> String? {
+        switch reason {
+        case .appStoreApp: "App Store Connect にアプリがありません。チェックリストを見て、App Store Connect でアプリを作ってください"
+        case let .appStoreFirstRelease(remaining): "初めての版を審査に出すまでに、App Store の準備が \(remaining) 個残っています"
+        case let .appStoreRefused(items):
+            "App Store Connect に書けなかった項目があります（\(items.map(\.rawValue).joined(separator: "・"))）。理由を確かめてください"
+        case .appStoreProblem: "App Store の準備を確かめられません。確かめてください"
+        default: nil
+        }
+    }
+
     private static func submissionLine(_ reason: Blocker.Reason) -> String? {
         switch reason {
         case .submissionReady: "審査に出す準備ができました。What's New とビルドを確かめて、審査に出してください"
         case let .submissionProblem(step): "リリース（\(step.label)）が止まっています。確かめてください"
         case let .reviewState(platform, state): reviewLine(platform, state)
         case .submissionDistributed: "App Store で配信しました"
+        case let .slotKept(platform):
+            "やめたリリースの \(platform.rawValue) の版を、App Store Connect から消せませんでした。App Store Connect で確かめてください"
         default: nil
         }
     }
@@ -257,6 +284,9 @@ extension SubmissionFile.Step {
         case .withdraw: "審査の取り下げ"
         case .review: "審査の状態"
         case .integration: "release ブランチの取り込み"
+        case .appStoreVersion: "App Store Connect の版の枠"
+        case .listing: "掲載文の案"
+        case .screenshots: "スクショの撮影"
         }
     }
 }

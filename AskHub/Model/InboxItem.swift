@@ -53,6 +53,8 @@ struct InboxItem: Identifiable, Hashable {
         case submissionProblem
         /// 審査で断られた（リジェクト）
         case submissionRejected
+        /// 新しいアプリを App Store に載せる準備（アプリを作る・初めての版の残り・書けなかった項目）
+        case appStoreSetup
     }
 }
 
@@ -81,6 +83,7 @@ enum InboxBuilder {
         items += snapshot.macs.compactMap(cleanupItem)
         items += snapshot.releases.flatMap { releaseItems($0, snapshot: snapshot) }
         items += snapshot.submissions.flatMap { submissionItems($0, snapshot: snapshot) }
+        items += snapshot.appStoreSetups.flatMap { appStoreSetupItems($0, snapshot: snapshot) }
         return items.sorted { lhs, rhs in
             if lhs.urgency != rhs.urgency {
                 return lhs.urgency == .blocking
@@ -311,11 +314,13 @@ enum InboxBuilder {
         )
     }
 
+    /// 消せる（注意の無い）片付けの候補がある Mac
     private static func cleanupItem(_ mac: Mac) -> InboxItem? {
-        guard !mac.cleanupCandidates.isEmpty else {
+        let removable = mac.cleanupCandidates.filter { $0.caution == nil }
+        guard !removable.isEmpty else {
             return nil
         }
-        let bytes = mac.cleanupCandidates.reduce(Int64(0)) { $0 + $1.bytes }
+        let bytes = removable.reduce(Int64(0)) { $0 + $1.bytes }
         let lastSeen: Date
         switch mac.connection {
         case .online(let date), .offline(let date):
@@ -328,7 +333,7 @@ enum InboxBuilder {
             repositoryID: nil,
             title: "片付けの候補",
             context: mac.name,
-            detail: "\(mac.cleanupCandidates.count) 件 · \(ByteFormat.string(bytes))",
+            detail: "\(removable.count) 件 · \(ByteFormat.string(bytes))",
             since: lastSeen,
             route: .cleanup(mac.id),
             targets: [.cleanup(macID: mac.id)]
@@ -382,7 +387,7 @@ extension InboxItem {
             return epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
 
         case .macOffline, .token, .claudeVersion, .compatibility, .cleanup, .releaseNotes, .releaseProblem, .submissionReady,
-             .submissionDistribution, .submissionProblem, .submissionRejected:
+             .submissionDistribution, .submissionProblem, .submissionRejected, .appStoreSetup:
             return []
         }
     }

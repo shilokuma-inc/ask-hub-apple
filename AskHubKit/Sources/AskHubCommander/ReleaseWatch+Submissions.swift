@@ -4,7 +4,7 @@ import AskHubStateStore
 import Foundation
 
 /// リリースを始めた版の準備（`docs/renewal/release.md` の「リリースを始めてから配信まで」の 2〜5）。
-/// release ブランチ → develop の版を上げる PR → What's New の下書き → release ブランチから上げたビルド、の順に進め、進めるたびに
+/// release ブランチ → develop の版を上げる PR → What's New の下書き → 掲載文の案 → release ブランチから上げたビルド、の順に進め、進めるたびに
 /// `submissions/<版>.json` に書く。ここで行うのは GitHub の操作と App Store Connect の読み取りだけ（書き込みは人の意図を受け付けてから）
 extension ReleaseWatch {
     /// 終わっていない、リリースを始めた版の記録を進め、進めた後の記録を返す
@@ -24,6 +24,15 @@ extension ReleaseWatch {
         for version in versions {
             guard let file = try? await context.readable(SubmissionFile.self, at: StatePath.submission(repo, version)) else { continue }
             guard !file.isEnded else {
+                // やめた版は、まだ審査に出していない App Store Connect の版の枠を消す。消せなかった枠を知らせる間は返す
+                if file.end?.reason == .abandoned {
+                    if file.awaitsSlotRemoval {
+                        advanced.append(await submissionStep(.appStoreVersion, file) { try await self.removeSlots($0, settings: settings) })
+                    } else if file.appStoreVersions?.contains(where: { $0.removal == .kept }) == true {
+                        advanced.append(file)
+                    }
+                    continue
+                }
                 // 配信した版は、release ブランチを main と develop に取り込み、配信の知らせを出し続ける間は返す
                 guard file.end?.reason == .distributed else { continue }
                 let bases = Self.integrationBases(settings)
@@ -40,6 +49,10 @@ extension ReleaseWatch {
     /// 1 つの版の準備を、進められるところまで進める
     func prepare(_ submission: SubmissionFile, settings: RepositoryFile) async -> SubmissionFile {
         var file = submission
+        // App Store Connect の版の枠は、リリースを始めたらすぐ作る（スクショや説明文を先に直せるように）。審査に出した後は、提出の段取りに任せる
+        if file.appStoreVersions != nil, file.submit == nil, !file.hasReviewInFlight, !isHeld(.appStoreVersion, file) {
+            file = await submissionStep(.appStoreVersion, file) { try await self.syncSlots($0, settings: settings) }
+        }
         if file.branch == nil, !isHeld(.branch, file) {
             file = await submissionStep(.branch, file) { try await self.createReleaseBranch($0, settings: settings) }
         }
@@ -59,9 +72,21 @@ extension ReleaseWatch {
         if file.whatsNew == nil, !isHeld(.whatsNew, file) {
             file = await submissionStep(.whatsNew, file) { try await self.draftWhatsNew($0, settings: settings) }
         }
+        // 審査に出した後は、案を作らない（出した中身は submit にある）
+        if file.listing == nil, file.submit == nil, !file.hasReviewInFlight, !isHeld(.listing, file) {
+            file = await submissionStep(.listing, file) { try await self.draftListing($0, settings: settings) }
+        }
+        // スクショは見回りの外で撮る（UI テストは長い）
+        if file.submit == nil, !file.hasReviewInFlight, !isHeld(.screenshots, file) {
+            file = await prepareScreenshots(file, settings: settings)
+        }
         // 審査に出した後は、出したビルドを変えない（出し直すときは取り下げてから）
         if file.submit == nil, !file.hasReviewInFlight, !isHeld(.builds, file) {
             file = await submissionStep(.builds, file) { try await self.findBuilds($0, settings: settings) }
+        }
+        // 見つけたビルドと下書きを、この見回りのうちに枠に入れる
+        if file.appStoreVersions?.isEmpty == false, file.submit == nil, !file.hasReviewInFlight, !isHeld(.appStoreVersion, file) {
+            file = await submissionStep(.appStoreVersion, file) { try await self.syncSlots($0, settings: settings) }
         }
         return file
     }
@@ -94,10 +119,7 @@ extension ReleaseWatch {
         let (store, app) = try await submissionApp(file.repo, settings: settings)
         let versions = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.versions(of: app.id) }
         var file = file
-        // iOS の版を先に見る（掲載文の言語はプラットフォームごとにあるが、ふつうは同じ）
-        let live = versions.filter { $0.state == .readyForDistribution }
-            .sorted { ($0.platform == .iOS ? 0 : 1) < ($1.platform == .iOS ? 0 : 1) }
-        guard let current = live.first else {
+        guard let current = Self.liveVersion(versions) else {
             log("\(file.repo) は App Store に配信中の版が無いので、\(file.version) の What's New は下書きしない（初めての版）")
             file.whatsNew = .init(drafts: [], draftedAt: context.timestamp)
             return file
@@ -110,16 +132,7 @@ extension ReleaseWatch {
         guard let drafter = whatsNew else {
             throw ReleaseStepProblem("What's New を下書きする仕組みが司令塔に無い", needsHuman: true)
         }
-        let changes: ReleaseChanges
-        do {
-            changes = try await sources.changes(file.repo, upTo: branch.commit, below: file.version)
-        } catch {
-            throw ReleaseStepProblem("release ブランチまでの変更を読めない（\(error)）", needsHuman: false)
-        }
-        let commits = Set(changes.changes.map(\.commit))
-        let epics = try await context.epics(of: file.repo) { epic in epic.merge.map { commits.contains($0.commit) } ?? false }
-            .sorted { $0.id < $1.id }
-            .map { ReleaseNotesMaterial.Epic(title: $0.title, summary: $0.summary) }
+        let (changes, epics) = try await changeMaterial(file, upTo: branch.commit)
         let material = WhatsNewMaterial(
             repo: file.repo,
             appName: app.name,
@@ -138,6 +151,84 @@ extension ReleaseWatch {
         log("\(file.repo) の \(file.version) の What's New を下書きした（\(locales.joined(separator: "・"))）")
         file.whatsNew = .init(drafts: drafts, draftedAt: context.timestamp)
         return file
+    }
+
+    // MARK: - 4. 掲載文
+
+    /// 配信中の版の掲載文（説明文・キーワード・プロモーションテキスト）を、変更をもとに言語ごとに直す案を書く。
+    /// 配信中の版が無ければ初めての版なので、編集できる版の今の文（新しいアプリでは空）を元に、アプリの中身から一から書く（2026-11-20 にユーザーが決めた）
+    func draftListing(_ file: SubmissionFile, settings: RepositoryFile) async throws -> SubmissionFile? {
+        guard let branch = file.branch else { return nil }
+        let (store, app) = try await submissionApp(file.repo, settings: settings)
+        let versions = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.versions(of: app.id) }
+        var file = file
+        // 今の文: 配信中の版のもの。初めての版なら、編集できる版（プラットフォームごとの版の枠）のすべてにそろっている欄だけ
+        let live = Self.liveVersion(versions)
+        let sources = live.map { [$0] } ?? Self.editableVersions(versions, of: file)
+        guard let first = sources.first else {
+            // 版の枠を作る記録なら、枠ができるのを待つ。この仕組みの前に始めた記録（枠を作らない）は、人が App Store Connect で版を作る
+            throw ReleaseStepProblem(
+                file.appStoreVersions == nil
+                    ? "初めての版 \(file.version) の編集できる版が App Store Connect に無い。App Store Connect で版を作るか、リリースをやめて始め直す"
+                    : "初めての版の App Store Connect の版がまだ無い（版の枠を作るのを待つ）",
+                needsHuman: file.appStoreVersions == nil
+            )
+        }
+        let current = try await currentListing(sources, firstVersion: live == nil, store: store)
+        guard !current.isEmpty else {
+            throw ReleaseStepProblem("\(live == nil ? "初めての" : "配信中の")版（\(first.versionString)）の掲載文の言語を読めない", needsHuman: true)
+        }
+        guard let drafter = listing else {
+            throw ReleaseStepProblem("掲載文の案を書く仕組みが司令塔に無い", needsHuman: true)
+        }
+        let review = try await reviewDetail(of: live, store: store)
+        let (changes, epics) = try await changeMaterial(file, upTo: branch.commit)
+        let material = ListingMaterial(
+            repo: file.repo,
+            appName: app.name,
+            version: file.version,
+            commit: branch.commit,
+            changes: changes,
+            epics: epics,
+            current: current,
+            review: review?.information,
+            firstVersion: live == nil
+        )
+        let proposal: ListingProposal
+        do {
+            proposal = try await drafter.draft(material)
+        } catch {
+            throw ReleaseStepProblem(error.message, needsHuman: !error.retryable)
+        }
+        let locales = proposal.drafts.map(\.locale)
+        log("\(file.repo) の \(file.version) の掲載文の案を書いた（\(locales.isEmpty ? "変えない" : locales.joined(separator: "・"))）")
+        file.listing = .init(current: current, drafts: proposal.drafts, reason: proposal.reason, draftedAt: context.timestamp)
+        file.appReview = live == nil ? nil : appReview(proposal, current: review)
+        return file
+    }
+
+    /// 配信中の版（iOS を先に見る。掲載文の言語はプラットフォームごとにあるが、ふつうは同じ）。無ければ初めての版
+    static func liveVersion(_ versions: [AppStoreVersionInfo]) -> AppStoreVersionInfo? {
+        versions.filter { $0.state == .readyForDistribution }
+            .min { ($0.platform == .iOS ? 0 : 1) < ($1.platform == .iOS ? 0 : 1) }
+    }
+
+    /// 前に配信した版のタグから release ブランチの先頭までの変更と、その間にマージした epic
+    private func changeMaterial(
+        _ file: SubmissionFile,
+        upTo commit: String
+    ) async throws -> (ReleaseChanges, [ReleaseNotesMaterial.Epic]) {
+        let changes: ReleaseChanges
+        do {
+            changes = try await sources.changes(file.repo, upTo: commit, below: file.version)
+        } catch {
+            throw ReleaseStepProblem("release ブランチまでの変更を読めない（\(error)）", needsHuman: false)
+        }
+        let commits = Set(changes.changes.map(\.commit))
+        let epics = try await context.epics(of: file.repo) { epic in epic.merge.map { commits.contains($0.commit) } ?? false }
+            .sorted { $0.id < $1.id }
+            .map { ReleaseNotesMaterial.Epic(title: $0.title, summary: $0.summary) }
+        return (changes, epics)
     }
 
     // MARK: - 5. ビルド
@@ -217,10 +308,10 @@ extension ReleaseWatch {
         }
     }
 
-    /// 人が直す問題を書いてから、まだ試し直さない区切りか（What's New は Claude を呼ぶので長く空ける）
+    /// 人が直す問題を書いてから、まだ試し直さない区切りか（What's New と掲載文は Claude を呼ぶので長く空ける）
     private func isHeld(_ step: SubmissionFile.Step, _ file: SubmissionFile) -> Bool {
         guard let problem = file.problem, problem.step == step, problem.needsHuman else { return false }
-        let interval: TimeInterval = step == .whatsNew ? 6 * 60 * 60 : 30 * 60
+        let interval: TimeInterval = step == .whatsNew || step == .listing ? 6 * 60 * 60 : 30 * 60
         return context.now().timeIntervalSince(problem.at.date) < interval
     }
 
@@ -245,15 +336,17 @@ extension ReleaseWatch {
         }
     }
 
-    /// 区切りが進めた欄を、今の記録に足して書く（人の意図が同じ記録に書いたものを消さない）。ビルドか What's New が変われば `revision` を上げる
+    /// 区切りが進めた欄を、今の記録に足して書く（人の意図が同じ記録に書いたものを消さない）。ビルド・What's New・掲載文の案が変われば `revision` を上げる
     nonisolated func saveSubmission(_ changed: SubmissionFile, step: SubmissionFile.Step) async throws(CommanderError) -> SubmissionFile {
         let path = StatePath.submission(changed.repo, changed.version)
         let message = "\(changed.repo) の \(changed.version) のリリース（\(step.rawValue)）"
         return try await context.writingResult { () throws(CommanderError) -> SubmissionFile in
             do throws(StateFileStore.Failure) {
                 return try await context.files.update(SubmissionFile.self, at: path, message: message) { file in
-                    // やめた後に進めたものは書かない（配信した後の取り込みのほか）
-                    guard !file.isEnded || (step == .integration && file.end?.reason == .distributed) else { return false }
+                    // やめた後に進めたものは書かない（配信した後の取り込み・やめた版の枠を消すのほか）
+                    let afterEnd = (step == .integration && file.end?.reason == .distributed)
+                        || (step == .appStoreVersion && file.end?.reason == .abandoned)
+                    guard !file.isEnded || afterEnd else { return false }
                     let before = file
                     Self.merge(changed, into: &file, step: step)
                     if file.problem?.step == step { file.problem = nil }
@@ -274,21 +367,56 @@ extension ReleaseWatch {
             if file.branch == nil { file.branch = changed.branch }
         case .nextVersion:
             if file.nextVersion?.state != .merged { file.nextVersion = changed.nextVersion }
-        case .whatsNew:
-            if file.whatsNew == nil, let whatsNew = changed.whatsNew {
-                file.whatsNew = whatsNew
-                file.revision += 1
-            }
-        case .builds:
-            if file.submit == nil, file.builds != changed.builds {
-                file.builds = changed.builds
-                file.revision += 1
-            }
+        case .whatsNew, .listing, .builds:
+            mergePreparation(changed, into: &file, step: step)
         case .submit, .distribute, .withdraw, .review:
             mergeRequests(changed, into: &file, step: step)
-        case .integration:
-            file.integration = changed.integration
+        case .integration, .appStoreVersion:
+            mergeAppStoreSide(changed, into: &file, step: step)
+        case .screenshots:
+            mergeScreenshots(changed, into: &file)
         }
+    }
+
+    /// 人が確かめる準備（What's New の下書き・掲載文の案・ビルド）を写し、変わったら `revision` を上げる。審査に出した後は変えない
+    static func mergePreparation(_ changed: SubmissionFile, into file: inout SubmissionFile, step: SubmissionFile.Step) {
+        switch step {
+        case .whatsNew:
+            guard file.whatsNew == nil, let whatsNew = changed.whatsNew else { return }
+            file.whatsNew = whatsNew
+        case .listing:
+            guard file.listing == nil, file.submit == nil, let listing = changed.listing else { return }
+            file.listing = listing
+            file.appReview = changed.appReview
+        case .builds:
+            guard file.submit == nil, file.builds != changed.builds else { return }
+            file.builds = changed.builds
+        default:
+            return
+        }
+        file.revision += 1
+    }
+
+    /// 配信した後の取り込みと、App Store Connect の版の枠を写す
+    static func mergeAppStoreSide(_ changed: SubmissionFile, into file: inout SubmissionFile, step: SubmissionFile.Step) {
+        if step == .integration {
+            file.integration = changed.integration
+        } else {
+            mergeSlots(changed, into: &file)
+        }
+    }
+
+    /// 枠を写す。今の記録で消した・消さなかった枠は、その結果を残す（枠を入れる見回りと、やめた後の消すが重ならないように）
+    static func mergeSlots(_ changed: SubmissionFile, into file: inout SubmissionFile) {
+        guard var slots = changed.appStoreVersions else { return }
+        for index in slots.indices {
+            guard let current = file.appStoreVersions?.first(where: { $0.platform == slots[index].platform }), current.removal != nil else {
+                continue
+            }
+            slots[index].removal = current.removal
+            slots[index].removalNote = current.removalNote
+        }
+        file.appStoreVersions = slots
     }
 
     /// 人が押した操作を送った結果を写す。記録を読んだ後に、人がほかの操作を押していれば写さない
@@ -325,7 +453,7 @@ extension ReleaseWatch {
         return try await context.writingResult { () throws(CommanderError) -> SubmissionFile in
             do throws(StateFileStore.Failure) {
                 return try await context.files.update(SubmissionFile.self, at: path, message: message) { file in
-                    guard !file.isEnded || problem.step == .integration else { return false }
+                    guard !file.isEnded || problem.step == .integration || problem.step == .appStoreVersion else { return false }
                     // 人が直す問題がほかの区切りに残っていれば、先に書いたほうを残す
                     if let current = file.problem, current.needsHuman, current.step != problem.step { return false }
                     if let current = file.problem, current.step == problem.step, current.needsHuman == problem.needsHuman,

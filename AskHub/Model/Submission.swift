@@ -17,7 +17,13 @@ struct Submission: Identifiable, Hashable {
     var builds: [Build] = []
     /// What's New の下書き。nil ならまだ下書きしていない、空なら初めての版（What's New を持たない）
     var drafts: [Localized]?
-    /// ビルドか What's New の下書きが変わるたびに上がる（審査に出すときに、見たものに結びつける）
+    /// 掲載文（説明文・キーワード・プロモーションテキスト）の案。nil ならまだ書いていない
+    var listing: Listing?
+    /// App Review の情報の案。nil ならまだ書いていない・初めての版
+    var appReview: AppReview?
+    /// App Store のスクショを撮って比べた結果。nil ならまだ撮り始めていない
+    var screenshots: StoreScreenshots?
+    /// ビルド・What's New の下書き・掲載文の案が変わるたびに上がる（審査に出すときに、見たものに結びつける）
     var revision: Int
     /// 審査に出した中身。出していなければ nil
     var submitted: Submitted?
@@ -27,6 +33,8 @@ struct Submission: Identifiable, Hashable {
     var withdrawal: RequestState = .none
     var end: EndReason?
     var problem: Problem?
+    /// App Store Connect の版の枠。nil ならこの仕組みの前に始めた版（枠を作らない）
+    var slots: [Slot]?
     var createdAt: Date
     var updatedAt: Date
     /// 人が What's New とビルドを確かめて「審査に出す」を押すのを待っている
@@ -99,6 +107,12 @@ struct Submission: Identifiable, Hashable {
         var builds: [Build]
         var whatsNew: [Localized]
         var releaseType: ReleaseType
+        /// 人が確かめた掲載文の直し（変える言語・欄だけ）
+        var listing: [ListingTexts] = []
+        /// 人が確かめた App Review の情報の直し。nil なら変えない
+        var appReview: ReviewInfo?
+        /// 人が確かめたスクショのうち、前のままにする画面。nil ならスクショを変えない
+        var screenshotKeep: [ShotKey]?
     }
 
     struct Submitted: Hashable {
@@ -106,6 +120,10 @@ struct Submission: Identifiable, Hashable {
         var whatsNew: [Localized]
         var releaseType: ReleaseType
         var at: Date
+        /// 審査に出した掲載文の直し
+        var listing: [ListingTexts] = []
+        /// 審査に出した App Review の情報の直し
+        var appReview: ReviewInfo?
     }
 
     /// 審査の状態（App Store Connect の版の状態をまとめたもの）
@@ -172,6 +190,9 @@ struct Submission: Identifiable, Hashable {
         case withdraw
         case review
         case integration
+        case appStoreVersion
+        case listing
+        case screenshots
 
         var label: String {
             switch self {
@@ -184,8 +205,20 @@ struct Submission: Identifiable, Hashable {
             case .withdraw: "審査の取り下げ"
             case .review: "審査の状態"
             case .integration: "release ブランチの取り込み"
+            case .appStoreVersion: "App Store Connect の版"
+            case .listing: "掲載文"
+            case .screenshots: "スクショ"
             }
         }
+    }
+
+    /// App Store Connect の版の枠（プラットフォームごと）
+    struct Slot: Hashable {
+        var platform: String
+        /// 枠に選んだビルドの番号
+        var build: String?
+        /// やめたリリースの枠を消せなかった理由。消した・まだなら nil
+        var keptNote: String?
     }
 
     struct Problem: Hashable {
@@ -242,7 +275,11 @@ extension Submission {
     /// 段取りの並び。AskHub で始めた版は release ブランチから、手で出した版は審査から
     var steps: [StepStatus] {
         guard startedInAskHub else { return [reviewStatus, distributionStatus] }
-        return [branchStatus, nextVersionStatus, whatsNewStatus, buildsStatus, reviewStatus, distributionStatus]
+        // 掲載文を扱う前に審査に出した版は、案を作らないので段取りに出さない
+        let listing = listing == nil && submitted != nil ? [] : [listingStatus]
+        let screenshots = self.screenshots == nil && submitted != nil ? [] : [screenshotsStatus]
+        let preparation = [branchStatus, nextVersionStatus, whatsNewStatus] + listing + screenshots + [buildsStatus]
+        return preparation + (slots == nil ? [] : [slotsStatus]) + [reviewStatus, distributionStatus]
     }
 
     /// 一覧の行に出す、今の段取りの一言
@@ -302,6 +339,58 @@ extension Submission {
             ?? StepStatus(id: "whatsNew", title: title, detail: "前の版からの変更をもとに、言語ごとに下書きします", state: .working)
     }
 
+    private var listingStatus: StepStatus {
+        let title = Step.listing.label
+        if let listing {
+            let detail = if listing.current.isEmpty {
+                "初めての版なので、App Store Connect で書きます"
+            } else if listing.drafts.isEmpty {
+                "変えません（\(listing.reason)）"
+            } else {
+                "直す案を書きました（\(listing.drafts.map(\.locale).joined(separator: "・"))）"
+            }
+            return StepStatus(id: "listing", title: title, detail: detail, state: .done)
+        }
+        return problemStatus(.listing, id: "listing", title: title)
+            ?? StepStatus(id: "listing", title: title, detail: "配信中の版の説明文・キーワードをもとに、直す案を書きます", state: .working)
+    }
+
+    private var screenshotsStatus: StepStatus {
+        let title = Step.screenshots.label
+        if let problem = problemStatus(.screenshots, id: "screenshots", title: title) { return problem }
+        guard let screenshots else {
+            return StepStatus(id: "screenshots", title: title, detail: "release ブランチで撮り、前回の App Store のものと比べます", state: .working)
+        }
+        let detail: String
+        switch screenshots.state {
+        case .capturing:
+            return StepStatus(id: "screenshots", title: title, detail: "撮っています（UI テストを表示サイズ・言語ごとに流します）", state: .working)
+        case .captured:
+            let changed = screenshots.changedSets.count
+            detail = changed == 0 ? "前回の App Store から変わっていません" : "\(changed) 組に差があります"
+        case .failed(let reason):
+            detail = "撮れませんでした（\(reason)）。スクショは変えずに出せます"
+        case .notConfigured:
+            detail = "撮り方が設定に無いので撮りません"
+        }
+        return StepStatus(id: "screenshots", title: title, detail: detail, state: .done)
+    }
+
+    private var slotsStatus: StepStatus {
+        let title = Step.appStoreVersion.label
+        if let problem = problemStatus(.appStoreVersion, id: "slots", title: title) { return problem }
+        guard let slots, !slots.isEmpty else {
+            return StepStatus(id: "slots", title: title, detail: "\(version) の版を App Store Connect に作ります", state: .working)
+        }
+        let platforms = slots.map(\.platform).joined(separator: "・")
+        return StepStatus(
+            id: "slots",
+            title: title,
+            detail: "\(platforms) の \(version) を作りました。スクショや説明文は App Store Connect で先に直せます",
+            state: .done
+        )
+    }
+
     private var buildsStatus: StepStatus {
         let title = Step.builds.label
         if let problem = problemStatus(.builds, id: "builds", title: title) { return problem }
@@ -326,7 +415,7 @@ extension Submission {
             return StepStatus(id: "review", title: title, detail: "審査を取り下げています", state: .working)
         }
         if awaitsSubmission {
-            return StepStatus(id: "review", title: title, detail: "What's New とビルドを確かめて、審査に出してください", state: .waitingHuman)
+            return StepStatus(id: "review", title: title, detail: "What's New・掲載文・ビルドを確かめて、審査に出してください", state: .waitingHuman)
         }
         if review.isEmpty {
             return StepStatus(id: "review", title: title, detail: "準備がそろったら、審査に出せます", state: .working)

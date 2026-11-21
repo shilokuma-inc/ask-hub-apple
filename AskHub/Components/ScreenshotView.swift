@@ -4,17 +4,32 @@ import SwiftUI
 /// 判断のカードの Before / After のスクショ
 struct ScreenshotView: View {
     let screenshot: Screenshot?
+    /// 枠で示す所（画像に対する割合。左上が原点）
+    var highlight: CGRect?
 
     var body: some View {
         Group {
             switch screenshot {
             case .stored(let path):
                 // パスが変わったら、前の画像を残さずに読み直す
-                StoredScreenshotImage(path: path)
+                StoredScreenshotImage(path: path, highlight: highlight)
                     .id(path)
 
             case .demo(let screen):
                 DemoScreenView(screen: screen)
+                    .overlay { HighlightFrame(area: highlight) }
+
+            case .remote(let url):
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case let .success(image):
+                        image.resizable().scaledToFit()
+                    case .failure:
+                        ContentUnavailableView("前回のスクショを読めない", systemImage: "exclamationmark.triangle").appFont(.caption)
+                    default:
+                        ProgressView()
+                    }
+                }
 
             case nil:
                 ContentUnavailableView("画面の変化はありません", systemImage: "rectangle.dashed")
@@ -28,6 +43,8 @@ struct ScreenshotView: View {
 /// ワーカーが撮って状態リポジトリに置いたスクショ。読むまでは待ちの表示、読めなければそのわけと読み直すボタンを出す
 struct StoredScreenshotImage: View {
     let path: String
+    /// 枠で示す所（画像に対する割合）
+    var highlight: CGRect?
     @Environment(ClientStore.self) private var store
     @State private var image: CGImage?
     @State private var failure: String?
@@ -40,6 +57,7 @@ struct StoredScreenshotImage: View {
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .scaledToFit()
+                    .overlay { HighlightFrame(area: highlight) }
             } else if let failure {
                 ContentUnavailableView {
                     Label("スクショを読めない", systemImage: "exclamationmark.triangle")
@@ -67,6 +85,24 @@ struct StoredScreenshotImage: View {
 
     static func image(from data: Data) -> CGImage? {
         CGImageSourceCreateWithData(data as CFData, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+    }
+}
+
+/// 画像の上の、変わった所を示す枠（画像に対する割合で置く）
+struct HighlightFrame: View {
+    let area: CGRect?
+
+    var body: some View {
+        if let area {
+            GeometryReader { geometry in
+                Rectangle()
+                    .stroke(Color.red, lineWidth: 2)
+                    .frame(width: max(4, geometry.size.width * area.width), height: max(4, geometry.size.height * area.height))
+                    .offset(x: geometry.size.width * area.minX, y: geometry.size.height * area.minY)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
     }
 }
 

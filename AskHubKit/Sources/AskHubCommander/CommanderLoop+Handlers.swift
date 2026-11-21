@@ -29,10 +29,17 @@ extension CommanderLoop {
         "humanTaskDone": HumanTaskDoneHandler(),
         "verify": VerifyHandler(),
         "publishGitHubRelease": PublishGitHubReleaseHandler(),
+        "updatePromotionalText": UpdatePromotionalTextHandler(),
         "startRelease": StartReleaseHandler(),
         "submitForReview": SubmitForReviewHandler(),
         "distributeRelease": DistributeReleaseHandler(),
         "withdrawSubmission": WithdrawSubmissionHandler(),
-        "abandonRelease": AbandonReleaseHandler()
+        "abandonRelease": AbandonReleaseHandler(),
+        "registerBundleId": RegisterBundleIdHandler(),
+        "applyAppStoreSettings": ApplyAppStoreSettingsHandler(),
+        "confirmAppStoreItem": ConfirmAppStoreItemHandler(),
+        "excludeFromAppStore": ExcludeFromAppStoreHandler(),
+        "findCleanupCandidates": CleanupRequestHandler(),
+        "removeCleanupCandidates": CleanupRequestHandler()
     ]
 }

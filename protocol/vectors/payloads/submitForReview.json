@@ -119,6 +119,121 @@
       "read": "valid"
     },
     {
+      "name": "with-listing",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "listing": [
+          {
+            "locale": "ja",
+            "description": "素数をすばやく見分けるクイズです。",
+            "keywords": "素数,クイズ"
+          },
+          {
+            "locale": "en-US",
+            "promotionalText": ""
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty-listing",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "listing": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "with-app-review",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "appReview": {
+          "notes": "ウィジェットはホーム画面の長押しから足せます。"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "with-screenshots",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "screenshots": {
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "keep": []
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "scheduled-without-date",
       "payload": {
         "builds": [
@@ -475,6 +590,361 @@
           }
         ],
         "releaseType": "afterApproval"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-without-fields",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "listing": [
+          {
+            "locale": "ja"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-duplicate-locale",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "listing": [
+          {
+            "locale": "ja",
+            "keywords": "素数"
+          },
+          {
+            "locale": "ja",
+            "description": "クイズ"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-blank-description",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "listing": [
+          {
+            "locale": "ja",
+            "description": " \n"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-too-long",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "listing": [
+          {
+            "locale": "ja",
+            "promotionalText": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-keywords-over-100-bytes",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "listing": [
+          {
+            "locale": "ja",
+            "keywords": "素数,クイズ,素数,クイズ,素数,クイズ,素数,クイズ,素数,クイズ,素数,クイズ,素数,クイズ,素数,クイズ,素数,クイズ,素数,クイズ,"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-unknown-field",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "listing": [
+          {
+            "locale": "ja",
+            "subtitle": "素数クイズ"
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "listing-null-field",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "listing": [
+          {
+            "locale": "ja",
+            "keywords": null
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-app-review",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "appReview": {}
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "app-review-with-password",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "appReview": {
+          "demoAccountRequired": true,
+          "demoAccountPassword": "secret"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "app-review-name-with-newline",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "appReview": {
+          "demoAccountName": "review\n@example.com"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "screenshots-bad-commit",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "screenshots": {
+          "commit": "abc",
+          "keep": []
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "screenshots-index-out-of-range",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "screenshots": {
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "keep": [
+            {
+              "displayType": "APP_IPHONE_67",
+              "locale": "ja",
+              "index": 11
+            }
+          ]
+        }
       },
       "schemaValid": false,
       "read": "malformed"

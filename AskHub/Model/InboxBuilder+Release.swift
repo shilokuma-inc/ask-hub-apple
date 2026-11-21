@@ -50,7 +50,9 @@ extension InboxBuilder {
     static func submissionItems(_ submission: Submission, snapshot: ClientSnapshot) -> [InboxItem] {
         // 配信した後は、release ブランチの取り込みで人が直す問題だけ出す
         let integrationOnly = submission.end == .distributed
-        guard !submission.isEnded || integrationOnly, submission.sending == nil else { return [] }
+        guard !submission.isEnded || integrationOnly, submission.sending == nil else {
+            return abandonedSlotItems(submission, snapshot: snapshot)
+        }
         let appName = snapshot.repository(submission.repositoryID)?.appName ?? submission.repositoryID
         let context = "\(appName) · \(submission.version)"
         let route = AppRoute.submission(repositoryID: submission.repositoryID, version: submission.version)
@@ -92,6 +94,69 @@ extension InboxBuilder {
         if let problem = submission.problem, problem.needsHuman {
             let title = "リリースを直す: \(problem.step.label)"
             items.append(item(.submissionProblem, "problem", title: title, detail: problem.message, since: problem.at))
+        }
+        return items
+    }
+
+    /// やめたリリースの、App Store Connect から消せなかった版の枠（人が App Store Connect で確かめる）
+    static func abandonedSlotItems(_ submission: Submission, snapshot: ClientSnapshot) -> [InboxItem] {
+        let kept = (submission.slots ?? []).filter { $0.keptNote != nil }
+        guard submission.end == .abandoned, !kept.isEmpty, submission.sending == nil else { return [] }
+        let appName = snapshot.repository(submission.repositoryID)?.appName ?? submission.repositoryID
+        let item = InboxItem(
+            id: "submission/\(submission.id)/slots",
+            urgency: .blocking,
+            kind: .submissionProblem,
+            repositoryID: submission.repositoryID,
+            title: "やめたリリースの版を App Store Connect で確かめる",
+            context: "\(appName) · \(submission.version)",
+            detail: kept.compactMap { slot in slot.keptNote.map { "\(slot.platform): \($0)" } }.joined(separator: "\n"),
+            since: submission.updatedAt,
+            route: .submission(repositoryID: submission.repositoryID, version: submission.version),
+            targets: [.submission(repositoryID: submission.repositoryID, version: submission.version)]
+        )
+        return [item]
+    }
+}
+
+// MARK: - App Store に載せる準備
+
+extension InboxBuilder {
+    /// 準備の人の番（司令塔が通知するものと同じ: アプリを作る・初めての版の残り・書けなかった項目・確かめられない）
+    static func appStoreSetupItems(_ setup: AppStoreSetup, snapshot: ClientSnapshot) -> [InboxItem] {
+        guard setup.isActive, !snapshot.isRemoved(setup.repositoryID) else { return [] }
+        let appName = snapshot.repository(setup.repositoryID)?.appName ?? setup.repositoryID
+        let firstRelease = snapshot.isFirstRelease(of: setup.repositoryID)
+        func item(_ suffix: String, title: String, detail: String, since: Date) -> InboxItem {
+            InboxItem(
+                id: "appStore/\(setup.repositoryID)/\(suffix)",
+                urgency: .blocking,
+                kind: .appStoreSetup,
+                repositoryID: setup.repositoryID,
+                title: title,
+                context: "\(appName) · App Store の準備",
+                detail: detail,
+                since: since,
+                route: .appStoreSetup(setup.repositoryID),
+                targets: [.appStore(setup.repositoryID)]
+            )
+        }
+        var items: [InboxItem] = []
+        let pending = setup.pendingItems(firstRelease: firstRelease)
+        if setup.app == nil, !pending.isEmpty {
+            let detail = "App Store Connect にアプリがありません。チェックリストを見て作ってください（残り \(pending.count)）"
+            items.append(item("app", title: "App Store Connect でアプリを作る", detail: detail, since: setup.updatedAt))
+        } else if firstRelease, !pending.isEmpty {
+            let names = pending.prefix(3).map(\.kind.title).joined(separator: "・") + (pending.count > 3 ? " など" : "")
+            let detail = "初めての版を審査に出すまでに、残り \(pending.count) 個（\(names)）"
+            items.append(item("firstRelease", title: "App Store の準備を終える", detail: detail, since: setup.updatedAt))
+        }
+        if !setup.isWriting, let failure = setup.failures.first {
+            let detail = "\(failure.item.title): \(failure.message)"
+            items.append(item("failed", title: "App Store Connect に書けなかった項目を直す", detail: detail, since: setup.updatedAt))
+        }
+        if let problem = setup.problem, problem.needsHuman {
+            items.append(item("problem", title: "App Store の準備を確かめられません", detail: problem.message, since: setup.updatedAt))
         }
         return items
     }

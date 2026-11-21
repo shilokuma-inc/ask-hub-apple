@@ -21,17 +21,13 @@ Claude Code による開発で、人間の判断が必要なものだけを集�
       <tr>
         <td style="border:2px double #000080;">branch \ workflow</td>
         <td style="border:2px double #000080;">Build</td>
-        <td style="border:2px double #000080;">Archive</td>
         <td style="border:2px double #000080;">Upload</td>
       </tr>
       <tr>
         <td style="border:2px double #000080;text-align:left;">main</td>
         <!-- main ブランチは初回リリースの後作業（docs/renewal/release.md）で作る。
              作成までは実行履歴が無くバッジが「no status」になるため、作成後に次のバッジを戻す:
-          build.yml/badge.svg?branch=main&event=push（Build）、archive.yml/badge.svg?branch=main（Archive）。 -->
-        <td style="border:2px double #000080;text-align:center;">
-          未作成
-        </td>
+          build.yml/badge.svg?branch=main&event=push（Build）。 -->
         <td style="border:2px double #000080;text-align:center;">
           未作成
         </td>
@@ -44,8 +40,6 @@ Claude Code による開発で、人間の判断が必要なものだけを集�
           <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml?query=branch%3Adevelop+event%3Apush">
             <img src="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/build.yml/badge.svg?branch=develop&event=push" alt="Build">
           </a>
-        </td>
-        <td style="border:2px double #000080;text-align:center;">
         </td>
         <td style="border:2px double #000080;text-align:center;">
           <a href="https://github.com/shilokuma-inc/ask-hub-apple/actions/workflows/upload.yml?query=branch%3Adevelop">
@@ -95,23 +89,24 @@ SKU は Bundle ID と同じ値にします。SKU はユーザーには見えな�
 
 ### 4. ブランチ運用と CI
 
-| ブランチ | Build（ビルド + テスト + SwiftLint） | Archive（IPA / pkg の Export） | Upload（App Store Connect。iOS / macOS） |
-|---|:-:|:-:|:-:|
-| `main` | ✅（人の push） | ✅（人の push） | |
-| `develop` | ✅ | | ✅ |
-| `release/**` | ✅ | | ✅ |
-| その他の作業ブランチ | ✅（Unit テストのみ。macOS で実行） | | |
-| Pull Request の作成時（opened / reopened / ready_for_review。AskHub の作業ブランチ `askhub/**` 宛ての子 PR を除く） | ✅ | | |
-| AskHub の最終 PR（`askhub/**` → `develop` など）の更新（synchronize） | ✅ | | |
-| Fork からの Pull Request | ✅ | | |
+| ブランチ | Build（ビルド + テスト + SwiftLint） | Upload（Archive → Export → App Store Connect。iOS / macOS） |
+|---|:-:|:-:|
+| `main` | ✅（人の push） | |
+| `develop` | ✅ | ✅ |
+| `release/**` | ✅ | ✅ |
+| その他の作業ブランチ | ✅（Unit テストのみ。macOS で実行） | |
+| Pull Request の作成時（opened / reopened / ready_for_review。AskHub の作業ブランチ `askhub/**` 宛ての子 PR を除く） | ✅ | |
+| AskHub の最終 PR（`askhub/**` → `develop` など）の更新（synchronize） | ✅ | |
+| Fork からの Pull Request | ✅ | |
 
-- Upload は Archive → Export を含むため、`develop` / `release/**` では Archive を別途実行しません
+- `main` への push では Build だけを実行します。`main` には `develop` / `release/**` で Upload（Archive を含む）を通したものがマージされるためです
+- Archive（Export まで。アップロードはしない）は手動実行だけです。Actions タブの Run workflow から、確かめたいブランチを選んで実行します
 - Archive と Upload は iOS（IPA）と macOS（pkg）を別々のジョブで扱い、macOS が失敗しても iOS は止まりません。macOS のアップロードは App Store Connect のアプリに macOS のプラットフォームを追加するまで飛ばします（失敗にはせず、追加の手順を Job Summary に出します）。詳しくは [docs/release.md](docs/release.md) の「macOS 版のアップロード」を参照してください
 - `main` はリリースだけを受け取るブランチです。App Store での配信は司令塔が見つけて、タグ・GitHub Release・次の版の PR を作ります（GitHub Actions の `GITHUB_TOKEN` で `main`・`develop` に直接 push しません）。流れは [docs/renewal/release.md](docs/renewal/release.md) を参照してください
 - Upload は Actions タブから手動でも実行できます（Run workflow）。最終 PR をマージする前に TestFlight で実機確認したいときは、Actions → Upload → Run workflow で作業ブランチ（最終 PR の head）を選んで実行します。ビルド番号は App Store Connect の最新から自動で増えるため、同じバージョンのままビルド番号だけが増えて TestFlight に並びます。App Store Connect には 24 時間あたりのアップロード上限があるため、作業ブランチの push では自動では上げません
 - リポジトリ変数（Settings → Secrets and variables → Actions → Variables）に `ENABLE_DELIVERY=false` を設定すると Upload をスキップします（Archive は App Store Connect にアプリが無くても通るため止めません）。何もしなければ従来どおり実行されます
 - `ENABLE_MACOS_DELIVERY=false` を設定すると、Upload と Archive の macOS のジョブと、メタデータ・スクリーンショットの macOS のバージョンへの反映をスキップします。何もしなければ macOS のプラットフォームの有無を見て自動で決めます
-- Build・Upload（`develop` / `release/**` への push・手動実行）・Archive（`main` への push）は、ドキュメントだけの変更でも実行します。AskHub のワーカーは子 PR と最終 PR で Build のチェック（`build / build`）を待つため、Build を paths・paths-ignore で絞らないでください（チェックが出ず、ワーカーが待ちきれずに失敗します）
+- Build・Upload（`develop` / `release/**` への push・手動実行）は、ドキュメントだけの変更でも実行します。AskHub のワーカーは子 PR と最終 PR で Build のチェック（`build / build`）を待つため、Build を paths・paths-ignore で絞らないでください（チェックが出ず、ワーカーが待ちきれずに失敗します）
 - 作業ブランチへの push では、Simulator の起動に時間がかかるため iOS はビルドの確認だけにし、UI テスト（`AskHubUITests`）を省いた Unit テストを macOS 上で実行します（アドホック署名・App Sandbox 無効）。UI テストは Pull Request の作成時と `main` / `develop` / `release/**` への push で実行します（AskHub の子 PR は PR のイベントでは動かさず、作業ブランチ `askhub/**` → `develop` の最終 PR で、作成時と更新（synchronize）のたびに UI テストまで確かめます）。Fork からの Pull Request は push で実行されないため、更新（synchronize）を含むすべてのイベントで UI テストまで実行します
 - Xcode のバージョンは [.github/workflows/_build.yml](.github/workflows/_build.yml) と [.github/workflows/_archive.yml](.github/workflows/_archive.yml) の `xcode-version` で固定しています。Environment の更新時はあわせて変更してください
 
@@ -171,7 +166,7 @@ body=$(gh pr view <番号> --json body -q .body) &&
         ├── _build.yml       # 共通処理: ビルド + テスト + SwiftLint（workflow_call）
         ├── _archive.yml     # 共通処理: Archive → Export（→ Upload）。iOS / macOS（workflow_call）
         ├── build.yml        # 全ブランチの push / PR の作成時 / Fork からの PR
-        ├── archive.yml      # main の push
+        ├── archive.yml      # Archive → Export の確認（手動実行）
         ├── upload.yml       # develop / release/** の push・手動実行（workflow_dispatch）
         ├── app-store-metadata.yml         # App Store のメタデータの反映（手動実行）
         └── verify-app-store-metadata.yml  # PR でメタデータを検査

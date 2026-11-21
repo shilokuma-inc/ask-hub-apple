@@ -23,11 +23,13 @@ public struct StartReleaseHandler: IntentHandler {
         // 前の周で作った（やり直し）
         if existing?.start?.approval == start.intent { return .accept }
         if let problem = try await Self.problem(starting: start, existing: existing, in: context) { return .reject(problem) }
+        // App Store Connect の版の枠は、見回りが作る（空の並びは「これから作る」の印）
         let file = SubmissionFile(
             repo: start.repo,
             version: start.version,
             origin: .askhub,
             start: .init(approval: start.intent, at: context.timestamp),
+            appStoreVersions: [],
             createdAt: context.timestamp,
             updatedAt: context.timestamp
         )
@@ -174,7 +176,10 @@ public struct SubmitForReviewHandler: IntentHandler {
             builds: submit.builds,
             whatsNew: submit.whatsNew,
             releaseType: submit.releaseType,
-            earliestReleaseDate: submit.earliestReleaseDate
+            earliestReleaseDate: submit.earliestReleaseDate,
+            listing: submit.listing,
+            appReview: submit.appReview,
+            screenshots: submit.screenshots
         )
         let saved: SubmissionFile
         do {
@@ -195,12 +200,27 @@ public struct SubmitForReviewHandler: IntentHandler {
         return .accept
     }
 
+    /// 人が確かめたスクショが、撮って比べた結果に合わない理由。合えば nil
+    static func problem(screenshots decision: SubmissionFile.ScreenshotDecision, on file: SubmissionFile) -> String? {
+        guard let captured = file.screenshots, captured.state == .captured, captured.commit == decision.commit else {
+            return "スクショの撮影が人の見たものと違う（撮り直した・まだ撮っていない）。見直してから送り直す"
+        }
+        for reference in decision.keep {
+            let shot = captured.sets.first { $0.displayType == reference.displayType && $0.locale == reference.locale }?
+                .shots.first { $0.index == reference.index }
+            guard shot?.changed == true else {
+                return "前のままにするスクショ（\(reference.displayType)/\(reference.locale) の \(reference.index) 枚目）は、差のある画面でない"
+            }
+        }
+        return nil
+    }
+
     /// 受け付けられない理由。受け付けられれば nil
     static func problem(submitting submit: SubmitForReviewIntent, on file: SubmissionFile, now: Date) -> String? {
         if file.isEnded { return "\(file.version) のリリースはもう終わっている" }
         guard file.origin == .askhub else { return "\(file.version) は App Store Connect で手で審査に出した版。AskHub からは出せない" }
         if file.revision != submit.revision {
-            return "\(file.version) の準備（ビルドか What's New）が変わった（今の版は \(file.revision)）。見直してから送り直す"
+            return "\(file.version) の準備（ビルド・What's New・掲載文の案）が変わった（今の版は \(file.revision)）。見直してから送り直す"
         }
         guard file.awaitsSubmission else {
             return file.submit != nil || file.hasReviewInFlight ? "\(file.version) はもう審査に出している" : "\(file.version) の準備がまだそろっていない"
@@ -212,6 +232,12 @@ public struct SubmitForReviewHandler: IntentHandler {
         if Set(submit.whatsNew.map(\.locale)) != drafted {
             return drafted.isEmpty ? "初めての版は What's New を持たない" : "What's New の言語が下書き（\(drafted.sorted().joined(separator: "・"))）と違う"
         }
+        let listed = Set(file.listing?.current.map(\.locale) ?? [])
+        if let locale = submit.listing.map(\.locale).first(where: { !listed.contains($0) }) {
+            return listed.isEmpty ? "初めての版の掲載文は App Store Connect で書く" : "掲載文の言語（\(locale)）が配信中の版に無い"
+        }
+        if submit.appReview != nil, file.appReview == nil { return "App Review の情報の案がまだ無い（初めての版は App Store Connect で書く）" }
+        if let decision = submit.screenshots, let problem = Self.problem(screenshots: decision, on: file) { return problem }
         if let date = submit.earliestReleaseDate, date.date <= now { return "配信の日時が過ぎている" }
         return nil
     }

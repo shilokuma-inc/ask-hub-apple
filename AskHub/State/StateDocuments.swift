@@ -32,7 +32,11 @@ struct StateDocuments {
     var releases: [ReleaseFile] = []
     /// リリースを始めた版の記録（`submissions/<版>.json`）。リポジトリの順、その中は版の小さい順
     var submissions: [SubmissionFile] = []
+    var appStoreSetups: [AppStoreSetupFile] = []  // 新しいアプリを App Store に載せる準備（`app-store.json`）。リポジトリの順
     var macs: [MacFile] = []
+    /// Mac ごとの片付けの候補（ワーカーが書く）と、受け付けた片付けの頼み（司令塔が書く）
+    var cleanupCandidates: [MacName: CleanupCandidatesFile] = [:]
+    var cleanupRequests: [MacName: CleanupRequestsFile] = [:]
     var commander: CommanderFile?
     /// 新しい順
     var sentIntents: [SentIntent] = []
@@ -71,6 +75,7 @@ struct StateReader {
         var epics: [StateDocuments.EpicDocuments] = []
         var releases: [ReleaseFile] = []
         var submissions: [SubmissionFile] = []
+        var appStoreSetup: AppStoreSetupFile?
         var failures: [SourceFailure] = []
     }
 
@@ -85,11 +90,13 @@ struct StateReader {
             documents.epics += part.epics
             documents.releases += part.releases
             documents.submissions += part.submissions
+            part.appStoreSetup.map { documents.appStoreSetups.append($0) }
             documents.failures += part.failures
         }
         let macsPart = try await macs.get()
         documents.macs = macsPart.value
         documents.failures += macsPart.failures
+        await readCleanup(into: &documents)
         let commanderPart = await commander
         documents.commander = commanderPart.value
         documents.failures += commanderPart.failures
@@ -250,16 +257,6 @@ struct StateReader {
 
     // MARK: Mac と送った意図
 
-    private func readMacs() async throws(StateStoreError) -> Part<[MacFile]> {
-        let entries = (try await store.listAll(Self.macsDirectory) ?? []).filter { $0.kind == .file && $0.name.hasSuffix(".json") }
-        var part = Part<[MacFile]>(value: [])
-        for read in await Self.inOrder(entries, { entry in await read(MacFile.self, at: entry.path) }) {
-            read.value.map { part.value.append($0) }
-            part.failures += read.failures
-        }
-        return part
-    }
-
     /// この端末の意図のうち新しいものと、その処理の記録
     private func sentIntents() async throws(StateStoreError) -> Part<[StateDocuments.SentIntent]> {
         async let sentList = Self.capture { () throws(StateStoreError) in
@@ -338,7 +335,7 @@ struct StateReader {
     // MARK: 読み方
 
     /// 読む。読めない（知らない版・形の違い・取得の失敗）ときは、失敗を添えて nil を返す
-    private func read<File: StateFile>(_ type: File.Type, at path: String) async -> Part<File?> {
+    func read<File: StateFile>(_ type: File.Type, at path: String) async -> Part<File?> {
         do {
             return Part(value: try await files.read(type, at: path)?.file)
         } catch {
@@ -452,6 +449,7 @@ extension StateReader {
         async let submissions = readVersioned(SubmissionFile.self, in: StatePath.submissions(repo)) { file, version, path in
             file.repo == repo && file.version == version && path == StatePath.submission(repo, version)
         }
+        async let setup = appStoreSetup(of: repo)
         let fileRead = await file
         var part = RepositoryPart(repository: fileRead.value, failures: fileRead.failures)
         let ids = try await listed.get().compactMap(ULID.init(rawValue:))
@@ -465,6 +463,8 @@ extension StateReader {
         let submissionsRead = await submissions
         part.submissions = submissionsRead.value
         part.failures += submissionsRead.failures
+        let setupRead = await setup
+        (part.appStoreSetup, part.failures) = (setupRead.value, part.failures + setupRead.failures)
         return part
     }
 

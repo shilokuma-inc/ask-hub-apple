@@ -194,34 +194,6 @@ public struct SubmissionFile: StateFile {
         }
     }
 
-    /// 人が「審査に出す」を押した中身（`submitForReview`）。司令塔が App Store Connect に出し終えたら、`review` に `submittedAt` が付く
-    public struct Submit: Codable, Equatable, Sendable {
-        public var approval: IntentReference
-        public var at: Timestamp
-        public var builds: [BuildChoice]
-        /// 人が確かめた What's New（言語ごと）
-        public var whatsNew: [LocalizedText]
-        public var releaseType: AppStoreReleaseType
-        /// `scheduled` のときの配信の日時（これより前には配信しない）
-        public var earliestReleaseDate: Timestamp?
-
-        public init(
-            approval: IntentReference,
-            at: Timestamp,
-            builds: [BuildChoice],
-            whatsNew: [LocalizedText],
-            releaseType: AppStoreReleaseType,
-            earliestReleaseDate: Timestamp? = nil
-        ) {
-            self.approval = approval
-            self.at = at
-            self.builds = builds
-            self.whatsNew = whatsNew
-            self.releaseType = releaseType
-            self.earliestReleaseDate = earliestReleaseDate
-        }
-    }
-
     /// 1 つのプラットフォームの審査の状態（司令塔が App Store Connect で読んだもの）
     public struct Review: Codable, Equatable, Sendable {
         public var platform: AppStorePlatform
@@ -274,37 +246,6 @@ public struct SubmissionFile: StateFile {
         }
     }
 
-    public enum IntegrationState: String, Codable, Sendable, CaseIterable {
-        /// 取り込む PR を開いている（CI を待っている）
-        case open
-        /// PR をマージした
-        case merged
-        /// 取り込むコミットが無かった（release ブランチに直しが入っていない）
-        case skipped
-        /// 取り込む先のブランチ（main）が無かったので、release ブランチの先頭から作った
-        case created
-    }
-
-    /// 配信した後に release ブランチを取り込む先（main と develop）の 1 つ
-    public struct Integration: Codable, Equatable, Sendable {
-        /// 取り込む先のブランチ（`main`・base の `develop`）
-        public var base: String
-        public var state: IntegrationState
-        /// 取り込む PR の番号（`open`・`merged` のときだけ）
-        public var pullRequest: Int?
-        public var at: Timestamp
-
-        public init(base: String, state: IntegrationState, pullRequest: Int? = nil, at: Timestamp) {
-            self.base = base
-            self.state = state
-            self.pullRequest = pullRequest
-            self.at = at
-        }
-
-        /// 終わった（マージした・取り込むものが無かった・作った）
-        public var isDone: Bool { state != .open }
-    }
-
     /// 進めることの区切り
     public enum Step: String, Codable, Sendable, CaseIterable {
         case branch
@@ -316,6 +257,9 @@ public struct SubmissionFile: StateFile {
         case withdraw
         case review
         case integration
+        case appStoreVersion
+        case listing
+        case screenshots
     }
 
     /// 進められなかった理由（進められたら消す）
@@ -344,7 +288,13 @@ public struct SubmissionFile: StateFile {
     public var nextVersion: ReleaseFile.NextVersion?
     public var builds: [Build]
     public var whatsNew: WhatsNew?
-    /// ビルドか What's New の下書きが変わるたびに上げる。審査に出す人の意図の `targetVersion`（人が見たものを出す）
+    /// 掲載文（説明文・キーワード・プロモーションテキスト）の案
+    public var listing: Listing?
+    /// App Review の情報の案（掲載文の案と一緒に書く）。初めての版・App Review の情報を扱う前に書いた案は nil
+    public var appReview: AppReview?
+    /// App Store のスクショを撮って比べた結果。まだ撮り始めていなければ nil
+    public var screenshots: StoreScreenshots?
+    /// ビルド・What's New の下書き・掲載文の案が変わるたびに上げる。審査に出す人の意図の `targetVersion`（人が見たものを出す）
     public var revision: Int
     public var submit: Submit?
     public var review: [Review]
@@ -353,6 +303,8 @@ public struct SubmissionFile: StateFile {
     public var end: End?
     /// 配信した後に release ブランチを取り込んだ様子（main と develop）。release ブランチを作った版だけ
     public var integration: [Integration]?
+    /// App Store Connect の版の枠。nil なら枠を作らない（この仕組みの前に始めた記録）。リリースを始めたときに空の並びで作り、司令塔が埋める
+    public var appStoreVersions: [VersionSlot]?
     public var problem: Problem?
     public var createdAt: Timestamp
     public var updatedAt: Timestamp
@@ -366,6 +318,9 @@ public struct SubmissionFile: StateFile {
         nextVersion: ReleaseFile.NextVersion? = nil,
         builds: [Build] = [],
         whatsNew: WhatsNew? = nil,
+        listing: Listing? = nil,
+        appReview: AppReview? = nil,
+        screenshots: StoreScreenshots? = nil,
         revision: Int = 0,
         submit: Submit? = nil,
         review: [Review] = [],
@@ -373,6 +328,7 @@ public struct SubmissionFile: StateFile {
         withdrawal: Request? = nil,
         end: End? = nil,
         integration: [Integration]? = nil,
+        appStoreVersions: [VersionSlot]? = nil,
         problem: Problem? = nil,
         createdAt: Timestamp,
         updatedAt: Timestamp
@@ -385,6 +341,9 @@ public struct SubmissionFile: StateFile {
         self.nextVersion = nextVersion
         self.builds = builds
         self.whatsNew = whatsNew
+        self.listing = listing
+        self.appReview = appReview
+        self.screenshots = screenshots
         self.revision = revision
         self.submit = submit
         self.review = review
@@ -392,6 +351,7 @@ public struct SubmissionFile: StateFile {
         self.withdrawal = withdrawal
         self.end = end
         self.integration = integration
+        self.appStoreVersions = appStoreVersions
         self.problem = problem
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -402,8 +362,10 @@ public struct SubmissionFile: StateFile {
 
     public var isEnded: Bool { end != nil }
 
-    /// 審査に出す準備（What's New の下書きと、release ブランチから上げたビルド）がそろった
-    public var isPrepared: Bool { origin == .askhub && whatsNew != nil && !builds.isEmpty }
+    /// 審査に出す準備（What's New の下書き・掲載文の案・スクショの撮影と、release ブランチから上げたビルド）がそろった
+    public var isPrepared: Bool {
+        origin == .askhub && whatsNew != nil && listing != nil && screenshots?.state.isSettled == true && !builds.isEmpty
+    }
 
     /// 審査に出してから配信までの間のプラットフォームがある
     public var hasReviewInFlight: Bool { review.contains { $0.state.isInFlight } }
@@ -433,6 +395,11 @@ public struct SubmissionFile: StateFile {
     /// このリリースをやめられる（審査に出していない・取り下げた・断られた）
     public var canAbandon: Bool { !isEnded && !hasReviewInFlight && !isSubmitting }
 
+    /// やめたリリースの、まだ消していない版の枠がある
+    public var awaitsSlotRemoval: Bool {
+        end?.reason == .abandoned && (appStoreVersions ?? []).contains { $0.removal == nil }
+    }
+
     /// 配信した後に、release ブランチを main と develop に取り込むのを待っている（取り込む先がすべて終わるまで見回る）
     public func awaitsIntegration(bases: [String]) -> Bool {
         guard end?.reason == .distributed, branch != nil else { return false }
@@ -445,8 +412,9 @@ public struct SubmissionFile: StateFile {
         case .askhub:
             if start == nil { violations.append("AskHub で始めた記録に start が無い") }
         case .appStoreConnect:
-            if start != nil || branch != nil || nextVersion != nil || !builds.isEmpty || whatsNew != nil || submit != nil {
-                violations.append("手で出した版の記録は、準備の欄（start・branch・nextVersion・builds・whatsNew・submit）を持たない")
+            if start != nil || branch != nil || nextVersion != nil || !builds.isEmpty
+                || whatsNew != nil || listing != nil || appReview != nil || screenshots != nil || submit != nil {
+                violations.append("手で出した版の記録は、準備の欄（start・branch・nextVersion・builds・whatsNew・listing・appReview・screenshots・submit）を持たない")
             }
         }
         if let branch {
@@ -465,6 +433,9 @@ public struct SubmissionFile: StateFile {
         if Set(builds.map(\.platform)).count != builds.count { violations.append("builds のプラットフォームが重複している") }
         if builds.contains(where: { !ReleaseFile.isBuildNumber($0.build) }) { violations.append("builds の build の形が違う") }
         if let whatsNew { violations += LocalizedText.problems(of: whatsNew.drafts, name: "whatsNew の drafts") }
+        if let listing { violations += Listing.problems(of: listing, name: "listing") }
+        if let appReview { violations += AppReview.problems(of: appReview, name: "appReview") }
+        if let screenshots { violations += screenshots.problems }
         if revision < 0 { violations.append("revision は 0 以上") }
         if let submit {
             if submit.builds.isEmpty { violations.append("submit の builds が空") }
@@ -473,6 +444,12 @@ public struct SubmissionFile: StateFile {
                 violations.append("submit の builds の build の形が違う")
             }
             violations += LocalizedText.problems(of: submit.whatsNew, name: "submit の whatsNew")
+            if let changes = submit.listing { violations += ListingText.problems(of: changes, name: "submit の listing") }
+            if let decision = submit.screenshots { violations += decision.problems }
+            if let change = submit.appReview {
+                violations += ReviewInformation.problems(of: change, name: "submit の appReview")
+                if change.isEmpty { violations.append("submit の appReview に変える欄が無い") }
+            }
             if (submit.releaseType == .scheduled) != (submit.earliestReleaseDate != nil) {
                 violations.append("earliestReleaseDate は、配信の方式が scheduled のときだけ持つ")
             }
@@ -487,6 +464,17 @@ public struct SubmissionFile: StateFile {
                 violations.append("integration の PR の番号は、open・merged のときだけ持つ")
             }
             if branch == nil { violations.append("integration は release ブランチを作った版だけ持つ") }
+        }
+        if let slots = appStoreVersions {
+            if origin != .askhub { violations.append("版の枠は AskHub で始めた記録だけ持つ") }
+            if Set(slots.map(\.platform)).count != slots.count { violations.append("appStoreVersions のプラットフォームが重複している") }
+            if slots.contains(where: { !VersionSlot.isID($0.id) }) { violations.append("appStoreVersions の id の形が違う") }
+            if slots.contains(where: { $0.build.map { !ReleaseFile.isBuildNumber($0) } ?? false }) {
+                violations.append("appStoreVersions の build の形が違う")
+            }
+            if slots.contains(where: { ($0.removal == .kept) != ($0.removalNote != nil) }) {
+                violations.append("appStoreVersions の removalNote は、消さなかった（kept）ときだけ持つ")
+            }
         }
         if problem?.message.isEmpty == true { violations.append("problem の message が空") }
         return violations
