@@ -839,3 +839,4 @@
   配置は作った後に変えられず、差し替えは消して作って並べ直す（並べるのは `POST /v1/appAssetLibraryPlacementOrderingRequests`。並び順は `sort=placementGroupPosition` の応答の順だけで分かる）。
   版の組は 10 枚までなので、作る前に余った配置を消す。配置の残る画像は消せない（409 `STATE_ERROR.ASSET_HAS_PLACEMENTS`）。
   古い appScreenshotSets で上げたスクショが配置として読めるかは文書に無い（2026-11-21、#1184）
+- `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations` の言語の並びは、読むたびに変わることがある。読んだ並びのまま記録と比べると、文が同じでも書き直してしまうので、言語の順に並べてから比べる（OshiCon の配信の記録で、並びだけが違う書き直しが続いた。#1180）。

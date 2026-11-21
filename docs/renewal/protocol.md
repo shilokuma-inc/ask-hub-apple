@@ -423,7 +423,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   "githubRelease": null,
   "nextVersion": { "version": "1.2.0", "state": "open", "pullRequest": 170, "at": "…" },
   "problem": null,
-  "promotionalText": { "current": [{ "locale": "ja", "text": "…" }, { "locale": "en-US", "text": "" }], "readAt": "…",
+  "promotionalText": { "current": [{ "locale": "en-US", "text": "" }, { "locale": "ja", "text": "…" }], "readAt": "…",
                        "request": { "approval": { … }, "at": "…", "texts": [{ "locale": "en-US", "text": "…" }], "doneAt": "…" } },
   "detectedAt": "…",
   "updatedAt": "…"
@@ -439,7 +439,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `githubRelease` は公開した GitHub Release（`url`・`created`）。タグを作ってから公開する
 - `nextVersion` は develop の `MARKETING_VERSION` を次の版に上げる PR。`state` は `open`（CI を待っている）・`merged`・`skipped`（develop の版がもう大きかったので上げなかった。`pullRequest` を持たない）。`open`・`merged` の `version` は配信した版より大きい
 - `problem` は後作業を進められなかった理由（`step` は `commit`・`tag`・`notes`・`githubRelease`・`nextVersion`）。進められたら消す。`needsHuman` が true なら、やり直しても進まないので人が直す（クライアントに出す）
-- `promotionalText` は配信中の版のプロモーションテキスト（審査に出さずに変えられる）。`current` は司令塔が配信の見回り（30 分ごと）で App Store Connect から読んだ今の文（言語ごと。空の言語は空の文字列。170 文字まで）で、読んだ文が変わったときだけ `readAt` ごと書き直す。`request` は人が `updatePromotionalText` で直した中身（`texts` は変える言語だけ。空の文字列は空にする）。司令塔が書き終えたら `doneAt`、App Store Connect が断ったら `failure`（どちらかだけ。断られたら、新しく押すまで書き直さない）。直せるのは記録のうち最も新しい版（配信中の版）だけ
+- `promotionalText` は配信中の版のプロモーションテキスト（審査に出さずに変えられる）。`current` は司令塔が配信の見回り（30 分ごと）で App Store Connect から読んだ今の文（言語ごと。言語の順に並べる。空の言語は空の文字列。170 文字まで）で、読んだ文が変わったときだけ `readAt` ごと書き直す（App Store Connect の言語の並びは毎回同じではないので、並びだけの違いでは書き直さない）。`request` は人が `updatePromotionalText` で直した中身（`texts` は変える言語だけ。空の文字列は空にする）。司令塔が書き終えたら `doneAt`、App Store Connect が断ったら `failure`（どちらかだけ。断られたら、新しく押すまで書き直さない）。直せるのは記録のうち最も新しい版（配信中の版）だけ
 - クライアントは、`notes` があって `confirmed` も `githubRelease` も無い版を、人の番として出す（Swift は `ReleaseFile.awaitsNotesReview`）。タグ・GitHub Release・次の版（`merged`・`skipped`）がそろったら終わり（`isFinished`）
 
 ### submissions/<版>.json（リリースを始めた版の準備と審査）
