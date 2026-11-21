@@ -373,6 +373,11 @@ public actor ReleaseWatch {
 }
 
 extension ReleaseWatch {
+    /// 見回り（`wake()` が裏で始めたものも）が終わるのを待つ（テスト）
+    func waitForRefresh() async {
+        while running { try? await Task.sleep(for: .milliseconds(1)) }
+    }
+
     /// 同じ知らせは 1 回だけログに出す
     func report(_ note: String) {
         if reported.insert(note).inserted { log(note) }

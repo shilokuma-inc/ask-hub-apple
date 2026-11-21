@@ -28,12 +28,19 @@ extension ReleaseWatch {
             guard file.screenshots == nil || file.screenshots?.state == .capturing else { return file }
             return await startScreenshotWorkflow(file, workflow: workflow, branch: branch)
         }
-        // 撮り終えた実行は、取り込む（見回りの外の Task。取り込んでいる間と、司令塔が落ちて取り込み直すとき）
-        if run.isCompleted {
-            startScreenshotImport(file, workflow: workflow, settings: settings)
+        if let checked = screenshotRunsCheckedAt[key], context.now().timeIntervalSince(checked) < Self.screenshotRunCheckInterval {
             return file
         }
-        if let checked = screenshotRunsCheckedAt[key], context.now().timeIntervalSince(checked) < Self.screenshotRunCheckInterval {
+        // 撮り終えた実行は、取り込む（見回りの外の Task。司令塔が落ちて取り込み直すときと、取り込みが一時的に失敗してやり直すときは、5 分空ける）。
+        // 一覧から見つけ直した実行も、撮れた（`success`・`failure`）ときだけ取り込む
+        if run.isCompleted {
+            guard ["success", "failure"].contains(run.conclusion) else {
+                let id = run.id.map(String.init) ?? "?"
+                return await submissionStep(.screenshots, file) { file in
+                    Self.failedScreenshots(file, "撮影の実行 \(id) が \(run.conclusion ?? "結論なし") で終わった。撮り直す", at: self.context.timestamp)
+                }
+            }
+            startScreenshotImport(file, workflow: workflow, settings: settings)
             return file
         }
         screenshotRunsCheckedAt[key] = context.now()
@@ -213,11 +220,14 @@ extension ReleaseWatch {
         commit: String
     ) async {
         let key = Self.screenshotKey(file)
+        // 取り込みが決着したときだけ、続きの段取りのために見回りを起こす（一時的な失敗では起こさず、5 分空けてやり直す）
+        var settled = false
         defer {
             capturing.remove(key)
             captureTasks[key] = nil
-            wake()
+            if settled { wake() }
         }
+        screenshotRunsCheckedAt[key] = context.now()
         let result: SubmissionFile.StoreScreenshots
         do {
             guard let capturer = screenshots else {
@@ -242,6 +252,7 @@ extension ReleaseWatch {
             return
         }
         screenshotRunsCheckedAt[key] = nil
+        settled = true
         _ = await submissionStep(.screenshots, file) { file in
             var file = file
             file.screenshots = result
