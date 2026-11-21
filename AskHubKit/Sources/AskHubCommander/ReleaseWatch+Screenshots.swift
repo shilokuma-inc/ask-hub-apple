@@ -11,6 +11,8 @@ extension ReleaseWatch {
         guard let branch = file.branch, file.screenshots?.state.isSettled != true else { return file }
         let key = Self.screenshotKey(file)
         guard !capturing.contains(key) else { return file }
+        // 撮って比べ終え、App Store Connect のライブラリの取り込みを待っている（撮り方によらない）
+        if file.screenshots?.library != nil { return await advanceLibraryUpload(file, settings: settings) }
         let now = context.timestamp
         let storeSettings: StoreScreenshotSettings
         switch settings.build?.storeScreenshots {
@@ -85,10 +87,19 @@ extension ReleaseWatch {
             report("\(file.repo) の \(file.version) のスクショを撮れない（\(error)）。次の見回りでやり直す")
             return
         }
-        _ = await submissionStep(.screenshots, file) { file in
+        let originals = capturer.originals(file.repo, version: file.version, commit: commit)
+        await finishCapture(file, result: awaitingLibrary(result, originals: originals), settings: repository)
+    }
+
+    /// 撮って比べた結果を書く。ライブラリに上げる画像があれば、続けて上げ始める（取り込みは見回りの周で待つ）
+    func finishCapture(_ file: SubmissionFile, result: SubmissionFile.StoreScreenshots, settings: RepositoryFile) async {
+        let saved = await submissionStep(.screenshots, file) { file in
             var file = file
             file.screenshots = result
             return file
+        }
+        if saved.screenshots?.library != nil, saved.screenshots?.state == .capturing {
+            _ = await advanceLibraryUpload(saved, settings: settings, force: true)
         }
     }
 
@@ -111,6 +122,12 @@ extension ReleaseWatch {
             if screenshots.state == .capturing {
                 file.screenshots?.run = screenshots.run ?? current.run
                 if screenshots.run != nil { file.screenshots?.commit = screenshots.commit }
+                // 比べ終えてライブラリの取り込みを待つ間は、比べた組（受け付けられなかった画面の印も）と取り込みの数を写す
+                if let library = screenshots.library {
+                    file.screenshots?.library = library
+                    file.screenshots?.sets = screenshots.sets
+                    file.screenshots?.skipped = screenshots.skipped
+                }
                 return
             }
         }

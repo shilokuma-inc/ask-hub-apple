@@ -253,11 +253,8 @@ extension ReleaseWatch {
         }
         screenshotRunsCheckedAt[key] = nil
         settled = true
-        _ = await submissionStep(.screenshots, file) { file in
-            var file = file
-            file.screenshots = result
-            return file
-        }
+        let originals = screenshots?.originals(file.repo, version: file.version, commit: commit)
+        await finishCapture(file, result: originals.map { awaitingLibrary(result, originals: $0) } ?? result, settings: settings)
     }
 
     /// 撮影のワークフローの入力（反映はしない。撮る表示サイズは `artifacts` の値）
