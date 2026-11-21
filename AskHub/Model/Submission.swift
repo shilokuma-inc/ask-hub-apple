@@ -21,6 +21,8 @@ struct Submission: Identifiable, Hashable {
     var listing: Listing?
     /// App Review の情報の案。nil ならまだ書いていない・初めての版
     var appReview: AppReview?
+    /// App Store のスクショを撮って比べた結果。nil ならまだ撮り始めていない
+    var screenshots: StoreScreenshots?
     /// ビルド・What's New の下書き・掲載文の案が変わるたびに上がる（審査に出すときに、見たものに結びつける）
     var revision: Int
     /// 審査に出した中身。出していなければ nil
@@ -109,6 +111,8 @@ struct Submission: Identifiable, Hashable {
         var listing: [ListingTexts] = []
         /// 人が確かめた App Review の情報の直し。nil なら変えない
         var appReview: ReviewInfo?
+        /// 人が確かめたスクショのうち、前のままにする画面。nil ならスクショを変えない
+        var screenshotKeep: [ShotKey]?
     }
 
     struct Submitted: Hashable {
@@ -188,6 +192,7 @@ struct Submission: Identifiable, Hashable {
         case integration
         case appStoreVersion
         case listing
+        case screenshots
 
         var label: String {
             switch self {
@@ -202,6 +207,7 @@ struct Submission: Identifiable, Hashable {
             case .integration: "release ブランチの取り込み"
             case .appStoreVersion: "App Store Connect の版"
             case .listing: "掲載文"
+            case .screenshots: "スクショ"
             }
         }
     }
@@ -271,7 +277,8 @@ extension Submission {
         guard startedInAskHub else { return [reviewStatus, distributionStatus] }
         // 掲載文を扱う前に審査に出した版は、案を作らないので段取りに出さない
         let listing = listing == nil && submitted != nil ? [] : [listingStatus]
-        let preparation = [branchStatus, nextVersionStatus, whatsNewStatus] + listing + [buildsStatus]
+        let screenshots = self.screenshots == nil && submitted != nil ? [] : [screenshotsStatus]
+        let preparation = [branchStatus, nextVersionStatus, whatsNewStatus] + listing + screenshots + [buildsStatus]
         return preparation + (slots == nil ? [] : [slotsStatus]) + [reviewStatus, distributionStatus]
     }
 
@@ -346,6 +353,27 @@ extension Submission {
         }
         return problemStatus(.listing, id: "listing", title: title)
             ?? StepStatus(id: "listing", title: title, detail: "配信中の版の説明文・キーワードをもとに、直す案を書きます", state: .working)
+    }
+
+    private var screenshotsStatus: StepStatus {
+        let title = Step.screenshots.label
+        if let problem = problemStatus(.screenshots, id: "screenshots", title: title) { return problem }
+        guard let screenshots else {
+            return StepStatus(id: "screenshots", title: title, detail: "release ブランチで撮り、前回の App Store のものと比べます", state: .working)
+        }
+        let detail: String
+        switch screenshots.state {
+        case .capturing:
+            return StepStatus(id: "screenshots", title: title, detail: "撮っています（UI テストを表示サイズ・言語ごとに流します）", state: .working)
+        case .captured:
+            let changed = screenshots.changedSets.count
+            detail = changed == 0 ? "前回の App Store から変わっていません" : "\(changed) 組に差があります"
+        case .failed(let reason):
+            detail = "撮れませんでした（\(reason)）。スクショは変えずに出せます"
+        case .notConfigured:
+            detail = "撮り方が設定に無いので撮りません"
+        }
+        return StepStatus(id: "screenshots", title: title, detail: detail, state: .done)
     }
 
     private var slotsStatus: StepStatus {

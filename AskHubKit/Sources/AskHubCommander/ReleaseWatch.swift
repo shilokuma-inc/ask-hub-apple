@@ -20,6 +20,8 @@ public actor ReleaseWatch {
     nonisolated let whatsNew: (any WhatsNewDrafting)?
     /// 掲載文の案。nil なら案を作れない（準備の問題として出す）
     nonisolated let listing: (any ListingDrafting)?
+    /// App Store のスクショを撮る道具。nil なら撮れない（撮り方のあるリポジトリでは、撮れなかったとして記録する）
+    nonisolated let screenshots: (any StoreScreenshotCapturing)?
     nonisolated let authors: any CommitAuthors
     nonisolated let log: @Sendable (String) -> Void
     /// 1 つのリポジトリの App Store Connect を読む間隔
@@ -32,6 +34,10 @@ public actor ReleaseWatch {
     var bundleIdentifiers: [RepositoryFullName: [String]] = [:]
     /// App Store に載せる準備の初めての版の項目を、最後に確かめたときの版の枠の id（枠が変わったら、待たずに確かめ直す）
     var checkedSlots: [RepositoryFullName: [String]] = [:]
+    /// スクショを撮っている版（`<owner>/<repo>/<版>`）。見回りの外の Task で撮っている間は、撮り始めない
+    var capturing: Set<String> = []
+    /// 撮っている Task（テストで終わりを待つ）
+    var captureTasks: [String: Task<Void, Never>] = [:]
     /// ログに出した知らせ（同じものを見回りのたびに出さない）
     private var reported: Set<String> = []
     private var running = false
@@ -48,6 +54,7 @@ public actor ReleaseWatch {
         drafter: any ReleaseNotesDrafting,
         whatsNew: (any WhatsNewDrafting)? = nil,
         listing: (any ListingDrafting)? = nil,
+        screenshots: (any StoreScreenshotCapturing)? = nil,
         authors: any CommitAuthors,
         log: @escaping @Sendable (String) -> Void,
         detectInterval: Duration = .seconds(30 * 60)
@@ -59,6 +66,7 @@ public actor ReleaseWatch {
         self.drafter = drafter
         self.whatsNew = whatsNew
         self.listing = listing
+        self.screenshots = screenshots
         self.authors = authors
         self.log = log
         self.detectInterval = TimeInterval(detectInterval.components.seconds)

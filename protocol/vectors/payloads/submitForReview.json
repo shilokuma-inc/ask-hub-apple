@@ -206,6 +206,34 @@
       "read": "valid"
     },
     {
+      "name": "with-screenshots",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "screenshots": {
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "keep": []
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "scheduled-without-date",
       "payload": {
         "builds": [
@@ -857,6 +885,68 @@
         }
       },
       "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "screenshots-bad-commit",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "screenshots": {
+          "commit": "abc",
+          "keep": []
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "screenshots-index-out-of-range",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "screenshots": {
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "keep": [
+            {
+              "displayType": "APP_IPHONE_67",
+              "locale": "ja",
+              "index": 11
+            }
+          ]
+        }
+      },
+      "schemaValid": false,
       "read": "malformed"
     }
   ]

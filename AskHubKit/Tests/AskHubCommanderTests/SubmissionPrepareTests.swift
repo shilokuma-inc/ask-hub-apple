@@ -214,7 +214,9 @@ extension ReleaseWatchTests {
         #expect(file.appReview?.draft == ReviewInformation(notes: "ログインは不要です。ウィジェットはホーム画面の長押しから足せます。"))
         #expect(file.appReview?.reason == "ウィジェットの足し方を審査の人に伝える案です")
         // ビルドがまだ無いので、人の番にしない
-        #expect(file.builds.isEmpty && file.revision == 2 && !file.awaitsSubmission)
+        // 撮り方の無いリポジトリはスクショを撮らない
+        #expect(file.screenshots?.state == .notConfigured)
+        #expect(file.builds.isEmpty && file.revision == 3 && !file.awaitsSubmission)
         #expect(await submissionBlockers(watch).isEmpty)
         // App Store Connect には書かない
         #expect(appStore.state.withLock { $0.writes }.isEmpty)
@@ -239,16 +241,16 @@ extension ReleaseWatchTests {
         await watch.refresh()
         let file = try await submission()
         #expect(file.builds.map(\.build) == ["46", "45"])
-        #expect(file.revision == 3 && file.awaitsSubmission)
+        #expect(file.revision == 4 && file.awaitsSubmission)
         let blockers = await submissionBlockers(watch)
         #expect(blockers.map(\.reason) == [.submissionReady])
-        #expect(blockers.first?.key == "submission/shariverse/oshikatsu-countdown-ios/1.2.0/ready/3")
+        #expect(blockers.first?.key == "submission/shariverse/oshikatsu-countdown-ios/1.2.0/ready/4")
         #expect(blockers.first?.scope == .submission(Self.repo, Self.next))
 
         // 同じビルドなら、版を上げない
         clock.advance(minutes: 10)
         await watch.refresh()
-        #expect(try await submission().revision == 3)
+        #expect(try await submission().revision == 4)
     }
 
     @Test func doesNotDraftWhatsNewForTheFirstVersion() async throws {

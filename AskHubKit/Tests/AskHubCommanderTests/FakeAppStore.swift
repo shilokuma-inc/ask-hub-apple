@@ -15,6 +15,10 @@ final class FakeAppStore: AppStoreConnecting {
         var localizations: [String: [AppStoreLocalization]] = [:]
         /// 版の id ごとの App Review の情報
         var reviewDetails: [String: AppStoreReviewDetail] = [:]
+        /// 掲載文の id ごとのスクショの組
+        var screenshotSets: [String: [AppStoreScreenshotSet]] = [:]
+        /// スクショの画像（URL ごと）
+        var images: [URL: Data] = [:]
         var submissions: [AppStoreReviewSubmission] = []
         /// 書き込みの記録（「createVersion 1.4.0」など）
         var writes: [String] = []
@@ -122,6 +126,35 @@ final class FakeAppStore: AppStoreConnecting {
         if let required = information.demoAccountRequired { fields.append("demoAccountRequired=\(required)") }
         if let name = information.demoAccountName { fields.append("demoAccountName=\(name)") }
         try write("writeReviewDetail \(detailID ?? "new:\(versionID)") \(fields.joined(separator: " "))")
+    }
+
+    func screenshotSets(of localizationID: String) async throws(AppStoreConnectError) -> [AppStoreScreenshotSet] {
+        state.withLock { $0.screenshotSets[localizationID] ?? [] }
+    }
+
+    func downloadScreenshot(_ url: URL) async throws(AppStoreConnectError) -> Data {
+        guard let data = state.withLock({ $0.images[url] }) else { throw .refused(status: 404, detail: "画像が無い") }
+        return data
+    }
+
+    func createScreenshotSet(of localizationID: String, displayType: String) async throws(AppStoreConnectError) -> AppStoreScreenshotSet {
+        try write("createScreenshotSet \(localizationID) \(displayType)")
+        let set = AppStoreScreenshotSet(id: "set-\(localizationID)-\(displayType)", displayType: displayType, screenshots: [])
+        state.withLock { $0.screenshotSets[localizationID, default: []].append(set) }
+        return set
+    }
+
+    func uploadScreenshot(to setID: String, fileName: String, data: Data) async throws(AppStoreConnectError) -> String {
+        try write("uploadScreenshot \(setID) \(fileName)")
+        return "new-\(fileName)"
+    }
+
+    func deleteScreenshot(_ id: String) async throws(AppStoreConnectError) {
+        try write("deleteScreenshot \(id)")
+    }
+
+    func orderScreenshots(of setID: String, ids: [String]) async throws(AppStoreConnectError) {
+        try write("orderScreenshots \(setID) \(ids.joined(separator: ","))")
     }
 
     func reviewSubmissions(of appID: String, platform: AppStorePlatform) async throws(AppStoreConnectError) -> [AppStoreReviewSubmission] {

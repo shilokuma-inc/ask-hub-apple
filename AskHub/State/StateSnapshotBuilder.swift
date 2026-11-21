@@ -76,6 +76,9 @@ struct StateIndex {
         var listing: [ListingText] = []
         /// App Review の情報の案がある（直しを送れる）
         var hasAppReview = false
+        /// 撮って比べたスクショ（撮ったコミットと、差のある画面）。撮っていなければ nil
+        var screenshotCommit: String?
+        var changedShots: Set<Submission.ShotKey> = []
         var canSubmit: Bool
         var canDistribute: Bool
         var canWithdraw: Bool

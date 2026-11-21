@@ -138,6 +138,50 @@
           "maxLength": 255
         }
       }
+    },
+    "screenshotDecision": {
+      "type": "object",
+      "required": [
+        "commit",
+        "keep"
+      ],
+      "additionalProperties": false,
+      "description": "人が確かめたスクショ。commit は人が見た撮影のコミット、keep は前の App Store のままにする画面（差のある画面だけ）",
+      "properties": {
+        "commit": {
+          "$ref": "release.schema.json#/$defs/commit"
+        },
+        "keep": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "type": "object",
+            "required": [
+              "displayType",
+              "locale",
+              "index"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{1,59}$",
+                "maxLength": 60
+              },
+              "locale": {
+                "type": "string",
+                "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
+                "maxLength": 21
+              },
+              "index": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10
+              }
+            }
+          }
+        }
+      }
     }
   },
   "properties": {
@@ -319,6 +363,196 @@
         }
       }
     },
+    "screenshots": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "App Store のスクショを撮って比べた結果。state は capturing（撮っている）・captured・failed（failure に理由。スクショを変えずに審査に出せる）・notConfigured（撮り方が無い）。sets は撮った組（表示サイズ × 言語）で、shots の preview は差のある画面の見本（状態リポジトリ）、before は前回の App Store の画像の URL、area は変わった所（割合）、removed は前回の組にあって撮ったものより後ろの位置の数。skipped は App Store Connect にあるが撮らなかった表示サイズ",
+      "required": [
+        "state",
+        "startedAt",
+        "sets",
+        "skipped"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "capturing",
+            "captured",
+            "failed",
+            "notConfigured"
+          ]
+        },
+        "commit": {
+          "anyOf": [
+            {
+              "$ref": "release.schema.json#/$defs/commit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "startedAt": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sets": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "type": "object",
+            "required": [
+              "displayType",
+              "locale",
+              "shots",
+              "removed"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{1,59}$",
+                "maxLength": 60
+              },
+              "locale": {
+                "type": "string",
+                "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$",
+                "maxLength": 21
+              },
+              "shots": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "index",
+                    "name",
+                    "changed"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "name": {
+                      "type": "string",
+                      "maxLength": 300
+                    },
+                    "changed": {
+                      "type": "boolean"
+                    },
+                    "preview": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "pattern": "^repos/[^/]+/[^/]+/store-screenshots/",
+                      "maxLength": 400
+                    },
+                    "before": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "pattern": "^https://",
+                      "maxLength": 2000
+                    },
+                    "area": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "x",
+                            "y",
+                            "width",
+                            "height"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "x": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "y": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "width": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "height": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "removed": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "skipped": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "required": [
+              "displayType",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{1,59}$",
+                "maxLength": 60
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            }
+          }
+        },
+        "failure": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    },
     "revision": {
       "type": "integer",
       "minimum": 0,
@@ -373,6 +607,10 @@
         "appReview": {
           "$ref": "#/$defs/reviewInformation",
           "description": "人が確かめた App Review の情報の直し（無い欄は変えない）。無ければ変えない"
+        },
+        "screenshots": {
+          "$ref": "#/$defs/screenshotDecision",
+          "description": "人が確かめたスクショ。無ければスクショを変えない"
         }
       }
     },
@@ -646,7 +884,8 @@
             "review",
             "integration",
             "appStoreVersion",
-            "listing"
+            "listing",
+            "screenshots"
           ]
         },
         "message": {

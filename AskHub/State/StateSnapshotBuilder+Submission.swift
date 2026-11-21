@@ -60,6 +60,10 @@ extension StateSnapshotBuilder {
             locales: file.whatsNew?.drafts.map(\.locale) ?? [],
             listing: file.listing?.current ?? [],
             hasAppReview: file.appReview != nil,
+            screenshotCommit: file.screenshots?.state == .captured ? file.screenshots?.commit : nil,
+            changedShots: Set((file.screenshots?.sets ?? []).flatMap { set in
+                set.shots.filter(\.changed).map { Submission.ShotKey(displayType: set.displayType, locale: set.locale, index: $0.index) }
+            }),
             canSubmit: file.awaitsSubmission && idle,
             canDistribute: file.awaitsDistribution && idle,
             canWithdraw: file.canWithdraw && idle,
@@ -111,12 +115,41 @@ extension StateSnapshotBuilder {
             )
         }
         submission.slots = file.appStoreVersions.map { $0.map(slot) }
+        submission.screenshots = file.screenshots.map(storeScreenshots)
         submission.awaitsSubmission = file.awaitsSubmission
         submission.awaitsDistribution = file.awaitsDistribution
         submission.canWithdraw = file.canWithdraw
         submission.canAbandon = file.canAbandon
         submission.isSubmitting = file.isSubmitting
         return submission
+    }
+
+    private static func storeScreenshots(_ file: SubmissionFile.StoreScreenshots) -> Submission.StoreScreenshots {
+        let state: Submission.ScreenshotState = switch file.state {
+        case .capturing: .capturing
+        case .captured: .captured
+        case .failed: .failed(file.failure ?? "理由は書かれていません")
+        case .notConfigured: .notConfigured
+        }
+        let sets = file.sets.map { set in
+            Submission.ScreenshotSet(
+                displayType: set.displayType,
+                locale: set.locale,
+                shots: set.shots.map { shot in
+                    Submission.Shot(
+                        index: shot.index,
+                        name: shot.name,
+                        changed: shot.changed,
+                        before: shot.before.flatMap(URL.init(string:)).map(Screenshot.remote),
+                        after: shot.preview.map(Screenshot.stored),
+                        area: shot.area.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
+                    )
+                },
+                removed: set.removed
+            )
+        }
+        let skipped = file.skipped.map { Submission.SkippedDisplayType(displayType: $0.displayType, reason: $0.reason) }
+        return Submission.StoreScreenshots(state: state, commit: file.commit, sets: sets, skipped: skipped)
     }
 
     private static func slot(_ slot: SubmissionFile.VersionSlot) -> Submission.Slot {
