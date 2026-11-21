@@ -135,11 +135,17 @@ extension DemoData {
             .row("鶏もも肉", detail: "600 g", highlighted: false),
             .row("しょうゆ", detail: "大さじ 4", highlighted: false)
         ])
+        // 前回の App Store に無い位置（増えた画面）。Before が無く、「載せない」を選べる
+        let added = DemoScreen(title: "買い物リスト", elements: [
+            .row("鶏もも肉", detail: "600 g", highlighted: false),
+            .row("しょうゆ", detail: "1 本", highlighted: false)
+        ])
         let area = CGRect(x: 0, y: 0.12, width: 1, height: 0.22)
         func set(_ locale: String) -> Submission.ScreenshotSet {
             let shots: [Submission.Shot] = [
                 .init(index: 1, name: "01-レシピ", changed: false, before: .demo(list)),
-                .init(index: 2, name: "02-材料", changed: true, before: .demo(before), after: .demo(after), area: area)
+                .init(index: 2, name: "02-材料", changed: true, before: .demo(before), after: .demo(after), area: area),
+                .init(index: 3, name: "03-買い物リスト", changed: true, after: .demo(added))
             ]
             return Submission.ScreenshotSet(displayType: "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE", locale: locale, shots: shots, removed: 0)
         }
