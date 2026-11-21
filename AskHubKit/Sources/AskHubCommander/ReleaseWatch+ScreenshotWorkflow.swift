@@ -200,16 +200,17 @@ extension ReleaseWatch {
         }
     }
 
-    /// 起動した時刻（1 分の時計のずれを許す）より後に、ブランチで起動した、そのワークフローの実行のうち最も古いもの
+    /// ブランチで起動した、そのワークフローの実行のうち、作られた時刻が起動を送った時刻に最も近いもの（1 分前〜10 分後。時計のずれと、
+    /// 実行が一覧に出るまでの遅れを許す）。最も古いものを選ぶと、起動の直前に人が起動した実行を取り違えるので、送った時刻との近さで選ぶ
     static func dispatchedRun(in runs: [WorkflowRunDetail], workflow: String, branch: String, since: Date) -> WorkflowRunDetail? {
         let path = ".github/workflows/\(workflow)"
         return runs.filter { run in
             // 呼び出されたワークフローなどでは path が <ファイル>@<ref> になる
             let file = run.path.split(separator: "@", maxSplits: 1).first.map(String.init) ?? run.path
-            return run.event == "workflow_dispatch" && file == path && run.headBranch == branch
-                && run.createdAt >= since.addingTimeInterval(-60)
+            let offset = run.createdAt.timeIntervalSince(since)
+            return run.event == "workflow_dispatch" && file == path && run.headBranch == branch && (-60...600).contains(offset)
         }
-        .min { $0.createdAt < $1.createdAt }
+        .min { abs($0.createdAt.timeIntervalSince(since)) < abs($1.createdAt.timeIntervalSince(since)) }
     }
 
     /// 実行の様子を記録の形にする（URL は前に書いたものを残す）

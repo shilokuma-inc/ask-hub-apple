@@ -248,9 +248,10 @@ extension ReleaseWatchTests {
 
         hosting.workflows.withLock { state in
             state.dispatchedRuns = [
-                // ほかのブランチ・起動より前の実行は使わない
+                // ほかのブランチ・ずっと前の実行は使わない。起動の直前に人が起動した実行より、送った時刻に近い実行を選ぶ
                 screenshotRun(id: 44_900_000_099, branch: "release/1.1.0", createdAt: Self.now.addingTimeInterval(10)),
                 screenshotRun(id: 44_900_000_090, createdAt: Self.now.addingTimeInterval(-3_600)),
+                screenshotRun(id: 44_900_000_095, status: "completed", conclusion: "success", createdAt: Self.now.addingTimeInterval(-30)),
                 screenshotRun(id: Self.screenshotRun, status: "queued", createdAt: Self.now.addingTimeInterval(3))
             ]
         }
