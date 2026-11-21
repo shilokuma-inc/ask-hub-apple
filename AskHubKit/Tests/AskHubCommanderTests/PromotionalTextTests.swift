@@ -28,8 +28,8 @@ extension ReleaseWatchTests {
         let watch = watch()
         await watch.refresh()
         let promotionalText = try #require(try await release().promotionalText)
-        // 空の言語は空の文字列で持つ
-        #expect(promotionalText.current == [.init(locale: "ja", text: "推しの予定を数えよう"), .init(locale: "en-US", text: "")])
+        // 言語の順に持つ。空の言語は空の文字列で持つ
+        #expect(promotionalText.current == [.init(locale: "en-US", text: ""), .init(locale: "ja", text: "推しの予定を数えよう")])
         #expect(promotionalText.readAt == Timestamp(Self.now) && promotionalText.request == nil)
 
         // 変わっていなければ書き直さない。変わったら書き直す
@@ -39,7 +39,7 @@ extension ReleaseWatchTests {
         appStore.state.withLock { $0.localizations["live-0"]?[1].listing.promotionalText = "Count down" }
         clock.advance(minutes: 31)
         await watch.refresh()
-        #expect(try await release().promotionalText?.current.last?.text == "Count down")
+        #expect(try await release().promotionalText?.current.first?.text == "Count down")
     }
 
     @Test func writesRequestedPromotionalTextOnce() async throws {
@@ -58,7 +58,7 @@ extension ReleaseWatchTests {
         #expect(Array(writes) == ["updateListing l-en promotionalText=New widgets"])
         let done = try #require(try await release().promotionalText)
         #expect(done.request?.doneAt == Timestamp(Self.now) && done.request?.failure == nil)
-        #expect(done.current.last?.text == "New widgets")
+        #expect(done.current.first { $0.locale == "en-US" }?.text == "New widgets")
         // 書き終えたら、もう一度は書かない
         await watch.refresh()
         #expect(appStore.state.withLock { $0.writes }.count == writesBefore.count + 1)
