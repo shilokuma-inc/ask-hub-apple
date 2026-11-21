@@ -1,0 +1,253 @@
+# App Store のスクショ（Actions で撮り、司令塔で確かめて反映する）
+
+[release.md](release.md) の「スクショ」（#1173・#1181・#1184 で作った作り）を、撮る場所から作り直す設計（#1192）。
+2026-11-21 の全リポジトリのスクショまわりの調査で、撮る場所（GitHub Actions か手元の Mac か）よりも、App Store Connect への反映と、AskHub に入口が無いことが問題だと分かった。
+推奨は「撮影は GitHub ホストの macOS ランナー（各リポジトリの既存のワークフロー）で行い、確かめと反映は AskHub の司令塔にまとめる」で、この文書はその設計。
+
+状態: 2026-11-22 にユーザーが決めた（下の「決めたこと」）。実装は「PR の分け方」の順に進める。
+
+## ねらい
+
+- 人が「リリースを始める」を押したら、あとは「審査に出す」画面で撮れた画像を確かめて承認するだけで、スクショが App Store Connect に反映される
+- 撮影で Mac mini（M2・メモリ 8 GB・ビルドの枠 1）を epic のビルドと取り合わない
+- 初めての版（配信中の版が無い）・iPhone Duo・リリースの途中の撮り直しを扱う
+- 見本の書き込みで、司令塔の書き込みの予算（1 分 20 回・1 時間 200 回）を食わない
+- App Store Connect の取り込みが何時間かかっても、ランナーや見回りを止めない
+
+## 今の作りと詰まる点
+
+2026-11-22 の develop（61bc54be）と、同じ日にマージした #1185（App Asset Library への移行と iPhone Duo。0c338875）を読んで確かめた。
+
+| 詰まる点 | 中身 |
+| --- | --- |
+| 撮り方が合わない | 撮り方は「UI テストの添付（`XCTAttachment`）」だけ。この形の UI テストを持つのは OshiCon だけで、template 系の 16 件は「起動引数の撮影モード」（`-screenshot-demo -screenshot-scene <名前>`）と、それを使う `.github/workflows/app-store-screenshots.yml` を持つ |
+| Mac mini を取り合う | 司令塔がビルドの枠（1）を借りて撮るので、撮っている間は epic のビルドが止まる |
+| 書き込みの予算 | 差のある画面の見本を、1 枚ごとに Contents API で状態リポジトリに書く。2026-11-21 は回答の意図が続いただけで予算が尽き、周が最大 597 秒止まった |
+| 初めての版 | 配信中の版が無いと「前回の App Store のスクショが無い」で `failed`。登録 9 本のうち 6 本がまだ配信前 |
+| 撮り直せない | release ブランチを直しても撮り直さない（リリースをやめて始め直すしかない） |
+| 取り込みを待ち切れない | 審査に出すとき（#1185）に、上げた画像の処理を 1 枚ずつ約 2.5 分待ち、終わらなければ投げてやり直す。やり直しでは、処理中の画像（`UPLOAD_COMPLETE`）を「置けない」とみなして消し、上げ直すので、Apple が混んで 1 枚 20 分を超える日は終わらない |
+| 旧 API の画像 | #1185 は旧 API（appScreenshotSets）を読まず、配信中の版の配置が読めなければ `failed` にする。template 系の反映（`Tools/upload_screenshots.py`）は旧 API で上げているので、配信中のアプリはどれも比べられない恐れがある（下の「旧 API で上げてある画像」） |
+
+確かめて、詰まらないと分かったこと:
+
+- 撮っている間（`capturing`）は、記録の `awaitsSubmission` が false なので、クライアントに「審査に出す」は出ず（`SubmissionDetailView`）、司令塔も `submitForReview` を断る（`SubmissionHandlers`）。「審査に出す準備ができました」も、スクショが決着してから出る（`SubmissionFile.isPrepared`）
+
+## 新しい流れ
+
+| 順 | すること | するのは | 中身 |
+| --- | --- | --- | --- |
+| 1 | リリースを始める | 人（`startRelease`） | 今のまま |
+| 2 | 撮影を起動する | 司令塔 | release ブランチを作ったら、そのリポジトリの撮影のワークフローを、release ブランチで `upload: false` にして `workflow_dispatch` する（`return_run_details: true` で run の id を持つ） |
+| 3 | 撮影を見張る | 司令塔 | 見回りの周で、run の状態を読む（5 分以上空ける） |
+| 4 | 取り込んで比べる | 司令塔 | run が終わったら artifact を落とし、配信中の版のスクショと比べる。初めての版は「すべて新しい」にする。見本は 1 回のコミットで状態リポジトリに書く |
+| 5 | App Asset Library に上げておく | 司令塔 | 差のある画像を、ライブラリに上げておく（配置はしない）。取り込みの完了は見回りの周で待つ（下の「決めたこと」の 2） |
+| 6 | 準備ができた | 司令塔 | スクショが決着したら（取り込みまで終わったか、撮れなかったか）、ほかの準備とそろったところで「審査に出す準備ができました」を出す |
+| 7 | 確かめて審査に出す | 人（`submitForReview`） | 「審査に出す」画面で Before / After（初めての版は After だけ）を確かめ、画面ごとに「前のままにする」を選んで押す。撮り直したいときは「撮り直す」（`retakeScreenshots`） |
+| 8 | 置いて提出する | 司令塔 | 承認した画像の配置を作り、余った配置を消し、並べ直してから提出する（今の #1185 の置き方） |
+
+## 撮り方の設定
+
+`repo.json` の `build.storeScreenshots` に、撮り方の種類 `capture` を足す。
+
+```json
+"storeScreenshots": {
+  "capture": "actions",
+  "workflow": "app-store-screenshots.yml",
+  "baseLocale": "ja",
+  "languages": { "ja": { "language": "ja" }, "en-US": { "language": "en" } },
+  "artifacts": {
+    "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": "APP_IPHONE_67",
+    "<6.3 インチの配置グループ>": "APP_IPHONE_61",
+    "<iPhone Duo の配置グループ>": "APP_IPHONE_DUO",
+    "<iPad 13 インチの配置グループ>": "APP_IPAD_PRO_3GEN_129"
+  }
+}
+```
+
+| `capture` | 撮り方 | 使う欄 |
+| --- | --- | --- |
+| `actions` | リポジトリの撮影のワークフロー（template 系の `app-store-screenshots.yml`）を起動し、artifact を取り込む | `workflow`（`.github/workflows/` の下のファイル名）、`artifacts`（配置グループごとの、artifact の表示サイズの名前。artifact は `screenshots-<表示サイズ>`）、`languages`（App Store Connect の言語ごとの、artifact のフォルダの言語。template の `AppStore/languages.json` の `language`）、`baseLocale` |
+| `uiTest`（省いたとき） | 今の #1173 の作り（常時オンの Mac で UI テストを流し、添付を取り出す）。OshiCon など | 今の欄（`test`・`environment`・`languageVariable`・`regionVariable`・`languages`・`baseLocale`・`displayTypes`） |
+
+- 撮らないリポジトリは、今までどおり `storeScreenshots` を書かない
+- 配置グループの ID は、Apple の文書には 6.9 インチの `IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` しか無く、ほかは参照データ（`GET /v1/appAssetLibraryRefData` の `placementProfileGroups`）にしか無い。司令塔が読むだけの確かめ（下の「確かめ方」）で値を読み、分かった値を LEARNINGS.md とこの文書に書く。配信中の版にあって `artifacts` に無い配置グループは、今までどおり記録の `skipped` に配置グループの値のまま出るので、その値で足せる
+- template 系の 16 件は同じ形なので、`workflow` と `artifacts` は同じ値になる見込み（違うのは `languages` と `baseLocale`）
+
+## 撮影の起動と見張り
+
+### 起動
+
+- release ブランチを作った後のスクショの段取り（`ReleaseWatch.prepareScreenshots`）で、`capture` が `actions` なら起動する
+- 先に記録に撮り始めた印（`screenshots.state` が `capturing`、`commit` は release ブランチの先頭、`run.dispatchedAt`）を書いてから、`POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` を送る
+  - `ref` は `release/<版>`、`inputs` は `upload: false` と `display_types`（`artifacts` の値をカンマでつないだもの）。撮り直しのときは `languages` も送る
+  - `return_run_details: true` を付け、200 の応答の `workflow_run_id`・`html_url` を記録の `run` に書く（2026-02-19 から。[GitHub の告知](https://github.blog/changelog/2026-02-19-workflow-dispatch-api-now-returns-run-ids/)）
+- 送った後に司令塔が落ちて run の id を書けなかったときは、次の周で `GET /repos/{owner}/{repo}/actions/workflows/{workflow}/runs?branch=release/<版>&event=workflow_dispatch` から、`dispatchedAt` より後に作られ、`actor` がトークンのアカウントの run を探して使う。5 分たっても見つからなければ送り直す（二重に送らない）
+- 断られたとき: ワークフローが無い（404。barless-ios・kawarin-apple は今これ）・入力が合わない（422）は、人が直す問題にして `failed` にする（理由に「ワークフローが GitHub に無い」など）。上限（403 / 429）と 5xx は、次の周でやり直す
+- 使うトークンは、司令塔の持ち主ごとのトークン。権限の Actions（読み書き）は、揺らいだ CI の流し直しのためにもう付けてある（[security.md](security.md)）。ワークフローのファイルは書かないので Workflows は要らない
+
+### 見張り
+
+- リリースの見回り（生きている印の 10 分ごとと、人の意図を受け付けたとき）で、`capturing` の記録の run を `GET /repos/{owner}/{repo}/actions/runs/{id}` で読む。前に読んでから 5 分たっていなければ読まない
+- 記録に書くのは、run の状態（`queued` → `in_progress` → `completed`）が変わったときだけ（書き込みの予算のため）
+- 終わった（`completed`）ら、`conclusion` で分ける
+  - `success`・`failure`: 取り込む。`failure` でも、撮れた表示サイズの artifact は残る（template のワークフローは撮影のジョブが失敗しても `if: always()` で artifact を上げる）ので、取り込める表示サイズだけ取り込み、ほかは `skipped` に「撮影のジョブが失敗した」と run の URL を書く
+  - `cancelled`（`concurrency` で後の実行に取り消された・人が取り消した）・`timed_out`: `failed` にして、撮り直せるようにする
+- 起動から 6 時間たっても終わらなければ、run を取り消し（`POST …/runs/{id}/cancel`）、`failed` にする。template のワークフローは表示サイズを 1 本ずつ撮るので、実績は失敗なしで 29〜66 分、各ジョブの上限は 90 分
+
+## 取り込みと比べ方
+
+- `GET /repos/{owner}/{repo}/actions/runs/{id}/artifacts` で一覧を読み、`artifacts` の値ごとに `screenshots-<表示サイズ>` を落とす（`GET …/actions/artifacts/{id}/zip`）
+- 中身は `<言語>/<ファイル名>.png`。ファイル名の順（template は `01_home.png` のように撮る順の番号が付く）を App Store の並び順にし、拡張子を除いた名前を記録の `name` にする
+- 比べ方は今のまま（配信中の版の配置の画像と、AskHub が上げた画像は MD5、ほかは画素で比べる）。ただし Actions は 1 回の実行ですべての言語を撮るので、#1181 の「基準の言語に差が無ければ、文言の変わった言語だけ撮る」は使わず、すべての言語を比べる（`uiTest` は今のまま）
+- 上げる前に、画像の寸法が配置グループの受け付ける寸法かを、参照データで確かめる（`placementTypes` の `specMappings` で配置グループから画像の仕様を引き、`imageSpecs` の `dimensions` と比べる）。合わない組は `skipped` に「寸法 1290x2796 は <配置グループ> に合わない」のように書く（`artifacts` の書き間違いを、上げる前に見つける）
+- 差のある画面の元の画像は、今までどおり常時オンの Mac に置く。落とした zip と、差の無い画像は、比べ終わったら消す
+
+### 初めての版と、新しい表示サイズ
+
+- 配信中の版が無ければ、比べる相手が無いので、撮ったものをすべて新しい画面（`changed: true`、`before` なし）にする。撮る配置グループは `artifacts` のすべて
+- 配信中の版にあって、その配置グループの組が無い（はじめて iPhone Duo を撮るなど）ときも、その組はすべて新しい画面にする
+- 「審査に出す」画面では、新しい画面は After だけを出す。「前のままにする」を選ぶと、その画面は置かない（今の「前回に無い位置を前のままにしたものは置かない」と同じ）
+
+## 見本の書き方
+
+- 1 回の撮影の見本（幅 600 の JPEG）を、Git Data API の 1 回のコミットにまとめる: `POST git/trees`（先頭の tree を元に、見本を足した tree）→ `POST git/commits` → `PATCH git/refs/heads/<ブランチ>`（早送りだけ）
+- tree の項目の `content` は UTF-8 の文字しか持てないので、見本は JPEG を base64 にした文字のファイルにする（パスは `store-screenshots/<版>/<撮ったコミット>/<表示サイズ>/<言語>/<位置>.b64`）。クライアントは読んで base64 を戻す。こうすると、見本が何枚でも、内容を作る要求は 3 回で済む（blob を 1 つずつ作ると、その数だけ要求が増える）
+- 1 回の要求が大きくなりすぎないよう、base64 で 8 MB ごとに tree を分け、前の tree を元に次の tree を作る（1 回増えるごとに要求が 1 回増える）
+- 読んだ後にほかの書き手が書いていて早送りにならなければ、読み直してやり直す（今の `move` と同じ）
+- 撮ったコミットをパスに入れるので、撮り直しても前の見本を上書きしない（クライアントが古い見本を出さない）
+
+## App Asset Library への反映
+
+### 先に上げておく
+
+- 比べ終わったら、差のある画面（初めての版はすべての画面）の元の画像を、アプリのライブラリに上げる（予約 → 送る → `uploaded: true`）。処理は待たない
+  - 参照名は #1185 と同じ `askhub-<ファイルの MD5>`。同じ画像は、言語・組・版をまたいで 1 回だけ上げる
+  - 配置はしない。ライブラリの画像は、配置して審査に出すまで App Store に出ない
+- 見回りの周で、処理を待っている画像の状態を読む（`GET /v1/appAssetLibraryImages/{id}`。前に読んでから 5 分空ける）
+  - `UPLOAD_COMPLETE`: 待つ（消さない。#1185 の「処理中の画像を消して上げ直す」を直す）
+  - `PREPARE_FOR_SUBMISSION` など、置ける状態: 終わり
+  - `FAILED`: その画面に Apple の理由（`stateDetails`）を書き、人は「前のままにする」か撮り直しを選ぶ
+  - `AWAITING_UPLOAD` のまま 1 時間たったもの（予約の後に司令塔が落ちた）: 消して上げ直す
+- すべて終わったら、スクショを決着（`captured`）にする。記録の `capturing` の間に、取り込みの数（`n / m 枚`）を書き、クライアントに出す
+- 取り込みが 3 時間終わらなければ、待っている画面を「取り込めなかった」にしてスクショを決着させる（その画面は前のままにするしかない。撮り直せる）。何時間も止まる日があるので、審査に出す準備をずっと止めない
+
+### 審査に出すとき
+
+- 置き方は今の #1185 のまま（同じ画像の配置は使い回し、余った配置を消してから足りない配置を作り、並べ直す）。画像はもう取り込み済みなので、待たない
+- 承認した画像がライブラリで置ける状態でない（取り込みの後に消されたなど）ときは、上げ直し、待つ間は提出の段取りを「待っている」にして次の周でやり直す（人の問題にしない）
+- 初めての版・新しい組は、配信中の版の画像が無いので、承認した画像だけを置く
+
+### 旧 API で上げてある画像
+
+- Apple の文書（App Asset Library への移行）には、旧 API で上げた画像が配置として読めるか・移されるかが書かれていない。移行の手順は「前に入れていた言語と表示サイズごとに配置を作る」で、上げ直す前提に読める
+- template 系の反映（`Tools/upload_screenshots.py`）は旧 API なので、配信中の template 系のアプリ（prime-pick-ios・idfa-vault-ios など）は、旧 API の画像しか持たない見込み
+- そこで、まず読むだけで確かめる（下の「確かめ方」の 3）。そのうえで、配置として読めなければ次のようにする（決めたことの 3）
+  - 比べる相手: 配置が無い組は、旧 API（`GET /v1/appStoreVersionLocalizations/{id}/appScreenshotSets`）を読んで比べる（読むだけ。非推奨だが、廃止の時期は書かれていない）
+  - 置き換え: 審査に出すとき、編集できる版のその組に旧 API の画像があれば、組ごと App Asset Library に移す。旧 API の組を消し（`DELETE /v1/appScreenshotSets/{id}`）、すべての位置に配置を作る。差の無い位置は撮った画像（比べて同じとみなしたもの）、前のままにした位置は配信中の版の画像（CDN の元の大きさの画像を落として上げる）を置く
+  - 消してから置くまでの間に止まっても、やり直せば同じになる（置きたい並びは、配信中の版と撮ったものだけで決まる）
+
+## 準備完了と撮り直し
+
+### 準備完了
+
+- 今のまま、`isPrepared` はスクショの決着（`captured`・`failed`・`notConfigured`）を待つ。`capturing` は、撮影の実行中・取り込み・ライブラリの処理待ちのすべてを含む
+- クライアントの「スクショ」の節に、今どこか（撮影の待ち・撮影中・取り込み中・ライブラリの処理 `n / m 枚`）と、run へのリンクを出す
+
+### 撮り直す（`retakeScreenshots`）
+
+| `kind` | 対象 | `targetVersion` | `payload` |
+| --- | --- | --- | --- |
+| `retakeScreenshots` | リリースを始めた版（`{ "type": "submission", "id": "<版>" }`） | 人が見たときの準備の版（`revision`） | `displayTypes`（撮り直す配置グループ。省けばすべて）、`locales`（撮り直す App Store Connect の言語。省けばすべて） |
+
+- 受け付けるのは、`origin` が `askhub` で、終わっていない・まだ審査に出していない（`submit` が無く、審査中でない）版だけ
+- 司令塔は、今の release ブランチの先頭で撮り直す。撮っている最中なら、その run を取り消してから起動し直す
+- 一部だけ撮り直したときは、ほかの組は前の結果を引き継ぐ（組ごとに撮ったコミットを持つ。見本と元の画像はそのまま使う）
+- 撮った後に release ブランチが進んだら、クライアントの「スクショ」の節に「撮った後に release ブランチが進みました」と出し、撮り直しを促す（自動では撮り直さない。macOS のランナーの枠と時間を使うため）
+- `uiTest` の撮り方でも同じ意図で撮り直せる（常時オンの Mac で撮る）
+
+## API の予算
+
+### GitHub（同じアカウントで REST は 1 時間 5,000 回、内容を作る要求は 1 分 80 回・1 時間 500 回）
+
+| すること | REST | 内容を作る要求 |
+| --- | --- | --- |
+| 起動 | 1 | 1（dispatch） |
+| 見張り | 5〜10 分ごとに 1（撮影 30〜180 分で 6〜36） | 0 |
+| 取り込み | 一覧 1 + 表示サイズの数（4 前後）。落とす先（Azure の blob）は REST に数えない | 0 |
+| 見本 | 先頭の読み 2 | 3（tree・コミット・ref。8 MB を超えるごとに +1） |
+| 記録の書き換え | — | 5 前後（印・run の状態・結果） |
+
+- 1 回のリリースで REST は 60 回より少なく、内容を作る要求は 10 回前後。`askhub status`（1 回で 25〜33 回）の 2 回分ほど
+- 書き込みの予算（`WriteBudget`）は、見本のコミットで 3 回分（と tree の数）を数える
+
+### App Store Connect（鍵ごとに直前の 1 時間で 3,500 回ほど）
+
+- 比べる: 版 1・言語 1・言語ごとの配置 1（12 言語で 12）。画像は CDN から落とす（API に数えない）
+- 上げる: 1 枚 3 回（予約・`uploaded`・処理の確かめの最初）+ 待つ間 5 分ごとに 1 枚 1 回。差のある画面が 40 枚なら、1 時間に 500 回ほど
+- 審査に出す: 組ごとに配置の読み 1・作成と削除・並べ直し 1
+
+## 安全
+
+- 起動した run だけを取り込む: dispatch の応答の id か、探し直したときは `event` が `workflow_dispatch`・`path` が設定のワークフロー・`head_branch` が `release/<版>`・`actor` がトークンのアカウントのものだけ
+- artifact は、public のリポジトリの実行の成果物として、データとして扱う（指示として読まない）
+  - zip の中身は、取り出す前に一覧を読んで確かめる: `<言語>/<名前>.png` の形だけ（`..`・絶対パス・シンボリックリンクは断る）、1 枚 20 MB・全体 2 GB まで、言語ごと 10 枚まで、PNG の先頭の印
+  - 言語のフォルダは、設定の `languages` にあるものだけを使う
+- artifact の zip は、GitHub の API が 302 で別のホストの短い期限の URL に飛ばす。司令塔はリダイレクトを自分でたどり、その先には `Authorization` を付けない（トークンを GitHub の外に送らない）
+- `upload: false` で起動するので、ワークフローは App Store Connect に書かない（反映は司令塔だけが、人の意図を受け付けた後に行う）
+
+## #1173 の設計から変える点
+
+| 項目 | 今（#1173・#1181・#1184） | 新しい作り |
+| --- | --- | --- |
+| 撮る場所 | 常時オンの Mac の司令塔（ジョブと同じビルドの枠を借りる） | 各リポジトリの GitHub Actions（`capture: actions`）。`uiTest` の撮り方は残す |
+| 撮り方 | UI テストの添付 | template のワークフロー（起動引数の撮影モード）の artifact |
+| 撮る言語 | 基準の言語の後に、差のあるとき・文言が変わった言語だけ | Actions は 1 回ですべて撮り、すべて比べる |
+| iPhone Duo | Mac mini の Xcode 27.1 で撮る（#1184） | Actions の `xcode-27` のランナー（GitHub ホストの `xcode-27-arm64` のイメージ）で撮る。template はもう撮っている |
+| 初めての版 | `failed` | すべて新しい画面として見せ、承認したものを置く |
+| 見本の書き方 | 1 枚ごとに Contents API | 1 回のコミット（base64 の文字のファイル） |
+| 取り込み | 審査に出すときに 1 枚ずつ約 2.5 分待つ。処理中の画像を消して上げ直す | 比べた後に上げておき（人が承認する前。配置はしない）、見回りの周で待つ。処理中の画像は消さない |
+| 旧 API の画像 | 読まない（`failed`） | 配置として読めなければ、旧 API で読んで比べ、置き換えるときに消す |
+| 撮り直し | リリースをやめて始め直す | `retakeScreenshots`（表示サイズ・言語を選べる） |
+| release.md の「Mac mini では司令塔がワーカーを兼ねるので撮影をジョブにしない」 | — | Actions で撮るので、この制約は `uiTest` だけに残る |
+
+## 決めたこと
+
+2026-11-22 にユーザーが決めた（#1193 で確かめた）。
+
+1. **#1185 の扱い**: #1185（App Asset Library への移行と iPhone Duo）を先に仕上げてマージし、その上に積む（同じ日にマージした）。この設計は #1185 の読み・置き方をそのまま使う
+2. **App Asset Library に上げる時期**: 比べ終わったら、差のある画像をライブラリに上げておき（配置はしない）、取り込みが終わってから「準備ができました」を出す。人が押したら、置いてすぐ提出する。Apple が受け付けない画像（寸法違いなど）も、人が確かめる前に分かる。
+   人が承認する前に、公開されないライブラリに画像を書くのは、release.md の「App Store Connect の書き込みは、どれも人の意図を受け付けたときだけ」の例外とし、リリースを始める意図（`startRelease`）で作る版の枠と同じ扱いにする。配置と提出は、今までどおり人が「審査に出す」を押した後だけ
+   - 採らなかった案: 人が承認した画像だけを、審査に出すときに上げる（押してから Apple に出るまで、混む日は数時間かかる）
+3. **旧 API で上げてある画像**: 読むだけの確かめで配置として読めなければ、旧 API を読んで比べ、審査に出すときに旧 API の組を消して App Asset Library に置き直す（上の「旧 API で上げてある画像」）。消すのは人が審査に出したときだけ
+   - 採らなかった案: #1185 のまま `failed` にし、Apple が移すのを待つ
+
+ほかの既定（同じ日にユーザーが承認した）:
+
+- 設定の形は、上の「撮り方の設定」（`capture`・`workflow`・`artifacts` を明示する。リポジトリのファイルから推し量らない）
+- 見張りは、見回りの周（10 分ごと）で 5 分以上空けて 1 回。撮影は 6 時間、取り込みは 3 時間で打ち切る
+- 撮り直しは、表示サイズ・言語を選べる。release ブランチが進んでも自動では撮り直さない
+- 見本は base64 の文字のファイルにし、1 回のコミットで書く
+- App Asset Library に移すのはスクショだけ。クリエイティブアセット（プロダクトページのヘッダー・検索結果の素材）は、読み書きの部品（配置の種類 `placementType`）を分けておくだけにし、流れは作らない
+- 最初は template 系だけを対象にする。ninjacord 系（ninjacord-ios・notti-ios・one-tone-apple）・shariverse 系（deki-roulette-ios・oshikatsu-countdown-ios）・単発（otanecho-ios・lain-tsx-ios）は後回し（ninjacord 系は artifact の形を確かめてから `actions` に、shariverse 系は `uiTest` のまま）
+
+## PR の分け方
+
+それぞれ独立してマージでき、マージしても次の PR まで今の動きを変えない（`capture` を設定したリポジトリが無い間は動かない）。
+
+| PR | 中身 |
+| --- | --- |
+| (0) | この設計の文書（#1192） |
+| (a) | 設定の `capture`・`workflow`・`artifacts`（Swift の型・スキーマ・ベクタ・protocol.md）、ワークフローの起動（`return_run_details`）と見張り、記録の `run`、LEARNINGS.md の `workflow_dispatch` の項の直し |
+| (b) | artifact の取り込み（zip の確かめ・寸法の確かめ）と比べ方（すべての言語・初めての版・新しい組）、見本の 1 回のコミット（`StateStore` に足す）、クライアントの base64 の見本と「新しい」の表示 |
+| (c) | App Asset Library に先に上げて見回りで待つ、審査に出すときは置くだけ、処理中の画像を消さない、旧 API の画像（読むだけの確かめの結果しだい） |
+| (d) | 撮り直しの意図 `retakeScreenshots`（プロトコル・司令塔・クライアント）と、release ブランチが進んだ印 |
+
+文書（release.md・protocol.md）は、各 PR で変えた所を直す。
+
+## 確かめ方
+
+1. ユニットテスト: GitHub と App Store Connect は偽物（今の `FakeAppStore` と、GitHub の転送の偽物）で、起動・見張り・取り込み・比べ・上げる・置くを流す
+2. GitHub の読むだけの確かめ（GET）: 16 件の撮影のワークフローがあるか（`GET …/actions/workflows/app-store-screenshots.yml`）、prime-pick-ios・idfa-vault-ios の過去の撮影の run の artifact を落とし、取り込みの部品（zip の確かめ・並び・名前）に通す（書き込みなし）
+3. App Store Connect の読むだけの確かめ: 鍵は Mac mini の司令塔の Keychain にしか無く、ssh からは読めない。司令塔に「読むだけの確かめ」（参照データの配置グループ・寸法、配信中の版の配置と旧 API の組）をログに出す道具を足し、ユーザーの承認を得て司令塔を更新してから流す。prime-pick-ios・idfa-vault-ios を対象にする
+4. ワークフローの起動を伴う確かめ（ユーザーの承認のうえ）: release ブランチが無いので、`allow_non_release: true`・`upload: false` で develop を撮る。司令塔の起動・見張り・取り込みの部品を、手元から本物の GitHub に向けて 1 回だけ呼ぶ（その場かぎりの確かめで、コードには残さない）。あわせて `return_run_details` の応答を確かめる
+5. 通しの確かめ（ユーザーの承認のうえ）: template 系の 1 リポジトリで「リリースを始める → Actions で撮影 → 審査に出す画面で確認 → 承認したものを App Asset Library に反映」を通す。実際に反映して審査に出すかは、そのときにユーザーに確かめる
