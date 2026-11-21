@@ -370,4 +370,28 @@ extension ReleaseWatchTests {
         #expect(file.problem?.step == .submit && file.problem?.needsHuman == true)
         #expect(file.problem?.message.contains("撮って比べた後に変わった") == true)
     }
+
+    @Test func checksEverySetBeforeWritingAny() async throws {
+        let (_, capturer) = try await readyToSubmitScreenshots()
+        // 日本語の組（書く必要がある）の後に、英語の組（1 枚目を前のままにする）がある
+        var file = try await submission()
+        let before = Self.liveImage(1).absoluteString
+        let preview = StatePath.storeScreenshot(Self.repo, Self.next, displayType: Self.iPhone, locale: "en-US", index: 1)
+        file.screenshots?.sets.append(.init(
+            displayType: Self.iPhone, locale: "en-US", shots: [.init(index: 1, name: "01", changed: true, preview: preview, before: before)]
+        ))
+        file.submit?.screenshots?.keep.append(.init(displayType: Self.iPhone, locale: "en-US", index: 1))
+        try await putSubmission(file)
+        appStore.state.withLock { state in
+            // 英語の組の配信中の 1 枚目だけが、撮って比べた後に別の画像になった
+            let changed = AppStoreScreenshot(
+                id: "l-en-new", imageID: "i9", checksum: nil, imageURL: URL(string: "https://is1-ssl.mzstatic.com/i9/1320x2868bb.png")
+            )
+            state.screenshotSets["l-en"] = [AppStoreScreenshotSet(displayType: Self.iPhone, screenshots: [changed])]
+        }
+        await watch(screenshots: capturer).refresh()
+        // 後の組で止まるので、先の日本語の組も書かない
+        #expect(screenshotWrites().isEmpty)
+        #expect(try await submission().problem?.message.contains("en-US の 1 枚目") == true)
+    }
 }

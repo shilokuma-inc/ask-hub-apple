@@ -22,7 +22,9 @@ extension AppStoreSubmission {
         let library = try await call { () throws(AppStoreConnectError) in try await store.assetLibrary(of: app.id) }
         let liveLocalizations = try await call { () throws(AppStoreConnectError) in try await store.localizations(of: live.id) }
         let localizations = try await call { () throws(AppStoreConnectError) in try await store.localizations(of: target.id) }
+        // 書く前にすべての組を確かめる（後の組で止まって、先の組だけ書き換わることが無いように）
         var liveSets: [String: [AppStoreScreenshotSet]] = [:]
+        var plans: [Plan] = []
         for set in sets {
             let changed = set.shots.filter(\.changed).map(\.index)
             // 差のある画面をすべて前のままにした組も、配信中の版の画像にそろえる（編集できる版が配信中の版と違うことがある）
@@ -34,44 +36,73 @@ extension AppStoreSubmission {
             if liveSets[set.locale] == nil, let source = liveLocalizations.first(where: { $0.locale == set.locale }) {
                 liveSets[set.locale] = try await call { () throws(AppStoreConnectError) in try await store.screenshotSets(of: source.id) }
             }
-            let before = liveSets[set.locale]?.first { $0.displayType == set.displayType }?.screenshots ?? []
-            let images = try await images(of: set, accepted: accepted, before: before, library: library, originals: originals)
-            try await place(images, displayType: set.displayType, on: localization)
+            let plan = Plan(
+                set: set,
+                accepted: accepted,
+                before: liveSets[set.locale]?.first { $0.displayType == set.displayType }?.screenshots ?? [],
+                localization: localization
+            )
+            try plan.check(originals: originals)
+            plans.append(plan)
+        }
+        for plan in plans {
+            let images = try await images(of: plan, library: library, originals: originals)
+            try await place(images, displayType: plan.set.displayType, on: plan.localization)
+        }
+    }
+
+    /// 1 つの組の書き方
+    struct Plan {
+        var set: SubmissionFile.ScreenshotSet
+        /// 撮った元の画像に替える位置（確かめた差のある画面）
+        var accepted: Set<Int>
+        /// 配信中の版の組（人が Before で見たもの）
+        var before: [AppStoreScreenshot]
+        /// 書く先の版の言語
+        var localization: AppStoreLocalization
+
+        /// 書けるかを確かめる。前のままにする位置の配信中の版の画像が、撮って比べたとき（人が Before で見たもの）から変わっていれば止める。
+        /// 撮った元の画像が常時オンの Mac に無ければ止める
+        func check(originals: URL) throws {
+            for shot in set.shots {
+                let target = StoreScreenshotTarget(displayType: set.displayType, locale: set.locale)
+                if accepted.contains(shot.index) {
+                    let original = StoreScreenshotRun.original(in: originals, target: target, index: shot.index)
+                    guard FileManager.default.fileExists(atPath: original.path) else {
+                        throw ReleaseStepProblem(
+                            "撮った元の画像（\(target.key) の \(shot.index) 枚目）が常時オンの Mac に無い。リリースをやめて始め直すと撮り直す", needsHuman: true
+                        )
+                    }
+                } else {
+                    let live = shot.index <= before.count ? before[shot.index - 1] : nil
+                    guard live?.imageURL?.absoluteString == shot.before else {
+                        throw ReleaseStepProblem(
+                            "配信中の版のスクショ（\(target.key) の \(shot.index) 枚目）が、撮って比べた後に変わった。リリースをやめて始め直すと撮り直す",
+                            needsHuman: true
+                        )
+                    }
+                }
+            }
         }
     }
 
     /// 組の位置ごとに置きたい画像の id。前のままにした位置は配信中の版の画像、確かめた差のある画面は撮った元の画像（ライブラリに無ければ上げる）。
-    /// 前回に無い位置を前のままにしたものは置かない。撮って比べた後に配信中の版の画像が変わっていれば（人が Before で見たものと違えば）、置かずに止める
-    private func images(
-        of set: SubmissionFile.ScreenshotSet,
-        accepted: Set<Int>,
-        before: [AppStoreScreenshot],
-        library: String,
-        originals: URL
-    ) async throws -> [String] {
-        // 上げる前に、前のままにする位置がどれも人が Before で見た画像のままかを確かめる
-        for shot in set.shots where !accepted.contains(shot.index) {
-            let live = shot.index <= before.count ? before[shot.index - 1] : nil
-            guard live?.imageURL?.absoluteString == shot.before else {
-                throw ReleaseStepProblem(
-                    "配信中の版のスクショ（\(set.displayType)/\(set.locale) の \(shot.index) 枚目）が、撮って比べた後に変わった。リリースをやめて始め直すと撮り直す",
-                    needsHuman: true
-                )
-            }
-        }
+    /// 前回に無い位置を前のままにしたものは置かない
+    private func images(of plan: Plan, library: String, originals: URL) async throws -> [String] {
+        let set = plan.set
         var images: [String] = []
         for shot in set.shots {
-            if accepted.contains(shot.index) {
+            if plan.accepted.contains(shot.index) {
                 let target = StoreScreenshotTarget(displayType: set.displayType, locale: set.locale)
                 guard let data = try? Data(contentsOf: StoreScreenshotRun.original(in: originals, target: target, index: shot.index)) else {
                     throw ReleaseStepProblem(
-                        "撮った元の画像（\(target.key) の \(shot.index) 枚目）が常時オンの Mac に無い。リリースをやめて始め直すと撮り直す", needsHuman: true
+                        "撮った元の画像（\(target.key) の \(shot.index) 枚目）を常時オンの Mac で読めない。リリースをやめて始め直すと撮り直す", needsHuman: true
                     )
                 }
                 let fileName = "\(set.displayType)-\(set.locale)-\(shot.index).png"
                 images.append(try await libraryImage(data, fileName: fileName, library: library))
-            } else if shot.index <= before.count {
-                images.append(before[shot.index - 1].imageID)
+            } else if shot.index <= plan.before.count {
+                images.append(plan.before[shot.index - 1].imageID)
             }
         }
         return images
