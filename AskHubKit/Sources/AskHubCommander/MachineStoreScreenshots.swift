@@ -44,8 +44,12 @@ public struct MachineStoreScreenshots: StoreScreenshotCapturing {
         do {
             for type in types {
                 let targets = request.targets.filter { $0.displayType == type }
-                guard let simulator = await simulator(for: request.settings.displayTypes[type] ?? [], slot: slot) else {
-                    for target in targets { results[target] = .failure(CaptureFailure("\(type) の機種の Simulator を用意できない")) }
+                let simulator: Simulator
+                switch await prepareSimulator(for: request.settings.displayTypes[type] ?? [], slot: slot) {
+                case let .success(prepared):
+                    simulator = prepared
+                case let .failure(failure):
+                    for target in targets { results[target] = .failure(failure) }
                     continue
                 }
                 if !built {
@@ -57,18 +61,7 @@ public struct MachineStoreScreenshots: StoreScreenshotCapturing {
                     }
                     built = true
                 }
-                for target in targets {
-                    let run = StoreScreenshotCapturer.Run(
-                        settings: request.build,
-                        test: request.settings.test,
-                        environment: Self.environment(request.settings, locale: target.locale),
-                        sourceDirectory: request.directory,
-                        derivedData: derivedData,
-                        output: base.appendingPathComponent("runs/\(request.commit)/\(target.key)", isDirectory: true)
-                    )
-                    results[target] = try await capturer.run(run, on: simulator)
-                    log("\(request.repo) の \(request.version) のスクショ（\(target.displayType)/\(target.locale)）を撮った")
-                }
+                results.merge(try await run(targets, of: request, with: capturer, on: simulator)) { $1 }
             }
         } catch {
             for target in request.targets where results[target] == nil { results[target] = .failure(CaptureFailure("取り消された")) }
@@ -76,16 +69,45 @@ public struct MachineStoreScreenshots: StoreScreenshotCapturing {
         return results
     }
 
-    /// 機種の候補から、用意できた最初の Simulator
-    private func simulator(for devices: [String], slot: Int) async -> Simulator? {
+    /// 1 つの表示サイズの Simulator で、言語ごとに UI テストを流す
+    private func run(
+        _ targets: [StoreScreenshotTarget],
+        of request: StoreScreenshotCaptureRequest,
+        with capturer: StoreScreenshotCapturer,
+        on simulator: Simulator
+    ) async throws(CancellationError) -> StoreScreenshotResults {
+        let base = directory(request.repo, request.version)
+        let derivedData = base.appendingPathComponent("DerivedData", isDirectory: true)
+        var results: StoreScreenshotResults = [:]
+        for target in targets {
+            let run = StoreScreenshotCapturer.Run(
+                settings: request.build,
+                test: request.settings.test,
+                environment: Self.environment(request.settings, locale: target.locale),
+                sourceDirectory: request.directory,
+                derivedData: derivedData,
+                output: base.appendingPathComponent("runs/\(request.commit)/\(target.key)", isDirectory: true)
+            )
+            results[target] = try await capturer.run(run, on: simulator)
+            log("\(request.repo) の \(request.version) のスクショ（\(target.displayType)/\(target.locale)）を撮った")
+        }
+        return results
+    }
+
+    /// 機種の候補から、用意できた最初の Simulator。どれも用意できなければ、最後の候補の理由
+    /// （新しい機種は、対応するランタイムと Xcode が要る。iPhone Duo は iOS 27.1 と Xcode 27.1 以上）
+    private func prepareSimulator(for devices: [String], slot: Int) async -> Result<Simulator, CaptureFailure> {
+        var reason = "機種の候補が無い"
         for device in devices {
             do {
-                return try await pool.prepare(slot: slot, for: SimulatorDestination(platform: .iOS, deviceType: device), restarting: true)
+                let destination = SimulatorDestination(platform: .iOS, deviceType: device)
+                return .success(try await pool.prepare(slot: slot, for: destination, restarting: true))
             } catch {
                 log("スクショの Simulator（\(device)）を用意できない（\(error.message)）")
+                reason = "\(device): \(error.message)"
             }
         }
-        return nil
+        return .failure(CaptureFailure("Simulator を用意できない（\(reason)）"))
     }
 
     /// 組のテストに渡す環境変数（決まった値と、言語・地域）

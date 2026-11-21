@@ -515,6 +515,9 @@
   使っていない Simulator を日数で見分けるときは `lastUsedAt` を使い、無いものは日数では決めない（書かない版の Xcode もあり得る）（2026-11-18、枠の Simulator の見回り）
 - CI の SwiftLint は `lint --strict` なので、行の長さ（140 字）・型の本体の長さ（300 行）・入れ子の型（2 段）・`String(decoding:as:)` も error になる。
   テストの struct が 300 行を超えたら、足したテストを同じファイルの `extension` に移す（`private` の補助はそのまま使える）。PR の前に手元の DerivedData の `swiftlint` で `lint --strict` を流す（2026-11-18）
+- swiftlint が PATH に無い Mac でも、アプリをビルドしたことがあれば、SwiftLintPlugins が取った実行ファイル
+  （DerivedData の `AskHub-*/SourcePackages/artifacts/swiftlintplugins/SwiftLintBinary/SwiftLintBinary.artifactbundle/macos/swiftlint`）で
+  `DEVELOPER_DIR=<Xcode.app>/Contents/Developer <そのパス> lint --strict` を流せる（2026-11-21、#1184）
 
 ## Keychain
 
@@ -834,4 +837,11 @@
   名前は `01-ホーム_0_<UUID>.png` のように番号と UUID が足される。並びは `timestamp` で決める。テストに環境変数を渡すには、xcodebuild に `TEST_RUNNER_<名前>=<値>` を付ける（2026-11-20、#1167）
 - App Store Connect の API の応答の関係（`relationships.<名前>.data`）は、`include` でその関係を求めたときだけ相手の id が入り、求めないと `links` だけになる。
   `GET /v1/apps/{id}/appInfos` の `primaryCategory` を `include` しないと、カテゴリを決めてあっても無いと読む（2026-11-20、#1168。反映後に deki-roulette のカテゴリが「まだ」になって分かった）
+- App Asset Library（API 4.5.1）の表示サイズは、`screenshotDisplayType` の代わりの「配置グループ」（`placementGroup`。列挙でなく文字列）で、
+  一覧は `GET /v1/appAssetLibraryRefData` の `placementProfileGroups`（`placementProfileGroupId`・`platform`・`displayClassId`）にしか無い。
+  文書の例は 6.9 インチの `IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE`（表示クラス `IPHONE_DYNAMIC_ISLAND_LARGE_DISPLAY`）・`MAC_PROFILE` だけで、iPhone Duo は表示クラス `IPHONE_DUO`。
+  画像の終わりの知らせ（`PATCH /v1/appAssetLibraryImages/{id}`）は `uploaded: true` だけで `sourceFileChecksum` が無く、応答にも MD5 が無い（AskHub は参照名 `askhub-<MD5>` に入れる）。
+  配置は作った後に変えられず、差し替えは消して作って並べ直す（並べるのは `POST /v1/appAssetLibraryPlacementOrderingRequests`。並び順は `sort=placementGroupPosition` の応答の順だけで分かる）。
+  版の組は 10 枚までなので、作る前に余った配置を消す。配置の残る画像は消せない（409 `STATE_ERROR.ASSET_HAS_PLACEMENTS`）。
+  古い appScreenshotSets で上げたスクショが配置として読めるかは文書に無い（2026-11-21、#1184）
 - `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations` の言語の並びは、読むたびに変わることがある。読んだ並びのまま記録と比べると、文が同じでも書き直してしまうので、言語の順に並べてから比べる（OshiCon の配信の記録で、並びだけが違う書き直しが続いた。#1180）。

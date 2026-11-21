@@ -148,7 +148,7 @@
         },
         "displayTypes": {
           "type": "object",
-          "description": "App Store Connect の表示サイズ（APP_IPHONE_67 など）ごとの、撮る Simulator の機種（上から順に、ある機種を使う）",
+          "description": "App Store Connect の表示サイズ（App Asset Library の配置グループ。IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE など）ごとの、撮る Simulator の機種（上から順に、ある機種を使う）",
           "additionalProperties": {
             "type": "array",
             "minItems": 1,

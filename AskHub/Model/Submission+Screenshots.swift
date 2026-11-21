@@ -55,15 +55,17 @@ extension Submission {
             "\(Self.displayName(displayType))・\(Localized(locale: locale, text: "").localeName)"
         }
 
-        /// App Store Connect の表示サイズの呼び名
+        /// App Store Connect の表示サイズ（App Asset Library の配置グループ）の呼び名。知らないものは配置グループのまま出す。
+        /// 配置グループの名前は Apple のリファレンスデータで決まり、文書にあるのは 6.9 インチ（`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE`）だけなので、
+        /// 頭の表示クラス（`AppAssetLibraryDisplayClass`）の名前で当てる
         static func displayName(_ displayType: String) -> String {
             let names = [
-                "APP_IPHONE_67": "iPhone 6.9 インチ", "APP_IPHONE_65": "iPhone 6.5 インチ", "APP_IPHONE_61": "iPhone 6.3 インチ",
-                "APP_IPHONE_58": "iPhone 5.8 インチ", "APP_IPHONE_55": "iPhone 5.5 インチ", "APP_IPAD_PRO_3GEN_129": "iPad 13 インチ",
-                "APP_IPAD_PRO_3GEN_11": "iPad 11 インチ", "APP_DESKTOP": "Mac", "APP_APPLE_VISION_PRO": "Apple Vision Pro",
-                "APP_IPHONE_DUO": "iPhone Duo"
+                ("IPHONE_DUO", "iPhone Duo"), ("IPHONE_DYNAMIC_ISLAND_LARGE", "iPhone 6.9 インチ"),
+                ("IPHONE_DYNAMIC_ISLAND_MEDIUM", "iPhone 6.3 インチ"), ("IPHONE_FACE_ID_LARGE", "iPhone 6.5 インチ"),
+                ("IPHONE_HOME_BUTTON_LARGE", "iPhone 5.5 インチ"), ("IPAD_13_", "iPad 13 インチ"), ("IPAD_129_", "iPad 12.9 インチ"),
+                ("IPAD_11_", "iPad 11 インチ"), ("MAC_", "Mac"), ("VISION_PRO_", "Apple Vision Pro")
             ]
-            return names[displayType] ?? displayType
+            return names.first { displayType.hasPrefix($0.0) }?.1 ?? displayType
         }
     }
 

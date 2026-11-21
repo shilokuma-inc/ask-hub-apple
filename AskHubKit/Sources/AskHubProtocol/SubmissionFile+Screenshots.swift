@@ -65,7 +65,7 @@ extension SubmissionFile {
 
     /// 1 つの組（表示サイズ・言語）
     public struct ScreenshotSet: Codable, Hashable, Sendable {
-        /// App Store Connect の表示サイズ（`APP_IPHONE_67` など）
+        /// App Store Connect の表示サイズ（App Asset Library の配置グループ。`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など）
         public var displayType: String
         /// App Store Connect の言語
         public var locale: String

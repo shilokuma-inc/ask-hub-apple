@@ -1774,7 +1774,7 @@
           "finishedAt": "2026-11-20T02:10:00Z",
           "sets": [
             {
-              "displayType": "APP_IPHONE_67",
+              "displayType": "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE",
               "locale": "ja",
               "removed": 0,
               "shots": [
@@ -1787,7 +1787,7 @@
                   "index": 2,
                   "name": "02-詳細",
                   "changed": true,
-                  "preview": "repos/shilokuma-inc/prime-pick-ios/store-screenshots/1.4.0/APP_IPHONE_67/ja/2.jpg",
+                  "preview": "repos/shilokuma-inc/prime-pick-ios/store-screenshots/1.4.0/IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE/ja/2.jpg",
                   "before": "https://is1-ssl.mzstatic.com/a/2.png",
                   "area": {
                     "x": 0.1,
@@ -1801,8 +1801,8 @@
           ],
           "skipped": [
             {
-              "displayType": "APP_IPHONE_DUO",
-              "reason": "iPhone Duo はまだ撮らない"
+              "displayType": "IPAD_11_PROFILE",
+              "reason": "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い"
             }
           ]
         }
@@ -2075,7 +2075,7 @@
             "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "keep": [
               {
-                "displayType": "APP_IPHONE_67",
+                "displayType": "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE",
                 "locale": "ja",
                 "index": 2
               }
@@ -2117,7 +2117,7 @@
           "finishedAt": "2026-11-20T02:10:00Z",
           "sets": [
             {
-              "displayType": "APP_IPHONE_67",
+              "displayType": "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE",
               "locale": "ja",
               "removed": 0,
               "shots": [
@@ -2130,7 +2130,7 @@
                   "index": 2,
                   "name": "02-詳細",
                   "changed": true,
-                  "preview": "repos/shilokuma-inc/prime-pick-ios/store-screenshots/1.4.0/APP_IPHONE_67/ja/2.jpg",
+                  "preview": "repos/shilokuma-inc/prime-pick-ios/store-screenshots/1.4.0/IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE/ja/2.jpg",
                   "before": "https://is1-ssl.mzstatic.com/a/2.png",
                   "area": {
                     "x": 0.1,
@@ -2144,8 +2144,8 @@
           ],
           "skipped": [
             {
-              "displayType": "APP_IPHONE_DUO",
-              "reason": "iPhone Duo はまだ撮らない"
+              "displayType": "IPAD_11_PROFILE",
+              "reason": "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い"
             }
           ]
         }
@@ -4897,7 +4897,7 @@
           "finishedAt": "2026-11-20T02:10:00Z",
           "sets": [
             {
-              "displayType": "APP_IPHONE_67",
+              "displayType": "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE",
               "locale": "ja",
               "removed": 0,
               "shots": [
@@ -4910,7 +4910,7 @@
                   "index": 2,
                   "name": "02-詳細",
                   "changed": true,
-                  "preview": "repos/shilokuma-inc/prime-pick-ios/store-screenshots/1.4.0/APP_IPHONE_67/ja/2.jpg",
+                  "preview": "repos/shilokuma-inc/prime-pick-ios/store-screenshots/1.4.0/IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE/ja/2.jpg",
                   "before": "https://is1-ssl.mzstatic.com/a/2.png",
                   "area": {
                     "x": 0.1,
@@ -4924,8 +4924,8 @@
           ],
           "skipped": [
             {
-              "displayType": "APP_IPHONE_DUO",
-              "reason": "iPhone Duo はまだ撮らない"
+              "displayType": "IPAD_11_PROFILE",
+              "reason": "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い"
             }
           ]
         }
@@ -5018,7 +5018,7 @@
           "finishedAt": "2026-11-20T02:10:00Z",
           "sets": [
             {
-              "displayType": "APP_IPHONE_67",
+              "displayType": "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE",
               "locale": "ja",
               "removed": 0,
               "shots": [
@@ -5045,8 +5045,8 @@
           ],
           "skipped": [
             {
-              "displayType": "APP_IPHONE_DUO",
-              "reason": "iPhone Duo はまだ撮らない"
+              "displayType": "IPAD_11_PROFILE",
+              "reason": "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い"
             }
           ]
         }
@@ -5139,7 +5139,7 @@
           "finishedAt": "2026-11-20T02:10:00Z",
           "sets": [
             {
-              "displayType": "APP_IPHONE_67",
+              "displayType": "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE",
               "locale": "ja",
               "removed": 0,
               "shots": [
@@ -5152,7 +5152,7 @@
                   "index": 3,
                   "name": "02-詳細",
                   "changed": true,
-                  "preview": "repos/shilokuma-inc/prime-pick-ios/store-screenshots/1.4.0/APP_IPHONE_67/ja/2.jpg",
+                  "preview": "repos/shilokuma-inc/prime-pick-ios/store-screenshots/1.4.0/IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE/ja/2.jpg",
                   "before": "https://is1-ssl.mzstatic.com/a/2.png",
                   "area": {
                     "x": 0.1,
@@ -5166,8 +5166,8 @@
           ],
           "skipped": [
             {
-              "displayType": "APP_IPHONE_DUO",
-              "reason": "iPhone Duo はまだ撮らない"
+              "displayType": "IPAD_11_PROFILE",
+              "reason": "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い"
             }
           ]
         }
@@ -5260,7 +5260,7 @@
           "finishedAt": "2026-11-20T02:10:00Z",
           "sets": [
             {
-              "displayType": "APP_IPHONE_67",
+              "displayType": "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE",
               "locale": "ja",
               "removed": 0,
               "shots": [
@@ -5273,7 +5273,7 @@
                   "index": 2,
                   "name": "02-詳細",
                   "changed": true,
-                  "preview": "repos/shilokuma-inc/prime-pick-ios/store-screenshots/1.4.0/APP_IPHONE_67/ja/2.jpg",
+                  "preview": "repos/shilokuma-inc/prime-pick-ios/store-screenshots/1.4.0/IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE/ja/2.jpg",
                   "before": "https://is1-ssl.mzstatic.com/a/2.png",
                   "area": {
                     "x": 0.1,
@@ -5287,8 +5287,8 @@
           ],
           "skipped": [
             {
-              "displayType": "APP_IPHONE_DUO",
-              "reason": "iPhone Duo はまだ撮らない"
+              "displayType": "IPAD_11_PROFILE",
+              "reason": "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い"
             }
           ]
         }
