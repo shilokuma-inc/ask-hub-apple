@@ -15,12 +15,13 @@ extension AppStoreSubmission {
         let sets = changed.filter { platforms[$0.displayType] == target.platform }
         guard !sets.isEmpty else { return }
         guard let originals else { throw ReleaseStepProblem("撮った元の画像の置き場所が分からない", needsHuman: true) }
-        // 撮ったときに比べた相手（同じプラットフォームの配信中の版）
-        guard let live = versions.first(where: { $0.platform == target.platform && $0.state == .readyForDistribution }) else {
-            throw ReleaseStepProblem("\(target.platform.rawValue) の配信中の版が無く、前のままにするスクショが分からない", needsHuman: true)
-        }
+        // 撮ったときに比べた相手（同じプラットフォームの配信中の版）。初めての版には無く、撮った画面はすべて新しい（前のままにする位置は置かない）
+        let live = versions.first(where: { $0.platform == target.platform && $0.state == .readyForDistribution })
         let library = try await call { () throws(AppStoreConnectError) in try await store.assetLibrary(of: app.id) }
-        let liveLocalizations = try await call { () throws(AppStoreConnectError) in try await store.localizations(of: live.id) }
+        var liveLocalizations: [AppStoreLocalization] = []
+        if let live {
+            liveLocalizations = try await call { () throws(AppStoreConnectError) in try await store.localizations(of: live.id) }
+        }
         let localizations = try await call { () throws(AppStoreConnectError) in try await store.localizations(of: target.id) }
         // 書く前にすべての組を確かめる（後の組で止まって、先の組だけ書き換わることが無いように）
         var liveSets: [String: [AppStoreScreenshotSet]] = [:]
@@ -30,7 +31,9 @@ extension AppStoreSubmission {
             // 差のある画面をすべて前のままにした組も、配信中の版の画像にそろえる（編集できる版が配信中の版と違うことがある）
             let accepted = Set(changed.filter { !keep.contains(.init(displayType: set.displayType, locale: set.locale, index: $0)) })
             guard let localization = localizations.first(where: { $0.locale == set.locale }) else {
-                let message = "\(target.platform.rawValue) の版に \(set.locale) の掲載文が無い。App Store Connect で言語を確かめる"
+                // 版に無い言語（設定に足したが App Store Connect にまだ無い）は、人がすべて前のままにした（載せない）なら飛ばす
+                if accepted.isEmpty, liveLocalizations.allSatisfy({ $0.locale != set.locale }) { continue }
+                let message = "\(target.platform.rawValue) の版に \(set.locale) の掲載文が無い。App Store Connect で言語を足すか、その言語の画面を載せない"
                 throw ReleaseStepProblem(message, needsHuman: true)
             }
             if liveSets[set.locale] == nil, let source = liveLocalizations.first(where: { $0.locale == set.locale }) {

@@ -130,8 +130,8 @@ struct WorkflowScreenshotImport: Sendable {
             let found = try await call { () throws(AppStoreConnectError) in try await store.screenshotSets(of: localization.id) }
             for set in found { sets[StoreScreenshotTarget(displayType: set.displayType, locale: localization.locale)] = set }
         }
-        let locales = Self.ordered(localizations.map(\.locale).filter { workflow.languages[$0] != nil }, base: workflow.baseLocale)
-        guard locales.first == workflow.baseLocale else {
+        let liveLocales = localizations.map(\.locale).filter { workflow.languages[$0] != nil }
+        guard liveLocales.contains(workflow.baseLocale) else {
             throw StoreScreenshotRun.Unavailable(message: "配信中の版に基準の言語（\(workflow.baseLocale)）の掲載文が無い")
         }
         // 配信中の版には必ずスクショがある。配置として読めないなら、比べられないので取り込まない（古い API で上げたスクショは読まない。#1185）
@@ -140,7 +140,8 @@ struct WorkflowScreenshotImport: Sendable {
                 message: "配信中の版の基準の言語（\(workflow.baseLocale)）のスクショを、App Asset Library の配置として読めない（App Store Connect で確かめる）"
             )
         }
-        return Live(sets: sets, locales: locales, isFirstVersion: false)
+        // 設定にあって配信中の版に無い言語（はじめて足した言語）も、組の無い言語として比べる（すべて新しい画面）
+        return Live(sets: sets, locales: configured, isFirstVersion: false)
     }
 
     /// 基準の言語を先に、ほかは名前の順
@@ -163,7 +164,15 @@ struct WorkflowScreenshotImport: Sendable {
         guard artifact.size <= UnzipArtifactExtractor.maximumZipBytes else {
             return .failure(ArtifactProblem("artifact \(full) が大きすぎる（\(artifact.size / 1_048_576) MB）"))
         }
-        let zip = try await github { () throws(PullRequestError) in try await hosting.downloadArtifact(repo, id: artifact.id) }
+        let zip: Data
+        do throws(PullRequestError) {
+            zip = try await hosting.downloadArtifact(repo, id: artifact.id)
+        } catch .notFound {
+            // 一覧を読んだ後に消えた・期限が切れた。その表示サイズだけ飛ばし、ほかの artifact は取り込む
+            return .failure(ArtifactProblem("artifact \(full) を落とせない（消えた・期限が切れた）。撮り直す"))
+        } catch {
+            return try await github { () throws(PullRequestError) in throw error }
+        }
         do {
             return .success(try await extractor.extract(zip, into: workspace.appendingPathComponent(name, isDirectory: true)))
         } catch let problem as ArtifactProblem {
