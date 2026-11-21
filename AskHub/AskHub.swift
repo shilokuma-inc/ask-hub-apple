@@ -12,6 +12,7 @@ struct AskHub: App {
     @AppStorage(DemoScenario.preferenceKey) private var scenario: DemoScenario = .standard
     @AppStorage(DataSource.preferenceKey) private var dataSource: DataSource = .stateRepository
     @AppStorage(StateConnection.repositoryPreferenceKey) private var stateRepository = StateConnection.defaultRepository
+    @AppStorage(ThemePreferences.themeKey) private var theme: AppTheme = .system
     @State private var store: ClientStore
     @State private var navigator: AppNavigator
     #if os(iOS)
@@ -53,6 +54,8 @@ struct AskHub: App {
                 .environment(store)
                 .environment(navigator)
                 .environment(appDelegate.push)
+                // 設定で選んだテーマ。iOS はウィンドウごと変わるので、シートにも効く
+                .preferredColorScheme(colorScheme)
                 // 設定でデータかデモの場面を変えたら、そのデータで作り直す（撮影モードは標準の場面のまま）
                 .onChange(of: scenario) { reloadStore() }
                 .onChange(of: dataSource) { reloadStore() }
@@ -78,9 +81,15 @@ struct AskHub: App {
                 .environment(store)
                 .environment(navigator)
                 .environment(appDelegate.push)
+                .preferredColorScheme(colorScheme)
                 .frame(width: 520, height: 620)
         }
         #endif
+    }
+
+    /// 設定で選んだテーマ。撮影モードは、保存された値によらずシステムの既定に従う
+    private var colorScheme: ColorScheme? {
+        theme.colorScheme(isScreenshotDemo: ScreenshotDemo.isEnabled)
     }
 
     private func reloadStore() {
