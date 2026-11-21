@@ -202,6 +202,8 @@
 - Git Data API でディレクトリを移す（`git/trees` に `base_tree` と「元のパスを消す・先のパスに同じ blob を置く」を並べ、`git/commits`・`PATCH git/refs/heads/<branch>`）とき、
   消すほうは `"sha": null` を明示する（欄を省くと消えない）。Swift の合成の `Encodable` は nil の欄を省くので、`encode(to:)` を自前で書く。
   ブランチの更新を `force: false` にすると、読んだ後にほかの書き手が書いていれば 422（早送りにならない）になるので、読み直してやり直す（2026-11-18、終わった epic の `archive/`）
+- 司令塔の clone は `--filter=blob:none` の partial clone。`git diff --raw` は、名前の変更の検出（既定で有効）のときだけ blob を GitHub から取りに行き、`--no-renames` なら tree だけで済む。
+  `git cat-file -s`・`cat-file blob` は、無い blob をその場で取りに行く。手元で試すときは、元のリポジトリに `uploadpack.allowFilter=true` を設定しないと `file://` の clone で filter が無視される（2026-11-21、#1181）
 
 ## ビルド・テスト
 
