@@ -141,13 +141,13 @@ extension DemoData {
                 .init(index: 1, name: "01-レシピ", changed: false, before: .demo(list)),
                 .init(index: 2, name: "02-材料", changed: true, before: .demo(before), after: .demo(after), area: area)
             ]
-            return Submission.ScreenshotSet(displayType: "APP_IPHONE_67", locale: locale, shots: shots, removed: 0)
+            return Submission.ScreenshotSet(displayType: "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE", locale: locale, shots: shots, removed: 0)
         }
         return Submission.StoreScreenshots(
             state: .captured,
             commit: String(repeating: "c", count: 40),
             sets: [set("ja"), set("en-US")],
-            skipped: [.init(displayType: "APP_IPHONE_DUO", reason: "iPhone Duo はまだ撮らない（App Store Connect で上げる）")]
+            skipped: [.init(displayType: "IPAD_13_PROFILE", reason: "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い")]
         )
     }()
 
