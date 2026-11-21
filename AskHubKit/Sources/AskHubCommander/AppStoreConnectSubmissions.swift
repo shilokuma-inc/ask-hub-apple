@@ -142,7 +142,7 @@ public struct AppStoreReviewSubmission: Equatable, Sendable {
 }
 
 /// App Store Connect の審査の API（テストでは差し替える）
-public protocol AppStoreConnectSubmitting: AppStoreConnectReading {
+public protocol AppStoreConnectSubmitting: AppStoreConnectReading, AppStoreConnectScreenshots {
     /// 置き換わった版（`REPLACED_WITH_NEW_VERSION`）のほかの、すべての版（審査の見張りと配信の検知を 1 回で読む）
     func versions(of appID: String) async throws(AppStoreConnectError) -> [AppStoreVersionInfo]
     /// その版の番号の、処理を終えた（`VALID`）ビルド（新しく上げた順）

@@ -69,6 +69,7 @@ struct SubmissionProtocolTests {
             builds: builds,
             whatsNew: whatsNew,
             listing: listing,
+            screenshots: .init(state: .notConfigured, startedAt: Self.at, finishedAt: Self.at),
             revision: 2,
             submit: submit,
             review: review,

@@ -234,7 +234,7 @@ struct ReleaseWatchTests {
     let listingDrafter = FakeListingDrafter()
     let clock = TestClock(Self.now)
 
-    func watch(stores: [any AppStoreConnecting]? = nil) -> ReleaseWatch {
+    func watch(stores: [any AppStoreConnecting]? = nil, screenshots: (any StoreScreenshotCapturing)? = nil) -> ReleaseWatch {
         let clock = clock
         return ReleaseWatch(
             context: CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { clock.now },
@@ -244,6 +244,7 @@ struct ReleaseWatchTests {
             drafter: drafter,
             whatsNew: whatsNewDrafter,
             listing: listingDrafter,
+            screenshots: screenshots,
             authors: FixedCommitAuthor(GitAuthor(name: "Takumi", email: "1+mrs1669@users.noreply.github.com")),
             log: { _ in }
         )

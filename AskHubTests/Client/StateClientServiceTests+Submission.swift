@@ -28,6 +28,13 @@ extension StateClientServiceTests {
              "appReview":{"current":{"notes":"ログインは不要です。","demoAccountRequired":false},
                           "draft":{"notes":"ログインは不要です。タイムアタックは右上のボタンから始めます。"},
                           "reason":"タイムアタックの始め方を伝える案です","draftedAt":"2027-01-20T01:06:00Z"},
+             "screenshots":{"state":"captured","commit":"\(commit)","startedAt":"2027-01-20T01:10:00Z","finishedAt":"2027-01-20T01:30:00Z",
+                            "sets":[{"displayType":"APP_IPHONE_67","locale":"ja","removed":0,"shots":[
+                              {"index":1,"name":"01","changed":false},
+                              {"index":2,"name":"02","changed":true,
+                               "preview":"repos/\(repo)/store-screenshots/1.2.0/APP_IPHONE_67/ja/2.jpg",
+                               "before":"https://is1-ssl.mzstatic.com/a/2.png","area":{"x":0.1,"y":0.2,"width":0.5,"height":0.3}}]}],
+                            "skipped":[]},
              "revision":2,"review":[],"createdAt":"2027-01-20T01:00:00Z","updatedAt":"2027-01-20T01:40:00Z"}
             """
         return releaseFiles(extra: ["\(submissionDirectory)/1.2.0.json": ready].merging(extra) { $1 })
@@ -55,7 +62,7 @@ extension StateClientServiceTests {
         #expect(submission.drafts?.map(\.locale) == ["ja", "en-US"])
         #expect(submission.listing?.current.map(\.locale) == ["ja", "en-US"])
         #expect(submission.listing?.drafts == [.init(locale: "ja", values: [.keywords: "素数,クイズ,タイムアタック"])])
-        #expect(submission.steps.map(\.state) == [.done, .done, .done, .done, .done, .waitingHuman, .working])
+        #expect(submission.steps.map(\.state) == [.done, .done, .done, .done, .done, .done, .waitingHuman, .working])
         // 次のリリースは、この版が終わるまで始められない。配信した版（1.1.0）より大きくない版も始められない
         #expect(!fixture.service.supports(.startRelease(repositoryID: submissionRepositoryID, version: "1.3.0")))
         let items = InboxBuilder.items(from: snapshot, now: now).filter { $0.kind == .submissionReady }
@@ -110,6 +117,31 @@ extension StateClientServiceTests {
             ListingText(locale: "ja", description: "素数のクイズ", keywords: "素数,クイズ,タイムアタック"),
             ListingText(locale: "en-US", promotionalText: "")
         ])
+    }
+
+    @Test
+    func sendsScreenshotDecisionForTheCapturedShots() async throws {
+        let fixture = try makeService(files: Self.submissionFiles())
+        let snapshot = try await fixture.service.fetchSnapshot()
+        let screenshots = try #require(snapshot.submission(Submission.id(submissionRepositoryID, "1.2.0"))?.screenshots)
+        let shot = try #require(screenshots.changedSets.first?.changedShots.first)
+        #expect(shot.after == .stored("repos/\(Self.repo)/store-screenshots/1.2.0/APP_IPHONE_67/ja/2.jpg"))
+        #expect(shot.before == .remote(URL(string: "https://is1-ssl.mzstatic.com/a/2.png")!))
+        var withScreenshots = request
+        withScreenshots.screenshotKeep = [.init(displayType: "APP_IPHONE_67", locale: "ja", index: 2)]
+        let submitting = HumanIntent.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: withScreenshots)
+        try await fixture.service.perform(submitting)
+        let submit = try SubmitForReviewIntent(envelope: try await sentEnvelope(in: fixture.store, key: fixture.key))
+        #expect(submit.screenshots?.commit == String(repeating: "b", count: 40))
+        #expect(submit.screenshots?.keep == [.init(displayType: "APP_IPHONE_67", locale: "ja", index: 2)])
+        // 差の無い画面は前のままにできない（取り直しを促す）。送った後の「受け付けを待っている」で断られないよう、取り直す
+        let fresh = try makeService(files: Self.submissionFiles())
+        _ = try await fresh.service.fetchSnapshot()
+        var unchanged = request
+        unchanged.screenshotKeep = [.init(displayType: "APP_IPHONE_67", locale: "ja", index: 1)]
+        let intent = HumanIntent.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: unchanged)
+        #expect(fresh.service.supports(intent))
+        await #expect(throws: ClientServiceError.self) { try await fresh.service.perform(intent) }
     }
 
     @Test

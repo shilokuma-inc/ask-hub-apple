@@ -102,6 +102,58 @@
       "read": "valid"
     },
     {
+      "name": "store-screenshots",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "storeScreenshots": {
+            "test": "OshiConUITests/AppStoreScreenshotTests/testCaptureAppStoreScreenshots",
+            "environment": {
+              "APP_STORE_SCREENSHOTS": "1"
+            },
+            "languageVariable": "APP_STORE_LANGUAGE",
+            "regionVariable": "APP_STORE_LOCALE",
+            "languages": {
+              "ja": {
+                "language": "ja",
+                "region": "ja_JP"
+              },
+              "en-US": {
+                "language": "en",
+                "region": "en_US"
+              }
+            },
+            "baseLocale": "ja",
+            "displayTypes": {
+              "APP_IPHONE_67": [
+                "iPhone 17 Pro Max",
+                "iPhone 16 Pro Max"
+              ],
+              "APP_IPAD_PRO_3GEN_129": [
+                "iPad Pro 13-inch (M5)"
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "missing-build",
       "payload": {},
       "schemaValid": false,
@@ -435,6 +487,208 @@
             "build"
           ],
           "baseBranch": "-main"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "store-screenshots-unknown-base",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "storeScreenshots": {
+            "test": "OshiConUITests/AppStoreScreenshotTests/testCaptureAppStoreScreenshots",
+            "environment": {
+              "APP_STORE_SCREENSHOTS": "1"
+            },
+            "languageVariable": "APP_STORE_LANGUAGE",
+            "regionVariable": "APP_STORE_LOCALE",
+            "languages": {
+              "ja": {
+                "language": "ja",
+                "region": "ja_JP"
+              },
+              "en-US": {
+                "language": "en",
+                "region": "en_US"
+              }
+            },
+            "baseLocale": "fr",
+            "displayTypes": {
+              "APP_IPHONE_67": [
+                "iPhone 17 Pro Max",
+                "iPhone 16 Pro Max"
+              ],
+              "APP_IPAD_PRO_3GEN_129": [
+                "iPad Pro 13-inch (M5)"
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "store-screenshots-bad-test",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "storeScreenshots": {
+            "test": "OshiConUITests",
+            "environment": {
+              "APP_STORE_SCREENSHOTS": "1"
+            },
+            "languageVariable": "APP_STORE_LANGUAGE",
+            "regionVariable": "APP_STORE_LOCALE",
+            "languages": {
+              "ja": {
+                "language": "ja",
+                "region": "ja_JP"
+              },
+              "en-US": {
+                "language": "en",
+                "region": "en_US"
+              }
+            },
+            "baseLocale": "ja",
+            "displayTypes": {
+              "APP_IPHONE_67": [
+                "iPhone 17 Pro Max",
+                "iPhone 16 Pro Max"
+              ],
+              "APP_IPAD_PRO_3GEN_129": [
+                "iPad Pro 13-inch (M5)"
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "store-screenshots-duplicate-variable",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "storeScreenshots": {
+            "test": "OshiConUITests/AppStoreScreenshotTests/testCaptureAppStoreScreenshots",
+            "environment": {
+              "APP_STORE_LANGUAGE": "x"
+            },
+            "languageVariable": "APP_STORE_LANGUAGE",
+            "regionVariable": "APP_STORE_LOCALE",
+            "languages": {
+              "ja": {
+                "language": "ja",
+                "region": "ja_JP"
+              },
+              "en-US": {
+                "language": "en",
+                "region": "en_US"
+              }
+            },
+            "baseLocale": "ja",
+            "displayTypes": {
+              "APP_IPHONE_67": [
+                "iPhone 17 Pro Max",
+                "iPhone 16 Pro Max"
+              ],
+              "APP_IPAD_PRO_3GEN_129": [
+                "iPad Pro 13-inch (M5)"
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "store-screenshots-no-device",
+      "payload": {
+        "build": {
+          "xcode": {
+            "project": "App.xcodeproj",
+            "scheme": "App",
+            "destinations": [
+              {
+                "platform": "macOS"
+              }
+            ]
+          },
+          "childChecks": [
+            "build"
+          ],
+          "finalChecks": [
+            "build"
+          ],
+          "storeScreenshots": {
+            "test": "OshiConUITests/AppStoreScreenshotTests/testCaptureAppStoreScreenshots",
+            "environment": {
+              "APP_STORE_SCREENSHOTS": "1"
+            },
+            "languageVariable": "APP_STORE_LANGUAGE",
+            "regionVariable": "APP_STORE_LOCALE",
+            "languages": {
+              "ja": {
+                "language": "ja",
+                "region": "ja_JP"
+              },
+              "en-US": {
+                "language": "en",
+                "region": "en_US"
+              }
+            },
+            "baseLocale": "ja",
+            "displayTypes": {
+              "APP_IPHONE_67": []
+            }
+          }
         }
       },
       "schemaValid": false,

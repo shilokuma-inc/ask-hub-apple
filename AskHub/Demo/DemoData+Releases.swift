@@ -69,10 +69,11 @@ extension DemoData {
                 draft: .init(notes: "ログインは不要です。レシピは右上の＋から足せます。レシピの画面の「人数」を変えると、材料の分量が変わります。"),
                 reason: "人数に合わせた分量の計算は見つけにくいので、試し方を審査メモに足す案です"
             ),
-            revision: 3,
+            revision: 4,
             createdAt: ago(minutes: 60 * 3),
             updatedAt: ago(minutes: 25)
         )
+        submission.screenshots = Self.recipeScreenshots
         submission.awaitsSubmission = true
         submission.canAbandon = true
         // おこづかい帳の初めての版。App Store の準備の残り（初めての版の項目を含む）を、あなたの番に出す
@@ -114,6 +115,41 @@ extension DemoData {
         ],
         reason: "人数に合わせて分量を計算できるようにしたので、日本語の説明文に一文足し、キーワードに「分量」を足す案です"
     )
+
+    /// レシピ帳のスクショ（2 枚目のレシピの画面に、人数の欄が増えた）
+    static let recipeScreenshots: Submission.StoreScreenshots = {
+        let list = DemoScreen(title: "レシピ", toolbarItem: "plus", elements: [
+            .search(highlighted: false),
+            .row("鶏の照り焼き", detail: "20 分", highlighted: false),
+            .row("具だくさん豚汁", detail: "30 分", highlighted: false)
+        ])
+        let before = DemoScreen(title: "鶏の照り焼き", elements: [
+            .section("材料", highlighted: false),
+            .row("鶏もも肉", detail: "300 g", highlighted: false),
+            .row("しょうゆ", detail: "大さじ 2", highlighted: false)
+        ])
+        let after = DemoScreen(title: "鶏の照り焼き", elements: [
+            .section("人数", highlighted: true),
+            .row("4 人分", detail: nil, highlighted: true),
+            .section("材料", highlighted: false),
+            .row("鶏もも肉", detail: "600 g", highlighted: false),
+            .row("しょうゆ", detail: "大さじ 4", highlighted: false)
+        ])
+        let area = CGRect(x: 0, y: 0.12, width: 1, height: 0.22)
+        func set(_ locale: String) -> Submission.ScreenshotSet {
+            let shots: [Submission.Shot] = [
+                .init(index: 1, name: "01-レシピ", changed: false, before: .demo(list)),
+                .init(index: 2, name: "02-材料", changed: true, before: .demo(before), after: .demo(after), area: area)
+            ]
+            return Submission.ScreenshotSet(displayType: "APP_IPHONE_67", locale: locale, shots: shots, removed: 0)
+        }
+        return Submission.StoreScreenshots(
+            state: .captured,
+            commit: String(repeating: "c", count: 40),
+            sets: [set("ja"), set("en-US")],
+            skipped: [.init(displayType: "APP_IPHONE_DUO", reason: "iPhone Duo はまだ撮らない（App Store Connect で上げる）")]
+        )
+    }()
 
     /// App Store に載せる準備。家事シェアは App Store Connect にアプリがまだ無く（あなたの番に出る）、
     /// おこづかい帳はアプリを作り、初めての版（1.0.0）のリリースを始めて、初めての版に要る設定が残っている（あなたの番に出る）
