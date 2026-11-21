@@ -131,11 +131,15 @@ extension ReleaseWatchTests {
         #expect(japanese.shots.map(\.changed) == [false, true])
         let changed = japanese.shots[1]
         #expect(changed.before == "https://is1-ssl.mzstatic.com/iphone/ja/2.png")
-        #expect(changed.preview == StatePath.storeScreenshot(Self.repo, Self.next, displayType: Self.iPhone, locale: "ja", index: 2))
+        #expect(changed.preview == StatePath.storeScreenshot(
+            Self.repo, Self.next, commit: Self.developHead, shot: .init(displayType: Self.iPhone, locale: "ja", index: 2)
+        ))
         let area = try #require(changed.area)
         #expect(area.x < 0.05 && area.y < 0.05 && area.x + area.width > 0.7 && area.y + area.height > 0.7)
-        // 見本は状態リポジトリに、元の画像は常時オンの Mac に
-        #expect(await store.data(at: changed.preview!) != nil)
+        // 見本（JPEG を base64 にした文字）は状態リポジトリに、元の画像は常時オンの Mac に
+        let stored = try #require(await store.data(at: changed.preview!))
+        let jpeg = try #require(StatePath.storeScreenshotImage(stored, path: changed.preview!))
+        #expect(jpeg.starts(with: [0xFF, 0xD8]))
         let original = StoreScreenshotRun.original(
             in: capturer.originals(Self.repo, version: Self.next, commit: Self.developHead), target: Self.japanese, index: 2
         )
@@ -245,7 +249,9 @@ extension ReleaseWatchTests {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try commanderPNG(mark: CGRect(x: index, y: index, width: 5, height: 5)).write(to: url)
         }
-        let preview = StatePath.storeScreenshot(Self.repo, Self.next, displayType: Self.iPhone, locale: "ja", index: 2)
+        let preview = StatePath.storeScreenshot(
+            Self.repo, Self.next, commit: Self.developHead, shot: .init(displayType: Self.iPhone, locale: "ja", index: 2)
+        )
         let shots: [SubmissionFile.Shot] = [
             .init(index: 1, name: "01", changed: false, before: Self.liveImage(1).absoluteString),
             .init(index: 2, name: "02", changed: true, preview: preview, before: Self.liveImage(2).absoluteString),
@@ -376,7 +382,9 @@ extension ReleaseWatchTests {
         // 日本語の組（書く必要がある）の後に、英語の組（1 枚目を前のままにする）がある
         var file = try await submission()
         let before = Self.liveImage(1).absoluteString
-        let preview = StatePath.storeScreenshot(Self.repo, Self.next, displayType: Self.iPhone, locale: "en-US", index: 1)
+        let preview = StatePath.storeScreenshot(
+            Self.repo, Self.next, commit: Self.developHead, shot: .init(displayType: Self.iPhone, locale: "en-US", index: 1)
+        )
         file.screenshots?.sets.append(.init(
             displayType: Self.iPhone, locale: "en-US", shots: [.init(index: 1, name: "01", changed: true, preview: preview, before: before)]
         ))

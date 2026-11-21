@@ -213,10 +213,11 @@ final class StateClientService: ClientService {
         StateIntentMapper(index: index).supports(intent)
     }
 
-    /// 判断のカードのスクショを状態リポジトリから読む。epic の `screenshots/` の下の PNG だけを読む
+    /// 判断のカードのスクショ（epic の `screenshots/` の下の PNG）と、App Store のスクショの見本（base64 の文字は画像に戻す）を状態リポジトリから読む
     func screenshot(at path: String) async throws -> Data {
         if let data = screenshots[path] { return data }
-        guard DecisionsFile.isScreenshotPath(path) || StatePath.isStoreScreenshotPath(path) else {
+        let isStore = StatePath.isStoreScreenshotPath(path)
+        guard DecisionsFile.isScreenshotPath(path) || isStore else {
             throw ClientServiceError(message: "スクショのパスの形が違う")
         }
         let blob: StoredBlob?
@@ -225,7 +226,10 @@ final class StateClientService: ClientService {
         } catch {
             throw ClientServiceError(message: StateServiceError.message(for: error))
         }
-        guard let data = blob?.data else { throw ClientServiceError(message: "スクショが状態リポジトリに無い") }
+        guard let stored = blob?.data else { throw ClientServiceError(message: "スクショが状態リポジトリに無い") }
+        guard let data = isStore ? StatePath.storeScreenshotImage(stored, path: path) : stored else {
+            throw ClientServiceError(message: "スクショの見本の形が違う")
+        }
         screenshots[path] = data
         return data
     }
