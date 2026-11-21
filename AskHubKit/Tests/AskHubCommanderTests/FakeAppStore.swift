@@ -31,6 +31,12 @@ final class FakeAppStore: AppStoreConnecting {
         var bundleIDRefusal: AppStoreConnectError?
         /// アプリの準備の様子（書き込むと変わる）
         var setup = AppStoreSetupState()
+        /// 版の枠ごとの、初めての版の項目の様子（書き込むと変わる）
+        var versionSetups: [String: AppStoreVersionSetupState] = [:]
+        /// ほかのアプリの版（アプリの id ごと）。無いアプリは `others` と配信中の版を返す
+        var versionsByApp: [String: [AppStoreVersionInfo]] = [:]
+        /// 版ごとの App Review の連絡先（写すもと）
+        var reviewContacts: [String: AppStoreReviewContact] = [:]
     }
 
     let keyID = "ABCDE12345"
@@ -50,6 +56,7 @@ final class FakeAppStore: AppStoreConnecting {
     func versions(of appID: String) async throws(AppStoreConnectError) -> [AppStoreVersionInfo] {
         state.withLock { state in
             state.reads += 1
+            if let versions = state.versionsByApp[appID] { return versions }
             return state.others + state.versions.enumerated().map { index, live in
                 AppStoreVersionInfo(
                     id: "live-\(index)",
@@ -237,5 +244,48 @@ final class FakeAppStore: AppStoreConnecting {
     func setAvailableEverywhere(of appID: String) async throws(AppStoreConnectError) {
         try write("setAvailableEverywhere")
         state.withLock { $0.setup.hasAvailability = true }
+    }
+
+    func versionSetupState(of versionID: String) async throws(AppStoreConnectError) -> AppStoreVersionSetupState {
+        state.withLock { $0.versionSetups[versionID] ?? AppStoreVersionSetupState(missingReviewContact: ReviewContactField.allCases) }
+    }
+
+    func setCopyright(_ text: String, versionID: String) async throws(AppStoreConnectError) {
+        try write("setCopyright \(versionID) \(text)")
+        state.withLock { $0.versionSetups[versionID, default: .init()].copyright = text }
+    }
+
+    func allApps() async throws(AppStoreConnectError) -> [AppStoreApp] {
+        state.withLock { $0.apps }
+    }
+
+    func reviewContact(of versionID: String) async throws(AppStoreConnectError) -> AppStoreReviewContact? {
+        state.withLock { $0.reviewContacts[versionID] }
+    }
+
+    /// 書き込みの記録には、欄の名前だけを残す（値は残さない）
+    func writeReviewContact(
+        _ contact: ReviewContact,
+        fields: [ReviewContactField],
+        detailID: String?,
+        versionID: String
+    ) async throws(AppStoreConnectError) {
+        try write("writeReviewContact \(versionID) \(fields.map(\.rawValue).joined(separator: ",")) \(detailID ?? "-")")
+        state.withLock { state in
+            let written = fields.filter { contact.values[$0] != nil }
+            state.versionSetups[versionID, default: .init()].missingReviewContact.removeAll(where: written.contains)
+            state.versionSetups[versionID]?.reviewDetailID = detailID ?? "detail-\(versionID)"
+        }
+    }
+
+    func setVersionURLs(support: String?, marketing: String?, localizationID: String) async throws(AppStoreConnectError) {
+        try write("setVersionURLs \(localizationID) \(support ?? "-") \(marketing ?? "-")")
+        state.withLock { state in
+            for (versionID, setup) in state.versionSetups {
+                guard let index = setup.localizations.firstIndex(where: { $0.id == localizationID }) else { continue }
+                if let support { state.versionSetups[versionID]?.localizations[index].supportUrl = support }
+                if let marketing { state.versionSetups[versionID]?.localizations[index].marketingUrl = marketing }
+            }
+        }
     }
 }

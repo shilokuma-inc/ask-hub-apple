@@ -32,6 +32,8 @@ public actor ReleaseWatch {
     var apps: [RepositoryFullName: (store: Int, app: AppStoreApp)] = [:]
     /// 最後に読んだ、リポジトリの base のビルドの設定の Bundle ID（App Store に載せる準備の記録に書く）
     var bundleIdentifiers: [RepositoryFullName: [String]] = [:]
+    /// App Store に載せる準備の初めての版の項目を、最後に確かめたときの版の枠の id（枠が変わったら、待たずに確かめ直す）
+    var checkedSlots: [RepositoryFullName: [String]] = [:]
     /// スクショを撮っている版（`<owner>/<repo>/<版>`）。見回りの外の Task で撮っている間は、撮り始めない
     var capturing: Set<String> = []
     /// 撮っている Task（テストで終わりを待つ）
@@ -124,7 +126,11 @@ public actor ReleaseWatch {
             waiting += submissions.flatMap { submission in
                 Blocker.waiting(on: submission) + Blocker.reviewNotices(on: submission, now: now) + Blocker.keptSlots(on: submission)
             }
-            if let setup = await advanceSetup(repo, settings: file) {
+            if var setup = await advanceSetup(repo, settings: file) {
+                // リリースを始めて版の枠を作った・やめて消したら、初めての版の項目を待たずに確かめ直す
+                if let rechecked = await recheckSetupIfSlotsChanged(repo, setup: setup, submissions: submissions, settings: file) {
+                    setup = rechecked
+                }
                 // 配信中の版が無いアプリで始めたリリース（準備の記録があるのは、配信中の版が無いアプリだけ）
                 let firstRelease = submissions.first { !$0.isEnded }?.version
                 waiting += Blocker.waiting(on: setup, firstRelease: firstRelease)
