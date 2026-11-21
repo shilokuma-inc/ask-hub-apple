@@ -17,12 +17,21 @@ extension ReleaseWatch {
     static let screenshotRunTimeout: TimeInterval = 6 * 60 * 60
 
     /// 撮影を進める（起動 → 見張り）。撮り終えたら結果を書く
-    func advanceScreenshotWorkflow(_ file: SubmissionFile, workflow: StoreScreenshotWorkflow) async -> SubmissionFile {
+    func advanceScreenshotWorkflow(
+        _ file: SubmissionFile,
+        workflow: StoreScreenshotWorkflow,
+        settings: RepositoryFile
+    ) async -> SubmissionFile {
         guard let branch = file.branch else { return file }
         let key = Self.screenshotKey(file)
         guard let current = file.screenshots, current.state == .capturing, let run = current.run else {
             guard file.screenshots == nil || file.screenshots?.state == .capturing else { return file }
             return await startScreenshotWorkflow(file, workflow: workflow, branch: branch)
+        }
+        // 撮り終えた実行は、取り込む（見回りの外の Task。取り込んでいる間と、司令塔が落ちて取り込み直すとき）
+        if run.isCompleted {
+            startScreenshotImport(file, workflow: workflow, settings: settings)
+            return file
         }
         if let checked = screenshotRunsCheckedAt[key], context.now().timeIntervalSince(checked) < Self.screenshotRunCheckInterval {
             return file
@@ -32,7 +41,7 @@ extension ReleaseWatch {
         if run.id == nil {
             advanced = await findScreenshotRun(file, workflow: workflow, branch: branch, run: run)
         } else {
-            advanced = await watchScreenshotRun(file, run: run)
+            advanced = await watchScreenshotRun(file, run: run, workflow: workflow, settings: settings)
         }
         if advanced.screenshots?.state.isSettled == true { screenshotRunsCheckedAt[key] = nil }
         return advanced
@@ -135,9 +144,14 @@ extension ReleaseWatch {
     }
 
     /// 実行を読み、様子が変わったら書く。終わったら結果を書き、6 時間で終わらなければ取り消して `failed` にする
-    private func watchScreenshotRun(_ file: SubmissionFile, run: SubmissionFile.CaptureRun) async -> SubmissionFile {
+    private func watchScreenshotRun(
+        _ file: SubmissionFile,
+        run: SubmissionFile.CaptureRun,
+        workflow: StoreScreenshotWorkflow,
+        settings: RepositoryFile
+    ) async -> SubmissionFile {
         guard let id = run.id, let startedAt = file.screenshots?.startedAt else { return file }
-        return await submissionStep(.screenshots, file) { file in
+        let watched = await submissionStep(.screenshots, file) { file in
             let detail = try await self.github { () throws(PullRequestError) in try await self.hosting.workflowRun(file.repo, id: id) }
             let original = file
             var file = file
@@ -168,20 +182,70 @@ extension ReleaseWatch {
                 return Self.failedScreenshots(file, "撮影の実行 \(id) が \(hours) 時間で終わらないので取り消した", at: now)
             }
             self.log("\(file.repo) の \(file.version) のスクショの撮影（実行 \(id)）が終わった（\(detail.conclusion ?? "結論なし")）")
-            return await self.settleScreenshotRun(file, detail: detail)
+            // 撮れた（一部の表示サイズの撮影が失敗した `failure` も、撮れた artifact は残る）なら、終わった様子を書いてから取り込む
+            guard ["success", "failure"].contains(detail.conclusion) else {
+                return Self.failedScreenshots(file, "撮影の実行 \(id) が \(detail.conclusion ?? "結論なし") で終わった。撮り直す", at: now)
+            }
+            return file
+        }
+        if watched.screenshots?.state == .capturing, watched.screenshots?.run?.isCompleted == true {
+            startScreenshotImport(watched, workflow: workflow, settings: settings)
+        }
+        return watched
+    }
+
+    /// 撮り終えた実行の artifact を、見回りの外の Task で取り込んで比べる（落として比べるのに数分かかる）。取り込んでいる間は始めない
+    func startScreenshotImport(_ file: SubmissionFile, workflow: StoreScreenshotWorkflow, settings: RepositoryFile) {
+        let key = Self.screenshotKey(file)
+        guard !capturing.contains(key), let id = file.screenshots?.run?.id, let commit = file.screenshots?.commit else { return }
+        capturing.insert(key)
+        captureTasks[key] = Task {
+            await self.importScreenshots(file, workflow: workflow, settings: settings, runID: id, commit: commit)
         }
     }
 
-    /// 終わった実行の結果を決める。取り込み（artifact と比べ方）は次の段階（#1192 の PR (b)）で作るので、今は撮れた実行も `failed` にする
-    func settleScreenshotRun(_ file: SubmissionFile, detail: WorkflowRunDetail) async -> SubmissionFile {
-        let now = context.timestamp
-        switch detail.conclusion {
-        case "success", "failure":
-            return Self.failedScreenshots(
-                file, "撮影の実行 \(detail.id) は終わった（\(detail.conclusion ?? "")）が、artifact の取り込みはまだ作っていないので、スクショは変えない", at: now
+    /// 取り込んで比べ、結果を記録に書く（見回りの外で動く）。人が直す失敗は `failed`、待てば直る失敗は撮っている印のまま次の見回りでやり直す
+    private func importScreenshots(
+        _ file: SubmissionFile,
+        workflow: StoreScreenshotWorkflow,
+        settings: RepositoryFile,
+        runID: Int,
+        commit: String
+    ) async {
+        let key = Self.screenshotKey(file)
+        defer {
+            capturing.remove(key)
+            captureTasks[key] = nil
+            wake()
+        }
+        let result: SubmissionFile.StoreScreenshots
+        do {
+            guard let capturer = screenshots else {
+                throw ReleaseStepProblem("撮った元の画像を置く場所が司令塔に無い（スクショを撮る道具の設定が無い）", needsHuman: true)
+            }
+            let (store, app) = try await submissionApp(file.repo, settings: settings)
+            let run = WorkflowScreenshotImport(
+                context: context,
+                store: store,
+                hosting: hosting,
+                extractor: artifacts,
+                originals: capturer.originals(file.repo, version: file.version, commit: commit),
+                log: log
             )
-        default:
-            return Self.failedScreenshots(file, "撮影の実行 \(detail.id) が \(detail.conclusion ?? "結論なし") で終わった。撮り直す", at: now)
+            result = try await run.execute(file, runID: runID, commit: commit, app: app, workflow: workflow)
+        } catch let problem as ReleaseStepProblem where problem.needsHuman {
+            let now = context.timestamp
+            let fallback = SubmissionFile.StoreScreenshots(state: .failed, startedAt: now, failure: problem.message)
+            result = Self.failedScreenshots(file, problem.message, at: now).screenshots ?? fallback
+        } catch {
+            report("\(file.repo) の \(file.version) のスクショ（実行 \(runID)）を取り込めない（\(error)）。次の見回りでやり直す")
+            return
+        }
+        screenshotRunsCheckedAt[key] = nil
+        _ = await submissionStep(.screenshots, file) { file in
+            var file = file
+            file.screenshots = result
+            return file
         }
     }
 

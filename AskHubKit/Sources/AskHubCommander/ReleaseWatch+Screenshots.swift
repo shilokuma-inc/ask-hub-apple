@@ -15,7 +15,7 @@ extension ReleaseWatch {
         let storeSettings: StoreScreenshotSettings
         switch settings.build?.storeScreenshots {
         case let .actions(workflow)?:
-            return await advanceScreenshotWorkflow(file, workflow: workflow)
+            return await advanceScreenshotWorkflow(file, workflow: workflow, settings: settings)
         case let .uiTest(settings)?:
             storeSettings = settings
         case nil:

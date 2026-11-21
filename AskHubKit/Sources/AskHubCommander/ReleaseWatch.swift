@@ -22,6 +22,8 @@ public actor ReleaseWatch {
     nonisolated let listing: (any ListingDrafting)?
     /// App Store のスクショを撮る道具。nil なら撮れない（撮り方のあるリポジトリでは、撮れなかったとして記録する）
     nonisolated let screenshots: (any StoreScreenshotCapturing)?
+    /// 撮影のワークフローの artifact を取り出す道具（`capture: actions`）
+    nonisolated let artifacts: any StoreScreenshotArtifactExtracting
     nonisolated let authors: any CommitAuthors
     nonisolated let log: @Sendable (String) -> Void
     /// 1 つのリポジトリの App Store Connect を読む間隔
@@ -57,6 +59,7 @@ public actor ReleaseWatch {
         whatsNew: (any WhatsNewDrafting)? = nil,
         listing: (any ListingDrafting)? = nil,
         screenshots: (any StoreScreenshotCapturing)? = nil,
+        artifacts: any StoreScreenshotArtifactExtracting = UnzipArtifactExtractor(),
         authors: any CommitAuthors,
         log: @escaping @Sendable (String) -> Void,
         detectInterval: Duration = .seconds(30 * 60)
@@ -69,6 +72,7 @@ public actor ReleaseWatch {
         self.whatsNew = whatsNew
         self.listing = listing
         self.screenshots = screenshots
+        self.artifacts = artifacts
         self.authors = authors
         self.log = log
         self.detectInterval = TimeInterval(detectInterval.components.seconds)
@@ -366,7 +370,10 @@ public actor ReleaseWatch {
             }
         }
     }
+}
 
+extension ReleaseWatch {
+    /// 同じ知らせは 1 回だけログに出す
     func report(_ note: String) {
         if reported.insert(note).inserted { log(note) }
     }
