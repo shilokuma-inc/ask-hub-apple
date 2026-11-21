@@ -207,7 +207,7 @@ App Store Connect にまだアプリが無い・配信中の版が無いアプ�
 | App のプライバシー（データの収集） | 無い | —（Web では App Manager で答えられる） | 人が Web で答えて「終わった」を押す |
 | DSA（EU のデジタルサービス法）の申告 | 見当たらない | — | 人が Web で答えて「終わった」を押す |
 | 初めての版の掲載文 | `POST`・`PATCH /v1/appStoreVersionLocalizations`（`description`・`keywords`・`promotionalText`・`supportUrl`・`marketingUrl`）、`appStoreVersions` の `copyright` | できる | 説明文・キーワード・プロモーションテキストは Claude が下書きし、審査に出すときに書く（上の「掲載文」）。サポート URL・マーケティング URL・著作権表示は、人がチェックリストで値を確かめて押したら、版の枠のうちまだ書いていない言語・版に書く |
-| スクショ | `appScreenshotSets`・`appScreenshots` は 4.5.1 で非推奨。新しい App Asset Library（`appAssetLibraryImages`・`appAssetLibraryPlacements`） | できる（文書に明記） | 「App Store の素材」の流れ（段階 5 の 6） |
+| スクショ | `appScreenshotSets`・`appScreenshots` は 4.5.1 で非推奨。新しい App Asset Library（`appAssetLibraryImages`・`appAssetLibraryPlacements`） | できる（文書に明記） | 「App Store の素材」の流れ（段階 5 の 6）。App Asset Library を使う（#1184） |
 | App Review の情報 | `POST`・`PATCH /v1/appStoreReviewDetails`（連絡先・デモアカウント・メモ） | 推定でできる（役割の表に行が無い） | メモ・デモアカウントは「App Store の素材」の流れ（段階 5 の 6）。連絡先は、人が押したら同じ鍵のほかのアプリの版から写す（値は状態リポジトリに置かない） |
 | 輸出コンプライアンス | `PATCH /v1/builds/{id}`（`usesNonExemptEncryption`） | 文書に無い | テンプレートの Info.plist の `ITSAppUsesNonExemptEncryption`（上の「審査に出す」） |
 | 契約・税・口座 | 無い | できない（Account Holder・Admin・Finance） | 無料のアプリは要らない。有料にするときは人が Web で |
@@ -251,17 +251,22 @@ App Store Connect にまだアプリが無い・配信中の版が無いアプ�
 - 差のあるものだけを見せる。ほかの言語は一覧で並べ、「まとめて OK」を押せる
 - ステータスバーの表示とデモモードのデータを固定し、画面が変わっていなければ同じ画像になるようにする。Xcode や Simulator の更新で全体に差が出たときは、環境の違いによる差の可能性を添える
 
-2026-11-20 にユーザーが決め、#1167 で作った作り:
+2026-11-20 にユーザーが決め、#1167 で作り、#1184 で App Asset Library に移した作り:
 
 - 撮るのは、リリースの見回り（`ReleaseWatch`）の段取り。release ブランチを作ったら撮り始めた印（`submissions/<版>.json` の `screenshots.state` が `capturing`）を書き、常時オンの Mac の司令塔の中の、ジョブと同じビルドの枠と Simulator の枠で、見回りの外の Task で撮る（ジョブにはしない。Mac mini では司令塔がワーカーを兼ねていて、動くのは同じプロセス・同じ枠のため）
 - 撮り方は、リポジトリの UI テストを流して添付の画像を取り出す（`repo.json` の `build.storeScreenshots`。[protocol.md](protocol.md)）。テストのビルドは 1 回（`build-for-testing`）だけにし、表示サイズの機種ごと・言語ごとに `test-without-building -only-testing:` で流し、言語は環境変数（`TEST_RUNNER_<名前>`）で渡す。結果（xcresult）の添付を `xcresulttool export attachments` で取り出し、添付した順に 1 枚目・2 枚目… とする
-- 撮る表示サイズは、配信中の版の App Store Connect にあるものすべて（撮り方に機種の無い表示サイズは「撮らなかった」として知らせる）。iPhone Duo は Xcode 27 と iOS 27.1 が要り、今のスクショの API（appScreenshotSets）の表示サイズにも無いので、まだ撮らない
-- 比べる相手は、配信中の版のスクショ（App Store Connect の CDN の元の大きさの画像）。同じファイル（MD5）なら差なし、違えば画素を比べ（色の差 24 以下・違う画素 0.05% 未満は同じとみなす）、変わった所を割合で記録する。基準の言語に差が無ければ、ほかの言語は撮らない（その言語の文言だけが変わったときの撮り直しは、まだ作っていない）
+- 撮る表示サイズは、配信中の版の App Store Connect にあるものすべて（撮り方に機種の無い表示サイズは「撮らなかった」として知らせる）。表示サイズは App Asset Library の配置グループ（`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など）で、値の一覧は App Store Connect のリファレンスデータにしか無い（文書にあるのは 6.9 インチだけ）。撮らなかった表示サイズは配置グループのまま記録に出るので、その値で `build.storeScreenshots.displayTypes` に機種を足す
+- iPhone Duo も、ほかの表示サイズと同じに撮る。iPhone Duo の機種は iOS 27.1 のランタイムにしか無く、Xcode 27.1 以上が要る。表示サイズごとの Xcode は持たず、撮る Mac の設定の Xcode 1 つで撮る（Mac mini は 27.1）。機種を用意できない Mac では、その組を撮らずに理由（ランタイムが無い・Xcode の SDK より新しいなど）を出す（2026-11-21 にユーザーが決めた）
+- 比べる相手は、配信中の版の配置のスクショ（App Store Connect の CDN の元の大きさの画像）。AskHub が上げた画像（参照名が `askhub-<ファイルの MD5>`）で同じファイルなら差なし、ほかで上げた画像や違うファイルは画素を比べ（色の差 24 以下・違う画素 0.05% 未満は同じとみなす）、変わった所を割合で記録する。基準の言語に差が無ければ、ほかの言語は撮らない（その言語の文言だけが変わったときの撮り直しは、まだ作っていない）
+- 古い appScreenshotSets は読まない。配信中の版の基準の言語に配置のスクショが無ければ、比べられないので撮らずに `failed` にする（古い API で上げたスクショが配置に出ないときに当たる。2026-11-21 にユーザーが決めた）
 - 差のある画面は、見本（幅 600 の JPEG）を状態リポジトリ（`store-screenshots/<版>/…`）に、元の画像を常時オンの Mac に置く
 - 人は審査に出すシートで、基準の言語の差のある画面を Before / After で見比べ（変わった所に枠）、画面ごとに「前のままにする」を選ぶ。ほかの言語は「まとめて OK」か、開いて画面ごとに選ぶ
-- 審査に出すときに、前のままにしなかった差のある画面を元の画像に替え（予約 → 送る → 終わりを伝える → 処理を待つ）、組の並びを決める。前回の組にあって撮ったものより後ろの位置は消す。上げる前に組を読み、同じファイルがもうあれば上げ直さない
+- 審査に出すときに、差のある組の、前のままにしなかった差のある画面を元の画像に替え、前のままにした位置には配信中の版の画像（人が Before で見たもの）を置く（2026-11-21 にユーザーが決めた）。前回の組にあって撮ったものより後ろの位置は消す。差の無い組は触らない
+  - 画像はアプリの App Asset Library に上げる（予約 → 送る → `uploaded` → 処理を待つ）。参照名に MD5 を入れ、ライブラリに同じ画像があれば上げ直さない（言語・版をまたいで使い回す）。前の試行の上げ終わらなかった・処理に失敗した同じ画像は消してから上げる
+  - 編集できる版の言語の表示サイズの配置を、置きたい画像の並びにする。同じ画像の配置は使い回し、余った配置を消してから足りない配置を作り（組の上限 10 枚でも詰まらない）、並べ直す（配置の順の要求）。置きたい並びは配信中の版と撮ったものだけで決まるので、途中で止まってもやり直せば同じになる
+  - 表示サイズを載せる版（プラットフォーム）は、リファレンスデータの配置グループのプラットフォームで決める（iPhone・iPad・Apple Watch・iMessage は iOS の版）
 - 撮れなかった（人が直す失敗）ときは `failed` にし、スクショを変えずに審査に出せる。待てば直る失敗は、撮り始めた印のまま次の見回りでやり直す
-- appScreenshotSets / appScreenshots は API 4.5 で非推奨になり、App Asset Library に移った。iPhone Duo を撮るときに、あわせて移す
+- appScreenshotSets / appScreenshots（API 4.5.1 で非推奨）は使わない。#1184 で App Asset Library（画像・配置・配置の順の要求・リファレンスデータ）に移した
 
 ### プロダクトページのヘッダーと検索結果の素材
 
