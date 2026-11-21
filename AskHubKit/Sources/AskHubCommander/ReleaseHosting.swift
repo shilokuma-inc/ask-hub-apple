@@ -22,6 +22,19 @@ public protocol ReleaseHosting: Sendable {
     func createBranch(_ repo: RepositoryFullName, branch: String, at sha: String) async throws(PullRequestError) -> String
     /// `head` が `base` より進んでいる・遅れているコミットの数
     func compare(_ repo: RepositoryFullName, base: String, head: String) async throws(PullRequestError) -> (ahead: Int, behind: Int)
+    /// `workflow_dispatch` のワークフローを起動する（App Store のスクショの撮影）。起動した実行の id が返らなければ nil
+    func dispatchWorkflow(
+        _ repo: RepositoryFullName,
+        workflow: String,
+        ref: String,
+        inputs: [String: String]
+    ) async throws(PullRequestError) -> DispatchedRun?
+    /// 1 つの実行の今の様子
+    func workflowRun(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) -> WorkflowRunDetail
+    /// ワークフローの、ブランチで `workflow_dispatch` から起こした実行（新しい順。最初のページだけ）
+    func dispatchedRuns(_ repo: RepositoryFullName, workflow: String, branch: String) async throws(PullRequestError) -> [WorkflowRunDetail]
+    /// 実行を取り消す
+    func cancelWorkflowRun(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError)
 }
 
 /// 配信したコミットに付ける注釈付きのタグ
@@ -96,6 +109,31 @@ public struct GitHubReleaseHosting: ReleaseHosting {
 
     public func tagCommit(_ repo: RepositoryFullName, tag: String) async throws(PullRequestError) -> String? {
         try await github(repo).tagCommit(tag)
+    }
+
+    public func dispatchWorkflow(
+        _ repo: RepositoryFullName,
+        workflow: String,
+        ref: String,
+        inputs: [String: String]
+    ) async throws(PullRequestError) -> DispatchedRun? {
+        try await github(repo).dispatchWorkflow(workflow, ref: ref, inputs: inputs)
+    }
+
+    public func workflowRun(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) -> WorkflowRunDetail {
+        try await github(repo).workflowRun(id: id)
+    }
+
+    public func dispatchedRuns(
+        _ repo: RepositoryFullName,
+        workflow: String,
+        branch: String
+    ) async throws(PullRequestError) -> [WorkflowRunDetail] {
+        try await github(repo).dispatchedRuns(workflow, branch: branch)
+    }
+
+    public func cancelWorkflowRun(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) {
+        try await github(repo).cancelWorkflowRun(id: id)
     }
 
     public func createAnnotatedTag(_ repo: RepositoryFullName, _ tag: AnnotatedTag) async throws(PullRequestError) {

@@ -38,6 +38,8 @@ public actor ReleaseWatch {
     var capturing: Set<String> = []
     /// 撮っている Task（テストで終わりを待つ）
     var captureTasks: [String: Task<Void, Never>] = [:]
+    /// 撮影のワークフローの実行を最後に読んだ時刻（`<owner>/<repo>/<版>`）。見回りのたびに読まず、5 分空ける
+    var screenshotRunsCheckedAt: [String: Date] = [:]
     /// ログに出した知らせ（同じものを見回りのたびに出さない）
     private var reported: Set<String> = []
     private var running = false

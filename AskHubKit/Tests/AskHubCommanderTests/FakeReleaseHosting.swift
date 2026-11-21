@@ -30,6 +30,7 @@ final class FakeReleaseHosting: ReleaseHosting {
     }
 
     let state = OSAllocatedUnfairLock(initialState: State())
+    let workflows = OSAllocatedUnfairLock(initialState: FakeWorkflows())
 
     private func call<Value: Sendable>(_ body: @Sendable (inout State) -> Value) -> Value {
         state.withLock { state in
