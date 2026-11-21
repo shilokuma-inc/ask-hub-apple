@@ -142,14 +142,29 @@ extension StateSnapshotBuilder {
                         changed: shot.changed,
                         before: shot.before.flatMap(URL.init(string:)).map(Screenshot.remote),
                         after: shot.preview.map(Screenshot.stored),
-                        area: shot.area.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
+                        area: shot.area.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) },
+                        rejected: shot.rejected
                     )
                 },
                 removed: set.removed
             )
         }
         let skipped = file.skipped.map { Submission.SkippedDisplayType(displayType: $0.displayType, reason: $0.reason) }
-        return Submission.StoreScreenshots(state: state, commit: file.commit, sets: sets, skipped: skipped)
+        return Submission.StoreScreenshots(state: state, commit: file.commit, sets: sets, skipped: skipped, progress: progress(of: file))
+    }
+
+    /// 撮っている間の今の段階。App Store Connect の取り込みを待っているか、GitHub Actions で撮っているか。UI テストの撮り方は nil
+    static func progress(of file: SubmissionFile.StoreScreenshots) -> String? {
+        guard file.state == .capturing else { return nil }
+        if let library = file.library {
+            return "App Store Connect の取り込みを待っています（\(library.ready) / \(library.total) 枚）"
+        }
+        guard let run = file.run else { return nil }
+        return switch run.status {
+        case "completed": "撮った画像を取り込んで、前回の App Store のものと比べています"
+        case "in_progress": "GitHub Actions で撮っています"
+        default: "GitHub Actions の撮影を待っています"
+        }
     }
 
     private static func slot(_ slot: SubmissionFile.VersionSlot) -> Submission.Slot {

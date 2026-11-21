@@ -364,7 +364,8 @@ extension Submission {
         let detail: String
         switch screenshots.state {
         case .capturing:
-            return StepStatus(id: "screenshots", title: title, detail: "撮っています（UI テストを表示サイズ・言語ごとに流します）", state: .working)
+            let detail = screenshots.progress ?? "撮っています（UI テストを表示サイズ・言語ごとに流します）"
+            return StepStatus(id: "screenshots", title: title, detail: detail, state: .working)
         case .captured:
             let changed = screenshots.changedSets.count
             detail = changed == 0 ? "前回の App Store から変わっていません" : "\(changed) 組に差があります"

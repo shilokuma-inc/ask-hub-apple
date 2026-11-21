@@ -13,7 +13,7 @@ struct StoreScreenshotsSection: View {
             EmptyView()
         case .capturing:
             Section {
-                Label("撮っています", systemImage: "camera")
+                Label(screenshots.progress ?? "撮っています", systemImage: "camera")
             } header: {
                 Text("スクショ")
             }
@@ -112,8 +112,18 @@ private struct ShotComparisonRow: View {
                 column("Before", shot.before, highlight: nil, empty: "新しい画面")
                 column("After", shot.after, highlight: shot.area, empty: "撮れなかった")
             }
-            Toggle(shot.before == nil ? "載せない" : "前のままにする", isOn: $keep)
-                .accessibilityIdentifier("store-screenshot-keep-\(shot.index)")
+            if let rejected = shot.rejected {
+                // App Store Connect が受け付けなかった画面は、前のままにするしかない（司令塔も置かない）
+                Label(rejected, systemImage: "exclamationmark.triangle")
+                    .appFont(.footnote)
+                    .foregroundStyle(.secondary)
+                Toggle(shot.before == nil ? "載せない" : "前のままにする", isOn: .constant(true))
+                    .disabled(true)
+                    .accessibilityIdentifier("store-screenshot-keep-\(shot.index)")
+            } else {
+                Toggle(shot.before == nil ? "載せない" : "前のままにする", isOn: $keep)
+                    .accessibilityIdentifier("store-screenshot-keep-\(shot.index)")
+            }
         }
     }
 
