@@ -829,3 +829,4 @@
   名前は `01-ホーム_0_<UUID>.png` のように番号と UUID が足される。並びは `timestamp` で決める。テストに環境変数を渡すには、xcodebuild に `TEST_RUNNER_<名前>=<値>` を付ける（2026-11-20、#1167）
 - App Store Connect の API の応答の関係（`relationships.<名前>.data`）は、`include` でその関係を求めたときだけ相手の id が入り、求めないと `links` だけになる。
   `GET /v1/apps/{id}/appInfos` の `primaryCategory` を `include` しないと、カテゴリを決めてあっても無いと読む（2026-11-20、#1168。反映後に deki-roulette のカテゴリが「まだ」になって分かった）
+- `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations` の言語の並びは、読むたびに変わることがある。読んだ並びのまま記録と比べると、文が同じでも書き直してしまうので、言語の順に並べてから比べる（OshiCon の配信の記録で、並びだけが違う書き直しが続いた。#1180）。
