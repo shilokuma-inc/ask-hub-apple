@@ -368,7 +368,7 @@
         "object",
         "null"
       ],
-      "description": "App Store のスクショを撮って比べた結果。state は capturing（撮っている）・captured・failed（failure に理由。スクショを変えずに審査に出せる）・notConfigured（撮り方が無い）。sets は撮った組（表示サイズ × 言語）で、shots の preview は差のある画面の見本（状態リポジトリ）、before は前回の App Store の画像の URL、area は変わった所（割合）、removed は前回の組にあって撮ったものより後ろの位置の数。skipped は App Store Connect にあるが撮らなかった表示サイズ",
+      "description": "App Store のスクショを撮って比べた結果。state は capturing（撮っている）・captured・failed（failure に理由。スクショを変えずに審査に出せる）・notConfigured（撮り方が無い）。sets は撮った組（表示サイズ × 言語）で、shots の preview は差のある画面の見本（状態リポジトリ）、before は前回の App Store の画像の URL、area は変わった所（割合）、removed は前回の組にあって撮ったものより後ろの位置の数。skipped は App Store Connect にあるが撮らなかった表示サイズ。run は撮影のワークフローの実行（capture: actions）",
       "required": [
         "state",
         "startedAt",
@@ -550,6 +550,58 @@
             "null"
           ],
           "minLength": 1
+        },
+        "run": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "撮影のワークフローの実行（capture: actions のときだけ）。id は run の id（起動の応答か、起動した後の一覧で分かる）、url は run の画面、dispatchedAt は起動を送った時刻、status・conclusion は GitHub の run の様子と結論。after は起動の前からあった、ブランチの workflow_dispatch の run の最大の id（id の分からない run を一覧から探すとき、これより新しいものだけを候補にする）",
+          "required": [
+            "dispatchedAt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^https://github\\.com/",
+              "maxLength": 400
+            },
+            "dispatchedAt": {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            },
+            "status": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[a-z_]{1,40}$"
+            },
+            "conclusion": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[a-z_]{1,40}$"
+            },
+            "after": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
         }
       }
     },

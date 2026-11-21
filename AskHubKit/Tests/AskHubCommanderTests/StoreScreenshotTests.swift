@@ -72,7 +72,7 @@ extension ReleaseWatchTests {
             xcode: try BuildSettings(project: "OshiCon.xcodeproj", scheme: "OshiCon", destinations: [.macOS]),
             childChecks: ["build / build"],
             finalChecks: ["build / build"],
-            storeScreenshots: StoreScreenshotSettings(
+            storeScreenshots: .uiTest(StoreScreenshotSettings(
                 test: "OshiConUITests/AppStoreScreenshotTests",
                 environment: ["APP_STORE_SCREENSHOTS": "1"],
                 languageVariable: "APP_STORE_LANGUAGE",
@@ -80,7 +80,7 @@ extension ReleaseWatchTests {
                 languages: ["ja": .init(language: "ja", region: "ja_JP"), "en-US": .init(language: "en", region: "en_US")],
                 baseLocale: "ja",
                 displayTypes: displayTypes
-            )
+            ))
         )
         await store.put(StatePath.repository(Self.repo), data: try StateFileCoder.encode(file))
     }

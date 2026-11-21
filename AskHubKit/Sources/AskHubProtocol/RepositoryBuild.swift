@@ -20,8 +20,8 @@ extension RepositoryFile {
         public var trustedReviewers: [String]
         /// 判断のカードのスクショの撮り方。無ければ撮らない
         public var screenshots: ScreenshotSettings?
-        /// App Store のスクショの撮り方（リリースのたびに撮る）。無ければ撮らない
-        public var storeScreenshots: StoreScreenshotSettings?
+        /// App Store のスクショの撮り方（リリースのたびに撮る。UI テストか、リポジトリの撮影のワークフロー）。無ければ撮らない
+        public var storeScreenshots: StoreScreenshotCapture?
 
         public init(
             baseBranch: String = Self.defaultBaseBranch,
@@ -30,7 +30,7 @@ extension RepositoryFile {
             finalChecks: [String],
             trustedReviewers: [String] = [],
             screenshots: ScreenshotSettings? = nil,
-            storeScreenshots: StoreScreenshotSettings? = nil
+            storeScreenshots: StoreScreenshotCapture? = nil
         ) {
             self.baseBranch = baseBranch
             self.xcode = xcode
@@ -49,7 +49,7 @@ extension RepositoryFile {
             finalChecks = try container.decode([String].self, forKey: .finalChecks)
             trustedReviewers = try container.decodeIfPresent([String].self, forKey: .trustedReviewers) ?? []
             screenshots = try container.decodeIfPresent(ScreenshotSettings.self, forKey: .screenshots)
-            storeScreenshots = try container.decodeIfPresent(StoreScreenshotSettings.self, forKey: .storeScreenshots)
+            storeScreenshots = try container.decodeIfPresent(StoreScreenshotCapture.self, forKey: .storeScreenshots)
         }
 
         /// 型だけでは表せない決まりに合わないところ（`xcode` の形は読むときに `BuildSettings` が確かめる）

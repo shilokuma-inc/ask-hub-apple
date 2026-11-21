@@ -270,6 +270,7 @@ App Store Connect にまだアプリが無い・配信中の版が無いアプ�
   - 表示サイズを載せる版（プラットフォーム）は、リファレンスデータの配置グループのプラットフォームで決める（iPhone・iPad・Apple Watch・iMessage は iOS の版）
 - 撮れなかった（人が直す失敗）ときは `failed` にし、スクショを変えずに審査に出せる。待てば直る失敗は、撮り始めた印のまま次の見回りでやり直す
 - appScreenshotSets / appScreenshots（API 4.5.1 で非推奨）は使わない。#1184 で App Asset Library（画像・配置・配置の順の要求・リファレンスデータ）に移した
+- 撮り方の設定の `capture` が `actions` のリポジトリは、Mac で撮らずに、リポジトリの撮影のワークフロー（template 系の `app-store-screenshots.yml`）で撮る（2026-11-22 にユーザーが決めた。[store-screenshots.md](store-screenshots.md)。#1194）。release ブランチを作ったら、その先頭を読んで撮り始めた印（`run.dispatchedAt`）を書き、ワークフローを `upload: false` で `workflow_dispatch` する（`return_run_details` で実行の id を記録の `screenshots.run` に書く。送る前に、そのブランチの既存の実行の最大の id を `run.after` に書く。送った後に落ちて id を書けなければ、ブランチの `workflow_dispatch` の実行のうち `after` より新しいものから探し、1 つならそれを使い、2 つ以上なら見分けられないので `failed`、5 分たっても無ければ送り直す）。見回りの周で実行を読み（5 分空ける。様子が変わったときだけ書く）、ワークフローが無い・入力が合わない・トークンで起動できない・取り消された・6 時間で終わらない（取り消す）ときは `failed` にする。artifact の取り込みと比べ方は次の段階（#1192 の PR (b)）で作るので、今は終わった実行も `failed`（スクショを変えずに審査に出せる）にする
 
 ### プロダクトページのヘッダーと検索結果の素材
 
