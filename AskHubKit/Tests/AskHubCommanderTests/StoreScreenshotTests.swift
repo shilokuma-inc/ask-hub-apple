@@ -234,9 +234,9 @@ extension ReleaseWatchTests {
         #expect(capturer.requests.withLock { $0 }.isEmpty)
     }
 
-    /// 撮った元の画像を置き、2・3 枚目に差があり 3 枚目を前のままにした記録で、審査に出せるようにする。
-    /// 配信中の版（l-ja）と編集できる版（e-ja）の配置は、どちらも画像 i1〜i4
-    func readyToSubmitScreenshots() async throws -> (originals: URL, capturer: FakeStoreScreenshots) {
+    /// 撮った元の画像を置き、2・3 枚目に差がある記録で、審査に出せるようにする（`keep` は前のままにする位置。既定は 3 枚目）。
+    /// 配信中の版（l-ja）と編集できる版（e-ja）の配置は、どちらも画像 i1〜i4。撮ったときの Before は配信中の版の画像の URL
+    func readyToSubmitScreenshots(keep: [Int] = [3]) async throws -> (originals: URL, capturer: FakeStoreScreenshots) {
         var file = try await readyToSubmit()
         let capturer = FakeStoreScreenshots()
         let originals = capturer.originals(Self.repo, version: Self.next, commit: Self.developHead)
@@ -247,9 +247,9 @@ extension ReleaseWatchTests {
         }
         let preview = StatePath.storeScreenshot(Self.repo, Self.next, displayType: Self.iPhone, locale: "ja", index: 2)
         let shots: [SubmissionFile.Shot] = [
-            .init(index: 1, name: "01", changed: false),
-            .init(index: 2, name: "02", changed: true, preview: preview),
-            .init(index: 3, name: "03", changed: true, preview: preview)
+            .init(index: 1, name: "01", changed: false, before: Self.liveImage(1).absoluteString),
+            .init(index: 2, name: "02", changed: true, preview: preview, before: Self.liveImage(2).absoluteString),
+            .init(index: 3, name: "03", changed: true, preview: preview, before: Self.liveImage(3).absoluteString)
         ]
         file.screenshots = .init(
             state: .captured,
@@ -262,11 +262,14 @@ extension ReleaseWatchTests {
                 .init(displayType: "MAC_PROFILE", locale: "ja", shots: [.init(index: 1, name: "01", changed: true, preview: preview)])
             ]
         )
-        // 3 枚目は前のままにする
-        file.submit?.screenshots = .init(commit: Self.developHead, keep: [.init(displayType: Self.iPhone, locale: "ja", index: 3)])
+        file.submit?.screenshots = .init(
+            commit: Self.developHead, keep: keep.map { .init(displayType: Self.iPhone, locale: "ja", index: $0) }
+        )
         try await putSubmission(file)
         let placements = { @Sendable (prefix: String) -> [AppStoreScreenshotSet] in
-            let shots = (1...4).map { AppStoreScreenshot(id: "\(prefix)-p\($0)", imageID: "i\($0)", checksum: nil, imageURL: nil) }
+            let shots = (1...4).map { index in
+                AppStoreScreenshot(id: "\(prefix)-p\(index)", imageID: "i\(index)", checksum: nil, imageURL: Self.liveImage(index))
+            }
             return [AppStoreScreenshotSet(displayType: Self.iPhone, screenshots: shots)]
         }
         appStore.state.withLock { state in
@@ -280,6 +283,11 @@ extension ReleaseWatchTests {
             state.screenshotSets["e-ja"] = placements("e")
         }
         return (originals, capturer)
+    }
+
+    /// 配信中の版の画像 i<n> の URL
+    static func liveImage(_ index: Int) -> URL {
+        URL(string: "https://is1-ssl.mzstatic.com/i\(index)/1320x2868bb.png")!
     }
 
     func screenshotWrites() -> [String] {
@@ -328,5 +336,38 @@ extension ReleaseWatchTests {
         appStore.state.withLock { $0.libraryImages[name] = [AppStoreLibraryImage(id: "image-failed", state: "FAILED")] }
         await watch(screenshots: capturer).refresh()
         #expect(screenshotWrites().prefix(2) == ["deleteImage image-failed", "uploadImage \(Self.iPhone)-ja-2.png"])
+    }
+
+    @Test func placesLiveImagesWhenEveryChangedScreenIsKept() async throws {
+        let (_, capturer) = try await readyToSubmitScreenshots(keep: [2, 3])
+        // 編集できる版の 2 枚目に、やめた前のリリースで上げた画像が残っている
+        appStore.state.withLock { state in
+            let left = AppStoreScreenshot(id: "e-left", imageID: "image-left", checksum: nil, imageURL: nil)
+            state.screenshotSets["e-ja"]?[0].screenshots[1] = left
+        }
+        await watch(screenshots: capturer).refresh()
+        // すべて前のままにした組も、配信中の版の画像（i1〜i3）にそろえ、撮ったものより後ろの 4 枚目を消す
+        #expect(screenshotWrites() == [
+            "deletePlacement e-left",
+            "deletePlacement e-p4",
+            "placeScreenshot i2 e-ja",
+            "orderScreenshots e-ja e-p1,placement-1,e-p3"
+        ])
+    }
+
+    @Test func stopsWhenLiveScreenshotsChangedAfterCapture() async throws {
+        let (_, capturer) = try await readyToSubmitScreenshots()
+        // 撮って比べた後に、配信中の版の 3 枚目（前のままにする位置）が別の画像になった
+        appStore.state.withLock { state in
+            state.screenshotSets["l-ja"]?[0].screenshots[2] = AppStoreScreenshot(
+                id: "l-new", imageID: "i9", checksum: nil, imageURL: URL(string: "https://is1-ssl.mzstatic.com/i9/1320x2868bb.png")
+            )
+        }
+        await watch(screenshots: capturer).refresh()
+        // 人が Before で見ていない画像は置かずに、上げる前に止める
+        #expect(screenshotWrites().isEmpty)
+        let file = try await submission()
+        #expect(file.problem?.step == .submit && file.problem?.needsHuman == true)
+        #expect(file.problem?.message.contains("撮って比べた後に変わった") == true)
     }
 }

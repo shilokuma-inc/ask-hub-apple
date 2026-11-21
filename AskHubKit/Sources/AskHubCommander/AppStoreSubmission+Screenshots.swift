@@ -25,9 +25,8 @@ extension AppStoreSubmission {
         var liveSets: [String: [AppStoreScreenshotSet]] = [:]
         for set in sets {
             let changed = set.shots.filter(\.changed).map(\.index)
+            // 差のある画面をすべて前のままにした組も、配信中の版の画像にそろえる（編集できる版が配信中の版と違うことがある）
             let accepted = Set(changed.filter { !keep.contains(.init(displayType: set.displayType, locale: set.locale, index: $0)) })
-            // 差のある画面をすべて前のままにした組は触らない（後ろの位置を消すだけの組は、そのまま消す）
-            guard !accepted.isEmpty || set.shots.allSatisfy({ !$0.changed }) else { continue }
             guard let localization = localizations.first(where: { $0.locale == set.locale }) else {
                 let message = "\(target.platform.rawValue) の版に \(set.locale) の掲載文が無い。App Store Connect で言語を確かめる"
                 throw ReleaseStepProblem(message, needsHuman: true)
@@ -42,7 +41,7 @@ extension AppStoreSubmission {
     }
 
     /// 組の位置ごとに置きたい画像の id。前のままにした位置は配信中の版の画像、確かめた差のある画面は撮った元の画像（ライブラリに無ければ上げる）。
-    /// 前回に無い位置を前のままにしたものは置かない
+    /// 前回に無い位置を前のままにしたものは置かない。撮って比べた後に配信中の版の画像が変わっていれば（人が Before で見たものと違えば）、置かずに止める
     private func images(
         of set: SubmissionFile.ScreenshotSet,
         accepted: Set<Int>,
@@ -50,6 +49,16 @@ extension AppStoreSubmission {
         library: String,
         originals: URL
     ) async throws -> [String] {
+        // 上げる前に、前のままにする位置がどれも人が Before で見た画像のままかを確かめる
+        for shot in set.shots where !accepted.contains(shot.index) {
+            let live = shot.index <= before.count ? before[shot.index - 1] : nil
+            guard live?.imageURL?.absoluteString == shot.before else {
+                throw ReleaseStepProblem(
+                    "配信中の版のスクショ（\(set.displayType)/\(set.locale) の \(shot.index) 枚目）が、撮って比べた後に変わった。リリースをやめて始め直すと撮り直す",
+                    needsHuman: true
+                )
+            }
+        }
         var images: [String] = []
         for shot in set.shots {
             if accepted.contains(shot.index) {
