@@ -10,7 +10,8 @@ public struct StoreScreenshotSettings: Codable, Equatable, Sendable {
 
     /// アプリの言語と地域（テストに環境変数で渡す）
     public struct Language: Codable, Equatable, Sendable {
-        /// アプリの言語（`-AppleLanguages` に渡す値。`ja`・`en`・`zh-Hans` など）
+        /// アプリの言語（`-AppleLanguages` に渡す値。`ja`・`en`・`zh-Hans` など）。前に配信した版から文言が変わった言語（`.lproj` のフォルダ・
+        /// String Catalog の言語）と結ぶのにも使う
         public var language: String
         /// 地域（`-AppleLocale` に渡す値。`ja_JP` など）。無ければ渡さない
         public var region: String?
@@ -31,7 +32,7 @@ public struct StoreScreenshotSettings: Codable, Equatable, Sendable {
     public var regionVariable: String?
     /// App Store Connect の言語（`ja`・`en-US` など）ごとの、アプリの言語と地域。ここに無い言語は撮らない
     public var languages: [String: Language]
-    /// 基準の言語（App Store Connect の言語）。毎回撮り、ほかの言語は基準の言語で差が出たときだけ撮る
+    /// 基準の言語（App Store Connect の言語）。毎回撮り、ほかの言語は基準の言語で差が出たときか、その言語の文言が前に配信した版から変わったときだけ撮る
     public var baseLocale: String
     /// App Store Connect の表示サイズ（App Asset Library の配置グループ。`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など）ごとの、
     /// 撮る Simulator の機種の名前（上から順に、ある機種を使う）。

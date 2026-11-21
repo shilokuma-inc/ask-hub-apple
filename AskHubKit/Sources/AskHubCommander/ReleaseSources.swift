@@ -80,6 +80,12 @@ public protocol ReleaseSourceReading: Sendable {
         upTo commit: String,
         below version: MarketingVersion
     ) async throws(WorkspaceError) -> ReleaseChanges
+    /// 前に配信した版のタグ（`ReleaseChanges.previousTag`）から `commit` までに、文言が変わった言語（App Store のスクショ）
+    func localizationChanges(
+        _ repo: RepositoryFullName,
+        from tag: String,
+        to commit: String
+    ) async throws(WorkspaceError) -> LocalizationChanges
     /// 配信したコミットを取り出した、Claude に読ませる写し（`id` ごとに分ける）
     func prepare(_ repo: RepositoryFullName, commit: String, for id: ULID) async throws(WorkspaceError) -> PreparedWorkspace
     /// 写しを片付ける

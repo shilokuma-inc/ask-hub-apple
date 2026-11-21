@@ -127,7 +127,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 }
 ```
 
-- `build.storeScreenshots` は App Store のスクショの撮り方（[release.md](release.md) の「スクショ」）。無ければ撮らない。`test` は流す UI テスト（`-only-testing:` の値）、`environment` はテストに渡す決まった環境変数、`languageVariable`・`regionVariable` は言語・地域を渡す環境変数の名前（xcodebuild には `TEST_RUNNER_` を付けて渡す）、`languages` は App Store Connect の言語ごとのアプリの言語と地域（ここに無い言語は撮らない）、`baseLocale` は毎回撮る基準の言語、`displayTypes` は App Store Connect の表示サイズごとの撮る機種（上から順に、ある機種を使う）。表示サイズは App Asset Library の配置グループ（`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など）で、値の一覧は App Store Connect のリファレンスデータにしか無いので、配信中の版にあって撮り方に無い表示サイズが記録の `skipped` に配置グループのまま出たら、その値で足す。テストが添付した画像（`XCTAttachment`）を添付した順に、1 枚目・2 枚目… とする
+- `build.storeScreenshots` は App Store のスクショの撮り方（[release.md](release.md) の「スクショ」）。無ければ撮らない。`test` は流す UI テスト（`-only-testing:` の値）、`environment` はテストに渡す決まった環境変数、`languageVariable`・`regionVariable` は言語・地域を渡す環境変数の名前（xcodebuild には `TEST_RUNNER_` を付けて渡す）、`languages` は App Store Connect の言語ごとのアプリの言語と地域（ここに無い言語は撮らない。`language` は、前に配信した版から文言が変わった言語（`.lproj`・String Catalog の言語）と結ぶのにも使う）、`baseLocale` は毎回撮る基準の言語（ほかの言語は、基準の言語で差が出たときか、文言が変わったときだけ撮る）、`displayTypes` は App Store Connect の表示サイズごとの撮る機種（上から順に、ある機種を使う）。表示サイズは App Asset Library の配置グループ（`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など）で、値の一覧は App Store Connect のリファレンスデータにしか無いので、配信中の版にあって撮り方に無い表示サイズが記録の `skipped` に配置グループのまま出たら、その値で足す。テストが添付した画像（`XCTAttachment`）を添付した順に、1 枚目・2 枚目… とする
 - `maxConcurrentEpics` は 1 以上
 - `appKit` は、共通リポジトリのワークフローを入れる前は `null`
 - 対象から外した（`removeRepository`）リポジトリの `repo.json` は消さず、外した印（外した時刻と意図。欄の名前と形は段階 4 の 4 で決めて、ここに書く）を付けて残す。印のあるリポジトリへの依頼・開始・ビルドの設定は断り、もう一度 `addRepository` すると印を外す（[operations.md](operations.md) の「対象から外す」）

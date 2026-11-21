@@ -40,7 +40,8 @@ public protocol StoreScreenshotCapturing: Sendable {
 }
 
 /// release ブランチの先頭で App Store のスクショを撮り、配信中の版のスクショと比べる（`docs/renewal/release.md` の「スクショ」）。
-/// 基準の言語を先に撮り、どれかの組に差があれば、ほかの言語も撮る。差のある画面は、見本を状態リポジトリに、元の画像を常時オンの Mac に置く
+/// 基準の言語を先に撮り、どれかの組に差があれば、ほかの言語もすべて撮る。差が無ければ、前に配信した版から文言が変わった言語だけを撮る。
+/// 差のある画面は、見本を状態リポジトリに、元の画像を常時オンの Mac に置く
 struct StoreScreenshotRun: Sendable {
     var context: CommanderContext
     var store: any AppStoreConnectSubmitting
@@ -76,6 +77,9 @@ struct StoreScreenshotRun: Sendable {
             return failed("App Store Connect にある表示サイズ（\(liveTypes.joined(separator: "・"))）の撮り方が設定に無い")
         }
 
+        let others = locales.filter { $0 != settings.baseLocale }
+        let localized = try await localizedLocales(others, file: file, commit: commit, settings: settings)
+
         let id = ULID.generate()
         defer { Task { await sources.release(id) } }
         let workspace: PreparedWorkspace
@@ -88,18 +92,43 @@ struct StoreScreenshotRun: Sendable {
             repo: file.repo, version: file.version, commit: commit, directory: workspace.directory, build: build, settings: settings
         )
         let place = Place(file: file, originals: capturer.originals(file.repo, version: file.version, commit: commit), current: current)
-        // 基準の言語を先に撮る。差が無ければ、ほかの言語は撮らない（文言の差だけの言語ごとの撮り直しは後で足す）
+        // 基準の言語を先に撮る。差があればほかの言語もすべて、差が無ければ文言の変わった言語だけを撮る。
+        // 基準の言語を 1 組も撮れなければ、ほかの言語も撮らない（クライアントは最初の組の言語を基準の言語とみなす）
         request.targets = types.map { StoreScreenshotTarget(displayType: $0, locale: settings.baseLocale) }
         var sets = try await compare(request.targets, results: try await capturer.capture(request), place: place, skipped: &skipped)
-        request.targets = types.flatMap { type in
-            locales.filter { $0 != settings.baseLocale }.map { StoreScreenshotTarget(displayType: type, locale: $0) }
-        }
-        if sets.contains(where: \.isChanged), !request.targets.isEmpty {
-            sets += try await compare(request.targets, results: try await capturer.capture(request), place: place, skipped: &skipped)
+        if !sets.isEmpty {
+            let rest = sets.contains(where: \.isChanged) ? others : localized
+            request.targets = types.flatMap { type in rest.map { StoreScreenshotTarget(displayType: type, locale: $0) } }
+            if !request.targets.isEmpty {
+                sets += try await compare(request.targets, results: try await capturer.capture(request), place: place, skipped: &skipped)
+            }
         }
         guard !sets.isEmpty else { return failed(skipped.first?.reason ?? "スクショを撮れなかった") }
-        log("\(file.repo) の \(file.version) のスクショを撮った（差のある組 \(sets.filter(\.isChanged).count) / \(sets.count)）")
+        let wording = localized.isEmpty ? "" : "。文言の変わった言語 \(localized.joined(separator: "・"))"
+        log("\(file.repo) の \(file.version) のスクショを撮った（差のある組 \(sets.filter(\.isChanged).count) / \(sets.count)\(wording)）")
         return .init(state: .captured, commit: commit, startedAt: started, finishedAt: context.timestamp, sets: sets, skipped: skipped)
+    }
+
+    /// `locales`（App Store Connect の言語）のうち、前に配信した版のタグから文言が変わったもの（`languages` の `language` で結ぶ）。
+    /// 前の版のタグが無ければ、どれが変わったか分からないので、すべての言語を返す
+    private func localizedLocales(
+        _ locales: [String],
+        file: SubmissionFile,
+        commit: String,
+        settings: StoreScreenshotSettings
+    ) async throws -> [String] {
+        guard !locales.isEmpty else { return [] }
+        var changes = LocalizationChanges.unknown
+        do {
+            if let tag = try await sources.changes(file.repo, upTo: commit, below: file.version).previousTag {
+                changes = try await sources.localizationChanges(file.repo, from: tag, to: commit)
+            } else {
+                log("\(file.repo) の \(file.version): 前に配信した版のタグが無く、文言の差を求められないので、ほかの言語もすべて撮る")
+            }
+        } catch {
+            throw ReleaseStepProblem("前に配信した版からの文言の差を読めない（\(error)）", needsHuman: false)
+        }
+        return locales.filter { settings.languages[$0].map { changes.affects($0.language) } ?? false }
     }
 
     /// 配信中の版の、言語ごと・表示サイズごとのスクショの組と、撮る言語

@@ -179,6 +179,45 @@ extension ReleaseWatchTests {
         #expect(shots.state == .captured && shots.sets.count == 1 && !shots.sets[0].isChanged)
         // 基準の言語に差が無いので、ほかの言語は撮らない
         #expect(capturer.requests.withLock { $0 } == [[Self.japanese]])
+        // 前に配信した版のタグから release ブランチの先頭までの文言の差を見た
+        #expect(sources.state.withLock { $0.localizationRanges } == ["v1.0.0..\(Self.developHead)"])
+    }
+
+    @Test func capturesLocalesWhoseWordingChangedEvenIfTheBaseIsUnchanged() async throws {
+        try await startRelease()
+        try await addScreenshotRepository()
+        let home = commanderPNG(), renamed = commanderPNG(mark: CGRect(x: 0, y: 70, width: 40, height: 10))
+        liveScreenshots([home], localization: "l-ja", locale: "ja")
+        liveScreenshots([home], localization: "l-en", locale: "en-US")
+        // アプリの英語（en-US の language）の文言だけが変わった
+        sources.state.withLock { $0.localizations = LocalizationChanges(languages: ["en", "fr"]) }
+        let capturer = FakeStoreScreenshots()
+        capturer.images.withLock { $0 = [Self.japanese: [home], Self.english: [renamed]] }
+        let watch = watch(screenshots: capturer)
+        await watch.refresh()
+        await watch.waitForScreenshotCaptures()
+        let shots = try #require(try await submission().screenshots)
+        #expect(capturer.requests.withLock { $0 } == [[Self.japanese], [Self.english]])
+        #expect(shots.state == .captured && shots.sets.map(\.locale) == ["ja", "en-US"])
+        #expect(shots.sets.map(\.isChanged) == [false, true])
+    }
+
+    @Test func capturesEveryLocaleWithoutPreviousTag() async throws {
+        try await startRelease()
+        try await addScreenshotRepository()
+        let home = commanderPNG()
+        liveScreenshots([home], localization: "l-ja", locale: "ja")
+        liveScreenshots([home], localization: "l-en", locale: "en-US")
+        // 前の版のタグが無いと、どの言語の文言が変わったか分からない
+        sources.state.withLock { $0.changes.previousTag = nil }
+        let capturer = FakeStoreScreenshots()
+        capturer.images.withLock { $0 = [Self.japanese: [home], Self.english: [home]] }
+        let watch = watch(screenshots: capturer)
+        await watch.refresh()
+        await watch.waitForScreenshotCaptures()
+        #expect(capturer.requests.withLock { $0 } == [[Self.japanese], [Self.english]])
+        #expect(sources.state.withLock { $0.localizationRanges }.isEmpty)
+        #expect(try await submission().screenshots?.sets.contains(where: \.isChanged) == false)
     }
 
     @Test func failsWhenLiveScreenshotsAreNotReadableAsPlacements() async throws {
