@@ -40,6 +40,57 @@ extension GitHubContentsStore {
         }
     }
 
+    /// 1 つの tree の要求に入れる文字の大きさの上限（UTF-8 のバイト数）。超えたら tree を分け、前の tree を元に次の tree を作る
+    static let treeChunkBytes = 8_000_000
+
+    /// テキストのファイルを、Git Data API の 1 つのコミットでまとめて書く（あれば上書き）。
+    ///
+    /// ブランチの先頭の tree を元に、ファイルの中身（`content`。UTF-8 の文字だけ持てる）を重ねた tree とコミットを作り、ブランチを早送りで進める。
+    /// 読んだ後にほかの書き手が書いて早送りにならなければ、読み直して 3 回までやり直す（足すファイルは、ほかの書き手のものと重ならない）。
+    /// 書き込みの予算は、内容を作る要求（tree・コミット・ブランチの更新）を数える。ファイルが何枚でも、1 回で 3 件（大きければ tree が増える）
+    public func writeTextFiles(_ files: [String: String], message: String) async throws(StateStoreError) {
+        guard !files.isEmpty else { return }
+        guard files.keys.allSatisfy(StatePathCheck.isSafe) else { throw .invalidPath }
+        let branch = try await branchName()
+        let chunks = Self.chunks(files)
+        for attempt in 1...3 {
+            let head = try await decode(RefPayload.self, from: try await request("GET", "git/ref/heads/\(branch)")).object.sha
+            var tree = try await decode(CommitPayload.self, from: try await request("GET", "git/commits/\(head)")).tree.sha
+            for chunk in chunks {
+                let body = TextTreeBody(baseTree: tree, tree: chunk.map { TextTreeEntry(path: $0.key, content: $0.value) })
+                tree = try await decode(ShaPayload.self, from: try await request("POST", "git/trees", body: body)).sha
+            }
+            let commitBody = CommitBody(message: message, tree: tree, parents: [head])
+            let commit = try await decode(ShaPayload.self, from: try await request("POST", "git/commits", body: commitBody))
+            do {
+                _ = try await request("PATCH", "git/refs/heads/\(branch)", body: RefBody(sha: commit.sha, force: false))
+                return
+            } catch let .unexpected(status: 422, message) where message?.localizedCaseInsensitiveContains("fast forward") == true {
+                // 早送りにならない（読んだ後にほかの書き手が書いた）。読み直してやり直す
+                if attempt == 3 { throw .conflict }
+            }
+        }
+    }
+
+    /// パスの順に並べ、UTF-8 で `treeChunkBytes` ごとに分ける（1 つのファイルが上限より大きくても、そのファイルだけの塊にする）
+    static func chunks(_ files: [String: String]) -> [[(key: String, value: String)]] {
+        var chunks: [[(key: String, value: String)]] = []
+        var current: [(key: String, value: String)] = []
+        var size = 0
+        for file in files.sorted(by: { $0.key < $1.key }) {
+            let bytes = file.value.utf8.count + file.key.utf8.count
+            if !current.isEmpty, size + bytes > treeChunkBytes {
+                chunks.append(current)
+                current = []
+                size = 0
+            }
+            current.append(file)
+            size += bytes
+        }
+        if !current.isEmpty { chunks.append(current) }
+        return chunks
+    }
+
     /// パスに何か（ディレクトリかファイル）があるか
     private func exists(_ path: String) async throws(StateStoreError) -> Bool {
         do throws(StateStoreError) {
@@ -119,6 +170,34 @@ private struct MoveTreeEntry: Encodable {
         try container.encode("100644", forKey: .mode)
         try container.encode("blob", forKey: .type)
         try container.encode(sha, forKey: .sha)
+    }
+}
+
+/// tree に重ねる 1 つのテキストのファイル（中身を渡し、GitHub が blob を作る）
+private struct TextTreeEntry: Encodable {
+    let path: String
+    let content: String
+
+    enum CodingKeys: String, CodingKey {
+        case path, mode, type, content
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        try container.encode("100644", forKey: .mode)
+        try container.encode("blob", forKey: .type)
+        try container.encode(content, forKey: .content)
+    }
+}
+
+private struct TextTreeBody: Encodable {
+    let baseTree: String
+    let tree: [TextTreeEntry]
+
+    enum CodingKeys: String, CodingKey {
+        case baseTree = "base_tree"
+        case tree
     }
 }
 
