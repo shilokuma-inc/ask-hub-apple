@@ -59,6 +59,8 @@ final class ClientStore {
     static let receiptTrackingWindow: TimeInterval = 10 * 60
     /// 司令塔は 30 秒ほどの周ごとに意図を受け取る。これより長く受け取らなければ、司令塔が動いていない可能性をその場に出す
     static let defaultStallThreshold: TimeInterval = 3 * 60
+    /// スワイプ・選択肢で答えた後、取り消せる間
+    static let defaultUndoDelay: Duration = .seconds(4)
     /// 延ばした取り直しの間隔（Mac で前面でない・GitHub の REST の残りが少ないとき）。GitHub の上限をほかのもの（司令塔・Claude のセッション）に残す
     static let relaxedRefreshInterval: Duration = .seconds(2 * 60)
 
@@ -102,7 +104,7 @@ final class ClientStore {
 
     init(
         service: any ClientService,
-        undoDelay: Duration = .seconds(4),
+        undoDelay: Duration = ClientStore.defaultUndoDelay,
         noticeDuration: Duration = .seconds(5),
         stallThreshold: TimeInterval = ClientStore.defaultStallThreshold,
         now: @escaping () -> Date = Date.init

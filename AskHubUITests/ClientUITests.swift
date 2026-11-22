@@ -108,22 +108,20 @@ final class ClientUITests: XCTestCase {
         XCTAssertTrue(key.exists)
     }
 
+    @MainActor
     private func chooseScenario(_ label: String, in app: XCUIApplication) {
         let settings = app.buttons["設定"].firstMatch
         XCTAssertTrue(settings.waitForExistence(timeout: 10))
         settings.tap()
-        // メニューの選択は、名前に今の値が続いたボタンになる（例「デモの場面, ひととおり（標準）」）
-        let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "デモの場面")).firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 5), app.debugDescription)
-        picker.tap()
-        app.buttons[label].firstMatch.tap()
+        XCTAssertTrue(choose(label, inMenu: "デモの場面", in: app), app.debugDescription)
         app.buttons["閉じる"].firstMatch.tap()
     }
 
     /// カードを右上へスワイプすると推奨で答え、猶予の間は取り消せる
     @MainActor
     func testSwipeAnswersAndCanUndo() {
-        let app = launch(["-demoScenario", "standard", "-demoOpen", "deck:questions:habit-export"])
+        // CI の Simulator ではスワイプの合成から戻るまでに 4〜5 秒かかり、既定の猶予（4 秒）では「取り消す」を押す前に送ってしまう（#1245）
+        let app = launch(["-demoScenario", "standard", "-demoOpen", "deck:questions:habit-export", "-demoUndoDelay", "30"])
         let card = app.otherElements["deckCard.top"]
         XCTAssertTrue(card.waitForExistence(timeout: 10))
         XCTAssertTrue(card.staticTexts["書き出したファイルの置き場所"].exists)
@@ -368,11 +366,7 @@ final class ClientUITests: XCTestCase {
         let plus = app.buttons["新しい依頼"].firstMatch
         XCTAssertTrue(plus.waitForExistence(timeout: 10))
         plus.tap()
-        // メニューの選択は、名前に今の値が続いたボタンになる（例「アプリ, 選んでください」）
-        let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "アプリ")).firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        picker.tap()
-        app.buttons["献立メモ"].firstMatch.tap()
+        XCTAssertTrue(choose("献立メモ", inMenu: "アプリ", in: app))
         let summary = app.textFields.matching(NSPredicate(format: "placeholderValue BEGINSWITH %@", "要約")).firstMatch
         XCTAssertTrue(summary.waitForExistence(timeout: 5))
         summary.tap()
@@ -440,19 +434,12 @@ extension ClientUITests {
         let plus = app.buttons["新しい依頼"].firstMatch
         XCTAssertTrue(plus.waitForExistence(timeout: 10))
         plus.tap()
-        let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "アプリ")).firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        picker.tap()
-        let first = app.staticTexts["demo-studio"]
-        let second = app.staticTexts["kurashi-apps"]
-        XCTAssertTrue(first.waitForExistence(timeout: 5))
-        XCTAssertTrue(second.exists)
         // kurashi-apps のアプリは、kurashi-apps の見出しの下に並ぶ
-        let item = app.buttons["積読リスト"].firstMatch
-        XCTAssertTrue(item.exists)
-        XCTAssertGreaterThan(second.frame.minY, first.frame.minY)
-        XCTAssertGreaterThan(item.frame.minY, second.frame.minY)
-        item.tap()
+        let elements = [app.staticTexts["demo-studio"], app.staticTexts["kurashi-apps"], app.buttons["積読リスト"].firstMatch]
+        let frames = menuFrames(of: elements, inMenu: "アプリ", in: app) ?? []
+        XCTAssertEqual(frames.count, 3, app.debugDescription)
+        XCTAssertEqual(frames.map(\.minY), frames.map(\.minY).sorted())
+        XCTAssertTrue(choose("積読リスト", inMenu: "アプリ", in: app))
         let header = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS %@", "kurashi-apps/tsundoku-ios"))
             .firstMatch

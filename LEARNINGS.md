@@ -538,6 +538,14 @@
 - swiftlint が PATH に無い Mac でも、アプリをビルドしたことがあれば、SwiftLintPlugins が取った実行ファイル
   （DerivedData の `AskHub-*/SourcePackages/artifacts/swiftlintplugins/SwiftLintBinary/SwiftLintBinary.artifactbundle/macos/swiftlint`）で
   `DEVELOPER_DIR=<Xcode.app>/Contents/Developer <そのパス> lint --strict` を流せる（2026-11-21、#1184）
+- CI の Simulator（iOS 26.5）では、開き切って静止した `Picker` のメニューの項目を、XCTest が押す位置を計算できない
+  （`Failed to compute hit point … Activation point invalid and no suggested hit points based on element frame`。枠は正しく取れている）・
+  押しても選ばれない・画面に出ている見出しや項目の枠が `inf` になることが、メニューを開いている間ずっと（5 秒以上）続くことがある。
+  手元では、単独・UI テストを全部続けて・Simulator のプロセスを `kill -STOP` / `-CONT` で間欠的に止めて遅くした状態のどれでも再現しない。
+  メニューの項目は `tap()` で押さず、`ClientUITests+Menu.swift` の `choose(_:inMenu:in:)`（押せるまで待って枠の中央を座標で押し、
+  選んだ値がメニューのボタンの名前に出たかで確かめ、出なければメニューの外を押して閉じて開き直す）で選ぶ（2026-11-23、#1245）
+- UI テストで「取り消す」を押すまでの間は、CI ではスワイプの合成から戻るまでに 4〜5 秒かかり、既定の猶予（4 秒）を超えることがある。
+  猶予の間に操作するテストは、起動引数 `-demoUndoDelay <秒>` で猶予を長くする（2026-11-23、#1245）
 
 ## Keychain
 
