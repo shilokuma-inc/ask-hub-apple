@@ -320,8 +320,9 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 
 - `notApplied` は、最後のゴールの修正で反映しなかった人の指示とその理由（決まったことを変える指示など。回答を変えて直してもらう）
 - ゴールを直すたびに `version` を上げる。「開始」の人の意図は、確かめたゴールの `version` を持つ
-- タスクの `state` は `pending`・`locked`（人がする作業の待ち）・`running`・`done`。`dependsOn` には、ほかのタスクと人がする作業の id を書ける
+- タスクの `state` は `pending`・`locked`（人がする作業の待ち）・`running`・`done`・`skipped`（人が飛ばした）。`dependsOn` には、ほかのタスクと人がする作業の id を書ける
   - 司令塔が、`pending` → `running`（実装のジョブを作ったとき）→ `done`（子 PR をマージしたとき）にする（[flows.md](flows.md) の「司令塔がタスクを進める」）。人が読むゴールの中身は変えないので、`version` は上げない
+  - 人がタスクを飛ばしたら（`skipTask`）、司令塔が `running` → `skipped` にし、`skip` に `{ "reason": "handledElsewhere" | "notNeeded", "note": "…" | null, "intent": { "keyId", "nonce" }, "at": "…", "pullRequest": <子 PR> | null }` を書く。`skip` は `skipped` のタスクだけが持つ。`skipped` のタスクは、依存するタスクを始めるときと最終 PR の段取りに進むときに、`done` と同じく済んだものとして扱う（2026-11-22 のユーザーの決定）
 - 人がする作業の `handover` は、終わったら渡すもの: `none`（「終わった」を押すだけ）・`file`（ファイルを渡す）・`secret`（GitHub の Secrets に入れる。`name` に Secrets の名前。値はどこにも残さない）。段階 3 では `none` と `file` を作り、`secret` は段階 4 の 4 で作る（値はクライアントが GitHub の公開鍵で暗号化し、暗号文だけを意図に入れる。[flows.md](flows.md) の「人がする作業」）
 - 人がする作業を終えたら、司令塔が `state` を `done` にし、`done` に `{ "intent": { "keyId", "nonce" }, "at": "…", "file": <依頼の添付と同じ形の参照> | null }` を書く。人が読むゴールの中身は変えないので、`version` は上げない
 - `comment` は、Discussion のゴールの写しのコメントの id
@@ -814,6 +815,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始した後の epic も受け付け、開いている子 PR と最終 PR を閉じる（ブランチは残す）。マージした epic は断る |
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`）。やめたときの扱い（epic ごとやめる・ジョブだけやめる・撮らずに進む）はジョブの種類で決まる（`JobKind.giveUpEffect`。[flows.md](flows.md) の「司令塔の動き」） |
+| `skipTask` | ジョブ（`retry` と同じ） | `retry` と同じ | `{ "reason": "handledElsewhere" \| "notNeeded", "note"?: "…" }`（`payloads/skipTask.schema.json`。メモは 2000 文字まで）。人に渡した実装・レビュー・直しのジョブ（`running` の epic）のタスクだけを飛ばせる（`JobKind.canSkipTask(at:)`。[flows.md](flows.md) の「司令塔の動き」） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
