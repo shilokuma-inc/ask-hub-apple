@@ -136,7 +136,12 @@ extension AskHubMain {
             guard let reason = TaskSkipReason(rawValue: try arguments.string("reason")) else {
                 throw CommandArguments.Failure(message: "--reason は handledElsewhere か notNeeded")
             }
-            return .skipTask(target, reason: reason, note: arguments.values["note"] ?? "")
+            let note = arguments.values["note"] ?? ""
+            // 司令塔（`PayloadReader`）と同じく、Unicode のコードポイントで数える
+            guard note.unicodeScalars.count <= SkipTaskIntent.maximumNoteLength else {
+                throw CommandArguments.Failure(message: "--note は \(SkipTaskIntent.maximumNoteLength) 文字まで")
+            }
+            return .skipTask(target, reason: reason, note: note)
         }
     }
 
