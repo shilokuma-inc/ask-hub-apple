@@ -777,7 +777,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `adoption`: 対象に加えるとき・準備をやり直すときに入れる版。最後に広げ終わった版で、まだ広げていなければ、最初にタグを読んだときの一番新しい版
 - `rollout`: 広げている・最後に広げた版（`version`・`ref`・広げる人の意図 `origin`・試しの 1 本 `pilot`・`startedAt`・`updatedAt`）
   - `state`: `running`（広げている）・`failed`（失敗して止めた。理由は `problem`。人が同じ版の `rolloutAppKit` でもう一度試すか、`stopAppKitRollout` でやめる）・`finished`（広げ終わった）・`stopped`（人がやめた）
-  - `targets`: PR を出した・出さなかった相手（出した順）。`kind` は `repository`（`repos/`）か `template`。`state` は `open`（PR を出して必須のチェックを待っている）・`verifying`（マージして develop の Build を待っている。試しの 1 本）・`done`（入れた。写すファイルがもう版の中身と同じで PR が要らなかったときも）・`failed`（止めた。PR は開いたまま）・`skipped`（出さなかった。major が違う・まだ入れ替えていない・準備の PR が開いている など）・`stopped`（人がやめたので PR を閉じた）。`failed`・`skipped` には `problem` を、`open`・`verifying` には `pullRequest`・`head` を必ず書く
+  - `targets`: PR を出した・出さなかった相手（出した順）。`kind` は `repository`（`repos/`）か `template`。`state` は `open`（PR を出して必須のチェックを待っている）・`verifying`（マージして develop の Build を待っている。試しの 1 本）・`done`（入れた。写すファイルがもう版の中身と同じで PR が要らなかったときも）・`failed`（止めた。PR は開いたまま）・`skipped`（出さなかった。major が違う・まだ入れ替えていない・準備の PR が開いている など）・`stopped`（人がやめたので PR を閉じた）。`failed`・`skipped` には `problem` を、`open`・`verifying` には `pullRequest`・`head` を、`verifying` には `mergeCommit`（マージしたコミット。その develop の Build を待つ）を必ず書く。`updatedAt` は様子が変わった時刻で、PR を出してからチェックが出るまでの時間もこれから測る
 - `templates`: テンプレート（`AppKitPolicy.templates`。テンプレートからの新規作成の一覧と同じ）に入っている版とずれ（`repo.json` の `appKit` と同じ形）。テンプレートは `repos/` に無いので、ここに持つ。初めての入れ替えは人が手で行い（2026-11-22 にユーザーが決めた）、司令塔は入れ替え済み（`appKit` がある）のテンプレートにだけ版を広げる
 
 ### devices/<device>.json（通知の宛先）

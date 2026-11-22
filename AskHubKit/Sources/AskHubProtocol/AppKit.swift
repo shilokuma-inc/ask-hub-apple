@@ -265,8 +265,11 @@ public struct AppKitRolloutTarget: Codable, Equatable, Sendable {
     public var pullRequest: Int?
     /// 出した PR の head。マージするときに、これと同じかを確かめる
     public var head: String?
+    /// マージしたコミット（`verifying` では、このコミットの develop の Build を待つ）。マージしていなければ nil
+    public var mergeCommit: String?
     /// 止めた・出さなかった理由（人が読む文）
     public var problem: String?
+    /// 様子が変わった時刻（PR を出してからチェックが出るまでの時間も、これから測る）
     public var updatedAt: Timestamp
 
     public init(
@@ -275,6 +278,7 @@ public struct AppKitRolloutTarget: Codable, Equatable, Sendable {
         state: State,
         pullRequest: Int? = nil,
         head: String? = nil,
+        mergeCommit: String? = nil,
         problem: String? = nil,
         updatedAt: Timestamp
     ) {
@@ -283,6 +287,7 @@ public struct AppKitRolloutTarget: Codable, Equatable, Sendable {
         self.state = state
         self.pullRequest = pullRequest
         self.head = head
+        self.mergeCommit = mergeCommit
         self.problem = problem
         self.updatedAt = updatedAt
     }
@@ -299,6 +304,10 @@ extension AppKitRollout {
         for target in targets {
             if let pullRequest = target.pullRequest, pullRequest < 1 { violations.append("rollout.targets の pullRequest は 1 以上") }
             if let head = target.head, !AttemptFile.isCommitSHA(head) { violations.append("rollout.targets の head の形が違う") }
+            if let merge = target.mergeCommit, !AttemptFile.isCommitSHA(merge) { violations.append("rollout.targets の mergeCommit の形が違う") }
+            if target.state == .verifying, target.mergeCommit == nil {
+                violations.append("rollout.targets の \(target.repo) が verifying なのに mergeCommit が無い")
+            }
             if let problem = target.problem, problem.isEmpty || problem.unicodeScalars.count > 1_000 {
                 violations.append("rollout.targets の problem は空でなく 1000 文字まで")
             }

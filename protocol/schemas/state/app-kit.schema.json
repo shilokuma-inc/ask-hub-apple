@@ -68,8 +68,12 @@
                   },
                   "pullRequest": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
                   "head": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/commitSha" }, { "type": "null" }], "description": "出した PR の head。マージするときに、これと同じかを確かめる" },
+                  "mergeCommit": {
+                    "anyOf": [{ "$ref": "../common.schema.json#/$defs/commitSha" }, { "type": "null" }],
+                    "description": "マージしたコミット（verifying では、このコミットの develop の Build を待つ。verifying では必ず書く）"
+                  },
                   "problem": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1000 }, { "type": "null" }], "description": "止めた・出さなかった理由（failed・skipped では必ず書く）" },
-                  "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+                  "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp", "description": "様子が変わった時刻（PR を出してからチェックが出るまでの時間も、これから測る）" }
                 }
               }
             },
