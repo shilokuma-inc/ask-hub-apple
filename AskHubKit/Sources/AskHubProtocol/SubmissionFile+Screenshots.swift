@@ -123,52 +123,7 @@ extension SubmissionFile {
     }
 
     /// 撮影のワークフローの実行（`capture: actions`。`docs/renewal/store-screenshots.md` の「撮影の起動と見張り」）
-    public struct CaptureRun: Codable, Equatable, Sendable {
-        /// run の id。起動の応答か、起動した後の一覧で分かる。分かるまでは nil
-        public var id: Int?
-        /// run の画面（`html_url`）
-        public var url: String?
-        /// 起動を送った時刻（送る前に書く。id が分からないまま時間がたてば送り直す）
-        public var dispatchedAt: Timestamp
-        /// GitHub の run の様子（`queued`・`in_progress`・`completed` など）。まだ読んでいなければ nil
-        public var status: String?
-        /// 終わった run の結論（`success`・`failure`・`cancelled` など）
-        public var conclusion: String?
-        /// 起動の前からあった、ブランチの `workflow_dispatch` の run の最大の id（無ければ 0）。id の分からない run を一覧から探すとき、
-        /// これより新しい run だけを候補にする（起動の前に人が起動した run を取り違えない）
-        public var after: Int?
-
-        public init(
-            id: Int? = nil,
-            url: String? = nil,
-            dispatchedAt: Timestamp,
-            status: String? = nil,
-            conclusion: String? = nil,
-            after: Int? = nil
-        ) {
-            self.id = id
-            self.url = url
-            self.dispatchedAt = dispatchedAt
-            self.status = status
-            self.conclusion = conclusion
-            self.after = after
-        }
-
-        /// 終わった
-        public var isCompleted: Bool { status == "completed" }
-
-        var problems: [String] {
-            var problems: [String] = []
-            if let id, id <= 0 { problems.append("screenshots の run の id は 1 以上") }
-            if let after, after < 0 { problems.append("screenshots の run の after は 0 以上") }
-            if let url, !url.hasPrefix("https://github.com/") || url.count > 400 { problems.append("screenshots の run の url は GitHub の画面") }
-            let words = [status, conclusion].compactMap(\.self)
-            if !words.allSatisfy({ $0.wholeMatch(of: #/[a-z_]{1,40}/#) != nil }) {
-                problems.append("screenshots の run の status・conclusion の形が違う")
-            }
-            return problems
-        }
-    }
+    public typealias CaptureRun = WorkflowRunRecord
 
     /// 撮って比べた画像を、App Store Connect のライブラリに先に上げた様子（`docs/renewal/store-screenshots.md` の「先に上げておく」）。
     /// 配置はしない（審査に出すときに置く）。すべて置ける状態になる（か受け付けられない）まで、撮影は決着しない
@@ -278,7 +233,7 @@ extension SubmissionFile {
         /// 合わない点
         var problems: [String] {
             var problems: [String] = []
-            problems += run?.problems ?? []
+            problems += run?.problems(label: "screenshots の run") ?? []
             problems += library?.problems ?? []
             if let retake {
                 let shaped = retake.displayTypes.allSatisfy(StoreScreenshotSettings.isDisplayType)

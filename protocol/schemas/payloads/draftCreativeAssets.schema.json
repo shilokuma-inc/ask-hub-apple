@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/draftCreativeAssets.schema.json",
+  "title": "クリエイティブアセットの案を頼む人の意図（kind が draftCreativeAssets）の payload",
+  "description": "封筒の repo が対象のリポジトリ、target は {type: creative}、targetVersion は人が見た案の版（creative.json の draft.revision。案が無ければ 0）。comment は直してほしいこと（最初の案なら省ける）。知らない欄のある payload は読まない",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "comment": { "type": "string", "minLength": 1, "maxLength": 2000 }
+  }
+}

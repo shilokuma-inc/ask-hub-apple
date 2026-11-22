@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/approveCreativeAssets.schema.json",
+  "title": "クリエイティブアセットの案を承認する人の意図（kind が approveCreativeAssets）の payload",
+  "description": "封筒の repo が対象のリポジトリ、target は {type: creative}、targetVersion は人が見た案の版（1 以上）。書き出しが終わった今の案だけ受け付ける。payload は持たない",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

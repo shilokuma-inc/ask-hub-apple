@@ -44,6 +44,8 @@ repos/<owner>/<repo>/releases/<版>.json             App Store で配信した�
 repos/<owner>/<repo>/submissions/<版>.json          リリースを始めた版の準備と審査（司令塔）
 repos/<owner>/<repo>/store-screenshots/<版>/<表示サイズ>/<言語>/<位置>.jpg  App Store のスクショの差のある画面の見本（司令塔）
 repos/<owner>/<repo>/app-store.json                新しいアプリを App Store に載せる準備（司令塔）
+repos/<owner>/<repo>/creative.json                 クリエイティブアセット（プロダクトページのヘッダー・検索結果の画像）の案と反映（司令塔）
+repos/<owner>/<repo>/creative/<案の版>/<言語>/<種類>.b64  クリエイティブアセットの案の見本（司令塔）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
 commander.json                                     司令塔の生きている印（司令塔）
 repo-candidates.json                               「対象に加える」の候補（司令塔）
@@ -516,6 +518,43 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `problem` は進められなかった理由（`step` は `branch`・`nextVersion`・`whatsNew`・`listing`・`builds`・`submit`・`distribute`・`withdraw`・`review`・`integration`・`appStoreVersion`）。`needsHuman` なら人が直す（クライアントに出す）
 - クライアントは、準備がそろい（`isPrepared`）、まだ出していない（`submit` も審査中のプラットフォームも無い）版を、人の番として出す（`awaitsSubmission`）。審査に通って配信の方式が手動の版（`pendingDeveloperRelease`）も人の番（`awaitsDistribution`）。審査を待っている・審査中なら取り下げられ（`canWithdraw`）、審査に出していない・取り下げた・断られた版はやめられる（`canAbandon`）
 
+### creative.json（クリエイティブアセットの案と反映）
+
+人が案を頼む（`draftCreativeAssets`）と、常時オンの Mac の Claude が案（文言・色・使う画面）を書き、司令塔が各リポジトリの書き出しのワークフロー（app-kit の `app-store-creative.yml`）で画像にして、見本を書く。人が承認（`approveCreativeAssets`）した案は、次のリリースの「審査に出す」で版の言語に置く（[creative-assets.md](creative-assets.md)）。
+形は `protocol/schemas/state/creative.schema.json`（Swift は `CreativeFile`）。案の形は `protocol/schemas/creative-spec.schema.json`（Swift は `CreativeSpec`。shilokuma-inc/app-kit の `schema/creative-spec.schema.json` と同じ形で、変えるときは両方を変える）。
+
+```json
+{
+  "v": 1,
+  "repo": "shilokuma-inc/prime-pick-ios",
+  "draft": {
+    "revision": 2,
+    "request": { "approval": { "keyId": "…", "nonce": "…" }, "comment": "見出しをもっと短く", "at": "…" },
+    "state": "rendered",
+    "spec": { "v": 1, "layout": "standard", "colors": { "…": "…" }, "screens": { "…": "…" }, "locales": [ … ] },
+    "reason": "検索結果では、ランキングを前に出しました",
+    "draftedAt": "…",
+    "run": { "id": 123, "url": "…", "dispatchedAt": "…", "status": "completed", "conclusion": "success" },
+    "screenshotsRun": 120,
+    "images": [{ "locale": "ja", "kind": "productPageHeader", "md5": "…", "preview": "repos/…/creative/2/ja/productPageHeader.b64", "problems": [] }],
+    "problems": []
+  },
+  "previous": { "revision": 1, "spec": { … }, "images": [ … ] },
+  "approved": { "revision": 1, "spec": { … }, "images": [ … ], "approval": { … }, "at": "…", "library": { "total": 4, "ready": 4, "sentAt": "…" } },
+  "live": { "version": "1.3.0", "images": [{ "locale": "ja", "kind": "productPageHeader", "url": "…" }], "readAt": "…" },
+  "placed": [{ "version": "1.4.0", "revision": 1, "at": "…" }],
+  "problem": null,
+  "updatedAt": "…"
+}
+```
+
+- `draft` は今の案。`revision` は頼まれるたびに 1 から上げる案の版で、人の意図の `targetVersion`。`request` は人の頼み（`comment` は直してほしいこと）。`state` は `drafting`（Claude が案を書いている）・`rendering`（GitHub Actions で書き出している）・`rendered`（人が確かめる番）・`failed`（`failure` に理由。人は直してほしいことを書いてやり直せる）。`rendering`・`rendered` は `spec` を、`rendered` は `images` を必ず持つ
+- `spec` は Claude が書いた案。`reason` は案の説明（人に見せる）。`problems` は案ぜんたいの書き出しを止めない問題（Apple の決まりに合わない文言・低いコントラスト）
+- `run` は書き出しのワークフローの実行（形は `submissions/<版>.json` の `screenshots.run` と同じ。Swift は共通の `WorkflowRunRecord`）。`screenshotsRun` は 6.9 インチの画面を撮った実行の id で、次の案で使い回す（撮り直さない）
+- `images` は書き出した画像（言語 × 種類）。`kind` は `productPageHeader`（3840x1646）・`searchResults`（3840x2560）。`md5` は元の画像（常時オンの Mac に置く）の MD5、`preview` は見本のパス（`creative/<案の版>/<言語>/<種類>.b64`。中身は幅 600 の JPEG を base64 にした文字で、1 回の書き出しの見本を 1 つのコミットでまとめて書く）、`problems` は書き出しを止めない問題（app-kit の `report.json` の、はみ出し・安全領域の外の文字・無い画面など）
+- `previous` は前の案（見比べるため）。`approved` は人が承認した案で、`library` は App Store Connect のライブラリに上げた様子（`total` は上げる画像の数・`ready` は置ける状態になった数）。`live` は配信中の版に置かれている画像（今の App Store）。`placed` は審査に出すときに置いた記録（新しい順・10 件まで）
+- `problem` は、案の頼みと関係なく進められなかった理由（書き出しのワークフローが無いなど。人が直す）
+
 ### verifications.json（実機確認への答え）
 
 ```json
@@ -930,11 +969,13 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `applyAppStoreSettings` | リポジトリ（封筒の `repo`） | — | 書く欄だけ: `contentRights`（`doesNotUseThirdPartyContent`・`usesThirdPartyContent`）、`primaryCategory`・`primarySubcategory`（App Store Connect のカテゴリの id）、`privacyPolicyUrl`（https）、`price`（`free`）、`availability`（`allTerritories`）、初めての版の `supportUrl`（https）・`marketingUrl`（https。任意で、`supportUrl` と一緒に送る）・`copyright`（権利を得た年と持ち主。200 文字まで・改行なし）・`reviewContact`（`copyFromOtherApp`。同じ鍵のほかのアプリの版から App Review の連絡先を写す。値は持たない）。`marketingUrl` のほかに 1 つ以上（`payloads/applyAppStoreSettings.schema.json`）。App Store Connect にアプリがあるときだけ受け付け、`settingsRequest` に写す。前の書き込みを送り終えていなければ断る |
 | `confirmAppStoreItem` | リポジトリ（封筒の `repo`） | — | `item`（チェックリストの項目。`app` は送れない。`payloads/confirmAppStoreItem.schema.json`）。項目に `confirmed` を付ける |
 | `excludeFromAppStore` | リポジトリ（封筒の `repo`） | — | `excluded`（true で出さない、false で出すに戻す。`payloads/excludeFromAppStore.schema.json`）。記録が無ければ作る |
+| `draftCreativeAssets` | クリエイティブアセット（`{ "type": "creative" }`。封筒の `repo` が対象のリポジトリ） | 人が見たときの案の版（`creative.json` の `draft.revision`。案が無ければ `0`） | `comment`（直してほしいこと。最初の案なら省ける。2,000 文字まで。`payloads/draftCreativeAssets.schema.json`）。書き出しの途中なら、その実行を取り消してから新しい案を書く |
+| `approveCreativeAssets` | 同上 | 人が見た案の版（1 以上） | 空（`payloads/approveCreativeAssets.schema.json`）。書き出しが終わった（`rendered`）今の案だけ受け付け、`approved` を上書きする |
 | `findCleanupCandidates` | —（封筒に `repo`・`target` を書かない） | — | `mac`（探す Mac。`payloads/findCleanupCandidates.schema.json`）。司令塔は登録された Mac なら `cleanup/<mac>/requests.json` に積むだけで、その Mac のワーカーが元の意図の署名を確かめてから探す（上の「片付けの候補」） |
 | `removeCleanupCandidates` | —（同上） | — | `mac`、`scannedAt`（選んだ候補を探した時刻）、`candidates`（消す候補の id。パスは送らない。`payloads/removeCleanupCandidates.schema.json`）。積み方は `findCleanupCandidates` と同じ（上の「片付けの候補」） |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
-テンプレートからの作成・実機確認の「確認した」「問題あり」の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作の `kind`（`startRelease`・`submitForReview`・`distributeRelease`・`withdrawSubmission`・`abandonRelease`）は、段階 5 の 3 で足した。スクショを撮り直す `kind`（`retakeScreenshots`）は、2026-11-22 に足した（#1200）。新しいアプリを App Store に載せる準備の `kind`（`registerBundleId`・`applyAppStoreSettings`・`confirmAppStoreItem`・`excludeFromAppStore`）は、2026-11-20 に足した。
+テンプレートからの作成・実機確認の「確認した」「問題あり」の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作の `kind`（`startRelease`・`submitForReview`・`distributeRelease`・`withdrawSubmission`・`abandonRelease`）は、段階 5 の 3 で足した。スクショを撮り直す `kind`（`retakeScreenshots`）は、2026-11-22 に足した（#1200）。新しいアプリを App Store に載せる準備の `kind`（`registerBundleId`・`applyAppStoreSettings`・`confirmAppStoreItem`・`excludeFromAppStore`）は、2026-11-20 に足した。クリエイティブアセットの `kind`（`draftCreativeAssets`・`approveCreativeAssets`）は、2026-11-23 に足した（#1235）。
 
 ### 署名のしかた
 
