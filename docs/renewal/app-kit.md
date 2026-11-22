@@ -202,11 +202,12 @@ app-kit/
 
 ### 状態リポジトリに書くもの
 
-形は実装の PR で決め、[protocol.md](protocol.md) に書く。今の考え:
+形は [protocol.md](protocol.md)（`repo.json` の `appKit`・`setup.workflows`、`app-kit.json`、意図の表）と `protocol/` にある（#1225）。
 
-- `repo.json` の `appKit`（今は `{ "ref" }` だけ）に、版のタグ・コミット・入れた時刻・開いている PR（番号・head・入れ替えか版の上げか）・ずれ（`drift`。`protection.drift` と同じ形）を持たせる
-- 状態リポジトリの直下の `app-kit.json` に、見つけた版（タグ・コミット・変更点）と、広げている版の進み具合（リポジトリごとの様子）を持たせる
-- 意図: 版を広げる（`rolloutAppKit`。版のタグとコミット）・広げるのをやめる。初めての入れ替えの承認は `approveSetupPullRequest` を使い、準備の結果（`repo.json` の `setup.workflows.changes`）の変更の種類に、app-kit への入れ替え（`adoptAppKit`）を足す
+- `repo.json` の `appKit` に、版のコミット（`ref`）・タグ（`version`）・入れた時刻（`installedAt`）・ずれ（`drift`。`protection.drift` と同じ形）を持たせる
+- 開いている PR は、版の上げの PR を `app-kit.json` の `rollout.targets` に、入れ替えの PR を `setup.workflows` に持つ（テンプレートには `repo.json` が無いので、版の上げの PR を 1 か所にまとめた）
+- 状態リポジトリの直下の `app-kit.json` に、見つけた版（タグ・コミット・変更点）、入れ替えに使う版（`adoption`）、広げている版の進み具合（`rollout`。相手ごとの様子）、テンプレートに入っている版（`templates`）を持たせる
+- 意図: 版を広げる（`rolloutAppKit`）・広げるのをやめる（`stopAppKitRollout`）。どちらも封筒の `repo` を書かず、target を版のタグ、targetVersion を版のコミットに結びつける。初めての入れ替えの承認は `approveSetupPullRequest` を使い、準備の結果（`setup.workflows`）の変更の種類に、app-kit への入れ替え（`adoptAppKit`）と置き換わるファイルを外す（`removeReplaced`）を足し、入れる版と名前が変わる待つチェックを `setup.workflows.appKit` に持つ
 
 ### ずれの点検
 
@@ -216,8 +217,9 @@ app-kit/
 
 ## テンプレート
 
-- template-app-ios と template-app-visionos を、対象のリポジトリと同じく配る相手にする。初めての入れ替えはリポジトリごとの承認で、版を広げるときは最後に出す
-- テンプレートは AskHub の対象（`repos/`）ではないので、司令塔の設定にテンプレートの一覧を持つ（テンプレートからの新規作成で使う一覧と同じものにする）
+- template-app-ios と template-app-visionos を、対象のリポジトリと同じく配る相手にする。版を広げるときは最後に出す
+- 初めての入れ替えは、人の Claude Code のセッションで手で行う（2026-11-22 にユーザーが決めた。テンプレートは `repos/` の対象ではないので、クライアントに承認の画面を別に作らずに済ませる）。司令塔は、入れ替え済みのテンプレート（`app-kit.json` の `templates[].appKit` がある）にだけ版を広げる。iOS は template-app-ios#190、visionOS は app-kit に visionOS の撮影を足してから
+- テンプレートは AskHub の対象（`repos/`）ではないので、テンプレートの一覧はテンプレートからの新規作成と同じもの（コードの `RepositoryTemplate`。`AppKitPolicy.templates`）を使う
 - テンプレートに残すのは、アプリの骨組み（プロジェクト・画面の雛形・`AppStore/` の雛形・撮影モード）と、`.github/app-kit.json`・写すファイル・`## 全員向けの事実` の見出しだけの CLAUDE.md
 - テンプレートから作ったリポジトリは、テンプレートの版の app-kit を呼ぶ形で生まれる。「対象に加える」で、呼ぶ側のコミットを読んで `appKit` に書く。名前を置き換えるとき（テンプレートからの新規作成の処理）は、`.github/app-kit.json` の `project`・`scheme` も置き換える
 - template-app-visionos の develop の Build は落ちたままなので、入れ替えのときに直す
