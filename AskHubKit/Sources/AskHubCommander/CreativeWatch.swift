@@ -34,6 +34,8 @@ public actor CreativeWatch {
     var tasks: [String: Task<Void, Never>] = [:]
     /// 案を最後に書こうとした・書き出しの実行を最後に読んだ時刻
     var checkedAt: [String: Date] = [:]
+    /// 待てば直る失敗（上限など）の後、GitHub に送らない時刻
+    var notBefore: [String: Date] = [:]
     /// ログに出した知らせ（同じものを見回りのたびに出さない）
     private var reported: Set<String> = []
     private var running = false
@@ -238,6 +240,8 @@ extension CreativeWatch {
         } catch let problem as ReleaseStepProblem where problem.needsHuman {
             outcome = .failure(problem)
         } catch {
+            // 待つ時間は、書けなかった時から数える（書くのに十数分かかることがあるため、始めた時からではない）
+            checkedAt[key] = context.now()
             report("\(file.repo) のクリエイティブアセットの案 \(draft.revision) を書けない（\(error)）。\(Int(Self.creativeDraftRetryInterval / 60)) 分後にやり直す")
             return
         }
