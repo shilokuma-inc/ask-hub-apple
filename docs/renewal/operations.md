@@ -501,6 +501,14 @@ GitHub の REST の上限（1 時間に 5,000 回）は、トークンごとで�
   - ワーカーのトークンは Workflows を持たないので、ふだんの epic では push できない。司令塔の管理用のトークンで出す（コミットの書き手は、トークンのアカウント）
   - PR は自動ではマージしない。人がクライアントで承認する（`approveSetupPullRequest`。見たときの head に結びつき、承認の後に push されたらマージしない）と、司令塔が管理用のトークンで merge commit にする。必須のチェックが通っていなければ、理由を付けて断る（CI が通ってから承認し直す）。GitHub の画面でマージしてもよい
   - YAML は行で読んで直す（`on:` の下のイベントの下のキーだけ）。決まった形でない書き方は直さないので、直すところが残れば準備の依頼で直す
+- **app-kit への入れ替え**（[app-kit.md](app-kit.md) の「初めての入れ替え」。#1226）: まだ app-kit を呼んでいないリポジトリなら、同じ準備の PR に足す。入れる版は `app-kit.json` の `adoption`
+  - 司令塔は app-kit（public）を git で読む（常時オンの Mac の `~/Library/Developer/AskHub/commander/app-kit.git` に bare の写しを置き、版のコミットだけを浅く取る。トークンを使わず、REST の上限に数えない）
+  - 写すファイル（`manifest.json` の `managed`）を版の中身（`{{APP_KIT_REF}}`・`{{APP_KIT_VERSION}}` を埋めたもの）にする。もう同じ中身なら変えない（git の blob の sha で比べる）
+  - `.github/app-kit.json` が無ければ、ビルドの設定（`project`・`scheme`・行き先・`generate`）と、リポジトリのファイル（直下の `…UITests` のフォルダ、外すワークフローが Secret から書き出していた `GoogleService-Info.plist` のパス）から作る。あれば変えず、`unmanaged` に書いたファイルは写さない（ask-hub-apple のように、リポジトリで足した設定を残したいときは、先に `.github/app-kit.json` を入れてから準備をやり直す）
+  - `replaces` のファイルを外す（`keepIfPresent` のどれかがあれば残す）。PR の本文と `setup.workflows.changes` に、外すファイルの行の数と、外すワークフローにしか無い手順（app-kit の再利用ワークフローに同じ名前の手順が無いもの）を並べる。入れ替えるファイルは、今の仕組みの直し（`paths` を外すなど）を重ねない
+  - 待つチェック（ビルドの設定の `childChecks`・`finalChecks` と、掛けた保護の必須のチェック）のうち、入れ替えた後に出ない名前（prime-pick の `Build`、askhub-sandbox の `build`）は、入れ替えた後の名前（`build / build`）への付け替えとして `setup.workflows.appKit.renamedChecks` に書く。承認されたら、司令塔がマージの前にルールセット（掛けていれば）とビルドの設定を新しい名前に替える（替えないと、古い名前のチェックが出ずにマージできない）
+  - マージしたら、`repo.json` の `appKit` に入れた版を書く。もう app-kit を呼んでいる（テンプレートから作った・手で入れ替えた）リポジトリは、PR を出さずに、`build.yml` が呼んでいるコミットと、そのコミットの版のタグを書く
+  - 入れ替えられないとき（ビルドの設定が無い・`.xcworkspace`・司令塔がまだ版を読んでいない・app-kit を読めない）は、入れ替えを足さずに `setup.problems` に理由を書き、ほかの直しは続ける
 - **管理用のトークンが無い持ち主**: 加えるのは受け付け、準備だけ止めて `setup.problems` に理由を書く（2026-11-13 にユーザーが決めた）。管理用のトークンを入れた後に、もう一度 `addRepository` を送る（クライアントの「準備をやり直す」）と流し直す。Discussions を有効にできない・PR を出せないなども、`setup.problems` に理由を書く
 - **ほかの中身**（CLAUDE.md の `## 全員向けの事実` の節・ループの中継のスクリプト・今の仕組みの設定・CI の `epic/**` を `askhub/**` に読み替える）は、加えた後にクライアントが「準備の依頼」の下書きを出す。人が確かめて送り、ふだんの epic（質問 → ゴール → 子 PR → 最終 PR）で直す。リポジトリごとに違う残りものを、Claude が読んで直せるように
   - ワークフローのファイル（`epic/**` の読み替えを含む）は、ワーカーが push できないので、epic では直せない。準備の依頼の下書きには、人が GitHub で直すことを添える（2026-11-13 にユーザーが決めた。決まった手順の PR には入れない）
