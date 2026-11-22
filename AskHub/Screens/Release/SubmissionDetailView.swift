@@ -10,11 +10,23 @@ struct SubmissionDetailView: View {
     @State private var isSubmitting = Self.initialSubmitting
     @State private var confirming: Confirmation?
     @State private var isRetaking = false
+    /// 「このリリースを直す」依頼のシート
+    @State private var fixDraft: RequestDraft?
+    /// 撮影では、起動引数でこのリリースを直す依頼のシートを開いておく
+    @State private var opensFixOnAppear = Self.initialFix
 
     /// 撮影では、起動引数で審査に出すシートを開いておく
     private static var initialSubmitting: Bool {
         #if DEBUG
         DemoLaunch.initialSheet() == .submitReview
+        #else
+        false
+        #endif
+    }
+
+    private static var initialFix: Bool {
+        #if DEBUG
+        DemoLaunch.initialSheet() == .fixRelease
         #else
         false
         #endif
@@ -49,6 +61,7 @@ struct SubmissionDetailView: View {
                 ReflectionStatusView(target(submission))
             }
             actions(submission)
+            fixes(submission)
             CardSection {
                 ForEach(submission.steps) { step in
                     StepStatusRow(title: step.title, detail: step.detail, state: step.state)
@@ -82,6 +95,7 @@ struct SubmissionDetailView: View {
         .sheet(isPresented: $isSubmitting) {
             SubmitReviewSheet(submission: submission) { isSubmitting = false }
         }
+
         .confirmationDialog(confirmationTitle, isPresented: isConfirming, titleVisibility: .visible, presenting: confirming) { action in
             confirmationButton(action, submission: submission)
         } message: { action in
@@ -134,6 +148,40 @@ struct SubmissionDetailView: View {
                 Text("あなたの番")
             }
             .disabled(store.isReflecting([target(submission)]))
+        }
+    }
+
+    /// このリリースを直す依頼（TestFlight で見つかった不具合など）と、出した直しの epic
+    @ViewBuilder private func fixes(_ submission: Submission) -> some View {
+        let epics = (store.snapshot?.epics ?? []).filter { $0.repositoryID == submission.repositoryID && $0.release == submission.version }
+        if submission.acceptsFixes || !epics.isEmpty {
+            CardSection {
+                ForEach(epics) { epic in
+                    NavigationLink(value: AppRoute.epic(epic.id)) {
+                        Label(epic.title, systemImage: epic.stage == .done ? "checkmark.circle" : "wrench.and.screwdriver")
+                    }
+                }
+                if submission.acceptsFixes {
+                    Button("このリリースを直す…", systemImage: "plus") {
+                        fixDraft = RequestDraft(repositoryID: submission.repositoryID, summary: "", body: "", release: submission.version)
+                    }
+                    .accessibilityIdentifier("submission-fix")
+                }
+            } header: {
+                Text("このリリースの直し")
+            } footer: {
+                if submission.acceptsFixes {
+                    Text("TestFlight で見つかった不具合などを、release/\(submission.version) に直しを入れる依頼にします。配信した後に develop にも取り込みます")
+                }
+            }
+            .sheet(item: $fixDraft) { draft in
+                NewRequestSheet(draft: draft)
+            }
+            .onAppear {
+                guard opensFixOnAppear, submission.acceptsFixes else { return }
+                opensFixOnAppear = false
+                fixDraft = RequestDraft(repositoryID: submission.repositoryID, summary: "", body: "", release: submission.version)
+            }
         }
     }
 

@@ -197,6 +197,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   "pause": null,
   "goalVersion": null,
   "origin": { "keyId": "…", "nonce": "01JC…" },
+  "release": null,
   "createdAt": "…",
   "updatedAt": "…"
 }
@@ -208,6 +209,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `pause` は、人が一時停止した印 `{ "since": "<受け付けた時刻>", "origin": { "keyId", "nonce" } }`（`pauseEpic` の意図）。再開（`resumeEpic`）で外す。付いている間、司令塔は epic の次のジョブを作らず、まだ動いていないジョブ（`queued`・`assigned`）を `paused` にしたままにする（動いているジョブは最後まで終わらせる）。Mac がオフラインでジョブが止まっただけのときは付けない
 - `merge` は、最終 PR のマージの記録 `{ "commit": "<マージのコミット>", "approval": { "keyId", "nonce" } | null, "at": "…" }`。司令塔が `merged` にするときに書く。`approval` は人の承認（`approveMerge`）の意図で、マージの規則で自動でマージしたなら `null`。クライアントは、どの端末から承認したかによらず、これで「自動でマージした」「承認してマージした」を出し分ける
 - `branch` は作業ブランチ。git のコマンドに渡しても選択肢に読まれないよう、`-` で始まる値・`..` を含む値・英数字と `._/-` 以外の文字を使わない
+- `release` は、「このリリースを直す」依頼（`request` の `release`）の直すリリースの版。あれば、作業ブランチの元・最終 PR の向き先・開始前の Claude のジョブが読む写しは `release/<版>`（無ければ `repo.json` の `build.baseBranch`）。直すリリースが終わった（配信した・やめた）後は、最終 PR をマージせずに人へ渡す（release ブランチを develop と main に取り込むのは配信したときの 1 回だけなので、その後の直しは develop に戻らない）。[release.md](release.md) の「リリース中の直し」
 
 `stage` の値と移り変わり:
 
@@ -840,7 +842,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 
 | kind | target | targetVersion | payload |
 | --- | --- | --- | --- |
-| `request` | リポジトリ | — | `title`、`body`、`attachments`（`[{ "n": 1, "name": "…", "size": …, "sha256": "…" }]`。中身は `attachments/<device>/<intent>/<n>` に、意図より先に置く。`n` は 1 から順に、10 個・1 つ 50 MiB まで）（`payloads/request.schema.json`） |
+| `request` | リポジトリ | — | `title`、`body`、`attachments`（`[{ "n": 1, "name": "…", "size": …, "sha256": "…" }]`。中身は `attachments/<device>/<intent>/<n>` に、意図より先に置く。`n` は 1 から順に、10 個・1 つ 50 MiB まで）、`release`（「このリリースを直す」依頼の直すリリースの版。AskHub で始めた終わっていないリリースで、release ブランチを作ったものだけ受け付け、epic の `release` に写す）（`payloads/request.schema.json`） |
 | `answer` | 質問 | 質問の `version` | `mode`（`answer`・`clarify`）、`choice`、`note`（`protocol/schemas/payloads/answer.schema.json`） |
 | `startEpic` | epic | ゴールの `version` | `mac`（`payloads/startEpic.schema.json`） |
 | `reviseGoal` | epic | ゴールの `version` | `instruction`（指示の本文。`payloads/reviseGoal.schema.json`） |

@@ -227,7 +227,7 @@ extension TaskJobEnvironment {
             throw .state(error)
         }
         guard let settings else { throw .fail(.unexpected, "\(job.repo) の repo.json に build（ビルドの設定）が無い") }
-        let branches = TaskBranches(base: settings.baseBranch, epic: epic, task: id)
+        let branches = TaskBranches(base: epic.base(repository: settings.baseBranch), epic: epic, task: id)
         return TaskTarget(epic: epic, goal: goal, task: task, settings: settings, branches: branches)
     }
 
