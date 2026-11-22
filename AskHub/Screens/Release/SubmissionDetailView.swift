@@ -61,6 +61,7 @@ struct SubmissionDetailView: View {
                 ReflectionStatusView(target(submission))
             }
             actions(submission)
+            rejection(submission)
             fixes(submission)
             CardSection {
                 ForEach(submission.steps) { step in
@@ -148,6 +149,13 @@ struct SubmissionDetailView: View {
                 Text("あなたの番")
             }
             .disabled(store.isReflecting([target(submission)]))
+        }
+    }
+
+    /// 審査で断られた版の対処（AskHub で出した版だけ。直し方を選んだ後も、出し直すまで出す）
+    @ViewBuilder private func rejection(_ submission: Submission) -> some View {
+        if submission.startedInAskHub, !submission.isEnded, submission.isRejected || submission.rejection?.choice != nil {
+            RejectionSection(submission: submission) { fixDraft = $0 }
         }
     }
 
