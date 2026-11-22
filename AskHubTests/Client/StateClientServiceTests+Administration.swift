@@ -88,6 +88,29 @@ extension StateClientServiceTests {
         #expect(try await fixture.service.fetchSnapshot().repository(Self.repo)?.protection?.rejection == reason)
     }
 
+    /// 掛けた上で重なる保護を外しきれずに断られたときは（掛けた時刻が断った時刻より前）、理由を出し続ける。後から掛け直したら出さない
+    @Test
+    func partialFailureReasonStaysUntilReapplied() async throws {
+        let fixture = try makeService(files: Self.administeredRepository(protection: #"{"appliedAt":null}"#))
+        _ = try await fixture.service.fetchSnapshot()
+        try await fixture.service.perform(.applyProtection(repositoryID: Self.repo, requiredChecks: ["build / build"]))
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        let reason = "ルールセットは掛けたが、重なる保護を外しきれなかった: クラシックの保護を読めない。もう一度押すと残りを外す"
+        let consumed = #"{"v":1,"kind":"applyProtection","consumedAt":"2027-01-15T08:00:00Z","result":"rejected","reason":"\#(reason)"}"#
+        await fixture.store.put(StatePath.consumed(device: fixture.key.keyID, nonce: envelope.nonce), data: Data(consumed.utf8))
+        func applied(at time: String) async {
+            let protection = #"{"appliedAt":"\#(time)","requiredChecks":["build / build"],"rulesetId":10}"#
+            let files = Self.administeredRepository(protection: protection)
+            for (path, text) in files where path.hasSuffix("repo.json") {
+                await fixture.store.put(path, data: Data(text.utf8))
+            }
+        }
+        await applied(at: "2027-01-15T07:59:59Z")
+        #expect(try await fixture.service.fetchSnapshot().repository(Self.repo)?.protection?.rejection == reason)
+        await applied(at: "2027-01-15T09:00:00Z")
+        #expect(try await fixture.service.fetchSnapshot().repository(Self.repo)?.protection?.rejection == nil)
+    }
+
     /// 送れない必須のチェックは、送る前に止める
     @Test
     func malformedRequiredChecksAreNotSent() async throws {

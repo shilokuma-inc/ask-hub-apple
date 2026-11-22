@@ -59,16 +59,18 @@ extension StateSnapshotBuilder {
         )
     }
 
-    /// このリポジトリに送った、その種類の最後の意図が断られた理由。`after` より後に送ったものだけを見る（掛け直した後の古い理由を出さない）
+    /// このリポジトリに送った、その種類の最後の意図が断られた理由。断った後に `after`（掛けた時刻）が書かれていれば、
+    /// 後から掛け直したので古い理由は出さない。同じ処理で掛けた上で断った（重なる保護を外しきれなかった）ときは、掛けた時刻が
+    /// 断った時刻より前なので、理由を出し続ける
     private func rejection(of kind: String, repo: RepositoryFullName, after: Timestamp?) -> String? {
         guard let last = documents.sentIntents.first(where: { $0.envelope.kind == kind && $0.envelope.repo == repo }),
-              last.consumed?.result == .rejected else {
+              let consumed = last.consumed, consumed.result == .rejected else {
             return nil
         }
-        if let after, last.envelope.issuedAt.date <= after.date {
+        if let after, after.date > consumed.consumedAt.date {
             return nil
         }
-        return last.consumed?.reason ?? "理由は書かれていません"
+        return consumed.reason ?? "理由は書かれていません"
     }
 
     /// 外した・残した保護の呼び名。残したわけがあれば添える
