@@ -232,7 +232,9 @@ struct CreativeImport: Sendable {
             return try await body()
         } catch {
             switch error {
-            case .rateLimited, .serverError, .transport, .cancelled, .malformed, .headChanged:
+            case let .rateLimited(retryAfter):
+                throw CreativeRateLimit(retryAfter: retryAfter)
+            case .serverError, .transport, .cancelled, .malformed, .headChanged:
                 throw ReleaseStepProblem("GitHub に届かない（\(error)）", needsHuman: false)
             case .notFound:
                 throw ReleaseStepProblem("書き出しの実行の artifact が無い（消された・期限が切れた）。案を作り直す", needsHuman: true)

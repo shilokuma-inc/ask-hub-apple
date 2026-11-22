@@ -171,7 +171,8 @@ extension CreativeWatch {
             await failCreativeDraft(repo, revision: draft.revision, "書き出しの実行 \(id) を読めない（\(problem.message)）")
             return
         } catch {
-            report("\(repo) のクリエイティブアセットの書き出しの実行 \(id) を読めない（\(error)）。次の見回りでやり直す")
+            let wait = hold(Self.creativeKey(repo, revision: draft.revision), after: error, interval: Self.creativeRunCheckInterval)
+            report("\(repo) のクリエイティブアセットの書き出しの実行 \(id) を読めない（\(error)）。\(Int(wait / 60)) 分あけてやり直す")
             return
         }
         let updated = ReleaseWatch.record(detail, dispatchedAt: run.dispatchedAt, previous: run)
@@ -280,7 +281,8 @@ extension CreativeWatch {
             await failCreativeDraft(repo, revision: draft.revision, problem.message)
             return
         } catch {
-            report("\(repo) のクリエイティブアセットの書き出し（実行 \(runID)）を取り込めない（\(error)）。次の見回りでやり直す")
+            let wait = hold(key, after: error, interval: Self.creativeRunCheckInterval)
+            report("\(repo) のクリエイティブアセットの書き出し（実行 \(runID)）を取り込めない（\(error)）。\(Int(wait / 60)) 分あけてやり直す")
             return
         }
         settled = true
@@ -333,11 +335,9 @@ extension CreativeWatch {
 
     /// 待てば直る失敗の後、GitHub に送らない時刻を決める（上限なら GitHub の示した時間、ほかは読む間隔）
     func holdCreative(_ repo: RepositoryFullName, revision: Int, after error: PullRequestError) {
-        var wait = Self.creativeRunCheckInterval
-        if case let .rateLimited(retryAfter) = error {
-            wait = max(wait, TimeInterval(retryAfter.components.seconds))
-        }
-        notBefore[Self.creativeKey(repo, revision: revision)] = context.now().addingTimeInterval(wait)
+        var carried: any Error = error
+        if case let .rateLimited(retryAfter) = error { carried = CreativeRateLimit(retryAfter: retryAfter) }
+        let wait = hold(Self.creativeKey(repo, revision: revision), after: carried, interval: Self.creativeRunCheckInterval)
         report("\(repo) のクリエイティブアセットの書き出しを起動できない（\(error)）。\(Int(wait / 60)) 分あけてやり直す")
     }
 
