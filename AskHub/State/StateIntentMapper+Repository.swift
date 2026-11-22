@@ -45,9 +45,10 @@ extension StateIntentMapper {
             return .request(repo: try repository(repositoryID), title: summary, body: body, attachments: files.map(\.attachment))
 
         case .addRepository(let repositoryID):
-            // 状態リポジトリにつないだときは候補の一覧が無いので、人が入れた owner/name を id にして送る。
-            // 外したリポジトリは、外す前の owner/name の書き方で送る（状態リポジトリのパスは大文字小文字を区別する）
+            // 候補と外したリポジトリは、GitHub の・外す前の owner/name の書き方で送る（状態リポジトリのパスは大文字小文字を区別する）。
+            // 候補に無いものは、人が入れた owner/name を id にして送る
             let known = index.repositories[repositoryID] ?? index.removedRepositories[repositoryID]
+                ?? index.candidateRepositories[repositoryID]
             guard let repo = known ?? RepositoryFullName(rawValue: repositoryID) else {
                 throw ClientServiceError(message: "owner/name の形で入れてください")
             }

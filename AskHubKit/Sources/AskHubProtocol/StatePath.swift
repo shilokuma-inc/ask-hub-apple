@@ -8,6 +8,8 @@ public enum StatePath {
     public static let commander = "commander.json"
     /// 進行を止めるものを知らせた記録（司令塔）
     public static let notifications = "notifications.json"
+    /// 「対象に加える」の候補（司令塔）
+    public static let repositoryCandidates = "repo-candidates.json"
 
     /// 対象のリポジトリを置くディレクトリ（`repos/<owner>/<repo>/`）
     public static let repositories = "repos"

@@ -30,6 +30,14 @@ struct GitHubAPI: Sendable {
         return url
     }
 
+    /// API の直下からのパス（`orgs/<org>/repos` など、リポジトリの下でないもの）の URL
+    func rootURL(_ path: String, query: [URLQueryItem] = []) throws(PullRequestError) -> URL {
+        var components = URLComponents(url: apiBase.appendingPathComponent(path), resolvingAgainstBaseURL: false)
+        if !query.isEmpty { components?.queryItems = query }
+        guard let url = components?.url else { throw .invalidArgument("URL を作れない") }
+        return url
+    }
+
     /// `repos/<owner>/<repo>`（リポジトリそのもの）の URL
     func repositoryURL() -> URL {
         apiBase.appendingPathComponent("repos/\(repository.owner)/\(repository.name)")
@@ -90,12 +98,17 @@ struct GitHubAPI: Sendable {
 
     /// 一覧を `Link` ヘッダーの `rel="next"` が無くなるまで読み、ページを順に返す
     func pages<Page: Decodable>(_ path: String, query: [URLQueryItem], as type: Page.Type) async throws(PullRequestError) -> [Page] {
-        var next: URL? = try url(path, query: query)
+        try await pages(from: url(path, query: query), what: path, as: type)
+    }
+
+    /// `start` から、一覧を `Link` ヘッダーの `rel="next"` が無くなるまで読み、ページを順に返す
+    func pages<Page: Decodable>(from start: URL, what: String, as type: Page.Type) async throws(PullRequestError) -> [Page] {
+        var next: URL? = start
         var pages: [Page] = []
         while let current = next {
-            guard pages.count < Self.maxPages else { throw .malformed("\(path) のページが \(Self.maxPages) を超えた") }
+            guard pages.count < Self.maxPages else { throw .malformed("\(what) のページが \(Self.maxPages) を超えた") }
             let (data, response) = try await send("GET", current)
-            pages.append(try Self.decode(type, from: data, what: path))
+            pages.append(try Self.decode(type, from: data, what: what))
             next = try nextPage(response)
         }
         return pages
