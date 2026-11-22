@@ -13,7 +13,7 @@ extension ReleaseWatch {
     static let screenshotRunCheckInterval: TimeInterval = 5 * 60
     /// 実行の id が分からないまま、起動を送り直すまでの時間
     static let screenshotRedispatchAfter: TimeInterval = 5 * 60
-    /// 撮り始めてから打ち切るまでの時間（template のワークフローは表示サイズを 1 本ずつ撮り、各ジョブの上限は 90 分）
+    /// 撮り始めてから打ち切るまでの時間（1 本ずつ撮るワークフローでも終わる長さ。各ジョブの上限は 90 分）
     static let screenshotRunTimeout: TimeInterval = 6 * 60 * 60
 
     /// 撮影を進める（起動 → 見張り）。撮り終えたら結果を書く
@@ -26,7 +26,7 @@ extension ReleaseWatch {
         let key = Self.screenshotKey(file)
         guard let current = file.screenshots, current.state == .capturing, let run = current.run else {
             guard file.screenshots == nil || file.screenshots?.state == .capturing else { return file }
-            return await startScreenshotWorkflow(file, workflow: workflow, branch: branch)
+            return await startScreenshotWorkflow(file, workflow: workflow, branch: branch, settings: settings)
         }
         if let checked = screenshotRunsCheckedAt[key], context.now().timeIntervalSince(checked) < Self.screenshotRunCheckInterval {
             return file
@@ -46,7 +46,7 @@ extension ReleaseWatch {
         screenshotRunsCheckedAt[key] = context.now()
         let advanced: SubmissionFile
         if run.id == nil {
-            advanced = await findScreenshotRun(file, workflow: workflow, branch: branch, run: run)
+            advanced = await findScreenshotRun(file, workflow: workflow, branch: branch, run: run, settings: settings)
         } else {
             advanced = await watchScreenshotRun(file, run: run, workflow: workflow, settings: settings)
         }
@@ -58,7 +58,8 @@ extension ReleaseWatch {
     private func startScreenshotWorkflow(
         _ file: SubmissionFile,
         workflow: StoreScreenshotWorkflow,
-        branch: SubmissionFile.Branch
+        branch: SubmissionFile.Branch,
+        settings: RepositoryFile
     ) async -> SubmissionFile {
         let now = context.timestamp
         let started = await submissionStep(.screenshots, file) { file in
@@ -84,22 +85,26 @@ extension ReleaseWatch {
         }
         guard let marked = started.screenshots, marked.state == .capturing, let run = marked.run, run.id == nil,
               run.dispatchedAt == now else { return started }
-        return await dispatchScreenshotWorkflow(started, workflow: workflow, branch: branch)
+        return await dispatchScreenshotWorkflow(started, workflow: workflow, branch: branch, settings: settings)
     }
 
-    /// ワークフローを起動し、実行の id を書く。古い形の応答（id なし）なら、次の見回りで一覧から探す
+    /// ワークフローを起動し、実行の id を書く。古い形の応答（id なし）なら、次の見回りで一覧から探す。
+    /// 同時に使う macOS ランナーの数（`max_parallel`）は、送ってよいリポジトリにだけ、起動するときに決めて送る
     private func dispatchScreenshotWorkflow(
         _ file: SubmissionFile,
         workflow: StoreScreenshotWorkflow,
-        branch: SubmissionFile.Branch
+        branch: SubmissionFile.Branch,
+        settings: RepositoryFile
     ) async -> SubmissionFile {
         screenshotRunsCheckedAt[Self.screenshotKey(file)] = context.now()
-        let inputs = Self.screenshotInputs(workflow, retake: file.screenshots?.retake)
+        let parallelism = screenshotParallelism(for: file, settings: settings, workflow: workflow)
+        let inputs = Self.screenshotInputs(workflow, retake: file.screenshots?.retake, maxParallel: parallelism?.count)
         return await submissionStep(.screenshots, file) { file in
             let dispatched: DispatchedRun?
+            let sent: ScreenshotParallelism?
             do throws(PullRequestError) {
-                dispatched = try await self.hosting.dispatchWorkflow(
-                    file.repo, workflow: workflow.workflow, ref: branch.name, inputs: inputs
+                (dispatched, sent) = try await self.sendScreenshotDispatch(
+                    file.repo, workflow: workflow.workflow, ref: branch.name, inputs: inputs, parallelism: parallelism
                 )
             } catch {
                 guard let reason = Self.lastingDispatchFailure(error, workflow: workflow.workflow) else {
@@ -108,7 +113,8 @@ extension ReleaseWatch {
                 return Self.failedScreenshots(file, reason, at: self.context.timestamp)
             }
             let which = dispatched.map { "実行 \($0.id)" } ?? "実行の id は次の見回りで探す"
-            self.log("\(file.repo) の \(file.version) のスクショの撮影（\(workflow.workflow)）を \(branch.name) で起動した（\(which)）")
+            let how = sent.map { "並行 \($0.count) 本: \($0.reason)" } ?? "1 本ずつ"
+            self.log("\(file.repo) の \(file.version) のスクショの撮影（\(workflow.workflow)）を \(branch.name) で起動した（\(which)、\(how)）")
             guard let dispatched, var screenshots = file.screenshots, var run = screenshots.run else { return nil }
             run.id = dispatched.id
             run.url = dispatched.url?.absoluteString
@@ -119,12 +125,32 @@ extension ReleaseWatch {
         }
     }
 
+    /// 起動を送る。`max_parallel` を送って 422 で断られたら、呼ぶ側のワークフローの版が記録とずれている（入力が無い）ので、
+    /// 外して 1 回だけ送り直す（断られたときは実行が作られないので、二重にならない）。送れた数を返す（外したら nil）
+    private func sendScreenshotDispatch(
+        _ repo: RepositoryFullName,
+        workflow: String,
+        ref: String,
+        inputs: [String: String],
+        parallelism: ScreenshotParallelism?
+    ) async throws(PullRequestError) -> (DispatchedRun?, ScreenshotParallelism?) {
+        do throws(PullRequestError) {
+            return (try await hosting.dispatchWorkflow(repo, workflow: workflow, ref: ref, inputs: inputs), parallelism)
+        } catch let .rejected(message) where parallelism != nil {
+            log("\(repo) の撮影のワークフロー（\(workflow)）が max_parallel を断った（\(message ?? "理由なし")）。外して 1 本ずつで送り直す")
+            var plain = inputs
+            plain[Self.maxParallelInput] = nil
+            return (try await hosting.dispatchWorkflow(repo, workflow: workflow, ref: ref, inputs: plain), nil)
+        }
+    }
+
     /// 起動した後に id を書けなかった実行を、ブランチの `workflow_dispatch` の実行から探す。見つからないまま 5 分たてば送り直す
     private func findScreenshotRun(
         _ file: SubmissionFile,
         workflow: StoreScreenshotWorkflow,
         branch: SubmissionFile.Branch,
-        run: SubmissionFile.CaptureRun
+        run: SubmissionFile.CaptureRun,
+        settings: RepositoryFile
     ) async -> SubmissionFile {
         let now = context.timestamp
         let found = await submissionStep(.screenshots, file) { file in
@@ -151,7 +177,7 @@ extension ReleaseWatch {
             }
         }
         guard let marked = found.screenshots?.run, marked.id == nil, marked.dispatchedAt == now else { return found }
-        return await dispatchScreenshotWorkflow(found, workflow: workflow, branch: branch)
+        return await dispatchScreenshotWorkflow(found, workflow: workflow, branch: branch, settings: settings)
     }
 
     /// 実行を読み、様子が変わったら書く。終わったら結果を書き、6 時間で終わらなければ取り消して `failed` にする
@@ -268,6 +294,9 @@ extension ReleaseWatch {
         let originals = screenshots?.originals(file.repo, version: file.version, commit: commit)
         await finishCapture(file, result: originals.map { awaitingLibrary(result, originals: $0) } ?? result, settings: settings)
     }
+
+    /// 同時に使う macOS ランナーの数の入力（app-kit の v1.1.0 から）
+    static let maxParallelInput = "max_parallel"
 
     /// 撮影のワークフローの入力（反映はしない。撮る表示サイズは `artifacts` の値）
     static func screenshotInputs(_ workflow: StoreScreenshotWorkflow) -> [String: String] {
