@@ -101,6 +101,8 @@ public actor CommanderLoop {
     nonisolated let releases: ReleaseWatch?
     /// 掛けた保護のずれを点検するもの。生きている印を書いた後に、周の外で確かめ始める。nil なら点検しない
     nonisolated let protection: ProtectionWatch?
+    /// 「対象に加える」の候補を読み直すもの。生きている印を書いた後に、周の外で読み始める。nil なら読まない
+    nonisolated let candidates: RepositoryCandidatesWatch?
     /// 人の意図の種類ごとの処理。管理用のトークンで GitHub を操作するもの（`AdminGitHub`）は、ここ（保護の設定など）にだけ渡す
     nonisolated let handlers: [String: any IntentHandler]
     /// 片付けの頼みを、常時オンの Mac（ワーカーを兼ねる）で済ませる。周ごとに見る
@@ -143,6 +145,7 @@ public actor CommanderLoop {
         appIcons: AppIconSync? = nil,
         releases: ReleaseWatch? = nil,
         protection: ProtectionWatch? = nil,
+        candidates: RepositoryCandidatesWatch? = nil,
         admin: AdminGitHub? = nil,
         cleanup: CleanupService? = nil
     ) {
@@ -164,6 +167,7 @@ public actor CommanderLoop {
         self.appIcons = appIcons
         self.releases = releases
         self.protection = protection
+        self.candidates = candidates
         handlers = Self.handlers(admin: admin)
         self.cleanup = cleanup
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
@@ -364,6 +368,7 @@ public actor CommanderLoop {
         appIcons?.start()
         releases?.start()
         protection?.start()
+        candidates?.start()
     }
 }
 

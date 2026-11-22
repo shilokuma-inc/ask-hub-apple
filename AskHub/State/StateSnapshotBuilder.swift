@@ -129,6 +129,8 @@ struct StateIndex {
     var releasedVersions: [TargetRepository.ID: MarketingVersion] = [:]
     /// 対象から外したリポジトリ（加え直すときに、元の owner/name の書き方で送る）
     var removedRepositories: [TargetRepository.ID: RepositoryFullName] = [:]
+    /// 「対象に加える」の候補（加えるときに、GitHub の owner/name の書き方で送る）
+    var candidateRepositories: [RepositoryCandidate.ID: RepositoryFullName] = [:]
     /// 終わっていない epic のあるリポジトリ（対象から外すと司令塔が断る）。処理を待つ意図を当てた後のもの
     var busyRepositories: Set<TargetRepository.ID> = []
     /// 新しいアプリを App Store に載せる準備（処理を待つ意図を当てた後のもの）
@@ -195,7 +197,8 @@ struct StateSnapshotBuilder {
         let appStoreSetups = appStoreSetups(index: &index, overlaid: overlaid)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
-            candidateRepositories: [],
+            candidateRepositories: candidates(excluding: repositories + removed, index: &index),
+            candidateProblems: candidateProblems,
             removedRepositories: removed.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             epics: epics.sorted { $0.updatedAt > $1.updatedAt },
             macs: macs(index: &index),

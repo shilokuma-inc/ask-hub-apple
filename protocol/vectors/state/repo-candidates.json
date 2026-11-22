@@ -1,0 +1,147 @@
+{
+  "description": "repo-candidates.json（「対象に加える」の候補）を読む例。schemaValid は protocol/schemas/state/repo-candidates.schema.json に合うか、read は読む側の結果",
+  "schema": "state/repo-candidates.schema.json",
+  "cases": [
+    {
+      "name": "full",
+      "value": {
+        "v": 1,
+        "owners": [
+          {
+            "owner": "shilokuma-inc",
+            "readAt": "2026-11-22T13:00:00Z",
+            "repositories": [
+              {
+                "name": "askhub-sandbox",
+                "isPrivate": false,
+                "description": "AskHub を試すリポジトリ",
+                "pushedAt": "2026-11-20T08:00:00Z"
+              },
+              {
+                "name": "kobuta-ios",
+                "isPrivate": true
+              }
+            ]
+          },
+          {
+            "owner": "mrs1669",
+            "repositories": [],
+            "problem": "mrs1669 の毎日のトークンで一覧を読めない（期限切れ・取り消し）"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty",
+      "value": {
+        "v": 1,
+        "owners": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "nulls-as-unset",
+      "value": {
+        "v": 1,
+        "owners": [
+          {
+            "owner": "shilokuma-inc",
+            "readAt": null,
+            "repositories": [
+              {
+                "name": "askhub-sandbox",
+                "isPrivate": false,
+                "description": null,
+                "pushedAt": null
+              }
+            ],
+            "problem": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "duplicate-owner",
+      "value": {
+        "v": 1,
+        "owners": [
+          {
+            "owner": "shilokuma-inc",
+            "repositories": []
+          },
+          {
+            "owner": "Shilokuma-Inc",
+            "repositories": []
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "duplicate-repository",
+      "value": {
+        "v": 1,
+        "owners": [
+          {
+            "owner": "shilokuma-inc",
+            "repositories": [
+              {
+                "name": "kobuta-ios",
+                "isPrivate": false
+              },
+              {
+                "name": "Kobuta-iOS",
+                "isPrivate": false
+              }
+            ]
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "bad-name",
+      "value": {
+        "v": 1,
+        "owners": [
+          {
+            "owner": "shilokuma-inc",
+            "repositories": [
+              {
+                "name": "..",
+                "isPrivate": false
+              }
+            ]
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "missing-private",
+      "value": {
+        "v": 1,
+        "owners": [
+          {
+            "owner": "shilokuma-inc",
+            "repositories": [
+              {
+                "name": "kobuta-ios"
+              }
+            ]
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

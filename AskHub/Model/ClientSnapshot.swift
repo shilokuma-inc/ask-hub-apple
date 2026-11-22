@@ -3,8 +3,10 @@ import Foundation
 /// 1 回の取得で読んだ状態の全体。画面はすべてここから組み立てる
 struct ClientSnapshot: Hashable {
     var repositories: [TargetRepository]
-    /// まだ対象になっていないリポジトリ（「対象に加える」で選ぶ候補）
-    var candidateRepositories: [TargetRepository]
+    /// まだ対象になっていないリポジトリ（「対象に加える」で選ぶ候補。持ち主・名前の順）
+    var candidateRepositories: [RepositoryCandidate]
+    /// 候補を読めなかった持ち主と理由（司令塔が書いたもの）
+    var candidateProblems: [RepositoryCandidateProblem] = []
     /// 対象から外したリポジトリ（`repo.json` は残っている）。「対象に加える」で戻せる。終わった epic の名前とアイコンにも使う
     var removedRepositories: [TargetRepository] = []
     var epics: [Epic]
