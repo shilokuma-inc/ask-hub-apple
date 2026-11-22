@@ -39,7 +39,7 @@ extension StateSnapshotBuilder {
         case RequestIntent.kind:
             applyRequest(envelope, to: &epics)
 
-        case AddRepositoryIntent.kind, RemoveRepositoryIntent.kind:
+        case AddRepositoryIntent.kind, RemoveRepositoryIntent.kind, CreateRepositoryIntent.kind:
             applyRepositoryIntent(envelope, repositories: &repositories, removed: &removed, index: &index)
 
         case AnswerIntent.kind:
@@ -101,7 +101,8 @@ extension StateSnapshotBuilder {
                 blocker: nil,
                 finalReview: nil,
                 history: [Epic.HistoryEntry(date: sentAt, text: "依頼を送りました。司令塔が受け取るのを待っています")],
-                updatedAt: sentAt
+                updatedAt: sentAt,
+                release: envelope.string("release")
             )
         )
     }

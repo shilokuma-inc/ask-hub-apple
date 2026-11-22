@@ -20,7 +20,8 @@ extension StateIntentMapper {
         case let .cleanUp(macID, candidateIDs):
             index.macs[macID].map { $0.cleanupScannedAt != nil && !$0.cleanupUnknown } == true && !candidateIDs.isEmpty
 
-        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots:
+        case .startRelease, .startHotfix, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots,
+             .reportRejection, .resolveRejection:
             supportsSubmissionIntent(intent)
 
         case .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
@@ -31,23 +32,41 @@ extension StateIntentMapper {
         }
     }
 
+    /// 依頼。長さ・添付の番号・直すリリースの版の形を、司令塔と同じ決まりで先に確かめる
+    private func requestDraft(
+        repositoryID: TargetRepository.ID,
+        summary: String,
+        body: String,
+        files: [RequestFile],
+        release: String?
+    ) throws(ClientServiceError) -> IntentDraft {
+        guard summary.count <= RequestIntent.maximumTitleLength, body.count <= RequestIntent.maximumBodyLength else {
+            let limits = "要約は \(RequestIntent.maximumTitleLength) 文字、内容は \(RequestIntent.maximumBodyLength) 文字まで"
+            throw ClientServiceError(message: "\(limits)です")
+        }
+        // 司令塔は 1 から順の番号を求める（添付欄の順に振ったものを、そのまま送る）
+        guard files.count <= RequestIntent.maximumAttachments, files.enumerated().allSatisfy({ $1.attachment.number == $0 + 1 }) else {
+            throw ClientServiceError(message: "添付の番号が合いません。添付し直してください")
+        }
+        let version = try release.map { text throws(ClientServiceError) in
+            guard let version = MarketingVersion(rawValue: text) else { throw ClientServiceError(message: "直すリリースの版の形が違います") }
+            return version
+        }
+        return .request(
+            repo: try repository(repositoryID), title: summary, body: body, attachments: files.map(\.attachment), release: version
+        )
+    }
+
     func repositoryDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
         switch intent {
-        case let .request(repositoryID, summary, body, files):
-            guard summary.count <= RequestIntent.maximumTitleLength, body.count <= RequestIntent.maximumBodyLength else {
-                let limits = "要約は \(RequestIntent.maximumTitleLength) 文字、内容は \(RequestIntent.maximumBodyLength) 文字まで"
-                throw ClientServiceError(message: "\(limits)です")
-            }
-            // 司令塔は 1 から順の番号を求める（添付欄の順に振ったものを、そのまま送る）
-            guard files.count <= RequestIntent.maximumAttachments, files.enumerated().allSatisfy({ $1.attachment.number == $0 + 1 }) else {
-                throw ClientServiceError(message: "添付の番号が合いません。添付し直してください")
-            }
-            return .request(repo: try repository(repositoryID), title: summary, body: body, attachments: files.map(\.attachment))
+        case let .request(repositoryID, summary, body, files, release):
+            return try requestDraft(repositoryID: repositoryID, summary: summary, body: body, files: files, release: release)
 
         case .addRepository(let repositoryID):
-            // 状態リポジトリにつないだときは候補の一覧が無いので、人が入れた owner/name を id にして送る。
-            // 外したリポジトリは、外す前の owner/name の書き方で送る（状態リポジトリのパスは大文字小文字を区別する）
+            // 候補と外したリポジトリは、GitHub の・外す前の owner/name の書き方で送る（状態リポジトリのパスは大文字小文字を区別する）。
+            // 候補に無いものは、人が入れた owner/name を id にして送る
             let known = index.repositories[repositoryID] ?? index.removedRepositories[repositoryID]
+                ?? index.candidateRepositories[repositoryID]
             guard let repo = known ?? RepositoryFullName(rawValue: repositoryID) else {
                 throw ClientServiceError(message: "owner/name の形で入れてください")
             }
@@ -62,7 +81,7 @@ extension StateIntentMapper {
         case let .configureRepository(repositoryID, json):
             return .configureRepository(try repository(repositoryID), build: try Self.build(json))
 
-        case .applyProtection, .approveSetup:
+        case .applyProtection, .approveSetup, .createRepository:
             return try administrationDraft(intent)
 
         default:
@@ -83,6 +102,9 @@ extension StateIntentMapper {
         case let .approveSetup(repositoryID, pullRequest, head):
             return .approveSetupPullRequest(try repository(repositoryID), number: pullRequest, head: head)
 
+        case .createRepository(let request):
+            return try createRepositoryDraft(request)
+
         default:
             throw Self.unsupported
         }
@@ -101,5 +123,17 @@ extension StateIntentMapper {
         } catch {
             throw ClientServiceError(message: "ビルドの設定が決まりに合いません（\(error.detail)）")
         }
+    }
+
+    /// テンプレートから作る意図。対象・外したリポジトリと同じ名前には送らない（司令塔も断る）
+    func createRepositoryDraft(_ request: NewAppRequest) throws(ClientServiceError) -> IntentDraft {
+        if let problem = request.problem { throw ClientServiceError(message: problem) }
+        guard let repo = request.repository else { throw ClientServiceError(message: "リポジトリの名前の形が違います") }
+        guard index.repositories[request.repositoryID] == nil, index.removedRepositories[request.repositoryID] == nil else {
+            throw ClientServiceError(message: "\(request.fullName) はもう対象のリポジトリにあります")
+        }
+        return .createRepository(
+            repo, template: request.template, visibility: request.visibility, appName: request.appName, bundleId: request.bundleId
+        )
     }
 }

@@ -68,7 +68,8 @@ struct TextRequest: Hashable {
         case decisionFix(epicID: Epic.ID, decisionID: DecisionCard.ID, headCommit: String?)
         /// 最終 PR への指示（見た head のコミットに結びつける）
         case finalInstruction(epicID: Epic.ID, headCommit: String)
-        case verificationProblem(epicID: Epic.ID, itemID: VerificationItem.ID)
+        /// 実機確認の「問題あり」。`release` があれば「このリリースで直す」、nil なら次のリリースで直す
+        case verificationProblem(epicID: Epic.ID, itemID: VerificationItem.ID, release: String? = nil)
         case blockerInstruction(epicID: Epic.ID)
         case goalRevision(epicID: Epic.ID)
     }
@@ -87,8 +88,8 @@ struct TextRequest: Hashable {
         case let .finalInstruction(epicID, headCommit):
             .instructFinal(epicID: epicID, headCommit: headCommit, instruction: text)
 
-        case let .verificationProblem(epicID, itemID):
-            .verify(epicID: epicID, itemID: itemID, reply: .problem(note: text))
+        case let .verificationProblem(epicID, itemID, release):
+            .verify(epicID: epicID, itemID: itemID, reply: .problem(note: text, release: release))
 
         case .blockerInstruction(let epicID):
             .resolveBlocker(epicID: epicID, action: .fixWithInstruction, instruction: text)
@@ -107,7 +108,7 @@ enum DeckBuilder {
             let epics = snapshot.activeEpics.sorted { $0.updatedAt > $1.updatedAt }
             return epics.flatMap(questionCards)
                 + epics.flatMap(decisionCards)
-                + snapshot.epics.flatMap(verificationCards)
+                + snapshot.epics.flatMap { verificationCards($0, release: snapshot.fixableRelease(of: $0.repositoryID)) }
 
         case .questions(let id):
             return snapshot.epic(id).map(questionCards) ?? []
@@ -116,10 +117,10 @@ enum DeckBuilder {
             return snapshot.epic(id).map(decisionCards) ?? []
 
         case .verifications(let id):
-            return snapshot.epic(id).map(verificationCards) ?? []
+            return snapshot.epic(id).map { verificationCards($0, release: snapshot.fixableRelease(of: $0.repositoryID)) } ?? []
 
         case .allVerifications:
-            return snapshot.epics.flatMap(verificationCards)
+            return snapshot.epics.flatMap { verificationCards($0, release: snapshot.fixableRelease(of: $0.repositoryID)) }
         }
     }
 
@@ -220,7 +221,10 @@ enum DeckBuilder {
         return SwipeLayout.arranged(choices, asksText: \.asksText)
     }
 
-    static func verificationCards(_ epic: Epic) -> [DeckCard] {
+    /// 実機確認のカード。`release` はリポジトリの進行中のリリース（「このリリースを直す」依頼を出せるもの）。あれば「問題あり」を
+    /// 「このリリースで直す」と「次のリリースで直す」に分け、既定（推奨の対角に置く方）を、epic がその release ブランチを作る前に
+    /// マージされていれば「このリリース」、後なら「次のリリース」にする（2026-11-22 のユーザーの決定）
+    static func verificationCards(_ epic: Epic, release: Submission? = nil) -> [DeckCard] {
         let items = epic.finalReview?.verifications.filter(\.isReady) ?? []
         return items.map { item in
             var build: String?
@@ -236,29 +240,64 @@ enum DeckBuilder {
                 title: item.text,
                 // 状態リポジトリの項目（ゴールの完了の条件）には手順が無い
                 detail: item.steps.isEmpty ? "TestFlight に上がった版を入れて、この条件を満たすか確かめてください" : "手順: \(item.steps)",
-                choices: [
-                    DeckCard.Choice(
-                        id: "confirmed",
-                        label: "確認した",
-                        detail: "問題なく動いた",
-                        note: nil,
-                        isRecommended: true,
-                        action: .send(.verify(epicID: epic.id, itemID: item.id, reply: .confirmed))
-                    ),
-                    DeckCard.Choice(
-                        id: "problem",
-                        label: "問題あり",
-                        detail: "内容を書いて新しい依頼にする",
-                        note: nil,
-                        isRecommended: false,
-                        action: .askText(TextRequest(
-                            title: "問題あり",
-                            prompt: "何が起きたか",
-                            purpose: .verificationProblem(epicID: epic.id, itemID: item.id)
-                        ))
-                    )
-                ]
+                choices: SwipeLayout.arranged(
+                    [
+                        DeckCard.Choice(
+                            id: "confirmed",
+                            label: "確認した",
+                            detail: "問題なく動いた",
+                            note: nil,
+                            isRecommended: true,
+                            action: .send(.verify(epicID: epic.id, itemID: item.id, reply: .confirmed))
+                        )
+                    ] + problemChoices(epic, item: item, release: release),
+                    asksText: \.asksText
+                )
             )
         }
+    }
+
+    /// 実機確認の「問題あり」。進行中のリリースが無ければ 1 つ（次のリリースで直す）。あれば既定を先に、2 つに分ける
+    private static func problemChoices(_ epic: Epic, item: VerificationItem, release: Submission?) -> [DeckCard.Choice] {
+        func choice(_ id: String, label: String, detail: String, title: String, release: String?) -> DeckCard.Choice {
+            DeckCard.Choice(
+                id: id,
+                label: label,
+                detail: detail,
+                note: nil,
+                isRecommended: false,
+                action: .askText(TextRequest(
+                    title: title,
+                    prompt: "何が起きたか",
+                    purpose: .verificationProblem(epicID: epic.id, itemID: item.id, release: release)
+                ))
+            )
+        }
+        guard let release else {
+            return [choice("problem", label: "問題あり", detail: "内容を書いて新しい依頼にする", title: "問題あり", release: nil)]
+        }
+        let thisRelease = choice(
+            "problem.release",
+            label: "問題あり・このリリースで直す",
+            detail: "\(release.version) の release ブランチに直しを入れる",
+            title: "問題あり（\(release.version) で直す）",
+            release: release.version
+        )
+        let nextRelease = choice(
+            "problem",
+            label: "問題あり・次のリリースで直す",
+            detail: "develop に直しを入れ、次のリリースで出す",
+            title: "問題あり（次のリリースで直す）",
+            release: nil
+        )
+        return isIncluded(epic, in: release) ? [thisRelease, nextRelease] : [nextRelease, thisRelease]
+    }
+
+    /// epic が、リリースの release ブランチを作る前にマージされていた（そのリリースに入っている）か。分からなければ false
+    static func isIncluded(_ epic: Epic, in release: Submission) -> Bool {
+        guard let branchCreatedAt = release.branchCreatedAt, case let .merged(mergedAt, _)? = epic.finalReview?.state else {
+            return false
+        }
+        return mergedAt <= branchCreatedAt
     }
 }

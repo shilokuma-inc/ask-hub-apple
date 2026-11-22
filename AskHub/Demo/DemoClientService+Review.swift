@@ -331,9 +331,10 @@ extension DemoClientService {
             case .confirmed:
                 review.verifications[index].state = .confirmed
 
-            case .problem(let note):
+            case let .problem(note, release):
                 review.verifications[index].state = .problem(note: note)
-                epic.log("実機確認で問題を見つけ、新しい依頼にしました", at: date)
+                let target = release.map { "リリース \($0) を直す" } ?? "新しい"
+                epic.log("実機確認で問題を見つけ、\(target)依頼にしました", at: date)
             }
             epic.finalReview = review
         }

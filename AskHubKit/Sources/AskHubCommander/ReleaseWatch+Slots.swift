@@ -33,7 +33,8 @@ extension ReleaseWatch {
     }
 
     /// 1 つのプラットフォームの枠。同じ番号の編集できる版があればそれを使い、無ければ作る。同じ番号の版がもう審査に出ていれば作らない（nil）。
-    /// 別の番号の編集できる版があれば作らずに断る（App Store Connect の編集できる版はプラットフォームごとに 1 つ。hotfix との兼ね合いは段階 5 の 4）
+    /// 別の番号の編集できる版があれば作らずに断る（App Store Connect の編集できる版はプラットフォームごとに 1 つ）。
+    /// hotfix は、一時停止した進行中のリリースの編集できる版を、hotfix の版に付け替えて使う（審査中なら、取り下げを待つ）
     private func makeSlot(
         _ file: SubmissionFile,
         platform: AppStorePlatform,
@@ -48,6 +49,17 @@ extension ReleaseWatch {
         }
         // 手で審査に出した・配信した（審査の見張りが記録する）
         guard mine.isEmpty else { return nil }
+        if let suspended = file.hotfix?.suspended {
+            if let other = versions.first(where: { $0.platform == platform && $0.isEditable }) {
+                let change = AppStoreVersionChange(version: file.version, releaseType: .afterApproval, buildID: nil)
+                try await appStoreConnect { () throws(AppStoreConnectError) in try await store.updateVersion(other.id, change) }
+                log("\(file.repo) の App Store Connect の \(platform.rawValue) \(other.versionString) の版を、hotfix \(file.version) に付け替えた")
+                return .init(platform: platform, id: other.id, at: context.timestamp)
+            }
+            if versions.contains(where: { $0.platform == platform && $0.versionString == suspended.rawValue && $0.state.isUnderReview }) {
+                throw ReleaseStepProblem("一時停止した \(suspended) の \(platform.rawValue) の審査の取り下げを待っている", needsHuman: false)
+            }
+        }
         if let other = versions.first(where: { $0.platform == platform && $0.isEditable }) {
             throw ReleaseStepProblem(
                 "App Store Connect に、ほかの版（\(other.versionString)）の編集できる \(platform.rawValue) の版がある。"
@@ -123,8 +135,8 @@ extension ReleaseWatch {
         let versions = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.versions(of: app.id) }
         for index in slots.indices where slots[index].removal == nil {
             let slot = slots[index]
-            guard let info = versions.first(where: { $0.id == slot.id }) else {
-                // もう無い（人が消した・置き換わった）
+            // もう無い（人が消した・置き換わった）か、hotfix に付け替えた（ほかの版の番号になった）枠は消さない
+            guard let info = versions.first(where: { $0.id == slot.id }), info.versionString == file.version.rawValue else {
                 slots[index].removal = .deleted
                 continue
             }

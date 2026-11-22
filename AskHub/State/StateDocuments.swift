@@ -38,6 +38,8 @@ struct StateDocuments {
     var cleanupCandidates: [MacName: CleanupCandidatesFile] = [:]
     var cleanupRequests: [MacName: CleanupRequestsFile] = [:]
     var commander: CommanderFile?
+    /// 「対象に加える」の候補（司令塔が書く）
+    var repositoryCandidates: RepositoryCandidatesFile?
     /// 新しい順
     var sentIntents: [SentIntent] = []
     var failures: [SourceFailure] = []
@@ -83,6 +85,7 @@ struct StateReader {
         async let repositories = Self.capture { () throws(StateStoreError) in try await readRepositories() }
         async let macs = Self.capture { () throws(StateStoreError) in try await readMacs() }
         async let commander = read(CommanderFile.self, at: StatePath.commander)
+        async let candidates = read(RepositoryCandidatesFile.self, at: StatePath.repositoryCandidates)
         async let sent = Self.capture { () throws(StateStoreError) in try await sentIntents() }
         var documents = StateDocuments()
         for part in try await repositories.get() {
@@ -100,6 +103,9 @@ struct StateReader {
         let commanderPart = await commander
         documents.commander = commanderPart.value
         documents.failures += commanderPart.failures
+        let candidatesPart = await candidates
+        documents.repositoryCandidates = candidatesPart.value
+        documents.failures += candidatesPart.failures
         let sentPart = try await sent.get()
         documents.sentIntents = sentPart.value
         documents.failures += sentPart.failures
@@ -404,35 +410,6 @@ extension StateReader {
             return Part(value: nil)
         }
         return await read(VerificationsFile.self, at: StatePath.verifications(epic.repo, epic.id))
-    }
-}
-
-/// 書いたら変わらないファイル（送った意図・司令塔の処理の記録）の、読んだ中身。
-/// 30 秒ごとの取り直しのたびに読み直さないよう、一覧の sha が同じなら取り直さずに使う（変わらないファイルでも、sha が変われば読み直す）
-final class ImmutableFileCache {
-    private var envelopes: [String: (sha: String, envelope: IntentEnvelope)] = [:]
-    private var records: [String: (sha: String, record: ConsumedIntentFile)] = [:]
-
-    func envelope(at path: String, sha: String) -> IntentEnvelope? {
-        envelopes[path].flatMap { $0.sha == sha ? $0.envelope : nil }
-    }
-
-    func consumed(at path: String, sha: String) -> ConsumedIntentFile? {
-        records[path].flatMap { $0.sha == sha ? $0.record : nil }
-    }
-
-    func store(_ envelope: IntentEnvelope, at path: String, sha: String) {
-        envelopes[path] = (sha, envelope)
-    }
-
-    func store(_ record: ConsumedIntentFile, at path: String, sha: String) {
-        records[path] = (sha, record)
-    }
-
-    /// `paths` のほかを捨てる
-    func keep(_ paths: Set<String>) {
-        envelopes = envelopes.filter { paths.contains($0.key) }
-        records = records.filter { paths.contains($0.key) }
     }
 }
 

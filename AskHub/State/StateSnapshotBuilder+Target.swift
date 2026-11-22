@@ -22,14 +22,14 @@ extension StateSnapshotBuilder {
         case RequestIntent.kind:
             return nil
 
-        case AddRepositoryIntent.kind, RemoveRepositoryIntent.kind, ConfigureRepositoryIntent.kind:
+        case AddRepositoryIntent.kind, CreateRepositoryIntent.kind, RemoveRepositoryIntent.kind, ConfigureRepositoryIntent.kind:
             return repo.map { .repository(repository($0).id) }
 
         case RegisterBundleIdIntent.kind, ApplyAppStoreSettingsIntent.kind, ConfirmAppStoreItemIntent.kind, ExcludeFromAppStoreIntent.kind:
             return repo.map { .appStore(repository($0).id) }
 
         case SubmitForReviewIntent.kind, DistributeReleaseIntent.kind, WithdrawSubmissionIntent.kind, AbandonReleaseIntent.kind,
-             RetakeScreenshotsIntent.kind:
+             RetakeScreenshotsIntent.kind, ReportRejectionIntent.kind, ResolveRejectionIntent.kind:
             // リリースを始めた版も epic に属さないので、リポジトリと版（`target.id`）で決める
             guard let repo, target?.type == SubmissionTarget.targetType, let version = target?.id else {
                 return nil

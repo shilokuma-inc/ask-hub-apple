@@ -250,6 +250,19 @@ struct PrepareWorkspaceTests {
         #expect(git.commands.contains { $0.prefix(2) == ["worktree", "add"] && $0.last == "origin/main" })
     }
 
+    @Test func jobCreatesWorkBranchFromReleaseBranchForReleaseFix() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        // 「このリリースを直す」epic は、repo.json の base ではなく release/<版> から作業ブランチを作る
+        var epic = epicFile(.running)
+        epic.release = MarketingVersion(rawValue: "1.4.0")
+        let store = try await store(with: epic)
+        let release = String(repeating: "r", count: 40)
+        let git = RemoteGit(remote: ["develop": Self.develop, "release/1.4.0": release])
+        let result = try await runner(store, git: git).execute(jobFile())
+        #expect(result.outputs == AttemptFile.Outputs(commit: release, branch: Self.branch))
+        #expect(git.commands.contains { $0.prefix(2) == ["worktree", "add"] && $0.last == "origin/release/1.4.0" })
+    }
+
     @Test func dispatcherRefusesKindsItDoesNotHandle() async throws {
         let dispatcher = JobDispatcher([.prepareWorkspace: StubJob { _ in JobResult() }])
         #expect(dispatcher.kinds == [.prepareWorkspace])

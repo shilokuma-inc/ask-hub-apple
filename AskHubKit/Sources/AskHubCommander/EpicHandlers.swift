@@ -21,14 +21,21 @@ public struct RequestHandler: IntentHandler {
             return .reject("\(request.repo) は対象のリポジトリに加えていない")
         }
         guard !repository.isRemoved else { return .reject("\(request.repo) は対象から外した。依頼するには加え直す") }
+        if let release = request.release, let problem = try await Self.releaseProblem(release, of: request.repo, in: context) {
+            // 前の周で epic を作った後に、リリースが終わった（やり直し）
+            guard try await context.read(EpicFile.self, at: StatePath.epic(request.repo, Self.epicID(for: request.intent))) != nil else {
+                return .reject(problem)
+            }
+        }
         // 添付は確かめること（protocol.md の 3）なので、合わなければ記録を作らずに残す（置き直せば次の周で受け付ける）
-        if let problem = try await attachmentProblem(of: request, in: context) { return .ignore(problem) }
+        if let problem = try await Self.attachmentProblem(request.attachments, of: request.intent, in: context) { return .ignore(problem) }
         let epic = EpicFile(
             id: Self.epicID(for: request.intent),
             repo: request.repo,
             title: request.title,
             stage: .drafting,
             origin: request.intent,
+            release: request.release,
             createdAt: context.timestamp,
             updatedAt: context.timestamp
         )
@@ -44,15 +51,35 @@ public struct RequestHandler: IntentHandler {
         return .accept
     }
 
+    /// 「このリリースを直す」依頼を受け付けられない理由。直す先は、AskHub で始めた終わっていないリリースで、release ブランチを作ったものだけ
+    /// （作業ブランチを release ブランチから作り、最終 PR を release ブランチに向けるため）。受け付けられれば nil
+    static func releaseProblem(
+        _ release: MarketingVersion,
+        of repo: RepositoryFullName,
+        in context: CommanderContext
+    ) async throws(CommanderError) -> String? {
+        guard let submission = try await context.read(SubmissionFile.self, at: StatePath.submission(repo, release)) else {
+            return "\(release) のリリースを始めていない"
+        }
+        if submission.isEnded { return "\(release) のリリースはもう終わっている。次のリリースで直す（ふだんの依頼にする）" }
+        if submission.origin != .askhub { return "\(release) は App Store Connect で手で審査に出した版。AskHub で始めたリリースだけを直せる" }
+        if submission.branch == nil { return "\(release) の release ブランチがまだ無い。作られてから依頼する" }
+        return nil
+    }
+
     /// 依頼の人の意図から決める epic の id（決め方は `RequestIntent.epicID(for:)`。クライアントと同じ）
     public static func epicID(for intent: IntentReference) -> ULID {
         RequestIntent.epicID(for: intent)
     }
 
-    /// 添付は、依頼の意図より先に置く。置いた中身の大きさとハッシュが、署名した封筒と合うかを確かめる
-    private func attachmentProblem(of request: RequestIntent, in context: CommanderContext) async throws(CommanderError) -> String? {
-        for attachment in request.attachments {
-            let path = StatePath.attachment(device: request.intent.keyId, nonce: request.intent.nonce, number: attachment.number)
+    /// 添付は、意図より先に置く。置いた中身の大きさとハッシュが、署名した封筒と合うかを確かめる（依頼・リジェクトの理由）
+    static func attachmentProblem(
+        _ attachments: [RequestAttachment],
+        of intent: IntentReference,
+        in context: CommanderContext
+    ) async throws(CommanderError) -> String? {
+        for attachment in attachments {
+            let path = StatePath.attachment(device: intent.keyId, nonce: intent.nonce, number: attachment.number)
             let blob: StoredBlob?
             do {
                 blob = try await context.store.read(path)

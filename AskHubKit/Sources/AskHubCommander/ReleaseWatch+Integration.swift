@@ -15,7 +15,8 @@ extension ReleaseWatch {
     /// 配信した版の release ブランチを、取り込む先ごとに 1 つずつ進める
     func integrate(_ submission: SubmissionFile, settings: RepositoryFile) async -> SubmissionFile {
         var file = submission
-        for base in Self.integrationBases(settings) where !(file.integration ?? []).contains(where: { $0.base == base && $0.isDone }) {
+        let bases = Self.integrationBases(settings, file: file)
+        for base in bases where !(file.integration ?? []).contains(where: { $0.base == base && $0.isDone }) {
             guard !isIntegrationHeld(file) else { break }
             file = await submissionStep(.integration, file) { try await self.integrate($0, into: base, settings: settings) }
         }
@@ -30,7 +31,7 @@ extension ReleaseWatch {
         if let current, current.state == .open, let number = current.pullRequest {
             next = try await advanceIntegration(file.repo, current, number: number, settings: settings)
         } else {
-            next = try await openIntegration(file.repo, branch: branch, base: base)
+            next = try await openIntegration(file, branch: branch, base: base)
         }
         guard let next else { return nil }
         var file = file
@@ -42,7 +43,8 @@ extension ReleaseWatch {
     }
 
     /// 取り込むコミットがあれば PR を出す。無ければ取り込まない（`skipped`）。main が無ければ作る（`created`）
-    private func openIntegration(_ repo: RepositoryFullName, branch: String, base: String) async throws -> SubmissionFile.Integration {
+    private func openIntegration(_ file: SubmissionFile, branch: String, base: String) async throws -> SubmissionFile.Integration {
+        let repo = file.repo
         guard let head = try await github({ () throws(PullRequestError) in try await hosting.branchHead(repo, branch: branch) }) else {
             throw ReleaseStepProblem("\(branch) が無い（消された）。main と develop への取り込みは人が行う", needsHuman: true)
         }
@@ -54,15 +56,20 @@ extension ReleaseWatch {
         }
         let (ahead, _) = try await github { () throws(PullRequestError) in try await hosting.compare(repo, base: base, head: branch) }
         guard ahead > 0 else { return .init(base: base, state: .skipped, at: context.timestamp) }
+        // hotfix を main 以外に取り込むときは、版の行を配信中の版に戻したブランチから出す
+        let source = try await integrationHead(file, branch: branch, base: base)
         let title = "\(branch) を \(base) に取り込む"
+        let version = source == branch
+            ? "release ブランチでは版（`MARKETING_VERSION`）を変えていないので、\(base) の版はそのまま残ります。"
+            : "hotfix で上げた版（`MARKETING_VERSION`）は、取り込むブランチ `\(source)` で元に戻したので、\(base) の版はそのまま残ります。"
         let body = """
             App Store で配信した \(branch) を、\(base) に取り込みます（\(ahead) コミット）。
-            release ブランチでは版（`MARKETING_VERSION`）を変えていないので、\(base) の版はそのまま残ります。
+            \(version)
 
             チェックが通ったら AskHub がマージします。コンフリクトしたときは、人が直してください。
             """
         let pull = try await github { () throws(PullRequestError) in
-            try await hosting.openPullRequest(repo, PullRequestDraft(base: base, head: branch, title: "【CHORE】\(title)", body: body))
+            try await hosting.openPullRequest(repo, PullRequestDraft(base: base, head: source, title: "【CHORE】\(title)", body: body))
         }
         log("\(repo) の \(title) PR #\(pull.number) を作った")
         return .init(base: base, state: .open, pullRequest: pull.number, at: context.timestamp)

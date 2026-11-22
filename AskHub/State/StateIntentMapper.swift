@@ -17,7 +17,7 @@ struct StateIntentMapper {
     /// 実機確認への答えは、マージした epic の、まだ答えていない項目だけ送れる
     func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
-        case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
+        case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository, .createRepository:
             true
 
         case .resolveBlocker, .skipTask:
@@ -46,8 +46,8 @@ struct StateIntentMapper {
             supportsAfterMerge(intent)
 
         case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp, .findCleanupCandidates, .startRelease,
-             .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots, .registerBundleId,
-             .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
+             .startHotfix, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots, .reportRejection,
+             .resolveRejection, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
             // リリースと App Store の準備の操作も、リポジトリに属する操作として判定する（`supportsSubmissionIntent`・`supportsAppStoreSetupIntent`）。
             // 片付けは Mac ごと（`supportsRepositoryIntent` の中で分ける）
             supportsRepositoryIntent(intent)
@@ -57,11 +57,14 @@ struct StateIntentMapper {
     /// 意図より先に状態リポジトリに置く中身（依頼の添付・渡すファイル）。`drafts(for:)` の payload の `attachments` の順
     static func attachments(for intent: HumanIntent) -> [Data] {
         switch intent {
-        case let .request(_, _, _, files):
+        case let .request(_, _, _, files, _):
             files.map(\.data)
 
         case let .completeHumanTask(_, _, file?):
             [file.data]
+
+        case let .reportRejection(_, _, _, images):
+            images.map(\.data)
 
         default:
             []
@@ -97,8 +100,8 @@ struct StateIntentMapper {
         case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
-        case .request, .addRepository, .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp,
-             .findCleanupCandidates:
+        case .request, .addRepository, .createRepository, .removeRepository, .configureRepository, .applyProtection, .approveSetup,
+             .cleanUp, .findCleanupCandidates:
             return try repositoryDraft(intent)
 
         case .resolveBlocker, .skipTask:
@@ -116,8 +119,8 @@ struct StateIntentMapper {
         case .publishRelease, .updatePromotionalText:
             return try releaseDraft(intent)
 
-        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots,
-             .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
+        case .startRelease, .startHotfix, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots,
+             .reportRejection, .resolveRejection, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
             return try releaseFlowDraft(intent)
 
         case .acceptAllDecisions, .verify:

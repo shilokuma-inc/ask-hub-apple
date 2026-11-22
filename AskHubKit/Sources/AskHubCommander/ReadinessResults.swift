@@ -51,7 +51,7 @@ extension ClaudeJobRunner {
             proceeding: proceeding,
             repository: epic.repo
         )
-        switch try await ask(claudeJob, for: job, attachments: placed?.directory) {
+        switch try await ask(claudeJob, for: job, epic: epic, attachments: placed?.directory) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):
@@ -169,7 +169,9 @@ extension ClaudeJobRunner {
             return .discarded("頼んだ後にゴールが直された", nil)
         }
         guard let questions = try await questionsFile(of: epic) else { return Self.missingQuestions }
-        switch try await ask(ReviseGoalJob(goal: goal, questions: questions, instruction: instruction, repository: epic.repo), for: job) {
+        switch try await ask(
+            ReviseGoalJob(goal: goal, questions: questions, instruction: instruction, repository: epic.repo), for: job, epic: epic
+        ) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):

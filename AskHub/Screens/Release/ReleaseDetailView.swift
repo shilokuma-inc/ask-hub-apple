@@ -9,6 +9,14 @@ struct ReleaseDetailView: View {
     @Environment(ClientStore.self) private var store
     @State private var isEditing = false
     @State private var isEditingPromotionalText = false
+    /// hotfix を始める確かめ（hotfix の版と、一時停止する進行中のリリースの版）
+    @State private var confirmingHotfix: HotfixPlan?
+
+    struct HotfixPlan: Identifiable {
+        var version: String
+        var suspend: String?
+        var id: String { version }
+    }
 
     var body: some View {
         if let release = store.snapshot?.release(Release.id(repositoryID, version)) {
@@ -16,6 +24,47 @@ struct ReleaseDetailView: View {
         } else {
             ContentUnavailableView("この版は見つかりません", systemImage: "shippingbox")
         }
+    }
+
+    /// 配信中の版だけを直す hotfix を始める（最も新しい配信した版だけ）。進行中のリリースがあれば、一時停止することを確かめる
+    @ViewBuilder private func hotfixSection(_ release: Release) -> some View {
+        let open = store.snapshot?.openRelease(of: release.repositoryID)
+        if let version = store.snapshot?.hotfixVersion(of: release.repositoryID, from: release.version), open?.hotfixFrom == nil,
+           store.supports(.startHotfix(repositoryID: release.repositoryID, version: version, suspend: open?.version)) {
+            CardSection {
+                Button("hotfix を始める…", systemImage: "bandage") {
+                    confirmingHotfix = HotfixPlan(version: version, suspend: open?.version)
+                }
+                .accessibilityIdentifier("release-hotfix")
+            } footer: {
+                Text("配信中の \(release.version) だけを直す \(version) を、v\(release.version) のタグから作ります。develop には触れず、配信した後に main と develop に取り込みます")
+            }
+            .confirmationDialog(
+                hotfixTitle,
+                isPresented: Binding { confirmingHotfix != nil } set: { if !$0 { confirmingHotfix = nil } },
+                titleVisibility: .visible,
+                presenting: confirmingHotfix
+            ) { plan in
+                Button(plan.suspend == nil ? "hotfix を始める" : "一時停止して hotfix を始める") {
+                    let intent = HumanIntent.startHotfix(repositoryID: release.repositoryID, version: plan.version, suspend: plan.suspend)
+                    Task { await store.send(intent) }
+                }
+            } message: { plan in
+                Text(hotfixMessage(plan))
+            }
+        }
+    }
+
+    private var hotfixTitle: String {
+        confirmingHotfix.map { "hotfix \($0.version) を始めますか？" } ?? ""
+    }
+
+    private func hotfixMessage(_ plan: HotfixPlan) -> String {
+        guard let suspend = plan.suspend else {
+            return "release/\(plan.version) を作り、版を \(plan.version) に上げます。直すことは「このリリースを直す」で依頼してください"
+        }
+        return "進行中の \(suspend) のリリースを一時停止します。審査中なら取り下げ、App Store Connect の編集できる版を hotfix に回します。"
+            + "hotfix を配信したら \(suspend) に取り込み、ビルド・What's New・掲載文の案を作り直して再開します"
     }
 
     private func content(_ release: Release) -> some View {
@@ -44,6 +93,7 @@ struct ReleaseDetailView: View {
             if let promotionalText = release.promotionalText {
                 promotionalTextSection(release, promotionalText)
             }
+            hotfixSection(release)
             links(release)
         }
         .pastelBackground()

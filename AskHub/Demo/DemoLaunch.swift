@@ -7,7 +7,7 @@ import Foundation
 /// `-demoOpen release:demo-studio/habit-ios:1.2.0`（配信した版）・`-demoOpen appStore:demo-studio/pocket-budget-ios`（App Store の準備）、
 /// スワイプの途中の色を撮るときは `-demoDrag 0:0.8`（選択肢の添字:進み具合）、
 /// 開いた画面のシートを撮るときは `-demoSheet start`（ゴールの画面の、Mac を選ぶシート）・`-demoSheet submitReview`（審査に出す）・
-/// `-demoSheet startRelease`（リリースを始める）・`-demoSheet appStoreSettings`（App Store Connect に決まった値を書く）・
+/// `-demoSheet startRelease`（リリースを始める）・`-demoSheet fixRelease`（このリリースを直す依頼）・`-demoSheet rejectionReport`（リジェクトの理由を貼る）・`-demoSheet appStoreSettings`（App Store Connect に決まった値を書く）・
 /// `-demoSheet settings`（iOS の設定のシート）。
 /// テーマは `-appTheme dark` のように保存のキーを起動引数で渡すと、保存された値によらずその見た目で撮れる
 enum DemoLaunch {
@@ -23,6 +23,10 @@ enum DemoLaunch {
         case submitReview
         /// リポジトリの画面の、リリースを始めるシート
         case startRelease
+        /// リリースを始めた版の画面の、このリリースを直す依頼のシート
+        case fixRelease
+        /// リリースを始めた版の画面の、リジェクトの理由を貼るシート
+        case rejectionReport
         /// App Store の準備の画面の、決まった値を書くシート
         case appStoreSettings
         /// 設定のシート（iOS。macOS は設定のウィンドウなので開かない）

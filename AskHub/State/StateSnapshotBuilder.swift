@@ -84,6 +84,10 @@ struct StateIndex {
         var canWithdraw: Bool
         var canAbandon: Bool
         var canRetakeScreenshots: Bool
+        /// リジェクトの理由を貼れる
+        var canReportRejection = false
+        /// リジェクトの直し方を選べる
+        var canResolveRejection = false
     }
 
     /// 実機確認への答え（`verify`）と、「問題あり」で一緒に送る依頼の材料
@@ -127,8 +131,12 @@ struct StateIndex {
     var releasingRepositories: Set<TargetRepository.ID> = []
     /// リポジトリの配信した版の最大（これより大きい版だけ始められる）
     var releasedVersions: [TargetRepository.ID: MarketingVersion] = [:]
+    /// リポジトリの終わっていないリリース（hotfix を始めるときに、一時停止する版を確かめる）。hotfix かどうかも持つ
+    var openReleases: [TargetRepository.ID: [(version: MarketingVersion, hotfix: Bool)]] = [:]
     /// 対象から外したリポジトリ（加え直すときに、元の owner/name の書き方で送る）
     var removedRepositories: [TargetRepository.ID: RepositoryFullName] = [:]
+    /// 「対象に加える」の候補（加えるときに、GitHub の owner/name の書き方で送る）
+    var candidateRepositories: [RepositoryCandidate.ID: RepositoryFullName] = [:]
     /// 終わっていない epic のあるリポジトリ（対象から外すと司令塔が断る）。処理を待つ意図を当てた後のもの
     var busyRepositories: Set<TargetRepository.ID> = []
     /// 新しいアプリを App Store に載せる準備（処理を待つ意図を当てた後のもの）
@@ -195,7 +203,8 @@ struct StateSnapshotBuilder {
         let appStoreSetups = appStoreSetups(index: &index, overlaid: overlaid)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
-            candidateRepositories: [],
+            candidateRepositories: candidates(excluding: repositories + removed, index: &index),
+            candidateProblems: candidateProblems,
             removedRepositories: removed.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             epics: epics.sorted { $0.updatedAt > $1.updatedAt },
             macs: macs(index: &index),
@@ -213,7 +222,7 @@ struct StateSnapshotBuilder {
     // MARK: リポジトリ
 
     private func repository(_ file: RepositoryFile, epics: [Epic], index: inout StateIndex) -> TargetRepository {
-        var repository = Self.repository(file.repo)
+        var repository = Self.repository(file)
         index.repositories[repository.id] = file.repo
         repository.icon = Self.appIcon(of: file)
         repository.build = file.build.map(Self.buildSettings)
@@ -226,7 +235,7 @@ struct StateSnapshotBuilder {
 
     /// 対象から外したリポジトリ。送るときは元の owner/name の書き方を使う
     private func removedRepository(_ file: RepositoryFile, index: inout StateIndex) -> TargetRepository {
-        var repository = Self.repository(file.repo)
+        var repository = Self.repository(file)
         index.removedRepositories[repository.id] = file.repo
         repository.icon = Self.appIcon(of: file)
         return repository
@@ -236,6 +245,13 @@ struct StateSnapshotBuilder {
     static func appIcon(of file: RepositoryFile) -> RepositoryIcon {
         guard let icon = file.icon else { return .monogram }
         return .stored(path: StatePath.appIcon(file.repo), version: icon.image)
+    }
+
+    /// 状態リポジトリの対象のリポジトリ。テンプレートから作ったものは、作るときに選んだアプリ名で出す
+    static func repository(_ file: RepositoryFile) -> TargetRepository {
+        var repository = repository(file.repo)
+        if let appName = file.created?.appName { repository.appName = appName }
+        return repository
     }
 
     static func repository(_ repo: RepositoryFullName) -> TargetRepository {

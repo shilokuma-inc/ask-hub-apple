@@ -3,8 +3,10 @@ import Foundation
 /// 1 回の取得で読んだ状態の全体。画面はすべてここから組み立てる
 struct ClientSnapshot: Hashable {
     var repositories: [TargetRepository]
-    /// まだ対象になっていないリポジトリ（「対象に加える」で選ぶ候補）
-    var candidateRepositories: [TargetRepository]
+    /// まだ対象になっていないリポジトリ（「対象に加える」で選ぶ候補。持ち主・名前の順）
+    var candidateRepositories: [RepositoryCandidate]
+    /// 候補を読めなかった持ち主と理由（司令塔が書いたもの）
+    var candidateProblems: [RepositoryCandidateProblem] = []
     /// 対象から外したリポジトリ（`repo.json` は残っている）。「対象に加える」で戻せる。終わった epic の名前とアイコンにも使う
     var removedRepositories: [TargetRepository] = []
     var epics: [Epic]
@@ -50,6 +52,15 @@ struct SourceFailure: Hashable {
 }
 
 extension ClientSnapshot {
+    /// 管理用のトークンを入れた持ち主（司令塔が使えるもの）。テンプレートから作る先に選べる
+    var adminOwners: [String] {
+        let owners = macs.flatMap(\.tokens).compactMap { token -> String? in
+            guard case let .githubAdmin(owner) = token.kind, token.state == .ok else { return nil }
+            return owner
+        }
+        return Array(Set(owners)).sorted()
+    }
+
     /// 対象のリポジトリ。外したリポジトリも返す（外す前の epic の名前とアイコンを出すため）
     func repository(_ id: TargetRepository.ID) -> TargetRepository? {
         repositories.first { $0.id == id } ?? removedRepositories.first { $0.id == id }
@@ -92,6 +103,27 @@ extension ClientSnapshot {
 
     func submission(_ id: Submission.ID) -> Submission? {
         submissions.first { $0.id == id }
+    }
+
+    /// hotfix の版（配信した版のうち最も新しいものの次のパッチ）。`version` が最も新しい配信した版でなければ nil
+    func hotfixVersion(of repositoryID: TargetRepository.ID, from version: String) -> String? {
+        guard let latest = releases(of: repositoryID).max(by: { Self.isOlder($0.version, $1.version) }), latest.version == version else {
+            return nil
+        }
+        var parts = version.split(separator: ".").compactMap { Int($0) }
+        while parts.count < 3 { parts.append(0) }
+        parts[2] += 1
+        return parts.prefix(3).map(String.init).joined(separator: ".")
+    }
+
+    /// 終わっていないリリース（hotfix を始めるときに一時停止する版）。無ければ nil
+    func openRelease(of repositoryID: TargetRepository.ID) -> Submission? {
+        submissions(of: repositoryID).first { !$0.isEnded }
+    }
+
+    /// 「このリリースを直す」依頼を出せる、進行中のリリース（AskHub で始めて release ブランチを作った、終わっていない版）。無ければ nil
+    func fixableRelease(of repositoryID: TargetRepository.ID) -> Submission? {
+        submissions(of: repositoryID).filter(\.acceptsFixes).max { Self.isOlder($0.version, $1.version) }
     }
 
     /// リリースを始めるときの版の既定（前に配信した版の次のマイナー。develop の版を上げた PR があれば、その版）

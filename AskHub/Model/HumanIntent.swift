@@ -34,15 +34,23 @@ enum HumanIntent: Hashable {
     case cleanUp(macID: Mac.ID, candidateIDs: [CleanupCandidate.ID])
     /// Mac の片付けの候補を探す（その Mac のワーカーが探す）
     case findCleanupCandidates(macID: Mac.ID)
-    /// 依頼。添付の中身は、意図より先に状態リポジトリに置く
-    case request(repositoryID: TargetRepository.ID, summary: String, body: String, attachments: [RequestFile] = [])
+    // 依頼の意図（`request`）の payload と同じ並びにしておくため、値を 5 つ持たせる（別の case にすると、依頼の扱いを 2 つに分けることになる）
+    // swiftlint:disable enum_case_associated_values_count
+    /// 依頼。添付の中身は、意図より先に状態リポジトリに置く。`release` は「このリリースを直す」依頼の直すリリースの版
+    /// （epic は `release/<版>` を base にする）。ふだんの依頼は nil
+    case request(repositoryID: TargetRepository.ID, summary: String, body: String, attachments: [RequestFile] = [], release: String? = nil)
+    // swiftlint:enable enum_case_associated_values_count
     case addRepository(repositoryID: TargetRepository.ID)
+    /// テンプレートから新しいアプリのリポジトリを作り、対象に加える（司令塔が管理用のトークンで作る）
+    case createRepository(NewAppRequest)
     /// 配信した版のリリース文を確かめて、GitHub Release を公開する。見た下書きの版に結びつける（見た後に下書きが作り直されていれば、司令塔が断る）
     case publishRelease(repositoryID: TargetRepository.ID, version: String, notesVersion: Int, notes: String)
     /// 配信中の版のプロモーションテキストを直して、すぐ反映する（変える言語だけ。空の文は空にする）
     case updatePromotionalText(repositoryID: TargetRepository.ID, version: String, texts: [Submission.Localized])
     /// リリースを始める（`version` は始める版）
     case startRelease(repositoryID: TargetRepository.ID, version: String)
+    /// 配信中の版だけを直す hotfix を始める（`version` は配信中の版の次のパッチ）。`suspend` は一時停止する進行中のリリースの版
+    case startHotfix(repositoryID: TargetRepository.ID, version: String, suspend: String?)
     /// 審査に出す（`revision` は見たときの準備の版。ビルドか What's New が変わっていれば司令塔が断る）
     case submitForReview(repositoryID: TargetRepository.ID, version: String, request: Submission.SubmitRequest)
     /// 審査に通った版を配信する（取り消せない）
@@ -53,6 +61,10 @@ enum HumanIntent: Hashable {
     case abandonRelease(repositoryID: TargetRepository.ID, version: String)
     /// スクショを撮り直す（`displayTypes`・`locales` が空なら、すべての組）
     case retakeScreenshots(repositoryID: TargetRepository.ID, version: String, displayTypes: [String], locales: [String])
+    /// リジェクトの理由を貼る（審査の文と画面の画像）。画像の中身は、意図より先に状態リポジトリに置く
+    case reportRejection(repositoryID: TargetRepository.ID, version: String, text: String, images: [RequestFile] = [])
+    /// リジェクトの直し方を選ぶ（コードを直すなら、「このリリースを直す」依頼を別に送る）
+    case resolveRejection(repositoryID: TargetRepository.ID, version: String, remedy: Submission.Remedy)
     /// 対象から外す（終わっていない epic があれば司令塔が断る。状態リポジトリのファイルと GitHub のリポジトリは消さない）
     case removeRepository(repositoryID: TargetRepository.ID)
     /// ビルドの設定を入れる（`json` は `repo.json` の `build` と同じ形。送るたびにまるごと置き換える）
@@ -101,7 +113,8 @@ enum DecisionReply: Hashable {
 
 enum VerificationReply: Hashable {
     case confirmed
-    case problem(note: String)
+    /// 問題あり。`release` があれば「このリリースで直す」（直しの依頼をその版の release ブランチに向ける）、nil なら次のリリースで直す
+    case problem(note: String, release: String? = nil)
 }
 
 extension HumanIntent {
@@ -115,7 +128,7 @@ extension HumanIntent {
     /// 送ったことを知らせるときの呼び名（状態リポジトリの「送った意図」と同じ呼び方。例: 依頼「週ごとのまとめ」・回答・開始）
     var label: String {
         switch self {
-        case let .request(_, summary, _, _):
+        case let .request(_, summary, _, _, _):
             "依頼「\(summary)」"
 
         case .answer:
@@ -136,11 +149,17 @@ extension HumanIntent {
         case .addRepository(let repositoryID):
             "対象に加える（\(repositoryID)）"
 
+        case .createRepository(let request):
+            "新しいアプリ（\(request.fullName)）"
+
         case let .publishRelease(_, version, _, _):
             "GitHub Release の公開（\(version)）"
 
         case let .updatePromotionalText(_, version, _):
             "プロモーションテキストの反映（\(version)）"
+
+        case let .startHotfix(_, version, _):
+            "hotfix を始める（\(version)）"
 
         case let .startRelease(_, version):
             "リリースを始める（\(version)）"
@@ -159,6 +178,12 @@ extension HumanIntent {
 
         case let .retakeScreenshots(_, version, _, _):
             "スクショの撮り直し（\(version)）"
+
+        case let .reportRejection(_, version, _, _):
+            "リジェクトの理由（\(version)）"
+
+        case let .resolveRejection(_, version, remedy):
+            "リジェクトの直し方: \(remedy.label)（\(version)）"
 
         case .removeRepository(let repositoryID):
             "対象から外す（\(repositoryID)）"

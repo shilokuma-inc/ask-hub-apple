@@ -54,6 +54,7 @@ extension AskHubCommanderMain {
             appIcons: appIcons(runtime: runtime, context: context),
             releases: releases,
             protection: protectionWatch(secrets: secrets, context: context, transport: transport),
+            candidates: candidatesWatch(runtime: runtime, context: context, transport: transport),
             admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) },
             cleanup: runtime.cleanupService(context: context, log: log)
         )
@@ -87,6 +88,22 @@ extension AskHubCommanderMain {
         )
     }
 
+    /// 「対象に加える」の候補。自動で読むので、毎日のトークンで読むだけにする（管理用のトークンは人の意図の処理にだけ渡す）
+    private static func candidatesWatch(
+        runtime: MachineRuntime,
+        context: CommanderContext,
+        transport: any HTTPTransport
+    ) -> RepositoryCandidatesWatch {
+        let token = MachineRuntime.githubTokens(in: runtime.secrets)
+        return RepositoryCandidatesWatch(
+            context: context,
+            owners: runtime.probe.owners,
+            listing: { GitHubOwnerRepositories(owner: $0, transport: transport, token: token) },
+            stateRepository: runtime.configuration.stateRepository,
+            log: log
+        )
+    }
+
     /// App Store での配信を見つけ、リリースの後作業を進めるもの。App Store Connect の鍵の設定が無ければ、配信は見つけず、
     /// 前に見つけた版の後作業だけを進める
     private static func releaseWatch(runtime: MachineRuntime, context: CommanderContext, transport: any HTTPTransport) -> ReleaseWatch {
@@ -115,6 +132,10 @@ extension AskHubCommanderMain {
                 sources: runtime.workspace
             ),
             listing: ClaudeListingDrafter(
+                client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
+                sources: runtime.workspace
+            ),
+            rejections: ClaudeRejectionTriager(
                 client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
                 sources: runtime.workspace
             ),

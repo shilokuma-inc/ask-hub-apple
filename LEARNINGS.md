@@ -853,6 +853,9 @@
   版の組は 10 枚までなので、作る前に余った配置を消す。配置の残る画像は消せない（409 `STATE_ERROR.ASSET_HAS_PLACEMENTS`）。
   古い appScreenshotSets で上げたスクショが配置として読めるかは文書に無い（2026-11-21、#1184）
 - `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations` の言語の並びは、読むたびに変わることがある。読んだ並びのまま記録と比べると、文が同じでも書き直してしまうので、言語の順に並べてから比べる（OshiCon の配信の記録で、並びだけが違う書き直しが続いた。#1180）。
+- 審査で断られた版の出し直しの手順は、App Store Connect の API の文書に無い（2026-11-22 に DocC の JSON を 30 本ほど読んで確かめた）。reviewSubmission の `state` は READY_FOR_REVIEW・WAITING_FOR_REVIEW・IN_REVIEW・UNRESOLVED_ISSUES・CANCELING・COMPLETING・COMPLETE、
+  reviewSubmissionItem の `state` は READY_FOR_REVIEW・ACCEPTED・APPROVED・REJECTED・REMOVED で、PATCH できるのは item の `resolved`・`removed` と submission の `submitted`・`canceled`・`platform` だけ（どれも説明が空）。
+  AskHub は「断られた項目を `resolved: true` → 同じ提出を `submitted: true`」で出し直し、断られたら人に App Store Connect で押してもらう（#1208）。審査とのやり取り（Resolution Center）の本文を読む API は見当たらない
 
 ## ワーカー・司令塔の運用
 

@@ -191,3 +191,16 @@ extension SubmissionFile {
         public var isDone: Bool { state != .open }
     }
 }
+
+extension SubmissionFile {
+    /// やめたリリースの、まだ消していない版の枠がある
+    public var awaitsSlotRemoval: Bool {
+        end?.reason == .abandoned && (appStoreVersions ?? []).contains { $0.removal == nil }
+    }
+
+    /// 配信した後に、release ブランチを main と develop に取り込むのを待っている（取り込む先がすべて終わるまで見回る）
+    public func awaitsIntegration(bases: [String]) -> Bool {
+        guard end?.reason == .distributed, branch != nil else { return false }
+        return bases.contains { base in !(integration ?? []).contains { $0.base == base && $0.isDone } }
+    }
+}

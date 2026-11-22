@@ -34,12 +34,20 @@ public struct IntentDraft: Equatable, Sendable {
         self.payload = payload
     }
 
-    /// 依頼。添付は参照（番号・名前・大きさ・ハッシュ）だけを書き、中身は `IntentSender.send(_:attachments:)` で意図より先に置く
-    public static func request(repo: RepositoryFullName, title: String, body: String, attachments: [RequestAttachment] = []) -> Self {
+    /// 依頼。添付は参照（番号・名前・大きさ・ハッシュ）だけを書き、中身は `IntentSender.send(_:attachments:)` で意図より先に置く。
+    /// `release` は「このリリースを直す」依頼の直すリリースの版（epic は `release/<版>` を base にする）
+    public static func request(
+        repo: RepositoryFullName,
+        title: String,
+        body: String,
+        attachments: [RequestAttachment] = [],
+        release: MarketingVersion? = nil
+    ) -> Self {
         var payload: [String: JSONValue] = ["title": .string(title), "body": .string(body)]
         if !attachments.isEmpty {
             payload["attachments"] = .array(attachments.map(\.jsonValue))
         }
+        if let release { payload["release"] = .string(release.rawValue) }
         return Self(kind: RequestIntent.kind, repo: repo, payload: payload)
     }
 
@@ -70,6 +78,23 @@ public struct IntentDraft: Equatable, Sendable {
     /// 対象に加える
     public static func addRepository(_ repo: RepositoryFullName, platform: RepositoryPlatform = .apple) -> Self {
         Self(kind: AddRepositoryIntent.kind, repo: repo, payload: ["platform": .string(platform.rawValue)])
+    }
+
+    /// テンプレートから新しいアプリのリポジトリを作り、対象に加える（司令塔が管理用のトークンで作る）
+    public static func createRepository(
+        _ repo: RepositoryFullName,
+        template: RepositoryTemplate,
+        visibility: RepositoryVisibility,
+        appName: String,
+        bundleId: String
+    ) -> Self {
+        let payload: [String: JSONValue] = [
+            "template": .string(template.rawValue),
+            "visibility": .string(visibility.rawValue),
+            "appName": .string(appName),
+            "bundleId": .string(bundleId)
+        ]
+        return Self(kind: CreateRepositoryIntent.kind, repo: repo, payload: payload)
     }
 
     /// 対象から外す（終わっていない epic があれば司令塔が断る。状態リポジトリのファイルは残る）
@@ -121,8 +146,16 @@ public struct IntentDraft: Equatable, Sendable {
     }
 
     /// リリースを始める（司令塔が release ブランチを作り、準備を進める）
-    public static func startRelease(_ repo: RepositoryFullName, version: MarketingVersion) -> Self {
-        Self(kind: StartReleaseIntent.kind, repo: repo, payload: ["version": .string(version.rawValue)])
+    public static func startRelease(
+        _ repo: RepositoryFullName,
+        version: MarketingVersion,
+        hotfix: Bool = false,
+        suspend: MarketingVersion? = nil
+    ) -> Self {
+        var payload: [String: JSONValue] = ["version": .string(version.rawValue)]
+        if hotfix { payload["hotfix"] = .bool(true) }
+        if let suspend { payload["suspend"] = .string(suspend.rawValue) }
+        return Self(kind: StartReleaseIntent.kind, repo: repo, payload: payload)
     }
 
     /// 審査に出す（`revision` は人が見たときの準備の版。ビルド・What's New・掲載文の案が変わっていれば司令塔が断る）。
@@ -197,6 +230,19 @@ public struct IntentDraft: Equatable, Sendable {
     /// このリリースをやめる（release ブランチ・App Store Connect の版は消さない）
     public static func abandonRelease(_ target: SubmissionTarget) -> Self {
         Self(kind: AbandonReleaseIntent.kind, repo: target.repo, target: target.target)
+    }
+
+    /// リジェクトの理由を貼る（審査の文と画面の画像）。画像は参照だけを書き、中身は `IntentSender.send(_:attachments:)` で意図より先に置く
+    public static func reportRejection(_ target: SubmissionTarget, text: String, attachments: [RequestAttachment] = []) -> Self {
+        var payload: [String: JSONValue] = [:]
+        if !text.isEmpty { payload["text"] = .string(text) }
+        if !attachments.isEmpty { payload["attachments"] = .array(attachments.map(\.jsonValue)) }
+        return Self(kind: ReportRejectionIntent.kind, repo: target.repo, target: target.target, payload: payload)
+    }
+
+    /// リジェクトの直し方を選ぶ（コードを直すなら、「このリリースを直す」依頼を別に送る）
+    public static func resolveRejection(_ target: SubmissionTarget, remedy: SubmissionFile.RejectionRemedy) -> Self {
+        Self(kind: ResolveRejectionIntent.kind, repo: target.repo, target: target.target, payload: ["remedy": .string(remedy.rawValue)])
     }
 
     /// epic を取り下げる（開始した後なら、開いている子 PR と最終 PR を閉じる。ブランチは残す。マージした epic は取り下げられない）

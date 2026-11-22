@@ -24,7 +24,7 @@ enum AskHubMain {
         switch command {
         case "setup": try setup(CommandArguments(arguments))
         case "key": try await key(arguments)
-        case "add-repository", "configure-repository", "apply-protection", "approve-setup",
+        case "add-repository", "create-repository", "configure-repository", "apply-protection", "approve-setup",
              "request", "answer", "clarify", "start", "revise-goal", "decide-split", "abandon",
              "pause", "resume", "handover", "retry", "give-up", "skip-task", "decide", "approve-merge", "instruct-final", "human-task-done":
             try await send(command, CommandArguments(arguments))
@@ -39,11 +39,15 @@ enum AskHubMain {
           key show | key register-first --account <GitHub のアカウント> --label <名前>
           key add --public-key <base64url> --account <アカウント> --label <名前> | key revoke <鍵の id>
           add-repository --repo <owner/repo>
+          create-repository --repo <owner/repo> --template ios|visionos --app-name <アプリ名>
+                         [--bundle-id <Bundle ID>] [--visibility public|private]
+                         テンプレートから新しいアプリのリポジトリを作って対象に加える（司令塔の管理用のトークンで作る。
+                         Bundle ID は既定で jp.shilokuma.<アプリ名>、公開範囲は既定で public）
           configure-repository --repo <owner/repo> --file <build.json>   ビルドの設定（repo.json の build と同じ形）を入れる
           approve-setup --repo <owner/repo> --pr <番号> --head <PR の head>   加えるときに司令塔が出したワークフローの直しの PR を承認する
           apply-protection --repo <owner/repo> [--checks <名前,名前>]   保護の設定（ルールセット askhub-protect）を司令塔に掛けてもらう
                          （必須のチェックは既定で build / build。司令塔の管理用のトークンで掛け、重なる保護を外す）
-          request --repo <owner/repo> --title <題> [--body <本文>]
+          request --repo <owner/repo> --title <題> [--body <本文>] [--release <直すリリースの版>]
           answer --repo <owner/repo> --epic <id> --question <q1> --version <版> [--choice <選択肢>] [--note <補足>]
           clarify --repo <owner/repo> --epic <id> --question <q1> --version <版> --note <問い>
           start --repo <owner/repo> --epic <id> --version <ゴールの版> --mac <Mac の名前>

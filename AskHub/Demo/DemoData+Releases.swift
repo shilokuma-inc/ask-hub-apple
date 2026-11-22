@@ -99,8 +99,59 @@ extension DemoData {
             skipped: [],
             progress: "App Store Connect の取り込みを待っています（2 / 5 枚）"
         )
-        return [submission, first]
+        return [submission, first, habitSubmission()]
     }
+
+    /// 習慣ログの 1.4.0。審査に出したら、説明文に無い機能を書いていたので断られた。人が理由を貼り、Claude の直し方の案を待っている。
+    /// 振り返りの epic（実機確認が残っている）は release ブランチより前にマージしたので、「問題あり」は「このリリースで直す」が既定
+    private func habitSubmission() -> Submission {
+        let whatsNew = [Submission.Localized(locale: "ja", text: "・週の振り返りの画面を足しました")]
+        var habit = Submission(
+            repositoryID: Self.repositoryID("habit-ios"),
+            version: "1.4.0",
+            startedInAskHub: true,
+            branch: "release/1.4.0",
+            nextVersion: .init(version: "1.5.0", state: .merged, pullRequest: 48),
+            builds: [.init(platform: "iOS", build: "52")],
+            drafts: whatsNew,
+            revision: 3,
+            submitted: .init(
+                builds: [.init(platform: "iOS", build: "52")], whatsNew: whatsNew, releaseType: .afterApproval, at: ago(minutes: 60 * 26)
+            ),
+            review: [.init(platform: "iOS", state: .rejected, since: ago(minutes: 60 * 2))],
+            createdAt: ago(minutes: 60 * 30),
+            updatedAt: ago(minutes: 30)
+        )
+        habit.branchCreatedAt = ago(minutes: 60 * 30)
+        habit.canAbandon = true
+        habit.rejection = Submission.Rejection(
+            platforms: ["iOS"],
+            text: Self.habitRejectionText,
+            images: [],
+            reportedAt: ago(minutes: 40),
+            triage: Self.rejectionTriage
+        )
+        habit.canReportRejection = true
+        habit.awaitsRejectionChoice = true
+        return habit
+    }
+
+    /// 習慣ログ 1.4.0 の審査の文（人が App Store Connect から貼ったもの）
+    static let habitRejectionText = """
+        Guideline 2.3.1 - Performance - Accurate Metadata
+
+        Your app's description mentions an Apple Watch app, but we were unable to locate it in the submission.
+        """
+
+    /// Claude の直し方の案（デモ）
+    static let rejectionTriage = Submission.RejectionTriage(
+        remedy: .metadata,
+        summary: "説明文に、まだ出していない Apple Watch のアプリのことが書いてあり、正確でないとされた（ガイドライン 2.3.1）",
+        plan: "1. 説明文から Apple Watch の文を外す（案を出し直すシートに入れた）\n2. 「審査に出し直す」で、同じビルドのまま出し直す",
+        reply: "Thank you for your review. We removed the mention of the Apple Watch app from the description, "
+            + "which is not included in this version.",
+        metadataChanges: ["説明文（ja）"]
+    )
 
     /// レシピ帳の掲載文の案（人数に合わせた分量の計算を、日本語の説明文とキーワード・英語のキーワードに入れる）
     static let recipeListing = Submission.Listing(

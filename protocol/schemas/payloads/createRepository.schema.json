@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/createRepository.schema.json",
+  "title": "テンプレートから新しいアプリのリポジトリを作る人の意図（kind が createRepository）の payload",
+  "description": "封筒の repo が作るリポジトリ（持ち主と名前）。target と targetVersion は持たない。元にするテンプレートのリポジトリは種類から司令塔が決める（任意のリポジトリは書かせない）。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "template",
+    "visibility",
+    "appName",
+    "bundleId"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "template": {
+      "enum": [
+        "ios",
+        "visionos"
+      ],
+      "description": "ios は shilokuma-inc/template-app-ios、visionos は shilokuma-vision/template-app-visionos"
+    },
+    "visibility": {
+      "enum": [
+        "public",
+        "private"
+      ]
+    },
+    "appName": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9]{0,59}$",
+      "not": {
+        "pattern": "\\n"
+      },
+      "description": "アプリ名（Swift のモジュール名・Xcode のプロジェクト名になる。テンプレートの scripts/rename.sh と同じ決まり）"
+    },
+    "bundleId": {
+      "type": "string",
+      "maxLength": 155,
+      "pattern": "^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$",
+      "not": {
+        "pattern": "\\n"
+      }
+    }
+  }
+}

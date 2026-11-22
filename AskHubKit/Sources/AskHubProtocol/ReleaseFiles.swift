@@ -37,6 +37,13 @@ public struct MarketingVersion: RawRepresentable, Codable, Hashable, Comparable,
         return MarketingVersion(rawValue: next.map(String.init).joined(separator: ".")) ?? self
     }
 
+    /// 次のパッチの版（`1.2.3` → `1.2.4`、`1.2` → `1.2.1`、`1` → `1.0.1`）。hotfix の版。数の数は 3 つにそろえる
+    public var nextPatch: MarketingVersion {
+        var next = components + Array(repeating: 0, count: max(0, 3 - components.count))
+        next[2] += 1
+        return MarketingVersion(rawValue: next.prefix(3).map(String.init).joined(separator: ".")) ?? self
+    }
+
     /// 足りない数を 0 とみなして比べる（`1.2` と `1.2.0` は同じ）
     public static func < (lhs: Self, rhs: Self) -> Bool {
         let count = max(lhs.components.count, rhs.components.count)

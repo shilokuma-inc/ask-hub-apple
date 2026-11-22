@@ -10,6 +10,12 @@ struct SubmissionDetailView: View {
     @State private var isSubmitting = Self.initialSubmitting
     @State private var confirming: Confirmation?
     @State private var isRetaking = false
+    /// 「このリリースを直す」依頼のシート
+    @State private var fixDraft: RequestDraft?
+    /// リジェクトの理由を貼るシート
+    @State private var isReportingRejection = false
+    /// 撮影では、起動引数でこのリリースを直す依頼・リジェクトの理由を貼るシートを開いておく（画面が出てから開く）
+    @State private var initialSheet = Self.initialDemoSheet
 
     /// 撮影では、起動引数で審査に出すシートを開いておく
     private static var initialSubmitting: Bool {
@@ -18,6 +24,37 @@ struct SubmissionDetailView: View {
         #else
         false
         #endif
+    }
+
+    private static var initialDemoSheet: DemoSheet? {
+        #if DEBUG
+        switch DemoLaunch.initialSheet() {
+        case .fixRelease: .fixRelease
+        case .rejectionReport: .rejectionReport
+        default: nil
+        }
+        #else
+        nil
+        #endif
+    }
+
+    /// 撮影で最初から開くシート
+    private enum DemoSheet {
+        case fixRelease
+        case rejectionReport
+    }
+
+    private func openInitialSheet(_ submission: Submission) {
+        guard let sheet = initialSheet else { return }
+        initialSheet = nil
+        switch sheet {
+        case .fixRelease where submission.acceptsFixes:
+            fixDraft = RequestDraft(repositoryID: submission.repositoryID, summary: "", body: "", release: submission.version)
+        case .rejectionReport where submission.canReportRejection:
+            isReportingRejection = true
+        default:
+            break
+        }
     }
 
     /// 取り消しにくい操作の確かめ
@@ -31,7 +68,15 @@ struct SubmissionDetailView: View {
 
     var body: some View {
         if let submission = store.snapshot?.submission(Submission.id(repositoryID, version)) {
+            // List の Section に付けたシートは行ごとに付いて開かないので、List の外に付ける
             content(submission)
+                .sheet(item: $fixDraft) { draft in
+                    NewRequestSheet(draft: draft)
+                }
+                .sheet(isPresented: $isReportingRejection) {
+                    RejectionReportSheet(submission: submission) { isReportingRejection = false }
+                }
+                .onAppear { openInitialSheet(submission) }
         } else {
             ContentUnavailableView("このリリースは見つかりません", systemImage: "shippingbox")
         }
@@ -49,6 +94,8 @@ struct SubmissionDetailView: View {
                 ReflectionStatusView(target(submission))
             }
             actions(submission)
+            rejection(submission)
+            fixes(submission)
             CardSection {
                 ForEach(submission.steps) { step in
                     StepStatusRow(title: step.title, detail: step.detail, state: step.state)
@@ -82,6 +129,7 @@ struct SubmissionDetailView: View {
         .sheet(isPresented: $isSubmitting) {
             SubmitReviewSheet(submission: submission) { isSubmitting = false }
         }
+
         .confirmationDialog(confirmationTitle, isPresented: isConfirming, titleVisibility: .visible, presenting: confirming) { action in
             confirmationButton(action, submission: submission)
         } message: { action in
@@ -134,6 +182,39 @@ struct SubmissionDetailView: View {
                 Text("あなたの番")
             }
             .disabled(store.isReflecting([target(submission)]))
+        }
+    }
+
+    /// 審査で断られた版の対処（AskHub で出した版だけ。直し方を選んだ後も、出し直すまで出す）
+    @ViewBuilder private func rejection(_ submission: Submission) -> some View {
+        if submission.startedInAskHub, !submission.isEnded, submission.isRejected || submission.rejection?.choice != nil {
+            RejectionSection(submission: submission) { isReportingRejection = true } onRequestFix: { fixDraft = $0 }
+        }
+    }
+
+    /// このリリースを直す依頼（TestFlight で見つかった不具合など）と、出した直しの epic
+    @ViewBuilder private func fixes(_ submission: Submission) -> some View {
+        let epics = (store.snapshot?.epics ?? []).filter { $0.repositoryID == submission.repositoryID && $0.release == submission.version }
+        if submission.acceptsFixes || !epics.isEmpty {
+            CardSection {
+                ForEach(epics) { epic in
+                    NavigationLink(value: AppRoute.epic(epic.id)) {
+                        Label(epic.title, systemImage: epic.stage == .done ? "checkmark.circle" : "wrench.and.screwdriver")
+                    }
+                }
+                if submission.acceptsFixes {
+                    Button("このリリースを直す…", systemImage: "plus") {
+                        fixDraft = RequestDraft(repositoryID: submission.repositoryID, summary: "", body: "", release: submission.version)
+                    }
+                    .accessibilityIdentifier("submission-fix")
+                }
+            } header: {
+                Text("このリリースの直し")
+            } footer: {
+                if submission.acceptsFixes {
+                    Text("TestFlight で見つかった不具合などを、release/\(submission.version) に直しを入れる依頼にします。配信した後に develop にも取り込みます")
+                }
+            }
         }
     }
 

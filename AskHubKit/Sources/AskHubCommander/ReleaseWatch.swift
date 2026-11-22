@@ -21,6 +21,8 @@ public actor ReleaseWatch {
     nonisolated let whatsNew: (any WhatsNewDrafting)?
     /// 掲載文の案。nil なら案を作れない（準備の問題として出す）
     nonisolated let listing: (any ListingDrafting)?
+    /// リジェクトの直し方の案。nil なら案を書けない（書けなかった理由を記録に書き、人が理由を読んで選ぶ）
+    nonisolated let rejections: (any RejectionTriaging)?
     /// App Store のスクショを撮る道具。nil なら撮れない（撮り方のあるリポジトリでは、撮れなかったとして記録する）
     nonisolated let screenshots: (any StoreScreenshotCapturing)?
     /// 撮影のワークフローの artifact を取り出す道具（`capture: actions`）
@@ -61,6 +63,7 @@ public actor ReleaseWatch {
         drafter: any ReleaseNotesDrafting,
         whatsNew: (any WhatsNewDrafting)? = nil,
         listing: (any ListingDrafting)? = nil,
+        rejections: (any RejectionTriaging)? = nil,
         screenshots: (any StoreScreenshotCapturing)? = nil,
         artifacts: any StoreScreenshotArtifactExtracting = UnzipArtifactExtractor(),
         authors: any CommitAuthors,
@@ -74,6 +77,7 @@ public actor ReleaseWatch {
         self.drafter = drafter
         self.whatsNew = whatsNew
         self.listing = listing
+        self.rejections = rejections
         self.screenshots = screenshots
         self.artifacts = artifacts
         self.authors = authors

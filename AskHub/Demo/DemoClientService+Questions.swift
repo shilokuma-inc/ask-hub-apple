@@ -3,10 +3,26 @@ import Foundation
 // MARK: - 人の意図を当てる（依頼から開始まで）
 
 extension DemoClientService {
+    /// テンプレートから作った直後の形で、対象のリポジトリに足す（デモにはアイコン・ビルドの設定は無い）
+    private func createRepository(_ request: NewAppRequest) {
+        guard !state.repositories.contains(where: { $0.id == request.repositoryID }) else {
+            return
+        }
+        state.repositories.append(TargetRepository(
+            owner: request.owner,
+            ownerAvatar: DemoData.ownerAvatar(request.owner),
+            name: request.name,
+            appName: request.appName,
+            icon: .monogram
+        ))
+    }
+
     func apply(_ intent: HumanIntent) -> SendReceipt {
         switch intent {
-        case let .request(repositoryID, summary, body, files):
-            let epicID = addRequest(repositoryID: repositoryID, summary: summary, body: body, attachmentCount: files.count)
+        case let .request(repositoryID, summary, body, files, release):
+            let epicID = addRequest(
+                repositoryID: repositoryID, summary: summary, body: body, attachmentCount: files.count, release: release
+            )
             return SendReceipt(requestedEpicID: epicID)
 
         case .answer, .requestExplanation:
@@ -18,7 +34,7 @@ extension DemoClientService {
         case .reviseGoal, .decideSplit, .addRepository, .removeRepository, .configureRepository:
             applySetupIntent(intent)
 
-        case .applyProtection, .approveSetup:
+        case .applyProtection, .approveSetup, .createRepository:
             applyAdministrationIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
@@ -30,7 +46,8 @@ extension DemoClientService {
         case .publishRelease, .updatePromotionalText:
             applyReleaseIntent(intent)
 
-        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots:
+        case .startRelease, .startHotfix, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots,
+             .reportRejection, .resolveRejection:
             applySubmissionIntent(intent)
 
         case .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
@@ -61,7 +78,16 @@ extension DemoClientService {
             decideSplit(epicID: epicID, choice: choice)
 
         case .addRepository(let repositoryID):
-            guard let repository = (state.candidateRepositories + state.removedRepositories).first(where: { $0.id == repositoryID }) else {
+            let candidate = state.candidateRepositories.first { $0.id == repositoryID }.map { candidate in
+                TargetRepository(
+                    owner: candidate.owner,
+                    ownerAvatar: DemoData.ownerAvatar(candidate.owner),
+                    name: candidate.name,
+                    appName: candidate.description ?? candidate.name,
+                    icon: .monogram
+                )
+            }
+            guard let repository = candidate ?? state.removedRepositories.first(where: { $0.id == repositoryID }) else {
                 return
             }
             state.candidateRepositories.removeAll { $0.id == repositoryID }
@@ -96,6 +122,9 @@ extension DemoClientService {
 
         case .approveSetup(let repositoryID, _, _):
             updateRepository(repositoryID) { $0.setup?.workflowPullRequest?.state = .merged }
+
+        case .createRepository(let request):
+            createRepository(request)
 
         default:
             break
@@ -368,10 +397,16 @@ extension DemoClientService {
     }
 
     /// 依頼を epic にして、その id を返す
-    private func addRequest(repositoryID: TargetRepository.ID, summary: String, body: String, attachmentCount: Int) -> Epic.ID {
+    private func addRequest(
+        repositoryID: TargetRepository.ID,
+        summary: String,
+        body: String,
+        attachmentCount: Int,
+        release: String? = nil
+    ) -> Epic.ID {
         let date = now()
         let id = "request-\(Int(date.timeIntervalSince1970))"
-        let epic = Epic(
+        var epic = Epic(
             id: id,
             title: summary,
             repositoryID: repositoryID,
@@ -388,6 +423,7 @@ extension DemoClientService {
             history: [Epic.HistoryEntry(date: date, text: "依頼しました")],
             updatedAt: date
         )
+        epic.release = release
         state.epics.insert(epic, at: 0)
         schedule(after: 1.5) { [now] snapshot in
             let asked = now()

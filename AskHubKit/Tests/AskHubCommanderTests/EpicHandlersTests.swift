@@ -120,6 +120,42 @@ struct EpicHandlersTests {
         #expect(job.assignedMac == Self.commander)
     }
 
+    @Test func releaseFixRequestCreatesEpicOnReleaseBranch() async throws {
+        let store = try await registeredRepository()
+        let version = try #require(MarketingVersion(rawValue: "1.4.0"))
+        var submission = SubmissionFile(
+            repo: Self.repo,
+            version: version,
+            origin: .askhub,
+            start: .init(approval: .init(keyId: keyID, nonce: .generate(at: Self.now)), at: Self.timestamp),
+            createdAt: Self.timestamp,
+            updatedAt: Self.timestamp
+        )
+        let path = StatePath.submission(Self.repo, version)
+        try await put(submission, at: path, in: store)
+        let payload: [String: JSONValue] = ["title": .string("課金の文言を直す"), "release": .string("1.4.0")]
+        try await put("request", payload: payload, in: store)
+        let noBranch = "1.4.0 の release ブランチがまだ無い。作られてから依頼する"
+        #expect(try await intake(store).processPending() == [.rejected(kind: "request", reason: noBranch)])
+
+        submission.branch = .init(name: "release/1.4.0", commit: String(repeating: "a", count: 40), created: true, at: Self.timestamp)
+        try await put(submission, at: path, in: store)
+        let nonce = try await put("request", payload: payload, in: store)
+        #expect(try await intake(store).processPending() == [.accepted(kind: "request")])
+        let epicID = RequestHandler.epicID(for: .init(keyId: keyID, nonce: nonce))
+        let epic = try #require(try await file(EpicFile.self, at: StatePath.epic(Self.repo, epicID), in: store))
+        #expect(epic.release == version)
+        #expect(epic.base(repository: "develop") == "release/1.4.0")
+
+        submission.end = .init(reason: .distributed, at: Self.timestamp)
+        try await put(submission, at: path, in: store)
+        try await put("request", payload: payload, in: store)
+        let ended = "1.4.0 のリリースはもう終わっている。次のリリースで直す（ふだんの依頼にする）"
+        #expect(try await intake(store).processPending() == [.rejected(kind: "request", reason: ended)])
+        try await put("request", payload: ["title": .string("直す"), "release": .string("2.0.0")], in: store)
+        #expect(try await intake(store).processPending() == [.rejected(kind: "request", reason: "2.0.0 のリリースを始めていない")])
+    }
+
     @Test func requestIsRejectedForUnregisteredRepository() async throws {
         let store = InMemoryStateStore()
         try await put("request", payload: ["title": .string("ランキング")], in: store)

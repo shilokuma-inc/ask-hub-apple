@@ -34,6 +34,22 @@ extension StateClientServiceTests {
         #expect(epic.request.attachmentCount == 2)
     }
 
+    /// 「このリリースを直す」依頼は、直すリリースの版を封筒に書き、司令塔が受け取る前の epic にも出す。版の形が違えば送らない
+    @Test
+    func releaseFixRequestSendsVersion() async throws {
+        let fixture = try makeService()
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        try await service.perform(.request(repositoryID: Self.repo, summary: "文言を直す", body: "審査で断られた", release: "1.4.0"))
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        #expect(try RequestIntent(envelope: envelope).release == MarketingVersion(rawValue: "1.4.0"))
+        let epic = try await service.fetchSnapshot().epic(StateSnapshotBuilder.epicID(forRequest: envelope).rawValue)
+        #expect(epic?.release == "1.4.0")
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.request(repositoryID: Self.repo, summary: "直す", body: "", release: "v1.4"))
+        }
+    }
+
     /// 司令塔の決まりに合わない名前のファイルは、送る形にしない（司令塔に断られる依頼を送らない）
     @Test
     func requestFileRefusesNamesCommanderRejects() {

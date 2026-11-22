@@ -76,6 +76,24 @@ extension StateClientServiceTests {
     }
 
     @Test
+    func problemFixedInReleaseSendsReleaseRequest() async throws {
+        let fixture = try makeService(files: Self.mergedEpic())
+        let service = fixture.service
+        _ = try await service.fetchSnapshot()
+        let reply = VerificationReply.problem(note: "線が背景に溶ける", release: "1.4.0")
+        let receipt = try await service.perform(.verify(epicID: Self.epicID, itemID: "v2", reply: reply))
+
+        let envelopes = try await sentEnvelopes(in: fixture)
+        #expect(envelopes.map(\.kind) == [VerifyIntent.kind, RequestIntent.kind])
+        let request = try RequestIntent(envelope: envelopes[1])
+        // 「このリリースで直す」は、依頼に直すリリースの版を付ける（epic は release/1.4.0 を base にする）
+        #expect(request.release == MarketingVersion(rawValue: "1.4.0"))
+        #expect(request.body.contains("リリース 1.4.0 の中で直す"))
+        let requested = try #require(receipt.requestedEpicID)
+        #expect(try await service.fetchSnapshot().epic(requested)?.release == "1.4.0")
+    }
+
+    @Test
     func emptyProblemIsNotSent() async throws {
         let fixture = try makeService(files: Self.mergedEpic())
         _ = try await fixture.service.fetchSnapshot()
