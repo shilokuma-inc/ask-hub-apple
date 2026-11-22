@@ -43,10 +43,13 @@ public struct CreativeProblem: Codable, Hashable, Sendable {
         self.message = message
     }
 
+    /// 記録に書ける形か（app-kit の `report.json` から写すときに確かめる）
+    public var isWellFormed: Bool { problems.isEmpty }
+
     var problems: [String] {
         var problems: [String] = []
         if code.wholeMatch(of: #/[a-z][a-z0-9-]{0,39}/#) == nil { problems.append("問題の code の形が違う") }
-        if message.isEmpty || message.count > 500 { problems.append("問題の message は 1〜500 文字") }
+        if message.isEmpty || message.unicodeScalars.count > 500 { problems.append("問題の message は 1〜500 文字") }
         return problems
     }
 }
@@ -233,8 +236,8 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
     // MARK: - 決まり
 
     public static func isColor(_ text: String) -> Bool { text.wholeMatch(of: #/#[0-9A-Fa-f]{6}/#) != nil }
-    static func isScreen(_ text: String) -> Bool { text.wholeMatch(of: #/[A-Za-z0-9_-]{1,64}/#) != nil }
-    static func isFolder(_ text: String) -> Bool { text.wholeMatch(of: #/[A-Za-z0-9_-]{1,20}/#) != nil }
+    public static func isScreen(_ text: String) -> Bool { text.wholeMatch(of: #/[A-Za-z0-9_-]{1,64}/#) != nil }
+    public static func isFolder(_ text: String) -> Bool { text.wholeMatch(of: #/[A-Za-z0-9_-]{1,20}/#) != nil }
 
     /// 言語の 1 つの文言
     struct TextField {
