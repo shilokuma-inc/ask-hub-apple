@@ -39,6 +39,21 @@ extension StateClientServiceTests {
         #expect(snapshot.sentIntents.first?.title == "新しいアプリ（example/Memo-Widget-iOS）")
     }
 
+    /// 司令塔が作った後も（送った意図の重ね合わせが消えた後も）、作るときに選んだアプリ名で出す
+    @Test
+    func createdRepositoryKeepsChosenAppName() async throws {
+        let created = """
+            {"v":1,"repo":"example/memo-widget-ios","platform":"apple","maxConcurrentEpics":1,"protection":{},
+             "created":{"template":"ios","appName":"MemoWidget","bundleId":"jp.shilokuma.MemoWidget","visibility":"public",
+              "intent":{"keyId":"\(String(repeating: "k", count: 43))","nonce":"01JCN0NCE00000000000000001"},"at":"2026-11-22T13:00:00Z"},
+             "addedAt":"2026-11-22T13:00:00Z"}
+            """
+        let fixture = try makeService(files: Self.askingEpic(extra: ["repos/example/memo-widget-ios/repo.json": created]))
+        let snapshot = try await fixture.service.fetchSnapshot()
+        #expect(snapshot.sourceFailures.isEmpty)
+        #expect(snapshot.repository("example/memo-widget-ios")?.appName == "MemoWidget")
+    }
+
     @Test
     func createRepositoryRefusesTargetNameAndBadNames() async throws {
         let fixture = try makeService()
