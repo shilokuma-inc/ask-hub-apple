@@ -11,7 +11,8 @@ extension SubmissionHandlersTests {
         revision: String = "2",
         releaseType: String = "afterApproval",
         locales: [String] = ["ja"],
-        listing: [ListingText] = []
+        listing: [ListingText] = [],
+        appReview: ReviewInformation? = nil
     ) -> IntentEnvelope {
         IntentEnvelope(
             kind: SubmitForReviewIntent.kind,
@@ -23,7 +24,8 @@ extension SubmissionHandlersTests {
                 whatsNew: locales.map { LocalizedText(locale: $0, text: "・\($0) を直した") },
                 releaseType: AppStoreReleaseType(rawValue: releaseType)!,
                 earliestReleaseDate: nil,
-                listing: listing
+                listing: listing,
+                appReview: appReview
             ),
             issuedAt: Timestamp(ReleaseWatchTests.now),
             nonce: ULID(rawValue: "01JCN0NCE00000000000000005")!,
@@ -42,6 +44,7 @@ extension SubmissionHandlersTests {
             reason: "ウィジェットを足したので、キーワードに入れる案です",
             draftedAt: now
         )
+        file.screenshots = .init(state: .notConfigured, startedAt: now, finishedAt: now)
         file.builds = [.init(platform: .iOS, build: "45", uploadedAt: now)]
         file.revision = 2
         return file
@@ -61,6 +64,19 @@ extension SubmissionHandlersTests {
         #expect(submit.listing?.isEmpty == true)
         // やり直しは受け付ける
         #expect(try await handler.handle(submitEnvelope(releaseType: "manual"), in: context) == .accept)
+    }
+
+    @Test func refusesAppReviewWithoutDraft() async throws {
+        var file = Self.prepared()
+        file.appReview = nil
+        try await put(file)
+        let handler = SubmitForReviewHandler()
+        let withReview = submitEnvelope(appReview: ReviewInformation(notes: "メモ"))
+        #expect(try await handler.handle(withReview, in: context) != .accept)
+        file.appReview = .init(current: ReviewInformation(), draft: nil, reason: "変えない", draftedAt: file.createdAt)
+        try await put(file)
+        #expect(try await handler.handle(withReview, in: context) == .accept)
+        #expect(try await self.file()?.submit?.appReview == ReviewInformation(notes: "メモ"))
     }
 
     @Test func recordsListingOnlyForLiveLocales() async throws {
@@ -114,7 +130,11 @@ extension ReleaseWatchTests {
         AppStoreVersionInfo(id: "v-1-2-0", platform: .iOS, versionString: "1.2.0", state: state)
     }
 
-    func readyToSubmit(releaseType: AppStoreReleaseType = .afterApproval, listing: [ListingText] = []) async throws -> SubmissionFile {
+    func readyToSubmit(
+        releaseType: AppStoreReleaseType = .afterApproval,
+        listing: [ListingText] = [],
+        appReview: ReviewInformation? = nil
+    ) async throws -> SubmissionFile {
         try await startRelease()
         hosting.state.withLock { $0.branches["release/1.2.0"] = Self.developHead }
         var file = SubmissionHandlersTests.prepared()
@@ -127,7 +147,8 @@ extension ReleaseWatchTests {
             builds: [.init(platform: .iOS, build: "45")],
             whatsNew: [.init(locale: "ja", text: "・速くなりました"), .init(locale: "en-US", text: "- Faster")],
             releaseType: releaseType,
-            listing: listing
+            listing: listing,
+            appReview: appReview
         )
         try await putSubmission(file)
         appStore.state.withLock { state in
@@ -140,10 +161,43 @@ extension ReleaseWatchTests {
                     whatsNew: nil,
                     listing: .init(locale: "ja", description: "推しの予定を数えるアプリ", keywords: "推し活", promotionalText: "毎日に推しを")
                 ),
-                AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: "- Faster")
+                // 2 つ目以降の版は、App Store Connect が前の版の掲載文を写す
+                AppStoreLocalization(
+                    id: "l-en",
+                    locale: "en-US",
+                    whatsNew: "- Faster",
+                    listing: .init(locale: "en-US", description: "Count down to your oshi events", keywords: "oshi")
+                )
             ]
         }
         return file
+    }
+
+    @Test func writesAppReviewWithoutPassword() async throws {
+        // 今のメモと同じ欄は書かず、デモアカウントの要否と名前だけ書く（パスワードは扱わない）
+        let change = ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: true, demoAccountName: "review@example.com")
+        _ = try await readyToSubmit(appReview: change)
+        appStore.state.withLock { state in
+            state.reviewDetails["v-1-2-0"] = AppStoreReviewDetail(id: "r-1", information: ReviewInformation(notes: "ログインは不要です。"))
+        }
+        await watch().refresh()
+        let writes = appStore.state.withLock { $0.writes }
+        #expect(writes.contains("writeReviewDetail r-1 demoAccountRequired=true demoAccountName=review@example.com"))
+        #expect(writes.firstIndex { $0.hasPrefix("writeReviewDetail") }! < writes.firstIndex { $0.hasPrefix("submitReviewSubmission") }!)
+    }
+
+    @Test func doesNotRewriteAnEmptyFieldWithAnEmptyString() async throws {
+        // 今のメモは空（nil で読む）。空にする直しは書かず、名前だけ書く
+        _ = try await readyToSubmit(appReview: ReviewInformation(notes: "", demoAccountName: "review@example.com"))
+        appStore.state.withLock { $0.reviewDetails["v-1-2-0"] = AppStoreReviewDetail(id: "r-1", information: ReviewInformation()) }
+        await watch().refresh()
+        #expect(appStore.state.withLock { $0.writes }.contains("writeReviewDetail r-1 demoAccountName=review@example.com"))
+    }
+
+    @Test func createsAppReviewWhenMissing() async throws {
+        _ = try await readyToSubmit(appReview: ReviewInformation(notes: "ウィジェットはホーム画面の長押しから足せます。"))
+        await watch().refresh()
+        #expect(appStore.state.withLock { $0.writes }.contains("writeReviewDetail new:v-1-2-0 notes=ウィジェットはホーム画面の長押しから足せます。"))
     }
 
     @Test func writesOnlyChangedListingFields() async throws {
@@ -193,8 +247,12 @@ extension ReleaseWatchTests {
             // やめたリリースで作った版（番号を直して使う）
             state.others = [AppStoreVersionInfo(id: "v-old", platform: .iOS, versionString: "1.1.9", state: .prepareForSubmission)]
             state.localizations["v-old"] = [
-                AppStoreLocalization(id: "l-ja", locale: "ja", whatsNew: nil),
-                AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: nil)
+                AppStoreLocalization(
+                    id: "l-ja", locale: "ja", whatsNew: nil, listing: .init(locale: "ja", description: "推し活", keywords: "推し")
+                ),
+                AppStoreLocalization(
+                    id: "l-en", locale: "en-US", whatsNew: nil, listing: .init(locale: "en-US", description: "Oshi", keywords: "oshi")
+                )
             ]
             state.refusal = .refused(status: 409, detail: "You must upload screenshots.")
         }
@@ -365,5 +423,50 @@ extension ReleaseWatchTests {
         #expect(try await submission().problem?.step == .integration)
         // 配信してから 1 日の間は、配信の知らせも出し続ける
         #expect(await submissionBlockers(watch).map(\.reason) == [.submissionProblem(.integration), .submissionDistributed])
+    }
+}
+
+/// 審査に出す前に、提出先の版のどの言語にも説明文とキーワードがそろうかを確かめる（初めての版で、後から足した版・「変える」を外した欄）
+extension ReleaseWatchTests {
+    @Test func stopsBeforeSubmittingWhenRequiredListingIsEmpty() {
+        let localizations = [
+            AppStoreLocalization(id: "l-ja", locale: "ja", whatsNew: nil, listing: .init(locale: "ja", description: "日数を数えます。")),
+            AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: nil, listing: .init(locale: "en-US"))
+        ]
+        // 人が「変える」を外した（直しが無い）
+        #expect(AppStoreSubmission.missingRequired(localizations, changes: []) == [
+            "ja の keywords", "en-US の description", "en-US の keywords"
+        ])
+        // 人が確かめた直しを当てるとそろう
+        let changes = [
+            ListingText(locale: "ja", keywords: "推し活"),
+            ListingText(locale: "en-US", description: "Counts days.", keywords: "oshi")
+        ]
+        #expect(AppStoreSubmission.missingRequired(localizations, changes: changes).isEmpty)
+    }
+
+    @Test func doesNotSubmitVersionWithEmptyListing() async throws {
+        _ = try await readyToSubmit()
+        // 後から足した版のように、英語の掲載文が空
+        appStore.state.withLock { state in
+            state.localizations["v-1-2-0"]?[1] = AppStoreLocalization(id: "l-en", locale: "en-US", whatsNew: "- Faster")
+        }
+        let watch = watch()
+        await watch.refresh()
+        let file = try await submission()
+        #expect(file.problem?.step == .submit && file.problem?.needsHuman == true)
+        #expect(file.problem?.message.contains("en-US の description・en-US の keywords") == true)
+        // 掲載文も提出も書かない（版を作るだけ）
+        #expect(appStore.state.withLock { $0.writes } == ["createVersion iOS 1.2.0 afterApproval b45"])
+    }
+
+    @Test func doesNotSubmitVersionWithoutLocales() async throws {
+        _ = try await readyToSubmit()
+        appStore.state.withLock { $0.localizations["v-1-2-0"] = [] }
+        await watch().refresh()
+        let file = try await submission()
+        #expect(file.problem?.step == .submit && file.problem?.needsHuman == true)
+        #expect(file.problem?.message.contains("掲載文の言語が無い") == true)
+        #expect(appStore.state.withLock { $0.writes } == ["createVersion iOS 1.2.0 afterApproval b45"])
     }
 }

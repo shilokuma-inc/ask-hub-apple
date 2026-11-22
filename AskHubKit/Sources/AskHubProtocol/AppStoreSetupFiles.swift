@@ -4,8 +4,9 @@ import Foundation
 ///
 /// 司令塔が App Store Connect にアプリを見つけられない・配信中の版が無いリポジトリに作り、チェックリストの項目が終わったかを API で確かめて書く。
 /// API で確かめられない項目（App のプライバシー・DSA の申告）は、人が「終わった」を押す（`confirmAppStoreItem`）。
-/// 決まった値（価格・配信の地域・カテゴリ・コンテンツの権利・プライバシーポリシーの URL）と Bundle ID の登録は、人が値を確かめて押したときだけ
-/// 司令塔が API で書く（`applyAppStoreSettings`・`registerBundleId`）。配信中の版を見つけたら終わりの印（`releasedAt`）を付ける
+/// 決まった値（価格・配信の地域・カテゴリ・コンテンツの権利・プライバシーポリシーの URL、初めての版のサポート URL・著作権表示・App Review の連絡先）と
+/// Bundle ID の登録は、人が値を確かめて押したときだけ司令塔が API で書く（`applyAppStoreSettings`・`registerBundleId`）。
+/// 版の項目（`ItemKind.isVersionItem`）は、初めての版のリリースを始めて版の枠があるときだけ確かめる。配信中の版を見つけたら終わりの印（`releasedAt`）を付ける
 /// （`docs/renewal/release.md` の「新しいアプリを載せる」）
 public struct AppStoreSetupFile: StateFile {
     public static let formatVersion = 1
@@ -32,6 +33,12 @@ public struct AppStoreSetupFile: StateFile {
         case appPrivacy
         /// EU のデジタルサービス法（DSA）の申告。API が無い
         case digitalServicesAct
+        /// 初めての版のサポート URL（版の言語ごとの `appStoreVersionLocalizations` の `supportUrl`）
+        case supportUrl
+        /// 初めての版の著作権表示（`appStoreVersions` の `copyright`）
+        case copyright
+        /// 初めての版の App Review の連絡先（`appStoreReviewDetails` の `contactFirstName`・`contactLastName`・`contactPhone`・`contactEmail`）
+        case reviewContact
 
         /// API で終わったかを確かめられる（できないものは、人が「終わった」を押す）
         public var isVerifiable: Bool { self != .appPrivacy && self != .digitalServicesAct }
@@ -39,11 +46,19 @@ public struct AppStoreSetupFile: StateFile {
         /// 人が値を確かめて押したら、司令塔が API で書ける
         public var isWritable: Bool { Self.settingKinds.contains(self) || self == .bundleId }
 
-        /// 決まった値を書く意図（`applyAppStoreSettings`）で書く項目
-        public static let settingKinds: [Self] = [.contentRights, .category, .privacyPolicy, .price, .availability]
+        /// 決まった値を書く意図（`applyAppStoreSettings`）で書く項目。App Review の連絡先は、値を持たずに同じ鍵のほかのアプリから写す
+        public static let settingKinds: [Self] = [
+            .contentRights, .category, .privacyPolicy, .price, .availability, .supportUrl, .copyright, .reviewContact
+        ]
 
         /// アプリを作るまで（TestFlight に上げるのに要る）の項目か。ほかは初めての版を審査に出すまでに要る
         public var isNeededForApp: Bool { self == .bundleId || self == .app }
+
+        /// 版の項目か。初めての版のリリースを始めて、App Store Connect に版の枠（`submissions/<版>.json` の `appStoreVersions`）が
+        /// あるときだけ確かめる（枠が無ければ、記録に持たない）
+        public var isVersionItem: Bool { Self.versionKinds.contains(self) }
+
+        public static let versionKinds: [Self] = [.supportUrl, .copyright, .reviewContact]
     }
 
     /// 項目の様子
@@ -152,26 +167,42 @@ public struct AppStoreSetupFile: StateFile {
         }
     }
 
-    /// 決まった値を書く人の意図（`applyAppStoreSettings`）。司令塔が送り終えたら `doneAt` が付き、断られた項目は `failures` に書く
+    /// App Review の連絡先を写したアプリ（連絡先の値は持たない）
+    public struct SourceApp: Codable, Equatable, Sendable {
+        /// App Store Connect のアプリの id（数字だけ）
+        public var id: String
+        public var name: String
+
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
+    }
+
+    /// 決まった値を書く人の意図（`applyAppStoreSettings`）。司令塔が送り終えたら `doneAt` が付き、断られた項目は `failures` に書く。
+    /// App Review の連絡先を写したら、写したアプリを `reviewContactFrom` に書く
     public struct SettingsRequest: Codable, Equatable, Sendable {
         public var approval: IntentReference
         public var at: Timestamp
         public var settings: AppStoreSettings
         public var doneAt: Timestamp?
         public var failures: [Failure]?
+        public var reviewContactFrom: SourceApp?
 
         public init(
             approval: IntentReference,
             at: Timestamp,
             settings: AppStoreSettings,
             doneAt: Timestamp? = nil,
-            failures: [Failure]? = nil
+            failures: [Failure]? = nil,
+            reviewContactFrom: SourceApp? = nil
         ) {
             self.approval = approval
             self.at = at
             self.settings = settings
             self.doneAt = doneAt
             self.failures = failures
+            self.reviewContactFrom = reviewContactFrom
         }
     }
 
@@ -308,6 +339,13 @@ public struct AppStoreSetupFile: StateFile {
             if request.failures?.contains(where: { !ItemKind.settingKinds.contains($0.item) }) ?? false {
                 violations.append("settingsRequest の failures に決まった値でない項目がある")
             }
+            if let source = request.reviewContactFrom {
+                if request.doneAt == nil || request.settings.reviewContact == nil {
+                    violations.append("settingsRequest の reviewContactFrom は、連絡先を写すのを送り終えたときだけ持つ")
+                }
+                if !App.isID(source.id) { violations.append("settingsRequest の reviewContactFrom の id の形が違う") }
+                if source.name.isEmpty { violations.append("settingsRequest の reviewContactFrom の name が空") }
+            }
         }
         if problem?.message.isEmpty == true { violations.append("problem の message が空") }
         return violations
@@ -352,91 +390,5 @@ public enum ContentRightsDeclaration: String, Codable, Sendable, CaseIterable {
         case .doesNotUseThirdPartyContent: "DOES_NOT_USE_THIRD_PARTY_CONTENT"
         case .usesThirdPartyContent: "USES_THIRD_PARTY_CONTENT"
         }
-    }
-}
-
-/// 人が値を確かめて、司令塔に書かせる決まった値（`applyAppStoreSettings` の payload と同じ形）。書く欄だけを持つ
-public struct AppStoreSettings: Codable, Hashable, Sendable {
-    /// 価格。今は無料（`free`）だけ
-    public enum Price: String, Codable, Sendable, CaseIterable {
-        case free
-    }
-
-    /// 配信の地域。今はすべての地域（`allTerritories`。新しい地域にも配信する）だけ
-    public enum Availability: String, Codable, Sendable, CaseIterable {
-        case allTerritories
-    }
-
-    public var contentRights: ContentRightsDeclaration?
-    /// 主なカテゴリ（App Store Connect の `appCategories` の id。`PRODUCTIVITY` など）
-    public var primaryCategory: String?
-    /// 主なカテゴリのサブカテゴリ（ゲームの `GAMES_PUZZLE` など）。`primaryCategory` があるときだけ
-    public var primarySubcategory: String?
-    /// プライバシーポリシーの URL（https）。App Store Connect のすべての言語のうち、まだ書かれていないものに書く
-    public var privacyPolicyUrl: String?
-    public var price: Price?
-    public var availability: Availability?
-
-    public init(
-        contentRights: ContentRightsDeclaration? = nil,
-        primaryCategory: String? = nil,
-        primarySubcategory: String? = nil,
-        privacyPolicyUrl: String? = nil,
-        price: Price? = nil,
-        availability: Availability? = nil
-    ) {
-        self.contentRights = contentRights
-        self.primaryCategory = primaryCategory
-        self.primarySubcategory = primarySubcategory
-        self.privacyPolicyUrl = privacyPolicyUrl
-        self.price = price
-        self.availability = availability
-    }
-
-    /// プライバシーポリシーの URL の長さの上限
-    public static let urlLimit = 512
-
-    /// 書く項目（チェックリストの項目）
-    public var items: [AppStoreSetupFile.ItemKind] {
-        var items: [AppStoreSetupFile.ItemKind] = []
-        if contentRights != nil { items.append(.contentRights) }
-        if primaryCategory != nil { items.append(.category) }
-        if privacyPolicyUrl != nil { items.append(.privacyPolicy) }
-        if price != nil { items.append(.price) }
-        if availability != nil { items.append(.availability) }
-        return items
-    }
-
-    /// 合わない点（何も書かない・カテゴリの形・URL の形）
-    public var problems: [String] {
-        var problems: [String] = []
-        if items.isEmpty { problems.append("書く値が 1 つも無い") }
-        if let primaryCategory, !Self.isCategory(primaryCategory) { problems.append("primaryCategory の形が違う") }
-        if let primarySubcategory {
-            if !Self.isCategory(primarySubcategory) { problems.append("primarySubcategory の形が違う") }
-            if primaryCategory == nil { problems.append("primarySubcategory は primaryCategory と一緒に送る") }
-        }
-        if let privacyPolicyUrl, !Self.isURL(privacyPolicyUrl) { problems.append("privacyPolicyUrl が https の URL でない") }
-        return problems
-    }
-
-    /// App Store Connect のカテゴリの id の形（英大文字・数字・`_`）
-    public static func isCategory(_ text: String) -> Bool {
-        guard let first = text.utf8.first, (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(first) else { return false }
-        return text.utf8.count <= 64 && text.utf8.allSatisfy { byte in
-            (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(byte) || (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte)
-                || byte == UInt8(ascii: "_")
-        }
-    }
-
-    /// https の URL（空白・制御文字を含まず、ホストがある）
-    public static func isURL(_ text: String) -> Bool {
-        let forbidden = CharacterSet.whitespacesAndNewlines.union(.controlCharacters)
-        guard text.unicodeScalars.count <= urlLimit, text.hasPrefix("https://"),
-              !text.unicodeScalars.contains(where: forbidden.contains),
-              let url = URL(string: text), url.scheme == "https", let host = url.host(), !host.isEmpty else {
-            return false
-        }
-        return true
     }
 }

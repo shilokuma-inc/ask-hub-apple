@@ -23,6 +23,19 @@ struct ListingDraftTests {
         #expect(normalized.reason == "ウィジェットを足したので、キーワードに入れる案です")
     }
 
+    @Test func normalizesAppReviewAgainstCurrent() {
+        let review = ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: false)
+        let same = ListingProposal(drafts: [], reason: "変えない", review: ReviewInformation(notes: " ログインは不要です。 ", demoAccountRequired: false))
+        #expect(ListingRules.normalize(same, current: current, review: review).review == nil)
+        let changed = ListingProposal(
+            drafts: [], reason: "変えない", review: ReviewInformation(notes: "ログインは不要です。", demoAccountRequired: true), reviewReason: "ログインを足した"
+        )
+        #expect(ListingRules.normalize(changed, current: current, review: review).review == ReviewInformation(demoAccountRequired: true))
+        // 変えるのに理由が無ければ断る
+        let noReason = ListingProposal(drafts: [], reason: "変えない", review: ReviewInformation(notes: "新しいメモ"))
+        #expect(ListingRules.problems(noReason, current: current, review: review).contains { $0.contains("appReviewReason") })
+    }
+
     @Test func allowsWhatTheCurrentTextAlreadyHas() {
         // 今の説明文にある URL は残してよい
         let kept = ListingProposal(

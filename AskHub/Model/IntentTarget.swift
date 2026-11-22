@@ -93,7 +93,7 @@ extension HumanIntent {
 
         case let .startRelease(repositoryID, version), let .submitForReview(repositoryID, version, _),
              let .distributeRelease(repositoryID, version), let .withdrawSubmission(repositoryID, version),
-             let .abandonRelease(repositoryID, version):
+             let .abandonRelease(repositoryID, version), let .retakeScreenshots(repositoryID, version, _, _):
             [.submission(repositoryID: repositoryID, version: version)]
 
         case let .registerBundleId(repositoryID, _, _), let .applyAppStoreSettings(repositoryID, _),

@@ -69,6 +69,11 @@ public protocol StateStore: Sendable {
     /// （読み直してやり直す）。まとめて移せない置き場所（読むだけの写しなど）は断る
     func move(_ moves: [StateMove], message: String) async throws(StateStoreError)
 
+    /// テキストのファイル（パス → 中身）を、1 回の書き込み（GitHub では 1 つのコミット）でまとめて書く。あれば上書きする。
+    /// App Store のスクショの見本（JPEG を base64 にした文字）のように、多くのファイルを一度に置くときに使う（ファイルの数だけ書き込みの予算を使わない）。
+    /// まとめて書けない置き場所では、1 つずつ書く
+    func writeTextFiles(_ files: [String: String], message: String) async throws(StateStoreError)
+
     /// 読むだけの、今の中身の写し。1 回の処理で多くのファイルを読むとき（司令塔のジョブの見回りなど）に使う。
     ///
     /// 写しから読むと、写しを作ったときの中身になる（GitHub では同じコミットの中身。前に読んだ tree と blob を使い回し、変わったものだけを取りに行く）。
@@ -77,6 +82,15 @@ public protocol StateStore: Sendable {
 }
 
 extension StateStore {
+    /// 1 つずつ書く（メモリ上・テストの置き場所など）。パスの順に書く
+    public func writeTextFiles(_ files: [String: String], message: String) async throws(StateStoreError) {
+        guard files.keys.allSatisfy(StatePathCheck.isSafe) else { throw .invalidPath }
+        for (path, text) in files.sorted(by: { $0.key < $1.key }) {
+            let existing = try await read(path)
+            _ = try await write(path, data: Data(text.utf8), replacing: existing?.sha, message: message)
+        }
+    }
+
     /// まとめて移せない置き場所（読むだけの写し・テストの置き場所など）は断る
     public func move(_ moves: [StateMove], message: String) async throws(StateStoreError) {
         throw .unexpected(status: 0, message: "この置き場所では、ディレクトリをまとめて移せない")

@@ -5,7 +5,8 @@ import Foundation
 /// 配信中の版のプロモーションテキスト（審査に出さずに変えられる。`docs/renewal/release.md` の「掲載文」）。
 /// 配信を見つける見回り（30 分ごと）で今の文を読んで配信の記録に書き、人が直した（`updatePromotionalText`）中身を App Store Connect に書く
 extension ReleaseWatch {
-    /// 配信中の版の今のプロモーションテキストを読み、変わっていれば配信の記録に書く（iOS の版を先に見る。言語はプラットフォームごとにあるが、ふつうは同じ）
+    /// 配信中の版の今のプロモーションテキストを読み、変わっていれば配信の記録に書く（iOS の版を先に見る。言語はプラットフォームごとにあるが、ふつうは同じ）。
+    /// App Store Connect の言語の並びは毎回同じではないので、言語の順に並べて比べ、その順で書く
     func readPromotionalText(
         _ repo: RepositoryFullName,
         versions: [AppStoreVersionInfo],
@@ -14,10 +15,11 @@ extension ReleaseWatch {
         guard let live = Self.liveVersion(versions), let version = live.version else { return }
         let localizations = try await store.localizations(of: live.id)
         guard !localizations.isEmpty else { return }
-        let current = localizations.map { LocalizedText(locale: $0.locale, text: $0.listing.promotionalText ?? "") }
+        let current = Self.byLocale(localizations.map { LocalizedText(locale: $0.locale, text: $0.listing.promotionalText ?? "") })
         let now = context.timestamp
         try await savePromotionalText(repo, version: version) { file in
-            guard file.promotionalText?.current != current else { return false }
+            // 前の記録が別の順でも、並べ直しだけでは書き直さない
+            guard file.promotionalText.map({ Self.byLocale($0.current) }) != current else { return false }
             if file.promotionalText == nil {
                 file.promotionalText = .init(current: current, readAt: now)
             } else {
@@ -110,5 +112,10 @@ extension ReleaseWatch {
                 throw .files(error)
             }
         }
+    }
+
+    /// 言語の順に並べる
+    static func byLocale(_ texts: [LocalizedText]) -> [LocalizedText] {
+        texts.sorted { $0.locale < $1.locale }
     }
 }

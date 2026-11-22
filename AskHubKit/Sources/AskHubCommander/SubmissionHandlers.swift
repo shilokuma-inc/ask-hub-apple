@@ -177,7 +177,9 @@ public struct SubmitForReviewHandler: IntentHandler {
             whatsNew: submit.whatsNew,
             releaseType: submit.releaseType,
             earliestReleaseDate: submit.earliestReleaseDate,
-            listing: submit.listing
+            listing: submit.listing,
+            appReview: submit.appReview,
+            screenshots: submit.screenshots
         )
         let saved: SubmissionFile
         do {
@@ -196,6 +198,21 @@ public struct SubmitForReviewHandler: IntentHandler {
         }
         guard saved.submit == request else { throw .changedWhileProcessing(path) }
         return .accept
+    }
+
+    /// 人が確かめたスクショが、撮って比べた結果に合わない理由。合えば nil
+    static func problem(screenshots decision: SubmissionFile.ScreenshotDecision, on file: SubmissionFile) -> String? {
+        guard let captured = file.screenshots, captured.state == .captured, captured.commit == decision.commit else {
+            return "スクショの撮影が人の見たものと違う（撮り直した・まだ撮っていない）。見直してから送り直す"
+        }
+        for reference in decision.keep {
+            let shot = captured.sets.first { $0.displayType == reference.displayType && $0.locale == reference.locale }?
+                .shots.first { $0.index == reference.index }
+            guard shot?.changed == true else {
+                return "前のままにするスクショ（\(reference.displayType)/\(reference.locale) の \(reference.index) 枚目）は、差のある画面でない"
+            }
+        }
+        return nil
     }
 
     /// 受け付けられない理由。受け付けられれば nil
@@ -219,6 +236,8 @@ public struct SubmitForReviewHandler: IntentHandler {
         if let locale = submit.listing.map(\.locale).first(where: { !listed.contains($0) }) {
             return listed.isEmpty ? "初めての版の掲載文は App Store Connect で書く" : "掲載文の言語（\(locale)）が配信中の版に無い"
         }
+        if submit.appReview != nil, file.appReview == nil { return "App Review の情報の案がまだ無い（初めての版は App Store Connect で書く）" }
+        if let decision = submit.screenshots, let problem = Self.problem(screenshots: decision, on: file) { return problem }
         if let date = submit.earliestReleaseDate, date.date <= now { return "配信の日時が過ぎている" }
         return nil
     }

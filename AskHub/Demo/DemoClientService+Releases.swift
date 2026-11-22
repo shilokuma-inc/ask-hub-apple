@@ -78,6 +78,14 @@ extension DemoClientService {
                 submission.awaitsSubmission = false
             }
 
+        case let .retakeScreenshots(repositoryID, version, _, _):
+            updateSoon(Submission.id(repositoryID, version), sending: .retake) { submission in
+                submission.screenshots?.state = .capturing
+                submission.screenshots?.progress = "GitHub Actions の撮影を待っています"
+                submission.awaitsSubmission = false
+                submission.canRetakeScreenshots = false
+            }
+
         default:
             break
         }
@@ -106,7 +114,12 @@ extension DemoClientService {
         }
         updateSoon(id, sending: .submit) { submission in
             submission.submitted = .init(
-                builds: request.builds, whatsNew: request.whatsNew, releaseType: request.releaseType, at: Date(), listing: request.listing
+                builds: request.builds,
+                whatsNew: request.whatsNew,
+                releaseType: request.releaseType,
+                at: Date(),
+                listing: request.listing,
+                appReview: request.appReview
             )
             submission.review = request.builds.map { .init(platform: $0.platform, state: .waitingForReview, since: Date()) }
             submission.canWithdraw = true
