@@ -247,12 +247,23 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
         referenceName: String,
         data: Data
     ) async throws(AppStoreConnectError) -> String {
+        try await sendImage(
+            to: libraryID, fileName: fileName, referenceName: referenceName, data: data, category: "APP_SCREENSHOTS_AND_PREVIEWS"
+        )
+    }
+
+    /// 1 枚上げる。`category` はスクショ（`APP_SCREENSHOTS_AND_PREVIEWS`）かクリエイティブアセット（`CREATIVE_ASSETS`。後から変えられない）
+    func sendImage(
+        to libraryID: String,
+        fileName: String,
+        referenceName: String,
+        data: Data,
+        category: String
+    ) async throws(AppStoreConnectError) -> String {
         try Self.checkID(libraryID)
         let body = try Self.document(
             "appAssetLibraryImages",
-            attributes: [
-                "fileName": fileName, "fileSize": data.count, "category": "APP_SCREENSHOTS_AND_PREVIEWS", "referenceName": referenceName
-            ],
+            attributes: ["fileName": fileName, "fileSize": data.count, "category": category, "referenceName": referenceName],
             relationships: ["assetLibrary": ("appAssetLibraries", libraryID)]
         )
         let reply = try await send("POST", "v1/appAssetLibraryImages", body: body)

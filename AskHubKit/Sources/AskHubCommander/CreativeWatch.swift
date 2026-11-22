@@ -218,15 +218,17 @@ extension CreativeWatch {
     /// 今の案を進める
     func advanceCreative(_ repo: RepositoryFullName, settings: RepositoryFile) async {
         let path = StatePath.creative(repo)
-        guard let file = try? await context.readable(CreativeFile.self, at: path), let draft = file.draft else { return }
-        switch draft.state {
-        case .drafting:
-            startCreativeDraft(file, draft: draft, settings: settings)
-        case .rendering:
-            await advanceCreativeRender(file, draft: draft, settings: settings)
-        case .rendered, .failed:
-            return
+        guard let file = try? await context.readable(CreativeFile.self, at: path) else { return }
+        switch file.draft?.state {
+        case .drafting?:
+            if let draft = file.draft { startCreativeDraft(file, draft: draft, settings: settings) }
+        case .rendering?:
+            if let draft = file.draft { await advanceCreativeRender(file, draft: draft, settings: settings) }
+        case .rendered?, .failed?, nil:
+            break
         }
+        // 承認した案は、案の様子と関係なくライブラリに上げておく
+        await advanceCreativeLibrary(file, settings: settings)
     }
 
     /// クリエイティブアセットの案を書く・取り込む Task が終わるのを待つ（テスト）
