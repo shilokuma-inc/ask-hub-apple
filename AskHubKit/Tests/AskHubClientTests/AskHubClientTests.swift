@@ -162,6 +162,10 @@ struct AskHubClientTests {
         let head = String(repeating: "b", count: 40)
         let approval = try ApproveSetupPullRequestIntent(envelope: envelope(.approveSetupPullRequest(Self.repo, number: 12, head: head)))
         #expect(approval.pullRequest == 12 && approval.head == head)
+        let create = try CreateRepositoryIntent(envelope: envelope(.createRepository(
+            Self.repo, template: .visionos, visibility: .private, appName: "Sandbox", bundleId: "jp.shilokuma.Sandbox"
+        )))
+        #expect(create.template == .visionos && create.visibility == .private && create.appName == "Sandbox")
     }
 
     @Test func intentWrittenBeforeLostResponseIsSent() async throws {
