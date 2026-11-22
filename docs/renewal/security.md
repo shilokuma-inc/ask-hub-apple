@@ -108,7 +108,7 @@ Claude とビルド・テストは、ワーカーと同じ macOS のユーザー
 - 権限は Administration・Secrets・Environments・Workflows の Read and write と、PR を出すための Contents・Pull requests の Read and write（Discussions のカテゴリを確かめるための Discussions の Read-only も付ける）。テンプレートから作るには、作る前のリポジトリを選べないので、その持ち主の All repositories が要る見込み（段階 4 の 5 で確かめる）
 - 期限は毎日のトークンと同じく自己診断（`githubAdminTokens`）に書き、クライアントで知らせる。切れても毎日の仕事は止まらないので、「止まっています」にはしない。管理用のトークンが無い持ち主への操作は、理由を書いて断る
 - ワークフローのファイルを変える PR は、ワーカーの epic では push できない（ワーカーは Workflows を持たない）。司令塔が決まった手順で PR を出し、人が承認してからマージする（[operations.md](operations.md) の「対象のリポジトリ」）
-- Secrets の値は、クライアントが GitHub の公開鍵で暗号化し、司令塔は暗号文を渡すだけ（[flows.md](flows.md) の「人がする作業」）
+- Secrets の値は、クライアントが GitHub の公開鍵で暗号化し（sealed box。`AskHubClient` の `SealedBox`。NaCl・RFC の試験値で確かめた）、司令塔は暗号文を渡すだけ（[flows.md](flows.md) の「人がする作業」）。公開鍵も司令塔が管理用のトークンで読んで状態リポジトリに置く（人が「公開鍵を読む」を押したときだけ）。入れ先はリポジトリの Actions の Secrets（Environment は #1067 で移すときに切り替える）
 
 ## public のリポジトリと Secrets
 

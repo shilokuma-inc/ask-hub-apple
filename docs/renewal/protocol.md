@@ -150,6 +150,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。`coderabbitai[bot]` など）。無ければ空
   - `screenshots`: 判断のカードのスクショの撮り方（Swift は `ScreenshotSettings`）。`scenes`（撮れる画面の一覧のファイルの、リポジトリの直下からの相対パス。`.json`）と `destination`（撮る Simulator。`destinations` と同じ形で、macOS はまだ撮らない）。無ければ撮らない（[flows.md](flows.md) の「スクショ」）
 - `build` が無いリポジトリでは、開始を断る
+- `secretsKey`: GitHub Actions の Secrets の公開鍵（`keyId`・`key`（base64 の 32 バイトの X25519 の公開鍵）・`readAt`）。司令塔が `readSecretsKey` を処理したとき（と、`humanTaskDone` の暗号文の鍵が古かったとき）に、管理用のトークンで読んで書く。クライアントは、これで人がする作業の `secret` の値を暗号化する（クライアントのトークンは状態リポジトリしか読めないため）。まだ読んでいなければ省くか `null`
 - `created`: テンプレートから作った記録（`createRepository`）。テンプレートの種類（`template`）・`appName`・`bundleId`・`visibility`・アプリ名と Bundle ID を書き換えたコミット（`renameCommit`。まだなら `null`）・元の意図（`intent`）・作った時刻（`at`）。対象に加えただけのリポジトリは省くか `null`
 - `removedAt`: 対象から外した時刻（`removeRepository`）。外していなければ省くか `null`。外しても `repos/<owner>/<repo>/` のファイルは消さない
   - 外したリポジトリには、依頼・開始・ビルドの設定を受け付けない。司令塔はアイコンを読みに行かない。クライアントは一覧から外し、「対象に加える」の候補に戻す
@@ -850,7 +851,8 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `decision` | 判断のカード（`{ "type": "decision", "epic", "id": "d1" }`） | 最終 PR の head のコミット | `answer`（`ok`・`alternative`・`fix`）、`note`（別案・直してほしいときの本文） |
 | `approveMerge` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | —（見える仮決めにすべて答えた後でだけ受け付ける） |
 | `instructFinal` | 最終 PR（`{ "type": "finalPullRequest", "epic" }`） | 最終 PR の head のコミット | `instruction`（指示の本文） |
-| `humanTaskDone` | 人がする作業（`{ "type": "humanTask", "epic", "id": "h1" }`） | ゴールの `version` | `none` は空、`file` は `attachments`（1 件。依頼の添付と同じ形・置き場所・上限） |
+| `humanTaskDone` | 人がする作業（`{ "type": "humanTask", "epic", "id": "h1" }`） | ゴールの `version` | `none` は空、`file` は `attachments`（1 件。依頼の添付と同じ形・置き場所・上限）、`secret` は `secret`（`keyId` と `encryptedValue`。クライアントが `repo.json` の `secretsKey` で sealed box にした暗号文の base64。値は 1 バイトから 48 KB。平文は入れない）か空（人が GitHub の画面で入れた）。`attachments` と `secret` は一緒に持たない。司令塔は `secret` があれば、管理用のトークンで今の公開鍵を読み、`keyId` が同じときだけ Secrets（`handover.name`）に入れてから作業を終える。違えば新しい鍵を `secretsKey` に書いて断る（クライアントが入れ直す） |
+| `readSecretsKey` | リポジトリ（封筒の `repo`） | — | 空（`payloads/readSecretsKey.schema.json`）。司令塔が管理用のトークンでリポジトリの Actions の Secrets の公開鍵を読み、`repo.json` の `secretsKey` に書く。クライアントは、人がする作業の `secret` の値を入れる画面で鍵が無いとき、人が押して送る |
 | `verify` | 実機確認の項目（`{ "type": "verification", "epic", "id": "v1" }`） | ゴールの `version` | `result`（`confirmed`・`problem`）、`note`（問題ありの説明。`payloads/verify.schema.json`）。最終 PR をマージした（`merged` の）epic の、完了の条件の項目に 1 回だけ。答えは `verifications.json` に書く。問題ありの直しは、クライアントが同時に送る依頼（`request`）が新しい epic になる |
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
