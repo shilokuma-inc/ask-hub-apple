@@ -108,6 +108,16 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: ApplyProtectionIntent.kind, repo: repo, payload: ["requiredChecks": .array(requiredChecks.map(JSONValue.string))])
     }
 
+    /// 準備の PR（ワークフローの直し）のマージを承認する。見たときの head に結びつける（承認の後に push された変更はマージしない）
+    public static func approveSetupPullRequest(_ repo: RepositoryFullName, number: Int, head: String) -> Self {
+        Self(
+            kind: ApproveSetupPullRequestIntent.kind,
+            repo: repo,
+            target: .init(type: ApproveSetupPullRequestIntent.targetType, id: String(number)),
+            targetVersion: head
+        )
+    }
+
     /// 配信中の版のプロモーションテキストを直す（審査に出さずに、司令塔がすぐ App Store Connect に書く）
     public static func updatePromotionalText(_ repo: RepositoryFullName, version: MarketingVersion, texts: [LocalizedText]) -> Self {
         Self(

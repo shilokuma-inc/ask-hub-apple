@@ -45,6 +45,8 @@ struct InboxItem: Identifiable, Hashable {
         case releaseNotes
         /// 配信した版の後作業が、人が直すまで進まない
         case releaseProblem
+        /// 対象のリポジトリの保護のずれ・加えるときの準備（Ideas を作る・ワークフローの直しを承認する・準備をやり直す）
+        case repositorySetup
         /// リリースを始めた版の準備がそろい、What's New とビルドを確かめて審査に出す
         case submissionReady
         /// 審査に通った版を配信する（配信の方式が手動）
@@ -82,6 +84,7 @@ enum InboxBuilder {
         items += snapshot.macs.compactMap(compatibilityItem)
         items += snapshot.macs.compactMap(cleanupItem)
         items += snapshot.releases.flatMap { releaseItems($0, snapshot: snapshot) }
+        items += snapshot.repositories.flatMap(administrationItems)
         items += snapshot.submissions.flatMap { submissionItems($0, snapshot: snapshot) }
         items += snapshot.appStoreSetups.flatMap { appStoreSetupItems($0, snapshot: snapshot) }
         return items.sorted { lhs, rhs in
@@ -386,8 +389,8 @@ extension InboxItem {
         case .verification:
             return epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
 
-        case .macOffline, .token, .claudeVersion, .compatibility, .cleanup, .releaseNotes, .releaseProblem, .submissionReady,
-             .submissionDistribution, .submissionProblem, .submissionRejected, .appStoreSetup:
+        case .macOffline, .token, .claudeVersion, .compatibility, .cleanup, .releaseNotes, .releaseProblem, .repositorySetup,
+             .submissionReady, .submissionDistribution, .submissionProblem, .submissionRejected, .appStoreSetup:
             return []
         }
     }
