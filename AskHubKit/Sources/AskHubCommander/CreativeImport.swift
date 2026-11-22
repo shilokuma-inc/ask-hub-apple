@@ -122,7 +122,10 @@ struct CreativeImport: Sendable {
         }
         if let problem = Self.imageProblem(data, kind: kind) { throw ReleaseStepProblem("\(name) \(problem)", needsHuman: true) }
         try keep(data, locale: locale, kind: kind)
-        guard let preview = ScreenshotDiff.preview(of: data) else { throw ReleaseStepProblem("\(name) の見本を作れない", needsHuman: false) }
+        // 印と寸法は合うのに画像として読めない（壊れた PNG）。同じ artifact をやり直しても直らないので、案を作り直す
+        guard let preview = ScreenshotDiff.preview(of: data) else {
+            throw ReleaseStepProblem("\(name) を画像として読めず、見本を作れない。案を作り直す", needsHuman: true)
+        }
         let problems = report.images?.first { $0.locale == locale && $0.kind == kind.rawValue }?.problems ?? []
         let image = CreativeFile.Image(
             locale: locale,
