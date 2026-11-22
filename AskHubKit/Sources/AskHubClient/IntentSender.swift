@@ -268,14 +268,22 @@ public struct IntentDraft: Equatable, Sendable {
     }
 
     /// 人がする作業を終えた（`file` の作業は、渡すファイルの参照を付け、中身は `IntentSender.send(_:attachments:)` で送る）
-    public static func humanTaskDone(_ target: HumanTaskTarget, file: RequestAttachment? = nil) -> Self {
-        Self(
+    /// `secret` は、Secrets に入れる値を `SealedBox` で暗号化したもの（平文は渡さない）
+    public static func humanTaskDone(_ target: HumanTaskTarget, file: RequestAttachment? = nil, secret: EncryptedSecret? = nil) -> Self {
+        var payload: [String: JSONValue] = file.map { ["attachments": .array([$0.jsonValue])] } ?? [:]
+        if let secret { payload["secret"] = secret.jsonValue }
+        return Self(
             kind: HumanTaskDoneIntent.kind,
             repo: target.repo,
             target: target.target,
             targetVersion: target.targetVersion,
-            payload: file.map { ["attachments": .array([$0.jsonValue])] } ?? [:]
+            payload: payload
         )
+    }
+
+    /// リポジトリの Secrets の公開鍵を、司令塔に読ませる（管理用のトークンで読み、repo.json に書く）
+    public static func readSecretsKey(_ repo: RepositoryFullName) -> Self {
+        Self(kind: ReadSecretsKeyIntent.kind, repo: repo)
     }
 
     /// 実機確認への答え（「問題あり」は説明が要る。直してほしいことは、別に依頼として送る）
