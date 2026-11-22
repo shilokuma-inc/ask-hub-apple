@@ -114,6 +114,14 @@ struct CreativeProtocolTests {
         spec = Self.sample
         spec.colors.text = "#202040"
         #expect(spec.cautions.map(\.code) == ["low-contrast", "low-contrast"])
+        // 強調の * を除いた文字で確かめ、強調とアプリ名の色も見る。アプリ名の * はそのまま（強調にしない）
+        spec = Self.sample
+        spec.locales[1].header.title = "*Fr*ee notes"
+        spec.locales[1].appName = "Q*bert"
+        #expect(spec.violations.isEmpty && spec.cautions.map(\.code) == ["forbidden-price"])
+        spec = Self.sample
+        spec.colors.highlight = "#0C1128"
+        #expect(Set(spec.cautions.map(\.code)) == ["low-contrast"])
         #expect(abs(CreativeSpec.contrast("#FFFFFF", "#000000") - 21) < 0.01)
     }
 

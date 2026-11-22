@@ -109,9 +109,11 @@
             "pattern": "^[A-Za-z0-9_-]{1,20}$"
           },
           "appName": {
-            "description": "アプリ名（App Store Connect の名前）。検索結果に載せる",
+            "description": "アプリ名（App Store Connect の名前）。検索結果に載せる。* もそのまま描く（強調にしない）",
             "$ref": "#/$defs/text",
-            "maxLength": 30
+            "maxLength": 30,
+            "minLength": 1,
+            "pattern": "\\S"
           },
           "header": {
             "type": "object",
@@ -123,7 +125,9 @@
               "title": {
                 "description": "見出し（2 行まで）",
                 "$ref": "#/$defs/text",
-                "maxLength": 60
+                "maxLength": 60,
+                "minLength": 1,
+                "pattern": "\\S"
               },
               "subtitle": {
                 "description": "見出しを支える一文（2 行まで。空でよい）",
@@ -142,7 +146,9 @@
               "title": {
                 "description": "何をするアプリか（3 行まで）",
                 "$ref": "#/$defs/text",
-                "maxLength": 60
+                "maxLength": 60,
+                "minLength": 1,
+                "pattern": "\\S"
               },
               "chips": {
                 "description": "主な機能（3 つまで）",
@@ -150,7 +156,9 @@
                 "maxItems": 3,
                 "items": {
                   "$ref": "#/$defs/text",
-                  "maxLength": 30
+                  "maxLength": 30,
+                  "minLength": 1,
+                  "pattern": "\\S"
                 }
               }
             }
@@ -169,7 +177,7 @@
       "pattern": "^[A-Za-z0-9_-]{1,64}$"
     },
     "text": {
-      "description": "文字として描く（HTML は読まない）。* で囲んだところを強調する（* は偶数個）。改行は欄ごとに決まる（見出し・一文は 1、検索結果の見出しは 2、アプリ名・チップは 0）",
+      "description": "文字として描く（HTML は読まない）。* で囲んだところを強調する（* は偶数個。アプリ名は除く）。改行は欄ごとに決まる（見出し・一文は 1、検索結果の見出しは 2、アプリ名・チップは 0）",
       "type": "string",
       "pattern": "^[^\\u0000-\\u0009\\u000b-\\u001f\\u007f]*$"
     }
