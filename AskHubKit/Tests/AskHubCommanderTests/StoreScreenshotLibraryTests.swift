@@ -141,6 +141,28 @@ extension ReleaseWatchTests {
         #expect(libraryWrites().filter { $0.hasPrefix("sendImage") }.count == 2)
     }
 
+    @Test func settlesAtOnceWhenNoOriginalCanBeRead() async throws {
+        let watch = watch(screenshots: FakeStoreScreenshots())
+        let empty = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let result = SubmissionFile.StoreScreenshots(
+            state: .captured,
+            commit: "abc",
+            startedAt: Timestamp(clock.now),
+            finishedAt: Timestamp(clock.now),
+            sets: [
+                .init(displayType: Self.iPhone, locale: "ja", shots: [
+                    .init(index: 1, name: "home", changed: false),
+                    .init(index: 2, name: "detail", changed: true)
+                ])
+            ]
+        )
+        // 比べ終えたときに、差のある画面の元の画像を 1 枚も読めない。上げる画像が無いので待たず、わけを書いて決着させる
+        let settled = await watch.awaitingLibrary(result, originals: empty)
+        #expect(settled.state == .captured && settled.library == nil)
+        let shots = try #require(settled.sets.first?.shots)
+        #expect(shots[0].rejected == nil && shots[1].rejected?.contains("読めない") == true)
+    }
+
     @Test func givesUpEvenIfAppStoreConnectCannotBeRead() async throws {
         let (watch, _) = try await captureWithLibrary(sentState: "UPLOAD_COMPLETE")
         appStore.state.withLock { $0.libraryFailure = .unavailable("503") }

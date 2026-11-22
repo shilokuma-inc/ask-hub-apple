@@ -12,6 +12,8 @@ extension ReleaseWatch {
     static let libraryCheckInterval: TimeInterval = 5 * 60
     /// 取り込みを打ち切るまでの時間（混む日は 1 枚 20 分を超え、何時間も止まる日もあるので、審査に出す準備をずっと止めない）
     static let libraryTimeout: TimeInterval = 3 * 60 * 60
+    /// 元の画像を常時オンの Mac で読めない画面のわけ（上げられないので、受け付けられなかった画面にする）
+    static let unreadableOriginal = "撮った元の画像を常時オンの Mac で読めない（撮り直す）"
 
     /// ライブラリに上げる 1 枚（同じ画像は 1 つ）と、その画像を使う画面
     struct LibraryUpload {
@@ -56,14 +58,18 @@ extension ReleaseWatch {
         return (uploads, unreadable)
     }
 
-    /// 比べ終えた結果（`captured`）に、ライブラリに上げる画像があれば、取り込みを待つ印（`capturing` と `library`）にする
+    /// 比べ終えた結果（`captured`）に、ライブラリに上げる画像があれば、取り込みを待つ印（`capturing` と `library`）にする。
+    /// 元の画像を読めない画面は、上げられないので受け付けられなかった画面にする（すべて読めなければ、待たずに決着させる）
     func awaitingLibrary(_ result: SubmissionFile.StoreScreenshots, originals: URL) -> SubmissionFile.StoreScreenshots {
-        let count = Self.libraryUploads(of: result, originals: originals).count
-        guard result.state == .captured, count > 0 else { return result }
+        guard result.state == .captured else { return result }
+        let (uploads, unreadable) = Self.libraryShots(of: result, originals: originals)
         var waiting = result
+        let rejected = Dictionary(uniqueKeysWithValues: unreadable.map { ($0, Self.unreadableOriginal) })
+        waiting.sets = Self.marking(result.sets, rejected: rejected)
+        guard !uploads.isEmpty else { return waiting }
         waiting.state = .capturing
         waiting.finishedAt = nil
-        waiting.library = .init(total: count, ready: 0, sentAt: context.timestamp)
+        waiting.library = .init(total: uploads.count, ready: 0, sentAt: context.timestamp)
         return waiting
     }
 
@@ -90,7 +96,7 @@ extension ReleaseWatch {
             // 画像を送ったら、Apple の処理の時間をそこから数え直す（送る前の待ちを含めない）
             if sent { library.sentAt = self.context.timestamp }
             var rejected = Self.rejectedShots(uploads, states: states, timedOut: timedOut && !sent)
-            for shot in unreadable { rejected[shot] = "撮った元の画像を常時オンの Mac で読めない（撮り直す）" }
+            for shot in unreadable { rejected[shot] = Self.unreadableOriginal }
             library.ready = uploads.filter { states[$0.checksum]?.isPlaceable == true }.count
             shots.sets = Self.marking(shots.sets, rejected: rejected)
             shots.library = library
