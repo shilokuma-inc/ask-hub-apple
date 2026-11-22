@@ -21,7 +21,17 @@ struct RepositoryCreationTests {
     static let config = "// IOSTemplateApp\nDEVELOPMENT_TEAM = XU74X3434S\nAPP_BUNDLE_IDENTIFIER = jp.shilokuma.IOSTemplateApp\n"
     static let view = "import SwiftUI\n\nstruct ContentView: View {}\n// IOSTemplateApp\n"
     /// テンプレートの Build（ドキュメントだけの変更でも流す形。準備で直すところが無い）
-    static let buildWorkflow = "name: Build\non:\n  push:\n    branches:\n      - '**'\njobs:\n  build:\n    uses: ./.github/workflows/_build.yml\n"
+    static let buildWorkflow = """
+        name: Build
+        on:
+          push:
+            branches:
+              - '**'
+        jobs:
+          build:
+            uses: ./.github/workflows/_build.yml
+
+        """
     static let readme = "# IOSTemplateApp\n\n[![Build](https://github.com/shilokuma-inc/template-app-ios/actions)]\n"
 
     /// テンプレートのファイル（sha は中身ごとに決めた 40 桁）
