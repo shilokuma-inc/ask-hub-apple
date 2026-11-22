@@ -92,7 +92,7 @@
 - 終わった（`completed`）ら、`conclusion` で分ける
   - `success`・`failure`: 取り込む。`failure` でも、撮れた表示サイズの artifact は残る（template のワークフローは撮影のジョブが失敗しても `if: always()` で artifact を上げる）ので、取り込める表示サイズだけ取り込み、ほかは `skipped` に「撮影のジョブが失敗した」と run の URL を書く
   - `cancelled`（`concurrency` で後の実行に取り消された・人が取り消した）・`timed_out`: `failed` にして、撮り直せるようにする
-- 起動から 6 時間たっても終わらなければ、run を取り消し（`POST …/runs/{id}/cancel`）、`failed` にする。template のワークフローは表示サイズを 1 本ずつ撮るので、実績は失敗なしで 29〜66 分、各ジョブの上限は 90 分
+- 起動から 6 時間たっても終わらなければ、run を取り消し（`POST …/runs/{id}/cancel`）、`failed` にする。template のワークフローは表示サイズを 1 本ずつ撮るので、実績は失敗なしで 29〜66 分、各ジョブの上限は 90 分（app-kit の v1.1.0 からは並行して撮れる。下の「撮影の並行」）
 
 ## 取り込みと比べ方
 
@@ -257,7 +257,7 @@
 app-kit の撮影の再利用ワークフローは、表示サイズを 1 本ずつ撮る（`strategy.max-parallel: 1`）。12 言語のアプリでは撮影に 1.5〜2.5 時間かかり、その間「審査に出す準備」が止まる。
 そこで、空いている macOS ランナーの枠があれば並行して撮る。この節はその設計。
 
-状態: 2026-11-23 にユーザーが決めた（下の「決めたこと」）。実装は「PR の分け方」の順に進める。
+状態: 2026-11-23 にユーザーが決め、実装した（app-kit の v1.1.0 は app-kit#14、司令塔は #1233 の実装の PR）。
 
 ### 方針（2026-11-22〜23 にユーザーが決めた）
 
@@ -314,11 +314,11 @@ app-kit の撮影の再利用ワークフローは、表示サイズを 1 本ず
 取り込みの取り決め（artifact `screenshots-<表示サイズ>`、中身は `<言語>/<名前>.png`）は変えない。
 
 - 分けた撮影のジョブは、`screenshots-<表示サイズ>-part<n>` に上げる（中身は今と同じ `<言語>/<名前>.png`。part どうしで言語は重ならない）。ジョブの名前は `capture (iPhone 6.9 inch 1/2)` のようにする
-- 分けた表示サイズごとに、ubuntu のジョブ（merge）が `actions/upload-artifact/merge` で `screenshots-<表示サイズ>-part*` を `screenshots-<表示サイズ>` にまとめ直し、part を消す（`delete-merged: true`）
+- 分けた表示サイズごとに、ubuntu のジョブ（merge）が `actions/upload-artifact/merge` で `screenshots-<表示サイズ>-part*` を `screenshots-<表示サイズ>` にまとめ直す。part は消さない（消すと、失敗したジョブだけを流し直したときに撮れた part を失う。app-kit#14 の CodeRabbit の指摘）
   - 撮影のジョブが一部失敗しても、撮れた part だけでまとめる（今の「失敗しても撮れたぶんは残す」と同じ。`if: !cancelled()`）。どの part も無ければ merge は失敗し、その表示サイズの artifact は無い（司令塔は今どおり、その表示サイズを `skipped` にする）
   - ubuntu で数十秒。macOS の枠を使わない
 - derive（6.3 inch）は、merge の後に、まとめ直した `screenshots-<6.9 inch>` を落として縮める（`needs` に merge を足す。分けないときは merge を飛ばし、今と同じく撮影の後に動く）
-- 司令塔の取り込みは変えない（名前がぴったり `screenshots-<表示サイズ>` の artifact だけを落とす。part を消せなかったときも、part は名前が違うので取り込まない）
+- 司令塔の取り込みは変えない（名前がぴったり `screenshots-<表示サイズ>` の artifact だけを落とす。残した part は名前が違うので取り込まない）
 
 ### 司令塔が数を決める仕組み
 

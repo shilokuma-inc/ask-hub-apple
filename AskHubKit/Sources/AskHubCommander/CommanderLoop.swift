@@ -265,6 +265,8 @@ public actor CommanderLoop {
             log(note)
         }
         swept.jobs += restarted.created.filter { created in !swept.jobs.contains { $0.id == created.id } }
+        // App Store のスクショを夜間に並行して撮るか決めるのに、epic のジョブが動いている持ち主を渡す（読み込みは増やさない）
+        await releases?.noteEpicJobs(swept.jobs)
         let picked = await slots.fill(from: swept.jobs, now: context.now(), with: worker(verifier), lowOnDisk: diskRefusal != nil)
         await notify(swept, trusted: Set(verifier.publicKeys.keys))
         await cleanup?.poll(verifier: verifier)

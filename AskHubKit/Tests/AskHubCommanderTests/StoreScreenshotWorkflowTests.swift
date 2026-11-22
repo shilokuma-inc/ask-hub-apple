@@ -16,6 +16,8 @@ struct FakeWorkflows {
     }
 
     var dispatches: [Dispatch] = []
+    /// この入力を送ると、呼ぶ側のワークフローに無い入力として 422 で断る（app-kit の古い版）
+    var rejectedInputs: Set<String> = []
     /// 起動の応答（既定は実行 44900000101）
     var dispatchReply: Result<DispatchedRun?, PullRequestError> = .success(
         DispatchedRun(id: 44_900_000_101, url: URL(string: "https://github.com/\(ReleaseWatchTests.repo)/actions/runs/44900000101"))
@@ -60,6 +62,9 @@ extension FakeReleaseHosting {
     ) async throws(PullRequestError) -> DispatchedRun? {
         let reply = workflows.withLock { state in
             state.dispatches.append(.init(workflow: workflow, ref: ref, inputs: inputs))
+            guard Set(inputs.keys).isDisjoint(with: state.rejectedInputs) else {
+                return Result<DispatchedRun?, PullRequestError>.failure(.rejected(message: "Unexpected inputs provided"))
+            }
             return state.dispatchReply
         }
         return try reply.get()
