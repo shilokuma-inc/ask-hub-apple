@@ -72,6 +72,17 @@ struct SealedBoxTests {
                 + "61ca01b6de56244a9e88d5f9b37973f622a43d14a6599b1f654cb45a74e355a5")
     }
 
+    /// sealed box 全体: 使い捨ての公開鍵 ‖ box。nonce は libsodium の文書のとおり BLAKE2b（使い捨ての公開鍵 ‖ 相手の公開鍵）で、
+    /// その値は Python の hashlib.blake2b(digest_size=24) で独立に求めたもの（並びを逆にすると b2a704a1… になり、一致しない）。
+    /// box の部分は NaCl の試験値で確かめた `boxMatchesNaCl` と同じ計算
+    @Test func sealedBoxMatchesLibsodiumComposition() throws {
+        let ephemeral = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: Self.aliceSecret)
+        let message = Self.hex("be075fc53c81f2d5cf141316ebeb0c7b5228c52a4c62cbd44b66849b64244ffc")
+        let sealed = try SealedBox.seal(Data(message), to: Data(Self.bobPublic), ephemeral: ephemeral)
+        let nonce = Self.hex("bde68c3007dd6c6038618666c8830b023d3c0a8e988a8d38")
+        #expect([UInt8](sealed) == Self.alicePublic + SealedBox.box(message, nonce: nonce, sharedPoint: Self.shared))
+    }
+
     /// sealed box は、使い捨ての公開鍵 ‖ box。受け取る側（秘密鍵を持つ GitHub）が同じ手順で開ける
     @Test func sealedBoxOpensWithRecipientSecret() throws {
         let recipient = Curve25519.KeyAgreement.PrivateKey()
