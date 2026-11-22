@@ -17,6 +17,7 @@
     { "id": "final-review-merged", "title": "マージ済みの最終 PR の確認画面（下のバーの押せない「マージ済」）", "arguments": ["-demoScenario", "standard", "-demoOpen", "final:habit-review", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "deck-decisions", "title": "見える仮決めのカード（Before / After のスクショ付き）", "arguments": ["-demoScenario", "standard", "-demoOpen", "deck:decisions:tsundoku-search", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "deck-verifications", "title": "実機で確かめてほしいことのカード", "arguments": ["-demoScenario", "standard", "-demoOpen", "deck:verifications:habit-review", "-demoClock", "2026-01-15T00:41:00Z"] },
+    { "id": "creative", "title": "ヘッダーと検索結果の案を確かめる（言語・案の切り替え・安全領域の枠・直してもらう・承認する）", "arguments": ["-demoScenario", "standard", "-demoOpen", "creative:demo-studio/habit-ios", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "settings", "title": "設定のシート（先頭のテーマのセグメントで「システム」を選んでいる）", "arguments": ["-demoScenario", "standard", "-demoOpen", "section:inbox", "-demoSheet", "settings", "-appTheme", "system", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "settings-dark", "title": "設定のシートでテーマに「ダーク」を選んだとき（シートも暗い見た目）", "arguments": ["-demoScenario", "standard", "-demoOpen", "section:inbox", "-demoSheet", "settings", "-appTheme", "dark", "-demoClock", "2026-01-15T00:41:00Z"] },
     { "id": "inbox-theme-dark", "title": "テーマに「ダーク」を選んだときのあなたの番の一覧", "arguments": ["-demoScenario", "standard", "-demoOpen", "section:inbox", "-appTheme", "dark", "-demoClock", "2026-01-15T00:41:00Z"] }
