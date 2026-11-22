@@ -8,6 +8,8 @@ struct BlockerSection: View {
 
     @Environment(ClientStore.self) private var store
     @State private var isConfirmingDiscard = false
+    @State private var isConfirmingSkip = false
+    @State private var skipNote = ""
 
     var body: some View {
         CardSection {
@@ -71,6 +73,11 @@ struct BlockerSection: View {
         return lead + "開いている子 PR と最終 PR は、マージせずに閉じます。作業ブランチと子ブランチは残すので、後から取り出せます。元に戻せません"
     }
 
+    private var skipMessage: String {
+        let lead = blocker.subject.map { "\($0)が止まっているタスクを飛ばします。" } ?? "止まっているタスクを飛ばします。"
+        return lead + "済んだタスクは残したまま、次のタスク・最終 PR へ進めます。理由とメモは最終 PR の本文に載り、開いている子 PR はマージせずに閉じます"
+    }
+
     /// 対象を付けた意図（送り直すまでに対象が替わっていたら、窓口が送らない）
     private func intent(_ action: Blocker.Action) -> HumanIntent {
         .resolveBlocker(epicID: epic.id, action: action, instruction: "", target: blocker.target)
@@ -88,7 +95,31 @@ struct BlockerSection: View {
 
             case .fixWithInstruction, .retry, .resumeAfterFix, .cancelJob, .discard:
                 store.supports(intent(action))
+
+            case .skipTask:
+                store.supports(.skipTask(epicID: epic.id, reason: .handledElsewhere, note: "", target: blocker.target))
             }
+        }
+    }
+
+    /// タスクを飛ばす。理由（人が別にやる・やらない）を選んで送る。メモは任意
+    private var skipButton: some View {
+        Button("このタスクを飛ばす…", systemImage: "arrow.uturn.forward.circle") {
+            skipNote = ""
+            isConfirmingSkip = true
+        }
+        // 一覧の Section に付けると行ごとに付くので、ボタンに付ける
+        .alert("このタスクを飛ばしますか？", isPresented: $isConfirmingSkip) {
+            TextField("メモ（任意）", text: $skipNote)
+            ForEach(TaskSkip.allCases, id: \.self) { reason in
+                Button(reason.label) {
+                    let intent = HumanIntent.skipTask(epicID: epic.id, reason: reason, note: skipNote, target: blocker.target)
+                    Task { await store.send(intent) }
+                }
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text(skipMessage)
         }
     }
 
@@ -122,6 +153,9 @@ struct BlockerSection: View {
                 Button("\(blocker.subject ?? "この作業")をやめる", systemImage: "xmark.circle") {
                     Task { await store.send(intent(.cancelJob)) }
                 }
+
+            case .skipTask:
+                skipButton
 
             case .discard:
                 // 一覧の Section に付けると行ごとに付くので、ボタンに付ける

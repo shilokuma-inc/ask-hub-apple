@@ -326,6 +326,7 @@ private struct TaskRow: View {
         case .inProgress: StepSymbol(name: "hammer.circle.fill", color: Theme.accent)
         case .failed: StepSymbol(name: "exclamationmark.circle.fill", color: Theme.danger)
         case .done: StepSymbol(name: "checkmark.circle.fill", color: Theme.success)
+        case .skipped: StepSymbol(name: "arrow.uturn.forward.circle", color: .secondary)
         }
     }
 
@@ -340,6 +341,7 @@ private struct TaskRow: View {
         case .inProgress(.waitingForAnswer(let question, _)?): "途中の質問 \(question) の回答を待っています"
         case .failed: "止まっています（対処が要ります）"
         case .done: "マージしました"
+        case .skipped(let reason): "飛ばしました（\(reason)）"
         }
     }
 }

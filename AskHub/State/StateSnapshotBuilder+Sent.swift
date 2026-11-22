@@ -51,7 +51,7 @@ extension StateSnapshotBuilder {
         case DecideSplitIntent.kind:
             applyDecideSplit(envelope, to: &epics, index: index)
 
-        case RetryJobIntent.kind, GiveUpJobIntent.kind:
+        case RetryJobIntent.kind, GiveUpJobIntent.kind, SkipTaskIntent.kind:
             applyJobIntent(envelope, to: &epics)
 
         case AbandonEpicIntent.kind, PauseEpicIntent.kind, ResumeEpicIntent.kind, HandoverIntent.kind:
@@ -187,6 +187,7 @@ extension StateSnapshotBuilder {
             return
         }
         let subject = subject(of: job)
+        if envelope.kind == SkipTaskIntent.kind { return skipTask(of: job, envelope: envelope, in: &epics[epicIndex]) }
         guard envelope.kind == GiveUpJobIntent.kind else {
             let text = "\(subject)のやり直しを頼みました。司令塔が受け取るのを待っています"
             epics[epicIndex].history.append(Epic.HistoryEntry(date: envelope.issuedAt.date, text: text))
@@ -421,8 +422,8 @@ extension StateSnapshotBuilder {
         case RetryJobIntent.kind:
             return "やり直し" + job
 
-        case GiveUpJobIntent.kind:
-            return "取りやめ" + job
+        case GiveUpJobIntent.kind, SkipTaskIntent.kind:
+            return (envelope.kind == GiveUpJobIntent.kind ? "取りやめ" : "タスクを飛ばす頼み") + job
 
         case AbandonEpicIntent.kind:
             return "取り下げ"

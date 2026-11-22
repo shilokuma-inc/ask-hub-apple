@@ -118,14 +118,35 @@ extension AskHubMain {
             return try finalDraft(command, arguments)
         case "abandon", "pause", "resume", "handover":
             return try epicControlDraft(command, arguments)
-        case "retry", "give-up":
-            try arguments.only(["repo", "epic", "job", "attempt"])
-            guard let job = ULID(rawValue: try arguments.string("job")) else { throw CommandArguments.Failure(message: "--job の形が違う") }
-            let (repo, epic, attempt) = (try arguments.repository(), try arguments.epic(), try arguments.integer("attempt", minimum: 0))
-            let target = JobTarget(repo: repo, epic: epic, job: job, attempt: attempt)
-            return command == "retry" ? .retry(target) : .giveUp(target)
+        case "retry", "give-up", "skip-task":
+            return try jobDraft(command, arguments)
         default:
             return try epicDraft(command, arguments)
+        }
+    }
+
+    /// 人の対応待ちのジョブへの操作（やり直す・やめる・タスクを飛ばす）
+    private static func jobDraft(_ command: String, _ arguments: CommandArguments) throws -> IntentDraft {
+        let common: Set<String> = ["repo", "epic", "job", "attempt"]
+        try arguments.only(command == "skip-task" ? common.union(["reason", "note"]) : common)
+        guard let job = ULID(rawValue: try arguments.string("job")) else { throw CommandArguments.Failure(message: "--job の形が違う") }
+        let (repo, epic, attempt) = (try arguments.repository(), try arguments.epic(), try arguments.integer("attempt", minimum: 0))
+        let target = JobTarget(repo: repo, epic: epic, job: job, attempt: attempt)
+        switch command {
+        case "retry":
+            return .retry(target)
+        case "give-up":
+            return .giveUp(target)
+        default:
+            guard let reason = TaskSkipReason(rawValue: try arguments.string("reason")) else {
+                throw CommandArguments.Failure(message: "--reason は handledElsewhere か notNeeded")
+            }
+            let note = arguments.values["note"] ?? ""
+            // 司令塔（`PayloadReader`）と同じく、Unicode のコードポイントで数える
+            guard note.unicodeScalars.count <= SkipTaskIntent.maximumNoteLength else {
+                throw CommandArguments.Failure(message: "--note は \(SkipTaskIntent.maximumNoteLength) 文字まで")
+            }
+            return .skipTask(target, reason: reason, note: note)
         }
     }
 

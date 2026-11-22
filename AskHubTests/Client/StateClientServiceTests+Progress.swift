@@ -106,6 +106,23 @@ extension StateClientServiceTests {
         return files
     }
 
+    /// t2 の実装が 1 回の試行の後に人の対応を待っている epic（t1 は済み）
+    static func waitingImplementationEpic() -> [String: String] {
+        var files = runningEpic()
+        files.removeValue(forKey: "\(base)/jobs/\(reviewSecondID).json")
+        let waiting = job(
+            implementSecondID,
+            kind: "implementTask",
+            task: "t2",
+            state: "waitingHuman",
+            dependsOn: [reviewFirstID],
+            at: "06:50"
+        )
+        files.merge(waiting) { _, new in new }
+        files.merge(attempt(implementSecondID, number: 1, outcome: "failed")) { _, new in new }
+        return files
+    }
+
     private func store(_ text: String, at path: String, in store: InMemoryStateStore) async {
         await store.put(path, data: Data(text.utf8))
     }
@@ -245,25 +262,14 @@ extension StateClientServiceTests {
     /// 人に渡されたタスクのジョブは、タスクを止まっていると出し、「対処が要ります」にタスクの名前で出す
     @Test
     func waitingTaskJobIsShownAsBlocker() async throws {
-        var files = Self.runningEpic()
-        files.removeValue(forKey: "\(Self.base)/jobs/\(Self.reviewSecondID).json")
-        let waiting = Self.job(
-            Self.implementSecondID,
-            kind: "implementTask",
-            task: "t2",
-            state: "waitingHuman",
-            dependsOn: [Self.reviewFirstID],
-            at: "06:50"
-        )
-        files.merge(waiting) { _, new in new }
-        files.merge(Self.attempt(Self.implementSecondID, number: 1, outcome: "failed")) { _, new in new }
+        let files = Self.waitingImplementationEpic()
         let epic = try #require(try await makeService(files: files).service.fetchSnapshot().epic(Self.epicID))
         #expect(epic.tasks[1].state == .failed(pullRequest: nil))
         #expect(epic.activities.isEmpty)
         #expect(epic.blocker?.title == "タスク 2「一覧に出す」の実装が止まっています")
         #expect(epic.blocker?.summary == "ビルドが通らない")
-        // 実装をやめると先に進めないので、やめるは epic ごと
-        #expect(epic.blocker?.actions == [.retry, .discard])
+        // 実装をやめると先に進めないので、やめるは epic ごと。タスクだけを飛ばして先へ進めることもできる
+        #expect(epic.blocker?.actions == [.retry, .skipTask, .discard])
 
         // やり直しを送ったら、司令塔が受け取るまでは止まったとは出さず、受け取り待ちを「いま」に出す
         let fixture = try makeService(files: files)

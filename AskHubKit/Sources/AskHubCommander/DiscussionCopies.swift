@@ -251,8 +251,10 @@ enum CopyText {
         case .locked: "【人がする作業の待ち】"
         case .running: "【実装中】"
         case .done: "【済み】"
+        case .skipped: "【飛ばした】"
         }
-        return "- \(state)\(task.id). \(plain(task.title))\(detail)\(premise)"
+        let skipped = task.skip.map { "（飛ばした理由: \(plain($0.text))）" } ?? ""
+        return "- \(state)\(task.id). \(plain(task.title))\(detail)\(premise)\(skipped)"
     }
 
     private static func humanTask(_ task: GoalFile.HumanTask) -> [String] {

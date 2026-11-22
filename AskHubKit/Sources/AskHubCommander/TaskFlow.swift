@@ -14,6 +14,7 @@ import Foundation
 /// | 実装・直し | 仮決めを `decisions.json` に足し、子 PR のレビューを作る |
 /// | レビュー（マージした） | タスクを `done` にし、次のタスクの実装を作る。人がする作業も含めてすべて済んだら、最終 PR の段取りに進む（`TaskFlow+Final.swift`） |
 /// | レビュー（直す判定） | 直しを作る。同じタスクの直しが上限を超えたら、動かさずに人の対応待ちで作る |
+/// | （人がタスクを飛ばした） | 飛ばしたタスクは済んだものとして、次のタスクを始める（`SkipTaskHandler`） |
 /// | 実装・直し（質問で終えた） | 質問を `questions.json` に足し、答えるまで次のジョブを作らない（`TaskFlow+Questions.swift`） |
 ///
 /// 作るジョブは epic の Mac に割り当て、元のジョブを `dependsOn` に持たせる（どの結果から作ったかの目印。子の無い成功したジョブだけを読む）。
@@ -94,8 +95,9 @@ public struct TaskFlow: Sendable {
             guard step == .merged else { return advanced(by: step, task: task, epic: plan.epic) }
             goal = try await setState(.done, of: task.id, from: [.running], in: plan.epic)
         }
-        // 最後のタスクを done にした後に止まっても、次の周でここから進む（人がする作業が残っていれば、終わるのを待つ）
-        if goal.tasks.allSatisfy({ $0.state == .done }) { return try await startFinalAfterHumanTasks(goal, plan: plan, jobs: jobs) }
+        // 最後のタスクを done にした後に止まっても、次の周でここから進む（人がする作業が残っていれば、終わるのを待つ）。
+        // 人が飛ばしたタスクは済んだものとして扱う
+        if goal.tasks.allSatisfy(\.state.isSettled) { return try await startFinalAfterHumanTasks(goal, plan: plan, jobs: jobs) }
         guard let job = try await startNext(goal, plan: plan) else { return Advanced() }
         return Advanced(created: [job])
     }
@@ -180,9 +182,10 @@ public struct TaskFlow: Sendable {
         return .created(fix)
     }
 
-    /// 次のタスク（`dependsOn` のタスクと人がする作業がすべて済んだ pending のもの。ゴールの並びの順）の実装を作り、running にする
+    /// 次のタスク（`dependsOn` のタスクと人がする作業がすべて済んだ pending のもの。ゴールの並びの順）の実装を作り、running にする。
+    /// 人が飛ばしたタスクは済んだものとして扱う（依存するタスクも進める。進められなければ、そのタスクも人が飛ばせる）
     func startNext(_ goal: GoalFile, plan: Plan) async throws(CommanderError) -> JobFile? {
-        let done = Set(goal.tasks.filter { $0.state == .done }.map(\.id) + goal.humanTasks.filter { $0.state == .done }.map(\.id))
+        let done = Set(goal.tasks.filter(\.state.isSettled).map(\.id) + goal.humanTasks.filter { $0.state == .done }.map(\.id))
         guard let next = goal.tasks.first(where: { $0.state == .pending && Set($0.dependsOn).isSubset(of: done) }) else { return nil }
         // ジョブを先に作る（running にする前に止まっても、次の周で同じ id のジョブを作ろうとするだけ）。
         // タスクは 1 回だけ実装するので、id はタスクから決める
