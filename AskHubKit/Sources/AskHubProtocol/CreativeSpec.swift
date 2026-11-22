@@ -204,10 +204,13 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
     }
 
     /// 書き出しは止めない問題（Apple の決まりに合わない文言・低いコントラスト）。app-kit の `report.json` の `problems` と同じ code
-    public var cautions: [CreativeProblem] {
+    public var cautions: [CreativeProblem] { cautions(checkingAppName: true) }
+
+    /// 書き出しは止めない問題。`checkingAppName` が false なら、アプリ名の文言は確かめない（App Store Connect の名前で、案では変えられない）
+    public func cautions(checkingAppName: Bool) -> [CreativeProblem] {
         var cautions: [CreativeProblem] = []
         for localization in locales {
-            for field in Self.texts(of: localization) {
+            for field in Self.texts(of: localization) where checkingAppName || field.name != "appName" {
                 // 強調の * は画像に出ないので、除いた文字で確かめる（アプリ名は * をそのまま描く）
                 let shown = field.name == "appName" ? field.text : field.text.replacing("*", with: "")
                 for rule in Self.forbidden where rule.matches(shown) {
