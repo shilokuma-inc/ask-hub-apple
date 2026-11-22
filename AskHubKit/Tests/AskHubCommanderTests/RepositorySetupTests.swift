@@ -107,7 +107,7 @@ struct RepositorySetupTests {
 
     // MARK: - 対象に加える
 
-    private func context(_ store: any StateStore) -> CommanderContext {
+    func context(_ store: any StateStore) -> CommanderContext {
         CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { Self.now }
     }
 
@@ -122,11 +122,11 @@ struct RepositorySetupTests {
         )
     }
 
-    private func repository(in store: InMemoryStateStore) async throws -> RepositoryFile? {
+    func repository(in store: InMemoryStateStore) async throws -> RepositoryFile? {
         try await store.data(at: StatePath.repository(Self.repo)).map { try StateFileCoder.decode(RepositoryFile.self, from: $0) }
     }
 
-    private static func blob(_ text: String) -> StubTransport.Reply {
+    static func blob(_ text: String) -> StubTransport.Reply {
         .json(200, #"{"content":"\#(Data(text.utf8).base64EncodedString())","encoding":"base64"}"#)
     }
 
@@ -148,10 +148,10 @@ struct RepositorySetupTests {
             .json(200, "{}"),
             .data(#"{"repository":{"discussionCategories":{"nodes":[{"name":"General"},{"name":"Q&A"}]}}}"#),
             .json(200, "[]"),
+            .json(200, #"{"object":{"sha":"\#(Self.base)","type":"commit"}}"#),
             .json(200, entries),
             Self.blob(Self.build),
             Self.blob(Self.closeGoal),
-            .json(200, #"{"object":{"sha":"\#(Self.base)","type":"commit"}}"#),
             .json(200, #"{"sha":"\#(Self.base)","tree":{"sha":"\#(String(repeating: "5", count: 40))"}}"#),
             .json(201, #"{"sha":"\#(String(repeating: "6", count: 40))"}"#),
             .json(201, #"{"sha":"\#(Self.commit)"}"#),
@@ -173,6 +173,9 @@ struct RepositorySetupTests {
         #expect(requests.contains("PATCH /repos/shilokuma-inc/askhub-sandbox"))
         #expect(requests.contains("POST /repos/shilokuma-inc/askhub-sandbox/git/refs"))
         #expect(requests.last == "POST /repos/shilokuma-inc/askhub-sandbox/pulls")
+        // 読んだ中身と直しのコミットの親は、同じコミット（base の head）
+        let contents = try #require(transport.requests.first { $0.url?.path.hasSuffix("contents/.github/workflows") == true })
+        #expect(contents.url?.query == "ref=\(Self.base)")
         #expect(Set(transport.requests.map { $0.value(forHTTPHeaderField: "Authorization") }) == ["Bearer \(ProtectionTests.adminToken)"])
         // 外すファイルは sha を null にした tree で消し、直したファイルは中身を書く
         let tree = try #require(transport.bodies.first { $0["base_tree"] != nil })
@@ -230,7 +233,7 @@ struct RepositorySetupTests {
         )
     }
 
-    private func registered(_ workflows: WorkflowSetup) async throws -> InMemoryStateStore {
+    func registered(_ workflows: WorkflowSetup) async throws -> InMemoryStateStore {
         let store = InMemoryStateStore()
         var file = RepositoryFile(repo: Self.repo, platform: .apple, addedAt: Timestamp(Self.now))
         file.setup = RepositorySetup(updatedAt: Timestamp(Self.now), discussions: .ready, workflows: workflows)

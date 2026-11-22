@@ -16,7 +16,8 @@ struct RepositorySetupStep {
         let setup: RepositorySetup
         switch await admin.pullRequests(for: repo, now: context.now()) {
         case let .failure(refusal):
-            setup = RepositorySetup(updatedAt: context.timestamp, problems: [refusal.description])
+            // 前に出した準備の PR の記録は残す（消すと、その PR の承認を断ることになる）
+            setup = RepositorySetup(updatedAt: context.timestamp, workflows: file.setup?.workflows, problems: [refusal.description])
         case let .success(github):
             let outcome = await RepositorySetupRunner(github: github, now: context.timestamp)
                 .run(build: file.build, previous: file.setup?.workflows)
@@ -50,7 +51,8 @@ struct RepositorySetupRunner {
         do throws(PullRequestError) {
             settings = try await github.repositorySettings()
         } catch {
-            return Outcome(setup: RepositorySetup(updatedAt: now, problems: [Self.reason("リポジトリの設定を読めない", error)]), stoppedFor: error.wait)
+            let problems = [Self.reason("リポジトリの設定を読めない", error)]
+            return Outcome(setup: RepositorySetup(updatedAt: now, workflows: previous, problems: problems), stoppedFor: error.wait)
         }
         var setup = RepositorySetup(updatedAt: now)
         var problems: [String] = []
@@ -70,8 +72,12 @@ struct RepositorySetupRunner {
             problems.append("GitHub の上限に当たったので、ワークフローの直しは確かめずに止めた（\(wait.components.seconds) 秒ほど待ってから準備をやり直す）")
         } else {
             do throws(PullRequestError) {
-                setup.workflows = try await workflows(base: build?.baseBranch ?? settings.defaultBranch, build: build, previous: previous)
+                let checked = try await workflows(base: build?.baseBranch ?? settings.defaultBranch, build: build, previous: previous)
+                setup.workflows = checked.setup
+                problems += checked.unresolvedJobs.map(Self.unresolved)
             } catch {
+                // 前に出した PR の記録は残す
+                setup.workflows = previous
                 problems.append(Self.reason("ワークフローの直しの PR を出せない", error))
                 stoppedFor = error.wait
             }
@@ -80,20 +86,31 @@ struct RepositorySetupRunner {
         return Outcome(setup: setup, stoppedFor: stoppedFor)
     }
 
-    /// 直すところがあれば、決まった手順の PR を出す。前に出した PR が開いていれば、出し直さない
-    func workflows(base: String, build: RepositoryFile.Build?, previous: WorkflowSetup?) async throws(PullRequestError) -> WorkflowSetup {
+    /// 直すところがあれば、決まった手順の PR を出す。前に出した PR が開いていれば、出し直さない。
+    /// どのワークフローにも見つからない待つチェックも返す
+    func workflows(
+        base: String,
+        build: RepositoryFile.Build?,
+        previous: WorkflowSetup?
+    ) async throws(PullRequestError) -> (setup: WorkflowSetup, unresolvedJobs: [String]) {
         if let open = try await github.openPullRequest(head: SetupPolicy.workflowBranch, base: base) {
             let changes = previous?.pullRequest == open.number ? previous?.changes ?? [] : []
-            return WorkflowSetup(state: .open, pullRequest: open.number, head: open.headSHA, changes: changes)
+            return (WorkflowSetup(state: .open, pullRequest: open.number, head: open.headSHA, changes: changes), [])
         }
-        let files = try await github.workflowFiles(ref: base)
-        let plan = WorkflowSetupEditor.plan(files, waitedJobs: WorkflowSetupEditor.waitedJobs(of: build))
-        guard !plan.isEmpty else { return WorkflowSetup(state: .notNeeded) }
+        // 読んだ中身と直しのコミットの親を、同じコミットにそろえる（読んだ後に base が進んでも、古い中身で上書きしない）
         guard let head = try await github.branchHead(base) else { throw .notFound }
+        let files = try await github.workflowFiles(ref: head)
+        let plan = WorkflowSetupEditor.plan(files, waitedJobs: WorkflowSetupEditor.waitedJobs(of: build))
+        guard !plan.isEmpty else { return (WorkflowSetup(state: .notNeeded), plan.unresolvedJobs) }
         _ = try await github.commitChanges(plan.changes, onto: head, branch: SetupPolicy.workflowBranch, message: Self.commitMessage)
         let draft = PullRequestDraft(base: base, head: SetupPolicy.workflowBranch, title: Self.title, body: Self.body(plan.summary))
         let opened = try await github.openPullRequest(draft).pullRequest
-        return WorkflowSetup(state: .open, pullRequest: opened.number, head: opened.headSHA, changes: plan.summary)
+        return (WorkflowSetup(state: .open, pullRequest: opened.number, head: opened.headSHA, changes: plan.summary), plan.unresolvedJobs)
+    }
+
+    /// 待つチェックを出すジョブが見つからないときの問題（絞りを外せたかを確かめられない）
+    static func unresolved(_ job: String) -> String {
+        "待つチェック \(job) を出すジョブがワークフローに見つからない。そのワークフローの paths・paths-ignore を人が確かめる"
     }
 
     static let commitMessage = "[ci] AskHub の準備として、待つチェックのワークフローと今の仕組みのワークフローを直す"

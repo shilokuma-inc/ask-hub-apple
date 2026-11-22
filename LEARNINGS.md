@@ -208,6 +208,10 @@
   `git cat-file -s`・`cat-file blob` は、無い blob をその場で取りに行く。手元で試すときは、元のリポジトリに `uploadpack.allowFilter=true` を設定しないと `file://` の clone で filter が無視される（2026-11-21、#1181）
 - 作業ブランチ `askhub/<epic>` を最終 PR のマージの後に消しても、GitHub は作業ブランチ宛ての開いた子 PR を閉じず、向き先を base（develop）に変える。
   開いたまま残った子 PR は develop 宛ての PR になってしまうので、最終 PR を出すときに子ブランチから作業ブランチへの開いた PR を探して閉じる（2026-11-22、#1204 の CodeRabbit の指摘）
+- ほかのリポジトリの再利用ワークフロー（`uses: owner/repo/.github/workflows/x.yml@ref`）に `secrets: inherit` で Secrets を渡せるのは、同じ organization か同じ enterprise の中だけ。
+  対象のリポジトリは 5 つの organization にまたがるので、共通リポジトリ（app-kit）を呼ぶ側では Secrets の名前を並べて渡す（2026-11-22、#1210）
+- 再利用ワークフローの中の `github` の値は呼んだ側のもので、呼ばれた再利用ワークフローのコミットを知る組み込みの値は無い（OIDC のトークンの `job_workflow_sha` から読む手はあるが、`id-token: write` が要る）。
+  再利用ワークフローが同じ版の道具を取り出すには、呼ぶ側が同じコミットを入力で渡す（2026-11-22、#1210）
 
 ## ビルド・テスト
 

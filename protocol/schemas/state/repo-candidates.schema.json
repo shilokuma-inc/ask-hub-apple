@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/repo-candidates.schema.json",
+  "title": "repo-candidates.json（「対象に加える」の候補）",
+  "description": "司令塔だけが書く。毎日のトークンを置いた持ち主ごとに、そのトークンで読めるリポジトリ（アーカイブ・テンプレート・状態リポジトリを除く）。対象かどうかはクライアントが repos/ と照らし合わせて決める",
+  "type": "object",
+  "required": [
+    "v",
+    "owners"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "owners": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "owner",
+          "repositories"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "owner": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+            "not": {
+              "pattern": "\\n"
+            }
+          },
+          "readAt": {
+            "anyOf": [
+              {
+                "$ref": "../common.schema.json#/$defs/timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "一覧を読んだ時刻（中身が変わったときだけ書き直す）。まだ読めていなければ書かない"
+          },
+          "repositories": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "isPrivate"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^(?!\\.{1,2}$)[A-Za-z0-9._-]{1,100}$",
+                  "not": {
+                    "pattern": "\\n"
+                  }
+                },
+                "isPrivate": {
+                  "type": "boolean"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 200
+                },
+                "pushedAt": {
+                  "anyOf": [
+                    {
+                      "$ref": "../common.schema.json#/$defs/timestamp"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "problem": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "最後に読もうとして読めなかった理由。読めなかったときは、前に読めた一覧を残す"
+          }
+        }
+      }
+    }
+  }
+}

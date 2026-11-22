@@ -34,6 +34,7 @@ AskHub（アプリ・オーケストレーター・ループの仕組み）を�
 | [release.md](release.md) | リリースの流れ、ワークフロー、App Store Connect の状態、App Store の素材 |
 | [store-screenshots.md](store-screenshots.md) | App Store のスクショを各リポジトリの GitHub Actions で撮り、司令塔で確かめて App Asset Library に反映する設計（#1192） |
 | [operations.md](operations.md) | 通知、容量、Mac の一時停止と引き継ぎ、ワーカーの配り方、テンプレートの配布 |
+| [app-kit.md](app-kit.md) | 共通リポジトリ（app-kit）の中身、各リポジトリへの届け方（初めての入れ替えと版を広げる）、テンプレートとの関係、今あるリポジトリをそろえる手順（#1210） |
 | [plan.md](plan.md) | 作る順番と各段階の状態、残りの段階 4・5 の順と決めたこと、切り替えの前提と試運転、切り替えの後始末、実装の前に確かめること |
 
 ## 用語

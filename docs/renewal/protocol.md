@@ -46,6 +46,7 @@ repos/<owner>/<repo>/store-screenshots/<版>/<表示サイズ>/<言語>/<位置>
 repos/<owner>/<repo>/app-store.json                新しいアプリを App Store に載せる準備（司令塔）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
 commander.json                                     司令塔の生きている印（司令塔）
+repo-candidates.json                               「対象に加える」の候補（司令塔）
 notifications.json                                 進行を止めるもの・止めないもの（実機確認）を知らせた記録（司令塔）
 devices/<device>.json                              通知の宛先（その端末のクライアント）
 keys/<seq>.json                                    公開鍵の追記の記録（クライアント。署名つき）
@@ -131,7 +132,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `build.storeScreenshots` は App Store のスクショの撮り方（[release.md](release.md) の「スクショ」・[store-screenshots.md](store-screenshots.md)）。無ければ撮らない。`capture` で撮り方を分ける（無ければ `uiTest`。書き出すときはいつも書く）。`uiTest` は常時オンの Mac の司令塔が UI テストで撮る形で、ほかの欄は次のとおり。`test` は流す UI テスト（`-only-testing:` の値）、`environment` はテストに渡す決まった環境変数、`languageVariable`・`regionVariable` は言語・地域を渡す環境変数の名前（xcodebuild には `TEST_RUNNER_` を付けて渡す）、`languages` は App Store Connect の言語ごとのアプリの言語と地域（ここに無い言語は撮らない。`language` は、前に配信した版から文言が変わった言語（`.lproj`・String Catalog の言語）と結ぶのにも使う）、`baseLocale` は毎回撮る基準の言語（ほかの言語は、基準の言語で差が出たときか、文言が変わったときだけ撮る）、`displayTypes` は App Store Connect の表示サイズごとの撮る機種（上から順に、ある機種を使う）。表示サイズは App Asset Library の配置グループ（`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など）で、値の一覧は App Store Connect のリファレンスデータにしか無いので、配信中の版にあって撮り方に無い表示サイズが記録の `skipped` に配置グループのまま出たら、その値で足す。テストが添付した画像（`XCTAttachment`）を添付した順に、1 枚目・2 枚目… とする
 - `build.storeScreenshots` の `capture` が `actions` なら、リポジトリの撮影のワークフロー（GitHub Actions）で撮る（[store-screenshots.md](store-screenshots.md)）。欄は `workflow`（`.github/workflows/` の下のファイル名。`app-store-screenshots.yml`）・`artifacts`（App Asset Library の配置グループごとの、artifact の表示サイズの名前。artifact は `screenshots-<名前>` で、中身は `<言語>/<名前>.png`。ワークフローの入力 `display_types` にも渡す）・`languages`（App Store Connect の言語ごとの、artifact のフォルダの言語 `language`。`region` は持たない）・`baseLocale`。例: `{ "capture": "actions", "workflow": "app-store-screenshots.yml", "artifacts": { "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": "APP_IPHONE_67" }, "languages": { "ja": { "language": "ja" }, "en-US": { "language": "en" } }, "baseLocale": "ja" }`
 - `maxConcurrentEpics` は 1 以上
-- `appKit` は、共通リポジトリのワークフローを入れる前は `null`
+- `appKit` は、共通リポジトリのワークフローを入れる前は `null`。版のタグ・開いている PR・ずれなどの欄は、[app-kit.md](app-kit.md) の「状態リポジトリに書くもの」に沿って実装の PR で足す
 - 対象から外した（`removeRepository`）リポジトリの `repo.json` は消さず、外した印（外した時刻と意図。欄の名前と形は段階 4 の 4 で決めて、ここに書く）を付けて残す。印のあるリポジトリへの依頼・開始・ビルドの設定は断り、もう一度 `addRepository` すると印を外す（[operations.md](operations.md) の「対象から外す」）
 - `protection`: ブランチの保護（ルールセット `askhub-protect`。[operations.md](operations.md) の「保護の設定」）。司令塔が保護の設定（`applyProtection`）を処理して書き、掛けた後のずれを点検して `drift` を書く。まだ掛けていなければ `appliedAt` が無い
   - `requiredChecks`: 必須にしたチェックの名前（`applyProtection` の `requiredChecks`）。`rulesetId`: 掛けたルールセットの id
@@ -699,6 +700,35 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `versions` と `selfCheck` の書き方は `macs/<mac>.json` と同じ（同じ周に、同じ様子を書く）
 
 - GitHub Actions の見張りが、`seenAt` の古さ（30 分。`macs/<mac>.json` のオフラインの判定と同じ）を確かめる。無い・読めないときも止まったとみなす（[operations.md](operations.md) の「司令塔の見張り」）
+
+### repo-candidates.json（「対象に加える」の候補）
+
+クライアントのトークンは状態リポジトリしか読めないので、「対象に加える」の候補は、司令塔が持ち主ごとに読んでここに書く（[operations.md](operations.md) の「対象のリポジトリ」）。
+形は `protocol/schemas/state/repo-candidates.schema.json`（Swift は `RepositoryCandidatesFile`）。
+
+```json
+{
+  "v": 1,
+  "owners": [
+    {
+      "owner": "shilokuma-inc",
+      "readAt": "2026-11-22T13:00:00Z",
+      "repositories": [
+        { "name": "askhub-sandbox", "isPrivate": false, "description": "AskHub を試すリポジトリ", "pushedAt": "2026-11-20T08:00:00Z" }
+      ],
+      "problem": null
+    }
+  ]
+}
+```
+
+- `owners`: 毎日のトークンを置いた持ち主（`githubOwners` と状態リポジトリの持ち主）ごとに 1 つ。司令塔は 1 時間ごとに、その持ち主の毎日のトークンで一覧を読む（自動で読むので、管理用のトークンは使わない）
+  - organization は `orgs/<org>/repos`、個人は `user/repos`（トークンの持ち主のもの）と `users/<owner>/repos`（public）を合わせる。fine-grained token では、public のものと、トークンの Repository access に入れた private のものが返る
+  - アーカイブ・テンプレート・状態リポジトリは入れない。名前の順で、1 つの持ち主に 1,000 件まで（多ければ最近 push したものから残す）。説明は 1 行にして 200 文字で切る
+- `readAt`: 一覧を読んだ時刻。中身（リポジトリと `problem`）が変わったときだけ書き直す（毎時の書き込みで状態リポジトリの履歴を増やさない）
+- `problem`: 最後に読もうとして読めなかった理由（毎日のトークンが無い・期限切れ・上限など）。読めなかったときは、前に読めた一覧を残す。GitHub の上限に当たったら、残りの持ち主は読まずに前のまま
+- 対象かどうかは書かない。クライアントが `repos/` と照らし合わせて、まだ対象でないもの（外したリポジトリと、加えると送ったものも除く）だけを、持ち主ごとに検索できる形で出す。加えるときは、ここに書かれた `owner/name` の書き方（GitHub の `full_name` の大文字小文字のまま）で送る
+- 互換の番号は上げない。前の版の司令塔は書かないので、クライアントは候補を出さず、owner/name を手で入れる形だけになる
 
 ### devices/<device>.json（通知の宛先）
 
