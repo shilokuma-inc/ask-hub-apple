@@ -212,6 +212,13 @@
   対象のリポジトリは 5 つの organization にまたがるので、共通リポジトリ（app-kit）を呼ぶ側では Secrets の名前を並べて渡す（2026-11-22、#1210）
 - 再利用ワークフローの中の `github` の値は呼んだ側のもので、呼ばれた再利用ワークフローのコミットを知る組み込みの値は無い（OIDC のトークンの `job_workflow_sha` から読む手はあるが、`id-token: write` が要る）。
   再利用ワークフローが同じ版の道具を取り出すには、呼ぶ側が同じコミットを入力で渡す（2026-11-22、#1210）
+- `strategy.max-parallel` には式を書ける（`jobs.<id>.strategy` で `needs`・`inputs` を使える）。前のジョブの出力で `max-parallel: ${{ fromJSON(needs.plan.outputs.max_parallel) }}` のように決められ、actionlint 1.7.12 も通る（2026-11-23、#1233）
+- `workflow_dispatch` は、呼ぶ側のワークフローに無い入力を送ると 422 で断る（実行は作られない）。共通リポジトリ（app-kit）の新しい版で足した入力は、その版を入れたリポジトリ（`repo.json` の `appKit.version`）にだけ送り、
+  記録がずれて 422 になったら、足した入力を外して送り直す（2026-11-23、#1233）
+- 複数の artifact を 1 つにまとめ直すには `actions/upload-artifact/merge`（`pattern` で選び、`delete-merged: true` で元を消す）を使う。v4 からあり、app-kit が固定している v7.0.2 にもある。
+  中身のパスが重ならなければ、`separate-directories: false`（既定）で 1 つのフォルダに重なる（2026-11-23、#1233）
+- ジョブの `defaults.run.working-directory` は checkout の前の `run` の手順にも効き、そのディレクトリがまだ無いと「An error occurred trying to start process '/usr/bin/bash' with working directory …」で失敗する。
+  checkout の前の手順には `working-directory: .` を付ける（app-kit の撮影の plan で、`working-directory` にサブディレクトリを渡したときに起きた。2026-11-23、app-kit#14）
 
 ## ビルド・テスト
 
