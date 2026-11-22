@@ -87,12 +87,11 @@ extension ReleaseWatch {
             guard let capturer = self.screenshots else {
                 throw ReleaseStepProblem("撮った元の画像を置く場所が司令塔に無い（スクショを撮る道具の設定が無い）", needsHuman: true)
             }
-            let (store, app) = try await self.submissionApp(file.repo, settings: settings)
             let originals = capturer.originals(file.repo, version: file.version, commit: commit)
             let (uploads, unreadable) = Self.libraryShots(of: shots, originals: originals)
             let timedOut = self.context.now().timeIntervalSince(library.sentAt.date) >= Self.libraryTimeout
             // 読めない画像がある周は、打ち切る時間を過ぎていなければやり直す（過ぎていれば、読めなかった画像も打ち切る）
-            let (states, sent) = try await self.sendAndRead(uploads, store: store, appID: app.id, giveUp: timedOut)
+            let (states, sent) = try await self.sendAndRead(uploads, of: file.repo, settings: settings, giveUp: timedOut)
             // 画像を送ったら、Apple の処理の時間をそこから数え直す（送る前の待ちを含めない）
             if sent { library.sentAt = self.context.timestamp }
             var rejected = Self.rejectedShots(uploads, states: states, timedOut: timedOut && !sent)
@@ -156,19 +155,20 @@ extension ReleaseWatch {
 
     /// 上げていない画像を上げ、画像ごとの処理の様子を返す（MD5 → 画像）。処理中の画像は消さずに待ち、予約だけして送り終えなかった画像は上げ直す。
     /// 受け付けられなかった画像は上げ直さない（同じ画像は、また受け付けられない）
-    /// `giveUp` なら、App Store Connect を読めない・送れない画像があっても投げず、読めた分だけを返す（打ち切りの判定を止めない）。
+    /// `giveUp` なら、App Store Connect のアプリを探せない・画像を読めない・送れないときも投げず、読めた分だけを返す（打ち切りの判定を止めない）。
     /// 画像を送った後に読めなくなったときも投げず、読めた分だけを返す（送った時刻を残し、そこから数え直すため。残りは次の周に読む）。
     /// `sent` は、この周に画像を送ったか
     private func sendAndRead(
         _ uploads: [LibraryUpload],
-        store: any AppStoreConnectSubmitting,
-        appID: String,
+        of repo: RepositoryFullName,
+        settings: RepositoryFile,
         giveUp: Bool
     ) async throws -> (states: [String: AppStoreLibraryImage], sent: Bool) {
         var states: [String: AppStoreLibraryImage] = [:]
         var sent = false
         do {
-            let library = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.assetLibrary(of: appID) }
+            let (store, app) = try await submissionApp(repo, settings: settings)
+            let library = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.assetLibrary(of: app.id) }
             for upload in uploads {
                 let found = try await appStoreConnect { () throws(AppStoreConnectError) in
                     try await store.libraryImages(in: library, referenceName: upload.referenceName)

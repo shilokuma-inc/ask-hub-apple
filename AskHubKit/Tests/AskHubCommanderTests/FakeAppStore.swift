@@ -27,6 +27,8 @@ final class FakeAppStore: AppStoreConnecting {
         var sentState = "PREPARE_FOR_SUBMISSION"
         /// 決めると、ライブラリの画像を読めずにこれを投げる
         var libraryFailure: AppStoreConnectError?
+        /// 決めると、アプリを探せずにこれを投げる
+        var appsFailure: AppStoreConnectError?
         /// 決めると、上げた画像の処理の様子（id で読む）を読めずにこれを投げる
         var sentImageFailure: AppStoreConnectError?
         /// 作った配置の数（配置の id の番号）
@@ -57,7 +59,8 @@ final class FakeAppStore: AppStoreConnecting {
     let state = OSAllocatedUnfairLock(initialState: State())
 
     func apps(bundleIDs: [String]) async throws(AppStoreConnectError) -> [AppStoreApp] {
-        state.withLock { $0.apps.filter { bundleIDs.contains($0.bundleId) } }
+        if let failure = state.withLock({ $0.appsFailure }) { throw failure }
+        return state.withLock { $0.apps.filter { bundleIDs.contains($0.bundleId) } }
     }
 
     func liveVersions(of appID: String) async throws(AppStoreConnectError) -> [LiveAppVersion] {

@@ -8,14 +8,17 @@ import Testing
 /// 撮って比べた画像を、人が確かめる前に App Store Connect のライブラリに上げておき、取り込みを見回りの周で待つ
 extension ReleaseWatchTests {
     /// Actions で撮り、日本語の 2 枚目だけに差がある記録にする（Apple の処理は `sentState` のまま止まる）
-    func captureWithLibrary(sentState: String) async throws -> (ReleaseWatch, String) {
+    func captureWithLibrary(
+        sentState: String,
+        screenshots: FakeStoreScreenshots = FakeStoreScreenshots()
+    ) async throws -> (ReleaseWatch, String) {
         try await startRelease()
         try await addWorkflowScreenshotRepository()
         liveScreenshots([Self.home, Self.detail], localization: "l-ja", locale: "ja")
         liveScreenshots([Self.home, Self.detail], localization: "l-en", locale: "en-US")
         screenshotArtifacts(iPhone: ["ja": [Self.home, Self.newDetail], "en": [Self.home, Self.detail]])
         appStore.state.withLock { $0.sentState = sentState }
-        let watch = watch(screenshots: FakeStoreScreenshots())
+        let watch = watch(screenshots: screenshots)
         await captureOnActions(watch)
         return (watch, AppStoreScreenshot.referenceName(checksum: AppStoreScreenshot.checksum(of: Self.newDetail)))
     }
@@ -139,6 +142,23 @@ extension ReleaseWatchTests {
         #expect(file.screenshots?.state == .capturing)
         #expect(file.screenshots?.sets.flatMap(\.shots).allSatisfy { $0.rejected == nil } == true)
         #expect(libraryWrites().filter { $0.hasPrefix("sendImage") }.count == 2)
+    }
+
+    @Test func givesUpEvenIfTheAppCannotBeFound() async throws {
+        let capturer = FakeStoreScreenshots()
+        _ = try await captureWithLibrary(sentState: "UPLOAD_COMPLETE", screenshots: capturer)
+        appStore.state.withLock { $0.appsFailure = .unavailable("503") }
+        // 司令塔を起動し直した（アプリを覚えていない）後、App Store Connect でアプリを探せない。打ち切る前はやり直す
+        let restarted = watch(screenshots: capturer)
+        clock.advance(minutes: 5)
+        await restarted.refresh()
+        #expect(try await submission().screenshots?.state == .capturing)
+        // 打ち切る時間を過ぎたら、アプリを探せなくても打ち切って決着させる
+        clock.advance(minutes: 3 * 60)
+        await restarted.refresh()
+        let shots = try #require(try await submission().screenshots)
+        #expect(shots.state == .captured)
+        #expect(shots.sets.flatMap(\.shots).contains { $0.rejected?.contains("3 時間") == true })
     }
 
     @Test func settlesAtOnceWhenNoOriginalCanBeRead() async throws {
