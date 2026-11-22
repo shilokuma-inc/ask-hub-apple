@@ -131,6 +131,8 @@ struct StateIndex {
     var releasingRepositories: Set<TargetRepository.ID> = []
     /// リポジトリの配信した版の最大（これより大きい版だけ始められる）
     var releasedVersions: [TargetRepository.ID: MarketingVersion] = [:]
+    /// リポジトリの終わっていないリリース（hotfix を始めるときに、一時停止する版を確かめる）。hotfix かどうかも持つ
+    var openReleases: [TargetRepository.ID: [(version: MarketingVersion, hotfix: Bool)]] = [:]
     /// 対象から外したリポジトリ（加え直すときに、元の owner/name の書き方で送る）
     var removedRepositories: [TargetRepository.ID: RepositoryFullName] = [:]
     /// 「対象に加える」の候補（加えるときに、GitHub の owner/name の書き方で送る）

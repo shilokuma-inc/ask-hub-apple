@@ -13,6 +13,10 @@ struct Submission: Identifiable, Hashable {
     var branch: String?
     /// release ブランチを作った（見つけた）時刻。まだ作っていなければ nil
     var branchCreatedAt: Date?
+    /// hotfix なら、直す配信中の版（release ブランチはそのタグから作る）
+    var hotfixFrom: String?
+    /// hotfix の間一時停止しているなら、その hotfix の版
+    var suspendedBy: String?
     /// develop の版を次に上げる PR
     var nextVersion: Release.NextVersion?
     /// release ブランチから上げたビルド
@@ -314,6 +318,7 @@ extension Submission {
         case nil: break
         }
         if let sending { return "\(sending.label)を送りました。受け付けるのを待っています" }
+        if let suspendedBy { return "hotfix \(suspendedBy) の間、一時停止しています（配信して取り込んだら、準備を作り直して再開します）" }
         if let step = steps.first(where: { $0.state == .problem || $0.state == .waitingHuman }) {
             return "\(step.title): \(step.detail)"
         }
@@ -327,12 +332,15 @@ extension Submission {
 
     private var branchStatus: StepStatus {
         let title = Step.branch.label
-        if let branch { return StepStatus(id: "branch", title: title, detail: "\(branch) を作りました", state: .done) }
+        if let branch {
+            let source = hotfixFrom.map { "v\($0) から" } ?? ""
+            return StepStatus(id: "branch", title: title, detail: "\(source)\(branch) を作りました", state: .done)
+        }
         if sending == .start {
             return StepStatus(id: "branch", title: title, detail: "リリースを始めるのを送りました", state: .working)
         }
         return problemStatus(.branch, id: "branch", title: title)
-            ?? StepStatus(id: "branch", title: title, detail: "develop の先頭から作ります", state: .working)
+            ?? StepStatus(id: "branch", title: title, detail: hotfixFrom.map { "v\($0) のタグから作ります" } ?? "develop の先頭から作ります", state: .working)
     }
 
     private var nextVersionStatus: StepStatus {
@@ -346,7 +354,8 @@ extension Submission {
             let pull = nextVersion.pullRequest.map { "PR #\($0) の" } ?? ""
             return StepStatus(id: "nextVersion", title: title, detail: "\(nextVersion.version) に上げる\(pull)チェックを待っています", state: .working)
         case .merged:
-            return StepStatus(id: "nextVersion", title: title, detail: "develop を \(nextVersion.version) に上げました", state: .done)
+            let target = hotfixFrom == nil ? "develop" : branch ?? "release ブランチ"
+            return StepStatus(id: "nextVersion", title: title, detail: "\(target) を \(nextVersion.version) に上げました", state: .done)
         case .skipped:
             return StepStatus(id: "nextVersion", title: title, detail: "develop はもう \(nextVersion.version) です", state: .done)
         }

@@ -46,7 +46,7 @@ struct StateIntentMapper {
             supportsAfterMerge(intent)
 
         case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp, .findCleanupCandidates, .startRelease,
-             .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots, .reportRejection,
+             .startHotfix, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots, .reportRejection,
              .resolveRejection, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
             // リリースと App Store の準備の操作も、リポジトリに属する操作として判定する（`supportsSubmissionIntent`・`supportsAppStoreSetupIntent`）。
             // 片付けは Mac ごと（`supportsRepositoryIntent` の中で分ける）
@@ -119,7 +119,7 @@ struct StateIntentMapper {
         case .publishRelease, .updatePromotionalText:
             return try releaseDraft(intent)
 
-        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots,
+        case .startRelease, .startHotfix, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots,
              .reportRejection, .resolveRejection, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
             return try releaseFlowDraft(intent)
 

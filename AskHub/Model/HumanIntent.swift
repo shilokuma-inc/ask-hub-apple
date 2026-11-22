@@ -47,6 +47,8 @@ enum HumanIntent: Hashable {
     case updatePromotionalText(repositoryID: TargetRepository.ID, version: String, texts: [Submission.Localized])
     /// リリースを始める（`version` は始める版）
     case startRelease(repositoryID: TargetRepository.ID, version: String)
+    /// 配信中の版だけを直す hotfix を始める（`version` は配信中の版の次のパッチ）。`suspend` は一時停止する進行中のリリースの版
+    case startHotfix(repositoryID: TargetRepository.ID, version: String, suspend: String?)
     /// 審査に出す（`revision` は見たときの準備の版。ビルドか What's New が変わっていれば司令塔が断る）
     case submitForReview(repositoryID: TargetRepository.ID, version: String, request: Submission.SubmitRequest)
     /// 審査に通った版を配信する（取り消せない）
@@ -150,6 +152,9 @@ extension HumanIntent {
 
         case let .updatePromotionalText(_, version, _):
             "プロモーションテキストの反映（\(version)）"
+
+        case let .startHotfix(_, version, _):
+            "hotfix を始める（\(version)）"
 
         case let .startRelease(_, version):
             "リリースを始める（\(version)）"

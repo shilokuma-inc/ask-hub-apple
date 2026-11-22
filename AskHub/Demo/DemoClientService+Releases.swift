@@ -54,6 +54,9 @@ extension DemoClientService {
         case let .startRelease(repositoryID, version):
             startRelease(repositoryID: repositoryID, version: version)
 
+        case let .startHotfix(repositoryID, version, suspend):
+            startHotfix(repositoryID: repositoryID, version: version, suspend: suspend)
+
         case let .submitForReview(repositoryID, version, request):
             submitForReview(Submission.id(repositoryID, version), request: request)
 
@@ -82,14 +85,7 @@ extension DemoClientService {
             reportRejection(Submission.id(repositoryID, version), text: text, imageCount: images.count)
 
         case let .resolveRejection(repositoryID, version, remedy):
-            updateSoon(Submission.id(repositoryID, version), sending: .resolveRejection) { submission in
-                submission.rejection?.choice = remedy
-                submission.awaitsRejectionChoice = false
-                submission.canReportRejection = false
-                submission.submitted = nil
-                submission.awaitsFixedBuild = remedy == .code
-                submission.awaitsSubmission = remedy != .code
-            }
+            resolveRejection(Submission.id(repositoryID, version), remedy: remedy)
 
         case let .retakeScreenshots(repositoryID, version, _, _):
             updateSoon(Submission.id(repositoryID, version), sending: .retake) { submission in
@@ -101,6 +97,31 @@ extension DemoClientService {
 
         default:
             break
+        }
+    }
+
+    /// hotfix を始める。進行中のリリースは一時停止する
+    private func startHotfix(repositoryID: TargetRepository.ID, version: String, suspend: String?) {
+        if let suspend {
+            state.updateSubmission(Submission.id(repositoryID, suspend)) { submission in
+                submission.suspendedBy = version
+                submission.awaitsSubmission = false
+            }
+        }
+        startRelease(repositoryID: repositoryID, version: version)
+        let from = state.releases(of: repositoryID).max { ClientSnapshot.isOlder($0.version, $1.version) }?.version
+        state.updateSubmission(Submission.id(repositoryID, version)) { $0.hotfixFrom = from }
+    }
+
+    /// リジェクトの直し方を受け付ける（審査に出した中身を消す。コードを直すなら、直した後のビルドを待つ）
+    private func resolveRejection(_ id: Submission.ID, remedy: Submission.Remedy) {
+        updateSoon(id, sending: .resolveRejection) { submission in
+            submission.rejection?.choice = remedy
+            submission.awaitsRejectionChoice = false
+            submission.canReportRejection = false
+            submission.submitted = nil
+            submission.awaitsFixedBuild = remedy == .code
+            submission.awaitsSubmission = remedy != .code
         }
     }
 
