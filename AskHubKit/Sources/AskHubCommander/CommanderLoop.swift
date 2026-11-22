@@ -99,6 +99,8 @@ public actor CommanderLoop {
     nonisolated let appIcons: AppIconSync?
     /// App Store での配信を見つけ、リリースの後作業を進めるもの。生きている印を書いた後に、周の外で見回り始める。nil なら見回らない
     nonisolated let releases: ReleaseWatch?
+    /// クリエイティブアセットの案を書き出すもの。生きている印を書いた後に、周の外で見回り始める。nil なら見回らない
+    nonisolated let creative: CreativeWatch?
     /// 掛けた保護のずれを点検するもの。生きている印を書いた後に、周の外で確かめ始める。nil なら点検しない
     nonisolated let protection: ProtectionWatch?
     /// 「対象に加える」の候補を読み直すもの。生きている印を書いた後に、周の外で読み始める。nil なら読まない
@@ -146,6 +148,7 @@ public actor CommanderLoop {
         tidy: @escaping @Sendable () async -> Void = {},
         appIcons: AppIconSync? = nil,
         releases: ReleaseWatch? = nil,
+        creative: CreativeWatch? = nil,
         protection: ProtectionWatch? = nil,
         candidates: RepositoryCandidatesWatch? = nil,
         admin: AdminGitHub? = nil,
@@ -171,6 +174,7 @@ public actor CommanderLoop {
         self.tidy = tidy
         self.appIcons = appIcons
         self.releases = releases
+        self.creative = creative
         self.protection = protection
         self.candidates = candidates
         self.appKitWatch = appKitWatch
@@ -238,6 +242,7 @@ public actor CommanderLoop {
             let outcome = try await intake.process(intent)
             log("人の意図: \(outcome)")
             if case let .accepted(kind) = outcome, Self.releaseKinds.contains(kind) { releases?.wake() }
+            if case let .accepted(kind) = outcome, Self.creativeKinds.contains(kind) { creative?.wake() }
         }
         timer.lap("人の意図")
         var swept = try await JobSweep(context: context, leftoversBefore: startedAt).sweepAll()
@@ -308,6 +313,9 @@ public actor CommanderLoop {
         "registerBundleId", "applyAppStoreSettings", "confirmAppStoreItem", "excludeFromAppStore"
     ]
 
+    /// 受け付けたら、生きている印を待たずにクリエイティブアセットの見回りを起こす種類
+    static let creativeKinds: Set<String> = ["draftCreativeAssets", "approveCreativeAssets"]
+
     // MARK: - 通知
 
     /// 進行を止めているものを知らせる。知らせられなくても、ジョブの引き受けは止めない
@@ -376,6 +384,7 @@ public actor CommanderLoop {
         await tidy()
         appIcons?.start()
         releases?.start()
+        creative?.start()
         protection?.start()
         candidates?.start()
         appKitWatch?.start()
