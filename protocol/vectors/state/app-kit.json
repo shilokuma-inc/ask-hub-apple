@@ -1,0 +1,1531 @@
+{
+  "description": "app-kit.json（共通リポジトリ app-kit の見つけた版と、版を広げる進み具合）を読む例。schemaValid は protocol/schemas/state/app-kit.schema.json に合うか、read は読む側（StateFileCoder など）の結果。スキーマで表せない決まり（版の並び・failed と skipped の理由・PR の番号と head・重なり）は、スキーマに合っても読む側が弾く",
+  "schema": "state/app-kit.schema.json",
+  "cases": [
+    {
+      "name": "full",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "minimal",
+      "value": {
+        "v": 1,
+        "releases": [],
+        "templates": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "explicit-nulls",
+      "value": {
+        "v": 1,
+        "checkedAt": null,
+        "problem": null,
+        "releases": [],
+        "adoption": null,
+        "rollout": null,
+        "templates": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ],
+        "futureField": 1
+      },
+      "schemaValid": false,
+      "read": "valid"
+    },
+    {
+      "name": "rollout-failed",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "failed",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "failed",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z",
+              "problem": "必須のチェック build / build が落ちた"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z",
+          "problem": "試しの 1 本 tm-family/shinkeisuijaku-app-ios の develop の Build が落ちた"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "rollout-failed-without-problem",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "failed",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "target-skipped-without-problem",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": null,
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "target-open-without-head",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": null,
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "duplicate-targets",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            },
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "target-unknown-state",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "merged",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "releases-out-of-order",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          },
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "releases-repeated",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.1.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "release-without-v",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "release-ref-tag",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "v1.1.0",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "release-empty-changes",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "templates-repeated",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "template-ref-branch",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "develop",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "adoption-short-ref",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "abc"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "future-version",
+      "value": {
+        "v": 2,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "unsupportedVersion"
+    },
+    {
+      "name": "missing-version",
+      "value": {
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        },
+        "templates": [
+          {
+            "repo": "shilokuma-inc/template-app-ios",
+            "appKit": {
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "version": "v1.0.0",
+              "installedAt": "2026-11-23T09:00:00Z"
+            }
+          },
+          {
+            "repo": "shilokuma-vision/template-app-visionos",
+            "appKit": null
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "missingVersion"
+    },
+    {
+      "name": "missing-templates",
+      "value": {
+        "v": 1,
+        "checkedAt": "2026-11-25T10:00:00Z",
+        "problem": null,
+        "releases": [
+          {
+            "version": "v1.1.0",
+            "ref": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": "- visionOS のスクショを撮れるようにした\n- Upload の内部テスターの直し",
+            "foundAt": "2026-11-25T10:00:00Z"
+          },
+          {
+            "version": "v1.0.0",
+            "ref": "0123456789abcdef0123456789abcdef01234567",
+            "changes": "最初の版。",
+            "foundAt": "2026-11-22T15:00:00Z"
+          }
+        ],
+        "adoption": {
+          "version": "v1.0.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "rollout": {
+          "version": "v1.1.0",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "origin": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "state": "running",
+          "pilot": "tm-family/shinkeisuijaku-app-ios",
+          "targets": [
+            {
+              "repo": "tm-family/shinkeisuijaku-app-ios",
+              "kind": "repository",
+              "state": "done",
+              "pullRequest": 90,
+              "head": "89abcdef0123456789abcdef0123456789abcdef",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "shilokuma-inc/prime-pick-ios",
+              "kind": "repository",
+              "state": "skipped",
+              "problem": "まだ app-kit に入れ替えていない（準備をやり直して入れる）",
+              "updatedAt": "2026-11-25T11:00:00Z"
+            },
+            {
+              "repo": "tm-family/kobosu-app-ios",
+              "kind": "repository",
+              "state": "open",
+              "pullRequest": 51,
+              "head": "0123456789abcdef0123456789abcdef01234567",
+              "updatedAt": "2026-11-25T11:05:00Z"
+            }
+          ],
+          "startedAt": "2026-11-25T10:30:00Z",
+          "updatedAt": "2026-11-25T11:05:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}
