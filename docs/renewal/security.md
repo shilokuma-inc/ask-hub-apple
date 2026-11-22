@@ -108,7 +108,11 @@ Claude とビルド・テストは、ワーカーと同じ macOS のユーザー
 - 権限は Administration・Secrets・Environments・Workflows の Read and write と、PR を出すための Contents・Pull requests の Read and write（Discussions のカテゴリを確かめるための Discussions の Read-only も付ける）。テンプレートから作るには、作る前のリポジトリを選べないので、その持ち主の All repositories が要る見込み（段階 4 の 5 で確かめる）
 - 期限は毎日のトークンと同じく自己診断（`githubAdminTokens`）に書き、クライアントで知らせる。切れても毎日の仕事は止まらないので、「止まっています」にはしない。管理用のトークンが無い持ち主への操作は、理由を書いて断る
 - ワークフローのファイルを変える PR は、ワーカーの epic では push できない（ワーカーは Workflows を持たない）。司令塔が決まった手順で PR を出し、人が承認してからマージする（[operations.md](operations.md) の「対象のリポジトリ」）
-- Secrets の値は、クライアントが GitHub の公開鍵で暗号化し、司令塔は暗号文を渡すだけ（[flows.md](flows.md) の「人がする作業」）
+- Secrets の値は、クライアントが GitHub の公開鍵で暗号化し（sealed box。`AskHubClient` の `SealedBox`。NaCl・RFC の試験値で確かめた）、司令塔は暗号文を渡すだけ（[flows.md](flows.md) の「人がする作業」）。公開鍵も司令塔が管理用のトークンで読んで状態リポジトリに置く（人が「公開鍵を読む」を押したときだけ）。入れ先はリポジトリの Actions の Secrets（Environment は #1067 で移すときに切り替える）
+  - 公開鍵の出どころ: クライアントは状態リポジトリの `repo.json` の `secretsKey` を信じて暗号化する。状態リポジトリに書ける者（乗っ取られたワーカーの Mac など）が鍵を差し替えると、
+    状態リポジトリに置いた暗号文を開けてしまう。今は、司令塔が入れるときに `secretsKey` と GitHub の今の鍵を照らし合わせ、同じ `keyId` で中身が違えば入れずに断り、
+    値が漏れたおそれを知らせる（見つける仕組み。2026-11-23 にユーザーが決めた。今のリポジトリの Secrets の例外でも、乗っ取られたワーカーは作業ブランチのワークフローから値に届きうるので、守りの強さは同じ水準）。
+    差し替えそのものを防ぐ司令塔の署名は、#1067 と一緒に #1246 で足す
 
 ## public のリポジトリと Secrets
 
@@ -116,6 +120,13 @@ Claude とビルド・テストは、ワーカーと同じ macOS のユーザー
 
 - ワーカーのトークンに Workflows の書き込み権限を持たせない。ワークフローのファイルを含む push は GitHub が断る
 - Secrets は Environment の Secrets にし、使えるブランチを develop・`release/**`・main に限る
+  - 例外: 人がする作業の `secret` で AskHub が入れる Secrets は、今はリポジトリの Actions の Secrets に入れる（2026-11-22 にユーザーが決めた。まだどのリポジトリにも Environment が無く、移すのは #1067）。
+    リポジトリの Secrets は、ブランチで絞れない。ワーカーが push した作業ブランチで動くワークフロー（push・`workflow_dispatch`）がその Secret を参照すると、
+    ワーカーの変更したビルドのスクリプトや道具から値が読める
+  - 防ぎ方: ワーカーはワークフローのファイルを変えられないので、Secret を参照するワークフローは人が書いて承認したものだけになる。
+    そのワークフローで Secret を渡すジョブは、`if:` で develop・`release/**`・main の ref に限る（作業ブランチでは Secret を渡さない）。
+    AskHub が入れた Secret を新しく参照するワークフローの変更は、自動マージの手動の条件（ワークフローの変更）で人が確かめる
+  - #1067 で Environment を作ったら、`secret` の入れ先を Environment の Secrets に切り替え、リポジトリの Secrets に入れたものは移して消す
 - 自動マージの手動の条件に、ワークフロー・道具・ビルドのスクリプトの変更を入れる（[flows.md](flows.md) の「マージの規則」）
 - 共通リポジトリのワークフローは、動くタグではなく固定したコミットで呼び、版はクライアントから上げる（または、タグを保護する）
 - Claude に渡すレビューの指摘は、決まった書き手（CodeRabbit など）のものだけにする。public のリポジトリには誰でもコメントを書けるため

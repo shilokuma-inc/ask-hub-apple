@@ -32,30 +32,48 @@ public struct HumanTaskTarget: Equatable, Sendable {
 }
 
 /// 人がする作業を終えた人の意図（`kind` が `humanTaskDone`）。「終わった」なら payload は空、ファイルを渡すなら `attachments` に 1 つ
-/// （依頼の添付と同じ形・同じ置き場所 `attachments/<device>/<nonce>/<n>`・同じ上限）
+/// （依頼の添付と同じ形・同じ置き場所 `attachments/<device>/<nonce>/<n>`・同じ上限）、GitHub の Secrets に入れるなら `secret` に暗号文
+/// （クライアントがリポジトリの公開鍵で暗号化したもの。平文は入れない）
 public struct HumanTaskDoneIntent: Equatable, Sendable {
     public static let kind = "humanTaskDone"
 
     public var target: HumanTaskTarget
     public var file: RequestAttachment?
+    public var secret: EncryptedSecret?
     public var intent: IntentReference
 
-    public init(target: HumanTaskTarget, file: RequestAttachment? = nil, intent: IntentReference) {
+    public init(target: HumanTaskTarget, file: RequestAttachment? = nil, secret: EncryptedSecret? = nil, intent: IntentReference) {
         self.target = target
         self.file = file
+        self.secret = secret
         self.intent = intent
     }
 
     public init(envelope: IntentEnvelope) throws(MalformedIntent) {
         guard envelope.kind == Self.kind else { throw .init(detail: "kind が humanTaskDone でない") }
         let target = try HumanTaskTarget(envelope: envelope)
-        let reader = try PayloadReader(envelope.payload, allowed: ["attachments"])
+        let reader = try PayloadReader(envelope.payload, allowed: ["attachments", "secret"])
         let files = try RequestIntent.readAttachments(reader.payload["attachments"])
         guard files.count <= 1 else { throw .init(detail: "渡すファイルは 1 つまで") }
-        self.init(target: target, file: files.first, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
+        let secret = try Self.secret(reader.payload["secret"])
+        guard files.isEmpty || secret == nil else { throw .init(detail: "ファイルと secret を一緒に渡せない") }
+        self.init(target: target, file: files.first, secret: secret, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
     }
 
     public var payload: [String: JSONValue] {
-        file.map { ["attachments": .array([$0.jsonValue])] } ?? [:]
+        if let secret { return ["secret": secret.jsonValue] }
+        return file.map { ["attachments": .array([$0.jsonValue])] } ?? [:]
+    }
+
+    /// `secret` の欄（`keyId` と `encryptedValue` だけ）。無ければ nil
+    private static func secret(_ value: JSONValue?) throws(MalformedIntent) -> EncryptedSecret? {
+        guard let value else { return nil }
+        guard case let .object(fields) = value, Set(fields.keys) == ["keyId", "encryptedValue"],
+              case let .string(keyId)? = fields["keyId"], case let .string(encrypted)? = fields["encryptedValue"] else {
+            throw .init(detail: "secret は keyId と encryptedValue だけを持つ")
+        }
+        let secret = EncryptedSecret(keyId: keyId, encryptedValue: encrypted)
+        if let problem = secret.problem { throw .init(detail: problem) }
+        return secret
     }
 }

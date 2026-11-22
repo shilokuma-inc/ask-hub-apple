@@ -1,3 +1,4 @@
+import AskHubProtocol
 import Foundation
 
 /// 人の意図。機械を動かす人の書き込みで、クライアントが署名して GitHub に書く（docs/renewal/security.md）。
@@ -29,6 +30,11 @@ enum HumanIntent: Hashable {
     /// 人がする作業を終えた。ファイルを渡す作業は、渡すファイルを付ける（中身は意図より先に状態リポジトリに置く）。
     /// GitHub の Secrets に入れる作業は、人が GitHub の設定画面で入れてから終えたことにする（値は受け取らない）
     case completeHumanTask(epicID: Epic.ID, taskID: HumanTask.ID, file: HandoverFile? = nil)
+    /// GitHub の Secrets に入れる作業を、値を渡して終える。値はこの端末でリポジトリの公開鍵で暗号化し、暗号文だけを持つ（司令塔が Secrets に入れる）。
+    /// Secrets の名前を出したときのゴールの版に結びつける（送るまでにゴールが直されて名前が変わっていれば、司令塔が断る）
+    case handOverSecret(epicID: Epic.ID, taskID: HumanTask.ID, goalVersion: Int, secret: EncryptedSecret)
+    /// リポジトリの Secrets の公開鍵を、司令塔に読ませる（管理用のトークンで読む）
+    case readSecretsKey(repositoryID: TargetRepository.ID)
     case verify(epicID: Epic.ID, itemID: VerificationItem.ID, reply: VerificationReply)
     /// 選んだ片付けの候補を消す（clone と DerivedData はゴミ箱に移し、Simulator は消す）
     case cleanUp(macID: Mac.ID, candidateIDs: [CleanupCandidate.ID])
@@ -261,6 +267,12 @@ extension HumanIntent {
 
         case .completeHumanTask:
             "作業の完了"
+
+        case .handOverSecret:
+            "Secrets の値"
+
+        case .readSecretsKey(let repositoryID):
+            "Secrets の公開鍵を読む（\(repositoryID)）"
 
         case .verify:
             "確かめた結果"

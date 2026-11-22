@@ -341,7 +341,7 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
 保護の設定（ルールセット）・Discussions を有効にする・ワークフローのファイルを変える PR などの管理の操作は、毎日のトークン（上の「GitHub のトークン（持ち主ごと）」）ではできない。
 毎日のトークンには Administration・Workflows を付けず、常時オンの Mac の司令塔の Keychain に、持ち主ごとの管理用のトークンを別に置く（[security.md](security.md) の「管理用のトークン」。2026-11-12 に決めた）。
 
-- 使うのは司令塔だけで、署名した人の意図を処理するときだけ（保護の設定・対象に加えるときの GitHub 側の準備・テンプレートからの新規作成）。自動では使わない
+- 使うのは司令塔だけで、署名した人の意図を処理するときだけ（保護の設定・対象に加えるときの GitHub 側の準備・テンプレートからの新規作成・Secrets の登録）。自動では使わない
 - git の credential helper（`git-credential`）・Claude のジョブ・ワーカーには渡さない。Keychain の名前（`github-admin-token/<持ち主>`）も読む部品（`GitHubAdminTokens`）も、毎日のトークンとは別にしてある
 - 管理用のトークンが無い持ち主のリポジトリへの管理の操作は、「管理用のトークンが無い（`askhub-commander admin-token <持ち主>` で入れる）」の理由で断り、クライアントに出す。毎日の仕事（依頼から最終 PR まで）は止めない
 
@@ -358,7 +358,7 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
    | Pull requests | Read and write | ワークフローの直しの PR を出す・マージする |
    | Workflows | Read and write | `.github/workflows/` のファイルを変える |
    | Discussions | Read-only | カテゴリ「Ideas」があるかを確かめる |
-   | Secrets・Environments | Read and write | Secrets の登録（後で足す。付けておけば作り直さなくてよい） |
+   | Secrets・Environments | Read and write | 人がする作業の Secrets の登録（公開鍵を読む・暗号文を入れる） |
    | Metadata | Read-only（自動で付く） | |
 
 4. 期限を決めて作り、常時オンの Mac のログインしている端末で `askhub-commander admin-token <持ち主>` を流して貼る（ssh からは Keychain を読めない）。値はほかの場所に残さない

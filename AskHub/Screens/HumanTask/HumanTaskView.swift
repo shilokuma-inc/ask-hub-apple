@@ -1,3 +1,5 @@
+import AskHubClient
+import AskHubProtocol
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -12,6 +14,10 @@ struct HumanTaskView: View {
     @State private var pickedFile: HandoverFile?
     /// 選んだファイルを渡せない理由
     @State private var pickNotice: String?
+    /// Secrets に入れる値と、入れ始めたときのゴールの版。送ったらすぐ消す（暗号化した後の暗号文だけを送る。平文は端末の外に出さない）
+    @State private var secretEntry = SecretEntry()
+    /// 値を暗号化できなかった理由
+    @State private var secretNotice: String?
 
     var body: some View {
         if let epic = store.epic(epicID), let task = epic.humanTask(taskID) {
@@ -22,6 +28,16 @@ struct HumanTaskView: View {
     }
 
     private func content(_ epic: Epic, _ task: HumanTask) -> some View {
+        taskList(epic, task)
+            // 入れている間にゴールが直されたら、Secrets の名前が変わったかもしれないので値を消す
+            .onChange(of: epic.goal?.version) { _, version in
+                if secretEntry.goalChanged(to: version) {
+                    secretNotice = "ゴールが直されたので、入れた値を消しました。作業を見直してから入れ直してください"
+                }
+            }
+    }
+
+    private func taskList(_ epic: Epic, _ task: HumanTask) -> some View {
         List {
             CardSection {
                 AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: epic.title, iconSize: 40)
@@ -135,8 +151,15 @@ struct HumanTaskView: View {
         }
     }
 
-    /// GitHub の Secrets に入れる作業。値は AskHub では受け取らず、人が GitHub の設定画面で入れてから「終わった」を押す
-    private func secretSection(_ epic: Epic, _ task: HumanTask, name: String, repository: String) -> some View {
+    /// GitHub の Secrets に入れる作業。値を貼ると、この端末でリポジトリの公開鍵で暗号化し、暗号文だけを送る（司令塔が Secrets に入れる）。
+    /// 公開鍵がまだ無ければ、司令塔に読ませる。GitHub の設定画面で自分で入れてから「終わった」を押すこともできる
+    @ViewBuilder private func secretSection(_ epic: Epic, _ task: HumanTask, name: String, repository: String) -> some View {
+        secretValueSection(epic, task, name: name, key: store.repository(epic.repositoryID)?.secretsKey)
+        manualSecretSection(epic, task, name: name, repository: repository)
+    }
+
+    /// 値を貼って、暗号化して渡す。公開鍵がまだ無ければ、司令塔に読ませる
+    private func secretValueSection(_ epic: Epic, _ task: HumanTask, name: String, key: SecretsPublicKey?) -> some View {
         CardSection {
             LabeledContent("Secrets の名前") {
                 HStack {
@@ -146,6 +169,43 @@ struct HumanTaskView: View {
                     CopyButton(value: name)
                 }
             }
+            if let key {
+                SecureField("値", text: secretValue(epic), prompt: Text("値を貼る"))
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    #endif
+                    .accessibilityIdentifier("human-task-secret-value")
+                Button("暗号化して渡す", systemImage: "lock.fill") {
+                    handOver(epic, task, key: key)
+                }
+                .disabled(secretEntry.value.isEmpty)
+                .accessibilityIdentifier("human-task-secret-send")
+            } else {
+                Button("GitHub の公開鍵を読む", systemImage: "key") {
+                    Task { await store.send(.readSecretsKey(repositoryID: epic.repositoryID)) }
+                }
+                .disabled(store.isReflecting([.repository(epic.repositoryID)]))
+                .accessibilityIdentifier("human-task-secret-read-key")
+            }
+        } header: {
+            Text("渡すもの")
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                if let secretNotice {
+                    Text(secretNotice)
+                        .foregroundStyle(Theme.danger)
+                }
+                Text(key == nil
+                    ? "値を暗号化するための GitHub の公開鍵を、司令塔が読みます（管理用のトークンを使います）。読めたら、ここに値を入れられます"
+                    : "値はこの端末で GitHub の公開鍵で暗号化し、暗号文だけを送ります。AskHub・司令塔・状態リポジトリに値は残りません")
+            }
+        }
+    }
+
+    /// 自分で GitHub の設定画面に入れてから「終わった」を押す
+    private func manualSecretSection(_ epic: Epic, _ task: HumanTask, name: String, repository: String) -> some View {
+        CardSection {
             if let url = Self.secretsSettingsURL(repository) {
                 Link(destination: url) {
                     Label("GitHub の Secrets の設定を開く", systemImage: "safari")
@@ -153,11 +213,50 @@ struct HumanTaskView: View {
             }
             completeButton(epic, task)
         } header: {
-            Text("渡すもの")
+            Text("GitHub で入れる")
         } footer: {
             let place = "GitHub の \(repository.isEmpty ? "リポジトリ" : repository) の Settings → Secrets and variables → Actions"
-            Text("\(place) で、「\(name)」に値を入れてから押してください。AskHub は値を受け取りません")
+            Text("\(place) で、「\(name)」に値を入れてから押してください")
         }
+    }
+
+    /// 入れる値。入れ始めたときのゴールの版を覚える
+    private func secretValue(_ epic: Epic) -> Binding<String> {
+        Binding {
+            secretEntry.value
+        } set: { text in
+            secretEntry.edit(text, goalVersion: epic.goal?.version)
+        }
+    }
+
+    /// 値を暗号化して送る。暗号化できたら、入れた値はすぐ消す
+    private func handOver(_ epic: Epic, _ task: HumanTask, key: SecretsPublicKey) {
+        guard Data(secretEntry.value.utf8).count <= EncryptedSecret.maximumValueLength else {
+            secretNotice = "値が大きすぎます。GitHub の Secrets には \(EncryptedSecret.maximumValueLength / 1024) KB までの値を入れられます"
+            return
+        }
+        // 入れ始めたときのゴールの版で送る（送るまでに版が変わっていれば、司令塔が断る）
+        guard let goalVersion = secretEntry.goalVersion else {
+            secretNotice = "ゴールを読めていません。取り直してから入れ直してください"
+            return
+        }
+        guard let secret = Self.encrypt(secretEntry.value, with: key) else {
+            secretNotice = "値を暗号化できませんでした。公開鍵を読み直してください"
+            return
+        }
+        secretEntry.clear()
+        secretNotice = nil
+        Task { await store.send(.handOverSecret(epicID: epic.id, taskID: task.id, goalVersion: goalVersion, secret: secret)) }
+    }
+
+    /// 値を公開鍵で暗号化した暗号文（sealed box）。鍵の形が違う・値が大きすぎるときは nil
+    static func encrypt(_ value: String, with key: SecretsPublicKey) -> EncryptedSecret? {
+        let data = Data(value.utf8)
+        guard let publicKey = key.keyData, (1...EncryptedSecret.maximumValueLength).contains(data.count),
+              let sealed = try? SealedBox.seal(data, to: publicKey) else {
+            return nil
+        }
+        return EncryptedSecret(keyId: key.keyId, encryptedValue: sealed.base64EncodedString())
     }
 
     /// リポジトリ（owner/name）の Actions の Secrets の設定画面。分からなければ nil

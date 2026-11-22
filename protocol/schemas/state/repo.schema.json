@@ -176,6 +176,22 @@
         { "type": "null" }
       ]
     },
+    "secretsKey": {
+      "description": "GitHub Actions の Secrets の公開鍵。司令塔が readSecretsKey を処理したとき（と、人がする作業の secret を入れようとして鍵が変わっていたとき）に、管理用のトークンで読んで書く。まだ読んでいなければ省くか null",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["keyId", "key", "readAt"],
+          "additionalProperties": false,
+          "properties": {
+            "keyId": { "type": "string", "pattern": "^[A-Za-z0-9]{1,100}$", "not": { "pattern": "\\n" } },
+            "key": { "type": "string", "pattern": "^[A-Za-z0-9+/]{43}=$", "description": "X25519 の公開鍵（base64 で 32 バイト）" },
+            "readAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
     "addedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
     "removedAt": {
       "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }],

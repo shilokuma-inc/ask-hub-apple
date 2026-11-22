@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/humanTaskDone.schema.json",
   "title": "人がする作業を終えた人の意図（kind が humanTaskDone）の payload",
-  "description": "封筒の target は {type: humanTask, epic, id: <作業の id>}、targetVersion は人が見たときのゴールの版。「終わった」なら空、ファイルを渡すなら attachments に 1 つ（依頼の添付と同じ形。中身は attachments/<device>/<nonce>/1）。知らない欄のある payload は読まない",
+  "description": "封筒の target は {type: humanTask, epic, id: <作業の id>}、targetVersion は人が見たときのゴールの版。「終わった」なら空、ファイルを渡すなら attachments に 1 つ（依頼の添付と同じ形。中身は attachments/<device>/<nonce>/1）。GitHub の Secrets に入れる作業は secret に暗号文（クライアントがリポジトリの公開鍵で sealed box にしたもの。平文は入れない）。attachments と secret は一緒に持たない。知らない欄のある payload は読まない",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -41,6 +41,40 @@
           }
         }
       }
+    },
+    "secret": {
+      "type": "object",
+      "required": [
+        "keyId",
+        "encryptedValue"
+      ],
+      "additionalProperties": false,
+      "description": "GitHub の Secrets に入れる値の暗号文。keyId は暗号化に使った公開鍵の id（repo.json の secretsKey.keyId）",
+      "properties": {
+        "keyId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]{1,100}$",
+          "not": {
+            "pattern": "\\n"
+          }
+        },
+        "encryptedValue": {
+          "type": "string",
+          "minLength": 68,
+          "maxLength": 65600,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+          "not": {
+            "pattern": "\\n"
+          },
+          "description": "sealed box（使い捨ての公開鍵 32 バイト ‖ タグ 16 バイト ‖ 暗号文）の base64。値は 1 バイトから 48 KB"
+        }
+      }
     }
+  },
+  "not": {
+    "required": [
+      "attachments",
+      "secret"
+    ]
   }
 }

@@ -17,7 +17,7 @@ struct StateIntentMapper {
     /// 実機確認への答えは、マージした epic の、まだ答えていない項目だけ送れる
     func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
-        case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository, .createRepository:
+        case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository, .createRepository, .readSecretsKey:
             true
 
         case .resolveBlocker, .skipTask:
@@ -30,7 +30,7 @@ struct StateIntentMapper {
              let .instructFinal(epicID, _, _):
             index.epics[epicID]?.final != nil
 
-        case let .completeHumanTask(epicID, taskID, _):
+        case let .completeHumanTask(epicID, taskID, _), let .handOverSecret(epicID, taskID, _, _):
             index.epics[epicID]?.humanTasks[taskID] != nil
 
         case .pause(let epicID):
@@ -101,8 +101,9 @@ struct StateIntentMapper {
         case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
-        case .request, .addRepository, .createRepository, .removeRepository, .configureRepository, .applyProtection, .approveSetup,
-             .cleanUp, .findCleanupCandidates, .rolloutAppKit, .stopAppKitRollout, .draftCreativeAssets, .approveCreativeAssets:
+        case .request, .addRepository, .createRepository, .readSecretsKey, .removeRepository, .configureRepository, .applyProtection,
+             .approveSetup, .cleanUp, .findCleanupCandidates, .rolloutAppKit, .stopAppKitRollout, .draftCreativeAssets,
+             .approveCreativeAssets:
             // app-kit の版は、リポジトリに属さない共通リポジトリの操作（`repositoryDraft` の中で分ける）
             return try repositoryDraft(intent)
 
@@ -112,8 +113,8 @@ struct StateIntentMapper {
         case .respondToDecision, .merge, .instructFinal:
             return try finalDraft(intent)
 
-        case let .completeHumanTask(epicID, taskID, file):
-            return try humanTaskDraft(epicID: epicID, taskID: taskID, file: file)
+        case .completeHumanTask, .handOverSecret:
+            return try humanTaskDraft(intent)
 
         case .pause, .resume, .handOver:
             return try pauseDraft(intent)
@@ -254,12 +255,47 @@ struct StateIntentMapper {
 
     /// 人がする作業を終えた。確かめたゴールの版に結びつける（その後にゴールが直されていれば、司令塔が断る）。
     /// ファイルを渡す作業はファイルが 1 つ要り、ほかの作業（Secrets に入れる作業を含む）はファイルを付けない
-    private func humanTaskDraft(epicID: Epic.ID, taskID: HumanTask.ID, file: HandoverFile?) throws(ClientServiceError) -> IntentDraft {
+    private func humanTaskDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
+        switch intent {
+        case let .completeHumanTask(epicID, taskID, file):
+            try humanTaskDraft(epicID: epicID, taskID: taskID, file: file)
+
+        case let .handOverSecret(epicID, taskID, goalVersion, secret):
+            try secretDraft(epicID: epicID, taskID: taskID, goalVersion: goalVersion, secret: secret)
+
+        default:
+            throw Self.unsupported
+        }
+    }
+
+    /// 作業を終えた意図の対象と、渡すものの種類
+    private func humanTask(_ epicID: Epic.ID, _ taskID: HumanTask.ID) throws(ClientServiceError) -> (HumanTaskTarget, HandoverKind) {
         let epic = try epic(epicID)
         guard let handover = epic.humanTasks[taskID], let version = epic.goalVersion else {
             throw ClientServiceError(message: "この作業は、いまは終えたことにできません。取り直してから送ってください")
         }
-        let target = HumanTaskTarget(repo: epic.repo, epic: epic.id, task: taskID, goalVersion: version)
+        return (HumanTaskTarget(repo: epic.repo, epic: epic.id, task: taskID, goalVersion: version), handover)
+    }
+
+    /// Secrets に入れる作業を、暗号文を渡して終える（暗号文の形は司令塔と同じ決まりで確かめる）。
+    /// 対象は、Secrets の名前を出したときのゴールの版に結びつける（今の版と違えば送らない。司令塔も断る）
+    private func secretDraft(
+        epicID: Epic.ID,
+        taskID: HumanTask.ID,
+        goalVersion: Int,
+        secret: EncryptedSecret
+    ) throws(ClientServiceError) -> IntentDraft {
+        let (current, handover) = try humanTask(epicID, taskID)
+        guard handover == .secret else { throw ClientServiceError(message: "この作業では、Secrets の値を渡しません") }
+        guard current.goalVersion == goalVersion else {
+            throw ClientServiceError(message: "ゴールが直されました。作業を見直してから、値を入れ直してください")
+        }
+        if let problem = secret.problem { throw ClientServiceError(message: "暗号化した値が決まりに合いません（\(problem)）") }
+        return .humanTaskDone(current, secret: secret)
+    }
+
+    private func humanTaskDraft(epicID: Epic.ID, taskID: HumanTask.ID, file: HandoverFile?) throws(ClientServiceError) -> IntentDraft {
+        let (target, handover) = try humanTask(epicID, taskID)
         switch (handover, file) {
         case (.file, let file?):
             return .humanTaskDone(target, file: file.attachment)

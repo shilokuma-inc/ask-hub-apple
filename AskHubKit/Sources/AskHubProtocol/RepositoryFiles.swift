@@ -172,6 +172,8 @@ public struct RepositoryFile: StateFile {
     public var setup: RepositorySetup?
     /// テンプレートから作った記録（`createRepository`）。対象に加えただけのリポジトリは nil
     public var created: Creation?
+    /// GitHub Actions の Secrets の公開鍵（`readSecretsKey` で司令塔が読む）。まだ読んでいなければ nil
+    public var secretsKey: SecretsPublicKey?
     public var addedAt: Timestamp
     /// 対象から外した時刻（`removeRepository`）。外していなければ nil。外してもファイルは消さず、加え直すと nil に戻す（設定はそのまま戻る）
     public var removedAt: Timestamp?
@@ -210,6 +212,7 @@ public struct RepositoryFile: StateFile {
         violations += protection.problems
         violations += setup?.violations ?? []
         violations += created?.problems ?? []
+        violations += secretsKey?.problems ?? []
         return violations
     }
 }

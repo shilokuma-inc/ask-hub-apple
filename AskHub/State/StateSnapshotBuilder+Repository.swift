@@ -64,6 +64,9 @@ extension StateSnapshotBuilder {
         case CreateRepositoryIntent.kind:
             "新しいアプリ（\(envelope.repo?.rawValue ?? "")）"
 
+        case ReadSecretsKeyIntent.kind:
+            "Secrets の公開鍵を読む（\(envelope.repo?.rawValue ?? "")）"
+
         case RemoveRepositoryIntent.kind:
             "対象から外す（\(envelope.repo?.rawValue ?? "")）"
 

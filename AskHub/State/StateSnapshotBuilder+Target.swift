@@ -23,8 +23,8 @@ extension StateSnapshotBuilder {
             return nil
 
         case AddRepositoryIntent.kind, CreateRepositoryIntent.kind, RemoveRepositoryIntent.kind, ConfigureRepositoryIntent.kind,
-             RegisterBundleIdIntent.kind, ApplyAppStoreSettingsIntent.kind, ConfirmAppStoreItemIntent.kind, ExcludeFromAppStoreIntent.kind,
-             DraftCreativeAssetsIntent.kind, ApproveCreativeAssetsIntent.kind:
+             ReadSecretsKeyIntent.kind, RegisterBundleIdIntent.kind, ApplyAppStoreSettingsIntent.kind, ConfirmAppStoreItemIntent.kind,
+             ExcludeFromAppStoreIntent.kind, DraftCreativeAssetsIntent.kind, ApproveCreativeAssetsIntent.kind:
             return repo.map { repositoryTarget(kind: kind, id: repository($0).id) }
 
         case SubmitForReviewIntent.kind, DistributeReleaseIntent.kind, WithdrawSubmissionIntent.kind, AbandonReleaseIntent.kind,

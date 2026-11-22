@@ -13,6 +13,8 @@ extension CommanderLoop {
         let administered: [String: any IntentHandler] = [
             "addRepository": AddRepositoryHandler(admin: admin, appKit: appKit),
             "createRepository": CreateRepositoryHandler(admin: admin, appKit: appKit),
+            "readSecretsKey": ReadSecretsKeyHandler(admin: admin),
+            "humanTaskDone": HumanTaskDoneHandler(admin: admin),
             "applyProtection": ApplyProtectionHandler(admin: admin),
             "approveSetupPullRequest": ApproveSetupPullRequestHandler(admin: admin),
             "rolloutAppKit": RolloutAppKitHandler(admin: admin, pilot: appKitPilot),
@@ -40,7 +42,6 @@ extension CommanderLoop {
         "decision": DecisionHandler(),
         "approveMerge": ApproveMergeHandler(),
         "instructFinal": InstructFinalHandler(),
-        "humanTaskDone": HumanTaskDoneHandler(),
         "verify": VerifyHandler(),
         "publishGitHubRelease": PublishGitHubReleaseHandler(),
         "updatePromotionalText": UpdatePromotionalTextHandler(),

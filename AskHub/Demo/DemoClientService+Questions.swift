@@ -1,3 +1,4 @@
+import AskHubProtocol
 import Foundation
 
 // MARK: - 人の意図を当てる（依頼から開始まで）
@@ -34,13 +35,14 @@ extension DemoClientService {
         case .reviseGoal, .decideSplit, .addRepository, .removeRepository, .configureRepository:
             applySetupIntent(intent)
 
-        case .applyProtection, .approveSetup, .createRepository, .rolloutAppKit, .stopAppKitRollout:
+        case .applyProtection, .approveSetup, .createRepository, .readSecretsKey, .rolloutAppKit, .stopAppKitRollout:
             applyAdministrationIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
             applyReviewIntent(intent)
 
-        case .resolveBlocker, .skipTask, .handOver, .pause, .resume, .discard, .completeHumanTask, .cleanUp, .findCleanupCandidates:
+        case .resolveBlocker, .skipTask, .handOver, .pause, .resume, .discard, .completeHumanTask, .handOverSecret, .cleanUp,
+             .findCleanupCandidates:
             applyOperationIntent(intent)
 
         case .publishRelease, .updatePromotionalText:
@@ -126,6 +128,11 @@ extension DemoClientService {
 
         case .createRepository(let request):
             createRepository(request)
+
+        case .readSecretsKey(let repositoryID):
+            // デモの鍵（暗号化して送っても、デモでは中身を使わない）
+            let key = SecretsPublicKey(keyId: "1", key: Data(repeating: 9, count: 32).base64EncodedString(), readAt: Timestamp(now()))
+            updateRepository(repositoryID) { $0.secretsKey = key }
 
         case .rolloutAppKit, .stopAppKitRollout:
             applyAppKitIntent(intent)
