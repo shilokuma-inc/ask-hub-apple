@@ -313,6 +313,9 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
       "state": "pending"
     }
   ],
+  "outsideRequests": [
+    { "repo": "owner/other-repo", "title": "…", "body": "…" }
+  ],
   "notApplied": [ "…" ],
   "comment": "DC_kwDO…"
 }
@@ -325,6 +328,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   - 人がタスクを飛ばしたら（`skipTask`）、司令塔が `running` → `skipped` にし、`skip` に `{ "reason": "handledElsewhere" | "notNeeded", "note": "…" | null, "intent": { "keyId", "nonce" }, "at": "…", "pullRequest": <子 PR> | null }` を書く。`skip` は `skipped` のタスクだけが持つ。`skipped` のタスクは、依存するタスクを始めるときと最終 PR の段取りに進むときに、`done` と同じく済んだものとして扱う（2026-11-22 のユーザーの決定）
 - 人がする作業の `handover` は、終わったら渡すもの: `none`（「終わった」を押すだけ）・`file`（ファイルを渡す）・`secret`（GitHub の Secrets に入れる。`name` に Secrets の名前。値はどこにも残さない）。段階 3 では `none` と `file` を作り、`secret` は段階 4 の 4 で作る（値はクライアントが GitHub の公開鍵で暗号化し、暗号文だけを意図に入れる。[flows.md](flows.md) の「人がする作業」）
 - 人がする作業を終えたら、司令塔が `state` を `done` にし、`done` に `{ "intent": { "keyId", "nonce" }, "at": "…", "file": <依頼の添付と同じ形の参照> | null }` を書く。人が読むゴールの中身は変えないので、`version` は上げない
+- `outsideRequests` は、別のリポジトリへの依頼の案（無ければ書かない）。ワーカーは対象のリポジトリの作業場所だけで動くので、外の作業はタスクにせず、マージの前に済んでいないといけないものは人がする作業に、そうでなければここに書く（2026-11-22 のユーザーの決定）。`repo` は依頼先（対象のリポジトリ自身は書かない）、`body` はそのリポジトリへの依頼としてそのまま送れる文。epic は待たない。クライアントは、対象のリポジトリなら案から依頼の下書きを出す
 - `comment` は、Discussion のゴールの写しのコメントの id
 
 ### decisions.json（人が決めていない判断）
