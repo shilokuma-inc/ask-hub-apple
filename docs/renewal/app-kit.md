@@ -288,6 +288,6 @@ app-kit/
 
 - XcodeGen への移行（段階 5 の 7）。app-kit は `generate` で XcodeGen のリポジトリも扱えるようにしておき、テンプレートを XcodeGen にするかは段階 5 の 7 で決める
 - 複数のアプリで同じ Swift のコードを持つようになったときの Swift Package（上の「置かないもの」）
-- クリエイティブ素材のワークフロー。司令塔でプロダクトページのヘッダー・検索結果の素材を作れるようになったら、各リポジトリから外す（[release.md](release.md) の「プロダクトページのヘッダーと検索結果の素材」）
+- クリエイティブ素材のワークフロー。司令塔でプロダクトページのヘッダー・検索結果の素材を作れるようになったら、各リポジトリから外す（[release.md](release.md) の「プロダクトページのヘッダーと検索結果の素材」）。作り方の設計は [creative-assets.md](creative-assets.md)（#1235）
 - Upload の鍵を Environment の Secrets に移すこと（#1067）。移すときは、app-kit の `app-archive.yml` の `environment` と、呼ぶ側の Secrets の渡し方を一緒に変える（major を上げる）
 - Android のリポジトリ（段階 6）。同じ形（再利用ワークフロー・写すファイル・版を広げる）で、別の再利用ワークフローを足す見込み
