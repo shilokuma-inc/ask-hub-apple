@@ -2,7 +2,7 @@
 import AskHubPullRequests
 import Foundation
 
-/// GitHub Actions の実行の読み取りと、PR の閉じる・開き直す（`FakePullRequests` の続き）
+/// GitHub Actions の実行の読み取りと、PR の閉じる・開き直す・コメント（`FakePullRequests` の続き）
 extension FakePullRequests {
     func workflowRuns(at sha: String) async throws(PullRequestError) -> [WorkflowRun] {
         update { state in
@@ -23,6 +23,15 @@ extension FakePullRequests {
             state.stateChanges.append((number, newState))
             state.pulls[number]?.state = newState
             return lost.map { .failure($0.error) } ?? .success(())
+        }
+        try result.get()
+    }
+
+    func comment(number: Int, body: String) async throws(PullRequestError) {
+        let result = update { state -> Result<Void, PullRequestError> in
+            if !state.commentFailures.isEmpty { return .failure(state.commentFailures.removeFirst()) }
+            state.comments.append((number, body))
+            return .success(())
         }
         try result.get()
     }

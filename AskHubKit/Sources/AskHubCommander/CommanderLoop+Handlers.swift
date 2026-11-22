@@ -23,6 +23,7 @@ extension CommanderLoop {
         "removeRepository": RemoveRepositoryHandler(),
         "retry": RetryJobHandler(),
         "giveUp": GiveUpJobHandler(),
+        "skipTask": SkipTaskHandler(),
         "decision": DecisionHandler(),
         "approveMerge": ApproveMergeHandler(),
         "instructFinal": InstructFinalHandler(),

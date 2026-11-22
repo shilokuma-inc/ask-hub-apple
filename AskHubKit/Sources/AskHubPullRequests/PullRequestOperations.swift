@@ -22,6 +22,8 @@ public protocol PullRequestOperations: Sendable {
     func jobCount(runID: Int) async throws(PullRequestError) -> Int
     /// PR を閉じる・開き直す
     func setState(number: Int, to state: PullRequest.State) async throws(PullRequestError)
+    /// PR にコメントを書く
+    func comment(number: Int, body: String) async throws(PullRequestError)
     /// 信用する書き手の、未解決の行コメントのスレッドとレビューの本文を読む
     func reviewFeedback(number: Int, trusted: TrustedAuthors) async throws(PullRequestError) -> ReviewFeedback
     /// merge commit でマージする。`headSHA` と今の head が違えば断る
