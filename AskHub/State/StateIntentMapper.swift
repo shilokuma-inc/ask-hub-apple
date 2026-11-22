@@ -45,9 +45,9 @@ struct StateIntentMapper {
         case .publishRelease, .updatePromotionalText, .verify:
             supportsAfterMerge(intent)
 
-        case .removeRepository, .configureRepository, .cleanUp, .findCleanupCandidates, .startRelease, .submitForReview, .distributeRelease,
-             .withdrawSubmission, .abandonRelease, .retakeScreenshots, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem,
-             .excludeFromAppStore:
+        case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp, .findCleanupCandidates, .startRelease,
+             .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots, .registerBundleId,
+             .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
             // リリースと App Store の準備の操作も、リポジトリに属する操作として判定する（`supportsSubmissionIntent`・`supportsAppStoreSetupIntent`）。
             // 片付けは Mac ごと（`supportsRepositoryIntent` の中で分ける）
             supportsRepositoryIntent(intent)
@@ -97,7 +97,8 @@ struct StateIntentMapper {
         case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
-        case .request, .addRepository, .removeRepository, .configureRepository, .cleanUp, .findCleanupCandidates:
+        case .request, .addRepository, .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp,
+             .findCleanupCandidates:
             return try repositoryDraft(intent)
 
         case .resolveBlocker, .skipTask:
