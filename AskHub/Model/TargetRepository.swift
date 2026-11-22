@@ -21,6 +21,8 @@ struct TargetRepository: Identifiable, Hashable {
     var protection: RepositoryProtection?
     /// 対象に加えるときの GitHub 側の準備の様子。まだ流していなければ nil
     var setup: RepositorySetupStatus?
+    /// app-kit の版と、広げている版の PR。`app-kit.json` が無い（司令塔がまだ書いていない）なら nil
+    var appKit: RepositoryAppKit?
 
     var fullName: String { "\(owner)/\(name)" }
 

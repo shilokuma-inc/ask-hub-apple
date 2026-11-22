@@ -24,6 +24,8 @@ struct ClientSnapshot: Hashable {
     var submissions: [Submission] = []
     /// 新しいアプリを App Store に載せる準備（リポジトリの順）
     var appStoreSetups: [AppStoreSetup] = []
+    /// 共通リポジトリ app-kit の様子（`app-kit.json`）。司令塔がまだ書いていなければ nil
+    var appKit: AppKitOverview?
 }
 
 /// 送った人の意図の処理の結果
