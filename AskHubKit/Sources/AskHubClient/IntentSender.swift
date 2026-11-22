@@ -224,6 +224,19 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: AbandonReleaseIntent.kind, repo: target.repo, target: target.target)
     }
 
+    /// リジェクトの理由を貼る（審査の文と画面の画像）。画像は参照だけを書き、中身は `IntentSender.send(_:attachments:)` で意図より先に置く
+    public static func reportRejection(_ target: SubmissionTarget, text: String, attachments: [RequestAttachment] = []) -> Self {
+        var payload: [String: JSONValue] = [:]
+        if !text.isEmpty { payload["text"] = .string(text) }
+        if !attachments.isEmpty { payload["attachments"] = .array(attachments.map(\.jsonValue)) }
+        return Self(kind: ReportRejectionIntent.kind, repo: target.repo, target: target.target, payload: payload)
+    }
+
+    /// リジェクトの直し方を選ぶ（コードを直すなら、「このリリースを直す」依頼を別に送る）
+    public static func resolveRejection(_ target: SubmissionTarget, remedy: SubmissionFile.RejectionRemedy) -> Self {
+        Self(kind: ResolveRejectionIntent.kind, repo: target.repo, target: target.target, payload: ["remedy": .string(remedy.rawValue)])
+    }
+
     /// epic を取り下げる（開始した後なら、開いている子 PR と最終 PR を閉じる。ブランチは残す。マージした epic は取り下げられない）
     public static func abandonEpic(repo: RepositoryFullName, epic: ULID) -> Self {
         Self(kind: AbandonEpicIntent.kind, repo: repo, target: .init(type: EpicTarget.targetType, epic: epic))

@@ -374,3 +374,10 @@ final class FakeAppStore: AppStoreConnecting {
         }
     }
 }
+
+extension FakeAppStore {
+    func resolveRejectedItems(of submissionID: String) async throws(AppStoreConnectError) -> Int {
+        try write("resolveRejectedItems \(submissionID)")
+        return 1
+    }
+}

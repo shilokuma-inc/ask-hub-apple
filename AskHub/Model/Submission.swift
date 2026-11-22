@@ -49,6 +49,16 @@ struct Submission: Identifiable, Hashable {
     var canRetakeScreenshots = false
     /// 審査に出すのを受け付けて、司令塔が App Store Connect に出し終えていない
     var isSubmitting = false
+    /// 審査で断られたときの対処（いちばん新しいもの）。断られていなければ nil
+    var rejection: Rejection?
+    /// 人がリジェクトの理由を貼るのを待っている
+    var awaitsRejectionReport = false
+    /// リジェクトの理由を貼れる（直し方を選ぶ前なら貼り直せる）
+    var canReportRejection = false
+    /// 人がリジェクトの直し方を選ぶのを待っている
+    var awaitsRejectionChoice = false
+    /// コードを直すを選び、直した後に上げたビルドを待っている
+    var awaitsFixedBuild = false
     /// この端末から送り、司令塔がまだ処理していない操作
     var sending: Action?
     /// この端末から送った操作を、司令塔が最後に断った理由
@@ -243,6 +253,8 @@ struct Submission: Identifiable, Hashable {
         case withdraw
         case abandon
         case retake
+        case reportRejection
+        case resolveRejection
 
         var label: String {
             switch self {
@@ -252,6 +264,8 @@ struct Submission: Identifiable, Hashable {
             case .withdraw: "審査の取り下げ"
             case .abandon: "やめる"
             case .retake: "スクショの撮り直し"
+            case .reportRejection: "リジェクトの理由"
+            case .resolveRejection: "リジェクトの直し方"
             }
         }
     }
@@ -261,7 +275,7 @@ struct Submission: Identifiable, Hashable {
 
     var isEnded: Bool { end != nil }
 
-    /// 審査で断られたプラットフォームがある（対処は App Store Connect で理由を確かめてから。段階 5 の 4 で AskHub から直せるようにする）
+    /// 審査で断られたプラットフォームがある（理由を貼ると、Claude が直し方の案を書く）
     var isRejected: Bool { review.contains { $0.state == .rejected } }
 
     /// 例: iOS (45)・macOS (46)

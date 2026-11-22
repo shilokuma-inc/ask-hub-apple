@@ -126,6 +126,11 @@ struct AppStoreSubmission: Sendable {
         if let sent = submissions.first(where: { $0.versionID == target.id && ($0.state == .waitingForReview || $0.state == .inReview) }) {
             return sent.state == .inReview ? .inReview : .waitingForReview
         }
+        // 断られた版を直して出し直す（断られたままの提出に、この版が入っている）
+        if let unresolved = submissions.first(where: { $0.state == .unresolvedIssues && $0.versionID == target.id }) {
+            try await resubmit(unresolved)
+            return .waitingForReview
+        }
         if submissions.contains(where: { $0.state == .unresolvedIssues }) {
             throw ReleaseStepProblem("\(platform.rawValue) に、審査で断られたままの提出が残っている。App Store Connect で確かめる", needsHuman: true)
         }
@@ -145,6 +150,27 @@ struct AppStoreSubmission: Sendable {
         }
         try await call { () throws(AppStoreConnectError) in try await store.submitReviewSubmission(draft.id) }
         return .waitingForReview
+    }
+
+    /// 断られたままの提出（`UNRESOLVED_ISSUES`）を出し直す。出し直しの手順は文書に無いので、断られた項目を直したことにしてから
+    /// 同じ提出を出す（`submitted: true`）。断られたら、人が App Store Connect で出し直す（出し直せば、次の見回りで審査を待っているとして読む）
+    private func resubmit(_ submission: AppStoreReviewSubmission) async throws {
+        var note = ""
+        do {
+            _ = try await call { () throws(AppStoreConnectError) in try await store.resolveRejectedItems(of: submission.id) }
+        } catch let problem as ReleaseStepProblem {
+            // 項目を直したことにできなくても、出してみる（出せればよい）
+            note = "。断られた項目を直したことにもできなかった（\(problem.message)）"
+        }
+        do {
+            try await call { () throws(AppStoreConnectError) in try await store.submitReviewSubmission(submission.id) }
+        } catch let problem as ReleaseStepProblem {
+            throw ReleaseStepProblem(
+                "断られた提出を出し直せない（\(problem.message)\(note)）。App Store Connect の審査の提出で「審査に出し直す」を押す"
+                    + "（押せば、次の見回りで審査を待っているとして読む）",
+                needsHuman: problem.needsHuman
+            )
+        }
     }
 
     func call<Value>(_ body: () async throws(AppStoreConnectError) -> Value) async throws -> Value {

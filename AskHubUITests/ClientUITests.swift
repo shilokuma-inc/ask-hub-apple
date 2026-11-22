@@ -37,9 +37,9 @@ final class ClientUITests: XCTestCase {
     @MainActor
     func testInboxShowsBlockingItems() {
         let app = launch(["-demoScenario", "standard"])
-        // 標準のデモの急ぎは 10 件（配信した版のリリース文の確認と、リリースを始めた版の審査に出すと、App Store Connect でアプリを作ると、
-        // 初めての版の App Store の準備を終えるを含む）
-        XCTAssertTrue(app.staticTexts["進行が止まっています · 10"].waitForExistence(timeout: 10))
+        // 標準のデモの急ぎは 11 件（配信した版のリリース文の確認と、リリースを始めた版の審査に出すと、リジェクトの直し方を選ぶと、
+        // App Store Connect でアプリを作ると、初めての版の App Store の準備を終えるを含む）
+        XCTAssertTrue(app.staticTexts["進行が止まっています · 11"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["まとめて判断する"].exists)
         // 出番があるときは、空の画面の「新しい依頼を出す」を出さない
         XCTAssertFalse(app.buttons["新しい依頼を出す"].exists)

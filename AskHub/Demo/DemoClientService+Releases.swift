@@ -78,6 +78,19 @@ extension DemoClientService {
                 submission.awaitsSubmission = false
             }
 
+        case let .reportRejection(repositoryID, version, text, images):
+            reportRejection(Submission.id(repositoryID, version), text: text, imageCount: images.count)
+
+        case let .resolveRejection(repositoryID, version, remedy):
+            updateSoon(Submission.id(repositoryID, version), sending: .resolveRejection) { submission in
+                submission.rejection?.choice = remedy
+                submission.awaitsRejectionChoice = false
+                submission.canReportRejection = false
+                submission.submitted = nil
+                submission.awaitsFixedBuild = remedy == .code
+                submission.awaitsSubmission = remedy != .code
+            }
+
         case let .retakeScreenshots(repositoryID, version, _, _):
             updateSoon(Submission.id(repositoryID, version), sending: .retake) { submission in
                 submission.screenshots?.state = .capturing
@@ -127,6 +140,26 @@ extension DemoClientService {
     }
 
     /// 送った印を付け、司令塔が受け付けたら印を外して `change` を当てる
+    /// リジェクトの理由を受け付け、少し後に Claude の直し方の案ができたことにする（デモの決まった案）
+    private func reportRejection(_ id: Submission.ID, text: String, imageCount: Int) {
+        let now = Date()
+        updateSoon(id, sending: .reportRejection) { submission in
+            submission.rejection = Submission.Rejection(
+                platforms: submission.review.filter { $0.state == .rejected }.map(\.platform),
+                text: text,
+                images: (0..<imageCount).map { .init(path: "demo/rejection/\($0 + 1)", name: "審査の文 \($0 + 1).png") },
+                reportedAt: now
+            )
+            submission.awaitsRejectionReport = false
+        }
+        schedule(after: 2) { snapshot in
+            snapshot.updateSubmission(id) { submission in
+                submission.rejection?.triage = DemoData.rejectionTriage
+                submission.awaitsRejectionChoice = true
+            }
+        }
+    }
+
     private func updateSoon(_ id: Submission.ID, sending: Submission.Action, _ change: @escaping (inout Submission) -> Void) {
         state.updateSubmission(id) { $0.sending = sending }
         schedule { snapshot in

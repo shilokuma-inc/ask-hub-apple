@@ -84,6 +84,10 @@ struct StateIndex {
         var canWithdraw: Bool
         var canAbandon: Bool
         var canRetakeScreenshots: Bool
+        /// リジェクトの理由を貼れる
+        var canReportRejection = false
+        /// リジェクトの直し方を選べる
+        var canResolveRejection = false
     }
 
     /// 実機確認への答え（`verify`）と、「問題あり」で一緒に送る依頼の材料

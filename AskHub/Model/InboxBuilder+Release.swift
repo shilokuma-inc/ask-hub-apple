@@ -47,6 +47,27 @@ extension InboxBuilder {
     }
 
     /// リリースを始めた版の人の番（司令塔が通知するものと同じ: 審査に出す・配信する・人が直す準備）と、リジェクトの知らせ
+    /// 審査で断られた版の人の番: 理由を貼る（AskHub で出した版）・直し方を選ぶ。手で出した版は App Store Connect で確かめるだけ。
+    /// 理由を貼った後、Claude が案を書いている間と、直し方を選んだ後は出さない
+    private static func rejectionItems(
+        _ submission: Submission,
+        rejected: Submission.Review,
+        item: (InboxItem.Kind, String, String, String, Date) -> InboxItem
+    ) -> [InboxItem] {
+        if submission.awaitsRejectionChoice, let rejection = submission.rejection {
+            let detail = rejection.triage.map { "\($0.summary)（勧める直し方: \($0.remedy.label)）" }
+                ?? "直し方の案を書けませんでした。理由を読んで、直し方を選んでください"
+            return [item(.submissionRejected, "rejection-choice", "リジェクトの直し方を選ぶ", detail, rejection.reportedAt)]
+        }
+        if submission.awaitsRejectionReport {
+            let detail = "\(rejected.platform) が審査で断られました。App Store Connect で理由を見て、AskHub に貼ってください。直し方の案を書きます"
+            return [item(.submissionRejected, "rejected", "審査で断られました", detail, rejected.since)]
+        }
+        guard !submission.startedInAskHub else { return [] }
+        let detail = "\(rejected.platform) が審査で断られました。App Store Connect で理由を確かめてください"
+        return [item(.submissionRejected, "rejected", "審査で断られました", detail, rejected.since)]
+    }
+
     static func submissionItems(_ submission: Submission, snapshot: ClientSnapshot) -> [InboxItem] {
         // 配信した後は、release ブランチの取り込みで人が直す問題だけ出す
         let integrationOnly = submission.end == .distributed
@@ -88,8 +109,7 @@ extension InboxBuilder {
             items.append(item(.submissionDistribution, "distribute", title: "配信する", detail: detail, since: since))
         }
         if let rejected = submission.review.first(where: { $0.state == .rejected }) {
-            let detail = "\(rejected.platform) が審査で断られました。App Store Connect で理由を確かめてください"
-            items.append(item(.submissionRejected, "rejected", title: "審査で断られました", detail: detail, since: rejected.since))
+            items += rejectionItems(submission, rejected: rejected) { item($0, $1, title: $2, detail: $3, since: $4) }
         }
         if let problem = submission.problem, problem.needsHuman {
             let title = "リリースを直す: \(problem.step.label)"

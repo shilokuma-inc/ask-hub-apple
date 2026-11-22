@@ -9,6 +9,8 @@ struct RequestDraft: Identifiable, Hashable {
     var body: String
     /// 直すリリースの版（「このリリースを直す」依頼）。依頼先は変えられない
     var release: String?
+    /// 最初から付ける添付（リジェクトの理由に貼った画像など）
+    var attachments: [AttachmentFile] = []
 }
 
 /// 依頼の画面で送るもの
@@ -53,6 +55,7 @@ struct NewRequestSheet: View {
         _summary = State(initialValue: draft?.summary ?? "")
         _requestBody = State(initialValue: draft?.body ?? "")
         release = draft?.release
+        _attachments = State(initialValue: draft?.attachments ?? [])
     }
 
     private var canSend: Bool {

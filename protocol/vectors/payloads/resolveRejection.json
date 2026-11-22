@@ -1,0 +1,53 @@
+{
+  "description": "リジェクトの直し方を選ぶ人の意図の payload の例。read は、封筒の target が正しいときに、読む側が直し方として読めるか",
+  "schema": "payloads/resolveRejection.schema.json",
+  "cases": [
+    {
+      "name": "code",
+      "payload": {
+        "remedy": "code"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "metadata",
+      "payload": {
+        "remedy": "metadata"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "reply",
+      "payload": {
+        "remedy": "reply"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "missing-remedy",
+      "payload": {},
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-remedy",
+      "payload": {
+        "remedy": "withdraw"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "remedy": "reply",
+        "note": "…"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

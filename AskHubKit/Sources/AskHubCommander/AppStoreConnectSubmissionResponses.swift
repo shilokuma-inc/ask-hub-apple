@@ -73,6 +73,20 @@ struct AppStoreConnectReviewDetailResponse: Decodable {
     var data: Item?
 }
 
+/// 提出の項目（`GET /v1/reviewSubmissions/{id}/items`）
+struct AppStoreConnectSubmissionItemsResponse: Decodable {
+    struct Attributes: Decodable {
+        var state: String?
+    }
+
+    struct Item: Decodable {
+        var id: String
+        var attributes: Attributes?
+    }
+
+    var data: [Item]
+}
+
 struct AppStoreConnectSubmissionsResponse: Decodable {
     struct Attributes: Decodable {
         var platform: String?

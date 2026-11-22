@@ -59,6 +59,10 @@ enum HumanIntent: Hashable {
     case abandonRelease(repositoryID: TargetRepository.ID, version: String)
     /// スクショを撮り直す（`displayTypes`・`locales` が空なら、すべての組）
     case retakeScreenshots(repositoryID: TargetRepository.ID, version: String, displayTypes: [String], locales: [String])
+    /// リジェクトの理由を貼る（審査の文と画面の画像）。画像の中身は、意図より先に状態リポジトリに置く
+    case reportRejection(repositoryID: TargetRepository.ID, version: String, text: String, images: [RequestFile] = [])
+    /// リジェクトの直し方を選ぶ（コードを直すなら、「このリリースを直す」依頼を別に送る）
+    case resolveRejection(repositoryID: TargetRepository.ID, version: String, remedy: Submission.Remedy)
     /// 対象から外す（終わっていない epic があれば司令塔が断る。状態リポジトリのファイルと GitHub のリポジトリは消さない）
     case removeRepository(repositoryID: TargetRepository.ID)
     /// ビルドの設定を入れる（`json` は `repo.json` の `build` と同じ形。送るたびにまるごと置き換える）
@@ -169,6 +173,12 @@ extension HumanIntent {
 
         case let .retakeScreenshots(_, version, _, _):
             "スクショの撮り直し（\(version)）"
+
+        case let .reportRejection(_, version, _, _):
+            "リジェクトの理由（\(version)）"
+
+        case let .resolveRejection(_, version, remedy):
+            "リジェクトの直し方: \(remedy.label)（\(version)）"
 
         case .removeRepository(let repositoryID):
             "対象から外す（\(repositoryID)）"

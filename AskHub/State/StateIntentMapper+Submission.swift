@@ -29,6 +29,12 @@ extension StateIntentMapper {
         case let .retakeScreenshots(repositoryID, version, _, _):
             return index.submissions[Submission.id(repositoryID, version)]?.canRetakeScreenshots == true
 
+        case let .reportRejection(repositoryID, version, _, _):
+            return index.submissions[Submission.id(repositoryID, version)]?.canReportRejection == true
+
+        case let .resolveRejection(repositoryID, version, _):
+            return index.submissions[Submission.id(repositoryID, version)]?.canResolveRejection == true
+
         default:
             return false
         }
@@ -74,11 +80,40 @@ extension StateIntentMapper {
             let entry = try entry(repositoryID, version, \.canAbandon, unavailable: "このリリースは、いまはやめられません（審査中か、審査に通っています）")
             return .abandonRelease(entry.target)
 
+        case .retakeScreenshots, .reportRejection, .resolveRejection:
+            return try followUpDraft(intent)
+
+        default:
+            throw Self.unsupported
+        }
+    }
+
+    /// 準備の後の操作: スクショを撮り直す・リジェクトの理由を貼る・直し方を選ぶ
+    private func followUpDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
+        switch intent {
         case let .retakeScreenshots(repositoryID, version, displayTypes, locales):
             let entry = try entry(
                 repositoryID, version, \.canRetakeScreenshots, unavailable: "この版は、いまはスクショを撮り直せません（審査に出した後か、撮っている途中）"
             )
             return .retakeScreenshots(entry.target, displayTypes: displayTypes, locales: locales)
+
+        case let .reportRejection(repositoryID, version, text, images):
+            let entry = try entry(repositoryID, version, \.canReportRejection, unavailable: "この版には、いまはリジェクトの理由を貼れません（直し方をもう選んだ）")
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty || !images.isEmpty else { throw ClientServiceError(message: "審査の文か、画面の画像を貼ってください") }
+            guard trimmed.unicodeScalars.count <= ReportRejectionIntent.maximumTextLength else {
+                throw ClientServiceError(message: "審査の文は \(ReportRejectionIntent.maximumTextLength) 文字までにしてください")
+            }
+            // 司令塔は 1 から順の番号を求める（添付欄の順に振ったものを、そのまま送る）
+            let numbered = images.enumerated().allSatisfy { $1.attachment.number == $0 + 1 }
+            guard images.count <= RequestIntent.maximumAttachments, numbered else {
+                throw ClientServiceError(message: "画像の番号が合いません。貼り直してください")
+            }
+            return .reportRejection(entry.target, text: trimmed, attachments: images.map(\.attachment))
+
+        case let .resolveRejection(repositoryID, version, remedy):
+            let entry = try entry(repositoryID, version, \.canResolveRejection, unavailable: "この版は、いまはリジェクトの直し方を選べません")
+            return .resolveRejection(entry.target, remedy: SubmissionFile.RejectionRemedy(rawValue: remedy.rawValue) ?? .code)
 
         default:
             throw Self.unsupported

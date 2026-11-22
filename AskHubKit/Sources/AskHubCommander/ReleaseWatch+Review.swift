@@ -241,10 +241,12 @@ extension Blocker {
             return [Blocker(key: "\(base)/distributed", scope: scope, reason: .submissionDistributed)]
         }
         return submission.review.filter { ReleaseWatch.noticeStates.contains($0.state) }.map { review in
-            Blocker(
+            // AskHub で出した版が断られたら、理由を貼るよう知らせる（貼ると直し方の案を書く）
+            let reportable = review.state.isRejected && submission.origin == .askhub && submission.canReportRejection
+            return Blocker(
                 key: "\(base)/review/\(review.platform.rawValue)/\(review.state.rawValue)/\(review.since.rawValue)",
                 scope: scope,
-                reason: .reviewState(review.platform, review.state)
+                reason: reportable ? .rejected(review.platform) : .reviewState(review.platform, review.state)
             )
         }
     }

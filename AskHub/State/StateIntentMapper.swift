@@ -46,8 +46,8 @@ struct StateIntentMapper {
             supportsAfterMerge(intent)
 
         case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp, .findCleanupCandidates, .startRelease,
-             .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots, .registerBundleId,
-             .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
+             .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots, .reportRejection,
+             .resolveRejection, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
             // リリースと App Store の準備の操作も、リポジトリに属する操作として判定する（`supportsSubmissionIntent`・`supportsAppStoreSetupIntent`）。
             // 片付けは Mac ごと（`supportsRepositoryIntent` の中で分ける）
             supportsRepositoryIntent(intent)
@@ -62,6 +62,9 @@ struct StateIntentMapper {
 
         case let .completeHumanTask(_, _, file?):
             [file.data]
+
+        case let .reportRejection(_, _, _, images):
+            images.map(\.data)
 
         default:
             []
@@ -117,7 +120,7 @@ struct StateIntentMapper {
             return try releaseDraft(intent)
 
         case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots,
-             .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
+             .reportRejection, .resolveRejection, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
             return try releaseFlowDraft(intent)
 
         case .acceptAllDecisions, .verify:
