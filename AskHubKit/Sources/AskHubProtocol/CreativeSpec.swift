@@ -43,10 +43,13 @@ public struct CreativeProblem: Codable, Hashable, Sendable {
         self.message = message
     }
 
+    /// 記録に書ける形か（app-kit の `report.json` から写すときに確かめる）
+    public var isWellFormed: Bool { problems.isEmpty }
+
     var problems: [String] {
         var problems: [String] = []
         if code.wholeMatch(of: #/[a-z][a-z0-9-]{0,39}/#) == nil { problems.append("問題の code の形が違う") }
-        if message.isEmpty || message.count > 500 { problems.append("問題の message は 1〜500 文字") }
+        if message.isEmpty || message.unicodeScalars.count > 500 { problems.append("問題の message は 1〜500 文字") }
         return problems
     }
 }
@@ -147,8 +150,10 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
     public static let limits: [String: Int] = [
         "appName": 30, "header.title": 60, "header.subtitle": 90, "search.title": 60, "search.chips": 30
     ]
-    /// 1 つの文言に入れられる改行の数
-    public static let newlineLimit = 2
+    /// 文言に入れられる改行の数（見出しと一文は 2 行・検索結果の見出しは 3 行まで。アプリ名とチップは 1 行）
+    public static let newlineLimits: [String: Int] = [
+        "appName": 0, "header.title": 1, "header.subtitle": 1, "search.title": 2, "search.chips": 0
+    ]
 
     /// 形の版（JSON では `v`）
     public var version: Int
@@ -190,31 +195,41 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
             if !Self.isFolder(localization.screenshots) { problems.append("\(code) の screenshots の形が違う") }
             if let chips = localization.search.chips, chips.count > 3 { problems.append("\(code) の search.chips は 3 つまで") }
             for field in Self.texts(of: localization) {
-                problems += Self.textProblems(field.text, name: "\(code).\(field.name)", allowEmpty: field.allowEmpty)
+                problems += Self.textProblems(
+                    field.text, name: "\(code).\(field.name)", allowEmpty: field.allowEmpty, emphasis: field.name != "appName"
+                )
             }
         }
         return problems
     }
 
     /// 書き出しは止めない問題（Apple の決まりに合わない文言・低いコントラスト）。app-kit の `report.json` の `problems` と同じ code
-    public var cautions: [CreativeProblem] {
+    public var cautions: [CreativeProblem] { cautions(checkingAppName: true) }
+
+    /// 書き出しは止めない問題。`checkingAppName` が false なら、アプリ名の文言は確かめない（App Store Connect の名前で、案では変えられない）
+    public func cautions(checkingAppName: Bool) -> [CreativeProblem] {
         var cautions: [CreativeProblem] = []
         for localization in locales {
-            for field in Self.texts(of: localization) {
-                for rule in Self.forbidden where rule.matches(field.text) {
+            for field in Self.texts(of: localization) where checkingAppName || field.name != "appName" {
+                // 強調の * は画像に出ないので、除いた文字で確かめる（アプリ名は * をそのまま描く）
+                let shown = field.name == "appName" ? field.text : field.text.replacing("*", with: "")
+                for rule in Self.forbidden where rule.matches(shown) {
                     let message = "\(localization.locale).\(field.name) に\(rule.what)らしい文字があります（App Store の決まりで入れられません）"
                     cautions.append(.init(code: rule.code, message: message))
                 }
             }
         }
+        let highlight = colors.highlight ?? colors.accent
         for background in Set([colors.background, colors.background2 ?? colors.background]).sorted() {
-            guard Self.isColor(colors.text), Self.isColor(background) else { continue }
-            let ratio = Self.contrast(colors.text, background)
-            if ratio < 4.5 {
-                cautions.append(.init(
-                    code: "low-contrast",
-                    message: "文字の色と背景の色 \(background) のコントラストが \(String(format: "%.1f", ratio)) で、4.5 より低いです"
-                ))
+            for (name, color) in [("文字", colors.text), ("強調とアプリ名", highlight)] {
+                guard Self.isColor(color), Self.isColor(background) else { continue }
+                let ratio = Self.contrast(color, background)
+                if ratio < 4.5 {
+                    let value = String(format: "%.1f", ratio)
+                    cautions.append(.init(
+                        code: "low-contrast", message: "\(name)の色 \(color) と背景の色 \(background) のコントラストが \(value) で、4.5 より低いです"
+                    ))
+                }
             }
         }
         return cautions
@@ -233,8 +248,8 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
     // MARK: - 決まり
 
     public static func isColor(_ text: String) -> Bool { text.wholeMatch(of: #/#[0-9A-Fa-f]{6}/#) != nil }
-    static func isScreen(_ text: String) -> Bool { text.wholeMatch(of: #/[A-Za-z0-9_-]{1,64}/#) != nil }
-    static func isFolder(_ text: String) -> Bool { text.wholeMatch(of: #/[A-Za-z0-9_-]{1,20}/#) != nil }
+    public static func isScreen(_ text: String) -> Bool { text.wholeMatch(of: #/[A-Za-z0-9_-]{1,64}/#) != nil }
+    public static func isFolder(_ text: String) -> Bool { text.wholeMatch(of: #/[A-Za-z0-9_-]{1,20}/#) != nil }
 
     /// 言語の 1 つの文言
     struct TextField {
@@ -257,16 +272,17 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
         return texts
     }
 
-    static func textProblems(_ text: String, name: String, allowEmpty: Bool) -> [String] {
+    static func textProblems(_ text: String, name: String, allowEmpty: Bool, emphasis: Bool = true) -> [String] {
         let limitName = name.split(separator: ".", maxSplits: 1).last.map { String($0).replacing(#/\[\d+\]/#, with: "") } ?? name
         let limit = limits[limitName] ?? 30
+        let newlines = newlineLimits[limitName] ?? 0
         var problems: [String] = []
-        if !allowEmpty, text.trimmingCharacters(in: .whitespaces).isEmpty { problems.append("\(name) が空") }
+        if !allowEmpty, text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { problems.append("\(name) が空") }
         if text.unicodeScalars.count > limit { problems.append("\(name) は \(limit) 文字まで") }
         let control = text.unicodeScalars.contains { ($0.value < 0x20 && $0 != "\n") || $0.value == 0x7F }
         if control { problems.append("\(name) に制御文字がある") }
-        if text.filter({ $0 == "\n" }).count > newlineLimit { problems.append("\(name) の改行は \(newlineLimit) つまで") }
-        if !text.filter({ $0 == "*" }).count.isMultiple(of: 2) { problems.append("\(name) の強調の * が閉じていない") }
+        if text.filter({ $0 == "\n" }).count > newlines { problems.append("\(name) の改行は \(newlines) つまで") }
+        if emphasis, !text.filter({ $0 == "*" }).count.isMultiple(of: 2) { problems.append("\(name) の強調の * が閉じていない") }
         return problems
     }
 

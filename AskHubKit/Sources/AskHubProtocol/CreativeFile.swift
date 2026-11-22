@@ -156,8 +156,8 @@ public struct CreativeFile: StateFile {
                 problems.append("draft の request の comment は 1〜\(CreativeIntents.commentLimit) 文字")
             }
             if let spec { problems += spec.violations.map { "draft の spec: \($0)" } }
-            if let reason, reason.isEmpty || reason.count > 2000 { problems.append("draft の reason は 1〜2000 文字") }
-            if let failure, failure.isEmpty || failure.count > 1000 { problems.append("draft の failure は 1〜1000 文字") }
+            if let reason, reason.isEmpty || reason.unicodeScalars.count > 2000 { problems.append("draft の reason は 1〜2000 文字") }
+            if let failure, failure.isEmpty || failure.unicodeScalars.count > 1000 { problems.append("draft の failure は 1〜1000 文字") }
             if state == .failed, failure == nil { problems.append("failed の draft は failure を持つ") }
             if [.rendering, .rendered].contains(state), spec == nil { problems.append("\(state.rawValue) の draft は spec を持つ") }
             if state == .rendered, images.isEmpty { problems.append("rendered の draft は images を持つ") }
@@ -281,7 +281,7 @@ public struct CreativeFile: StateFile {
             if malformed { problems.append("live の画像の locale・url の形が違う") }
         }
         if placed.count > 10 { problems.append("placed は 10 件まで") }
-        if let problem, problem.isEmpty || problem.count > 1000 { problems.append("problem は 1〜1000 文字") }
+        if let problem, problem.isEmpty || problem.unicodeScalars.count > 1000 { problems.append("problem は 1〜1000 文字") }
         return problems
     }
 }

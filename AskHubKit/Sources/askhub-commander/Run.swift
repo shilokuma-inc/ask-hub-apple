@@ -22,9 +22,6 @@ extension AskHubCommanderMain {
         }
         // 人の意図の処理・Claude のジョブの結果・通知の記録・写しの id の書き戻しは、同じ排他を使うよう、同じ `context` を渡す
         let context = CommanderContext(store: runtime.store, mac: configuration.mac)
-        let cleanUp = runtime.finishedEpicCleanUp(context: context, log: log)
-        let simulators = runtime.straySimulatorSweep(log: log)
-        let archive = FinishedEpicArchive(context: context, log: log)
         let releases = releaseWatch(runtime: runtime, context: context, transport: transport)
         // app-kit（public）は git で読む。版の中身はコミットで決まるので、1 つの部品を準備・広げる・ずれの点検で使い回す
         let (admin, appKit) = (runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) }, appKitSource(runtime))
@@ -48,13 +45,10 @@ extension AskHubCommanderMain {
             ),
             epicWorkspace: runtime.workspace,
             taskRunners: runtime.taskRunners(context: context, settings: TaskRepositorySettings.reader(context: context)),
-            tidy: {
-                await cleanUp.run()
-                await simulators.run()
-                await archive.run()
-            },
+            tidy: tidy(runtime: runtime, context: context),
             appIcons: appIcons(runtime: runtime, context: context),
             releases: releases,
+            creative: creativeWatch(runtime: runtime, context: context, transport: transport),
             protection: protectionWatch(secrets: secrets, context: context, transport: transport),
             candidates: candidatesWatch(runtime: runtime, context: context, transport: transport),
             admin: admin,
@@ -177,6 +171,36 @@ extension AskHubCommanderMain {
                 log: log
             ),
             authors: GitHubCommitAuthors(token: token, log: log),
+            log: log
+        )
+    }
+
+    /// 生きている印を書いた後に片付けるもの（終わった epic の残りもの・残った Simulator・畳む epic）
+    private static func tidy(runtime: MachineRuntime, context: CommanderContext) -> @Sendable () async -> Void {
+        let cleanUp = runtime.finishedEpicCleanUp(context: context, log: log)
+        let simulators = runtime.straySimulatorSweep(log: log)
+        let archive = FinishedEpicArchive(context: context, log: log)
+        return {
+            await cleanUp.run()
+            await simulators.run()
+            await archive.run()
+        }
+    }
+
+    /// クリエイティブアセットの案を、Claude が書き、各リポジトリの GitHub Actions で書き出すもの（元の画像はこの Mac に置く）
+    private static func creativeWatch(runtime: MachineRuntime, context: CommanderContext, transport: any HTTPTransport) -> CreativeWatch {
+        CreativeWatch(
+            context: context,
+            stores: (runtime.configuration.appStoreConnect ?? []).map { configuration in
+                AppStoreConnectClient(configuration: configuration, secrets: runtime.secrets, transport: transport)
+            },
+            sources: runtime.workspace,
+            hosting: GitHubReleaseHosting(transport: transport, token: MachineRuntime.githubTokens(in: runtime.secrets)),
+            drafter: ClaudeCreativeDrafter(
+                client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
+                sources: runtime.workspace
+            ),
+            originals: runtime.paths.root.appendingPathComponent("creative", isDirectory: true),
             log: log
         )
     }

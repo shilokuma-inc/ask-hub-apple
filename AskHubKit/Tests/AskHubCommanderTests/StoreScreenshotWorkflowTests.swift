@@ -27,6 +27,8 @@ struct FakeWorkflows {
     var runReads = 0
     /// ブランチの workflow_dispatch の実行の一覧
     var dispatchedRuns: [WorkflowRunDetail] = []
+    /// 決めると、実行の一覧を読めずにこれを投げる
+    var dispatchedRunsFailure: PullRequestError?
     var cancelledRuns: [Int] = []
     /// 取り消しの応答
     var cancelReply: Result<Void, PullRequestError> = .success(())
@@ -84,7 +86,9 @@ extension FakeReleaseHosting {
         workflow: String,
         branch: String
     ) async throws(PullRequestError) -> [WorkflowRunDetail] {
-        workflows.withLock { $0.dispatchedRuns }
+        let (runs, failure) = workflows.withLock { ($0.dispatchedRuns, $0.dispatchedRunsFailure) }
+        if let failure { throw failure }
+        return runs
     }
 
     func cancelWorkflowRun(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) {

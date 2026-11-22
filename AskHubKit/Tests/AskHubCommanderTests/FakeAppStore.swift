@@ -53,6 +53,8 @@ final class FakeAppStore: AppStoreConnecting {
         var versionsByApp: [String: [AppStoreVersionInfo]] = [:]
         /// 版ごとの App Review の連絡先（写すもと）
         var reviewContacts: [String: AppStoreReviewContact] = [:]
+        /// App 情報の言語ごとのアプリ名
+        var appNames: [String: String] = [:]
     }
 
     let keyID = "ABCDE12345"
@@ -379,5 +381,14 @@ extension FakeAppStore {
     func resolveRejectedItems(of submissionID: String) async throws(AppStoreConnectError) -> Int {
         try write("resolveRejectedItems \(submissionID)")
         return 1
+    }
+}
+
+extension FakeAppStore {
+    func appNames(of appID: String) async throws(AppStoreConnectError) -> [String: String] {
+        state.withLock { state in
+            state.reads += 1
+            return state.appNames
+        }
     }
 }

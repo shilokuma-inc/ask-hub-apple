@@ -520,7 +520,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 
 ### creative.json（クリエイティブアセットの案と反映）
 
-人が案を頼む（`draftCreativeAssets`）と、常時オンの Mac の Claude が案（文言・色・使う画面）を書き、司令塔が各リポジトリの書き出しのワークフロー（app-kit の `app-store-creative.yml`）で画像にして、見本を書く。人が承認（`approveCreativeAssets`）した案は、次のリリースの「審査に出す」で版の言語に置く（[creative-assets.md](creative-assets.md)）。
+人が案を頼む（`draftCreativeAssets`）と、常時オンの Mac の Claude が案（文言・色・使う画面）を書き、司令塔が各リポジトリの書き出しのワークフロー（app-kit の `app-store-creative.yml`）で画像にして、見本を書く。人が承認（`approveCreativeAssets`）した案は、司令塔が App Store Connect のライブラリに上げておき、次のリリースの「審査に出す」で版の言語に置く（[creative-assets.md](creative-assets.md)）。承認した案をライブラリに上げる処理と、審査に出すときに置く処理（`submitForReview` の `creative`）は、まだ無い（creative-assets.md の「PR の分け方」の 6 で足す）。
 形は `protocol/schemas/state/creative.schema.json`（Swift は `CreativeFile`）。案の形は `protocol/schemas/creative-spec.schema.json`（Swift は `CreativeSpec`。shilokuma-inc/app-kit の `schema/creative-spec.schema.json` と同じ形で、変えるときは両方を変える）。
 
 ```json

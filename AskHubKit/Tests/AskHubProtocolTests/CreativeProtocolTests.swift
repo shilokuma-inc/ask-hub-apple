@@ -91,7 +91,11 @@ struct CreativeProtocolTests {
         #expect(!violations { $0.locales[0].header.title = "" }.isEmpty)
         #expect(!violations { $0.locales[0].header.title = String(repeating: "あ", count: 61) }.isEmpty)
         #expect(!violations { $0.locales[0].header.title = "a\tb" }.isEmpty)
-        #expect(!violations { $0.locales[0].header.title = "a\nb\nc\nd" }.isEmpty)
+        #expect(!violations { $0.locales[0].header.title = "a\nb\nc" }.isEmpty)
+        #expect(!violations { $0.locales[0].header.title = "\n" }.isEmpty)
+        #expect(!violations { $0.locales[0].search.title = "a\nb\nc\nd" }.isEmpty)
+        #expect(!violations { $0.locales[0].appName = "a\nb" }.isEmpty)
+        #expect(violations { $0.locales[0].search.title = "a\nb\nc" }.isEmpty)
         #expect(!violations { $0.locales[0].header.title = "*強調" }.isEmpty)
         #expect(!violations { $0.locales[0].search.chips = ["a", "b", "c", "d"] }.isEmpty)
         #expect(!violations { $0.locales[0].search.chips = [String(repeating: "x", count: 31)] }.isEmpty)
@@ -110,6 +114,14 @@ struct CreativeProtocolTests {
         spec = Self.sample
         spec.colors.text = "#202040"
         #expect(spec.cautions.map(\.code) == ["low-contrast", "low-contrast"])
+        // 強調の * を除いた文字で確かめ、強調とアプリ名の色も見る。アプリ名の * はそのまま（強調にしない）
+        spec = Self.sample
+        spec.locales[1].header.title = "*Fr*ee notes"
+        spec.locales[1].appName = "Q*bert"
+        #expect(spec.violations.isEmpty && spec.cautions.map(\.code) == ["forbidden-price"])
+        spec = Self.sample
+        spec.colors.highlight = "#0C1128"
+        #expect(Set(spec.cautions.map(\.code)) == ["low-contrast"])
         #expect(abs(CreativeSpec.contrast("#FFFFFF", "#000000") - 21) < 0.01)
     }
 
