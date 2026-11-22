@@ -59,6 +59,8 @@ struct InboxItem: Identifiable, Hashable {
         case appStoreSetup
         /// app-kit の新しい版を広げる・広げる途中で止まった・ずれを直す
         case appKit
+        /// クリエイティブアセット（App Store のヘッダー・検索結果の画像）の案を確かめる・作れなかった
+        case creative
     }
 }
 
@@ -89,6 +91,7 @@ enum InboxBuilder {
         items += snapshot.repositories.flatMap(administrationItems)
         items += snapshot.repositories.compactMap(appKitDriftItem)
         items += appKitItems(snapshot)
+        items += creativeItems(snapshot)
         items += snapshot.submissions.flatMap { submissionItems($0, snapshot: snapshot) }
         items += snapshot.appStoreSetups.flatMap { appStoreSetupItems($0, snapshot: snapshot) }
         return items.sorted { lhs, rhs in
@@ -394,7 +397,7 @@ extension InboxItem {
             return epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
 
         case .macOffline, .token, .claudeVersion, .compatibility, .cleanup, .releaseNotes, .releaseProblem, .repositorySetup,
-             .submissionReady, .submissionDistribution, .submissionProblem, .submissionRejected, .appStoreSetup, .appKit:
+             .submissionReady, .submissionDistribution, .submissionProblem, .submissionRejected, .appStoreSetup, .appKit, .creative:
             return []
         }
     }

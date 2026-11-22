@@ -33,6 +33,7 @@ struct StateDocuments {
     /// リリースを始めた版の記録（`submissions/<版>.json`）。リポジトリの順、その中は版の小さい順
     var submissions: [SubmissionFile] = []
     var appStoreSetups: [AppStoreSetupFile] = []  // 新しいアプリを App Store に載せる準備（`app-store.json`）。リポジトリの順
+    var creatives: [CreativeFile] = []  // クリエイティブアセットの案と反映（`creative.json`）。リポジトリの順
     var macs: [MacFile] = []
     /// Mac ごとの片付けの候補（ワーカーが書く）と、受け付けた片付けの頼み（司令塔が書く）
     var cleanupCandidates: [MacName: CleanupCandidatesFile] = [:]
@@ -80,6 +81,7 @@ struct StateReader {
         var releases: [ReleaseFile] = []
         var submissions: [SubmissionFile] = []
         var appStoreSetup: AppStoreSetupFile?
+        var creative: CreativeFile?
         var failures: [SourceFailure] = []
     }
 
@@ -97,6 +99,7 @@ struct StateReader {
             documents.releases += part.releases
             documents.submissions += part.submissions
             part.appStoreSetup.map { documents.appStoreSetups.append($0) }
+            part.creative.map { documents.creatives.append($0) }
             documents.failures += part.failures
         }
         let macsPart = try await macs.get()
@@ -433,6 +436,7 @@ extension StateReader {
             file.repo == repo && file.version == version && path == StatePath.submission(repo, version)
         }
         async let setup = appStoreSetup(of: repo)
+        async let creative = creative(of: repo)
         let fileRead = await file
         var part = RepositoryPart(repository: fileRead.value, failures: fileRead.failures)
         let ids = try await listed.get().compactMap(ULID.init(rawValue:))
@@ -448,6 +452,8 @@ extension StateReader {
         part.failures += submissionsRead.failures
         let setupRead = await setup
         (part.appStoreSetup, part.failures) = (setupRead.value, part.failures + setupRead.failures)
+        let creativeRead = await creative
+        (part.creative, part.failures) = (creativeRead.value, part.failures + creativeRead.failures)
         return part
     }
 
