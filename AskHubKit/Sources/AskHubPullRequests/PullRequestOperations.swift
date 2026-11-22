@@ -6,6 +6,8 @@ public protocol PullRequestOperations: Sendable {
     func openPullRequest(_ draft: PullRequestDraft) async throws(PullRequestError) -> OpenedPullRequest
     /// PR の様子を読む
     func pullRequest(number: Int) async throws(PullRequestError) -> PullRequest
+    /// 同じリポジトリのブランチからの開いた PR。`head` を渡せばそのブランチからの PR、`base` を渡せばその向き先の PR に絞る
+    func openPullRequests(head: String?, base: String?) async throws(PullRequestError) -> [PullRequest]
     /// head の SHA の CI を読み、まとめた状態を返す
     func checks(at sha: String, policy: CheckPolicy) async throws(PullRequestError) -> CheckSummary
     /// head の SHA の check run（名前ごとの最新）と、結果の見出し

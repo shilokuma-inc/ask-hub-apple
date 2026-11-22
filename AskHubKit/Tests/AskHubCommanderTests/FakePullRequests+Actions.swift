@@ -35,4 +35,15 @@ extension FakePullRequests {
         }
         try result.get()
     }
+
+    func openPullRequests(head: String?, base: String?) async throws(PullRequestError) -> [PullRequest] {
+        let result = update { state -> Result<[PullRequest], PullRequestError> in
+            if !state.listFailures.isEmpty { return .failure(state.listFailures.removeFirst()) }
+            let open = state.pulls.values.filter { pull in
+                pull.state == .open && head.map { pull.headRef == $0 } ?? true && base.map { pull.baseRef == $0 } ?? true
+            }
+            return .success(open.sorted { $0.number < $1.number })
+        }
+        return try result.get()
+    }
 }

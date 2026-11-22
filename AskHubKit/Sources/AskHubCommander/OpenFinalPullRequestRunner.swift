@@ -8,8 +8,9 @@ import Foundation
 /// 本文には、見える仮決めのカード・内部の細部の仮決め（畳む）・実機で確かめてほしいこと・人がした作業を載せる。
 /// やり直しでも PR を二重に作らない（同じ作業ブランチから base への開いた PR があれば、作らずにそれを使う）。
 ///
-/// 人が飛ばしたタスクの子 PR（飛ばしたときに開いていたもの）は、最終 PR を出した後に、マージせずに閉じてコメントを書く。
-/// 閉じるのは、作業ブランチ宛てで、まだ開いているものだけ。上限のほかの失敗では最終 PR を止めない（最終 PR をマージして作業ブランチを消すと、GitHub が閉じる）
+/// 人が飛ばしたタスクの子 PR（子ブランチから作業ブランチへの開いた PR）は、最終 PR を出した後に、マージせずに閉じてコメントを書く。
+/// 作業ブランチを消しても GitHub は開いた子 PR を閉じず、向き先を base に変えるので、閉じられなければ試行の失敗にする（やり直しで続きをする）。
+/// コメントは理由を添えるだけなので、書けなくても止めない（理由は最終 PR の本文にも書く）
 public struct OpenFinalPullRequestRunner: JobRunning {
     public var environment: FinalJobEnvironment
 
@@ -49,21 +50,21 @@ public struct OpenFinalPullRequestRunner: JobRunning {
         return JobResult(outputs: outputs)
     }
 
-    /// 飛ばしたタスクの、作業ブランチ宛ての開いた子 PR を閉じてからコメントを書く（先にコメントを書くと、閉じられずにやり直したときに重なる）。
-    /// GitHub の上限なら試行の失敗として終え（やり直しで続きをする）、ほかの失敗は飛ばす
+    /// 飛ばしたタスクの子ブランチから作業ブランチへの開いた PR を、すべて閉じてからコメントを書く（先にコメントを書くと、閉じられずにやり直したときに重なる）。
+    /// 飛ばしたときに記録した子 PR のほか、飛ばした後に元の試行が作った PR も閉じる。一覧を読めない・閉じられないときは試行の失敗として終える
     private func closeSkippedPullRequests(_ job: JobFile, _ target: FinalTarget, keeping partial: JobResult) async throws(TaskJobExit) {
+        let environment = environment
         let pulls = environment.tasks.pullRequests(job.repo)
-        for task in target.goal.tasks {
-            guard let number = task.skip?.pullRequest else { continue }
-            do {
-                let pull = try await pulls.pullRequest(number: number)
-                guard pull.state == .open, pull.baseRef == target.branches.epic else { continue }
-                try await pulls.setState(number: number, to: .closed)
-                try await pulls.comment(number: number, body: Self.skippedComment(task: task, epic: target.epic))
-            } catch {
-                guard case .rateLimited = error else { continue }
-                let failure = error.attemptFailure(doing: "飛ばしたタスクの子 PR を閉じる", now: environment.context.now())
-                throw .finish(JobResult(failure: failure, outputs: partial.outputs))
+        for task in target.goal.tasks where task.state == .skipped {
+            let head = TaskBranches.child(of: target.branches.epic, task: task.id)
+            let open = try await environment.tasks.github("飛ばしたタスクの子 PR を探す", keeping: partial) { () throws(PullRequestError) in
+                try await pulls.openPullRequests(head: head, base: target.branches.epic)
+            }
+            for pull in open {
+                try await environment.tasks.github("飛ばしたタスクの子 PR を閉じる", keeping: partial) { () throws(PullRequestError) in
+                    try await pulls.setState(number: pull.number, to: .closed)
+                }
+                try? await pulls.comment(number: pull.number, body: Self.skippedComment(task: task, epic: target.epic))
             }
         }
     }

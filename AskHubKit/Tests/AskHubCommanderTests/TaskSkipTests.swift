@@ -211,6 +211,50 @@ struct TaskSkipTests {
         #expect(try await goal().tasks[1].state == .running)
     }
 
+    /// 子 PR をマージした後に止まったレビュー（子ブランチを消せなかった）は飛ばさせない。「もう一度試す」で続きをする
+    @Test func rejectsSkippingReviewThatAlreadyMerged() async throws {
+        try await started()
+        let head = String(repeating: "a", count: 40)
+        let review = try await taskJob(.reviewTask, input: PullRequestInput(pullRequest: 41, head: head), seed: "review")
+        let time = Timestamp(Self.now)
+        let attempt = AttemptFile(
+            job: review.id,
+            number: 1,
+            mac: Self.laptop,
+            startedAt: time,
+            heartbeatAt: time,
+            endedAt: time,
+            outcome: .failed,
+            failure: AttemptFailure(failureClass: .unexpected, message: "マージした子ブランチを消すことができない"),
+            outputs: AttemptFile.Outputs(pullRequest: 41, commit: head, verdict: .merged)
+        )
+        try await put(attempt, at: StatePath.attempt(Self.repo, epic: Self.epicID, job: review.id, number: 1))
+        try await skip(review, attempt: 1)
+        let reason = "タスク t2 の子 PR はもうマージした。飛ばさずに「もう一度試す」で続きをする"
+        #expect(try await intake().processPending() == [.rejected(kind: "skipTask", reason: reason)])
+        #expect(try await goal().tasks[1].state == .running)
+        #expect(try await reread(review).state == .waitingHuman)
+    }
+
+    /// 何も実装していないまま最後のタスクを飛ばすと、最終 PR に入れるものが無いので断る（epic ごとやめるなら「やめる」）
+    @Test func rejectsSkippingThatLeavesNothingToMerge() async throws {
+        try await started(t3: false)
+        var goal = try await goal()
+        goal.tasks[0].state = .skipped
+        goal.tasks[0].skip = GoalFile.Skip(reason: .notNeeded, intent: TaskFlowTests.origin, at: Timestamp(Self.now))
+        try await put(goal, at: StatePath.goal(Self.repo, Self.epicID))
+        let implement = try await taskJob(.implementTask, seed: "t2")
+        try await skip(implement, attempt: 1)
+        let reason = "タスク t2 を飛ばすと、実装したタスクが 1 つも無く、最終 PR に入れるものが無い。epic ごとやめるなら「やめる」を選ぶ"
+        #expect(try await intake().processPending() == [.rejected(kind: "skipTask", reason: reason)])
+        #expect(try await self.goal().tasks[1].state == .running)
+        #expect(goal.skippingLeavesNothing("t2"))
+        // 実装したタスクがあるか、まだ進めるタスクが残っていれば飛ばせる
+        goal.tasks[0].state = .done
+        goal.tasks[0].skip = nil
+        #expect(!goal.skippingLeavesNothing("t2"))
+    }
+
     @Test(arguments: [EpicStage.finalizing, .reviewing])
     func rejectsJobsOutsideTaskStage(stage: EpicStage) async throws {
         try await started(stage: stage, taskState: .done)
@@ -284,25 +328,51 @@ struct SkippedTaskFinalTests {
         #expect(body.contains("- t2: ランキングの画面を作る — 人が別にやる。Android で直す（子 PR #30 はマージせずに閉じる）"))
     }
 
-    /// 閉じた・ほかのブランチ宛ての子 PR には触れない。上限のほかの失敗では最終 PR を止めない
-    @Test(arguments: [
-        (childPull(state: .closed), nil as PullRequestError?),
-        (childPull(base: "develop"), nil),
-        (childPull(), PullRequestError.forbidden(message: nil))
-    ])
-    func leavesOtherChildPullRequestsAlone(pull: PullRequest, closeError: PullRequestError?) async throws {
+    /// 閉じた・ほかのブランチ宛ての子 PR には触れない
+    @Test(arguments: [childPull(state: .closed), childPull(base: "develop")])
+    func leavesOtherChildPullRequestsAlone(pull: PullRequest) async throws {
         let fixture = Fixture()
         try await fixture.prepare()
         try await skip(in: fixture, pullRequest: 30)
-        fixture.pulls.update { state in
-            state.pulls[30] = pull
-            if let closeError { state.closeFailures = [(false, closeError)] }
-        }
+        fixture.pulls.update { $0.pulls[30] = pull }
         let result = try await open(fixture)
         #expect(result.failure == nil)
         #expect(result.outputs?.pullRequest == 41)
         #expect(fixture.pulls.current.stateChanges.isEmpty)
         #expect(fixture.pulls.current.comments.isEmpty)
+    }
+
+    /// 飛ばした後に元の試行が作った子 PR（記録に無い番号）も閉じる。コメントを書けなくても止めない
+    @Test func closesEveryOpenPullRequestFromSkippedBranchEvenIfCommentFails() async throws {
+        let fixture = Fixture()
+        try await fixture.prepare()
+        try await skip(in: fixture, pullRequest: nil)
+        fixture.pulls.update { state in
+            state.pulls[30] = Self.childPull()
+            var later = Self.childPull()
+            later.number = 31
+            state.pulls[31] = later
+            state.commentFailures = [.forbidden(message: nil)]
+        }
+        let result = try await open(fixture)
+        #expect(result.failure == nil)
+        #expect(fixture.pulls.current.stateChanges.map(\.number) == [30, 31])
+        #expect(fixture.pulls.current.comments.map(\.number) == [31])
+    }
+
+    /// 閉じられなければ試行の失敗にする（作業ブランチを消しても GitHub は開いた子 PR を閉じず、向き先を base に変えるので、開いたまま残さない）
+    @Test func failsAttemptWhenChildPullRequestCannotBeClosed() async throws {
+        let fixture = Fixture()
+        try await fixture.prepare()
+        try await skip(in: fixture, pullRequest: 30)
+        fixture.pulls.update { state in
+            state.pulls[30] = Self.childPull()
+            state.closeFailures = [(false, .forbidden(message: nil))]
+        }
+        let result = try await open(fixture)
+        #expect(result.failure?.message.contains("飛ばしたタスクの子 PR を閉じる") == true)
+        #expect(result.outputs?.pullRequest == 41)
+        #expect(fixture.pulls.current.pulls[30]?.state == .open)
     }
 
     /// GitHub の上限なら試行の失敗にする（最終 PR は出したので、やり直しで同じ PR を使い、子 PR を閉じる続きをする）
@@ -321,5 +391,48 @@ struct SkippedTaskFinalTests {
         #expect(retried.failure == nil)
         #expect(retried.outputs?.pullRequest == 41)
         #expect(fixture.pulls.current.pulls[30]?.state == .closed)
+    }
+}
+
+/// 子 PR のレビュー: 人がタスクを飛ばした後はマージしない。マージした後に子ブランチを消せなければ、マージしたことを残す
+struct SkippedTaskReviewTests {
+    typealias Fixture = TaskJobFixture
+    static let input = PullRequestInput(pullRequest: 41, head: sha("1"))
+
+    private func fixture() async throws -> Fixture {
+        let fixture = Fixture(reviews: [ReviewTaskRunnerTests.noFindings])
+        try await fixture.prepare()
+        fixture.pulls.update { state in
+            state.pulls[41] = Fixture.openPull(head: sha("1"))
+            state.checks = [CheckSummary(verdict: .passed)]
+        }
+        return fixture
+    }
+
+    private func review(_ fixture: Fixture) async throws -> JobResult {
+        let runner = ReviewTaskRunner(environment: try fixture.environment(FakeTaskRunner([])))
+        return try await runner.execute(fixture.job(.reviewTask, "03", input: Self.input.jobInput))
+    }
+
+    @Test func doesNotMergeChildPullRequestOfSkippedTask() async throws {
+        let fixture = try await fixture()
+        let record = GoalFile.Skip(reason: .handledElsewhere, intent: TaskFlowTests.origin, at: Timestamp(TaskSkipTests.now))
+        try await fixture.files.update(GoalFile.self, at: StatePath.goal(Fixture.repo, Fixture.epic), message: "skip") { goal in
+            goal.tasks[1].state = .skipped
+            goal.tasks[1].skip = record
+            return true
+        }
+        let result = try await review(fixture)
+        #expect(result.failure?.message == "タスク t2 は人が飛ばしたので、子 PR をマージしない")
+        #expect(fixture.pulls.current.merges.isEmpty)
+    }
+
+    @Test func keepsMergedVerdictWhenChildBranchCannotBeDeleted() async throws {
+        let fixture = try await fixture()
+        fixture.pulls.update { $0.deleteError = .forbidden(message: nil) }
+        let result = try await review(fixture)
+        #expect(result.failure != nil)
+        #expect(result.outputs?.verdict == .merged)
+        #expect(fixture.pulls.current.merges.map(\.number) == [41])
     }
 }

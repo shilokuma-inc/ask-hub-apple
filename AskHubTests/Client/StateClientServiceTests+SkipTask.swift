@@ -54,4 +54,19 @@ extension StateClientServiceTests {
         let epic = try #require(try await makeService(files: files).service.fetchSnapshot().epic(Self.epicID))
         #expect(epic.tasks[1].state == .skipped(reason: "やらない・今回は要らない"))
     }
+
+    /// 司令塔が断るもの（飛ばすと実装したタスクが 1 つも残らない）には、飛ばすを出さない
+    @Test
+    func skippingIsNotOfferedWhenNothingWouldRemain() async throws {
+        var files = Self.waitingImplementationEpic()
+        let intent = #"{"keyId":"\#(String(repeating: "k", count: 43))","nonce":"01JCN0NCE00000000000000009"}"#
+        let skip = #"{"reason":"notNeeded","intent":\#(intent),"at":"2027-01-15T06:40:00Z"}"#
+        files["repos/\(Self.repo)/epics/\(Self.epicID)/goal.json"] = """
+        {"v":1,"version":1,"summary":"ランキングを日ごとに入れ替える","decided":[],"outOfScope":[],"doneWhen":["毎日入れ替わる"],
+         "tasks":[{"id":"t1","title":"集計を作る","dependsOn":[],"state":"skipped","skip":\(skip)},
+                  {"id":"t2","title":"一覧に出す","dependsOn":[],"state":"running"}],"humanTasks":[]}
+        """
+        let blocker = try #require(try await makeService(files: files).service.fetchSnapshot().epic(Self.epicID)?.blocker)
+        #expect(blocker.actions == [.retry, .discard])
+    }
 }

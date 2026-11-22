@@ -36,6 +36,7 @@ public struct SkipTaskHandler: IntentHandler {
         if task.skip?.intent != skip.intent {
             guard job.state == .waitingHuman else { return .reject("ジョブは人の対応を待っていない（\(job.state.rawValue)）") }
             guard task.state == .running else { return .reject("タスク \(taskID) は進めていない（\(task.state.rawValue)）") }
+            if let problem = try await Self.problem(skipping: taskID, of: job, in: goal, context: context) { return .reject(problem) }
             let record = GoalFile.Skip(
                 reason: skip.reason,
                 note: skip.note.isEmpty ? nil : skip.note,
@@ -47,6 +48,26 @@ public struct SkipTaskHandler: IntentHandler {
         }
         try await context.cancelJobs(epic.repo, epic: epic.id) { $0.task == taskID }
         return .accept
+    }
+
+    /// 飛ばせない理由。飛ばせれば nil
+    /// - 子 PR をマージした後に止まったレビュー（子ブランチを消せなかった）: 変更は作業ブランチに入っている。「もう一度試す」で続きをする
+    /// - 何も実装していないまま最後のタスクを飛ばす: 最終 PR に入れるものが無い
+    static func problem(
+        skipping taskID: String,
+        of job: JobFile,
+        in goal: GoalFile,
+        context: CommanderContext
+    ) async throws(CommanderError) -> String? {
+        if job.kind == .reviewTask, job.attempts > 0,
+           try await context.read(AttemptFile.self, at: StatePath.attempt(job.repo, epic: job.epic, job: job.id, number: job.attempts))?
+               .outputs?.verdict == .merged {
+            return "タスク \(taskID) の子 PR はもうマージした。飛ばさずに「もう一度試す」で続きをする"
+        }
+        if goal.skippingLeavesNothing(taskID) {
+            return "タスク \(taskID) を飛ばすと、実装したタスクが 1 つも無く、最終 PR に入れるものが無い。epic ごとやめるなら「やめる」を選ぶ"
+        }
+        return nil
     }
 
     /// 飛ばすジョブが見ていた子 PR（レビュー・直しの入力）。実装のジョブは子 PR を作る前に止まるので nil
