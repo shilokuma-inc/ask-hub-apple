@@ -43,6 +43,10 @@
     "screenshots": {
       "$ref": "../state/submission.schema.json#/$defs/screenshotDecision",
       "description": "人が確かめたスクショ（撮影のコミットと、前のままにする画面）。スクショを変えないなら送らない"
+    },
+    "creative": {
+      "$ref": "../state/submission.schema.json#/$defs/creativeChoice",
+      "description": "載せるクリエイティブアセット（creative.json の approved の案の版）。載せないなら送らない"
     }
   }
 }

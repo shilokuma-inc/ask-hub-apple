@@ -104,6 +104,14 @@ struct CreativeOverview: Identifiable, Hashable {
         /// ライブラリに上げる数と、置ける状態になった数。上げる前は nil
         var libraryTotal: Int?
         var libraryReady: Int?
+        /// この案を置いて審査に出した版（まだなら nil）
+        var placedIn: String?
+
+        /// 審査に出すときに置ける（ライブラリの画像がすべて置ける状態になった）
+        var isPlaceable: Bool {
+            guard let libraryTotal, let libraryReady else { return false }
+            return libraryTotal > 0 && libraryReady == libraryTotal
+        }
     }
 
     /// 人が確かめる番（書き出し終えた今の案を、まだ承認していない）
@@ -135,6 +143,7 @@ struct CreativeOverview: Identifiable, Hashable {
             }
         }
         if let approved {
+            if let version = approved.placedIn { return "案 \(approved.revision) を \(version) に載せました" }
             return "案 \(approved.revision) を承認済み（次のリリースで載せます）"
         }
         return "まだありません"

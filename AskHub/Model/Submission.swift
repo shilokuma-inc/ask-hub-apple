@@ -134,6 +134,8 @@ struct Submission: Identifiable, Hashable {
         var appReview: ReviewInfo?
         /// 人が確かめたスクショのうち、前のままにする画面。nil ならスクショを変えない
         var screenshotKeep: [ShotKey]?
+        /// 載せる、承認したクリエイティブアセットの案の版。nil なら置かない（`docs/renewal/creative-assets.md`）
+        var creative: Int?
     }
 
     struct Submitted: Hashable {

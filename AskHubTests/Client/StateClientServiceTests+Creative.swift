@@ -22,7 +22,7 @@ extension StateClientServiceTests {
         return "[" + images.joined(separator: ",") + "]"
     }
 
-    static func creativeFiles(state: String = "rendered", approved: String = "null") -> [String: String] {
+    static func creativeFiles(state: String = "rendered", approved: String = "null", placed: String = "[]") -> [String: String] {
         askingEpic(extra: [
             StatePath.creative(RepositoryFullName(rawValue: repo)!): """
             {"v":1,"repo":"\(repo)",
@@ -30,7 +30,7 @@ extension StateClientServiceTests {
                       "state":"\(state)","spec":\(creativeSpec),"reason":"続けやすさを見出しにしました","draftedAt":"2027-01-15T06:05:00Z",
                       "images":\(state == "rendered" ? creativeImages(2) : "[]"),"problems":[]},
              "previous":{"revision":1,"spec":\(creativeSpec),"images":\(creativeImages(1))},
-             "approved":\(approved),"placed":[],"updatedAt":"2027-01-15T06:30:00Z"}
+             "approved":\(approved),"placed":\(placed),"updatedAt":"2027-01-15T06:30:00Z"}
             """
         ])
     }
@@ -70,7 +70,16 @@ extension StateClientServiceTests {
         let approvedSnapshot = try await approved.service.fetchSnapshot()
         let creative = try #require(approvedSnapshot.creative(of: Self.repo))
         #expect(!creative.awaitsReview && creative.approved?.libraryReady == 1 && creative.approved?.libraryTotal == 2)
+        #expect(creative.approved?.isPlaceable == false && creative.approved?.placedIn == nil)
         #expect(InboxBuilder.items(from: approvedSnapshot, now: now).allSatisfy { $0.kind != .creative })
+        // 載せた版は、承認した案の版の記録のうち新しいもの（新しい順に並ぶ）
+        let placed = """
+            [{"version":"1.3.0","revision":2,"at":"2027-01-20T00:00:00Z"},{"version":"1.2.0","revision":1,"at":"2027-01-10T00:00:00Z"}]
+            """
+        let placedFixture = try makeService(files: Self.creativeFiles(approved: approvedJSON, placed: placed))
+        let placedSnapshot = try await placedFixture.service.fetchSnapshot()
+        #expect(placedSnapshot.creative(of: Self.repo)?.approved?.placedIn == "1.3.0")
+        #expect(placedSnapshot.creative(of: Self.repo)?.status == "案 2 を 1.3.0 に載せました")
     }
 
     /// 頼むと承認は、封筒の repo と人が見た案の版に結びつけて送り、送った結果を先に出す

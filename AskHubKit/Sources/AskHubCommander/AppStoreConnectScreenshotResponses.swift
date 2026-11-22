@@ -13,6 +13,8 @@ struct AppStoreConnectImageAttributes: Decodable {
     var state: String?
     var imageAsset: ImageAsset?
     var stateDetails: StateDetails?
+    /// 処理を終えた画像に Apple が合わせた仕様（クリエイティブアセットの配置グループを参照データから引く）
+    var specId: String?
 }
 
 /// 処理の様子の詳しいこと（失敗のわけ）。形が文書と違っても、画像を読めなくしないよう、読めなければ空にする

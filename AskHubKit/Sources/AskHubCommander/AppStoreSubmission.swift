@@ -13,6 +13,8 @@ struct AppStoreSubmission: Sendable {
     var screenshots: SubmissionFile.StoreScreenshots?
     /// 撮った元の画像のフォルダ（常時オンの Mac）
     var originals: URL?
+    /// 人が承認したクリエイティブアセット（`request.creative` の版のとき載せる）
+    var creative: CreativeFile.Approval?
 
     /// `build` のプラットフォームを審査に出し、出した後の状態を返す。`versions` はアプリの版（出す前に読んだもの）
     func send(_ build: AppStoreBuild, versions: [AppStoreVersionInfo]) async throws -> AppStoreVersionState {
@@ -24,6 +26,7 @@ struct AppStoreSubmission: Sendable {
         try await writeTexts(of: target)
         try await writeReview(of: target)
         try await writeScreenshots(of: target, versions: versions)
+        try await writeCreative(of: target)
         return try await sendForReview(target)
     }
 
