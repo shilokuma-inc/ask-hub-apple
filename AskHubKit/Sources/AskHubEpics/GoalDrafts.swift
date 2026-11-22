@@ -43,12 +43,27 @@ public struct GoalDraft: Codable, Equatable, Sendable {
         }
     }
 
+    /// 別のリポジトリへの依頼の案。`repo` は確かめる前の文字列（形が違えば、ゴールを作るときに直させる）
+    public struct OutsideRequest: Codable, Equatable, Sendable {
+        public var repo: String
+        public var title: String
+        public var body: String
+
+        public init(repo: String, title: String, body: String) {
+            self.repo = repo
+            self.title = title
+            self.body = body
+        }
+    }
+
     public var summary: String
     public var decided: [GoalFile.Item]
     public var outOfScope: [String]
     public var doneWhen: [String]
     public var tasks: [Task]
     public var humanTasks: [HumanTask]
+    /// 別のリポジトリへの依頼の案。無ければ空か nil
+    public var outsideRequests: [OutsideRequest]?
 
     public init(
         summary: String,
@@ -56,7 +71,8 @@ public struct GoalDraft: Codable, Equatable, Sendable {
         outOfScope: [String] = [],
         doneWhen: [String],
         tasks: [Task],
-        humanTasks: [HumanTask] = []
+        humanTasks: [HumanTask] = [],
+        outsideRequests: [OutsideRequest]? = nil
     ) {
         self.summary = summary
         self.decided = decided
@@ -64,20 +80,24 @@ public struct GoalDraft: Codable, Equatable, Sendable {
         self.doneWhen = doneWhen
         self.tasks = tasks
         self.humanTasks = humanTasks
+        self.outsideRequests = outsideRequests
     }
 }
 
 /// ゴールの案を `goal.json` にする（`docs/renewal/flows.md` の「着手前の確認とゴール」）
 public enum GoalFlow {
     /// 案からゴールを作る。人がする作業に依存するタスクはロックして出す（その作業が終わるまで始めない）。
-    /// 決まったこと（`decided`）は、回答した質問をすべて、ちょうど 1 回ずつ含む（回答の取りこぼしを防ぐ）
+    /// 決まったこと（`decided`）は、回答した質問をすべて、ちょうど 1 回ずつ含む（回答の取りこぼしを防ぐ）。
+    /// `repository` を渡せば、別のリポジトリへの依頼の案がそのリポジトリ自身を指していないかも確かめる
     public static func goal(
         from draft: GoalDraft,
         questions: QuestionsFile,
         version: Int,
-        comment: String? = nil
+        comment: String? = nil,
+        repository: RepositoryFullName? = nil
     ) throws(QuestionFlow.ResultError) -> GoalFile {
         let humanTaskIDs = Set(draft.humanTasks.map(\.id))
+        let (outsideRequests, outsideProblems) = outsideRequests(draft.outsideRequests ?? [], repository: repository)
         let goal = GoalFile(
             version: version,
             summary: draft.summary,
@@ -98,11 +118,34 @@ public enum GoalFlow {
                     id: task.id, title: task.title, why: task.why, steps: task.steps, links: task.links, handover: task.handover
                 )
             },
+            outsideRequests: outsideRequests.isEmpty ? nil : outsideRequests,
             comment: comment
         )
         let problems = goal.violations + decidedProblems(draft.decided, questions: questions) + linkProblems(draft.humanTasks)
+            + outsideProblems
         guard problems.isEmpty else { throw .invalid(problems) }
         return goal
+    }
+
+    /// 依頼の案のリポジトリの名前を確かめる。形が違うもの・対象のリポジトリ自身を指すものは、理由を返して外す
+    private static func outsideRequests(
+        _ drafts: [GoalDraft.OutsideRequest],
+        repository: RepositoryFullName?
+    ) -> ([GoalFile.OutsideRequest], [String]) {
+        var requests: [GoalFile.OutsideRequest] = []
+        var problems: [String] = []
+        for (index, draft) in drafts.enumerated() {
+            let name = "outsideRequests の \(index + 1) 番目"
+            guard let repo = RepositoryFullName(rawValue: draft.repo) else {
+                problems.append("\(name): repo は owner/name の形で書く（\(draft.repo)）")
+                continue
+            }
+            if let repository, repo.rawValue.lowercased() == repository.rawValue.lowercased() {
+                problems.append("\(name): 対象のリポジトリ（\(repository)）の変更は tasks に書く。outsideRequests は別のリポジトリへの依頼だけ")
+            }
+            requests.append(GoalFile.OutsideRequest(repo: repo, title: draft.title, body: draft.body))
+        }
+        return (requests, problems)
     }
 
     private static func decidedProblems(_ decided: [GoalFile.Item], questions: QuestionsFile) -> [String] {

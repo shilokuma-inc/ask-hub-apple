@@ -59,4 +59,34 @@ struct GoalFlowTests {
         broken.tasks.append(.init(id: "t3", title: "", dependsOn: ["t9"]))
         #expect(throws: (any Error).self) { try GoalFlow.goal(from: broken, questions: settled(), version: 1) }
     }
+
+    /// 別のリポジトリへの依頼の案は、そのままゴールに写す。無ければ書かない
+    @Test func keepsOutsideRequests() throws {
+        var withRequest = draft()
+        withRequest.outsideRequests = [.init(repo: "demo-studio/ranking-android", title: "日ごとの入れ替えを仕様に足す", body: "SPEC.md に書く")]
+        let goal = try GoalFlow.goal(from: withRequest, questions: settled(), version: 1)
+        let repo = try #require(RepositoryFullName(rawValue: "demo-studio/ranking-android"))
+        #expect(goal.outsideRequests == [GoalFile.OutsideRequest(repo: repo, title: "日ごとの入れ替えを仕様に足す", body: "SPEC.md に書く")])
+        withRequest.outsideRequests = []
+        #expect(try GoalFlow.goal(from: withRequest, questions: settled(), version: 1).outsideRequests == nil)
+    }
+
+    /// 依頼の案のリポジトリは owner/name の形で、対象のリポジトリ自身（大文字小文字は問わない）を指さない
+    @Test func rejectsOutsideRequestsToMalformedOrOwnRepository() throws {
+        let own = try #require(RepositoryFullName(rawValue: "demo-studio/ranking-ios"))
+        var broken = draft()
+        broken.outsideRequests = [
+            .init(repo: "ranking-android", title: "仕様", body: "…"),
+            .init(repo: "Demo-Studio/Ranking-iOS", title: "自分", body: "…")
+        ]
+        #expect(throws: QuestionFlow.ResultError.invalid([
+            "outsideRequests の 1 番目: repo は owner/name の形で書く（ranking-android）",
+            "outsideRequests の 2 番目: 対象のリポジトリ（demo-studio/ranking-ios）の変更は tasks に書く。outsideRequests は別のリポジトリへの依頼だけ"
+        ])) {
+            try GoalFlow.goal(from: broken, questions: settled(), version: 1, repository: own)
+        }
+        // 対象のリポジトリを渡さなければ、自身かどうかは確かめない
+        broken.outsideRequests?.removeFirst()
+        #expect(try GoalFlow.goal(from: broken, questions: settled(), version: 1).outsideRequests?.count == 1)
+    }
 }

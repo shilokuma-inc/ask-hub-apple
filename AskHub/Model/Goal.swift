@@ -15,6 +15,8 @@ struct Goal: Hashable {
     var revisionRequest: String?
     /// 最後のゴールの修正で反映しなかった指示と、その理由（決まったことを変える指示など。回答を変えて直してもらう）
     var notApplied: [String] = []
+    /// 別のリポジトリへの依頼の案（この epic では作らない。人がそのリポジトリへの依頼として出す）
+    var outsideRequests: [OutsideRequest] = []
 
     struct Point: Hashable {
         var text: String
@@ -25,6 +27,17 @@ struct Goal: Hashable {
         var title: String
         /// 人がする作業が前提のタスク
         var humanTaskID: HumanTask.ID?
+    }
+
+    /// 別のリポジトリへの依頼の案
+    struct OutsideRequest: Hashable {
+        /// `owner/name`
+        var repositoryFullName: String
+        var title: String
+        var body: String
+
+        /// 対象のリポジトリの id（`TargetRepository.id` と同じく小文字）
+        var repositoryID: TargetRepository.ID { repositoryFullName.lowercased() }
     }
 
     var isRevising: Bool { revisionRequest != nil }

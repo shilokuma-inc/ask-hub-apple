@@ -60,8 +60,13 @@ public struct ReviewTaskRunner: JobRunning {
         let merge = try await environment.github("子 PR をマージする", keeping: JobResult(claude: claude)) { () throws(PullRequestError) in
             try await pulls.merge(number: input.pullRequest, headSHA: input.head, commitTitle: nil, commitMessage: nil)
         }
-        // 読み直してからマージするまでの間に向き先が変えられていたら、作業ブランチ以外に入っている。取り消せないので、merged とせずに人へ渡す
-        let landed = try await environment.github("マージした子 PR を読む", keeping: JobResult(claude: claude)) { () throws(PullRequestError) in
+        // 読み直してからマージするまでの間に向き先が変えられていたら、作業ブランチ以外に入っている。取り消せないので、merged とせずに人へ渡す。
+        // 読み直せなかったときは、マージしたことを残す（司令塔は、マージした子 PR のタスクを飛ばさせない）
+        let mergedOutputs = AttemptFile.Outputs(
+            pullRequest: input.pullRequest, commit: merge.sha ?? input.head, branch: target.branches.task, verdict: .merged
+        )
+        let landed = try await environment.github("マージした子 PR を読む", keeping: JobResult(outputs: mergedOutputs, claude: claude)) {
+            () throws(PullRequestError) in
             try await pulls.pullRequest(number: input.pullRequest)
         }
         guard landed.baseRef == target.branches.epic else {
