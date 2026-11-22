@@ -50,7 +50,7 @@ struct AppStoreConnectScreenshotTests {
         #expect(query(transport.requests.last)["cursor"] == "Mg")
     }
 
-    @Test func uploadsImageWithoutChecksumAndWaitsForProcessing() async throws {
+    @Test func sendsImageWithoutChecksumAndDoesNotWaitForProcessing() async throws {
         let data = Data(repeating: 7, count: 10)
         let reservation = #"{"data":{"type":"appAssetLibraryImages","id":"img-9","attributes":{"state":"AWAITING_UPLOAD","#
             + #""uploadOperations":[{"method":"PUT","url":"https://store-030.blobstore.apple.com/up","length":10,"offset":0,"#
@@ -58,16 +58,15 @@ struct AppStoreConnectScreenshotTests {
         let transport = StubTransport([
             .json(201, reservation),
             .json(200, ""),
-            .json(200, #"{"data":{"type":"appAssetLibraryImages","id":"img-9"}}"#),
-            .json(200, #"{"data":{"type":"appAssetLibraryImages","id":"img-9","attributes":{"state":"PREPARE_FOR_SUBMISSION"}}}"#)
+            .json(200, #"{"data":{"type":"appAssetLibraryImages","id":"img-9"}}"#)
         ])
-        let id = try await base.client(transport).uploadImage(
+        let id = try await base.client(transport).sendImage(
             to: "lib-1", fileName: "IPHONE_DUO_PROFILE-ja-1.png", referenceName: "askhub-\(String(repeating: "b", count: 32))", data: data
         )
         #expect(id == "img-9")
         let requests = transport.requests
         #expect(requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" } == [
-            "POST /v1/appAssetLibraryImages", "PUT /up", "PATCH /v1/appAssetLibraryImages/img-9", "GET /v1/appAssetLibraryImages/img-9"
+            "POST /v1/appAssetLibraryImages", "PUT /up", "PATCH /v1/appAssetLibraryImages/img-9"
         ])
         let reserve = try body(requests[0])
         let attributes = try #require(reserve["attributes"] as? [String: Any])
@@ -79,18 +78,30 @@ struct AppStoreConnectScreenshotTests {
         #expect(try body(requests[2])["attributes"] as? [String: Bool] == ["uploaded": true])
     }
 
-    @Test func refusesAndDeletesImageWhenProcessingFails() async throws {
-        let reservation = #"{"data":{"type":"appAssetLibraryImages","id":"img-9","attributes":{"uploadOperations":[]}}}"#
+    @Test func readsTheStateAndTheReasonOfAnImage() async throws {
+        let failed = #"{"data":{"type":"appAssetLibraryImages","id":"img-9","attributes":{"state":"FAILED","#
+            + #""stateDetails":{"errors":[{"code":"IMAGE_INCORRECT_DIMENSIONS","message":"The dimensions are not allowed."}]}}}}"#
+        // stateDetails の形が文書と違っても、様子は読む
+        let odd = #"{"data":{"type":"appAssetLibraryImages","id":"img-8","attributes":{"state":"UPLOAD_COMPLETE","stateDetails":"?"}}}"#
+        let transport = StubTransport([.json(200, failed), .json(200, odd)])
+        let image = try await base.client(transport).libraryImage("img-9")
+        #expect(image.isFailed && image.details == "IMAGE_INCORRECT_DIMENSIONS: The dimensions are not allowed.")
+        #expect(query(transport.requests.first)["fields[appAssetLibraryImages]"] == "state,stateDetails")
+        let processing = try await base.client(transport).libraryImage("img-8")
+        #expect(processing.isProcessing && processing.details == nil)
+    }
+
+    @Test func readsReferenceDataAsOneResourceOrAList() async throws {
+        let groups = #"{"placementProfileGroups":[{"placementProfileGroupId":"IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE","#
+            + #""platform":"IPHONE_APP_STORE"},"#
+            + #"{"placementProfileGroupId":"MAC_PROFILE","platform":"MAC_APP_STORE"}]}"#
         let transport = StubTransport([
-            .json(201, reservation),
-            .json(200, #"{"data":{"type":"appAssetLibraryImages","id":"img-9"}}"#),
-            .json(200, #"{"data":{"type":"appAssetLibraryImages","id":"img-9","attributes":{"state":"FAILED"}}}"#),
-            .json(204, "")
+            .json(200, #"{"data":{"type":"appAssetLibraryRefData","id":"ref","attributes":"# + groups + "}}"),
+            .json(200, #"{"data":[{"type":"appAssetLibraryRefData","id":"ref","attributes":"# + groups + "}]}")
         ])
-        await #expect(throws: AppStoreConnectError.self) {
-            try await base.client(transport).uploadImage(to: "lib-1", fileName: "a.png", referenceName: "a", data: Data([1]))
-        }
-        #expect(transport.requests.last?.httpMethod == "DELETE" && transport.requests.last?.url?.path == "/v1/appAssetLibraryImages/img-9")
+        let one = try await base.client(transport).displayTypePlatforms()
+        let list = try await base.client(transport).displayTypePlatforms()
+        #expect(one == ["IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": .iOS, "MAC_PROFILE": .macOS] && list == one)
     }
 
     @Test func placesAndOrdersScreenshots() async throws {

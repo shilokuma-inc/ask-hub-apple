@@ -297,7 +297,7 @@ extension ReleaseWatchTests {
     }
 
     func screenshotWrites() -> [String] {
-        let kinds = ["uploadImage", "deleteImage", "placeScreenshot", "deletePlacement", "orderScreenshots"]
+        let kinds = ["sendImage", "deleteImage", "placeScreenshot", "deletePlacement", "orderScreenshots"]
         return appStore.state.withLock { $0.writes }.filter { write in kinds.contains { write.hasPrefix($0) } }
     }
 
@@ -307,7 +307,7 @@ extension ReleaseWatchTests {
         let uploaded = "image-\(Self.iPhone)-ja-2.png"
         // 1・3 枚目は配信中の版の画像（i1・i3）の配置を残し、2 枚目を上げて置き、4 枚目（撮ったものより後ろ）を消す
         #expect(screenshotWrites() == [
-            "uploadImage \(Self.iPhone)-ja-2.png",
+            "sendImage \(Self.iPhone)-ja-2.png",
             "deletePlacement e-p2",
             "deletePlacement e-p4",
             "placeScreenshot \(uploaded) e-ja",
@@ -335,13 +335,40 @@ extension ReleaseWatchTests {
         #expect(screenshotWrites() == ["orderScreenshots e-ja e-p1,e-new,e-p3"])
     }
 
-    @Test func replacesFailedUploadsOfTheSameImage() async throws {
+    @Test func replacesImagesWhoseUploadDidNotFinish() async throws {
         let (originals, capturer) = try await readyToSubmitScreenshots()
         let data = try Data(contentsOf: StoreScreenshotRun.original(in: originals, target: Self.japanese, index: 2))
         let name = AppStoreScreenshot.referenceName(checksum: AppStoreScreenshot.checksum(of: data))
-        appStore.state.withLock { $0.libraryImages[name] = [AppStoreLibraryImage(id: "image-failed", state: "FAILED")] }
+        // 予約だけして送り終えなかった画像は、消してから上げ直す
+        appStore.state.withLock { $0.libraryImages[name] = [AppStoreLibraryImage(id: "image-stale", state: "AWAITING_UPLOAD")] }
         await watch(screenshots: capturer).refresh()
-        #expect(screenshotWrites().prefix(2) == ["deleteImage image-failed", "uploadImage \(Self.iPhone)-ja-2.png"])
+        #expect(screenshotWrites().prefix(2) == ["deleteImage image-stale", "sendImage \(Self.iPhone)-ja-2.png"])
+    }
+
+    @Test func waitsForImagesThatAppStoreConnectIsProcessing() async throws {
+        let (originals, capturer) = try await readyToSubmitScreenshots()
+        let data = try Data(contentsOf: StoreScreenshotRun.original(in: originals, target: Self.japanese, index: 2))
+        let name = AppStoreScreenshot.referenceName(checksum: AppStoreScreenshot.checksum(of: data))
+        // 先に上げておいた画像を Apple が処理している。消さずに、置かずに待つ（審査にもまだ出さない）
+        appStore.state.withLock { $0.libraryImages[name] = [AppStoreLibraryImage(id: "image-processing", state: "UPLOAD_COMPLETE")] }
+        await watch(screenshots: capturer).refresh()
+        #expect(screenshotWrites().isEmpty)
+        let file = try await submission()
+        #expect(file.problem?.step == .submit && file.problem?.needsHuman == false && file.problem?.message.contains("取り込んで") == true)
+        #expect(file.review.allSatisfy { $0.submittedAt == nil })
+    }
+
+    @Test func stopsWhenAppStoreConnectRejectedAnAcceptedImage() async throws {
+        let (originals, capturer) = try await readyToSubmitScreenshots()
+        let data = try Data(contentsOf: StoreScreenshotRun.original(in: originals, target: Self.japanese, index: 2))
+        let name = AppStoreScreenshot.referenceName(checksum: AppStoreScreenshot.checksum(of: data))
+        appStore.state.withLock {
+            $0.libraryImages[name] = [AppStoreLibraryImage(id: "image-failed", state: "FAILED", details: "IMAGE_INCORRECT_DIMENSIONS")]
+        }
+        await watch(screenshots: capturer).refresh()
+        #expect(screenshotWrites().isEmpty)
+        let problem = try #require(try await submission().problem)
+        #expect(problem.needsHuman && problem.message.contains("IMAGE_INCORRECT_DIMENSIONS"))
     }
 
     @Test func placesLiveImagesWhenEveryChangedScreenIsKept() async throws {

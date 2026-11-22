@@ -23,6 +23,14 @@ final class FakeAppStore: AppStoreConnecting {
         ]
         /// ライブラリの画像（参照名ごと。上げると足す）
         var libraryImages: [String: [AppStoreLibraryImage]] = [:]
+        /// 上げた画像の、上げた直後の処理の様子（既定はすぐ置ける）
+        var sentState = "PREPARE_FOR_SUBMISSION"
+        /// 決めると、ライブラリの画像を読めずにこれを投げる
+        var libraryFailure: AppStoreConnectError?
+        /// 決めると、アプリを探せずにこれを投げる
+        var appsFailure: AppStoreConnectError?
+        /// 決めると、上げた画像の処理の様子（id で読む）を読めずにこれを投げる
+        var sentImageFailure: AppStoreConnectError?
         /// 作った配置の数（配置の id の番号）
         var placementCount = 0
         /// スクショの画像（URL ごと）
@@ -51,7 +59,8 @@ final class FakeAppStore: AppStoreConnecting {
     let state = OSAllocatedUnfairLock(initialState: State())
 
     func apps(bundleIDs: [String]) async throws(AppStoreConnectError) -> [AppStoreApp] {
-        state.withLock { $0.apps.filter { bundleIDs.contains($0.bundleId) } }
+        if let failure = state.withLock({ $0.appsFailure }) { throw failure }
+        return state.withLock { $0.apps.filter { bundleIDs.contains($0.bundleId) } }
     }
 
     func liveVersions(of appID: String) async throws(AppStoreConnectError) -> [LiveAppVersion] {
@@ -154,19 +163,40 @@ final class FakeAppStore: AppStoreConnecting {
     }
 
     func libraryImages(in libraryID: String, referenceName: String) async throws(AppStoreConnectError) -> [AppStoreLibraryImage] {
-        state.withLock { $0.libraryImages[referenceName] ?? [] }
+        let (images, failure) = state.withLock { ($0.libraryImages[referenceName] ?? [], $0.libraryFailure) }
+        if let failure { throw failure }
+        return images
     }
 
-    func uploadImage(
+    func sendImage(
         to libraryID: String,
         fileName: String,
         referenceName: String,
         data: Data
     ) async throws(AppStoreConnectError) -> String {
-        try write("uploadImage \(fileName)")
-        let image = AppStoreLibraryImage(id: "image-\(fileName)", state: "PREPARE_FOR_SUBMISSION")
-        state.withLock { $0.libraryImages[referenceName, default: []].append(image) }
-        return image.id
+        try write("sendImage \(fileName)")
+        return state.withLock { state in
+            let image = AppStoreLibraryImage(id: "image-\(fileName)", state: state.sentState)
+            state.libraryImages[referenceName, default: []].append(image)
+            return image.id
+        }
+    }
+
+    func libraryImage(_ id: String) async throws(AppStoreConnectError) -> AppStoreLibraryImage {
+        if let failure = state.withLock({ $0.sentImageFailure }) { throw failure }
+        guard let image = state.withLock({ $0.libraryImages.values.flatMap(\.self).first { $0.id == id } }) else {
+            throw .refused(status: 404, detail: "画像が無い")
+        }
+        return image
+    }
+
+    /// 参照名の画像の処理の様子を変える（Apple の処理が進んだ・失敗した）
+    func setLibraryState(_ referenceName: String, _ newState: String, details: String? = nil) {
+        state.withLock { state in
+            state.libraryImages[referenceName] = (state.libraryImages[referenceName] ?? []).map {
+                AppStoreLibraryImage(id: $0.id, state: newState, details: details)
+            }
+        }
     }
 
     func deleteImage(_ id: String) async throws(AppStoreConnectError) {

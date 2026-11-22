@@ -29,7 +29,10 @@ extension AppStoreSubmission {
         for set in sets {
             let changed = set.shots.filter(\.changed).map(\.index)
             // 差のある画面をすべて前のままにした組も、配信中の版の画像にそろえる（編集できる版が配信中の版と違うことがある）
+            // App Store Connect が受け付けなかった画面（`rejected`）は、前のままにするしかない
+            let rejected = Set(set.shots.filter { $0.rejected != nil }.map(\.index))
             let accepted = Set(changed.filter { !keep.contains(.init(displayType: set.displayType, locale: set.locale, index: $0)) })
+                .subtracting(rejected)
             guard let localization = localizations.first(where: { $0.locale == set.locale }) else {
                 // 版に無い言語（設定に足したが App Store Connect にまだ無い）は、人がすべて前のままにした（載せない）なら飛ばす
                 if accepted.isEmpty, liveLocalizations.allSatisfy({ $0.locale != set.locale }) { continue }
@@ -111,16 +114,29 @@ extension AppStoreSubmission {
         return images
     }
 
-    /// ライブラリにある同じ画像（参照名の MD5）を使い、無ければ上げる。前の試行の、上げ終わらなかった・処理に失敗した同じ画像は消してから上げる
+    /// ライブラリにある同じ画像（参照名の MD5）を使う。ふつうは撮って比べた後に上げておいた画像（`docs/renewal/store-screenshots.md` の
+    /// 「先に上げておく」）。処理中なら消さずに待つ（待てば直るものとして投げ、次の見回りでやり直す）。無い・上げ終わらなかった（予約だけ）なら上げ直す
     private func libraryImage(_ data: Data, fileName: String, library: String) async throws -> String {
         let name = AppStoreScreenshot.referenceName(checksum: AppStoreScreenshot.checksum(of: data))
         let found = try await call { () throws(AppStoreConnectError) in try await store.libraryImages(in: library, referenceName: name) }
         if let ready = found.first(where: \.isPlaceable) { return ready.id }
-        for stale in found { try? await store.deleteImage(stale.id) }
-        return try await call { () throws(AppStoreConnectError) in
-            try await store.uploadImage(to: library, fileName: fileName, referenceName: name, data: data)
+        if found.contains(where: \.isProcessing) { throw Self.processing }
+        if let failed = found.first(where: \.isFailed) {
+            throw ReleaseStepProblem(
+                "App Store Connect がスクショ（\(fileName)）を受け付けない（\(failed.details ?? "理由なし")）。撮り直すか、前のままにする", needsHuman: true
+            )
         }
+        for stale in found { try? await store.deleteImage(stale.id) }
+        let id = try await call { () throws(AppStoreConnectError) in
+            try await store.sendImage(to: library, fileName: fileName, referenceName: name, data: data)
+        }
+        let sent = try await call { () throws(AppStoreConnectError) in try await store.libraryImage(id) }
+        guard sent.isPlaceable else { throw Self.processing }
+        return id
     }
+
+    /// App Store Connect がスクショを処理している（待てば置ける）
+    static let processing = ReleaseStepProblem("App Store Connect がスクショを取り込んでいる。取り込み終えたら置いて審査に出す", needsHuman: false)
 
     /// 版の言語の表示サイズの配置を、`images` の並びにする。同じ画像の配置は使い回し、余った配置を消してから足りない配置を作り
     /// （組の上限 10 枚でも詰まらない）、並べ直す。もう同じなら何もしない
