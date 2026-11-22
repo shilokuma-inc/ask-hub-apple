@@ -4,12 +4,17 @@ import SwiftUI
 /// 依頼の画面の「新しいアプリ」の欄。テンプレート・作る先（持ち主と名前）・アプリ名・Bundle ID・公開範囲を選ぶ。
 /// 作る先の持ち主は、司令塔に管理用のトークンを入れた持ち主だけを出す（ほかの持ち主には作れない）
 struct NewAppSections: View {
+    /// アプリ名・Bundle ID を人が直したか（直していなければ、リポジトリの名前・アプリ名から決まる案に合わせ続ける）
+    struct Edits: Hashable {
+        var appName = false
+        var bundleId = false
+    }
+
     @Binding var request: NewAppRequest
+    /// 欄が作り直されても残るよう、親が入れた値と一緒に持つ
+    @Binding var edits: Edits
     /// 管理用のトークンを入れた持ち主
     let owners: [String]
-    /// アプリ名・Bundle ID を人が直したか（直していなければ、リポジトリの名前・アプリ名から決まる案に合わせ続ける）
-    @State private var editedAppName = false
-    @State private var editedBundleId = false
 
     var body: some View {
         Section {
@@ -85,9 +90,9 @@ struct NewAppSections: View {
         Binding {
             request.appName
         } set: { value in
-            editedAppName = true
+            edits.appName = true
             request.appName = value
-            if !editedBundleId { request.bundleId = CreateRepositoryIntent.defaultBundleId(appName: value) }
+            if !edits.bundleId { request.bundleId = CreateRepositoryIntent.defaultBundleId(appName: value) }
         }
     }
 
@@ -95,16 +100,16 @@ struct NewAppSections: View {
         Binding {
             request.bundleId
         } set: { value in
-            editedBundleId = true
+            edits.bundleId = true
             request.bundleId = value
         }
     }
 
     /// 人が直していなければ、リポジトリの名前からアプリ名と Bundle ID の案を入れる
     private func suggestNames() {
-        guard !editedAppName else { return }
+        guard !edits.appName else { return }
         request.appName = NewAppRequest.suggestedAppName(from: request.name)
-        if !editedBundleId { request.bundleId = CreateRepositoryIntent.defaultBundleId(appName: request.appName) }
+        if !edits.bundleId { request.bundleId = CreateRepositoryIntent.defaultBundleId(appName: request.appName) }
     }
 
     /// テンプレートのある持ち主を既定に選ぶ。選べる持ち主に無ければ先頭

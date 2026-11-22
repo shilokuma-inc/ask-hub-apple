@@ -29,6 +29,8 @@ struct NewRequestSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var kind: RequestKind
     @State private var newApp = NewAppRequest()
+    /// 新しいアプリのアプリ名・Bundle ID を手で直したか。欄は「機能の依頼」に切り替えると作り直されるので、入れた値と同じくここに持つ
+    @State private var newAppEdits = NewAppSections.Edits()
     /// 下書き（分け方の案から依頼し直す）から開いたか。下書きなら「新しいアプリ」に切り替えさせない
     private let isDraft: Bool
     @State private var repositoryID: TargetRepository.ID?
@@ -81,7 +83,8 @@ struct NewRequestSheet: View {
             Form {
                 if sending.showsStatus {
                     Section {
-                        SheetSendStatus(state: sending) { submit() }
+                        // 送れなかったときのやり直しも、送るものの種類で分ける（ツールバーのボタンと同じ）
+                        SheetSendStatus(state: sending) { kind == .feature ? submit() : create() }
                     }
                 }
                 if !isDraft {
@@ -97,7 +100,7 @@ struct NewRequestSheet: View {
                     .disabled(sending.isSending)
                 }
                 if kind == .newApp {
-                    NewAppSections(request: $newApp, owners: store.snapshot?.adminOwners ?? [])
+                    NewAppSections(request: $newApp, edits: $newAppEdits, owners: store.snapshot?.adminOwners ?? [])
                         .disabled(sending.isSending)
                 } else {
                     featureSections(groups: groups)
