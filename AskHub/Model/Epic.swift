@@ -29,6 +29,8 @@ struct Epic: Identifiable, Hashable {
     /// 人が一時停止した時刻（再開するまで次の作業を始めない）。止めていなければ nil。
     /// Mac がオフラインで止まっているときは、`activities` の `.paused` で出す
     var pausedAt: Date?
+    /// 直すリリースの版（「このリリースを直す」依頼）。作業ブランチは `release/<版>` から作り、最終 PR は `release/<版>` に向ける。ふだんの依頼は nil
+    var release: String?
 
     /// 段階。画面の段階の帯は 依頼・質問・確認（着手前の確認とゴール）・実装・最終 PR・完了 の 6 つ
     enum Stage: Int, Hashable, CaseIterable, Comparable {

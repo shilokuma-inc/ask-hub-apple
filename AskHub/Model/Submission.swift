@@ -11,6 +11,8 @@ struct Submission: Identifiable, Hashable {
     var startedInAskHub: Bool
     /// release ブランチ（`release/1.4.0`）。まだ作っていなければ nil
     var branch: String?
+    /// release ブランチを作った（見つけた）時刻。まだ作っていなければ nil
+    var branchCreatedAt: Date?
     /// develop の版を次に上げる PR
     var nextVersion: Release.NextVersion?
     /// release ブランチから上げたビルド
@@ -51,6 +53,9 @@ struct Submission: Identifiable, Hashable {
     var sending: Action?
     /// この端末から送った操作を、司令塔が最後に断った理由
     var rejected: String?
+
+    /// 「このリリースを直す」依頼を出せる（AskHub で始めた終わっていないリリースで、release ブランチを作った。司令塔の受け付けと同じ）
+    var acceptsFixes: Bool { startedInAskHub && branch != nil && end == nil }
 
     static func id(_ repositoryID: TargetRepository.ID, _ version: String) -> ID {
         "\(repositoryID)/\(version)"

@@ -33,7 +33,7 @@ extension StateIntentMapper {
 
     func repositoryDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
         switch intent {
-        case let .request(repositoryID, summary, body, files):
+        case let .request(repositoryID, summary, body, files, release):
             guard summary.count <= RequestIntent.maximumTitleLength, body.count <= RequestIntent.maximumBodyLength else {
                 let limits = "要約は \(RequestIntent.maximumTitleLength) 文字、内容は \(RequestIntent.maximumBodyLength) 文字まで"
                 throw ClientServiceError(message: "\(limits)です")
@@ -42,7 +42,13 @@ extension StateIntentMapper {
             guard files.count <= RequestIntent.maximumAttachments, files.enumerated().allSatisfy({ $1.attachment.number == $0 + 1 }) else {
                 throw ClientServiceError(message: "添付の番号が合いません。添付し直してください")
             }
-            return .request(repo: try repository(repositoryID), title: summary, body: body, attachments: files.map(\.attachment))
+            let version = try release.map { text throws(ClientServiceError) in
+                guard let version = MarketingVersion(rawValue: text) else { throw ClientServiceError(message: "直すリリースの版の形が違います") }
+                return version
+            }
+            return .request(
+                repo: try repository(repositoryID), title: summary, body: body, attachments: files.map(\.attachment), release: version
+            )
 
         case .addRepository(let repositoryID):
             // 状態リポジトリにつないだときは候補の一覧が無いので、人が入れた owner/name を id にして送る。

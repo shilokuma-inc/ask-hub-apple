@@ -1,6 +1,6 @@
 import Foundation
 
-/// 最終 PR（epic → develop）の確認。人が決めていない判断のカードと、マージの条件を持つ
+/// 最終 PR（epic → base。ふだんは develop、「このリリースを直す」epic は release/<版>）の確認。人が決めていない判断のカードと、マージの条件を持つ
 struct FinalReview: Hashable {
     var pullRequestNumber: Int
     /// 追加・削除の行数。状態リポジトリには無い（対象のリポジトリの API は呼ばない）ので、分からなければ nil

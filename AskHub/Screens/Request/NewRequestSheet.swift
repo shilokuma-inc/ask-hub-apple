@@ -1,12 +1,14 @@
 import AskHubKit
 import SwiftUI
 
-/// 依頼の下書き（分け方の案から依頼し直すとき）
+/// 依頼の下書き（分け方の案から依頼し直すとき・リリースを直すとき）
 struct RequestDraft: Identifiable, Hashable {
-    var id: String { summary }
+    var id: String { "\(release ?? "")/\(summary)" }
     var repositoryID: TargetRepository.ID
     var summary: String
     var body: String
+    /// 直すリリースの版（「このリリースを直す」依頼）。依頼先は変えられない
+    var release: String?
 }
 
 /// 新しい依頼。依頼先には対象のリポジトリだけを、organization ごとに分けて出す。添付は、意図より先に状態リポジトリに置く。
@@ -19,6 +21,8 @@ struct NewRequestSheet: View {
     @State private var repositoryID: TargetRepository.ID?
     @State private var summary: String
     @State private var requestBody: String
+    /// 直すリリースの版。nil ならふだんの依頼（develop に入れ、次のリリースで出す）
+    private let release: String?
     @State private var attachments: [AttachmentFile] = []
     /// 選んだのに足さなかったファイル・送れなかったファイルの説明
     @State private var attachmentNotices: [String] = []
@@ -31,6 +35,7 @@ struct NewRequestSheet: View {
         _repositoryID = State(initialValue: draft?.repositoryID)
         _summary = State(initialValue: draft?.summary ?? "")
         _requestBody = State(initialValue: draft?.body ?? "")
+        release = draft?.release
     }
 
     private var canSend: Bool {
@@ -44,7 +49,7 @@ struct NewRequestSheet: View {
         }
         switch RequestFile.make(attachments) {
         case let .success(files):
-            return .request(repositoryID: repositoryID, summary: summary, body: requestBody, attachments: files)
+            return .request(repositoryID: repositoryID, summary: summary, body: requestBody, attachments: files, release: release)
 
         case let .failure(rejection):
             attachmentNotices = [rejection.message]
@@ -74,10 +79,20 @@ struct NewRequestSheet: View {
                                 }
                             }
                         }
+                        // 直すリリースの依頼は、リリースのリポジトリから変えない
+                        .disabled(release != nil)
                         if let repository = store.repository(repositoryID) {
                             AppHeaderView(repository: repository) {
                                 OwnerLabel(repository: repository)
                             }
+                        }
+                    }
+                    if let release {
+                        Section {
+                            Label("リリース \(release) を直す", systemImage: "wrench.and.screwdriver")
+                                .accessibilityIdentifier("request.release")
+                        } footer: {
+                            Text("直しは release/\(release) に入れ、このリリースのビルドに載せます。配信した後に develop にも取り込みます")
                         }
                     }
                     Section("作りたいもの") {
@@ -101,7 +116,7 @@ struct NewRequestSheet: View {
             // macOS では、フォームのどこに落としても添付になる（Discussion #784）
             .attachmentDropTarget(attachments: $attachments, notices: $attachmentNotices) { !sending.isSending }
             .pastelBackground()
-            .navigationTitle("新しい依頼")
+            .navigationTitle(release == nil ? "新しい依頼" : "このリリースを直す")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル") { dismiss() }

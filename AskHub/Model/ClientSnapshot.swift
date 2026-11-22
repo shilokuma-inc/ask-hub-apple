@@ -94,6 +94,11 @@ extension ClientSnapshot {
         submissions.first { $0.id == id }
     }
 
+    /// 「このリリースを直す」依頼を出せる、進行中のリリース（AskHub で始めて release ブランチを作った、終わっていない版）。無ければ nil
+    func fixableRelease(of repositoryID: TargetRepository.ID) -> Submission? {
+        submissions(of: repositoryID).filter(\.acceptsFixes).max { Self.isOlder($0.version, $1.version) }
+    }
+
     /// リリースを始めるときの版の既定（前に配信した版の次のマイナー。develop の版を上げた PR があれば、その版）
     func suggestedReleaseVersion(of repositoryID: TargetRepository.ID) -> String {
         guard let latest = releases(of: repositoryID).max(by: { Self.isOlder($0.version, $1.version) }) else { return "1.0.0" }
