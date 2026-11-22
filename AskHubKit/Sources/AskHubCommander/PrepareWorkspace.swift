@@ -4,7 +4,7 @@ import Foundation
 /// 作業場所の用意（`prepareWorkspace`）を 1 回実行する（`docs/renewal/flows.md` の「作業ブランチと子 PR」）。
 /// 開始のときに人が選んだ Mac で動く（ワーカーと、常時オンの Mac の司令塔の両方）。
 ///
-/// epic の作業場所に作業ブランチ `askhub/<epic の id>` を取り出し、無ければ base の最新から作って push する。
+/// epic の作業場所に作業ブランチ `askhub/<epic の id>` を取り出し、無ければ base（「このリリースを直す」epic は `release/<版>`）の最新から作って push する。
 /// 作業ブランチの名前と先頭のコミットは試行の `outputs` に書く（`epic.json` は司令塔だけが書く）
 public struct PrepareWorkspaceRunner: JobRunning {
     public var context: CommanderContext
@@ -32,7 +32,7 @@ public struct PrepareWorkspaceRunner: JobRunning {
             return JobResult()
         }
         let repository = try await context.read(RepositoryFile.self, at: StatePath.repository(job.repo))
-        let base = repository?.build?.baseBranch ?? base
+        let base = epic.base(repository: repository?.build?.baseBranch ?? base)
         do {
             let branch = epic.branch ?? Self.branch(of: epic.id)
             let prepared = try await workspace.prepareEpic(job.repo, epic: epic.id, branch: branch, base: base)

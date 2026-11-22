@@ -105,6 +105,7 @@ extension StateSnapshotBuilder {
             createdAt: file.createdAt.date,
             updatedAt: file.updatedAt.date
         )
+        submission.branchCreatedAt = file.branch?.at.date
         submission.submitted = file.submit.map(submitted)
         submission.slots = file.appStoreVersions.map { $0.map(slot) }
         submission.screenshots = file.screenshots.map(storeScreenshots)

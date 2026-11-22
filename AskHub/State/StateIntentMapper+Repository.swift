@@ -31,18 +31,35 @@ extension StateIntentMapper {
         }
     }
 
+    /// 依頼。長さ・添付の番号・直すリリースの版の形を、司令塔と同じ決まりで先に確かめる
+    private func requestDraft(
+        repositoryID: TargetRepository.ID,
+        summary: String,
+        body: String,
+        files: [RequestFile],
+        release: String?
+    ) throws(ClientServiceError) -> IntentDraft {
+        guard summary.count <= RequestIntent.maximumTitleLength, body.count <= RequestIntent.maximumBodyLength else {
+            let limits = "要約は \(RequestIntent.maximumTitleLength) 文字、内容は \(RequestIntent.maximumBodyLength) 文字まで"
+            throw ClientServiceError(message: "\(limits)です")
+        }
+        // 司令塔は 1 から順の番号を求める（添付欄の順に振ったものを、そのまま送る）
+        guard files.count <= RequestIntent.maximumAttachments, files.enumerated().allSatisfy({ $1.attachment.number == $0 + 1 }) else {
+            throw ClientServiceError(message: "添付の番号が合いません。添付し直してください")
+        }
+        let version = try release.map { text throws(ClientServiceError) in
+            guard let version = MarketingVersion(rawValue: text) else { throw ClientServiceError(message: "直すリリースの版の形が違います") }
+            return version
+        }
+        return .request(
+            repo: try repository(repositoryID), title: summary, body: body, attachments: files.map(\.attachment), release: version
+        )
+    }
+
     func repositoryDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
         switch intent {
-        case let .request(repositoryID, summary, body, files):
-            guard summary.count <= RequestIntent.maximumTitleLength, body.count <= RequestIntent.maximumBodyLength else {
-                let limits = "要約は \(RequestIntent.maximumTitleLength) 文字、内容は \(RequestIntent.maximumBodyLength) 文字まで"
-                throw ClientServiceError(message: "\(limits)です")
-            }
-            // 司令塔は 1 から順の番号を求める（添付欄の順に振ったものを、そのまま送る）
-            guard files.count <= RequestIntent.maximumAttachments, files.enumerated().allSatisfy({ $1.attachment.number == $0 + 1 }) else {
-                throw ClientServiceError(message: "添付の番号が合いません。添付し直してください")
-            }
-            return .request(repo: try repository(repositoryID), title: summary, body: body, attachments: files.map(\.attachment))
+        case let .request(repositoryID, summary, body, files, release):
+            return try requestDraft(repositoryID: repositoryID, summary: summary, body: body, files: files, release: release)
 
         case .addRepository(let repositoryID):
             // 候補と外したリポジトリは、GitHub の・外す前の owner/name の書き方で送る（状態リポジトリのパスは大文字小文字を区別する）。

@@ -99,7 +99,26 @@ extension DemoData {
             skipped: [],
             progress: "App Store Connect の取り込みを待っています（2 / 5 枚）"
         )
-        return [submission, first]
+        return [submission, first, habitSubmission()]
+    }
+
+    /// 習慣ログの 1.4.0。release ブランチを作った後に TestFlight に上げ、What's New を下書きしている。
+    /// 振り返りの epic（実機確認が残っている）は release ブランチより前にマージしたので、「問題あり」は「このリリースで直す」が既定
+    private func habitSubmission() -> Submission {
+        var habit = Submission(
+            repositoryID: Self.repositoryID("habit-ios"),
+            version: "1.4.0",
+            startedInAskHub: true,
+            branch: "release/1.4.0",
+            nextVersion: .init(version: "1.5.0", state: .merged, pullRequest: 48),
+            builds: [.init(platform: "iOS", build: "52")],
+            revision: 1,
+            createdAt: ago(minutes: 60 * 30),
+            updatedAt: ago(minutes: 60 * 20)
+        )
+        habit.branchCreatedAt = ago(minutes: 60 * 30)
+        habit.canAbandon = true
+        return habit
     }
 
     /// レシピ帳の掲載文の案（人数に合わせた分量の計算を、日本語の説明文とキーワード・英語のキーワードに入れる）

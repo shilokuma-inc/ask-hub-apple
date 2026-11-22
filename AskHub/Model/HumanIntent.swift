@@ -34,8 +34,12 @@ enum HumanIntent: Hashable {
     case cleanUp(macID: Mac.ID, candidateIDs: [CleanupCandidate.ID])
     /// Mac の片付けの候補を探す（その Mac のワーカーが探す）
     case findCleanupCandidates(macID: Mac.ID)
-    /// 依頼。添付の中身は、意図より先に状態リポジトリに置く
-    case request(repositoryID: TargetRepository.ID, summary: String, body: String, attachments: [RequestFile] = [])
+    // 依頼の意図（`request`）の payload と同じ並びにしておくため、値を 5 つ持たせる（別の case にすると、依頼の扱いを 2 つに分けることになる）
+    // swiftlint:disable enum_case_associated_values_count
+    /// 依頼。添付の中身は、意図より先に状態リポジトリに置く。`release` は「このリリースを直す」依頼の直すリリースの版
+    /// （epic は `release/<版>` を base にする）。ふだんの依頼は nil
+    case request(repositoryID: TargetRepository.ID, summary: String, body: String, attachments: [RequestFile] = [], release: String? = nil)
+    // swiftlint:enable enum_case_associated_values_count
     case addRepository(repositoryID: TargetRepository.ID)
     /// 配信した版のリリース文を確かめて、GitHub Release を公開する。見た下書きの版に結びつける（見た後に下書きが作り直されていれば、司令塔が断る）
     case publishRelease(repositoryID: TargetRepository.ID, version: String, notesVersion: Int, notes: String)
@@ -101,7 +105,8 @@ enum DecisionReply: Hashable {
 
 enum VerificationReply: Hashable {
     case confirmed
-    case problem(note: String)
+    /// 問題あり。`release` があれば「このリリースで直す」（直しの依頼をその版の release ブランチに向ける）、nil なら次のリリースで直す
+    case problem(note: String, release: String? = nil)
 }
 
 extension HumanIntent {
@@ -115,7 +120,7 @@ extension HumanIntent {
     /// 送ったことを知らせるときの呼び名（状態リポジトリの「送った意図」と同じ呼び方。例: 依頼「週ごとのまとめ」・回答・開始）
     var label: String {
         switch self {
-        case let .request(_, summary, _, _):
+        case let .request(_, summary, _, _, _):
             "依頼「\(summary)」"
 
         case .answer:

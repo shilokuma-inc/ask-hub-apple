@@ -23,17 +23,18 @@ struct SwipeHoldTests {
         #expect(SwipeHold.heldChoices([]).isEmpty)
     }
 
-    /// 判断の「直してほしい」と実機確認の「問題あり」を止め、OK・別案・確認したは飛ばす
+    /// 判断の「直してほしい」と実機確認の「問題あり」を止め、OK・別案・確認したは飛ばす。
+    /// 習慣ログは 1.4.0 のリリースが進行中なので、「問題あり」は「次のリリースで直す」と「このリリースで直す」の 2 つ
     @Test(arguments: [
-        (DeckScope.decisions("tsundoku-search"), "fix"),
-        (DeckScope.verifications("habit-review"), "problem")
+        (DeckScope.decisions("tsundoku-search"), ["fix"]),
+        (DeckScope.verifications("habit-review"), ["problem", "problem.release"])
     ])
-    func holdsFixAndProblem(scope: DeckScope, heldID: String) {
+    func holdsFixAndProblem(scope: DeckScope, heldIDs: [String]) {
         let cards = DeckBuilder.cards(from: snapshot, scope: scope)
         #expect(!cards.isEmpty)
         for card in cards {
-            let held = SwipeHold.heldChoices(card.choices).map { card.choices[$0].id }
-            #expect(held == [heldID])
+            let held = Set(SwipeHold.heldChoices(card.choices).map { card.choices[$0].id })
+            #expect(held == Set(heldIDs))
         }
     }
 

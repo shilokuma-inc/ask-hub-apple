@@ -268,6 +268,8 @@ public struct EpicFile: StateFile {
     public var goalVersion: Int?
     /// 元になった依頼の人の意図
     public var origin: IntentReference?
+    /// 直すリリースの版（「このリリースを直す」依頼）。あれば作業ブランチの元と最終 PR の向き先は `release/<版>`。無ければ repo.json の base
+    public var release: MarketingVersion?
     public var createdAt: Timestamp
     public var updatedAt: Timestamp
 
@@ -285,6 +287,7 @@ public struct EpicFile: StateFile {
         pause: Pause? = nil,
         goalVersion: Int? = nil,
         origin: IntentReference? = nil,
+        release: MarketingVersion? = nil,
         createdAt: Timestamp,
         updatedAt: Timestamp
     ) {
@@ -301,8 +304,14 @@ public struct EpicFile: StateFile {
         self.pause = pause
         self.goalVersion = goalVersion
         self.origin = origin
+        self.release = release
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    /// 作業ブランチの元で、最終 PR の向き先。直すリリースがあれば `release/<版>`、無ければ `repository`（repo.json の `build.baseBranch`）
+    public func base(repository: String) -> String {
+        release.map(SubmissionFile.branchName(for:)) ?? repository
     }
 
     public var violations: [String] {

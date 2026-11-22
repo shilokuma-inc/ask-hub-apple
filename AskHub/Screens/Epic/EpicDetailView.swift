@@ -84,14 +84,7 @@ struct EpicDetailView: View {
                 SplitSection(epic: epic, split: split)
             }
             EpicStageSections(epic: epic) { shownQuestion = $0 }
-            CardSection("依頼") {
-                Text(epic.request.summary).rowFont(.title)
-                Text(epic.request.body).foregroundStyle(.secondary)
-                if epic.request.attachmentCount > 0 {
-                    Label("添付 \(epic.request.attachmentCount)", systemImage: "paperclip")
-                        .foregroundStyle(.secondary)
-                }
-            }
+            EpicRequestSection(epic: epic)
             HistorySection(history: epic.history, now: store.currentDate())
         }
     }

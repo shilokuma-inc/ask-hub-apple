@@ -93,7 +93,7 @@ public actor AbandonedPullRequests {
         self.log = log
     }
 
-    /// 見る epic と、最終 PR の向き先（`repo.json` の `build.baseBranch`。読めなければ nil で、向き先で絞らない）
+    /// 見る epic と、最終 PR の向き先（`repo.json` の `build.baseBranch`。「このリリースを直す」epic は `release/<版>`。読めなければ nil で、向き先で絞らない）
     struct Target {
         var epic: EpicFile
         var base: String?
@@ -165,7 +165,8 @@ public actor AbandonedPullRequests {
             for epic in epics {
                 let searches = now.timeIntervalSince(epic.updatedAt.date) < period
                 guard searches || uncommented[epic.id]?.isEmpty == false else { continue }
-                let base = try await reader.readable(RepositoryFile.self, at: StatePath.repository(repo))?.build?.baseBranch
+                let repository = try await reader.readable(RepositoryFile.self, at: StatePath.repository(repo))?.build?.baseBranch
+                let base = epic.release.map(SubmissionFile.branchName(for:)) ?? repository
                 targets.append(Target(epic: epic, base: base, searches: searches))
             }
         }
