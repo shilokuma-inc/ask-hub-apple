@@ -488,7 +488,10 @@ GitHub の REST の上限（1 時間に 5,000 回）は、トークンごとで�
 2026-11-12 に決めた。司令塔が `addRepository` の処理で、管理用のトークン（上の「管理用のトークン（持ち主ごと）」）で行い、結果を `repo.json` の `setup` に書く（[protocol.md](protocol.md) の「repo.json」）。
 
 - **Discussions**: 無効なら有効にする。カテゴリ「Ideas」（有効にすると GitHub が作る既定のカテゴリ。Discussion の写しに使う）があるかを確かめ、無ければ `setup.discussions` を `missingCategory` にし、クライアントが人がする作業として出す（API ではカテゴリを作れない。GitHub のリポジトリの Discussions の画面でカテゴリを作る）
-- **ワークフローのファイル**: 今の仕組みのワークフロー（`close-goal-discussion.yml` と、ralph-kit を呼ぶもの）を外し、待つチェックのワークフローの `push`・`pull_request` の `paths`・`paths-ignore`（とそのすぐ上のコメント）を外す、決まった手順の PR を出す（下の「既存のリポジトリを移すとき」）
+- **ワークフローのファイル**: 今の仕組みのワークフロー（`close-goal-discussion.yml` と、`uses:` で ralph-kit を呼ぶもの。コメントなどに名前があるだけでは外さない）を外し、待つチェックのワークフローの `push`・`pull_request` の `paths`・`paths-ignore`（とそのすぐ上のコメント、同じ深さに書いたリストの値）を外す、決まった手順の PR を出す（下の「既存のリポジトリを移すとき」）
+  - 待つチェックのワークフローは、チェックの名前（`build / build` の前の `build`）をジョブの id と表示名（`jobs.<id>.name`）に照らして探す。どのワークフローにも見つからない待つチェックは、準備の問題（人が絞りを確かめる）として出す
+  - 中身を読むのとコミットの親は、同じコミット（読み始めたときの base の head）にそろえる
+  - 途中で失敗した・上限で止めたときも、前に出した準備の PR の記録は残す（承認できるように）
   - 待つチェックのワークフローは、ビルドの設定の `childChecks`・`finalChecks`（まだ無ければ `build / build`）の ` / ` の前の名前のジョブを持つもの。待たないワークフロー（Upload など）は絞ったままにする
   - ブランチは `askhub/setup-workflows`、base はビルドの設定の `baseBranch`（無ければ既定のブランチ）。前に出した PR が開いていれば出し直さない。直すところが無ければ PR を出さない（`setup.workflows.state` が `notNeeded`）
   - ワーカーのトークンは Workflows を持たないので、ふだんの epic では push できない。司令塔の管理用のトークンで出す（コミットの書き手は、トークンのアカウント）
