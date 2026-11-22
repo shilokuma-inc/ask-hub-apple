@@ -170,6 +170,8 @@ struct RepositorySetupSection: View {
     @Environment(ClientStore.self) private var store
     @Environment(\.openURL) private var openURL
     @State private var confirmsApproval = false
+    /// 確かめを開いたときの PR（番号と head）。開いた後に head が変わっても、見たものだけを承認する
+    @State private var approving: SetupPullRequest?
     @State private var draft: RequestDraft?
 
     var body: some View {
@@ -188,8 +190,11 @@ struct RepositorySetupSection: View {
                     Button("PR #\(pullRequest.number) を GitHub で見る") { openURL(url) }
                 }
                 if pullRequest.state == .open {
-                    Button("承認してマージする…") { confirmsApproval = true }
-                        .disabled(reflecting)
+                    Button("承認してマージする…") {
+                        approving = pullRequest
+                        confirmsApproval = true
+                    }
+                    .disabled(reflecting)
                 }
             }
             if let rejection = setup.approvalRejection {
@@ -209,14 +214,17 @@ struct RepositorySetupSection: View {
             let ran = RelativeTime.string(setup.updatedAt, now: store.currentDate())
             Text("\(ran)に司令塔が管理用のトークンで流しました。CLAUDE.md の節や epic/** の読み替えなど、ほかの残りものは準備の依頼で直します")
         }
-        .confirmationDialog("ワークフローの直しをマージしますか？", isPresented: $confirmsApproval, titleVisibility: .visible) {
-            if let pullRequest = setup.workflowPullRequest {
-                Button("承認してマージする") {
-                    let (id, number, head) = (repository.id, pullRequest.number, pullRequest.head)
-                    Task { await store.send(.approveSetup(repositoryID: id, pullRequest: number, head: head)) }
-                }
+        .confirmationDialog(
+            "ワークフローの直しをマージしますか？",
+            isPresented: $confirmsApproval,
+            titleVisibility: .visible,
+            presenting: approving
+        ) { pullRequest in
+            Button("承認してマージする") {
+                let (id, number, head) = (repository.id, pullRequest.number, pullRequest.head)
+                Task { await store.send(.approveSetup(repositoryID: id, pullRequest: number, head: head)) }
             }
-        } message: {
+        } message: { _ in
             Text("今の head のままマージします。CI が通っていなければ、司令塔が断るので、通ってから承認し直します")
         }
         .sheet(item: $draft) { draft in
