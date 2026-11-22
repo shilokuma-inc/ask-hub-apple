@@ -21,8 +21,14 @@ extension ReleaseWatch {
             .compactMap { MarketingVersion(rawValue: String($0.name.dropLast(".json".count))) }
             .sorted()
         var advanced: [SubmissionFile] = []
+        // 撮影の実行が動いている版を覚え直す（読めなかった版は、前に覚えたものを残す）。後のリポジトリの起動は、この周に起動したものも数える
+        var unreadable: Set<MarketingVersion> = []
+        defer { noteScreenshotRuns(repo, files: advanced, unreadable: unreadable) }
         for version in versions {
-            guard let file = try? await context.readable(SubmissionFile.self, at: StatePath.submission(repo, version)) else { continue }
+            guard let file = try? await context.readable(SubmissionFile.self, at: StatePath.submission(repo, version)) else {
+                unreadable.insert(version)
+                continue
+            }
             guard !file.isEnded else {
                 if let ended = await advanceEnded(file, settings: settings) { advanced.append(ended) }
                 continue
