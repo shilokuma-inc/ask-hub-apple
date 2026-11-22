@@ -9,6 +9,8 @@ import Foundation
 ///   元にしたジョブでだけマージする。司令塔の取り違えで、人の確認を飛ばさないよう、ワーカーでも確かめる
 /// - マージしたら作業ブランチを消す（マージの後に push されていれば残す）
 /// - 動いている間に epic をやめたら、マージもブランチの削除もしない（マージの直前に epic を読み直す）
+/// - 「このリリースを直す」epic は、リリースが終わっていたら（配信した・やめた）マージしない。release ブランチを develop と main に取り込むのは
+///   配信したときの 1 回だけなので、その後に release ブランチに入れた直しは develop に戻らない
 public struct MergeFinalPullRequestRunner: JobRunning {
     public var environment: FinalJobEnvironment
 
@@ -45,6 +47,7 @@ public struct MergeFinalPullRequestRunner: JobRunning {
             throw .fail(.unexpected, "最終 PR #\(input.pullRequest) の head が、マージする head（\(input.head)）から動いた（\(pull.headSHA)）")
         }
         try await checkApproval(job, input: input)
+        try await checkRelease(target.epic)
         try await stopIfAbandoned(job)
         let merge = try await environment.tasks.github("最終 PR をマージする") { () throws(PullRequestError) in
             try await pulls.merge(number: input.pullRequest, headSHA: input.head, commitTitle: nil, commitMessage: nil)
@@ -57,6 +60,26 @@ public struct MergeFinalPullRequestRunner: JobRunning {
             throw .fail(.unexpected, "最終 PR #\(input.pullRequest) が、base（\(target.branches.base)）ではなく \(landed.baseRef) にマージされた。人が確かめる")
         }
         return try await merged(input, sha: merge.sha ?? landed.mergeCommitSHA, target: target, pulls: pulls)
+    }
+
+    /// 「このリリースを直す」epic の、直すリリースがまだ終わっていないかを確かめる。終わっていたら人へ渡す（マージしない）
+    private func checkRelease(_ epic: EpicFile) async throws(TaskJobExit) {
+        guard let release = epic.release else { return }
+        let submission = try await environment.tasks.read(SubmissionFile.self, at: StatePath.submission(epic.repo, release))
+        guard let end = submission?.end else {
+            if submission == nil { throw .fail(.unexpected, "直すリリース \(release) の記録が無い。人が確かめる") }
+            return
+        }
+        let reason = switch end.reason {
+        case .distributed: "配信した"
+        case .abandoned: "やめた"
+        case .superseded: "新しい版に置き換わった"
+        }
+        throw .fail(
+            .unexpected,
+            "直すリリース \(release) は\(reason)ので、\(SubmissionFile.branchName(for: release)) にはマージしない（develop に取り込まれないため）。"
+                + "次のリリースで直すなら、epic をやめて依頼し直す"
+        )
     }
 
     /// 取り下げ（`abandonEpic`）は、このジョブが動いている間にも届く。epic を読み直し、やめていれば、マージも作業ブランチの削除もせずに終える

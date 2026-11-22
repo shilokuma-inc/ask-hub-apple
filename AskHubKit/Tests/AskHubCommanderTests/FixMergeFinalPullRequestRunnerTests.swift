@@ -335,3 +335,51 @@ struct FixMergeFinalPullRequestRunnerTests {
         #expect(fixture.pulls.current.merges.isEmpty)
     }
 }
+
+extension FixMergeFinalPullRequestRunnerTests {
+    /// 「このリリースを直す」epic は release/<版> に向けてマージする。リリースが終わっていたら（配信した後は develop に取り込まれないので）マージしない
+    @Test func mergesReleaseFixOnlyWhileReleaseIsOpen() async throws {
+        let fixture = try await fixture()
+        let version = try #require(MarketingVersion(rawValue: "1.4.0"))
+        try await fixture.files.update(EpicFile.self, at: StatePath.epic(Tasks.repo, Tasks.epic), message: "直すリリース") { epic in
+            epic.release = version
+            return true
+        }
+        let time = Timestamp(Tasks.start)
+        var submission = SubmissionFile(
+            repo: Tasks.repo,
+            version: version,
+            origin: .askhub,
+            start: .init(approval: .init(keyId: fixture.keyID, nonce: .generate(at: Tasks.start)), at: time),
+            createdAt: time,
+            updatedAt: time
+        )
+        submission.end = .init(reason: .distributed, at: time)
+        let path = StatePath.submission(Tasks.repo, version)
+        try await fixture.files.create(submission, at: path, message: "submission")
+        let releaseBranch = FinalBranches(base: "release/1.4.0", epic: Fixture.branches.epic)
+        fixture.pulls.update {
+            $0.pulls[512] = PullRequest(
+                number: 512,
+                state: .open,
+                merged: false,
+                mergeable: true,
+                head: (releaseBranch.epic, Self.head),
+                baseRef: releaseBranch.base
+            )
+        }
+        try await reviewed(fixture, "01", outputs: AttemptFile.Outputs(verdict: .ready, mergeRisks: []))
+        let refused = try await merge(fixture)
+        #expect(refused.failure?.failureClass == .unexpected)
+        #expect(refused.failure?.message.contains("1.4.0 は配信したので、release/1.4.0 にはマージしない") == true)
+        #expect(fixture.pulls.current.merges.isEmpty)
+
+        try await fixture.files.update(SubmissionFile.self, at: path, message: "まだ") { file in
+            file.end = nil
+            return true
+        }
+        let result = try await merge(fixture)
+        #expect(result.failure == nil)
+        #expect(fixture.pulls.current.merges.map(\.head) == [Self.head])
+    }
+}
