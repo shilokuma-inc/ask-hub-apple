@@ -33,6 +33,9 @@ enum DemoScenario: String, CaseIterable {
     static let rejectsIntentsKey = "demoRejectIntents"
     /// 司令塔の受け取りを待ったまま、受け取りが遅いと知らせるまでの秒数を決める UserDefaults のキー（起動引数 `-demoStallAfter 5` で渡す）
     static let stallThresholdKey = "demoStallAfter"
+    /// スワイプ・選択肢で答えた後の取り消しの猶予の秒数を決める UserDefaults のキー（起動引数 `-demoUndoDelay 30` で渡す。
+    /// CI の Simulator ではスワイプの合成から戻るまでに 4〜5 秒かかり、既定の 4 秒では「取り消す」を押す前に送ってしまう。#1245）
+    static let undoDelayKey = "demoUndoDelay"
     /// 司令塔の Mac が読んだ GitHub の REST の残りを決める UserDefaults のキー（残りが少ないときの画面を撮るときに、起動引数 `-demoGitHubRemaining 820` で渡す）
     static let githubRemainingKey = "demoGitHubRemaining"
     /// デモの時計を止める時刻の UserDefaults のキー（判断のカードのスクショで、起動引数 `-demoClock 2026-01-15T00:41:00Z` で渡す。
