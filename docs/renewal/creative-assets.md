@@ -227,9 +227,9 @@ A の書き出しの所要時間の見込み: 6.9 インチを撮る（10〜30 �
 
 | `kind` | 対象 | `targetVersion` | `payload` |
 | --- | --- | --- | --- |
-| `draftCreativeAssets` | リポジトリ（`{ "type": "creative", "id": "<owner/repo>" }`。封筒の `repo` が対象） | 人が見たときの案の `revision`（案が無ければ `0`） | `comment`（直してほしいこと。最初の案なら空でよい。2,000 文字まで） |
+| `draftCreativeAssets` | クリエイティブアセット（`{ "type": "creative" }`。封筒の `repo` が対象のリポジトリ） | 人が見たときの案の `revision`（案が無ければ `0`） | `comment`（直してほしいこと。最初の案なら省ける。2,000 文字まで） |
 | `approveCreativeAssets` | 同上 | 人が見た案の `revision` | 空。書き出しが終わった（`rendered`）案だけ受け付ける |
-| `submitForReview`（足す欄） | リリースを始めた版 | 今のまま | `creative`（`{ "revision": <承認した案> }`。載せないなら送らない） |
+| `submitForReview`（足す欄。PR の分け方の 6 で足す） | リリースを始めた版 | 今のまま | `creative`（`{ "revision": <承認した案> }`。載せないなら送らない） |
 
 - 書き出しの途中に `draftCreativeAssets` が来たら、その実行を取り消してから新しい案を書く
 - 承認は、`approved` を上書きする（前に承認した案は、置いていなければ捨てる）
@@ -238,7 +238,7 @@ A の書き出しの所要時間の見込み: 6.9 インチを撮る（10〜30 �
 
 - 起動・見張り・取り込みは、スクショの段取りから「実行の記録」と「保存先」を引数にした共通の部品に切り出して使う（`CaptureRun` を共通の型にする）。打ち切りは 3 時間（撮影 10〜30 分 + 書き出し）
 - 起動は既定のブランチ（`repo.json` の base）。送る前に記録に `dispatchedAt` を書き、送った後に落ちて id を書けなければ、スクショと同じく一覧から探す
-- ワークフローが無い（404）ときは、app-kit の版が古いので、`problem` に「app-kit を v1.1.0 以上に広げる」と出す
+- ワークフローが無い（404）ときは、app-kit の版が古いので、`problem` に「app-kit を v1.2.0 以上に広げる」と出す
 - 取り込み: 2 つの artifact を落とす。PNG・寸法（3840x1646・3840x2560）・アルファなし（PNG の色の種類）・言語のフォルダが案の言語と同じかを確かめる。`report.json` は 1 MB までの JSON として読み、`images[].problems` に写す
 - 今の App Store: 配信中の版の言語ごとの配置（`filter[placementType]` に 2 つの種類）を `include=image` で読み、画像の URL を `live` に書く。見比べは画素で行う（スクショと同じ）
 - 承認の後: 承認した画像を参照名 `askhub-<MD5>` でライブラリに上げる（カテゴリ `CREATIVE_ASSETS`）。処理中は消さずに待ち、`FAILED` はその画像の `problems` に Apple の理由を書く（人は直して案を作り直す）
@@ -273,7 +273,7 @@ A の書き出しの所要時間の見込み: 6.9 インチを撮る（10〜30 �
 
 1. ユニットテスト: GitHub と App Store Connect は偽物で、案 → 起動 → 見張り → 取り込み → 承認 → ライブラリ → 置く、を流す。app-kit は `self-test.yml` で書き出しを流す
 2. App Store Connect の読むだけの確かめ（ユーザーの承認を得て司令塔を更新してから）: 参照データのヘッダーと検索結果の配置グループ・仕様・上限、配信中のアプリ（idfa-vault-ios・prime-pick-ios など）の版の言語にクリエイティブの配置があるか、新しく作った編集できる版に前の版の配置が引き継がれているか
-3. 試しの書き出し（ユーザーの承認のうえ）: app-kit v1.1.0 を試しの 1 本に入れ、司令塔から 1 回書き出して artifact とクライアントの見本を確かめる
+3. 試しの書き出し（ユーザーの承認のうえ）: app-kit v1.2.0 を試しの 1 本に入れ、司令塔から 1 回書き出して artifact とクライアントの見本を確かめる
 4. ライブラリに上げる（ユーザーの承認のうえ）: 承認済みの版があるアプリで承認し、ライブラリに上がって処理が済むまで（配置はしない。公開されない）
 5. 審査に出すときに置く（ユーザーの承認のうえ）: 次のリリースで置いて提出するか、そのときにユーザーに確かめる
 
@@ -284,12 +284,12 @@ A の書き出しの所要時間の見込み: 6.9 インチを撮る（10〜30 �
 | 順 | どこ | 中身 | 待つもの |
 | --- | --- | --- | --- |
 | 0 | ask-hub-apple | この設計の文書 | — |
-| 1 | ask-hub-apple | プロトコル: `creative.json`・意図 `draftCreativeAssets`・`approveCreativeAssets`・`submitForReview` の `creative`・見本のパス（スキーマ・ベクタ・Swift の型・protocol.md） | #1232・#1224 のマージ（意図の一覧・`IntentSender` が重なる） |
-| 2 | app-kit | 雛形と書き出しの道具、案のスキーマ、`app-creative-assets.yml`・`app-store-creative.yml`、`manifest.json`、`self-test.yml`。v1.1.0 | 撮影を並行させる app-kit の PR のマージ（呼ぶ撮影のワークフローの入力が変わりうる） |
+| 1 | ask-hub-apple | プロトコル: `creative.json`・案の形（`CreativeSpec`）・意図 `draftCreativeAssets`・`approveCreativeAssets`・見本のパス・実行の記録の共通の型（`WorkflowRunRecord`）（スキーマ・ベクタ・Swift の型・protocol.md） | — |
+| 2 | app-kit | 雛形と書き出しの道具、案のスキーマ、`app-creative-assets.yml`・`app-store-creative.yml`、`manifest.json`、`self-test.yml`。v1.2.0（app-kit#16） | 撮影を並行させる app-kit の PR（app-kit#14。v1.1.0）のマージ |
 | 3 | ask-hub-apple | 司令塔: App Asset Library のクライアントの配置の種類・カテゴリの引数、参照データの `placementTypes`・`imageSpecs`、読むだけの確かめの道具 | — |
 | 4 | ask-hub-apple | 司令塔: Claude の案（材料・下書き・直し・確かめ） | 1 |
 | 5 | ask-hub-apple | 司令塔: 書き出しの起動・見張り・取り込み・見本・今の App Store の読み（スクショの段取りから共通の部品を切り出す） | 1・2・撮影を並行させる司令塔の PR のマージ（`ReleaseWatch+ScreenshotWorkflow.swift` が重なる） |
-| 6 | ask-hub-apple | 司令塔: 承認の後にライブラリに上げる・審査に出すときに置く | 3・5 |
+| 6 | ask-hub-apple | 司令塔: 承認の後にライブラリに上げる・審査に出すときに置く（`submitForReview` の `creative` を足す） | 3・5 |
 | 7 | ask-hub-apple | クライアント: リポジトリの節・案を確かめる画面・あなたの番・審査に出すシートの節 | 1 |
 | 8 | app-kit・各リポジトリ | 古い仕組みを外す（決めたこと 5） | 通しの確かめ |
 
