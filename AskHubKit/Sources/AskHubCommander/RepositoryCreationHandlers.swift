@@ -13,13 +13,22 @@ import Foundation
 /// 途中で止まったら理由を付けて断る。押し直すと、作ってあるものは作り直さずに続きから進める
 public struct CreateRepositoryHandler: IntentHandler {
     public var admin: AdminGitHub?
+    /// app-kit を読む部品。nil なら、準備に app-kit への入れ替えを足さない（テンプレートから作ったリポジトリは、もう app-kit を呼んでいれば版を書くだけ）
+    public var appKit: (any AppKitSource)?
     /// テンプレートから作り終わる（ブランチが出る）のを待つ間隔と回数
     var wait: Duration
     var attempts: Int
     var sleeper: any Sleeper
 
-    public init(admin: AdminGitHub?, wait: Duration = .seconds(3), attempts: Int = 10, sleeper: any Sleeper = TaskSleeper()) {
+    public init(
+        admin: AdminGitHub?,
+        appKit: (any AppKitSource)? = nil,
+        wait: Duration = .seconds(3),
+        attempts: Int = 10,
+        sleeper: any Sleeper = TaskSleeper()
+    ) {
         self.admin = admin
+        self.appKit = appKit
         self.wait = wait
         self.attempts = attempts
         self.sleeper = sleeper
@@ -49,7 +58,7 @@ public struct CreateRepositoryHandler: IntentHandler {
         }
         try await record(create, renameCommit: renameCommit, existing: existing, in: context)
         // 作ったリポジトリにも、対象に加えるときと同じ準備を流す（準備が止まっても、作ったのは受け付ける）
-        try await RepositorySetupStep(admin: admin).run(for: create.repo, in: context)
+        try await RepositorySetupStep(admin: admin, appKit: appKit).run(for: create.repo, in: context)
         return .accept
     }
 
@@ -71,7 +80,7 @@ public struct CreateRepositoryHandler: IntentHandler {
         if let setup = existing.setup, setup.problems == nil, existing.build != nil, !existing.isRemoved { return .accept }
         guard let admin else { return .reject(Self.noAdmin) }
         try await record(create, renameCommit: nil, existing: existing, in: context)
-        try await RepositorySetupStep(admin: admin).run(for: create.repo, in: context)
+        try await RepositorySetupStep(admin: admin, appKit: appKit).run(for: create.repo, in: context)
         return .accept
     }
 
