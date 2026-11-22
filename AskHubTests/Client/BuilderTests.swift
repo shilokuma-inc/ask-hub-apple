@@ -112,7 +112,7 @@ struct BuilderTests {
         #expect(cards[2].choices.map(\.id) == ["accept", "fix"])
     }
 
-    /// どのカードでも、自由回答の選択肢は推奨の対角（右手は ↙・左手は ↘）にあり、「自由回答」の札が付く
+    /// どのカードでも、自由回答の選択肢（2 つあるときは既定の方）は推奨の対角（右手は ↙・左手は ↘）にあり、「自由回答」の札が付く
     @Test
     func freeTextChoicesSitOppositeRecommended() throws {
         let cards = DeckBuilder.cards(from: snapshot, scope: .all)
@@ -127,7 +127,9 @@ struct BuilderTests {
         })
         #expect(kinds == ["decision", "verification"])
         for card in withFreeText {
-            let index = try #require(card.choices.firstIndex { $0.asksText })
+            // 実機確認は、リリースが進行中なら「問題あり」が 2 つ（このリリース・次のリリース）。対角にあるのは既定の方
+            let right = SwipeLayout.directions(count: card.choices.count, hand: .right)
+            let index = try #require(card.choices.indices.first { card.choices[$0].asksText && right[$0] == .downLeft })
             #expect(card.choices.first?.isRecommended == true)
             #expect(SwipeLayout.directions(count: card.choices.count, hand: .right)[index] == .downLeft)
             #expect(SwipeLayout.directions(count: card.choices.count, hand: .left)[index] == .downRight)
