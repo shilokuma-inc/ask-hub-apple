@@ -99,7 +99,7 @@ struct DemoData {
     func repositoriesWithSetup() -> [TargetRepository] {
         Self.repositories.map { repository in
             guard repository.name == "kaji-share-ios" else {
-                return repository
+                return withAppKit(repository)
             }
             var added = repository
             added.protection = RepositoryProtection(state: .notApplied, requiredChecks: ["build / build"])
@@ -114,6 +114,7 @@ struct DemoData {
                 ),
                 workflowsChecked: true
             )
+            added.appKit = RepositoryAppKit(installed: nil, rolloutVersion: Self.appKitLatest)
             return added
         }
     }
@@ -141,7 +142,8 @@ struct DemoData {
             sourceFailures: [],
             releases: releases(),
             submissions: submissions(),
-            appStoreSetups: appStoreSetups()
+            appStoreSetups: appStoreSetups(),
+            appKit: appKit()
         )
     }
 

@@ -8,12 +8,32 @@ import Testing
 
 /// 決まった版の app-kit を返す（本物の git は流さない）
 struct FixedAppKitSource: AppKitSource {
-    var release: AppKitRelease?
+    var releases: [AppKitRelease] = []
+    var tagList: [AppKitFile.Pin] = []
+    var changelog: [AppKitVersion: String] = [:]
+    var changed: [String] = []
+
+    init(
+        release: AppKitRelease? = nil,
+        releases: [AppKitRelease] = [],
+        tags: [AppKitFile.Pin] = [],
+        changelog: [AppKitVersion: String] = [:]
+    ) {
+        self.releases = (release.map { [$0] } ?? []) + releases
+        tagList = tags
+        self.changelog = changelog
+    }
 
     func release(_ pin: AppKitFile.Pin) async throws(AppKitSourceError) -> AppKitRelease {
-        guard let release, release.pin == pin else { throw .malformed("版 \(pin.version) が無い") }
+        guard let release = releases.first(where: { $0.pin == pin }) else { throw .malformed("版 \(pin.version) が無い") }
         return release
     }
+
+    func tags() async throws(AppKitSourceError) -> [AppKitFile.Pin] { tagList }
+
+    func changes(of pin: AppKitFile.Pin) async throws(AppKitSourceError) -> String? { changelog[pin.version] }
+
+    func changedPaths(from: String, to: String) async throws(AppKitSourceError) -> [String] { changed }
 }
 
 /// app-kit への入れ替えの中身（`AppKitAdoptionPlanner`）と、app-kit を git で読む部品

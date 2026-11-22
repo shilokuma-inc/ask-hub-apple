@@ -57,10 +57,20 @@ struct ScreenshotScenesTests {
             return snapshot.submission(Submission.id(repositoryID, version)) == nil ? "リリース \(repositoryID) \(version) が無い" : nil
         case .appStoreSetup(let id):
             return snapshot.appStoreSetup(of: id) == nil ? "App Store の準備 \(id) が無い" : nil
-        case .deck(.all), .deck(.allVerifications):
-            return nil
+        case .deck(.all), .deck(.allVerifications), .finishedEpics, .appKit:
+            return listProblem(of: route, in: snapshot)
+        }
+    }
+
+    /// 一覧の行き先（アプリをまたいだ山札・終わったもの・app-kit）がデモのデータに無いわけ
+    private static func listProblem(of route: AppRoute, in snapshot: ClientSnapshot) -> String? {
+        switch route {
         case .finishedEpics:
             return snapshot.epics.contains { !$0.isActive } ? nil : "終わった epic が無い"
+        case .appKit:
+            return snapshot.appKit == nil ? "app-kit の様子が無い" : nil
+        default:
+            return nil
         }
     }
 }

@@ -62,6 +62,15 @@ struct SetupPullRequest: Hashable {
     var state: State
     /// 直したところ（例: build.yml の paths を外す）
     var changes: [String]
+    /// app-kit に入れ替える PR なら、入れる版と名前が変わる待つチェック
+    var appKit: SetupAppKit?
+}
+
+/// 準備の PR で入れる app-kit の版
+struct SetupAppKit: Hashable {
+    var version: String
+    /// 名前が変わる待つチェック（例: Build → build / build）。承認すると、司令塔がマージの前にルールセットとビルドの設定を替える
+    var renamedChecks: [String]
 }
 
 extension TargetRepository {

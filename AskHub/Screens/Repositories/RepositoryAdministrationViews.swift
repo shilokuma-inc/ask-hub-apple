@@ -182,6 +182,12 @@ struct RepositorySetupSection: View {
                 Button("GitHub でカテゴリ「Ideas」を作る") { openURL(url) }
             }
             LabeledContent("ワークフロー", value: workflowText)
+            if let appKit = setup.workflowPullRequest?.appKit {
+                Label("CI・リリースのワークフローを app-kit \(appKit.version) に入れ替えます", systemImage: "shippingbox")
+                ForEach(appKit.renamedChecks, id: \.self) { rename in
+                    Label("待つチェックの名前を替える: \(rename)", systemImage: "arrow.left.arrow.right").appFont(.caption)
+                }
+            }
             if let pullRequest = setup.workflowPullRequest {
                 ForEach(pullRequest.changes, id: \.self) { change in
                     Text(change).appFont(.caption).foregroundStyle(.secondary)
@@ -224,12 +230,25 @@ struct RepositorySetupSection: View {
                 let (id, number, head) = (repository.id, pullRequest.number, pullRequest.head)
                 Task { await store.send(.approveSetup(repositoryID: id, pullRequest: number, head: head)) }
             }
-        } message: { _ in
-            Text("今の head のままマージします。CI が通っていなければ、司令塔が断るので、通ってから承認し直します")
+        } message: { pullRequest in
+            Text(Self.approvalMessage(pullRequest))
         }
         .sheet(item: $draft) { draft in
             NewRequestSheet(draft: draft)
         }
+    }
+
+    /// 承認の確かめの文。app-kit に入れ替える PR は、外すファイルと名前が変わるチェックを確かめてもらう
+    static func approvalMessage(_ pullRequest: SetupPullRequest) -> String {
+        var message = "今の head のままマージします。CI が通っていなければ、司令塔が断るので、通ってから承認し直します"
+        guard let appKit = pullRequest.appKit else {
+            return message
+        }
+        message = "ワークフローを app-kit \(appKit.version) に入れ替え、置き換わるファイルを外します（外すワークフローにしか無い手順も消えます）。" + message
+        if !appKit.renamedChecks.isEmpty {
+            message += "。マージの前に、ルールセットとビルドの設定の待つチェックの名前を替えます（\(appKit.renamedChecks.joined(separator: "・"))）"
+        }
+        return message
     }
 
     /// 加えた後の「準備の依頼」の下書き。リポジトリごとに違う今の仕組みの残りものを、ふだんの epic で Claude に直してもらう

@@ -35,7 +35,7 @@ extension DemoClientService {
         case .reviseGoal, .decideSplit, .addRepository, .removeRepository, .configureRepository:
             applySetupIntent(intent)
 
-        case .applyProtection, .approveSetup, .createRepository, .readSecretsKey:
+        case .applyProtection, .approveSetup, .createRepository, .readSecretsKey, .rolloutAppKit, .stopAppKitRollout:
             applyAdministrationIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
@@ -132,6 +132,28 @@ extension DemoClientService {
             // デモの鍵（暗号化して送っても、デモでは中身を使わない）
             let key = SecretsPublicKey(keyId: "1", key: Data(repeating: 9, count: 32).base64EncodedString(), readAt: Timestamp(now()))
             updateRepository(repositoryID) { $0.secretsKey = key }
+
+        case .rolloutAppKit, .stopAppKitRollout:
+            applyAppKitIntent(intent)
+
+        default:
+            break
+        }
+    }
+
+    /// app-kit の版を広げる・やめる。デモでは広げ始めた（やめた）様子にするだけ
+    private func applyAppKitIntent(_ intent: HumanIntent) {
+        let date = now()
+        switch intent {
+        case let .rolloutAppKit(version, ref):
+            let pilot = state.appKit?.rollout?.pilot ?? "demo-studio/habit-ios"
+            state.appKit?.rollout = .init(
+                version: version, ref: ref, state: .running, pilot: pilot, targets: [], problem: nil, startedAt: date, updatedAt: date
+            )
+
+        case .stopAppKitRollout:
+            state.appKit?.rollout?.state = .stopped
+            state.appKit?.rollout?.updatedAt = date
 
         default:
             break

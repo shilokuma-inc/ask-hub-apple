@@ -166,6 +166,10 @@ struct AskHubClientTests {
             Self.repo, template: .visionos, visibility: .private, appName: "Sandbox", bundleId: "jp.shilokuma.Sandbox"
         )))
         #expect(create.template == .visionos && create.visibility == .private && create.appName == "Sandbox")
+        // app-kit の版の意図は、封筒に repo を書かず、版のタグとコミットに結びつける
+        let release = AppKitReleaseTarget(version: AppKitVersion(rawValue: "v1.0.1")!, ref: head)
+        #expect(try RolloutAppKitIntent(envelope: envelope(.rolloutAppKit(release))).release == release)
+        #expect(try StopAppKitRolloutIntent(envelope: envelope(.stopAppKitRollout(release))).release == release)
     }
 
     @Test func intentWrittenBeforeLostResponseIsSent() async throws {

@@ -126,6 +126,16 @@ public struct IntentDraft: Equatable, Sendable {
     }
 
     /// 準備の PR（ワークフローの直し）のマージを承認する。見たときの head に結びつける（承認の後に push された変更はマージしない）
+    /// app-kit の版を広げる（版ごとに 1 回。人が見たときの版のコミットに結びつける。封筒に repo を書かない）
+    public static func rolloutAppKit(_ release: AppKitReleaseTarget) -> Self {
+        Self(kind: RolloutAppKitIntent.kind, target: release.target, targetVersion: release.ref)
+    }
+
+    /// app-kit の版を広げるのをやめる（開いている PR を司令塔が閉じる）
+    public static func stopAppKitRollout(_ release: AppKitReleaseTarget) -> Self {
+        Self(kind: StopAppKitRolloutIntent.kind, target: release.target, targetVersion: release.ref)
+    }
+
     public static func approveSetupPullRequest(_ repo: RepositoryFullName, number: Int, head: String) -> Self {
         Self(
             kind: ApproveSetupPullRequestIntent.kind,
