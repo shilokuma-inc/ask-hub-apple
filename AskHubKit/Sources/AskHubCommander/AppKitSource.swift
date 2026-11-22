@@ -92,6 +92,34 @@ public enum AppKitSourceError: Error, Equatable, Sendable, CustomStringConvertib
 public protocol AppKitSource: Sendable {
     /// 版の中身（写すファイルに版を埋めたもの・manifest・再利用ワークフローの手順）
     func release(_ pin: AppKitFile.Pin) async throws(AppKitSourceError) -> AppKitRelease
+    /// 版のタグ（`v<major>.<minor>.<patch>` の形のものだけ）と、タグが指すコミット
+    func tags() async throws(AppKitSourceError) -> [AppKitFile.Pin]
+    /// 版のコミットの `CHANGELOG.md` の、その版の節。無ければ nil
+    func changes(of pin: AppKitFile.Pin) async throws(AppKitSourceError) -> String?
+    /// 2 つの版のあいだで変わったパス
+    func changedPaths(from: String, to: String) async throws(AppKitSourceError) -> [String]
+}
+
+/// `CHANGELOG.md` から版の節を取り出す（`## v1.1.0（2026-11-25）` の次の行から、次の `## ` の前まで）
+enum AppKitChangelog {
+    static func section(of version: AppKitVersion, in text: String) -> String? {
+        var lines: [Substring] = []
+        var inside = false
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("## ") {
+                if inside { break }
+                let title = line.dropFirst(3)
+                // v1.1.0 の見出しで v1.1.0x・v1.1.01 を拾わない
+                inside = title.hasPrefix(version.rawValue)
+                    && title.dropFirst(version.rawValue.count).first.map { !$0.isNumber && $0 != "." && !$0.isLetter } ?? true
+                continue
+            }
+            if inside { lines.append(line) }
+        }
+        let section = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !section.isEmpty else { return nil }
+        return String(String.UnicodeScalarView(section.unicodeScalars.prefix(AppKitFile.maximumChangesLength)))
+    }
 }
 
 /// app-kit（public）を git で読む。REST の上限に数えない（`docs/renewal/app-kit.md` の「版」）。
@@ -157,16 +185,55 @@ public actor GitAppKitSource: AppKitSource {
         return release
     }
 
+    public func tags() async throws(AppKitSourceError) -> [AppKitFile.Pin] {
+        try await prepareRepository()
+        var commits: [AppKitVersion: (tag: String?, peeled: String?)] = [:]
+        for line in try await output(["ls-remote", "--tags", setup.remote.absoluteString]).split(separator: "\n") {
+            let parts = line.split(separator: "\t")
+            guard parts.count == 2, parts[1].hasPrefix("refs/tags/"), AttemptFile.isCommitSHA(String(parts[0])) else { continue }
+            var name = String(parts[1].dropFirst("refs/tags/".count))
+            let peeled = name.hasSuffix("^{}")
+            if peeled { name = String(name.dropLast(3)) }
+            guard let version = AppKitVersion(rawValue: name) else { continue }
+            if peeled {
+                commits[version, default: (nil, nil)].peeled = String(parts[0])
+            } else {
+                commits[version, default: (nil, nil)].tag = String(parts[0])
+            }
+        }
+        // 注釈つきのタグは、^{} の行がタグの指すコミット
+        return commits.compactMap { version, refs in (refs.peeled ?? refs.tag).map { AppKitFile.Pin(version: version, ref: $0) } }
+            .sorted { $0.version > $1.version }
+    }
+
+    public func changes(of pin: AppKitFile.Pin) async throws(AppKitSourceError) -> String? {
+        guard AttemptFile.isCommitSHA(pin.ref) else { throw .malformed("版のコミット \(pin.ref) の形が違う") }
+        try await fetch(pin.ref)
+        guard try await run(["cat-file", "-e", "\(pin.ref):CHANGELOG.md"]).succeeded else { return nil }
+        return AppKitChangelog.section(of: pin.version, in: try await show(pin.ref, "CHANGELOG.md"))
+    }
+
+    public func changedPaths(from: String, to: String) async throws(AppKitSourceError) -> [String] {
+        guard AttemptFile.isCommitSHA(from), AttemptFile.isCommitSHA(to) else { throw .malformed("版のコミットの形が違う") }
+        try await fetch(from)
+        try await fetch(to)
+        return try await output(["diff", "--name-only", from, to]).split(separator: "\n").map(String.init)
+    }
+
+    /// bare の写しを作る（もうあれば何もしない）
+    func prepareRepository() async throws(AppKitSourceError) {
+        guard !FileManager.default.fileExists(atPath: setup.directory.appendingPathComponent("HEAD").path) else { return }
+        do {
+            try FileManager.default.createDirectory(at: setup.directory, withIntermediateDirectories: true)
+        } catch {
+            throw .unavailable("\(setup.directory.lastPathComponent) を作れない（\(error.localizedDescription)）")
+        }
+        _ = try await output(["init", "--bare", "--quiet"])
+    }
+
     /// 版のコミットを取る（もう持っていれば取らない）
     func fetch(_ ref: String) async throws(AppKitSourceError) {
-        if !FileManager.default.fileExists(atPath: setup.directory.appendingPathComponent("HEAD").path) {
-            do {
-                try FileManager.default.createDirectory(at: setup.directory, withIntermediateDirectories: true)
-            } catch {
-                throw .unavailable("\(setup.directory.lastPathComponent) を作れない（\(error.localizedDescription)）")
-            }
-            _ = try await output(["init", "--bare", "--quiet"])
-        }
+        try await prepareRepository()
         if try await run(["cat-file", "-e", "\(ref)^{commit}"]).succeeded { return }
         _ = try await output(["fetch", "--quiet", "--depth", "1", "--no-tags", setup.remote.absoluteString, ref])
     }
