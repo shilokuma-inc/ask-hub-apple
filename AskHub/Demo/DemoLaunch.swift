@@ -74,6 +74,9 @@ enum DemoLaunch {
         case "finished":
             return (.progress, .finishedEpics)
 
+        case "appKit":
+            return (.repositories, .appKit)
+
         default:
             return nil
         }

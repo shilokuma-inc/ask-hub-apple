@@ -51,6 +51,9 @@ struct RouteDestination: View {
 
             case .finishedEpics:
                 FinishedEpicListView()
+
+            case .appKit:
+                AppKitView()
             }
         }
         .sendStatusBar()
