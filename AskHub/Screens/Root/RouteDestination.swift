@@ -54,6 +54,9 @@ struct RouteDestination: View {
 
             case .appKit:
                 AppKitView()
+
+            case .creative(let repositoryID):
+                CreativeView(repositoryID: repositoryID)
             }
         }
         .sendStatusBar()

@@ -143,6 +143,9 @@ struct RepositoryDetailView: View {
                 if let appKit = repository.appKit, !isRemoved {
                     AppKitRepositorySection(repository: repository, appKit: appKit)
                 }
+                if !isRemoved {
+                    CreativeRepositorySection(repository: repository)
+                }
                 ReleaseSection(repository: repository, isRemoved: isRemoved, isStarting: $isStartingRelease)
             }
             .pastelBackground()
