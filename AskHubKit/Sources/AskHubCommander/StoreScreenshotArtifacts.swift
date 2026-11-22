@@ -7,6 +7,15 @@ import Foundation
 public protocol StoreScreenshotArtifactExtracting: Sendable {
     /// `zip` を `directory` に取り出し、言語のフォルダごとの PNG（名前の順）を返す。形の違う zip は `ArtifactProblem` で断る
     func extract(_ zip: Data, into directory: URL) async throws -> [String: [URL]]
+    /// 項目が `name` の 1 つだけの `zip` から、そのファイルの中身を取り出す（クリエイティブアセットの `report.json`）。
+    /// ほかの項目がある・大きすぎるときは `ArtifactProblem` で断る
+    func extractFile(_ zip: Data, named name: String, maximumBytes: Int, into directory: URL) async throws -> Data
+}
+
+extension StoreScreenshotArtifactExtracting {
+    public func extractFile(_ zip: Data, named name: String, maximumBytes: Int, into directory: URL) async throws -> Data {
+        throw ArtifactProblem("\(name) を取り出す道具が無い")
+    }
 }
 
 /// artifact を取り出せないわけ
@@ -71,6 +80,28 @@ public struct UnzipArtifactExtractor: StoreScreenshotArtifactExtracting {
             folders[folder, default: []].append(file)
         }
         return folders
+    }
+
+    public func extractFile(_ zip: Data, named name: String, maximumBytes: Int, into directory: URL) async throws -> Data {
+        guard zip.count <= Self.maximumZipBytes else { throw ArtifactProblem("artifact が \(Self.maximumZipBytes / 1_048_576) MB を超える") }
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let archive = directory.appendingPathComponent("artifact.zip")
+        let output = directory.appendingPathComponent("files", isDirectory: true)
+        try zip.write(to: archive, options: .atomic)
+        defer { try? fileManager.removeItem(at: archive) }
+        // 項目がそのファイル 1 つだけで、取り出した大きさが上限までかを、取り出す前に確かめる
+        let entries = try await lines(of: "/usr/bin/zipinfo", ["-1", archive.path], in: directory)
+        guard entries == [name] else { throw ArtifactProblem("artifact の中身が \(name) だけでない") }
+        let listing = try await lines(of: "/usr/bin/unzip", ["-l", archive.path], in: directory)
+        guard let total = Self.expandedBytes(listing), total <= maximumBytes else {
+            throw ArtifactProblem("\(name) の大きさが分からないか、\(maximumBytes / 1024) KB を超える")
+        }
+        _ = try await lines(of: "/usr/bin/unzip", ["-qq", "-o", archive.path, name, "-d", output.path], in: directory)
+        let file = output.appendingPathComponent(name)
+        let attributes = try fileManager.attributesOfItem(atPath: file.path)
+        guard attributes[.type] as? FileAttributeType == .typeRegular else { throw ArtifactProblem("\(name) がふつうのファイルでない") }
+        return try Data(contentsOf: file)
     }
 
     /// zip の項目の名前を確かめ、画像の名前を返す。`<言語>/<名前>.png` と `<言語>/` のフォルダのほかの項目・同じ名前の項目
