@@ -152,12 +152,46 @@ struct BuilderTests {
         ])
     }
 
-    /// 実機確認のカードは確認したを先頭にする
+    /// 実機確認のカードは確認したを先頭にする（習慣ログは 1.4.0 のリリースが進行中なので、「問題あり」が 2 つになる）
     @Test
     func verificationCardPutsConfirmedFirst() {
         let cards = DeckBuilder.cards(from: snapshot, scope: .verifications("habit-review"))
         #expect(cards.count == 2)
-        #expect(cards.allSatisfy { $0.choices.map(\.id) == ["confirmed", "problem"] })
+        #expect(cards.allSatisfy { $0.choices.map(\.id) == ["confirmed", "problem", "problem.release"] })
+    }
+
+    /// リポジトリにリリースが進行中なら、「問題あり」を「このリリースで直す」と「次のリリースで直す」に分ける。
+    /// 既定（推奨の対角）は、epic がその release ブランチを作る前にマージされていれば「このリリース」、後なら「次のリリース」
+    @Test
+    func verificationProblemOffersReleaseWhileReleaseIsOpen() throws {
+        var snapshot = snapshot
+        let epic = try #require(snapshot.epic("habit-review"))
+        guard case let .merged(mergedAt, _)? = epic.finalReview?.state else {
+            Issue.record("habit-review がマージ済みでない")
+            return
+        }
+        // 習慣ログの 1.4.0（デモ）は、振り返りの epic をマージした後に release ブランチを作った
+        let index = try #require(snapshot.submissions.firstIndex { $0.repositoryID == epic.repositoryID && $0.version == "1.4.0" })
+        snapshot.submissions[index].branchCreatedAt = mergedAt.addingTimeInterval(60)
+        let included = try #require(DeckBuilder.cards(from: snapshot, scope: .verifications("habit-review")).first)
+        // 右手の 3 択は ↗（確認した）・↖・↙。推奨の対角（↙）に既定の「問題あり」を置く
+        #expect(included.choices.map(\.id) == ["confirmed", "problem", "problem.release"])
+        guard case let .askText(request) = included.choices[2].action,
+              case let .verificationProblem(_, _, version) = request.purpose else {
+            Issue.record("このリリースで直すが文を書く選択肢でない")
+            return
+        }
+        #expect(version == "1.4.0")
+
+        // release ブランチを作った後にマージした epic は、次のリリースで直すのが既定
+        snapshot.submissions[index].branchCreatedAt = mergedAt.addingTimeInterval(-60)
+        let later = try #require(DeckBuilder.cards(from: snapshot, scope: .verifications("habit-review")).first)
+        #expect(later.choices.map(\.id) == ["confirmed", "problem.release", "problem"])
+
+        // リリースが終わったら、分けない
+        snapshot.submissions[index].end = .distributed
+        let ended = try #require(DeckBuilder.cards(from: snapshot, scope: .verifications("habit-review")).first)
+        #expect(ended.choices.map(\.id) == ["confirmed", "problem"])
     }
 
     /// 実機確認のまとめ（通知から開く）は、アプリをまたいで実機確認だけを流す。TestFlight の版が無い項目は出さない
@@ -177,7 +211,9 @@ struct BuilderTests {
         let cards = DeckBuilder.cards(from: snapshot, scope: .allVerifications)
         #expect(Set(cards.map(\.epicID)) == ["habit-review", "tsundoku-search"])
         #expect(Set(cards.map(\.repositoryID)).count == 2)
-        #expect(cards.allSatisfy { $0.choices.map(\.id) == ["confirmed", "problem"] })
+        // リリースが進行中の習慣ログだけ、「問題あり」を「このリリースで直す」と「次のリリースで直す」に分ける
+        #expect(cards.filter { $0.epicID == "tsundoku-search" }.allSatisfy { $0.choices.map(\.id) == ["confirmed", "problem"] })
+        #expect(cards.filter { $0.epicID == "habit-review" }.allSatisfy { $0.choices.count == 3 })
         // 質問・最終 PR の判断のカードは混ぜない
         #expect(cards.count == 4)
     }

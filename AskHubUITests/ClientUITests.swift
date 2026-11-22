@@ -221,7 +221,8 @@ final class ClientUITests: XCTestCase {
         app.typeText("crash")
         send.tap()
         XCTAssertTrue(app.buttons["取り消す"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["習慣ログ · 実機で確かめる · TestFlight 1.4.0 (52): 問題あり"].exists)
+        // 習慣ログは 1.4.0 のリリースが進行中で、振り返りの epic はそのリリースに入っているので、左下は「このリリースで直す」
+        XCTAssertTrue(app.staticTexts["習慣ログ · 実機で確かめる · TestFlight 1.4.0 (52): 問題あり（1.4.0 で直す）"].exists)
         XCTAssertTrue(card.staticTexts["グラフの色がダークモードでも読める"].waitForExistence(timeout: 5))
     }
 
@@ -237,19 +238,19 @@ final class ClientUITests: XCTestCase {
         let resting = settledFrame(of: title)
         let cancel = app.buttons["キャンセル"]
 
-        // 2 番目の選択肢（問題あり）を数字キーで選ぶ。親の onKeyPress に届くよう typeKey で打つ
-        app.typeKey("2", modifierFlags: [])
+        // 3 番目の選択肢（左下の「問題あり・このリリースで直す」）を数字キーで選ぶ。親の onKeyPress に届くよう typeKey で打つ
+        app.typeKey("3", modifierFlags: [])
         XCTAssertTrue(cancel.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil { isHeldDownLeft(title, from: resting) }, "\(title.frame) / \(resting)")
         cancel.tap()
         XCTAssertTrue(cancel.waitForNonExistence(timeout: 5))
         XCTAssertTrue(waitUntil { isResting(title, at: resting) }, "\(title.frame) / \(resting)")
 
-        card.buttons["問題あり（自由回答・左下へスワイプ）"].tap()
+        card.buttons["問題あり・このリリースで直す（自由回答・左下へスワイプ）"].tap()
         XCTAssertTrue(cancel.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil { isHeldDownLeft(title, from: resting) }, "\(title.frame) / \(resting)")
 
-        let bar = app.navigationBars["問題あり"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let bar = app.navigationBars["問題あり（1.4.0 で直す）"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         bar.press(forDuration: 0.05, thenDragTo: bar.withOffset(CGVector(dx: 0, dy: 700)), withVelocity: .fast, thenHoldForDuration: 0)
         XCTAssertTrue(cancel.waitForNonExistence(timeout: 5))
         XCTAssertTrue(waitUntil { isResting(title, at: resting) }, "\(title.frame) / \(resting)")
