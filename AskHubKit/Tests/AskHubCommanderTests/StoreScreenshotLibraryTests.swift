@@ -119,6 +119,28 @@ extension ReleaseWatchTests {
         #expect(libraryWrites().filter { $0.hasPrefix("sendImage") }.count == 2)
     }
 
+    @Test func keepsTheSendTimeEvenIfTheSentImageCannotBeRead() async throws {
+        let (watch, name) = try await captureWithLibrary(sentState: "UPLOAD_COMPLETE")
+        // 待ち始めて 2 時間 55 分後に送り直し、その直後に送った画像の様子を読めなかった
+        appStore.state.withLock {
+            _ = $0.libraryImages.removeValue(forKey: name)
+            $0.sentImageFailure = .unavailable("503")
+        }
+        clock.advance(minutes: 2 * 60 + 55)
+        await watch.refresh()
+        var file = try await submission()
+        #expect(file.screenshots?.state == .capturing && file.screenshots?.library?.sentAt == Timestamp(clock.now))
+        #expect(file.problem == nil)
+        // 次の周（待ち始めて 3 時間を過ぎた）も、送り直したところから数えるので打ち切らない
+        appStore.state.withLock { $0.sentImageFailure = nil }
+        clock.advance(minutes: 10)
+        await watch.refresh()
+        file = try await submission()
+        #expect(file.screenshots?.state == .capturing)
+        #expect(file.screenshots?.sets.flatMap(\.shots).allSatisfy { $0.rejected == nil } == true)
+        #expect(libraryWrites().filter { $0.hasPrefix("sendImage") }.count == 2)
+    }
+
     @Test func givesUpEvenIfAppStoreConnectCannotBeRead() async throws {
         let (watch, _) = try await captureWithLibrary(sentState: "UPLOAD_COMPLETE")
         appStore.state.withLock { $0.libraryFailure = .unavailable("503") }

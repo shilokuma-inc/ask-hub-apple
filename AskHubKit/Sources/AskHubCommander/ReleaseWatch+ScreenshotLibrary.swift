@@ -151,6 +151,7 @@ extension ReleaseWatch {
     /// 上げていない画像を上げ、画像ごとの処理の様子を返す（MD5 → 画像）。処理中の画像は消さずに待ち、予約だけして送り終えなかった画像は上げ直す。
     /// 受け付けられなかった画像は上げ直さない（同じ画像は、また受け付けられない）
     /// `giveUp` なら、App Store Connect を読めない・送れない画像があっても投げず、読めた分だけを返す（打ち切りの判定を止めない）。
+    /// 画像を送った後に読めなくなったときも投げず、読めた分だけを返す（送った時刻を残し、そこから数え直すため。残りは次の周に読む）。
     /// `sent` は、この周に画像を送ったか
     private func sendAndRead(
         _ uploads: [LibraryUpload],
@@ -181,8 +182,10 @@ extension ReleaseWatch {
                 states[upload.checksum] = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.libraryImage(id) }
             }
         } catch {
-            guard giveUp else { throw error }
-            report("App Store Connect のライブラリを読めない画像がある（\(error)）。打ち切る時間を過ぎたので、読めなかった画像は前のままにする")
+            guard giveUp || sent else { throw error }
+            report(giveUp
+                ? "App Store Connect のライブラリを読めない画像がある（\(error)）。打ち切る時間を過ぎたので、読めなかった画像は前のままにする"
+                : "App Store Connect に送った画像の様子を読めない（\(error)）。送った時刻は残し、次の周に読み直す")
         }
         return (states, sent)
     }

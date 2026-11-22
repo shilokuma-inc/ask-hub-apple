@@ -27,6 +27,8 @@ final class FakeAppStore: AppStoreConnecting {
         var sentState = "PREPARE_FOR_SUBMISSION"
         /// 決めると、ライブラリの画像を読めずにこれを投げる
         var libraryFailure: AppStoreConnectError?
+        /// 決めると、上げた画像の処理の様子（id で読む）を読めずにこれを投げる
+        var sentImageFailure: AppStoreConnectError?
         /// 作った配置の数（配置の id の番号）
         var placementCount = 0
         /// スクショの画像（URL ごと）
@@ -178,6 +180,7 @@ final class FakeAppStore: AppStoreConnecting {
     }
 
     func libraryImage(_ id: String) async throws(AppStoreConnectError) -> AppStoreLibraryImage {
+        if let failure = state.withLock({ $0.sentImageFailure }) { throw failure }
         guard let image = state.withLock({ $0.libraryImages.values.flatMap(\.self).first { $0.id == id } }) else {
             throw .refused(status: 404, detail: "画像が無い")
         }
