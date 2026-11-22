@@ -23,15 +23,27 @@ extension ReleaseWatch {
         var referenceName: String { AppStoreScreenshot.referenceName(checksum: checksum) }
     }
 
-    /// 差のある画面（受け付けられなかったものを除く）の元の画像を、同じ画像ごとにまとめる。元の画像が常時オンの Mac に無いものは数えない
+    /// 差のある画面（受け付けられなかったものを除く）の元の画像を、同じ画像ごとにまとめる
     static func libraryUploads(of screenshots: SubmissionFile.StoreScreenshots, originals: URL) -> [LibraryUpload] {
+        libraryShots(of: screenshots, originals: originals).uploads
+    }
+
+    /// 差のある画面（受け付けられなかったものを除く）を、上げる画像（同じ画像ごと）と、元の画像を常時オンの Mac で読めない画面に分ける
+    static func libraryShots(
+        of screenshots: SubmissionFile.StoreScreenshots,
+        originals: URL
+    ) -> (uploads: [LibraryUpload], unreadable: [SubmissionFile.ShotReference]) {
         var uploads: [LibraryUpload] = []
+        var unreadable: [SubmissionFile.ShotReference] = []
         for set in screenshots.sets {
             for shot in set.shots where shot.changed && shot.rejected == nil {
                 let target = StoreScreenshotTarget(displayType: set.displayType, locale: set.locale)
                 let file = StoreScreenshotComparer.original(in: originals, target: target, index: shot.index)
-                guard let data = try? Data(contentsOf: file) else { continue }
                 let reference = SubmissionFile.ShotReference(displayType: set.displayType, locale: set.locale, index: shot.index)
+                guard let data = try? Data(contentsOf: file) else {
+                    unreadable.append(reference)
+                    continue
+                }
                 let checksum = AppStoreScreenshot.checksum(of: data)
                 if let index = uploads.firstIndex(where: { $0.checksum == checksum }) {
                     uploads[index].shots.append(reference)
@@ -41,7 +53,7 @@ extension ReleaseWatch {
                 }
             }
         }
-        return uploads
+        return (uploads, unreadable)
     }
 
     /// 比べ終えた結果（`captured`）に、ライブラリに上げる画像があれば、取り込みを待つ印（`capturing` と `library`）にする
@@ -70,10 +82,15 @@ extension ReleaseWatch {
                 throw ReleaseStepProblem("撮った元の画像を置く場所が司令塔に無い（スクショを撮る道具の設定が無い）", needsHuman: true)
             }
             let (store, app) = try await self.submissionApp(file.repo, settings: settings)
-            let uploads = Self.libraryUploads(of: shots, originals: capturer.originals(file.repo, version: file.version, commit: commit))
-            let states = try await self.sendAndRead(uploads, store: store, appID: app.id)
+            let originals = capturer.originals(file.repo, version: file.version, commit: commit)
+            let (uploads, unreadable) = Self.libraryShots(of: shots, originals: originals)
             let timedOut = self.context.now().timeIntervalSince(library.sentAt.date) >= Self.libraryTimeout
-            let rejected = Self.rejectedShots(uploads, states: states, timedOut: timedOut)
+            // 読めない画像がある周は、打ち切る時間を過ぎていなければやり直す（過ぎていれば、読めなかった画像も打ち切る）
+            let (states, sent) = try await self.sendAndRead(uploads, store: store, appID: app.id, giveUp: timedOut)
+            // 画像を送ったら、Apple の処理の時間をそこから数え直す（送る前の待ちを含めない）
+            if sent { library.sentAt = self.context.timestamp }
+            var rejected = Self.rejectedShots(uploads, states: states, timedOut: timedOut && !sent)
+            for shot in unreadable { rejected[shot] = "撮った元の画像を常時オンの Mac で読めない（撮り直す）" }
             library.ready = uploads.filter { states[$0.checksum]?.isPlaceable == true }.count
             shots.sets = Self.marking(shots.sets, rejected: rejected)
             shots.library = library
@@ -133,27 +150,40 @@ extension ReleaseWatch {
 
     /// 上げていない画像を上げ、画像ごとの処理の様子を返す（MD5 → 画像）。処理中の画像は消さずに待ち、予約だけして送り終えなかった画像は上げ直す。
     /// 受け付けられなかった画像は上げ直さない（同じ画像は、また受け付けられない）
+    /// `giveUp` なら、App Store Connect を読めない・送れない画像があっても投げず、読めた分だけを返す（打ち切りの判定を止めない）。
+    /// `sent` は、この周に画像を送ったか
     private func sendAndRead(
         _ uploads: [LibraryUpload],
         store: any AppStoreConnectSubmitting,
-        appID: String
-    ) async throws -> [String: AppStoreLibraryImage] {
-        let library = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.assetLibrary(of: appID) }
+        appID: String,
+        giveUp: Bool
+    ) async throws -> (states: [String: AppStoreLibraryImage], sent: Bool) {
         var states: [String: AppStoreLibraryImage] = [:]
-        for upload in uploads {
-            let found = try await appStoreConnect { () throws(AppStoreConnectError) in
-                try await store.libraryImages(in: library, referenceName: upload.referenceName)
+        var sent = false
+        do {
+            let library = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.assetLibrary(of: appID) }
+            for upload in uploads {
+                let found = try await appStoreConnect { () throws(AppStoreConnectError) in
+                    try await store.libraryImages(in: library, referenceName: upload.referenceName)
+                }
+                let known = found.first(where: \.isPlaceable) ?? found.first(where: \.isProcessing) ?? found.first(where: \.isFailed)
+                if let image = known {
+                    states[upload.checksum] = image
+                    continue
+                }
+                for stale in found { try? await store.deleteImage(stale.id) }
+                let id = try await appStoreConnect { () throws(AppStoreConnectError) in
+                    try await store.sendImage(
+                        to: library, fileName: upload.fileName, referenceName: upload.referenceName, data: upload.data
+                    )
+                }
+                sent = true
+                states[upload.checksum] = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.libraryImage(id) }
             }
-            if let image = found.first(where: \.isPlaceable) ?? found.first(where: \.isProcessing) ?? found.first(where: \.isFailed) {
-                states[upload.checksum] = image
-                continue
-            }
-            for stale in found { try? await store.deleteImage(stale.id) }
-            let id = try await appStoreConnect { () throws(AppStoreConnectError) in
-                try await store.sendImage(to: library, fileName: upload.fileName, referenceName: upload.referenceName, data: upload.data)
-            }
-            states[upload.checksum] = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.libraryImage(id) }
+        } catch {
+            guard giveUp else { throw error }
+            report("App Store Connect のライブラリを読めない画像がある（\(error)）。打ち切る時間を過ぎたので、読めなかった画像は前のままにする")
         }
-        return states
+        return (states, sent)
     }
 }

@@ -96,4 +96,41 @@ extension ReleaseWatchTests {
         let name = AppStoreScreenshot.referenceName(checksum: AppStoreScreenshot.checksum(of: third))
         #expect(appStore.state.withLock { $0.libraryImages.keys.contains(name) })
     }
+
+    @Test func rejectsScreensWhoseOriginalCannotBeRead() async throws {
+        _ = try await captureWithLibrary(sentState: "UPLOAD_COMPLETE")
+        // 撮った元の画像が、常時オンの Mac に無い（別の置き場所の撮影の道具で見回る）
+        let moved = watch(screenshots: FakeStoreScreenshots())
+        clock.advance(minutes: 5)
+        await moved.refresh()
+        let shots = try #require(try await submission().screenshots)
+        let rejected = shots.sets.first { $0.locale == "ja" }?.shots.first { $0.index == 2 }?.rejected
+        #expect(shots.state == .captured && rejected?.contains("読めない") == true)
+    }
+
+    @Test func countsTheProcessingTimeFromWhenTheImagesWereSent() async throws {
+        let (watch, name) = try await captureWithLibrary(sentState: "UPLOAD_COMPLETE")
+        // 送ったはずの画像がライブラリに無い（司令塔が止まっている間に消えた）。3 時間たっていても、送り直したところから数え直す
+        appStore.state.withLock { _ = $0.libraryImages.removeValue(forKey: name) }
+        clock.advance(minutes: 3 * 60)
+        await watch.refresh()
+        let shots = try #require(try await submission().screenshots)
+        #expect(shots.state == .capturing && shots.library?.sentAt == Timestamp(clock.now))
+        #expect(libraryWrites().filter { $0.hasPrefix("sendImage") }.count == 2)
+    }
+
+    @Test func givesUpEvenIfAppStoreConnectCannotBeRead() async throws {
+        let (watch, _) = try await captureWithLibrary(sentState: "UPLOAD_COMPLETE")
+        appStore.state.withLock { $0.libraryFailure = .unavailable("503") }
+        // 打ち切る前は、読めなければやり直す
+        clock.advance(minutes: 5)
+        await watch.refresh()
+        #expect(try await submission().screenshots?.state == .capturing)
+        // 打ち切る時間を過ぎたら、読めなかった画像も打ち切って決着させる
+        clock.advance(minutes: 3 * 60)
+        await watch.refresh()
+        let shots = try #require(try await submission().screenshots)
+        #expect(shots.state == .captured)
+        #expect(shots.sets.flatMap(\.shots).contains { $0.rejected?.contains("3 時間") == true })
+    }
 }

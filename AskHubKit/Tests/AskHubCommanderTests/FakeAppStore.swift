@@ -25,6 +25,8 @@ final class FakeAppStore: AppStoreConnecting {
         var libraryImages: [String: [AppStoreLibraryImage]] = [:]
         /// 上げた画像の、上げた直後の処理の様子（既定はすぐ置ける）
         var sentState = "PREPARE_FOR_SUBMISSION"
+        /// 決めると、ライブラリの画像を読めずにこれを投げる
+        var libraryFailure: AppStoreConnectError?
         /// 作った配置の数（配置の id の番号）
         var placementCount = 0
         /// スクショの画像（URL ごと）
@@ -156,7 +158,9 @@ final class FakeAppStore: AppStoreConnecting {
     }
 
     func libraryImages(in libraryID: String, referenceName: String) async throws(AppStoreConnectError) -> [AppStoreLibraryImage] {
-        state.withLock { $0.libraryImages[referenceName] ?? [] }
+        let (images, failure) = state.withLock { ($0.libraryImages[referenceName] ?? [], $0.libraryFailure) }
+        if let failure { throw failure }
+        return images
     }
 
     func sendImage(
