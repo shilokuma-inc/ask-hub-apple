@@ -58,7 +58,16 @@ extension DemoClientService {
             decideSplit(epicID: epicID, choice: choice)
 
         case .addRepository(let repositoryID):
-            guard let repository = (state.candidateRepositories + state.removedRepositories).first(where: { $0.id == repositoryID }) else {
+            let candidate = state.candidateRepositories.first { $0.id == repositoryID }.map { candidate in
+                TargetRepository(
+                    owner: candidate.owner,
+                    ownerAvatar: DemoData.ownerAvatar(candidate.owner),
+                    name: candidate.name,
+                    appName: candidate.description ?? candidate.name,
+                    icon: .monogram
+                )
+            }
+            guard let repository = candidate ?? state.removedRepositories.first(where: { $0.id == repositoryID }) else {
                 return
             }
             state.candidateRepositories.removeAll { $0.id == repositoryID }

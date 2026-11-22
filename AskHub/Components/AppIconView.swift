@@ -141,7 +141,7 @@ extension AppHeaderView where Subtitle == Text {
 
 #Preview("アプリのアイコン") {
     HStack {
-        ForEach(DemoData.repositories + DemoData.candidates.prefix(1)) { repository in
+        ForEach(DemoData.repositories) { repository in
             AppIconView(repository: repository)
         }
     }

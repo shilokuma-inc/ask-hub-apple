@@ -228,7 +228,7 @@ extension DemoData {
 
     /// デモのリポジトリの id。デモのリポジトリは organization をまたいでも名前が重ならないので、名前から持ち主を引く
     static func repositoryID(_ name: String) -> TargetRepository.ID {
-        (repositories + candidates).first { $0.name == name }?.id ?? "\(owner)/\(name)".lowercased()
+        repositories.first { $0.name == name }?.id ?? candidates.first { $0.name == name }?.id ?? "\(owner)/\(name)".lowercased()
     }
 
     static let repositories: [TargetRepository] = [
@@ -242,12 +242,10 @@ extension DemoData {
         repository("kaji-share-ios", "家事シェア", "house.fill", .pink, owner: secondOwner, lastMac: macBookAirID)
     ]
 
-    static let candidates: [TargetRepository] = [
-        TargetRepository(owner: owner, ownerAvatar: ownerAvatar(owner), name: "memo-widget-ios", appName: "メモウィジェット", icon: .monogram),
-        TargetRepository(owner: owner, ownerAvatar: ownerAvatar(owner), name: "sleep-log-apple", appName: "睡眠ログ", icon: .monogram),
-        TargetRepository(
-            owner: secondOwner, ownerAvatar: ownerAvatar(secondOwner), name: "plant-water-ios", appName: "水やり当番", icon: .monogram
-        )
+    static let candidates: [RepositoryCandidate] = [
+        RepositoryCandidate(owner: owner, name: "memo-widget-ios", description: "メモウィジェット"),
+        RepositoryCandidate(owner: owner, name: "sleep-log-apple", isPrivate: true, description: "睡眠ログ"),
+        RepositoryCandidate(owner: secondOwner, name: "plant-water-ios", description: "水やり当番")
     ]
 
     /// デモの organization のアバター。架空の名前なので GitHub からは取らない（同じ名前の実在のアカウントの画像が写らないように）

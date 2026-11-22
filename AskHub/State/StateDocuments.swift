@@ -38,6 +38,8 @@ struct StateDocuments {
     var cleanupCandidates: [MacName: CleanupCandidatesFile] = [:]
     var cleanupRequests: [MacName: CleanupRequestsFile] = [:]
     var commander: CommanderFile?
+    /// 「対象に加える」の候補（司令塔が書く）
+    var repositoryCandidates: RepositoryCandidatesFile?
     /// 新しい順
     var sentIntents: [SentIntent] = []
     var failures: [SourceFailure] = []
@@ -83,6 +85,7 @@ struct StateReader {
         async let repositories = Self.capture { () throws(StateStoreError) in try await readRepositories() }
         async let macs = Self.capture { () throws(StateStoreError) in try await readMacs() }
         async let commander = read(CommanderFile.self, at: StatePath.commander)
+        async let candidates = read(RepositoryCandidatesFile.self, at: StatePath.repositoryCandidates)
         async let sent = Self.capture { () throws(StateStoreError) in try await sentIntents() }
         var documents = StateDocuments()
         for part in try await repositories.get() {
@@ -100,6 +103,9 @@ struct StateReader {
         let commanderPart = await commander
         documents.commander = commanderPart.value
         documents.failures += commanderPart.failures
+        let candidatesPart = await candidates
+        documents.repositoryCandidates = candidatesPart.value
+        documents.failures += candidatesPart.failures
         let sentPart = try await sent.get()
         documents.sentIntents = sentPart.value
         documents.failures += sentPart.failures
