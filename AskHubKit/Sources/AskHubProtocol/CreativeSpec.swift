@@ -150,8 +150,10 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
     public static let limits: [String: Int] = [
         "appName": 30, "header.title": 60, "header.subtitle": 90, "search.title": 60, "search.chips": 30
     ]
-    /// 1 つの文言に入れられる改行の数
-    public static let newlineLimit = 2
+    /// 文言に入れられる改行の数（見出しと一文は 2 行・検索結果の見出しは 3 行まで。アプリ名とチップは 1 行）
+    public static let newlineLimits: [String: Int] = [
+        "appName": 0, "header.title": 1, "header.subtitle": 1, "search.title": 2, "search.chips": 0
+    ]
 
     /// 形の版（JSON では `v`）
     public var version: Int
@@ -263,12 +265,13 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
     static func textProblems(_ text: String, name: String, allowEmpty: Bool) -> [String] {
         let limitName = name.split(separator: ".", maxSplits: 1).last.map { String($0).replacing(#/\[\d+\]/#, with: "") } ?? name
         let limit = limits[limitName] ?? 30
+        let newlines = newlineLimits[limitName] ?? 0
         var problems: [String] = []
-        if !allowEmpty, text.trimmingCharacters(in: .whitespaces).isEmpty { problems.append("\(name) が空") }
+        if !allowEmpty, text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { problems.append("\(name) が空") }
         if text.unicodeScalars.count > limit { problems.append("\(name) は \(limit) 文字まで") }
         let control = text.unicodeScalars.contains { ($0.value < 0x20 && $0 != "\n") || $0.value == 0x7F }
         if control { problems.append("\(name) に制御文字がある") }
-        if text.filter({ $0 == "\n" }).count > newlineLimit { problems.append("\(name) の改行は \(newlineLimit) つまで") }
+        if text.filter({ $0 == "\n" }).count > newlines { problems.append("\(name) の改行は \(newlines) つまで") }
         if !text.filter({ $0 == "*" }).count.isMultiple(of: 2) { problems.append("\(name) の強調の * が閉じていない") }
         return problems
     }
