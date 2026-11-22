@@ -99,7 +99,8 @@ struct StoreScreenshotsSection: View {
     }
 }
 
-/// 1 枚の Before / After（After の変わった所に枠）と「前のままにする」
+/// 1 枚の Before / After（After の変わった所に枠）と「前のままにする」。前回の App Store に無い位置（初めての版・新しい表示サイズ・
+/// 増えた画面）は新しい画面として出し、「載せない」を選べる（前回に無い位置を前のままにすると、その画面は置かない）
 private struct ShotComparisonRow: View {
     let shot: Submission.Shot
     @Binding var keep: Bool
@@ -108,10 +109,10 @@ private struct ShotComparisonRow: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("\(shot.index) 枚目 · \(shot.name)").appFont(.footnote, weight: .semibold).foregroundStyle(.secondary)
             HStack(alignment: .top, spacing: 12) {
-                column("Before", shot.before, highlight: nil, empty: "前回は無い位置")
+                column("Before", shot.before, highlight: nil, empty: "新しい画面")
                 column("After", shot.after, highlight: shot.area, empty: "撮れなかった")
             }
-            Toggle("前のままにする", isOn: $keep)
+            Toggle(shot.before == nil ? "載せない" : "前のままにする", isOn: $keep)
                 .accessibilityIdentifier("store-screenshot-keep-\(shot.index)")
         }
     }

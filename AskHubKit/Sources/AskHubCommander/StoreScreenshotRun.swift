@@ -88,22 +88,27 @@ struct StoreScreenshotRun: Sendable {
         } catch {
             throw ReleaseStepProblem("release ブランチの写しを用意できない（\(error)）", needsHuman: false)
         }
-        var request = StoreScreenshotCaptureRequest(
-            repo: file.repo, version: file.version, commit: commit, directory: workspace.directory, build: build, settings: settings
+        let originals = capturer.originals(file.repo, version: file.version, commit: commit)
+        var place = Place(
+            request: .init(
+                repo: file.repo, version: file.version, commit: commit, directory: workspace.directory, build: build, settings: settings
+            ),
+            comparer: .init(store: store, repo: file.repo, version: file.version, commit: commit, originals: originals),
+            current: current
         )
-        let place = Place(file: file, originals: capturer.originals(file.repo, version: file.version, commit: commit), current: current)
         // 基準の言語を先に撮る。差があればほかの言語もすべて、差が無ければ文言の変わった言語だけを撮る。
         // 基準の言語を 1 組も撮れなければ、ほかの言語も撮らない（クライアントは最初の組の言語を基準の言語とみなす）
-        request.targets = types.map { StoreScreenshotTarget(displayType: $0, locale: settings.baseLocale) }
-        var sets = try await compare(request.targets, results: try await capturer.capture(request), place: place, skipped: &skipped)
+        var sets = try await shoot(types.map { StoreScreenshotTarget(displayType: $0, locale: settings.baseLocale) }, place: &place)
         if !sets.isEmpty {
             let rest = sets.contains(where: \.isChanged) ? others : localized
-            request.targets = types.flatMap { type in rest.map { StoreScreenshotTarget(displayType: type, locale: $0) } }
-            if !request.targets.isEmpty {
-                sets += try await compare(request.targets, results: try await capturer.capture(request), place: place, skipped: &skipped)
-            }
+            let targets = types.flatMap { type in rest.map { StoreScreenshotTarget(displayType: type, locale: $0) } }
+            sets += try await shoot(targets, place: &place)
         }
+        skipped += place.skipped
+        let previews = place.previews
         guard !sets.isEmpty else { return failed(skipped.first?.reason ?? "スクショを撮れなかった") }
+        // 見本は 1 回のコミットでまとめて書く（書き込みの予算を、見本の枚数だけ使わない）
+        try await StoreScreenshotComparer.writePreviews(previews, of: file, to: context.store)
         let wording = localized.isEmpty ? "" : "。文言の変わった言語 \(localized.joined(separator: "・"))"
         log("\(file.repo) の \(file.version) のスクショを撮った（差のある組 \(sets.filter(\.isChanged).count) / \(sets.count)\(wording)）")
         return .init(state: .captured, commit: commit, startedAt: started, finishedAt: context.timestamp, sets: sets, skipped: skipped)
@@ -166,109 +171,44 @@ struct StoreScreenshotRun: Sendable {
         return Live(sets: current, locales: locales)
     }
 
-    /// 比べる相手と、置く場所
+    /// 撮る頼み・比べる道具・配信中の版の組と、撮りながら集める見本（状態リポジトリのパス → base64 の文字）と撮れなかった組
     struct Place {
-        var file: SubmissionFile
-        /// 撮った元の画像のフォルダ（常時オンの Mac）
-        var originals: URL
+        var request: StoreScreenshotCaptureRequest
+        var comparer: StoreScreenshotComparer
         /// 配信中の版の組
         var current: [StoreScreenshotTarget: AppStoreScreenshotSet]
+        var previews: [String: String] = [:]
+        var skipped: [SubmissionFile.SkippedDisplayType] = []
     }
 
-    /// 撮れた組を、配信中の版の組と比べる。差のある画面は見本と元の画像を置く。撮れなかった組は `skipped` に足す
-    private func compare(
-        _ targets: [StoreScreenshotTarget],
-        results: StoreScreenshotResults,
-        place: Place,
-        skipped: inout [SubmissionFile.SkippedDisplayType]
-    ) async throws -> [SubmissionFile.ScreenshotSet] {
+    /// 組を撮り、配信中の版の組と比べる。差のある画面は元の画像を置き、見本を `place.previews` に足す。撮れなかった組は `place.skipped` に足す
+    private func shoot(_ targets: [StoreScreenshotTarget], place: inout Place) async throws -> [SubmissionFile.ScreenshotSet] {
+        guard !targets.isEmpty else { return [] }
+        place.request.targets = targets
+        let results = try await capturer.capture(place.request)
         var sets: [SubmissionFile.ScreenshotSet] = []
         for target in targets {
             switch results[target] {
             case let .success(shots)?:
-                sets.append(try await compare(target, shots: shots, place: place))
+                let compared = try await place.comparer.compare(target, shots: shots, current: place.current[target]?.screenshots ?? [])
+                sets.append(compared.set)
+                place.previews.merge(compared.previews) { $1 }
             case let .failure(failure)?:
-                skipped.append(.init(displayType: target.displayType, reason: "\(target.locale): \(failure.message)"))
+                place.skipped.append(.init(displayType: target.displayType, reason: "\(target.locale): \(failure.message)"))
             case nil:
-                skipped.append(.init(displayType: target.displayType, reason: "\(target.locale): 撮れなかった"))
+                place.skipped.append(.init(displayType: target.displayType, reason: "\(target.locale): 撮れなかった"))
             }
         }
         return sets
     }
 
-    private func compare(
-        _ target: StoreScreenshotTarget,
-        shots: [CapturedShot],
-        place: Place
-    ) async throws -> SubmissionFile.ScreenshotSet {
-        let current = place.current[target]?.screenshots ?? []
-        var result: [SubmissionFile.Shot] = []
-        for (offset, shot) in shots.enumerated() {
-            let index = offset + 1
-            guard let after = try? Data(contentsOf: shot.file) else {
-                throw ReleaseStepProblem("撮った画像（\(target.key) の \(index) 枚目）を読めない", needsHuman: false)
-            }
-            let before = offset < current.count ? current[offset] : nil
-            var difference = ScreenshotDifference(changed: true)
-            if let before {
-                if before.checksum == AppStoreScreenshot.checksum(of: after) {
-                    difference = ScreenshotDifference(changed: false)
-                } else if let url = before.imageURL {
-                    let old = try await call { () throws(AppStoreConnectError) in try await store.downloadScreenshot(url) }
-                    difference = ScreenshotDiff.compare(before: old, after: after)
-                }
-            }
-            let url = before?.imageURL?.absoluteString
-            var entry = SubmissionFile.Shot(index: index, name: shot.name, changed: difference.changed, before: url)
-            if difference.changed {
-                entry.area = difference.area.map(Self.area)
-                entry.preview = try await keep(after, target: target, index: index, place: place)
-            }
-            result.append(entry)
-        }
-        return SubmissionFile.ScreenshotSet(
-            displayType: target.displayType, locale: target.locale, shots: result, removed: max(0, current.count - shots.count)
-        )
-    }
-
-    /// 差のある画面の元の画像を常時オンの Mac に、見本を状態リポジトリに置き、見本のパスを返す
-    private func keep(_ data: Data, target: StoreScreenshotTarget, index: Int, place: Place) async throws -> String {
-        let file = place.file
-        let original = Self.original(in: place.originals, target: target, index: index)
-        do {
-            try FileManager.default.createDirectory(at: original.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: original, options: .atomic)
-        } catch {
-            throw ReleaseStepProblem("撮った画像を常時オンの Mac に置けない（\(error.localizedDescription)）", needsHuman: false)
-        }
-        guard let preview = ScreenshotDiff.preview(of: data) else {
-            throw ReleaseStepProblem("撮った画像（\(target.key) の \(index) 枚目）の見本を作れない", needsHuman: false)
-        }
-        let path = StatePath.storeScreenshot(file.repo, file.version, displayType: target.displayType, locale: target.locale, index: index)
-        do {
-            let existing = try await context.store.read(path)
-            _ = try await context.store.write(
-                path, data: preview, replacing: existing?.sha, message: "\(file.repo) の \(file.version) のスクショの見本（\(target.key)）"
-            )
-        } catch {
-            throw ReleaseStepProblem("スクショの見本を状態リポジトリに置けない（\(error)）", needsHuman: false)
-        }
-        return path
-    }
-
     /// 元の画像のファイル（`<originals>/<表示サイズ>/<言語>/<位置>.png`）
     static func original(in originals: URL, target: StoreScreenshotTarget, index: Int) -> URL {
-        originals.appendingPathComponent(target.displayType).appendingPathComponent(target.locale).appendingPathComponent("\(index).png")
+        StoreScreenshotComparer.original(in: originals, target: target, index: index)
     }
 
     /// 撮り方に機種の無い表示サイズのわけ
     static let unconfiguredReason = "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い"
-
-    /// 変わった所（小数 4 桁）
-    static func area(_ rect: CGRect) -> SubmissionFile.ChangedArea {
-        func round(_ value: Double) -> Double { (value * 10_000).rounded() / 10_000 }
-        return .init(x: round(rect.minX), y: round(rect.minY), width: round(rect.width), height: round(rect.height))
-    }
 
     private func call<Value>(_ body: () async throws(AppStoreConnectError) -> Value) async throws -> Value {
         do {

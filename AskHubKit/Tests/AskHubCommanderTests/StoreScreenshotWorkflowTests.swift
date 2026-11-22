@@ -28,9 +28,30 @@ struct FakeWorkflows {
     var cancelledRuns: [Int] = []
     /// 取り消しの応答
     var cancelReply: Result<Void, PullRequestError> = .success(())
+    /// 実行の id → artifact
+    var artifacts: [Int: [RunArtifact]] = [:]
+    /// artifact の id → zip（`FakeArtifactExtractor.zip` の形）
+    var zips: [Int: Data] = [:]
+    /// artifact の一覧を読んだ数と、決めると一覧を読めずにこれを投げる
+    var artifactReads = 0
+    var artifactsFailure: PullRequestError?
 }
 
 extension FakeReleaseHosting {
+    func runArtifacts(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [RunArtifact] {
+        let (artifacts, failure) = workflows.withLock { state in
+            state.artifactReads += 1
+            return (state.artifacts[runID] ?? [], state.artifactsFailure)
+        }
+        if let failure { throw failure }
+        return artifacts
+    }
+
+    func downloadArtifact(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) -> Data {
+        guard let zip = workflows.withLock({ $0.zips[id] }) else { throw .notFound }
+        return zip
+    }
+
     func dispatchWorkflow(
         _ repo: RepositoryFullName,
         workflow: String,
@@ -172,10 +193,10 @@ extension ReleaseWatchTests {
         #expect(file.screenshots?.run?.status == "in_progress" && file.screenshots?.commit == Self.releaseHead)
     }
 
-    @Test func settlesWhenTheRunCompletes() async throws {
+    @Test func importsWhenTheRunCompletes() async throws {
         try await startRelease()
         try await addWorkflowScreenshotRepository()
-        let watch = watch()
+        let watch = watch(screenshots: FakeStoreScreenshots())
         await watch.refresh()
         let revision = try await submission().revision
         hosting.workflows.withLock {
@@ -183,10 +204,11 @@ extension ReleaseWatchTests {
         }
         clock.advance(minutes: 5)
         await watch.refresh()
+        await watch.waitForScreenshotCaptures()
 
         let shots = try #require(try await submission().screenshots)
-        // 取り込みは次の段階で作るので、今は撮れた実行も failed（スクショを変えずに審査に出せる）
-        #expect(shots.state == .failed && shots.failure?.contains("取り込み") == true)
+        // 終わったので取り込んだ。この版の配信中の版には配置のスクショが無いので、比べられずに failed（スクショを変えずに審査に出せる）
+        #expect(shots.state == .failed && shots.failure?.contains("App Asset Library") == true)
         #expect(shots.run?.status == "completed" && shots.run?.conclusion == "success")
         #expect(try await submission().revision > revision)
         #expect(await watch.screenshotRunsCheckedAt.isEmpty)

@@ -50,6 +50,20 @@ extension GitHubPullRequests {
         _ = try await api.send("POST", api.url("actions/runs/\(id)/cancel"))
     }
 
+    /// 実行の artifact（ページングを最後まで追う）
+    public func runArtifacts(runID: Int) async throws(PullRequestError) -> [RunArtifact] {
+        try GitNames.checkNumber(runID)
+        let query = [URLQueryItem(name: "per_page", value: "100")]
+        let pages = try await api.pages("actions/runs/\(runID)/artifacts", query: query, as: ArtifactsPage.self)
+        return pages.flatMap(\.artifacts).compactMap(\.model)
+    }
+
+    /// artifact の zip。GitHub は短い期限の署名つきの URL に飛ばすので、行き先にはトークンを付けない（`GitHubAPI.download`）
+    public func downloadArtifact(id: Int) async throws(PullRequestError) -> Data {
+        try GitNames.checkNumber(id)
+        return try await api.download("actions/artifacts/\(id)/zip")
+    }
+
     static func checkWorkflow(_ workflow: String) throws(PullRequestError) {
         guard StoreScreenshotWorkflow.isWorkflowFile(workflow) else { throw .invalidArgument("ワークフローのファイル名の形が違う") }
     }
@@ -115,7 +129,41 @@ public struct WorkflowRunDetail: Sendable, Equatable {
     public var isCompleted: Bool { status == "completed" }
 }
 
+/// 実行の artifact
+public struct RunArtifact: Sendable, Equatable {
+    public var id: Int
+    /// `screenshots-APP_IPHONE_67` など
+    public var name: String
+    /// zip の大きさ（バイト）
+    public var size: Int
+    /// 期限が切れて落とせない
+    public var expired: Bool
+
+    public init(id: Int, name: String, size: Int, expired: Bool) {
+        self.id = id
+        self.name = name
+        self.size = size
+        self.expired = expired
+    }
+}
+
 // MARK: - 要求と応答の形（応答のキーは `convertFromSnakeCase` で読む）
+
+private struct ArtifactsPage: Decodable {
+    struct Artifact: Decodable {
+        let id: Int
+        let name: String?
+        let sizeInBytes: Int?
+        let expired: Bool?
+
+        var model: RunArtifact? {
+            guard id > 0, let name, let sizeInBytes else { return nil }
+            return RunArtifact(id: id, name: name, size: sizeInBytes, expired: expired ?? false)
+        }
+    }
+
+    let artifacts: [Artifact]
+}
 
 private struct DispatchBody: Encodable, Sendable {
     let ref: String
