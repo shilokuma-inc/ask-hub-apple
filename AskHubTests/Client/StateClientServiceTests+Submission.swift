@@ -145,6 +145,23 @@ extension StateClientServiceTests {
     }
 
     @Test
+    func retakingSendsTheChosenSets() async throws {
+        let fixture = try makeService(files: Self.submissionFiles())
+        _ = try await fixture.service.fetchSnapshot()
+        let intent = HumanIntent.retakeScreenshots(
+            repositoryID: submissionRepositoryID, version: "1.2.0", displayTypes: ["IPHONE_DUO_PROFILE"], locales: ["ja"]
+        )
+        #expect(fixture.service.supports(intent))
+        try await fixture.service.perform(intent)
+        let retake = try RetakeScreenshotsIntent(envelope: try await sentEnvelope(in: fixture.store, key: fixture.key))
+        #expect(retake.displayTypes == ["IPHONE_DUO_PROFILE"] && retake.locales == ["ja"])
+        // 送った後は受け付けを待っている間として出し、続けては送れない
+        let sent = try await fixture.service.fetchSnapshot()
+        #expect(sent.submission(Submission.id(submissionRepositoryID, "1.2.0"))?.sending == .retake)
+        #expect(!fixture.service.supports(intent))
+    }
+
+    @Test
     func sendsAppReviewWithoutPassword() async throws {
         let fixture = try makeService(files: Self.submissionFiles())
         let snapshot = try await fixture.service.fetchSnapshot()

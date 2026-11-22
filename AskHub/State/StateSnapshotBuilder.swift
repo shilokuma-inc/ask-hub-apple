@@ -83,6 +83,7 @@ struct StateIndex {
         var canDistribute: Bool
         var canWithdraw: Bool
         var canAbandon: Bool
+        var canRetakeScreenshots: Bool
     }
 
     /// 実機確認への答え（`verify`）と、「問題あり」で一緒に送る依頼の材料

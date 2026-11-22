@@ -9,6 +9,7 @@ struct SubmissionDetailView: View {
     @Environment(ClientStore.self) private var store
     @State private var isSubmitting = Self.initialSubmitting
     @State private var confirming: Confirmation?
+    @State private var isRetaking = false
 
     /// 撮影では、起動引数で審査に出すシートを開いておく
     private static var initialSubmitting: Bool {
@@ -67,6 +68,17 @@ struct SubmissionDetailView: View {
         .pastelBackground()
         .compactList()
         .navigationTitle("\(submission.version) のリリース")
+        .sheet(isPresented: $isRetaking) {
+            if let screenshots = submission.screenshots {
+                RetakeScreenshotsSheet(screenshots: screenshots) { displayTypes, locales in
+                    isRetaking = false
+                    let id = submission.repositoryID
+                    send(.retakeScreenshots(repositoryID: id, version: submission.version, displayTypes: displayTypes, locales: locales))
+                } onClose: {
+                    isRetaking = false
+                }
+            }
+        }
         .sheet(isPresented: $isSubmitting) {
             SubmitReviewSheet(submission: submission) { isSubmitting = false }
         }
@@ -94,7 +106,9 @@ struct SubmissionDetailView: View {
             && store.supports(.withdrawSubmission(repositoryID: id, version: submission.version))
         let canAbandon = submission.canAbandon && submission.sending == nil
             && store.supports(.abandonRelease(repositoryID: id, version: submission.version))
-        if canSubmit || canDistribute || canWithdraw || canAbandon {
+        let canRetake = submission.canRetakeScreenshots && submission.sending == nil && submission.screenshots?.sets.isEmpty == false
+            && store.supports(.retakeScreenshots(repositoryID: id, version: submission.version, displayTypes: [], locales: []))
+        if canSubmit || canDistribute || canWithdraw || canAbandon || canRetake {
             CardSection {
                 if canSubmit {
                     Button("確かめて審査に出す…", systemImage: "paperplane") { isSubmitting = true }
@@ -107,6 +121,10 @@ struct SubmissionDetailView: View {
                 if canWithdraw {
                     Button("審査を取り下げる…", systemImage: "arrow.uturn.backward") { confirming = .withdraw }
                         .accessibilityIdentifier("submission-withdraw")
+                }
+                if canRetake {
+                    Button("スクショを撮り直す…", systemImage: "camera.rotate") { isRetaking = true }
+                        .accessibilityIdentifier("submission-retake-screenshots")
                 }
                 if canAbandon {
                     Button("このリリースをやめる…", systemImage: "xmark.circle", role: .destructive) { confirming = .abandon }

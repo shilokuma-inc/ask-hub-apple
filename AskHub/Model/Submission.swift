@@ -43,6 +43,8 @@ struct Submission: Identifiable, Hashable {
     var awaitsDistribution = false
     var canWithdraw = false
     var canAbandon = false
+    /// スクショを撮り直せる（審査に出す前で、撮っている途中でない）
+    var canRetakeScreenshots = false
     /// 審査に出すのを受け付けて、司令塔が App Store Connect に出し終えていない
     var isSubmitting = false
     /// この端末から送り、司令塔がまだ処理していない操作
@@ -235,6 +237,7 @@ struct Submission: Identifiable, Hashable {
         case distribute
         case withdraw
         case abandon
+        case retake
 
         var label: String {
             switch self {
@@ -243,6 +246,7 @@ struct Submission: Identifiable, Hashable {
             case .distribute: "配信する"
             case .withdraw: "審査の取り下げ"
             case .abandon: "やめる"
+            case .retake: "スクショの撮り直し"
             }
         }
     }

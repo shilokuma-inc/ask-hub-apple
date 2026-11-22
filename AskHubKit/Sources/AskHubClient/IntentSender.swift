@@ -176,6 +176,14 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: WithdrawSubmissionIntent.kind, repo: target.repo, target: target.target)
     }
 
+    /// スクショを撮り直す（審査に出す前だけ）。`displayTypes`・`locales` が空なら、すべての組
+    public static func retakeScreenshots(_ target: SubmissionTarget, displayTypes: [String] = [], locales: [String] = []) -> Self {
+        var payload: [String: JSONValue] = [:]
+        if !displayTypes.isEmpty { payload["displayTypes"] = .array(displayTypes.map(JSONValue.string)) }
+        if !locales.isEmpty { payload["locales"] = .array(locales.map(JSONValue.string)) }
+        return Self(kind: RetakeScreenshotsIntent.kind, repo: target.repo, target: target.target, payload: payload)
+    }
+
     /// このリリースをやめる（release ブランチ・App Store Connect の版は消さない）
     public static func abandonRelease(_ target: SubmissionTarget) -> Self {
         Self(kind: AbandonReleaseIntent.kind, repo: target.repo, target: target.target)

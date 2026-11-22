@@ -20,7 +20,7 @@ extension StateIntentMapper {
         case let .cleanUp(macID, candidateIDs):
             index.macs[macID].map { $0.cleanupScannedAt != nil && !$0.cleanupUnknown } == true && !candidateIDs.isEmpty
 
-        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease:
+        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots:
             supportsSubmissionIntent(intent)
 
         case .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:

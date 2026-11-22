@@ -76,6 +76,7 @@ extension DemoData {
         submission.screenshots = Self.recipeScreenshots
         submission.awaitsSubmission = true
         submission.canAbandon = true
+        submission.canRetakeScreenshots = true
         // おこづかい帳の初めての版。App Store の準備の残り（初めての版の項目を含む）を、あなたの番に出す
         var first = Submission(
             repositoryID: Self.repositoryID("pocket-budget-ios"),
