@@ -300,25 +300,6 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: ApproveMergeIntent.kind, repo: target.repo, target: target.target, targetVersion: target.targetVersion)
     }
 
-    /// 人がする作業を終えた（`file` の作業は、渡すファイルの参照を付け、中身は `IntentSender.send(_:attachments:)` で送る）
-    /// `secret` は、Secrets に入れる値を `SealedBox` で暗号化したもの（平文は渡さない）
-    public static func humanTaskDone(_ target: HumanTaskTarget, file: RequestAttachment? = nil, secret: EncryptedSecret? = nil) -> Self {
-        var payload: [String: JSONValue] = file.map { ["attachments": .array([$0.jsonValue])] } ?? [:]
-        if let secret { payload["secret"] = secret.jsonValue }
-        return Self(
-            kind: HumanTaskDoneIntent.kind,
-            repo: target.repo,
-            target: target.target,
-            targetVersion: target.targetVersion,
-            payload: payload
-        )
-    }
-
-    /// リポジトリの Secrets の公開鍵を、司令塔に読ませる（管理用のトークンで読み、repo.json に書く）
-    public static func readSecretsKey(_ repo: RepositoryFullName) -> Self {
-        Self(kind: ReadSecretsKeyIntent.kind, repo: repo)
-    }
-
     /// 実機確認への答え（「問題あり」は説明が要る。直してほしいことは、別に依頼として送る）
     public static func verify(_ target: VerificationTarget, result: VerifyIntent.Result, note: String = "") -> Self {
         var payload: [String: JSONValue] = ["result": .string(result.rawValue)]
