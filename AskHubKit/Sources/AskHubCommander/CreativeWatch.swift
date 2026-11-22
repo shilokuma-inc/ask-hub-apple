@@ -130,14 +130,19 @@ public actor CreativeWatch {
             throw ReleaseStepProblem("\(repo) のビルドの設定を読めない（\(error)）", needsHuman: false)
         }
         guard !bundleIDs.isEmpty else { return nil }
-        // 1 つの鍵で読めなくても（失効・上限）、ほかの鍵で探す。どの鍵でも見つからず、読めない鍵があったときだけ、その失敗を投げる
-        var failure: (any Error)?
+        // 1 つの鍵で読めなくても（失効・上限）、ほかの鍵で探す。どの鍵でも見つからず、読めない鍵があったときだけ、その失敗を投げる。
+        // 待てば直る失敗があれば、そちらを投げる（読めなかった鍵にアプリがあるかもしれないので、人の問題にして止めない）
+        var transient: (any Error)?
+        var lasting: (any Error)?
         for (index, store) in stores.enumerated() {
             let found: [AppStoreApp]
             do {
                 found = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.apps(bundleIDs: bundleIDs) }
+            } catch let problem as ReleaseStepProblem where problem.needsHuman {
+                lasting = lasting ?? problem
+                continue
             } catch {
-                failure = error
+                transient = transient ?? error
                 continue
             }
             if let app = found.first {
@@ -145,7 +150,7 @@ public actor CreativeWatch {
                 return (index, app)
             }
         }
-        if let failure { throw failure }
+        if let failure = transient ?? lasting { throw failure }
         return nil
     }
 

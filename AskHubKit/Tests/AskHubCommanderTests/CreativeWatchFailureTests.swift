@@ -215,6 +215,27 @@ extension ReleaseWatchTests {
             log: { _ in }
         )
         await #expect(throws: ReleaseStepProblem.self) { try await alone.app(of: Self.repo, base: "develop") }
+        // 待てば直る失敗（503）と人が直す失敗（401）が両方あれば、鍵の順によらず待てば直る失敗を投げる（自動でやり直す）
+        let unavailable = FakeAppStore()
+        unavailable.state.withLock { $0.appsFailure = .unavailable("503") }
+        for stores in [[unavailable, revoked], [revoked, unavailable]] {
+            let both = CreativeWatch(
+                context: creativeContext,
+                stores: stores,
+                sources: sources,
+                hosting: hosting,
+                artifacts: FakeCreativeExtractor(),
+                drafter: FakeCreativeDrafter(),
+                originals: temporaryOriginals(),
+                log: { _ in }
+            )
+            do {
+                _ = try await both.app(of: Self.repo, base: "develop")
+                Issue.record("投げていない")
+            } catch let problem as ReleaseStepProblem {
+                #expect(!problem.needsHuman)
+            }
+        }
     }
 
     /// PNG の印と IHDR だけの、画像として読めないデータ
