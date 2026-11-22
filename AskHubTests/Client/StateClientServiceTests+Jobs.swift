@@ -137,7 +137,7 @@ extension StateClientServiceTests {
         #expect(blocker.summary == "CI が通らないまま、自動の直しが上限（3 回）を超えたので止めています。もう一度試すと、もう 1 回直します")
         #expect(blocker.logExcerpt == nil)
         #expect(blocker.attempts.isEmpty)
-        // 直しをやめると先に進めないので、epic ごとやめる
+        // 直しをやめると先に進めないので、epic ごとやめる。タスクの id の無いジョブは、司令塔と同じく飛ばせない
         #expect(blocker.actions == [.retry, .discard])
         #expect(blocker.target == "\(Self.jobID)/0")
 

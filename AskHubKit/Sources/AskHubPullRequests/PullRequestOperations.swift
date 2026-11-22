@@ -6,6 +6,8 @@ public protocol PullRequestOperations: Sendable {
     func openPullRequest(_ draft: PullRequestDraft) async throws(PullRequestError) -> OpenedPullRequest
     /// PR の様子を読む
     func pullRequest(number: Int) async throws(PullRequestError) -> PullRequest
+    /// 同じリポジトリのブランチからの開いた PR。`head` を渡せばそのブランチからの PR、`base` を渡せばその向き先の PR に絞る
+    func openPullRequests(head: String?, base: String?) async throws(PullRequestError) -> [PullRequest]
     /// head の SHA の CI を読み、まとめた状態を返す
     func checks(at sha: String, policy: CheckPolicy) async throws(PullRequestError) -> CheckSummary
     /// head の SHA の check run（名前ごとの最新）と、結果の見出し
@@ -22,6 +24,8 @@ public protocol PullRequestOperations: Sendable {
     func jobCount(runID: Int) async throws(PullRequestError) -> Int
     /// PR を閉じる・開き直す
     func setState(number: Int, to state: PullRequest.State) async throws(PullRequestError)
+    /// PR にコメントを書く
+    func comment(number: Int, body: String) async throws(PullRequestError)
     /// 信用する書き手の、未解決の行コメントのスレッドとレビューの本文を読む
     func reviewFeedback(number: Int, trusted: TrustedAuthors) async throws(PullRequestError) -> ReviewFeedback
     /// merge commit でマージする。`headSHA` と今の head が違えば断る

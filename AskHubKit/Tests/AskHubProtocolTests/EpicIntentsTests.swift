@@ -44,6 +44,9 @@ struct EpicIntentsTests {
         Kind(vectors: "payloads/giveUp.json", kind: "giveUp", target: jobTarget, targetVersion: "2") {
             try GiveUpJobIntent(envelope: $0).payload
         },
+        Kind(vectors: "payloads/skipTask.json", kind: "skipTask", target: jobTarget, targetVersion: "2") {
+            try SkipTaskIntent(envelope: $0).payload
+        },
         Kind(vectors: "payloads/abandonEpic.json", kind: "abandonEpic", target: .init(type: "epic", epic: epic), targetVersion: nil) {
             try AbandonEpicIntent(envelope: $0).payload
         },

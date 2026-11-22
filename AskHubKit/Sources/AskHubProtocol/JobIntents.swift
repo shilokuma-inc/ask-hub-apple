@@ -81,6 +81,46 @@ public struct GiveUpJobIntent: Equatable, Sendable {
     public var payload: [String: JSONValue] { [:] }
 }
 
+/// タスクを飛ばす人の意図（`kind` が `skipTask`）。人に渡した実装・レビュー・直しのジョブのタスクを飛ばし、epic は次のタスク・最終 PR へ進める。
+/// payload は理由（`reason`）と任意のメモ（`note`）
+public struct SkipTaskIntent: Equatable, Sendable {
+    public static let kind = "skipTask"
+    public static let maximumNoteLength = 2000
+
+    public var target: JobTarget
+    public var reason: TaskSkipReason
+    /// 人のメモ。無ければ空
+    public var note: String
+    public var intent: IntentReference
+
+    public init(target: JobTarget, reason: TaskSkipReason, note: String = "", intent: IntentReference) {
+        self.target = target
+        self.reason = reason
+        self.note = note
+        self.intent = intent
+    }
+
+    public init(envelope: IntentEnvelope) throws(MalformedIntent) {
+        guard envelope.kind == Self.kind else { throw .init(detail: "kind が skipTask でない") }
+        let target = try JobTarget(envelope: envelope)
+        let reader = try PayloadReader(envelope.payload, allowed: ["reason", "note"])
+        guard let reason = TaskSkipReason(rawValue: try reader.text("reason", required: true, limit: 32)) else {
+            throw .init(detail: "reason が handledElsewhere・notNeeded のどれでもない")
+        }
+        let note = try reader.text("note", required: false, limit: Self.maximumNoteLength)
+        self.init(target: target, reason: reason, note: note, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
+    }
+
+    public var payload: [String: JSONValue] { Self.payload(reason: reason, note: note) }
+
+    /// 送る payload。メモは空なら書かない
+    public static func payload(reason: TaskSkipReason, note: String) -> [String: JSONValue] {
+        var payload: [String: JSONValue] = ["reason": .string(reason.rawValue)]
+        if !note.isEmpty { payload["note"] = .string(note) }
+        return payload
+    }
+}
+
 /// 人に渡したジョブをやめたときの扱い（`docs/renewal/flows.md` の「人に渡したジョブ」）。司令塔とクライアントで同じ扱いにする
 public enum GiveUpEffect: Equatable, Sendable {
     /// やめると epic が先に進めなくなるので、epic ごとやめる（`abandoned`）。開始した後なら、開いている子 PR と最終 PR を閉じる（ブランチは残す）
@@ -109,6 +149,16 @@ extension JobKind {
         // 名前だけで作らない種類
         case .integrateDevelop, .rerunChecks, .notify: nil
         }
+    }
+
+    /// タスクを飛ばせる種類か（実装・レビュー・直し）。司令塔とクライアントで同じ扱いにする
+    public var skipsTask: Bool {
+        [.implementTask, .reviewTask, .fixTask].contains(self)
+    }
+
+    /// epic の段階が `stage` のときに、人に渡したこのジョブのタスクを飛ばせるか（タスクを進めている `running` の epic だけ）
+    public func canSkipTask(at stage: EpicStage) -> Bool {
+        skipsTask && stage == .running
     }
 
     /// epic の段階が `stage` のときにやめた扱い。開始の前の段取りのジョブ（質問づくりなど）が開始した後の epic に残っていたら、

@@ -45,4 +45,18 @@ struct GiveUpEffectTests {
         #expect(JobKind.cleanUp.giveUpEffect(at: stage) == .jobOnly)
         #expect(JobKind.notify.giveUpEffect(at: stage) == nil)
     }
+
+    /// タスクを飛ばせるのは、タスクを進めている epic の実装・レビュー・直しのジョブだけ
+    @Test(arguments: EpicStage.allCases)
+    func canSkipTaskAtEachStage(stage: EpicStage) {
+        for kind in JobKind.allCases {
+            let expected = stage == .running && [JobKind.implementTask, .reviewTask, .fixTask].contains(kind)
+            #expect(kind.canSkipTask(at: stage) == expected, "\(kind.rawValue)")
+        }
+    }
+
+    /// 済んだタスク（依存するタスクを始められる・最終 PR に進める）は、実装したものと飛ばしたもの
+    @Test func settledTaskStates() {
+        #expect(TaskState.allCases.filter(\.isSettled) == [.done, .skipped])
+    }
 }

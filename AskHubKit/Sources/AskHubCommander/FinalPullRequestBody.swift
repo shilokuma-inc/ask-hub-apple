@@ -34,9 +34,13 @@ enum FinalPullRequestBody {
         var sections = [
             "AskHub が epic「\(safe(epic.title))」の最終 PR として出しました。作業ブランチ `\(branches.epic)` を `\(branches.base)` に merge commit でマージします。",
             "## 何を作ったか\n\n\(safe(goal.summary))",
-            "## タスク\n\n" + list(goal.tasks.map { "\($0.id): \(safe($0.title))" }),
-            "## 人が決めていない判断（見える仮決め）\n\n" + cards(visible, capturesScreenshots: capturesScreenshots, screens: screens)
+            "## タスク\n\n" + list(goal.tasks.map { "\($0.id): \(safe($0.title))\($0.state == .skipped ? "（飛ばした）" : "")" })
         ]
+        let skipped = goal.tasks.filter { $0.state == .skipped }
+        if !skipped.isEmpty {
+            sections.append("## 飛ばしたタスク\n\n\(skippedGuide)\n\n" + list(skipped.map(skippedTask)))
+        }
+        sections.append("## 人が決めていない判断（見える仮決め）\n\n" + cards(visible, capturesScreenshots: capturesScreenshots, screens: screens))
         // 画面の変化（仮決めに結びつかない、epic 全体で見た目が変わった画面）。選んだ画面があるときだけ出す
         if !screens.isEmpty {
             sections.append("## 画面の変化\n\n" + screens.map(screenChange).joined(separator: "\n\n"))
@@ -53,6 +57,16 @@ enum FinalPullRequestBody {
         let body = String(sections.joined(separator: "\n\n").prefix(maximumLength))
         let marker = JSONValue.object(["type": .string("finalPullRequest"), "epic": .string(epic.id.rawValue)])
         return ProtocolMarker.text(body: body, marker: marker)
+    }
+
+    /// 「飛ばしたタスク」の前置き
+    static let skippedGuide = "AskHub のワーカーでは進められなかったなどの理由で、人が飛ばしたタスクです。この PR には入っていません。"
+
+    /// 飛ばしたタスクの 1 行（理由・メモと、閉じた子 PR）
+    private static func skippedTask(_ task: GoalFile.Task) -> String {
+        let reason = task.skip.map { safe($0.text) } ?? "理由は書かれていない"
+        let pull = task.skip?.pullRequest.map { "（子 PR #\($0) はマージせずに閉じる）" } ?? ""
+        return "\(task.id): \(safe(task.title)) — \(reason)\(pull)"
     }
 
     /// 見える仮決めのカード（1 件ずつ見出しを付ける）

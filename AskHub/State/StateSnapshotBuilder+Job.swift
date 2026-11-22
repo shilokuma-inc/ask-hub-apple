@@ -63,7 +63,7 @@ extension StateSnapshotBuilder {
     }
 
     static func isJobIntent(_ envelope: IntentEnvelope) -> Bool {
-        [RetryJobIntent.kind, GiveUpJobIntent.kind].contains(envelope.kind)
+        [RetryJobIntent.kind, GiveUpJobIntent.kind, SkipTaskIntent.kind].contains(envelope.kind)
     }
 
     /// 意図の対象の、人の対応を待っているジョブ。人が見たときから試行が進んでいれば（司令塔が断る）nil
@@ -82,7 +82,18 @@ extension StateSnapshotBuilder {
         return documents.epics.first { $0.epic.id == epic }?.jobs.first { $0.id.rawValue == jobID }
     }
 
+    /// 人に渡したジョブのタスクを飛ばせるか。司令塔（`SkipTaskHandler`）と同じく、タスクの id のある実装・レビュー・直しのジョブで、
+    /// 子 PR をマージした後に止まったレビューでなく、飛ばしても実装したタスクが残るものだけ
+    static func canSkipTask(of job: JobFile, goal: GoalFile?, attempts: [AttemptFile], stage: EpicStage) -> Bool {
+        guard let task = job.task, job.kind.canSkipTask(at: stage), let goal, !goal.skippingLeavesNothing(task) else {
+            return false
+        }
+        return !(job.kind == .reviewTask && attempts.last { $0.number == job.attempts }?.outputs?.verdict == .merged)
+    }
+
     private func blocker(_ job: JobFile, target: JobTarget, stage: EpicStage, attempts: [AttemptFile], others: Int) -> Blocker {
+        let goal = documents.epics.first { $0.epic.id == job.epic }?.goal
+        let canSkip = Self.canSkipTask(of: job, goal: goal, attempts: attempts, stage: stage)
         let failure = attempts.last { $0.number == job.attempts }?.failure
         let overLimit = failure == nil ? Self.fixOverLimit(job) : nil
         let category = failure?.failureClass.category ?? overLimit?.category ?? .unexpected
@@ -98,7 +109,7 @@ extension StateSnapshotBuilder {
             logExcerpt: failure?.logExcerpt,
             attempts: attempts.map(Self.attempt),
             occurredAt: job.updatedAt.date,
-            actions: Self.actions(for: job.kind, at: stage, category: category),
+            actions: Self.actions(for: job.kind, at: stage, category: category, canSkip: canSkip),
             subject: subject,
             target: Self.blockerTarget(target)
         )
@@ -121,11 +132,16 @@ extension StateSnapshotBuilder {
         return (remaining?.category ?? .unexpected, remaining.map { "\($0.text)、\(limit)" } ?? limit)
     }
 
-    /// 選べる操作。司令塔が受け付けるものだけを出す（やり直しはどの種類でも、やめるは `JobKind.giveUpEffect(at:)` で扱いが決まっているものだけ）。
+    /// 選べる操作。司令塔が受け付けるものだけを出す（やり直しはどの種類でも、やめるは `JobKind.giveUpEffect(at:)` で扱いが決まっているものだけ、
+    /// タスクを飛ばすのは `canSkipTask(of:goal:attempts:stage:)` のものだけ）。
     /// 開始した後の epic に残っていた開始の前のジョブ（着手前の確認など）は、司令塔と同じく、epic ごとではなくその作業だけをやめる
-    private static func actions(for kind: JobKind, at stage: EpicStage, category: FailureCategory) -> [Blocker.Action] {
+    private static func actions(for kind: JobKind, at stage: EpicStage, category: FailureCategory, canSkip: Bool) -> [Blocker.Action] {
         // 認証切れは、人が Mac で直してから再開する
         var actions: [Blocker.Action] = [category == .authExpired ? .resumeAfterFix : .retry]
+        // やめる（epic ごと取り下げ）より先に、済んだタスクを残して進める道を出す
+        if canSkip {
+            actions.append(.skipTask)
+        }
         switch kind.giveUpEffect(at: stage) {
         case .abandonsEpic:
             actions.append(.discard)
