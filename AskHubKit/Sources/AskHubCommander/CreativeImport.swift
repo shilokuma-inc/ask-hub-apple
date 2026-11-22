@@ -69,6 +69,17 @@ struct CreativeImport: Sendable {
         let folders = try await download(Self.assetsArtifact, from: artifacts, repo: repo) { zip throws in
             try await extractor.extract(zip, into: workspace)
         }
+        // 言語のフォルダは、案の言語と同じでなければならない（足りない・余る言語のある artifact は取り込まない）
+        let expected = Set(spec.locales.map(\.locale))
+        let found = Set(folders.keys)
+        guard found == expected else {
+            let missing = expected.subtracting(found).sorted().joined(separator: "・")
+            let extra = found.subtracting(expected).sorted().joined(separator: "・")
+            let detail = [missing.isEmpty ? nil : "無い: \(missing)", extra.isEmpty ? nil : "余分: \(extra)"].compactMap(\.self)
+            throw ReleaseStepProblem(
+                "artifact \(Self.assetsArtifact) の言語が案と合わない（\(detail.joined(separator: "、"))）", needsHuman: true
+            )
+        }
         var images: [CreativeFile.Image] = []
         var previews: [String: String] = [:]
         for localization in spec.locales {
@@ -140,7 +151,23 @@ struct CreativeImport: Sendable {
         guard (width, height) == kind.size else { return "の寸法が \(width)x\(height)（\(kind.size.width)x\(kind.size.height) のはず）" }
         // 色の種類 2 は RGB（アルファなし）。App Store Connect は透過を受け付けない
         guard bytes[25] == 2 else { return "にアルファがある（PNG の色の種類 \(bytes[25])）" }
+        // RGB でも tRNS のチャンク（透過にする色）があれば透過になる。画像のデータ（IDAT）より前にしか置けない
+        if hasTransparencyChunk(data) { return "に透過の指定（tRNS）がある" }
         return nil
+    }
+
+    /// IDAT より前に tRNS のチャンクがあるか（PNG の先頭の 8 バイトの後は、長さ 4・種類 4・中身・CRC 4 の並び）
+    static func hasTransparencyChunk(_ data: Data) -> Bool {
+        let bytes = [UInt8](data)
+        var offset = 8
+        while offset + 8 <= bytes.count {
+            let length = bytes[offset..<(offset + 4)].reduce(0) { $0 << 8 | Int($1) }
+            let type = String(bytes: bytes[(offset + 4)..<(offset + 8)], encoding: .ascii) ?? ""
+            if type == "tRNS" { return true }
+            if type == "IDAT" || type == "IEND" { return false }
+            offset += 12 + length
+        }
+        return false
     }
 
     static func md5(_ data: Data) -> String {
