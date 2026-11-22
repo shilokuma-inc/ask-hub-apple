@@ -1,0 +1,57 @@
+{
+  "description": "タスクを飛ばす人の意図の payload の例。read は、封筒の target と targetVersion が正しいときに、読む側がタスクを飛ばすとして読めるか",
+  "schema": "payloads/skipTask.schema.json",
+  "cases": [
+    {
+      "name": "handled-elsewhere-with-note",
+      "payload": {
+        "reason": "handledElsewhere",
+        "note": "Android の SPEC は別の依頼で直す"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "not-needed",
+      "payload": {
+        "reason": "notNeeded"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "empty-note",
+      "payload": {
+        "reason": "notNeeded",
+        "note": ""
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "missing-reason",
+      "payload": {
+        "note": "…"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-reason",
+      "payload": {
+        "reason": "later"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "reason": "notNeeded",
+        "force": true
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

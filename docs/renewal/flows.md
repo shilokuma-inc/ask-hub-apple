@@ -97,6 +97,7 @@
 | 分け方の判断（`decideSplit`） | epic が分け方の判断の待ち（`awaitingSplit`）で、着手前の確認の結果の `version` が合うかを確かめる。分けて依頼し直すなら epic を `abandoned` にし、このまま進めるなら `checking` にして、大きすぎるとは返させない `checkReadiness` のジョブを作る |
 | 取り下げ（`abandonEpic`） | epic を `abandoned` にし、epic の終わっていないジョブを取り消す（動いている Claude のジョブは、結果を書く前に epic を読み直して捨てる）。すでにやめていれば、ジョブの取り消しだけをして受け付ける。マージした epic と、最終 PR をマージしている途中の epic は断る。開始した後（`running`・`finalizing`・`reviewing`。一時停止中・実装の途中の質問の待ちも）の epic は、下の「開始した後の取り下げ」の片付けもする（2026-11-12 に決めた） |
 | やり直す（`retry`） | 人の対応待ち（`waitingHuman`）のジョブで、試行の番号（`targetVersion`）が人の見たときのままかを確かめ、ジョブを `assigned` に戻す（担当の Mac がそのまま次の試行を引き受ける）。失敗の数え方は変えないので、同じ失敗が続けばまた人に渡る |
+| タスクを飛ばす（`skipTask`） | 人の対応待ちの実装・レビュー・直しのジョブ（`implementTask`・`reviewTask`・`fixTask`。`running` の epic）のタスクを、epic ごと取り下げずに飛ばす（ワーカーにできない別のリポジトリの変更など）。試行の番号を確かめ、`goal.json` のタスクを `skipped` にして飛ばした記録（理由 `handledElsewhere`（人が別にやる）・`notNeeded`（やらない）・任意のメモ・意図・時刻・レビューと直しの子 PR）を書いてから、そのタスクの終わっていないジョブを取り消す。飛ばしたタスクは済んだものとして、依存するタスクを始め、すべて済めば最終 PR の段取りに進む（下の「司令塔がタスクを進める」）。最終 PR の本文の「飛ばしたタスク」に理由を書き、最終 PR を出すときに、そのタスクの子ブランチからの開いた PR をマージせずに閉じる。子 PR のレビューは、マージの直前にタスクを飛ばしていないかを読み直す（飛ばした後に元の試行がマージしない）。子 PR をマージした後に止まったレビュー（子ブランチを消せなかった）と、何も済んでいないまま最後のタスクを飛ばすこと（最終 PR に入れるものが無い。epic ごとやめるなら「やめる」）は断る。最終 PR のレビューは、飛ばしたタスクの分の完了の条件を必須の指摘にしない。2026-11-22 に決めた |
 | やめる（`giveUp`） | 質問づくり・質問の見直し・着手前の確認をやめると epic が先に進めないので、epic ごと `abandoned` にして、epic の終わっていないジョブを取り消す（epic の段階の 1 回の書き込みで決まる。ほかの理由で取り消されたジョブでは epic をやめない）。開始した後の epic に残っていたこれらのジョブは、epic が先に進めるので、ジョブだけを取り消す（実装・レビュー・直しのジョブは止めない）。説明をやめると、ジョブを取り消し、説明を待つ問いを外して質問を `open` に戻す。ゴールの修正をやめると、ジョブだけを取り消す（前のゴールのまま開始を待つ）。実装と最終 PR の段取りのジョブ（`prepareWorkspace`・`implementTask`・`reviewTask`・`fixTask`・`verifyBeforeFinal`・`classifyDecisions`・`openFinalPullRequest`・`reviewFinalPullRequest`・`fixFinalPullRequest`・`mergeFinalPullRequest`）をやめると、epic が先に進めないので、epic ごと取り下げる（下の「開始した後の取り下げ」）。ただし、スクショ（`captureScreenshots`）をやめると、撮影のジョブを取り消し、撮っていない判断のカードと画面の変化を「スクショ無し（撮影をやめた）」にして、撮影の前のジョブの後に、同じ最終 PR と head のレビュー（元はやめるの意図）を作る（レビューは、先に最終 PR の本文の「撮影中」を書き直す）。片付け（`cleanUp`）をやめると、ジョブだけを取り消す（マージした epic でも受け付ける。残りは見回りで消える。[operations.md](operations.md) の「容量」）。どれも 2026-11-12 に決めた。名前だけで作らない種類（`integrateDevelop`・`rerunChecks`・`notify`）は断る |
 | 開始（`startEpic`） | ビルドの設定（`repo.json` の `build`）があるか、ゴールの `version` と、選ばれた Mac がオンラインか（生きている印が 30 分より新しい）、ゴールを直している途中でないか、同時に回している epic が上限に達していないかを確かめ、epic を `running` にして、選ばれた Mac に作業場所の準備（`prepareWorkspace`）のジョブを作る |
 
@@ -236,14 +237,15 @@
 | --- | --- |
 | `prepareWorkspace` | 試行の `outputs.branch` を `epic.json` の `branch` に書き、最初のタスク（`dependsOn` がすべて済んだ `pending` のもの。ゴールの並びの順）の `implementTask` を作って、`goal.json` のそのタスクを `running` にする |
 | `implementTask` | `outputs.report.decisions` を `decisions.json` に足し（`task`・`pullRequest` 付き。`visible` は `null`）、`reviewTask`（`outputs.pullRequest` と、push した head の `outputs.commit`）を作る |
-| `reviewTask`（`verdict` が `merged`） | タスクを `done` にし、次のタスクの `implementTask` を作る。すべて済んだら、epic を `finalizing` にして最終 PR の段取りに進む（下の「司令塔が最終 PR を進める」） |
+| `reviewTask`（`verdict` が `merged`） | タスクを `done` にし、次のタスクの `implementTask` を作る。すべて済んだら（人が飛ばした `skipped` のタスクも済んだものとする）、epic を `finalizing` にして最終 PR の段取りに進む（下の「司令塔が最終 PR を進める」） |
 | `reviewTask`（`fixCI`・`fixReview`） | `fixTask`（子 PR と、レビューが見た head。`reason` は `ci`・`review`）を作る。同じタスクの直しが 3 回（`FailurePolicy.maxFixRounds`）を超えたら、作るが動かさずに人の対応待ち（`waitingHuman`）にする（失敗の扱いの「4 回目で人へ」と同じ。人が「やり直す」を送れば、もう 1 回直す。試行の前に渡すので、やり直しの試行の番号は 0） |
 | `fixTask` | 実装と同じく仮決めを足し、新しい head（`outputs.commit`）で `reviewTask` を作る |
 
 - タスクのジョブは、epic の Mac（`epic.mac`）に割り当て、ジョブの `task` にタスクの id を書く。元になった人の意図（`origin`）は開始の意図（作業場所の用意のジョブと同じ。ワーカーが署名を確かめる）
 - 元のジョブを `dependsOn` に持たせる（`implementTask` は作業場所の用意）。どの結果から作ったかの目印で、子の無い成功したジョブだけを読むので、同じ結果を 2 度読まない
 - やり直しても重ならない: ジョブの id は、開始の意図と、`implementTask` はタスクの id、`reviewTask` は元のジョブと head、`fixTask` は元のレビューと直しの回から決める（`ULID.derived`）。書く順は、仮決め → 次のジョブ、ジョブ → タスクの状態で、途中で止まっても次の周で同じものを作ろうとするだけ。同じタスク・子 PR の同じ仮決めは 2 度足さない
-- タスクの状態は、司令塔が `pending` → `running`（実装を作ったとき）→ `done`（子 PR をマージしたとき）にする。人が読むゴールの中身は変えないので、ゴールの版は上げない
+- タスクの状態は、司令塔が `pending` → `running`（実装を作ったとき）→ `done`（子 PR をマージしたとき）にする。人がタスクを飛ばしたら（`skipTask`）`running` → `skipped` にする。人が読むゴールの中身は変えないので、ゴールの版は上げない
+- 人が飛ばしたタスクは、`dependsOn` を満たしたものとして扱う（依存するタスクもそのまま進める。進められなければ、そのタスクも人が飛ばせる）。Claude に渡すゴールには、飛ばしたタスクと理由を書く
 - 結果が欠けていて進められないとき（作業ブランチ・子 PR・コミット・判定が無い）は、変わるまで何もせず、司令塔のログに 1 度だけ出す
 
 ### Claude にビルドとテストを頼ませる
@@ -298,13 +300,13 @@ AskHub だけではできない作業（App Store Connect の Web でしかで�
 | `verifyBeforeFinal` | epic の Mac | すべてのタスクが `done` になったら、最終 PR で流すのと同じ検証（`build.testFull`。UI テストを含む）を通す |
 | `classifyDecisions` | 常時オンの Mac | レビュー役の Claude が epic 全体の仮決めを見直し、見える・内部を決めて `decisions.json` に書く |
 | `captureScreenshots` | epic の Mac | 見える仮決めの Before（base との分岐点）と After（作業ブランチの先頭）を、撮れる画面の一覧の起動引数でデモのデータの画面を開いて撮る。状態リポジトリと GitHub に上げ、最終 PR の本文のカードを書き直す（下の「スクショ」） |
-| `openFinalPullRequest` | 常時オンの Mac | 作業ブランチから base への最終 PR を出す。本文には、判断のカード・実機で確かめてほしいこと・人がした作業を載せる |
+| `openFinalPullRequest` | 常時オンの Mac | 作業ブランチから base への最終 PR を出す。本文には、判断のカード・実機で確かめてほしいこと・人がした作業・人が飛ばしたタスクと理由を載せる。飛ばしたタスクの子ブランチから作業ブランチへの開いた PR は、すべてマージせずに閉じてコメントを書く（作業ブランチを消しても GitHub は開いた子 PR を閉じず、向き先を base に変えるので、閉じられなければ試行の失敗にする。コメントは書けなくても止めない） |
 | `fixFinalPullRequest` | epic の Mac（オンラインのとき）・常時オンの Mac | 最終 PR の CI の失敗・必須の指摘（CodeRabbit を含む）・コンフリクトを直す。作業場所と DerivedData が温まっている epic の Mac で行い、オフラインのときだけ常時オンの Mac で行う（ユーザーの決定） |
 | `reviewFinalPullRequest` | 常時オンの Mac | 最終 PR の待つチェック（`build.finalChecks`）と、信用するレビューの書き手（`build.trustedReviewers`。CodeRabbit など）のレビューを待つ。CodeRabbit が上限で見送ったら待たない（ユーザーの決定）。そのうえで、読むだけのレビュー役の Claude が epic 全体の差分を読み、必須の指摘と、マージの規則の材料（セキュリティのリスク・テストを弱めたか・データの削除や移行）を返す。判定は `ready`（通った）・`fixCI`・`fixReview` |
 | `mergeFinalPullRequest` | 常時オンの Mac | マージの規則で自動なら、司令塔がマージする。手動なら、人の承認（`approveMerge`。head に結びつく）を受けてマージする |
 | `cleanUp` | epic の Mac | マージの後、作業場所・Simulator の枠・DerivedData を片付ける |
 
-- 流れ: すべてのタスクが `done` → `verifyBeforeFinal` → `classifyDecisions` → `openFinalPullRequest` →（`captureScreenshots`）→ `reviewFinalPullRequest` → 判定が `fixCI`・`fixReview` なら `fixFinalPullRequest` で直して、（`captureScreenshots` →）`reviewFinalPullRequest` に戻る（3 回まで）→ `ready` で、マージの規則に当てて自動なら `mergeFinalPullRequest`、手動なら人の判断のカードの答えと承認を待つ → `cleanUp`
+- 流れ: すべてのタスクが `done`（か人が飛ばした `skipped`）→ `verifyBeforeFinal` → `classifyDecisions` → `openFinalPullRequest` →（`captureScreenshots`）→ `reviewFinalPullRequest` → 判定が `fixCI`・`fixReview` なら `fixFinalPullRequest` で直して、（`captureScreenshots` →）`reviewFinalPullRequest` に戻る（3 回まで）→ `ready` で、マージの規則に当てて自動なら `mergeFinalPullRequest`、手動なら人の判断のカードの答えと承認を待つ → `cleanUp`
 - 人が判断のカードで「直してほしい」「別案にする」を選ぶか、最終 PR に指示（`instructFinal`）を出したら、`fixFinalPullRequest` に人の文を付けて直させ、`reviewFinalPullRequest` からやり直す（見える仮決めは、スクショを撮り直して再び出す）
 - 承認は、その時点の head に結びつく。直しで head が変わったら、承認は無効になり、承認し直してもらう
 - `reviewFinalPullRequest` は、待つ間・レビューの間に head が進んだら、古い head の判定を書かない（`verdict` を書かずに、今の head だけを `outputs.commit` に書いて成功で終える）。`ready` のときは `mergeRisks` を必ず書く（無ければ空）。最終 PR が base とコンフリクトしていれば（GitHub が判定を出していれば、チェックを待つ前・待った後・レビューの前に確かめる）、判定 `fixConflict` で終え、司令塔が `fixFinalPullRequest`（理由 `conflict`）を作る。コンフリクトしていると GitHub は PR のチェックを流さないので、チェックが始まらずに待ちきったときもコンフリクトを確かめ直す

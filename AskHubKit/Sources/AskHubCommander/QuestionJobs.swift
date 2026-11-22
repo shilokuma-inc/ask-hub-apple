@@ -259,7 +259,9 @@ enum PromptText {
         lines += ["タスク:"] + goal.tasks.map { task in
             let detail = task.detail.map { "（\($0)）" } ?? ""
             let premise = task.dependsOn.isEmpty ? "" : " 前提: \(task.dependsOn.joined(separator: "・"))"
-            return "- \(task.id): \(task.title)\(detail)\(premise)"
+            // 人が飛ばしたタスクは作らない。それにだけ結びつく完了の条件は満たさなくてよい
+            let skipped = task.skip.map { " 【人が飛ばした。作らない（\($0.text)）】" } ?? ""
+            return "- \(task.id): \(task.title)\(detail)\(premise)\(skipped)"
         }
         lines += ["人がする作業:"] + goal.humanTasks.map { task in
             "- \(task.id): \(task.title)（\(task.why)）手順: \(task.steps.joined(separator: " → "))"

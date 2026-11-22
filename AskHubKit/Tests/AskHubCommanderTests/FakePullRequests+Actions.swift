@@ -2,7 +2,7 @@
 import AskHubPullRequests
 import Foundation
 
-/// GitHub Actions の実行の読み取りと、PR の閉じる・開き直す（`FakePullRequests` の続き）
+/// GitHub Actions の実行の読み取りと、PR の閉じる・開き直す・コメント（`FakePullRequests` の続き）
 extension FakePullRequests {
     func workflowRuns(at sha: String) async throws(PullRequestError) -> [WorkflowRun] {
         update { state in
@@ -25,5 +25,25 @@ extension FakePullRequests {
             return lost.map { .failure($0.error) } ?? .success(())
         }
         try result.get()
+    }
+
+    func comment(number: Int, body: String) async throws(PullRequestError) {
+        let result = update { state -> Result<Void, PullRequestError> in
+            if !state.commentFailures.isEmpty { return .failure(state.commentFailures.removeFirst()) }
+            state.comments.append((number, body))
+            return .success(())
+        }
+        try result.get()
+    }
+
+    func openPullRequests(head: String?, base: String?) async throws(PullRequestError) -> [PullRequest] {
+        let result = update { state -> Result<[PullRequest], PullRequestError> in
+            if !state.listFailures.isEmpty { return .failure(state.listFailures.removeFirst()) }
+            let open = state.pulls.values.filter { pull in
+                pull.state == .open && head.map { pull.headRef == $0 } ?? true && base.map { pull.baseRef == $0 } ?? true
+            }
+            return .success(open.sorted { $0.number < $1.number })
+        }
+        return try result.get()
     }
 }

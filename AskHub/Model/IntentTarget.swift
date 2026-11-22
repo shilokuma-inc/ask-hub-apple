@@ -70,7 +70,7 @@ extension HumanIntent {
         case let .merge(epicID, _), let .instructFinal(epicID, _, _):
             [.finalPullRequest(epicID: epicID)]
 
-        case let .resolveBlocker(epicID, _, _, _):
+        case let .resolveBlocker(epicID, _, _, _), let .skipTask(epicID, _, _, _):
             [.blocker(epicID: epicID)]
 
         case let .handOver(epicID, _), let .pause(epicID), let .resume(epicID), let .discard(epicID):

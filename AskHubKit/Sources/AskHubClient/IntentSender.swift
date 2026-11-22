@@ -288,6 +288,17 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: GiveUpJobIntent.kind, repo: target.repo, target: target.target, targetVersion: target.targetVersion)
     }
 
+    /// 人に渡した実装・レビュー・直しのジョブのタスクを飛ばす（epic は次のタスク・最終 PR へ進む）。メモは空なら送らない
+    public static func skipTask(_ target: JobTarget, reason: TaskSkipReason, note: String = "") -> Self {
+        Self(
+            kind: SkipTaskIntent.kind,
+            repo: target.repo,
+            target: target.target,
+            targetVersion: target.targetVersion,
+            payload: SkipTaskIntent.payload(reason: reason, note: note)
+        )
+    }
+
     private static func epic(_ kind: String, _ target: EpicTarget, payload: [String: JSONValue]) -> Self {
         Self(kind: kind, repo: target.repo, target: target.target, targetVersion: target.targetVersion, payload: payload)
     }

@@ -138,6 +138,139 @@
       "read": "malformed"
     },
     {
+      "name": "task-skipped",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "予定を画像でシェアする",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["シェアのボタンがある"],
+        "tasks": [
+          { "id": "t1", "title": "シェアのカードを作る", "dependsOn": [], "state": "done" },
+          {
+            "id": "t2",
+            "title": "Android 版の仕様を直す",
+            "dependsOn": ["t1"],
+            "state": "skipped",
+            "skip": { "reason": "handledElsewhere", "note": "別の依頼で直す", "intent": { "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y", "nonce": "01JCJ0C0000000000000000001" }, "at": "2026-11-22T08:00:00Z", "pullRequest": 42 }
+          }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "task-skipped-without-note",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "予定を画像でシェアする",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["シェアのボタンがある"],
+        "tasks": [
+          {
+            "id": "t2",
+            "title": "Android 版の仕様を直す",
+            "dependsOn": [],
+            "state": "skipped",
+            "skip": { "reason": "notNeeded", "intent": { "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y", "nonce": "01JCJ0C0000000000000000001" }, "at": "2026-11-22T08:00:00Z" }
+          }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "task-skipped-without-record",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "予定を画像でシェアする",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["シェアのボタンがある"],
+        "tasks": [
+          { "id": "t2", "title": "Android 版の仕様を直す", "dependsOn": [], "state": "skipped" }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "skip-record-on-done-task",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "予定を画像でシェアする",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["シェアのボタンがある"],
+        "tasks": [
+          {
+            "id": "t2",
+            "title": "Android 版の仕様を直す",
+            "dependsOn": [],
+            "state": "done",
+            "skip": { "reason": "notNeeded", "intent": { "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y", "nonce": "01JCJ0C0000000000000000001" }, "at": "2026-11-22T08:00:00Z" }
+          }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "skip-unknown-reason",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "予定を画像でシェアする",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["シェアのボタンがある"],
+        "tasks": [
+          {
+            "id": "t2",
+            "title": "Android 版の仕様を直す",
+            "dependsOn": [],
+            "state": "skipped",
+            "skip": { "reason": "later", "intent": { "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y", "nonce": "01JCJ0C0000000000000000001" }, "at": "2026-11-22T08:00:00Z" }
+          }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "skip-empty-note",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "予定を画像でシェアする",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["シェアのボタンがある"],
+        "tasks": [
+          {
+            "id": "t2",
+            "title": "Android 版の仕様を直す",
+            "dependsOn": [],
+            "state": "skipped",
+            "skip": { "reason": "notNeeded", "note": "", "intent": { "keyId": "3GHenKEuXhau_ydZhSS8zpDFx5A1_I5K_ZMmfZsTw1Y", "nonce": "01JCJ0C0000000000000000001" }, "at": "2026-11-22T08:00:00Z" }
+          }
+        ],
+        "humanTasks": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "minimal",
       "value": {
         "v": 1,

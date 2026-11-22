@@ -20,8 +20,8 @@ struct StateIntentMapper {
         case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
             true
 
-        case let .resolveBlocker(epicID, action, _, _):
-            index.epics[epicID]?.blockerActions.contains(action) == true
+        case .resolveBlocker, .skipTask:
+            supportsBlockerIntent(intent)
 
         case .discard(let epicID):
             index.epics[epicID]?.canAbandon == true
@@ -100,8 +100,8 @@ struct StateIntentMapper {
         case .request, .addRepository, .removeRepository, .configureRepository, .cleanUp, .findCleanupCandidates:
             return try repositoryDraft(intent)
 
-        case let .resolveBlocker(epicID, action, _, target):
-            return try blockerDraft(epicID: epicID, action: action, target: target)
+        case .resolveBlocker, .skipTask:
+            return try blockerDraft(intent)
 
         case .respondToDecision, .merge, .instructFinal:
             return try finalDraft(intent)
@@ -203,28 +203,6 @@ struct StateIntentMapper {
             return .handover(repo: epic.repo, epic: epic.id, to: mac)
 
         default:
-            throw Self.unsupported
-        }
-    }
-
-    /// 人に渡されたジョブへの操作。人が見たときの試行の番号を付ける（その後に試行が進んでいれば、司令塔が断る）。
-    /// 送り直すまでに「対処が要ります」に出すジョブが替わっていたら、別のジョブに当てないよう送らない
-    private func blockerDraft(epicID: Epic.ID, action: Blocker.Action, target: String?) throws(ClientServiceError) -> IntentDraft {
-        let entry = try epic(epicID)
-        guard let job = entry.blockedJob else {
-            throw ClientServiceError(message: "対処を待っている作業がありません。取り直してから送ってください")
-        }
-        guard target == StateSnapshotBuilder.blockerTarget(job), entry.blockerActions.contains(action) else {
-            throw ClientServiceError(message: "対処を待っている作業が替わりました。画面を確かめてから選び直してください")
-        }
-        switch action {
-        case .retry, .resumeAfterFix:
-            return .retry(job)
-
-        case .cancelJob, .discard:
-            return .giveUp(job)
-
-        case .fixWithInstruction, .handOver, .pause:
             throw Self.unsupported
         }
     }

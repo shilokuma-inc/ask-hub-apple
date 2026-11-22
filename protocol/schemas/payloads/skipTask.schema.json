@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/skipTask.schema.json",
+  "title": "タスクを飛ばす人の意図（kind が skipTask）の payload",
+  "description": "封筒の target は {type: job, epic, id: <ジョブの ULID>}、targetVersion は人が見たときの試行の番号（ジョブの attempts。試行の前に人に渡したジョブは 0）を 10 進で書く。人に渡した実装・レビュー・直しのジョブ（implementTask・reviewTask・fixTask）の、running の epic のタスクだけを飛ばせる（読む側で確かめる）。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "reason"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "reason": {
+      "enum": [
+        "handledElsewhere",
+        "notNeeded"
+      ],
+      "description": "handledElsewhere: 人が別にやる。notNeeded: やらない"
+    },
+    "note": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "人のメモ（任意）。最終 PR の本文の「飛ばしたタスク」に載る"
+    }
+  }
+}

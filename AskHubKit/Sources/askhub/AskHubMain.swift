@@ -26,7 +26,7 @@ enum AskHubMain {
         case "key": try await key(arguments)
         case "add-repository", "configure-repository", "apply-protection",
              "request", "answer", "clarify", "start", "revise-goal", "decide-split", "abandon",
-             "pause", "resume", "handover", "retry", "give-up", "decide", "approve-merge", "instruct-final", "human-task-done":
+             "pause", "resume", "handover", "retry", "give-up", "skip-task", "decide", "approve-merge", "instruct-final", "human-task-done":
             try await send(command, CommandArguments(arguments))
         case "status": try await status(CommandArguments(arguments))
         default: fail(usage, status: command.isEmpty || command == "help" ? EX_OK : EX_USAGE)
@@ -58,6 +58,8 @@ enum AskHubMain {
           human-task-done --repo <owner/repo> --epic <id> --task <h1> --version <ゴールの版> [--file <渡すファイル>]
           retry --repo <owner/repo> --epic <id> --job <id> --attempt <試行の番号>     人の対応待ちのジョブをやり直させる
           give-up --repo <owner/repo> --epic <id> --job <id> --attempt <試行の番号>   人の対応待ちのジョブをやめる
+          skip-task --repo <owner/repo> --epic <id> --job <id> --attempt <試行の番号> --reason handledElsewhere|notNeeded [--note <メモ>]
+            人の対応待ちの実装・レビュー・直しのタスクを飛ばし、epic を次のタスク・最終 PR へ進める
           status [--repo <owner/repo>] [--watch <秒>]   epic・質問・ゴール・人の対応待ちのジョブと、送った意図の処理の結果を出す
             --watch は 60 秒以上の間隔で読み直し、変わったときだけ出す（Ctrl-C で止める）。
             見張るときは --watch を使い、外のループ（while … sleep）で流さない（毎回すべてを GitHub の上限に数えられる）
