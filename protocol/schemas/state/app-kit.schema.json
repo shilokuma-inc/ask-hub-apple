@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/state/app-kit.schema.json",
+  "title": "app-kit.json（共通リポジトリ app-kit の見つけた版と、版を広げる進み具合）",
+  "description": "司令塔だけが書く。司令塔が app-kit のタグを git ls-remote --tags で読んで版と変更点を書き、人の rolloutAppKit を受けたら、試しの 1 本 → 残りの対象 → 入れ替え済みのテンプレートの順に、写すファイルを置き換える PR を出して進み具合を書く",
+  "type": "object",
+  "required": ["v", "releases", "templates"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "checkedAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "最後にタグを読んだ時刻（中身が変わったときだけ書き直す）" },
+    "problem": {
+      "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1000 }, { "type": "null" }],
+      "description": "最後に読もうとして読めなかった理由。読めたら null（読めなかったときは、前に読めた版を残す）"
+    },
+    "releases": {
+      "description": "見つけた版（新しい順。30 個まで）",
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "required": ["version", "ref", "foundAt"],
+        "additionalProperties": false,
+        "properties": {
+          "version": { "$ref": "../common.schema.json#/$defs/appKitVersion" },
+          "ref": { "$ref": "../common.schema.json#/$defs/commitSha", "description": "タグが指すコミット" },
+          "changes": {
+            "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 10000 }, { "type": "null" }],
+            "description": "そのタグの CHANGELOG.md の版の節（Markdown。見出しの行は除く）。読めなければ null"
+          },
+          "foundAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+        }
+      }
+    },
+    "adoption": {
+      "description": "対象に加えるとき・準備をやり直すときに入れる版（最後に広げ終わった版。まだ広げていなければ、最初に見つけたときの一番新しい版）",
+      "anyOf": [{ "$ref": "#/$defs/pin" }, { "type": "null" }]
+    },
+    "rollout": {
+      "description": "広げている・最後に広げた版。まだ広げていなければ null",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["version", "ref", "origin", "state", "pilot", "targets", "startedAt", "updatedAt"],
+          "additionalProperties": false,
+          "properties": {
+            "version": { "$ref": "../common.schema.json#/$defs/appKitVersion" },
+            "ref": { "$ref": "../common.schema.json#/$defs/commitSha" },
+            "origin": { "$ref": "../common.schema.json#/$defs/intentReference", "description": "広げる人の意図（もう一度試したときは、その意図）" },
+            "state": {
+              "enum": ["running", "failed", "finished", "stopped"],
+              "description": "running は広げている、failed は失敗して止めた（人がもう一度試すかやめる）、finished は広げ終わった、stopped は人がやめた"
+            },
+            "pilot": { "$ref": "../common.schema.json#/$defs/repositoryFullName", "description": "試しの 1 本" },
+            "targets": {
+              "description": "PR を出した・出さなかった相手（出した順）",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["repo", "kind", "state", "updatedAt"],
+                "additionalProperties": false,
+                "properties": {
+                  "repo": { "$ref": "../common.schema.json#/$defs/repositoryFullName" },
+                  "kind": { "enum": ["repository", "template"] },
+                  "state": {
+                    "enum": ["open", "verifying", "done", "failed", "skipped", "stopped"],
+                    "description": "open は PR を出して必須のチェックを待っている、verifying はマージして develop の Build を待っている（試しの 1 本）、done は入れた（PR が要らなかったときも）、failed は止めた（PR は開いたまま）、skipped は出さなかった、stopped は人がやめたので PR を閉じた"
+                  },
+                  "pullRequest": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
+                  "head": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/commitSha" }, { "type": "null" }], "description": "出した PR の head。マージするときに、これと同じかを確かめる" },
+                  "mergeCommit": {
+                    "anyOf": [{ "$ref": "../common.schema.json#/$defs/commitSha" }, { "type": "null" }],
+                    "description": "マージしたコミット（verifying では、このコミットの develop の Build を待つ。verifying では必ず書く）"
+                  },
+                  "problem": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1000 }, { "type": "null" }], "description": "止めた・出さなかった理由（failed・skipped では必ず書く）" },
+                  "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp", "description": "様子が変わった時刻（PR を出してからチェックが出るまでの時間も、これから測る）" }
+                }
+              }
+            },
+            "problem": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1000 }, { "type": "null" }], "description": "止めた理由（failed では必ず書く）" },
+            "startedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
+            "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "templates": {
+      "description": "テンプレートに入っている版（テンプレートは repos/ に無いので、ここに持つ）",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["repo"],
+        "additionalProperties": false,
+        "properties": {
+          "repo": { "$ref": "../common.schema.json#/$defs/repositoryFullName" },
+          "appKit": {
+            "anyOf": [{ "$ref": "repo.schema.json#/$defs/appKit" }, { "type": "null" }],
+            "description": "入っている版とずれ（repo.json の appKit と同じ形）。まだ入れ替えていなければ null（版を広げる相手にしない）"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "pin": {
+      "type": "object",
+      "required": ["version", "ref"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "$ref": "../common.schema.json#/$defs/appKitVersion" },
+        "ref": { "$ref": "../common.schema.json#/$defs/commitSha" }
+      }
+    }
+  }
+}

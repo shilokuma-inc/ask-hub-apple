@@ -121,6 +121,8 @@ struct RepositorySetupRunner {
             switch change.kind {
             case .removeLegacy: "- `\(change.path)` を外す（今の仕組みのワークフロー）"
             case .removePathFilters: "- `\(change.path)` の `paths`・`paths-ignore` を外す（AskHub のワーカーが待つチェックを、ドキュメントだけの変更でも出す）"
+            case .adoptAppKit: "- `\(change.path)` を app-kit の版の中身にする"
+            case .removeReplaced: "- `\(change.path)` を外す（app-kit に置き換わる）"
             }
         }
         return """

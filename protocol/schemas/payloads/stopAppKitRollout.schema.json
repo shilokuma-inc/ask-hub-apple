@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/stopAppKitRollout.schema.json",
+  "title": "app-kit の版を広げるのをやめる人の意図（kind が stopAppKitRollout）の payload",
+  "description": "封筒は rolloutAppKit と同じ（repo なし・target が版・targetVersion が版のコミット）。payload は空。司令塔は、その版で開いている PR を閉じ、残りには出さない",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

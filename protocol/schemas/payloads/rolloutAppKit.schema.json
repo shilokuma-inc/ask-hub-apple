@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/rolloutAppKit.schema.json",
+  "title": "app-kit の版を広げる人の意図（kind が rolloutAppKit）の payload",
+  "description": "封筒の repo は書かない。target が { type: appKitRelease, id: <版> }、targetVersion が人が見たときの版のコミット。payload は空。版ごとに 1 回。失敗して止めた版に同じ版でもう一度送ると止めたところからやり直し、広げ終わった版に送ると、ずれたリポジトリに置き換える PR を出し直す",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

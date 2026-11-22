@@ -1,0 +1,20 @@
+{
+  "description": "app-kit の版を広げる人の意図（kind が rolloutAppKit）の payload の例。read は、封筒に repo が無く、target が appKitRelease の版で、targetVersion が版のコミットのときに、読む側が読めるか",
+  "schema": "payloads/rolloutAppKit.schema.json",
+  "cases": [
+    {
+      "name": "empty",
+      "payload": {},
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "repositories": ["tm-family/kobosu-app-ios"]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

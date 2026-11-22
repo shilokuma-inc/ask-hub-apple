@@ -66,12 +66,15 @@ public struct WorkflowSetup: Codable, Equatable, Sendable {
     public var head: String?
     /// 直したところ
     public var changes: [WorkflowChange]
+    /// app-kit に入れ替える PR なら、入れる版と替える待つチェックの名前。入れ替えない PR は nil
+    public var appKit: AppKitAdoption?
 
-    public init(state: State, pullRequest: Int? = nil, head: String? = nil, changes: [WorkflowChange] = []) {
+    public init(state: State, pullRequest: Int? = nil, head: String? = nil, changes: [WorkflowChange] = [], appKit: AppKitAdoption? = nil) {
         self.state = state
         self.pullRequest = pullRequest
         self.head = head
         self.changes = changes
+        self.appKit = appKit
     }
 
     var violations: [String] {
@@ -82,7 +85,60 @@ public struct WorkflowSetup: Codable, Equatable, Sendable {
         if changes.contains(where: { $0.path.isEmpty || $0.path.unicodeScalars.count > 1_000 }) {
             violations.append("setup.workflows.changes の path は空でなく 1000 文字まで")
         }
+        if changes.contains(where: { $0.lines.map { $0 < 0 } == true }) { violations.append("setup.workflows.changes の lines は 0 以上") }
+        if changes.contains(where: { change in
+            change.steps.map { $0.isEmpty || $0.count > 50 || $0.contains { $0.isEmpty || $0.unicodeScalars.count > 200 } } == true
+        }) {
+            violations.append("setup.workflows.changes の steps は 1〜50 個で、空でなく 200 文字まで")
+        }
+        let adopts = changes.contains { $0.kind == .adoptAppKit }
+        if adopts != (appKit != nil) { violations.append("setup.workflows の adoptAppKit の変更と appKit は一緒に書く") }
+        violations += appKit?.violations ?? []
         return violations
+    }
+}
+
+/// app-kit に入れ替える準備の PR の、入れる版と、名前が変わる待つチェック（`docs/renewal/app-kit.md` の「初めての入れ替え」）
+public struct AppKitAdoption: Codable, Equatable, Sendable {
+    /// 入れる版のタグ
+    public var version: AppKitVersion
+    /// 入れる版のコミット（40 桁）
+    public var ref: String
+    /// 入れ替えで名前が変わる待つチェック（今の名前 → 入れ替えた後の名前）。承認されたら、司令塔がマージの前に、
+    /// ルールセットの必須のチェック（保護を掛けていれば）とビルドの設定の `childChecks`・`finalChecks` を新しい名前に替える。替えるものが無ければ nil
+    public var renamedChecks: [CheckRename]?
+
+    public init(version: AppKitVersion, ref: String, renamedChecks: [CheckRename]? = nil) {
+        self.version = version
+        self.ref = ref
+        self.renamedChecks = renamedChecks
+    }
+
+    var violations: [String] {
+        var violations: [String] = []
+        if !AttemptFile.isCommitSHA(ref) { violations.append("setup.workflows.appKit.ref の形が違う") }
+        if let renamedChecks {
+            let names = renamedChecks.flatMap { [$0.from, $0.to] }
+            if renamedChecks.isEmpty || renamedChecks.contains(where: { $0.from == $0.to })
+                || names.contains(where: { !ProtectionPolicy.problems(ofRequiredChecks: [$0]).isEmpty })
+                || Set(renamedChecks.map(\.from)).count != renamedChecks.count {
+                violations.append("setup.workflows.appKit.renamedChecks は 1 つ以上で、チェックの名前の形で、今の名前が重ならず、名前が変わる")
+            }
+        }
+        return violations
+    }
+}
+
+/// 待つチェックの名前の付け替え
+public struct CheckRename: Codable, Equatable, Sendable {
+    /// 今の名前
+    public var from: String
+    /// 入れ替えた後の名前
+    public var to: String
+
+    public init(from: String, to: String) {
+        self.from = from
+        self.to = to
     }
 }
 
@@ -93,15 +149,25 @@ public struct WorkflowChange: Codable, Equatable, Sendable {
         case removeLegacy
         /// 待つチェックのワークフローの `paths`・`paths-ignore` を外す
         case removePathFilters
+        /// app-kit の写すファイルを版の中身にする・`.github/app-kit.json` を足す
+        case adoptAppKit
+        /// app-kit に置き換わるファイル（app-kit の `manifest.json` の `replaces`）を外す
+        case removeReplaced
     }
 
     public var kind: Kind
     /// リポジトリの直下からのパス（`.github/workflows/build.yml`）
     public var path: String
+    /// 外すファイルの行の数（`removeLegacy`・`removeReplaced`。人が差分の大きさを見る）。数えていなければ nil
+    public var lines: Int?
+    /// 外すワークフローにしか無い手順の名前（app-kit の再利用ワークフローに同じ名前の手順が無いもの。人が、消える手順を確かめる）。無ければ nil
+    public var steps: [String]?
 
-    public init(kind: Kind, path: String) {
+    public init(kind: Kind, path: String, lines: Int? = nil, steps: [String]? = nil) {
         self.kind = kind
         self.path = path
+        self.lines = lines
+        self.steps = steps
     }
 }
 

@@ -13,7 +13,7 @@
       "enum": [
         "request", "answer", "startEpic", "reviseGoal", "decideSplit", "decision", "approveMerge", "instructFinal", "humanTaskDone",
         "pauseEpic", "resumeEpic", "handover", "retry", "giveUp", "skipTask", "abandonEpic", "verify", "addRepository", "createRepository", "configureRepository", "removeRepository",
-        "applyProtection", "approveSetupPullRequest", "publishGitHubRelease", "startRelease", "submitForReview", "distributeRelease", "withdrawSubmission",
+        "applyProtection", "approveSetupPullRequest", "rolloutAppKit", "stopAppKitRollout", "publishGitHubRelease", "startRelease", "submitForReview", "distributeRelease", "withdrawSubmission",
         "abandonRelease", "retakeScreenshots", "reportRejection", "resolveRejection", "registerBundleId", "applyAppStoreSettings", "confirmAppStoreItem", "excludeFromAppStore",
         "registerKey", "revokeKey"
       ]
