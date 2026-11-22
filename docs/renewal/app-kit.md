@@ -94,6 +94,8 @@ app-kit/
 - 再利用ワークフローは GitHub の決まりで `.github/workflows/` に置く。app-kit 自身の CI と名前がぶつからないよう、配るものには `app-` を付ける
 - `managed/` の呼ぶ側のワークフローは、版を `{{APP_KIT_REF}}`（コミット）・`{{APP_KIT_VERSION}}`（タグ）の目印で持ち、司令塔が写すときに埋める。ほかの写すファイルは版の中身そのまま
 - `manifest.json` は、写すファイルのパスの一覧（`managed`）と、初めての入れ替えで外すファイル（`replaces`。`_build.yml`・`_archive.yml`・`.github/scripts/*.rb`・App Store の素材のワークフローと道具・今の仕組みの跡）を持つ。司令塔は、この一覧に無いファイルに触れない
+  - 外すファイルには、残す条件（`keepIfPresent`）を持たせられる。クリエイティブ素材のワークフローが残るリポジトリでは、それが使う `Tools/app_store_config.py`・`app_store_connect.py`・`remove_alpha.swift` を外さない
+  - 版を埋めた写すファイルは `tools/render-managed.sh <コミット> <タグ> <出力のフォルダ>` で作れる（司令塔は同じことを Swift で行う。手で入れ替えるときにも使う）
 
 ### 各リポジトリの設定（`.github/app-kit.json`）
 
@@ -108,7 +110,7 @@ app-kit/
   "generate": null,
   "uiTests": "ShinkeisuijakuUITests",
   "xcodeVersion": null,
-  "archive": { "platforms": ["iOS"], "googleServiceInfo": false },
+  "archive": { "platforms": ["iOS"], "googleServiceInfo": null },
   "unmanaged": []
 }
 ```
@@ -117,7 +119,7 @@ app-kit/
 - `platforms`: ビルドとテストの行き先（`iOS`・`macOS`・`visionOS`）。`generate` は XcodeGen で作るリポジトリの `"xcodegen"`（ワーカーのビルドの設定の `generate` と同じ）
 - `uiTests`: UI テストのターゲット。作業ブランチへの push では飛ばす（今と同じ）。無いリポジトリは `null`
 - `xcodeVersion`: 版の既定（今は 26.6）と違う Xcode を使うときだけ書く
-- `archive`: Upload する行き先（ask-hub-apple は iOS と macOS）と、Secret から `GoogleService-Info.plist` を書き出すか（kobosu）
+- `archive`: Upload する行き先（`platforms`。省くと `platforms` の先頭）と、Secret から書き出す `GoogleService-Info.plist` のパス（`googleServiceInfo`。kobosu。使わなければ `null`）
 - `unmanaged`: 写すファイルのうち、このリポジトリでは配らないもの（ask-hub-apple の `.coderabbit.yaml`・`.swiftlint.yml` のように、リポジトリで足した設定があるもの）。版を上げる PR でも、ずれの点検でも触れない
 - `.github/` の下なので、ワーカーの epic で変えると、マージの規則で人の確認に回る（[flows.md](flows.md) の「マージの規則」）
 - ワーカーのビルドの設定（`repo.json` の `build.xcode`）と値が重なる。初めての入れ替えでは、ビルドの設定から作る。食い違いは、ずれの点検で知らせる
@@ -149,7 +151,8 @@ app-kit/
 - 起動の条件（push・PR・`askhub/` の子 PR と最終 PR の見分け・`concurrency`）は、呼ぶ側のワークフローに書く（再利用ワークフローからは決められないため）。中身は今のテンプレートと同じで、`paths`・`paths-ignore` で絞らない
 - 撮影の呼ぶ側（`app-store-screenshots.yml`）は、ファイルの名前と入力（`display_types`・`languages`・`allow_non_release`・`upload`）を今のままにする。司令塔がこの名前で起動し、artifact `screenshots-<表示サイズ>` を取り込むため（[store-screenshots.md](store-screenshots.md)）。上げるのは司令塔なので、`upload` が true なら理由を出して止める
 - 使うアクション（`actions/checkout`・`maxim-lobanov/setup-xcode` など）は、コミットで固定する（今はタグ）
-- macOS（ask-hub-apple）と visionOS（テンプレート）の Archive・Upload も、`archive.platforms` で扱う
+- visionOS（テンプレート）の Archive・Upload も、`archive.platforms` で扱う。macOS（ask-hub-apple）の Archive は v1 では扱わず、ask-hub-apple を入れ替えるときに足す
+- 書き出した IPA は artifact に上げない（今のテンプレートは上げている。public のリポジトリでは誰でも取れるため。[release.md](release.md) の「ワークフロー」）
 
 ### 版
 
