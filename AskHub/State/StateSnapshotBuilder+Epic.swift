@@ -291,7 +291,10 @@ extension StateSnapshotBuilder {
             doneCriteria: file.doneWhen,
             tasks: file.tasks.map { Goal.PlannedTask(title: $0.title, humanTaskID: $0.dependsOn.first { humanTaskIDs.contains($0) }) },
             revisionRequest: nil,
-            notApplied: file.notApplied ?? []
+            notApplied: file.notApplied ?? [],
+            outsideRequests: (file.outsideRequests ?? []).map {
+                Goal.OutsideRequest(repositoryFullName: $0.repo.rawValue, title: $0.title, body: $0.body)
+            }
         )
     }
 

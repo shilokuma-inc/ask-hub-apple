@@ -47,6 +47,9 @@ struct GoalReviewView: View {
                     }
                 }
             }
+            if !goal.outsideRequests.isEmpty {
+                OutsideRequestsSection(requests: goal.outsideRequests)
+            }
         }
         .pastelBackground()
         .compactList()
