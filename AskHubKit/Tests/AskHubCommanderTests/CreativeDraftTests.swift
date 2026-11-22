@@ -80,6 +80,25 @@ struct CreativeDraftTests {
         #expect(problems.contains { $0.contains("価格") })
     }
 
+    /// アプリ名（App Store Connect の名前）は Claude に変えられないので、価格らしい文字があっても直させない。人には案の問題として見せる
+    @Test func leavesTheAppNameToTheHuman() {
+        let config = CreativeRepositoryConfig(folders: ["ja": "ja"], screens: ["01_home"])
+        let request = CreativeDraftRequest(
+            repo: Self.repo,
+            appName: "無料メモ",
+            commit: String(repeating: "a", count: 40),
+            locales: [.init(locale: "ja", appName: "無料メモ", listing: ListingText(locale: "ja"))]
+        )
+        let output = ClaudeCreativeDrafter.Output(
+            reason: "書きとめる速さを見出しにしました",
+            colors: .init(background: "#101820", accent: "#4FC3F7", text: "#FFFFFF"),
+            screens: .init(header: ["01_home"], search: ["01_home"]),
+            locales: [.init(locale: "ja", header: .init(title: "思いついたら*すぐ*書く"), search: .init(title: "メモをすばやく"))]
+        )
+        #expect(ClaudeCreativeDrafter.problems(output, request: request, config: config).isEmpty)
+        #expect(output.spec(request, config: config).cautions.map(\.code) == ["forbidden-price"])
+    }
+
     @Test func promptsWithTheMaterials() {
         let config = CreativeRepositoryConfig(folders: ["ja": "ja"], screens: ["01_home"])
         let request = CreativeDraftRequest(

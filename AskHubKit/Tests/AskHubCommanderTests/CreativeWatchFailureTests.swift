@@ -129,6 +129,106 @@ extension ReleaseWatchTests {
         #expect(hosting.workflows.withLock { $0.dispatches.count } == 1)
     }
 
+    /// 印と寸法は合うのに画像として読めない（壊れた PNG）なら、やり直さずに案を `failed` にする
+    @Test func failsCreativeWhenTheImageCannotBeRead() async throws {
+        try await prepareCreative()
+        let watch = creativeWatch(drafter: FakeCreativeDrafter(), originals: temporaryOriginals())
+        try await draftAndDispatch(watch)
+        var files = Self.allImages
+        files["ja/product-page-header.png"] = Self.pngHeader(width: 3840, height: 1646)
+        creativeArtifacts(report: Self.cleanReport, files: files)
+        hosting.workflows.withLock { $0.runs[Self.creativeRun] = creativeRunDetail(status: "completed", conclusion: "success") }
+        clock.advance(minutes: 5)
+        await watch.refresh()
+        await watch.waitForTasks()
+        let draft = try #require(try await creativeFile().draft)
+        #expect(draft.state == .failed && draft.failure?.contains("見本を作れない") == true)
+    }
+
+    /// artifact を読むときに上限に当たったら、GitHub が示した時間がたつまで取り込み直さない
+    @Test func holdsCreativeImportWhileRateLimited() async throws {
+        try await prepareCreative()
+        let watch = creativeWatch(drafter: FakeCreativeDrafter(), originals: temporaryOriginals())
+        try await draftAndDispatch(watch)
+        creativeArtifacts(report: Self.cleanReport, files: Self.allImages)
+        hosting.workflows.withLock { state in
+            state.runs[Self.creativeRun] = creativeRunDetail(status: "completed", conclusion: "success")
+            state.artifactsFailure = .rateLimited(retryAfter: .seconds(900))
+        }
+        clock.advance(minutes: 5)
+        await watch.refresh()
+        await watch.waitForTasks()
+        hosting.workflows.withLock { $0.artifactsFailure = nil }
+        clock.advance(minutes: 10)
+        await watch.refresh()
+        await watch.waitForTasks()
+        #expect(try await creativeFile().draft?.state == .rendering)
+        clock.advance(minutes: 6)
+        await watch.refresh()
+        await watch.waitForTasks()
+        #expect(try await creativeFile().draft?.state == .rendered)
+    }
+
+    /// 起動の後に実行の一覧を読めないまま（ワークフローが消された）、打ち切りの時間がたったら案を `failed` にする
+    @Test func failsCreativeWhenTheRunCannotBeFoundForHours() async throws {
+        try await prepareCreative()
+        let watch = creativeWatch(drafter: FakeCreativeDrafter(), originals: temporaryOriginals())
+        hosting.workflows.withLock { $0.dispatchReply = .success(nil) }
+        _ = try await DraftCreativeAssetsHandler().handle(creativeEnvelope("draftCreativeAssets", revision: 0), in: creativeContext)
+        await watch.refresh()
+        await watch.waitForTasks()
+        await watch.waitForRefresh()
+        hosting.workflows.withLock { $0.dispatchedRunsFailure = .notFound }
+        clock.advance(minutes: 5)
+        await watch.refresh()
+        #expect(try await creativeFile().draft?.state == .rendering)
+        clock.advance(minutes: 3 * 60)
+        await watch.refresh()
+        let draft = try #require(try await creativeFile().draft)
+        #expect(draft.state == .failed && draft.failure?.contains("書き出しの実行を探せない") == true)
+    }
+
+    /// 1 つの鍵で読めなくても、ほかの鍵でアプリを探す。どの鍵でも見つからなければ、読めなかった鍵の失敗を投げる
+    @Test func looksForTheAppWithTheOtherKeys() async throws {
+        try await prepareCreative()
+        let revoked = FakeAppStore()
+        revoked.state.withLock { $0.appsFailure = .unauthorized(status: 401) }
+        let watch = CreativeWatch(
+            context: creativeContext,
+            stores: [revoked, appStore],
+            sources: sources,
+            hosting: hosting,
+            artifacts: FakeCreativeExtractor(),
+            drafter: FakeCreativeDrafter(),
+            originals: temporaryOriginals(),
+            log: { _ in }
+        )
+        #expect(try await watch.app(of: Self.repo, base: "develop")?.store == 1)
+        let alone = CreativeWatch(
+            context: creativeContext,
+            stores: [revoked],
+            sources: sources,
+            hosting: hosting,
+            artifacts: FakeCreativeExtractor(),
+            drafter: FakeCreativeDrafter(),
+            originals: temporaryOriginals(),
+            log: { _ in }
+        )
+        await #expect(throws: ReleaseStepProblem.self) { try await alone.app(of: Self.repo, base: "develop") }
+    }
+
+    /// PNG の印と IHDR だけの、画像として読めないデータ
+    static func pngHeader(width: UInt32, height: UInt32) -> Data {
+        var data = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        let size = withUnsafeBytes(of: width.bigEndian) { Array($0) } + withUnsafeBytes(of: height.bigEndian) { Array($0) }
+        let payload = size + [8, 2, 0, 0, 0]
+        data.append(contentsOf: withUnsafeBytes(of: UInt32(payload.count).bigEndian) { Array($0) })
+        data.append(Data("IHDR".utf8))
+        data.append(contentsOf: payload)
+        data.append(contentsOf: [0, 0, 0, 0])
+        return data
+    }
+
     @Test func checksCreativeImages() {
         #expect(CreativeImport.imageProblem(Self.header, kind: .productPageHeader) == nil)
         // RGB でも tRNS（透過にする色）があれば断る
