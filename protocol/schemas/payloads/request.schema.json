@@ -2,13 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/request.schema.json",
   "title": "依頼の人の意図（kind が request）の payload",
-  "description": "封筒の repo は対象のリポジトリ、target と targetVersion は書かない。知らない欄のある payload は読まない。添付の n は 1 から順に並べ、名前はパスの区切り（/・\\）と制御文字を含まないことは、読む側で確かめる。添付の中身は attachments/<device>/<nonce>/<n> に置き、大きさとハッシュを司令塔が確かめる",
+  "description": "封筒の repo は対象のリポジトリ、target と targetVersion は書かない。知らない欄のある payload は読まない。添付の n は 1 から順に並べ、名前はパスの区切り（/・\\）と制御文字を含まないことは、読む側で確かめる。添付の中身は attachments/<device>/<nonce>/<n> に置き、大きさとハッシュを司令塔が確かめる。release は「このリリースを直す」依頼の直すリリースの版で、司令塔は終わっていないリリースで release ブランチがあるときだけ受け付ける",
   "type": "object",
   "required": [
     "title"
   ],
   "additionalProperties": false,
   "properties": {
+    "release": {
+      "$ref": "../state/release.schema.json#/$defs/marketingVersion"
+    },
     "title": {
       "type": "string",
       "minLength": 1,

@@ -42,6 +42,34 @@
       "read": "valid"
     },
     {
+      "name": "release-fix",
+      "payload": {
+        "title": "審査で断られた所を直す",
+        "body": "課金の画面の文言",
+        "release": "1.4.0"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "release-not-version",
+      "payload": {
+        "title": "直す",
+        "release": "v1.4"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "release-not-string",
+      "payload": {
+        "title": "直す",
+        "release": 140
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "missing-title",
       "payload": {
         "body": "…"
