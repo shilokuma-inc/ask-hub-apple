@@ -130,13 +130,22 @@ public actor CreativeWatch {
             throw ReleaseStepProblem("\(repo) のビルドの設定を読めない（\(error)）", needsHuman: false)
         }
         guard !bundleIDs.isEmpty else { return nil }
+        // 1 つの鍵で読めなくても（失効・上限）、ほかの鍵で探す。どの鍵でも見つからず、読めない鍵があったときだけ、その失敗を投げる
+        var failure: (any Error)?
         for (index, store) in stores.enumerated() {
-            let found = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.apps(bundleIDs: bundleIDs) }
+            let found: [AppStoreApp]
+            do {
+                found = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.apps(bundleIDs: bundleIDs) }
+            } catch {
+                failure = error
+                continue
+            }
             if let app = found.first {
                 apps[repo] = (index, app)
                 return (index, app)
             }
         }
+        if let failure { throw failure }
         return nil
     }
 
